@@ -1,4 +1,5 @@
 import { Group, LOD, Vector3 } from 'three';
+import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -255,11 +256,12 @@ export class WorldBuilder {
   /** Broad-leaf tree: voxel trunk + lumpy canopy. */
   tree(chunk: string, x: number, z: number, y: number, height: number, seed: number): void {
     const b = this.chunk(chunk);
+    const src = traceSource(); // one trace for the whole tree, not one per canopy block
     const trunkH = height * 0.55;
     const tw = 0.7 + height * 0.03;
     const bark = GREEN.bark[seed % GREEN.bark.length];
     for (let s = 0; s < Math.ceil(trunkH / 1.2); s++)
-      b.box(x, y + s * 1.2 + 0.6, z, tw, 1.2, tw, bark, 'bark', { shade: 0.95 + hash3(s, seed, 1, 3) * 0.1 });
+      b.box(x, y + s * 1.2 + 0.6, z, tw, 1.2, tw, bark, 'bark', { shade: 0.95 + hash3(s, seed, 1, 3) * 0.1, src });
     const R = height * 0.33;
     const cy = y + trunkH + R * 0.55;
     const cell = Math.max(1.1, R / 3.2);
@@ -274,24 +276,25 @@ export class WorldBuilder {
           if (r > 1) continue;
           if (r < 0.62 && Math.abs(i) < n && Math.abs(j) < n && Math.abs(k) < n) continue; // hollow core
           const c = GREEN.leaf[Math.floor(hash3(k, i, j, seed + 1) * GREEN.leaf.length)];
-          b.box(x + px, cy + py, z + pz, cell, cell * 0.8, cell, c, 'foliage', { shade: 0.85 + (j + n) / (2 * n) * 0.3 });
+          b.box(x + px, cy + py, z + pz, cell, cell * 0.8, cell, c, 'foliage', { shade: 0.85 + (j + n) / (2 * n) * 0.3, src });
         }
-    this.colliders.addBox(x - tw / 2, y, z - tw / 2, x + tw / 2, y + trunkH, z + tw / 2);
+    this.colliders.addBox(x - tw / 2, y, z - tw / 2, x + tw / 2, y + trunkH, z + tw / 2, { src });
   }
 
   /** Sugar palm: tall thin trunk and a star of fronds. */
   palm(chunk: string, x: number, z: number, y: number, height: number, seed: number): void {
     const b = this.chunk(chunk);
+    const src = traceSource();
     const tw = 0.45;
     const segs = Math.ceil(height / 0.9);
     const lean = (hash3(seed, 2, 3, 4) - 0.5) * 0.08;
     for (let s = 0; s < segs; s++) {
       const c = GREEN.palmTrunk[(s + seed) % GREEN.palmTrunk.length];
-      b.box(x + lean * s * 0.9, y + s * 0.9 + 0.45, z, tw, 0.9, tw, c, 'bark');
+      b.box(x + lean * s * 0.9, y + s * 0.9 + 0.45, z, tw, 0.9, tw, c, 'bark', { src });
     }
     const topX = x + lean * segs * 0.9;
     const topY = y + segs * 0.9;
-    b.box(topX, topY + 0.3, z, 1.1, 0.9, 1.1, GREEN.palm[2], 'foliage');
+    b.box(topX, topY + 0.3, z, 1.1, 0.9, 1.1, GREEN.palm[2], 'foliage', { src });
     const fronds = 9;
     for (let f = 0; f < fronds; f++) {
       const a = (f / fronds) * Math.PI * 2 + hash3(f, seed, 1, 1);
@@ -299,10 +302,10 @@ export class WorldBuilder {
         const d = s * 0.85;
         const droop = -0.12 * s * s;
         const c = GREEN.palm[(f + s) % GREEN.palm.length];
-        b.box(topX + Math.cos(a) * d, topY + 0.5 + droop, z + Math.sin(a) * d, 0.95, 0.28, 0.95, c, 'foliage', { ry: a });
+        b.box(topX + Math.cos(a) * d, topY + 0.5 + droop, z + Math.sin(a) * d, 0.95, 0.28, 0.95, c, 'foliage', { ry: a, src });
       }
     }
-    this.colliders.addBox(x - tw / 2, y, z - tw / 2, x + tw / 2, y + height, z + tw / 2);
+    this.colliders.addBox(x - tw / 2, y, z - tw / 2, x + tw / 2, y + height, z + tw / 2, { src });
   }
 
   /**

@@ -118,6 +118,24 @@ distance travelled, layers jump / landing / actions / prop-holding arms, then
 plants the lowest sole on the ground (so crouches and strides stay grounded).
 The krama tail, camera and lantern are Verlet pendulums that react to movement.
 
+## Reporting bugs and ideas
+
+Press **B** in the game or the viewer (or tap **🐞 Report**). The page freezes;
+click what's wrong — a wall block, the explorer's hair, a spot where something
+invisible blocks you — write a note in any language and **Save report**. The dev
+server writes `feedback/<date>-<slug>/report.md` + `screenshot.jpg`:
+
+- every pick names **the line of code that built it** (e.g. `gateHall` in
+  `AngkorScaleWorld.ts` → `WorldBuilder.block`), plus the collider boxes there and
+  where they were added — blocks and colliders record their call stack in dev
+  builds, mapped back to the `.ts` sources;
+- a URL (and an `npm run shots` command) that puts the explorer, camera, outfit,
+  lighting and current action back exactly as they were;
+- the explorer / camera state, recent console errors, browser and GPU.
+
+Ask Claude to "check the feedback" (push the folder first if Claude runs in the
+cloud). See [`feedback/README.md`](feedback/README.md).
+
 ## Scripts
 
 - `npm run shots -- name=query …` — headless screenshots of viewer states, e.g.
@@ -125,7 +143,8 @@ The krama tail, camera and lantern are Verlet pendulums that react to movement.
   `@page?` for another page (`game="@index.html?shot=1&spawn=1"`).
 - `npm run playtest` — headless play test that drives the explorer with real key
   presses: walks through the gopura doorway, runs, hits a wall, climbs the temple
-  stairs, jumps and opens a door.
+  stairs, jumps and opens a door — then files a bug report and checks it names
+  the code that built what was clicked.
 - `node scripts/voxel-slices.mjs hair,head` — ASCII front/side projections for
   quick silhouette checks.
 
@@ -134,5 +153,5 @@ The krama tail, camera and lantern are Verlet pendulums that react to movement.
 `WASD` move · `Shift` run · `Space` jump · mouse drag / `Q` `R` orbit · wheel
 zoom · `E` interact / open door · `F` wave · `C` cheer · `U` look up · `P` peek ·
 `L` lantern · `T` torch · `H` hat · `G` outfit · `X` expression · `N` dusk ·
-`V` overview · `1`–`4` teleport (causeway, gopura, temple stairs, Bakan).
+`V` overview · `1`–`4` teleport (causeway, gopura, temple stairs, Bakan) · `B` report a bug.
 Touch: left thumb stick, drag right side to look.

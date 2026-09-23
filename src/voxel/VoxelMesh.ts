@@ -171,6 +171,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
 
   const group = new Group();
   group.name = options.name ?? 'voxels';
+  // Builder space = instance position + offset (the feedback tool reports picks in it).
+  group.userData.voxelOffset = offset.clone();
   for (const list of buckets.values()) {
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
@@ -197,6 +199,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
       mesh.setColorAt(i, _c);
     }
     geo.setAttribute('voxOpen', new InstancedBufferAttribute(open, 1));
+    // The code that made each instance (dev builds), for the feedback tool's picker.
+    if (list.some((b) => b.src)) mesh.userData.voxelSources = list.map((b) => b.src);
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = options.castShadow ?? true;

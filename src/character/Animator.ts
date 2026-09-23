@@ -87,6 +87,11 @@ export class Animator {
     return this.action && !this.action.stopping ? this.action.name : null;
   }
 
+  /** Seconds since the current action started (0 when there is none). */
+  get actionTime(): number {
+    return this.action && !this.action.stopping ? this.action.t : 0;
+  }
+
   /** True while a full-body action wants the character to stand still. */
   get isBusy(): boolean {
     return !!this.action && !this.action.stopping && !ACTIONS[this.action.name].allowLocomotion;

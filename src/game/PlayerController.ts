@@ -49,12 +49,7 @@ export class PlayerController {
 
   update(dt: number): void {
     const inp = this.input;
-    // ── Camera orbit input ──────────────────────────────────────────────
-    this.camYaw -= inp.dragX * 0.005;
-    this.camPitch = Math.min(1.25, Math.max(-0.35, this.camPitch + inp.dragY * 0.004));
-    this.camDist = Math.min(this.overview ? 120 : 18, Math.max(1.6, this.camDist * (1 + inp.wheel * 0.12)));
-    if (inp.down('KeyQ')) this.camYaw += dt * 1.8;
-    if (inp.down('KeyR')) this.camYaw -= dt * 1.8;
+    this.orbit(dt);
 
     // ── Desired horizontal velocity (camera-relative) ───────────────────
     const m = inp.move();
@@ -90,6 +85,21 @@ export class PlayerController {
     for (let s = 0; s < steps; s++) this.step(h);
 
     this.sync(dt);
+  }
+
+  /** Camera only — orbit, zoom, follow — while the game is paused (e.g. for a bug report). */
+  look(dt: number): void {
+    this.orbit(dt);
+    this.sync(dt);
+  }
+
+  private orbit(dt: number): void {
+    const inp = this.input;
+    this.camYaw -= inp.dragX * 0.005;
+    this.camPitch = Math.min(1.25, Math.max(-0.35, this.camPitch + inp.dragY * 0.004));
+    this.camDist = Math.min(this.overview ? 120 : 18, Math.max(1.6, this.camDist * (1 + inp.wheel * 0.12)));
+    if (inp.down('KeyQ')) this.camYaw += dt * 1.8;
+    if (inp.down('KeyR')) this.camYaw -= dt * 1.8;
   }
 
   private step(dt: number): void {

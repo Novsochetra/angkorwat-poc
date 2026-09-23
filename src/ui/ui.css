@@ -263,3 +263,202 @@ body.shot .viewer-link {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* ── Feedback tool (B): report bugs / ideas into feedback/ ─────────────── */
+.fb-button {
+  position: fixed;
+  right: 12px;
+  top: 48px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(20, 24, 28, 0.55);
+  color: #f3efe7;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.fb-button:hover {
+  background: rgba(20, 24, 28, 0.75);
+}
+
+/* Console errors so far: worth a report. */
+.fb-button[data-errors]::after {
+  content: attr(data-errors);
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-weight: 700;
+}
+
+body.viewer .fb-button {
+  top: 12px;
+  right: auto;
+  left: 12px;
+}
+
+body.reporting canvas#scene {
+  cursor: crosshair;
+}
+
+body.reporting .fb-button,
+body.reporting .hud,
+body.reporting .viewer-link,
+body.reporting .touchpad,
+body.reporting #panel,
+.fb-panel {
+  display: none;
+}
+
+body.reporting .fb-panel {
+  display: block;
+}
+
+.fb-picks {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+  font-size: 12px;
+}
+
+.fb-picks:empty {
+  display: none;
+}
+
+.fb-picks li {
+  margin: 3px 0;
+}
+
+.fb-picks code {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.fb-picks button {
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.fb-panel textarea {
+  display: block;
+  width: 100%;
+  margin: 8px 0 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.fb-status p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fb-status p:first-child {
+  font-weight: 600;
+}
+
+.fb-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.fb-actions button {
+  appearance: none;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fb-actions button.fb-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.fb-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fb-panel[data-mode='saved'] :is(.sub, .chips, textarea, label.row, .fb-picks button) {
+  display: none;
+}
+
+.fb-tip {
+  position: fixed;
+  display: none;
+  transform: translate(14px, 14px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(20, 24, 28, 0.8);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A ring on the picked point with its number up-right (drawn the same way on the screenshot). */
+.fb-pin {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2.5px solid #ffd27a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(20, 24, 28, 0.85), inset 0 0 0 1.5px rgba(20, 24, 28, 0.85);
+  pointer-events: none;
+}
+
+.fb-pin span {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ffd27a;
+  box-shadow: 0 0 0 1.5px rgba(20, 24, 28, 0.85);
+  color: #1f2a36;
+  font: 700 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .fb-picks code {
+    display: none;
+  }
+  .fb-panel {
+    max-height: 50%;
+  }
+  .fb-panel textarea {
+    height: 3.8em;
+  }
+  /* Keep Save in reach when the sheet scrolls. */
+  .fb-actions {
+    position: sticky;
+    bottom: -14px;
+    margin: 8px -14px -14px;
+    padding: 8px 14px 14px;
+    background: var(--panel);
+  }
+}

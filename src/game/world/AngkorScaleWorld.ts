@@ -7,6 +7,7 @@ import {
   PlaneGeometry,
   type Object3D,
 } from 'three';
+import { traceSource } from '../../feedback/sourceTrace';
 import { hash3, valueNoise3 } from '../../voxel/random';
 import type { VoxelQuality } from '../../voxel/VoxelMesh';
 import { ANGKOR } from '../../world/scale';
@@ -284,6 +285,8 @@ function pond(root: Object3D, w: WorldBuilder, x: number, z: number, lx: number,
   w.block('avenue', x + h, 0, z - d, x + h + 1, 0.5, z + d, { color: STONE.weathered, tile: [1, 0.5, 3] });
   w.colliders.addBox(x - h, -3, z - d, x + h, 0.45, z + d, { noStand: true });
   const water = new Mesh(new PlaneGeometry(lx, lz), waterMaterial());
+  water.name = 'pond';
+  water.userData.source = traceSource();
   water.rotation.x = -Math.PI / 2;
   water.position.set(x, 0.18, z);
   water.receiveShadow = true;
@@ -316,6 +319,7 @@ function makeWater(): Mesh {
   water.position.y = -0.35;
   water.receiveShadow = true;
   water.name = 'moat';
+  water.userData.source = traceSource();
   return water;
 }
 
@@ -326,6 +330,7 @@ function makeWater(): Mesh {
 function makeGround(): Group {
   const g = new Group();
   g.name = 'ground';
+  g.userData.source = traceSource();
   const mat = new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   const slab = (x0: number, z0: number, x1: number, z1: number, step = 20) => {
     const sx = Math.max(1, Math.round((x1 - x0) / step));
