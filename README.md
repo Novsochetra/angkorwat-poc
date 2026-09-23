@@ -1,0 +1,133 @@
+# Angkor Quest — Explorer character
+
+A fully rigged, animated voxel explorer for the Angkor Wat game, rebuilt from the
+character reference sheets (turnaround, close-up details, colour palette,
+expressions, variations, action poses) and scaled to sit correctly in a
+real-size Angkor Wat map.
+
+- **`index.html`** — real-scale test level: walk the explorer across the western
+  causeway, through the west gopura's doorway and up to the 65 m central tower.
+- **`viewer.html`** — character studio: turnaround, expressions, outfits and
+  animations on a backdrop that mimics the reference sheet.
+
+```bash
+npm install
+npm run dev        # open http://localhost:5173/ (game) and /viewer.html (viewer)
+npm run build      # typecheck + production build into dist/
+```
+
+![Turnaround](docs/turnaround.webp)
+
+![Expressions: neutral, happy, determined, surprised, curious, focused](docs/expressions.webp)
+
+![Outfits: default, hat, lantern, no scarf, explorer gear, temple sampot, torch](docs/outfits.webp)
+
+| Western causeway (12 m) | Gopura doorway (3.4 m) |
+| --- | --- |
+| ![Causeway](docs/scale-causeway.webp) | ![Doorway](docs/scale-doorway.webp) |
+| **Overview — the explorer is the dot in the doorway** | **Dusk with the torch** |
+| ![Overview](docs/scale-overview.webp) | ![Dusk](docs/dusk-torch.webp) |
+
+## Scale contract (1 unit = 1 metre)
+
+The Angkor Wat sheets are drawn at real size (complex ≈ 1.5 km × 1.3 km, 190 m
+moat, 65 m central tower) and mark the human figure as ≈ 1.7 m, so the explorer
+is exactly **1.70 m** tall. All constants live in `src/world/scale.ts`; build the
+map against them rather than guessing.
+
+| Thing | Size |
+| --- | --- |
+| Explorer (sole → hair top) | **1.70 m** (32.4 body units, 1 BU ≈ 5.2 cm) |
+| Collision capsule | radius 0.32 m, step-up 0.42 m |
+| Walk / run speed | 1.9 m/s / 4.6 m/s (animation cadence is locked to distance) |
+| Gopura / gallery doorway | 3.4 m × 1.8 m (≈ 2× the explorer, as on the sheet) |
+| Western causeway | 12 m wide |
+| Stair riser / tread | 0.25 m / 0.35 m (Bakan stairs 0.3 m / 0.18 m) |
+| Central tower | 65 m |
+| Sandstone block kit | 0.5–1.5 m tiles |
+
+The character sheet's own "Height ≈ 16 voxels / 6 voxels wide" labels do not
+match its renders (the render is ≈ 32 blocks tall with an 11-block face and a
+14-block head of hair), so — as requested — those numbers were ignored and the
+model was measured off the renders with a grid overlay instead.
+
+## Using the explorer in the map
+
+```ts
+import { AngkorExplorer } from './src/character/AngkorExplorer';
+
+const explorer = new AngkorExplorer({ quality: 'medium', outfit: 'default' });
+scene.add(explorer.object);            // metres, feet on y = 0, facing +Z
+
+// every frame, from your controller:
+explorer.object.position.copy(playerPosition);
+explorer.object.rotation.y = playerYaw;
+explorer.setMotion(horizontalSpeed, isGrounded, verticalSpeed);
+explorer.update(dt);
+
+// on demand:
+explorer.play('openDoor');             // interact, lookUp, peek, wave, cheer
+explorer.setExpression('surprised');   // neutral, happy, determined, surprised, curious, focused
+explorer.setOutfit('withLantern');     // default, withHat, withLantern, withoutScarf,
+                                       // explorerGear, templeOutfit, torchBearer
+explorer.setOutfit({ hat: true, held: 'torch' });   // or mix individual pieces
+```
+
+`src/game/PlayerController.ts` is a complete third-person controller (camera-
+relative movement, run, jump, stairs, box collision, wall-aware follow camera)
+that works with any `ColliderWorld` of axis-aligned boxes.
+
+## What's in the character
+
+| Sheet panel | Implementation |
+| --- | --- |
+| Turnaround / proportions | `src/character/skeleton.ts` (joint pivots measured in body units) |
+| Colour palette (3.2) | `src/character/palette.ts` — swatches sampled from the sheet, tuned against the renders |
+| Face (3.3.1) + expressions (3.4) | `parts/face.ts` — 2×2 white/black eyes, blush, nose bump, thin smile; six expressions + blinking |
+| Hair (3.3.2) | `parts/hair.ts` — procedural: skull shell ∪ rounded cloud, strand displacement, bangs profile read off the front view |
+| Krama scarf (3.3.3) | `parts/scarf.ts` — checked collar + three-segment tail with fringe (swings with physics) |
+| Shirt, straps (3.3.4) | `parts/torso.ts` |
+| Camera (3.3.5–6) | `parts/gear.ts` — octagonal lens, red shutter light, brass lugs, neck strap (swings) |
+| Backpack (3.3.7) | `parts/gear.ts` — flap, brass buckle, pockets, rivets; bigger trekking pack for "Explorer Gear" |
+| Belt & pouches (3.3.8) | `parts/torso.ts` — buckle, pouches with brass snaps, knife sheath |
+| Shorts, boots, hands (3.3.9–11) | `parts/limbs.ts` — hemmed shorts, cream socks, cuffed boots; relaxed / holding / pointing fists |
+| Materials (3.3.12) | `src/voxel/materials.ts` — per-material bevel radius, warm rim tint, surface grain |
+| Variations (3.5) | hat, lantern (lit), no scarf, explorer gear, temple sampot, torch (lit) |
+| Action poses (3.6) | `src/character/clips.ts` — idle, walk, run, jump/land, open door, peek, hold lantern/torch, look up, interact, wave, cheer |
+
+### How the blocks are drawn
+
+Every block is a rounded cube (`src/voxel`). Parts are authored on their own
+grids so the model mixes resolutions like the sheet (big hair/face blocks, a
+finer shirt weave, tiny camera parts). Each material family is one
+`InstancedMesh`; block sizes ride in the instance matrices and the shader
+re-bevels them so every edge keeps the same radius. Rims are painted only on
+edges between two exposed faces, so flush neighbours show a soft seam and real
+steps catch a warm highlight — the look of the reference renders. Ambient
+occlusion and colour jitter are baked per block.
+
+Quality levels: `high` (smooth bevels, viewer), `medium` (24-vertex chamfered
+blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).
+
+### Animation
+
+`Animator` blends idle / walk / run by speed with the gait phase driven by
+distance travelled, layers jump / landing / actions / prop-holding arms, then
+plants the lowest sole on the ground (so crouches and strides stay grounded).
+The krama tail, camera and lantern are Verlet pendulums that react to movement.
+
+## Scripts
+
+- `npm run shots -- name=query …` — headless screenshots of viewer states, e.g.
+  `npm run shots -- front="view=0" happy="expr=happy&zoom=head"`; prefix with
+  `@page?` for another page (`game="@index.html?shot=1&spawn=1"`).
+- `node scripts/voxel-slices.mjs hair,head` — ASCII front/side projections for
+  quick silhouette checks.
+
+## Controls (game)
+
+`WASD` move · `Shift` run · `Space` jump · mouse drag / `Q` `R` orbit · wheel
+zoom · `E` interact / open door · `F` wave · `C` cheer · `U` look up · `P` peek ·
+`L` lantern · `T` torch · `H` hat · `G` outfit · `X` expression · `N` dusk ·
+`V` overview · `1`–`4` teleport (causeway, gopura, temple stairs, Bakan).
+Touch: left thumb stick, drag right side to look.

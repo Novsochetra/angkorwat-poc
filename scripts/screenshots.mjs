@@ -1,0 +1,62 @@
+// Capture viewer / game states with headless Chromium.
+//
+//   node scripts/screenshots.mjs                      # default set
+//   node scripts/screenshots.mjs front="view=0&zoom=full" game="@index.html?shot=1"
+//
+// Each arg is name=query (viewer.html) or name=@page?query for another page.
+// Output: screenshots/<name>.png
+import { mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { createServer } from 'vite';
+import { chromium } from 'playwright';
+
+const root = resolve(import.meta.dirname, '..');
+const out = resolve(root, 'screenshots');
+mkdirSync(out, { recursive: true });
+
+const defaults = {
+  turnaround: 'turnaround=1',
+  front: 'view=0',
+  side: 'view=90',
+  back: 'view=180',
+  face: 'view=0&zoom=head',
+};
+const args = process.argv.slice(2);
+const width = Number(process.env.SHOT_W ?? 1280);
+const height = Number(process.env.SHOT_H ?? 800);
+const shots = args.length
+  ? Object.fromEntries(
+      args.map((a) => {
+        const i = a.indexOf('=');
+        return [a.slice(0, i), a.slice(i + 1)];
+      }),
+    )
+  : defaults;
+
+const server = await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false } });
+await server.listen();
+const port = server.config.server.port ?? 5199;
+const base = `http://localhost:${server.resolvedUrls?.local?.[0] ? new URL(server.resolvedUrls.local[0]).port : port}`;
+
+const executablePath = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const browser = await chromium.launch({
+  executablePath,
+  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+});
+const page = await browser.newPage({ viewport: { width, height } });
+page.on('pageerror', (e) => console.error('[pageerror]', e.message));
+page.on('console', (m) => {
+  if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[angkor]')) console.log(`[${m.type()}]`, m.text());
+});
+
+for (const [name, spec] of Object.entries(shots)) {
+  const url = spec.startsWith('@') ? `${base}/${spec.slice(1)}` : `${base}/viewer.html?shot=1&${spec}`;
+  const t0 = Date.now();
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__ready === true, null, { timeout: 180_000 });
+  await page.screenshot({ path: resolve(out, `${name}.png`), timeout: 240_000 });
+  console.log(`${name}: ${url} (${Date.now() - t0} ms)`);
+}
+
+await browser.close();
+await server.close();
