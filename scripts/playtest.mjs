@@ -1,6 +1,8 @@
 // Headless play test: drive the explorer with real key presses and check the
-// controller walks through the gopura doorway, climbs stairs, collides and jumps.
+// controller walks through the gopura doorway, climbs stairs, collides and jumps,
+// then file a bug report and check it points at the code that built the picks.
 //   node scripts/playtest.mjs
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
@@ -100,6 +102,26 @@ await page.keyboard.press('KeyE');
 await page.evaluate(() => window.__step(1 / 60));
 s1 = await state();
 check('E near the doorway plays openDoor', s1.action === 'openDoor', `action ${s1.action}`);
+
+// 7. Bug report: B, click the gate hall wall and the explorer, save. The report
+// must name the exact lines that built them (source-mapped from the served JS).
+const game = await browser.newPage({ viewport: { width: 800, height: 500 } }); // desktop layout: panel on the right
+game.on('pageerror', (e) => errors.push(e.message));
+await game.goto(`${url}index.html?at=-526,1.5,-5.5,90&cam=0,5,4`, { waitUntil: 'load' });
+await game.waitForFunction(() => !!window.feedback, null, { timeout: 120_000 });
+await game.keyboard.press('KeyB');
+await game.mouse.click(400, 117); // the wall above the explorer's head
+await game.mouse.click(400, 250); // the explorer: the camera looks at its head
+await game.fill('.fb-panel textarea', 'playtest: report tool check');
+await game.keyboard.press('Control+Enter'); // save (a click would wait for "stable" frames, slow in software GL)
+await game.waitForFunction(() => document.querySelector('.fb-panel')?.dataset.mode === 'saved', null, { timeout: 60_000, polling: 100 });
+const saved = resolve(root, (await game.textContent('.fb-status p')).replace(/^Saved to /, ''));
+const report = existsSync(resolve(saved, 'report.md')) ? readFileSync(resolve(saved, 'report.md'), 'utf8') : '';
+const wall = readFileSync(resolve(root, 'src/game/world/AngkorScaleWorld.ts'), 'utf8').split('\n').findIndex((l) => l.includes('w.block(chunk, x0, floor, zc - hw,')) + 1;
+check('report names the line that built the wall', report.includes(`\`src/game/world/AngkorScaleWorld.ts:${wall}\` gateHall`), `expected AngkorScaleWorld.ts:${wall} gateHall`);
+check('report names the explorer part', /### ② Explorer · hair[\s\S]*`src\/character\/parts\/hair\.ts:\d+` buildHair/.test(report), report.match(/### ② .*/)?.[0]);
+check('report has a screenshot', existsSync(resolve(saved, 'screenshot.jpg')), saved);
+rmSync(saved, { recursive: true, force: true });
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();

@@ -23,6 +23,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { AngkorExplorer, OUTFITS, type OutfitName } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
+import { FeedbackTool } from '../feedback/FeedbackTool';
 import { CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 
@@ -195,7 +196,7 @@ function chipGroup<T extends string>(title: string, items: readonly T[], current
 }
 
 if (!shot) {
-  panel.innerHTML = `<h1>Angkor Quest Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit</p>`;
+  panel.innerHTML = `<h1>Angkor Quest Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit · B to report a bug</p>`;
   const pretty = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
   chipGroup('Outfit', Object.keys(OUTFITS) as OutfitName[], () => outfit, (v) => {
     outfit = v;
@@ -265,14 +266,54 @@ addEventListener('resize', () => {
   frame();
 });
 
+// ── Bug reports (B): pause, click what's wrong, save to feedback/ ───────────
+const deg = (rad: number) => (rad * 180) / Math.PI;
+const feedback = shot
+  ? null
+  : new FeedbackTool({
+      renderer,
+      scene,
+      camera,
+      pickables: () => explorers.map((e) => e.object),
+      state: () => {
+        const a = explorers[0]?.animator;
+        const d = camera.position.clone().sub(controls.target);
+        return {
+          Character: `outfit ${outfit} · expression ${expression} · animation ${anim}${a?.currentAction ? ` (${a.actionTime.toFixed(2)} s in)` : ''} · quality ${quality}${turnaround ? ' · turnaround ×8' : ''}`,
+          Camera: `${d.length().toFixed(2)} m from (${controls.target.x.toFixed(2)}, ${controls.target.y.toFixed(2)}, ${controls.target.z.toFixed(2)}) · azimuth ${deg(Math.atan2(d.x, d.z)).toFixed(0)}° · elevation ${deg(Math.asin(d.y / d.length())).toFixed(0)}° · fov ${camera.fov}°`,
+        };
+      },
+      repro: () => {
+        const q = new URLSearchParams(location.search);
+        q.delete('shot');
+        q.set('outfit', outfit);
+        q.set('expr', expression);
+        q.set('anim', anim);
+        const a = explorers[0]?.animator;
+        if (a) q.set('t', (a.currentAction ? a.actionTime : a.time).toFixed(2));
+        if (!turnaround) {
+          const d = camera.position.clone().sub(controls.target);
+          q.delete('zoom'); // ty + dist below pin the framing instead
+          q.set('view', deg(explorers[0].object.rotation.y).toFixed(0));
+          q.set('azim', deg(Math.atan2(d.x, d.z)).toFixed(1));
+          q.set('elev', deg(Math.asin(d.y / d.length())).toFixed(1));
+          q.set('dist', d.length().toFixed(2));
+          q.set('tx', controls.target.x.toFixed(3));
+          q.set('ty', controls.target.y.toFixed(3));
+        }
+        return q;
+      },
+    });
+
 let last = performance.now();
 function tick(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // (the first rAF time can predate `last`)
   last = now;
-  for (const e of explorers) e.update(dt);
+  if (!feedback?.active) for (const e of explorers) e.update(dt); // frozen while reporting
   controls.update();
   renderer.render(scene, camera);
   placeLabels();
+  feedback?.update();
   requestAnimationFrame(tick);
 }
 if (shot) {
@@ -284,4 +325,4 @@ if (shot) {
 } else requestAnimationFrame(tick);
 
 // Handy for debugging from the console.
-Object.assign(window, { explorers, scene, camera, renderer, Vector3 });
+Object.assign(window, { explorers, scene, camera, renderer, Vector3, feedback });

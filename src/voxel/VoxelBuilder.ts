@@ -1,3 +1,4 @@
+import { traceSource, type SourceTrace } from '../feedback/sourceTrace';
 import { hash3 } from './random';
 import type { VoxelMaterialKey } from './materials';
 
@@ -24,7 +25,11 @@ export interface VoxelBox {
   rx?: number;
   ry?: number;
   rz?: number;
+  /** The code that created this box (dev builds; shown by the feedback tool). */
+  src?: SourceTrace;
 }
+
+type BoxExtra = Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open' | 'src'>>;
 
 export type Vec3Tuple = [number, number, number];
 
@@ -72,14 +77,15 @@ export class VoxelBuilder {
     sz: number,
     color: number,
     mat: VoxelMaterialKey,
-    extra: Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open'>> = {},
+    extra: BoxExtra = {},
   ): this {
-    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, rx: extra.rx, ry: extra.ry, rz: extra.rz });
+    const src = extra.src ?? traceSource();
+    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, rx: extra.rx, ry: extra.ry, rz: extra.rz, src });
     return this;
   }
 
   /** Box given by its min/max corners. */
-  span(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, mat: VoxelMaterialKey, extra: Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open'>> = {}): this {
+  span(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, mat: VoxelMaterialKey, extra: BoxExtra = {}): this {
     return this.box((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), color, mat, extra);
   }
 
@@ -132,6 +138,8 @@ export class VoxelGrid {
   readonly cell: Vec3Tuple;
   readonly origin: Vec3Tuple;
   readonly mat: VoxelMaterialKey;
+  /** Where the grid was created; shared by every box it emits. */
+  readonly src = traceSource();
   private readonly cells = new Map<number, Cell>();
   private readonly idx = new Map<number, Vec3Tuple>();
   private readonly opts: Required<Omit<GridOptions, 'cell' | 'origin' | 'mat'>>;
@@ -276,7 +284,7 @@ export class VoxelGrid {
         (this.has(i, j, k + 1) ? 0 : 16) |
         (this.has(i, j, k - 1) ? 0 : 32);
       const [x, y, z] = this.center(i, j, k);
-      this.builder.box(x, y, z, this.cell[0], this.cell[1], this.cell[2], c.color, c.mat, { shade, open });
+      this.builder.box(x, y, z, this.cell[0], this.cell[1], this.cell[2], c.color, c.mat, { shade, open, src: this.src });
     }
     return this.builder;
   }

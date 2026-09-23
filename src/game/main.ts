@@ -15,8 +15,10 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { AngkorExplorer, OUTFITS, type OutfitName } from '../character/AngkorExplorer';
-import { EXPRESSIONS } from '../character/parts/face';
+import { AngkorExplorer, OUTFITS, type ExplorerOutfit, type OutfitName } from '../character/AngkorExplorer';
+import { ACTIONS, type ActionName } from '../character/clips';
+import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
+import { FeedbackTool } from '../feedback/FeedbackTool';
 import { ANGKOR, CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import { Input } from './Input';
 import { PlayerController } from './PlayerController';
@@ -29,6 +31,7 @@ import { buildAngkorScaleWorld } from './world/AngkorScaleWorld';
  */
 const params = new URLSearchParams(location.search);
 const shot = params.get('shot') === '1';
+const test = params.get('test') === '1';
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
 renderer.setPixelRatio(Math.min(devicePixelRatio, shot ? 1 : 2));
@@ -167,7 +170,7 @@ function renderHud(fps: number): void {
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
     <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview<br>
-    <kbd>1</kbd>–<kbd>4</kbd> causeway · gopura · temple stairs · Bakan`;
+    <kbd>1</kbd>–<kbd>4</kbd> causeway · gopura · temple stairs · Bakan · <kbd>B</kbd> report a bug`;
 }
 
 addEventListener('resize', () => {
@@ -176,8 +179,66 @@ addEventListener('resize', () => {
   camera.updateProjectionMatrix();
 });
 
+// ── Bug reports (B): pause, click what's wrong, save to feedback/ ───────────
+/** Degrees in [−180, 180). */
+const deg = (rad: number) => {
+  const d = (rad * 180) / Math.PI;
+  return d - 360 * Math.round(d / 360);
+};
+const feedback = shot || test
+  ? null
+  : new FeedbackTool({
+      renderer,
+      scene,
+      camera,
+      pickables: () => [world.root, explorer.object],
+      colliders: world.colliders,
+      anchor: () => player.position,
+      state: () => {
+        const p = player.position;
+        const o = explorer.currentOutfit;
+        const action = explorer.currentAction;
+        return {
+          Explorer: `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) m · facing ${deg(player.yaw).toFixed(0)}° · ${player.grounded ? 'on the ground' : 'in the air'} · ${Math.hypot(player.velocity.x, player.velocity.z).toFixed(2)} m/s · ${Math.hypot(p.x, p.z).toFixed(0)} m from the central tower`,
+          Action: action ? `${action}, ${explorer.animator.actionTime.toFixed(2)} s in` : 'none',
+          Camera: `${player.overview ? 'overview' : 'follow'} · ${deg(player.camYaw - player.yaw - Math.PI).toFixed(0)}° round from behind · pitch ${deg(player.camPitch).toFixed(0)}° · ${player.camDist.toFixed(1)} m`,
+          Look: `outfit ${outfit} (hat ${o.hat ? 'on' : 'off'}, holding ${o.held}) · expression ${explorer.currentExpression} · ${dusk ? 'dusk' : 'afternoon'}`,
+          World: `${world.stats.instances} voxel blocks · ${world.colliders.boxes.length} colliders · built in ${buildMs.toFixed(0)} ms`,
+        };
+      },
+      // Everything the URL params below need to put the explorer and camera back here.
+      repro: () => {
+        const q = new URLSearchParams(location.search);
+        for (const k of ['spawn', 'shot', 'test', 'at', 'cam', 'hat', 'held', 'expr', 'dusk', 'overview', 'dist', 'anim', 'action', 't']) q.delete(k);
+        const p = player.position;
+        const o = explorer.currentOutfit;
+        const speed = Math.hypot(player.velocity.x, player.velocity.z);
+        q.set('at', `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)},${deg(player.yaw).toFixed(1)}`);
+        q.set('cam', `${deg(player.camYaw - player.yaw - Math.PI).toFixed(1)},${deg(player.camPitch).toFixed(1)},${player.camDist.toFixed(2)}`);
+        q.set('outfit', outfit);
+        if (o.hat !== OUTFITS[outfit].hat) q.set('hat', o.hat ? '1' : '0');
+        if (o.held !== OUTFITS[outfit].held) q.set('held', o.held);
+        if (explorer.currentExpression !== 'neutral') q.set('expr', explorer.currentExpression);
+        if (dusk) q.set('dusk', '1');
+        if (player.overview) {
+          q.set('overview', '1');
+          q.set('dist', player.camDist.toFixed(1));
+        }
+        if (speed > 0.5) q.set('anim', speed > (WALK_SPEED + RUN_SPEED) / 2 ? 'run' : 'walk');
+        if (explorer.currentAction) {
+          q.set('action', explorer.currentAction);
+          q.set('t', explorer.animator.actionTime.toFixed(2));
+        }
+        return q;
+      },
+    });
+
 // ── Loop ────────────────────────────────────────────────────────────────────
-spawn(spawnIndex);
+if (params.has('at')) {
+  // An exact spot (e.g. from a bug report): x,y,z in metres, facing in degrees (0 = +Z, default 90 = toward the temple).
+  const [x, y, z, yaw = 90] = params.get('at')!.split(',').map(Number);
+  player.teleport(x, y, z, (yaw * Math.PI) / 180);
+} else spawn(spawnIndex);
 if (params.has('cam')) {
   const [yaw, pitch, dist] = params.get('cam')!.split(',').map(Number);
   player.camYaw = player.yaw + Math.PI + (yaw * Math.PI) / 180;
@@ -185,7 +246,12 @@ if (params.has('cam')) {
   player.camDist = dist;
 }
 if (params.get('dusk') === '1') setDusk(true);
-if (params.get('held')) explorer.setOutfit({ held: params.get('held') as 'lantern' | 'torch' });
+if (params.get('held')) explorer.setOutfit({ held: params.get('held') as ExplorerOutfit['held'] });
+if (params.has('hat')) explorer.setOutfit({ hat: params.get('hat') === '1' });
+if (EXPRESSIONS.includes(params.get('expr') as ExpressionName)) {
+  expr = EXPRESSIONS.indexOf(params.get('expr') as ExpressionName);
+  explorer.setExpression(EXPRESSIONS[expr]);
+}
 if (params.get('overview') === '1') {
   player.overview = true;
   player.camDist = Number(params.get('dist') ?? 70);
@@ -202,13 +268,17 @@ let fpsAcc = 0;
 let fpsFrames = 0;
 let fps = 60;
 function tick(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // (the first rAF time can predate `last`)
   last = now;
-  onKeys();
-  player.update(dt);
-  explorer.update(dt);
+  if (feedback?.active) player.look(dt); // frozen for a bug report; the camera still turns
+  else {
+    onKeys();
+    player.update(dt);
+    explorer.update(dt);
+  }
   followSun();
   renderer.render(scene, camera);
+  feedback?.update();
   input.endFrame();
   fpsAcc += dt;
   fpsFrames++;
@@ -221,7 +291,7 @@ function tick(now: number): void {
   requestAnimationFrame(tick);
 }
 
-if (params.get('test') === '1') {
+if (test) {
   // Deterministic stepping for scripts/playtest.mjs (no rAF loop, no rendering).
   Object.assign(window, {
     __step: (dt: number) => {
@@ -234,13 +304,22 @@ if (params.get('test') === '1') {
   });
 } else if (shot) {
   document.body.classList.add('shot');
-  // Deterministic warm-up for screenshots: settle animation + camera, render once.
+  // Deterministic warm-up for screenshots: settle animation + camera (then play
+  // `action` for `t` seconds), render once.
   const anim = params.get('anim');
   const speed = anim === 'run' ? RUN_SPEED : anim === 'walk' ? WALK_SPEED : 0;
-  for (let i = 0; i < 60; i++) {
-    player.update(1 / 60);
-    if (speed) explorer.setMotion(speed, true, 0);
-    explorer.update(1 / 60);
+  const settle = (seconds: number) => {
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+      player.update(1 / 60);
+      if (speed) explorer.setMotion(speed, true, 0);
+      explorer.update(1 / 60);
+    }
+  };
+  settle(1);
+  const action = params.get('action') as ActionName | null;
+  if (action && action in ACTIONS) {
+    explorer.play(action);
+    settle(Number(params.get('t') ?? 0.5));
   }
   followSun();
   renderer.render(scene, camera);
@@ -251,4 +330,4 @@ if (params.get('test') === '1') {
 }
 
 console.info(`[angkor] world built in ${buildMs.toFixed(0)} ms, ${world.stats.instances} voxel instances, ${world.colliders.boxes.length} colliders`);
-Object.assign(window, { scene, camera, player, explorer, world, renderer });
+Object.assign(window, { scene, camera, player, explorer, world, renderer, feedback });

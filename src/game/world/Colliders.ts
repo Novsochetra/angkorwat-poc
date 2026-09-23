@@ -1,3 +1,5 @@
+import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
+
 /**
  * Axis-aligned box colliders in metres with a uniform spatial hash, plus the
  * queries the character controller needs: ground height under a circle,
@@ -14,6 +16,8 @@ export interface AABB {
   maxZ: number;
   /** Blocks movement but is never stood on (water, invisible bounds). */
   noStand?: boolean;
+  /** The code that added this box (dev builds; shown by the feedback tool). */
+  src?: SourceTrace;
 }
 
 const CELL = 16;
@@ -26,6 +30,7 @@ export class ColliderWorld {
   private query = 0;
 
   add(box: AABB): AABB {
+    box.src ??= traceSource();
     const id = this.boxes.length;
     this.boxes.push(box);
     this.stamp.push(0);
@@ -141,6 +146,27 @@ export class ColliderWorld {
       if (t >= 0 && t < best) best = t;
     });
     return best;
+  }
+
+  /** Nearest box along a ray, water and bounds included (the feedback tool's picker). */
+  pick(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number): { box: AABB; t: number } | null {
+    let best: { box: AABB; t: number } | null = null;
+    const ex = ox + dx * maxDist;
+    const ez = oz + dz * maxDist;
+    this.forEachNear(Math.min(ox, ex), Math.min(oz, ez), Math.max(ox, ex), Math.max(oz, ez), (b) => {
+      const t = rayBox(ox, oy, oz, dx, dy, dz, b);
+      if (t > 0 && t < (best?.t ?? maxDist)) best = { box: b, t };
+    });
+    return best;
+  }
+
+  /** Boxes containing a point, give or take `eps` metres. */
+  boxesAt(x: number, y: number, z: number, eps = 0.02): AABB[] {
+    const out: AABB[] = [];
+    this.forEachNear(x - eps, z - eps, x + eps, z + eps, (b) => {
+      if (y >= b.minY - eps && y <= b.maxY + eps) out.push(b);
+    });
+    return out;
   }
 }
 
