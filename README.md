@@ -121,6 +121,9 @@ The krama tail, camera and lantern are Verlet pendulums that react to movement.
 - `npm run shots -- name=query …` — headless screenshots of viewer states, e.g.
   `npm run shots -- front="view=0" happy="expr=happy&zoom=head"`; prefix with
   `@page?` for another page (`game="@index.html?shot=1&spawn=1"`).
+- `npm run playtest` — headless play test that drives the explorer with real key
+  presses: walks through the gopura doorway, runs, hits a wall, climbs the temple
+  stairs, jumps and opens a door.
 - `node scripts/voxel-slices.mjs hair,head` — ASCII front/side projections for
   quick silhouette checks.
 

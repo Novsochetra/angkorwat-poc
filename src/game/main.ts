@@ -221,7 +221,18 @@ function tick(now: number): void {
   requestAnimationFrame(tick);
 }
 
-if (shot) {
+if (params.get('test') === '1') {
+  // Deterministic stepping for scripts/playtest.mjs (no rAF loop, no rendering).
+  Object.assign(window, {
+    __step: (dt: number) => {
+      onKeys();
+      player.update(dt);
+      explorer.update(dt);
+      input.endFrame();
+    },
+    __spawn: (i: number) => spawn(i),
+  });
+} else if (shot) {
   document.body.classList.add('shot');
   // Deterministic warm-up for screenshots: settle animation + camera, render once.
   const anim = params.get('anim');
