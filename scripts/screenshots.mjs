@@ -49,13 +49,13 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width, height } });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
 page.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[angkor]')) console.log(`[${m.type()}]`, m.text());
+  if (m.type() === 'error' || m.type() === 'warning' || /^\[(angkor|kit)\]/.test(m.text())) console.log(`[${m.type()}]`, m.text());
 });
 
 for (const [name, spec] of Object.entries(shots)) {
   const url = spec.startsWith('@') ? `${base}/${spec.slice(1)}` : `${base}/viewer.html?shot=1&${spec}`;
   const t0 = Date.now();
-  await page.goto(url, { waitUntil: 'load' });
+  await page.goto(url, { waitUntil: 'load', timeout: 300_000 });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180_000 });
   await page.screenshot({ path: resolve(out, `${name}.png`), timeout: 240_000, fullPage: process.env.SHOT_FULL === '1' });
   console.log(`${name}: ${url} (${Date.now() - t0} ms)`);

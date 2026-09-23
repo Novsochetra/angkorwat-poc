@@ -17,8 +17,12 @@ import { Stage, type StageView, type Subject } from './Stage';
  *   studio.html?asset=18.1/large-tree        one asset: views, reference, scale, variants
  *     &variant=…&seed=3&quality=high
  *   studio.html?lineup=18.1                  every asset of a section side by side, to scale
+ *   studio.html?scene=tree-temple-wall       a diorama (the sheets' environment examples)
+ *     &az=30&el=12&dist=40&target=0,3,0      …seen from another camera
+ *   studio.html?scenes=1                     every scene, by section
  *
- * Add `shot=1` for headless screenshots (scripts/screenshots.mjs).
+ * Add `shot=1` for headless screenshots (scripts/screenshots.mjs); section pages
+ * then leave out their environment examples unless `&examples=1`.
  */
 const params = new URLSearchParams(location.search);
 const shot = params.get('shot') === '1';
@@ -29,7 +33,8 @@ document.documentElement.classList.add('studio');
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const page = document.getElementById('page')!;
 const light: Record<string, number> = {};
-for (const k of ['hemi', 'key', 'fill', 'rim', 'env']) if (params.has(k)) light[k] = Number(params.get(k));
+for (const k of ['hemi', 'key', 'fill', 'rim', 'env', 'kaz', 'kel']) if (params.has(k)) light[k] = Number(params.get(k));
+for (const k of ['skyc', 'fillc']) if (params.has(k)) light[k] = parseInt(params.get(k)!, 16);
 const stage = new Stage(canvas, { shot, pageBg: '#f1eadb', light });
 const t0 = performance.now();
 let blocksTotal = 0;
@@ -136,7 +141,8 @@ function header(info: KitSectionInfo | null, crumb?: string): HTMLElement {
 
 function band(num: string, text: string, right = ''): HTMLElement {
   const b = el('div', 'st-band');
-  b.append(el('span', 'st-num', num), el('span', 'st-band-title', text));
+  if (num) b.append(el('span', 'st-num', num));
+  b.append(el('span', 'st-band-title', text));
   if (right) b.append(el('span', 'st-band-right', right));
   return b;
 }
@@ -225,6 +231,21 @@ async function sectionPage(section: KitSection): Promise<void> {
   }
   for (const e of errors) grid.append(errorCard(e.id, e.error));
   if (!assets.length && !errors.length) grid.append(el('p', 'st-empty', `No assets yet — add modules under src/kit/assets/${section}/.`));
+  // The sheet's environment / usage examples: this section's scenes. They are
+  // big, so screenshots leave them out unless asked for with `&examples=1`.
+  if (shot && params.get('examples') !== '1') return;
+  const scenes = (await allScenes()).filter((s) => sceneSection(s) === section);
+  if (!scenes.length) return;
+  page.append(band('', 'ENVIRONMENT EXAMPLES', 'Click one to open the scene'));
+  const row = el('section', 'st-envs');
+  page.append(row);
+  for (const s of scenes) {
+    try {
+      row.append(await sceneCard(s));
+    } catch (e) {
+      row.append(errorCard(s.id, e));
+    }
+  }
 }
 
 function card(asset: KitAsset): HTMLElement {
@@ -418,6 +439,49 @@ async function lineupPage(section: KitSection): Promise<void> {
   page.append(box);
 }
 
+/** Build a scene into one piece (assets that are missing or fail are skipped and listed). */
+async function buildScene(scene: KitScene): Promise<{ piece: KitPiece; missing: string[] }> {
+  const p = new PieceBuilder();
+  const missing: string[] = [];
+  const t = performance.now();
+  await scene.build(kitSceneContext((aid, e) => {
+    missing.push(aid);
+    console.warn(`[kit] scene ${scene.id}: asset ${aid} unavailable`, e);
+  }), p);
+  const piece = p.done();
+  console.info(`[kit] scene ${scene.id}: ${piece.voxels.boxes.length} blocks in ${(performance.now() - t).toFixed(0)} ms`);
+  return { piece, missing: [...new Set(missing)] };
+}
+
+/**
+ * A scene's camera; on its own page `&az=&el=&dist=` (degrees, metres) and
+ * `&target=x,y,z` override it, to try framings without editing the scene.
+ */
+function sceneCamera(scene: KitScene, own = false): NonNullable<KitScene['camera']> {
+  const cam = { ...(scene.camera ?? { az: 35, el: 28, dist: Math.max(...scene.size) * 1.4 }) };
+  if (!own) return cam;
+  for (const k of ['az', 'el', 'dist'] as const) if (params.has(k)) cam[k] = Number(params.get(k));
+  const t = params.get('target')?.split(',').map(Number);
+  if (t?.length === 3 && t.every(Number.isFinite)) cam.target = t as [number, number, number];
+  return cam;
+}
+
+/** Every scene, loaded (a scene module that fails to load is reported and left out). */
+async function allScenes(): Promise<KitScene[]> {
+  const out: KitScene[] = [];
+  for (const id of kitSceneIds()) {
+    try {
+      out.push(await loadKitScene(id));
+    } catch (e) {
+      console.error(`[kit] scene ${id}:`, e);
+    }
+  }
+  return out;
+}
+
+/** The section a scene recreates a panel of: its `source` starts with the section number. */
+const sceneSection = (scene: KitScene) => scene.source.split(' ')[0];
+
 async function scenePage(id: string): Promise<void> {
   let scene: KitScene;
   try {
@@ -426,34 +490,51 @@ async function scenePage(id: string): Promise<void> {
     page.append(header(null, id), errorCard(id, e));
     return;
   }
-  page.append(header(null, `Scenes › ${scene.name}`), band('Scene', scene.name.toUpperCase(), scene.source));
-  const p = new PieceBuilder();
-  const missing: string[] = [];
-  const t = performance.now();
-  await scene.build(kitSceneContext((aid, e) => {
-    missing.push(aid);
-    console.warn(`[kit] scene ${id}: asset ${aid} unavailable`, e);
-  }), p);
-  const piece = p.done();
-  console.info(`[kit] scene ${id}: ${piece.voxels.boxes.length} blocks in ${(performance.now() - t).toFixed(0)} ms`);
+  const info = KIT_SECTIONS.find((s) => s.id === sceneSection(scene)) ?? null;
+  page.append(header(info, `Scenes › ${scene.name}`), band('Scene', scene.name.toUpperCase(), scene.source));
+  const { piece, missing } = await buildScene(scene);
   const subject = stage.addSubject(pieceObject(piece, `scene:${id}`), localBounds(piece));
   const box = el('div', 'st-view st-scene');
-  stage.addPerspectiveView(box, subject, scene.camera ?? { az: 35, el: 28, dist: Math.max(...scene.size) * 1.4 }, { orbit: !shot });
+  stage.addPerspectiveView(box, subject, sceneCamera(scene, true), { orbit: !shot });
   box.append(el('div', 'st-dims', `${scene.size[0]} × ${scene.size[1]} m · ${piece.voxels.boxes.length.toLocaleString()} blocks`), el('div', 'st-hint', shot ? '' : 'drag to orbit · wheel to zoom · B to report'));
   page.append(box, el('p', 'st-caption st-scene-caption', scene.caption));
-  if (missing.length) page.append(el('p', 'st-size', `Not built yet: ${[...new Set(missing)].join(', ')}`));
+  if (missing.length) page.append(el('p', 'st-size', `Not built yet: ${missing.join(', ')}`));
+  // Step through the scenes in order.
+  const ids = kitSceneIds();
+  const at = ids.indexOf(id);
+  const nav = el('nav', 'st-scene-nav');
+  if (at > 0) nav.append(link(`← ${ids[at - 1]}`, { scene: ids[at - 1] }));
+  nav.append(link('All scenes', { scenes: '1' }));
+  if (at < ids.length - 1) nav.append(link(`${ids[at + 1]} →`, { scene: ids[at + 1] }));
+  page.append(nav);
 }
 
-function scenesIndex(): void {
-  page.append(header(null, 'Scenes — the kit assembled into the sheets’ environment examples'));
-  const list = el('main', 'st-index');
-  for (const id of kitSceneIds()) {
-    const c = el('article', 'st-card');
-    c.append(el('h2', '', id), link('Open scene →', { scene: id }, 'st-open'));
-    list.append(c);
+/** A small card of a scene (the sheets' environment-example panels), linking to its page. */
+async function sceneCard(scene: KitScene): Promise<HTMLElement> {
+  const c = el('article', 'st-card st-env');
+  c.append(el('h2', '', scene.name));
+  const { piece } = await buildScene(scene);
+  const box = el('div', 'st-view st-envview');
+  stage.addPerspectiveView(box, stage.addSubject(pieceObject(piece, `scene:${scene.id}`), localBounds(piece)), sceneCamera(scene));
+  c.append(box, el('p', 'st-caption', scene.caption), link('Open scene →', { scene: scene.id }, 'st-open'));
+  return c;
+}
+
+function scenesIndex(scenes: KitScene[]): void {
+  page.append(header(null, 'Scenes — the kit assembled into the sheets’ environment and usage examples'));
+  for (const s of KIT_SECTIONS) {
+    const mine = scenes.filter((x) => sceneSection(x) === s.id);
+    if (!mine.length) continue;
+    page.append(band(s.id, s.title.replace(/^[\d.]+ /, '').toUpperCase(), 'Environment / usage examples'));
+    const list = el('main', 'st-index st-scene-index');
+    for (const x of mine) {
+      const c = el('article', 'st-card');
+      c.append(el('h2', '', x.name), el('p', 'st-caption', x.caption), el('p', 'st-size', `${x.source} · ${x.size[0]} × ${x.size[1]} m`), link('Open scene →', { scene: x.id }, 'st-open'));
+      list.append(c);
+    }
+    page.append(list);
   }
-  if (!kitSceneIds().length) list.append(el('p', 'st-empty', 'No scenes yet — add modules under src/kit/scenes/.'));
-  page.append(list);
+  if (!scenes.length) page.append(el('p', 'st-empty', 'No scenes yet — add modules under src/kit/scenes/.'));
 }
 
 function indexPage(): void {
@@ -482,7 +563,7 @@ function sizeCanvas(): void {
 
 async function main(): Promise<void> {
   if (params.has('scene')) await scenePage(params.get('scene')!);
-  else if (params.has('scenes')) scenesIndex();
+  else if (params.has('scenes')) scenesIndex(await allScenes());
   else if (params.has('asset')) await assetPage(params.get('asset')!);
   else if (params.has('lineup')) await lineupPage(params.get('lineup') as KitSection);
   else if (params.has('section')) await sectionPage(params.get('section') as KitSection);

@@ -127,6 +127,8 @@ export class FeedbackTool {
         this.renderKind();
       };
     this.ui.colliders.onchange = () => this.mapColliders(this.ui.colliders.checked);
+    // Pages without a collision world (the studio) have no colliders to show.
+    if (!o.colliders) this.ui.colliders.closest('label')!.style.display = 'none';
     primary.onclick = () => (this.mode === 'saved' ? this.close() : void this.save());
     secondary.onclick = () => (this.mode === 'saved' ? void this.copy() : this.close());
 

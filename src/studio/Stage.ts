@@ -65,15 +65,23 @@ export interface StageView {
 
 const SLOT_GAP = 60;
 
-/** Studio light intensities (tunable from the URL: hemi=…&key=…&fill=…&rim=…&env=…). */
+/**
+ * Studio light intensities (tunable from the URL: hemi=…&key=…&fill=…&rim=…&env=…),
+ * plus the key light's azimuth / elevation in degrees (kaz=…&kel=…, to try others).
+ */
 export interface StudioLight {
   hemi: number;
   key: number;
   fill: number;
   rim: number;
   env: number;
+  kaz?: number;
+  kel?: number;
+  /** Sky (hemisphere) and fill colours as hex numbers (skyc=…&fillc=…, to try others). */
+  skyc?: number;
+  fillc?: number;
 }
-export const STUDIO_LIGHT: StudioLight = { hemi: 0.42, key: 3.1, fill: 0.42, rim: 0.4, env: 0.15 };
+export const STUDIO_LIGHT: StudioLight = { hemi: 0.4, key: 3.1, fill: 0.3, rim: 0.4, env: 0.15 };
 
 /**
  * Draws many orthographic views into one full-page canvas: each view is a DOM
@@ -100,6 +108,11 @@ export class Stage {
     o: { shot: boolean; pageBg: string; light?: Partial<StudioLight> },
   ) {
     const L = { ...STUDIO_LIGHT, ...o.light };
+    if (L.kaz !== undefined || L.kel !== undefined) {
+      const a = ((L.kaz ?? -33.7) * Math.PI) / 180;
+      const e = ((L.kel ?? 60.6) * Math.PI) / 180;
+      this.keyDir.set(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e));
+    }
     const renderer = new WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: o.shot, alpha: false });
     renderer.setPixelRatio(Math.min(devicePixelRatio, o.shot ? 1 : 2));
     renderer.outputColorSpace = SRGBColorSpace;
@@ -116,7 +129,7 @@ export class Stage {
     this.scene.environmentIntensity = L.env;
     // Warm key from the upper left, cool dim fill: the sheets' lit faces glow,
     // their shaded faces go a cool grey-brown.
-    this.scene.add(new HemisphereLight(0xdde5f7, 0x8a8a8e, L.hemi));
+    this.scene.add(new HemisphereLight(L.skyc ?? 0xb8cbf5, 0x8a8a8e, L.hemi));
     const key = new DirectionalLight(0xfff4e8, L.key);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -125,8 +138,9 @@ export class Stage {
     key.shadow.intensity = 0.6;
     this.scene.add(key, key.target);
     this.key = key;
-    // Cool fill from the right, so the shaded side reads grey-violet like the sheets.
-    const fill = new DirectionalLight(0xb4c4ee, L.fill);
+    // Cool fill from the right, so the shaded side reads grey-violet like the
+    // sheets (measured on the §19.1 cube: shaded face #6d5b4c vs the sheet's #6c5750).
+    const fill = new DirectionalLight(L.fillc ?? 0x7390f0, L.fill);
     fill.position.set(3.0, 1.2, 2.0);
     const rim = new DirectionalLight(0xffd7a8, L.rim);
     rim.position.set(1.0, 3.0, -4.0);
@@ -250,7 +264,10 @@ export class Stage {
     this.frame(v);
   }
 
-  /** Keep the fitted extents inside the element, whatever its aspect ratio. */
+  /**
+   * Keep the fitted extents inside the element, whatever its aspect ratio
+   * (orbiting ortho views zoom through `camera.zoom`, so this stays valid).
+   */
   private frame(v: StageView, rect = v.el.getBoundingClientRect()): void {
     if (v.camera instanceof PerspectiveCamera) {
       const aspect = Math.max(1e-3, rect.width / Math.max(1, rect.height));
@@ -268,6 +285,7 @@ export class Stage {
     const hh = hw / aspect;
     const cx = (f.x0 + f.x1) / 2;
     const cy = (f.y0 + f.y1) / 2;
+    if (v.camera.left === cx - hw && v.camera.top === cy + hh) return;
     Object.assign(v.camera, { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh });
     v.camera.updateProjectionMatrix();
   }
@@ -299,7 +317,7 @@ export class Stage {
       r.setScissor(left, bottom, rect.width, rect.height);
       r.setClearColor(v.bg);
       r.clear();
-      this.frameCamera(v, rect);
+      this.frame(v, rect);
       this.fitShadow(v.subject);
       for (const s of this.subjects) s.object.visible = s === v.subject;
       this.sky.visible = v.camera instanceof PerspectiveCamera;
@@ -310,26 +328,6 @@ export class Stage {
     for (const s of this.subjects) s.object.visible = true;
     this.sky.visible = false;
     r.setScissorTest(false);
-  }
-
-  private frameCamera(v: StageView, rect: DOMRect): void {
-    if (v.controls && v.camera instanceof OrthographicCamera) {
-      // Orbiting keeps the fitted size; only the aspect follows the element.
-      const f = v.camera.userData.fit as { x0: number; x1: number; y0: number; y1: number };
-      const w = (f.x1 - f.x0) * (1 + v.pad * 2);
-      const h = (f.y1 - f.y0) * (1 + v.pad * 2);
-      const aspect = Math.max(1e-3, rect.width / Math.max(1, rect.height));
-      const hw = Math.max(w, h * aspect) / 2;
-      const hh = hw / aspect;
-      const cx = (f.x0 + f.x1) / 2;
-      const cy = (f.y0 + f.y1) / 2;
-      if (v.camera.left !== cx - hw || v.camera.top !== cy + hh) {
-        Object.assign(v.camera, { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh });
-        v.camera.updateProjectionMatrix();
-      }
-      return;
-    }
-    this.frame(v, rect);
   }
 
   /** Aim the key light's shadow camera at one subject. */

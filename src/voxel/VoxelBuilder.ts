@@ -141,16 +141,54 @@ export class VoxelBuilder {
   bounds(): { min: Vec3Tuple; max: Vec3Tuple } {
     const min: Vec3Tuple = [Infinity, Infinity, Infinity];
     const max: Vec3Tuple = [-Infinity, -Infinity, -Infinity];
+    const h: Vec3Tuple = [0, 0, 0];
     for (const b of this.boxes) {
-      min[0] = Math.min(min[0], b.x - b.sx / 2);
-      min[1] = Math.min(min[1], b.y - b.sy / 2);
-      min[2] = Math.min(min[2], b.z - b.sz / 2);
-      max[0] = Math.max(max[0], b.x + b.sx / 2);
-      max[1] = Math.max(max[1], b.y + b.sy / 2);
-      max[2] = Math.max(max[2], b.z + b.sz / 2);
+      halfExtents(b, h);
+      min[0] = Math.min(min[0], b.x - h[0]);
+      min[1] = Math.min(min[1], b.y - h[1]);
+      min[2] = Math.min(min[2], b.z - h[2]);
+      max[0] = Math.max(max[0], b.x + h[0]);
+      max[1] = Math.max(max[1], b.y + h[1]);
+      max[2] = Math.max(max[2], b.z + h[2]);
     }
     return { min, max };
   }
+}
+
+/**
+ * Half extents of a box's axis-aligned bounds, rotation included: for a box
+ * turned by Euler XYZ (three.js order, R = Rx·Ry·Rz), extent_i = Σ_j |R_ij|·half_j.
+ */
+function halfExtents(b: VoxelBox, out: Vec3Tuple): Vec3Tuple {
+  const hx = b.sx / 2;
+  const hy = b.sy / 2;
+  const hz = b.sz / 2;
+  if (!b.rx && !b.ry && !b.rz) {
+    out[0] = hx;
+    out[1] = hy;
+    out[2] = hz;
+    return out;
+  }
+  const a = Math.cos(b.rx ?? 0);
+  const s = Math.sin(b.rx ?? 0);
+  const c = Math.cos(b.ry ?? 0);
+  const d = Math.sin(b.ry ?? 0);
+  const e = Math.cos(b.rz ?? 0);
+  const f = Math.sin(b.rz ?? 0);
+  // Rows of R (as in Matrix4.makeRotationFromEuler, order 'XYZ').
+  const r00 = c * e;
+  const r01 = -c * f;
+  const r02 = d;
+  const r10 = a * f + s * e * d;
+  const r11 = a * e - s * f * d;
+  const r12 = -s * c;
+  const r20 = s * f - a * e * d;
+  const r21 = s * e + a * f * d;
+  const r22 = a * c;
+  out[0] = Math.abs(r00) * hx + Math.abs(r01) * hy + Math.abs(r02) * hz;
+  out[1] = Math.abs(r10) * hx + Math.abs(r11) * hy + Math.abs(r12) * hz;
+  out[2] = Math.abs(r20) * hx + Math.abs(r21) * hy + Math.abs(r22) * hz;
+  return out;
 }
 
 /** A sparse voxel grid that emits its visible cells into a {@link VoxelBuilder}. */

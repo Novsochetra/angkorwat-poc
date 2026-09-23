@@ -5,6 +5,28 @@
   `screenshots/<name>.png`; view the PNG to check visual changes.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
 
+## World kit (component plan sections 18–20)
+
+Voxel assets for the temple environment: one module per numbered component of
+the reference sheets in `assets/angkor detail/`. The guide is `docs/world-kit.md`,
+and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF.md`.
+
+- Assets: `src/kit/assets/<section>/<slug>.ts`, default export
+  `defineKitAsset({…})`. Files starting with `_` are helpers. Shared builders
+  live in `src/kit/lib/`. Dioramas are in `src/kit/scenes/<slug>.ts`.
+- Look at an asset beside its sheet crop with
+  `npm run shots -- a="@studio.html?asset=18.1/large-tree&shot=1"`, and a whole
+  section with `@studio.html?section=20&shot=1&refs=1` (add `&examples=1` for its
+  scenes). Walk it at true scale with `index.html?level=kit`.
+- Colours: sample the sheet (`python3 docs/kit-work/measure.py`) and wrap the
+  colour in `fromSheet()`. Sizes are real-world; record the sheet's estimate in
+  the asset's `size` field. Refresh the docs table with
+  `node scripts/kit-sizes.mjs --write`.
+- Checks: `npm run kitcheck` builds every variant and reports errors, block
+  budgets and build times.
+- Studio bug reports (**B**) name the asset line that made each block, the same
+  way world blocks name their `WorldBuilder` caller.
+
 ## Bug reports in `feedback/`
 
 The user reports bugs and ideas from inside the game or viewer (**B** / 🐞 button).

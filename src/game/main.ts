@@ -94,6 +94,7 @@ scene.add(explorer.object);
 const pad = document.getElementById('pad') ?? undefined;
 const input = new Input(canvas, pad);
 const player = new PlayerController(explorer, world.colliders, camera, input);
+player.floor = world.baseGround;
 let spawnIndex = Number(params.get('spawn') ?? 0);
 const spawn = (i: number) => {
   spawnIndex = (i + world.spawns.length) % world.spawns.length;
@@ -132,6 +133,9 @@ function setDusk(on: boolean): void {
 let expr = 0;
 function onKeys(): void {
   for (let i = 0; i < Math.min(9, world.spawns.length); i++) if (input.hit(`Digit${i + 1}`)) spawn(i);
+  // [ ] step through every spawn (the kit level has more than nine).
+  if (input.hit('BracketRight')) spawn(spawnIndex + 1);
+  if (input.hit('BracketLeft')) spawn(spawnIndex - 1);
   if (input.hit('KeyE')) {
     const near = doors.some((d) => d.distanceTo(player.position) < 3.2);
     explorer.play(near ? 'openDoor' : 'interact');
@@ -191,7 +195,7 @@ function renderHud(fps: number): void {
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
     <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview<br>
-    <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ') : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
+    <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? `${world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ')} · <kbd>[</kbd><kbd>]</kbd> all ${world.spawns.length} spots` : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
 }
 
 addEventListener('resize', () => {

@@ -34,7 +34,7 @@ const FACES: [number, number, number][] = [
 ];
 
 /** Rotate (x, z) by quarter turns: turn 1 maps +Z to +X. */
-function turnXZ(x: number, z: number, turn: number): [number, number] {
+export function turnXZ(x: number, z: number, turn: number): [number, number] {
   switch (turn & 3) {
     case 1:
       return [z, -x];

@@ -265,6 +265,21 @@ body.shot .viewer-link {
 }
 
 /* ── Feedback tool (B): report bugs / ideas into feedback/ ─────────────── */
+/* Above any page content (the studio's page is its own layer over the canvas):
+   pins, then the button and panel, then the hover tip. */
+.fb-pin {
+  z-index: 30;
+}
+
+.fb-button,
+.fb-panel {
+  z-index: 40;
+}
+
+.fb-tip {
+  z-index: 50;
+}
+
 .fb-button {
   position: fixed;
   right: 12px;
@@ -299,6 +314,12 @@ body.viewer .fb-button {
   top: 12px;
   right: auto;
   left: 12px;
+}
+
+/* The studio's header holds the section links: report from the bottom corner. */
+body.studio .fb-button {
+  top: auto;
+  bottom: 14px;
 }
 
 body.reporting canvas#scene {

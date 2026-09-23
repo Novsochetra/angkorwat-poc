@@ -436,6 +436,39 @@ body.studio canvas#scene {
   font-size: 14px;
 }
 
+/* The section's environment examples, three across like the sheets. */
+main + .st-band {
+  margin-top: 16px;
+}
+
+.st-envs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.st-envview {
+  aspect-ratio: 16 / 10;
+}
+
+.st-scene-nav {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin: 10px 0 0;
+}
+
+.st-scene-nav a {
+  color: #9a4b24;
+  font: 600 13px Georgia, serif;
+  text-decoration: none;
+}
+
+.st-scene-index {
+  margin-bottom: 14px;
+}
+
 /* ── Ruler (elevation views) ────────────────────────────────────────────── */
 .st-ruler {
   position: absolute;
@@ -497,6 +530,30 @@ body.studio canvas#scene {
 /* While reporting a bug (B), clicks pick blocks instead of following links. */
 body.reporting .st-open::after {
   display: none;
+}
+
+/* Narrow screens: header rows stacked, one column of views. */
+@media (max-width: 760px) {
+  .st-header {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .st-brand {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .st-nav {
+    justify-content: flex-start;
+    max-width: none;
+  }
+  .st-asset,
+  .st-asset-bottom {
+    grid-template-columns: 1fr;
+  }
+  .st-big {
+    min-height: 360px;
+    height: 56vh;
+  }
 }
 
 /* Screenshots: no hover chrome. */

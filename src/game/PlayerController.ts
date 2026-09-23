@@ -28,7 +28,8 @@ export class PlayerController {
   private camDistSmooth = 5.5;
   private readonly camTarget = new Vector3();
   private readonly tmp = new Vector3();
-  private floor = 0;
+  /** Ground height where no collider is: the world's base ground (the explorer never goes below it). */
+  floor = 0;
 
   constructor(
     private readonly explorer: AngkorExplorer,
