@@ -32,33 +32,44 @@ export const FACE_ROWS = [1, 2, 3, 4] as const; // y 21.4 → 25.4
 export const FACE_LAYER = 8; // z 3.9 → 4.9
 
 export function headGrid(b: VoxelBuilder, seed = 11): VoxelGrid {
-  return b.grid({ ...HEAD_GRID, mat: 'skin', jitter: 0.022, ao: 0.16, seed });
+  return b.grid({ ...HEAD_GRID, mat: 'face', jitter: 0.008, ao: 0.16, seed });
 }
 
-export function buildHead(): VoxelBuilder {
+/**
+ * @param underHair where the hair covers a cell next to the skull; skull blocks
+ * whose every open side is under hair turn scalp-dark, so gaps between the hair
+ * blocks read as shadow instead of skin.
+ */
+export function buildHead(underHair?: (x: number, y: number, z: number) => boolean): VoxelBuilder {
   const b = new VoxelBuilder();
   const g = headGrid(b);
   const P = PALETTE.skin;
+  const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const;
   for (let i = 0; i <= 10; i++)
     for (let j = 0; j <= 8; j++)
       for (let k = 0; k <= 8; k++) {
         const [x, y, z] = g.center(i, j, k);
-        if (skullHas(x, y, z)) g.set(i, j, k, P.base);
+        if (!skullHas(x, y, z)) continue;
+        const open = SIDES.filter(([dx, dy, dz]) => !skullHas(x + dx, y + dy, z + dz));
+        const scalp = !!underHair && open.length > 0 && open.every(([dx, dy, dz]) => underHair(x + dx, y + dy, z + dz));
+        g.set(i, j, k, scalp ? PALETTE.hair.darkest : P.base);
       }
   // The face part supplies these blocks (eyes, blush, eyelids).
   for (const i of FACE_COLUMNS) for (const j of FACE_ROWS) g.ghost(i, j, FACE_LAYER);
 
   // Slightly warmer cheeks and a cooler, shaded underside of the jaw.
-  g.paint((i, j, k) => {
+  g.paint((i, j, k, cell) => {
+    if (cell.color === PALETTE.hair.darkest) return;
     if (j === 0 && k < 8) return P.shade;
     if (j <= 1 && (i <= 1 || i >= 9) && k >= 6) return P.warm;
   });
   g.commit();
 
-  // Ears: small bumps below the side hair with a darker inner notch.
+  // Ears: big blocks between the sideburn and the hair behind (side view of the
+  // sheet), with a darker inner notch.
   for (const s of [-1, 1]) {
-    b.span(s * 5.5, 22.4, -0.9, s * 6.15, 24.1, 0.55, P.base, 'skin', { shade: 0.97 });
-    b.span(s * 5.9, 22.9, -0.45, s * 6.22, 23.5, 0.1, P.shade, 'skin', { shade: 0.9 });
+    b.span(s * 5.5, 21.5, -1.05, s * 6.2, 24.0, 0.85, P.base, 'skin', { shade: 0.97 });
+    b.span(s * 5.95, 22.2, -0.5, s * 6.27, 23.3, 0.3, P.shade, 'skin', { shade: 0.9 });
   }
 
   return b;

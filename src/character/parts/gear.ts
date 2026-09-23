@@ -34,39 +34,42 @@ function strap(
 
 /**
  * Compact camera on a neck strap (sheet 3.3.5/3.3.6): dark body, pale top plate,
- * viewfinder hump, octagonal lens ring, red shutter light, brass strap lugs.
- * Camera joint (pivots at the neck so it swings).
+ * viewfinder hump, chunky octagonal lens with recessed glass, red shutter light,
+ * leather straps on brass D-rings. Camera joint (pivots at the neck so it swings).
  */
 export function buildCamera(): VoxelBuilder {
   const b = new VoxelBuilder();
-  // 7 × 5 × 3 blocks of 0.35: body x −1.225‥1.225, y 12.3‥14.05, z 3.2‥4.25.
-  const g = b.grid({ cell: 0.35, origin: [-1.225, 12.3, 3.2], mat: 'metal', jitter: 0.05, ao: 0.2, seed: 81 });
-  g.fill(0, 6, 0, 4, 0, 2, (i, j) => (j === 4 ? C.plate : i === 0 || i === 6 ? C.mid : C.body));
-  g.fill(2, 4, 5, 5, 0, 1, C.plate); // viewfinder hump
+  // 8 × 6 × 3 blocks of 0.33: x −1.32‥1.32, y 12.2‥14.18, z 3.2‥4.19.
+  const g = b.grid({ cell: 0.33, origin: [-1.32, 12.2, 3.2], mat: 'metal', jitter: 0.05, ao: 0.22, seed: 81 });
+  g.fill(0, 7, 0, 5, 0, 2, (i, j) => (j === 5 ? C.plate : j === 0 ? C.dark : i === 0 || i === 7 ? C.mid : C.body));
+  g.fill(2, 5, 6, 6, 0, 1, C.plate); // viewfinder hump
+  g.set(6, 6, 1, C.dark); // dial
   g.commit();
 
-  // Lens: octagonal ring two cells deep with recessed dark glass.
-  const lens = b.grid({ cell: 0.2, origin: [-0.6, 12.575, 4.25], mat: 'metal', jitter: 0.03, ao: 0.15, seed: 82 });
-  for (let i = 0; i < 6; i++)
-    for (let j = 0; j < 6; j++) {
-      const corner = (i === 0 || i === 5) && (j === 0 || j === 5);
-      if (corner) continue;
-      const centre = i >= 2 && i <= 3 && j >= 2 && j <= 3;
-      if (centre) lens.set(i, j, 0, C.glass, 'lens');
-      else {
-        lens.set(i, j, 0, C.light);
-        lens.set(i, j, 1, C.light);
-      }
-    }
-  lens.commit();
-  b.box(0.14, 13.3, 4.3, 0.1, 0.1, 0.04, 0xffffff, 'lens', { shade: 0.9 }); // glint
-
-  b.box(0.86, 13.72, 4.28, 0.26, 0.26, 0.08, PALETTE.red, 'metal', { shade: 1.1 }); // shutter light
-  b.box(-0.84, 14.1, 3.7, 0.32, 0.14, 0.32, C.dark, 'metal'); // dial
-  // Brass lugs + neck strap going up under the krama.
+  // Lens (sheet 3.3.5): a chunky octagonal ring of eight bevelled blocks standing
+  // proud of the body, a dark barrel inside it and the glass with a glint.
+  const lx = -0.12;
+  const ly = 13.12;
+  const front = 4.19;
+  const apothem = 0.68;
+  const ring = 0.27;
+  const depth = 0.46;
+  const side = 2 * apothem * Math.tan(Math.PI / 8) + 0.12;
+  for (let n = 0; n < 8; n++) {
+    const a = (n * Math.PI) / 4;
+    const r = apothem - ring / 2;
+    b.box(lx + Math.cos(a) * r, ly + Math.sin(a) * r, front + depth / 2, ring, side, depth, n % 2 ? C.plate : C.light, 'metal', { rz: a });
+  }
+  b.box(lx, ly, front + 0.16, 0.92, 0.92, 0.32, C.dark, 'metal'); // barrel
+  b.box(lx, ly, front + 0.2, 0.52, 0.52, 0.32, C.glass, 'lens'); // glass
+  b.box(lx - 0.1, ly + 0.1, front + 0.37, 0.1, 0.1, 0.02, 0xffffff, 'lens', { shade: 0.9 }); // glint
+  b.box(0.98, 13.8, 4.24, 0.26, 0.26, 0.1, PALETTE.red, 'metal', { shade: 1.15 }); // shutter light
+  // Brass D-rings + leather neck straps going up under the krama.
   for (const s of [-1, 1]) {
-    b.box(s * 1.14, 14.1, 3.66, 0.22, 0.3, 0.22, PALETTE.brass, 'brass');
-    strap(b, [s * 1.14, 14.22, 3.58], [s * 1.8, 18.9, 2.5], 0.3, 0.16, L.darkest, 0.6);
+    const x = s * 1.12;
+    b.box(x, 14.28, 3.7, 0.12, 0.34, 0.34, PALETTE.brass, 'brass');
+    b.box(x, 14.5, 3.7, 0.3, 0.1, 0.34, PALETTE.brass, 'brass');
+    strap(b, [x, 14.62, 3.62], [s * 1.9, 18.9, 2.5], 0.44, 0.2, L.strap, 0.55);
   }
   return b;
 }
@@ -88,8 +91,8 @@ function leatherTone(i: number, j: number, k: number, seed: number): number {
 
 function buildDaypack(): VoxelBuilder {
   const b = new VoxelBuilder();
-  const body = b.grid({ cell: 0.7, origin: [-2.8, 11.0, -6.4], mat: 'leather', jitter: 0.05, ao: 0.28, seed: 91 });
-  body.fill(0, 7, 0, 8, 0, 4, (i, j, k) => leatherTone(i, j, k, 92));
+  const body = b.grid({ cell: 0.7, origin: [-2.8, 11.0, -6.4], mat: 'leather', jitter: 0.05, ao: 0.3, seed: 91 });
+  body.fill(0, 7, 0, 8, 0, 4, (i, j, k) => (k === 0 ? leatherTone(i, j, k, 92) : hash3(i, j, k, 93) < 0.6 ? L.mid : L.dark));
   for (let i = 0; i <= 7; i++) body.delete(i, 8, 0); // rounded top-back edge
   for (const i of [0, 7]) {
     body.delete(i, 8, 1);
@@ -97,45 +100,50 @@ function buildDaypack(): VoxelBuilder {
   }
   body.commit();
 
-  // Top flap over the upper back face, wrapping over the top.
-  const flap = b.grid({ cell: [0.7, 0.7, 0.35], origin: [-2.45, 13.9, -6.75], mat: 'leather', jitter: 0.05, ao: 0.2, seed: 93 });
-  flap.fill(0, 6, 0, 4, 0, 0, (i, j) => (j === 0 ? L.darkest : hash3(i, j, 0, 94) < 0.6 ? L.dark : L.mid));
+  // Top flap: lighter leather with a dark stitched edge, wrapping over the top.
+  const FL = [0x93593a, 0x8a5334, 0x9d6441];
+  const flap = b.grid({ cell: [0.7, 0.7, 0.4], origin: [-2.45, 13.85, -6.8], mat: 'leather', jitter: 0.04, ao: 0.2, seed: 93 });
+  flap.fill(0, 6, 0, 4, 0, 0, (i, j) => (i === 0 || i === 6 || j === 0 ? L.darkest : FL[Math.floor(hash3(i, j, 0, 94) * 3)]));
   flap.delete(0, 0, 0);
   flap.delete(6, 0, 0);
   flap.commit();
-  const lid = b.grid({ cell: [0.7, 0.35, 0.7], origin: [-2.45, 16.6, -6.75], mat: 'leather', jitter: 0.05, ao: 0.15, seed: 95 });
-  lid.fill(0, 6, 0, 0, 0, 3, (i, _j, k) => (hash3(i, 0, k, 96) < 0.6 ? L.dark : L.mid));
+  const lid = b.grid({ cell: [0.7, 0.4, 0.7], origin: [-2.45, 17.1, -6.8], mat: 'leather', jitter: 0.04, ao: 0.15, seed: 95 });
+  lid.fill(0, 6, 0, 0, 0, 3, (i, _j, k) => (i === 0 || i === 6 ? L.darkest : FL[Math.floor(hash3(i, 0, k, 96) * 3)]));
   lid.commit();
 
-  // Brass buckle on the flap and the strap below it.
-  const bz = -6.95;
-  b.box(0, 14.82, bz, 1.12, 0.24, 0.24, PALETTE.brass, 'brass');
-  b.box(0, 13.62, bz, 1.12, 0.24, 0.24, PALETTE.brass, 'brass');
-  b.box(-0.44, 14.22, bz, 0.24, 1.0, 0.24, PALETTE.brass, 'brass');
-  b.box(0.44, 14.22, bz, 0.24, 1.0, 0.24, PALETTE.brass, 'brass');
-  b.box(0, 14.22, bz + 0.08, 0.64, 0.96, 0.12, L.darkest, 'leather');
-  b.span(-0.3, 12.2, -6.98, 0.3, 13.5, -6.72, L.dark, 'leather');
+  // Big brass buckle at the flap's lower edge and its strap down to the pockets.
+  const bz = -6.98;
+  b.box(0, 15.02, bz, 1.25, 0.26, 0.26, PALETTE.brass, 'brass');
+  b.box(0, 13.72, bz, 1.25, 0.26, 0.26, PALETTE.brass, 'brass');
+  b.box(-0.5, 14.37, bz, 0.26, 1.04, 0.26, PALETTE.brass, 'brass');
+  b.box(0.5, 14.37, bz, 0.26, 1.04, 0.26, PALETTE.brass, 'brass');
+  b.box(0, 14.37, bz + 0.1, 0.74, 1.04, 0.1, L.darkest, 'leather');
+  b.box(0, 14.37, bz - 0.06, 0.16, 0.9, 0.12, PALETTE.brassDark, 'brass'); // prong
+  b.span(-0.34, 12.0, -7.08, 0.34, 13.6, -6.76, L.dark, 'leather');
 
-  // Two front pockets with rivets.
+  // Two front pockets, each with its own little flap and brass stud.
   for (const s of [-1, 1]) {
     const x0 = s < 0 ? -2.45 : 0.35;
-    const p = b.grid({ cell: 0.7, origin: [x0, 11.2, -7.1], mat: 'leather', jitter: 0.05, ao: 0.2, seed: 97 + s });
-    p.fill(0, 2, 0, 2, 0, 0, (i, j) => (j === 2 ? L.dark : hash3(i, j, 1, 98) < 0.6 ? L.mid : L.base));
+    const p = b.grid({ cell: 0.7, origin: [x0, 11.15, -7.15], mat: 'leather', jitter: 0.05, ao: 0.22, seed: 97 + s });
+    p.fill(0, 2, 0, 2, 0, 0, (i, j) => (j === 2 ? FL[i % 3] : hash3(i, j, 1, 98) < 0.6 ? L.base : L.mid));
     p.commit();
-    for (const dx of [0.35, 1.75]) b.box(x0 + dx, 12.95, -7.16, 0.22, 0.22, 0.1, PALETTE.rivet, 'metal');
+    b.span(x0 - 0.02, 12.95, -7.3, x0 + 2.12, 13.3, -7.12, L.darkest, 'leather'); // flap edge
+    b.box(x0 + 1.05, 12.78, -7.3, 0.3, 0.3, 0.12, PALETTE.brass, 'brass');
+    for (const dx of [0.25, 1.85]) b.box(x0 + dx, 11.4, -7.22, 0.18, 0.18, 0.1, PALETTE.rivet, 'metal');
   }
   // Side pockets with small buckles.
   for (const s of [-1, 1]) {
-    const sp = b.grid({ cell: 0.7, origin: [s < 0 ? -3.5 : 2.8, 11.5, -5.9], mat: 'leather', jitter: 0.05, ao: 0.2, seed: 99 + s });
-    sp.fill(0, 0, 0, 3, 0, 2, (_i, j) => (j === 3 ? L.darkest : L.dark));
+    const sp = b.grid({ cell: 0.7, origin: [s < 0 ? -3.5 : 2.8, 11.4, -5.95], mat: 'leather', jitter: 0.05, ao: 0.2, seed: 99 + s });
+    sp.fill(0, 0, 0, 3, 0, 2, (_i, j) => (j === 3 ? FL[1] : L.dark));
     sp.commit();
-    b.box(s * 3.56, 13.5, -4.85, 0.14, 0.34, 0.34, PALETTE.brass, 'brass');
+    b.box(s * 3.56, 13.35, -4.85, 0.14, 0.36, 0.36, PALETTE.brass, 'brass');
   }
   // Carry loop.
-  b.box(-0.7, 17.62, -4.6, 0.3, 0.6, 0.35, L.dark, 'leather');
-  b.box(0.7, 17.62, -4.6, 0.3, 0.6, 0.35, L.dark, 'leather');
-  b.box(0, 17.95, -4.6, 1.7, 0.3, 0.35, L.dark, 'leather');
-  return b;
+  b.box(-0.7, 17.72, -4.6, 0.3, 0.6, 0.35, L.dark, 'leather');
+  b.box(0.7, 17.72, -4.6, 0.3, 0.6, 0.35, L.dark, 'leather');
+  b.box(0, 18.05, -4.6, 1.7, 0.3, 0.35, L.dark, 'leather');
+  // Worn high like the sheet: the lid tucks right under the krama, the base sits on the belt.
+  return b.translate(0, 0.9, 0);
 }
 
 /** Bigger trekking pack with a bedroll and canteen ("Explorer Gear" variant). */

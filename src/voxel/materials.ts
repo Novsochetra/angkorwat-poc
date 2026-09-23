@@ -25,6 +25,11 @@ export interface VoxelMaterialSpec {
   grainScale: number;
   /** Unlit, self-coloured voxels (flames, lamp glass). */
   unlit?: boolean;
+  /**
+   * Flush neighbours merge into one smooth surface: each block pushes its bevel
+   * into covered neighbours, so only the outer silhouette stays rounded (the face).
+   */
+  seamless?: boolean;
   emissive?: number;
   emissiveIntensity?: number;
   transparent?: boolean;
@@ -34,6 +39,8 @@ export interface VoxelMaterialSpec {
 export const VOXEL_MATERIALS = {
   // ── Character ────────────────────────────────────────────────────────────
   skin: { roughness: 0.7, metalness: 0, bevel: 0.075, edgeTint: 0xffcfa2, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.035, grainScale: 20 },
+  // The face reads as one smooth block on the sheet: no seams between its cells.
+  face: { roughness: 0.7, metalness: 0, bevel: 0.075, edgeTint: 0xffcfa2, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.035, grainScale: 20, seamless: true },
   hair: { roughness: 0.78, metalness: 0, bevel: 0.17, edgeTint: 0xae5f2e, edgeStrength: 0.5, edgeWidth: 1.0, grain: 0.16, grainScale: 26 },
   eye: { roughness: 0.35, metalness: 0, bevel: 0.1, edgeTint: 0x000000, edgeStrength: 0, grain: 0, grainScale: 1 },
   shirt: { roughness: 0.93, metalness: 0, bevel: 0.15, edgeTint: 0xfff6ea, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.08, grainScale: 22 },
@@ -42,7 +49,7 @@ export const VOXEL_MATERIALS = {
   krama: { roughness: 0.9, metalness: 0, bevel: 0.17, edgeTint: 0xf0a24c, edgeStrength: 0.5, edgeWidth: 0.6, grain: 0.1, grainScale: 22 },
   leather: { roughness: 0.66, metalness: 0, bevel: 0.13, edgeTint: 0xd48a45, edgeStrength: 0.55, edgeWidth: 0.6, grain: 0.14, grainScale: 26 },
   boot: { roughness: 0.64, metalness: 0, bevel: 0.13, edgeTint: 0xc97a3a, edgeStrength: 0.55, edgeWidth: 0.6, grain: 0.14, grainScale: 24 },
-  metal: { roughness: 0.42, metalness: 0.35, bevel: 0.13, edgeTint: 0xd6d6d6, edgeStrength: 0.3, grain: 0.05, grainScale: 18 },
+  metal: { roughness: 0.55, metalness: 0.12, bevel: 0.13, edgeTint: 0xc9c7c3, edgeStrength: 0.38, edgeWidth: 0.7, grain: 0.07, grainScale: 22 },
   brass: { roughness: 0.32, metalness: 0.75, bevel: 0.14, edgeTint: 0xffe2a0, edgeStrength: 0.35, grain: 0.03, grainScale: 18 },
   lens: { roughness: 0.12, metalness: 0.2, bevel: 0.12, edgeTint: 0x000000, edgeStrength: 0, grain: 0, grainScale: 1 },
   wood: { roughness: 0.8, metalness: 0, bevel: 0.14, edgeTint: 0xc98a52, edgeStrength: 0.35, grain: 0.09, grainScale: 12 },
@@ -106,6 +113,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uGrain = { value: spec.grain };
     shader.uniforms.uGrainScale = { value: spec.grainScale };
     shader.uniforms.uBevel = { value: Math.max(1e-4, spec.bevel) };
+    shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -116,7 +124,27 @@ varying vec3 vVoxP;
 varying vec3 vVoxSeed;
 attribute float voxOpen;
 flat varying float vVoxOpen;
-uniform float uBevel;`,
+uniform float uBevel;
+uniform float uSeamless;
+// Seamless families push the bevel of every covered side into the neighbour, so
+// flush faces meet flat and only the silhouette stays rounded.
+vec3 voxPushOf(float open, vec3 p) {
+  if (uSeamless < 0.5) return vec3(0.0);
+  int m = int(open + 0.5);
+  return vec3(
+    1.0 - float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
+    1.0 - float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
+    1.0 - float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
+}
+// ...and shade the pushed bevel like the face it continues. Fully covered faces
+// take the block's exposed direction, so a sliver leaking through a seam matches.
+vec3 voxFlatNormal(vec3 n, vec3 push, float open) {
+  vec3 f = n * (1.0 - push);
+  if (dot(f, f) > 1e-4) return normalize(f);
+  int m = int(open + 0.5);
+  vec3 e = vec3(float(m & 1) - float((m >> 1) & 1), float((m >> 2) & 1) - float((m >> 3) & 1), float((m >> 4) & 1) - float((m >> 5) & 1));
+  return dot(e, e) > 0.5 ? normalize(e) : n;
+}`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -125,8 +153,9 @@ uniform float uBevel;`,
 #else
   vec3 voxNS = vec3(1.0);
 #endif
-// Inverse-transpose for the per-instance (diagonal) size scale.
-vec3 objectNormal = vec3(normal) / (voxNS * voxNS);
+// three.js divides instance normals by scale² then applies the instance matrix
+// (n / s); the re-bevelled block keeps its unit normals, so pre-multiply by s.
+vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushOf(voxOpen, position), voxOpen) * voxNS;
 #ifdef USE_TANGENT
   vec3 objectTangent = vec3(tangent.xyz);
 #endif`,
@@ -143,12 +172,14 @@ vec3 objectNormal = vec3(normal) / (voxNS * voxNS);
   #endif
   float voxR = min(min(voxS.x, voxS.y), voxS.z) * uBevel;
   vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
-  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR);
+  vec3 voxPush = voxPushOf(voxOpen, position);
+  // (+ a hair of overlap so neighbouring flat faces never leave a crack)
+  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
   transformed = voxPw / voxS;
   vVoxP = voxPw;
+  vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
 }
 vVoxOpen = voxOpen;
-vVoxN = normal;
 #ifdef USE_INSTANCING
   vVoxSeed = instanceMatrix[3].xyz;
 #else
@@ -210,5 +241,5 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
       );
   };
   // Every family injects identical code (only uniforms differ), so programs are shared.
-  material.customProgramCacheKey = () => 'voxel-shading-v4';
+  material.customProgramCacheKey = () => 'voxel-shading-v5';
 }

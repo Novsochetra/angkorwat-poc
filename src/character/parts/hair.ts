@@ -40,23 +40,40 @@ function inCloud(x: number, y: number, z: number, c: typeof CLOUD = CLOUD): bool
 }
 
 /**
- * Lowest cell-bottom (y) of the bangs per column x (−5‥5), read off the front view.
- * The character's right side (−x) is messier and hangs to the eye; the left side
- * is shorter so the left brow shows — as in the reference.
+ * Lowest cell-bottom (y) of the bangs per column x (−5‥5), read off the front view
+ * and the expression row. The fringe is swept to the character's right: a clump
+ * hangs over the right eye (hiding that brow, see {@link BANG_TIPS}) while the
+ * forehead shows high up on the left, above the visible left brow.
  */
 const BANGS: Record<number, number> = {
-  [-5]: 21.4,
-  [-4]: 24.4,
-  [-3]: 24.4,
-  [-2]: 24.4,
+  [-5]: 22.4,
+  [-4]: 23.4,
+  [-3]: 25.4,
+  [-2]: 25.4,
   [-1]: 25.4,
-  0: 26.4,
-  1: 26.4,
-  2: 25.4,
-  3: 25.4,
-  4: 24.4,
-  5: 21.4,
+  0: 27.4,
+  1: 27.4,
+  2: 27.4,
+  3: 26.4,
+  4: 23.4,
+  5: 22.4,
 };
+
+/**
+ * The right clump's strands hang past the 1-block grid and end just above the eye
+ * (hiding that brow): column x → bottom of the elongated lowest block.
+ */
+const BANG_TIPS: Record<number, number> = { [-3]: 25.05, [-2]: 24.85, [-1]: 24.95 };
+
+/**
+ * True where the hair covers the cell centred at (x, y, z) next to the skull
+ * (the scalp shell). The head paints those skull blocks dark so no skin peeks
+ * through the gaps between hair blocks.
+ */
+export function hairCovers(x: number, y: number, z: number): boolean {
+  const [i, j, k] = [Math.round(x + 7), Math.round(y - 20.9), Math.round(z + 7.6)];
+  return j >= 0 && j <= 12 && allowed(i, j, k);
+}
 
 /** Keep the face, ears, jaw and nape clear. */
 function allowed(i: number, j: number, k: number): boolean {
@@ -66,22 +83,26 @@ function allowed(i: number, j: number, k: number): boolean {
   const z = cz(k);
   const bottom = cy(j) - 0.5;
   if (z > 4.9) {
-    // In front of the face: bang strands.
+    // In front of the face: bang strands. Beside it the cheek stays clear.
     if (ax <= 5) return bottom >= (BANGS[x] ?? 26.4);
-    return bottom >= 23.4;
+    return bottom >= 24.4;
   }
   if (ax >= 5.5) {
-    // Beside the head the hair stops above the jaw; the strands framing the face
-    // hang in front of it (BANGS ±5) so the jaw line stays narrow like the reference.
-    if (z >= 1.0) return bottom >= 23.4;
-    if (z >= -1.1) return bottom >= 24.4; // ear stays visible
-    if (z >= -4.1) return bottom >= 22.4; // behind the ear
+    // Side profile of the sheet: the cheek shows below the temple, a sideburn hangs
+    // in front of the ear, the ear stays clear and the hair behind it reaches the jaw.
+    if (z >= 2.9) return bottom >= 24.4; // cheek
+    if (z >= 0.9) return bottom >= 22.4; // sideburn
+    if (z >= -1.1) return bottom >= 24.4; // ear
+    if (z >= -4.1) return bottom >= 21.4; // behind the ear
   }
   if (z < -4.1) {
     // Nape: hair comes lowest at the centre of the back.
     const minBottom = ax <= 2 ? 20.4 : ax <= 3 ? 21.4 : 22.4;
     return bottom >= minBottom;
   }
+  // The stepped-in chin row stays clear in front of the ear, so the jaw reads as
+  // skin from the side; behind the ear the hair still frames it.
+  if (bottom < 21.4 && z >= -1.1) return false;
   return true;
 }
 
@@ -178,7 +199,23 @@ export function buildHair(opts: HairOptions = {}): VoxelBuilder {
 
   // Skull as ghosts so AO darkens the roots and lifts the tips.
   for (let i = 1; i <= 13; i++) for (let j = 0; j <= 10; j++) for (let k = 3; k <= 13; k++) if (inHead(i, j, k)) g.ghost(i, j, k);
+
+  // The right clump's lowest blocks become long strands reaching past the grid.
+  const strands: [number, number, number, number, number][] = [];
+  for (const [xs, bottom] of Object.entries(BANG_TIPS)) {
+    const x = Number(xs);
+    const i = x + 7;
+    const j = Math.round(BANGS[x] + 0.5 - 20.9);
+    for (const k of [13, 14]) {
+      const cell = g.get(i, j, k);
+      if (!cell || cell.ghost) continue;
+      strands.push([x, bottom, cy(j) + 0.5, cz(k), cell.color]);
+      g.ghost(i, j, k);
+    }
+  }
   g.commit();
+  for (const [x, bottom, top, z, color] of strands)
+    b.box(x, (bottom + top) / 2, z, 1, top - bottom, 1, color, 'hair', { shade: 0.94 });
   return b;
 }
 

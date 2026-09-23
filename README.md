@@ -83,15 +83,15 @@ that works with any `ColliderWorld` of axis-aligned boxes.
 | --- | --- |
 | Turnaround / proportions | `src/character/skeleton.ts` (joint pivots measured in body units) |
 | Colour palette (3.2) | `src/character/palette.ts` — swatches sampled from the sheet, tuned against the renders |
-| Face (3.3.1) + expressions (3.4) | `parts/face.ts` — 2×2 white/black eyes, blush, nose bump, thin smile; six expressions + blinking |
-| Hair (3.3.2) | `parts/hair.ts` — procedural: skull shell ∪ rounded cloud, strand displacement, bangs profile read off the front view |
-| Krama scarf (3.3.3) | `parts/scarf.ts` — checked collar + three-segment tail with fringe (swings with physics) |
+| Face (3.3.1) + expressions (3.4) | `parts/face.ts` — seamless skin, eyes with a white block and a wide two-tone pupil, blush, nose bump, thin smile; six expressions + blinking |
+| Hair (3.3.2) | `parts/hair.ts` — procedural: skull shell ∪ rounded cloud, strand displacement; fringe swept over the right eye (hiding that brow) with the forehead showing on the left, sideburns, cheeks and ears clear like the side view |
+| Krama scarf (3.3.3) | `parts/scarf.ts` — chunky three-row collar that dips at the front, plaid built from red / maroon / salmon bands, four-band tail with cross stripes and a five-tassel fringe (swings with physics) |
 | Shirt, straps (3.3.4) | `parts/torso.ts` |
-| Camera (3.3.5–6) | `parts/gear.ts` — octagonal lens, red shutter light, brass lugs, neck strap (swings) |
+| Camera (3.3.5–6) | `parts/gear.ts` — chunky octagonal lens ring, red shutter light, brass lugs, neck strap (swings) |
 | Backpack (3.3.7) | `parts/gear.ts` — flap, brass buckle, pockets, rivets; bigger trekking pack for "Explorer Gear" |
 | Belt & pouches (3.3.8) | `parts/torso.ts` — buckle, pouches with brass snaps, knife sheath |
 | Shorts, boots, hands (3.3.9–11) | `parts/limbs.ts` — hemmed shorts, cream socks, cuffed boots; relaxed / holding / pointing fists |
-| Materials (3.3.12) | `src/voxel/materials.ts` — per-material bevel radius, warm rim tint, surface grain |
+| Materials (3.3.12) | `src/voxel/materials.ts` — per-material bevel radius, warm rim tint, surface grain, seamless face |
 | Variations (3.5) | hat, lantern (lit), no scarf, explorer gear, temple sampot, torch (lit) |
 | Action poses (3.6) | `src/character/clips.ts` — idle, walk, run, jump/land, open door, peek, hold lantern/torch, look up, interact, wave, cheer |
 
@@ -104,7 +104,9 @@ finer shirt weave, tiny camera parts). Each material family is one
 re-bevels them so every edge keeps the same radius. Rims are painted only on
 edges between two exposed faces, so flush neighbours show a soft seam and real
 steps catch a warm highlight — the look of the reference renders. Ambient
-occlusion and colour jitter are baked per block.
+occlusion and colour jitter are baked per block. The face family is
+*seamless*: each block pushes its bevel into covered neighbours, so the face
+reads as one smooth surface with only its silhouette rounded, as on the sheet.
 
 Quality levels: `high` (smooth bevels, viewer), `medium` (24-vertex chamfered
 blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).

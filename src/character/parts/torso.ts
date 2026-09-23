@@ -36,14 +36,14 @@ export function buildTorso(opts: TorsoOptions = {}): VoxelBuilder {
 
   const L = PALETTE.leather;
   if (opts.packStraps ?? true) {
-    // Backpack straps: over both shoulders and down the chest edges to the belt.
-    // Backpack straps hug the outer edge of the chest (mostly behind the sleeves).
+    // Backpack straps: over both shoulders and down the sides of the chest to the
+    // belt, half hidden behind the sleeves as in the front view of the sheet.
     for (const s of [-1, 1]) {
-      const x = s * 3.98;
+      const x = s * 4.18;
       for (let z = -2.4; z <= 2.41; z += 0.8) b.box(s * 3.7, 19.12, z, 0.7, 0.26, 0.8, L.strap, 'leather', { shade: 0.95 });
       for (let y = 18.6; y >= 12.6; y -= 0.8) b.box(x, y, 2.94, 0.7, 0.8, 0.28, L.strap, 'leather', { shade: 1 - (18.6 - y) * 0.01 });
       for (let y = 18.6; y >= 15.8; y -= 0.8) b.box(x, y, -2.94, 0.7, 0.8, 0.28, L.strap, 'leather');
-      b.box(x, 15.4, 3.13, 0.46, 0.4, 0.14, PALETTE.brassDark, 'brass');
+      b.box(x, 15.4, 3.13, 0.4, 0.4, 0.14, PALETTE.brassDark, 'brass');
     }
   }
   if (opts.satchelStrap ?? true) {
@@ -53,8 +53,8 @@ export function buildTorso(opts: TorsoOptions = {}): VoxelBuilder {
         const i = j + di;
         const x = TORSO.minX + (i + 0.5) * TORSO.cell;
         const y = TORSO.minY + (j + 0.5) * TORSO.cell;
-        const c = hash3(i, j, 3, 9) < 0.5 ? L.mid : L.base;
-        b.box(x, y, 3.0, 0.8, 0.8, 0.34, c, 'leather');
+        const c = hash3(i, j, 3, 9) < 0.5 ? L.mid : di ? L.dark : L.base;
+        b.box(x, y, 3.03, 0.8, 0.8, 0.4, c, 'leather');
         // back run, mostly hidden by the pack
         b.box(x, y, -3.0, 0.8, 0.8, 0.34, L.dark, 'leather');
       }
@@ -79,12 +79,12 @@ export function buildBelt(opts: { pouches?: boolean; sheath?: boolean } = {}): V
   b.box(0, 12.15, 3.5, 0.74, 0.64, 0.16, PALETTE.camera.mid, 'metal');
 
   if (opts.pouches ?? true) {
-    // Right-hip pouch with two brass snaps.
-    const p = b.grid({ cell: 0.55, origin: [-3.95, 10.1, 3.12], mat: 'leather', jitter: 0.06, ao: 0.2, seed: 33 });
-    p.fill(0, 3, 0, 4, 0, 1, (i, j) => (j >= 3 ? L.dark : hash3(i, j, 0, 4) < 0.5 ? L.light : L.base));
+    // Right-hip pouch riding on the belt, flap on top, two brass snaps.
+    const p = b.grid({ cell: 0.55, origin: [-4.62, 10.85, 3.12], mat: 'leather', jitter: 0.06, ao: 0.2, seed: 33 });
+    p.fill(0, 3, 0, 3, 0, 1, (i, j) => (j >= 2 ? (j === 3 ? L.dark : L.mid) : hash3(i, j, 0, 4) < 0.5 ? L.light : L.base));
     p.commit();
-    b.box(-2.85, 12.2, 4.28, 0.36, 0.36, 0.14, PALETTE.brass, 'brass');
-    b.box(-2.85, 11.0, 4.28, 0.36, 0.36, 0.14, PALETTE.brass, 'brass');
+    b.box(-3.52, 12.28, 4.28, 0.34, 0.34, 0.14, PALETTE.brass, 'brass');
+    b.box(-3.52, 11.4, 4.28, 0.34, 0.34, 0.14, PALETTE.brass, 'brass');
     // Left-hip side pouch.
     const q = b.grid({ cell: 0.55, origin: [4.72, 10.3, -1.2], mat: 'leather', jitter: 0.06, ao: 0.2, seed: 34 });
     q.fill(0, 1, 0, 3, 0, 3, (_i, j) => (j >= 3 ? L.dark : L.base));

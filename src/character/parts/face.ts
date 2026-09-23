@@ -1,6 +1,6 @@
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { PALETTE } from '../palette';
-import { FACE_COLUMNS, FACE_LAYER, FACE_ROWS, HEAD, HEAD_GRID } from './head';
+import { FACE_COLUMNS, FACE_LAYER, FACE_ROWS, HEAD, HEAD_GRID, skullHas } from './head';
 
 /**
  * Face: the 4 × 4 block patch of the head front that holds eyes, blush and lids,
@@ -49,9 +49,9 @@ const DEFS: Record<ExpressionName, ExpressionDef> = {
     lids: 'none',
   },
   surprised: {
-    cells: ['wkkw', 'wkkw', 'wkkw', 'ssss'],
-    browRight: { dy: 0.95, tilt: -0.12 },
-    browLeft: { dy: 0.95, tilt: -0.12 },
+    cells: ['ssss', 'wkkw', 'wkkw', 'ssss'],
+    browRight: { dy: 0.5, tilt: -0.12 },
+    browLeft: { dy: 0.5, tilt: -0.12 },
     mouth: 'o',
     lids: 'none',
   },
@@ -78,35 +78,59 @@ export function buildFace(expression: ExpressionName, blink = false): VoxelBuild
   const def = DEFS[expression];
   const b = new VoxelBuilder();
   const P = PALETTE;
-  const g = b.grid({ ...HEAD_GRID, mat: 'skin', jitter: 0.02, ao: 0, seed: 11 });
+  const g = b.grid({ ...HEAD_GRID, mat: 'face', jitter: 0.008, ao: 0, seed: 11 });
   // A blink closes whatever eye cells are open, keeping blush and lids.
   const closeRow = (row: string) => (blink ? row.replace(/[wk]/g, 's') : row);
   const rows = [...FACE_ROWS].reverse(); // top → bottom
+  const seen = new Set<string>(); // columns whose eye has started (upper row done)
+  const pupils: { x0: number; x1: number; y: number; color: number }[] = [];
   rows.forEach((j, r) => {
     const code = closeRow(def.cells[r]);
     FACE_COLUMNS.forEach((i, c) => {
-      switch (code[c]) {
+      const ch = code[c];
+      const upper = (ch === 'w' || ch === 'k') && !seen.has(`${ch}${c}`);
+      if (ch === 'w' || ch === 'k') seen.add(`${ch}${c}`);
+      switch (ch) {
         case 'w':
-          g.set(i, j, FACE_LAYER, P.eyeWhite, 'eye');
+          g.set(i, j, FACE_LAYER, upper ? P.eyeWhiteShade : P.eyeWhite, 'eye');
           break;
-        case 'k':
-          g.set(i, j, FACE_LAYER, P.eyeDark, 'eye');
+        case 'k': {
+          // Pupils are ~1.4 blocks wide on the sheet: a block that reaches past
+          // its cell, away from the white of the same eye.
+          const [x, y] = g.center(i, j, FACE_LAYER);
+          const partner = code[c ^ 1];
+          const dir = partner === 'w' ? Math.sign(x - g.center(FACE_COLUMNS[c ^ 1], j, FACE_LAYER)[0]) : 0;
+          pupils.push({ x0: x - 0.5 + Math.min(dir, 0) * 0.38, x1: x + 0.5 + Math.max(dir, 0) * 0.38, y, color: upper ? P.eyeDark : P.eyeDarkLow });
+          g.ghost(i, j, FACE_LAYER);
           break;
+        }
         case 'b':
-          g.set(i, j, FACE_LAYER, P.blush, 'skin');
+          g.set(i, j, FACE_LAYER, P.blush, 'face');
           break;
         case 'l':
-          g.set(i, j, FACE_LAYER, P.skin.shade, 'skin', 1.08);
+          g.set(i, j, FACE_LAYER, P.skin.shade, 'face', 1.08);
           break;
         default:
-          g.set(i, j, FACE_LAYER, P.skin.base, 'skin');
+          g.set(i, j, FACE_LAYER, P.skin.base, 'face');
       }
     });
   });
+  // The surrounding head as ghosts, so the face cells know which sides are covered
+  // (the seamless face material merges them with the head).
+  for (let i = 0; i <= 10; i++)
+    for (let j = 0; j <= 8; j++)
+      for (let k = 0; k <= 8; k++) {
+        if (g.has(i, j, k)) continue;
+        const [x, y, z] = g.center(i, j, k);
+        if (skullHas(x, y, z)) g.ghost(i, j, k);
+      }
   g.commit();
 
   const decal = (x: number, y: number, w: number, h: number, color: number, depth = 0.08, rz = 0, lift = 0) =>
     b.box(x, y, FRONT + depth / 2 - 0.012 + lift, w, h, depth, color, 'eye', { rz });
+
+  // Pupil blocks sit a hair proud of the face so their overhang covers the skin.
+  for (const p of pupils) b.span(p.x0, p.y - 0.5, FRONT - 1, p.x1, p.y + 0.5, FRONT + 0.014, p.color, 'eye');
 
   // Closed-eye marks.
   const lids: LidDecal = blink && def.lids === 'none' ? 'lash' : def.lids;
@@ -122,9 +146,10 @@ export function buildFace(expression: ExpressionName, blink = false): VoxelBuild
     }
   }
 
-  // Brows (thick, dark, sitting on the forehead; the bangs overlap them).
+  // Brows: thick bars well above the eyes. The fringe hides the right one, as on
+  // the sheet; the left one shows under the high hairline.
   const brow = (side: -1 | 1, dy: number, tilt: number) =>
-    b.box(side * 2.5, 24.88 + dy, FRONT + 0.15, 2.1, 0.52, 0.3, P.brow, 'hair', { rz: side * tilt });
+    b.box(side * 2.5, 25.49 + dy, FRONT + 0.15, 2.2, 0.9, 0.3, P.brow, 'hair', { rz: side * tilt });
   brow(-1, def.browRight.dy, def.browRight.tilt);
   brow(1, def.browLeft.dy, def.browLeft.tilt);
 

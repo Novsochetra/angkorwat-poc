@@ -146,11 +146,13 @@ function frame(): void {
     controls.target.set(0, h * 0.5, 0);
   } else {
     const zoom = params.get('zoom') ?? 'full';
-    const targetY = zoom === 'head' ? h * 0.78 : zoom === 'torso' ? h * 0.55 : zoom === 'feet' ? h * 0.14 : h * 0.5;
-    const dist = zoom === 'full' ? 5.6 : 2.2;
+    const targetY = num('ty', zoom === 'head' ? h * 0.78 : zoom === 'torso' ? h * 0.55 : zoom === 'feet' ? h * 0.14 : h * 0.5);
+    const dist = num('dist', zoom === 'full' ? 5.6 : 2.2);
     const elev = (num('elev', 8) * Math.PI) / 180;
-    camera.position.set(0, targetY + Math.sin(elev) * dist, Math.cos(elev) * dist);
-    controls.target.set(0, targetY, 0);
+    const azim = (num('azim', 0) * Math.PI) / 180;
+    const tx = num('tx', 0);
+    camera.position.set(tx + Math.sin(azim) * Math.cos(elev) * dist, targetY + Math.sin(elev) * dist, Math.cos(azim) * Math.cos(elev) * dist);
+    controls.target.set(tx, targetY, 0);
   }
   camera.updateProjectionMatrix();
   controls.update();

@@ -6,7 +6,7 @@
  *  32.4 ┐ hair top
  *  30.4 │ skull top         head: 11 × 10 × 9 blocks, eyes on rows 22.4–24.4
  *  20.4 ┘ chin
- *  19.0   shoulders / scarf collar 18.2–20.4
+ *  19.0   shoulders / scarf collar 17.4–20.5
  *  12.7   belt top (belt 11.6–12.7)
  *   9.8   crotch / shorts legs, hem 6.8–7.8
  *   5.6   knee skin → cream sock 4.6–5.6
@@ -71,9 +71,9 @@ export const JOINTS: Record<JointName, JointDef> = {
   kneeR: { parent: 'hipR', pivot: [-LEG_X, 7.1, LEG_Z] },
   ankleR: { parent: 'kneeR', pivot: [-LEG_X, 2.0, -0.9] },
   // Krama tail hangs from the front-left of the collar in three swinging segments.
-  scarf1: { parent: 'chest', pivot: [2.45, 18.3, 3.35] },
-  scarf2: { parent: 'scarf1', pivot: [2.45, 15.7, 3.45] },
-  scarf3: { parent: 'scarf2', pivot: [2.45, 13.3, 3.45] },
+  scarf1: { parent: 'chest', pivot: [3.05, 17.9, 3.6] },
+  scarf2: { parent: 'scarf1', pivot: [3.05, 15.55, 3.6] },
+  scarf3: { parent: 'scarf2', pivot: [3.05, 13.4, 3.6] },
   // Camera swings from its neck strap.
   camera: { parent: 'chest', pivot: [0, 19.3, 2.3] },
   backpack: { parent: 'chest', pivot: [0, 17.4, -2.9] },

@@ -7,7 +7,7 @@ import type { ActionName } from './clips';
 import { Pendulum } from './Dynamics';
 import { buildFace, EXPRESSIONS, type ExpressionName } from './parts/face';
 import { buildBackpack, buildCamera, type PackStyle } from './parts/gear';
-import { buildHair } from './parts/hair';
+import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
 import { buildFoot, buildForearm, buildHand, buildPelvis, buildShin, buildThigh, buildUpperArm, type HandPose, type LegStyle, type Side } from './parts/limbs';
 import { buildFlame, buildHat, buildLantern, buildTorchHandle, HAT_CLIP_Y } from './parts/props';
@@ -90,7 +90,7 @@ export class AngkorExplorer {
     this.castShadow = opts.castShadow ?? true;
 
     const r = this.rig;
-    r.setSlot('head', 'head', buildHead());
+    r.setSlot('head', 'head', buildHead(hairCovers));
     r.setSlot('neck', 'neck', buildNeck());
     for (const s of ['L', 'R'] as Side[]) {
       r.setSlot(`upperArm${s}`, `shoulder${s}`, buildUpperArm(s));
@@ -311,9 +311,9 @@ export class AngkorExplorer {
     this.pendulums = [];
     if (this.outfit.scarf) {
       this.pendulums.push(
-        new Pendulum(j.scarf1, { length: 2.6 * m, damping: 0.93, stiffness: 0.06, maxAngle: 0.9, minForward: -0.04, limitFrame: j.chest }),
-        new Pendulum(j.scarf2, { length: 2.4 * m, damping: 0.93, stiffness: 0.04, maxAngle: 0.7, minForward: -0.04, limitFrame: j.chest }),
-        new Pendulum(j.scarf3, { length: 2.2 * m, damping: 0.92, stiffness: 0.03, maxAngle: 0.7, minForward: -0.04, limitFrame: j.chest }),
+        new Pendulum(j.scarf1, { length: 2.35 * m, damping: 0.93, stiffness: 0.06, maxAngle: 0.9, minForward: -0.04, limitFrame: j.chest }),
+        new Pendulum(j.scarf2, { length: 2.15 * m, damping: 0.93, stiffness: 0.04, maxAngle: 0.7, minForward: -0.04, limitFrame: j.chest }),
+        new Pendulum(j.scarf3, { length: 2.4 * m, damping: 0.92, stiffness: 0.03, maxAngle: 0.7, minForward: -0.04, limitFrame: j.chest }),
       );
     }
     if (this.outfit.camera)
