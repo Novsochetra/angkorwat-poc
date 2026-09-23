@@ -13,8 +13,8 @@ import {
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { getVoxelMaterial, VOXEL_MATERIALS } from './materials';
-import type { VoxelBox, VoxelBuilder } from './VoxelBuilder';
+import { getVoxelMaterial, VOXEL_MATERIALS, voxelPatternOf, type VoxelMaterialKey } from './materials';
+import type { Surf, VoxelBox, VoxelBuilder } from './VoxelBuilder';
 
 export type VoxelQuality = 'low' | 'medium' | 'high';
 
@@ -154,6 +154,26 @@ const _p = new Vector3();
 const _s = new Vector3(1, 1, 1);
 const _c = new Color();
 
+const q8 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+/** Two 0‥1 amounts in one float (8 bits each), unpacked by voxUnpack in the shader. */
+const pack2 = (a: number, b: number) => q8(a) * 256 + q8(b);
+
+/**
+ * Per-instance data of a patterned family: packed surf amounts, the baked
+ * shade (applied after the pattern, so moss and grass keep the block's AO) and
+ * the merge mask (sides that continue into the same stone).
+ */
+export function packSurf(out: Float32Array, i: number, surf: Surf | undefined, shade: number, merge = 0): void {
+  const s = surf ?? NO_SURF;
+  out[i * 4] = pack2(s[0], s[1]);
+  out[i * 4 + 1] = pack2(s[2], s[3]);
+  out[i * 4 + 2] = shade;
+  out[i * 4 + 3] = merge;
+}
+const NO_SURF: Surf = [0, 0, 0, 0];
+
+const patterned = (mat: VoxelMaterialKey) => voxelPatternOf(mat) !== undefined;
+
 /**
  * Turn a builder into instanced voxel meshes: one InstancedMesh per material
  * family (sizes live in the instance matrices), so a whole character is a
@@ -184,6 +204,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     geo.setAttribute('position', geometry.getAttribute('position'));
     geo.setAttribute('normal', geometry.getAttribute('normal'));
     const open = new Float32Array(list.length);
+    // Patterned families carry their surf amounts + shade; their colour stays pure.
+    const surf = patterned(mat) ? new Float32Array(list.length * 4) : null;
     const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), list.length);
     mesh.name = `${group.name}:${mat}`;
     for (let i = 0; i < list.length; i++) {
@@ -195,10 +217,13 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
       _s.set(b.sx, b.sy, b.sz);
       _m.compose(_p, _q, _s);
       mesh.setMatrixAt(i, _m);
-      _c.setHex(b.color).multiplyScalar(b.shade);
+      _c.setHex(b.color);
+      if (surf) packSurf(surf, i, b.surf, b.shade, b.merge);
+      else _c.multiplyScalar(b.shade);
       mesh.setColorAt(i, _c);
     }
     geo.setAttribute('voxOpen', new InstancedBufferAttribute(open, 1));
+    if (surf) geo.setAttribute('voxSurf', new InstancedBufferAttribute(surf, 4));
     // The code that made each instance (dev builds), for the feedback tool's picker.
     if (list.some((b) => b.src)) mesh.userData.voxelSources = list.map((b) => b.src);
     mesh.instanceMatrix.needsUpdate = true;

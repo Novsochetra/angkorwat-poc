@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         game: resolve(import.meta.dirname, 'index.html'),
         viewer: resolve(import.meta.dirname, 'viewer.html'),
+        studio: resolve(import.meta.dirname, 'studio.html'),
       },
     },
   },

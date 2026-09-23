@@ -5,13 +5,17 @@
 //
 // Each arg is name=query (viewer.html) or name=@page?query for another page.
 // Output: screenshots/<name>.png
+//
+// Env: SHOT_W / SHOT_H viewport (1280×800), SHOT_FULL=1 capture the whole page,
+// SHOT_OUT=dir output folder, SHOT_BASE=http://localhost:5173 use a running dev
+// server instead of starting one (faster when taking many shots).
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
 const root = resolve(import.meta.dirname, '..');
-const out = resolve(root, 'screenshots');
+const out = resolve(root, process.env.SHOT_OUT ?? 'screenshots');
 mkdirSync(out, { recursive: true });
 
 const defaults = {
@@ -33,10 +37,9 @@ const shots = args.length
     )
   : defaults;
 
-const server = await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false } });
-await server.listen();
-const port = server.config.server.port ?? 5199;
-const base = `http://localhost:${server.resolvedUrls?.local?.[0] ? new URL(server.resolvedUrls.local[0]).port : port}`;
+const server = process.env.SHOT_BASE ? null : await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false } });
+await server?.listen();
+const base = process.env.SHOT_BASE ?? `http://localhost:${server.resolvedUrls?.local?.[0] ? new URL(server.resolvedUrls.local[0]).port : (server.config.server.port ?? 5199)}`;
 
 const executablePath = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const browser = await chromium.launch({
@@ -54,9 +57,9 @@ for (const [name, spec] of Object.entries(shots)) {
   const t0 = Date.now();
   await page.goto(url, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 180_000 });
-  await page.screenshot({ path: resolve(out, `${name}.png`), timeout: 240_000 });
+  await page.screenshot({ path: resolve(out, `${name}.png`), timeout: 240_000, fullPage: process.env.SHOT_FULL === '1' });
   console.log(`${name}: ${url} (${Date.now() - t0} ms)`);
 }
 
 await browser.close();
-await server.close();
+await server?.close();

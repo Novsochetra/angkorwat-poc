@@ -9,9 +9,9 @@ import {
   Raycaster,
   Vector2,
   Vector3,
+  type Camera,
   type Matrix4,
   type Object3D,
-  type PerspectiveCamera,
   type Scene,
   type WebGLRenderer,
 } from 'three';
@@ -20,10 +20,16 @@ import { pick, type Pick } from './pick';
 import { errorCount, reportMarkdown, reportSlug, type ReportData } from './report';
 import { resolveTrace } from './sourceTrace';
 
+/** One camera's view on screen (client pixels). */
+export interface FeedbackView {
+  camera: Camera;
+  rect: { left: number; top: number; width: number; height: number };
+}
+
 export interface FeedbackOptions {
   renderer: WebGLRenderer;
   scene: Scene;
-  camera: PerspectiveCamera;
+  camera: Camera;
   /** Roots whose meshes can be picked. */
   pickables: () => Object3D[];
   colliders?: ColliderWorld;
@@ -33,6 +39,15 @@ export interface FeedbackOptions {
   state: () => Record<string, string>;
   /** Query string that reproduces the current view of this page. */
   repro: () => URLSearchParams;
+  // ── Pages that draw several views into one canvas (the asset studio) ──
+  /** Element whose clicks pick (default: the canvas). */
+  events?: HTMLElement;
+  /** The view under a client point, or null if none (default: `camera` over the whole canvas). */
+  viewAt?: (x: number, y: number) => FeedbackView | null;
+  /** Client position of a world point, or null when it isn't shown (default: projected with `camera`). */
+  screenOf?: (p: Vector3) => { x: number; y: number } | null;
+  /** Draw a fresh full frame for the screenshot (default: renderer.render(scene, camera)). */
+  render?: () => void;
 }
 
 /** Served by src/feedback/vitePlugin.ts (dev server and `vite preview`). */
@@ -137,20 +152,23 @@ export class FeedbackTool {
     });
 
     // A click that doesn't drag picks; drags keep turning the camera.
-    const canvas = o.renderer.domElement;
+    const canvas = o.events ?? o.renderer.domElement;
+    // (on a page-wide element, the reporter's own panel and the page's controls don't pick)
+    const ours = (e: Event) => e.target instanceof Element && (this.panel.contains(e.target) || this.button.contains(e.target) || (!!o.events && !!e.target.closest('button, input, select, textarea, label')));
     canvas.addEventListener('pointerdown', (e) => {
-      if (this.open && e.isPrimary && e.button === 0) this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
+      if (this.open && e.isPrimary && e.button === 0 && !ours(e)) this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
     });
     canvas.addEventListener('pointerup', (e) => {
       const d = this.down;
       this.down = null;
-      if (!this.open || this.mode !== 'picking' || !d || !e.isPrimary) return;
+      if (!this.open || this.mode !== 'picking' || !d || !e.isPrimary || ours(e)) return;
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || performance.now() - d.t > 800) return;
-      this.add(this.pickAt(e.clientX, e.clientY));
+      const p = this.pickAt(e.clientX, e.clientY);
+      if (p) this.add(p);
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!this.open || e.pointerType !== 'mouse') return;
-      this.hoverAt = e.buttons ? null : { x: e.clientX, y: e.clientY };
+      this.hoverAt = e.buttons || ours(e) ? null : { x: e.clientX, y: e.clientY };
       if (e.buttons) this.setHover(null);
     });
     canvas.addEventListener('pointerleave', () => {
@@ -219,16 +237,26 @@ export class FeedbackTool {
 
   // ── Picking ──────────────────────────────────────────────────────────────
 
-  private pickAt(x: number, y: number): Pick {
-    const r = this.o.renderer.domElement.getBoundingClientRect();
+  private pickAt(x: number, y: number): Pick | null {
+    const view = this.o.viewAt ? this.o.viewAt(x, y) : { camera: this.o.camera, rect: this.o.renderer.domElement.getBoundingClientRect() };
+    if (!view) return null;
+    const r = view.rect;
     // A fifth of a pixel off: a ray lying exactly in the seam plane between two
     // flush blocks (dead centre with the follow camera axis-aligned) slips
     // between their side faces and hits whatever is below.
     x += 0.21;
     y += 0.17;
     this.ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
-    this.raycaster.setFromCamera(this.ndc, this.o.camera);
+    this.raycaster.setFromCamera(this.ndc, view.camera);
     return pick(this.raycaster, this.o.pickables(), this.o.colliders, this.o.anchor?.());
+  }
+
+  /** Client position of a world point (null when off screen). */
+  private screenOf(p: Vector3): { x: number; y: number } | null {
+    if (this.o.screenOf) return this.o.screenOf(p);
+    const r = this.o.renderer.domElement.getBoundingClientRect();
+    const s = this.v.copy(p).project(this.o.camera);
+    return s.z < 1 ? { x: r.left + ((s.x + 1) / 2) * r.width, y: r.top + ((1 - s.y) / 2) * r.height } : null;
   }
 
   private add(p: Pick): void {
@@ -243,8 +271,8 @@ export class FeedbackTool {
     const trace = p.trace ?? p.colliders[0]?.src;
     if (!trace) return;
     const frames = await resolveTrace(trace);
-    // WorldBuilder's kit helpers (block, stairs…) are rarely the place to fix; their caller is.
-    const f = frames.find((fr) => !fr.file.endsWith('/WorldBuilder.ts')) ?? frames[0];
+    // Builder helpers (WorldBuilder.block, the kit's BlockSet / shapes…) are rarely the place to fix; their caller is.
+    const f = frames.find((fr) => !fr.file.endsWith('/WorldBuilder.ts') && !/^src\/kit\/[^/]+\.ts$/.test(fr.file)) ?? frames[0];
     if (!f) return;
     this.hints.set(p, `${f.file.split('/').pop()}:${f.line}`);
     if (this.picks.includes(p)) this.renderList();
@@ -318,14 +346,14 @@ export class FeedbackTool {
   }
 
   private placePins(): void {
-    const r = this.o.renderer.domElement.getBoundingClientRect();
     this.picks.forEach((p, i) => {
       const pin = this.pins.children[i] as HTMLElement | undefined;
       if (!pin) return;
-      const s = this.v.copy(p.point).project(this.o.camera);
-      pin.style.display = s.z < 1 ? '' : 'none';
-      pin.style.left = `${r.left + ((s.x + 1) / 2) * r.width}px`;
-      pin.style.top = `${r.top + ((1 - s.y) / 2) * r.height}px`;
+      const s = this.screenOf(p.point);
+      pin.style.display = s ? '' : 'none';
+      if (!s) return;
+      pin.style.left = `${s.x}px`;
+      pin.style.top = `${s.y}px`;
     });
   }
 
@@ -398,8 +426,10 @@ export class FeedbackTool {
   /** Render a fresh frame and copy it (the WebGL buffer is only valid until this task ends), with pins drawn on. */
   private capture(): HTMLCanvasElement {
     const { renderer, scene, camera } = this.o;
-    renderer.render(scene, camera);
+    if (this.o.render) this.o.render();
+    else renderer.render(scene, camera);
     const src = renderer.domElement;
+    const rect = src.getBoundingClientRect();
     const k = Math.min(1, 1600 / src.width);
     const out = document.createElement('canvas');
     out.width = Math.round(src.width * k);
@@ -408,8 +438,8 @@ export class FeedbackTool {
     g.drawImage(src, 0, 0, out.width, out.height);
     const r = Math.max(9, out.width / 90);
     this.picks.forEach((p, i) => {
-      const s = this.v.copy(p.point).project(camera);
-      if (s.z < 1) drawPin(g, ((s.x + 1) / 2) * out.width, ((1 - s.y) / 2) * out.height, r, String(i + 1));
+      const s = this.screenOf(p.point);
+      if (s) drawPin(g, ((s.x - rect.left) / rect.width) * out.width, ((s.y - rect.top) / rect.height) * out.height, r, String(i + 1));
     });
     return out;
   }

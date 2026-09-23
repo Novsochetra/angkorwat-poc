@@ -2,6 +2,13 @@ import { traceSource, type SourceTrace } from '../feedback/sourceTrace';
 import { hash3 } from './random';
 import type { VoxelMaterialKey } from './materials';
 
+/**
+ * Per-block amounts (0‥1) for the pixel-art pattern of its material family —
+ * stone: [moss, lichen, cracks, stain], soil: [grass, moss, dry, wet],
+ * leaf: [flowers, yellowing, 0, 0], bark: [moss, lichen, 0, stain]. See materials.ts.
+ */
+export type Surf = readonly [number, number, number, number];
+
 /** One rounded block. Coordinates are in the builder's space (character: body units). */
 export interface VoxelBox {
   x: number;
@@ -21,6 +28,14 @@ export interface VoxelBox {
    * seam while real steps get the warm highlight. Free boxes default to 63.
    */
   open?: number;
+  /** Pattern amounts for kit families with a pixel-art surface (see {@link Surf}). */
+  surf?: Surf;
+  /**
+   * Sides (same bits as `open`) that continue into the same stone — e.g. the
+   * cells of one carved block: no bevel there, so the cells read as one block.
+   * Patterned families only.
+   */
+  merge?: number;
   /** Optional Euler rotation (radians, XYZ). */
   rx?: number;
   ry?: number;
@@ -29,7 +44,7 @@ export interface VoxelBox {
   src?: SourceTrace;
 }
 
-type BoxExtra = Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open' | 'src'>>;
+type BoxExtra = Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open' | 'src' | 'surf' | 'merge'>>;
 
 export type Vec3Tuple = [number, number, number];
 
@@ -46,12 +61,17 @@ export interface GridOptions {
   seed?: number;
   /** Drop cells whose six neighbours are all filled (never visible). Default true. */
   cull?: boolean;
+  /** Pattern amounts for cells set without their own. */
+  surf?: Surf;
 }
 
 interface Cell {
   color: number;
   mat: VoxelMaterialKey;
   shade: number;
+  surf?: Surf;
+  /** Who made this cell (default: where the grid was created). */
+  src?: SourceTrace;
   /** Occupies space (for culling / AO) but is not emitted. */
   ghost?: boolean;
 }
@@ -80,7 +100,7 @@ export class VoxelBuilder {
     extra: BoxExtra = {},
   ): this {
     const src = extra.src ?? traceSource();
-    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, rx: extra.rx, ry: extra.ry, rz: extra.rz, src });
+    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, surf: extra.surf, merge: extra.merge, rx: extra.rx, ry: extra.ry, rz: extra.rz, src });
     return this;
   }
 
@@ -142,7 +162,8 @@ export class VoxelGrid {
   readonly src = traceSource();
   private readonly cells = new Map<number, Cell>();
   private readonly idx = new Map<number, Vec3Tuple>();
-  private readonly opts: Required<Omit<GridOptions, 'cell' | 'origin' | 'mat'>>;
+  private readonly opts: Required<Omit<GridOptions, 'cell' | 'origin' | 'mat' | 'surf'>>;
+  private readonly surf?: Surf;
 
   constructor(
     private readonly builder: VoxelBuilder,
@@ -152,11 +173,20 @@ export class VoxelGrid {
     this.origin = opts.origin;
     this.mat = opts.mat;
     this.opts = { jitter: opts.jitter ?? 0.05, ao: opts.ao ?? 0.25, seed: opts.seed ?? 1, cull: opts.cull ?? true };
+    this.surf = opts.surf;
   }
 
-  set(i: number, j: number, k: number, color: number, mat: VoxelMaterialKey = this.mat, shade = 1): this {
+  set(i: number, j: number, k: number, color: number, mat: VoxelMaterialKey = this.mat, shade = 1, surf: Surf | undefined = this.surf): this {
     const kk = key(i, j, k);
-    this.cells.set(kk, { color, mat, shade });
+    this.cells.set(kk, { color, mat, shade, surf });
+    this.idx.set(kk, [i, j, k]);
+    return this;
+  }
+
+  /** Set a cell with every option at once (family, shade, surf, source trace). */
+  put(i: number, j: number, k: number, c: { color: number; mat?: VoxelMaterialKey; shade?: number; surf?: Surf; src?: SourceTrace }): this {
+    const kk = key(i, j, k);
+    this.cells.set(kk, { color: c.color, mat: c.mat ?? this.mat, shade: c.shade ?? 1, surf: c.surf ?? this.surf, src: c.src });
     this.idx.set(kk, [i, j, k]);
     return this;
   }
@@ -197,12 +227,13 @@ export class VoxelGrid {
     k1: number,
     color: number | ((i: number, j: number, k: number) => number | null),
     mat: VoxelMaterialKey = this.mat,
+    surf: Surf | undefined = this.surf,
   ): this {
     for (let i = Math.min(i0, i1); i <= Math.max(i0, i1); i++)
       for (let j = Math.min(j0, j1); j <= Math.max(j0, j1); j++)
         for (let k = Math.min(k0, k1); k <= Math.max(k0, k1); k++) {
           const c = typeof color === 'number' ? color : color(i, j, k);
-          if (c !== null) this.set(i, j, k, c, mat);
+          if (c !== null) this.set(i, j, k, c, mat, 1, surf);
         }
     return this;
   }
@@ -284,7 +315,7 @@ export class VoxelGrid {
         (this.has(i, j, k + 1) ? 0 : 16) |
         (this.has(i, j, k - 1) ? 0 : 32);
       const [x, y, z] = this.center(i, j, k);
-      this.builder.box(x, y, z, this.cell[0], this.cell[1], this.cell[2], c.color, c.mat, { shade, open, src: this.src });
+      this.builder.box(x, y, z, this.cell[0], this.cell[1], this.cell[2], c.color, c.mat, { shade, open, surf: c.surf, src: c.src ?? this.src });
     }
     return this.builder;
   }
