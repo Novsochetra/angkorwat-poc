@@ -9,6 +9,10 @@ real-size Angkor Wat map.
   causeway, through the west gopura's doorway and up to the 65 m central tower.
 - **`viewer.html`** — character studio: turnaround, expressions, outfits and
   animations on a backdrop that mimics the reference sheet.
+- **`studio.html`** — the world kit's asset studio: the landscape, stone and
+  props of the component plan's sections 18–20, laid out like their reference
+  sheets. `index.html?level=kit` lets you walk among them at true scale. See
+  [World kit](#world-kit-sections-1820).
 
 ```bash
 npm install
@@ -27,6 +31,47 @@ npm run build      # typecheck + production build into dist/
 | ![Causeway](docs/scale-causeway.webp) | ![Doorway](docs/scale-doorway.webp) |
 | **Overview — the explorer is the dot in the doorway** | **Dusk with the torch** |
 | ![Overview](docs/scale-overview.webp) | ![Dusk](docs/dusk-torch.webp) |
+
+## World kit (sections 18–20)
+
+The first components of the temple plan
+(`Angkor Wat Voxel Bavel Reconstruction --- Component Plan.md`), built as a
+reusable voxel kit from the sheets in `assets/angkor detail/`:
+
+- **§18 landscape**: trees, palms, bushes, a jungle cluster, ground foliage and
+  ground tiles.
+- **§19 stone**: six sandstone finishes and six kinds of damage.
+- **§20 small props**: fragments, fallen blocks, statues, shrines, offerings,
+  steps, drains, ponds, leaves, roots and grass.
+
+Sizes are real-world. Each asset records what its sheet said and why it
+differs.
+
+![§18.1 Trees: large tree, medium tree, small tree, sugar palm, bush, dense jungle cluster](docs/kit-18-1.webp)
+![§18.2 Ground: grass, dirt, sandstone path, moss, lichen, fallen leaves](docs/kit-18-2.webp)
+![§19.1 Sandstone: clean, warm, dark, cracked, weathered, moss-covered](docs/kit-19-1.webp)
+![§19.2 Stone damage: broken corner, missing block, cracked block, eroded edge, collapsed frieze, dark weathering](docs/kit-19-2.webp)
+![§20 Small props: stone fragments, fallen blocks, broken statue, small shrine, offering platform, stone steps](docs/kit-20.webp)
+
+The sheets' environment examples as scenes: a tree by a temple wall, palms
+along the causeway, dense jungle, a temple path, a weathered gallery and a shrine
+with offerings. They are six of the twelve.
+
+![Scenes: tree near temple wall, palm causeway, dense jungle, temple path, weathered gallery, shrine with offerings](docs/kit-scenes.webp)
+
+![The explorer at the palm causeway in the walkable kit level](docs/kit-level.webp)
+
+- `studio.html?section=18.1` (`18.2`, `19.1`, `19.2`, `20`) shows a section
+  as cards like its sheet, with its environment scenes underneath.
+  `?asset=18.1/large-tree` shows one asset beside its sheet crop: every view and
+  variant, plus a scale view with the explorer. `?scene=…` opens a diorama.
+- `index.html?level=kit` is a walkable specimen garden of every asset, plus the
+  dioramas at true scale. Keys `1`–`9` and `[` `]` jump between spots.
+- **B** reports a problem from any of these pages. The report names the line of
+  the asset module that made each block.
+
+How it's built, the size decisions and how to add assets:
+[`docs/world-kit.md`](docs/world-kit.md).
 
 ## Scale contract (1 unit = 1 metre)
 
@@ -147,6 +192,10 @@ cloud). See [`feedback/README.md`](feedback/README.md).
   the code that built what was clicked.
 - `node scripts/voxel-slices.mjs hair,head` — ASCII front/side projections for
   quick silhouette checks.
+- `npm run kitcheck` — builds every world-kit asset variant headlessly and
+  reports errors, block budgets and build times;
+  `node scripts/kit-sizes.mjs --write` refreshes the size table in
+  `docs/world-kit.md`.
 
 ## Controls (game)
 
