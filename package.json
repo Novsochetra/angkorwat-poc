@@ -2,7 +2,7 @@
   "name": "angkorwat-poc",
   "private": true,
   "version": "0.1.0",
-  "description": "Angkor Quest — voxel explorer character and real-scale Angkor Wat test world",
+  "description": "Angkor Quest \u2014 voxel explorer character and real-scale Angkor Wat test world",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "shots": "node scripts/screenshots.mjs",
-    "playtest": "node scripts/playtest.mjs"
+    "playtest": "node scripts/playtest.mjs",
+    "kitcheck": "node scripts/kit-check.mjs"
   },
   "dependencies": {
     "three": "^0.186.0"

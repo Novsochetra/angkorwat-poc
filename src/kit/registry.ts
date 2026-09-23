@@ -14,14 +14,16 @@ export interface KitSectionInfo {
   sheet: string;
   title: string;
   subtitle: string;
+  /** The reference sheet image, under `assets/angkor detail/`. */
+  image: string;
 }
 
 export const KIT_SECTIONS: KitSectionInfo[] = [
-  { id: '18.1', sheet: '18 — Landscape / Vegetation', title: '18.1 Trees', subtitle: 'Trees, palms, bushes and jungle foliage for the temple environment' },
-  { id: '18.2', sheet: '18 — Landscape / Vegetation', title: '18.2 Ground', subtitle: 'Terrain and surface detail for the temple environment' },
-  { id: '19.1', sheet: '19 — Stone / Material System', title: '19.1 Sandstone', subtitle: 'Variations for an authentic and atmospheric temple look' },
-  { id: '19.2', sheet: '19 — Stone / Material System', title: '19.2 Stone damage', subtitle: 'Wear, aging and destruction variations' },
-  { id: '20', sheet: '20 — Small Props', title: '20 Small props', subtitle: 'Every detail brings the temple to life' },
+  { id: '18.1', sheet: '18 — Landscape / Vegetation', title: '18.1 Trees', subtitle: 'Trees, palms, bushes and jungle foliage for the temple environment', image: 'section 18/section 18.1.png' },
+  { id: '18.2', sheet: '18 — Landscape / Vegetation', title: '18.2 Ground', subtitle: 'Terrain and surface detail for the temple environment', image: 'section 18/section 18.2.png' },
+  { id: '19.1', sheet: '19 — Stone / Material System', title: '19.1 Sandstone', subtitle: 'Variations for an authentic and atmospheric temple look', image: 'section 19/85D8F367-EBB2-45B5-94C0-E9ED5A7CE350.PNG' },
+  { id: '19.2', sheet: '19 — Stone / Material System', title: '19.2 Stone damage', subtitle: 'Wear, aging and destruction variations', image: 'section 19/DC8CFA59-53FC-45C2-9C62-F650EC8907C8.PNG' },
+  { id: '20', sheet: '20 — Small Props', title: '20 Small props', subtitle: 'Every detail brings the temple to life', image: 'section 20/6706F03E-0DFA-4AFA-80F0-5C031D4F49D5.PNG' },
 ];
 
 const idOf = (path: string) => path.replace(/^\.\/assets\//, '').replace(/\.ts$/, '');

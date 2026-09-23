@@ -122,6 +122,32 @@ body.studio canvas#scene {
   opacity: 0.85;
 }
 
+/* ── Reference sheet (folded) ───────────────────────────────────────── */
+.st-sheetref {
+  margin: 0 0 12px;
+}
+
+.st-reftoggle {
+  display: inline-block;
+  margin: 0 0 12px;
+  color: #9a4b24;
+  font: 600 13px Georgia, serif;
+}
+
+.st-sheetref summary {
+  cursor: pointer;
+  font: 600 13px Georgia, serif;
+  color: #9a4b24;
+}
+
+.st-sheetref img {
+  display: block;
+  width: 100%;
+  max-width: 1536px;
+  margin: 8px auto 0;
+  border-radius: 6px;
+}
+
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 .st-grid,
 .st-index {
@@ -326,9 +352,14 @@ body.studio canvas#scene {
 }
 
 .st-refimg {
+  width: 100%;
   border: 1px solid #ddd2bf;
   border-radius: 6px;
   background-repeat: no-repeat;
+}
+
+.st-card .st-ref {
+  margin: 8px 8px 0;
 }
 
 .st-three {
@@ -392,6 +423,19 @@ body.studio canvas#scene {
   margin: 0;
 }
 
+/* ── Scenes (dioramas) ──────────────────────────────────────────────────── */
+.st-scene {
+  height: min(78vh, 900px);
+  min-height: 520px;
+  border: 1px solid #ddd2bf;
+  border-radius: 6px;
+  cursor: grab;
+}
+
+.st-scene-caption {
+  font-size: 14px;
+}
+
 /* ── Ruler (elevation views) ────────────────────────────────────────────── */
 .st-ruler {
   position: absolute;
@@ -422,8 +466,8 @@ body.studio canvas#scene {
 
 .st-ruler .height span {
   position: absolute;
-  left: 4px;
-  top: -2px;
+  right: 6px;
+  top: -6px;
   white-space: nowrap;
   font: 700 12px/1 Georgia, serif;
   color: #9a4b24;

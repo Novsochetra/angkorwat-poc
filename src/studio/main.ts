@@ -1,7 +1,9 @@
-import { Box3, Group, Vector3 } from 'three';
+import { Box3, Group, OrthographicCamera, Vector3 } from 'three';
 import { AngkorExplorer } from '../character/AngkorExplorer';
 import { FeedbackTool } from '../feedback/FeedbackTool';
+import { PieceBuilder } from '../kit/PieceBuilder';
 import { KIT_SECTIONS, kitAssetIds, loadKitAsset, loadKitSection, type KitSectionInfo } from '../kit/registry';
+import { kitSceneContext, kitSceneIds, loadKitScene, type KitScene } from '../kit/scene';
 import type { KitAsset, KitPiece, KitSection, KitShot, KitView } from '../kit/types';
 import { buildVoxelMesh, type VoxelQuality } from '../voxel/VoxelMesh';
 import { CHARACTER_HEIGHT_M } from '../world/scale';
@@ -127,7 +129,7 @@ function header(info: KitSectionInfo | null, crumb?: string): HTMLElement {
     if (info?.id === s.id) a.setAttribute('aria-current', 'page');
     nav.append(a);
   }
-  nav.append(link('Scale lineup', { lineup: info?.id ?? '18.1' }, 'st-alt'));
+  nav.append(link('Scale lineup', { lineup: info?.id ?? '18.1' }, 'st-alt'), link('Scenes', { scenes: '1' }, 'st-alt'));
   h.append(brand, title, nav);
   return h;
 }
@@ -153,6 +155,8 @@ function niceStep(h: number): number {
 
 function ruler(label: (h: number) => string = (h) => `${metres(h)}`): NonNullable<StageView['after']> {
   return (v, rect) => {
+    const cam = v.camera;
+    if (!(cam instanceof OrthographicCamera)) return;
     let r = v.el.querySelector<HTMLDivElement>('.st-ruler');
     if (!r) {
       r = el('div', 'st-ruler');
@@ -160,8 +164,8 @@ function ruler(label: (h: number) => string = (h) => `${metres(h)}`): NonNullabl
     }
     // Elevation views look level, so camera-space y is world height minus the camera's.
     const b = v.subject.bounds;
-    const px = rect.height / (v.camera.top - v.camera.bottom);
-    const yPx = (h: number) => (v.camera.top - (h - v.camera.position.y)) * px;
+    const px = rect.height / (cam.top - cam.bottom);
+    const yPx = (h: number) => (cam.top - (h - cam.position.y)) * px;
     const top = b.max.y;
     const step = niceStep(top);
     const parts: string[] = [];
@@ -198,6 +202,17 @@ function errorCard(id: string, error: unknown): HTMLElement {
 async function sectionPage(section: KitSection): Promise<void> {
   const info = KIT_SECTIONS.find((s) => s.id === section) ?? KIT_SECTIONS[0];
   page.append(header(info), band(info.id, info.title.replace(/^[\d.]+ /, '').toUpperCase(), 'Click a card to inspect it'));
+  if (!shot) {
+    // The whole reference sheet, folded away, to compare against the cards.
+    const ref = el('details', 'st-sheetref');
+    const img = el('img');
+    img.src = encodeURI(`/assets/angkor detail/${info.image}`);
+    img.alt = `Reference sheet ${info.title}`;
+    ref.append(el('summary', '', 'Reference sheet'), img);
+    const refs = params.get('refs') === '1';
+    const toggle = link(refs ? 'Hide the sheet panels under the cards' : 'Show each card’s sheet panel under it', refs ? { section } : { section, refs: '1' }, 'st-reftoggle');
+    page.append(ref, toggle);
+  }
   const grid = el('main', `st-grid st-grid-${section.replace('.', '-')}`);
   page.append(grid);
   const { assets, errors } = await loadKitSection(section);
@@ -232,25 +247,30 @@ function card(asset: KitAsset): HTMLElement {
     fig.append(viewBox('st-small', subject, s.view).box, el('figcaption', '', s.label));
     row.append(fig);
   }
-  c.append(row, el('p', 'st-caption', asset.caption), sizeLine(asset, mainSubject.bounds), open);
+  c.append(row, el('p', 'st-caption', asset.caption), sizeLine(asset, mainSubject.bounds));
+  // `&refs=1`: the sheet's panel under the render, to compare card by card.
+  const ref = params.get('refs') === '1' ? refCrop(asset, false) : null;
+  if (ref) c.append(ref);
+  c.append(open);
   return c;
 }
 
-function refCrop(asset: KitAsset, width: number): HTMLElement | null {
+/** The component's crop of its reference sheet (1536 × 1024), scaled to the box's width. */
+function refCrop(asset: KitAsset, caption = true): HTMLElement | null {
   if (!asset.ref) return null;
   const [x0, y0, x1, y1] = asset.ref.box;
-  const k = width / (x1 - x0);
+  const w = x1 - x0;
+  const h = y1 - y0;
   const fig = el('figure', 'st-ref');
   const img = el('div', 'st-refimg');
-  const url = encodeURI(`/assets/angkor detail/${asset.ref.sheet}`);
   Object.assign(img.style, {
-    width: `${width}px`,
-    height: `${(y1 - y0) * k}px`,
-    backgroundImage: `url("${url}")`,
-    backgroundSize: `${1536 * k}px ${1024 * k}px`,
-    backgroundPosition: `${-x0 * k}px ${-y0 * k}px`,
+    aspectRatio: `${w} / ${h}`,
+    backgroundImage: `url("${encodeURI(`/assets/angkor detail/${asset.ref.sheet}`)}")`,
+    backgroundSize: `${(1536 / w) * 100}% auto`,
+    backgroundPosition: `${(x0 / (1536 - w)) * 100}% ${(y0 / (1024 - h)) * 100}%`,
   });
-  fig.append(img, el('figcaption', '', `Reference · ${asset.ref.sheet.split('/').pop()}`));
+  fig.append(img);
+  if (caption) fig.append(el('figcaption', '', `Reference · ${asset.ref.sheet.split('/').pop()}`));
   return fig;
 }
 
@@ -301,7 +321,7 @@ async function assetPage(id: string): Promise<void> {
   const dims = el('div', 'st-dims', dimsOf(subject.bounds));
   mainBox.box.append(dims, el('div', 'st-hint', shot ? '' : 'drag to orbit · wheel to zoom · B to report'));
   const side = el('aside', 'st-side');
-  const ref = refCrop(asset, 300);
+  const ref = refCrop(asset);
   if (ref) side.append(ref);
   const three = el('div', 'st-three');
   for (const v of ['front', 'side', 'top'] as KitView[]) {
@@ -398,6 +418,44 @@ async function lineupPage(section: KitSection): Promise<void> {
   page.append(box);
 }
 
+async function scenePage(id: string): Promise<void> {
+  let scene: KitScene;
+  try {
+    scene = await loadKitScene(id);
+  } catch (e) {
+    page.append(header(null, id), errorCard(id, e));
+    return;
+  }
+  page.append(header(null, `Scenes › ${scene.name}`), band('Scene', scene.name.toUpperCase(), scene.source));
+  const p = new PieceBuilder();
+  const missing: string[] = [];
+  const t = performance.now();
+  await scene.build(kitSceneContext((aid, e) => {
+    missing.push(aid);
+    console.warn(`[kit] scene ${id}: asset ${aid} unavailable`, e);
+  }), p);
+  const piece = p.done();
+  console.info(`[kit] scene ${id}: ${piece.voxels.boxes.length} blocks in ${(performance.now() - t).toFixed(0)} ms`);
+  const subject = stage.addSubject(pieceObject(piece, `scene:${id}`), localBounds(piece));
+  const box = el('div', 'st-view st-scene');
+  stage.addPerspectiveView(box, subject, scene.camera ?? { az: 35, el: 28, dist: Math.max(...scene.size) * 1.4 }, { orbit: !shot });
+  box.append(el('div', 'st-dims', `${scene.size[0]} × ${scene.size[1]} m · ${piece.voxels.boxes.length.toLocaleString()} blocks`), el('div', 'st-hint', shot ? '' : 'drag to orbit · wheel to zoom · B to report'));
+  page.append(box, el('p', 'st-caption st-scene-caption', scene.caption));
+  if (missing.length) page.append(el('p', 'st-size', `Not built yet: ${[...new Set(missing)].join(', ')}`));
+}
+
+function scenesIndex(): void {
+  page.append(header(null, 'Scenes — the kit assembled into the sheets’ environment examples'));
+  const list = el('main', 'st-index');
+  for (const id of kitSceneIds()) {
+    const c = el('article', 'st-card');
+    c.append(el('h2', '', id), link('Open scene →', { scene: id }, 'st-open'));
+    list.append(c);
+  }
+  if (!kitSceneIds().length) list.append(el('p', 'st-empty', 'No scenes yet — add modules under src/kit/scenes/.'));
+  page.append(list);
+}
+
 function indexPage(): void {
   page.append(header(null));
   const list = el('main', 'st-index');
@@ -423,7 +481,9 @@ function sizeCanvas(): void {
 }
 
 async function main(): Promise<void> {
-  if (params.has('asset')) await assetPage(params.get('asset')!);
+  if (params.has('scene')) await scenePage(params.get('scene')!);
+  else if (params.has('scenes')) scenesIndex();
+  else if (params.has('asset')) await assetPage(params.get('asset')!);
   else if (params.has('lineup')) await lineupPage(params.get('lineup') as KitSection);
   else if (params.has('section')) await sectionPage(params.get('section') as KitSection);
   else indexPage();
@@ -437,6 +497,8 @@ async function main(): Promise<void> {
   }
   addEventListener('resize', sizeCanvas);
   addEventListener('scroll', () => stage.invalidate(), { passive: true });
+  // Views move whenever the layout does (images loading, a sheet unfolding).
+  new ResizeObserver(() => stage.invalidate()).observe(page);
   const feedback = new FeedbackTool({
     renderer: stage.renderer,
     scene: stage.scene,

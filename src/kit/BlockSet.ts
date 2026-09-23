@@ -71,7 +71,12 @@ export class BlockSet {
   /** @param res carve-cell size in metres (1/8 m default; 1/16 m for fine cracks). */
   constructor(readonly res = 0.125) {}
 
-  /** A block from min/max corners in metres (snapped to the carve grid). Returns its id, or -1 if empty. */
+  /**
+   * A block from min/max corners in metres (snapped to the carve grid). Returns
+   * its id, or -1 if empty. Stone already laid wins: a block overlapping earlier
+   * ones keeps only the free cells (and is emitted as those), so overlapping
+   * authoring never double-draws.
+   */
   add(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, style: BlockStyle = {}): number {
     const r = this.res;
     const [i0, i1] = [Math.round(Math.min(x0, x1) / r), Math.round(Math.max(x0, x1) / r)];
@@ -96,7 +101,16 @@ export class BlockSet {
       removed: false,
       carved: null,
     });
-    for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) for (let k = k0; k < k1; k++) this.owner.set(key(i, j, k), id);
+    let clipped = false;
+    for (let i = i0; i < i1; i++)
+      for (let j = j0; j < j1; j++)
+        for (let k = k0; k < k1; k++) {
+          const kk = key(i, j, k);
+          if (this.owner.has(kk)) clipped = true;
+          else this.owner.set(kk, id);
+        }
+    // (a clipped block is drawn as its own cells, like a carved one, minus the broken faces)
+    if (clipped) this.blocks[id].carved = new Set();
     return id;
   }
 

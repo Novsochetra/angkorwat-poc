@@ -1,4 +1,5 @@
 import {
+  BackSide,
   Box3,
   Color,
   DirectionalLight,
@@ -8,10 +9,13 @@ import {
   NeutralToneMapping,
   OrthographicCamera,
   PCFShadowMap,
+  PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
   Scene,
+  ShaderMaterial,
   ShadowMaterial,
+  SphereGeometry,
   SRGBColorSpace,
   Vector3,
   WebGLRenderer,
@@ -47,7 +51,8 @@ export interface Subject {
 export interface StageView {
   el: HTMLElement;
   subject: Subject;
-  camera: OrthographicCamera;
+  /** Orthographic for the sheet views; perspective for dioramas (see addPerspectiveView). */
+  camera: OrthographicCamera | PerspectiveCamera;
   view: KitView;
   /** Clear colour behind this view. */
   bg: Color;
@@ -83,6 +88,8 @@ export class Stage {
   readonly subjects: Subject[] = [];
   readonly key: DirectionalLight;
   readonly pageBg: Color;
+  /** Gradient sky shown behind perspective (diorama) views only. */
+  private readonly sky: Mesh;
   private slotX = 0;
   private dirty = true;
   /** Key light direction (towards the light): upper left, in front. */
@@ -124,6 +131,23 @@ export class Stage {
     const rim = new DirectionalLight(0xffd7a8, L.rim);
     rim.position.set(1.0, 3.0, -4.0);
     this.scene.add(fill, rim);
+    // Afternoon sky like the sheets' environment examples: blue overhead, warm haze at the horizon.
+    this.sky = new Mesh(
+      new SphereGeometry(900, 32, 16),
+      new ShaderMaterial({
+        side: BackSide,
+        depthWrite: false,
+        uniforms: { top: { value: new Color(0x6fa3d8) }, horizon: { value: new Color(0xf3e3c6) } },
+        vertexShader: /* glsl */ `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: /* glsl */ `uniform vec3 top; uniform vec3 horizon; varying vec3 vDir;
+          void main(){ float h = max(vDir.y, 0.0); gl_FragColor = vec4(mix(horizon, top, pow(min(1.0, h * 1.8), 0.75)), 1.0); }`,
+      }),
+    );
+    this.sky.name = 'studio-sky';
+    this.sky.renderOrder = -1;
+    this.sky.frustumCulled = false;
+    this.sky.visible = false;
+    this.scene.add(this.sky);
     const ground = new Mesh(new PlaneGeometry(20000, 20000), new ShadowMaterial({ opacity: 0.17 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -167,8 +191,32 @@ export class Stage {
     return v;
   }
 
+  /**
+   * A perspective view of a diorama: camera at azimuth / elevation (degrees) and
+   * distance (metres) around a target in the subject's local space.
+   */
+  addPerspectiveView(el: HTMLElement, subject: Subject, cam: { az: number; el: number; dist: number; target?: [number, number, number]; fov?: number }, o: { bg?: string; orbit?: boolean } = {}): StageView {
+    const camera = new PerspectiveCamera(cam.fov ?? 35, 1, 0.1, 2000);
+    const t = new Vector3(...(cam.target ?? [0, 0, 0])).add(subject.object.position);
+    const a = (cam.az * Math.PI) / 180;
+    const e = (cam.el * Math.PI) / 180;
+    camera.position.copy(t).add(new Vector3(Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e)).multiplyScalar(cam.dist));
+    camera.lookAt(t);
+    const v: StageView = { el, subject, camera, view: 'iso', bg: new Color(o.bg ?? '#dfe7ea'), pad: 0 };
+    if (o.orbit) {
+      const controls = new OrbitControls(camera, el);
+      controls.target.copy(t);
+      controls.addEventListener('change', () => (this.dirty = true));
+      v.controls = controls;
+    }
+    this.views.push(v);
+    this.dirty = true;
+    return v;
+  }
+
   /** Point a view's camera from its preset direction and fit the subject. */
   aim(v: StageView): void {
+    if (!(v.camera instanceof OrthographicCamera)) return;
     const { az, el } = VIEW_PRESETS[v.view];
     const a = (az * Math.PI) / 180;
     const e = (Math.min(89.9, el) * Math.PI) / 180;
@@ -204,6 +252,14 @@ export class Stage {
 
   /** Keep the fitted extents inside the element, whatever its aspect ratio. */
   private frame(v: StageView, rect = v.el.getBoundingClientRect()): void {
+    if (v.camera instanceof PerspectiveCamera) {
+      const aspect = Math.max(1e-3, rect.width / Math.max(1, rect.height));
+      if (v.camera.aspect !== aspect) {
+        v.camera.aspect = aspect;
+        v.camera.updateProjectionMatrix();
+      }
+      return;
+    }
     const f = v.camera.userData.fit as { x0: number; x1: number; y0: number; y1: number };
     const w = (f.x1 - f.x0) * (1 + v.pad * 2);
     const h = (f.y1 - f.y0) * (1 + v.pad * 2);
@@ -246,15 +302,18 @@ export class Stage {
       this.frameCamera(v, rect);
       this.fitShadow(v.subject);
       for (const s of this.subjects) s.object.visible = s === v.subject;
+      this.sky.visible = v.camera instanceof PerspectiveCamera;
+      this.sky.position.copy(v.camera.position);
       r.render(this.scene, v.camera);
       v.after?.(v, rect);
     }
     for (const s of this.subjects) s.object.visible = true;
+    this.sky.visible = false;
     r.setScissorTest(false);
   }
 
   private frameCamera(v: StageView, rect: DOMRect): void {
-    if (v.controls) {
+    if (v.controls && v.camera instanceof OrthographicCamera) {
       // Orbiting keeps the fitted size; only the aspect follows the element.
       const f = v.camera.userData.fit as { x0: number; x1: number; y0: number; y1: number };
       const w = (f.x1 - f.x0) * (1 + v.pad * 2);

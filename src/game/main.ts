@@ -23,13 +23,16 @@ import { ANGKOR, CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scal
 import { Input } from './Input';
 import { PlayerController } from './PlayerController';
 import { buildAngkorScaleWorld } from './world/AngkorScaleWorld';
+import type { KitLabel } from './world/KitWorld';
 
 /**
  * Angkor Quest — real-scale test level. Walk the explorer across the western
  * causeway, through the gopura's 3.4 m doorway and up to the 65 m central tower
  * to judge the character against the map at true size (1 unit = 1 m).
+ * `?level=kit` loads the world-kit specimen garden instead (sections 18–20).
  */
 const params = new URLSearchParams(location.search);
+const level = params.get('level') === 'kit' ? 'kit' : 'angkor';
 const shot = params.get('shot') === '1';
 const test = params.get('test') === '1';
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
@@ -77,7 +80,9 @@ scene.add(sun, sun.target);
 
 // ── World + explorer ────────────────────────────────────────────────────────
 const t0 = performance.now();
-const world = buildAngkorScaleWorld('medium');
+// (the kit level loads on demand, so the main level doesn't pull in every kit asset)
+const world = level === 'kit' ? await (await import('./world/KitWorld')).buildKitWorld('medium') : buildAngkorScaleWorld('medium');
+const labels: KitLabel[] = 'labels' in world ? (world.labels as KitLabel[]) : [];
 scene.add(world.root);
 const buildMs = performance.now() - t0;
 
@@ -126,10 +131,7 @@ function setDusk(on: boolean): void {
 
 let expr = 0;
 function onKeys(): void {
-  if (input.hit('Digit1')) spawn(0);
-  if (input.hit('Digit2')) spawn(1);
-  if (input.hit('Digit3')) spawn(2);
-  if (input.hit('Digit4')) spawn(3);
+  for (let i = 0; i < Math.min(9, world.spawns.length); i++) if (input.hit(`Digit${i + 1}`)) spawn(i);
   if (input.hit('KeyE')) {
     const near = doors.some((d) => d.distanceTo(player.position) < 3.2);
     explorer.play(near ? 'openDoor' : 'interact');
@@ -160,17 +162,36 @@ function onKeys(): void {
   }
 }
 
+/** The kit level's nearest labelled asset or scene (within 14 m). */
+function nearestLabel(): KitLabel | null {
+  const p = player.position;
+  let best: KitLabel | null = null;
+  let bd = 14;
+  for (const l of labels) {
+    const d = Math.hypot(l.x - p.x, l.z - p.z);
+    if (d < bd) [best, bd] = [l, d];
+  }
+  return best;
+}
+
 function renderHud(fps: number): void {
   const p = player.position;
   const dCentre = Math.hypot(p.x, p.z);
   const sp = Math.hypot(player.velocity.x, player.velocity.z);
-  hud.innerHTML = `<div class="title">Angkor Quest · scale test</div>
+  const near = level === 'kit' ? nearestLabel() : null;
+  const title =
+    level === 'kit'
+      ? `<div class="title">Angkor Quest · world kit (sections 18–20)</div>
+    Explorer <b>${CHARACTER_HEIGHT_M.toFixed(2)} m</b> · ${near ? `near <b>${near.name}</b> — ${near.detail}` : 'walk up to an asset to see its name and size'}<br>
+    ${sp.toFixed(1)} m/s · (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) · y ${p.y.toFixed(2)} m · ${fps.toFixed(0)} fps<br>`
+      : `<div class="title">Angkor Quest · scale test</div>
     Explorer <b>${CHARACTER_HEIGHT_M.toFixed(2)} m</b> · doorway <b>${ANGKOR.doorwayHeight} m</b> · causeway <b>${ANGKOR.causewayWidth} m</b> wide · central tower <b>${ANGKOR.centralTowerHeight} m</b><br>
-    ${sp.toFixed(1)} m/s · ${dCentre.toFixed(0)} m to the central tower · y ${p.y.toFixed(2)} m · ${fps.toFixed(0)} fps<br>
+    ${sp.toFixed(1)} m/s · ${dCentre.toFixed(0)} m to the central tower · y ${p.y.toFixed(2)} m · ${fps.toFixed(0)} fps<br>`;
+  hud.innerHTML = `${title}
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
     <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview<br>
-    <kbd>1</kbd>–<kbd>4</kbd> causeway · gopura · temple stairs · Bakan · <kbd>B</kbd> report a bug`;
+    <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ') : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
 }
 
 addEventListener('resize', () => {

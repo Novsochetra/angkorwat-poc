@@ -206,12 +206,12 @@ vec2 voxFaceUV(vec3 p, vec3 f) {
   return f.x != 0.0 ? p.zy : (f.y != 0.0 ? p.xz : p.xy);
 }
 
-// Crack network: one-texel lines along some Voronoi borders (≈0.55 m cells) of the
+// Crack network: one-texel lines along some Voronoi borders (≈0.6 m cells) of the
 // face plane; more borders crack as amount grows.
 float voxCracks(vec3 p, vec3 f, float amount) {
   float plane = floor(dot(p, abs(f)) * 4.0 + 0.5) + 3.0 * (f.x + 2.0 * f.y + 4.0 * f.z);
   vec2 q = (floor(voxFaceUV(p, f) * uTexel) + 0.5) / uTexel;
-  vec2 g = q * 1.8;
+  vec2 g = q * 1.6;
   vec2 gi = floor(g);
   vec2 gf = fract(g);
   float d1 = 9.0;
@@ -232,7 +232,7 @@ float voxCracks(vec3 p, vec3 f, float amount) {
   vec2 lo = min(id1, id2);
   vec2 hi = max(id1, id2);
   float keep = step(1.0 - amount, voxHash(vec3(lo * 1.37 + hi * 0.71, plane + 13.0)));
-  return step(border, 1.05 * 1.8 / uTexel) * keep;
+  return step(border, 1.05 * 1.6 / uTexel) * keep;
 }
 
 // Moss: patches that start on tops and upper edges, creep down the sides and
