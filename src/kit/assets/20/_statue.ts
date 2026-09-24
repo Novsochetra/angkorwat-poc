@@ -164,6 +164,10 @@ export interface CellInfo {
   sky: number;
   /** Next to stone that broke away: shows a fresh break. */
   scar: boolean;
+  /** Open sides (+x 1, −x 2, +y 4, −y 8, +z 16, −z 32). */
+  open: number;
+  /** Solid cells straight above, up to 3 (0 = the cell is a top): how far down a face it sits. */
+  under: number;
 }
 
 export interface CellLook {
@@ -594,7 +598,9 @@ export class Carver {
       shade *= 1 + (hash3(Math.floor(wx / TEXEL), Math.floor(wy / TEXEL), Math.floor(wz / TEXEL), seed) - 0.5) * 2 * jitter;
       let sky = 0;
       for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (!g[q + sy + dx * sx + dz]) sky += 1 / 9;
-      const l = look({ i, j, k, x, y, z, part: p, top: !g[q + sy], sky, scar });
+      let under = 0;
+      while (under < 3 && g[q + (under + 1) * sy]) under++;
+      const l = look({ i, j, k, x, y, z, part: p, top: !g[q + sy], sky, scar, open, under });
       b.box(wx, wy, wz, c, c, c, l.color, l.mat ?? 'sandstone', {
         shade: shade * (l.shade ?? 1),
         open,
