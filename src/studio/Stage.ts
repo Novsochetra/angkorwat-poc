@@ -66,6 +66,17 @@ export interface StageView {
 const SLOT_GAP = 60;
 
 /**
+ * Key light shadows: edges soft over this many metres (the PCF blur radius, set
+ * per subject from the shadow map's texel size), within these limits in texels —
+ * the filter takes 5 taps, so a wider blur turns grainy.
+ */
+const PENUMBRA_M = 0.05;
+const SHADOW_BLUR = [1, 5] as const;
+/** Normal offset and depth bias of the shadow lookup, in shadow-map texels. */
+const SHADOW_NORMAL_BIAS = 1;
+const SHADOW_BIAS = 1;
+
+/**
  * Studio light intensities (tunable from the URL: hemi=…&key=…&fill=…&rim=…&env=…),
  * plus the key light's azimuth / elevation in degrees (kaz=…&kel=…, to try others).
  */
@@ -133,8 +144,7 @@ export class Stage {
     const key = new DirectionalLight(0xfff4e8, L.key);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    key.shadow.bias = -0.0004;
-    key.shadow.normalBias = 0.02;
+    // (camera, blur and biases are fitted to each subject, see fitShadow)
     key.shadow.intensity = 0.6;
     this.scene.add(key, key.target);
     this.key = key;
@@ -330,17 +340,46 @@ export class Stage {
     r.setScissorTest(false);
   }
 
-  /** Aim the key light's shadow camera at one subject. */
+  /**
+   * Aim the key light's shadow camera at one subject, fitted to its box as
+   * the light sees it. The PCF blur and the biases follow the texel size, so
+   * shadow edges keep the same softness in metres on a prop and a diorama.
+   */
   private fitShadow(s: Subject): void {
-    const c = s.bounds.getCenter(new Vector3());
-    const R = s.bounds.getSize(new Vector3()).length() / 2 + 0.5;
+    const b = s.bounds;
+    const c = b.getCenter(new Vector3());
+    const R = b.getSize(new Vector3()).length() / 2 + 0.5;
     this.key.target.position.copy(c);
     this.key.position.copy(c).addScaledVector(this.keyDir, R * 3);
-    const cam = this.key.shadow.camera;
-    Object.assign(cam, { left: -R, right: R, top: R, bottom: -R, near: R * 1.5, far: R * 4.6 });
-    cam.updateProjectionMatrix();
     this.key.target.updateMatrixWorld();
     this.key.updateMatrixWorld();
+    const cam = this.key.shadow.camera;
+    // (aimed the way the renderer aims it, from the light at its target)
+    cam.position.copy(this.key.position);
+    cam.lookAt(c);
+    cam.updateMatrixWorld();
+    const toLight = cam.matrixWorldInverse;
+    const p = new Vector3();
+    const lo = new Vector3(Infinity, Infinity, Infinity);
+    const hi = new Vector3(-Infinity, -Infinity, -Infinity);
+    for (let i = 0; i < 8; i++) {
+      p.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
+      lo.min(p.applyMatrix4(toLight));
+      hi.max(p);
+    }
+    // Square texels, and a margin for the blur.
+    const size = this.key.shadow.mapSize.x;
+    const side = Math.max(hi.x - lo.x, hi.y - lo.y, 0.25) * (1 + 16 / size);
+    const texel = side / size;
+    const [cx, cy] = [(lo.x + hi.x) / 2, (lo.y + hi.y) / 2];
+    // (the floor behind a tall prop lies deeper than its box: keep its shadow)
+    const [near, far] = [Math.max(0.05, -hi.z - 0.5), -lo.z + R];
+    Object.assign(cam, { left: cx - side / 2, right: cx + side / 2, bottom: cy - side / 2, top: cy + side / 2, near, far });
+    cam.updateProjectionMatrix();
+    const sh = this.key.shadow;
+    sh.radius = Math.min(SHADOW_BLUR[1], Math.max(SHADOW_BLUR[0], PENUMBRA_M / texel));
+    sh.normalBias = texel * SHADOW_NORMAL_BIAS;
+    sh.bias = (-texel * SHADOW_BIAS) / (far - near);
   }
 
   /** The view under a client point. */

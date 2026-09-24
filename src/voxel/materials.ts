@@ -1,4 +1,4 @@
-import { Color, MeshBasicMaterial, MeshStandardMaterial, type Material } from 'three';
+import { Color, MeshBasicMaterial, MeshStandardMaterial, type Material, type WebGLProgramParametersWithUniforms } from 'three';
 
 /**
  * Pixel-art surfaces of the world kit (plan §19). Every face of a block with a
@@ -373,126 +373,12 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uEdgeWidth = { value: spec.edgeWidth ?? 1 };
     shader.uniforms.uGrain = { value: spec.grain };
     shader.uniforms.uGrainScale = { value: spec.grainScale };
-    shader.uniforms.uBevel = { value: Math.max(1e-4, spec.bevel) };
-    shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
     shader.uniforms.uRelief = { value: spec.relief ?? 0 };
     shader.uniforms.uSpecular = { value: spec.specular ?? 1 };
 
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        /* glsl */ `#include <common>
-varying vec3 vVoxN;
-varying vec3 vVoxP;
-varying vec3 vVoxSeed;
-attribute float voxOpen;
-attribute float voxRadius;
-flat varying float vVoxOpen;
-#ifdef VOX_PAT
-attribute vec4 voxSurf;
-flat varying vec4 vVoxSurf;
-flat varying vec3 vVoxS;
-#endif
-uniform float uBevel;
-uniform float uSeamless;
-// Sides that butt against another block (bits 6–11 of voxOpen).
-vec3 voxJointOf(float open, vec3 p) {
-  int m = int(open + 0.5) >> 6;
-  return vec3(
-    float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
-    float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
-    float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
-}
-// Seamless families push the bevel of every covered side into the neighbour, so
-// flush faces meet flat and only the silhouette stays rounded.
-vec3 voxPushOf(float open, vec3 p) {
-  if (uSeamless < 0.5) return vec3(0.0);
-  int m = int(open + 0.5);
-  return vec3(
-    1.0 - float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
-    1.0 - float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
-    1.0 - float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
-}
-#ifdef VOX_PAT
-// Patterned blocks also merge the sides flagged in voxSurf.w (cells of one stone).
-vec3 voxMergeOf(float merge, vec3 p) {
-  int m = int(merge + 0.5);
-  return vec3(
-    float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
-    float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
-    float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
-}
-#endif
-// ...and shade the pushed bevel like the face it continues. Fully covered faces
-// take the block's exposed direction, so a sliver leaking through a seam matches.
-vec3 voxFlatNormal(vec3 n, vec3 push, float open) {
-  vec3 f = n * (1.0 - push);
-  if (dot(f, f) > 1e-4) return normalize(f);
-  int m = int(open + 0.5);
-  vec3 e = vec3(float(m & 1) - float((m >> 1) & 1), float((m >> 2) & 1) - float((m >> 3) & 1), float((m >> 4) & 1) - float((m >> 5) & 1));
-  return dot(e, e) > 0.5 ? normalize(e) : n;
-}`,
-      )
-      .replace(
-        '#include <beginnormal_vertex>',
-        /* glsl */ `#ifdef USE_INSTANCING
-  vec3 voxNS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
-#else
-  vec3 voxNS = vec3(1.0);
-#endif
-// three.js divides instance normals by scale² then applies the instance matrix
-// (n / s); the re-bevelled block keeps its unit normals, so pre-multiply by s.
-vec3 voxPushN = voxPushOf(voxOpen, position);
-#ifdef VOX_PAT
-  voxPushN = max(voxPushN, voxMergeOf(voxSurf.w, position));
-#endif
-vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
-#ifdef USE_TANGENT
-  vec3 objectTangent = vec3(tangent.xyz);
-#endif`,
-      )
-      .replace(
-        '#include <begin_vertex>',
-        /* glsl */ `#include <begin_vertex>
-{
-  // Unit block → real size with a constant bevel radius on every edge.
-  #ifdef USE_INSTANCING
-    vec3 voxS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
-  #else
-    vec3 voxS = vec3(1.0);
-  #endif
-  float voxMin = min(min(voxS.x, voxS.y), voxS.z);
-  // (a block's own radius, if given, stays below half its smallest side)
-  float voxR = voxRadius > 0.0 ? min(voxRadius, voxMin * 0.45) : voxMin * uBevel;
-  vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
-  // An edge between two joints lies inside the masonry: keep it square, so no
-  // channel opens between the stones where four of them meet.
-  vec3 voxJ = voxJointOf(voxOpen, position);
-  float voxOnJoint = max(max(voxJ.x * step(1e-3, voxT.x), voxJ.y * step(1e-3, voxT.y)), voxJ.z * step(1e-3, voxT.z));
-  voxT = max(voxT, voxJ * voxOnJoint);
-  vec3 voxPush = voxPushOf(voxOpen, position);
-  #ifdef VOX_PAT
-    voxPush = max(voxPush, voxMergeOf(voxSurf.w, position));
-  #endif
-  // (+ a hair of overlap so neighbouring flat faces never leave a crack)
-  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
-  transformed = voxPw / voxS;
-  vVoxP = voxPw;
-  vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
-  #ifdef VOX_PAT
-    vVoxS = voxS;
-    vVoxSurf = voxSurf;
-  #endif
-}
-vVoxOpen = voxOpen;
-#ifdef USE_INSTANCING
-  vVoxSeed = instanceMatrix[3].xyz;
-#else
-  vVoxSeed = vec3(0.0);
-#endif`,
-      );
+    injectVoxelVertex(shader, spec);
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -624,4 +510,127 @@ reflectedLight.indirectSpecular *= uSpecular;
   };
   // Families inject identical code (only uniforms and the pattern define differ).
   material.customProgramCacheKey = () => `voxel-shading-v9${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
+}
+
+/**
+ * The vertex half of the voxel shading: re-bevels each instance to its real
+ * size (constant bevel, squared joints, pushed / merged sides). Shared with the
+ * shadow depth pass (see shadow.ts), so what casts a shadow is what is drawn.
+ */
+export function injectVoxelVertex(shader: WebGLProgramParametersWithUniforms, spec: VoxelMaterialSpec): void {
+  shader.uniforms.uBevel = { value: Math.max(1e-4, spec.bevel) };
+  shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
+  shader.vertexShader = shader.vertexShader
+    .replace(
+      '#include <common>',
+      /* glsl */ `#include <common>
+varying vec3 vVoxN;
+varying vec3 vVoxP;
+varying vec3 vVoxSeed;
+attribute float voxOpen;
+attribute float voxRadius;
+flat varying float vVoxOpen;
+#ifdef VOX_PAT
+attribute vec4 voxSurf;
+flat varying vec4 vVoxSurf;
+flat varying vec3 vVoxS;
+#endif
+uniform float uBevel;
+uniform float uSeamless;
+// Sides that butt against another block (bits 6–11 of voxOpen).
+vec3 voxJointOf(float open, vec3 p) {
+  int m = int(open + 0.5) >> 6;
+  return vec3(
+    float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
+    float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
+    float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
+}
+// Seamless families push the bevel of every covered side into the neighbour, so
+// flush faces meet flat and only the silhouette stays rounded.
+vec3 voxPushOf(float open, vec3 p) {
+  if (uSeamless < 0.5) return vec3(0.0);
+  int m = int(open + 0.5);
+  return vec3(
+    1.0 - float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
+    1.0 - float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
+    1.0 - float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
+}
+#ifdef VOX_PAT
+// Patterned blocks also merge the sides flagged in voxSurf.w (cells of one stone).
+vec3 voxMergeOf(float merge, vec3 p) {
+  int m = int(merge + 0.5);
+  return vec3(
+    float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
+    float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
+    float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
+}
+#endif
+// ...and shade the pushed bevel like the face it continues. Fully covered faces
+// take the block's exposed direction, so a sliver leaking through a seam matches.
+vec3 voxFlatNormal(vec3 n, vec3 push, float open) {
+  vec3 f = n * (1.0 - push);
+  if (dot(f, f) > 1e-4) return normalize(f);
+  int m = int(open + 0.5);
+  vec3 e = vec3(float(m & 1) - float((m >> 1) & 1), float((m >> 2) & 1) - float((m >> 3) & 1), float((m >> 4) & 1) - float((m >> 5) & 1));
+  return dot(e, e) > 0.5 ? normalize(e) : n;
+}`,
+    )
+    .replace(
+      '#include <beginnormal_vertex>',
+      /* glsl */ `#ifdef USE_INSTANCING
+  vec3 voxNS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+#else
+  vec3 voxNS = vec3(1.0);
+#endif
+// three.js divides instance normals by scale² then applies the instance matrix
+// (n / s); the re-bevelled block keeps its unit normals, so pre-multiply by s.
+vec3 voxPushN = voxPushOf(voxOpen, position);
+#ifdef VOX_PAT
+  voxPushN = max(voxPushN, voxMergeOf(voxSurf.w, position));
+#endif
+vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
+#ifdef USE_TANGENT
+  vec3 objectTangent = vec3(tangent.xyz);
+#endif`,
+    )
+    .replace(
+      '#include <begin_vertex>',
+      /* glsl */ `#include <begin_vertex>
+{
+  // Unit block → real size with a constant bevel radius on every edge.
+  #ifdef USE_INSTANCING
+    vec3 voxS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  #else
+    vec3 voxS = vec3(1.0);
+  #endif
+  float voxMin = min(min(voxS.x, voxS.y), voxS.z);
+  // (a block's own radius, if given, stays below half its smallest side)
+  float voxR = voxRadius > 0.0 ? min(voxRadius, voxMin * 0.45) : voxMin * uBevel;
+  vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
+  // An edge between two joints lies inside the masonry: keep it square, so no
+  // channel opens between the stones where four of them meet.
+  vec3 voxJ = voxJointOf(voxOpen, position);
+  float voxOnJoint = max(max(voxJ.x * step(1e-3, voxT.x), voxJ.y * step(1e-3, voxT.y)), voxJ.z * step(1e-3, voxT.z));
+  voxT = max(voxT, voxJ * voxOnJoint);
+  vec3 voxPush = voxPushOf(voxOpen, position);
+  #ifdef VOX_PAT
+    voxPush = max(voxPush, voxMergeOf(voxSurf.w, position));
+  #endif
+  // (+ a hair of overlap so neighbouring flat faces never leave a crack)
+  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
+  transformed = voxPw / voxS;
+  vVoxP = voxPw;
+  vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
+  #ifdef VOX_PAT
+    vVoxS = voxS;
+    vVoxSurf = voxSurf;
+  #endif
+}
+vVoxOpen = voxOpen;
+#ifdef USE_INSTANCING
+  vVoxSeed = instanceMatrix[3].xyz;
+#else
+  vVoxSeed = vec3(0.0);
+#endif`,
+    );
 }

@@ -13,6 +13,7 @@ import {
 } from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getVoxelMaterial, VOXEL_MATERIALS, voxelPatternOf, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
+import { getVoxelDepthMaterial } from './shadow';
 import type { Surf, VoxelBox, VoxelBuilder } from './VoxelBuilder';
 
 export type VoxelQuality = 'low' | 'medium' | 'high';
@@ -282,6 +283,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = options.castShadow ?? true;
     mesh.receiveShadow = options.receiveShadow ?? true;
+    // Shadows are cast by the re-bevelled block, not its square box.
+    mesh.customDepthMaterial = getVoxelDepthMaterial(mat);
     mesh.computeBoundingSphere();
     mesh.computeBoundingBox();
     group.add(mesh);

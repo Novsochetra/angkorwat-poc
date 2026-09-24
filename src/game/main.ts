@@ -74,9 +74,19 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 const S = 26;
 Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: 260 });
-sun.shadow.bias = -0.0005;
-sun.shadow.normalBias = 0.03;
+// Soft shadows on the 0.5 m masonry: 2.5 cm texels blurred over two (a ~5 cm
+// penumbra), offsets of about a texel (in metres, so the 260 m depth range
+// doesn't inflate them into gaps under stones), and a quarter of the sun kept
+// in shadow, so shaded stone keeps its colour under the cool sky.
+const SUN_TEXEL = (2 * S) / 2048;
+sun.shadow.radius = 2;
+sun.shadow.normalBias = SUN_TEXEL;
+sun.shadow.bias = -SUN_TEXEL / (260 - 1);
+sun.shadow.intensity = 0.75;
 scene.add(sun, sun.target);
+// The shadow camera's axes across the light (it looks down −sunDir, +y up).
+const sunX = new Vector3().crossVectors(new Vector3(0, 1, 0), sunDir).normalize();
+const sunY = new Vector3().crossVectors(sunDir, sunX);
 
 // ── World + explorer ────────────────────────────────────────────────────────
 const t0 = performance.now();
@@ -282,9 +292,15 @@ if (params.get('overview') === '1') {
   player.camDist = Number(params.get('dist') ?? 70);
 }
 
+const _sunAt = new Vector3();
 function followSun(): void {
-  sun.target.position.copy(player.position);
-  sun.position.copy(player.position).addScaledVector(sunDir, 120);
+  // Move the shadow map in whole texels, so shadow edges don't crawl as the player walks.
+  const p = player.position;
+  const u = p.dot(sunX);
+  const v = p.dot(sunY);
+  _sunAt.copy(p).addScaledVector(sunX, Math.round(u / SUN_TEXEL) * SUN_TEXEL - u).addScaledVector(sunY, Math.round(v / SUN_TEXEL) * SUN_TEXEL - v);
+  sun.target.position.copy(_sunAt);
+  sun.position.copy(_sunAt).addScaledVector(sunDir, 120);
   sky.position.copy(camera.position);
 }
 
