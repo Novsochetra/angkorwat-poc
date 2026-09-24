@@ -622,6 +622,7 @@ async function main(): Promise<void> {
     redraw: () => stage.invalidate(),
     scene: stage.scene,
     renderer: stage.renderer,
+    lightsFile: 'src/studio/Stage.ts',
   });
   const tick = () => {
     stage.render();

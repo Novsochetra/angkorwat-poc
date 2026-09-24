@@ -24,6 +24,7 @@ import { AngkorExplorer, OUTFITS, type OutfitName } from '../character/AngkorExp
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FeedbackTool } from '../feedback/FeedbackTool';
+import { installLookPanel } from '../voxel/LookPanel';
 import { CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 
@@ -58,8 +59,12 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = num('env', 0.2);
 
 // Studio lighting modelled on the sheet: warm key from front-left-top, cool fill, warm rim.
-scene.add(new HemisphereLight(0xfbf6f0, 0xbfb1a0, num('hemi', 0.62)));
+// (named for the block look panel's Lights folder)
+const hemi = new HemisphereLight(0xfbf6f0, 0xbfb1a0, num('hemi', 0.62));
+hemi.name = 'sky light';
+scene.add(hemi);
 const key = new DirectionalLight(0xffeedd, num('key', 3.1));
+key.name = 'key light (sun, upper left)';
 key.position.set(-2.2, 5.4, 3.8);
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -75,9 +80,11 @@ key.shadow.radius = 4;
 key.shadow.intensity = num('shadow', 0.6);
 scene.add(key);
 const fill = new DirectionalLight(0xe6ecff, num('fill', 0.85));
+fill.name = 'fill light (cool, right)';
 fill.position.set(1.2, 1.4, 4.0);
 scene.add(fill);
 const rim = new DirectionalLight(0xffd7a8, num('rim', 1.2));
+rim.name = 'rim light (warm, behind)';
 rim.position.set(1.0, 3.0, -4.0);
 scene.add(rim);
 
@@ -196,7 +203,7 @@ function chipGroup<T extends string>(title: string, items: readonly T[], current
 }
 
 if (!shot) {
-  panel.innerHTML = `<h1>Angkor Quest Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit · B to report a bug</p>`;
+  panel.innerHTML = `<h1>Angkor Quest Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit · B to report a bug · K for block look</p>`;
   const pretty = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
   chipGroup('Outfit', Object.keys(OUTFITS) as OutfitName[], () => outfit, (v) => {
     outfit = v;
@@ -304,6 +311,18 @@ const feedback = shot
         return q;
       },
     });
+
+// ── Block look panel (K): tweak every block family's shading live ──────────
+if (!shot)
+  installLookPanel({
+    viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }),
+    pickables: () => explorers.map((e) => e.object),
+    scene,
+    renderer,
+    lightsFile: 'src/viewer/main.ts',
+    // (the side panel holds the top right; Report is top left)
+    place: { top: '52px', left: '12px', right: 'auto', maxHeight: 'calc(100% - 64px)' },
+  });
 
 let last = performance.now();
 function tick(now: number): void {

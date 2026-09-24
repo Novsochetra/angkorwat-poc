@@ -35,6 +35,10 @@ export interface LookPanelOptions {
   /** The scene and renderer, for the Lights folder (named lights only). */
   scene?: Scene;
   renderer?: WebGLRenderer;
+  /** Where the page sets its lights up (named in the copied Lights snippet). */
+  lightsFile?: string;
+  /** Panel position, over the default (top right, below the Report button). */
+  place?: Partial<CSSStyleDeclaration>;
 }
 
 const HOTKEY = 'KeyK';
@@ -97,17 +101,17 @@ class LookPanel {
     const gui = new G({ title: 'Block look (K to hide)', width: 300 });
     this.gui = gui;
     // (below the top-right Report button)
-    Object.assign(gui.domElement.style, { zIndex: '30', top: '88px', maxHeight: 'calc(100% - 96px)' });
+    Object.assign(gui.domElement.style, { zIndex: '30', top: '88px', maxHeight: 'calc(100% - 96px)' }, o.place);
+    // World families first, then the explorer's.
+    const inUse = voxelFamiliesInUse().sort((a, b) => Number(isWorld(b.key)) - Number(isWorld(a.key)));
     gui.add(this.top, 'pick').name('🎯 Pick a block');
     this.pickedCtrl = gui.add(this.top, 'picked').name('picked').disable();
-    gui.add(this.top, 'worldStrips', 0, 2, 0.05).name('all world edge strips ×');
+    if (inUse.some((x) => isWorld(x.key))) gui.add(this.top, 'worldStrips', 0, 2, 0.05).name('all world edge strips ×');
     gui.add(this.top, 'copy').name('📋 Copy changes');
     gui.add(this.top, 'reset').name('↺ Reset all');
     this.was = { env: o.scene?.environmentIntensity ?? 1, exposure: o.renderer?.toneMappingExposure ?? 1 };
     this.addLights();
 
-    // World families first, then the explorer's.
-    const inUse = voxelFamiliesInUse().sort((a, b) => Number(isWorld(b.key)) - Number(isWorld(a.key)));
     for (const { key, material, uniforms: u } of inUse) {
       const spec: VoxelMaterialSpec = VOXEL_MATERIALS[key];
       const lit = !spec.unlit;
@@ -308,7 +312,7 @@ class LookPanel {
     if (Math.abs(env - this.was.env) > 1e-4) lights.push(`  'room light (environment)': ${num(env)},`);
     const exposure = this.o.renderer?.toneMappingExposure ?? 1;
     if (Math.abs(exposure - this.was.exposure) > 1e-4) lights.push(`  exposure: ${num(exposure)},`);
-    if (lights.length) out.push(`// Lights (${location.pathname.includes('studio') ? 'src/studio/Stage.ts' : 'src/game/main.ts'})\n${lights.join('\n')}`);
+    if (lights.length) out.push(`// Lights (${this.o.lightsFile ?? 'src/game/main.ts'})\n${lights.join('\n')}`);
     return out.join('\n');
   }
 
