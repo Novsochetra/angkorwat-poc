@@ -1,3 +1,5 @@
+import { Vector3 } from 'three';
+import type { Area, AreaItem } from './area';
 import { describeBox, type Pick } from './pick';
 import { formatFrame, resolveTrace, type SourceFrame } from './sourceTrace';
 
@@ -74,6 +76,7 @@ export async function reportMarkdown(r: ReportData): Promise<string> {
     out.push('', `### ${pickNumber(i)} ${p.label}`, ...p.facts.map(([k, v]) => `- **${k}:** ${v}`));
     const frames = p.trace ? await resolveTrace(p.trace) : [];
     if (frames.length) out.push('- **Code** (innermost call first):', ...frames.map((f) => `  - ${frameText(f)}`));
+    if (p.area) out.push(...(await areaLines(p.area)));
     for (const box of p.colliders) {
       const where = box.src ? (await resolveTrace(box.src)).slice(0, 3).map(frameText).join(' ← ') : '';
       out.push(`- **Collider:** ${describeBox(box)}${where ? ` — added by ${where}` : ''}`);
@@ -83,6 +86,84 @@ export async function reportMarkdown(r: ReportData): Promise<string> {
   out.push('', '## Environment', ...Object.entries(r.env).map(([k, v]) => `- **${k}:** ${v}`));
   out.push(`- **Recent console errors:** ${errors.length ? '' : 'none'}`, ...errors.map((e) => `  - ${e}`));
   return `${out.join('\n')}\n`;
+}
+
+const AREA_GROUPS = 15;
+
+/**
+ * What a drawn area covers, grouped by the code that made it (same call
+ * stack, same group): one fix usually covers a group. The group that fills
+ * most of the area comes first, since that is what was drawn around; far
+ * things behind it are many small blocks.
+ */
+async function areaLines(a: Area): Promise<string[]> {
+  const byStack = new Map<string, SourceFrame[]>();
+  const groups = new Map<string, { frames: SourceFrame[]; items: AreaItem[] }>();
+  for (const it of a.items) {
+    const stack = it.trace?.stack ?? '';
+    let frames = byStack.get(stack);
+    if (!frames) byStack.set(stack, (frames = it.trace ? await resolveTrace(it.trace) : []));
+    const key = frames.length ? frames.map(formatFrame).join(' < ') : `no trace: ${it.label}`;
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { frames, items: [] }));
+    g.items.push(it);
+  }
+  const share = (g: { items: AreaItem[] }) => g.items.reduce((n, i) => n + i.pixels, 0);
+  const sorted = [...groups.values()].sort((x, y) => share(y) - share(x));
+  if (!sorted.length) return [];
+  const out = ['', `Grouped by the code that made them: ${sorted.length} group${sorted.length === 1 ? '' : 's'}, the one filling most of the area first.`];
+  for (const g of sorted.slice(0, AREA_GROUPS)) {
+    const blocks = g.items.filter((i) => i.kind === 'block');
+    const meshes = g.items.filter((i) => i.kind === 'mesh');
+    const pct = a.pixels ? Math.round((100 * share(g)) / a.pixels) : 0;
+    out.push('', `#### ${g.items.length} × ${mostly(g.items.map((i) => i.label))} · ${pct < 1 ? '< 1' : pct} % of the area`);
+    if (blocks.length) {
+      out.push(`- **Blocks:** ${tally(blocks.map((i) => i.material))} · sizes ${tally(blocks.map((i) => i.size), 3)}`);
+      if (blocks.length <= 6) out.push(`- **Where:** ${blocks.map((i) => `${i.ref} at ${i.centre}`).join('; ')}`);
+      else {
+        const lo = new Vector3(Infinity, Infinity, Infinity);
+        const hi = new Vector3(-Infinity, -Infinity, -Infinity);
+        for (const i of blocks) {
+          if (!i.at) continue;
+          lo.min(i.at);
+          hi.max(i.at);
+        }
+        out.push(`- **Where:** centres from ${vec(lo)} to ${vec(hi)} ${blocks[0].unit} · most visible: ${blocks.slice(0, 3).map((i) => `${i.ref} at ${i.centre}`).join('; ')}`);
+      }
+    }
+    if (meshes.length) out.push(`- **Mesh:** ${tally(meshes.map((i) => `${i.ref} · material \`${i.material}\``))}`);
+    if (g.frames.length) out.push('- **Code** (innermost call first):', ...g.frames.map((f) => `  - ${frameText(f)}`));
+    else out.push('- **Code:** no trace (a production build, or made outside the builders)');
+  }
+  const rest = sorted.slice(AREA_GROUPS);
+  if (rest.length) out.push('', `…and ${rest.length} smaller groups with ${rest.reduce((n, g) => n + g.items.length, 0)} things between them.`);
+  if (a.more) out.push('', `(${a.more} more things show inside the area, too many to list.)`);
+  return out;
+}
+
+/** Distinct values with their counts, most common first. */
+function counted(values: string[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
+
+/** "sandstone ×120, laterite ×30, +2 more". */
+function tally(values: string[], limit = 4): string {
+  const top = counted(values);
+  const shown = top.slice(0, limit).map(([v, n]) => (n > 1 ? `${v} ×${n}` : v));
+  return top.length > limit ? `${shown.join(', ')}, +${top.length - limit} more` : shown.join(', ');
+}
+
+/** "gopura · stone block (+1 other kind)". */
+function mostly(values: string[]): string {
+  const top = counted(values);
+  const others = top.length - 1;
+  return `${top[0][0]}${others ? ` (+${others} other kind${others > 1 ? 's' : ''})` : ''}`;
+}
+
+function vec(v: Vector3): string {
+  return `(${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`;
 }
 
 function frameText(f: SourceFrame): string {

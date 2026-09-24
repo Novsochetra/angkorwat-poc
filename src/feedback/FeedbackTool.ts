@@ -16,9 +16,10 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { AABB, ColliderWorld } from '../game/world/Colliders';
+import { areaPick, samePose, viewPose, type Area, type Point } from './area';
 import { pick, type Pick } from './pick';
 import { errorCount, reportMarkdown, reportSlug, type ReportData } from './report';
-import { resolveTrace } from './sourceTrace';
+import { resolveTrace, type SourceTrace } from './sourceTrace';
 
 /** One camera's view on screen (client pixels). */
 export interface FeedbackView {
@@ -53,10 +54,32 @@ export interface FeedbackOptions {
 /** Served by src/feedback/vitePlugin.ts (dev server and `vite preview`). */
 const ENDPOINT = '/__feedback';
 const HOTKEY = 'KeyB';
+const MAX_PICKS = 20;
 
-const line = (color: number, onTop = true) => new LineBasicMaterial({ color, depthTest: !onTop, transparent: true, fog: false, toneMapped: false });
-const LINES = { hover: line(0xffffff), pick: line(0xffd27a), collider: line(0xff6b3d), map: line(0xff9a3c, false), mapWater: line(0x4cc3ff, false) };
+const line = (color: number, onTop = true, opacity = 1) => new LineBasicMaterial({ color, depthTest: !onTop, transparent: true, opacity, fog: false, toneMapped: false });
+// (an area's blocks are outlined faintly and only where they show: all their edges on top would hide the problem)
+const LINES = { hover: line(0xffffff), pick: line(0xffd27a), area: line(0xffd27a, false, 0.45), collider: line(0xff6b3d), map: line(0xff9a3c, false), mapWater: line(0x4cc3ff, false) };
 const UNIT_BOX = new EdgesGeometry(new BoxGeometry(1, 1, 1));
+const SVG = 'http://www.w3.org/2000/svg';
+
+/** How a press on the scene picks: one thing, or everything inside a drawn box / loop. */
+type Tool = 'click' | Area['tool'];
+const HOW: Record<Tool, string> = {
+  click: "Click or tap what's wrong — as many things as you like. Drag to look around.",
+  box: "Drag a box around what's wrong: everything you can see inside it is picked. A tap picks one thing; 👆 Click looks around again.",
+  loop: "Draw a loop around what's wrong: everything you can see inside it is picked. A tap picks one thing; 👆 Click looks around again.",
+};
+const KEYS = ' Shift + drag draws a box, Alt (⌥) + drag a loop.';
+
+/** A box or loop being drawn. */
+interface Drawing {
+  tool: Area['tool'];
+  pointer: number;
+  view: FeedbackView;
+  /** Box: start and current corner. Loop: the path so far. */
+  points: Point[];
+  t: number;
+}
 
 /**
  * Bug / idea reporter for the game and the viewer. B (or the 🐞 button) freezes
@@ -71,6 +94,8 @@ export class FeedbackTool {
   private kind: ReportData['kind'] = 'bug';
   private picks: Pick[] = [];
   private readonly hints = new WeakMap<Pick, string>();
+  private tool: Tool = 'click';
+  private drawing: Drawing | null = null;
   private hoverAt: { x: number; y: number } | null = null;
   private down: { x: number; y: number; t: number } | null = null;
   private savedText = '';
@@ -90,6 +115,12 @@ export class FeedbackTool {
   private readonly panel = document.createElement('aside');
   private readonly tip = document.createElement('div');
   private readonly pins = document.createElement('div');
+  private readonly shapes = document.createElementNS(SVG, 'svg');
+  private shapesDrawn = '';
+  /** The element whose presses pick (the canvas, or the studio's page), and its own touch-action. */
+  private readonly surface: HTMLElement;
+  private readonly touchAction: string;
+  private readonly coarse = matchMedia('(pointer: coarse)').matches;
   private readonly ui;
 
   constructor(private readonly o: FeedbackOptions) {
@@ -102,7 +133,8 @@ export class FeedbackTool {
     this.panel.className = 'panel fb-panel';
     this.panel.innerHTML = `
       <h1></h1>
-      <p class="sub">Click or tap what's wrong — as many things as you like. Drag to look around.</p>
+      <div class="chips fb-tools" role="group" aria-label="Pick with"><button type="button" data-tool="click">👆 Click</button><button type="button" data-tool="box">▭ Box</button><button type="button" data-tool="loop">◯ Loop</button></div>
+      <p class="sub"></p>
       <ol class="fb-picks"></ol>
       <div class="chips"><button type="button" data-kind="bug">🐞 Bug</button><button type="button" data-kind="idea">💡 Idea</button></div>
       <textarea rows="4" placeholder="What's wrong, and what did you expect? Any language is fine."></textarea>
@@ -113,6 +145,8 @@ export class FeedbackTool {
     const [secondary, primary] = this.panel.querySelectorAll<HTMLButtonElement>('.fb-actions button');
     this.ui = {
       title: $<HTMLElement>('h1'),
+      how: $<HTMLElement>('.sub'),
+      tools: [...this.panel.querySelectorAll<HTMLButtonElement>('[data-tool]')],
       list: $<HTMLOListElement>('.fb-picks'),
       kinds: [...this.panel.querySelectorAll<HTMLButtonElement>('[data-kind]')],
       note: $<HTMLTextAreaElement>('textarea'),
@@ -126,6 +160,7 @@ export class FeedbackTool {
         this.kind = b.dataset.kind as ReportData['kind'];
         this.renderKind();
       };
+    for (const b of this.ui.tools) b.onclick = () => this.setTool(b.dataset.tool as Tool);
     this.ui.colliders.onchange = () => this.mapColliders(this.ui.colliders.checked);
     // Pages without a collision world (the studio) have no colliders to show.
     if (!o.colliders) this.ui.colliders.closest('label')!.style.display = 'none';
@@ -134,8 +169,12 @@ export class FeedbackTool {
 
     this.tip.className = 'fb-tip';
     this.pins.className = 'fb-pins';
-    document.body.append(this.button, this.panel, this.tip, this.pins);
+    this.shapes.classList.add('fb-shapes');
+    document.body.append(this.button, this.panel, this.tip, this.shapes, this.pins);
     o.scene.add(this.outlines, this.hoverLines, this.colliderMap);
+    this.surface = o.events ?? o.renderer.domElement;
+    this.touchAction = this.surface.style.touchAction;
+    this.setTool('click');
 
     addEventListener('keydown', (e) => {
       const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
@@ -146,7 +185,8 @@ export class FeedbackTool {
         }
       } else if (e.code === 'Escape') {
         e.preventDefault();
-        this.close();
+        if (this.drawing) this.drawing = null;
+        else this.close();
       } else if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         void this.save();
@@ -154,9 +194,55 @@ export class FeedbackTool {
     });
 
     // A click that doesn't drag picks; drags keep turning the camera.
-    const canvas = o.events ?? o.renderer.domElement;
+    const canvas = this.surface;
     // (on a page-wide element, the reporter's own panel and the page's controls don't pick)
     const ours = (e: Event) => e.target instanceof Element && (this.panel.contains(e.target) || this.button.contains(e.target) || (!!o.events && !!e.target.closest('button, input, select, textarea, label')));
+
+    // Box / loop (or Shift / Alt + drag): the drag draws instead. These listeners
+    // run first (window, capture phase) and keep the drag from the page's camera.
+    addEventListener('pointerdown', (e) => {
+      if (!this.open || this.mode !== 'picking' || this.drawing || !e.isPrimary || e.button !== 0) return;
+      if (!(e.target instanceof Node) || !canvas.contains(e.target) || ours(e)) return;
+      const tool = e.shiftKey ? 'box' : e.altKey ? 'loop' : this.tool;
+      const view = tool === 'click' ? null : this.viewAt(e.clientX, e.clientY);
+      if (tool === 'click' || !view) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this.drawing = { tool, pointer: e.pointerId, view, points: [{ x: e.clientX, y: e.clientY }], t: performance.now() };
+      this.down = null;
+      this.setHover(null);
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        // (a pointer that is already gone)
+      }
+    }, true);
+    addEventListener('pointermove', (e) => {
+      const d = this.drawing;
+      if (!d || e.pointerId !== d.pointer) return;
+      e.stopPropagation();
+      const p = { x: e.clientX, y: e.clientY };
+      const last = d.points[d.points.length - 1];
+      if (d.tool === 'box') d.points[1] = p;
+      else if (Math.hypot(p.x - last.x, p.y - last.y) >= 3) d.points.push(p);
+    }, true);
+    addEventListener('pointerup', (e) => {
+      const d = this.drawing;
+      if (!d || e.pointerId !== d.pointer) return;
+      e.stopPropagation();
+      this.drawing = null;
+      this.finishDrawing(d);
+    }, true);
+    addEventListener('pointercancel', (e) => {
+      if (this.drawing?.pointer === e.pointerId) this.drawing = null;
+    }, true);
+    // (the game reads touches as touch events: hold those back while drawing too)
+    for (const type of ['touchstart', 'touchmove', 'touchend'] as const)
+      addEventListener(type, (e) => {
+        if (!this.drawing) return;
+        e.stopPropagation();
+        if (e.cancelable) e.preventDefault();
+      }, { capture: true, passive: false });
     canvas.addEventListener('pointerdown', (e) => {
       if (this.open && e.isPrimary && e.button === 0 && !ours(e)) this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
     });
@@ -201,12 +287,13 @@ export class FeedbackTool {
       this.button.title = `Report a bug or an idea (B) — ${errors} console error(s) so far`;
     }
     if (!this.open) return;
-    if (this.hoverAt && this.mode === 'picking') {
+    if (this.hoverAt && this.mode === 'picking' && !this.drawing) {
       const at = this.hoverAt;
       this.hoverAt = null;
       this.setHover(this.pickAt(at.x, at.y), at);
     }
     this.placePins();
+    this.drawShapes();
   }
 
   show(): void {
@@ -217,7 +304,9 @@ export class FeedbackTool {
     this.kind = 'bug';
     this.ui.note.value = '';
     this.ui.colliders.checked = false;
+    this.drawing = null;
     this.setMode('picking');
+    this.setTool(this.tool);
     this.renderKind();
     this.renderPicks();
     document.body.classList.add('reporting');
@@ -230,7 +319,10 @@ export class FeedbackTool {
     if (this.mode === 'picking' && (this.picks.length || this.ui.note.value.trim()) && !confirm('Discard this report?')) return;
     this.open = false;
     this.picks = [];
+    this.drawing = null;
     this.renderPicks();
+    this.drawShapes();
+    this.setTool(this.tool);
     this.setHover(null);
     this.mapColliders(false);
     document.body.classList.remove('reporting');
@@ -239,8 +331,12 @@ export class FeedbackTool {
 
   // ── Picking ──────────────────────────────────────────────────────────────
 
+  private viewAt(x: number, y: number): FeedbackView | null {
+    return this.o.viewAt ? this.o.viewAt(x, y) : { camera: this.o.camera, rect: this.o.renderer.domElement.getBoundingClientRect() };
+  }
+
   private pickAt(x: number, y: number): Pick | null {
-    const view = this.o.viewAt ? this.o.viewAt(x, y) : { camera: this.o.camera, rect: this.o.renderer.domElement.getBoundingClientRect() };
+    const view = this.viewAt(x, y);
     if (!view) return null;
     const r = view.rect;
     // A fifth of a pixel off: a ray lying exactly in the seam plane between two
@@ -262,21 +358,56 @@ export class FeedbackTool {
   }
 
   private add(p: Pick): void {
-    if (this.picks.length >= 20) return;
+    if (this.picks.length >= MAX_PICKS) return;
     this.picks.push(p);
     this.renderPicks();
     void this.resolveHint(p);
   }
 
+  private setTool(tool: Tool): void {
+    this.tool = tool;
+    for (const b of this.ui.tools) b.setAttribute('aria-pressed', String(b.dataset.tool === tool));
+    this.ui.how.textContent = HOW[tool] + (tool === 'click' && !this.coarse ? KEYS : '');
+    // (on touch screens a drag then draws, instead of scrolling the page)
+    this.surface.style.touchAction = this.open && tool !== 'click' ? 'none' : this.touchAction;
+    document.body.classList.toggle('fb-drawing', this.open && tool !== 'click');
+  }
+
+  /** A finished drag: everything that shows inside the box / loop becomes one pick. */
+  private finishDrawing(d: Drawing): void {
+    const outline = d.tool === 'box' ? corners(d.points[0], d.points[d.points.length - 1]) : d.points;
+    const xs = outline.map((p) => p.x);
+    const ys = outline.map((p) => p.y);
+    const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    if (size <= 6) {
+      // Hardly moved: a tap, which picks one thing as the Click tool does.
+      const p = performance.now() - d.t < 800 ? this.pickAt(d.points[0].x, d.points[0].y) : null;
+      if (p) this.add(p);
+      return;
+    }
+    if (outline.length < 3 || this.picks.length >= MAX_PICKS) return;
+    try {
+      // (the pin goes on the block nearest the middle; with no blocks, on whatever is there)
+      const mid = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+      const fallback = this.pickAt(mid.x, mid.y)?.point ?? new Vector3().setFromMatrixPosition(d.view.camera.matrixWorld);
+      this.add(areaPick(this.o.renderer, this.o.pickables(), d.view, d.tool, outline, fallback));
+    } catch (err) {
+      console.error('[feedback] could not pick inside the area:', err);
+      this.setMode('picking', `Couldn't pick inside the ${d.tool}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** A drawn outline lines up with the scene only while its view hasn't moved. */
+  private lined(a: Area): boolean {
+    const v = this.viewAt(a.outline[0].x, a.outline[0].y);
+    return !!v && v.camera === a.camera && samePose(viewPose(v), a.pose);
+  }
+
   /** Show where the code is (`File.ts:line`) next to the pick once the trace resolves. */
   private async resolveHint(p: Pick): Promise<void> {
-    const trace = p.trace ?? p.colliders[0]?.src;
-    if (!trace) return;
-    const frames = await resolveTrace(trace);
-    // Builder helpers (WorldBuilder.block, the kit's BlockSet / shapes…) are rarely the place to fix; their caller is.
-    const f = frames.find((fr) => !fr.file.endsWith('/WorldBuilder.ts') && !/^src\/kit\/[^/]+\.ts$/.test(fr.file)) ?? frames[0];
-    if (!f) return;
-    this.hints.set(p, `${f.file.split('/').pop()}:${f.line}`);
+    const hint = p.area ? await areaHint(p.area) : await fixSite(p.trace ?? p.colliders[0]?.src);
+    if (!hint) return;
+    this.hints.set(p, hint);
     if (this.picks.includes(p)) this.renderList();
   }
 
@@ -327,6 +458,8 @@ export class FeedbackTool {
     clear(this.outlines);
     for (const p of this.picks) {
       if (p.block) this.outlines.add(outline(p.block, LINES.pick));
+      const blocks = p.area?.items.flatMap((i) => (i.block ? [i.block] : [])) ?? [];
+      if (blocks.length) this.outlines.add(blockLines(blocks.slice(0, 4000), LINES.area));
       if (p.colliders.length) this.outlines.add(boxLines(p.colliders, LINES.collider));
     }
   }
@@ -357,6 +490,16 @@ export class FeedbackTool {
       pin.style.left = `${s.x}px`;
       pin.style.top = `${s.y}px`;
     });
+  }
+
+  /** The drawn outlines that still line up with the scene, and the one being drawn. */
+  private drawShapes(): void {
+    const paths: string[] = [];
+    if (this.open) for (const p of this.picks) if (p.area && this.lined(p.area)) paths.push(`<path d="${pathData(p.area.outline)}"/>`);
+    const d = this.drawing;
+    if (d && d.points.length > 1) paths.push(`<path class="fb-draft" d="${pathData(d.tool === 'box' ? corners(d.points[0], d.points[d.points.length - 1]) : d.points)}"/>`);
+    const html = paths.join('');
+    if (html !== this.shapesDrawn) this.shapes.innerHTML = this.shapesDrawn = html;
   }
 
   /** Wireframes of every collider within 60 m (orange; water / bounds blue). */
@@ -439,6 +582,8 @@ export class FeedbackTool {
     const g = out.getContext('2d')!;
     g.drawImage(src, 0, 0, out.width, out.height);
     const r = Math.max(9, out.width / 90);
+    const at = (q: Point) => [((q.x - rect.left) / rect.width) * out.width, ((q.y - rect.top) / rect.height) * out.height] as const;
+    for (const p of this.picks) if (p.area && this.lined(p.area)) drawOutline(g, p.area.outline.map(at), r);
     this.picks.forEach((p, i) => {
       const s = this.screenOf(p.point);
       if (s) drawPin(g, ((s.x - rect.left) / rect.width) * out.width, ((s.y - rect.top) / rect.height) * out.height, r, String(i + 1));
@@ -501,12 +646,82 @@ function boxLines(boxes: AABB[], material: LineBasicMaterial): LineSegments {
   return l;
 }
 
+/** Outlines of many blocks as one line mesh. */
+function blockLines(blocks: Matrix4[], material: LineBasicMaterial): LineSegments {
+  const edges = UNIT_BOX.getAttribute('position');
+  const p = new Float32Array(blocks.length * edges.count * 3);
+  const v = new Vector3();
+  let k = 0;
+  for (const m of blocks)
+    for (let i = 0; i < edges.count; i++) {
+      v.fromBufferAttribute(edges, i).applyMatrix4(m);
+      p[k++] = v.x;
+      p[k++] = v.y;
+      p[k++] = v.z;
+    }
+  const l = new LineSegments(new BufferGeometry().setAttribute('position', new Float32BufferAttribute(p, 3)), material);
+  l.frustumCulled = false;
+  l.renderOrder = 999;
+  return l;
+}
+
+function corners(a: Point, b: Point): Point[] {
+  return [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }];
+}
+
+function pathData(points: Point[]): string {
+  return `${points.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('')}Z`;
+}
+
+/** Where to fix a pick, `File.ts:line`. */
+async function fixSite(trace?: SourceTrace): Promise<string> {
+  if (!trace) return '';
+  const frames = await resolveTrace(trace);
+  // Builder helpers (WorldBuilder.block, the kit's BlockSet / shapes…) are rarely the place to fix; their caller is.
+  const f = frames.find((fr) => !fr.file.endsWith('/WorldBuilder.ts') && !/^src\/kit\/[^/]+\.ts$/.test(fr.file)) ?? frames[0];
+  return f ? `${f.file.split('/').pop()}:${f.line}` : '';
+}
+
+/** Where an area's blocks were made, the code filling most of it first: `Gate.ts:12 +3 more`. */
+async function areaHint(a: Area): Promise<string> {
+  const stacks = new Map<string, { trace: SourceTrace; n: number }>();
+  for (const i of a.items) {
+    if (!i.trace) continue;
+    const s = stacks.get(i.trace.stack ?? '');
+    if (s) s.n += i.pixels;
+    else stacks.set(i.trace.stack ?? '', { trace: i.trace, n: i.pixels });
+  }
+  const sites = new Map<string, number>();
+  for (const { trace, n } of stacks.values()) {
+    const site = await fixSite(trace);
+    if (site) sites.set(site, (sites.get(site) ?? 0) + n);
+  }
+  const top = [...sites].sort((x, y) => y[1] - x[1]);
+  return top.length ? `${top[0][0]}${top.length > 1 ? ` +${top.length - 1} more` : ''}` : '';
+}
+
 function clear(group: Group): void {
   for (const c of [...group.children]) {
     c.removeFromParent();
     const geo = (c as LineSegments).geometry;
     if (geo !== UNIT_BOX) geo.dispose();
   }
+}
+
+/** A drawn box / loop, as on screen: gold over a dark edge, lightly filled. */
+function drawOutline(g: CanvasRenderingContext2D, points: (readonly [number, number])[], r: number): void {
+  g.beginPath();
+  points.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.closePath();
+  g.fillStyle = 'rgba(255, 210, 122, 0.14)';
+  g.fill();
+  g.lineJoin = 'round';
+  g.lineWidth = r * 0.45;
+  g.strokeStyle = 'rgba(20, 24, 28, 0.85)';
+  g.stroke();
+  g.lineWidth = r * 0.22;
+  g.strokeStyle = '#ffd27a';
+  g.stroke();
 }
 
 /** Numbered marker like the on-screen pins: a ring on the point, the number up-right. */

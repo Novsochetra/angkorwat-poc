@@ -45,7 +45,9 @@ into the chat:
    blocks that is `WorldBuilder.block` → the line that called it (e.g.
    `gateHall` in `AngkorScaleWorld.ts`). The report also lists the **Collider**
    boxes at the point and who added them. Start there. Explorer picks give the
-   slot, joint and block position in body units (part space).
+   slot, joint and block position in body units (part space). A **box** / **loop**
+   pick covers every block seen inside it, grouped by the code that made them,
+   the group filling most of the area first.
 3. Reproduce with the report's headless command
    (`npm run shots -- repro="@index.html?shot=1&at=…&cam=…"`), fix, and re-run it
    to compare. Then run the checks.

@@ -14,6 +14,9 @@ feedback/2026-09-23-143205-explorer-walks-through-the-wall/
 1. `npm run dev` and play (`index.html`) or open the viewer (`viewer.html`).
 2. Press **B** (or tap **🐞 Report**). The game freezes; you can still drag to look around.
 3. Click or tap what's wrong. Pick several things if it's about how they meet. A **✕** removes one.
+   Many things at once: choose **▭ Box** or **◯ Loop** and drag around them (on a computer,
+   **Shift** + drag draws a box and **Alt/⌥** + drag a loop). Everything you can see inside
+   becomes one pick, and the report groups those blocks by the code that made them.
 4. Say what's wrong and what you expected, in any language, then **Save report**
    (Ctrl/⌘ + Enter). "Show colliders nearby" draws the invisible collision boxes,
    which helps with "I walk through this" / "I get stuck here" bugs.
