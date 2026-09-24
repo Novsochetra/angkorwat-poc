@@ -28,7 +28,9 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
   way world blocks name their `WorldBuilder` caller.
 - The block look panel (**K**, `src/voxel/LookPanel.ts`) tweaks block families
   live. A pasted "Block look changes" snippet lists new values per family:
-  write them into `VOXEL_MATERIALS` in `src/voxel/materials.ts`.
+  write them into `VOXEL_MATERIALS` in `src/voxel/materials.ts`. A "Lights"
+  snippet names lights by their `name` (set in `src/game/main.ts` and
+  `src/studio/Stage.ts`).
 
 ## Bug reports in `feedback/`
 

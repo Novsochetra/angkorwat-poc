@@ -620,6 +620,8 @@ async function main(): Promise<void> {
     },
     pickables: () => stage.pickables(),
     redraw: () => stage.invalidate(),
+    scene: stage.scene,
+    renderer: stage.renderer,
   });
   const tick = () => {
     stage.render();

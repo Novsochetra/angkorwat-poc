@@ -1,13 +1,29 @@
-import { Raycaster, Vector2, type Camera, type Intersection, type Material, type Mesh, type MeshStandardMaterial, type Object3D } from 'three';
+import {
+  Raycaster,
+  Vector2,
+  type Camera,
+  type HemisphereLight,
+  type InstancedMesh,
+  type Intersection,
+  type Light,
+  type Material,
+  type Mesh,
+  type MeshStandardMaterial,
+  type Object3D,
+  type Scene,
+  type WebGLRenderer,
+} from 'three';
 import type GUI from 'three/addons/libs/lil-gui.module.min.js';
-import { VOXEL_MATERIALS, voxelFamiliesInUse, type VoxelLookUniforms, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
+import { VOXEL_MATERIALS, voxelBevelUniform, voxelFamiliesInUse, type VoxelLookUniforms, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
+import { unitVoxelGeometry } from './VoxelMesh';
 
 /**
  * Block look panel (K): sliders for every block family on the page (edge
  * strip, speckle, bumps, shine…), changed live on every block of the family.
  * "Pick a block" names the family of the block you click next; "show where"
- * paints a family pink. "Copy changes" puts the values that differ from
- * materials.ts on the clipboard, ready to paste into VOXEL_MATERIALS.
+ * paints a family pink. "Lights" turns the scene's lights, room light and
+ * exposure. "Copy changes" puts the values that differ from the code on the
+ * clipboard, ready to paste into VOXEL_MATERIALS / the light setup.
  */
 export interface LookPanelOptions {
   /** Camera and canvas rectangle under a client point (null: not over a view). */
@@ -16,6 +32,9 @@ export interface LookPanelOptions {
   pickables: () => Object3D[];
   /** Draw again (pages that render on demand). */
   redraw?: () => void;
+  /** The scene and renderer, for the Lights folder (named lights only). */
+  scene?: Scene;
+  renderer?: WebGLRenderer;
 }
 
 const HOTKEY = 'KeyK';
@@ -47,7 +66,20 @@ interface Family {
   material: Material;
   u: VoxelLookUniforms;
   folder: GUI;
-  s: { where: boolean; strip: number; width: number; stripColour: string; speckle: number; bumps: number; shine: number; shineBlur: number };
+  s: { where: boolean; strip: number; width: number; stripColour: string; speckle: number; bumps: number; shine: number; shineBlur: number; edgeSize: number; edgeShape: string };
+  /** The edge size and shape the blocks have now (reshaped only when they change). */
+  shaped: string;
+}
+
+type EdgeShape = { segments: number; flat: boolean };
+const FLAT = 'flat cut';
+const ROUND = 'round';
+
+interface LightRow {
+  light: Light;
+  /** sRGB hex strings, for the colour pickers. */
+  p: { colour: string; ground: string };
+  was: { intensity: number; colour: string; ground: string };
 }
 
 class LookPanel {
@@ -55,6 +87,8 @@ class LookPanel {
   private readonly families: Family[] = [];
   private readonly top = { worldStrips: 1, picked: '—', pick: () => this.startPick(), copy: () => void this.copy(), reset: () => this.gui.reset() };
   private readonly pickedCtrl: ReturnType<GUI['add']>;
+  private readonly lights: LightRow[] = [];
+  private readonly was: { env: number; exposure: number };
   private readonly raycaster = new Raycaster();
   private readonly ndc = new Vector2();
   private flash = 0;
@@ -69,6 +103,8 @@ class LookPanel {
     gui.add(this.top, 'worldStrips', 0, 2, 0.05).name('all world edge strips ×');
     gui.add(this.top, 'copy').name('📋 Copy changes');
     gui.add(this.top, 'reset').name('↺ Reset all');
+    this.was = { env: o.scene?.environmentIntensity ?? 1, exposure: o.renderer?.toneMappingExposure ?? 1 };
+    this.addLights();
 
     // World families first, then the explorer's.
     const inUse = voxelFamiliesInUse().sort((a, b) => Number(isWorld(b.key)) - Number(isWorld(a.key)));
@@ -85,8 +121,11 @@ class LookPanel {
         bumps: spec.relief ?? 0,
         shine: spec.specular ?? 0,
         shineBlur: spec.roughness,
+        edgeSize: spec.bevel,
+        edgeShape: spec.chamfer ? FLAT : ROUND,
       };
-      const f: Family = { key, spec, material, u, folder, s };
+      const f: Family = { key, spec, material, u, folder, s, shaped: '' };
+      f.shaped = `${s.edgeSize}|${s.edgeShape}`;
       folder.add(s, 'where').name('show where (pink)');
       folder.add(s, 'strip', 0, 1, 0.01).name('edge strip');
       folder.add(s, 'width', 0, 1.5, 0.05).name('edge strip width');
@@ -98,6 +137,8 @@ class LookPanel {
         folder.add(s, 'shine', 0, 1, 0.01).name('shine');
         folder.add(s, 'shineBlur', 0, 1, 0.01).name('shine blur');
       }
+      folder.add(s, 'edgeSize', 0.01, 0.3, 0.005).name('cut edge size');
+      folder.add(s, 'edgeShape', [FLAT, ROUND]).name('cut edge shape');
       this.families.push(f);
     }
     gui.onChange(() => this.apply());
@@ -120,7 +161,56 @@ class LookPanel {
       u.uHighlight.value = s.where || (this.flash && key === this.top.picked) ? PINK : 0;
       if ('roughness' in material) (material as MeshStandardMaterial).roughness = s.shineBlur;
     }
+    for (const f of this.families) if (f.shaped !== `${f.s.edgeSize}|${f.s.edgeShape}`) this.reshape(f);
+    for (const { light, p } of this.lights) {
+      light.color.set(p.colour);
+      if ((light as HemisphereLight).isHemisphereLight) (light as HemisphereLight).groundColor.set(p.ground);
+    }
     this.o.redraw?.();
+  }
+
+  /**
+   * New cut-edge size / shape: swap every block of the family to the matching
+   * unit block (same cost: one step, flat cut or smooth) and move the shared
+   * bevel uniform with it. (Merged stones keep their own edge radius until the
+   * page is rebuilt with the new value.)
+   */
+  private reshape(f: Family): void {
+    f.shaped = `${f.s.edgeSize}|${f.s.edgeShape}`;
+    const bevel = voxelBevelUniform(f.key);
+    bevel.value = Math.max(1e-4, f.s.edgeSize);
+    const flat = f.s.edgeShape === FLAT;
+    for (const root of this.o.pickables())
+      root.traverse((m) => {
+        const mesh = m as InstancedMesh;
+        const shape = mesh.userData.voxelShape as EdgeShape | undefined;
+        // (plain boxes far away have no edges to change)
+        if (!mesh.isInstancedMesh || mesh.material !== f.material || !shape || shape.segments === 0) return;
+        const g = unitVoxelGeometry(bevel.value, shape.segments, flat);
+        mesh.geometry.setIndex(g.index);
+        mesh.geometry.setAttribute('position', g.getAttribute('position'));
+        mesh.geometry.setAttribute('normal', g.getAttribute('normal'));
+      });
+  }
+
+  // ── Lights ───────────────────────────────────────────────────────────────
+
+  private addLights(): void {
+    const { scene, renderer } = this.o;
+    if (!scene) return;
+    const folder = this.gui.addFolder('💡 Lights (whole scene)').close();
+    scene.traverse((o) => {
+      const light = o as Light;
+      if (!light.isLight || !light.name) return;
+      const hemi = (light as HemisphereLight).isHemisphereLight ? (light as HemisphereLight) : null;
+      const p = { colour: `#${light.color.getHexString()}`, ground: hemi ? `#${hemi.groundColor.getHexString()}` : '' };
+      this.lights.push({ light, p, was: { intensity: light.intensity, ...p } });
+      folder.add(light, 'intensity', 0, Math.max(4, light.intensity * 2), 0.01).name(`${light.name}`).listen();
+      folder.addColor(p, 'colour').name(hemi ? '  ↳ sky colour' : '  ↳ colour');
+      if (hemi) folder.addColor(p, 'ground').name('  ↳ ground colour');
+    });
+    if (scene.environment) folder.add(scene, 'environmentIntensity', 0, 1, 0.01).name('room light (environment)');
+    if (renderer) folder.add(renderer, 'toneMappingExposure', 0.3, 2, 0.01).name('exposure');
   }
 
   // ── Pick a block ─────────────────────────────────────────────────────────
@@ -200,9 +290,26 @@ class LookPanel {
         diff('specular', s.shine, spec.specular ?? 0);
         diff('roughness', s.shineBlur, spec.roughness);
       }
+      diff('bevel', s.edgeSize, spec.bevel);
+      if ((s.edgeShape === FLAT) !== (spec.chamfer ?? false)) out.push(`chamfer: ${s.edgeShape === FLAT}`);
       if (out.length) lines.push(`  ${key}: { ${out.join(', ')} },`);
     }
-    return lines.length ? `// Block look changes (src/voxel/materials.ts, VOXEL_MATERIALS)\n${lines.join('\n')}` : '';
+    const out: string[] = [];
+    if (lines.length) out.push(`// Block look changes (src/voxel/materials.ts, VOXEL_MATERIALS)\n${lines.join('\n')}`);
+    const lights: string[] = [];
+    for (const { light, p, was } of this.lights) {
+      const d: string[] = [];
+      if (Math.abs(light.intensity - was.intensity) > 1e-4) d.push(`intensity: ${num(light.intensity)}`);
+      if (p.colour !== was.colour) d.push(`color: 0x${p.colour.slice(1)}`);
+      if (p.ground !== was.ground) d.push(`groundColor: 0x${p.ground.slice(1)}`);
+      if (d.length) lights.push(`  '${light.name}': { ${d.join(', ')} },`);
+    }
+    const env = this.o.scene?.environmentIntensity ?? 1;
+    if (Math.abs(env - this.was.env) > 1e-4) lights.push(`  'room light (environment)': ${num(env)},`);
+    const exposure = this.o.renderer?.toneMappingExposure ?? 1;
+    if (Math.abs(exposure - this.was.exposure) > 1e-4) lights.push(`  exposure: ${num(exposure)},`);
+    if (lights.length) out.push(`// Lights (${location.pathname.includes('studio') ? 'src/studio/Stage.ts' : 'src/game/main.ts'})\n${lights.join('\n')}`);
+    return out.join('\n');
   }
 
   private async copy(): Promise<void> {

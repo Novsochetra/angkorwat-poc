@@ -68,8 +68,10 @@ scene.fog = new Fog(0xe6dcc6, 260, 1900);
 
 // ── Lights: warm afternoon sun from the west-southwest ─────────────────────
 const hemi = new HemisphereLight(0xdfeaff, 0x8a7a55, 1.1);
+hemi.name = 'sky light';
 scene.add(hemi);
 const sun = new DirectionalLight(0xffe7c8, 3.0);
+sun.name = 'sun';
 const sunDir = new Vector3(-0.55, 0.62, 0.35).normalize();
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -274,6 +276,8 @@ if (!test)
   installLookPanel({
     viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }),
     pickables: () => [world.root, explorer.object],
+    scene,
+    renderer,
   });
 
 // ── Loop ────────────────────────────────────────────────────────────────────

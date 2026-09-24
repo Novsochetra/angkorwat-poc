@@ -152,6 +152,22 @@ export interface VoxelLookUniforms {
 
 const looks = new Map<VoxelMaterialKey, VoxelLookUniforms>();
 
+const bevels = new Map<VoxelMaterialSpec, { value: number }>();
+
+/**
+ * A family's cut-edge size (its `bevel`) as one uniform shared by the drawn
+ * block and its shadow caster; the look panel changes it with the geometry.
+ */
+export function voxelBevelUniform(key: VoxelMaterialKey): { value: number } {
+  return bevelOf(VOXEL_MATERIALS[key]);
+}
+
+function bevelOf(spec: VoxelMaterialSpec): { value: number } {
+  let u = bevels.get(spec);
+  if (!u) bevels.set(spec, (u = { value: Math.max(1e-4, spec.bevel) }));
+  return u;
+}
+
 /** The families built so far on this page, with their material and live uniforms. */
 export function voxelFamiliesInUse(): { key: VoxelMaterialKey; material: Material; uniforms: VoxelLookUniforms }[] {
   return (Object.keys(VOXEL_MATERIALS) as VoxelMaterialKey[])
@@ -550,7 +566,7 @@ reflectedLight.indirectSpecular *= uSpecular;
  * shadow depth pass (see shadow.ts), so what casts a shadow is what is drawn.
  */
 export function injectVoxelVertex(shader: WebGLProgramParametersWithUniforms, spec: VoxelMaterialSpec): void {
-  shader.uniforms.uBevel = { value: Math.max(1e-4, spec.bevel) };
+  shader.uniforms.uBevel = bevelOf(spec);
   shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
   shader.vertexShader = shader.vertexShader
     .replace(

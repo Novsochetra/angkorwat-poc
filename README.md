@@ -161,10 +161,13 @@ highlight or reflection, `specular`); only water shines.
 
 **Block look panel (K)** — in the game and the studio, **K** (or `?look=1`)
 opens sliders for every block family on the page: edge strip, its width and
-colour, speckle, bumps, shine. They change every block of the family live.
+colour, speckle, bumps, shine, cut edge size and shape (flat cut or round).
+They change every block of the family live. *Lights* turns the scene's named
+lights, the room light (environment) and the exposure: the cool fill light and
+the room light are what make shaded stone read grey-blue, like a reflection.
 *Pick a block* names the family of the block you click; *show where* paints a
-family pink. *Copy changes* puts the values that differ from
-`VOXEL_MATERIALS` on the clipboard (`src/voxel/LookPanel.ts`).
+family pink. *Copy changes* puts the values that differ from the code on the
+clipboard (`src/voxel/LookPanel.ts`).
 
 Quality levels: `high` (smooth bevels, viewer), `medium` (24-vertex chamfered
 blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).

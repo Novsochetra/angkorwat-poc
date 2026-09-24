@@ -140,8 +140,11 @@ export class Stage {
     this.scene.environmentIntensity = L.env;
     // Warm key from the upper left, cool dim fill: the sheets' lit faces glow,
     // their shaded faces go a cool grey-brown.
-    this.scene.add(new HemisphereLight(L.skyc ?? 0xb8cbf5, 0x8a8a8e, L.hemi));
+    const hemi = new HemisphereLight(L.skyc ?? 0xb8cbf5, 0x8a8a8e, L.hemi);
+    hemi.name = 'sky light';
+    this.scene.add(hemi);
     const key = new DirectionalLight(0xfff4e8, L.key);
+    key.name = 'key light (sun, upper left)';
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     // (camera, blur and biases are fitted to each subject, see fitShadow)
@@ -151,8 +154,10 @@ export class Stage {
     // Cool fill from the right, so the shaded side reads grey-violet like the
     // sheets (measured on the §19.1 cube: shaded face #6d5b4c vs the sheet's #6c5750).
     const fill = new DirectionalLight(L.fillc ?? 0x7390f0, L.fill);
+    fill.name = 'fill light (cool, right)';
     fill.position.set(3.0, 1.2, 2.0);
     const rim = new DirectionalLight(0xffd7a8, L.rim);
+    rim.name = 'rim light (warm, behind)';
     rim.position.set(1.0, 3.0, -4.0);
     this.scene.add(fill, rim);
     // Afternoon sky like the sheets' environment examples: blue overhead, warm haze at the horizon.

@@ -245,7 +245,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
     const chamfer = (spec as VoxelMaterialSpec).chamfer ?? false;
-    const geometry = unitVoxelGeometry(spec.bevel, chamfer ? Math.min(1, SEGMENTS[quality]) : SEGMENTS[quality], chamfer);
+    const segments = chamfer ? Math.min(1, SEGMENTS[quality]) : SEGMENTS[quality];
+    const geometry = unitVoxelGeometry(spec.bevel, segments, chamfer);
     // A thin geometry wrapper per mesh: shares the cached index/position/normal
     // buffers and adds the per-instance side masks and bevel radius.
     const geo = new BufferGeometry();
@@ -258,6 +259,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     const surf = patterned(mat) ? new Float32Array(list.length * 4) : null;
     const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), list.length);
     mesh.name = `${group.name}:${mat}`;
+    // (the look panel rebuilds the edges from this: segments, flat cut or round)
+    mesh.userData.voxelShape = { segments, flat: chamfer };
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       // Bits 0–5: exposed sides; bits 6–11: joints to other blocks.
