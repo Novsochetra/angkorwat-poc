@@ -38,8 +38,8 @@ export interface VoxelBox {
   merge?: number;
   /**
    * Sides (same bits as `open`) that butt against another block — masonry
-   * joints. The family's `gap` pulls them in, so a thin dark joint shows
-   * between neighbouring stones.
+   * joints. Their bevel keeps the rim highlight, so every stone's own edge
+   * catches the light even where it touches the next one.
    */
   joint?: number;
   /**

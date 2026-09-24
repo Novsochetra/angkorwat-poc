@@ -257,8 +257,8 @@ export class BlockSet {
   /**
    * Emit the voxels: intact blocks as single boxes (faces hidden by neighbours
    * culled from the rim highlight), carved blocks as their remaining cells.
-   * Sides against another block are flagged `joint`, so the stone's gap opens
-   * a thin joint there.
+   * Sides against another block are flagged `joint`, so each stone's bevel
+   * keeps its light rim there.
    */
   emit(b: VoxelBuilder, o: { jitter?: number; seed?: number } = {}): VoxelBuilder {
     const r = this.res;

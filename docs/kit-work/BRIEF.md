@@ -50,8 +50,8 @@ details that give it charm. It must look good from every view (iso, front, side,
   edges), `find`, `emit(builder)`, and `masonry(set, box…, {length, course, depth, axis, palette, style, seed})`
   for walls/platforms/steps with staggered joints. Intact blocks = 1 box each; carved blocks are
   emitted as merged cells that still read as one stone, broken faces in rough stone colour.
-  Sides against another block are masonry joints: sandstone pulls them in by 5 mm (a 1 cm
-  joint) and shades them dark; every block edge gets the same flat 5 cm chamfer.
+  Sides against another block are masonry joints: their chamfer keeps its light rim, so every
+  block edge gets the same flat 5 cm chamfer; neighbouring stones touch (no gap).
 - `src/kit/palette.ts` — calibrated colours: `SANDSTONE` (clean, warm, dark, cracked, weathered, mossy,
   broken, cavity), `SOIL`, `GRASS`, `MOSS`, `LICHEN`, `LEAF`, `FLOWER`, `BARK`, `LITTER`, `WATER`,
   `OFFERING`, and **`fromSheet(hex)`**: give it a colour sampled from a lit face of a reference

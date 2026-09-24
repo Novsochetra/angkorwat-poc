@@ -153,8 +153,8 @@ occlusion and colour jitter are baked per block. The face family is
 *seamless*: each block pushes its bevel into covered neighbours, so the face
 reads as one smooth surface with only its silhouette rounded, as on the sheet.
 The world kit's sandstone has *chamfered* edges instead: one flat cut on every
-edge that catches the light, and a 1 cm joint between neighbouring stones
-(`gap`), so each block reads as a cube with crisp, bevelled edges.
+edge that catches the light, worn texel by texel, on a matte surface whose
+texels each lean a little their own way (`relief`), so it reads as rough stone.
 
 Quality levels: `high` (smooth bevels, viewer), `medium` (24-vertex chamfered
 blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).

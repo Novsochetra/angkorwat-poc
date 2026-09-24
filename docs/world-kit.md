@@ -41,8 +41,9 @@ names the exact line of the asset module that made each block.
   corners, bites), `erode` (worn edges). Damaged blocks are emitted as merged
   cells that still read as one stone, the broken faces in rougher stone.
   Sandstone blocks have flat-cut (chamfered) edges, 10 % of the block, and a
-  1 cm joint between neighbours (`chamfer` and `gap` in `src/voxel/materials.ts`);
-  the cells of a damaged block keep the chamfer of the whole stone.
+  chiselled surface (`chamfer` and `relief` in `src/voxel/materials.ts`);
+  neighbouring stones touch, and the cells of a damaged block keep the chamfer
+  of the whole stone.
 - **Colours** — `src/kit/palette.ts`, sampled from the sheets and corrected in
   linear light so the studio render matches the sheets (`fromSheet()` does the
   correction for any colour sampled off a sheet).

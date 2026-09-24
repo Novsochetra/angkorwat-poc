@@ -74,11 +74,11 @@ export interface VoxelMaterialSpec {
   /** Share of stone texels that are dark pores (0‥1). */
   pits?: number;
   /**
-   * Masonry joint (metres per side): sides flagged `joint` (against another
-   * block) are pulled in by this much, so neighbouring blocks keep a thin gap
-   * where their rounded edges and the joint's shadow show.
+   * Chiselled surface (patterned families): each texel's normal leans up to
+   * this much (tangent of the angle) its own way, so light catches the face
+   * texel by texel like rough stone instead of sliding over a smooth plane.
    */
-  gap?: number;
+  relief?: number;
 }
 
 export const VOXEL_MATERIALS = {
@@ -108,8 +108,8 @@ export const VOXEL_MATERIALS = {
   bark: { roughness: 0.95, metalness: 0, bevel: 0.12, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8 },
   ground: { roughness: 1, metalness: 0, bevel: 0.06, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
-  // 5 cm flat-cut edges on a 0.5 m block, 1 cm joints between blocks.
-  sandstone: { roughness: 0.88, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, gap: 0.005 },
+  // 5 cm flat-cut edges on a 0.5 m block; a matte, chiselled surface.
+  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
   soil: { roughness: 0.97, metalness: 0, bevel: 0.05, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil' },
   leaves: { roughness: 0.82, metalness: 0, bevel: 0.1, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf' },
   trunk: { roughness: 0.93, metalness: 0, bevel: 0.09, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark' },
@@ -175,6 +175,7 @@ function glslColor(hex: number): string {
 const PATTERN_GLSL = /* glsl */ `
 uniform float uTexel;
 uniform float uPits;
+uniform float uRelief;
 flat varying vec4 vVoxSurf;
 flat varying vec3 vVoxS;
 const vec3 MOSS_0 = ${glslColor(SURFACE_COLORS.moss[0])};
@@ -283,9 +284,15 @@ vec3 voxPattern(vec3 base, vec3 n) {
   float blot = voxNoise(T * 0.33 + vec3(3.1, 7.7, 1.3));
   vec3 c = base;
 #if VOX_PAT == 1
-  // Sandstone: 3–4 tones in soft blotches, dark pores.
+  // Sandstone: 3–4 tones in soft blotches, then the sheets' bold grains —
+  // small clusters of pale cream and of cool grey-brown — and dark pores.
   c *= 1.0 + ((h1 - 0.5) * uGrain + (blot - 0.5) * uGrain * 0.9) * fine;
-  c = mix(c, c * vec3(0.6, 0.54, 0.48), step(h2, uPits) * fine);
+  float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float pale = step(0.76, voxNoise(T * 0.55 + 17.0) * 0.75 + h1 * 0.25);
+  c = mix(c, mix(c, vec3(lum), 0.35) * 1.22, pale * 0.85 * fine);
+  float grey = step(0.78, voxNoise(T * 0.6 + 43.0) * 0.75 + h2 * 0.25);
+  c = mix(c, mix(c, vec3(lum), 0.2) * 0.52, grey * fine);
+  c = mix(c, c * vec3(0.5, 0.48, 0.48), step(h2, uPits) * fine);
   if (sB.y > 0.001) {
     // Dark weathering: a harsher mottle, vertical run-off streaks, grime low on blocks.
     c *= 1.0 + (voxHash(T + 3.0) - 0.5) * sB.y * 0.45 * fine;
@@ -356,6 +363,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
   const defines: Record<string, unknown> = { ...(material.defines ?? {}) };
   if (lit) defines.VOX_LIT = '';
   if (spec.pattern) defines.VOX_PAT = String(PATTERN_ID[spec.pattern]);
+  if (spec.pattern && lit && spec.relief) defines.VOX_RELIEF = '';
   material.defines = defines;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uEdgeTint = { value: edgeTint };
@@ -367,7 +375,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
-    shader.uniforms.uGap = { value: spec.gap ?? 0 };
+    shader.uniforms.uRelief = { value: spec.relief ?? 0 };
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -386,8 +394,7 @@ flat varying vec3 vVoxS;
 #endif
 uniform float uBevel;
 uniform float uSeamless;
-uniform float uGap;
-// Sides that butt against another block (bits 6–11 of voxOpen): pulled in by uGap.
+// Sides that butt against another block (bits 6–11 of voxOpen).
 vec3 voxJointOf(float open, vec3 p) {
   int m = int(open + 0.5) >> 6;
   return vec3(
@@ -457,12 +464,17 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
   // (a block's own radius, if given, stays below half its smallest side)
   float voxR = voxRadius > 0.0 ? min(voxRadius, voxMin * 0.45) : voxMin * uBevel;
   vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
+  // An edge between two joints lies inside the masonry: keep it square, so no
+  // channel opens between the stones where four of them meet.
+  vec3 voxJ = voxJointOf(voxOpen, position);
+  float voxOnJoint = max(max(voxJ.x * step(1e-3, voxT.x), voxJ.y * step(1e-3, voxT.y)), voxJ.z * step(1e-3, voxT.z));
+  voxT = max(voxT, voxJ * voxOnJoint);
   vec3 voxPush = voxPushOf(voxOpen, position);
   #ifdef VOX_PAT
     voxPush = max(voxPush, voxMergeOf(voxSurf.w, position));
   #endif
   // (+ a hair of overlap so neighbouring flat faces never leave a crack)
-  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012) - voxJointOf(voxOpen, position) * uGap);
+  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
   transformed = voxPw / voxS;
   vVoxP = voxPw;
   vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
@@ -507,25 +519,37 @@ ${PATTERN_GLSL}
 vec3 voxN = normalize(vVoxN);
 // 0 on the flat faces, 1 on the outer half of the rounded bevel.
 float voxEdge = smoothstep(0.29 - 0.2 * uEdgeWidth, 0.29, 1.0 - max(max(abs(voxN.x), abs(voxN.y)), abs(voxN.z)));
-float voxJoint = 0.0;
 {
   // Only rims between exposed faces glow; edges against a flush neighbour stay a
-  // soft seam. A masonry joint counts as exposed: its gap shows the rounding.
-  int m = (int(vVoxOpen + 0.5) | (int(vVoxOpen + 0.5) >> 6)) & 63;
+  // soft seam. A masonry joint (bits 6–11) is half exposed: every stone's own
+  // bevel catches some light down to where it meets the next stone.
+  int m = int(vVoxOpen + 0.5) & 63;
+  int j = (int(vVoxOpen + 0.5) >> 6) & 63;
   float w = 1.0;
-  if (abs(voxN.x) > 0.12) w *= (voxN.x > 0.0 ? float(m & 1) : float((m >> 1) & 1));
-  if (abs(voxN.y) > 0.12) w *= (voxN.y > 0.0 ? float((m >> 2) & 1) : float((m >> 3) & 1));
-  if (abs(voxN.z) > 0.12) w *= (voxN.z > 0.0 ? float((m >> 4) & 1) : float((m >> 5) & 1));
+  if (abs(voxN.x) > 0.12) w *= voxN.x > 0.0 ? max(float(m & 1), 0.6 * float(j & 1)) : max(float((m >> 1) & 1), 0.6 * float((j >> 1) & 1));
+  if (abs(voxN.y) > 0.12) w *= voxN.y > 0.0 ? max(float((m >> 2) & 1), 0.6 * float((j >> 2) & 1)) : max(float((m >> 3) & 1), 0.6 * float((j >> 3) & 1));
+  if (abs(voxN.z) > 0.12) w *= voxN.z > 0.0 ? max(float((m >> 4) & 1), 0.6 * float((j >> 4) & 1)) : max(float((m >> 5) & 1), 0.6 * float((j >> 5) & 1));
   voxEdge *= mix(0.1, 1.0, w);
-  // The part of the bevel that turns into a joint falls into its shadow.
-  int j = int(vVoxOpen + 0.5) >> 6;
-  vec3 jn = vec3(
-    voxN.x > 0.0 ? float(j & 1) : float((j >> 1) & 1),
-    voxN.y > 0.0 ? float((j >> 2) & 1) : float((j >> 3) & 1),
-    voxN.z > 0.0 ? float((j >> 4) & 1) : float((j >> 5) & 1));
-  voxJoint = smoothstep(0.75, 1.0, max(max(abs(voxN.x) * jn.x, abs(voxN.y) * jn.y), abs(voxN.z) * jn.z));
-  voxEdge *= 1.0 - voxJoint;
 }
+float voxSeam = 0.0;
+#ifdef VOX_PAT
+{
+  // Where two stones meet, the V of their bevels closes in a thin shadow line.
+  int j = (int(vVoxOpen + 0.5) >> 6) & 63;
+  vec3 js = vec3(
+    vVoxP.x > 0.0 ? float(j & 1) : float((j >> 1) & 1),
+    vVoxP.y > 0.0 ? float((j >> 2) & 1) : float((j >> 3) & 1),
+    vVoxP.z > 0.0 ? float((j >> 4) & 1) : float((j >> 5) & 1));
+  vec3 sd = vVoxS * 0.5 - abs(vVoxP);
+  vec3 sl = js * (1.0 - smoothstep(vec3(0.003), vec3(0.014), sd));
+  voxSeam = max(max(sl.x, sl.y), sl.z);
+  voxEdge *= 1.0 - voxSeam;
+}
+#if VOX_PAT == 1
+// Worn stone edges: the light rim breaks up texel by texel.
+voxEdge *= 0.5 + 0.5 * voxHash(floor((vVoxSeed + vVoxP) * uTexel) + 71.0);
+#endif
+#endif
 #ifdef VOX_PAT
 diffuseColor.rgb = voxPattern(diffuseColor.rgb, voxN);
 #else
@@ -539,6 +563,31 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
       .replace(
         '#include <normal_fragment_maps>',
         /* glsl */ `#include <normal_fragment_maps>
+#ifdef VOX_RELIEF
+{
+  // Chiselled surface: every texel leans a little its own way (a tilt in its
+  // face plane, turned into view space by the screen-space frame of the face).
+  vec3 ra = abs(voxN);
+  vec3 rf = ra.x > ra.y && ra.x > ra.z ? vec3(sign(voxN.x), 0.0, 0.0) : (ra.y > ra.z ? vec3(0.0, sign(voxN.y), 0.0) : vec3(0.0, 0.0, sign(voxN.z)));
+  vec3 rP = vVoxSeed + vVoxP;
+  vec3 rT = floor(rP * uTexel - rf * 0.5);
+  // (faded out where a texel shrinks below a pixel)
+  float rFine = 1.0 - smoothstep(0.45, 1.1, length(fwidth(rP)) * uTexel);
+  vec2 rTilt = (vec2(voxHash(rT + 13.1), voxHash(rT + 27.7)) - 0.5) * 2.0 * uRelief * rFine;
+  vec2 rUV = voxFaceUV(rP, rf);
+  vec3 q0 = dFdx(-vViewPosition);
+  vec3 q1 = dFdy(-vViewPosition);
+  vec2 st0 = dFdx(rUV);
+  vec2 st1 = dFdy(rUV);
+  vec3 q1perp = cross(q1, normal);
+  vec3 q0perp = cross(normal, q0);
+  vec3 rTan = q1perp * st0.x + q0perp * st1.x;
+  vec3 rBit = q1perp * st0.y + q0perp * st1.y;
+  float rDet = max(dot(rTan, rTan), dot(rBit, rBit));
+  float rScale = rDet == 0.0 ? 0.0 : inversesqrt(rDet);
+  normal = normalize(normal + (rTan * rTilt.x + rBit * rTilt.y) * rScale);
+}
+#endif
 {
   // Worn, warm rims catch the key light (orange hair / leather rims, gold krama threads).
   float voxFacing = 1.0;
@@ -546,10 +595,10 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
     voxFacing = smoothstep(-0.2, 0.5, dot(normal, directionalLights[0].direction));
   #endif
   diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength * mix(0.3, 1.0, voxFacing));
-  diffuseColor.rgb *= 1.0 - 0.6 * voxJoint;
+  diffuseColor.rgb *= 1.0 - 0.5 * voxSeam;
 }`,
       );
   };
   // Families inject identical code (only uniforms and the pattern define differ).
-  material.customProgramCacheKey = () => `voxel-shading-v7${spec.pattern ? `:${spec.pattern}` : ''}`;
+  material.customProgramCacheKey = () => `voxel-shading-v8${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
 }
