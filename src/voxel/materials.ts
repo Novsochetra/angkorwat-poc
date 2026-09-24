@@ -617,7 +617,13 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
     voxPush = max(voxPush, voxMergeOf(voxSurf.w, position));
   #endif
   // (+ a hair of overlap so neighbouring flat faces never leave a crack)
-  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
+  float voxLap = 0.012;
+  #ifdef VOX_PAT
+    // Merged cells of carved stone are a few centimetres: keep the overlap a
+    // small share of the block, or each neighbour's colour covers most of a cell.
+    voxLap = min(voxLap, voxMin * 0.03);
+  #endif
+  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + voxLap));
   transformed = voxPw / voxS;
   vVoxP = voxPw;
   vVoxN = voxFlatNormal(normal, voxPush, voxOpen);

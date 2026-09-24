@@ -276,22 +276,24 @@ function card(asset: KitAsset): HTMLElement {
   return c;
 }
 
-/** The component's crop of its reference sheet (1536 × 1024), scaled to the box's width. */
-function refCrop(asset: KitAsset, caption = true): HTMLElement | null {
-  if (!asset.ref) return null;
-  const [x0, y0, x1, y1] = asset.ref.box;
+/** The component's crop of its reference sheet (the variant's own, if it has one), scaled to the box's width. */
+function refCrop(asset: KitAsset, caption = true, variant?: string): HTMLElement | null {
+  const ref = asset.variants.find((v) => v.id === variant)?.ref ?? asset.ref;
+  if (!ref) return null;
+  const [x0, y0, x1, y1] = ref.box;
+  const [sw, sh] = ref.size ?? [1536, 1024];
   const w = x1 - x0;
   const h = y1 - y0;
   const fig = el('figure', 'st-ref');
   const img = el('div', 'st-refimg');
   Object.assign(img.style, {
     aspectRatio: `${w} / ${h}`,
-    backgroundImage: `url("${encodeURI(`/assets/angkor detail/${asset.ref.sheet}`)}")`,
-    backgroundSize: `${(1536 / w) * 100}% auto`,
-    backgroundPosition: `${(x0 / (1536 - w)) * 100}% ${(y0 / (1024 - h)) * 100}%`,
+    backgroundImage: `url("${encodeURI(`/assets/angkor detail/${ref.sheet}`)}")`,
+    backgroundSize: `${(sw / w) * 100}% auto`,
+    backgroundPosition: `${(x0 / (sw - w)) * 100}% ${(y0 / (sh - h)) * 100}%`,
   });
   fig.append(img);
-  if (caption) fig.append(el('figcaption', '', `Reference · ${asset.ref.sheet.split('/').pop()}`));
+  if (caption) fig.append(el('figcaption', '', `Reference · ${ref.sheet.split('/').pop()}`));
   return fig;
 }
 
@@ -342,7 +344,7 @@ async function assetPage(id: string): Promise<void> {
   const dims = el('div', 'st-dims', dimsOf(subject.bounds));
   mainBox.box.append(dims, el('div', 'st-hint', shot ? '' : 'drag to orbit · wheel to zoom · B to report'));
   const side = el('aside', 'st-side');
-  const ref = refCrop(asset);
+  const ref = refCrop(asset, true, variant);
   if (ref) side.append(ref);
   const three = el('div', 'st-three');
   for (const v of ['front', 'side', 'top'] as KitView[]) {

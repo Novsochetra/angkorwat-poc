@@ -14,6 +14,7 @@ import {
   Carver,
   centreSince,
   ellipsoid,
+  emitMoss,
   lowestSince,
   moveSince,
   part,
@@ -26,6 +27,7 @@ import {
   tagOf,
   type CellInfo,
   type CellLook,
+  type MossClump,
   type Part,
   type V3,
 } from './_statue';
@@ -35,7 +37,8 @@ import {
  * detailed Buddha sheet draws it (a stepped plinth of three courses, the
  * crossed legs a wide stepped lap, hands in meditation, broad shoulders with
  * the arms hanging clear of the chest, a head with tiers of curls, long
- * earlobes and closed, downcast eyes; moss on the tops), its fallen head; a
+ * earlobes and closed, downcast eyes; moss in clumps of little olive cubes on
+ * the tops and running down the faces), its fallen head; a
  * seated figure that lost its head; a guardian's torso; and a broken
  * pedestal among rubble.
  *
@@ -110,29 +113,33 @@ const mod5 = (n: number) => ((n % 5) + 5) % 5;
 // c = floor(2|x|), zc = floor(2z) (the cheek's own cell is zc = -1; 0 and 1 stand proud).
 
 /** Half-width of each row (cells), chin → crown: the jaw narrowing to the chin, a square skull; rows 10 up are the tiers of curls. */
-const HEAD_W = [2, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 2];
+const HEAD_W = [2, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 2];
 /** Back of each row (cells behind the cheek plane). */
-const HEAD_BACK = [-7, -8, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -8, -7];
+const HEAD_BACK = [-7, -8, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -9, -8, -7];
 /** Front of the tiers (rows 10 up; cells in front of it are empty): flush with the forehead band, then set back. */
-const TIER_FRONT = [1, 1, 0, -2];
+const TIER_FRONT = [1, 1, 0, -1, -2];
+/** How far the back corners of each tier are rounded (cells): a dome rising to the topknot. */
+const TIER_ROUND = [3, 3, 3, 2, 1];
 /**
  * Face relief, right half (mirrored), columns from the axis out: cells in
  * front of the cheek plane per row (0 = flush, -1 = receding); `E` marks the
- * dark eye slits, `L` the line of the lips, `S` half shade beside the nose
- * and at the corners, `B` the forehead band, `x` outside the face. The band
- * stands a cell proud and its lower edge is the brow ridge, two cells over
- * the lids, so it casts a band of shade over the eyes.
+ * eye slits, `L` the mouth, `S` half shade, `B` the forehead band, `x`
+ * outside the face. As the sheet draws it: a square chin, the mouth a dark
+ * line, broad flat cheeks, a long nose standing three cells proud at its tip,
+ * closed eyes as slits under a brow ridge that shades them, and the band over
+ * it. (A nostril wing beside the tip, one cell proud, renders as a dark hole:
+ * the tip stands alone.)
  */
 const FACE_ROWS: string[] = [
   '+0 +0 x  x  x ', // chin
-  '+1 +1 +0 +0 x ', // full lower lip over the square jaw
-  '1L 1L 0S +0 x ', // the line of the lips, cut into their face
-  '+1 +1 +0 +0 -1', // upper lip, the corners turned up in a smile
-  '+1 1S +0 +0 -1', // the nose's underside over the shaded nostril wings
-  '+2 +0 +0 +0 -1', // nose tip, cheeks
-  '+2 -1E -1E -1E +0', // closed eyes, downcast: long dark slits under the lids
-  '+1 +0 +0 +0 +0', // heavy lids, the nose rising to the brow
-  '+1B +1B +1B +1B +0B', // brow ridge: the band's lower edge
+  '+0 +0 +0 +0 x ', // lower lip over the square jaw
+  '0L 0L +0 +0 x ', // the mouth: a dark line across the lips
+  '+0 +0 +0 +0 +0', // upper lip; the jaw widening to the cheeks
+  '+3 +0 +0 +0 +0', // nose tip; cheeks
+  '+3 +0 +0 +0 +0', // the long nose; lower lids
+  '+2 -1E -1E -1E +0', // closed eyes, downcast: long slits between the lids
+  '+2 +1 +1 +1 +1', // the brow ridge over the eyes, the nose rising to it
+  '+1B +1B +1B +1B +1B', // forehead band
   '+1B +1B +1B +1B +1B', // forehead band under the curls
 ];
 const FACE_REL = FACE_ROWS.map((row) => row.trim().split(/\s+/).map((s) => (s[0] === 'x' ? null : s[0] === '-' ? -Number(s[1]) : Number(s[0] === '+' ? s[1] : s[0]))));
@@ -151,18 +158,38 @@ function hairAt(r: number, c: number, zc: number): boolean {
 }
 
 /**
- * Long ears standing two cells out from the sides, behind the cheeks: a rim
- * round a dark hollow, and the long lobe hanging free of the jaw nearly to
- * the chin.
+ * Long ears standing clear of the face, as the sheet's front view draws them:
+ * flat panels two cells wide from the brow down to the nose, joined to the
+ * skull by a root set a cell further back (a column of shade between face
+ * and ear), a dark hollow opening to the side, and the long lobe hanging
+ * free of the jaw.
  */
 function ear(r: number, c: number, zc: number): Part {
-  if (c > 6 || zc < -7 || zc > -5) return 0;
+  if (c < 5 || c > 7 || zc < -8 || zc > -5) return 0;
   if (r >= 4 && r <= 8) {
+    if (c === 5) return zc <= -6 ? part(STONE, EAR) : 0;
+    if (zc < -7) return 0;
     const hollow = r >= 5 && r <= 7 && zc === -6;
-    if (c === 6) return hollow ? 0 : part(STONE, EAR);
-    return c === 5 ? part(hollow ? DARK : STONE, EAR) : 0;
+    if (c === 7) return hollow ? 0 : part(STONE, EAR);
+    return part(hollow ? DARK : STONE, EAR);
   }
-  return c === 5 && r >= 1 && r <= 3 && zc === -6 ? part(STONE, EAR) : 0;
+  return c === 6 && r >= 1 && r <= 3 && zc === -6 ? part(STONE, EAR) : 0;
+}
+
+/**
+ * A curl of the hair: a lump two cells wide and deep (or one), one tall, the
+ * lumps of each tier set half a lump over from the tier below, so the hair
+ * reads as rows of uneven knobs rather than a grid; neighbouring lumps are
+ * different stones and meet in a seam.
+ */
+function curlAt(x: number, r: number, zc: number): Part {
+  const o = r & 1;
+  const cx = Math.floor(x * 2) + o;
+  let lx = Math.floor(cx / 2);
+  const lz = Math.floor((zc + o) / 2);
+  // Some lumps are two curls of one cell each, so the knobs vary in size.
+  if (hash3(lx, r, lz, 5) < 0.4) lx = 2 * lx + (cx & 1) + 1000;
+  return part(HAIR, CURL + mod5(lx + 2 * r + 3 * lz));
 }
 
 /**
@@ -170,8 +197,8 @@ function ear(r: number, c: number, zc: number): Part {
  * square face under a forehead band whose lower edge is the brow ridge, the
  * eyes closed and downcast under heavy lids, a long straight nose, full lips
  * with the corners turned up, a narrow chin; long earlobes; and the
- * hair as tiers of curls stepping in to the topknot — `ushnisha` of its top
- * two rows are left (0‥2; the topknot is the first thing to break). More
+ * hair as five tiers of curls rising in a dome to the topknot — `ushnisha` of
+ * its top two rows are left (0‥2; the topknot is the first thing to break). More
  * curls are grown afterwards ({@link growCurls}).
  */
 function buddhaHead(ushnisha: number): Fn {
@@ -179,16 +206,16 @@ function buddhaHead(ushnisha: number): Fn {
     const r = Math.floor(y * 2);
     const c = Math.floor(Math.abs(x) * 2);
     const zc = Math.floor(z * 2);
-    if (r < 0 || r >= FACE_ROWS.length + 2 + ushnisha) return 0;
+    if (r < 0 || r >= FACE_ROWS.length + 3 + ushnisha) return 0;
     const w = HEAD_W[r];
     if (c >= w) return ear(r, c, zc);
-    const curl = part(HAIR, CURL + mod5(Math.floor(x * 2) + 2 * r + 3 * zc));
+    const curl = curlAt(x, r, zc);
     if (r >= FACE_ROWS.length) {
       // A tier: set in from the one below, the upper ones rounded at all four corners.
       const t = r - FACE_ROWS.length;
       const front = TIER_FRONT[t];
-      if (!inSkull(c, zc, w, HEAD_BACK[r], front, [3, 3, 2, 1][t])) return 0;
-      return t >= 2 && c === w - 1 && (zc === front - 1 || zc === HEAD_BACK[r]) ? 0 : curl;
+      if (!inSkull(c, zc, w, HEAD_BACK[r], front, TIER_ROUND[t])) return 0;
+      return t >= 3 && c === w - 1 && (zc === front - 1 || zc === HEAD_BACK[r]) ? 0 : curl;
     }
     if (zc >= -3) {
       const rel = FACE_REL[r][c] ?? -3;
@@ -201,21 +228,27 @@ function buddhaHead(ushnisha: number): Fn {
 }
 
 /**
- * Snail-shell curls: every hair cell is a little cube of its own (see
- * {@link buddhaHead}), and here some stand a cell out, on every other row
- * down the back (a few on the sides), so the back of the head shows the
- * sheet's rows. The tiers' tops stay level and the hairline flush over the
- * forehead band, so the head keeps its clean stepped outline.
+ * Snail-shell curls: the hair is lumps (see {@link curlAt}), and here some
+ * whole lumps stand a cell out — every other row down the back, fewer on the
+ * sides and over the forehead — so the outline of the head is knobbly, as the
+ * sheet draws it. The tiers' tops stay level.
  */
-function growCurls(c: Carver): void {
-  const n = (v: number) => Math.floor((v * c.unit * 2) / TEXEL + 1e-6);
+function growCurls(c: Carver, headY: number): void {
+  /** x and z steps of the six sides (±x, ±y, ±z). */
+  const STEP = [1, -1, 0, 0, 0, 0].map((dx, n) => [dx, n === 4 ? 1 : n === 5 ? -1 : 0]);
+  const cell = c.cell / c.unit;
   c.grow(
     (p) => tagOf(p) === HAIR,
     (x, y, z, side, from) => {
-      if (side === 4) return 0;
-      const [i, j, k] = [n(x), n(y), n(z)];
-      const h = hash3(i, j, k, 23);
-      return side !== 2 && j % 2 === 0 && h < (side === 5 ? 0.35 : 0.15) ? from : 0;
+      if (side === 2) return 0;
+      // The lump grown from (as curlAt lays them, `headY` being the head's
+      // y = 0 in the carver's design units), so a whole lump stands out.
+      const j = Math.floor((y - headY) * 2 + 1e-6);
+      const [dx, dz] = STEP[side];
+      const lump = (v: number) => Math.floor((Math.floor(v * 2 + 1e-6) + (j & 1)) / 2);
+      const h = hash3(lump(x - dx * cell) * 7 + side, j, lump(z - dz * cell), 23);
+      const chance = side === 5 ? (j % 2 === 0 ? 0.5 : 0.1) : side === 4 ? 0.22 : 0.3;
+      return h < chance ? from : 0;
     },
   );
 }
@@ -494,21 +527,24 @@ const BUDDHA_H = 21 * TEXEL;
  */
 const PLINTH = { hw: 8.5, hd: 5, course: 1.5, step: 0.5 };
 /** Chin above the seat, and the cheek plane (z); the neck's axis (head-local z) and radius. */
-const CHIN = 9.5;
+const CHIN = 9;
 const FACE = 2;
 const NECK_HZ = -2.4;
-const NECK_R = 1.25;
+const NECK_R = 1.4;
 
 /**
  * The Buddha sheet's colours, sampled off its lit faces (measure.py) and put
  * through fromSheet: the figure a warm pink-tan (chest plates, forehead band,
- * back plates), the plinth a darker, yellower brown, the moss a bright
- * yellow-olive on the tops and a darker olive where it runs down the faces.
+ * back plates) in close tones, the plinth a darker, yellower tan, the moss a
+ * lit olive-yellow on the tops of its clumps and a dark olive on their sides
+ * and where it grows down the faces (#68611e, #5f5d21 on the sheet).
  */
-const BUDDHA_STONE = [0xc49a74, 0xbc906d, 0xc29470, 0xb58b68, 0xbf9369, 0xb08360].map(fromSheet);
-const BUDDHA_BASE = [0x967250, 0x8d6b48, 0x9b7859, 0xa17a57, 0x8a6c43].map(fromSheet);
-const BUDDHA_MOSS = [0xa7932f, 0x918328, 0xaf9434, 0x9a8a2c, 0x918328].map(fromSheet);
-const BUDDHA_MOSS_SIDE = [0x918328, 0x7d7222, 0x6d6723, 0x8e8026].map(fromSheet);
+const BUDDHA_STONE = [0xcca27b, 0xc49874, 0xca9c77, 0xc0946f, 0xc79b70].map(fromSheet);
+const BUDDHA_BASE = [0x9c7a50, 0x94744a, 0xa27f56, 0xa4805a, 0x91734a].map(fromSheet);
+const BUDDHA_MOSS = [0x8a7e36, 0x837a32, 0x90843a, 0x7c7430, 0x877c36].map(fromSheet);
+const BUDDHA_MOSS_SIDE = [0x625e24, 0x5a5822, 0x66612a, 0x6c6628].map(fromSheet);
+/** The plinth's pattern: a little grime and moss, no heavy streaks (the sheet's blocks are clean). */
+const PLINTH_SURF = { top: stoneSurf({ moss: 0.12, stain: 0.08, lichen: 0.1, crack: 0.04 }), low: stoneSurf({ moss: 0.16, stain: 0.18, lichen: 0.08, crack: 0.04 }) };
 
 /**
  * The body in the sheet's chunky blocks (body-local texels): the crossed legs
@@ -529,17 +565,17 @@ function buddhaBody(): Fn {
   const shins = box([0, 0.95, 3.05], [4.8, 0.95, 1.1], 0.35);
   const lap = box([0, 1.5, 1.2], [3.2, 0.45, 2.2], 0.2);
   const waist = box([0, 4.0, -0.75], [2.9, 2.0, 1.7], 0.5);
-  const belly = box([0, 4.75, 0.9], [1.3, 0.7, 0.55], 0.2);
-  const chest = box([0, 7.05, -0.75], [3.1, 1.45, 1.7], 0.4);
-  const sternum = box([0, 6.5, 1.2], [0.45, 0.95, 0.3]);
-  const pec = box([1.65, 6.5, 1.3], [1.35, 0.95, 0.5], 0.2);
-  const yoke = box([0, 8.0, -0.75], [3.6, 0.45, 1.7], 0.2);
-  const blade = box([1.6, 6.9, -2.75], [1.45, 1.0, 0.2], 0.1);
+  const belly = box([0, 4.5, 0.9], [1.6, 0.75, 0.6], 0.3);
+  const chest = box([0, 6.35, -0.75], [3.1, 1.4, 1.7], 0.4);
+  const sternum = box([0, 6.0, 1.2], [0.45, 0.9, 0.3]);
+  const pec = box([1.65, 6.1, 1.3], [1.35, 0.95, 0.55], 0.35);
+  const yoke = box([0, 7.3, -0.75], [3.5, 0.45, 1.7], 0.2);
+  const blade = box([1.6, 6.3, -2.75], [1.45, 1.0, 0.2], 0.1);
   const spine = box([0, 4.6, -2.75], [1.8, 1.2, 0.2], 0.1);
-  const armpit = box([3.4, 6.3, -0.75], [0.6, 1.6, 0.2]);
-  const shoulder = box([5.1, 7.75, -1.1], [1.7, 0.7, 1.45], 0.4);
-  const upper = box([5.1, 5.95, -1.05], [1.45, 1.35, 1.4], 0.35);
-  const fore = bar([5.0, 4.9, -0.6], [2.6, 3.3, 2.7], 0.95, 0.85, 0.3);
+  const armpit = box([3.3, 5.8, -0.75], [0.6, 1.4, 0.2]);
+  const shoulder = box([4.9, 7.05, -1.1], [1.7, 0.7, 1.45], 0.5);
+  const upper = box([4.95, 5.4, -1.05], [1.4, 1.35, 1.4], 0.45);
+  const fore = bar([4.9, 4.4, -0.6], [2.6, 3.3, 2.7], 0.95, 0.85, 0.3);
   const handL = box([0, 2.5, 2.5], [2.6, 0.45, 1.15], 0.2);
   const handR = box([0, 3.25, 2.5], [2.1, 0.2, 0.95], 0.1);
   const thumbs = box([0, 3.75, 2.25], [0.95, 0.2, 0.7], 0.1);
@@ -578,23 +614,24 @@ function buddhaBody(): Fn {
       take(upper(ax, y, z), R ? ARM_R : ARM_L);
     }
     if (!stone) return 0;
-    // The big stones are laid up of blocks, like the sheet's figure.
-    if (BLOCKED.has(stone)) stone = blockOf(stone, x, y, z, stone === ARM_R || stone === ARM_L ? 9 : 2);
+    // The legs and lap are laid up of blocks, like the sheet's figure; the
+    // chest, belly, shoulders and arms are single big stones.
+    if (BLOCKED.has(stone)) stone = blockOf(stone, x, y, z, 4, 1.5);
     return part(tag, stone);
   };
 }
 
 /** Stones of the Buddha built up of blocks (see {@link blockOf}). */
-const BLOCKED = new Set([HIPS, LEG_R, LEG_L, SHIN, LOW_SHIN, LAP, WAIST, YOKE, ARM_R, ARM_L]);
+const BLOCKED = new Set([HIPS, LEG_R, LEG_L, SHIN, LOW_SHIN, LAP]);
 
 /**
  * One block of a big stone: the stone split into blocks `w` texels wide and
- * deep and 1.5 tall in a running bond. Each block is a stone of its own (its
- * kind in the low six bits, {@link kind}), so the blocks meet in seams and
- * each takes a shade of its own.
+ * deep and `course` tall in a running bond. Each block is a stone of its own
+ * (its kind in the low six bits, {@link kind}), so the blocks meet in seams
+ * and each takes a shade of its own.
  */
-function blockOf(st: number, x: number, y: number, z: number, w: number): number {
-  const row = Math.floor(y / 1.5);
+function blockOf(st: number, x: number, y: number, z: number, w: number, course: number): number {
+  const row = Math.floor(y / course);
   const o = ((row & 1) * w) / 2;
   const b = (Math.floor((x + o) / w) * 7 + Math.floor((z + o) / w) * 3 + row * 5) & 15;
   return st | ((b + 1) << 6);
@@ -613,7 +650,7 @@ function buddhaFn(ushnisha: number): Fn {
       if (h) return h;
     }
     // A short round neck, set back under the chin.
-    if (y >= 8 && y < CHIN + 2 && Math.hypot(x, z - FACE - NECK_HZ) < NECK_R) return part(STONE, NECK);
+    if (y >= 7.4 && y < CHIN + 2 && Math.hypot(x, z - FACE - NECK_HZ) < NECK_R) return part(STONE, NECK);
     return y < CHIN ? body(x, y, z) : 0;
   };
 }
@@ -637,14 +674,14 @@ function buddhaPlinth(set: BlockSet, s: number, seed: number): number {
       axis,
       palette: BUDDHA_BASE,
       // The lowest course grimier, moss creeping up from the soil.
-      style: (_id: number, c: number) => ({ surf: y0 + c === 0 ? PROP_SURF.low : PROP_SURF.top, broken: PROP_BROKEN }),
+      style: (_id: number, c: number) => ({ surf: y0 + c === 0 ? PLINTH_SURF.low : PLINTH_SURF.top, broken: PROP_BROKEN }),
       seed: seed + n * 11 + k * 3,
     });
     masonry(set, t(x0), t(y0), t(z1 - skin), t(x1), t(y1), t(z1), opts('x', 0));
     masonry(set, t(x0), t(y0), t(z0), t(x1), t(y1), t(z0 + skin), opts('x', 1));
     masonry(set, t(x0), t(y0), t(z0 + skin), t(x0 + skin), t(y1), t(z1 - skin), opts('z', 2));
     masonry(set, t(x1 - skin), t(y0), t(z0 + skin), t(x1), t(y1), t(z1 - skin), opts('z', 3));
-    set.add(t(x0 + skin), t(y0), t(z0 + skin), t(x1 - skin), t(y1), t(z1 - skin), BUDDHA_BASE[0], { surf: PROP_SURF.top });
+    set.add(t(x0 + skin), t(y0), t(z0 + skin), t(x1 - skin), t(y1), t(z1 - skin), BUDDHA_BASE[0], { surf: PLINTH_SURF.top });
   };
   lay(0, 0, 2, 0);
   lay(step, 2 * course, 1, 1);
@@ -652,16 +689,17 @@ function buddhaPlinth(set: BlockSet, s: number, seed: number): number {
 }
 
 /**
- * Moss on the plinth as the sheet draws it: yellow-olive felt (half-cell
- * slabs) along the top edges, on the ledge of the step and at the foot of the
- * figure, and hanging a cell over the mossiest edges.
+ * Moss on the plinth as the sheet draws it: clumps of little olive cubes, each
+ * as high as it grew (a whole cube in the middle of a patch, two stacked
+ * where it is thickest), along the top edges, on the ledge of the step and at
+ * the foot of the figure, and hanging a cell over the mossiest edges.
  */
 function plinthMoss(p: PieceBuilder, set: BlockSet, figure: Carver, seed: number): void {
   const c = TEXEL / 2;
   const r = rng(seed * 13 + 5);
   const solid = (x: number, y: number, z: number) => set.solidAt(x, y, z) || figure.occupies(x, y, z);
   const grid = (cell: V3) => p.voxels.grid({ cell, origin: [0, 0, 0], mat: 'leaves', jitter: 0.1, ao: 0.25, seed });
-  const tops = grid([c, c / 2, c]);
+  const clumps: MossClump[] = [];
   const faceX = grid([c / 2, c, c]);
   const faceZ = grid([c, c, c / 2]);
   const sides: [number, number][] = [
@@ -682,11 +720,14 @@ function plinthMoss(p: PieceBuilder, set: BlockSet, figure: Carver, seed: number
         const edge = sides.find(([dx, dz]) => !solid(x + dx * c, y - c / 2, z + dz * c));
         const foot = sides.some(([dx, dz]) => solid(x + dx * c, y + c / 2, z + dz * c));
         const n = valueNoise3(x * 6, y * 3, z * 6, seed + 29) * 0.8 + r() * 0.2;
-        const cover = 0.2 + (edge ? 0.28 : 0) + (foot ? 0.2 : 0);
+        const cover = 0.16 + (edge ? 0.24 : 0) + (foot ? 0.2 : 0);
         if (n >= cover) continue;
-        tops.set(i, j, k, tone(BUDDHA_MOSS, i, j, k, seed));
-        // Thick in the middle of a patch: a whole cube of it.
-        if (n < cover - 0.14) tops.set(i, j + 1, k, tone(BUDDHA_MOSS, i, j + 1, k, seed));
+        // Half a cube at the rim of a patch, a whole one in its middle, a second on top where it is thickest.
+        const h = hash3(i, j, k, seed + 3);
+        const jc = Math.round(y / c);
+        const whole = n < cover - 0.08;
+        clumps.push({ i, j: jc, k, x, y, z, h: whole ? 1 : 0.5, color: tone(h < 0.6 ? BUDDHA_MOSS_SIDE : BUDDHA_MOSS, i, j, k, seed), shade: 0.92 + h * 0.12 });
+        if (n < cover - 0.22) clumps.push({ i, j: jc + 1, k, x, y: y + c, z, h: 0.5, color: tone(BUDDHA_MOSS, i, j + 1, k, seed), shade: 1.02 });
         if (!edge || n > cover - 0.2) continue;
         // Over the edge: a lip of it down the face.
         const [dx, dz] = edge;
@@ -697,7 +738,7 @@ function plinthMoss(p: PieceBuilder, set: BlockSet, figure: Carver, seed: number
         else faceZ.set(i, jj, dz > 0 ? 2 * k + 2 : 2 * k - 1, color);
       }
   }
-  tops.commit();
+  emitMoss(p.voxels, c, clumps);
   faceX.commit();
   faceZ.commit();
 }
@@ -718,17 +759,18 @@ function buddhaMoss(seed: number, seatD: number) {
     else if (st === HAND_R || st === HAND_L) boost = -0.3;
     else if (st === WAIST && c.z > 0 && y < 4) boost = 0.45;
     else if (y < 3.1) boost = 0.15;
-    else if (y > 7.4) boost = 0.25;
+    else if (y > 7.0) boost = 0.25;
     const n = valueNoise3(c.x * 0.33, c.y * 0.33, c.z * 0.33, seed + 17);
     return Math.max(0, Math.min(1, (n - 0.4) * 1.5 + boost));
   };
 }
 
 /**
- * The Buddha's stone: the sheet's warm tan in blotches, each block (and each
- * curl) a shade of its own, dark eyes and carved lines, warm rough breaks.
- * Moss lies as mats on the broad tops and, where it is thickest, wraps over
- * the edge and a cell down the face as the sheet's green cubes.
+ * The Buddha's stone: the sheet's warm tan mottled cell by cell in close
+ * tones, each block (and each curl) a shade of its own but only just, the eye
+ * slits and mouth dark brown (not black), warm rough breaks. Moss grows as
+ * clumps of little cubes on the broad tops and, where it is thickest, wraps
+ * over the edge and a cell down the face as the sheet's dark olive cubes.
  */
 function buddhaLook(seed: number, moss: (c: CellInfo) => number): (c: CellInfo) => CellLook {
   return (c) => {
@@ -736,22 +778,32 @@ function buddhaLook(seed: number, moss: (c: CellInfo) => number): (c: CellInfo) 
     const k = kind(c.part);
     const tg = tagOf(c.part);
     const m = moss(c);
-    const cushion = c.top && !c.scar && m * (0.35 + 0.65 * c.sky) > 0.38 ? tone(BUDDHA_MOSS, c.i, c.j, c.k, seed) : undefined;
+    const h = hash3(c.i, c.j, c.k, seed + 29);
+    const mossy = c.top && !c.scar && m * (0.35 + 0.65 * c.sky) > 0.44;
+    // Clumps: a whole cube where the moss is thick, lower towards the rim of a patch.
+    const cushion = mossy ? tone(h < 0.55 ? BUDDHA_MOSS_SIDE : BUDDHA_MOSS, c.i, c.j, c.k, seed) : undefined;
+    const cushionH = mossy ? (m > 0.72 ? 1 : 0.5) : undefined;
+    // Where it is thick it grows over the edge and down the face in ragged
+    // tongues, a cell or three, as the sheet's olive cubes on the fronts.
     const face = c.open & 0b110011;
-    if (face && !c.scar && (c.under === 0 ? cushion !== undefined && m > 0.6 : c.under === 1 && m > 0.82)) {
-      return { color: tone(c.under ? BUDDHA_MOSS_SIDE : BUDDHA_MOSS, c.i, c.j, c.k, seed + 1), mat: 'leaves', surf: [0, 0.35, 0, 0], cushion };
+    const down = [mossy ? 0.5 : 9, 0.6, 0.72, 0.84][c.under] - (h - 0.5) * 0.16;
+    if (face && !c.scar && tg !== EYE && m > down) {
+      return { color: tone(BUDDHA_MOSS_SIDE, c.i, c.j, c.k, seed + 1), mat: 'leaves', surf: [0, 0, 0, 0], cushion, cushionH };
     }
-    let color = mul(blotch(BUDDHA_STONE, c.x, c.y, c.z, seed + st * 13), 0.9 + hash3(st, seed, 5) * 0.2);
-    if (tg === DARK) color = mul(color, 0.45);
-    else if (tg === EYE) color = mul(color, 0.45);
-    else if (tg === LINE) color = mul(color, 0.6);
+    let color = mul(blotch(BUDDHA_STONE, c.x, c.y, c.z, seed + st * 13, 0.7), 0.96 + hash3(st, seed, 5) * 0.08);
+    if (tg === DARK) color = mul(color, 0.5);
+    else if (tg === EYE) color = mul(color, 0.62);
+    else if (tg === LINE) color = mul(color, 0.5);
     else if (tg === SHADE) color = mul(color, 0.8);
-    else if (tg === BAND) color = mul(color, 1.05);
+    else if (tg === BAND) color = mul(color, 1.04);
     if (c.scar && tg !== DARK) color = tone(PROP_BROKEN, c.i, c.j, c.k, seed);
     const fine = k === HEAD || k === BROW || k === HAND_R || k === HAND_L;
     // The ears stand in the head's shade; lift them so they read lit, as drawn.
     // The face and hands keep a clean skin: no dark streaks across the features.
-    return { color, cushion, shade: k === EAR ? 1.15 : 1, surf: stoneSurf({ moss: c.scar ? 0 : m * 0.2, lichen: fine ? 0.05 : 0.1, stain: fine ? 0.05 : 0.28 }) };
+    // The face keeps little of the crevice shade, so its features read as the sheet's
+    // (dark only in the slits, not round the nose and lips).
+    const features = k === HEAD || k === BROW;
+    return { color, cushion, cushionH, cavity: features && tg !== EYE && tg !== LINE ? 0.35 : 1, shade: k === EAR ? 1.15 : 1, surf: stoneSurf({ moss: c.scar ? 0 : m * 0.15, lichen: fine ? 0.04 : 0.06, stain: fine ? 0.03 : 0.08 }) };
   };
 }
 
@@ -772,16 +824,16 @@ function buddha(p: PieceBuilder, seed: number, height?: number): void {
   const local: Fn = (x, y, z) => fn(x, y - seatD, z);
   const body = new Carver(TEXEL / 2, [0, 0, 0], u);
   body.add([-7.5, seatD, -5], [7.5, seatD + CHIN, 4.5], local);
-  body.add([-3.6, seatD + CHIN, -3.2], [3.6, seatD + CHIN + 7, 3.2], local);
+  body.add([-4.2, seatD + CHIN, -3.2], [4.2, seatD + CHIN + 7.5, 3.2], local);
   body.ghost([-hw, seatD - 1, -hd], [hw, seatD, hd]);
-  growCurls(body);
+  growCurls(body, seatD + CHIN);
   // Weathering: a bite out of a shoulder, chipped edges; the face, ears, hands and curls kept crisp.
   body.bite([r.chance(0.5) ? 6.2 : -6.2, seatD + 8.6, -1.6], 0.8 + r() * 0.3, seed + 9);
-  const crisp = [HEAD, BROW, EAR, HAND_R, HAND_L];
+  const crisp = [HEAD, BROW, EAR, HAND_R, HAND_L, FORE_R, FORE_L];
   body.chip(0.06, seed + 11, (_x, _y, _z, q) => tagOf(q) !== HAIR && !crisp.includes(kind(q)));
   body.prune();
   const look = buddhaLook(seed, buddhaMoss(seed, seatD));
-  body.emit(p.voxels, look, { seed });
+  body.emit(p.voxels, look, { seed, round: 0.2 });
   plinthMoss(p, set, body, seed);
   // The pieces of the broken corner lie piled against the plinth below it.
   const box3 = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => p.collider(x0 * u, y0 * u, z0 * u, x1 * u, y1 * u, z1 * u);
@@ -789,8 +841,8 @@ function buddha(p: PieceBuilder, seed: number, height?: number): void {
   box3(-hw + 0.4, 0, hd, -hw + 5.2, 3.8, hd + 2.5);
   box3(-hw, 0, -hd, hw, seatD, hd);
   box3(-7, seatD, -3.5, 7, seatD + 3, 4); // lap
-  box3(-6.5, seatD + 3, -3, 6.5, seatD + 8.5, 3.5); // trunk, arms and hands
-  box3(-3.5, seatD + 8.5, -3, 3.5, seatD + CHIN + 7, 3); // neck and head
+  box3(-6.5, seatD + 3, -3, 6.5, seatD + 8, 3.5); // trunk, arms and hands
+  box3(-3.5, seatD + 8, -3, 3.5, seatD + CHIN + 7.5, 3); // neck and head
 }
 
 /**
@@ -875,10 +927,10 @@ function fallenHead(p: PieceBuilder, seed: number): void {
   // Upright on the broken neck, chin a hand's breadth off the ground.
   const hy = 1.5;
   fine.add([-4, 0, -5.5], [4, 9, 1.5], (x, y, z) => head(x, y - hy, z) || (y < hy + 2 && Math.hypot(x, z - NECK_HZ) < NECK_R ? part(STONE, HEAD) : 0));
-  growCurls(fine);
+  growCurls(fine, hy);
   // The neck broke off unevenly.
   fine.cut((x, y, z) => y < 0.6 + valueNoise3(x * 0.9, z * 0.9, 3, seed) * 1.1 && z < -1);
-  if (r.chance(0.6)) fine.bite([r.chance(0.5) ? 2.8 : -2.8, hy + 1.2, -2.8], 0.8, seed + 7); // a chipped earlobe
+  if (r.chance(0.6)) fine.bite([r.chance(0.5) ? 3.2 : -3.2, hy + 1.2, -2.8], 0.8, seed + 7); // a chipped earlobe
   fine.prune();
   const look = statueLook(seed, mossPatches(seed, (c) => (c.top && hash3(c.i, c.j, c.k, seed + 41) < 0.03 ? 1 : -9)));
   const start = p.voxels.boxes.length;
@@ -1028,12 +1080,13 @@ export default defineKitAsset({
   name: 'Broken statue',
   caption: 'Damaged statues (Buddha, deity, guardian, etc).',
   size: {
-    real: 'seated Buddha 1.31 m on a 0.28 m plinth of three courses, 1.06 × 0.63 m (head 0.44 m chin to topknot, shoulders 0.81 m and lap 0.88 m wide); guardian torso 0.9 m',
+    real: 'seated Buddha 1.31 m on a 0.28 m plinth of three courses, 1.06 × 0.63 m (head 0.47 m chin to topknot, shoulders 0.83 m and lap 0.88 m wide); guardian torso 0.9 m',
     sheet: 'not given',
-    note: 'Khmer seated Buddhas of the Angkor Wat period are about life size, 1.2–1.4 m with the pedestal; a dvarapala guardian is ~1.8 m whole, so its torso fragment is ~0.9 m. The Buddha sheet gives no size either: its head is a third of the height and its base a fifth, so at a 0.44 m head the statue comes to 1.3 m.',
+    note: 'Khmer seated Buddhas of the Angkor Wat period are about life size, 1.2–1.4 m with the pedestal; a dvarapala guardian is ~1.8 m whole, so its torso fragment is ~0.9 m. The Buddha sheet gives no size either: its head is a third of the height and its base a fifth, so at a 0.47 m head the statue comes to 1.3 m.',
   },
   variants: [
-    { id: 'buddha', name: 'Seated Buddha' },
+    // The Buddha has a detailed sheet of its own (front, side and back views).
+    { id: 'buddha', name: 'Seated Buddha', ref: { sheet: 'section 20/ChatGPT Image Sep 24, 2026, 09_43_55 AM.png', box: [20, 70, 525, 695], size: [1342, 1172] } },
     { id: 'head', name: 'Fallen head' },
     { id: 'headless', name: 'Headless figure' },
     { id: 'torso', name: 'Guardian torso' },

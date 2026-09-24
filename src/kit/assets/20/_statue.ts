@@ -177,6 +177,13 @@ export interface CellLook {
   shade?: number;
   /** A mat of moss on the cell's top face: its colour (sheet olive). */
   cushion?: number;
+  /**
+   * The moss as a clump of its own this high (share of the cell) instead of a
+   * thin mat merged with its neighbours: a bumpy cover of little cubes.
+   */
+  cushionH?: number;
+  /** Scale of the crevice shading on this cell (default 1; lower keeps carved features readable). */
+  cavity?: number;
 }
 
 /** The 26 neighbours of a cell: offsets and the weight of each in the exposure (faces, edges, corners). */
@@ -548,14 +555,17 @@ export class Carver {
    * both per texel so half-texel cells don't speckle. On top of that a
    * `cavity` term darkens stone that is hemmed in within ~9 cm (armpits,
    * under the chin, between the legs) the way the sheet's renders shade
-   * their crevices, and lifts the rounded edges a little.
+   * their crevices, and lifts the rounded edges a little. `round` (share of
+   * the cell) rounds each stone's outer edges more than the family's bevel,
+   * so they catch the light like soft, worn blocks.
    */
-  emit(b: VoxelBuilder, look: (c: CellInfo) => CellLook, o: { jitter?: number; ao?: number; cavity?: number; seed?: number } = {}): void {
+  emit(b: VoxelBuilder, look: (c: CellInfo) => CellLook, o: { jitter?: number; ao?: number; cavity?: number; seed?: number; round?: number } = {}): void {
     const jitter = o.jitter ?? 0.02;
     const ao = o.ao ?? 0.4;
     const cavity = o.cavity ?? 0.9;
     const seed = o.seed ?? 1;
     const c = this.cell;
+    const radius = o.round ? o.round * c : undefined;
     if (!this.cells.size) return;
     const reach = Math.max(1, Math.round(0.09 / c));
     const { d, hemmed } = this.field(reach);
@@ -564,6 +574,7 @@ export class Carver {
     /** Occupancy of a cell on a flat wall. */
     const flat = (reach + 1) / (2 * reach + 1);
     const mats = new Map<number, [number, number, number, number, number]>();
+    const clumps: MossClump[] = [];
     for (const [kk, p] of this.cells) {
       const [i, j, k] = this.idx.get(kk)!;
       const q = d.at(i, j, k);
@@ -591,7 +602,7 @@ export class Carver {
       let shade = (1 + ao * Math.max(-0.7, Math.min(0.45, (exp / N26_TOTAL - 0.305) * 2))) * (seam ? 0.82 : 1);
       if (g[q + sy] && !g[q + 1] && g[q + sy + 1]) shade *= 1 - ao * 0.35;
       const hem = hemmed(q, reach) - flat;
-      shade *= hem > 0 ? 1 - cavity * Math.min(0.62, hem * 2.3) : 1 - cavity * Math.max(-0.1, hem * 0.35);
+      const cav = hem > 0 ? cavity * Math.min(0.62, hem * 2.3) : cavity * Math.max(-0.1, hem * 0.35);
       const wx = this.origin[0] + (i + 0.5) * c;
       const wy = this.origin[1] + (j + 0.5) * c;
       const wz = this.origin[2] + (k + 0.5) * c;
@@ -601,15 +612,20 @@ export class Carver {
       let under = 0;
       while (under < 3 && g[q + (under + 1) * sy]) under++;
       const l = look({ i, j, k, x, y, z, part: p, top: !g[q + sy], sky, scar, open, under });
+      shade *= 1 - cav * (l.cavity ?? 1);
       b.box(wx, wy, wz, c, c, c, l.color, l.mat ?? 'sandstone', {
         shade: shade * (l.shade ?? 1),
         open,
         merge,
         surf: l.surf,
+        radius,
         src: this.src,
       });
-      if (l.cushion !== undefined && open & 4) mats.set(kk, [wx, wy, wz, l.cushion, shade]);
+      if (l.cushion === undefined || !(open & 4)) continue;
+      if (l.cushionH) clumps.push({ i, j: j + 1, k, x: wx, y: wy + c / 2, z: wz, h: l.cushionH, color: l.cushion, shade });
+      else mats.set(kk, [wx, wy, wz, l.cushion, shade]);
     }
+    emitMoss(b, c, clumps, this.src);
     // Moss mats: thin slabs on the tops, merged with their neighbours into one cushion.
     const h = c * CUSHION;
     for (const [kk, [wx, wy, wz, color, shade]] of mats) {
@@ -618,6 +634,35 @@ export class Carver {
       const merge = m(1, 0, 1) | m(-1, 0, 2) | m(0, 1, 16) | m(0, -1, 32);
       b.box(wx, wy + c / 2 + h / 2, wz, c, h, c, color, 'leaves', { shade, open: 63 & ~merge & ~8, merge, surf: [0, 0.35, 0, 0], src: this.src });
     }
+  }
+}
+
+/** A cube of moss standing on a top: its cell (i, j, k), where its foot is (metres), its height (share of the cell). */
+export interface MossClump {
+  i: number;
+  j: number;
+  k: number;
+  x: number;
+  y: number;
+  z: number;
+  h: number;
+  color: number;
+  shade: number;
+}
+
+/**
+ * Moss clumps as cubes of the `leaves` family: neighbours of the same height
+ * merge into one block, the rest meet in a step, so a patch reads as the
+ * sheet's lumpy cover of little olive cubes.
+ */
+export function emitMoss(b: VoxelBuilder, c: number, clumps: MossClump[], src?: ReturnType<typeof traceSource>): void {
+  const at = new Map<number, number>();
+  for (const m of clumps) at.set(key(m.i, m.j, m.k), m.h);
+  for (const m of clumps) {
+    const same = (di: number, dk: number, bit: number) => (at.get(key(m.i + di, m.j, m.k + dk)) === m.h ? bit : 0);
+    const merge = same(1, 0, 1) | same(-1, 0, 2) | same(0, 1, 16) | same(0, -1, 32);
+    const h = m.h * c;
+    b.box(m.x, m.y + h / 2, m.z, c, h, c, m.color, 'leaves', { shade: m.shade, open: 63 & ~8 & ~merge, merge, surf: [0, 0, 0, 0], src });
   }
 }
 

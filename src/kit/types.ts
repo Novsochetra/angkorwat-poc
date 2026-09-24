@@ -38,6 +38,8 @@ export interface KitVariant {
   id: string;
   /** Label under the small render, e.g. "Patchy grass". */
   name: string;
+  /** The variant's own sheet crop, when it has a sheet of its own (else the asset's `ref`). */
+  ref?: KitRef;
 }
 
 export interface KitBuildOptions {
@@ -75,6 +77,8 @@ export interface KitRef {
   sheet: string;
   /** [x0, y0, x1, y1] in sheet pixels. */
   box: [number, number, number, number];
+  /** The sheet's size in pixels, when it is not the usual 1536 × 1024. */
+  size?: [number, number];
 }
 
 export interface KitAsset {
