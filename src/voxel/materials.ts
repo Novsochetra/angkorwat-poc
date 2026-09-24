@@ -81,8 +81,8 @@ export interface VoxelMaterialSpec {
    */
   relief?: number;
   /**
-   * Share of the specular reflection kept (sun highlight and environment,
-   * default 1). World materials keep little of it, so they read matte.
+   * Share of the specular reflection kept (sun highlight and environment).
+   * Default 0: blocks are matte like stone and cloth; only water shines (1).
    */
   specular?: number;
 }
@@ -100,30 +100,30 @@ export const VOXEL_MATERIALS = {
   krama: { roughness: 0.9, metalness: 0, bevel: 0.17, edgeTint: 0xf0a24c, edgeStrength: 0.5, edgeWidth: 0.6, grain: 0.1, grainScale: 22 },
   leather: { roughness: 0.66, metalness: 0, bevel: 0.13, edgeTint: 0xd48a45, edgeStrength: 0.55, edgeWidth: 0.6, grain: 0.14, grainScale: 26 },
   boot: { roughness: 0.64, metalness: 0, bevel: 0.13, edgeTint: 0xc97a3a, edgeStrength: 0.55, edgeWidth: 0.6, grain: 0.14, grainScale: 24 },
-  metal: { roughness: 0.55, metalness: 0.12, bevel: 0.13, edgeTint: 0xc9c7c3, edgeStrength: 0.38, edgeWidth: 0.7, grain: 0.07, grainScale: 22 },
-  brass: { roughness: 0.32, metalness: 0.75, bevel: 0.14, edgeTint: 0xffe2a0, edgeStrength: 0.35, grain: 0.03, grainScale: 18 },
-  lens: { roughness: 0.12, metalness: 0.2, bevel: 0.12, edgeTint: 0x000000, edgeStrength: 0, grain: 0, grainScale: 1 },
+  metal: { roughness: 0.55, metalness: 0, bevel: 0.13, edgeTint: 0xc9c7c3, edgeStrength: 0.38, edgeWidth: 0.7, grain: 0.07, grainScale: 22 },
+  brass: { roughness: 0.32, metalness: 0, bevel: 0.14, edgeTint: 0xffe2a0, edgeStrength: 0.35, grain: 0.03, grainScale: 18 },
+  lens: { roughness: 0.12, metalness: 0, bevel: 0.12, edgeTint: 0x000000, edgeStrength: 0, grain: 0, grainScale: 1 },
   wood: { roughness: 0.8, metalness: 0, bevel: 0.14, edgeTint: 0xc98a52, edgeStrength: 0.35, grain: 0.09, grainScale: 12 },
   hat: { roughness: 0.92, metalness: 0, bevel: 0.14, edgeTint: 0xfff0d2, edgeStrength: 0.25, grain: 0.08, grainScale: 12 },
   glow: { roughness: 1, metalness: 0, bevel: 0.14, edgeTint: 0xffffff, edgeStrength: 0.25, grain: 0.04, grainScale: 10, unlit: true },
   // ── World (Angkor Wat sandstone kit) ─────────────────────────────────────
-  // World families are matte (little specular), with flat-cut edges and a
+  // World families are matte (no specular), with flat-cut edges and a
   // chiselled `relief`, like the kit's sandstone.
-  stone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xe9d4ae, edgeStrength: 0.35, grain: 0.1, grainScale: 9, relief: 0.07, specular: 0.35 },
-  darkstone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xa39580, edgeStrength: 0.3, grain: 0.1, grainScale: 9, relief: 0.07, specular: 0.35 },
-  moss: { roughness: 0.98, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xa6c46a, edgeStrength: 0.3, grain: 0.12, grainScale: 8, relief: 0.08, specular: 0.3 },
-  foliage: { roughness: 0.95, metalness: 0, bevel: 0.14, chamfer: true, edgeTint: 0xb5d67a, edgeStrength: 0.35, grain: 0.1, grainScale: 6, relief: 0.1, specular: 0.4 },
-  bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8, relief: 0.08, specular: 0.3 },
-  ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3, relief: 0.06, specular: 0.3 },
+  stone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xe9d4ae, edgeStrength: 0.35, grain: 0.1, grainScale: 9, relief: 0.07 },
+  darkstone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xa39580, edgeStrength: 0.3, grain: 0.1, grainScale: 9, relief: 0.07 },
+  moss: { roughness: 0.98, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xa6c46a, edgeStrength: 0.3, grain: 0.12, grainScale: 8, relief: 0.08 },
+  foliage: { roughness: 0.95, metalness: 0, bevel: 0.14, chamfer: true, edgeTint: 0xb5d67a, edgeStrength: 0.35, grain: 0.1, grainScale: 6, relief: 0.1 },
+  bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8, relief: 0.08 },
+  ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3, relief: 0.06 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
   // 5 cm flat-cut edges on a 0.5 m block; a matte, chiselled surface.
-  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07, specular: 0.35 },
-  soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07, specular: 0.3 },
-  leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1, specular: 0.4 },
-  trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08, specular: 0.3 },
-  water: { roughness: 0.1, metalness: 0.05, bevel: 0.04, edgeTint: 0xcdeee8, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.1, grainScale: KIT_TEXELS_PER_M, pattern: 'water', transparent: true, opacity: 0.84 },
-  petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05, specular: 0.5 },
-  wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.25, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4, specular: 0.6 },
+  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
+  soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07 },
+  leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1 },
+  trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08 },
+  water: { roughness: 0.1, metalness: 0.05, bevel: 0.04, edgeTint: 0xcdeee8, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.1, grainScale: KIT_TEXELS_PER_M, pattern: 'water', transparent: true, opacity: 0.84, specular: 1 },
+  petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05 },
+  wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.25, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4 },
 } as const satisfies Record<string, VoxelMaterialSpec>;
 
 /** Families drawn with a pixel-art pattern (their instances carry a `surf`). */
@@ -376,7 +376,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
     shader.uniforms.uRelief = { value: spec.relief ?? 0 };
-    shader.uniforms.uSpecular = { value: spec.specular ?? 1 };
+    shader.uniforms.uSpecular = { value: spec.specular ?? 0 };
 
     injectVoxelVertex(shader, spec);
 
@@ -502,7 +502,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
         '#include <aomap_fragment>',
         /* glsl */ `#include <aomap_fragment>
 #ifdef VOX_LIT
-// Matte families keep only part of the sun highlight and environment reflection.
+// Matte families (all but water) drop the sun highlight and environment reflection.
 reflectedLight.directSpecular *= uSpecular;
 reflectedLight.indirectSpecular *= uSpecular;
 #endif`,

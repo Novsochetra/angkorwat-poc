@@ -3,6 +3,7 @@ import {
   Color,
   Group,
   Mesh,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
   type Object3D,
@@ -331,7 +332,8 @@ function makeGround(): Group {
   const g = new Group();
   g.name = 'ground';
   g.userData.source = traceSource();
-  const mat = new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+  // (matte: no sun sheen on the grass, only water shines)
+  const mat = new MeshLambertMaterial({ vertexColors: true });
   const slab = (x0: number, z0: number, x1: number, z1: number, step = 20) => {
     const sx = Math.max(1, Math.round((x1 - x0) / step));
     const sz = Math.max(1, Math.round((z1 - z0) / step));

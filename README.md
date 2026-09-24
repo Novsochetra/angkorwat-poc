@@ -154,9 +154,10 @@ occlusion and colour jitter are baked per block. The face family is
 reads as one smooth surface with only its silhouette rounded, as on the sheet.
 World families (stone, soil, leaves, bark, props) have *chamfered* edges
 instead: one flat cut on every edge that catches the light (worn texel by
-texel on sandstone), on a matte surface (`specular`) whose texels each lean a
-little their own way (`relief`), so they read as rough stone, bark and leaves.
-The character keeps its soft rounded blocks.
+texel on sandstone), on a surface whose texels each lean a little their own
+way (`relief`), so they read as rough stone, bark and leaves.
+The character keeps its soft rounded blocks. Every block is matte (no sun
+highlight or reflection, `specular`); only water shines.
 
 Quality levels: `high` (smooth bevels, viewer), `medium` (24-vertex chamfered
 blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).

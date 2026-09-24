@@ -42,7 +42,8 @@ names the exact line of the asset module that made each block.
   cells that still read as one stone, the broken faces in rougher stone.
   Sandstone blocks have flat-cut (chamfered) edges, 10 % of the block, and a
   chiselled, matte surface (`chamfer`, `relief` and `specular` in
-  `src/voxel/materials.ts`; every world family shares them);
+  `src/voxel/materials.ts`; every world family shares them, and only water
+  keeps a reflection);
   neighbouring stones touch, and the cells of a damaged block keep the chamfer
   of the whole stone.
 - **Colours** — `src/kit/palette.ts`, sampled from the sheets and corrected in
