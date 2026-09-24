@@ -74,11 +74,17 @@ export interface VoxelMaterialSpec {
   /** Share of stone texels that are dark pores (0‥1). */
   pits?: number;
   /**
-   * Chiselled surface (patterned families): each texel's normal leans up to
-   * this much (tangent of the angle) its own way, so light catches the face
-   * texel by texel like rough stone instead of sliding over a smooth plane.
+   * Chiselled surface: each texel's normal (1/16 m on patterned families, one
+   * grain cell on others) leans up to this much (tangent of the angle) its own
+   * way, so light catches the face texel by texel like rough stone, bark or
+   * leaves instead of sliding over a smooth plane.
    */
   relief?: number;
+  /**
+   * Share of the specular reflection kept (sun highlight and environment,
+   * default 1). World materials keep little of it, so they read matte.
+   */
+  specular?: number;
 }
 
 export const VOXEL_MATERIALS = {
@@ -101,21 +107,23 @@ export const VOXEL_MATERIALS = {
   hat: { roughness: 0.92, metalness: 0, bevel: 0.14, edgeTint: 0xfff0d2, edgeStrength: 0.25, grain: 0.08, grainScale: 12 },
   glow: { roughness: 1, metalness: 0, bevel: 0.14, edgeTint: 0xffffff, edgeStrength: 0.25, grain: 0.04, grainScale: 10, unlit: true },
   // ── World (Angkor Wat sandstone kit) ─────────────────────────────────────
-  stone: { roughness: 0.9, metalness: 0, bevel: 0.08, edgeTint: 0xe9d4ae, edgeStrength: 0.35, grain: 0.1, grainScale: 9 },
-  darkstone: { roughness: 0.92, metalness: 0, bevel: 0.08, edgeTint: 0xa39580, edgeStrength: 0.3, grain: 0.1, grainScale: 9 },
-  moss: { roughness: 0.95, metalness: 0, bevel: 0.12, edgeTint: 0xa6c46a, edgeStrength: 0.3, grain: 0.12, grainScale: 8 },
-  foliage: { roughness: 0.9, metalness: 0, bevel: 0.14, edgeTint: 0xb5d67a, edgeStrength: 0.35, grain: 0.1, grainScale: 6 },
-  bark: { roughness: 0.95, metalness: 0, bevel: 0.12, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8 },
-  ground: { roughness: 1, metalness: 0, bevel: 0.06, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3 },
+  // World families are matte (little specular), with flat-cut edges and a
+  // chiselled `relief`, like the kit's sandstone.
+  stone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xe9d4ae, edgeStrength: 0.35, grain: 0.1, grainScale: 9, relief: 0.07, specular: 0.35 },
+  darkstone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xa39580, edgeStrength: 0.3, grain: 0.1, grainScale: 9, relief: 0.07, specular: 0.35 },
+  moss: { roughness: 0.98, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xa6c46a, edgeStrength: 0.3, grain: 0.12, grainScale: 8, relief: 0.08, specular: 0.3 },
+  foliage: { roughness: 0.95, metalness: 0, bevel: 0.14, chamfer: true, edgeTint: 0xb5d67a, edgeStrength: 0.35, grain: 0.1, grainScale: 6, relief: 0.1, specular: 0.4 },
+  bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8, relief: 0.08, specular: 0.3 },
+  ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3, relief: 0.06, specular: 0.3 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
   // 5 cm flat-cut edges on a 0.5 m block; a matte, chiselled surface.
-  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
-  soil: { roughness: 0.97, metalness: 0, bevel: 0.05, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil' },
-  leaves: { roughness: 0.82, metalness: 0, bevel: 0.1, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf' },
-  trunk: { roughness: 0.93, metalness: 0, bevel: 0.09, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark' },
+  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07, specular: 0.35 },
+  soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07, specular: 0.3 },
+  leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1, specular: 0.4 },
+  trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08, specular: 0.3 },
   water: { roughness: 0.1, metalness: 0.05, bevel: 0.04, edgeTint: 0xcdeee8, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.1, grainScale: KIT_TEXELS_PER_M, pattern: 'water', transparent: true, opacity: 0.84 },
-  petal: { roughness: 0.7, metalness: 0, bevel: 0.12, edgeTint: 0xfff2f4, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M },
-  wax: { roughness: 0.55, metalness: 0, bevel: 0.1, edgeTint: 0xfff5e2, edgeStrength: 0.25, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4 },
+  petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05, specular: 0.5 },
+  wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.25, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4, specular: 0.6 },
 } as const satisfies Record<string, VoxelMaterialSpec>;
 
 /** Families drawn with a pixel-art pattern (their instances carry a `surf`). */
@@ -175,7 +183,6 @@ function glslColor(hex: number): string {
 const PATTERN_GLSL = /* glsl */ `
 uniform float uTexel;
 uniform float uPits;
-uniform float uRelief;
 flat varying vec4 vVoxSurf;
 flat varying vec3 vVoxS;
 const vec3 MOSS_0 = ${glslColor(SURFACE_COLORS.moss[0])};
@@ -209,11 +216,6 @@ float voxNoise(vec3 p) {
 vec2 voxUnpack(float v) {
   float a = floor(v / 256.0 + 0.001);
   return vec2(a, v - a * 256.0) / 255.0;
-}
-
-// Face-plane coordinates (metres) of a point on the face with normal f.
-vec2 voxFaceUV(vec3 p, vec3 f) {
-  return f.x != 0.0 ? p.zy : (f.y != 0.0 ? p.xz : p.xy);
 }
 
 // Crack network: one-texel lines along some Voronoi borders (≈0.6 m cells) of the
@@ -363,7 +365,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
   const defines: Record<string, unknown> = { ...(material.defines ?? {}) };
   if (lit) defines.VOX_LIT = '';
   if (spec.pattern) defines.VOX_PAT = String(PATTERN_ID[spec.pattern]);
-  if (spec.pattern && lit && spec.relief) defines.VOX_RELIEF = '';
+  if (lit && spec.relief) defines.VOX_RELIEF = '';
   material.defines = defines;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uEdgeTint = { value: edgeTint };
@@ -376,6 +378,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
     shader.uniforms.uRelief = { value: spec.relief ?? 0 };
+    shader.uniforms.uSpecular = { value: spec.specular ?? 1 };
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -504,13 +507,23 @@ uniform float uEdgeStrength;
 uniform float uEdgeWidth;
 uniform float uGrain;
 uniform float uGrainScale;
+uniform float uRelief;
+uniform float uSpecular;
 float voxHash(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
   p *= 17.0;
   return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
 }
+// Face-plane coordinates (metres) of a point on the face with normal f.
+vec2 voxFaceUV(vec3 p, vec3 f) {
+  return f.x != 0.0 ? p.zy : (f.y != 0.0 ? p.xz : p.xy);
+}
 #ifdef VOX_PAT
 ${PATTERN_GLSL}
+// Surface detail cells per metre: the pattern's texels.
+#define VOX_TEXEL uTexel
+#else
+#define VOX_TEXEL uGrainScale
 #endif`,
       )
       .replace(
@@ -542,12 +555,13 @@ float voxSeam = 0.0;
     vVoxP.z > 0.0 ? float((j >> 4) & 1) : float((j >> 5) & 1));
   vec3 sd = vVoxS * 0.5 - abs(vVoxP);
   vec3 sl = js * (1.0 - smoothstep(vec3(0.003), vec3(0.014), sd));
-  voxSeam = max(max(sl.x, sl.y), sl.z);
+  // (a line thinner than a pixel far away would only flicker)
+  voxSeam = max(max(sl.x, sl.y), sl.z) * (1.0 - smoothstep(0.004, 0.012, length(fwidth(vVoxP))));
   voxEdge *= 1.0 - voxSeam;
 }
 #if VOX_PAT == 1
-// Worn stone edges: the light rim breaks up texel by texel.
-voxEdge *= 0.5 + 0.5 * voxHash(floor((vVoxSeed + vVoxP) * uTexel) + 71.0);
+// Worn stone edges: the light rim breaks up texel by texel (evened out far away).
+voxEdge *= mix(0.75, 0.5 + 0.5 * voxHash(floor((vVoxSeed + vVoxP) * uTexel) + 71.0), 1.0 - smoothstep(0.45, 1.1, length(fwidth(vVoxP)) * uTexel));
 #endif
 #endif
 #ifdef VOX_PAT
@@ -570,9 +584,9 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
   vec3 ra = abs(voxN);
   vec3 rf = ra.x > ra.y && ra.x > ra.z ? vec3(sign(voxN.x), 0.0, 0.0) : (ra.y > ra.z ? vec3(0.0, sign(voxN.y), 0.0) : vec3(0.0, 0.0, sign(voxN.z)));
   vec3 rP = vVoxSeed + vVoxP;
-  vec3 rT = floor(rP * uTexel - rf * 0.5);
+  vec3 rT = floor(rP * VOX_TEXEL - rf * 0.5);
   // (faded out where a texel shrinks below a pixel)
-  float rFine = 1.0 - smoothstep(0.45, 1.1, length(fwidth(rP)) * uTexel);
+  float rFine = 1.0 - smoothstep(0.45, 1.1, length(fwidth(rP)) * VOX_TEXEL);
   vec2 rTilt = (vec2(voxHash(rT + 13.1), voxHash(rT + 27.7)) - 0.5) * 2.0 * uRelief * rFine;
   vec2 rUV = voxFaceUV(rP, rf);
   vec3 q0 = dFdx(-vViewPosition);
@@ -597,8 +611,17 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
   diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength * mix(0.3, 1.0, voxFacing));
   diffuseColor.rgb *= 1.0 - 0.5 * voxSeam;
 }`,
+      )
+      .replace(
+        '#include <aomap_fragment>',
+        /* glsl */ `#include <aomap_fragment>
+#ifdef VOX_LIT
+// Matte families keep only part of the sun highlight and environment reflection.
+reflectedLight.directSpecular *= uSpecular;
+reflectedLight.indirectSpecular *= uSpecular;
+#endif`,
       );
   };
   // Families inject identical code (only uniforms and the pattern define differ).
-  material.customProgramCacheKey = () => `voxel-shading-v8${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
+  material.customProgramCacheKey = () => `voxel-shading-v9${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
 }
