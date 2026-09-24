@@ -102,3 +102,37 @@ export function buildFlame(): VoxelBuilder {
   b.box(-0.2, 2.6, 0.12, 0.28, 0.4, 0.28, T.orange, 'glow');
   return b;
 }
+
+/**
+ * Brass explorer's flashlight. Origin at the grip (the middle of the fist); the
+ * barrel runs through the fist along +Z and the lens looks down +Z. `lens` is
+ * the glowing glass, meshed apart so it casts no shadow.
+ */
+export function buildFlashlight(): { body: VoxelBuilder; lens: VoxelBuilder } {
+  const body = new VoxelBuilder();
+  const lens = new VoxelBuilder();
+  const C = PALETTE.camera;
+  // Tail cap sticking out behind the fist, then the brass barrel with dark grip rings.
+  body.span(-0.5, -0.5, -2.1, 0.5, 0.5, -1.5, C.dark, 'metal');
+  body.box(0, 0, -2.14, 0.56, 0.56, 0.1, C.mid, 'metal');
+  const g = body.grid({ cell: [0.9, 0.9, 0.45], origin: [-0.45, -0.45, -1.5], mat: 'brass', jitter: 0.03, ao: 0, seed: 131 });
+  g.fill(0, 0, 0, 0, 0, 7, (_i, _j, k) => (k % 3 === 1 ? PALETTE.brassDark : PALETTE.brass));
+  g.commit();
+  // Flared neck, the wide head and a bright bezel ring round the lens.
+  body.span(-0.56, -0.56, 2.1, 0.56, 0.56, 2.5, PALETTE.brassDark, 'brass');
+  body.span(-0.72, -0.72, 2.5, 0.72, 0.72, 2.9, PALETTE.brass, 'brass');
+  body.span(-0.85, -0.85, 2.9, 0.85, 0.85, 3.9, PALETTE.brass, 'brass');
+  for (const [x, y, w, h] of [
+    [0, 0.84, 1.84, 0.2],
+    [0, -0.84, 1.84, 0.2],
+    [0.84, 0, 0.2, 1.84],
+    [-0.84, 0, 0.2, 1.84],
+  ])
+    body.box(x, y, 3.98, w, h, 0.22, C.light, 'metal');
+  // Rubber switch on top.
+  body.span(-0.22, 0.44, 0.7, 0.22, 0.64, 1.35, PALETTE.red, 'metal', { shade: 0.9 });
+  const T = PALETTE.torch;
+  lens.box(0, 0, 3.96, 1.44, 1.44, 0.18, 0xfff6e0, 'glow');
+  lens.box(0, 0, 4.02, 0.7, 0.7, 0.12, T.core, 'glow');
+  return { body, lens };
+}

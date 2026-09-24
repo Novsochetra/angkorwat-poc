@@ -3,9 +3,9 @@ import { Object3D, Quaternion, Vector3 } from 'three';
 export interface PendulumOptions {
   /** Distance from pivot to the simulated mass (metres, world). */
   length: number;
-  /** Velocity kept per 1/120 s step (0‥1). */
+  /** Velocity kept per 1/120 s (0‥1). */
   damping?: number;
-  /** Pull toward the animated rest direction per step (0‥1). */
+  /** Pull toward the animated rest direction per 1/120 s (0‥1). */
   stiffness?: number;
   /** Hang toward world-down instead of the parent's local −Y (lanterns). */
   worldDown?: boolean;
@@ -25,21 +25,25 @@ const _p = new Vector3();
 const _rest = new Vector3();
 const _d = new Vector3();
 const _v = new Vector3();
+const _x0 = new Vector3();
 const _q = new Quaternion();
 const _qi = new Quaternion();
 const _lq = new Quaternion();
 const _local = new Vector3();
 
 /**
- * Verlet point-mass hanging from a joint. Each step the joint is rotated so its
- * −Y axis points at the mass — gives the krama tail, camera and lantern a
- * natural lag and swing when the explorer walks, turns or stops.
+ * Point-mass hanging from a joint. Each frame the joint is rotated so its −Y
+ * axis points at the mass — gives the krama tail, camera and lantern a natural
+ * lag and swing when the explorer walks, turns or stops. The frame is split
+ * into equal steps of at most 1/120 s (not a fixed 1/120 s with the remainder
+ * carried over, which runs 0 steps one frame and 2 the next and makes the
+ * swing judder at 120 Hz and on uneven frames).
  */
 export class Pendulum {
   private readonly x = new Vector3();
-  private readonly prev = new Vector3();
+  /** Velocity of the mass (m/s). */
+  private readonly vel = new Vector3();
   private ready = false;
-  private acc = 0;
 
   constructor(
     readonly joint: Object3D,
@@ -62,19 +66,23 @@ export class Pendulum {
     else _rest.copy(DOWN).applyQuaternion(_q);
     if (!this.ready) {
       this.x.copy(_p).addScaledVector(_rest, length);
-      this.prev.copy(this.x);
+      this.vel.set(0, 0, 0);
       this.ready = true;
     }
-    this.acc = Math.min(this.acc + dt, 0.1);
-    while (this.acc >= STEP) {
-      this.acc -= STEP;
-      _v.subVectors(this.x, this.prev).multiplyScalar(damping);
-      this.prev.copy(this.x);
-      this.x.add(_v);
-      this.x.y -= 9.81 * STEP * STEP;
+    dt = Math.min(dt, 0.1);
+    const n = dt > 0 ? Math.ceil(dt / STEP - 1e-6) : 0;
+    const h = dt / Math.max(1, n);
+    // Damping and spring are tuned per 1/120 s; scale them to the step length.
+    const keep = damping ** (h / STEP);
+    const pull = 1 - (1 - stiffness) ** (h / STEP);
+    for (let i = 0; i < n; i++) {
+      _x0.copy(this.x);
+      this.vel.multiplyScalar(keep);
+      this.vel.y -= 9.81 * h;
+      this.x.addScaledVector(this.vel, h);
       // spring toward the animated direction
       _d.copy(_p).addScaledVector(_rest, length);
-      this.x.lerp(_d, stiffness);
+      this.x.lerp(_d, pull);
       // length constraint + swing limits
       _d.subVectors(this.x, _p);
       if (_d.lengthSq() < 1e-10) _d.copy(_rest);
@@ -94,6 +102,7 @@ export class Pendulum {
         }
       }
       this.x.copy(_p).addScaledVector(_d, length);
+      this.vel.subVectors(this.x, _x0).divideScalar(h);
     }
     // Rotate the joint so local −Y points along the swing direction.
     _d.subVectors(this.x, _p).normalize();

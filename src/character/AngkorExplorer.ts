@@ -1,4 +1,16 @@
-import { Group, PointLight } from 'three';
+import {
+  AdditiveBlending,
+  ConeGeometry,
+  DoubleSide,
+  Euler,
+  Group,
+  Mesh,
+  PointLight,
+  Quaternion,
+  ShaderMaterial,
+  SpotLight,
+  Vector3,
+} from 'three';
 import { BODY_UNIT_M } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
@@ -6,11 +18,11 @@ import { Animator, type HoldKind } from './Animator';
 import type { ActionName } from './clips';
 import { Pendulum } from './Dynamics';
 import { buildFace, EXPRESSIONS, type ExpressionName } from './parts/face';
-import { buildBackpack, buildCamera, type PackStyle } from './parts/gear';
+import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from './parts/gear';
 import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
 import { buildFoot, buildForearm, buildHand, buildPelvis, buildShin, buildThigh, buildUpperArm, type HandPose, type LegStyle, type Side } from './parts/limbs';
-import { buildFlame, buildHat, buildLantern, buildTorchHandle, HAT_CLIP_Y } from './parts/props';
+import { buildFlame, buildFlashlight, buildHat, buildLantern, buildTorchHandle, HAT_CLIP_Y } from './parts/props';
 import { buildScarfCollar, buildScarfTail } from './parts/scarf';
 import { buildBelt, buildTorso } from './parts/torso';
 import { Rig } from './Rig';
@@ -20,6 +32,20 @@ import { JOINTS } from './skeleton';
  *  within a few metres without blowing out the explorer holding them. */
 const LANTERN_CANDELA = 0.55;
 const TORCH_CANDELA = 0.9;
+/** Flashlight: a narrow, bright beam that reaches across a gallery. */
+const FLASHLIGHT_CANDELA = 18;
+const FLASHLIGHT_ANGLE = 0.36;
+const FLASHLIGHT_RANGE = 32;
+/** "Straight ahead" tips the beam a little down, onto the path in front. */
+const AHEAD_PITCH = -0.12;
+/** Longest the visible beam gets (m). */
+const BEAM_MAX = 9;
+
+const _a = new Vector3();
+const _s = new Vector3();
+const _q = new Quaternion();
+const _q2 = new Quaternion();
+const _e = new Euler(0, 0, 0, 'YXZ');
 
 export interface ExplorerOutfit {
   hat: boolean;
@@ -39,6 +65,7 @@ export const OUTFITS = {
   explorerGear: { hat: false, scarf: true, camera: true, pack: 'explorer', legs: 'shorts', held: 'none' },
   templeOutfit: { hat: false, scarf: false, camera: false, pack: 'none', legs: 'sampot', held: 'none' },
   torchBearer: { hat: false, scarf: true, camera: true, pack: 'default', legs: 'shorts', held: 'torch' },
+  withFlashlight: { hat: false, scarf: true, camera: true, pack: 'default', legs: 'shorts', held: 'flashlight' },
 } as const satisfies Record<string, ExplorerOutfit>;
 export type OutfitName = keyof typeof OUTFITS;
 
@@ -46,7 +73,7 @@ export interface ExplorerOptions {
   quality?: VoxelQuality;
   outfit?: OutfitName | Partial<ExplorerOutfit>;
   expression?: ExpressionName;
-  /** Point lights for lantern / torch (turn off for thumbnails). */
+  /** Point lights for lantern / torch, spot light for the flashlight (turn off for thumbnails). */
   propLights?: boolean;
   castShadow?: boolean;
 }
@@ -65,6 +92,13 @@ export class AngkorExplorer {
   blinking = true;
   /** Multiplier for the lantern / torch light (raise it at night). */
   propLightBoost = 1;
+  /**
+   * Where the flashlight points: a world point, or null for straight ahead of
+   * the explorer. The arm, chest and head turn toward it.
+   */
+  aimPoint: Vector3 | null = null;
+  /** How far the beam goes before it hits something (m); the game sets it from a ray. */
+  beamReach = BEAM_MAX;
   private readonly scaler = new Group();
   private outfit: ExplorerOutfit = { ...OUTFITS.default };
   private expression: ExpressionName = 'neutral';
@@ -72,9 +106,13 @@ export class AngkorExplorer {
   private blinkIn = 2.5;
   private blinkLeft = 0;
   private pendulums: Pendulum[] = [];
-  private lanternPivot: Group | null = null;
+  /** The held prop (lantern, torch or flashlight), under the left fist. */
+  private propRoot: Group | null = null;
   private flame: Group | null = null;
-  private light: PointLight | null = null;
+  private light: PointLight | SpotLight | null = null;
+  private beam: Mesh<ConeGeometry, ShaderMaterial> | null = null;
+  private aimYaw = 0;
+  private aimPitch = AHEAD_PITCH;
   private readonly propLights: boolean;
   private readonly handPose: Record<Side, HandPose> = { L: 'relaxed', R: 'relaxed' };
   private readonly castShadow: boolean;
@@ -142,6 +180,10 @@ export class AngkorExplorer {
   play(action: ActionName): void {
     this.animator.play(action);
     if (action === 'interact') this.setHandPose('R', 'pointing');
+    if (action === 'photo') {
+      this.setHandPose('R', 'holding');
+      if (this.outfit.held === 'none') this.setHandPose('L', 'holding');
+    }
   }
 
   stop(action?: ActionName): void {
@@ -157,10 +199,30 @@ export class AngkorExplorer {
     return this.animator.currentAction;
   }
 
+  /** Where the flashlight beam starts and which way it points (world). */
+  flashlightRay(origin: Vector3, dir: Vector3): boolean {
+    if (!this.propRoot || this.outfit.held !== 'flashlight') return false;
+    this.propRoot.getWorldPosition(origin);
+    dir.set(0, 0, 1).applyQuaternion(this.propRoot.getWorldQuaternion(_q));
+    return true;
+  }
+
+  /** Show or hide the explorer's blocks (not his lights), e.g. while the view is through his camera. */
+  setBodyVisible(visible: boolean): void {
+    this.object.traverse((o) => {
+      if ((o as Mesh).isMesh) o.visible = visible;
+    });
+  }
+
   update(dt: number): void {
     dt = Math.min(dt, 0.1);
+    const photo = this.animator.currentAction === 'photo';
+    if (this.outfit.held === 'flashlight' || photo) this.steerAim(dt);
     this.animator.update(dt);
-    if (!this.animator.currentAction && this.handPose.R === 'pointing') this.setHandPose('R', 'relaxed');
+    if (!this.animator.currentAction && this.animator.photoHold.weight === 0) {
+      if (this.handPose.R !== 'relaxed') this.setHandPose('R', 'relaxed');
+      if (this.outfit.held === 'none' && this.handPose.L !== 'relaxed') this.setHandPose('L', 'relaxed');
+    }
 
     // Blinking.
     if (this.blinking) this.blinkIn -= dt;
@@ -174,6 +236,7 @@ export class AngkorExplorer {
 
     this.object.updateMatrixWorld(true);
     for (const p of this.pendulums) p.update(dt);
+    this.raiseCamera();
 
     if (this.flame) {
       // Keep the flame upright in world space and let it flicker.
@@ -182,7 +245,8 @@ export class AngkorExplorer {
       const f = 1 + Math.sin(t * 23) * 0.08 + Math.sin(t * 37 + 1.3) * 0.06;
       this.flame.scale.set(1 + Math.sin(t * 29) * 0.06, f, 1 + Math.cos(t * 31) * 0.06);
     }
-    if (this.light) {
+    if (this.outfit.held === 'flashlight') this.pointFlashlight();
+    else if (this.light) {
       const t = this.animator.time;
       const base = this.outfit.held === 'torch' ? TORCH_CANDELA : LANTERN_CANDELA;
       this.light.intensity = base * this.propLightBoost * (0.88 + Math.sin(t * 17.3) * 0.06 + Math.sin(t * 29.7 + 2) * 0.05);
@@ -233,7 +297,10 @@ export class AngkorExplorer {
       r.setSlot('torso', 'chest', buildTorso({ packStraps: next.pack !== 'none', satchelStrap: true }));
       r.setSlot('pack', 'backpack', next.pack === 'none' ? null : buildBackpack(next.pack));
     }
-    if (changed('camera')) r.setSlot('camera', 'camera', next.camera ? buildCamera() : null);
+    if (changed('camera')) {
+      r.setSlot('camera', 'camera', next.camera ? buildCamera() : null);
+      r.setSlot('cameraStrap', 'camera', next.camera ? buildCameraStraps() : null);
+    }
     if (changed('scarf')) {
       r.setSlot('scarfCollar', 'chest', next.scarf ? buildScarfCollar() : null);
       r.setSlot('scarf1', 'scarf1', next.scarf ? buildScarfTail(1) : null);
@@ -256,6 +323,7 @@ export class AngkorExplorer {
       if (first) r.setSlot('handR', 'wristR', buildHand('R', this.handPose.R));
       if (next.held === 'lantern') this.attachLantern();
       if (next.held === 'torch') this.attachTorch();
+      if (next.held === 'flashlight') this.attachFlashlight();
     }
     this.rebuildPendulums();
   }
@@ -273,7 +341,7 @@ export class AngkorExplorer {
       pivot.add(this.light);
     }
     this.rig.joints.propL.add(pivot);
-    this.lanternPivot = pivot;
+    this.propRoot = pivot;
   }
 
   private attachTorch(): void {
@@ -292,17 +360,107 @@ export class AngkorExplorer {
     }
     this.rig.joints.propL.add(holder);
     this.flame = flame;
-    this.lanternPivot = holder;
+    this.propRoot = holder;
+  }
+
+  private attachFlashlight(): void {
+    const holder = new Group();
+    holder.name = 'flashlight:hold';
+    const { body, lens } = buildFlashlight();
+    holder.add(buildVoxelMesh(body, { quality: this.rig.quality, name: 'flashlight:body' }));
+    holder.add(buildVoxelMesh(lens, { quality: this.rig.quality, name: 'flashlight:glass', castShadow: false }));
+    if (this.propLights) {
+      const light = new SpotLight(0xfff1dc, FLASHLIGHT_CANDELA, FLASHLIGHT_RANGE, FLASHLIGHT_ANGLE, 0.5, 2);
+      light.name = 'flashlight';
+      light.position.set(0, 0, 4.2);
+      light.target.position.set(0, 0, 40);
+      light.castShadow = true;
+      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.camera.near = 0.15;
+      light.shadow.camera.far = FLASHLIGHT_RANGE;
+      light.shadow.bias = -0.0004;
+      light.shadow.normalBias = 0.02;
+      holder.add(light, light.target);
+      this.light = light;
+      this.beam = buildBeam();
+      this.beam.position.set(0, 0, 4.1);
+      holder.add(this.beam);
+    }
+    this.rig.joints.propL.add(holder);
+    this.propRoot = holder;
   }
 
   private clearProp(): void {
-    if (this.lanternPivot) {
-      disposeVoxelMesh(this.lanternPivot);
-      this.lanternPivot.removeFromParent();
+    if (this.propRoot) {
+      disposeVoxelMesh(this.propRoot);
+      this.propRoot.removeFromParent();
+      (this.light as SpotLight | null)?.shadow?.dispose();
     }
-    this.lanternPivot = null;
+    if (this.beam) {
+      this.beam.geometry.dispose();
+      this.beam.material.dispose();
+    }
+    this.propRoot = null;
     this.flame = null;
     this.light = null;
+    this.beam = null;
+  }
+
+  /**
+   * Photo pose: bring the neck camera up to the eye (where the animator put
+   * the hands), swinging out in front of the chin on the way. The straps hide
+   * while it's up.
+   */
+  private raiseCamera(): void {
+    const hold = this.animator.photoHold;
+    const strap = this.rig.getSlot('cameraStrap');
+    if (strap) strap.visible = hold.weight < 0.02;
+    if (hold.weight <= 0 || !this.outfit.camera) return;
+    const j = this.rig.joints.camera;
+    const w = hold.weight * hold.weight * (3 - 2 * hold.weight);
+    hold.matrix.decompose(_a, _q, _s);
+    j.position.lerp(_a, w);
+    j.position.z += Math.sin(Math.PI * w) * 1.6;
+    j.quaternion.slerp(_q, w);
+  }
+
+  /** Ease the flashlight's aim toward `aimPoint` (or straight ahead), within the arm's reach. */
+  private steerAim(dt: number): void {
+    let yaw = 0;
+    let pitch = AHEAD_PITCH;
+    if (this.aimPoint) {
+      // From the beam's start, in the explorer's own frame.
+      (this.propRoot ?? this.rig.joints.shoulderL).getWorldPosition(_a);
+      _a.subVectors(this.aimPoint, _a).applyQuaternion(this.object.getWorldQuaternion(_q).invert());
+      yaw = Math.atan2(_a.x, _a.z);
+      pitch = Math.atan2(_a.y, Math.hypot(_a.x, _a.z));
+    }
+    yaw = Math.min(1.45, Math.max(-1.2, yaw));
+    pitch = Math.min(1.25, Math.max(-1.0, pitch));
+    const k = 1 - Math.exp(-dt * 12);
+    this.aimYaw += (yaw - this.aimYaw) * k;
+    this.aimPitch += (pitch - this.aimPitch) * k;
+    this.animator.setAim(this.aimYaw, this.aimPitch);
+  }
+
+  /**
+   * Turn the flashlight in the fist so the beam points exactly along the aim,
+   * whatever the arm swing is doing — the beam stays steady while he walks.
+   */
+  private pointFlashlight(): void {
+    const holder = this.propRoot;
+    if (!holder) return;
+    this.object.getWorldQuaternion(_q).multiply(_q2.setFromEuler(_e.set(-this.aimPitch, this.aimYaw, 0)));
+    holder.parent!.getWorldQuaternion(_q2).invert();
+    holder.quaternion.copy(_q2.multiply(_q));
+    holder.updateMatrixWorld(true);
+    if (this.light) this.light.intensity = FLASHLIGHT_CANDELA * (1 + (this.propLightBoost - 1) * 0.5);
+    if (this.beam) {
+      const len = Math.max(0.3, Math.min(BEAM_MAX, this.beamReach)) / BODY_UNIT_M;
+      const r = len * Math.tan(FLASHLIGHT_ANGLE * 0.8);
+      this.beam.scale.set(r, r, len);
+      this.beam.material.uniforms.strength.value = Math.min(0.14, 0.02 * this.propLightBoost);
+    }
   }
 
   private rebuildPendulums(): void {
@@ -318,16 +476,48 @@ export class AngkorExplorer {
     }
     if (this.outfit.camera)
       this.pendulums.push(new Pendulum(j.camera, { length: 5.8 * m, damping: 0.9, stiffness: 0.08, maxAngle: 0.6, minForward: 0.0, limitFrame: j.chest }));
-    if (this.outfit.held === 'lantern' && this.lanternPivot)
-      this.pendulums.push(new Pendulum(this.lanternPivot, { length: 3.1 * m, damping: 0.95, stiffness: 0, worldDown: true, maxAngle: 1.1 }));
+    if (this.outfit.held === 'lantern' && this.propRoot)
+      this.pendulums.push(new Pendulum(this.propRoot, { length: 3.1 * m, damping: 0.95, stiffness: 0, worldDown: true, maxAngle: 1.1 }));
   }
 
   private applyShadowFlags(): void {
     this.object.traverse((o) => {
       if ((o as { isMesh?: boolean }).isMesh) {
-        o.castShadow = this.castShadow && !o.name.includes('glass') && !o.name.includes('flame');
-        o.receiveShadow = true;
+        const glow = /glass|flame|beam/.test(o.name);
+        o.castShadow = this.castShadow && !glow;
+        o.receiveShadow = !o.name.includes('beam');
       }
     });
   }
+}
+
+/**
+ * Faint cone of light in front of the lens (1 long, 1 wide at the end; scaled
+ * to the beam). Added on top of the scene, brightest near the lens and down the
+ * middle, fading out toward the far end and the sides.
+ */
+function buildBeam(): Mesh<ConeGeometry, ShaderMaterial> {
+  const geo = new ConeGeometry(1, 1, 24, 1, true);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, 0, 0.5);
+  const mat = new ShaderMaterial({
+    uniforms: { strength: { value: 0.02 }, color: { value: [1, 0.93, 0.8] } },
+    vertexShader: /* glsl */ `varying float vT; varying vec3 vN; varying vec3 vV;
+      void main(){ vT = position.z; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: /* glsl */ `uniform float strength; uniform vec3 color; varying float vT; varying vec3 vN; varying vec3 vV;
+      void main(){ float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.5);
+        float fade = pow(1.0 - vT, 1.8) * smoothstep(0.0, 0.08, vT);
+        gl_FragColor = vec4(color * strength * edge * fade, 1.0); }`,
+    transparent: true,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  const cone = new Mesh(geo, mat);
+  cone.name = 'flashlight:beam';
+  cone.castShadow = false;
+  cone.receiveShadow = false;
+  cone.renderOrder = 10;
+  return cone;
 }

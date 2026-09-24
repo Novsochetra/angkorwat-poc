@@ -10,6 +10,11 @@ export class Input {
   dragY = 0;
   /** Accumulated wheel delta since last frame. */
   wheel = 0;
+  /** Mouse position (client pixels) while it is over the canvas, else null. */
+  pointer: { x: number; y: number } | null = null;
+  /** True for one frame after a left click on the canvas that wasn't a drag. */
+  clicked = false;
+  private dragDist = 0;
   private touchMove: { id: number; x0: number; y0: number; x: number; y: number } | null = null;
   private touchLook: { id: number; x: number; y: number } | null = null;
   private pointerDown = false;
@@ -30,14 +35,21 @@ export class Input {
     el.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') return;
       this.pointerDown = true;
+      this.dragDist = 0;
       el.setPointerCapture(e.pointerId);
     });
     el.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse') this.pointer = { x: e.clientX, y: e.clientY };
       if (e.pointerType === 'touch' || !this.pointerDown) return;
       this.dragX += e.movementX;
       this.dragY += e.movementY;
+      this.dragDist += Math.abs(e.movementX) + Math.abs(e.movementY);
     });
-    el.addEventListener('pointerup', () => (this.pointerDown = false));
+    el.addEventListener('pointerup', (e) => {
+      if (this.pointerDown && e.button === 0 && this.dragDist < 6) this.clicked = true;
+      this.pointerDown = false;
+    });
+    el.addEventListener('pointerleave', () => (this.pointer = null));
     el.addEventListener('wheel', (e) => {
       this.wheel += Math.sign(e.deltaY) * Math.min(3, Math.abs(e.deltaY) / 60);
       e.preventDefault();
@@ -114,6 +126,7 @@ export class Input {
   /** Call at the end of every frame. */
   endFrame(): void {
     this.pressed.clear();
+    this.clicked = false;
     this.dragX = this.dragY = this.wheel = 0;
   }
 

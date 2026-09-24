@@ -32,10 +32,14 @@ function strap(
   }
 }
 
+/** Middle of the camera body (character space, hanging at rest). */
+export const CAMERA_BODY_CENTER = [0, 13.19, 3.7] as const;
+
 /**
  * Compact camera on a neck strap (sheet 3.3.5/3.3.6): dark body, pale top plate,
- * viewfinder hump, chunky octagonal lens with recessed glass, red shutter light,
- * leather straps on brass D-rings. Camera joint (pivots at the neck so it swings).
+ * viewfinder hump, chunky octagonal lens with recessed glass, red shutter light
+ * and brass D-rings. The straps are `buildCameraStraps`. Camera joint (pivots at
+ * the neck so it swings).
  */
 export function buildCamera(): VoxelBuilder {
   const b = new VoxelBuilder();
@@ -64,13 +68,19 @@ export function buildCamera(): VoxelBuilder {
   b.box(lx, ly, front + 0.2, 0.52, 0.52, 0.32, C.glass, 'lens'); // glass
   b.box(lx - 0.1, ly + 0.1, front + 0.37, 0.1, 0.1, 0.02, 0xffffff, 'lens', { shade: 0.9 }); // glint
   b.box(0.98, 13.8, 4.24, 0.26, 0.26, 0.1, PALETTE.red, 'metal', { shade: 1.15 }); // shutter light
-  // Brass D-rings + leather neck straps going up under the krama.
+  // Brass D-rings for the straps.
   for (const s of [-1, 1]) {
     const x = s * 1.12;
     b.box(x, 14.28, 3.7, 0.12, 0.34, 0.34, PALETTE.brass, 'brass');
     b.box(x, 14.5, 3.7, 0.3, 0.1, 0.34, PALETTE.brass, 'brass');
-    strap(b, [x, 14.62, 3.62], [s * 1.9, 18.9, 2.5], 0.44, 0.2, L.strap, 0.55);
   }
+  return b;
+}
+
+/** Leather neck straps from the camera's D-rings up under the krama. Camera joint. */
+export function buildCameraStraps(): VoxelBuilder {
+  const b = new VoxelBuilder();
+  for (const s of [-1, 1]) strap(b, [s * 1.12, 14.62, 3.62], [s * 1.9, 18.9, 2.5], 0.44, 0.2, L.strap, 0.55);
   return b;
 }
 

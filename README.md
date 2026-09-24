@@ -111,11 +111,12 @@ explorer.setMotion(horizontalSpeed, isGrounded, verticalSpeed);
 explorer.update(dt);
 
 // on demand:
-explorer.play('openDoor');             // interact, lookUp, peek, wave, cheer
+explorer.play('openDoor');             // interact, lookUp, peek, wave, cheer, photo
 explorer.setExpression('surprised');   // neutral, happy, determined, surprised, curious, focused
 explorer.setOutfit('withLantern');     // default, withHat, withLantern, withoutScarf,
-                                       // explorerGear, templeOutfit, torchBearer
+                                       // explorerGear, templeOutfit, torchBearer, withFlashlight
 explorer.setOutfit({ hat: true, held: 'torch' });   // or mix individual pieces
+explorer.aimPoint = pointInWorld;      // where the flashlight shines (null = straight ahead)
 ```
 
 `src/game/PlayerController.ts` is a complete third-person controller (camera-
@@ -137,8 +138,8 @@ that works with any `ColliderWorld` of axis-aligned boxes.
 | Belt & pouches (3.3.8) | `parts/torso.ts` — buckle, pouches with brass snaps, knife sheath |
 | Shorts, boots, hands (3.3.9–11) | `parts/limbs.ts` — hemmed shorts, cream socks, cuffed boots; relaxed / holding / pointing fists |
 | Materials (3.3.12) | `src/voxel/materials.ts` — per-material bevel radius, warm rim tint, surface grain, seamless face |
-| Variations (3.5) | hat, lantern (lit), no scarf, explorer gear, temple sampot, torch (lit) |
-| Action poses (3.6) | `src/character/clips.ts` — idle, walk, run, jump/land, open door, peek, hold lantern/torch, look up, interact, wave, cheer |
+| Variations (3.5) | hat, lantern (lit), no scarf, explorer gear, temple sampot, torch (lit), brass flashlight (spot light with shadows) |
+| Action poses (3.6) | `src/character/clips.ts` — idle, walk, run, jump/land, open door, peek, hold lantern/torch/flashlight, look up, interact, wave, cheer, camera to the eye |
 
 ### How the blocks are drawn
 
@@ -177,7 +178,11 @@ blocks, game default), `low` (plain boxes, world LOD beyond ~170 m).
 `Animator` blends idle / walk / run by speed with the gait phase driven by
 distance travelled, layers jump / landing / actions / prop-holding arms, then
 plants the lowest sole on the ground (so crouches and strides stay grounded).
-The krama tail, camera and lantern are Verlet pendulums that react to movement.
+The walk and run place each foot on a set path (heel → flat → toe on the
+ground, a smooth arc in the air) and bend the legs with IK, so the body rides a
+smooth wave instead of jumping when the lowest foot changes. The photo pose
+puts the hands on the camera with arm IK.
+The krama tail, camera and lantern are pendulums that react to movement.
 
 ## Reporting bugs and ideas
 
@@ -204,8 +209,9 @@ cloud). See [`feedback/README.md`](feedback/README.md).
   `@page?` for another page (`game="@index.html?shot=1&spawn=1"`).
 - `npm run playtest` — headless play test that drives the explorer with real key
   presses: walks through the gopura doorway, runs, hits a wall, climbs the temple
-  stairs, jumps and opens a door — then files a bug report and checks it names
-  the code that built what was clicked.
+  stairs, jumps, opens a door, turns on the flashlight and raises the camera —
+  then files a bug report and checks it names the code that built what was
+  clicked.
 - `node scripts/voxel-slices.mjs hair,head` — ASCII front/side projections for
   quick silhouette checks.
 - `npm run kitcheck` — builds every world-kit asset variant headlessly and
@@ -217,6 +223,11 @@ cloud). See [`feedback/README.md`](feedback/README.md).
 
 `WASD` move · `Shift` run · `Space` jump · mouse drag / `Q` `R` orbit · wheel
 zoom · `E` interact / open door · `F` wave · `C` cheer · `U` look up · `P` peek ·
-`L` lantern · `T` torch · `H` hat · `G` outfit · `X` expression · `N` dusk ·
-`V` overview · `1`–`4` teleport (causeway, gopura, temple stairs, Bakan) · `B` report a bug.
+`L` lantern · `T` torch · `I` flashlight · `O` beam straight ahead / follows the
+mouse · `H` hat · `G` outfit · `X` expression · `N` dusk · `V` overview · `1`–`4`
+teleport (causeway, gopura, temple stairs, Bakan) · `B` report a bug.
+
+Photos: `Z` raises the camera to the explorer's eye — click or `Space` takes a
+photo, drag looks, wheel zooms, `Z` / `Esc` puts it away. `M` (or **🖼 Album**)
+opens the album: photos stay in this browser; download or delete them there.
 Touch: left thumb stick, drag right side to look.

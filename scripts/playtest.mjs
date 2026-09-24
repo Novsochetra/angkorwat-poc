@@ -103,7 +103,42 @@ await page.evaluate(() => window.__step(1 / 60));
 s1 = await state();
 check('E near the doorway plays openDoor', s1.action === 'openDoor', `action ${s1.action}`);
 
-// 7. Bug report: B, click the gate hall wall and the explorer, save. The report
+// 7. I: a flashlight in the left fist, its beam straight ahead of the explorer.
+await page.evaluate(() => window.__spawn(1));
+await page.keyboard.press('KeyI');
+await hold([], 0.5);
+const beam = await page.evaluate(() => {
+  const light = window.explorer.object.getObjectByName('flashlight');
+  if (!light?.isSpotLight) return null;
+  const from = light.getWorldPosition(light.position.clone());
+  const dir = light.target.getWorldPosition(light.position.clone()).sub(from).normalize();
+  const yaw = window.player.yaw;
+  const deg = (r) => (r * 180) / Math.PI;
+  return {
+    held: window.explorer.currentOutfit.held,
+    turn: deg(Math.atan2(dir.x, dir.z) - yaw),
+    tilt: deg(Math.asin(dir.y)),
+  };
+});
+check(
+  'I holds a flashlight that shines ahead',
+  beam?.held === 'flashlight' && Math.abs(beam.turn) < 3 && beam.tilt < 0 && beam.tilt > -12,
+  beam ? `${beam.turn.toFixed(1)}° from where he faces, tipped ${beam.tilt.toFixed(1)}° onto the path` : 'no spot light',
+);
+await page.keyboard.press('KeyI');
+await hold([], 0.1);
+
+// 8. Z: the view moves into the explorer's camera at his eye; Z again puts it away.
+await page.keyboard.press('KeyZ');
+await hold([], 1);
+const photo = await page.evaluate(() => ({ action: window.explorer.currentAction, view: window.player.photoView }));
+check('Z raises the camera to the eye', photo.action === 'photo' && photo.view === 1, `action ${photo.action}, view ${photo.view.toFixed(2)}`);
+await page.keyboard.press('KeyZ');
+await hold([], 1);
+const away = await page.evaluate(() => ({ action: window.explorer.currentAction, view: window.player.photoView }));
+check('Z puts the camera away', away.action === null && away.view === 0, `action ${away.action}, view ${away.view.toFixed(2)}`);
+
+// 9. Bug report: B, click the gate hall wall and the explorer, save. The report
 // must name the exact lines that built them (source-mapped from the served JS).
 const game = await browser.newPage({ viewport: { width: 800, height: 500 } }); // desktop layout: panel on the right
 game.on('pageerror', (e) => errors.push(e.message));

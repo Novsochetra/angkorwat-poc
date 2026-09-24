@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Vector3 } from 'three';
+import { Euler, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import type { AngkorExplorer } from '../character/AngkorExplorer';
 import { CHARACTER_HEIGHT_M, CHARACTER_RADIUS_M, CHARACTER_STEP_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import type { ColliderWorld } from './world/Colliders';
@@ -9,11 +9,29 @@ const JUMP_SPEED = 5.6; // ≈ 0.7 m hop
 const ACCEL = 14;
 const TURN_RATE = 12;
 const EYE = CHARACTER_HEIGHT_M * 0.78;
+const FOV = 55;
+/** The explorer's camera in front of his eyes: height and how far forward (m). */
+const PHOTO_EYE = CHARACTER_HEIGHT_M * 0.722;
+const PHOTO_AHEAD = 0.32;
+/** Seconds to raise the camera to the eye / take it down. */
+const PHOTO_RAISE = 0.45;
+const _eye = new Vector3();
+const _q = new Quaternion();
+const _e = new Euler(0, 0, 0, 'YXZ');
+
+export interface PhotoView {
+  /** Heading and tilt of the shot (radians; pitch + = up). */
+  yaw: number;
+  pitch: number;
+  /** Vertical field of view (degrees); smaller = zoomed in. */
+  fov: number;
+}
 
 /**
  * Third-person controller in metres: camera-relative movement, walk / run, jump,
  * step-up onto stairs, gravity, capsule-vs-box collision and a follow camera
- * that pulls in when a wall is behind the explorer.
+ * that pulls in when a wall is behind the explorer. In photo mode the view
+ * moves into the explorer's camera: drag to look, wheel to zoom.
  */
 export class PlayerController {
   readonly position = new Vector3();
@@ -30,6 +48,13 @@ export class PlayerController {
   private readonly tmp = new Vector3();
   /** Ground height where no collider is: the world's base ground (the explorer never goes below it). */
   floor = 0;
+  /** A heading to turn toward while standing still (e.g. where the flashlight points), or null. */
+  faceYaw: number | null = null;
+  /** Photo mode: the shot being framed, or null for the follow camera. */
+  photo: PhotoView | null = null;
+  /** 0 = follow camera, 1 = looking through the explorer's camera (eases between). */
+  photoView = 0;
+  private readonly lastPhoto: PhotoView = { yaw: 0, pitch: 0, fov: FOV };
 
   constructor(
     private readonly explorer: AngkorExplorer,
@@ -71,6 +96,15 @@ export class PlayerController {
       let d = target - this.yaw;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       this.yaw += d * Math.min(1, TURN_RATE * dt);
+    } else if (this.photo) {
+      let d = this.photo.yaw - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      this.yaw += d * Math.min(1, TURN_RATE * dt);
+    } else if (this.faceYaw !== null && !busy) {
+      // Standing still: turn once the heading is past what the arm can reach.
+      let d = this.faceYaw - this.yaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      if (Math.abs(d) > 0.9) this.yaw += (d - Math.sign(d) * 0.3) * Math.min(1, 6 * dt);
     }
 
     // ── Jump + gravity ──────────────────────────────────────────────────
@@ -96,6 +130,17 @@ export class PlayerController {
 
   private orbit(dt: number): void {
     const inp = this.input;
+    this.photoView = Math.min(1, Math.max(0, this.photoView + (this.photo ? dt : -dt) / PHOTO_RAISE));
+    if (this.photo) {
+      // Drag to look, wheel to zoom; slower when zoomed in.
+      const p = this.photo;
+      const k = 0.0035 * (p.fov / FOV);
+      p.yaw -= inp.dragX * k;
+      p.pitch = Math.min(1.3, Math.max(-1.2, p.pitch - inp.dragY * k));
+      p.fov = Math.min(75, Math.max(8, p.fov * (1 + inp.wheel * 0.1)));
+      Object.assign(this.lastPhoto, p);
+      return;
+    }
     this.camYaw -= inp.dragX * 0.005;
     this.camPitch = Math.min(1.25, Math.max(-0.35, this.camPitch + inp.dragY * 0.004));
     this.camDist = Math.min(this.overview ? 120 : 18, Math.max(1.6, this.camDist * (1 + inp.wheel * 0.12)));
@@ -154,5 +199,27 @@ export class PlayerController {
     this.camDistSmooth += (want - this.camDistSmooth) * (dt > 0 ? Math.min(1, dt * rate) : 1);
     this.camera.position.copy(this.camTarget).addScaledVector(dir, this.camDistSmooth);
     this.camera.lookAt(this.camTarget);
+
+    // ── Photo: glide into the explorer's camera ─────────────────────────
+    const k = this.photoView * this.photoView * (3 - 2 * this.photoView);
+    const p = this.photo ?? this.lastPhoto;
+    if (k > 0) {
+      _eye.set(Math.sin(p.yaw), 0, Math.cos(p.yaw)).multiplyScalar(PHOTO_AHEAD).add(this.position);
+      _eye.y += PHOTO_EYE;
+      this.camera.position.lerp(_eye, k);
+      this.camera.quaternion.slerp(_q.setFromEuler(_e.set(p.pitch, p.yaw + Math.PI, 0)), k);
+    }
+    const fov = FOV + (p.fov - FOV) * k;
+    if (this.camera.fov !== fov) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  /** Where the photo view looks from and toward (world), for aiming the flashlight and head. */
+  photoRay(origin: Vector3, dir: Vector3): void {
+    const p = this.photo ?? this.lastPhoto;
+    origin.set(Math.sin(p.yaw) * PHOTO_AHEAD, PHOTO_EYE, Math.cos(p.yaw) * PHOTO_AHEAD).add(this.position);
+    dir.set(Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch), Math.cos(p.yaw) * Math.cos(p.pitch));
   }
 }

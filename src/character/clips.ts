@@ -1,4 +1,4 @@
-import type { JointName } from './skeleton';
+import { JOINTS, SOLE_POINTS, type JointName } from './skeleton';
 import { sampleKeys, type Pose } from './pose';
 
 /**
@@ -51,71 +51,188 @@ export function idle(t: number): Pose {
   };
 }
 
-/** Keep a planted foot flat: counter the hip + knee pitch during stance. */
-function footPitch(hip: number, knee: number, stance: number, swingToeUp: number): number {
-  return -(hip + knee) * stance + swingToeUp * (1 - stance);
+const smooth = (v: number) => {
+  const c = Math.min(1, Math.max(0, v));
+  return c * c * (3 - 2 * c);
+};
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+/** Cubic Hermite from p0 to p1 with end slopes m0, m1 (per unit of u). */
+const hermite = (p0: number, p1: number, m0: number, m1: number, u: number) => {
+  const u2 = u * u;
+  const u3 = u2 * u;
+  return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
+};
+
+// ─── Walk / run gait ────────────────────────────────────────────────────────
+
+// Leg bones and sole (BU), for the leg IK.
+const HIPS_Y = JOINTS.hips.pivot[1];
+const HIP_OFFSET = JOINTS.hipL.pivot.map((v, i) => v - JOINTS.hips.pivot[i]);
+const THIGH = JOINTS.kneeL.pivot.map((v, i) => v - JOINTS.hipL.pivot[i]);
+const SHIN = JOINTS.ankleL.pivot.map((v, i) => v - JOINTS.kneeL.pivot[i]);
+const THIGH_LEN = Math.hypot(THIGH[1], THIGH[2]);
+const SHIN_LEN = Math.hypot(SHIN[1], SHIN[2]);
+const ANKLE_Z = JOINTS.ankleL.pivot[2];
+/** Ankle height over a flat sole, and the heel / toe ends of the sole. */
+const SOLE_DEPTH = -SOLE_POINTS[0][1];
+const HEEL = Math.min(...SOLE_POINTS.map((p) => p[2]));
+const TOE = Math.max(...SOLE_POINTS.map((p) => p[2]));
+
+/**
+ * Foot pitch against the ground (+ = toe down) over one step: the heel lands
+ * with the toe up, the foot rolls flat, the heel lifts onto the toe, and in the
+ * swing it turns back toe-up for the next landing. Every piece eases in and out.
+ */
+function footRoll(p: number, stance: number, strike: number, push: number): number {
+  if (p < stance) {
+    const u = p / stance;
+    if (u < 0.2) return strike * (1 - smooth(u / 0.2));
+    if (u < 0.6) return 0;
+    return push * smooth((u - 0.6) / 0.4);
+  }
+  return push + (strike - push) * smooth((p - stance) / (1 - stance) / 0.85);
 }
 
-/** Walk cycle; `phase` in cycles (one cycle = two steps). */
-export function walk(phase: number): Pose {
+/** How far the lowest sole point is below the ankle when the foot is pitched by `g`. */
+const soleDepth = (g: number) => SOLE_DEPTH * Math.cos(g) + (g > 0 ? TOE : HEEL) * Math.sin(g);
+
+/**
+ * Ankle position (y, z) of a foot on the ground. `zFlat` is where the ankle
+ * would be with the foot flat; a pitched foot pivots on its heel (toe up) or
+ * toe (toe down), so the sole never sinks into the ground or slides.
+ */
+function plantedAnkle(zFlat: number, g: number): [number, number] {
+  const pz = g > 0 ? TOE : HEEL;
+  return [SOLE_DEPTH * Math.cos(g) + pz * Math.sin(g), zFlat + pz + SOLE_DEPTH * Math.sin(g) - pz * Math.cos(g)];
+}
+
+interface LegFrame {
+  /** Hip joint position (character space, BU). */
+  hip: readonly [number, number, number];
+  lean: number;
+  twist: number;
+}
+
+/**
+ * Two-bone leg IK in the leg's side plane: hip and knee pitch that put the
+ * ankle at (y, z) in character space. Returns [hip rx, knee rx, reached], where
+ * `reached` < 1 when the target is out of reach and the straight leg stops
+ * short of it (that share of the way).
+ */
+function legIK(f: LegFrame, y: number, z: number): [number, number, number] {
+  // Target relative to the hip, turned into the hips' frame (undo the twist, then the lean).
+  let dy = y - f.hip[1];
+  let dz = z - f.hip[2];
+  const cl = Math.cos(-f.lean);
+  const sl = Math.sin(-f.lean);
+  [dy, dz] = [dy * cl - dz * sl, dy * sl + dz * cl];
+  dz *= Math.cos(f.twist);
+  const reach = Math.hypot(dy, dz);
+  // Knee: law of cosines on the (slightly bent) shin.
+  const bias = Math.atan2(-SHIN[2], -SHIN[1]);
+  const cosK = (reach * reach - THIGH_LEN * THIGH_LEN - SHIN_LEN * SHIN_LEN) / (2 * THIGH_LEN * SHIN_LEN);
+  const knee = Math.max(0, Math.acos(Math.min(1, Math.max(-1, cosK))) - bias);
+  // Hip: turn the bent leg's hip→ankle line onto the target.
+  const ck = Math.cos(knee);
+  const sk = Math.sin(knee);
+  const vy = THIGH[1] + SHIN[1] * ck - SHIN[2] * sk;
+  const vz = THIGH[2] + SHIN[1] * sk + SHIN[2] * ck;
+  let hip = Math.atan2(dz, dy) - Math.atan2(vz, vy);
+  hip = Math.atan2(Math.sin(hip), Math.cos(hip));
+  return [hip, knee, Math.min(1, Math.hypot(vy, vz) / reach)];
+}
+
+export interface GaitPose {
+  pose: Pose;
+  /** How high both feet are off the ground (BU) — the run's flight. */
+  lift: number;
+}
+
+/**
+ * Walk / run cycle with planted feet. `phase` in cycles (one cycle = two
+ * steps), `run` blends walk → run, `amount` (0‥1) eases from standing into the
+ * full gait, and `cycle` is the ground covered per cycle (BU).
+ *
+ * The feet follow set paths — on the ground a foot moves back exactly as fast
+ * as the ground goes by, rolling heel → toe, and in the air it swings forward on
+ * a smooth arc — and leg IK bends hip and knee to reach them. The body rides a
+ * smooth wave (low when a foot lands in the walk, low mid-stride in the run), so
+ * nothing jumps from one frame to the next.
+ */
+export function gait(phase: number, run: number, amount: number, cycle: number): GaitPose {
   const t = phase * TAU;
   const s = Math.sin(t);
-  const c = Math.cos(t);
-  const hipL = -0.5 * s;
-  const hipR = 0.5 * s;
-  const kneeL = 0.06 + 0.95 * pos(c) ** 1.4;
-  const kneeR = 0.06 + 0.95 * pos(-c) ** 1.4;
-  const stL = Math.min(1, pos(-c) * 3.5);
-  const stR = Math.min(1, pos(c) * 3.5);
-  return {
-    hips: { ry: -0.09 * s, rz: 0.03 * Math.sin(2 * t) },
-    chest: { rx: 0.06, ry: 0.13 * s },
-    head: { rx: -0.03, ry: -0.05 * s },
-    shoulderL: { rx: 0.5 * s, rz: 0.07 },
-    shoulderR: { rx: -0.5 * s, rz: -0.07 },
-    elbowL: { rx: -0.25 - 0.3 * pos(-s) },
-    elbowR: { rx: -0.25 - 0.3 * pos(s) },
-    hipL: { rx: hipL, rz: 0.02, ry: 0.06 },
-    hipR: { rx: hipR, rz: -0.02, ry: -0.06 },
-    kneeL: { rx: kneeL },
-    kneeR: { rx: kneeR },
-    ankleL: { rx: footPitch(hipL, kneeL, stL, -0.28 * pos(c)) },
-    ankleR: { rx: footPitch(hipR, kneeR, stR, -0.28 * pos(-c)) },
-  };
-}
+  const a = amount;
+  const stance = mix(0.5, 0.22, run);
+  const travel = stance * cycle;
+  const lean = 0.06 * run * a;
+  const twist = mix(-0.09, -0.15, run) * s * a;
 
-/** Run cycle with forward lean and pumping arms. */
-export function run(phase: number): Pose {
-  const t = phase * TAU;
-  const s = Math.sin(t);
-  const c = Math.cos(t);
-  const hipL = -0.82 * s - 0.08;
-  const hipR = 0.82 * s - 0.08;
-  const kneeL = 0.22 + 1.5 * pos(c) ** 1.2;
-  const kneeR = 0.22 + 1.5 * pos(-c) ** 1.2;
-  const stL = Math.min(1, pos(-c) * 3);
-  const stR = Math.min(1, pos(c) * 3);
-  return {
-    hips: { rx: 0.06, ry: -0.15 * s },
-    chest: { rx: 0.2, ry: 0.2 * s },
-    neck: { rx: -0.06 },
-    head: { rx: -0.12, ry: -0.08 * s },
-    shoulderL: { rx: 0.78 * s - 0.1, rz: 0.16 },
-    shoulderR: { rx: -0.78 * s - 0.1, rz: -0.16 },
-    elbowL: { rx: -1.35 + 0.22 * s },
-    elbowR: { rx: -1.35 - 0.22 * s },
-    hipL: { rx: hipL },
-    hipR: { rx: hipR },
-    kneeL: { rx: kneeL },
-    kneeR: { rx: kneeR },
-    ankleL: { rx: footPitch(hipL, kneeL, stL, -0.2 * pos(c)) + 0.25 * pos(-s) * stL },
-    ankleR: { rx: footPitch(hipR, kneeR, stR, -0.2 * pos(-c)) + 0.25 * pos(s) * stR },
-  };
-}
+  // Body height: q = 0 when a foot lands.
+  const q = 2 * phase - 0.5 - Math.floor(2 * phase - 0.5);
+  const bodyWalk = -0.2 - 0.3 * (1 + Math.cos(TAU * q));
+  const bodyRun = -0.55 - 0.4 * (1 + Math.cos(TAU * (q - stance)));
+  const body = mix(bodyWalk, bodyRun, run) * a;
 
-/** Body lift (BU) of the run's flight phase. */
-export function runFlight(phase: number): number {
-  return 0.8 * pos(-Math.cos(phase * TAU * 2)) ** 1.5;
+  const strike = mix(-0.22, -0.08, run) * a;
+  const push = mix(0.5, 0.75, run) * a;
+  const arc = mix(1.5, 3.4, run) * a;
+  // Ground speed at take-off; the run lands with the foot already slowing.
+  const slope = (-travel / stance) * (1 - stance);
+  const land = slope * mix(1, 0.35, run);
+
+  const pose: Pose = {
+    body: { py: body },
+    hips: { rx: lean, ry: twist, rz: 0.03 * Math.sin(2 * t) * (1 - run) * a },
+  };
+  const clearance: number[] = [];
+  for (const [side, off] of [['L', 0.25], ['R', -0.25]] as const) {
+    const p = phase - off - Math.floor(phase - off); // 0 = this foot lands
+    const g = footRoll(p, stance, strike, push);
+    let y: number;
+    let z: number;
+    if (p < stance) {
+      [y, z] = plantedAnkle(ANKLE_Z + travel / 2 - (travel * p) / stance, g);
+    } else {
+      // Swing: leave the ground at its speed and land again, lifted on an arc.
+      const v = (p - stance) / (1 - stance);
+      const [y0, z0] = plantedAnkle(ANKLE_Z - travel / 2, push);
+      const [y1, z1] = plantedAnkle(ANKLE_Z + travel / 2, strike);
+      z = hermite(z0, z1, slope, land, v);
+      y = mix(y0, y1, smooth(v)) + arc * Math.sin(Math.PI * v) ** 2;
+    }
+    const sx = side === 'L' ? 1 : -1;
+    const hx = sx * HIP_OFFSET[0];
+    const frame: LegFrame = {
+      hip: [
+        hx,
+        HIPS_Y + body + HIP_OFFSET[1] * Math.cos(lean) - HIP_OFFSET[2] * Math.sin(lean),
+        JOINTS.hips.pivot[2] + HIP_OFFSET[1] * Math.sin(lean) + HIP_OFFSET[2] * Math.cos(lean) - hx * Math.sin(twist),
+      ],
+      lean,
+      twist,
+    };
+    const [hip, knee, reached] = legIK(frame, y, z);
+    // Sole height the leg actually reaches (a foot out of reach hangs short).
+    clearance.push(frame.hip[1] + (y - frame.hip[1]) * reached - soleDepth(g));
+    pose[`hip${side}`] = { rx: hip, rz: sx * 0.02 * (1 - run) * a, ry: sx * 0.06 * (1 - run) * a };
+    pose[`knee${side}`] = { rx: knee };
+    pose[`ankle${side}`] = { rx: g - lean - hip - knee };
+  }
+
+  // Upper body: arms swing against the legs, chest and head counter-turn.
+  const k = (w: number, r: number) => mix(w, r, run) * a;
+  Object.assign(pose, {
+    chest: { rx: k(0.06, 0.2), ry: k(0.13, 0.2) * s },
+    neck: { rx: k(0, -0.06) },
+    head: { rx: k(-0.03, -0.12), ry: k(-0.05, -0.08) * s },
+    shoulderL: { rx: k(0.5, 0.78) * s - k(0, 0.1), rz: k(0.07, 0.16) },
+    shoulderR: { rx: -k(0.5, 0.78) * s - k(0, 0.1), rz: -k(0.07, 0.16) },
+    elbowL: { rx: mix(-0.25 - 0.3 * pos(-s), -1.35 + 0.22 * s, run) * a },
+    elbowR: { rx: mix(-0.25 - 0.3 * pos(s), -1.35 - 0.22 * s, run) * a },
+  } satisfies Pose);
+
+  return { pose, lift: Math.max(0, Math.min(...clearance)) };
 }
 
 /** Airborne: tucked legs, arms up for balance. `rise` > 0 going up, < 0 falling. */
@@ -156,7 +273,7 @@ export function landing(k: number): Pose {
 
 // ─── One-shot / looping actions ─────────────────────────────────────────────
 
-export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer';
+export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo';
 
 export interface ActionDef {
   duration: number;
@@ -318,6 +435,24 @@ export const ACTIONS: Record<ActionName, ActionDef> = {
       };
     },
   },
+  // Camera up to the eye (held until stopped). The Animator moves the hands
+  // onto the camera with arm IK and turns the head to where the photo looks.
+  photo: {
+    duration: 1.0,
+    loop: true,
+    fadeIn: 0.45,
+    fadeOut: 0.35,
+    joints: UPPER_BODY,
+    allowLocomotion: false,
+    pose: () => ({
+      chest: { rx: -0.04 },
+      neck: { rx: 0.02 },
+      shoulderL: { rx: -1.3, rz: 0.55 },
+      shoulderR: { rx: -1.3, rz: -0.55 },
+      elbowL: { rx: -1.9 },
+      elbowR: { rx: -1.9 },
+    }),
+  },
   cheer: {
     duration: 1.6,
     loop: false,
@@ -368,5 +503,34 @@ export function holdTorch(t: number): Pose {
     elbowL: { rx: -0.62 },
     // Roll the fist outward so the abducted arm doesn't tilt the torch into the face.
     wristL: { ry: 0.38 },
+  };
+}
+
+/**
+ * Left arm carrying the flashlight low, the beam along the fist's grip axis:
+ * the arm swings forward to raise the beam and twists to turn it. `yaw` (+ =
+ * toward the character's left) and `pitch` (+ = up) are the beam's direction
+ * from the chest; the explorer turns the flashlight in the fist by whatever is
+ * left over, so the beam lands exactly where it should.
+ */
+export function holdFlashlight(t: number, yaw: number, pitch: number): Pose {
+  const bob = Math.sin(t * 1.5) * 0.02;
+  const elbow = -0.45 - 0.45 * smooth(pitch / 0.9);
+  // Shoulder + elbow pitch that tips the grip axis up by `pitch` at this twist.
+  const swing = -Math.asin(Math.max(-1, Math.min(1, Math.sin(pitch) / Math.max(0.35, Math.cos(yaw)))));
+  // The fist cocks back a little, so the upper arm hangs forward, not behind.
+  return {
+    shoulderL: { rx: swing - 0.4 * elbow + bob, ry: yaw, rz: 0.16 + 0.1 * pos(-yaw) },
+    elbowL: { rx: elbow },
+    wristL: { rx: -0.6 * elbow },
+  };
+}
+
+/** Chest and head turning toward where the flashlight shines (added on top). */
+export function lookAlong(yaw: number, pitch: number): Pose {
+  return {
+    chest: { ry: 0.3 * yaw, rx: -0.08 * pitch },
+    neck: { ry: 0.15 * yaw, rx: -0.12 * pitch },
+    head: { ry: 0.3 * yaw, rx: -0.3 * pitch },
   };
 }

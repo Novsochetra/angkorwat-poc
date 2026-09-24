@@ -8,10 +8,12 @@ import {
   NeutralToneMapping,
   PCFShadowMap,
   PerspectiveCamera,
+  Raycaster,
   Scene,
   ShaderMaterial,
   SphereGeometry,
   SRGBColorSpace,
+  Vector2,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -22,6 +24,7 @@ import { FeedbackTool } from '../feedback/FeedbackTool';
 import { installLookPanel } from '../voxel/LookPanel';
 import { ANGKOR, CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import { Input } from './Input';
+import { PHOTO_FOV, PhotoAlbum } from './Photos';
 import { PlayerController } from './PlayerController';
 import { buildAngkorScaleWorld } from './world/AngkorScaleWorld';
 import type { KitLabel } from './world/KitWorld';
@@ -140,11 +143,101 @@ function setDusk(on: boolean): void {
   skyUniforms.horizon.value.set(on ? 0xd9875a : 0xf1e2c6);
   (scene.fog as Fog).color.set(on ? 0x5a4a55 : 0xe6dcc6);
   explorer.propLightBoost = on ? 6 : 1;
-  toast(on ? 'Dusk — try the lantern (L) or torch (T)' : 'Afternoon');
+  toast(on ? 'Dusk — try the lantern (L), torch (T) or flashlight (I)' : 'Afternoon');
+}
+
+// ── Flashlight: I on/off, O beam straight ahead ↔ follows the mouse ─────────
+let beamMode: 'ahead' | 'mouse' = params.get('beam') === 'mouse' ? 'mouse' : 'ahead';
+const beamLabel = () => (beamMode === 'ahead' ? 'beam straight ahead' : 'beam follows the mouse');
+const _ray = new Raycaster();
+const _ndc = new Vector2();
+const _aim = new Vector3();
+const _beamFrom = new Vector3();
+const _beamDir = new Vector3();
+/**
+ * Point the flashlight at what's under the mouse (or straight ahead), stop the
+ * visible beam at walls, and in photo mode turn the head (and the beam) to
+ * where the photo looks.
+ */
+function aim(): void {
+  const held = explorer.currentOutfit.held === 'flashlight';
+  const pointer = beamMode === 'mouse' ? input.pointer : null;
+  player.faceYaw = null;
+  if (player.photo) {
+    player.photoRay(_beamFrom, _beamDir);
+    explorer.aimPoint = _aim.copy(_beamFrom).addScaledVector(_beamDir, 30);
+  } else if (!held) {
+    return;
+  } else if (pointer) {
+    const r = canvas.getBoundingClientRect();
+    _ndc.set(((pointer.x - r.left) / r.width) * 2 - 1, -((pointer.y - r.top) / r.height) * 2 + 1);
+    _ray.setFromCamera(_ndc, camera);
+    const { origin: o, direction: d } = _ray.ray;
+    let t = world.colliders.raycast(o.x, o.y, o.z, d.x, d.y, d.z, 80);
+    if (d.y < -1e-3) t = Math.min(t, (player.floor - o.y) / d.y);
+    explorer.aimPoint = _aim.copy(o).addScaledVector(d, t);
+    player.faceYaw = Math.atan2(_aim.x - player.position.x, _aim.z - player.position.z);
+  } else {
+    explorer.aimPoint = null;
+  }
+  if (held && explorer.flashlightRay(_beamFrom, _beamDir))
+    explorer.beamReach = world.colliders.raycast(_beamFrom.x, _beamFrom.y, _beamFrom.z, _beamDir.x, _beamDir.y, _beamDir.z, 12);
+}
+
+// ── Photo mode (Z): look through the explorer's camera and take photos ─────
+const photos = shot || test ? null : new PhotoAlbum();
+let snap = false;
+let finderOn = false;
+let bodyHidden = false;
+function setPhotoMode(on: boolean): void {
+  if (!on) {
+    player.photo = null;
+    explorer.stop('photo');
+    return;
+  }
+  if (!explorer.currentOutfit.camera) return toast('No camera with this outfit (G changes the outfit)');
+  if (!player.grounded) return;
+  player.photo = { yaw: player.yaw, pitch: 0, fov: PHOTO_FOV };
+  explorer.play('photo');
+}
+
+/** Where a photo was taken, in words. */
+function placeName(): string {
+  if (level === 'kit') return nearestLabel()?.name ?? 'World kit garden';
+  return `Angkor Wat · ${Math.hypot(player.position.x, player.position.z).toFixed(0)} m from the central tower`;
+}
+
+/** Keys while the camera is up: take a photo, put the camera away, album, flashlight, dusk. */
+function photoKeys(): void {
+  if (input.hit('KeyZ') || input.hit('Escape')) setPhotoMode(false);
+  else if (player.photoView > 0.95 && (input.clicked || input.hit('Space') || input.hit('Enter'))) snap = true;
+  if (input.hit('KeyM')) photos?.openAlbum();
+  if (input.hit('KeyI')) {
+    explorer.setOutfit({ held: explorer.currentOutfit.held === 'flashlight' ? 'none' : 'flashlight' });
+    bodyHidden = false; // new blocks come in visible; hide them again
+  }
+  if (input.hit('KeyN')) setDusk(!dusk);
+}
+
+/**
+ * Viewfinder over the view once it's through the explorer's camera. His body
+ * hides while the view is inside or next to his head (on the way in and out).
+ */
+function updateFinder(): void {
+  const on = !!player.photo && player.photoView > 0.9;
+  if (on) photos?.setViewfinder(true, player.photo!.fov);
+  else if (finderOn) photos?.setViewfinder(false);
+  finderOn = on;
+  const hide = player.photoView > 0 && camera.position.distanceTo(explorer.rig.joints.head.getWorldPosition(_aim)) < 0.95;
+  if (hide !== bodyHidden) explorer.setBodyVisible(!hide);
+  bodyHidden = hide;
 }
 
 let expr = 0;
 function onKeys(): void {
+  if (player.photo) return photoKeys();
+  if (input.hit('KeyZ')) setPhotoMode(true);
+  if (input.hit('KeyM')) photos?.openAlbum();
   for (let i = 0; i < Math.min(9, world.spawns.length); i++) if (input.hit(`Digit${i + 1}`)) spawn(i);
   // [ ] step through every spawn (the kit level has more than nine).
   if (input.hit('BracketRight')) spawn(spawnIndex + 1);
@@ -159,6 +252,16 @@ function onKeys(): void {
   if (input.hit('KeyP')) explorer.currentAction === 'peek' ? explorer.stop('peek') : explorer.play('peek');
   if (input.hit('KeyL')) explorer.setOutfit({ held: explorer.currentOutfit.held === 'lantern' ? 'none' : 'lantern' });
   if (input.hit('KeyT')) explorer.setOutfit({ held: explorer.currentOutfit.held === 'torch' ? 'none' : 'torch' });
+  if (input.hit('KeyI')) {
+    const on = explorer.currentOutfit.held !== 'flashlight';
+    explorer.setOutfit({ held: on ? 'flashlight' : 'none' });
+    toast(on ? `Flashlight on · ${beamLabel()} (O to change)` : 'Flashlight off');
+  }
+  if (input.hit('KeyO')) {
+    if (explorer.currentOutfit.held === 'flashlight') beamMode = beamMode === 'ahead' ? 'mouse' : 'ahead';
+    else explorer.setOutfit({ held: 'flashlight' });
+    toast(`Flashlight: ${beamLabel()}`);
+  }
   if (input.hit('KeyH')) explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
   if (input.hit('KeyG')) {
     const names = Object.keys(OUTFITS) as OutfitName[];
@@ -207,7 +310,8 @@ function renderHud(fps: number): void {
   hud.innerHTML = `${title}
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
-    <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview <kbd>K</kbd> block look<br>
+    <kbd>Z</kbd> camera (take photos) <kbd>M</kbd> album<br>
+    <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>I</kbd> flashlight <kbd>O</kbd> beam aim <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview <kbd>K</kbd> block look<br>
     <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? `${world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ')} · <kbd>[</kbd><kbd>]</kbd> all ${world.spawns.length} spots` : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
 }
 
@@ -240,14 +344,14 @@ const feedback = shot || test
           Explorer: `(${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) m · facing ${deg(player.yaw).toFixed(0)}° · ${player.grounded ? 'on the ground' : 'in the air'} · ${Math.hypot(player.velocity.x, player.velocity.z).toFixed(2)} m/s · ${Math.hypot(p.x, p.z).toFixed(0)} m from the central tower`,
           Action: action ? `${action}, ${explorer.animator.actionTime.toFixed(2)} s in` : 'none',
           Camera: `${player.overview ? 'overview' : 'follow'} · ${deg(player.camYaw - player.yaw - Math.PI).toFixed(0)}° round from behind · pitch ${deg(player.camPitch).toFixed(0)}° · ${player.camDist.toFixed(1)} m`,
-          Look: `outfit ${outfit} (hat ${o.hat ? 'on' : 'off'}, holding ${o.held}) · expression ${explorer.currentExpression} · ${dusk ? 'dusk' : 'afternoon'}`,
+          Look: `outfit ${outfit} (hat ${o.hat ? 'on' : 'off'}, holding ${o.held}${o.held === 'flashlight' ? `, ${beamLabel()}` : ''}) · expression ${explorer.currentExpression} · ${dusk ? 'dusk' : 'afternoon'}`,
           World: `${world.stats.instances} voxel blocks · ${world.colliders.boxes.length} colliders · built in ${buildMs.toFixed(0)} ms`,
         };
       },
       // Everything the URL params below need to put the explorer and camera back here.
       repro: () => {
         const q = new URLSearchParams(location.search);
-        for (const k of ['spawn', 'shot', 'test', 'at', 'cam', 'hat', 'held', 'expr', 'dusk', 'overview', 'dist', 'anim', 'action', 't']) q.delete(k);
+        for (const k of ['spawn', 'shot', 'test', 'at', 'cam', 'hat', 'held', 'beam', 'expr', 'dusk', 'overview', 'dist', 'anim', 'action', 't']) q.delete(k);
         const p = player.position;
         const o = explorer.currentOutfit;
         const speed = Math.hypot(player.velocity.x, player.velocity.z);
@@ -256,6 +360,7 @@ const feedback = shot || test
         q.set('outfit', outfit);
         if (o.hat !== OUTFITS[outfit].hat) q.set('hat', o.hat ? '1' : '0');
         if (o.held !== OUTFITS[outfit].held) q.set('held', o.held);
+        if (o.held === 'flashlight' && beamMode === 'mouse') q.set('beam', 'mouse');
         if (explorer.currentExpression !== 'neutral') q.set('expr', explorer.currentExpression);
         if (dusk) q.set('dusk', '1');
         if (player.overview) {
@@ -323,14 +428,25 @@ let fps = 60;
 function tick(now: number): void {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // (the first rAF time can predate `last`)
   last = now;
-  if (feedback?.active) player.look(dt); // frozen for a bug report; the camera still turns
-  else {
+  if (feedback?.active || photos?.isOpen) {
+    // Frozen for a bug report or the album; the camera still turns.
+    player.look(dt);
+    if (photos?.isOpen && input.hit('KeyM')) photos.closeAlbum();
+    if (photos?.isOpen && input.hit('Escape')) photos.back();
+  } else {
     onKeys();
+    aim();
     player.update(dt);
     explorer.update(dt);
   }
+  updateFinder();
   followSun();
   renderer.render(scene, camera);
+  if (snap) {
+    // Read the canvas now, before the browser clears it.
+    snap = false;
+    photos?.capture(canvas, placeName());
+  }
   feedback?.update();
   input.endFrame();
   fpsAcc += dt;
@@ -349,6 +465,7 @@ if (test) {
   Object.assign(window, {
     __step: (dt: number) => {
       onKeys();
+      aim();
       player.update(dt);
       explorer.update(dt);
       input.endFrame();
@@ -363,6 +480,7 @@ if (test) {
   const speed = anim === 'run' ? RUN_SPEED : anim === 'walk' ? WALK_SPEED : 0;
   const settle = (seconds: number) => {
     for (let i = 0; i < Math.round(seconds * 60); i++) {
+      aim();
       player.update(1 / 60);
       if (speed) explorer.setMotion(speed, true, 0);
       explorer.update(1 / 60);
@@ -383,4 +501,4 @@ if (test) {
 }
 
 console.info(`[angkor] world built in ${buildMs.toFixed(0)} ms, ${world.stats.instances} voxel instances, ${world.colliders.boxes.length} colliders`);
-Object.assign(window, { scene, camera, player, explorer, world, renderer, feedback });
+Object.assign(window, { scene, camera, player, explorer, world, renderer, feedback, photos });
