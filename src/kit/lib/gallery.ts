@@ -122,8 +122,7 @@ export interface CourseOptions {
   length: [number, number];
   /**
    * Faces of the course that abut other stone (FACE bits; default the bottom).
-   * A covered top or far end makes the stones stop a texel short there (the
-   * joint); the dark fill isn't set back from covered faces.
+   * The dark fill isn't set back from covered faces.
    */
   closed?: number;
   /** Course number in its wall: alternate courses start with a part stone (running bond). */
@@ -190,8 +189,6 @@ export class DryMasonry {
     const bitN = axis === 'x' ? FACE.nx : FACE.nz;
     const [crossP, crossN] = axis === 'x' ? [FACE.pz, FACE.nz] : [FACE.px, FACE.nx];
     const [a0, a1] = [box[A], box[A + 3]];
-    const capTop = (closed & FACE.py) !== 0;
-    const capEnd = (closed & bitP) !== 0;
     const row = o.row ?? 0;
     const seed = this.seed + Math.round(box[1] * 16) * 131 + Math.round(a0 * 16) * 7;
     const src = here();
@@ -235,15 +232,12 @@ export class DryMasonry {
       else segs[i + 1].a = segs[i].a;
       segs.splice(i--, 1);
     }
+    // Stones touch their neighbours: the joints are drawn by their bevels (see emit).
     const out: Stone[] = [];
-    const y1 = capTop ? box[4] - T : box[4];
-    segs.forEach((sg, i) => {
-      const last = i === segs.length - 1;
-      const e = last && !capEnd ? sg.b : sg.b - T;
+    segs.forEach((sg) => {
       const b: Box6 = [...box];
       b[A] = sg.a;
-      b[A + 3] = e;
-      b[4] = y1;
+      b[A + 3] = sg.b;
       if (face === crossP) b[C + 3] += sg.proud;
       else if (face === crossN) b[C] -= sg.proud;
       const look = o.look((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2);
@@ -354,12 +348,16 @@ export class DryMasonry {
     this.fill = this.fill.flatMap((f) => subtractBox(f.b, cut).map((q) => ({ b: q, src: f.src })));
   }
 
-  /** Emit the stones and the dark fill. */
+  /**
+   * Emit the stones and the dark fill. A stone's side that lies wholly against
+   * other stones is a masonry joint (`joint`): its bevel keeps a softer rim and
+   * closes in a thin shadow line, and an edge between two joints stays square,
+   * like the §19 blocks.
+   */
   emit(v: VoxelBuilder): void {
+    const pieces: { b: Box6; s: Stone; merge: number }[] = [];
     for (const s of this.stones) {
-      const shade = s.look.shade ?? 1;
-      const put = (b: Box6, merge = 0) =>
-        v.box((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2, b[3] - b[0], b[4] - b[1], b[5] - b[2], s.look.color, 'sandstone', { shade, open: 63, merge, surf: s.look.surf, src: s.src });
+      const put = (b: Box6, merge = 0) => pieces.push({ b, s, merge });
       let parts: Box6[] = [s.box];
       if (s.gone) {
         // What is left behind the hole, a texel behind the fill that is its back.
@@ -392,6 +390,18 @@ export class DryMasonry {
         });
       }
     }
+    const joints = jointMasks(pieces);
+    pieces.forEach(({ b, s, merge }, i) => {
+      const joint = joints[i] & ~merge;
+      v.box((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2, b[3] - b[0], b[4] - b[1], b[5] - b[2], s.look.color, 'sandstone', {
+        shade: s.look.shade ?? 1,
+        open: 63 & ~joint,
+        merge,
+        joint,
+        surf: s.look.surf,
+        src: s.src,
+      });
+    });
     for (const { b: f, src } of this.fill) {
       if (f[3] - f[0] < 1e-6 || f[4] - f[1] < 1e-6 || f[5] - f[2] < 1e-6) continue;
       v.box((f[0] + f[3]) / 2, (f[1] + f[4]) / 2, (f[2] + f[5]) / 2, f[3] - f[0], f[4] - f[1], f[5] - f[2], JOINT, 'sandstone', { open: 0, src });
@@ -443,6 +453,52 @@ function crackParts(s: Stone): Box6[] {
 }
 
 /**
+ * Joint mask of each piece (FACE bits): the sides lying wholly against pieces
+ * of other stones, tested texel by texel just outside the side. Pieces sit on
+ * the texel grid; a 1 m bucket grid keeps the test cheap on long walls.
+ */
+function jointMasks(pieces: readonly { b: Box6; s: Stone }[]): number[] {
+  const E = 1e-6;
+  const cell = (v: number) => Math.floor(v);
+  const buckets = new Map<string, number[]>();
+  pieces.forEach(({ b }, i) => {
+    for (let x = cell(b[0] + E); x <= cell(b[3] - E); x++)
+      for (let y = cell(b[1] + E); y <= cell(b[4] - E); y++)
+        for (let z = cell(b[2] + E); z <= cell(b[5] - E); z++) {
+          const k = `${x},${y},${z}`;
+          const list = buckets.get(k);
+          if (list) list.push(i);
+          else buckets.set(k, [i]);
+        }
+  });
+  const inOther = (p: readonly number[], s: Stone) => {
+    for (const j of buckets.get(`${cell(p[0])},${cell(p[1])},${cell(p[2])}`) ?? []) {
+      const q = pieces[j];
+      if (q.s !== s && p[0] > q.b[0] && p[0] < q.b[3] && p[1] > q.b[1] && p[1] < q.b[4] && p[2] > q.b[2] && p[2] < q.b[5]) return true;
+    }
+    return false;
+  };
+  return pieces.map(({ b, s }) => {
+    let mask = 0;
+    for (let bit = 0; bit < 6; bit++) {
+      const ax = bit >> 1;
+      const [u, w] = [(ax + 1) % 3, (ax + 2) % 3];
+      const p = [0, 0, 0];
+      p[ax] = bit & 1 ? b[ax] - T / 2 : b[ax + 3] + T / 2;
+      let all = true;
+      for (let a = b[u] + T / 2; all && a < b[u + 3]; a += T)
+        for (let c = b[w] + T / 2; all && c < b[w + 3]; c += T) {
+          p[u] = a;
+          p[w] = c;
+          all = inOther(p, s);
+        }
+      if (all) mask |= 1 << bit;
+    }
+    return mask;
+  });
+}
+
+/**
  * The look of stones in a §19.1 finish, varied stone by stone: the finish's
  * tones, a little shade jitter, moss in patches (more low down), lichen,
  * cracks on only some of the stones (a wall where every block is crazed reads
@@ -463,7 +519,8 @@ export function finishLook(f: StoneFinish, seed: number, o: { streaks?: (x: numb
         clamp01(moss * (0.3 + 1.2 * n + 0.5 * low) + (o.moss ?? 0) * (0.5 + n)),
         clamp01(lichen * (0.4 + 1.2 * h(3))),
         h(4) < 0.28 ? clamp01(crack * 1.3) : 0,
-        clamp01(Math.max(stain * (0.45 + 1.1 * s), o.streaks?.(x, y) ?? 0)),
+        // (grime varies stone by stone but stays under the sheets' warm, sunlit stone)
+        clamp01(Math.max(stain * (0.3 + 0.75 * s), o.streaks?.(x, y) ?? 0)),
       ],
     };
   };
