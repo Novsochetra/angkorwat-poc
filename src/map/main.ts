@@ -6,7 +6,9 @@ import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
+import type { Foreground } from './foreground';
 import type { MapPost } from './post';
+import type { MapRoam } from './roam/roam';
 import { DEFAULT_SETTINGS, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
@@ -74,7 +76,10 @@ async function safe<T>(name: string, make: () => Promise<T>, fallback: () => T):
 
 const field = timed('land', buildHeightField);
 const ctx: MapContext = { scene, renderer, camera, field, quality, shot };
-const atmosphere: Atmosphere = await safe('atmosphere', async () => (await import('./atmosphere')).buildAtmosphere(ctx), () => {
+const atmosphere: Atmosphere = await safe('atmosphere', async () => {
+  const { buildAtmosphere } = await import('./atmosphere');
+  return timed('atmosphere', () => buildAtmosphere(ctx));
+}, () => {
   const key = new DirectionalLight(0xffffff, 2);
   key.position.set(300, 400, 200);
   const object = new Group().add(new HemisphereLight(0xffffff, 0x444444, 1), key);
@@ -125,8 +130,9 @@ const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.na
 // ── Camera, sound, interface ────────────────────────────────────────────────
 const rig = new MapCameraRig(camera);
 rig.calm = settings.calm;
-const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, flight() {}, update() {} }));
+const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, roam() {}, setWorld() {}, flight() {}, update() {} }));
 audio.setVolumes(settings);
+audio.setWorld(field);
 
 let selected: PlaceId | null = null;
 let hovered: PlaceId | null = null;
@@ -169,7 +175,43 @@ const handlers = {
   onSound: (s: Parameters<MapAudio['play']>[0]) => audio.play(s),
   onFirstGesture: () => void audio.start(),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {} }));
+
+// ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
+const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);
+const roam: MapRoam | null = foreground
+  ? await safe<MapRoam | null>(
+      'roam',
+      async () =>
+        (await import('./roam/roam')).buildRoam(ctx, {
+          explorer: foreground.explorer,
+          feet: foreground.feet,
+          yaw: foreground.yaw,
+          release: (on) => foreground.release(on),
+          parts,
+          uiRoot,
+          canvas,
+          onMode: (mode) => {
+            if (mode !== 'overview') select(null);
+            ui.setRoaming(mode);
+          },
+          onOverview: () => {
+            rig.fit();
+            rig.focus(null, true);
+          },
+          onEnter: (place) => {
+            audio.play('begin');
+            if (place.href) setTimeout(() => location.assign(place.href!), 1600);
+          },
+          playSound: (s, gain) => audio.roam(s, gain),
+        }),
+      () => null,
+    )
+  : null;
+if (roam) {
+  parts.push(roam);
+  scene.add(roam.object);
+}
 
 addEventListener('pointermove', (e) => rig.setPointer((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1));
 addEventListener('resize', () => {
@@ -191,13 +233,15 @@ function nightTarget(t: number): number {
 
 // ── Frame ───────────────────────────────────────────────────────────────────
 const fixedCam = params.get('cam')?.split(',').map(Number);
-const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0) };
+const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0 } };
 const anchors = Object.fromEntries(PLACES.map((p) => [p.id, { x: 0, y: 0, visible: false }])) as Record<PlaceId, AnchorOnScreen>;
 const _p = new Vector3();
+const _d = new Vector3();
 function projectAnchors(): void {
   for (const p of PLACES) {
     _p.set(...p.anchor).project(camera);
     const a = anchors[p.id];
+    a.dist = camera.position.distanceTo(_d.set(...p.anchor));
     a.x = ((_p.x + 1) / 2) * innerWidth;
     a.y = ((1 - _p.y) / 2) * innerHeight;
     // In front of the camera (the interface keeps cards of off-screen places at the screen's edge).
@@ -216,9 +260,11 @@ function step(t: number, dt: number): void {
   if (fixedCam) {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
-  } else rig.update(dt, t);
+  } else if (!roam?.active) rig.update(dt, t);
+  // Roaming moves the explorer and the follow camera first: the other parts read the camera.
+  roam?.update?.(frame);
   camera.updateMatrixWorld();
-  for (const p of parts) p.update?.(frame);
+  for (const p of parts) if (p !== roam) p.update?.(frame);
   projectAnchors();
   ui.update(anchors, dt);
   ui.setNight(night);
@@ -235,7 +281,7 @@ const feedback = shot
       pickables: () => parts.map((p) => p.object),
       render: () => post.render(frame),
       state: () => ({
-        Map: `${selected ? `focused on ${selected}` : 'overview'} · night ${night.toFixed(2)} · t ${frame.t.toFixed(1)} s`,
+        Map: `${roam?.report()?.text ?? (selected ? `focused on ${selected}` : 'overview')} · night ${night.toFixed(2)} · t ${frame.t.toFixed(1)} s`,
         Camera: `(${camera.position.toArray().map((v) => v.toFixed(1)).join(', ')})`,
         Blocks: Object.entries(blocks).map(([k, v]) => `${k} ${v}`).join(' · '),
       }),
@@ -244,6 +290,7 @@ const feedback = shot
         q.set('t', frame.t.toFixed(1));
         q.set('night', night.toFixed(2));
         if (selected) q.set('focus', selected);
+        for (const [k, v] of Object.entries(roam?.report()?.params ?? {})) q.set(k, v);
         return q;
       },
     });
@@ -258,7 +305,7 @@ if (focus) {
   pointOut();
 }
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
-Object.assign(window, { scene, camera, field, parts, rig, audio, ui, renderer, __mapStats: { timings, blocks, failed } });
+Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __mapStats: { timings, blocks, failed } });
 
 /** Fade the loading screen out once the map is drawn. */
 function hideLoading(): void {
@@ -269,11 +316,47 @@ function hideLoading(): void {
   setTimeout(() => loading.remove(), 1000);
 }
 
+// ── Resolution follows the frame rate ─────────────────────────────────────
+/**
+ * The pixel ratio steps down (to 1 at least) while frames come slower than
+ * about 48 a second, and back up when they keep up with the screen: the
+ * haze, mist, bloom and grading run on every pixel, so fewer pixels keep
+ * the map smooth on any machine. A ratio that proved too slow is not tried
+ * again for a minute (no see-sawing).
+ */
+const MAX_RATIO = renderer.getPixelRatio();
+const res = { ratio: MAX_RATIO, ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0 };
+function adaptResolution(dt: number): void {
+  if (dt > 0.25) return; // (a hitch: a tab switch, a build)
+  res.time += dt;
+  res.frames++;
+  res.since += dt;
+  res.ceilingAge += dt;
+  if (res.ceilingAge > 60) res.ceiling = MAX_RATIO;
+  if (res.frames < 45 || res.since < 1.5) return;
+  const avg = res.time / res.frames;
+  res.time = res.frames = 0;
+  let next = res.ratio;
+  if (avg > 1 / 48 && res.ratio > 1) {
+    res.ceiling = res.ratio - 0.25;
+    res.ceilingAge = 0;
+    next = Math.max(1, res.ratio - 0.25);
+  } else if (avg < 1 / 57 && res.ratio < res.ceiling) next = Math.min(res.ceiling, res.ratio + 0.25);
+  if (next === res.ratio) return;
+  res.ratio = next;
+  res.since = 0;
+  renderer.setPixelRatio(next);
+  renderer.setSize(innerWidth, innerHeight);
+  post.setSize(innerWidth, innerHeight);
+}
+Object.assign(window, { __mapResolution: res });
+
 if (shot) {
   document.body.classList.add('shot');
   hideLoading();
   const t = Number(params.get('t') ?? 12);
   step(t, 0);
+  roam?.simulate(frame);
   // Let the scene settle (animated parts ease in), then render once.
   for (let i = 0; i < 30; i++) step(t, 1 / 60);
   step(t, 0);
@@ -285,9 +368,11 @@ if (shot) {
   const t0 = performance.now();
   let last = t0;
   const tick = (now: number) => {
-    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    const raw = Math.max(0, (now - last) / 1000);
+    const dt = Math.min(0.05, raw);
     last = now;
     if (!feedback?.active) step((now - t0) / 1000, dt);
+    if (now - t0 > 3000) adaptResolution(raw);
     post.render(frame);
     feedback?.update();
     if (first) {

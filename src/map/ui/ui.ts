@@ -1,5 +1,5 @@
 import type { PlaceDef } from '../layout';
-import type { MapSettings, PlaceId, UISound } from '../types';
+import { DEFAULT_SETTINGS, VOLUME_KEYS, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey } from '../types';
 import { ICON } from './icons';
 import { steppedRing, steppedShape } from './shape';
 
@@ -14,10 +14,17 @@ import { steppedRing, steppedShape } from './shape';
  * Keys: Tab / arrows move between cards, Enter picks, Esc goes back (or
  * closes the settings). A click on the empty map goes back too.
  *
+ * While the explorer roams the map (`setRoaming`), the picker steps back:
+ * no title, hint or info panel; the cards become small name pins over their
+ * beacons that fade with distance and cannot be clicked; the keys and clicks
+ * are the roaming's. The gear and mute buttons stay (top right); the roaming
+ * HUD has the top-left and bottom-left corners and the bottom centre.
+ *
  * Shots (`?shot=1`) can show states: `uistate=` a comma list of
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
- * `settings`, `muted`, `begin` (the fade to black).
+ * `settings`, `muted`, `begin` (the fade to black), `roam` (the interface
+ * while roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
   /** A card is hovered (null: none). */
@@ -38,6 +45,8 @@ export interface AnchorOnScreen {
   x: number;
   y: number;
   visible: boolean;
+  /** Metres from the camera to the anchor (the roaming pins fade with it and show it). */
+  dist?: number;
 }
 
 export interface MapUI {
@@ -47,14 +56,30 @@ export interface MapUI {
   setSelected(id: PlaceId | null): void;
   /** Night 0‥1, for anything that should follow the time of day. */
   setNight(night: number): void;
+  /**
+   * The player is roaming the map with the explorer (any mode but
+   * `overview`): the picker steps back (no title, no arrow-key card focus,
+   * no click-to-go-back) so the roaming controls and view have the screen.
+   */
+  setRoaming(mode: RoamMode): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
 const CARD_REF_WIDTH = 1280;
 /** The interface is drawn at 1× for the concept art's size (1672 × 941). */
 const ART = { w: 1672, h: 941 };
-/** Volumes restored by "unmute" when none were kept. */
+/** Volumes restored by "unmute" (kept when muting). */
 const UNMUTE_KEY = 'angkor-map-unmute';
+/** The volume sliders: name, and what they cover (tooltip). */
+const VOLUME_LABEL: Record<VolumeKey, [string, string]> = {
+  master: ['Master', 'All sound'],
+  music: ['Music', 'The calm music'],
+  ambience: ['Ambience', 'Wind, birds, insects and frogs'],
+  water: ['Water', 'Waterfalls and rivers, louder the closer you are'],
+  sfx: ['Effects', "The interface and the explorer's steps, parachute and paddle"],
+};
+/** Every volume but the master. */
+const PART_KEYS = VOLUME_KEYS.filter((k) => k !== 'master');
 const FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Pixelify+Sans:wght@500;600;700&display=swap';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
@@ -104,6 +129,9 @@ interface Card {
   /** Last placed centre (for arrow keys). */
   cx: number;
   cy: number;
+  /** Roaming: the pin's opacity (fades with distance) and its distance text, as last set. */
+  fade: number;
+  dist: string;
 }
 
 export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandlers, initial: MapSettings): MapUI {
@@ -117,6 +145,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   let settingsOpen = false;
   let begun = false;
   let night = -1;
+  /** The explorer is roaming the map: the cards are name pins, the keys are the roaming's. */
+  let roaming = false;
+  /** Interface scale (`--u`). */
+  let unit = 1;
   const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
 
   root.replaceChildren();
@@ -148,11 +180,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     b.setAttribute('aria-expanded', 'false');
     const inner = framed(el('span', 'mu-pin-in', `
       <span class="mu-pin-icon">${ICON.pin}</span>
-      <span class="mu-pin-text"><span class="mu-pin-name">${esc(p.name)}</span><span class="mu-pin-sub">${esc(p.subtitle)}</span></span>
+      <span class="mu-pin-text"><span class="mu-pin-name">${esc(p.name)}</span><span class="mu-pin-sub">${esc(p.subtitle)}</span><span class="mu-pin-dist"></span></span>
       <span class="mu-pin-chev">${ICON.chevron}</span>`), 'sm', true);
     b.append(inner);
     pinsNav.append(b);
-    return { place: p, button: b, w: 200, h: 48, shown: false, push: 0, cx: -1e4, cy: -1e4 };
+    return { place: p, button: b, w: 200, h: 48, shown: false, push: 0, cx: -1e4, cy: -1e4, fade: 1, dist: '' };
   });
   const cardById = new Map(cards.map((c) => [c.place.id, c]));
 
@@ -184,9 +216,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     <div class="mu-set-head"><h2>Settings</h2><button type="button" class="mu-x" aria-label="Close settings">${ICON.close}</button></div>
     <div class="mu-set-group" role="group" aria-label="Sound">
       <h3>Sound</h3>
-      ${(['music', 'ambience', 'sfx'] as const)
-        .map((k) => `<label class="mu-slider"><span>${{ music: 'Music', ambience: 'Ambience', sfx: 'Effects' }[k]}</span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`)
-        .join('')}
+      ${VOLUME_KEYS.map((k) => `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" title="${VOLUME_LABEL[k][1]}"><span>${VOLUME_LABEL[k][0]}</span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`).join('')}
     </div>
     <div class="mu-set-group">
       <h3 id="mu-time-h">Time of day</h3>
@@ -226,7 +256,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   let lastAnchors: Record<PlaceId, AnchorOnScreen> | null = null;
   function measure(): void {
     // Interface scale: the art's size at 1672 × 941, never below 0.8 on a desktop (phones: own sizes in map.css).
-    const unit = innerWidth < 640 ? 0.74 : clamp(Math.min(innerWidth / ART.w, innerHeight / ART.h), 0.8, 1.3);
+    unit = innerWidth < 640 ? 0.74 : clamp(Math.min(innerWidth / ART.w, innerHeight / ART.h), 0.8, 1.3);
     root.style.setProperty('--u', unit.toFixed(3));
     for (const c of cards) {
       c.w = c.button.offsetWidth || c.w;
@@ -308,7 +338,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   }
 
   function pick(id: PlaceId, byKey: boolean): void {
-    if (begun) return;
+    // (roaming: the pins are only markers)
+    if (begun || roaming) return;
     if (settingsOpen) toggleSettings(false, false);
     if (id !== selected) {
       h.onSound('select');
@@ -379,12 +410,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   backBtn.addEventListener('click', back);
 
   // ── Settings ─────────────────────────────────────────────────────────────
-  const volumeKeys = ['music', 'ambience', 'sfx'] as const;
-  const isMuted = () => volumeKeys.every((k) => settings[k] === 0);
+  /** Silent: the master is down, or every other volume is. */
+  const isMuted = () => settings.master === 0 || PART_KEYS.every((k) => settings[k] === 0);
 
   function syncSettings(): void {
     for (const s of sliders) {
-      const k = s.dataset.k as (typeof volumeKeys)[number];
+      const k = s.dataset.k as VolumeKey;
       const v = Math.round(settings[k] * 100);
       s.value = String(v);
       s.style.setProperty('--v', `${v}%`);
@@ -433,10 +464,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   let lastTick = 0;
   for (const s of sliders) {
     s.addEventListener('input', () => {
-      const k = s.dataset.k as (typeof volumeKeys)[number];
+      const k = s.dataset.k as VolumeKey;
       const v = Number(s.value) / 100;
-      // Moving a slider while muted brings the other volumes back too.
-      const restore = isMuted() ? savedVolumes() : {};
+      // Moving a slider while muted brings the sound back too (the moved slider keeps its value).
+      const restore: Partial<MapSettings> = isMuted() && v > 0 ? unmuted() : {};
       change({ ...restore, [k]: v });
       const now = performance.now();
       if (now - lastTick > 70) {
@@ -457,27 +488,43 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     h.onSound('toggle');
   });
 
-  function savedVolumes(): Pick<MapSettings, 'music' | 'ambience' | 'sfx'> {
+  /** The volumes kept by the last mute (volumes it did not keep: the defaults). */
+  function savedVolumes(): Pick<MapSettings, VolumeKey> {
+    const out = Object.fromEntries(VOLUME_KEYS.map((k) => [k, DEFAULT_SETTINGS[k]])) as Pick<MapSettings, VolumeKey>;
     try {
       const v = JSON.parse(localStorage.getItem(UNMUTE_KEY) ?? 'null');
-      if (v && volumeKeys.some((k) => v[k] > 0)) return { music: +v.music || 0, ambience: +v.ambience || 0, sfx: +v.sfx || 0 };
+      if (v && typeof v === 'object') {
+        const kept = { ...out };
+        for (const k of VOLUME_KEYS) if (typeof v[k] === 'number' && Number.isFinite(v[k])) kept[k] = clamp(v[k], 0, 1);
+        // (a kept set that is itself silent would not unmute)
+        if (kept.master > 0 && PART_KEYS.some((k) => kept[k] > 0)) return kept;
+      }
     } catch {
       /* no storage */
     }
-    return { music: 0.55, ambience: 0.8, sfx: 0.7 };
+    return out;
   }
+  /** What brings the sound back: the kept master if it is down, the kept others if they all are. */
+  function unmuted(): Partial<MapSettings> {
+    const kept = savedVolumes();
+    const out: Partial<MapSettings> = {};
+    if (settings.master === 0) out.master = kept.master;
+    if (PART_KEYS.every((k) => settings[k] === 0)) for (const k of PART_KEYS) out[k] = kept[k];
+    return out;
+  }
+  // Mute turns the master down (the mix stays as it was); unmute brings it back.
   muteBtn.addEventListener('click', () => {
     if (isMuted()) {
-      change(savedVolumes());
+      change(unmuted());
       h.onSound('toggle');
     } else {
       h.onSound('toggle');
       try {
-        localStorage.setItem(UNMUTE_KEY, JSON.stringify({ music: settings.music, ambience: settings.ambience, sfx: settings.sfx }));
+        localStorage.setItem(UNMUTE_KEY, JSON.stringify(Object.fromEntries(VOLUME_KEYS.map((k) => [k, settings[k]]))));
       } catch {
         /* no storage: unmute brings the defaults */
       }
-      change({ music: 0, ambience: 0, sfx: 0 });
+      change({ master: 0 });
     }
   });
   syncSettings();
@@ -530,6 +577,15 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   addEventListener('keydown', (e) => {
     if (reporting() || e.ctrlKey || e.metaKey || e.altKey) return;
+    // (roaming: the keys move the explorer, and Esc goes back to the overview,
+    // unless it closes the settings first)
+    if (roaming) {
+      if (e.key === 'Escape' && settingsOpen) {
+        toggleSettings(false);
+        e.preventDefault();
+      }
+      return;
+    }
     const t = e.target as HTMLElement | null;
     if (e.key === 'Escape') {
       if (settingsOpen) toggleSettings(false);
@@ -556,7 +612,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (!d || reporting() || !(e.target instanceof HTMLCanvasElement)) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || performance.now() - d.t > 700) return;
     if (settingsOpen) toggleSettings(false);
-    else back();
+    else if (!roaming) back();
   });
 
   // Phones: drag the sheet's grip down to close it.
@@ -596,9 +652,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'selected' && c) applySelected(c.place.id);
       if (k === 'settings') toggleSettings(true, false);
       if (k === 'muted') {
-        settings = { ...settings, music: 0, ambience: 0, sfx: 0 };
+        settings = { ...settings, master: 0 };
         syncSettings();
       }
+      if (k === 'roam') queueMicrotask(() => setRoaming('walk'));
       if (k === 'begin') {
         const p = (selected && cardById.get(selected)?.place) || places[0];
         fade.querySelector('p')!.textContent = `Setting out for ${p.name}`;
@@ -614,6 +671,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const EDGE = 24;
   /** Cards at their beacons (+ the art's offset), inside the view, clear of the corners and of each other. */
   function place(anchors: Record<PlaceId, AnchorOnScreen>, dt: number): void {
+    if (roaming) return placePins(anchors, dt);
     const k = innerWidth / CARD_REF_WIDTH;
     const phone = innerWidth < 640;
     const want = new Map<Card, number>();
@@ -646,7 +704,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       }
       want.set(c, down > 0 ? down : -up);
     }
-    // Keep shown cards apart: push overlapping pairs up / down.
+    settle(want, dt);
+  }
+
+  /** Keep shown cards apart (push overlapping pairs up / down, from where `want` already moves them), then move them there. */
+  function settle(want: Map<Card, number>, dt: number): void {
     const shown = cards.filter((c) => c.shown).sort((a, b) => a.cy + want.get(a)! - (b.cy + want.get(b)!));
     for (let pass = 0; pass < 3; pass++)
       for (let i = 0; i < shown.length; i++)
@@ -668,6 +730,98 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     }
   }
 
+  // ── Roaming pins ─────────────────────────────────────────────────────────
+  /** Gap between a pin and its beacon (the pin's stem), px at 1×. */
+  const STEM = 12;
+  /** Metres from the camera to a place's beacon: from main.ts (`dist`), else from the camera it puts on `window`. */
+  function beaconDistance(a: AnchorOnScreen, p: PlaceDef): number {
+    if (a.dist !== undefined) return a.dist;
+    const cam = (window as unknown as { camera?: { position: { x: number; y: number; z: number } } }).camera;
+    if (!cam) return 300;
+    return Math.hypot(p.anchor[0] - cam.position.x, p.anchor[1] - cam.position.y, p.anchor[2] - cam.position.z);
+  }
+  const smooth = (a: number, b: number, v: number) => {
+    const x = clamp((v - a) / (b - a), 0, 1);
+    return x * x * (3 - 2 * x);
+  };
+  /** A pin's opacity at `d` m: gone when you are at the place (its prompt shows then), faint far off. */
+  const pinFade = (d: number) => smooth(25, 50, d) * (1 - 0.6 * smooth(150, 700, d));
+  const distText = (d: number) => (d < 1000 ? `${Math.max(10, Math.round(d / 10) * 10)} m` : `${(d / 1000).toFixed(1)} km`);
+  /** Screen boxes of the roaming HUD (px): its corners top left and bottom left, the prompt at the bottom. */
+  function hudZones(): { l: number; t: number; r: number; b: number }[] {
+    const u = unit;
+    const w = innerWidth;
+    const hgt = innerHeight;
+    const prompt = hgt * 0.86;
+    return [
+      { l: 0, t: 0, r: 330 * u, b: 110 * u },
+      { l: 0, t: hgt - 110 * u, r: 640 * u, b: hgt },
+      { l: w / 2 - 250 * u, t: prompt - 70 * u, r: w / 2 + 250 * u, b: prompt + 16 * u },
+    ];
+  }
+  /** While roaming: small name pins right over their beacons, fading with distance, none under the HUD or the corner buttons. */
+  function placePins(anchors: Record<PlaceId, AnchorOnScreen>, dt: number): void {
+    const zones = hudZones();
+    const cr = corner.getBoundingClientRect();
+    zones.push({ l: cr.left - GAP, t: 0, r: innerWidth, b: cr.bottom + GAP });
+    const want = new Map<Card, number>();
+    for (const c of cards) {
+      const a = anchors[c.place.id];
+      if (!a) continue;
+      const d = beaconDistance(a, c.place);
+      c.cx = a.x;
+      c.cy = a.y - c.h / 2 - STEM * unit;
+      const inView = a.visible && a.x > c.w / 2 && a.x < innerWidth - c.w / 2 && c.cy > c.h / 2 && a.y < innerHeight;
+      const l = c.cx - c.w / 2;
+      const t = c.cy - c.h / 2;
+      const underHud = zones.some((z) => l < z.r && l + c.w > z.l && t < z.b && t + c.h > z.t);
+      const fade = pinFade(d);
+      const shown = inView && !underHud && fade > 0.02 && !begun;
+      if (shown !== c.shown) {
+        c.shown = shown;
+        c.button.classList.toggle('is-off', !shown);
+      }
+      if (Math.abs(fade - c.fade) > 0.01) {
+        c.fade = fade;
+        c.button.style.opacity = fade.toFixed(2);
+      }
+      const text = distText(d);
+      if (text !== c.dist) {
+        c.dist = text;
+        c.button.querySelector('.mu-pin-dist')!.textContent = text;
+        // ("90 m" and "1.2 km" differ in width: centre the pin again)
+        c.w = c.button.offsetWidth || c.w;
+      }
+      want.set(c, 0);
+    }
+    settle(want, dt);
+  }
+
+  function setRoaming(mode: RoamMode): void {
+    const on = mode !== 'overview';
+    if (on === roaming) return;
+    roaming = on;
+    root.classList.toggle('mu-roam', on);
+    // The pins are only markers now: no focus, no hover, no clicks.
+    pinsNav.inert = on;
+    if (on) {
+      if (hovered) {
+        hovered = null;
+        h.onHover(null);
+      }
+      for (const c of cards) c.button.classList.remove('is-hover', 'is-press', 'is-focus');
+      if (selected) applySelected(null);
+    } else
+      for (const c of cards) {
+        c.fade = 1;
+        c.dist = '';
+        c.button.style.removeProperty('opacity');
+      }
+    live.textContent = on ? 'Exploring the map.' : 'Back to the map.';
+    // Pins and cards differ in size.
+    measure();
+  }
+
   return {
     update(anchors, dt) {
       lastAnchors = anchors;
@@ -681,5 +835,6 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       night = n;
       root.style.setProperty('--mu-n', n.toFixed(3));
     },
+    setRoaming,
   };
 }

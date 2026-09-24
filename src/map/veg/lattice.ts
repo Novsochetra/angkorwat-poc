@@ -1,4 +1,5 @@
 import type { HeightField } from '../heightfield';
+import { FACE_Z_MIN } from '../terrain/views';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Proto } from './proto';
 
@@ -8,17 +9,21 @@ import type { Proto } from './proto';
  * sides is open in the whole jungle, not just in its own tree, so a dense
  * stand costs about one block per square metre of canopy.
  *
- * Every map camera stands south of what it looks at and above the canopy, so
- * cells whose only open sides face north (−z) or down (−y) are never seen:
- * they stay in the lattice (they still hide their neighbours and cast shadow
- * through the cells in front of them) but are not drawn.
+ * The fixed map cameras stand south of what they look at and above the
+ * canopy; the roaming camera looks every way, but seldom up into a crown
+ * (and there the undersides of the cells above close it). So cells whose
+ * only open sides face down (−y), or north (−z) where no camera looks south
+ * (views.ts `FACE_Z_MIN`), are not drawn: they stay in the lattice (they
+ * still hide their neighbours and cast shadow through the cells in front of
+ * them).
  */
 
 // Cell index ranges: x −1024‥1023, y −16‥495, z −800‥223 (in cells).
 const key = (i: number, j: number, k: number) => ((i + 1024) << 19) | ((j + 16) << 10) | (k + 800);
 
-/** Sides a map camera can see: ±x, +y, +z. */
+/** Sides a map camera can see: ±x, +y, +z, and −z (north) in most of the map. */
 const SEEN = 1 | 2 | 4 | 16;
+const NORTH = 32;
 
 /** Quarter turn q (0‥3) and mirror m of a local (x, z) offset. */
 function turn(x: number, z: number, q: number, m: boolean): [number, number] {
@@ -116,10 +121,10 @@ export class Lattice {
     return this.ci.length;
   }
 
-  /** Emit the visible cells and the free boxes into a builder. Returns the number of boxes. */
-  emit(b: VoxelBuilder): number {
+  /** Emit the visible cells and the free boxes into the builder of their chunk. Returns the number of boxes. */
+  emit(sink: (x: number, z: number) => VoxelBuilder): number {
     const s = this.s;
-    const start = b.boxes.length;
+    let n = 0;
     const has = (i: number, j: number, k: number) => this.map.has(key(i, j, k));
     for (let c = 0; c < this.ci.length; c++) {
       if (!this.shell[c]) continue;
@@ -127,13 +132,16 @@ export class Lattice {
       const j = this.cj[c];
       const k = this.ck[c];
       const open = (has(i + 1, j, k) ? 0 : 1) | (has(i - 1, j, k) ? 0 : 2) | (has(i, j + 1, k) ? 0 : 4) | (has(i, j - 1, k) ? 0 : 8) | (has(i, j, k + 1) ? 0 : 16) | (has(i, j, k - 1) ? 0 : 32);
-      if (!(open & SEEN)) continue;
+      if (!(open & ((k + 0.5) * s > FACE_Z_MIN ? SEEN | NORTH : SEEN))) continue;
       let shade = this.shade[c];
       // Under another tree's crown: darker.
       if (!(open & 4) && (has(i, j + 2, k) || has(i, j + 3, k))) shade *= 0.93;
-      b.box((i + 0.5) * s, (j + 0.5) * s, (k + 0.5) * s, s, s, s, this.color[c], this.mat[c] ? 'mapBark' : 'mapLeaf', { shade, open, src: this.proto[c]?.src });
+      const x = (i + 0.5) * s;
+      const z = (k + 0.5) * s;
+      sink(x, z).box(x, (j + 0.5) * s, z, s, s, s, this.color[c], this.mat[c] ? 'mapBark' : 'mapLeaf', { shade, open, src: this.proto[c]?.src });
+      n++;
     }
-    for (const f of this.free) b.box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, f.leaf ? 'mapLeaf' : 'mapBark', { shade: f.shade, src: f.p.src });
-    return b.boxes.length - start;
+    for (const f of this.free) sink(f.x, f.z).box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, f.leaf ? 'mapLeaf' : 'mapBark', { shade: f.shade, src: f.p.src });
+    return n + this.free.length;
   }
 }

@@ -12,8 +12,10 @@ import type { MapContext, MapFrame, MapPart } from './types';
  * afternoon ↔ moonlit night, blended by `night`; the values are in
  * sky/palette.ts).
  *
- * - The sky dome (sky/skyDome.ts): gradient, sun and moon discs placed where
- *   the concept art has them, clouds, stars.
+ * - The sky dome (sky/skyDome.ts): gradient, the sun disc and the moon
+ *   (its real face, sky/moon.ts) placed where the concept art has them, two
+ *   layers of clouds drifting with the wind (on `f.drift`, so they stand
+ *   still under "reduce motion"), stars.
  * - One key light (sun by day, moon by night) that casts every shadow of the
  *   map. Its direction is a cheat: it comes from the east-south-east and
  *   low (≈ 25° by day), so the faces toward the camera catch the warm light

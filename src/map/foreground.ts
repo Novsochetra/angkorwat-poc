@@ -11,13 +11,24 @@ import type { MapContext, MapFrame, MapPart } from './types';
 
 /** Size of the ledge's sandstone blocks (m): the game's own temple block. */
 const B = 0.5;
+/** While roaming, the ledge shows only while the explorer is this close to it (m). */
+const LEDGE_SEEN = 90;
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
  * with the explorer standing on its corner looking out over the highlands
  * (true size, 1.70 m, so the map reads as far away and huge).
  */
-export function buildForeground(ctx: MapContext): MapPart & { explorer: AngkorExplorer; feet: Vector3 } {
+export interface Foreground extends MapPart {
+  explorer: AngkorExplorer;
+  feet: Vector3;
+  /** Facing on the ledge (radians, like `rotation.y`). */
+  yaw: number;
+  /** The explorer leaves the ledge to roam (true), or is back (false): the ledge stops / starts driving him. */
+  release(roaming: boolean): void;
+}
+
+export function buildForeground(ctx: MapContext): Foreground {
   const feet = explorerFeet();
   const object = new Group();
   object.name = 'foreground';
@@ -73,23 +84,34 @@ export function buildForeground(ctx: MapContext): MapPart & { explorer: AngkorEx
   bush(cr.x, cr.y, cr.z, 1.9, 0.5, 13, LEAF.bright);
   const cl = screenPoint(-0.01, 0.64, 14);
   bush(cl.x, cl.y, cl.z, 1.7, 0.5, 14, LEAF.jungle);
-  object.add(buildVoxelMesh(b, { quality: 'high', name: 'foreground:ledge' }));
+  const ledge = buildVoxelMesh(b, { quality: 'high', name: 'foreground:ledge' });
+  object.add(ledge);
 
   // Hat and the big pack, as in the concept art.
   const explorer = new AngkorExplorer({ quality: 'high', outfit: { ...OUTFITS.explorerGear, hat: true } });
   explorer.blinking = !ctx.shot;
   explorer.object.position.copy(feet);
   const [fx, , fz] = EXPLORER_SPOT.facing;
-  explorer.object.rotation.y = Math.atan2(fx - feet.x, fz - feet.z);
+  const yaw = Math.atan2(fx - feet.x, fz - feet.z);
+  explorer.object.rotation.y = yaw;
   object.add(explorer.object);
+  let roaming = false;
 
   return {
     name: 'foreground',
     object,
     explorer,
     feet,
+    yaw,
     blocks: b.boxes.length,
+    release(on) {
+      roaming = on;
+    },
     update(f: MapFrame) {
+      // The ledge hangs in the air by the overview camera: seen from the land
+      // it would float in the sky, so it goes once the explorer is far off.
+      ledge.visible = !roaming || explorer.object.position.distanceTo(feet) < LEDGE_SEEN;
+      if (roaming) return;
       // After dark the explorer lights a lantern.
       const lantern = f.night > 0.55;
       if (lantern !== (explorer.currentOutfit.held === 'lantern')) explorer.setOutfit({ held: lantern ? 'lantern' : 'none' });

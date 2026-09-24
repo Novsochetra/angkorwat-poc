@@ -1,35 +1,46 @@
-import { DEFAULT_SETTINGS, type MapFrame, type PlaceId, type UISound } from '../types';
+import type { HeightField } from '../heightfield';
+import { DEFAULT_SETTINGS, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { SoundEngine, type Mix, type Volumes } from './engine';
+import type { Ears } from './water';
 
 /**
- * Sound of the map: ambience (wind, water, birds by day, insects and frogs by
- * night), calm generative music, and the interface sounds. All made with the
- * Web Audio API, no sound files.
+ * Sound of the map: ambience (wind, birds by day, insects and frogs by
+ * night), the waterfalls and rivers where they are on the map, calm
+ * generative music, the interface sounds and the roaming explorer's. All made
+ * with the Web Audio API, no sound files.
  *
  * The graph lives in `engine.ts` (it also runs on an `OfflineAudioContext`,
  * which is how its levels are measured). This file is the live side: the
- * `AudioContext`, the scheduling timer, and pausing while the tab is hidden.
+ * `AudioContext`, the scheduling timer, the ears following the camera or the
+ * explorer, and pausing while the tab is hidden.
  */
 export interface MapAudio {
   /** Start (call from a user gesture: browsers keep sound off until one). */
   start(): Promise<void>;
   readonly started: boolean;
-  /** Volumes 0‥1. */
-  setVolumes(v: { music: number; ambience: number; sfx: number }): void;
+  /** Volumes 0‥1 (master multiplies the others). */
+  setVolumes(v: Pick<MapSettings, VolumeKey>): void;
   play(s: UISound): void;
+  /** A sound of the roaming explorer (steps, the parachute, the paddle…), gain 0‥1. */
+  roam(s: RoamSound, gain?: number): void;
+  /** The land, once built: where the waterfalls and rivers are (`field.falls`, `field.rivers`). */
+  setWorld(field: HeightField): void;
   /** A camera flight of this many seconds begins (a soft whoosh). */
   flight(seconds: number): void;
-  /** Every frame: time of day and the place in focus (e.g. louder water near falls). */
+  /**
+   * Every frame: time of day, where the ears are (`f.listener` while
+   * roaming, else the camera: the water is placed, so a close-up on a place
+   * by the falls is louder by itself; `focus` is not needed for it) and the
+   * roaming explorer's lasting sounds (`f.roamLevels`).
+   */
   update(f: MapFrame, focus: PlaceId | null): void;
 }
 
-/** Places with waterfalls close by: the water comes up when the camera is there. */
-const WATERFALLS: ReadonlySet<PlaceId> = new Set<PlaceId>(['terrace', 'rivergate', 'sanctuary']);
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
 const AHEAD = 1.2;
 const EVERY = 250;
-/** Fade-in of music and ambience on start (s). */
+/** Fade-in of music, ambience and water on start (s). */
 const FADE_IN = 3;
 
 /** Make the noise and insect buffers in idle moments, a millisecond at a time, so starting never stalls a frame. */
@@ -56,8 +67,12 @@ export function createMapAudio(): MapAudio {
   let suspendTimer = 0;
   /** Sound is running (not before start, not while the tab is hidden). */
   const live = (): boolean => !!engine && !!ctx && ctx.state === 'running';
-  const volumes: Volumes = { music: DEFAULT_SETTINGS.music, ambience: DEFAULT_SETTINGS.ambience, sfx: DEFAULT_SETTINGS.sfx };
-  const mix: Mix = { night: 0, water: 0 };
+  const volumes: Volumes = { master: DEFAULT_SETTINGS.master, music: DEFAULT_SETTINGS.music, ambience: DEFAULT_SETTINGS.ambience, water: DEFAULT_SETTINGS.water, sfx: DEFAULT_SETTINGS.sfx };
+  const mix: Mix = { night: 0 };
+  let world: HeightField | null = null;
+  const ears: Ears & { right: [number, number, number]; forward: [number, number, number] } = { x: 0, y: 0, z: 0, right: [1, 0, 0], forward: [0, 0, -1] };
+  /** The ears were placed at least once (the first placing jumps, later ones glide). */
+  let heard = false;
 
   const hidden = () => typeof document !== 'undefined' && document.hidden;
 
@@ -111,6 +126,8 @@ export function createMapAudio(): MapAudio {
           engine = new SoundEngine(ctx);
           engine.setVolumes(volumes, true);
           engine.setMix(mix, true);
+          if (world) engine.setWorld(world);
+          if (heard) engine.listen(ears, true);
           engine.fadeIn(FADE_IN);
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
@@ -127,10 +144,26 @@ export function createMapAudio(): MapAudio {
     },
 
     setVolumes(v) {
+      volumes.master = v.master;
       volumes.music = v.music;
       volumes.ambience = v.ambience;
+      volumes.water = v.water;
       volumes.sfx = v.sfx;
       engine?.setVolumes(volumes);
+    },
+
+    roam(s, gain = 1) {
+      if (!engine || !live()) return;
+      try {
+        engine.roam(s, gain);
+      } catch (e) {
+        console.warn('[map] audio roam failed:', e);
+      }
+    },
+
+    setWorld(field) {
+      world = field;
+      engine?.setWorld(field);
     },
 
     play(s) {
@@ -151,10 +184,30 @@ export function createMapAudio(): MapAudio {
       }
     },
 
-    update(f, focus) {
+    update(f) {
       mix.night = f.night;
-      mix.water = focus && WATERFALLS.has(focus) ? 1 : 0;
-      engine?.setMix(mix);
+      // The ears: the camera in the overview (also if roaming failed to load), the explorer's head while roaming;
+      // left and right are the camera's.
+      const at = f.roam === 'overview' ? f.camera.position : f.listener;
+      const m = f.camera.matrixWorld.elements;
+      ears.x = at.x;
+      ears.y = at.y;
+      ears.z = at.z;
+      ears.right[0] = m[0];
+      ears.right[1] = m[1];
+      ears.right[2] = m[2];
+      ears.forward[0] = -m[8];
+      ears.forward[1] = -m[9];
+      ears.forward[2] = -m[10];
+      heard = true;
+      if (!engine || !live()) return;
+      try {
+        engine.setMix(mix);
+        engine.listen(ears);
+        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake);
+      } catch (e) {
+        console.warn('[map] audio update failed:', e);
+      }
     },
   };
 }

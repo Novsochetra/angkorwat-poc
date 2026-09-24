@@ -4,27 +4,30 @@ import { hash3, pick } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { PLACES } from '../layout';
+import { FACE_Z_MIN } from '../terrain/views';
 import { lodAt } from './scatter';
 
 /**
  * Green on the cliffs: moss cushions over the lips and curtains of vines and
  * lianas hanging down the walls, like the concept art's overgrown mesas.
- * Only on walls a map camera can see (facing south, east or west).
+ * Only on walls a camera can see: facing south, east or west, and north
+ * where the roaming camera goes (views.ts `FACE_Z_MIN`).
  */
 
 const VINE = [...BARK.vine, LEAF.jungle[0], LEAF.jungle[3], LEAF.dark[2], LEAF.bright[4]];
 const MOSS_TONES = [...MOSS, LEAF.bright[4], LEAF.jungle[3]];
 
-/** Wall directions: neighbour offset (cells) and the face normal; north-facing walls are skipped. */
+/** Wall directions: neighbour offset (cells) and the face normal. */
 const WALLS: [number, number][] = [
   [1, 0],
   [-1, 0],
   [0, 1],
+  [0, -1],
 ];
 
-export function buildCliffGreens(f: HeightField, b: VoxelBuilder, density: number): number {
+/** Build the greens, each into the builder of its chunk. */
+export function buildCliffGreens(f: HeightField, sink: (x: number, z: number) => VoxelBuilder, density: number): void {
   const src = traceSource();
-  const start = b.boxes.length;
   const { nx, nz, height } = f;
   const nearPad = (x: number, z: number) => PLACES.some((p) => Math.abs(x - p.x) < p.pad[0] + 10 && Math.abs(z - p.z) < p.pad[1] + 10);
   for (let k = 0; k < nz; k++)
@@ -35,6 +38,7 @@ export function buildCliffGreens(f: HeightField, b: VoxelBuilder, density: numbe
       const s = f.surface[c];
       if (s === SURFACE.pad || s === SURFACE.path || f.water[c] > -1000) continue;
       for (const [di, dk] of WALLS) {
+        if (dk < 0 && z - CELL / 2 <= FACE_Z_MIN) continue;
         const ni = i + di;
         const nk = k + dk;
         if (ni < 0 || nk < 0 || ni >= nx || nk >= nz) continue;
@@ -45,6 +49,7 @@ export function buildCliffGreens(f: HeightField, b: VoxelBuilder, density: numbe
         if (f.surface[n] === SURFACE.path || nearPad(x, z)) continue;
         const lod = lodAt(x, h, z);
         const far = lod >= 2;
+        const b = sink(x, z);
         // Wall plane and the along-wall axis.
         const wx = x + di * (CELL / 2);
         const wz = z + dk * (CELL / 2);
@@ -97,7 +102,6 @@ export function buildCliffGreens(f: HeightField, b: VoxelBuilder, density: numbe
         }
       }
     }
-  return b.boxes.length - start;
 }
 
 function smooth(a: number, b: number, t: number): number {

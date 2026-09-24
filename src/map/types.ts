@@ -44,6 +44,43 @@ export interface MapFrame {
   camera: PerspectiveCamera;
   /** Direction towards the sun (day) or the moon (night), normalised; set by the atmosphere. */
   lightDir: Vector3;
+  /**
+   * Where the ears are, for sounds placed on the map (waterfalls, rivers):
+   * the camera in the overview, the explorer's head while roaming.
+   */
+  listener: Vector3;
+  /** What the player is doing: looking at the overview, or roaming the map with the explorer. */
+  roam: RoamMode;
+  /** Lasting sounds of the roaming explorer (all 0 in the overview). */
+  roamLevels: RoamLevels;
+}
+
+/**
+ * Roaming the map with the explorer (src/map/roam/): `overview` = the
+ * picker screen; `leap` = running off the ledge; `glide` = under the
+ * parachute; `walk` = on foot; `boat` = paddling a boat on a river.
+ */
+export type RoamMode = 'overview' | 'leap' | 'glide' | 'walk' | 'boat';
+
+/** One-off sounds of the roaming explorer (audio/audio.ts makes them). */
+export type RoamSound =
+  | 'step'
+  | 'jump'
+  | 'land'
+  | 'chuteOpen'
+  | 'chuteClose'
+  | 'splash'
+  | 'paddle'
+  | 'boatIn'
+  | 'boatOut'
+  | 'enter';
+
+/** Sounds of the roaming explorer that last (0‥1 each, set every frame). */
+export interface RoamLevels {
+  /** Rushing air: falling, gliding under the parachute. */
+  wind: number;
+  /** Water against a moving boat. */
+  wake: number;
 }
 
 /** Sounds the interface asks for (audio/audio.ts makes them). */
@@ -51,8 +88,14 @@ export type UISound = 'hover' | 'select' | 'back' | 'begin' | 'open' | 'close' |
 
 /** Player settings (gear button), kept in localStorage. Volumes 0‥1. */
 export interface MapSettings {
+  /** Everything at once (multiplies the others). */
+  master: number;
   music: number;
+  /** Wind, birds by day, insects and frogs by night. */
   ambience: number;
+  /** Waterfalls and rivers (louder the closer you are). */
+  water: number;
+  /** Interface sounds and the explorer's own (steps, parachute, paddle). */
   sfx: number;
   /** Time of day: follow the clock of the page (a slow cycle) or stay. */
   time: 'day' | 'night' | 'cycle';
@@ -60,7 +103,11 @@ export interface MapSettings {
   calm: boolean;
 }
 
-export const DEFAULT_SETTINGS: MapSettings = { music: 0.55, ambience: 0.8, sfx: 0.7, time: 'day', calm: false };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, sfx: 0.7, time: 'day', calm: false };
+
+/** The volume settings (sliders), in panel order. */
+export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'sfx'] as const;
+export type VolumeKey = (typeof VOLUME_KEYS)[number];
 
 /** A built part of the map: main.ts adds `object` to the scene and calls `update` each frame. */
 export interface MapPart {

@@ -1,6 +1,6 @@
 import { valueNoise3 } from '../voxel/random';
 import { MAP_BOUNDS, PATHS, PLACES, PLATEAUS, RIVERS, type Plateau } from './layout';
-import { MAP_VIEWS, viewDistance } from './terrain/views';
+import { CAM_REACH, MAP_VIEWS, roamDistance, viewDistance } from './terrain/views';
 
 /**
  * The land of the world map as a grid of columns: ground height, water level
@@ -96,7 +96,8 @@ export class HeightField {
   readonly occupied: Uint8Array;
   /**
    * Block size of the terrain per cell: 0 = 2 m columns, 1 = 4 m, 2 = 8 m.
-   * Land far from every camera (or hidden from all of them) is coarse: its
+   * All the land the roaming explorer can reach is fine; beyond it, land far
+   * from every camera (or hidden from all of them) is coarse: its
    * 2 × 2 or 4 × 4 cells share one height, so everything that reads
    * `height` (trees, clouds) sits on the blocks that are drawn.
    */
@@ -379,12 +380,16 @@ export function buildHeightField(): HeightField {
 
 /** Cells per LOD tile side (8 m). */
 const TILE = 4;
+/** Past the roaming area (m): 2 m columns as far as the follow camera goes, then 4 m ones this far out. */
+const ROAM_MID = 110;
 
 /**
  * Pick the block size of every 8 m tile (see `HeightField.lod`) from the
  * cameras that can see it, and give coarse tiles one height per 4 m or 8 m
  * block (the upper median of their cells). Tiles with a pad, road, river or
- * bank keep 2 m columns.
+ * bank keep 2 m columns, and so does all the land the roaming explorer and
+ * his camera get near; past it (the sinking edges, the far back) the roaming
+ * camera only sees the land from afar.
  */
 function coarsen(f: HeightField): void {
   const { nx, nz, height } = f;
@@ -409,7 +414,10 @@ function coarsen(f: HeightField): void {
       if (forced) continue;
       const x = f.x0 + (a + TILE / 2) * CELL;
       const z = f.z0 + (b + TILE / 2) * CELL;
-      let level = 2;
+      // (distance from the tile's nearest point)
+      const dr = roamDistance(x, z) - (TILE * CELL) / 2;
+      if (dr <= CAM_REACH) continue;
+      let level = dr <= ROAM_MID ? 1 : 2;
       for (const v of MAP_VIEWS) {
         const d = viewDistance(v, x, hmax + 1, z);
         if (d < 0) continue;

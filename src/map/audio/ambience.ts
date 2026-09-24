@@ -5,8 +5,8 @@ import type { SoundEngine } from './engine';
  * Highland jungle ambience.
  *
  * Always: wind in the trees (pink noise, band-passed, slow gusts; leaves
- * rustle on the strong ones) and far-off water (brown noise roar + a pink
- * hiss band for the falls, slowly breathing).
+ * rustle on the strong ones). (The waterfalls and rivers are placed on the
+ * map, on their own bus: water.ts.)
  * Day: sparse birds — whistles, chirp runs, trills, a distant cuckoo, a dove.
  * Night: crickets and a katydid (looping buffers, started only at night),
  * frogs now and then, an owl, softer wind.
@@ -16,8 +16,6 @@ import type { SoundEngine } from './engine';
 const LEVEL = {
   wind: 0.19,
   leaves: 0.16,
-  water: 0.155,
-  hiss: 0.16,
   insects: 0.36,
   bird: 0.17,
   frog: 0.13,
@@ -77,8 +75,6 @@ export class Ambience {
   private readonly gust: GainNode;
   private readonly windTone: BiquadFilterNode;
   private readonly leaves: GainNode;
-  private readonly waterMix: GainNode;
-  private readonly waterTone: BiquadFilterNode;
   private readonly insects: GainNode;
   private readonly insectLayers: LoopLayer[];
   private dayW = 1;
@@ -119,31 +115,6 @@ export class Ambience {
     this.leaves = gain(LEVEL.leaves * 0.4);
     loop(source('rustle')).connect(this.leaves).connect(this.windMix);
 
-    // Water: a low roar and the hiss of the falls, breathing slowly.
-    this.waterTone = filter('lowpass', 700, 0.5);
-    const breathe = gain(1);
-    this.waterMix = gain(LEVEL.water);
-    loop(noise('brown')).connect(this.waterTone).connect(filter('highpass', 110, 0.5)).connect(breathe);
-    loop(noise('pink'), 0.93).connect(filter('bandpass', 2200, 0.8)).connect(gain(LEVEL.hiss)).connect(breathe);
-    // Narrower than the wind: the falls are out there, not all around.
-    const split = ctx.createChannelSplitter(2);
-    breathe.connect(split);
-    for (const ch of [0, 1]) {
-      const p = ctx.createStereoPanner();
-      p.pan.value = ch ? 0.5 : -0.5;
-      split.connect(p, ch).connect(this.waterMix);
-    }
-    this.waterMix.connect(dry);
-    for (const [hz, depth] of [
-      [0.047, 0.1],
-      [0.013, 0.12],
-    ]) {
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = hz;
-      lfo.connect(gain(depth)).connect(breathe.gain);
-      lfo.start(now);
-    }
-
     // Night insects: started only when it gets dark.
     this.insects = gain(0);
     const soft = filter('lowpass', 7000, 0.5);
@@ -164,14 +135,11 @@ export class Ambience {
     ];
   }
 
-  mix(night: number, water: number, t: number, tc: number): void {
+  mix(night: number, t: number, tc: number): void {
     this.dayW = Math.cos((night * Math.PI) / 2);
     this.nightW = Math.sin((night * Math.PI) / 2);
     glide(this.windMix.gain, LEVEL.wind * (0.55 + 0.45 * this.dayW), t, tc);
     glide(this.insects.gain, LEVEL.insects * this.nightW ** 1.5, t, tc);
-    // Near the falls: about +4 dB and a little brighter.
-    glide(this.waterMix.gain, LEVEL.water * (1 + 0.6 * water), t, tc && 1.5);
-    glide(this.waterTone.frequency, 700 + 400 * water, t, tc && 1.5);
   }
 
   schedule(now: number, until: number): void {

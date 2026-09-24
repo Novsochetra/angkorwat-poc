@@ -136,6 +136,19 @@ export class Animator {
    */
   readonly photoHold = { weight: 0, matrix: new Matrix4() };
   onActionEnd?: (name: ActionName) => void;
+  /**
+   * A whole-body pose from outside, over everything else (hanging under a
+   * parachute, sitting in a boat), as a function of time (s); null for none.
+   * It eases in and out.
+   */
+  posture: ((t: number) => Pose) | null = null;
+  /**
+   * Plant the lowest sole on the ground under the posture (true), or let the
+   * posture place the body itself (false: sitting, hanging).
+   */
+  postureFeet = true;
+  private postureW = 0;
+  private lastPosture: ((t: number) => Pose) | null = null;
 
   constructor(private readonly rig: Rig) {}
 
@@ -246,6 +259,12 @@ export class Animator {
     }
     if (this.action?.name !== 'photo') this.photoHold.weight = 0;
 
+    // ── Posture (vehicles) ───────────────────────────────────────────────
+    if (this.posture) this.lastPosture = this.posture;
+    this.postureW = lerp(this.postureW, this.posture ? 1 : 0, clamp(dt * 7, 0, 1));
+    if (this.postureW < 0.001) this.lastPosture = null;
+    if (this.lastPosture) buf.override(this.lastPosture(this.time), this.postureW, FULL_BODY);
+
     this.apply();
   }
 
@@ -294,6 +313,7 @@ export class Animator {
         minY = Math.min(minY, _v.y);
       }
     }
-    body.position.y += -minY + this.flight * (1 - this.airW);
+    const plant = this.postureFeet || !this.lastPosture ? 1 : 1 - this.postureW;
+    body.position.y += (-minY + this.flight * (1 - this.airW)) * plant;
   }
 }

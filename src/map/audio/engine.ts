@@ -1,31 +1,41 @@
-import type { UISound } from '../types';
+import type { HeightField } from '../heightfield';
+import type { RoamSound, UISound } from '../types';
 import { Ambience } from './ambience';
 import { clamp01, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
+import { Explorer } from './explorer';
 import { Music } from './music';
 import { Sfx } from './sfx';
+import { Water, type Ears } from './water';
 
 /**
  * The sound graph of the map, on any `BaseAudioContext` (live or offline).
  *
- *   music  ─┐              ┌─ dry ─────────────────────────┐
- *   ambience┼─ Bus: volume ┤                               ├─ master ─ compressor ─ trim ─ soft clip ─ out ─ speakers
- *   ui     ─┘              └─ wet ─ reverb (convolver) ────┘
+ *   music   ─┐              ┌─ dry ──────────────────────────┐
+ *   ambience ┤              │                                │
+ *   water   ─┼─ Bus: volume ┤                                ├─ sum ─ compressor ─ trim ─ soft clip ─ master ─ out ─ speakers
+ *   sfx     ─┘              └─ wet ─ reverb (convolver) ─────┘
+ *   (sfx: the interface and the roaming explorer)
+ *
+ * `master` (the Master slider) comes after the compressor, so turning it
+ * down makes everything quieter without changing the mix. `out` fades
+ * everything while the tab is hidden.
  *
  * Voices are scheduled ahead on the audio clock: `schedule(until)` fills in
  * every note and call up to `until` (live: every 250 ms, ~1 s ahead;
  * offline: once, for the whole render).
  */
 
+/** Slider values 0‥1 (see `MapSettings`). */
 export interface Volumes {
+  master: number;
   music: number;
   ambience: number;
+  water: number;
   sfx: number;
 }
 export interface Mix {
   /** 0 day … 1 night. */
   night: number;
-  /** 0‥1: louder water (the camera is on a place with waterfalls). */
-  water: number;
 }
 
 /** Reverb return level. */
@@ -80,26 +90,32 @@ export class SoundEngine {
   readonly ctx: BaseAudioContext;
   readonly rnd: Rng;
   /** Everything sums here, before the compressor. */
+  readonly sum: GainNode;
+  /** The Master slider, after the limiter. */
   readonly master: GainNode;
-  /** After the limiter: fades everything out when the tab is hidden. */
+  /** Last: fades everything out when the tab is hidden. */
   readonly out: GainNode;
   readonly musicBus: Bus;
   readonly ambBus: Bus;
-  readonly uiBus: Bus;
-  /** Current time of day and water boost (voices read them when they are scheduled). */
+  /** Waterfalls and rivers. */
+  readonly waterBus: Bus;
+  /** Interface sounds and the explorer's own ("Effects"). */
+  readonly sfxBus: Bus;
+  /** Current time of day (voices read it when they are scheduled). */
   night = 0;
-  water = 0;
   private readonly ambience: Ambience;
   private readonly music: Music;
+  private readonly water: Water;
   private readonly sfx: Sfx;
-  private applied: Mix = { night: -1, water: -1 };
-  private volumes: Volumes = { music: 1, ambience: 1, sfx: 1 };
+  private readonly explorer: Explorer;
+  private applied: Mix = { night: -1 };
+  private volumes: Volumes = { master: 1, music: 1, ambience: 1, water: 1, sfx: 1 };
 
   constructor(ctx: BaseAudioContext, opts: { seed?: number } = {}) {
     this.ctx = ctx;
     this.rnd = mulberry32(opts.seed ?? Math.floor(Math.random() * 2 ** 32));
 
-    this.master = ctx.createGain();
+    this.sum = ctx.createGain();
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18;
     comp.knee.value = 10;
@@ -111,52 +127,72 @@ export class SoundEngine {
     // Safety: the soft clip never lets a sample past −3.3 dBFS.
     const clip = ctx.createWaveShaper();
     clip.curve = softClipCurve(0.5, 0.68);
+    this.master = ctx.createGain();
     this.out = ctx.createGain();
-    this.master.connect(comp).connect(trim).connect(clip).connect(this.out).connect(ctx.destination);
+    this.sum.connect(comp).connect(trim).connect(clip).connect(this.master).connect(this.out).connect(ctx.destination);
 
     const reverbIn = ctx.createGain();
     const conv = ctx.createConvolver();
     conv.buffer = impulse(ctx);
     const ret = ctx.createGain();
     ret.gain.value = REVERB;
-    reverbIn.connect(conv).connect(ret).connect(this.master);
+    reverbIn.connect(conv).connect(ret).connect(this.sum);
 
-    this.musicBus = new Bus(ctx, this.master, reverbIn, true);
-    this.ambBus = new Bus(ctx, this.master, reverbIn, true);
-    this.uiBus = new Bus(ctx, this.master, reverbIn, false);
+    this.musicBus = new Bus(ctx, this.sum, reverbIn, true);
+    this.ambBus = new Bus(ctx, this.sum, reverbIn, true);
+    this.waterBus = new Bus(ctx, this.sum, reverbIn, true);
+    this.sfxBus = new Bus(ctx, this.sum, reverbIn, false);
 
     this.ambience = new Ambience(this);
     this.music = new Music(this);
+    this.water = new Water(this);
     this.sfx = new Sfx(this);
+    this.explorer = new Explorer(this);
   }
 
   setVolumes(v: Volumes, immediate = false): void {
     this.volumes = { ...v };
     const t = this.ctx.currentTime;
     const tc = immediate ? 0 : 0.12;
+    const g = clamp01(v.master) ** 2;
+    if (tc > 0) this.master.gain.setTargetAtTime(g, t, tc);
+    else {
+      this.master.gain.cancelScheduledValues(t);
+      this.master.gain.setValueAtTime(g, t);
+    }
     this.musicBus.volume(v.music, t, tc);
     this.ambBus.volume(v.ambience, t, tc);
-    this.uiBus.volume(v.sfx, t, tc);
+    this.waterBus.volume(v.water, t, tc);
+    this.sfxBus.volume(v.sfx, t, tc);
   }
 
-  /** Time of day and water; small changes are skipped (called every frame). */
+  /** Time of day; small changes are skipped (called every frame). */
   setMix(m: Mix, immediate = false): void {
     const night = clamp01(m.night);
-    const water = clamp01(m.water);
     this.night = night;
-    this.water = water;
-    if (!immediate && Math.abs(night - this.applied.night) < 0.01 && Math.abs(water - this.applied.water) < 0.01) return;
-    this.applied = { night, water };
+    if (!immediate && Math.abs(night - this.applied.night) < 0.01) return;
+    this.applied = { night };
     const t = this.ctx.currentTime;
-    this.ambience.mix(night, water, t, immediate ? 0 : 0.5);
+    this.ambience.mix(night, t, immediate ? 0 : 0.5);
     this.music.mix(night, t, immediate ? 0 : 0.8);
   }
 
-  /** Music and ambience swell in from silence (interface sounds are never faded). */
+  /** Where the waterfalls and rivers are (once, when the land is built). */
+  setWorld(field: Pick<HeightField, 'falls' | 'rivers'>): void {
+    this.water.setWorld(field.falls, field.rivers);
+  }
+
+  /** Where the ears are (every frame; the water voices follow at ~15 Hz). `immediate`: no glide. */
+  listen(ears: Ears, immediate = false): void {
+    this.water.listen(ears, immediate);
+  }
+
+  /** Music, ambience and water swell in from silence (effects are never faded). */
   fadeIn(seconds: number): void {
     const t = this.ctx.currentTime;
     this.musicBus.fadeIn(t, seconds);
     this.ambBus.fadeIn(t, seconds);
+    this.waterBus.fadeIn(t, seconds);
   }
 
   /** Quiet everything (tab hidden) or bring it back. */
@@ -167,8 +203,11 @@ export class SoundEngine {
   /** Schedule every voice up to `until` (audio clock, s). A muted bus schedules nothing. */
   schedule(until: number): void {
     const now = this.ctx.currentTime;
-    if (this.volumes.ambience > 0) this.ambience.schedule(now, until);
-    if (this.volumes.music > 0) this.music.schedule(now, until);
+    const v = this.volumes;
+    if (v.master <= 0) return;
+    if (v.ambience > 0) this.ambience.schedule(now, until);
+    if (v.music > 0) this.music.schedule(now, until);
+    if (v.water > 0) this.water.schedule(now, until);
   }
 
   play(s: UISound, when = 0): void {
@@ -177,5 +216,18 @@ export class SoundEngine {
 
   flight(seconds: number, when = 0): void {
     this.sfx.flight(seconds, Math.max(when, this.ctx.currentTime));
+  }
+
+  /** A sound of the roaming explorer (gain 0‥1). */
+  roam(s: RoamSound, gain = 1, when = 0): void {
+    if (this.volumes.sfx <= 0 || this.volumes.master <= 0) return;
+    this.explorer.play(s, clamp01(gain), Math.max(when, this.ctx.currentTime));
+  }
+
+  /** The explorer's lasting sounds: rushing air (falling, gliding) and the boat's wake, 0‥1 each. */
+  roamLevels(wind: number, wake: number): void {
+    // (muted: the lasting sounds are not even made)
+    const on = this.volumes.sfx > 0 && this.volumes.master > 0 ? 1 : 0;
+    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime);
   }
 }

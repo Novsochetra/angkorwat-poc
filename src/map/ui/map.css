@@ -148,6 +148,7 @@
   align-items: center;
   gap: calc(22 * var(--px));
   padding: calc(14 * var(--px)) calc(34 * var(--px)) calc(16 * var(--px)) calc(22 * var(--px));
+  transition: opacity 0.5s, visibility 0s;
   --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.22), rgba(180, 204, 255, 0.2) var(--mu-night));
 }
 
@@ -255,6 +256,16 @@
 
 .mu-pin-chev {
   color: #c4c8d0;
+}
+
+/* Distance to the place: only on the roaming pins. */
+.mu-pin-dist {
+  display: none;
+  font-size: calc(12.5 * var(--px));
+  font-weight: 600;
+  color: var(--mu-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .mu-pin-chev .mu-icon {
@@ -855,6 +866,13 @@
   color: var(--mu-ink);
 }
 
+/* Master: above the others, a thin line under it. */
+.mu-slider.is-master {
+  padding-bottom: calc(10 * var(--px));
+  margin-bottom: calc(12 * var(--px));
+  border-bottom: 1px solid var(--mu-line);
+}
+
 .mu-slider output {
   text-align: right;
   font-size: calc(13 * var(--px));
@@ -1046,6 +1064,100 @@
 }
 
 .mu-has-pick .mu-hint {
+  opacity: 0;
+}
+
+/* ── Roaming (the explorer walks the map; ui.ts setRoaming) ─────────────── */
+
+/* The picker steps back: the title and the hint go; the gear and mute stay. */
+.mu-roam .mu-title,
+.mu-roam .mu-hint {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s, visibility 0s 0.5s;
+}
+
+/* The cards become small, calm name pins over their beacons (markers only). */
+.mu-roam .mu-pin {
+  pointer-events: none;
+  cursor: default;
+  transition: opacity 0.4s, visibility 0s;
+}
+
+.mu-roam .mu-pin.is-off {
+  transition: opacity 0.4s, visibility 0s 0.45s;
+}
+
+.mu-roam .mu-pin-in,
+.mu-roam .mu-pin.is-main .mu-pin-in {
+  gap: calc(7 * var(--px));
+  min-height: 0;
+  padding: calc(4 * var(--px)) calc(11 * var(--px)) calc(5 * var(--px)) calc(9 * var(--px));
+  transform: none;
+  animation: mu-pin-in 0.7s var(--mu-ease);
+}
+
+@keyframes mu-pin-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(6 * var(--px)));
+  }
+}
+
+.mu-roam .mu-pin .mu-bg {
+  background: color-mix(in srgb, rgba(13, 25, 39, 0.6), rgba(4, 15, 32, 0.62) var(--mu-night));
+}
+
+.mu-roam .mu-pin-in::before {
+  box-shadow: 0 calc(3 * var(--px)) calc(10 * var(--px)) rgba(3, 8, 16, 0.25);
+}
+
+.mu-roam .mu-pin-sub,
+.mu-roam .mu-pin-chev,
+.mu-roam .mu-pin .mu-glow {
+  display: none;
+}
+
+.mu-roam .mu-pin-icon .mu-icon,
+.mu-roam .mu-pin.is-main .mu-pin-icon .mu-icon {
+  width: calc(12 * var(--px));
+  height: calc(14 * var(--px));
+}
+
+.mu-roam .mu-pin-text {
+  flex-direction: row;
+  align-items: baseline;
+  gap: calc(8 * var(--px));
+  padding-right: 0;
+}
+
+.mu-roam .mu-pin-name,
+.mu-roam .mu-pin.is-main .mu-pin-name {
+  font-size: calc(15 * var(--px));
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.mu-roam .mu-pin-dist {
+  display: inline;
+}
+
+/* A thin stem down to the beacon. */
+.mu-roam .mu-pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: calc(12 * var(--px));
+  background: linear-gradient(var(--mu-line-hi), transparent);
+  transition: opacity 0.45s;
+}
+
+.mu-roam .mu-pin.is-main::after {
+  background: linear-gradient(rgba(255, 208, 112, 0.8), transparent);
+}
+
+.mu-roam .mu-pin.is-off::after {
   opacity: 0;
 }
 

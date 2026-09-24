@@ -150,7 +150,7 @@ export class Sfx {
 
   // ── Building blocks ───────────────────────────────────────────────────────
 
-  /** Send `node` to the ui bus (dry and a little reverb), optionally through a pan. */
+  /** Send `node` to the effects bus (dry and a little reverb), optionally through a pan. */
   private out(node: AudioNode, pan: number, wet: number, panned = true): void {
     let last: AudioNode = node;
     if (panned && pan) {
@@ -159,11 +159,11 @@ export class Sfx {
       node.connect(p);
       last = p;
     }
-    last.connect(this.e.uiBus.dry);
+    last.connect(this.e.sfxBus.dry);
     if (wet > 0) {
       const g = this.ctx.createGain();
       g.gain.value = wet;
-      last.connect(g).connect(this.e.uiBus.wet);
+      last.connect(g).connect(this.e.sfxBus.wet);
     }
   }
 

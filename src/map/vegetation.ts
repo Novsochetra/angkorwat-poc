@@ -3,6 +3,7 @@ import { hash3 } from '../voxel/random';
 import { VoxelBuilder } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import type { HeightField } from './heightfield';
+import { ChunkGrid, ChunkLods } from './terrain/lod';
 import type { MapContext, MapPart } from './types';
 import { buildCliffGreens } from './veg/cliffs';
 import { Lattice } from './veg/lattice';
@@ -17,8 +18,12 @@ import { broadleaf, bush, emergent, palm, type Species } from './veg/species';
  * stamped where the jungle grows (veg/scatter.ts) onto a world lattice of
  * 1 m cells near the camera and 2 m cells far away (veg/lattice.ts), where
  * touching crowns merge. Cliff lips get moss and vines (veg/cliffs.ts).
- * Two meshes in all: near (medium blocks) and far (plain boxes).
+ * The blocks are split into 300 m chunks (terrain/lod.ts; bigger than the
+ * land's: three families per chunk): per chunk a near mesh (medium blocks;
+ * plain boxes far from the camera) and a far one (plain boxes).
  */
+
+const GRID = new ChunkGrid(300);
 
 /** Prototype sets per species and size class, for one level of detail. */
 type Kit = Record<Species, Proto[][]>;
@@ -47,16 +52,22 @@ const BROAD_SIZES = [
   ],
 ];
 
-function makeKit(lod: number): Kit {
-  const s = LOD_CELL[lod];
-  const near = lod === 0;
+/**
+ * The prototypes for trees planted at a level of detail, built of the cells
+ * of `cell` (see scatter.ts `cellLod`). Crowns of smaller cells than their
+ * level's grow a little, to fill as much of the view as the coarse ones.
+ */
+function makeKit(lod: number, cell = lod): Kit {
+  const s = LOD_CELL[cell];
+  const near = cell === 0;
+  const grow = cell < lod ? 1.12 : 1;
   const kit: Kit = { broadleaf: [[], [], []], emergent: [[]], palm: [[]], bush: [[]], flowering: [[]] };
   const per = [8, 6, 5, 4][lod];
   const seed0 = (lod + 1) * 10000;
   BROAD_SIZES[lod].forEach(([h0, h1, r0, r1], size) => {
     for (let n = 0; n < per; n++) {
       const t = hash3(n, size, lod, 1);
-      kit.broadleaf[size].push(broadleaf({ s, h: h0 + (h1 - h0) * t, r: r0 + (r1 - r0) * hash3(n, size, lod, 2), seed: seed0 + size * 100 + n }));
+      kit.broadleaf[size].push(broadleaf({ s, h: (h0 + (h1 - h0) * t) * grow, r: (r0 + (r1 - r0) * hash3(n, size, lod, 2)) * grow, seed: seed0 + size * 100 + n }));
     }
   });
   for (let n = 0; n < (near ? 6 : 4); n++) kit.emergent[0].push(emergent({ s, h: 18 + 7 * hash3(n, 0, lod, 3), r: 5 + 2 * hash3(n, 1, lod, 3), seed: seed0 + 5000 + n }));
@@ -80,8 +91,8 @@ function protoFor(kit: Kit, t: TreeSpot): Proto | null {
   return best;
 }
 
-/** Block budget of the part (the brief: vegetation ≤ 130 k). */
-const BUDGET = 130_000;
+/** Block budget of the part (vegetation ≤ 150 k, with trees all over the roaming area). */
+const BUDGET = 150_000;
 
 /**
  * The tuned jungle. `thin` (0‥0.2) shrinks the groves and the lip rows, for
@@ -99,9 +110,13 @@ function jungle(density: number, thin: number): ScatterOptions {
   };
 }
 
+/** Kits by level of detail and cells: `lod * 4 + cell`. */
+type Kits = Map<number, Kit>;
+
 interface Planted {
-  near: VoxelBuilder;
-  far: VoxelBuilder;
+  /** Per chunk: near (1 m and 1.5 m cells, cliff greens) and far (2 m and 3 m cells). */
+  chunks: [VoxelBuilder, VoxelBuilder][];
+  blocks: number;
   trees: number;
   counts: Record<string, number>;
   perLod: number[];
@@ -110,29 +125,49 @@ interface Planted {
 }
 
 /** Scatter the trees, stamp them on the lattices and emit the visible blocks (no meshes yet). */
-function plant(f: HeightField, kits: Kit[], opts: ScatterOptions): Planted {
+function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   const spots = scatterTrees(f, opts);
   const lattices = LOD_CELL.map((s) => new Lattice(s, f));
   const counts: Record<string, number> = {};
   const perLod = [0, 0, 0, 0];
   for (const t of spots) {
-    const p = protoFor(kits[t.lod], t);
+    const p = protoFor(kits.get(t.lod * 4 + t.cell)!, t);
     if (!p) continue;
     // Trunk on the lowest corner of its footprint (no floating roots on a step).
     const y = Math.min(t.y, f.heightAt(t.x - 1, t.z - 1), f.heightAt(t.x + 1, t.z + 1), f.heightAt(t.x - 1, t.z + 1), f.heightAt(t.x + 1, t.z - 1));
     const shade = 0.94 + hash3(t.x, t.z, 1, 41) * 0.12;
-    lattices[t.lod].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
+    lattices[t.cell].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
     counts[t.kind] = (counts[t.kind] ?? 0) + 1;
-    perLod[t.lod]++;
+    perLod[t.cell]++;
   }
-  // Near and middle trees and the cliff greens share the detailed mesh; far trees are plain boxes.
-  const near = new VoxelBuilder();
-  const lodBlocks = [lattices[0].emit(near), lattices[1].emit(near), 0, 0];
-  const cliffBlocks = buildCliffGreens(f, near, opts.density);
-  const far = new VoxelBuilder();
-  lodBlocks[2] = lattices[2].emit(far);
-  lodBlocks[3] = lattices[3].emit(far);
-  return { near, far, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks };
+  // Near and middle trees and the cliff greens share the detailed meshes; far trees are plain boxes.
+  const chunks: [VoxelBuilder, VoxelBuilder][] = [];
+  for (let n = 0; n < GRID.count; n++) chunks.push([new VoxelBuilder(), new VoxelBuilder()]);
+  const near = (x: number, z: number) => chunks[GRID.at(x, z)][0];
+  const far = (x: number, z: number) => chunks[GRID.at(x, z)][1];
+  const lodBlocks = [lattices[0].emit(near), lattices[1].emit(near), lattices[2].emit(far), lattices[3].emit(far)];
+  const treeBlocks = lodBlocks.reduce((a, b) => a + b, 0);
+  buildCliffGreens(f, near, opts.density);
+  const blocks = chunks.reduce((a, [n, fa]) => a + n.boxes.length + fa.boxes.length, 0);
+  return { chunks, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks };
+}
+
+/** The whole jungle's blocks (no meshes yet), thinned to the budget. */
+export function plantJungle(f: HeightField, density: number): Planted & { thin: number; ms: [number, number] } {
+  const t0 = performance.now();
+  const kits: Kits = new Map();
+  for (const lod of [0, 1, 2, 3]) kits.set(lod * 4 + lod, makeKit(lod));
+  // (the back hills' trees where the explorer roams: their size, smaller cells)
+  kits.set(3 * 4 + 2, makeKit(3, 2));
+  const t1 = performance.now();
+  // Over budget (the land changed, more mesa top to cover)? Thin the groves and plant again.
+  let thin = 0;
+  let r = plant(f, kits, jungle(density, thin));
+  for (let n = 0; n < 3 && r.blocks > BUDGET; n++) {
+    thin = Math.min(0.2, thin + 0.02 + 0.3 * (1 - BUDGET / r.blocks));
+    r = plant(f, kits, jungle(density, thin));
+  }
+  return { ...r, thin, ms: [t1 - t0, performance.now() - t1] };
 }
 
 export function buildVegetation(ctx: MapContext): MapPart {
@@ -141,25 +176,24 @@ export function buildVegetation(ctx: MapContext): MapPart {
   object.name = 'vegetation';
   const density = ctx.quality === 'low' ? 0.7 : 1;
 
-  const t0 = performance.now();
-  const kits = [0, 1, 2, 3].map(makeKit);
-  const t1 = performance.now();
-  // Over budget (the land changed, more mesa top to cover)? Thin the groves and plant again.
-  let thin = 0;
-  let r = plant(f, kits, jungle(density, thin));
-  for (let n = 0; n < 3 && r.near.boxes.length + r.far.boxes.length > BUDGET; n++) {
-    const total = r.near.boxes.length + r.far.boxes.length;
-    thin = Math.min(0.2, thin + 0.02 + 0.3 * (1 - BUDGET / total));
-    r = plant(f, kits, jungle(density, thin));
-  }
+  const r = plantJungle(f, density);
+  const { thin } = r;
   const t2 = performance.now();
-  object.add(buildVoxelMesh(r.near, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: 'vegetation' }));
-  object.add(buildVoxelMesh(r.far, { quality: 'low', name: 'vegetation:far' }));
+  const lowOnly = ctx.quality === 'low';
+  const lods = new ChunkLods();
+  r.chunks.forEach(([near, far], n) => {
+    if (near.boxes.length) {
+      const mesh = buildVoxelMesh(near, { quality: lowOnly ? 'low' : 'medium', name: `vegetation:${n}` });
+      if (lowOnly) object.add(mesh);
+      else lods.add(object, GRID.box(n), mesh);
+    }
+    if (far.boxes.length) object.add(buildVoxelMesh(far, { quality: 'low', name: `vegetation:${n}:far` }));
+  });
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (new URLSearchParams(location.search).has('vegstats'))
     console.info(
-      `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ms kits ${Math.round(t1 - t0)}, plant ${Math.round(t2 - t1)}, mesh ${Math.round(t3 - t2)}`,
+      `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ms kits ${Math.round(r.ms[0])}, plant ${Math.round(r.ms[1])}, mesh ${Math.round(t3 - t2)}`,
     );
-  return { name: 'vegetation', object, blocks: r.near.boxes.length + r.far.boxes.length };
+  return { name: 'vegetation', object, blocks: r.blocks, update: (fr) => lods.update(fr.camera, fr.roam !== 'overview') };
 }

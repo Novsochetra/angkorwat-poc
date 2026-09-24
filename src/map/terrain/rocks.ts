@@ -3,7 +3,7 @@ import { hash3 } from '../../voxel/random';
 import { CELL, SURFACE, type HeightField } from '../heightfield';
 import type { Sink } from './columns';
 import * as P from './palette';
-import { FACE_X_MAX, FACE_X_MIN } from './views';
+import { FACE_X_MAX, FACE_X_MIN, FACE_Z_MIN } from './views';
 
 /**
  * Loose rock on the 2 m land: buttresses (rock masses standing against a
@@ -44,16 +44,19 @@ export function placeRocks(f: HeightField, sink: Sink, wet: Uint8Array): void {
       const h = H[c];
       const [x, z] = f.cellCenter(i, k);
       // The cliff behind this cell, on a side some camera sees: north (its
-      // south face), west (east face), east (west face).
+      // south face), west (east face), east (west face), south (north face).
       const riseN = H[c - nx] - h;
       const riseW = x - CELL / 2 < FACE_X_MAX ? H[c - 1] - h : 0;
       const riseE = x + CELL / 2 > FACE_X_MIN ? H[c + 1] - h : 0;
-      const rise = Math.max(riseN, riseW, riseE);
+      const riseS = z + CELL / 2 > FACE_Z_MIN ? H[c + nx] - h : 0;
+      const rise = Math.max(riseN, riseW, riseE, riseS);
       const r = hash3(i, h, k, 61);
       if (rise >= 5 * CELL && r < 0.075) {
         // Buttress: 1–3 cells along the face, a third to two thirds of its height.
-        const alongX = riseN === rise;
-        const dir = alongX ? [0, -1] : riseW === rise ? [-1, 0] : [1, 0];
+        const dir = riseN === rise ? [0, -1] : riseW === rise ? [-1, 0] : riseE === rise ? [1, 0] : [0, 1];
+        const alongX = dir[0] === 0;
+        // (the side it shows: south, or north against a north face)
+        const front = dir[1] > 0 ? 32 : 16;
         const n = 1 + Math.floor(hash3(i, 1, k, 62) * 3);
         let cells = 0;
         for (; cells < n; cells++) {
@@ -69,20 +72,28 @@ export function placeRocks(f: HeightField, sink: Sink, wet: Uint8Array): void {
         const mid = Math.min(top, h + 2 + Math.floor(hash3(i, 4, k, 62) * 3));
         // Footprint: against the face behind (dir), running along it from this cell.
         const [fx0, fx1, fz0, fz1] = alongX
-          ? [x - CELL / 2 + 0.2, x - CELL / 2 + 0.2 + len, z - CELL / 2, z - CELL / 2 + d]
+          ? dir[1] < 0
+            ? [x - CELL / 2 + 0.2, x - CELL / 2 + 0.2 + len, z - CELL / 2, z - CELL / 2 + d]
+            : [x - CELL / 2 + 0.2, x - CELL / 2 + 0.2 + len, z + CELL / 2 - d, z + CELL / 2]
           : dir[0] < 0
             ? [x - CELL / 2, x - CELL / 2 + d, z - CELL / 2 + 0.2, z - CELL / 2 + 0.2 + len]
             : [x + CELL / 2 - d, x + CELL / 2, z - CELL / 2 + 0.2, z - CELL / 2 + 0.2 + len];
-        b.span(fx0, h - 0.6, fz0, fx1, mid, fz1, P.pick(hash3(i, 5, k, 62) < 0.5 ? P.MOSS_ROCK : P.FOOT, hash3(i, 6, k, 62)), 'mapRock', { shade: 0.88, open: 1 | 2 | 16, src: srcButtress });
+        b.span(fx0, h - 0.6, fz0, fx1, mid, fz1, P.pick(hash3(i, 5, k, 62) < 0.5 ? P.MOSS_ROCK : P.FOOT, hash3(i, 6, k, 62)), 'mapRock', { shade: 0.88, open: 1 | 2 | front, src: srcButtress });
         if (top > mid) {
           const kind = [P.STRATA_KINDS.ochre, P.STRATA_KINDS.rust, P.STRATA_KINDS.pale][Math.floor(hash3(i, 7, k, 62) * 3)];
           // (a little narrower than the base, so the step between them shows)
           const inset = 0.25;
-          const [ix0, ix1, iz0, iz1] = alongX ? [fx0 + inset, fx1 - inset, fz0, fz1 - inset] : dir[0] < 0 ? [fx0, fx1 - inset, fz0 + inset, fz1 - inset] : [fx0 + inset, fx1, fz0 + inset, fz1 - inset];
-          b.span(ix0, mid, iz0, ix1, top, iz1, P.pick(kind, hash3(i, 8, k, 62)), 'mapRock', { shade: 0.96, open: 1 | 2 | 4 | 16, src: srcButtress });
+          const [ix0, ix1, iz0, iz1] = alongX
+            ? dir[1] < 0
+              ? [fx0 + inset, fx1 - inset, fz0, fz1 - inset]
+              : [fx0 + inset, fx1 - inset, fz0 + inset, fz1]
+            : dir[0] < 0
+              ? [fx0, fx1 - inset, fz0 + inset, fz1 - inset]
+              : [fx0 + inset, fx1, fz0 + inset, fz1 - inset];
+          b.span(ix0, mid, iz0, ix1, top, iz1, P.pick(kind, hash3(i, 8, k, 62)), 'mapRock', { shade: 0.96, open: 1 | 2 | 4 | front, src: srcButtress });
           // Moss or grass on some tops.
           if (hash3(i, 9, k, 62) < 0.45)
-            b.span(ix0 - 0.1, top, iz0, ix1 + 0.1, top + 0.5, iz1 + 0.1, P.pick(P.VINE, hash3(i, 10, k, 62)), 'mapGrass', { shade: 1, open: 1 | 2 | 4 | 16, src: srcButtress });
+            b.span(ix0 - 0.1, top, iz0 - (front === 32 ? 0.1 : 0), ix1 + 0.1, top + 0.5, iz1 + (front === 16 ? 0.1 : 0), P.pick(P.VINE, hash3(i, 10, k, 62)), 'mapGrass', { shade: 1, open: 1 | 2 | 4 | front, src: srcButtress });
         }
         for (let a = 0; a < cells; a++) f.occupied[alongX ? c + a : c + a * nx] = 1;
       } else if (rise >= 3 * CELL && r > 0.86) {

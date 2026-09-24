@@ -2,6 +2,7 @@ import { Matrix4, PerspectiveCamera } from 'three';
 import { hash3 } from '../../voxel/random';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
+import { CAM_REACH, roamDistance } from '../terrain/views';
 import type { Species } from './species';
 
 /**
@@ -12,7 +13,9 @@ import type { Species } from './species';
  *  - clearings round the landmarks (a ring that thickens away from the pad),
  *    no crown over a pad or the road (`field.occupy` marks them);
  *  - thin on steep ground; palms and bushes by the rivers;
- *  - only where a map camera can see (overview and the six place views).
+ *  - everywhere the roaming explorer and his camera go; beyond that (the
+ *    sinking edges) only where a map camera can see (overview and the six
+ *    place views).
  * Everything is seeded: the same jungle every run.
  */
 
@@ -26,8 +29,10 @@ export interface TreeSpot {
   r: number;
   /** Size class 0 (small) ‥ 2 (large). */
   size: number;
-  /** Level of detail: 0 near (1 m cells), 1 middle (1.5 m), 2 far (2 m). */
+  /** Level of detail as the overview sees it (`lodAt`): its size and spacing. */
   lod: number;
+  /** The cells it is built of (`cellLod`): 0 = 1 m, 1 = 1.5 m, 2 = 2 m, 3 = 3 m. */
+  cell: number;
   /** Prototype pick, turn and mirror (from a hash). */
   seed: number;
 }
@@ -44,10 +49,11 @@ function cameraMatrices(): Matrix4[] {
   });
 }
 
-/** Seen by any map camera (with a margin for wide windows and the camera's sway). */
+/** Seen by the roaming camera, or by any map camera (with a margin for wide windows and the camera's sway). */
 function makeSeen(): (x: number, y: number, z: number) => boolean {
   const ms = cameraMatrices().map((m) => m.elements.slice());
   return (x, y, z) => {
+    if (roamDistance(x, z) < CAM_REACH) return true;
     for (const e of ms) {
       const w = e[3] * x + e[7] * y + e[11] * z + e[15];
       if (w <= 0) continue;
@@ -74,12 +80,23 @@ const FOCUS = PLACES.map((p) => p.focus.pos);
  * ~250 m (a 1 m block is 3+ px there), 1.5 m to ~400 m (the summit), then
  * 2 m cells and a plain-box mesh; 3 m cells beyond ~560 m where no place's
  * close view comes near (the back hills, the far side of the holy mountain).
+ * The jungle is planted by it (how thick, how big the crowns), as the
+ * overview sees it; the cells may be smaller (`cellLod`).
  */
 export function lodAt(x: number, y: number, z: number): number {
   const [cx, cy, cz] = OVERVIEW.pos;
   const d = Math.hypot(x - cx, y - cy, z - cz);
   if (d > 560 && FOCUS.every(([fx, fy, fz]) => Math.hypot(x - fx, y - fy, z - fz) > 280)) return 3;
   return z < -330 || d > 400 ? 2 : d > 250 ? 1 : 0;
+}
+
+/**
+ * The cells a tree is built of: its level of detail, but no bigger than
+ * 2 m where the roaming explorer goes (from the ground, leaves bigger than
+ * the land's 2 m blocks look like boxes).
+ */
+export function cellLod(lod: number, x: number, z: number): number {
+  return lod === 3 && roamDistance(x, z) < CAM_REACH ? 2 : lod;
 }
 
 /** Spatial hash of placed trees, for spacing. */
@@ -292,7 +309,8 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
   };
   const spot = (x: number, z: number, kind: Species, size: number, r: number, seed: number): TreeSpot => {
     const y = f.heightAt(x, z);
-    return { x, z, y, kind, size, r, lod: lodAt(x, y, z), seed };
+    const lod = lodAt(x, y, z);
+    return { x, z, y, kind, size, r, lod, cell: cellLod(lod, x, z), seed };
   };
   const { x0, z0, nx, nz } = f;
   const x1 = x0 + nx * CELL;
@@ -324,7 +342,8 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
       if (padDist(x, z) < 6) continue;
       const size = hash3(i, k, 8, 12) < 0.4 ? 2 : 1;
       const r = size === 2 ? 4.2 + hash3(i, k, 9, 12) * 0.8 : 3.2 + hash3(i, k, 9, 12) * 0.8;
-      const t: TreeSpot = { x: Math.floor(x), z: Math.floor(z), y, kind: 'broadleaf', size, r, lod: lodAt(x, y, z), seed: Math.floor(hash3(i, k, 10, 12) * 1e6) };
+      const lod = lodAt(x, y, z);
+      const t: TreeSpot = { x: Math.floor(x), z: Math.floor(z), y, kind: 'broadleaf', size, r, lod, cell: cellLod(lod, x, z), seed: Math.floor(hash3(i, k, 10, 12) * 1e6) };
       place(t, true);
     }
 

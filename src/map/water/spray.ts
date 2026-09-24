@@ -72,6 +72,8 @@ export function buildSpray(feet: FallFoot[], quality: MapQuality): { mesh: Mesh;
     transparent: true,
     depthWrite: false,
     fog: true,
+    // Upright puffs: the haze's mist mode (per point, the valley mist would streak them).
+    defines: { HAZE_MIST: '' },
   });
   Object.assign(material.uniforms, uniforms);
   const mesh = new Mesh(geo, material);

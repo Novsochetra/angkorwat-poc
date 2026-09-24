@@ -68,3 +68,6 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`.
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads).
+- Roaming (explorer leaps off the ledge, parachute, walk, boat): `src/map/roam/`.
+  Check it with `roam=leap|glide|walk|boat&at=x,z&yaw=<deg>&sim=w:2,wr:3`
+  (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.

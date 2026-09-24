@@ -1,10 +1,12 @@
-import { OVERVIEW, PLACES } from '../layout';
+import { MAP_BOUNDS, OVERVIEW, PLACES } from '../layout';
 
 /**
- * The cameras the map is ever seen from: the overview and the close-up of
- * every place (camera.ts flies between them). All of them stand south of what
- * they look at, so the land only needs what these cameras can see: its tops,
- * its south faces, and east / west faces on the side of a camera.
+ * The cameras the map is seen from: the overview and the close-up of every
+ * place (camera.ts flies between them), all south of what they look at; and
+ * the roaming explorer's follow camera, which goes anywhere in the roaming
+ * area and looks every way. So the land is closed from every side there, and
+ * only its far edges keep the savings of the fixed cameras (coarse blocks,
+ * no faces turned away from every camera).
  */
 export interface MapView {
   pos: readonly [number, number, number];
@@ -63,11 +65,28 @@ export function viewDistance(v: MapView, x: number, y: number, z: number): numbe
   return Math.hypot(dx, dy, dz);
 }
 
+/**
+ * Where the explorer can roam: the map less its sinking side and back edges
+ * (the same box as roam/world.ts `inBounds`).
+ */
+export const ROAM_AREA = { x0: MAP_BOUNDS.x0 + 150, x1: MAP_BOUNDS.x1 - 150, z0: MAP_BOUNDS.z0 + 150, z1: MAP_BOUNDS.z1 };
+/** How far the follow camera gets from the explorer (m; followCam.ts `maxDistance`). */
+export const CAM_REACH = 40;
+
+/** Distance (m) on the map from a point to the roaming area (0 inside). */
+export function roamDistance(x: number, z: number): number {
+  const dx = Math.max(0, ROAM_AREA.x0 - x, x - ROAM_AREA.x1);
+  const dz = Math.max(0, ROAM_AREA.z0 - z, z - ROAM_AREA.z1);
+  return Math.hypot(dx, dz);
+}
+
 const camXs = MAP_VIEWS.map((v) => v.pos[0]);
 /**
  * East faces (normal +x) east of this line never face a camera, nor do west
- * faces west of `FACE_X_MIN`; north faces (−z) and bottoms never do.
- * (10 m margin for the camera's lean.)
+ * faces west of `FACE_X_MIN`, nor north faces (−z) north of `FACE_Z_MIN`:
+ * all of them lie in the sinking edges and face out of the map. Bottoms are
+ * never seen. (10 m margin for the fixed cameras' lean.)
  */
-export const FACE_X_MAX = Math.max(...camXs) + 10;
-export const FACE_X_MIN = Math.min(...camXs) - 10;
+export const FACE_X_MAX = Math.max(Math.max(...camXs) + 10, ROAM_AREA.x1 + CAM_REACH);
+export const FACE_X_MIN = Math.min(Math.min(...camXs) - 10, ROAM_AREA.x0 - CAM_REACH);
+export const FACE_Z_MIN = ROAM_AREA.z0 - CAM_REACH;

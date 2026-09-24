@@ -5,12 +5,17 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import * as P from './palette';
 import { Strata } from './strata';
-import { FACE_X_MAX, FACE_X_MIN } from './views';
+import { FACE_X_MAX, FACE_X_MIN, FACE_Z_MIN } from './views';
 
 /** Where a block goes: the builder of its chunk and level of detail. */
 export type Sink = (x: number, z: number, lod: number) => VoxelBuilder;
 
 const NONE = -1e4;
+/**
+ * Foot of the wall along the map's front edge (m): the land ends there in a
+ * cliff down into the mist, seen by the roaming camera from the south.
+ */
+const FRONT_FOOT = -24;
 /** How far a pillar stands out of a cliff face (m). */
 const PILLAR_OFFSETS = [-1, -0.5, -0.5, 0, 0, 0.5, 1];
 const isNatural = (s: number) => s === SURFACE.grass || s === SURFACE.rock || s === SURFACE.dirt;
@@ -23,7 +28,9 @@ const isNatural = (s: number) => s === SURFACE.grass || s === SURFACE.rock || s 
  * out or sit back a little, dark grooves run down between them, some bands
  * stick out as ledges, the grass top overhangs the lip and greenery hangs
  * down; the foot is darker and mossy, the waterline wet and dark.
- * North faces and faces turned away from every camera are never built.
+ * The roaming camera sees walls on every side; only faces turned away from
+ * every camera (out of the map, in its sinking edges) are left out
+ * (views.ts `FACE_*`).
  */
 export class ColumnMaker {
   readonly strata = new Strata(3);
@@ -120,9 +127,13 @@ export class ColumnMaker {
     return [off, s === u && hash3(s, 2, 0, seed) < 0.55, 0.84 + hash3(s, 3, 0, seed) * 0.24];
   }
 
-  /** Ground height of a cell; outside the map: +∞ (counts as buried, never reached into). */
+  /**
+   * Ground height of a cell; off the front edge: the foot of its cliff;
+   * outside the other edges: +∞ (counts as buried, never reached into).
+   */
   private hAt(i: number, k: number): number {
     const f = this.f;
+    if (k === f.nz && i >= 0 && i < f.nx) return FRONT_FOOT;
     return i < 0 || k < 0 || i >= f.nx || k >= f.nz ? Infinity : f.height[i + k * f.nx];
   }
 
@@ -149,6 +160,7 @@ export class ColumnMaker {
     const xr = xl + g * CELL;
     const seeE = xr < FACE_X_MAX;
     const seeW = xl > FACE_X_MIN;
+    const seeN = f.z0 + k * CELL > FACE_Z_MIN;
     const i1 = i + g - 1;
     const k1 = k + g - 1;
     const ok = (strip: number, dA: number, seeA: boolean, dB: number, seeB: boolean) =>
@@ -156,20 +168,21 @@ export class ColumnMaker {
     // North / south: the side faces of the reach are east and west.
     out[0] = ok(this.minH(i, i1, k - 1, k - 1), this.hAt(i + g, k - 1), seeE, this.hAt(i - 1, k - 1), seeW);
     out[1] = ok(this.minH(i, i1, k + g, k + g), this.hAt(i + g, k + g), seeE, this.hAt(i - 1, k + g), seeW);
-    // East / west: north faces are never seen; south ones always.
-    out[2] = ok(this.minH(i + g, i + g, k, k1), 0, false, this.hAt(i + g, k + g), true);
-    out[3] = ok(this.minH(i - 1, i - 1, k, k1), 0, false, this.hAt(i - 1, k + g), true);
+    // East / west: north and south.
+    out[2] = ok(this.minH(i + g, i + g, k, k1), this.hAt(i + g, k - 1), seeN, this.hAt(i + g, k + g), true);
+    out[3] = ok(this.minH(i - 1, i - 1, k, k1), this.hAt(i - 1, k - 1), seeN, this.hAt(i - 1, k + g), true);
   }
   private readonly rch = [0, 0, 0, 0];
 
   /** Lowest block of a 2 m column (its top block's bottom if it has no wall). */
   private lowOf(i: number, k: number): number {
     const h = this.hAt(i, k);
-    if (h === Infinity) return Infinity;
+    if (h === Infinity || k >= this.f.nz) return Infinity;
     const x = this.f.x0 + (i + 0.5) * CELL;
     let low = Math.min(h - CELL, this.hAt(i, k + 1));
     if (x + CELL / 2 < FACE_X_MAX) low = Math.min(low, this.hAt(i + 1, k));
     if (x - CELL / 2 > FACE_X_MIN) low = Math.min(low, this.hAt(i - 1, k));
+    if (this.f.z0 + k * CELL > FACE_Z_MIN) low = Math.min(low, this.hAt(i, k - 1));
     return low;
   }
 
@@ -198,18 +211,24 @@ export class ColumnMaker {
     const c = i + k * nx;
     const h = H[c];
     const [x, z] = f.cellCenter(i, k);
-    const hS = k + 1 < nz ? H[c + nx] : h;
+    // Neighbours on sides some camera sees (a side no camera sees: no wall).
+    const hS = this.hAt(i, k + 1);
     const hE = i + 1 < nx && x + 1 < FACE_X_MAX ? H[c + 1] : h;
     const hW = i > 0 && x - 1 > FACE_X_MIN ? H[c - 1] : h;
-    const hN = k > 0 ? H[c - nx] : h;
-    const low = Math.min(hS, hE, hW, h - CELL);
+    const hN = k > 0 && z - 1 > FACE_Z_MIN ? H[c - nx] : h;
+    // (the south, east and west walls are the ones the fixed cameras see)
+    const lowSEW = Math.min(hS, hE, hW, h - CELL);
+    const low = Math.min(lowSEW, hN);
     const b = this.sink(x, z, 0);
     const s = f.surface[c];
     const natural = this.shapeable(c);
-    const shapeS = natural && k + 1 < nz && this.shapeable(c + nx);
+    const shapeS = natural && (k + 1 === nz || this.shapeable(c + nx));
     const shapeE = natural && i + 1 < nx && this.shapeable(c + 1);
     const shapeW = natural && i > 0 && this.shapeable(c - 1);
-    const lip = h - low >= 2 * CELL;
+    const shapeN = natural && k > 0 && this.shapeable(c - nx);
+    const lip = h - lowSEW >= 2 * CELL;
+    // A lip on any side, north too (greenery hangs over it).
+    const edge = h - low >= 2 * CELL;
 
     // Top block: the grass overhangs a cliff lip a little.
     const [color, mat] = this.topColor(c, i, k, x, z, h, lip);
@@ -218,24 +237,28 @@ export class ColumnMaker {
     const oS = shapeS && h - hS >= 2 * CELL && this.hAt(i - 1, k + 1) < h && this.hAt(i + 1, k + 1) < h ? over : 0;
     const oE = shapeE && h - hE >= 2 * CELL && this.hAt(i + 1, k - 1) < h && this.hAt(i + 1, k + 1) < h ? over : 0;
     const oW = shapeW && h - hW >= 2 * CELL && this.hAt(i - 1, k - 1) < h && this.hAt(i - 1, k + 1) < h ? over : 0;
+    const oN = shapeN && h - hN >= 2 * CELL && this.hAt(i - 1, k - 1) < h && this.hAt(i + 1, k - 1) < h ? over : 0;
     let shade = 0.96 + hash3(i, h, k, 17) * 0.08;
     // Ground at the foot of a cliff lies in its shade.
-    if (hN - h >= 2 * CELL) shade *= 0.86;
-    else if (hN - h >= CELL) shade *= 0.94;
-    const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0);
+    const rise = k > 0 ? H[c - nx] - h : 0;
+    if (rise >= 2 * CELL) shade *= 0.86;
+    else if (rise >= CELL) shade *= 0.94;
+    const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0) | (hN < h ? 32 : 0);
     // (a top with no wall under it goes 1 m deeper, past the next step's edge)
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
-    b.span(x - CELL / 2 - oW, bottom, z - CELL / 2, x + CELL / 2 + oE, h, z + CELL / 2 + oS, color, mat, { open, shade, src: this.srcTop });
+    b.span(x - CELL / 2 - oW, bottom, z - CELL / 2 - oN, x + CELL / 2 + oE, h, z + CELL / 2 + oS, color, mat, { open, shade, src: this.srcTop });
     if (low >= h - CELL) return;
 
     // Wall: split at the strata, at each neighbour's top (shaping stops
-    // there) and where the hanging greenery ends.
+    // there) and where the hanging greenery ends. (Not at the north
+    // neighbour's top: that is never above the others' in the fixed
+    // cameras' view, and a block across it just keeps a flat north face.)
     const w = Strata.warp(x, z);
     const grassy = s === SURFACE.grass && natural;
     const rv = hash3(i, 3, k, 31);
     // (longer on tall cliffs; never below the foot band)
-    const vine = grassy && lip && rv < 0.24 ? Math.min(CELL + Math.floor(hash3(i, 4, k, 31) * 5) * CELL, Math.max(0, h - low - 3 * CELL)) : 0;
-    const lipMoss = grassy && lip && rv >= 0.24 && rv < 0.55 ? (rv < 0.4 ? 1 : 2) : 0;
+    const vine = grassy && edge && rv < 0.24 ? Math.min(CELL + Math.floor(hash3(i, 4, k, 31) * 5) * CELL, Math.max(0, h - (lip ? lowSEW : low) - 3 * CELL)) : 0;
+    const lipMoss = grassy && edge && rv >= 0.24 && rv < 0.55 ? (rv < 0.4 ? 1 : 2) : 0;
     const wallTop = h - CELL;
     const splits = this.splits;
     const hard = this.hard;
@@ -256,8 +279,9 @@ export class ColumnMaker {
     const [pS, gS, tS] = ColumnMaker.pillar(i, 101);
     const [pE, gE, tE] = ColumnMaker.pillar(k, 102);
     const [pW, gW, tW] = ColumnMaker.pillar(k, 103);
+    const [pN, gN, tN] = ColumnMaker.pillar(i, 104);
     // The tint of the pillar on the side that shows most.
-    const tint = hS < h ? tS : hE < h && x < FACE_X_MAX ? tE : tW;
+    const tint = hS < h ? tS : hE < h ? tE : hW < h ? tW : tN;
     let y0 = splits[0];
     for (let n = 1; n < splits.length; n++) {
       let y1 = splits[n];
@@ -297,13 +321,16 @@ export class ColumnMaker {
       const sS = face(shapeS, hS, pS, gS, 0, 1);
       const sE = face(shapeE, hE, pE, gE, 1, 0);
       const sW = face(shapeW, hW, pW, gW, -1, 0);
+      const sN = face(shapeN, hN, pN, gN, 0, -1);
       let sh = (0.8 + 0.2 * Math.min(1, (mid - low) / 12)) * (0.94 + rr * 0.12) * (m === 'mapRock' ? tint : 1);
-      if ((gS && sS < 0) || (gE && sE < 0) || (gW && sW < 0)) sh *= 0.55;
+      // (a groove on the north side darkens only a block that shows no other side)
+      const grooveN = gN && sN < 0 && hS >= y1 && hE >= y1 && hW >= y1;
+      if ((gS && sS < 0) || (gE && sE < 0) || (gW && sW < 0) || grooveN) sh *= 0.55;
       else if (under && m === 'mapRock') sh *= 0.9;
-      const op = (hE < y1 ? 1 : 0) | (hW < y1 ? 2 : 0) | (hS < y1 ? 16 : 0) | (ledge > 0 && !under ? 4 : 0);
+      const op = (hE < y1 ? 1 : 0) | (hW < y1 ? 2 : 0) | (hS < y1 ? 16 : 0) | (hN < y1 ? 32 : 0) | (ledge > 0 && !under ? 4 : 0);
       const [rN, rS, rE, rW] = this.reachOf(i, k, 1, y1, 0.3);
       // (the lowest block goes 1 m under its neighbour's top, past that top's edge)
-      b.span(x - CELL / 2 - (sW || rW), y0 === low ? low - 1 : y0, z - CELL / 2 - rN, x + CELL / 2 + (sE || rE), y1, z + CELL / 2 + (sS || rS), col, m, { open: op, shade: sh, src: this.srcWall });
+      b.span(x - CELL / 2 - (sW || rW), y0 === low ? low - 1 : y0, z - CELL / 2 - (sN || rN), x + CELL / 2 + (sE || rE), y1, z + CELL / 2 + (sS || rS), col, m, { open: op, shade: sh, src: this.srcWall });
       y0 = y1;
     }
   }
@@ -311,23 +338,25 @@ export class ColumnMaker {
   /** A coarse column: g × g cells (4 or 8 m) that share one height, seen from far. */
   coarse(i: number, k: number, g: number): void {
     const f = this.f;
-    const { nx, nz, height: H } = f;
+    const { nx, height: H } = f;
     const src = this.srcFar;
     const c = i + k * nx;
     const h = H[c];
     const size = g * CELL;
     const x = f.x0 + i * CELL + size / 2;
     const z = f.z0 + k * CELL + size / 2;
-    let hS = h;
+    const hS = Math.min(h, this.minH(i, i + g - 1, k + g, k + g));
     let hE = h;
     let hW = h;
-    if (k + g < nz) for (let a = i; a < i + g; a++) hS = Math.min(hS, H[a + (k + g) * nx]);
+    let hN = h;
     if (i + g < nx && x + size / 2 < FACE_X_MAX) for (let a = k; a < k + g; a++) hE = Math.min(hE, H[i + g + a * nx]);
     if (i > 0 && x - size / 2 > FACE_X_MIN) for (let a = k; a < k + g; a++) hW = Math.min(hW, H[i - 1 + a * nx]);
-    const low = Math.min(hS, hE, hW, h - CELL);
+    if (k > 0 && z - size / 2 > FACE_Z_MIN) for (let a = i; a < i + g; a++) hN = Math.min(hN, H[a + (k - 1) * nx]);
+    const lowSEW = Math.min(hS, hE, hW, h - CELL);
+    const low = Math.min(lowSEW, hN);
     const b = this.sink(x, z, g === 2 ? 1 : 2);
-    const [color, mat] = this.topColor(c, i, k, x, z, h, h - low >= 2 * CELL);
-    const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0);
+    const [color, mat] = this.topColor(c, i, k, x, z, h, h - lowSEW >= 2 * CELL);
+    const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0) | (hN < h ? 32 : 0);
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
     b.span(x - size / 2, bottom, z - size / 2, x + size / 2, h, z + size / 2, color, mat, { open, shade: 0.96 + hash3(i, h, k, 17) * 0.08, src });
     if (low >= h - CELL) return;
@@ -348,7 +377,7 @@ export class ColumnMaker {
       const rr = hash3(i, Math.round(y0 * 2), k, 13);
       const col = mid < low + footH ? P.pick(rr < 0.45 ? P.MOSS_ROCK : P.FOOT, rr) : P.pick(P.STRATA_KINDS[this.strata.bands[bi].kind], rr);
       const sh = (0.8 + 0.2 * Math.min(1, (mid - low) / 14)) * (0.95 + rr * 0.1);
-      const op = (hE < y1 ? 1 : 0) | (hW < y1 ? 2 : 0) | (hS < y1 ? 16 : 0);
+      const op = (hE < y1 ? 1 : 0) | (hW < y1 ? 2 : 0) | (hS < y1 ? 16 : 0) | (hN < y1 ? 32 : 0);
       const [rN, rS, rE, rW] = this.reachOf(i, k, g, y1, 0.6);
       b.span(x - size / 2 - rW, y0 === low ? low - 1 : y0, z - size / 2 - rN, x + size / 2 + rE, y1, z + size / 2 + rS, col, 'mapRock', { open: op, shade: sh, src });
       y0 = y1;

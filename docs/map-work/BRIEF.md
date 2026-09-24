@@ -40,6 +40,35 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   vegetation → clouds → life → foreground. Landmarks and the road call
   `field.occupy(...)` for what they cover, so trees keep off.
 
+## Roaming the map
+
+The player can leave the picker: **Jump in** (button by the explorer, or
+**J**) makes the explorer leap off his ledge, glide down under a parachute,
+then walk the map, paddle a boat on the rivers and enter a temple at its
+beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
+`src/map/roam/`:
+
+- `types.ts`: the modes (`leap`, `glide`, `walk`, `boat`), `RoamBody`,
+  `RoamInput`, `RoamWorld` (ground to stand on, water, river current, the
+  roaming area, places' entrances), `FollowCam`, `RoamHud`. `ROAM_SCALE`: the
+  roaming explorer is 1.6 × his true 1.7 m, so he can hop up a 2 m land step.
+- `roam.ts` runs one mode at a time and hands the camera between the
+  overview rig and the follow camera; `main.ts` builds it after the parts.
+- `walker.ts`, `followCam.ts`, `input.ts`, `world.ts`, `hud.ts`: on foot,
+  the camera, keys / mouse / touch, the walkable world, the roaming interface.
+- `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current).
+- Poses for vehicles use the animator's `posture` hook
+  (`src/character/Animator.ts`).
+
+Because of roaming, the map is also seen from the ground and from every
+direction: land, trees, mist and sky must hold up from there too (no
+missing faces, no mist planes seen edge-on).
+
+Check with URL params: `roam=leap|glide|walk|boat` · `at=x,z` or `x,y,z` ·
+`yaw=<deg>` (0 = facing south, 180 = north) · `sim=<keys:seconds,…>` a
+scripted input run before the shot (`input.ts parseScript`, e.g.
+`sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist` the follow camera's orbit.
+
 ## World and scale
 
 - 1 unit = 1 m. +X east (right), −Z north (away from the camera), +Y up.
@@ -81,7 +110,7 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
 
 ## Budgets (blocks = voxel instances)
 
-terrain ≤ 180 k · vegetation ≤ 130 k · sanctuary ≤ 60 k · each other
+terrain ≤ 260 k · vegetation ≤ 150 k · sanctuary ≤ 60 k · each other
 landmark ≤ 20 k · road ≤ 20 k · foreground ≈ 3 k. Keep each part's build
 under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 
@@ -116,6 +145,7 @@ under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 | road + life | `src/map/path.ts`, `src/map/life.ts`, `src/map/road/*` |
 | interface | `src/map/ui/*` |
 | sound | `src/map/audio/*` |
+| roaming | `src/map/roam/*` (`roam.ts` and `types.ts` belong to the lead) |
 
 `main.ts`, `camera.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the
 lead. If you need a change there, say it in your report.
