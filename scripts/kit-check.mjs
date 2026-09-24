@@ -10,6 +10,7 @@ import { availableParallelism, loadavg } from 'node:os';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { chromiumPath } from './chromium.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const sections = process.argv.slice(2).length ? process.argv.slice(2) : ['18.1', '18.2', '19.1', '19.2', '20'];
@@ -28,7 +29,7 @@ const server = process.env.SHOT_BASE ? null : await createServer({ root, logLeve
 await server?.listen();
 const base = process.env.SHOT_BASE ?? server.resolvedUrls.local[0].replace(/\/$/, '');
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: chromiumPath(),
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });

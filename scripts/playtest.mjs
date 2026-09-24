@@ -6,13 +6,14 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { chromiumPath } from './chromium.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const server = await createServer({ root, logLevel: 'error', server: { port: 5198, strictPort: false } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: chromiumPath(),
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 640, height: 400 } });

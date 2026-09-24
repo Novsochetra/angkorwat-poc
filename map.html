@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Angkor Quest — Highland Journey</title>
+    <link rel="stylesheet" href="./src/ui/ui.css" />
+    <link rel="stylesheet" href="./src/map/ui/map.css" />
+    <style>
+      /* Loading screen while the map builds (main.ts fills the bar, then fades it out). */
+      body.map {
+        background: #121726;
+      }
+      .map-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 18px;
+        background: radial-gradient(ellipse at 50% 70%, #3a2c33 0%, #1a1f30 55%, #10141f 100%);
+        color: #f6ead6;
+        font: 600 15px/1.4 'Nunito Sans', system-ui, sans-serif;
+        transition: opacity 0.9s ease;
+      }
+      .map-loading.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .map-loading h1 {
+        margin: 0;
+        font: 700 clamp(28px, 5vw, 46px) / 1 'Pixelify Sans', 'Nunito Sans', system-ui, sans-serif;
+        letter-spacing: 0.02em;
+        text-shadow: 0 2px 0 #0008;
+      }
+      .map-loading .bar {
+        width: min(260px, 60vw);
+        height: 6px;
+        background: #ffffff1a;
+        border: 1px solid #e8c48a55;
+      }
+      .map-loading .bar span {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #e8a94a, #ffd98a);
+        box-shadow: 0 0 10px #ffc46a99;
+        transition: width 0.25s ease;
+      }
+      .map-loading p {
+        margin: 0;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body class="map">
+    <canvas id="scene"></canvas>
+    <div id="ui" class="map-ui"></div>
+    <div id="loading" class="map-loading" role="status">
+      <h1>Highland Journey</h1>
+      <div class="bar"><span></span></div>
+      <p>Clearing the path through the jungle…</p>
+    </div>
+    <script type="module" src="./src/map/main.ts"></script>
+  </body>
+</html>

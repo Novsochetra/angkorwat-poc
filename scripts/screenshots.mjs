@@ -13,6 +13,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { chromiumPath } from './chromium.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const out = resolve(root, process.env.SHOT_OUT ?? 'screenshots');
@@ -37,11 +38,12 @@ const shots = args.length
     )
   : defaults;
 
-const server = process.env.SHOT_BASE ? null : await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false } });
+// (no live reload: files may change while shooting)
+const server = process.env.SHOT_BASE ? null : await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false, hmr: false } });
 await server?.listen();
 const base = process.env.SHOT_BASE ?? `http://localhost:${server.resolvedUrls?.local?.[0] ? new URL(server.resolvedUrls.local[0]).port : (server.config.server.port ?? 5199)}`;
 
-const executablePath = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const executablePath = chromiumPath();
 const browser = await chromium.launch({
   executablePath,
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
@@ -49,7 +51,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width, height } });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
 page.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning' || /^\[(angkor|kit)\]/.test(m.text())) console.log(`[${m.type()}]`, m.text());
+  if (m.type() === 'error' || m.type() === 'warning' || /^\[(angkor|kit|map)\]/.test(m.text())) console.log(`[${m.type()}]`, m.text());
 });
 
 for (const [name, spec] of Object.entries(shots)) {

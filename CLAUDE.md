@@ -53,3 +53,18 @@ into the chat:
    to compare. Then run the checks.
 4. Delete the report's folder in the commit that fixes it, and name the report
    in the commit message.
+
+## World map screen (`map.html`)
+
+The expedition picker: a voxel diorama of the Angkor highlands (Angkor Wat,
+Bayon, Preah Khan, Ta Prohm, Phnom Kulen, River Gate) with pin cards, sound
+and day/night. Code in `src/map/`; the guide for its parts (API, budgets,
+checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
+`assets/world-map-selection-screen/` and `assets/2B06F1FD-531A-4ED7-9C2E-7044E141F122.PNG`.
+
+- Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
+- Look at it: `npm run shots -- m="@map.html?shot=1"` (1672×941 with
+  `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
+  `parts=terrain,water` (only those parts), `uistate=hover:<place>`.
+- The console line `[map] built in …` lists build times and blocks per part,
+  and names any part that failed (the rest of the map still loads).
