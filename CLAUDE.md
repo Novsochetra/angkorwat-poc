@@ -26,6 +26,9 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
   budgets and build times.
 - Studio bug reports (**B**) name the asset line that made each block, the same
   way world blocks name their `WorldBuilder` caller.
+- The block look panel (**K**, `src/voxel/LookPanel.ts`) tweaks block families
+  live. A pasted "Block look changes" snippet lists new values per family:
+  write them into `VOXEL_MATERIALS` in `src/voxel/materials.ts`.
 
 ## Bug reports in `feedback/`
 

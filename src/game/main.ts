@@ -19,6 +19,7 @@ import { AngkorExplorer, OUTFITS, type ExplorerOutfit, type OutfitName } from '.
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FeedbackTool } from '../feedback/FeedbackTool';
+import { installLookPanel } from '../voxel/LookPanel';
 import { ANGKOR, CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import { Input } from './Input';
 import { PlayerController } from './PlayerController';
@@ -204,7 +205,7 @@ function renderHud(fps: number): void {
   hud.innerHTML = `${title}
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
-    <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview<br>
+    <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview <kbd>K</kbd> block look<br>
     <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? `${world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ')} · <kbd>[</kbd><kbd>]</kbd> all ${world.spawns.length} spots` : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
 }
 
@@ -267,6 +268,13 @@ const feedback = shot || test
         return q;
       },
     });
+
+// ── Block look panel (K): tweak every block family's shading live ──────────
+if (!test)
+  installLookPanel({
+    viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }),
+    pickables: () => [world.root, explorer.object],
+  });
 
 // ── Loop ────────────────────────────────────────────────────────────────────
 if (params.has('at')) {

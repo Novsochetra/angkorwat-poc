@@ -107,23 +107,23 @@ export const VOXEL_MATERIALS = {
   hat: { roughness: 0.92, metalness: 0, bevel: 0.14, edgeTint: 0xfff0d2, edgeStrength: 0.25, grain: 0.08, grainScale: 12 },
   glow: { roughness: 1, metalness: 0, bevel: 0.14, edgeTint: 0xffffff, edgeStrength: 0.25, grain: 0.04, grainScale: 10, unlit: true },
   // ── World (Angkor Wat sandstone kit) ─────────────────────────────────────
-  // World families are matte (no specular), with flat-cut edges and a
+  // World families are matte (no specular), with flat-cut edges, soft rims and a
   // chiselled `relief`, like the kit's sandstone.
-  stone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xe9d4ae, edgeStrength: 0.35, grain: 0.1, grainScale: 9, relief: 0.07 },
-  darkstone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xa39580, edgeStrength: 0.3, grain: 0.1, grainScale: 9, relief: 0.07 },
-  moss: { roughness: 0.98, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xa6c46a, edgeStrength: 0.3, grain: 0.12, grainScale: 8, relief: 0.08 },
-  foliage: { roughness: 0.95, metalness: 0, bevel: 0.14, chamfer: true, edgeTint: 0xb5d67a, edgeStrength: 0.35, grain: 0.1, grainScale: 6, relief: 0.1 },
-  bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8, relief: 0.08 },
-  ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3, relief: 0.06 },
+  stone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xe9d4ae, edgeStrength: 0.09, grain: 0.1, grainScale: 9, relief: 0.07 },
+  darkstone: { roughness: 0.96, metalness: 0, bevel: 0.08, chamfer: true, edgeTint: 0xa39580, edgeStrength: 0.08, grain: 0.1, grainScale: 9, relief: 0.07 },
+  moss: { roughness: 0.98, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xa6c46a, edgeStrength: 0.08, grain: 0.12, grainScale: 8, relief: 0.08 },
+  foliage: { roughness: 0.95, metalness: 0, bevel: 0.14, chamfer: true, edgeTint: 0xb5d67a, edgeStrength: 0.09, grain: 0.1, grainScale: 6, relief: 0.1 },
+  bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.08, grain: 0.1, grainScale: 8, relief: 0.08 },
+  ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.05, grain: 0.12, grainScale: 3, relief: 0.06 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
   // 5 cm flat-cut edges on a 0.5 m block; a matte, chiselled surface.
-  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
-  soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07 },
-  leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1 },
-  trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08 },
+  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.09, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
+  soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.05, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07 },
+  leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1 },
+  trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08 },
   water: { roughness: 0.1, metalness: 0.05, bevel: 0.04, edgeTint: 0xcdeee8, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.1, grainScale: KIT_TEXELS_PER_M, pattern: 'water', transparent: true, opacity: 0.84, specular: 1 },
-  petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05 },
-  wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.25, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4 },
+  petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05 },
+  wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.06, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4 },
 } as const satisfies Record<string, VoxelMaterialSpec>;
 
 /** Families drawn with a pixel-art pattern (their instances carry a `surf`). */
@@ -134,6 +134,30 @@ export function voxelPatternOf(key: VoxelMaterialKey): VoxelPattern | undefined 
 export type VoxelMaterialKey = keyof typeof VOXEL_MATERIALS;
 
 const cache = new Map<VoxelMaterialKey, Material>();
+
+/**
+ * A family's shading values as live shader uniforms: the look panel (K, see
+ * LookPanel.ts) turns them, and every block of the family follows at once.
+ */
+export interface VoxelLookUniforms {
+  uEdgeTint: { value: Color };
+  uEdgeStrength: { value: number };
+  uEdgeWidth: { value: number };
+  uGrain: { value: number };
+  uRelief: { value: number };
+  uSpecular: { value: number };
+  /** 0‥1: paints the family pink, to show where it is used. */
+  uHighlight: { value: number };
+}
+
+const looks = new Map<VoxelMaterialKey, VoxelLookUniforms>();
+
+/** The families built so far on this page, with their material and live uniforms. */
+export function voxelFamiliesInUse(): { key: VoxelMaterialKey; material: Material; uniforms: VoxelLookUniforms }[] {
+  return (Object.keys(VOXEL_MATERIALS) as VoxelMaterialKey[])
+    .filter((key) => cache.has(key))
+    .map((key) => ({ key, material: cache.get(key)!, uniforms: looks.get(key)! }));
+}
 
 /**
  * Shared material for a voxel family. Adds (via shader injection):
@@ -147,7 +171,7 @@ export function getVoxelMaterial(key: VoxelMaterialKey): Material {
   let material: Material;
   if (spec.unlit) {
     const m = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-    injectVoxelShading(m, spec);
+    looks.set(key, injectVoxelShading(m, spec));
     material = m;
   } else {
     const m = new MeshStandardMaterial({
@@ -161,7 +185,7 @@ export function getVoxelMaterial(key: VoxelMaterialKey): Material {
       m.emissive = new Color(spec.emissive);
       m.emissiveIntensity = spec.emissiveIntensity ?? 1;
     }
-    injectVoxelShading(m, spec);
+    looks.set(key, injectVoxelShading(m, spec));
     material = m;
   }
   material.name = `voxel:${key}`;
@@ -359,8 +383,16 @@ vec3 voxPattern(vec3 base, vec3 n) {
 }
 `;
 
-function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, spec: VoxelMaterialSpec): void {
-  const edgeTint = new Color(spec.edgeTint);
+function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, spec: VoxelMaterialSpec): VoxelLookUniforms {
+  const look: VoxelLookUniforms = {
+    uEdgeTint: { value: new Color(spec.edgeTint) },
+    uEdgeStrength: { value: spec.edgeStrength },
+    uEdgeWidth: { value: spec.edgeWidth ?? 1 },
+    uGrain: { value: spec.grain },
+    uRelief: { value: spec.relief ?? 0 },
+    uSpecular: { value: spec.specular ?? 0 },
+    uHighlight: { value: 0 },
+  };
   const lit = !spec.unlit;
   const defines: Record<string, unknown> = { ...(material.defines ?? {}) };
   if (lit) defines.VOX_LIT = '';
@@ -368,15 +400,11 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
   if (lit && spec.relief) defines.VOX_RELIEF = '';
   material.defines = defines;
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uEdgeTint = { value: edgeTint };
-    shader.uniforms.uEdgeStrength = { value: spec.edgeStrength };
-    shader.uniforms.uEdgeWidth = { value: spec.edgeWidth ?? 1 };
-    shader.uniforms.uGrain = { value: spec.grain };
+    // (shared objects, so the look panel's changes reach the compiled shader)
+    Object.assign(shader.uniforms, look);
     shader.uniforms.uGrainScale = { value: spec.grainScale };
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
-    shader.uniforms.uRelief = { value: spec.relief ?? 0 };
-    shader.uniforms.uSpecular = { value: spec.specular ?? 0 };
 
     injectVoxelVertex(shader, spec);
 
@@ -395,6 +423,7 @@ uniform float uGrain;
 uniform float uGrainScale;
 uniform float uRelief;
 uniform float uSpecular;
+uniform float uHighlight;
 float voxHash(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
   p *= 17.0;
@@ -458,7 +487,9 @@ diffuseColor.rgb *= 1.0 + (voxGrain - 0.5) * uGrain;
 #endif
 #ifndef VOX_LIT
 diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
-#endif`,
+#endif
+// (look panel: "show where")
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.05, 0.55), uHighlight);`,
       )
       .replace(
         '#include <normal_fragment_maps>',
@@ -509,7 +540,8 @@ reflectedLight.indirectSpecular *= uSpecular;
       );
   };
   // Families inject identical code (only uniforms and the pattern define differ).
-  material.customProgramCacheKey = () => `voxel-shading-v9${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
+  material.customProgramCacheKey = () => `voxel-shading-v10${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
+  return look;
 }
 
 /**

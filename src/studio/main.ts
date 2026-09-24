@@ -5,6 +5,7 @@ import { PieceBuilder } from '../kit/PieceBuilder';
 import { KIT_SECTIONS, kitAssetIds, loadKitAsset, loadKitSection, type KitSectionInfo } from '../kit/registry';
 import { kitSceneContext, kitSceneIds, loadKitScene, type KitScene } from '../kit/scene';
 import type { KitAsset, KitPiece, KitSection, KitShot, KitView } from '../kit/types';
+import { installLookPanel } from '../voxel/LookPanel';
 import { buildVoxelMesh, type VoxelQuality } from '../voxel/VoxelMesh';
 import { CHARACTER_HEIGHT_M } from '../world/scale';
 import { Stage, type StageView, type Subject } from './Stage';
@@ -611,6 +612,15 @@ async function main(): Promise<void> {
   page.addEventListener('click', (e) => {
     if (feedback.active && e.target instanceof Element && e.target.closest('a')) e.preventDefault();
   }, true);
+  // Block look panel (K): tweak every block family's shading live.
+  installLookPanel({
+    viewAt: (x, y) => {
+      const v = stage.viewAt(x, y);
+      return v ? { camera: v.camera, rect: v.el.getBoundingClientRect() } : null;
+    },
+    pickables: () => stage.pickables(),
+    redraw: () => stage.invalidate(),
+  });
   const tick = () => {
     stage.render();
     feedback.update();
