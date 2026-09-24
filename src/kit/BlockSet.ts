@@ -1,5 +1,5 @@
 import { traceSource, type SourceTrace } from '../feedback/sourceTrace';
-import type { VoxelMaterialKey } from '../voxel/materials';
+import { VOXEL_MATERIALS, type VoxelMaterialKey } from '../voxel/materials';
 import { hash3, valueNoise3 } from '../voxel/random';
 import type { Surf, VoxelBuilder } from '../voxel/VoxelBuilder';
 import { SANDSTONE } from './palette';
@@ -257,6 +257,8 @@ export class BlockSet {
   /**
    * Emit the voxels: intact blocks as single boxes (faces hidden by neighbours
    * culled from the rim highlight), carved blocks as their remaining cells.
+   * Sides against another block are flagged `joint`, so the stone's gap opens
+   * a thin joint there.
    */
   emit(b: VoxelBuilder, o: { jitter?: number; seed?: number } = {}): VoxelBuilder {
     const r = this.res;
@@ -282,6 +284,7 @@ export class BlockSet {
       b.box(((i0 + i1) / 2) * r, ((j0 + j1) / 2) * r, ((k0 + k1) / 2) * r, (i1 - i0) * r, (j1 - j0) * r, (k1 - k0) * r, bl.color, bl.mat, {
         shade,
         open,
+        joint: ~open & 63,
         surf: bl.surf,
         src: bl.src,
       });
@@ -289,16 +292,19 @@ export class BlockSet {
     if (!carvedBlocks.length) return b;
     // Carved blocks: their remaining cells, merged into x-runs. Sides that continue
     // into the same block are flagged `merge` (no bevel), so the cells still read as
-    // one stone with bites out of it; joints to other blocks keep their groove.
+    // one stone with bites out of it; joints to other blocks keep their groove. Cells
+    // on the stone's own surface keep its bevel, so worn blocks have the same edges
+    // as intact ones; cells the damage laid bare keep small, sharp edges.
     const status = (id: number, i: number, j: number, k: number) => {
       const n = this.owner.get(key(i, j, k));
       return n === undefined ? 1 : n === id ? 2 : 0; // 1 open, 2 same stone, 0 other stone
     };
     for (const bl of carvedBlocks) {
       const shade = bl.shade * (1 + (hash3(bl.i0, bl.j0, bl.k0, seed) - 0.5) * 2 * jitter);
+      const radius = Math.min(bl.i1 - bl.i0, bl.j1 - bl.j0, bl.k1 - bl.k0) * r * VOXEL_MATERIALS[bl.mat].bevel;
       for (let j = bl.j0; j < bl.j1; j++)
         for (let k = bl.k0; k < bl.k1; k++) {
-          let run: { i0: number; i1: number; color: number; sig: number } | null = null;
+          let run: { i0: number; i1: number; color: number; sig: number; raw: boolean } | null = null;
           const flush = () => {
             if (!run) return;
             const r0 = run;
@@ -307,8 +313,17 @@ export class BlockSet {
             const nx = status(bl.id, r0.i0 - 1, j, k);
             const open = (sx === 1 ? 1 : 0) | (nx === 1 ? 2 : 0) | (r0.sig & 0b111100);
             const merge = (sx === 2 ? 1 : 0) | (nx === 2 ? 2 : 0) | ((r0.sig >> 6) & 0b111100);
+            const joint = (sx === 0 ? 1 : 0) | (nx === 0 ? 2 : 0) | ((r0.sig >> 12) & 0b111100);
             if (open === 0) return; // buried inside the stone
-            b.box(((r0.i0 + r0.i1) / 2) * r, (j + 0.5) * r, (k + 0.5) * r, (r0.i1 - r0.i0) * r, r, r, r0.color, bl.mat, { shade, open, merge, surf: bl.surf, src: bl.src });
+            b.box(((r0.i0 + r0.i1) / 2) * r, (j + 0.5) * r, (k + 0.5) * r, (r0.i1 - r0.i0) * r, r, r, r0.color, bl.mat, {
+              shade,
+              open,
+              merge,
+              joint,
+              radius: r0.raw ? undefined : radius,
+              surf: bl.surf,
+              src: bl.src,
+            });
           };
           for (let i = bl.i0; i <= bl.i1; i++) {
             const inside = i < bl.i1 && this.owner.get(key(i, j, k)) === bl.id;
@@ -316,20 +331,19 @@ export class BlockSet {
               flush();
               continue;
             }
-            // Perpendicular sides: open bits (y, z) and merge bits (y, z) of this cell.
+            // Perpendicular sides: open, merge and joint bits (y, z) of this cell.
             const st = [status(bl.id, i, j + 1, k), status(bl.id, i, j - 1, k), status(bl.id, i, j, k + 1), status(bl.id, i, j, k - 1)];
-            const openYZ = (st[0] === 1 ? 4 : 0) | (st[1] === 1 ? 8 : 0) | (st[2] === 1 ? 16 : 0) | (st[3] === 1 ? 32 : 0);
-            const mergeYZ = (st[0] === 2 ? 4 : 0) | (st[1] === 2 ? 8 : 0) | (st[2] === 2 ? 16 : 0) | (st[3] === 2 ? 32 : 0);
-            const sig = openYZ | (mergeYZ << 6);
+            const sides = (v: number) => (st[0] === v ? 4 : 0) | (st[1] === v ? 8 : 0) | (st[2] === v ? 16 : 0) | (st[3] === v ? 32 : 0);
+            const sig = sides(1) | (sides(2) << 6) | (sides(0) << 12);
             // Faces the damage opened up get the rough broken-stone colour.
             let raw = false;
-            if (bl.broken) for (const [dx, dy, dz] of N6) if (this.carvedAll.has(key(i + dx, j + dy, k + dz))) raw = true;
+            for (const [dx, dy, dz] of N6) if (this.carvedAll.has(key(i + dx, j + dy, k + dz))) raw = true;
             const color = raw && bl.broken ? bl.broken[Math.floor(hash3(i, j, k, seed + 5) * bl.broken.length)] : bl.color;
             // Hidden cells (no open side along y/z and covered ends) still split runs cleanly.
-            if (run && run.color === color && run.sig === sig) run.i1 = i + 1;
+            if (run && run.color === color && run.sig === sig && run.raw === raw) run.i1 = i + 1;
             else {
               flush();
-              run = { i0: i, i1: i + 1, color, sig };
+              run = { i0: i, i1: i + 1, color, sig, raw };
             }
           }
           flush();

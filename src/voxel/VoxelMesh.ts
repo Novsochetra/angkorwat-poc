@@ -11,19 +11,20 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { getVoxelMaterial, VOXEL_MATERIALS, voxelPatternOf, type VoxelMaterialKey } from './materials';
+import { getVoxelMaterial, VOXEL_MATERIALS, voxelPatternOf, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
 import type { Surf, VoxelBox, VoxelBuilder } from './VoxelBuilder';
 
 export type VoxelQuality = 'low' | 'medium' | 'high';
 
 /**
- * Block geometry per quality level:
- *  - high:   RoundedBoxGeometry, 2 bevel segments (300 tris) — viewer / close-ups
- *  - medium: 24-vertex chamfered box with split normals (44 tris) — shades like a
- *            rounded block at a fraction of the cost; default for the game
+ * Block geometry per quality level. Every block is a cube with flat faces and
+ * bevelled edges and corners (radius = the family's `bevel`):
+ *  - high:   rounded in 2 steps (92 tris) — viewer / close-ups
+ *  - medium: one chamfer with smooth normals (44 tris) — shades like a rounded
+ *            block at a fraction of the cost; default for the game
  *  - low:    plain box (12 tris) — distant LOD
+ * Families with `chamfer` get one flat cut on every edge from medium up.
  */
 const SEGMENTS: Record<VoxelQuality, number> = { low: 0, medium: 1, high: 2 };
 
@@ -32,15 +33,15 @@ const geometryCache = new Map<string, BufferGeometry>();
 /**
  * Unit-size block for a material's bevel ratio. Instances are scaled to their
  * real size by the instance matrix; the voxel shader re-bevels them so the
- * rounding keeps the same radius on every edge (see materials.ts).
+ * bevel keeps the same size on every edge (see materials.ts).
  */
-export function unitVoxelGeometry(bevel: number, segments: number): BufferGeometry {
-  const k = `${bevel.toFixed(4)}|${segments}`;
+export function unitVoxelGeometry(bevel: number, segments: number, flat = false): BufferGeometry {
+  const k = `${bevel.toFixed(4)}|${segments}|${flat ? 'flat' : 'smooth'}`;
   let geo = geometryCache.get(k);
   if (!geo) {
-    if (segments === 1) geo = chamferBoxGeometry(1, 1, 1, bevel);
+    if (segments >= 1) geo = roundedBlockGeometry(1, 1, 1, bevel, segments, flat);
     else {
-      const raw = segments <= 0 ? new BoxGeometry(1, 1, 1) : new RoundedBoxGeometry(1, 1, 1, segments, bevel);
+      const raw = new BoxGeometry(1, 1, 1);
       raw.deleteAttribute('uv');
       geo = mergeVertices(raw, 1e-5);
       raw.dispose();
@@ -52,30 +53,50 @@ export function unitVoxelGeometry(bevel: number, segments: number): BufferGeomet
 }
 
 /**
- * Chamfered box: 6 inset faces, 12 bevel quads and 8 corner triangles sharing 24
- * vertices (one per corner per face normal). Normals interpolate across each
- * bevel, so lighting and the rim shader read it as a rounded edge.
+ * Bevelled block: 6 flat faces joined by edges and corners rounded in `segments`
+ * steps (1 = a single chamfer). A point sits on the inset corner pushed out by
+ * the radius along its direction, so the shader can re-bevel it at any size.
+ * Each corner is a triangle grid over the sphere octant, each edge a strip
+ * between two corners. Smooth: normals follow the rounding, so the light rolls
+ * over it. Flat: every strip and corner facet has its own normal, so each bevel
+ * step reads as a flat cut with crisp lines on both sides.
  */
-export function chamferBoxGeometry(sx: number, sy: number, sz: number, radius: number): BufferGeometry {
+export function roundedBlockGeometry(sx: number, sy: number, sz: number, radius: number, segments: number, flat = false): BufferGeometry {
+  const s = Math.max(1, Math.round(segments));
   const h = [sx / 2, sy / 2, sz / 2];
   const r = Math.max(1e-4, Math.min(radius, h[0] * 0.999, h[1] * 0.999, h[2] * 0.999));
   const inset = [h[0] - r, h[1] - r, h[2] - r];
+  // Surface points and their directions (the rounded normal).
+  const pp: number[] = [];
+  const pn: number[] = [];
+  const ids = new Map<number, number>();
+  // Point of corner c (bits xyz: + side) at rounding step t (t[0] + t[1] + t[2] = s;
+  // [s, 0, 0] lies on the x face). Steps are even in angle along every edge.
+  const vid = (c: number, t: readonly number[]) => {
+    const k = ((c * (s + 1) + t[0]) * (s + 1) + t[1]) * (s + 1) + t[2];
+    let id = ids.get(k);
+    if (id === undefined) {
+      const sg = [c & 1 ? 1 : -1, c & 2 ? 1 : -1, c & 4 ? 1 : -1];
+      const d = t.map((ti, a) => Math.sin(((ti / s) * Math.PI) / 2) * sg[a]);
+      const l = Math.hypot(d[0], d[1], d[2]);
+      for (let a = 0; a < 3; a++) {
+        pp.push(sg[a] * inset[a] + (r * d[a]) / l);
+        pn.push(d[a] / l);
+      }
+      id = ids.size;
+      ids.set(k, id);
+    }
+    return id;
+  };
   const pos: number[] = [];
   const nor: number[] = [];
-  // Vertex (corner c = bits xyz, axis a): inset corner pushed out to the face along a.
-  const vid = (c: number, a: number) => c * 3 + a;
-  for (let c = 0; c < 8; c++) {
-    const sg = [c & 1 ? 1 : -1, c & 2 ? 1 : -1, c & 4 ? 1 : -1];
-    for (let a = 0; a < 3; a++) {
-      const p = [sg[0] * inset[0], sg[1] * inset[1], sg[2] * inset[2]];
-      p[a] = sg[a] * h[a];
-      const n = [0, 0, 0];
-      n[a] = sg[a];
-      pos.push(p[0], p[1], p[2]);
-      nor.push(n[0], n[1], n[2]);
-    }
-  }
   const idx: number[] = [];
+  const vertex = (p: number, n: readonly number[]) => {
+    pos.push(pp[p * 3], pp[p * 3 + 1], pp[p * 3 + 2]);
+    nor.push(n[0], n[1], n[2]);
+    return pos.length / 3 - 1;
+  };
+  const shared = new Map<number, number>();
   const tri = (a: number, b: number, c: number) => {
     // Orient outward (the shape is convex and centred on the origin).
     const pa = [pos[a * 3], pos[a * 3 + 1], pos[a * 3 + 2]];
@@ -88,14 +109,33 @@ export function chamferBoxGeometry(sx: number, sy: number, sz: number, radius: n
     if (n[0] * m[0] + n[1] * m[1] + n[2] * m[2] < 0) idx.push(a, c, b);
     else idx.push(a, b, c);
   };
-  const quad = (a: number, b: number, c: number, d: number) => {
-    tri(a, b, c);
-    tri(a, c, d);
+  // A triangle or quad (points in order around it).
+  const poly = (...ps: number[]) => {
+    let vs: number[];
+    if (flat) {
+      const n = [0, 0, 0];
+      for (const p of ps) for (let a = 0; a < 3; a++) n[a] += pn[p * 3 + a];
+      const l = Math.hypot(n[0], n[1], n[2]);
+      vs = ps.map((p) => vertex(p, [n[0] / l, n[1] / l, n[2] / l]));
+    } else
+      vs = ps.map((p) => {
+        let v = shared.get(p);
+        if (v === undefined) shared.set(p, (v = vertex(p, [pn[p * 3], pn[p * 3 + 1], pn[p * 3 + 2]])));
+        return v;
+      });
+    tri(vs[0], vs[1], vs[2]);
+    if (vs.length === 4) tri(vs[0], vs[2], vs[3]);
   };
-  const corner = (x: number, y: number, z: number) => (x ? 1 : 0) | (y ? 2 : 0) | (z ? 4 : 0);
+  const corner = (bits: readonly number[]) => bits[0] | (bits[1] << 1) | (bits[2] << 2);
+  const step = (a: number, ta: number, b: number, tb: number) => {
+    const t = [0, 0, 0];
+    t[a] = ta;
+    t[b] = tb;
+    return t;
+  };
   // Faces.
   for (let a = 0; a < 3; a++)
-    for (const s of [0, 1]) {
+    for (const sa of [0, 1]) {
       const b = (a + 1) % 3;
       const c = (a + 2) % 3;
       const cs: number[] = [];
@@ -106,31 +146,38 @@ export function chamferBoxGeometry(sx: number, sy: number, sz: number, radius: n
         [0, 1],
       ]) {
         const bits = [0, 0, 0];
-        bits[a] = s;
+        bits[a] = sa;
         bits[b] = pb;
         bits[c] = pc;
-        cs.push(vid(corner(bits[0], bits[1], bits[2]), a));
+        cs.push(vid(corner(bits), step(a, s, b, 0)));
       }
-      quad(cs[0], cs[1], cs[2], cs[3]);
+      poly(cs[0], cs[1], cs[2], cs[3]);
     }
-  // Bevels between face (a, sa) and face (b, sb), running along axis c.
+  // Edges between face (a, sa) and face (b, sb), running along axis c.
   for (let a = 0; a < 3; a++)
     for (let b = a + 1; b < 3; b++) {
       const c = 3 - a - b;
       for (const sa of [0, 1])
         for (const sb of [0, 1]) {
-          const at = (sc: number, ax: number) => {
+          const at = (sc: number, k: number) => {
             const bits = [0, 0, 0];
             bits[a] = sa;
             bits[b] = sb;
             bits[c] = sc;
-            return vid(corner(bits[0], bits[1], bits[2]), ax);
+            return vid(corner(bits), step(a, s - k, b, k));
           };
-          quad(at(0, a), at(1, a), at(1, b), at(0, b));
+          for (let k = 0; k < s; k++) poly(at(0, k), at(1, k), at(1, k + 1), at(0, k + 1));
         }
     }
-  // Corner triangles.
-  for (let c = 0; c < 8; c++) tri(vid(c, 0), vid(c, 1), vid(c, 2));
+  // Corners: row i holds the steps [s - i, i - j, j].
+  for (let c = 0; c < 8; c++) {
+    const at = (i: number, j: number) => vid(c, [s - i, i - j, j]);
+    for (let i = 0; i < s; i++)
+      for (let j = 0; j <= i; j++) {
+        poly(at(i, j), at(i + 1, j), at(i + 1, j + 1));
+        if (j < i) poly(at(i, j), at(i + 1, j + 1), at(i, j + 1));
+      }
+  }
   const geo = new BufferGeometry();
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new Float32BufferAttribute(nor, 3));
@@ -196,21 +243,25 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
   for (const list of buckets.values()) {
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
-    const geometry = unitVoxelGeometry(spec.bevel, SEGMENTS[quality]);
+    const chamfer = (spec as VoxelMaterialSpec).chamfer ?? false;
+    const geometry = unitVoxelGeometry(spec.bevel, chamfer ? Math.min(1, SEGMENTS[quality]) : SEGMENTS[quality], chamfer);
     // A thin geometry wrapper per mesh: shares the cached index/position/normal
-    // buffers and adds the per-instance exposed-face mask.
+    // buffers and adds the per-instance side masks and bevel radius.
     const geo = new BufferGeometry();
     geo.setIndex(geometry.index);
     geo.setAttribute('position', geometry.getAttribute('position'));
     geo.setAttribute('normal', geometry.getAttribute('normal'));
     const open = new Float32Array(list.length);
+    const radius = new Float32Array(list.length);
     // Patterned families carry their surf amounts + shade; their colour stays pure.
     const surf = patterned(mat) ? new Float32Array(list.length * 4) : null;
     const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), list.length);
     mesh.name = `${group.name}:${mat}`;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
-      open[i] = b.open ?? 63;
+      // Bits 0–5: exposed sides; bits 6–11: joints to other blocks.
+      open[i] = (b.open ?? 63) | ((b.joint ?? 0) << 6);
+      radius[i] = b.radius ?? 0;
       _p.set(b.x - offset.x, b.y - offset.y, b.z - offset.z);
       if (b.rx || b.ry || b.rz) _q.setFromEuler(_e.set(b.rx ?? 0, b.ry ?? 0, b.rz ?? 0));
       else _q.identity();
@@ -223,6 +274,7 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
       mesh.setColorAt(i, _c);
     }
     geo.setAttribute('voxOpen', new InstancedBufferAttribute(open, 1));
+    geo.setAttribute('voxRadius', new InstancedBufferAttribute(radius, 1));
     if (surf) geo.setAttribute('voxSurf', new InstancedBufferAttribute(surf, 4));
     // The code that made each instance (dev builds), for the feedback tool's picker.
     if (list.some((b) => b.src)) mesh.userData.voxelSources = list.map((b) => b.src);

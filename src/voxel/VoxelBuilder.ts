@@ -36,6 +36,17 @@ export interface VoxelBox {
    * Patterned families only.
    */
   merge?: number;
+  /**
+   * Sides (same bits as `open`) that butt against another block — masonry
+   * joints. The family's `gap` pulls them in, so a thin dark joint shows
+   * between neighbouring stones.
+   */
+  joint?: number;
+  /**
+   * Bevel radius in metres, in place of the family's `bevel` ratio — e.g. the
+   * cells of a carved block keep the rounding of their whole stone.
+   */
+  radius?: number;
   /** Optional Euler rotation (radians, XYZ). */
   rx?: number;
   ry?: number;
@@ -44,7 +55,7 @@ export interface VoxelBox {
   src?: SourceTrace;
 }
 
-type BoxExtra = Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open' | 'src' | 'surf' | 'merge'>>;
+type BoxExtra = Partial<Pick<VoxelBox, 'shade' | 'rx' | 'ry' | 'rz' | 'open' | 'src' | 'surf' | 'merge' | 'joint' | 'radius'>>;
 
 export type Vec3Tuple = [number, number, number];
 
@@ -100,7 +111,7 @@ export class VoxelBuilder {
     extra: BoxExtra = {},
   ): this {
     const src = extra.src ?? traceSource();
-    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, surf: extra.surf, merge: extra.merge, rx: extra.rx, ry: extra.ry, rz: extra.rz, src });
+    this.boxes.push({ x, y, z, sx, sy, sz, color, mat, shade: extra.shade ?? 1, open: extra.open, surf: extra.surf, merge: extra.merge, joint: extra.joint, radius: extra.radius, rx: extra.rx, ry: extra.ry, rz: extra.rz, src });
     return this;
   }
 
@@ -122,7 +133,9 @@ export class VoxelBuilder {
   mirrorX(): this {
     for (const b of this.boxes) {
       b.x = -b.x;
-      if (b.open !== undefined) b.open = (b.open & ~3) | ((b.open & 1) << 1) | ((b.open & 2) >> 1);
+      if (b.open !== undefined) b.open = swapX(b.open);
+      if (b.merge !== undefined) b.merge = swapX(b.merge);
+      if (b.joint !== undefined) b.joint = swapX(b.joint);
       if (b.ry !== undefined) b.ry = -b.ry;
       if (b.rz !== undefined) b.rz = -b.rz;
     }
@@ -154,6 +167,9 @@ export class VoxelBuilder {
     return { min, max };
   }
 }
+
+/** A side mask mirrored across x = 0 (swaps the +x and −x bits). */
+const swapX = (m: number) => (m & ~3) | ((m & 1) << 1) | ((m & 2) >> 1);
 
 /**
  * Half extents of a box's axis-aligned bounds, rotation included: for a box

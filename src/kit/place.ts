@@ -85,6 +85,7 @@ export function placePiece(target: PlaceTarget, piece: KitPiece, at: Placement):
       }
       nb.open = turnMask(b.open, turn);
       nb.merge = turnMask(b.merge, turn);
+      nb.joint = turnMask(b.joint, turn);
     }
     target.voxels.boxes.push(nb);
   }

@@ -48,6 +48,8 @@ export interface VoxelMaterialSpec {
   metalness: number;
   /** Corner radius relative to the smallest box side (0.5 = fully round). */
   bevel: number;
+  /** Edges cut flat (one slanted strip that catches the light) instead of rounded. */
+  chamfer?: boolean;
   edgeTint: number;
   edgeStrength: number;
   /** Width of the tinted rim across the bevel (0‥1, default 1 = whole outer bevel). */
@@ -71,6 +73,12 @@ export interface VoxelMaterialSpec {
   pattern?: VoxelPattern;
   /** Share of stone texels that are dark pores (0‥1). */
   pits?: number;
+  /**
+   * Masonry joint (metres per side): sides flagged `joint` (against another
+   * block) are pulled in by this much, so neighbouring blocks keep a thin gap
+   * where their rounded edges and the joint's shadow show.
+   */
+  gap?: number;
 }
 
 export const VOXEL_MATERIALS = {
@@ -100,7 +108,8 @@ export const VOXEL_MATERIALS = {
   bark: { roughness: 0.95, metalness: 0, bevel: 0.12, edgeTint: 0x9c7552, edgeStrength: 0.3, grain: 0.1, grainScale: 8 },
   ground: { roughness: 1, metalness: 0, bevel: 0.06, edgeTint: 0x9fbf66, edgeStrength: 0.2, grain: 0.12, grainScale: 3 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
-  sandstone: { roughness: 0.88, metalness: 0, bevel: 0.1, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045 },
+  // 5 cm flat-cut edges on a 0.5 m block, 1 cm joints between blocks.
+  sandstone: { roughness: 0.88, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.34, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, gap: 0.005 },
   soil: { roughness: 0.97, metalness: 0, bevel: 0.05, edgeTint: 0xc39a6a, edgeStrength: 0.18, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil' },
   leaves: { roughness: 0.82, metalness: 0, bevel: 0.1, edgeTint: 0xd8ec8e, edgeStrength: 0.32, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf' },
   trunk: { roughness: 0.93, metalness: 0, bevel: 0.09, edgeTint: 0xc2946a, edgeStrength: 0.3, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark' },
@@ -358,6 +367,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     shader.uniforms.uSeamless = { value: spec.seamless ? 1 : 0 };
     shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
     shader.uniforms.uPits = { value: spec.pits ?? 0 };
+    shader.uniforms.uGap = { value: spec.gap ?? 0 };
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -367,6 +377,7 @@ varying vec3 vVoxN;
 varying vec3 vVoxP;
 varying vec3 vVoxSeed;
 attribute float voxOpen;
+attribute float voxRadius;
 flat varying float vVoxOpen;
 #ifdef VOX_PAT
 attribute vec4 voxSurf;
@@ -375,6 +386,15 @@ flat varying vec3 vVoxS;
 #endif
 uniform float uBevel;
 uniform float uSeamless;
+uniform float uGap;
+// Sides that butt against another block (bits 6–11 of voxOpen): pulled in by uGap.
+vec3 voxJointOf(float open, vec3 p) {
+  int m = int(open + 0.5) >> 6;
+  return vec3(
+    float(p.x > 0.0 ? (m & 1) : ((m >> 1) & 1)),
+    float(p.y > 0.0 ? ((m >> 2) & 1) : ((m >> 3) & 1)),
+    float(p.z > 0.0 ? ((m >> 4) & 1) : ((m >> 5) & 1)));
+}
 // Seamless families push the bevel of every covered side into the neighbour, so
 // flush faces meet flat and only the silhouette stays rounded.
 vec3 voxPushOf(float open, vec3 p) {
@@ -433,14 +453,16 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
   #else
     vec3 voxS = vec3(1.0);
   #endif
-  float voxR = min(min(voxS.x, voxS.y), voxS.z) * uBevel;
+  float voxMin = min(min(voxS.x, voxS.y), voxS.z);
+  // (a block's own radius, if given, stays below half its smallest side)
+  float voxR = voxRadius > 0.0 ? min(voxRadius, voxMin * 0.45) : voxMin * uBevel;
   vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
   vec3 voxPush = voxPushOf(voxOpen, position);
   #ifdef VOX_PAT
     voxPush = max(voxPush, voxMergeOf(voxSurf.w, position));
   #endif
   // (+ a hair of overlap so neighbouring flat faces never leave a crack)
-  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012));
+  vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + 0.012) - voxJointOf(voxOpen, position) * uGap);
   transformed = voxPw / voxS;
   vVoxP = voxPw;
   vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
@@ -485,14 +507,24 @@ ${PATTERN_GLSL}
 vec3 voxN = normalize(vVoxN);
 // 0 on the flat faces, 1 on the outer half of the rounded bevel.
 float voxEdge = smoothstep(0.29 - 0.2 * uEdgeWidth, 0.29, 1.0 - max(max(abs(voxN.x), abs(voxN.y)), abs(voxN.z)));
+float voxJoint = 0.0;
 {
-  // Only rims between exposed faces glow; edges against a flush neighbour stay a soft seam.
-  int m = int(vVoxOpen + 0.5);
+  // Only rims between exposed faces glow; edges against a flush neighbour stay a
+  // soft seam. A masonry joint counts as exposed: its gap shows the rounding.
+  int m = (int(vVoxOpen + 0.5) | (int(vVoxOpen + 0.5) >> 6)) & 63;
   float w = 1.0;
   if (abs(voxN.x) > 0.12) w *= (voxN.x > 0.0 ? float(m & 1) : float((m >> 1) & 1));
   if (abs(voxN.y) > 0.12) w *= (voxN.y > 0.0 ? float((m >> 2) & 1) : float((m >> 3) & 1));
   if (abs(voxN.z) > 0.12) w *= (voxN.z > 0.0 ? float((m >> 4) & 1) : float((m >> 5) & 1));
   voxEdge *= mix(0.1, 1.0, w);
+  // The part of the bevel that turns into a joint falls into its shadow.
+  int j = int(vVoxOpen + 0.5) >> 6;
+  vec3 jn = vec3(
+    voxN.x > 0.0 ? float(j & 1) : float((j >> 1) & 1),
+    voxN.y > 0.0 ? float((j >> 2) & 1) : float((j >> 3) & 1),
+    voxN.z > 0.0 ? float((j >> 4) & 1) : float((j >> 5) & 1));
+  voxJoint = smoothstep(0.75, 1.0, max(max(abs(voxN.x) * jn.x, abs(voxN.y) * jn.y), abs(voxN.z) * jn.z));
+  voxEdge *= 1.0 - voxJoint;
 }
 #ifdef VOX_PAT
 diffuseColor.rgb = voxPattern(diffuseColor.rgb, voxN);
@@ -514,9 +546,10 @@ diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
     voxFacing = smoothstep(-0.2, 0.5, dot(normal, directionalLights[0].direction));
   #endif
   diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength * mix(0.3, 1.0, voxFacing));
+  diffuseColor.rgb *= 1.0 - 0.6 * voxJoint;
 }`,
       );
   };
   // Families inject identical code (only uniforms and the pattern define differ).
-  material.customProgramCacheKey = () => `voxel-shading-v6${spec.pattern ? `:${spec.pattern}` : ''}`;
+  material.customProgramCacheKey = () => `voxel-shading-v7${spec.pattern ? `:${spec.pattern}` : ''}`;
 }
