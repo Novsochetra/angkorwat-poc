@@ -164,7 +164,8 @@ under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
   then view the PNG. Useful params: `night=1` · `t=<s>` (time for moving
   things) · `focus=<place id>` (closer camera on a place) · `ui=0` (no
   interface) · `parts=terrain,sanctuary` (build only these parts — faster, and
-  hides others' work in progress) · `cam=x,y,z,tx,ty,tz` (any fixed camera).
+  hides others' work in progress) · `cam=x,y,z,tx,ty,tz` (any fixed camera) ·
+  `lang=en` (English words; Khmer is the default).
   The console line `[map] built in … · blocks {…}` shows build times and block
   counts; `FAILED: …` names parts that broke.
 - Put screenshots and scratch files in your scratch dir, not in the repo.

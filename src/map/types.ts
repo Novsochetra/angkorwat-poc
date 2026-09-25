@@ -147,9 +147,14 @@ export interface MapSettings {
   time: 'day' | 'night' | 'cycle';
   /** No camera sway, short flights, no drifting clouds. */
   calm: boolean;
+  /** Language of the interface (ui/lang.ts): Khmer first. */
+  lang: Lang;
 }
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, sfx: 0.7, time: 'day', calm: false };
+/** Interface languages: Khmer and English. */
+export type Lang = 'km' | 'en';
+
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, sfx: 0.7, time: 'day', calm: false, lang: 'km' };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'sfx'] as const;

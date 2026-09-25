@@ -1,6 +1,7 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, VOLUME_KEYS, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey } from '../types';
+import { DEFAULT_SETTINGS, VOLUME_KEYS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey } from '../types';
 import { ICON } from './icons';
+import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { steppedRing, steppedShape } from './shape';
 
 /**
@@ -8,8 +9,10 @@ import { steppedRing, steppedShape } from './shape';
  * (assets/world-map-selection-screen/): the title card (top left), a pin card
  * per place (placed from the place's beacon on screen), the info panel with
  * "Begin expedition" (right side; a bottom sheet on phones), the gear and
- * mute buttons with the settings panel (top right) and the hint line
- * (bottom right). Styles: map.css (classes start with `mu-`).
+ * mute buttons with the settings panel and the ខ្មែរ / EN switch (top
+ * right) and the hint line (bottom right). Styles: map.css (classes start
+ * with `mu-`). Words: lang.ts (`data-t` / `data-t-aria` / `data-t-title`
+ * name the word an element shows; `fillWords` fills them in the language).
  *
  * Keys: Tab / arrows move between cards, Enter picks, Esc goes back (or
  * closes the settings). A click on the empty map goes back too.
@@ -70,17 +73,12 @@ const CARD_REF_WIDTH = 1280;
 const ART = { w: 1672, h: 941 };
 /** Volumes restored by "unmute" (kept when muting). */
 const UNMUTE_KEY = 'angkor-map-unmute';
-/** The volume sliders: name, and what they cover (tooltip). */
-const VOLUME_LABEL: Record<VolumeKey, [string, string]> = {
-  master: ['Master', 'All sound'],
-  music: ['Music', 'The calm music'],
-  ambience: ['Ambience', 'Wind, birds, insects and frogs'],
-  water: ['Water', 'Waterfalls and rivers, louder the closer you are'],
-  sfx: ['Effects', "The interface and the explorer's steps, parachute and paddle"],
-};
 /** Every volume but the master. */
 const PART_KEYS = VOLUME_KEYS.filter((k) => k !== 'master');
-const FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Pixelify+Sans:wght@500;600;700&display=swap';
+/** The language switch: each button shows its language in that language. */
+const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'EN' };
+/** Latin fonts, and the Khmer ones they fall back to (lang.ts). */
+const FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Pixelify+Sans:wght@500;600;700&family=Kantumruy+Pro:wght@400;600;700&family=Koulen&display=swap';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -166,21 +164,20 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   // ── Title ────────────────────────────────────────────────────────────────
   const title = framed(el('header', 'mu-title', `
     <span class="mu-title-icon">${ICON.temple}</span>
-    <span class="mu-title-text"><h1>Highland Journey</h1><p>Choose your next expedition</p></span>`), 'lg');
+    <span class="mu-title-text"><h1 data-t="title"></h1><p data-t="tagline"></p></span>`), 'lg');
 
   // ── Pin cards ────────────────────────────────────────────────────────────
   const pinsNav = el('nav', 'mu-pins');
-  pinsNav.setAttribute('aria-label', 'Places on the map');
+  pinsNav.dataset.tAria = 'places';
   const cards: Card[] = places.map((p) => {
     const b = el('button', `mu-pin is-off${p.id === 'sanctuary' ? ' is-main' : ''}${p.href ? '' : ' is-soon'}`);
     b.type = 'button';
     b.dataset.id = p.id;
-    b.setAttribute('aria-label', `${p.name}, ${p.subtitle}${p.href ? '' : ' (coming soon)'}`);
     b.setAttribute('aria-controls', 'mu-info');
     b.setAttribute('aria-expanded', 'false');
     const inner = framed(el('span', 'mu-pin-in', `
       <span class="mu-pin-icon">${ICON.pin}</span>
-      <span class="mu-pin-text"><span class="mu-pin-name">${esc(p.name)}</span><span class="mu-pin-sub">${esc(p.subtitle)}</span><span class="mu-pin-dist"></span></span>
+      <span class="mu-pin-text"><span class="mu-pin-name"></span><span class="mu-pin-sub"></span><span class="mu-pin-dist"></span></span>
       <span class="mu-pin-chev">${ICON.chevron}</span>`), 'sm', true);
     b.append(inner);
     pinsNav.append(b);
@@ -192,8 +189,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const info = framed(el('aside', 'mu-info', `
     <div class="mu-grip" aria-hidden="true"></div>
     <div class="mu-info-top">
-      <button type="button" class="mu-back" aria-label="Back to the map">${ICON.back}<span>Map</span></button>
-      <span class="mu-info-kicker">Destination</span>
+      <button type="button" class="mu-back" data-t-aria="backToMap">${ICON.back}<span data-t="map"></span></button>
+      <span class="mu-info-kicker" data-t="destination"></span>
     </div>
     <div class="mu-info-body"></div>`), 'lg');
   info.id = 'mu-info';
@@ -203,47 +200,76 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   // ── Corner buttons and settings ─────────────────────────────────────────
   const corner = el('div', 'mu-corner');
+  const langSwitch = framed(el('div', 'mu-lang', (['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')), 'md');
+  langSwitch.setAttribute('role', 'group');
+  langSwitch.dataset.tAria = 'language';
+  const langBtns = [...langSwitch.querySelectorAll<HTMLButtonElement>('button')];
   const muteBtn = framed(el('button', 'mu-round mu-mute'), 'md');
   muteBtn.type = 'button';
+  muteBtn.dataset.tAria = 'mute';
   const gearBtn = framed(el('button', 'mu-round mu-gear', ICON.gear), 'md');
   gearBtn.type = 'button';
-  gearBtn.setAttribute('aria-label', 'Settings');
+  gearBtn.dataset.tAria = 'settings';
   gearBtn.setAttribute('aria-controls', 'mu-settings');
   gearBtn.setAttribute('aria-expanded', 'false');
-  corner.append(muteBtn, gearBtn);
+  corner.append(langSwitch, muteBtn, gearBtn);
 
   const panel = framed(el('section', 'mu-settings', `
-    <div class="mu-set-head"><h2>Settings</h2><button type="button" class="mu-x" aria-label="Close settings">${ICON.close}</button></div>
-    <div class="mu-set-group" role="group" aria-label="Sound">
-      <h3>Sound</h3>
-      ${VOLUME_KEYS.map((k) => `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" title="${VOLUME_LABEL[k][1]}"><span>${VOLUME_LABEL[k][0]}</span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`).join('')}
+    <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x" data-t-aria="closeSettings">${ICON.close}</button></div>
+    <div class="mu-set-group" role="group" data-t-aria="sound">
+      <h3 data-t="sound"></h3>
+      ${VOLUME_KEYS.map((k) => `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`).join('')}
     </div>
     <div class="mu-set-group">
-      <h3 id="mu-time-h">Time of day</h3>
+      <h3 id="mu-time-h" data-t="time"></h3>
       <div class="mu-seg" role="group" aria-labelledby="mu-time-h">
-        <button type="button" data-time="day">${ICON.sun}<span>Day</span></button>
-        <button type="button" data-time="night">${ICON.moon}<span>Night</span></button>
-        <button type="button" data-time="cycle">${ICON.cycle}<span>Cycle</span></button>
+        <button type="button" data-time="day">${ICON.sun}<span data-t="day"></span></button>
+        <button type="button" data-time="night">${ICON.moon}<span data-t="night"></span></button>
+        <button type="button" data-time="cycle">${ICON.cycle}<span data-t="cycle"></span></button>
       </div>
     </div>
     <div class="mu-set-row">
-      <span id="mu-calm-l">Reduce motion<small>Still camera, short flights</small></span>
+      <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
       <button type="button" class="mu-switch" role="switch" aria-labelledby="mu-calm-l"><span></span></button>
     </div>`), 'lg');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Settings');
+  panel.dataset.tAria = 'settings';
   const sliders = [...panel.querySelectorAll<HTMLInputElement>('input[type=range]')];
   const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button')];
   const calmSwitch = panel.querySelector<HTMLButtonElement>('.mu-switch')!;
 
   // ── Hint, fade, live region ─────────────────────────────────────────────
-  const hint = el('p', 'mu-hint', `${ICON.plane}<span>Explore the ancient highlands of Angkor</span>`);
+  const hint = el('p', 'mu-hint', `${ICON.plane}<span data-t="hint"></span>`);
   const fade = el('div', 'mu-fade', '<p></p>');
   const live = el('p', 'mu-sr');
   live.setAttribute('aria-live', 'polite');
 
   root.append(title, hint, pinsNav, info, corner, panel, fade, live);
+
+  // ── Words (lang.ts) ──────────────────────────────────────────────────────
+  /** Every word in the language in use: the marked elements, the cards and the open panel. */
+  function fillWords(): void {
+    for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
+    for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
+    for (const e of root.querySelectorAll<HTMLElement>('[data-t-title]')) e.title = t(e.dataset.tTitle as WordKey);
+    for (const c of cards) {
+      const p = placeText(c.place);
+      c.button.querySelector('.mu-pin-name')!.textContent = p.name;
+      c.button.querySelector('.mu-pin-sub')!.textContent = p.subtitle;
+      c.button.setAttribute('aria-label', `${p.name}, ${p.subtitle}${c.place.href ? '' : t('pinSoon')}`);
+      // (the roaming pins write their distance again next frame)
+      c.dist = '';
+    }
+    if (selected) renderInfo(cardById.get(selected)!.place);
+  }
+  fillWords();
+  onLang(() => {
+    fillWords();
+    syncSettings();
+    // Khmer and English words differ in size.
+    measure();
+  });
 
   // ── Sizes ────────────────────────────────────────────────────────────────
   /** Screen boxes cards keep out of: title and corner buttons (cards go below), the hint line (cards go above). */
@@ -293,17 +319,18 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   // ── Selection ────────────────────────────────────────────────────────────
   function renderInfo(p: PlaceDef): void {
+    const w = placeText(p);
     const body = el('div', 'mu-info-card', `
       <div class="mu-info-head">
         <span class="mu-info-pin">${ICON.pin}</span>
-        <div><h2 id="mu-info-name">${esc(p.name)}</h2><p class="mu-info-sub">${esc(p.subtitle)}</p></div>
+        <div><h2 id="mu-info-name">${esc(w.name)}</h2><p class="mu-info-sub">${esc(w.subtitle)}</p></div>
       </div>
       <div class="mu-orn" aria-hidden="true"><i></i>${ICON.diamond}<i></i></div>
-      <p class="mu-info-blurb">${esc(p.blurb)}</p>
-      <ul class="mu-facts">${p.facts.map((f) => `<li>${ICON.diamond}${esc(f)}</li>`).join('')}</ul>
+      <p class="mu-info-blurb">${esc(w.blurb)}</p>
+      <ul class="mu-facts">${w.facts.map((f) => `<li>${ICON.diamond}${esc(f)}</li>`).join('')}</ul>
       ${p.href
-        ? `<button type="button" class="mu-begin">Begin expedition${ICON.arrow}</button>`
-        : `<button type="button" class="mu-begin" disabled aria-disabled="true">${ICON.hourglass}Coming soon</button><p class="mu-soon-note">This path is still being cleared.</p>`}`);
+        ? `<button type="button" class="mu-begin">${esc(t('begin'))}${ICON.arrow}</button>`
+        : `<button type="button" class="mu-begin" disabled aria-disabled="true">${ICON.hourglass}${esc(t('soon'))}</button><p class="mu-soon-note">${esc(t('soonNote'))}</p>`}`);
     const begin = body.querySelector<HTMLButtonElement>('.mu-begin')!;
     framed(begin, 'md', true);
     if (p.href) begin.addEventListener('click', () => beginExpedition(p));
@@ -327,13 +354,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       info.inert = false;
       measureInfo();
       info.removeAttribute('aria-hidden');
-      live.textContent = `${p.name}, ${p.subtitle}. ${p.href ? 'Ready to begin.' : 'Coming soon.'}`;
+      const w = placeText(p);
+      live.textContent = `${w.name}, ${w.subtitle}. ${t(p.href ? 'ready' : 'soonLive')}`;
     } else {
       info.classList.remove('is-open');
       info.inert = true;
       measureInfo();
       info.setAttribute('aria-hidden', 'true');
-      if (prev) live.textContent = 'Back to the map.';
+      if (prev) live.textContent = t('backLive');
     }
   }
 
@@ -368,7 +396,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     begun = true;
     h.onSound('begin');
     h.onBegin(p.id);
-    fade.querySelector('p')!.textContent = `Setting out for ${p.name}`;
+    fade.querySelector('p')!.textContent = t('settingOut', { name: placeText(p).name });
     fade.classList.add('is-on');
     root.classList.add('mu-begun');
   }
@@ -419,8 +447,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       const v = Math.round(settings[k] * 100);
       s.value = String(v);
       s.style.setProperty('--v', `${v}%`);
-      s.nextElementSibling!.textContent = `${v}`;
-      s.setAttribute('aria-valuetext', `${v} percent`);
+      s.nextElementSibling!.textContent = num(v);
+      s.setAttribute('aria-valuetext', t('percent', { n: String(v) }));
     }
     for (const b of segBtns) b.setAttribute('aria-pressed', String(b.dataset.time === settings.time));
     calmSwitch.setAttribute('aria-checked', String(settings.calm));
@@ -428,10 +456,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     muteBtn.innerHTML = '';
     muteBtn.append(el('span', 'mu-bg'));
     muteBtn.insertAdjacentHTML('beforeend', muted ? ICON.muted : ICON.speaker);
-    muteBtn.setAttribute('aria-label', 'Mute sound');
     muteBtn.setAttribute('aria-pressed', String(muted));
     muteBtn.classList.toggle('is-off', muted);
+    for (const b of langBtns) b.setAttribute('aria-pressed', String(b.dataset.lang === settings.lang));
     applyCalm();
+    // (a new language fills the words again: `onLang` above)
+    setLang(settings.lang);
   }
 
   function change(s: Partial<MapSettings>): void {
@@ -487,6 +517,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     change({ calm: !settings.calm });
     h.onSound('toggle');
   });
+  for (const b of langBtns)
+    b.addEventListener('click', () => {
+      const l = b.dataset.lang as Lang;
+      if (l === settings.lang) return;
+      change({ lang: l });
+      h.onSound('toggle');
+    });
 
   /** The volumes kept by the last mute (volumes it did not keep: the defaults). */
   function savedVolumes(): Pick<MapSettings, VolumeKey> {
@@ -658,7 +695,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'roam') queueMicrotask(() => setRoaming('walk'));
       if (k === 'begin') {
         const p = (selected && cardById.get(selected)?.place) || places[0];
-        fade.querySelector('p')!.textContent = `Setting out for ${p.name}`;
+        fade.querySelector('p')!.textContent = t('settingOut', { name: placeText(p).name });
         fade.classList.add('is-on', 'is-half');
       }
     }
@@ -746,7 +783,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   };
   /** A pin's opacity at `d` m: gone when you are at the place (its prompt shows then), faint far off. */
   const pinFade = (d: number) => smooth(25, 50, d) * (1 - 0.6 * smooth(150, 700, d));
-  const distText = (d: number) => (d < 1000 ? `${Math.max(10, Math.round(d / 10) * 10)} m` : `${(d / 1000).toFixed(1)} km`);
+  const distText = (d: number) => (d < 1000 ? `${num(Math.max(10, Math.round(d / 10) * 10))} ${t('m')}` : `${num((d / 1000).toFixed(1))} ${t('km')}`);
   /** Screen boxes of the roaming HUD (px): its corners top left and bottom left, the prompt at the bottom. */
   /** The roaming mini-map and tool bar (found the first time pins are placed while roaming). */
   let roamHud: HTMLElement[] | null = null;
@@ -824,7 +861,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         c.dist = '';
         c.button.style.removeProperty('opacity');
       }
-    live.textContent = on ? 'Exploring the map.' : 'Back to the map.';
+    live.textContent = t(on ? 'exploring' : 'backLive');
     // Pins and cards differ in size.
     measure();
   }

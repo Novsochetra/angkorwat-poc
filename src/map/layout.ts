@@ -17,14 +17,20 @@ export const OVERVIEW = {
   fov: 55,
 };
 
-export interface PlaceDef {
-  id: PlaceId;
+/** A place's words on its card and in the info panel. */
+export interface PlaceText {
   name: string;
   subtitle: string;
   /** Two or three sentences for the info panel. */
   blurb: string;
   /** Short facts under the blurb. */
   facts: string[];
+}
+
+/** English words in the place itself, Khmer in `km` (the interface picks: ui/lang.ts `placeText`). */
+export interface PlaceDef extends PlaceText {
+  id: PlaceId;
+  km: PlaceText;
   /** Centre of the landmark's flat pad (m); `y` is the pad's ground height. */
   x: number;
   y: number;
@@ -54,6 +60,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Sacred Summit',
     blurb: 'The greatest temple of Angkor crowns the highest mesa: five lotus towers above three galleries, facing the setting sun. Pilgrims have climbed its long stairs for nine hundred years.',
     facts: ['Main expedition', 'Real-scale Angkor Wat'],
+    km: {
+      name: 'អង្គរវត្ត',
+      subtitle: 'កំពូលដ៏ពិសិដ្ឋ',
+      blurb: 'ប្រាសាទធំបំផុតនៃអង្គរ ឋិតនៅលើខ្ពង់រាបខ្ពស់បំផុត៖ ប្រាង្គរាងផ្កាឈូកប្រាំ លើថែវបីជាន់ បែរមុខទៅរកព្រះអាទិត្យលិច។ អ្នកធម្មយាត្រាបានឡើងជណ្ដើរវែងរបស់វា អស់រយៈពេលប្រាំបួនរយឆ្នាំមកហើយ។',
+      facts: ['ដំណើរសំខាន់', 'អង្គរវត្តទំហំពិត'],
+    },
     x: 0,
     y: 56,
     z: -205,
@@ -69,6 +81,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Mountain Temple',
     blurb: 'A lone temple on the holy mountain, above the clouds. The kings of Angkor were crowned here, and the rivers of the highlands begin on its slopes.',
     facts: ['Long climb', 'Above the clouds'],
+    km: {
+      name: 'ភ្នំគូលែន',
+      subtitle: 'ប្រាសាទលើភ្នំ',
+      blurb: 'ប្រាសាទឯកាលើភ្នំដ៏ពិសិដ្ឋ ខ្ពស់ផុតពពក។ ព្រះមហាក្សត្រអង្គរត្រូវបានរាជាភិសេកនៅទីនេះ ហើយស្ទឹងទាំងឡាយនៃខ្ពង់រាប ហូរចេញពីជម្រាលភ្នំនេះ។',
+      facts: ['ផ្លូវឡើងវែង', 'ខ្ពស់ផុតពពក'],
+    },
     x: 370,
     y: 150,
     z: -440,
@@ -83,6 +101,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Lost Gardens',
     blurb: 'Giant silk-cotton and fig trees grow over the towers of Ta Prohm, their roots pouring over the stones. Water runs from terrace to terrace down to the valley.',
     facts: ['Tree temple', 'Waterfalls'],
+    km: {
+      name: 'តាព្រហ្ម',
+      subtitle: 'សួនច្បារដែលបាត់បង់',
+      blurb: 'ដើមស្ពង់ និងដើមជ្រៃដ៏ធំ ដុះគ្របលើប្រាង្គនៃប្រាសាទតាព្រហ្ម ឫសរបស់វាលូនគ្របលើថ្ម។ ទឹកហូរចុះពីថ្នាក់មួយទៅថ្នាក់មួយ រហូតដល់ជ្រលងភ្នំ។',
+      facts: ['ប្រាសាទដើមឈើ', 'ទឹកធ្លាក់'],
+    },
     x: 200,
     y: 34,
     z: -140,
@@ -97,6 +121,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Stone Faces',
     blurb: 'Calm stone faces smile from every tower of Bayon, high on the western cliffs. From its terrace you can see every temple of the highlands.',
     facts: ['Viewpoint', 'Face towers'],
+    km: {
+      name: 'បាយ័ន',
+      subtitle: 'ព្រះភក្ត្រថ្ម',
+      blurb: 'ព្រះភក្ត្រថ្មដ៏ស្ងប់ស្ងាត់ ញញឹមចេញពីគ្រប់ប្រាង្គនៃប្រាសាទបាយ័ន ដែលឋិតនៅខ្ពស់លើច្រាំងថ្មចោទខាងលិច។ ពីទីលានរបស់វា អ្នកអាចមើលឃើញគ្រប់ប្រាសាទនៃខ្ពង់រាប។',
+      facts: ['កន្លែងមើលទេសភាព', 'ប្រាង្គព្រះភក្ត្រ'],
+    },
     x: -300,
     y: 40,
     z: -230,
@@ -111,6 +141,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Silent Ruins',
     blurb: 'Once a city of monks and scholars, now the jungle holds its long broken galleries. Roots hold the stones together, and birds nest in the fallen towers.',
     facts: ['Ruins', 'Short walk'],
+    km: {
+      name: 'ព្រះខ័ន',
+      subtitle: 'ប្រាសាទដ៏ស្ងាត់ស្ងៀម',
+      blurb: 'ធ្លាប់ជាទីក្រុងនៃព្រះសង្ឃ និងអ្នកប្រាជ្ញ ឥឡូវនេះព្រៃបានគ្របដណ្ដប់ថែវវែងៗដែលបាក់បែករបស់វា។ ឫសឈើចាប់ថ្មឱ្យនៅជាប់គ្នា ហើយសត្វស្លាបធ្វើសំបុកក្នុងប្រាង្គដែលរលំ។',
+      facts: ['ប្រាសាទបាក់បែក', 'ផ្លូវដើរខ្លី'],
+    },
     x: -88,
     y: 24,
     z: -30,
@@ -126,6 +162,12 @@ export const PLACES: PlaceDef[] = [
     subtitle: 'The Eastern Crossing',
     blurb: 'An old stone bridge and its gate towers, where the valley road crosses the river. Every journey into the highlands starts here.',
     facts: ['Start of the road', 'Stone bridge'],
+    km: {
+      name: 'ក្លោងទ្វារទន្លេ',
+      subtitle: 'ច្រកឆ្លងខាងកើត',
+      blurb: 'ស្ពានថ្មចាស់ និងក្លោងទ្វាររបស់វា ជាកន្លែងដែលផ្លូវជ្រលងភ្នំឆ្លងកាត់ទន្លេ។ គ្រប់ដំណើរឆ្ពោះទៅខ្ពង់រាប ចាប់ផ្ដើមនៅទីនេះ។',
+      facts: ['ដើមផ្លូវ', 'ស្ពានថ្ម'],
+    },
     x: -60,
     y: 8,
     z: 30,

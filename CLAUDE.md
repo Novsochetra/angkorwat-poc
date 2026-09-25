@@ -63,6 +63,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 `assets/world-map-selection-screen/` and `assets/2B06F1FD-531A-4ED7-9C2E-7044E141F122.PNG`.
 
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
+- Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
+  the settings). The word list is `src/map/ui/lang.ts`; place texts are in
+  `layout.ts` (`km`). Add `lang=en` to a shot for English.
 - Look at it: `npm run shots -- m="@map.html?shot=1"` (1672×941 with
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`.

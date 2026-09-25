@@ -10,7 +10,8 @@ import { PLACES } from './layout';
 import type { Foreground } from './foreground';
 import type { MapPost } from './post';
 import type { MapRoam } from './roam/roam';
-import { DEFAULT_SETTINGS, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { onLang, setLang, t } from './ui/lang';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
 /**
@@ -20,7 +21,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * `night=0‥1` time of day · `focus=<place>` camera on a place ·
  * `ui=0` no interface · `quality=low|medium|high` ·
  * `parts=terrain,water,…` build only these parts (checking one part) ·
- * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview.
+ * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
+ * `lang=km|en` the interface's language (else the saved one; Khmer first).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -53,6 +55,18 @@ function loadSettings(): MapSettings {
   }
 }
 let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
+if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
+// The page's own words (tab title, loading screen) in that language (ui/lang.ts).
+function pageWords(): void {
+  document.title = `Angkor Quest — ${t('title')}`;
+  for (const [sel, key] of [['#loading h1', 'title'], ['#loading p', 'loading']] as const) {
+    const e = document.querySelector(sel);
+    if (e) e.textContent = t(key);
+  }
+}
+setLang(settings.lang);
+pageWords();
+onLang(pageWords);
 
 // ── Build ───────────────────────────────────────────────────────────────────
 const timings: Record<string, number> = {};

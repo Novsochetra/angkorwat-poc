@@ -1,4 +1,5 @@
 import { OVERVIEW } from '../layout';
+import { onLang, t } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { setTouchUse } from './touch';
 import type { RoamHud, RoamMode } from './types';
@@ -30,8 +31,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(): void; onBack(): 
   wrap.style.setProperty('--mu-ring-sm', steppedRing(8, 4, 1.25));
   wrap.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2));
   wrap.innerHTML = `
-    <button type="button" class="rh-jump mu-frame mu-sm" aria-label="Jump in: roam the map (J)">
-      <span class="mu-bg"></span><span class="mu-glow"></span>${CHUTE_ICON}<span class="rh-jump-text">Jump in</span><kbd>J</kbd>
+    <button type="button" class="rh-jump mu-frame mu-sm">
+      <span class="mu-bg"></span><span class="mu-glow"></span>${CHUTE_ICON}<span class="rh-jump-text"></span><kbd>J</kbd>
     </button>
     <button type="button" class="rh-back mu-frame mu-sm">
       <span class="mu-bg"></span>${BACK_ICON}<span>Back to map</span><kbd>Esc</kbd>
@@ -43,6 +44,13 @@ export function createRoamHud(root: HTMLElement, h: { onJump(): void; onBack(): 
   root.after(wrap);
   const q = <T extends HTMLElement>(s: string) => wrap.querySelector<T>(s)!;
   const jump = q('.rh-jump');
+  // (in the map's language: ui/lang.ts; the roaming's own words are English for now)
+  const jumpWords = () => {
+    q('.rh-jump-text').textContent = t('jumpIn');
+    jump.setAttribute('aria-label', t('jumpInAria'));
+  };
+  jumpWords();
+  onLang(jumpWords);
   const keys = q('.rh-keys');
   const promptEl = q('.rh-prompt');
   const promptKey = q('.rh-prompt kbd');
