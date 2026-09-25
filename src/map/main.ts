@@ -1,5 +1,6 @@
 import { DirectionalLight, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
 import { FeedbackTool } from '../feedback/FeedbackTool';
+import { skipBackFacets } from '../voxel/backFacets';
 import { installLookPanel } from '../voxel/LookPanel';
 import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
@@ -126,6 +127,8 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
   }
 }
 scene.add(atmosphere.object);
+// The land, trees, temples and road never move: they draw only the block sides that can face the camera.
+for (const p of parts) if (['terrain', 'vegetation', 'path'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
 const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.name, p.blocks!]));
 

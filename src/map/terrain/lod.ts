@@ -80,6 +80,9 @@ export function lowTwin(src: Group): Group {
     t.castShadow = m.castShadow;
     t.receiveShadow = m.receiveShadow;
     t.customDepthMaterial = m.customDepthMaterial;
+    // (and draws the way it does, e.g. only the sides that face the camera)
+    t.onBeforeRender = m.onBeforeRender;
+    t.onAfterRender = m.onAfterRender;
     t.userData = { voxelSources: m.userData.voxelSources };
     t.boundingSphere = m.boundingSphere;
     t.boundingBox = m.boundingBox;

@@ -1,5 +1,6 @@
 import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3 } from 'three';
 import { MAP_BOUNDS } from './layout';
+import { skipDarkLights } from './sky/darkLights';
 import { HAZE, installHaze } from './sky/haze';
 import { buildLandMap } from './sky/mist';
 import { mistNoiseTexture } from './sky/noise';
@@ -25,6 +26,9 @@ import type { MapContext, MapFrame, MapPart } from './types';
  * - Haze (sky/haze.ts): three's fog chunks are replaced here, before any
  *   material compiles, with distance haze tinted towards the sun plus
  *   valley mist, so every material gets both.
+ * - Small lights (sky/darkLights.ts): a point or spot light is shaded only
+ *   where it reaches, so the lamps and lanterns that wait in the dark cost
+ *   next to nothing.
  */
 export interface Atmosphere extends MapPart {
   /** The key light (sun by day, moon by night); casts the map's shadows. */
@@ -36,6 +40,7 @@ const SHADOW_BOX = { x0: MAP_BOUNDS.x0, x1: MAP_BOUNDS.x1, y0: -4, y1: 175, z0: 
 
 export function buildAtmosphere(ctx: MapContext): Atmosphere {
   const land = buildLandMap(ctx.field);
+  skipDarkLights();
   installHaze(mistNoiseTexture(), land.texture);
   HAZE.landBounds.set(land.bounds.x, land.bounds.y, land.bounds.z);
   HAZE.landBounds.w = land.bounds.w;
