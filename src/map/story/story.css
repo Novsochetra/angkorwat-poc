@@ -4,7 +4,8 @@
  * sunrise glow), shade (behind words at the bottom), the empire map, the
  * gold-block temple — then the words, the top bar (ខ្មែរ / EN, Skip) and the
  * foot (← progress →, the hint). A scene is classes on `.st`: is-grey,
- * is-dawn, is-low, is-map, is-dots.
+ * is-dawn, is-low, is-map, is-dots; where its words go is on their own box
+ * (`.st-text`: is-low, is-map).
  */
 
 .st {
@@ -324,13 +325,24 @@ body.st-after :is(.map-ui, .rt) {
 .st-stage {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 12vh 7vw 17vh;
   pointer-events: none;
 }
 
-.st.is-low .st-stage {
+/*
+ * A beat's words: a layer over the whole screen, placed by its own scene
+ * (`is-low`, `is-map` on the box, not on `.st`), so the words of the beat
+ * before stay where they were while they fade out. `st-copy` is the words.
+ */
+.st-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12vh 7vw 17vh;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.st-text.is-low {
   align-items: end;
   padding-bottom: 14vh;
 }
@@ -348,27 +360,27 @@ body.st-after :is(.map-ui, .rt) {
     transform: translateY(-50%);
   }
 
-  .st.is-map .st-stage {
+  .st-text.is-map {
     justify-items: start;
     padding-left: calc(8vw + 86vh * 696 / 736);
     padding-right: 6vw;
   }
 
-  .st.is-map .st-text {
+  .st-text.is-map .st-copy {
     text-align: left;
   }
 }
 
 @media not (min-aspect-ratio: 3 / 2) {
   /* (the words right under the map) */
-  .st.is-map .st-stage {
+  .st-text.is-map {
     align-items: start;
     padding-top: calc(7vh + min(58vh, 92vw * 736 / 696));
   }
 }
 
 @media (max-width: 639px) {
-  .st-stage {
+  .st-text {
     padding-left: 5vw;
     padding-right: 5vw;
   }
@@ -378,16 +390,19 @@ body.st-after :is(.map-ui, .rt) {
   }
 }
 
-.st-text {
-  grid-area: 1 / 1;
+.st-copy {
   max-width: 100%;
   text-align: center;
-  transition: opacity 0.6s ease, transform 0.6s ease;
 }
 
 .st-text.is-out {
   opacity: 0;
   transform: translateY(-10px);
+}
+
+/* (its Start button is not clicked while it fades out) */
+.st-text.is-out .st-start {
+  pointer-events: none;
 }
 
 .st-line {
@@ -408,7 +423,7 @@ body.st-after :is(.map-ui, .rt) {
   line-height: 1.9;
 }
 
-.st.is-map .st-line {
+.st-text.is-map .st-line {
   margin-left: 0;
 }
 
@@ -512,7 +527,7 @@ body.st-after :is(.map-ui, .rt) {
   animation: st-fade 1.4s ease 1s both;
 }
 
-.st.is-map .st-text .st-orn {
+.st-text.is-map .st-orn {
   margin-left: 0;
 }
 

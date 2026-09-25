@@ -22,8 +22,8 @@ import type { Ears } from './water';
  *
  * Every slider has its own bus (`engine.ts`): Master, Music, Ambience,
  * Water, Animals, Steps, Moves (the explorer's other sounds), Interface.
- * The story's typing is on Interface; while the story is open the
- * background buses duck (`duck`), so its keys are heard.
+ * The story's typing is on Interface; while the story is open every other
+ * bus ducks (`duck`), so its keys are heard, and comes back when it closes.
  *
  * Checking: `audio.debug()` in the console (main.ts puts `audio` on
  * `window`), or in a headless script, tells whether the sound runs, each
@@ -39,7 +39,7 @@ export interface MapAudio {
   play(s: UISound): void;
   /** A key of the story's typing as a word comes in (`delay` s from now), panned −1‥1 by where the word is (`typing.ts`). */
   type(k: TypeKey, pan?: number, delay?: number): void;
-  /** The background (music, ambience, water, animals) steps back for the story and its typing, or comes back (`none`). */
+  /** Every sound but the interface's steps back for the story and its typing, or comes back (`none`). */
   duck(d: Duck): void;
   /** A sound of the roaming explorer (steps, the parachute, the paddle…), gain 0‥1. */
   roam(s: RoamSound, gain?: number): void;
@@ -72,8 +72,9 @@ export interface AudioDebug {
   recordings: Partial<Record<StepSet, number>>;
   /** Footsteps played so far on each ground: [recorded, synthesized]. */
   played: Record<string, [number, number]>;
-  /** How far the background steps back now (the story, its typing). */
+  /** How far every other sound steps back now (the story, its typing), and its level (1: not at all). */
   duck: Duck;
+  duckLevel: number;
   /** The typewriter recording (`typewriter.ts`), and the strikes cut from it. */
   typewriter: TypewriterState;
   strikes: number;
@@ -325,7 +326,7 @@ export function createMapAudio(): MapAudio {
       const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
       for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
       const steps = footstepsState();
-      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, typewriter: typewriterState().state, strikes: typewriterState().strikes };
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes };
     },
   };
 }

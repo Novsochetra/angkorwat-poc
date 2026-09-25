@@ -31,8 +31,9 @@ import { Water, type Ears } from './water';
  * sfx.ts; the bell on entering a place; the story's typing: typing.ts). A
  * new kind of sound picks one.
  *
- * While the story is open the background buses (`FADED`) duck — step back
- * to a lower level — and duck further while its words type in (`duck()`).
+ * While the story is open every bus but `ui` (`DUCKED`) ducks — steps back
+ * to a lower level — and ducks further while its words type in (`duck()`);
+ * when it closes, they come back to where their sliders are.
  *
  * `master` (the Master slider) comes after the compressor, so turning it
  * down makes everything quieter without changing the mix. `out` fades
@@ -50,8 +51,10 @@ export type BusName = Exclude<VolumeKey, 'master'>;
 export const BUSES: readonly BusName[] = VOLUME_KEYS.filter((k): k is BusName => k !== 'master');
 /** Buses that swell in on start (the lasting background); the explorer's sounds and the interface never wait. */
 const FADED: ReadonlySet<BusName> = new Set<BusName>(['music', 'ambience', 'water', 'animals']);
-/** The background's level while ducked (`FADED` buses), and how fast it goes down and comes back (time constants, s). */
-const DUCK: Record<Duck, number> = { none: 1, story: 0.5, typing: 0.3 };
+/** Buses that duck for the story: all but the interface (the story's own sounds: its typing, its clicks, its camera flights). */
+const DUCKED: readonly BusName[] = BUSES.filter((b) => b !== 'ui');
+/** The level of every other sound while ducked (`DUCKED` buses), and how fast it goes down and comes back (time constants, s). */
+const DUCK: Record<Duck, number> = { none: 1, story: 0.3, typing: 0.2 };
 const DUCK_DOWN = 0.25;
 const DUCK_UP = 0.9;
 
@@ -89,6 +92,11 @@ export class Bus {
   /** Step back to `g` (0‥1) or come back up (1), gliding with time constant `tc` (0: jump). */
   duck(g: number, t: number, tc: number): void {
     for (const d of this.ducks) glide(d.gain, g, t, tc);
+  }
+
+  /** The duck's gain now (1: not ducked). */
+  get duckLevel(): number {
+    return this.ducks[0].gain.value;
   }
 
   /** Slider 0‥1 → gain (squared: closer to how loud it feels). */
@@ -252,13 +260,18 @@ export class SoundEngine {
     this.typing.play(k, pan, Math.max(when, this.ctx.currentTime));
   }
 
-  /** The background (`FADED` buses) steps back for the story, or comes back (`none`); `immediate`: no glide. */
+  /** Every other sound (`DUCKED` buses) steps back for the story, or comes back (`none`); `immediate`: no glide. */
   duck(d: Duck, immediate = false): void {
     const t = this.ctx.currentTime;
     const g = DUCK[d];
     const tc = immediate ? 0 : g < this.ducked ? DUCK_DOWN : DUCK_UP;
     this.ducked = g;
-    for (const b of FADED) this.bus[b].duck(g, t, tc);
+    for (const b of DUCKED) this.bus[b].duck(g, t, tc);
+  }
+
+  /** The ducked buses' level now (1: not ducked), for checks. */
+  get duckLevel(): number {
+    return this.bus.music.duckLevel;
   }
 
   /** A camera flight of `seconds` begins (on the `ui` bus). */

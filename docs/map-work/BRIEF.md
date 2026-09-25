@@ -130,9 +130,10 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   the recording in `assets/sound/` (`audio/typewriter.ts`; synthesized until
   it loads); the title is a heavy strike. Panned by where the word is on
   screen.
-  While the story is open the background buses (music, ambience, water,
-  animals) duck to half, and to 0.3 while words type in (`DUCK` in
-  `audio/engine.ts`).
+  While the story is open every bus but ui (music, ambience, water,
+  animals, steps, moves) ducks to 0.3, and to 0.2 while words type in
+  (`DUCK` in `audio/engine.ts`); they come back to their sliders when it
+  closes. `audio.debug().duckLevel` shows the level now.
 
 Because of roaming, the map is also seen from the ground and from every
 direction: land, trees, mist and sky must hold up from there too (no

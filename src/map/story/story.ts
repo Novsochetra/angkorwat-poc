@@ -246,21 +246,36 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
     if (open) render(true);
   });
 
-  /** The beat's words (and the Start button on the last one); `whole`: all in at once. */
+  /**
+   * The beat's words (and the Start button on the last one); `whole`: all in at once.
+   * The box is placed by its own scene (`is-low`, `is-map` on it, not on `.st`),
+   * so the words of the beat before stay where they were while they fade out.
+   */
   function render(whole: boolean): void {
     const l = lang();
     const beat = BEATS[index];
-    const box = el('div', `st-text${whole ? ' is-done' : ''}`);
+    const look = SCENES[beat.scene];
+    const box = el('div', `st-text${whole ? ' is-done' : ''}${look.low ? ' is-low' : ''}${look.map ? ' is-map' : ''}`);
     box.lang = l;
+    const copy = box.appendChild(el('div', 'st-copy'));
     let at = 0.5;
     let letters = 0;
     keys = [];
     nextKey = 0;
     typedUntil = 0;
-    if (beat.scene === 'title') box.append(flag.el);
+    if (beat.scene === 'title') {
+      // (the title again, in the other language: the flag moves to the new box, and a
+      // space as tall keeps the old one's words where they were while they fade out)
+      if (text?.contains(flag.el)) {
+        const gap = el('div', 'st-flag');
+        gap.style.height = `${flag.el.offsetHeight}px`;
+        flag.el.replaceWith(gap);
+      }
+      copy.append(flag.el);
+    }
     for (const line of beat.lines) {
       const kind = line.kind ?? 'body';
-      if (kind === 'sign') box.append(el('div', 'st-orn', `<i></i>${ICON.diamond}<i></i>`));
+      if (kind === 'sign') copy.append(el('div', 'st-orn', `<i></i>${ICON.diamond}<i></i>`));
       const p = el('p', `st-line st-${kind}`);
       const step = kind === 'list' ? 0.3 : STEP[l] * (kind === 'big' ? 1.4 : 1);
       let n = 0;
@@ -276,8 +291,8 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
         }
         if (phrase.gap) p.append(phrase.gap);
       }
-      box.append(p);
-      if (kind === 'title') box.append(el('div', 'st-orn', `<i></i>${ICON.diamond}<i></i>`));
+      copy.append(p);
+      if (kind === 'title') copy.append(el('div', 'st-orn', `<i></i>${ICON.diamond}<i></i>`));
       at += (n - 1) * step + (kind === 'title' ? 1.4 : 0.8) + 0.3;
       letters += line[l].length;
     }
@@ -286,7 +301,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
       start.type = 'button';
       start.style.setProperty('--d', `${at.toFixed(2)}s`);
       start.addEventListener('click', () => close('begin'));
-      box.append(start);
+      copy.append(start);
       at += 0.8;
     }
     revealEnd = whole ? 0 : at;
