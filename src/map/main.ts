@@ -10,6 +10,7 @@ import { PLACES } from './layout';
 import type { Foreground } from './foreground';
 import type { MapPost } from './post';
 import type { MapRoam } from './roam/roam';
+import type { Story } from './story/story';
 import { DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
 import { onLang, setLang, t } from './ui/lang';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
@@ -22,7 +23,9 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * `ui=0` no interface · `quality=low|medium|high` ·
  * `parts=terrain,water,…` build only these parts (checking one part) ·
  * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
- * `lang=km|en` the interface's language (else the saved one; Khmer first).
+ * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
+ * `story=<n>` the story from beat n (1‥; shots: that beat), `story=0` never
+ * (else it plays before the map on the first visit).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -200,8 +203,9 @@ const handlers = {
   },
   onSound: (s: Parameters<MapAudio['play']>[0]) => audio.play(s),
   onFirstGesture: () => void audio.start(),
+  onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {} }));
 
 // ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
 const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);
@@ -336,6 +340,51 @@ if (focus) {
   ui.setSelected(focus);
   pointOut();
 }
+// ── The story (story/): before the map on the first visit; "Our story" in the settings shows it again ──
+const STORY_KEY = 'angkor-story-seen';
+let story: Story | null = null;
+async function openStory(from: number): Promise<void> {
+  story ??= await safe<Story | null>(
+    'story',
+    async () =>
+      (await import('./story/story')).createStory(
+        {
+          focus: (id, instant) => {
+            // (roaming: the explorer's camera stays his)
+            if (roam?.active) return;
+            rig.focus(id, instant);
+            if (!instant) audio.flight(settings.calm ? 1.2 : 2.6);
+          },
+          setLang: (l) => ui.setLang(l),
+          sound: (s) => audio.play(s),
+          onOpen: () => {
+            select(null);
+            uiRoot.inert = true;
+          },
+          onClose: () => {
+            uiRoot.inert = false;
+            try {
+              localStorage.setItem(STORY_KEY, '1');
+            } catch {
+              /* private mode: it shows again next visit */
+            }
+          },
+        },
+        { shot },
+      ),
+    () => null,
+  );
+  story?.play(from);
+}
+const storyAt = Number(params.get('story') ?? 0);
+let seenStory = false;
+try {
+  seenStory = localStorage.getItem(STORY_KEY) === '1';
+} catch {
+  /* no storage */
+}
+if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0')) await openStory(Math.max(0, storyAt - 1));
+
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __mapStats: { timings, blocks, failed } });
 
@@ -404,8 +453,10 @@ if (shot) {
     const dt = Math.min(0.05, raw);
     last = now;
     if (!feedback?.active) step((now - t0) / 1000, dt);
-    if (now - t0 > 3000) adaptResolution(raw);
-    post.render(frame);
+    // (while the story hides the whole map, the map is not drawn: story/story.ts)
+    const drawn = !story?.covered;
+    if (now - t0 > 3000 && drawn) adaptResolution(raw);
+    if (drawn) post.render(frame);
     for (const p of parts) p.afterRender?.();
     feedback?.update();
     if (first) {

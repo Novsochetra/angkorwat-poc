@@ -1088,6 +1088,35 @@
   transform: translateX(calc(20 * var(--px)));
 }
 
+/* "Our story": watch the story again (story/story.ts). */
+.mu-watch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6 * var(--px));
+  height: calc(30 * var(--px));
+  padding: 0 calc(12 * var(--px)) 0 calc(9 * var(--px));
+  border: 1px solid rgba(247, 183, 51, 0.55);
+  border-radius: calc(15 * var(--px));
+  background: rgba(247, 183, 51, 0.12);
+  color: var(--mu-gold-hi);
+  font-size: calc(13.5 * var(--px));
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+
+.mu-watch .mu-icon {
+  width: calc(14 * var(--px));
+  height: calc(14 * var(--px));
+}
+
+@media (hover: hover) {
+  .mu-watch:hover {
+    background: rgba(247, 183, 51, 0.24);
+  }
+}
+
 /* ── Hint ───────────────────────────────────────────────────────────────── */
 
 .mu-hint {

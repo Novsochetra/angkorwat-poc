@@ -58,6 +58,20 @@ const WORDS = {
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
   km: { km: 'គ.ម', en: 'km' },
+  // The story before the map (story/story.ts; its own words are in story/beats.ts), and its row in the settings:
+  stStory: { km: 'រឿងរ៉ាវរបស់យើង', en: 'Our story' },
+  stStoryNote: { km: 'ពាក្យផ្ដាំជូនយុវជនខ្មែរ', en: 'A message to the young people of Cambodia' },
+  stWatch: { km: 'មើល', en: 'Watch' },
+  stSkip: { km: 'រំលង', en: 'Skip' },
+  stPrev: { km: 'មុន', en: 'Back' },
+  stNext: { km: 'បន្ទាប់', en: 'Next' },
+  stHint: { km: 'ចុចដើម្បីបន្ត', en: 'Click to continue' },
+  stHintTouch: { km: 'ប៉ះដើម្បីបន្ត', en: 'Tap to continue' },
+  stStart: { km: 'ចាប់ផ្ដើមលេង', en: 'Start playing' },
+  stEmpire: { km: 'អាណាចក្រខ្មែរ', en: 'Khmer Empire' },
+  stAngkor: { km: 'អង្គរ', en: 'Angkor' },
+  stYear: { km: 'ប្រហែលឆ្នាំ ៩០០ គ.ស.', en: 'Around 900 CE' },
+  stCredit: { km: 'ផែនទី៖ Jembezmamy, Wikimedia Commons (CC0)', en: 'Map: Jembezmamy, Wikimedia Commons (CC0)' },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 

@@ -41,6 +41,8 @@ export interface MapUIHandlers {
   onSound(s: UISound): void;
   /** The first click / key / touch on the page (sound may start now). */
   onFirstGesture(): void;
+  /** "Our story" in the settings: show the story again (story/story.ts). */
+  onStory(): void;
 }
 
 /** Screen point of a place's anchor (CSS px) and whether it is in front of the camera. */
@@ -65,6 +67,8 @@ export interface MapUI {
    * no click-to-go-back) so the roaming controls and view have the screen.
    */
   setRoaming(mode: RoamMode): void;
+  /** Change (and keep) the language from outside: the story's ខ្មែរ / EN switch. */
+  setLang(l: Lang): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
@@ -231,6 +235,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     <div class="mu-set-row">
       <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
       <button type="button" class="mu-switch" role="switch" aria-labelledby="mu-calm-l"><span></span></button>
+    </div>
+    <div class="mu-set-row">
+      <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
+      <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
     </div>`), 'lg');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
@@ -490,6 +498,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   gearBtn.addEventListener('click', () => toggleSettings());
   panel.querySelector('.mu-x')!.addEventListener('click', () => toggleSettings(false));
+  panel.querySelector('.mu-watch')!.addEventListener('click', () => {
+    toggleSettings(false, false);
+    h.onStory();
+  });
 
   let lastTick = 0;
   for (const s of sliders) {
@@ -880,5 +892,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       root.style.setProperty('--mu-n', n.toFixed(3));
     },
     setRoaming,
+    setLang(l) {
+      if (l !== settings.lang) change({ lang: l });
+    },
   };
 }

@@ -115,4 +115,5 @@ export const ICON = {
   hourglass: svg('<path d="M7 3.5h10M7 20.5h10M8 3.5c0 5 8 5 8 8.5s-8 3.5-8 8.5m8-17c0 5-8 5-8 8.5s8 3.5 8 8.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),
   /** Small diamond ornament. */
   diamond: svg('<path fill="currentColor" d="m12 5 7 7-7 7-7-7z"/>'),
+  play: svg('<path fill="currentColor" d="M8 5.2v13.6c0 .8.9 1.3 1.6.8l10-6.8c.6-.4.6-1.2 0-1.6l-10-6.8C8.9 3.9 8 4.4 8 5.2Z"/>'),
 };
