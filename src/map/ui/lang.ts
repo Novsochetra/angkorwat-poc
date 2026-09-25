@@ -179,6 +179,8 @@ const WORDS = {
   rStickOff: { km: 'ដងសែលហ្វី៖ បិទ (កាន់ដោយលាតដៃ)', en: 'Selfie stick: off (at arm’s length)' },
   rHatOn: { km: 'ពាក់មួក', en: 'Hat on' },
   rHatOff: { km: 'ដោះមួក', en: 'Hat off' },
+  // (he kneels to pray at a shrine: roam/_pray.ts)
+  rPray: { km: 'ថ្វាយបង្គំ', en: 'Paying respect' },
   rOutfitIs: { km: 'សម្លៀកបំពាក់៖ {name}', en: 'Outfit: {name}' },
   rFaceIs: { km: 'ទឹកមុខ៖ {name}', en: 'Face: {name}' },
   rGestureIs: { km: 'សញ្ញាដៃ៖ {name}', en: 'Gesture: {name}' },
@@ -205,6 +207,8 @@ const WORDS = {
   rCheer: { km: 'អបអរ', en: 'cheer' },
   rLookUp: { km: 'ងើយមើល', en: 'look up' },
   rPeek: { km: 'លបមើល', en: 'peek' },
+  rStill: { km: 'ឈរស្ងៀម', en: 'stand still' },
+  rPrayAt: { km: 'លុតជង្គង់ថ្វាយបង្គំ នៅទីសក្ការបូជា', en: 'kneel and pray at a shrine' },
   rHat: { km: 'មួក', en: 'hat' },
   rOutfit: { km: 'សម្លៀកបំពាក់', en: 'outfit' },
   rFace: { km: 'ទឹកមុខ', en: 'face' },

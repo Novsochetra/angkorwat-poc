@@ -6,6 +6,7 @@ import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
 import type { MapFrame, RoamMode } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
+import { createPrayer } from './_pray';
 import { angleDiff } from './followCam';
 import type { RoamControls } from './input';
 import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
@@ -40,6 +41,8 @@ const AIM_RANGE = 220;
 const PHONE_FILL_AT = 0.55;
 /** After dark (night over this) he takes a lantern, until the player picks a tool. */
 const DUSK = 0.55;
+/** Keys that get him up from a prayer and do nothing else (tools, camera, phone, beam, emotes). */
+const PRAYER_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
 
 const _o = new Vector3();
 const _d = new Vector3();
@@ -67,7 +70,8 @@ export interface RoamTools {
   /** Right after a frame is drawn (the photo). */
   afterRender(): void;
   /**
-   * URL (checks): `tool=…` start with a tool out · `act=…` play an action ·
+   * URL (checks): `tool=…` start with a tool out · `act=…` play an action (`act=pray`: kneel and pray, on foot) ·
+   * `kneelat=x,z,fx,fz` (or `x,y,z,fx,fz`) a worship spot of its own there, facing (fx, fz): stand still by it and he prays (_pray.ts) ·
    * `beam=mouse` + `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
    * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot · `gesture=peace|wave|thumbsUp|none`
    * and `saim=yaw,pitch,reach` the selfie (degrees round his head, 0‥1) · `stick=0|1` the selfie stick ·
@@ -145,14 +149,19 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     up: () => photo.kind,
     camera: () => explorer.currentOutfit.camera,
   });
+  // (standing still at a shrine he kneels to pray: _pray.ts)
+  const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody() });
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  /** What his left hand should hold now. */
+  /** What his left hand should hold now (nothing while he prays). */
   function wantHeld(): HoldKind {
-    if (mode !== 'walk') return 'none';
-    return chosen ?? (night > DUSK ? 'lantern' : 'none');
+    if (mode !== 'walk' || prayer.handsBusy) return 'none';
+    return handTool();
   }
+
+  /** What his left hand holds on foot: the player's pick, else a lantern after dark. */
+  const handTool = (): HoldKind => chosen ?? (night > DUSK ? 'lantern' : 'none');
 
   function setHeld(h: HoldKind): void {
     if (explorer.currentOutfit.held === h) return;
@@ -308,6 +317,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         stillInput(ctx);
         return;
       }
+      // Kneeling in prayer (or turning to it, or getting up): a tool, camera or emote key gets him
+      // up first and does nothing else (press it again once he stands), so no wave or photo starts from the floor.
+      if (m === 'walk' && prayer.handsBusy && tap(...PRAYER_BREAKERS)) {
+        prayer.stop(true);
+        stillInput(ctx);
+        return;
+      }
 
       // Tools (on foot).
       if (tap('Digit1', 'Numpad1')) useTool('lantern', ctx);
@@ -330,6 +346,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       // His look: in any roaming mode.
       if (tap('KeyH')) {
+        // (during a prayer too: the hat stays as the player left it)
+        prayer.hatChosen();
         explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
         photo.refreshBody();
         hud.toast(t(explorer.currentOutfit.hat ? 'rHatOn' : 'rHatOff'));
@@ -364,10 +382,15 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         if (tap('KeyC')) play('cheer');
         if (tap('KeyU')) play('lookUp');
         if (tap('KeyP')) play('peek');
-        // A whole-body action holds him still; pushing the stick ends the looping one (peek).
+        // A whole-body action holds him still; pushing the stick ends the looping one (peek),
+        // and the prayer (the stick or Space: he gets up at once, the hat and the tool come back).
         if (explorer.busy) {
           const a = explorer.currentAction;
-          if (a && ACTIONS[a].loop && Math.hypot(input.move.x, input.move.y) > 0.3) explorer.stop(a);
+          const push = Math.hypot(input.move.x, input.move.y) > 0.3;
+          if (a === 'pray' && (push || input.jump)) {
+            prayer.stop(true);
+            input.jump = false;
+          } else if (a && ACTIONS[a].loop && push) explorer.stop(a);
           else {
             input.move.x = input.move.y = 0;
             input.jump = false;
@@ -377,7 +400,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     },
     after(ctx, m, dt) {
       night = ctx.night;
-      if (m === 'walk') setHeld(wantHeld());
+      if (m === 'walk') {
+        prayer.step(ctx, dt, !photo.kind && !photo.albumOpen);
+        setHeld(wantHeld());
+      }
       // Flashlight: straight ahead, or at what the mouse points to.
       const held = explorer.currentOutfit.held === 'flashlight';
       if (!photo.kind) {
@@ -411,6 +437,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       mode = next;
       // (a new mode, a new pose: the camera or the phone goes away)
       if (next !== prev) photo.lower();
+      // (praying is on foot: he gets up, the hat goes back on)
+      if (next !== 'walk') prayer.stop();
       if (next !== 'walk') bar.toggleKeys(false);
       // (in the overview the ledge drives him: a lantern after dark)
       if (next === 'overview') setHeld('none');
@@ -435,7 +463,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         else setHeld((chosen = tool));
       }
       const a = params.get('act') as ActionName | null;
-      if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie') explorer.play(a);
+      if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie' && (a !== 'pray' || mode === 'walk')) explorer.play(a);
+      // A worship spot of its own (checks, new shrines): kneelat=x,z,fx,fz (y: the ground there) or x,y,z,fx,fz.
+      const kn = params.get('kneelat')?.split(',').map(Number);
+      if (kn && (kn.length === 4 || kn.length === 5) && kn.every(Number.isFinite)) {
+        const [x, y, z, fx, fz] = kn.length === 5 ? kn : [kn[0], d.world.groundAt(kn[0], kn[1]), kn[1], kn[2], kn[3]];
+        prayer.addSpot({ id: 'url', place: null, x, y, z, fx, fz });
+      }
       const lk = LOOKS.findIndex(([n]) => n === params.get('look'));
       if (lk >= 0) {
         look = lk;
@@ -463,13 +497,17 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     report() {
       const out: Record<string, string> = {};
       const o = explorer.currentOutfit;
-      const tool = photo.kind ?? (o.held !== 'none' ? o.held : null);
+      // (while he prays: what he put away, and the hat he took off, so act=pray plays it again as it was)
+      const hand = prayer.handsBusy && mode === 'walk' ? handTool() : o.held;
+      const tool = photo.kind ?? (hand !== 'none' ? hand : null);
       if (tool) out.tool = tool;
-      if (o.held === 'flashlight' && beamMouse) out.beam = 'mouse';
+      if (hand === 'flashlight' && beamMouse) out.beam = 'mouse';
       const a = explorer.currentAction;
       if (a && a !== 'photo' && a !== 'selfie') out.act = a;
+      // (a shot of the prayer as far along as it is now: roam.ts takes this `sim`)
+      if (a === 'pray') out.sim = `_:${Math.max(0.5, explorer.animator.actionTime).toFixed(1)}`;
       if (look !== 0) out.look = LOOKS[look][0];
-      out.hat = o.hat ? '1' : '0';
+      out.hat = o.hat || prayer.hatOff ? '1' : '0';
       if (explorer.currentExpression !== 'neutral') out.face = explorer.currentExpression;
       const deg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
       if (photo.kind === 'camera') out.pview = `${deg(photo.shot.yaw)},${deg(photo.shot.pitch)},${photo.shot.fov.toFixed(0)}`;
@@ -602,7 +640,7 @@ const keyList = () => `
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
     ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
-    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}
+    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(mouse('rStill'), 'rPrayAt')}
     ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
     <b class="rtb-sub">${t('rView')}</b>${row(mouse('rDrag') + k('Q') + k('R'), 'rLookRound')}${row(mouse('rWheel'), 'rZoom')}
     <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}</div>

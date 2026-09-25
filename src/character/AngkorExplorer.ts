@@ -17,7 +17,7 @@ import { BODY_UNIT_M } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
 import { Animator, clampSelfieAim, type HoldKind, type SelfieGesture } from './Animator';
-import type { ActionName } from './clips';
+import { PRAY_PALMS, type ActionName } from './clips';
 import { Pendulum } from './Dynamics';
 import { buildFace, EXPRESSIONS, type ExpressionName } from './parts/face';
 import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from './parts/gear';
@@ -165,6 +165,8 @@ export class AngkorExplorer {
   /** The face from before the selfie, put back after it (null once the caller picks another). */
   private faceBeforeSelfie: ExpressionName | null = null;
   private selfieUp = false;
+  /** Eyes closed in prayer (the sampeah and the bows). */
+  private eyesShut = false;
 
   constructor(opts: ExplorerOptions = {}) {
     this.object.name = 'AngkorExplorer';
@@ -264,6 +266,11 @@ export class AngkorExplorer {
   }
 
   play(action: ActionName): void {
+    // (another action over the prayer: its flat hands go first, before this one sets its own)
+    if (action !== 'pray' && this.animator.currentAction === 'pray') {
+      if (this.handPose.R === 'open') this.setHandPose('R', 'relaxed');
+      if (this.outfit.held === 'none' && this.handPose.L === 'open') this.setHandPose('L', 'relaxed');
+    }
     this.animator.play(action);
     if (action === 'interact') this.setHandPose('R', 'pointing');
     if (action === 'photo') {
@@ -368,6 +375,20 @@ export class AngkorExplorer {
       this.faceBeforeSelfie = null;
     }
     this.animator.update(dt);
+    const praying = this.animator.currentAction === 'pray';
+    if (praying) {
+      // Praying: flat hands (palms together, then on the floor) from the sampeah until they come down after the bows.
+      const t = this.animator.actionTime;
+      const hand: HandPose = t >= PRAY_PALMS[0] && t < PRAY_PALMS[1] ? 'open' : 'relaxed';
+      if (this.handPose.R !== hand) this.setHandPose('R', hand);
+      if (this.outfit.held === 'none' && this.handPose.L !== hand) this.setHandPose('L', hand);
+    }
+    // (and the eyes closed while the palms are together)
+    const shut = praying && this.animator.actionTime >= PRAY_PALMS[0] + 0.3 && this.animator.actionTime < PRAY_PALMS[1];
+    if (shut !== this.eyesShut) {
+      this.eyesShut = shut;
+      this.refreshFace();
+    }
     if (!this.animator.currentAction && this.animator.photoHold.weight === 0 && this.animator.selfieWeight === 0) {
       if (this.handPose.R !== 'relaxed') this.setHandPose('R', 'relaxed');
       if (this.outfit.held === 'none' && this.handPose.L !== 'relaxed') this.setHandPose('L', 'relaxed');
@@ -436,7 +457,7 @@ export class AngkorExplorer {
   }
 
   private refreshFace(): void {
-    const key = `${this.expression}|${this.blinkLeft > 0}`;
+    const key = `${this.expression}|${this.blinkLeft > 0 || this.eyesShut}`;
     for (const [k, g] of this.faces) g.visible = k === key;
   }
 

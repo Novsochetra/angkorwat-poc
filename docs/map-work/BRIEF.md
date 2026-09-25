@@ -100,6 +100,13 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   selfie stick: on by default, the wheel slides it out); emotes
   **F** wave, **C** cheer, **U** look up, **P** peek; **H** hat, **G** outfit
   (in a selfie: gesture), **X** face, **V** photo album, **?** all keys.
+  At a shrine he pays respect (`_pray.ts`): standing still for 1 s within
+  5 m of a worship spot, in front of it (`_worship.ts`: one or more per
+  temple, where he kneels and the point he faces), he turns to it, puts
+  away his tool, takes his hat off, kneels, sampeah and bows three times
+  (the `pray` action; `PRAY` times in `src/character/clips.ts`), a soft
+  bell at the first bow, then hat on and up. Once per spot until he has
+  been 12 m away; the stick, Space or a tool / emote key gets him up.
   The camera and the phone also work in the boat (the paddle goes down
   on his lap) and on the hang glider (it flies on straight): the
   Animator's posture keeps the body, the device's arms go on top.
@@ -149,7 +156,9 @@ scripted input run before the shot (`input.ts parseScript`, e.g.
 `bigmap=1` · `target=<place id>|ramp:<i>|ramp` (a place, a ramp, the nearest ramp) ·
 `jumpmenu=1` the Jump in card open (`=key` with the focus ring) · `start=glider`
 with `roam=leap` the hang glider opens at the end of the leap · `easyfly=0|1` · `fauna=lineup` (every land animal in every
-pose on the valley road) · `wildlife=<s>` (run the water animals' reactions).
+pose on the valley road) · `wildlife=<s>` (run the water animals' reactions) ·
+`act=pray` (kneel and pray; with `sim=_:<s>` that far in) · `kneelat=x,z,fx,fz`
+or `x,y,z,fx,fz` (a worship spot of its own there, facing (fx, fz)).
 
 ## World and scale
 

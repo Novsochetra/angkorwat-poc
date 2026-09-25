@@ -24,6 +24,17 @@ import { JOINTS, JOINT_NAMES, SOLE_POINTS, type JointName } from './skeleton';
 /** Distance covered by one full walk / run cycle (two steps), metres. */
 const WALK_CYCLE_M = 1.05;
 const RUN_CYCLE_M = 1.85;
+/**
+ * Kneeling to pray, these rest on the ground too (BU, from the joint): the
+ * front of the knee and the shin (kneecap, sock, boot cuff) and the top of
+ * the boot (toe cap, instep, heel), for a foot turned back with its sole up.
+ */
+const KNEEL_POINTS: readonly (readonly [JointName, readonly (readonly [number, number, number])[]])[] = [
+  ['kneeL', [[0, 0.5, 1.52], [0, -1.5, 1.52], [0, -2.5, 1.68], [0, -3.5, 1.68], [0, -4.4, 1.62]]],
+  ['kneeR', [[0, 0.5, 1.52], [0, -1.5, 1.52], [0, -2.5, 1.68], [0, -3.5, 1.68], [0, -4.4, 1.62]]],
+  ['ankleL', [[0, -0.4, 5.05], [0, 0.6, 3.0], [0, 0.6, -2.0], [0, -0.4, -3.05]]],
+  ['ankleR', [[0, -0.4, 5.05], [0, 0.6, 3.0], [0, 0.6, -2.0], [0, -0.4, -3.05]]],
+];
 
 export type HoldKind = 'none' | 'lantern' | 'torch' | 'flashlight';
 /** What the free (left) hand does in a selfie. */
@@ -477,7 +488,7 @@ export class Animator {
       const rate = a.stopping ? 1 / def.fadeOut : 1 / def.fadeIn;
       a.weight = clamp(a.weight + Math.sign(target - a.weight) * rate * dt, 0, 1);
       const t = def.loop ? a.t % def.duration : Math.min(a.t, def.duration);
-      let joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek') : def.joints;
+      let joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek' || a.name === 'pray') : def.joints;
       // (in a vehicle only the arms: the posture keeps the body, the neck and the head)
       if (device) joints = joints.filter((j) => ARM_JOINTS_L.includes(j) || ARM_JOINTS_R.includes(j));
       buf.override(def.pose(t), a.weight, joints);
@@ -620,6 +631,15 @@ export class Animator {
         minY = Math.min(minY, _v.y);
       }
     }
+    // Kneeling to pray: the knees, the fronts of the shins and the tops of the feet rest on the ground too.
+    if (this.action?.name === 'pray')
+      for (const [joint, points] of KNEEL_POINTS) {
+        rig.chainMatrix(joint, _m);
+        for (const p of points) {
+          _v.set(p[0], p[1], p[2]).applyMatrix4(_m);
+          minY = Math.min(minY, _v.y);
+        }
+      }
     const plant = this.postureFeet || !this.lastPosture ? 1 : 1 - this.postureW;
     body.position.y += (-minY + this.flight * (1 - this.airW)) * plant;
   }

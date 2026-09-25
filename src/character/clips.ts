@@ -1,5 +1,5 @@
 import { JOINTS, SOLE_POINTS, type JointName } from './skeleton';
-import { sampleKeys, type Pose } from './pose';
+import { sampleKeys, type JointPose, type Pose } from './pose';
 
 /**
  * Procedural animation clips (sheet 3.6 "Action Poses").
@@ -273,7 +273,17 @@ export function landing(k: number): Pose {
 
 // ─── One-shot / looping actions ─────────────────────────────────────────────
 
-export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo' | 'selfie';
+export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo' | 'selfie' | 'pray';
+
+/**
+ * Times in the `pray` action (s from its start): the hat comes off and goes
+ * back on (a hand at the brim), and the lowest point of each of the three
+ * bows. Whoever plays it (the map's roaming, `roam/_pray.ts`) hides the hat
+ * and rings the bell at these times.
+ */
+export const PRAY = { duration: 9.75, hatOff: 0.4, bows: [3.62, 4.87, 6.12], hatOn: 8.9 } as const;
+/** When (s) in `pray` the hands open flat for the sampeah and the bows, and close again. */
+export const PRAY_PALMS = [2.2, 6.95] as const;
 
 export interface ActionDef {
   duration: number;
@@ -302,6 +312,205 @@ const crouch: Pose = {
   shoulderL: { rx: -0.25, rz: 0.35 },
   elbowL: { rx: -0.9 },
 };
+
+// ─── Pray: kneel, sampeah and three bows (thvay bangkum) ────────────────────
+// About 9.75 s: the right hand to the hat brim (the hat comes off at
+// PRAY.hatOff) · kneel: the right foot steps back and its knee goes down, then
+// the left leg follows · sit back on the heels, sampeah at the chest, then at
+// the face · three bows, hands flat on the floor (lowest at PRAY.bows) · hands
+// to the thighs, up the same way back (the left foot forward first) · the
+// hand to the brim again (PRAY.hatOn) · standing, fading into idle.
+// The arms were solved with arm IK (the palms meet and lie flat), the kneeling
+// legs so the knees, shins and toes touch the ground (the Animator plants them
+// while `pray` plays). He kneels with the feet turned back, soles up: his boots
+// are as long as his shins, so with the toes tucked under the shins could not
+// rest on the ground.
+/** Standing (the idle stance). */
+const PRAY_STAND: Pose = {
+  hipL: { rz: 0.03, ry: 0.14 }, ankleL: { rz: -0.03 }, hipR: { rz: -0.03, ry: -0.14 }, ankleR: { rz: 0.03 },
+  shoulderL: { rx: 0.02, rz: 0.06 }, elbowL: { rx: -0.12 },
+  shoulderR: { rx: 0.02, rz: -0.06 }, elbowR: { rx: -0.12 },
+};
+/** The right hand up at the hat brim (as far as the arm goes), the head tipped toward it. */
+const PRAY_HAT: Pose = {
+  hipL: { rz: 0.03, ry: 0.14 }, ankleL: { rz: -0.03 }, hipR: { rz: -0.03, ry: -0.14 }, ankleR: { rz: 0.03 },
+  chest: { rz: 0.04 }, neck: { rx: 0.06, rz: 0.04 }, head: { rx: 0.14, rz: 0.14 },
+  shoulderL: { rx: 0.02, rz: 0.07 }, elbowL: { rx: -0.15 },
+  shoulderR: { rx: -2.17, ry: -0.01, rz: -0.39, px: -0.4, py: 1.8, pz: 0.8 }, elbowR: { rx: -0.78 }, wristR: { rx: 0.15, ry: -0.26, rz: 0.44 },
+};
+/** Weight onto the left foot, the right foot lifts. */
+const PRAY_LIFTR: Pose = {
+  hipL: { rx: -0.25 }, kneeL: { rx: 0.45 }, ankleL: { rx: -0.2 }, hipR: { rx: -0.3 }, kneeR: { rx: 1.35 }, ankleR: { rx: -0.9 },
+  chest: { rx: 0.05 }, head: { rx: 0.03 },
+  shoulderL: { rx: -0.1, rz: 0.12 }, elbowL: { rx: -0.3 },
+  shoulderR: { rx: -0.1, rz: -0.12 }, elbowR: { rx: -0.3 },
+};
+/** The right foot steps back, off the ground; the left knee bends. */
+const PRAY_STEP: Pose = {
+  hipL: { rx: -0.8 }, kneeL: { rx: 1.25 }, ankleL: { rx: -0.45 }, hipR: { rx: 0.25 }, kneeR: { rx: 1.55 }, ankleR: { rx: 0.2 },
+  chest: { rx: 0.1 }, head: { rx: 0.04 },
+  shoulderL: { rx: -0.3, rz: 0.16 }, elbowL: { rx: -0.45 },
+  shoulderR: { rx: -0.15, rz: -0.16 }, elbowR: { rx: -0.35 },
+};
+/** The right knee down, the left foot flat, the left hand on the left knee. */
+const PRAY_HALF: Pose = {
+  hipL: { rx: -2.02 }, kneeL: { rx: 2.56 }, ankleL: { rx: -0.54 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.12 }, head: { rx: 0.06 },
+  shoulderL: { rx: -0.39, ry: -0.44, rz: -0.56 }, elbowL: { rx: -1.83 }, wristL: { rx: 1.56, ry: 0.35, rz: 0.62 },
+  shoulderR: { rx: -0.12, rz: -0.1 }, elbowR: { rx: -0.3 },
+};
+/** The left leg swings back to kneel, its toe drawn along the ground (DRAG1‥6: solved so the toe stays on the ground). */
+const PRAY_DRAG1: Pose = {
+  hipL: { rx: -1.75 }, kneeL: { rx: 2.88 }, ankleL: { rx: -0.78 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.11 }, head: { rx: 0.06 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+const PRAY_DRAG2: Pose = {
+  hipL: { rx: -1.45 }, kneeL: { rx: 3.05 }, ankleL: { rx: -0.65 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.11 }, head: { rx: 0.06 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+const PRAY_DRAG3: Pose = {
+  hipL: { rx: -1.15 }, kneeL: { rx: 2.96 }, ankleL: { rx: -0.46 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.1 }, head: { rx: 0.06 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+const PRAY_DRAG4: Pose = {
+  hipL: { rx: -0.85 }, kneeL: { rx: 2.68 }, ankleL: { rx: -0.03 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.09 }, head: { rx: 0.05 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+const PRAY_DRAG5: Pose = {
+  hipL: { rx: -0.55 }, kneeL: { rx: 2.26 }, ankleL: { rx: 0.54 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.09 }, head: { rx: 0.05 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+const PRAY_DRAG6: Pose = {
+  hipL: { rx: -0.3 }, kneeL: { rx: 1.83 }, ankleL: { rx: 1.02 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.08 }, head: { rx: 0.05 },
+  shoulderL: { rx: -0.2, rz: 0.14 }, elbowL: { rx: -0.35 },
+  shoulderR: { rx: -0.13, rz: -0.11 }, elbowR: { rx: -0.3 },
+};
+/** Both knees down, upright. */
+const PRAY_KNEES: Pose = {
+  hipL: { rx: -0.15 }, kneeL: { rx: 1.6 }, ankleL: { rx: 1.21 }, hipR: { rx: -0.15 }, kneeR: { rx: 1.6 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.06 }, head: { rx: 0.05 },
+  shoulderL: { rx: -0.12, rz: 0.1 }, elbowL: { rx: -0.3 },
+  shoulderR: { rx: -0.12, rz: -0.1 }, elbowR: { rx: -0.3 },
+};
+/** Sitting back on the heels, the hands on the thighs. */
+const PRAY_REST: Pose = {
+  hipL: { rx: -0.8 }, kneeL: { rx: 2.25 }, ankleL: { rx: 1.21 }, hipR: { rx: -0.8 }, kneeR: { rx: 2.25 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.04 }, head: { rx: 0.1 },
+  shoulderL: { rx: -0.55, ry: -1.11, rz: -0.5 }, elbowL: { rx: -0.96 }, wristL: { rx: 0.88, ry: -0.25, rz: 1.05 },
+  shoulderR: { rx: -0.55, ry: 1.11, rz: 0.5 }, elbowR: { rx: -0.96 }, wristR: { rx: 0.88, ry: 0.25, rz: -1.05 },
+};
+/** Sampeah at the chest: palms together, fingertips up. */
+const PRAY_CHEST: Pose = {
+  hipL: { rx: -0.8 }, kneeL: { rx: 2.25 }, ankleL: { rx: 1.21 }, hipR: { rx: -0.8 }, kneeR: { rx: 2.25 }, ankleR: { rx: 1.21 },
+  head: { rx: 0.08 },
+  shoulderL: { rx: -1.08, ry: -0.46, rz: -0.68, px: -0.6, pz: 1.2 }, elbowL: { rx: -0.45 }, wristL: { rx: -1.56, ry: -0.78, rz: 0.17 },
+  shoulderR: { rx: -1.08, ry: 0.46, rz: 0.68, px: 0.6, pz: 1.2 }, elbowR: { rx: -0.45 }, wristR: { rx: -1.56, ry: 0.78, rz: -0.17 },
+};
+/** Sampeah raised to the face, the head bowed onto the fingertips (his arms are too short for the forehead). */
+const PRAY_FACE: Pose = {
+  hipL: { rx: -0.8 }, kneeL: { rx: 2.25 }, ankleL: { rx: 1.21 }, hipR: { rx: -0.8 }, kneeR: { rx: 2.25 }, ankleR: { rx: 1.21 },
+  neck: { rx: 0.1 }, head: { rx: 0.25 },
+  shoulderL: { rx: -1.46, ry: -0.37, rz: -0.67, px: -0.6, py: 0.6, pz: 1.5 }, elbowL: { rx: -0.68 }, wristL: { rx: -0.58, ry: -0.54, rz: 0.55 },
+  shoulderR: { rx: -1.46, ry: 0.37, rz: 0.67, px: 0.6, py: 0.6, pz: 1.5 }, elbowR: { rx: -0.68 }, wristR: { rx: -0.58, ry: 0.54, rz: -0.55 },
+};
+/** The bow: hands flat on the floor in front of the knees, the forehead (the fringe) down. */
+const PRAY_BOW: Pose = {
+  hips: { rx: 0.8 }, hipL: { rx: -1.15 }, kneeL: { rx: 1.8 }, ankleL: { rx: 1.21 }, hipR: { rx: -1.15 }, kneeR: { rx: 1.8 }, ankleR: { rx: 1.21 },
+  chest: { rx: 0.55 }, neck: { rx: 0.12 }, head: { rx: 0.18 },
+  shoulderL: { rx: -0.77, ry: -0.39, rz: -0.29, py: -0.5, pz: 1.5 }, elbowL: { rx: -1.43 }, wristL: { rx: 2.05, ry: -1.09, rz: 2.83 },
+  shoulderR: { rx: -0.77, ry: 0.39, rz: 0.29, py: -0.5, pz: 1.5 }, elbowR: { rx: -1.43 }, wristR: { rx: 2.05, ry: 1.09, rz: -2.83 },
+};
+const PRAY_KEYS: readonly (readonly [number, Pose])[] = [
+  [0, PRAY_STAND],
+  [0.4, PRAY_HAT],
+  [0.8, PRAY_STAND],
+  [1.05, PRAY_LIFTR],
+  [1.3, PRAY_STEP],
+  [1.58, PRAY_HALF],
+  [1.66, PRAY_DRAG1],
+  [1.74, PRAY_DRAG2],
+  [1.82, PRAY_DRAG3],
+  [1.9, PRAY_DRAG4],
+  [1.98, PRAY_DRAG5],
+  [2.06, PRAY_DRAG6],
+  [2.15, PRAY_KNEES],
+  [2.55, PRAY_CHEST],
+  [3.0, PRAY_FACE],
+  [3.55, PRAY_BOW],
+  [3.7, PRAY_BOW],
+  [4.25, PRAY_FACE],
+  [4.8, PRAY_BOW],
+  [4.95, PRAY_BOW],
+  [5.5, PRAY_FACE],
+  [6.05, PRAY_BOW],
+  [6.2, PRAY_BOW],
+  [6.75, PRAY_FACE],
+  [7.15, PRAY_REST],
+  [7.45, PRAY_KNEES],
+  [7.53, PRAY_DRAG6],
+  [7.61, PRAY_DRAG5],
+  [7.69, PRAY_DRAG4],
+  [7.77, PRAY_DRAG3],
+  [7.85, PRAY_DRAG2],
+  [7.93, PRAY_DRAG1],
+  [8.02, PRAY_HALF],
+  [8.3, PRAY_STEP],
+  [8.55, PRAY_LIFTR],
+  [8.9, PRAY_HAT],
+  [9.3, PRAY_STAND],
+];
+
+/**
+ * Like `sampleKeys`, but the motion flows through the keys instead of stopping
+ * at each one: every channel follows a cubic whose slope at a key comes from
+ * its neighbours (zero where the channel turns back, and never past a key, so
+ * a pose never overshoots). The first and last keys, and every turning point
+ * (the bottom of a bow), still come to rest.
+ */
+function flowKeys(t: number, keys: readonly (readonly [number, Pose])[]): Pose {
+  if (t <= keys[0][0]) return keys[0][1];
+  const n = keys.length;
+  if (t >= keys[n - 1][0]) return keys[n - 1][1];
+  let i = 0;
+  while (keys[i + 1][0] < t) i++;
+  const [t1, p1] = keys[i];
+  const [t2, p2] = keys[i + 1];
+  const p0 = i > 0 ? keys[i - 1] : null;
+  const p3 = i + 2 < n ? keys[i + 2] : null;
+  const h = t2 - t1;
+  const u = (t - t1) / h;
+  const u2 = u * u;
+  const u3 = u2 * u;
+  // (monotone slope: the harmonic mean of the two secants, zero at a turn)
+  const slope = (a: number, b: number) => (a * b > 0 ? (2 * a * b) / (a + b) : 0);
+  const out: Pose = {};
+  const names = new Set([...Object.keys(p1), ...Object.keys(p2)]) as Set<JointName>;
+  for (const name of names) {
+    const j: JointPose = {};
+    for (const c of CHANNELS) {
+      const v1 = p1[name]?.[c] ?? 0;
+      const v2 = p2[name]?.[c] ?? 0;
+      const d = (v2 - v1) / h;
+      const m1 = p0 ? slope((v1 - (p0[1][name]?.[c] ?? 0)) / (t1 - p0[0]), d) : 0;
+      const m2 = p3 ? slope(d, ((p3[1][name]?.[c] ?? 0) - v2) / (p3[0] - t2)) : 0;
+      j[c] = (2 * u3 - 3 * u2 + 1) * v1 + (u3 - 2 * u2 + u) * h * m1 + (-2 * u3 + 3 * u2) * v2 + (u3 - u2) * h * m2;
+    }
+    out[name] = j;
+  }
+  return out;
+}
+const CHANNELS = ['rx', 'ry', 'rz', 'px', 'py', 'pz'] as const;
 
 export const ACTIONS: Record<ActionName, ActionDef> = {
   openDoor: {
@@ -497,6 +706,15 @@ export const ACTIONS: Record<ActionName, ActionDef> = {
         ankleR: { rx: -0.35 * hop },
       };
     },
+  },
+  pray: {
+    duration: PRAY.duration,
+    loop: false,
+    fadeIn: 0.35,
+    fadeOut: 0.45,
+    joints: FULL_BODY,
+    allowLocomotion: false,
+    pose: (t) => flowKeys(t, PRAY_KEYS),
   },
 };
 

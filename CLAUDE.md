@@ -80,6 +80,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
   a selfie stick (T); `tool=`, `stick=` in shots; camera and selfie also in
   the boat and on the glider), emotes and photos (`roam/tools.ts`, `roam/photo.ts`),
+  kneels to pray when he stands still at a shrine (`roam/_pray.ts`, spots in
+  `roam/_worship.ts`; `act=pray`, `kneelat=x,z,fx,fz` in shots),
   and a mini-map (`src/map/ui/minimap.ts`, M for the big map, N the nearest
   glider ramp).
 - Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
