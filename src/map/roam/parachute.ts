@@ -357,7 +357,7 @@ export function createParachute(): { leap: RoamModeHandler; glide: RoamModeHandl
           ex.setMotion(runSpeed, true, 0);
           // A footfall each time a foot lands (a quarter and three quarters into the stride).
           const half = footHalf(ex);
-          if (half !== lastHalf) ctx.sound('step', 0.7);
+          if (half !== lastHalf) ctx.sound('stepStone', 0.7);
           lastHalf = half;
           return null;
         }

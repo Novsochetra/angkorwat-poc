@@ -1,5 +1,7 @@
 import { RUN_SPEED, WALK_SPEED } from '../../world/scale';
+import { SURFACE } from '../heightfield';
 import type { PlaceDef } from '../layout';
+import type { RoamSound } from '../types';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
@@ -36,8 +38,9 @@ const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), M
 /**
  * On foot: walk and run relative to the camera, turn smoothly, climb stairs,
  * hop up one land step (2 m), slide along walls, jump (Space), drop off
- * ledges and cliffs (in a long fall Space opens the parachute), wade into
- * deep water and take a boat, and enter a place with E at its beacon.
+ * ledges and cliffs (in a long fall Space opens the parachute, E the hang
+ * glider), wade into deep water and take a boat, fly the hang glider from
+ * a cliff-top ramp (E), and enter a place with E at its beacon.
  *
  * Collisions use the walk map (world.standAt): the body is a circle of
  * probes; each must have ground within a step of the feet and room above
@@ -138,7 +141,7 @@ export function createWalker(): RoamModeHandler {
       settle = cam.distance > 16 ? 12 : cam.distance < 5 ? 6.2 * body.scale : null;
       body.explorer.animator.posture = null;
       body.vel.y = 0;
-      if (from !== 'glide' && from !== 'leap') body.vel.set(0, 0, 0);
+      if (from !== 'glide' && from !== 'leap' && from !== 'hang') body.vel.set(0, 0, 0);
       airTime = offGround = jumpWait = recover = stuck = 0;
       hopping = false;
       prompt = null;
@@ -357,6 +360,11 @@ export function createWalker(): RoamModeHandler {
           setPrompt(ctx, null);
           return 'glide';
         }
+        // …and E unfolds the hang glider.
+        if (long && input.use) {
+          setPrompt(ctx, null);
+          return 'hang';
+        }
         if (long) setPrompt(ctx, CHUTE);
         else if (prompt === CHUTE) setPrompt(ctx, null);
       }
@@ -378,6 +386,13 @@ export function createWalker(): RoamModeHandler {
             setPrompt(ctx, null);
             return 'boat';
           }
+        } else if (world.launchNear?.(pos.x, pos.z, pos.y)) {
+          // A take-off ramp on a cliff top.
+          setPrompt(ctx, 'E  Fly the hang glider');
+          if (input.use) {
+            setPrompt(ctx, null);
+            return 'hang';
+          }
         } else {
           const place = world.placeNear(pos.x, pos.z, pos.y);
           setPrompt(ctx, place ? placePrompt(place) : null);
@@ -392,7 +407,7 @@ export function createWalker(): RoamModeHandler {
       const phase = body.explorer.animator.phase;
       if (body.grounded && hspeed > 0.4) {
         const crossed = (p: number) => (lastPhase < p && phase >= p) || (phase < lastPhase && (lastPhase < p || phase >= p));
-        if (crossed(0.25) || crossed(0.75)) ctx.sound('step', Math.min(1, 0.35 + hspeed / (RUN_SPEED * s * PACE)));
+        if (crossed(0.25) || crossed(0.75)) ctx.sound(stepSound(world, pos.x, pos.y, pos.z), Math.min(1, 0.35 + hspeed / (RUN_SPEED * s * PACE)));
       }
       lastPhase = phase;
       body.explorer.setMotion(hspeed / s, body.grounded, vel.y / s);
@@ -417,7 +432,36 @@ export function createWalker(): RoamModeHandler {
   }
 }
 
-const CHUTE = 'Space  Open the parachute';
+const CHUTE = 'Space  Parachute  ·  E  Hang glider';
+
+/**
+ * The footstep for the ground at the feet (x, y, z): wading in water over
+ * the ankles; on a take-off ramp's deck (up on it, not on the land round
+ * it) wood; on something built above the land (the road's stairs and
+ * bridges, temple floors, walls) stone; else the land's surface.
+ */
+export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSound {
+  const water = w.waterAt(x, z);
+  if (water !== null && water > y + 0.08) return 'stepWater';
+  const f = w.field;
+  const land = f.heightAt(x, z);
+  if (y > land + 0.05 && w.launchNear?.(x, z, y)) return 'stepWood';
+  if (y > land + 0.4) return 'stepStone';
+  switch (f.surfaceAt(x, z)) {
+    case SURFACE.grass:
+      return 'stepGrass';
+    case SURFACE.sand:
+      return 'stepSand';
+    case SURFACE.bed:
+      return 'stepWater';
+    case SURFACE.rock:
+    case SURFACE.path:
+    case SURFACE.pad:
+      return 'stepStone';
+    default:
+      return 'step';
+  }
+}
 
 /** The prompt at a place's beacon. */
 function placePrompt(place: PlaceDef): string {

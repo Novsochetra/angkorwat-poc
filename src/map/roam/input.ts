@@ -251,14 +251,14 @@ const ROAM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown
 
 /**
  * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·
- * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie ·
+ * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie (T: stick) ·
  * F wave · C cheer · U look up · P peek · H hat · G outfit · X face ·
  * V album · ? all keys. (Not M, B, K or J: the mini-map, the bug report,
  * the block look panel and "Jump in" have them.)
  */
 export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5',
-  'KeyZ', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'KeyH', 'KeyG', 'KeyX', 'KeyV', 'Slash',
+  'KeyZ', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'KeyH', 'KeyG', 'KeyX', 'KeyV', 'KeyT', 'Slash',
 ]);
 
 /**

@@ -32,6 +32,8 @@ const REST_C = new Vector3(0, 3.2, 5.4);
 const PULL_C = new Vector3(0, 5.3, 4.6);
 /** Held up overhead (going over a fall). */
 const BRACE_C = new Vector3(0, 10.4, 3.4);
+/** Laid across the lap, the hands off it (BU, chest space: on his thighs). */
+const LAP_C = new Vector3(0, -1.2, 6.2);
 /** How far the shaft shifts towards the side that pulls (BU). */
 const SHIFT = 1.7;
 /** Half the distance between the hands on the shaft (BU): the leather wraps. */
@@ -156,6 +158,8 @@ export interface RideState {
   brace: number;
   /** Head turn (radians, + = to his left): he looks into turns. */
   look: number;
+  /** The paddle laid across his lap, the hands free (the camera or the phone is up), 0‥1. */
+  rest?: number;
 }
 
 /** Hips joint over the seat (m, true size): sitting on the pelvis, a little back. */
@@ -196,10 +200,11 @@ export function ridePose(r: RideState, paddle: Object3D | null): Pose {
     ankleR: { rx: 0.6 },
   };
 
-  // Paddle in chest space, then the fists on its leather wraps.
-  const tilt = s.tilt * (1 - brace);
-  const sweep = s.sweep * (1 - brace);
-  _c.copy(s.centre).lerp(BRACE_C, brace);
+  // Paddle in chest space, then the fists on its leather wraps (laid down: level across the lap).
+  const rest = ease(r.rest ?? 0);
+  const tilt = s.tilt * (1 - brace) * (1 - rest);
+  const sweep = s.sweep * (1 - brace) * (1 - rest);
+  _c.copy(s.centre).lerp(BRACE_C, brace).lerp(LAP_C, rest);
   _a.set(Math.cos(tilt) * Math.cos(sweep), Math.sin(tilt), -Math.cos(tilt) * Math.sin(sweep));
   if (paddle) {
     paddle.position.copy(_c);
@@ -243,8 +248,8 @@ function frame(a: Vector3, b: Vector3, out: Matrix4): Matrix4 {
   return out.makeBasis(_b1, _b2, _b3);
 }
 
-/** Shoulder rotation and elbow bend that put the fist on `target` (chest space), the elbow towards `pole`. */
-function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3): Pose {
+/** Shoulder rotation and elbow bend that put the fist on `target` (chest space), the elbow towards `pole` (the hang glider's poses use it too). */
+export function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3): Pose {
   const arm = ARMS[side];
   const a = arm.upper.length();
   const b = arm.fore.length();

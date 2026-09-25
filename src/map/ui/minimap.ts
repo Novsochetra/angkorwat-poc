@@ -50,7 +50,7 @@ export interface Minimap extends MapPart {
 }
 
 /** Metres across the mini-map, per mode (high up under the parachute: further). */
-const SPAN: Record<RoamMode, number> = { overview: 240, leap: 420, glide: 420, walk: 240, boat: 300 };
+const SPAN: Record<RoamMode, number> = { overview: 240, leap: 420, glide: 420, walk: 240, boat: 300, hang: 520 };
 /** The big map's area: the roaming area and a margin (m). */
 const BIG = { x0: ROAM_AREA.x0 - 30, x1: ROAM_AREA.x1 + 30, z0: ROAM_AREA.z0 - 30, z1: ROAM_AREA.z1 + 10 };
 const BIG_W = BIG.x1 - BIG.x0;
@@ -405,6 +405,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       g2.lineTo(w, Z);
     }
     g2.stroke();
+    // Hang glider ramps.
+    for (const sp of roam.launchSpots) wing(g2, (sp.x - BIG.x0) * sc, (sp.z - BIG.z0) * sc, Math.sin(sp.yaw), Math.cos(sp.yaw), Math.max(7, w / 120));
   }
 
   /** "You are here" on the big map (moved only when it changed). */
@@ -504,6 +506,18 @@ export function createMinimap(d: MinimapDeps): Minimap {
       g.drawImage(spr, Math.round(C + x - spr.width / 2), Math.round(C + y - spr.height / 2));
       iconX[j] = (C + x) / dpr;
       iconY[j] = (C + y) / dpr;
+    }
+
+    // Hang glider ramps: a small wing pointing off the cliff.
+    for (const sp of roam.launchSpots) {
+      const dx = sp.x - p.x;
+      const dz = sp.z - p.z;
+      const x = a * dx + c * dz;
+      const y = b * dx + e * dz;
+      if (Math.abs(x) > F || Math.abs(y) > F) continue;
+      const fx = Math.sin(sp.yaw);
+      const fz = Math.cos(sp.yaw);
+      wing(g, C + x, C + y, a * fx + c * fz, b * fx + e * fz, 6.5 * ks);
     }
 
     // The target: its beacon on the map, or a gold arrow on the rim towards it.
@@ -922,4 +936,23 @@ function injectStyle(): void {
       .mm-cap { max-width: 120px; }
     }`;
   document.head.append(style);
+}
+
+/** A hang glider seen from above (a cream delta wing, gold-edged) at (x, y), its nose along (dx, dy), `r` px. */
+function wing(g: CanvasRenderingContext2D, x: number, y: number, dx: number, dy: number, r: number): void {
+  const l = Math.hypot(dx, dy) || 1;
+  const fx = dx / l;
+  const fy = dy / l;
+  g.beginPath();
+  g.moveTo(x + fx * r, y + fy * r);
+  g.lineTo(x - fx * r * 0.45 - fy * r * 1.1, y - fy * r * 0.45 + fx * r * 1.1);
+  g.lineTo(x - fx * r * 0.15, y - fy * r * 0.15);
+  g.lineTo(x - fx * r * 0.45 + fy * r * 1.1, y - fy * r * 0.45 - fx * r * 1.1);
+  g.closePath();
+  g.lineJoin = 'round';
+  g.lineWidth = Math.max(1.2, r * 0.28);
+  g.strokeStyle = 'rgba(40, 22, 4, 0.85)';
+  g.stroke();
+  g.fillStyle = '#f5d27a';
+  g.fill();
 }

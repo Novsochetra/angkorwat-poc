@@ -396,6 +396,10 @@ export function createBoat(field?: HeightField): BoatMode {
     rollV = spring(roll, rollV, rollT, 45, 7);
     roll += rollV * h;
     rideState.brace = Math.max(0, rideState.brace - h * 1.2);
+    // The camera or the phone up: the paddle goes down across his lap (the boat drifts on).
+    const a = ctx.body.explorer.currentAction;
+    const free = a === 'photo' || a === 'selfie';
+    rideState.rest = Math.min(1, Math.max(0, (rideState.rest ?? 0) + h * (free ? 2.5 : -2.5)));
     rideState.look += (yawRate * 0.4 - rideState.look) * (1 - Math.exp(-h * 3));
 
     // Wake: a V of foam streaks off the stern, ripples at the bow when fast, rings round a still hull.

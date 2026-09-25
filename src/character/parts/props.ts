@@ -141,6 +141,43 @@ export function buildFlashlight(): { body: VoxelBuilder; lens: VoxelBuilder } {
 export const PHONE_LENS = [0, 3.42, 1.8] as const;
 
 /**
+ * Telescopic selfie stick, in three parts posed each frame
+ * (AngkorExplorer): `grip`, a rubber handle round the right fist's grip
+ * point, along +Y (0 = the fist); `shaft`, the pole, one BU long along +Y
+ * (stretched to reach the phone), in three sections, thinner toward the
+ * phone; `clamp`, the spring clamp behind the phone that holds it (in the
+ * phone's frame: it grips the case from behind, the pole's joint below it).
+ */
+export function buildSelfieStick(): { grip: VoxelBuilder; shaft: VoxelBuilder; clamp: VoxelBuilder } {
+  const C = PALETTE.camera;
+  const grip = new VoxelBuilder();
+  // Rubber handle: ribbed, a wrist loop hanging from its end, a gold shutter button.
+  grip.box(0, -0.6, 0, 0.62, 3.6, 0.62, 0x26282b, 'metal');
+  for (const y of [-1.9, -1.2, -0.5, 0.2]) grip.box(0, y, 0, 0.7, 0.18, 0.7, 0x1b1c1e, 'metal');
+  grip.box(0, 1.35, 0, 0.5, 0.3, 0.5, C.mid, 'metal');
+  grip.box(0, 0.9, 0.36, 0.2, 0.3, 0.12, 0xe0b04a, 'metal');
+  grip.box(0, -2.75, -0.2, 0.14, 0.9, 0.14, PALETTE.krama.red, 'metal');
+  const shaft = new VoxelBuilder();
+  // Three sections (the pole slides out of the handle); each a third of the length, a little thinner.
+  const W = [0.38, 0.32, 0.26];
+  for (let i = 0; i < 3; i++) {
+    shaft.box(0, (i + 0.5) / 3, 0, W[i], 1 / 3 + 0.004, W[i], i === 1 ? C.mid : C.body, 'metal', { shade: 1 - 0.06 * i });
+    // (a collar at each joint)
+    if (i > 0) shaft.box(0, i / 3, 0, W[i - 1] + 0.1, 0.02, W[i - 1] + 0.1, C.light, 'metal');
+  }
+  const clamp = new VoxelBuilder();
+  // A spring clamp across the back of the case (y ≈ 1), and the ball joint the pole ends in.
+  clamp.span(-1.75, 0.55, 0.62, 1.75, 1.45, 0.9, 0x2d2f33, 'metal');
+  for (const sx of [-1, 1]) clamp.span(sx * 1.75 - 0.2, 0.55, 0.62, sx * 1.75 + 0.2, 1.45, 1.6, 0x2d2f33, 'metal');
+  clamp.box(0, 1.0, 0.35, 0.8, 0.8, 0.5, C.mid, 'metal');
+  clamp.box(0, 1.0, 0.0, 0.55, 0.55, 0.4, C.light, 'metal');
+  return { grip, shaft, clamp };
+}
+
+/** Where the selfie stick's pole ends on the clamp (BU, the phone's frame). */
+export const STICK_JOINT = [0, 1.0, -0.1] as const;
+
+/**
  * Smartphone for selfies, in a krama-red case. Origin at the grip (the middle
  * of the right fist, which holds it from behind); it stands up along +Y with
  * the screen facing +Z, toward the explorer's face. The back has the camera

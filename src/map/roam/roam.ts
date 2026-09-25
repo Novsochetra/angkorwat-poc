@@ -4,8 +4,10 @@ import type { PlaceDef } from '../layout';
 import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound } from '../types';
 import { createBoat } from './boat';
 import { OrbitFollowCam } from './followCam';
+import { createHangGlider } from './hangGlider';
 import { createRoamHud } from './hud';
 import { parseScript, RoamControls } from './input';
+import { createLaunchSpots, type LaunchSpot } from './launchSpots';
 import { createParachute } from './parachute';
 import { createRoamTools } from './tools';
 import { ROAM_SCALE, type FollowCam, type RoamBody, type RoamCtx, type RoamModeHandler, type RoamWorld } from './types';
@@ -14,11 +16,12 @@ import { buildRoamWorld } from './world';
 
 /**
  * Roaming the map: the explorer leaps off his ledge, glides down under a
- * parachute, walks, paddles the rivers and enters the temples. This file
+ * parachute, walks, paddles the rivers, flies a hang glider off the
+ * cliff-top ramps and enters the temples. This file
  * runs the modes (roam/types.ts) and hands the camera between the overview
  * rig and the follow camera.
  *
- * URL (for checking): `roam=leap|glide|walk|boat` start in that mode ·
+ * URL (for checking): `roam=leap|glide|walk|boat|hang` start in that mode ·
  * `at=x,z` or `at=x,y,z` where (m; y defaults to the ground or water) ·
  * `yaw=<deg>` facing · `sim=<script>` scripted input run before a shot
  * (input.ts `parseScript`, e.g. `sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist`
@@ -27,7 +30,8 @@ import { buildRoamWorld } from './world';
  * start with it out · `act=wave|cheer|lookUp|peek` · `beam=mouse` with
  * `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
  * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot (degrees) ·
- * `gesture=…` and `saim=yaw,pitch,reach` the selfie · `keys=1` the key list.
+ * `gesture=…` and `saim=yaw,pitch,reach` the selfie · `stick=0|1` its stick ·
+ * `keys=1` the key list.
  */
 export interface MapRoam extends MapPart {
   readonly mode: RoamMode;
@@ -37,6 +41,8 @@ export interface MapRoam extends MapPart {
   readonly cam: FollowCam;
   /** What the roaming modes know about the world (ground, water, places). */
   readonly world: RoamWorld;
+  /** The hang glider take-off ramps (for the maps). */
+  readonly launchSpots: readonly LaunchSpot[];
   /** Roaming (the follow camera has the view). */
   readonly active: boolean;
   /** Leap off the ledge. */
@@ -79,7 +85,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const controls = new RoamControls(deps.canvas);
   const explorer = deps.explorer;
   const body: RoamBody = { explorer, pos: new Vector3().copy(deps.feet), vel: new Vector3(), yaw: deps.yaw, grounded: true, scale: 1 };
-  const levels: RoamLevels = { wind: 0, wake: 0 };
+  const levels: RoamLevels = { wind: 0, wake: 0, sail: 0 };
 
   let mode: RoamMode = 'overview';
   let leaving = false;
@@ -94,11 +100,25 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const chute = createParachute();
   // (built now: the boat tied up by the River Gate shows in the overview too)
   const boat = createBoat(ctx.field);
+  // Hang glider ramps on the cliff tops: walkable (their decks over the walk map), E on one flies.
+  const spots = createLaunchSpots(ctx.field, world);
+  object.add(spots.object);
+  const { groundAt, standAt } = world;
+  world.groundAt = (x, z) => Math.max(groundAt(x, z), spots.deckAt(x, z));
+  if (standAt)
+    world.standAt = (x, z, y, up, h) => {
+      const g = standAt(x, z, y, up, h);
+      const d = spots.deckAt(x, z);
+      return d > -Infinity && d <= y + up && (Number.isNaN(g) || d > g) ? d : g;
+    };
+  world.launchNear = (x, z, y) => spots.near(x, z, y) !== null;
+  const hang = createHangGlider(spots, world);
   const handlers: Record<Exclude<RoamMode, 'overview'>, RoamModeHandler> = {
     leap: chute.leap,
     glide: chute.glide,
     walk: createWalker(),
     boat,
+    hang,
   };
   for (const h of new Set(Object.values(handlers))) if (h.object) object.add(h.object);
 
@@ -153,7 +173,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       void api.stop();
       return;
     }
-    levels.wind = levels.wake = 0;
+    levels.wind = levels.wake = levels.sail = 0;
     const next = handlers[mode as Exclude<RoamMode, 'overview'>].update(rctx, dt);
     if (next) {
       if (next === 'overview') void api.stop();
@@ -171,6 +191,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     body,
     cam,
     world,
+    launchSpots: spots.list,
     get mode() {
       return mode;
     },
@@ -231,6 +252,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       for (let i = 0; i < n; i++) {
         step(f, STEP);
         cam.update(STEP, world);
+        // (the glider put away and the seed fluff move on too)
+        hang.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode, body.pos);
       }
     },
     update(f) {
@@ -243,11 +266,14 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         cam.update(ctx.shot ? 1 : f.dt, world);
         f.listener.set(body.pos.x, body.pos.y + 1.7 * body.scale, body.pos.z);
       } else f.listener.copy(f.camera.position);
+      // The hang glider over him (after his step: they move together), a glider put away, the ramps' lanterns, the seed fluff.
+      hang.frame(f, mode, body.pos);
       // The view through his camera, the lights of his lantern, torch or flashlight (the ledge's too).
       tools.frame(f);
       f.roam = mode;
       f.roamLevels.wind = mode === 'overview' ? 0 : levels.wind;
       f.roamLevels.wake = mode === 'overview' ? 0 : levels.wake;
+      f.roamLevels.sail = mode === 'overview' ? 0 : (levels.sail ?? 0);
     },
   };
 
@@ -266,7 +292,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         body.pos.set(x, y, z);
       }
       body.scale = ROAM_SCALE;
-      body.grounded = startMode !== 'glide';
+      body.grounded = startMode !== 'glide' && startMode !== 'hang';
       cam.yaw = body.yaw;
       mode = startMode;
       controls.enabled = true;

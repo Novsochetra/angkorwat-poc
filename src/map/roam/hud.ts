@@ -159,13 +159,22 @@ const HELP: Record<RoamMode, string> = {
     item(key('W') + key('A') + key('S') + key('D'), 'move'),
     item(key('Shift'), 'run'),
     item(key('Space'), 'jump'),
-    item(key('E'), 'enter'),
+    item(key('E'), 'enter · fly'),
     item('<i>drag</i>', 'look'),
     item(key('1') + '–' + key('5'), 'tools'),
     item(key('F') + key('C') + key('U') + key('P'), 'emotes'),
     item(key('?'), 'all keys'),
   ].join(''),
-  boat: [item(key('W') + key('S'), 'paddle'), item(key('A') + key('D'), 'turn'), item(key('E'), 'step ashore'), item('<i>drag</i>', 'look')].join(''),
+  boat: [item(key('W') + key('S'), 'paddle'), item(key('A') + key('D'), 'turn'), item(key('E'), 'step ashore'), item('<i>drag</i>', 'look'), item(key('4') + key('5'), 'photo')].join(''),
+  hang: [
+    item(key('A') + key('D'), 'turn'),
+    item(key('W'), 'faster'),
+    item(key('S'), 'slower · climb'),
+    item(key('Shift'), 'fast'),
+    item(key('Space'), 'let go'),
+    item('<i>drag</i>', 'look'),
+    item(key('4') + key('5'), 'photo'),
+  ].join(''),
 };
 
 /** A small parachute over a tiny explorer (16 × 16 pixel art). */

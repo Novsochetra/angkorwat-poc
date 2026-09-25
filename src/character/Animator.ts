@@ -16,8 +16,8 @@ import {
   type ActionName,
 } from './clips';
 import { CAMERA_BODY_CENTER } from './parts/gear';
-import { PHONE_LENS } from './parts/props';
-import { PoseBuffer, clamp, lerp, type Pose } from './pose';
+import { PHONE_LENS, STICK_JOINT } from './parts/props';
+import { PoseBuffer, clamp, lerp, type JointPose, type Pose } from './pose';
 import type { Rig } from './Rig';
 import { JOINTS, JOINT_NAMES, SOLE_POINTS, type JointName } from './skeleton';
 
@@ -74,6 +74,29 @@ const SELFIE_YAW = [-1.35, 0.35] as const;
 const SELFIE_PITCH = [-0.45, 0.75] as const;
 /** The chest turns a little to his left, bringing the phone shoulder forward. */
 const selfieChestYaw = (yaw: number) => 0.18 + 0.1 * yaw;
+/**
+ * The selfie stick: the lens goes this far from the head's middle (BU, from
+ * no reach to full reach: about 0.95‥1.9 m at true size), and round the head
+ * much further than the arm alone lets it (radians): high over him (short of
+ * straight up, where the pole would pass his hat), low, and round to his
+ * right side; to his left less far (the right hand holds it: the pole
+ * would cross his chest).
+ */
+export const STICK_REACH = [18, 36] as const;
+const STICK_YAW = [-2.0, 0.7] as const;
+const STICK_PITCH = [-0.7, 1.35] as const;
+/**
+ * With the stick the arm reaches this share of its length out, this far
+ * (radians) below the line from the shoulder to the phone: the pole leaves
+ * the top of the fist at an easy angle to the forearm (the wrist bent a
+ * little), as a stick is held, not straight on from the arm.
+ */
+const STICK_ARM = 0.84;
+const STICK_DIP = 0.6;
+const STICK_RAISE = 0.45;
+const STICK_LOWER = -0.9;
+/** On the stick the shoulder comes forward less (the pole does the reaching), and hardly up (clear of his jaw). */
+const SHRUG_STICK = new Vector3(0.3, 0.15, 0.9);
 
 interface GestureDef {
   /**
@@ -98,6 +121,8 @@ const GESTURES: Record<Exclude<SelfieGesture, 'none'>, GestureDef> = {
   // Fist below the chin, thumb up.
   thumbsUp: { fist: new Vector3(4.6, -6.0, 3.4), pole: new Vector3(0.5, -0.6, -1).normalize(), hand: 'thumb' },
 };
+/** On the stick, the free hand's gesture goes down as the phone goes round to his right side, between these aims (radians). */
+const STICK_GESTURE_YAW = [-1.4, -1.2] as const;
 /** A far point along the phone's view (BU): the palm turns to the picture, not just the lens. */
 const VIEW_FAR = 20;
 
@@ -187,6 +212,39 @@ function wristAim(pose: Pose, palm: boolean, up: Vector3, view: Vector3, out: Qu
   return out.setFromRotationMatrix(fore.transpose().multiply(_rest));
 }
 
+/**
+ * The fist on the stick (chest space): out from the shoulder the way the
+ * phone is round him (`dir`), dipped below the line to the lens, between
+ * `STICK_LOWER` and `STICK_RAISE` (a phone high over him: the fist stays by
+ * his chin, the pole goes up steeply, clear of his head; a phone low down:
+ * the fist stays out in front, the pole clear of his belt).
+ */
+function stickFist(lens: Vector3, shoulder: Vector3, dir: Vector3, length: number, out: Vector3): Vector3 {
+  out.subVectors(lens, shoulder);
+  const el = clamp(Math.atan2(out.y, Math.hypot(out.x, out.z)) - STICK_DIP, STICK_LOWER, STICK_RAISE);
+  // (straight overhead there is no way round him: out in front)
+  const flat = Math.hypot(dir.x, dir.z);
+  const hx = flat > 1e-4 ? dir.x / flat : 0;
+  const hz = flat > 1e-4 ? dir.z / flat : 1;
+  return out.set(hx * Math.cos(el), Math.sin(el), hz * Math.cos(el)).multiplyScalar(length).add(shoulder);
+}
+
+/**
+ * Wrist rotation that turns the right fist of an arm posed by `solveArm` (at
+ * `fist`, chest space) so the pole runs through it along its grip axis (+Z,
+ * out past the thumb) to `to`: the fingers' axis stays as near the forearm's
+ * line as the pole lets it.
+ */
+function stickWrist(pose: Pose, fist: Vector3, to: Vector3): JointPose {
+  const fore = forearmRotation(pose, 'R', _m2);
+  // The pole in the forearm's frame.
+  _f.subVectors(to, fist).normalize().applyMatrix4(_rest.copy(fore).transpose());
+  _u.set(0, 1, 0).addScaledVector(_f, -_f.y).normalize();
+  _p.crossVectors(_u, _f);
+  _e.setFromRotationMatrix(_rest.makeBasis(_p, _u, _f), 'XYZ');
+  return { rx: _e.x, ry: _e.y, rz: _e.z };
+}
+
 /** Rest arm geometry for the selfie reach (chest space, BU). */
 const SELFIE_REST = {
   center: SELFIE_CENTER.clone().add(sub('head', 'chest')),
@@ -223,7 +281,14 @@ function selfieDir(yaw: number, pitch: number, out: Vector3): Vector3 {
  * Keep a selfie aim where the arm can hold the phone clear of the face: in
  * range, then down and round to his right until the full arm reaches.
  */
-export function clampSelfieAim(aim: { yaw: number; pitch: number; reach: number }): void {
+export function clampSelfieAim(aim: { yaw: number; pitch: number; reach: number }, stick = false): void {
+  if (stick) {
+    // (the stick holds the phone well clear of the face everywhere in its range)
+    aim.yaw = clamp(aim.yaw, STICK_YAW[0], STICK_YAW[1]);
+    aim.pitch = clamp(aim.pitch, STICK_PITCH[0], STICK_PITCH[1]);
+    aim.reach = clamp(aim.reach, 0, 1);
+    return;
+  }
   aim.yaw = clamp(aim.yaw, SELFIE_YAW[0], SELFIE_YAW[1]);
   aim.pitch = clamp(aim.pitch, SELFIE_PITCH[0], SELFIE_PITCH[1]);
   aim.reach = clamp(aim.reach, 0, 1);
@@ -271,6 +336,10 @@ export class Animator {
   private selfieYaw = -0.75;
   private selfiePitch = 0.1;
   private selfieReach = 1;
+  /** The phone is on a selfie stick (the fist holds the stick; the phone goes far out). */
+  selfieStick = false;
+  /** With the stick: where the phone's lens goes (chest space, BU), for the explorer to put the phone and the stick there. */
+  readonly stickLens = new Vector3();
   /** The gesture arm: how far it's up, and its eased target (chest space). */
   private gestureW = 0;
   private gestureKind: Exclude<SelfieGesture, 'none'> = 'peace';
@@ -388,6 +457,16 @@ export class Animator {
       if (this.hold === 'flashlight') buf.add(lookAlong(this.aimYaw, this.aimPitch), this.holdW);
     }
 
+    // ── Posture (vehicles) ───────────────────────────────────────────────
+    if (this.posture) this.lastPosture = this.posture;
+    this.postureW = lerp(this.postureW, this.posture ? 1 : 0, clamp(dt * 7, 0, 1));
+    if (this.postureW < 0.001) this.lastPosture = null;
+    // The camera or the phone up in a vehicle (the boat, the hang glider): the
+    // posture holds the body, the device's arms (and the selfie's turn of the
+    // head) go on top of it. Else the posture is over everything.
+    const device = !!this.lastPosture && !!this.action && (this.action.name === 'photo' || this.action.name === 'selfie');
+    if (device) this.buf.override(this.lastPosture!(this.time), this.postureW, FULL_BODY);
+
     // ── Actions ──────────────────────────────────────────────────────────
     const a = this.action;
     if (a) {
@@ -398,7 +477,9 @@ export class Animator {
       const rate = a.stopping ? 1 / def.fadeOut : 1 / def.fadeIn;
       a.weight = clamp(a.weight + Math.sign(target - a.weight) * rate * dt, 0, 1);
       const t = def.loop ? a.t % def.duration : Math.min(a.t, def.duration);
-      const joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek') : def.joints;
+      let joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek') : def.joints;
+      // (in a vehicle only the arms: the posture keeps the body, the neck and the head)
+      if (device) joints = joints.filter((j) => ARM_JOINTS_L.includes(j) || ARM_JOINTS_R.includes(j));
       buf.override(def.pose(t), a.weight, joints);
       if (a.name === 'photo') this.holdCamera(a.weight);
       if (a.name === 'selfie') this.holdPhone(a.weight, a.stopping, dt);
@@ -413,11 +494,7 @@ export class Animator {
       this.gestureW = 0;
     }
 
-    // ── Posture (vehicles) ───────────────────────────────────────────────
-    if (this.posture) this.lastPosture = this.posture;
-    this.postureW = lerp(this.postureW, this.posture ? 1 : 0, clamp(dt * 7, 0, 1));
-    if (this.postureW < 0.001) this.lastPosture = null;
-    if (this.lastPosture) buf.override(this.lastPosture(this.time), this.postureW, FULL_BODY);
+    if (this.lastPosture && !device) buf.override(this.lastPosture(this.time), this.postureW, FULL_BODY);
 
     this.apply();
   }
@@ -450,11 +527,15 @@ export class Animator {
     const pitch = this.selfiePitch;
     this.selfieWeight = w;
     const chestYaw = selfieChestYaw(yaw);
+    // (a stick takes the phone further round than the neck turns: the head stops at a comfortable turn)
+    const turn = clamp(0.8 * yaw - chestYaw, -1.25, 0.9);
+    // (and he looks further up at a phone high on the stick)
+    const lift = clamp(pitch, -0.6, this.selfieStick ? 1.25 : 1.0);
     buf.add(
       {
         chest: { ry: chestYaw, rx: -0.04 * pitch },
-        neck: { ry: 0.3 * (0.8 * yaw - chestYaw), rx: -0.12 * pitch },
-        head: { ry: 0.7 * (0.8 * yaw - chestYaw), rx: -0.42 * pitch, rz: clamp(-0.3 * yaw, -0.16, 0.16) },
+        neck: { ry: 0.3 * turn, rx: (this.selfieStick ? -0.2 : -0.12) * lift },
+        head: { ry: 0.7 * turn, rx: -0.42 * lift, rz: clamp(-0.3 * yaw, -0.16, 0.16) },
       },
       w,
     );
@@ -465,20 +546,35 @@ export class Animator {
     const shoulder = _sh.copy(ARMS.R.shoulder).add(SHRUG.R);
     const full = SELFIE_REST.arm;
     const up = _up;
-    const t = Math.max(SELFIE_NEAR, selfieDistance(center, shoulder, dir, full * lerp(0.62, 1, this.selfieReach), up));
-    const grip = _g.copy(center).addScaledVector(dir, t + PHONE_LENS[2]).addScaledVector(up, -PHONE_LENS[1]);
-    buf.override(solveArm('R', grip, SELFIE_POLE, SHRUG.R), w, ARM_JOINTS_R);
+    if (this.selfieStick) {
+      // The lens far out along the aim; the arm reaches out below the line to it, and the stick spans the rest.
+      up.set(0, 1, 0).addScaledVector(dir, -dir.y).normalize();
+      this.stickLens.copy(center).addScaledVector(dir, lerp(STICK_REACH[0], STICK_REACH[1], this.selfieReach));
+      shoulder.copy(ARMS.R.shoulder).add(SHRUG_STICK);
+      const pose = solveArm('R', stickFist(this.stickLens, shoulder, dir, full * STICK_ARM, _g), SELFIE_POLE, SHRUG_STICK);
+      // (the pole ends on the clamp, below the lens and behind it)
+      const clampAt = _c2.copy(this.stickLens).addScaledVector(up, STICK_JOINT[1] - PHONE_LENS[1]).addScaledVector(dir, PHONE_LENS[2] - STICK_JOINT[2]);
+      pose.wristR = stickWrist(pose, _g, clampAt);
+      buf.override(pose, w, ARM_JOINTS_R);
+    } else {
+      const t = Math.max(SELFIE_NEAR, selfieDistance(center, shoulder, dir, full * lerp(0.62, 1, this.selfieReach), up));
+      const grip = _g.copy(center).addScaledVector(dir, t + PHONE_LENS[2]).addScaledVector(up, -PHONE_LENS[1]);
+      buf.override(solveArm('R', grip, SELFIE_POLE, SHRUG.R), w, ARM_JOINTS_R);
+    }
     const right = _right.crossVectors(up, dir); // the picture's right (his left)
 
     // Gesture: ease the arm between gestures (and down for none, or when the hand holds a prop).
     const g = this.selfieGesture;
-    const on = g !== 'none' && this.hold === 'none' && !stopping;
-    const k = clamp(dt * 9, 0, 1);
-    this.gestureW = lerp(this.gestureW, on ? 1 : 0, k);
-    if (on) this.gestureKind = g;
-    const def = GESTURES[this.gestureKind];
+    const def = GESTURES[g === 'none' ? this.gestureKind : g];
     const target = inView(def.fist, right, up, dir, _c2).add(center);
-    if (this.gestureKind === 'wave') target.addScaledVector(right, Math.sin(this.time * Math.PI * 2 * 1.6) * 0.9);
+    // (on the stick the phone goes round to his right side, where the place beside his head is out of
+    // the left arm's reach: stretched toward it the hand would cross his face, so it goes down)
+    const fits = this.selfieStick ? clamp((yaw - STICK_GESTURE_YAW[0]) / (STICK_GESTURE_YAW[1] - STICK_GESTURE_YAW[0]), 0, 1) : 1;
+    if ((g === 'none' ? this.gestureKind : g) === 'wave') target.addScaledVector(right, Math.sin(this.time * Math.PI * 2 * 1.6) * 0.9);
+    const on = g !== 'none' && this.hold === 'none' && !stopping && fits > 0;
+    const k = clamp(dt * 9, 0, 1);
+    this.gestureW = lerp(this.gestureW, on ? fits : 0, k);
+    if (on) this.gestureKind = g;
     const first = this.gestureW < 0.02;
     this.gestureFist.lerp(target, first ? 1 : k);
     this.gesturePole.lerp(inView(def.pole, right, up, dir, _v2), first ? 1 : k).normalize();

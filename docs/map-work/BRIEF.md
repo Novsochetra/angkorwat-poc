@@ -48,11 +48,11 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
 
 The player can leave the picker: **Jump in** (button by the explorer, or
 **J**) makes the explorer leap off his ledge, glide down under a parachute,
-then walk the map, paddle a boat on the rivers and enter a temple at its
-beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
+then walk the map, paddle a boat on the rivers, fly a hang glider from a
+cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
 `src/map/roam/`:
 
-- `types.ts`: the modes (`leap`, `glide`, `walk`, `boat`), `RoamBody`,
+- `types.ts`: the modes (`leap`, `glide`, `walk`, `boat`, `hang`), `RoamBody`,
   `RoamInput`, `RoamWorld` (ground to stand on, water, river current, the
   roaming area, places' entrances), `FollowCam`, `RoamHud`. `ROAM_SCALE`: the
   roaming explorer is 1.6 × his true 1.7 m, so he can hop up a 2 m land step.
@@ -61,13 +61,25 @@ beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
 - `walker.ts`, `followCam.ts`, `input.ts`, `world.ts`, `hud.ts`: on foot,
   the camera, keys / mouse / touch, the walkable world, the roaming interface.
 - `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current).
+- `hangGlider.ts` (mode `hang`): E on a take-off ramp (`launchSpots.ts`:
+  found on the land, the best cliff tops near a road; walkable decks; a
+  wing mark on the mini-map) lifts the glider, runs down the ramp and
+  flies; E in a long fall unfolds it in the air. A / D bank, W / S bar in /
+  out (speed ↔ height), Shift fast, Space high up lets go. Rising air
+  (`_lift.ts`): along cliffs, and in warm columns marked by golden seed
+  fluff. Model `_gliderModel.ts`, ramp `_launchRamp.ts`, poses
+  `_gliderPoses.ts` (upright with it, prone in the harness, the flare).
 - Poses for vehicles use the animator's `posture` hook
   (`src/character/Animator.ts`).
 - `tools.ts` + `photo.ts`: on foot the explorer has a tool bar (bottom
   centre): **1** lantern, **2** torch, **3** flashlight (**O** beam ahead ↔
-  follows the mouse), **4**/**Z** camera, **5**/**Y** selfie phone; emotes
+  follows the mouse), **4**/**Z** camera, **5**/**Y** selfie phone (**T**
+  selfie stick: on by default, the wheel slides it out); emotes
   **F** wave, **C** cheer, **U** look up, **P** peek; **H** hat, **G** outfit
   (in a selfie: gesture), **X** face, **V** photo album, **?** all keys.
+  The camera and the phone also work in the boat (the paddle goes down
+  on his lap) and on the hang glider (it flies on straight): the
+  Animator's posture keeps the body, the device's arms go on top.
   Photos go to the game's album (`src/game/Photos.ts`, IndexedDB). The
   explorer is made with `propLights: false`: the tools own one PointLight and
   one SpotLight (no shadow) that are always in the scene (intensity 0 when
@@ -76,17 +88,22 @@ beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
   the view; **M** or a click opens the big map, where a click on a place
   sets it as the target (a gold arrow on the mini-map points the way).
   The land picture is drawn once, in small slices over several frames.
+- Footsteps (`walker.ts stepSound` picks the ground): recordings in
+  `assets/sound/`, cut into single steps when they load
+  (`audio/footsteps.ts`) and played one per footfall (`audio/explorer.ts`);
+  synthesized steps while they load or if they fail.
 
 Because of roaming, the map is also seen from the ground and from every
 direction: land, trees, mist and sky must hold up from there too (no
 missing faces, no mist planes seen edge-on).
 
 Check with URL params (in roaming shots always pass `sim=` and usually
-`rcam=`, or the follow camera is not placed): `roam=leap|glide|walk|boat` · `at=x,z` or `x,y,z` ·
+`rcam=`, or the follow camera is not placed): `roam=leap|glide|walk|boat|hang` · `at=x,z` or `x,y,z` ·
 `yaw=<deg>` (0 = facing south, 180 = north) · `sim=<keys:seconds,…>` a
 scripted input run before the shot (`input.ts parseScript`, e.g.
 `sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist` the follow camera's orbit ·
-`tool=lantern|torch|flashlight|camera|selfie` · `act=wave|cheer|lookUp|peek` ·
+`tool=lantern|torch|flashlight|camera|selfie` (also in `boat` and `hang`) ·
+`stick=0|1` the selfie stick · `sview=0‥1` hold the selfie view part way from the follow camera to the phone (see him holding the stick) · `act=wave|cheer|lookUp|peek` ·
 `bigmap=1` · `target=<place id>` · `fauna=lineup` (every land animal in every
 pose on the valley road) · `wildlife=<s>` (run the water animals' reactions).
 

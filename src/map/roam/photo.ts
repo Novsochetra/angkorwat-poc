@@ -1,6 +1,8 @@
 import { Euler, MathUtils, Quaternion, Spherical, Vector3, type PerspectiveCamera } from 'three';
-import type { AngkorExplorer, SelfieGesture } from '../../character/AngkorExplorer';
+import type { AngkorExplorer, SelfieAim, SelfieGesture } from '../../character/AngkorExplorer';
+import { SELFIE_CENTER, STICK_REACH } from '../../character/Animator';
 import { PHOTO_FOV, PhotoAlbum } from '../../game/Photos';
+import { BODY_UNIT_M } from '../../world/scale';
 import { PLACES, PLATEAUS } from '../layout';
 import type { RoamMode } from '../types';
 import { angleDiff } from './followCam';
@@ -27,15 +29,22 @@ const SELFIE_FOV = 64;
  * only his face would show.
  */
 const SELFIE_BACK = [0.3, 0.75] as const;
+/** On the selfie stick the view is the phone's own lens (the stick holds it far enough out), and a little wider. */
+const STICK_BACK = 0.02;
+const STICK_FOV = 70;
+/** Modes he can take photos in: on foot, sitting in the boat (the paddle laid down), hanging under the hang glider (it flies straight on). */
+export const PHOTO_MODES: readonly RoamMode[] = ['walk', 'boat', 'hang'];
 /** Near plane while the phone's view is up (m): his arm comes closer than the map camera's 0.5 m. */
 const SELFIE_NEAR = 0.25;
+/** On the stick the phone keeps this far (m, true size) above the ground and the water, and short of a wall. */
+const LENS_CLEAR = 0.35;
 const GESTURES: readonly SelfieGesture[] = ['peace', 'wave', 'thumbsUp', 'none'];
 const GESTURE_NAME: Record<SelfieGesture, string> = { peace: 'peace sign', wave: 'wave', thumbsUp: 'thumbs up', none: 'no gesture' };
 
 /** The map's keys under the viewfinder and the selfie shutter (M is the mini-map here). */
 const CAMERA_HINT = '<kbd>Click</kbd> / <kbd>Space</kbd> take · drag to look · wheel to zoom · <kbd>4</kbd> / <kbd>Esc</kbd> put away · <kbd>V</kbd> album';
 const SELFIE_HINT =
-  '<kbd>Space</kbd> / click take · drag to move the phone · wheel closer / further · <kbd>G</kbd> gesture · <kbd>X</kbd> face · <kbd>5</kbd> / <kbd>Esc</kbd> put away · <kbd>V</kbd> album';
+  '<kbd>Space</kbd> / click take · drag to move the phone · wheel closer / further · <kbd>T</kbd> selfie stick · <kbd>G</kbd> gesture · <kbd>X</kbd> face · <kbd>5</kbd> / <kbd>Esc</kbd> put away · <kbd>V</kbd> album';
 
 const _e = new Euler(0, 0, 0, 'YXZ');
 const _q = new Quaternion();
@@ -45,6 +54,8 @@ const _back = new Vector3();
 const _look = new Vector3();
 const _from = new Spherical();
 const _to = new Spherical();
+const _head = new Vector3();
+const _lq = new Quaternion();
 
 export interface RoamPhoto {
   /** What is up now (null: nothing). */
@@ -65,6 +76,10 @@ export interface RoamPhoto {
   refreshBody(): void;
   /** Cycle the selfie's hand gesture (G with the phone up); returns its name. */
   nextGesture(): string;
+  /** The selfie stick: on (the phone far out on a pole) or off (at arm's length). On by default. */
+  stick: boolean;
+  /** Checks (`sview=`): hold the view at this blend (0 = the follow camera: see him hold it; 1 = the lens), null as it goes. */
+  hold: number | null;
   setGesture(g: SelfieGesture): void;
   /**
    * After the follow camera: glide the view into the lens (the selfie's
@@ -122,6 +137,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
   const lensQ = new Quaternion();
   let hasLens = false;
   let gesture: SelfieGesture = 'peace';
+  let stick = true;
   const shot = { yaw: 0, pitch: 0, fov: PHOTO_FOV };
   const aim = new Vector3();
 
@@ -138,10 +154,37 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     return album;
   }
 
-  /** The camera at his eye, looking along the shot (world). */
+  /** The camera at his eye, looking along the shot (world). In the boat or the air, from his head wherever it is. */
   function eye(out: Vector3): Vector3 {
     const s = body.scale;
+    if (d.mode() !== 'walk') {
+      const head = explorer.rig.joints.head;
+      head.updateWorldMatrix(true, false);
+      head.localToWorld(out.copy(SELFIE_CENTER));
+      const c = Math.cos(shot.pitch) * AHEAD * s;
+      return out.add(_v2.set(Math.sin(shot.yaw) * c, Math.sin(shot.pitch) * AHEAD * s, Math.cos(shot.yaw) * c));
+    }
     return out.set(Math.sin(shot.yaw) * AHEAD * s, EYE * s, Math.cos(shot.yaw) * AHEAD * s).add(body.pos);
+  }
+
+  /**
+   * On the stick the phone goes far out: keep it above the ground and the
+   * water (the lowest the aim may go there) and short of a wall between it
+   * and his head (the pole slides in), from where it is now.
+   */
+  function keepLensClear(a: SelfieAim): void {
+    if (!explorer.selfieStick || !explorer.phoneLens(_v, _lq)) return;
+    const s = body.scale;
+    const w = d.world;
+    explorer.rig.joints.head.localToWorld(_head.copy(SELFIE_CENTER));
+    const unit = BODY_UNIT_M * s;
+    const far = (STICK_REACH[0] + (STICK_REACH[1] - STICK_REACH[0]) * a.reach) * unit;
+    const floor = Math.max(w.groundAt(_v.x, _v.z), w.waterAt(_v.x, _v.z) ?? -Infinity) + LENS_CLEAR * s;
+    a.pitch = Math.max(a.pitch, Math.asin(MathUtils.clamp((floor - _head.y) / far, -1, 1)));
+    if (!w.clearance) return;
+    const len = _head.distanceTo(_v);
+    const free = w.clearance(_head.x, _head.y, _head.z, _v.x, _v.y, _v.z);
+    if (free < 1) a.reach = MathUtils.clamp((free * len - LENS_CLEAR * s - STICK_REACH[0] * unit) / ((STICK_REACH[1] - STICK_REACH[0]) * unit), 0, a.reach);
   }
 
   function setFinder(on: boolean): void {
@@ -161,13 +204,23 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       return !!album?.isOpen;
     },
     shot,
+    get stick() {
+      return stick;
+    },
+    set stick(on) {
+      stick = on;
+      explorer.selfieStick = on;
+      // (at arm's length the phone must come back round within the arm's reach: the explorer clamps it)
+    },
+    hold: null,
     raise(k, ctx) {
       if (k === kind) return true;
       if (k === 'camera' && !explorer.currentOutfit.camera) {
         d.toast('No camera with this outfit (G changes the outfit)');
         return false;
       }
-      if (!body.grounded) return false;
+      const mode = d.mode();
+      if (!PHOTO_MODES.includes(mode) || (mode === 'walk' && !body.grounded)) return false;
       if (kind) api.lower();
       kind = last = k;
       getAlbum();
@@ -178,8 +231,16 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         shot.fov = PHOTO_FOV;
         explorer.play('photo');
       } else {
-        // (the phone to his right, a little above the eyes; he smiles by himself)
-        Object.assign(explorer.selfieAim, { yaw: -0.5, pitch: 0.15, reach: 1 });
+        // (the phone to his right, a little above the eyes; he smiles by himself.
+        // Hanging face down under the glider, "above the eyes" is ahead of him:
+        // the phone goes out in front, looking back at him in the control
+        // frame under the wing, the land beside him; a little to his right
+        // on the stick (the down tube passes by his cheek, not over his face),
+        // straight ahead at arm's length (level: the phone's up is his chest's).)
+        explorer.selfieStick = stick;
+        const hang = mode === 'hang';
+        const aim = hang ? (stick ? { yaw: -0.3, pitch: 1.25, reach: 0.8 } : { yaw: 0.2, pitch: 0.75, reach: 1 }) : { yaw: -0.5, pitch: stick ? 0.3 : 0.15, reach: stick ? 0.7 : 1 };
+        Object.assign(explorer.selfieAim, aim);
         explorer.selfieGesture = gesture;
         explorer.play('selfie');
       }
@@ -201,7 +262,8 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         shot.yaw += input.lookYaw * k;
         shot.pitch = MathUtils.clamp(shot.pitch - input.lookPitch * k, -1.2, 1.3);
         shot.fov = MathUtils.clamp(shot.fov * (1 + input.zoom * 0.1), FOV_MIN, FOV_MAX);
-        body.yaw += angleDiff(shot.yaw, body.yaw) * Math.min(1, 12 * dt);
+        // (on foot he turns to the shot; in the boat or the air he looks round from where he is)
+        if (d.mode() === 'walk') body.yaw += angleDiff(shot.yaw, body.yaw) * Math.min(1, 12 * dt);
         // Head and hands follow the shot.
         explorer.aimPoint = aim.set(Math.sin(shot.yaw) * Math.cos(shot.pitch), Math.sin(shot.pitch), Math.cos(shot.yaw) * Math.cos(shot.pitch)).multiplyScalar(30).add(eye(_v));
       } else if (kind === 'selfie') {
@@ -211,10 +273,12 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         const a = explorer.selfieAim;
         a.yaw -= input.lookYaw;
         a.pitch -= input.lookPitch;
-        a.reach = MathUtils.clamp(a.reach + input.zoom * 0.12, 0, 1);
+        a.reach = MathUtils.clamp(a.reach + input.zoom * (stick ? 0.08 : 0.12), 0, 1);
+        keepLensClear(a);
       }
       if (kind && view > 0.95 && (input.click || input.jump)) snap = true;
       view = MathUtils.clamp(view + (kind ? dt : -dt) / (last === 'selfie' ? RAISE_SELFIE : RAISE), 0, 1);
+      if (kind && api.hold !== null) view = MathUtils.clamp(api.hold, 0, 1);
     },
     refreshBody() {
       if (hidden) explorer.setBodyVisible(false);
@@ -239,9 +303,11 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       if (k > 0) {
         if (last === 'selfie' && explorer.phoneLens(lens, lensQ)) hasLens = true;
         if (last === 'selfie' && hasLens) {
-          // Back from the phone along its view (further with more reach), short of a wall behind it.
+          // Back from the phone along its view (further with more reach), short of a wall behind it;
+          // on the stick, the lens itself.
           const reach = explorer.selfieAim.reach;
-          const back = (SELFIE_BACK[0] + (SELFIE_BACK[1] - SELFIE_BACK[0]) * reach) * body.scale;
+          const onStick = explorer.selfieStick;
+          const back = (onStick ? STICK_BACK : SELFIE_BACK[0] + (SELFIE_BACK[1] - SELFIE_BACK[0]) * reach) * body.scale;
           const dir = _back.set(0, 0, 1).applyQuaternion(lensQ);
           const w = d.world;
           const room = back + 0.3;
@@ -259,7 +325,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
           _look.copy(lens).addScaledVector(dir, Math.max(0, _v2.subVectors(pivot, lens).dot(dir)));
           camera.lookAt(_look.lerp(pivot, 1 - k));
           camera.quaternion.slerp(lensQ, k * k * k);
-          fov += (SELFIE_FOV + (1 - reach) * 10 - fov) * k;
+          fov += ((onStick ? STICK_FOV : SELFIE_FOV + (1 - reach) * 10) - fov) * k;
         } else if (last === 'camera') {
           camera.position.lerp(eye(_v), k);
           camera.quaternion.slerp(_q.setFromEuler(_e.set(shot.pitch, shot.yaw + Math.PI, 0)), k);
@@ -283,7 +349,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         const phone = kind === 'selfie' && view > 0.9;
         // (a hand holding the lantern or torch makes no gesture)
         const hand = explorer.currentOutfit.held === 'none' ? GESTURE_NAME[explorer.selfieGesture] : `holding the ${explorer.currentOutfit.held}`;
-        const info = phone ? `${hand} · ${explorer.currentExpression}` : '';
+        const info = phone ? `${hand} · ${explorer.currentExpression}${explorer.selfieStick ? ' · stick' : ''}` : '';
         if (phone !== selfieFrame || info !== selfieInfo) album.setSelfieFrame(phone, info, SELFIE_HINT);
         selfieFrame = phone;
         selfieInfo = info;
@@ -317,6 +383,13 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
  * round him ("On the western cliffs"), else in the highlands.
  */
 export function placeName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
+  if (mode !== 'hang') return groundName(world, at, mode);
+  // Flying: over what is under him ("Above Angkor Wat", "Over the summit river", "Flying near Bayon").
+  const n = groundName(world, at, 'walk');
+  return n.replace(/^(At|On) /, (_, w) => (w === 'At' ? 'Above ' : 'Over ')).replace(/^By /, 'Over ').replace(/^Near /, 'Flying near ').replace(/^In the /, 'Over the ');
+}
+
+function groundName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
   let near: (typeof PLACES)[number] | null = null;
   let nd = Infinity;
   for (const p of PLACES) {

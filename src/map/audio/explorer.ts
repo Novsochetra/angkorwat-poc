@@ -1,21 +1,71 @@
 import type { RoamSound } from '../types';
 import { biquad, glide, mtof, noise, range, source, strike, type NoiseKind, type Rng } from './dsp';
 import type { SoundEngine } from './engine';
+import type { StepSet, StepSets } from './footsteps';
 
 /**
  * The roaming explorer's sounds, on the effects bus: footsteps, the jump
  * and the landing, the parachute snapping open and folding away, splashes,
  * the paddle, stepping into and out of the boat, and a soft temple bell on
- * entering a place. Lasting: rushing air while falling or gliding, and the
- * water along the boat's hull.
+ * entering a place, the hang glider unfolding and put away. Lasting:
+ * rushing air while falling or gliding, the water along the boat's hull,
+ * and the hang glider's sail thrumming in the airflow.
+ *
+ * The footsteps are recordings (`assets/sound/`, cut into single steps by
+ * `footsteps.ts`): one step per footfall from the ground's recording, never
+ * the same one twice in a row. Until they are loaded (or if they fail) the
+ * steps are synthesized (`footstep`). Everything else is made with the Web
+ * Audio API.
  *
  * Roaming puts the ears at the explorer's head, so his sounds sit in the
  * middle, a little to either side. Every one varies a little each time.
  */
 
+/** Ground under a footstep (RoamSound `step*`). */
+type Ground = 'earth' | 'grass' | 'stone' | 'sand' | 'water' | 'wood';
+const GROUND: Partial<Record<RoamSound, Ground>> = { step: 'earth', stepGrass: 'grass', stepStone: 'stone', stepSand: 'sand', stepWater: 'water', stepWood: 'wood' };
+/** Each ground's level, so every synthesized step sounds about as loud (stone's tap is short and sand's thud soft: they need more; the water's long slosh less). */
+const GROUND_GAIN: Record<Ground, number> = { earth: 1.2, grass: 1, stone: 1.75, sand: 1.32, water: 0.47, wood: 1.3 };
+
+/**
+ * One recorded step in a footfall: a step from `set` (`same`: the one the
+ * layer before picked), at `level`, played at `rate`, through a lowpass
+ * `lp` / highpass `hp` (Hz).
+ */
+interface Layer {
+  set: StepSet;
+  level: number;
+  same?: boolean;
+  rate?: number;
+  lp?: number;
+  hp?: number;
+}
+/**
+ * The recordings on each ground (the layers of a footfall start together);
+ * `level` evens the grounds out, `wet` is the reverb send, `run` the
+ * longest step when running (s).
+ */
+const RECORDED: Record<Ground, { layers: readonly Layer[]; level: number; wet: number; run: number }> = {
+  // Dry grass crunching (its hiss taken off) over a soft low thump of the body's weight (the boots on concrete, only their lows).
+  grass: { level: 1.02, wet: 0.04, run: 0.26, layers: [{ set: 'grass', level: 1, lp: 6500 }, { set: 'concrete', level: 0.8, lp: 450, rate: 0.88 }] },
+  // Packed earth: the boots on concrete softened (dull, a little deeper), a trace of grit from the grass.
+  earth: { level: 1, wet: 0.05, run: 0.26, layers: [{ set: 'concrete', level: 1, lp: 1200, rate: 0.92 }, { set: 'grass', level: 0.2, lp: 3500 }] },
+  // Sandstone: the road, temple floors, bare rock.
+  stone: { level: 1.1, wet: 0.1, run: 0.26, layers: [{ set: 'concrete', level: 1 }] },
+  // River banks: the grass crunch hushed and slower (grains), the foot sinking in with a muffled thump.
+  sand: { level: 1.58, wet: 0.03, run: 0.28, layers: [{ set: 'grass', level: 0.9, lp: 2200, rate: 0.9 }, { set: 'concrete', level: 0.6, lp: 350, rate: 0.85 }] },
+  // Wading: the slosh, and the same slosh deeper under it (the water the leg pushes).
+  water: { level: 1.08, wet: 0.08, run: 0.32, layers: [{ set: 'water', level: 1 }, { set: 'water', same: true, level: 0.5, rate: 0.6, lp: 800 }] },
+  // Planks: the take-off ramp, stepping off the boat (no boom under 70 Hz: an open deck, not a hollow floor).
+  wood: { level: 1.14, wet: 0.07, run: 0.26, layers: [{ set: 'wood', level: 1, hp: 70 }] },
+};
+
 /** Peak levels (before the effects volume). */
 const LEVEL = {
-  step: 1.5,
+  // (the steps sit clearly over the birds, insects and music: about 10 dB over the background's middle)
+  step: 5.5,
+  /** The recorded steps (each levelled to a loudest 20 ms RMS of −12 dBFS). */
+  recorded: 3.2,
   jump: 1,
   land: 1.2,
   chute: 1.6,
@@ -25,6 +75,7 @@ const LEVEL = {
   bell: 0.15,
   wind: 0.85,
   wake: 0.24,
+  sail: 0.3,
 };
 /** Steps closer together than this are one step (s). */
 const STEP_GAP = 0.09;
@@ -33,6 +84,8 @@ const IDLE = 4;
 
 interface Burst {
   kind?: NoiseKind;
+  /** Another source buffer instead of noise (e.g. the crunch of grit). */
+  buf?: AudioBuffer;
   type: BiquadFilterType;
   /** Filter frequency, sliding from `f0` to `f1` over `dur`. */
   f0: number;
@@ -43,6 +96,8 @@ interface Burst {
   tau: number;
   /** Length of the slide (default: the whole sound). */
   dur?: number;
+  /** A highpass after the filter (Hz): thins out what lies under the band. */
+  hp?: number;
   level: number;
   pan?: number;
   wet?: number;
@@ -76,12 +131,17 @@ export class Explorer {
   private readonly e: SoundEngine;
   private readonly ctx: BaseAudioContext;
   private readonly rnd: Rng;
+  /** The recorded steps, once loaded (`footsteps.ts`); until then the steps are synthesized. */
+  steps: StepSets | null = null;
   private lastStep = -1;
+  /** The step last played from each recording (never the same twice in a row). */
+  private readonly lastPick: Partial<Record<StepSet, number>> = {};
   /** Which foot / which side of the boat (±1). */
   private foot = 1;
   private stroke = 1;
   private wind: Lasting | null = null;
   private wake: Lasting | null = null;
+  private sail: Lasting | null = null;
 
   constructor(e: SoundEngine) {
     this.e = e;
@@ -91,19 +151,27 @@ export class Explorer {
 
   play(s: RoamSound, g: number, t: number): void {
     const r = this.rnd;
+    const ground = GROUND[s];
+    if (ground) {
+      if (t - this.lastStep < STEP_GAP) return;
+      this.lastStep = t;
+      if (!this.recorded(t, g, ground)) this.footstep(t, g, ground);
+      return;
+    }
     switch (s) {
-      case 'step': {
-        if (t - this.lastStep < STEP_GAP) return;
-        this.lastStep = t;
-        const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
-        const k = range(r, 0.82, 1.2);
-        const v = g * range(r, 0.75, 1);
-        // Heel: a soft low thump; sole: a short scuff on earth, and a little grit crunching.
-        this.tone(t, { f0: 115 * k, f1: 62 * k, glide: 0.05, attack: 0.002, tau: 0.028, level: LEVEL.step * 0.1 * v, pan, wet: 0.03 });
-        this.burst(t + 0.004, { kind: 'pink', type: 'bandpass', f0: 900 * k, f1: 520 * k, q: 0.8, attack: 0.004, tau: 0.035, level: LEVEL.step * v, pan, wet: 0.04 });
-        this.grit(t + 0.01, 1 + Math.floor(r() * 3), 0.05, LEVEL.step * 0.25 * v, pan);
+      case 'gliderOpen':
+        // The folded sail shakes out and snaps taut on its frame: a rustle, two cracks, a hollow tick of the tubes.
+        this.flutter(t, 1100, 700, 20, 12, 0.45, LEVEL.chute * 0.55);
+        this.burst(t + 0.28, { kind: 'white', type: 'bandpass', f0: 1900, q: 1.2, attack: 0.001, tau: 0.02, level: LEVEL.chute * 0.45, pan: -0.1, wet: 0.1 });
+        this.burst(t + 0.34, { kind: 'white', type: 'bandpass', f0: 2500, q: 1.4, attack: 0.001, tau: 0.014, level: LEVEL.chute * 0.3, pan: 0.12, wet: 0.1 });
+        this.knock(t + 0.3, range(r, 520, 580), LEVEL.knock * 0.35, 0);
         return;
-      }
+      case 'gliderStow':
+        // Laid down: the sail sighs and folds, the tubes click together.
+        this.flutter(t, 700, 420, 10, 4, 0.7, LEVEL.chute * 0.5);
+        this.knock(t + 0.45, range(r, 480, 540), LEVEL.knock * 0.3, 0.05);
+        this.knock(t + 0.62, range(r, 600, 660), LEVEL.knock * 0.2, -0.05);
+        return;
       case 'jump':
         // Push-off, then air past the body as it rises.
         this.burst(t, { kind: 'pink', type: 'bandpass', f0: 1100, f1: 700, q: 0.8, attack: 0.003, tau: 0.04, level: LEVEL.jump * g, wet: 0.05 });
@@ -164,7 +232,7 @@ export class Explorer {
         this.knock(t, range(r, 180, 210), LEVEL.knock * 0.7 * (0.6 + 0.4 * g), 0.08);
         this.slosh(t + 0.05, 0.4);
         this.lastStep = -1;
-        this.play('step', 1, t + 0.18);
+        this.play('stepWood', 1, t + 0.18);
         return;
       case 'enter':
         // A small bronze temple bell, struck twice (it rings over the gong of "begin").
@@ -174,8 +242,14 @@ export class Explorer {
     }
   }
 
-  /** Rushing air (falling, gliding) and the water along the boat, 0‥1 each; called every frame. */
-  levels(wind: number, wake: number, t: number): void {
+  /** Rushing air (falling, gliding), the water along the boat, the glider's sail, 0‥1 each; called every frame. */
+  levels(wind: number, wake: number, t: number, sail = 0): void {
+    this.sail = this.lasting(this.sail, sail, t, () => this.makeSail(), (l, v) => {
+      // Faster: louder, the sail's hum higher, its trailing edge flapping quicker.
+      glide(l.env.gain, LEVEL.sail * v ** 1.3, t, 0.2);
+      glide(l.tone.frequency, 180 + 160 * v, t, 0.3);
+      glide(l.low.gain, 0.3 + 0.7 * v, t, 0.3);
+    });
     this.wind = this.lasting(this.wind, wind, t, () => this.makeWind(), (l, v) => {
       // More air, higher and brighter.
       glide(l.env.gain, LEVEL.wind * v ** 1.2, t, 0.12);
@@ -187,6 +261,152 @@ export class Explorer {
       glide(l.tone.frequency, 800 + 900 * v, t, 0.2);
       glide(l.low.gain, 0.4 + 0.6 * v, t, 0.2);
     });
+  }
+
+  /**
+   * One recorded footfall on `ground` (false: the recordings are not there,
+   * synthesize it). `g` 0‥1 from a slow walk to a full run: running is
+   * louder, a little quicker and brighter, each step cut shorter (its tail
+   * faded) so the quick steps never pile up. Every step varies in speed
+   * (±5 %) and level (±15 %) and sits a little to the side of its foot.
+   */
+  private recorded(t: number, g: number, ground: Ground): boolean {
+    const sets = this.steps;
+    const kind = RECORDED[ground];
+    if (!sets || kind.layers.some((l) => !sets[l.set].length)) return false;
+    const ctx = this.ctx;
+    const r = this.rnd;
+    const run = Math.min(1, Math.max(0, (g - 0.72) / 0.28));
+    const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
+    const level = LEVEL.recorded * kind.level * g ** 1.8 * range(r, 0.85, 1.15);
+    const env = this.gain(level);
+    const nodes: AudioNode[] = [env, ...this.out(env, pan, kind.wet)];
+    // (one foot: the layers share the speed)
+    const speed = range(r, 0.95, 1.05) * (0.98 + 0.05 * run);
+    const longest = run > 0 ? kind.run + (0.45 - kind.run) * (1 - run) : Infinity;
+    let end = 0;
+    const sources: AudioBufferSourceNode[] = [];
+    let buf: AudioBuffer | null = null;
+    for (const l of kind.layers) {
+      buf = l.same && buf ? buf : this.pickStep(sets[l.set], l.set);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const rate = (l.rate ?? 1) * speed;
+      src.playbackRate.value = rate;
+      let last: AudioNode = src;
+      // (running: the lowpassed layers open up a little)
+      if (l.lp) nodes.push((last = last.connect(biquad(ctx, 'lowpass', l.lp * (1 + 0.25 * run), 0.6))));
+      if (l.hp) nodes.push((last = last.connect(biquad(ctx, 'highpass', l.hp, 0.7))));
+      const lg = this.gain(l.level);
+      last.connect(lg).connect(env);
+      nodes.push(src, lg);
+      const dur = Math.min(buf.duration / rate, longest);
+      src.start(t);
+      src.stop(t + dur);
+      end = Math.max(end, dur);
+      sources.push(src);
+    }
+    if (end >= longest) {
+      // Cut short: the tail fades out over the last 50 ms.
+      env.gain.setValueAtTime(level, t + longest - 0.05);
+      env.gain.linearRampToValueAtTime(0, t + longest);
+    }
+    let left = sources.length;
+    for (const src of sources)
+      src.onended = () => {
+        if (--left === 0) for (const n of nodes) n.disconnect();
+      };
+    return true;
+  }
+
+  /** A step from `list` (of recording `set`), not the one it gave last time. */
+  private pickStep(list: readonly AudioBuffer[], set: StepSet): AudioBuffer {
+    const n = list.length;
+    let i = Math.floor(this.rnd() * n);
+    const last = this.lastPick[set];
+    if (n > 1 && i === last) i = (i + 1 + Math.floor(this.rnd() * (n - 1))) % n;
+    this.lastPick[set] = i;
+    return list[i];
+  }
+
+  /**
+   * One footfall on `ground`, `g` 0‥1 from a slow walk to a full run. Soft
+   * and deep: the body's weight lands as a dull thud (noise in a low band,
+   * 120–400 Hz, which small speakers still play; a sub under it for
+   * headphones), then what the sole meets, kept dark (no clicks, nothing
+   * bright or ringing). Walking rolls heel then toe, the toe lighter;
+   * running lands in one heavier, shorter blow.
+   */
+  private footstep(t: number, g: number, ground: Ground): void {
+    const r = this.rnd;
+    const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
+    const k = range(r, 0.9, 1.12);
+    const v = g * range(r, 0.8, 1);
+    const run = Math.max(0, (g - 0.72) / 0.28);
+    const L = LEVEL.step * GROUND_GAIN[ground] * v;
+    const heavy = 1 + 0.6 * run;
+    const short = 1 - 0.3 * run;
+    // The toe comes down 50–90 ms after the heel (later when slow); running, it is part of the one blow.
+    const toeLevel = Math.max(0, 1 - 1.8 * run);
+    const toe = t + range(r, 0.05, 0.08) + 0.03 * (1 - g);
+    // The weight landing: pink noise in a low band sliding down from `f0` to `f1`, the deepest lows left to the sub.
+    const thud = (at: number, f0: number, f1: number, attack: number, tau: number, level: number, wet: number) =>
+      this.burst(at, { kind: 'pink', type: 'bandpass', f0: f0 * k, f1: f1 * k, q: 1, hp: 125, attack, tau: tau * short, dur: 0.07, level: L * level, pan, wet });
+    // Under it, a smooth low pulse: its first cycles near `f` × 1.5 (a laptop still plays those), then down into the sub (headphones).
+    const sub = (f: number, level: number) =>
+      this.tone(t, { f0: f * 1.5 * k, f1: f * 0.65 * k, glide: 0.05, attack: 0.003, tau: 0.04 * short, level: L * level * heavy, pan, wet: 0.02 });
+    // What the sole meets: grit crunching (or `kind` noise), under a lowpass, swelling in `attack`.
+    const sole = (at: number, f0: number, f1: number, attack: number, tau: number, level: number, wet: number, kind?: NoiseKind) =>
+      this.burst(at, { kind, buf: kind ? undefined : source('crunch'), type: 'lowpass', f0: f0 * k, f1: f1 * k, q: 0.5, attack, tau, dur: 0.1, level: L * level, pan, wet });
+    switch (ground) {
+      case 'earth':
+        // Packed earth: a dull thud, a low crunch of grit under the sole.
+        thud(t, 300, 170, 0.004, 0.034, heavy, 0.04);
+        sub(85, 0.09);
+        sole(t + 0.006, 2000, 1100, 0.012, 0.04, 0.33, 0.03);
+        if (toeLevel) thud(toe, 340, 200, 0.006, 0.028, 0.5 * toeLevel, 0.03);
+        break;
+      case 'grass':
+        // Soft: a cushioned thud, and the blades brushing under the sole (a low swish).
+        thud(t, 260, 160, 0.006, 0.04, 0.9 * heavy, 0.03);
+        sub(80, 0.08);
+        sole(t, 2200, 1100, 0.02, 0.05, 0.36, 0.03, 'pink');
+        if (toeLevel) thud(toe, 300, 180, 0.008, 0.03, 0.45 * toeLevel, 0.03);
+        break;
+      case 'stone':
+        // Firm: the heel taps sandstone (a short dull knock), grit scuffs under the sole; the walls answer a little.
+        thud(t, 380, 210, 0.002, 0.03, 1 + 0.3 * run, 0.1);
+        sub(90, 0.06);
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 1000 * k, f1: 700 * k, q: 0.8, attack: 0.0015, tau: 0.014 * short, level: L * 0.6 * (1 - 0.35 * run), pan, wet: 0.12 });
+        sole(t + 0.02, 2400, 1400, 0.01, 0.03, 0.18, 0.1);
+        if (toeLevel) thud(toe, 420, 230, 0.003, 0.022, 0.4 * toeLevel, 0.08);
+        break;
+      case 'sand':
+        // Soft: the sole sinks in (a slow, low thud) with a hushed crunch of grains, pushed back again by the toe.
+        thud(t, 240, 150, 0.01, 0.05, 0.8 * heavy, 0.02);
+        sub(75, 0.08);
+        sole(t + 0.004, 1300, 650, 0.02, 0.06, 0.42, 0.02);
+        if (toeLevel) {
+          thud(toe, 270, 160, 0.01, 0.035, 0.3 * toeLevel, 0.02);
+          sole(toe, 1200, 600, 0.015, 0.04, 0.25 * toeLevel, 0.02);
+        }
+        break;
+      case 'wood':
+        // Planks: a hollow thud, the boards knocking low under it.
+        thud(t, 330, 190, 0.003, 0.03, heavy, 0.06);
+        sub(95, 0.06);
+        this.knock(t + 0.004, range(r, 140, 175) * k, L * 0.06, pan);
+        if (toeLevel) thud(toe, 360, 210, 0.004, 0.024, 0.45 * toeLevel, 0.05);
+        break;
+      case 'water':
+        // Wading: a low slosh round the shin, a "bloop", a dull splash, the foot pulled out, a drop or two.
+        this.burst(t, { kind: 'brown', type: 'lowpass', f0: 900 * k, f1: 300 * k, q: 0.7, hp: 100, attack: 0.012, tau: 0.07 * short, dur: 0.15, level: L * (1 + 0.3 * run), pan, wet: 0.1 });
+        this.tone(t + 0.008, { f0: 190 * k, f1: 95 * k, glide: 0.07, attack: 0.006, tau: 0.05, level: L * 0.12 * heavy, pan, wet: 0.05 });
+        sole(t + 0.006, 3500, 1000, 0.004, 0.045, 0.75, 0.12, 'pink');
+        sole(t + range(r, 0.12, 0.16), 700, 350, 0.04, 0.08, 0.4, 0.08, 'brown');
+        this.drops(t + 0.08, 1 + Math.floor(r() * 2), 0.3, L * 0.025, pan);
+        break;
+    }
   }
 
   // ── Lasting sounds ────────────────────────────────────────────────────────
@@ -233,6 +453,33 @@ export class Explorer {
     sway.connect(env);
     this.out(env, 0, 0.05);
     return { env, tone, low, sources: [src, buffet, lfo], nodes: [src, tone, buffet, lp, low, sway, lfo, depth, env], level: 0, quietSince: -1 };
+  }
+
+  private makeSail(): Lasting {
+    const ctx = this.ctx;
+    const r = this.rnd;
+    // The sail taut on its frame: a low hum (the wires and the cloth), and the trailing edge fluttering in pink noise.
+    const env = this.gain(0);
+    const hum = ctx.createOscillator();
+    hum.type = 'triangle';
+    hum.frequency.value = range(r, 95, 110);
+    const tone = biquad(ctx, 'bandpass', 250, 1.2);
+    const humGain = this.gain(0.09);
+    hum.connect(tone).connect(humGain).connect(env);
+    hum.start(ctx.currentTime);
+    const cloth = this.loop(noise('pink'));
+    const band = biquad(ctx, 'bandpass', 1400, 0.9);
+    const low = this.gain(0.5);
+    // The flutter: noise beating at ~13 Hz, not quite steady.
+    const beat = this.gain(0.6);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = range(r, 11, 14);
+    const depth = this.gain(0.4);
+    lfo.connect(depth).connect(beat.gain);
+    lfo.start(ctx.currentTime);
+    cloth.connect(band).connect(beat).connect(low).connect(env);
+    this.out(env, 0, 0.06);
+    return { env, tone, low, sources: [hum, cloth, lfo], nodes: [hum, tone, humGain, cloth, band, beat, lfo, depth, low, env], level: 0, quietSince: -1 };
   }
 
   private makeWake(): Lasting {
@@ -289,7 +536,7 @@ export class Explorer {
   /** Filtered noise, struck: rises in `attack`, then dies away; its filter slides from `f0` to `f1`. */
   private burst(t: number, b: Burst): void {
     const ctx = this.ctx;
-    const buf = noise(b.kind ?? 'white');
+    const buf = b.buf ?? noise(b.kind ?? 'white');
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const end = b.attack + b.tau * 6;
@@ -300,12 +547,15 @@ export class Explorer {
     }
     const env = ctx.createGain();
     strike(env.gain, t, b.level, b.attack, b.tau);
-    src.connect(f).connect(env);
+    const hp = b.hp ? biquad(ctx, 'highpass', b.hp, 0.7) : null;
+    src.connect(f).connect(hp ?? env);
+    hp?.connect(env);
     const made = this.out(env, b.pan ?? 0, b.wet ?? 0);
     src.start(t, this.rnd() * (buf.duration - end - 0.1));
     src.stop(t + end);
     src.onended = () => {
       for (const n of [src, f, env, ...made]) n.disconnect();
+      hp?.disconnect();
     };
   }
 

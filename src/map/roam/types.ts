@@ -6,10 +6,12 @@ import type { RoamLevels, RoamMode, RoamSound } from '../types';
 
 /**
  * Roaming the map with the explorer: leap off the ledge, glide down under a
- * parachute, walk, paddle a boat on the rivers, and enter a temple.
+ * parachute, walk, paddle a boat on the rivers, fly a hang glider from a
+ * cliff-top ramp, and enter a temple.
  *
  * roam.ts runs one mode at a time (a `RoamModeHandler` each): `leap` and
- * `glide` (parachute.ts), `walk` (walker.ts), `boat` (boat.ts). Every mode
+ * `glide` (parachute.ts), `walk` (walker.ts), `boat` (boat.ts), `hang`
+ * (hangGlider.ts). Every mode
  * moves the same body (`RoamBody`), reads the same input (`RoamInput`) and
  * tells the follow camera (`FollowCam`) what it wants.
  *
@@ -78,6 +80,8 @@ export interface RoamWorld {
    * a low roof is in the way. (The walk map: roam/walkmap.ts.)
    */
   standAt?(x: number, z: number, y: number, up: number, height: number): number;
+  /** A hang glider take-off ramp (launchSpots.ts) at (x, z) for feet at height `y`: E there flies. */
+  launchNear?(x: number, z: number, y: number): boolean;
   /** Bottom of the first solid above height `y` at (x, z), or Infinity (open sky). */
   ceilingAt?(x: number, z: number, y: number): number;
   /** Part of the segment a → b (0‥1) that is free of solid blocks, from a (1 = nothing in the way). */

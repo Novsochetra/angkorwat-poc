@@ -88,13 +88,27 @@ export interface AnimalCall {
 /**
  * Roaming the map with the explorer (src/map/roam/): `overview` = the
  * picker screen; `leap` = running off the ledge; `glide` = under the
- * parachute; `walk` = on foot; `boat` = paddling a boat on a river.
+ * parachute; `walk` = on foot; `boat` = paddling a boat on a river;
+ * `hang` = flying the hang glider.
  */
-export type RoamMode = 'overview' | 'leap' | 'glide' | 'walk' | 'boat';
+export type RoamMode = 'overview' | 'leap' | 'glide' | 'walk' | 'boat' | 'hang';
 
-/** One-off sounds of the roaming explorer (audio/audio.ts makes them). */
+/**
+ * One-off sounds of the roaming explorer (audio/audio.ts makes them).
+ * Footsteps by the ground under them: `step` on earth, `stepGrass`,
+ * `stepStone` (the road, temple floors, bare rock), `stepSand` (river
+ * banks), `stepWater` (wading), `stepWood` (planks: the take-off ramp's
+ * deck, stepping off the boat).
+ */
 export type RoamSound =
   | 'step'
+  | 'stepGrass'
+  | 'stepStone'
+  | 'stepSand'
+  | 'stepWater'
+  | 'stepWood'
+  | 'gliderOpen'
+  | 'gliderStow'
   | 'jump'
   | 'land'
   | 'chuteOpen'
@@ -107,8 +121,10 @@ export type RoamSound =
 
 /** Sounds of the roaming explorer that last (0‥1 each, set every frame). */
 export interface RoamLevels {
-  /** Rushing air: falling, gliding under the parachute. */
+  /** Rushing air: falling, gliding under the parachute or the hang glider. */
   wind: number;
+  /** The hang glider's sail humming and fluttering in the airflow (0‥1). */
+  sail?: number;
   /** Water against a moving boat. */
   wake: number;
 }

@@ -114,6 +114,13 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
   if (bar) bar.style.width = `${Math.round(((i + 1) / (BUILDERS.length + 1)) * 100)}%`;
   await nextFrame();
   if (only && !only.includes(name)) continue;
+  // The hang glider's take-off ramps are picked on the bare land, before the jungle is planted: no tree grows on them.
+  if (name === 'vegetation')
+    try {
+      (await import('./roam/launchSpots')).reserveLaunchSpots(ctx.field);
+    } catch (e) {
+      console.warn('[map] launch spots failed:', e);
+    }
   try {
     const build = await load();
     const t0 = performance.now();
@@ -241,7 +248,7 @@ function nightTarget(t: number): number {
 
 // ── Frame ───────────────────────────────────────────────────────────────────
 const fixedCam = params.get('cam')?.split(',').map(Number);
-const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0 }, calls: [] };
+const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
 const anchors = Object.fromEntries(PLACES.map((p) => [p.id, { x: 0, y: 0, visible: false }])) as Record<PlaceId, AnchorOnScreen>;
 const _p = new Vector3();
 const _d = new Vector3();

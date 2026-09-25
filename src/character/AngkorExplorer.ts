@@ -6,6 +6,7 @@ import {
   Group,
   Matrix4,
   Mesh,
+  type Object3D,
   PointLight,
   Quaternion,
   ShaderMaterial,
@@ -23,7 +24,7 @@ import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from '.
 import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
 import { buildFoot, buildForearm, buildHand, buildPelvis, buildShin, buildThigh, buildUpperArm, type HandPose, type LegStyle, type Side } from './parts/limbs';
-import { buildFlame, buildFlashlight, buildHat, buildLantern, buildPhone, buildTorchHandle, HAT_CLIP_Y, PHONE_LENS } from './parts/props';
+import { buildFlame, buildFlashlight, buildHat, buildLantern, buildPhone, buildSelfieStick, buildTorchHandle, HAT_CLIP_Y, PHONE_LENS, STICK_JOINT } from './parts/props';
 import { buildScarfCollar, buildScarfTail } from './parts/scarf';
 import { buildBelt, buildTorso } from './parts/torso';
 import { Rig } from './Rig';
@@ -46,6 +47,9 @@ const _a = new Vector3();
 const _s = new Vector3();
 const _up = new Vector3();
 const _face = new Vector3();
+const _lens = new Vector3();
+const _cu = new Vector3();
+const _joint = new Vector3();
 const _q = new Quaternion();
 const _q2 = new Quaternion();
 const _m = new Matrix4();
@@ -136,6 +140,8 @@ export class AngkorExplorer {
   readonly selfieAim: SelfieAim = { yaw: -0.75, pitch: 0.1, reach: 1 };
   private phoneHidden = false;
   private readonly selfieEased: SelfieAim = { ...this.selfieAim };
+  /** The selfie stick (built on first use): its handle and pole under the right fist, its clamp on the phone. */
+  private stick: { grip: Group; shaft: Group; clamp: Group } | null = null;
   private readonly scaler = new Group();
   private outfit: ExplorerOutfit = { ...OUTFITS.default };
   private expression: ExpressionName = 'neutral';
@@ -230,6 +236,19 @@ export class AngkorExplorer {
     this.animator.selfieGesture = g;
   }
 
+  /**
+   * The selfie phone is on a telescopic stick: it goes much further out
+   * (`selfieAim.reach` slides the pole out) and further round him, high
+   * over him or low; the fist holds the stick's handle near his body.
+   */
+  get selfieStick(): boolean {
+    return this.animator.selfieStick;
+  }
+
+  set selfieStick(on: boolean) {
+    this.animator.selfieStick = on;
+  }
+
   /** Swap a hand shape (the held-prop hand is managed automatically). */
   setHandPose(side: Side, pose: HandPose): void {
     this.handPose[side] = pose;
@@ -254,7 +273,7 @@ export class AngkorExplorer {
     if (action === 'selfie' && !this.selfieUp) {
       this.selfieUp = true;
       this.setHandPose('R', 'holding');
-      clampSelfieAim(this.selfieAim);
+      clampSelfieAim(this.selfieAim, this.selfieStick);
       Object.assign(this.selfieEased, this.selfieAim);
       // Smile for the selfie (the old face comes back after, unless someone picks another).
       const before = this.expression;
@@ -289,10 +308,22 @@ export class AngkorExplorer {
     const head = this.rig.joints.head;
     head.updateWorldMatrix(true, false);
     head.localToWorld(_face.copy(SELFIE_LOOK));
-    // Upright with his chest (not the phone, which rolls as it comes up): a level picture.
-    _up.set(0, 1, 0).transformDirection(this.rig.joints.chest.matrixWorld);
-    quat.setFromRotationMatrix(_m.lookAt(pos, _face, _up));
+    // (not the phone's own up, which rolls as it comes up: a level picture)
+    quat.setFromRotationMatrix(_m.lookAt(pos, _face, this.pictureUp(pos, _face, _up)));
     return true;
+  }
+
+  /**
+   * "Up" of the selfie picture seen from `from` looking at `to` (world): the
+   * world's up, so the horizon stays level however he stands, sits or lies
+   * (face down under the hang glider); only looking almost straight up or
+   * down does it turn to his chest's up.
+   */
+  private pictureUp(from: Vector3, to: Vector3, out: Vector3): Vector3 {
+    const steep = Math.abs(to.y - from.y) / Math.max(1e-6, from.distanceTo(to));
+    const k = Math.min(1, Math.max(0, (steep - 0.85) / 0.12));
+    _cu.set(0, 1, 0).transformDirection(this.rig.joints.chest.matrixWorld);
+    return out.set(0, 1, 0).lerp(_cu, k).normalize();
   }
 
   /**
@@ -375,6 +406,7 @@ export class AngkorExplorer {
   dispose(): void {
     this.rig.dispose();
     if (this.phone) disposeVoxelMesh(this.phone);
+    if (this.stick) for (const g of [this.stick.grip, this.stick.shaft]) disposeVoxelMesh(g);
     for (const g of this.faces.values()) disposeVoxelMesh(g);
     this.faces.clear();
     this.clearProp();
@@ -569,10 +601,15 @@ export class AngkorExplorer {
     this.showPhoneMeshes(true);
     const fist = phone.parent!;
     this.rig.joints.head.localToWorld(_face.copy(SELFIE_LOOK));
-    _up.set(0, 1, 0).transformDirection(this.rig.joints.chest.matrixWorld);
     const k = w * w * (3 - 2 * w);
+    if (this.selfieStick) {
+      this.placeOnStick(fist, k);
+      return;
+    }
     // Aim from the grip, then again from the lens it gives.
+    phone.position.set(0, 0, 0);
     fist.getWorldPosition(_a);
+    this.pictureUp(_a, _face, _up);
     for (let i = 0; i < 2; i++) {
       _q.setFromRotationMatrix(_m.lookAt(_face, _a, _up));
       _q.premultiply(fist.getWorldQuaternion(_q2).invert());
@@ -582,13 +619,66 @@ export class AngkorExplorer {
     }
   }
 
-  /** Phone and the arm holding it: shown with the phone out unless `hidePhone`. */
+  /**
+   * The phone at the end of the stick: its lens where the animator put it
+   * (`stickLens`, eased out of the fist as the selfie comes up), turned to
+   * the face and level with the world; the pole from the fist to the clamp.
+   * Written in the fist's frame (BU), from world points.
+   */
+  private placeOnStick(fist: Object3D, k: number): void {
+    const phone = this.phone!;
+    const stick = (this.stick ??= this.buildStick());
+    const chest = this.rig.joints.chest;
+    // (the lens eases out from the fist as the phone comes up)
+    fist.getWorldPosition(_a);
+    chest.localToWorld(_lens.copy(this.animator.stickLens)).lerp(_a, 1 - k);
+    this.pictureUp(_lens, _face, _up);
+    // Everything in the fist's frame.
+    fist.updateWorldMatrix(true, false);
+    _m.copy(fist.matrixWorld).invert();
+    _lens.applyMatrix4(_m);
+    _face.applyMatrix4(_m);
+    fist.getWorldQuaternion(_q2).invert();
+    _up.applyQuaternion(_q2);
+    // Phone +Z to the face, then its origin back from the lens.
+    phone.quaternion.setFromRotationMatrix(_m.lookAt(_face, _lens, _up));
+    phone.position.copy(_lens).sub(_a.copy(LENS_POINT).applyQuaternion(phone.quaternion));
+    phone.updateMatrixWorld(true);
+    // The pole: from the fist (the origin here) to the clamp's joint.
+    _joint.set(...STICK_JOINT).applyQuaternion(phone.quaternion).add(phone.position);
+    const len = Math.max(0.5, _joint.length());
+    _q.setFromUnitVectors(_a.set(0, 1, 0), _s.copy(_joint).divideScalar(len));
+    stick.shaft.quaternion.copy(_q);
+    stick.shaft.scale.set(1, len, 1);
+    stick.grip.quaternion.copy(_q);
+    for (const g of [stick.shaft, stick.grip]) g.updateMatrixWorld(true);
+  }
+
+  /** Phone and the arm holding it: shown with the phone out unless `hidePhone` (on a stick the arm stays: it is in the picture). */
   private showPhoneMeshes(out: boolean): void {
-    if (this.phone) for (const c of this.phone.children) c.visible = !this.phoneHidden;
+    if (this.phone) for (const c of this.phone.children) c.visible = c.name === 'stick:clamp' ? this.selfieStick && !this.phoneHidden : !this.phoneHidden;
+    const onStick = out && this.selfieStick;
     for (const slot of PHONE_ARM) {
       const g = this.rig.getSlot(slot);
-      if (g) g.visible = !(out && this.phoneHidden);
+      if (g) g.visible = !(out && this.phoneHidden && !onStick);
     }
+    if (this.stick) this.stick.grip.visible = this.stick.shaft.visible = onStick;
+  }
+
+  private buildStick(): { grip: Group; shaft: Group; clamp: Group } {
+    const { grip, shaft, clamp } = buildSelfieStick();
+    const q = this.rig.quality;
+    const make = (b: typeof grip, name: string) => {
+      const g = new Group();
+      g.name = name;
+      g.add(buildVoxelMesh(b, { quality: q, name, castShadow: this.castShadow }));
+      return g;
+    };
+    const s = { grip: make(grip, 'stick:grip'), shaft: make(shaft, 'stick:shaft'), clamp: make(clamp, 'stick:clamp') };
+    this.rig.joints.propR.add(s.grip, s.shaft);
+    this.phone!.add(s.clamp);
+    this.showPhoneMeshes(true);
+    return s;
   }
 
   private buildPhoneProp(): Group {
@@ -604,7 +694,7 @@ export class AngkorExplorer {
 
   /** Ease the selfie phone's place toward `selfieAim` (kept within the arm's reach). */
   private steerSelfie(dt: number): void {
-    clampSelfieAim(this.selfieAim);
+    clampSelfieAim(this.selfieAim, this.selfieStick);
     const k = 1 - Math.exp(-dt * 10);
     const a = this.selfieAim;
     const e = this.selfieEased;

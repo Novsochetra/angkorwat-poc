@@ -376,6 +376,40 @@ function* splashJob(): Job {
 }
 
 /**
+ * Grit giving under a sole: a dense crackle of tiny noise grains (0.3–3 ms,
+ * a few loud among many soft), ~200 Hz–3 kHz — earth, sand and small stones
+ * crunching when a footstep's filter and envelope shape it. Stereo loop.
+ */
+function* crunchJob(): Job {
+  const seconds = 3.1;
+  const buf = newBuffer(2, seconds);
+  const n = buf.length;
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    const rnd = mulberry32(8080 + c * 577);
+    let t = 0;
+    let made = 0;
+    while (t < seconds) {
+      const i0 = Math.round(t * RATE);
+      const len = Math.round((0.0003 + rnd() ** 2 * 0.0027) * RATE);
+      const amp = 0.1 + rnd() ** 4;
+      for (let i = 0; i < len; i++) addWrapped(d, n, i0 + i, amp * Math.sin((Math.PI * i) / len) ** 2 * (rnd() * 2 - 1));
+      if ((made += len) > SLICE) {
+        made = 0;
+        yield;
+      }
+      // ~900 grains a second.
+      t += -Math.log(1 - rnd() * 0.999) / 900;
+    }
+    highpass1(d, 200);
+    lowpass1(d, 3000);
+    normaliseRms(d, 0.25);
+    yield;
+  }
+  return buf;
+}
+
+/**
  * A river babbling over stones: dark noise through a very resonant filter
  * whose note wanders fast and at random (after James McCartney's "babbling
  * brook"): two layers, one low and one higher. Stereo loop.
@@ -534,10 +568,11 @@ const SOURCES = {
   'cricket-b': () => chirpJob({ freq: 4100, every: 0.93, pulses: 4, rate: 24, seconds: 6.7, seed: 23 }),
   trill: () => trillJob({ freq: 3000, rate: 42, seconds: 7.9, seed: 5 }),
   buzz: () => buzzJob({ freq: 5600, seconds: 12.7, seed: 9 }),
+  crunch: crunchJob,
 } satisfies Record<string, () => Job>;
 
-export type SourceName = 'rustle' | 'roar' | 'splash' | 'babble' | 'cricket-a' | 'cricket-b' | 'trill' | 'buzz';
-/** A named source loop (leaves, water, insects). */
+export type SourceName = 'rustle' | 'roar' | 'splash' | 'babble' | 'cricket-a' | 'cricket-b' | 'trill' | 'buzz' | 'crunch';
+/** A named source loop (leaves, water, insects, grit under a sole). */
 export const source = (name: SourceName): AudioBuffer => obtain(name, SOURCES[name]);
 /** Looping stereo noise. */
 export const noise = (kind: NoiseKind): AudioBuffer => obtain(`noise-${kind}`, SOURCES[`noise-${kind}`]);

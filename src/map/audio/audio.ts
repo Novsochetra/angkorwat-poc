@@ -2,13 +2,16 @@ import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, type AnimalCall, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { SoundEngine, type Mix, type Volumes } from './engine';
+import { loadFootsteps, prefetchFootsteps } from './footsteps';
 import type { Ears } from './water';
 
 /**
  * Sound of the map: ambience (wind, birds by day, insects and frogs by
  * night), the waterfalls and rivers where they are on the map, the animals'
  * calls where the animals are, calm generative music, the interface sounds
- * and the roaming explorer's. All made with the Web Audio API, no sound files.
+ * and the roaming explorer's. All made with the Web Audio API, except the
+ * explorer's footsteps: recordings from `assets/sound/`, cut into single
+ * steps when they load (`footsteps.ts`; synthesized steps until then).
  *
  * The graph lives in `engine.ts` (it also runs on an `OfflineAudioContext`,
  * which is how its levels are measured). This file is the live side: the
@@ -45,7 +48,11 @@ const EVERY = 250;
 /** Fade-in of music, ambience and water on start (s). */
 const FADE_IN = 3;
 
-/** Make the noise and insect buffers in idle moments, a millisecond at a time, so starting never stalls a frame. */
+/**
+ * Make the noise and insect buffers in idle moments, a millisecond at a
+ * time, so starting never stalls a frame; then fetch the footstep
+ * recordings (decoded once the sound starts).
+ */
 function warmInIdleTime(): void {
   type Idle = (cb: (d: { timeRemaining(): number }) => void, o?: { timeout: number }) => number;
   const ric = (window as unknown as { requestIdleCallback?: Idle }).requestIdleCallback;
@@ -53,6 +60,7 @@ function warmInIdleTime(): void {
   const step = (d: { timeRemaining(): number }) => {
     try {
       if (!warmUp(() => Math.min(d.timeRemaining(), 6))) later(step);
+      else prefetchFootsteps();
     } catch (e) {
       console.warn('[map] audio warm-up failed:', e);
     }
@@ -61,8 +69,9 @@ function warmInIdleTime(): void {
 }
 
 export function createMapAudio(): MapAudio {
-  // Headless stills never play sound: no need to make buffers there.
-  if (new URLSearchParams(location.search).get('shot') !== '1') warmInIdleTime();
+  // Headless stills never play sound: no need to make buffers (or fetch the footsteps) there.
+  const still = new URLSearchParams(location.search).get('shot') === '1';
+  if (!still) warmInIdleTime();
   let ctx: AudioContext | null = null;
   let engine: SoundEngine | null = null;
   let starting: Promise<void> | null = null;
@@ -131,6 +140,9 @@ export function createMapAudio(): MapAudio {
           if (world) engine.setWorld(world);
           if (heard) engine.listen(ears, true);
           engine.fadeIn(FADE_IN);
+          // The recorded footsteps: decoded and cut in the background (synthesized steps until they are ready).
+          const e = engine;
+          if (!still) void loadFootsteps(ctx).then((steps) => e.setFootsteps(steps));
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
           if (ctx.state !== 'running') {
@@ -216,7 +228,7 @@ export function createMapAudio(): MapAudio {
       try {
         engine.setMix(mix);
         engine.listen(ears);
-        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake);
+        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0);
       } catch (e) {
         console.warn('[map] audio update failed:', e);
       }

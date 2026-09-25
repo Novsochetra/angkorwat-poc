@@ -7,7 +7,7 @@ import type { MapFrame, RoamMode } from '../types';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { angleDiff } from './followCam';
 import type { RoamControls } from './input';
-import { createRoamPhoto, type PhotoKind, type RoamPhoto } from './photo';
+import { createRoamPhoto, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
 import type { FollowCam, RoamBody, RoamCtx, RoamHud, RoamWorld } from './types';
 
 /** What the tool bar holds: three lights for the left hand, the camera and the selfie phone. */
@@ -34,6 +34,8 @@ const FLASH_ANGLE = 0.36;
 /** Longest visible beam (m, true size) and how far the mouse aim looks (m). */
 const BEAM_MAX = 9;
 const AIM_RANGE = 220;
+/** How far from his head the phone's face light is as bright as it is in his hand (m, true size). */
+const PHONE_FILL_AT = 0.55;
 /** After dark (night over this) he takes a lantern, until the player picks a tool. */
 const DUSK = 0.55;
 
@@ -58,7 +60,7 @@ export interface RoamTools {
   after(ctx: RoamCtx, mode: RoamMode, dt: number): void;
   /** Every frame in every mode, after the follow camera: the view into the lens, the lights onto the props. */
   frame(f: MapFrame): void;
-  /** The roaming mode changed: the bar shows only on foot; in the boat and the air the tools are put away (and come back after). */
+  /** The roaming mode changed: the lights are for walking; the camera and the phone work on foot, in the boat and on the hang glider (put away at each change). */
   setMode(next: RoamMode, prev: RoamMode): void;
   /** Right after a frame is drawn (the photo). */
   afterRender(): void;
@@ -66,7 +68,8 @@ export interface RoamTools {
    * URL (checks): `tool=…` start with a tool out · `act=…` play an action ·
    * `beam=mouse` + `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
    * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot · `gesture=peace|wave|thumbsUp|none`
-   * and `saim=yaw,pitch,reach` the selfie (degrees round his head, 0‥1) · `keys=1` the key list.
+   * and `saim=yaw,pitch,reach` the selfie (degrees round his head, 0‥1) · `stick=0|1` the selfie stick ·
+   * `sview=0‥1` hold the view there (0: the follow camera, to see him hold the camera or the phone) · `keys=1` the key list.
    */
   fromUrl(params: URLSearchParams, ctx: RoamCtx): void;
   /** URL params that put the tools back as they are (bug reports). */
@@ -158,11 +161,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
 
   /** A tool key or a click on the bar. */
   function useTool(t: ToolName, ctx: RoamCtx | null): void {
-    if (mode !== 'walk') {
-      if (mode === 'boat') hud.toast('Hands on the paddle');
+    const device = t === 'camera' || t === 'selfie';
+    if (mode !== 'walk' && !(device && PHOTO_MODES.includes(mode))) {
+      if (mode === 'boat') hud.toast('Hands on the paddle (the camera and the phone work here: 4, 5)');
+      else if (mode === 'hang') hud.toast('Hands on the bar (the camera and the phone work here: 4, 5)');
       return;
     }
-    if (t === 'camera' || t === 'selfie') {
+    if (device) {
       if (photo.kind === t) photo.lower();
       else if (ctx) photo.raise(t, ctx);
       bar.update();
@@ -250,10 +255,12 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     const s = explorer.object.scale.y;
     const boost = 1 + night * 5;
     if (photo.kind === 'selfie' && explorer.phoneLens(glow.position, _q)) {
-      // A soft fill on his face from the phone (the sun is often behind him), warm with a flame in hand.
+      // A soft fill on his face from the phone (the sun is often behind him), warm with a flame in hand;
+      // as bright on his face from the end of the selfie stick as from his hand.
       glow.color.setHex(held === 'lantern' || held === 'torch' ? 0xffc78a : 0xffe6cc);
-      glow.intensity = (0.06 + 0.1 * night) * s * s * photo.view;
-      glow.distance = 3 * s;
+      const far = glow.position.distanceTo(explorer.rig.joints.head.getWorldPosition(_o)) / (PHONE_FILL_AT * s);
+      glow.intensity = (0.06 + 0.1 * night) * s * s * photo.view * Math.max(1, far * far);
+      glow.distance = 3 * s * Math.max(1, far);
     } else if (held === 'lantern' || held === 'torch') {
       explorer.propGlowPoint(glow.position);
       glow.color.setHex(held === 'torch' ? 0xff9a3c : 0xffb347);
@@ -306,6 +313,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (tap('Digit3', 'Numpad3')) useTool('flashlight', ctx);
       if (tap('Digit4', 'Numpad4', 'KeyZ')) useTool('camera', ctx);
       if (tap('Digit5', 'Numpad5', 'KeyY')) useTool('selfie', ctx);
+      if (tap('KeyT')) {
+        photo.stick = !photo.stick;
+        hud.toast(photo.stick ? 'Selfie stick: on (wheel slides it out)' : 'Selfie stick: off (at arm’s length)');
+      }
       if (tap('KeyO') && m === 'walk') {
         if (explorer.currentOutfit.held === 'flashlight') beamMouse = !beamMouse;
         else {
@@ -332,8 +343,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
 
       if (photo.kind) {
-        // Esc puts the camera away (not back to the map); no walking, jumping or entering.
-        if (input.exit || (m !== 'walk' && photo.kind)) {
+        // Esc puts the camera away (not back to the map); no walking, jumping or entering
+        // (in the boat it drifts, the hang glider flies on straight).
+        if (input.exit || !PHOTO_MODES.includes(m)) {
           photo.lower();
           bar.update();
           input.exit = false;
@@ -395,10 +407,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     },
     setMode(next, prev) {
       mode = next;
-      if (next !== 'walk') {
-        photo.lower();
-        bar.toggleKeys(false);
-      }
+      // (a new mode, a new pose: the camera or the phone goes away)
+      if (next !== prev) photo.lower();
+      if (next !== 'walk') bar.toggleKeys(false);
       // (in the overview the ledge drives him: a lantern after dark)
       if (next === 'overview') setHeld('none');
       else setHeld(wantHeld());
@@ -414,8 +425,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       beamMouse = params.get('beam') === 'mouse';
       const mouse = params.get('mouse')?.split(',').map(Number);
       if (mouse?.length === 2) fakePointer = { x: mouse[0] * innerWidth, y: mouse[1] * innerHeight };
+      if (params.has('stick')) photo.stick = params.get('stick') !== '0';
+      if (params.has('sview')) photo.hold = Number(params.get('sview')) || 0;
       const t = params.get('tool') as ToolName | null;
-      if (t && TOOLS.includes(t) && mode === 'walk') {
+      if (t && TOOLS.includes(t) && (mode === 'walk' || ((t === 'camera' || t === 'selfie') && PHOTO_MODES.includes(mode)))) {
         if (t === 'camera' || t === 'selfie') photo.raise(t, ctx);
         else setHeld((chosen = t));
       }
@@ -440,7 +453,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         photo.shot.yaw = ((pv[0] ?? 0) * Math.PI) / 180;
         photo.shot.pitch = ((pv[1] ?? 0) * Math.PI) / 180;
         if (pv[2]) photo.shot.fov = pv[2];
-        body.yaw = photo.shot.yaw;
+        // (on foot he turns to it; the boat and the glider keep their heading)
+        if (mode === 'walk') body.yaw = photo.shot.yaw;
       }
       bar.update();
     },
@@ -461,6 +475,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         const a = explorer.selfieAim;
         out.gesture = explorer.selfieGesture;
         out.saim = `${deg(a.yaw)},${deg(a.pitch)},${a.reach.toFixed(2)}`;
+        out.stick = photo.stick ? '1' : '0';
       }
       return out;
     },
@@ -574,7 +589,7 @@ const KEY_LIST = `
     ${row(k('H'), 'hat')}${row(k('G'), 'outfit')}${row(k('X'), 'face')}</div>
   <div class="rtb-col"><b>Camera</b>
     ${row('<i>click</i>' + k('Space'), 'take a photo')}${row('<i>drag</i>', 'look')}${row('<i>wheel</i>', 'zoom')}${row(k('Esc'), 'put away')}
-    <b class="rtb-sub">Selfie</b>${row('<i>drag</i>', 'move the phone')}${row(k('G'), 'gesture')}</div>`;
+    <b class="rtb-sub">Selfie</b>${row('<i>drag</i>', 'move the phone')}${row('<i>wheel</i>', 'closer / further')}${row(k('T'), 'selfie stick')}${row(k('G'), 'gesture')}</div>`;
 
 /** 16 × 16 pixel-art icons (currentColor, with their own glow colours). */
 const px = (body: string) => `<svg class="rtb-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">${body}</svg>`;
@@ -601,7 +616,9 @@ function injectStyle(): void {
   style.textContent = `
     .rtb-wrap { position: absolute; left: 50%; bottom: calc(18 * var(--px)); transform: translateX(-50%); display: grid; justify-items: center;
       gap: calc(8 * var(--px)); opacity: 0; visibility: hidden; transition: opacity 0.5s, visibility 0s 0.5s; --rtb-shape: ${steppedShape(6, 3)}; --rtb-ring: ${steppedRing(6, 3, 1.5)}; }
-    .rh[data-mode='walk'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
+    .rh[data-mode='walk'] .rtb-wrap, .rh[data-mode='boat'] .rtb-wrap, .rh[data-mode='hang'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
+    /* (in the boat and on the glider the hands are busy: only the camera and the phone) */
+    .rh:not([data-mode='walk']) .rtb-slot:is([data-tool='lantern'], [data-tool='torch'], [data-tool='flashlight']) { opacity: 0.32; }
     .rtb { display: flex; align-items: center; gap: calc(4 * var(--px)); padding: calc(5 * var(--px)); pointer-events: auto; grid-row: 2;
       --mu-edge: rgba(255, 229, 188, 0.16); }
     .rtb > .mu-bg { background: color-mix(in srgb, rgba(13, 25, 39, 0.62), rgba(4, 15, 32, 0.62) var(--mu-night)); }
@@ -626,7 +643,7 @@ function injectStyle(): void {
     .rtb-sep { width: 1px; height: calc(24 * var(--px)); margin: 0 calc(3 * var(--px)); background: var(--mu-line); }
     .rtb-more { width: calc(28 * var(--px)); }
     /* (the key help at the bottom left stops short of the bar) */
-    .rh[data-mode='walk'] .rh-help { max-width: calc(50% - 210 * var(--px) - 24px); }
+    .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang']) .rh-help { max-width: calc(50% - 210 * var(--px) - 24px); }
     .rtb-q { font: 700 calc(15 * var(--px)) / 1 var(--mu-display); }
 
     /* All the keys (?): a small panel over the bar. */

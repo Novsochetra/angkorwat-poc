@@ -4,6 +4,7 @@ import { Ambience } from './ambience';
 import { Animals } from './animals';
 import { clamp01, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
 import { Explorer } from './explorer';
+import type { StepSets } from './footsteps';
 import { Music } from './music';
 import { Sfx } from './sfx';
 import { Water, type Ears } from './water';
@@ -228,16 +229,21 @@ export class SoundEngine {
     this.explorer.play(s, clamp01(gain), Math.max(when, this.ctx.currentTime));
   }
 
+  /** The recorded footsteps, once loaded (`footsteps.ts`); until then (or `null`) the steps are synthesized. */
+  setFootsteps(steps: StepSets | null): void {
+    this.explorer.steps = steps;
+  }
+
   /** An animal call where the animal is (on the ambience bus: muted, it is not even made). */
   call(c: AnimalCall, when = 0): void {
     if (this.volumes.ambience <= 0 || this.volumes.master <= 0) return;
     this.animals.call(c, Math.max(when, this.ctx.currentTime));
   }
 
-  /** The explorer's lasting sounds: rushing air (falling, gliding) and the boat's wake, 0‥1 each. */
-  roamLevels(wind: number, wake: number): void {
+  /** The explorer's lasting sounds: rushing air (falling, gliding), the boat's wake, the hang glider's sail, 0‥1 each. */
+  roamLevels(wind: number, wake: number, sail = 0): void {
     // (muted: the lasting sounds are not even made)
     const on = this.volumes.sfx > 0 && this.volumes.master > 0 ? 1 : 0;
-    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime);
+    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on);
   }
 }
