@@ -1,8 +1,9 @@
 import type { HeightField } from '../heightfield';
-import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
+import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
+import { loadTypewriter, prefetchTypewriter, typewriterState, type TypewriterState } from './typewriter';
 import type { Ears } from './water';
 
 /**
@@ -10,8 +11,9 @@ import type { Ears } from './water';
  * night), the waterfalls and rivers where they are on the map, the animals'
  * calls where the animals are, calm generative music, the interface sounds
  * and the roaming explorer's. All made with the Web Audio API, except the
- * explorer's footsteps: recordings from `assets/sound/`, cut into single
- * steps when they load (`footsteps.ts`; synthesized steps until then).
+ * explorer's footsteps and the story's typewriter strikes: recordings from
+ * `assets/sound/`, cut into single steps / strikes when they load
+ * (`footsteps.ts`, `typewriter.ts`; synthesized until then).
  *
  * The graph lives in `engine.ts` (it also runs on an `OfflineAudioContext`,
  * which is how its levels are measured). This file is the live side: the
@@ -20,6 +22,8 @@ import type { Ears } from './water';
  *
  * Every slider has its own bus (`engine.ts`): Master, Music, Ambience,
  * Water, Animals, Steps, Moves (the explorer's other sounds), Interface.
+ * The story's typing is on Interface; while the story is open the
+ * background buses duck (`duck`), so its keys are heard.
  *
  * Checking: `audio.debug()` in the console (main.ts puts `audio` on
  * `window`), or in a headless script, tells whether the sound runs, each
@@ -33,6 +37,10 @@ export interface MapAudio {
   /** Volumes 0‥1, one per slider (master multiplies the others). */
   setVolumes(v: Pick<MapSettings, VolumeKey>): void;
   play(s: UISound): void;
+  /** A key of the story's typing as a word comes in (`delay` s from now), panned −1‥1 by where the word is (`typing.ts`). */
+  type(k: TypeKey, pan?: number, delay?: number): void;
+  /** The background (music, ambience, water, animals) steps back for the story and its typing, or comes back (`none`). */
+  duck(d: Duck): void;
   /** A sound of the roaming explorer (steps, the parachute, the paddle…), gain 0‥1. */
   roam(s: RoamSound, gain?: number): void;
   /** An animal call where the animal is (quieter and panned by where the ears are). */
@@ -64,6 +72,11 @@ export interface AudioDebug {
   recordings: Partial<Record<StepSet, number>>;
   /** Footsteps played so far on each ground: [recorded, synthesized]. */
   played: Record<string, [number, number]>;
+  /** How far the background steps back now (the story, its typing). */
+  duck: Duck;
+  /** The typewriter recording (`typewriter.ts`), and the strikes cut from it. */
+  typewriter: TypewriterState;
+  strikes: number;
 }
 
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
@@ -87,7 +100,10 @@ function warmInIdleTime(): void {
   const step = (d: { timeRemaining(): number }) => {
     try {
       if (!warmUp(() => Math.min(d.timeRemaining(), 6))) later(step);
-      else void loadFootsteps();
+      else {
+        void loadFootsteps();
+        void loadTypewriter();
+      }
     } catch (e) {
       console.warn('[map] audio warm-up failed:', e);
     }
@@ -101,6 +117,7 @@ export function createMapAudio(): MapAudio {
   if (!still) {
     // (the recordings download while the buffers are made)
     prefetchFootsteps();
+    prefetchTypewriter();
     warmInIdleTime();
   }
   let ctx: AudioContext | null = null;
@@ -115,6 +132,8 @@ export function createMapAudio(): MapAudio {
   const ears: Ears & { right: [number, number, number]; forward: [number, number, number] } = { x: 0, y: 0, z: 0, right: [1, 0, 0], forward: [0, 0, -1] };
   /** The ears were placed at least once (the first placing jumps, later ones glide). */
   let heard = false;
+  /** The background's duck (kept for when the sound starts). */
+  let ducked: Duck = 'none';
 
   const hidden = () => typeof document !== 'undefined' && document.hidden;
 
@@ -152,6 +171,14 @@ export function createMapAudio(): MapAudio {
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, again, { once: true, capture: true });
   }
 
+  /** Hand the typewriter's strikes to the engine once cut; tried again a few times if it failed (`RETRY`). */
+  function loadStrikes(e: SoundEngine, c: AudioContext, tries = 0): void {
+    void loadTypewriter(c).then((s) => {
+      e.setTypewriter(s);
+      if (!s && tries < RETRY.length) window.setTimeout(() => loadStrikes(e, c, tries + 1), RETRY[tries] * 1000);
+    });
+  }
+
   /** Hand the recorded footsteps to the engine once cut; a recording that failed is tried again a few times (`RETRY`). */
   function loadSteps(e: SoundEngine, c: AudioContext, tries = 0): void {
     void loadFootsteps(c).then((steps) => {
@@ -176,11 +203,15 @@ export function createMapAudio(): MapAudio {
           engine = new SoundEngine(ctx);
           engine.setVolumes(volumes, true);
           engine.setMix(mix, true);
+          engine.duck(ducked, true);
           if (world) engine.setWorld(world);
           if (heard) engine.listen(ears, true);
           engine.fadeIn(FADE_IN);
           // The recorded footsteps (most often cut already, in idle time; synthesized steps until they are ready).
-          if (!still) loadSteps(engine, ctx);
+          if (!still) {
+            loadSteps(engine, ctx);
+            loadStrikes(engine, ctx);
+          }
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
           if (ctx.state !== 'running') {
@@ -233,6 +264,27 @@ export function createMapAudio(): MapAudio {
       }
     },
 
+    type(k, pan = 0, delay = 0) {
+      // (not while the tab is hidden: the story's clock waits then too)
+      if (!engine || !ctx || !live() || hidden()) return;
+      try {
+        engine.type(k, pan, ctx.currentTime + delay);
+      } catch (e) {
+        console.warn('[map] audio type failed:', e);
+      }
+    },
+
+    duck(d) {
+      if (d === ducked) return;
+      ducked = d;
+      if (!engine) return;
+      try {
+        engine.duck(d);
+      } catch (e) {
+        console.warn('[map] audio duck failed:', e);
+      }
+    },
+
     flight(seconds) {
       if (!engine || !live()) return;
       try {
@@ -273,7 +325,7 @@ export function createMapAudio(): MapAudio {
       const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
       for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
       const steps = footstepsState();
-      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) } };
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, typewriter: typewriterState().state, strikes: typewriterState().strikes };
     },
   };
 }

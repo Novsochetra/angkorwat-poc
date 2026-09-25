@@ -163,8 +163,8 @@ async function loadOne(k: StepSet, ctx?: BaseAudioContext): Promise<void> {
   }
 }
 
-/** Decode on `ctx`; without one, or if it refuses, on an offline context of our own. */
-async function decode(b: ArrayBuffer, ctx?: BaseAudioContext): Promise<AudioBuffer> {
+/** Decode on `ctx`; without one, or if it refuses, on an offline context of our own (the typewriter's recording too). */
+export async function decode(b: ArrayBuffer, ctx?: BaseAudioContext): Promise<AudioBuffer> {
   // (copies: decoding takes the bytes away)
   if (ctx) {
     try {
@@ -298,7 +298,7 @@ function* cutJob(buf: AudioBuffer, maxLen: number): Generator<void, AudioBuffer[
 }
 
 /** The loudest mean square of `x[a‥b)` over `w` samples (a sliding sum). */
-function loudest(x: Float32Array, a: number, b: number, w: number): number {
+export function loudest(x: Float32Array, a: number, b: number, w: number): number {
   w = Math.max(1, Math.min(b - a, w));
   let sum = 0;
   let top = 0;
@@ -363,7 +363,7 @@ function sameShape(a: Float32Array, b: Float32Array): boolean {
 }
 
 /** A 2nd-order highpass at `f` Hz, in place. */
-function highpass(x: Float32Array, f: number, sr: number): void {
+export function highpass(x: Float32Array, f: number, sr: number): void {
   const w = (2 * Math.PI * f) / sr;
   const cs = Math.cos(w);
   const al = Math.sin(w) / (2 * Math.SQRT1_2);
@@ -372,7 +372,7 @@ function highpass(x: Float32Array, f: number, sr: number): void {
 }
 
 /** A high shelf: `db` over `f` Hz (Q 0.71), in place. */
-function highShelf(x: Float32Array, f: number, db: number, sr: number): void {
+export function highShelf(x: Float32Array, f: number, db: number, sr: number): void {
   const A = 10 ** (db / 40);
   const w = (2 * Math.PI * f) / sr;
   const cs = Math.cos(w);

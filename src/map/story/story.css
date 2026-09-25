@@ -478,22 +478,28 @@ body.st-after :is(.map-ui, .rt) {
   animation-delay: var(--d, 0s);
 }
 
+/* A Khmer phrase: its words come in one by one, but the line breaks only at the spaces between phrases. */
+.st-phrase {
+  white-space: nowrap;
+}
+
 .st-title .st-w {
   white-space: normal;
   animation: st-word 1.8s ease forwards;
   animation-delay: var(--d, 0s);
 }
 
-.st-temple {
-  width: clamp(96px, 8vw + 40px, 160px);
-  margin: 0 auto 2.4vh;
-  filter: drop-shadow(0 0 22px rgba(255, 180, 60, 0.35));
+/* The flag of Cambodia over the title, waving (flag.ts; its canvas keeps its own shape). */
+.st-flag {
+  width: clamp(140px, 10vw + 60px, 230px);
+  margin: 0 auto 1.6vh;
+  filter: drop-shadow(0 0 22px rgba(255, 180, 60, 0.3));
   animation: st-rise 1.8s var(--st-ease) 0.1s both;
 }
 
-.st-temple svg {
+.st-flag canvas {
+  display: block;
   width: 100%;
-  height: auto;
 }
 
 .st-orn {
@@ -525,7 +531,7 @@ body.st-after :is(.map-ui, .rt) {
   height: 12px;
 }
 
-.st-text.is-done :is(.st-w, .st-orn, .st-temple) {
+.st-text.is-done :is(.st-w, .st-orn, .st-flag) {
   animation: none;
   opacity: 1;
 }
@@ -575,6 +581,44 @@ body.st-after :is(.map-ui, .rt) {
   .st-start:hover .mu-icon {
     transform: translateX(4px);
   }
+}
+
+/* "Start" on the first beat, while the sound is still off (in place of the arrows), and the note under it. */
+.st-begin {
+  display: none;
+  margin-top: 0;
+  animation: st-rise 1.2s var(--st-ease) 1.1s backwards;
+}
+
+.st-sound {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--st-dim);
+  animation: st-fade 1.2s ease 1.6s both;
+}
+
+.st-sound .mu-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.st.is-gated .st-begin {
+  display: inline-flex;
+}
+
+.st.is-gated .st-sound {
+  display: flex;
+}
+
+.st.is-gated :is(.st-foot-row, .st-hint) {
+  display: none;
+}
+
+.st-foot-row {
+  animation: st-fade 0.6s ease both;
 }
 
 /* ── Top bar and foot ───────────────────────────────────────────────────── */

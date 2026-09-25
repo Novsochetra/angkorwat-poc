@@ -86,6 +86,8 @@ const WORDS = {
   stHint: { km: 'ចុចដើម្បីបន្ត', en: 'Click to continue' },
   stHintTouch: { km: 'ប៉ះដើម្បីបន្ត', en: 'Tap to continue' },
   stStart: { km: 'ចាប់ផ្ដើមលេង', en: 'Start playing' },
+  stBegin: { km: 'ចាប់ផ្ដើម', en: 'Start' },
+  stSoundOn: { km: 'សូមបើកសំឡេង', en: 'Turn your sound on' },
   stEmpire: { km: 'អាណាចក្រខ្មែរ', en: 'Khmer Empire' },
   stAngkor: { km: 'អង្គរ', en: 'Angkor' },
   stYear: { km: 'ប្រហែលឆ្នាំ ៩០០ គ.ស.', en: 'Around 900 CE' },

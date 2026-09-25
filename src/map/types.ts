@@ -132,6 +132,16 @@ export interface RoamLevels {
 /** Sounds the interface asks for (audio/audio.ts makes them). */
 export type UISound = 'hover' | 'select' | 'back' | 'begin' | 'open' | 'close' | 'toggle' | 'tick';
 
+/** The story's words typing in on a typewriter: a word, or the title (a heavy strike). */
+export type TypeKey = 'key' | 'title';
+
+/**
+ * How much the background (music, ambience, water, animals) steps back:
+ * not at all, for the story (a little quieter), while its words type in
+ * (quieter still, so the keys are heard).
+ */
+export type Duck = 'none' | 'story' | 'typing';
+
 /** Player settings (gear button), kept in localStorage. Volumes 0‥1. */
 export interface MapSettings {
   /** Everything at once (multiplies the others). */

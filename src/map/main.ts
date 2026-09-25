@@ -170,7 +170,7 @@ const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.na
 // ── Camera, sound, interface ────────────────────────────────────────────────
 const rig = new MapCameraRig(camera);
 rig.calm = settings.calm;
-const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, roam() {}, call() {}, setWorld() {}, flight() {}, update() {} }));
+const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, type() {}, duck() {}, roam() {}, call() {}, setWorld() {}, flight() {}, update() {} }));
 audio.setVolumes(settings);
 audio.setWorld(field);
 
@@ -370,6 +370,10 @@ async function openStory(from: number): Promise<void> {
           },
           setLang: (l) => ui.setLang(l),
           sound: (s) => audio.play(s),
+          soundOn: () => audio.started,
+          startSound: () => audio.start(),
+          type: (k, pan, delay) => audio.type(k, pan, delay),
+          duck: (d) => audio.duck(d),
           onOpen: () => {
             select(null);
             uiRoot.inert = true;

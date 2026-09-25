@@ -1,12 +1,14 @@
 import type { HeightField } from '../heightfield';
-import { VOLUME_KEYS, type AnimalCall, type RoamSound, type UISound, type VolumeKey } from '../types';
+import { VOLUME_KEYS, type AnimalCall, type Duck, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { Ambience } from './ambience';
 import { Animals } from './animals';
-import { clamp01, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
+import { clamp01, glide, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
 import { Explorer, roamBus } from './explorer';
 import type { StepSets } from './footsteps';
+import type { Strike } from './typewriter';
 import { Music } from './music';
 import { Sfx } from './sfx';
+import { Typing } from './typing';
 import { Water, type Ears } from './water';
 
 /**
@@ -26,7 +28,11 @@ import { Water, type Ears } from './water';
  * calls, placed on the map: animals.ts); `steps` (the explorer's footsteps)
  * and `moves` (his other sounds, the lasting wind, sail and wake too:
  * explorer.ts `roamBus`); `ui` (the interface and the camera's flights:
- * sfx.ts; the bell on entering a place). A new kind of sound picks one.
+ * sfx.ts; the bell on entering a place; the story's typing: typing.ts). A
+ * new kind of sound picks one.
+ *
+ * While the story is open the background buses (`FADED`) duck — step back
+ * to a lower level — and duck further while its words type in (`duck()`).
  *
  * `master` (the Master slider) comes after the compressor, so turning it
  * down makes everything quieter without changing the mix. `out` fades
@@ -44,6 +50,10 @@ export type BusName = Exclude<VolumeKey, 'master'>;
 export const BUSES: readonly BusName[] = VOLUME_KEYS.filter((k): k is BusName => k !== 'master');
 /** Buses that swell in on start (the lasting background); the explorer's sounds and the interface never wait. */
 const FADED: ReadonlySet<BusName> = new Set<BusName>(['music', 'ambience', 'water', 'animals']);
+/** The background's level while ducked (`FADED` buses), and how fast it goes down and comes back (time constants, s). */
+const DUCK: Record<Duck, number> = { none: 1, story: 0.5, typing: 0.3 };
+const DUCK_DOWN = 0.25;
+const DUCK_UP = 0.9;
 
 export interface Mix {
   /** 0 day … 1 night. */
@@ -55,21 +65,30 @@ const REVERB = 0.5;
 /** Level after the compressor (it adds make-up gain; this takes it back). */
 const TRIM = 0.62;
 
-/** A mixer channel: `dry` and `wet` (reverb send) inputs under one volume, with a fade-in. */
+/** A mixer channel: `dry` and `wet` (reverb send) inputs under one volume, with a fade-in and a duck. */
 export class Bus {
   readonly dry: GainNode;
   readonly wet: GainNode;
   private readonly fades: GainNode[];
+  private readonly ducks: GainNode[];
 
   constructor(ctx: BaseAudioContext, out: AudioNode, reverb: AudioNode, faded: boolean) {
     this.dry = ctx.createGain();
     this.wet = ctx.createGain();
     const fd = ctx.createGain();
     const fw = ctx.createGain();
-    this.dry.connect(fd).connect(out);
-    this.wet.connect(fw).connect(reverb);
+    const dd = ctx.createGain();
+    const dw = ctx.createGain();
+    this.dry.connect(fd).connect(dd).connect(out);
+    this.wet.connect(fw).connect(dw).connect(reverb);
     this.fades = [fd, fw];
+    this.ducks = [dd, dw];
     if (faded) for (const f of this.fades) f.gain.value = 0;
+  }
+
+  /** Step back to `g` (0‥1) or come back up (1), gliding with time constant `tc` (0: jump). */
+  duck(g: number, t: number, tc: number): void {
+    for (const d of this.ducks) glide(d.gain, g, t, tc);
   }
 
   /** Slider 0‥1 → gain (squared: closer to how loud it feels). */
@@ -115,9 +134,12 @@ export class SoundEngine {
   private readonly music: Music;
   private readonly water: Water;
   private readonly sfx: Sfx;
+  private readonly typing: Typing;
   private readonly explorer: Explorer;
   private readonly animals: Animals;
   private applied: Mix = { night: -1 };
+  /** The background's duck level now (`DUCK`). */
+  private ducked = 1;
   private volumes = Object.fromEntries(VOLUME_KEYS.map((k) => [k, 1])) as Volumes;
 
   constructor(ctx: BaseAudioContext, opts: { seed?: number } = {}) {
@@ -153,6 +175,7 @@ export class SoundEngine {
     this.music = new Music(this);
     this.water = new Water(this);
     this.sfx = new Sfx(this);
+    this.typing = new Typing(this);
     this.explorer = new Explorer(this);
     this.animals = new Animals(this);
   }
@@ -223,6 +246,21 @@ export class SoundEngine {
     this.sfx.play(s, Math.max(when, this.ctx.currentTime));
   }
 
+  /** A key of the story's typing, panned −1‥1 (on the `ui` bus). */
+  type(k: TypeKey, pan = 0, when = 0): void {
+    if (!this.heard('ui')) return;
+    this.typing.play(k, pan, Math.max(when, this.ctx.currentTime));
+  }
+
+  /** The background (`FADED` buses) steps back for the story, or comes back (`none`); `immediate`: no glide. */
+  duck(d: Duck, immediate = false): void {
+    const t = this.ctx.currentTime;
+    const g = DUCK[d];
+    const tc = immediate ? 0 : g < this.ducked ? DUCK_DOWN : DUCK_UP;
+    this.ducked = g;
+    for (const b of FADED) this.bus[b].duck(g, t, tc);
+  }
+
   /** A camera flight of `seconds` begins (on the `ui` bus). */
   flight(seconds: number, when = 0): void {
     if (!this.heard('ui')) return;
@@ -238,6 +276,11 @@ export class SoundEngine {
   /** The recorded footsteps, once loaded (`footsteps.ts`); until then (or `null`) the steps are synthesized. */
   setFootsteps(steps: StepSets | null): void {
     this.explorer.steps = steps;
+  }
+
+  /** The recorded typewriter strikes, once cut (`typewriter.ts`); until then (or `null`) they are synthesized. */
+  setTypewriter(strikes: readonly Strike[] | null): void {
+    this.typing.strikes = strikes;
   }
 
   /** Footsteps played so far on each ground: [recorded, synthesized] (for checks). */

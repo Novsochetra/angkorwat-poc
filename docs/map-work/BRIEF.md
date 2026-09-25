@@ -125,6 +125,14 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   ui. `explorer.ts roamBus` says which roaming sound goes to which bus.
   `audio.debug()` in the console shows the buses and whether the recorded
   steps are loaded.
+- The story's typing (`audio/typing.ts`, on the ui bus): an old typewriter,
+  one strike per word as it shows (Khmer words: `Intl.Segmenter`), cut from
+  the recording in `assets/sound/` (`audio/typewriter.ts`; synthesized until
+  it loads); the title is a heavy strike. Panned by where the word is on
+  screen.
+  While the story is open the background buses (music, ambience, water,
+  animals) duck to half, and to 0.3 while words type in (`DUCK` in
+  `audio/engine.ts`).
 
 Because of roaming, the map is also seen from the ground and from every
 direction: land, trees, mist and sky must hold up from there too (no
