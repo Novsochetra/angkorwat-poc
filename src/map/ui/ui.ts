@@ -20,8 +20,9 @@ import { steppedRing, steppedShape } from './shape';
  * While the explorer roams the map (`setRoaming`), the picker steps back:
  * no title, hint or info panel; the cards become small name pins over their
  * beacons that fade with distance and cannot be clicked; the keys and clicks
- * are the roaming's. The gear and mute buttons stay (top right); the roaming
- * HUD has the top-left and bottom-left corners and the bottom centre.
+ * are the roaming's. The gear and mute buttons stay (top right), the
+ * mini-map under them fades while the settings are open; the roaming HUD has
+ * the top-left and bottom-left corners and the bottom centre.
  *
  * Shots (`?shot=1`) can show states: `uistate=` a comma list of
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
@@ -79,6 +80,19 @@ const ART = { w: 1672, h: 941 };
 const UNMUTE_KEY = 'angkor-map-unmute';
 /** Every volume but the master. */
 const PART_KEYS = VOLUME_KEYS.filter((k) => k !== 'master');
+/** Where each volume's slider goes: at the top (master, music), or under a sub-heading (its word): the sounds around you, your own. */
+const SOUND_PART: Record<VolumeKey, WordKey | null> = {
+  master: null,
+  music: null,
+  ambience: 'soundAround',
+  water: 'soundAround',
+  animals: 'soundAround',
+  steps: 'soundYours',
+  moves: 'soundYours',
+  ui: 'soundYours',
+};
+/** The on / off settings (a switch each in the panel). */
+type SwitchKey = 'calm' | 'easyFly';
 /** The language switch: each button shows its language in that language. */
 const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'EN' };
 /** Latin fonts, and the Khmer ones they fall back to (lang.ts). */
@@ -218,34 +232,50 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   gearBtn.setAttribute('aria-expanded', 'false');
   corner.append(langSwitch, muteBtn, gearBtn);
 
+  const slider = (k: VolumeKey) =>
+    `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`;
+  // (the sliders in `VOLUME_KEYS` order, a sub-heading over each part but the top)
+  const soundParts = [...new Set(VOLUME_KEYS.map((k) => SOUND_PART[k]))].map((p) => {
+    const rows = VOLUME_KEYS.filter((k) => SOUND_PART[k] === p).map(slider).join('');
+    return p ? `<div class="mu-set-sub" role="group" aria-labelledby="mu-${p}-h"><h4 id="mu-${p}-h" data-t="${p}"></h4>${rows}</div>` : rows;
+  });
   const panel = framed(el('section', 'mu-settings', `
     <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x" data-t-aria="closeSettings">${ICON.close}</button></div>
-    <div class="mu-set-group" role="group" data-t-aria="sound">
-      <h3 data-t="sound"></h3>
-      ${VOLUME_KEYS.map((k) => `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`).join('')}
-    </div>
-    <div class="mu-set-group">
-      <h3 id="mu-time-h" data-t="time"></h3>
-      <div class="mu-seg" role="group" aria-labelledby="mu-time-h">
-        <button type="button" data-time="day">${ICON.sun}<span data-t="day"></span></button>
-        <button type="button" data-time="night">${ICON.moon}<span data-t="night"></span></button>
-        <button type="button" data-time="cycle">${ICON.cycle}<span data-t="cycle"></span></button>
+    <div class="mu-set-body">
+      <div class="mu-set-group" role="group" data-t-aria="sound">
+        <h3 data-t="sound"></h3>
+        ${soundParts.join('')}
       </div>
-    </div>
-    <div class="mu-set-row">
-      <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
-      <button type="button" class="mu-switch" role="switch" aria-labelledby="mu-calm-l"><span></span></button>
-    </div>
-    <div class="mu-set-row">
-      <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
-      <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
+      <div class="mu-set-group">
+        <h3 id="mu-time-h" data-t="time"></h3>
+        <div class="mu-seg" role="group" aria-labelledby="mu-time-h">
+          <button type="button" data-time="day">${ICON.sun}<span data-t="day"></span></button>
+          <button type="button" data-time="night">${ICON.moon}<span data-t="night"></span></button>
+          <button type="button" data-time="cycle">${ICON.cycle}<span data-t="cycle"></span></button>
+        </div>
+      </div>
+      <div class="mu-set-row">
+        <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
+        <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span></span></button>
+      </div>
+      <div class="mu-set-row">
+        <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
+        <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span></span></button>
+      </div>
+      <div class="mu-set-row">
+        <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
+        <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
+      </div>
     </div>`), 'lg');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
   panel.dataset.tAria = 'settings';
   const sliders = [...panel.querySelectorAll<HTMLInputElement>('input[type=range]')];
   const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button')];
-  const calmSwitch = panel.querySelector<HTMLButtonElement>('.mu-switch')!;
+  /** The on / off settings: a switch each (`data-set` names the setting). */
+  const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch')];
+  /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
+  const setBody = panel.querySelector<HTMLElement>('.mu-set-body')!;
 
   // ── Hint, fade, live region ─────────────────────────────────────────────
   const hint = el('p', 'mu-hint', `${ICON.plane}<span data-t="hint"></span>`);
@@ -256,9 +286,28 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   root.append(title, hint, pinsNav, info, corner, panel, fade, live);
 
   // ── Words (lang.ts) ──────────────────────────────────────────────────────
+  /**
+   * The easy flying note names the glider's keys, or the stick of the touch
+   * controls (roam/touch.ts) when the last press was a finger (on a
+   * touch-first device, before any).
+   */
+  const flyNote = panel.querySelector<HTMLElement>('.mu-fly-note')!;
+  let touchUse = matchMedia('(pointer: coarse)').matches;
+  const fillFlyNote = () => (flyNote.textContent = t(touchUse ? 'easyFlyNoteTouch' : 'easyFlyNote'));
+  addEventListener(
+    'pointerdown',
+    (e) => {
+      if ((e.pointerType === 'touch') === touchUse) return;
+      touchUse = !touchUse;
+      fillFlyNote();
+    },
+    { capture: true, passive: true },
+  );
+
   /** Every word in the language in use: the marked elements, the cards and the open panel. */
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
+    fillFlyNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-title]')) e.title = t(e.dataset.tTitle as WordKey);
     for (const c of cards) {
@@ -302,6 +351,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       { r: hint.getBoundingClientRect(), up: true },
     ];
     measureInfo();
+    scrollEdges();
     // Shots render once: place the cards again with the new sizes.
     if (lastAnchors) place(lastAnchors, 0);
   }
@@ -459,7 +509,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       s.setAttribute('aria-valuetext', t('percent', { n: String(v) }));
     }
     for (const b of segBtns) b.setAttribute('aria-pressed', String(b.dataset.time === settings.time));
-    calmSwitch.setAttribute('aria-checked', String(settings.calm));
+    for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
     const muted = isMuted();
     muteBtn.innerHTML = '';
     muteBtn.append(el('span', 'mu-bg'));
@@ -482,6 +532,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (open === settingsOpen) return;
     settingsOpen = open;
     panel.classList.toggle('is-open', open);
+    // (the roaming mini-map, under the gear, fades while the panel is open: map.css)
+    root.classList.toggle('mu-set-open', open);
     panel.inert = !open;
     if (open) panel.removeAttribute('aria-hidden');
     else panel.setAttribute('aria-hidden', 'true');
@@ -491,6 +543,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (open) sliders[0].focus({ preventScroll: true });
     else if (panel.contains(document.activeElement)) gearBtn.focus({ preventScroll: true });
   }
+  /** Soft edges on the panel's body where there is more to scroll to (map.css). */
+  function scrollEdges(): void {
+    setBody.classList.toggle('is-more-up', setBody.scrollTop > 1);
+    setBody.classList.toggle('is-more-down', setBody.scrollTop + setBody.clientHeight < setBody.scrollHeight - 1);
+  }
+  setBody.addEventListener('scroll', scrollEdges, { passive: true });
   panel.inert = true;
   panel.setAttribute('aria-hidden', 'true');
   info.inert = true;
@@ -525,10 +583,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       change({ time });
       h.onSound('toggle');
     });
-  calmSwitch.addEventListener('click', () => {
-    change({ calm: !settings.calm });
-    h.onSound('toggle');
-  });
+  for (const b of switches)
+    b.addEventListener('click', () => {
+      const k = b.dataset.set as SwitchKey;
+      change({ [k]: !settings[k] });
+      h.onSound('toggle');
+    });
   for (const b of langBtns)
     b.addEventListener('click', () => {
       const l = b.dataset.lang as Lang;

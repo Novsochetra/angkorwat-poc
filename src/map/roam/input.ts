@@ -1,13 +1,24 @@
 import { TouchControls } from './touch';
 import type { RoamInput } from './types';
 
+/** Q / R turn the camera round him at this speed (radians/s, as on the game page), easing in and out at this rate (1/s). */
+const ORBIT_SPEED = 1.8;
+const ORBIT_EASE = 10;
+/**
+ * A mouse drag turns the view this much per pixel (radians; across, up and
+ * down), as on the game page: round him, through the camera, the selfie
+ * phone round his head.
+ */
+const DRAG = { orbit: [0.005, 0.004], camera: [0.0035, 0.0035], selfie: [0.004, 0.003] } as const;
+
 /**
  * Input while roaming, all mapped onto one `RoamInput`:
  *
  * - keys: WASD / arrows move (relative to the camera), Shift runs, Space
  *   jumps (and opens or closes the parachute), E / Enter uses, Esc goes back
- *   to the overview; the explorer's tools and emotes (`TOOL_KEYS`: 1–5, Z,
- *   Y, O, F, C, U, P, H, G, X, V, ?) come as `taps` for tools.ts;
+ *   to the overview, Q / R held turn the camera round him (as a drag does);
+ *   the explorer's tools and emotes (`TOOL_KEYS`: 1–5, Z, Y, O, F, C, U, P,
+ *   H, G, X, V, ?) come as `taps` for tools.ts;
  * - mouse: drag the view (either button) to turn the camera, wheel to zoom,
  *   a click (no drag) is `click`, and where it points is `pointer`;
  * - touch: a joystick, Jump and Use buttons, drag to look, pinch to zoom
@@ -28,6 +39,10 @@ export class RoamControls {
   private drag: { id: number; x: number; y: number; moved: number; t: number } | null = null;
   private clicked = false;
   private readonly look = { yaw: 0, pitch: 0, zoom: 0 };
+  /** Q / R turn speed now (radians/s, + = left), eased. */
+  private orbit = 0;
+  /** The camera or the selfie phone is up (the drag moves that instead). */
+  private photo: 'camera' | 'selfie' | null = null;
   private readonly touch: TouchControls;
   private pad = { jump: false, use: false, exit: false };
   private script: ScriptStep[] | null = null;
@@ -69,9 +84,9 @@ export class RoamControls {
         this.state.pointer = this.mouse;
       }
       if (!this.drag || e.pointerId !== this.drag.id) return;
-      const k = 3.2 / Math.max(innerHeight, 1);
-      this.look.yaw -= (e.clientX - this.drag.x) * k;
-      this.look.pitch += (e.clientY - this.drag.y) * k;
+      const [kx, ky] = DRAG[this.photo ?? 'orbit'];
+      this.look.yaw -= (e.clientX - this.drag.x) * kx;
+      this.look.pitch += (e.clientY - this.drag.y) * ky;
       this.drag.moved += Math.abs(e.clientX - this.drag.x) + Math.abs(e.clientY - this.drag.y);
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
@@ -143,7 +158,7 @@ export class RoamControls {
     s.jumpHeld = on('Space') || t.jumpHeld;
     s.use = hit('KeyE', 'Enter') || t.useHit;
     s.exit = hit('Escape') || t.closeHit;
-    s.lookYaw = this.look.yaw + t.look.yaw;
+    s.lookYaw = this.look.yaw + t.look.yaw + this.orbitTurn((on('KeyQ') ? 1 : 0) - (on('KeyR') ? 1 : 0), dt);
     s.lookPitch = this.look.pitch + t.look.pitch;
     s.zoom = this.look.zoom + t.look.zoom;
     this.taps.clear();
@@ -177,8 +192,9 @@ export class RoamControls {
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
   }
 
-  /** Photo mode on touch: a put-away button, and a shutter for the camera (the selfie frame has its own), instead of the stick and Jump (tools.ts). */
+  /** Photo mode (tools.ts): the drag moves the camera or the phone, and on touch a put-away button and a shutter for the camera (the selfie frame has its own) take the place of the stick and Jump. */
   setShutter(kind: 'camera' | 'selfie' | null): void {
+    this.photo = kind;
     this.touch.setShutter(kind);
   }
 
@@ -187,7 +203,24 @@ export class RoamControls {
     this.clear();
     this.keys.clear();
     this.drag = null;
+    this.orbit = 0;
     this.touch.release();
+  }
+
+  /**
+   * The camera's turn this frame from Q / R held (`dir`: +1 Q, −1 R, 0
+   * neither). The speed eases to `dir` × ORBIT_SPEED; the turn is its exact
+   * sum over the frame, so any frame rate turns alike, and a press of t
+   * seconds turns ORBIT_SPEED × t in all (as on the game page, only smooth).
+   */
+  private orbitTurn(dir: number, dt: number): number {
+    const goal = dir * ORBIT_SPEED;
+    const k = 1 - Math.exp(-ORBIT_EASE * dt);
+    const turn = goal * dt + ((this.orbit - goal) * k) / ORBIT_EASE;
+    this.orbit += (goal - this.orbit) * k;
+    // (stopped: no turn at all, so the camera's auto-follow comes back)
+    if (!dir && Math.abs(this.orbit) < 0.02) this.orbit = 0;
+    return turn;
   }
 
   /** The first connected gamepad, added onto the state (standard mapping). */
@@ -238,7 +271,7 @@ export class RoamControls {
     s.jump = fresh && s.jumpHeld;
     s.use = fresh && k.includes('e');
     s.exit = fresh && k.includes('x');
-    s.lookYaw = (step?.turn ?? 0) * dt;
+    s.lookYaw = (step?.turn ?? 0) * dt + this.orbitTurn(step?.orbit ?? 0, dt);
     s.lookPitch = (step?.tilt ?? 0) * dt;
     s.zoom = 0;
     this.taps.clear();
@@ -247,14 +280,15 @@ export class RoamControls {
   }
 }
 
-const ROAM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyE', 'Enter', 'Escape']);
+const ROAM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyE', 'Enter', 'Escape', 'KeyQ', 'KeyR']);
 
 /**
  * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·
  * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie (T: stick) ·
  * F wave · C cheer · U look up · P peek · H hat · G outfit · X face ·
- * V album · ? all keys. (Not M, B, K or J: the mini-map, the bug report,
- * the block look panel and "Jump in" have them.)
+ * V album · ? all keys. (Not M, N, B, K or J: the mini-map and its nearest
+ * glider ramp, the bug report, the block look panel and "Jump in" have them;
+ * Q and R turn the camera.)
  */
 export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5',
@@ -266,19 +300,22 @@ export const TOOL_KEYS: ReadonlySet<string> = new Set([
  * (move), r (run), j (jump: pressed at the start of the step, held through
  * it), e (use), x (exit), c (a click on the view: in photo mode, a photo);
  * `turn` turns the camera (radians/s, + = left),
- * `tilt` tilts it (radians/s, + = look down more).
+ * `tilt` tilts it (radians/s, + = look down more),
+ * `orbit` holds Q (+1) or R (−1): the camera's eased turn round him.
  */
 export interface ScriptStep {
   keys: string;
   seconds: number;
   turn?: number;
   tilt?: number;
+  orbit?: number;
 }
 
 /**
- * `sim=w:2,wr:3,j:0.5,_:1,e:0.2,a<0.6:1,_^0.4:1` → steps. `_` = no keys;
- * `<rate` after the keys turns the camera (radians/s, + = left), `^rate`
- * tilts it (+ = down).
+ * `sim=w:2,wr:3,j:0.5,_:1,e:0.2,a<0.6:1,_^0.4:1,w<:1.5` → steps. `_` = no
+ * keys; after the keys, `<` alone holds Q and `>` alone R (the camera goes
+ * round him, eased, as with the keys), `<rate` / `>rate` turn it left /
+ * right at a steady rate (radians/s), `^rate` tilts it (+ = down).
  */
 export function parseScript(spec: string): ScriptStep[] {
   return spec
@@ -286,13 +323,15 @@ export function parseScript(spec: string): ScriptStep[] {
     .filter(Boolean)
     .map((part) => {
       const [head, secs] = part.split(':');
-      const m = /^([^<^]*)(?:<(-?[\d.]+))?(?:\^(-?[\d.]+))?$/.exec(head);
+      const m = /^([^<>^]*)(?:([<>])(-?[\d.]+)?)?(?:\^(-?[\d.]+))?$/.exec(head);
       const keys = m?.[1] ?? head;
+      const side = m?.[2] === '>' ? -1 : 1;
       return {
         keys: keys === '_' ? '' : keys,
         seconds: Number(secs ?? 1) || 1,
-        turn: m?.[2] ? Number(m[2]) : undefined,
-        tilt: m?.[3] ? Number(m[3]) : undefined,
+        turn: m?.[3] ? side * Number(m[3]) : undefined,
+        tilt: m?.[4] ? Number(m[4]) : undefined,
+        orbit: m?.[2] && !m[3] ? side : undefined,
       };
     });
 }

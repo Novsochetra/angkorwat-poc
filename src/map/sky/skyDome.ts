@@ -203,8 +203,11 @@ export function buildSkyDome(): SkyDome {
         // The haze band at the horizon: exactly the haze, as far land fades into it.
         vec3 haze = hazeColorDir(d);
         col = mix(col, haze, 1.0 - smoothstep(-0.01, 0.12, e));
-        // Below the horizon: the sea of mist.
+        // Below the horizon: the sea of mist (seen from high up, over the sunk
+        // backdrop): a mist surface ≈ 20 m up, hazed with its distance as the
+        // mist layers over it are, so their far end melts into it.
         vec3 low = mix(haze, hazeMistColor(vec2(1.0, 0.55), haze), hazeHeight.w);
+        low = mix(low, haze, hazeDistance(max(cameraPosition.y - 20.0, 1.0) / max(-e, 0.002)));
         col = mix(col, low, smoothstep(0.0, -0.05, e));
 
         // Stars.

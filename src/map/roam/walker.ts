@@ -2,6 +2,7 @@ import { RUN_SPEED, WALK_SPEED } from '../../world/scale';
 import { SURFACE } from '../heightfield';
 import type { PlaceDef } from '../layout';
 import type { RoamSound } from '../types';
+import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
@@ -227,11 +228,11 @@ export function createWalker(): RoamModeHandler {
           const d0 = world.edgeDistance(pos.x, pos.z);
           const d1 = world.edgeDistance(pos.x + dx, pos.z + dz);
           if (d1 < EDGE_SOFT && d1 < d0) {
-            const t = Math.max(0, d1 / EDGE_SOFT) ** 1.5;
-            dx *= t;
-            dz *= t;
-            if (t < 0.1 && ctx.t > edgeToast) {
-              ctx.hud.toast('The mist is too thick to go further');
+            const slow = Math.max(0, d1 / EDGE_SOFT) ** 1.5;
+            dx *= slow;
+            dz *= slow;
+            if (slow < 0.1 && ctx.t > edgeToast) {
+              ctx.hud.toast(t('rMist'));
               edgeToast = ctx.t + 8;
             }
           }
@@ -365,8 +366,8 @@ export function createWalker(): RoamModeHandler {
           setPrompt(ctx, null);
           return 'hang';
         }
-        if (long) setPrompt(ctx, CHUTE);
-        else if (prompt === CHUTE) setPrompt(ctx, null);
+        if (long) setPrompt(ctx, fallPrompt());
+        else if (prompt === fallPrompt()) setPrompt(ctx, null);
       }
 
       // ── Deep water: into a boat ───────────────────────────────────────────
@@ -381,14 +382,14 @@ export function createWalker(): RoamModeHandler {
       if (body.grounded) {
         const boat = mooredBoatNear(pos.x, pos.z);
         if (boat && Math.abs(boat.level - pos.y) < 4) {
-          setPrompt(ctx, 'E  Board the boat');
+          setPrompt(ctx, `E  ${t('rBoard')}`);
           if (input.use) {
             setPrompt(ctx, null);
             return 'boat';
           }
         } else if (world.launchNear?.(pos.x, pos.z, pos.y)) {
           // A take-off ramp on a cliff top.
-          setPrompt(ctx, 'E  Fly the hang glider');
+          setPrompt(ctx, `E  ${t('rFly')}`);
           if (input.use) {
             setPrompt(ctx, null);
             return 'hang';
@@ -398,7 +399,7 @@ export function createWalker(): RoamModeHandler {
           setPrompt(ctx, place ? placePrompt(place) : null);
           if (place && input.use) {
             if (place.href) ctx.enter(place);
-            else ctx.hud.toast(`${place.name} is not open yet — coming soon`);
+            else ctx.hud.toast(t('rNotOpen', { name: placeText(place).name }));
           }
         }
       }
@@ -432,7 +433,8 @@ export function createWalker(): RoamModeHandler {
   }
 }
 
-const CHUTE = 'Space  Parachute  ·  E  Hang glider';
+/** The prompt in a long fall (the words in the language in use: ui/lang.ts). */
+const fallPrompt = () => `Space  ${t('jumpChute')}  ·  E  ${t('jumpGlider')}`;
 
 /**
  * The footstep for the ground at the feet (x, y, z): wading in water over
@@ -453,7 +455,8 @@ export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSo
     case SURFACE.sand:
       return 'stepSand';
     case SURFACE.bed:
-      return 'stepWater';
+      // (wet at the water's edge; a dry bed well over the water is sand)
+      return water !== null && water > y - 0.3 ? 'stepWater' : 'stepSand';
     case SURFACE.rock:
     case SURFACE.path:
     case SURFACE.pad:
@@ -465,5 +468,6 @@ export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSo
 
 /** The prompt at a place's beacon. */
 function placePrompt(place: PlaceDef): string {
-  return place.href ? `E  Enter ${place.name}` : `${place.name} — coming soon`;
+  const name = placeText(place).name;
+  return place.href ? `E  ${t('rEnter', { name })}` : t('rSoon', { name });
 }

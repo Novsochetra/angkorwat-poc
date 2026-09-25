@@ -9,6 +9,7 @@ import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
 import type { Foreground } from './foreground';
 import type { MapPost } from './post';
+import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
 import type { Story } from './story/story';
 import { DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
@@ -52,12 +53,22 @@ const camera = new PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 9000);
 const SETTINGS_KEY = 'angkor-map-settings';
 function loadSettings(): MapSettings {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number };
+    // (older visits kept one "effects" volume: it becomes the interface and the explorer's moves; the steps start quieter)
+    if (typeof saved.sfx === 'number') {
+      saved.ui ??= saved.sfx;
+      saved.moves ??= saved.sfx;
+      saved.steps ??= Math.min(DEFAULT_SETTINGS.steps, saved.sfx);
+      delete saved.sfx;
+    }
+    return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
+if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
+roamPrefs.easyFly = settings.easyFly;
 if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
@@ -194,6 +205,7 @@ const handlers = {
   onSettings: (s: MapSettings) => {
     settings = s;
     rig.calm = s.calm;
+    roamPrefs.easyFly = s.easyFly;
     audio.setVolumes(s);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
@@ -234,6 +246,7 @@ const roam: MapRoam | null = foreground
             if (place.href) setTimeout(() => location.assign(place.href!), 1600);
           },
           playSound: (s, gain) => audio.roam(s, gain),
+          uiSound: (s) => audio.play(s),
         }),
       () => null,
     )

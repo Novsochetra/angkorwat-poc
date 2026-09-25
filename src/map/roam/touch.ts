@@ -1,3 +1,4 @@
+import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 
 /**
@@ -46,11 +47,18 @@ export class TouchControls {
     this.wrap.className = 'rt';
     this.wrap.innerHTML = `
       <div class="rt-stick"><div class="rt-knob"></div></div>
-      <button type="button" class="rt-btn rt-use" aria-label="Use"><span class="rt-bg"></span><span class="rt-label"></span></button>
-      <button type="button" class="rt-btn rt-jump" aria-label="Jump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label">Jump</span></button>
-      <button type="button" class="rt-btn rt-shutter" aria-label="Take a photo"><span class="rt-bg"></span><span class="rt-dot"></span></button>
-      <button type="button" class="rt-btn rt-close" aria-label="Put the camera away"><span class="rt-bg"></span>${CLOSE_ICON}</button>`;
+      <button type="button" class="rt-btn rt-use" data-t-aria="rtUse"><span class="rt-bg"></span><span class="rt-label"></span></button>
+      <button type="button" class="rt-btn rt-jump" data-t-aria="rtJump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label" data-t="rtJump"></span></button>
+      <button type="button" class="rt-btn rt-shutter" data-t-aria="rtShutter"><span class="rt-bg"></span><span class="rt-dot"></span></button>
+      <button type="button" class="rt-btn rt-close" data-t-aria="rtClose"><span class="rt-bg"></span>${CLOSE_ICON}</button>`;
     document.body.append(this.wrap);
+    // Words in the language in use (ui/lang.ts; the Use button's comes with the prompt: `setUse`).
+    const fillWords = () => {
+      for (const e of this.wrap.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
+      for (const e of this.wrap.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
+    };
+    fillWords();
+    onLang(fillWords);
     this.base = this.wrap.querySelector('.rt-stick')!;
     this.knob = this.wrap.querySelector('.rt-knob')!;
     this.useBtn = this.wrap.querySelector('.rt-use')!;
@@ -126,9 +134,10 @@ export class TouchControls {
         this.pinch = d;
         return;
       }
-      const k = 3.6 / Math.max(innerHeight, 1);
-      this.look.yaw -= (e.clientX - f.x) * k;
-      this.look.pitch += (e.clientY - f.y) * k;
+      // (across by the shorter side: on a phone held upright a swipe over its
+      // narrow screen turns as far as one held sideways)
+      this.look.yaw -= ((e.clientX - f.x) * 3.6) / Math.max(Math.min(innerWidth, innerHeight), 1);
+      this.look.pitch += ((e.clientY - f.y) * 3.6) / Math.max(innerHeight, 1);
       f.x = e.clientX;
       f.y = e.clientY;
     });
@@ -250,7 +259,7 @@ function injectStyle(): void {
   styled = true;
   const style = document.createElement('style');
   style.textContent = `
-    .rt { position: fixed; inset: 0; z-index: 21; pointer-events: none; display: none; font: 700 13px/1 'Pixelify Sans', 'Nunito Sans', system-ui, sans-serif; color: #f8f0dc; user-select: none; -webkit-user-select: none; }
+    .rt { position: fixed; inset: 0; z-index: 21; pointer-events: none; display: none; font: 700 13px/1 'Pixelify Sans', 'Kantumruy Pro', 'Nunito Sans', system-ui, sans-serif; color: #f8f0dc; user-select: none; -webkit-user-select: none; }
     .rt.is-on { display: block; }
     .rt-stick { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0.35; transition: opacity 0.2s; }
     .rt-stick.is-on { opacity: 1; }

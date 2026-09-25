@@ -187,8 +187,8 @@ class Placed {
     this.level.gain.value = 0;
     this.pan = ctx.createStereoPanner();
     this.send = ctx.createGain();
-    this.input.connect(this.air).connect(this.level).connect(this.pan).connect(e.waterBus.dry);
-    this.pan.connect(this.send).connect(e.waterBus.wet);
+    this.input.connect(this.air).connect(this.level).connect(this.pan).connect(e.bus.water.dry);
+    this.pan.connect(this.send).connect(e.bus.water.wet);
   }
 
   /** Plug a source in (cut off while the voice sleeps). */

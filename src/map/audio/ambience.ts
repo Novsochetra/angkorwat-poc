@@ -90,7 +90,7 @@ export class Ambience {
     this.e = e;
     const ctx = (this.ctx = e.ctx);
     this.rnd = e.rnd;
-    const dry = e.ambBus.dry;
+    const dry = e.bus.ambience.dry;
     const now = ctx.currentTime;
     const loop = (buf: AudioBuffer, rate = 1) => {
       const s = ctx.createBufferSource();
@@ -119,7 +119,7 @@ export class Ambience {
     this.insects = gain(0);
     const soft = filter('lowpass', 7000, 0.5);
     this.insects.connect(soft).connect(dry);
-    soft.connect(gain(0.25)).connect(e.ambBus.wet);
+    soft.connect(gain(0.25)).connect(e.bus.ambience.wet);
     const layer = (make: () => AudioBuffer, pan: number, level: number, rate = 1) => {
       const p = ctx.createStereoPanner();
       p.pan.value = pan;
@@ -183,8 +183,8 @@ export class Ambience {
     pan.pan.value = range(r, -0.85, 0.85);
     const send = ctx.createGain();
     send.gain.value = 0.15 + 0.6 * dist;
-    osc.connect(env).connect(f).connect(pan).connect(this.e.ambBus.dry);
-    pan.connect(send).connect(this.e.ambBus.wet);
+    osc.connect(env).connect(f).connect(pan).connect(this.e.bus.ambience.dry);
+    pan.connect(send).connect(this.e.bus.ambience.wet);
     cleanup(osc, [osc, env, f, pan, send]);
     return { osc, env: env.gain, freq: osc.frequency, level: amp * (1 - 0.7 * dist) };
   }

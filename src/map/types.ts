@@ -141,23 +141,31 @@ export interface MapSettings {
   ambience: number;
   /** Waterfalls and rivers (louder the closer you are). */
   water: number;
-  /** Interface sounds and the explorer's own (steps, parachute, paddle). */
-  sfx: number;
+  /** Animal calls (birds, monkeys, frogs, the rooster…), where the animals are. */
+  animals: number;
+  /** The explorer's footsteps. */
+  steps: number;
+  /** The explorer's other sounds: jump and landing, parachute, hang glider wind and sail, paddle, splash, tools, camera. */
+  moves: number;
+  /** Interface sounds (hover, clicks, open / close). */
+  ui: number;
   /** Time of day: follow the clock of the page (a slow cycle) or stay. */
   time: 'day' | 'night' | 'cycle';
   /** No camera sway, short flights, no drifting clouds. */
   calm: boolean;
   /** Language of the interface (ui/lang.ts): Khmer first. */
   lang: Lang;
+  /** Easy flying for the hang glider: it holds its height hands-off, S climbs, W dives, no ceiling to speak of (roam/prefs.ts). Off: the real glider (it sinks, rising air keeps it up). */
+  easyFly: boolean;
 }
 
 /** Interface languages: Khmer and English. */
 export type Lang = 'km' | 'en';
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, sfx: 0.7, time: 'day', calm: false, lang: 'km' };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 0.7, time: 'day', calm: false, lang: 'km', easyFly: true };
 
 /** The volume settings (sliders), in panel order. */
-export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'sfx'] as const;
+export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
 export type VolumeKey = (typeof VOLUME_KEYS)[number];
 
 /** A built part of the map: main.ts adds `object` to the scene and calls `update` each frame. */

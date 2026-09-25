@@ -71,14 +71,19 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`.
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads).
-- Roaming (explorer leaps off the ledge, parachute, walk, boat, hang glider
-  from cliff-top ramps): `src/map/roam/`.
+- Roaming (Jump in: pick parachute or hang glider, then walk, boat, hang
+  glider from cliff-top ramps; Q / R or a drag orbits the camera):
+  `src/map/roam/`. Easy flying (glider holds its height, S climbs, W dives)
+  is a setting (`roam/prefs.ts`); the Cambodian flag helper is `roam/_flag.ts`.
   Check it with `roam=leap|glide|walk|boat|hang&at=x,z&yaw=<deg>&sim=w:2,wr:3`
   (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
   a selfie stick (T); `tool=`, `stick=` in shots; camera and selfie also in
   the boat and on the glider), emotes and photos (`roam/tools.ts`, `roam/photo.ts`),
-  and a mini-map (`src/map/ui/minimap.ts`, M for the big map).
+  and a mini-map (`src/map/ui/minimap.ts`, M for the big map, N the nearest
+  glider ramp).
+- Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
+  footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
 - Animals: land (`src/map/fauna/land.ts`) and water / air
   (`src/map/fauna/waterAir.ts`); their calls go through `MapFrame.calls` to
   `src/map/audio/animals.ts`.

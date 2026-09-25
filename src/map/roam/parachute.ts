@@ -3,6 +3,7 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { clamp, lerp, mixPose, smoothstep, type Pose } from '../../character/pose';
 import { JOINTS } from '../../character/skeleton';
 import { OVERVIEW, placeById } from '../layout';
+import { t } from '../ui/lang';
 import { Canopy, OPEN_TIME, type CanopyPose } from './_canopy';
 import { HARNESS, hangPose, leapPose, readyPose, tilt, type HangParams } from './_chutePoses';
 import { angleDiff } from './followCam';
@@ -14,7 +15,10 @@ import { ROAM_SCALE, type FollowCam, type RoamCtx, type RoamMode, type RoamModeH
  * - `leap`: on the ledge by the camera the explorer turns to the map, crouches,
  *   runs three steps to the edge and jumps: arms flung wide, then over into a
  *   dive, growing from his true size to the roaming size while the view
- *   swings round behind him.
+ *   swings round behind him. Then what the player picked (hud.ts) opens over
+ *   him: the parachute (`glide`), or the hang glider (`hang`, hangGlider.ts:
+ *   its wing unfolds in the air), which takes him over out of the dive
+ *   (`outOfLeap`).
  * - `glide`: the canopy comes out of his pack and opens (about 0.9 s), the
  *   harness catches him and he swings under it. A / D pull a toggle and turn
  *   (the canopy banks, the trailing edge on that side comes down), W dives
@@ -115,6 +119,40 @@ function overLedge(ctx: RoamCtx, pitch: number): number {
   return 1.3;
 }
 
+/**
+ * For a ride that starts at the end of the leap (the hang glider): tilt
+ * the follow camera up, eased, as far as it takes to keep it out of the
+ * ledge's rock as he drops past it. Away from the ledge it does nothing.
+ */
+export function keepOverLedge(ctx: RoamCtx, dt: number): void {
+  const to = overLedge(ctx, ctx.cam.pitch);
+  if (to > ctx.cam.pitch) ctx.cam.pitch += (to - ctx.cam.pitch) * (1 - Math.exp(-dt * 6));
+}
+
+/** The leap off the ledge, and what opens over him at the end of the fall (roam.ts sets it from the player's pick). */
+export interface LeapMode extends RoamModeHandler {
+  /** The parachute (`glide`, the default) or the hang glider (`hang`). */
+  opens: 'glide' | 'hang';
+}
+
+/** Blending out of the dive into another ride's pose (s, the animator's clock). */
+const OUT_OF_DIVE = 0.7;
+
+/**
+ * For a ride that takes him over at the end of the leap (the hang glider):
+ * its posture `ride`, blended in from the dive he is in (the leap keeps its
+ * pose on him when it hands over to `hang`).
+ */
+export function outOfLeap(ex: AngkorExplorer, ride: () => Pose): () => Pose {
+  const dive = ex.animator.posture?.(ex.animator.time);
+  if (!dive) return ride;
+  const t0 = ex.animator.time;
+  return () => {
+    const k = smoothstep(0.05, OUT_OF_DIVE, ex.animator.time - t0);
+    return k >= 1 ? ride() : mixPose(dive, ride(), k);
+  };
+}
+
 /** A group that poses its contents whenever the scene is drawn. */
 class PosedGroup extends Group {
   constructor(private readonly pose: () => void) {
@@ -127,7 +165,7 @@ class PosedGroup extends Group {
   }
 }
 
-export function createParachute(): { leap: RoamModeHandler; glide: RoamModeHandler } {
+export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
   const canopy = new Canopy();
   let explorer: AngkorExplorer | null = null;
   let night = 0;
@@ -299,7 +337,9 @@ export function createParachute(): { leap: RoamModeHandler; glide: RoamModeHandl
     cam.blendFrom(0);
   }
 
-  const leap: RoamModeHandler = {
+  const leap: LeapMode = {
+    opens: 'glide',
+
     enter(ctx) {
       const { body, cam } = ctx;
       explorer = body.explorer;
@@ -403,11 +443,12 @@ export function createParachute(): { leap: RoamModeHandler; glide: RoamModeHandl
       cam.yaw += angleDiff(body.yaw, cam.yaw) * (1 - Math.exp(-dt * 3));
       cam.distance = lerp(8, 12, grow);
       cam.pitch += (overLedge(ctx, lerp(0.3, CAM_PITCH, grow)) - cam.pitch) * (1 - Math.exp(-dt * 6));
-      return lt >= FALL ? 'glide' : null;
+      return lt >= FALL ? leap.opens : null;
     },
 
     exit(ctx, to) {
-      if (to !== 'glide') release(ctx.body.explorer);
+      // (the parachute and the hang glider take him over out of his dive)
+      if (to !== 'glide' && to !== 'hang') release(ctx.body.explorer);
     },
   };
 
@@ -547,7 +588,7 @@ export function createParachute(): { leap: RoamModeHandler; glide: RoamModeHandl
         const back = clamp(angleDiff(home, body.yaw) * 1.5, -0.9, 0.9);
         omega = lerp(omega, back, 0.8);
         if (!turnedBack && Math.abs(back) > 0.3) {
-          ctx.hud.toast('The wind turns you back towards the temples');
+          ctx.hud.toast(t('rWindBack'));
           turnedBack = true;
         }
       } else turnedBack = false;

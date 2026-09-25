@@ -1,10 +1,12 @@
 import { Euler, MathUtils, Quaternion, Spherical, Vector3, type PerspectiveCamera } from 'three';
 import type { AngkorExplorer, SelfieAim, SelfieGesture } from '../../character/AngkorExplorer';
-import { SELFIE_CENTER, STICK_REACH } from '../../character/Animator';
+import { SELFIE_CENTER, STICK_REACH, type HoldKind } from '../../character/Animator';
+import type { ExpressionName } from '../../character/parts/face';
 import { PHOTO_FOV, PhotoAlbum } from '../../game/Photos';
 import { BODY_UNIT_M } from '../../world/scale';
 import { PLACES, PLATEAUS } from '../layout';
 import type { RoamMode } from '../types';
+import { onLang, t, type WordKey } from '../ui/lang';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
 
@@ -39,12 +41,37 @@ const SELFIE_NEAR = 0.25;
 /** On the stick the phone keeps this far (m, true size) above the ground and the water, and short of a wall. */
 const LENS_CLEAR = 0.35;
 const GESTURES: readonly SelfieGesture[] = ['peace', 'wave', 'thumbsUp', 'none'];
-const GESTURE_NAME: Record<SelfieGesture, string> = { peace: 'peace sign', wave: 'wave', thumbsUp: 'thumbs up', none: 'no gesture' };
+const GESTURE_NAME: Record<SelfieGesture, WordKey> = { peace: 'rPeace', wave: 'rWave', thumbsUp: 'rThumbsUp', none: 'rNoGesture' };
+/** The faces' names (X; on the phone's screen too), and what the other hand holds. */
+export const FACE_NAME: Record<ExpressionName, WordKey> = {
+  neutral: 'rFaceNeutral',
+  happy: 'rFaceHappy',
+  determined: 'rFaceDetermined',
+  surprised: 'rFaceSurprised',
+  curious: 'rFaceCurious',
+  focused: 'rFaceFocused',
+};
+const HELD_NAME: Record<Exclude<HoldKind, 'none'>, WordKey> = { lantern: 'rLantern', torch: 'rTorch', flashlight: 'rFlashlight' };
 
-/** The map's keys under the viewfinder and the selfie shutter (M is the mini-map here). */
-const CAMERA_HINT = '<kbd>Click</kbd> / <kbd>Space</kbd> take · drag to look · wheel to zoom · <kbd>4</kbd> / <kbd>Esc</kbd> put away · <kbd>V</kbd> album';
-const SELFIE_HINT =
-  '<kbd>Space</kbd> / click take · drag to move the phone · wheel closer / further · <kbd>T</kbd> selfie stick · <kbd>G</kbd> gesture · <kbd>X</kbd> face · <kbd>5</kbd> / <kbd>Esc</kbd> put away · <kbd>V</kbd> album';
+/**
+ * The map's keys under the viewfinder and the selfie shutter (M is the
+ * mini-map here), in the language in use (ui/lang.ts; in English in lower case).
+ */
+const kbd = (k: string) => `<kbd>${k}</kbd>`;
+const low = (w: WordKey) => t(w).toLowerCase();
+const takeKeys = () => `${kbd('Space')} / ${low('rClick')} ${low('rTake')}`;
+const cameraHint = () => [takeKeys(), low('rDragLook'), low('rWheelZoom'), `${kbd('4')} / ${kbd('Esc')} ${low('rStow')}`, `${kbd('V')} ${low('rAlbum')}`].join(' · ');
+const selfieHint = () =>
+  [
+    takeKeys(),
+    low('rDragPhone'),
+    `${low('rWheel')} ${low('rReach')}`,
+    `${kbd('T')} ${low('rStick')}`,
+    `${kbd('G')} ${low('rGesture')}`,
+    `${kbd('X')} ${low('rFace')}`,
+    `${kbd('5')} / ${kbd('Esc')} ${low('rStow')}`,
+    `${kbd('V')} ${low('rAlbum')}`,
+  ].join(' · ');
 
 const _e = new Euler(0, 0, 0, 'YXZ');
 const _q = new Quaternion();
@@ -149,10 +176,16 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     album.onShutter = () => {
       if (kind && view > 0.95) snap = true;
     };
-    const hint = document.querySelector('.photo-finder .hint');
-    if (hint) hint.innerHTML = CAMERA_HINT;
+    showCameraHint();
     return album;
   }
+
+  /** The viewfinder's keys (the album made; again when the language changes). */
+  function showCameraHint(): void {
+    const hint = album && document.querySelector('.photo-finder .hint');
+    if (hint) hint.innerHTML = cameraHint();
+  }
+  onLang(showCameraHint);
 
   /** The camera at his eye, looking along the shot (world). In the boat or the air, from his head wherever it is. */
   function eye(out: Vector3): Vector3 {
@@ -216,7 +249,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     raise(k, ctx) {
       if (k === kind) return true;
       if (k === 'camera' && !explorer.currentOutfit.camera) {
-        d.toast('No camera with this outfit (G changes the outfit)');
+        d.toast(t('rNoCamera'));
         return false;
       }
       const mode = d.mode();
@@ -289,7 +322,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     nextGesture() {
       gesture = GESTURES[(GESTURES.indexOf(gesture) + 1) % GESTURES.length];
       explorer.selfieGesture = gesture;
-      return GESTURE_NAME[gesture];
+      return t(GESTURE_NAME[gesture]);
     },
     place(camera, pivot) {
       const k = view * view * (3 - 2 * view);
@@ -348,9 +381,11 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         // The phone's screen round the selfie, with the gesture and face on it.
         const phone = kind === 'selfie' && view > 0.9;
         // (a hand holding the lantern or torch makes no gesture)
-        const hand = explorer.currentOutfit.held === 'none' ? GESTURE_NAME[explorer.selfieGesture] : `holding the ${explorer.currentOutfit.held}`;
-        const info = phone ? `${hand} · ${explorer.currentExpression}${explorer.selfieStick ? ' · stick' : ''}` : '';
-        if (phone !== selfieFrame || info !== selfieInfo) album.setSelfieFrame(phone, info, SELFIE_HINT);
+        const held = explorer.currentOutfit.held;
+        const hand = held === 'none' ? t(GESTURE_NAME[explorer.selfieGesture]) : t('rHolding', { name: low(HELD_NAME[held]) });
+        const info = phone ? [hand, t(FACE_NAME[explorer.currentExpression]), ...(explorer.selfieStick ? [t('rStick')] : [])].join(' · ') : '';
+        // (new words, a new language: the keys line again too)
+        if (phone !== selfieFrame || info !== selfieInfo) album.setSelfieFrame(phone, info, selfieHint());
         selfieFrame = phone;
         selfieInfo = info;
       }

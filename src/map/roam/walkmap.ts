@@ -19,6 +19,11 @@ import type { MapPart } from '../types';
  * they only repeat the height field (they are hollow: only their shells are
  * blocks); rocks, pillars and lips that stand out of it are kept.
  *
+ * Two more kinds for the follow camera: `hard`, the same less tree bark, and
+ * `soft`, the leaves (crowns, bushes, vines) and bark alone over the land:
+ * what it can see through (the near fade, _nearFade.ts, dissolves them) but
+ * keeps out of, softly.
+ *
  * Cheap to make: the blocks are only sorted into 16 m chunks up front; a
  * chunk's columns are built the first time something asks about it.
  */
@@ -34,6 +39,11 @@ const BOUNDS = { x0: MAP_BOUNDS.x0 - 64, x1: MAP_BOUNDS.x1 + 64, z0: MAP_BOUNDS.
 
 /** Block families that are not solid to walk on or into. */
 const SOFT = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', 'petal', 'glow', 'water', 'wax']);
+/** What the follow camera sees through (a `soft` map holds only these, a `hard` one none). */
+const SEE_THROUGH = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', 'petal', 'mapBark']);
+
+/** What a walk map holds: see `WalkMap`. */
+export type WalkMapKind = 'walk' | 'hard' | 'soft';
 /** Parts with nothing to stand on (or that move). */
 const SKIP_PARTS = new Set(['atmosphere', 'water', 'clouds', 'life', 'roam']);
 
@@ -95,6 +105,7 @@ export class WalkMap {
   constructor(
     private readonly field: HeightField,
     parts: readonly MapPart[],
+    kind: WalkMapKind = 'walk',
   ) {
     const t0 = performance.now();
     const size = CN * RES;
@@ -128,7 +139,8 @@ export class WalkMap {
         const mesh = o as InstancedMesh;
         if (!mesh.isInstancedMesh || !mesh.userData.voxelShape || !mesh.count) return;
         const mat = mesh.name.slice(mesh.name.lastIndexOf(':') + 1) as VoxelMaterialKey;
-        if (SOFT.has(mat) || (skip && isUnder(mesh, skip))) return;
+        const keep = kind === 'soft' ? SEE_THROUGH.has(mat) : !SOFT.has(mat) && !(kind === 'hard' && SEE_THROUGH.has(mat));
+        if (!keep || (skip && isUnder(mesh, skip))) return;
         if (this.sources.length >= 1 << MESH_BITS || mesh.count > INST_MASK) return;
         const s = this.sources.length;
         this.sources.push({ array: mesh.instanceMatrix.array as Float32Array, world: mesh.matrixWorld.equals(IDENTITY) ? null : mesh.matrixWorld.clone() });
@@ -211,13 +223,20 @@ export class WalkMap {
     return false;
   }
 
-  /** Part of the segment a → b (0‥1) that is free of solid blocks, from a. */
-  clearance(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+  /**
+   * Part of the segment a → b (0‥1) that is free of solid blocks, from a.
+   * With `leave`, what a is inside does not count: from where the segment
+   * comes out of it (he stands in a bush).
+   */
+  clearance(ax: number, ay: number, az: number, bx: number, by: number, bz: number, leave = false): number {
     const len = Math.hypot(bx - ax, by - ay, bz - az);
     const n = Math.max(1, Math.ceil(len / (RES * 0.5)));
+    let inside = leave && this.solid(ax, ay, az);
     for (let i = 1; i <= n; i++) {
       const t = i / n;
-      if (this.solid(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t)) return (i - 1) / n;
+      const hit = this.solid(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t);
+      if (inside) inside = hit;
+      else if (hit) return (i - 1) / n;
     }
     return 1;
   }

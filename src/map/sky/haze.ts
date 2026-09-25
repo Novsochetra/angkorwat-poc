@@ -11,7 +11,9 @@ import { ShaderChunk, ShaderLib, UniformsLib, type Color, type Texture, type Vec
  *    swirls) and breathe. Seen from low down (roaming) it keeps clear near
  *    the eye and builds up further off;
  *  - wisps between the mesas: a thin streaky layer ≈ 27 m up, over low ground;
- *  - cloud shadows: soft darker patches drifting over the land by day.
+ *  - cloud shadows: soft darker patches drifting over the land by day;
+ *  - seen from high up (the hang glider), the sea of mist reaching in over
+ *    the land's front edge, so it never shows as a straight cut.
  *
  * `scene.fog` is a plain `Fog`: its colour is the haze away from the sun,
  * `near` where haze starts, `far` the distance of about 63 % haze.
@@ -180,6 +182,19 @@ vec2 hazeBanks(vec2 xz) {
   float m = smoothstep(cov - 0.16, cov + 0.24, n) * allow;
   return vec2(m, clamp(0.5 + (nl - n) * 6.0, 0.0, 1.0));
 }
+// Seen from high over the land (the hang glider climbs to 700 m), its front
+// edge would show as a straight cut into the sea of mist: the sea reaches in
+// over it, its inland side ragged and drifting with the wind. (The overview
+// camera, beyond that edge, and the places' cameras never see it.) How much
+// of it lies over xz, 0‥1, seen from the eye.
+float hazeFrontBank(vec2 xz, vec3 eye) {
+  float high = smoothstep(90.0, 300.0, eye.y) * smoothstep(140.0, 115.0, eye.z);
+  if (high <= 0.0) return 0.0;
+  float inside = (1.0 - (xz.y - hazeLandBounds.y) * hazeLandBounds.w) / max(hazeLandBounds.w, 1e-6);
+  // (it reaches further in the higher the eye: 40‥190 m at the top)
+  float reach = (40.0 + 150.0 * texture2D(hazeNoise, (xz - HAZE_WIND * hazeMist.x * 3.0) / 320.0).r) * (0.6 + 0.4 * high);
+  return high * (1.0 - smoothstep(reach * 0.35, reach, inside));
+}
 // Share of valley mist between the eye (height ye) and a point (height yp), d
 // apart, where the banks there are m thick (they rise as mounds).
 float hazeHeightAmount(float ye, float yp, float d, float m) {
@@ -296,6 +311,12 @@ const FOG_FRAGMENT = /* glsl */ `
   #endif
   float fogFactor = hazeDistance(hzDist);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, hzCol, fogFactor);
+  #ifndef HAZE_MIST
+    // From high up, the land's front edge sinks into the sea of mist beyond it
+    // (its colour as the sky shows it below the horizon: no line between them).
+    vec3 hzSea = mix(mix(hzCol, hazeMistColor(vec2(1.0, 0.55), hzCol), hazeHeight.w), hzCol, fogFactor);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, hzSea, hazeFrontBank(vFogWorld.xz, cameraPosition));
+  #endif
 #endif
 `;
 

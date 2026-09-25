@@ -1,21 +1,24 @@
-import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Quaternion, Vector3, type InstancedMesh } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Matrix3, Mesh, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
+import { FLAG_ASPECT, FLAG_BLUE, flagMaterial } from './_flag';
 
 /**
- * The explorer's hang glider: a delta wing in Khmer colours (saffron and
- * deep red panels, a gold leading edge, a gold-edged temple tower in the
- * middle that reads from below and from above), its tubes, wires, the
- * control frame he holds and the strap he hangs from.
+ * The explorer's hang glider: a delta wing of cream silk with the flag of
+ * Cambodia on each wing half (a flat panel sewn on top, upright from behind,
+ * and one under it, upright from below), a blue leading edge, its tubes,
+ * wires, the control frame he holds and the strap he hangs from.
  *
  * It is posed every frame from outside (`pose`). The frame, the king post
  * and the control frame are rigid: they ride on the glider's own group. The
  * sail is a fan of blocks round the nose. Folding swings each leading edge
  * round the nose towards the keel, and the fan of sail between them closes
  * into pleats, like a paper fan, so opening it looks like a glider being
- * unfolded. The trailing edge ripples with the airspeed.
+ * unfolded. The trailing edge ripples with the airspeed. The sail is flat
+ * under the flags, which ride along while it is open and are tucked away
+ * as it folds.
  *
  * Glider space: origin at the hang point on the keel, +z forward (the
  * nose), +y up, +x the pilot's left (as in the explorer's own space). Sizes
@@ -64,6 +67,16 @@ const DA = OPEN_ANGLE / COLS;
 const R0 = 0.14;
 /** Leading-edge pocket: blocks along each side. */
 const NLE = 7;
+/**
+ * The flag on each wing half, top towards the nose: its width (a good third
+ * of the half span) and height, its inner edge (|x|) and top edge (z), and
+ * how far its panels lie off the sail's faces (m).
+ */
+const FLAG_W = 1.7;
+const FLAG_H = FLAG_W / FLAG_ASPECT;
+const FLAG_IN = 0.32;
+const FLAG_TOP = 0.06;
+const FLAG_LIFT = 0.006;
 
 /** Where things are in the glider frame (m, true size). */
 export interface GliderLayout {
@@ -117,11 +130,11 @@ export interface GliderPose {
   shrink?: number;
 }
 
-// Khmer silk colours (sRGB), as on the parachute: saffron, deep red, gold, a cream core.
-const SAFFRON = [0xe98d1c, 0xf29a28, 0xe2831a];
-const RED = [0x9c2420, 0x8c1e1b, 0xa82b24];
-const GOLD = [0xe9b84b, 0xf3c75c];
-const CREAM = 0xf3e2bd;
+// Cream silk (sRGB) round the flags, as on the parachute, trimmed in the flag's blue (the leading edge, the tips,
+// a hem along the trailing edge); a gold nose.
+const SILK = [0xf1e5cb, 0xebdec2, 0xf4ead6];
+const BLUE = [FLAG_BLUE, 0x0a3092];
+const GOLD = 0xf3c75c;
 /** Dark anodised tubes (their family's rim catches the light), light fittings, leather. */
 const TUBE = [0x3b4048, 0x343941, 0x42474f];
 const FITTING = 0x8e9398;
@@ -148,12 +161,85 @@ const leadZ = (s: number) => NOSE - s * LE_BACK;
 const trailZ = (s: number) => NOSE - ROOT - (LE_BACK + TIP - ROOT) * s + SCALLOP * Math.sin(Math.PI * s);
 
 /** Height of the sail's middle at (x, z), fully open: anhedral, camber, sag between the tubes, washout. */
-function sailY(x: number, z: number): number {
+function sailShape(x: number, z: number): number {
   const s = Math.min(1, Math.abs(x) / HALF);
   const lz = leadZ(s);
   const q = clamp01((lz - z) / Math.max(1e-3, lz - trailZ(s)));
   const chord = lz - trailZ(s);
   return SAIL_Y - ANHEDRAL * s + CAMBER * chord * Math.sin(Math.PI * Math.pow(q, 0.8)) - SAG * Math.sin(Math.PI * s) * Math.pow(q, 1.5) + WASH * Math.pow(s, 2.5) * Math.pow(q, 1.5);
+}
+
+/** The plane that best fits the sail under the flag on the +x half (−x: mirrored), as y = [0] + [1]·|x| + [2]·z. */
+const FLAG_PLANE = ((): readonly [number, number, number] => {
+  // (least squares on a grid over the flag)
+  const m = new Matrix3().set(0, 0, 0, 0, 0, 0, 0, 0, 0);
+  const r = new Vector3();
+  const e = m.elements;
+  for (let i = 0; i <= 8; i++)
+    for (let j = 0; j <= 8; j++) {
+      const f = [1, FLAG_IN + (FLAG_W * i) / 8, FLAG_TOP - (FLAG_H * j) / 8];
+      const y = sailShape(f[1], f[2]);
+      r.x += f[0] * y;
+      r.y += f[1] * y;
+      r.z += f[2] * y;
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) e[a * 3 + b] += f[a] * f[b];
+    }
+  r.applyMatrix3(m.invert());
+  return [r.x, r.y, r.z];
+})();
+
+/** How much the sail at (x, z) lies on the flag's plane: 1 under the flag, easing out round it. */
+function flatAt(x: number, z: number): number {
+  const ax = Math.abs(x);
+  const dx = Math.max(FLAG_IN - ax, 0, ax - FLAG_IN - FLAG_W);
+  const dz = Math.max(z - FLAG_TOP, 0, FLAG_TOP - FLAG_H - z);
+  return 1 - ease((Math.hypot(dx, dz) - 0.08) / 0.4);
+}
+
+/** Height of the sail's middle at (x, z), fully open: its shape, flat under the flags. */
+function sailY(x: number, z: number): number {
+  const y = sailShape(x, z);
+  return y + (FLAG_PLANE[0] + FLAG_PLANE[1] * Math.abs(x) + FLAG_PLANE[2] * z - y) * flatAt(x, z);
+}
+
+/**
+ * The flag panels on the open sail (glider space): on each wing half one on
+ * the top face, its top towards the nose, and one on the bottom face, its
+ * top towards the tail, so each reads upright from behind (above or below),
+ * his left on the left. Four corners each: inner top, outer top, outer
+ * bottom, inner bottom.
+ */
+function flagPanels(): BufferGeometry {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const index: number[] = [];
+  const n = new Vector3();
+  for (const side of [1, -1]) {
+    // (the plane's normal on this half)
+    n.set(-side * FLAG_PLANE[1], 1, -FLAG_PLANE[2]).normalize();
+    for (const face of [1, -1]) {
+      const o = pos.length / 3;
+      const off = face * (THICK / 2 + FLAG_LIFT);
+      for (const [across, down] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+        const x = side * (FLAG_IN + FLAG_W * across);
+        const z = FLAG_TOP - FLAG_H * down;
+        const y = FLAG_PLANE[0] + FLAG_PLANE[1] * Math.abs(x) + FLAG_PLANE[2] * z;
+        pos.push(x + n.x * off, y + n.y * off, z + n.z * off);
+        nor.push(n.x * face, n.y * face, n.z * face);
+        uv.push(side > 0 ? 1 - across : across, face > 0 ? 1 - down : down);
+      }
+      // (facing out of the sail)
+      if (side * face > 0) index.push(o, o + 1, o + 2, o, o + 2, o + 3);
+      else index.push(o, o + 2, o + 1, o, o + 3, o + 2);
+    }
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+  geo.setAttribute('normal', new BufferAttribute(new Float32Array(nor), 3));
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
+  geo.setIndex(index);
+  return geo;
 }
 
 /** Distance from the nose to where the ray at angle `a` from the keel leaves the sail (trailing edge or tip). */
@@ -172,37 +258,8 @@ function rayEnd(a: number): number {
   return lo;
 }
 
-/**
- * The temple tower (a lotus bud) over the keel, its tip towards the nose:
- * a gold outline and tiers, red inside, a cream doorway, a gold plinth and
- * finial. `ax` = |x|, `z` along the keel. Null outside it.
- */
-function tower(ax: number, z: number, tone: (list: readonly number[]) => number): number | null {
-  const base = -0.74;
-  const top = 0.78;
-  const t = (z - base) / (top - base);
-  const w0 = 0.62;
-  if (t < 0) return t > -0.11 && ax < w0 + 0.12 ? tone(GOLD) : null;
-  if (t > 1) return t < 1.14 && ax < 0.07 ? tone(GOLD) : null;
-  const w = w0 * Math.pow(1 - Math.pow(t, 2.2), 0.65);
-  if (ax > w) return null;
-  if (ax > w - 0.13 || t < 0.07) return tone(GOLD);
-  if (Math.abs(t - 0.36) < 0.035 || Math.abs(t - 0.6) < 0.035) return tone(GOLD);
-  if (ax < 0.15 && t < 0.24) return CREAM;
-  return tone(RED);
-}
-
-/** Colour of the sail block in column `j` (0 at the keel), row `i` (0 at the nose), centred at (x, z). */
-function sailColor(j: number, i: number, x: number, z: number, h: number): number {
-  const tone = (list: readonly number[]) => list[Math.floor(h * list.length)];
-  // A deep red hem along the trailing edge, a gold band just in front of it.
-  if (i === ROWS - 1) return tone(RED);
-  if (i === ROWS - 3) return tone(GOLD);
-  const m = tower(Math.abs(x), z, tone);
-  if (m !== null) return m;
-  // Panels fanning out from the nose: saffron in the middle, red, saffron, red tips.
-  return j < 5 || (j >= 8 && j < 11) ? tone(SAFFRON) : tone(RED);
-}
+/** One of a few close tones (`h` 0‥1). */
+const tone = (list: readonly number[], h: number) => list[Math.floor(h * list.length)];
 
 // Scratch (pose allocates nothing).
 const _p = new Vector3();
@@ -307,6 +364,11 @@ export class Glider {
   private lastShrink = 0;
   private readonly families: Family[];
   private readonly posed: InstancedMesh[];
+  /** The flag panels (`flagPanels`), their corners open, and how they were last posed (shown share, spread). */
+  private readonly flags = new Mesh(flagPanels(), flagMaterial());
+  private readonly flagOpen: Float32Array;
+  private flagShown = -1;
+  private flagSpread = -1;
 
   constructor() {
     this.object.name = 'glider';
@@ -365,18 +427,21 @@ export class Glider {
           this.bdte[k] = te > 0 ? 1 / (0.45 * (end - R0)) : 0;
           this.bph[k] = side * j * 0.7 - c * 8;
           this.bdph[k] = -8 / (end - R0);
-          this.bamp[k] = 0.6 + (0.4 * j) / COLS;
+          // (the ripple fades out under the flags)
+          this.bamp[k] = (0.6 + (0.4 * j) / COLS) * (1 - flatAt(x, z));
           const h = hash3(col, i, 3, 57);
           const shade = 0.96 + 0.08 * hash3(col, i, 5, 57);
-          add(x, y, z, this.bw[k], THICK, this.bd[k], sailColor(j, i, x, z, h), 'krama', { shade, ry: side * a });
+          // Cream silk, a blue hem along the trailing edge.
+          const color = i === ROWS - 1 ? tone(BLUE, h) : tone(SILK, h);
+          add(x, y, z, this.bw[k], THICK, this.bd[k], color, 'krama', { shade, ry: side * a });
         }
       }
     }
-    // Leading-edge pockets (gold), each side from the nose to the tip.
+    // Leading-edge pockets (flag blue), each side from the nose to the tip.
     for (let si = 0; si < 2; si++)
-      for (let i = 0; i < NLE; i++) add(0, SAIL_Y, NOSE - i * 0.5, 0.15, 0.115, LE_LEN / NLE, GOLD[(i + si) % 2], 'krama', { shade: i % 2 ? 0.96 : 1.04 });
-    // Tip caps: a red batten round each tip, from the leading edge back to the trailing corner.
-    for (let si = 0; si < 2; si++) add(0, SAIL_Y, 0, 0.1, 0.09, TIP, RED[1], 'krama');
+      for (let i = 0; i < NLE; i++) add(0, SAIL_Y, NOSE - i * 0.5, 0.15, 0.115, LE_LEN / NLE, BLUE[(i + si) % 2], 'krama', { shade: i % 2 ? 0.96 : 1.04 });
+    // Tip caps: a blue batten round each tip, from the leading edge back to the trailing corner.
+    for (let si = 0; si < 2; si++) add(0, SAIL_Y, 0, 0.1, 0.09, TIP, BLUE[1], 'krama');
     const kramaMoving = count.krama;
     // Leading-edge tube ends beyond the pockets, and the crossbar under the sail (a single-surface glider shows it from below).
     for (let si = 0; si < 2; si++) add(0, 0, 0, 0.07, 0.07, 0.16, FITTING, 'metal');
@@ -393,7 +458,7 @@ export class Glider {
     for (let i = 0; i < 4; i++) add(0, 0, tail + (i + 0.5) * seg, 0.07, 0.07, seg, TUBE[i % 3], 'metal');
     add(0, 0, tail - 0.03, 0.085, 0.085, 0.07, FITTING, 'metal');
     add(0, 0.035, NOSE + 0.03, 0.12, 0.11, 0.16, FITTING, 'metal');
-    add(0, SAIL_Y + 0.03, NOSE - 0.1, 0.24, 0.13, 0.34, GOLD[1], 'krama');
+    add(0, SAIL_Y + 0.03, NOSE - 0.1, 0.24, 0.13, 0.34, GOLD, 'krama');
     // King post on top, its fitting.
     add(0, 0.035 + KING / 2, APEX, 0.05, KING, 0.05, TUBE[0], 'metal');
     add(0, KING + 0.02, APEX, 0.08, 0.07, 0.08, FITTING, 'metal');
@@ -447,6 +512,12 @@ export class Glider {
     this.lines.name = 'glider:wires';
     this.lines.frustumCulled = false;
     this.rig.add(this.lines);
+    // The flags (one mesh: lit like the sail, in its shadows, casting none of their own).
+    this.flags.name = 'glider:flags';
+    this.flags.frustumCulled = false;
+    this.flags.receiveShadow = true;
+    this.flagOpen = (this.flags.geometry.attributes.position.array as Float32Array).slice();
+    this.rig.add(this.flags);
     this.object.add(this.rig);
     this.object.visible = false;
   }
@@ -458,6 +529,42 @@ export class Glider {
   /** Where a wing-tip lamp is now (world, with `object` left untransformed): `side` 1 his left (red), −1 his right (green). */
   lampAt(side: 1 | -1, out: Vector3): Vector3 {
     return out.copy(this.lampLocal[side === 1 ? 0 : 1]).applyMatrix4(this.rig.matrix);
+  }
+
+  /**
+   * The flags ride on the open sail: in the pop past open they turn out with
+   * its columns; as it folds they are tucked away (shrinking to their
+   * middles, lifted clear of the pleats), and they go when it is put away.
+   * `f`: the fan's spread (1 open), `sinP` its pleats.
+   */
+  private poseFlags(f: number, sinP: number, shrink: number): void {
+    const shown = ease((f - 0.97) / 0.03) * kept(shrink, 0.5);
+    this.flags.visible = shown > 0.01;
+    if (!this.flags.visible || (shown === this.flagShown && f === this.flagSpread)) return;
+    this.flagShown = shown;
+    this.flagSpread = f;
+    const geo = this.flags.geometry;
+    const out = geo.attributes.position.array as Float32Array;
+    const nor = geo.attributes.normal.array as Float32Array;
+    const open = this.flagOpen;
+    const lift = 0.15 * sinP;
+    for (let o = 0; o < open.length; o += 12) {
+      // The panel's middle (half way from its inner top to its outer bottom corner), and its turn round the nose.
+      _p.set(open[o] + open[o + 6], open[o + 1] + open[o + 7], open[o + 2] + open[o + 8]).multiplyScalar(0.5);
+      const side = _p.x > 0 ? 1 : -1;
+      const turn = Math.atan2(Math.abs(_p.x), NOSE - _p.z) * (f - 1);
+      const c = Math.cos(turn);
+      const s = Math.sin(turn);
+      for (let v = o; v < o + 12; v += 3) {
+        const x = _p.x + (open[v] - _p.x) * shown + nor[v] * lift;
+        const y = _p.y + (open[v + 1] - _p.y) * shown + nor[v + 1] * lift;
+        const back = NOSE - (_p.z + (open[v + 2] - _p.z) * shown + nor[v + 2] * lift);
+        out[v] = x * c + side * back * s;
+        out[v + 1] = y;
+        out[v + 2] = NOSE - (back * c - side * x * s);
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
   }
 
   pose(p: GliderPose): void {
@@ -525,6 +632,7 @@ export class Glider {
       const sk = kept(shrink, kseed[k]);
       put(km, k, _p, w * stretch * sk, THICK * sk, this.bd[k] * sk);
     }
+    this.poseFlags(f, sinP, shrink);
 
     // ── Leading edges, tip caps, tube ends, crossbar, lamps ──
     const snT = Math.sin(theta);

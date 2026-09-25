@@ -9,13 +9,14 @@ import type { Ears } from './water';
  * fresh from oscillators and noise, a little different each time, and
  * played once:
  *
- *   oscillators, noise ─ envelopes, formants ─ level ─ air ─ pan ─ ambience bus (+ reverb, more when far)
+ *   oscillators, noise ─ envelopes, formants ─ level ─ air ─ pan ─ animals bus (+ reverb, more when far)
  *
  * Placed like the water (water.ts): louder and brighter close by, panned
  * left or right of the ears, more of the valley's echo far off, silent
  * beyond its reach (60–200 m; a trumpeting elephant carries further), and a
- * little late far off (sound takes 0.3 s to cross 100 m). They play on the
- * ambience bus: the Ambience slider sets them, with the birds and frogs.
+ * little late far off (sound takes 0.3 s to cross 100 m). They play on their
+ * own bus: the Animals slider sets them (the birds and insects all around
+ * are the ambience's).
  *
  * At most six at once (and two of a kind): more are dropped. Every node is
  * let go once its call has ended.
@@ -25,7 +26,7 @@ import type { Ears } from './water';
 type Voiced = AnimalCallKind | 'trumpet';
 
 /**
- * Each call: its peak `level` close by (before the ambience volume), full
+ * Each call: its peak `level` close by (before the animals volume), full
  * within `near` m, then some −5 dB each time the distance doubles, fading
  * out over the second half of `reach` m (silent beyond). Loud callers carry.
  * Close by, the loud callers are a little over the explorer's steps, the
@@ -229,8 +230,8 @@ export class Animals {
       const lp = v.filter('lowpass', air(a.d) * (1 - 0.4 * behind), 0.5);
       const pan = v.keep(this.ctx.createStereoPanner());
       pan.pan.value = Math.max(-0.85, Math.min(0.85, 0.85 * a.side));
-      v.out.connect(lv).connect(lp).connect(pan).connect(this.e.ambBus.dry);
-      pan.connect(v.gain(wet(a.d))).connect(this.e.ambBus.wet);
+      v.out.connect(lv).connect(lp).connect(pan).connect(this.e.bus.animals.dry);
+      pan.connect(v.gain(wet(a.d))).connect(this.e.bus.animals.wet);
       v.play();
     } catch (err) {
       v.drop();

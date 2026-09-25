@@ -47,28 +47,51 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
 ## Roaming the map
 
 The player can leave the picker: **Jump in** (button by the explorer, or
-**J**) makes the explorer leap off his ledge, glide down under a parachute,
-then walk the map, paddle a boat on the rivers, fly a hang glider from a
+**J**) opens a small card with two ways down (`hud.ts`): **1** Parachute or
+**2** Hang glider (the last pick is kept for the visit). The explorer leaps
+off his ledge and the parachute, or the hang glider, opens over him at the
+end of the fall (`roam.start(kind)`); then he can walk the map, paddle a boat on the rivers, fly a hang glider from a
 cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
 `src/map/roam/`:
 
 - `types.ts`: the modes (`leap`, `glide`, `walk`, `boat`, `hang`), `RoamBody`,
   `RoamInput`, `RoamWorld` (ground to stand on, water, river current, the
   roaming area, places' entrances), `FollowCam`, `RoamHud`. `ROAM_SCALE`: the
-  roaming explorer is 1.6 × his true 1.7 m, so he can hop up a 2 m land step.
+  roaming explorer is 1.4 × his true 1.7 m, so he can hop up a 2 m land step.
 - `roam.ts` runs one mode at a time and hands the camera between the
   overview rig and the follow camera; `main.ts` builds it after the parts.
 - `walker.ts`, `followCam.ts`, `input.ts`, `world.ts`, `hud.ts`: on foot,
   the camera, keys / mouse / touch, the walkable world, the roaming interface.
+  Every word shown while roaming (key help, prompts, messages, the tools,
+  the touch buttons) is in `ui/lang.ts` (`r…`, `rt…`): keys stay keys,
+  place names come from `placeText(p)`; prompts are made with `t()` each
+  step, so the ខ្មែរ / EN switch shows at once.
+  A drag, or holding **Q** / **R**, orbits the camera round him in every mode
+  (as on `index.html`: 1.8 rad/s); the follow camera eases back behind him
+  after a pause. It keeps him in view: walls, stone and land pull it in
+  (`world.hardClearance`); tree leaves and bark, the parked gliders and the
+  ramps dissolve in a dithered tube from the camera to him (`_nearFade.ts`,
+  `world.softClearance`), off in the overview and in photos.
 - `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current).
 - `hangGlider.ts` (mode `hang`): E on a take-off ramp (`launchSpots.ts`:
-  found on the land, the best cliff tops near a road; walkable decks; a
-  wing mark on the mini-map) lifts the glider, runs down the ramp and
-  flies; E in a long fall unfolds it in the air. A / D bank, W / S bar in /
-  out (speed ↔ height), Shift fast, Space high up lets go. Rising air
-  (`_lift.ts`): along cliffs, and in warm columns marked by golden seed
-  fluff. Model `_gliderModel.ts`, ramp `_launchRamp.ts`, poses
-  `_gliderPoses.ts` (upright with it, prone in the harness, the flare).
+  found on the land, the best cliff tops near a road; a hill with a temple
+  and no flat cliff edge (Phnom Kulen, the terrace hills) gets a built-up
+  ramp on a trestle with steps; walkable decks; every ramp has a mast with
+  a waving flag and a beacon lamp that glows at night (`_rampFlag.ts`); a
+  glider badge on both maps) lifts the glider, runs down the ramp and
+  flies; E in a long fall unfolds it in the air. A / D bank, Shift fast,
+  Space high up lets go. **Easy flying** (the settings panel, on by
+  default; `roam/prefs.ts`, `easyfly=0|1` in the URL): hands-off it holds
+  its height as long as you like, S climbs and W dives (faster the higher
+  he is), up to 700 m over the land. Off: the real glider, W / S bar in /
+  out (speed ↔ height), it sinks about 1 in 12. Rising air (`_lift.ts`):
+  along cliffs, and in warm columns marked by golden seed fluff. Model
+  `_gliderModel.ts`, ramp `_launchRamp.ts`, poses `_gliderPoses.ts`
+  (upright with it, prone in the harness, the flare).
+- The flag of Cambodia (`_flag.ts`: `flagColor`, `flagCell` for voxel
+  grids, `flagTexture` / `flagMaterial` for flat panels, one texture for
+  the page) flies on the hang glider (a panel on each wing half, and under
+  it), on top of the parachute's middle cell and on a pole at every ramp.
 - Poses for vehicles use the animator's `posture` hook
   (`src/character/Animator.ts`).
 - `tools.ts` + `photo.ts`: on foot the explorer has a tool bar (bottom
@@ -86,12 +109,22 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   unused), so the light count never changes (no shader recompiles).
 - Mini-map (`src/map/ui/minimap.ts`): top right while roaming, turns with
   the view; **M** or a click opens the big map, where a click on a place
-  sets it as the target (a gold arrow on the mini-map points the way).
-  The land picture is drawn once, in small slices over several frames.
+  or a hang glider ramp sets it as the target (a gold arrow on the
+  mini-map points the way, the distance shows under it). **N** (or
+  "Nearest glider ramp" on the big map) heads for the nearest ramp. The
+  ramps (read live from `roam.launchSpots`) show as a glider on a round
+  badge on both maps. The land picture is drawn once, in small slices
+  over several frames. Its words are in `ui/lang.ts` (`mm…`).
 - Footsteps (`walker.ts stepSound` picks the ground): recordings in
   `assets/sound/`, cut into single steps when they load
   (`audio/footsteps.ts`) and played one per footfall (`audio/explorer.ts`);
   synthesized steps while they load or if they fail.
+- Sound settings: one slider per bus (`VOLUME_KEYS` in `types.ts`): master,
+  music, ambience, water, animals, steps (footsteps), moves (the explorer's
+  other sounds: jump, parachute, glider wind and sail, paddle, splash) and
+  ui. `explorer.ts roamBus` says which roaming sound goes to which bus.
+  `audio.debug()` in the console shows the buses and whether the recorded
+  steps are loaded.
 
 Because of roaming, the map is also seen from the ground and from every
 direction: land, trees, mist and sky must hold up from there too (no
@@ -101,10 +134,12 @@ Check with URL params (in roaming shots always pass `sim=` and usually
 `rcam=`, or the follow camera is not placed): `roam=leap|glide|walk|boat|hang` · `at=x,z` or `x,y,z` ·
 `yaw=<deg>` (0 = facing south, 180 = north) · `sim=<keys:seconds,…>` a
 scripted input run before the shot (`input.ts parseScript`, e.g.
-`sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist` the follow camera's orbit ·
+`sim=w:2,wr:3,j:0.5`; `<` / `>` alone hold Q / R) · `rcam=yaw,pitch,dist` the follow camera's orbit ·
 `tool=lantern|torch|flashlight|camera|selfie` (also in `boat` and `hang`) ·
 `stick=0|1` the selfie stick · `sview=0‥1` hold the selfie view part way from the follow camera to the phone (see him holding the stick) · `act=wave|cheer|lookUp|peek` ·
-`bigmap=1` · `target=<place id>` · `fauna=lineup` (every land animal in every
+`bigmap=1` · `target=<place id>|ramp:<i>|ramp` (a place, a ramp, the nearest ramp) ·
+`jumpmenu=1` the Jump in card open (`=key` with the focus ring) · `start=glider`
+with `roam=leap` the hang glider opens at the end of the leap · `easyfly=0|1` · `fauna=lineup` (every land animal in every
 pose on the valley road) · `wildlife=<s>` (run the water animals' reactions).
 
 ## World and scale

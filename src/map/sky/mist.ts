@@ -150,8 +150,10 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
       void main() {
         vec2 p = vWorld.xz;
         float vis = smoothstep(-60.0, 40.0, outsideLand(p, 0.0));
-        // (beyond the front edge it starts at the edge: the land runs to it)
-        vis = max(vis, smoothstep(0.0, 60.0, outsideLand(p, 1.0)));
+        // (beyond the front edge it starts at the edge: the land runs to it; seen
+        // from high up it reaches in over the edge, sky/haze.ts hazeFrontBank)
+        float front = hazeFrontBank(p, cameraPosition);
+        vis = max(vis, max(smoothstep(0.0, 60.0, outsideLand(p, 1.0)), front));
         if (vis < 0.004) discard;
         float t = hazeMist.x;
         float scale = hazeMist.y * 0.55;
@@ -171,7 +173,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
         float dens = smoothstep(lo, lo + 0.2, n) * vis;
         // Where land rises into the sea, the whole stack gives way at once (per
         // layer it would repeat the land's shape at each height: streaks).
-        dens *= smoothstep(0.0, 8.0, 10.0 - landAt(p).x);
+        dens *= max(smoothstep(0.0, 8.0, 10.0 - landAt(p).x), front);
         vec3 ray = vWorld - cameraPosition;
         float dist = length(ray);
         dens *= smoothstep(30.0, 140.0, dist);

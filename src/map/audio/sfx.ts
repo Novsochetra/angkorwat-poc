@@ -8,7 +8,7 @@ import type { SoundEngine } from './engine';
  * breathy whooshes; and the airy whoosh of a camera flight.
  */
 
-/** Peak levels (before the sfx volume). */
+/** Peak levels (before the interface volume). */
 const LEVEL = {
   hover: 0.16,
   tick: 0.12,
@@ -150,7 +150,7 @@ export class Sfx {
 
   // ── Building blocks ───────────────────────────────────────────────────────
 
-  /** Send `node` to the effects bus (dry and a little reverb), optionally through a pan. */
+  /** Send `node` to the interface bus (dry and a little reverb), optionally through a pan. */
   private out(node: AudioNode, pan: number, wet: number, panned = true): void {
     let last: AudioNode = node;
     if (panned && pan) {
@@ -159,11 +159,11 @@ export class Sfx {
       node.connect(p);
       last = p;
     }
-    last.connect(this.e.sfxBus.dry);
+    last.connect(this.e.bus.ui.dry);
     if (wet > 0) {
       const g = this.ctx.createGain();
       g.gain.value = wet;
-      last.connect(g).connect(this.e.sfxBus.wet);
+      last.connect(g).connect(this.e.bus.ui.wet);
     }
   }
 

@@ -3,12 +3,15 @@ import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { placeById } from '../layout';
 import type { MapFrame } from '../types';
+import { t } from '../ui/lang';
 import { GLIDER, Glider } from './_gliderModel';
-import { gliderPose, hangPoint, type GliderPoseState } from './_gliderPoses';
+import { gliderPose, HANG, hangPoint, type GliderPoseState } from './_gliderPoses';
 import { RAMP } from './_launchRamp';
 import { Lift } from './_lift';
 import { angleDiff } from './followCam';
 import type { LaunchSpot, LaunchSpots } from './launchSpots';
+import { keepOverLedge, outOfLeap } from './parachute';
+import { roamPrefs } from './prefs';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
 import { stepSound } from './walker';
 
@@ -20,16 +23,30 @@ import { stepSound } from './walker';
  *   swings up into the harness and lies face down under the wing.
  * - In a long fall (the walker: E instead of Space's parachute) the wing
  *   unfolds over him and catches him.
- * - Flying: A / D shift his weight and bank the wing into a turn; W pulls
- *   the bar in (faster, sinks faster), S pushes it out (slower; speed turns
- *   back into height), Shift flies fast. The glider sinks about a metre in
- *   twelve; rising air (_lift.ts) along cliffs and in the warm columns
- *   marked by golden seed fluff lifts him, so he can cross the whole map.
- *   The wind turns him back at the roaming area's edge. Space high up lets
- *   go (Space again opens the parachute).
- * - Near the ground he stands up in the harness and flares, touches down
- *   and runs it out; the glider is laid down, folds and is put away. On
- *   deep water he comes down into a boat.
+ * - Flying: A / D shift his weight and bank the wing into a turn, Shift
+ *   flies fast.
+ * - Easy flying (the settings, `roamPrefs.easyFly`; on by default):
+ *   hands-off he holds his height, for as long as you like; S climbs (nose
+ *   up, a little slower), W dives (nose down, faster), both easing in and
+ *   out, and he levels off when they are let go. He can climb to
+ *   `CEILING_EASY` over the land, the whole map under him (the camera looks
+ *   down more up there).
+ * - The real glider (easy flying off): W pulls the bar in (faster, sinks
+ *   faster), S pushes it out (slower; speed turns back into height). It
+ *   sinks about a metre in twelve.
+ * - Rising air (_lift.ts) along cliffs and in the warm columns marked by
+ *   golden seed fluff lifts him (the real glider needs it to cross the whole
+ *   map). The wind turns him back at the roaming area's edge. Space high up
+ *   lets go (Space again opens the parachute).
+ * - Walls (cliffs, river banks, temple walls): he looks ahead as he flies.
+ *   Easy flying goes over a low one, the real glider zooms over one its
+ *   speed can lift it over; from a taller one he banks away to the side
+ *   with more room. Low down he flares at its foot, and met head-on there
+ *   the wing stalls and he drops to it. He never stops in the air.
+ * - Near the ground (easy flying: dive to come down; the dive eases off low
+ *   down) he stands up in the harness and flares, touches down and runs it
+ *   out; the glider is laid down, folds and is put away. On deep water he
+ *   comes down into a boat.
  * - The camera and the selfie phone work in flight (tools.ts): the glider
  *   flies on straight meanwhile.
  *
@@ -53,16 +70,65 @@ const BANK_MAX = 0.62;
 const BANK_RATE = 1.7;
 const SPEED_RATE = 0.7;
 const G = 9.8;
-/** Highest he can climb over the ground under him (m): the air gets thin and cold. */
+/** Highest the real glider climbs over the ground under him (m): the air gets thin and cold. */
 const CEILING = 200;
 /** He flares with his feet this high over the ground or water under him or just ahead (m). */
 const FLARE_AT = 2.0;
+/** His feet (the explorer's own point) are this far ahead of the strap's end, and a margin (m at his true size). */
+const FEET_AHEAD = -HANG[2] * BODY_UNIT_M + 0.15;
 /** Letting go (Space): only this high over the ground (m). */
 const LET_GO_ABOVE = 20;
 /** Wing hands-off pitch: nose down this much per m/s over trim (rad). */
 const PITCH_PER_V = 0.014;
 /** Circling in a thermal he edges his circle towards its core at this rate (1/s, at full bank). */
 const CENTRE = 0.12;
+
+// ── Easy flying (roamPrefs.easyFly) ────────────────────────────────────────
+/** Climbing (S) and diving (W) (m/s; Shift: × `EASY_FAST`), and how softly they start and stop (1/s: nearly all the way in two seconds). */
+const CLIMB = 5;
+const DIVE = 7;
+const EASY_FAST = 1.5;
+const EASE = 2;
+/** Higher up both go faster, so the land far below seems to move as much: once more their speed for every this many metres over the ground. */
+const RATE_UP = 250;
+/** Airspeed climbing: a little slower (m/s). */
+const V_CLIMB = 11;
+/** Wing nose up per m/s of climb, down per m/s of dive (rad). */
+const PITCH_PER_CLIMB = 0.03;
+/** Rising air lifts him this share of what it lifts the real glider: nice, no longer needed. */
+const AIR_EASY = 0.6;
+/** Highest he climbs over the ground under him (m): the whole land in view. The climb fades out over the last `THIN_EASY` m. */
+const CEILING_EASY = 700;
+const THIN_EASY = 150;
+/** Low down the dive eases off, to this share of it at the flare (from `DIVE_EASE_AT` m up): he comes in as gently as the real glider. */
+const DIVE_LOW = 0.3;
+const DIVE_EASE_AT = 24;
+/** Up high the follow camera looks down more, the land in view: this much more at the ceiling (rad), from `TILT_FROM` m up. */
+const TILT_HIGH = 0.66;
+const TILT_FROM = 60;
+
+// ── Walls (cliffs, river banks, temple walls) ──────────────────────────────
+/** He looks for a wall as far ahead as he flies in this long (s), and this much more (m). */
+const WALL_LOOK = 1.6;
+const WALL_LOOK_M = 8;
+/** Which ways he looks (rad from his heading): the wing is wide. */
+const WALL_FAN = [0, 0.3, -0.3];
+/** Turning away from one: at least this fast by the time he is near it (rad/s); met head-on, this fast (rad/s). */
+const TURN_AWAY = 1.0;
+const TURN_HARD = 3;
+/** Only this high over the ground under him (m) and up does he turn away; lower down he comes in to land at its foot. */
+const TURN_LOW = 4;
+/** Easy flying goes over a wall up to this high over his feet (m), climbing at most this fast (m/s), starting this quickly (1/s), to this much over its top (m: more than `FLARE_AT`, he flies on). */
+const HOP_EASY = 10;
+const HOP_RATE = 10;
+const HOP_EASE = 3;
+const HOP_OVER = 3;
+/** The real glider zooms over one its speed can lift it over: this share of the height slowing down gives (the sink takes the rest). */
+const ZOOM = 0.6;
+/** Turning away or zooming he slows this quickly (1/s: the bar pushed out hard). */
+const BRAKE_RATE = 1.6;
+/** Stopped by a wall low down the wing stalls: he drops to its foot at this speed (m/s). */
+const DROP = 4.5;
 
 // ── On the ground ──────────────────────────────────────────────────────────
 /** Lifting it off the ramp (s, at the least: longer when he stands further from the ramp's back, at `PICKUP_PACE` m/s), the run (m/s start, m/s², top), the swing into the harness after take-off (s). */
@@ -101,8 +167,19 @@ const _core = { x: 0, z: 0 };
 const floorAt = (w: RoamWorld, x: number, z: number) => Math.max(w.groundAt(x, z), w.waterAt(x, z) ?? -Infinity);
 /** Nothing solid at (x, z) up to `low` (m): he can fly on there. */
 const clearAt = (w: RoamWorld, x: number, z: number, low: number) => w.groundAt(x, z) <= low + 0.4;
+/** Extra sink (m/s) when he flies too slowly (pressed against a cliff): he comes down. */
+const stallAt = (v: number) => Math.max(0, V_SLOW - 0.5 - v) * 1.2;
 /** The glider's sink at airspeed `v` (m/s). */
-const sinkAt = (v: number) => SINK_MIN + SINK_K * (v - V_BEST) ** 2 + Math.max(0, V_SLOW - 0.5 - v) * 1.2;
+const sinkAt = (v: number) => SINK_MIN + SINK_K * (v - V_BEST) ** 2 + stallAt(v);
+/**
+ * Two keys held together (A and S) come from input.ts at 0.7 each (the
+ * stick's circle): this puts each back to what it is alone (easy flying: a
+ * climbing turn climbs and turns in full).
+ */
+const fullKeys = (m: { x: number; y: number }) => {
+  const most = Math.max(Math.abs(m.x), Math.abs(m.y));
+  return most > 1e-3 ? Math.hypot(m.x, m.y) / most : 1;
+};
 
 export interface HangGliderMode extends RoamModeHandler {
   /** Every frame in every mode: the glider put away after a landing, the seed fluff, the ramps. */
@@ -125,6 +202,8 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
   let yaw = 0;
   let v = V_TRIM;
   let vy = 0;
+  /** How fast `vy` is changing (m/s²): easy flying eases the climb in and out with it. */
+  let vyA = 0;
   let bank = 0;
   let pitch = 0;
   let pitchV = 0;
@@ -135,7 +214,19 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
   /** The wind is turning him back from the edge: which way round (+1 left, −1 right; 0 = not), and when it last said so. */
   let homing = 0;
   let toldAt = -99;
-  let hinted = false;
+  /** The keys were shown for easy flying (true), the real glider (false), or not yet (null); and this flight's kind. */
+  let hinted: boolean | null = null;
+  let easyNow = true;
+  /** "The air is thin up here" said this flight. */
+  let thinTold = false;
+  /** A wall ahead: the way he turns from it (+1 left, −1 right; 0 = not) and how long none has been seen (s); going over one (easy flying), up to this height (m; NaN = not). */
+  let dodge = 0;
+  let wallGone = 0;
+  let hopTo = NaN;
+  /** Stopped by a wall low down: the wing stalls and he drops to its foot. */
+  let stalled = false;
+  /** The wall `wallAlong` found: how far (m; Infinity = none), and its top (m). */
+  const wall = { dist: Infinity, top: 0 };
   let zoomBase = CAM_DIST;
   /** Started from the URL (a shot): the camera distance it set (`rcam`) is the one to keep. */
   let urlStart = false;
@@ -228,6 +319,47 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
     cam.fov = 52 + 9 * clamp((v - V_TRIM) / (V_MAX - V_TRIM), 0, 1) - 3 * clamp((V_TRIM - v) / (V_TRIM - V_SLOW), 0, 1);
   }
 
+  /** The follow camera's own tilt (rad): easy flying up high, it looks down more (the land in view, not the haze). */
+  function camTilt(): number {
+    return CAM_PITCH + (easyNow ? TILT_HIGH * smoothstep(TILT_FROM, CEILING_EASY, hang.y - floorAt(world, hang.x, hang.z)) : 0);
+  }
+
+  /**
+   * Along heading `a` (rad), from his feet out to `look` m: the first ground
+   * that would stop him (over 0.4 m above his lowest point `low`, as
+   * `clearAt`), and the highest top from there to a few metres past it.
+   */
+  function wallAlong(a: number, low: number, look: number): typeof wall {
+    const sx = Math.sin(a);
+    const sz = Math.cos(a);
+    const x0 = hang.x + sx * FEET_AHEAD * size;
+    const z0 = hang.z + sz * FEET_AHEAD * size;
+    wall.dist = Infinity;
+    wall.top = -Infinity;
+    for (let d = 1; d <= (wall.dist === Infinity ? look : wall.dist + 8); d++) {
+      const g = world.groundAt(x0 + sx * d, z0 + sz * d);
+      if (wall.dist === Infinity && g > low + 0.4) wall.dist = d;
+      if (wall.dist < Infinity) wall.top = Math.max(wall.top, g);
+    }
+    return wall;
+  }
+
+  /** Which way to turn from a wall ahead: to the side with more room (+1 left, −1 right), or `lean` when they are alike. */
+  function openSide(low: number, look: number, lean: number): number {
+    let room = 0;
+    for (const a of [0.5, 1, 1.6]) room += Math.min(look, wallAlong(yaw + a, low, look).dist) - Math.min(look, wallAlong(yaw - a, low, look).dist);
+    return Math.abs(room) > 3 ? Math.sign(room) : lean || 1;
+  }
+
+  /** The keys: the first flight, and again when the kind of flying (easy or the real glider) changed since. */
+  function hint(ctx: RoamCtx): void {
+    if (hinted === easyNow || ctx.shot) return;
+    hinted = easyNow;
+    // (on a touch screen the stick and the Jump button, not keys: touch.ts)
+    const touch = document.body.classList.contains('roam-touch');
+    ctx.hud.toast(t(easyNow ? (touch ? 'rGliderTouch' : 'rGliderKeys') : touch ? 'rGliderRealTouch' : 'rGliderReal'));
+  }
+
   /** Lay the glider down (and away): where it is now. */
   function putAway(kind: 'ground' | 'air' | 'water', ctx: RoamCtx): void {
     stow = kind;
@@ -300,9 +432,14 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       stow = 'none';
       homing = 0;
       zoomBase = CAM_DIST;
-      bank = pitch = pitchV = omega = 0;
+      easyNow = roamPrefs.easyFly;
+      thinTold = stalled = false;
+      dodge = 0;
+      hopTo = NaN;
+      bank = pitch = pitchV = omega = vyA = 0;
       ps.flare = ps.run = ps.pitch = ps.roll = 0;
-      ex.animator.posture = posture;
+      // (off the ledge with the leap: out of his dive, parachute.ts)
+      ex.animator.posture = from === 'leap' ? outOfLeap(ex, posture) : posture;
       cam.minDistance = 6;
       cam.maxDistance = 45;
       cam.follow = 1.2;
@@ -339,11 +476,11 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         openK = 1;
         yaw = body.yaw;
         v = V_TRIM;
-        vy = -SINK_MIN;
+        vy = easyNow ? 0 : -SINK_MIN;
         hangFromFeet(ctx);
         ex.animator.postureFeet = false;
         cam.distance = zoomBase = CAM_DIST;
-        cam.pitch = CAM_PITCH;
+        cam.pitch = camTilt();
         cam.yaw = yaw;
       } else {
         // In a fall (or off a ledge): the wing unfolds over him and catches him.
@@ -363,10 +500,7 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         zoomBase = Math.max(cam.distance, 12);
       }
       urlStart = from === 'overview';
-      if (!hinted && !ctx.shot) {
-        hinted = true;
-        ctx.hud.toast('Hang glider: A / D turn · W faster · S slower · climb along cliffs, or circle in the golden seed fluff');
-      }
+      hint(ctx);
     },
 
     update(ctx, dt): RoamMode | null {
@@ -377,6 +511,12 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       if (phase !== 'runout') pt += dt;
       cam.turn(input.lookYaw, input.lookPitch, input.zoom);
       size = body.scale;
+      // Easy flying switched in the settings mid-flight: the new keys (the help at the bottom left too).
+      if (roamPrefs.easyFly !== easyNow) {
+        easyNow = roamPrefs.easyFly;
+        ctx.hud.setMode('hang');
+        hint(ctx);
+      }
       if (phase === 'runout') return runOut(ctx, dt);
 
       // ── Lifting it, running down the ramp ──────────────────────────────
@@ -463,7 +603,8 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
 
       // The ground and water under him and just ahead.
       const ahead = Math.max(3, v * 0.6);
-      const floor = Math.max(floorAt(world, hang.x, hang.z), floorAt(world, hang.x + fx * ahead, hang.z + fz * ahead));
+      const under = floorAt(world, hang.x, hang.z);
+      const floor = Math.max(under, floorAt(world, hang.x + fx * ahead, hang.z + fz * ahead));
       const low = lowest(ctx);
       const height = low - floor;
 
@@ -476,24 +617,75 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         cam.distance = Math.min(cam.distance, 16);
         return 'walk';
       }
-      if (phase === 'fly' && pt > 0.8 && height < FLARE_AT) {
+
+      // The bar: A / D shift his weight (bank and turn), W / S pull it in / push it out (easy flying: dive / climb).
+      const easy = easyNow;
+      const keys = easy ? fullKeys(input.move) : 1;
+      const turnIn = -input.move.x * keys * openK;
+      const bar = input.move.y * keys;
+
+      // A wall ahead (a cliff, a river bank, a temple wall), as far as he flies in a second and a half:
+      // easy flying goes over a low one (not diving: W lands at its foot), the real glider pushes the bar
+      // out to zoom over one its speed can lift it over. From a taller one he banks away to the side with
+      // more room, harder as it nears; low down he comes in to land at its foot (the flare).
+      const lowOver = low - under;
+      const look = v * WALL_LOOK + WALL_LOOK_M;
+      // (how hard he turns away, 0‥1; the real glider zooming; easy flying's climb over it, m/s)
+      let near = 0;
+      let zoom = false;
+      let climbOver = 0;
+      // (straight ahead and a little to each side: the wing is wide, and a wall curving in beside him is seen in time)
+      let wallAt = Infinity;
+      let wallTop = -Infinity;
+      if (phase === 'fly' && openK >= 1 && pt > 0.4)
+        for (const a of WALL_FAN) {
+          wallAlong(yaw + a, low, look);
+          wallAt = Math.min(wallAt, wall.dist);
+          wallTop = Math.max(wallTop, wall.top);
+        }
+      if (wallAt < look) {
+        wallGone = 0;
+        const rise = wallTop + HOP_OVER - low;
+        const need = rise / Math.max(wallAt / Math.max(v, 4) - 2 / HOP_EASE, 0.25);
+        // (once going over, on over it even if it takes a little more; once turning away, on round: not over the next one halfway)
+        const going = !Number.isNaN(hopTo);
+        const goes = (going || !dodge) && (easy ? bar <= 0.2 && rise <= HOP_EASY && need <= HOP_RATE * (going ? 1.5 : 1) : rise <= ((v * v - V_SLOW * V_SLOW) / (2 * G)) * ZOOM);
+        if (goes && easy) {
+          hopTo = going ? Math.max(hopTo, wallTop + HOP_OVER) : wallTop + HOP_OVER;
+          climbOver = need;
+        } else if (goes) zoom = true;
+        else {
+          hopTo = NaN;
+          if (lowOver > TURN_LOW) {
+            dodge ||= openSide(low, look, Math.sign(turnIn) || Math.sign(bank));
+            near = smoothstep(look, look * 0.4, wallAt);
+          }
+        }
+      } else if ((wallGone += dt) > 0.6) dodge = 0;
+      // (over it: up to its top and a little more, then on level; diving (W) lets it go)
+      if (!Number.isNaN(hopTo) && (low >= hopTo - 0.2 || wallGone > 2 || bar > 0.2 || phase !== 'fly')) hopTo = NaN;
+      const hopping = !Number.isNaN(hopTo);
+      if (hopping) climbOver = Math.min(HOP_RATE * 1.5, Math.max(climbOver, (hopTo - low) * 1.5));
+
+      // Near the ground he flares (turning from a wall or going over it: the ground under him, not its top).
+      if (phase === 'fly' && pt > 0.8 && (near > 0 || hopping || zoom ? lowOver : height) < FLARE_AT) {
         phase = 'flare';
         pt = 0;
-      } else if (phase === 'flare' && pt > 0.4 && height > FLARE_AT + 4) {
+      } else if (phase === 'flare' && pt > 0.4 && height > FLARE_AT + 4 && !stalled) {
         // (flared over a bump or a cliff's lip and the ground fell away: lie down and fly on)
         phase = 'fly';
         pt = PRONE_TIME * 0.5;
       }
 
-      // The bar: A / D shift his weight (bank and turn), W / S pull it in / push it out.
-      const turnIn = -input.move.x * openK;
       // (low over the ground only gentle turns: a steep bank would put a wing tip into it)
       const bankT = (flaring ? 0 : turnIn * BANK_MAX * clamp((height - 1) / 8, 0.35, 1)) + 0.02 * Math.sin(clock * 0.9);
       bank += (bankT - bank) * (1 - Math.exp(-dt * BANK_RATE));
-      const bar = input.move.y;
-      let vT = input.run ? V_MAX : bar >= 0 ? V_TRIM + (V_FAST - V_TRIM) * bar : V_TRIM + (V_TRIM - V_SLOW) * bar;
+      let vT = input.run ? V_MAX : bar >= 0 ? V_TRIM + (V_FAST - V_TRIM) * bar : V_TRIM + (V_TRIM - (easy ? V_CLIMB : V_SLOW)) * bar;
+      // (a wall ahead: slower, to turn tighter or to zoom over it)
+      const brake = zoom ? 1 : near;
+      if (brake > 0) vT = lerp(vT, Math.min(vT, easy ? V_CLIMB : V_SLOW), brake);
       if (flaring) vT = V_FLARE;
-      const dv = (vT - v) * (1 - Math.exp(-dt * (flaring ? 2 : SPEED_RATE)));
+      const dv = (vT - v) * (1 - Math.exp(-dt * (flaring ? (stalled ? 4 : 2) : lerp(SPEED_RATE, BRAKE_RATE, brake))));
       v += dv;
       const accel = dt > 0 ? dv / dt : 0;
 
@@ -505,7 +697,7 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       if (!homing && !world.inBounds(hang.x + fx * 45, hang.z + fz * 45) && Math.abs(off) > 0.6) {
         // (straight away from home: round the way he is already banking)
         homing = Math.abs(off) > 2.8 && Math.abs(bank) > 0.1 ? Math.sign(bank) : off >= 0 ? 1 : -1;
-        if (clock - toldAt > 8) ctx.hud.toast('The wind turns you back towards the temples');
+        if (clock - toldAt > 8) ctx.hud.toast(t('rWindBack'));
         toldAt = clock;
       } else if (homing && Math.abs(off) < 0.5) homing = 0;
       if (homing) {
@@ -513,33 +705,65 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         omega = lerp(omega, back, 0.8);
         bank += (clamp(back, -0.5, 0.5) - bank) * (1 - Math.exp(-dt * 2));
       }
+      if (near > 0) {
+        // (away from a wall ahead: over the wind at the edge, and over his own steering as it nears)
+        bank += (dodge * BANK_MAX * clamp((lowOver - 1) / 6, 0.5, 1) - bank) * (1 - Math.exp(-dt * 4 * near));
+        omega = lerp(omega, dodge * Math.max(TURN_AWAY, dodge * omega), near);
+      }
       yaw += omega * dt;
 
       // Up and down: the wing's sink (more in a bank), the rising air, and speed traded for height.
+      // Easy flying (not in the flare): he holds his height, S climbs and W dives (easing off low
+      // down), rising air lifts him a little, and too slow (against a cliff) he comes down.
       const air = lift.liftAt(hang.x, hang.y, hang.z) * (1 - ps.flare);
-      const ground0 = floorAt(world, hang.x, hang.z);
-      const thin = smoothstep(CEILING - 30, CEILING, hang.y - ground0);
-      let vyT = -sinkAt(v) / Math.cos(bank) + air * (1 - thin) - (v * accel) / G;
-      // (the flare trades the speed for a moment's float, not a climb)
-      if (flaring) vyT = clamp(vyT, -1.8, 0.3);
+      const over = hang.y - under;
+      const thin = easy ? smoothstep(CEILING_EASY - THIN_EASY, CEILING_EASY, over) : smoothstep(CEILING - 30, CEILING, over);
+      const glide = !easy || flaring;
+      let vyT: number;
+      if (glide) vyT = -sinkAt(v) / Math.cos(bank) + air * (1 - thin) - (v * accel) / G;
+      else {
+        const want = bar < 0 ? -bar * CLIMB * (1 - thin) : -bar * DIVE * lerp(DIVE_LOW, 1, smoothstep(FLARE_AT, DIVE_EASE_AT, height));
+        vyT = want * (1 + Math.max(0, over) / RATE_UP) * (input.run ? EASY_FAST : 1) + air * AIR_EASY * (1 - thin) - stallAt(v);
+        // (over a wall ahead)
+        if (hopping) vyT = Math.max(vyT, climbOver);
+      }
+      // (the flare trades the speed for a moment's float, not a climb; stalled against a wall he drops)
+      if (flaring) vyT = stalled ? -DROP : clamp(vyT, -1.8, 0.3);
+      const vy0 = vy;
       if (phase === 'open') {
         // Falling until the wing takes hold.
         vy -= G * (1 - openK) * dt;
         vyT = lerp(vy, vyT, openK);
       }
-      vy += (vyT - vy) * (1 - Math.exp(-dt * 2.2));
-      if (thin > 0 && vy > 0) vy *= 1 - thin;
+      if (glide || phase === 'open') {
+        vy += (vyT - vy) * (1 - Math.exp(-dt * (stalled ? 4 : 2.2)));
+        vyA = dt > 0 ? (vy - vy0) / dt : 0;
+      } else {
+        // (a spring, critically damped: the climb and the dive start and stop softly, and never overshoot)
+        const k = hopping ? HOP_EASE : EASE;
+        vyA += (k * k * (vyT - vy) - 2 * k * vyA) * dt;
+        vy += vyA * dt;
+      }
+      if (!easy && thin > 0 && vy > 0) vy *= 1 - thin;
+      if (easy && thin > 0.5 && bar < 0 && !thinTold) {
+        thinTold = true;
+        ctx.hud.toast(t('rThinAir'));
+      }
 
-      // Forward. Into a slope or a wall: he glances off it along its face (turning that way, slowing),
-      // or, in a corner, stops (he still comes down, and lands).
+      // Forward. Into a slope or a wall: he glances off it along its face (turning that way, slowing).
+      // Met head-on high up he banks hard to the side with more room and slides off along it; low down
+      // the wing stalls and he drops to its foot. He never stops in the air.
       let nfx = Math.sin(yaw);
       let nfz = Math.cos(yaw);
       let nx = hang.x + nfx * v * dt;
       let nz = hang.z + nfz * v * dt;
+      // (a wall is met at his feet, a little ahead of the strap's end: they never end up in it, so he lands at its foot, not on top)
+      const reach = FEET_AHEAD * size;
+      const clear = (x: number, z: number) => clearAt(world, x + nfx * reach, z + nfz * reach, low);
       // (not in the first moment off a ramp's end: a tuft of moss at the lip must not stop the take-off)
-      if (!clearAt(world, nx, nz, low) && !(phase === 'fly' && pt < 0.4)) {
-        const alongX = clearAt(world, nx, hang.z, low) ? Math.abs(nfx) : 0;
-        const alongZ = clearAt(world, hang.x, nz, low) ? Math.abs(nfz) : 0;
+      if (!clear(nx, nz) && !(phase === 'fly' && pt < 0.4)) {
+        const alongX = clear(nx, hang.z) ? Math.abs(nfx) : 0;
+        const alongZ = clear(hang.x, nz) ? Math.abs(nfz) : 0;
         if (alongX > 0.15 || alongZ > 0.15) {
           if (alongX >= alongZ) nz = hang.z;
           else nx = hang.x;
@@ -548,9 +772,26 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
           nfx = Math.sin(yaw);
           nfz = Math.cos(yaw);
         } else {
-          v *= 0.3;
           nx = hang.x;
           nz = hang.z;
+          if (phase === 'fly' && lowOver > TURN_LOW) {
+            dodge ||= openSide(low, look, Math.sign(turnIn) || Math.sign(bank));
+            yaw += dodge * TURN_HARD * dt;
+            bank += (dodge * BANK_MAX - bank) * (1 - Math.exp(-dt * 6));
+            v *= 1 - Math.min(1, dt * 1.5);
+            nfx = Math.sin(yaw);
+            nfz = Math.cos(yaw);
+          } else if (phase === 'open') {
+            // (still unfolding he is falling anyway: the wing catches him after)
+            v *= 0.3;
+          } else {
+            if (!stalled) {
+              stalled = true;
+              phase = 'flare';
+              pt = 0;
+            }
+            v *= 1 - Math.min(1, dt * 4);
+          }
         }
       }
       if (nx !== hang.x || nz !== hang.z) {
@@ -570,7 +811,9 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       body.vel.set(nfx * v, vy, nfz * v);
 
       // The wing: nose down with speed, and at once as he pulls the bar in (up as he pushes it out); up in the flare; a little bob.
-      const pitchT = (v - V_TRIM) * PITCH_PER_V + (vT - v) * 0.025 - 0.45 * ps.flare + 0.015 * Math.sin(clock * 1.3);
+      // (easy flying: nose up climbing, down diving; no steeper for the quicker climb and dive high up)
+      const climbing = easy && phase === 'fly' ? clamp(vy, -DIVE * EASY_FAST, CLIMB * EASY_FAST) * PITCH_PER_CLIMB : 0;
+      const pitchT = (v - V_TRIM) * PITCH_PER_V + (vT - v) * 0.025 - climbing - 0.45 * ps.flare + 0.015 * Math.sin(clock * 1.3);
       pitchV += (12 * (clamp(pitchT, -0.5, 0.4) - pitch) - 4 * pitchV) * dt;
       pitch += pitchV * dt;
       wingQuat(quat, yaw, pitch, bank);
@@ -586,7 +829,9 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       // Camera and wind.
       setCam(ctx, dt, lerp(FOCUS_UP, 1.3, ps.flare));
       // (back to its tilt by itself, unless the camera is held where it was put: a shot's `rcam`)
-      if (!input.lookPitch && cam.follow > 0 && phase !== 'flare') cam.pitch += (CAM_PITCH - cam.pitch) * (1 - Math.exp(-dt * 0.4));
+      if (!input.lookPitch && cam.follow > 0 && phase !== 'flare') cam.pitch += (camTilt() - cam.pitch) * (1 - Math.exp(-dt * 0.4));
+      // (off the ledge with the leap: not into its rock, parachute.ts)
+      keepOverLedge(ctx, dt);
       ctx.levels.wind = clamp(0.12 + (v - 7) / 17, 0, 1) * openK;
       ctx.levels.sail = clamp((v - 5) / 15, 0, 1) * openK;
 

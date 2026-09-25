@@ -13,14 +13,19 @@ const ENTER_RISE = 10;
 
 /**
  * The world as the roaming modes see it: what is solid (the walk map:
- * land, temples, the road with its stairs and bridges, tree trunks), water,
- * river current, the roaming area and the places' entrances.
+ * land, temples, the road with its stairs and bridges, tree trunks), what
+ * the follow camera sees through and not (two more walk maps: leaves and
+ * bark, the rest), water, river current, the roaming area and the places'
+ * entrances.
  */
 export function buildRoamWorld(field: HeightField, parts: readonly MapPart[]): RoamWorld {
   const flow = buildFlow(field);
   const river = riverField(field);
   const walk = new WalkMap(field, parts);
-  console.info(`[map] roam walk map: ${walk.stats.blocks} blocks in ${walk.stats.ms} ms`);
+  const hard = new WalkMap(field, parts, 'hard');
+  const soft = new WalkMap(field, parts, 'soft');
+  const ms = (m: WalkMap) => `${m.stats.blocks} blocks in ${m.stats.ms} ms`;
+  console.info(`[map] roam walk map: ${ms(walk)} · the camera's: hard ${ms(hard)}, soft ${ms(soft)}`);
   const a = ROAM_AREA;
   return {
     field,
@@ -33,6 +38,9 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[]): R
     standAt: (x, z, y, up, height) => walk.standAt(x, z, y, up, height),
     ceilingAt: (x, z, y) => walk.ceilingAt(x, z, y),
     clearance: (ax, ay, az, bx, by, bz) => walk.clearance(ax, ay, az, bx, by, bz),
+    hardClearance: (ax, ay, az, bx, by, bz) => hard.clearance(ax, ay, az, bx, by, bz),
+    hardStandAt: (x, z, y, up, height) => hard.standAt(x, z, y, up, height),
+    softClearance: (ax, ay, az, bx, by, bz, leave) => soft.clearance(ax, ay, az, bx, by, bz, leave),
     placeNear(x, z, y): PlaceDef | null {
       let best: PlaceDef | null = null;
       let bestD = ENTER_REACH;

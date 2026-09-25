@@ -1,35 +1,49 @@
-import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Matrix4, Mesh, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
+import { FLAG_ASPECT, FLAG_BLUE, flagMaterial } from './_flag';
 
 /**
- * The explorer's parachute: a ram-air canopy of nine cells in Khmer
- * colours (saffron and deep red, gold bands, a gold-edged lotus bud on
- * top), its suspension lines and two leather risers.
+ * The explorer's parachute: a ram-air canopy of nine cells of cream silk
+ * trimmed in blue, the flag of Cambodia on top of its wider middle cell
+ * (a flat panel, upright from the follow camera behind him), its
+ * suspension lines and two leather risers.
  *
  * It is posed every frame from outside (`fly`, `settle`): every block is an
- * instance whose matrix is written from its cell's frame, so the same ~330
+ * instance whose matrix is written from its cell's frame, so the same ~360
  * blocks unfold out of the pack, inflate cell by cell, bank, ripple, pull
  * down at the trailing edge when a toggle is pulled, and fall in a heap
- * behind the explorer after the landing. Sizes below are for the explorer
- * at his true 1.7 m and scale with him (`size`): at the roaming size
- * (1.6×) it is 11 m across, 3.4 m deep and 6.6 m above his shoulders.
+ * behind the explorer after the landing; the flag rides on its cell. Sizes
+ * below are for the explorer at his true 1.7 m and scale with him (`size`):
+ * at the roaming size (1.6×) it is 11 m across, 3.4 m deep and 6.6 m above
+ * his shoulders.
  */
 
-/** Cells across the span, blocks across one cell, blocks along the chord. */
+/** Cells across the span, the middle one, blocks along the chord. */
 const N = 9;
-const COLS = 4;
+const MID = (N - 1) / 2;
 const ROWS = 9;
 /** Span along the arc, chord in the middle (m, at true size). */
 const SPAN = 6.9;
-const CELL_W = SPAN / N;
 const CHORD = 2.15;
+/** The middle cell is wider (it carries the flag), 8 blocks across; the others share the rest, 4 blocks each. */
+const MID_W = 1.64;
+const CELL_W = (SPAN - MID_W) / (N - 1);
+/**
+ * The flag on the middle cell, behind its thickest part (facing the follow
+ * camera): its front and back edge (shares of the chord, on block rows),
+ * width, and lift off the silk (m).
+ */
+const FLAG_C0 = 3 / ROWS;
+const FLAG_C1 = 7 / ROWS;
+const FLAG_W = (FLAG_C1 - FLAG_C0) * CHORD * FLAG_ASPECT;
+const FLAG_LIFT = 0.008;
 /** From the harness up to the underside of the middle cell (m). */
 const LINE = 4.1;
-/** Radius of the arc the cells sit on: the tips hang about a metre lower than the middle. */
-const ARC = 5.4;
+/** How much each cell turns from the one inside it (rad): an arc, the tips' middles about 0.85 m lower than the middle. */
+const TURN = 0.168;
 /** Share of the chord in front of the lines, thickness over chord, nose-down trim (rad). */
 const LEAD = 0.3;
 const THICK = 0.17;
@@ -40,11 +54,9 @@ const BEND = 0.42;
 /** Seconds from the pack to a full canopy. */
 export const OPEN_TIME = 0.86;
 
-// Khmer silk colours (sRGB): saffron, deep red, gold, a cream core.
-const SAFFRON = [0xe98d1c, 0xf29a28, 0xe2831a];
-const RED = [0x9c2420, 0x8c1e1b, 0xa82b24];
-const GOLD = [0xe9b84b, 0xf3c75c];
-const CREAM = 0xf3e2bd;
+// Cream silk (sRGB) round the flag, as on the hang glider, trimmed in the flag's blue.
+const SILK = [0xf1e5cb, 0xebdec2, 0xf4ead6];
+const BLUE = [FLAG_BLUE, 0x0a3092];
 const STRAP = 0x3a2a1e;
 const LAMP = new Color(1, 0.62, 0.28);
 const LINE_COLOR = 0x33291f;
@@ -93,21 +105,51 @@ const airfoil = (c: number) => (c < 0.22 ? 0.62 + 0.38 * Math.sin(((c / 0.22) * 
 /** Cell `i`'s distance from the middle (0‥1) and chord (m): the tips are a little shorter. */
 const cellD = (i: number) => Math.abs(i + 0.5 - N / 2) / (N / 2);
 const cellChord = (i: number) => CHORD * (1 - 0.2 * cellD(i) ** 2);
+/** Cell `i`'s width, blocks across it, and its middle along the span (m, 0 in the middle). */
+const cellW = (i: number) => (i === MID ? MID_W : CELL_W);
+const cellCols = (i: number) => (i === MID ? 8 : 4);
+const cellS = (i: number) => Math.sign(i - MID) * (MID_W / 2 + (Math.abs(i - MID) - 0.5) * CELL_W);
 
-/** Colour of the fabric block at cell `i`, column `col`, row `row` (from the leading edge). */
-function fabric(i: number, col: number, row: number): number {
-  const h = hash3(i * COLS + col, row, 7, 41);
-  const tone = (list: readonly number[]) => list[Math.floor(h * list.length)];
-  // Gold band near the trailing edge, and along the leading edge.
-  if (row === ROWS - 2 || row === 0) return tone(GOLD);
-  // A lotus bud (or a temple tower) over the middle three cells, pointing forward.
-  const dx = Math.abs(i * COLS + col + 0.5 - (N * COLS) / 2);
-  if (row >= 1 && row <= 5) {
-    if (dx < row - 0.4 && dx >= row - 1.4) return tone(GOLD);
-    if (dx < row - 1.4) return row >= 3 && dx < 1 ? CREAM : tone(RED);
+/**
+ * Where cell `i`'s middle is (x, y; the middle cell's at 0) with the cells
+ * in a chain out from the middle one, each turned `TURN` more than the one
+ * inside it; returns its turn (rad, + on his left). `spread` 0 draws it all
+ * in to the middle (the bundle).
+ */
+function chain(i: number, spread: number, out: Vector3): number {
+  const side = Math.sign(i - MID);
+  const n = Math.abs(i - MID);
+  if (n === 0) {
+    out.set(0, 0, 0);
+    return 0;
   }
-  // Saffron in the middle, then red and saffron cells out to red tips.
-  return Math.abs(i - (N - 1) / 2) % 2 === 1 ? tone(RED) : tone(SAFFRON);
+  let x = (MID_W / 2) * spread;
+  let y = 0;
+  for (let j = 1; j <= n; j++) {
+    // (whole cells out to this one's middle)
+    const w = (j < n ? CELL_W : CELL_W / 2) * spread;
+    x += w * Math.cos(j * TURN * spread);
+    y -= w * Math.sin(j * TURN * spread);
+  }
+  out.set(side * x, y, 0);
+  return side * n * TURN * spread;
+}
+
+/** Height of the top of the silk at chord share `c` in a cell of chord `chord` (m, open; ribs are lower). */
+const topAt = (c: number, chord: number, rib: boolean) => chord * (0.03 * Math.sin(Math.PI * c) + THICK * airfoil(c) * (rib ? 0.8 : 1));
+
+/** The flag's plane on the middle cell's top: its height at the flag's front edge, and its rise per chord share. */
+const FLAG_Y0 = topAt(FLAG_C0, CHORD, false);
+const FLAG_RISE = (topAt(FLAG_C1, CHORD, false) - FLAG_Y0) / (FLAG_C1 - FLAG_C0);
+/** The flag's rows of corners (chord shares): its edges and the middles of the block rows under it, so it bends as they do. */
+const FLAG_ROWS = [FLAG_C0, ...Array.from({ length: Math.round((FLAG_C1 - FLAG_C0) * ROWS) }, (_, r) => FLAG_C0 + (r + 0.5) / ROWS), FLAG_C1];
+
+/** Colour of the fabric block at cell `i`, column `col`, row `row` (from the leading edge): cream, blue tips and edges. */
+function fabric(i: number, col: number, row: number): number {
+  const h = hash3(i * 8 + col, row, 7, 41);
+  const blue = i === 0 || i === N - 1 || row === 0 || row === ROWS - 1;
+  const list = blue ? BLUE : SILK;
+  return list[Math.floor(h * list.length)];
 }
 
 const _v = new Vector3();
@@ -124,6 +166,8 @@ const _topR = new Vector3();
 const _a = new Vector3();
 const _mid = new Vector3();
 const _te = Array.from({ length: 4 }, () => new Vector3());
+/** The slope `Canopy.trail` found last. */
+let trailSlope = 0;
 const X = new Vector3(1, 0, 0);
 const UP = new Vector3(0, 1, 0);
 
@@ -135,8 +179,10 @@ export class Canopy {
   private readonly lamp: InstancedMesh;
   private readonly lines: LineSegments<BufferGeometry, LineBasicMaterial>;
   private readonly linePos: Float32Array;
+  /** The flag panel on the middle cell (a pair of corners on each of its rows, posed with the cell). */
+  private readonly flag: Mesh<BufferGeometry>;
   // Every fabric block at true size, fully open, in its cell's frame.
-  private readonly nb = N * COLS * ROWS;
+  private readonly nb = ROWS * Array.from({ length: N }, (_, i) => cellCols(i)).reduce((a, n) => a + n, 0);
   private readonly bx = new Float32Array(this.nb);
   private readonly by = new Float32Array(this.nb);
   private readonly bz = new Float32Array(this.nb);
@@ -167,28 +213,31 @@ export class Canopy {
     this.object.name = 'parachute';
     const b = new VoxelBuilder();
     const src = traceSource();
+    let k = 0;
     for (let i = 0; i < N; i++) {
       const chord = cellChord(i);
-      for (let col = 0; col < COLS; col++) {
+      const cols = cellCols(i);
+      const bw = cellW(i) / cols;
+      for (let col = 0; col < cols; col++) {
         // The ribs between cells are thinner than the cells' middles: the canopy reads cell by cell.
-        const rib = col === 0 || col === COLS - 1;
-        for (let row = 0; row < ROWS; row++) {
-          const k = (i * COLS + col) * ROWS + row;
+        const rib = col === 0 || col === cols - 1;
+        for (let row = 0; row < ROWS; row++, k++) {
           const cr = (row + 0.5) / ROWS;
-          const top = (c: number) => chord * (0.03 * Math.sin(Math.PI * c) + THICK * airfoil(c) * (rib ? 0.8 : 1));
-          const t = chord * THICK * airfoil(cr) * (rib ? 0.8 : 1);
+          // Under the flag the top is flat (the flag's plane), ribs too.
+          const flag = i === MID && cr > FLAG_C0 && cr < FLAG_C1;
           const yb = chord * 0.03 * Math.sin(Math.PI * cr);
-          this.btop[k] = (top(cr + 0.02) - top(cr - 0.02)) / 0.04;
-          this.bx[k] = (col + 0.5 - COLS / 2) * (CELL_W / COLS);
+          const t = (flag ? FLAG_Y0 + FLAG_RISE * (cr - FLAG_C0) : topAt(cr, chord, rib)) - yb;
+          this.btop[k] = flag ? FLAG_RISE : (topAt(cr + 0.02, chord, rib) - topAt(cr - 0.02, chord, rib)) / 0.04;
+          this.bx[k] = (col + 0.5 - cols / 2) * bw;
           this.by[k] = yb + t / 2;
           this.bz[k] = chord * (LEAD - cr);
           this.bh[k] = t;
-          this.bsx[k] = (CELL_W / COLS) * 0.98;
+          this.bsx[k] = bw * 0.98;
           this.bsz[k] = (chord / ROWS) * 1.04;
           this.bcr[k] = cr;
           this.bcell[k] = i;
           this.bseed[k] = hash3(i, col, row, 17);
-          const shade = (rib ? 0.86 : 1) * (0.95 + 0.1 * hash3(i, col, row, 3));
+          const shade = (rib && !flag ? 0.86 : 1) * (0.95 + 0.1 * hash3(i, col, row, 3));
           b.box(this.bx[k], this.by[k], this.bz[k], this.bsx[k], t, this.bsz[k], fabric(i, col, row), 'krama', { shade, src });
         }
       }
@@ -215,6 +264,26 @@ export class Canopy {
     this.lines.name = 'parachute:lines';
     this.lines.frustumCulled = false;
     this.object.add(this.lines);
+
+    // The flag: a pair of corners (his left, his right) on each of its rows, front to back; from behind him his
+    // left is on the left, the flag's top towards the leading edge. Lit like the silk, in its shadows, casting none.
+    const nv = FLAG_ROWS.length * 2;
+    const uv = new Float32Array(nv * 2);
+    const index: number[] = [];
+    for (const [r, c] of FLAG_ROWS.entries()) {
+      uv.set([0, 1 - (c - FLAG_C0) / (FLAG_C1 - FLAG_C0), 1, 1 - (c - FLAG_C0) / (FLAG_C1 - FLAG_C0)], r * 4);
+      if (r > 0) index.push(2 * r - 2, 2 * r + 1, 2 * r - 1, 2 * r - 2, 2 * r, 2 * r + 1);
+    }
+    const fg = new BufferGeometry();
+    fg.setAttribute('position', new BufferAttribute(new Float32Array(nv * 3), 3));
+    fg.setAttribute('normal', new BufferAttribute(new Float32Array(nv * 3), 3));
+    fg.setAttribute('uv', new BufferAttribute(uv, 2));
+    fg.setIndex(index);
+    this.flag = new Mesh(fg, flagMaterial());
+    this.flag.name = 'parachute:flag';
+    this.flag.frustumCulled = false;
+    this.flag.receiveShadow = true;
+    this.object.add(this.flag);
     this.object.visible = false;
   }
 
@@ -233,12 +302,11 @@ export class Canopy {
     const origin = _w.lerpVectors(p.pack, p.harness, lines);
     const up = 0.25 + (LINE - 0.25) * lines;
     for (let i = 0; i < N; i++) {
-      const s = (i + 0.5 - N / 2) * CELL_W;
+      const s = cellS(i);
       const d = cellD(i);
-      const a = (s * spread) / ARC;
+      const a = chain(i, spread, _v);
       // (folded: the cells lie stacked in a bundle)
-      _v.set(ARC * Math.sin(a), up - ARC * (1 - Math.cos(a)) + (1 - spread) * (i - (N - 1) / 2) * 0.09, 0);
-      _v.y += p.flutter * 0.03 * Math.sin(p.t * 5.1 + i * 1.9);
+      _v.y += up + (1 - spread) * (i - MID) * 0.09 + p.flutter * 0.03 * Math.sin(p.t * 5.1 + i * 1.9);
       this.pos[i].copy(_v.multiplyScalar(size).applyQuaternion(p.quat).add(origin));
       this.quat[i].copy(p.quat).multiply(_q.setFromEuler(_e.set(TRIM + p.flutter * 0.02 * Math.sin(p.t * 3.7 + i * 2.3), 0, -a)));
       this.thick[i] = 0.2 + 0.8 * pop((t - 0.28 - 0.2 * d) / 0.38);
@@ -249,6 +317,8 @@ export class Canopy {
       this.phase[i] = p.t * 6.3 + i * 1.3;
     }
     this.writeFabric(size, null);
+    // (the flag once the cells are out of the bundle)
+    this.writeFlag(size, ease((spread - 0.85) / 0.15));
     this.writeStraps(p, 1);
     this.writeLines(p, p.lines);
     this.object.visible = true;
@@ -274,7 +344,7 @@ export class Canopy {
       const h1 = hash3(i, 1, 0, 91);
       const h2 = hash3(i, 2, 0, 91);
       const h3 = hash3(i, 3, 0, 91);
-      const s = (i + 0.5 - N / 2) * CELL_W * 0.8 * size;
+      const s = cellS(i) * 0.8 * size;
       const back = (LINE * 0.55 + h1 * 0.4) * size;
       const x = at.x - Math.sin(dir) * back + Math.cos(dir) * s;
       const z = at.z - Math.cos(dir) * back - Math.sin(dir) * s;
@@ -315,7 +385,9 @@ export class Canopy {
       this.wave[i] = 0.06 * (1 - k);
       this.phase[i] = tau * 9 + i * 1.3;
     }
-    this.writeFabric(size, (seed) => 1 - ease((tau - gone - seed) / 0.4));
+    const left = (seed: number) => 1 - ease((tau - gone - seed) / 0.4);
+    this.writeFabric(size, left);
+    this.writeFlag(size, left(0.5));
     this.writeStraps(p, 1 - ease(tau / 0.3));
     this.writeLines(p, 1 - ease((tau - 0.1) / 0.8));
     this.object.visible = tau < gone + 1.45;
@@ -330,12 +402,8 @@ export class Canopy {
       const cr = this.bcr[k];
       const chordLen = cellChord(i) * this.chord[i];
       // The trailing edge bends down under a pulled toggle and ripples a little.
-      const te = Math.max(0, (cr - 0.45) / 0.55);
-      const ph = this.phase[i] + cr * 5;
-      const bend = this.bend[i];
-      const wave = this.wave[i];
-      const dy = -bend * te ** 1.7 + wave * Math.sin(ph) * cr * cr;
-      const slope = this.btop[k] * this.thick[i] + (te > 0 ? (-bend * 1.7 * te ** 0.7) / 0.55 : 0) + wave * (5 * Math.cos(ph) * cr * cr + 2 * cr * Math.sin(ph));
+      const dy = this.trail(i, cr);
+      const slope = this.btop[k] * this.thick[i] + trailSlope;
       const sk = shrink ? Math.max(0, shrink(this.bseed[k])) : 1;
       _v.set(this.bx[k] * this.width[i], this.by[k] * this.thick[i] + dy, this.bz[k] * this.chord[i]).multiplyScalar(size).applyQuaternion(this.quat[i]).add(this.pos[i]);
       _q.copy(this.quat[i]).multiply(_q2.setFromAxisAngle(X, Math.atan(slope / chordLen)));
@@ -346,6 +414,46 @@ export class Canopy {
     // (bounds come back from the new matrices when something asks: a pick)
     m.boundingSphere = null;
     m.boundingBox = null;
+  }
+
+  /** The flag on the middle cell's flat top, as the cell is now (`shown` 0‥1: tucked away to its middle). */
+  private writeFlag(size: number, shown: number): void {
+    const flag = this.flag;
+    flag.visible = shown > 0.01;
+    if (!flag.visible) return;
+    const pos = flag.geometry.attributes.position.array as Float32Array;
+    const nor = flag.geometry.attributes.normal.array as Float32Array;
+    const quat = this.quat[MID];
+    const chordLen = CHORD * this.chord[MID];
+    const x = (FLAG_W / 2) * this.width[MID] * shown;
+    const mid = (FLAG_C0 + FLAG_C1) / 2;
+    for (const [r, row] of FLAG_ROWS.entries()) {
+      // On the flat top, pulled down and rippled as the blocks under it are.
+      const c = mid + (row - mid) * shown;
+      const y = (FLAG_Y0 + FLAG_RISE * (c - FLAG_C0)) * this.thick[MID] + this.trail(MID, c) + FLAG_LIFT;
+      const z = (LEAD - c) * chordLen;
+      _w.set(0, chordLen, FLAG_RISE * this.thick[MID] + trailSlope).normalize().applyQuaternion(quat);
+      for (const [n, side] of [[0, 1], [1, -1]]) {
+        _v.set(side * x, y, z).multiplyScalar(size).applyQuaternion(quat).add(this.pos[MID]).toArray(pos, (2 * r + n) * 3);
+        _w.toArray(nor, (2 * r + n) * 3);
+      }
+    }
+    flag.geometry.attributes.position.needsUpdate = true;
+    flag.geometry.attributes.normal.needsUpdate = true;
+  }
+
+  /**
+   * How far the silk of cell `i` at chord share `cr` is pulled down by a
+   * toggle and rippled (m, true size); its slope along the chord (m per
+   * chord share) goes to `trailSlope`.
+   */
+  private trail(i: number, cr: number): number {
+    const te = Math.max(0, (cr - 0.45) / 0.55);
+    const ph = this.phase[i] + cr * 5;
+    const bend = this.bend[i];
+    const wave = this.wave[i];
+    trailSlope = (te > 0 ? (-bend * 1.7 * te ** 0.7) / 0.55 : 0) + wave * (5 * Math.cos(ph) * cr * cr + 2 * cr * Math.sin(ph));
+    return -bend * te ** 1.7 + wave * Math.sin(ph) * cr * cr;
   }
 
   /** Riser top on each side (world): above the shoulders, where the lines meet. */
@@ -381,7 +489,7 @@ export class Canopy {
     const chord = cellChord(i);
     const te = Math.max(0, (cr - 0.45) / 0.55);
     const y = chord * 0.03 * Math.sin(Math.PI * cr) * this.thick[i] - this.bend[i] * te ** 1.7;
-    return out.set(edge * CELL_W * this.width[i], y, chord * (LEAD - cr) * this.chord[i]).multiplyScalar(size).applyQuaternion(this.quat[i]).add(this.pos[i]);
+    return out.set(edge * cellW(i) * this.width[i], y, chord * (LEAD - cr) * this.chord[i]).multiplyScalar(size).applyQuaternion(this.quat[i]).add(this.pos[i]);
   }
 
   private writeLines(p: CanopyPose, strength: number): void {

@@ -1,8 +1,8 @@
 import type { HeightField } from '../heightfield';
-import { DEFAULT_SETTINGS, type AnimalCall, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
+import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
-import { SoundEngine, type Mix, type Volumes } from './engine';
-import { loadFootsteps, prefetchFootsteps } from './footsteps';
+import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
+import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
 import type { Ears } from './water';
 
 /**
@@ -17,12 +17,20 @@ import type { Ears } from './water';
  * which is how its levels are measured). This file is the live side: the
  * `AudioContext`, the scheduling timer, the ears following the camera or the
  * explorer, and pausing while the tab is hidden.
+ *
+ * Every slider has its own bus (`engine.ts`): Master, Music, Ambience,
+ * Water, Animals, Steps, Moves (the explorer's other sounds), Interface.
+ *
+ * Checking: `audio.debug()` in the console (main.ts puts `audio` on
+ * `window`), or in a headless script, tells whether the sound runs, each
+ * bus's gain, and whether the recorded footsteps are loaded and played
+ * (see `AudioDebug`).
  */
 export interface MapAudio {
   /** Start (call from a user gesture: browsers keep sound off until one). */
   start(): Promise<void>;
   readonly started: boolean;
-  /** Volumes 0‥1 (master multiplies the others). */
+  /** Volumes 0‥1, one per slider (master multiplies the others). */
   setVolumes(v: Pick<MapSettings, VolumeKey>): void;
   play(s: UISound): void;
   /** A sound of the roaming explorer (steps, the parachute, the paddle…), gain 0‥1. */
@@ -40,18 +48,37 @@ export interface MapAudio {
    * roaming explorer's lasting sounds (`f.roamLevels`).
    */
   update(f: MapFrame, focus: PlaceId | null): void;
+  /** What the sound is doing, for checks (`audio.debug()` in the console). */
+  debug?(): AudioDebug;
+}
+
+/** `debug()`: the state of the sound. */
+export interface AudioDebug {
+  /** The context's state (`none`: not started yet, or no Web Audio). */
+  state: AudioContextState | 'none';
+  /** Each slider's gain now (the slider squared; 0: muted), Master's too. */
+  gains: Record<VolumeKey, number>;
+  /** The recorded footsteps: `idle` (not asked for yet), `loading`, `ready`, `partial` or `failed` (synthesized steps on the grounds without their recording). */
+  footsteps: FootstepsState;
+  /** Steps cut from each recording (empty until loaded). */
+  recordings: Partial<Record<StepSet, number>>;
+  /** Footsteps played so far on each ground: [recorded, synthesized]. */
+  played: Record<string, [number, number]>;
 }
 
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
 const AHEAD = 1.2;
 const EVERY = 250;
-/** Fade-in of music, ambience and water on start (s). */
+/** Fade-in of music, ambience, water and the animals on start (s). */
 const FADE_IN = 3;
+/** Recordings that failed to load are tried again after these waits (s): the network may be back. */
+const RETRY = [5, 20, 60];
 
 /**
  * Make the noise and insect buffers in idle moments, a millisecond at a
- * time, so starting never stalls a frame; then fetch the footstep
- * recordings (decoded once the sound starts).
+ * time, so starting never stalls a frame; then decode and cut the footstep
+ * recordings (their slow part runs off the page's thread, the cutting in
+ * slices), so they are ready before the first step.
  */
 function warmInIdleTime(): void {
   type Idle = (cb: (d: { timeRemaining(): number }) => void, o?: { timeout: number }) => number;
@@ -60,7 +87,7 @@ function warmInIdleTime(): void {
   const step = (d: { timeRemaining(): number }) => {
     try {
       if (!warmUp(() => Math.min(d.timeRemaining(), 6))) later(step);
-      else prefetchFootsteps();
+      else void loadFootsteps();
     } catch (e) {
       console.warn('[map] audio warm-up failed:', e);
     }
@@ -71,14 +98,18 @@ function warmInIdleTime(): void {
 export function createMapAudio(): MapAudio {
   // Headless stills never play sound: no need to make buffers (or fetch the footsteps) there.
   const still = new URLSearchParams(location.search).get('shot') === '1';
-  if (!still) warmInIdleTime();
+  if (!still) {
+    // (the recordings download while the buffers are made)
+    prefetchFootsteps();
+    warmInIdleTime();
+  }
   let ctx: AudioContext | null = null;
   let engine: SoundEngine | null = null;
   let starting: Promise<void> | null = null;
   let suspendTimer = 0;
   /** Sound is running (not before start, not while the tab is hidden). */
   const live = (): boolean => !!engine && !!ctx && ctx.state === 'running';
-  const volumes: Volumes = { master: DEFAULT_SETTINGS.master, music: DEFAULT_SETTINGS.music, ambience: DEFAULT_SETTINGS.ambience, water: DEFAULT_SETTINGS.water, sfx: DEFAULT_SETTINGS.sfx };
+  const volumes = Object.fromEntries(VOLUME_KEYS.map((k) => [k, DEFAULT_SETTINGS[k]])) as Volumes;
   const mix: Mix = { night: 0 };
   let world: HeightField | null = null;
   const ears: Ears & { right: [number, number, number]; forward: [number, number, number] } = { x: 0, y: 0, z: 0, right: [1, 0, 0], forward: [0, 0, -1] };
@@ -121,6 +152,14 @@ export function createMapAudio(): MapAudio {
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, again, { once: true, capture: true });
   }
 
+  /** Hand the recorded footsteps to the engine once cut; a recording that failed is tried again a few times (`RETRY`). */
+  function loadSteps(e: SoundEngine, c: AudioContext, tries = 0): void {
+    void loadFootsteps(c).then((steps) => {
+      e.setFootsteps(steps);
+      if (footstepsState().state !== 'ready' && tries < RETRY.length) window.setTimeout(() => loadSteps(e, c, tries + 1), RETRY[tries] * 1000);
+    });
+  }
+
   return {
     get started() {
       return live();
@@ -140,9 +179,8 @@ export function createMapAudio(): MapAudio {
           if (world) engine.setWorld(world);
           if (heard) engine.listen(ears, true);
           engine.fadeIn(FADE_IN);
-          // The recorded footsteps: decoded and cut in the background (synthesized steps until they are ready).
-          const e = engine;
-          if (!still) void loadFootsteps(ctx).then((steps) => e.setFootsteps(steps));
+          // The recorded footsteps (most often cut already, in idle time; synthesized steps until they are ready).
+          if (!still) loadSteps(engine, ctx);
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
           if (ctx.state !== 'running') {
@@ -158,11 +196,7 @@ export function createMapAudio(): MapAudio {
     },
 
     setVolumes(v) {
-      volumes.master = v.master;
-      volumes.music = v.music;
-      volumes.ambience = v.ambience;
-      volumes.water = v.water;
-      volumes.sfx = v.sfx;
+      for (const k of VOLUME_KEYS) volumes[k] = v[k];
       engine?.setVolumes(volumes);
     },
 
@@ -232,6 +266,14 @@ export function createMapAudio(): MapAudio {
       } catch (e) {
         console.warn('[map] audio update failed:', e);
       }
+    },
+
+    debug() {
+      const round = (g: number) => Math.round(g * 1000) / 1000;
+      const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
+      for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
+      const steps = footstepsState();
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) } };
     },
   };
 }

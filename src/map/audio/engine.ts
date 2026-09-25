@@ -1,9 +1,9 @@
 import type { HeightField } from '../heightfield';
-import type { AnimalCall, RoamSound, UISound } from '../types';
+import { VOLUME_KEYS, type AnimalCall, type RoamSound, type UISound, type VolumeKey } from '../types';
 import { Ambience } from './ambience';
 import { Animals } from './animals';
 import { clamp01, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
-import { Explorer } from './explorer';
+import { Explorer, roamBus } from './explorer';
 import type { StepSets } from './footsteps';
 import { Music } from './music';
 import { Sfx } from './sfx';
@@ -12,11 +12,21 @@ import { Water, type Ears } from './water';
 /**
  * The sound graph of the map, on any `BaseAudioContext` (live or offline).
  *
- *   music   ─┐              ┌─ dry ──────────────────────────┐
- *   ambience ┤              │                                │
- *   water   ─┼─ Bus: volume ┤                                ├─ sum ─ compressor ─ trim ─ soft clip ─ master ─ out ─ speakers
- *   sfx     ─┘              └─ wet ─ reverb (convolver) ─────┘
- *   (ambience: also the animals' calls, placed on the map; sfx: the interface and the roaming explorer)
+ *   music    ─┐              ┌─ dry ─────────────────────────┐
+ *   ambience ─┤              │                               │
+ *   water    ─┤              │                               │
+ *   animals  ─┼─ Bus: volume ┤                               ├─ sum ─ compressor ─ trim ─ soft clip ─ master ─ out ─ speakers
+ *   steps    ─┤              │                               │
+ *   moves    ─┤              └─ wet ─ reverb (convolver) ────┘
+ *   ui       ─┘
+ *
+ * One bus per volume slider (`MapSettings`, `VOLUME_KEYS`), and every sound
+ * on exactly one: `music`; `ambience` (wind, birds, insects, frogs:
+ * ambience.ts); `water` (falls and rivers: water.ts); `animals` (their
+ * calls, placed on the map: animals.ts); `steps` (the explorer's footsteps)
+ * and `moves` (his other sounds, the lasting wind, sail and wake too:
+ * explorer.ts `roamBus`); `ui` (the interface and the camera's flights:
+ * sfx.ts; the bell on entering a place). A new kind of sound picks one.
  *
  * `master` (the Master slider) comes after the compressor, so turning it
  * down makes everything quieter without changing the mix. `out` fades
@@ -28,13 +38,13 @@ import { Water, type Ears } from './water';
  */
 
 /** Slider values 0‥1 (see `MapSettings`). */
-export interface Volumes {
-  master: number;
-  music: number;
-  ambience: number;
-  water: number;
-  sfx: number;
-}
+export type Volumes = Record<VolumeKey, number>;
+/** The buses: one per slider but Master. */
+export type BusName = Exclude<VolumeKey, 'master'>;
+export const BUSES: readonly BusName[] = VOLUME_KEYS.filter((k): k is BusName => k !== 'master');
+/** Buses that swell in on start (the lasting background); the explorer's sounds and the interface never wait. */
+const FADED: ReadonlySet<BusName> = new Set<BusName>(['music', 'ambience', 'water', 'animals']);
+
 export interface Mix {
   /** 0 day … 1 night. */
   night: number;
@@ -97,12 +107,8 @@ export class SoundEngine {
   readonly master: GainNode;
   /** Last: fades everything out when the tab is hidden. */
   readonly out: GainNode;
-  readonly musicBus: Bus;
-  readonly ambBus: Bus;
-  /** Waterfalls and rivers. */
-  readonly waterBus: Bus;
-  /** Interface sounds and the explorer's own ("Effects"). */
-  readonly sfxBus: Bus;
+  /** One bus per slider (see the top of this file for what plays on each). */
+  readonly bus: Readonly<Record<BusName, Bus>>;
   /** Current time of day (voices read it when they are scheduled). */
   night = 0;
   private readonly ambience: Ambience;
@@ -112,7 +118,7 @@ export class SoundEngine {
   private readonly explorer: Explorer;
   private readonly animals: Animals;
   private applied: Mix = { night: -1 };
-  private volumes: Volumes = { master: 1, music: 1, ambience: 1, water: 1, sfx: 1 };
+  private volumes = Object.fromEntries(VOLUME_KEYS.map((k) => [k, 1])) as Volumes;
 
   constructor(ctx: BaseAudioContext, opts: { seed?: number } = {}) {
     this.ctx = ctx;
@@ -141,10 +147,7 @@ export class SoundEngine {
     ret.gain.value = REVERB;
     reverbIn.connect(conv).connect(ret).connect(this.sum);
 
-    this.musicBus = new Bus(ctx, this.sum, reverbIn, true);
-    this.ambBus = new Bus(ctx, this.sum, reverbIn, true);
-    this.waterBus = new Bus(ctx, this.sum, reverbIn, true);
-    this.sfxBus = new Bus(ctx, this.sum, reverbIn, false);
+    this.bus = Object.fromEntries(BUSES.map((b) => [b, new Bus(ctx, this.sum, reverbIn, FADED.has(b))])) as Record<BusName, Bus>;
 
     this.ambience = new Ambience(this);
     this.music = new Music(this);
@@ -154,6 +157,7 @@ export class SoundEngine {
     this.animals = new Animals(this);
   }
 
+  /** Every slider; a moved one glides there (no clicks), `immediate` jumps. */
   setVolumes(v: Volumes, immediate = false): void {
     this.volumes = { ...v };
     const t = this.ctx.currentTime;
@@ -164,10 +168,12 @@ export class SoundEngine {
       this.master.gain.cancelScheduledValues(t);
       this.master.gain.setValueAtTime(g, t);
     }
-    this.musicBus.volume(v.music, t, tc);
-    this.ambBus.volume(v.ambience, t, tc);
-    this.waterBus.volume(v.water, t, tc);
-    this.sfxBus.volume(v.sfx, t, tc);
+    for (const b of BUSES) this.bus[b].volume(v[b], t, tc);
+  }
+
+  /** A bus is heard: its slider and Master both up (a muted bus's sounds are not even made). */
+  heard(b: BusName): boolean {
+    return this.volumes.master > 0 && this.volumes[b] > 0;
   }
 
   /** Time of day; small changes are skipped (called every frame). */
@@ -192,12 +198,10 @@ export class SoundEngine {
     this.animals.listen(ears);
   }
 
-  /** Music, ambience and water swell in from silence (effects are never faded). */
+  /** Music, ambience, water and the animals swell in from silence (the explorer and the interface are never faded). */
   fadeIn(seconds: number): void {
     const t = this.ctx.currentTime;
-    this.musicBus.fadeIn(t, seconds);
-    this.ambBus.fadeIn(t, seconds);
-    this.waterBus.fadeIn(t, seconds);
+    for (const b of FADED) this.bus[b].fadeIn(t, seconds);
   }
 
   /** Quiet everything (tab hidden) or bring it back. */
@@ -208,24 +212,26 @@ export class SoundEngine {
   /** Schedule every voice up to `until` (audio clock, s). A muted bus schedules nothing. */
   schedule(until: number): void {
     const now = this.ctx.currentTime;
-    const v = this.volumes;
-    if (v.master <= 0) return;
-    if (v.ambience > 0) this.ambience.schedule(now, until);
-    if (v.music > 0) this.music.schedule(now, until);
-    if (v.water > 0) this.water.schedule(now, until);
+    if (this.heard('ambience')) this.ambience.schedule(now, until);
+    if (this.heard('music')) this.music.schedule(now, until);
+    if (this.heard('water')) this.water.schedule(now, until);
   }
 
+  /** An interface sound (on the `ui` bus). */
   play(s: UISound, when = 0): void {
+    if (!this.heard('ui')) return;
     this.sfx.play(s, Math.max(when, this.ctx.currentTime));
   }
 
+  /** A camera flight of `seconds` begins (on the `ui` bus). */
   flight(seconds: number, when = 0): void {
+    if (!this.heard('ui')) return;
     this.sfx.flight(seconds, Math.max(when, this.ctx.currentTime));
   }
 
-  /** A sound of the roaming explorer (gain 0‥1). */
+  /** A sound of the roaming explorer (gain 0‥1), on its bus: the steps, his moves, or the interface (`roamBus`). */
   roam(s: RoamSound, gain = 1, when = 0): void {
-    if (this.volumes.sfx <= 0 || this.volumes.master <= 0) return;
+    if (!this.heard(roamBus(s))) return;
     this.explorer.play(s, clamp01(gain), Math.max(when, this.ctx.currentTime));
   }
 
@@ -234,16 +240,21 @@ export class SoundEngine {
     this.explorer.steps = steps;
   }
 
-  /** An animal call where the animal is (on the ambience bus: muted, it is not even made). */
+  /** Footsteps played so far on each ground: [recorded, synthesized] (for checks). */
+  get stepsPlayed(): Explorer['played'] {
+    return this.explorer.played;
+  }
+
+  /** An animal call where the animal is (on the `animals` bus: muted, it is not even made). */
   call(c: AnimalCall, when = 0): void {
-    if (this.volumes.ambience <= 0 || this.volumes.master <= 0) return;
+    if (!this.heard('animals')) return;
     this.animals.call(c, Math.max(when, this.ctx.currentTime));
   }
 
-  /** The explorer's lasting sounds: rushing air (falling, gliding), the boat's wake, the hang glider's sail, 0‥1 each. */
+  /** The explorer's lasting sounds (on the `moves` bus): rushing air (falling, gliding), the boat's wake, the hang glider's sail, 0‥1 each. */
   roamLevels(wind: number, wake: number, sail = 0): void {
     // (muted: the lasting sounds are not even made)
-    const on = this.volumes.sfx > 0 && this.volumes.master > 0 ? 1 : 0;
+    const on = this.heard('moves') ? 1 : 0;
     this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on);
   }
 }

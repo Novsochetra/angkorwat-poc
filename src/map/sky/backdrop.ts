@@ -18,7 +18,9 @@ import { SUN_DIR, type SkyState } from './palette';
  * out for it; roaming can look any way, so behind the overview camera the
  * ring carries on, blending one end of that arc into the other (no seam).
  * Mist at the foot of every layer flows with the wind and swells and
- * settles, so the far hills stand in moving mist.
+ * settles, so the far hills stand in moving mist. Seen from high up (the
+ * hang glider climbs to 700 m) the curtains would look thin as paper: they
+ * sink into the sea of mist (`SINK`).
  */
 
 interface Layer {
@@ -52,6 +54,10 @@ const LAYERS: Layer[] = [
 export const RING_CENTRE = { x: 0, z: -200 };
 /** The arc laid out for the overview (radians either side of north); the rest of the ring blends its ends. */
 const ARC = (128 * Math.PI) / 180;
+/** From the camera this high up (m) the curtains sink (and fade) into the sea of mist, gone by the second height. */
+const SINK = [220, 440];
+/** The curtains' foot (m): well down, so seen from low on the land no gap shows under them. */
+const BASE = -40;
 
 /** Height of a prasat group at offset dx (m) from its centre, 0 outside. */
 function templeHeight(dx: number, t: Layer['temples'][number]): number {
@@ -107,6 +113,8 @@ export function buildBackdrop(): Backdrop {
         vInfo = aInfo;
         vec4 w = modelMatrix * vec4(position, 1.0);
         vWorld = w.xyz;
+        // (seen from high up they sink into the sea of mist: SINK)
+        w.y = mix(w.y, ${BASE.toFixed(1)}, smoothstep(${SINK[0].toFixed(1)}, ${SINK[1].toFixed(1)}, cameraPosition.y));
         gl_Position = projectionMatrix * viewMatrix * w;
       }`,
     fragmentShader: /* glsl */ `
@@ -140,6 +148,11 @@ export function buildBackdrop(): Backdrop {
         vec3 haze = hazeColorDir(dir);
         vec3 low = mix(haze, hazeMistColor(vec2(1.0, 0.35 + 0.3 * mn), haze), 0.7);
         col = mix(col, mix(haze, low, foot), h);
+        // From high up the curtains would show as thin rings round the map: they sink
+        // into the sea of mist, coloured as the sky shows it below the horizon.
+        float high = smoothstep(${SINK[0].toFixed(1)}, ${SINK[1].toFixed(1)}, cameraPosition.y);
+        vec3 sea = mix(haze, hazeMistColor(vec2(1.0, 0.55), haze), hazeHeight.w);
+        col = mix(col, mix(sea, haze, hazeDistance(length(ray))), high);
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
@@ -153,8 +166,6 @@ export function buildBackdrop(): Backdrop {
     const pos = new Float32Array(total * 4 * 3);
     const info = new Float32Array(total * 4 * 4);
     const index: number[] = [];
-    // (well down: seen from low on the land, no gap shows under the curtain)
-    const base = -40;
     const ref = (L.lo + L.hi) / 2;
     /** Hill height (m, before the steps) at ring angle a: broad swells (fractal noise stretched to its full range), sharper crests, tree crowns. */
     const hills = (a: number) => {
@@ -201,8 +212,8 @@ export function buildBackdrop(): Backdrop {
         pos.set([RING_CENTRE.x + Math.sin(a) * L.r, y, RING_CENTRE.z - Math.cos(a) * L.r], (v + k) * 3);
         info.set([h, L.fade, shade, ref], (v + k) * 4);
       };
-      set(0, a0, base);
-      set(1, a1, base);
+      set(0, a0, BASE);
+      set(1, a1, BASE);
       set(2, a1, h);
       set(3, a0, h);
       index.push(v, v + 1, v + 2, v, v + 2, v + 3);

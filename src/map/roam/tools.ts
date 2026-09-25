@@ -4,23 +4,25 @@ import type { HoldKind } from '../../character/Animator';
 import { ACTIONS, type ActionName } from '../../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
 import type { MapFrame, RoamMode } from '../types';
+import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { angleDiff } from './followCam';
 import type { RoamControls } from './input';
-import { createRoamPhoto, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
+import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
 import type { FollowCam, RoamBody, RoamCtx, RoamHud, RoamWorld } from './types';
 
 /** What the tool bar holds: three lights for the left hand, the camera and the selfie phone. */
 export type ToolName = 'lantern' | 'torch' | 'flashlight' | 'camera' | 'selfie';
 const TOOLS: readonly ToolName[] = ['lantern', 'torch', 'flashlight', 'camera', 'selfie'];
-const TOOL_NAME: Record<ToolName, string> = { lantern: 'Lantern', torch: 'Torch', flashlight: 'Flashlight', camera: 'Camera', selfie: 'Selfie phone' };
+/** The tools' names (words: ui/lang.ts). */
+const TOOL_NAME: Record<ToolName, WordKey> = { lantern: 'rLantern', torch: 'rTorch', flashlight: 'rFlashlight', camera: 'rCamera', selfie: 'rSelfie' };
 
 /** Looks the outfit key (G) steps through (the hat and what he holds stay as they are). */
-const LOOKS: readonly [OutfitName, string][] = [
-  ['explorerGear', 'explorer gear'],
-  ['default', 'day pack'],
-  ['withoutScarf', 'no scarf'],
-  ['templeOutfit', 'temple clothes'],
+const LOOKS: readonly [OutfitName, WordKey][] = [
+  ['explorerGear', 'rLookGear'],
+  ['default', 'rLookPack'],
+  ['withoutScarf', 'rLookNoScarf'],
+  ['templeOutfit', 'rLookTemple'],
 ];
 
 /** Light of the lantern and the torch (candela at true size: a little over the game's, for the open map), and how far it reaches (m). */
@@ -133,11 +135,11 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     world: d.world,
     canvas: d.canvas,
     mode: () => mode,
-    toast: (t) => hud.toast(t),
+    toast: (text) => hud.toast(text),
     onFinder: (on) => document.body.classList.toggle('roam-finder', on),
   });
   const bar = createToolBar(hud.layer ?? document.body, {
-    onTool: (t) => useTool(t, lastCtx),
+    onTool: (tool) => useTool(tool, lastCtx),
     onAlbum: () => photo.openAlbum(),
     held: () => explorer.currentOutfit.held,
     up: () => photo.kind,
@@ -160,27 +162,27 @@ export function createRoamTools(d: ToolDeps): RoamTools {
   }
 
   /** A tool key or a click on the bar. */
-  function useTool(t: ToolName, ctx: RoamCtx | null): void {
-    const device = t === 'camera' || t === 'selfie';
+  function useTool(tool: ToolName, ctx: RoamCtx | null): void {
+    const device = tool === 'camera' || tool === 'selfie';
     if (mode !== 'walk' && !(device && PHOTO_MODES.includes(mode))) {
-      if (mode === 'boat') hud.toast('Hands on the paddle (the camera and the phone work here: 4, 5)');
-      else if (mode === 'hang') hud.toast('Hands on the bar (the camera and the phone work here: 4, 5)');
+      if (mode === 'boat') hud.toast(t('rHandsPaddle'));
+      else if (mode === 'hang') hud.toast(t('rHandsBar'));
       return;
     }
     if (device) {
-      if (photo.kind === t) photo.lower();
-      else if (ctx) photo.raise(t, ctx);
+      if (photo.kind === tool) photo.lower();
+      else if (ctx) photo.raise(tool, ctx);
       bar.update();
       return;
     }
-    const on = explorer.currentOutfit.held !== t;
-    chosen = on ? t : 'none';
+    const on = explorer.currentOutfit.held !== tool;
+    chosen = on ? tool : 'none';
     setHeld(chosen);
-    hud.toast(on ? (t === 'flashlight' ? `Flashlight · ${beamLabel()} (O to change)` : TOOL_NAME[t]) : `${TOOL_NAME[t]} put away`);
+    hud.toast(on ? (tool === 'flashlight' ? t('rBeamOn', { beam: beamLabel() }) : t(TOOL_NAME[tool])) : t('rPutAway', { name: t(TOOL_NAME[tool]) }));
     bar.update();
   }
 
-  const beamLabel = () => (beamMouse ? 'follows the mouse' : 'straight ahead');
+  const beamLabel = () => t(beamMouse ? 'rBeamMouse' : 'rBeamAhead');
 
   function play(a: ActionName): void {
     // (the looping ones stop on a second press)
@@ -194,7 +196,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     const o = explorer.currentOutfit;
     explorer.setOutfit({ ...OUTFITS[name], hat: o.hat, held: o.held });
     photo.refreshBody();
-    hud.toast(`Outfit: ${label}`);
+    hud.toast(t('rOutfitIs', { name: t(label) }));
     // (no camera in temple clothes)
     if (photo.kind === 'camera' && !explorer.currentOutfit.camera) photo.lower();
     bar.update();
@@ -315,7 +317,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (tap('Digit5', 'Numpad5', 'KeyY')) useTool('selfie', ctx);
       if (tap('KeyT')) {
         photo.stick = !photo.stick;
-        hud.toast(photo.stick ? 'Selfie stick: on (wheel slides it out)' : 'Selfie stick: off (at arm’s length)');
+        hud.toast(t(photo.stick ? 'rStickOn' : 'rStickOff'));
       }
       if (tap('KeyO') && m === 'walk') {
         if (explorer.currentOutfit.held === 'flashlight') beamMouse = !beamMouse;
@@ -323,23 +325,23 @@ export function createRoamTools(d: ToolDeps): RoamTools {
           chosen = 'flashlight';
           setHeld('flashlight');
         }
-        hud.toast(`Flashlight: ${beamMouse ? 'follows the mouse' : 'beam straight ahead'}`);
+        hud.toast(t('rBeam', { beam: beamLabel() }));
         bar.update();
       }
       // His look: in any roaming mode.
       if (tap('KeyH')) {
         explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
         photo.refreshBody();
-        hud.toast(explorer.currentOutfit.hat ? 'Hat on' : 'Hat off');
+        hud.toast(t(explorer.currentOutfit.hat ? 'rHatOn' : 'rHatOff'));
       }
       if (tap('KeyG')) {
-        if (photo.kind === 'selfie') hud.toast(`Gesture: ${photo.nextGesture()}`);
+        if (photo.kind === 'selfie') hud.toast(t('rGestureIs', { name: photo.nextGesture() }));
         else nextLook();
       }
       if (tap('KeyX')) {
         // (from the face he shows: the selfie makes him smile)
         setFace(EXPRESSIONS.indexOf(explorer.currentExpression) + 1);
-        hud.toast(`Face: ${EXPRESSIONS[face]}`);
+        hud.toast(t('rFaceIs', { name: t(FACE_NAME[EXPRESSIONS[face]]) }));
       }
 
       if (photo.kind) {
@@ -427,10 +429,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (mouse?.length === 2) fakePointer = { x: mouse[0] * innerWidth, y: mouse[1] * innerHeight };
       if (params.has('stick')) photo.stick = params.get('stick') !== '0';
       if (params.has('sview')) photo.hold = Number(params.get('sview')) || 0;
-      const t = params.get('tool') as ToolName | null;
-      if (t && TOOLS.includes(t) && (mode === 'walk' || ((t === 'camera' || t === 'selfie') && PHOTO_MODES.includes(mode)))) {
-        if (t === 'camera' || t === 'selfie') photo.raise(t, ctx);
-        else setHeld((chosen = t));
+      const tool = params.get('tool') as ToolName | null;
+      if (tool && TOOLS.includes(tool) && (mode === 'walk' || ((tool === 'camera' || tool === 'selfie') && PHOTO_MODES.includes(mode)))) {
+        if (tool === 'camera' || tool === 'selfie') photo.raise(tool, ctx);
+        else setHeld((chosen = tool));
       }
       const a = params.get('act') as ActionName | null;
       if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie') explorer.play(a);
@@ -521,28 +523,39 @@ function createToolBar(
   injectStyle();
   const wrap = document.createElement('div');
   wrap.className = 'rtb-wrap';
-  const slot = (t: ToolName, key: string) =>
-    `<button type="button" class="rtb-slot" data-tool="${t}" aria-pressed="false" title="${TOOL_NAME[t]} (${key})"><span class="rtb-bg"></span>${ICONS[t]}<kbd>${key}</kbd></button>`;
+  const slot = (tool: ToolName, key: string) =>
+    `<button type="button" class="rtb-slot" data-tool="${tool}" data-key="${key}" aria-pressed="false"><span class="rtb-bg"></span>${ICONS[tool]}<kbd>${key}</kbd></button>`;
   wrap.innerHTML = `
-    <div class="rtb mu-frame mu-sm" role="toolbar" aria-label="The explorer's tools">
+    <div class="rtb mu-frame mu-sm" role="toolbar">
       <span class="mu-bg"></span>
       ${slot('lantern', '1')}${slot('torch', '2')}${slot('flashlight', '3')}${slot('camera', '4')}${slot('selfie', '5')}
       <span class="rtb-sep" aria-hidden="true"></span>
-      <button type="button" class="rtb-slot rtb-album" title="Photo album (V)"><span class="rtb-bg"></span>${ICONS.album}<kbd>V</kbd></button>
-      <button type="button" class="rtb-slot rtb-more" title="All keys (?)" aria-expanded="false"><span class="rtb-bg"></span><span class="rtb-q">?</span></button>
+      <button type="button" class="rtb-slot rtb-album"><span class="rtb-bg"></span>${ICONS.album}<kbd>V</kbd></button>
+      <button type="button" class="rtb-slot rtb-more" aria-expanded="false"><span class="rtb-bg"></span><span class="rtb-q">?</span></button>
     </div>
-    <div class="rtb-keys mu-frame mu-sm" role="dialog" aria-label="Keys"><span class="mu-bg"></span>${KEY_LIST}</div>`;
+    <div class="rtb-keys mu-frame mu-sm" role="dialog"></div>`;
   layer.append(wrap);
   const keysEl = wrap.querySelector<HTMLElement>('.rtb-keys')!;
   const more = wrap.querySelector<HTMLButtonElement>('.rtb-more')!;
   const slots = [...wrap.querySelectorAll<HTMLButtonElement>('.rtb-slot[data-tool]')];
+  const albumBtn = wrap.querySelector<HTMLButtonElement>('.rtb-album')!;
+  /** The names on the buttons (shown on hover) and the key list, in the language in use (ui/lang.ts). */
+  const fillWords = () => {
+    wrap.querySelector('.rtb')!.setAttribute('aria-label', t('rToolsAria'));
+    for (const b of slots) b.title = `${t(TOOL_NAME[b.dataset.tool as ToolName])} (${b.dataset.key})`;
+    albumBtn.title = `${t('rAlbum')} (V)`;
+    more.title = `${t('rAllKeys')} (?)`;
+    keysEl.setAttribute('aria-label', t('rKeys'));
+    keysEl.innerHTML = `<span class="mu-bg"></span>${keyList()}`;
+  };
+  fillWords();
+  onLang(fillWords);
   // (let go of the focus: Space is the jump and the shutter)
   for (const b of slots)
     b.addEventListener('click', () => {
       b.blur();
       h.onTool(b.dataset.tool as ToolName);
     });
-  const albumBtn = wrap.querySelector<HTMLButtonElement>('.rtb-album')!;
   albumBtn.addEventListener('click', () => {
     albumBtn.blur();
     h.onAlbum();
@@ -556,8 +569,8 @@ function createToolBar(
       const held = h.held();
       const up = h.up();
       for (const b of slots) {
-        const t = b.dataset.tool as ToolName;
-        const on = t === held || t === up;
+        const tool = b.dataset.tool as ToolName;
+        const on = tool === held || tool === up;
         b.classList.toggle('is-on', on);
         b.setAttribute('aria-pressed', String(on));
       }
@@ -579,17 +592,23 @@ function createToolBar(
 }
 
 const k = (s: string) => `<kbd>${s}</kbd>`;
-const row = (keys: string, what: string) => `<span class="rtb-k">${keys}</span><span>${what}</span>`;
-const KEY_LIST = `
-  <div class="rtb-col"><b>Tools</b>
-    ${row(k('1'), 'lantern')}${row(k('2'), 'torch')}${row(k('3'), 'flashlight')}${row(k('O'), 'beam ahead / mouse')}
-    ${row(k('4') + k('Z'), 'camera')}${row(k('5') + k('Y'), 'selfie phone')}${row(k('V'), 'photo album')}</div>
-  <div class="rtb-col"><b>Explorer</b>
-    ${row(k('F'), 'wave')}${row(k('C'), 'cheer')}${row(k('U'), 'look up')}${row(k('P'), 'peek')}
-    ${row(k('H'), 'hat')}${row(k('G'), 'outfit')}${row(k('X'), 'face')}</div>
-  <div class="rtb-col"><b>Camera</b>
-    ${row('<i>click</i>' + k('Space'), 'take a photo')}${row('<i>drag</i>', 'look')}${row('<i>wheel</i>', 'zoom')}${row(k('Esc'), 'put away')}
-    <b class="rtb-sub">Selfie</b>${row('<i>drag</i>', 'move the phone')}${row('<i>wheel</i>', 'closer / further')}${row(k('T'), 'selfie stick')}${row(k('G'), 'gesture')}</div>`;
+/** A mouse action, as a key: drag, wheel, click. */
+const mouse = (w: WordKey) => `<i>${t(w)}</i>`;
+/** Keys and what they do (in English in lower case, as a list). */
+const row = (keys: string, what: WordKey) => `<span class="rtb-k">${keys}</span><span>${t(what).toLowerCase()}</span>`;
+/** All the keys (?), in the language in use. */
+const keyList = () => `
+  <div class="rtb-col"><b>${t('rTools')}</b>
+    ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
+    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}</div>
+  <div class="rtb-col"><b>${t('rExplorer')}</b>
+    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}
+    ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
+    <b class="rtb-sub">${t('rView')}</b>${row(mouse('rDrag') + k('Q') + k('R'), 'rLookRound')}${row(mouse('rWheel'), 'rZoom')}
+    <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}</div>
+  <div class="rtb-col"><b>${t('rCamera')}</b>
+    ${row(mouse('rClick') + k('Space'), 'rTakePhoto')}${row(mouse('rDrag') + k('Q') + k('R'), 'rLook')}${row(mouse('rWheel'), 'rZoom')}${row(k('Esc'), 'rStow')}
+    <b class="rtb-sub">${t('rSelfieHead')}</b>${row(mouse('rDrag'), 'rMovePhone')}${row(mouse('rWheel'), 'rReach')}${row(k('T'), 'rStick')}${row(k('G'), 'rGesture')}</div>`;
 
 /** 16 × 16 pixel-art icons (currentColor, with their own glow colours). */
 const px = (body: string) => `<svg class="rtb-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">${body}</svg>`;
@@ -650,11 +669,16 @@ function injectStyle(): void {
     .rtb-keys { grid-row: 1; display: none; gap: calc(22 * var(--px)); padding: calc(12 * var(--px)) calc(16 * var(--px)); pointer-events: auto;
       font-size: calc(13 * var(--px)); color: var(--mu-ink2); }
     .rtb-keys.is-on { display: flex; }
+    /* (it has every key: the mode's key help at the bottom left steps aside for it) */
+    .rh:has(.rtb-keys.is-on) .rh-help { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
     .rtb-col { display: grid; grid-template-columns: auto auto; gap: calc(5 * var(--px)) calc(8 * var(--px)); align-content: start; align-items: center; }
     .rtb-col b { grid-column: 1 / -1; font: 700 calc(14 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-gold-hi); letter-spacing: 0.02em; }
     .rtb-col b.rtb-sub { margin-top: calc(6 * var(--px)); }
     .rtb-k { display: flex; gap: calc(3 * var(--px)); justify-content: flex-end; align-items: center; }
     .rtb-k i { font-style: normal; font-weight: 700; color: var(--mu-ink); margin-right: calc(3 * var(--px)); }
+    /* (Khmer letters look smaller at the same size, and take no letter spacing: map.css) */
+    :lang(km) .rtb-keys { font-size: calc(14 * var(--px)); }
+    :lang(km) .rtb-col b { letter-spacing: 0; }
 
     /* The camera or the phone up: only the viewfinder. */
     body.roam-photo .rtb-wrap, body.roam-photo .rh-help, body.roam-photo .rh-back, body.roam-photo .rh-prompt,
@@ -673,6 +697,8 @@ function injectStyle(): void {
     @media (max-width: 639px) {
       .rtb-wrap { bottom: 10px; }
       .rtb-slot { width: 36px; height: 36px; }
+      /* (no room beside the bar: the key help goes over it, as wide as the screen) */
+      .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang']) .rh-help { max-width: calc(100% - 20px); bottom: 62px; }
     }
     /* (a phone on its side: no room up the edge, so along the top) */
     @media (max-height: 500px) {

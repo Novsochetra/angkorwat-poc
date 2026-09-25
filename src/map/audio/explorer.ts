@@ -1,15 +1,19 @@
 import type { RoamSound } from '../types';
 import { biquad, glide, mtof, noise, range, source, strike, type NoiseKind, type Rng } from './dsp';
-import type { SoundEngine } from './engine';
+import type { Bus, BusName, SoundEngine } from './engine';
 import type { StepSet, StepSets } from './footsteps';
 
 /**
- * The roaming explorer's sounds, on the effects bus: footsteps, the jump
- * and the landing, the parachute snapping open and folding away, splashes,
- * the paddle, stepping into and out of the boat, and a soft temple bell on
- * entering a place, the hang glider unfolding and put away. Lasting:
- * rushing air while falling or gliding, the water along the boat's hull,
- * and the hang glider's sail thrumming in the airflow.
+ * The roaming explorer's sounds: footsteps, the jump and the landing, the
+ * parachute snapping open and folding away, splashes, the paddle, stepping
+ * into and out of the boat, and a soft temple bell on entering a place, the
+ * hang glider unfolding and put away. Lasting: rushing air while falling or
+ * gliding, the water along the boat's hull, and the hang glider's sail
+ * thrumming in the airflow.
+ *
+ * Each has its slider (`roamBus`): the footsteps are on the `steps` bus,
+ * everything else on `moves`, but the bell, which rings with the "begin"
+ * gong of the interface, on `ui`.
  *
  * The footsteps are recordings (`assets/sound/`, cut into single steps by
  * `footsteps.ts`): one step per footfall from the ground's recording, never
@@ -24,8 +28,14 @@ import type { StepSet, StepSets } from './footsteps';
 /** Ground under a footstep (RoamSound `step*`). */
 type Ground = 'earth' | 'grass' | 'stone' | 'sand' | 'water' | 'wood';
 const GROUND: Partial<Record<RoamSound, Ground>> = { step: 'earth', stepGrass: 'grass', stepStone: 'stone', stepSand: 'sand', stepWater: 'water', stepWood: 'wood' };
+
+/** The bus (slider) a sound of the explorer plays on: his steps, the bell on entering a place (with the interface's gong), or his moves (anything else). */
+export function roamBus(s: RoamSound): BusName {
+  return GROUND[s] ? 'steps' : s === 'enter' ? 'ui' : 'moves';
+}
+
 /** Each ground's level, so every synthesized step sounds about as loud (stone's tap is short and sand's thud soft: they need more; the water's long slosh less). */
-const GROUND_GAIN: Record<Ground, number> = { earth: 1.2, grass: 1, stone: 1.75, sand: 1.32, water: 0.47, wood: 1.3 };
+const GROUND_GAIN: Record<Ground, number> = { earth: 1.11, grass: 1, stone: 1.44, sand: 1.07, water: 0.36, wood: 1.27 };
 
 /**
  * One recorded step in a footfall: a step from `set` (`same`: the one the
@@ -42,30 +52,32 @@ interface Layer {
 }
 /**
  * The recordings on each ground (the layers of a footfall start together);
- * `level` evens the grounds out, `wet` is the reverb send, `run` the
- * longest step when running (s).
+ * `level` evens the grounds out (walking, each is as loud to within
+ * 0.5 dB), `wet` is the reverb send, `run` the longest step when running (s).
  */
 const RECORDED: Record<Ground, { layers: readonly Layer[]; level: number; wet: number; run: number }> = {
   // Dry grass crunching (its hiss taken off) over a soft low thump of the body's weight (the boots on concrete, only their lows).
-  grass: { level: 1.02, wet: 0.04, run: 0.26, layers: [{ set: 'grass', level: 1, lp: 6500 }, { set: 'concrete', level: 0.8, lp: 450, rate: 0.88 }] },
+  grass: { level: 1, wet: 0.04, run: 0.26, layers: [{ set: 'grass', level: 1, lp: 6500 }, { set: 'concrete', level: 0.42, lp: 450, rate: 0.88 }] },
   // Packed earth: the boots on concrete softened (dull, a little deeper), a trace of grit from the grass.
-  earth: { level: 1, wet: 0.05, run: 0.26, layers: [{ set: 'concrete', level: 1, lp: 1200, rate: 0.92 }, { set: 'grass', level: 0.2, lp: 3500 }] },
+  earth: { level: 0.955, wet: 0.05, run: 0.26, layers: [{ set: 'concrete', level: 1, lp: 1200, rate: 0.92 }, { set: 'grass', level: 0.38, lp: 3500 }] },
   // Sandstone: the road, temple floors, bare rock.
-  stone: { level: 1.1, wet: 0.1, run: 0.26, layers: [{ set: 'concrete', level: 1 }] },
+  stone: { level: 1.07, wet: 0.1, run: 0.26, layers: [{ set: 'concrete', level: 1 }] },
   // River banks: the grass crunch hushed and slower (grains), the foot sinking in with a muffled thump.
-  sand: { level: 1.58, wet: 0.03, run: 0.28, layers: [{ set: 'grass', level: 0.9, lp: 2200, rate: 0.9 }, { set: 'concrete', level: 0.6, lp: 350, rate: 0.85 }] },
+  sand: { level: 1.9, wet: 0.03, run: 0.28, layers: [{ set: 'grass', level: 0.9, lp: 2200, rate: 0.9 }, { set: 'concrete', level: 0.32, lp: 350, rate: 0.85 }] },
   // Wading: the slosh, and the same slosh deeper under it (the water the leg pushes).
-  water: { level: 1.08, wet: 0.08, run: 0.32, layers: [{ set: 'water', level: 1 }, { set: 'water', same: true, level: 0.5, rate: 0.6, lp: 800 }] },
+  water: { level: 0.87, wet: 0.08, run: 0.32, layers: [{ set: 'water', level: 1 }, { set: 'water', same: true, level: 0.5, rate: 0.6, lp: 800 }] },
   // Planks: the take-off ramp, stepping off the boat (no boom under 70 Hz: an open deck, not a hollow floor).
-  wood: { level: 1.14, wet: 0.07, run: 0.26, layers: [{ set: 'wood', level: 1, hp: 70 }] },
+  wood: { level: 1.02, wet: 0.07, run: 0.26, layers: [{ set: 'wood', level: 1, hp: 70 }] },
 };
 
-/** Peak levels (before the effects volume). */
+/** Peak levels (before the volume of their bus). */
 const LEVEL = {
-  // (the steps sit clearly over the birds, insects and music: about 10 dB over the background's middle)
-  step: 5.5,
-  /** The recorded steps (each levelled to a loudest 20 ms RMS of −12 dBFS). */
-  recorded: 3.2,
+  // Walking, the steps sit some 4.5 dB under the music and the day's ambience together (6 under the night's), running
+  // 3–4 dB louder (at the default Steps slider; K-weighted, measured offline): heard, never over the rest, and too
+  // soft to make the compressor duck the rest. The synthesized steps are as loud as the recorded ones.
+  step: 3.6,
+  /** The recorded steps (each levelled to a loudest weighted 100 ms of −20 dBFS: `footsteps.ts`). */
+  recorded: 2.7,
   jump: 1,
   land: 1.2,
   chute: 1.6,
@@ -79,6 +91,10 @@ const LEVEL = {
 };
 /** Steps closer together than this are one step (s). */
 const STEP_GAP = 0.09;
+/** A step's level grows with its gain `g` as `g` ** EFFORT (running also packs the steps closer: that alone adds some 2.5 dB). */
+const EFFORT = 0.3;
+/** How much a footfall of gain `g` is a run (0 walking … 1 running): the walker's steps come at ~0.7 walking, 1 running. */
+const running = (g: number): number => Math.min(1, Math.max(0, (g - 0.8) / 0.2));
 /** A lasting sound silent this long stops its sources (s). */
 const IDLE = 4;
 
@@ -133,6 +149,10 @@ export class Explorer {
   private readonly rnd: Rng;
   /** The recorded steps, once loaded (`footsteps.ts`); until then the steps are synthesized. */
   steps: StepSets | null = null;
+  /** Footsteps played so far on each ground: [recorded, synthesized] (for checks: `audio.debug()`). */
+  readonly played: Record<Ground, [number, number]> = { earth: [0, 0], grass: [0, 0], stone: [0, 0], sand: [0, 0], water: [0, 0], wood: [0, 0] };
+  /** The bus the sound being made goes to (`roamBus`; the lasting sounds are on `moves`). */
+  private to: Bus;
   private lastStep = -1;
   /** The step last played from each recording (never the same twice in a row). */
   private readonly lastPick: Partial<Record<StepSet, number>> = {};
@@ -147,15 +167,29 @@ export class Explorer {
     this.e = e;
     this.ctx = e.ctx;
     this.rnd = e.rnd;
+    this.to = e.bus.moves;
   }
 
+  /** One sound at `t`, `g` 0‥1, on its bus (a sound made inside another, the step off the boat, on its own). */
   play(s: RoamSound, g: number, t: number): void {
+    const was = this.to;
+    this.to = this.e.bus[roamBus(s)];
+    try {
+      this.make(s, g, t);
+    } finally {
+      this.to = was;
+    }
+  }
+
+  private make(s: RoamSound, g: number, t: number): void {
     const r = this.rnd;
     const ground = GROUND[s];
     if (ground) {
       if (t - this.lastStep < STEP_GAP) return;
       this.lastStep = t;
-      if (!this.recorded(t, g, ground)) this.footstep(t, g, ground);
+      const recorded = this.recorded(t, g, ground);
+      if (!recorded) this.footstep(t, g, ground);
+      this.played[ground][recorded ? 0 : 1]++;
       return;
     }
     switch (s) {
@@ -276,9 +310,9 @@ export class Explorer {
     if (!sets || kind.layers.some((l) => !sets[l.set].length)) return false;
     const ctx = this.ctx;
     const r = this.rnd;
-    const run = Math.min(1, Math.max(0, (g - 0.72) / 0.28));
+    const run = running(g);
     const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
-    const level = LEVEL.recorded * kind.level * g ** 1.8 * range(r, 0.85, 1.15);
+    const level = LEVEL.recorded * kind.level * g ** EFFORT * range(r, 0.85, 1.15);
     const env = this.gain(level);
     const nodes: AudioNode[] = [env, ...this.out(env, pan, kind.wet)];
     // (one foot: the layers share the speed)
@@ -341,8 +375,8 @@ export class Explorer {
     const r = this.rnd;
     const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
     const k = range(r, 0.9, 1.12);
-    const v = g * range(r, 0.8, 1);
-    const run = Math.max(0, (g - 0.72) / 0.28);
+    const v = g ** EFFORT * range(r, 0.8, 1);
+    const run = running(g);
     const L = LEVEL.step * GROUND_GAIN[ground] * v;
     const heavy = 1 + 0.6 * run;
     const short = 1 - 0.3 * run;
@@ -514,7 +548,7 @@ export class Explorer {
     return s;
   }
 
-  /** Send `node` to the effects bus (dry, and some reverb), through a pan. */
+  /** Send `node` to the sound's bus (dry, and some reverb), through a pan. */
   private out(node: AudioNode, pan: number, wet: number): AudioNode[] {
     const made: AudioNode[] = [];
     let last = node;
@@ -524,10 +558,10 @@ export class Explorer {
       last = last.connect(p);
       made.push(p);
     }
-    last.connect(this.e.sfxBus.dry);
+    last.connect(this.to.dry);
     if (wet > 0) {
       const g = this.gain(wet);
-      last.connect(g).connect(this.e.sfxBus.wet);
+      last.connect(g).connect(this.to.wet);
       made.push(g);
     }
     return made;

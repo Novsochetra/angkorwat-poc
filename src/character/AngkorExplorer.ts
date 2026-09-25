@@ -787,7 +787,10 @@ function buildBeam(): Mesh<ConeGeometry, ShaderMaterial> {
         vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
     fragmentShader: /* glsl */ `uniform float strength; uniform vec3 color; varying float vT; varying vec3 vN; varying vec3 vV;
       void main(){ float edge = pow(abs(dot(normalize(vN), normalize(vV))), 1.5);
-        float fade = pow(1.0 - vT, 1.8) * smoothstep(0.0, 0.08, vT);
+        // (multisampling can shade a pixel on the far rim from its centre, just past
+        // the end, where vT is a hair over 1: pow of a negative number is NaN, a black dot)
+        float t = clamp(vT, 0.0, 1.0);
+        float fade = pow(1.0 - t, 1.8) * smoothstep(0.0, 0.08, t);
         gl_FragColor = vec4(color * strength * edge * fade, 1.0); }`,
     transparent: true,
     blending: AdditiveBlending,

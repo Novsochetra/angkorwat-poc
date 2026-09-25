@@ -90,7 +90,7 @@ export class Music {
     const ctx = (this.ctx = e.ctx);
     this.rnd = e.rnd;
     this.wave = softWave(ctx, 1.7, 12);
-    const { dry, wet } = e.musicBus;
+    const { dry, wet } = e.bus.music;
     const now = ctx.currentTime;
     const gain = (v: number) => {
       const g = ctx.createGain();

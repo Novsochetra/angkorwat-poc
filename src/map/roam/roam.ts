@@ -1,11 +1,12 @@
 import { Group, Vector3 } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { PlaceDef } from '../layout';
-import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound } from '../types';
+import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UISound } from '../types';
+import { followNearFade, installNearFade } from './_nearFade';
 import { createBoat } from './boat';
 import { OrbitFollowCam } from './followCam';
 import { createHangGlider } from './hangGlider';
-import { createRoamHud } from './hud';
+import { createRoamHud, type JumpKind } from './hud';
 import { parseScript, RoamControls } from './input';
 import { createLaunchSpots, type LaunchSpot } from './launchSpots';
 import { createParachute } from './parachute';
@@ -21,7 +22,9 @@ import { buildRoamWorld } from './world';
  * runs the modes (roam/types.ts) and hands the camera between the overview
  * rig and the follow camera.
  *
- * URL (for checking): `roam=leap|glide|walk|boat|hang` start in that mode ·
+ * URL (for checking): `roam=leap|glide|walk|boat|hang` start in that mode
+ * (`roam=leap&start=glider`: the hang glider opens at the end of the leap,
+ * not the parachute; hud.ts: `jumpmenu=1` the "Jump in" card open) ·
  * `at=x,z` or `at=x,y,z` where (m; y defaults to the ground or water) ·
  * `yaw=<deg>` facing · `sim=<script>` scripted input run before a shot
  * (input.ts `parseScript`, e.g. `sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist`
@@ -45,8 +48,8 @@ export interface MapRoam extends MapPart {
   readonly launchSpots: readonly LaunchSpot[];
   /** Roaming (the follow camera has the view). */
   readonly active: boolean;
-  /** Leap off the ledge. */
-  start(): void;
+  /** Leap off the ledge; at the end of the fall the parachute opens over him (`chute`, the default) or the hang glider (`glider`). */
+  start(kind?: JumpKind): void;
   /** Back to the overview (fades out and in). */
   stop(): Promise<void>;
   /** Headless shots: run the `sim=` script now (fixed steps). */
@@ -72,6 +75,8 @@ export interface RoamDeps {
   /** Enter a place (fade and open its page). */
   onEnter(place: PlaceDef): void;
   playSound(s: RoamSound, gain: number): void;
+  /** Play an interface sound (the "Jump in" card: hover, open, close, pick). */
+  uiSound?(s: UISound): void;
 }
 
 const STEP = 1 / 30;
@@ -90,8 +95,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   let mode: RoamMode = 'overview';
   let leaving = false;
   const hud = createRoamHud(deps.uiRoot, {
-    onJump: () => api.start(),
+    onJump: (kind) => api.start(kind),
     onBack: () => void api.stop(),
+    sound: (s) => deps.uiSound?.(s),
   });
 
   const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas });
@@ -103,6 +109,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   // Hang glider ramps on the cliff tops: walkable (their decks over the walk map), E on one flies.
   const spots = createLaunchSpots(ctx.field, world);
   object.add(spots.object);
+  // (leaves, bark and the ramps' gliders dissolve in front of the follow camera)
+  installNearFade(spots.object);
   const { groundAt, standAt } = world;
   world.groundAt = (x, z) => Math.max(groundAt(x, z), spots.deckAt(x, z));
   if (standAt)
@@ -198,8 +206,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     get active() {
       return mode !== 'overview';
     },
-    start() {
+    start(kind = 'chute') {
       if (mode !== 'overview' || leaving) return;
+      chute.leap.opens = kind === 'glider' ? 'hang' : 'glide';
       deps.release(true);
       body.scale = 1;
       switchTo('leap');
@@ -231,7 +240,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       return {
         text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}), facing ${deg(body.yaw).toFixed(0)}°${look ? ` · ${look}` : ''}`,
         params: {
-          roam: mode === 'leap' ? 'glide' : mode,
+          // (a leap goes on as whatever opens at its end: the parachute, or the hang glider)
+          roam: mode === 'leap' ? chute.leap.opens : mode,
           at: [p.x, p.y, p.z].map((v) => v.toFixed(1)).join(','),
           yaw: deg(body.yaw).toFixed(0),
           rcam: [deg(cam.yaw - body.yaw), (cam.pitch * 180) / Math.PI, cam.distance].map((v) => v.toFixed(0)).join(','),
@@ -266,6 +276,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         cam.update(ctx.shot ? 1 : f.dt, world);
         f.listener.set(body.pos.x, body.pos.y + 1.7 * body.scale, body.pos.z);
       } else f.listener.copy(f.camera.position);
+      // (the near fade: what stands in front of the follow camera dissolves; not in a photo)
+      followNearFade(mode !== 'overview' && mode !== 'leap' ? cam.focus : null, ctx.shot ? 1 : f.dt, 1 - tools.photo.view);
       // The hang glider over him (after his step: they move together), a glider put away, the ramps' lanterns, the seed fluff.
       hang.frame(f, mode, body.pos);
       // The view through his camera, the lights of his lantern, torch or flashlight (the ledge's too).
@@ -284,8 +296,10 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     const at = params.get('at')?.split(',').map(Number);
     const yawDeg = Number(params.get('yaw') ?? NaN);
     if (!Number.isNaN(yawDeg)) body.yaw = (yawDeg * Math.PI) / 180;
-    if (startMode === 'leap') switchTo('leap');
-    else {
+    if (startMode === 'leap') {
+      chute.leap.opens = params.get('start') === 'glider' ? 'hang' : 'glide';
+      switchTo('leap');
+    } else {
       if (at && at.length >= 2) {
         const [x, z] = at.length === 2 ? [at[0], at[1]] : [at[0], at[2]];
         const y = at.length === 3 ? at[1] : Math.max(world.groundAt(x, z), world.waterAt(x, z) ?? -Infinity);

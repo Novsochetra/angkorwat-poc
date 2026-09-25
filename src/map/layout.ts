@@ -113,7 +113,7 @@ export const PLACES: PlaceDef[] = [
     pad: [24, 20],
     anchor: [180, 36, -112],
     card: [114, 38],
-    focus: { pos: [240, 110, 10], target: [190, 34, -125] },
+    focus: { pos: [232, 96, -66], target: [194, 42, -150] },
   },
   {
     id: 'overlook',

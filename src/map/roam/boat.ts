@@ -3,6 +3,7 @@ import { hash3 } from '../../voxel/random';
 import type { HeightField, RiverSample } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
 import type { MapFrame } from '../types';
+import { placeText, t } from '../ui/lang';
 import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANTERN, lanternHalo, lanternMaterial } from './_boatModel';
 import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
 import { createWake } from './_wake';
@@ -824,13 +825,14 @@ export function createBoat(field?: HeightField): BoatMode {
       // What E does here: enter a place, step ashore.
       const spot = world.placeNear(body.pos.x, body.pos.z, level);
       const land = phase === 'float' ? ashore(ctx) : null;
-      const text = spot?.href ? `E  Enter ${spot.name}` : land ? 'E  Step ashore' : spot ? `${spot.name} — coming soon` : null;
+      const name = spot ? placeText(spot).name : '';
+      const text = spot?.href ? `E  ${t('rEnter', { name })}` : land ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
       if (text !== prompt) hud.prompt((prompt = text));
       if (input.use && phase === 'float') {
         if (spot?.href) ctx.enter(spot);
         else if (land) return stepOut(ctx, land);
-        else if (spot) hud.toast(`${spot.name} is not open yet — coming soon`);
-        else hud.toast('Paddle closer to the bank');
+        else if (spot) hud.toast(t('rNotOpen', { name }));
+        else hud.toast(t('rToBank'));
       }
       return null;
     },

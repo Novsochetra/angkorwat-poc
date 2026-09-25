@@ -173,6 +173,8 @@ export function redentKeep(cx: number, cz: number, hx: number, hz: number, n: nu
   return (x, _y, z) => {
     const a = Math.abs(x - cx);
     const b = Math.abs(z - cz);
+    // One cell each side of the centre leaves no room for a step: keep the plain block.
+    if (hx <= n || hz <= n) return true;
     if (hx - 2 * n < n || hz - 2 * n < n) return !(a > hx - n && b > hz - n);
     return !(a > hx - 2 * n && b > hz - 2 * n && (a > hx - n || b > hz - n));
   };

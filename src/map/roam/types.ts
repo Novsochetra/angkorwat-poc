@@ -41,7 +41,7 @@ export interface RoamInput {
   use: boolean;
   /** Esc pressed this frame: back to the overview. */
   exit: boolean;
-  /** Camera orbit from a mouse or touch drag since the last frame (radians; yaw + = turn left, pitch + = look down more). */
+  /** Camera orbit from a mouse or touch drag, Q / R or the right stick since the last frame (radians; yaw + = turn left, pitch + = look down more). */
   lookYaw: number;
   lookPitch: number;
   /** Wheel / pinch since the last frame (+ = further out). */
@@ -86,6 +86,12 @@ export interface RoamWorld {
   ceilingAt?(x: number, z: number, y: number): number;
   /** Part of the segment a → b (0‥1) that is free of solid blocks, from a (1 = nothing in the way). */
   clearance?(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number;
+  /** For the follow camera, what it cannot see through: the same less tree bark (the near fade dissolves trunks). */
+  hardClearance?(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number;
+  /** `standAt` of that (the camera's floor: it passes a tree softly, not over it). */
+  hardStandAt?(x: number, z: number, y: number, up: number, height: number): number;
+  /** For the follow camera, what it sees through but keeps out of: tree leaves and bark over the land; with `leave`, from where the segment comes out of what a is in (he walks through leaves). */
+  softClearance?(ax: number, ay: number, az: number, bx: number, by: number, bz: number, leave?: boolean): number;
 }
 
 /**

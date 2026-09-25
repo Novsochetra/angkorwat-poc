@@ -5,8 +5,8 @@ import type { HeightField } from '../heightfield';
 import type { RoamWorld } from './types';
 
 /**
- * Rising air for the hang glider: it keeps him up and lets him fly the
- * whole map.
+ * Rising air for the hang glider: it keeps the real glider up and lets him
+ * fly the whole map (with easy flying, hangGlider.ts, it only helps).
  *
  * - Along cliffs (ridge lift): wherever the land rises steeply close by,
  *   the air goes up over it, from the cliff's foot to some way over its

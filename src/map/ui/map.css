@@ -825,11 +825,16 @@
 /* ── Settings ───────────────────────────────────────────────────────────── */
 
 .mu-settings {
+  /* (under the corner buttons; the bottom stays clear on low screens: the body scrolls) */
+  --mu-set-top: calc(94 * var(--px));
   position: absolute;
   right: calc(22 * var(--px));
-  top: calc(94 * var(--px));
+  top: var(--mu-set-top);
   z-index: 8;
+  display: flex;
+  flex-direction: column;
   width: calc(330 * var(--px));
+  max-height: calc(100% - var(--mu-set-top) - 22 * var(--px));
   padding: calc(14 * var(--px)) calc(20 * var(--px)) calc(20 * var(--px));
   pointer-events: auto;
   visibility: hidden;
@@ -874,6 +879,33 @@
   color: var(--mu-ink);
 }
 
+/* Everything under the heading: scrolls when the screen is too low for it (the frame stays). */
+.mu-set-body {
+  min-height: 0;
+  margin: 0 calc(-8 * var(--px));
+  padding: 0 calc(8 * var(--px)) calc(4 * var(--px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 236, 205, 0.22) transparent;
+  --mu-more-up: 0px;
+  --mu-more-down: 0px;
+}
+
+/* Soft edges where there is more to scroll to (ui.ts `scrollEdges`). */
+.mu-set-body:is(.is-more-up, .is-more-down) {
+  -webkit-mask-image: linear-gradient(transparent, #000 var(--mu-more-up), #000 calc(100% - var(--mu-more-down)), transparent);
+  mask-image: linear-gradient(transparent, #000 var(--mu-more-up), #000 calc(100% - var(--mu-more-down)), transparent);
+}
+
+.mu-set-body.is-more-up {
+  --mu-more-up: calc(26 * var(--px));
+}
+
+.mu-set-body.is-more-down {
+  --mu-more-down: calc(26 * var(--px));
+}
+
 .mu-settings h3 {
   margin: calc(16 * var(--px)) 0 calc(6 * var(--px));
   font-size: calc(11 * var(--px));
@@ -882,6 +914,24 @@
   text-transform: uppercase;
   color: var(--mu-gold);
   opacity: 0.9;
+}
+
+/* A part of the sound (around you, your own): a small heading with a hairline to the edge. */
+.mu-set-sub h4 {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--px));
+  margin: calc(14 * var(--px)) 0 calc(4 * var(--px));
+  font-size: calc(12 * var(--px));
+  font-weight: 700;
+  color: var(--mu-dim);
+}
+
+.mu-set-sub h4::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--mu-line);
 }
 
 .mu-x {
@@ -919,11 +969,9 @@
   color: var(--mu-ink);
 }
 
-/* Master: above the others, a thin line under it. */
+/* Master: over all the others. */
 .mu-slider.is-master {
-  padding-bottom: calc(10 * var(--px));
-  margin-bottom: calc(12 * var(--px));
-  border-bottom: 1px solid var(--mu-line);
+  font-weight: 800;
 }
 
 .mu-slider output {
@@ -1053,6 +1101,7 @@
   font-size: calc(12 * var(--px));
   font-weight: 400;
   color: var(--mu-dim);
+  text-wrap: pretty;
 }
 
 .mu-switch {
@@ -1241,6 +1290,14 @@
 
 .mu-roam .mu-pin.is-off::after {
   opacity: 0;
+}
+
+/* The mini-map (ui/minimap.ts) sits under the gear, where the settings open:
+   it fades while they are open, and comes back after. */
+.map-ui.mu-set-open ~ .mm.is-on .mm-mini {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0s 0.2s;
 }
 
 /* ── Fade to black ("Begin expedition") ─────────────────────────────────── */
@@ -1475,11 +1532,16 @@
     font-size: 16px;
   }
 
+  /* (under both rows of corner buttons; roaming: one row, below) */
   .mu-settings {
+    --mu-set-top: 100px;
     left: 8px;
     right: 8px;
-    top: 62px;
     width: auto;
+  }
+
+  .mu-roam .mu-settings {
+    --mu-set-top: 62px;
   }
 
   .mu-hint {
@@ -1558,6 +1620,10 @@ body.reporting .map-ui {
   font-weight: 700;
 }
 
+:lang(km) :is(.mu-set-sub h4, .mu-set-row small) {
+  font-size: calc(13 * var(--px));
+}
+
 :lang(km) .mu-info-blurb {
   line-height: 1.65;
 }
@@ -1602,5 +1668,15 @@ body.reporting .map-ui {
 
   .mu-lang button[lang='km'] {
     font-size: 13px;
+  }
+
+  /* Roaming: no title, so one row again, clear of the mini-map under it (ui/minimap.ts). */
+  .mu-roam .mu-corner {
+    flex-wrap: nowrap;
+    width: auto;
+  }
+
+  .mu-roam .mu-lang {
+    order: 0;
   }
 }
