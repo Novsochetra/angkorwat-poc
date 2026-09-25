@@ -92,7 +92,10 @@ export function buildFireflies(field: HeightField, feet: Vector3, camera: Vector
         gl_Position = projectionMatrix * mvPosition;
         float dist = max(1.0, -mvPosition.z);
         float px = aSize * uScale / dist;
-        gl_PointSize = max(2.5, px * 6.0);
+        // The lowland ones glow big to be seen from the overview; walking among
+        // them (roaming) they shrink towards a firefly's own small light.
+        float near = aSize > 0.2 ? mix(0.1, 1.0, smoothstep(6.0, 60.0, dist)) : 1.0;
+        gl_PointSize = clamp(px * 6.0 * near, 2.5, 28.0);
         // A soft glow for about a second every 3–6 s, and a faint ember between.
         float period = 3.0 + aSeed.x * 3.0;
         float ph = fract(t / period + aSeed.y);

@@ -273,7 +273,7 @@ export function landing(k: number): Pose {
 
 // ─── One-shot / looping actions ─────────────────────────────────────────────
 
-export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo';
+export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo' | 'selfie';
 
 export interface ActionDef {
   duration: number;
@@ -452,6 +452,26 @@ export const ACTIONS: Record<ActionName, ActionDef> = {
       elbowL: { rx: -1.9 },
       elbowR: { rx: -1.9 },
     }),
+  },
+  // Phone held out for a selfie (held until stopped). The Animator puts the
+  // right fist where the phone goes with arm IK, turns the head and chest to
+  // it, and poses the left hand's gesture; this is the gentle sway on top.
+  selfie: {
+    duration: 4.0,
+    loop: true,
+    fadeIn: 0.45,
+    fadeOut: 0.4,
+    joints: ['chest', 'neck', 'head', ...ARM_JOINTS_R],
+    allowLocomotion: false,
+    pose: (t) => {
+      const sway = Math.sin((t / 4.0) * TAU);
+      return {
+        chest: { rx: -0.05, rz: 0.015 * sway },
+        head: { rz: 0.03 * sway, rx: 0.01 * Math.sin((t / 2.0) * TAU) },
+        shoulderR: { rx: -1.6, rz: -0.4 },
+        elbowR: { rx: -0.6 },
+      };
+    },
   },
   cheer: {
     duration: 1.6,

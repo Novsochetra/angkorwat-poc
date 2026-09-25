@@ -44,6 +44,12 @@ export interface RoamInput {
   lookPitch: number;
   /** Wheel / pinch since the last frame (+ = further out). */
   zoom: number;
+  /** The explorer's tool and emote keys pressed this frame (`KeyboardEvent.code`, input.ts `TOOL_KEYS`; tools.ts reads them). */
+  taps?: ReadonlySet<string>;
+  /** A click on the view this frame (a mouse press and release without a drag), or the touch shutter. */
+  click?: boolean;
+  /** Where the mouse is over the view (CSS px), or null (touch, or off the view). */
+  pointer?: { readonly x: number; readonly y: number } | null;
 }
 
 /** What the roaming modes know about the world. */
@@ -165,4 +171,6 @@ export interface RoamHud {
   /** Fade the view to black (1) or back (0) over `seconds`. */
   fade(to: 0 | 1, seconds: number): Promise<void>;
   update(dt: number): void;
+  /** The roaming interface's layer (it follows the picker's size and time of day): more of it goes in here (the tool bar). */
+  readonly layer?: HTMLElement;
 }

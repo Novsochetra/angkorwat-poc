@@ -1,5 +1,5 @@
-import { Euler, PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import type { AngkorExplorer } from '../character/AngkorExplorer';
+import { Euler, PerspectiveCamera, Quaternion, Spherical, Vector3 } from 'three';
+import type { AngkorExplorer, SelfieAim } from '../character/AngkorExplorer';
 import { CHARACTER_HEIGHT_M, CHARACTER_RADIUS_M, CHARACTER_STEP_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
 import type { ColliderWorld } from './world/Colliders';
 import type { Input } from './Input';
@@ -15,7 +15,21 @@ const PHOTO_EYE = CHARACTER_HEIGHT_M * 0.722;
 const PHOTO_AHEAD = 0.32;
 /** Seconds to raise the camera to the eye / take it down. */
 const PHOTO_RAISE = 0.45;
+/** Selfie: seconds to glide to the phone, and the view's field of view (degrees; wider with the phone close). */
+const SELFIE_RAISE = 0.55;
+export const SELFIE_FOV = 64;
+/**
+ * The selfie view sits this far behind the phone's lens (m; closer with a short
+ * reach), on the line to the face: the explorer's arm is short for his big
+ * head, so the lens itself is too close to frame it. The phone and the arm
+ * holding it hide from this view.
+ */
+const SELFIE_BACK = [0.3, 0.75] as const;
 const _eye = new Vector3();
+const _back = new Vector3();
+const _look = new Vector3();
+const _from = new Spherical();
+const _to = new Spherical();
 const _q = new Quaternion();
 const _e = new Euler(0, 0, 0, 'YXZ');
 
@@ -55,6 +69,17 @@ export class PlayerController {
   /** 0 = follow camera, 1 = looking through the explorer's camera (eases between). */
   photoView = 0;
   private readonly lastPhoto: PhotoView = { yaw: 0, pitch: 0, fov: FOV };
+  /**
+   * Selfie mode: where the phone is round the explorer's head (his
+   * `selfieAim`: drag moves it, the wheel changes the reach), or null.
+   */
+  selfie: SelfieAim | null = null;
+  /** 0 = follow camera, 1 = looking through the selfie phone (eases between). */
+  selfieView = 0;
+  /** The last selfie lens (world), to glide back from once the phone is down. */
+  private readonly lensPos = new Vector3();
+  private readonly lensQuat = new Quaternion();
+  private hasLens = false;
 
   constructor(
     private readonly explorer: AngkorExplorer,
@@ -131,6 +156,15 @@ export class PlayerController {
   private orbit(dt: number): void {
     const inp = this.input;
     this.photoView = Math.min(1, Math.max(0, this.photoView + (this.photo ? dt : -dt) / PHOTO_RAISE));
+    this.selfieView = Math.min(1, Math.max(0, this.selfieView + (this.selfie ? dt : -dt) / SELFIE_RAISE));
+    if (this.selfie) {
+      // Drag moves the phone round his head (like orbiting), the wheel brings it closer / further.
+      const s = this.selfie;
+      s.yaw -= inp.dragX * 0.004;
+      s.pitch += inp.dragY * 0.003;
+      s.reach = Math.min(1, Math.max(0, s.reach + inp.wheel * 0.08));
+      return;
+    }
     if (this.photo) {
       // Drag to look, wheel to zoom; slower when zoomed in.
       const p = this.photo;
@@ -209,11 +243,47 @@ export class PlayerController {
       this.camera.position.lerp(_eye, k);
       this.camera.quaternion.slerp(_q.setFromEuler(_e.set(p.pitch, p.yaw + Math.PI, 0)), k);
     }
-    const fov = FOV + (p.fov - FOV) * k;
-    if (this.camera.fov !== fov) {
-      this.camera.fov = fov;
-      this.camera.updateProjectionMatrix();
+    if (this.selfieView === 0) this.setFov(FOV + (p.fov - FOV) * k);
+  }
+
+  /**
+   * Selfie: glide from the follow camera to the phone's front camera, looking
+   * back at the explorer. Call after the explorer's update (the phone moves with his arm).
+   */
+  selfieCamera(): void {
+    const e = this.explorer;
+    if (e.phoneLens(this.lensPos, this.lensQuat)) this.hasLens = true;
+    const v = this.selfieView;
+    const k = v * v * (3 - 2 * v);
+    e.hidePhone = k > 0.8;
+    if (k <= 0 || !this.hasLens) {
+      if (k <= 0) this.hasLens = false;
+      return;
     }
+    const reach = e.selfieAim.reach;
+    const back = SELFIE_BACK[0] + (SELFIE_BACK[1] - SELFIE_BACK[0]) * reach;
+    _eye.copy(this.lensPos).add(_back.set(0, 0, back * e.object.scale.x).applyQuaternion(this.lensQuat));
+    // Swing round him (not through his head) from the follow camera to the phone,
+    // looking at him on the way.
+    const pivot = this.camTarget;
+    _from.setFromVector3(this.tmp.subVectors(this.camera.position, pivot));
+    _to.setFromVector3(this.tmp.subVectors(_eye, pivot));
+    _from.theta += Math.atan2(Math.sin(_to.theta - _from.theta), Math.cos(_to.theta - _from.theta)) * k;
+    _from.phi += (_to.phi - _from.phi) * k;
+    _from.radius += (_to.radius - _from.radius) * k;
+    this.camera.position.setFromSpherical(_from).add(pivot);
+    // His face: where the lens's line of sight passes closest to the follow target.
+    _back.set(0, 0, -1).applyQuaternion(this.lensQuat);
+    _look.copy(this.lensPos).addScaledVector(_back, Math.max(0, this.tmp.subVectors(pivot, this.lensPos).dot(_back)));
+    this.camera.lookAt(_look.lerp(pivot, 1 - k));
+    this.camera.quaternion.slerp(this.lensQuat, k * k * k);
+    this.setFov(FOV + (SELFIE_FOV + (1 - reach) * 10 - FOV) * k);
+  }
+
+  private setFov(fov: number): void {
+    if (this.camera.fov === fov) return;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
   }
 
   /** Where the photo view looks from and toward (world), for aiming the flashlight and head. */

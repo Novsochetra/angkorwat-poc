@@ -1,9 +1,10 @@
 import { Group } from 'three';
+import { traceSource } from '../feedback/sourceTrace';
 import { hash3 } from '../voxel/random';
 import { VoxelBuilder } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
-import { GlowBlocks, glowMaterial, haloPoints, pointScale, type Halo } from './road/glow';
-import { buildBeacons, buildLanterns } from './road/lamps';
+import { GlowBlocks, glowMaterial, haloPoints, LightPools, pointScale, type Halo } from './road/glow';
+import { buildBeacons, buildLamps } from './road/lamps';
 import { buildRoadNetwork, KIND, LIFT, STEP, type Station } from './road/line';
 import { buildRoadStone } from './road/stone';
 import type { MapContext, MapFrame, MapPart, PlaceId } from './types';
@@ -11,9 +12,13 @@ import type { MapContext, MapFrame, MapPart, PlaceId } from './types';
 /**
  * The glowing road between the places: sandstone paving on the land, straight
  * staircases where it climbs a cliff, small footbridges over the rivers (the
- * River Gate builds its own big bridge), stone lanterns every ~25 m, a beacon
- * at every place, and a warm line of light down the middle with slow pulses
- * running along it from the River Gate outwards.
+ * River Gate builds its own big bridge), small stone lamps every ~12 m, a
+ * beacon at every place, and a warm line of light down the middle with slow
+ * pulses running along it from the River Gate outwards.
+ *
+ * The line is the journey seen from afar. Walking the road, it gives way
+ * near the camera to the carved stone strip it is set in (it shows again
+ * further on), and at night the lamps light the way with pools of light.
  *
  * Helpers in road/: line.ts (centre line and heights), stone.ts (paving,
  * stairs, walls, bridges), lamps.ts (lanterns, beacons), glow.ts (light).
@@ -23,6 +28,10 @@ import type { MapContext, MapFrame, MapPart, PlaceId } from './types';
 const INLAY_W = 1.1;
 /** Inlay colours (sRGB, before the level). */
 const INLAY = [0xffc474, 0xffbd6a, 0xffcb7c];
+/** The carved stone strip under the light (pale warm sandstone), seen where the light fades near the camera. */
+const INLAY_STONE = [0xe3cba4, 0xdcc39b, 0xe8d2ad, 0xd6bc93];
+/** Roaming: the road light is gone within `[0]` m of the camera and full from `[1]` m. */
+const ROAM_FADE = [22, 110];
 
 export function buildPath(ctx: MapContext): MapPart {
   const object = new Group();
@@ -35,8 +44,9 @@ export function buildPath(ctx: MapContext): MapPart {
   const glass = new GlowBlocks();
   const beacon = new GlowBlocks();
   const halos: Halo[] = [];
-  net.roads.forEach((road, r) => inlayBlocks(inlay, road.stations, r));
-  buildLanterns(b, net, ctx.field, glass, halos);
+  const lightPools = new LightPools();
+  net.roads.forEach((road, r) => inlayBlocks(b, inlay, road.stations, r));
+  buildLamps(b, net, ctx.field, glass, halos, lightPools);
   const beaconSpans = buildBeacons(b, net, ctx.field, beacon, halos);
 
   object.add(buildVoxelMesh(b, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: 'path' }));
@@ -44,9 +54,19 @@ export function buildPath(ctx: MapContext): MapPart {
   const lamp = glowMaterial('lamp');
   const bright = glowMaterial('lamp');
   const beaconMesh = beacon.mesh(bright.material, 'path:beacons');
-  object.add(inlay.mesh(road.material, 'path:inlay'), glass.mesh(lamp.material, 'path:lanterns'), beaconMesh);
+  const inlayMesh = inlay.mesh(road.material, 'path:inlay');
+  // (drawn over its stone, after the other opaque things)
+  inlayMesh.renderOrder = 1;
+  object.add(inlayMesh, glass.mesh(lamp.material, 'path:lamps'), beaconMesh);
+  const pools = lightPools.mesh('path:pools');
+  object.add(pools.mesh);
   const halo = haloPoints(halos);
   object.add(halo.points);
+  // At night lamps and beacons soften when you walk up to them (the halos
+  // too, in glow.ts): lit to be seen from afar, they would blind up close.
+  lamp.uniforms.uNear.value.set(4, 30);
+  bright.uniforms.uNear.value.set(10, 70);
+  let roaming = 0;
 
   // The beacon of the hovered or picked place brightens (eased), so the card
   // and its spot on the map read together.
@@ -89,13 +109,27 @@ export function buildPath(ctx: MapContext): MapPart {
       road.uniforms.uLevel.value = 2.5 + n * 0.35;
       road.material.color.setRGB(1, 0.8 + n * 0.2, 0.55 + n * 0.45);
       road.uniforms.uPulse.value = 0.4 + n * 0.3;
-      // Lanterns: dim amber glass by day, lit at night; beacons: always lit.
+      // Roaming, it fades out near the camera (eased in and out, so the
+      // overview and the places' close-ups keep the whole line); at night a
+      // faint ember stays in the stone.
+      const goal = f.roam === 'overview' ? 0 : 1;
+      roaming = f.dt > 0 ? roaming + (goal - roaming) * (1 - Math.exp(-f.dt * 1.5)) : goal;
+      road.uniforms.uNear.value.set(ROAM_FADE[0] * roaming, ROAM_FADE[1] * roaming);
+      road.uniforms.uNearLevel.value = n * n * 0.1;
+      // Lamps: stone with dim amber glass by day, lit at night, with pools of
+      // light on the paving round them; beacons: always lit.
       lamp.uniforms.uTime.value = f.t;
       lamp.uniforms.uLevel.value = 0.35 + n * 3.4;
       lamp.uniforms.uPulse.value = 0.02 + n * 0.05;
+      lamp.uniforms.uNearLevel.value = 1 - n * 0.55;
+      pools.uniforms.uTime.value = f.t;
+      pools.uniforms.uLevel.value = n * n * 0.6;
+      pools.uniforms.uPulse.value = 0.02 + n * 0.05;
+      pools.mesh.visible = n > 0.05;
       bright.uniforms.uTime.value = f.t;
       bright.uniforms.uLevel.value = 1.3 + n * 3.5;
       bright.uniforms.uPulse.value = 0.04;
+      bright.uniforms.uNearLevel.value = 1 - n * 0.72;
       halo.uniforms.uTime.value = f.t;
       halo.uniforms.uScale.value = pointScale(ctx.renderer, f.camera);
       halo.uniforms.uLamp.value = n * n * 1.4;
@@ -107,8 +141,11 @@ export function buildPath(ctx: MapContext): MapPart {
 /**
  * The inlay of light down the middle: long strips where the road is flat
  * (up to 4 m, so the pulses stay smooth), one short bar per step on stairs.
+ * Under each strip lies its carved stone (in up to 2 m stones), a little
+ * inside the light, so it shows only where the light fades.
  */
-function inlayBlocks(inlay: GlowBlocks, st: Station[], road: number): void {
+function inlayBlocks(b: VoxelBuilder, inlay: GlowBlocks, st: Station[], road: number): void {
+  const src = traceSource();
   for (let i = 0; i < st.length; ) {
     const a = st[i];
     if (a.kind === KIND.gate) {
@@ -124,6 +161,12 @@ function inlayBlocks(inlay: GlowBlocks, st: Station[], road: number): void {
     const ry = Math.atan2(a.tx + c.tx, a.tz + c.tz);
     const color = INLAY[Math.floor(hash3(road, i, 0, 61) * INLAY.length)];
     inlay.add(x, a.h + LIFT - 0.02, z, INLAY_W, 0.12, along, ry, color, (a.s + c.s) / 2);
+    const pieces = Math.ceil(along / 2 - 1e-6);
+    for (let p = 0; p < pieces; p++) {
+      const k = ((p + 0.5) / pieces - 0.5) * along;
+      const tone = hash3(road, i, p, 62);
+      b.box(x + Math.sin(ry) * k, a.h + LIFT - 0.07, z + Math.cos(ry) * k, INLAY_W - 0.04, 0.2, along / pieces, INLAY_STONE[Math.floor(tone * INLAY_STONE.length)], 'mapStone', { ry, shade: 0.95 + tone * 0.06, src });
+    }
     i = e + 1;
   }
 }

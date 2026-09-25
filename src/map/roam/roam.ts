@@ -7,7 +7,8 @@ import { OrbitFollowCam } from './followCam';
 import { createRoamHud } from './hud';
 import { parseScript, RoamControls } from './input';
 import { createParachute } from './parachute';
-import { ROAM_SCALE, type RoamBody, type RoamCtx, type RoamModeHandler } from './types';
+import { createRoamTools } from './tools';
+import { ROAM_SCALE, type FollowCam, type RoamBody, type RoamCtx, type RoamModeHandler, type RoamWorld } from './types';
 import { createWalker } from './walker';
 import { buildRoamWorld } from './world';
 
@@ -21,10 +22,21 @@ import { buildRoamWorld } from './world';
  * `at=x,z` or `at=x,y,z` where (m; y defaults to the ground or water) ·
  * `yaw=<deg>` facing · `sim=<script>` scripted input run before a shot
  * (input.ts `parseScript`, e.g. `sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist`
- * the follow camera's orbit (degrees relative to the facing, degrees, m).
+ * the follow camera's orbit (degrees relative to the facing, degrees, m) ·
+ * the explorer's tools (tools.ts): `tool=lantern|torch|flashlight|camera|selfie`
+ * start with it out · `act=wave|cheer|lookUp|peek` · `beam=mouse` with
+ * `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
+ * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot (degrees) ·
+ * `gesture=…` and `saim=yaw,pitch,reach` the selfie · `keys=1` the key list.
  */
 export interface MapRoam extends MapPart {
   readonly mode: RoamMode;
+  /** The roaming explorer (feet, facing, size), for the mini-map and the tools. */
+  readonly body: RoamBody;
+  /** The follow camera (its `yaw` is the view's heading). */
+  readonly cam: FollowCam;
+  /** What the roaming modes know about the world (ground, water, places). */
+  readonly world: RoamWorld;
   /** Roaming (the follow camera has the view). */
   readonly active: boolean;
   /** Leap off the ledge. */
@@ -76,6 +88,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     onBack: () => void api.stop(),
   });
 
+  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas });
+  object.add(tools.object);
+
   const chute = createParachute();
   // (built now: the boat tied up by the River Gate shows in the overview too)
   const boat = createBoat(ctx.field);
@@ -117,6 +132,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     hud.setMode(next);
     deps.onMode(next);
     if (next !== 'overview') handlers[next].enter(rctx, prev);
+    tools.setMode(next, prev);
   }
 
   /** Put the body on the explorer's object. */
@@ -131,6 +147,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     rctx.t = f.t;
     rctx.night = f.night;
     controls.poll(dt);
+    // (the tools take the keys they use first: Esc puts the camera away, not the map)
+    tools.input(rctx, mode, dt);
     if (controls.state.exit) {
       void api.stop();
       return;
@@ -141,10 +159,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       if (next === 'overview') void api.stop();
       else switchTo(next);
     }
-    // A lantern after dark, while the hands are free.
-    const lantern = f.night > 0.55 && mode === 'walk';
-    if (lantern !== (explorer.currentOutfit.held === 'lantern')) explorer.setOutfit({ held: lantern ? 'lantern' : 'none' });
-    explorer.propLightBoost = 1 + f.night * 5;
+    // What he holds (a lantern after dark, until the player picks), where the flashlight points.
+    if (mode !== 'overview') tools.after(rctx, mode, dt);
     pose();
     explorer.update(dt);
   }
@@ -152,6 +168,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const api: MapRoam = {
     name: 'roam',
     object,
+    body,
+    cam,
+    world,
     get mode() {
       return mode;
     },
@@ -186,15 +205,23 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       if (mode === 'overview') return null;
       const p = body.pos;
       const deg = (r: number) => ((((r * 180) / Math.PI) % 360) + 360) % 360;
+      const t = tools.report();
+      const look = [t.tool, t.act].filter(Boolean).join(', ');
       return {
-        text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}), facing ${deg(body.yaw).toFixed(0)}°`,
+        text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}), facing ${deg(body.yaw).toFixed(0)}°${look ? ` · ${look}` : ''}`,
         params: {
           roam: mode === 'leap' ? 'glide' : mode,
           at: [p.x, p.y, p.z].map((v) => v.toFixed(1)).join(','),
           yaw: deg(body.yaw).toFixed(0),
           rcam: [deg(cam.yaw - body.yaw), (cam.pitch * 180) / Math.PI, cam.distance].map((v) => v.toFixed(0)).join(','),
+          // (a shot needs a moment for the camera to come up)
+          ...(t.tool === 'camera' || t.tool === 'selfie' ? { sim: '_:1' } : {}),
+          ...t,
         },
       };
+    },
+    afterRender() {
+      tools.afterRender();
     },
     simulate(f) {
       const spec = params.get('sim');
@@ -216,6 +243,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         cam.update(ctx.shot ? 1 : f.dt, world);
         f.listener.set(body.pos.x, body.pos.y + 1.7 * body.scale, body.pos.z);
       } else f.listener.copy(f.camera.position);
+      // The view through his camera, the lights of his lantern, torch or flashlight (the ledge's too).
+      tools.frame(f);
       f.roam = mode;
       f.roamLevels.wind = mode === 'overview' ? 0 : levels.wind;
       f.roamLevels.wake = mode === 'overview' ? 0 : levels.wake;
@@ -245,6 +274,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       deps.onMode(mode);
       handlers[mode].enter(rctx, 'overview');
       cam.blendFrom(0);
+      tools.setMode(mode, 'overview');
     }
     const rc = params.get('rcam')?.split(',').map(Number);
     if (rc) {
@@ -253,6 +283,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       if (rc[2]) cam.distance = rc[2];
       cam.follow = 0;
     }
+    // (after the camera: a photo looks the way the view does)
+    rctx.night = Number(params.get('night') ?? 0);
+    tools.fromUrl(params, rctx);
     pose();
   }
   return api;

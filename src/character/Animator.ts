@@ -16,6 +16,7 @@ import {
   type ActionName,
 } from './clips';
 import { CAMERA_BODY_CENTER } from './parts/gear';
+import { PHONE_LENS } from './parts/props';
 import { PoseBuffer, clamp, lerp, type Pose } from './pose';
 import type { Rig } from './Rig';
 import { JOINTS, JOINT_NAMES, SOLE_POINTS, type JointName } from './skeleton';
@@ -25,6 +26,8 @@ const WALK_CYCLE_M = 1.05;
 const RUN_CYCLE_M = 1.85;
 
 export type HoldKind = 'none' | 'lantern' | 'torch' | 'flashlight';
+/** What the free (left) hand does in a selfie. */
+export type SelfieGesture = 'peace' | 'wave' | 'thumbsUp' | 'none';
 
 interface ActiveAction {
   name: ActionName;
@@ -57,6 +60,47 @@ const ARMS = {
   R: { shoulder: sub('shoulderR', 'chest'), upper: sub('elbowR', 'shoulderR'), fore: sub('propR', 'elbowR') },
 };
 
+// ── Selfie: the phone held out round the head ─────────────────────────────
+/** Head space (BU): the point the phone circles, the middle of the head at eye height. */
+export const SELFIE_CENTER = new Vector3(0, 3.2, 0.3);
+/** Nearest the lens comes to that point: the phone stays clear of the face. */
+const SELFIE_NEAR = 7.4;
+/** Reaching out brings the shoulder forward and up (chest space, BU). */
+const SHRUG = { R: new Vector3(0.4, 0.6, 1.5), L: new Vector3(-0.25, 0.45, 0.9) };
+/** The phone elbow points down and out. */
+const SELFIE_POLE = new Vector3(-0.8, -1, -0.25).normalize();
+/** How far the phone can go round the head (radians); the arm limits it further. */
+const SELFIE_YAW = [-1.35, 0.35] as const;
+const SELFIE_PITCH = [-0.45, 0.75] as const;
+/** The chest turns a little to his left, bringing the phone shoulder forward. */
+const selfieChestYaw = (yaw: number) => 0.18 + 0.1 * yaw;
+
+interface GestureDef {
+  /**
+   * Fist position from the head's middle in the phone's view (BU): x to the
+   * right of the picture (his left), y up, z toward the phone — so the phone
+   * always sees the hand beside his big head.
+   */
+  fist: Vector3;
+  /** Which way the elbow points, in the same frame. */
+  pole: Vector3;
+  /**
+   * `palm`: the hand stands up from the wrist, fingers up, palm to the phone;
+   * `thumb`: a fist with the thumb up and the knuckles to the phone.
+   */
+  hand: 'palm' | 'thumb';
+}
+const GESTURES: Record<Exclude<SelfieGesture, 'none'>, GestureDef> = {
+  // Two fingers up beside the face.
+  peace: { fist: new Vector3(9.4, -3.3, 3.0), pole: new Vector3(0.6, -1, -0.5).normalize(), hand: 'palm' },
+  // Open hand up beside the head, waving.
+  wave: { fist: new Vector3(7.4, 0.0, 1.4), pole: new Vector3(0.7, -1, -0.5).normalize(), hand: 'palm' },
+  // Fist below the chin, thumb up.
+  thumbsUp: { fist: new Vector3(4.6, -6.0, 3.4), pole: new Vector3(0.5, -0.6, -1).normalize(), hand: 'thumb' },
+};
+/** A far point along the phone's view (BU): the palm turns to the picture, not just the lens. */
+const VIEW_FAR = 20;
+
 const _d = new Vector3();
 const _p = new Vector3();
 const _u = new Vector3();
@@ -65,6 +109,14 @@ const _b1 = new Vector3();
 const _b2 = new Vector3();
 const _b3 = new Vector3();
 const _rest = new Matrix4();
+const _c = new Vector3();
+const _c2 = new Vector3();
+const _dir = new Vector3();
+const _sh = new Vector3();
+const _up = new Vector3();
+const _g = new Vector3();
+const _right = new Vector3();
+const _qw = new Quaternion();
 
 /** Orthonormal frame from a direction and a second vector in its plane (as matrix columns). */
 function frame(a: Vector3, b: Vector3, out: Matrix4): Matrix4 {
@@ -78,11 +130,12 @@ function frame(a: Vector3, b: Vector3, out: Matrix4): Matrix4 {
  * Two-bone arm IK in chest space: shoulder rotation and elbow bend that put
  * the fist on `target`, the elbow bent toward `pole`.
  */
-function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3): Pose {
+function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3, shrug?: Vector3): Pose {
   const arm = ARMS[side];
   const a = arm.upper.length();
   const b = arm.fore.length();
   _d.subVectors(target, arm.shoulder);
+  if (shrug) _d.sub(shrug);
   const len = clamp(_d.length(), Math.abs(a - b) + 0.01, a + b - 0.01);
   _d.normalize();
   const cosA = (a * a + len * len - b * b) / (2 * a * len);
@@ -100,10 +153,86 @@ function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3): Pose {
   frame(_u, _f, _m2).multiply(_rest);
   _e.setFromRotationMatrix(_m2, 'XYZ');
   return {
-    [`shoulder${side}`]: { rx: _e.x, ry: _e.y, rz: _e.z },
+    [`shoulder${side}`]: { rx: _e.x, ry: _e.y, rz: _e.z, px: shrug?.x, py: shrug?.y, pz: shrug?.z },
     [`elbow${side}`]: { rx: elbow },
     [`wrist${side}`]: {},
   };
+}
+
+/** Forearm rotation (chest space) of an arm posed by `solveArm`. */
+function forearmRotation(pose: Pose, side: 'L' | 'R', out: Matrix4): Matrix4 {
+  const s = pose[`shoulder${side}`]!;
+  out.makeRotationFromEuler(_e.set(s.rx ?? 0, s.ry ?? 0, s.rz ?? 0, 'XYZ'));
+  return out.multiply(_rest.makeRotationX(pose[`elbow${side}`]!.rx ?? 0));
+}
+
+/**
+ * Wrist rotation that turns the left hand of an arm posed by `solveArm` to face
+ * `view` (chest space): `palm` stands the fingers along `up` with the palm to
+ * the view; else the thumb goes up and the curled fingers face the view.
+ * (Hand frame: fingers along −Y, palm toward −X, thumb toward +Z.)
+ */
+function wristAim(pose: Pose, palm: boolean, up: Vector3, view: Vector3, out: Quaternion): Quaternion {
+  const fore = forearmRotation(pose, 'L', _m2);
+  if (palm) {
+    _u.copy(up).negate(); // +Y
+    _p.copy(view).addScaledVector(up, -view.dot(up)).normalize().negate(); // +X
+    _f.crossVectors(_p, _u); // +Z
+  } else {
+    _f.copy(up); // +Z
+    _u.copy(view).addScaledVector(up, -view.dot(up)).normalize().negate(); // +Y
+    _p.crossVectors(_u, _f); // +X
+  }
+  _rest.makeBasis(_p, _u, _f);
+  return out.setFromRotationMatrix(fore.transpose().multiply(_rest));
+}
+
+/** Rest arm geometry for the selfie reach (chest space, BU). */
+const SELFIE_REST = {
+  center: SELFIE_CENTER.clone().add(sub('head', 'chest')),
+  shoulder: ARMS.R.shoulder.clone().add(SHRUG.R),
+  arm: ARMS.R.upper.length() + ARMS.R.fore.length() - 0.02,
+};
+
+/**
+ * How far from the head's middle the lens goes (BU) with the phone at `dir`
+ * (chest space, unit) and the arm stretched to `length`: the grip, below and
+ * behind the lens, lands on the sphere the fist can reach round the shoulder.
+ * Also gives the phone's up (⊥ `dir`) in `up`.
+ */
+function selfieDistance(center: Vector3, shoulder: Vector3, dir: Vector3, length: number, up: Vector3): number {
+  up.set(0, 1, 0).addScaledVector(dir, -dir.y).normalize();
+  _b2.copy(center).addScaledVector(up, -PHONE_LENS[1]).sub(shoulder);
+  const qd = _b2.dot(dir);
+  const disc = qd * qd - _b2.lengthSq() + length * length;
+  return -qd + Math.sqrt(Math.max(0, disc)) - PHONE_LENS[2];
+}
+
+/** A vector given in the phone's view frame (x right, y up, z toward the phone), in chest space. */
+function inView(v: Vector3, right: Vector3, up: Vector3, dir: Vector3, out: Vector3): Vector3 {
+  return out.copy(right).multiplyScalar(v.x).addScaledVector(up, v.y).addScaledVector(dir, v.z);
+}
+
+/** Phone direction round the head in chest space, from the aim in the body's frame. */
+function selfieDir(yaw: number, pitch: number, out: Vector3): Vector3 {
+  const y = yaw - selfieChestYaw(yaw);
+  return out.set(Math.sin(y) * Math.cos(pitch), Math.sin(pitch), Math.cos(y) * Math.cos(pitch));
+}
+
+/**
+ * Keep a selfie aim where the arm can hold the phone clear of the face: in
+ * range, then down and round to his right until the full arm reaches.
+ */
+export function clampSelfieAim(aim: { yaw: number; pitch: number; reach: number }): void {
+  aim.yaw = clamp(aim.yaw, SELFIE_YAW[0], SELFIE_YAW[1]);
+  aim.pitch = clamp(aim.pitch, SELFIE_PITCH[0], SELFIE_PITCH[1]);
+  aim.reach = clamp(aim.reach, 0, 1);
+  const r = SELFIE_REST;
+  for (let i = 0; i < 40; i++) {
+    if (selfieDistance(r.center, r.shoulder, selfieDir(aim.yaw, aim.pitch, _b3), r.arm, _v2) >= SELFIE_NEAR + 0.05) return;
+    if (aim.pitch > -0.1) aim.pitch -= 0.025;
+    else aim.yaw = Math.max(SELFIE_YAW[0], aim.yaw - 0.025);
+  }
 }
 
 /**
@@ -135,6 +264,19 @@ export class Animator {
    * the camera joint goes then (chest space).
    */
   readonly photoHold = { weight: 0, matrix: new Matrix4() };
+  /** How far the selfie phone is up (0‥1; the selfie's fade in and out). */
+  selfieWeight = 0;
+  /** Which gesture the free hand makes in a selfie. */
+  selfieGesture: SelfieGesture = 'peace';
+  private selfieYaw = -0.75;
+  private selfiePitch = 0.1;
+  private selfieReach = 1;
+  /** The gesture arm: how far it's up, and its eased target (chest space). */
+  private gestureW = 0;
+  private gestureKind: Exclude<SelfieGesture, 'none'> = 'peace';
+  private readonly gestureFist = new Vector3();
+  private readonly gesturePole = new Vector3();
+  private readonly gestureWrist = new Quaternion();
   onActionEnd?: (name: ActionName) => void;
   /**
    * A whole-body pose from outside, over everything else (hanging under a
@@ -168,6 +310,13 @@ export class Animator {
   setAim(yaw: number, pitch: number): void {
     this.aimYaw = yaw;
     this.aimPitch = pitch;
+  }
+
+  /** Where the selfie phone is round the head (see `AngkorExplorer.selfieAim`; already clamped). */
+  setSelfie(yaw: number, pitch: number, reach: number): void {
+    this.selfieYaw = yaw;
+    this.selfiePitch = pitch;
+    this.selfieReach = reach;
   }
 
   play(name: ActionName): void {
@@ -252,12 +401,17 @@ export class Animator {
       const joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek') : def.joints;
       buf.override(def.pose(t), a.weight, joints);
       if (a.name === 'photo') this.holdCamera(a.weight);
+      if (a.name === 'selfie') this.holdPhone(a.weight, a.stopping, dt);
       if (a.stopping && a.weight <= 0) {
         this.action = null;
         this.onActionEnd?.(a.name);
       }
     }
     if (this.action?.name !== 'photo') this.photoHold.weight = 0;
+    if (this.action?.name !== 'selfie') {
+      this.selfieWeight = 0;
+      this.gestureW = 0;
+    }
 
     // ── Posture (vehicles) ───────────────────────────────────────────────
     if (this.posture) this.lastPosture = this.posture;
@@ -283,6 +437,63 @@ export class Animator {
       target.copy(PHOTO_FIST[side]).applyMatrix4(_m);
       buf.override(solveArm(side, target, PHOTO_POLE[side]), w, side === 'L' ? ARM_JOINTS_L : ARM_JOINTS_R);
     }
+  }
+
+  /**
+   * Selfie: the right fist holds the phone out round the head where the aim
+   * says (lens on the ray from the head's middle, arm stretched by `reach`),
+   * chest and head turn to it, and the left hand makes the gesture.
+   */
+  private holdPhone(w: number, stopping: boolean, dt: number): void {
+    const buf = this.buf;
+    const yaw = this.selfieYaw;
+    const pitch = this.selfiePitch;
+    this.selfieWeight = w;
+    const chestYaw = selfieChestYaw(yaw);
+    buf.add(
+      {
+        chest: { ry: chestYaw, rx: -0.04 * pitch },
+        neck: { ry: 0.3 * (0.8 * yaw - chestYaw), rx: -0.12 * pitch },
+        head: { ry: 0.7 * (0.8 * yaw - chestYaw), rx: -0.42 * pitch, rz: clamp(-0.3 * yaw, -0.16, 0.16) },
+      },
+      w,
+    );
+    // Head in chest space, from this frame's pose.
+    this.localMatrix('neck', _m).multiply(this.localMatrix('head', _m2));
+    const center = _c.copy(SELFIE_CENTER).applyMatrix4(_m);
+    const dir = selfieDir(yaw, pitch, _dir);
+    const shoulder = _sh.copy(ARMS.R.shoulder).add(SHRUG.R);
+    const full = SELFIE_REST.arm;
+    const up = _up;
+    const t = Math.max(SELFIE_NEAR, selfieDistance(center, shoulder, dir, full * lerp(0.62, 1, this.selfieReach), up));
+    const grip = _g.copy(center).addScaledVector(dir, t + PHONE_LENS[2]).addScaledVector(up, -PHONE_LENS[1]);
+    buf.override(solveArm('R', grip, SELFIE_POLE, SHRUG.R), w, ARM_JOINTS_R);
+    const right = _right.crossVectors(up, dir); // the picture's right (his left)
+
+    // Gesture: ease the arm between gestures (and down for none, or when the hand holds a prop).
+    const g = this.selfieGesture;
+    const on = g !== 'none' && this.hold === 'none' && !stopping;
+    const k = clamp(dt * 9, 0, 1);
+    this.gestureW = lerp(this.gestureW, on ? 1 : 0, k);
+    if (on) this.gestureKind = g;
+    const def = GESTURES[this.gestureKind];
+    const target = inView(def.fist, right, up, dir, _c2).add(center);
+    if (this.gestureKind === 'wave') target.addScaledVector(right, Math.sin(this.time * Math.PI * 2 * 1.6) * 0.9);
+    const first = this.gestureW < 0.02;
+    this.gestureFist.lerp(target, first ? 1 : k);
+    this.gesturePole.lerp(inView(def.pole, right, up, dir, _v2), first ? 1 : k).normalize();
+    const gw = w * this.gestureW;
+    if (gw <= 0.001 || this.hold !== 'none') return;
+    const pose = solveArm('L', this.gestureFist, this.gesturePole, SHRUG.L);
+    const palm = def.hand === 'palm';
+    // Fingers (or thumb) up, leaning out a little; the palm (or knuckles) to the picture.
+    const upward = _g.set(0, 1, 0).addScaledVector(right, palm ? 0.4 : 0.15).normalize();
+    const toView = _c.copy(center).addScaledVector(dir, VIEW_FAR).sub(this.gestureFist).normalize();
+    wristAim(pose, palm, upward, toView, _qw);
+    this.gestureWrist.slerp(_qw, first ? 1 : k);
+    _e.setFromQuaternion(this.gestureWrist, 'XYZ');
+    pose.wristL = { rx: _e.x, ry: _e.y, rz: _e.z };
+    buf.override(pose, gw, ARM_JOINTS_L);
   }
 
   /** A joint's transform relative to its parent, from the pose buffer. */

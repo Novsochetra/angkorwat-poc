@@ -748,6 +748,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const pinFade = (d: number) => smooth(25, 50, d) * (1 - 0.6 * smooth(150, 700, d));
   const distText = (d: number) => (d < 1000 ? `${Math.max(10, Math.round(d / 10) * 10)} m` : `${(d / 1000).toFixed(1)} km`);
   /** Screen boxes of the roaming HUD (px): its corners top left and bottom left, the prompt at the bottom. */
+  /** The roaming mini-map and tool bar (found the first time pins are placed while roaming). */
+  let roamHud: HTMLElement[] | null = null;
   function hudZones(): { l: number; t: number; r: number; b: number }[] {
     const u = unit;
     const w = innerWidth;
@@ -764,6 +766,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const zones = hudZones();
     const cr = corner.getBoundingClientRect();
     zones.push({ l: cr.left - GAP, t: 0, r: innerWidth, b: cr.bottom + GAP });
+    // The roaming mini-map and tool bar (theirs: ui/minimap.ts, roam/tools.ts), where they show.
+    for (const e of (roamHud ??= [...document.querySelectorAll<HTMLElement>('.mm-mini, .rtb')])) {
+      const r = e.getBoundingClientRect();
+      if (r.width > 0) zones.push({ l: r.left - GAP, t: r.top - GAP, r: r.right + GAP, b: r.bottom + GAP });
+    }
     const want = new Map<Card, number>();
     for (const c of cards) {
       const a = anchors[c.place.id];

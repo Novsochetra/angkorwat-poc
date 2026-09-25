@@ -8,7 +8,8 @@ import { ARM_CENTER_X, LEG_CENTER_X, LEG_CENTER_Z } from '../skeleton';
  * mirrored for the right, like the reference turnaround.
  */
 export type Side = 'L' | 'R';
-export type HandPose = 'relaxed' | 'holding' | 'pointing';
+/** Fist shapes, plus the selfie gestures: two fingers up, an open hand to wave, a thumb up. */
+export type HandPose = 'relaxed' | 'holding' | 'pointing' | 'peace' | 'open' | 'thumbsUp';
 export type LegStyle = 'shorts' | 'sampot';
 
 const AX = ARM_CENTER_X;
@@ -79,12 +80,27 @@ export function buildHand(side: Side, pose: HandPose = 'relaxed'): VoxelBuilder 
       b.span(x0 + 0.95, 7.7, z - 0.26, x0 + 1.72, 8.05, z + 0.26, K.light, 'skin', { shade: 0.96 });
       return;
     }
-    const top = pose === 'holding' ? 10.5 : 10.47;
+    if ((pose === 'peace' && f >= 2) || pose === 'open') {
+      // Straight finger along −Y, tipped by `tilt` toward ±Z: the peace sign's
+      // index and middle finger splay into a V, the open hand fans out a little.
+      const tilt = pose === 'peace' ? (f === 3 ? -0.1 : 0.45) : (f - 1.5) * -0.1;
+      const len = pose === 'peace' ? 2.9 : f === 2 ? 2.7 : f === 0 ? 2.0 : 2.4;
+      const y = 10.5 - (len / 2) * Math.cos(tilt);
+      const zc = z - (len / 2) * Math.sin(tilt);
+      b.box(AX, y, zc, 0.8, len, 0.6, K.base, 'skin', { rx: tilt, shade: 1.02 - f * 0.01 });
+      return;
+    }
+    const top = pose === 'relaxed' || pose === 'pointing' ? 10.47 : 10.5;
     b.span(x0 + 0.3, 9.5 + knuckle, z - 0.3, x1 - 0.12, top, z + 0.3, K.base, 'skin', { shade: 0.98 - f * 0.01 });
   });
 
-  // Thumb along the index finger, on the palm side.
-  if (pose === 'holding') {
+  // Thumb along the index finger, on the palm side (sticking out forward for a thumb up).
+  if (pose === 'thumbsUp') {
+    b.span(x0 - 0.04, 10.2, 0.9, x0 + 0.86, 11.05, 2.95, K.base, 'skin', { shade: 1.04 });
+    b.span(x0 + 0.02, 10.26, 2.95, x0 + 0.8, 10.99, 3.1, K.light, 'skin', { shade: 0.98 });
+  } else if (pose === 'open') {
+    b.span(x0 - 0.04, 9.7, 1.25, x0 + 0.7, 10.6, 2.3, K.base, 'skin', { shade: 1.03 });
+  } else if (pose === 'holding' || pose === 'peace') {
     b.span(x0 - 0.08, 10.0, 0.45, x0 + 0.9, 10.9, 1.4, K.base, 'skin', { shade: 1.03 });
   } else {
     b.span(x0 - 0.06, 9.85, 0.62, x0 + 0.62, 11.2, 1.38, K.base, 'skin', { shade: 1.03 });

@@ -4,6 +4,7 @@ import {
   DoubleSide,
   Euler,
   Group,
+  Matrix4,
   Mesh,
   PointLight,
   Quaternion,
@@ -14,7 +15,7 @@ import {
 import { BODY_UNIT_M } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
-import { Animator, type HoldKind } from './Animator';
+import { Animator, clampSelfieAim, type HoldKind, type SelfieGesture } from './Animator';
 import type { ActionName } from './clips';
 import { Pendulum } from './Dynamics';
 import { buildFace, EXPRESSIONS, type ExpressionName } from './parts/face';
@@ -22,7 +23,7 @@ import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from '.
 import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
 import { buildFoot, buildForearm, buildHand, buildPelvis, buildShin, buildThigh, buildUpperArm, type HandPose, type LegStyle, type Side } from './parts/limbs';
-import { buildFlame, buildFlashlight, buildHat, buildLantern, buildTorchHandle, HAT_CLIP_Y } from './parts/props';
+import { buildFlame, buildFlashlight, buildHat, buildLantern, buildPhone, buildTorchHandle, HAT_CLIP_Y, PHONE_LENS } from './parts/props';
 import { buildScarfCollar, buildScarfTail } from './parts/scarf';
 import { buildBelt, buildTorso } from './parts/torso';
 import { Rig } from './Rig';
@@ -43,9 +44,36 @@ const BEAM_MAX = 9;
 
 const _a = new Vector3();
 const _s = new Vector3();
+const _up = new Vector3();
+const _face = new Vector3();
 const _q = new Quaternion();
 const _q2 = new Quaternion();
+const _m = new Matrix4();
 const _e = new Euler(0, 0, 0, 'YXZ');
+
+/** Head space (BU): where the selfie phone and its lens look, the middle of the face. */
+const SELFIE_LOOK = new Vector3(0, 4.2, 2.0);
+/** The lens point, a hair in front of the phone's glass. */
+const LENS_POINT = new Vector3(PHONE_LENS[0], PHONE_LENS[1], PHONE_LENS[2] + 0.1);
+/** The glowing part of each held prop, in the prop's frame (BU). */
+const GLOW_AT = { lantern: new Vector3(0, -3.05, 0), torch: new Vector3(0, 1.6, 0), flashlight: new Vector3(0, 0, 4.0) };
+/** Slots of the arm holding the phone (hidden with `hidePhone`). */
+const PHONE_ARM = ['upperArmR', 'forearmR', 'handR'] as const;
+/** The free hand's shape for each selfie gesture. */
+const GESTURE_HAND: Record<SelfieGesture, HandPose> = { peace: 'peace', wave: 'open', thumbsUp: 'thumbsUp', none: 'relaxed' };
+
+/**
+ * Where the selfie phone is, round the head: `yaw` (radians, + = toward his
+ * left, 0 = straight in front), `pitch` (+ = above the eyes) and `reach` 0‥1
+ * (how far the arm is stretched; 1 = the full arm).
+ */
+export interface SelfieAim {
+  yaw: number;
+  pitch: number;
+  reach: number;
+}
+
+export type { HoldKind, SelfieGesture } from './Animator';
 
 export interface ExplorerOutfit {
   hat: boolean;
@@ -75,6 +103,8 @@ export interface ExplorerOptions {
   expression?: ExpressionName;
   /** Point lights for lantern / torch, spot light for the flashlight (turn off for thumbnails). */
   propLights?: boolean;
+  /** The flashlight's visible beam cone (default: with `propLights`). */
+  beam?: boolean;
   castShadow?: boolean;
 }
 
@@ -99,6 +129,13 @@ export class AngkorExplorer {
   aimPoint: Vector3 | null = null;
   /** How far the beam goes before it hits something (m); the game sets it from a ray. */
   beamReach = BEAM_MAX;
+  /**
+   * Where the selfie phone goes round the head (see `SelfieAim`). Kept in
+   * what the arm can do: `update` clamps it in place. Eased like the flashlight.
+   */
+  readonly selfieAim: SelfieAim = { yaw: -0.75, pitch: 0.1, reach: 1 };
+  private phoneHidden = false;
+  private readonly selfieEased: SelfieAim = { ...this.selfieAim };
   private readonly scaler = new Group();
   private outfit: ExplorerOutfit = { ...OUTFITS.default };
   private expression: ExpressionName = 'neutral';
@@ -114,8 +151,14 @@ export class AngkorExplorer {
   private aimYaw = 0;
   private aimPitch = AHEAD_PITCH;
   private readonly propLights: boolean;
+  private readonly beamOn: boolean;
   private readonly handPose: Record<Side, HandPose> = { L: 'relaxed', R: 'relaxed' };
   private readonly castShadow: boolean;
+  /** The selfie phone in the right fist (built on the first selfie, then shown / hidden). */
+  private phone: Group | null = null;
+  /** The face from before the selfie, put back after it (null once the caller picks another). */
+  private faceBeforeSelfie: ExpressionName | null = null;
+  private selfieUp = false;
 
   constructor(opts: ExplorerOptions = {}) {
     this.object.name = 'AngkorExplorer';
@@ -125,6 +168,7 @@ export class AngkorExplorer {
     this.rig = new Rig(this.scaler, opts.quality ?? 'high');
     this.animator = new Animator(this.rig);
     this.propLights = opts.propLights ?? true;
+    this.beamOn = opts.beam ?? this.propLights;
     this.castShadow = opts.castShadow ?? true;
 
     const r = this.rig;
@@ -159,8 +203,31 @@ export class AngkorExplorer {
   }
 
   setExpression(name: ExpressionName): void {
-    this.expression = name;
-    this.refreshFace();
+    this.faceBeforeSelfie = null;
+    this.showExpression(name);
+  }
+
+  /**
+   * Hide the phone and the arm holding it (still "out": `phoneLens` works),
+   * e.g. while the view is a selfie camera behind the phone: his arm is too
+   * short to reach out of that picture, so it would end in mid-air.
+   */
+  get hidePhone(): boolean {
+    return this.phoneHidden;
+  }
+
+  set hidePhone(hidden: boolean) {
+    this.phoneHidden = hidden;
+    this.showPhoneMeshes(!!this.phone?.visible);
+  }
+
+  /** Which gesture the free (left) hand makes in a selfie. */
+  get selfieGesture(): SelfieGesture {
+    return this.animator.selfieGesture;
+  }
+
+  set selfieGesture(g: SelfieGesture) {
+    this.animator.selfieGesture = g;
   }
 
   /** Swap a hand shape (the held-prop hand is managed automatically). */
@@ -184,6 +251,16 @@ export class AngkorExplorer {
       this.setHandPose('R', 'holding');
       if (this.outfit.held === 'none') this.setHandPose('L', 'holding');
     }
+    if (action === 'selfie' && !this.selfieUp) {
+      this.selfieUp = true;
+      this.setHandPose('R', 'holding');
+      clampSelfieAim(this.selfieAim);
+      Object.assign(this.selfieEased, this.selfieAim);
+      // Smile for the selfie (the old face comes back after, unless someone picks another).
+      const before = this.expression;
+      this.showExpression('happy');
+      this.faceBeforeSelfie = before;
+    }
   }
 
   stop(action?: ActionName): void {
@@ -197,6 +274,38 @@ export class AngkorExplorer {
   /** The action currently playing (not fading out), if any. */
   get currentAction(): ActionName | null {
     return this.animator.currentAction;
+  }
+
+  /**
+   * The phone's front camera (world) and an orientation for a three.js camera
+   * there looking back at the face (cameras look down −Z). False when no
+   * phone is out.
+   */
+  phoneLens(pos: Vector3, quat: Quaternion): boolean {
+    const phone = this.phone;
+    if (!phone?.visible) return false;
+    phone.updateWorldMatrix(true, false);
+    phone.localToWorld(pos.copy(LENS_POINT));
+    const head = this.rig.joints.head;
+    head.updateWorldMatrix(true, false);
+    head.localToWorld(_face.copy(SELFIE_LOOK));
+    // Upright with his chest (not the phone, which rolls as it comes up): a level picture.
+    _up.set(0, 1, 0).transformDirection(this.rig.joints.chest.matrixWorld);
+    quat.setFromRotationMatrix(_m.lookAt(pos, _face, _up));
+    return true;
+  }
+
+  /**
+   * Where the held prop glows (world): the lantern glass, the torch flame, the
+   * flashlight lens. Returns what is held; for 'none' `out` is left as it is.
+   */
+  propGlowPoint(out: Vector3): HoldKind {
+    const held = this.outfit.held;
+    const node = held === 'torch' ? this.flame : this.propRoot;
+    if (held === 'none' || !node) return held;
+    node.updateWorldMatrix(true, false);
+    node.localToWorld(out.copy(GLOW_AT[held]));
+    return held;
   }
 
   /** Where the flashlight beam starts and which way it points (world). */
@@ -218,8 +327,17 @@ export class AngkorExplorer {
     dt = Math.min(dt, 0.1);
     const photo = this.animator.currentAction === 'photo';
     if (this.outfit.held === 'flashlight' || photo) this.steerAim(dt);
+    const selfie = this.animator.currentAction === 'selfie';
+    if (selfie || this.animator.selfieWeight > 0) this.steerSelfie(dt);
+    if (selfie && this.outfit.held === 'none' && this.handPose.L !== GESTURE_HAND[this.selfieGesture]) this.setHandPose('L', GESTURE_HAND[this.selfieGesture]);
+    if (this.selfieUp && !selfie) {
+      // The selfie is over: back to the face from before it.
+      this.selfieUp = false;
+      if (this.faceBeforeSelfie) this.showExpression(this.faceBeforeSelfie);
+      this.faceBeforeSelfie = null;
+    }
     this.animator.update(dt);
-    if (!this.animator.currentAction && this.animator.photoHold.weight === 0) {
+    if (!this.animator.currentAction && this.animator.photoHold.weight === 0 && this.animator.selfieWeight === 0) {
       if (this.handPose.R !== 'relaxed') this.setHandPose('R', 'relaxed');
       if (this.outfit.held === 'none' && this.handPose.L !== 'relaxed') this.setHandPose('L', 'relaxed');
     }
@@ -237,6 +355,7 @@ export class AngkorExplorer {
     this.object.updateMatrixWorld(true);
     for (const p of this.pendulums) p.update(dt);
     this.raiseCamera();
+    this.placePhone();
 
     if (this.flame) {
       // Keep the flame upright in world space and let it flicker.
@@ -255,6 +374,7 @@ export class AngkorExplorer {
 
   dispose(): void {
     this.rig.dispose();
+    if (this.phone) disposeVoxelMesh(this.phone);
     for (const g of this.faces.values()) disposeVoxelMesh(g);
     this.faces.clear();
     this.clearProp();
@@ -276,6 +396,11 @@ export class AngkorExplorer {
         this.rig.joints.head.add(g);
         this.faces.set(`${e}|${blink}`, g);
       }
+  }
+
+  private showExpression(name: ExpressionName): void {
+    this.expression = name;
+    this.refreshFace();
   }
 
   private refreshFace(): void {
@@ -369,6 +494,11 @@ export class AngkorExplorer {
     const { body, lens } = buildFlashlight();
     holder.add(buildVoxelMesh(body, { quality: this.rig.quality, name: 'flashlight:body' }));
     holder.add(buildVoxelMesh(lens, { quality: this.rig.quality, name: 'flashlight:glass', castShadow: false }));
+    if (this.beamOn) {
+      this.beam = buildBeam();
+      this.beam.position.set(0, 0, 4.1);
+      holder.add(this.beam);
+    }
     if (this.propLights) {
       const light = new SpotLight(0xfff1dc, FLASHLIGHT_CANDELA, FLASHLIGHT_RANGE, FLASHLIGHT_ANGLE, 0.5, 2);
       light.name = 'flashlight';
@@ -382,9 +512,6 @@ export class AngkorExplorer {
       light.shadow.normalBias = 0.02;
       holder.add(light, light.target);
       this.light = light;
-      this.beam = buildBeam();
-      this.beam.position.set(0, 0, 4.1);
-      holder.add(this.beam);
     }
     this.rig.joints.propL.add(holder);
     this.propRoot = holder;
@@ -422,6 +549,69 @@ export class AngkorExplorer {
     j.position.lerp(_a, w);
     j.position.z += Math.sin(Math.PI * w) * 1.6;
     j.quaternion.slerp(_q, w);
+  }
+
+  /**
+   * Selfie: show the phone in the right fist while it's up, turned so the
+   * screen faces the face (from the fist's own frame as the arm comes up).
+   */
+  private placePhone(): void {
+    const w = this.animator.selfieWeight;
+    if (w <= 0) {
+      if (this.phone?.visible) {
+        this.phone.visible = false;
+        this.showPhoneMeshes(false);
+      }
+      return;
+    }
+    const phone = (this.phone ??= this.buildPhoneProp());
+    phone.visible = true;
+    this.showPhoneMeshes(true);
+    const fist = phone.parent!;
+    this.rig.joints.head.localToWorld(_face.copy(SELFIE_LOOK));
+    _up.set(0, 1, 0).transformDirection(this.rig.joints.chest.matrixWorld);
+    const k = w * w * (3 - 2 * w);
+    // Aim from the grip, then again from the lens it gives.
+    fist.getWorldPosition(_a);
+    for (let i = 0; i < 2; i++) {
+      _q.setFromRotationMatrix(_m.lookAt(_face, _a, _up));
+      _q.premultiply(fist.getWorldQuaternion(_q2).invert());
+      phone.quaternion.identity().slerp(_q, k);
+      phone.updateMatrixWorld(true);
+      phone.localToWorld(_a.copy(LENS_POINT));
+    }
+  }
+
+  /** Phone and the arm holding it: shown with the phone out unless `hidePhone`. */
+  private showPhoneMeshes(out: boolean): void {
+    if (this.phone) for (const c of this.phone.children) c.visible = !this.phoneHidden;
+    for (const slot of PHONE_ARM) {
+      const g = this.rig.getSlot(slot);
+      if (g) g.visible = !(out && this.phoneHidden);
+    }
+  }
+
+  private buildPhoneProp(): Group {
+    const holder = new Group();
+    holder.name = 'phone';
+    const { body, screen } = buildPhone();
+    holder.add(buildVoxelMesh(body, { quality: this.rig.quality, name: 'phone:body', castShadow: this.castShadow }));
+    holder.add(buildVoxelMesh(screen, { quality: this.rig.quality, name: 'phone:screen', castShadow: false }));
+    this.rig.joints.propR.add(holder);
+    holder.updateMatrixWorld(true);
+    return holder;
+  }
+
+  /** Ease the selfie phone's place toward `selfieAim` (kept within the arm's reach). */
+  private steerSelfie(dt: number): void {
+    clampSelfieAim(this.selfieAim);
+    const k = 1 - Math.exp(-dt * 10);
+    const a = this.selfieAim;
+    const e = this.selfieEased;
+    e.yaw += (a.yaw - e.yaw) * k;
+    e.pitch += (a.pitch - e.pitch) * k;
+    e.reach += (a.reach - e.reach) * k;
+    this.animator.setSelfie(e.yaw, e.pitch, e.reach);
   }
 
   /** Ease the flashlight's aim toward `aimPoint` (or straight ahead), within the arm's reach. */
@@ -483,7 +673,7 @@ export class AngkorExplorer {
   private applyShadowFlags(): void {
     this.object.traverse((o) => {
       if ((o as { isMesh?: boolean }).isMesh) {
-        const glow = /glass|flame|beam/.test(o.name);
+        const glow = /glass|flame|beam|screen/.test(o.name);
         o.castShadow = this.castShadow && !glow;
         o.receiveShadow = !o.name.includes('beam');
       }

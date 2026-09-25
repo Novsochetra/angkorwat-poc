@@ -1,14 +1,14 @@
 import type { HeightField } from '../heightfield';
-import { DEFAULT_SETTINGS, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
+import { DEFAULT_SETTINGS, type AnimalCall, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { SoundEngine, type Mix, type Volumes } from './engine';
 import type { Ears } from './water';
 
 /**
  * Sound of the map: ambience (wind, birds by day, insects and frogs by
- * night), the waterfalls and rivers where they are on the map, calm
- * generative music, the interface sounds and the roaming explorer's. All made
- * with the Web Audio API, no sound files.
+ * night), the waterfalls and rivers where they are on the map, the animals'
+ * calls where the animals are, calm generative music, the interface sounds
+ * and the roaming explorer's. All made with the Web Audio API, no sound files.
  *
  * The graph lives in `engine.ts` (it also runs on an `OfflineAudioContext`,
  * which is how its levels are measured). This file is the live side: the
@@ -24,6 +24,8 @@ export interface MapAudio {
   play(s: UISound): void;
   /** A sound of the roaming explorer (steps, the parachute, the paddle…), gain 0‥1. */
   roam(s: RoamSound, gain?: number): void;
+  /** An animal call where the animal is (quieter and panned by where the ears are). */
+  call(c: AnimalCall): void;
   /** The land, once built: where the waterfalls and rivers are (`field.falls`, `field.rivers`). */
   setWorld(field: HeightField): void;
   /** A camera flight of this many seconds begins (a soft whoosh). */
@@ -158,6 +160,16 @@ export function createMapAudio(): MapAudio {
         engine.roam(s, gain);
       } catch (e) {
         console.warn('[map] audio roam failed:', e);
+      }
+    },
+
+    call(c) {
+      // (not before the ears are placed, nor while the tab is hidden)
+      if (!engine || !live() || !heard || hidden()) return;
+      try {
+        engine.call(c);
+      } catch (e) {
+        console.warn('[map] audio call failed:', e);
       }
     },
 

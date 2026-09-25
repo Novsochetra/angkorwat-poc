@@ -16,15 +16,21 @@ const DB_NAME = 'angkor-quest';
 const STORE = 'photos';
 /** Field of view that counts as 1× zoom (degrees). */
 export const PHOTO_FOV = 50;
+/** Keys shown under the selfie shutter (the game's; a page can pass its own). */
+const SELFIE_HINT =
+  '<kbd>Space</kbd> / click take · drag to move the phone · wheel closer / further · <kbd>G</kbd> gesture · <kbd>X</kbd> face · <kbd>Y</kbd> / <kbd>Esc</kbd> put away · <kbd>M</kbd> album';
 
 /**
  * The explorer's photos: the viewfinder drawn over the view while his camera
- * is up, the shutter (flash, click, a print sliding into the corner), and an
- * album kept in this browser (IndexedDB) to look through, download or delete.
+ * is up (or a phone screen round a selfie), the shutter (flash, click, a print
+ * sliding into the corner), and an album kept in this browser (IndexedDB) to
+ * look through, download or delete.
  */
 export class PhotoAlbum {
   /** True while the album is open (the game pauses behind it). */
   isOpen = false;
+  /** The selfie frame's shutter button was pressed: the page takes the photo. */
+  onShutter?: () => void;
   private photos: Photo[] = [];
   private readonly db = openDb();
   private readonly finder = el('div', 'photo-finder');
@@ -36,6 +42,9 @@ export class PhotoAlbum {
   private readonly grid = el('div', 'photo-grid');
   private readonly view = el('div', 'photo-view');
   private readonly countEl = el('span', 'photo-count');
+  private readonly selfie = el('div', 'selfie-frame');
+  private readonly selfieInfo = el('span', 'selfie-info');
+  private readonly selfieHint = el('span', 'selfie-hint');
   private printTimer = 0;
   private audio: AudioContext | null = null;
 
@@ -49,6 +58,14 @@ export class PhotoAlbum {
         innerHTML: '<kbd>Click</kbd> / <kbd>Space</kbd> take · drag to look · wheel to zoom · <kbd>Z</kbd> / <kbd>Esc</kbd> put away · <kbd>M</kbd> album',
       }),
     );
+    // Selfie: a phone screen round the view — bezel, front-camera notch, mode, shutter.
+    const shutter = Object.assign(el('button', 'selfie-shutter'), { type: 'button', title: 'Take the selfie (Space)' });
+    shutter.setAttribute('aria-label', 'Take the selfie');
+    shutter.onclick = () => this.onShutter?.();
+    const modes = el('div', 'selfie-modes');
+    modes.innerHTML = '<span>Photo</span><span class="on">Selfie</span>';
+    this.selfieHint.innerHTML = SELFIE_HINT;
+    this.selfie.append(el('i', 'selfie-bezel'), Object.assign(el('i', 'selfie-notch'), { innerHTML: '<b></b>' }), this.selfieInfo, modes, shutter, this.selfieHint);
     this.button.type = 'button';
     this.button.title = 'Your photos (M)';
     this.button.onclick = () => this.openAlbum();
@@ -66,7 +83,7 @@ export class PhotoAlbum {
     this.album.hidden = true;
     this.view.hidden = true;
 
-    document.body.append(this.finder, this.flash, this.print, this.button, this.album);
+    document.body.append(this.finder, this.selfie, this.flash, this.print, this.button, this.album);
     this.refresh();
     void this.load();
   }
@@ -76,6 +93,18 @@ export class PhotoAlbum {
     document.body.classList.toggle('photo-mode', on);
     const zoom = Math.tan((PHOTO_FOV * Math.PI) / 360) / Math.tan((fov * Math.PI) / 360);
     this.zoomEl.textContent = `${zoom.toFixed(1)}×`;
+  }
+
+  /**
+   * Show or hide the selfie frame (a phone screen round the view, with a
+   * shutter button that calls `onShutter`). `info` is a line at the top (e.g.
+   * the gesture and face); `hint` replaces the keys line (HTML).
+   */
+  setSelfieFrame(on: boolean, info = '', hint?: string): void {
+    document.body.classList.toggle('selfie-mode', on);
+    this.selfieInfo.textContent = info;
+    this.selfieInfo.hidden = !info;
+    if (hint !== undefined) this.selfieHint.innerHTML = hint;
   }
 
   /**
@@ -125,7 +154,7 @@ export class PhotoAlbum {
     this.grid.hidden = false;
     this.grid.replaceChildren();
     if (!this.photos.length) {
-      this.grid.append(Object.assign(el('p', 'photo-empty'), { innerHTML: 'No photos yet. Press <kbd>Z</kbd> to raise the camera.' }));
+      this.grid.append(Object.assign(el('p', 'photo-empty'), { innerHTML: 'No photos yet. Press <kbd>Z</kbd> to raise the camera, or <kbd>Y</kbd> for a selfie.' }));
       return;
     }
     for (const p of this.photos) {

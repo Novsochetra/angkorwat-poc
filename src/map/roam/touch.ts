@@ -8,7 +8,10 @@ import { steppedRing, steppedShape } from '../ui/shape';
  *
  * Shown while roaming once the page has seen a touch (or on a touch-first
  * device; `touch=1` in the URL forces them). While they show,
- * `body.roam-touch` is set (the key help hides).
+ * `body.roam-touch` is set (the key help hides). With the camera or the
+ * selfie phone up, a shutter button takes the place of the stick and Jump
+ * (the selfie phone's screen has its own), and a button to put it away
+ * (`setShutter`).
  */
 export class TouchControls {
   /** The stick: x right, y forward (−1‥1 each); `run` when pushed past the ring. */
@@ -19,7 +22,11 @@ export class TouchControls {
   jumpHit = false;
   jumpHeld = false;
   useHit = false;
+  shutterHit = false;
+  /** The put-away button (camera or phone up): read as Esc. */
+  closeHit = false;
   private enabled = false;
+  private shutter = false;
   /** A touch was seen (or a touch-first device; `touch=1` in the URL shows them for checking). */
   private seen = (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) || new URLSearchParams(location.search).get('touch') === '1';
   private readonly wrap: HTMLDivElement;
@@ -40,7 +47,9 @@ export class TouchControls {
     this.wrap.innerHTML = `
       <div class="rt-stick"><div class="rt-knob"></div></div>
       <button type="button" class="rt-btn rt-use" aria-label="Use"><span class="rt-bg"></span><span class="rt-label"></span></button>
-      <button type="button" class="rt-btn rt-jump" aria-label="Jump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label">Jump</span></button>`;
+      <button type="button" class="rt-btn rt-jump" aria-label="Jump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label">Jump</span></button>
+      <button type="button" class="rt-btn rt-shutter" aria-label="Take a photo"><span class="rt-bg"></span><span class="rt-dot"></span></button>
+      <button type="button" class="rt-btn rt-close" aria-label="Put the camera away"><span class="rt-bg"></span>${CLOSE_ICON}</button>`;
     document.body.append(this.wrap);
     this.base = this.wrap.querySelector('.rt-stick')!;
     this.knob = this.wrap.querySelector('.rt-knob')!;
@@ -71,6 +80,16 @@ export class TouchControls {
       () => (this.useHit = true),
       () => {},
     );
+    hold(
+      this.wrap.querySelector<HTMLButtonElement>('.rt-shutter')!,
+      () => (this.shutterHit = true),
+      () => {},
+    );
+    hold(
+      this.wrap.querySelector<HTMLButtonElement>('.rt-close')!,
+      () => (this.closeHit = true),
+      () => {},
+    );
 
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
@@ -79,8 +98,8 @@ export class TouchControls {
       if (!this.enabled) return;
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
-      // Lower left: the stick; anywhere else: look.
-      if (this.stickId === null && e.clientX < innerWidth * 0.45 && e.clientY > innerHeight * 0.3) {
+      // Lower left: the stick (not with the camera up); anywhere else: look.
+      if (this.stickId === null && !this.shutter && e.clientX < innerWidth * 0.45 && e.clientY > innerHeight * 0.3) {
         this.stickId = e.pointerId;
         const r = stickRadius();
         this.origin.x = Math.max(r + 12, e.clientX);
@@ -137,6 +156,21 @@ export class TouchControls {
     this.show();
   }
 
+  /** The camera or the selfie phone is up (null: neither): the put-away button and the camera's shutter show, the stick and Jump hide. */
+  setShutter(kind: 'camera' | 'selfie' | null): void {
+    const on = kind !== null;
+    this.shutter = on;
+    this.wrap.classList.toggle('is-photo', on);
+    this.wrap.classList.toggle('is-camera', kind === 'camera');
+    if (on && this.stickId !== null) {
+      this.stickId = null;
+      this.stick.x = this.stick.y = 0;
+      this.stick.run = false;
+      this.base.classList.remove('is-on');
+      this.rest();
+    }
+  }
+
   /** The Use button: shown with this label ("Enter", "Board"), or hidden (null). */
   setUse(label: string | null): void {
     this.useBtn.classList.toggle('is-on', !!label);
@@ -149,7 +183,7 @@ export class TouchControls {
     this.stick.x = this.stick.y = 0;
     this.stick.run = false;
     this.fingers.clear();
-    this.jumpHit = this.jumpHeld = this.useHit = false;
+    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = false;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     this.base.classList.remove('is-on');
     this.rest();
@@ -207,6 +241,7 @@ export function setTouchUse(label: string | null): void {
 /** Radius of the stick's ring (CSS px). */
 const stickRadius = () => (Math.min(innerWidth, innerHeight) < 500 ? 52 : 62);
 
+const CLOSE_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/></svg>`;
 const JUMP_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 2h2v1h1v1h1v1h1v1h1v2h-3v6H6V8H3V6h1V5h1V4h1V3h1z"/></svg>`;
 
 let styled = false;
@@ -235,12 +270,20 @@ function injectStyle(): void {
     .rt-use { right: 114px; bottom: 46px; width: auto; min-width: 84px; height: 52px; padding: 0 16px; display: none; color: #ffe07c; white-space: nowrap; font-size: 14px; }
     .rt-use.is-on { display: grid; }
     .rt-use .rt-bg::after { background: rgba(255, 208, 112, 0.8); }
+    .rt-shutter { right: 26px; bottom: 50%; transform: translateY(50%); display: none; }
+    .rt-dot { width: 40px; height: 40px; border-radius: 50%; background: #f8f0dc; box-shadow: inset 0 0 0 3px rgba(13, 25, 39, 0.55), 0 0 0 3px rgba(248, 240, 220, 0.5); }
+    .rt-shutter.is-down .rt-dot { background: #ffe07c; transform: scale(0.9); }
+    .rt.is-camera .rt-shutter { display: grid; }
+    .rt-close { left: 24px; top: 24px; width: 52px; height: 52px; display: none; }
+    .rt.is-photo .rt-close { display: grid; }
+    .rt.is-photo .rt-stick, .rt.is-photo .rt-jump, .rt.is-photo .rt-use { display: none; }
     @media (max-width: 500px), (max-height: 500px) {
       .rt-stick::before { left: -52px; top: -52px; width: 104px; height: 104px; }
       .rt-knob { left: -22px; top: -22px; width: 44px; height: 44px; }
       .rt-btn { width: 64px; height: 64px; }
       .rt-jump { right: 18px; bottom: 22px; }
       .rt-use { right: 92px; bottom: 28px; width: auto; height: 46px; }
+      .rt-shutter { right: 18px; }
     }`;
   document.head.append(style);
   document.documentElement.style.setProperty('--rt-shape', steppedShape(10, 5));

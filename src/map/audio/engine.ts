@@ -1,6 +1,7 @@
 import type { HeightField } from '../heightfield';
-import type { RoamSound, UISound } from '../types';
+import type { AnimalCall, RoamSound, UISound } from '../types';
 import { Ambience } from './ambience';
+import { Animals } from './animals';
 import { clamp01, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
 import { Explorer } from './explorer';
 import { Music } from './music';
@@ -14,7 +15,7 @@ import { Water, type Ears } from './water';
  *   ambience ┤              │                                │
  *   water   ─┼─ Bus: volume ┤                                ├─ sum ─ compressor ─ trim ─ soft clip ─ master ─ out ─ speakers
  *   sfx     ─┘              └─ wet ─ reverb (convolver) ─────┘
- *   (sfx: the interface and the roaming explorer)
+ *   (ambience: also the animals' calls, placed on the map; sfx: the interface and the roaming explorer)
  *
  * `master` (the Master slider) comes after the compressor, so turning it
  * down makes everything quieter without changing the mix. `out` fades
@@ -108,6 +109,7 @@ export class SoundEngine {
   private readonly water: Water;
   private readonly sfx: Sfx;
   private readonly explorer: Explorer;
+  private readonly animals: Animals;
   private applied: Mix = { night: -1 };
   private volumes: Volumes = { master: 1, music: 1, ambience: 1, water: 1, sfx: 1 };
 
@@ -148,6 +150,7 @@ export class SoundEngine {
     this.water = new Water(this);
     this.sfx = new Sfx(this);
     this.explorer = new Explorer(this);
+    this.animals = new Animals(this);
   }
 
   setVolumes(v: Volumes, immediate = false): void {
@@ -182,9 +185,10 @@ export class SoundEngine {
     this.water.setWorld(field.falls, field.rivers);
   }
 
-  /** Where the ears are (every frame; the water voices follow at ~15 Hz). `immediate`: no glide. */
+  /** Where the ears are (every frame; the water voices follow at ~15 Hz, animal calls read them when they come). `immediate`: no glide. */
   listen(ears: Ears, immediate = false): void {
     this.water.listen(ears, immediate);
+    this.animals.listen(ears);
   }
 
   /** Music, ambience and water swell in from silence (effects are never faded). */
@@ -222,6 +226,12 @@ export class SoundEngine {
   roam(s: RoamSound, gain = 1, when = 0): void {
     if (this.volumes.sfx <= 0 || this.volumes.master <= 0) return;
     this.explorer.play(s, clamp01(gain), Math.max(when, this.ctx.currentTime));
+  }
+
+  /** An animal call where the animal is (on the ambience bus: muted, it is not even made). */
+  call(c: AnimalCall, when = 0): void {
+    if (this.volumes.ambience <= 0 || this.volumes.master <= 0) return;
+    this.animals.call(c, Math.max(when, this.ctx.currentTime));
   }
 
   /** The explorer's lasting sounds: rushing air (falling, gliding) and the boat's wake, 0‥1 each. */

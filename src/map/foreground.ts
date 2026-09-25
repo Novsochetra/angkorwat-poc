@@ -87,8 +87,10 @@ export function buildForeground(ctx: MapContext): Foreground {
   const ledge = buildVoxelMesh(b, { quality: 'high', name: 'foreground:ledge' });
   object.add(ledge);
 
-  // Hat and the big pack, as in the concept art.
-  const explorer = new AngkorExplorer({ quality: 'high', outfit: { ...OUTFITS.explorerGear, hat: true } });
+  // Hat and the big pack, as in the concept art. (No lights of his own: the
+  // roaming tools keep one lamp and one flashlight always in the scene, so
+  // lighting a lantern never changes the light count: roam/tools.ts.)
+  const explorer = new AngkorExplorer({ quality: 'high', outfit: { ...OUTFITS.explorerGear, hat: true }, propLights: false, beam: true });
   explorer.blinking = !ctx.shot;
   explorer.object.position.copy(feet);
   const [fx, , fz] = EXPLORER_SPOT.facing;

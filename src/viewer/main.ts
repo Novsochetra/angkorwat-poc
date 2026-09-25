@@ -20,7 +20,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { AngkorExplorer, OUTFITS, type OutfitName } from '../character/AngkorExplorer';
+import { AngkorExplorer, OUTFITS, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FeedbackTool } from '../feedback/FeedbackTool';
@@ -34,6 +34,7 @@ import type { VoxelQuality } from '../voxel/VoxelMesh';
  * scripts/screenshots.mjs can capture it, e.g.
  *   viewer.html?turnaround=1&shot=1
  *   viewer.html?view=45&expr=happy&outfit=withHat&anim=walk&t=0.4&shot=1
+ *   viewer.html?view=30&anim=selfie&gesture=thumbsUp&saim=-30,10,1&t=1.2&shot=1
  */
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -119,6 +120,12 @@ function spawn(): void {
   for (let i = 0; i < count; i++) {
     const e = new AngkorExplorer({ quality, outfit, expression });
     e.blinking = !shot;
+    // Selfie: the free hand's gesture, and the phone's place (yaw, pitch in degrees, reach 0‥1).
+    if (params.has('gesture')) e.selfieGesture = params.get('gesture') as SelfieGesture;
+    if (params.has('saim')) {
+      const [yaw, pitch, reach = 1] = params.get('saim')!.split(',').map(Number);
+      Object.assign(e.selfieAim, { yaw: (yaw * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, reach });
+    }
     e.object.position.x = turnaround ? (i - (count - 1) / 2) * spacing : 0;
     e.object.rotation.y = turnaround ? (i * Math.PI) / 4 : (num('view', 0) * Math.PI) / 180;
     stage.add(e.object);

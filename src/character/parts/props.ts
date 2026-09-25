@@ -136,3 +136,51 @@ export function buildFlashlight(): { body: VoxelBuilder; lens: VoxelBuilder } {
   lens.box(0, 0, 4.02, 0.7, 0.7, 0.12, T.core, 'glow');
   return { body, lens };
 }
+
+/** The phone's front camera (selfie lens), in the phone's frame (BU). */
+export const PHONE_LENS = [0, 3.42, 1.8] as const;
+
+/**
+ * Smartphone for selfies, in a krama-red case. Origin at the grip (the middle
+ * of the right fist, which holds it from behind); it stands up along +Y with
+ * the screen facing +Z, toward the explorer's face. The back has the camera
+ * bump. `screen` is the glowing display (a camera preview: sky, temple, a
+ * face and the shutter), meshed apart so it casts no shadow.
+ */
+export function buildPhone(): { body: VoxelBuilder; screen: VoxelBuilder } {
+  const body = new VoxelBuilder();
+  const screen = new VoxelBuilder();
+  const K = PALETTE.krama;
+  // Case: 6 × 12 blocks of 0.5 × 0.5, the corners rounded off, lighter along the rim.
+  const g = body.grid({ cell: [0.5, 0.5, 0.56], origin: [-1.5, -1.9, 1.16], mat: 'metal', jitter: 0.02, ao: 0.12, seed: 141 });
+  g.fill(0, 5, 0, 11, 0, 0, (i, j) => (i === 0 || i === 5 || j === 0 || j === 11 ? K.redLight : hash3(i, j, 0, 142) < 0.7 ? K.red : K.red2));
+  for (const [i, j] of [[0, 0], [5, 0], [0, 11], [5, 11]]) g.delete(i, j, 0);
+  g.commit();
+  // Glass front with a dark bezel, and the front camera in the bezel above the screen.
+  body.span(-1.32, -1.72, 1.72, 1.32, 3.92, 1.78, 0x16181b, 'lens');
+  body.box(PHONE_LENS[0], PHONE_LENS[1], 1.79, 0.34, 0.34, 0.05, PALETTE.camera.glass, 'lens');
+  body.box(PHONE_LENS[0] - 0.06, PHONE_LENS[1] + 0.06, 1.815, 0.08, 0.08, 0.02, 0xffffff, 'lens', { shade: 0.8 });
+  // Camera bump on the back: two lenses and a flash.
+  body.span(-1.25, 2.2, 0.96, -0.05, 3.7, 1.16, K.dark, 'metal');
+  for (const y of [3.25, 2.63]) {
+    body.box(-0.85, y, 0.9, 0.5, 0.5, 0.12, PALETTE.camera.body, 'metal');
+    body.box(-0.85, y, 0.85, 0.3, 0.3, 0.06, PALETTE.camera.glass, 'lens');
+  }
+  body.box(-0.33, 3.3, 0.92, 0.2, 0.2, 0.06, 0xfff3d6, 'metal', { shade: 1.2 });
+  // Side buttons.
+  body.box(1.56, 2.5, 1.44, 0.12, 0.8, 0.22, K.dark, 'metal');
+  body.box(-1.56, 2.8, 1.44, 0.12, 0.45, 0.22, K.dark, 'metal');
+
+  // Screen (x −1.16‥1.16, y −1.48‥3.14): sky over sandstone, a face, the shutter.
+  const z = 1.8;
+  const band = (y0: number, y1: number, c: number) => screen.span(-1.16, y0, z - 0.02, 1.16, y1, z + 0.02, c, 'glow');
+  band(2.3, 3.14, 0x9ccff0);
+  band(1.3, 2.3, 0xc7e3f2);
+  band(-0.2, 1.3, 0xe7c898);
+  band(-1.48, -0.2, 0xcfa36c);
+  screen.span(-0.42, 0.25, z, 0.42, 1.25, z + 0.04, PALETTE.skin.light, 'glow');
+  screen.span(-0.5, 1.2, z, 0.5, 1.55, z + 0.04, 0x5a4034, 'glow');
+  screen.span(-0.24, -0.08, z, 0.24, 0.26, z + 0.04, 0xd8c4ab, 'glow');
+  screen.box(0, -1.08, z + 0.03, 0.46, 0.46, 0.04, 0xffffff, 'glow');
+  return { body, screen };
+}

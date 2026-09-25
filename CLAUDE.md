@@ -71,3 +71,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Roaming (explorer leaps off the ledge, parachute, walk, boat): `src/map/roam/`.
   Check it with `roam=leap|glide|walk|boat&at=x,z&yaw=<deg>&sim=w:2,wr:3`
   (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.
+  On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie;
+  `tool=` in shots), emotes and photos (`roam/tools.ts`, `roam/photo.ts`),
+  and a mini-map (`src/map/ui/minimap.ts`, M for the big map).
+- Animals: land (`src/map/fauna/land.ts`) and water / air
+  (`src/map/fauna/waterAir.ts`); their calls go through `MapFrame.calls` to
+  `src/map/audio/animals.ts`.

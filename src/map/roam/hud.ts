@@ -13,7 +13,8 @@ import type { RoamHud, RoamMode } from './types';
  * - while roaming, "Back to map" at the top left (Esc), the keys of the mode
  *   at the bottom left (small; hidden while the touch controls show), a
  *   prompt at a place's beacon ("E  Enter Angkor Wat"), short messages that
- *   fade by themselves, and the fade to black.
+ *   fade by themselves, and the fade to black; the explorer's tool bar
+ *   (tools.ts) goes in the same layer.
  *
  * It sits beside the picker's root (`#ui`) and follows its size (`--u`) and
  * time of day (`--mu-n`).
@@ -86,6 +87,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(): void; onBack(): 
   addEventListener('resize', placeJump);
 
   return {
+    layer: wrap,
     setMode(next) {
       mode = next;
       wrap.dataset.mode = next;
@@ -153,7 +155,16 @@ const HELP: Record<RoamMode, string> = {
   overview: '',
   leap: '',
   glide: [item(key('A') + key('D'), 'steer'), item(key('W'), 'dive'), item(key('S'), 'brake'), item(key('Space'), 'let go'), item('<i>drag</i>', 'look')].join(''),
-  walk: [item(key('W') + key('A') + key('S') + key('D'), 'move'), item(key('Shift'), 'run'), item(key('Space'), 'jump'), item(key('E'), 'enter'), item('<i>drag</i>', 'look')].join(''),
+  walk: [
+    item(key('W') + key('A') + key('S') + key('D'), 'move'),
+    item(key('Shift'), 'run'),
+    item(key('Space'), 'jump'),
+    item(key('E'), 'enter'),
+    item('<i>drag</i>', 'look'),
+    item(key('1') + '–' + key('5'), 'tools'),
+    item(key('F') + key('C') + key('U') + key('P'), 'emotes'),
+    item(key('?'), 'all keys'),
+  ].join(''),
   boat: [item(key('W') + key('S'), 'paddle'), item(key('A') + key('D'), 'turn'), item(key('E'), 'step ashore'), item('<i>drag</i>', 'look')].join(''),
 };
 

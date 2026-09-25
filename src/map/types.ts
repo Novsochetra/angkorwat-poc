@@ -53,6 +53,36 @@ export interface MapFrame {
   roam: RoamMode;
   /** Lasting sounds of the roaming explorer (all 0 in the overview). */
   roamLevels: RoamLevels;
+  /**
+   * Animal calls this frame, where they are on the map: parts push them in
+   * `update` (a rooster crows, a monkey chatters as it runs off) and main.ts
+   * hands them to the sound, then empties the list. Not filled in shots.
+   */
+  calls: AnimalCall[];
+}
+
+/** Kinds of animal call (audio/animals.ts makes them). */
+export type AnimalCallKind =
+  | 'elephant'
+  | 'monkey'
+  | 'rooster'
+  | 'hen'
+  | 'deer'
+  | 'buffalo'
+  | 'duck'
+  | 'egret'
+  | 'wings'
+  | 'fish'
+  | 'bat'
+  | 'frog';
+
+/** One animal call at a point of the map (m); `gain` 0‥1 (1 = a full call close by). */
+export interface AnimalCall {
+  kind: AnimalCallKind;
+  x: number;
+  y: number;
+  z: number;
+  gain: number;
 }
 
 /**
@@ -118,4 +148,9 @@ export interface MapPart {
   highlight?(id: PlaceId | null): void;
   /** Voxel blocks in the part (for the stats line and the block budget). */
   blocks?: number;
+  /**
+   * Called right after each frame is drawn, while the canvas still holds the
+   * picture (e.g. to take a photo of it). Not called in headless shots.
+   */
+  afterRender?(): void;
 }

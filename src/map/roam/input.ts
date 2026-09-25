@@ -6,8 +6,10 @@ import type { RoamInput } from './types';
  *
  * - keys: WASD / arrows move (relative to the camera), Shift runs, Space
  *   jumps (and opens or closes the parachute), E / Enter uses, Esc goes back
- *   to the overview;
- * - mouse: drag the view (either button) to turn the camera, wheel to zoom;
+ *   to the overview; the explorer's tools and emotes (`TOOL_KEYS`: 1–5, Z,
+ *   Y, O, F, C, U, P, H, G, X, V, ?) come as `taps` for tools.ts;
+ * - mouse: drag the view (either button) to turn the camera, wheel to zoom,
+ *   a click (no drag) is `click`, and where it points is `pointer`;
  * - touch: a joystick, Jump and Use buttons, drag to look, pinch to zoom
  *   (touch.ts);
  * - a gamepad: left stick moves (pushed in: run), right stick looks, A jumps,
@@ -17,11 +19,14 @@ import type { RoamInput } from './types';
  * shots (`sim=` in the URL, see `parseScript`).
  */
 export class RoamControls {
-  readonly state: RoamInput = { move: { x: 0, y: 0 }, run: false, jump: false, jumpHeld: false, use: false, exit: false, lookYaw: 0, lookPitch: 0, zoom: 0 };
+  private readonly taps = new Set<string>();
+  private readonly mouse = { x: 0, y: 0 };
+  readonly state: RoamInput = { move: { x: 0, y: 0 }, run: false, jump: false, jumpHeld: false, use: false, exit: false, lookYaw: 0, lookPitch: 0, zoom: 0, taps: this.taps, click: false, pointer: null };
   private on = false;
   private readonly keys = new Set<string>();
   private readonly hits = new Set<string>();
-  private drag: { id: number; x: number; y: number } | null = null;
+  private drag: { id: number; x: number; y: number; moved: number; t: number } | null = null;
+  private clicked = false;
   private readonly look = { yaw: 0, pitch: 0, zoom: 0 };
   private readonly touch: TouchControls;
   private pad = { jump: false, use: false, exit: false };
@@ -36,9 +41,16 @@ export class RoamControls {
       if (!this.on || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (!ROAM_KEYS.has(e.code)) return;
-      if (!e.repeat) this.hits.add(e.code);
-      this.keys.add(e.code);
+      // ("?" is Shift + / on most keyboards, elsewhere on some)
+      const code = e.key === '?' ? 'Slash' : e.code;
+      if (TOOL_KEYS.has(code)) {
+        if (!e.repeat) this.hits.add(code);
+        e.preventDefault();
+        return;
+      }
+      if (!ROAM_KEYS.has(code)) return;
+      if (!e.repeat) this.hits.add(code);
+      this.keys.add(code);
       e.preventDefault();
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -46,20 +58,31 @@ export class RoamControls {
     // Mouse and pen: drag to look (touch: touch.ts).
     canvas.addEventListener('pointerdown', (e) => {
       if (!this.on || this.drag || e.pointerType === 'touch' || e.button > 2) return;
-      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0, t: performance.now() };
       canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = 'grabbing';
     });
     canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch') {
+        this.mouse.x = e.clientX;
+        this.mouse.y = e.clientY;
+        this.state.pointer = this.mouse;
+      }
       if (!this.drag || e.pointerId !== this.drag.id) return;
       const k = 3.2 / Math.max(innerHeight, 1);
       this.look.yaw -= (e.clientX - this.drag.x) * k;
       this.look.pitch += (e.clientY - this.drag.y) * k;
+      this.drag.moved += Math.abs(e.clientX - this.drag.x) + Math.abs(e.clientY - this.drag.y);
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
     });
+    canvas.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'touch' && !this.drag) this.state.pointer = null;
+    });
     const end = (e: PointerEvent) => {
       if (this.drag && e.pointerId === this.drag.id) {
+        // (a press and release in place is a click, not a drag)
+        if (e.type === 'pointerup' && this.drag.moved < 6 && performance.now() - this.drag.t < 500) this.clicked = true;
         this.drag = null;
         canvas.style.cursor = this.on ? 'grab' : '';
       }
@@ -119,10 +142,13 @@ export class RoamControls {
     s.jump = hit('Space') || t.jumpHit;
     s.jumpHeld = on('Space') || t.jumpHeld;
     s.use = hit('KeyE', 'Enter') || t.useHit;
-    s.exit = hit('Escape');
+    s.exit = hit('Escape') || t.closeHit;
     s.lookYaw = this.look.yaw + t.look.yaw;
     s.lookPitch = this.look.pitch + t.look.pitch;
     s.zoom = this.look.zoom + t.look.zoom;
+    this.taps.clear();
+    for (const c of this.hits) if (TOOL_KEYS.has(c)) this.taps.add(c);
+    s.click = this.clicked || t.shutterHit;
     this.pollPad(dt);
     const len = Math.hypot(s.move.x, s.move.y);
     if (len > 1) {
@@ -131,7 +157,8 @@ export class RoamControls {
     }
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
-    t.jumpHit = t.useHit = false;
+    t.jumpHit = t.useHit = t.shutterHit = t.closeHit = false;
+    this.clicked = false;
     this.hits.clear();
     return s;
   }
@@ -142,10 +169,17 @@ export class RoamControls {
    */
   clear(): void {
     this.hits.clear();
+    this.taps.clear();
+    this.clicked = false;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     const t = this.touch;
-    t.jumpHit = t.useHit = false;
+    t.jumpHit = t.useHit = t.shutterHit = t.closeHit = false;
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
+  }
+
+  /** Photo mode on touch: a put-away button, and a shutter for the camera (the selfie frame has its own), instead of the stick and Jump (tools.ts). */
+  setShutter(kind: 'camera' | 'selfie' | null): void {
+    this.touch.setShutter(kind);
   }
 
   /** Let go of everything (leaving, the window lost focus). */
@@ -207,6 +241,8 @@ export class RoamControls {
     s.lookYaw = (step?.turn ?? 0) * dt;
     s.lookPitch = (step?.tilt ?? 0) * dt;
     s.zoom = 0;
+    this.taps.clear();
+    s.click = fresh && k.includes('c');
     return s;
   }
 }
@@ -214,9 +250,22 @@ export class RoamControls {
 const ROAM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyE', 'Enter', 'Escape']);
 
 /**
+ * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·
+ * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie ·
+ * F wave · C cheer · U look up · P peek · H hat · G outfit · X face ·
+ * V album · ? all keys. (Not M, B, K or J: the mini-map, the bug report,
+ * the block look panel and "Jump in" have them.)
+ */
+export const TOOL_KEYS: ReadonlySet<string> = new Set([
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5',
+  'KeyZ', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'KeyH', 'KeyG', 'KeyX', 'KeyV', 'Slash',
+]);
+
+/**
  * One step of a scripted input: keys held for some seconds. Keys: w a s d
  * (move), r (run), j (jump: pressed at the start of the step, held through
- * it), e (use), x (exit); `turn` turns the camera (radians/s, + = left),
+ * it), e (use), x (exit), c (a click on the view: in photo mode, a photo);
+ * `turn` turns the camera (radians/s, + = left),
  * `tilt` tilts it (radians/s, + = look down more).
  */
 export interface ScriptStep {

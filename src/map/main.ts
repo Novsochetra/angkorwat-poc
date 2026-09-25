@@ -100,6 +100,8 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['vegetation', async () => (await import('./vegetation')).buildVegetation],
   ['clouds', async () => (await import('./clouds')).buildClouds],
   ['life', async () => (await import('./life')).buildLife],
+  ['fauna', async () => (await import('./fauna/land')).buildLandFauna],
+  ['wildlife', async () => (await import('./fauna/waterAir')).buildWaterAirFauna],
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
@@ -130,7 +132,7 @@ const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.na
 // ── Camera, sound, interface ────────────────────────────────────────────────
 const rig = new MapCameraRig(camera);
 rig.calm = settings.calm;
-const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, roam() {}, setWorld() {}, flight() {}, update() {} }));
+const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, roam() {}, call() {}, setWorld() {}, flight() {}, update() {} }));
 audio.setVolumes(settings);
 audio.setWorld(field);
 
@@ -211,6 +213,9 @@ const roam: MapRoam | null = foreground
 if (roam) {
   parts.push(roam);
   scene.add(roam.object);
+  // Mini-map while roaming, and the big map (M): a part, so the frame loop draws it after the roaming.
+  const minimap = await safe('minimap', async () => (await import('./ui/minimap')).createMinimap({ root: uiRoot, field, parts: [...parts], roam, sound: (s) => audio.play(s) }), () => null);
+  if (minimap) parts.push(minimap);
 }
 
 addEventListener('pointermove', (e) => rig.setPointer((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1));
@@ -233,7 +238,7 @@ function nightTarget(t: number): number {
 
 // ── Frame ───────────────────────────────────────────────────────────────────
 const fixedCam = params.get('cam')?.split(',').map(Number);
-const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0 } };
+const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0 }, calls: [] };
 const anchors = Object.fromEntries(PLACES.map((p) => [p.id, { x: 0, y: 0, visible: false }])) as Record<PlaceId, AnchorOnScreen>;
 const _p = new Vector3();
 const _d = new Vector3();
@@ -269,6 +274,9 @@ function step(t: number, dt: number): void {
   ui.update(anchors, dt);
   ui.setNight(night);
   audio.update(frame, selected);
+  // (animal calls: heard where they are)
+  for (const c of frame.calls) audio.call(c);
+  frame.calls.length = 0;
 }
 
 // ── Tools: bug reports (B) and block look panel (K) ────────────────────────
@@ -374,6 +382,7 @@ if (shot) {
     if (!feedback?.active) step((now - t0) / 1000, dt);
     if (now - t0 > 3000) adaptResolution(raw);
     post.render(frame);
+    for (const p of parts) p.afterRender?.();
     feedback?.update();
     if (first) {
       first = false;

@@ -17,7 +17,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { AngkorExplorer, OUTFITS, type ExplorerOutfit, type OutfitName } from '../character/AngkorExplorer';
+import { AngkorExplorer, OUTFITS, type ExplorerOutfit, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FeedbackTool } from '../feedback/FeedbackTool';
@@ -185,7 +185,8 @@ function aim(): void {
 }
 
 // ── Photo mode (Z): look through the explorer's camera and take photos ─────
-const photos = shot || test ? null : new PhotoAlbum();
+const selfieShot = shot && params.get('selfie') === '1';
+const photos = test || (shot && !selfieShot) ? null : new PhotoAlbum();
 let snap = false;
 let finderOn = false;
 let bodyHidden = false;
@@ -199,6 +200,35 @@ function setPhotoMode(on: boolean): void {
   if (!player.grounded) return;
   player.photo = { yaw: player.yaw, pitch: 0, fov: PHOTO_FOV };
   explorer.play('photo');
+}
+
+// ── Selfie mode (Y): the phone held out, the view from it looking back ──────
+const GESTURES: readonly SelfieGesture[] = ['peace', 'wave', 'thumbsUp', 'none'];
+const GESTURE_NAMES: Record<SelfieGesture, string> = { peace: '✌ peace', wave: '👋 wave', thumbsUp: '👍 thumbs up', none: 'no gesture' };
+let selfieFrameOn = false;
+let selfieInfo = '';
+function setSelfieMode(on: boolean): void {
+  if (!on) {
+    player.selfie = null;
+    explorer.stop('selfie');
+    return;
+  }
+  if (!player.grounded) return;
+  player.selfie = explorer.selfieAim;
+  explorer.play('selfie');
+}
+
+/** Keys while the phone is out: take the selfie, gesture, face, put it away. */
+function selfieKeys(): void {
+  if (input.hit('KeyY') || input.hit('Escape')) setSelfieMode(false);
+  else if (player.selfieView > 0.95 && (input.clicked || input.hit('Space') || input.hit('Enter'))) snap = true;
+  if (input.hit('KeyG')) explorer.selfieGesture = GESTURES[(GESTURES.indexOf(explorer.selfieGesture) + 1) % GESTURES.length];
+  if (input.hit('KeyX')) {
+    expr = (EXPRESSIONS.indexOf(explorer.currentExpression) + 1) % EXPRESSIONS.length;
+    explorer.setExpression(EXPRESSIONS[expr]);
+  }
+  if (input.hit('KeyM')) photos?.openAlbum();
+  if (input.hit('KeyN')) setDusk(!dusk);
 }
 
 /** Where a photo was taken, in words. */
@@ -228,6 +258,13 @@ function updateFinder(): void {
   if (on) photos?.setViewfinder(true, player.photo!.fov);
   else if (finderOn) photos?.setViewfinder(false);
   finderOn = on;
+  // The phone screen frame round the selfie view, with the gesture and face it shows.
+  const selfieOn = !!player.selfie && player.selfieView > 0.9;
+  const hands = explorer.currentOutfit.held === 'none' ? GESTURE_NAMES[explorer.selfieGesture] : `${explorer.currentOutfit.held} in hand`;
+  const info = selfieOn ? `${hands} · ${explorer.currentExpression}` : '';
+  if (selfieOn !== selfieFrameOn || info !== selfieInfo) photos?.setSelfieFrame(selfieOn, info);
+  selfieFrameOn = selfieOn;
+  selfieInfo = info;
   const hide = player.photoView > 0 && camera.position.distanceTo(explorer.rig.joints.head.getWorldPosition(_aim)) < 0.95;
   if (hide !== bodyHidden) explorer.setBodyVisible(!hide);
   bodyHidden = hide;
@@ -236,7 +273,9 @@ function updateFinder(): void {
 let expr = 0;
 function onKeys(): void {
   if (player.photo) return photoKeys();
+  if (player.selfie) return selfieKeys();
   if (input.hit('KeyZ')) setPhotoMode(true);
+  if (input.hit('KeyY')) setSelfieMode(true);
   if (input.hit('KeyM')) photos?.openAlbum();
   for (let i = 0; i < Math.min(9, world.spawns.length); i++) if (input.hit(`Digit${i + 1}`)) spawn(i);
   // [ ] step through every spawn (the kit level has more than nine).
@@ -310,7 +349,7 @@ function renderHud(fps: number): void {
   hud.innerHTML = `${title}
     <kbd>WASD</kbd> move <kbd>Shift</kbd> run <kbd>Space</kbd> jump · drag / <kbd>Q</kbd><kbd>R</kbd> orbit · wheel zoom<br>
     <kbd>E</kbd> interact / open door <kbd>F</kbd> wave <kbd>C</kbd> cheer <kbd>U</kbd> look up <kbd>P</kbd> peek<br>
-    <kbd>Z</kbd> camera (take photos) <kbd>M</kbd> album<br>
+    <kbd>Z</kbd> camera (take photos) <kbd>Y</kbd> selfie <kbd>M</kbd> album<br>
     <kbd>L</kbd> lantern <kbd>T</kbd> torch <kbd>I</kbd> flashlight <kbd>O</kbd> beam aim <kbd>H</kbd> hat <kbd>G</kbd> outfit <kbd>X</kbd> face <kbd>N</kbd> dusk <kbd>V</kbd> overview <kbd>K</kbd> block look<br>
     <kbd>1</kbd>–<kbd>${Math.min(9, world.spawns.length)}</kbd> ${level === 'kit' ? `${world.spawns.slice(0, 9).map((s) => s.name.replace(/^(Garden|Scene): /, '')).join(' · ')} · <kbd>[</kbd><kbd>]</kbd> all ${world.spawns.length} spots` : 'causeway · gopura · temple stairs · Bakan'} · <kbd>B</kbd> report a bug`;
 }
@@ -351,7 +390,7 @@ const feedback = shot || test
       // Everything the URL params below need to put the explorer and camera back here.
       repro: () => {
         const q = new URLSearchParams(location.search);
-        for (const k of ['spawn', 'shot', 'test', 'at', 'cam', 'hat', 'held', 'beam', 'expr', 'dusk', 'overview', 'dist', 'anim', 'action', 't']) q.delete(k);
+        for (const k of ['spawn', 'shot', 'test', 'at', 'cam', 'hat', 'held', 'beam', 'expr', 'dusk', 'overview', 'dist', 'anim', 'action', 't', 'selfie', 'gesture', 'saim']) q.delete(k);
         const p = player.position;
         const o = explorer.currentOutfit;
         const speed = Math.hypot(player.velocity.x, player.velocity.z);
@@ -368,7 +407,12 @@ const feedback = shot || test
           q.set('dist', player.camDist.toFixed(1));
         }
         if (speed > 0.5) q.set('anim', speed > (WALK_SPEED + RUN_SPEED) / 2 ? 'run' : 'walk');
-        if (explorer.currentAction) {
+        if (player.selfie) {
+          const a = explorer.selfieAim;
+          q.set('selfie', '1');
+          q.set('gesture', explorer.selfieGesture);
+          q.set('saim', `${deg(a.yaw).toFixed(0)},${deg(a.pitch).toFixed(0)},${a.reach.toFixed(2)}`);
+        } else if (explorer.currentAction) {
           q.set('action', explorer.currentAction);
           q.set('t', explorer.animator.actionTime.toFixed(2));
         }
@@ -408,6 +452,15 @@ if (params.get('overview') === '1') {
   player.overview = true;
   player.camDist = Number(params.get('dist') ?? 70);
 }
+// Selfie: the free hand's gesture, and where the phone is (yaw, pitch in degrees, reach 0‥1).
+if (GESTURES.includes(params.get('gesture') as SelfieGesture)) explorer.selfieGesture = params.get('gesture') as SelfieGesture;
+if (params.has('saim')) {
+  const [yaw, pitch, reach = 1] = params.get('saim')!.split(',').map(Number);
+  Object.assign(explorer.selfieAim, { yaw: (yaw * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, reach });
+}
+if (photos) photos.onShutter = () => {
+  if (player.selfie && player.selfieView > 0.95) snap = true;
+};
 
 const _sunAt = new Vector3();
 function followSun(): void {
@@ -439,6 +492,7 @@ function tick(now: number): void {
     player.update(dt);
     explorer.update(dt);
   }
+  player.selfieCamera();
   updateFinder();
   followSun();
   renderer.render(scene, camera);
@@ -468,6 +522,7 @@ if (test) {
       aim();
       player.update(dt);
       explorer.update(dt);
+      player.selfieCamera();
       input.endFrame();
     },
     __spawn: (i: number) => spawn(i),
@@ -484,11 +539,17 @@ if (test) {
       player.update(1 / 60);
       if (speed) explorer.setMotion(speed, true, 0);
       explorer.update(1 / 60);
+      player.selfieCamera();
     }
   };
   settle(1);
   const action = params.get('action') as ActionName | null;
-  if (action && action in ACTIONS) {
+  if (selfieShot) {
+    // The view from the selfie phone (`gesture`, `saim` above), with its frame.
+    setSelfieMode(true);
+    settle(Number(params.get('t') ?? 1.2));
+    updateFinder();
+  } else if (action && action in ACTIONS) {
     explorer.play(action);
     settle(Number(params.get('t') ?? 0.5));
   }

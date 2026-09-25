@@ -37,8 +37,12 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   `paths` (road samples every metre with ground `y` and `wet` over water).
   Only the terrain pass may edit `heightfield.ts`.
 - Build order: atmosphere → terrain → the six landmarks → path → water →
-  vegetation → clouds → life → foreground. Landmarks and the road call
-  `field.occupy(...)` for what they cover, so trees keep off.
+  vegetation → clouds → life → fauna → wildlife → foreground. Landmarks and
+  the road call `field.occupy(...)` for what they cover, so trees keep off.
+- `MapPart.afterRender()` runs right after each frame is drawn (the canvas
+  still holds the picture: photos). `MapFrame.calls` is a list of animal
+  calls (`{ kind, x, y, z, gain }`) parts push in `update`; main.ts hands them
+  to the sound (`audio/animals.ts`), which pans and fades them by distance.
 
 ## Roaming the map
 
@@ -59,15 +63,32 @@ beacon (**E**). **Esc** or "Back to map" returns to the overview. Code in
 - `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current).
 - Poses for vehicles use the animator's `posture` hook
   (`src/character/Animator.ts`).
+- `tools.ts` + `photo.ts`: on foot the explorer has a tool bar (bottom
+  centre): **1** lantern, **2** torch, **3** flashlight (**O** beam ahead ↔
+  follows the mouse), **4**/**Z** camera, **5**/**Y** selfie phone; emotes
+  **F** wave, **C** cheer, **U** look up, **P** peek; **H** hat, **G** outfit
+  (in a selfie: gesture), **X** face, **V** photo album, **?** all keys.
+  Photos go to the game's album (`src/game/Photos.ts`, IndexedDB). The
+  explorer is made with `propLights: false`: the tools own one PointLight and
+  one SpotLight (no shadow) that are always in the scene (intensity 0 when
+  unused), so the light count never changes (no shader recompiles).
+- Mini-map (`src/map/ui/minimap.ts`): top right while roaming, turns with
+  the view; **M** or a click opens the big map, where a click on a place
+  sets it as the target (a gold arrow on the mini-map points the way).
+  The land picture is drawn once, in small slices over several frames.
 
 Because of roaming, the map is also seen from the ground and from every
 direction: land, trees, mist and sky must hold up from there too (no
 missing faces, no mist planes seen edge-on).
 
-Check with URL params: `roam=leap|glide|walk|boat` · `at=x,z` or `x,y,z` ·
+Check with URL params (in roaming shots always pass `sim=` and usually
+`rcam=`, or the follow camera is not placed): `roam=leap|glide|walk|boat` · `at=x,z` or `x,y,z` ·
 `yaw=<deg>` (0 = facing south, 180 = north) · `sim=<keys:seconds,…>` a
 scripted input run before the shot (`input.ts parseScript`, e.g.
-`sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist` the follow camera's orbit.
+`sim=w:2,wr:3,j:0.5`) · `rcam=yaw,pitch,dist` the follow camera's orbit ·
+`tool=lantern|torch|flashlight|camera|selfie` · `act=wave|cheer|lookUp|peek` ·
+`bigmap=1` · `target=<place id>` · `fauna=lineup` (every land animal in every
+pose on the valley road) · `wildlife=<s>` (run the water animals' reactions).
 
 ## World and scale
 
@@ -111,7 +132,10 @@ scripted input run before the shot (`input.ts parseScript`, e.g.
 ## Budgets (blocks = voxel instances)
 
 terrain ≤ 260 k · vegetation ≤ 150 k · sanctuary ≤ 60 k · each other
-landmark ≤ 20 k · road ≤ 20 k · foreground ≈ 3 k. Keep each part's build
+landmark ≤ 20 k · road ≤ 20 k · foreground ≈ 3 k. Animals (fauna, wildlife):
+≤ 6 draw calls and < 1 ms CPU a frame each; one `InstancedMesh` per species
+posed in the vertex shader, only animals near the camera or the explorer
+are updated, far ones hidden. Keep each part's build
 under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 
 ## Checking your work
@@ -143,6 +167,9 @@ under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 | water | `src/map/water.ts`, `src/map/water/*` |
 | atmosphere | `src/map/atmosphere.ts`, `src/map/post.ts`, `src/map/clouds.ts`, `src/map/sky/*` |
 | road + life | `src/map/path.ts`, `src/map/life.ts`, `src/map/road/*` |
+| land animals | `src/map/fauna/land.ts`, `src/map/fauna/_kit.ts`, `src/map/fauna/_land*.ts` |
+| water and air animals | `src/map/fauna/waterAir.ts`, `src/map/fauna/_water*.ts`, `src/map/fauna/_air*.ts` |
+| mini-map | `src/map/ui/minimap.ts`, `src/map/ui/_minimap*.ts` |
 | interface | `src/map/ui/*` |
 | sound | `src/map/audio/*` |
 | roaming | `src/map/roam/*` (`roam.ts` and `types.ts` belong to the lead) |

@@ -334,3 +334,180 @@ body.shot .photo-album-button,
 body.shot .photo-print {
   display: none;
 }
+
+/* ── Selfie mode (Y): a phone screen round the view ──────────────────────── */
+
+.selfie-frame {
+  position: fixed;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  color: #f6f2ea;
+  z-index: 20;
+}
+
+body.selfie-mode .selfie-frame {
+  display: block;
+}
+
+body.selfie-mode .hud,
+body.selfie-mode .viewer-link,
+body.selfie-mode .fb-button,
+body.selfie-mode .photo-album-button {
+  display: none;
+}
+
+/* Dark bezel: everything outside the rounded screen. */
+.selfie-bezel {
+  position: absolute;
+  inset: 12px;
+  border-radius: 38px;
+  box-shadow:
+    0 0 0 100vmax #101215,
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.1),
+    inset 0 0 70px rgba(0, 0, 0, 0.28);
+}
+
+/* Front-camera notch hanging from the top edge. */
+.selfie-notch {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  width: 112px;
+  height: 30px;
+  transform: translateX(-50%);
+  border-radius: 15px;
+  background: #101215;
+}
+
+.selfie-notch b {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #5a6d8a 0 18%, #1c2533 30%, #07090c 70%);
+  box-shadow: 0 0 0 2px #1b1e22;
+}
+
+.selfie-info {
+  position: absolute;
+  left: 34px;
+  top: 30px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(16, 18, 21, 0.55);
+  font-size: 13px;
+  backdrop-filter: blur(4px);
+}
+
+.selfie-info[hidden] {
+  display: none;
+}
+
+.selfie-modes {
+  position: absolute;
+  left: 50%;
+  bottom: 128px;
+  display: flex;
+  gap: 18px;
+  transform: translateX(-50%);
+  font: 600 12px/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.selfie-modes span {
+  opacity: 0.7;
+}
+
+.selfie-modes .on {
+  color: #ffd27a;
+  opacity: 1;
+}
+
+/* Big round shutter: white disc inside a white ring. */
+.selfie-shutter {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  width: 74px;
+  height: 74px;
+  padding: 4px;
+  transform: translateX(-50%);
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: #fff;
+  background-clip: content-box;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), inset 0 0 0 4px rgba(16, 18, 21, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.08s;
+}
+
+.selfie-shutter:hover {
+  background-color: #f3efe7;
+}
+
+.selfie-shutter:active {
+  transform: translateX(-50%) scale(0.9);
+}
+
+.selfie-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
+  transform: translateX(-50%);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.selfie-hint kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font: 10px/14px ui-monospace, monospace;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .selfie-bezel {
+    inset: 8px;
+    border-radius: 28px;
+  }
+
+  .selfie-notch {
+    top: 14px;
+    width: 90px;
+    height: 24px;
+  }
+
+  .selfie-info {
+    top: 46px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .selfie-modes {
+    bottom: 112px;
+  }
+
+  .selfie-shutter {
+    bottom: 34px;
+    width: 66px;
+    height: 66px;
+  }
+
+  .selfie-hint {
+    bottom: 12px;
+  }
+}
