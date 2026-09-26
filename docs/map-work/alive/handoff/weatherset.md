@@ -50,24 +50,30 @@ because the old weather rained every 9–12 min all year.
 - Shots seen at desktop 1672×941, Khmer and English: the row matches the Time of day look.
   The panel body now scrolls slightly on desktop, and "Our story" sits under the soft edge.
 
-## Not done / half done
-- The rain and storm icons were enlarged after the last shot, so they have not been seen since.
-  Take a panel shot and zoom in on the row.
-- Phone shots (390×844) have not been taken. On a phone, the weather row is below the fold of
-  the scrolling panel; scroll `.mu-set-body` before the shot.
-- Two checks were stopped before they finished:
-  - The live-page check: rainy setting saved, wait for the first shower, click Clear, watch
-    `weatherNow().rain` fade.
-  - The click, keyboard and touch check of the buttons.
+## Checked (second pass)
+- Live switch, in the page (Playwright, `parts=rain,rainbow`, saved setting rainy): the first shower
+  came at ~3 min; clicking Clear saved `weather: "clear"` at once, and rain and cloud went to 0 in
+  32 s. After a reload the setting was still Clear (the button pressed, the Clear note shown).
+- Fixed: after a switch to Clear, a shower still building kept building under the fade (rain
+  0.42 → 0.69 in 4 s before falling). `Schedule.sample` now holds the build-up ramps (cloud, rain,
+  storm, gust front) at the moment of the switch (`tu = min(t, fade)`), so Clear only brings the rain
+  down (what is left is the rain's own pulse, ≤ 0.07). Nothing changes while no fade runs.
+  Node check (season 0.3): rainy / stormy switched at 140–200 s all clear in 30.0 s, largest step
+  between frames ≤ 0.0033.
+- Click, keyboard, touch: click sets `aria-pressed`, the note and the saved setting; Tab moves
+  season → clear → rainy → stormy → Reduce motion; Enter and Space choose; the focus ring shows
+  (2 px light outline). On a phone (390×844, touch) tapping Stormy and Rainy works; no page
+  sideways scroll.
+- Phone shots (390×844, Khmer and English): the whole panel, weather row and note included, fits
+  without scrolling. The buttons are 27 px tall there, the same as the Time of day row.
+- Desktop panel shot (1672×941, English): the enlarged rain and storm icons read well.
 
-  Both were throwaway Playwright scripts in the scratchpad. To redo them:
-  - Load `map.html?parts=terrain,rain,rainbow` with localStorage
-    `angkor-story-seen=1` and `angkor-map-settings={"weather":"rainy","master":0}`.
-  - Read `(await import('/src/map/sky/weather.ts')).weatherNow()` from `page.evaluate`.
-  - Click `.mu-gear`, then `.mu-seg button[data-weather="clear"]`.
-- The before/after overview comparison was not taken. The "before" shot was fine. Shots hold
-  `weather=clear` as before, and the breeze phases come from the same seed, so the overview
-  should be unchanged.
+## Left
+- The overview shot (`map.html?shot=1`, full map) showed only the loading screen twice during
+  this pass (1672×941, both at ~64 s). A probe of the same URL found the page fine: `__ready`
+  set, `#loading` removed, no errors, so it looks like the headless compositor not painting
+  the full map under load (20 helpers on 4 CPUs), not the weather code (shots hold
+  `weather=clear`). Take it again when the machine is quiet.
 
 ## How to check
 - Shots:
