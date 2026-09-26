@@ -190,7 +190,8 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   langGroup.setAttribute('role', 'group');
   langGroup.dataset.tAria = 'language';
   langGroup.append(...langBtns);
-  top.append(langGroup, skip);
+  // (Skip is hidden for now: put `skip` back after `langGroup` to show it again)
+  top.append(langGroup);
 
   const prevBtn = framed(el('button', 'st-arrow', ICON.back), 'sm');
   prevBtn.type = 'button';
