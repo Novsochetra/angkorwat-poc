@@ -5,6 +5,7 @@ import { installLookPanel } from '../voxel/LookPanel';
 import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
+import { GRAPHICS, graphicsNow, setGraphics } from './graphics';
 import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
 import type { Foreground } from './foreground';
@@ -13,7 +14,7 @@ import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
-import { CALM_WEATHER, DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_LEVELS, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
@@ -24,7 +25,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  *
  * URL: `shot=1` headless still · `t=` seconds into the scene (shots) ·
  * `night=0‥1` time of day · `focus=<place>` camera on a place ·
- * `ui=0` no interface · `quality=low|medium|high` ·
+ * `ui=0` no interface · `graphics=low|medium|high|max` the graphics level
+ * (graphics.ts) · `quality=low|medium|high` only the built detail ·
  * `parts=terrain,water,…` build only these parts (checking one part) ·
  * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
  * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
@@ -37,7 +39,6 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  */
 const params = new URLSearchParams(location.search);
 const shot = params.get('shot') === '1';
-const quality = (['low', 'medium', 'high'].includes(params.get('quality') ?? '') ? params.get('quality') : 'medium') as MapQuality;
 const placeIds = PLACES.map((p) => p.id);
 const asPlace = (v: string | null) => (placeIds.includes(v as PlaceId) ? (v as PlaceId) : null);
 
@@ -57,7 +58,7 @@ const camera = new PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 9000);
 const SETTINGS_KEY = 'angkor-map-settings';
 function loadSettings(): MapSettings {
   try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number; sharp?: boolean };
     // (older visits kept one "effects" volume: it becomes the interface and the explorer's moves; the steps start quieter)
     if (typeof saved.sfx === 'number') {
       saved.ui ??= saved.sfx;
@@ -65,6 +66,12 @@ function loadSettings(): MapSettings {
       saved.steps ??= Math.min(DEFAULT_SETTINGS.steps, saved.sfx);
       delete saved.sfx;
     }
+    // (the "Always sharp" switch of before is the high graphics level)
+    if (saved.sharp !== undefined) {
+      saved.graphics ??= saved.sharp ? 'high' : 'medium';
+      delete saved.sharp;
+    }
+    if (!GRAPHICS_LEVELS.includes(saved.graphics as GraphicsLevel)) delete saved.graphics;
     return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -73,7 +80,10 @@ function loadSettings(): MapSettings {
 let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
 if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
 roamPrefs.easyFly = settings.easyFly;
-if (params.has('sharp')) settings.sharp = params.get('sharp') !== '0';
+if (GRAPHICS_LEVELS.includes(params.get('graphics') as GraphicsLevel)) settings.graphics = params.get('graphics') as GraphicsLevel;
+setGraphics(settings.graphics, scene);
+/** Built detail: the graphics level's (a new level is built the next time the map opens), or `quality=` to check one. */
+const quality = (['low', 'medium', 'high'].includes(params.get('quality') ?? '') ? params.get('quality') : GRAPHICS[settings.graphics].build) as MapQuality;
 if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
@@ -208,6 +218,8 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+// (the low graphics level's plain blocks, now that they are built)
+setGraphics(settings.graphics, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
 const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.name, p.blocks!]));
 
@@ -248,6 +260,10 @@ const handlers = {
   },
   onSettings: (s: MapSettings) => {
     settings = s;
+    if (s.graphics !== graphicsNow.level) {
+      setGraphics(s.graphics, scene);
+      newLevelRatio();
+    }
     rig.calm = s.calm;
     roamPrefs.easyFly = s.easyFly;
     audio.setVolumes(s);
@@ -505,7 +521,7 @@ try {
 if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0')) await openStory(Math.max(0, storyAt - 1));
 
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
-Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __frame: frame, __mapStats: { timings, blocks, failed } });
+Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed } });
 
 /** Fade the loading screen out once the map is drawn (after the explorer's wave has begun). */
 function hideLoading(): void {
@@ -526,11 +542,11 @@ function hideLoading(): void {
  * stretched by 4/3, which blurs the whole map and lays a fine grid over it.
  * A ratio that proved too slow waits a minute before it is tried again, twice
  * as long each time it fails again (up to ten minutes: no see-sawing).
- * The "Always sharp" setting (`settings.sharp`, `sharp=0|1` in the URL) keeps
- * the screen's ratio whatever the frame rate.
+ * That is the medium graphics level's `auto`; the others hold one ratio
+ * (graphics.ts: the screen's on high and max, 1 on low).
  */
-const MAX_RATIO = renderer.getPixelRatio();
-const res = { ratio: MAX_RATIO, ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0, slow: 0, wait: 30 };
+const MAX_RATIO = Math.min(devicePixelRatio, shot ? 1 : 2);
+const res = { ratio: renderer.getPixelRatio(), ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0, slow: 0, wait: 30 };
 function setRatio(next: number): void {
   res.ratio = next;
   res.since = 0;
@@ -538,13 +554,26 @@ function setRatio(next: number): void {
   renderer.setSize(innerWidth, innerHeight);
   post.setSize(innerWidth, innerHeight);
 }
+/** A graphics level with its own ratio gets it (true); `auto` is left to {@link adaptResolution} (false). */
+function holdRatio(): boolean {
+  const want = graphicsNow.ratio;
+  if (want === 'auto') return false;
+  const ratio = want === 'screen' ? MAX_RATIO : Math.min(MAX_RATIO, want);
+  if (res.ratio !== ratio) setRatio(ratio);
+  res.ceiling = MAX_RATIO;
+  res.time = res.frames = res.slow = 0;
+  return true;
+}
+// (from the first frame: the low level never draws a full-size picture)
+holdRatio();
+/** A new graphics level: its own ratio, or (auto) the screen's again, dropping only if it proves slow there. */
+function newLevelRatio(): void {
+  if (holdRatio()) return;
+  Object.assign(res, { ceiling: MAX_RATIO, ceilingAge: 0, time: 0, frames: 0, slow: 0, wait: 30 });
+  if (res.ratio !== MAX_RATIO) setRatio(MAX_RATIO);
+}
 function adaptResolution(dt: number): void {
-  if (settings.sharp) {
-    if (res.ratio !== MAX_RATIO) setRatio(MAX_RATIO);
-    res.ceiling = MAX_RATIO;
-    res.time = res.frames = res.slow = 0;
-    return;
-  }
+  if (holdRatio()) return;
   if (dt > 0.25) return; // (a hitch: a tab switch, a build)
   res.time += dt;
   res.frames++;

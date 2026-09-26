@@ -1,4 +1,5 @@
 import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3 } from 'three';
+import { graphicsNow } from './graphics';
 import { MAP_BOUNDS } from './layout';
 import { skipDarkLights } from './sky/darkLights';
 import { HAZE, installHaze } from './sky/haze';
@@ -116,7 +117,8 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   }
 
   // The shadow map is 4096² over ≈ 400 k blocks: it is drawn every third
-  // frame (for things that move), and the key light turns only on those
+  // frame (for things that move; graphics.ts: 2048² on the low level, 8192²
+  // and every frame on max), and the key light turns only on those
   // frames, so a moving sun or moon adds no shadow pass (at 60 fps it turns
   // 20 times a second, in steps too small to see).
   const shadows = ctx.renderer.shadowMap;
@@ -134,7 +136,15 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     key,
     update(f: MapFrame) {
       const s = updateSky(f);
-      const redraw = ctx.shot || ++frames % 3 === 0;
+      // (the graphics level sets the map's size and how often it is drawn: graphics.ts)
+      const size = Math.min(graphicsNow.shadowMap, ctx.renderer.capabilities.maxTextureSize);
+      if (key.shadow.mapSize.x !== size) {
+        key.shadow.mapSize.set(size, size);
+        key.shadow.map?.dispose();
+        key.shadow.map = null;
+        shadowDirty = true;
+      }
+      const redraw = ctx.shot || ++frames % graphicsNow.shadowEvery === 0;
       if (redraw || shadowDirty) fitShadow(s.keyDir);
       f.lightDir.copy(fitted);
 

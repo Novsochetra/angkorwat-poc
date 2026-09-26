@@ -9,6 +9,18 @@ const svg = (body: string, view = '0 0 24 24', extra = '') => `<svg class="mu-ic
 const CLOUD = '<circle cx="7.6" cy="11.4" r="3.3"/><circle cx="12.2" cy="8.8" r="4.6"/><circle cx="16.8" cy="11.6" r="3.1"/><rect x="7.6" y="10.6" width="9.2" height="4.1"/>';
 
 /**
+ * A graphics level: four bars rising to the right, on a 16 grid (one cell a
+ * pixel at the interface's 1× size), the first `lit` of them full and the
+ * rest faint, so the level reads at a glance.
+ */
+const bars = (lit: number) =>
+  svg(
+    [0, 1, 2, 3].map((i) => `<rect x="${1 + i * 4}" y="${11 - i * 3}" width="2" height="${3 + i * 3}" fill="currentColor"${i < lit ? '' : ' fill-opacity=".3"'}/>`).join(''),
+    '0 0 16 16',
+    ' shape-rendering="crispEdges"',
+  );
+
+/**
  * The title's temple: a pixel-art Angkor front — five lotus-bud towers over a
  * long gallery with a gate. Drawn on a grid (one rect per run of same-colour
  * cells), sandstone lit from the left.
@@ -127,4 +139,9 @@ export const ICON = {
   ),
   rain: svg(`<g transform="translate(-1.2 -1.8) scale(1.1)" fill="currentColor">${CLOUD}</g><path d="M8.3 16.9 6.9 21M12.7 16.9 11.3 21M17.1 16.9 15.7 21" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>`),
   storm: svg(`<g transform="translate(-1.2 -1.8) scale(1.1)" fill="currentColor">${CLOUD}</g><path fill="currentColor" d="M14.2 13.4 8.6 19.9h3.9l-1.7 4.1 6.2-7.2h-3.9l2.3-3.4Z"/>`),
+  /** The graphics setting: one bar lit (low) to all four (max). */
+  bars1: bars(1),
+  bars2: bars(2),
+  bars3: bars(3),
+  bars4: bars(4),
 };

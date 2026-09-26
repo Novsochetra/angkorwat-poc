@@ -4,6 +4,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { graphicsNow, samplesAt } from './graphics';
 import { SKY } from './sky/palette';
 import type { MapContext, MapFrame } from './types';
 
@@ -115,10 +116,8 @@ const mixGrade = (out: Grade, a: Grade, b: Grade, t: number): Grade => {
 
 export function createPost(ctx: MapContext): MapPost {
   const { renderer, scene, camera } = ctx;
-  const pr = renderer.getPixelRatio();
-  // Multisampling: the voxel edges crawl without it. Fewer samples on dense screens.
-  const samples = ctx.quality === 'low' ? 0 : pr > 1.5 ? 2 : 4;
-  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples });
+  // Multisampling: the voxel edges crawl without it. Fewer samples on dense screens (graphics.ts: none on low).
+  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: samplesAt(graphicsNow, renderer.getPixelRatio()) });
   target.texture.name = 'map scene';
   const composer = new EffectComposer(renderer, target);
 
@@ -165,8 +164,19 @@ export function createPost(ctx: MapContext): MapPost {
   const g: Grade = mixGrade({ balance: [1, 1, 1], shadow: [1, 1, 1], high: [1, 1, 1], saturation: 1, contrast: 1, vignette: 0, bloom: 0 }, DAY_GRADE, DAY_GRADE, 0);
   const one = [1, 1, 1];
 
+  /** The graphics level's multisampling (it changes with the level and the pixel ratio): the targets are made again. */
+  const matchSamples = () => {
+    const samples = samplesAt(graphicsNow, renderer.getPixelRatio());
+    if (composer.renderTarget1.samples === samples) return;
+    for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+      rt.samples = samples;
+      rt.dispose();
+    }
+  };
+
   return {
     render(f: MapFrame) {
+      matchSamples();
       const n = MathUtils.smoothstep(f.night, 0, 1);
       const u = grade.uniforms;
       // Day ↔ night, leaning to the dawn grade on the morning side (SKY.dawn: its share of the sky's blend).
@@ -180,8 +190,9 @@ export function createPost(ctx: MapContext): MapPost {
       u.uSaturation.value = g.saturation * (1 - 0.22 * wet);
       u.uContrast.value = g.contrast * (1 - 0.03 * wet);
       u.uVignette.value = g.vignette + 0.06 * wet;
-      // Blur radius at the very top (px): only in the wide views.
-      u.uTilt.value = 2.2 * renderer.getPixelRatio();
+      // Blur radius at the very top (px): only in the wide views. Glow and blur are off on the low graphics level.
+      u.uTilt.value = graphicsNow.glow ? 2.2 * renderer.getPixelRatio() : 0;
+      bloom.enabled = graphicsNow.glow;
       bloom.strength = g.bloom;
       renderer.toneMappingExposure = SKY.exposure || 1;
       composer.render(f.dt);

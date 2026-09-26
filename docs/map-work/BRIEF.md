@@ -521,11 +521,17 @@ landmark ≤ 20 k · road ≤ 20 k · foreground ≈ 3 k. Animals (fauna, wildli
 posed in the vertex shader, only animals near the camera or the explorer
 are updated, far ones hidden. Keep each part's build
 under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
-When frames stay under ~40 a second the picture drops to half its pixels
+The player picks a **Graphics** level in the settings (`graphics.ts`,
+`settings.graphics`, `graphics=low|medium|high|max` in the URL): low draws
+half the pixels, the map's blocks as plain boxes, no MSAA, no glow; medium
+(the default) drops to half the pixels while frames stay under ~40 a second
 (`adaptResolution` in `main.ts`: the screen's ratio or 1, never a step
-between, which blurs and lays a grid over the map), unless the player keeps
-**Always sharp** on (`settings.sharp`, `sharp=0|1`). A blurry map on a 2×
-screen means the frame is over budget: `__mapResolution.ratio` shows it.
+between, which blurs and lays a grid over the map); high always keeps the
+screen's pixels; max adds MSAA ×4, a 8192² shadow map drawn every frame.
+All of it changes live; the built detail (`ctx.quality`: tree density,
+spray) follows the next time the map opens. A blurry map on a 2× screen on
+medium means the frame is over budget: `__mapResolution.ratio` shows it,
+`graphicsNow` the level's values.
 
 ## Checking your work
 

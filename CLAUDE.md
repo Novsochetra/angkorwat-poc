@@ -94,6 +94,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   glider ramp).
 - Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
+- Graphics is a setting (low, medium, high, max: what each draws is in
+  `src/map/graphics.ts`; it changes live); add `graphics=<level>` to a shot.
 - Weather is a setting too (by season — dry December–April —, clear, rainy,
   stormy): the schedule is `src/map/sky/weather.ts`. Shots are calm; add
   `weather=season|rainy|stormy&t=<s>` (with `season=`) for a schedule, or

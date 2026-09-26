@@ -1,5 +1,5 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, VOLUME_KEYS, WEATHER_SETTINGS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import { DEFAULT_SETTINGS, GRAPHICS_LEVELS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsLevel, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { framed, setSteppedVars } from './shape';
@@ -92,13 +92,20 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'sharp';
+type SwitchKey = 'calm' | 'easyFly';
 /** The weather setting's choices: icon, word, and the note under them while chosen (lang.ts). */
 const WEATHER_CHOICE: Record<WeatherSetting, { icon: string; word: WordKey; note: WordKey }> = {
   season: { icon: ICON.season, word: 'wSeason', note: 'wSeasonNote' },
   clear: { icon: ICON.sun, word: 'wClear', note: 'wClearNote' },
   rainy: { icon: ICON.rain, word: 'wRainy', note: 'wRainyNote' },
   stormy: { icon: ICON.storm, word: 'wStormy', note: 'wStormyNote' },
+};
+/** The graphics setting's choices, the same way (graphics.ts says what each level draws). */
+const GRAPHICS_CHOICE: Record<GraphicsLevel, { icon: string; word: WordKey; note: WordKey }> = {
+  low: { icon: ICON.bars1, word: 'gLow', note: 'gLowNote' },
+  medium: { icon: ICON.bars2, word: 'gMedium', note: 'gMediumNote' },
+  high: { icon: ICON.bars3, word: 'gHigh', note: 'gHighNote' },
+  max: { icon: ICON.bars4, word: 'gMax', note: 'gMaxNote' },
 };
 /** The language switch: each button shows its language in that language. */
 const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'EN' };
@@ -254,6 +261,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         </div>
         <p class="mu-set-note" id="mu-weather-note"></p>
       </div>
+      <div class="mu-set-group">
+        <h3 id="mu-graphics-h" data-t="graphics"></h3>
+        <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-graphics-h" aria-describedby="mu-graphics-note">
+          ${GRAPHICS_LEVELS.map((g) => `<button type="button" data-graphics="${g}">${GRAPHICS_CHOICE[g].icon}<span data-t="${GRAPHICS_CHOICE[g].word}"></span></button>`).join('')}
+        </div>
+        <p class="mu-set-note" id="mu-graphics-note"></p>
+      </div>
       <div class="mu-set-row">
         <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span class="mu-knob"></span></button>
@@ -261,10 +275,6 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       <div class="mu-set-row">
         <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span class="mu-knob"></span></button>
-      </div>
-      <div class="mu-set-row">
-        <span id="mu-sharp-l"><span data-t="sharp"></span><small data-t="sharpNote"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="sharp" aria-labelledby="mu-sharp-l"><span class="mu-knob"></span></button>
       </div>
       <div class="mu-set-row">
         <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
@@ -285,6 +295,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-time]')];
   const weatherBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-weather]')];
   const weatherNote = panel.querySelector<HTMLElement>('#mu-weather-note')!;
+  const graphicsBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-graphics]')];
+  const graphicsNote = panel.querySelector<HTMLElement>('#mu-graphics-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
   const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch')];
   /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
@@ -526,6 +538,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     // (the note of the weather chosen: filled again with the other words when the language changes)
     weatherNote.dataset.t = WEATHER_CHOICE[settings.weather]?.note ?? 'wSeasonNote';
     weatherNote.textContent = t(weatherNote.dataset.t as WordKey);
+    for (const b of graphicsBtns) b.setAttribute('aria-pressed', String(b.dataset.graphics === settings.graphics));
+    // (and the graphics level's)
+    graphicsNote.dataset.t = GRAPHICS_CHOICE[settings.graphics]?.note ?? 'gMediumNote';
+    graphicsNote.textContent = t(graphicsNote.dataset.t as WordKey);
     for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
     const muted = isMuted();
     muteBtn.innerHTML = '';
@@ -605,6 +621,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       const weather = b.dataset.weather as WeatherSetting;
       if (weather === settings.weather) return;
       change({ weather });
+      h.onSound('toggle');
+    });
+  for (const b of graphicsBtns)
+    b.addEventListener('click', () => {
+      const graphics = b.dataset.graphics as GraphicsLevel;
+      if (graphics === settings.graphics) return;
+      change({ graphics });
       h.onSound('toggle');
     });
   for (const b of switches)

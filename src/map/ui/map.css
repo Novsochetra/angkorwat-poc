@@ -575,9 +575,9 @@
   font-size: calc(15.5 * var(--px));
 }
 
-/* A choice among a few (the language; the time and the weather in the
- * settings): the buttons' stepped corners, and the one in use gets the
- * gold edge of a picked card. */
+/* A choice among a few (the language; the time, the weather and the
+ * graphics in the settings): the buttons' stepped corners, and the one in
+ * use gets the gold edge of a picked card. */
 :is(.mu-lang, .mu-seg) button {
   --mu-edge: transparent;
   --mu-shadow: none;
@@ -1152,12 +1152,12 @@
   height: calc(16 * var(--px));
 }
 
-/* Four choices (the weather): two by two. */
+/* Four choices (the weather, the graphics): two by two. */
 .mu-seg.is-pairs {
   grid-template-columns: repeat(2, 1fr);
 }
 
-/* The note under a choice (the weather chosen). */
+/* The note under a choice (the weather or graphics level chosen). */
 .mu-set-note {
   margin: calc(6 * var(--px)) calc(2 * var(--px)) 0;
   font-size: calc(12 * var(--px));
