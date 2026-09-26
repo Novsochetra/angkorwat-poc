@@ -5,6 +5,7 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { Frame } from '../landmarks/_prasatKit';
 import { ShadowGate } from '../cull';
 import { pointScale } from '../road/glow';
+import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { Bobbing, Floaters, floatingHome, hyacinth } from './_floating';
 import { jetty, shore, stillGlow, stiltHouse, type Env } from './_houses';
@@ -61,7 +62,8 @@ export function buildVillage(ctx: MapContext): MapPart {
   jetty(env);
   shore(env);
   // (its worship spot is in roam/_worship.ts: `village-pagoda-door`)
-  buildPagoda(field, world, stillGlow(env, new Frame(0, 0, 0, 0)));
+  const sacred = new SacredSet('village');
+  buildPagoda(field, world, stillGlow(env, new Frame(0, 0, 0, 0)), sacred);
 
   // What floats: the rafts, the boats tied up, hyacinth.
   const glowOf = (owner: number, fr: Frame): GlowFn => (x, y, z, sx, sy, sz, color, halo) => {
@@ -85,6 +87,7 @@ export function buildVillage(ctx: MapContext): MapPart {
   if (glow.floatingMesh) bob.track(glow.floatingMesh, lights.floatingOwner);
   const fires = buildSmoke(smoke);
   object.add(fires.object);
+  object.add(sacred.object);
   // (drawn wherever the camera is in the first frames: the rafts' bobbing shaders compile at load)
   const shadows = new ShadowGate(true).addAll(object);
 
@@ -104,6 +107,7 @@ export function buildVillage(ctx: MapContext): MapPart {
         lastBob = f.t;
       }
       glow.update(f, f.camera);
+      sacred.update(f);
       fires.update(f, pointScale(ctx.renderer, f.camera));
       if (f.dt > 0 && d < HEAR_NEAR) nextCall = calls(f, nextCall);
     },

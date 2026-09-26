@@ -10,20 +10,29 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  type Object3D,
   PointLight,
   Quaternion,
   Vector3,
 } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
-import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { SURFACE, type HeightField } from '../heightfield';
+import { ShrineGlow, type ShrineLights } from '../jungle/_incense';
+import { ROAM_SCALE } from '../roam/types';
+import { SACRED_LAMPS } from '../sacred/finish';
+import { candleLamp, offering, type OfferingKind, type OfferingOptionsByKind, type OfferingPiece } from '../sacred/offerings';
+import { SacredSet } from '../sacred/set';
+import type { MapFrame } from '../types';
 import { GRASS, pick } from './_prasat';
 
 /**
  * Plumbing shared by the River Gate, Ta Prohm and Phnom Kulen:
  * turned frames (build square to a road, then turn into place), lamps that
- * bloom at night, still pools, and grass over the parts of a pad left open.
+ * bloom at night, still pools, grass over the parts of a pad left open, and
+ * the sculpted shrines people keep there (Buddhas, stupas, offerings).
  */
 
 // ── Frames ──────────────────────────────────────────────────────────────────
@@ -240,4 +249,113 @@ export function grassOverPad(
       }
     }
   return n;
+}
+
+// ── Shrines ─────────────────────────────────────────────────────────────────
+
+/** A sculpted candle's flame height at true size (m, sacred/offerings.ts `candleFlame`). */
+const FLAME = 0.036;
+
+/**
+ * The sculpted sacred pieces of a landmark (sacred/: Buddhas, stupas and
+ * offerings, not blocks), set down in a frame and turned to its facing, in
+ * one `SacredSet`. Offerings are `ROAM_SCALE` × true size, as the explorer
+ * who kneels before them. Their candles light the statues near them
+ * (`SACRED_LAMPS`) and get a core that blooms at night, their incense
+ * smokes, and a soft halo warms each altar at night (jungle/_incense.ts
+ * `ShrineGlow`: glow only, no light). Sculpted pieces are not solid: they
+ * stand on voxel plinths, and `solid` blocks (in the walk map, never drawn)
+ * keep the explorer off the altars and plinths and out of the statues.
+ *
+ * Add `build()` to the part's object; call `update(f)` from its `update`.
+ */
+export class Shrines {
+  readonly sacred: SacredSet;
+  readonly lights: ShrineLights = { candles: [], cores: [], tips: [], smoke: [], halos: [] };
+  private readonly hidden = new VoxelBuilder();
+  private glow: ShrineGlow | null = null;
+
+  constructor(readonly name: string) {
+    this.sacred = new SacredSet(name);
+  }
+
+  /** Puts a piece (standing on y = 0, front +z) at a frame point (m; y is a world height), turned `ry` from the frame's +z. */
+  place<T extends Object3D>(fr: Frame, o: T, x: number, y: number, z: number, ry = 0): T {
+    const [wx, wy, wz] = fr.world(x, y, z);
+    o.position.set(wx, wy, wz);
+    o.rotation.y = fr.theta + ry;
+    this.sacred.add(o);
+    o.updateMatrixWorld(true);
+    return o;
+  }
+
+  /**
+   * An offering standing at a frame point (m), `scale` × true size
+   * (default `ROAM_SCALE`), turned `ry`; `smoke` is its incense's thread of
+   * smoke (× a bowl's), `lamp` how strongly its candle lights the statues
+   * near it (default 1; less by white stucco, which it bleaches).
+   */
+  offer<K extends OfferingKind>(fr: Frame, kind: K, x: number, y: number, z: number, o: OfferingOptionsByKind[K] & { ry?: number; smoke?: number; lamp?: number } = {} as never): OfferingPiece {
+    const p = offering(kind, { scale: ROAM_SCALE, ...o });
+    this.place(fr, p.object, x, y, z, o.ry ?? 0);
+    const k = o.scale ?? ROAM_SCALE;
+    for (const f of p.flames) {
+      const w = p.object.localToWorld(f.clone());
+      SACRED_LAMPS.push(candleLamp(w, o.lamp ?? 1));
+      this.lights.cores.push({ at: [w.x, w.y, w.z], size: FLAME * k });
+    }
+    if (p.embers.length) {
+      const c = new Vector3();
+      for (const e of p.embers) c.add(p.object.localToWorld(e.clone()));
+      c.divideScalar(p.embers.length);
+      this.lights.smoke.push({ at: [c.x, c.y + 0.02, c.z], strength: o.smoke ?? 0.8 });
+    }
+    return p;
+  }
+
+  /** A marigold garland between two frame points (m), sagging `sag` m (0 and `a` over `b`: hanging straight down). */
+  garland(fr: Frame, a: [number, number, number], b: [number, number, number], sag: number, seed: number, scale = ROAM_SCALE): OfferingPiece {
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    // (the garland's own space: from the middle, unscaled, along the frame's axes)
+    const rel = (p: [number, number, number]): [number, number, number] => [(p[0] - mid[0]) / scale, (p[1] - mid[1]) / scale, (p[2] - mid[2]) / scale];
+    const p = offering('marigold', { from: rel(a), to: rel(b), sag: sag / scale, seed, scale });
+    this.place(fr, p.object, mid[0], mid[1], mid[2]);
+    return p;
+  }
+
+  /** A soft warm halo at a frame point (m) at night, `size` m across. */
+  halo(fr: Frame, x: number, y: number, z: number, size: number, strength?: number): void {
+    this.lights.halos.push({ at: fr.world(x, y, z), size, strength });
+  }
+
+  /** A solid box, never drawn (frame m: its middle and sizes; y world): keeps the explorer off an altar, out of a statue. */
+  solid(fr: Frame, x: number, y: number, z: number, sx: number, sy: number, sz: number): void {
+    const [wx, wy, wz] = fr.world(x, y, z);
+    this.hidden.box(wx, wy, wz, sx, sy, sz, 0x808080, 'mapStone', { ry: fr.theta || undefined });
+  }
+
+  /** The pieces, their glows and the hidden blocks, as one group. */
+  build(): Group {
+    const group = new Group();
+    group.name = `${this.name}:shrines`;
+    group.add(this.sacred.object);
+    if (this.lights.cores.length || this.lights.smoke.length || this.lights.halos.length) {
+      this.glow = new ShrineGlow(this.lights);
+      this.glow.object.name = `${this.name}:shrine-lights`;
+      group.add(this.glow.object);
+    }
+    if (this.hidden.boxes.length) {
+      // (in the walk map, roam/walkmap.ts; never drawn, never picked)
+      const solid = buildVoxelMesh(this.hidden, { quality: 'low', name: `${this.name}:solid`, castShadow: false, receiveShadow: false });
+      solid.visible = false;
+      solid.traverse((o) => (o.raycast = () => {}));
+      group.add(solid);
+    }
+    return group;
+  }
+
+  update(f: MapFrame): void {
+    this.sacred.update(f);
+    this.glow?.update(f);
+  }
 }

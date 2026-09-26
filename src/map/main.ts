@@ -12,6 +12,7 @@ import type { Foreground } from './foreground';
 import type { MapPost } from './post';
 import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
+import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_LEVELS, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
@@ -598,6 +599,9 @@ Object.assign(window, { __mapResolution: res });
 if (shot) {
   document.body.classList.add('shot');
   hideLoading();
+  // (statues are sculpted in workers: wait for them, sacred/pending.ts)
+  const sculpted = await sacredReady();
+  console.info(`[map] sacred pieces sculpted ${sculpted.ms.toFixed(0)} ms after the build${sculpted.left ? ` · ${sculpted.left} NOT READY` : ''}`);
   const t = Number(params.get('t') ?? 12);
   step(t, 0);
   roam?.simulate(frame);

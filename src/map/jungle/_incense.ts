@@ -23,7 +23,9 @@ import type { MapFrame } from '../types';
  *
  * - candle flames and the glowing tips of incense sticks: tiny unlit boxes
  *   (one instanced mesh) whose colour goes above 1.0 (linear) at night, so
- *   they bloom; by day a flame is a small warm dot, a tip a dull ember;
+ *   they bloom; by day a flame is a small warm dot, a tip a dull ember; the
+ *   sculpted candles (sacred/offerings.ts) draw their own flame, and get only
+ *   a small bright core in it that blooms at night;
  * - incense smoke: soft grey puffs that rise from each bowl of sticks, sway,
  *   spread and fade over a few seconds, carried by the wind; and a soft
  *   warm halo round the candles at night (additive). All puffs and halos
@@ -36,6 +38,8 @@ import type { MapFrame } from '../types';
 export interface ShrineLights {
   /** Candle flames (m: the flame's middle). */
   candles: [number, number, number][];
+  /** Sculpted candles' own flames (m: the middle; size: the flame's height, m): a bright core in each. */
+  cores: { at: [number, number, number]; size: number }[];
   /** Incense sticks' tips (m); `smoke` bowls get a thread of smoke. */
   tips: [number, number, number][];
   /** Where a thread of smoke starts (m), and how strong (1 = a bowl of sticks). */
@@ -49,8 +53,11 @@ const PUFFS = 9;
 /** Flame and tip sizes (m; the explorer and his world are 1.4 × true size). */
 const FLAME = [0.07, 0.13, 0.07] as const;
 const TIP = 0.045;
+/** A sculpted flame's core, in shares of its height (across, up). */
+const CORE = [0.3, 0.55] as const;
 /** Their colours (linear) and brightness by day and at night. */
 const FLAME_COLOR = new Color(1, 0.6, 0.24);
+const CORE_COLOR = new Color(1, 0.82, 0.5);
 const TIP_COLOR = new Color(1, 0.26, 0.07);
 const LEVEL = { day: 0.95, night: 2.1 };
 /** A halo's default strength (additive: more bleaches the stone round it white). */
@@ -72,7 +79,7 @@ export class ShrineGlow {
     this.object.name = 'jungle:lights';
 
     // ── Flames and tips ──────────────────────────────────────────────────
-    const n = l.candles.length + l.tips.length;
+    const n = l.candles.length + l.cores.length + l.tips.length;
     const sparks = new InstancedMesh(new BoxGeometry(1, 1, 1), this.spark, Math.max(1, n));
     sparks.name = 'jungle:sparks';
     sparks.castShadow = sparks.receiveShadow = false;
@@ -81,6 +88,10 @@ export class ShrineGlow {
     for (const [x, y, z] of l.candles) {
       sparks.setMatrixAt(i, m.makeScale(FLAME[0], FLAME[1], FLAME[2]).setPosition(x, y, z));
       sparks.setColorAt(i++, FLAME_COLOR);
+    }
+    for (const { at, size } of l.cores) {
+      sparks.setMatrixAt(i, m.makeScale(size * CORE[0], size * CORE[1], size * CORE[0]).setPosition(at[0], at[1], at[2]));
+      sparks.setColorAt(i++, CORE_COLOR);
     }
     for (const [x, y, z] of l.tips) {
       sparks.setMatrixAt(i, m.makeScale(TIP, TIP, TIP).setPosition(x, y, z));

@@ -79,8 +79,8 @@ export interface GlowBox {
   sy: number;
   sz: number;
   color: number;
-  /** door: warm by day too · window: dark by day, lit at night · flame: small, flickers */
-  kind: 'door' | 'window' | 'flame';
+  /** door: warm by day too · window: dark by day, lit at night · flame: small, flickers · shrine: a door behind a Buddha, softer at night (he stays in view) */
+  kind: 'door' | 'window' | 'flame' | 'shrine';
 }
 
 export class Mason {

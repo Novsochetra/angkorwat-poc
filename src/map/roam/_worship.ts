@@ -27,36 +27,43 @@ export interface WorshipSpot {
  * road, and he kneels and bows there (1.5 m forward) without touching stone.
  */
 export const WORSHIP: WorshipSpot[] = [
-  // Angkor Wat: the warm lit doorway of the main gate on the road
-  // (sanctuary.ts `gopura` at z −174, its glowing door at z −169), knelt in
-  // the passage mouth (floor 58), the beacon behind him. (The terraces
-  // above are out of reach on foot, so the central tower is not a spot.)
-  { id: 'sanctuary-main-gate', place: 'sanctuary', x: 0, y: 58, z: -166.9, fx: 0, fz: -169 },
-  // Bayon: the candles in the central tower's south porch (overlook.ts
-  // `candles`: tower door cell (−2, 6, 3) → z −226.7), knelt on the porch floor (46).
-  { id: 'overlook-central-candles', place: 'overlook', x: -301.5, y: 46, z: -224.2, fx: -301.5, fz: -226.7 },
-  // Preah Khan: the candles in the gate's passage (shrine.ts, (−79.5, −39.5)),
-  // the central tower's doorway beyond them; knelt in the passage (25).
-  { id: 'shrine-gate-candles', place: 'shrine', x: -79.5, y: 25, z: -36.6, fx: -79.5, fz: -39.5 },
-  // Ta Prohm: the central tower's south door, glowing at night (terrace.ts
-  // `windows.strip` at (183.5, −155.95)), at the top of the stair up from the
-  // gate (40).
-  { id: 'terrace-central-door', place: 'terrace', x: 183.5, y: 40, z: -154.2, fx: 183.5, fz: -155.95 },
+  // Angkor Wat: the gilt Buddha in the main gate's passage on the road
+  // (_sanctuaryShrine.ts `mainGateShrine`: sanctuary.ts `gopura` at z −174,
+  // the Buddha at z −170.6 before the lit door), knelt in the passage mouth
+  // (floor 58), the beacon behind him. (The terraces above are out of reach
+  // on foot, so the central tower is not a spot.)
+  { id: 'sanctuary-main-gate', place: 'sanctuary', x: 0, y: 58, z: -166.9, fx: 0, fz: -170.6 },
+  // Bayon: the naga Buddha in the central tower's sanctum, through its south
+  // door (overlook.ts `sanctum`: door cell (−2, 6, 3), the Buddha at z
+  // −228.85), knelt in the doorway on its floor (46).
+  { id: 'overlook-central-candles', place: 'overlook', x: -301.5, y: 46, z: -224.8, fx: -301.5, fz: -228.85 },
+  // Preah Khan: the sandstone Buddha in the gate's passage (shrine.ts
+  // `gateShrine`, at (−79.5, −40.45)), the central tower's doorway beyond
+  // him; knelt in the passage (25).
+  { id: 'shrine-gate-candles', place: 'shrine', x: -79.5, y: 25, z: -36.6, fx: -79.5, fz: -40.45 },
+  // Ta Prohm: the sandstone Buddha in the central tower's south sanctum
+  // (terrace.ts: on its altar at (183.5, −159), glowing at night), knelt in
+  // the doorway at the top of the stair up from the gate (40).
+  { id: 'terrace-central-door', place: 'terrace', x: 183.5, y: 40, z: -155.3, fx: 183.5, fz: -159 },
   // Ta Prohm: the garden stupa by the road, across from the temple
-  // (terrace.ts `stupa` at pad (4.5, 20.5) → (204.75, −119.75)); knelt on
-  // the lawn west of it (35).
-  { id: 'terrace-garden-stupa', place: 'terrace', x: 201.1, y: 35, z: -119.75, fx: 204.75, fz: -119.75 },
-  // Phnom Kulen: the foot of the pyramid's central stair on the pad (grass
-  // over 150), facing the sanctuary's lit south door at its top (kulen.ts,
-  // pad centre + (0, 5) → z −435).
-  { id: 'kulen-stair-foot', place: 'kulen', x: 370, y: 150.25, z: -423.3, fx: 370, fz: -435 },
-  // River Gate: the riverside shrine behind the first gate (rivergate.ts
-  // `prasat` at road frame (cx, −16) → (−85.97, 28.38)), its door facing the
-  // road (−84.71, 30.25); knelt on the grass between it and the gate's wing (8).
-  { id: 'rivergate-shrine', place: 'rivergate', x: -83.45, y: 8, z: 32.83, fx: -84.71, fz: 30.25 },
-  // River Gate: the stupa by the second gate (rivergate.ts `stupa` at road
-  // frame (cx − 6, −11) → (−54.97, 13.53)), knelt on its road side (grass over 8).
-  { id: 'rivergate-stupa', place: 'rivergate', x: -53.01, y: 8.3, z: 16.43, fx: -54.97, fz: 13.53 },
+  // (terrace.ts: on its plinth at pad (4.5, 20.5) → (204.5, −119.5), its
+  // offerings on the plinth's west edge); knelt on the lawn west of it (35).
+  { id: 'terrace-garden-stupa', place: 'terrace', x: 201.1, y: 35, z: -119.5, fx: 204.5, fz: -119.5 },
+  // Phnom Kulen: the gilt Buddha on the altar at the foot of the pyramid's
+  // central stair (kulen.ts: pad centre + (0, 14.5) → z −425.5), the lit
+  // south door of the sanctuary at the stair's top beyond him; knelt on the
+  // pad before the altar (grass over 150).
+  { id: 'kulen-stair-foot', place: 'kulen', x: 370, y: 150.25, z: -422.6, fx: 370, fz: -425.5 },
+  // River Gate: the gilt Buddha in the door of the riverside shrine behind
+  // the first gate (rivergate.ts `prasat` at road frame (cx, −16) →
+  // (−85.97, 28.38); the Buddha 1 m out along its door's axis → (−85.41,
+  // 29.21)); knelt on the grass on that axis, between the shrine and the
+  // gate's wing (8).
+  { id: 'rivergate-shrine', place: 'rivergate', x: -83.01, y: 8, z: 32.77, fx: -85.41, fz: 29.21 },
+  // River Gate: the whitewashed stupa by the second gate, a Buddha in its
+  // niche (rivergate.ts, road frame (cx − 6, −11) → (−54.99, 13.51)),
+  // knelt on its road side before the offerings on its plinth (grass over 8).
+  { id: 'rivergate-stupa', place: 'rivergate', x: -53.01, y: 8.3, z: 16.43, fx: -54.99, fz: 13.51 },
   // The floating village's pagoda (village/_pagoda.ts, `PAGODA` in
   // village/_spots.ts): knelt on the porch before the open north door (floor
   // 10, door at z 99), facing the golden Buddha on the altar inside (z 110.9).

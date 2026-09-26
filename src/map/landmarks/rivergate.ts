@@ -4,9 +4,11 @@ import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { PATHS, type PlaceDef } from '../layout';
+import { buddhaStatue } from '../sacred/buddha';
+import { stupa, stupaNiche } from '../sacred/stupa';
 import type { MapContext, MapFrame, MapPart } from '../types';
-import { gopura, LATERITE, Mason, naga, pick, prasat, SIDE, STONE, STONE_DARK, STONE_LIGHT, stupa } from './_prasat';
-import { Frame, grassOverPad, Lamps } from './_prasatKit';
+import { gopura, LATERITE, Mason, naga, pick, prasat, SHADOW, SIDE, STONE, STONE_DARK, STONE_LIGHT } from './_prasat';
+import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
 
 /**
  * River Gate — "The Eastern Crossing": where the valley road crosses the
@@ -29,6 +31,12 @@ import { Frame, grassOverPad, Lamps } from './_prasatKit';
  * clear: rails and gates stop 3.4 m short of it along the road.
  * Open pad around the gates is laid with grass, and the part behind the road
  * is handed back to the vegetation pass (surface grass, not occupied).
+ *
+ * Travellers pray here for a safe road: a small gilt Buddha sits in the
+ * door of the riverside shrine behind the first gate, candles and incense
+ * before him, and a whitewashed stupa with a Buddha in its niche stands by
+ * the second gate, offerings at its foot (sacred/, `Shrines`; the worship
+ * spots are roam/_worship.ts).
  */
 
 const ROAD = 'valley road';
@@ -44,6 +52,9 @@ const PAVE_TOP = 0.25;
 const PAVE = [0xd4bb96, 0xc9ae88, 0xdcc4a0, 0xbfa27e, 0xcfb38e];
 /** Rails and towers keep this far from the beacon at the anchor, along the road (m): its disc is 2.65 m round. */
 const BEACON_CLEAR = 3.4;
+/** The Buddha in the riverside shrine's door, and the stupas by the second gate (heights, m). */
+const SHRINE_BUDDHA = 1;
+const STUPA_H = 4.5;
 
 interface Seg {
   ax: number;
@@ -170,6 +181,7 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
   // ── Build, one local builder per road segment ────────────────────────────
   const world = new VoxelBuilder();
   const lamps = new Lamps();
+  const shrines = new Shrines(`landmark:${place.id}`);
   // The road's line of light over the bridge (as path.ts: a 1.1 m warm strip,
   // soft gold by day, brighter and whiter at night).
   const line = new Lamps(2.5, 2.85);
@@ -331,7 +343,29 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
       sm.fill(-4, g, -1, -3.5, g + 0.5, 1, STONE_DARK, { src });
       prasat(sm, 0, 0, g + 1, { h: 10, w: 4, tiers: 4, doors: SIDE.px | SIDE.pz, src });
       sm.weather(0.12);
+      // The door facing the road is a niche for a small gilt Buddha: made
+      // taller and deeper, dark inside, a stone pedestal at its back; he
+      // faces the road, candles and incense before him, a garland over the
+      // door. The explorer kneels on the grass before the shrine
+      // (roam/_worship.ts `rivergate-shrine`).
+      const F = g + 1;
+      sm.clear(-0.5, F, 0.5, 0.5, F + 2, 2.5);
+      sm.paint(-1, F, 0, 1, F + 2.5, 2, SHADOW, { src });
+      sm.fill(-0.5, F, 0.5, 0.5, F + 0.5, 1.5, STONE_LIGHT, { src });
       sm.commit();
+      // (the shrine's own frame: its middle, +z out of that door)
+      const sf = new Frame(wx, 0, wz, fr.theta);
+      shrines.place(sf, buddhaStatue({ kind: 'shrine', look: 'gilt', height: SHRINE_BUDDHA }), 0, F + 0.5, 1);
+      // (the niche and the base before the door: the explorer keeps off the offerings)
+      shrines.solid(sf, 0, F + 1.25, 2.5, 7, 2.5, 2);
+      for (const sx of [-1, 1]) shrines.offer(sf, 'candle', sx * 0.32, F, 2.1, {});
+      shrines.offer(sf, 'incense', 0, F, 3.0, { scale: 1.8, sticks: 7, smoke: 0.6 });
+      for (const sx of [-1, 1]) {
+        shrines.offer(sf, 'lotusVase', sx * 1.1, F, 3.0, { ry: sx * 0.4, scale: 1.2 });
+        shrines.offer(sf, 'baySei', sx * 2.2, F, 2.9, { tiers: 3, scale: 1.1 });
+      }
+      shrines.garland(sf, [-0.6, F + 2.1, 2.56], [0.6, F + 2.1, 2.56], 0.22, 131);
+      shrines.halo(sf, 0, F + 0.9, 2.4, 2.2);
       sb.translate(cx, 0, lz);
       local(q).b.append(sb);
       footprints.push({ fr, x0: cx - 4, z0: lz - 4, x1: cx + 4, z1: lz + 4 });
@@ -348,7 +382,26 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
       const wx = fr.wx(x, lz);
       const wz = fr.wz(x, lz);
       if (!inPad(wx, wz) || f.heightAt(wx, wz) !== g || wetAt(wx, wz)) continue;
-      stupa(d, x, lz, g, 5, traceSource());
+      // A whitewashed stupa on a laterite plinth (sculpted: sacred/stupa.ts),
+      // facing the road, a gilt Buddha in its niche; candles, incense and
+      // lotus on the plinth before it. The explorer kneels on its road side
+      // (roam/_worship.ts `rivergate-stupa`).
+      const src = traceSource();
+      d.fill(x - 1.5, g, lz - 1.5, x + 1.5, g + 0.5, lz + 1.5, LATERITE, { src });
+      const sf = new Frame(wx, 0, wz, fr.theta + (lz < 0 ? 0 : Math.PI));
+      const top = g + 0.5;
+      shrines.place(sf, stupa({ height: STUPA_H, look: 'white', niche: true }), 0, top, 0);
+      // (the whole plinth: the explorer keeps off it and its offerings)
+      shrines.solid(sf, 0, g + 1.75, 0, 3, 3.5, 3);
+      const n = stupaNiche({ height: STUPA_H, look: 'white' });
+      shrines.place(sf, buddhaStatue({ kind: 'meditate', look: 'gilt', height: n.height * 0.7, farOnly: true, hide: 80 }), 0, top + n.at.y, n.at.z);
+      shrines.offer(sf, 'incense', 0, top, 1.15, { scale: 1.8, sticks: 9, smoke: 1 });
+      for (const sx of [-1, 1]) {
+        shrines.offer(sf, 'candle', sx * 0.42, top, 1.2, { scale: 1.6, lamp: 0.35 });
+        shrines.offer(sf, 'lotusVase', sx * 0.95, top, 1.12, { ry: sx * 0.4, scale: 1.2 });
+      }
+      // (a faint halo: more bleaches the white stupa)
+      shrines.halo(sf, 0, top + 0.35, 1.3, 1.6, 0.08);
       footprints.push({ fr, x0: x - 2.5, z0: lz - 2.5, x1: x + 2.5, z1: lz + 2.5 });
     }
   }
@@ -407,6 +460,7 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
   const object = new Group();
   object.name = `landmark:${place.id}`;
   object.add(buildVoxelMesh(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  object.add(shrines.build());
   // One warm light over the causeway at night.
   const lightAt = gates.length === 2 ? (gates[0] + gates[1]) / 2 : main ? (main[0] + main[1]) / 2 : (padIn + padOut) / 2;
   const [lx, lz] = pointAt(lightAt);
@@ -422,6 +476,7 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
     update(fr: MapFrame) {
       lamps.update(fr.night, fr.t);
       line.update(fr.night, fr.t);
+      shrines.update(fr);
     },
   };
 }

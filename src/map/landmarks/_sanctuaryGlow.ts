@@ -13,6 +13,7 @@ const LEVEL = {
   door: { day: 0.9, night: 3.6 },
   window: { day: 0.05, night: 2.8 },
   flame: { day: 0.35, night: 3.4 },
+  shrine: { day: 0.9, night: 1.25 },
 } as const;
 
 export interface SanctuaryLights {
@@ -27,7 +28,7 @@ export function buildLights(boxes: GlowBox[], door: [number, number, number]): S
   const dummy = new Object3D();
   const c = new Color();
   const mats: { kind: keyof typeof LEVEL; mat: MeshBasicMaterial; flicker: number }[] = [];
-  for (const kind of ['door', 'window', 'flame'] as const) {
+  for (const kind of ['door', 'window', 'flame', 'shrine'] as const) {
     const list = boxes.filter((b) => b.kind === kind);
     if (!list.length) continue;
     const mat = new MeshBasicMaterial({ color: 0xffffff, fog: true });
@@ -43,7 +44,7 @@ export function buildLights(boxes: GlowBox[], door: [number, number, number]): S
     mesh.castShadow = false;
     mesh.receiveShadow = false;
     object.add(mesh);
-    mats.push({ kind, mat, flicker: kind === 'flame' ? 0.12 : kind === 'door' ? 0.03 : 0 });
+    mats.push({ kind, mat, flicker: kind === 'flame' ? 0.12 : kind === 'door' || kind === 'shrine' ? 0.03 : 0 });
   }
 
   // Warm light spilling from the main door onto the forecourt and the stairs.

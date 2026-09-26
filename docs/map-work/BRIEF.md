@@ -513,6 +513,36 @@ title card and as a toast when roaming starts (`_banner.ts`); sound
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
 
+## Sacred pieces (sculpted, not blocks)
+
+Buddhas, stupas, offerings and the pagoda's gables are smooth sculpted
+meshes (`src/map/sacred/`), so they look real up close; the temples round
+them stay voxels.
+
+- `buddhaStatue({ kind, look, height })` (`buddha.ts`): an Object3D on y = 0
+  facing +z. Kinds `pagoda` (calling the earth to witness, flame), `meditate`,
+  `shrine` (+ saffron cloth), `naga` / `nagaSash` (the Angkor naga Buddha);
+  looks `gilt`, `sandstone`, `bronze` (`finish.ts` `PALETTES`). Its meshes are
+  sculpted in a worker (`sculptWorker.ts`): the far one at once, the near one
+  when the camera first comes close; shots wait for them (`pending.ts`).
+- `offering(kind, opts)` (`offerings.ts`: candle, incense, lotus vase, bay
+  sei, fruit, marigold garland, parasol, alms bowl) and `stupa({ height, look,
+  niche })` (`stupa.ts`). Candle lamps light the statues:
+  `SACRED_LAMPS.push(candleLamp(worldPos))` (the four nearest the camera).
+- Khmer ornament on canvas (`kbach.ts`: flame leaves, scrolls, lotus bands,
+  flame arches); the pagoda gable is `gable.ts`.
+- A part adds its pieces to a `SacredSet` (`set.ts`) and calls its
+  `update(f)`. Landmarks use `Shrines` (`landmarks/_prasatKit.ts`) or
+  `landmarks/_sanctuaryShrine.ts`.
+- Sculpted meshes are not solid: stand them on voxel plinths, or add hidden
+  voxel blocks, so the explorer cannot walk through them. A Buddha always
+  sits raised, facing the kneeling spot (`roam/_worship.ts`), with the spot
+  and 1.5 m in front of it clear.
+- Make a new sculpt with `Sculpt` (`add`, `carve`, `paint`, `fine` for the
+  small details) from the shapes in `sdf.ts`; look at it alone on
+  `sacred.html?piece=<name>` (register it in a `*.pieces.ts`; params in
+  `preview.ts`).
+
 ## Budgets (blocks = voxel instances)
 
 terrain ≤ 260 k · vegetation ≤ 150 k · sanctuary ≤ 60 k · each other
@@ -543,7 +573,9 @@ medium means the frame is over budget: `__mapResolution.ratio` shows it,
   things) · `focus=<place id>` (closer camera on a place) · `ui=0` (no
   interface) · `parts=terrain,sanctuary` (build only these parts — faster, and
   hides others' work in progress) · `cam=x,y,z,tx,ty,tz` (any fixed camera) ·
-  `lang=en` (English words; Khmer is the default).
+  `lang=en` (English words; Khmer is the default). Walk shots
+  (`roam=walk&at=…`) need `foreground` in `parts=`, and `at=x,y,z` with the
+  floor's height indoors (with two values he stands on whatever is highest).
   The console line `[map] built in … · blocks {…}` shows build times and block
   counts; `FAILED: …` names parts that broke.
 - Put screenshots and scratch files in your scratch dir, not in the repo.
@@ -581,6 +613,7 @@ medium means the frame is over budget: `__mapResolution.ratio` shows it,
 | treasure (hidden gold) | `src/map/treasure/*` |
 | journal (nature book, passport) | `src/map/roam/_book*.ts`, `_stamps.ts` |
 | rain, rainbow, weather | `src/map/sky/rain.ts`, `rainbow.ts`, `weather.ts`, `src/map/audio/weather.ts` |
+| sacred pieces (sculpted Buddhas, stupas, offerings, gables) | `src/map/sacred/*`, `sacred.html` |
 
 `main.ts`, `camera.ts`, `cull.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the
 lead. If you need a change there, say it in your report.

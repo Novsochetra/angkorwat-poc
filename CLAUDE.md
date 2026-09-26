@@ -121,6 +121,15 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - The floating village on the great lake (stilt houses, floating houses, the
   jetty, the pagoda): `src/map/village/`; where everything stands (and
   `VILLAGE_SPOTS` for people and festivals) is `src/map/village/_spots.ts`.
+- Sacred things (Buddhas, stupas, offerings, the pagoda's gables) are
+  sculpted smooth meshes, not blocks: `src/map/sacred/` (distance shapes
+  `sdf.ts` → mesh `sculpt.ts`; Buddhas `buddha.ts` from `_buddhaHead/Body/Throne.ts`,
+  sculpted in a worker; gold, stone and cloth `finish.ts`; Khmer ornament
+  painted on canvas `kbach.ts`). Look at one alone:
+  `npm run shots -- b="@sacred.html?piece=buddha-pagoda"` (names in `*.pieces.ts`).
+  Worship spots are `roam/_worship.ts`; kneeling brings the camera down
+  behind him (`roam/_pray.ts`). Walk shots need `foreground` in `parts=`,
+  and `at=x,y,z` indoors (two values stand him on the roof).
 - People (`src/map/people/`): monks, a tour group, fishermen, an ox cart,
   kite-flying children, farmers by the season, village life, apsara dancers
   at night; `people=lineup|0|<scene>,…`, `fish=`, `cart=` in shots. Hats are

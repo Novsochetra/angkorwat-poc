@@ -1,27 +1,43 @@
+import { BoxGeometry, ConeGeometry, CylinderGeometry, Euler, ExtrudeGeometry, LOD, Matrix4, Mesh, Object3D, QuadraticBezierCurve3, Shape as Outline, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3, type BufferGeometry } from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { VoxelGrid } from '../../voxel/VoxelBuilder';
 import { bondTone, courseShade, fillBox, tone } from '../landmarks/_faces';
 import { CANOPY, chip, growTree, LATERITE, overgrow, pickOf, RUIN_STONE, TREE_BARK } from '../landmarks/_ruin';
+import { buddhaStatue } from '../sacred/buddha';
+import { PALETTES, statueMaterial, type Finish } from '../sacred/finish';
+import { finishGeometry, plainAttributes, revolve } from '../sacred/offerings';
+import type { V3 } from '../sacred/sdf';
+import { stupa, stupaNiche } from '../sacred/stupa';
 import type { ShrineLights } from './_incense';
 import { mossOn, plantsAround, steppingStones } from './_ruinBits';
 import type { SiteFrame } from './_ruinFrame';
-import { BRASS, candle, clothBand, fruitPlate, garland, garlandDrop, incenseBowl, LACQUER, lotusBud, lotusOpen, SAFFRON } from './_ruinOfferings';
+import { BRASS, clothBand, LACQUER, later, marigolds, offer, place, type Sculpted } from './_ruinOfferings';
 
 /**
  * The jungle's places of worship (site space: +z toward the trail, see
  * _ruinFrame.ts), each kept by the people who pass: incense, candles,
- * flowers, fruit.
+ * flowers, fruit. The statues, the stupa and the offerings are sculpted
+ * (sacred/: smooth stone, gilt, brass, wax), on voxel plinths, steps and
+ * tables that make them solid; hidden blocks (`Sculpted.solid`) keep the
+ * explorer out of a statue's body.
  *
- * - the forest Buddha: a lone sandstone Buddha seated in meditation on a
- *   lotus throne under a great bodhi tree, a saffron sash over his left
- *   shoulder, a red offering table before him;
+ * - the forest Buddha: the Angkor naga Buddha in sandstone, meditating on
+ *   the serpent's coils under its seven heads, a saffron cloth the people
+ *   tied over his shoulder, on a moulded plinth under a great bodhi tree,
+ *   a red offering table before him;
  * - the spirit house (san preah phum) by the village trail: a little
- *   temple-roofed house on a post, garlands, a tray of tiny offerings;
- * - the lake shrine: a small whitewashed stupa with a niche, a brass urn of
- *   incense before it and a frangipani beside it;
+ *   temple of the land's spirit on a post (smooth: crossed gable roofs in
+ *   red and gold, chofa horns, a spire), garlands, a tray of small
+ *   offerings;
+ * - the lake shrine: a small whitewashed stupa on a laterite base, a gilt
+ *   Buddha in its niche, candles on its step, a brass urn of incense
+ *   before it and a frangipani beside it;
  * - the Kulen shrine: a small stone sanctuary tower at the mountain's foot,
- *   a Buddha in saffron inside its doorway, candles, an urn.
+ *   a gilt Buddha in saffron on a pedestal inside its doorway, candles, an
+ *   urn of incense on the step.
  *
  * `KNEEL` (site space) is where the explorer kneels at each and what he
  * faces (roam/_worship.ts holds them in map metres).
@@ -34,160 +50,74 @@ export const KNEEL: Record<string, { at: [number, number]; face: [number, number
   'kulen-shrine': { at: [0, 3.35], face: [0, -2.2] },
 };
 
-type Put = (i: number, j: number, k: number, color: number, mat?: 'mapStone' | 'krama' | 'brass' | 'mapGrass', shade?: number) => void;
+type CellPut = (i: number, j: number, k: number, color: number, mat?: 'mapStone' | 'krama' | 'brass' | 'mapGrass', shade?: number) => void;
 const putter =
-  (g: VoxelGrid): Put =>
+  (g: VoxelGrid): CellPut =>
   (i, j, k, color, mat = 'mapStone', shade = 1) =>
     g.put(i, j, k, { color, mat, shade });
 
-// ── The forest Buddha ────────────────────────────────────────────────────
-
-/** The Buddha's sandstone: warm, lighter than the ruins (the people keep him clean). */
-const B = {
-  stone: [0xc2aa89, 0xbaa282, 0xc8b190, 0xb39b7c],
-  skin: [0xc4b9a3, 0xbeb29c, 0xcabfa9],
-  /** The face: brighter and warm, little variation (the features are drawn in tone). */
-  face: [0xdec7a0, 0xdac39c, 0xe2cba5],
-  dark: [0x3d372f, 0x453e35],
-  shade: [0x938875, 0x8b806e],
-  hair: [0xa28b6b, 0x9a8466, 0xa89171],
-  lotus: [0xa2967f, 0x998d77, 0xab9f88],
-  lotusLight: [0xc3b79e, 0xbbaf96],
+/** A statue's sandstone plinth: warm, lighter than the ruins (the people keep it clean). */
+const PLINTH = {
+  wall: [0xb89a76, 0xb0926e, 0xc0a27d, 0xa98c69],
+  ledge: [0xc8ab86, 0xc0a37e, 0xd0b38d],
+  dado: [0xa5886a, 0x9d8163, 0xab8e6f],
 };
-/** A colour made lighter or darker (sRGB multiply). */
-const scale = (hex: number, by: number): number => {
-  const c = (v: number) => Math.min(255, Math.round(v * by));
-  return (c((hex >> 16) & 255) << 16) | (c((hex >> 8) & 255) << 8) | c(hex & 255);
-};
-/** The throne's centre (site z, m). */
-const ZB = -2;
 
 /**
- * The seated Buddha (0.25 m cells, the head 0.125 m): a lotus throne, the
- * legs crossed, hands in the lap (meditation), a straight body, long
- * earlobes, the hair in curls with the ushnisha and a gilded finial; a
- * saffron sash from the left shoulder across the chest to the right hip.
+ * A moulded plinth for a statue (cells of `cell` m, centred on the site
+ * point (x, z), its foot `y` m over the floor): the base course (laterite,
+ * a cell wider all round), a moulding, a recessed dado, the cornice and the
+ * top slab (half sizes `hw` × `hd` cells), the moulding's and cornice's
+ * corners cut back; with `land`, laterite footing down to the land under
+ * it. Moss in patches on the base course (`moss` 0‥1). Returns its top (m
+ * over the floor).
  */
-function seatedBuddha(fr: SiteFrame, seed: number): void {
-  const bg = fr.grid(0.25, { seed, at: [0, 0, ZB], ao: 0.28, jitter: 0.03 });
-  const P = putter(bg);
-  const t = (list: readonly number[], i: number, j: number, k: number, s = 0) => tone(list, i, j, k, seed + s);
-  for (let i = -8; i <= 8; i++) for (let k = -6; k <= 5; k++) bg.ghost(i, -1, k);
-  // Throne: plinth, a narrow waist, the lotus with a rim of upturned petals.
-  fillBox(bg, -7, 7, 0, 1, -5, 4, (i, j, k) => t(B.stone, i, j, k));
-  fillBox(bg, -6, 6, 2, 2, -4, 3, (i, j, k) => t(B.shade, i, j, k, 1));
-  for (let i = -7; i <= 7; i++)
-    for (let k = -5; k <= 4; k++) {
-      const rim = Math.abs(i) === 7 || k === -5 || k === 4;
-      P(i, 3, k, rim ? ((i + k) & 1 ? t(B.lotusLight, i, 3, k, 2) : t(B.lotus, i, 3, k, 3)) : t(B.stone, i, 3, k));
-      if (!rim) P(i, 4, k, t(B.stone, i, 4, k, 4));
-      else if (!((i + k) & 1)) P(i, 4, k, t(B.lotusLight, i, 4, k, 5), 'mapStone', 1.06);
+function plinth(fr: SiteFrame, o: { x: number; z: number; y?: number; cell: number; hw: number; hd: number; seed: number; land?: boolean; moss?: number }): number {
+  const { cell, hw, hd, seed } = o;
+  const y0 = o.y ?? 0;
+  const g = fr.grid(cell, { seed, at: [o.x, y0, o.z], ao: 0.3, jitter: 0.015 });
+  const lat = (i: number, j: number, k: number) => tone(LATERITE, i >> 1, j, k >> 1, seed + 1);
+  const wall = (i: number, j: number, k: number) => bondTone(PLINTH.wall, i, j, k, seed + 2);
+  const ledge = (i: number, j: number, k: number) => tone(PLINTH.ledge, i, j, k, seed + 3);
+  const notch = (i: number, k: number, a: number, b: number) => Math.abs(i) === a && Math.abs(k) === b;
+  // Laterite footing to the land, and the base course.
+  for (let i = -hw - 1; i <= hw + 1; i++)
+    for (let k = -hd - 1; k <= hd + 1; k++) {
+      const low = o.land ? Math.min(0, fr.landRow(o.x + i * cell, o.z + k * cell, cell, y0)) : 0;
+      if (o.land) g.ghost(i, low - 1, k);
+      for (let j = low; j <= 0; j++) g.put(i, j, k, { color: lat(i, j, k), mat: 'mapStone', shade: 0.95 });
     }
-  // Legs crossed, and the lap.
-  const inside = (i: number, k: number, ri: number, rk: number) => (i / ri) ** 2 + ((k + 0.5) / rk) ** 2 <= 1;
-  for (let i = -7; i <= 7; i++)
-    for (let k = -5; k <= 4; k++) {
-      if (inside(i, k, 6.6, 3.7)) for (let j = 5; j <= 6; j++) P(i, j, k, t(B.stone, i, j, k, 6));
-      if (inside(i, k, 6, 3.2)) P(i, 7, k, t(B.stone, i, 7, k, 7));
-    }
-  // The soles, turned up on the thighs.
-  for (const s of [-1, 1]) for (const k of [1, 2]) P(s * 3, 7, k, t(B.skin, s, 7, k, 8), 'mapStone', 1.04);
-  // Body: waist to shoulders; a cell in from each corner.
-  const HW = [3, 3, 3, 3, 4, 4, 4, 3];
-  for (let j = 8; j <= 15; j++) {
-    const hw = HW[j - 8];
-    for (let i = -hw; i <= hw; i++) for (let k = -2; k <= 1; k++) if (!(Math.abs(i) === hw && (k === -2 || k === 1))) P(i, j, k, t(B.stone, i, j, k, 9));
-  }
-  // Arms: upper arms hanging, elbows out, forearms to the hands in the lap.
-  for (const s of [-1, 1]) {
-    for (let j = 11; j <= 14; j++) for (let k = -1; k <= 0; k++) P(s * 5, j, k, t(B.stone, s, j, k, 10));
-    for (let j = 9; j <= 10; j++) for (const i of [4, 5]) for (let k = -1; k <= 1; k++) P(s * i, j, k, t(B.stone, i, j, k, 11));
-    for (const i of [3, 4, 5]) for (let k = 1; k <= 2; k++) P(s * i, 8, k, t(B.stone, i, 8, k, 12));
-  }
-  // Hands, right over left, thumbs touching.
-  for (let i = -2; i <= 2; i++) P(i, 8, 2, t(B.skin, i, 8, 2, 13), 'mapStone', 1.03);
-  P(0, 9, 2, t(B.skin, 0, 9, 2, 14), 'mapStone', 1.05);
-  // Neck.
-  for (let i = -1; i <= 1; i++) for (let k = -1; k <= 0; k++) P(i, 16, k, t(B.skin, i, 16, k, 15));
-  // The saffron sash: a band from the left shoulder (+x: he faces +z) across the chest to the right hip, over the left arm.
-  bg.forEach((i, j, k, c) => {
-    if (c.ghost || j < 8 || j > 15) return;
-    const d = ((i - 3) * 7 - (j - 15) * 6.5) / 9.55;
-    const onArm = i >= 4 && j >= 9;
-    if (Math.abs(d) <= 1.35 || (i >= 3 && j >= 12) || onArm) {
-      c.color = pickOf(SAFFRON, i, j, k, seed + 16);
-      c.mat = 'krama';
-      c.shade = 0.9 + 0.14 * ((i + j) % 3 === 0 ? 1 : 0.4);
-    }
-  });
-  // Two marigold swags across the throne's front.
-  const zf = ZB + 4 * 0.25 + 0.2;
-  garland(fr, [-1.75, 1.05, zf], [0, 1.05, zf], 0.45, seed + 17, 0.09);
-  garland(fr, [0, 1.05, zf], [1.75, 1.05, zf], 0.45, seed + 18, 0.09);
-  for (const x of [-1.75, 0, 1.75]) garlandDrop(fr, x, 1.0, zf, 0.35, seed + 19 + x, 0.09);
-  bg.commit();
-
-  // The head (0.125 m cells) over the neck: an Angkor-period face, broad and
-  // serene, the eyes lowered, a faint smile, long lobes, the hair in curls
-  // over the ushnisha. The face is flush (k 4) and drawn in tone only, so no
-  // feature makes a pit in the shade under the tree; only the nose stands out.
-  const hg = fr.grid(0.125, { seed: seed + 20, at: [0, 17 * 0.25, ZB - 0.125], ao: 0.12, jitter: 0.015 });
-  const H = putter(hg);
-  // Per row from the chin: half width, back and front (cells). The jaw is
-  // narrow at r1–r2 so the lobes hang free; the hairline steps back at r11.
-  const ROWS: [number, number, number][] = [[3, -1, 3], [4, -2, 4], [4, -3, 4]];
-  for (let r = 3; r <= 10; r++) ROWS.push([5, -4, 4]);
-  ROWS.push([5, -4, 3], [5, -4, 3], [4, -4, 2], [3, -3, 1]);
-  // (then the ushnisha, curls all over)
-  ROWS.push([2, -2, 1], [2, -2, 1], [1, -1, 0]);
-  ROWS.forEach(([hw, kb, kf], r) => {
-    const kc = (kb + kf) / 2;
-    const hd = (kf - kb) / 2 + 0.5;
-    for (let i = -hw; i <= hw; i++)
-      for (let k = kb; k <= kf; k++) {
-        if (Math.abs(i / (hw + 0.5)) ** 4 + Math.abs((k - kc) / hd) ** 4 > 1.02) continue;
-        const hair = r >= 11 || k <= -2 || (Math.abs(i) >= 5 && r >= 9 && k <= 1);
-        // (the curls: a gentle checker, warm stone, never black in the shade)
-        if (hair) H(i, r, k, t(B.hair, i, r, k, 21), 'mapStone', (i + k + r) & 1 ? 0.94 : 1.04);
-        else H(i, r, k, t(B.face, i, r, k, 23));
-      }
-  });
-  // Features: the face's own stone, lighter or darker (sRGB).
-  const f = (i: number, r: number, k: number, by: number) => H(i, r, k, scale(t(B.face, i, r, k, 24), by));
-  f(0, 4, 5, 1.02); // the nose, proud
-  f(0, 5, 5, 1.04);
-  f(0, 6, 4, 1.04); // its bridge
-  f(0, 7, 4, 1.04);
-  for (const s of [-1, 1]) {
-    for (let a = 2; a <= 4; a++) f(s * a, 6, 4, a === 3 ? 0.84 : 0.9); // the eyes, lowered: the lash line
-    for (let a = 2; a <= 4; a++) f(s * a, 7, 4, 1.03); // the heavy lids
-    for (let a = 1; a <= 4; a++) f(s * a, 8, 4, 0.93); // a faint brow
-    f(s * 2, 3, 4, 0.93); // the corners of the smile, turned up
-  }
-  for (let i = -1; i <= 1; i++) {
-    f(i, 2, 4, 0.86); // the mouth, closed
-    f(i, 1, 4, 1.04); // the lower lip
-  }
-  // Ears, their long lobes hanging beside the jaw.
-  for (const s of [-1, 1]) {
-    for (let r = 5; r <= 9; r++) for (let k = -1; k <= 0; k++) H(s * 6, r, k, scale(t(B.face, s, r, k, 30), k === 0 && (r === 6 || r === 7) ? 0.86 : 0.97));
-    for (let r = 1; r <= 4; r++) H(s * 6, r, 0, scale(t(B.face, s, r, 0, 31), 0.96));
-  }
-  // A lotus-bud finial on the ushnisha, gilded.
-  H(0, 18, 0, BRASS[0], 'brass');
-  for (const [di, dk] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) H(di, 18, dk, BRASS[1], 'brass');
-  H(0, 19, 0, BRASS[2], 'brass');
-  H(0, 20, 0, BRASS[2], 'brass', 1.1);
-  hg.commit();
+  fillBox(g, -hw, hw, 1, 1, -hd, hd, (i, j, k) => (notch(i, k, hw, hd) ? null : ledge(i, j, k)));
+  fillBox(g, -hw + 1, hw - 1, 2, 2, -hd + 1, hd - 1, (i, j, k) => tone(PLINTH.dado, i, j, k, seed + 4), 'mapStone', () => 0.92);
+  fillBox(g, -hw, hw, 3, 3, -hd, hd, (i, j, k) => (notch(i, k, hw, hd) ? null : wall(i, j, k)), 'mapStone', (_i, j) => courseShade(j));
+  fillBox(g, -hw, hw, 4, 4, -hd, hd, (i, j, k) => ledge(i, j, k), 'mapStone', () => 1.04);
+  // (the top slab under the statue stays clean)
+  const keep = new Set<string>();
+  for (let i = -hw; i <= hw; i++) for (let k = -hd; k <= hd; k++) keep.add(`${i},4,${k}`);
+  if (o.moss) mossOn(g, { seed: seed + 5, amount: o.moss, dirs: [[0, 1, 0]], moss: RUIN_STONE.moss, keep, scale: 3 });
+  g.commit();
+  return y0 + 5 * cell;
 }
 
+/** A hidden block (solid to the explorer, never drawn) over a statue's or a stupa's body: site space, its foot `y` m over the floor. */
+function solidBody(S: Sculpted, x: number, y: number, z: number, w: number, h: number, d: number): void {
+  S.solid.b.box(x, y + h / 2, z, w, h, d, 0x808080, 'mapStone');
+}
+
+// ── The forest Buddha ────────────────────────────────────────────────────
+
+/** The Buddha's middle (site z, m) and his height to the hood's top (m). */
+const ZB = -2;
+const FOREST_BUDDHA = 3;
+
 /**
- * The forest Buddha (back trail, behind Angkor Wat): the Buddha under a
- * bodhi tree whose trunk is tied with a saffron cloth, laterite paving round
- * the throne, a red offering table with incense, candles, lotus and fruit,
- * stepping stones from the trail, ferns.
+ * The forest Buddha (back trail, behind Angkor Wat): the naga Buddha on
+ * his plinth under a bodhi tree whose trunk is tied with a saffron cloth,
+ * laterite paving round the plinth, a red offering table with candles,
+ * incense, lotus, bay sei, fruit and marigolds, stepping stones from the
+ * trail, ferns.
  */
-export function forestBuddha(fr: SiteFrame, L: ShrineLights): void {
+export function forestBuddha(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();
   // The bodhi tree behind him, its crown over him.
   const tg = fr.grid(1, { seed: 610, mat: 'mapBark' });
@@ -195,35 +125,41 @@ export function forestBuddha(fr: SiteFrame, L: ShrineLights): void {
   growTree(tg, 0, fr.landRow(0, -6, 1), -6, { trunk: 10, radius: 8, squash: 0.5, seed: 611, thick: true, bark: [0x7d7262, 0x74695a, 0x857a69], leaf: CANOPY, lean: [0, -2] });
   tg.commit();
   clothBand(fr, 0.5, -5.5, 1.05, 1.05, 1.5, 0.4, 612);
-  // Paving round the throne.
+  // Paving round the plinth.
   for (let x = -2; x <= 2; x++)
     for (let z = -4; z <= 0; z++) {
       const px = x + (hash3(x, z, 1, 613) - 0.5) * 0.08;
       const pz = z + (hash3(x, z, 2, 613) - 0.5) * 0.08;
       fr.b.box(px, fr.ground(px, pz) + 0.06, pz, 0.94, 0.14, 0.94, pickOf(PATH_STONE, x, z, 0, 614), 'mapStone', { src, shade: 0.9 + 0.12 * hash3(x, z, 3, 613) });
     }
-  seatedBuddha(fr, 620);
+  // The plinth (0.2 m cells: 2.6 × 2.2 m, 1 m high), and the Buddha on it, facing the trail.
+  const top = plinth(fr, { x: 0, z: ZB, cell: 0.2, hw: 6, hd: 5, seed: 620, land: true, moss: 0.55 });
+  place(fr, S, buddhaStatue({ kind: 'nagaSash', look: 'sandstone', height: FOREST_BUDDHA }), 0, top, ZB);
+  solidBody(S, 0, top, ZB, 1.8, FOREST_BUDDHA * 0.9, 1.4);
+  // Marigold swags across the plinth's cornice, hung from three points.
+  const zf = ZB + 5.5 * 0.2 + 0.03;
+  marigolds(fr, S, [-1.2, top - 0.08, zf], [0, top - 0.08, zf], 0.3, 621);
+  marigolds(fr, S, [0, top - 0.08, zf], [1.2, top - 0.08, zf], 0.3, 622);
 
   // The offering table: red lacquer, gilt edge.
-  const top = 0.78;
+  const tt = 0.78;
   const [tx0, tx1, tz0, tz1] = [-1.1, 1.1, -0.35, 0.45];
   const tzc = (tz0 + tz1) / 2;
-  fr.b.box(0, top - 0.04, tzc, tx1 - tx0, 0.08, tz1 - tz0, LACQUER[0], 'wood', { src });
-  fr.b.box(0, top - 0.13, tz1 - 0.02, tx1 - tx0 - 0.1, 0.1, 0.04, BRASS[1], 'brass', { src });
-  for (const x of [tx0 + 0.08, tx1 - 0.08]) for (const z of [tz0 + 0.08, tz1 - 0.08]) fr.b.box(x, (top - 0.08) / 2, z, 0.1, top - 0.08, 0.1, LACQUER[1], 'wood', { src });
-  incenseBowl(fr, L, 0, top, tzc - 0.05, { r: 0.17, h: 0.2, n: 5, stick: 0.62, seed: 630 });
-  for (const s of [-1, 1]) candle(fr, L, s * 0.78, top, tzc - 0.1, 0.34, 0.1, 631 + s);
-  // Lotus buds in a brass vase, an open lotus, fruit.
-  fr.b.box(-0.42, top + 0.12, tzc + 0.12, 0.14, 0.24, 0.14, BRASS[0], 'brass', { src, ry: 0.4 });
-  lotusBud(fr, -0.45, top + 0.2, tzc + 0.1, 0.42, 632);
-  lotusBud(fr, -0.38, top + 0.2, tzc + 0.15, 0.34, 633);
-  lotusBud(fr, -0.44, top + 0.2, tzc + 0.17, 0.28, 634);
-  lotusOpen(fr, 0.25, top, tzc + 0.25, 1);
-  fruitPlate(fr, 0.52, top, tzc + 0.12, 0.3, 1);
+  fr.b.box(0, tt - 0.04, tzc, tx1 - tx0, 0.08, tz1 - tz0, LACQUER[0], 'wood', { src });
+  fr.b.box(0, tt - 0.13, tz1 - 0.02, tx1 - tx0 - 0.1, 0.1, 0.04, BRASS[1], 'brass', { src });
+  for (const x of [tx0 + 0.08, tx1 - 0.08]) for (const z of [tz0 + 0.08, tz1 - 0.08]) fr.b.box(x, (tt - 0.08) / 2, z, 0.1, tt - 0.08, 0.1, LACQUER[1], 'wood', { src });
+  // On it: bay sei at the ends, lotus in vases, the urn of incense between two candles, fruit.
+  for (const s of [-1, 1]) {
+    offer(fr, S, L, 'baySei', s * 0.88, tt, tzc - 0.12, { scale: 1.3 });
+    offer(fr, S, L, 'lotusVase', s * 0.52, tt, tzc - 0.14, { ry: s * 0.4 });
+    offer(fr, S, L, 'candle', s * 0.24, tt, tzc + 0.16, { scale: 1.6 });
+    offer(fr, S, L, 'fruitPlate', s * 0.6, tt, tzc + 0.2, { ry: -s * 0.5 });
+  }
+  offer(fr, S, L, 'incense', 0, tt, tzc - 0.06, { scale: 1.7, sticks: 9, smoke: 1 });
   // A marigold garland along the table's front.
-  garland(fr, [tx0 + 0.05, top - 0.06, tz1 + 0.04], [tx1 - 0.05, top - 0.06, tz1 + 0.04], 0.22, 635, 0.08);
-  // Night: a soft halo over the table (none on the Buddha: it bleached the stone white).
-  L.halos.push({ at: fr.point(0, top + 0.5, tzc), size: 2.2 });
+  marigolds(fr, S, [tx0 + 0.04, tt - 0.05, tz1 + 0.03], [tx1 - 0.04, tt - 0.05, tz1 + 0.03], 0.2, 635);
+  // Night: a soft halo over the table (none on the Buddha: it bleached the stone white; the candles light him).
+  L.halos.push({ at: fr.point(0, tt + 0.5, tzc), size: 2.2 });
 
   steppingStones(fr, [0.2, 5.6], [0.1, 1.2], 1.1, 640, PATH_STONE);
   plantsAround(fr, { n: 40, r0: 3, r1: 8.5, seed: 641, flowers: 0.25, keepOut: (x, z) => Math.abs(x) < 2.6 && z > -4.8 && z < 6 });
@@ -231,19 +167,197 @@ export function forestBuddha(fr: SiteFrame, L: ShrineLights): void {
 
 // ── The spirit house ─────────────────────────────────────────────────────
 
-const PLASTER = [0xece3cf, 0xe4dbc6, 0xf1e9d7];
-const TILE = [0xb33a26, 0xa5331f, 0xbd4430];
 const PAINT_RED = [0x9c2a22, 0x8e241d];
 
+/** The spirit house's surfaces (the statues' material, sacred/finish.ts). */
+const SH = {
+  plaster: { color: 0xf0e4c8, metal: 0, rough: 0.82, grain: 0.35 },
+  gold: PALETTES.gilt.skin,
+  trim: PALETTES.gilt.hem,
+  lacquer: { color: 0x8a2217, metal: 0.05, rough: 0.4, grain: 0.3 },
+  tile: { color: 0xb9492c, metal: 0, rough: 0.6, grain: 0.45 },
+  tileDark: { color: 0xa33d25, metal: 0, rough: 0.62, grain: 0.45 },
+  dark: { color: 0x2c0e0a, metal: 0, rough: 0.8, grain: 0 },
+} satisfies Record<string, Finish>;
+
+/** The house's measures (m, house space: its foot's middle at the origin, the front +z). */
+const HOUSE = {
+  /** The walls' half width and depth (their middle 0.08 back), height over the plinth. */
+  wall: [0.42, 0.31] as const,
+  wallZ: -0.08,
+  wallH: 0.62,
+  plinth: 0.1,
+  /** The lower roofs: the eaves' half span and height, the pitch, the half lengths along z and x. */
+  span: 0.56,
+  eaveY: 0.7,
+  pitch: 0.92,
+  front: 0.56,
+  side: 0.62,
+  /** Where a garland hangs from the front eave's corners. */
+  eaveX: 0.5,
+};
+
+let house: BufferGeometry | null = null;
+
 /**
- * The spirit house on the village trail (0.125 m cells for the house): a
- * cream post on a white plinth, a red tray, a little cream house with gold
- * pilasters and a dark doorway (a gilt figure of the guardian spirit
- * within), a two-tiered red roof with gold gables, finials and a gold
- * spire. On the tray: incense, candles, a red soda with a straw, a banana,
- * flowers; marigold garlands hang from its corners.
+ * The spirit house's little temple (smooth, made once; about 2.4 m tall):
+ * a red plinth with a gold band, cream walls with gold pilasters, a porch
+ * of two gold columns before a gold-framed doorway where the guardian
+ * spirit's gilt figure stands, a window each side; two tiers of crossed
+ * gable roofs in red tiles laid in courses, red gables with gold
+ * medallions, gold naga bargeboards curling up at the eaves and a chofa
+ * horn at each peak; a gold spire of rings over the crossing.
  */
-export function spiritHouse(fr: SiteFrame, L: ShrineLights): void {
+function spiritHouseModel(): Object3D {
+  house ??= houseGeometry();
+  const m = new Mesh(house, statueMaterial());
+  m.name = 'spirit house';
+  m.castShadow = m.receiveShadow = true;
+  const lod = new LOD();
+  lod.name = 'spirit house';
+  lod.addLevel(m, 0);
+  lod.addLevel(new Object3D(), 150);
+  return lod;
+}
+
+function houseGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  const mat = new Matrix4();
+  const put = (g: BufferGeometry, f: Finish, at: V3 = [0, 0, 0], turn: V3 = [0, 0, 0]) => {
+    g.applyMatrix4(mat.makeRotationFromEuler(new Euler(turn[0], turn[1], turn[2])).setPosition(at[0], at[1], at[2]));
+    parts.push(plainAttributes(finishGeometry(g, f)));
+  };
+  const box = (w: number, h: number, d: number, f: Finish, at: V3, turn?: V3) => put(new BoxGeometry(w, h, d), f, at, turn);
+  const H = HOUSE;
+  const [hw, hd] = H.wall;
+  const top = H.plinth + H.wallH;
+  // The plinth, its gold band; the walls, gold pilasters at their corners and a gold cornice.
+  put(new RoundedBoxGeometry(1.04, H.plinth, 0.92, 2, 0.015), SH.lacquer, [0, H.plinth / 2, 0]);
+  box(1.06, 0.022, 0.94, SH.trim, [0, H.plinth - 0.005, 0]);
+  put(new RoundedBoxGeometry(hw * 2, H.wallH, hd * 2, 2, 0.01), SH.plaster, [0, H.plinth + H.wallH / 2, H.wallZ]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(0.06, H.wallH, 0.06, SH.gold, [sx * hw, H.plinth + H.wallH / 2, H.wallZ + sz * hd]);
+  box(hw * 2 + 0.08, 0.04, hd * 2 + 0.08, SH.trim, [0, top - 0.01, H.wallZ]);
+  // The doorway: dark within, a gold frame and a pointed pediment; the guardian spirit's gilt figure.
+  const fz = H.wallZ + hd;
+  box(0.3, 0.44, 0.012, SH.dark, [0, H.plinth + 0.22, fz + 0.002]);
+  for (const sx of [-1, 1]) box(0.035, 0.48, 0.03, SH.gold, [sx * 0.168, H.plinth + 0.24, fz + 0.01]);
+  box(0.4, 0.04, 0.03, SH.gold, [0, H.plinth + 0.49, fz + 0.01]);
+  const ped = new Outline([new Vector2(-0.2, 0), new Vector2(0.2, 0), new Vector2(0, 0.13)]);
+  put(new ExtrudeGeometry(ped, { depth: 0.02, bevelEnabled: false }), SH.gold, [0, H.plinth + 0.51, fz]);
+  put(new CylinderGeometry(0.03, 0.045, 0.13, 10), SH.gold, [0, H.plinth + 0.065, fz + 0.05]);
+  put(new SphereGeometry(0.027, 10, 8), SH.gold, [0, H.plinth + 0.155, fz + 0.05]);
+  put(new ConeGeometry(0.018, 0.06, 8), SH.gold, [0, H.plinth + 0.205, fz + 0.05]);
+  // Windows each side, gold framed.
+  for (const sx of [-1, 1]) {
+    box(0.012, 0.2, 0.2, SH.dark, [sx * (hw + 0.002), H.plinth + 0.36, H.wallZ]);
+    box(0.02, 0.24, 0.03, SH.gold, [sx * (hw + 0.008), H.plinth + 0.36, H.wallZ - 0.115]);
+    box(0.02, 0.24, 0.03, SH.gold, [sx * (hw + 0.008), H.plinth + 0.36, H.wallZ + 0.115]);
+    box(0.02, 0.03, 0.26, SH.gold, [sx * (hw + 0.008), H.plinth + 0.475, H.wallZ]);
+  }
+  // The porch: two gold columns with red bands, on the plinth before the door.
+  for (const sx of [-1, 1]) {
+    put(new CylinderGeometry(0.026, 0.03, H.wallH, 10), SH.gold, [sx * 0.38, H.plinth + H.wallH / 2, 0.39]);
+    for (const y of [H.plinth + 0.03, top - 0.05]) box(0.075, 0.04, 0.075, SH.lacquer, [sx * 0.38, y, 0.39]);
+  }
+  // The lower roofs, crossed; a drum under the upper ones; the upper roofs; the spire.
+  gableRoof(put, box, { span: H.span, eave: H.eaveY, pitch: H.pitch, len: H.front, turn: 0 });
+  gableRoof(put, box, { span: H.span, eave: H.eaveY, pitch: H.pitch, len: H.side, turn: Math.PI / 2 });
+  put(new RoundedBoxGeometry(0.56, 0.4, 0.56, 2, 0.01), SH.plaster, [0, 1.05, 0]);
+  const up = { span: 0.34, eave: 1.2, pitch: 1.02, len: 0.38 };
+  gableRoof(put, box, { ...up, turn: 0 });
+  gableRoof(put, box, { ...up, turn: Math.PI / 2 });
+  const ridge = up.eave + up.span * Math.tan(up.pitch);
+  const G = SH.gold;
+  const T = SH.trim;
+  const spire: [number, number, Finish][] = [
+    [0.075, ridge - 0.08, G],
+    [0.075, ridge + 0.02, G],
+    [0.058, ridge + 0.04, T],
+    [0.062, ridge + 0.08, T],
+    [0.046, ridge + 0.1, G],
+    [0.05, ridge + 0.14, G],
+    [0.036, ridge + 0.16, T],
+    [0.04, ridge + 0.2, T],
+    [0.026, ridge + 0.22, G],
+    [0.03, ridge + 0.26, G],
+    [0.016, ridge + 0.3, T],
+    [0.011, ridge + 0.42, T],
+    [0.006, ridge + 0.56, G],
+    [0, ridge + 0.64, G],
+  ];
+  parts.push(plainAttributes(revolve([{ r: 0, y: ridge - 0.08, f: G }, ...spire.map(([r, y, f]) => ({ r, y, f }))], 16)));
+  const g = mergeGeometries(parts)!;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
+
+type Put = (g: BufferGeometry, f: Finish, at?: V3, turn?: V3) => void;
+type BoxPut = (w: number, h: number, d: number, f: Finish, at: V3, turn?: V3) => void;
+
+/**
+ * A gable roof on the house (its ridge along z, turned `turn` about y):
+ * the eaves `span` m out each side at height `eave`, the slopes at `pitch`
+ * (rad), `len` m to each gable. Red tiles laid in courses (each lapping the
+ * one below it), a gold ridge; at each end a red gable with a gold
+ * medallion, gold naga bargeboards curling up at the eaves, a chofa horn
+ * at the peak.
+ */
+function gableRoof(put: Put, box: BoxPut, o: { span: number; eave: number; pitch: number; len: number; turn: number }): void {
+  const { span, eave, pitch, len, turn } = o;
+  const [c, s] = [Math.cos(turn), Math.sin(turn)];
+  // (roof space → house space: turned about y)
+  const at = (x: number, y: number, z: number): V3 => [c * x + s * z, y, -s * x + c * z];
+  const rise = span * Math.tan(pitch);
+  const slope = span / Math.cos(pitch);
+  const ridge = eave + rise;
+  const n = 5;
+  const t = 0.026;
+  for (const side of [-1, 1]) {
+    // Down the slope from the ridge: (sin, −cos) of the pitch outward; its normal (side·sin… up).
+    const dir = [side * Math.cos(pitch), -Math.sin(pitch)];
+    const nor = [side * Math.sin(pitch), Math.cos(pitch)];
+    for (let i = 0; i < n; i++) {
+      const d = ((i + 0.5) * slope) / n + 0.012;
+      const lift = t / 2 + (n - 1 - i) * 0.006;
+      const x = dir[0] * d + nor[0] * lift;
+      const y = ridge + dir[1] * d + nor[1] * lift;
+      box(slope / n + 0.03, t, len * 2 + 0.04, i & 1 ? SH.tileDark : SH.tile, at(x, y, 0), [0, turn, -side * pitch]);
+    }
+  }
+  box(0.05, 0.05, len * 2 + 0.06, SH.trim, at(0, ridge + 0.035, 0), [0, turn, 0]);
+  for (const end of [-1, 1]) {
+    const z = end * (len - 0.01);
+    // The gable: red, a gold medallion.
+    const tri = new Outline([new Vector2(-span * 0.96, 0), new Vector2(span * 0.96, 0), new Vector2(0, rise * 0.96)]);
+    put(new ExtrudeGeometry(tri, { depth: 0.02, bevelEnabled: false }), SH.lacquer, at(0, eave, z - 0.01), [0, turn, 0]);
+    put(new CylinderGeometry(rise * 0.17, rise * 0.17, 0.02, 20).rotateX(Math.PI / 2), SH.gold, at(0, eave + rise * 0.36, z + end * 0.012), [0, turn, 0]);
+    // The bargeboards along both slopes, and the curls at the eaves.
+    for (const side of [-1, 1]) {
+      const d = slope / 2 + 0.02;
+      const x = side * Math.cos(pitch) * d + side * Math.sin(pitch) * 0.045;
+      const y = ridge - Math.sin(pitch) * d + Math.cos(pitch) * 0.045;
+      box(slope + 0.06, 0.05, 0.03, SH.gold, at(x, y, end * (len + 0.02)), [0, turn, -side * pitch]);
+      const curl = new TorusGeometry(0.045, 0.012, 6, 12, Math.PI * 1.25);
+      put(curl, SH.gold, at(side * (span + 0.06), eave + 0.03, end * (len + 0.02)), [0, turn, side > 0 ? -Math.PI * 0.2 : Math.PI * 1.2 - Math.PI * 0.25]);
+    }
+    // The chofa: a slim horn rising from the peak, curling out.
+    const [bx, by, bz] = at(0, ridge + 0.02, end * (len + 0.02));
+    const [ox, , oz] = at(0, 0, end * 0.1);
+    const horn = new QuadraticBezierCurve3(new Vector3(bx, by, bz), new Vector3(bx, by + 0.16, bz), new Vector3(bx + ox, by + 0.2, bz + oz));
+    put(new TubeGeometry(horn, 8, 0.014, 6), SH.gold);
+  }
+}
+
+/**
+ * The spirit house on the village trail: a cream post on a white plinth,
+ * red brackets, a red tray with a gold rim (blocks: solid), and on it the
+ * little temple of the land's spirit (`spiritHouseModel`, smooth). On the
+ * tray before it: an urn of incense between two candles, a plate of fruit,
+ * a red soda with a straw, small bay sei by the house; marigold garlands
+ * along the tray and hanging from its corners and the eaves.
+ */
+export function spiritHouse(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();
   const [cx, cz] = [0.5, -1.2];
   const gy = fr.ground(cx, cz);
@@ -269,71 +383,25 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights): void {
   }
   const floor = ty + 0.05;
 
-  // The house (0.125 m cells): 9 wide, 7 deep, walls 7 high, then the roof.
+  // The house (smooth, made later; a hidden block keeps the follow camera out of it).
   const hz = cz - 0.1;
-  const hg = fr.grid(0.125, { seed: 701, at: [cx, floor, hz], ao: 0.22, jitter: 0.03 });
-  const H = putter(hg);
-  const t = (list: readonly number[], i: number, j: number, k: number, s = 0) => tone(list, i, j, k, 702 + s);
-  for (let j = 0; j <= 6; j++)
-    for (let i = -4; i <= 4; i++)
-      for (let k = -3; k <= 3; k++) {
-        const corner = Math.abs(i) === 4 && Math.abs(k) === 3;
-        if (j === 0) H(i, j, k, t(PAINT_RED, i, j, k), 'mapStone');
-        else if (corner || j === 6) H(i, j, k, BRASS[(i + j + k) & 1], 'brass');
-        else H(i, j, k, t(PLASTER, i, j, k, 1));
-      }
-  // Doorway: dark red within, a gold frame, the guardian's gilt figure.
-  for (let j = 1; j <= 4; j++) for (let i = -1; i <= 1; i++) {
-    hg.delete(i, j, 3);
-    H(i, j, 2, 0x4a1612, 'mapStone', 0.8);
-  }
-  for (let j = 1; j <= 5; j++) for (const i of [-2, 2]) H(i, j, 3, BRASS[1], 'brass');
-  for (let i = -2; i <= 2; i++) H(i, 5, 3, BRASS[0], 'brass');
-  H(0, 1, 2, BRASS[2], 'brass');
-  H(0, 2, 2, BRASS[2], 'brass', 1.1);
-  // Side windows.
-  for (const s of [-1, 1]) for (let j = 2; j <= 3; j++) H(s * 4, j, 0, 0x4a1612, 'mapStone', 0.8);
-  // Roof: two gabled tiers (ridge front to back), gold gables and edges, then the spire.
-  const gable = (j0: number, hw: number, k0: number, k1: number) => {
-    for (let r = 0; r <= hw; r++) {
-      const w = hw - r;
-      for (let i = -w; i <= w; i++)
-        for (let k = k0; k <= k1; k++) {
-          const end = k === k0 || k === k1;
-          const edge = Math.abs(i) === w;
-          if (end) H(i, j0 + r, k, edge ? BRASS[0] : r === hw - 2 && i === 0 ? BRASS[2] : t(PAINT_RED, i, r, k, 2), edge || (r === hw - 2 && i === 0) ? 'brass' : 'mapStone');
-          else H(i, j0 + r, k, edge ? BRASS[1] : t(TILE, i, r, k, 3), edge ? 'brass' : 'mapStone', r & 1 ? 0.95 : 1.02);
-        }
-    }
-    // Finials: a chofa curling up at each gable's peak, tails at the eaves.
-    for (const k of [k0, k1]) {
-      H(0, j0 + hw + 1, k, BRASS[2], 'brass');
-      for (const s of [-1, 1]) H(s * (hw + 1), j0, k, BRASS[2], 'brass');
-    }
-  };
-  gable(7, 6, -5, 5);
-  gable(10, 4, -3, 3);
-  // Spire.
-  for (let j = 15; j <= 20; j++) {
-    const w = j < 17 ? 1 : 0;
-    for (let i = -w; i <= w; i++) for (let k = -w; k <= w; k++) H(i, j, k, BRASS[(j + i) & 1], 'brass', 1 + (j - 15) * 0.02);
-  }
-  hg.commit();
+  later(() => place(fr, S, spiritHouseModel(), cx, floor, hz, 0, src));
+  solidBody(S, cx, floor, hz, 1.1, 1.5, 0.95);
 
-  // Offerings on the porch.
+  // Offerings on the porch (sculpted, a little smaller than an altar's).
   const pz = hz + 0.62;
-  incenseBowl(fr, L, cx, floor, pz, { r: 0.07, h: 0.1, n: 3, stick: 0.34, seed: 710, smoke: 0.6 });
-  for (const s of [-1, 1]) candle(fr, L, cx + s * 0.28, floor, pz - 0.02, 0.14, 0.05, 711 + s);
-  fr.b.box(cx + 0.55, floor + 0.1, pz - 0.08, 0.07, 0.2, 0.07, 0xd8263a, 'petal', { src }); // the red soda
-  fr.b.box(cx + 0.57, floor + 0.25, pz - 0.08, 0.015, 0.14, 0.015, 0xf2f2f2, 'petal', { src, rz: -0.3 }); // its straw
-  fr.b.box(cx - 0.5, floor + 0.04, pz, 0.06, 0.05, 0.2, 0xf2cf3a, 'petal', { src, ry: 0.4 }); // a banana
-  fr.b.box(cx + 0.45, floor + 0.05, pz + 0.12, 0.09, 0.09, 0.09, 0xe6a52a, 'petal', { src }); // a mango
-  lotusOpen(fr, cx - 0.5, floor, pz - 0.28, 0.7);
+  offer(fr, S, L, 'incense', cx, floor, pz - 0.02, { scale: 1.1, sticks: 5, smoke: 0.6 });
+  // (their light kept soft: close by, it glared on the brass)
+  for (const s of [-1, 1]) offer(fr, S, L, 'candle', cx + s * 0.34, floor, pz + 0.04, { scale: 1.1, lamp: 0.5 });
+  offer(fr, S, L, 'fruitPlate', cx - 0.57, floor, pz, { scale: 1.1, ry: 0.4 });
+  for (const s of [-1, 1]) offer(fr, S, L, 'baySei', cx + s * 0.63, floor, hz + 0.02, { tiers: 3, scale: 0.9 });
+  fr.b.box(cx + 0.55, floor + 0.1, pz - 0.02, 0.07, 0.2, 0.07, 0xd8263a, 'petal', { src }); // the red soda
+  fr.b.box(cx + 0.57, floor + 0.25, pz - 0.02, 0.015, 0.14, 0.015, 0xf2f2f2, 'petal', { src, rz: -0.3 }); // its straw
   // Garlands: along the tray's front, hanging from its corners and the roof's eaves.
   const front = tcz + trd / 2 + 0.04;
-  garland(fr, [cx - trw / 2, ty - 0.02, front], [cx + trw / 2, ty - 0.02, front], 0.16, 720, 0.07);
-  for (const s of [-1, 1]) garlandDrop(fr, cx + (s * trw) / 2, ty - 0.02, front, 0.5, 721 + s, 0.07);
-  for (const s of [-1, 1]) garlandDrop(fr, cx + s * 0.8, floor + 7 * 0.125, hz + 0.68, 0.35, 723 + s, 0.06);
+  marigolds(fr, S, [cx - trw / 2, ty - 0.02, front], [cx + trw / 2, ty - 0.02, front], 0.16, 720);
+  for (const s of [-1, 1]) marigolds(fr, S, [cx + (s * trw) / 2, ty - 0.02, front], [cx + (s * trw) / 2, ty - 0.52, front], 0, 721 + s);
+  for (const s of [-1, 1]) marigolds(fr, S, [cx + s * HOUSE.eaveX, floor + HOUSE.eaveY - 0.03, hz + HOUSE.front], [cx + s * HOUSE.eaveX, floor + HOUSE.eaveY - 0.4, hz + HOUSE.front], 0, 723 + s);
   L.halos.push({ at: fr.point(cx, floor + 0.5, pz + 0.1), size: 2.4 });
 }
 
@@ -342,69 +410,58 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights): void {
 /** Laterite stepping stones and paving: warm red-brown and ochre (grey went navy in the shade). */
 const PATH_STONE = [0xa86f47, 0x9e6640, 0xb37a50, 0x94603d];
 
-const LIME = [0xeeeadf, 0xe6e1d4, 0xf3efe6, 0xdfd9cb];
-const LIME_OLD = [0xc9c4b6, 0xbfbaac, 0xd2cdbf];
 /** Frangipani flowers: white with a yellow heart. */
 const FRANGIPANI = [0xf6f2e6, 0xf8f0d0, 0xf4e8b8];
+/** The stupa's height to its gold tip (m). */
+const LAKE_STUPA = 4;
 
 /**
- * A small whitewashed stupa on the lake's north shore (0.25 m cells): two
- * steps, a square body with a niche (a little gilt Buddha, candles), a
- * bell, a square harmika and a spire of rings tipped in gold; stains of
- * damp climbing from its foot, moss on its steps, a saffron cloth round
- * its body. A brass urn of incense stands before it, a frangipani beside.
+ * A small whitewashed stupa on the lake's north shore (sacred/stupa.ts:
+ * mouldings, a lotus band, the bell, the spire of gold rings) on a base
+ * of two steps (0.25 m cells: laterite, a sandstone course on top, moss on
+ * the lower tread). In its niche sits a small gilt Buddha, two candles on
+ * the step before him; a brass urn of incense stands before it on a stone,
+ * a frangipani beside it.
  */
-export function lakeShrine(fr: SiteFrame, L: ShrineLights): void {
+export function lakeShrine(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();
   const zc = -1.4;
   const g = fr.grid(0.25, { seed: 801, at: [0, 0, zc], ao: 0.3 });
   const P = putter(g);
-  for (let i = -7; i <= 7; i++) for (let k = -7; k <= 7; k++) g.ghost(i, fr.landRow(i * 0.25, zc + k * 0.25, 0.25) - 1, k);
-  // Whitewash, greyer toward the foot (damp).
-  const lime = (i: number, j: number, k: number) => (hash3(i, j, k, 802) < 0.45 - j * 0.08 ? tone(LIME_OLD, i, j, k, 803) : tone(LIME, i, j, k, 804));
-  const sq = (h: number, j0: number, j1: number, notch = false) =>
-    fillBox(g, -h, h, j0, j1, -h, h, (i, j, k) => (notch && Math.abs(i) === h && Math.abs(k) === h ? null : lime(i, j, k)));
-  // Footing down to the land, two steps, the body with redented corners and a cornice.
+  const lat = (i: number, j: number, k: number) => tone(PATH_STONE, i >> 1, j, k >> 1, 805);
+  const course = (i: number, j: number, k: number) => bondTone(PLINTH.ledge, i, j, k, 802);
+  // Footing down to the land and the lower step of laterite (5 cells out, a tread in front), the upper a sandstone course (4 out).
   for (let i = -5; i <= 5; i++)
-    for (let k = -5; k <= 5; k++) for (let j = Math.min(0, fr.landRow(i * 0.25, zc + k * 0.25, 0.25)); j <= 1; j++) P(i, j, k, lime(i, j, k));
-  sq(4, 2, 3);
-  sq(3, 4, 7, true);
-  sq(4, 8, 8, true);
-  // The bell.
-  const bell = [3.6, 3.75, 3.55, 3.1, 2.5, 1.6];
-  bell.forEach((r, n) => {
-    const j = 9 + n;
-    for (let i = -4; i <= 4; i++) for (let k = -4; k <= 4; k++) if (i * i + k * k <= r * r) P(i, j, k, lime(i, j, k));
-  });
-  // Harmika, rings, the gold tip.
-  sq(1, 15, 16);
-  for (let j = 17; j <= 20; j++) for (let i = -1; i <= 1; i++) for (let k = -1; k <= 1; k++) if (j % 2 === 1 || Math.abs(i) + Math.abs(k) <= 1) P(i, j, k, lime(i, j, k));
-  for (let j = 21; j <= 23; j++) P(0, j, 0, BRASS[j & 1], 'brass', 1.05);
-  // The niche on the front, a little gilt Buddha in it.
-  for (let j = 4; j <= 6; j++) for (let i = -1; i <= 1; i++) g.delete(i, j, 3);
-  for (let j = 4; j <= 6; j++) for (let i = -1; i <= 1; i++) P(i, j, 2, 0x3a352f, 'mapStone', 0.8);
-  P(0, 4, 3, BRASS[0], 'brass');
-  P(0, 5, 3, BRASS[2], 'brass', 1.1);
-  // Saffron cloth round the body.
-  for (let i = -3; i <= 3; i++)
-    for (let k = -3; k <= 3; k++) {
-      if (Math.max(Math.abs(i), Math.abs(k)) !== 3 || (Math.abs(i) === 3 && Math.abs(k) === 3) || (k === 3 && Math.abs(i) <= 1)) continue;
-      P(i, 7, k, pickOf(SAFFRON, i, 7, k, 805), 'krama');
+    for (let k = -5; k <= 6; k++) {
+      const low = Math.min(0, fr.landRow(i * 0.25, zc + k * 0.25, 0.25));
+      g.ghost(i, low - 1, k);
+      const top = Math.abs(i) <= 4 && k >= -4 && k <= 4 ? 1 : k === 6 && Math.abs(i) > 2 ? -1 : 0;
+      for (let j = low; j <= top; j++) P(i, j, k, j === 1 ? course(i, j, k) : lat(i, j, k), 'mapStone', j === 1 ? 1.02 : 0.92);
     }
-  mossOn(g, { seed: 806, amount: 0.35, dirs: [[0, 1, 0]], moss: RUIN_STONE.moss, scale: 2 });
+  mossOn(g, { seed: 806, amount: 0.3, dirs: [[0, 1, 0]], moss: RUIN_STONE.moss, scale: 2, keep: new Set(Array.from({ length: 81 }, (_, n) => `${(n % 9) - 4},1,${Math.floor(n / 9) - 4}`)) });
   g.commit();
+  const base = 0.5;
 
-  // The urn before it, candles on the step, flowers and fruit.
-  const uz = zc + 5 * 0.25 + 0.55;
-  fr.b.box(0, 0.22, uz, 0.44, 0.44, 0.44, BRASS[1], 'brass', { src, ry: 0.785 });
-  fr.b.box(0, 0.08, uz, 0.3, 0.16, 0.3, BRASS[0], 'brass', { src, ry: 0.785 });
-  incenseBowl(fr, L, 0, 0.36, uz, { r: 0.2, h: 0.1, n: 6, stick: 0.55, seed: 810 });
-  const stepY = 0.5;
-  for (const s of [-1, 1]) candle(fr, L, s * 0.62, stepY, zc + 1.25, 0.22, 0.08, 811 + s);
-  lotusOpen(fr, -0.3, stepY, zc + 1.25, 0.9);
-  fruitPlate(fr, 0.32, stepY, zc + 1.22, -0.2, 0.8);
-  garland(fr, [-0.8, 1.95, zc + 0.8], [0.8, 1.95, zc + 0.8], 0.28, 812, 0.07);
-  L.halos.push({ at: fr.point(0, 1.3, zc + 1.4), size: 2.2 });
+  // The stupa on it, facing the trail; the gilt Buddha in its niche.
+  later(() => place(fr, S, stupa({ height: LAKE_STUPA, look: 'white', niche: true }), 0, base, zc, 0, src));
+  solidBody(S, 0, base, zc, 1.4, LAKE_STUPA * 0.85, 1.4);
+  const n = stupaNiche({ height: LAKE_STUPA, look: 'white' });
+  place(fr, S, buddhaStatue({ kind: 'meditate', look: 'gilt', height: n.height * 0.7, farOnly: true, hide: 80 }), 0, base + n.at.y, zc + n.at.z);
+  // Candles on the upper step before him, a garland along its edge.
+  const step = zc + 4.5 * 0.25;
+  // (their light kept low: it bleaches the whitewash)
+  for (const s of [-1, 1]) offer(fr, S, L, 'candle', s * 0.36, base, step - 0.16, { scale: 1.5, lamp: 0.4 });
+  offer(fr, S, L, 'lotusVase', -0.72, base, step - 0.22, { scale: 1.1, ry: 0.5 });
+  offer(fr, S, L, 'fruitPlate', 0.72, base, step - 0.2, { scale: 1.1, ry: -0.4 });
+  marigolds(fr, S, [-1.1, base - 0.04, step + 0.03], [1.1, base - 0.04, step + 0.03], 0.1, 812);
+
+  // The urn before it, on a stone.
+  // (low: its sticks stay under the niche, seen from where he kneels)
+  const uz = zc + 2.1;
+  fr.b.box(0, 0.12, uz, 0.5, 0.24, 0.5, PLINTH.wall[0], 'mapStone', { src, shade: 0.95 });
+  fr.b.box(0, 0.27, uz, 0.58, 0.06, 0.58, PLINTH.ledge[0], 'mapStone', { src });
+  offer(fr, S, L, 'incense', 0, 0.3, uz, { scale: 2, sticks: 9, smoke: 1 });
+  L.halos.push({ at: fr.point(0, 1.2, zc + 1.5), size: 2, strength: 0.12 });
 
   // The frangipani to its left, flowers in its crown; ferns.
   const tg = fr.grid(1, { seed: 820, mat: 'mapBark' });
@@ -437,15 +494,19 @@ export function lakeShrine(fr: SiteFrame, L: ShrineLights): void {
 
 // ── The Kulen shrine ─────────────────────────────────────────────────────
 
+/** The Kulen Buddha's height (m). */
+const KULEN_BUDDHA = 1.2;
+
 /**
  * A small stone sanctuary at the foot of Phnom Kulen (0.5 m cells): a
  * laterite platform with a step, a square cella with a doorway to the
  * trail and false doors on its other sides, three tiers and a lotus bud,
- * weathered and mossy, a small tree behind. In the dark doorway sits a
- * little Buddha wrapped in saffron, candles before him; an urn of incense on
- * the step, marigolds.
+ * weathered and mossy, a small tree behind. Inside the doorway a gilt
+ * Buddha calling the earth to witness, a saffron cloth over his shoulder,
+ * sits on a sandstone pedestal, candles and an urn on a slab before him;
+ * a big urn of incense on the step, lotus in vases, marigolds.
  */
-export function kulenShrine(fr: SiteFrame, L: ShrineLights): void {
+export function kulenShrine(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();
   const zc = -2.2;
   const g = fr.grid(0.5, { seed: 901, at: [0, 0, zc], ao: 0.34 });
@@ -499,30 +560,28 @@ export function kulenShrine(fr: SiteFrame, L: ShrineLights): void {
   for (let jj = 1; jj <= 5; jj++) for (let i = -1; i <= 1; i++) if (g.get(i, jj, 4)?.mat === 'mapLeaf') g.delete(i, jj, 4);
   g.commit();
 
-  // The little Buddha inside (0.25 m cells): seated, saffron over his shoulder, before the back wall.
-  const bg = fr.grid(0.25, { seed: 920, at: [0, 0.5, zc - 0.25] });
-  for (let i = -3; i <= 3; i++) for (let k = -1; k <= 1; k++) bg.put(i, 0, k, { color: tone(B.lotus, i, 0, k, 921), mat: 'mapStone' });
-  for (let i = -2; i <= 2; i++) for (let k = -1; k <= 1; k++) bg.put(i, 1, k, { color: tone(B.stone, i, 1, k, 922), mat: 'mapStone' });
-  // (the sash: over his left shoulder, +x, down across to the right)
-  const sash = (i: number, jj: number) => i === 1 || (jj === 3 && i === 0) || (jj === 2 && i === -1);
-  for (let jj = 2; jj <= 4; jj++)
-    for (let i = -1; i <= 1; i++) bg.put(i, jj, 0, sash(i, jj) ? { color: pickOf(SAFFRON, i, jj, 0, 923), mat: 'krama' } : { color: tone(B.stone, i, jj, 0, 924), mat: 'mapStone' });
-  bg.put(0, 5, 0, { color: tone(B.skin, 0, 5, 0, 925), mat: 'mapStone' });
-  bg.put(0, 6, 0, { color: BRASS[2], mat: 'brass' });
-  bg.commit();
-  // Candles before him, on the cella's floor.
-  for (const x of [-0.5, 0.5]) candle(fr, L, x, 0.5, zc + 0.35, 0.18, 0.07, 930 + x);
+  // The Buddha inside on his pedestal (0.1 m cells, on the cella's floor), facing out of the door.
+  const floor = 0.5;
+  const bz = zc - 0.5;
+  const top = plinth(fr, { x: 0, y: floor, z: bz, cell: 0.1, hw: 6, hd: 4, seed: 920 });
+  place(fr, S, buddhaStatue({ kind: 'shrine', look: 'gilt', height: KULEN_BUDDHA }), 0, top, bz);
+  solidBody(S, 0, top, bz, 0.9, KULEN_BUDDHA * 0.9, 0.7);
+  // Before him a low slab: candles, a small urn, lotus.
+  const sz = zc + 0.45;
+  fr.b.box(0, floor + 0.09, sz, 1.3, 0.18, 0.36, tone(PLINTH.ledge, 0, 0, 0, 921), 'mapStone', { src });
+  for (const s of [-1, 1]) {
+    offer(fr, S, L, 'candle', s * 0.32, floor + 0.18, sz + 0.02, { scale: 1.5 });
+    offer(fr, S, L, 'lotusVase', s * 0.54, floor + 0.18, sz - 0.02, { scale: 1.05, ry: s * 0.5 });
+  }
+  offer(fr, S, L, 'incense', 0, floor + 0.18, sz, { scale: 1.3, sticks: 5, smoke: 0.5 });
   L.halos.push({ at: fr.point(0, 1.2, zc + 1.2), size: 2.2 });
 
-  // The urn on the step, marigolds on the platform's front edge.
-  const uz = zc + 3.1;
-  fr.b.box(0, 0.5 + 0.18, uz, 0.36, 0.36, 0.36, BRASS[1], 'brass', { src, ry: 0.785 });
-  incenseBowl(fr, L, 0, 0.86, uz, { r: 0.16, h: 0.08, n: 5, stick: 0.5, seed: 931 });
-  garland(fr, [-1.25, 0.52, zc + 2.8], [1.25, 0.52, zc + 2.8], 0.02, 932, 0.08);
-  for (const s of [-1, 1]) {
-    fr.b.box(s * 0.9, 0.62, uz - 0.1, 0.14, 0.2, 0.14, BRASS[0], 'brass', { src });
-    lotusBud(fr, s * 0.9, 0.7, uz - 0.1, 0.3, 933 + s);
-  }
+  // The big urn on the step, lotus in vases beside it, marigolds along the platform's front edge.
+  const uz = zc + 3.05;
+  offer(fr, S, L, 'incense', 0, floor, uz, { scale: 2.4, sticks: 9, smoke: 1 });
+  for (const s of [-1, 1]) offer(fr, S, L, 'lotusVase', s * 0.85, floor, uz - 0.05, { scale: 1.5, ry: s * 0.3 });
+  marigolds(fr, S, [-1.25, floor - 0.03, zc + 2.78], [1.25, floor - 0.03, zc + 2.78], 0.04, 932);
+  marigolds(fr, S, [-0.75, floor + 1.95, zc + 2.03], [0.75, floor + 1.95, zc + 2.03], 0.28, 933);
 
   // A tree behind, ferns about.
   const tg = fr.grid(1, { seed: 940, mat: 'mapBark' });

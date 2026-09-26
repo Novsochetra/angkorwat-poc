@@ -3,9 +3,10 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { PATHS, type PlaceDef } from '../layout';
+import { buddhaStatue } from '../sacred/buddha';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { FLOWER_PINK, gardenTree, Mason, type Palette, prasat, redent, SHADOW, SIDE, tieredTop } from './_prasat';
-import { Frame, grassOverPad, Lamps } from './_prasatKit';
+import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
 
 /**
  * Phnom Kulen — "The Mountain Temple", in the manner of Phnom Bakheng: a
@@ -23,6 +24,12 @@ import { Frame, grassOverPad, Lamps } from './_prasatKit';
  * the foot of the stair. At night lamps burn up the stair and at the doors,
  * with one warm light on the tower's face. The tip stays under ~188 m: the
  * overview frame's top edge is at about 192 m over the pad.
+ *
+ * At the foot of the central stair pilgrims keep a small open-air shrine:
+ * a gilt Buddha on a low stone altar facing the way up, candles, incense,
+ * lotus and marigolds before him, a white tiered parasol either side of
+ * the stair (sacred/, `Shrines`; its worship spot is roam/_worship.ts
+ * `kulen-stair-foot`).
  */
 
 /** Weathered grey-brown sandstone and laterite, as at Bakheng. */
@@ -37,6 +44,8 @@ const TIERS = [14, 12, 10, 8, 6];
 const TIER_H = 3;
 /** The main tower: sanctuary width (m); the spire above it tops out ~20 m over the top tier. */
 const TOWER = { w: 10 };
+/** The stair-foot shrine's Buddha (height, m; the explorer's world is 1.4 × true size). */
+const BUDDHA = 1.2;
 
 export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
   const f = ctx.field;
@@ -177,6 +186,36 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
   lamps.strip(fr.world(0, top + 1.5, TW + 0.1), 1.6, 0.2, 2.6, 0, 1.1);
   for (const sx of [-1, 1]) lamps.add(fr.world(sx * 2.5, top + 1.2, doorZ + 0.6), 0.9);
 
+  // ── The shrine at the foot of the central stair ──────────────────────────
+  // A low laterite altar before the first step, narrower than the stair so
+  // the way up stays open either side: the gilt Buddha on its back half
+  // facing south, candles, incense and lotus on its front step, a marigold
+  // garland along it; a white parasol either side of the stair. The
+  // explorer kneels on the pad before it, 1.5 m clear.
+  const shrines = new Shrines(`landmark:${place.id}`);
+  {
+    const z0 = TIERS[0];
+    d.fill(-1, g, z0, 1, g + 0.5, z0 + 1.5, BK.base, { src });
+    d.fill(-1, g + 0.5, z0, 1, g + 1, z0 + 1, BK.light, { src });
+    const bz = z0 + 0.5;
+    shrines.place(fr, buddhaStatue({ kind: 'shrine', look: 'gilt', height: BUDDHA }), 0, g + 1, bz);
+    // (the whole altar, 4 m tall: the explorer walks round it, never up onto it)
+    shrines.solid(fr, 0, g + 2, z0 + 0.75, 2, 4, 1.5);
+    const step = g + 0.5;
+    const sz = z0 + 1.25;
+    shrines.offer(fr, 'incense', 0, step, sz, { scale: 1.6, sticks: 9, smoke: 1 });
+    for (const sx of [-1, 1]) {
+      shrines.offer(fr, 'candle', sx * 0.36, step, sz, { scale: 1.5 });
+      shrines.offer(fr, 'lotusVase', sx * 0.76, step, sz - 0.02, { ry: sx * 0.4, scale: 1.2 });
+      // (beside the stair's cheek walls, out of the way up: a hidden post keeps him off the pole)
+      shrines.offer(fr, 'parasol', sx * 3.6, g, z0 + 1, { height: 2.4 });
+      shrines.solid(fr, sx * 3.6, g + 1.2, z0 + 1, 0.2, 2.4, 0.2);
+    }
+    shrines.garland(fr, [-1, g + 0.44, z0 + 1.53], [1, g + 0.44, z0 + 1.53], 0.14, 151);
+    shrines.garland(fr, [-1, g + 0.96, z0 + 1.03], [1, g + 0.96, z0 + 1.03], 0.1, 152);
+    shrines.halo(fr, 0, g + 0.9, z0 + 1.4, 2.4);
+  }
+
   // ── Two small shrines at the foot of the stair ───────────────────────────
   for (const sx of [-1, 1]) {
     const cx = sx * (TIERS[0] + 3.5);
@@ -212,6 +251,7 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
   const object = new Group();
   object.name = `landmark:${place.id}`;
   object.add(buildVoxelMesh(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  object.add(shrines.build());
   object.add(lamps.addLight(fr.world(0, top - 2, TIERS[0] + 8), 1100, 60));
   const lampMesh = lamps.build(`landmark:${place.id}:lamps`);
   if (lampMesh) object.add(lampMesh);
@@ -221,6 +261,7 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
     blocks: world.boxes.length,
     update(fr: MapFrame) {
       lamps.update(fr.night, fr.t);
+      shrines.update(fr);
     },
   };
 }

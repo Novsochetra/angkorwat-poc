@@ -4,9 +4,11 @@ import { hash3, valueNoise3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
+import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { bondTone, courseShade, fillBox, tone } from './_faces';
-import { CANOPY, CandleGlow, chip, drapeRoot, FIG_BARK, growTree, LATERITE, limb, overgrow, pickOf, RUIN_STONE } from './_ruin';
+import { CANOPY, chip, drapeRoot, FIG_BARK, growTree, LATERITE, limb, overgrow, pickOf, RUIN_STONE } from './_ruin';
+import { AltarGlow, hiddenSolid, peoplesShrine, stepCloth, type ShrineSpec } from './_sanctuaryShrine';
 
 /**
  * Preah Khan — "The Silent Ruins": a ruined temple complex the jungle has
@@ -18,7 +20,10 @@ import { CANOPY, CandleGlow, chip, drapeRoot, FIG_BARK, growTree, LATERITE, limb
  * stands the central tower, its east side come down in a heap, a strangler
  * fig sitting on its top with pale roots gripping the walls down to the
  * ground; another fig grows out of the south gallery's roof. Moss on every
- * ledge. At night a faint candle glows in the gate's passage.
+ * ledge. In the gate's passage the people keep a small sandstone Buddha on a
+ * stone pedestal, candles and incense before him (`gateShrine`), the way
+ * through open either side of him; the explorer kneels before it
+ * (roam/_worship.ts). At night its candles glow.
  *
  * The road crosses the pad diagonally (south-east corner to the west side),
  * so the complex keeps north of it, reaching onto the flat mesa beyond the
@@ -40,6 +45,8 @@ const SMALL = { ci: 20, ck: -20 };
 const GATE = 8;
 /** Keep this far (m) from the road's centre line. */
 const CLEAR = 4;
+/** The gate Buddha's pedestal: foot, block, slab (sandstone). */
+const PEDESTAL = [0x8c7c68, 0x9b8a73, 0xa6947c];
 
 export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
   const b = new VoxelBuilder();
@@ -291,6 +298,20 @@ export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
   ] as const)
     if (roadDist(i, k) > CLEAR) growTree(g, i, 0, k, { trunk: 1, radius: r, seed: s, squash: 0.8 });
 
+  // The way from the gate to the tower's door kept by the people: no moss cushions or vines where
+  // the explorer walks and kneels by the Buddha, the tower's steps behind him swept to bare stone
+  // (the floor: the passage's row 0, the platform's first step, its top).
+  for (let k = ck + C; k <= k1 + 3; k++) {
+    const floor = k <= ck + P + 1 ? base - 1 : k === ck + P + 2 ? base - 2 : 0;
+    for (let i = GATE - 1; i <= GATE + 1; i++)
+      for (let j = 0; j <= 6; j++) {
+        const c = g.get(i, j, k);
+        if (!c || (c.mat !== 'mapGrass' && c.mat !== 'mapLeaf')) continue;
+        if (j > floor) g.delete(i, j, k);
+        else if (k <= k1 - 5) put(i, j, k, j === floor ? ledge(i, j, k) : tone(LATERITE, i, j, k, 17));
+      }
+  }
+
   g.commit();
 
   // Tumbled blocks, turned every which way, off the heap and the fallen corner.
@@ -319,25 +340,64 @@ export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
   // (a few metres of clearing round it, so the jungle does not swallow the galleries)
   ctx.field.occupy(place.x + i0 - 3, place.z + k0 - 4, place.x + i1 + 6, place.z + k1 + 6);
 
-  // ── Night: candles in the gate's passage ────────────────────────────────
-  const [dx, dy, dz] = [place.x + GATE + 0.5, place.y + 1.22, place.z + k1 - 1.5];
-  const glow = new CandleGlow(
-    [
-      [dx - 0.5, dy, dz],
-      [dx + 0.4, dy, dz - 0.3],
-      [dx + 0.1, dy, dz + 0.4],
-    ],
-    [{ at: [dx, dy + 1.1, dz + 1.2], size: 4 }],
-    { day: 0.1, night: 1.45, halo: 0.32, seed: 7 },
-  );
+  // ── The Buddha in the gate's passage; its candles glow at night ─────────
+  const sacred = new SacredSet('shrine');
+  const hidden = new VoxelBuilder();
+  const glow = new AltarGlow({ seed: 7, scale: 1.3, halo: { off: [0, 0.3, 0.5], size: 2.4 } });
+  gateShrine(b, hidden, sacred, glow, place);
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }), glow.object);
+  object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }), glow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
   return {
     name: `landmark:${place.id}`,
     object,
     blocks: b.boxes.length,
-    update: (f: MapFrame) => glow.update(f),
+    update: (f: MapFrame) => {
+      glow.update(f);
+      sacred.update(f);
+    },
   };
+}
+
+/**
+ * The people's Buddha in the gate's passage (3 m wide, at the pavilion's
+ * middle): a small sandstone Buddha, a saffron cloth over his shoulder, on
+ * an old sandstone block as wide as his throne, the way through open a
+ * metre either side; candles and incense on the step before him (a
+ * saffron cloth over it), lotus on the floor, a marigold garland. World
+ * metres (the gate's axis x = `place.x + GATE + 0.5`); `glow` lights its
+ * candles.
+ */
+function gateShrine(b: VoxelBuilder, hidden: VoxelBuilder, sacred: SacredSet, glow: AltarGlow, place: PlaceDef): void {
+  const src = traceSource();
+  const x = place.x + GATE + 0.5;
+  const F = place.y + 1;
+  const zb = place.z + GA.k1 - 2.45;
+  const top = F + 0.75;
+  const span = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, shade = 1) => b.span(x + x0, y0, zb + z0, x + x1, y1, zb + z1, color, 'mapStone', { src, shade });
+  // (an old block of paler sandstone than the ruin's walls, so it shows in the passage's shade)
+  span(-0.5, F, -0.48, 0.5, F + 0.12, 0.48, PEDESTAL[0], 0.92);
+  span(-0.45, F + 0.12, -0.43, 0.45, top - 0.08, 0.43, PEDESTAL[1]);
+  span(-0.49, top - 0.08, -0.47, 0.49, top, 0.47, PEDESTAL[2], 1.04);
+  span(-0.45, F, 0.47, 0.45, F + 0.3, 0.87, PEDESTAL[0], 0.97);
+  const stepTop = stepCloth(b, src, x, 0.42, zb + 0.49, zb + 0.87, F + 0.3, F, 0xc2701c);
+  // Hidden: the statue, the step and the lotus before it (he walks round it, never climbs up).
+  hidden.span(x - 0.5, F, zb - 0.5, x + 0.5, F + 3, zb + 1.2, 0x808080, 'mapStone', { src });
+
+  const low = stepTop - top;
+  const shrine: ShrineSpec = {
+    at: [x, top, zb],
+    buddha: { kind: 'shrine', look: 'sandstone', height: 1.15 },
+    scale: 1.3,
+    offerings: [
+      { kind: 'candle', at: [-0.27, low, 0.72] },
+      { kind: 'incense', at: [0, low, 0.66] },
+      { kind: 'candle', at: [0.27, low, 0.72] },
+      { kind: 'lotusVase', at: [-0.28, F - top, 1.05], turn: 0.8 },
+      { kind: 'lotusVase', at: [0.28, F - top, 1.05], turn: -0.8 },
+      { kind: 'marigold', at: [0, -0.02, 0.48], opts: { from: [-0.48, 0, 0], to: [0.48, 0, 0], sag: 0.1, seed: 2 } },
+    ],
+  };
+  peoplesShrine(sacred, shrine, glow);
 }

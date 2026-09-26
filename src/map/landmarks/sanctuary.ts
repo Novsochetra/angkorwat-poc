@@ -4,10 +4,12 @@ import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
+import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { buildLights } from './_sanctuaryGlow';
 import { Mason, PAD_Y } from './_sanctuaryMason';
 import { flight, galleryRing, gopura, steppedBase, terrace, tower, tree, vine, type GalleryStyle } from './_sanctuaryParts';
+import { AltarGlow, hiddenSolid, mainGateShrine } from './_sanctuaryShrine';
 import { buildPools, type Pool } from './_sanctuaryWater';
 
 /**
@@ -73,6 +75,11 @@ export function buildSanctuary(ctx: MapContext, place: PlaceDef): MapPart {
     backPorch: false,
     tower: { half: 5, top: 88, body: 2 },
   });
+  // The Buddha in its passage, the lit door moved back behind him.
+  const sacred = new SacredSet('sanctuary');
+  const hidden = new VoxelBuilder();
+  const glow = new AltarGlow({ seed: 5, scale: 1.3, halo: { off: [0, 0.25, 0.3], size: 2.6 } });
+  mainGateShrine(m, b, hidden, sacred, glow);
 
   // ── Level 2: the middle terrace and its gallery ──────────────────────────
   terrace(m, -35, -236, 35, -181, PAD_Y, L2_Y);
@@ -163,12 +170,13 @@ export function buildSanctuary(ctx: MapContext, place: PlaceDef): MapPart {
   const object = new Group();
   object.name = `landmark:${place.id}`;
   object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }));
-  const lights = buildLights(m.glows, [0, PAD_Y + 4, -164]);
+  // (the door's light hangs out over the forecourt, clear of the passage: the Buddha in it stays candle-lit)
+  const lights = buildLights(m.glows, [0, PAD_Y + 7, -158]);
   const pools = buildPools(
     POOLS.map((p) => ({ x0: p.x0 - 0.5, z0: p.z0 - 0.5, x1: p.x1 + 0.5, z1: p.z1 + 0.5 })),
     WATER_Y,
   );
-  object.add(lights.object, pools.mesh);
+  object.add(lights.object, pools.mesh, glow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
   return {
     name: `landmark:${place.id}`,
     object,
@@ -176,6 +184,8 @@ export function buildSanctuary(ctx: MapContext, place: PlaceDef): MapPart {
     update: (f: MapFrame) => {
       lights.update(f);
       pools.update(f);
+      glow.update(f);
+      sacred.update(f);
     },
   };
 }

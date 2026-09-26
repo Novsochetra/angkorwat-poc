@@ -21,6 +21,15 @@ const AWAY = 12;
 const TURN = 0.55;
 /** The temple bell at the first bow (gain of the 'enter' bell: soft). */
 const BELL = 0.3;
+/**
+ * The camera while he prays: it comes down behind him to about eye level
+ * and a little closer, looking the way he looks, so the Buddha shows over
+ * his shoulder (through a pagoda's door, under a lintel) instead of the
+ * roof from above. It eases there over the first `FRAME_FOR` s (after that
+ * the player may look round), and back to where it was when he gets up.
+ */
+const FRAME = { pitch: 0.04, distance: 4.5, rate: 2.2, back: 2.5 };
+const FRAME_FOR = 3;
 
 export interface Prayer {
   /** His hands are for the prayer (turning to the shrine, kneeling, getting up): the lantern, torch or flashlight is put away. */
@@ -86,6 +95,35 @@ export function createPrayer(d: PrayerDeps): Prayer {
   /** The spot of this prayer, and whether it was completed (told once: `onPrayed`). */
   let prayedAt: WorshipSpot | null = null;
   let told = false;
+  /** The player's camera before the prayer (to go back to), and how long it has been framed for the prayer (s). */
+  let before: { pitch: number; distance: number } | null = null;
+  let framed = 0;
+
+  /** Brings the camera down behind him while he turns and prays, and back after (see `FRAME`). */
+  function frame(ctx: RoamCtx, dt: number): void {
+    const cam = ctx.cam;
+    const busy = turn !== null || praying;
+    if (busy) {
+      before ??= { pitch: cam.pitch, distance: cam.distance };
+      framed += dt;
+      if (framed > FRAME_FOR) return;
+      const k = 1 - Math.exp(-FRAME.rate * dt);
+      const yaw = turn ? turn.from + turn.by : body.yaw;
+      cam.yaw += angleDiff(yaw, cam.yaw) * k;
+      cam.pitch += (FRAME.pitch - cam.pitch) * k;
+      cam.distance += (Math.min(before.distance, FRAME.distance) - cam.distance) * k;
+      return;
+    }
+    if (!before) return;
+    // (getting up: back to the player's own view)
+    const k = 1 - Math.exp(-FRAME.back * dt);
+    cam.pitch += (before.pitch - cam.pitch) * k;
+    cam.distance += (before.distance - cam.distance) * k;
+    if (Math.abs(before.pitch - cam.pitch) < 0.005 && Math.abs(before.distance - cam.distance) < 0.05) {
+      before = null;
+      framed = 0;
+    }
+  }
 
   /** The nearest spot within reach of his feet and in front of its shrine (used or not), or null. */
   function nearest(): WorshipSpot | null {
@@ -150,6 +188,7 @@ export function createPrayer(d: PrayerDeps): Prayer {
       return hatTaken;
     },
     step(ctx, dt, free) {
+      frame(ctx, dt);
       const p = body.pos;
       for (const s of used) if ((s.x - p.x) ** 2 + (s.z - p.z) ** 2 > AWAY * AWAY) used.delete(s);
       restore = Math.max(0, restore - dt);

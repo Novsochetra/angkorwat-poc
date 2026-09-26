@@ -6,8 +6,10 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { bondTone, courseShade, tone } from './_faces';
-import { FLOWER_ORANGE, FLOWER_PINK, gardenTree, GRASS, LEAF, Mason, type Palette, pick, stupa, type Tones } from './_prasat';
-import { grassOverPad, Lamps, Pools } from './_prasatKit';
+import { buddhaStatue } from '../sacred/buddha';
+import { stupa } from '../sacred/stupa';
+import { FLOWER_ORANGE, FLOWER_PINK, gardenTree, GRASS, LEAF, Mason, pick, type Tones } from './_prasat';
+import { Frame, grassOverPad, Lamps, Pools, Shrines } from './_prasatKit';
 import { giantTree } from './_prasatTrees';
 import { chip, overgrow } from './_ruin';
 
@@ -31,6 +33,12 @@ import { chip, overgrow } from './_ruin';
  * small stupas; south-west of the pad an open meadow with a lotus pool, so
  * the overview sees the temple. At night lanterns, the gate and a few
  * gallery windows glow.
+ *
+ * People still pray here: in the central tower's south door a small
+ * sanctum holds an old sandstone Buddha wrapped in a saffron cloth, on a
+ * stone altar with candles, incense and lotus; the garden's stupas are
+ * sculpted in weathered stone, offerings at the foot of the one by the
+ * road (sacred/, `Shrines`; the worship spots are roam/_worship.ts).
  *
  * Built on a 1 m grid whose cell (0, 0, 0) is the pad centre at pad height:
  * i = east, j = up, k = south. Where the eye lands the edges are finer, on
@@ -58,8 +66,6 @@ const TP = {
   /** Laterite of the platforms. */
   base: [0x5e4e44, 0x56473e, 0x66554a, 0x4f423a],
 };
-/** The same stone for the garden's stupas and pool rims (0.5 m masonry). */
-const GARDEN: Palette = { stone: TP.wall, light: TP.light, dark: TP.dark, base: TP.base };
 /** Bushes on the stone: the jungle's dark greens, and their sunlit tips. */
 const BUSH = [0x2f4f1f, 0x365a22, 0x29451a, 0x3c6226];
 const BUSH_TOP = [0x5a8a2e, 0x679a34, 0x4e7d29];
@@ -77,6 +83,10 @@ const GAL = { hi: 23, hk: 15 };
 const INNER = { hi: 17, hk: 11 };
 /** Keep this far (m) from the road's centre line. */
 const CLEAR = 4.5;
+/** The garden stupas: their height, and their stone plinths' side (m; their middles are in the garden code). */
+const STUPA = { height: 4.2, plinth: 3 };
+/** The Buddha in the central tower's south sanctum: his height (m, the explorer's world is 1.4 × true size). */
+const BUDDHA = 1.5;
 const ROAD = 'garden and mountain road';
 
 const mod = (a: number, n: number) => ((a % n) + n) % n;
@@ -125,6 +135,9 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
   const pools = new Pools();
   const src = traceSource();
   const at = (x: number, y: number, z: number): [number, number, number] => [place.x + x, gy + y, place.z + z];
+  // The sculpted shrines, placed in pad metres (x east, z south; y a world height).
+  const shrines = new Shrines(`landmark:${place.id}`);
+  const pad = new Frame(place.x, 0, place.z, 0);
 
   // ── The road: its centre line smoothed as the road part does it (road/line.ts), + on the temple's side ──
   const raw = f.paths.find((p) => p.name === ROAD)?.samples ?? [];
@@ -475,7 +488,7 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
       }
   }
   for (const [nx, nz] of FACES) frame(AX, CK, nx, nz, CH + 2.5, 1.5, UP, UP + 5);
-  windows.strip(at(AX + 0.5, UP + 2.5, CK + CH + 2.05), 2.6, 0.1, 4.6, 0, 1);
+  // (the south door opens into the Buddha's sanctum: see below)
   layer(AX, CK, UP + 8, CH + 1, 2, ledge, 1.04);
   tiers(AX, CK, UP + 9, [6, 5, 5, 4, 3], 2, 4, 0.5);
 
@@ -630,6 +643,50 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     for (const [x, y, z] of cells) if (!g.has(x, y + 1, z)) g.put(x, y, z, { color: pick(BUSH_TOP, hash3(x, y, z, 47)), mat: 'mapLeaf', shade: 1 });
   }
 
+  // ── The Buddha in the central tower's south door ─────────────────────────
+  // The door opens into a small dark sanctum (cut once the weathering is
+  // done, so it stays clean): an old sandstone Buddha wrapped in a saffron
+  // cloth on a two-step stone altar at its back, facing out; candles and
+  // lotus on the altar's step, incense, bay sei and a marigold garland
+  // before it. The explorer kneels in the doorway (roam/_worship.ts
+  // `terrace-central-door`), 1.5 m clear before him.
+  {
+    const [i0, i1, k0, k1] = [AX - 1, AX + 1, CK + 4, CK + 8];
+    for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) for (let j = UP; j <= UP + 4; j++) g.delete(i, j, k);
+    // Its walls, ceiling and back: dark stone, near black deep inside (the porch keeps its own).
+    for (let k = k0 - 1; k < k1; k++)
+      for (let j = UP - 1; j <= UP + 5; j++)
+        for (let i = i0 - 1; i <= i1 + 1; i++) {
+          if (!g.has(i, j, k) || (i >= i0 && i <= i1 && k >= k0 && j >= UP && j <= UP + 4)) continue;
+          const inmost = k < k0 + 2;
+          put(i, j, k, j === UP - 1 ? ledge(i, j, k) : inmost ? deep(i, j, k) : dark(i, j, k), j === UP - 1 ? 0.9 : 0.85);
+        }
+    const F = gy + UP;
+    const cx = AX + 0.5;
+    const back = k0;
+    // The altar: a bench the width of the sanctum's middle, and the seat on its back half.
+    d.fill(cx - 1, F, back + 0.5, cx + 1, F + 0.5, back + 2, TP.light, { src });
+    d.fill(cx - 1, F + 0.5, back + 0.5, cx + 1, F + 1, back + 1.5, TP.ledge, { src });
+    const seat = F + 1;
+    const bz = back + 1;
+    shrines.place(pad, buddhaStatue({ kind: 'shrine', look: 'sandstone', height: BUDDHA }), cx, seat, bz);
+    // (the explorer walks in up to the offerings, never onto the altar)
+    shrines.solid(pad, cx, F + 2.5, back + 1.35, 3, 5, 2.7);
+    // On the bench before him: candles, lotus in vases, a plate of fruit; a garland along its edge.
+    const step = F + 0.5;
+    const sz = back + 1.75;
+    for (const s of [-1, 1]) {
+      shrines.offer(pad, 'candle', cx + s * 0.36, step, sz, {});
+      shrines.offer(pad, 'lotusVase', cx + s * 0.76, step, sz - 0.02, { ry: s * 0.4 });
+    }
+    shrines.offer(pad, 'fruitPlate', cx, step, sz + 0.06, { scale: 1.1 });
+    shrines.garland(pad, [cx - 1, step - 0.06, back + 2.03], [cx + 1, step - 0.06, back + 2.03], 0.16, 141);
+    // On the floor: the incense urn in the middle, a bay sei either side.
+    shrines.offer(pad, 'incense', cx, F, back + 2.45, { scale: 2, sticks: 9, smoke: 1 });
+    for (const s of [-1, 1]) shrines.offer(pad, 'baySei', cx + s * 0.8, F, back + 2.35, { tiers: 3, scale: 1.2 });
+    shrines.halo(pad, cx, F + 1.1, back + 2, 2.6);
+  }
+
   // ── Gardens across the road: a raised lawn with a long pool, beds, stupas ──
   const onGarden = (x: number, z: number) => inPad(x, z) && road(x, z) <= -CLEAR;
   const pool = { x0: 8, x1: 22, z0: 9, z1: 19 };
@@ -650,20 +707,47 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     [pool.x1 - 0.5, pool.z1 - 0.5],
   ])
     lamps.add(at(x, 1.5, z), 0.45);
+  // The stupas' middles (pad m): the first by the road, the explorer kneels west of it.
+  const stupas = [
+    [4.5, 20.5],
+    [24.5, 5.5],
+    [24.5, 20.5],
+  ];
+  // (kept off the stupas' plinths and the lawn west of them, where he kneels)
+  const byStupa = (x: number, z: number) => stupas.some(([sx, sz]) => x > sx - STUPA.plinth / 2 - 4.5 && x < sx + STUPA.plinth / 2 + 0.5 && Math.abs(z + 0.25 - sz) < STUPA.plinth / 2 + 0.75);
   // Flower beds: pink and orange, sparse.
   for (let x = -ex; x < ex; x += 0.5)
     for (let z = -ez; z < ez; z += 0.5) {
-      const bed = onGarden(x, z) && (z > pool.z1 + 0.5 || x > pool.x1 + 0.5) && onGarden(x + 1.5, z) && onGarden(x, z + 1.5) && onGarden(x - 1.5, z);
+      const bed = onGarden(x, z) && (z > pool.z1 + 0.5 || x > pool.x1 + 0.5) && onGarden(x + 1.5, z) && onGarden(x, z + 1.5) && onGarden(x - 1.5, z) && !byStupa(x + 0.25, z);
       if (!bed || hash3(x * 2, z * 2, 5, 79) > 0.2) continue;
       const tones = hash3(x * 2, z * 2, 6, 79) < 0.6 ? FLOWER_PINK : FLOWER_ORANGE;
       b.box(x + 0.25, gy + 1.25, z + 0.25, 0.5, 0.5, 0.5, pick(tones, hash3(x * 2, z * 2, 7, 79)), 'mapLeaf', { src });
     }
-  for (const [x, z] of [
-    [4.5, 20.5],
-    [24.5, 5.5],
-    [24.5, 20.5],
-  ])
-    if (onGarden(x, z) && onGarden(x - 1.5, z - 1.5)) stupa(d, x, z, gy + 1, 4, src, GARDEN);
+  // The stupas: weathered stone, sculpted (sacred/stupa.ts), each on a low
+  // stone plinth, their fronts to the road; offerings at the foot of the
+  // one by the road, where the explorer kneels on the lawn west of it
+  // (roam/_worship.ts `terrace-garden-stupa`).
+  for (const [n, [x, z]] of stupas.entries()) {
+    const h = STUPA.plinth / 2;
+    if (!onGarden(x, z) || !onGarden(x - h, z - h)) continue;
+    const y = gy + 1;
+    d.fill(x - h, y, z - h, x + h, y + 0.5, z + h, TP.light, { src });
+    const west = -Math.PI / 2;
+    shrines.place(pad, stupa({ height: STUPA.height, look: 'stone' }), x, y + 0.5, z, west);
+    // (the whole plinth: the explorer keeps off it and its offerings)
+    shrines.solid(pad, x, y + 1.75, z, STUPA.plinth, 3.5, STUPA.plinth);
+    if (n > 0) continue;
+    // (on the plinth's west edge, toward the kneeling explorer)
+    const fx = x - h + 0.3;
+    const top = y + 0.5;
+    shrines.offer(pad, 'incense', fx, top, z, { ry: west, scale: 1.8, sticks: 9, smoke: 1 });
+    for (const s of [-1, 1]) {
+      shrines.offer(pad, 'candle', fx, top, z + s * 0.4, { ry: west, scale: 1.6 });
+      shrines.offer(pad, 'lotusVase', fx + 0.05, top, z + s * 0.85, { ry: west + s * 0.4, scale: 1.2 });
+    }
+    shrines.garland(pad, [x - 1.02, top + 0.5, z - 0.9], [x - 1.02, top + 0.5, z + 0.9], 0.25, 142);
+    shrines.halo(pad, fx, top + 0.6, z, 2.2);
+  }
   for (const [n, [x, z, h]] of [
     [0, 15, 8],
     [23, -1, 7],
@@ -746,6 +830,7 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
   const object = new Group();
   object.name = `landmark:${place.id}`;
   object.add(buildVoxelMesh(b, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  object.add(shrines.build());
   const water = pools.build(`landmark:${place.id}:pools`);
   if (water) object.add(water);
   object.add(lamps.addLight(at(AX + 0.5, 8, GK + 10), 800, 50));
@@ -763,6 +848,7 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     update(fr: MapFrame) {
       lamps.update(fr.night, fr.t);
       windows.update(fr.night, fr.t);
+      shrines.update(fr);
     },
   };
 }
