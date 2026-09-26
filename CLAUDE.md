@@ -66,6 +66,16 @@ and day/night. Code in `src/map/`; the guide for its parts (API, budgets,
 checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 `assets/world-map-selection-screen/` and `assets/2B06F1FD-531A-4ED7-9C2E-7044E141F122.PNG`.
 
+- Search and share: the words are in `index.html`'s head; the address
+  (`SITE_URL` in `.env`), share picture, JSON-LD, `robots.txt` and
+  `sitemap.xml` come from `src/seo/vitePlugin.ts`. The share picture
+  `public/og-night.jpg` is the map at night with its pin cards: a JPEG,
+  1200×630, under 600 KB (WhatsApp shows no bigger picture), with no dev
+  buttons. A new night shot without the cards: `SHOT_W=1200 SHOT_H=630 SHOT_OUT=public npm run shots -- og-night="@index.html?shot=1&night=1&ui=0&graphics=high"`,
+  then `sips -s format jpeg -s formatOptions 82 public/og-night.png --out public/og-night.jpg`
+  and delete the PNG. The tab icon `public/favicon.svg` is the loading screen's temple.
+  The map's bug report (B) and block look panel (K) are on the dev server
+  only: a build shows neither.
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
 - Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
   the settings). The word list is `src/map/ui/lang.ts`; place texts are in

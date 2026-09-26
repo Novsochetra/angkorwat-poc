@@ -451,7 +451,9 @@ function step(t: number, dt: number): void {
 }
 
 // ── Tools: bug reports (B) and block look panel (K) ────────────────────────
-const feedback = shot
+// (dev server only: reports are saved through it, and a deployed map shows no tools)
+const devTools = import.meta.env.DEV && !shot;
+const feedback = !devTools
   ? null
   : new FeedbackTool({
       renderer,
@@ -479,7 +481,7 @@ const feedback = shot
         return q;
       },
     });
-if (!shot) installLookPanel({ viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }), pickables: () => parts.map((p) => p.object), scene, renderer });
+if (devTools) installLookPanel({ viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }), pickables: () => parts.map((p) => p.object), scene, renderer });
 
 // ── Start ───────────────────────────────────────────────────────────────────
 const focus = asPlace(params.get('focus'));

@@ -1,11 +1,16 @@
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import { feedbackPlugin } from './src/feedback/vitePlugin.ts';
+import { seoPlugin } from './src/seo/vitePlugin.ts';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
-  // In-game bug reports (B) are saved to feedback/ through the dev server.
-  plugins: [feedbackPlugin()],
+  plugins: [
+    // In-game bug reports (B) are saved to feedback/ through the dev server.
+    feedbackPlugin(),
+    // Search and share tags for the world map (SITE_URL in .env: the site's address).
+    seoPlugin(loadEnv(mode, import.meta.dirname, '').SITE_URL),
+  ],
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
@@ -20,4 +25,4 @@ export default defineConfig({
     },
   },
   server: { host: true },
-});
+}));
