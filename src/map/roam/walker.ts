@@ -25,6 +25,8 @@ const STAIR = 1.1;
 const DROP = 1.1;
 /** In the air, a ledge this far above the feet is still caught (m). */
 const AIR_UP = 0.9;
+/** Stone whose underside is this share of his height over his feet is a lintel or a roof, not a step to hop onto: he walks on under it. */
+const LINTEL = 0.75;
 /** Walk and run pace over the true-size speeds (the map is big). */
 const PACE = 1.6;
 /** A jump pressed this long before landing still happens; after walking off an edge it still works this long (s). */
@@ -78,7 +80,12 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
 
   /** Where feet at `y` would stand at (x, z) with `up` of step, or NaN (walls; the land only without a walk map). */
   const standAt = (w: RoamWorld, x: number, z: number, y: number, up: number, h: number): number => {
-    if (w.standAt) return w.standAt(x, z, y, up, h);
+    if (w.standAt) {
+      const g = w.standAt(x, z, y, up, h);
+      // (a lintel over the way on, too tall to hop onto, is not a wall: he walks
+      // under it onto the floor below, e.g. down the last stair step out of Ta Prohm's sanctum)
+      return Number.isNaN(g) && up > LINTEL * h ? w.standAt(x, z, y, LINTEL * h, h) : g;
+    }
     const g = w.groundAt(x, z);
     return g > y + up ? NaN : g;
   };

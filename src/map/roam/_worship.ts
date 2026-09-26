@@ -41,10 +41,11 @@ export const WORSHIP: WorshipSpot[] = [
   // `gateShrine`, at (−79.5, −40.45)), the central tower's doorway beyond
   // him; knelt in the passage (25).
   { id: 'shrine-gate-candles', place: 'shrine', x: -79.5, y: 25, z: -36.6, fx: -79.5, fz: -40.45 },
-  // Ta Prohm: the sandstone Buddha in the central tower's south sanctum
-  // (terrace.ts: on its altar at (183.5, −159), glowing at night), knelt in
-  // the doorway at the top of the stair up from the gate (40).
-  { id: 'terrace-central-door', place: 'terrace', x: 183.5, y: 40, z: -155.3, fx: 183.5, fz: -159 },
+  // Ta Prohm: the sandstone Buddha at the walled-up back of the gate's
+  // passage (terrace.ts: on its altar at (183.5, −149), glowing at night),
+  // knelt in the passage, the open terrace before the gate a step behind
+  // him (36).
+  { id: 'terrace-gate', place: 'terrace', x: 183.5, y: 36, z: -145.8, fx: 183.5, fz: -149 },
   // Ta Prohm: the garden stupa by the road, across from the temple
   // (terrace.ts: on its plinth at pad (4.5, 20.5) → (204.5, −119.5), its
   // offerings on the plinth's west edge); knelt on the lawn west of it (35).

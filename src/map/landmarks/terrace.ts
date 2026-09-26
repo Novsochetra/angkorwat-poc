@@ -34,9 +34,9 @@ import { chip, overgrow } from './_ruin';
  * the overview sees the temple. At night lanterns, the gate and a few
  * gallery windows glow.
  *
- * People still pray here: in the central tower's south door a small
- * sanctum holds an old sandstone Buddha wrapped in a saffron cloth, on a
- * stone altar with candles, incense and lotus; the garden's stupas are
+ * People still pray here: in the gate's passage an old sandstone Buddha
+ * wrapped in a saffron cloth sits on a stone altar with candles, incense
+ * and lotus (the passage is walled up behind him); the garden's stupas are
  * sculpted in weathered stone, offerings at the foot of the one by the
  * road (sacred/, `Shrines`; the worship spots are roam/_worship.ts).
  *
@@ -85,7 +85,7 @@ const INNER = { hi: 17, hk: 11 };
 const CLEAR = 4.5;
 /** The garden stupas: their height, and their stone plinths' side (m; their middles are in the garden code). */
 const STUPA = { height: 4.2, plinth: 3 };
-/** The Buddha in the central tower's south sanctum: his height (m, the explorer's world is 1.4 × true size). */
+/** The Buddha in the gate's passage: his height (m, the explorer's world is 1.4 × true size). */
 const BUDDHA = 1.5;
 const ROAD = 'garden and mountain road';
 
@@ -364,8 +364,8 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
       put(i, 1, k, deep(i, 1, k), 0.8);
     }
   for (let k = GK - 2; k <= GK + 2; k++) for (let j = 2; j <= 6; j++) for (const i of [AX - 2, AX + 2]) put(i, j, k, deep(i, j, k), 0.8);
-  // (a glow at its far end at night; by day a dark screen, so the passage reads as a deep door)
-  windows.strip(at(AX + 0.5, 3.5, GK - 1.5), 2.8, 0.1, 3, 0, 0.8);
+  // (a glow at its far end at night, behind the Buddha; by day a dark screen, so the passage reads as a deep door)
+  windows.strip(at(AX + 0.5, 3.5, GK - 0.94), 2.8, 0.1, 3, 0, 0.8);
   // Roof, a stepped pediment over the porch, and the gate's tower.
   for (let i = AX - 7; i <= AX + 7; i++) for (let k = GK - 3; k <= GK + 2; k++) put(i, 10, k, ledge(i, 10, k), 1.04);
   for (let i = AX - 5; i <= AX + 5; i++) for (let k = GK - 3; k <= GK + 2; k++) put(i, 11, k, roofTone(i, 11, k));
@@ -488,7 +488,6 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
       }
   }
   for (const [nx, nz] of FACES) frame(AX, CK, nx, nz, CH + 2.5, 1.5, UP, UP + 5);
-  // (the south door opens into the Buddha's sanctum: see below)
   layer(AX, CK, UP + 8, CH + 1, 2, ledge, 1.04);
   tiers(AX, CK, UP + 9, [6, 5, 5, 4, 3], 2, 4, 0.5);
 
@@ -643,34 +642,26 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     for (const [x, y, z] of cells) if (!g.has(x, y + 1, z)) g.put(x, y, z, { color: pick(BUSH_TOP, hash3(x, y, z, 47)), mat: 'mapLeaf', shade: 1 });
   }
 
-  // ── The Buddha in the central tower's south door ─────────────────────────
-  // The door opens into a small dark sanctum (cut once the weathering is
-  // done, so it stays clean): an old sandstone Buddha wrapped in a saffron
-  // cloth on a two-step stone altar at its back, facing out; candles and
-  // lotus on the altar's step, incense, bay sei and a marigold garland
-  // before it. The explorer kneels in the doorway (roam/_worship.ts
-  // `terrace-central-door`), 1.5 m clear before him.
+  // ── The Buddha in the gate's passage ─────────────────────────────────────
+  // The passage's low court end is walled up (the stair beyond and the
+  // court are out of reach), and before that wall (the dark screen behind
+  // him) an old sandstone Buddha wrapped in a saffron cloth sits on a
+  // two-step stone altar, facing out down the causeway; candles and lotus on
+  // the altar's step, incense, bay sei and a marigold garland before it. The
+  // explorer kneels in the passage, the open terrace a step behind him
+  // (roam/_worship.ts `terrace-gate`), 1.5 m clear before him.
   {
-    const [i0, i1, k0, k1] = [AX - 1, AX + 1, CK + 4, CK + 8];
-    for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) for (let j = UP; j <= UP + 4; j++) g.delete(i, j, k);
-    // Its walls, ceiling and back: dark stone, near black deep inside (the porch keeps its own).
-    for (let k = k0 - 1; k < k1; k++)
-      for (let j = UP - 1; j <= UP + 5; j++)
-        for (let i = i0 - 1; i <= i1 + 1; i++) {
-          if (!g.has(i, j, k) || (i >= i0 && i <= i1 && k >= k0 && j >= UP && j <= UP + 4)) continue;
-          const inmost = k < k0 + 2;
-          put(i, j, k, j === UP - 1 ? ledge(i, j, k) : inmost ? deep(i, j, k) : dark(i, j, k), j === UP - 1 ? 0.9 : 0.85);
-        }
-    const F = gy + UP;
+    for (let i = AX - 1; i <= AX + 1; i++) for (let j = 2; j <= 4; j++) put(i, j, GK - 2, deep(i, j, GK - 2), 0.8);
+    const F = gy + 2;
     const cx = AX + 0.5;
-    const back = k0;
-    // The altar: a bench the width of the sanctum's middle, and the seat on its back half.
+    const back = GK - 1;
+    // The altar: a bench nearly the passage's width, and the seat on its back half.
     d.fill(cx - 1, F, back + 0.5, cx + 1, F + 0.5, back + 2, TP.light, { src });
     d.fill(cx - 1, F + 0.5, back + 0.5, cx + 1, F + 1, back + 1.5, TP.ledge, { src });
     const seat = F + 1;
     const bz = back + 1;
     shrines.place(pad, buddhaStatue({ kind: 'shrine', look: 'sandstone', height: BUDDHA }), cx, seat, bz);
-    // (the explorer walks in up to the offerings, never onto the altar)
+    // (the explorer walks in up to the offerings, never onto the altar nor round it)
     shrines.solid(pad, cx, F + 2.5, back + 1.35, 3, 5, 2.7);
     // On the bench before him: candles, lotus in vases, a plate of fruit; a garland along its edge.
     const step = F + 0.5;
