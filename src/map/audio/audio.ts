@@ -153,6 +153,12 @@ export function createMapAudio(): MapAudio {
     }
   }
 
+  /**
+   * Hidden: hush, then suspend. Shown again: resume. A phone (iOS most of
+   * all, its context "interrupted") often refuses a resume outside a
+   * gesture, so the next gestures try again until it runs; the hush lifts
+   * when it runs, whichever way it got there (`onRunning`).
+   */
   function onVisibility(): void {
     if (!engine || !ctx) return;
     clearTimeout(suspendTimer);
@@ -160,21 +166,39 @@ export function createMapAudio(): MapAudio {
       engine.hush(true);
       const c = ctx;
       suspendTimer = window.setTimeout(() => void c.suspend().catch(() => {}), 400);
-    } else {
-      void ctx.resume().then(() => {
-        engine?.hush(false);
-        pump();
-      }, () => {});
+    } else if (ctx.state === 'running') onRunning();
+    else {
+      resumeOnGesture();
+      void ctx.resume().catch(() => {});
     }
   }
 
-  /** If the browser still holds the sound back, try again on the next gesture. */
+  /** The context runs (again) with the page shown: lift the hush and fill the schedule. */
+  function onRunning(): void {
+    if (!engine || !ctx || ctx.state !== 'running' || hidden()) return;
+    engine.hush(false);
+    pump();
+  }
+
+  /** Gestures that let a browser start sound (iOS: a touch's end, not its start). */
+  const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
+  let waiting = false;
+  /** If the browser still holds the sound back, try again on each gesture until it runs. */
   function resumeOnGesture(): void {
+    if (waiting) return;
+    waiting = true;
     const again = () => {
-      if (!ctx || ctx.state === 'running') return;
-      void ctx.resume().then(pump, () => {});
+      if (!ctx || ctx.state === 'running' || hidden()) {
+        if (!ctx || ctx.state === 'running') stop();
+        return;
+      }
+      void ctx.resume().then(onRunning, () => {});
     };
-    for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, again, { once: true, capture: true });
+    const stop = () => {
+      waiting = false;
+      for (const ev of GESTURES) removeEventListener(ev, again, { capture: true });
+    };
+    for (const ev of GESTURES) addEventListener(ev, again, { capture: true });
   }
 
   /** Hand the typewriter's strikes to the engine once cut; tried again a few times if it failed (`RETRY`). */
@@ -221,6 +245,9 @@ export function createMapAudio(): MapAudio {
           }
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
+          // (back from the page cache: the page may come back without a visibility change)
+          addEventListener('pageshow', onVisibility);
+          ctx.addEventListener('statechange', onRunning);
           if (ctx.state !== 'running') {
             resumeOnGesture();
             await ctx.resume();
