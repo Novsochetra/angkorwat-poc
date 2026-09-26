@@ -253,7 +253,7 @@ const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.na
 // ── Camera, sound, interface ────────────────────────────────────────────────
 const rig = new MapCameraRig(camera);
 rig.calm = settings.calm;
-const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, setVolumes() {}, play() {}, type() {}, duck() {}, roam() {}, call() {}, setWorld() {}, flight() {}, update() {} }));
+const audio: MapAudio = await safe('audio', async () => (await import('./audio/audio')).createMapAudio(), () => ({ started: false, async start() {}, onHeld() {}, wake() {}, setVolumes() {}, play() {}, type() {}, duck() {}, roam() {}, call() {}, setWorld() {}, flight() {}, update() {} }));
 audio.setVolumes(settings);
 audio.setWorld(field);
 
@@ -304,10 +304,12 @@ const handlers = {
   },
   onSound: (s: Parameters<MapAudio['play']>[0]) => audio.play(s),
   onFirstGesture: () => void audio.start(),
+  onWake: () => audio.wake(),
   onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
+audio.onHeld((held) => ui.setSoundHeld(held));
 
 // ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
 const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);

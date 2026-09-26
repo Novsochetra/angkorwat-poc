@@ -95,6 +95,9 @@ const WORDS = {
   // (on a touch screen: the stick of the touch controls, roam/touch.ts)
   easyFlyNoteTouch: { km: 'ខ្លែងហោះ និងបាឡុងរក្សាកម្ពស់៖ ទាញដងបញ្ជាមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ', en: 'Glider and balloon hold their height: pull the stick back to climb, push to dive' },
   mute: { km: 'បិទសំឡេង', en: 'Mute sound' },
+  // (back on the page, the browser still holds the sound: the card that asks for a tap, ui.ts)
+  soundHeld: { km: 'សំឡេងបានផ្អាក', en: 'The sound is paused' },
+  soundHeldNote: { km: 'ប៉ះទីនេះដើម្បីបើកសំឡេងវិញ', en: 'Tap here to turn it back on' },
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
   km: { km: 'គ.ម', en: 'km' },

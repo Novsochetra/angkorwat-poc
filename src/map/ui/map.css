@@ -1441,6 +1441,90 @@
   transition: opacity 0.2s, visibility 0s 0.2s;
 }
 
+/* ── Held sound (ui.ts `setSoundHeld`) ──────────────────────────────────────
+ * Back on the page, a phone may keep the sound off until a tap: a card in the
+ * middle asks for it. Its own layer, over the story (z-index 60) too. */
+
+.mu-wake-layer {
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.mu-wake {
+  display: flex;
+  align-items: center;
+  gap: max(12px, calc(16 * var(--px)));
+  max-width: 100%;
+  padding: max(14px, calc(18 * var(--px))) max(20px, calc(26 * var(--px))) max(14px, calc(18 * var(--px))) max(16px, calc(20 * var(--px)));
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px) scale(0.96);
+  transition: opacity 0.25s, transform 0.35s var(--mu-ease), visibility 0s 0.35s;
+  --mu-edge: var(--mu-gold-hi);
+}
+
+.mu-wake.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.25s, transform 0.35s var(--mu-ease), visibility 0s;
+}
+
+.mu-wake > .mu-bg {
+  background: var(--mu-panel-strong);
+}
+
+.mu-wake-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: max(40px, calc(48 * var(--px)));
+  height: max(40px, calc(48 * var(--px)));
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe07c, #f2ab2e);
+  color: #3a2608;
+  animation: mu-wake-pulse 1.6s ease-in-out infinite;
+}
+
+.mu-wake-icon .mu-icon {
+  width: 55%;
+  height: 55%;
+}
+
+@keyframes mu-wake-pulse {
+  50% {
+    box-shadow: 0 0 0 max(6px, calc(8 * var(--px))) rgba(255, 214, 120, 0.22);
+  }
+}
+
+.mu-wake-text {
+  font-size: max(16px, calc(18 * var(--px)));
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--mu-ink);
+}
+
+.mu-wake-text small {
+  display: block;
+  margin-top: 3px;
+  font-size: max(13px, calc(14 * var(--px)));
+  font-weight: 400;
+  color: var(--mu-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mu-wake-icon {
+    animation: none;
+  }
+}
+
 /* ── Fade to black ("Begin expedition") ─────────────────────────────────── */
 
 .mu-fade {

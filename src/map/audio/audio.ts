@@ -36,6 +36,14 @@ export interface MapAudio {
   /** Start (call from a user gesture: browsers keep sound off until one). */
   start(): Promise<void>;
   readonly started: boolean;
+  /**
+   * Back on the page, the browser still holds the sound (a phone most of
+   * all): `fn(true)` so a card can ask for the tap it needs, `fn(false)` once
+   * it plays again or the page is hidden.
+   */
+  onHeld(fn: (held: boolean) => void): void;
+  /** Try to play again (call from a gesture: the held card's button). */
+  wake(): void;
   /** Volumes 0‥1, one per slider (master multiplies the others). */
   setVolumes(v: Pick<MapSettings, VolumeKey>): void;
   play(s: UISound): void;
@@ -89,6 +97,8 @@ const EVERY = 250;
 const FADE_IN = 3;
 /** Recordings that failed to load are tried again after these waits (s): the network may be back. */
 const RETRY = [5, 20, 60];
+/** Back on the page and still held this long (ms): the card asks for a tap (`onHeld`). */
+const HELD_AFTER = 700;
 
 /**
  * Make the noise and insect buffers in idle moments, a millisecond at a
@@ -154,51 +164,117 @@ export function createMapAudio(): MapAudio {
   }
 
   /**
-   * Hidden: hush, then suspend. Shown again: resume. A phone (iOS most of
-   * all, its context "interrupted") often refuses a resume outside a
-   * gesture, so the next gestures try again until it runs; the hush lifts
-   * when it runs, whichever way it got there (`onRunning`).
+   * Hidden: hush, then suspend. Shown again: resume, then check the clock
+   * moves. A phone (iOS most of all) may refuse the resume outside a
+   * gesture, or say "running" with a clock that stands still and no sound
+   * out. Either way the sound is `stale`: a card asks for a tap (`onHeld`),
+   * and the next gesture drops the old context for a fresh one (`build`),
+   * which a gesture always lets play.
    */
   function onVisibility(): void {
     if (!engine || !ctx) return;
     clearTimeout(suspendTimer);
+    clearTimeout(heldTimer);
     if (hidden()) {
+      setHeld(false);
       engine.hush(true);
       const c = ctx;
-      suspendTimer = window.setTimeout(() => void c.suspend().catch(() => {}), 400);
-    } else if (ctx.state === 'running') onRunning();
+      // (a phone may run this late, after the page is back: then it must not)
+      suspendTimer = window.setTimeout(() => {
+        if (hidden()) void c.suspend().catch(() => {});
+      }, 400);
+      return;
+    }
+    if (ctx.state === 'running') onRunning();
     else {
       resumeOnGesture();
       void ctx.resume().catch(() => {});
     }
+    const c = ctx;
+    const t0 = c.currentTime;
+    // (a browser that lets it play again does so at once: no card for it)
+    heldTimer = window.setTimeout(() => {
+      if (c !== ctx || hidden()) return;
+      const moved = c.currentTime - t0;
+      if (c.state === 'running' && moved > HELD_AFTER / 4000) return;
+      console.info(`[map] sound held after the page came back (${c.state}, clock moved ${moved.toFixed(2)} s): a tap starts it fresh`);
+      stale = true;
+      resumeOnGesture();
+      if (volumes.master > 0) setHeld(true);
+    }, HELD_AFTER);
+  }
+
+  const heldFns: ((held: boolean) => void)[] = [];
+  let held = false;
+  let heldTimer = 0;
+  /** The context stopped working while the page was away: the next gesture builds a fresh one. */
+  let stale = false;
+  function setHeld(v: boolean): void {
+    if (v === held) return;
+    held = v;
+    for (const fn of heldFns) fn(v);
   }
 
   /** The context runs (again) with the page shown: lift the hush and fill the schedule. */
   function onRunning(): void {
     if (!engine || !ctx || ctx.state !== 'running' || hidden()) return;
+    // (a stale context may say "running" and still be silent: the card stays)
+    if (!stale) setHeld(false);
     engine.hush(false);
     pump();
+  }
+
+  /** A gesture (or the held card's button): a fresh context if the old one is stale, then resume. */
+  function wake(): void {
+    if (!ctx || hidden()) return;
+    if (stale) {
+      stale = false;
+      const old = ctx;
+      old.removeEventListener('statechange', onRunning);
+      build();
+      void old.close().catch(() => {});
+    }
+    if (ctx.state === 'running') onRunning();
+    else void ctx.resume().then(onRunning, () => {});
   }
 
   /** Gestures that let a browser start sound (iOS: a touch's end, not its start). */
   const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
   let waiting = false;
-  /** If the browser still holds the sound back, try again on each gesture until it runs. */
+  /** If the browser still holds the sound back, try again on each gesture until it plays. */
   function resumeOnGesture(): void {
     if (waiting) return;
     waiting = true;
     const again = () => {
-      if (!ctx || ctx.state === 'running' || hidden()) {
-        if (!ctx || ctx.state === 'running') stop();
-        return;
-      }
-      void ctx.resume().then(onRunning, () => {});
+      if (ctx && ctx.state === 'running' && !stale) return stop();
+      wake();
     };
     const stop = () => {
       waiting = false;
       for (const ev of GESTURES) removeEventListener(ev, again, { capture: true });
     };
     for (const ev of GESTURES) addEventListener(ev, again, { capture: true });
+  }
+
+  /** A context and everything on it (inside a gesture: browsers start sound only then). */
+  function build(): void {
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    ctx = new AC({ latencyHint: 'balanced' });
+    engine = new SoundEngine(ctx);
+    fest = new FestivalSound(engine);
+    engine.setVolumes(volumes, true);
+    engine.setMix(mix, true);
+    engine.duck(ducked, true);
+    if (world) engine.setWorld(world);
+    if (heard) engine.listen(ears, true);
+    engine.fadeIn(FADE_IN);
+    // The recorded footsteps (most often cut already, in idle time; synthesized steps until they are ready).
+    if (!still) {
+      loadSteps(engine, ctx);
+      loadStrikes(engine, ctx);
+    }
+    ctx.addEventListener('statechange', onRunning);
   }
 
   /** Hand the typewriter's strikes to the engine once cut; tried again a few times if it failed (`RETRY`). */
@@ -222,32 +298,23 @@ export function createMapAudio(): MapAudio {
       return live();
     },
 
+    onHeld(fn) {
+      heldFns.push(fn);
+    },
+
+    wake,
+
     start() {
       if (starting) return starting;
       starting = (async () => {
         try {
           // Made synchronously, inside the user's gesture.
-          const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-          if (!AC) return;
-          ctx = new AC({ latencyHint: 'balanced' });
-          engine = new SoundEngine(ctx);
-          fest = new FestivalSound(engine);
-          engine.setVolumes(volumes, true);
-          engine.setMix(mix, true);
-          engine.duck(ducked, true);
-          if (world) engine.setWorld(world);
-          if (heard) engine.listen(ears, true);
-          engine.fadeIn(FADE_IN);
-          // The recorded footsteps (most often cut already, in idle time; synthesized steps until they are ready).
-          if (!still) {
-            loadSteps(engine, ctx);
-            loadStrikes(engine, ctx);
-          }
+          build();
+          if (!ctx) return;
           window.setInterval(pump, EVERY);
           document.addEventListener('visibilitychange', onVisibility);
           // (back from the page cache: the page may come back without a visibility change)
           addEventListener('pageshow', onVisibility);
-          ctx.addEventListener('statechange', onRunning);
           if (ctx.state !== 'running') {
             resumeOnGesture();
             await ctx.resume();

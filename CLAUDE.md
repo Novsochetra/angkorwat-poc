@@ -122,6 +122,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   glider ramp).
 - Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
+  Back on the page, a phone may hold the sound until a tap: a card in the
+  middle asks for it (`onHeld` in `audio/audio.ts`; `uistate=held` in shots).
 - Graphics is a setting (auto, low, medium, high, max: what each draws is in
   `src/map/graphics.ts`; it changes live); add `graphics=<level>` to a shot
   (auto is medium in shots), `phone=1` to act as a phone (auto starts on

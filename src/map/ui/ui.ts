@@ -28,7 +28,8 @@ import { framed, setSteppedVars } from './shape';
  * Shots (`?shot=1`) can show states: `uistate=` a comma list of
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
- * `settings`, `credits` (the settings' credits page), `muted`, `begin` (the fade to black), `roam` (the interface
+ * `settings`, `credits` (the settings' credits page), `muted`, `held` (the
+ * held-sound card), `begin` (the fade to black), `roam` (the interface
  * while roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
@@ -43,6 +44,8 @@ export interface MapUIHandlers {
   onSound(s: UISound): void;
   /** The first click / key / touch on the page (sound may start now). */
   onFirstGesture(): void;
+  /** The held-sound card was tapped: try to play again. */
+  onWake(): void;
   /** "Our story" in the settings: show the story again (story/story.ts). */
   onStory(): void;
 }
@@ -73,6 +76,8 @@ export interface MapUI {
   setLang(l: Lang): void;
   /** The graphics level in use now (graphics.ts: Auto's pick, else the level chosen); Auto's note names it. */
   setGraphicsLevel(level: GraphicsLevel): void;
+  /** Back on the page, the browser still holds the sound: a card in the middle asks for a tap (audio.ts `onHeld`). */
+  setSoundHeld(held: boolean): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
@@ -331,6 +336,27 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   root.append(title, hint, pinsNav, info, corner, panel, fade, live);
 
+  // ── Held sound ───────────────────────────────────────────────────────────
+  // Back on the page, a phone may keep the sound off until a tap: a card in
+  // the middle asks for it. On its own layer over the story too (story.css).
+  const wakeLayer = el('div', 'map-ui mu-wake-layer');
+  setSteppedVars(wakeLayer);
+  const wakeBtn = framed(el('button', 'mu-wake', `
+    <span class="mu-wake-icon">${ICON.speaker}</span>
+    <span class="mu-wake-text"><span data-t="soundHeld"></span><small data-t="soundHeldNote"></small></span>`), 'lg', true);
+  wakeBtn.type = 'button';
+  wakeBtn.inert = true;
+  wakeLayer.append(wakeBtn);
+  document.body.append(wakeLayer);
+  // (it goes once the sound plays: audio.ts `onHeld`)
+  wakeBtn.addEventListener('click', () => h.onWake());
+  function setSoundHeld(on: boolean): void {
+    if (on === wakeBtn.classList.contains('is-on')) return;
+    wakeBtn.classList.toggle('is-on', on);
+    wakeBtn.inert = !on;
+    if (on) live.textContent = `${t('soundHeld')}. ${t('soundHeldNote')}`;
+  }
+
   // ── Words (lang.ts) ──────────────────────────────────────────────────────
   /**
    * The easy flying note names the glider's keys, or the stick of the touch
@@ -372,6 +398,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillCredits();
+    for (const e of wakeBtn.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillFlyNote();
     fillGraphicsNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
@@ -407,6 +434,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     // Interface scale: the art's size at 1672 × 941, never below 0.8 on a desktop (phones: own sizes in map.css).
     unit = innerWidth < 640 ? 0.74 : clamp(Math.min(innerWidth / ART.w, innerHeight / ART.h), 0.8, 1.3);
     root.style.setProperty('--u', unit.toFixed(3));
+    wakeLayer.style.setProperty('--u', unit.toFixed(3));
     for (const c of cards) {
       c.w = c.button.offsetWidth || c.w;
       c.h = c.button.offsetHeight || c.h;
@@ -879,6 +907,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'pressed' && c) c.button.classList.add('is-hover', 'is-press');
       if (k === 'selected' && c) applySelected(c.place.id);
       if (k === 'settings') toggleSettings(true, false);
+      if (k === 'held') setSoundHeld(true);
       if (k === 'credits') {
         toggleSettings(true, false);
         showCredits(true);
@@ -1073,6 +1102,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (Math.abs(n - night) < 0.004) return;
       night = n;
       root.style.setProperty('--mu-n', n.toFixed(3));
+      wakeLayer.style.setProperty('--mu-n', n.toFixed(3));
     },
     setRoaming,
     setLang(l) {
@@ -1083,5 +1113,6 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       graphicsLevel = level;
       fillGraphicsNote();
     },
+    setSoundHeld,
   };
 }
