@@ -5,8 +5,11 @@ import type { ExpressionName } from '../../character/parts/face';
 import { PHOTO_FOV, PhotoAlbum } from '../../game/Photos';
 import { BODY_UNIT_M } from '../../world/scale';
 import { PLACES, PLATEAUS } from '../layout';
-import type { RoamMode } from '../types';
-import { onLang, t, type WordKey } from '../ui/lang';
+import type { MapPart, RoamMode } from '../types';
+import { lang, onLang, t, type WordKey } from '../ui/lang';
+import { createJournal, type Journal } from './_book';
+import { SPECIES_BY_KIND } from './_bookData';
+import { attachBookUi, type AlbumTab, type BookUi } from './_bookUi';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
 
@@ -34,8 +37,8 @@ const SELFIE_BACK = [0.3, 0.75] as const;
 /** On the selfie stick the view is the phone's own lens (the stick holds it far enough out), and a little wider. */
 const STICK_BACK = 0.02;
 const STICK_FOV = 70;
-/** Modes he can take photos in: on foot, sitting in the boat (the paddle laid down), hanging under the hang glider (it flies straight on). */
-export const PHOTO_MODES: readonly RoamMode[] = ['walk', 'boat', 'hang'];
+/** Modes he can take photos in: on foot, sitting in the boat (the paddle laid down), hanging under the hang glider (it flies straight on), standing in the hot air balloon's basket (it floats on). */
+export const PHOTO_MODES: readonly RoamMode[] = ['walk', 'boat', 'hang', 'balloon'];
 /** Near plane while the phone's view is up (m): his arm comes closer than the map camera's 0.5 m. */
 const SELFIE_NEAR = 0.25;
 /** On the stick the phone keeps this far (m, true size) above the ground and the water, and short of a wall. */
@@ -117,9 +120,11 @@ export interface RoamPhoto {
   /** Right after the frame is drawn: take the photo asked for. */
   afterRender(): void;
   openAlbum(): void;
-  /** Esc in the album: one photo → all of them → closed. */
+  /** Esc in the album: one photo → all of them → closed (a book page → the book → closed). */
   albumBack(): void;
   closeAlbum(): void;
+  /** The nature book and the temple passport (roam/_book.ts): the album's other sections. */
+  readonly journal: Journal;
 }
 
 export interface PhotoDeps {
@@ -132,6 +137,8 @@ export interface PhotoDeps {
   toast(text: string): void;
   /** The view went through the lens or back (hide the roaming interface). */
   onFinder(on: boolean): void;
+  /** The map's parts: what is in a photo, for the nature book (their `subjects`). */
+  parts?: readonly MapPart[];
 }
 
 /**
@@ -167,6 +174,23 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
   let stick = true;
   const shot = { yaw: 0, pitch: 0, fov: PHOTO_FOV };
   const aim = new Vector3();
+  /** The view's camera as last placed (a photo is taken through it). */
+  let lensCam: PerspectiveCamera | null = null;
+
+  // The nature book and the temple passport (their pages and stamps, kept in this browser).
+  const journal = createJournal({
+    world: d.world,
+    parts: d.parts ?? [],
+    toast: (text) => d.toast(text),
+    name: (w) => ('kind' in w ? (SPECIES_BY_KIND.get(w.kind)?.name[lang()] ?? w.kind) : w.stamp.name[lang()]),
+    words: {
+      page: (names) => t('bkNew', { name: names }),
+      stamp: (name) => t('bkStamped', { name }),
+      lotus: (name) => t('bkLotus', { name }),
+    },
+  });
+  /** The album's tabs (Photos · Nature book · Passport), made with the album. */
+  let bookUi: BookUi | null = null;
 
   /** The album, made when first needed (its viewfinder, flash and print too). */
   function getAlbum(): PhotoAlbum {
@@ -177,6 +201,13 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       if (kind && view > 0.95) snap = true;
     };
     showCameraHint();
+    const panels = document.querySelectorAll<HTMLElement>('.photo-album .photo-panel');
+    const panel = panels[panels.length - 1];
+    if (panel) {
+      bookUi = attachBookUi(panel, journal, () => album?.closeAlbum());
+      // (the print in the corner opens its photo: the photos' section)
+      document.querySelector('.photo-print')?.addEventListener('click', () => bookUi?.setTab('photos'));
+    }
     return album;
   }
 
@@ -295,8 +326,9 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
         shot.yaw += input.lookYaw * k;
         shot.pitch = MathUtils.clamp(shot.pitch - input.lookPitch * k, -1.2, 1.3);
         shot.fov = MathUtils.clamp(shot.fov * (1 + input.zoom * 0.1), FOV_MIN, FOV_MAX);
-        // (on foot he turns to the shot; in the boat or the air he looks round from where he is)
-        if (d.mode() === 'walk') body.yaw += angleDiff(shot.yaw, body.yaw) * Math.min(1, 12 * dt);
+        // (on foot he turns to the shot; in the boat or the air he looks round from where he is,
+        // and so on foot when something holds his body: seated on the rope swing, _swingRide.ts)
+        if (d.mode() === 'walk' && !explorer.animator.posture) body.yaw += angleDiff(shot.yaw, body.yaw) * Math.min(1, 12 * dt);
         // Head and hands follow the shot.
         explorer.aimPoint = aim.set(Math.sin(shot.yaw) * Math.cos(shot.pitch), Math.sin(shot.pitch), Math.cos(shot.yaw) * Math.cos(shot.pitch)).multiplyScalar(30).add(eye(_v));
       } else if (kind === 'selfie') {
@@ -325,6 +357,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       return t(GESTURE_NAME[gesture]);
     },
     place(camera, pivot) {
+      lensCam = camera;
       const k = view * view * (3 - 2 * view);
       let fov = camera.fov;
       near ||= camera.near;
@@ -397,18 +430,33 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     afterRender() {
       if (!snap || !album) return;
       snap = false;
+      // (what is in it, for the nature book: before the album's flash and print)
+      // (in a selfie he stands in front of what is behind him)
+      const s = body.scale;
+      if (lensCam) journal.photographed(lensCam, d.canvas, last === 'selfie' ? { kind: 'visitor', x: body.pos.x, y: body.pos.y + 0.9 * s, z: body.pos.z, r: 0.75 * s } : null);
       album.capture(d.canvas, placeName(d.world, body.pos, d.mode()));
     },
     openAlbum() {
       getAlbum().openAlbum();
+      // (the section last looked at, up to date)
+      bookUi?.setTab(bookUi.tab);
     },
     albumBack() {
+      if (bookUi?.back()) return;
       album?.back();
     },
     closeAlbum() {
       album?.closeAlbum();
     },
+    journal,
   };
+  // Checks: `album=photos|book|passport` opens the album there (`album=book:<kind>`: that page).
+  const at = new URLSearchParams(location.search).get('album');
+  if (at) {
+    const [tab, page] = at.split(':');
+    api.openAlbum();
+    if (['photos', 'book', 'passport'].includes(tab)) (bookUi as BookUi | null)?.setTab(tab as AlbumTab, page as never);
+  }
   return api;
 }
 
@@ -418,7 +466,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
  * round him ("On the western cliffs"), else in the highlands.
  */
 export function placeName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
-  if (mode !== 'hang') return groundName(world, at, mode);
+  if (mode !== 'hang' && mode !== 'balloon') return groundName(world, at, mode);
   // Flying: over what is under him ("Above Angkor Wat", "Over the summit river", "Flying near Bayon").
   const n = groundName(world, at, 'walk');
   return n.replace(/^(At|On) /, (_, w) => (w === 'At' ? 'Above ' : 'Over ')).replace(/^By /, 'Over ').replace(/^Near /, 'Flying near ').replace(/^In the /, 'Over the ');

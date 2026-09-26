@@ -30,6 +30,8 @@ export const RAMPS = {
   pink: [0x9c4d63, 0xb85e76, 0xd07a90, 0xe199aa, 0xeeb4c1, 0xf6cdd6],
   orange: [0x9a3c1e, 0xb54d23, 0xcf652c, 0xe27d36, 0xee9a48, 0xf5b660],
   dry: [0x4f4426, 0x5f522c, 0x6f6131, 0x83723a, 0x928347, 0xa39456],
+  /** Bamboo: feathery, lighter and yellower than the broadleaf crowns. */
+  bamboo: [0x38552d, 0x4b6a30, 0x628534, 0x7b9d3b, 0x96b447, 0xb0c75a],
 } as const;
 export type RampName = keyof typeof RAMPS;
 const RAMP_LIST = Object.values(RAMPS) as readonly (readonly number[])[];
@@ -186,6 +188,8 @@ export interface Proto {
   r: number;
   /** Top (m above the ground). */
   h: number;
+  /** Bottom of the leaves (m above the ground): where the crown starts. */
+  low: number;
   src?: SourceTrace;
 }
 
@@ -289,6 +293,7 @@ export function finishProto(v: Vol, o: FinishOptions): Proto {
     boxes: o.boxes ?? [],
     r: o.r,
     h: o.h,
+    low: Number.isFinite(lo) ? lo * o.s : o.h,
     src: o.src,
   };
 }

@@ -9,20 +9,27 @@ import { buildSkyDome } from './sky/skyDome';
 import type { MapContext, MapFrame, MapPart } from './types';
 
 /**
- * Sky, sun and moon, lights and haze for both times of day (golden-hour
- * afternoon ↔ moonlit night, blended by `night`; the values are in
- * sky/palette.ts).
+ * Sky, sun and moon, lights and haze through the day (golden-hour afternoon
+ * → dusk → moonlit night → dawn, on `f.clock`; the moon's phase from `f.day`;
+ * the weather from `f.weather`; the values are in sky/palette.ts).
  *
  * - The sky dome (sky/skyDome.ts): gradient, the sun disc and the moon
- *   (its real face, sky/moon.ts) placed where the concept art has them, two
- *   layers of clouds drifting with the wind (on `f.drift`, so they stand
- *   still under "reduce motion"), stars.
+ *   (its real face and phase, sky/moon.ts) on their paths (where the concept
+ *   art has them in the afternoon and at midnight; the sun comes up behind
+ *   Angkor Wat at dawn), two layers of clouds drifting with the wind (on
+ *   `f.drift`, so they stand still under "reduce motion"), stars and now and
+ *   then a shooting star (sky/stars.ts).
  * - One key light (sun by day, moon by night) that casts every shadow of the
  *   map. Its direction is a cheat: it comes from the east-south-east and
  *   low (≈ 25° by day), so the faces toward the camera catch the warm light
- *   while the sun disc sits low in the north-east of the picture. `f.lightDir`
- *   is this direction.
- * - A hemisphere fill: cool sky light from above, warm bounce from below.
+ *   while the sun disc sits low in the north-east of the picture. It swings
+ *   and drops a little with the sun (and the moon) through the day. It turns
+ *   only on the frames the shadow map is drawn anyway (every third), so a
+ *   moving sun costs no extra shadow passes. `f.lightDir` is this direction.
+ *   Clouds and dawn make its shadows paler and softer (`shadow.intensity`,
+ *   `shadow.radius`: uniforms, no redraw).
+ * - A hemisphere fill: cool sky light from above, warm bounce from below; a
+ *   lightning flash floods it for a moment (no light is ever added).
  * - Haze (sky/haze.ts): three's fog chunks are replaced here, before any
  *   material compiles, with distance haze tinted towards the sun plus
  *   valley mist, so every material gets both.
@@ -108,29 +115,35 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     shadowDirty = true;
   }
 
-  // The shadow map is 4096² over ≈ 400 k blocks: draw it again only when
-  // the light turns, and every few frames for things that move.
+  // The shadow map is 4096² over ≈ 400 k blocks: it is drawn every third
+  // frame (for things that move), and the key light turns only on those
+  // frames, so a moving sun or moon adds no shadow pass (at 60 fps it turns
+  // 20 times a second, in steps too small to see).
   const shadows = ctx.renderer.shadowMap;
   shadows.autoUpdate = false;
   shadows.needsUpdate = true;
   let shadowDirty = true;
   let frames = 0;
+  let lastDrift = NaN;
 
   return {
     name: 'atmosphere',
     object,
     key,
     update(f: MapFrame) {
-      const s = updateSky(f.night);
-      f.lightDir.copy(s.keyDir);
+      const s = updateSky(f);
+      const redraw = ctx.shot || ++frames % 3 === 0;
+      if (redraw || shadowDirty) fitShadow(s.keyDir);
+      f.lightDir.copy(fitted);
 
       key.color.copy(s.key);
       key.intensity = s.keyIntensity;
+      key.shadow.intensity = s.shadow;
+      key.shadow.radius = s.shadowSoft;
       fill.color.copy(s.fillSky);
       fill.groundColor.copy(s.fillGround);
       fill.intensity = s.fillIntensity;
-      fitShadow(s.keyDir);
-      if (ctx.shot || shadowDirty || ++frames % 3 === 0) shadows.needsUpdate = true;
+      if (redraw || shadowDirty) shadows.needsUpdate = true;
       shadowDirty = false;
 
       fog.color.copy(s.haze);
@@ -146,7 +159,9 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
       HAZE.mist.set(f.drift, 1 / s.bankSize, s.mound);
       HAZE.mist.w = s.coverage;
 
-      sky.update(s, f.drift, f.camera.position);
+      // (under "reduce motion" the drift clock stands still while frames go by: no shooting stars then)
+      sky.update(s, f.drift, f.camera, f.dt > 0 && f.drift === lastDrift);
+      lastDrift = f.drift;
     },
   };
 }

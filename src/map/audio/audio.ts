@@ -1,6 +1,8 @@
+import { eventsNow } from '../events';
 import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
+import { FestivalSound } from './festival';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
 import { loadTypewriter, prefetchTypewriter, typewriterState, type TypewriterState } from './typewriter';
@@ -123,6 +125,8 @@ export function createMapAudio(): MapAudio {
   }
   let ctx: AudioContext | null = null;
   let engine: SoundEngine | null = null;
+  /** The festivals' drums, crowds and music (festival.ts), on the engine's buses. */
+  let fest: FestivalSound | null = null;
   let starting: Promise<void> | null = null;
   let suspendTimer = 0;
   /** Sound is running (not before start, not while the tab is hidden). */
@@ -143,6 +147,7 @@ export function createMapAudio(): MapAudio {
     if (!engine || !ctx || !live() || hidden()) return;
     try {
       engine.schedule(ctx.currentTime + AHEAD);
+      fest?.schedule(ctx.currentTime, ctx.currentTime + AHEAD);
     } catch (e) {
       console.warn('[map] audio schedule failed:', e);
     }
@@ -202,6 +207,7 @@ export function createMapAudio(): MapAudio {
           if (!AC) return;
           ctx = new AC({ latencyHint: 'balanced' });
           engine = new SoundEngine(ctx);
+          fest = new FestivalSound(engine);
           engine.setVolumes(volumes, true);
           engine.setMix(mix, true);
           engine.duck(ducked, true);
@@ -296,7 +302,11 @@ export function createMapAudio(): MapAudio {
     },
 
     update(f) {
+      // (the event clock: the temples' chant, drum and bells; worked out here too, so it runs without the animals)
+      const ev = eventsNow(f);
       mix.night = f.night;
+      // (the leaves over the roaming explorer, from the jungle animals part: the cicadas)
+      mix.canopy = f.canopy ?? 0;
       // The ears: the camera in the overview (also if roaming failed to load), the explorer's head while roaming;
       // left and right are the camera's.
       const at = f.roam === 'overview' ? f.camera.position : f.listener;
@@ -315,7 +325,11 @@ export function createMapAudio(): MapAudio {
       try {
         engine.setMix(mix);
         engine.listen(ears);
-        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0);
+        // (drops on the leaves only on foot under them: not in the balloon, the boat or on the glider)
+        engine.weather(f.weather, ears, f.roam !== 'overview', f.t, f.roam === 'walk' ? (f.canopy ?? 0) : 0);
+        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0, f.roamLevels.burner ?? 0);
+        fest?.update(ears);
+        engine.events(ev, f.t);
       } catch (e) {
         console.warn('[map] audio update failed:', e);
       }

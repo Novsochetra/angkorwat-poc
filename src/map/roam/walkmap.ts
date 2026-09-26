@@ -45,7 +45,7 @@ const SEE_THROUGH = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', '
 /** What a walk map holds: see `WalkMap`. */
 export type WalkMapKind = 'walk' | 'hard' | 'soft';
 /** Parts with nothing to stand on (or that move). */
-const SKIP_PARTS = new Set(['atmosphere', 'water', 'clouds', 'life', 'roam']);
+const SKIP_PARTS = new Set(['atmosphere', 'water', 'undergrowth', 'clouds', 'rain', 'rainbow', 'life', 'people', 'jungleFauna', 'paddies', 'festival', 'treasure', 'roam']);
 
 const MESH_BITS = 10;
 const INST_BITS = 22;
@@ -137,7 +137,8 @@ export class WalkMap {
       part.object.updateMatrixWorld(true);
       part.object.traverse((o) => {
         const mesh = o as InstancedMesh;
-        if (!mesh.isInstancedMesh || !mesh.userData.voxelShape || !mesh.count) return;
+        // (`userData.noWalk`: a moving piece of a solid part, e.g. the camps' swing seat)
+        if (!mesh.isInstancedMesh || !mesh.userData.voxelShape || !mesh.count || mesh.userData.noWalk) return;
         const mat = mesh.name.slice(mesh.name.lastIndexOf(':') + 1) as VoxelMaterialKey;
         const keep = kind === 'soft' ? SEE_THROUGH.has(mat) : !SOFT.has(mat) && !(kind === 'hard' && SEE_THROUGH.has(mat));
         if (!keep || (skip && isUnder(mesh, skip))) return;

@@ -3,7 +3,7 @@ import { OUTFITS, type AngkorExplorer, type OutfitName, type SelfieGesture } fro
 import type { HoldKind } from '../../character/Animator';
 import { ACTIONS, type ActionName } from '../../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
-import type { MapFrame, RoamMode } from '../types';
+import type { MapFrame, MapPart, RoamMode } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { createPrayer } from './_pray';
@@ -90,6 +90,8 @@ export interface ToolDeps {
   hud: RoamHud;
   controls: RoamControls;
   canvas: HTMLCanvasElement;
+  /** The map's parts (photos: what is in them, for the nature book). */
+  parts?: readonly MapPart[];
 }
 
 /**
@@ -141,6 +143,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     mode: () => mode,
     toast: (text) => hud.toast(text),
     onFinder: (on) => document.body.classList.toggle('roam-finder', on),
+    parts: d.parts,
   });
   const bar = createToolBar(hud.layer ?? document.body, {
     onTool: (tool) => useTool(tool, lastCtx),
@@ -150,7 +153,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     camera: () => explorer.currentOutfit.camera,
   });
   // (standing still at a shrine he kneels to pray: _pray.ts)
-  const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody() });
+  const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody(), onPrayed: (spot) => photo.journal.prayed(spot, body.pos) });
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -176,6 +179,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     if (mode !== 'walk' && !(device && PHOTO_MODES.includes(mode))) {
       if (mode === 'boat') hud.toast(t('rHandsPaddle'));
       else if (mode === 'hang') hud.toast(t('rHandsBar'));
+      else if (mode === 'balloon') hud.toast(t('rHandsBurner'));
       return;
     }
     if (device) {
@@ -404,6 +408,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         prayer.step(ctx, dt, !photo.kind && !photo.albumOpen);
         setHeld(wantHeld());
       }
+      // (the passport: a stamp for a temple or a jungle place he walks up to)
+      photo.journal.step(body.pos, m, body.grounded);
       // Flashlight: straight ahead, or at what the mouse points to.
       const held = explorer.currentOutfit.held === 'flashlight';
       if (!photo.kind) {
@@ -638,7 +644,8 @@ const row = (keys: string, what: WordKey) => `<span class="rtb-k">${keys}</span>
 const keyList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
-    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}</div>
+    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(mouse('rStill'), 'rPrayAt')}
     ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
@@ -673,7 +680,7 @@ function injectStyle(): void {
   style.textContent = `
     .rtb-wrap { position: absolute; left: 50%; bottom: calc(18 * var(--px)); transform: translateX(-50%); display: grid; justify-items: center;
       gap: calc(8 * var(--px)); opacity: 0; visibility: hidden; transition: opacity 0.5s, visibility 0s 0.5s; --rtb-shape: ${steppedShape(6, 3)}; --rtb-ring: ${steppedRing(6, 3, 1.5)}; }
-    .rh[data-mode='walk'] .rtb-wrap, .rh[data-mode='boat'] .rtb-wrap, .rh[data-mode='hang'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
+    .rh[data-mode='walk'] .rtb-wrap, .rh[data-mode='boat'] .rtb-wrap, .rh[data-mode='hang'] .rtb-wrap, .rh[data-mode='balloon'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
     /* (in the boat and on the glider the hands are busy: only the camera and the phone) */
     .rh:not([data-mode='walk']) .rtb-slot:is([data-tool='lantern'], [data-tool='torch'], [data-tool='flashlight']) { opacity: 0.32; }
     .rtb { display: flex; align-items: center; gap: calc(4 * var(--px)); padding: calc(5 * var(--px)); pointer-events: auto; grid-row: 2;
@@ -700,7 +707,7 @@ function injectStyle(): void {
     .rtb-sep { width: 1px; height: calc(24 * var(--px)); margin: 0 calc(3 * var(--px)); background: var(--mu-line); }
     .rtb-more { width: calc(28 * var(--px)); }
     /* (the key help at the bottom left stops short of the bar) */
-    .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang']) .rh-help { max-width: calc(50% - 210 * var(--px) - 24px); }
+    .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang'], [data-mode='balloon']) .rh-help { max-width: calc(50% - 210 * var(--px) - 24px); }
     .rtb-q { font: 700 calc(15 * var(--px)) / 1 var(--mu-display); }
 
     /* All the keys (?): a small panel over the bar. */
@@ -736,7 +743,7 @@ function injectStyle(): void {
       .rtb-wrap { bottom: 10px; }
       .rtb-slot { width: 36px; height: 36px; }
       /* (no room beside the bar: the key help goes over it, as wide as the screen) */
-      .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang']) .rh-help { max-width: calc(100% - 20px); bottom: 62px; }
+      .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang'], [data-mode='balloon']) .rh-help { max-width: calc(100% - 20px); bottom: 62px; }
     }
     /* (a phone on its side: no room up the edge, so along the top) */
     @media (max-height: 500px) {

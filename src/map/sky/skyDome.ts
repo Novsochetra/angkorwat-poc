@@ -1,17 +1,29 @@
-import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry, Vector2, Vector3, Vector4 } from 'three';
+import { BackSide, Color, Mesh, ShaderMaterial, SphereGeometry, Vector2, Vector3, Vector4, type PerspectiveCamera } from 'three';
 import { HAZE_FUNCS, HAZE_PARS, hazeOwnUniforms, WIND } from './haze';
 import { moonTexture } from './moon';
 import { mistNoiseTexture } from './noise';
 import type { SkyState } from './palette';
+import { createMeteors, METEOR_GLSL } from './stars';
 
 /**
  * The sky: a dome that follows the camera. A gradient from the haze at the
  * horizon to lavender blue (day) or deep blue (night) up high, a broad warm
  * glow around the sun, the sun disc and the moon (sky/moon.ts: its real
  * face, kept under the bloom threshold so the seas read, with a bright rim
- * and halo that bloom), two layers of drifting clouds and, at night, stars.
- * At the horizon the sky is exactly the haze colour, so far land melts into
- * it; below the horizon it is the valley mist.
+ * and halo that bloom), two layers of drifting clouds and, at night, stars
+ * that twinkle and now and then a shooting star (sky/stars.ts). At the
+ * horizon the sky is exactly the haze colour, so far land melts into it;
+ * below the horizon it is the valley mist.
+ *
+ * The moon shows its phase (`SkyState.moonLight`): the sunlit part bright,
+ * a soft, slightly ragged terminator (crater rims catch the light first),
+ * and on the dark side the face still there, asleep in the faint blue
+ * earthshine (brightest when the moon is a thin crescent). Its rim and halo
+ * glow only as much as it is lit.
+ *
+ * Weather (`SkyState.cloud`, `flash`): cloud cover spreads the heaped clouds
+ * over the sky, closes a grey veil over it and hides the sun, moon and
+ * stars; a lightning flash lights the clouds from inside.
  *
  * Clouds: two layers on flat sheets over the land, seen from below (a
  * direction d meets them at s = d.xz / (d.y + 0.18): wide overhead, squeezed
@@ -30,7 +42,8 @@ import type { SkyState } from './palette';
  */
 export interface SkyDome {
   mesh: Mesh;
-  update(sky: SkyState, t: number, cameraPos: Vector3): void;
+  /** `still`: time stands still ("reduce motion"): no shooting stars. */
+  update(sky: SkyState, t: number, camera: PerspectiveCamera, still?: boolean): void;
 }
 
 /** Angular radius of the moon disc (rad). The concept art's is ≈ 0.024; a little bigger reads better. */
@@ -116,6 +129,10 @@ export function buildSkyDome(): SkyDome {
     uMoonDir: { value: new Vector3() },
     /** sun visibility, moon visibility, stars, glow strength */
     uAmounts: { value: new Vector4() },
+    /** The moon's sunlight in its disc frame (xyz: x right, y up, z toward us) and its lit share (w). */
+    uMoonLight: { value: new Vector4(0, 0, 1, 1) },
+    /** Weather: cloud cover, rain, lightning flash, unused. */
+    uWeather: { value: new Vector4() },
     uCloudLit: { value: new Color() },
     uCloudBody: { value: new Color() },
     /** Per lookup: where the texture has slid to (wrapped to 0‥1). */
@@ -123,6 +140,9 @@ export function buildSkyDome(): SkyDome {
     uTime: { value: 0 },
     uNoise: { value: mistNoiseTexture() },
     uMoonMap: { value: moonTexture() },
+    uMeteorFrom: { value: new Vector3(1, 0, 0) },
+    uMeteorTo: { value: new Vector3(0, 0, -1) },
+    uMeteor: { value: new Vector4() },
   };
   // The haze (the sky has no scene fog, so it gets its own fog colour and range).
   const haze = hazeOwnUniforms();
@@ -152,6 +172,8 @@ export function buildSkyDome(): SkyDome {
       uniform vec3 uSunDir;
       uniform vec3 uMoonDir;
       uniform vec4 uAmounts;
+      uniform vec4 uMoonLight;
+      uniform vec4 uWeather;
       uniform vec3 uCloudLit;
       uniform vec3 uCloudBody;
       uniform vec2 uCloudOff[${LOOKUPS.length}];
@@ -161,6 +183,7 @@ export function buildSkyDome(): SkyDome {
       varying vec3 vDir;
 
       ${LOOKUP_GLSL}
+      ${METEOR_GLSL}
 
       float hash13(vec3 p) {
         p = fract(p * 0.1031);
@@ -223,6 +246,8 @@ export function buildSkyDome(): SkyDome {
             col += vec3(0.85, 0.9, 1.0) * b * uAmounts.z * smoothstep(0.02, 0.2, e);
           }
         }
+        // Now and then a shooting star.
+        if (uMeteor.z > 0.0 && e > 0.0) col += meteorAt(d) * smoothstep(0.0, 0.03, e);
 
         // Sun disc.
         if (sunA > 0.001) {
@@ -233,7 +258,8 @@ export function buildSkyDome(): SkyDome {
         }
         // Moon: its face (seas and highlands, a slightly darker limb) under the
         // bloom threshold, so it reads; a bright rim just outside that blooms,
-        // and a soft blue halo.
+        // and a soft blue halo. Its phase: lit where the sun reaches the sphere,
+        // the face asleep in earthshine on the dark side.
         float moonMu = max(dot(d, uMoonDir), 0.0);
         if (moonA > 0.001 && moonMu > 0.99) {
           vec2 q = discUV(d, uMoonDir, ${MOON_RADIUS});
@@ -241,11 +267,21 @@ export function buildSkyDome(): SkyDome {
           float aa = clamp(fwidth(r) * 1.5, 0.01, 0.2);
           float disc = 1.0 - smoothstep(1.0 - aa, 1.0, r);
           vec4 face = texture2D(uMoonMap, q * 0.5 + 0.5);
-          vec3 moon = face.r * mix(vec3(0.84, 0.93, 1.06), vec3(0.58, 0.8, 1.2), face.g) * (1.0 - 0.22 * pow(r, 4.0));
-          // (the sky's own light lies in front of it: a pale disc by day, bright at night)
-          col = mix(col, col * 0.4 + moon, disc * moonA);
+          vec3 albedo = face.r * mix(vec3(0.84, 0.93, 1.06), vec3(0.58, 0.8, 1.2), face.g);
+          // The sphere here (x right, y up, z toward us) against the sunlight; near the
+          // terminator crater rims catch it first and floors stay dark (face.b: relief).
+          vec3 L = uMoonLight.xyz;
+          vec3 nrm = vec3(q, sqrt(max(1.0 - dot(q, q), 0.0)));
+          float lit = smoothstep(-0.05, 0.1, dot(nrm, L) + (face.b - 0.5) * 0.3 * (1.0 - L.z * L.z));
+          float earth = 0.03 + 0.06 * (1.0 - uMoonLight.w) * (1.0 - uMoonLight.w);
+          vec3 moon = albedo * ((1.0 - 0.22 * pow(r, 4.0)) * lit + vec3(0.5, 0.66, 1.0) * earth * (1.0 - lit));
+          // (the sky's own light lies in front of it: a pale disc by day, bright at night; the dark side hides the sky behind)
+          col = mix(col, col * mix(0.8, 0.4, lit) + moon, disc * moonA);
           float past = max(r - 1.0, 0.0);
-          col += (vec3(0.8, 0.9, 1.0) * 1.5 * exp(-past / 0.05) * moonA + vec3(0.16, 0.32, 0.8) * 0.35 * exp(-past * 2.4)) * (1.0 - disc) * moonA;
+          // (the rim only where the limb is lit; the halo as bright as the moon is full)
+          float limb = smoothstep(-0.05, 0.25, dot(vec3(q / max(r, 1e-4) * 0.97, 0.243), L));
+          float halo = 0.2 + 0.8 * uMoonLight.w;
+          col += (vec3(0.8, 0.9, 1.0) * 1.5 * exp(-past / 0.05) * limb * moonA + vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-past * 2.4)) * (1.0 - disc) * moonA;
         }
 
         // Clouds.
@@ -267,6 +303,12 @@ export function buildSkyDome(): SkyDome {
           float ha = smoothstep(0.56, 0.82, hn) * (0.34 - 0.14 * moonA) * fade;
           vec3 hc = mix(uCloudBody, uCloudLit, 0.3 + 0.6 * toward) + lining * 0.6;
           col = mix(col, mix(hc, haze, horizon * 0.8), ha);
+          // Overcast: a grey sheet closes over the sky (under the heaps, thinning into the haze low down).
+          float overcast = uWeather.x;
+          if (overcast > 0.0) {
+            vec3 sheet = mix(uCloudBody, uCloudLit, 0.2 + 0.35 * toward) + lining * 0.3;
+            col = mix(col, mix(sheet, haze, horizon * 0.7), overcast * 0.8 * smoothstep(0.004, 0.08, e));
+          }
 
           // Low heaps: a slab of cloud (top 1.35 × as high as the base). Each
           // cloud is as tall as its density is over the threshold. A ray low
@@ -274,8 +316,8 @@ export function buildSkyDome(): SkyDome {
           // show heaped, lit tops over flat, darker bases; overhead we see
           // their undersides. Three steps up through the slab, nearest first.
           vec2 w = (texture2D(uNoise, CM0 * s + uCloudOff[0]).rg - 0.5) * 1.1;
-          float cover = texture2D(uNoise, CM4 * s + uCloudOff[4]).r;
-          float th = mix(0.65, 0.49, smoothstep(0.25, 0.75, cover)) + horizon * 0.05;
+          float cover = mix(texture2D(uNoise, CM4 * s + uCloudOff[4]).r, 1.0, overcast);
+          float th = mix(0.65, 0.49, smoothstep(0.25, 0.75, cover)) + horizon * 0.05 - overcast * 0.14;
           // Fine ragged detail (only matters overhead; far off it blurs away).
           float fine = (texture2D(uNoise, CM7 * s + uCloudOff[7]).b - 0.5) * 0.12;
           vec3 cc = vec3(0.0);
@@ -315,6 +357,7 @@ export function buildSkyDome(): SkyDome {
   mesh.renderOrder = 1000;
   mesh.frustumCulled = false;
 
+  const meteors = createMeteors();
   const travel = new Vector2();
   const at = new Vector2();
   const layerAt = new Map<Layer, Vector2>([
@@ -323,7 +366,8 @@ export function buildSkyDome(): SkyDome {
   ]);
   return {
     mesh,
-    update(sky, t, cameraPos) {
+    update(sky, t, camera, still = false) {
+      const cameraPos = camera.position;
       u.uZenith.value.copy(sky.zenith);
       u.uHorizon.value.copy(sky.horizon);
       u.uGlow.value.copy(sky.glow);
@@ -331,6 +375,12 @@ export function buildSkyDome(): SkyDome {
       u.uSunDir.value.copy(sky.sunDir);
       u.uMoonDir.value.copy(sky.moonDir);
       u.uAmounts.value.set(sky.sun, sky.moon, sky.stars, sky.glowStrength);
+      u.uMoonLight.value.set(sky.moonLight.x, sky.moonLight.y, sky.moonLight.z, sky.moonLit);
+      u.uWeather.value.set(sky.cloud, sky.rain, sky.flash, 0);
+      const m = meteors.update(t, camera, still ? 0 : sky.stars);
+      u.uMeteorFrom.value.copy(m.from);
+      u.uMeteorTo.value.copy(m.to);
+      u.uMeteor.value.copy(m.info);
       u.uCloudLit.value.copy(sky.cloudLit);
       u.uCloudBody.value.copy(sky.cloudBody);
       u.uTime.value = t;

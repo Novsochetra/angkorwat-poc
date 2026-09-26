@@ -57,4 +57,20 @@ export const WORSHIP: WorshipSpot[] = [
   // River Gate: the stupa by the second gate (rivergate.ts `stupa` at road
   // frame (cx − 6, −11) → (−54.97, 13.53)), knelt on its road side (grass over 8).
   { id: 'rivergate-stupa', place: 'rivergate', x: -53.01, y: 8.3, z: 16.43, fx: -54.97, fz: 13.53 },
+  // The floating village's pagoda (village/_pagoda.ts, `PAGODA` in
+  // village/_spots.ts): knelt on the porch before the open north door (floor
+  // 10, door at z 99), facing the golden Buddha on the altar inside (z 110.9).
+  { id: 'village-pagoda-door', place: null, x: -306, y: 10, z: 96.8, fx: -306, fz: 110.9 },
+  // The jungle's shrines (jungle/_ruinShrines.ts `KNEEL`, site space → map
+  // metres by each site's frame): on the flat ground of the clearing
+  // between its trail and its offerings, facing the statue.
+  // The forest Buddha on the back trail (throne at (−52, −312)), knelt on
+  // the stepping stones before his offering table (floor 10).
+  { id: 'jungle-forest-buddha', place: null, x: -52, y: 10, z: -306.9, fx: -52, fz: -312 },
+  // The whitewashed stupa by the lake, its urn of incense between him and it (8).
+  { id: 'jungle-lake-shrine', place: null, x: -438.07, y: 8, z: -69.8, fx: -439.44, fz: -65.67 },
+  // The stone shrine at the foot of Phnom Kulen, its little Buddha in the doorway (8).
+  { id: 'jungle-kulen-shrine', place: null, x: 268, y: 8, z: -236.65, fx: 268, fz: -242.2 },
+  // The spirit house by the village trail, on the grass before its post (8).
+  { id: 'jungle-spirit-house', place: null, x: -124.5, y: 8, z: 86.3, fx: -124.5, fz: 89.2 },
 ];

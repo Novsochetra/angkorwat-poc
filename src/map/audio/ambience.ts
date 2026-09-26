@@ -7,9 +7,12 @@ import type { SoundEngine } from './engine';
  * Always: wind in the trees (pink noise, band-passed, slow gusts; leaves
  * rustle on the strong ones). (The waterfalls and rivers are placed on the
  * map, on their own bus: water.ts.)
- * Day: sparse birds — whistles, chirp runs, trills, a distant cuckoo, a dove.
+ * Day: sparse birds — whistles, chirp runs, trills, a distant cuckoo, a dove;
+ * the cicadas' shimmering chorus in waves, loud under the jungle's canopy
+ * while roaming (`Cicadas`), fading at dusk; birds and cicadas hush in rain.
  * Night: crickets and a katydid (looping buffers, started only at night),
  * frogs now and then, an owl, softer wind.
+ * Muted (`idle`), the loops stop once silent.
  */
 
 /** Base levels (before the ambience volume). */
@@ -20,6 +23,8 @@ const LEVEL = {
   bird: 0.17,
   frog: 0.13,
   owl: 0.17,
+  /** The day's cicadas, under the canopy (Cicadas). */
+  cicada: 0.7,
 };
 
 /** A looping buffer that plays only while wanted (lets night layers cost nothing by day). */
@@ -65,6 +70,167 @@ class LoopLayer {
   }
 }
 
+/**
+ * The jungle's cicadas by day: a shimmering high drone that swells and
+ * fades in slow waves. A few layers, each a narrow band of noise at its own
+ * pitch, pulsed at its own rate (the buzz) and placed left or right, each
+ * swelling on its own; now and then one cicada nearer by winds up in a
+ * rising whine and dies away. `level` (Ambience.mix) follows the day and
+ * the leaves over the explorer (`MapFrame.canopy`): soft over the map,
+ * loud in the forest, gone at dusk. Its sources run only while heard.
+ */
+class Cicadas {
+  readonly level: GainNode;
+  private readonly ctx: BaseAudioContext;
+  private readonly rnd: Rng;
+  private readonly wet: AudioNode;
+  private readonly layers: { f: number; q: number; pulse: number; pan: number; gain: number; swell: GainNode | null; stop: (() => void) | null; next: number }[] = [
+    { f: 4800, q: 7, pulse: 112, pan: -0.5, gain: 1, swell: null, stop: null, next: 0 },
+    { f: 6100, q: 8, pulse: 151, pan: 0.45, gain: 0.8, swell: null, stop: null, next: 0 },
+    { f: 3900, q: 5, pulse: 86, pan: 0.05, gain: 0.6, swell: null, stop: null, next: 0 },
+  ];
+  private on = false;
+  private idleSince = -1;
+  private nextWhine = -1;
+  /** The level's target (its last glide), to know when the chorus is heard. */
+  heard = 0;
+
+  constructor(ctx: BaseAudioContext, dry: AudioNode, wet: AudioNode, rnd: Rng) {
+    this.ctx = ctx;
+    this.rnd = rnd;
+    this.wet = wet;
+    this.level = ctx.createGain();
+    this.level.gain.value = 0;
+    const soft = biquad(ctx, 'lowpass', 9000, 0.5);
+    this.level.connect(soft).connect(dry);
+    const send = ctx.createGain();
+    send.gain.value = 0.2;
+    soft.connect(send).connect(wet);
+  }
+
+  schedule(now: number, until: number): void {
+    if (!this.keep(this.heard > 0.002, now)) return;
+    const r = this.rnd;
+    for (const L of this.layers) {
+      if (!L.swell) continue;
+      if (L.next < now) L.next = now;
+      while (L.next < until) {
+        // A wave: up over a few seconds, held, down, a rest.
+        const t = L.next;
+        const rise = range(r, 2.5, 5);
+        const hold = range(r, 3, 9);
+        const fall = range(r, 3, 6);
+        const g = L.swell.gain;
+        g.setTargetAtTime(L.gain * range(r, 0.6, 1), t, rise / 3);
+        g.setTargetAtTime(L.gain * range(r, 0.04, 0.18), t + rise + hold, fall / 3);
+        L.next = t + rise + hold + fall + range(r, 2, 8);
+      }
+    }
+    if (this.nextWhine < now) this.nextWhine = now + range(r, 6, 20);
+    while (this.nextWhine < until) this.nextWhine = this.whine(this.nextWhine);
+  }
+
+  /** The ambience is muted (nothing is scheduled): the chorus stops once it has been silent a while. */
+  idle(now: number): void {
+    this.keep(false, now);
+  }
+
+  /** Start the chorus when `want`ed; when not, stop it once it has been silent a while (its level is already fading). Whether it runs. */
+  private keep(want: boolean, now: number): boolean {
+    if (want && !this.on) this.start(now);
+    if (!want && this.on) {
+      if (this.idleSince < 0) this.idleSince = now;
+      else if (now - this.idleSince > 6) this.stop(now);
+    } else this.idleSince = -1;
+    return this.on;
+  }
+
+  private start(now: number): void {
+    const ctx = this.ctx;
+    const r = this.rnd;
+    this.on = true;
+    for (const L of this.layers) {
+      const src = ctx.createBufferSource();
+      const buf = noise('white');
+      src.buffer = buf;
+      src.loop = true;
+      const band = biquad(ctx, 'bandpass', L.f * range(r, 0.97, 1.03), L.q);
+      // The buzz: the band pulsed a hundred-odd times a second.
+      const am = ctx.createGain();
+      am.gain.value = 0.55;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = L.pulse * range(r, 0.95, 1.05);
+      const depth = ctx.createGain();
+      depth.gain.value = 0.45;
+      lfo.connect(depth).connect(am.gain);
+      const swell = ctx.createGain();
+      swell.gain.value = L.gain * 0.1;
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = L.pan;
+      src.connect(band).connect(am).connect(swell).connect(pan).connect(this.level);
+      src.start(now, r() * buf.duration);
+      lfo.start(now);
+      L.swell = swell;
+      L.next = now + range(r, 0, 3);
+      L.stop = () => {
+        src.stop();
+        lfo.stop();
+        for (const n of [src, band, am, lfo, depth, swell, pan]) n.disconnect();
+      };
+    }
+  }
+
+  private stop(now: number): void {
+    this.on = false;
+    this.idleSince = -1;
+    for (const L of this.layers) {
+      L.stop?.();
+      L.stop = null;
+      L.swell = null;
+      L.next = now;
+    }
+  }
+
+  /** One cicada close by: a pulsing whine that winds up in pitch, holds, and dies away. Returns when the next may come. */
+  private whine(t: number): number {
+    const r = this.rnd;
+    const ctx = this.ctx;
+    const dur = range(r, 3.5, 6);
+    const o = ctx.createOscillator();
+    const f = range(r, 3300, 3900);
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.linearRampToValueAtTime(f * range(r, 1.15, 1.25), t + dur * 0.55);
+    o.frequency.linearRampToValueAtTime(f * range(r, 1.05, 1.12), t + dur);
+    const am = ctx.createGain();
+    am.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = range(r, 38, 55);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(am.gain);
+    const env = ctx.createGain();
+    env.gain.value = 0;
+    const peak = range(r, 0.05, 0.09);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(peak * 0.3, t + dur * 0.2);
+    env.gain.linearRampToValueAtTime(peak, t + dur * 0.55);
+    env.gain.linearRampToValueAtTime(peak * 0.8, t + dur * 0.8);
+    env.gain.linearRampToValueAtTime(0, t + dur);
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = range(r, -0.8, 0.8);
+    o.connect(am).connect(env).connect(pan).connect(this.level);
+    const send = ctx.createGain();
+    send.gain.value = 0.3;
+    pan.connect(send).connect(this.wet);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + dur + 0.05);
+    lfo.stop(t + dur + 0.05);
+    cleanup(o, [o, lfo, depth, am, env, pan, send]);
+    return t + dur + range(r, 15, 45);
+  }
+}
+
 type BirdKind = 'whistle' | 'chirps' | 'trill' | 'cuckoo' | 'dove';
 
 export class Ambience {
@@ -77,7 +243,13 @@ export class Ambience {
   private readonly leaves: GainNode;
   private readonly insects: GainNode;
   private readonly insectLayers: LoopLayer[];
+  private readonly cicadas: Cicadas;
   private dayW = 1;
+  /** Rain now (0‥1, `setRain`): the birds and the cicadas keep quiet in it. */
+  rain = 0;
+  /** The rain and the leaves over him the cicadas' level was last set for. */
+  private cicadaRain = 0;
+  private canopy = 0;
   private nightW = 0;
   private nextGust = -1;
   private nextBird = -1;
@@ -133,18 +305,45 @@ export class Ambience {
       layer(() => source('trill'), 0.15, 0.22),
       layer(() => source('buzz'), -0.25, 0.5),
     ];
+
+    // Day cicadas (started only while heard).
+    this.cicadas = new Cicadas(ctx, dry, e.bus.ambience.wet, this.rnd);
   }
 
-  mix(night: number, t: number, tc: number): void {
+  /** Time of day, and `canopy` (0‥1): the leaves over the roaming explorer (the cicadas are louder in the forest). */
+  mix(night: number, t: number, tc: number, canopy = 0): void {
     this.dayW = Math.cos((night * Math.PI) / 2);
     this.nightW = Math.sin((night * Math.PI) / 2);
     glide(this.windMix.gain, LEVEL.wind * (0.55 + 0.45 * this.dayW), t, tc);
     glide(this.insects.gain, LEVEL.insects * this.nightW ** 1.5, t, tc);
+    this.canopy = Math.min(1, Math.max(0, canopy));
+    this.cicadaLevel(t, tc * 3);
+  }
+
+  /** Rain now (0‥1, every frame from engine.weather): the birds and the cicadas keep quiet in it. */
+  setRain(rain: number, t: number): void {
+    this.rain = rain;
+    if (Math.abs(rain - this.cicadaRain) < 0.02) return;
+    this.cicadaRain = rain;
+    this.cicadaLevel(t, 1.5);
+  }
+
+  /** Cicadas: soft over the map, loud under the trees; they fade with the light at dusk, and hush in heavy rain like the birds. */
+  private cicadaLevel(t: number, tc: number): void {
+    this.cicadas.heard = LEVEL.cicada * this.dayW ** 3 * (0.3 + 0.7 * this.canopy) * (1 - 0.9 * this.cicadaRain);
+    glide(this.cicadas.level.gain, this.cicadas.heard, t, tc);
+  }
+
+  /** The ambience is muted (nothing is scheduled): the night insects and the cicadas stop once silent. */
+  idle(now: number): void {
+    for (const l of this.insectLayers) l.want(false, now);
+    this.cicadas.idle(now);
   }
 
   schedule(now: number, until: number): void {
     const on = this.nightW > 0.003;
     for (const l of this.insectLayers) l.want(on, now);
+    this.cicadas.schedule(now, until);
     const r = this.rnd;
     if (this.nextGust < now) this.nextGust = now;
     while (this.nextGust < until) this.nextGust = this.gustAt(this.nextGust);
@@ -192,7 +391,7 @@ export class Ambience {
   private birdAt(t: number): number {
     const r = this.rnd;
     // Fewer birds as it gets dark; none at night.
-    if (r() >= this.dayW ** 2) return t + range(r, 3, 8);
+    if (r() >= this.dayW ** 2 * (1 - 0.9 * this.rain)) return t + range(r, 3, 8);
     const kinds: BirdKind[] = ['whistle', 'chirps', 'trill', 'cuckoo', 'dove'];
     const w = [3, 3, 2, t - this.lastCuckoo > 25 ? 1.3 : 0, t - this.lastDove > 14 ? 1.2 : 0];
     const kind = kinds[weighted(r, w)];

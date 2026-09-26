@@ -1,4 +1,4 @@
-# Angkor Quest — notes for Claude
+# Angkor Heritage — notes for Claude
 
 - Checks: `npm run typecheck`, `npm run build`, `npm run playtest` (headless play test).
 - `npm run shots -- name="@index.html?shot=1&…"` renders a page headlessly into
@@ -75,7 +75,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   glider from cliff-top ramps; Q / R or a drag orbits the camera):
   `src/map/roam/`. Easy flying (glider holds its height, S climbs, W dives)
   is a setting (`roam/prefs.ts`); the Cambodian flag helper is `roam/_flag.ts`.
-  Check it with `roam=leap|glide|walk|boat|hang&at=x,z&yaw=<deg>&sim=w:2,wr:3`
+  A hot air balloon stands on its field below Angkor Wat (`roam/balloon.ts`:
+  E rides it, W / Space burner, S vent, E lands and steps out).
+  Check it with `roam=leap|glide|walk|boat|hang|balloon&at=x,z&yaw=<deg>&sim=w:2,wr:3`
   (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
   a selfie stick (T); `tool=`, `stick=` in shots; camera and selfie also in
@@ -86,6 +88,19 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   glider ramp).
 - Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
+- Weather is a setting too (by season — dry December–April —, clear, rainy,
+  stormy): the schedule is `src/map/sky/weather.ts`. Shots are calm; add
+  `weather=season|rainy|stormy&t=<s>` (with `season=`) for a schedule, or
+  `weather=rain|storm|rainbow` to hold one.
 - Animals: land (`src/map/fauna/land.ts`) and water / air
   (`src/map/fauna/waterAir.ts`); their calls go through `MapFrame.calls` to
   `src/map/audio/animals.ts`.
+- Rice paddies by the great lake follow the year (`season=0‥1`): the stages
+  are in `src/map/paddies/stages.ts`, the part in `src/map/paddies.ts`.
+- The floating village on the great lake (stilt houses, floating houses, the
+  jetty, the pagoda): `src/map/village/`; where everything stands (and
+  `VILLAGE_SPOTS` for people and festivals) is `src/map/village/_spots.ts`.
+- People (`src/map/people/`): monks, a tour group, fishermen, an ox cart,
+  kite-flying children, farmers by the season, village life, apsara dancers
+  at night; `people=lineup|0|<scene>,…`, `fish=`, `cart=` in shots. Hats are
+  the Khmer palm-leaf hat or a krama (never a conical hat).

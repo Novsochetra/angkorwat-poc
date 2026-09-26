@@ -112,6 +112,13 @@ float outsideLand(vec2 p, float front) {
 const MIST_DEFINES = { HAZE_MIST: '' };
 
 /**
+ * After rain the mist lies thicker (0 dry … 1 soaked): the sea of mist fills
+ * in and the banks thicken. One uniform shared by every mist material;
+ * clouds.ts sets it from `f.weather.wet` (and sinks the layers a little).
+ */
+export const MIST_WET = { value: 0 };
+
+/**
  * A layer of the sea of mist beyond the land: a big flat plane at height `y`.
  * The layers share one noise field and each higher one keeps only its
  * thicker parts, so together they build soft mounds, lit on the key light's
@@ -130,7 +137,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
     side: DoubleSide,
     fog: true,
     defines: MIST_DEFINES,
-    uniforms: { ...hazeUniforms(), uY: { value: y }, uK: { value: k } },
+    uniforms: { ...hazeUniforms(), uY: { value: y }, uK: { value: k }, uWet: MIST_WET },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       varying vec3 vWorld;
@@ -146,6 +153,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
       ${MIST_COMMON}
       uniform float uY;
       uniform float uK;
+      uniform float uWet;
       varying vec3 vWorld;
       void main() {
         vec2 p = vWorld.xz;
@@ -169,7 +177,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
         float nl = hazeBankNoise(q + k / max(length(k), 1e-3) * 20.0 * scale, drift);
         n = n * 0.85 + texture2D(hazeNoise, (p - HAZE_WIND * t * 4.5) / 170.0).b * 0.15;
         // Breathing: the mounds swell and settle (≈ 25 s), each layer a little out of step.
-        float lo = 0.12 + uK * 0.5 + 0.045 * sin(t * 0.25 + sw.x * 12.0 - uK * 1.6);
+        float lo = 0.12 + uK * 0.5 - 0.09 * uWet + 0.045 * sin(t * 0.25 + sw.x * 12.0 - uK * 1.6);
         float dens = smoothstep(lo, lo + 0.2, n) * vis;
         // Where land rises into the sea, the whole stack gives way at once (per
         // layer it would repeat the land's shape at each height: streaks).
@@ -188,7 +196,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
         // Brighter up the stack (the tops catch the light), a little relief towards the key light.
         float lit = 0.22 + 0.68 * uK + clamp((nl - n) * 3.0, -0.12, 0.12);
         vec3 col = hazeMistColor(vec2(1.0, clamp(lit, 0.0, 1.0)), hazeColorDir(ray / dist));
-        gl_FragColor = vec4(col, dens * mix(0.92, 0.6, uK));
+        gl_FragColor = vec4(col, min(1.0, dens * mix(0.92, 0.6, uK) * (1.0 + 0.2 * uWet)));
         #include <fog_fragment>
       }`,
   });
@@ -209,7 +217,7 @@ export function mistBankMaterial(): ShaderMaterial {
     depthWrite: false,
     fog: true,
     defines: MIST_DEFINES,
-    uniforms: { ...hazeUniforms() },
+    uniforms: { ...hazeUniforms(), uWet: MIST_WET },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       uniform vec4 hazeMist;
@@ -250,6 +258,7 @@ export function mistBankMaterial(): ShaderMaterial {
       varying vec4 vSeed;
       varying vec2 vFlow;
       varying float vInside;
+      uniform float uWet;
       void main() {
         vec2 uv = vUv;
         vec2 e = (uv - 0.5) * 2.0;
@@ -278,7 +287,7 @@ export function mistBankMaterial(): ShaderMaterial {
         dens *= smoothstep(12.0, 30.0, vWorld.y);
         vec3 ray = vWorld - cameraPosition;
         float dist = length(ray);
-        dens *= smoothstep(40.0, 160.0, dist) * smoothstep(0.5, 1.1, vInside) * vSeed.w;
+        dens *= smoothstep(40.0, 160.0, dist) * smoothstep(0.5, 1.1, vInside) * min(1.0, vSeed.w * (1.0 + 0.25 * uWet));
         if (dens < 0.004) discard;
         vec3 col = hazeMistColor(vec2(1.0, lit), hazeColorDir(ray / dist));
         gl_FragColor = vec4(col, dens);

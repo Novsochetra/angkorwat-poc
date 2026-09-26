@@ -49,6 +49,13 @@ export const GRASS_DRY = [0x8ba445, 0x85a042, 0x92aa4a, 0x7f9b3f];
 export const GRASS_DARK = [0x56832f, 0x517e2d, 0x5b8832, 0x4c792b];
 export const ROCK_TOP = [0xaa8660, 0x9e7b57, 0xb5926b, 0xa3805b];
 export const DIRT = [0x946c45, 0x88633f, 0x9e7750];
+/**
+ * A jungle trail's tread: worn earth close to the dry grass beside it, some
+ * grass left on it, so from above it reads as a faint game path.
+ */
+export const TRAIL = [0x85714a, 0x7d6a44, 0x8b774f, 0x806d47];
+/** A rice paddy's plot: wet mud with young rice (the paddies part lays its water and rice over it). */
+export const PADDY = [0x6b6a3e, 0x646339, 0x737244, 0x5f5f38];
 /** Under the road (the road pass paves it). */
 export const PATH = [0xa6825a, 0x997652, 0xb08c63];
 /** Bare ground on a landmark's pad (the rest of the pad is dry grass). */

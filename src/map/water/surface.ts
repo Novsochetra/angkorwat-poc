@@ -1,5 +1,6 @@
 import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial, Vector3, type Vector4, type DataTexture } from 'three';
 import { CELL } from '../heightfield';
+import { RAIN_RINGS_GLSL } from '../sky/rain';
 import { NOISE_GLSL } from './glsl';
 import { NONE, type WaterGrid } from './grid';
 
@@ -73,6 +74,8 @@ export interface SurfaceUniforms {
   uFlowSpeed: { value: number };
   uSparkle: { value: number };
   uLightDirW: { value: Vector3 };
+  /** Rain on the water (0‥1, `f.weather.rain`): rings and splashes up close, a duller, stippled surface. */
+  uRain: { value: number };
 }
 
 /**
@@ -97,6 +100,7 @@ export function surfaceMaterial(tex: DataTexture, box: Vector4): { material: Mes
     uFlowSpeed: { value: 0.75 },
     uSparkle: { value: 4 },
     uLightDirW: { value: new Vector3(0, 1, 0) },
+    uRain: { value: 0 },
   };
   const material = new MeshStandardMaterial({ roughness: 0.2, metalness: 0 });
   material.name = 'water surface';
@@ -134,9 +138,11 @@ uniform vec3 uSky;
 uniform float uFlowSpeed;
 uniform float uSparkle;
 uniform vec3 uLightDirW;
+uniform float uRain;
 varying vec3 vWPos;
 varying vec3 vWNormal;
 ${NOISE_GLSL}
+${RAIN_RINGS_GLSL}
 const mat2 W_ROT1 = mat2(0.8, -0.6, 0.6, 0.8);
 const mat2 W_ROT2 = mat2(-0.28, 0.96, -0.96, -0.28);
 // Ripple height (centred) and its gradient, world metres.
@@ -206,12 +212,21 @@ const SURFACE_MAIN = /* glsl */ `
     col *= 0.9 + 0.3 * rp.x + 0.25 * (st - 0.5);
     col = mix(col, uFoam, wFoam);
 
+    // Rain: rings spreading where drops hit and a splash at each (up close), the mirror dulled.
+    float wRain = 0.0;
+    if (uRain > 0.001) {
+      wRain = uRain * (1.0 - wFoam);
+      vec3 rr = rainRings(vWPos.xz, uTime, uRain) * (1.0 - smoothstep(35.0, 110.0, dist));
+      wN = normalize(wN + vec3(rr.x, 0.0, rr.y) * 0.5 * (1.0 - wFoam));
+      col = mix(col, uFoam, clamp(rr.z, 0.0, 1.0) * 0.55 * (1.0 - wFoam));
+    }
+
     vec3 V = normalize(cameraPosition - vWPos);
-    wFres = (0.02 + 0.98 * pow(1.0 - max(dot(wN, V), 0.0), 5.0)) * (1.0 - wFoam);
+    wFres = (0.02 + 0.98 * pow(1.0 - max(dot(wN, V), 0.0), 5.0)) * (1.0 - wFoam) * (1.0 - 0.3 * wRain);
     float s0 = wNoise(W_ROT2 * p0 * 3.4 + 71.0);
     float s1 = wNoise(W_ROT2 * p1 * 3.4 + 71.0);
     float sp = ((s0 - 0.5) * w0 + (s1 - 0.5) * w1) * nrm + 0.5;
-    wSpark = smoothstep(0.6, 0.9, sp) * (1.0 - wFoam);
+    wSpark = smoothstep(0.6, 0.9, sp) * (1.0 - wFoam) * (1.0 - 0.8 * wRain);
 
     if (vWNormal.y < 0.5) {
       // Sides: shallow water spilling down to the bed.

@@ -2,9 +2,12 @@ import { RUN_SPEED, WALK_SPEED } from '../../world/scale';
 import { SURFACE } from '../heightfield';
 import type { PlaceDef } from '../layout';
 import type { RoamSound } from '../types';
+import { paddyFlooded } from '../paddies/stages';
+import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
+import { createSwingRide, type SwingRide } from './_swingRide';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
 
 /** Gravity (m/s²): a little over the real one, for a lively jump. */
@@ -41,14 +44,15 @@ const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), M
  * hop up one land step (2 m), slide along walls, jump (Space), drop off
  * ledges and cliffs (in a long fall Space opens the parachute, E the hang
  * glider), wade into deep water and take a boat, fly the hang glider from
- * a cliff-top ramp (E), and enter a place with E at its beacon.
+ * a cliff-top ramp (E), climb into the hot air balloon's basket (E), and
+ * enter a place with E at its beacon.
  *
  * Collisions use the walk map (world.standAt): the body is a circle of
  * probes; each must have ground within a step of the feet and room above
  * it. Where he stands is the highest ground under the middle of the circle,
  * so he steps onto a stair as his foot reaches it.
  */
-export function createWalker(): RoamModeHandler {
+export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } {
   let airTime = 0;
   /** Seconds since he was last on the ground (for the late jump). */
   let offGround = 0;
@@ -64,6 +68,8 @@ export function createWalker(): RoamModeHandler {
   let stuck = 0;
   /** A camera distance to ease to after entering, or null. */
   let settle: number | null = null;
+  /** The rope swing on the Bayon's rim (_swingRide.ts): E there sits him on it. */
+  const swing = createSwingRide();
 
   /** Size of the body now (grows with `body.scale`). */
   const radius = (s: number) => 0.3 * s;
@@ -131,6 +137,9 @@ export function createWalker(): RoamModeHandler {
   };
 
   return {
+    // (for bug reports: roam.ts asks whether he is on it)
+    swing,
+
     enter(ctx, from) {
       const { cam, body } = ctx;
       cam.minDistance = 3.5;
@@ -151,6 +160,11 @@ export function createWalker(): RoamModeHandler {
 
     update(ctx, dt): RoamMode | null {
       const { body, input, world, cam } = ctx;
+      // On the rope swing: it holds him (E or a move key brings him off).
+      if (swing.riding) {
+        setPrompt(ctx, swing.update(ctx, dt));
+        return null;
+      }
       const s = body.scale;
       const pos = body.pos;
       const vel = body.vel;
@@ -378,10 +392,19 @@ export function createWalker(): RoamModeHandler {
         return 'boat';
       }
 
-      // ── A boat tied up by the bank, a place's beacon ──────────────────────
+      // ── A golden figure, a boat tied up by the bank, a place's beacon ─────
       if (body.grounded) {
+        // (a hidden golden figure within arm's reach comes first, before a boat, a ramp, the
+        // balloon, the swing or a beacon that is also in reach: E picks it up; treasure/)
+        const gold = treasure.near(ctx);
         const boat = mooredBoatNear(pos.x, pos.z);
-        if (boat && Math.abs(boat.level - pos.y) < 4) {
+        if (gold) {
+          setPrompt(ctx, gold.prompt);
+          if (input.use) {
+            setPrompt(ctx, null);
+            treasure.pick(ctx, gold.id);
+          }
+        } else if (boat && Math.abs(boat.level - pos.y) < 4) {
           setPrompt(ctx, `E  ${t('rBoard')}`);
           if (input.use) {
             setPrompt(ctx, null);
@@ -393,6 +416,20 @@ export function createWalker(): RoamModeHandler {
           if (input.use) {
             setPrompt(ctx, null);
             return 'hang';
+          }
+        } else if (world.balloonNear?.(pos.x, pos.z, pos.y)) {
+          // The hot air balloon's basket (balloon.ts).
+          setPrompt(ctx, `E  ${t('rBalloon')}`);
+          if (input.use) {
+            setPrompt(ctx, null);
+            return 'balloon';
+          }
+        } else if (swing.near(pos.x, pos.z, pos.y)) {
+          // The rope swing on the Bayon's rim (jungle/_swing.ts).
+          setPrompt(ctx, `E  ${t('rSwing')}`);
+          if (input.use) {
+            setPrompt(ctx, null);
+            swing.start(ctx);
           }
         } else {
           const place = world.placeNear(pos.x, pos.z, pos.y);
@@ -422,6 +459,7 @@ export function createWalker(): RoamModeHandler {
     exit(ctx) {
       setPrompt(ctx, null);
       hopping = false;
+      swing.stop(ctx);
     },
   };
 
@@ -439,15 +477,17 @@ const fallPrompt = () => `Space  ${t('jumpChute')}  ·  E  ${t('jumpGlider')}`;
 /**
  * The footstep for the ground at the feet (x, y, z): wading in water over
  * the ankles; on a take-off ramp's deck (up on it, not on the land round
- * it) wood; on something built above the land (the road's stairs and
- * bridges, temple floors, walls) stone; else the land's surface.
+ * it) or on planks (the village's verandas, stairs, jetty and rafts, the
+ * camps' bridges and hut: `woodAt`) wood; on something else built above the
+ * land (the road's stairs and bridges, temple floors, walls) stone; else the
+ * land's surface.
  */
 export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSound {
   const water = w.waterAt(x, z);
   if (water !== null && water > y + 0.08) return 'stepWater';
   const f = w.field;
   const land = f.heightAt(x, z);
-  if (y > land + 0.05 && w.launchNear?.(x, z, y)) return 'stepWood';
+  if (y > land + 0.05 && (w.launchNear?.(x, z, y) || w.woodAt?.(x, z, y))) return 'stepWood';
   if (y > land + 0.4) return 'stepStone';
   switch (f.surfaceAt(x, z)) {
     case SURFACE.grass:
@@ -457,6 +497,9 @@ export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSo
     case SURFACE.bed:
       // (wet at the water's edge; a dry bed well over the water is sand)
       return water !== null && water > y - 0.3 ? 'stepWater' : 'stepSand';
+    case SURFACE.paddy:
+      // (a rice paddy: wading while it is flooded, else earth: paddies/stages.ts)
+      return paddyFlooded(x, z) ? 'stepWater' : 'step';
     case SURFACE.rock:
     case SURFACE.path:
     case SURFACE.pad:

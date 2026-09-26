@@ -1,18 +1,22 @@
 import { Group } from 'three';
 import { hash3 } from '../../voxel/random';
+import { eventsNow, type EventState } from '../events';
 import { PLACES } from '../layout';
 import { ROAM_HEIGHT } from '../roam/types';
-import type { AnimalCallKind, MapContext, MapFrame, MapPart } from '../types';
+import type { AnimalCallKind, MapContext, MapFrame, MapPart, Subject, SubjectKind } from '../types';
 import { CH, Flock, type Species } from './_kit';
 import { Agent, Herd, type Ground, type Habits, type Walker } from './_landBrain';
 import { BUFFALO, BUFFALO_HABITS } from './_landBuffalo';
 import { DEER, MUNTJAC_HABITS, SAMBAR_HABITS } from './_landDeer';
 import { ELEPHANT } from './_landElephant';
 import { FOWL, FOWL_HABITS } from './_landFowl';
+import { findBathSite, sunBlockers } from './_landBath';
+import { Crossing, findCrossSite } from './_landCrossing';
 import { buildLineup } from './_landLineup';
 import { MACAQUE, MACAQUE_HABITS } from './_landMacaque';
 import { bankGround, banks, edges, flatStretch, meadows, openGround, roadside, scatter, survey, templeGround, type Spot } from './_landPlaces';
-import { Trek } from './_landTrek';
+import { Splash } from './_landSplash';
+import { COW_SIDE, Trek, type Passer, type TrekWorld } from './_landTrek';
 
 /**
  * Animals on the land, real ones of the Angkor region:
@@ -23,7 +27,16 @@ import { Trek } from './_landTrek';
  * - red junglefowl (a rooster and his hens) by the road;
  * - water buffalo on the river banks and in the shallows;
  * - a cow elephant and her calf walking the valley road — the one animal
- *   the overview shows clearly.
+ *   the overview shows clearly; in the afternoon they go down to the river
+ *   below the River Gate to bathe (_landBath.ts: the cow sprays water over
+ *   her back, the calf rolls in the shallows; drops and rings: _landSplash.ts);
+ *   they wait for people on the road as they do for the explorer;
+ * - a macaque troop at the forest's edge on both sides of the valley road,
+ *   that runs across it in a line a few times a day (_landCrossing.ts).
+ *
+ * The day's events (events.ts: `elephantBath`, `monkeyCrossing`) start the
+ * bath and the crossings; in a storm (`shelter`) the macaques and the
+ * junglefowl huddle, the elephants stand and wait.
  *
  * They react to the roaming explorer (look up, run off, settle again; the
  * elephants stop for him) and most of them sleep at night. Behaviour:
@@ -32,13 +45,14 @@ import { Trek } from './_landTrek';
  * the kit in _kit.ts.
  *
  * Cost: one InstancedMesh per species (5 draws; buffalo and elephants also
- * cast shadows), posed in the vertex shader from eased channels, so the CPU
+ * cast shadows) and one for the bath's splashes (6), posed in the vertex shader from eased channels, so the CPU
  * only runs the state machines of the animals within `ACTIVE` m of the camera
  * or the explorer, and writes a buffer only when something changed. Animals
  * too far to be more than a pixel or two are hidden.
  *
  * `?fauna=lineup`: every species in every pose in a row on the valley road
- * (checking the models).
+ * (checking the models). `?event=elephantBath|monkeyCrossing` (events.ts):
+ * that event from the start (a still at `t=` shows it that far in).
  */
 
 /** Animals this near the camera or the explorer think; the others stand still (m). */
@@ -52,6 +66,10 @@ const PREROLL = 30;
 const REACT = 1.5;
 /** Length of road the elephants walk up and down (m). */
 const TREK_LENGTH = 55;
+/** Where the elephants go down to the river to bathe (the nearest good way down wins: just east of the River Gate's tower and its stone bank, out of its shadow). */
+const BATH_NEAR = { x: -36, z: 14 };
+/** A still of an event held on by the URL simulates it from its start, up to this long (s). */
+const EVENT_PREROLL = 600;
 
 interface Member {
   x: number;
@@ -191,6 +209,12 @@ export function buildLandFauna(ctx: MapContext): MapPart {
   counts.set(MACAQUE, (counts.get(MACAQUE) ?? 0) + babies);
   const stretch = flatStretch(sv);
   if (stretch) counts.set(ELEPHANT, 2);
+  // (the open part of the stretch, from its River Gate end: further on, the trees hide the road from the overview)
+  const trekStations = stretch ? sv.road.roads[stretch.road].stations.slice(stretch.from, Math.min(stretch.to, stretch.from + TREK_LENGTH * 2) + 1) : [];
+  const bathSite = stretch ? findBathSite(sv, trekStations, COW_SIDE, BATH_NEAR, sunBlockers(ctx.scene, BATH_NEAR.x - 15, BATH_NEAR.x + 75, BATH_NEAR.z + 5, BATH_NEAR.z + 80, 5)) : null;
+  // The troop that crosses the valley road: away from the temples' troops, the elephants and the balloon's field.
+  const crossSite = findCrossSite(sv, [...TROOPS.map(([x, z]) => ({ x, z, r: 45 })), ...trekStations.filter((_, i) => i % 20 === 0).map((q) => ({ x: q.x, z: q.z, r: 30 })), { x: -32, z: -64, r: 35 }]);
+  if (crossSite) counts.set(MACAQUE, (counts.get(MACAQUE) ?? 0) + Crossing.SIZE);
   const flocks = new Map<Species, Flock>();
   for (const [sp, n] of counts) {
     const fl = new Flock(sp, n);
@@ -223,35 +247,64 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     flocks.get(MACAQUE)!.setup(i, 1, hash3(i, 1, 14), 1);
     riders.push({ mother, i, x: mother.x, y: mother.y, z: mother.z, yaw: mother.yaw });
   }
-  // (the open part of the stretch, from its River Gate end: further on, the trees hide the road from the overview)
-  const trek = stretch ? new Trek(flocks.get(ELEPHANT)!, sv.road.roads[stretch.road].stations.slice(stretch.from, Math.min(stretch.to, stretch.from + TREK_LENGTH * 2) + 1), 77) : null;
+  const splash = bathSite ? new Splash() : null;
+  if (splash) object.add(splash.mesh);
+  const trek = stretch ? new Trek(flocks.get(ELEPHANT)!, trekStations, 77, bathSite, splash) : null;
+  let crossing: Crossing | null = null;
+  if (crossSite) {
+    const first = next(MACAQUE);
+    for (let k = 1; k < Crossing.SIZE; k++) next(MACAQUE);
+    crossing = new Crossing(flocks.get(MACAQUE)!, first, crossSite, 4242);
+  }
   const plansByHerd = new Map(plans.map((p) => [p.herd, p]));
-  Object.assign(window, { __fauna: { plans, agents, riders, trek } });
+  Object.assign(window, { __fauna: { plans, agents, riders, trek, crossing, bathSite, crossSite } });
 
   const buildMs = performance.now() - t0;
   const tally = [...counts].map(([sp, n]) => `${sp.name} ${n}`).join(', ');
-  console.info(`[map] fauna: ${tally} (${plans.length} herds) · ${flocks.size} draws · built in ${buildMs.toFixed(0)} ms (survey ${tSurvey.toFixed(0)})`);
+  const where = (p: { x: number; z: number } | undefined) => (p ? `(${p.x.toFixed(0)}, ${p.z.toFixed(0)})` : 'none');
+  console.info(
+    `[map] fauna: ${tally} (${plans.length} herds) · ${flocks.size + (splash ? 1 : 0)} draws · built in ${buildMs.toFixed(0)} ms (survey ${tSurvey.toFixed(0)}) · bath ${where(bathSite?.path.at(-1))} · monkeys cross at ${where(crossSite ?? undefined)}`,
+  );
 
   // ── Frame ──
   const explorer: Walker = { x: 0, y: 0, z: 0 };
   let now = 0;
   let started = false;
   let settled = false;
+  /** People on the roads (the people part's traffic, as it was last frame): the elephants wait for them. */
+  const people: Passer[] = [];
+  const readPeople = () => {
+    people.length = 0;
+    const list = (window as unknown as { __people?: { traffic?: { list: readonly (Passer & { who: string })[] } } }).__people?.traffic?.list;
+    if (list) for (const o of list) if (o.who !== 'animal' && o.who !== 'explorer' && o.who !== 'beacon') people.push(o);
+  };
+  const world: TrekWorld = { people, bath: false, bathCount: 0, storm: 0 };
+  let ev: Readonly<EventState> | null = null;
   /** One step of every animal's life. */
   const live = (dt: number, f: MapFrame, ex: Walker | null) => {
     const cam = f.camera.position;
     const big = trek ? trek.cow : null;
+    const shelter = ev?.shelter ?? 0;
+    // (in a storm the monkeys and the junglefowl huddle as they do at night)
+    const huddle = Math.max(f.night, shelter);
     for (let a = 0; a < agents.length; a++) {
       const ag = agents[a];
       const dc = Math.hypot(ag.x - cam.x, ag.z - cam.z, ag.y - cam.y);
       const de = ex ? Math.hypot(ag.x - ex.x, ag.z - ex.z) : Infinity;
-      if (Math.min(dc, de) < ACTIVE) ag.step(dt, now, ex, big, f.night);
+      const sp = ag.flock.species;
+      if (Math.min(dc, de) < ACTIVE) ag.step(dt, now, ex, big, sp === MACAQUE || sp === FOWL ? huddle : f.night);
       else ag.freeze(now);
       if (dc < far[a]) ag.flock.place(ag.i, ag.x, ag.y, ag.z, ag.yaw, ag.scale);
       else ag.flock.hide(ag.i);
     }
     for (const r of riders) ride(r, dt, now, cam.x, cam.y, cam.z);
-    if (trek) trek.step(dt, now, ex, f.night);
+    if (trek) {
+      world.bath = ev?.on.elephantBath ?? false;
+      world.bathCount = ev?.count.elephantBath ?? 0;
+      world.storm = shelter;
+      trek.step(dt, now, ex, f.night, world);
+    }
+    crossing?.step(dt, now, ex, f.night, shelter, ev?.on.monkeyCrossing ?? false, ev?.count.monkeyCrossing ?? 0, cam, people);
   };
   const ride = (r: Rider, dt: number, t: number, cx: number, cy: number, cz: number) => {
     const m = r.mother;
@@ -310,9 +363,18 @@ export function buildLandFauna(ctx: MapContext): MapPart {
         }
       } else if (p.sp === BUFFALO && lead.rnd() < 0.4) push('buffalo', lead.x, lead.y + 1, lead.z, 0.5);
     }
+    if (crossing?.event) {
+      const a = crossing.at;
+      push('monkey', a.x, a.y + 0.4, a.z, crossing.event === 'chatter' ? 0.7 : 0.4);
+      crossing.event = null;
+    }
     if (trek) {
       const c = trek.cow;
       if (trek.event === 'trumpet') push('elephant', c.x, c.y + 2.5, c.z, 1);
+      // The bath: the spray coming down, the calf flopping over (a splash), the cow's call as she wades in.
+      else if (trek.event === 'splash') push('fish', c.x, c.y + 1, c.z, 0.9);
+      else if (trek.event === 'roll') push('fish', c.x, c.y + 0.5, c.z, 0.8);
+      else if (trek.event === 'call') push('elephant', c.x, c.y + 2.5, c.z, 0.55);
       trek.event = null;
       trekCallIn -= f.dt;
       if (trekCallIn <= 0) {
@@ -327,6 +389,8 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     name: 'fauna',
     object,
     update(f: MapFrame) {
+      ev = eventsNow(f);
+      readPeople();
       let ex: Walker | null = null;
       if (f.roam !== 'overview') {
         explorer.x = f.listener.x;
@@ -336,11 +400,14 @@ export function buildLandFauna(ctx: MapContext): MapPart {
       }
       if (!started) {
         started = true;
-        // A still shows the animals as they would be after a while (the same every time for a given t).
-        now = ctx.shot ? f.t - PREROLL : f.t;
+        // A still shows the animals as they would be after a while (the same every time for a given t);
+        // an event held on by the URL, from its start (so `t` is how far into it).
+        const pre = ev.forced === 'elephantBath' || ev.forced === 'monkeyCrossing' ? Math.min(EVENT_PREROLL, Math.max(0, f.t)) : PREROLL;
+        now = ctx.shot ? f.t - pre : f.t;
         if (ctx.shot) {
-          for (let k = 0; k < PREROLL * 10; k++, now += 0.1) live(0.1, f, null);
-          if (trek) console.info(`[map] fauna: elephants at (${trek.cow.x.toFixed(1)}, ${trek.cow.y.toFixed(1)}, ${trek.cow.z.toFixed(1)})`);
+          for (let k = 0; k < pre * 10; k++, now += 0.1) live(0.1, f, null);
+          if (trek) console.info(`[map] fauna: elephants at (${trek.cow.x.toFixed(1)}, ${trek.cow.y.toFixed(1)}, ${trek.cow.z.toFixed(1)})${trek.bathLog.length ? ` · ${trek.bathLog.join(' · ')}` : ''}`);
+          if (crossing?.crossings) console.info(`[map] fauna: monkeys crossing (${crossing.mode}) since ${(now - crossing.startedAt).toFixed(1)} s`);
         }
       } else if (ctx.shot && !settled && f.dt > 0) {
         // (then how they took the explorer's arrival)
@@ -352,6 +419,25 @@ export function buildLandFauna(ctx: MapContext): MapPart {
       if (!ctx.shot && f.dt > 0) calls(f);
       else for (const ag of agents) ag.event = null;
       for (const fl of flocks.values()) fl.flush(now);
+      splash?.flush(now, f.night);
+    },
+    // (the nature book, roam/_book.ts: the animals drawn now; read only)
+    subjects(out: Subject[]) {
+      for (const ag of agents) {
+        if (!ag.flock.isShown(ag.i)) continue;
+        const p = plansByHerd.get(ag.herd)!;
+        const kind: SubjectKind = p.sp === MACAQUE ? 'macaque' : p.sp === FOWL ? 'junglefowl' : p.sp === BUFFALO ? 'buffalo' : p.habits === MUNTJAC_HABITS ? 'muntjac' : 'sambar';
+        const r = (p.sp === MACAQUE ? 0.38 : p.sp === FOWL ? 0.32 : p.sp === BUFFALO ? 1.05 : 0.9) * ag.scale;
+        out.push({ kind, x: ag.x, y: ag.y + r * 0.9, z: ag.z, r });
+      }
+      const el = flocks.get(ELEPHANT);
+      if (el)
+        for (let i = 0; i < el.count; i++) {
+          if (!el.isShown(i)) continue;
+          const m = el.mesh.instanceMatrix.array;
+          const r = i === 0 ? 1.7 : 0.8;
+          out.push({ kind: 'elephant', x: m[i * 16 + 12], y: m[i * 16 + 13] + r, z: m[i * 16 + 14], r });
+        }
     },
   };
 }

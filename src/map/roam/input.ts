@@ -64,6 +64,9 @@ export class RoamControls {
         return;
       }
       if (!ROAM_KEYS.has(code)) return;
+      // (the album open: Enter and Space press its buttons — the tabs, the nature book's cards —
+      // not his; closed, they are his again even if one of its buttons kept the focus)
+      if ((code === 'Enter' || code === 'Space') && albumOpen()) return;
       if (!e.repeat) this.hits.add(code);
       this.keys.add(code);
       e.preventDefault();
@@ -281,6 +284,12 @@ export class RoamControls {
 }
 
 const ROAM_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyE', 'Enter', 'Escape', 'KeyQ', 'KeyR']);
+
+/** The photo album is open (the game's album, src/game/Photos.ts; roaming waits behind it: tools.ts). */
+function albumOpen(): boolean {
+  const a = document.querySelector<HTMLElement>('.photo-album');
+  return !!a && !a.hidden;
+}
 
 /**
  * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·

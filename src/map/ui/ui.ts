@@ -1,5 +1,5 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, VOLUME_KEYS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey } from '../types';
+import { DEFAULT_SETTINGS, VOLUME_KEYS, WEATHER_SETTINGS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { steppedRing, steppedShape } from './shape';
@@ -93,6 +93,13 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
 };
 /** The on / off settings (a switch each in the panel). */
 type SwitchKey = 'calm' | 'easyFly';
+/** The weather setting's choices: icon, word, and the note under them while chosen (lang.ts). */
+const WEATHER_CHOICE: Record<WeatherSetting, { icon: string; word: WordKey; note: WordKey }> = {
+  season: { icon: ICON.season, word: 'wSeason', note: 'wSeasonNote' },
+  clear: { icon: ICON.sun, word: 'wClear', note: 'wClearNote' },
+  rainy: { icon: ICON.rain, word: 'wRainy', note: 'wRainyNote' },
+  stormy: { icon: ICON.storm, word: 'wStormy', note: 'wStormyNote' },
+};
 /** The language switch: each button shows its language in that language. */
 const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'EN' };
 /** Latin fonts, and the Khmer ones they fall back to (lang.ts). */
@@ -254,6 +261,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           <button type="button" data-time="cycle">${ICON.cycle}<span data-t="cycle"></span></button>
         </div>
       </div>
+      <div class="mu-set-group">
+        <h3 id="mu-weather-h" data-t="weather"></h3>
+        <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-weather-h" aria-describedby="mu-weather-note">
+          ${WEATHER_SETTINGS.map((w) => `<button type="button" data-weather="${w}">${WEATHER_CHOICE[w].icon}<span data-t="${WEATHER_CHOICE[w].word}"></span></button>`).join('')}
+        </div>
+        <p class="mu-set-note" id="mu-weather-note"></p>
+      </div>
       <div class="mu-set-row">
         <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span></span></button>
@@ -271,7 +285,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   panel.setAttribute('role', 'dialog');
   panel.dataset.tAria = 'settings';
   const sliders = [...panel.querySelectorAll<HTMLInputElement>('input[type=range]')];
-  const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button')];
+  const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-time]')];
+  const weatherBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-weather]')];
+  const weatherNote = panel.querySelector<HTMLElement>('#mu-weather-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
   const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch')];
   /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
@@ -509,6 +525,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       s.setAttribute('aria-valuetext', t('percent', { n: String(v) }));
     }
     for (const b of segBtns) b.setAttribute('aria-pressed', String(b.dataset.time === settings.time));
+    for (const b of weatherBtns) b.setAttribute('aria-pressed', String(b.dataset.weather === settings.weather));
+    // (the note of the weather chosen: filled again with the other words when the language changes)
+    weatherNote.dataset.t = WEATHER_CHOICE[settings.weather]?.note ?? 'wSeasonNote';
+    weatherNote.textContent = t(weatherNote.dataset.t as WordKey);
     for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
     const muted = isMuted();
     muteBtn.innerHTML = '';
@@ -581,6 +601,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       const time = b.dataset.time as MapSettings['time'];
       if (time === settings.time) return;
       change({ time });
+      h.onSound('toggle');
+    });
+  for (const b of weatherBtns)
+    b.addEventListener('click', () => {
+      const weather = b.dataset.weather as WeatherSetting;
+      if (weather === settings.weather) return;
+      change({ weather });
       h.onSound('toggle');
     });
   for (const b of switches)

@@ -460,6 +460,8 @@ export class Flock {
   set(i: number, c: Channel, v: number, t: number, snap = false): void {
     const a = this.ch[c];
     const o = i * 4;
+    // (compared as the buffer holds it: a value a float32 cannot hold exactly would never match, re-easing every frame)
+    v = Math.fround(v);
     if (a[o + 1] === v && (!snap || a[o] === v)) return;
     a[o] = snap ? v : this.value(i, c, t);
     a[o + 1] = v;

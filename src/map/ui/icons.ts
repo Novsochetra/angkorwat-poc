@@ -5,6 +5,9 @@
 
 const svg = (body: string, view = '0 0 24 24', extra = '') => `<svg class="mu-icon" viewBox="${view}" aria-hidden="true" focusable="false"${extra}>${body}</svg>`;
 
+/** A cloud of three puffs (x 4.3–19.9, y 4.2–14.7), for the weather icons: fill it. */
+const CLOUD = '<circle cx="7.6" cy="11.4" r="3.3"/><circle cx="12.2" cy="8.8" r="4.6"/><circle cx="16.8" cy="11.6" r="3.1"/><rect x="7.6" y="10.6" width="9.2" height="4.1"/>';
+
 /**
  * The title's temple: a pixel-art Angkor front — five lotus-bud towers over a
  * long gallery with a gate. Drawn on a grid (one rect per run of same-colour
@@ -116,4 +119,12 @@ export const ICON = {
   /** Small diamond ornament. */
   diamond: svg('<path fill="currentColor" d="m12 5 7 7-7 7-7-7z"/>'),
   play: svg('<path fill="currentColor" d="M8 5.2v13.6c0 .8.9 1.3 1.6.8l10-6.8c.6-.4.6-1.2 0-1.6l-10-6.8C8.9 3.9 8 4.4 8 5.2Z"/>'),
+  /** The weather setting: follow the season (the sun behind a cloud), rainy (drops), stormy (a bolt); clear is the sun. */
+  season: svg(
+    `<mask id="mu-wx-behind"><rect width="24" height="24" fill="#fff"/><g transform="translate(4.4 8) scale(.82)" stroke="#000" stroke-width="3.4">${CLOUD}</g></mask>` +
+      `<g mask="url(#mu-wx-behind)"><circle cx="8.6" cy="9.6" r="3.4" fill="currentColor"/><g stroke="currentColor" stroke-width="1.9" stroke-linecap="round">${Array.from({ length: 8 }, (_, i) => `<path d="M8.6 3.3v1.6" transform="rotate(${i * 45} 8.6 9.6)"/>`).join('')}</g></g>` +
+      `<g transform="translate(4.4 8) scale(.82)" fill="currentColor">${CLOUD}</g>`,
+  ),
+  rain: svg(`<g transform="translate(-1.2 -1.8) scale(1.1)" fill="currentColor">${CLOUD}</g><path d="M8.3 16.9 6.9 21M12.7 16.9 11.3 21M17.1 16.9 15.7 21" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>`),
+  storm: svg(`<g transform="translate(-1.2 -1.8) scale(1.1)" fill="currentColor">${CLOUD}</g><path fill="currentColor" d="M14.2 13.4 8.6 19.9h3.9l-1.7 4.1 6.2-7.2h-3.9l2.3-3.4Z"/>`),
 };

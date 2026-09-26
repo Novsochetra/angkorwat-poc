@@ -1,4 +1,4 @@
-import type { AnimalCall, AnimalCallKind } from '../types';
+import type { AnimalCall, AnimalCallKind, PeopleCallKind } from '../types';
 import { biquad, clamp01, noise, note, range, softWave, strike, type NoiseKind, type Rng } from './dsp';
 import type { SoundEngine } from './engine';
 import type { Ears } from './water';
@@ -23,7 +23,9 @@ import type { Ears } from './water';
  */
 
 /** A call's voice: the elephant has two. */
-type Voiced = AnimalCallKind | 'trumpet';
+type Voiced = Exclude<AnimalCallKind, PeopleCallKind> | 'trumpet';
+/** The people's sounds come through the same calls, but audio/people.ts makes them (the engine hands them there). */
+const PEOPLE: ReadonlySet<AnimalCallKind> = new Set<PeopleCallKind>(['oxBell', 'cartCreak', 'netSplash', 'laugh', 'pinpeat']);
 
 /**
  * Each call: its peak `level` close by (before the animals volume), full
@@ -46,6 +48,16 @@ const CALLS: Record<Voiced, { level: number; near: number; reach: number }> = {
   fish: { level: 0.252, near: 5, reach: 90 },
   bat: { level: 0.074, near: 3, reach: 60 },
   frog: { level: 0.742, near: 5, reach: 110 },
+  // The jungle's (fauna/jungle.ts). The gibbons' song and the hornbill carry across the forest.
+  boar: { level: 0.62, near: 6, reach: 110 },
+  piglet: { level: 0.4, near: 4, reach: 80 },
+  peafowl: { level: 0.45, near: 10, reach: 240 },
+  hornbill: { level: 0.5, near: 12, reach: 280 },
+  whoosh: { level: 0.5, near: 6, reach: 110 },
+  ibis: { level: 0.55, near: 10, reach: 220 },
+  gibbon: { level: 0.26, near: 25, reach: 420 },
+  gibbonHoot: { level: 0.26, near: 20, reach: 360 },
+  squirrel: { level: 0.3, near: 4, reach: 70 },
 };
 /** One elephant call in this many is a trumpet. */
 const TRUMPET = 0.25;
@@ -206,7 +218,8 @@ export class Animals {
   /** A call at its place, from `now` (audio clock); dropped when too many play or it would not be heard. */
   call(c: AnimalCall, now: number): void {
     const ears = this.ears;
-    if (!ears) return;
+    if (!ears || PEOPLE.has(c.kind)) return;
+    const kind = c.kind as Exclude<AnimalCallKind, PeopleCallKind>;
     const playing = this.playing;
     for (let i = playing.length - 1; i >= 0; i--) if (playing[i].end <= now) playing.splice(i, 1);
     if (playing.length >= MAX_CALLS) return;
@@ -214,7 +227,7 @@ export class Animals {
     for (const p of playing) if (p.kind === c.kind) same++;
     if (same >= MAX_KIND) return;
     const r = this.rnd;
-    const key: Voiced = c.kind === 'elephant' && r() < TRUMPET ? 'trumpet' : c.kind;
+    const key: Voiced = kind === 'elephant' && r() < TRUMPET ? 'trumpet' : kind;
     const a = aim(ears, c.x, c.y, c.z);
     const behind = Math.max(0, -a.front);
     const call = CALLS[key];
@@ -268,6 +281,24 @@ export class Animals {
         return this.bat(v, t);
       case 'frog':
         return this.frog(v, t);
+      case 'boar':
+        return this.boar(v, t);
+      case 'piglet':
+        return this.piglet(v, t);
+      case 'peafowl':
+        return this.peafowl(v, t);
+      case 'hornbill':
+        return this.hornbill(v, t);
+      case 'whoosh':
+        return this.whoosh(v, t);
+      case 'ibis':
+        return this.ibis(v, t);
+      case 'gibbon':
+        return this.gibbon(v, t);
+      case 'gibbonHoot':
+        return this.gibbonHoot(v, t);
+      case 'squirrel':
+        return this.squirrel(v, t);
     }
   }
 
@@ -718,4 +749,380 @@ export class Animals {
     // The wet body of it, from the vocal sac.
     env.connect(v.filter('lowpass', 400, 0.7)).connect(v.gain(0.4)).connect(v.out);
   }
+
+  // ── The jungle (fauna/jungle.ts) ──────────────────────────────────────────
+
+  /** A wild boar sow rooting: a few short, low, nasal grunts ("hunk … hunk-hunk"), breathy and rough. */
+  private boar(v: Voice, t: number): void {
+    const r = v.r;
+    const f = range(r, 85, 120);
+    const grunts: [number, number][] = [];
+    let s = t;
+    for (let i = 0, n = 2 + Math.floor(r() * 4); i < n; i++) {
+      const len = range(r, 0.09, 0.2);
+      grunts.push([s, len]);
+      s += len + range(r, 0.12, 0.35);
+    }
+    const last = grunts[grunts.length - 1];
+    const end = last[0] + last[1];
+    const o = v.osc('sawtooth', t, end + 0.02);
+    const env = v.gain();
+    for (const [s0, len] of grunts) {
+      o.frequency.setValueAtTime(f * range(r, 1.1, 1.25), s0);
+      o.frequency.exponentialRampToValueAtTime(f * range(r, 0.75, 0.9), s0 + len);
+      line(env.gain, s0, [
+        [0, 0],
+        [0.012, 0.55 * range(r, 0.7, 1)],
+        [len * 0.45, 0.35],
+        [len, 0],
+      ]);
+    }
+    o.connect(env);
+    // Breath through the snout, in the same envelope; the throat rough (chopped at 30–45 Hz).
+    v.noise('pink', t, end).connect(v.filter('bandpass', 700, 0.8)).connect(v.gain(0.7)).connect(env);
+    const rough = v.gain(0.7);
+    v.lfo(rough.gain, range(r, 30, 45), 0.3, t, end);
+    env.connect(rough);
+    rough.connect(v.filter('bandpass', range(r, 380, 480), 1.4)).connect(v.out);
+    rough.connect(v.filter('lowpass', 1400, 0.7)).connect(v.gain(0.35)).connect(v.out);
+  }
+
+  /** Piglets: thin squeals ("wee", "wii-ik"), two to four. */
+  private piglet(v: Voice, t: number): void {
+    const r = v.r;
+    const squeals: [number, number][] = [];
+    let s = t;
+    for (let i = 0, n = 2 + Math.floor(r() * 3); i < n; i++) {
+      const len = range(r, 0.06, 0.16);
+      squeals.push([s, len]);
+      s += len + range(r, 0.05, 0.2);
+    }
+    const last = squeals[squeals.length - 1];
+    const o = v.osc('sawtooth', t, last[0] + last[1] + 0.02);
+    const env = v.gain();
+    for (const [s0, len] of squeals) {
+      const f = range(r, 750, 1150);
+      line(o.frequency, s0, [
+        [0, f * 0.85],
+        [len * 0.35, f * 1.15],
+        [len, f * 0.8],
+      ]);
+      line(env.gain, s0, [
+        [0, 0],
+        [0.012, 0.45],
+        [len * 0.6, 0.35],
+        [len, 0],
+      ]);
+    }
+    o.connect(env).connect(v.filter('bandpass', range(r, 1700, 2200), 1.6)).connect(v.filter('lowpass', 4000, 0.7)).connect(v.out);
+  }
+
+  /** A green peafowl: a loud, brassy two-note "ki-wao" ("may-awe"), once to three times. */
+  private peafowl(v: Voice, t: number): void {
+    const r = v.r;
+    const f = range(r, 470, 550);
+    const calls: [number, number, number][] = [];
+    let s = t;
+    for (let i = 0, n = 1 + Math.floor(r() * 3); i < n; i++) {
+      const a = range(r, 0.12, 0.17);
+      const b = range(r, 0.4, 0.58);
+      calls.push([s, a, b]);
+      s += a + 0.05 + b + range(r, 0.5, 0.9);
+    }
+    const last = calls[calls.length - 1];
+    const end = last[0] + last[1] + 0.05 + last[2];
+    const o = v.osc('sawtooth', t, end + 0.02);
+    const env = v.gain();
+    for (const [s0, a, b] of calls) {
+      // "ki": short and rising; "wao": high, then falling away.
+      line(o.frequency, s0, [
+        [0, f * 0.95],
+        [a, f * 1.25],
+      ]);
+      line(env.gain, s0, [
+        [0, 0],
+        [0.015, 0.32],
+        [a, 0],
+      ]);
+      const s1 = s0 + a + 0.05;
+      line(o.frequency, s1, [
+        [0, f * 1.4],
+        [b * 0.3, f * 1.55],
+        [b, f * 1.02],
+      ]);
+      line(env.gain, s1, [
+        [0, 0],
+        [0.03, 0.42],
+        [b * 0.5, 0.5],
+        [b * 0.85, 0.3],
+        [b, 0],
+      ]);
+    }
+    v.lfo(o.frequency, range(r, 6, 8), f * 0.015, t, end);
+    o.connect(env);
+    env.connect(v.filter('bandpass', range(r, 1200, 1450), 1.3)).connect(v.out);
+    env.connect(v.filter('bandpass', range(r, 2400, 2800), 2)).connect(v.gain(0.45)).connect(v.out);
+    env.connect(v.filter('lowpass', 3000, 0.7)).connect(v.gain(0.18)).connect(v.out);
+  }
+
+  /** A great hornbill: deep, harsh barks ("gok … gok-gok-gok"), quickening, now and then ending in a roar. */
+  private hornbill(v: Voice, t: number): void {
+    const r = v.r;
+    const f = range(r, 170, 230);
+    const barks: [number, number][] = [];
+    let s = t;
+    let gap = range(r, 0.28, 0.4);
+    for (let i = 0, n = 3 + Math.floor(r() * 5); i < n; i++) {
+      const len = range(r, 0.09, 0.15);
+      barks.push([s, len]);
+      s += len + gap;
+      gap *= range(r, 0.78, 0.9);
+    }
+    const roar = r() < 0.4;
+    if (roar) barks.push([s, range(r, 0.35, 0.5)]);
+    const last = barks[barks.length - 1];
+    const end = last[0] + last[1];
+    const o = v.osc('sawtooth', t, end + 0.02);
+    const env = v.gain();
+    barks.forEach(([s0, len], i) => {
+      const long = roar && i === barks.length - 1;
+      o.frequency.setValueAtTime(f * (long ? 1.1 : 1.25), s0);
+      o.frequency.exponentialRampToValueAtTime(f * (long ? 0.8 : 0.9), s0 + len);
+      line(env.gain, s0, [
+        [0, 0],
+        [0.008, 0.55],
+        [len * 0.5, long ? 0.45 : 0.3],
+        [len, 0],
+      ]);
+    });
+    o.connect(env);
+    v.noise('white', t, end).connect(v.filter('bandpass', 1200, 0.9)).connect(v.gain(0.35)).connect(env);
+    // A harsh rasp, and the long bill's two resonances.
+    const rasp = v.gain(0.65);
+    v.lfo(rasp.gain, range(r, 45, 70), 0.35, t, end);
+    env.connect(rasp);
+    rasp.connect(v.filter('bandpass', range(r, 550, 700), 1.4)).connect(v.out);
+    rasp.connect(v.filter('bandpass', range(r, 1050, 1300), 2)).connect(v.gain(0.6)).connect(v.out);
+  }
+
+  /**
+   * A great hornbill's wings going over: heavy rushing beats ("whoosh …
+   * whoosh"), like a steam train, one per downstroke at the model's 2.4
+   * beats a second (fauna/_jungleBirds.ts), with a soft thump in each.
+   */
+  private whoosh(v: Voice, t: number): void {
+    const r = v.r;
+    const w = 1 / 2.4;
+    const band = v.filter('bandpass', 420, 0.8);
+    const env = v.gain();
+    const thump = v.gain();
+    let s = t;
+    for (let i = 0, n = 4 + Math.floor(r() * 2); i < n; i++) {
+      const peak = (1 - 0.12 * i) * range(r, 0.85, 1);
+      line(band.frequency, s, [
+        [0, 380],
+        [w * 0.3, range(r, 850, 1050)],
+        [w * 0.8, 420],
+      ]);
+      line(env.gain, s, [
+        [0, 0],
+        [w * 0.28, peak],
+        [w * 0.95, 0],
+      ]);
+      line(thump.gain, s, [
+        [0, 0],
+        [w * 0.2, 0.5 * peak],
+        [w * 0.55, 0],
+      ]);
+      s += w;
+    }
+    v.noise('pink', t, s).connect(band).connect(env).connect(v.out);
+    v.noise('brown', t, s).connect(v.filter('lowpass', 220, 0.8)).connect(thump).connect(v.out);
+  }
+
+  /** A giant ibis: loud, low, nasal honks ("ow-aa"), two to four. */
+  private ibis(v: Voice, t: number): void {
+    const r = v.r;
+    const f = range(r, 125, 165);
+    const honks: [number, number][] = [];
+    let s = t;
+    for (let i = 0, n = 2 + Math.floor(r() * 3); i < n; i++) {
+      const len = range(r, 0.28, 0.42);
+      honks.push([s, len]);
+      s += len + range(r, 0.18, 0.4);
+    }
+    const last = honks[honks.length - 1];
+    const end = last[0] + last[1];
+    const o = v.osc('sawtooth', t, end + 0.02);
+    const env = v.gain();
+    const mouth = v.filter('bandpass', 650, 2.2);
+    for (const [s0, len] of honks) {
+      line(o.frequency, s0, [
+        [0, f],
+        [len * 0.3, f * 1.12],
+        [len, f * 0.88],
+      ]);
+      line(env.gain, s0, [
+        [0, 0],
+        [0.03, 0.5],
+        [len * 0.7, 0.4],
+        [len, 0],
+      ]);
+      // "ow" opening to "aa".
+      line(mouth.frequency, s0, [
+        [0, 560],
+        [len * 0.5, 950],
+        [len, 820],
+      ]);
+    }
+    o.connect(env);
+    v.noise('pink', t, end).connect(v.filter('bandpass', 1400, 1)).connect(v.gain(0.4)).connect(env);
+    env.connect(mouth).connect(v.out);
+    env.connect(v.filter('bandpass', 1600, 3)).connect(v.gain(0.35)).connect(v.out);
+    env.connect(v.filter('lowpass', 700, 0.7)).connect(v.gain(0.25)).connect(v.out);
+  }
+
+  /**
+   * A pair of pileated gibbons singing their morning duet (about 14 s, as
+   * long as the song in fauna/_jungleGibbons.ts): the female's great call —
+   * a few soft hoots, then whooping notes that rise and quicken into a
+   * bubbling trill, and fall away — and the male's short "hoo-wa" phrases
+   * before it and after. Clear, fluting tones.
+   */
+  private gibbon(v: Voice, t: number): void {
+    const r = v.r;
+    const tone = softWave(v.ctx, 2.2, 6);
+    const out = v.filter('lowpass', 4000, 0.7);
+    out.connect(v.out);
+    // ── Female ──
+    const fo = v.osc(tone, t, t + 15.5);
+    const fe = v.gain();
+    const vib = v.gain(0);
+    v.osc('sine', t, t + 15.5, range(r, 8, 10)).connect(vib).connect(fo.frequency);
+    fo.connect(fe).connect(out);
+    const f0 = range(r, 560, 640);
+    let s = t + 0.2;
+    // Soft opening hoots.
+    for (let i = 0; i < 3; i++) {
+      const len = range(r, 0.28, 0.36);
+      line(fo.frequency, s, [
+        [0, f0 * 0.9],
+        [len * 0.6, f0 * 1.08],
+        [len, f0 * 0.95],
+      ]);
+      note(fe.gain, s, len, 0.24 + 0.04 * i, 0.06, 0.1);
+      s += len + range(r, 0.4, 0.55);
+    }
+    // The great call: whoops rising and quickening.
+    let gap = 0.42;
+    for (let i = 0, n = 9 + Math.floor(r() * 3); i < n; i++) {
+      const k = i / (n - 1);
+      const len = 0.3 - 0.13 * k;
+      const lo = f0 * (1 + 0.55 * k);
+      line(fo.frequency, s, [
+        [0, lo],
+        [len * 0.7, lo * (1.45 + 0.2 * k)],
+        [len, lo * 1.3],
+      ]);
+      note(fe.gain, s, len, 0.3 + 0.16 * k, 0.03, 0.06);
+      s += len + gap;
+      gap *= 0.8;
+    }
+    // The climax: a bubbling trill up high, then notes falling away.
+    const top = f0 * 2.05;
+    const trill = range(r, 1.2, 1.6);
+    line(fo.frequency, s, [
+      [0, top * 0.95],
+      [trill * 0.3, top * 1.05],
+      [trill, top * 0.9],
+    ]);
+    line(vib.gain, s, [
+      [0, 0],
+      [0.1, top * 0.07],
+      [trill - 0.1, top * 0.06],
+      [trill, 0],
+    ]);
+    note(fe.gain, s, trill, 0.46, 0.05, 0.15);
+    s += trill + 0.15;
+    for (let i = 0; i < 3; i++) {
+      const hi = top * (0.85 - 0.12 * i);
+      line(fo.frequency, s, [
+        [0, hi],
+        [0.35, hi * 0.7],
+      ]);
+      note(fe.gain, s, 0.35, 0.32 - 0.07 * i, 0.03, 0.12);
+      s += 0.55;
+    }
+    const femaleEnd = s;
+    // ── Male: phrases while she opens, and after her call ──
+    const mo = v.osc(tone, t, t + 15.5);
+    const me = v.gain();
+    mo.connect(me).connect(out);
+    const m0 = range(r, 470, 530);
+    let q = gibbonPhrase(r, mo.frequency, me.gain, t + 1.4, m0, 2);
+    q = gibbonPhrase(r, mo.frequency, me.gain, q + range(r, 0.6, 1), m0, 2);
+    q = Math.max(q + 0.5, femaleEnd + 0.1);
+    q = gibbonPhrase(r, mo.frequency, me.gain, q, m0 * 1.05, 3);
+    if (q < t + 14.2) gibbonPhrase(r, mo.frequency, me.gain, q + 0.4, m0, 2);
+  }
+
+  /** A gibbon's short call now and then: a few "hoo-wa" notes, rising. */
+  private gibbonHoot(v: Voice, t: number): void {
+    const r = v.r;
+    const o = v.osc(softWave(v.ctx, 2.2, 6), t, t + 4);
+    const e = v.gain();
+    o.connect(e).connect(v.filter('lowpass', 4000, 0.7)).connect(v.out);
+    const m0 = range(r, 480, 600);
+    const q = gibbonPhrase(r, o.frequency, e.gain, t + 0.05, m0, 2 + Math.floor(r() * 2));
+    if (r() < 0.5 && q < t + 2.6) gibbonPhrase(r, o.frequency, e.gain, q + 0.3, m0 * 1.1, 2);
+  }
+
+  /** A variable squirrel scolding: quick, dry "chk-chk-chk" with a squeak in each, ending in a rattle. */
+  private squirrel(v: Voice, t: number): void {
+    const r = v.r;
+    const n = 6 + Math.floor(r() * 8);
+    const rate = range(r, 8, 12);
+    const ne = v.gain();
+    const o = v.osc('sine', t, t + (1.2 * n) / rate + 0.1);
+    const oe = v.gain();
+    let s = t;
+    for (let i = 0; i < n; i++) {
+      strike(ne.gain, s, 0.9, 0.002, 0.012);
+      const f = range(r, 2600, 3400);
+      o.frequency.setValueAtTime(f, s);
+      o.frequency.exponentialRampToValueAtTime(f * 0.7, s + 0.035);
+      strike(oe.gain, s, 0.3, 0.003, 0.015);
+      s += (1 / rate) * range(r, 0.85, 1.15);
+    }
+    // The rattle at the end.
+    const len = range(r, 0.2, 0.35);
+    pulses(ne.gain, s, len, range(r, 35, 45), 0.6);
+    v.noise('white', t, s + len).connect(v.filter('bandpass', range(r, 3400, 4200), 3)).connect(ne).connect(v.out);
+    o.connect(oe).connect(v.filter('highpass', 1500, 0.7)).connect(v.out);
+  }
+}
+
+/**
+ * A gibbon's phrase on one voice: `n` pairs of a quick rising "hoo" and a
+ * falling "wa" from base pitch `f` (Hz), from time `at`; returns its end.
+ */
+function gibbonPhrase(r: () => number, freq: AudioParam, gain: AudioParam, at: number, f: number, n: number): number {
+  let q = at;
+  for (let i = 0; i < n; i++) {
+    const up = f * (1 + 0.06 * i);
+    line(freq, q, [
+      [0, up * 0.95],
+      [0.1, up * 1.4],
+      [0.12, up * 1.5],
+    ]);
+    note(gain, q, 0.12, 0.24, 0.02, 0.04);
+    q += 0.16;
+    line(freq, q, [
+      [0, up * 1.55],
+      [0.2, up],
+    ]);
+    note(gain, q, 0.2, 0.2, 0.02, 0.08);
+    q += 0.2 + range(r, 0.12, 0.25);
+  }
+  return q;
 }

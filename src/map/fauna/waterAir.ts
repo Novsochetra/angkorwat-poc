@@ -1,12 +1,12 @@
 import { Group } from 'three';
-import type { MapContext, MapFrame, MapPart } from '../types';
+import type { MapContext, MapFrame, MapPart, Subject, SubjectKind } from '../types';
 import { buildBats } from './_airBats';
 import { buildDragonflies } from './_airDragonflies';
 import { dragonflyShape } from './_airModels';
-import { creatureMaterial, Herd, readExplorer, View, type Explorer } from './_waterAirKit';
+import { creatureMaterial, Herd, readExplorer, STRIDE, View, type Explorer } from './_waterAirKit';
 import { buildWaterCritters } from './_waterCritters';
 import { buildDucks } from './_waterDucks';
-import { fishShape, frogShape } from './_waterModels';
+import { CRITTER, DUCK, fishShape, frogShape, WADER } from './_waterModels';
 import { Rings } from './_waterRings';
 import { buildWaders } from './_waterWaders';
 
@@ -95,6 +95,23 @@ export function buildWaterAirFauna(ctx: MapContext): MapPart {
       spent += performance.now() - a;
       if (++frames === 32)
         console.info(`[map] wildlife: ${(spent / frames).toFixed(3)} ms a frame (CPU, average of ${frames}) · drawn: ${ducks.herd.count} ducks, ${waders.herd.count} waders, ${bats.herd.count} bats, ${critters.count} critters, ${rings?.count ?? 0} rings`);
+    },
+    // (the nature book, roam/_book.ts: the animals drawn this frame, read from the herds' buffers)
+    subjects(out: Subject[]) {
+      const read = (h: Herd, what: (kind: number) => [SubjectKind, number] | null) => {
+        for (let i = 0; i < h.count; i++) {
+          const o = i * STRIDE;
+          const d = h.data;
+          const k = what(d[o + 7]);
+          if (!k || d[o + 3] <= 0.05) continue;
+          const r = k[1] * d[o + 3];
+          out.push({ kind: k[0], x: d[o], y: d[o + 1] + r * 0.6, z: d[o + 2], r });
+        }
+      };
+      read(ducks.herd, (k) => ['duck', k === DUCK.duckling ? 0.12 : 0.2]);
+      read(waders.herd, (k) => (k === WADER.heron ? ['heron', 0.42] : ['egret', 0.38]));
+      read(bats.herd, () => ['bat', 0.16]);
+      read(critters, (k) => (k === CRITTER.fish ? ['fish', 0.12] : k === CRITTER.dragonfly ? ['dragonfly', 0.04] : ['frog', 0.04]));
     },
   };
 }

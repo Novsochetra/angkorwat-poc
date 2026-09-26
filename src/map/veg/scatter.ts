@@ -1,7 +1,7 @@
 import { Matrix4, PerspectiveCamera } from 'three';
 import { hash3 } from '../../voxel/random';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
-import { OVERVIEW, PLACES } from '../layout';
+import { LAKES, OVERVIEW, PLACES } from '../layout';
 import { CAM_REACH, roamDistance } from '../terrain/views';
 import type { Species } from './species';
 
@@ -64,6 +64,9 @@ function makeSeen(): (x: number, y: number, z: number) => boolean {
     return false;
   };
 }
+
+/** How far round a lake (in its radii) land lower than its water keeps no tree (scatterTrees `drowned`). */
+const LAKE_LOWLAND = 2.6;
 
 /** Half width of the road (m), the gap crowns keep from its edge, and their distance from a beacon's centre. */
 const ROAD_HALF = 2;
@@ -137,6 +140,8 @@ function pairSpacing(a: Species, b: Species, lod: number): number {
   if (a === 'emergent' || b === 'emergent') return a === b ? 1.1 : 0.42;
   if (a === 'bush' || b === 'bush') return a === b ? 0.8 : 0.62;
   if (a === 'palm' || b === 'palm') return 0.6;
+  // (bamboo clumps crowd into thickets)
+  if (a === 'bamboo' || b === 'bamboo') return a === b ? 0.72 : 0.6;
   return [0.62, 0.62, 0.56, 0.56][lod];
 }
 
@@ -297,8 +302,23 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
     const s = f.surface[c];
     return s === SURFACE.grass || s === SURFACE.dirt || s === SURFACE.rock;
   };
+  /**
+   * Land sunk lower than a lake's water beside it, out in the map's sinking edge (where the great lake runs
+   * on west under the mist): the valley mist swallows the ground and the trunk there, and a crown alone
+   * would hang over the misty lake like a dark box. No tree there.
+   */
+  const drowned = (x: number, y: number, z: number) =>
+    roamDistance(x, z) > 0 &&
+    LAKES.some((l) => {
+      if (y >= l.level) return false;
+      const c = Math.cos(l.rot ?? 0);
+      const s = Math.sin(l.rot ?? 0);
+      const dx = x - l.x;
+      const dz = z - l.z;
+      return Math.hypot((dx * c + dz * s) / l.rx, (-dx * s + dz * c) / l.rz) < LAKE_LOWLAND;
+    });
   const place = (t: TreeSpot, lip = false): boolean => {
-    if (!standable(t.x, t.z, lip)) return false;
+    if (!standable(t.x, t.z, lip) || drowned(t.x, t.y, t.z)) return false;
     if (!seen(t.x, t.y + t.r, t.z)) return false;
     if (!spacing.fits(t.x, t.z, t.r, t.kind, t.lod)) return false;
     if (!crownClear(t.x, t.z, t.kind === 'bush' ? t.r * 0.8 : t.r)) return false;
@@ -347,9 +367,18 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
       place(t, true);
     }
 
-  // 3. The canopy: broadleaf trees, palms by the water, a few in flower.
+  // 3. The canopy: broadleaf trees, palms and bamboo by the water, a few in flower.
   // Crowns grow a little with distance (they read as clumps, and cost less per square metre).
+  // Bamboo: thickets along the streams and in patches of the wet lowland, a few up in the jungle.
   const STEP = [3, 4, 5, 7];
+  /** Bamboo clumps' reach per level of detail (m). */
+  const BAMBOO_R = [3.2, 3.6, 4.2, 5];
+  /** Chance a canopy tree is a bamboo clump: by the streams, in patches of low ground, a few on the mesas. */
+  const bambooChance = (x: number, z: number, y: number, wet: boolean) => {
+    const patch = fbm(x / 45, z / 45, 909);
+    if (wet) return 0.28 + 0.4 * smooth(0.45, 0.6, patch);
+    return y < 14 ? 0.55 * smooth(0.58, 0.68, patch) : 0.3 * smooth(0.66, 0.74, patch);
+  };
   const RADII = [
     [3, 3.8, 4.6],
     [3.4, 4.2, 5.2],
@@ -371,8 +400,9 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
         let kind: Species = 'broadleaf';
         if (r0 < (wet ? 0.3 : y < 14 ? 0.09 : 0.04)) kind = 'palm';
         else if (r0 > 0.975) kind = 'flowering';
+        else if (hash3(x, z, 7, 13) < bambooChance(px, pz, y, wet)) kind = 'bamboo';
         const size = r1 < 0.3 ? 0 : r1 < 0.78 ? 1 : 2;
-        const r = kind === 'palm' ? 3.5 : RADII[lod][size] + ((r1 * 7) % 1) * 0.7;
+        const r = kind === 'palm' ? 3.5 : kind === 'bamboo' ? BAMBOO_R[lod] + r1 * 0.8 : RADII[lod][size] + ((r1 * 7) % 1) * 0.7;
         place(spot(Math.floor(px), Math.floor(pz), kind, size, r, Math.floor(hash3(x, z, 6, 13) * 1e6)));
       }
   }

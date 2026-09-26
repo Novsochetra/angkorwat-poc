@@ -1,8 +1,8 @@
 /**
- * Little pictures of the mini-map and the big map: the temple icon and the
- * hang glider of a take-off ramp (pixel art, as canvas sprites and as SVG),
- * the explorer's arrow, the boat, the rim arrow and the beacon, as paths
- * drawn round (0, 0) pointing up.
+ * Little pictures of the mini-map and the big map: the temple icon, the
+ * hang glider of a take-off ramp and the hot air balloon (pixel art, as
+ * canvas sprites and as SVG), the explorer's arrow, the boat, the rim arrow
+ * and the beacon, as paths drawn round (0, 0) pointing up.
  */
 
 /** A temple (three towers over a gallery with a door), lit from the left. `.` = empty. */
@@ -49,6 +49,40 @@ const WING_PAL: Record<string, string> = {
   o: 'rgba(24, 16, 12, 0.88)',
 };
 
+/**
+ * The hot air balloon, in the flag of Cambodia as it flies: a blue crown,
+ * gold lines round the red band, Angkor Wat in white on it, the blue skirt,
+ * the ropes (no outline: thin) and the wicker basket.
+ */
+const BALLOON = [
+  '...bbBbb...',
+  '.bbBBBBBbb.',
+  '.bBBBBBBBb.',
+  'bBBBBBBBBBb',
+  'yyyyyyyyyyy',
+  'rRRRRwRRRRr',
+  'rRRRwwwRRRr',
+  'rRwRwwwRwRr',
+  '.rwwwwwwwr.',
+  '.yyyyyyyyy.',
+  '..bBBBBBb..',
+  '...bBBBb...',
+  '....l.l....',
+  '....kkk....',
+  '....kkk....',
+];
+const BALLOON_PAL: Record<string, string> = {
+  B: '#2f5fd0',
+  b: '#1f45a8',
+  R: '#e8283c',
+  r: '#b81d2e',
+  w: '#fff6e6',
+  y: '#f2c55e',
+  l: '#d9d4c8',
+  k: '#a87444',
+  o: 'rgba(24, 16, 12, 0.88)',
+};
+
 /** Pixel art with a one-pixel dark outline round every colour but the `bare` ones: rows of colour keys (`.` empty, `o` outline). */
 function outlined(art: string[], bare = ''): string[] {
   const h = art.length + 2;
@@ -73,9 +107,11 @@ function outlined(art: string[], bare = ''): string[] {
 }
 const ICON_ROWS = outlined(TEMPLE);
 const WING_ROWS = outlined(WING, 'lhp');
+const BALLOON_ROWS = outlined(BALLOON, 'l');
 /** Size of the temple icon and of the glider in their pixels. */
 export const TEMPLE_SIZE = { w: ICON_ROWS[0].length, h: ICON_ROWS.length };
 export const WING_SIZE = { w: WING_ROWS[0].length, h: WING_ROWS.length };
+export const BALLOON_SIZE = { w: BALLOON_ROWS[0].length, h: BALLOON_ROWS.length };
 
 /** Pixel art on a canvas, its top left at (x0, y0), `k` device px per pixel. */
 function paint(g: CanvasRenderingContext2D, rows: string[], pal: Record<string, string>, k: number, x0 = 0, y0 = 0): void {
@@ -122,6 +158,31 @@ export function rampSprite(k: number, gold = false): HTMLCanvasElement {
   return cv;
 }
 
+/**
+ * The hot air balloon on the mini-map: on a small dark badge with a cream
+ * ring like the ramps (a gold one and a warm badge: the target), `k` device
+ * px per pixel.
+ */
+export function balloonSprite(k: number, gold = false): HTMLCanvasElement {
+  const w = BALLOON_SIZE.w * k;
+  const h = BALLOON_SIZE.h * k;
+  const ring = gold ? 1.6 * k : Math.max(1, 0.9 * k);
+  const r = Math.max(w, h) / 2 + k;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = Math.ceil(2 * r + ring);
+  const c = cv.width / 2;
+  const g = cv.getContext('2d')!;
+  g.beginPath();
+  g.arc(c, c, r, 0, Math.PI * 2);
+  g.fillStyle = gold ? 'rgba(58, 38, 8, 0.94)' : 'rgba(10, 18, 30, 0.86)';
+  g.fill();
+  g.lineWidth = ring;
+  g.strokeStyle = gold ? '#ffd54a' : 'rgba(255, 236, 200, 0.72)';
+  g.stroke();
+  paint(g, BALLOON_ROWS, BALLOON_PAL, k, Math.round(c - w / 2), Math.round(c - h / 2));
+  return cv;
+}
+
 /** Pixel art as SVG: one rect per run of a colour, a group per palette (with its class). */
 function pixelSvg(rows: string[], cls: string, looks: [Record<string, string>, string][]): string {
   const rects = (pal: Record<string, string>, extra: string) => {
@@ -149,6 +210,8 @@ export const templeSvg = (cls: string) =>
   ]);
 /** The glider as SVG (the big map's ramps, its legend and button, the toast). */
 export const wingSvg = (cls: string) => pixelSvg(WING_ROWS, cls, [[WING_PAL, '']]);
+/** The hot air balloon as SVG (the big map's marker, its legend, the toast). */
+export const balloonSvg = (cls: string) => pixelSvg(BALLOON_ROWS, cls, [[BALLOON_PAL, '']]);
 
 /** The explorer: an arrow pointing up (his facing), about 16 px long. */
 export const ARROW_PATH = 'M0 -8.5L6.2 7.5L0 3.6L-6.2 7.5Z';

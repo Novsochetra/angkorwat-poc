@@ -107,8 +107,8 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
   // (locals: the loop runs 234 000 times)
   const hash = hash3;
   const pick = P.pick;
-  const { ROCK_TOP, DIRT, SAND, PATH, PAD, BED, GRASS, GRASS_DRY, GRASS_DARK } = P;
-  const { rock, dirt, sand, path, pad, bed } = SURFACE;
+  const { ROCK_TOP, DIRT, SAND, PATH, PAD, BED, PADDY, GRASS, GRASS_DRY, GRASS_DARK } = P;
+  const { rock, dirt, sand, path, pad, bed, paddy } = SURFACE;
   // (a row at a time: small functions get fast sooner than one long loop)
   const cellRow = (k: number) => {
     for (let i = 0; i < nx; i++) {
@@ -150,6 +150,7 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
         else if (s === path) col = pick(PATH, r);
         else if (s === pad) col = pick(PAD, r);
         else if (s === bed) col = pick(BED, r);
+        else if (s === paddy) col = pick(PADDY, r);
         else {
           const p = patch[(i >> 2) + (k >> 2) * pw];
           col = pick(p > 0.6 ? GRASS_DRY : p < 0.4 ? GRASS_DARK : GRASS, r);

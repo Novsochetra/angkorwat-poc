@@ -11,7 +11,13 @@ import { Model, type Species } from './_kit';
  * stop to flap the ears, swing and curl the trunk. Asleep they stand still
  * with the head and trunk low. Head up and trunk raised: a trumpet.
  *
- * Variants: 0 cow, 1 calf. Act: 1 trunk up to the mouth, 2 trunk raised high.
+ * Bathing in the river (_landBath.ts) the trunk dips into the water and
+ * sprays it back over the head and the back; the calf lies down on its
+ * side in the shallows and kicks.
+ *
+ * Variants: 0 cow, 1 calf. Act: 1 trunk up to the mouth, 2 trunk raised
+ * high, 3 trunk curled back over the head (spraying), −1 trunk down in the
+ * water (drinking it up). Rest: 1 dozing, 2 lying on its side.
  */
 
 const S = { skin: 0, belly: 1, pink: 2, edge: 3, eye: 4, nail: 5, dark: 6, foot: 7 };
@@ -69,22 +75,27 @@ model
 
 const GLSL = /* glsl */ `
 vec3 faunaBoneRot(int b, FaunaPose P) {
-  float doze = P.rest;
+  // (rest 1‥2: from dozing to lying on its side)
+  float lie = clamp(P.rest - 1.0, 0.0, 1.0);
+  float doze = clamp(P.rest, 0.0, 1.0) * (1.0 - lie);
   float awake = 1.0 - doze;
   float mouth = clamp(1.0 - abs(P.act - 1.0), 0.0, 1.0);
-  float raise = clamp(P.act - 1.0, 0.0, 1.0);
+  float raise = clamp(1.0 - abs(P.act - 2.0), 0.0, 1.0);
+  float spray = clamp(P.act - 2.0, 0.0, 1.0);
+  float dip = clamp(-P.act, 0.0, 1.0);
   float mv = P.walk + P.run;
-  if (b == B_BODY) return vec3(0.0, 0.0, 0.035 * sin(P.phase) * mv);
+  // Lying: rolled onto its right side (the left up).
+  if (b == B_BODY) return vec3(0.0, 0.0, 0.035 * sin(P.phase) * mv + 1.3 * lie);
   if (b == B_HEAD) {
-    float nod = 0.035 * sin(P.phase * 2.0 + 0.6) * mv + 0.12 * P.head + 0.12 * doze - 0.2 * raise;
-    return vec3(nod, P.turn * 0.35, 0.02 * sin(P.phase) * mv);
+    float nod = 0.035 * sin(P.phase * 2.0 + 0.6) * mv + 0.12 * P.head + 0.12 * doze - 0.2 * raise - 0.3 * spray + 0.32 * dip;
+    return vec3(nod - 0.15 * lie, P.turn * 0.35 + 0.2 * sin(P.t * 1.3 + P.seed * 5.0) * lie, 0.02 * sin(P.phase) * mv);
   }
   if (b == B_EARL || b == B_EARR) {
     // Flapping in bouts (fanning), wide open when alarmed; still asleep.
     float s = b == B_EARL ? 1.0 : -1.0;
     float bout = smoothstep(0.2, 0.7, sin(P.t * 0.21 + P.seed * 5.0) * 0.5 + 0.5);
     float flap = (0.5 + 0.5 * sin(P.t * 2.3 + P.seed * 9.0 + s * 0.4)) * bout * awake;
-    return vec3(0.0, -s * (0.1 + 0.75 * flap + 1.0 * raise), 0.0);
+    return vec3(0.0, -s * (0.1 + 0.75 * flap + 1.0 * raise + 0.35 * spray), 0.0);
   }
   if (b == B_TRUNK1 || b == B_TRUNK2 || b == B_TRUNK3) {
     // Swinging with the steps and idly; the tip curls forward; up to the mouth, or raised high.
@@ -94,7 +105,11 @@ vec3 faunaBoneRot(int b, FaunaPose P) {
     float curl = (k == 0.0 ? -0.05 : (k == 1.0 ? -0.15 : -0.4)) * awake;
     float feed = mouth * (k == 0.0 ? -0.35 : (k == 1.0 ? -1.0 : -1.4));
     float up = raise * (k == 0.0 ? -1.3 : (k == 1.0 ? -0.9 : -0.8));
-    return vec3(curl + feed + up + 0.04 * sin(P.phase * 2.0 - k) * mv, sway + idle, 0.0);
+    // Spraying: up and curled back over the head; dipping: straight down into the water, swinging a little.
+    float back = spray * (k == 0.0 ? -1.6 : (k == 1.0 ? -1.4 : -1.2));
+    float down = dip * (k == 0.0 ? 0.08 : (k == 1.0 ? 0.2 : 0.42));
+    float wave = 0.25 * sin(P.t * 2.1 + P.seed * 3.0 - k * 0.7) * lie;
+    return vec3(curl + feed + up + back + down + wave + 0.04 * sin(P.phase * 2.0 - k) * mv, sway + idle + 0.08 * sin(P.t * 1.7 - k) * dip, 0.0);
   }
   if (b == B_TAIL) return vec3(0.05, 0.25 * sin(P.t * 1.1 + P.seed * 4.0) * awake, 0.0);
   bool left = b == B_FLEGL || b == B_FSHINL || b == B_HLEGL || b == B_HSHINL;
@@ -105,12 +120,17 @@ vec3 faunaBoneRot(int b, FaunaPose P) {
   float th = P.phase + 6.2832 * off;
   float swing = -sin(th) * (0.26 * P.walk + 0.45 * P.run);
   float bend = max(0.0, cos(th)) * (0.45 * P.walk + 0.7 * P.run);
-  if (upper) return vec3(swing, 0.0, 0.0);
-  return vec3(hind ? -0.6 * bend : bend, 0.0, 0.0);
+  // Lying: the legs stretched out, kicking the water now and then.
+  float kick = lie * (0.3 + 0.35 * sin(P.t * 2.6 + P.seed * 7.0 + off * 6.2832)) * (0.5 + 0.5 * sin(P.t * 0.45 + P.seed * 3.0));
+  if (upper) return vec3(swing + (hind ? -0.35 : 0.35) * kick, 0.0, 0.0);
+  return vec3((hind ? -0.6 * bend : bend) + 0.2 * kick, 0.0, 0.0);
 }
 
 vec3 faunaRootMove(FaunaPose P) {
-  return vec3(0.0, 0.035 * sin(P.phase * 2.0) * (P.walk + P.run) - 0.04 * P.rest, 0.0);
+  float lie = clamp(P.rest - 1.0, 0.0, 1.0);
+  float doze = clamp(P.rest, 0.0, 1.0) * (1.0 - lie);
+  // (lying on its side: the body's middle down near the ground, a little to the right)
+  return vec3(-0.35 * lie, 0.035 * sin(P.phase * 2.0) * (P.walk + P.run) - 0.04 * doze - 1.25 * lie, 0.0);
 }
 `;
 

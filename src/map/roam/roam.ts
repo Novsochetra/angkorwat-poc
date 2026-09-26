@@ -3,6 +3,7 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { PlaceDef } from '../layout';
 import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UISound } from '../types';
 import { followNearFade, installNearFade } from './_nearFade';
+import { createBalloon, type BalloonInfo } from './balloon';
 import { createBoat } from './boat';
 import { OrbitFollowCam } from './followCam';
 import { createHangGlider } from './hangGlider';
@@ -22,7 +23,7 @@ import { buildRoamWorld } from './world';
  * runs the modes (roam/types.ts) and hands the camera between the overview
  * rig and the follow camera.
  *
- * URL (for checking): `roam=leap|glide|walk|boat|hang` start in that mode
+ * URL (for checking): `roam=leap|glide|walk|boat|hang|balloon` start in that mode
  * (`roam=leap&start=glider`: the hang glider opens at the end of the leap,
  * not the parachute; hud.ts: `jumpmenu=1` the "Jump in" card open) ·
  * `at=x,z` or `at=x,y,z` where (m; y defaults to the ground or water) ·
@@ -46,6 +47,8 @@ export interface MapRoam extends MapPart {
   readonly world: RoamWorld;
   /** The hang glider take-off ramps (for the maps). */
   readonly launchSpots: readonly LaunchSpot[];
+  /** The hot air balloon (where it stands or flies, at home or not, ridden), for the maps. */
+  readonly balloon: BalloonInfo;
   /** Roaming (the follow camera has the view). */
   readonly active: boolean;
   /** Leap off the ledge; at the end of the fall the parachute opens over him (`chute`, the default) or the hang glider (`glider`). */
@@ -90,7 +93,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const controls = new RoamControls(deps.canvas);
   const explorer = deps.explorer;
   const body: RoamBody = { explorer, pos: new Vector3().copy(deps.feet), vel: new Vector3(), yaw: deps.yaw, grounded: true, scale: 1 };
-  const levels: RoamLevels = { wind: 0, wake: 0, sail: 0 };
+  const levels: RoamLevels = { wind: 0, wake: 0, sail: 0, burner: 0 };
 
   let mode: RoamMode = 'overview';
   let leaving = false;
@@ -100,7 +103,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     sound: (s) => deps.uiSound?.(s),
   });
 
-  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas });
+  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas, parts: deps.parts });
   object.add(tools.object);
 
   const chute = createParachute();
@@ -121,12 +124,19 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     };
   world.launchNear = (x, z, y) => spots.near(x, z, y) !== null;
   const hang = createHangGlider(spots, world);
+  // The hot air balloon on its field below Angkor Wat: E at its basket rides it; the walker goes round the basket.
+  const balloon = createBalloon(ctx.field, world);
+  world.balloonNear = (x, z, y) => balloon.near(x, z, y);
+  const standOnDecks = world.standAt;
+  if (standOnDecks) world.standAt = (x, z, y, up, h) => (balloon.solid(x, z, y) ? NaN : standOnDecks(x, z, y, up, h));
+  const walker = createWalker();
   const handlers: Record<Exclude<RoamMode, 'overview'>, RoamModeHandler> = {
     leap: chute.leap,
     glide: chute.glide,
-    walk: createWalker(),
+    walk: walker,
     boat,
     hang,
+    balloon,
   };
   for (const h of new Set(Object.values(handlers))) if (h.object) object.add(h.object);
 
@@ -174,6 +184,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   function step(f: MapFrame, dt: number): void {
     rctx.t = f.t;
     rctx.night = f.night;
+    rctx.weather = f.weather;
     controls.poll(dt);
     // (the tools take the keys they use first: Esc puts the camera away, not the map)
     tools.input(rctx, mode, dt);
@@ -181,7 +192,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       void api.stop();
       return;
     }
-    levels.wind = levels.wake = levels.sail = 0;
+    levels.wind = levels.wake = levels.sail = levels.burner = 0;
     const next = handlers[mode as Exclude<RoamMode, 'overview'>].update(rctx, dt);
     if (next) {
       if (next === 'overview') void api.stop();
@@ -200,6 +211,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     cam,
     world,
     launchSpots: spots.list,
+    balloon: balloon.info,
     get mode() {
       return mode;
     },
@@ -237,17 +249,24 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       const deg = (r: number) => ((((r * 180) / Math.PI) % 360) + 360) % 360;
       const t = tools.report();
       const look = [t.tool, t.act].filter(Boolean).join(', ');
+      // On the rope swing (_swingRide.ts): the shot starts him at its stand spot, E sits him on
+      // it and it swings as long as he has been on it. (The camera or the phone up would keep
+      // E from seating him: named in the words, not in the params.)
+      const ride = mode === 'walk' ? walker.swing.ride : null;
+      if (ride && (t.tool === 'camera' || t.tool === 'selfie')) for (const k of ['tool', 'pview', 'saim', 'gesture', 'stick']) delete t[k];
+      const at = ride?.stand ?? p;
       return {
-        text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}), facing ${deg(body.yaw).toFixed(0)}°${look ? ` · ${look}` : ''}`,
+        text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})${ride ? `, on the rope swing ${ride.seconds.toFixed(1)} s` : ''}, facing ${deg(body.yaw).toFixed(0)}°${look ? ` · ${look}` : ''}`,
         params: {
           // (a leap goes on as whatever opens at its end: the parachute, or the hang glider)
           roam: mode === 'leap' ? chute.leap.opens : mode,
-          at: [p.x, p.y, p.z].map((v) => v.toFixed(1)).join(','),
+          at: [at.x, at.y, at.z].map((v) => v.toFixed(ride ? 2 : 1)).join(','),
           yaw: deg(body.yaw).toFixed(0),
           rcam: [deg(cam.yaw - body.yaw), (cam.pitch * 180) / Math.PI, cam.distance].map((v) => v.toFixed(0)).join(','),
           // (a shot needs a moment for the camera to come up)
           ...(t.tool === 'camera' || t.tool === 'selfie' ? { sim: '_:1' } : {}),
           ...t,
+          ...(ride ? { sim: `e:0.1,_:${Math.max(0.1, ride.seconds - 0.1).toFixed(1)}` } : {}),
         },
       };
     },
@@ -264,6 +283,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         cam.update(STEP, world);
         // (the glider put away and the seed fluff move on too)
         hang.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode, body.pos);
+        balloon.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode);
       }
     },
     update(f) {
@@ -280,12 +300,15 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       followNearFade(mode !== 'overview' && mode !== 'leap' ? cam.focus : null, ctx.shot ? 1 : f.dt, 1 - tools.photo.view);
       // The hang glider over him (after his step: they move together), a glider put away, the ramps' lanterns, the seed fluff.
       hang.frame(f, mode, body.pos);
+      // The balloon where it stands or flies (back home once he leaves roaming).
+      balloon.frame(f, mode);
       // The view through his camera, the lights of his lantern, torch or flashlight (the ledge's too).
       tools.frame(f);
       f.roam = mode;
       f.roamLevels.wind = mode === 'overview' ? 0 : levels.wind;
       f.roamLevels.wake = mode === 'overview' ? 0 : levels.wake;
       f.roamLevels.sail = mode === 'overview' ? 0 : (levels.sail ?? 0);
+      f.roamLevels.burner = mode === 'overview' ? 0 : (levels.burner ?? 0);
     },
   };
 

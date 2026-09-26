@@ -1,5 +1,6 @@
 import type { HeightField } from '../heightfield';
-import { VOLUME_KEYS, type AnimalCall, type Duck, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
+import type { EventState } from '../events';
+import { VOLUME_KEYS, type AnimalCall, type Duck, type MapWeather, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { Ambience } from './ambience';
 import { Animals } from './animals';
 import { clamp01, glide, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
@@ -10,6 +11,9 @@ import { Music } from './music';
 import { Sfx } from './sfx';
 import { Typing } from './typing';
 import { Water, type Ears } from './water';
+import { isPeopleCall, PeopleSound } from './people';
+import { TempleSound } from './temple';
+import { WeatherSound } from './weather';
 
 /**
  * The sound graph of the map, on any `BaseAudioContext` (live or offline).
@@ -24,7 +28,7 @@ import { Water, type Ears } from './water';
  *
  * One bus per volume slider (`MapSettings`, `VOLUME_KEYS`), and every sound
  * on exactly one: `music`; `ambience` (wind, birds, insects, frogs:
- * ambience.ts); `water` (falls and rivers: water.ts); `animals` (their
+ * ambience.ts; the temples' chant, drum and bells: temple.ts); `water` (falls and rivers: water.ts); `animals` (their
  * calls, placed on the map: animals.ts); `steps` (the explorer's footsteps)
  * and `moves` (his other sounds, the lasting wind, sail and wake too:
  * explorer.ts `roamBus`); `ui` (the interface and the camera's flights:
@@ -61,8 +65,12 @@ const DUCK_UP = 0.9;
 export interface Mix {
   /** 0 day … 1 night. */
   night: number;
+  /** Leaves over the roaming explorer, 0‥1 (`MapFrame.canopy`): the day's cicadas are louder in the forest. */
+  canopy?: number;
 }
 
+/** How far the map's music steps back for the pinpeat when it is at its loudest (`yieldMusic`). */
+const MUSIC_YIELD = 0.85;
 /** Reverb return level. */
 const REVERB = 0.5;
 /** Level after the compressor (it adds make-up gain; this takes it back). */
@@ -145,7 +153,12 @@ export class SoundEngine {
   private readonly typing: Typing;
   private readonly explorer: Explorer;
   private readonly animals: Animals;
-  private applied: Mix = { night: -1 };
+  private readonly weatherSound: WeatherSound;
+  /** The temples' chant, drum and bells (temple.ts, on the ambience bus; public for checks). */
+  readonly temple: TempleSound;
+  /** The people's sounds (people.ts: ox bells, the cart, a net's splash, laughter on ambience; the pinpeat on music). */
+  private readonly people: PeopleSound;
+  private applied: Mix = { night: -1, canopy: -1 };
   /** The background's duck level now (`DUCK`). */
   private ducked = 1;
   private volumes = Object.fromEntries(VOLUME_KEYS.map((k) => [k, 1])) as Volumes;
@@ -186,6 +199,9 @@ export class SoundEngine {
     this.typing = new Typing(this);
     this.explorer = new Explorer(this);
     this.animals = new Animals(this);
+    this.weatherSound = new WeatherSound(this);
+    this.temple = new TempleSound(this);
+    this.people = new PeopleSound(this);
   }
 
   /** Every slider; a moved one glides there (no clicks), `immediate` jumps. */
@@ -210,12 +226,32 @@ export class SoundEngine {
   /** Time of day; small changes are skipped (called every frame). */
   setMix(m: Mix, immediate = false): void {
     const night = clamp01(m.night);
+    const canopy = clamp01(m.canopy ?? 0);
     this.night = night;
-    if (!immediate && Math.abs(night - this.applied.night) < 0.01) return;
-    this.applied = { night };
+    if (!immediate && Math.abs(night - this.applied.night) < 0.01 && Math.abs(canopy - (this.applied.canopy ?? 0)) < 0.03) return;
+    this.applied = { night, canopy };
     const t = this.ctx.currentTime;
-    this.ambience.mix(night, t, immediate ? 0 : 0.5);
+    this.ambience.mix(night, t, immediate ? 0 : 0.5, canopy);
     this.music.mix(night, t, immediate ? 0 : 0.8);
+  }
+
+  /**
+   * The weather (every frame; `weather.ts`, on the ambience bus): rain, wind,
+   * thunder after each flash (from where it struck, heard at `ears`), drops
+   * on the leaves round him while he walks under them (`leaves`: the leaves
+   * over him on foot, `MapFrame.canopy`; 0 in the overview, the balloon,
+   * the boat and the glider); the birds and the cicadas keep quiet in rain.
+   * `roaming`: he roams (the rain is nearer than over the overview).
+   * `t`: the page time (s, `MapFrame.t`).
+   */
+  weather(w: MapWeather, ears: Ears, roaming: boolean, t: number, leaves = 0): void {
+    this.ambience.setRain(w.rain, this.ctx.currentTime);
+    this.weatherSound.set(w, ears, roaming, t, leaves);
+  }
+
+  /** The event clock (every frame; `events.ts`): the monks' dawn chant, the dusk drum and the bells (temple.ts). `t`: the page time (s). */
+  events(ev: Readonly<Pick<EventState, 'on' | 'count' | 'began'>>, t: number): void {
+    this.temple.cue(ev, t);
   }
 
   /** Where the waterfalls and rivers are (once, when the land is built). */
@@ -227,6 +263,8 @@ export class SoundEngine {
   listen(ears: Ears, immediate = false): void {
     this.water.listen(ears, immediate);
     this.animals.listen(ears);
+    this.people.listen(ears);
+    this.temple.listen(ears, immediate);
   }
 
   /** Music, ambience, water and the animals swell in from silence (the explorer and the interface are never faded). */
@@ -240,12 +278,34 @@ export class SoundEngine {
     this.out.gain.setTargetAtTime(on ? 0 : 1, this.ctx.currentTime, on ? 0.05 : 0.35);
   }
 
-  /** Schedule every voice up to `until` (audio clock, s). A muted bus schedules nothing. */
+  /**
+   * Schedule every voice up to `until` (audio clock, s). A muted bus
+   * schedules nothing, and its lasting loops (the cicadas, the night
+   * insects, the rain and wind, the chant) stop once silent (`idle`).
+   */
   schedule(until: number): void {
     const now = this.ctx.currentTime;
-    if (this.heard('ambience')) this.ambience.schedule(now, until);
+    const ambience = this.heard('ambience');
+    if (ambience) this.ambience.schedule(now, until);
+    else this.ambience.idle(now);
     if (this.heard('music')) this.music.schedule(now, until);
     if (this.heard('water')) this.water.schedule(now, until);
+    if (ambience) {
+      this.weatherSound.schedule(now, until);
+      this.temple.schedule(now, until);
+    } else {
+      this.weatherSound.idle(now);
+      this.temple.idle(now);
+    }
+  }
+
+  /**
+   * The map's music steps back for other music near by (the pinpeat by the
+   * apsara dancers: people.ts): `near` 0‥1 is how loud that is here; from
+   * `t` until `until` (audio clock, s), then it comes back.
+   */
+  yieldMusic(near: number, t: number, until: number): void {
+    this.music.yieldTo(1 - MUSIC_YIELD * clamp01(near), t, until);
   }
 
   /** An interface sound (on the `ui` bus). */
@@ -303,14 +363,16 @@ export class SoundEngine {
 
   /** An animal call where the animal is (on the `animals` bus: muted, it is not even made). */
   call(c: AnimalCall, when = 0): void {
+    // (the people's sounds pick their own bus: people.ts)
+    if (isPeopleCall(c.kind)) return this.people.call(c, Math.max(when, this.ctx.currentTime));
     if (!this.heard('animals')) return;
     this.animals.call(c, Math.max(when, this.ctx.currentTime));
   }
 
-  /** The explorer's lasting sounds (on the `moves` bus): rushing air (falling, gliding), the boat's wake, the hang glider's sail, 0‥1 each. */
-  roamLevels(wind: number, wake: number, sail = 0): void {
+  /** The explorer's lasting sounds (on the `moves` bus): rushing air (falling, gliding), the boat's wake, the hang glider's sail, the balloon's burner, 0‥1 each. */
+  roamLevels(wind: number, wake: number, sail = 0, burner = 0): void {
     // (muted: the lasting sounds are not even made)
     const on = this.heard('moves') ? 1 : 0;
-    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on);
+    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on, clamp01(burner) * on);
   }
 }

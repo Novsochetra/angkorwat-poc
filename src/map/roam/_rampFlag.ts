@@ -1,5 +1,6 @@
 import { BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshStandardMaterial, Sphere, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
+import { weatherNow } from '../sky/weather';
 import { FLAG_ASPECT, flagTexture } from './_flag';
 
 /**
@@ -12,8 +13,9 @@ import { FLAG_ASPECT, flagTexture } from './_flag';
  * the flag is the same both ways round). It is cut in narrow strips from
  * the hoist to the fly and waves by turning them, a little at the hoist
  * and more towards the fly end, in a ripple running out along it: `update`
- * moves the strips' edges (a few dozen points; nothing is rebuilt). At
- * night the beacon above lights it softly.
+ * moves the strips' edges (a few dozen points; nothing is rebuilt). The
+ * weather's wind (sky/weather.ts) makes it stream out and snap faster, in
+ * a storm's gusts hard. At night the beacon above lights it softly.
  *
  * Flag space: origin at the top of the hoist (on the mast), +x along the
  * flag to the fly end, +y up (the flag hangs below its origin).
@@ -50,10 +52,12 @@ export class RampFlag {
   readonly object: Mesh;
   private readonly geo = new BufferGeometry();
   private readonly pos: BufferAttribute;
-  private readonly phase: number;
   /** Where each strip's edge is (flag space, reused every frame). */
   private readonly ex = new Float32Array(COLS + 1);
   private readonly ez = new Float32Array(COLS + 1);
+  /** The ripple's phase (rad) and the time it was last moved (s). */
+  private clock = 0;
+  private lastT = 0;
 
   constructor(seed: number) {
     const n = (COLS + 1) * (ROWS + 1);
@@ -80,19 +84,24 @@ export class RampFlag {
     this.object.name = 'launchRamp:flag';
     this.object.castShadow = true;
     this.object.receiveShadow = true;
-    this.phase = hash3(seed, 5, 2, 73) * 30;
+    this.clock = hash3(seed, 5, 2, 73) * 30;
     this.update(0, 0.5, 0);
   }
 
-  /** Wave in the breeze: `t` the time (s), `gust` how strong it blows (0 a lull … 1), `night` 0‥1. */
+  /** Wave in the breeze: `t` the time (s), `gust` how strong it blows (0 a lull … 1), `night` 0‥1; the weather's wind on top. */
   update(t: number, gust: number, night: number): void {
     const cw = FLAG.width / COLS;
-    const tt = t + this.phase;
-    const pace = PACE * (0.75 + 0.5 * gust);
-    const swing = 0.6 + 0.4 * gust;
+    // (the weather's wind: a lull only in calm air; in a strong wind it snaps quick and flies out flatter)
+    const wind = weatherNow().wind;
+    gust = Math.min(1, gust * (1 - wind) + wind * (0.7 + 0.3 * gust) + wind * 0.3);
+    const pace = PACE * (0.75 + 0.5 * gust + 2 * wind);
+    // (the ripple runs on its own clock at the pace of the moment, so a change of pace never jumps it)
+    this.clock += Math.min(0.1, Math.max(0, t - this.lastT)) * pace;
+    this.lastT = t;
+    const swing = (0.6 + 0.4 * gust) * (1 - 0.35 * wind);
     // Each strip turned a little, more towards the fly end, in a ripple running out along it.
     for (let c = 0; c < COLS; c++) {
-      const a = (TURN_HOIST + (TURN_FLY - TURN_HOIST) * (c / (COLS - 1))) * swing * Math.sin(tt * pace - c * WAVE);
+      const a = (TURN_HOIST + (TURN_FLY - TURN_HOIST) * (c / (COLS - 1))) * swing * Math.sin(this.clock - c * WAVE);
       this.ex[c + 1] = this.ex[c] + Math.cos(a) * cw;
       this.ez[c + 1] = this.ez[c] - Math.sin(a) * cw;
     }

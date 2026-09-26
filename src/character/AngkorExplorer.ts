@@ -113,7 +113,7 @@ export interface ExplorerOptions {
 }
 
 /**
- * The Angkor Quest explorer. Add `explorer.object` to the scene — it is in
+ * The Angkor Heritage explorer. Add `explorer.object` to the scene — it is in
  * metres with the feet on y = 0, facing +Z — then call `update(dt)` each frame
  * and feed it movement with `setMotion()`.
  */

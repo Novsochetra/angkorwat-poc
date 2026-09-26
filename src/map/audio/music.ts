@@ -12,6 +12,8 @@ import type { SoundEngine } from './engine';
  *   partial near 4×; now and then an octave double or a quick tremolo roll.
  * - Drone: a very soft low root and fifth, swelling slowly.
  * - Long reverb (the engine's convolver) and a ping-pong delay on the plucks.
+ * - Near the apsara dancers it steps back while their pinpeat plays
+ *   (`yieldTo`, from people.ts through the engine).
  *
  * Nothing repeats on a loop: chords follow weighted random steps, phrases
  * random-walk the scale, and silences come and go.
@@ -68,6 +70,9 @@ const PLUCK = 0.32;
 const DRONE = 0.045;
 /** At most this many pluck notes ringing. */
 const MAX_PLUCKS = 12;
+/** Stepping back for other music and coming back (time constants, s). */
+const YIELD_DOWN = 1.2;
+const YIELD_UP = 2.5;
 
 export class Music {
   private readonly e: SoundEngine;
@@ -78,6 +83,8 @@ export class Music {
   private readonly plucks: GainNode;
   private readonly dayDrone: GainNode;
   private readonly nightDrone: GainNode;
+  /** The music's own level (dry, wet) before the bus: 1, lower while it steps back (`yieldTo`). */
+  private readonly level: GainNode[];
   private nextChord = -1;
   private nextPhrase = -1;
   private chord = DAY.chords[0];
@@ -90,13 +97,18 @@ export class Music {
     const ctx = (this.ctx = e.ctx);
     this.rnd = e.rnd;
     this.wave = softWave(ctx, 1.7, 12);
-    const { dry, wet } = e.bus.music;
     const now = ctx.currentTime;
     const gain = (v: number) => {
       const g = ctx.createGain();
       g.gain.value = v;
       return g;
     };
+    // Its own level on the Music bus (it steps back for the pinpeat by the dancers: `yieldTo`).
+    const dry = gain(1);
+    const wet = gain(1);
+    dry.connect(e.bus.music.dry);
+    wet.connect(e.bus.music.wet);
+    this.level = [dry, wet];
     const lfo = (hz: number, depth: number, target: AudioParam) => {
       const o = ctx.createOscillator();
       o.frequency.value = hz;
@@ -164,6 +176,19 @@ export class Music {
     };
     this.dayDrone = drone([38, 45], DRONE);
     this.nightDrone = drone([35, 42], 0);
+  }
+
+  /**
+   * Step back to `g` (0‥1) from `t` and come back up from `until` (audio
+   * clock, s), gliding (`YIELD_DOWN`, `YIELD_UP`); a later call moves both,
+   * so while other music keeps coming the music stays back.
+   */
+  yieldTo(g: number, t: number, until: number): void {
+    for (const n of this.level) {
+      n.gain.cancelScheduledValues(t);
+      n.gain.setTargetAtTime(g, t, YIELD_DOWN);
+      n.gain.setTargetAtTime(1, Math.max(t, until), YIELD_UP);
+    }
   }
 
   mix(night: number, t: number, tc: number): void {

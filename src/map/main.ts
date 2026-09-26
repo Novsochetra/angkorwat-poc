@@ -12,12 +12,13 @@ import type { MapPost } from './post';
 import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
 import type { Story } from './story/story';
-import { DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { createWeather } from './sky/weather';
+import { CALM_WEATHER, DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
 import { onLang, setLang, t } from './ui/lang';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
 /**
- * World map screen — "Highland Journey: choose your next expedition".
+ * World map screen — "Angkor Heritage: choose your next expedition".
  *
  * URL: `shot=1` headless still · `t=` seconds into the scene (shots) ·
  * `night=0‥1` time of day · `focus=<place>` camera on a place ·
@@ -72,7 +73,7 @@ roamPrefs.easyFly = settings.easyFly;
 if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
-  document.title = `Angkor Quest — ${t('title')}`;
+  document.title = t('title');
   for (const [sel, key] of [['#loading h1', 'title'], ['#loading p', 'loading']] as const) {
     const e = document.querySelector(sel);
     if (e) e.textContent = t(key);
@@ -125,12 +126,24 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
     return (c) => LANDMARKS[p.id](c, p);
   }]),
   ['path', async () => (await import('./path')).buildPath],
+  ['jungle', async () => (await import('./jungle/ruins')).buildJungleRuins],
+  ['camps', async () => (await import('./jungle/camps')).buildCamps],
   ['water', async () => (await import('./water')).buildWater],
+  // (after the water: its stilts and rafts are not rocks in the lake, no foam round them)
+  ['village', async () => (await import('./village')).buildVillage],
+  ['paddies', async () => (await import('./paddies')).buildPaddies],
   ['vegetation', async () => (await import('./vegetation')).buildVegetation],
+  ['undergrowth', async () => (await import('./veg/undergrowth')).buildUndergrowth],
   ['clouds', async () => (await import('./clouds')).buildClouds],
+  ['rain', async () => (await import('./sky/rain')).buildRain],
+  ['rainbow', async () => (await import('./sky/rainbow')).buildRainbow],
   ['life', async () => (await import('./life')).buildLife],
   ['fauna', async () => (await import('./fauna/land')).buildLandFauna],
   ['wildlife', async () => (await import('./fauna/waterAir')).buildWaterAirFauna],
+  ['jungleFauna', async () => (await import('./fauna/jungle')).buildJungleFauna],
+  ['people', async () => (await import('./people')).buildPeople],
+  ['festival', async () => (await import('./festival')).buildFestival],
+  ['treasure', async () => (await import('./treasure')).buildTreasure],
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
@@ -149,6 +162,13 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
     } catch (e) {
       console.warn('[map] launch spots failed:', e);
     }
+  // The hot air balloon's field below Angkor Wat, and a lane to the valley road: kept clear of trees too.
+  if (name === 'vegetation')
+    try {
+      (await import('./roam/balloon')).reserveBalloonHome(ctx.field);
+    } catch (e) {
+      console.warn('[map] balloon field failed:', e);
+    }
   try {
     const build = await load();
     const t0 = performance.now();
@@ -163,7 +183,7 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
 }
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
-for (const p of parts) if (['terrain', 'vegetation', 'path'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
 const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.name, p.blocks!]));
 
@@ -270,8 +290,19 @@ addEventListener('resize', () => {
 // ── Time of day ─────────────────────────────────────────────────────────────
 /** A full day↔night cycle in "cycle" mode (s). */
 const CYCLE = 360;
-let night = params.has('night') ? Number(params.get('night')) : settings.time === 'night' ? 1 : 0;
+/** `clock=` (checks): hold the day's cycle there (0 afternoon, 0.25 dusk, 0.5 night, 0.75 dawn). */
+const clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
+const nightOf = (c: number) => 0.5 - 0.5 * Math.cos(c * Math.PI * 2);
+/** The clock on the dusk side for a time of day (0 afternoon … 0.5 night). */
+const duskClock = (n: number) => Math.acos(1 - 2 * Math.min(1, Math.max(0, n))) / (Math.PI * 2);
+/** Days since a new moon (6 Jan 2000) when the page opened, for the moon's phase (`day=` in shots, else 15 there: a full moon, as in the concept art). */
+const DAY0 = shot ? Number(params.get('day') ?? 15) || 0 : Math.floor((Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86_400_000);
+/** The time of the year when the page opened (0 = Khmer New Year, mid-April), and how far it moves per day of `clock`. */
+const SEASON0 = params.has('season') ? Number(params.get('season')) || 0 : shot ? 0.45 : (((Date.now() - Date.UTC(new Date().getUTCFullYear(), 3, 14)) / 86_400_000 / 365) % 1 + 1) % 1;
+const SEASON_PER_DAY = params.has('season') || shot ? 0 : 1 / 24;
+let night = clockParam !== null ? nightOf(clockParam) : params.has('night') ? Number(params.get('night')) : settings.time === 'night' ? 1 : 0;
 function nightTarget(t: number): number {
+  if (clockParam !== null) return nightOf(clockParam);
   if (params.has('night')) return Number(params.get('night'));
   if (settings.time === 'cycle') return 0.5 - 0.5 * Math.cos((t / CYCLE) * Math.PI * 2);
   return settings.time === 'night' ? 1 : 0;
@@ -279,7 +310,9 @@ function nightTarget(t: number): number {
 
 // ── Frame ───────────────────────────────────────────────────────────────────
 const fixedCam = params.get('cam')?.split(',').map(Number);
-const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
+// (the weather setting: follow the season, clear, rainy, stormy; a change eases in)
+const weather = createWeather(params, () => settings.weather);
+const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, clock: duskClock(night), day: DAY0, season: SEASON0, weather: { ...CALM_WEATHER }, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
 const anchors = Object.fromEntries(PLACES.map((p) => [p.id, { x: 0, y: 0, visible: false }])) as Record<PlaceId, AnchorOnScreen>;
 const _p = new Vector3();
 const _d = new Vector3();
@@ -295,6 +328,18 @@ function projectAnchors(): void {
   }
 }
 
+/** Parts whose `update` threw: logged once, then left still (the rest of the map keeps running). */
+const broken = new Set<MapPart>();
+function runUpdate(p: MapPart | null | undefined, f: MapFrame): void {
+  if (!p?.update || broken.has(p)) return;
+  try {
+    p.update(f);
+  } catch (e) {
+    broken.add(p);
+    console.error(`[map] part "${p.name}" failed to update (left still from now on):`, e);
+  }
+}
+
 function step(t: number, dt: number): void {
   const target = nightTarget(t);
   // Ease towards the time of day (a few seconds for a switch).
@@ -303,14 +348,20 @@ function step(t: number, dt: number): void {
   frame.dt = dt;
   frame.drift = shot ? t : frame.drift + (settings.calm ? 0 : dt);
   frame.night = night;
+  // (the cycle's own clock while it runs; else the dusk side of the eased time of day, so a switch to night goes through dusk)
+  const cycling = clockParam === null && !params.has('night') && settings.time === 'cycle';
+  frame.clock = clockParam ?? (cycling ? (t / CYCLE) % 1 : duskClock(night));
+  frame.day = DAY0 + (cycling ? Math.floor(t / CYCLE) : 0);
+  frame.season = (SEASON0 + (cycling ? (t / CYCLE) * SEASON_PER_DAY : 0)) % 1;
+  weather.update(frame);
   if (fixedCam) {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
     camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
   } else if (!roam?.active) rig.update(dt, t);
   // Roaming moves the explorer and the follow camera first: the other parts read the camera.
-  roam?.update?.(frame);
+  runUpdate(roam, frame);
   camera.updateMatrixWorld();
-  for (const p of parts) if (p !== roam) p.update?.(frame);
+  for (const p of parts) if (p !== roam) runUpdate(p, frame);
   projectAnchors();
   ui.update(anchors, dt);
   ui.setNight(night);
@@ -338,6 +389,12 @@ const feedback = shot
         const q = new URLSearchParams(location.search);
         q.set('t', frame.t.toFixed(1));
         q.set('night', night.toFixed(2));
+        // (the day's cycle, the moon, the season and the weather as they are now: dawn is not dusk, the balloon keeps its wind)
+        q.set('clock', frame.clock.toFixed(3));
+        q.set('day', String(frame.day));
+        q.set('season', frame.season.toFixed(3));
+        const w = frame.weather;
+        for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
         if (selected) q.set('focus', selected);
         for (const [k, v] of Object.entries(roam?.report()?.params ?? {})) q.set(k, v);
         return q;
@@ -469,7 +526,8 @@ if (shot) {
     const raw = Math.max(0, (now - last) / 1000);
     const dt = Math.min(0.05, raw);
     last = now;
-    if (!feedback?.active) step((now - t0) / 1000, dt);
+    // (the first frame's time can come a hair before t0)
+    if (!feedback?.active) step(Math.max(0, (now - t0) / 1000), dt);
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
     const drawn = !story?.covered;
     if (now - t0 > 3000 && drawn) adaptResolution(raw);

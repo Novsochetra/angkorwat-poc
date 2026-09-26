@@ -11,10 +11,12 @@ import { barkLine, fillBlobs, finishProto, rng, RAMP_ID, Vol, type Blob, type Fr
  *  - emergent: a tall pale trunk (18–25 m) with a flat, wide crown above the rest;
  *  - sugar palm: a ringed trunk 9–14 m with a star of fronds and dry ones hanging;
  *  - bush: low clumps 2–3 m;
- *  - flowering: a broadleaf with pink or orange blossom on its sunny side.
+ *  - flowering: a broadleaf with pink or orange blossom on its sunny side;
+ *  - bamboo: a clump of thin yellow-green culms 10–15 m, arching out like a
+ *    fountain, with feathery tufts of small leaves (by streams, wet lowland).
  */
 
-export type Species = 'broadleaf' | 'emergent' | 'palm' | 'bush' | 'flowering';
+export type Species = 'broadleaf' | 'emergent' | 'palm' | 'bush' | 'flowering' | 'bamboo';
 
 /** Canopy ramps for broadleaf trees, with their weights. */
 const BROAD_RAMPS: [RampName, number][] = [
@@ -278,6 +280,84 @@ export function bush(o: BushOpts): Proto {
   }
   fillBlobs(v, blobs, ramp, o.seed, 0, 0.25);
   return finishProto(v, { s, r: o.r, h: o.h, seed: o.seed, src, lift: 1.1 });
+}
+
+export interface BambooOpts {
+  s: number;
+  /** Height of the tallest culms (m). */
+  h: number;
+  /** How far the tips reach out from the clump's middle (m). */
+  r: number;
+  seed: number;
+}
+
+/** Culms: yellow-green, some older olive ones; the nodes a darker ring. */
+const CULM = [0xa3ae4d, 0x95a245, 0xb1ba5b, 0x899840];
+const CULM_OLD = [0x7f8b48, 0x8b9251];
+const NODE = 0x68762f;
+
+/**
+ * A clump of bamboo (Bambusa): tall thin culms from a tight base, leaning
+ * out and arching over like a fountain, stepping out block by block; feathery
+ * sprays of small leaves along their upper half, the tips drooping. Near
+ * (1 m cells) the culms have node rings; farther only every other culm is
+ * drawn (the leaves hide the rest).
+ */
+export function bamboo(o: BambooOpts): Proto {
+  const src = traceSource();
+  const rand = rng(o.seed);
+  const s = o.s;
+  const H = o.h / s;
+  const R = o.r / s;
+  const v = new Vol(Math.ceil(R) + 4, Math.ceil(H) + 2);
+  const ramp = RAMP_ID.bamboo;
+  const boxes: FreeBox[] = [];
+  const near = s === 1;
+  const n = near ? 8 + Math.floor(rand() * 3) : s < 2 ? 7 : 6;
+  const a0 = rand() * Math.PI * 2;
+  for (let q = 0; q < n; q++) {
+    const a = a0 + (q / n) * Math.PI * 2 + (rand() - 0.5) * 0.7;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // Base offset, height and how far the tip leans out (cells).
+    const r0 = (0.2 + rand() * 0.8) / s;
+    const tall = H * (0.72 + rand() * 0.28);
+    const reach = R * (0.45 + rand() * 0.55);
+    const tones = rand() < 0.2 ? CULM_OLD : CULM;
+    /** Out from the middle at height j (cells): bending more toward the top. */
+    const out = (j: number) => r0 + (reach - r0) * Math.pow(Math.min(1, Math.max(0, j) / tall), 1.7);
+    if (near || q % 2 === 0) {
+      // (segments step out; their bevelled joints read as the nodes, every other one a dark ring)
+      const seg = near ? 2 : 2.5 * s;
+      const cw = near ? 0.32 : Math.min(0.45 * s, 0.9);
+      const top = tall * s * 0.9;
+      let joint = 0;
+      for (let y = -0.3; y < top; y += seg, joint++) {
+        const len = Math.min(seg, top - y);
+        const d = out((y + len / 2) / s) * s;
+        boxes.push({ x: ca * d, y: y + len / 2, z: sa * d, sx: cw, sy: len, sz: cw, color: pick(tones, rand()), shade: 1.02 - 0.12 * (y / top) });
+        if (near && joint % 2 === 0 && y + seg < top) boxes.push({ x: ca * d, y: y + len, z: sa * d, sx: cw + 0.08, sy: 0.14, sz: cw + 0.08, color: NODE, shade: 1 });
+      }
+    }
+    // Leaves: a plume along the upper part of each culm, with sprays that
+    // hang out and down (holes between them keep it feathery).
+    for (let j = Math.floor(tall * 0.4); j <= tall; j++) {
+      const d = out(j);
+      const ci = Math.round(ca * d);
+      const ck = Math.round(sa * d);
+      if (rand() < 0.9) v.leaf(ci, j, ck, ramp, 0.95 + rand() * 0.1);
+      for (let k = 0; k < (near ? 2 : 1); k++) {
+        if (rand() > 0.4) continue;
+        const b = a + (rand() < 0.5 ? 1 : -1) * (0.6 + rand() * 1.1);
+        const len = 1 + Math.floor(rand() * (near ? 2 : 1.5));
+        for (let t = 1; t <= len; t++) v.leaf(Math.round(ci + Math.cos(b) * t), j - t + 1, Math.round(ck + Math.sin(b) * t), ramp, 1 + rand() * 0.08);
+      }
+    }
+    // The tip arches over and hangs down outside the clump.
+    const droop = near ? 4 : 2;
+    for (let t = 1; t <= droop; t++) v.leaf(Math.round(ca * (reach + Math.min(t, 2) * 0.8)), Math.round(tall) - t, Math.round(sa * (reach + Math.min(t, 2) * 0.8)), ramp, 1.05 - t * 0.03);
+  }
+  return finishProto(v, { s, r: o.r, h: o.h, seed: o.seed, boxes, src, lift: 0.7 });
 }
 
 /** A small stand of leaf tones, for a sanity check of LEAF use (kept for the vines and moss). */

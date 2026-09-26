@@ -8,8 +8,9 @@ import type { StepSet, StepSets } from './footsteps';
  * parachute snapping open and folding away, splashes, the paddle, stepping
  * into and out of the boat, and a soft temple bell on entering a place, the
  * hang glider unfolding and put away. Lasting: rushing air while falling or
- * gliding, the water along the boat's hull, and the hang glider's sail
- * thrumming in the airflow.
+ * gliding, the water along the boat's hull, the hang glider's sail
+ * thrumming in the airflow, and the hot air balloon's burner roaring (a
+ * low thump as it lights).
  *
  * Each has its slider (`roamBus`): the footsteps are on the `steps` bus,
  * everything else on `moves`, but the bell, which rings with the "begin"
@@ -31,7 +32,7 @@ const GROUND: Partial<Record<RoamSound, Ground>> = { step: 'earth', stepGrass: '
 
 /** The bus (slider) a sound of the explorer plays on: his steps, the bell on entering a place (with the interface's gong), or his moves (anything else). */
 export function roamBus(s: RoamSound): BusName {
-  return GROUND[s] ? 'steps' : s === 'enter' ? 'ui' : 'moves';
+  return GROUND[s] ? 'steps' : s === 'enter' || s === 'gold' ? 'ui' : 'moves';
 }
 
 /** Each ground's level, so every synthesized step sounds about as loud (stone's tap is short and sand's thud soft: they need more; the water's long slosh less). */
@@ -88,6 +89,7 @@ const LEVEL = {
   wind: 0.85,
   wake: 0.24,
   sail: 0.3,
+  burner: 0.5,
 };
 /** Steps closer together than this are one step (s). */
 const STEP_GAP = 0.09;
@@ -162,6 +164,9 @@ export class Explorer {
   private wind: Lasting | null = null;
   private wake: Lasting | null = null;
   private sail: Lasting | null = null;
+  private burner: Lasting | null = null;
+  /** The burner's level last frame (it lights with a thump). */
+  private burnerWas = 0;
 
   constructor(e: SoundEngine) {
     this.e = e;
@@ -273,11 +278,27 @@ export class Explorer {
         this.bell(t, mtof(81), LEVEL.bell * (0.5 + 0.5 * g), -0.15);
         this.bell(t + 0.32, mtof(86), LEVEL.bell * 0.8 * (0.5 + 0.5 * g), 0.15);
         return;
+      case 'gold':
+        // A golden figure into his bag (treasure/): a small rising run of glassy chimes, a high one to end.
+        [88, 91, 93, 100].forEach((m, i) => this.chime(t + i * 0.085 + (i === 3 ? 0.08 : 0), mtof(m), LEVEL.bell * (i === 3 ? 0.55 : 0.8) * (0.5 + 0.5 * g), -0.2 + i * 0.13));
+        return;
     }
   }
 
-  /** Rushing air (falling, gliding), the water along the boat, the glider's sail, 0‥1 each; called every frame. */
-  levels(wind: number, wake: number, t: number, sail = 0): void {
+  /** Rushing air (falling, gliding), the water along the boat, the glider's sail, the balloon's burner, 0‥1 each; called every frame. */
+  levels(wind: number, wake: number, t: number, sail = 0, burner = 0): void {
+    // The burner lights: a soft low "whump" as the flame catches.
+    if (burner > 0.15 && this.burnerWas <= 0.15) {
+      this.burst(t, { kind: 'brown', type: 'lowpass', f0: 700, f1: 180, q: 0.7, attack: 0.012, tau: 0.09, dur: 0.25, level: LEVEL.burner * 1.6, wet: 0.08 });
+      this.tone(t + 0.005, { f0: 80, f1: 52, glide: 0.12, attack: 0.008, tau: 0.08, level: LEVEL.burner * 0.18, wet: 0.04 });
+    }
+    this.burnerWas = burner;
+    this.burner = this.lasting(this.burner, burner, t, () => this.makeBurner(), (l, v) => {
+      // Quick to roar, a little slower to die away; fuller and brighter the harder it burns.
+      glide(l.env.gain, LEVEL.burner * v ** 0.8, t, v > 0.5 ? 0.05 : 0.12);
+      glide(l.tone.frequency, 900 + 900 * v, t, 0.1);
+      glide(l.low.gain, 0.6 + 0.4 * v, t, 0.1);
+    });
     this.sail = this.lasting(this.sail, sail, t, () => this.makeSail(), (l, v) => {
       // Faster: louder, the sail's hum higher, its trailing edge flapping quicker.
       glide(l.env.gain, LEVEL.sail * v ** 1.3, t, 0.2);
@@ -516,6 +537,40 @@ export class Explorer {
     return { env, tone, low, sources: [hum, cloth, lfo], nodes: [hum, tone, humGain, cloth, band, beat, lfo, depth, low, env], level: 0, quietSince: -1 };
   }
 
+  private makeBurner(): Lasting {
+    const ctx = this.ctx;
+    const r = this.rnd;
+    // A propane jet: a deep rumble (brown noise, low), the roar of the flame (pink, a wide band), the gas's hiss
+    // (white, high), all beating a little with the flame's turbulence and surging slowly.
+    const env = this.gain(0);
+    const rumble = this.loop(noise('brown'));
+    const lp = biquad(ctx, 'lowpass', 420, 0.6);
+    const low = this.gain(0.8);
+    const roar = this.loop(noise('pink'));
+    const tone = biquad(ctx, 'bandpass', 1200, 0.55);
+    const roarGain = this.gain(0.55);
+    const hiss = this.loop(noise('white'));
+    const hp = biquad(ctx, 'highpass', 3800, 0.7);
+    const hissGain = this.gain(0.07);
+    const beat = this.gain(1);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = range(r, 9, 13);
+    const depth = this.gain(0.18);
+    lfo.connect(depth).connect(beat.gain);
+    const surge = ctx.createOscillator();
+    surge.frequency.value = range(r, 0.5, 0.8);
+    const surgeDepth = this.gain(0.08);
+    surge.connect(surgeDepth).connect(beat.gain);
+    lfo.start(ctx.currentTime);
+    surge.start(ctx.currentTime);
+    rumble.connect(lp).connect(low).connect(beat);
+    roar.connect(tone).connect(roarGain).connect(beat);
+    hiss.connect(hp).connect(hissGain).connect(beat);
+    beat.connect(env);
+    this.out(env, 0, 0.08);
+    return { env, tone, low, sources: [rumble, roar, hiss, lfo, surge], nodes: [rumble, lp, low, roar, tone, roarGain, hiss, hp, hissGain, beat, lfo, depth, surge, surgeDepth, env], level: 0, quietSince: -1 };
+  }
+
   private makeWake(): Lasting {
     const ctx = this.ctx;
     // Water hissing along the hull, and gurgling behind it.
@@ -673,6 +728,16 @@ export class Explorer {
     ];
     for (const [ratio, amp, tau] of parts) this.tone(t, { f0: f * ratio, attack: 0.001, tau, level: level * amp, pan, wet: 0.08 });
     this.burst(t, { type: 'highpass', f0: 2000, attack: 0.0005, tau: 0.004, level: level * 0.4, pan });
+  }
+
+  /** A small glassy chime (the treasure's): a pure note, a soft bright partial, a long ring. */
+  private chime(t: number, f: number, level: number, pan: number): void {
+    for (const [ratio, amp, tau] of [
+      [1, 1, 0.9],
+      [2.76, 0.18, 0.35],
+      [5.4, 0.05, 0.15],
+    ] as const)
+      this.tone(t, { f0: f * ratio * range(this.rnd, 0.999, 1.001), attack: 0.004, tau, level: level * amp, pan, wet: 0.55 });
   }
 
   /** A small bronze bell: a clear note with a few softer, quicker partials above. */

@@ -232,7 +232,8 @@ export const PLATEAUS: Plateau[] = [
 /**
  * Rivers, drawn downstream as points on the map (m). The water level follows
  * the land: it only goes down, and where the land drops at a cliff the river
- * falls (see heightfield.ts). `w` is the width in metres.
+ * falls (see heightfield.ts). `w` is the width in metres; a stream 5 m wide
+ * or less is 0.6 m deep (waded), wider rivers 1 m (a boat).
  */
 export interface River {
   name: string;
@@ -297,6 +298,27 @@ export const RIVERS: River[] = [
       [70, 8],
     ],
   },
+  {
+    // A jungle stream on the western cliffs, west of the Bayon (out of the
+    // overview's frame): a spring in the forest on the mesa top, off the
+    // rim onto the ledge, off the ledge into the stream pool (a `LAKES`
+    // entry: the `pool` site), then south into the great lake.
+    name: 'Bayon stream',
+    w: 4,
+    points: [
+      [-358, -190],
+      [-368, -176],
+      [-380, -162],
+      [-390, -150],
+      [-397, -136],
+      [-400, -122],
+      [-401, -110],
+      [-402, -96],
+      [-404, -80],
+      [-406, -62],
+      [-408, -40],
+    ],
+  },
 ];
 
 /**
@@ -353,6 +375,292 @@ export const PATHS: { name: string; points: [number, number][] }[] = [
     ],
   },
 ];
+
+/**
+ * Jungle trails: dirt foot paths about `w` m wide (2 m), as points on the map
+ * (m); heights come from the land. They branch off the stone roads (`PATHS`)
+ * and lead to the hidden sites (`JUNGLE_SITES`). The land under them is
+ * dirt, graded so the explorer can walk them end to end (no step over 2 m),
+ * and no trunk stands on them (crowns may meet overhead, so the overview
+ * barely sees them). The height field keeps samples every metre
+ * (`field.trails`: ground `y`, `wet` where a trail crosses water: a
+ * `bridge` site is there).
+ */
+export interface Trail {
+  name: string;
+  /** Width (m). */
+  w: number;
+  points: [number, number][];
+}
+
+export const TRAILS: Trail[] = [
+  {
+    // Off the shrine road between Preah Khan and the Bayon, north up the
+    // wooded gap between the western cliffs and the summit, round the back
+    // of Angkor Wat (hidden from the overview) and east past Ta Prohm's hills
+    // over the mountain road at the foot of Phnom Kulen to a woodcutters'
+    // camp east of it. Stations: ruin wall, Buddha, monk's hut, root gate,
+    // Kulen shrine, woodcutters' camp.
+    name: 'back trail',
+    w: 2,
+    points: [
+      [-180, -98],
+      [-160, -124],
+      [-149, -160],
+      [-142, -196],
+      [-134, -222],
+      [-131, -248],
+      [-118, -276],
+      [-88, -296],
+      [-54, -304],
+      [-10, -308],
+      [36, -318],
+      [72, -332],
+      [108, -318],
+      [148, -294],
+      [188, -268],
+      [226, -244],
+      [258, -236],
+      [283, -236],
+      [318, -236],
+      [352, -226],
+      [394, -216],
+    ],
+  },
+  {
+    // A loop through the forest on the western cliffs round the Bayon's west
+    // side: the fallen face, over the stream on a foot bridge, the swing on
+    // the rim above the lake, and back to the road.
+    name: 'Bayon rim trail',
+    w: 2,
+    points: [
+      [-284, -194],
+      [-306, -197],
+      [-332, -199],
+      [-356, -210],
+      [-378, -226],
+      [-393, -240],
+      [-404, -222],
+      [-406, -200],
+      [-400, -180],
+      [-390, -168],
+      [-376, -156],
+      [-375, -146],
+      [-356, -150],
+      [-338, -166],
+      [-320, -184],
+      [-306, -197],
+    ],
+  },
+  {
+    // Off the shrine road at the foot of the western cliffs, west under them
+    // to the stream pool, over the stream below it and on to a shrine on the
+    // lake's north shore.
+    name: 'lake trail',
+    w: 2,
+    points: [
+      [-192, -106],
+      [-214, -103],
+      [-240, -100],
+      [-268, -94],
+      [-300, -90],
+      [-336, -94],
+      [-368, -100],
+      [-388, -112],
+      [-394, -101],
+      [-402, -90],
+      [-420, -78],
+      [-438, -70],
+    ],
+  },
+  {
+    // From the lake trail south along the lake's east shore to the village.
+    name: 'east shore trail',
+    w: 2,
+    points: [
+      [-300, -90],
+      [-292, -60],
+      [-282, -28],
+      [-276, 0],
+      [-278, 26],
+      [-282, 46],
+      [-290, 62],
+      [-300, 74],
+    ],
+  },
+  {
+    // From the south end of the valley road (by the River Gate) west past a
+    // spirit shrine and along the dike between the rice paddies to the village.
+    name: 'village trail',
+    w: 2,
+    points: [
+      [-100, 72],
+      [-110, 82],
+      [-128, 84],
+      [-150, 85],
+      [-164, 83],
+      [-200, 83],
+      [-240, 83],
+      [-284, 83],
+      [-300, 74],
+    ],
+  },
+];
+
+/** What stands at a jungle site (the jungle part builds it). */
+export type JungleSiteKind =
+  /** A giant fallen stone face in the ferns. */
+  | 'fallenHead'
+  /** A small gate swallowed by strangler-fig roots (the trail passes through it). */
+  | 'rootGate'
+  /** A lone seated Buddha under a tree, orange cloth, offerings. */
+  | 'buddha'
+  /** A small spirit shrine or stupa with incense and offerings. */
+  | 'shrine'
+  /** A forest monk's hut on stilts. */
+  | 'monkHut'
+  /** A woodcutters' camp: logs, a fire ring. */
+  | 'woodcutter'
+  /** A rope swing on a big tree by a view. */
+  | 'swing'
+  /** A small waterfall pool on a jungle stream. */
+  | 'pool'
+  /** A wooden foot bridge where a trail crosses water (`facing` runs along the bridge). */
+  | 'bridge'
+  /** A fallen wall with a carved lintel. */
+  | 'ruinWall';
+
+export interface JungleSite {
+  id: string;
+  kind: JungleSiteKind;
+  /** Centre of the clearing (m); its height is the land's (`field.heightAt`, flattened within ±2 m over `r`). */
+  x: number;
+  z: number;
+  /**
+   * Where its front faces (radians, toward (sin, cos) in x, z): toward the
+   * trail that reaches it; a swing faces its view; a bridge and the root gate
+   * run along the trail (the trail passes through them).
+   */
+  facing: number;
+  /** Clear radius (m): no trees, flat, marked occupied in the height field. */
+  r: number;
+  /** Words for later (a nature book / hidden gold). */
+  name?: string;
+}
+
+/**
+ * Hidden places along the trails, each in a small clearing, most out of the
+ * overview's sight (behind the summit, west of the Bayon, round the lake).
+ */
+export const JUNGLE_SITES: JungleSite[] = [
+  // Western cliffs (Bayon).
+  { id: 'fallen-face', kind: 'fallenHead', x: -398, z: -246, facing: 0.69, r: 9, name: 'The fallen face' },
+  { id: 'rim-bridge', kind: 'bridge', x: -383, z: -162, facing: 0.86, r: 5, name: 'Bridge over the Bayon stream' },
+  { id: 'rim-swing', kind: 'swing', x: -377, z: -141, facing: 0, r: 8, name: 'The swing over the lake' },
+  { id: 'stream-pool', kind: 'pool', x: -400, z: -115, facing: 1.08, r: 14, name: 'The stream pool' },
+  { id: 'pool-bridge', kind: 'bridge', x: -401, z: -91, facing: -0.69, r: 5, name: 'Bridge below the pool' },
+  { id: 'lake-shrine', kind: 'shrine', x: -439, z: -67, facing: 2.82, r: 5, name: 'Shrine by the lake' },
+  // Round the back of Angkor Wat.
+  { id: 'ruin-wall', kind: 'ruinWall', x: -124, z: -236, facing: -1.68, r: 9, name: 'The carved lintel' },
+  { id: 'forest-buddha', kind: 'buddha', x: -52, z: -310, facing: 0.1, r: 7, name: 'The forest Buddha' },
+  { id: 'monk-hut', kind: 'monkHut', x: 75, z: -339, facing: -0.38, r: 9, name: "The monk's hut" },
+  // Between Ta Prohm's hills and Phnom Kulen, and at the mountain's foot.
+  { id: 'root-gate', kind: 'rootGate', x: 226, z: -244, facing: 1.17, r: 7, name: 'The root gate' },
+  { id: 'kulen-shrine', kind: 'shrine', x: 268, z: -240, facing: 0, r: 5, name: 'Shrine at the foot of the mountain' },
+  { id: 'woodcutters', kind: 'woodcutter', x: 402, z: -216, facing: -1.57, r: 10, name: "Woodcutters' camp" },
+  // Lowlands by the River Gate.
+  { id: 'spirit-house', kind: 'shrine', x: -124, z: 88, facing: -3.04, r: 5, name: 'The spirit house' },
+];
+
+/**
+ * Still lakes: an ellipse (roughened like the mesas) of water at `level`
+ * (m; the land under it is carved to a flat bed 1 m down, where the
+ * explorer takes a boat, and 0.6 m in a band of reed shallows along the
+ * shore, where he wades; a small pool is shallow all over); a shore of
+ * sand, then mud, round it. No current. A river that runs into a lake takes
+ * its level. Hills in it higher than 7 m over the water stay as islands.
+ */
+export interface Lake {
+  name: string;
+  x: number;
+  z: number;
+  rx: number;
+  rz: number;
+  /** Turn of the ellipse (radians). */
+  rot?: number;
+  /** Water surface (m). */
+  level: number;
+  /** Edge noise, 0 = clean ellipse. */
+  rough?: number;
+}
+
+export const LAKES: Lake[] = [
+  // The great lake in the south-west lowland (like the Tonle Sap, south-west
+  // of Angkor): out of the overview's frame, its water runs west under the
+  // edge mist so it looks endless. Floating village on its east shore.
+  { name: 'Great lake', x: -490, z: 22, rx: 206, rz: 78, rot: 0.05, level: 5, rough: 0.08 },
+  // The pool under the Bayon stream's fall (the `stream-pool` site).
+  { name: 'Stream pool', x: -400, z: -116, rx: 9, rz: 8, level: 7, rough: 0.12 },
+];
+
+/**
+ * The floating village on the great lake's east shore (the village part
+ * places the houses): the ground is flat dirt 1 m over the water, cleared
+ * of trees; `shore` is the waterline where the stilt houses stand (half on
+ * land, half over the reed shallows), `water` open water for the floating
+ * houses. The village trail and the east shore trail end at `x, z`.
+ */
+export const VILLAGE = {
+  x: -300,
+  z: 74,
+  shore: [
+    [-290, 30],
+    [-292, 44],
+    [-301, 58],
+    [-320, 68],
+    [-336, 76],
+    [-352, 82],
+  ] as [number, number][],
+  water: { x: -338, z: 48, r: 18 },
+};
+
+/**
+ * Rice paddies between the lake and the west hill, south of the village
+ * trail: flat plots (`w` across x, `d` across z before the turn `rot`) at
+ * `level` (m), stepping down toward the lake; low earth dikes (one 2 m
+ * cell, 0.5 m over the higher plot beside it) between them. The height
+ * field makes them `SURFACE.paddy` (plots) and dirt (dikes), all occupied
+ * (no trees); the paddies part adds water sheen and rice.
+ */
+export interface Paddy {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  rot: number;
+  level: number;
+}
+
+export const PADDIES: Paddy[] = [
+  // North row (z 58‥82), the village trail on the dike south of it.
+  { x: -272, z: 70, w: 20, d: 24, rot: 0, level: 7 },
+  { x: -249, z: 70, w: 22, d: 24, rot: 0, level: 7.5 },
+  { x: -224, z: 70, w: 24, d: 24, rot: 0, level: 8 },
+  { x: -200, z: 70, w: 20, d: 24, rot: 0, level: 8.5 },
+  { x: -177, z: 70, w: 22, d: 24, rot: 0, level: 9 },
+  // South row (z 84‥106).
+  { x: -274, z: 95, w: 16, d: 22, rot: 0, level: 6.5 },
+  { x: -254, z: 95, w: 20, d: 22, rot: 0, level: 7 },
+  { x: -231, z: 95, w: 22, d: 22, rot: 0, level: 7.5 },
+  { x: -207, z: 95, w: 22, d: 22, rot: 0, level: 8 },
+  { x: -182, z: 95, w: 24, d: 22, rot: 0, level: 8.5 },
+];
+
+/**
+ * A straight lane for the dragon boat race (a festival, later) on the great
+ * lake: starts out west under the mist, finishes by the village.
+ */
+export const RACE_COURSE = { from: [-548, 10] as [number, number], to: [-348, 10] as [number, number] };
 
 /** Where the explorer stands in the foreground: a rock ledge near the camera, bottom left. */
 export const EXPLORER_SPOT = {

@@ -100,7 +100,16 @@ export class ColumnMaker {
       case SURFACE.rock:
         return [P.pick(P.ROCK_TOP, r), 'mapRock'];
       case SURFACE.dirt:
+        // A trail's tread: worn earth with tufts of dry grass; a paddy dike
+        // (half a metre over a plot, so off the 2 m steps): grassy earth;
+        // bare ground elsewhere (the village, a lake's muddy shore, a
+        // clearing's middle): packed earth in patches of dry grass.
+        if (this.f.trail[c] === 2) return r < 0.4 ? [P.pick(P.GRASS_DRY, hash3(i, h, k, 8)), 'mapGrass'] : [P.pick(P.TRAIL, r), 'mapRock'];
+        if (h % 1 !== 0 && r < 0.5) return [P.pick(r < 0.25 ? P.GRASS : P.GRASS_DRY, hash3(i, h, k, 8)), 'mapGrass'];
+        if (fbm(x / 8, z / 8, 25, 2) > 0.56 || r < 0.15) return [P.pick(P.GRASS_DRY, hash3(i, h, k, 8)), 'mapGrass'];
         return [P.pick(P.DIRT, r), 'mapRock'];
+      case SURFACE.paddy:
+        return [P.pick(P.PADDY, r), 'mapGrass'];
       case SURFACE.sand:
         return [r < 0.28 ? P.pick(P.PEBBLE, hash3(i, h, k, 9)) : P.pick(P.SAND, r), 'mapRock'];
       case SURFACE.path:

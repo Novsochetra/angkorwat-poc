@@ -3,54 +3,103 @@ import { hash3 } from '../../voxel/random';
 import { PALETTE } from '../palette';
 
 /**
- * Hat, lantern and torch from the "Equipment / Variations" row of the sheet.
+ * Hat (the Khmer palm-leaf hat), lantern and torch from the "Equipment /
+ * Variations" row of the sheet.
  * Lantern and torch are authored in their own local frame (origin = grip point).
  */
 
 /** Hair above this height is trimmed away under the hat crown. */
 export const HAT_CLIP_Y = 29.6;
 
-/** Wide-brimmed khaki explorer hat. Head joint. */
+/**
+ * The Khmer palm-leaf hat (មួកស្លឹកត្នោត, woven from sugar-palm leaves). Head joint.
+ * A wide, flat, round brim that droops a little toward its edge, bound in red
+ * cloth; a round, flat-topped crown about half a head tall with straight sides
+ * tapering a little, a red band round its base, and a small woven star knot on
+ * top. The leaf strips run out from the middle (lighter and darker radial
+ * streaks), stitch rings go round the brim and the top. Never the pointed
+ * conical hat: that one is Vietnamese.
+ */
 export function buildHat(): VoxelBuilder {
   const b = new VoxelBuilder();
   const H = PALETTE.hat;
   const zc = -0.9;
-  // Brim: stepped voxel ellipse, curling down slightly at the rim.
-  const brim = b.grid({ cell: [1, 0.7, 1], origin: [-10.5, 28.9, zc - 10.5], mat: 'hat', jitter: 0.05, ao: 0.2, seed: 111 });
-  for (let i = 0; i < 21; i++)
-    for (let k = 0; k < 21; k++) {
-      const x = i - 10;
-      const z = k - 10;
-      const r = Math.hypot(x / 9.7, z / 10.0);
-      if (r > 1) continue;
-      brim.set(i, 0, k, r > 0.82 ? H.light : hash3(i, 0, k, 3) < 0.6 ? H.base : H.shade);
+  /** The leaf strip a direction falls in, and its straw tone (the same strips run over brim, crown and top). */
+  const STRIPS = 20;
+  const strip = (x: number, z: number) => Math.floor(((Math.atan2(z, x) + Math.PI) / (2 * Math.PI)) * STRIPS) % STRIPS;
+  const leaf = (n: number) => (hash3(n, 0, 0, 151) < 0.2 ? H.shade : n % 2 ? H.light : H.base);
+  const cloth = (i: number, j: number, k: number) => (hash3(i, j, k, 114) < 0.7 ? H.red : H.redDark);
+
+  // Brim: a disc of cells in three rings, each a step lower toward the
+  // edge (the droop); the outermost cells (any of the eight around them
+  // outside: a ring closed all round) are the red cloth binding, a little
+  // thicker as it wraps the edge. (None under the middle of the crown: nothing
+  // sees it.) Cells a little under 1 BU: the brim still passes between the hang
+  // glider's down tubes and stays (just) inside the map overview's frame.
+  const R = 12;
+  const cw = 0.95;
+  const inBrim = (x: number, z: number) => x * x + z * z <= 11.8 * 11.8;
+  const rim = (x: number, z: number) => !inBrim(x + 1, z) || !inBrim(x - 1, z) || !inBrim(x, z + 1) || !inBrim(x, z - 1) || !inBrim(x + 1, z + 1) || !inBrim(x - 1, z + 1) || !inBrim(x + 1, z - 1) || !inBrim(x - 1, z - 1);
+  const brim = [
+    { y: 29.0, h: 0.6 },
+    { y: 28.86, h: 0.6 },
+    { y: 28.64, h: 0.66 },
+  ].map((zn, n) => b.grid({ cell: [cw, zn.h, cw], origin: [-(R + 0.5) * cw, zn.y, zc - (R + 0.5) * cw], mat: n === 2 ? 'krama' : 'hat', jitter: 0.05, ao: 0.2, seed: 111 + n }));
+  for (let x = -R; x <= R; x++)
+    for (let z = -R; z <= R; z++) {
+      const r = Math.hypot(x, z);
+      if (r <= 5 || !inBrim(x, z)) continue;
+      const n = rim(x, z) ? 2 : r > 9.2 ? 1 : 0;
+      // (a stitch ring where the brim starts to droop)
+      const stitch = n === 1 && r <= 10.2;
+      brim[n].set(x + R, 0, z + R, n === 2 ? cloth(x, 0, z) : stitch ? H.stitch : leaf(strip(x, z)));
     }
-  brim.commit();
-  // Rim lip one step lower at the edge (gives the brim a soft downward curl).
-  for (let i = 0; i < 21; i++)
-    for (let k = 0; k < 21; k++) {
-      const r = Math.hypot((i - 10) / 9.7, (k - 10) / 10.0);
-      if (r > 0.9 && r <= 1.0 && hash3(i, 1, k, 4) < 0.55) b.box(i - 10, 28.74, zc + k - 10, 0.98, 0.32, 0.98, H.shade, 'hat', { shade: 0.9 });
-    }
-  // Crown: band row + three tapering rows with a centre crease on top.
-  const crown = b.grid({ cell: 1, origin: [-7.5, 29.6, zc - 7.5], mat: 'hat', jitter: 0.05, ao: 0.28, seed: 113 });
-  const rows = [
-    { rx: 6.6, rz: 7.0, band: true },
-    { rx: 6.4, rz: 6.8, band: false },
-    { rx: 6.0, rz: 6.4, band: false },
-    { rx: 5.2, rz: 5.6, band: false },
+  for (const g of brim) g.commit();
+
+  // Crown: a band of red cloth, then woven rows, each ring of cells a little
+  // narrower (the sides taper), the last one the flat top. Only the outside
+  // shows; the inside is ghosted so the shading sees a solid crown.
+  const C = 6;
+  const inCrown = (x: number, z: number) => x * x + z * z <= 6.75 * 6.75;
+  const rows: { y: number; h: number; w: number; band?: boolean; top?: boolean }[] = [
+    { y: 29.6, h: 1.0, w: 1.06, band: true },
+    { y: 30.6, h: 0.95, w: 1.03 },
+    { y: 31.55, h: 0.95, w: 1.0 },
+    { y: 32.5, h: 0.95, w: 0.97 },
+    { y: 33.45, h: 0.95, w: 0.94, top: true },
   ];
-  rows.forEach((row, j) => {
-    for (let i = 0; i < 15; i++)
-      for (let k = 0; k < 15; k++) {
-        const x = i - 7;
-        const z = k - 7;
-        if ((x / row.rx) ** 2 + (z / row.rz) ** 2 > 1) continue;
-        if (j === 3 && Math.abs(x) <= 1 && Math.abs(z) <= 3) continue; // pinch
-        crown.set(i, j, k, row.band ? H.band : hash3(i, j, k, 5) < 0.6 ? H.base : H.light);
+  rows.forEach((row, n) => {
+    const o = (C + 0.5) * row.w;
+    const g = b.grid({ cell: [row.w, row.h, row.w], origin: [-o, row.y, zc - o], mat: row.band ? 'krama' : 'hat', jitter: 0.05, ao: 0.25, seed: 116 + n });
+    for (let x = -C; x <= C; x++)
+      for (let z = -C; z <= C; z++) {
+        if (!inCrown(x, z)) continue;
+        const i = x + C;
+        const k = z + C;
+        // (the eight around: a staircase corner cell shows between its neighbours)
+        let edge = false;
+        for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) edge ||= !inCrown(x + dx, z + dz);
+        if (!edge && !row.top) {
+          g.ghost(i, 0, k);
+          continue;
+        }
+        const r = Math.hypot(x, z);
+        // Stitch rings on the flat top.
+        const ring = row.top && !edge && (Math.abs(r - 2.2) < 0.5 || Math.abs(r - 4.4) < 0.5);
+        g.set(i, 0, k, row.band ? cloth(i, n, k) : ring ? H.stitch : leaf(strip(x, z)));
       }
+    g.commit();
   });
-  crown.commit();
+
+  // The woven knot on top: a six-pointed star of three crossed strips under a
+  // small hexagon (three crossed boxes) with a dark eye.
+  const top = 34.4;
+  for (let n = 0; n < 3; n++) {
+    const a = (n * Math.PI) / 3;
+    b.box(0, top + 0.12, zc, 3.0, 0.24, 0.55, H.stitch, 'hat', { ry: a + Math.PI / 6 });
+    b.box(0, top + 0.22, zc, 0.95, 0.44, 0.95 * Math.sqrt(3), H.light, 'hat', { ry: a });
+  }
+  b.box(0, top + 0.46, zc, 0.5, 0.1, 0.5, H.stitch, 'hat', { ry: Math.PI / 4 });
   return b;
 }
 

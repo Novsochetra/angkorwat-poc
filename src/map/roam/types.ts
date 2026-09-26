@@ -2,7 +2,7 @@ import type { Object3D, PerspectiveCamera, Vector3 } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { HeightField } from '../heightfield';
 import type { PlaceDef } from '../layout';
-import type { RoamLevels, RoamMode, RoamSound } from '../types';
+import type { MapWeather, RoamLevels, RoamMode, RoamSound } from '../types';
 
 /**
  * Roaming the map with the explorer: leap off the ledge, glide down under a
@@ -11,7 +11,7 @@ import type { RoamLevels, RoamMode, RoamSound } from '../types';
  *
  * roam.ts runs one mode at a time (a `RoamModeHandler` each): `leap` and
  * `glide` (parachute.ts), `walk` (walker.ts), `boat` (boat.ts), `hang`
- * (hangGlider.ts). Every mode
+ * (hangGlider.ts), `balloon` (balloon.ts). Every mode
  * moves the same body (`RoamBody`), reads the same input (`RoamInput`) and
  * tells the follow camera (`FollowCam`) what it wants.
  *
@@ -82,6 +82,10 @@ export interface RoamWorld {
   standAt?(x: number, z: number, y: number, up: number, height: number): number;
   /** A hang glider take-off ramp (launchSpots.ts) at (x, z) for feet at height `y`: E there flies. */
   launchNear?(x: number, z: number, y: number): boolean;
+  /** Feet at height `y` at (x, z) stand on planks: the village's verandas, stairs, jetty and rafts, the camps' bridges and hut (_woodFloor.ts). */
+  woodAt?(x: number, z: number, y: number): boolean;
+  /** The hot air balloon's basket (balloon.ts) is within reach of feet at (x, z, y): E climbs in. */
+  balloonNear?(x: number, z: number, y: number): boolean;
   /** Bottom of the first solid above height `y` at (x, z), or Infinity (open sky). */
   ceilingAt?(x: number, z: number, y: number): number;
   /** Part of the segment a → b (0‥1) that is free of solid blocks, from a (1 = nothing in the way). */
@@ -153,6 +157,8 @@ export interface RoamCtx {
   /** Seconds since start, and the time of day (0 day ‥ 1 night). */
   t: number;
   night: number;
+  /** The weather this frame (the wind carries the balloon). */
+  weather?: Readonly<MapWeather>;
   /** Headless still: no randomness, no real input. */
   shot: boolean;
   /** Where the explorer stood on the ledge (true scale) and which way he faced. */

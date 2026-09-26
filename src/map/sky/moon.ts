@@ -10,7 +10,10 @@ import { hash3, valueNoise3 } from '../../voxel/random';
  * Texture: the disc fills the square (x → east / right, y → north / up,
  * row 0 at the bottom, like the dome's disc coordinates).
  *  - r: albedo 0‥1 (seas ≈ 0.4, highlands ≈ 0.85, rays up to 1),
- *  - g: how much of a sea the point is (0‥1), for their bluer tint.
+ *  - g: how much of a sea the point is (0‥1), for their bluer tint,
+ *  - b: relief (0.5 flat; crater rims and rough highlands up, crater floors
+ *    and the smooth seas down): the dome's terminator runs ragged with it,
+ *    the rims catching the sunlight first.
  * Outside the disc it repeats the limb, so filtering at the edge stays on the face.
  */
 
@@ -217,6 +220,8 @@ export function moonTexture(): DataTexture {
       }
       if (sea > 0) albedo += (0.5 - (fbm(v, 9, 2, 13) - 0.5) * 0.12 - albedo) * sea;
       albedo += craters[x + y * SIZE] * (1 - sea * 0.5);
+      // (the highlands are rough, the seas low and smooth)
+      const relief = 0.5 + craters[x + y * SIZE] * 4 + (fbm(v, 14, 3, 61) - 0.5) * 0.5 * (1 - sea) - 0.08 * sea;
 
       // Ray craters: a bright halo round each, and patchy rays that fade with distance.
       const patchy = 0.5 + 0.9 * valueNoise3(v[0] * 40, v[1] * 40, v[2] * 40, 29);
@@ -239,7 +244,7 @@ export function moonTexture(): DataTexture {
       const i = (x + y * SIZE) * 4;
       data[i] = Math.round(Math.min(1, Math.max(0, albedo)) * 255);
       data[i + 1] = Math.round(Math.min(1, sea) * 255);
-      data[i + 2] = 0;
+      data[i + 2] = Math.round(Math.min(1, Math.max(0, relief)) * 255);
       data[i + 3] = 255;
     }
   }

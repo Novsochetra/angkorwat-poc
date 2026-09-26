@@ -1085,6 +1085,20 @@
   height: calc(16 * var(--px));
 }
 
+/* Four choices (the weather): two by two. */
+.mu-seg.is-pairs {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* The note under a choice (the weather chosen). */
+.mu-set-note {
+  margin: calc(6 * var(--px)) calc(2 * var(--px)) 0;
+  font-size: calc(12 * var(--px));
+  line-height: 1.35;
+  color: var(--mu-dim);
+  text-wrap: pretty;
+}
+
 .mu-set-row {
   display: flex;
   align-items: center;
@@ -1620,7 +1634,7 @@ body.reporting .map-ui {
   font-weight: 700;
 }
 
-:lang(km) :is(.mu-set-sub h4, .mu-set-row small) {
+:lang(km) :is(.mu-set-sub h4, .mu-set-row small, .mu-set-note) {
   font-size: calc(13 * var(--px));
 }
 
@@ -1678,5 +1692,502 @@ body.reporting .map-ui {
 
   .mu-roam .mu-lang {
     order: 0;
+  }
+}
+
+/* ── The album's nature book and temple passport (roam/_bookUi.ts) ─────────
+ * Sections of the photo album (the game's paper panel: src/ui/photos.css):
+ * tabs in its header, then the book's cards and pages, the passport's ink
+ * stamps (roam/_stamps.ts), all on the album's paper, in its ink.
+ */
+body.map .photo-panel {
+  --bk-red: #b3392b;
+  position: relative;
+}
+
+body.map .photo-panel header {
+  align-items: flex-end;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+body.map .photo-panel header h2,
+body.map .photo-count {
+  display: none;
+}
+
+body.map .photo-close {
+  align-self: center;
+}
+
+.bk-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.bk-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 2px;
+  margin-bottom: -1px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bk-tab {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 12px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+  font: 600 17px/1.2 Georgia, 'Kantumruy Pro', serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bk-tab:hover {
+  color: var(--ink);
+}
+
+.bk-tab[aria-selected='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--bk-red);
+}
+
+.bk-tab:focus-visible {
+  outline: 2px solid rgba(179, 57, 43, 0.5);
+  outline-offset: -2px;
+}
+
+.bk-tab-n {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(31, 42, 54, 0.07);
+  color: var(--ink-soft);
+  font: 500 12px/1.4 system-ui, -apple-system, 'Kantumruy Pro', sans-serif;
+}
+
+.bk-tab[aria-selected='true'] .bk-tab-n {
+  background: rgba(179, 57, 43, 0.1);
+  color: var(--bk-red);
+}
+
+:lang(km) .bk-tab {
+  font: 600 16px/1.3 'Kantumruy Pro', Georgia, serif;
+}
+
+body.roam-touch .bk-tab {
+  min-height: 44px;
+  align-items: center;
+}
+
+/* The sections: the photo grid, or one of these. */
+.photo-panel[data-tab='book'] :is(.photo-grid, .photo-view),
+.photo-panel[data-tab='passport'] :is(.photo-grid, .photo-view) {
+  display: none !important;
+}
+
+.bk-pane {
+  display: none;
+}
+
+.photo-panel[data-tab='book'] .bk-book,
+.photo-panel[data-tab='passport'] .bk-pass {
+  display: block;
+}
+
+.bk-intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.bk-intro p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+
+.bk-pass-intro p {
+  flex: none;
+}
+
+.bk-meter {
+  flex: 0 0 170px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(31, 42, 54, 0.1);
+}
+
+.bk-meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #c8922e, var(--bk-red));
+}
+
+/* The nature book: a card per living thing, chapter by chapter. */
+.bk-group {
+  margin: 0 0 18px;
+}
+
+.bk-group h3,
+.bk-pass-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+  color: var(--ink);
+  font: 600 15px/1.3 Georgia, serif;
+}
+
+.bk-group h3 span,
+.bk-pass-h span {
+  color: var(--ink-soft);
+  font: 12px system-ui, -apple-system, 'Kantumruy Pro', sans-serif;
+}
+
+:lang(km) :is(.bk-group h3, .bk-pass-h) {
+  font: 400 16px/1.5 Koulen, 'Kantumruy Pro', serif;
+  letter-spacing: 0.01em;
+}
+
+.bk-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 12px;
+}
+
+.bk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #fbf9f4;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(31, 42, 54, 0.06);
+}
+
+.bk-card.is-found {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bk-card.is-found:hover,
+.bk-card.is-found:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 12px rgba(31, 42, 54, 0.15);
+}
+
+.bk-card.is-found:focus-visible {
+  outline: 2px solid rgba(179, 57, 43, 0.5);
+}
+
+.bk-card:not(.is-found) {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bk-pic {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 5px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #e8e1d3;
+}
+
+.bk-card:not(.is-found) .bk-pic {
+  background: repeating-linear-gradient(135deg, rgba(31, 42, 54, 0.045) 0 6px, transparent 6px 12px);
+}
+
+.bk-pic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bk-pic-q {
+  color: rgba(31, 42, 54, 0.24);
+  font: 700 26px Georgia, serif;
+}
+
+.bk-n1 {
+  font: 600 14px/1.3 Georgia, serif;
+}
+
+.bk-n2 {
+  color: var(--ink-soft);
+  font: italic 12px/1.3 Georgia, serif;
+}
+
+:lang(km) .bk-n1,
+.bk-n2[lang='km'] {
+  font-family: 'Kantumruy Pro', Georgia, serif;
+  font-style: normal;
+}
+
+.bk-card:not(.is-found) :is(.bk-n1, .bk-n2) {
+  opacity: 0.6;
+}
+
+.bk-where {
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* A page of the book. */
+.bk-back {
+  margin-bottom: 14px;
+}
+
+.bk-page-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.bk-page-pic {
+  display: grid;
+  place-items: center;
+  margin: 4px;
+  padding: 8px 8px 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(31, 42, 54, 0.18);
+  transform: rotate(-1.2deg);
+}
+
+.bk-page-pic img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.bk-page-pic .bk-pic-q {
+  padding: 60px 0;
+  font-size: 15px;
+}
+
+.bk-page-group {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bk-page-n1 {
+  margin: 2px 0 0;
+  font: 600 28px/1.15 Georgia, serif;
+}
+
+:lang(km) .bk-page-n1 {
+  font: 400 30px/1.5 Koulen, 'Kantumruy Pro', serif;
+}
+
+.bk-page-n2 {
+  margin: 2px 0 14px;
+  color: var(--ink-soft);
+  font: italic 16px/1.3 Georgia, serif;
+}
+
+.bk-page-n2[lang='km'] {
+  font: 16px/1.5 'Kantumruy Pro', serif;
+}
+
+.bk-page-fact {
+  margin: 0 0 14px;
+  font: 16px/1.55 Georgia, serif;
+}
+
+:lang(km) .bk-page-fact {
+  font: 15px/1.8 'Kantumruy Pro', serif;
+}
+
+.bk-page-meta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+/* The passport: a page of ink stamps (faint rings where one is still to come). */
+.bk-pass {
+  margin: -4px -6px 0;
+  padding: 4px 6px 6px;
+  border-radius: 6px;
+  background-image: repeating-radial-gradient(ellipse at 50% 130%, rgba(45, 75, 134, 0.05) 0 1px, transparent 1px 10px);
+}
+
+.bk-pass-intro {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bk-pass-intro h3 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 19px/1.3 Georgia, serif;
+  letter-spacing: 0.03em;
+}
+
+:lang(km) .bk-pass-intro h3 {
+  font: 400 21px/1.5 Koulen, 'Kantumruy Pro', serif;
+}
+
+.bk-pass-h {
+  margin-top: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+}
+
+.bk-stamps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  gap: 12px 10px;
+}
+
+.bk-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+}
+
+.bk-stamp {
+  width: 94%;
+  height: 94%;
+  overflow: visible;
+  opacity: 0.9;
+  transform: rotate(var(--bk-turn, 0deg));
+}
+
+.bk-lotus {
+  position: absolute;
+  top: -6%;
+  right: -6%;
+  width: 44%;
+  height: 44%;
+  overflow: visible;
+  color: #c47a14;
+  opacity: 0.92;
+  transform: rotate(var(--bk-turn, 0deg));
+}
+
+.bk-ring {
+  width: 78%;
+  height: 78%;
+  border: 1.5px dashed rgba(31, 42, 54, 0.2);
+  border-radius: 50%;
+}
+
+.bk-slot-name {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24%;
+  color: rgba(31, 42, 54, 0.46);
+  font: italic 12px/1.25 Georgia, serif;
+  text-align: center;
+}
+
+:lang(km) .bk-slot-name {
+  font: 12px/1.5 'Kantumruy Pro', serif;
+}
+
+.bk-st-name,
+.bk-st-date {
+  fill: currentColor;
+  text-anchor: middle;
+}
+
+.bk-st-en.bk-st-name {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.bk-st-en.bk-st-date {
+  font-family: Georgia, serif;
+  letter-spacing: 0.1em;
+}
+
+.bk-st-km.bk-st-name {
+  font-family: Koulen, 'Kantumruy Pro', serif;
+}
+
+.bk-st-km.bk-st-date {
+  font-family: 'Kantumruy Pro', serif;
+}
+
+@media (max-width: 640px) {
+  .bk-tab {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px 6px;
+    font-size: 15px;
+  }
+
+  :lang(km) .bk-tab {
+    font-size: 14px;
+  }
+
+  .bk-tab-n {
+    padding: 0 6px;
+    font-size: 11px;
+  }
+
+  body.roam-touch .bk-tab {
+    min-height: 48px;
+  }
+
+  .bk-cards {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 9px;
+  }
+
+  .bk-stamps {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px 6px;
+  }
+
+  .bk-page-body {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .bk-page-n1 {
+    font-size: 24px;
   }
 }

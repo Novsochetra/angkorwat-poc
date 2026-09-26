@@ -4,12 +4,14 @@ import { VoxelBuilder } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import type { HeightField } from './heightfield';
 import { ChunkGrid, ChunkLods } from './terrain/lod';
-import type { MapContext, MapPart } from './types';
+import type { MapContext, MapPart, Subject } from './types';
+import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
 import { Lattice } from './veg/lattice';
 import type { Proto } from './veg/proto';
 import { LOD_CELL, scatterTrees, type ScatterOptions, type TreeSpot } from './veg/scatter';
-import { broadleaf, bush, emergent, palm, type Species } from './veg/species';
+import { bamboo, broadleaf, bush, emergent, palm, type Species } from './veg/species';
+import { stepWind, swayLeaves } from './veg/sway';
 
 /**
  * Jungle: map-scale voxel trees, palms, bushes and hanging vines.
@@ -21,6 +23,8 @@ import { broadleaf, bush, emergent, palm, type Species } from './veg/species';
  * The blocks are split into 300 m chunks (terrain/lod.ts; bigger than the
  * land's: three families per chunk): per chunk a near mesh (medium blocks;
  * plain boxes far from the camera) and a far one (plain boxes).
+ * The leaves sway in the wind (veg/sway.ts). The trees where the explorer
+ * roams are handed to the undergrowth (veg/canopy.ts).
  */
 
 const GRID = new ChunkGrid(300);
@@ -61,7 +65,7 @@ function makeKit(lod: number, cell = lod): Kit {
   const s = LOD_CELL[cell];
   const near = cell === 0;
   const grow = cell < lod ? 1.12 : 1;
-  const kit: Kit = { broadleaf: [[], [], []], emergent: [[]], palm: [[]], bush: [[]], flowering: [[]] };
+  const kit: Kit = { broadleaf: [[], [], []], emergent: [[]], palm: [[]], bush: [[]], flowering: [[]], bamboo: [[]] };
   const per = [8, 6, 5, 4][lod];
   const seed0 = (lod + 1) * 10000;
   BROAD_SIZES[lod].forEach(([h0, h1, r0, r1], size) => {
@@ -73,6 +77,8 @@ function makeKit(lod: number, cell = lod): Kit {
   for (let n = 0; n < (near ? 6 : 4); n++) kit.emergent[0].push(emergent({ s, h: 18 + 7 * hash3(n, 0, lod, 3), r: 5 + 2 * hash3(n, 1, lod, 3), seed: seed0 + 5000 + n }));
   for (let n = 0; n < (near ? 8 : 4); n++) kit.palm[0].push(palm({ s, h: 9 + 5 * hash3(n, 0, lod, 4), seed: seed0 + 6000 + n }));
   if (near) for (let n = 0; n < 10; n++) kit.bush[0].push(bush({ s, h: 2 + hash3(n, 0, lod, 5), r: 1.6 + 1.2 * hash3(n, 1, lod, 5), seed: seed0 + 7000 + n }));
+  // Bamboo clumps: a little wider with distance (like the crowns: see scatter.ts BAMBOO_R).
+  for (let n = 0; n < (near ? 6 : 3); n++) kit.bamboo[0].push(bamboo({ s, h: (10 + 5 * hash3(n, 0, lod, 7)) * grow, r: ([3.2, 3.6, 4.2, 5][lod] + 0.8 * hash3(n, 1, lod, 7)) * grow, seed: seed0 + 9000 + n }));
   for (let n = 0; n < (near ? 5 : 3); n++)
     kit.flowering[0].push(broadleaf({ s, h: 9 + 3 * hash3(n, 0, lod, 6), r: 3.4 + lod * 0.6 + hash3(n, 1, lod, 6), seed: seed0 + 8000 + n, flower: n % 3 === 2 ? 'orange' : 'pink' }));
   return kit;
@@ -122,6 +128,8 @@ interface Planted {
   perLod: number[];
   lodBlocks: number[];
   cliffBlocks: number;
+  /** The trees where the explorer roams (for the undergrowth). */
+  near: CanopyTree[];
 }
 
 /** Scatter the trees, stamp them on the lattices and emit the visible blocks (no meshes yet). */
@@ -130,6 +138,7 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   const lattices = LOD_CELL.map((s) => new Lattice(s, f));
   const counts: Record<string, number> = {};
   const perLod = [0, 0, 0, 0];
+  const nearTrees: CanopyTree[] = [];
   for (const t of spots) {
     const p = protoFor(kits.get(t.lod * 4 + t.cell)!, t);
     if (!p) continue;
@@ -139,6 +148,9 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
     lattices[t.cell].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
     counts[t.kind] = (counts[t.kind] ?? 0) + 1;
     perLod[t.cell]++;
+    // (the trunk's middle: the lattice cell's centre)
+    const s = LOD_CELL[t.cell];
+    if (underReach(t.x, t.z)) nearTrees.push({ x: (Math.floor(t.x / s) + 0.5) * s, z: (Math.floor(t.z / s) + 0.5) * s, y, kind: t.kind, r: p.r, low: p.low, h: p.h });
   }
   // Near and middle trees and the cliff greens share the detailed meshes; far trees are plain boxes.
   const chunks: [VoxelBuilder, VoxelBuilder][] = [];
@@ -149,7 +161,7 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   const treeBlocks = lodBlocks.reduce((a, b) => a + b, 0);
   buildCliffGreens(f, near, opts.density);
   const blocks = chunks.reduce((a, [n, fa]) => a + n.boxes.length + fa.boxes.length, 0);
-  return { chunks, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks };
+  return { chunks, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks, near: nearTrees };
 }
 
 /** The whole jungle's blocks (no meshes yet), thinned to the budget. */
@@ -178,6 +190,7 @@ export function buildVegetation(ctx: MapContext): MapPart {
 
   const r = plantJungle(f, density);
   const { thin } = r;
+  setCanopy(f, r.near);
   const t2 = performance.now();
   const lowOnly = ctx.quality === 'low';
   const lods = new ChunkLods();
@@ -189,11 +202,26 @@ export function buildVegetation(ctx: MapContext): MapPart {
     }
     if (far.boxes.length) object.add(buildVoxelMesh(far, { quality: 'low', name: `vegetation:${n}:far` }));
   });
+  // (before the plain twins are made: they share the meshes' materials)
+  swayLeaves(object, f);
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (new URLSearchParams(location.search).has('vegstats'))
     console.info(
       `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ms kits ${Math.round(r.ms[0])}, plant ${Math.round(r.ms[1])}, mesh ${Math.round(t3 - t2)}`,
     );
-  return { name: 'vegetation', object, blocks: r.blocks, update: (fr) => lods.update(fr.camera, fr.roam !== 'overview') };
+  // (the nature book, roam/_book.ts: the bamboo clumps where the explorer roams, as they stand)
+  const bamboo: Subject[] = r.near.filter((t) => t.kind === 'bamboo').map((t) => ({ kind: 'bamboo', x: t.x, y: t.y + t.h * 0.4, z: t.z, r: Math.min(t.r, t.h * 0.3) }));
+  return {
+    name: 'vegetation',
+    object,
+    blocks: r.blocks,
+    update(fr) {
+      stepWind(fr, 'vegetation');
+      lods.update(fr.camera, fr.roam !== 'overview');
+    },
+    subjects(out) {
+      for (const b of bamboo) out.push(b);
+    },
+  };
 }

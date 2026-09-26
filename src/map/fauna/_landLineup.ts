@@ -24,7 +24,7 @@ interface Pose {
   act?: number;
 }
 
-const ROWS: { sp: Species; station: number; gap: number; poses: Pose[] }[] = [
+const ROWS: { sp: Species; road?: number; station: number; gap: number; poses: Pose[] }[] = [
   {
     sp: MACAQUE,
     station: 140,
@@ -67,12 +67,21 @@ const ROWS: { sp: Species; station: number; gap: number; poses: Pose[] }[] = [
     gap: 5,
     poses: [{}, { gait: 1, hz: 0.55 }, { act: 1 }, { act: 2, head: -1 }, { rest: 1 }, { variant: 1, scale: 0.44 }, { variant: 1, scale: 0.44, gait: 1, hz: 0.85 }],
   },
+  {
+    // Bathing (_landBath.ts): trunk down in the water, spraying over the back, lying on the side (cow, calf). On the shrine road.
+    sp: ELEPHANT,
+    road: 1,
+    station: 60,
+    gap: 5,
+    poses: [{ act: -1 }, { act: 3 }, { rest: 2 }, { variant: 1, scale: 0.44, rest: 2 }, { variant: 1, scale: 0.44, act: 3 }],
+  },
 ];
 
 export function buildLineup(field: HeightField): Flock[] {
-  const road = buildRoadNetwork(field).roads[0].stations;
+  const roads = buildRoadNetwork(field).roads;
   const flocks: Flock[] = [];
   for (const row of ROWS) {
+    const road = roads[row.road ?? 0].stations;
     const fl = new Flock(row.sp, row.poses.length);
     flocks.push(fl);
     row.poses.forEach((p, i) => {
@@ -94,7 +103,7 @@ export function buildLineup(field: HeightField): Flock[] {
     const y = mid.h + LIFT;
     const size = row.sp === ELEPHANT ? 2.5 : row.sp === BUFFALO || row.sp === DEER ? 1.2 : 0.4;
     const cam = [mid.x + nx * d, y + size + d * 0.25, mid.z + nz * d, mid.x, y + size * 0.6, mid.z].map((v) => v.toFixed(2)).join(',');
-    console.info(`[map] fauna lineup ${row.sp.name}: cam=${cam}`);
+    console.info(`[map] fauna lineup ${row.sp.name}${row.road ? ` (road ${row.road})` : ''}: cam=${cam}`);
   }
   return flocks;
 }

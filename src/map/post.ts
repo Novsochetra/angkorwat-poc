@@ -13,8 +13,9 @@ import type { MapContext, MapFrame } from './types';
  *  2. bloom: everything above {@link BLOOM_THRESHOLD} in linear light glows
  *     softly (sun, moon, lamps, beacons, the road light); half resolution,
  *  3. grade (still linear): warm golden highlights and lavender shadows by
- *     day, cool blue by night, a touch of contrast, a soft vignette and a
- *     faint blur along the top edge (tilt-shift: the far hills look far),
+ *     day, cool blue by night, pale gold over cool blue at dawn, greyer in
+ *     the rain, a touch of contrast, a soft vignette and a faint blur along
+ *     the top edge (tilt-shift: the far hills look far),
  *  4. OutputPass: tone mapping (the renderer's, Neutral) and sRGB.
  */
 export interface MapPost {
@@ -102,9 +103,15 @@ interface Grade {
   vignette: number;
   bloom: number;
 }
-/** Grade keys: golden hour and moonlit night. */
+/** Grade keys: golden hour, moonlit night and dawn (cool shadows, pale gold highlights, soft). */
 const DAY_GRADE: Grade = { balance: [1, 1, 1], shadow: [0.96, 0.97, 1.08], high: [1.05, 1.0, 0.93], saturation: 1.12, contrast: 1.08, vignette: 0.22, bloom: 0.5 };
 const NIGHT_GRADE: Grade = { balance: [0.97, 1, 1.04], shadow: [0.92, 0.98, 1.12], high: [1.04, 1.0, 0.94], saturation: 1.06, contrast: 1.06, vignette: 0.32, bloom: 0.8 };
+const DAWN_GRADE: Grade = { balance: [0.98, 0.995, 1.03], shadow: [0.95, 0.96, 1.1], high: [1.05, 1.01, 0.95], saturation: 1.06, contrast: 1.03, vignette: 0.24, bloom: 0.62 };
+const mixGrade = (out: Grade, a: Grade, b: Grade, t: number): Grade => {
+  for (const k of ['balance', 'shadow', 'high'] as const) for (let i = 0; i < 3; i++) out[k][i] = a[k][i] + (b[k][i] - a[k][i]) * t;
+  for (const k of ['saturation', 'contrast', 'vignette', 'bloom'] as const) out[k] = a[k] + (b[k] - a[k]) * t;
+  return out;
+};
 
 export function createPost(ctx: MapContext): MapPost {
   const { renderer, scene, camera } = ctx;
@@ -155,19 +162,27 @@ export function createPost(ctx: MapContext): MapPost {
     out.divideScalar(out.x * 0.2126 + out.y * 0.7152 + out.z * 0.0722);
   };
 
+  const g: Grade = mixGrade({ balance: [1, 1, 1], shadow: [1, 1, 1], high: [1, 1, 1], saturation: 1, contrast: 1, vignette: 0, bloom: 0 }, DAY_GRADE, DAY_GRADE, 0);
+  const one = [1, 1, 1];
+
   return {
     render(f: MapFrame) {
       const n = MathUtils.smoothstep(f.night, 0, 1);
       const u = grade.uniforms;
-      tint(u.uBalance.value, DAY_GRADE.balance, NIGHT_GRADE.balance, n);
-      tint(u.uShadowTint.value, DAY_GRADE.shadow, NIGHT_GRADE.shadow, n);
-      tint(u.uHighTint.value, DAY_GRADE.high, NIGHT_GRADE.high, n);
-      u.uSaturation.value = MathUtils.lerp(DAY_GRADE.saturation, NIGHT_GRADE.saturation, n);
-      u.uContrast.value = MathUtils.lerp(DAY_GRADE.contrast, NIGHT_GRADE.contrast, n);
-      u.uVignette.value = MathUtils.lerp(DAY_GRADE.vignette, NIGHT_GRADE.vignette, n);
+      // Day ↔ night, leaning to the dawn grade on the morning side (SKY.dawn: its share of the sky's blend).
+      mixGrade(g, DAY_GRADE, NIGHT_GRADE, n);
+      if (SKY.dawn > 0) mixGrade(g, g, DAWN_GRADE, SKY.dawn);
+      // Rain: greyer, flatter.
+      const wet = SKY.rain;
+      tint(u.uBalance.value, g.balance, one, 0);
+      tint(u.uShadowTint.value, g.shadow, one, 0);
+      tint(u.uHighTint.value, g.high, one, wet * 0.6);
+      u.uSaturation.value = g.saturation * (1 - 0.22 * wet);
+      u.uContrast.value = g.contrast * (1 - 0.03 * wet);
+      u.uVignette.value = g.vignette + 0.06 * wet;
       // Blur radius at the very top (px): only in the wide views.
       u.uTilt.value = 2.2 * renderer.getPixelRatio();
-      bloom.strength = MathUtils.lerp(DAY_GRADE.bloom, NIGHT_GRADE.bloom, n);
+      bloom.strength = g.bloom;
       renderer.toneMappingExposure = SKY.exposure || 1;
       composer.render(f.dt);
     },

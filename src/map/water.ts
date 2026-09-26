@@ -93,6 +93,7 @@ export function buildWater(ctx: MapContext): MapPart {
       s.uSky.value.copy(sky);
       s.uLightDirW.value.copy(f.lightDir);
       s.uSparkle.value = 7 + 4 * n;
+      s.uRain.value = f.weather.rain;
 
       const u = fall.uniforms;
       u.uTime.value = f.t;

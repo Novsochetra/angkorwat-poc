@@ -4,6 +4,7 @@ import type { HeightField, RiverSample } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
 import type { MapFrame } from '../types';
 import { placeText, t } from '../ui/lang';
+import { JETTY } from '../village/_spots';
 import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANTERN, lanternHalo, lanternMaterial } from './_boatModel';
 import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
 import { createWake } from './_wake';
@@ -18,7 +19,9 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler } from '.
  * the water, a splash in the pool below) but never up them. E near a bank
  * (or paddling hard into a low one) steps ashore; the boat stays moored
  * there. A second boat waits at a little landing by the River Gate bridge,
- * seen from the overview: the walker boards it with E (`mooredBoatNear`).
+ * seen from the overview, and a third at the floating village's jetty head
+ * (the great lake): the walker boards them with E (`mooredBoatNear`). E
+ * alongside the jetty steps up onto its planks (`onJetty`).
  *
  * The boat's middle on the waterline is the explorer's feet point
  * (`body.pos`), and they share the heading; the posture (_boatPoses.ts) seats
@@ -57,8 +60,8 @@ export interface Moored {
   level: number;
 }
 
-/** The boats waiting to be boarded (the River Gate landing, the one he left). */
-const moored: { dock: Moored | null; left: Moored | null } = { dock: null, left: null };
+/** The boats waiting to be boarded (the River Gate landing, the village jetty, the one he left). */
+const moored: { dock: Moored | null; jetty: Moored | null; left: Moored | null } = { dock: null, jetty: null, left: null };
 
 /**
  * The nearest boat waiting within `reach` of (x, z) (m), or null. For the
@@ -68,7 +71,7 @@ const moored: { dock: Moored | null; left: Moored | null } = { dock: null, left:
 export function mooredBoatNear(x: number, z: number, reach = BOARD_REACH): Moored | null {
   let best: Moored | null = null;
   let bd = reach;
-  for (const m of [moored.dock, moored.left]) {
+  for (const m of [moored.dock, moored.jetty, moored.left]) {
     if (!m) continue;
     const d = Math.hypot(m.x - x, m.z - z);
     if (d < bd) {
@@ -116,14 +119,17 @@ export function createBoat(field?: HeightField): BoatMode {
   object.add(wake.object);
   let blocks = model.blocks * 2 + paddle.blocks;
 
-  // The boat he rides (hidden until the first ride) and the one at the landing.
+  // The boat he rides (hidden until the first ride), the one at the landing and the one at the village jetty.
   const ride = model.object;
   ride.name = 'boat:ride';
   ride.visible = false;
   const dock = model.object.clone();
   dock.name = 'boat:landing';
   dock.visible = false;
-  object.add(ride, dock);
+  const pier = model.object.clone();
+  pier.name = 'boat:jetty';
+  pier.visible = false;
+  object.add(ride, dock, pier);
   // One warm light, on the lantern of the boat in use (else the landing's): lights the water round it at night.
   const light = new PointLight(0xffb266, 0, 14, 2);
   light.name = 'boat lantern';
@@ -133,6 +139,7 @@ export function createBoat(field?: HeightField): BoatMode {
 
   let river: RiverField | null = null;
   let dockAt: Moored | null = null;
+  let pierAt: Moored | null = null;
   const build = (f: HeightField) => {
     if (river) return;
     const t0 = performance.now();
@@ -147,8 +154,16 @@ export function createBoat(field?: HeightField): BoatMode {
       object.add(m.object);
       blocks += m.blocks;
     }
+    pierAt = jettyBerth(river);
+    if (pierAt) {
+      moored.jetty = { ...pierAt };
+      placeHull(pier, pierAt, 0);
+      pier.visible = true;
+      blocks += model.blocks;
+    }
     const at = spot ? `landing at (${spot.boat.x.toFixed(0)}, ${spot.boat.z.toFixed(0)})` : 'no landing found';
-    console.info(`[map] boat: ${blocks} blocks, rivers and ${at} in ${Math.round(performance.now() - t0)} ms`);
+    const jt = pierAt ? `jetty berth at (${pierAt.x.toFixed(0)}, ${pierAt.z.toFixed(0)})` : 'no jetty berth';
+    console.info(`[map] boat: ${blocks} blocks, rivers, ${at} and ${jt} in ${Math.round(performance.now() - t0)} ms`);
   };
   if (field) build(field);
 
@@ -258,7 +273,8 @@ export function createBoat(field?: HeightField): BoatMode {
       for (const d of [0.9, 1.7, 2.6, 3.4, 4.3]) {
         const x = body.pos.x + dx * (lead + d);
         const z = body.pos.z + dz * (lead + d);
-        if (r.levelAt(x, z) !== null || world.waterAt(x, z) !== null) continue;
+        // (over the water only onto the village jetty's planks)
+        if ((r.levelAt(x, z) !== null || world.waterAt(x, z) !== null) && !onJetty(x, z, world.groundAt(x, z))) continue;
         if (!world.inBounds(x, z)) break;
         const g = world.groundAt(x, z);
         if (g > level + STEP_UP || g < level - 1.5) break;
@@ -747,6 +763,10 @@ export function createBoat(field?: HeightField): BoatMode {
           dock.visible = false;
           moored.dock = null;
         }
+        if (m === moored.jetty) {
+          pier.visible = false;
+          moored.jetty = null;
+        }
         if (m === moored.left) moored.left = null;
         level = m.level;
         hopFrom.copy(body.pos);
@@ -846,12 +866,18 @@ export function createBoat(field?: HeightField): BoatMode {
       ctx.sound('boatOut');
       // Back to the map while afloat: the boat stays where it is.
       if (to === 'overview' && (phase === 'float' || phase === 'rise')) moored.left = { x: body.pos.x, z: body.pos.z, yaw: body.yaw, level };
-      // Left by the landing: back in its place. Back to the map: a boat waits at the landing again.
+      // Left by the landing or the jetty: back in its place. Back to the map: a boat waits at each again.
       const left = moored.left;
-      if (dockAt && left && Math.hypot(left.x - dockAt.x, left.z - dockAt.z) < 10) moored.left = null;
-      if (dockAt && !moored.dock && (moored.left === null || to === 'overview')) {
-        dock.visible = true;
-        moored.dock = { ...dockAt };
+      if (left && [dockAt, pierAt].some((b) => b && Math.hypot(left.x - b.x, left.z - b.z) < 10)) moored.left = null;
+      if (moored.left === null || to === 'overview') {
+        if (dockAt && !moored.dock) {
+          dock.visible = true;
+          moored.dock = { ...dockAt };
+        }
+        if (pierAt && !moored.jetty) {
+          pier.visible = true;
+          moored.jetty = { ...pierAt };
+        }
       }
       ride.visible = moored.left !== null;
       // The light goes with the boat most in view: the landing's, else the one he left.
@@ -874,6 +900,7 @@ export function createBoat(field?: HeightField): BoatMode {
         placeHull(hull, m, (0.025 * Math.sin(t * 1.4) + 0.015 * Math.sin(t * 2.3 + 1)) * ROAM_SCALE, 0.012 * Math.sin(t * 1.1 + 0.4), 0.02 * Math.sin(t * 1.3));
       };
       bob(moored.dock, dock, 1);
+      bob(moored.jetty, pier, 3);
       if (!riding) bob(moored.left, ride, 2);
     },
   };
@@ -913,6 +940,39 @@ function findLanding(f: HeightField, r: RiverField): Landing | null {
       if (spot && seen(f, view, spot.boat)) [bd, best] = [d, spot];
     }
   return best;
+}
+
+/**
+ * The berth at the floating village's jetty head (village/_spots.ts `JETTY`): alongside the head on its
+ * north-east side, bow out over the lake (the ladder and the village's own skiffs are on the other side
+ * and further in; the floating shop lies off the head's end); null if there is no open water there.
+ */
+function jettyBerth(r: RiverField): Moored | null {
+  const [jx, jz] = JETTY.to;
+  const [ux, uz] = JETTY.dir;
+  // (the jetty's across is (uz, −ux); its head is 2.2 m wide each side)
+  const across = -(2.2 + BOAT_HALF_BEAM * ROAM_SCALE + 0.3);
+  const along = JETTY_BERTH_ALONG;
+  const x = jx + ux * along + uz * across;
+  const z = jz + uz * along - ux * across;
+  const level = r.levelAt(x, z);
+  return level === null ? null : { x, z, yaw: Math.atan2(ux, uz), level };
+}
+/** Where the jetty's boat lies along the head (m from its end, − = back toward the land). */
+const JETTY_BERTH_ALONG = -0.6;
+
+/** (x, z) is on the village jetty's plank floor, at the top `g` of what stands there (not on a bench, a trap or a post). */
+function onJetty(x: number, z: number, g: number): boolean {
+  const [fx, fz] = JETTY.from;
+  const [ux, uz] = JETTY.dir;
+  const len = Math.hypot(JETTY.to[0] - fx, JETTY.to[1] - fz);
+  const dx = x - fx;
+  const dz = z - fz;
+  const u = dx * ux + dz * uz;
+  const a = dx * uz - dz * ux;
+  // (the head, its last 3.2 m, is 2.2 m wide each side; the rest half the jetty's width)
+  const half = u > len - 3.2 ? 2.2 : JETTY.width / 2;
+  return u > 0.5 && u < len - 0.2 && Math.abs(a) < half - 0.3 && Math.abs(g - JETTY.y) < 0.15;
 }
 
 interface Landing {

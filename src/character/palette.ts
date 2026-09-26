@@ -82,7 +82,8 @@ export const PALETTE = {
   rivet: 0x5b5752,
   wood: { base: 0x6b4226, dark: 0x4f2f1a, light: 0x855634 },
   torch: { yellow: 0xfdce63, orange: 0xeb9024, deep: 0x9c4f15, core: 0xfff1b8 },
-  hat: { base: 0xd9c6a2, light: 0xe8d8ba, shade: 0xc4ad86, band: 0x4a3020 },
+  /** Khmer palm-leaf hat: natural straw leaf strips, darker stitching, red cloth binding and band (as the map's people wear). */
+  hat: { base: 0xd6bc86, light: 0xe4cf9e, shade: 0xc3a66f, stitch: 0xa4844f, red: 0xae2c34, redDark: 0x84202a },
   sampot: { base: 0x5b4a3a, light: 0x6e5a46, dark: 0x463829, gold: 0xa8823e },
   bedroll: { base: 0x8a7a55, light: 0x9f8e66, strap: 0x5d3626 },
   canteen: { base: 0x5f6b52, cap: 0x3d3f3e },

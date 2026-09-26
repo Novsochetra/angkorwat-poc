@@ -366,6 +366,8 @@ function helpFor(mode: RoamMode): string {
         look,
         photo,
       ].join('');
+    case 'balloon':
+      return [item(key('W') + key('Space'), 'rBurn'), item(key('Shift'), 'rBothBurners'), item(key('S'), 'rVent'), item(key('A') + key('D'), 'rTurn'), item(key('E'), 'rLandOut'), look, photo].join('');
     default:
       return '';
   }

@@ -1,9 +1,10 @@
-import { Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry } from 'three';
+import { BackSide, Color, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector2, Vector3 } from 'three';
 import { hash3 } from '../voxel/random';
 import { MAP_BOUNDS } from './layout';
 import { buildBackdrop, RING_CENTRE } from './sky/backdrop';
-import { HAZE, WIND } from './sky/haze';
-import { mistBankMaterial, mistLayerMaterial } from './sky/mist';
+import { HAZE, HAZE_FUNCS, HAZE_PARS, hazeUniforms, WIND } from './sky/haze';
+import { MIST_WET, mistBankMaterial, mistLayerMaterial } from './sky/mist';
+import { mistNoiseTexture } from './sky/noise';
 import { SKY } from './sky/palette';
 import type { MapContext, MapFrame, MapPart } from './types';
 
@@ -35,6 +36,18 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   drift slowly round the rings with long thin wisps between them. The
  *   mist inside every bank streams and rises, so its edges billow. One
  *   instanced draw, sorted back to front.
+ *
+ * Weather (`f.weather`, sky/weather.ts):
+ * - Rain clouds ({@link rainDeck}): as a shower comes, low dark clouds build
+ *   under the sky's own (which the atmosphere greys over): a few ragged
+ *   heaps, then more, darker and closer together until they close over,
+ *   with torn scud below them hurrying on the wind; lightning lights them
+ *   from inside, brightest where it struck. One draw at the far plane, only
+ *   while there are any.
+ * - Cloud shadows: more of them, darker, as the clouds build; gone when it
+ *   is overcast (then the whole light dims: the atmosphere).
+ * - After rain (`wet`) the mist lies thicker and a little lower: the sea of
+ *   mist sinks a few metres and fills in, the banks thicken and settle.
  */
 
 /** Mist planes (m). */
@@ -42,6 +55,9 @@ const LAYER_Y = [10, 14, 18, 23, 29];
 
 /** Cloud shadows by day: darkening, patch size (m), cover (0‥1, higher = fewer). */
 const SHADE = { amount: 0.14, size: 1100, cover: 0.48 };
+/** After rain: how far the sea of mist sinks (m) and the banks settle (share of their height). */
+const WET_SINK = 4;
+const WET_SETTLE = 0.12;
 
 interface Bank {
   /** Resting base centre (m). */
@@ -75,7 +91,7 @@ export function buildClouds(ctx: MapContext): MapPart {
 
   // ── Sea of mist ─────────────────────────────────────────────────────────
   const plane = new PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2);
-  LAYER_Y.forEach((y, i) => {
+  const layers = LAYER_Y.map((y, i) => {
     const mesh = new Mesh(plane, mistLayerMaterial(y, i / (LAYER_Y.length - 1)));
     mesh.name = `mist ${y} m`;
     mesh.position.set(0, y, -300);
@@ -83,6 +99,7 @@ export function buildClouds(ctx: MapContext): MapPart {
     mesh.frustumCulled = false;
     mesh.raycast = () => {};
     object.add(mesh);
+    return mesh;
   });
 
   // ── Banks ───────────────────────────────────────────────────────────────
@@ -197,8 +214,8 @@ export function buildClouds(ctx: MapContext): MapPart {
       now[k + 4] = b.h * (1 + 0.1 * Math.sin(t * 0.21 + b.seed * 17));
     });
   }
-  /** Back to front for the camera (they blend over each other). */
-  function sortBanks(cam: { x: number; y: number; z: number }): void {
+  /** Back to front for the camera (they blend over each other); `settle` lowers their tops (after rain). */
+  function sortBanks(cam: { x: number; y: number; z: number }, settle: number): void {
     for (let i = 0; i < banks.length; i++) {
       const k = i * 5;
       dist[i] = (now[k] - cam.x) ** 2 + (now[k + 1] + now[k + 4] * 0.4 - cam.y) ** 2 + (now[k + 2] - cam.z) ** 2;
@@ -208,25 +225,190 @@ export function buildClouds(ctx: MapContext): MapPart {
       const b = banks[bi];
       const k = bi * 5;
       aCentre.setXYZ(i, now[k], now[k + 1], now[k + 2]);
-      aSize.setXY(i, now[k + 3], now[k + 4]);
+      aSize.setXY(i, now[k + 3], now[k + 4] * (1 - settle));
       aSeed.setXYZW(i, b.seed, b.wisp, b.roll, b.alpha);
     });
     aCentre.needsUpdate = aSize.needsUpdate = aSeed.needsUpdate = true;
   }
 
+  // ── Rain clouds ──────────────────────────────────────────────────────────
+  const deck = rainDeck(ctx);
+  object.add(deck.mesh);
+
   return {
     name: 'clouds',
     object,
     update(f: MapFrame) {
+      const w = f.weather;
       backdrop.update(SKY, f.drift);
       if (f.drift !== lastT) {
         lastT = f.drift;
         place(f.drift);
       }
-      sortBanks(f.camera.position);
-      // Cloud shadows by day only (the moon's would be too faint to read).
+      sortBanks(f.camera.position, WET_SETTLE * w.wet);
+      // After rain the sea of mist lies a little lower and thicker.
+      MIST_WET.value = w.wet;
+      for (let i = 0; i < layers.length; i++) {
+        const y = LAYER_Y[i] - WET_SINK * w.wet;
+        layers[i].position.y = y;
+        (layers[i].material as ShaderMaterial).uniforms.uY.value = y;
+      }
+      // Cloud shadows by day only (the moon's would be too faint to read): more and darker as
+      // the clouds build, gone under a closed sky (then all the light dims instead).
       const day = 1 - Math.min(1, Math.max(0, (f.night - 0.1) / 0.4));
-      HAZE.shade.set(SHADE.amount * day * day, 1 / SHADE.size, SHADE.cover);
+      const c = w.cloud;
+      const broken = Math.min(1, c / 0.5) * (1 - smooth01((c - 0.6) / 0.35));
+      HAZE.shade.set(SHADE.amount * day * day * (1 + 1.3 * broken) * (1 - smooth01((c - 0.6) / 0.35)), 1 / SHADE.size, SHADE.cover - 0.2 * broken);
+      deck.update(f);
+    },
+  };
+}
+
+const smooth01 = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+
+/** A deck's sheet: a direction d meets it at s = d.xz / (d.y + DECK_FLAT) (lower and closer than the sky's: squeezed more at the horizon). */
+const DECK_FLAT = 0.1;
+/** How high the deck is (m): the camera's move shifts it by move / height. */
+const DECK_HEIGHT = 650;
+/** Noise lookups: scale (texture units per sheet unit) and share of the wind (the scud runs ahead). */
+const DECK_LOOKUPS = [
+  { scale: 0.03, wind: 0.5 },
+  { scale: 0.075, wind: 1 },
+  { scale: 0.19, wind: 1.1 },
+  { scale: 0.3, wind: 1.9 },
+];
+
+/**
+ * Low rain clouds: a shell round the camera drawn at the far plane (like the
+ * sky dome: only where no land or backdrop covers it), transparent over the
+ * sky. `f.weather.cloud` sets how much of the sky they cover (a few heaps …
+ * closed), `storm` how dark their cores are; they drift with the wind
+ * (`wind`, `windDir`), the scud under them faster; `flash` lights them from
+ * inside round where the lightning struck (`flashX`, `flashZ`). Colours from
+ * the sky's own clouds (sky/palette.ts, already greyed by the rain there),
+ * darker; at the horizon they melt into the haze.
+ */
+function rainDeck(ctx: MapContext): { mesh: Mesh; update(f: MapFrame): void } {
+  const u = {
+    uCover: { value: 0 },
+    uStorm: { value: 0 },
+    uBody: { value: new Color() },
+    uLit: { value: new Color() },
+    uGlowDir: { value: new Vector3(0, 1, 0) },
+    uFlash: { value: 0 },
+    uFlashDir: { value: new Vector3(0, 1, 0) },
+    uOff: { value: DECK_LOOKUPS.map(() => new Vector2()) },
+    uNoise: { value: mistNoiseTexture() },
+  };
+  const S = DECK_LOOKUPS.map((l) => l.scale.toFixed(3));
+  const material = new ShaderMaterial({
+    name: 'rain clouds',
+    side: BackSide,
+    transparent: true,
+    depthWrite: false,
+    fog: true,
+    uniforms: { ...hazeUniforms(), ...u },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() {
+        vDir = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        // On the far plane: behind everything, drawn only where nothing covers it.
+        gl_Position.z = gl_Position.w;
+      }`,
+    fragmentShader: /* glsl */ `
+      ${HAZE_PARS}
+      ${HAZE_FUNCS}
+      uniform float uCover;
+      uniform float uStorm;
+      uniform vec3 uBody;
+      uniform vec3 uLit;
+      uniform vec3 uGlowDir;
+      uniform float uFlash;
+      uniform vec3 uFlashDir;
+      uniform vec2 uOff[${DECK_LOOKUPS.length}];
+      uniform sampler2D uNoise;
+      varying vec3 vDir;
+      void main() {
+        vec3 d = normalize(vDir);
+        float e = d.y;
+        if (e < -0.01) discard;
+        vec2 s = d.xz / (max(e, 0.0) + ${DECK_FLAT.toFixed(2)});
+        // Slow swirls bend the heaps a little.
+        vec2 w = (texture2D(uNoise, s * ${S[0]} + uOff[0]).rg - 0.5) * 1.4;
+        vec2 q = s + w;
+        // Heaped clouds: big lumps with billowy edges.
+        float n = texture2D(uNoise, q * ${S[1]} + uOff[1]).r * 0.6 + texture2D(uNoise, q * ${S[2]} + uOff[2]).a * 0.4;
+        // The same a little toward the light: the side facing it is lit, the far side in shade.
+        vec2 toLight = uGlowDir.xz / max(length(uGlowDir.xz), 1e-3);
+        vec2 ql = q + toLight * 0.35;
+        float nl = texture2D(uNoise, ql * ${S[1]} + uOff[1]).r * 0.6 + texture2D(uNoise, ql * ${S[2]} + uOff[2]).a * 0.4;
+        // A few ragged heaps at first, more and more until they close over.
+        float th = mix(0.84, 0.22, uCover);
+        float heap = smoothstep(th - 0.03, th + 0.07, n);
+        // Torn scud below them, hurrying on the wind.
+        // (overhead only: squeezed toward the horizon they would be specks)
+        float scud = smoothstep(0.58, 0.85, texture2D(uNoise, q * ${S[3]} + uOff[3]).b) * smoothstep(0.35, 0.8, uCover) * smoothstep(0.12, 0.35, e);
+        float a = max(heap * (0.8 + 0.2 * smoothstep(th, th + 0.2, n)), scud * 0.7) * smoothstep(0.08, 0.3, uCover);
+        // Dark, heavy bases (darker in their thick cores and in a storm), their edges and the side toward the light paler.
+        float thick = smoothstep(th, th + 0.3, n);
+        float lit = clamp(0.45 + (nl - n) * 5.0, 0.0, 1.0);
+        float toward = pow(max(dot(d, uGlowDir), 0.0), 4.0);
+        vec3 col = mix(uBody, uLit, clamp(lit * (1.0 - 0.6 * thick) + 0.3 * toward, 0.0, 1.0));
+        col *= 1.0 - 0.35 * uStorm * thick;
+        col = mix(col, uBody * 0.85, scud * (1.0 - heap));
+        // Far off they melt into the haze.
+        vec3 haze = hazeColorDir(d);
+        col = mix(col, haze, (1.0 - smoothstep(0.0, 0.12, e)) * 0.55);
+        a *= smoothstep(-0.005, 0.03, e);
+        // Lightning lights them from inside, brightest round where it struck.
+        float mu = max(dot(d, uFlashDir), 0.0);
+        col += vec3(0.78, 0.82, 1.0) * uFlash * (0.12 + 3.0 * pow(mu, 14.0)) * (0.25 + 0.75 * thick);
+        gl_FragColor = vec4(col, a * 0.95);
+      }`,
+  });
+  const mesh = new Mesh(new SphereGeometry(3000, 32, 16), material);
+  mesh.name = 'rain clouds';
+  mesh.frustumCulled = false;
+  // (first of the see-through things: the rainbow, mist and rain go over it)
+  mesh.renderOrder = 0;
+  mesh.raycast = () => {};
+  let compiled = false;
+  mesh.onAfterRender = () => void (compiled = true);
+
+  // Where the wind has carried the deck (sheet units = m / height).
+  const travel = new Vector2();
+  const grey = new Color();
+  return {
+    mesh,
+    update(f: MapFrame) {
+      const w = f.weather;
+      const speed = (3 + 12 * w.wind) / DECK_HEIGHT;
+      const vx = Math.sin(w.windDir) * speed;
+      const vz = Math.cos(w.windDir) * speed;
+      if (ctx.shot) travel.set(vx * f.t, vz * f.t);
+      else travel.set(travel.x + vx * f.dt, travel.y + vz * f.dt);
+      const on = w.cloud > 0.08;
+      mesh.visible = on || !compiled;
+      if (!mesh.visible) return;
+      mesh.position.copy(f.camera.position);
+      const cam = f.camera.position;
+      for (let i = 0; i < DECK_LOOKUPS.length; i++) {
+        const l = DECK_LOOKUPS[i];
+        const x = (cam.x / DECK_HEIGHT - travel.x * l.wind) * l.scale;
+        const y = (cam.z / DECK_HEIGHT - travel.y * l.wind) * l.scale;
+        u.uOff.value[i].set(x - Math.floor(x), y - Math.floor(y));
+      }
+      u.uCover.value = on ? w.cloud : 0;
+      u.uStorm.value = w.storm;
+      // The sky's cloud colours (greyed by the rain there), darker and duller: rain-laden.
+      const b = SKY.cloudBody;
+      grey.setScalar(0.3 * b.r + 0.5 * b.g + 0.2 * b.b);
+      u.uBody.value.copy(b).lerp(grey, 0.4).multiplyScalar(0.55);
+      u.uLit.value.copy(SKY.cloudLit).lerp(SKY.haze, 0.5).multiplyScalar(0.85);
+      u.uGlowDir.value.copy(SKY.glowDir);
+      u.uFlash.value = w.flash;
+      u.uFlashDir.value.set(w.flashX - cam.x, DECK_HEIGHT + 150 - cam.y, w.flashZ - cam.z).normalize();
     },
   };
 }

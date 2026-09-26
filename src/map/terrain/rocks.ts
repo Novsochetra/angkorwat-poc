@@ -18,7 +18,7 @@ export function placeRocks(f: HeightField, sink: Sink, wet: Uint8Array): void {
   const { nx, nz, height: H } = f;
   const plain = (c: number) => {
     const s = f.surface[c];
-    return (s === SURFACE.grass || s === SURFACE.dirt || s === SURFACE.rock) && !f.occupied[c] && f.water[c] < -1000 && !wet[c] && f.lod[c] === 0;
+    return (s === SURFACE.grass || s === SURFACE.dirt || s === SURFACE.rock) && !f.occupied[c] && !f.trail[c] && f.water[c] < -1000 && !wet[c] && f.lod[c] === 0;
   };
   const boulder = (x: number, y: number, z: number, i: number, k: number, seed: number, big: number) => {
     const b = sink(x, z, 0);

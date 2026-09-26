@@ -1,5 +1,5 @@
 import { valueNoise3 } from '../voxel/random';
-import { MAP_BOUNDS, PATHS, PLACES, PLATEAUS, RIVERS, type Plateau } from './layout';
+import { JUNGLE_SITES, LAKES, MAP_BOUNDS, PADDIES, PATHS, PLACES, PLATEAUS, RIVERS, TRAILS, VILLAGE, type Lake, type Plateau } from './layout';
 import { CAM_REACH, MAP_VIEWS, roamDistance, viewDistance } from './terrain/views';
 
 /**
@@ -8,7 +8,11 @@ import { CAM_REACH, MAP_VIEWS, roamDistance, viewDistance } from './terrain/view
  * reads it (terrain blocks, trees, water, the road, the landmarks' pads).
  */
 
-/** Size of one terrain column and of the height steps (m). */
+/**
+ * Size of one terrain column and of the height steps (m). (Heights are whole
+ * steps but for a few flat things: paddy plots and dikes in half metres,
+ * shallow beds 0.6 m under their water.)
+ */
 export const CELL = 2;
 
 export const SURFACE = {
@@ -22,8 +26,10 @@ export const SURFACE = {
   path: 4,
   /** A landmark's flat pad. */
   pad: 5,
-  /** River bed (under water). */
+  /** River or lake bed (under water). */
   bed: 6,
+  /** A rice paddy's flat plot (layout.ts `PADDIES`; the dikes round it are dirt). */
+  paddy: 7,
 } as const;
 export type SurfaceKind = (typeof SURFACE)[keyof typeof SURFACE];
 
@@ -87,12 +93,12 @@ export class HeightField {
   readonly z0 = MAP_BOUNDS.z0;
   readonly nx = Math.round((MAP_BOUNDS.x1 - MAP_BOUNDS.x0) / CELL);
   readonly nz = Math.round((MAP_BOUNDS.z1 - MAP_BOUNDS.z0) / CELL);
-  /** Top of the ground per cell (m, a multiple of CELL). Index: i + k * nx. */
+  /** Top of the ground per cell (m, a multiple of CELL but for paddies and shallow beds). Index: i + k * nx. */
   readonly height: Float32Array;
   /** Water surface per cell (m), or below −1000 where there is none. */
   readonly water: Float32Array;
   readonly surface: Uint8Array;
-  /** 1 where something is built or passes (pads, road, rivers): no trees there. */
+  /** 1 where something is built or passes (pads, road, rivers, lakes and their beaches, jungle sites, paddies, the village): no trees there. */
   readonly occupied: Uint8Array;
   /**
    * Block size of the terrain per cell: 0 = 2 m columns, 1 = 4 m, 2 = 8 m.
@@ -102,9 +108,17 @@ export class HeightField {
    * `height` (trees, clouds) sits on the blocks that are drawn.
    */
   readonly lod: Uint8Array;
+  /**
+   * Jungle trails (layout.ts `TRAILS`): 2 on the tread (dirt, graded), 1 on
+   * the band beside it where no trunk stands (`isFree` is false there, but
+   * the trail is not `occupied`: crowns may still meet over it).
+   */
+  readonly trail: Uint8Array;
   readonly falls: Waterfall[] = [];
   readonly rivers: { name: string; samples: RiverSample[] }[] = [];
   readonly paths: { name: string; samples: PathSample[] }[] = [];
+  /** The jungle trails, a sample every metre (ground `y`; `wet` over water, where a bridge site is). */
+  readonly trails: { name: string; samples: PathSample[] }[] = [];
 
   constructor() {
     const n = this.nx * this.nz;
@@ -113,6 +127,7 @@ export class HeightField {
     this.surface = new Uint8Array(n);
     this.occupied = new Uint8Array(n);
     this.lod = new Uint8Array(n);
+    this.trail = new Uint8Array(n);
   }
 
   /** Cell index of a map point, or −1 outside the grid. */
@@ -166,10 +181,10 @@ export class HeightField {
     return d;
   }
 
-  /** Free for a tree or a rock: open grass or dirt, nothing built, not on a cliff lip, no water. */
+  /** Free for a tree or a rock: open grass or dirt, nothing built, not on a cliff lip or a trail, no water. */
   isFree(x: number, z: number): boolean {
     const c = this.index(x, z);
-    if (c < 0 || this.occupied[c] || this.water[c] > -1000) return false;
+    if (c < 0 || this.occupied[c] || this.trail[c] || this.water[c] > -1000) return false;
     const s = this.surface[c];
     return (s === SURFACE.grass || s === SURFACE.dirt) && this.dropAt(x, z) <= CELL;
   }
@@ -255,6 +270,9 @@ export function buildHeightField(): HeightField {
       f.surface[c] = SURFACE.grass;
     }
 
+  // Lakes: where they lie, and their shores shaped (the water comes after the rivers).
+  const lakes = lakeMap(f);
+
   // Landmark pads: flat, exactly at the place's height (a cell of margin round them).
   for (const p of PLACES) {
     const [hx, hz] = p.pad;
@@ -286,6 +304,9 @@ export function buildHeightField(): HeightField {
         const x = ax + dir[0] * t;
         const z = az + dir[1] * t;
         level = Math.min(level, f.heightAt(x, z) - 1);
+        // (into a lake: its level)
+        const li = lakes.of[f.index(x, z)] ?? -1;
+        if (li >= 0) level = Math.min(level, LAKES[li].level);
         samples.push({ x, z, level, w: r.w, dir });
       }
     }
@@ -324,8 +345,9 @@ export function buildHeightField(): HeightField {
     const L = nearLevel[c];
     // (the level is always a column top minus 1 m, so L ± 1 are whole steps)
     if (near[c] <= nearW[c] / 2 + 0.5) {
-      // Channel: the bed one step under the bank, the water 1 m over the bed.
-      f.height[c] = Math.min(f.height[c], L - 1);
+      // Channel: the bed one step under the bank, the water 1 m over the bed
+      // (a small stream, `SMALL_STREAM` wide or less: 0.6 m, the explorer wades across).
+      f.height[c] = Math.min(f.height[c], L - (nearW[c] <= SMALL_STREAM ? SHALLOWS_DEPTH : 1));
       f.water[c] = L;
       f.surface[c] = SURFACE.bed;
       f.occupied[c] = 1;
@@ -339,6 +361,10 @@ export function buildHeightField(): HeightField {
       f.occupied[c] = 1;
     }
   }
+
+  fillLakes(f, lakes);
+  layPaddies(f);
+  layVillage(f, lakes);
 
   // Road: samples every metre on the ground; its cells turn to dirt and stay free of trees.
   for (const p of PATHS) {
@@ -365,6 +391,9 @@ export function buildHeightField(): HeightField {
     }
   }
 
+  clearSites(f);
+  layTrails(f);
+
   coarsen(f);
 
   // Bare rock on cliff lips.
@@ -376,6 +405,356 @@ export function buildHeightField(): HeightField {
       if (f.dropAt(x, z) >= CELL * 3 && fbm(x / 6, z / 6, 77, 2) > 0.55) f.surface[c] = SURFACE.rock;
     }
   return f;
+}
+
+const isNatural = (s: number) => s === SURFACE.grass || s === SURFACE.rock || s === SURFACE.dirt;
+
+// ── Lakes ─────────────────────────────────────────────────────────────────
+
+/** Lake cells and how far each cell is from a shore. */
+interface LakeMap {
+  /** Index into `LAKES` per cell, −1 where dry. */
+  of: Int8Array;
+  /** Lake cells: distance (m) to the nearest dry cell; dry cells: to the nearest lake cell. */
+  dist: Float32Array;
+  /** Per dry cell: the nearest lake (−1 when none is within `SHORE_REACH`). */
+  near: Int8Array;
+}
+
+/** How far out from a lake the land is shaped into its shore (m). */
+const SHORE_REACH = 24;
+/** The beach: sand at the water, then mud (m from the water); no trees on either. */
+const SAND_BAND = 3;
+const MUD_BAND = 7;
+/** Reed shallows along the shore (m): 0.6 m deep, the explorer wades; the 1 m deep water beyond takes a boat. */
+const SHALLOWS = 4;
+const SHALLOWS_DEPTH = 0.6;
+/** Streams this wide or less (m) run 0.6 m deep, and lakes this small (the larger radius) are shallow all over: waded, not boated. */
+const SMALL_STREAM = 5;
+const SMALL_LAKE = 20;
+/** Highest ground (m over the water) a lake floods: higher land in it stays, an island or a bank. */
+const LAKE_FLOOD = 7;
+
+/** Distance from a lake's centre as a share of its radius, its shore roughened (< 1 inside). */
+function lakeD(l: Lake, x: number, z: number, seed: number): number {
+  const rough = l.rough ?? 0.08;
+  const c = Math.cos(l.rot ?? 0);
+  const s = Math.sin(l.rot ?? 0);
+  const dx = x - l.x;
+  const dz = z - l.z;
+  const d = Math.hypot((dx * c + dz * s) / l.rx, (-dx * s + dz * c) / l.rz);
+  if (d > 1 + rough * 1.5) return d;
+  return d + (fbm(x / 40, z / 40, seed) - 0.5) * 2 * rough + (fbm(x / 11, z / 11, seed + 5, 2) - 0.5) * 0.4 * rough;
+}
+
+/**
+ * Chamfer distance (m) from every cell to the nearest cell with `src` set
+ * (0 on those), and that cell's `label`.
+ */
+function chamfer(f: HeightField, src: Uint8Array, label: Int8Array): { dist: Float32Array; lab: Int8Array } {
+  const { nx, nz } = f;
+  const dist = new Float32Array(nx * nz).fill(1e9);
+  const lab = new Int8Array(nx * nz).fill(-1);
+  for (let c = 0; c < nx * nz; c++)
+    if (src[c]) {
+      dist[c] = 0;
+      lab[c] = label[c];
+    }
+  const a = CELL;
+  const b = CELL * Math.SQRT2;
+  const relax = (c: number, m: number, w: number) => {
+    if (dist[m] + w < dist[c]) {
+      dist[c] = dist[m] + w;
+      lab[c] = lab[m];
+    }
+  };
+  for (let k = 0; k < nz; k++)
+    for (let i = 0; i < nx; i++) {
+      const c = i + k * nx;
+      if (i > 0) relax(c, c - 1, a);
+      if (k > 0) {
+        relax(c, c - nx, a);
+        if (i > 0) relax(c, c - nx - 1, b);
+        if (i < nx - 1) relax(c, c - nx + 1, b);
+      }
+    }
+  for (let k = nz - 1; k >= 0; k--)
+    for (let i = nx - 1; i >= 0; i--) {
+      const c = i + k * nx;
+      if (i < nx - 1) relax(c, c + 1, a);
+      if (k < nz - 1) {
+        relax(c, c + nx, a);
+        if (i < nx - 1) relax(c, c + nx + 1, b);
+        if (i > 0) relax(c, c + nx - 1, b);
+      }
+    }
+  return { dist, lab };
+}
+
+/**
+ * Where the lakes lie (low ground inside each roughened ellipse), and their
+ * shores shaped: the land round a lake comes down to a beach 1 m over the
+ * water (only gentle ground: hills and cliffs beside it stay), rising again
+ * a step every 4 m; nothing lower than the beach lies next to the water
+ * (where the map's edge sinks into the mist, the land beside the lake
+ * slopes away gently instead, so the water runs on west under the mist).
+ */
+function lakeMap(f: HeightField): LakeMap {
+  const { nx, nz } = f;
+  const n = nx * nz;
+  const of = new Int8Array(n).fill(-1);
+  LAKES.forEach((l, li) => {
+    const R = Math.max(l.rx, l.rz) * (1 + (l.rough ?? 0.08) * 1.5) + CELL;
+    const i0 = Math.max(0, Math.floor((l.x - R - f.x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((l.x + R - f.x0) / CELL));
+    const k0 = Math.max(0, Math.floor((l.z - R - f.z0) / CELL));
+    const k1 = Math.min(nz - 1, Math.floor((l.z + R - f.z0) / CELL));
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const c = i + k * nx;
+        const [x, z] = f.cellCenter(i, k);
+        if (f.height[c] > l.level + LAKE_FLOOD || lakeD(l, x, z, 2000 + li * 13) >= 1) continue;
+        of[c] = li;
+      }
+  });
+  const wet = new Uint8Array(n);
+  const dry = new Uint8Array(n);
+  for (let c = 0; c < n; c++) {
+    wet[c] = of[c] >= 0 ? 1 : 0;
+    dry[c] = 1 - wet[c];
+  }
+  const out = chamfer(f, wet, of);
+  const inn = chamfer(f, dry, of);
+  const dist = new Float32Array(n);
+  const near = new Int8Array(n).fill(-1);
+  for (let c = 0; c < n; c++) {
+    if (of[c] >= 0) {
+      dist[c] = inn.dist[c];
+      continue;
+    }
+    const d = out.dist[c];
+    dist[c] = d;
+    if (d >= SHORE_REACH) continue;
+    near[c] = out.lab[c];
+    const top = LAKES[near[c]].level + 1;
+    let h = f.height[c];
+    if (h - top <= 4) h = Math.min(h, Math.max(top, Math.floor((top + Math.max(0, d - 4) * 0.5) / CELL) * CELL));
+    h = Math.max(h, Math.floor((top - Math.max(0, d - 10) * 0.6) / CELL) * CELL);
+    f.height[c] = h;
+    if (h <= top && d < MUD_BAND) f.surface[c] = d < SAND_BAND ? SURFACE.sand : SURFACE.dirt;
+    if (d < MUD_BAND) f.occupied[c] = 1;
+  }
+  return { of, dist, near };
+}
+
+/** The lakes' water: a flat bed 1 m down, 0.6 m in the reed shallows along the shore (and all over a small pool). */
+function fillLakes(f: HeightField, lakes: LakeMap): void {
+  for (let c = 0; c < f.nx * f.nz; c++) {
+    const li = lakes.of[c];
+    if (li < 0) continue;
+    const l = LAKES[li];
+    const level = l.level;
+    f.height[c] = lakes.dist[c] <= SHALLOWS || Math.max(l.rx, l.rz) <= SMALL_LAKE ? level - SHALLOWS_DEPTH : level - 1;
+    f.water[c] = level;
+    f.surface[c] = SURFACE.bed;
+    f.occupied[c] = 1;
+  }
+}
+
+// ── Rice paddies, the village ─────────────────────────────────────────────
+
+/** Height of a paddy's dikes over the higher plot beside them (m). */
+const DIKE = 0.5;
+
+/** Paddy plots (flat, `SURFACE.paddy`) and the earth dikes between them (dirt), all kept free of trees. */
+function layPaddies(f: HeightField): void {
+  const { nx, nz } = f;
+  const plot = new Float32Array(nx * nz).fill(NaN);
+  for (const p of PADDIES) {
+    const cs = Math.cos(p.rot);
+    const sn = Math.sin(p.rot);
+    const R = Math.hypot(p.w, p.d) / 2 + CELL;
+    const i0 = Math.max(0, Math.floor((p.x - R - f.x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((p.x + R - f.x0) / CELL));
+    const k0 = Math.max(0, Math.floor((p.z - R - f.z0) / CELL));
+    const k1 = Math.min(nz - 1, Math.floor((p.z + R - f.z0) / CELL));
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const [x, z] = f.cellCenter(i, k);
+        const dx = x - p.x;
+        const dz = z - p.z;
+        if (Math.abs(dx * cs + dz * sn) < p.w / 2 && Math.abs(-dx * sn + dz * cs) < p.d / 2) plot[i + k * nx] = p.level;
+      }
+  }
+  const open = (c: number) => f.water[c] < -1000 && f.surface[c] !== SURFACE.path && f.surface[c] !== SURFACE.pad && f.surface[c] !== SURFACE.bed;
+  for (let c = 0; c < nx * nz; c++) {
+    if (Number.isNaN(plot[c]) || !open(c)) continue;
+    f.height[c] = plot[c];
+    f.surface[c] = SURFACE.paddy;
+    f.occupied[c] = 1;
+  }
+  for (let k = 1; k < nz - 1; k++)
+    for (let i = 1; i < nx - 1; i++) {
+      const c = i + k * nx;
+      if (!Number.isNaN(plot[c]) || !open(c)) continue;
+      let top = -Infinity;
+      for (let dk = -1; dk <= 1; dk++)
+        for (let di = -1; di <= 1; di++) {
+          const v = plot[c + di + dk * nx];
+          if (v > top) top = v;
+        }
+      if (top === -Infinity) continue;
+      f.height[c] = top + DIKE;
+      f.surface[c] = SURFACE.dirt;
+      f.occupied[c] = 1;
+    }
+}
+
+/** Distance (m) from a point to a polyline. */
+function lineDistance(x: number, z: number, pts: readonly [number, number][]): number {
+  let best = Infinity;
+  for (let s = 0; s < pts.length - 1; s++) {
+    const [ax, az] = pts[s];
+    const [bx, bz] = pts[s + 1];
+    const ex = bx - ax;
+    const ez = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1)));
+    best = Math.min(best, Math.hypot(x - ax - ex * t, z - az - ez * t));
+  }
+  return best;
+}
+
+/** How far the village ground reaches from its centre and from its shore line (m). */
+const VILLAGE_R = 20;
+const VILLAGE_SHORE = 10;
+
+/** The village ground: flat dirt 1 m over the lake (sand kept at the water), no trees. */
+function layVillage(f: HeightField, lakes: LakeMap): void {
+  const li = lakes.of[f.index(VILLAGE.water.x, VILLAGE.water.z)] ?? -1;
+  if (li < 0) return;
+  const top = LAKES[li].level + 1;
+  const R = VILLAGE_R + 60;
+  const { nx, nz } = f;
+  const i0 = Math.max(0, Math.floor((VILLAGE.x - R - f.x0) / CELL));
+  const i1 = Math.min(nx - 1, Math.floor((VILLAGE.x + R - f.x0) / CELL));
+  const k0 = Math.max(0, Math.floor((VILLAGE.z - R - f.z0) / CELL));
+  const k1 = Math.min(nz - 1, Math.floor((VILLAGE.z + R - f.z0) / CELL));
+  for (let k = k0; k <= k1; k++)
+    for (let i = i0; i <= i1; i++) {
+      const c = i + k * nx;
+      const [x, z] = f.cellCenter(i, k);
+      if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) > VILLAGE_R && lineDistance(x, z, VILLAGE.shore) > VILLAGE_SHORE) continue;
+      const s = f.surface[c];
+      if (f.water[c] > -1000 || !(isNatural(s) || s === SURFACE.sand) || f.height[c] - top > 4) continue;
+      f.height[c] = top;
+      if (s !== SURFACE.sand) f.surface[c] = SURFACE.dirt;
+      f.occupied[c] = 1;
+    }
+}
+
+// ── Jungle sites and trails ───────────────────────────────────────────────
+
+/**
+ * The jungle sites' clearings: occupied (no trees, no rocks) over their
+ * radius, flattened to the centre's height where the ground is within a
+ * step of it (not the pool or a bridge: water and banks stay), bare earth
+ * round the middle.
+ */
+function clearSites(f: HeightField): void {
+  const { nx, nz } = f;
+  for (const s of JUNGLE_SITES) {
+    const flat = s.kind !== 'pool' && s.kind !== 'bridge';
+    const h0 = f.heightAt(s.x, s.z);
+    const i0 = Math.max(0, Math.floor((s.x - s.r - f.x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((s.x + s.r - f.x0) / CELL));
+    const k0 = Math.max(0, Math.floor((s.z - s.r - f.z0) / CELL));
+    const k1 = Math.min(nz - 1, Math.floor((s.z + s.r - f.z0) / CELL));
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const [x, z] = f.cellCenter(i, k);
+        const d = Math.hypot(x - s.x, z - s.z);
+        const c = i + k * nx;
+        const sf = f.surface[c];
+        if (d > s.r || f.water[c] > -1000 || sf === SURFACE.path || sf === SURFACE.pad || sf === SURFACE.paddy) continue;
+        if (flat && isNatural(sf) && Math.abs(f.height[c] - h0) <= CELL) {
+          f.height[c] = h0;
+          if (d < s.r * 0.45) f.surface[c] = SURFACE.dirt;
+        }
+        f.occupied[c] = 1;
+      }
+  }
+}
+
+/** Steepest a trail may climb (m per m): 2 m cells then differ by one step at most. */
+const TRAIL_SLOPE = 0.9;
+/** Beside the tread, trunks keep this far (m) from a trail's middle line. */
+const TRAIL_KEEP = 2;
+
+/**
+ * The jungle trails: a sample every metre; the tread (cells within half
+ * the width + 0.5 m of the line) turns to dirt and is graded: where the
+ * ground along it climbs faster than `TRAIL_SLOPE`, the higher cells are cut
+ * down (plain ground only: not a road, pad, site, dike or the village) so
+ * no step is over 2 m. Trunks keep off the tread and a band beside it.
+ */
+function layTrails(f: HeightField): void {
+  const { nx, nz } = f;
+  const near = new Float32Array(nx * nz).fill(1e9);
+  const nearS = new Int32Array(nx * nz);
+  const touched: number[] = [];
+  for (const t of TRAILS) {
+    const pts: [number, number][] = [];
+    for (let s = 0; s < t.points.length - 1; s++) {
+      const [ax, az] = t.points[s];
+      const [bx, bz] = t.points[s + 1];
+      const len = Math.hypot(bx - ax, bz - az);
+      for (let d = 0; d < len; d += 1) pts.push([ax + ((bx - ax) * d) / len, az + ((bz - az) * d) / len]);
+    }
+    pts.push(t.points[t.points.length - 1]);
+    // Cut line: the ground along the trail, lowered where it climbs too fast (water: no bound, a bridge spans it).
+    const cut = pts.map(([x, z]) => {
+      const c = f.index(x, z);
+      return c < 0 || f.water[c] > f.height[c] ? Infinity : f.height[c];
+    });
+    for (let s = 1; s < cut.length; s++) cut[s] = Math.min(cut[s], cut[s - 1] + TRAIL_SLOPE);
+    for (let s = cut.length - 2; s >= 0; s--) cut[s] = Math.min(cut[s], cut[s + 1] + TRAIL_SLOPE);
+    // Cells of the tread and the band beside it, each with its nearest sample.
+    const tread = t.w / 2 + 0.5;
+    const band = t.w / 2 + TRAIL_KEEP;
+    pts.forEach(([x, z], s) => {
+      const i0 = Math.max(0, Math.floor((x - band - f.x0) / CELL));
+      const i1 = Math.min(nx - 1, Math.floor((x + band - f.x0) / CELL));
+      const k0 = Math.max(0, Math.floor((z - band - f.z0) / CELL));
+      const k1 = Math.min(nz - 1, Math.floor((z + band - f.z0) / CELL));
+      for (let k = k0; k <= k1; k++)
+        for (let i = i0; i <= i1; i++) {
+          const [cx, cz] = f.cellCenter(i, k);
+          const d = Math.hypot(cx - x, cz - z);
+          const c = i + k * nx;
+          if (d > band || d >= near[c]) continue;
+          if (near[c] > 1e8) touched.push(c);
+          near[c] = d;
+          nearS[c] = s;
+        }
+    });
+    for (const c of touched) {
+      const onTread = near[c] <= tread;
+      f.trail[c] = Math.max(f.trail[c], onTread ? 2 : 1);
+      near[c] = 1e9;
+      if (!onTread || f.water[c] > -1000 || !isNatural(f.surface[c])) continue;
+      const lim = cut[nearS[c]];
+      if (!f.occupied[c] && f.height[c] > lim + 0.01) f.height[c] = Math.floor(lim / CELL) * CELL;
+      f.surface[c] = SURFACE.dirt;
+    }
+    touched.length = 0;
+    f.trails.push({
+      name: t.name,
+      samples: pts.map(([x, z]) => {
+        const w = f.waterAt(x, z);
+        return { x, z, y: f.standY(x, z), wet: w !== null && w > f.heightAt(x, z) };
+      }),
+    });
+  }
 }
 
 /** Cells per LOD tile side (8 m). */

@@ -51,6 +51,8 @@ export interface PrayerDeps {
   hud: RoamHud;
   /** After the hat changes (photo.ts `refreshBody`, as the H key). */
   refreshBody(): void;
+  /** A prayer was completed (the three bows done) at this spot (null: not at a known one): the passport's lotus seal. */
+  onPrayed?(spot: WorshipSpot | null): void;
 }
 
 /**
@@ -81,6 +83,9 @@ export function createPrayer(d: PrayerDeps): Prayer {
   let restore = 0;
   /** Stopped part way: the hat goes back on once `restore` has run out (he is up). */
   let hatLater = false;
+  /** The spot of this prayer, and whether it was completed (told once: `onPrayed`). */
+  let prayedAt: WorshipSpot | null = null;
+  let told = false;
 
   /** The nearest spot within reach of his feet and in front of its shrine (used or not), or null. */
   function nearest(): WorshipSpot | null {
@@ -125,6 +130,8 @@ export function createPrayer(d: PrayerDeps): Prayer {
     // (started from the URL too: not again at once at this spot)
     const s = nearest();
     if (s) used.add(s);
+    prayedAt = s;
+    told = false;
     d.hud.toast(t('rPray'));
   }
 
@@ -171,6 +178,11 @@ export function createPrayer(d: PrayerDeps): Prayer {
           ctx.sound('enter', BELL);
         }
         if (at >= PRAY.hatOn) hatBack();
+        // (the bows done, the hat going back on: a completed prayer)
+        if (!told && at >= PRAY.hatOn) {
+          told = true;
+          d.onPrayed?.(prayedAt);
+        }
         still = 0;
         return;
       }
@@ -212,7 +224,15 @@ export function createPrayer(d: PrayerDeps): Prayer {
       turn = null;
       still = 0;
       if (explorer.currentAction === 'pray') explorer.stop('pray');
-      if (!praying) return;
+      if (!praying) {
+        // (already getting up, and now a new mode: the hat goes back on at once, not later on foot)
+        if (!soft && hatLater) {
+          hatLater = false;
+          restore = 0;
+          hatBack();
+        }
+        return;
+      }
       praying = false;
       if (soft) {
         // (the arms and legs come up out of the kneel first: no lantern in a flat hand, no hat put on from the floor)

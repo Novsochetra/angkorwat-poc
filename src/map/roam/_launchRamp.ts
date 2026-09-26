@@ -3,6 +3,7 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
+import { weatherNow } from '../sky/weather';
 import { RampFlag } from './_rampFlag';
 
 /**
@@ -400,7 +401,9 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
       const tt = t + phase;
       const k = Math.max(0, Math.min(1, night));
       // The sock trails back (−z), swings a little across and lifts and droops with the gusts.
-      const gust = 0.5 + 0.5 * Math.sin(tt * 0.37) * Math.sin(tt * 0.23 + 1);
+      // (the weather's wind fills it out: it droops only in calm air)
+      const blow = weatherNow().wind;
+      const gust = (0.5 + 0.5 * Math.sin(tt * 0.37) * Math.sin(tt * 0.23 + 1)) * (1 - blow) + blow;
       pivot.rotation.set(0.12 + 0.35 * (1 - gust) + 0.04 * Math.sin(tt * 2.3), Math.PI + wind + 0.22 * Math.sin(tt * 0.6) + 0.07 * Math.sin(tt * 1.9), 0, 'YXZ');
       // The flag the same way (its +x downwind), a moment behind the light sock.
       flagPivot.rotation.y = Math.PI / 2 + wind + 0.16 * Math.sin(tt * 0.6 - 0.5) + 0.04 * Math.sin(tt * 1.9 - 0.8);

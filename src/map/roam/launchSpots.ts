@@ -83,6 +83,8 @@ const LIP_GAP = 1.3;
 const CLEAR_RUN = 150;
 const MIN_CLEAR = 6;
 const CORRIDOR = 8;
+/** How far over the treetops (and what else stands on the land) the flight must stay (m, before the glider's sink; the wing tips ride higher). */
+const CROWN_ROOM = 2;
 /** Room round the deck for a parked glider's wings (they reach 7.6 m to each side): across and behind the back (m). */
 const KEEP_SIDE = 9;
 const KEEP_BACK = 4;
@@ -358,7 +360,14 @@ function blocked(field: HeightField, world: RoamWorld, s: LaunchSpot): string | 
     const w = world.groundAt(x, z);
     return Math.max(canopy(field, x, z), w > field.heightAt(x, z) + 0.6 ? w + 5 : w);
   };
-  return corridor(field, s.x, s.y, s.z, fx, fz, (x, z) => world.groundAt(x, z), crowns) >= 0 ? null : 'trees ahead';
+  // (what stands on the land further out, a roof or a trunk, needs the treetops' room under the wings, not the land's: the
+  // land itself got its room when the spot was found; e.g. the village's stilt houses far below the Bayon's ramp)
+  const land = (x: number, z: number) => {
+    const w = world.groundAt(x, z);
+    const g = field.heightAt(x, z);
+    return w > g + 0.6 ? Math.max(g, w - (MIN_CLEAR - CROWN_ROOM)) : w;
+  };
+  return corridor(field, s.x, s.y, s.z, fx, fz, land, crowns) >= 0 ? null : 'trees ahead';
 }
 
 /** Every cliff-top take-off that fits on the land, best first (`walk` from the road, on cells `free` of anything built). */
@@ -577,7 +586,7 @@ function corridor(field: HeightField, x: number, y: number, z: number, fx: numbe
       if (px <= a.x0 || px >= a.x1 || pz <= a.z0 || pz >= a.z1) return -1;
       const under = y - Math.max(land(px, pz), field.waterAt(px, pz) ?? -Infinity);
       if (under < Math.min(MIN_CLEAR, 1 + d * 0.6) + sink - tips) return -1;
-      if (d <= CANOPY_RUN && y - crowns(px, pz) < 2 + sink - tips) return -1;
+      if (d <= CANOPY_RUN && y - crowns(px, pz) < CROWN_ROOM + sink - tips) return -1;
       if (v === 0) clear = Math.min(clear, under);
     }
   }
