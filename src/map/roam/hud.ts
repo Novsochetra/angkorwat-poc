@@ -2,7 +2,7 @@ import { OVERVIEW } from '../layout';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
 import { onLang, t, type WordKey } from '../ui/lang';
-import { steppedRing, steppedShape } from '../ui/shape';
+import { setSteppedVars, steppedRing } from '../ui/shape';
 import { roamPrefs } from './prefs';
 import { setTouchUse } from './touch';
 import type { RoamHud, RoamMode } from './types';
@@ -41,11 +41,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   wrap.className = 'map-ui rh';
   if (shot) wrap.classList.add('mu-shot');
   if (root.style.display === 'none') wrap.style.display = 'none';
-  wrap.style.setProperty('--mu-shape-sm', steppedShape(8, 4));
-  wrap.style.setProperty('--mu-ring-sm', steppedRing(8, 4, 1.25));
+  setSteppedVars(wrap);
   wrap.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2));
-  wrap.style.setProperty('--mu-shape-md', steppedShape(10, 5));
-  wrap.style.setProperty('--mu-ring-md', steppedRing(10, 5, 1.25));
   wrap.innerHTML = `
     <button type="button" class="rh-jump mu-frame mu-sm" aria-haspopup="dialog" aria-expanded="false" aria-controls="rh-jumps" aria-keyshortcuts="J">
       <span class="mu-bg"></span><span class="mu-glow"></span><span class="rh-jump-icon"></span><span class="rh-jump-text"></span><kbd>J</kbd>

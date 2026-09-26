@@ -26,6 +26,10 @@
   --mu-line: color-mix(in srgb, rgba(255, 229, 188, 0.2), rgba(176, 200, 255, 0.2) var(--mu-night));
   --mu-line-hi: color-mix(in srgb, rgba(255, 238, 212, 0.5), rgba(205, 222, 255, 0.5) var(--mu-night));
   --mu-shadow: 0 calc(8 * var(--px)) calc(24 * var(--px)) rgba(3, 8, 16, 0.34);
+  /* The buttons' fill (hover: -hi) and edge. */
+  --mu-btn: color-mix(in srgb, rgba(44, 44, 56, 0.82), rgba(12, 22, 42, 0.84) var(--mu-night));
+  --mu-btn-hi: color-mix(in srgb, rgba(58, 58, 72, 0.88), rgba(20, 32, 58, 0.88) var(--mu-night));
+  --mu-btn-edge: rgba(255, 236, 205, 0.16);
   --mu-lift: calc(-3 * var(--px));
   --mu-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
@@ -64,19 +68,28 @@
   isolation: isolate;
 }
 
+.mu-xs {
+  --mu-shape: var(--mu-shape-xs);
+  --mu-ring: var(--mu-ring-xs);
+  --mu-halo: var(--mu-halo-xs);
+}
+
 .mu-sm {
   --mu-shape: var(--mu-shape-sm);
   --mu-ring: var(--mu-ring-sm);
+  --mu-halo: var(--mu-halo-sm);
 }
 
 .mu-md {
   --mu-shape: var(--mu-shape-md);
   --mu-ring: var(--mu-ring-md);
+  --mu-halo: var(--mu-halo-md);
 }
 
 .mu-lg {
   --mu-shape: var(--mu-shape-lg);
   --mu-ring: var(--mu-ring-lg);
+  --mu-halo: var(--mu-halo-lg);
 }
 
 /* Soft drop shadow (under everything). */
@@ -102,13 +115,20 @@
   transition: background 0.3s, box-shadow 0.3s, opacity 0.45s;
 }
 
-.mu-title > .mu-bg,
-.mu-pin-in > .mu-bg,
-.mu-round > .mu-bg,
-.mu-info > .mu-bg,
-.mu-settings > .mu-bg {
+/* Blur behind the glass panels, on its own layer under the fill. (Blur and
+ * the stepped clip on the fill itself draw the fill a pixel off its edge
+ * when the panel sits between two screen pixels: a dark notch outside
+ * every corner step.) */
+:is(.mu-title, .mu-pin-in, .mu-round, .mu-lang, .mu-info, .mu-settings)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  clip-path: var(--mu-shape);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+  transition: opacity 0.45s;
 }
 
 .mu-frame > .mu-bg::after {
@@ -120,25 +140,27 @@
   transition: background 0.3s;
 }
 
-/* Glow: a gold halo around the edge, behind the fill. */
+/* Glow: a gold halo around the edge, behind the fill. The shape's own
+ * outline glows (so the halo follows the stepped corners), cut away inside. */
 .mu-frame > .mu-glow {
   position: absolute;
   inset: 0;
   z-index: -2;
   opacity: 0;
   pointer-events: none;
+  clip-path: var(--mu-halo);
+  filter: drop-shadow(0 0 calc(2 * var(--px)) rgba(255, 226, 130, 0.95))
+    drop-shadow(0 0 calc(8 * var(--px)) rgba(255, 176, 40, 0.6))
+    drop-shadow(0 0 calc(16 * var(--px)) rgba(255, 150, 20, 0.3));
   transition: opacity 0.4s;
 }
 
 .mu-frame > .mu-glow::before {
   content: '';
   position: absolute;
-  inset: calc(1 * var(--px));
-  border-radius: calc(5 * var(--px));
-  box-shadow:
-    0 0 calc(3 * var(--px)) calc(1 * var(--px)) rgba(255, 226, 130, 0.95),
-    0 0 calc(12 * var(--px)) calc(2 * var(--px)) rgba(255, 176, 40, 0.75),
-    0 0 calc(26 * var(--px)) calc(4 * var(--px)) rgba(255, 150, 20, 0.3);
+  inset: 0;
+  background: rgb(255, 214, 120);
+  clip-path: var(--mu-shape);
 }
 
 /* ── Title ──────────────────────────────────────────────────────────────── */
@@ -397,7 +419,8 @@
 
 /* Another place is picked: the other cards step back. */
 .mu-has-pick .mu-pin:not(.is-selected, :hover, :focus-visible, .is-hover, .is-focus) .mu-pin-in > :not(.mu-glow),
-.mu-has-pick .mu-pin:not(.is-selected, :hover, :focus-visible, .is-hover, .is-focus) .mu-pin-in::before {
+.mu-has-pick .mu-pin:not(.is-selected, :hover, :focus-visible, .is-hover, .is-focus) .mu-pin-in::before,
+.mu-has-pick .mu-pin:not(.is-selected, :hover, :focus-visible, .is-hover, .is-focus) .mu-pin-in::after {
   opacity: 0.55;
 }
 
@@ -413,7 +436,8 @@
 }
 
 .mu-pin.is-off .mu-pin-in > *,
-.mu-pin.is-off .mu-pin-in::before {
+.mu-pin.is-off .mu-pin-in::before,
+.mu-pin.is-off .mu-pin-in::after {
   opacity: 0 !important;
 }
 
@@ -440,7 +464,7 @@
   color: #f8ecd9;
   cursor: pointer;
   outline: none;
-  --mu-edge: rgba(255, 236, 205, 0.16);
+  --mu-edge: var(--mu-btn-edge);
 }
 
 .mu-round .mu-icon {
@@ -450,7 +474,7 @@
 }
 
 .mu-round > .mu-bg {
-  background: color-mix(in srgb, rgba(44, 44, 56, 0.82), rgba(12, 22, 42, 0.84) var(--mu-night));
+  background: var(--mu-btn);
 }
 
 .mu-mute {
@@ -473,7 +497,7 @@
   }
 
   .mu-round:hover > .mu-bg {
-    background: color-mix(in srgb, rgba(58, 58, 72, 0.88), rgba(20, 32, 58, 0.88) var(--mu-night));
+    background: var(--mu-btn-hi);
   }
 
   .mu-gear:hover .mu-icon {
@@ -501,13 +525,11 @@
   gap: calc(2 * var(--px));
   height: calc(44 * var(--px));
   padding: 0 calc(5 * var(--px));
-  --mu-edge: rgba(255, 236, 205, 0.16);
+  --mu-edge: var(--mu-btn-edge);
 }
 
 .mu-lang > .mu-bg {
-  background: color-mix(in srgb, rgba(44, 44, 56, 0.82), rgba(12, 22, 42, 0.84) var(--mu-night));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--mu-btn);
 }
 
 .mu-lang button {
@@ -517,7 +539,6 @@
   height: calc(34 * var(--px));
   padding: 0 calc(8 * var(--px));
   border: 0;
-  border-radius: calc(6 * var(--px));
   background: none;
   color: var(--mu-dim);
   font-size: calc(14.5 * var(--px));
@@ -525,22 +546,44 @@
   line-height: 1;
   cursor: pointer;
   outline: none;
-  transition: background 0.2s, color 0.2s;
+  transition: color 0.2s;
 }
 
 .mu-lang button[lang='km'] {
   font-size: calc(15.5 * var(--px));
 }
 
-.mu-lang button:hover {
-  color: var(--mu-ink);
-  background: rgba(255, 255, 255, 0.07);
+/* A choice among a few (the language; the time and the weather in the
+ * settings): the buttons' stepped corners, and the one in use gets the
+ * gold edge of a picked card. */
+:is(.mu-lang, .mu-seg) button {
+  --mu-edge: transparent;
+  --mu-shadow: none;
 }
 
-.mu-lang button[aria-pressed='true'] {
+:is(.mu-lang, .mu-seg) button > .mu-bg {
+  background: transparent;
+}
+
+@media (hover: hover) {
+  :is(.mu-lang, .mu-seg) button:not([aria-pressed='true']):hover {
+    color: var(--mu-ink);
+  }
+
+  :is(.mu-lang, .mu-seg) button:not([aria-pressed='true']):hover > .mu-bg {
+    background: rgba(255, 255, 255, 0.07);
+  }
+}
+
+:is(.mu-lang, .mu-seg) button[aria-pressed='true'] {
+  --mu-edge: var(--mu-gold-hi);
   color: var(--mu-gold-hi);
-  background: rgba(255, 214, 120, 0.13);
   cursor: default;
+}
+
+:is(.mu-lang, .mu-seg) button[aria-pressed='true'] > .mu-bg {
+  background: rgba(255, 214, 120, 0.14);
+  box-shadow: inset 0 0 calc(12 * var(--px)) rgba(255, 190, 70, 0.3);
 }
 
 .mu-lang button:focus-visible,
@@ -548,6 +591,7 @@
 .mu-back:focus-visible,
 .mu-x:focus-visible,
 .mu-seg button:focus-visible,
+.mu-watch:focus-visible,
 .mu-switch:focus-visible,
 .mu-begin:focus-visible {
   outline: 2px solid rgba(255, 244, 214, 0.95);
@@ -848,7 +892,8 @@
   transition: opacity 0.25s;
 }
 
-.mu-settings::before {
+.mu-settings::before,
+.mu-settings::after {
   opacity: 0;
 }
 
@@ -859,7 +904,8 @@
 }
 
 .mu-settings.is-open > *,
-.mu-settings.is-open::before {
+.mu-settings.is-open::before,
+.mu-settings.is-open::after {
   opacity: 1;
 }
 
@@ -1047,8 +1093,11 @@
   grid-template-columns: repeat(3, 1fr);
   gap: calc(4 * var(--px));
   padding: calc(4 * var(--px));
-  border: 1px solid var(--mu-line);
-  border-radius: calc(10 * var(--px));
+  --mu-edge: var(--mu-line);
+  --mu-shadow: none;
+}
+
+.mu-seg > .mu-bg {
   background: rgba(0, 0, 0, 0.25);
 }
 
@@ -1060,24 +1109,12 @@
   height: calc(36 * var(--px));
   padding: 0;
   border: 0;
-  border-radius: calc(7 * var(--px));
   background: none;
   color: var(--mu-ink2);
   font-size: calc(13.5 * var(--px));
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.25s, color 0.25s, box-shadow 0.25s;
-}
-
-.mu-seg button:hover {
-  color: var(--mu-ink);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.mu-seg button[aria-pressed='true'] {
-  color: #2b1904;
-  background: linear-gradient(180deg, #ffdc80, #f2ab2e);
-  box-shadow: 0 0 calc(12 * var(--px)) rgba(247, 183, 51, 0.35);
+  transition: color 0.25s;
 }
 
 .mu-seg .mu-icon {
@@ -1157,16 +1194,22 @@
   display: inline-flex;
   align-items: center;
   gap: calc(6 * var(--px));
-  height: calc(30 * var(--px));
-  padding: 0 calc(12 * var(--px)) 0 calc(9 * var(--px));
-  border: 1px solid rgba(247, 183, 51, 0.55);
-  border-radius: calc(15 * var(--px));
-  background: rgba(247, 183, 51, 0.12);
+  height: calc(34 * var(--px));
+  padding: 0 calc(14 * var(--px)) 0 calc(11 * var(--px));
+  border: 0;
+  background: none;
   color: var(--mu-gold-hi);
   font-size: calc(13.5 * var(--px));
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.25s;
+  outline: none;
+  --mu-edge: var(--mu-btn-edge);
+  --mu-shadow: none;
+  transition: transform 0.3s var(--mu-ease);
+}
+
+.mu-watch > .mu-bg {
+  background: var(--mu-btn);
 }
 
 .mu-watch .mu-icon {
@@ -1176,8 +1219,17 @@
 
 @media (hover: hover) {
   .mu-watch:hover {
-    background: rgba(247, 183, 51, 0.24);
+    --mu-edge: var(--mu-line-hi);
   }
+
+  .mu-watch:hover > .mu-bg {
+    background: var(--mu-btn-hi);
+  }
+}
+
+.mu-watch:active {
+  transform: scale(0.96);
+  transition-duration: 0.08s;
 }
 
 /* ── Hint ───────────────────────────────────────────────────────────────── */

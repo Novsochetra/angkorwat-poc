@@ -2,7 +2,7 @@ import type { PlaceDef } from '../layout';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, WEATHER_SETTINGS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
-import { steppedRing, steppedShape } from './shape';
+import { setSteppedVars } from './shape';
 
 /**
  * The map's interface over the 3D view, after the concept art
@@ -133,7 +133,7 @@ function loadFonts(): void {
 }
 
 /** A panel's layers: fill with its stepped border (`mu-bg`), and an optional glow ring. */
-function framed<T extends HTMLElement>(host: T, size: 'sm' | 'md' | 'lg', glow = false): T {
+function framed<T extends HTMLElement>(host: T, size: 'xs' | 'sm' | 'md' | 'lg', glow = false): T {
   host.classList.add('mu-frame', `mu-${size}`);
   host.prepend(el('span', 'mu-bg'));
   if (glow) host.querySelector('.mu-bg')!.after(el('span', 'mu-glow'));
@@ -177,14 +177,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   root.replaceChildren();
   root.classList.add('mu-root');
   if (shot) root.classList.add('mu-shot');
-  // Stepped corners (cut px, steps) and edge rings (px), after the art.
-  root.style.setProperty('--mu-shape-sm', steppedShape(8, 4));
-  root.style.setProperty('--mu-ring-sm', steppedRing(8, 4, 1.25));
-  root.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2.5));
-  root.style.setProperty('--mu-shape-md', steppedShape(10, 5));
-  root.style.setProperty('--mu-ring-md', steppedRing(10, 5, 1.25));
-  root.style.setProperty('--mu-shape-lg', steppedShape(12, 4));
-  root.style.setProperty('--mu-ring-lg', steppedRing(12, 4, 1.5));
+  // Stepped corners, edge rings and glow areas, after the art.
+  setSteppedVars(root);
 
   // ── Title ────────────────────────────────────────────────────────────────
   const title = framed(el('header', 'mu-title', `
@@ -228,7 +222,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const langSwitch = framed(el('div', 'mu-lang', (['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')), 'md');
   langSwitch.setAttribute('role', 'group');
   langSwitch.dataset.tAria = 'language';
-  const langBtns = [...langSwitch.querySelectorAll<HTMLButtonElement>('button')];
+  const langBtns = [...langSwitch.querySelectorAll<HTMLButtonElement>('button')].map((b) => framed(b, 'xs'));
   const muteBtn = framed(el('button', 'mu-round mu-mute'), 'md');
   muteBtn.type = 'button';
   muteBtn.dataset.tAria = 'mute';
@@ -281,6 +275,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
       </div>
     </div>`), 'lg');
+  // (the choices and the story button in the stepped frames of the buttons above)
+  for (const seg of panel.querySelectorAll<HTMLElement>('.mu-seg')) {
+    framed(seg, 'sm');
+    for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) framed(b, 'xs');
+  }
+  framed(panel.querySelector<HTMLButtonElement>('.mu-watch')!, 'sm');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
   panel.dataset.tAria = 'settings';

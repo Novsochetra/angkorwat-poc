@@ -9,7 +9,7 @@ import { treasure } from '../treasure/hooks';
 import type { MapFrame, MapPart, PlaceId, RoamMode, UISound } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, t, type WordKey } from './lang';
-import { steppedRing, steppedShape } from './shape';
+import { setSteppedVars, steppedRing, steppedShape } from './shape';
 import { ARROW_PATH, ARROW_SVG, balloonSprite, balloonSvg, BEACON_PATH, BOAT_PATH, RIM_PATH, rampSprite, templeSprite, templeSvg, TEMPLE_SIZE, wingSvg } from './_minimapArt';
 import { LandBuilder, MIST, type LandPicture } from './_minimapLand';
 import { drawPaddies, paddyKey } from './_minimapPaddies';
@@ -182,10 +182,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
   for (const w of [wrap, bigWrap]) {
     if (shot) w.classList.add('mu-shot');
     if (off) w.style.display = 'none';
-    w.style.setProperty('--mu-shape-sm', steppedShape(8, 4));
-    w.style.setProperty('--mu-ring-sm', steppedRing(8, 4, 1.25));
-    w.style.setProperty('--mu-shape-lg', steppedShape(12, 4));
-    w.style.setProperty('--mu-ring-lg', steppedRing(12, 4, 1.5));
+    setSteppedVars(w);
     w.style.setProperty('--mm-shape', steppedShape(12, 4));
     w.style.setProperty('--mm-ring', steppedRing(12, 4, 1.5));
     w.style.setProperty('--mm-face', steppedShape(8, 4));
@@ -1145,7 +1142,10 @@ function injectStyle(): void {
       --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.3), rgba(180, 204, 255, 0.28) var(--mu-night));
       opacity: 0; visibility: hidden; transition: opacity 0.4s, visibility 0s 0.4s; }
     .mm.is-on .mm-mini { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
-    .mm-mini > .mu-bg { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    /* (the blur on its own layer under the fill, like map.css's glass panels) */
+    .mm-mini::after, .mm-big::after { content: ''; position: absolute; inset: 0; z-index: -2; clip-path: var(--mu-shape); pointer-events: none;
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    .mm-mini::after { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     .mm-mini:hover, .mm-mini:focus-visible { --mu-edge: var(--mu-line-hi); }
     .mm-mini:focus-visible { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 3px; border-radius: calc(8 * var(--px)); }
     .mm-face { position: relative; display: block; width: calc(${FACE} * var(--px)); height: calc(${FACE} * var(--px)); }
@@ -1197,7 +1197,7 @@ function injectStyle(): void {
       transform: translate(-50%, calc(-50% + 10px)) scale(0.985); opacity: 0; visibility: hidden;
       transition: opacity 0.3s, transform 0.35s var(--mu-ease), visibility 0s 0.35s;
       --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.3), rgba(180, 204, 255, 0.28) var(--mu-night)); }
-    .mm-big > .mu-bg { background: var(--mu-panel-strong); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    .mm-big > .mu-bg { background: var(--mu-panel-strong); }
     .mm-bigwrap.is-open .mm-shade, .mm-bigwrap.is-open .mm-big { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.3s, transform 0.35s var(--mu-ease); }
     .mm-bigwrap.is-open .mm-big { transform: translate(-50%, -50%); }
     .mm-head { display: flex; align-items: center; gap: calc(14 * var(--px)); }
