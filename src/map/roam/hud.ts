@@ -1,4 +1,5 @@
 import { OVERVIEW, SCENES_OPEN } from '../layout';
+import posthog, { isPostHogConfigured } from '../../posthog';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
 import { onLang, t, type WordKey } from '../ui/lang';
@@ -165,6 +166,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
     openCard(false, true);
     // (let go of the focus: Space and Enter are the roaming keys now)
     (document.activeElement as HTMLElement | null)?.blur?.();
+    if (isPostHogConfigured) posthog.capture('roam_jump_started', { jump_type: kind });
     h.onJump(kind);
   }
 

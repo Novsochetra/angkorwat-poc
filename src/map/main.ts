@@ -1,4 +1,5 @@
 import { DirectionalLight, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
+import { posthogLogger } from '../posthog';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { skipBackFacets } from '../voxel/backFacets';
 import { installLookPanel } from '../voxel/LookPanel';
@@ -538,6 +539,11 @@ try {
 if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0')) await openStory(Math.max(0, storyAt - 1));
 
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
+posthogLogger.info('map initialized', {
+  entry_point: 'map',
+  built_part_count: parts.length,
+  failed_part_count: failed.length,
+});
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed } });
 
 /** Fade the loading screen out once the map is drawn (after the explorer's wave has begun). */

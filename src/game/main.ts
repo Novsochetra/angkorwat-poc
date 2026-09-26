@@ -17,6 +17,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
+import { posthogLogger } from '../posthog';
 import { AngkorExplorer, OUTFITS, type ExplorerOutfit, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
@@ -562,4 +563,10 @@ if (test) {
 }
 
 console.info(`[angkor] world built in ${buildMs.toFixed(0)} ms, ${world.stats.instances} voxel instances, ${world.colliders.boxes.length} colliders`);
+posthogLogger.info('game world initialized', {
+  entry_point: 'game',
+  build_duration_ms: Math.round(buildMs),
+  voxel_instances: world.stats.instances,
+  collider_count: world.colliders.boxes.length,
+});
 Object.assign(window, { scene, camera, player, explorer, world, renderer, feedback, photos });

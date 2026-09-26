@@ -1,3 +1,4 @@
+import posthog, { isPostHogConfigured } from '../posthog';
 import '../ui/photos.css';
 
 /** One photo in the album. */
@@ -208,6 +209,7 @@ export class PhotoAlbum {
     const blob = dataUrlBlob(this.marked(canvas).toDataURL('image/jpeg', 0.92));
     const photo: Photo = { id: 0, blob, time: Date.now(), place, url: URL.createObjectURL(blob) };
     this.photos.unshift(photo);
+    if (isPostHogConfigured) posthog.capture('photo_captured', { album_size: this.photos.length });
     this.shutter();
     this.showPrint(photo);
     this.refresh();

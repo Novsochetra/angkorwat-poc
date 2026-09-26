@@ -1,4 +1,5 @@
 import type { Duck, Lang, PlaceId, TypeKey, UISound } from '../types';
+import posthog, { isPostHogConfigured } from '../../posthog';
 import { ICON } from '../ui/icons';
 import { lang, onLang, t, type WordKey } from '../ui/lang';
 import { framed, setSteppedVars, steppedShape } from '../ui/shape';
@@ -395,6 +396,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   function close(sound: UISound): void {
     if (!open) return;
     open = false;
+    if (sound === 'begin' && isPostHogConfigured) posthog.capture('story_completed');
     flag.stop();
     hooks.sound(sound);
     hooks.duck('none');

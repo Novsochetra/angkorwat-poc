@@ -1,4 +1,5 @@
 import { Box3, Group, OrthographicCamera, Vector3 } from 'three';
+import { posthogLogger } from '../posthog';
 import { AngkorExplorer } from '../character/AngkorExplorer';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { PieceBuilder } from '../kit/PieceBuilder';
@@ -573,6 +574,12 @@ async function main(): Promise<void> {
   else indexPage();
   const buildMs = performance.now() - t0;
   console.info(`[kit] studio built in ${buildMs.toFixed(0)} ms, ${blocksTotal} blocks on ${stage.subjects.length} subjects, ${stage.views.length} views`);
+  posthogLogger.info('asset studio initialized', {
+    entry_point: 'studio',
+    build_duration_ms: Math.round(buildMs),
+    subject_count: stage.subjects.length,
+    view_count: stage.views.length,
+  });
   sizeCanvas();
   if (shot) {
     stage.render(true);

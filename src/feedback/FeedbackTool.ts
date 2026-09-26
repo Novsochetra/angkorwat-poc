@@ -16,6 +16,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import type { AABB, ColliderWorld } from '../game/world/Colliders';
+import posthog, { isPostHogConfigured } from '../posthog';
 import { areaPick, samePose, viewPose, type Area, type Point } from './area';
 import { pick, type Pick } from './pick';
 import { errorCount, reportMarkdown, reportSlug, type ReportData } from './report';
@@ -542,6 +543,7 @@ export class FeedbackTool {
         return null;
       });
       if (dir) {
+        if (isPostHogConfigured) posthog.capture('feedback_submitted', { feedback_type: this.kind, picked_item_count: this.picks.length, delivery: 'dev_server' });
         this.setMode('saved', `Saved to ${dir}/`, 'Tell Claude: “check the feedback”. Using Claude on the web? Push the folder first, or copy the text into the chat.');
         return;
       }
@@ -549,6 +551,7 @@ export class FeedbackTool {
       this.savedText = await reportMarkdown({ ...data, image: `${name}.jpg` });
       download(`${name}.md`, new Blob([this.savedText], { type: 'text/markdown' }));
       if (jpeg) download(`${name}.jpg`, jpeg);
+      if (isPostHogConfigured) posthog.capture('feedback_submitted', { feedback_type: this.kind, picked_item_count: this.picks.length, delivery: 'browser_download' });
       this.setMode('saved', `Downloaded ${name}.md and .jpg (the dev server wasn't reachable).`, 'Send both files to Claude, or copy the text into the chat.');
     } catch (err) {
       // A bug in the reporter itself: stay open (and unfrozen from "Saving…") so the note isn't lost.

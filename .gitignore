@@ -4,3 +4,4 @@ dist/
 *.log
 screenshots/
 .claude/worktrees/
+.env

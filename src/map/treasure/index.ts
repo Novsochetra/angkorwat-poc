@@ -1,5 +1,6 @@
 import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Points, ShaderMaterial, Vector3, Vector4, type WebGLProgramParametersWithUniforms } from 'three';
 import { hash3 } from '../../voxel/random';
+import posthog, { isPostHogConfigured } from '../../posthog';
 import type { RoamCtx, RoamHud } from '../roam/types';
 import type { MapContext, MapFrame, MapPart, RoamSound } from '../types';
 import { lang, num, t } from '../ui/lang';
@@ -228,6 +229,7 @@ export function buildTreasure(ctx: MapContext): MapPart {
       f.found = true;
       f.pickAt = clock + PICK_DELAY;
       save.found = figs.filter((g) => g.found).map((g) => g.def.id);
+      if (isPostHogConfigured) posthog.capture('treasure_collected', { collection_count: save.found.length, collection_total: figs.length });
       if (!demo) saveTreasure(save);
       // He turns to it and bends down to pick it up.
       c.body.yaw = Math.atan2(f.x - c.body.pos.x, f.z - c.body.pos.z);

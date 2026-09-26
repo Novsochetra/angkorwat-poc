@@ -20,6 +20,7 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { posthogLogger } from '../posthog';
 import { AngkorExplorer, OUTFITS, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
@@ -225,6 +226,11 @@ function settle(t: number): void {
 spawn();
 frame();
 settle(num('t', shot ? 0.5 : 0));
+posthogLogger.info('character viewer initialized', {
+  entry_point: 'viewer',
+  explorer_count: explorers.length,
+  turnaround,
+});
 
 // ── UI ──────────────────────────────────────────────────────────────────────
 const panel = document.getElementById('panel')!;
