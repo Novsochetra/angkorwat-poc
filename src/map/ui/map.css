@@ -1155,37 +1155,55 @@
   text-wrap: pretty;
 }
 
+/* On / off: the choices' look (a dark slot; on, the gold edge) with a
+ * stepped knob that slides over and turns gold. */
 .mu-switch {
-  position: relative;
   flex: none;
-  width: calc(46 * var(--px));
+  width: calc(48 * var(--px));
   height: calc(26 * var(--px));
   padding: 0;
   border: 0;
-  border-radius: calc(13 * var(--px));
-  background: rgba(255, 255, 255, 0.16);
+  background: none;
   cursor: pointer;
-  transition: background 0.25s;
+  --mu-edge: var(--mu-line-hi);
+  --mu-shadow: none;
 }
 
-.mu-switch span {
+.mu-switch > .mu-bg {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.mu-knob {
   position: absolute;
-  left: calc(3 * var(--px));
-  top: calc(3 * var(--px));
-  width: calc(20 * var(--px));
-  height: calc(20 * var(--px));
-  border-radius: 50%;
-  background: #fff4da;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  transition: transform 0.25s var(--mu-ease);
+  left: calc(4 * var(--px));
+  top: calc(4 * var(--px));
+  width: calc(18 * var(--px));
+  height: calc(18 * var(--px));
+  background: #b9c1cd;
+  /* (a darker lower lip, like a block's side) */
+  box-shadow: inset 0 calc(-3 * var(--px)) 0 rgba(0, 0, 0, 0.2);
+  clip-path: var(--mu-shape-xxs);
+  transition: transform 0.25s var(--mu-ease), background 0.25s;
+}
+
+@media (hover: hover) {
+  .mu-switch:hover > .mu-knob {
+    background: #e3e7ee;
+  }
 }
 
 .mu-switch[aria-checked='true'] {
-  background: var(--mu-gold);
+  --mu-edge: var(--mu-gold-hi);
 }
 
-.mu-switch[aria-checked='true'] span {
-  transform: translateX(calc(20 * var(--px)));
+.mu-switch[aria-checked='true'] > .mu-bg {
+  background: rgba(255, 214, 120, 0.14);
+  box-shadow: inset 0 0 calc(12 * var(--px)) rgba(255, 190, 70, 0.3);
+}
+
+.mu-switch[aria-checked='true'] > .mu-knob {
+  background: linear-gradient(180deg, #ffe07c, #f2ab2e);
+  transform: translateX(calc(22 * var(--px)));
 }
 
 /* "Our story": watch the story again (story/story.ts). */

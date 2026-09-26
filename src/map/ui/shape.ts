@@ -51,8 +51,9 @@ export function steppedOutside(cut: number, steps: number, pad = 64): string {
   return `polygon(evenodd,${[...box, box[0], ...o, o[0]].join(',')})`;
 }
 
-/** The frame sizes (map.css `.mu-xs` … `.mu-lg`): corner cut (px), steps, edge (px). */
+/** The frame sizes (map.css `.mu-xs` … `.mu-lg`; `xxs`: a switch's knob): corner cut (px), steps, edge (px). */
 const SIZES: Record<string, [number, number, number]> = {
+  xxs: [4, 2, 1],
   xs: [6, 3, 1.5],
   sm: [8, 4, 1.25],
   md: [10, 5, 1.25],

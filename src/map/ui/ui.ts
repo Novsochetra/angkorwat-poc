@@ -264,23 +264,24 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       </div>
       <div class="mu-set-row">
         <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span></span></button>
+        <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span class="mu-knob"></span></button>
       </div>
       <div class="mu-set-row">
         <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span></span></button>
+        <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span class="mu-knob"></span></button>
       </div>
       <div class="mu-set-row">
         <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
         <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
       </div>
     </div>`), 'lg');
-  // (the choices and the story button in the stepped frames of the buttons above)
+  // (the choices, the story button and the switches in the stepped frames of the buttons above)
   for (const seg of panel.querySelectorAll<HTMLElement>('.mu-seg')) {
     framed(seg, 'sm');
     for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) framed(b, 'xs');
   }
   framed(panel.querySelector<HTMLButtonElement>('.mu-watch')!, 'sm');
+  for (const s of panel.querySelectorAll<HTMLButtonElement>('.mu-switch')) framed(s, 'xs');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
   panel.dataset.tAria = 'settings';
