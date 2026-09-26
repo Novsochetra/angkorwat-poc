@@ -1,5 +1,5 @@
 import { hash3 } from '../../voxel/random';
-import { BAMBOO, banana, pickTone, PLANK, POST, ROCK, ROPE, SAFFRON, Site, stone, THATCH } from './_campKit';
+import { BAMBOO, banana, FLAGSTONE, pickTone, PLANK, POST, ROPE, SAFFRON, Site, stone, THATCH } from './_campKit';
 import type { CampLights } from './_campFx';
 
 /**
@@ -49,7 +49,7 @@ export function buildMonkHut(s: Site, lights: CampLights): void {
         const y0 = g - 0.3 + (p * h) / parts;
         s.box(x, y0 + h / parts / 2, z, 0.2, h / parts - 0.01, 0.2, tone(POST, r, p, x > 0 ? 1 : 2), 'mapBark');
       }
-      s.box(x, g + 0.06, z, 0.46, 0.16, 0.46, tone(ROCK, r, x > 0 ? 3 : 4, 5), 'mapStone');
+      s.box(x, g + 0.06, z, 0.46, 0.16, 0.46, tone(FLAGSTONE, r, x > 0 ? 3 : 4, 5), 'mapStone');
     }
   // Middle posts under the floor (it is 3.6 m across).
   for (const z of rows) {
@@ -212,27 +212,50 @@ export function buildMonkHut(s: Site, lights: CampLights): void {
   }
 
   // ── Ladder down from the veranda's middle ───────────────────────────────
-  const foot = 1.3;
-  for (const sx of [1, -1]) s.beam([sx * 0.36, s.ground(sx * 0.36, EDGE + foot) - 0.05, EDGE + foot], [sx * 0.36, FLOOR + 0.85, EDGE - 0.05], 0.09, 0.1, tone(BAMBOO, sx, 51, 51), 'wood');
-  // (rungs on the rails' line: from the foot to the top of the rails)
-  const [z0, z1, y1] = [EDGE + foot, EDGE - 0.05, FLOOR + 0.85];
-  for (let r = 1; r <= 4; r++) {
-    const y = (r * FLOOR) / 5;
-    s.box(0, y, z0 + ((z1 - z0) * y) / y1, 0.78, 0.07, 0.14, tone(BAMBOO, r, 52, 52), 'wood');
+  // Two bamboo rails from their feet on the ground (each on its own flat
+  // stone) up against the veranda's edge, a little over the floor for the
+  // hands; rungs lashed across on their line, the last one level with the
+  // floor's edge. The rails go up in short lengths: the walk map sees a
+  // tilted block as its bounding box, and one long rail made the ladder a
+  // wall as high as its top (the explorer could not climb it).
+  const foot = 1.5;
+  const zf = EDGE + foot;
+  const [zt, yt] = [EDGE - 0.08, FLOOR + 0.4];
+  const g0 = Math.min(s.ground(0.36, zf), s.ground(-0.36, zf), s.ground(0, zf));
+  /** A point on the rails' line at height y (from the foot, g0, to the top, yt). */
+  const railZ = (y: number) => zf + ((zt - zf) * (y - g0)) / (yt - g0);
+  for (const sx of [1, -1]) {
+    const x = sx * 0.36;
+    const g = s.ground(x, zf);
+    s.box(x, g + 0.04, zf, 0.3, 0.12, 0.3, tone(FLAGSTONE, sx, 51, 50), 'mapStone');
+    const y0 = g + 0.06;
+    const pieces = 6;
+    for (let p = 0; p < pieces; p++) {
+      const ya = y0 + ((yt - y0) * p) / pieces;
+      const yb = y0 + ((yt - y0) * (p + 1)) / pieces + 0.04;
+      s.beam([x, ya, railZ(ya)], [x, yb, railZ(yb)], 0.09, 0.1, tone(BAMBOO, sx, 51, p), 'wood');
+    }
+  }
+  // (rungs every ~0.3 m up the rails' line, the top one just under the floor's edge)
+  const rungs = Math.max(3, Math.round((FLOOR - g0) / 0.32));
+  for (let r = 1; r <= rungs; r++) {
+    const y = g0 + ((FLOOR - 0.04 - g0) * r) / rungs;
+    s.box(0, y, railZ(y), 0.8, 0.07, 0.16, tone(BAMBOO, r, 52, 52), 'wood');
   }
   // Sandals at its foot, side by side, toes out.
   for (const [x, turn] of [
     [0.12, 0.1],
     [-0.14, -0.08],
   ]) {
-    s.box(x, 0.02, EDGE + foot + 0.4, 0.12, 0.04, 0.28, 0x4a3524, 'wood', { ry: turn });
-    s.box(x, 0.055, EDGE + foot + 0.36, 0.13, 0.025, 0.035, 0x2c211a, 'wood', { ry: turn });
+    const g = s.ground(x, zf + 0.4);
+    s.box(x, g + 0.02, zf + 0.4, 0.12, 0.04, 0.28, 0x4a3524, 'wood', { ry: turn });
+    s.box(x, g + 0.055, zf + 0.36, 0.13, 0.025, 0.035, 0x2c211a, 'wood', { ry: turn });
   }
   // Stepping stones out towards the trail.
   for (let i = 0; i < 4; i++) {
     const z = EDGE + foot + 1.3 + i * 1.1;
     const x = 0.2 * Math.sin(i * 1.7);
-    s.box(x, s.ground(x, z) + 0.04, z, 0.7 + 0.15 * hash3(i, 1, 0, seed), 0.14, 0.55, tone(ROCK, i, 53, 53), 'mapStone', { ry: hash3(i, 2, 0, seed) - 0.5 });
+    s.box(x, s.ground(x, z) + 0.04, z, 0.7 + 0.15 * hash3(i, 1, 0, seed), 0.14, 0.55, tone(FLAGSTONE, i, 53, 53), 'mapStone', { ry: hash3(i, 2, 0, seed) - 0.5 });
   }
 
   // ── The water jar and its dipper, the broom ─────────────────────────────

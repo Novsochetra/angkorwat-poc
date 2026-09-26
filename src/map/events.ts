@@ -1,5 +1,6 @@
 import { hash3 } from '../voxel/random';
 import type { MapFrame } from './types';
+import { festivalNow, type Festival } from './festival/_schedule';
 
 /**
  * The day at Angkor: what happens when (the event clock). It knows the
@@ -42,7 +43,8 @@ import type { MapFrame } from './types';
  * in rain) and `hurry` (1‥1.5, people walk faster in rain).
  *
  * Festivals (hooks for later parts): `festival` names the one on now,
- * from the time of the year (`f.season`) and the moon (`f.day`).
+ * from the time of the year (`f.season`) and the moon (`f.day`): the same
+ * as the festival part's (`festivalNow`, festival/_schedule.ts, `fest=`).
  *
  * URL: `event=<name>` holds one event on from the start (checks: with
  * `t=` it is that far in); stills show daylight events only when asked for
@@ -53,8 +55,8 @@ import type { MapFrame } from './types';
 export type TempleEvent = 'dawnChant' | 'duskDrum' | 'noonBell' | 'elephantBath' | 'monkeyCrossing';
 export const TEMPLE_EVENTS: readonly TempleEvent[] = ['dawnChant', 'duskDrum', 'noonBell', 'elephantBath', 'monkeyCrossing'];
 
-/** Festivals of the Khmer year (for later parts to celebrate). */
-export type Festival = 'khmerNewYear' | 'visakBochea' | 'pchumBen' | 'waterFestival';
+/** The festival on now (the one the festival part shows: festival/_schedule.ts). */
+export type { Festival } from './festival/_schedule';
 
 export interface EventLogEntry {
   name: TempleEvent | 'storm';
@@ -175,22 +177,6 @@ function fire(name: TempleEvent | 'storm', f: MapFrame): void {
   if (EVENTS.log.length > LOG) EVENTS.log.shift();
 }
 
-/** The festival on a day of the year (`season`, 0 = Khmer New Year, mid-April) and of the moon (`day`: 0 new, ~14.8 full). */
-export function festivalOf(season: number, day: number): Festival | null {
-  const s = wrap01(season);
-  const moon = ((day % 29.53) + 29.53) % 29.53;
-  const full = Math.abs(moon - 14.77) < 1.5;
-  // (13–16 April)
-  if (s < 0.008 || s > 0.995) return 'khmerNewYear';
-  // (the full moon of Visakha, May: the Buddha's birth, awakening and passing)
-  if (full && s > 0.04 && s < 0.14) return 'visakBochea';
-  // (the Water Festival, Bon Om Touk: the full moon of Kadeuk, November)
-  if (full && s > 0.54 && s < 0.64) return 'waterFestival';
-  // (Pchum Ben: the fifteen days of the waning moon of Photrobot, September–October)
-  if (s > 0.4 && s < 0.5 && moon > 14.8) return 'pchumBen';
-  return null;
-}
-
 /**
  * Bring the events up to date for this frame (once per frame: a second
  * call with the same `f.t` just returns them) and return them.
@@ -242,7 +228,7 @@ export function eventsNow(f: MapFrame): Readonly<EventState> {
   const storm = EVENTS.storm ? w.storm > 0.2 : w.storm > 0.3;
   if (storm && !EVENTS.storm) fire('storm', f);
   EVENTS.storm = storm;
-  EVENTS.festival = festivalOf(f.season, f.day);
+  EVENTS.festival = festivalNow(f);
   // (daylight events wait out a storm or a downpour)
   const calm = w.storm < 0.35 && w.rain < 0.8;
 

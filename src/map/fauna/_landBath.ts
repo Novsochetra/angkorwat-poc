@@ -4,6 +4,7 @@ import { LIFT, type Station } from '../road/line';
 import { CH, type Flock } from './_kit';
 import type { Survey } from './_landPlaces';
 import type { Splash } from './_landSplash';
+import { len2 } from './_len';
 
 /**
  * The elephants' bath (the `elephantBath` event, events.ts): in the
@@ -54,7 +55,7 @@ class Line {
     out.x = a.x + (b.x - a.x) * k;
     out.y = a.y + (b.y - a.y) * k;
     out.z = a.z + (b.z - a.z) * k;
-    if (Math.hypot(b.x - a.x, b.z - a.z) > 1e-4) out.yaw = Math.atan2(b.x - a.x, b.z - a.z);
+    if (len2(b.x - a.x, b.z - a.z) > 1e-4) out.yaw = Math.atan2(b.x - a.x, b.z - a.z);
     return out;
   }
 }

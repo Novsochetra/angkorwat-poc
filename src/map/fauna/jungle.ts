@@ -5,7 +5,7 @@ import type { AnimalCallKind, MapContext, MapFrame, MapPart, Subject } from '../
 import { Flock } from './_kit';
 import { Agent, Herd, type Habits, type Walker } from './_landBrain';
 import { scatter } from './_landPlaces';
-import { View } from './_waterAirKit';
+import { birdShelter, View } from './_waterAirKit';
 import { BIG_BIRDS_MAX, buildJungleLineup } from './_jungleLineup';
 import { BigBirds, BIRD, BIRDS, flapping } from './_jungleBirds';
 import { BOAR, PIGLET_HABITS, SOW_HABITS } from './_jungleBoar';
@@ -13,6 +13,7 @@ import { Family, FAMILY_MAX, GIBBON, territory } from './_jungleGibbons';
 import { PEACOCK_HABITS, PEAFOWL, PEAHEN_HABITS } from './_junglePeafowl';
 import { CRITTERS, SmallLife } from './_jungleSmall';
 import { canopyTop, clearings, forestFloors, groves, lowBanks, marshGround, readCanopy, sites, tallCrowns, type Spot } from './_jungleSurvey';
+import { len2, len3 } from './_len';
 
 /**
  * Animals you meet up close in the jungle (roaming on foot), real ones of
@@ -202,8 +203,8 @@ export function buildJungleFauna(ctx: MapContext): MapPart {
     // Boar and peafowl.
     for (let a = 0; a < agents.length; a++) {
       const ag = agents[a];
-      const dc = Math.hypot(ag.x - cam.x, ag.z - cam.z, ag.y - cam.y);
-      const de = ex ? Math.hypot(ag.x - ex.x, ag.z - ex.z) : Infinity;
+      const dc = len3(ag.x - cam.x, ag.z - cam.z, ag.y - cam.y);
+      const de = ex ? len2(ag.x - ex.x, ag.z - ex.z) : Infinity;
       const plan = planOf.get(ag.herd)!;
       // (the piglets keep round their mother)
       const mother = ag.herd.members[0];
@@ -226,14 +227,14 @@ export function buildJungleFauna(ctx: MapContext): MapPart {
     }
     // Gibbons.
     for (const fam of families) {
-      const dc = Math.hypot(fam.x - cam.x, fam.z - cam.z, fam.y - cam.y);
-      const de = ex ? Math.hypot(fam.x - ex.x, fam.z - ex.z) : Infinity;
+      const dc = len3(fam.x - cam.x, fam.z - cam.z, fam.y - cam.y);
+      const de = ex ? len2(fam.x - ex.x, fam.z - ex.z) : Infinity;
       if (Math.min(dc, de) < ACTIVE) fam.step(dt, now, ex, f.night, f.clock);
       else fam.freeze(now);
       fam.show(cam.x, cam.y, cam.z, FAR.gibbon);
     }
     // Big birds (always: a few, and they are seen from far).
-    birds.step(dt, now, exAny, f.night, f.roam === 'overview');
+    birds.step(dt, now, exAny, f.night, f.roam === 'overview', birdShelter(f));
     birds.show(cam.x, cam.y, cam.z, (b) => (b.kind === BIRD.hornbill ? FAR.hornbill : FAR.ibis));
     // Small life round the explorer (by day, on foot).
     const m = f.camera.matrixWorld.elements;
@@ -246,7 +247,7 @@ export function buildJungleFauna(ctx: MapContext): MapPart {
   const calls = (f: MapFrame) => {
     const L = f.listener;
     const push = (kind: AnimalCallKind, x: number, y: number, z: number, gain: number, hear = HEAR) => {
-      if (Math.hypot(x - L.x, y - L.y, z - L.z) < hear) f.calls.push({ kind, x, y, z, gain });
+      if (len3(x - L.x, y - L.y, z - L.z) < hear) f.calls.push({ kind, x, y, z, gain });
     };
     const day = f.night < 0.55;
     const dusk = (f.clock > 0.17 && f.clock < 0.33) || (f.clock > 0.68 && f.clock < 0.84);

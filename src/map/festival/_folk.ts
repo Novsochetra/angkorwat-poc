@@ -6,7 +6,7 @@ import { CARRY, FEAT, SLOT, SLOTS, type Carry, type Feature, type Look, type Slo
  * How the festival's people dress (the people part's model and kinds,
  * `people/_personModel.ts`, `_kinds.ts`): Khmer villagers in their best for
  * the festival (bright blouses and silk sampots, white shirts, a krama),
- * the rowers of a dragon boat in their crew's colour with a headband,
+ * the rowers of a racing boat (ngo) in their crew's colour with a headband,
  * elders in white for the pagoda, children, monks.
  */
 
@@ -105,7 +105,7 @@ export function folk(role: Role, seed: number, opts: { carry?: Carry; props?: Fe
   return { feats: [...feats], carry, colors, height, seed: rnd() };
 }
 
-/** A rower of a dragon boat: the crew's shirt, dark shorts, a headband in the crew's colour (seed = the boat's stroke phase: set by the caller). */
+/** A rower of a racing boat (ngo): the crew's shirt, dark shorts, a headband in the crew's colour (seed = the boat's stroke phase: set by the caller). */
 export function rower(crew: number, seed: number, stroke: number): Look {
   const { rnd, pick, colors, set } = base(seed + 5000);
   const skin = pick(SKIN);

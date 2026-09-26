@@ -28,10 +28,7 @@ export interface Species {
   where: Both;
 }
 
-/**
- * Every page of the nature book, chapter by chapter. (A kind with no page —
- * 'lotus' — waits for a part that shows it: add its page here then.)
- */
+/** Every page of the nature book, chapter by chapter. */
 export const SPECIES: readonly Species[] = [
   // ── Land animals ──
   {
@@ -238,6 +235,16 @@ export const SPECIES: readonly Species[] = [
     fact: { km: 'ឫស្សីខ្លះអាចដុះបានជិតមួយម៉ែត្រ ក្នុងមួយថ្ងៃ។', en: 'Some bamboo grows almost a metre in a single day.' },
     where: { km: 'មាត់អូរ និងដីទំនាប', en: 'by the streams and on low ground' },
   },
+  {
+    kind: 'lotus',
+    group: 'plants',
+    name: { km: 'ផ្កាឈូក', en: 'Lotus' },
+    fact: {
+      km: 'ផ្កាឈូកដុះចេញពីភក់ ប៉ុន្តែផ្កាវានៅតែស្អាតបរិសុទ្ធ។ ប៉មប្រាសាទអង្គរវត្ត មានរាងដូចផ្កាឈូកកំពុងក្ពុំ។',
+      en: 'The lotus rises clean out of the mud; the towers of Angkor Wat are shaped like its closed buds.',
+    },
+    where: { km: 'ក្នុងត្រពាំងក្រោមទឹកធ្លាក់', en: 'in the pool below the waterfall' },
+  },
   // ── People of Angkor ──
   {
     kind: 'monk',
@@ -293,6 +300,16 @@ export const SPECIES: readonly Species[] = [
       en: 'Khmer classical dance is on UNESCO’s list of the living heritage of humanity.',
     },
     where: { km: 'ពេលយប់ ក្រោមពន្លឺចន្លុះ', en: 'at night, by torchlight' },
+  },
+  {
+    kind: 'festival',
+    group: 'people',
+    name: { km: 'អ្នកចូលរួមពិធីបុណ្យ', en: 'Festival crowd' },
+    fact: {
+      km: 'នៅបុណ្យអុំទូក ទូកងរាប់រយប្រណាំងគ្នា ហើយនៅចូលឆ្នាំខ្មែរ ក្នុងខែមេសា គ្រួសារនានាជួបជុំគ្នានៅវត្ត។',
+      en: 'Hundreds of long boats race at the Water Festival; at Khmer New Year, in April, families gather at the pagoda.',
+    },
+    where: { km: 'ពេលមានពិធីបុណ្យ នៅមាត់បឹង ឬក្នុងភូមិ', en: 'at festival time, by the lake or in the village' },
   },
 ];
 

@@ -114,10 +114,10 @@ export function buildNewYear(kit: Kit, field: HeightField, villageBuilt: boolean
       const y = g(x, z);
       flagPole(kit, x, y, z, 5, 1.3, 0.85, Math.PI * 0.8, i % 2 === 0 ? 'khmer' : 'buddhist');
       const [nx, nz] = ring[(i + 1) % ring.length];
-      bunting(kit, x, y + 4.4, z, nx, g(nx, nz) + 4.4, nz, 0.7);
+      bunting(kit, x, y + 4.4, z, nx, g(nx, nz) + 4.4, nz, 0.7, undefined, undefined, undefined, g);
     });
   // Across the lane to the jetty.
-  bunting(kit, -292, g(-292, 60) + 4, 60, -302, g(-302, 70) + 4, 70, 0.6);
+  bunting(kit, -292, g(-292, 60) + 4, 60, -302, g(-302, 70) + 4, 70, 0.6, undefined, undefined, undefined, g);
   kit.box(-292, g(-292, 60) + 2.1, 60, 0.1, 4.2, 0.1, 0xc8a46a);
   kit.box(-302, g(-302, 70) + 2.1, 70, 0.1, 4.2, 0.1, 0xc8a46a);
 
@@ -317,7 +317,7 @@ function roadFlags(kit: Kit, field: HeightField): void {
       const y = field.heightAt(x, z);
       flagPole(kit, x, y, z, 5.5, 1.3, 0.85, Math.atan2(dx, dz) + Math.PI * 0.8 * side, n % 2 ? 'buddhist' : 'khmer');
       const prev = last[side];
-      if (prev) bunting(kit, prev[0], prev[1] + 4.6, prev[2], x, y + 4.6, z, 0.7);
+      if (prev) bunting(kit, prev[0], prev[1] + 4.6, prev[2], x, y + 4.6, z, 0.7, undefined, undefined, undefined, (px, pz) => field.heightAt(px, pz));
       last[side] = [x, y, z];
     }
     n++;

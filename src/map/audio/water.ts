@@ -127,7 +127,7 @@ function aim(e: Ears, x: number, y: number, z: number): { side: number; front: n
   const dx = x - e.x;
   const dy = y - e.y;
   const dz = z - e.z;
-  const d = Math.hypot(dx, dy, dz) || 1e-3;
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-3;
   return {
     side: (dx * e.right[0] + dy * e.right[1] + dz * e.right[2]) / d,
     front: (dx * e.forward[0] + dy * e.forward[1] + dz * e.forward[2]) / d,
@@ -385,7 +385,10 @@ export class Water {
       const vy = f.bottom - f.top;
       const vz = f.fz - f.z;
       const k = Math.min(1, Math.max(0, ((e.x - f.x) * vx + (e.y - f.top) * vy + (e.z - f.z) * vz) / (vx * vx + vy * vy + vz * vz)));
-      const d = Math.max(1, Math.hypot(f.x + vx * k - e.x, f.top + vy * k - e.y, f.z + vz * k - e.z) - f.width / 2);
+      const nx = f.x + vx * k - e.x;
+      const ny = f.top + vy * k - e.y;
+      const nz = f.z + vz * k - e.z;
+      const d = Math.max(1, Math.sqrt(nx * nx + ny * ny + nz * nz) - f.width / 2);
       dist[i] = d;
       amp[i] = f.strength * fallAmp(d);
     }

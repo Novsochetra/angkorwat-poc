@@ -1,7 +1,7 @@
 import type { EventState } from '../events';
 import { PLACES } from '../layout';
 import { PAGODA } from '../village/_spots';
-import { biquad, glide, mtof, noise, range, softWave, type Rng } from './dsp';
+import { biquad, glide, mtof, noise, range, softWave, strike, type Rng } from './dsp';
 import type { SoundEngine } from './engine';
 import type { Ears } from './water';
 
@@ -421,6 +421,22 @@ const HITS = [
 ] as const;
 /** Voices stop this many decay times after the stroke (e⁻⁵: −43 dB). */
 const TAIL = 5;
+/**
+ * The bell's partials: ratio to the prime, level, decay (s), beating (Hz: a
+ * pair of oscillators that far apart, else one). The strongest of a bronze
+ * bell's: the hum and the prime beating slowly (the warm wobble of the tail),
+ * the minor third, the nominal, one upper partial for the strike's shimmer
+ * (the knock's noise covers the rest).
+ */
+const BELL: readonly [number, number, number, number][] = [
+  [0.5, 0.36, 5.8, 0.4],
+  [1, 0.52, 4.4, 0.7],
+  [1.19, 0.34, 3.2, 0],
+  [2, 0.42, 2.6, 0],
+  [2.67, 0.16, 1.3, 0],
+];
+/** A bell's partial stops when it has decayed to this level as heard (about −70 dB). */
+const BELL_FLOOR = 3e-4;
 
 export class TempleSound {
   private readonly ctx: BaseAudioContext;
@@ -570,49 +586,40 @@ export class TempleSound {
     if (longest) (longest as AudioScheduledSourceNode).onended = () => nodes.forEach((n) => n.disconnect());
   }
 
-  /** The bronze bell struck with a wooden beam: its hum, prime, minor third, fifth and nominal, beating slowly, a knock at the strike. */
+  /**
+   * The bronze bell struck with a wooden beam: its hum and prime (each a
+   * slowly beating pair), minor third, nominal and one upper partial, a knock
+   * at the strike. Seven oscillators; each stops once it has decayed under
+   * `BELL_FLOOR` (quiet ones and far bells sooner) and is disconnected when it
+   * ends, the stroke's output when the last one has.
+   */
   private bell(site: Site, t: number, vel: number): void {
     const ctx = this.ctx;
     const r = this.rnd;
     const out = ctx.createGain();
     out.gain.value = LEVEL.bell * vel;
     out.connect(site.input);
-    const nodes: AudioNode[] = [out];
     // (prime B3: the hum B2, the tierce D4, the nominal B4)
     const prime = mtof(59 + site.def.tune) * range(r, 0.997, 1.003);
-    let longest: OscillatorNode | null = null;
-    let longestEnd = 0;
-    const partials: [number, number, number, number][] = [
-      // ratio, level, decay (s), beating (Hz)
-      [0.5, 0.34, 6.5, 0.4],
-      [1, 0.5, 4.8, 0.7],
-      [1.19, 0.3, 3.4, 0.9],
-      [1.5, 0.16, 2.6, 0],
-      [2, 0.4, 2.8, 1.1],
-      [2.52, 0.14, 1.6, 0],
-      [2.67, 0.11, 1.4, 0],
-      [3.02, 0.1, 1.0, 0],
-      [4.1, 0.06, 0.6, 0],
-      [5.43, 0.04, 0.35, 0],
-    ];
-    for (const [ratio, amp, tau, beat] of partials) {
+    // The level a partial starts at, as heard (a far bell's tail is cut sooner; not below a quarter, the ears may come closer).
+    const heard = LEVEL.bell * vel * Math.max(0.25, site.amp);
+    let left = 0;
+    const done = (...ns: AudioNode[]) => () => {
+      for (const n of ns) n.disconnect();
+      if (--left === 0) out.disconnect();
+    };
+    for (const [ratio, amp, tau, beat] of BELL) {
       for (const k of beat ? [-0.5, 0.5] : [0]) {
         const o = ctx.createOscillator();
         o.frequency.value = prime * ratio + beat * k;
         const g = ctx.createGain();
         const a = amp * (beat ? 0.6 : 1);
-        g.gain.setValueAtTime(0, t);
-        g.gain.linearRampToValueAtTime(a, t + 0.006);
-        g.gain.setTargetAtTime(0, t + 0.006, tau);
+        strike(g.gain, t, a, 0.006, tau);
         o.connect(g).connect(out);
-        const end = t + tau * 4.5;
         o.start(t);
-        o.stop(end);
-        nodes.push(o, g);
-        if (end > longestEnd) {
-          longestEnd = end;
-          longest = o;
-        }
+        o.stop(t + 0.006 + tau * Math.min(4.5, Math.max(1, Math.log((heard * a) / BELL_FLOOR))));
+        left++;
+        o.onended = done(o, g);
       }
     }
     // The knock of the wooden beam.
@@ -620,13 +627,11 @@ export class TempleSound {
     src.buffer = noise('white');
     const bp = biquad(ctx, 'bandpass', 1500, 1.1);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.28, t + 0.002);
-    g.gain.setTargetAtTime(0, t + 0.002, 0.014);
+    strike(g.gain, t, 0.28, 0.002, 0.014);
     src.connect(bp).connect(g).connect(out);
     src.start(t, r() * 4);
     src.stop(t + 0.15);
-    nodes.push(src, bp, g);
-    if (longest) (longest as OscillatorNode).onended = () => nodes.forEach((n) => n.disconnect());
+    left++;
+    src.onended = done(src, bp, g);
   }
 }

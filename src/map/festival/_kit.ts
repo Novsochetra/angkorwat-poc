@@ -23,7 +23,7 @@ import { ROW_HZ } from '../people/_personModel';
  * festival (a draw, and one for its shadow), posed in the vertex shader:
  *
  * - every box has its place, size and turn (yaw, pitch, roll) in its
- *   **rig**'s space: rig 0 is the world, the others move whole (a dragon
+ *   **rig**'s space: rig 0 is the world, the others move whole (a racing
  *   boat, a lit float) by a matrix per rig (`Kit.rigs`, a uniform array);
  * - a box may **move** by itself (`ANIM`): a paddle swings with its boat's
  *   stroke (the same clock as the rowers' `row` pose, `ROW_HZ`), a cloth

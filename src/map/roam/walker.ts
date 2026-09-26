@@ -393,7 +393,9 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       }
 
       // ── A golden figure, a boat tied up by the bank, a place's beacon ─────
-      if (body.grounded) {
+      // (kneeling in prayer: no "E  Enter …" over him; E gets him up first: tools.ts, _pray.ts)
+      if (body.explorer.currentAction === 'pray') setPrompt(ctx, null);
+      else if (body.grounded) {
         // (a hidden golden figure within arm's reach comes first, before a boat, a ramp, the
         // balloon, the swing or a beacon that is also in reach: E picks it up; treasure/)
         const gold = treasure.near(ctx);

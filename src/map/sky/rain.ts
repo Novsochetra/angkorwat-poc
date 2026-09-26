@@ -10,9 +10,11 @@ import { SKY } from './palette';
  * and wrap round it, so the drops stay put in the world as it moves (and
  * slide past it as they should):
  *  - near: a 36 m box of short thin streaks (on foot, in the boat: the rain
- *    round the explorer);
- *  - middle: 170 m, longer ones;
- *  - far: 1100 m, long faint lines, so the rain reads from the overview too.
+ *    round the explorer; left out over the picker, where nothing near the
+ *    camera shows them for rain and they read as scratches on the lens);
+ *  - middle: 170 m, longer ones (shorter and fainter over the picker);
+ *  - far: 1100 m, short faint streaks, many of them: a veil, so the rain
+ *    reads from the overview too.
  * Each layer shows only where the one inside it ends, so no drop is ever
  * a thick rod right at the lens; a drop narrower than a pixel is drawn one
  * pixel wide and fainter (no shimmer). The drops fall at 7.5–9.5 m/s and
@@ -34,9 +36,12 @@ import { SKY } from './palette';
 /** Drop layers: box size across and tall (m), streak length and width (m), opacity, share of the drops. */
 const LAYERS = [
   { box: 36, tall: 26, len: 0.85, width: 0.011, alpha: 0.6, share: 0.42 },
-  { box: 170, tall: 120, len: 3.4, width: 0.03, alpha: 0.45, share: 0.28 },
-  { box: 1100, tall: 460, len: 15, width: 0.12, alpha: 0.4, share: 0.3 },
+  { box: 170, tall: 120, len: 3.4, width: 0.03, alpha: 0.45, share: 0.13 },
+  // (far away: short streaks, many of them, a veil rather than long lines)
+  { box: 1100, tall: 460, len: 6, width: 0.12, alpha: 0.45, share: 0.45 },
 ];
+/** The middle layer over the picker: its streak length and opacity, times. */
+const OVER_MID = { len: 0.35, alpha: 0.8 };
 /** Drops at full rain (all layers). */
 const DROPS = 20000;
 /** Sideways speed in a full wind (m/s). */
@@ -171,6 +176,12 @@ export function buildRain(ctx: MapContext): MapPart {
       mesh.visible = !dry || !compiled;
       if (!mesh.visible) return;
       geo.instanceCount = dry ? LAYERS.length : Math.max(LAYERS.length, Math.ceil(n * Math.min(1, rain * 1.25)));
+      // Over the picker (no explorer, nothing near the camera) the drops right at the
+      // lens would read as long bright scratches on it: the near layer is left out
+      // and the middle one is shorter and fainter, a veil over the land.
+      const over = f.roam === 'overview';
+      u.uShape.value[0].z = over ? 0 : LAYERS[0].alpha;
+      u.uShape.value[1].set(LAYERS[1].len * (over ? OVER_MID.len : 1), LAYERS[1].width, LAYERS[1].alpha * (over ? OVER_MID.alpha : 1));
       ctx.renderer.getDrawingBufferSize(buf);
       const cam = f.camera;
       u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, buf.y) / cam.zoom;

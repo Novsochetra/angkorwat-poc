@@ -327,7 +327,7 @@ export function createMapAudio(): MapAudio {
         engine.listen(ears);
         // (drops on the leaves only on foot under them: not in the balloon, the boat or on the glider)
         engine.weather(f.weather, ears, f.roam !== 'overview', f.t, f.roam === 'walk' ? (f.canopy ?? 0) : 0);
-        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0, f.roamLevels.burner ?? 0);
+        engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0, f.roamLevels.burner ?? 0, f.roamLevels.fan ?? 0);
         fest?.update(ears);
         engine.events(ev, f.t);
       } catch (e) {

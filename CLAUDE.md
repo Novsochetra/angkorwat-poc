@@ -70,13 +70,17 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`.
 - The console line `[map] built in …` lists build times and blocks per part,
-  and names any part that failed (the rest of the map still loads).
+  and names any part that failed (the rest of the map still loads);
+  `[map] shaders compiled in N ms` follows. `window.__frame` is the live
+  frame. Parts spread over the map cull per place (`src/map/cull.ts`).
 - Roaming (Jump in: pick parachute or hang glider, then walk, boat, hang
   glider from cliff-top ramps; Q / R or a drag orbits the camera):
   `src/map/roam/`. Easy flying (glider holds its height, S climbs, W dives)
   is a setting (`roam/prefs.ts`); the Cambodian flag helper is `roam/_flag.ts`.
-  A hot air balloon stands on its field below Angkor Wat (`roam/balloon.ts`:
-  E rides it, W / Space burner, S vent, E lands and steps out).
+  A hot air balloon lies deflated on its field below Angkor Wat
+  (`roam/balloon.ts`: E rides it, the fan fills it, then the burner stands
+  it up; W / Space burner, S vent, E lands and steps out;
+  `balloon=parked|inflate:<s>|up` in shots).
   Check it with `roam=leap|glide|walk|boat|hang|balloon&at=x,z&yaw=<deg>&sim=w:2,wr:3`
   (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
@@ -93,10 +97,23 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `weather=season|rainy|stormy&t=<s>` (with `season=`) for a schedule, or
   `weather=rain|storm|rainbow` to hold one.
 - Animals: land (`src/map/fauna/land.ts`) and water / air
-  (`src/map/fauna/waterAir.ts`); their calls go through `MapFrame.calls` to
-  `src/map/audio/animals.ts`.
-- Rice paddies by the great lake follow the year (`season=0‥1`): the stages
-  are in `src/map/paddies/stages.ts`, the part in `src/map/paddies.ts`.
+  (`src/map/fauna/waterAir.ts`, lake and paddy birds `_waterLake.ts`); their
+  calls go through `MapFrame.calls` to `src/map/audio/animals.ts`. In rain
+  birds stay perched and people open umbrellas and hurry (`src/map/events.ts`).
+- Rice paddies by the great lake follow the year (`season=0‥1`, also their
+  colour on the mini-map): the stages are in `src/map/paddies/stages.ts`,
+  the part in `src/map/paddies.ts`.
+- The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
+  ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
+  woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
+  (`veg/undergrowth.ts`) and jungle animals (`fauna/jungle.ts`,
+  `fauna=jungle` lines them up).
+- Festivals (`src/map/festival/`, when `festival/_schedule.ts` says, or
+  `fest=water|newyear`): the Water Festival with Khmer ngo racing boats
+  (never dragon boats), and Khmer New Year.
+- The album (V) also holds the nature book and the temple passport
+  (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
+  hidden gold figures are in `src/map/treasure/`.
 - The floating village on the great lake (stilt houses, floating houses, the
   jetty, the pagoda): `src/map/village/`; where everything stands (and
   `VILLAGE_SPOTS` for people and festivals) is `src/map/village/_spots.ts`.

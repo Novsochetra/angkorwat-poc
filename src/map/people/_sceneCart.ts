@@ -49,6 +49,16 @@ const ROAD_ON = 6;
 /** The explorer (or anyone) this far ahead in its way, this far across: it stops (m). */
 const BLOCK_AHEAD = 5.5;
 const BLOCK_ACROSS = 2.2;
+
+/** A disc (x, y, z, r) in the lane ahead of the yoke `y`, heading (tx, tz)? (no allocation: runs each frame) */
+function inPath(x: number, oy: number, z: number, r: number, y: { x: number; y: number; z: number }, tx: number, tz: number): boolean {
+  if (Math.abs(oy - y.y) > 3) return false;
+  const dx = x - y.x;
+  const dz = z - y.z;
+  const along = dx * tx + dz * tz;
+  const across = Math.abs(dx * tz - dz * tx);
+  return along > -0.5 && along < BLOCK_AHEAD + r && across < BLOCK_ACROSS + r;
+}
 /** Dark enough to stand for the night; light enough to go out (`night`). */
 const DARK = 0.6;
 const LIGHT = 0.5;
@@ -217,6 +227,8 @@ const P = new Vector3();
 const Q = new Vector3();
 const A = new Vector3();
 const Y = new Vector3();
+/** The farmer's look point (copied by `lookAt`). */
+const LOOK = { x: 0, y: 0, z: 0 };
 
 export class OxCart implements PeopleScene {
   readonly name = 'cart';
@@ -324,7 +336,9 @@ export class OxCart implements PeopleScene {
     // The cart: axle REACH behind the yoke, along the loop (a chord of it), pitched to the yoke's height.
     const axle = loop.at(front - REACH * k, Y);
     const yawCart = Math.atan2(yoke.x - axle.x, yoke.z - axle.z);
-    const reach = Math.hypot(yoke.x - axle.x, yoke.z - axle.z) || 1;
+    const rx = yoke.x - axle.x;
+    const rz = yoke.z - axle.z;
+    const reach = Math.sqrt(rx * rx + rz * rz) || 1;
     const pitch = Math.atan2(axle.y - yoke.y, reach) * 0.8;
     // (the pole's end rides at the yoke: the axle comes forward on a tight turn)
     const fx = yoke.x - Math.sin(yawCart) * REACH * k;
@@ -359,9 +373,14 @@ export class OxCart implements PeopleScene {
       a.ride(P.x, P.y, P.z, yawCart);
       if (!a.shown) a.show();
       a.pose(POSE.sit, now);
-      if (ex && blocked && Math.hypot(ex.x - a.x, ex.z - a.z) < 9) {
+      const ax = ex ? ex.x - a.x : 0;
+      const az = ex ? ex.z - a.z : 0;
+      if (ex && blocked && Math.sqrt(ax * ax + az * az) < 9) {
         if (now - this.nodAt > 30) this.nodAt = now;
-        a.lookAt({ x: ex.x, y: ex.y + 2, z: ex.z }, now + 0.5);
+        LOOK.x = ex.x;
+        LOOK.y = ex.y + 2;
+        LOOK.z = ex.z;
+        a.lookAt(LOOK, now + 0.5);
       } else a.lookAt(null);
       const u = now - this.nodAt;
       a.tilt(u > 0.4 && u < 1.3 ? 0.7 : 0);
@@ -415,19 +434,15 @@ export class OxCart implements PeopleScene {
     const tx = (a.x - b.x) / 1.6;
     const tz = (a.z - b.z) / 1.6;
     const y = loop.at(this.s, A);
-    const test = (o: { x: number; y: number; z: number; r: number }) => {
-      if (Math.abs(o.y - y.y) > 3) return false;
-      const dx = o.x - y.x;
-      const dz = o.z - y.z;
-      const along = dx * tx + dz * tz;
-      const across = Math.abs(dx * tz - dz * tx);
-      return along > -0.5 && along < BLOCK_AHEAD + o.r && across < BLOCK_ACROSS + o.r;
-    };
-    if (ex && test(ex)) return true;
+    if (ex && inPath(ex.x, ex.y, ex.z, ex.r, y, tx, tz)) return true;
+    const near = 2.6 * k;
     for (const o of this.env.traffic.list) {
       if (o.who === 'animal' || o.who === 'explorer' || o.who === 'beacon' || o.who === this.name) continue;
       // (people just step aside: only someone right before the oxen stops it)
-      if (test({ ...o, r: Math.min(o.r, PERSON_R) }) && Math.hypot(o.x - y.x, o.z - y.z) < 2.6 * k) return true;
+      if (!inPath(o.x, o.y, o.z, Math.min(o.r, PERSON_R), y, tx, tz)) continue;
+      const dx = o.x - y.x;
+      const dz = o.z - y.z;
+      if (Math.sqrt(dx * dx + dz * dz) < near) return true;
     }
     return false;
   }

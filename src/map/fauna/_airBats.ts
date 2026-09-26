@@ -4,6 +4,7 @@ import { placeById } from '../layout';
 import type { MapFrame } from '../types';
 import { BAT_SHOULDER, batShape } from './_airModels';
 import { call, creatureMaterial, Herd, smooth, type Explorer, type View } from './_waterAirKit';
+import { len2, len3 } from './_len';
 
 /**
  * Bats at dusk and at night: flying foxes flitting round the towers of
@@ -144,7 +145,7 @@ export function buildBats(field: HeightField): Bats {
       for (const b of bats) {
         pos(b, t, p0);
         if (me.near) {
-          const d = Math.hypot(p0[0] - me.x, p0[1] - me.y, p0[2] - me.z);
+          const d = len3(p0[0] - me.x, p0[1] - me.y, p0[2] - me.z);
           if (d < nearest) [nearest, nx, ny, nz] = [d, p0[0], p0[1], p0[2]];
         }
         if (!view.sees(p0[0], p0[1], p0[2], 1, b.fox ? FAR_FOX : FAR_SMALL)) continue;
@@ -155,7 +156,7 @@ export function buildBats(field: HeightField): Bats {
         const vz = p1[2] - p2[2];
         const yaw = Math.atan2(vx, vz);
         const turn = (vx * (p1[2] - 2 * p0[2] + p2[2]) - vz * (p1[0] - 2 * p0[0] + p2[0])) / Math.max(1e-4, (vx * vx + vz * vz) ** 1.5);
-        const climb = Math.atan2(p1[1] - p2[1], Math.hypot(vx, vz));
+        const climb = Math.atan2(p1[1] - p2[1], len2(vx, vz));
         // (far off a little larger, so they stay a few pixels across from the overview)
         const grow = b.fox ? 1 + 0.6 * smooth(120, 420, view.dist(p0[0], p0[1], p0[2])) : 1;
         const o = herd.add(p0[0], p0[1], p0[2], b.size * grow * out, yaw, -climb * 0.6, Math.max(-0.7, Math.min(0.7, turn * 4)), 0);

@@ -1,4 +1,5 @@
 import { Group, Vector3 } from 'three';
+import { birdShelter } from './fauna/_waterAirKit';
 import { explorerFeet } from './foreground';
 import { OVERVIEW } from './layout';
 import { buildBirds } from './road/birds';
@@ -9,7 +10,7 @@ import type { MapContext, MapFrame, MapPart } from './types';
 
 /**
  * Small moving life, slow and sparse: flocks of pale birds gliding in wide
- * loops over the valley by day, fireflies drifting over the lowlands and round
+ * loops over the valley by day (fewer in rain), fireflies drifting over the lowlands and round
  * the explorer's ledge at night, and a few butterflies by the ledge by day.
  * Helpers in road/ (birds.ts, fireflies.ts, butterflies.ts).
  */
@@ -25,7 +26,7 @@ export function buildLife(ctx: MapContext): MapPart {
     name: 'life',
     object,
     update(f: MapFrame) {
-      birds.update(f.t, f.night);
+      birds.update(f.t, f.night, birdShelter(f));
       butterflies.update(f.t, f.night);
       flies.uniforms.uTime.value = f.t;
       flies.uniforms.uNight.value = f.night;

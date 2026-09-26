@@ -289,8 +289,17 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     const huddle = Math.max(f.night, shelter);
     for (let a = 0; a < agents.length; a++) {
       const ag = agents[a];
-      const dc = Math.hypot(ag.x - cam.x, ag.z - cam.z, ag.y - cam.y);
-      const de = ex ? Math.hypot(ag.x - ex.x, ag.z - ex.z) : Infinity;
+      // (sqrt of the squares, not Math.hypot: this runs for every animal every frame)
+      const cx = ag.x - cam.x;
+      const cy = ag.y - cam.y;
+      const cz = ag.z - cam.z;
+      const dc = Math.sqrt(cx * cx + cz * cz + cy * cy);
+      let de = Infinity;
+      if (ex) {
+        const ax = ag.x - ex.x;
+        const az = ag.z - ex.z;
+        de = Math.sqrt(ax * ax + az * az);
+      }
       const sp = ag.flock.species;
       if (Math.min(dc, de) < ACTIVE) ag.step(dt, now, ex, big, sp === MACAQUE || sp === FOWL ? huddle : f.night);
       else ag.freeze(now);
@@ -326,15 +335,25 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     fl.gait(r.i, 0, 2, t);
     fl.set(r.i, CH.rest, sitting ? 1 : 0, t);
     fl.set(r.i, CH.head, sitting ? fl.target(m.i, CH.head) : 0.2, t);
-    if (Math.hypot(r.x - cx, r.z - cz, r.y - cy) < FAR.macaque * 0.6) fl.place(r.i, r.x, r.y, r.z, r.yaw, 0.42);
+    const dx = r.x - cx;
+    const dy = r.y - cy;
+    const dz = r.z - cz;
+    if (Math.sqrt(dx * dx + dz * dz + dy * dy) < FAR.macaque * 0.6) fl.place(r.i, r.x, r.y, r.z, r.yaw, 0.42);
     else fl.hide(r.i);
   };
   /** Sounds: bolting animals, and now and then a call (not in shots). */
-  const calls = (f: MapFrame) => {
+  // (made once, not each frame: `callFrame` is the frame `calls` is sounding)
+  let callFrame: MapFrame | null = null;
+  const push = (kind: AnimalCallKind, x: number, y: number, z: number, gain: number) => {
+    const f = callFrame!;
     const L = f.listener;
-    const push = (kind: AnimalCallKind, x: number, y: number, z: number, gain: number) => {
-      if (Math.hypot(x - L.x, y - L.y, z - L.z) < HEAR) f.calls.push({ kind, x, y, z, gain });
-    };
+    const dx = x - L.x;
+    const dy = y - L.y;
+    const dz = z - L.z;
+    if (Math.sqrt(dx * dx + dy * dy + dz * dz) < HEAR) f.calls.push({ kind, x, y, z, gain });
+  };
+  const calls = (f: MapFrame) => {
+    callFrame = f;
     for (const ag of agents) {
       const ev = ag.event;
       if (!ev) continue;

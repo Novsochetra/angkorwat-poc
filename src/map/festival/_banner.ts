@@ -18,6 +18,7 @@ const STYLE = `
 .mu-fest.is-on { opacity: 1; transform: none; }
 .mu-fest .mu-fest-icon { width: calc(30 * var(--px)); height: calc(30 * var(--px)); flex: none; color: var(--mu-gold); }
 .mu-fest .mu-fest-kick { display: block; font-size: calc(12 * var(--px)); letter-spacing: 0.08em; color: var(--mu-gold); text-transform: uppercase; }
+:lang(km) .mu-fest .mu-fest-kick { letter-spacing: 0; text-transform: none; }
 .mu-fest .mu-fest-name { display: block; font: 400 calc(21 * var(--px)) / 1.15 var(--mu-display); color: var(--mu-ink); white-space: nowrap; }
 .mu-fest .mu-fest-note { display: block; font-size: calc(13.5 * var(--px)); color: var(--mu-ink2); white-space: nowrap; margin-top: calc(2 * var(--px)); }
 .mu-fest.is-toast { left: 50%; top: calc(20 * var(--px)); transform: translate(-50%, calc(-8 * var(--px))); }

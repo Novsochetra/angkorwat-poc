@@ -5,7 +5,7 @@ import { CARRY, FEAT, POSE, ROW_HZ, type Crowd, type Look, type Pose } from '../
 import { moonPath } from '../sky/palette';
 import type { MapFrame } from '../types';
 import { LAKE_LEVEL } from '../village/_spots';
-import { CALLER, CREWS, DRUMMER, dragonBoat, FLOOR, litFloat, ROW_X, ROW_Z, STEERER, type FloatKind } from './_boats';
+import { CALLER, CREWS, DRUMMER, FLOOR, litFloat, raceBoat, ROW_X, ROW_Z, STEERER, type FloatKind } from './_boats';
 import { bunting, flag, flagPole, garland } from './_decor';
 import { folk, rower } from './_folk';
 import { GLOW_MODE, type Glow } from './_glow';
@@ -16,7 +16,7 @@ import { FESTIVAL_SCENE } from './_schedule';
 /**
  * Bon Om Touk (the Water Festival) on the great lake and at Angkor Wat.
  *
- * By day: the dragon boat race (`_race.ts`), heat after heat, the crews
+ * By day: the racing boat (ngo) race (`_race.ts`), heat after heat, the crews
  * rowing in time to their drummer, a caller at the bow; crowds on the
  * village beach cheering them in, bunting and flags, the judges' pavilion,
  * start and finish buoys. The lit floats wait moored by the north shore.
@@ -29,7 +29,7 @@ import { FESTIVAL_SCENE } from './_schedule';
  * offerings (Sampeah Preah Khae), others sit and watch the floats.
  */
 
-/** Rigs: 1‥4 the dragon boats, 5‥7 the floats. */
+/** Rigs: 1‥4 the racing boats (ngo), 5‥7 the floats. */
 const BOAT_RIG = 1;
 const FLOAT_RIG = 5;
 const FLOATS: { kind: FloatKind; x: number; moor: [number, number] }[] = [
@@ -90,10 +90,10 @@ export interface WaterFestival {
 export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: HeightField): WaterFestival {
   const looks: Look[] = [];
   const seats: Seat[] = [];
-  // ── The four dragon boats and their crews ──
+  // ── The four racing boats (ngo) and their crews ──
   const seeds = BOATS.map((_, k) => hash3(k, 3, 5, 717));
   CREWS.forEach((crew, k) => {
-    dragonBoat(kit, BOAT_RIG + k, crew, k);
+    raceBoat(kit, BOAT_RIG + k, crew, k);
     const stroke = seeds[k];
     for (const z of ROW_Z)
       for (const side of [1, -1]) {
@@ -154,7 +154,7 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
     else kit.box(x, y + 2, z, 0.1, 4, 0.1, 0xc8a46a);
     if (i > 0) {
       const [px, pz] = poles[i - 1];
-      bunting(kit, px, ground(px, pz) + ((i - 1) % 2 === 0 ? 4.3 : 3.9), pz, x, y + top, z, 0.5);
+      bunting(kit, px, ground(px, pz) + ((i - 1) % 2 === 0 ? 4.3 : 3.9), pz, x, y + top, z, 0.5, undefined, undefined, undefined, ground);
     }
   });
   pavilion(kit, -297.5, ground(-297.5, -8.5), -8.5);

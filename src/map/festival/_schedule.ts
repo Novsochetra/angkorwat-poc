@@ -6,7 +6,7 @@
  *   the full moon of the month Kadeuk, late October to late November
  *   (`MapFrame.season` ≈ 0.52‥0.63, the real dates of the last years), when
  *   the moon is within `WATER_MOON` days of full (`MapFrame.day`: days since
- *   a new moon). Dragon boats race by day, lit floats and floating candles
+ *   a new moon). Racing boats (ngo) race by day, lit floats and floating candles
  *   at night, people salute the moon (Sampeah Preah Khae).
  * - **Chaul Chnam Thmey** (បុណ្យចូលឆ្នាំខ្មែរ, Khmer New Year): mid-April,
  *   `season` ≥ 0.98 or < 0.03 (the three days and the week round them).
@@ -67,7 +67,7 @@ export interface FestivalScene {
   kind: Festival | null;
   /** Page time of this state (s, `MapFrame.t`). */
   t: number;
-  /** Dragon boats: where each is, how hard the crew rows (0 resting … 1 racing), its stroke clock (strokes since t = 0, the drum on whole numbers). */
+  /** Racing boats (ngo): where each is, how hard the crew rows (0 resting … 1 racing), its stroke clock (strokes since t = 0, the drum on whole numbers). */
   boats: { x: number; y: number; z: number; row: number; stroke: number; racing: boolean }[];
   /** Strokes a second (the drum's beat). */
   strokeHz: number;

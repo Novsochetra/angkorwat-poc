@@ -2,6 +2,7 @@ import { mulberry32 } from '../../voxel/random';
 import { CH, Model, type Flock, type Species } from './_kit';
 import type { Walker } from './_landBrain';
 import { canopyTop, type Canopy, type Crown, type Spot } from './_jungleSurvey';
+import { len2, len3 } from './_len';
 
 /**
  * Pileated gibbons, the gibbons of Cambodia's forests: small apes with very
@@ -274,7 +275,7 @@ export class Family {
     const singing = now - this.songAt < SONG;
     // ── The explorer below ──
     let d = Infinity;
-    if (ex && ex.y < this.y - 2) d = Math.hypot(ex.x - this.x, ex.z - this.z);
+    if (ex && ex.y < this.y - 2) d = len2(ex.x - this.x, ex.z - this.z);
     if (!moving && !singing && d < (this.asleep ? SHY * 0.5 : SHY)) this.moveAway(ex!);
     else if (!moving) {
       // ── Rest, song, then off to another crown ──
@@ -442,7 +443,7 @@ export class Family {
     const h = a.hops[a.hop];
     a.hopT += dt;
     const u = Math.min(1, a.hopT / h.dur);
-    const d = Math.hypot(h.x1 - h.x0, h.z1 - h.z0);
+    const d = len2(h.x1 - h.x0, h.z1 - h.z0);
     a.x = h.x0 + (h.x1 - h.x0) * u;
     a.z = h.z0 + (h.z1 - h.z0) * u;
     const line = h.y0 + (h.y1 - h.y0) * u;
@@ -483,7 +484,7 @@ export class Family {
   /** Put every ape on the map (or hide it, `far` m from the camera). */
   show(cx: number, cy: number, cz: number, far: number): void {
     for (const a of this.apes) {
-      if (Math.hypot(a.x - cx, a.y - cy, a.z - cz) < far) this.flock.place(a.i, a.x, a.y, a.z, a.yaw, a.scale);
+      if (len3(a.x - cx, a.y - cy, a.z - cz) < far) this.flock.place(a.i, a.x, a.y, a.z, a.yaw, a.scale);
       else this.flock.hide(a.i);
     }
   }

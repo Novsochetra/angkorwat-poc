@@ -1,7 +1,8 @@
 import { Group, Sphere, Vector3 } from 'three';
 import { CastView } from '../cull';
 import { Crowd } from '../people/_personModel';
-import type { MapContext, MapFrame, MapPart } from '../types';
+import { fadeNearMaterial } from '../roam/_nearFade';
+import type { MapContext, MapFrame, MapPart, Subject } from '../types';
 import { createBanner } from './_banner';
 import { Glow } from './_glow';
 import { Kit, kitUniforms, PERIOD } from './_kit';
@@ -14,7 +15,7 @@ import { buildWaterFestival } from './_water';
  * (`_schedule.ts`: `MapFrame.season` and the moon) or the URL holds one
  * (`fest=water|newyear`):
  *
- * - **Bon Om Touk**, the Water Festival (`_water.ts`): dragon boats race on
+ * - **Bon Om Touk**, the Water Festival (`_water.ts`): racing boats (ngo) race on
  *   the great lake by day, the village cheering on the beach; at night lit
  *   floats and floating lotus candles on the lake and Angkor Wat's moat,
  *   families saluting the full moon (Sampeah Preah Khae).
@@ -63,6 +64,8 @@ export function buildFestival(ctx: MapContext): MapPart {
   const reach: Record<Festival, Sphere> = { water: new Sphere(new Vector3(-432, 8, 8), 165), newyear: new Sphere(new Vector3(-150, 30, -48), 245) };
   const view = new CastView();
   object.add(wMesh.mesh, glow.mesh, nMesh.mesh, crowd.mesh);
+  // (the follow camera sees through pennants, boats and people close in front of it: the part is not solid to the camera)
+  for (const m of [wMesh.mesh.material, nMesh.mesh.material, crowd.mesh.material]) if (!Array.isArray(m)) fadeNearMaterial(m);
 
   const banner = createBanner();
   let active: Festival | null | undefined;
@@ -137,6 +140,17 @@ export function buildFestival(ctx: MapContext): MapPart {
       if (f.dt > 0 && frames < 24) {
         cpu += performance.now() - c0;
         if (++frames === 24 && ctx.shot) console.info(`[map] festival: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24)`);
+      }
+    },
+    // (the nature book, roam/_book.ts: the festival's people where they are now, one kind for them all)
+    subjects(out: Subject[]) {
+      if (!active) return;
+      const m = crowd.mesh.instanceMatrix.array as ArrayLike<number>;
+      for (let i = 0; i < crowd.mesh.count; i++) {
+        if (!crowd.isShown(i)) continue;
+        const o = i * 16;
+        const r = 0.85 * crowd.scale(i);
+        out.push({ kind: 'festival', x: m[o + 12], y: m[o + 13] + r, z: m[o + 14], r });
       }
     },
   };

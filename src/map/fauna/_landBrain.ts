@@ -1,5 +1,6 @@
 import { mulberry32 } from '../../voxel/random';
 import { CH, type Flock } from './_kit';
+import { len2 } from './_len';
 
 /**
  * What a land animal does: a small state machine per animal, shared by all
@@ -166,9 +167,9 @@ export class Agent {
     this.frozen = false;
     // ── The explorer (or an elephant coming by) ──
     let d = Infinity;
-    if (ex && Math.abs(ex.y - this.y) < 6) d = Math.hypot(this.x - ex.x, this.z - ex.z) / Math.sqrt(this.scale);
+    if (ex && Math.abs(ex.y - this.y) < 6) d = len2(this.x - ex.x, this.z - ex.z) / Math.sqrt(this.scale);
     if (big && Math.abs(big.y - this.y) < 4) {
-      const db = (Math.hypot(this.x - big.x, this.z - big.z) - 2) * 2.2;
+      const db = (len2(this.x - big.x, this.z - big.z) - 2) * 2.2;
       if (db < d) {
         d = db;
         ex = big;
@@ -177,7 +178,7 @@ export class Agent {
     const herd = this.herd;
     if (this.mode !== 'flee') {
       if (d < h.fleeAt || (this.mode === 'alert' && this.timer <= 0 && d < h.alertAt * 0.8)) this.flee(now, ex!.x, ex!.z);
-      else if (now - herd.alarmAt < 1.2 && Math.hypot(this.x - herd.alarmX, this.z - herd.alarmZ) < h.alertAt * 1.6 && this.rnd() < dt * 4) this.flee(now, herd.alarmX, herd.alarmZ);
+      else if (now - herd.alarmAt < 1.2 && len2(this.x - herd.alarmX, this.z - herd.alarmZ) < h.alertAt * 1.6 && this.rnd() < dt * 4) this.flee(now, herd.alarmX, herd.alarmZ);
       else if (d < h.alertAt && this.mode !== 'alert') {
         this.mode = 'alert';
         this.timer = 0.6 + this.rnd() * 1.4;
@@ -379,7 +380,7 @@ export class Agent {
   private move(dt: number, speed: number): boolean {
     const dx = this.tx - this.x;
     const dz = this.tz - this.z;
-    const dist = Math.hypot(dx, dz);
+    const dist = len2(dx, dz);
     if (dist < Math.max(0.15, speed * dt)) return true;
     const diff = this.face(dt, Math.atan2(dx, dz), this.mode === 'flee' ? 2.5 : 1);
     const go = Math.min(dist, speed * dt * Math.max(0, Math.cos(diff)));

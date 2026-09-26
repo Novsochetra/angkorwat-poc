@@ -46,7 +46,7 @@ function trunk(boxes: FreeBox[], top: number, width: number, tones: readonly num
   while (y < top) {
     const seg = s > 1 ? top - y : Math.min(top - y, 3 + Math.floor(rand() * 2));
     const t = (y + seg / 2) / Math.max(1, top);
-    boxes.push({ x: ox, y: y + seg / 2, z: oz, sx: width, sy: seg, sz: width, color: pick(tones, rand()), shade: 1.02 - 0.25 * t });
+    boxes.push({ x: ox, y: y + seg / 2, z: oz, sx: width, sy: seg, sz: width, color: pick(tones, rand()), shade: 1.12 - 0.2 * t });
     y += seg;
   }
 }
@@ -72,7 +72,7 @@ function roots(boxes: FreeBox[], width: number, tones: readonly number[], rand: 
       sy: h,
       sz: dz ? len : side,
       color: pick(tones, rand()),
-      shade: 0.95,
+      shade: 1.05,
     });
   }
 }

@@ -235,16 +235,32 @@ const snap = (h: number) => Math.round(h / CELL) * CELL;
 
 /** Width of the band along the west, east and north edges where the land sinks into the mist (m). */
 const EDGE_FALL = 150;
+/** The front edge sinks only west of these x (m: from none at x0 to all at x1), over this width (m). */
+const SOUTH_FALL_X0 = -345;
+const SOUTH_FALL_X1 = -380;
+const SOUTH_FALL = 60;
 /** Ground height at the very edge (m). */
 const EDGE_Y = -16;
 
+/** How much the front edge sinks at x (0‥1): only west of the village, past the great lake. */
+function frontFall(x: number): number {
+  const t = Math.min(1, Math.max(0, (SOUTH_FALL_X0 - x) / (SOUTH_FALL_X0 - SOUTH_FALL_X1)));
+  return t * t * (3 - 2 * t);
+}
+
 /**
  * The land sinks away toward the far edges of the map (not the front one,
- * which is under the camera), so no wall shows where the map ends. The steps
- * it makes face away from every camera.
+ * which is under the camera, except past the great lake), so no wall shows
+ * where the map ends. The steps it makes face away from every camera.
  */
 function edgeFall(x: number, z: number, h: number): number {
   let e = Math.min(x - MAP_BOUNDS.x0, MAP_BOUNDS.x1 - x, z - MAP_BOUNDS.z0);
+  // The front edge too, but only past the great lake (west of the village and
+  // the paddies) and over a short fall: the thin strip of land beyond the water
+  // showed edge-on from the lake's shore. The lake floods it (lakeMap), so its
+  // water runs off the front edge as it does off the west one.
+  const west = frontFall(x);
+  if (west > 0) e = Math.min(e, ((MAP_BOUNDS.z1 - z) * EDGE_FALL) / SOUTH_FALL + (1 - west) * 1000);
   if (e >= EDGE_FALL + 35) return h;
   e += (fbm(x / 70, z / 70, 211) - 0.5) * 70;
   if (e >= EDGE_FALL) return h;
@@ -363,8 +379,8 @@ export function buildHeightField(): HeightField {
   }
 
   fillLakes(f, lakes);
-  layPaddies(f);
-  layVillage(f, lakes);
+  const paddyCells = layPaddies(f);
+  layVillage(f, lakes, paddyCells);
 
   // Road: samples every metre on the ground; its cells turn to dirt and stay free of trees.
   for (const p of PATHS) {
@@ -513,7 +529,9 @@ function lakeMap(f: HeightField): LakeMap {
       for (let i = i0; i <= i1; i++) {
         const c = i + k * nx;
         const [x, z] = f.cellCenter(i, k);
-        if (f.height[c] > l.level + LAKE_FLOOD || lakeD(l, x, z, 2000 + li * 13) >= 1) continue;
+        // (the great lake also runs off the front edge where edgeFall sinks the land there under its level)
+        const offFront = l === LAKES[0] && z > l.z && f.height[c] < l.level && frontFall(x) > 0;
+        if (f.height[c] > l.level + LAKE_FLOOD || (lakeD(l, x, z, 2000 + li * 13) >= 1 && !offFront)) continue;
         of[c] = li;
       }
   });
@@ -566,10 +584,11 @@ function fillLakes(f: HeightField, lakes: LakeMap): void {
 /** Height of a paddy's dikes over the higher plot beside them (m). */
 const DIKE = 0.5;
 
-/** Paddy plots (flat, `SURFACE.paddy`) and the earth dikes between them (dirt), all kept free of trees. */
-function layPaddies(f: HeightField): void {
+/** Paddy plots (flat, `SURFACE.paddy`) and the earth dikes between them (dirt), all kept free of trees; returns which cells they took (1). */
+function layPaddies(f: HeightField): Uint8Array {
   const { nx, nz } = f;
   const plot = new Float32Array(nx * nz).fill(NaN);
+  const taken = new Uint8Array(nx * nz);
   for (const p of PADDIES) {
     const cs = Math.cos(p.rot);
     const sn = Math.sin(p.rot);
@@ -592,6 +611,7 @@ function layPaddies(f: HeightField): void {
     f.height[c] = plot[c];
     f.surface[c] = SURFACE.paddy;
     f.occupied[c] = 1;
+    taken[c] = 1;
   }
   for (let k = 1; k < nz - 1; k++)
     for (let i = 1; i < nx - 1; i++) {
@@ -607,7 +627,9 @@ function layPaddies(f: HeightField): void {
       f.height[c] = top + DIKE;
       f.surface[c] = SURFACE.dirt;
       f.occupied[c] = 1;
+      taken[c] = 1;
     }
+  return taken;
 }
 
 /** Distance (m) from a point to a polyline. */
@@ -628,8 +650,8 @@ function lineDistance(x: number, z: number, pts: readonly [number, number][]): n
 const VILLAGE_R = 20;
 const VILLAGE_SHORE = 10;
 
-/** The village ground: flat dirt 1 m over the lake (sand kept at the water), no trees. */
-function layVillage(f: HeightField, lakes: LakeMap): void {
+/** The village ground: flat dirt 1 m over the lake (sand kept at the water), no trees; the paddies' plots and dikes stay. */
+function layVillage(f: HeightField, lakes: LakeMap, paddyCells: Uint8Array): void {
   const li = lakes.of[f.index(VILLAGE.water.x, VILLAGE.water.z)] ?? -1;
   if (li < 0) return;
   const top = LAKES[li].level + 1;
@@ -642,6 +664,7 @@ function layVillage(f: HeightField, lakes: LakeMap): void {
   for (let k = k0; k <= k1; k++)
     for (let i = i0; i <= i1; i++) {
       const c = i + k * nx;
+      if (paddyCells[c]) continue;
       const [x, z] = f.cellCenter(i, k);
       if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) > VILLAGE_R && lineDistance(x, z, VILLAGE.shore) > VILLAGE_SHORE) continue;
       const s = f.surface[c];

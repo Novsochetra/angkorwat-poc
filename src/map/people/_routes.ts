@@ -576,9 +576,10 @@ export class Traffic {
    * The lane for someone of group `who` at `s` on `route`, walking it
    * `dir` (±1), who likes lane `prefer` (m left of their way), looking
    * `look` m ahead. `polite`: stop at the side for the explorer walking up
-   * towards them.
+   * towards them. `out`: written and returned instead of a new object
+   * (for callers asking every frame that read it at once).
    */
-  lane(route: Route, s: number, dir: 1 | -1, prefer: number, look: number, who: string, ground: Ground | null, polite = true): LaneChoice {
+  lane(route: Route, s: number, dir: 1 | -1, prefer: number, look: number, who: string, ground: Ground | null, polite = true, out?: LaneChoice): LaneChoice {
     const c = route.at(s, 0, P);
     const tx = Math.sin(c.yaw!) * dir;
     const tz = Math.cos(c.yaw!) * dir;
@@ -609,7 +610,7 @@ export class Traffic {
       }
       if (n >= 16) break;
     }
-    if (!n) return { side: prefer, wait: false, explorer: null, onlyPeople: false, backOff: false, obstacle: false };
+    if (!n) return choice(out, prefer, false, null, false, false, false);
     // Lanes to try: the usual one first, then the road's middle and edges, then the verges (where there is room).
     LANES[0] = prefer;
     let best = prefer;
@@ -640,11 +641,23 @@ export class Traffic {
       const exSide = (ex.x - c.x) * tz - (ex.z - c.z) * tx;
       let side = exSide > 0 ? -1.55 : 1.55;
       if (Math.abs(exSide) < 0.6) side = prefer < 0 ? -1.55 : 1.55;
-      return { side, wait: true, explorer, onlyPeople: false, backOff: false, obstacle: true };
+      return choice(out, side, true, explorer, false, false, true);
     }
-    if (bestCost === Infinity) return { side: widest, wait: true, explorer, onlyPeople, backOff, obstacle: true };
-    return { side: best, wait: false, explorer, onlyPeople, backOff: false, obstacle: true };
+    if (bestCost === Infinity) return choice(out, widest, true, explorer, onlyPeople, backOff, true);
+    return choice(out, best, false, explorer, onlyPeople, false, true);
   }
+}
+
+/** A lane choice, written into `out` when given (no allocation), else a new one. */
+function choice(out: LaneChoice | undefined, side: number, wait: boolean, explorer: Obstacle | null, onlyPeople: boolean, backOff: boolean, obstacle: boolean): LaneChoice {
+  if (!out) return { side, wait, explorer, onlyPeople, backOff, obstacle };
+  out.side = side;
+  out.wait = wait;
+  out.explorer = explorer;
+  out.onlyPeople = onlyPeople;
+  out.backOff = backOff;
+  out.obstacle = obstacle;
+  return out;
 }
 
 const P: Point & { yaw?: number } = { x: 0, y: 0, z: 0 };

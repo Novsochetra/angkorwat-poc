@@ -1,9 +1,10 @@
 import { hash3 } from '../../voxel/random';
 import type { MapFrame, PlaceId } from '../types';
-import { Actor, wrap } from './_actor';
+import { eventsNow } from '../events';
+import { Actor, RAIN_PACE, wrap } from './_actor';
 import { dress } from './_kinds';
-import { POSE, type Pose } from './_personModel';
-import { Route, type Beacon, type Obstacle, type Point, type Traffic } from './_routes';
+import { CARRY, FEAT, POSE, SLOT, type Look, type Pose } from './_personModel';
+import { Route, type Beacon, type LaneChoice, type Obstacle, type Point, type Traffic } from './_routes';
 import { BACK_OFF, GONE, isEvening, STANDOFF, STANDOFF_LONG, type PeopleEnv, type PeopleScene } from './_scene';
 
 /**
@@ -36,6 +37,8 @@ const STOP_BEFORE = 3.8;
 const LOOP: PlaceId[] = ['rivergate', 'shrine', 'sanctuary'];
 /** Height over each temple's pad the visitors look up to (m). */
 const LOOK_UP: Partial<Record<PlaceId, number>> = { sanctuary: 32, shrine: 7, rivergate: 9, overlook: 14, terrace: 10, kulen: 12 };
+/** Where an elephant will be (s ahead) when the standing group gives way. */
+const GIVE_WAY_AHEAD = [0, 1.5, 3];
 /** Evening dark enough to go home; light enough to come back (`night`). */
 const HOME_AT = 0.3;
 /** The explorer this near: the guide greets him (m); not again for this long (s). */
@@ -79,6 +82,10 @@ export class Tour implements PeopleScene {
   private onward = 0;
   private turn = false;
   private started = false;
+  /** Umbrellas up (`EVENTS.umbrellas`): everyone's look for the rain and for dry weather (as `actors`). */
+  private wet = false;
+  private readonly rainLooks: Look[];
+  private readonly dryLooks: Look[];
   private greetAt = -1e9;
   private stuck = 0;
   /** At a stop: how far the group has moved along the road to let an elephant by (m). */
@@ -86,6 +93,11 @@ export class Tour implements PeopleScene {
   private waver = -1;
   private readonly home: [number, number];
   private readonly tmp: Point & { yaw?: number } = { x: 0, y: 0, z: 0 };
+  // (per-frame scratch: lane choices, look points; `lookAt` copies its point)
+  private readonly choiceBuf: LaneChoice = { side: 0, wait: false, explorer: null, onlyPeople: false, backOff: false, obstacle: false };
+  private readonly ownBuf: LaneChoice = { side: 0, wait: false, explorer: null, onlyPeople: false, backOff: false, obstacle: false };
+  private readonly lookBuf: Point = { x: 0, y: 0, z: 0 };
+  private readonly headBuf: Point = { x: 0, y: 0, z: 0 };
 
   constructor(private readonly env: PeopleEnv) {
     const { crowd, graph, ground } = env;
@@ -101,6 +113,11 @@ export class Tour implements PeopleScene {
     ];
     who.forEach(([sex, age], k) => this.visitors.push({ a: new Actor(crowd, dress('visitor', 311 + k * 3, { sex, age }), ground).avoid(env.traffic, this.name), s: 0, lane: 0 }));
     this.actors.push(this.guide, ...this.visitors.map((v) => v.a));
+    // (in the rain the guide's flag gives way to an umbrella, and most visitors open one; two just walk quicker)
+    this.dryLooks = this.actors.map((a) => a.look);
+    this.rainLooks = this.actors.map((a, k) =>
+      k === 0 ? dress('guide', 301, { carry: CARRY.umbrella }) : k % 4 === 3 ? a.look : withUmbrella(a.look, RAIN_UMBRELLAS[k % RAIN_UMBRELLAS.length]),
+    );
     const beacons = LOOP.map((id) => graph.beacon(id)).filter((b): b is Beacon => !!b);
     beacons.forEach((b, k) => {
       const next = beacons[(k + 1) % beacons.length];
@@ -212,6 +229,17 @@ export class Tour implements PeopleScene {
       this.started = true;
       this.begin(now, f);
     }
+    // Rain: umbrellas up (down again once it has passed).
+    const u = eventsNow(f).umbrellas;
+    if (this.wet ? u < 0.3 : u > 0.5) {
+      this.wet = !this.wet;
+      const looks = this.wet ? this.rainLooks : this.dryLooks;
+      this.actors.forEach((a, k) => {
+        a.look = looks[k];
+        this.env.crowd.dress(a.i, a.look);
+        if (k > 0) a.carry(this.wet && a.look.carry === CARRY.umbrella ? 1 : 0, now);
+      });
+    }
     const evening = f.night > HOME_AT && isEvening(f.clock);
     if (this.mode !== 'in' && f.night > GONE) this.goIn();
     if (this.mode === 'in') {
@@ -245,12 +273,13 @@ export class Tour implements PeopleScene {
     // (going home they walk on off the road's end, one after another)
     const home = this.mode === 'home';
     const end = home ? L + 8 : L - STOP_BEFORE;
-    const choice = traffic.lane(route, Math.min(this.s, L), 1, -0.5, 7, this.name, ground);
+    const choice = traffic.lane(route, Math.min(this.s, L), 1, -0.5, 7, this.name, ground, true, this.choiceBuf);
     this.stuck = choice.wait && !choice.explorer ? this.stuck + dt : 0;
     // (and for anyone left behind)
-    const lag = this.people.some((a) => a.shown && a.behind > LAG);
+    let lag = false;
+    for (const a of this.people) if (a.shown && a.behind > LAG) { lag = true; break; }
     const hold = (choice.wait && this.stuck < (choice.onlyPeople ? STANDOFF : STANDOFF_LONG)) || greeting >= 0 || lag;
-    if (!hold) this.s = Math.min(end, this.s + SPEED * dt);
+    if (!hold) this.s = Math.min(end, this.s + SPEED * RAIN_PACE.hurry * dt);
     else if (choice.backOff) this.s = Math.max(0, this.s - BACK_OFF * dt);
     const k = 0.9 * dt;
     this.lane += Math.max(-k, Math.min(k, choice.side - this.lane));
@@ -268,20 +297,23 @@ export class Tour implements PeopleScene {
       g.lookAt(null);
     }
     if (g.shown) g.step(dt, now);
-    this.visitors.forEach((v, j) => {
+    // (plain loops, no closures: this runs every frame)
+    const visitors = this.visitors;
+    for (let j = 0; j < visitors.length; j++) {
+      const v = visitors[j];
       const want = this.s - this.behind(j);
-      if (want > v.s) v.s = Math.min(want, v.s + SPEED * 1.4 * dt);
+      if (want > v.s) v.s = Math.min(want, v.s + SPEED * 1.4 * RAIN_PACE.hurry * dt);
       // (backing off before an elephant: the pairs behind give way too)
       else if (want < v.s - 0.6) v.s = Math.max(want, v.s - BACK_OFF * 1.1 * dt);
       // (beside the guide's lane, on the paving; off it only where lane() found the verge clear)
       const pair = Math.max(-1.7, Math.min(1.7, this.lane + this.across(j)));
-      const own = v.s > 0 ? traffic.lane(route, v.s, 1, pair, 3, this.name, ground, false) : null;
+      const own = v.s > 0 ? traffic.lane(route, v.s, 1, pair, 3, this.name, ground, false, this.ownBuf) : null;
       const lane = own && !own.wait ? own.side : pair;
       v.lane += Math.max(-k, Math.min(k, lane - v.lane));
       const a = v.a;
       if (v.s < 0 || (home && v.s > L - 0.3)) {
         if (a.shown) a.hide();
-        return;
+        continue;
       }
       route.at(v.s, v.lane, p);
       if (!a.shown) this.place(a, p, route.yawAt(v.s));
@@ -295,8 +327,10 @@ export class Tour implements PeopleScene {
         else a.lookAt(null);
       }
       a.step(dt, now);
-    });
-    if (this.s >= end - 0.05 && this.visitors.every((v, j) => v.s >= this.s - this.behind(j) - 0.3)) this.arrive();
+    }
+    if (!(this.s >= end - 0.05)) return;
+    for (let j = 0; j < visitors.length; j++) if (!(visitors[j].s >= this.s - this.behind(j) - 0.3)) return;
+    this.arrive();
   }
 
   private arrive(): void {
@@ -310,9 +344,13 @@ export class Tour implements PeopleScene {
     this.enter((this.seg + 1) % this.loop.length, 0, false);
   }
 
-  /** The temple a visitor looks up at. */
+  /** The temple a visitor looks up at (a shared buffer: `lookAt` copies it). */
   private lookPoint(b: Beacon): Point {
-    return { x: b.temple.x, y: b.temple.y + (LOOK_UP[b.id] ?? 10), z: b.temple.z };
+    const q = this.lookBuf;
+    q.x = b.temple.x;
+    q.y = b.temple.y + (LOOK_UP[b.id] ?? 10);
+    q.z = b.temple.z;
+    return q;
   }
 
   /** At a temple: the talk, photos, setting off again. */
@@ -362,13 +400,20 @@ export class Tour implements PeopleScene {
     }
     g.step(dt, now);
     // ── The visitors ──
-    const guideHead = { x: g.x, y: g.y + 2.2, z: g.z };
-    this.visitors.forEach((v, j) => {
-      const a = v.a;
-      const [back, side] = SPOTS[j];
-      route.at(this.s - back, side, p);
+    const guideHead = this.headBuf;
+    guideHead.x = g.x;
+    guideHead.y = g.y + 2.2;
+    guideHead.z = g.z;
+    const visitors = this.visitors;
+    for (let j = 0; j < visitors.length; j++) {
+      const a = visitors[j].a;
+      const spot = SPOTS[j];
+      route.at(this.s - spot[0], spot[1], p);
       a.goTo(p.x, p.z, SPEED * 1.3);
-      if (j === this.waver && greeting >= 0) return a.step(dt, now);
+      if (j === this.waver && greeting >= 0) {
+        a.step(dt, now);
+        continue;
+      }
       // Each on their own clock: listen, look up, take a photo, point.
       const slot = 6 + 4 * hash3(j, 7, 1);
       const n = Math.floor((u + j * 1.7) / slot);
@@ -391,7 +436,7 @@ export class Tour implements PeopleScene {
         a.lookAt(act === 'photo' ? null : temple);
       }
       a.step(dt, now);
-    });
+    }
     this.s = s0;
     if (u >= STOP) {
       this.shift = 0;
@@ -406,7 +451,7 @@ export class Tour implements PeopleScene {
     let shift = 0;
     for (const o of this.env.traffic.list) {
       if (o.who !== 'animal') continue;
-      for (const ahead of [0, 1.5, 3]) {
+      for (const ahead of GIVE_WAY_AHEAD) {
         const q = route.project(o.x + o.vx * ahead, o.z + o.vz * ahead, this.s, 16);
         if (Math.abs(q.side) > 3.2 || q.d > 16) continue;
         const a0 = q.s - o.r - 1.4;
@@ -456,4 +501,18 @@ export class Tour implements PeopleScene {
   report(traffic: Traffic): void {
     for (const a of this.people) if (a.shown) traffic.add(this.name, a.x, a.y, a.z);
   }
+}
+
+/** Rain umbrellas: dark blue, black, plum, bottle green, one yellow. */
+const RAIN_UMBRELLAS = [0x2a3a5a, 0x2e2e32, 0x6a2a3a, 0x2f5a4a, 0xd8b040];
+
+/** A visitor's look with a rain umbrella held up (their phone and anything else in the right hand put away). */
+function withUmbrella(look: Look, cover: number): Look {
+  if (look.carry === CARRY.umbrella) return look;
+  const colors = look.colors.slice();
+  colors[SLOT.prop] = cover;
+  colors[SLOT.prop2] = cover + 0x181818;
+  colors[SLOT.wood] = 0x3a3634;
+  const feats = look.feats.filter((f) => f !== FEAT.phone && f !== FEAT.flag);
+  return { ...look, colors, feats: [...feats, FEAT.umbrella], carry: CARRY.umbrella };
 }

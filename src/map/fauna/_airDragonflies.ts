@@ -5,6 +5,7 @@ import type { MapFrame } from '../types';
 import { smooth, type Explorer, type Herd, type View } from './_waterAirKit';
 import { CRITTER } from './_waterModels';
 import { drawnWater } from './_waterRivers';
+import { len2 } from './_len';
 
 /**
  * Dragonflies by day over the water and the reedy banks round the roaming
@@ -103,7 +104,7 @@ export function buildDragonflies(field: HeightField): Dragonflies {
       if (day <= 0 || !me.near) return;
       const t = f.t;
       flies.forEach((fl, i) => {
-        if (!fl.home || Math.hypot(fl.home[0] - me.x, fl.home[2] - me.z) > LEAVE || t - fl.homeT > STAY + i * 3 || fl.homeT > t) {
+        if (!fl.home || len2(fl.home[0] - me.x, fl.home[2] - me.z) > LEAVE || t - fl.homeT > STAY + i * 3 || fl.homeT > t) {
           if (t - fl.homeT > 0.8 || fl.homeT > t) {
             fl.epoch++;
             fl.prev = fl.home;
@@ -121,7 +122,7 @@ export function buildDragonflies(field: HeightField): Dragonflies {
           at(i, fl, t, fl.prev, q0);
           for (let k = 0; k < 3; k++) q1[k] = q0[k] + (q1[k] - q0[k]) * move;
           yaw = Math.atan2(fl.home[0] - fl.prev[0], fl.home[2] - fl.prev[2]);
-          if (Math.hypot(fl.home[0] - fl.prev[0], fl.home[2] - fl.prev[2]) > 40) show = move;
+          if (len2(fl.home[0] - fl.prev[0], fl.home[2] - fl.prev[2]) > 40) show = move;
         }
         if (!view.sees(q1[0], q1[1], q1[2], 0.3, 45)) return;
         const o = herd.add(q1[0], q1[1], q1[2], SIZE * day * show, yaw, 0.08 * Math.sin(t * 3 + i), 0, CRITTER.dragonfly);

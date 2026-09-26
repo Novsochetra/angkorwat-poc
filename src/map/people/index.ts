@@ -1,6 +1,7 @@
 import { Group, type Object3D } from 'three';
 import type { MapContext, MapFrame, MapPart, Subject, SubjectKind } from '../types';
-import { keepApart, type Actor } from './_actor';
+import { eventsNow } from '../events';
+import { keepApart, RAIN_PACE, type Actor } from './_actor';
 import { Bubble } from './_bubble';
 import { buildPeopleLineup } from './_lineup';
 import { Monks } from './_monks';
@@ -116,6 +117,8 @@ export function buildPeople(ctx: MapContext): MapPart {
   let started = false;
   let settled = false;
   const live = (dt: number, f: MapFrame, explorer = true) => {
+    // (rain: walks quicken; scenes open umbrellas from `eventsNow(f).umbrellas` themselves)
+    RAIN_PACE.hurry = eventsNow(f).hurry;
     traffic.update(f, explorer);
     for (const s of scenes) s.report(traffic);
     for (const s of scenes) s.update(dt, now, f, traffic.explorer);

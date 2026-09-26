@@ -875,7 +875,7 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
     frame(f, mode, pos) {
       // (the seed fluff while flying or standing on a ramp)
       lift.frame(f.t, f.dt, f.night, mode === 'hang');
-      spots.frame(f.night, f.t, pos, mode === 'hang');
+      spots.frame(f.night, f.t, pos, mode === 'hang', f.camera);
       if (mode === 'hang') {
         glider.pose({ position: at, quaternion: quat, size, open: openK, flutter: clamp((v - 4) / 18, 0, 1), t: clock, night: f.night });
         return;

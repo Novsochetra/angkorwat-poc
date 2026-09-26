@@ -210,6 +210,8 @@ export interface RoamLevels {
   sail?: number;
   /** The hot air balloon's burner roaring (0‥1). */
   burner?: number;
+  /** The hot air balloon's inflation fan blowing (0‥1). */
+  fan?: number;
   /** Water against a moving boat. */
   wake: number;
 }
@@ -327,7 +329,8 @@ export type SubjectKind =
   | 'dancer'
   | 'villager'
   | 'bamboo'
-  | 'lotus';
+  | 'lotus'
+  | 'festival';
 
 /** One living thing on the map as a part shows it now: its middle (m) and rough radius (m: how big it is). */
 export interface Subject {

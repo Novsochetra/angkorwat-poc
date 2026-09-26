@@ -22,8 +22,12 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   is its own module, loaded with a dynamic import: a part that fails is logged
   (`[map] part "x" failed`) and left out, the rest still runs.
 - `src/map/types.ts`: `MapContext` (scene, renderer, camera, `field`, quality,
-  `shot`), `MapFrame` (`t`, `dt`, `night` 0‥1, `camera`, `lightDir`), `MapPart`
-  (`name`, `object`, optional `update(f)` and `blocks`).
+  `shot`), `MapFrame` (`t`, `dt`, `night` 0‥1, `clock`, `day`, `season`,
+  `weather`, `camera`, `lightDir`, `listener`, `roam` mode, `roamLevels`,
+  `calls`, optional `canopy`), `MapPart` (`name`, `object`, optional
+  `update(f)`, `blocks`, `highlight`, `afterRender`, `subjects` for the
+  nature book). A part whose `update` throws is logged and left still; the
+  map runs on.
 - `src/map/layout.ts`: where everything is — places (`PLACES`: pad centre, pad
   size, `anchor` beacon point, card offset, focus camera), mesas (`PLATEAUS`),
   `RIVERS`, road `PATHS`, the explorer's ledge, the overview camera.
@@ -36,9 +40,25 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   width, flow dir), `rivers` (samples every metre with level, width, dir),
   `paths` (road samples every metre with ground `y` and `wet` over water).
   Only the terrain pass may edit `heightfield.ts`.
-- Build order: atmosphere → terrain → the six landmarks → path → water →
-  vegetation → clouds → life → fauna → wildlife → foreground. Landmarks and
-  the road call `field.occupy(...)` for what they cover, so trees keep off.
+- Build order (`BUILDERS` in main.ts): atmosphere → terrain → the six
+  landmarks → path → jungle → camps → water → village → paddies →
+  vegetation → undergrowth → clouds → rain → rainbow → life → fauna →
+  wildlife → jungleFauna → people → festival → treasure → foreground.
+  Landmarks, the road and the sites call `field.occupy(...)` for what they
+  cover, so trees keep off; the glider ramps and the balloon's field are
+  reserved just before the vegetation.
+- After the build, `renderer.compileAsync` compiles every shader before the
+  first frame (at most 6 s); the console says `[map] shaders compiled in N ms`.
+  `window.__frame` is the live `MapFrame`, `window.__mapStats` the build
+  times, blocks and failed parts (also `scene`, `parts`, `roam`, `audio`…).
+- `src/map/cull.ts`, for parts spread over the map: `splitByPlace` cuts a
+  part's blocks into one builder per place (near sites share one), so
+  three leaves out the places off screen; `ShadowGate` lets a mesh cast
+  shadows only while the ground its shadow can fall on is in view (every
+  gated mesh casts for the first frames, so its shaders compile at load).
+  Used by the jungle ruins, the camps, the village and the
+  paddies. `fauna/_len.ts` (`len2`, `len3`) replaces `Math.hypot` in
+  per-frame code (it allocates).
 - `MapPart.afterRender()` runs right after each frame is drawn (the canvas
   still holds the picture: photos). `MapFrame.calls` is a list of animal
   calls (`{ kind, x, y, z, gain }`) parts push in `update`; main.ts hands them
@@ -72,7 +92,9 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   (`world.hardClearance`); tree leaves and bark, the parked gliders and the
   ramps dissolve in a dithered tube from the camera to him (`_nearFade.ts`,
   `world.softClearance`), off in the overview and in photos.
-- `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current).
+- `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current;
+  boats wait at the River Gate landing and at the village jetty's head;
+  the wake `_wake.ts`).
 - `hangGlider.ts` (mode `hang`): E on a take-off ramp (`launchSpots.ts`:
   found on the land, the best cliff tops near a road; a hill with a temple
   and no flat cliff edge (Phnom Kulen, the terrace hills) gets a built-up
@@ -89,12 +111,21 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   `_gliderModel.ts`, ramp `_launchRamp.ts`, poses `_gliderPoses.ts`
   (upright with it, prone in the harness, the flare).
 - `balloon.ts` (mode `balloon`): a hot air balloon in the flag of Cambodia
-  (Angkor Wat in white on the red band) stands tethered on its field in the
+  (Angkor Wat in white on the red band) lies deflated on its field in the
   valley below Angkor Wat (`BALLOON_HOME`, west of the road's stairs;
   `reserveBalloonHome` keeps the trees off it and a lane to the valley road,
-  main.ts, before the jungle is planted), a small sign by the lane, the
-  burner breathing now and then (a glow at night). E at the basket: he
-  climbs in and stands at the burner line (`_balloonPoses.ts`). **W** /
+  main.ts, before the jungle is planted): the envelope a flat heap behind
+  the basket (tipped on its side), the inflation fan, tether stakes, a small
+  sign by the lane with a lantern lit after dark (a glow block, no light).
+  E at the basket: it rights itself, he climbs in and stands at the burner
+  line (`_balloonPoses.ts`), the fan fills the envelope with cold air, then
+  the burner stands it up (8 s; **W** / **Space** faster; **Esc** stops: he
+  hops out, it lies down again; the fan hum is `RoamLevels.fan`). Landed
+  back home it stands inflated, the burner breathing now and then; leaving
+  roaming lays it down again. Shots: `roam=balloon&balloon=parked` (on foot
+  by the parked basket), `balloon=inflate:<s>` (inflating for s seconds),
+  `roam=walk&balloon=up` (standing inflated at home). A bug report taken
+  mid-hop or while inflating replays it (`reportParams`). **W** /
   **Space** burner (heats the envelope: lift off, climb; Shift both
   burners), **S** vent (sink), hands off it cools and sinks slowly, **A** /
   **D** turn the basket; the breeze carries it (low along the valley to the
@@ -149,7 +180,10 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   "Nearest glider ramp" on the big map) heads for the nearest ramp. The
   ramps (read live from `roam.launchSpots`) show as a glider on a round
   badge on both maps. The land picture is drawn once, in small slices
-  over several frames. Its words are in `ui/lang.ts` (`mm…`).
+  over several frames. Its words are in `ui/lang.ts` (`mm…`). The rice
+  paddies are drawn over it in the colour of their stage of the year
+  (`ui/_minimapPaddies.ts`, from `f.season` and `paddies/stages.ts`: dry
+  earth, mud, flooded sky-blue, green, gold, stubble).
 - Hidden gold (part `treasure`, `src/map/treasure/`; the
   roaming modes reach it through `treasure/hooks.ts`): fifteen small
   golden figures, each a Khmer motif (`_models.ts`: apsara, naga, garuda,
@@ -163,10 +197,26 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   (`angkor-map-treasure-v1` in localStorage) and marked on the big map.
   A gold counter under "Back to map" while roaming (`_hud.ts`). Hidden in
   the overview. Two draw calls; words `tg…` in `ui/lang.ts`; sound `gold`.
+- The journal (`_book.ts`, data `_bookData.ts`, pages `_bookUi.ts`, stamps
+  `_stamps.ts`): two more sections of the photo album (**V**: Photos ·
+  Nature book · Passport). **Nature book**: a photo fills the page of each
+  living thing in it — what the parts list in `subjects(out)` (animals,
+  people, bamboo, the lotus, a festival crowd: subject kind `'festival'`),
+  in frame, big enough, not hidden behind stone or land; the first photo
+  gives the page its picture. Chapters land, jungle, water, plants,
+  people; each page has Khmer and English names, one true fact and where
+  to look. **Temple passport**: an ink stamp for each of the six places
+  (reaching its beacon on foot), each jungle site (walking into its
+  clearing) and the village pagoda, dated, with a lotus seal where he
+  prayed. Kept in localStorage (`angkor-map-journal-v1`). Words `bk…` /
+  `al…` in `ui/lang.ts` (the album's own words are Khmer too).
 - Footsteps (`walker.ts stepSound` picks the ground): recordings in
   `assets/sound/`, cut into single steps when they load
   (`audio/footsteps.ts`) and played one per footfall (`audio/explorer.ts`);
-  synthesized steps while they load or if they fail.
+  synthesized steps while they load or if they fail. On the planks of the
+  village (verandas, stairs, jetty, rafts) and the camps (bridges, the
+  monk's hut) they sound of wood (`_woodFloor.ts`, `RoamWorld.woodAt`, read
+  from the wooden blocks when the roaming world is built).
 - Sound settings: one slider per bus (`VOLUME_KEYS` in `types.ts`): master,
   music, ambience, water, animals, steps (footsteps), moves (the explorer's
   other sounds: jump, parachute, glider wind and sail, paddle, splash) and
@@ -202,7 +252,20 @@ pose on the valley road) · `wildlife=<s>` (run the water animals' reactions) ·
 or `x,y,z,fx,fz` (a worship spot of its own there, facing (fx, fz)) ·
 `gold=all|none|<n>|<id>,…` which golden figures are found (shots start
 with none) · `gold=lineup` every figure in a row on the valley road ·
-`goldfound=<id>` as if it was just found (the message).
+`goldfound=<id>` as if it was just found (the message) ·
+`balloon=parked|inflate:<s>|up` (see the balloon) ·
+`album=photos|book|passport` the album open there (`album=book:<kind>` that
+page) · `book=all` / `stamps=all` the nature book / passport filled for the
+visit (not saved) · `journal=0` start empty, save nothing ·
+`fest=water|newyear|0` hold a festival or none (else the calendar) ·
+`fauna=jungle` every jungle animal in every pose on the valley road ·
+`people=lineup` (`lineupturn=0‥1` turns them) · `touch=1` the touch
+buttons · `quality=low|medium|high` · `story=<n>` open the story at page
+n (`story=0` never) · `vegstats` the vegetation's counts in the console.
+The explorer in shots: `look=<outfit>`, `hat=0|1`, `face=<expression>`,
+`keys=1` (the ? key list open), `beam=mouse` with `mouse=x,y` (0‥1 of
+the screen), the selfie's `gesture=peace|wave|thumbsUp|none` and
+`saim=yaw,pitch,reach`, the camera's `pview=yaw,pitch,fov`.
 
 ## Time of day and the sky
 
@@ -236,10 +299,38 @@ often as the rains set in; *clear* never rains; *rainy* a shower every
 7–13 min (first ≈ 2½ min in); *stormy* a storm every 7–11 min (first ≈ 2
 min in), showers between. A change starts the new schedule from then; a
 switch to clear fades the rain out over 30 s. Rainbows follow rain by day.
+Parts `rain` (`sky/rain.ts`: streaks in three boxes round the camera, one
+draw, hidden while dry) and `rainbow` (`sky/rainbow.ts`: one draw, only
+while there is one). Drops ring the water (`RAIN_RINGS_GLSL`: the rivers,
+the lake, the flooded paddies and Angkor Wat's moat and pools).
 Checks: `clock=0‥1`, `day=0‥29` (7 first quarter, 15 full, 22 last quarter),
 `night=` still works (dusk side), `weather=rain|storm|rainbow|clear` (held),
 `weather=season|rainy|stormy` (that setting's schedule at `t=`, with
 `season=`), `flash=1`.
+
+## The jungle
+
+Dirt trails (layout.ts `TRAILS`, graded into the land: `field.trail`,
+`field.trails`) lead off the roads to 13 hidden sites (`JUNGLE_SITES`),
+each in its clearing. Part `jungle` (`jungle/ruins.ts`, `_ruin*.ts`,
+`_incense.ts`): the fallen face, the root gate (the back trail runs
+through it), the carved lintel, the forest Buddha, the spirit house, the
+lake shrine and the Kulen shrine, with offerings, incense smoke and
+candles (glow only, no light) and a worship spot at each shrine. Part
+`camps` (`jungle/camps.ts`, `_camp*.ts`, `_bridges.ts`, `_swing.ts`): the
+forest monk's hut on stilts (with its ladder), the woodcutters' camp and
+its fire, the rope swing, two foot bridges over the Bayon stream and the
+pool at the foot of its fall. Both are cut per site (`cull.ts`). Part
+`undergrowth` (`veg/undergrowth.ts`): ferns, elephant ears, grass, flowers,
+reeds, leaf litter, logs and vines, streamed in 4 m cells round the
+explorer (32–44 m out), one draw, walk-through, off in the overview; with
+the jungle's leaves they sway in the wind (`veg/sway.ts`). Part
+`jungleFauna` (`fauna/jungle.ts`, where they live read from the built trees
+by `_jungleSurvey.ts`): wild boar with piglets, green peafowl, great
+hornbills, a giant ibis pair, pileated gibbons, and small life (squirrel,
+water monitor, whip snake, skinks); cicadas in the ambience. Checks:
+`fauna=jungle`, `parts=terrain,jungle,camps`, a walk at a site from the
+console line `[map] camps: …`.
 
 ## Rice paddies and the year
 
@@ -263,6 +354,9 @@ walk map); a footstep in a flooded plot is `stepWater`
 (0 dry · 0.12 flooded · 0.25 young · 0.45 lush · 0.62 turning · 0.7
 harvest · 0.8 stubble · 0.95 dry), e.g.
 `cam=-150,26,112,-232,7,80` or `roam=walk&at=-196,83&yaw=270`.
+Great egrets stand in a plot while it holds water, and egrets, grey
+herons and two duck families live on the great lake
+(`fauna/_waterLake.ts`, in the wildlife part's wader and duck herds).
 
 ## The floating village
 
@@ -335,12 +429,16 @@ cart's creak, a net's splash, children laughing (ambience bus), the pinpeat
 any part may call it; `EVENTS` is the same object) says which windows are
 open (`on`), how often each began (`count`, `began`) and the weather's
 effect on life (`shelter` 0‥1 in a storm, `umbrellas`, `hurry`, `storm`),
-plus `festival` (Khmer New Year, Visak Bochea, Pchum Ben, the Water
-Festival, from `season` and the moon) for later parts. Hours on the clock:
+plus `festival` (`'water'` or `'newyear'`: the festival part's own
+`festivalNow`, from `season` and the moon, `fest=`) for later parts. Hours on the clock:
 `dawnChant` 0.71‥0.81, `duskDrum` ≈ 0.22 (±, seeded by `day`). In the
 daylight (0.8‥0.2 of the clock; while the clock is held in the day, on a
 loop of its own every 10 min): `noonBell`, `elephantBath`, `monkeyCrossing`
-(3×); none start in a storm. Sound: `audio/temple.ts` (ambience bus) — the
+(3×); none start in a storm. In rain people open umbrellas and walk
+faster (`umbrellas`, `hurry`: the monks, the tour group, every `Actor`);
+birds stay on their perches, hunched (`fauna/_waterAirKit.ts
+birdShelter`: waders, jungle birds, the flocks over the road); only the
+explorer puts them up. (People do not yet go under cover in a storm.) Sound: `audio/temple.ts` (ambience bus) — the
 monks' Pali chanting at dawn, the skor drum and the bronze bell at dusk, a
 bell before noon, from the village pagoda and Angkor Wat, placed and faded
 like the water. Animals (land fauna): the elephants' bath below the River
@@ -353,6 +451,25 @@ elephants stand. Checks: `event=elephantBath&t=115` (a still that far into
 it; ≈ 20 s walk, 45 s down, then ≈ 60 s bathing),
 `event=monkeyCrossing&t=4|6.2`, `events=1` (daylight events in a still),
 `window.__events.log`, `cam=-28,8.5,41,-37.5,5.8,30.5` (the bath).
+
+## Festivals
+
+Part `festival` (`src/map/festival/`), when the calendar says so
+(`_schedule.ts festivalNow`: `season` and the moon; `EVENTS.festival` is the
+same) or `fest=water|newyear` holds one: **Bon Om Touk**, the Water
+Festival (`_water.ts`, `_race.ts`: Khmer ngo racing boats — never a dragon
+boat — race on the great lake by day, the village cheering on the beach;
+lit floats and floating lotus candles on the lake and Angkor Wat's moat at
+night, families saluting the full moon), `season` ≈ 0.52‥0.63 within 2.5
+days of the full moon; **Chaul Chnam Thmey**, Khmer New Year (`_newyear.ts`:
+sand stupas, flags and bunting, water play, Chol Chhoung, blessings of the
+elders, musicians), `season` ≥ 0.98 or < 0.03. One draw for its kit
+(`_kit.ts`), one for its crowd (the people part's model), one additive glow
+(`_glow.ts`); nothing drawn without a festival. Its name shows under the
+title card and as a toast when roaming starts (`_banner.ts`); sound
+`audio/festival.ts`. The crowd is a nature-book subject. Checks:
+`fest=water&season=0.57&day=15` (add `clock=0.35` for the night),
+`fest=newyear`.
 
 ## World and scale
 
@@ -432,6 +549,9 @@ under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 | water | `src/map/water.ts`, `src/map/water/*` |
 | atmosphere | `src/map/atmosphere.ts`, `src/map/post.ts`, `src/map/clouds.ts`, `src/map/sky/*` |
 | road + life | `src/map/path.ts`, `src/map/life.ts`, `src/map/road/*` |
+| jungle (ruins and shrines at the sites) | `src/map/jungle/ruins.ts`, `_ruin*.ts`, `_incense.ts` |
+| undergrowth | `src/map/veg/undergrowth.ts` (sway: `veg/sway.ts`) |
+| jungle animals | `src/map/fauna/jungle.ts`, `src/map/fauna/_jungle*.ts` |
 | camps (jungle sites people use: monk's hut, woodcutters, swing, bridges, pool) | `src/map/jungle/camps.ts`, `_camp*.ts`, `_bridges.ts`, `_swing.ts`; the ride `src/map/roam/_swingRide.ts` |
 | land animals | `src/map/fauna/land.ts`, `src/map/fauna/_kit.ts`, `src/map/fauna/_land*.ts` |
 | water and air animals | `src/map/fauna/waterAir.ts`, `src/map/fauna/_water*.ts`, `src/map/fauna/_air*.ts` |
@@ -443,8 +563,12 @@ under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 | paddies | `src/map/paddies.ts`, `src/map/paddies/*` |
 | village (stilt houses, floating houses, jetty, pagoda) | `src/map/village/*` |
 | people (and their sounds) | `src/map/people/*`, `src/map/audio/people.ts` |
+| festival | `src/map/festival/*`, `src/map/audio/festival.ts` |
+| treasure (hidden gold) | `src/map/treasure/*` |
+| journal (nature book, passport) | `src/map/roam/_book*.ts`, `_stamps.ts` |
+| rain, rainbow, weather | `src/map/sky/rain.ts`, `rainbow.ts`, `weather.ts`, `src/map/audio/weather.ts` |
 
-`main.ts`, `camera.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the
+`main.ts`, `camera.ts`, `cull.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the
 lead. If you need a change there, say it in your report.
 
 ## Report

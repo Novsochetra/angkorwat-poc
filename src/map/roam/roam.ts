@@ -93,7 +93,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const controls = new RoamControls(deps.canvas);
   const explorer = deps.explorer;
   const body: RoamBody = { explorer, pos: new Vector3().copy(deps.feet), vel: new Vector3(), yaw: deps.yaw, grounded: true, scale: 1 };
-  const levels: RoamLevels = { wind: 0, wake: 0, sail: 0, burner: 0 };
+  const levels: RoamLevels = { wind: 0, wake: 0, sail: 0, burner: 0, fan: 0 };
 
   let mode: RoamMode = 'overview';
   let leaving = false;
@@ -188,11 +188,13 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     controls.poll(dt);
     // (the tools take the keys they use first: Esc puts the camera away, not the map)
     tools.input(rctx, mode, dt);
+    // (Esc while the balloon is being boarded or inflated: he hops back out, it deflates)
+    if (controls.state.exit && mode === 'balloon' && balloon.cancel(rctx)) controls.state.exit = false;
     if (controls.state.exit) {
       void api.stop();
       return;
     }
-    levels.wind = levels.wake = levels.sail = levels.burner = 0;
+    levels.wind = levels.wake = levels.sail = levels.burner = levels.fan = 0;
     const next = handlers[mode as Exclude<RoamMode, 'overview'>].update(rctx, dt);
     if (next) {
       if (next === 'overview') void api.stop();
@@ -255,6 +257,9 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       const ride = mode === 'walk' ? walker.swing.ride : null;
       if (ride && (t.tool === 'camera' || t.tool === 'selfie')) for (const k of ['tool', 'pview', 'saim', 'gesture', 'stick']) delete t[k];
       const at = ride?.stand ?? p;
+      // (the balloon mid-hop or inflating: a shot that replays it, not him hanging in the air where he was)
+      const hop = mode === 'balloon' ? balloon.reportParams() : null;
+      const yawOut = hop?.yaw ?? body.yaw;
       return {
         text: `${mode} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})${ride ? `, on the rope swing ${ride.seconds.toFixed(1)} s` : ''}, facing ${deg(body.yaw).toFixed(0)}°${look ? ` · ${look}` : ''}`,
         params: {
@@ -262,11 +267,12 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
           roam: mode === 'leap' ? chute.leap.opens : mode,
           at: [at.x, at.y, at.z].map((v) => v.toFixed(ride ? 2 : 1)).join(','),
           yaw: deg(body.yaw).toFixed(0),
-          rcam: [deg(cam.yaw - body.yaw), (cam.pitch * 180) / Math.PI, cam.distance].map((v) => v.toFixed(0)).join(','),
+          rcam: [deg(cam.yaw - yawOut), (cam.pitch * 180) / Math.PI, cam.distance].map((v) => v.toFixed(0)).join(','),
           // (a shot needs a moment for the camera to come up)
           ...(t.tool === 'camera' || t.tool === 'selfie' ? { sim: '_:1' } : {}),
           ...t,
           ...(ride ? { sim: `e:0.1,_:${Math.max(0.1, ride.seconds - 0.1).toFixed(1)}` } : {}),
+          ...hop?.params,
         },
       };
     },
@@ -309,6 +315,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       f.roamLevels.wake = mode === 'overview' ? 0 : levels.wake;
       f.roamLevels.sail = mode === 'overview' ? 0 : (levels.sail ?? 0);
       f.roamLevels.burner = mode === 'overview' ? 0 : (levels.burner ?? 0);
+      f.roamLevels.fan = mode === 'overview' ? 0 : (levels.fan ?? 0);
     },
   };
 

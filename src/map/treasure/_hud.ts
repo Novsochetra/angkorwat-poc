@@ -67,6 +67,7 @@ function injectStyle(): void {
     .rh > .tg-count { left: calc(24 * var(--px)); top: calc(76 * var(--px)); gap: calc(7 * var(--px)); padding: calc(6 * var(--px)) calc(12 * var(--px)) calc(6 * var(--px)) calc(9 * var(--px));
       font: 700 calc(15 * var(--px)) / 1 var(--mu-display); color: var(--mu-ink); letter-spacing: 0.02em; --mu-edge: rgba(255, 208, 112, 0.45);
       opacity: 0; visibility: hidden; transition: opacity 0.6s, visibility 0s 0.6s; pointer-events: none; }
+    :lang(km) .rh > .tg-count { letter-spacing: 0; }
     .rh > .tg-count > .mu-bg { background: color-mix(in srgb, rgba(13, 25, 39, 0.62), rgba(4, 15, 32, 0.62) var(--mu-night)); }
     .rh > .tg-count .mu-glow { opacity: 0; transition: opacity 0.8s; }
     .rh.is-roam > .tg-count { opacity: 1; visibility: visible; transition: opacity 0.6s 0.5s, visibility 0s; }

@@ -40,8 +40,8 @@ export interface ShrineLights {
   tips: [number, number, number][];
   /** Where a thread of smoke starts (m), and how strong (1 = a bowl of sticks). */
   smoke: { at: [number, number, number]; strength: number }[];
-  /** Soft halos at night (m, size across). */
-  halos: { at: [number, number, number]; size: number }[];
+  /** Soft halos at night (m, size across; strength, default `HALO`). */
+  halos: { at: [number, number, number]; size: number; strength?: number }[];
 }
 
 /** Puffs in one thread of smoke. */
@@ -53,6 +53,8 @@ const TIP = 0.045;
 const FLAME_COLOR = new Color(1, 0.6, 0.24);
 const TIP_COLOR = new Color(1, 0.26, 0.07);
 const LEVEL = { day: 0.95, night: 2.1 };
+/** A halo's default strength (additive: more bleaches the stone round it white). */
+const HALO = 0.22;
 
 export class ShrineGlow {
   readonly object = new Group();
@@ -105,7 +107,7 @@ export class ShrineGlow {
     l.smoke.forEach((s, e) => {
       for (let q = 0; q < PUFFS; q++) put(s.at[0], s.at[1], s.at[2], 0, (q + 0.37 * e) / PUFFS, 0.2 * Math.sqrt(s.strength), 0.3 * s.strength);
     });
-    for (const h of l.halos) put(h.at[0], h.at[1], h.at[2], 1, (h.at[0] * 0.37 + h.at[2] * 0.11) % 1, h.size, 0.34);
+    for (const h of l.halos) put(h.at[0], h.at[1], h.at[2], 1, (h.at[0] * 0.37 + h.at[2] * 0.11) % 1, h.size, h.strength ?? HALO);
     geo.setAttribute('aAt', new InstancedBufferAttribute(at, 3));
     geo.setAttribute('aInfo', new InstancedBufferAttribute(info, 4));
     geo.instanceCount = count;

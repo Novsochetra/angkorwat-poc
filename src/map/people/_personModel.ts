@@ -15,6 +15,7 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 import { ROAM_SCALE } from '../roam/types';
+import { SlotMarks } from './_things';
 
 /**
  * The people of the map: one blocky person model (boxes on 13 bones, in the
@@ -103,7 +104,7 @@ export const POSE = {
   /** Harvesting rice: bent over, the left hand gathering the stalks, the right swinging the sickle. */
   reap: 14,
   /**
-   * Rowing a dragon boat, seated on a thwart (festival/): the stroke comes from
+   * Rowing a racing boat (ngo), seated on a thwart (festival/): the stroke comes from
    * `fract(t · ROW_HZ + seed)` (give a crew one `seed`: they row in time) and its
    * strength from the gait's walk share (`gait(i, 0‥1, 0)`: 0 resting … 1 racing).
    */
@@ -417,9 +418,20 @@ function buildModel(): Builder {
   round(1.85, 0.54, 0.05, 0.72, S.hat);
   round(1.665, 0.6, 0.05, 0.74, S.trim);
   round(1.882, 0.13, 0.018, 0.62, S.straw);
-  m.box('head', [0, 1.6, 0.0], [0.62, 0.12, 0.51], S.accent, F.kramaHead)
-    .box('head', [0, 1.6, 0.0], [0.63, 0.04, 0.52], S.accent2, F.kramaHead)
-    .box('head', [0.31, 1.58, 0.07], [0.06, 0.11, 0.11], S.accent, F.kramaHead);
+  // Krama wound round the head: a white band over the brow and a folded top, checked with crossing stripes of
+  // its colour (whole boxes a hair bigger: each shows on every face it reaches, crossings are the same colour),
+  // a knot at the back on the left and a short tail hanging from it, its white fringe at the end.
+  m.box('head', [0, 1.53, 0.01], [0.62, 0.18, 0.51], S.accent2, F.kramaHead)
+    .box('head', [0, 1.64, 0.01], [0.56, 0.05, 0.46], S.accent2, F.kramaHead)
+    .box('head', [0, 1.485, 0.01], [0.625, 0.04, 0.515], S.accent, F.kramaHead)
+    .box('head', [0, 1.575, 0.01], [0.625, 0.04, 0.515], S.accent, F.kramaHead);
+  for (const x of [-0.17, 0, 0.17]) m.box('head', [x, 1.53, 0.01], [0.04, 0.185, 0.515], S.accent, F.kramaHead);
+  for (const z of [-0.1, 0.12]) m.box('head', [0, 1.53, z], [0.625, 0.185, 0.04], S.accent, F.kramaHead);
+  m.box('head', [0, 1.64, 0.01], [0.04, 0.054, 0.465], S.accent, F.kramaHead)
+    .box('head', [0, 1.64, 0.01], [0.565, 0.054, 0.04], S.accent, F.kramaHead)
+    .box('head', [0.2, 1.53, -0.265], [0.12, 0.11, 0.09], S.accent, F.kramaHead)
+    .box('head', [0.23, 1.39, -0.275], [0.09, 0.18, 0.04], S.accent, F.kramaHead)
+    .box('head', [0.23, 1.285, -0.275], [0.092, 0.035, 0.042], S.accent2, F.kramaHead);
   // Apsara mokot: a gold band, tiers narrowing to a spire, ear ornaments.
   m.box('head', [0, 1.62, 0.01], [0.61, 0.06, 0.5], S.gold, F.headdress)
     .box('head', [0, 1.69, 0.0], [0.46, 0.09, 0.38], S.gold, F.headdress)
@@ -450,7 +462,9 @@ function buildModel(): Builder {
   m.box('chest', [0, 0.985, 0.0], [0.34, 0.07, 0.31], S.accent, F.kramaNeck)
     .box('chest', [0, 0.985, 0.0], [0.345, 0.025, 0.315], S.accent2, F.kramaNeck)
     .box('chest', [0.12, 0.87, 0.152], [0.08, 0.17, 0.02], S.accent, F.kramaNeck)
-    .box('chest', [0.12, 0.83, 0.153], [0.082, 0.03, 0.02], S.accent2, F.kramaNeck);
+    .box('chest', [0.12, 0.83, 0.153], [0.082, 0.03, 0.02], S.accent2, F.kramaNeck)
+    .box('chest', [-0.06, 0.985, 0.0], [0.03, 0.075, 0.316], S.accent2, F.kramaNeck)
+    .box('chest', [0.12, 0.88, 0.152], [0.022, 0.1, 0.022], S.accent2, F.kramaNeck);
   // Gold collar, armbands, bracelets, anklets.
   m.box('chest', [0, 0.97, 0.01], [0.37, 0.06, 0.305], S.gold, F.jewels)
     .box('chest', [0, 0.91, 0.15], [0.16, 0.08, 0.012], S.gold, F.jewels)
@@ -1059,9 +1073,13 @@ export class Crowd {
   private readonly shown: Uint8Array;
   private readonly size: Float32Array;
   private readonly uniforms: CrowdUniforms;
-  private dirtyRoot = false;
-  private dirtyCh = 0;
-  private dirtyLook = false;
+  /** People whose matrix, channels (one set each) or look changed since the last flush: only they go up to the GPU. */
+  private readonly rootMarks: SlotMarks;
+  private readonly chMarks: SlotMarks[] = [];
+  private readonly lookMarks: SlotMarks;
+  private readonly rootRange: { attr: InstancedBufferAttribute; size: number }[];
+  private readonly chRange: { attr: InstancedBufferAttribute; size: number }[][] = [];
+  private readonly lookRange: { attr: InstancedBufferAttribute; size: number }[];
   private base = 0;
   /** Boxes in the model (all features). */
   readonly boxes: number;
@@ -1078,6 +1096,8 @@ export class Crowd {
       geo.setAttribute(`aPCh${c}`, attr);
       this.ch.push(a);
       this.attrs.push(attr);
+      this.chMarks.push(new SlotMarks(capacity));
+      this.chRange.push([{ attr, size: 4 }]);
     }
     this.looks = new Float32Array(capacity * 4);
     this.lookAttr = new InstancedBufferAttribute(this.looks, 4);
@@ -1121,6 +1141,10 @@ export class Crowd {
     this.mesh = mesh;
     this.shown = new Uint8Array(capacity);
     this.size = new Float32Array(capacity).fill(PEOPLE_SCALE);
+    this.rootMarks = new SlotMarks(capacity);
+    this.lookMarks = new SlotMarks(capacity);
+    this.rootRange = [{ attr: mesh.instanceMatrix, size: 16 }];
+    this.lookRange = [{ attr: this.lookAttr, size: 4 }];
     (mesh.instanceMatrix.array as Float32Array).fill(0);
     for (let i = 0; i < capacity; i++) for (let c = 0; c < 5; c++) this.ch[c][i * 4 + 2] = -1e4;
   }
@@ -1147,7 +1171,7 @@ export class Crowd {
     this.looks[o + 1] = hi;
     this.looks[o + 2] = look.carry;
     this.looks[o + 3] = look.seed;
-    this.dirtyLook = true;
+    this.lookMarks.mark(i);
     const c = new Color();
     for (let s = 0; s < SLOTS; s++) {
       c.setHex(look.colors[s] ?? 0xff00ff);
@@ -1187,7 +1211,7 @@ export class Crowd {
     m[o + 13] = y;
     m[o + 14] = z;
     m[o + 15] = 1;
-    this.dirtyRoot = true;
+    this.rootMarks.mark(i);
   }
 
   /** Hide person `i` (folds them to a point). */
@@ -1196,7 +1220,7 @@ export class Crowd {
     this.shown[i] = 0;
     const m = this.mesh.instanceMatrix.array as Float32Array;
     m.fill(0, i * 16, i * 16 + 16);
-    this.dirtyRoot = true;
+    this.rootMarks.mark(i);
   }
 
   isShown(i: number): boolean {
@@ -1220,7 +1244,7 @@ export class Crowd {
     a[o] = snap ? v : this.value(i, c, t);
     a[o + 1] = v;
     a[o + 2] = t - this.base;
-    this.dirtyCh |= 1 << c;
+    this.chMarks[c].mark(i);
   }
 
   /**
@@ -1238,7 +1262,8 @@ export class Crowd {
     const phase = tt * rate[o] * Math.PI * 2 + g[o];
     g[o] = (phase - tt * hz * Math.PI * 2) % (Math.PI * 2);
     rate[o] = hz;
-    this.dirtyCh |= (1 << CH.gait) | (1 << CH.pose);
+    this.chMarks[CH.gait].mark(i);
+    this.chMarks[CH.pose].mark(i);
   }
 
   /** Step cycles a second for person `i` walking at `speed` m/s with stride share `walk`. */
@@ -1256,7 +1281,7 @@ export class Crowd {
     a[o] = snap ? p : k < 0.5 ? a[o] : a[o + 1];
     a[o + 1] = p;
     a[o + 2] = t - this.base;
-    this.dirtyCh |= 1 << CH.pose;
+    this.chMarks[CH.pose].mark(i);
   }
 
   /** The pose person `i` is going to. */
@@ -1285,16 +1310,13 @@ export class Crowd {
         this.ch[CH.gait][o + 3] = (this.ch[CH.gait][o + 3] + shift * this.ch[CH.pose][o + 3] * Math.PI * 2) % (Math.PI * 2);
       }
       this.base += shift;
-      this.dirtyCh = 0b11111;
+      if (this.count > 0) for (const m of this.chMarks) m.mark(0, this.count);
     }
     this.uniforms.uPTime.value = t - this.base;
     this.uniforms.uPGlow.value = 1.2 + 3.2 * night;
-    if (this.dirtyRoot) this.mesh.instanceMatrix.needsUpdate = true;
-    for (let c = 0; c < 5; c++) if (this.dirtyCh & (1 << c)) this.attrs[c].needsUpdate = true;
-    if (this.dirtyLook) this.lookAttr.needsUpdate = true;
-    this.dirtyRoot = false;
-    this.dirtyCh = 0;
-    this.dirtyLook = false;
+    this.rootMarks.flush(this.rootRange);
+    for (let c = 0; c < 5; c++) this.chMarks[c].flush(this.chRange[c]);
+    this.lookMarks.flush(this.lookRange);
   }
 
   /** Seconds into the net-casting cycle of person `i` at time `t` (0‥6: the throw leaves the hands at ≈ 4.4 s), for a thrown net to follow. */

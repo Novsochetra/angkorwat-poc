@@ -12,6 +12,7 @@ import { num, onLang, placeText, t, type WordKey } from './lang';
 import { steppedRing, steppedShape } from './shape';
 import { ARROW_PATH, ARROW_SVG, balloonSprite, balloonSvg, BEACON_PATH, BOAT_PATH, RIM_PATH, rampSprite, templeSprite, templeSvg, TEMPLE_SIZE, wingSvg } from './_minimapArt';
 import { LandBuilder, MIST, type LandPicture } from './_minimapLand';
+import { drawPaddies, paddyKey } from './_minimapPaddies';
 
 /**
  * The mini-map while roaming, and the big map (M).
@@ -41,7 +42,8 @@ import { LandBuilder, MIST, type LandPicture } from './_minimapLand';
  *
  * The land is a picture made once (_minimapLand.ts) the first time roaming
  * starts; each redraw (30 a second at most, only while shown) only draws
- * part of it turned round the explorer, and a few markers.
+ * part of it turned round the explorer, and a few markers. The rice paddies
+ * are painted over it in the colour of their season (_minimapPaddies.ts).
  *
  * URL: `bigmap=1` opens the big map (roaming) · `target=<place id>` sets a
  * place as the target, `target=ramp:<i>` a ramp (`roam.launchSpots[i]`),
@@ -268,6 +270,9 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let bgNight = -1;
   // Big map: drawn at this night value; "you are here" where last put.
   let bigNight = -1;
+  /** The rice year now (`MapFrame.season`; NaN: no paddies part), and the paddies' look the big map was drawn with. */
+  let season = NaN;
+  let bigPaddies = '';
   let youX = NaN;
   let youY = NaN;
   let youR = NaN;
@@ -602,6 +607,12 @@ export function createMinimap(d: MinimapDeps): Minimap {
       const dh = (sz1 - sz0) * L.res * sc;
       drawLand(g2, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh, Infinity);
     }
+    if (!Number.isNaN(season)) {
+      bigPaddies = paddyKey(season);
+      g2.setTransform(sc, 0, 0, sc, 0, 0);
+      drawPaddies(g2, season, night, BIG.x0, BIG.z0);
+      g2.setTransform(1, 0, 0, 1, 0, 0);
+    }
     g2.strokeStyle = night > 0.5 ? 'rgba(190, 210, 255, 0.07)' : 'rgba(255, 240, 210, 0.09)';
     g2.lineWidth = Math.max(1, w / 900);
     g2.beginPath();
@@ -707,6 +718,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
         const dw = (sx1 - sx0) * L.res;
         const dh = (sz1 - sz0) * L.res;
         drawLand(g, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh, shot ? Infinity : 4);
+        if (!Number.isNaN(season)) drawPaddies(g, season, night, p.x, p.z);
         g.setTransform(1, 0, 0, 1, 0, 0);
       }
     }
@@ -1029,6 +1041,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       }
       if (toastLeft > 0 && (toastLeft -= f.dt) <= 0) toastEl.classList.remove('is-on');
       night = f.night;
+      // (the paddies drawn only when their part is built: `parts=` in shots may leave it out)
+      season = d.parts.some((q) => q.name === 'paddies') ? f.season : NaN;
       const on = roam.active && !off;
       if (on !== shown) {
         shown = on;
@@ -1069,7 +1083,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
       checkArrival();
       updateDistance();
       if (bigOpen) {
-        if (Math.abs(night - bigNight) > 0.03) drawBig();
+        if (Math.abs(night - bigNight) > 0.03 || (!Number.isNaN(season) && paddyKey(season) !== bigPaddies)) drawBig();
         placeYou();
         writeRampTags();
         placeBalloon();

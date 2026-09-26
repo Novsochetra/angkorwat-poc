@@ -44,7 +44,9 @@ export interface PeopleScene {
  */
 export function viewDist(f: MapFrame, x: number, z: number): number {
   const c = f.camera.position;
-  return Math.hypot(x - c.x, z - c.z);
+  const dx = x - c.x;
+  const dz = z - c.z;
+  return Math.sqrt(dx * dx + dz * dz);
 }
 
 /**

@@ -14,7 +14,9 @@ import {
   Vector3,
   type PerspectiveCamera,
 } from 'three';
+import { eventsNow } from '../events';
 import type { AnimalCallKind, MapFrame } from '../types';
+import { len3 } from './_len';
 
 /**
  * Shared kit of the water and air animals: blocky models made of boxes with
@@ -331,7 +333,7 @@ export class View {
 
   /** Distance from the camera (m). */
   dist(x: number, y: number, z: number): number {
-    return Math.hypot(x - this.cam.x, y - this.cam.y, z - this.cam.z);
+    return len3(x - this.cam.x, y - this.cam.y, z - this.cam.z);
   }
 
   /** In view: a sphere of radius r at (x, y, z) within `far` m. */
@@ -371,9 +373,18 @@ const HEAR = 150;
 /** Push an animal call for the sound (never in shots, only within earshot). */
 export function call(f: MapFrame, kind: AnimalCallKind, x: number, y: number, z: number, gain: number): void {
   if (f.dt <= 0 || !f.calls) return;
-  const d = Math.hypot(x - f.listener.x, y - f.listener.y, z - f.listener.z);
+  const d = len3(x - f.listener.x, y - f.listener.y, z - f.listener.z);
   if (d > HEAR) return;
   f.calls.push({ kind, x, y, z, gain: Math.min(1, gain) });
+}
+
+/**
+ * How much the birds keep out of the weather (0 … 1): the storm's
+ * `EVENTS.shelter`, and steady rain (≈ 0.7: they hunch where they stand and
+ * fly less).
+ */
+export function birdShelter(f: MapFrame): number {
+  return Math.max(eventsNow(f).shelter, 0.75 * smooth(0.3, 0.85, f.weather.rain));
 }
 
 export function smooth(a: number, b: number, x: number): number {

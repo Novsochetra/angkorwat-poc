@@ -7,7 +7,7 @@ import type { Ears } from './water';
  * The festivals' sound (festival/, which writes `FESTIVAL_SCENE` every
  * frame), placed where it happens and faded with distance, gentle:
  *
- * - Water Festival, by day: each rowing dragon boat's drum on every stroke
+ * - Water Festival, by day: each rowing racing boat (ngo)'s drum on every stroke
  *   (a deep barrel drum), and while it races its crew's shout on the pull
  *   ("hou!" / "hei!" in turn, a group of voices); the crowd on the beach, a
  *   murmur that swells into cheering as a heat comes in. At night, only the

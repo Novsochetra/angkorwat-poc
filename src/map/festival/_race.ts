@@ -2,7 +2,7 @@ import { RACE_COURSE } from '../layout';
 import { hash3 } from '../../voxel/random';
 
 /**
- * The dragon boat race on the great lake (Bon Om Touk), heat after heat by
+ * The racing boat (ngo) race on the great lake (Bon Om Touk), heat after heat by
  * day: four boats (ngo), two to a heat, race side by side from the start
  * out west under the mist to the finish by the village (`RACE_COURSE`),
  * coast past the line, turn north and paddle back easy along the north

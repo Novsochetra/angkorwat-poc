@@ -157,9 +157,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  /** What his left hand should hold now (nothing while he prays). */
+  /** What his left hand should hold now (nothing while he prays, or while a posture holds him: the swing's rope grip). */
   function wantHeld(): HoldKind {
-    if (mode !== 'walk' || prayer.handsBusy) return 'none';
+    if (mode !== 'walk' || prayer.handsBusy || explorer.animator.posture) return 'none';
     return handTool();
   }
 
@@ -323,7 +323,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       // Kneeling in prayer (or turning to it, or getting up): a tool, camera or emote key gets him
       // up first and does nothing else (press it again once he stands), so no wave or photo starts from the floor.
-      if (m === 'walk' && prayer.handsBusy && tap(...PRAYER_BREAKERS)) {
+      // E too: he gets up, and does not enter the temple, board or pick up from his knees (the walker hides its prompt meanwhile).
+      if (m === 'walk' && prayer.handsBusy && (input.use || tap(...PRAYER_BREAKERS))) {
         prayer.stop(true);
         stillInput(ctx);
         return;
@@ -380,8 +381,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       photo.step(ctx, dt);
 
-      // Emotes (on foot, hands free of the camera).
-      if (m === 'walk') {
+      // Emotes (on foot, hands free of the camera; not while a posture holds him, e.g. on the
+      // rope swing: the emote would not show and would hold his keys, so the swing could not be stopped).
+      if (m === 'walk' && !explorer.animator.posture) {
         if (tap('KeyF')) play('wave');
         if (tap('KeyC')) play('cheer');
         if (tap('KeyU')) play('lookUp');
@@ -416,8 +418,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         const pointer = fakePointer ?? ctx.input.pointer ?? null;
         const hit = held && beamMouse && pointer && m === 'walk' ? mouseHit(cam.camera, pointer.x, pointer.y, aim) : null;
         explorer.aimPoint = hit;
-        // Standing still: turn once the aim is past what his arm reaches.
-        if (hit && Math.hypot(body.vel.x, body.vel.z) < 0.3) {
+        // Standing still: turn once the aim is past what his arm reaches (not while a posture turns him).
+        if (hit && !explorer.animator.posture && Math.hypot(body.vel.x, body.vel.z) < 0.3) {
           const want = Math.atan2(hit.x - body.pos.x, hit.z - body.pos.z);
           const dYaw = angleDiff(want, body.yaw);
           if (Math.abs(dYaw) > 0.9) body.yaw += (dYaw - Math.sign(dYaw) * 0.3) * Math.min(1, 6 * dt);

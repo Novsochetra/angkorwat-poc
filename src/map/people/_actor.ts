@@ -3,6 +3,13 @@ import { POSE } from './_personModel';
 import { len, type Ground, type Point, type Traffic } from './_routes';
 
 /**
+ * Walking in the rain (index.ts sets it once a frame from the event clock's
+ * `hurry`, events.ts: 1 dry … 1.5 a downpour): every walk (`goTo` at 0.5 m/s
+ * or more) is that much quicker; slow steps (working, shuffling) are not.
+ */
+export const RAIN_PACE = { hurry: 1 };
+
+/**
  * One person on the map, driving their instance of the crowd: where they
  * are and face, walking to a point (turning first, easing in and out of
  * the step), standing and facing somewhere, their pose, the prop held up,
@@ -92,11 +99,11 @@ export class Actor {
     this.riding = true;
   }
 
-  /** Walk towards (x, z) at up to `speed` m/s (slowing on arrival, then standing). */
+  /** Walk towards (x, z) at up to `speed` m/s (slowing on arrival, then standing; a walk quickens in the rain: `RAIN_PACE`). */
   goTo(x: number, z: number, speed: number): void {
     this.gx = x;
     this.gz = z;
-    this.want = speed;
+    this.want = speed >= 0.5 ? speed * RAIN_PACE.hurry : speed;
   }
 
   /** Stand still (where they are), turning to `yaw` if given. */
@@ -169,6 +176,21 @@ export class Actor {
   hide(): void {
     this.shown = false;
     this.crowd.hide(this.i);
+  }
+
+  /**
+   * Shuffle towards (x, z) by at most `max` m, facing the way they face (a
+   * row working its way along a paddy: no turning round to walk a step);
+   * then they stand there (`step` turns them to `face`).
+   */
+  shuffle(x: number, z: number, max: number): void {
+    const dx = x - this.x;
+    const dz = z - this.z;
+    const d = len(dx, dz);
+    const k = d > max ? max / d : 1;
+    this.x = this.gx = this.x + dx * k;
+    this.z = this.gz = this.z + dz * k;
+    this.want = 0;
   }
 
   /** Shift them a little (kept apart from others; onto open ground only). */

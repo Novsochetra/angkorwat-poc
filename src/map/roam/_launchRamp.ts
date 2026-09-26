@@ -1,4 +1,4 @@
-import { Color, Euler, Group, Matrix4, Vector3, type InstancedMesh } from 'three';
+import { Color, Euler, Group, Matrix4, Vector3, type InstancedMesh, type Object3D } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -114,7 +114,7 @@ const BAY = 2.8;
 const TALL_POST = 6;
 
 /** A ramp; `site` the land it stands on (without one: a flat cliff top). */
-export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; blocks: number; lamp: Vector3; update(night: number, t: number): void } {
+export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; blocks: number; lamp: Vector3; flagAt: Object3D; update(night: number, t: number, flag?: boolean): void } {
   const b = new VoxelBuilder();
   const src = traceSource();
   const tone = (list: readonly number[], i: number, j: number, k: number) => list[Math.floor(hash3(i, j, k, seed * 131 + 7) * list.length)];
@@ -381,12 +381,12 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
   pivot.add(sock);
   group.add(pivot);
   // The flag, hoisted from the mast's top just under the beacon; it streams downwind with the sock.
-  const flag = new RampFlag(seed);
-  flag.object.position.x = 0.14;
+  const flagCloth = new RampFlag(seed);
+  flagCloth.object.position.x = 0.14;
   const flagPivot = new Group();
   flagPivot.name = 'launchRamp:flag';
   flagPivot.position.set(M.x, M.height - 0.3, M.z);
-  flagPivot.add(flag.object);
+  flagPivot.add(flagCloth.object);
   group.add(flagPivot);
   // (each ramp's wind gusts at its own pace, and comes from its own side)
   const phase = hash3(seed, 3, 1, 61) * 20;
@@ -397,7 +397,9 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
     group,
     blocks: blocksMain + ws.boxes.length,
     lamp,
-    update(night: number, t: number) {
+    flagAt: flagPivot,
+    // (`flag` false: the flag keeps its last shape, nothing uploaded, when it can't be seen)
+    update(night: number, t: number, flag = true) {
       const tt = t + phase;
       const k = Math.max(0, Math.min(1, night));
       // The sock trails back (−z), swings a little across and lifts and droops with the gusts.
@@ -407,7 +409,7 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
       pivot.rotation.set(0.12 + 0.35 * (1 - gust) + 0.04 * Math.sin(tt * 2.3), Math.PI + wind + 0.22 * Math.sin(tt * 0.6) + 0.07 * Math.sin(tt * 1.9), 0, 'YXZ');
       // The flag the same way (its +x downwind), a moment behind the light sock.
       flagPivot.rotation.y = Math.PI / 2 + wind + 0.16 * Math.sin(tt * 0.6 - 0.5) + 0.04 * Math.sin(tt * 1.9 - 0.8);
-      flag.update(tt, gust, k);
+      flagCloth.update(tt, gust, k, flag);
       // The lantern: soft by day, a warm flicker bright enough to bloom at night.
       const flicker = 1 + k * (0.05 * Math.sin(tt * 11.3) + 0.04 * Math.sin(tt * 17.9));
       glass.setColorAt(0, c.copy(LAMP).multiplyScalar((0.45 + k * 4.5) * flicker));

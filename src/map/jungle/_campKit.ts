@@ -28,6 +28,8 @@ export const CUT = [0xd8b27a, 0xcfa56b, 0xe0bd88];
 export const LOG_BARK = [0x5f4a38, 0x6b533e, 0x564231, 0x735a43];
 /** Grey sandstone and river stones. */
 export const ROCK = [0x8a8378, 0x7d776d, 0x958d80, 0x6f6a62, 0x9c9486];
+/** Laterite flagstones (stepping stones, post footings): warm red-brown, ochre (grey went navy in the shade). */
+export const FLAGSTONE = [0xa86f47, 0x9e6640, 0xb37a50, 0x94603d];
 /** Moss on stones (mapLeaf: soft cushions). */
 export const MOSS = [0x4f6a2c, 0x5a7732, 0x44602a, 0x66823a];
 /** Rope and twine. */

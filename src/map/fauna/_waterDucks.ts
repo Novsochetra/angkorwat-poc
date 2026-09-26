@@ -3,8 +3,10 @@ import type { HeightField } from '../heightfield';
 import type { MapFrame } from '../types';
 import { call, creatureMaterial, Herd, smooth, window01, type Explorer, type View } from './_waterAirKit';
 import { DUCK, duckShapes } from './_waterModels';
+import type { LakeBirds } from './_waterLake';
 import type { Rings } from './_waterRings';
 import { reachIndex, reachNear, reachPoint, type Reach, type ReachPoint } from './_waterRivers';
+import { len2 } from './_len';
 
 /**
  * Little families of ducks on the calm river reaches: Indian spot-billed
@@ -18,6 +20,9 @@ import { reachIndex, reachNear, reachPoint, type Reach, type ReachPoint } from '
  * off along the river away from him, quacking, the grown ducks pattering and
  * flapping low over the water; once he is gone they paddle slowly back.
  * At night they drift slower, heads tucked.
+ *
+ * On the great lake too (_waterLake.ts): a raft of whistling ducks and a
+ * spot-billed family offshore.
  */
 
 interface FamilyDef {
@@ -109,11 +114,14 @@ export interface Ducks {
   update(f: MapFrame, view: View, me: Explorer, rings: Rings | null): void;
 }
 
-export function buildDucks(field: HeightField): Ducks {
+export function buildDucks(field: HeightField, extra: LakeBirds | null = null): Ducks {
   const rnd = mulberry32(5150);
   const families: Family[] = [];
-  for (const def of FAMILIES) {
-    const reach = reachNear(field, def.at[0], def.at[1], 40);
+  const defs: { reach: Reach | null; def: Omit<FamilyDef, 'at'> }[] = [
+    ...FAMILIES.map((def) => ({ reach: reachNear(field, def.at[0], def.at[1], 40), def })),
+    ...(extra?.families ?? []).map((def) => ({ reach: def.reach, def })),
+  ];
+  for (const { reach, def } of defs) {
     if (!reach || reach.b - reach.a < 20) continue;
     const span = Math.min(24, (reach.b - reach.a) / 2 - 3);
     const period = (2 * span) / DOWN + (2 * span) / UP + (2 * TURN) / ROUND;
@@ -226,7 +234,7 @@ export function buildDucks(field: HeightField): Ducks {
         if (me.near && Math.abs(me.y - level) < 5) {
           for (const d of fa.ducks) {
             place(fa, d, along, fa.shift, q);
-            near = Math.min(near, Math.hypot(q.x - me.x, q.z - me.z));
+            near = Math.min(near, len2(q.x - me.x, q.z - me.z));
           }
         }
         const shy = me.boat ? SHY_BOAT : SHY;

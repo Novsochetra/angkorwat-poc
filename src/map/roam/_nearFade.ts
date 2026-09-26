@@ -94,6 +94,14 @@ export function followNearFade(focus: Vector3 | null, dt: number, amount = 1): v
   u.value = Math.min(amount, u.value + (1 - u.value) * (1 - Math.exp(-EASE * dt)));
 }
 
+/**
+ * Let the near fade reach one more material (a lit one whose fragment shader
+ * has `vViewPosition` and the clipping planes chunk, as MeshStandardMaterial):
+ * the festival's things and crowd. Once, at build, after the material's own
+ * `onBeforeCompile`.
+ */
+export const fadeNearMaterial = (m: Material): void => addFade(m);
+
 /** Add the fade to a material's shader (after its own changes). */
 function addFade(m: Material): void {
   if (m.userData.nearFade) return;

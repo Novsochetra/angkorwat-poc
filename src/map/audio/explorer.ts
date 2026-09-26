@@ -90,6 +90,7 @@ const LEVEL = {
   wake: 0.24,
   sail: 0.3,
   burner: 0.5,
+  fan: 0.22,
 };
 /** Steps closer together than this are one step (s). */
 const STEP_GAP = 0.09;
@@ -165,6 +166,7 @@ export class Explorer {
   private wake: Lasting | null = null;
   private sail: Lasting | null = null;
   private burner: Lasting | null = null;
+  private fan: Lasting | null = null;
   /** The burner's level last frame (it lights with a thump). */
   private burnerWas = 0;
 
@@ -285,8 +287,14 @@ export class Explorer {
     }
   }
 
-  /** Rushing air (falling, gliding), the water along the boat, the glider's sail, the balloon's burner, 0‥1 each; called every frame. */
-  levels(wind: number, wake: number, t: number, sail = 0, burner = 0): void {
+  /** Rushing air (falling, gliding), the water along the boat, the glider's sail, the balloon's burner and its inflation fan, 0‥1 each; called every frame. */
+  levels(wind: number, wake: number, t: number, sail = 0, burner = 0, fan = 0): void {
+    this.fan = this.lasting(this.fan, fan, t, () => this.makeFan(), (l, v) => {
+      // The engine winds up: louder, its hum and the air higher.
+      glide(l.env.gain, LEVEL.fan * v ** 0.7, t, 0.4);
+      glide(l.tone.frequency, 380 + 420 * v, t, 0.5);
+      glide(l.low.gain, 0.5 + 0.5 * v, t, 0.5);
+    });
     // The burner lights: a soft low "whump" as the flame catches.
     if (burner > 0.15 && this.burnerWas <= 0.15) {
       this.burst(t, { kind: 'brown', type: 'lowpass', f0: 700, f1: 180, q: 0.7, attack: 0.012, tau: 0.09, dur: 0.25, level: LEVEL.burner * 1.6, wet: 0.08 });
@@ -535,6 +543,33 @@ export class Explorer {
     cloth.connect(band).connect(beat).connect(low).connect(env);
     this.out(env, 0, 0.06);
     return { env, tone, low, sources: [hum, cloth, lfo], nodes: [hum, tone, humGain, cloth, band, beat, lfo, depth, low, env], level: 0, quietSince: -1 };
+  }
+
+  private makeFan(): Lasting {
+    const ctx = this.ctx;
+    const r = this.rnd;
+    // The balloon's inflation fan: a small petrol engine's low hum (a soft sawtooth, lowpassed, with its
+    // firing flutter) and the cold air it blows (pink noise in a soft band).
+    const env = this.gain(0);
+    const hum = ctx.createOscillator();
+    hum.type = 'sawtooth';
+    hum.frequency.value = range(r, 48, 56);
+    const lp = biquad(ctx, 'lowpass', 260, 0.7);
+    const low = this.gain(0.5);
+    const flutter = this.gain(1);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = range(r, 22, 26);
+    const depth = this.gain(0.25);
+    lfo.connect(depth).connect(flutter.gain);
+    hum.connect(lp).connect(flutter).connect(low).connect(env);
+    const air = this.loop(noise('pink'));
+    const tone = biquad(ctx, 'bandpass', 600, 0.6);
+    const airGain = this.gain(0.6);
+    air.connect(tone).connect(airGain).connect(env);
+    hum.start(ctx.currentTime);
+    lfo.start(ctx.currentTime);
+    this.out(env, 0, 0.06);
+    return { env, tone, low, sources: [hum, lfo, air], nodes: [hum, lp, flutter, lfo, depth, low, air, tone, airGain, env], level: 0, quietSince: -1 };
   }
 
   private makeBurner(): Lasting {

@@ -1,3 +1,4 @@
+import { eventsNow } from '../events';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
@@ -68,6 +69,9 @@ export class Monks implements PeopleScene {
   /** How long they have waited for other people (a stand-off ends after a few seconds). */
   private stuck = 0;
   private started = false;
+  /** Out in the morning (alms bowls), and the rain on (umbrellas up, whatever the hour: `EVENTS.umbrellas`). */
+  private morning = false;
+  private wet = false;
   private readonly sweeper: Sweeper;
   private readonly tmp: Point & { yaw?: number } = { x: 0, y: 0, z: 0 };
 
@@ -119,16 +123,24 @@ export class Monks implements PeopleScene {
   private goOut(dir: 1 | -1, s: number, morning: boolean): void {
     this.mode = 'out';
     this.dir = dir;
+    this.morning = morning;
     this.members.forEach((m, k) => {
       m.s = s - dir * k * GAP;
       m.lane = -0.9;
-      const look = m.looks[morning ? 0 : 1];
+      m.a.hide();
+    });
+    this.dressAll();
+  }
+
+  /** Bowls in the morning, else umbrellas (against the sun, or the rain). */
+  private dressAll(): void {
+    for (const m of this.members) {
+      const look = m.looks[this.morning && !this.wet ? 0 : 1];
       if (m.a.look !== look) {
         m.a.look = look;
         this.env.crowd.dress(m.a.i, look);
       }
-      m.a.hide();
-    });
+    }
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
@@ -138,6 +150,12 @@ export class Monks implements PeopleScene {
     }
     this.sweeper.update(dt, now, f, ex);
     const L = this.route.len;
+    // (rain: umbrellas up, down again when it has passed)
+    const u = eventsNow(f).umbrellas;
+    if (this.wet ? u < 0.3 : u > 0.5) {
+      this.wet = !this.wet;
+      this.dressAll();
+    }
     if (this.mode === 'in') {
       this.timer -= dt;
       // (no setting out with the evening coming: they stay in for the night)

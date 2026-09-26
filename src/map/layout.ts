@@ -657,7 +657,7 @@ export const PADDIES: Paddy[] = [
 ];
 
 /**
- * A straight lane for the dragon boat race (a festival, later) on the great
+ * A straight lane for the racing boat (ngo) race (a festival, later) on the great
  * lake: starts out west under the mist, finishes by the village.
  */
 export const RACE_COURSE = { from: [-548, 10] as [number, number], to: [-348, 10] as [number, number] };

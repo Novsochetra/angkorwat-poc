@@ -4,6 +4,7 @@ import { CH, type Flock } from './_kit';
 import { Bath, type BathEvent, type BathSite, type P3 } from './_landBath';
 import type { Walker } from './_landBrain';
 import type { Splash } from './_landSplash';
+import { len2 } from './_len';
 
 /**
  * A cow elephant and her calf walking the valley road: slowly up and down a
@@ -170,7 +171,7 @@ export class Trek {
       const dz = ex.z - p.z;
       const ahead = dx * fx + dz * fz;
       const across = Math.abs(dx * fz - dz * fx);
-      const d = Math.hypot(dx, dz);
+      const d = len2(dx, dz);
       blocked = d < BLOCK_NEAR || (ahead > 0 && ahead < BLOCK_AHEAD && across < BLOCK_ACROSS);
       if (d < 12 && now - this.trumpetAt > 90 && night < 0.6) {
         this.trumpetAt = now;
@@ -185,7 +186,7 @@ export class Trek {
       const dz = o.z - p.z;
       const ahead = dx * fx + dz * fz;
       const across = Math.abs(dx * fz - dz * fx);
-      if (Math.hypot(dx, dz) < PEOPLE_NEAR || (ahead > -0.5 && ahead < PEOPLE_AHEAD && across < PEOPLE_ACROSS)) {
+      if (len2(dx, dz) < PEOPLE_NEAR || (ahead > -0.5 && ahead < PEOPLE_AHEAD && across < PEOPLE_ACROSS)) {
         byPeople = true;
         break;
       }

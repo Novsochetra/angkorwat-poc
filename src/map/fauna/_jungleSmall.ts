@@ -3,6 +3,7 @@ import { SURFACE } from '../heightfield';
 import { CH, Model, type Flock, type Species } from './_kit';
 import type { Ground, Walker } from './_landBrain';
 import type { Canopy, Trunk } from './_jungleSurvey';
+import { len2 } from './_len';
 
 /**
  * Small life round the roaming explorer, one small pool of animals that
@@ -294,7 +295,7 @@ export class SmallLife {
     this.spawnIn -= dt;
     for (const c of this.critters) {
       if (!c.on) continue;
-      const d = ex ? Math.hypot(c.x - ex.x, c.z - ex.z) : Infinity;
+      const d = ex ? len2(c.x - ex.x, c.z - ex.z) : Infinity;
       // Let go: far from him, or night / him gone, out of sight.
       if ((d > GONE || !ex || !day) && (!seen(c.x, c.y + 0.1, c.z) || d > GONE + 15)) {
         c.on = false;
@@ -571,7 +572,7 @@ export class SmallLife {
   private walkTo(c: Critter, dt: number, speed: number, free = false): boolean {
     const dx = c.tx - c.x;
     const dz = c.tz - c.z;
-    const d = Math.hypot(dx, dz);
+    const d = len2(dx, dz);
     if (d < 0.05) return true;
     c.yaw = Math.atan2(dx, dz);
     const go = Math.min(d, speed * dt);

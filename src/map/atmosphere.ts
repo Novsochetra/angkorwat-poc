@@ -125,6 +125,8 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   let shadowDirty = true;
   let frames = 0;
   let lastDrift = NaN;
+  /** How much the eye has got used to the shade under the leaves (0‥1, eased). */
+  let under = 0;
 
   return {
     name: 'atmosphere',
@@ -136,13 +138,20 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
       if (redraw || shadowDirty) fitShadow(s.keyDir);
       f.lightDir.copy(fitted);
 
+      // Under the jungle's leaves (roaming on foot or by boat; 0 in the overview)
+      // the eye gets used to the shade: paler shadows, more sky fill, a little
+      // more exposure. No light is added. Half of it at night.
+      const leaves = (f.canopy ?? 0) * (1 - 0.5 * s.night);
+      under += (leaves - under) * (f.dt > 0 ? 1 - Math.exp(-f.dt / 2.5) : 1);
+      SKY.exposure *= 1 + 0.1 * under;
+
       key.color.copy(s.key);
       key.intensity = s.keyIntensity;
-      key.shadow.intensity = s.shadow;
+      key.shadow.intensity = s.shadow * (1 - 0.4 * under);
       key.shadow.radius = s.shadowSoft;
       fill.color.copy(s.fillSky);
       fill.groundColor.copy(s.fillGround);
-      fill.intensity = s.fillIntensity;
+      fill.intensity = s.fillIntensity * (1 + 0.5 * under);
       if (redraw || shadowDirty) shadows.needsUpdate = true;
       shadowDirty = false;
 

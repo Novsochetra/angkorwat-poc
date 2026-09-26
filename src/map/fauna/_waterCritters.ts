@@ -5,6 +5,7 @@ import { call, smooth, type Explorer, type Herd, type View } from './_waterAirKi
 import { CRITTER } from './_waterModels';
 import type { Rings } from './_waterRings';
 import { drawnWater, openWater } from './_waterRivers';
+import { len2 } from './_len';
 
 /**
  * Small water life, only where it can be seen:
@@ -203,13 +204,13 @@ export function buildWaterCritters(field: HeightField): WaterCritters {
       if (dark <= 0 || !me.near) return;
       frogs.forEach((fr, i) => {
         // A new bank when he has gone on, or a while after it hopped in.
-        const far = !fr.on || Math.hypot(fr.x - me.x, fr.z - me.z) > 28;
+        const far = !fr.on || len2(fr.x - me.x, fr.z - me.z) > 28;
         if (far || (fr.gone && t - fr.hopT > 25)) {
           if (t - fr.homeT > 1 || fr.homeT > t) placeFrog(fr, i, t, me);
           if (!fr.on) return;
         }
         if (fr.gone) return;
-        const d = Math.hypot(fr.x - me.x, fr.z - me.z);
+        const d = len2(fr.x - me.x, fr.z - me.z);
         if (fr.hopT < 0 && d < (me.boat ? FROG_SHY * 1.5 : FROG_SHY)) {
           fr.hopT = t;
           call(f, 'frog', fr.x, fr.y, fr.z, 0.35);

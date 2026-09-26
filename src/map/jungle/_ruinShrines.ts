@@ -44,13 +44,20 @@ const putter =
 
 /** The Buddha's sandstone: warm, lighter than the ruins (the people keep him clean). */
 const B = {
-  stone: [0xb3a791, 0xab9f89, 0xbaae98, 0xa59983],
+  stone: [0xc2aa89, 0xbaa282, 0xc8b190, 0xb39b7c],
   skin: [0xc4b9a3, 0xbeb29c, 0xcabfa9],
+  /** The face: brighter and warm, little variation (the features are drawn in tone). */
+  face: [0xdec7a0, 0xdac39c, 0xe2cba5],
   dark: [0x3d372f, 0x453e35],
   shade: [0x938875, 0x8b806e],
-  hair: [0x7a7163, 0x6f675a, 0x857b6c],
+  hair: [0xa28b6b, 0x9a8466, 0xa89171],
   lotus: [0xa2967f, 0x998d77, 0xab9f88],
   lotusLight: [0xc3b79e, 0xbbaf96],
+};
+/** A colour made lighter or darker (sRGB multiply). */
+const scale = (hex: number, by: number): number => {
+  const c = (v: number) => Math.min(255, Math.round(v * by));
+  return (c((hex >> 16) & 255) << 16) | (c((hex >> 8) & 255) << 8) | c(hex & 255);
 };
 /** The throne's centre (site z, m). */
 const ZB = -2;
@@ -120,65 +127,57 @@ function seatedBuddha(fr: SiteFrame, seed: number): void {
   for (const x of [-1.75, 0, 1.75]) garlandDrop(fr, x, 1.0, zf, 0.35, seed + 19 + x, 0.09);
   bg.commit();
 
-  // The head (0.125 m cells) over the neck.
-  const hg = fr.grid(0.125, { seed: seed + 20, at: [0, 17 * 0.25, ZB - 0.125], ao: 0.12, jitter: 0.02 });
+  // The head (0.125 m cells) over the neck: an Angkor-period face, broad and
+  // serene, the eyes lowered, a faint smile, long lobes, the hair in curls
+  // over the ushnisha. The face is flush (k 4) and drawn in tone only, so no
+  // feature makes a pit in the shade under the tree; only the nose stands out.
+  const hg = fr.grid(0.125, { seed: seed + 20, at: [0, 17 * 0.25, ZB - 0.125], ao: 0.12, jitter: 0.015 });
   const H = putter(hg);
-  // Per row from the chin: half width, back and front (cells).
-  const ROWS: [number, number, number][] = [
-    [2, -1, 4],
-    [3, -2, 4],
-    [4, -3, 4],
-    [4, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 4],
-    [5, -4, 3],
-    [4, -4, 3],
-    [3, -3, 2],
-    [3, -3, 2],
-    [2, -2, 1],
-  ];
+  // Per row from the chin: half width, back and front (cells). The jaw is
+  // narrow at r1–r2 so the lobes hang free; the hairline steps back at r11.
+  const ROWS: [number, number, number][] = [[3, -1, 3], [4, -2, 4], [4, -3, 4]];
+  for (let r = 3; r <= 10; r++) ROWS.push([5, -4, 4]);
+  ROWS.push([5, -4, 3], [5, -4, 3], [4, -4, 2], [3, -3, 1]);
+  // (then the ushnisha, curls all over)
+  ROWS.push([2, -2, 1], [2, -2, 1], [1, -1, 0]);
   ROWS.forEach(([hw, kb, kf], r) => {
     const kc = (kb + kf) / 2;
     const hd = (kf - kb) / 2 + 0.5;
     for (let i = -hw; i <= hw; i++)
       for (let k = kb; k <= kf; k++) {
-        if (Math.abs(i / (hw + 0.5)) ** 2.6 + Math.abs((k - kc) / hd) ** 2.6 > 1.02) continue;
-        const hair = r >= 11;
-        // (the hair in curls: every other cell a little proud of the next, in light and shade)
-        const color = hair ? t(B.hair, i, r, k, 21) : t(B.skin, i, r, k, 23);
-        H(i, r, k, color, 'mapStone', hair ? ((i + k + r) & 1 ? 0.84 : 1.06) : 1);
+        if (Math.abs(i / (hw + 0.5)) ** 4 + Math.abs((k - kc) / hd) ** 4 > 1.02) continue;
+        const hair = r >= 11 || k <= -2 || (Math.abs(i) >= 5 && r >= 9 && k <= 1);
+        // (the curls: a gentle checker, warm stone, never black in the shade)
+        if (hair) H(i, r, k, t(B.hair, i, r, k, 21), 'mapStone', (i + k + r) & 1 ? 0.94 : 1.04);
+        else H(i, r, k, t(B.face, i, r, k, 23));
       }
   });
-  // The face (front at k 4): flush, drawn in tone, so no feature throws a
-  // hard shadow (the brows over the eyes would read as hollows); only the
-  // nose and the lips stand out a little (k 5).
-  const skin = (i: number, r: number, k: number) => t(B.skin, i, r, k, 24);
-  const light = (i: number, r: number, k: number) => t(B.lotusLight, i, r, k, 28);
-  H(0, 1, 5, skin(0, 1, 5), 'mapStone', 1.03); // lower lip
-  H(0, 2, 4, t(B.shade, 0, 2, 4, 25), 'mapStone', 1.02); // the mouth, closed, a small smile
-  for (const s of [-1, 1]) H(s, 2, 4, skin(s, 2, 4), 'mapStone', 0.94);
-  for (const s of [-1, 1]) H(s * 2, 3, 4, skin(s, 3, 4), 'mapStone', 0.95);
-  H(0, 3, 5, skin(0, 3, 5), 'mapStone', 1.02); // upper lip
-  for (let r = 4; r <= 6; r++) H(0, r, 5, light(0, r, 5), 'mapStone', r === 4 ? 1.02 : 1.06); // the nose
-  for (const s of [-1, 1]) for (let a = 2; a <= 3; a++) H(s * a, 6, 4, t(B.shade, a, 6, 4, 27), 'mapStone', 1.08); // eyes, lowered: thin lines
-  for (const s of [-1, 1]) for (let a = 1; a <= 4; a++) H(s * a, 7, 4, light(a, 7, 4), 'mapStone', 1.05); // brows, arched
-  for (const s of [-1, 1]) H(s * 4, 6, 4, light(4, 6, 4), 'mapStone', 1.02);
-  H(0, 7, 4, 0xcfc6b4, 'mapStone', 1.08); // the urna
+  // Features: the face's own stone, lighter or darker (sRGB).
+  const f = (i: number, r: number, k: number, by: number) => H(i, r, k, scale(t(B.face, i, r, k, 24), by));
+  f(0, 4, 5, 1.02); // the nose, proud
+  f(0, 5, 5, 1.04);
+  f(0, 6, 4, 1.04); // its bridge
+  f(0, 7, 4, 1.04);
+  for (const s of [-1, 1]) {
+    for (let a = 2; a <= 4; a++) f(s * a, 6, 4, a === 3 ? 0.84 : 0.9); // the eyes, lowered: the lash line
+    for (let a = 2; a <= 4; a++) f(s * a, 7, 4, 1.03); // the heavy lids
+    for (let a = 1; a <= 4; a++) f(s * a, 8, 4, 0.93); // a faint brow
+    f(s * 2, 3, 4, 0.93); // the corners of the smile, turned up
+  }
+  for (let i = -1; i <= 1; i++) {
+    f(i, 2, 4, 0.86); // the mouth, closed
+    f(i, 1, 4, 1.04); // the lower lip
+  }
   // Ears, their long lobes hanging beside the jaw.
   for (const s of [-1, 1]) {
-    for (let r = 5; r <= 8; r++) for (let k = -1; k <= 0; k++) H(s * 6, r, k, t(B.skin, s, r, k, 30), 'mapStone', 0.97);
-    for (let r = 2; r <= 4; r++) H(s * 5, r, 0, t(B.skin, s, r, 0, 31), 'mapStone', 0.95);
-    H(s * 6, 4, 0, t(B.skin, s, 4, 0, 31), 'mapStone', 0.95);
+    for (let r = 5; r <= 9; r++) for (let k = -1; k <= 0; k++) H(s * 6, r, k, scale(t(B.face, s, r, k, 30), k === 0 && (r === 6 || r === 7) ? 0.86 : 0.97));
+    for (let r = 1; r <= 4; r++) H(s * 6, r, 0, scale(t(B.face, s, r, 0, 31), 0.96));
   }
-  // Ushnisha finial, gilded.
-  for (let i = -1; i <= 1; i++) for (let k = -1; k <= 0; k++) H(i, 16, k, BRASS[0], 'brass');
-  H(0, 17, 0, BRASS[2], 'brass');
-  H(0, 18, 0, BRASS[2], 'brass', 1.1);
+  // A lotus-bud finial on the ushnisha, gilded.
+  H(0, 18, 0, BRASS[0], 'brass');
+  for (const [di, dk] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) H(di, 18, dk, BRASS[1], 'brass');
+  H(0, 19, 0, BRASS[2], 'brass');
+  H(0, 20, 0, BRASS[2], 'brass', 1.1);
   hg.commit();
 }
 
@@ -223,9 +222,8 @@ export function forestBuddha(fr: SiteFrame, L: ShrineLights): void {
   fruitPlate(fr, 0.52, top, tzc + 0.12, 0.3, 1);
   // A marigold garland along the table's front.
   garland(fr, [tx0 + 0.05, top - 0.06, tz1 + 0.04], [tx1 - 0.05, top - 0.06, tz1 + 0.04], 0.22, 635, 0.08);
-  // Night: a soft halo over the table.
-  L.halos.push({ at: fr.point(0, top + 0.6, tzc), size: 4.2 });
-  L.halos.push({ at: fr.point(0, 3.2, ZB + 0.8), size: 3.2 });
+  // Night: a soft halo over the table (none on the Buddha: it bleached the stone white).
+  L.halos.push({ at: fr.point(0, top + 0.5, tzc), size: 2.2 });
 
   steppingStones(fr, [0.2, 5.6], [0.1, 1.2], 1.1, 640, PATH_STONE);
   plantsAround(fr, { n: 40, r0: 3, r1: 8.5, seed: 641, flowers: 0.25, keepOut: (x, z) => Math.abs(x) < 2.6 && z > -4.8 && z < 6 });
@@ -341,8 +339,8 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights): void {
 
 // ── The lake shrine ──────────────────────────────────────────────────────
 
-/** Grey stepping stones and paving. */
-const PATH_STONE = [0x8f877a, 0x9b9283, 0x857d70, 0x958c7e];
+/** Laterite stepping stones and paving: warm red-brown and ochre (grey went navy in the shade). */
+const PATH_STONE = [0xa86f47, 0x9e6640, 0xb37a50, 0x94603d];
 
 const LIME = [0xeeeadf, 0xe6e1d4, 0xf3efe6, 0xdfd9cb];
 const LIME_OLD = [0xc9c4b6, 0xbfbaac, 0xd2cdbf];
@@ -406,7 +404,7 @@ export function lakeShrine(fr: SiteFrame, L: ShrineLights): void {
   lotusOpen(fr, -0.3, stepY, zc + 1.25, 0.9);
   fruitPlate(fr, 0.32, stepY, zc + 1.22, -0.2, 0.8);
   garland(fr, [-0.8, 1.95, zc + 0.8], [0.8, 1.95, zc + 0.8], 0.28, 812, 0.07);
-  L.halos.push({ at: fr.point(0, 1.3, zc + 1.4), size: 3.2 });
+  L.halos.push({ at: fr.point(0, 1.3, zc + 1.4), size: 2.2 });
 
   // The frangipani to its left, flowers in its crown; ferns.
   const tg = fr.grid(1, { seed: 820, mat: 'mapBark' });
@@ -514,7 +512,7 @@ export function kulenShrine(fr: SiteFrame, L: ShrineLights): void {
   bg.commit();
   // Candles before him, on the cella's floor.
   for (const x of [-0.5, 0.5]) candle(fr, L, x, 0.5, zc + 0.35, 0.18, 0.07, 930 + x);
-  L.halos.push({ at: fr.point(0, 1.2, zc + 1.2), size: 3 });
+  L.halos.push({ at: fr.point(0, 1.2, zc + 1.2), size: 2.2 });
 
   // The urn on the step, marigolds on the platform's front edge.
   const uz = zc + 3.1;

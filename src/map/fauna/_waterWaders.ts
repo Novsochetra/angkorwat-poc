@@ -1,10 +1,13 @@
 import { mulberry32 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
+import { PADDIES } from '../layout';
 import type { MapFrame } from '../types';
-import { angleTo, call, creatureMaterial, Herd, smooth, window01, type Explorer, type View } from './_waterAirKit';
+import { angleTo, birdShelter, call, creatureMaterial, Herd, smooth, window01, type Explorer, type View } from './_waterAirKit';
+import { paddyWater, type LakeBirds } from './_waterLake';
 import { WADER, WADER_SHOULDER, waderShapes } from './_waterModels';
 import type { Rings } from './_waterRings';
 import { reachNear, reachPoint, type Reach, type ReachPoint } from './_waterRivers';
+import { len2 } from './_len';
 
 /**
  * Great egrets and grey herons wading in the shallows by the banks and the
@@ -13,7 +16,13 @@ import { reachNear, reachPoint, type Reach, type ReachPoint } from './_waterRive
  * ring), a preen, and back. When the roaming explorer comes within about
  * 15 m it takes off with a croak and a clatter of wings, flies low along
  * the river and lands on another stretch of bank further on (away from
- * him). At night they stand still, necks drawn in.
+ * him). At night they stand still, necks drawn in; so they do in the rain
+ * (`birdShelter`: hunched where they stand, flying off only when he is
+ * very close).
+ *
+ * More of them on the great lake's shallows and in the flooded rice
+ * paddies (_waterLake.ts); a paddy egret is only there while its plot
+ * holds water.
  */
 
 /** Where they stand at first: near a river point, on its left (−1) or right (1) bank. */
@@ -50,6 +59,8 @@ interface Spot {
   u: number;
   side: number;
   taken: boolean;
+  /** Paddy plot (−1: none): only while it holds water. */
+  plot: number;
 }
 
 interface Wader {
@@ -78,7 +89,7 @@ export interface Waders {
   update(f: MapFrame, view: View, me: Explorer, rings: Rings | null): void;
 }
 
-export function buildWaders(field: HeightField): Waders {
+export function buildWaders(field: HeightField, extra: LakeBirds | null = null): Waders {
   const rnd = mulberry32(8123);
   // Landing spots: every 22 m along every river where it is calm, both banks.
   const spots: Spot[] = [];
@@ -88,13 +99,18 @@ export function buildWaders(field: HeightField): Waders {
       const reach = reachNear(field, s.x, s.z, 6);
       if (!reach) continue;
       const u = (reach.a + reach.b) / 2;
-      for (const side of [-1, 1]) spots.push({ reach, u, side, taken: false });
+      for (const side of [-1, 1]) spots.push({ reach, u, side, taken: false, plot: -1 });
     }
-  const birds: Wader[] = [];
+  for (const sp of extra?.spots ?? []) spots.push({ ...sp, taken: false });
+  const homes: { spot: Spot; kind: 'egret' | 'heron' }[] = [];
   for (const h of HOMES) {
     const reach = reachNear(field, h.at[0], h.at[1], 6);
-    if (!reach) continue;
-    const spot: Spot = { reach, u: (reach.a + reach.b) / 2, side: h.side, taken: true };
+    if (reach) homes.push({ spot: { reach, u: (reach.a + reach.b) / 2, side: h.side, taken: true, plot: -1 }, kind: h.kind });
+  }
+  for (const w of extra?.waders ?? []) homes.push({ spot: { reach: w.reach, u: w.u, side: w.side, taken: true, plot: w.plot }, kind: w.kind });
+  const birds: Wader[] = [];
+  for (const h of homes) {
+    const spot = h.spot;
     const heron = h.kind === 'heron';
     birds.push({
       kind: heron ? WADER.heron : WADER.egret,
@@ -117,6 +133,10 @@ export function buildWaders(field: HeightField): Waders {
   const herd = new Herd('wildlife:waders', waderShapes(), creatureMaterial('map:waders', { shoulder: WADER_SHOULDER, emissive: 0x2a2824 }), birds.length);
   const p: ReachPoint = { x: 0, z: 0, dx: 0, dz: 1, level: 0 };
   const talk = mulberry32(31);
+  const wet = new Float32Array(PADDIES.length);
+  /** Can a bird be at this spot now (a paddy spot: while the plot holds water)? */
+  const here = (sp: Spot) => sp.plot < 0 || wet[sp.plot] > 0.4;
+  const wade = (sp: Spot) => sp.reach.wade ?? WADE;
 
   /** Standing point of a spot, walked `walk` m along the bank. */
   const stand = (sp: Spot, walk: number, out: ReachPoint) => reachPoint(sp.reach, sp.u + walk, sp.side, out);
@@ -129,7 +149,7 @@ export function buildWaders(field: HeightField): Waders {
     let best: Spot | null = null;
     let score = Infinity;
     for (const sp of spots) {
-      if (sp.taken) continue;
+      if (sp.taken || !here(sp)) continue;
       stand(sp, 0, p);
       const d = Math.hypot(p.x - x0, p.z - z0);
       const dm = Math.hypot(p.x - me.x, p.z - me.z);
@@ -150,22 +170,26 @@ export function buildWaders(field: HeightField): Waders {
     count: birds.length,
     update(f, view, me, rings) {
       const t = f.t;
-      const still = smooth(0.55, 0.85, f.night);
+      // (night, or rain: still and hunched)
+      const still = Math.max(smooth(0.55, 0.85, f.night), smooth(0.3, 0.7, birdShelter(f)));
+      paddyWater(f.season, wet);
       herd.begin();
       for (const b of birds) {
+        // (a paddy egret whose plot is dry is away)
+        if (!b.flying && !here(b.spot)) continue;
         // ── Take off when he comes close ─────────────────────────────────
         if (!b.flying && me.near) {
           stand(b.spot, 0, p);
           const shy = still > 0.5 ? SHY_NIGHT : me.boat ? SHY_BOAT : SHY;
-          if (Math.hypot(p.x - me.x, p.z - me.z) < shy && Math.abs(me.y - p.level) < 8) {
-            const from: [number, number, number] = [p.x, p.level - WADE, p.z];
+          if (len2(p.x - me.x, p.z - me.z) < shy && Math.abs(me.y - p.level) < 8) {
+            const from: [number, number, number] = [p.x, p.level - wade(b.spot), p.z];
             const to = landing(b, me);
             if (to) {
               b.flying = true;
               b.t0 = t;
               b.from = from;
               stand(to, 0, p);
-              b.to = [p.x, p.level - WADE, p.z];
+              b.to = [p.x, p.level - wade(to), p.z];
               const dist = Math.hypot(b.to[0] - b.from[0], b.to[2] - b.from[2]);
               b.dur = dist / FLY + 1.6;
               b.yaw0 = b.lastYaw;
@@ -196,10 +220,10 @@ export function buildWaders(field: HeightField): Waders {
             b.flying = false;
             b.since = t;
             b.splashT = t;
-            b.splashAt = [b.to[0], b.to[1] + WADE, b.to[2]];
+            b.splashAt = [b.to[0], b.to[1] + wade(b.spot), b.to[2]];
           }
           const e = u * u * (3 - 2 * u);
-          const dist = Math.hypot(b.to[0] - b.from[0], b.to[2] - b.from[2]);
+          const dist = len2(b.to[0] - b.from[0], b.to[2] - b.from[2]);
           x = b.from[0] + (b.to[0] - b.from[0]) * e;
           z = b.from[2] + (b.to[2] - b.from[2]) * e;
           y = b.from[1] + (b.to[1] - b.from[1]) * e + (2.5 + dist * 0.05) * Math.pow(Math.sin(Math.PI * u), 0.6);
@@ -229,7 +253,7 @@ export function buildWaders(field: HeightField): Waders {
           stand(b.spot, walk, p);
           x = p.x;
           z = p.z;
-          y = p.level - WADE;
+          y = p.level - wade(b.spot);
           const along = Math.atan2(p.dx, p.dz);
           const water = Math.atan2(p.dz * b.spot.side, -p.dx * b.spot.side);
           const back = along + Math.PI;

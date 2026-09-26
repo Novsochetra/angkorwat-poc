@@ -4,7 +4,7 @@ import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate, splitByPlace } from '../cull';
 import { JUNGLE_SITES, type JungleSite } from '../layout';
-import type { MapContext, MapFrame, MapPart } from '../types';
+import type { MapContext, MapFrame, MapPart, Subject } from '../types';
 import { bridgeSpan, buildBridge, type BridgeSpan } from './_bridges';
 import { CampFx } from './_campFx';
 import { buildMonkHut } from './_campHut';
@@ -40,6 +40,8 @@ export function buildCamps(ctx: MapContext): MapPart {
   const done: string[] = [];
   let swing: SwingBuild | null = null;
   const spans: BridgeSpan[] = [];
+  /** The pool's lotus (the nature book's). */
+  const lotus: Subject[] = [];
 
   // Bridges first: the pool keeps its stones off them.
   for (const site of JUNGLE_SITES)
@@ -77,7 +79,7 @@ export function buildCamps(ctx: MapContext): MapPart {
         break;
       case 'pool': {
         const level = field.waterAt(site.x, site.z) ?? at(site);
-        buildPool(new Site(b, field, site.x, level, site.z, 0, src, 37), field, site, level, onBridge);
+        lotus.push(...buildPool(new Site(b, field, site.x, level, site.z, 0, src, 37), field, site, level, onBridge));
         break;
       }
       default:
@@ -109,6 +111,10 @@ export function buildCamps(ctx: MapContext): MapPart {
       shadows.update(f);
       fx.update(f, ctx.renderer);
       swing?.update(f);
+    },
+    // (the nature book, roam/_book.ts: the pool's lotus flowers and buds)
+    subjects(out: Subject[]) {
+      for (const l of lotus) out.push(l);
     },
   };
 }

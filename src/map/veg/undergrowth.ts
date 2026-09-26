@@ -556,7 +556,7 @@ export function buildUndergrowth(ctx: MapContext): MapPart {
       const feet = L.y - HEAD;
       let want = fr.roam === 'overview' || fr.roam === 'leap' ? 0 : 1;
       // (from high up in the air the plants are too small to see)
-      if (want && (fr.roam === 'glide' || fr.roam === 'hang')) {
+      if (want && (fr.roam === 'glide' || fr.roam === 'hang' || fr.roam === 'balloon')) {
         const above = feet - f.standY(L.x, L.z);
         want = 1 - Math.min(1, Math.max(0, (above - HIGH.from) / (HIGH.to - HIGH.from)));
       }

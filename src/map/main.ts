@@ -301,10 +301,16 @@ const DAY0 = shot ? Number(params.get('day') ?? 15) || 0 : Math.floor((Date.now(
 const SEASON0 = params.has('season') ? Number(params.get('season')) || 0 : shot ? 0.45 : (((Date.now() - Date.UTC(new Date().getUTCFullYear(), 3, 14)) / 86_400_000 / 365) % 1 + 1) % 1;
 const SEASON_PER_DAY = params.has('season') || shot ? 0 : 1 / 24;
 let night = clockParam !== null ? nightOf(clockParam) : params.has('night') ? Number(params.get('night')) : settings.time === 'night' ? 1 : 0;
-function nightTarget(t: number): number {
+/** Days of the cycle so far (its fraction is always the clock): runs with `t` while cycling, else follows the eased clock, so a switch in or out of "cycle" (and the moon, the season) never jumps. */
+let cycleDays = duskClock(night);
+const cycleDays0 = cycleDays;
+/** `t` where the cycle's days would be 0 (set on entering the cycle so it starts at the current clock). */
+let cycleOff = 0;
+let wasCycling = false;
+function nightTarget(): number {
   if (clockParam !== null) return nightOf(clockParam);
   if (params.has('night')) return Number(params.get('night'));
-  if (settings.time === 'cycle') return 0.5 - 0.5 * Math.cos((t / CYCLE) * Math.PI * 2);
+  if (settings.time === 'cycle') return nightOf(cycleDays % 1);
   return settings.time === 'night' ? 1 : 0;
 }
 
@@ -341,18 +347,33 @@ function runUpdate(p: MapPart | null | undefined, f: MapFrame): void {
 }
 
 function step(t: number, dt: number): void {
-  const target = nightTarget(t);
+  const cycling = clockParam === null && !params.has('night') && settings.time === 'cycle';
+  // (entering the cycle: start it at the current clock and day, so the sun, the moon and the festivals carry on)
+  if (cycling && !wasCycling) cycleOff = t - cycleDays * CYCLE;
+  wasCycling = cycling;
+  if (cycling) cycleDays = (t - cycleOff) / CYCLE;
+  const target = nightTarget();
   // Ease towards the time of day (a few seconds for a switch).
   night += (target - night) * (dt > 0 ? 1 - Math.exp(-dt * 0.8) : 1);
   frame.t = t;
   frame.dt = dt;
   frame.drift = shot ? t : frame.drift + (settings.calm ? 0 : dt);
   frame.night = night;
-  // (the cycle's own clock while it runs; else the dusk side of the eased time of day, so a switch to night goes through dusk)
-  const cycling = clockParam === null && !params.has('night') && settings.time === 'cycle';
-  frame.clock = clockParam ?? (cycling ? (t / CYCLE) % 1 : duskClock(night));
-  frame.day = DAY0 + (cycling ? Math.floor(t / CYCLE) : 0);
-  frame.season = (SEASON0 + (cycling ? (t / CYCLE) * SEASON_PER_DAY : 0)) % 1;
+  // (the cycle's own clock while it runs; else the eased time of day on the side of the dial the clock was on — dawn stays
+  // dawn — moving to the dusk side once it settles, so a switch to night from the afternoon goes through dusk)
+  if (clockParam !== null) frame.clock = clockParam;
+  else if (cycling) frame.clock = cycleDays % 1;
+  else {
+    const prev = frame.clock;
+    const settled = night < 1e-3 || night > 1 - 1e-3;
+    const clock = prev > 0.5 && !settled ? 1 - duskClock(night) : duskClock(night);
+    // (keep the days whole across the dial's wrap, so the moon's phase does not jump)
+    const wrap = clock - prev > 0.5 ? -1 : clock - prev < -0.5 ? 1 : 0;
+    cycleDays = Math.round(cycleDays - prev) + wrap + clock;
+    frame.clock = clock;
+  }
+  frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
+  frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
   if (fixedCam) {
     camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
@@ -460,7 +481,7 @@ try {
 if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0')) await openStory(Math.max(0, storyAt - 1));
 
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
-Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __mapStats: { timings, blocks, failed } });
+Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __frame: frame, __mapStats: { timings, blocks, failed } });
 
 /** Fade the loading screen out once the map is drawn. */
 function hideLoading(): void {
@@ -520,6 +541,10 @@ if (shot) {
   post.render(frame);
   requestAnimationFrame(() => ((window as unknown as { __ready: boolean }).__ready = true));
 } else {
+  // (the shaders compile side by side while the loading screen still shows, not one by one in the first frame; never waits long)
+  const c0 = performance.now();
+  await Promise.race([renderer.compileAsync(scene, camera).catch(() => undefined), new Promise((r) => setTimeout(r, 6000))]);
+  console.info(`[map] shaders compiled in ${(performance.now() - c0).toFixed(0)} ms`);
   const t0 = performance.now();
   let last = t0;
   const tick = (now: number) => {

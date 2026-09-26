@@ -69,7 +69,7 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
   let dirty = true;
 
   // ── Counts on the tabs ──────────────────────────────────────────────────
-  const photoCount = () => Number(/\d+/.exec(countEl?.textContent ?? '')?.[0] ?? 0);
+  const photoCount = () => Number(countEl?.dataset.n ?? 0);
   function fillTabs(): void {
     nav.setAttribute('aria-label', t('bkTabs'));
     const pages = SPECIES.filter((s) => journal.book[s.kind]).length;

@@ -51,6 +51,10 @@ export function createWake(): Wake {
   const seed = new Float32Array(CAP);
   let next = 0;
   let count = 0;
+  /** Marks drawn after the last `update` (nothing to upload while it stays 0). */
+  let shown = 0;
+  /** `count` at the last `update` (new marks were spawned since if it moved). */
+  let seen = 0;
 
   const quad = new PlaneGeometry(1, 1);
   const geo = new InstancedBufferGeometry();
@@ -135,8 +139,13 @@ export function createWake(): Wake {
       age.fill(0);
       life.fill(0);
       geo.instanceCount = 0;
+      shown = 0;
+      seen = count;
     },
     update(dt) {
+      // (nothing on the water and nothing new: no work, no upload)
+      if (shown === 0 && count === seen) return;
+      seen = count;
       const P = aP.array as Float32Array;
       const S = aS.array as Float32Array;
       let n = 0;
@@ -169,8 +178,16 @@ export function createWake(): Wake {
         n++;
       }
       geo.instanceCount = n;
-      aP.needsUpdate = true;
-      aS.needsUpdate = true;
+      // (only the marks drawn go up to the GPU)
+      if (n > 0) {
+        aP.clearUpdateRanges();
+        aS.clearUpdateRanges();
+        aP.addUpdateRange(0, n * 4);
+        aS.addUpdateRange(0, n * 4);
+        aP.needsUpdate = true;
+        aS.needsUpdate = true;
+      }
+      shown = n;
     },
   };
 }

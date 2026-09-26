@@ -42,6 +42,14 @@ import { FLAG_BLUE, FLAG_RED, FLAG_WHITE } from './_flag';
  *   never goes out; while it roars the envelope glows from inside like a
  *   lantern (an additive shell over it, stronger after dark).
  * - The burner line: a cord from the blast valve down to his right hand.
+ * - Parked (deflated): the envelope lies on the grass as a long flat heap
+ *   with soft folds (`heap`, its bands in the flag's order, the crown's gold
+ *   ring at the far end), the basket tipped on its side at the mouth, a small
+ *   petrol fan (the inflator, its propeller spins) beside it. Inflating: the
+ *   fan fills the envelope with cold air (it rises off the grass, lying),
+ *   then the burner stands it up over the basket (`BalloonPose.cold`,
+ *   `rise`, `tip`). The envelope's lying pose turns it about its mouth, the
+ *   crown behind the basket, the front (the temple) up.
  *
  * Balloon space: origin on the basket floor in the middle (the explorer's
  * feet point), +z forward (his facing), +x his left, +y up.
@@ -68,6 +76,9 @@ export const BALLOON = {
   rimHand: new Vector3(0.43, 0.67, 0.02),
   /** Tether rings at the top of the basket's front corners (the ropes to the stakes at home). */
   tether: [new Vector3(0.52, 0.6, 0.47), new Vector3(-0.52, 0.6, -0.47)],
+  /** Parked: the lying envelope's mouth (z, behind the basket) and how long the heap is from it (m). */
+  mouthZ: -2.6,
+  heapLength: 8.6,
 } as const;
 
 // ── The envelope's shape ────────────────────────────────────────────────────
@@ -127,6 +138,8 @@ const FLAME_ROOT = new Color(0.3, 0.55, 1);
 const FLAME_CORE = new Color(1, 0.7, 0.26);
 const FLAME_TIP = new Color(1, 0.36, 0.05);
 const PILOT = new Color(0.35, 0.6, 1);
+/** The sign's lantern (linear). */
+const SIGN_LAMP = new Color(1, 0.6, 0.24);
 /** The envelope lit from inside: warm. */
 const LANTERN = new Color(1, 0.8, 0.6);
 
@@ -152,6 +165,17 @@ export interface BalloonPose {
   tether: readonly Vector3[] | null;
   /** How far from the camera it is (m): the inside glow fades out with distance (it gets no fog). */
   distance: number;
+  /** The basket on its side (0 standing … 1 lying, parked). */
+  tip: number;
+  /** The fan's cold air in the lying envelope (0 flat on the grass … 1 full), and the burner standing it up (0 lying … 1 upright). */
+  cold: number;
+  rise: number;
+  /** The fan running (0‥1): its propeller spins. */
+  fan: number;
+  /** The pilot light burns (not while parked). */
+  pilot: boolean;
+  /** The first frames: every part drawn (tiny where it should be hidden), so their shaders compile at load. */
+  warm?: boolean;
 }
 
 /** Flame blocks: [height of its middle over the burner, width, length] at full burn (m), and its colour. */
@@ -169,6 +193,8 @@ const CANS = [0.11, -0.11];
 const NOZZLE = BALLOON.burner + 0.3;
 
 const _m = new Matrix4();
+const _m2 = new Matrix4();
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const _q = new Quaternion();
 const _p = new Vector3();
 const _s = new Vector3();
@@ -185,6 +211,15 @@ export class Balloon {
   readonly envelope: Group;
   readonly blocks: number;
   private readonly rig = new Group();
+  /** The basket, burner, rods, flame and lines: tipped on its side while parked (round the basket's back foot). */
+  private readonly cradle = new Group();
+  /** The deflated envelope lying on the grass (rig space). */
+  private readonly heap: Group;
+  /** The fan (stays on the home field: `setHome`) and its propeller. */
+  private readonly ground = new Group();
+  private readonly prop: Group;
+  private propAngle = 0;
+  private lastT = 0;
   private readonly flames: InstancedMesh;
   private readonly glow: Mesh<LatheGeometry, MeshBasicMaterial>;
   private readonly cord: LineSegments<BufferGeometry, LineBasicMaterial>;
@@ -394,9 +429,38 @@ export class Balloon {
     this.tether.name = 'balloon:tether';
     this.tether.frustumCulled = false;
 
-    this.rig.add(this.envelope, kit, fg, this.glow, this.cord);
-    this.object.add(this.rig, this.tether);
+    // ── Parked: the heap on the grass, the fan ──
+    const hb = new VoxelBuilder();
+    buildHeap(hb, traceSource());
+    this.heap = buildVoxelMesh(hb, { quality: 'medium', name: 'balloon:heap' });
+    const fan = new VoxelBuilder();
+    const pb = new VoxelBuilder();
+    buildFan(fan, pb, traceSource());
+    const fanMesh = buildVoxelMesh(fan, { quality: 'medium', name: 'balloon:fan' });
+    this.prop = buildVoxelMesh(pb, { quality: 'medium', name: 'balloon:fanProp' });
+    const propPivot = new Group();
+    propPivot.position.set(0, FAN_HUB_Y, 0.06);
+    propPivot.add(this.prop);
+    const fanGroup = new Group();
+    // (beside the tipped basket, blowing into the lying envelope's mouth)
+    fanGroup.position.set(1.35, 0, -1.75);
+    fanGroup.rotation.y = Math.atan2(-1.35, BALLOON.mouthZ + 1.75);
+    fanGroup.add(fanMesh, propPivot);
+    this.ground.add(fanGroup);
+    this.blocks += hb.boxes.length + fan.boxes.length + pb.boxes.length;
+
+    this.cradle.matrixAutoUpdate = false;
+    this.cradle.add(kit, fg, this.cord);
+    this.rig.add(this.envelope, this.cradle, this.glow, this.heap);
+    this.object.add(this.rig, this.tether, this.ground);
     console.info(`[map] balloon: ${this.blocks} blocks (envelope ${envBlocks}), built in ${Math.round(performance.now() - t0)} ms`);
+  }
+
+  /** The home field (world, the balloon's size): the fan stays there when the balloon flies. */
+  setHome(position: Vector3, yaw: number, size: number): void {
+    this.ground.position.copy(position);
+    this.ground.rotation.set(0, yaw, 0);
+    this.ground.scale.setScalar(size);
   }
 
   pose(p: BalloonPose): void {
@@ -404,9 +468,84 @@ export class Balloon {
     rig.position.copy(p.position);
     rig.rotation.set(0, p.yaw, 0);
     rig.scale.setScalar(p.size);
-    // The envelope sways a little over the basket (round the burner frame).
-    this.envelope.rotation.set(p.swayX, 0, p.swayZ);
-    this.envelope.position.set(0, BALLOON.burner, 0).sub(_v.set(0, BALLOON.burner, 0).applyEuler(this.envelope.rotation));
+    const tip = clamp01(p.tip);
+    const cold = clamp01(p.cold);
+    const rise = clamp01(p.rise);
+    const warm = !!p.warm;
+
+    // The basket on its side: round its back foot, then forward onto its old place (its floor where the front wall stood).
+    const { hz } = BALLOON.basket;
+    const e = tip * tip * (3 - 2 * tip);
+    const cm = this.cradle.matrix;
+    if (e > 0) {
+      _p.set(0, BALLOON.bottom, -hz);
+      cm.makeTranslation(0, -BALLOON.bottom * e, (2 * hz - BALLOON.bottom) * e)
+        .multiply(_m.makeTranslation(_p.x, _p.y, _p.z))
+        .multiply(_m2.makeRotationX((-Math.PI / 2) * e))
+        .multiply(_m.makeTranslation(-_p.x, -_p.y, -_p.z));
+    } else cm.identity();
+    this.cradle.matrixWorldNeedsUpdate = true;
+
+    // The envelope: lying behind the basket (turned about its mouth, the crown to −z, the front up), squashed flat
+    // until the fan fills it, then the burner stands it up; standing, it sways a little round the burner frame.
+    const standing = rise >= 1 && cold >= 1;
+    const env = this.envelope;
+    const shown = cold > 0.05 || rise > 0;
+    env.visible = shown || warm;
+    if (!shown) {
+      env.matrixAutoUpdate = true;
+      env.position.set(0, 0, 0);
+      env.rotation.set(0, 0, 0);
+      env.scale.setScalar(warm ? 1e-3 : 1);
+    }
+    if (shown && standing) {
+      env.matrixAutoUpdate = true;
+      env.scale.setScalar(1);
+      env.rotation.set(p.swayX, 0, p.swayZ);
+      env.position.set(0, BALLOON.burner, 0).sub(_v.set(0, BALLOON.burner, 0).applyEuler(env.rotation));
+    } else if (shown) {
+      // (the cold air ripples the cloth while the fan runs)
+      const wob = (1 - rise) * clamp01(p.fan);
+      const across = (0.55 + 0.45 * cold) * (1 + 0.035 * wob * Math.sin(p.t * 3.1));
+      const high = (0.08 + 0.92 * cold) * (1 + 0.07 * wob * Math.sin(p.t * 2.3 + 1)) ;
+      const r = rise * rise * (3 - 2 * rise);
+      const a = (-Math.PI / 2) * (1 - r);
+      // The mouth: over the grass by the lying envelope's radius, behind the basket; up to the throat as it stands.
+      const my0 = R * high + 0.05;
+      _p.set(0, my0 + (BALLOON.throat - my0) * r, BALLOON.mouthZ * (1 - r));
+      // (never through the grass while it swings up: lift the mouth by what would dip under)
+      const ca = Math.cos(a);
+      const sa = Math.abs(Math.sin(a));
+      let low = Infinity;
+      for (let h = -SKIRT; h <= H1 + HC; h += 0.5) low = Math.min(low, h * ca - Math.max(R0, radiusAt(h)) * high * sa);
+      _p.y = Math.max(_p.y, 0.05 - low);
+      env.matrixAutoUpdate = false;
+      env.matrix
+        .makeTranslation(_p.x, _p.y, _p.z)
+        .multiply(_m.makeRotationX(a))
+        .multiply(_m2.makeScale(across, 1, high))
+        .multiply(_m.makeTranslation(0, -BALLOON.throat, 0));
+      env.matrixWorldNeedsUpdate = true;
+    }
+    // (the inside glow shell goes with the envelope)
+    const glow = this.glow;
+    if (env.matrixAutoUpdate) {
+      glow.matrixAutoUpdate = true;
+      glow.position.copy(env.position);
+      glow.rotation.copy(env.rotation);
+      glow.scale.copy(env.scale);
+    } else {
+      glow.matrixAutoUpdate = false;
+      glow.matrix.copy(env.matrix);
+      glow.matrixWorldNeedsUpdate = true;
+    }
+    this.heap.visible = (cold < 0.12 && rise <= 0) || warm;
+
+    // The fan's propeller.
+    const dt = Math.max(0, Math.min(0.1, p.t - this.lastT));
+    this.lastT = p.t;
+    this.propAngle = (this.propAngle + clamp01(p.fan) * 42 * dt) % (Math.PI * 2);
+    this.prop.rotation.z = this.propAngle;
 
     // The flame: each can's column of blocks, as long as the burn, flickering; the pilot light always.
     const m = this.flames;
@@ -428,6 +567,10 @@ export class Balloon {
       }
     for (let c = 0; c < CANS.length; c++, n++) {
       const f = 0.85 + 0.15 * Math.sin(p.t * 9 + c * 3);
+      const k = p.pilot || warm ? 1 : 0;
+      _p.set(CANS[c], NOZZLE + 0.04, 0);
+      _s.set(0.05 * k + 1e-4, 0.08 * k + 1e-4, 0.05 * k + 1e-4);
+      m.setMatrixAt(n, _m.compose(_p, _q.identity(), _s));
       m.setColorAt(n, _c.copy(PILOT).multiplyScalar((0.9 + 2.6 * night) * f));
     }
     m.instanceMatrix.needsUpdate = true;
@@ -442,12 +585,13 @@ export class Balloon {
     cp.set([p.handle.x, p.handle.y, p.handle.z], 3);
     this.cord.geometry.attributes.position.needsUpdate = true;
 
-    // The tether ropes: from the basket's rings to the stakes (world).
+    // The tether ropes: from the basket's rings (tipped with it) to the stakes (world).
     if (p.tether) {
       rig.updateMatrix();
+      _m.multiplyMatrices(rig.matrix, cm);
       const tp = this.tether.geometry.attributes.position.array as Float32Array;
       for (let i = 0; i < BALLOON.tether.length && i < p.tether.length; i++) {
-        _w.copy(BALLOON.tether[i]).applyMatrix4(rig.matrix);
+        _w.copy(BALLOON.tether[i]).applyMatrix4(_m);
         tp.set([_w.x, _w.y, _w.z, p.tether[i].x, p.tether[i].y, p.tether[i].z], i * 6);
       }
       this.tether.geometry.attributes.position.needsUpdate = true;
@@ -456,12 +600,106 @@ export class Balloon {
   }
 }
 
+/** The fan's hub over the ground (m, fan space). */
+const FAN_HUB_Y = 0.55;
+
+/**
+ * The deflated envelope on the grass (balloon space, true size): a long flat
+ * heap from the mouth (`BALLOON.mouthZ`) back along −z, narrow at the mouth
+ * and wider further out, 0.2–0.5 m tall, with lengthwise fold ridges and a
+ * few cross wrinkles; the flag's bands run across it in the envelope's
+ * order (the dark scoop, blue, a gold line, red with a few white temple
+ * fragments, a gold line, blue, the gold ring round the dark blue cap).
+ */
+function buildHeap(b: VoxelBuilder, src: ReturnType<typeof traceSource>): void {
+  const CZ = 0.25;
+  const CX = 0.2;
+  const len = BALLOON.heapLength;
+  const rows = Math.round(len / CZ);
+  for (let j = 0; j < rows; j++) {
+    const u = (j + 0.5) / rows;
+    // (narrow at the mouth, wide in the middle, rounded at the crown's end; it wanders a little)
+    let half = 0.6 + 1.15 * Math.sin((Math.PI / 2) * Math.min(1, u / 0.45));
+    if (u > 0.88) half *= 0.55 + 0.45 * Math.sqrt(Math.max(0, 1 - ((u - 0.88) / 0.12) ** 2));
+    const mid = 0.22 * Math.sin(u * 5.5 + 0.6) * Math.min(1, u * 4);
+    const z = BALLOON.mouthZ - u * len;
+    const cols = Math.max(3, Math.round((2 * half) / CX));
+    // A cross wrinkle now and then.
+    const wrinkle = 0.11 * Math.max(0, Math.sin(u * 41 + 0.3)) ** 6;
+    for (let i = 0; i < cols; i++) {
+      const xr = -half + (i + 0.5) * ((2 * half) / cols);
+      const x = mid + xr;
+      const edge = Math.abs(xr) / half;
+      const ridge = 0.2 * Math.max(0, Math.sin(xr * 4.6 + u * 3 + 1.3 * hash3(j >> 2, 0, 0, 91))) ** 2;
+      const h = Math.max(0.08, (0.2 + ridge + wrinkle + 0.05 * hash3(i, j, 3, 92)) * (1 - 0.6 * edge ** 3) * (u < 0.05 ? 0.7 : 1));
+      // The bands (v: 0 at the crown, 1 at the mouth, as on the envelope).
+      const v = 1 - u;
+      let color: number;
+      let shade = 0.9 + 0.35 * (ridge + wrinkle);
+      if (u < 0.05) color = tone(SCOOP, hash3(i, j, 1, 93));
+      else if (u > 0.955) color = 0x02226f;
+      else if (u > 0.93) color = tone(GOLD, hash3(i, j, 2, 94));
+      else if (Math.abs(v - 0.25) < 0.018 || Math.abs(v - 0.75) < 0.018) color = tone(GOLD, hash3(i, j, 3, 95));
+      else if (v < 0.25 || v > 0.75) color = hash3(i, j, 4, 96) < 0.5 ? 0x0a36b0 : 0x0633a8;
+      else {
+        color = hash3(i, j, 5, 97) < 0.5 ? 0xe00025 : 0xd4052a;
+        // (a few white bits of the temple show between the folds)
+        if (Math.abs(v - 0.5) < 0.12 && Math.abs(xr) < 0.9 && ridge < 0.08 && hash3(i, j, 6, 98) > 0.72) color = FLAG_WHITE;
+      }
+      // (load tapes along the gores: darker seams)
+      if (color !== FLAG_WHITE && Math.abs(((xr / 0.7) % 1 + 1) % 1 - 0.5) > 0.44) shade *= 0.84;
+      b.box(x, h / 2, z, (2 * half) / cols + 0.01, h, CZ + 0.01, color, 'shirt', { src, shade });
+    }
+  }
+}
+
+/**
+ * The inflation fan (fan space: its feet on the ground, blowing along +z): a
+ * small petrol engine on a tube frame, a round wire cage; the propeller is a
+ * separate build (`prop`, round its hub at the origin, turning about z).
+ */
+function buildFan(b: VoxelBuilder, prop: VoxelBuilder, src: ReturnType<typeof traceSource>): void {
+  const FRAME = 0x8a3a22;
+  // Skids and the upright hoop's legs.
+  for (const s of [1, -1]) {
+    b.box(s * 0.28, 0.03, -0.05, 0.05, 0.05, 0.75, FRAME, 'metal', { src });
+    b.box(s * 0.28, 0.28, 0.05, 0.05, 0.5, 0.05, FRAME, 'metal', { src });
+  }
+  b.box(0, 0.05, -0.32, 0.6, 0.05, 0.05, FRAME, 'metal', { src });
+  // The engine behind the cage: block, tank, pull cord housing.
+  b.box(0, 0.36, -0.28, 0.3, 0.26, 0.3, 0x3a3a3c, 'metal', { src });
+  b.box(0, 0.54, -0.3, 0.24, 0.1, 0.22, 0xc23a22, 'metal', { src });
+  b.box(0.16, 0.38, -0.28, 0.04, 0.14, 0.14, STEEL[0], 'metal', { src });
+  b.box(0, FAN_HUB_Y, -0.1, 0.08, 0.08, 0.3, STEEL[1], 'metal', { src });
+  // The cage: a ring of wire round the propeller, front spokes.
+  const RING = 0.44;
+  for (let a = 0; a < 20; a++) {
+    const th = (a / 20) * Math.PI * 2;
+    for (const z of [-0.02, 0.14]) b.box(Math.cos(th) * RING, FAN_HUB_Y + Math.sin(th) * RING, z, 0.15, 0.035, 0.035, STEEL[a % 3], 'metal', { src, rz: th + Math.PI / 2 });
+  }
+  for (let a = 0; a < 4; a++) {
+    const th = (a / 4) * Math.PI * 2 + Math.PI / 4;
+    b.box(Math.cos(th) * RING * 0.5, FAN_HUB_Y + Math.sin(th) * RING * 0.5, 0.15, RING, 0.02, 0.02, STEEL[2], 'metal', { src, rz: th });
+  }
+  // The propeller: a hub and four blades.
+  prop.box(0, 0, 0, 0.1, 0.1, 0.08, 0x2b2b2e, 'metal', { src });
+  for (let a = 0; a < 4; a++) {
+    const th = (a / 4) * Math.PI * 2;
+    prop.box(Math.cos(th) * 0.2, Math.sin(th) * 0.2, 0, 0.32, 0.09, 0.02, 0x5c4630, 'wood', { src, rz: th, rx: 0.3 });
+  }
+}
+
 /**
  * The balloon's home field: a small wooden sign by the path in (a balloon
  * painted on it, in the flag's colours), and the tether stakes. World
  * positions; `stakes` are where the ropes are tied (m).
  */
-export function buildBalloonHome(at: { x: number; y: number; z: number; yaw: number }, sign: { x: number; y: number; z: number; yaw: number }, stakes: readonly Vector3[], size: number): { object: Group; blocks: number } {
+export function buildBalloonHome(
+  at: { x: number; y: number; z: number; yaw: number },
+  sign: { x: number; y: number; z: number; yaw: number },
+  stakes: readonly Vector3[],
+  size: number,
+): { object: Group; blocks: number; lantern: (night: number) => void } {
   const b = new VoxelBuilder();
   const src = traceSource();
   // The stakes: short posts leaning out, a coil of rope at each.
@@ -501,8 +739,23 @@ export function buildBalloonHome(at: { x: number; y: number; z: number; yaw: num
       if (k !== '.') put((x - (row.length - 1) / 2) * px, 1.2 * S + ((ART.length - 1) / 2 - y) * px, 0.09 * S, px, px, 0.012 * S, PAL[k], 'krama');
     }
   });
+  // A small lantern on a post beside the sign (a glow block, lit after dark; no light of its own).
+  put(0.62 * S, 0.5 * S, 0.1 * S, 0.06 * S, 1.0 * S, 0.06 * S, 0x6e4b2b, 'wood');
+  put(0.62 * S, 1.02 * S, 0.1 * S, 0.2 * S, 0.04 * S, 0.2 * S, 0x3a2a1c, 'wood');
+  put(0.62 * S, 0.8 * S, 0.1 * S, 0.18 * S, 0.03 * S, 0.18 * S, 0x3a2a1c, 'wood');
+  const lb = new VoxelBuilder();
+  lb.box(sign.x + 0.62 * S * c + 0.1 * S * sn, sign.y + 0.91 * S, sign.z - 0.62 * S * sn + 0.1 * S * c, 0.13 * S, 0.18 * S, 0.13 * S, 0xffffff, 'glow', { src, ry: sign.yaw });
+  const lg = buildVoxelMesh(lb, { quality: 'medium', name: 'balloon:signLantern', castShadow: false, receiveShadow: false });
+  const lamp = lg.children[0] as InstancedMesh;
   const object = new Group();
   object.name = 'balloon:home';
-  object.add(buildVoxelMesh(b, { quality: 'medium', name: 'balloon:home' }));
-  return { object, blocks: b.boxes.length };
+  object.add(buildVoxelMesh(b, { quality: 'medium', name: 'balloon:home' }), lg);
+  const lantern = (night: number) => {
+    // (by day a dull paper amber, after dark a warm glow that blooms)
+    const k = Math.max(0, Math.min(1, night));
+    lamp.setColorAt(0, _c.copy(SIGN_LAMP).multiplyScalar(0.3 + 2.2 * k * k));
+    if (lamp.instanceColor) lamp.instanceColor.needsUpdate = true;
+  };
+  lantern(0);
+  return { object, blocks: b.boxes.length + lb.boxes.length, lantern };
 }

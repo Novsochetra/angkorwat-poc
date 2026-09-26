@@ -1,13 +1,14 @@
 import { hash3 } from '../../voxel/random';
 import { flag, garland } from './_decor';
-import { ANIM, type Kit } from './_kit';
+import { ANIM, type BoxOpts, type Kit } from './_kit';
 
 /**
  * Models of the Water Festival (kit boxes, metres, in their rig's space:
  * +z ahead, +x to the left, y = 0 the water line).
  *
- * - `dragonBoat`: a ngo, the long narrow racing boat of Bon Om Touk: a 20 m
- *   painted hull, a naga head rising at the bow and its tail at the stern,
+ * - `raceBoat`: a ngo, the long narrow racing boat of Bon Om Touk: a 20 m
+ *   painted hull, a tall slender bow post sweeping up with painted eyes, scarves
+ *   and a gold flame on its tip, a lower stern post,
  *   thwarts for nine pairs of rowers (their paddles swing with the boat's
  *   stroke), a drum at the front, the steering oar, the flag of Cambodia.
  *   `ROWERS` / `DRUMMER` / `CALLER` / `STEERER` say where the crew sits.
@@ -15,12 +16,12 @@ import { ANIM, type Kit } from './_kit';
  *   with a frame of lights: Angkor Wat, the seven-headed naga or a lotus.
  */
 
-/** Crew colours (shirts and paint), one per boat. */
+/** Crew colours (shirts and paint), one per boat; `line`: the band along the waterline. */
 export const CREWS = [
-  { hull: 0xb8262a, band: 0xe8b84a, dots: 0xf4f0e6, shirt: 0xd8312a },
-  { hull: 0x1f7a4a, band: 0xf0c850, dots: 0xf4f0e6, shirt: 0x2a9a5a },
-  { hull: 0x1f4a9a, band: 0xe8b84a, dots: 0xf4f0e6, shirt: 0x3a6ad0 },
-  { hull: 0xd89a1a, band: 0xb8262a, dots: 0x1f4a9a, shirt: 0xf0b030 },
+  { hull: 0xb8262a, band: 0xe8b84a, dots: 0xf4f0e6, line: 0x1c1a1c, shirt: 0xd8312a },
+  { hull: 0x1f7a4a, band: 0xf0c850, dots: 0xf4f0e6, line: 0xb8262a, shirt: 0x2a9a5a },
+  { hull: 0x1f4a9a, band: 0xe8b84a, dots: 0xf4f0e6, line: 0xf4f0e6, shirt: 0x3a6ad0 },
+  { hull: 0xd89a1a, band: 0xb8262a, dots: 0x1f4a9a, line: 0x1f4a9a, shirt: 0xf0b030 },
 ];
 
 /** Half length of the hull (m). */
@@ -38,8 +39,8 @@ export const STEERER = { x: 0, y: 0.42, z: -8.5 };
 const halfBeam = (z: number) => 1.15 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(z) / (HALF + 0.4), 2.6)));
 const sheer = (z: number) => 0.45 + 0.5 * Math.pow(Math.abs(z) / HALF, 3);
 
-/** A dragon boat on rig `rig`, painted `crew`. */
-export function dragonBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], seed: number): void {
+/** A racing boat (ngo) on rig `rig`, painted `crew`. */
+export function raceBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], seed: number): void {
   const o = { rig };
   const WOOD = 0x5c3a22;
   const DECK = 0x7a5232;
@@ -55,6 +56,9 @@ export function dragonBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], 
       kit.box(sx * (w - 0.055), top - 0.07, z, 0.14, 0.12, step + 0.02, crew.band, o);
       // Painted scales / dots along the side.
       if (Math.round((z + HALF) / step) % 2 === 0) kit.box(sx * (w + 0.005), top - 0.26, z, 0.02, 0.1, 0.22, crew.dots, o);
+      // A thin stripe under the gold band, and a band along the waterline.
+      kit.box(sx * (w + 0.005), top - 0.17, z, 0.02, 0.035, step + 0.02, crew.dots, o);
+      kit.box(sx * (w + 0.003), 0.06, z, 0.02, 0.09, step + 0.02, crew.line, o);
     }
     kit.box(0, FLOOR - 0.05, z, Math.max(0.2, 2 * w - 0.2), 0.1, step + 0.02, DECK, o);
     // Keel under the water (seen from close by, through the clear water).
@@ -66,48 +70,39 @@ export function dragonBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], 
   kit.box(0, 0.36, CALLER.z, 0.9, 0.1, 0.9, DECK, o);
   kit.box(0, 0.36, STEERER.z, 0.9, 0.1, 1.0, DECK, o);
 
-  // ── The naga's head at the bow: a neck rising forward, the head, crest and eyes ──
+  // ── The prow and the stern post: the ngo's long slender neck sweeping up, painted eyes, a gold flame on top ──
   const GOLD = 0xe8b84a;
-  const neck: [number, number, number][] = [
-    [HALF - 0.2, 0.95, 0.55],
-    [HALF + 0.3, 1.25, 0.5],
-    [HALF + 0.75, 1.6, 0.46],
-    [HALF + 1.1, 1.95, 0.44],
-    [HALF + 1.35, 2.3, 0.42],
-  ];
-  for (const [z, y, s] of neck) {
-    kit.box(0, y, z, s, 0.5, 0.55, crew.hull, o);
-    kit.box(0, y + 0.18, z - 0.1, s * 0.5, 0.3, 0.4, GOLD, o);
+  const bow = upswept(kit, o, crew, [HALF - 0.5, 0.35], [HALF + 1.7, 0.55], [HALF + 2.0, 3.0], 1.1, 0.7);
+  const stern = upswept(kit, o, crew, [-HALF + 0.5, 0.35], [-HALF - 1.3, 0.5], [-HALF - 1.6, 2.3], 0.95, 0.62);
+  finial(kit, o, bow, 1);
+  finial(kit, o, stern, 0.7);
+  // The eyes, painted on both sides of the prow just over the water (they let the boat see its way).
+  {
+    const t = 0.2;
+    const [ez, ey] = bow.at(t);
+    const hw = Math.max(bow.width(t) / 2, halfBeam(ez)) + 0.012;
+    for (const sx of [-1, 1]) {
+      kit.box(sx * hw, ey + 0.08, ez, 0.02, 0.18, 0.34, 0xf8f4ea, o);
+      kit.box(sx * (hw + 0.008), ey + 0.08, ez + 0.03, 0.02, 0.14, 0.14, 0x141010, o);
+      kit.box(sx * (hw + 0.004), ey + 0.19, ez - 0.02, 0.02, 0.04, 0.4, GOLD, o);
+      kit.box(sx * (hw + 0.004), ey - 0.03, ez - 0.02, 0.02, 0.03, 0.3, crew.band, o);
+    }
   }
-  const hz = HALF + 1.75;
-  const hy = 2.55;
-  kit.box(0, hy, hz, 0.62, 0.5, 0.95, GOLD, o);
-  // Upper jaw and snout, the lower jaw open, a red tongue.
-  kit.box(0, hy + 0.05, hz + 0.65, 0.5, 0.28, 0.5, GOLD, o);
-  kit.box(0, hy - 0.3, hz + 0.45, 0.42, 0.12, 0.6, crew.hull, o);
-  kit.box(0, hy - 0.18, hz + 0.6, 0.12, 0.05, 0.4, 0xd02030, o);
-  for (const sx of [-1, 1]) {
-    // Eyes (white, dark pupil), the curled crest behind them, whiskers.
-    kit.box(sx * 0.3, hy + 0.12, hz + 0.18, 0.05, 0.16, 0.2, 0xf8f4ea, o);
-    kit.box(sx * 0.325, hy + 0.12, hz + 0.22, 0.04, 0.09, 0.1, 0x141010, o);
-    kit.box(sx * 0.22, hy + 0.42, hz - 0.35, 0.1, 0.45, 0.25, crew.hull, { ...o, pitch: -0.5 });
-    kit.box(sx * 0.3, hy - 0.2, hz + 0.75, 0.3, 0.04, 0.05, GOLD, { ...o, roll: sx * 0.4 });
+  // Scarves tied round the bow post under its flame (two colours, two short tails), and a marigold garland (offerings to the boat's spirit).
+  {
+    const t = 0.8;
+    const [sz, sy] = bow.at(t);
+    const w = bow.width(t);
+    const th = bow.thick(t);
+    const SCARF = [0xd8312a, 0xf6c21a];
+    SCARF.forEach((c, i) => {
+      kit.box(0, sy - i * 0.13, sz, w + 0.06, 0.12, th + 0.06, c, o);
+      kit.box(0.04 - i * 0.08, sy - 0.3 - i * 0.13, sz - th / 2 - 0.04, 0.08, 0.45, 0.02, c, { ...o, pitch: 0.15, roll: i ? -0.12 : 0.12 });
+    });
+    const [gz, gy] = bow.at(0.66);
+    const gw = bow.width(0.66);
+    garland(kit, -gw / 2 - 0.05, gy, gz, gw / 2 + 0.05, gy, gz, 0.35, o);
   }
-  // The crest: flames of gold up the back of the head.
-  for (let i = 0; i < 4; i++) kit.box(0, hy + 0.35 + i * 0.12, hz - 0.1 - i * 0.22, 0.08, 0.35 - i * 0.05, 0.18, i % 2 ? crew.hull : GOLD, { ...o, pitch: -0.4 });
-  // A marigold garland round the neck (offerings to the boat's spirit).
-  garland(kit, -0.3, 1.9, HALF + 1.1, 0.3, 1.9, HALF + 1.1, 0.25, o);
-
-  // ── The tail at the stern: rising and curling, a fan of gold ──
-  const tail: [number, number, number][] = [
-    [-HALF + 0.2, 0.95, 0.5],
-    [-HALF - 0.25, 1.25, 0.42],
-    [-HALF - 0.6, 1.62, 0.36],
-    [-HALF - 0.85, 2.0, 0.3],
-    [-HALF - 0.95, 2.4, 0.26],
-  ];
-  for (const [z, y, s] of tail) kit.box(0, y, z, s, 0.45, 0.45, crew.hull, o);
-  for (let i = -1; i <= 1; i++) kit.box(0, 2.85, -HALF - 0.85 + i * 0.25, 0.08, 0.6, 0.18, GOLD, { ...o, pitch: i * 0.45 });
 
   // Drum at the front, gold bands.
   kit.box(0, FLOOR + 0.28, DRUMMER.z - 0.75, 0.5, 0.5, 0.5, 0xa82a22, o);
@@ -150,6 +145,100 @@ export function dragonBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], 
       kit.box(sx * (0.4 + u * 2.4 + (r - 0.5) * 0.6), 0.02, -HALF - 0.8 - u * 9 - r * 0.8, s, 0.04, s * (1 + r), 0xe4eeee, { ...o, anim: ANIM.wake, a: [r, 0, 0] });
     }
   }
+}
+
+/** A post rising from the hull's end: its centre line, width (x) and thickness at t (0 foot ‥ 1 tip). */
+interface Post {
+  at(t: number): [number, number];
+  /** The direction the line runs at t (unit, z and y). */
+  dir(t: number): [number, number];
+  width(t: number): number;
+  thick(t: number): number;
+}
+
+/**
+ * A ngo's upswept post (the bow or the stern) in the y-z plane: a quadratic
+ * curve p0 → p1 → p2 ((z, y) m), tapering from `th0` thick and `w0` wide at
+ * its foot to a slender tip; the crew's colour, a gold rim on its inner edge,
+ * the band's colour on its outer edge, small gold lozenges on its sides.
+ */
+function upswept(kit: Kit, o: BoxOpts, crew: (typeof CREWS)[number], p0: [number, number], p1: [number, number], p2: [number, number], th0: number, w0: number): Post {
+  const GOLD = 0xe8b84a;
+  const post: Post = {
+    at: (t) => {
+      const a = (1 - t) * (1 - t);
+      const b = 2 * (1 - t) * t;
+      const c = t * t;
+      return [a * p0[0] + b * p1[0] + c * p2[0], a * p0[1] + b * p1[1] + c * p2[1]];
+    },
+    dir: (t) => {
+      const dz = 2 * (1 - t) * (p1[0] - p0[0]) + 2 * t * (p2[0] - p1[0]);
+      const dy = 2 * (1 - t) * (p1[1] - p0[1]) + 2 * t * (p2[1] - p1[1]);
+      const l = Math.hypot(dz, dy) || 1;
+      return [dz / l, dy / l];
+    },
+    width: (t) => w0 + (0.14 - w0) * t,
+    thick: (t) => th0 + (0.18 - th0) * Math.pow(t, 0.8),
+  };
+  const N = 10;
+  for (let i = 0; i < N; i++) {
+    const t0 = i / N;
+    const t1 = (i + 1) / N;
+    const tm = (t0 + t1) / 2;
+    const [z0, y0] = post.at(t0);
+    const [z1, y1] = post.at(t1);
+    const len = Math.hypot(z1 - z0, y1 - y0) + 0.06;
+    // (kRotX turns the box's local y to (0, cos a, sin a): its long side runs along the line)
+    const a = Math.atan2(z1 - z0, y1 - y0);
+    const zc = (z0 + z1) / 2;
+    const yc = (y0 + y1) / 2;
+    const w = post.width(tm);
+    const th = post.thick(tm);
+    // (the inner side of the curve: toward the boat and up; nz, ny)
+    const nz = -Math.cos(a);
+    const ny = Math.sin(a);
+    const po = { ...o, pitch: a };
+    kit.box(0, yc, zc, w, len, th, crew.hull, po);
+    kit.box(0, yc + ny * (th / 2), zc + nz * (th / 2), w + 0.02, len, 0.07, GOLD, po);
+    kit.box(0, yc - ny * (th / 2), zc - nz * (th / 2), w + 0.02, len, 0.07, crew.band, po);
+    if (i % 2 === 1 && i < N - 1) {
+      const s = Math.min(0.2, th * 0.35);
+      for (const sx of [-1, 1]) kit.box(sx * (w / 2 + 0.01), yc, zc, 0.02, s, s, GOLD, { ...o, pitch: a + Math.PI / 4 });
+    }
+  }
+  return post;
+}
+
+/**
+ * The gold flame (kbach) on a post's tip, `s` its scale: a collar, a bulb,
+ * a tongue of flame curling back toward the boat, small flames to the sides
+ * and fore and aft, a red inset.
+ */
+function finial(kit: Kit, o: BoxOpts, post: Post, s: number): void {
+  const GOLD = 0xe8b84a;
+  const RED = 0xc02a26;
+  const [z, y] = post.at(1);
+  const [dz] = post.dir(1);
+  // (back: toward the boat's middle, along z)
+  const back = z > 0 ? -1 : 1;
+  kit.box(0, y + 0.02 * s, z, 0.24 * s, 0.1 * s, 0.26 * s, GOLD, o);
+  kit.box(0, y + 0.16 * s, z + dz * 0.1 * s, 0.26 * s, 0.22 * s, 0.26 * s, GOLD, o);
+  kit.box(0, y + 0.16 * s, z + dz * 0.1 * s, 0.28 * s, 0.1 * s, 0.1 * s, RED, o);
+  // The tongue: up, then curling back.
+  const tongue: [number, number, number, number][] = [
+    [0.36, 0.02, 0.16, 0.1],
+    [0.54, -0.03, 0.14, 0.4],
+    [0.68, -0.14, 0.12, 0.9],
+    [0.76, -0.28, 0.1, 1.4],
+    [0.74, -0.42, 0.08, 2.0],
+  ];
+  for (const [ty, tz, ts, tp] of tongue) kit.box(0, y + ty * s, z - back * tz * s, 0.1 * s, ts * 1.6 * s, ts * s, GOLD, { ...o, pitch: back * tp });
+  // Side flames in the y-z plane (fore and aft) and across (x), a red heart.
+  for (const f of [-1, 1]) {
+    kit.box(0, y + 0.3 * s, z + f * 0.17 * s, 0.06 * s, 0.26 * s, 0.07 * s, GOLD, { ...o, pitch: f * 0.6 });
+    kit.box(f * 0.17 * s, y + 0.3 * s, z, 0.07 * s, 0.26 * s, 0.06 * s, GOLD, { ...o, roll: -f * 0.6 });
+  }
+  kit.box(0, y + 0.42 * s, z, 0.12 * s, 0.14 * s, 0.05 * s, RED, o);
 }
 
 type Pt = [number, number];

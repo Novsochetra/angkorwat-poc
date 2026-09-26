@@ -5,7 +5,9 @@ import { mulberry32 } from '../../voxel/random';
  * Small flocks of big pale birds (egrets, storks) gliding in wide, slow loops
  * over the valley by day: blocky bodies and wings, mostly gliding with a few
  * lazy wing beats now and then, banking into the turn. Everything is a pure
- * function of time, so a still at `t` is always the same.
+ * function of time, so a still at `t` is always the same. In rain fewer
+ * fly (`shelter`, fauna/_waterAirKit.ts `birdShelter`): the last of each V
+ * go down first (steady rain leaves about a third), a storm clears the sky.
  */
 
 interface Flock {
@@ -38,13 +40,15 @@ const FLOCKS: Flock[] = [
 
 export interface Birds {
   meshes: InstancedMesh[];
-  update(t: number, night: number): void;
+  update(t: number, night: number, shelter?: number): void;
 }
 
 export function buildBirds(): Birds {
   const members = FLOCKS.flatMap((f) => {
     const rnd = mulberry32(f.seed * 977);
     return Array.from({ length: f.birds }, (_, i) => {
+      // (in rain the birds go down from the back of the V: this one at this `shelter`)
+      const down = 0.95 - (0.8 * i) / f.birds;
       // A loose V: each bird a little behind and to the side of the one before.
       const side = i === 0 ? 0 : (i % 2 ? 1 : -1) * Math.ceil(i / 2);
       return {
@@ -54,6 +58,7 @@ export function buildBirds(): Birds {
         up: (rnd() - 0.5) * 2,
         phase: rnd() * 100,
         size: 0.85 + rnd() * 0.3,
+        down,
       };
     });
   });
@@ -96,7 +101,7 @@ export function buildBirds(): Birds {
 
   return {
     meshes: [body, wings],
-    update(t: number, night: number) {
+    update(t: number, night: number, shelter = 0) {
       const k = 1 - smooth(0.25, 0.7, night);
       body.visible = wings.visible = k > 0.01;
       material.opacity = k;
@@ -121,7 +126,7 @@ export function buildBirds(): Birds {
         // Heading, a gentle bank into the turn, a slight nose-down glide.
         e.set(-0.04, Math.atan2(fwd.x, fwd.z), -Math.sign(f.v) * 0.22);
         q.setFromEuler(e);
-        mb.compose(pos, q, scale.setScalar(m.size));
+        mb.compose(pos, q, scale.setScalar(m.size * (1 - smooth(m.down - 0.12, m.down, shelter))));
         body.setMatrixAt(i, mb);
         // Wings: glide with a slight dihedral; now and then a few slow beats.
         const burst = smooth(0.55, 0.85, Math.sin(t * 0.8 + w));

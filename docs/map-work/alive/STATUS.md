@@ -1,10 +1,9 @@
-# "Make the world map alive": status at the pause
+# "Make the world map alive": status
 
-Local work was paused to move the session to the cloud. The commit that holds
-this file is a **work-in-progress** snapshot: everything built so far and the
-fixes that were running, stopped at a safe point. Each fixer that was
-running wrote a note in `handoff/<name>.md`: what is done, what is half
-done, and how to finish it. Read those first.
+The work paused locally (commit e3bfb96) and was finished in the cloud: the
+fixers that had stopped, the speed leftovers and the small review items are
+all done. The notes in `handoff/<name>.md` are kept as history (their "not
+started" wording is from the pause: every one of them is done now).
 
 - The team's shared rules: `COMMON.md`. Its scratch paths were local.
 - The plan: `ROADMAP.md`.
@@ -33,7 +32,9 @@ Rule from the user: Khmer culture only. Never a conical (Vietnamese) hat.
 whose `update` throws is now logged and left still; it no longer freezes the
 map.
 
-## Fixes finished before the pause
+## Done
+
+**Before the pause:**
 
 - **Roaming:** prayer hat after mode change, bad saved journal records,
   swing camera turn, Enter/Space in the album, swing in bug reports, village
@@ -46,48 +47,55 @@ map.
   people shadows by distance, per-frame garbage, parked balloon pose gating.
 - **Khmer hat** for the explorer.
 
-## Fixers stopped at the pause: where each one got to
+**In the cloud (the fixers, `handoff/`):**
 
-Each one's note in `handoff/<name>.md` has the details.
+- **fixer:** all 5 glider ramps are back, no dark cube over the lake, no
+  kites crash with `t` < 0, wood footsteps (`roam/_woodFloor.ts`), a boat
+  waits at the village jetty, the ? list has a "Close by" section.
+- **perfworld:** `cull.ts` (`splitByPlace`, `ShadowGate`): ruins and camps
+  per site, packed undergrowth, raft bobbing in the shader, one rice mesh
+  per plot.
+- **weatherset:** the Weather row in the settings, the season-based
+  schedule, no forced shower. The last live-switch / touch / phone check is
+  the lead's final check.
+- **lightfix:** forest floor, rain streaks from the overview, the south lake
+  edge, the rainbow's place.
+- **ruinsfix:** the forest Buddha's face, the laterite colour, the candle
+  halo.
+- **peoplefix:** rice planters spread out, the fisherman's krama.
+- **festfix:** Khmer ngo racing boats (never a dragon), New Year pennants and
+  near fade, Khmer letter-spacing.
+- **balloonfix:** the balloon lies deflated until ridden; the fan fills it,
+  then the burner stands it up (`balloon=parked|inflate:<s>|up`).
 
-- **fixer: done.** All 5 glider ramps are back. A tree no longer draws a
-  dark cube over the lake. Kites no longer crash with `t` < 0. Wood
-  footsteps work (`roam/_woodFloor.ts`). A boat waits at the village jetty.
-  The ? list has a "Close by" section. Still to do: re-check the kites loop
-  and stepping off at the jetty, and retake the after-shots.
-- **weatherset: done** and in the code: the Weather row in the settings, the
-  season-based schedule, the forced shower removed. Still to do: the live
-  switch test, the click/keyboard/touch test, and phone and overview shots.
-- **perfworld: done.** New `cull.ts` (`splitByPlace`, `ShadowGate`). Ruins
-  and camps are split per site, the undergrowth uses a packed count, raft
-  bobbing moved to the shader, the paddies' rice is one mesh per plot.
-  Still to do: finish the before/after picture check (a few small diffs are
-  probably other fixers').
-- **lightfix, ruinsfix, peoplefix, festfix, balloonfix: NOT started.** No
-  code was changed. Each note holds the full plan, with file:line and the
-  shots to check.
+**Speed leftovers:**
 
-## The original tasks of those fixers
+- Ramp flags: off-screen and far flags are throttled (a near, visible flag
+  still uploads each frame).
+- The boat wake, crowd buffer update ranges, per-frame garbage
+  (`_sceneKites`, `_sceneCart`, `_tour`, `fauna/land.ts`), `Math.hypot` on
+  hot paths (`fauna/_len.ts`), fewer bell oscillators.
+- `renderer.compileAsync` before the first frame (`[map] shaders compiled
+  in N ms`).
 
-- **fixer:** a missing glider ramp near (−283, −108), a kites crash, a dark
-  cube over the lake, wood footsteps, a village jetty boat landing, the ?
-  key list.
-- **perfworld:** ruins culled per site, undergrowth count, village raft
-  bobbing, shadow casters by distance (village, festival, camps, paddies).
-- **weatherset:** a Weather choice in settings (Follow the season, Always
-  clear, Rainy, Stormy). "Follow the season" gives rain in the wet season
-  and dry December–April. This was the user's request.
-- **lightfix:** dark forest floor, rain streaks from the overview, south
-  lake edge strip, rainbow placement.
-- **ruinsfix:** forest Buddha's face (it reads as a skull), blue laterite,
-  candle halo too bright.
-- **peoplefix:** rice planters clumping, fisherman's krama.
-- **festfix:** Khmer ngo boat bow (not a dragon), New Year pennants and near
-  fade, Khmer letter-spacing.
-- **balloonfix:** the balloon lies deflated until ridden, then inflates.
-  This was the lead's decision after the review.
+**Small review items:**
 
-## Still open after those
+- No stale prompt after `goldfound=`; the balloon hop replays in a bug
+  report; E no longer enters the temple while he kneels.
+- Water birds on the lake and egrets in flooded paddies
+  (`fauna/_waterLake.ts`).
+- In rain birds stay perched (`birdShelter`) and people open umbrellas and
+  hurry; `EVENTS.festival` comes from `festival/_schedule.ts festivalNow`.
+- Rain rings on Angkor Wat's moat.
+- The festival crowd and the lotus in the nature book.
+- The mini-map's paddies take their colour from `season=`
+  (`ui/_minimapPaddies.ts`).
+- The monk hut's ladder; the album's own words in Khmer (`al…` in
+  `ui/lang.ts`).
+- Docs: `docs/map-work/BRIEF.md` and `CLAUDE.md` cover every part and URL
+  param; the sky rings are gone and not mentioned as present.
+
+## Still open
 
 - **Khmer words the user should check** (asked, no answer yet):
   - giant ibis ត្រយ៉ង (ត្រយ៉ងយក្ស?)
@@ -101,31 +109,21 @@ Each one's note in `handoff/<name>.md` has the details.
   - burner line ខ្សែភ្លើង
   - burner បាញ់ភ្លើង
   - swing អង្គុយយោលលេង (លេងទោង?)
-- **Speed leftovers:**
-  - `launchRamp` flag uploads 12 KB/frame and the boat wake 7.7 KB/frame,
-    even in the overview.
-  - Crowd buffers need update ranges.
-  - Per-frame garbage in `_sceneKites.fly`, `_sceneCart.blocked`,
-    `_tour.ts:280` and `fauna/land.ts` (`live`, `calls`).
-  - `Math.hypot` on hot paths.
-  - Bells run 16 oscillators with long tails.
-  - Optional: `renderer.compileAsync` before the first frame.
-- **Small review items:**
-  - A stale prompt after `goldfound=`.
-  - Balloon report during the hop.
-  - E enters the temple while he kneels at the Angkor Wat and River Gate
-    spots.
-  - Water birds on the lake, egrets in flooded paddies.
-  - Birds and people should react to `EVENTS.shelter` / `umbrellas` /
-    `hurry`.
-  - Rain rings on the moat (`RAIN_RINGS_GLSL`).
-  - Festival crowd and pool lotus as nature-book subjects.
-  - Mini-map paddy colour by season.
-  - The monk hut ladder.
-  - The album's own words are English only (`src/game/Photos.ts`).
-- **Docs:** fold every new part and URL param into `docs/map-work/BRIEF.md`
-  and `CLAUDE.md`. Several builders already added their sections; check for
-  gaps and the removed rings.
+  - balloon inflating (`rInflating`) កំពុងបំប៉ោងបាឡុង · W ឲ្យលឿន · Esc ឈប់
+  - lotus ផ្កាឈូក
+  - festival crowd អ្នកចូលរួមពិធីបុណ្យ
+  - the album's words (`al…` keys in `ui/lang.ts`)
+- People do not yet go under cover in a storm (`EVENTS.shelter`).
+- Album photos keep their place names in English only.
+- The main game's viewfinder hints are English only.
+- `story.css` letter-spacing on Khmer (the story is another session's file).
+- `audio/water.ts` `listenFalls` sorts every frame.
+- Within 2.3 m of the jetty boat the golden hamsa takes E first.
+- A jetty plank seam reads as water in the walk map.
+- `roam=walk&at=-236,45` gives an upside-down camera (was there before;
+  only at that spot).
+- The vegetation build is ≈ 720 ms, over the 600 ms budget; people CPU
+  against its budget to re-measure on real hardware.
 - **Final checks:** `npx tsc --noEmit`, `npm run build`, `npm run playtest`,
   the overview `m="@map.html?shot=1"` at 1672×941 (day, `night=1`,
   `clock=0.75`), a walk at each area. Then commit, only when the user asks.

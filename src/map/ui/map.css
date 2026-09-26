@@ -1619,7 +1619,8 @@ body.reporting .map-ui {
   font-size: calc(17.5 * var(--px));
 }
 
-:lang(km) :is(.mu-info-kicker, .mu-settings h3, .mu-fade p, .mu-begin, .rh-jump-text) {
+/* (never space Khmer letters: it breaks the clusters of consonant, sub-consonant and vowel signs) */
+:lang(km) :is(.mu-info-kicker, .mu-settings h3, .mu-fade p, .mu-begin, .rh-jump-text, .mu-title h1, .mm-toast-text b, .mm-head h2) {
   letter-spacing: 0;
 }
 
@@ -1863,7 +1864,7 @@ body.roam-touch .bk-tab {
 
 :lang(km) :is(.bk-group h3, .bk-pass-h) {
   font: 400 16px/1.5 Koulen, 'Kantumruy Pro', serif;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .bk-cards {
@@ -2004,6 +2005,10 @@ body.roam-touch .bk-tab {
   text-transform: uppercase;
 }
 
+:lang(km) .bk-page-group {
+  letter-spacing: 0;
+}
+
 .bk-page-n1 {
   margin: 2px 0 0;
   font: 600 28px/1.15 Georgia, serif;
@@ -2061,6 +2066,7 @@ body.roam-touch .bk-tab {
 
 :lang(km) .bk-pass-intro h3 {
   font: 400 21px/1.5 Koulen, 'Kantumruy Pro', serif;
+  letter-spacing: 0;
 }
 
 .bk-pass-h {

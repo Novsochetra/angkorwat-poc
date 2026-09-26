@@ -6,15 +6,18 @@ import { dragonflyShape } from './_airModels';
 import { creatureMaterial, Herd, readExplorer, STRIDE, View, type Explorer } from './_waterAirKit';
 import { buildWaterCritters } from './_waterCritters';
 import { buildDucks } from './_waterDucks';
+import { buildLakeBirds } from './_waterLake';
 import { CRITTER, DUCK, fishShape, frogShape, WADER } from './_waterModels';
 import { Rings } from './_waterRings';
 import { buildWaders } from './_waterWaders';
 
 /**
  * Animals on the water and in the air, to make the map feel alive:
- *  - duck families on the calm river reaches (_waterDucks.ts);
+ *  - duck families on the calm river reaches and the great lake (_waterDucks.ts);
  *  - egrets and herons wading by the banks and the waterfall pools, flying
- *    off along the river when the explorer comes close (_waterWaders.ts);
+ *    off along the river when the explorer comes close; more on the great
+ *    lake's shallows, and egrets in the rice paddies while they hold water
+ *    (_waterWaders.ts, _waterLake.ts); in rain they stand hunched;
  *  - fish jumping now and then, frogs on the banks at night (_waterCritters.ts);
  *  - dragonflies over the water round the roaming explorer (_airDragonflies.ts);
  *  - bats at dusk and night round Angkor Wat's towers and over the rivers (_airBats.ts);
@@ -36,8 +39,9 @@ export function buildWaterAirFauna(ctx: MapContext): MapPart {
   const field = ctx.field;
   const low = ctx.quality === 'low';
 
-  const ducks = buildDucks(field);
-  const waders = buildWaders(field);
+  const lake = buildLakeBirds(field);
+  const ducks = buildDucks(field, lake);
+  const waders = buildWaders(field, lake);
   const bats = buildBats(field);
   const water = buildWaterCritters(field);
   const flies = buildDragonflies(field);

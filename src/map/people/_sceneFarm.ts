@@ -31,8 +31,13 @@ import { GONE, Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene
 /** Walking pace, working drift (m/s). */
 const WALK = 0.75;
 const WORK = 0.08;
-/** Spacing across a working row (m). */
-const ROW = 1.7;
+/**
+ * Spacing across a working row (m): the palm-leaf hat's brim is ≈ 1.5 m wide
+ * at the people's scale, so the brims keep a hand apart.
+ */
+const ROW = 2.4;
+/** Close to their place in the row, they shuffle along with it (m), not walk round to it. */
+const SHUFFLE = 2;
 /** Where the harvest carriers take the sheaves: the trail's west end by the village. */
 const HOME: Point = { x: -272, y: 7.5, z: 83 };
 /** Sugar palms to rest under (paddies/props.ts `PALMS`, on the dikes). */
@@ -52,7 +57,7 @@ interface Farmer {
   a: Actor;
   looks: Record<'seedlings' | 'sickle' | 'pole' | 'bare' | 'sheaves', Look>;
   job: 'row' | 'carry' | 'walk' | 'rest';
-  /** Their place in the row (0‥). */
+  /** Their place in the row (0‥; set by `order`, so no one crosses another walking over). */
   k: number;
   /** A walk: its points and how far along. */
   path: Point[];
@@ -164,10 +169,47 @@ export class Farmers implements PeopleScene {
     if (!best) return;
     const s = plotSeason(season, best.lag);
     const age = (s - (mode === 'plant' ? best.plant : best.cut)) / SWEEP;
-    if (best !== this.plot) this.front = age >= 0 && age <= 1 ? age : mode === 'harvest' ? 0.06 : 0.3;
+    const moved = best !== this.plot;
+    if (moved) this.front = age >= 0 && age <= 1 ? age : mode === 'harvest' ? 0.06 : 0.3;
     this.plot = best;
+    if (moved) this.order();
     // (in the sweep: at its line; after it, drifting back and forth over the plot)
     if (age >= 0 && age <= 1) this.front = age;
+  }
+
+  /**
+   * Who takes which place in the row (on a new plot or a new season's jobs):
+   * the choice that walks them the least in all, so nobody's way over crosses
+   * anyone else's (≤ 4 in the row: 24 choices, tried once).
+   */
+  private order(): void {
+    const row = this.farmers.filter((fm) => fm.job === 'row');
+    const n = row.length;
+    const spots = row.map((_, k) => {
+      const p = this.rowSpot(k, n);
+      return [p.x, p.z];
+    });
+    let best: number[] = row.map((_, k) => k);
+    let bestD = Infinity;
+    const perm = (done: number[], left: number[]) => {
+      if (!left.length) {
+        let d = 0;
+        done.forEach((k, j) => (d += (row[j].a.x - spots[k][0]) ** 2 + (row[j].a.z - spots[k][1]) ** 2));
+        if (d < bestD) [bestD, best] = [d, done];
+        return;
+      }
+      for (const k of left) perm([...done, k], left.filter((q) => q !== k));
+    };
+    perm([], best);
+    row.forEach((fm, j) => (fm.k = best[j]));
+  }
+
+  /** Place `k` of `n` across the working row (spaced closer only if the plot is too narrow). */
+  private rowSpot(k: number, n: number): Point {
+    const p = this.plot.paddy;
+    const room = (this.plot.rowsX ? p.w : p.d) - 2 * 1.6;
+    const gap = n > 1 ? Math.min(ROW, room / (n - 1)) : 0;
+    return this.inPlot(this.front, (Math.min(k, n - 1) - (n - 1) / 2) * gap);
   }
 
   /** A point in the working plot: `u` along its sweep (0‥1), `v` metres across it from its middle (`ROW_AT`, overwritten next call). */
@@ -228,6 +270,8 @@ export class Farmers implements PeopleScene {
       harvest: ['row', 'row', 'row', 'carry', 'rest'],
       dry: ['walk', 'rest', 'rest', 'rest', 'rest'],
     };
+    this.farmers.forEach((fm, k) => (fm.job = jobs[mode][k]));
+    this.order();
     this.farmers.forEach((fm, k) => {
       // (only two resting spots: the others of the season are away)
       fm.job = jobs[mode][k];
@@ -260,7 +304,7 @@ export class Farmers implements PeopleScene {
         if (o === fm) k = n;
         n++;
       }
-      if (fm.job === 'row') return this.inPlot(this.front, (k - (n - 1) / 2) * ROW);
+      if (fm.job === 'row') return this.rowSpot(fm.k, n);
       return k < this.rest.length ? this.rest[k] : null;
     }
     // Walkers and carriers: along the path they are on (made when needed).
@@ -299,9 +343,12 @@ export class Farmers implements PeopleScene {
     let pose: Pose = POSE.stand;
     if (fm.job === 'row') {
       const working = mode === 'plant' || mode === 'harvest' || mode === 'grow';
-      a.goTo(at.x, at.z, a.dist(at.x, at.z) > 2 ? WALK : 0.3);
       // (planters face the planted rows as they step back; reapers face the standing rice)
       const yaw = this.sweepYaw() + (mode === 'plant' ? (this.dir > 0 ? Math.PI : 0) : this.dir > 0 ? 0 : Math.PI);
+      // Far from their place: walk there. In the row: the whole row shuffles along together, each straight
+      // back (or on) with it, never turning round to walk to a place a few centimetres away.
+      if (a.dist(at.x, at.z) > SHUFFLE) a.goTo(at.x, at.z, WALK);
+      else a.shuffle(at.x, at.z, 0.4 * dt);
       a.face(yaw);
       if (working && a.dist(at.x, at.z) < 1.2) pose = mode === 'harvest' ? POSE.reap : POSE.plant;
     } else if (fm.job === 'rest') {

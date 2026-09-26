@@ -3,7 +3,7 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import type { HeightField, PathSample } from '../heightfield';
 import type { JungleSite } from '../layout';
-import { BAMBOO, pickTone, PLANK, POST, ROCK, ROPE, Site } from './_campKit';
+import { BAMBOO, FLAGSTONE, pickTone, PLANK, POST, ROPE, Site } from './_campKit';
 
 /**
  * Wooden foot bridges where a jungle trail crosses a stream (the `bridge`
@@ -156,8 +156,8 @@ export function buildBridge(b: VoxelBuilder, field: HeightField, span: BridgeSpa
   ] as const) {
     const z = end * (half + 0.35);
     const y = g - span.level;
-    s.box(0.2 * end, y + 0.05, z, 1.5, 0.16, 0.7, tone(ROCK, end, 1, 13), 'mapStone', { ry: 0.15 * end });
-    s.box(-0.75, y + 0.08, z + end * 0.1, 0.6, 0.22, 0.55, tone(ROCK, end, 2, 14), 'mapStone', { ry: 0.5 });
-    s.box(0.9, y + 0.07, z - end * 0.05, 0.55, 0.2, 0.5, tone(ROCK, end, 3, 15), 'mapStone', { ry: -0.3 });
+    s.box(0.2 * end, y + 0.05, z, 1.5, 0.16, 0.7, tone(FLAGSTONE, end, 1, 13), 'mapStone', { ry: 0.15 * end });
+    s.box(-0.75, y + 0.08, z + end * 0.1, 0.6, 0.22, 0.55, tone(FLAGSTONE, end, 2, 14), 'mapStone', { ry: 0.5 });
+    s.box(0.9, y + 0.07, z - end * 0.05, 0.55, 0.2, 0.5, tone(FLAGSTONE, end, 3, 15), 'mapStone', { ry: -0.3 });
   }
 }

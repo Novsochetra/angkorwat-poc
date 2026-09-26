@@ -10,7 +10,7 @@ import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
 import { createWake } from './_wake';
 import { angleDiff } from './followCam';
 import { riverField, type RiverField } from './flow';
-import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler } from './types';
+import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type RoamWorld } from './types';
 
 /**
  * A small wooden boat on the rivers: W / S paddle, A / D turn; the current
@@ -274,7 +274,7 @@ export function createBoat(field?: HeightField): BoatMode {
         const x = body.pos.x + dx * (lead + d);
         const z = body.pos.z + dz * (lead + d);
         // (over the water only onto the village jetty's planks)
-        if ((r.levelAt(x, z) !== null || world.waterAt(x, z) !== null) && !onJetty(x, z, world.groundAt(x, z))) continue;
+        if ((r.levelAt(x, z) !== null || world.waterAt(x, z) !== null) && !onJetty(x, z, world, 0.3 * s + 0.15)) continue;
         if (!world.inBounds(x, z)) break;
         const g = world.groundAt(x, z);
         if (g > level + STEP_UP || g < level - 1.5) break;
@@ -961,8 +961,23 @@ function jettyBerth(r: RiverField): Moored | null {
 /** Where the jetty's boat lies along the head (m from its end, − = back toward the land). */
 const JETTY_BERTH_ALONG = -0.6;
 
+/**
+ * (x, z) is on the village jetty's plank floor, with bare planks for `room` m all round (the top of what
+ * stands there, `world.groundAt`), so he steps out onto the deck, not onto a bench, a fish trap or a post beside it.
+ */
+function onJetty(x: number, z: number, world: RoamWorld, room: number): boolean {
+  if (!onJettyAt(x, z, world.groundAt(x, z))) return false;
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    const px = x + Math.sin(a) * room;
+    const pz = z + Math.cos(a) * room;
+    if (!onJettyAt(px, pz, world.groundAt(px, pz))) return false;
+  }
+  return true;
+}
+
 /** (x, z) is on the village jetty's plank floor, at the top `g` of what stands there (not on a bench, a trap or a post). */
-function onJetty(x: number, z: number, g: number): boolean {
+function onJettyAt(x: number, z: number, g: number): boolean {
   const [fx, fz] = JETTY.from;
   const [ux, uz] = JETTY.dir;
   const len = Math.hypot(JETTY.to[0] - fx, JETTY.to[1] - fz);

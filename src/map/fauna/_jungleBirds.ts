@@ -2,6 +2,7 @@ import { mulberry32 } from '../../voxel/random';
 import { CH, Model, type Flock, type Species } from './_kit';
 import type { Ground, Walker } from './_landBrain';
 import type { Crown, Spot } from './_jungleSurvey';
+import { len2, len3 } from './_len';
 
 /**
  * The big birds of the jungle, one mesh:
@@ -263,6 +264,7 @@ export class BigBirds {
   readonly birds: Bird[] = [];
   private readonly rnd = mulberry32(4127);
   private roost = false;
+  private sit = false;
 
   constructor(
     private readonly flock: Flock,
@@ -323,8 +325,10 @@ export class BigBirds {
   }
 
   /** One update of every bird; `ex` the explorer's feet on foot or by boat (null otherwise); `overview`: the picker is up. */
-  step(dt: number, now: number, ex: Walker | null, night: number, overview: boolean): void {
+  /** `shelter` (0‥1, fauna/_waterAirKit.ts `birdShelter`): in rain they stay on their perches (only the explorer puts them up). */
+  step(dt: number, now: number, ex: Walker | null, night: number, overview: boolean, shelter = 0): void {
     const roost = (this.roost = night > 0.6);
+    this.sit = shelter > 0.5;
     for (const b of this.birds) if (!b.lead) this.leader(b, dt, now, ex, roost, overview);
     for (const b of this.birds) if (b.lead) this.follower(b, dt, now);
     for (const b of this.birds) this.pose(b, now, roost);
@@ -336,11 +340,11 @@ export class BigBirds {
     // The explorer close by: off (far off at night, they sleep).
     let near = false;
     if (ex) {
-      const d = Math.hypot(ex.x - b.x, ex.z - b.z);
+      const d = len2(ex.x - b.x, ex.z - b.z);
       const shy = b.kind === BIRD.hornbill ? 22 : 28;
       near = d < (roost ? shy * 0.35 : shy) && (b.kind === BIRD.ibis || ex.y < b.y - 3);
     }
-    if (near || (b.stay <= 0 && !roost)) {
+    if (near || (b.stay <= 0 && !roost && !this.sit)) {
       if (this.takeOff(b, now, ex, overview)) return;
       b.stay = 10 + 20 * this.rnd();
     }
@@ -470,12 +474,12 @@ export class BigBirds {
   private along(b: Bird, fl: Flight, u: number, side: number): void {
     flightAt(fl, u, P3);
     flightAt(fl, Math.min(1, u + 0.01), Q3);
-    const h = Math.hypot(Q3[0] - P3[0], Q3[2] - P3[2]);
+    const h = len2(Q3[0] - P3[0], Q3[2] - P3[2]);
     const yaw = h > 1e-4 ? Math.atan2(Q3[0] - P3[0], Q3[2] - P3[2]) : b.yaw;
     // (how the heading turns a little further on: the bank)
     flightAt(fl, Math.min(1, u + 0.04), R3);
     flightAt(fl, Math.min(1, u + 0.05), Q3);
-    const yaw2 = Math.hypot(Q3[0] - R3[0], Q3[2] - R3[2]) > 1e-4 ? Math.atan2(Q3[0] - R3[0], Q3[2] - R3[2]) : yaw;
+    const yaw2 = len2(Q3[0] - R3[0], Q3[2] - R3[2]) > 1e-4 ? Math.atan2(Q3[0] - R3[0], Q3[2] - R3[2]) : yaw;
     let turn = yaw2 - yaw;
     turn = Math.atan2(Math.sin(turn), Math.cos(turn));
     b.x = P3[0] + Math.cos(yaw) * side;
@@ -517,7 +521,7 @@ export class BigBirds {
     }
     // At rest beside its mate: on the perch, or wading near it.
     if (b.kind === BIRD.ibis) {
-      const d = Math.hypot(a.x - b.x, a.z - b.z);
+      const d = len2(a.x - b.x, a.z - b.z);
       if (d > 4.5 && !b.walking) {
         b.wx = a.x + (b.x - a.x) * (2 / d);
         b.wz = a.z + (b.z - a.z) * (2 / d);
@@ -543,7 +547,7 @@ export class BigBirds {
   /** Put every bird on the map (or hide it, `far` m from the camera). */
   show(cx: number, cy: number, cz: number, far: (b: Bird) => number): void {
     for (const b of this.birds) {
-      if (Math.hypot(b.x - cx, b.y - cy, b.z - cz) < far(b)) this.flock.place(b.i, b.x, b.y, b.z, b.yaw, b.scale);
+      if (len3(b.x - cx, b.y - cy, b.z - cz) < far(b)) this.flock.place(b.i, b.x, b.y, b.z, b.yaw, b.scale);
       else this.flock.hide(b.i);
     }
   }

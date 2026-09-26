@@ -2,13 +2,13 @@ import { Euler, MathUtils, Quaternion, Spherical, Vector3, type PerspectiveCamer
 import type { AngkorExplorer, SelfieAim, SelfieGesture } from '../../character/AngkorExplorer';
 import { SELFIE_CENTER, STICK_REACH, type HoldKind } from '../../character/Animator';
 import type { ExpressionName } from '../../character/parts/face';
-import { PHOTO_FOV, PhotoAlbum } from '../../game/Photos';
+import { PHOTO_FOV, PhotoAlbum, type AlbumText, type AlbumWord } from '../../game/Photos';
 import { BODY_UNIT_M } from '../../world/scale';
 import { PLACES, PLATEAUS } from '../layout';
 import type { MapPart, RoamMode } from '../types';
-import { lang, onLang, t, type WordKey } from '../ui/lang';
+import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import { createJournal, type Journal } from './_book';
-import { SPECIES_BY_KIND } from './_bookData';
+import { KHMER_MONTHS, SPECIES_BY_KIND } from './_bookData';
 import { attachBookUi, type AlbumTab, type BookUi } from './_bookUi';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
@@ -75,6 +75,39 @@ const selfieHint = () =>
     `${kbd('5')} / ${kbd('Esc')} ${low('rStow')}`,
     `${kbd('V')} ${low('rAlbum')}`,
   ].join(' · ');
+
+/** The album's own words in the language in use (ui/lang.ts `al…`; the keys here: 4 camera, 5 selfie). */
+const ALBUM_KEY: Record<AlbumWord, WordKey> = {
+  rec: 'alRec',
+  modePhoto: 'alModePhoto',
+  modeSelfie: 'alModeSelfie',
+  shutter: 'alShutter',
+  button: 'alButton',
+  buttonN: 'alButtonN',
+  buttonTip: 'alButtonTip',
+  heading: 'alHeading',
+  close: 'alClose',
+  countOne: 'alCountOne',
+  countN: 'alCountN',
+  empty: 'alEmpty',
+  photoAlt: 'alPhotoAlt',
+  download: 'alDownload',
+  delete: 'alDelete',
+  all: 'alAll',
+  saved: 'alSaved',
+};
+const ALBUM_TEXT: AlbumText = {
+  word: (key, vars) => t(ALBUM_KEY[key], vars),
+  num: (n) => num(n),
+  // (Khmer: day, month, year and a 24-hour clock in Khmer digits, as the passport's dates; browsers may lack Khmer dates)
+  date: (time) => {
+    if (lang() !== 'km') return undefined;
+    const d = new Date(time);
+    const two = (n: number) => String(n).padStart(2, '0');
+    return `${num(d.getDate())} ${KHMER_MONTHS[d.getMonth()]} ${num(d.getFullYear())} ម៉ោង ${num(two(d.getHours()))}:${num(two(d.getMinutes()))}`;
+  },
+  keys: { camera: '4', selfie: '5' },
+};
 
 const _e = new Euler(0, 0, 0, 'YXZ');
 const _q = new Quaternion();
@@ -195,7 +228,7 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
   /** The album, made when first needed (its viewfinder, flash and print too). */
   function getAlbum(): PhotoAlbum {
     if (album) return album;
-    album = new PhotoAlbum();
+    album = new PhotoAlbum(ALBUM_TEXT);
     // The selfie frame's shutter button (the view is ready: take it).
     album.onShutter = () => {
       if (kind && view > 0.95) snap = true;
@@ -215,13 +248,14 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
   function showCameraHint(): void {
     const hint = album && document.querySelector('.photo-finder .hint');
     if (hint) hint.innerHTML = cameraHint();
+    album?.relabel();
   }
   onLang(showCameraHint);
 
-  /** The camera at his eye, looking along the shot (world). In the boat or the air, from his head wherever it is. */
+  /** The camera at his eye, looking along the shot (world). In the boat, the air or a posture (the swing), from his head wherever it is. */
   function eye(out: Vector3): Vector3 {
     const s = body.scale;
-    if (d.mode() !== 'walk') {
+    if (d.mode() !== 'walk' || explorer.animator.posture) {
       const head = explorer.rig.joints.head;
       head.updateWorldMatrix(true, false);
       head.localToWorld(out.copy(SELFIE_CENTER));

@@ -77,7 +77,7 @@ const GAP = 6;
  * (runs of slots; short gaps are sent along, fewer calls), not the whole
  * buffer.
  */
-class SlotMarks {
+export class SlotMarks {
   private readonly marks: Uint8Array;
   private lo = Number.POSITIVE_INFINITY;
   private hi = -1;

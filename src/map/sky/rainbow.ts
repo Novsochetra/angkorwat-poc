@@ -5,10 +5,11 @@ import { KEY_DAY, SKY } from './palette';
 
 /**
  * A rainbow after rain (the part `rainbow`): a soft, faint arc in the
- * west-north-west, over Bayon, round the point opposite the key light
- * (by day `KEY_DAY`: the sun, low from the east-south-east; it follows the
- * key as it turns). Its top stands ≈ 17° up; its right leg comes down
- * behind the western cliffs in the overview.
+ * west-north-west, over Bayon, round the point opposite the key light's
+ * bearing (by day `KEY_DAY`: the sun from the east-south-east; it follows the
+ * key as it turns), taken at the real sun's low height (≥ 2°), not the key's
+ * 25°: a tall, near upright bow. The overview never sees its top; its right
+ * leg stands in the open sky between the title card and Angkor Wat's.
  *
  * As the real one: the primary bow at 40–42.5° from that point, red on the
  * outside, violet inside; the sky inside it a little brighter; a faint
@@ -30,6 +31,8 @@ const RADIUS = 1100;
 /** The band holds these angles from the antisolar point (degrees). */
 const INNER = 30;
 const OUTER = 56;
+/** The sun is never taken lower than this for the bow (rad). */
+const LOW_SUN = (2 * Math.PI) / 180;
 /** Brightness at full (linear light added). */
 const STRENGTH = 0.36;
 
@@ -148,8 +151,13 @@ export function buildRainbow(ctx: MapContext): MapPart {
       mesh.visible = a > 0.002 || !compiled;
       if (!mesh.visible) return;
       mesh.position.copy(f.camera.position);
-      // Opposite the sun (the key light): turn the band there, and the axes round it (side level, up above).
-      anti.copy(SKY.keyDir).negate().normalize();
+      // Opposite the sun: the key light's bearing (it matches the shading) but the
+      // real sun's low height (not the key's 25°): a tall, near upright bow whose
+      // right leg stands in the open sky of the overview. Turn the band there, and
+      // the axes round it (side level, up above).
+      const el = Math.max(Math.asin(Math.min(1, Math.max(-1, SKY.sunDir.y))), LOW_SUN);
+      const h = Math.hypot(SKY.keyDir.x, SKY.keyDir.z) || 1;
+      anti.set((-SKY.keyDir.x / h) * Math.cos(el), -Math.sin(el), (-SKY.keyDir.z / h) * Math.cos(el));
       mesh.quaternion.setFromUnitVectors(Z, anti);
       side.crossVectors(Y, anti).normalize();
       up.crossVectors(anti, side).normalize();

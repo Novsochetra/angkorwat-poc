@@ -17,11 +17,19 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type Roa
  * Its home is a small grass field in the valley below Angkor Wat, west of
  * the road's stairs up the cliff (`BALLOON_HOME`; `reserveBalloonHome` keeps
  * the trees off it and off a lane to the valley road, before the jungle is
- * planted). It stands there inflated and tethered to two stakes, its pilot
- * light burning, a small wooden sign by the lane; now and then the burner
- * fires a short breath to keep it warm (a glow in the night).
+ * planted). Parked there it lies deflated on the grass (the envelope a long
+ * flat heap behind the basket, the basket on its side at the mouth, the
+ * inflation fan beside it), tethered to two stakes, a small wooden sign by
+ * the lane with a lantern lit after dark.
  *
- * - Walk up to the basket, E: he climbs in and stands at the burner line.
+ * - Walk up to the basket, E: the basket rights itself, he climbs in and
+ *   stands at the burner line; the fan blows cold air into the envelope (it
+ *   ripples and rises off the grass), then the burner fires and stands it up
+ *   over the basket (`INFLATE` s; W / Space: faster, the burner roaring).
+ *   Esc meanwhile: he hops back out and it lies down again.
+ * - Inflated and standing on its field (after a landing back home), its
+ *   pilot light burns and now and then the burner breathes (a glow in the
+ *   night); E climbs straight in.
  * - W or Space: the burner roars and heats the air in the envelope; it
  *   lifts off (the tether lets go) and climbs, slowly, the longer the burn
  *   the faster (Shift: both burners). S opens the vent at the top: it
@@ -36,13 +44,19 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type Roa
  *   (no water, no temple, no trees in the envelope's way); on the ground E
  *   again and he climbs out. Touching down anywhere else just bumps: the
  *   burner lifts it off again. Left away from home it stands where it
- *   landed until he leaves roaming; then it is back home.
+ *   landed until he leaves roaming; then it is back home, deflated.
  * - The camera and the selfie phone work in the basket (tools.ts); the
  *   balloon floats on meanwhile (hardly cooling).
  *
  * The explorer's feet are the basket floor's middle (`body.pos`), he faces
  * the balloon's heading; the posture (_balloonPoses.ts) stands him at the
  * burner line.
+ *
+ * URL (with `roam=balloon`; checking): `balloon=parked` on foot beside the
+ * tipped basket (parked) · `balloon=inflate:<s>` in the basket at home, the
+ * inflation run for s seconds · none: in the basket, inflated. With
+ * `roam=walk`: `balloon=up` stands it inflated at home. A bug report taken
+ * while he hops in or out, or while it inflates, replays that (`reportParams`).
  */
 
 /** The balloon's field (m): west of the valley road, at the foot of the summit's cliff. */
@@ -130,6 +144,17 @@ const BREATH_LONG = 1.3;
  */
 const POSE_NEAR = 150;
 const POSE_EVERY = 0.25;
+/** Inflating (s): the fan's cold air, then the burner stands it up (all of it); W / Space this much faster; deflating back this much faster. */
+const INFLATE_FAN = 3.5;
+const INFLATE = 8;
+const FAST = 3.5;
+const DEFLATE = 2;
+/** The basket rights itself (or lies back down) in this long (s). */
+const RIGHT = 0.9;
+/** The first frames draw every part (their shaders compile at load). */
+const WARM_FRAMES = 3;
+/** Inflating, the follow camera stands off to his front and looks back at the envelope (radians from his facing). */
+const INFLATE_CAM = Math.PI * 0.72;
 
 const _v = new Vector3();
 const _wind = { x: 0, z: 0 };
@@ -157,6 +182,10 @@ export interface BalloonMode extends RoamModeHandler {
   solid(x: number, z: number, y: number): boolean;
   /** Every frame in every mode: poses it, sends it home when roaming ends. */
   frame(f: MapFrame, mode: RoamMode): void;
+  /** Esc while boarding or inflating: he hops back out and it deflates (true: taken, roaming goes on). */
+  cancel(ctx: RoamCtx): boolean;
+  /** For bug reports: while he hops in or out or it inflates, URL params (and the facing) that replay it; else null. */
+  reportParams(): { params: Record<string, string>; yaw: number } | null;
 }
 
 /**
@@ -210,6 +239,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     return new Vector3(x, world.groundAt(x, z) + 0.05 * size, z);
   });
   const deco = buildBalloonHome(home, sign, stakes, size);
+  model.setHome(new Vector3(home.x, home.y, home.z), home.yaw, size);
   const object = new Group();
   object.name = 'roam:balloon';
   object.add(model.object, deco.object);
@@ -225,8 +255,23 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   let flame = 0;
   let atHome = true;
   let riding = false;
-  let phase: 'board' | 'ground' | 'fly' | 'land' | 'out' = 'ground';
+  let phase: 'board' | 'inflate' | 'ground' | 'fly' | 'land' | 'out' = 'ground';
   let pt = 0;
+  /** The envelope stands (else parked or inflating at home); the inflation so far (s, 0‥`INFLATE`); the basket on its side (0‥1). */
+  let inflated = false;
+  let prog = 0;
+  let tip = 1;
+  /** Letting the air out after Esc (the progress runs back, then the basket lies down). */
+  let deflating = false;
+  /** The fan: blowing now, and its level eased (the propeller, the hum). */
+  let fanOn = false;
+  let fanLv = 0;
+  /** Since E at the basket (s), his facing then; the inflation when Esc stopped it (for bug reports). */
+  let boardT = 0;
+  let boardYaw = 0;
+  let stoppedAt = 0;
+  let warm = WARM_FRAMES;
+  let lampNight = -1;
   let clock = 0;
   const hopFrom = new Vector3();
   const hopTo = new Vector3();
@@ -376,6 +421,21 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     heat = REST;
     atHome = true;
     phase = 'ground';
+    // (parked: deflated on the grass)
+    inflated = false;
+    prog = 0;
+    tip = 1;
+    deflating = false;
+    fanOn = false;
+  }
+
+  /** Stand it up at once (inflated). */
+  function standUp(): void {
+    inflated = true;
+    prog = INFLATE;
+    tip = 0;
+    deflating = false;
+    fanOn = false;
   }
 
   /** The keys, on the first ride of the visit. */
@@ -446,14 +506,17 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       ex.animator.postureFeet = true;
       if (from === 'overview') {
         // (a URL start: where `at` says, on the ground or in the air; else at home)
-        if (new URLSearchParams(location.search).has('at')) {
+        const q = new URLSearchParams(location.search);
+        if (q.has('at')) {
           pos.copy(body.pos);
           yaw = body.yaw;
           atHome = Math.hypot(pos.x - home.x, pos.z - home.z) < 3;
+          if (atHome) [pos.x, pos.z] = [home.x, home.z];
         } else {
           goHome();
-          if (new URLSearchParams(location.search).has('yaw')) yaw = body.yaw;
+          if (q.has('yaw')) yaw = body.yaw;
         }
+        standUp();
         const fl = floorUnder(pos.x, pos.z);
         if (pos.y > fl + 2) {
           phase = 'fly';
@@ -464,16 +527,49 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
           phase = 'ground';
           heat = REST;
         }
-        body.pos.copy(pos);
-        body.yaw = yaw;
-        ex.animator.posture = posture;
         cam.distance = CAM_DIST;
         cam.pitch = CAM_PITCH;
         settle = null;
+        const bq = q.get('balloon') ?? '';
+        if (atHome && phase === 'ground' && bq === 'parked') {
+          // Parked, and he on foot beside the tipped basket (the first step hands him to the walker).
+          goHome();
+          const at = outSpot(hopTo) ?? hopTo.set(pos.x + Math.sin(yaw) * OUT * size, pos.y, pos.z + Math.cos(yaw) * OUT * size);
+          hopFrom.copy(at);
+          hopYaw = Math.atan2(pos.x - at.x, pos.z - at.z);
+          phase = 'out';
+          pt = HOP;
+          body.pos.copy(at);
+          body.yaw = hopYaw;
+          ex.animator.posture = null;
+          cam.focus.set(at.x, at.y + 1.2 * size, at.z);
+          return;
+        }
+        if (atHome && phase === 'ground' && bq.startsWith('inflate')) {
+          // In the basket at home, the inflation run for so long.
+          goHome();
+          tip = 0;
+          prog = clamp(Number(bq.split(':')[1]) || 0, 0, INFLATE);
+          phase = 'inflate';
+          fanOn = prog < INFLATE_FAN + 1.5;
+          fanLv = fanOn ? 1 : 0;
+          cam.yaw = cam.behindYaw = yaw + INFLATE_CAM;
+          if (prog >= INFLATE) {
+            standUp();
+            phase = 'ground';
+          }
+        }
+        body.pos.copy(pos);
+        body.yaw = yaw;
+        ex.animator.posture = posture;
+        cam.focus.set(pos.x, pos.y + FOCUS_UP * size, pos.z);
       } else {
-        // Climb in over the rim.
+        // Climb in over the rim (parked: once the basket stands up again).
         phase = 'board';
         pt = 0;
+        boardT = 0;
+        boardYaw = body.yaw;
+        deflating = false;
         hopFrom.copy(body.pos);
         hopTo.copy(pos);
         hopYaw = yaw;
@@ -493,12 +589,22 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       const a = ex.currentAction;
       device = a === 'photo' || a === 'selfie';
 
+      ctx.levels.fan = fanLv;
       // ── Climbing in and out ────────────────────────────────────────────
       if (phase === 'board') {
+        boardT += dt;
         cam.focus.set(body.pos.x, body.pos.y + 1.2 * size, body.pos.z);
         cam.behindYaw = yaw;
+        if (tip > 0) {
+          // The basket rights itself first; he waits by it, turned to it.
+          tip = Math.max(0, tip - dt / RIGHT);
+          body.yaw += angleDiff(Math.atan2(pos.x - body.pos.x, pos.z - body.pos.z), body.yaw) * (1 - Math.exp(-dt * 6));
+          ex.setMotion(0, true, 0);
+          return null;
+        }
         if (hop(ctx, dt)) {
-          phase = 'ground';
+          phase = inflated ? 'ground' : 'inflate';
+          if (!inflated) fanOn = true;
           body.pos.copy(pos);
           body.yaw = yaw;
           ex.animator.posture = posture;
@@ -511,6 +617,36 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         if (hop(ctx, dt)) {
           ctx.sound(world.field.surfaceAt(body.pos.x, body.pos.z) === SURFACE.grass ? 'stepGrass' : 'step', 0.8);
           return 'walk';
+        }
+        return null;
+      }
+      if (phase === 'inflate') {
+        // ── Inflating on the field: the fan's cold air, then the burner (W / Space: faster, a steady roar) ──
+        const fast = input.jumpHeld || input.move.y > 0.3;
+        prog = Math.min(INFLATE, prog + dt * (fast ? FAST : 1));
+        fanOn = prog < INFLATE_FAN + 1.5;
+        const hot = prog > INFLATE_FAN;
+        const fire = hot ? (fast ? 1 : (prog - INFLATE_FAN) % 1.7 < 1.2 ? 0.8 : 0) : 0;
+        flame += (fire - flame) * (1 - Math.exp(-dt * (fire > flame ? 12 : 5)));
+        setPrompt(ctx, t('rInflating'));
+        body.pos.copy(pos);
+        body.yaw = yaw;
+        body.vel.set(0, 0, 0);
+        body.grounded = true;
+        ex.setMotion(0, true, 0);
+        ps.burn = device ? 0 : flame;
+        handle.copy(BALLOON.handle).y -= 0.07 * ps.burn;
+        ps.fistR.copy(handle).divideScalar(BODY_UNIT_M);
+        ps.fistL.copy(BALLOON.rimHand).divideScalar(BODY_UNIT_M);
+        // (the camera stands off to the front and looks back over him at the envelope coming up)
+        setCam(ctx, dt, 0);
+        cam.behindYaw = yaw + INFLATE_CAM;
+        ctx.levels.burner = flame;
+        if (prog >= INFLATE) {
+          standUp();
+          phase = 'ground';
+          heat = REST;
+          setPrompt(ctx, null);
         }
         return null;
       }
@@ -663,6 +799,43 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       return null;
     },
 
+    cancel(ctx) {
+      if (!riding || inflated || (phase !== 'board' && phase !== 'inflate')) return false;
+      const { body } = ctx;
+      // He hops back out (not hopped in yet: he just stays), and it lies down again.
+      stoppedAt = prog;
+      deflating = true;
+      fanOn = false;
+      flame = 0;
+      setPrompt(ctx, null);
+      body.explorer.animator.posture = null;
+      if (phase === 'board' && pt === 0) hopTo.copy(body.pos);
+      else if (!outSpot(hopTo)) hopTo.copy(hopFrom);
+      hopFrom.copy(body.pos);
+      hopYaw = Math.atan2(hopTo.x - pos.x, hopTo.z - pos.z);
+      pt = phase === 'board' && pt === 0 ? HOP : 0;
+      phase = 'out';
+      return true;
+    },
+
+    reportParams(): { params: Record<string, string>; yaw: number } | null {
+      const at = (v: Vector3) => [v.x, v.y, v.z].map((n) => n.toFixed(2)).join(',');
+      const s = (n: number) => Math.max(0.1, n).toFixed(1);
+      if (!riding) return null;
+      if (phase === 'board') {
+        // Away from home it stands inflated: start him in the basket. At home: replay E from where he stood.
+        if (!atHome) return { params: { roam: 'balloon', at: at(pos) }, yaw };
+        return { params: { roam: 'walk', at: at(hopFrom), ...(inflated ? { balloon: 'up' } : ({} as Record<string, string>)), sim: `e:0.1,_:${s(boardT - 0.1)}` }, yaw: boardYaw };
+      }
+      if (phase === 'inflate') return { params: { roam: 'balloon', at: at(pos), balloon: `inflate:${prog.toFixed(1)}` }, yaw };
+      if (phase === 'out') {
+        // (stopped while it inflated: Esc at that point; else E on the ground, then the hop so far)
+        if (deflating) return { params: { roam: 'balloon', at: at(pos), balloon: `inflate:${stoppedAt.toFixed(1)}`, sim: `x:0.1,_:${s(pt - 0.1)}` }, yaw };
+        return { params: { roam: 'balloon', at: at(pos), sim: `e:0.1,_:${s(pt - 0.1)}` }, yaw };
+      }
+      return null;
+    },
+
     exit(ctx, to) {
       const { body } = ctx;
       riding = false;
@@ -671,6 +844,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       setPrompt(ctx, null);
       ctx.levels.burner = 0;
       flame = 0;
+      fanOn = false;
+      if (!inflated && phase !== 'out') deflating = true;
       // Back to the map: the balloon is back home. Out of the basket: it stands where it is.
       if (to === 'overview') goHome();
       else if (phase !== 'out') {
@@ -682,7 +857,18 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
 
     frame(f, mode) {
       clock += riding ? 0 : f.dt;
-      if (mode === 'overview' && !atHome) goHome();
+      if (mode === 'overview' && (!atHome || inflated || prog > 0 || tip < 1)) goHome();
+      // The fan winds up and down; after Esc the air runs out, then the basket lies down.
+      fanLv += ((fanOn ? 1 : 0) - fanLv) * (1 - Math.exp(-f.dt * 1.5));
+      if (!fanOn && fanLv < 0.003) fanLv = 0;
+      if (deflating) {
+        if (prog > 0) prog = Math.max(0, prog - f.dt * DEFLATE);
+        else if (tip < 1) tip = Math.min(1, tip + f.dt / RIGHT);
+        else deflating = false;
+      }
+      // The sign's lantern follows the night.
+      if (Math.abs(f.night - lampNight) > 0.01) deco.lantern((lampNight = f.night));
+      if (warm > 0) warm--;
       const distance = f.camera.position.distanceTo(pos);
       if (!riding && !parkedPose(f.t, f.camera, distance)) return;
       place(f.t, f.night, f.weather, distance);
@@ -690,15 +876,18 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   };
 
   // (what the parked balloon was last posed with)
-  const posed = { at: Number.NEGATIVE_INFINITY, pos: new Vector3(Number.NaN, 0, 0), yaw: 0, home: true, flame: 0 };
-  /** Parked: whether to pose it this frame (see `POSE_NEAR`). */
+  const posed = { at: Number.NEGATIVE_INFINITY, pos: new Vector3(Number.NaN, 0, 0), yaw: 0, home: true, flame: 0, prog: -1, tip: -1, fan: -1, warm: true };
+  /** Parked: whether to pose it this frame (see `POSE_NEAR`; deflated and still: once). */
   function parkedPose(time: number, camera: PerspectiveCamera, distance: number): boolean {
     if (!posed.pos.equals(pos) || posed.yaw !== yaw || posed.home !== atHome || time < posed.at) return true;
+    if (posed.prog !== prog || posed.tip !== tip || posed.fan !== fanLv || posed.warm !== warm > 0) return true;
+    // (lying on the grass, nothing moves: posed already)
+    if (!inflated) return false;
     _sphere.center.copy(pos).y += 9 * size;
     _sphere.radius = 11 * size;
     _frustum.setFromProjectionMatrix(_viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     if (!_frustum.intersectsSphere(_sphere)) return false;
-    const breathing = atHome && (time % BREATH_EVERY) / BREATH_LONG < 1;
+    const breathing = atHome && inflated && (time % BREATH_EVERY) / BREATH_LONG < 1;
     return distance < POSE_NEAR || breathing || posed.flame > 0 || time - posed.at >= POSE_EVERY;
   }
 
@@ -711,7 +900,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     let fl = flame;
     if (!riding) {
       const b = (time % BREATH_EVERY) / BREATH_LONG;
-      fl = atHome && b < 1 ? 0.75 * Math.sin(Math.PI * b) ** 0.5 : 0;
+      fl = atHome && inflated && b < 1 ? 0.75 * Math.sin(Math.PI * b) ** 0.5 : 0;
       handle.copy(BALLOON.handle).y -= 0.04;
     } else if (device) handle.copy(BALLOON.handle).y -= 0.04;
     posed.at = time;
@@ -719,6 +908,10 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     posed.yaw = yaw;
     posed.home = atHome;
     posed.flame = fl;
+    posed.prog = prog;
+    posed.tip = tip;
+    posed.fan = fanLv;
+    posed.warm = warm > 0;
     const sway = riding && phase !== 'ground' ? 0.3 : 1;
     const lean = 0.03 * w.wind * sway;
     model.pose({
@@ -731,10 +924,18 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       night,
       t: time,
       handle,
-      tether: atHome && (!riding || phase === 'ground' || phase === 'board' || phase === 'out') ? stakes : null,
+      tether: atHome && (!riding || phase === 'ground' || phase === 'board' || phase === 'inflate' || phase === 'out') ? stakes : null,
       distance,
+      tip,
+      cold: inflated ? 1 : smoothstep(0, INFLATE_FAN, prog),
+      rise: inflated ? 1 : clamp((prog - INFLATE_FAN) / (INFLATE - INFLATE_FAN), 0, 1),
+      fan: fanLv,
+      pilot: inflated || prog > 0 || tip < 1,
+      warm: warm > 0,
     });
   }
+  // (a walk shot with `balloon=up`: it stands inflated at home)
+  if (new URLSearchParams(location.search).get('balloon') === 'up') standUp();
   place(0, 0, CALM_WEATHER, 200);
   return mode;
 }

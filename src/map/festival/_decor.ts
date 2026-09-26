@@ -63,14 +63,40 @@ export function flag(kit: Kit, x: number, y: number, z: number, w: number, h: nu
   } else cloth(0, w, 0, h, kind);
 }
 
+/** The lowest a string of pennants hangs over the ground under it (m), when its caller gives the ground: well over the heads of the (1.4× scale) people. */
+export const BUNTING_CLEAR = 3.5;
+/** A pennant: stacked strips narrowing downward (widths m; each `PENNANT_ROW` m tall). */
+const PENNANT = [0.34, 0.26, 0.18, 0.1, 0.04];
+const PENNANT_ROW = 0.08;
+
 /**
  * A string of pennants from (ax, ay, az) to (bx, by, bz), sagging `sag` m
  * in the middle, a pennant every `every` m (seeded colours, or `colors`).
+ * Given `ground` (height at x, z), the string keeps `BUNTING_CLEAR` m over
+ * the ground all along: it sags less, then (if it must) its ends go up.
  */
-export function bunting(kit: Kit, ax: number, ay: number, az: number, bx: number, by: number, bz: number, sag: number, every = 0.55, colors: readonly number[] = PENNANTS, o: BoxOpts = {}): void {
+export function bunting(kit: Kit, ax: number, ay: number, az: number, bx: number, by: number, bz: number, sag: number, every = 0.55, colors: readonly number[] = PENNANTS, o: BoxOpts = {}, ground?: (x: number, z: number) => number): void {
   const len = Math.hypot(bx - ax, bz - az);
   const n = Math.max(2, Math.round(len / every));
   const yaw = Math.atan2(bx - ax, bz - az) - Math.PI / 2;
+  if (ground) {
+    // (how far under the clearance the string would hang, with the sag and without)
+    const short = (sg: number) => {
+      let worst = 0;
+      for (let k = 1; k < 16; k++) {
+        const u = k / 16;
+        const y = ay + (by - ay) * u - sg * 4 * u * (1 - u);
+        worst = Math.max(worst, ground(ax + (bx - ax) * u, az + (bz - az) * u) + BUNTING_CLEAR - y);
+      }
+      return worst;
+    };
+    for (let k = 0; k < 8 && sag > 0.05 && short(sag) > 0; k++) sag *= 0.7;
+    const lift = short(sag);
+    if (lift > 0) {
+      ay += lift;
+      by += lift;
+    }
+  }
   // The line: short straight pieces along the sag.
   const pieces = Math.max(3, Math.round(len / 1.5));
   const yAt = (u: number) => ay + (by - ay) * u - sag * 4 * u * (1 - u);
@@ -87,15 +113,17 @@ export function bunting(kit: Kit, ax: number, ay: number, az: number, bx: number
     kit.box((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, l, 0.025, 0.025, 0x5a4a3a, { ...o, yaw, roll: Math.atan2(y1 - y0, Math.hypot(x1 - x0, z1 - z0)) });
   }
   const phase = hash3(ax, ay, az, 9) * 6.28;
+  // (small strings, as between the sand stupas, get smaller pennants)
+  const k = Math.min(1, every / 0.5);
   for (let i = 1; i < n; i++) {
     const u = i / n;
     const x = ax + (bx - ax) * u;
     const z = az + (bz - az) * u;
     const y = yAt(u);
     const color = colors === PENNANTS ? pick(colors, i, Math.round(ax), Math.round(az), 3) : colors[i % colors.length];
-    // A triangle: two boxes, the lower narrower (they sway a little, across the string).
-    kit.box(x, y - 0.13, z, 0.26, 0.16, 0.02, color, { ...o, yaw, anim: ANIM.wave, a: [0.25, 0.0, SWAY], b: [phase + i * 0.9, 0, 0, 0] });
-    kit.box(x, y - 0.28, z, 0.12, 0.14, 0.02, color, { ...o, yaw, anim: ANIM.wave, a: [0.25, 0.0, SWAY], b: [phase + i * 0.9, 0, 0, 0] });
+    // A triangle, point down: strips narrowing downward (they sway a little, across the string).
+    const anim = { ...o, yaw, anim: ANIM.wave, a: [0.25, 0.0, SWAY] as [number, number, number], b: [phase + i * 0.9, 0, 0, 0] as [number, number, number, number] };
+    PENNANT.forEach((w, r) => kit.box(x, y - 0.02 - (r + 0.5) * PENNANT_ROW * k, z, w * k, PENNANT_ROW * k + 0.005, 0.02, color, anim));
   }
 }
 

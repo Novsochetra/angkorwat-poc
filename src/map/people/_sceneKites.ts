@@ -187,7 +187,10 @@ export class KiteKids implements PeopleScene {
       const qy = H.y + (k.y - H.y) * u - SAG * L * 4 * u * (1 - u);
       const qz = H.z + (k.z - H.z) * u;
       th.segment(fl.line + s - 1, px, py, pz, qx, qy, qz, 0.02);
-      [px, py, pz] = [qx, qy, qz];
+      // (plain assignments: a destructuring swap builds an array every segment, every frame)
+      px = qx;
+      py = qy;
+      pz = qz;
     }
     // The child: facing the kite, reel up, looking up; a few steps back and forth as it swoops.
     const back = 1.2 * sw;

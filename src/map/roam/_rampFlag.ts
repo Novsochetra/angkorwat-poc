@@ -88,8 +88,13 @@ export class RampFlag {
     this.update(0, 0.5, 0);
   }
 
-  /** Wave in the breeze: `t` the time (s), `gust` how strong it blows (0 a lull … 1), `night` 0‥1; the weather's wind on top. */
-  update(t: number, gust: number, night: number): void {
+  /**
+   * Wave in the breeze: `t` the time (s), `gust` how strong it blows (0 a lull … 1), `night` 0‥1; the weather's wind on top.
+   * `move` false (out of sight): only the night light follows; the cloth keeps its shape and nothing is uploaded.
+   */
+  update(t: number, gust: number, night: number, move = true): void {
+    cloth().emissiveIntensity = NIGHT_LIT * night;
+    if (!move) return;
     const cw = FLAG.width / COLS;
     // (the weather's wind: a lull only in calm air; in a strong wind it snaps quick and flies out flatter)
     const wind = weatherNow().wind;
@@ -117,6 +122,5 @@ export class RampFlag {
       }
     this.pos.needsUpdate = true;
     this.geo.computeVertexNormals();
-    cloth().emissiveIntensity = NIGHT_LIT * night;
   }
 }

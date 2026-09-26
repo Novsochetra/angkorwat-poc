@@ -1,6 +1,7 @@
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
 import type { JungleSite } from '../layout';
+import type { Subject } from '../types';
 import { FERN, fern, MOSS, pickTone, ROCK, Site, stone } from './_campKit';
 
 /**
@@ -12,7 +13,8 @@ import { FERN, fern, MOSS, pickTone, ROCK, Site, stone } from './_campKit';
  * far end, away from the splash.
  *
  * Built in map space round the site (a `Site` with no turn: its local x, z
- * are map offsets; y from the pool's surface).
+ * are map offsets; y from the pool's surface). Returns the open flowers and
+ * buds as the nature book's lotus subjects (roam/_book.ts).
  */
 
 /** Keep this far (m) from the trail's middle line (and the bridge on it). */
@@ -21,7 +23,8 @@ const TRAIL_CLEAR = 2.2;
 const LOTUS = [0xe59bb0, 0xeaa6bb, 0xd98aa2, 0xf0b8c8];
 const PAD = [0x4f7f33, 0x5e8f3a, 0x46752d, 0x689a40];
 
-export function buildPool(s: Site, field: HeightField, site: JungleSite, level: number, keepOff: (x: number, z: number) => boolean): void {
+export function buildPool(s: Site, field: HeightField, site: JungleSite, level: number, keepOff: (x: number, z: number) => boolean): Subject[] {
+  const flowers: Subject[] = [];
   const seed = s.seed;
   const tone = (list: readonly number[], i: number, j: number, k: number) => pickTone(list, i, j, k, seed);
   const R = site.r + 2;
@@ -105,16 +108,21 @@ export function buildPool(s: Site, field: HeightField, site: JungleSite, level: 
       s.box(jx - s.x, y, jz - s.z, size, 0.03, size * 0.9, c, 'mapLeaf', { ry: turn });
       s.box(jx - s.x, y + 0.005, jz - s.z, size * 0.8, 0.03, size * 0.8, c, 'mapLeaf', { ry: turn + Math.PI / 4, shade: 1.06 });
       const r = hash3(x * 10, z * 10, 8, seed);
-      if (r < 0.22) lotus(s, jx - s.x + 0.1, y + 0.03, jz - s.z + 0.05, x * 10 + z);
-      else if (r < 0.32) {
+      if (r < 0.22) {
+        lotus(s, jx - s.x + 0.1, y + 0.03, jz - s.z + 0.05, x * 10 + z);
+        // (a little bigger than the flower: the pad round it too)
+        flowers.push({ kind: 'lotus', x: jx + 0.1, y: s.y + y + 0.15, z: jz + 0.05, r: 0.45 });
+      } else if (r < 0.32) {
         // A bud on its stalk, standing out of the water.
         const bx = jx - s.x - size * 0.4;
         const bz = jz - s.z;
         s.box(bx, y + 0.3, bz, 0.04, 0.6, 0.04, tone(FERN, x, z, 9), 'mapLeaf');
         s.box(bx, y + 0.66, bz, 0.13, 0.2, 0.13, tone(LOTUS, x, z, 10), 'petal');
         s.box(bx, y + 0.79, bz, 0.07, 0.08, 0.07, tone(LOTUS, x, z, 11), 'petal', { shade: 1.1 });
+        flowers.push({ kind: 'lotus', x: bx + s.x, y: s.y + y + 0.6, z: bz + s.z, r: 0.4 });
       }
     }
+  return flowers;
 }
 
 /** A lotus flower open on the water: a ring of pink petals round a yellow heart. */

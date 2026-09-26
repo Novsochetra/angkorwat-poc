@@ -1,4 +1,4 @@
-import { Group, Quaternion, Vector3 } from 'three';
+import { Frustum, Group, Matrix4, Quaternion, Sphere, Vector3, type Camera, type Object3D } from 'three';
 import { CELL, SURFACE, type HeightField } from '../heightfield';
 import { OVERVIEW, PLACES, PLATEAUS, type PlaceDef, type Plateau } from '../layout';
 import { buildRoadNetwork, KIND, LIFT, type Station } from '../road/line';
@@ -70,8 +70,11 @@ export interface LaunchSpots {
   parked(spot: LaunchSpot, pos: Vector3, quat: Quaternion): Vector3;
   /** The explorer lifts the spot's glider (it leaves the ramp until he is far away). */
   take(spot: LaunchSpot): void;
-  /** Every frame: lanterns, beacons, windsocks and flags; a glider comes back to its ramp once the explorer is well away. */
-  frame(night: number, t: number, at: Vector3, flying: boolean): void;
+  /**
+   * Every frame: lanterns, beacons, windsocks and flags; a glider comes back to its ramp once the explorer is well away.
+   * With the `camera`, a flag out of its view keeps still (nothing uploaded) and a far one waves at `FAR_FLAG_HZ`.
+   */
+  frame(night: number, t: number, at: Vector3, flying: boolean, camera?: Camera): void;
 }
 
 /** The cliff: the land past the lip at least this much lower right away, and this much a few metres on (m). */
@@ -133,7 +136,7 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
   const object = new Group();
   object.name = 'roam:launchSpots';
   let blocks = 0;
-  const ramps: { spot: LaunchSpot; update(night: number, t: number): void; glider: Glider; taken: boolean }[] = [];
+  const ramps: { spot: LaunchSpot; update(night: number, t: number, flag?: boolean): void; flagAt: Object3D; flagT: number; glider: Glider; taken: boolean }[] = [];
   const q = new Quaternion();
   const p = new Vector3();
   for (const [i, spot] of list.entries()) {
@@ -153,13 +156,14 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
     const glider = new Glider();
     object.add(glider.object);
     blocks += glider.blocks;
-    ramps.push({ spot, update: ramp.update, glider, taken: false });
+    ramps.push({ spot, update: ramp.update, flagAt: ramp.flagAt, flagT: -Infinity, glider, taken: false });
   }
   const park = (r: (typeof ramps)[number]) => {
     api.parked(r.spot, p, q);
     r.glider.pose({ position: p, quaternion: q, size: ROAM_SCALE, open: 1, flutter: 0.05, t: 0, night: 0 });
   };
 
+  let warm = 3;
   const api: LaunchSpots = {
     object,
     list,
@@ -199,9 +203,27 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
       r.taken = true;
       r.glider.hide();
     },
-    frame(night, t, at, flying) {
+    frame(night, t, at, flying, camera) {
+      // (the first frames move every flag: the camera's matrices may not be set yet)
+      // (and in a headless shot all of them always: its still stays as it was)
+      const see = warm === 0 && !SHOT ? camera : undefined;
+      if (warm > 0) warm--;
+      if (see) {
+        // (roaming moves the camera before main.ts updates its matrices)
+        see.updateMatrixWorld();
+        _frustum.setFromProjectionMatrix(_m.multiplyMatrices(see.projectionMatrix, see.matrixWorldInverse));
+      }
       for (const r of ramps) {
-        r.update(night, t);
+        // (the flag waves only where it can be seen: every frame near, a few times a second far off)
+        let flag = true;
+        if (see) {
+          r.flagAt.getWorldPosition(_sphere.center);
+          _sphere.radius = FLAG.width + 2;
+          const far = _sphere.center.distanceToSquared(see.position) > FAR_FLAG * FAR_FLAG;
+          flag = _frustum.intersectsSphere(_sphere) && (!far || t - r.flagT >= 1 / FAR_FLAG_HZ || t < r.flagT);
+          if (flag) r.flagT = t;
+        }
+        r.update(night, t, flag);
         if (r.taken && !flying && Math.hypot(at.x - r.spot.x, at.z - r.spot.z) > RETURN_AT) {
           r.taken = false;
           park(r);
@@ -214,6 +236,14 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
   console.info(`[map] launch spots: ${list.length} (${list.map((s) => `${s.x.toFixed(0)},${s.z.toFixed(0)} ↑${s.y.toFixed(0)}m yaw ${Math.round((s.yaw * 180) / Math.PI)}° ↓${s.drop.toFixed(0)}m${built(s)}`).join(' · ')}), ${blocks} blocks, ${pre ? `found in ${pre.ms.toFixed(0)} ms, ` : ''}built in ${(performance.now() - t0).toFixed(0)} ms`);
   return api;
 }
+
+/** Past this far from the camera (m) a flag is a few pixels: it waves at `FAR_FLAG_HZ` moves a second. */
+const FAR_FLAG = 250;
+const FAR_FLAG_HZ = 10;
+const SHOT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('shot') === '1';
+const _frustum = new Frustum();
+const _m = new Matrix4();
+const _sphere = new Sphere();
 
 const _f = new Vector3();
 const fwd = (yaw: number, out: Vector3) => out.set(Math.sin(yaw), 0, Math.cos(yaw));

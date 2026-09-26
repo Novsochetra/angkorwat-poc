@@ -369,10 +369,10 @@ export class SoundEngine {
     this.animals.call(c, Math.max(when, this.ctx.currentTime));
   }
 
-  /** The explorer's lasting sounds (on the `moves` bus): rushing air (falling, gliding), the boat's wake, the hang glider's sail, the balloon's burner, 0‥1 each. */
-  roamLevels(wind: number, wake: number, sail = 0, burner = 0): void {
+  /** The explorer's lasting sounds (on the `moves` bus): rushing air (falling, gliding), the boat's wake, the hang glider's sail, the balloon's burner and fan, 0‥1 each. */
+  roamLevels(wind: number, wake: number, sail = 0, burner = 0, fan = 0): void {
     // (muted: the lasting sounds are not even made)
     const on = this.heard('moves') ? 1 : 0;
-    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on, clamp01(burner) * on);
+    this.explorer.levels(clamp01(wind) * on, clamp01(wake) * on, this.ctx.currentTime, clamp01(sail) * on, clamp01(burner) * on, clamp01(fan) * on);
   }
 }

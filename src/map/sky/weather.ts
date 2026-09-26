@@ -302,6 +302,8 @@ class Schedule {
     const k = fade === Infinity ? 1 : 1 - ramp(t, fade, fade + FADE);
     // (faded: the rain stops half way through the fade, then no more lightning and the land dries)
     const tw = Math.min(t, fade + FADE / 2);
+    // (and a shower still building stops building at the switch: Clear never brings heavier rain)
+    const tu = Math.min(t, fade);
     const drying = Math.exp(-Math.max(0, t - tw) / DRY_TAU);
     for (const e of this.events) {
       if (e.start > t || e.start >= until) break;
@@ -309,15 +311,15 @@ class Schedule {
       const soak = e.rain * ramp(tw, e.rainOn, e.full + 40);
       a.wet = Math.max(a.wet, (tw < e.dry ? soak : soak * Math.exp(-(tw - e.dry) / DRY_TAU)) * drying);
       if (k <= 0 || t > Math.max(e.clear, e.bowOff)) continue;
-      const cloud = k * e.cloud * ramp(t, e.start, e.rainOn + 10) * (1 - ramp(t, e.easeOff, e.clear));
+      const cloud = k * e.cloud * ramp(tu, e.start, e.rainOn + 10) * (1 - ramp(t, e.easeOff, e.clear));
       a.cloud = Math.max(a.cloud, cloud);
       if (t < e.easeOff) a.build = Math.max(a.build, cloud);
       // Rain: heavier and lighter by turns while it lasts.
       const pulse = 0.82 + 0.18 * Math.sin((t * TAU) / 23 + p[4]) * Math.sin((t * TAU) / 11 + p[5]);
-      a.rain = Math.max(a.rain, k * e.rain * ramp(t, e.rainOn, e.full) * (1 - ramp(t, e.easeOff, e.dry)) * pulse);
-      if (e.kind === 'storm') a.storm = Math.max(a.storm, k * ramp(t, e.rainOn + 5, e.full + 10) * (1 - ramp(t, e.easeOff - 20, e.dry)));
+      a.rain = Math.max(a.rain, k * e.rain * ramp(tu, e.rainOn, e.full) * (1 - ramp(t, e.easeOff, e.dry)) * pulse);
+      if (e.kind === 'storm') a.storm = Math.max(a.storm, k * ramp(tu, e.rainOn + 5, e.full + 10) * (1 - ramp(t, e.easeOff - 20, e.dry)));
       // The gust front just before the rain, then a steady wind in it, dying away as it passes.
-      const front = ramp(t, e.rainOn - 40, e.rainOn - 5) * (1 - 0.4 * ramp(t, e.rainOn + 5, e.full + 30));
+      const front = ramp(tu, e.rainOn - 40, e.rainOn - 5) * (1 - 0.4 * ramp(t, e.rainOn + 5, e.full + 30));
       a.wind = Math.max(a.wind, k * e.wind * front * (1 - ramp(t, e.easeOff, e.dry + 40)));
       a.bow = Math.max(a.bow, k * e.bow * ramp(t, e.bowOn, e.dry + 15) * (1 - ramp(t, e.bowOff - 30, e.bowOff)));
       const last = lastFlash(e.flashes, tw);

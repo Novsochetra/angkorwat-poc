@@ -59,6 +59,8 @@ export interface Reach {
   level: number;
   left: Float32Array;
   right: Float32Array;
+  /** How deep a wader stands in it (m; default: the waders' own). */
+  wade?: number;
 }
 
 /** Keep this far from a fall or a step along the river (m, samples). */
@@ -159,4 +161,49 @@ export function reachIndex(r: Reach, x: number, z: number): number {
     }
   }
   return best;
+}
+
+/**
+ * A made-up straight reach from (x0, z0) to (x1, z1) (samples 1 m apart,
+ * "flowing" that way) for water that is not a river: the great lake's
+ * shallows and the flooded paddies. `level`: its surface (default: the
+ * drawn water at the middle). `room`: open water either side (m); if not
+ * given it is measured on the drawn water, up to `w` m (so the shore side
+ * ends at the shore). Null where there is no water.
+ */
+export function lineReach(
+  f: HeightField,
+  name: string,
+  x0: number,
+  z0: number,
+  x1: number,
+  z1: number,
+  o: { level?: number; room?: number; w?: number; wade?: number } = {},
+): Reach | null {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  const n = Math.max(2, Math.round(len) + 1);
+  const dir: [number, number] = [(x1 - x0) / len, (z1 - z0) / len];
+  const L = o.level ?? drawnWater(f, (x0 + x1) / 2, (z0 + z1) / 2);
+  if (L === null) return null;
+  const w = o.w ?? 12;
+  const samples: RiverSample[] = [];
+  const left = new Float32Array(n);
+  const right = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const u = k / (n - 1);
+    const s: RiverSample = { x: x0 + (x1 - x0) * u, z: z0 + (z1 - z0) * u, level: L, w, dir };
+    samples.push(s);
+    const free = (sg: number) => {
+      let v = 0;
+      while (v < w) {
+        const d = drawnWater(f, s.x - dir[1] * sg * (v + 0.5), s.z + dir[0] * sg * (v + 0.5));
+        if (d === null || Math.abs(d - L) > 0.3) break;
+        v += 0.5;
+      }
+      return Math.max(0, v - 0.6);
+    };
+    left[k] = o.room ?? free(-1);
+    right[k] = o.room ?? free(1);
+  }
+  return { river: name, samples, a: 0, b: n - 1, level: L, left, right, wade: o.wade };
 }

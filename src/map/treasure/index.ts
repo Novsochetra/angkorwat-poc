@@ -73,6 +73,8 @@ export function buildTreasure(ctx: MapContext): MapPart {
   const save: TreasureSave = shot ? { found: [] } : loadTreasure();
   const goldParam = params.get('gold');
   const lineup = goldParam === 'lineup';
+  /** A `gold=` list (checks, demos) stands in for the saved one: never written back, so real progress is kept. */
+  const demo = shot || goldParam !== null;
   if (goldParam && !lineup) {
     const ids = GOLD.map((g) => g.id as string);
     save.found = goldParam === 'all' ? ids : goldParam === 'none' ? [] : /^\d+$/.test(goldParam) ? ids.slice(0, Number(goldParam)) : goldParam.split(',').filter((id) => ids.includes(id));
@@ -209,7 +211,9 @@ export function buildTreasure(ctx: MapContext): MapPart {
       let bestD = REACH;
       for (const f of figs) {
         if (f.found || Math.abs(f.y - p.y) > REACH_UP) continue;
-        const d = Math.hypot(f.x - p.x, f.z - p.z);
+        const fx = f.x - p.x;
+        const fz = f.z - p.z;
+        const d = Math.sqrt(fx * fx + fz * fz);
         if (d < bestD) {
           bestD = d;
           best = f;
@@ -224,7 +228,7 @@ export function buildTreasure(ctx: MapContext): MapPart {
       f.found = true;
       f.pickAt = clock + PICK_DELAY;
       save.found = figs.filter((g) => g.found).map((g) => g.def.id);
-      if (!shot) saveTreasure(save);
+      if (!demo) saveTreasure(save);
       // He turns to it and bends down to pick it up.
       c.body.yaw = Math.atan2(f.x - c.body.pos.x, f.z - c.body.pos.z);
       c.body.explorer.play('interact');
@@ -233,8 +237,11 @@ export function buildTreasure(ctx: MapContext): MapPart {
   });
 
   // ── Every frame ─────────────────────────────────────────────────────────
+  // (found from the start, so the walker never offers to pick it up: only the message waits for the interface)
   const goldfound = params.get('goldfound');
-  let goldfoundShown = false;
+  const goldfoundFig = goldfound ? figs.find((x) => x.def.id === goldfound) : undefined;
+  if (goldfoundFig) goldfoundFig.found = true;
+  let goldfoundShown = !goldfoundFig;
   const cam = new Vector3();
 
   /** Frames drawn (the figures' mesh is drawn from the start, so its shader compiles at load). */
@@ -256,15 +263,11 @@ export function buildTreasure(ctx: MapContext): MapPart {
         ui.count(foundCount(), figs.length);
       }
     }
-    if (goldfound && !goldfoundShown && hud && ui) {
-      const g = figs.find((x) => x.def.id === goldfound);
-      if (g) {
-        goldfoundShown = true;
-        g.found = true;
-        hud.prompt(null);
-        ui.count(foundCount(), figs.length, true);
-        hud.toast(t('tgFound', { name: cap(name(g)), n: num(foundCount()), total: num(figs.length) }));
-      }
+    // (no hud.prompt(null) here: the walker owns the prompt and only redraws it when its text changes)
+    if (goldfoundFig && !goldfoundShown && hud && ui) {
+      goldfoundShown = true;
+      ui.count(foundCount(), figs.length, true);
+      hud.toast(t('tgFound', { name: cap(name(goldfoundFig)), n: num(foundCount()), total: num(figs.length) }));
     }
 
     // Figures: turn, glint, fly into his bag once picked.
