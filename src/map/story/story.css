@@ -700,6 +700,20 @@ body.st-after :is(.map-ui, .rt) {
   }
 }
 
+/* Phones: level with ខ្មែរ / EN, the size of the map's corner buttons there (ui/map.css). */
+@media (max-width: 639px) {
+  .st-skip {
+    height: 34px;
+    padding: 0 8px 0 12px;
+    font-size: 13.5px;
+  }
+
+  .st-skip .mu-icon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
 .st-foot {
   position: absolute;
   left: 0;
