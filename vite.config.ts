@@ -11,10 +11,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       input: {
-        game: resolve(import.meta.dirname, 'index.html'),
+        // (the world map is the entry page, at /)
+        map: resolve(import.meta.dirname, 'index.html'),
+        game: resolve(import.meta.dirname, 'game.html'),
         viewer: resolve(import.meta.dirname, 'viewer.html'),
         studio: resolve(import.meta.dirname, 'studio.html'),
-        map: resolve(import.meta.dirname, 'map.html'),
       },
     },
   },

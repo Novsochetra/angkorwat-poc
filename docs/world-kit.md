@@ -21,7 +21,7 @@ npm run dev
 | `studio.html?asset=18.1/large-tree` | One asset: big orbitable render **beside the crop of its reference sheet**, front / side / top views, a scale view next to the 1.70 m explorer with a metre ruler, every variant, block counts and the file that builds it. Add `&seed=3`, `&variant=…`, `&quality=high`, `&height=15` (assets sized by height). |
 | `studio.html?lineup=18.1` | Every asset of a section side by side, to scale, with the explorer. |
 | `studio.html?scene=tree-temple-wall` | A diorama that assembles the kit like one of the sheets' environment / usage examples (orbit it; `&az=&el=&dist=` tries another framing). `studio.html?scenes=1` lists them all. |
-| `index.html?level=kit` | Walk the explorer through a specimen garden of every asset and the dioramas at true scale. Keys `1`–`9` and `[` `]` jump between garden rows and scenes; the HUD names the asset you are standing next to and its size. |
+| `game.html?level=kit` | Walk the explorer through a specimen garden of every asset and the dioramas at true scale. Keys `1`–`9` and `[` `]` jump between garden rows and scenes; the HUD names the asset you are standing next to and its size. |
 
 Report anything with **B** (or 🐞) on any of these pages: click the blocks that
 are wrong, write what you expected, save. The report lands in `feedback/` and

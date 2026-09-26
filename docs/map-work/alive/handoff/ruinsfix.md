@@ -38,11 +38,11 @@ Planned new head. Keep the 0.125 m grid, the same origin and about the same size
 - Fix: add an optional `strength` to `ShrineLights.halos` (default about 0.22) and use it in that `put`. In `forestBuddha`, remove the body halo (or keep it tiny and faint, about size 1.2 at 0.08) and shrink the table halo to about size 2.2. Check the others at night too: spirit house 2.4, lake shrine 3.2, Kulen 3. Probably lower the lake shrine and Kulen to about 2.2.
 
 ## How to check (shots; `SHOT_OUT=<scratch> SHOT_W=1672 SHOT_H=941 npm run shots -- name="@…"`)
-- Front (the reviewer's): `@map.html?shot=1&ui=0&cam=-51.6,12.6,-304.5,-52,12.2,-310`
-- Whole statue: `@map.html?shot=1&ui=0&cam=-51.3,13.5,-303,-52,11.5,-310` (add `&night=1` for the halo)
-- Face, front: `@map.html?shot=1&ui=0&cam=-52,15.1,-307.6,-52,15.0,-311.6`. Close up: `cam=-52,15.05,-309.9,-52,15.0,-311.6`. Three-quarter: `cam=-49.6,15.4,-308.6,-52,15.0,-311.6`. Also with `&night=1`.
-- From the prayer spot: `@map.html?shot=1&ui=0&roam=walk&at=-52,-306.9&yaw=180&act=pray&sim=_:3&rcam=0,8,4`
-- Monk's hut stepping stones: `@map.html?shot=1&ui=0&cam=70.5,16,-327.9,75,12,-339`
+- Front (the reviewer's): `@index.html?shot=1&ui=0&cam=-51.6,12.6,-304.5,-52,12.2,-310`
+- Whole statue: `@index.html?shot=1&ui=0&cam=-51.3,13.5,-303,-52,11.5,-310` (add `&night=1` for the halo)
+- Face, front: `@index.html?shot=1&ui=0&cam=-52,15.1,-307.6,-52,15.0,-311.6`. Close up: `cam=-52,15.05,-309.9,-52,15.0,-311.6`. Three-quarter: `cam=-49.6,15.4,-308.6,-52,15.0,-311.6`. Also with `&night=1`.
+- From the prayer spot: `@index.html?shot=1&ui=0&roam=walk&at=-52,-306.9&yaw=180&act=pray&sim=_:3&rcam=0,8,4`
+- Monk's hut stepping stones: `@index.html?shot=1&ui=0&cam=70.5,16,-327.9,75,12,-339`
 - Other shrines at night: spirit house `cam=-124.5,10.5,83,-124.5,9.5,89`, lake `cam=-437.1,10.5,-72.6,-439.4,9,-65.7`, Kulen `cam=268,10.5,-232,268,9,-242` (each with `&night=1&ui=0`).
 - The site: forest Buddha at (−52, −310), floor y 10, facing +z (snapped). The throne centre is at z −312. The head bottom is at y 14.25 and the face front at z ≈ −311.56.
 - Checks: `npx tsc --noEmit`, `npm run build`.

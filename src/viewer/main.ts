@@ -23,6 +23,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { AngkorExplorer, OUTFITS, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
+import { REST_U, restDuration, restPose, type RestState } from '../character/rest';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { installLookPanel } from '../voxel/LookPanel';
 import { CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
@@ -35,6 +36,7 @@ import type { VoxelQuality } from '../voxel/VoxelMesh';
  *   viewer.html?turnaround=1&shot=1
  *   viewer.html?view=45&expr=happy&outfit=withHat&anim=walk&t=0.4&shot=1
  *   viewer.html?view=30&anim=selfie&gesture=thumbsUp&saim=-30,10,1&t=1.2&shot=1
+ *   viewer.html?view=90&anim=sleep&t=6&shot=1   (sit / lie / sleep: resting on the ground, character/rest.ts)
  */
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -140,12 +142,50 @@ function speedFor(name: string): number {
   return 0;
 }
 
+/** Resting on the ground (character/rest.ts): he sits down, lies down, or lies down and falls asleep 1 s later. */
+const RESTS = ['sit', 'lie', 'sleep'] as const;
+type RestAnim = (typeof RESTS)[number];
+
 function applyAnim(): void {
   for (const e of explorers) {
     e.setMotion(speedFor(anim), anim !== 'jump', anim === 'jump' ? 1.5 : 0);
     if (anim in ACTIONS) e.play(anim as ActionName);
     else e.stop();
+    rest(e, RESTS.includes(anim as RestAnim) ? (anim as RestAnim) : null);
   }
+}
+
+/**
+ * Sit or lie him down from where he stands (the posture eases `u` there as
+ * the map does), or stand him up at once. A shot without `t=` shows him
+ * already down (and asleep); with `t=` the way down that far in.
+ */
+function rest(e: AngkorExplorer, kind: RestAnim | null): void {
+  e.asleep = false;
+  // (down he sits or lies behind where he stood: moved forward by his middle, so he stays in the middle of the view)
+  const home = (e.object.userData.home ??= e.object.position.clone()) as Vector3;
+  const ahead = kind === 'sit' ? 0.3 : kind ? 0.55 : 0;
+  e.object.position.copy(home).add(new Vector3(Math.sin(e.object.rotation.y), 0, Math.cos(e.object.rotation.y)).multiplyScalar(ahead));
+  if (!kind) {
+    e.animator.posture = null;
+    e.animator.postureFeet = true;
+    return;
+  }
+  const to = kind === 'sit' ? REST_U.sit : REST_U.lie;
+  const len = restDuration(REST_U.stand, to);
+  const t0 = e.animator.time - (shot && !params.has('t') ? len + 4 : 0);
+  const s: RestState = { u: 0, sleep: 0, t: 0, pack: e.currentOutfit.pack, knife: e.currentOutfit.legs === 'shorts' };
+  const ease = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+  e.animator.postureFeet = false;
+  e.animator.posture = (t) => {
+    s.u = to * ease((t - t0) / len);
+    s.t = t;
+    s.pack = e.currentOutfit.pack;
+    s.knife = e.currentOutfit.legs === 'shorts';
+    s.sleep = kind === 'sleep' ? ease((t - t0 - len - 1) / 2.5) : 0;
+    e.asleep = s.sleep > 0.3;
+    return restPose(s);
+  };
 }
 
 function frame(): void {
@@ -161,7 +201,9 @@ function frame(): void {
     controls.target.set(0, h * 0.5, 0);
   } else {
     const zoom = params.get('zoom') ?? 'full';
-    const targetY = num('ty', zoom === 'head' ? h * 0.78 : zoom === 'torso' ? h * 0.55 : zoom === 'feet' ? h * 0.14 : h * 0.5);
+    // (sitting or lying he is low: the view comes down with him)
+    const low = RESTS.includes(anim as RestAnim);
+    const targetY = num('ty', zoom === 'head' ? h * (low ? 0.4 : 0.78) : zoom === 'torso' ? h * 0.55 : zoom === 'feet' ? h * 0.14 : h * (low ? 0.28 : 0.5));
     const dist = num('dist', zoom === 'full' ? 5.6 : 2.2);
     const elev = (num('elev', 8) * Math.PI) / 180;
     const azim = (num('azim', 0) * Math.PI) / 180;
@@ -220,10 +262,11 @@ if (!shot) {
     expression = v;
     for (const e of explorers) e.setExpression(v);
   }, pretty);
-  const anims = ['idle', 'walk', 'run', 'jump', ...Object.keys(ACTIONS)];
+  const anims = ['idle', 'walk', 'run', 'jump', ...Object.keys(ACTIONS), ...RESTS];
   chipGroup('Animation', anims, () => anim, (v) => {
     anim = v;
     applyAnim();
+    frame();
   }, pretty);
   const views: [string, number][] = [['Front', 0], ['Front-L', 45], ['Left', 90], ['Back', 180], ['Right', 270], ['Front-R', 315]];
   const h = document.createElement('h2');

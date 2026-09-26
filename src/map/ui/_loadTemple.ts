@@ -1,5 +1,5 @@
 /**
- * The loading screen's Angkor Wat (map.html, main.ts): the west front in pixel
+ * The loading screen's Angkor Wat (index.html, main.ts): the west front in pixel
  * art on a grid of `cols` × `rows` cells. It rises row by row while the map
  * builds.
  *

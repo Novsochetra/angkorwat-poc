@@ -91,9 +91,9 @@ const WORDS = {
   calmNote: { km: 'កាមេរ៉ានៅស្ងៀម ហោះខ្លីៗ', en: 'Still camera, short flights' },
   easyFly: { km: 'ហោះងាយស្រួល', en: 'Easy flying' },
   // (a key stays with its word: no-break spaces)
-  easyFlyNote: { km: 'ខ្លែងហោះរក្សាកម្ពស់៖ S ឡើង W ចុះ', en: 'Glider holds its height: S climbs, W dives' },
+  easyFlyNote: { km: 'ខ្លែងហោះ និងបាឡុងរក្សាកម្ពស់៖ S ឡើង W ចុះ', en: 'Glider and balloon hold their height: S climbs, W dives' },
   // (on a touch screen: the stick of the touch controls, roam/touch.ts)
-  easyFlyNoteTouch: { km: 'ខ្លែងហោះរក្សាកម្ពស់៖ ទាញដងបញ្ជាមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ', en: 'Glider holds its height: pull the stick back to climb, push to dive' },
+  easyFlyNoteTouch: { km: 'ខ្លែងហោះ និងបាឡុងរក្សាកម្ពស់៖ ទាញដងបញ្ជាមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ', en: 'Glider and balloon hold their height: pull the stick back to climb, push to dive' },
   mute: { km: 'បិទសំឡេង', en: 'Mute sound' },
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
@@ -107,7 +107,7 @@ const WORDS = {
   stNext: { km: 'បន្ទាប់', en: 'Next' },
   stHint: { km: 'ចុចដើម្បីបន្ត', en: 'Click to continue' },
   stHintTouch: { km: 'ប៉ះដើម្បីបន្ត', en: 'Tap to continue' },
-  stStart: { km: 'ចាប់ផ្ដើមលេង', en: 'Start playing' },
+  stStart: { km: 'តោះ ទៅមើលទាំងអស់គ្នា …', en: "Let's all go and see …" },
   stBegin: { km: 'ចាប់ផ្ដើម', en: 'Start' },
   stSoundOn: { km: 'សូមបើកសំឡេង', en: 'Turn your sound on' },
   stEmpire: { km: 'អាណាចក្រខ្មែរ', en: 'Khmer Empire' },
@@ -145,6 +145,8 @@ const WORDS = {
   rRun: { km: 'រត់', en: 'run' },
   rJump: { km: 'លោត', en: 'jump' },
   rEnterFly: { km: 'ចូល · ហោះ', en: 'enter · fly' },
+  rUseFly: { km: 'ប្រើ · ហោះ', en: 'use · fly' },
+  rSitLie: { km: 'អង្គុយ · ដេក', en: 'sit · lie down' },
   rRamp: { km: 'ជម្រាលខ្លែងហោះ', en: 'glider ramp' },
   rEmotes: { km: 'កាយវិការ', en: 'emotes' },
   rSteer: { km: 'បត់', en: 'steer' },
@@ -177,7 +179,7 @@ const WORDS = {
   rLand: { km: 'ចុះចត', en: 'Land' },
   rStepOut: { km: 'ចេញពីកន្ត្រក', en: 'Step out' },
   // The parked balloon filling up before the ride (roam/balloon.ts).
-  rInflating: { km: 'កំពុងបំប៉ោងបាឡុង · W ឲ្យលឿន · Esc ឈប់', en: 'Inflating the balloon · W faster · Esc stop' },
+  rInflating: { km: 'កំពុងបំប៉ោងបាឡុង · Space ឲ្យលឿន · Esc ឈប់', en: 'Inflating the balloon · Space faster · Esc stop' },
   rToBank: { km: 'ចែវចូលជិតច្រាំងបន្តិចទៀត', en: 'Paddle closer to the bank' },
   rMist: { km: 'អ័ព្ទក្រាស់ពេក មិនអាចទៅមុខទៀតបានទេ', en: 'The mist is too thick to go further' },
   rWindBack: { km: 'ខ្យល់បក់នាំអ្នកត្រឡប់ទៅរកប្រាសាទវិញ', en: 'The wind turns you back towards the temples' },
@@ -188,13 +190,22 @@ const WORDS = {
   rNoLandTemple: { km: 'មិនអាចចុះលើប្រាសាទបានទេ៖ រកដីរាបស្មើ និងទំនេរនៅក្បែរនោះ', en: 'Not on the temple: find flat, open ground nearby' },
   rNoLandTrees: { km: 'ដើមឈើច្រើនពេក៖ រកវាលទំនេរ', en: 'Too many trees here: find an open clearing' },
   rBalloonEdge: { km: 'ខ្យល់ស្ងប់នៅមាត់អ័ព្ទ៖ ឡើង ឬចុះ ដើម្បីរកខ្យល់ផ្សេង', en: 'The breeze dies at the mist: climb or sink to find another wind' },
+  // (easy flying, as the hang glider; with it off, the real balloon)
   rBalloonKeys: {
-    km: 'បាឡុងខ្យល់ក្ដៅ៖ W / Space បាញ់ភ្លើងដើម្បីឡើង (Shift៖ ភ្លើងទាំងពីរ) · S បើករន្ធខ្យល់ដើម្បីចុះ · A / D បង្វិល · ខ្យល់នាំអ្នកទៅ ហើយប្ដូរទិសតាមកម្ពស់',
-    en: 'Hot air balloon: W / Space burner (climb; with Shift both burners) · S vent (sink) · A / D turn · the wind carries you, and turns with height',
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ A / D បត់ · S ឬ Space ឡើង (បាញ់ភ្លើង) · W ចុះ (បើករន្ធខ្យល់) · Shift លឿន · វារក្សាកម្ពស់ដោយខ្លួនឯង',
+    en: 'Hot air balloon: A / D turn · S or Space climb (the burner) · W descend (the vent) · Shift fast · it holds its height by itself',
   },
   rBalloonTouch: {
-    km: 'បាឡុងខ្យល់ក្ដៅ៖ រុញដងបញ្ជាទៅមុខ ឬសង្កត់ «លោត» ដើម្បីបាញ់ភ្លើង (រុញហួសរង្វង់៖ ភ្លើងទាំងពីរ) · ទាញមកក្រោយដើម្បីចុះ · ខ្យល់នាំអ្នកទៅ',
-    en: 'Hot air balloon: push the stick or hold Jump for the burner (the stick past its ring: both burners) · pull back to vent · the wind carries you',
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ ដងបញ្ជាទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ទាញមកក្រោយ ឬសង្កត់ «លោត» ដើម្បីឡើង រុញទៅមុខដើម្បីចុះ · វារក្សាកម្ពស់ដោយខ្លួនឯង',
+    en: 'Hot air balloon: stick left / right turns · pull back or hold Jump to climb, push to descend · it holds its height by itself',
+  },
+  rBalloonReal: {
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ S / Space បាញ់ភ្លើងដើម្បីឡើង (Shift៖ ភ្លើងទាំងពីរ) · W បើករន្ធខ្យល់ដើម្បីចុះ · A / D បត់ · ខ្យល់នាំអ្នកទៅ ហើយប្ដូរទិសតាមកម្ពស់',
+    en: 'Hot air balloon: S / Space burner (climb; with Shift both burners) · W vent (sink) · A / D turn · the wind carries you, and turns with height',
+  },
+  rBalloonRealTouch: {
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ ទាញដងបញ្ជាមកក្រោយ ឬសង្កត់ «លោត» ដើម្បីបាញ់ភ្លើង (ទាញហួសរង្វង់៖ ភ្លើងទាំងពីរ) · រុញទៅមុខដើម្បីបើករន្ធខ្យល់ · ទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ខ្យល់នាំអ្នកទៅ',
+    en: 'Hot air balloon: pull the stick back or hold Jump for the burner (past its ring: both burners) · push to vent · left / right turns · the wind carries you',
   },
   // The hang glider's keys on the first flight (hangGlider.ts): easy flying, the real glider; on touch the stick and Jump.
   rGliderKeys: { km: 'ខ្លែងហោះ៖ A / D បត់ · S ឡើង · W ចុះ · Shift លឿន · Space លែងដៃ', en: 'Hang glider: A / D turn · S climb · W dive · Shift fast · Space let go' },
@@ -230,8 +241,20 @@ const WORDS = {
   rStickOff: { km: 'ដងសែលហ្វី៖ បិទ (កាន់ដោយលាតដៃ)', en: 'Selfie stick: off (at arm’s length)' },
   rHatOn: { km: 'ពាក់មួក', en: 'Hat on' },
   rHatOff: { km: 'ដោះមួក', en: 'Hat off' },
-  // (he kneels to pray at a shrine: roam/_pray.ts)
+  // (he kneels to pray at a shrine: roam/_pray.ts; the prompt in front of one, "E  Pray")
   rPray: { km: 'ថ្វាយបង្គំ', en: 'Paying respect' },
+  // (J sits him down, L lies him down, watching the sky: roam/_rest.ts)
+  rSitting: { km: 'អង្គុយមើលមេឃ', en: 'Sitting, watching the sky' },
+  rLying: { km: 'ដេកផ្ងារមើលមេឃ', en: 'Lying back, watching the sky' },
+  rAsleep: { km: 'លង់លក់បាត់ហើយ… ចុចអ្វីក៏បាន ដើម្បីដាស់', en: 'Fast asleep… any key wakes him' },
+  rAwake: { km: 'ភ្ញាក់ហើយ', en: 'Awake' },
+  rGetUp: { km: 'ក្រោកឈរ', en: 'Get up' },
+  rLieBack: { km: 'ដេកផ្ងារ', en: 'Lie back' },
+  rSitUp: { km: 'ក្រោកអង្គុយ', en: 'Sit up' },
+  rRestWater: { km: 'មិនអាចអង្គុយ ឬដេកក្នុងទឹកបានទេ', en: 'Not in the water' },
+  rRestSteep: { km: 'ដីនៅទីនេះមិនរាបស្មើល្មមទេ', en: 'The ground is not flat enough here' },
+  rRestRoom: { km: 'គ្មានកន្លែងទំនេរល្មមនៅទីនេះទេ', en: 'Not enough room here' },
+  rPrayHere: { km: 'ថ្វាយបង្គំ', en: 'Pray' },
   rOutfitIs: { km: 'សម្លៀកបំពាក់៖ {name}', en: 'Outfit: {name}' },
   rFaceIs: { km: 'ទឹកមុខ៖ {name}', en: 'Face: {name}' },
   rGestureIs: { km: 'សញ្ញាដៃ៖ {name}', en: 'Gesture: {name}' },
@@ -258,7 +281,12 @@ const WORDS = {
   rCheer: { km: 'អបអរ', en: 'cheer' },
   rLookUp: { km: 'ងើយមើល', en: 'look up' },
   rPeek: { km: 'លបមើល', en: 'peek' },
-  rStill: { km: 'ឈរស្ងៀម', en: 'stand still' },
+  rSit: { km: 'អង្គុយ', en: 'sit' },
+  rLieDown: { km: 'ដេកផ្ងារ', en: 'lie down' },
+  // The explorer menu (I, roam/_explorerMenu.ts): its titles are rMoves, rOutfit, rFace.
+  rMoves: { km: 'ចលនា', en: 'Moves' },
+  rOnFootOnly: { km: 'បានតែពេលដើរ (ដៃកំពុងជាប់)', en: 'on foot only (hands busy)' },
+  rMenuKey: { km: 'ចលនា សម្លៀកបំពាក់ ទឹកមុខ', en: 'moves, outfits, faces' },
   rPrayAt: { km: 'លុតជង្គង់ថ្វាយបង្គំ នៅទីសក្ការបូជា', en: 'kneel and pray at a shrine' },
   rHat: { km: 'មួក', en: 'hat' },
   rOutfit: { km: 'សម្លៀកបំពាក់', en: 'outfit' },

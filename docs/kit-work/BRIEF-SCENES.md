@@ -3,7 +3,7 @@
 Scenes are dioramas that assemble kit assets into the sheets' "Environment /
 usage examples". They are shown in the studio (`studio.html?scene=<slug>`, a
 perspective orbit view over a sky, warm studio light) and laid out at true
-scale in the walkable level (`index.html?level=kit`, where the explorer walks
+scale in the walkable level (`game.html?level=kit`, where the explorer walks
 through them — so they need colliders and a sensible spawn).
 
 ## API
@@ -40,7 +40,7 @@ out; don't spend long on it. The kit assets are the stars.
 
 ## Checking
 `SHOT_BASE=http://localhost:5173 SHOT_W=1600 SHOT_H=1000 SHOT_OUT=screenshots/<you> node scripts/screenshots.mjs s1="@studio.html?scene=<slug>&shot=1"`
-and walk-level views: `k1="@index.html?level=kit&shot=1&at=X,Y,Z,YAW&cam=YAW,PITCH,DIST"` (at = explorer
+and walk-level views: `k1="@game.html?level=kit&shot=1&at=X,Y,Z,YAW&cam=YAW,PITCH,DIST"` (at = explorer
 position + facing in degrees; cam = camera yaw offset / pitch in degrees / distance — try `cam=20,15,9`).
 The level places scenes west of the avenue, turned a quarter; its console prints `[kit]` lines and
 the spawn list is in `world.spawns` (you can find your scene's spawn by name in the HUD /

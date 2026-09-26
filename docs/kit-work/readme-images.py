@@ -48,7 +48,7 @@ def main():
         grid.paste(t.resize((tw, th), Image.LANCZOS), ((i % 2) * (tw + 8), (i // 2) * (th + 8)))
     save(grid, 'kit-scenes.webp', 1408)
     # The explorer at the foot of the palm causeway's stairs (scene spawns follow the garden rows).
-    shoot([('level', 'index.html?level=kit&shot=1&spawn=10&cam=30,14,10')], 1400, 800)
+    shoot([('level', 'game.html?level=kit&shot=1&spawn=10&cam=30,14,10')], 1400, 800)
     save(Image.open(os.path.join(SHOTS, 'level.png')), 'kit-level.webp', 1200)
 
 

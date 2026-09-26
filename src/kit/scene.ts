@@ -7,7 +7,7 @@ import type { KitPiece } from './types';
  * (a tree gripping a temple wall, palms along a causeway, a shrine with
  * offerings…). One module per scene: `src/kit/scenes/<slug>.ts`, default export
  * made by {@link defineKitScene}. The studio renders them (`studio.html?scene=`)
- * and the walkable kit level (`index.html?level=kit`) lays them out at true scale.
+ * and the walkable kit level (`game.html?level=kit`) lays them out at true scale.
  */
 export interface KitSceneContext {
   /**

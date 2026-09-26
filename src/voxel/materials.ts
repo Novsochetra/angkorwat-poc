@@ -134,7 +134,7 @@ export const VOXEL_MATERIALS = {
   water: { roughness: 0.1, metalness: 0.05, bevel: 0.04, edgeTint: 0xcdeee8, edgeStrength: 0.2, edgeWidth: 0.6, grain: 0.1, grainScale: KIT_TEXELS_PER_M, pattern: 'water', transparent: true, opacity: 0.84, specular: 1 },
   petal: { roughness: 0.85, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0xfff2f4, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.06, grainScale: KIT_TEXELS_PER_M, relief: 0.05 },
   wax: { roughness: 0.7, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xfff5e2, edgeStrength: 0.06, grain: 0.03, grainScale: KIT_TEXELS_PER_M, emissive: 0x3a1c00, emissiveIntensity: 0.4 },
-  // ── World map (map.html): 1–2 m blocks seen from 200–500 m ───────────────
+  // ── World map (index.html): 1–2 m blocks seen from 200–500 m ───────────────
   // No pixel pattern (its texels would be smaller than a pixel there): a few
   // speckle cells per face, and a flat-cut rim that catches the low sun.
   mapRock: { roughness: 0.95, metalness: 0, bevel: 0.07, chamfer: true, edgeTint: 0xf0cf9f, edgeStrength: 0.12, edgeWidth: 0.8, grain: 0.07, grainScale: 1.5 },

@@ -169,7 +169,7 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
-// The loading screen follows the build (map.html): Angkor Wat rises row by row
+// The loading screen follows the build (index.html): Angkor Wat rises row by row
 // from its grey outline with light on the stones being laid, the bar fills block by block (20) and the explorer walks
 // below it to the bar's end; a frame in between lets it paint.
 const loading = document.getElementById('loading');

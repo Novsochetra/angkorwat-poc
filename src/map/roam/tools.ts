@@ -6,7 +6,9 @@ import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
 import type { MapFrame, MapPart, RoamMode } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
+import { createExplorerMenu, type ExplorerMenu } from './_explorerMenu';
 import { createPrayer } from './_pray';
+import { createRest } from './_rest';
 import { angleDiff } from './followCam';
 import type { RoamControls } from './input';
 import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
@@ -43,6 +45,10 @@ const PHONE_FILL_AT = 0.55;
 const DUSK = 0.55;
 /** Keys that get him up from a prayer and do nothing else (tools, camera, phone, beam, emotes). */
 const PRAYER_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
+/** Keys that get him up from sitting or lying (a light comes out once he stands; the camera and the phone work on the ground). */
+const REST_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
+/** His camera raised sitting or lying looks up this far (radians): at the sky. */
+const SKY_SHOT = 0.55;
 
 const _o = new Vector3();
 const _d = new Vector3();
@@ -70,12 +76,14 @@ export interface RoamTools {
   /** Right after a frame is drawn (the photo). */
   afterRender(): void;
   /**
-   * URL (checks): `tool=…` start with a tool out · `act=…` play an action (`act=pray`: kneel and pray, on foot) ·
-   * `kneelat=x,z,fx,fz` (or `x,y,z,fx,fz`) a worship spot of its own there, facing (fx, fz): stand still by it and he prays (_pray.ts) ·
+   * URL (checks): `tool=…` start with a tool out · `act=…` play an action (`act=pray`: kneel and pray, on foot;
+   * `act=sit|lie|sleep`: down on the ground there, asleep once lying: _rest.ts) ·
+   * `kneelat=x,z,fx,fz` (or `x,y,z,fx,fz`) a worship spot of its own there, facing (fx, fz): E by it and he prays (_pray.ts) ·
    * `beam=mouse` + `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
    * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot · `gesture=peace|wave|thumbsUp|none`
    * and `saim=yaw,pitch,reach` the selfie (degrees round his head, 0‥1) · `stick=0|1` the selfie stick ·
-   * `sview=0‥1` hold the view there (0: the follow camera, to see him hold the camera or the phone) · `keys=1` the key list.
+   * `sview=0‥1` hold the view there (0: the follow camera, to see him hold the camera or the phone) · `keys=1` the key list ·
+   * `menu=1` the explorer menu open.
    */
   fromUrl(params: URLSearchParams, ctx: RoamCtx): void;
   /** URL params that put the tools back as they are (bug reports). */
@@ -145,15 +153,37 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     onFinder: (on) => document.body.classList.toggle('roam-finder', on),
     parts: d.parts,
   });
+  // (the explorer menu, I: his moves, looks and faces for a click or a tap, _explorerMenu.ts)
+  const menu = createExplorerMenu({
+    press: (code) => d.controls.press(code),
+    looks: LOOKS,
+    look: () => look,
+    setLook,
+    hat: () => explorer.currentOutfit.hat,
+    face: () => EXPRESSIONS.indexOf(explorer.currentExpression),
+    setFace: (i) => {
+      setFace(i);
+      hud.toast(t('rFaceIs', { name: t(FACE_NAME[EXPRESSIONS[face]]) }));
+    },
+    onFoot: () => mode === 'walk',
+    onToggle: (on) => {
+      if (on) bar.toggleKeys(false);
+      bar.update();
+    },
+  });
   const bar = createToolBar(hud.layer ?? document.body, {
+    menu,
     onTool: (tool) => useTool(tool, lastCtx),
     onAlbum: () => photo.openAlbum(),
     held: () => explorer.currentOutfit.held,
     up: () => photo.kind,
     camera: () => explorer.currentOutfit.camera,
   });
-  // (standing still at a shrine he kneels to pray: _pray.ts)
+  // (E at a shrine: he kneels to pray, a golden lotus on the floor where: _pray.ts)
   const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody(), onPrayed: (spot) => photo.journal.prayed(spot, body.pos) });
+  object.add(prayer.object);
+  // (J sits him down, L lies him down, watching the sky; asleep after a while: _rest.ts)
+  const rest = createRest({ explorer, body, cam, hud, canvas: d.canvas, refreshBody: () => photo.refreshBody() });
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
@@ -184,7 +214,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     }
     if (device) {
       if (photo.kind === tool) photo.lower();
-      else if (ctx) photo.raise(tool, ctx);
+      // (on the ground: a photo of the sky)
+      else if (ctx && photo.raise(tool, ctx) && tool === 'camera' && rest.active) photo.shot.pitch = SKY_SHOT;
       bar.update();
       return;
     }
@@ -204,7 +235,12 @@ export function createRoamTools(d: ToolDeps): RoamTools {
   }
 
   function nextLook(): void {
-    look = (look + 1) % LOOKS.length;
+    setLook(look + 1);
+  }
+
+  /** Put on one of the looks (G steps through them, the explorer menu picks one). */
+  function setLook(i: number): void {
+    look = (i + LOOKS.length) % LOOKS.length;
     const [name, label] = LOOKS[look];
     const o = explorer.currentOutfit;
     explorer.setOutfit({ ...OUTFITS[name], hat: o.hat, held: o.held });
@@ -316,12 +352,18 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         bar.toggleKeys(false);
         input.exit = false;
       }
+      // The explorer menu (I; not with the camera or the phone up): Esc shuts it first.
+      if (tap('KeyI') && !photo.kind) menu.toggle();
+      if (input.exit && menu.open) {
+        menu.toggle(false);
+        input.exit = false;
+      }
       if (tap('KeyV')) {
         photo.openAlbum();
         stillInput(ctx);
         return;
       }
-      // Kneeling in prayer (or turning to it, or getting up): a tool, camera or emote key gets him
+      // Kneeling in prayer (or walking up to it, turning to it, or getting up): a tool, camera or emote key gets him
       // up first and does nothing else (press it again once he stands), so no wave or photo starts from the floor.
       // E too: he gets up, and does not enter the temple, board or pick up from his knees (the walker hides its prompt meanwhile).
       if (m === 'walk' && prayer.handsBusy && (input.use || tap(...PRAYER_BREAKERS))) {
@@ -329,6 +371,20 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         stillInput(ctx);
         return;
       }
+      // (after E at a shrine he walks onto its lotus: the prayer steers him, before the walker's step)
+      if (m === 'walk') prayer.lead(ctx);
+      // Sitting or lying on the ground (_rest.ts): J sits, L lies down (the same key again: up, the other: lie back / sit up).
+      // Asleep, any key only wakes him; the stick, Space or E gets him up (not with the camera up: Space is its shutter).
+      if (m === 'walk' && !photo.kind && rest.input(ctx)) {
+        stillInput(ctx);
+        return;
+      }
+      if (m === 'walk' && tap('KeyJ', 'KeyL') && !prayer.handsBusy && (rest.active || !explorer.animator.posture)) {
+        if (photo.kind) photo.lower();
+        rest.toggle(tap('KeyJ') ? 'sit' : 'lie', ctx);
+        bar.update();
+      }
+      if (m === 'walk' && rest.active && tap(...REST_BREAKERS)) rest.stop(true);
 
       // Tools (on foot).
       if (tap('Digit1', 'Numpad1')) useTool('lantern', ctx);
@@ -351,11 +407,18 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       // His look: in any roaming mode.
       if (tap('KeyH')) {
-        // (during a prayer too: the hat stays as the player left it)
-        prayer.hatChosen();
-        explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
-        photo.refreshBody();
-        hud.toast(t(explorer.currentOutfit.hat ? 'rHatOn' : 'rHatOff'));
+        // (lying down he has it off: H says whether it goes back on as he gets up)
+        if (rest.hatOff) {
+          rest.hatChosen();
+          hud.toast(t('rHatOff'));
+        } else {
+          // (during a prayer too: the hat stays as the player left it)
+          prayer.hatChosen();
+          rest.hatChosen();
+          explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
+          photo.refreshBody();
+          hud.toast(t(explorer.currentOutfit.hat ? 'rHatOn' : 'rHatOff'));
+        }
       }
       if (tap('KeyG')) {
         if (photo.kind === 'selfie') hud.toast(t('rGestureIs', { name: photo.nextGesture() }));
@@ -408,6 +471,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       night = ctx.night;
       if (m === 'walk') {
         prayer.step(ctx, dt, !photo.kind && !photo.albumOpen);
+        rest.step(ctx, dt, !photo.kind && !photo.albumOpen);
         setHeld(wantHeld());
       }
       // (the passport: a stamp for a temple or a jungle place he walks up to)
@@ -432,8 +496,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       night = f.night;
       if (mode !== 'overview' || photo.view > 0) photo.place(cam.camera, cam.focus);
       lights(f.t);
+      // (asleep on the ground: the "Z z z" over his head)
+      rest.frame(cam.camera, photo.view);
       // Photo mode: the touch shutter and put-away instead of the stick, no roaming interface.
       const up = photo.kind;
+      // (the explorer menu shuts with the camera or the phone up, the album open, or off the bar; else it shows him as he is now)
+      if (menu.open && (up || photo.albumOpen || !PHOTO_MODES.includes(mode))) menu.toggle(false);
+      menu.update();
       if (up !== shutter) {
         d.controls.setShutter(up);
         document.body.classList.toggle('roam-photo', !!up);
@@ -447,6 +516,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (next !== prev) photo.lower();
       // (praying is on foot: he gets up, the hat goes back on)
       if (next !== 'walk') prayer.stop();
+      if (next !== 'walk') rest.stop();
       if (next !== 'walk') bar.toggleKeys(false);
       // (in the overview the ledge drives him: a lantern after dark)
       if (next === 'overview') setHeld('none');
@@ -472,6 +542,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       const a = params.get('act') as ActionName | null;
       if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie' && (a !== 'pray' || mode === 'walk')) explorer.play(a);
+      // (sit, lie or sleep on the ground where he stands: _rest.ts)
+      const ra = params.get('act');
+      if ((ra === 'sit' || ra === 'lie' || ra === 'sleep') && mode === 'walk') rest.start(ra, params.has('rcam'));
       // A worship spot of its own (checks, new shrines): kneelat=x,z,fx,fz (y: the ground there) or x,y,z,fx,fz.
       const kn = params.get('kneelat')?.split(',').map(Number);
       if (kn && (kn.length === 4 || kn.length === 5) && kn.every(Number.isFinite)) {
@@ -487,6 +560,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       const fc = EXPRESSIONS.indexOf(params.get('face') as ExpressionName);
       if (fc >= 0) setFace(fc);
       if (params.get('keys') === '1') bar.toggleKeys(true);
+      if (params.get('menu') === '1') menu.toggle(true);
       // The selfie: the hand's gesture, where the phone is (degrees round his head, reach 0‥1).
       const g = params.get('gesture') as SelfieGesture | null;
       if (g && ['peace', 'wave', 'thumbsUp', 'none'].includes(g)) photo.setGesture(g);
@@ -506,7 +580,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       const out: Record<string, string> = {};
       const o = explorer.currentOutfit;
       // (while he prays: what he put away, and the hat he took off, so act=pray plays it again as it was)
-      const hand = prayer.handsBusy && mode === 'walk' ? handTool() : o.held;
+      const hand = (prayer.handsBusy || rest.active) && mode === 'walk' ? handTool() : o.held;
       const tool = photo.kind ?? (hand !== 'none' ? hand : null);
       if (tool) out.tool = tool;
       if (hand === 'flashlight' && beamMouse) out.beam = 'mouse';
@@ -515,7 +589,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       // (a shot of the prayer as far along as it is now: roam.ts takes this `sim`)
       if (a === 'pray') out.sim = `_:${Math.max(0.5, explorer.animator.actionTime).toFixed(1)}`;
       if (look !== 0) out.look = LOOKS[look][0];
-      out.hat = o.hat || prayer.hatOff ? '1' : '0';
+      out.hat = o.hat || prayer.hatOff || rest.hatOff ? '1' : '0';
+      // (sitting, lying or asleep on the ground: a shot that lies him down again, as long as that takes)
+      const r = mode === 'walk' ? rest.state : null;
+      if (r) {
+        out.act = r;
+        out.sim = r === 'sleep' ? '_:5.5' : r === 'lie' ? '_:3' : '_:2';
+      }
       if (explorer.currentExpression !== 'neutral') out.face = explorer.currentExpression;
       const deg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
       if (photo.kind === 'camera') out.pview = `${deg(photo.shot.yaw)},${deg(photo.shot.pitch)},${photo.shot.fov.toFixed(0)}`;
@@ -558,13 +638,14 @@ interface ToolBar {
 
 /**
  * A small bar at the bottom centre while he walks: 1 lantern, 2 torch,
- * 3 flashlight, 4 camera, 5 selfie phone, then the album (V) and the key
- * list (?). Pixel-art icons with their key; the one in use is lit gold.
+ * 3 flashlight, 4 camera, 5 selfie phone, then the album (V), the explorer
+ * menu (I: moves, looks, faces; _explorerMenu.ts) and the key list (?).
+ * Pixel-art icons with their key; the one in use is lit gold.
  * On touch it stands at the right edge, above the Jump button.
  */
 function createToolBar(
   layer: HTMLElement,
-  h: { onTool(t: ToolName): void; onAlbum(): void; held(): HoldKind; up(): ToolName | null; camera(): boolean },
+  h: { menu: ExplorerMenu; onTool(t: ToolName): void; onAlbum(): void; held(): HoldKind; up(): ToolName | null; camera(): boolean },
 ): ToolBar {
   injectStyle();
   const wrap = document.createElement('div');
@@ -577,10 +658,14 @@ function createToolBar(
       ${slot('lantern', '1')}${slot('torch', '2')}${slot('flashlight', '3')}${slot('camera', '4')}${slot('selfie', '5')}
       <span class="rtb-sep" aria-hidden="true"></span>
       <button type="button" class="rtb-slot rtb-album"><span class="rtb-bg"></span>${ICONS.album}<kbd>V</kbd></button>
+      <button type="button" class="rtb-slot rtb-me" aria-expanded="false"><span class="rtb-bg"></span>${ICONS.explorer}<kbd>I</kbd></button>
       <button type="button" class="rtb-slot rtb-more" aria-expanded="false"><span class="rtb-bg"></span><span class="rtb-q">?</span></button>
     </div>
     <div class="rtb-keys mu-frame mu-sm" role="dialog"></div>`;
   layer.append(wrap);
+  // (the explorer menu opens in the same place as the key list)
+  wrap.append(h.menu.el);
+  const me = wrap.querySelector<HTMLButtonElement>('.rtb-me')!;
   const keysEl = wrap.querySelector<HTMLElement>('.rtb-keys')!;
   const more = wrap.querySelector<HTMLButtonElement>('.rtb-more')!;
   const slots = [...wrap.querySelectorAll<HTMLButtonElement>('.rtb-slot[data-tool]')];
@@ -590,6 +675,7 @@ function createToolBar(
     wrap.querySelector('.rtb')!.setAttribute('aria-label', t('rToolsAria'));
     for (const b of slots) b.title = `${t(TOOL_NAME[b.dataset.tool as ToolName])} (${b.dataset.key})`;
     albumBtn.title = `${t('rAlbum')} (V)`;
+    me.title = `${t('rExplorer')}: ${t('rMenuKey')} (I)`;
     more.title = `${t('rAllKeys')} (?)`;
     keysEl.setAttribute('aria-label', t('rKeys'));
     keysEl.innerHTML = `<span class="mu-bg"></span>${keyList()}`;
@@ -605,6 +691,10 @@ function createToolBar(
   albumBtn.addEventListener('click', () => {
     albumBtn.blur();
     h.onAlbum();
+  });
+  me.addEventListener('click', () => {
+    me.blur();
+    h.menu.toggle();
   });
   let open = false;
   const bar: ToolBar = {
@@ -622,8 +712,12 @@ function createToolBar(
       }
       const cam = slots.find((b) => b.dataset.tool === 'camera');
       cam?.classList.toggle('is-off', !h.camera());
+      me.classList.toggle('is-on', h.menu.open);
+      me.setAttribute('aria-expanded', String(h.menu.open));
     },
     toggleKeys(on = !open) {
+      // (one panel at a time: the key list or the explorer menu)
+      if (on) h.menu.toggle(false);
       open = on;
       keysEl.classList.toggle('is-on', on);
       more.classList.toggle('is-on', on);
@@ -647,9 +741,10 @@ const keyList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
     ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}
-    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
-    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(mouse('rStill'), 'rPrayAt')}
+    ${row(k('I'), 'rMenuKey')}
+    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(k('J'), 'rSit')}${row(k('L'), 'rLieDown')}
     ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
     <b class="rtb-sub">${t('rView')}</b>${row(mouse('rDrag') + k('Q') + k('R'), 'rLookRound')}${row(mouse('rWheel'), 'rZoom')}
     <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}</div>
@@ -659,7 +754,7 @@ const keyList = () => `
 
 /** 16 × 16 pixel-art icons (currentColor, with their own glow colours). */
 const px = (body: string) => `<svg class="rtb-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">${body}</svg>`;
-const ICONS: Record<ToolName | 'album', string> = {
+const ICONS: Record<ToolName | 'album' | 'explorer', string> = {
   lantern: px(`<path fill="currentColor" d="M6 0h4v1h1v2h-1V1H6v2H5V1h1zM4 3h8v2H4zM4 5h1v7H4zM11 5h1v7h-1zM3 12h10v2H3zM5 14h6v1H5z"/>
     <path class="rtb-lit" fill="#ffc45a" d="M5 5h6v7H5z"/><path class="rtb-lit" fill="#fff0b8" d="M7 7h2v3H7z"/>`),
   torch: px(`<path class="rtb-lit" fill="#ff9a3c" d="M8 0h1v2h1v1h1v4h-1v1H6V7H5V4h1V3h1V1h1z"/><path class="rtb-lit" fill="#ffe07c" d="M7 4h2v3H7zM8 3h1v1H8z"/>
@@ -672,6 +767,10 @@ const ICONS: Record<ToolName | 'album', string> = {
     <path class="rtb-lit" fill="#dcae8f" d="M6 5h4v4H6zM6 11h4v3H6z"/><path fill="#3a2a26" d="M7 6h1v1H7zM9 6h1v1H9zM7 8h2v1H7z"/><path class="rtb-lit" fill="#f7b733" d="M6 10h4v1H6z"/>`),
   album: px(`<path fill="currentColor" opacity="0.55" d="M4 1h11v10H4z"/><path fill="currentColor" d="M1 4h11v11H1z"/><path fill="#0d1927" d="M2 5h9v7H2z"/>
     <path class="rtb-lit" fill="#ffe07c" d="M8 6h2v2H8z"/><path fill="#7fa36a" d="M2 11h2V9h1V8h1v1h1v1h1v1h1v-1h1v1h1v1H2z"/>`),
+  // (his face under the straw hat, smiling: the explorer menu)
+  explorer: px(`<path class="rtb-lit" fill="#e2b35c" d="M5 1h6v1h1v3H4V2h1z"/><path class="rtb-lit" fill="#c8453a" d="M4 4h8v1H4z"/>
+    <path class="rtb-lit" fill="#f0c874" d="M1 5h14v1h-1v1H2V6H1z"/><path class="rtb-lit" fill="#dcae8f" d="M4 7h8v5h-1v1h-1v1H6v-1H5v-1H4z"/>
+    <path fill="#3a2a26" d="M6 8h1v2H6zM9 8h1v2H9zM5 10h1v1H5zM10 10h1v1h-1zM6 11h4v1H6z"/><path fill="currentColor" d="M3 14h3v1h4v-1h3v2H3z"/>`),
 };
 
 let styled = false;
@@ -709,7 +808,7 @@ function injectStyle(): void {
     .rtb-sep { width: 1px; height: calc(24 * var(--px)); margin: 0 calc(3 * var(--px)); background: var(--mu-line); }
     .rtb-more { width: calc(28 * var(--px)); }
     /* (the key help at the bottom left stops short of the bar) */
-    .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang'], [data-mode='balloon']) .rh-help { max-width: calc(50% - 210 * var(--px) - 24px); }
+    .rh:is([data-mode='walk'], [data-mode='boat'], [data-mode='hang'], [data-mode='balloon']) .rh-help { max-width: calc(50% - 233 * var(--px) - 24px); }
     .rtb-q { font: 700 calc(15 * var(--px)) / 1 var(--mu-display); }
 
     /* All the keys (?): a small panel over the bar. */
@@ -753,6 +852,11 @@ function injectStyle(): void {
       body.roam-touch .rtb { flex-direction: row; }
       body.roam-touch .rtb-sep { width: 1px; height: 24px; margin: 0 3px; }
       body.roam-touch .rtb-slot { width: 40px; height: 40px; }
+    }
+    /* (a small phone on its side: narrower buttons, so the bar fits between "Back to the map" and the language switch) */
+    @media (max-height: 500px) and (max-width: 720px) {
+      body.roam-touch .rtb-slot { width: 36px; }
+      body.roam-touch .rtb-sep { margin: 0 1px; }
     }`;
   document.head.append(style);
 }

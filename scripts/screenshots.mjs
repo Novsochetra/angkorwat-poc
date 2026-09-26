@@ -1,7 +1,7 @@
 // Capture viewer / game states with headless Chromium.
 //
 //   node scripts/screenshots.mjs                      # default set
-//   node scripts/screenshots.mjs front="view=0&zoom=full" game="@index.html?shot=1"
+//   node scripts/screenshots.mjs front="view=0&zoom=full" game="@game.html?shot=1"
 //
 // Each arg is name=query (viewer.html) or name=@page?query for another page.
 // Output: screenshots/<name>.png

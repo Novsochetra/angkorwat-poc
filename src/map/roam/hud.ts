@@ -1,4 +1,4 @@
-import { OVERVIEW } from '../layout';
+import { OVERVIEW, SCENES_OPEN } from '../layout';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
 import { onLang, t, type WordKey } from '../ui/lang';
@@ -332,7 +332,7 @@ function explorerOnScreen(): { x: number; y: number } {
 const key = (k: string) => `<kbd>${k}</kbd>`;
 /** A key and what it does (in English in lower case, as a list). */
 const item = (keys: string, what: WordKey) => `<span class="rh-k">${keys}<em>${t(what).toLowerCase()}</em></span>`;
-/** The keys of a mode (bottom left) in the language in use; the hang glider's with easy flying off (roam/prefs.ts) are the real glider's. */
+/** The keys of a mode (bottom left) in the language in use; the hang glider's and the balloon's with easy flying off (roam/prefs.ts) are the real ones'. */
 function helpFor(mode: RoamMode): string {
   const look = item(`<i>${t('rDrag')}</i> / ${key('Q')}${key('R')}`, 'rLook');
   const letGo = item(key('Space'), 'rLetGo');
@@ -345,11 +345,14 @@ function helpFor(mode: RoamMode): string {
         item(key('W') + key('A') + key('S') + key('D'), 'rMove'),
         item(key('Shift'), 'rRun'),
         item(key('Space'), 'rJump'),
-        item(key('E'), 'rEnterFly'),
+        // (the places' pages are closed for this release: E does the rest — pray, fly, the balloon, the swing)
+        item(key('E'), SCENES_OPEN ? 'rEnterFly' : 'rUseFly'),
         item(key('N'), 'rRamp'),
         look,
         item(key('1') + '–' + key('5'), 'rTools'),
         item(key('F') + key('C') + key('U') + key('P'), 'rEmotes'),
+        item(key('J') + key('L'), 'rSitLie'),
+        item(key('I'), 'rExplorer'),
         item(key('?'), 'rAllKeys'),
       ].join('');
     case 'boat':
@@ -364,7 +367,16 @@ function helpFor(mode: RoamMode): string {
         photo,
       ].join('');
     case 'balloon':
-      return [item(key('W') + key('Space'), 'rBurn'), item(key('Shift'), 'rBothBurners'), item(key('S'), 'rVent'), item(key('A') + key('D'), 'rTurn'), item(key('E'), 'rLandOut'), look, photo].join('');
+      // (the same keys as the glider's: S up, W down; with easy flying off Shift fires both burners)
+      return [
+        item(key('A') + key('D'), 'rTurn'),
+        item(key('S') + key('Space'), 'rBurn'),
+        item(key('W'), 'rVent'),
+        item(key('Shift'), roamPrefs.easyFly ? 'rFast' : 'rBothBurners'),
+        item(key('E'), 'rLandOut'),
+        look,
+        photo,
+      ].join('');
     default:
       return '';
   }

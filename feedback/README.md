@@ -11,7 +11,7 @@ feedback/2026-09-23-143205-explorer-walks-through-the-wall/
 
 ## Making a report
 
-1. `npm run dev` and play (`index.html`) or open the viewer (`viewer.html`).
+1. `npm run dev` and play (`game.html`) or open the viewer (`viewer.html`).
 2. Press **B** (or tap **🐞 Report**). The game freezes; you can still drag to look around.
 3. Click or tap what's wrong. Pick several things if it's about how they meet. A **✕** removes one.
    Many things at once: choose **▭ Box** or **◯ Loop** and drag around them (on a computer,

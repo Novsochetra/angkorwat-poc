@@ -23,7 +23,7 @@ import { createDotTemple } from './temple';
  * been time to read it. A click / tap / Space / → shows the whole beat,
  * then the next one; ← goes back, a swipe too; Esc or "Skip" closes it.
  * The ខ្មែរ / EN switch at the top changes the saved language
- * (`hooks.setLang`). The last beat waits for "Start playing".
+ * (`hooks.setLang`). The last beat waits for its gold button.
  *
  * While the map's sound is still off (a browser plays none before a click
  * or a key), the first beat waits for "Start" in place of the arrows: that

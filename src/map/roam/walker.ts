@@ -7,6 +7,7 @@ import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
+import { shrine } from './_pray';
 import { createSwingRide, type SwingRide } from './_swingRide';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
 
@@ -44,8 +45,8 @@ const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), M
  * hop up one land step (2 m), slide along walls, jump (Space), drop off
  * ledges and cliffs (in a long fall Space opens the parachute, E the hang
  * glider), wade into deep water and take a boat, fly the hang glider from
- * a cliff-top ramp (E), climb into the hot air balloon's basket (E), and
- * enter a place with E at its beacon.
+ * a cliff-top ramp (E), climb into the hot air balloon's basket (E), kneel
+ * to pray at a shrine (E: _pray.ts), and enter a place with E at its beacon.
  *
  * Collisions use the walk map (world.standAt): the body is a circle of
  * probes; each must have ground within a step of the feet and room above
@@ -393,18 +394,28 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       }
 
       // ── A golden figure, a boat tied up by the bank, a place's beacon ─────
-      // (kneeling in prayer: no "E  Enter …" over him; E gets him up first: tools.ts, _pray.ts)
-      if (body.explorer.currentAction === 'pray') setPrompt(ctx, null);
+      // (kneeling in prayer, or on his way to: no "E  Enter …" over him; E gets him up first: tools.ts, _pray.ts)
+      // (sitting or lying on the ground, _rest.ts: its posture holds him, it shows its own keys; E gets him up)
+      if (body.explorer.currentAction === 'pray' || shrine.busy() || body.explorer.animator.posture) setPrompt(ctx, null);
       else if (body.grounded) {
-        // (a hidden golden figure within arm's reach comes first, before a boat, a ramp, the
+        // (a hidden golden figure within arm's reach comes first, before a shrine, a boat, a ramp, the
         // balloon, the swing or a beacon that is also in reach: E picks it up; treasure/)
         const gold = treasure.near(ctx);
         const boat = mooredBoatNear(pos.x, pos.z);
+        const kneel = shrine.near();
         if (gold) {
           setPrompt(ctx, gold.prompt);
           if (input.use) {
             setPrompt(ctx, null);
             treasure.pick(ctx, gold.id);
+          }
+        } else if (kneel) {
+          // In front of a shrine (its lotus glows on the floor): E walks him onto it to pray, before a boat
+          // or the balloon left beside it (from its other sides they are still in reach); _pray.ts.
+          setPrompt(ctx, `E  ${t('rPrayHere')}`);
+          if (input.use) {
+            setPrompt(ctx, null);
+            shrine.kneel(kneel);
           }
         } else if (boat && Math.abs(boat.level - pos.y) < 4) {
           setPrompt(ctx, `E  ${t('rBoard')}`);

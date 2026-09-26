@@ -6,7 +6,7 @@ import { formatFrame, resolveTrace, type SourceFrame } from './sourceTrace';
 export interface ReportData {
   kind: 'bug' | 'idea';
   note: string;
-  /** Page file, e.g. `index.html`. */
+  /** Page file, e.g. `game.html`. */
   page: string;
   picks: Pick[];
   /** Page state (explorer, camera, outfit…), label → value. */

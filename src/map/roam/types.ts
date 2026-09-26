@@ -110,6 +110,8 @@ export interface FollowCam {
   yaw: number;
   /** Tilt down (radians, + = from above). */
   pitch: number;
+  /** Lowest tilt the player may drag to (radians; a little from below): resting on the ground he looks up at the sky (_rest.ts lowers it). */
+  pitchMin: number;
   /** Distance from the focus (m). */
   distance: number;
   /** Range the wheel may zoom between (m), set by the mode. */

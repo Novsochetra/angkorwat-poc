@@ -142,7 +142,7 @@ export const BEATS: Beat[] = [
   {
     scene: 'dawnWorld',
     lines: [
-      { km: 'សូមរីករាយជាមួយហ្គេម 😉', en: 'Enjoy the game 😉' },
+      { km: 'តោះ ទៅមើលមរតកដែលដូនតាបន្សល់ទុកឲ្យយើង។', en: "Let's go and see what our ancestors left us." },
       { kind: 'sign', km: '— ពីកូនខ្មែរម្នាក់ ជូនកូនខ្មែរទាំងអស់', en: '— From one Cambodian, to all Cambodians' },
     ],
   },

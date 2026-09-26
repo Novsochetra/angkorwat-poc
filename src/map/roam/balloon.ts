@@ -1,14 +1,16 @@
 import { Frustum, Group, Matrix4, Sphere, Vector3, type PerspectiveCamera } from 'three';
-import { clamp, smoothstep } from '../../character/pose';
+import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { SURFACE, type HeightField } from '../heightfield';
-import { OVERVIEW } from '../layout';
+import { OVERVIEW, placeById } from '../layout';
 import { CALM_WEATHER, type MapFrame, type MapWeather } from '../types';
 import { t } from '../ui/lang';
 import { BALLOON, Balloon, buildBalloonHome } from './_balloonModel';
 import { balloonPose, type BalloonPoseState } from './_balloonPoses';
 import { installNearFade } from './_nearFade';
 import { angleDiff } from './followCam';
+import { fullKeys } from './hangGlider';
+import { roamPrefs } from './prefs';
 import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type RoamWorld } from './types';
 
 /**
@@ -25,17 +27,30 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type Roa
  * - Walk up to the basket, E: the basket rights itself, he climbs in and
  *   stands at the burner line; the fan blows cold air into the envelope (it
  *   ripples and rises off the grass), then the burner fires and stands it up
- *   over the basket (`INFLATE` s; W / Space: faster, the burner roaring).
+ *   over the basket (`INFLATE` s; Space, S or W: faster, the burner roaring).
  *   Esc meanwhile: he hops back out and it lies down again.
  * - Inflated and standing on its field (after a landing back home), its
  *   pilot light burns and now and then the burner breathes (a glow in the
  *   night); E climbs straight in.
- * - W or Space: the burner roars and heats the air in the envelope; it
- *   lifts off (the tether lets go) and climbs, slowly, the longer the burn
- *   the faster (Shift: both burners). S opens the vent at the top: it
- *   sinks. Hands off, the air cools a little at a time and it sinks slowly.
- *   A / D turn the basket (the turning vents). Up to `CEILING` over the land.
- * - The wind carries it, slow and calm: a light breeze (low down along the
+ * - Easy flying (the settings, `roamPrefs.easyFly`, as for the hang glider;
+ *   on by default) flies it like the glider: S or Space and it lifts off
+ *   (the tether lets go) and climbs, the burner roaring; W comes down (the
+ *   vent); both ease in and out, quicker higher up and with Shift, up to
+ *   `CEILING_EASY` over the land. Hands-off it holds its height (the burner
+ *   breathing now and then). In the air it cruises forward where the basket
+ *   faces (`V_CRUISE`, Shift `V_FAST`; slower low down), A / D turn it (the
+ *   envelope leans into the turn), the follow camera swings round behind it.
+ *   Land rising ahead it climbs over by itself (not while W takes it down);
+ *   coming down, the descent rounds out softly near the ground. The day's
+ *   wind only nudges it (`WIND_EASY`, at most `DRIFT_MAX`); at the roaming
+ *   area's edge the wind turns it back towards the temples.
+ * - The real balloon (easy flying off): S or Space fire the burner, which
+ *   heats the air in the envelope; it lifts off and climbs, slowly, the
+ *   longer the burn the faster (Shift: both burners). W opens the vent at
+ *   the top: it sinks. Hands off, the air cools a little at a time and it
+ *   sinks slowly. A / D turn the basket (the turning vents), and it edges
+ *   forward the way it faces (`PUSH`). Up to `CEILING` over the land. The
+ *   wind carries it, slow and calm: a light breeze (low down along the
  *   valley to the east, higher up to the north over Angkor Wat) plus the
  *   day's wind (`MapWeather.wind`, `windDir`), stronger higher up and
  *   turning with height as the breeze does (the pilot steers by picking his
@@ -46,7 +61,7 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type Roa
  *   burner lifts it off again. Left away from home it stands where it
  *   landed until he leaves roaming; then it is back home, deflated.
  * - The camera and the selfie phone work in the basket (tools.ts); the
- *   balloon floats on meanwhile (hardly cooling).
+ *   balloon floats on meanwhile (the real one hardly cooling).
  *
  * The explorer's feet are the basket floor's middle (`body.pos`), he faces
  * the balloon's heading; the posture (_balloonPoses.ts) stands him at the
@@ -78,7 +93,7 @@ const BURN_BOTH = 1.8;
 const COOL_HIGH = 0.16;
 const COOL_LOW = 0.028;
 const AMBIENT = 0.2;
-/** The vent open (S) lets the heat out this fast (1/s); the camera up: the cooling this slow. */
+/** The vent open (W) lets the heat out this fast (1/s); the camera up: the cooling this slow. */
 const VENT = 0.13;
 const COOL_PHOTO = 0.25;
 /** Climb or sink per unit of heat over level (m/s), and at most (m/s); how quickly it follows (s). */
@@ -97,6 +112,57 @@ const SOFT_SINK = 0.8;
 /** Landing (E): the sink from high to low (m/s); E lands from this high over the ground (m). */
 const LAND_SINK = [0.7, 2] as const;
 const LAND_AT = 12;
+
+// ── Easy flying (roamPrefs.easyFly) ────────────────────────────────────────
+/** Cruising forward where the basket faces (m/s; Shift: `V_FAST`), and how softly it speeds up and slows down (1/s). */
+const V_CRUISE = 8;
+const V_FAST = 15;
+const SPEED_RATE = 0.6;
+/** Low down it slows, to this share of its speed at the ground (full speed from `SLOW_AT` m over it). */
+const V_LOW = 0.3;
+const SLOW_AT = 12;
+/** Turning at full A / D (rad/s), and how quickly the turn follows the keys (1/s). */
+const TURN = 0.5;
+const TURN_EASE = 1.8;
+/** Climbing (S / Space) and coming down (W) (m/s; Shift: × `EASY_FAST`), and how softly they start and stop (1/s: nearly all the way in two seconds). */
+const CLIMB = 4;
+const DESCEND = 4.5;
+const EASY_FAST = 1.5;
+const EASE = 2;
+/** Higher up both go faster, so the land far below seems to move as much: once more their speed for every this many metres over the ground. */
+const RATE_EASY = 250;
+/** Highest it climbs over the land (m, as the glider): the climb fades out over the last `THIN_EASY` m. */
+const CEILING_EASY = 700;
+const THIN_EASY = 150;
+/** Low down the descent eases off, to this share of it at the touch (from `DESCEND_EASE_AT` m up): it rounds out softly. */
+const DESCEND_LOW = 0.15;
+const DESCEND_EASE_AT = 24;
+/**
+ * Land rising ahead (a slope, a cliff, a tower): it looks as far as it
+ * flies in this long (s) and this much more (m), and climbs to clear it by
+ * `CLEAR` m, at most `HOP_RATE` m/s (slowing for a taller one), easing in
+ * this quickly (1/s).
+ */
+const HOP_LOOK = 2.5;
+const HOP_LOOK_M = 10;
+const CLEAR = 2;
+const HOP_RATE = 8;
+const HOP_EASE = 3;
+/** It looks at the land every this many metres ahead. */
+const HOP_STEP = 2;
+/** The day's wind only nudges it: this share of it, at most this fast (m/s). */
+const WIND_EASY = 0.3;
+const DRIFT_MAX = 2.5;
+/** Hands-off the burner breathes now and then, as a pilot holds his height (s between). */
+const HOLD_EVERY = 11;
+/** The envelope leans into a turn (rad at the full turn), and forward with the speed (rad at `V_FAST`). */
+const LEAN_TURN = 0.08;
+const LEAN_FWD = 0.035;
+/** The wind turns it back at the roaming area's edge when the edge is this near ahead (m), or this many seconds of flight. */
+const EDGE_LOOK = 40;
+const EDGE_LOOK_S = 5;
+/** Where the wind turns it back to: Angkor Wat. */
+const HOME = placeById('sanctuary');
 
 // ── Wind ───────────────────────────────────────────────────────────────────
 /**
@@ -119,8 +185,9 @@ const TAU_H = 3.5;
 const DRAG_GROUND = 3;
 /** The mist at the roaming area's edge holds it back from this far in (m). */
 const EDGE = 30;
-/** Turning the basket (rad/s), and its own slow turn in the air. */
+/** Turning the basket (rad/s), and its own slow turn in the air; it edges forward the way it faces this fast (m/s: the turning vents). */
 const SPIN = 0.35;
+const PUSH = 2.5;
 
 // ── Getting in and out, the camera ─────────────────────────────────────────
 /** E at the basket from this near (m from its middle), the climb in or out (s), how high over the floor he hops (m, true size). */
@@ -129,11 +196,23 @@ const HOP = 0.7;
 const HOP_UP = 0.85;
 /** Where he steps out to (m from the basket's middle, true size). */
 const OUT = 1.3;
-/** Follow camera: distance, tilt, focus over the basket floor (× size); up high it looks down more. */
+/**
+ * Follow camera: distance, tilt, focus over the basket floor (× size); up
+ * high it looks down more (this much more from 40 m up to `TILT_TOP` m,
+ * easy flying `TILT_TOP_EASY`); how readily it swings round behind the
+ * heading (easy flying, the real balloon).
+ */
 const CAM_DIST = 17;
 const CAM_PITCH = 0.3;
 const FOCUS_UP = 1.5;
-const TILT_HIGH = 0.5;
+const TILT_HIGH = 0.3;
+const TILT_TOP = 350;
+const TILT_TOP_EASY = 600;
+const FOLLOW_EASY = 0.9;
+const FOLLOW = 0.4;
+/** Easy flying towards the camera, it swings round behind at this rate (rad/s), from this long after the player last turned it (s). */
+const SWING = 0.9;
+const SWING_AFTER = 1.6;
 /** At home the burner breathes now and then (s between, s long). */
 const BREATH_EVERY = 29;
 const BREATH_LONG = 1.3;
@@ -245,11 +324,25 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   object.add(model.object, deco.object);
 
   // ── State ──────────────────────────────────────────────────────────────
-  /** The basket floor's middle (world), heading, drift and climb. */
+  /** The basket floor's middle (world), heading, its velocity (the drift plus forward) and turn. */
   const pos = new Vector3(home.x, home.y, home.z);
   let yaw = home.yaw;
   const vel = new Vector3();
   let yawV = 0;
+  /** The wind's drift (m/s, eased), the speed forward where it faces (m/s), how fast the climb is changing (m/s²: easy flying eases it in and out). */
+  const drift = { x: 0, z: 0 };
+  let v = 0;
+  let vyA = 0;
+  /** Easy flying this ride (roamPrefs.easyFly); the keys were shown for easy flying (true), the real balloon (false), or not yet (null). */
+  let easyNow = true;
+  let hinted: boolean | null = null;
+  /** The wind is turning it back from the edge (easy flying): which way round (+1 left, −1 right; 0 = not). */
+  let homing = 0;
+  /** The envelope's lean (rad, eased): forward, and into the turn. */
+  let leanX = 0;
+  let leanZ = 0;
+  /** Since the player last turned the camera (s). */
+  let lookIdle = 10;
   let heat = REST;
   /** The burner's flame now (0‥1), eased: the look and the roar. */
   let flame = 0;
@@ -277,7 +370,6 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   const hopTo = new Vector3();
   let hopYaw = 0;
   let prompt: string | null = null;
-  let hinted = false;
   let edgeTold = -99;
   let thinTold = false;
   let settle: number | null = null;
@@ -418,6 +510,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     yaw = home.yaw;
     vel.set(0, 0, 0);
     yawV = 0;
+    drift.x = drift.z = v = vyA = leanX = leanZ = 0;
     heat = REST;
     atHome = true;
     phase = 'ground';
@@ -438,23 +531,66 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     fanOn = false;
   }
 
-  /** The keys, on the first ride of the visit. */
+  /** The keys: the first ride of the visit, and again when the kind of flying (easy or the real balloon) changed since. */
   function hint(ctx: RoamCtx): void {
-    if (hinted || ctx.shot) return;
-    hinted = true;
-    ctx.hud.toast(t(document.body.classList.contains('roam-touch') ? 'rBalloonTouch' : 'rBalloonKeys'));
+    if (hinted === easyNow || ctx.shot) return;
+    hinted = easyNow;
+    // (on a touch screen the stick and the Jump button, not keys: touch.ts)
+    const touch = document.body.classList.contains('roam-touch');
+    ctx.hud.toast(t(easyNow ? (touch ? 'rBalloonTouch' : 'rBalloonKeys') : touch ? 'rBalloonRealTouch' : 'rBalloonReal'));
   }
 
-  /** The follow camera: behind him, over the basket; up high it looks down more. */
+  /** The follow camera: behind him (a little into the turn), over the basket; up high it looks down more; a little wider going fast. */
   function setCam(ctx: RoamCtx, dt: number, over: number): void {
     const { cam, input } = ctx;
     cam.focus.set(pos.x, pos.y + FOCUS_UP * size, pos.z);
-    cam.behindYaw = yaw;
+    cam.behindYaw = yaw + yawV * 0.5;
+    cam.fov = 50 + 5 * clamp((v - V_CRUISE) / (V_FAST - V_CRUISE), 0, 1);
+    // Easy flying towards the camera: it swings round behind anyway, a while after the player last turned it
+    // (the follow camera leaves that to the player: a walker coming towards it); then the follow camera takes over.
+    lookIdle = input.lookYaw ? 0 : lookIdle + dt;
+    if (easyNow && phase === 'fly' && cam.follow > 0 && v > 1) {
+      const d = angleDiff(cam.behindYaw, cam.yaw);
+      cam.yaw += Math.sign(d) * SWING * smoothstep(2, 2.4, Math.abs(d)) * smoothstep(SWING_AFTER, SWING_AFTER + 1, lookIdle) * dt;
+    }
     if (settle !== null) {
       cam.distance += (settle - cam.distance) * (1 - Math.exp(-dt * 1.2));
       if (input.zoom || Math.abs(settle - cam.distance) < 0.05) settle = null;
     }
-    if (!input.lookPitch && cam.follow > 0) cam.pitch += (CAM_PITCH + TILT_HIGH * smoothstep(40, 350, over) - cam.pitch) * (1 - Math.exp(-dt * 0.4));
+    const tilt = CAM_PITCH + TILT_HIGH * smoothstep(40, easyNow ? TILT_TOP_EASY : TILT_TOP, over);
+    if (!input.lookPitch && cam.follow > 0) cam.pitch += (tilt - cam.pitch) * (1 - Math.exp(-dt * 0.4));
+  }
+
+  /**
+   * Easy flying: how fast it must climb (m/s) to clear the land ahead by
+   * `CLEAR` m in time, flying on at `speed` along the way it is turning:
+   * the basket over the ground, the envelope's front and sides over a
+   * cliff's top as they come to it. 0: nothing ahead is in the way.
+   */
+  function climbAhead(speed: number): number {
+    const rr = BALLOON.radius * size;
+    const rim = (BALLOON.throat + 2) * size;
+    let [x, z, a] = [pos.x, pos.z, yaw];
+    let need = 0;
+    for (let d = HOP_STEP; d <= speed * HOP_LOOK + HOP_LOOK_M; d += HOP_STEP) {
+      a += (yawV * HOP_STEP) / speed;
+      const sx = Math.sin(a);
+      const sz = Math.cos(a);
+      x += sx * HOP_STEP;
+      z += sz * HOP_STEP;
+      const top =
+        CLEAR +
+        Math.max(
+          floorAt(x, z),
+          world.groundAt(x + sx * rr * 0.5, z + sz * rr * 0.5) - BALLOON.throat * size,
+          world.groundAt(x + sx * rr, z + sz * rr) - rim,
+          world.groundAt(x + sz * rr * 0.8, z - sx * rr * 0.8) - rim,
+          world.groundAt(x - sz * rr * 0.8, z + sx * rr * 0.8) - rim,
+        );
+      // (its climb starts softly: a moment late)
+      if (top > pos.y) need = Math.max(need, (top - pos.y) / Math.max(d / speed - 1 / HOP_EASE, 0.3));
+    }
+    return need;
   }
 
   /** The hop over the rim, in or out: an arc from `hopFrom` to `hopTo`. */
@@ -496,12 +632,15 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       prompt = null;
       thinTold = false;
       device = false;
+      easyNow = roamPrefs.easyFly;
       vel.set(0, 0, 0);
       yawV = 0;
+      drift.x = drift.z = v = vyA = leanX = leanZ = 0;
+      homing = 0;
       flame = 0;
       cam.minDistance = 7;
       cam.maxDistance = 60;
-      cam.follow = 0.3;
+      cam.follow = easyNow ? FOLLOW_EASY : FOLLOW;
       cam.fov = 50;
       ex.animator.postureFeet = true;
       if (from === 'overview') {
@@ -519,9 +658,11 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         standUp();
         const fl = floorUnder(pos.x, pos.z);
         if (pos.y > fl + 2) {
+          // (already flying: on its way)
           phase = 'fly';
           heat = EQ;
           atHome = false;
+          v = easyNow ? V_CRUISE : PUSH;
         } else {
           pos.y = fl;
           phase = 'ground';
@@ -621,8 +762,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         return null;
       }
       if (phase === 'inflate') {
-        // ── Inflating on the field: the fan's cold air, then the burner (W / Space: faster, a steady roar) ──
-        const fast = input.jumpHeld || input.move.y > 0.3;
+        // ── Inflating on the field: the fan's cold air, then the burner (Space, S or W: faster, a steady roar) ──
+        const fast = input.jumpHeld || Math.abs(input.move.y) > 0.3;
         prog = Math.min(INFLATE, prog + dt * (fast ? FAST : 1));
         fanOn = prog < INFLATE_FAN + 1.5;
         const hot = prog > INFLATE_FAN;
@@ -651,76 +792,144 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         return null;
       }
 
-      // ── The burner, the vent, the turning vents ────────────────────────
-      const burn = phase !== 'land' && (input.jumpHeld || input.move.y > 0.3);
-      const vent = phase === 'land' || input.move.y < -0.3;
-      const turn = phase === 'ground' ? 0 : -input.move.x;
-      flame += ((burn ? 1 : 0) - flame) * (1 - Math.exp(-dt * (burn ? 12 : 5)));
-      if (burn) heat += BURN * (input.run ? BURN_BOTH : 1) * (1 - heat) * dt;
-      const cool = (heat > EQ ? COOL_HIGH : COOL_LOW) * (heat - AMBIENT) * (device && !burn ? COOL_PHOTO : 1);
-      heat -= cool * dt;
-      if (vent) heat -= VENT * dt;
-      if (phase === 'ground') heat = Math.max(heat, REST - 0.05);
-      heat = clamp(heat, AMBIENT, 1);
-      yawV += (turn * SPIN - yawV) * (1 - Math.exp(-dt * 1.5));
-      yaw += (yawV + (phase === 'fly' ? 0.012 * Math.sin(clock * 0.07) : 0)) * dt;
+      // Easy flying switched in the settings mid-flight: the new keys (the help at the bottom left too).
+      if (roamPrefs.easyFly !== easyNow) {
+        easyNow = roamPrefs.easyFly;
+        ctx.hud.setMode('balloon');
+        hint(ctx);
+        // (not a camera a shot holds still)
+        if (cam.follow > 0) cam.follow = easyNow ? FOLLOW_EASY : FOLLOW;
+      }
+      const easy = easyNow;
 
-      // ── Up and down ────────────────────────────────────────────────────
+      // ── The keys: S / Space up (the burner), W down (the vent), A / D turn ──
+      // (two keys held together come at 0.7 each: easy flying takes each in full, as the glider does)
+      const keys = easy ? fullKeys(input.move) : 1;
+      const bar = input.move.y * keys;
+      const up = phase === 'land' ? 0 : Math.max(input.jumpHeld ? 1 : 0, clamp(-bar, 0, 1));
+      const down = phase === 'land' ? 1 : clamp(bar, 0, 1);
+      const burn = up > 0.3;
+      const vent = down > 0.3;
+      const turn = phase === 'ground' ? 0 : -input.move.x * keys;
       const floor = floorUnder(pos.x, pos.z);
       const over = pos.y - floor;
-      const thin = smoothstep(CEILING - THIN, CEILING, over);
-      let vyT = clamp((heat - EQ) * LIFT, -SINK_MAX, CLIMB_MAX);
-      vyT *= 1 + Math.max(0, over) / (vyT > 0 ? RATE_UP : RATE_DOWN);
-      if (vyT > 0) vyT *= 1 - thin;
+
+      // ── Turning; easy flying: at the roaming area's edge the wind turns it back towards the temples ──
+      yawV += (turn * (easy ? TURN : SPIN) - yawV) * (1 - Math.exp(-dt * (easy ? TURN_EASE : 1.5)));
+      if (easy && phase === 'fly') {
+        const off = angleDiff(Math.atan2(HOME.x - pos.x, HOME.z - pos.z), yaw);
+        const ahead = Math.max(EDGE_LOOK, v * EDGE_LOOK_S);
+        if (!homing && !world.inBounds(pos.x + Math.sin(yaw) * ahead, pos.z + Math.cos(yaw) * ahead) && Math.abs(off) > 0.6) {
+          // (once it starts it turns it all the way round, one way; straight away from home: the way it already turns)
+          homing = Math.abs(off) > 2.8 && Math.abs(yawV) > 0.05 ? Math.sign(yawV) : off >= 0 ? 1 : -1;
+          if (clock - edgeTold > 8) ctx.hud.toast(t('rWindBack'));
+          edgeTold = clock;
+        } else if (homing && Math.abs(off) < 0.5) homing = 0;
+        if (homing) yawV += (homing * clamp(Math.abs(off) * 1.2, 0.3, TURN) - yawV) * (1 - Math.exp(-dt * 3));
+      } else homing = 0;
+      yaw += (yawV + (phase === 'fly' && !easy ? 0.012 * Math.sin(clock * 0.07) : 0)) * dt;
+
+      // ── Forward: easy flying cruises where it faces (slower low down, and nearing land it must climb over); the real balloon edges forward ──
+      let vT = phase !== 'fly' ? 0 : easy ? (input.run ? V_FAST : V_CRUISE) * lerp(V_LOW, 1, smoothstep(1, SLOW_AT, over)) : PUSH;
+      // (easy flying: land rising ahead, a slope, a cliff, a tower: over it in time, unless W takes it down)
+      let rise = 0;
+      if (easy && phase === 'fly' && down < 0.2) {
+        rise = climbAhead(Math.max(v, 2));
+        if (rise > HOP_RATE) vT *= HOP_RATE / rise;
+        rise = Math.min(rise, HOP_RATE);
+      }
+      v += (vT - v) * (1 - Math.exp(-dt * (phase === 'land' ? 1.5 : easy ? SPEED_RATE : 0.5)));
+
+      // ── Up and down ────────────────────────────────────────────────────
+      const thin = easy ? smoothstep(CEILING_EASY - THIN_EASY, CEILING_EASY, over) : smoothstep(CEILING - THIN, CEILING, over);
+      let vyT: number;
+      if (easy) {
+        // Hands-off it holds its height; S / Space climb, W comes down (easing off low down); quicker higher up and with Shift.
+        const want = up > 0 ? up * CLIMB * (1 - thin) : -down * DESCEND * lerp(DESCEND_LOW, 1, smoothstep(0.5, DESCEND_EASE_AT, over));
+        vyT = want * (1 + Math.max(0, over) / RATE_EASY) * (input.run ? EASY_FAST : 1);
+        // (over land rising ahead)
+        if (rise > 0) vyT = Math.max(vyT, rise);
+        // (the air in the envelope as hot as floating level takes: the real balloon goes on from here)
+        heat = phase === 'ground' ? REST : EQ;
+      } else {
+        // The burner heats the air in the envelope, the vent lets it out, it cools by itself.
+        if (burn) heat += BURN * (input.run ? BURN_BOTH : 1) * (1 - heat) * dt;
+        heat -= (heat > EQ ? COOL_HIGH : COOL_LOW) * (heat - AMBIENT) * (device && !burn ? COOL_PHOTO : 1) * dt;
+        if (vent) heat -= VENT * dt;
+        if (phase === 'ground') heat = Math.max(heat, REST - 0.05);
+        heat = clamp(heat, AMBIENT, 1);
+        vyT = clamp((heat - EQ) * LIFT, -SINK_MAX, CLIMB_MAX);
+        vyT *= 1 + Math.max(0, over) / (vyT > 0 ? RATE_UP : RATE_DOWN);
+        if (vyT > 0) vyT *= 1 - thin;
+        // (rounding out near the ground unless the vent is open)
+        if (!vent && vyT < 0) vyT = Math.max(vyT, -(SOFT_SINK + (SINK_MAX - SOFT_SINK) * smoothstep(2, 20, over)));
+      }
       if (thin > 0.5 && burn && !thinTold) {
         thinTold = true;
         ctx.hud.toast(t('rThinAir'));
       }
-      // (rounding out near the ground unless the vent is open; landing: down gently)
-      if (!vent && vyT < 0) vyT = Math.max(vyT, -(SOFT_SINK + (SINK_MAX - SOFT_SINK) * smoothstep(2, 20, over)));
+      // (landing: down gently)
       if (phase === 'land') vyT = -(LAND_SINK[0] + (LAND_SINK[1] - LAND_SINK[0]) * smoothstep(2, LAND_AT, over));
       if (phase === 'ground') {
         if (vyT > 0.25) {
           // Lift off: the tether lets go at home.
           phase = 'fly';
           atHome = false;
-        } else vel.y = 0;
+        } else vel.y = vyA = 0;
       }
-      if (phase !== 'ground') vel.y += (vyT - vel.y) * (1 - Math.exp(-dt / TAU_V));
+      if (phase !== 'ground') {
+        if (easy) {
+          // (a spring, critically damped: the climb and the descent start and stop softly, and never overshoot)
+          const k = rise > 0 ? HOP_EASE : EASE;
+          vyA += (k * k * (vyT - vel.y) - 2 * k * vyA) * dt;
+          vel.y += vyA * dt;
+        } else vel.y += (vyT - vel.y) * (1 - Math.exp(-dt / TAU_V));
+      }
 
-      // ── The drift ──────────────────────────────────────────────────────
+      // ── The flame: easy flying as it climbs (and now and then hands-off, holding its height); the real balloon, the burner ──
+      const breathe = easy && phase === 'fly' && !up && !down && clock % HOLD_EVERY < BREATH_LONG ? 0.6 : 0;
+      const fire = easy ? Math.max(up, rise > 0.5 ? 0.8 : 0, breathe) : burn ? 1 : 0;
+      flame += (fire - flame) * (1 - Math.exp(-dt * (fire > flame ? 12 : 5)));
+
+      // ── The drift (easy flying: the wind only nudges it), and forward where it faces ──
       if (phase === 'ground') {
-        vel.x *= Math.exp(-dt * DRAG_GROUND);
-        vel.z *= Math.exp(-dt * DRAG_GROUND);
+        const k = Math.exp(-dt * DRAG_GROUND);
+        drift.x *= k;
+        drift.z *= k;
+        v *= k;
       } else {
         const w = windAt(over, ctx.weather);
+        const share = easy ? WIND_EASY * Math.min(1, DRIFT_MAX / (WIND_EASY * Math.hypot(w.x, w.z) || 1)) : 1;
         const k = 1 - Math.exp(-dt / TAU_H);
-        vel.x += (w.x - vel.x) * k;
-        vel.z += (w.z - vel.z) * k;
-        // The mist at the edge holds it back (the part of the drift going out).
-        if (world.edgeDistance) {
-          const e = world.edgeDistance(pos.x + vel.x * 4, pos.z + vel.z * 4);
-          if (e < EDGE) {
-            const g = 1;
-            const ex0 = world.edgeDistance(pos.x + g, pos.z) - world.edgeDistance(pos.x - g, pos.z);
-            const ez0 = world.edgeDistance(pos.x, pos.z + g) - world.edgeDistance(pos.x, pos.z - g);
-            const l = Math.hypot(ex0, ez0) || 1;
-            const nx = ex0 / l;
-            const nz = ez0 / l;
-            const outward = -(vel.x * nx + vel.z * nz);
-            if (outward > 0) {
-              const hold = smoothstep(EDGE, EDGE * 0.3, e);
-              vel.x += nx * outward * hold;
-              vel.z += nz * outward * hold;
-              if (hold > 0.5 && clock - edgeTold > 12) {
-                edgeTold = clock;
-                ctx.hud.toast(t('rBalloonEdge'));
-              }
+        drift.x += (w.x * share - drift.x) * k;
+        drift.z += (w.z * share - drift.z) * k;
+      }
+      vel.x = drift.x + Math.sin(yaw) * v;
+      vel.z = drift.z + Math.cos(yaw) * v;
+      // The mist at the edge holds it back (the part of its way going out).
+      if (phase !== 'ground' && world.edgeDistance) {
+        const e = world.edgeDistance(pos.x + vel.x * 4, pos.z + vel.z * 4);
+        if (e < EDGE) {
+          const g = 1;
+          const ex0 = world.edgeDistance(pos.x + g, pos.z) - world.edgeDistance(pos.x - g, pos.z);
+          const ez0 = world.edgeDistance(pos.x, pos.z + g) - world.edgeDistance(pos.x, pos.z - g);
+          const l = Math.hypot(ex0, ez0) || 1;
+          const nx = ex0 / l;
+          const nz = ez0 / l;
+          const outward = -(vel.x * nx + vel.z * nz);
+          if (outward > 0) {
+            const hold = smoothstep(EDGE, EDGE * 0.3, e);
+            vel.x += nx * outward * hold;
+            vel.z += nz * outward * hold;
+            // (easy flying: the wind turning it back said so already)
+            if (!easy && hold > 0.5 && clock - edgeTold > 12) {
+              edgeTold = clock;
+              ctx.hud.toast(t('rBalloonEdge'));
             }
           }
         }
       }
-      // Move, sliding along what is in the way.
+      // Move, sliding along what is in the way (and slowing against it).
       const nx = pos.x + vel.x * dt;
       const nz = pos.z + vel.z * dt;
       if (nx !== pos.x || nz !== pos.z) {
@@ -734,8 +943,10 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
           pos.z = nz;
           vel.x = 0;
         } else {
-          vel.x *= 0.5;
-          vel.z *= 0.5;
+          vel.x = vel.z = 0;
+          drift.x *= 0.5;
+          drift.z *= 0.5;
+          v *= 1 - Math.min(1, dt * 1.5);
         }
       }
       pos.y += vel.y * dt;
@@ -748,8 +959,12 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
           heat = Math.min(heat, REST);
         }
         pos.y = fl;
-        vel.y = 0;
+        vel.y = vyA = 0;
       }
+      // The envelope leans into a turn, and a little forward with the speed.
+      const lk = 1 - Math.exp(-dt * 2);
+      leanZ += (-LEAN_TURN * clamp(yawV / TURN, -1, 1) - leanZ) * lk;
+      leanX += (LEAN_FWD * clamp(v / V_FAST, 0, 1) - leanX) * lk;
 
       // ── What E does: land, step out ────────────────────────────────────
       const overNow = pos.y - fl;
@@ -845,6 +1060,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       ctx.levels.burner = 0;
       flame = 0;
       fanOn = false;
+      v = leanX = leanZ = 0;
       if (!inflated && phase !== 'out') deflating = true;
       // Back to the map: the balloon is back home. Out of the basket: it stands where it is.
       if (to === 'overview') goHome();
@@ -894,7 +1110,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   /**
    * Pose the balloon: the burner (at home it breathes now and then, a glow
    * in the night; else the pilot light), the envelope's sway (less aloft:
-   * it drifts with the air), the tether at home.
+   * it drifts with the air) and lean (into a turn, forward with the speed),
+   * the tether at home.
    */
   function place(time: number, night: number, w: Readonly<MapWeather>, distance: number): void {
     let fl = flame;
@@ -917,8 +1134,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     model.pose({
       position: pos,
       yaw,
-      swayX: (0.012 * Math.sin(time * 0.43) + 0.006 * Math.sin(time * 1.1 + 1)) * sway + lean * Math.cos(w.windDir - yaw),
-      swayZ: (0.01 * Math.sin(time * 0.37 + 2) + 0.005 * Math.sin(time * 0.9)) * sway - lean * Math.sin(w.windDir - yaw),
+      swayX: (0.012 * Math.sin(time * 0.43) + 0.006 * Math.sin(time * 1.1 + 1)) * sway + lean * Math.cos(w.windDir - yaw) + leanX,
+      swayZ: (0.01 * Math.sin(time * 0.37 + 2) + 0.005 * Math.sin(time * 0.9)) * sway - lean * Math.sin(w.windDir - yaw) + leanZ,
       size,
       flame: fl,
       night,

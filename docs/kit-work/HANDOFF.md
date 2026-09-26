@@ -17,7 +17,7 @@ along with any feedback reports in `feedback/`.
   - §20: eleven props
 - **12 scenes** in `src/kit/scenes/`, one per example panel on the sheets.
   They are shown under each section's cards in the studio and laid out in
-  `index.html?level=kit`.
+  `game.html?level=kit`.
 - **Shared builders** in `src/kit/lib/`: ground, grass, leaves, roots, rocks
   and gallery façades.
 - **Checks:**

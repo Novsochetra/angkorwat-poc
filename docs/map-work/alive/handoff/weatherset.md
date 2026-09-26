@@ -69,7 +69,7 @@ because the old weather rained every 9–12 min all year.
 - Desktop panel shot (1672×941, English): the enlarged rain and storm icons read well.
 
 ## Left
-- The overview shot (`map.html?shot=1`, full map) showed only the loading screen twice during
+- The overview shot (`index.html?shot=1`, full map) showed only the loading screen twice during
   this pass (1672×941, both at ~64 s). A probe of the same URL found the page fine: `__ready`
   set, `#loading` removed, no errors, so it looks like the headless compositor not painting
   the full map under load (20 helpers on 4 CPUs), not the weather code (shots hold
@@ -77,7 +77,7 @@ because the old weather rained every 9–12 min all year.
 
 ## How to check
 - Shots:
-  - `m="@map.html?shot=1&parts=terrain&uistate=settings"`, and again with `&lang=en`.
+  - `m="@index.html?shot=1&parts=terrain&uistate=settings"`, and again with `&lang=en`.
   - Weather in shots: `weather=season&season=0.3&t=270` (first wet-season shower, day 0),
     `weather=stormy&t=170`, `weather=season&season=0.8&t=270` (dry, clear).
   - `weather=rain|storm|rainbow|clear` still holds a weather.

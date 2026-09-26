@@ -1,11 +1,11 @@
 /**
- * The loading screen's explorer (map.html, main.ts): pixel-art frames of the
- * main character side by side in one SVG strip, which map.html steps through
+ * The loading screen's explorer (index.html, main.ts): pixel-art frames of the
+ * main character side by side in one SVG strip, which index.html steps through
  * (`.ld-hero`): standing, a six-frame walk to the right, then facing us to
  * wave when the map is built. Colours from src/character/palette.ts.
  */
 
-/** Cells per frame (3 px each on screen, map.html); the soles stand on row 26. */
+/** Cells per frame (3 px each on screen, index.html); the soles stand on row 26. */
 const W = 24;
 const H = 29;
 
@@ -217,7 +217,7 @@ function rects(g: string[][], ox: number): string {
   return out;
 }
 
-/** The frames, in strip order (map.html's keyframes count on it). */
+/** The frames, in strip order (index.html's keyframes count on it). */
 function frames(): Layer[][] {
   const puff: Art = ['.1.', '111'];
   const fade: Art = ['2..', '..2'];

@@ -7,7 +7,7 @@ export const angleDiff = (a: number, b: number) => Math.atan2(Math.sin(a - b), M
 /** Frame-rate independent easing factor for a rate (1/s). */
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 
-/** Pitch range (radians): a little from below ‥ nearly straight down. */
+/** Pitch range (radians): a little from below ‥ nearly straight down (`pitchMin` lets a mode look up further). */
 const PITCH_MIN = -0.35;
 const PITCH_MAX = 1.35;
 /** Room kept between the camera and a solid block (m): the near plane is 0.5 m. */
@@ -51,6 +51,7 @@ export class OrbitFollowCam implements FollowCam {
   follow = 0;
   behindYaw = 0;
   fov = 50;
+  pitchMin = PITCH_MIN;
   /** Seconds since the player last turned the camera. */
   private idle = 10;
   private blend = 1;
@@ -89,7 +90,7 @@ export class OrbitFollowCam implements FollowCam {
   turn(dYaw: number, dPitch: number, zoom: number): void {
     if (dYaw || dPitch) this.idle = 0;
     this.yaw += dYaw;
-    this.pitch = MathUtils.clamp(this.pitch + dPitch, PITCH_MIN, PITCH_MAX);
+    this.pitch = MathUtils.clamp(this.pitch + dPitch, this.pitchMin, PITCH_MAX);
     if (zoom) this.distance = MathUtils.clamp(this.distance * Math.pow(1.15, zoom), this.minDistance, this.maxDistance);
   }
 
@@ -145,7 +146,7 @@ export class OrbitFollowCam implements FollowCam {
     // (it orbits the followed point, and looks a little ahead of it)
     const aim = this._aim.copy(this.look).add(this.lead);
     const clear = world.clearance ? (p: number, d: number, yaw = this.yaw) => this.free(world, yaw, p, d) : () => 1;
-    let pitch = MathUtils.clamp(this.pitch + this.lift, PITCH_MIN, PITCH_MAX);
+    let pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
     const span = this.distance + MARGIN;
     let free = clear(pitch, this.distance);
     // A wall close behind him: rise to look over it, if that sees him better.
@@ -160,7 +161,7 @@ export class OrbitFollowCam implements FollowCam {
       }
     }
     this.lift += (liftGoal - this.lift) * damp(liftGoal > this.lift ? 4 : 1.5, dt);
-    pitch = MathUtils.clamp(this.pitch + this.lift, PITCH_MIN, PITCH_MAX);
+    pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
     free = clear(pitch, this.distance);
     // Hemmed in all round the back (a gallery, a gate): turn slowly to where
     // there is more room, the nearest way round, unless the player steers.

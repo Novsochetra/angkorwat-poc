@@ -48,11 +48,11 @@
 
 ## How to check
 - Type check and build: `npx tsc --noEmit`, `npm run build`.
-- The bow up close: `@map.html?shot=1&ui=0&fest=water&t=3&parts=terrain,water,festival&cam=-527,8,0,-538,6,8`
-- The race from the air: `@map.html?shot=1&ui=0&fest=water&t=52&cam=-362,34,52,-418,5,12`
-- The race from the shore: `@map.html?shot=1&fest=water&t=60&roam=walk&at=-291,4&yaw=270&sim=_:1&rcam=30,10,9`
-- The New Year village: `@map.html?shot=1&fest=newyear&roam=walk&at=-306,84&yaw=0&sim=_:1&rcam=0,16,12`
-- The night crowd in front of the camera: `@map.html?shot=1&fest=water&night=1&roam=walk&at=-291,1&yaw=0&sim=_:1&rcam=160,14,9`
+- The bow up close: `@index.html?shot=1&ui=0&fest=water&t=3&parts=terrain,water,festival&cam=-527,8,0,-538,6,8`
+- The race from the air: `@index.html?shot=1&ui=0&fest=water&t=52&cam=-362,34,52,-418,5,12`
+- The race from the shore: `@index.html?shot=1&fest=water&t=60&roam=walk&at=-291,4&yaw=270&sim=_:1&rcam=30,10,9`
+- The New Year village: `@index.html?shot=1&fest=newyear&roam=walk&at=-306,84&yaw=0&sim=_:1&rcam=0,16,12`
+- The night crowd in front of the camera: `@index.html?shot=1&fest=water&night=1&roam=walk&at=-291,1&yaw=0&sim=_:1&rcam=160,14,9`
 - The banner in Khmer: crop the top middle of any festival roam shot.
 
 ## Files changed

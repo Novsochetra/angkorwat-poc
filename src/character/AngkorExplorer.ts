@@ -19,7 +19,7 @@ import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
 import { Animator, clampSelfieAim, type HoldKind, type SelfieGesture } from './Animator';
 import { PRAY_PALMS, type ActionName } from './clips';
 import { Pendulum } from './Dynamics';
-import { buildFace, EXPRESSIONS, type ExpressionName } from './parts/face';
+import { buildFace, EXPRESSIONS, type ExpressionName, type FaceName } from './parts/face';
 import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from './parts/gear';
 import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
@@ -167,6 +167,8 @@ export class AngkorExplorer {
   private selfieUp = false;
   /** Eyes closed in prayer (the sampeah and the bows). */
   private eyesShut = false;
+  /** Asleep: the sleeping face (built on first use) instead of the expression. */
+  private sleeping = false;
 
   constructor(opts: ExplorerOptions = {}) {
     this.object.name = 'AngkorExplorer';
@@ -213,6 +215,25 @@ export class AngkorExplorer {
   setExpression(name: ExpressionName): void {
     this.faceBeforeSelfie = null;
     this.showExpression(name);
+  }
+
+  /**
+   * Asleep (lying down watching the sky, the map's roam/_rest.ts): his eyes
+   * closed at rest, the mouth a little open, whatever the expression; it
+   * comes back when he wakes.
+   */
+  get asleep(): boolean {
+    return this.sleeping;
+  }
+
+  set asleep(on: boolean) {
+    if (on === this.sleeping) return;
+    this.sleeping = on;
+    if (on && !this.faces.has('asleep')) {
+      this.faces.set('asleep', this.faceMesh('asleep', false));
+      this.applyShadowFlags();
+    }
+    this.refreshFace();
   }
 
   /**
@@ -437,18 +458,20 @@ export class AngkorExplorer {
   // ── Internals ────────────────────────────────────────────────────────────
 
   private buildFaces(): void {
+    for (const e of EXPRESSIONS) for (const blink of [false, true]) this.faces.set(`${e}|${blink}`, this.faceMesh(e, blink));
+  }
+
+  /** A face's blocks on the head, hidden. */
+  private faceMesh(face: FaceName, blink: boolean): Group {
     const pivot = JOINTS.head.pivot;
-    for (const e of EXPRESSIONS)
-      for (const blink of [false, true]) {
-        const g = buildVoxelMesh(buildFace(e, blink), {
-          quality: this.rig.quality,
-          name: `face:${e}${blink ? ':blink' : ''}`,
-        });
-        g.position.set(-pivot[0], -pivot[1], -pivot[2]);
-        g.visible = false;
-        this.rig.joints.head.add(g);
-        this.faces.set(`${e}|${blink}`, g);
-      }
+    const g = buildVoxelMesh(buildFace(face, blink), {
+      quality: this.rig.quality,
+      name: `face:${face}${blink ? ':blink' : ''}`,
+    });
+    g.position.set(-pivot[0], -pivot[1], -pivot[2]);
+    g.visible = false;
+    this.rig.joints.head.add(g);
+    return g;
   }
 
   private showExpression(name: ExpressionName): void {
@@ -457,7 +480,7 @@ export class AngkorExplorer {
   }
 
   private refreshFace(): void {
-    const key = `${this.expression}|${this.blinkLeft > 0 || this.eyesShut}`;
+    const key = this.sleeping ? 'asleep' : `${this.expression}|${this.blinkLeft > 0 || this.eyesShut}`;
     for (const [k, g] of this.faces) g.visible = k === key;
   }
 

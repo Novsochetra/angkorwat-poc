@@ -60,7 +60,7 @@ function spacing(section: string): { plot: number; variant: number } {
 const sunk = (section: string, id: string) => section === '17.1' || section === '17.2' || id === '21.3/moat-section';
 
 /**
- * Walkable test level for the world kit (`index.html?level=kit`): every asset
+ * Walkable test level for the world kit (`game.html?level=kit`): every asset
  * of sections 15–21 in a specimen garden east of a paved avenue — one row per
  * sheet section, each asset on its own plot with its variants lined up behind
  * it, water pieces set into the lawn — and the kit's dioramas along the west

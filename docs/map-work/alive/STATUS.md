@@ -125,7 +125,7 @@ map.
 - The vegetation build is ≈ 720 ms, over the 600 ms budget; people CPU
   against its budget to re-measure on real hardware.
 - **Final checks:** `npx tsc --noEmit`, `npm run build`, `npm run playtest`,
-  the overview `m="@map.html?shot=1"` at 1672×941 (day, `night=1`,
+  the overview `m="@index.html?shot=1"` at 1672×941 (day, `night=1`,
   `clock=0.75`), a walk at each area. Then commit, only when the user asks.
 
 ## Not ours in the working tree

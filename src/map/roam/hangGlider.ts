@@ -174,9 +174,9 @@ const sinkAt = (v: number) => SINK_MIN + SINK_K * (v - V_BEST) ** 2 + stallAt(v)
 /**
  * Two keys held together (A and S) come from input.ts at 0.7 each (the
  * stick's circle): this puts each back to what it is alone (easy flying: a
- * climbing turn climbs and turns in full).
+ * climbing turn climbs and turns in full; the balloon's easy flying too).
  */
-const fullKeys = (m: { x: number; y: number }) => {
+export const fullKeys = (m: { x: number; y: number }) => {
   const most = Math.max(Math.abs(m.x), Math.abs(m.y));
   return most > 1e-3 ? Math.hypot(m.x, m.y) / most : 1;
 };

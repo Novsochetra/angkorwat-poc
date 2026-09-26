@@ -21,6 +21,9 @@ import { PoseBuffer, clamp, lerp, type JointPose, type Pose } from './pose';
 import type { Rig } from './Rig';
 import { JOINTS, JOINT_NAMES, SOLE_POINTS, type JointName } from './skeleton';
 
+/** What a posture sets: the whole body, and the backpack (sitting down he puts it down beside him: rest.ts). */
+const POSTURE_JOINTS: readonly JointName[] = [...FULL_BODY, 'backpack'];
+
 /** Distance covered by one full walk / run cycle (two steps), metres. */
 const WALK_CYCLE_M = 1.05;
 const RUN_CYCLE_M = 1.85;
@@ -164,9 +167,9 @@ function frame(a: Vector3, b: Vector3, out: Matrix4): Matrix4 {
 
 /**
  * Two-bone arm IK in chest space: shoulder rotation and elbow bend that put
- * the fist on `target`, the elbow bent toward `pole`.
+ * the fist on `target`, the elbow bent toward `pole` (rest.ts uses it too).
  */
-function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3, shrug?: Vector3): Pose {
+export function solveArm(side: 'L' | 'R', target: Vector3, pole: Vector3, shrug?: Vector3): Pose {
   const arm = ARMS[side];
   const a = arm.upper.length();
   const b = arm.fore.length();
@@ -476,7 +479,7 @@ export class Animator {
     // posture holds the body, the device's arms (and the selfie's turn of the
     // head) go on top of it. Else the posture is over everything.
     const device = !!this.lastPosture && !!this.action && (this.action.name === 'photo' || this.action.name === 'selfie');
-    if (device) this.buf.override(this.lastPosture!(this.time), this.postureW, FULL_BODY);
+    if (device) this.buf.override(this.lastPosture!(this.time), this.postureW, POSTURE_JOINTS);
 
     // ── Actions ──────────────────────────────────────────────────────────
     const a = this.action;
@@ -505,7 +508,7 @@ export class Animator {
       this.gestureW = 0;
     }
 
-    if (this.lastPosture && !device) buf.override(this.lastPosture(this.time), this.postureW, FULL_BODY);
+    if (this.lastPosture && !device) buf.override(this.lastPosture(this.time), this.postureW, POSTURE_JOINTS);
 
     this.apply();
   }

@@ -53,17 +53,26 @@ export interface PlaceDef extends PlaceText {
   href?: string;
 }
 
+/**
+ * The places' own pages (the real-scale temple, the kit world) open from the
+ * map. Off for this release, where the world map is the whole game: every
+ * place is "coming soon" (no "Begin expedition", no "E  Enter …").
+ */
+export const SCENES_OPEN = false;
+/** A place's page, while the pages are open. */
+const scene = (href: string) => (SCENES_OPEN ? href : undefined);
+
 export const PLACES: PlaceDef[] = [
   {
     id: 'sanctuary',
     name: 'Angkor Wat',
     subtitle: 'The Sacred Summit',
-    blurb: 'The greatest temple of Angkor crowns the highest mesa: five lotus towers above three galleries, facing the setting sun. Pilgrims have climbed its long stairs for nine hundred years.',
+    blurb: "Angkor Wat was built in 1122 AD, in the 12th century. It was built during the reign of King Suryavarman II. The king built it for many purposes. He dedicated it to the god Vishnu. It also honored his own great works. And it was to be his place of eternal peace after his death.",
     facts: ['Main expedition', 'Real-scale Angkor Wat'],
     km: {
       name: 'អង្គរវត្ត',
       subtitle: 'កំពូលដ៏ពិសិដ្ឋ',
-      blurb: 'ប្រាសាទធំបំផុតនៃអង្គរ ឋិតនៅលើខ្ពង់រាបខ្ពស់បំផុត៖ ប្រាង្គរាងផ្កាឈូកប្រាំ លើថែវបីជាន់ បែរមុខទៅរកព្រះអាទិត្យលិច។ អ្នកធម្មយាត្រាបានឡើងជណ្ដើរវែងរបស់វា អស់រយៈពេលប្រាំបួនរយឆ្នាំមកហើយ។',
+      blurb: 'ប្រាសាទអង្គរវត្តត្រូវបានកសាងឡើងក្នុងឆ្នាំ ១១២២ នៃគ.ស. ដែលត្រូវនឹងស.វទី១២ ក្នុងរជ្ជកាលព្រះបាទ សូរ្យវរ្ម័នទី២ ដែលប្រាសាទនេះបានសាងសង់ឡើងក្នុងពហុបំណងច្រើនយ៉ាងរបស់ព្រះអង្គ ដោយការឧទ្ទិសឱ្យអង្គទេព ព្រះវិស្ណុ ការរំលឹកដល់ស្នាដៃរបស់អង្គខ្លួនឯងផ្ទាល់ផង ការផ្ដល់ជាទីឋានបរមសុខនៅពេលដែលទ្រង់សោយទីវង្គតនៅពេលខាងមុខផងដែរ។',
       facts: ['ដំណើរសំខាន់', 'អង្គរវត្តទំហំពិត'],
     },
     x: 0,
@@ -73,7 +82,7 @@ export const PLACES: PlaceDef[] = [
     anchor: [0, 58, -165],
     card: [4, -161],
     focus: { pos: [70, 150, -30], target: [0, 80, -200] },
-    href: './index.html?spawn=2',
+    href: scene('./game.html?spawn=2'),
   },
   {
     id: 'kulen',
@@ -99,12 +108,12 @@ export const PLACES: PlaceDef[] = [
     id: 'terrace',
     name: 'Ta Prohm',
     subtitle: 'The Lost Gardens',
-    blurb: 'Giant silk-cotton and fig trees grow over the towers of Ta Prohm, their roots pouring over the stones. Water runs from terrace to terrace down to the valley.',
+    blurb: "Ta Prohm Temple was built in 1186 AD by King Jayavarman VII. He dedicated it to his mother, in the form of Prajnaparamita. Prajnaparamita is the Buddhist goddess of wisdom. Big trees grow over the temple and wrap around it. An inscription (old writing carved in stone) at the temple says Ta Prohm had 3,140 villages. It also had 79,365 people who cared for the temple. These included 18 royal priests, 2,740 officials, 2,202 assistants, and 615 dancers.",
     facts: ['Tree temple', 'Waterfalls'],
     km: {
       name: 'តាព្រហ្ម',
       subtitle: 'សួនច្បារដែលបាត់បង់',
-      blurb: 'ដើមស្ពង់ និងដើមជ្រៃដ៏ធំ ដុះគ្របលើប្រាង្គនៃប្រាសាទតាព្រហ្ម ឫសរបស់វាលូនគ្របលើថ្ម។ ទឹកហូរចុះពីថ្នាក់មួយទៅថ្នាក់មួយ រហូតដល់ជ្រលងភ្នំ។',
+      blurb: 'ប្រាសាទតាព្រហ្មកសាងឡើយនៅក្នុងឆ្នាំ១១៨៦នៃគ្រឹស្តរាជ ដោយព្រះបាទជ័យវរ្ម័នទី៧ ដើម្បីឧទ្ទិសថ្វាយព្រះមាតារបស់ព្រះអង្គក្រោមរូបភាពប្រាជ្ញាបារមី។ ប្រាសាទនេះរុំព័ទ្ធទៅដោយឈើធំៗដុះលើប្រាសាទ។ បើតាមសិលាចារិកនៅប្រាសាទនេះបញ្ជាក់តាព្រហ្មមាន ៣១៤០ភូមិ និងមានមនុស្ស ៧៩៣៦៥នាក់ មើលថែប្រាសាទរួមមានរាជគ្រូ ១៨នាក់ មន្រ្តី២៧៤០នាក់ ជំនួយការ២២០២នាក់ និងអ្នករាំរបាំ ៦១៥នាក់។',
       facts: ['ប្រាសាទដើមឈើ', 'ទឹកធ្លាក់'],
     },
     x: 200,
@@ -119,12 +128,12 @@ export const PLACES: PlaceDef[] = [
     id: 'overlook',
     name: 'Bayon',
     subtitle: 'The Stone Faces',
-    blurb: 'Calm stone faces smile from every tower of Bayon, high on the western cliffs. From its terrace you can see every temple of the highlands.',
+    blurb: 'Bayon Temple stands in the exact center of the royal capital, Angkor Thom. King Jayavarman VII built it in the late 12th and early 13th centuries. Each tower has four faces. There are 49 towers, plus 5 more over the entrance gates. That makes 54 towers in total. They stand for the 54 Khmer provinces of that time. Some scholars think the four faces show Lokeshvara. Lokeshvara is a Bodhisattva (a being who helps others reach enlightenment) in Mahayana Buddhism. Others think the faces show King Jayavarman VII.',
     facts: ['Viewpoint', 'Face towers'],
     km: {
       name: 'បាយ័ន',
       subtitle: 'ព្រះភក្ត្រថ្ម',
-      blurb: 'ព្រះភក្ត្រថ្មដ៏ស្ងប់ស្ងាត់ ញញឹមចេញពីគ្រប់ប្រាង្គនៃប្រាសាទបាយ័ន ដែលឋិតនៅខ្ពស់លើច្រាំងថ្មចោទខាងលិច។ ពីទីលានរបស់វា អ្នកអាចមើលឃើញគ្រប់ប្រាសាទនៃខ្ពង់រាប។',
+      blurb: 'ប្រាសាទបាយ័នមានទីតាំងស្ថិតនៅចំកណ្តាលនៃរាជធានីអង្គរធំ។ ប្រាសាទនេះកសាងនៅចុងសតវត្សរ៍ទី ១២ និងដើមសតវត្សរ៍ទី ១៣ ដោយព្រះបាទជ័យវរ្ម័នទី៧។ ប្រាសាទនេះមាន តួប៉មនីមួយៗ មានមុខបួន ដែលមានកំពូល ៤៩ និងកំពូលក្លោងទ្វារចូល៥ ទៀត សរុបទាំងអស់ ៥៤ កំពូល ដែលតំណាងឲ្យខេត្តក្រុងខ្មែរ ទាំង ៥៤ នៅសម័យកាលនោះ។ មានអ្នកប្រាជ្ញមួយចំនួនបានគិតថា មុខទាំង ៤ នោះតំណាងឲ្យព្រះពោធិសត្វលោកេស្វរៈនៃព្រះពុទ្ធសាសនាមហាយាន អ្នកខ្លះទៀត គិតថា ជារូបតំណាងព្រះបាទជ័យវរ្ម័នទី៧',
       facts: ['កន្លែងមើលទេសភាព', 'ប្រាង្គព្រះភក្ត្រ'],
     },
     x: -300,
@@ -139,12 +148,12 @@ export const PLACES: PlaceDef[] = [
     id: 'shrine',
     name: 'Preah Khan',
     subtitle: 'The Silent Ruins',
-    blurb: 'Once a city of monks and scholars, now the jungle holds its long broken galleries. Roots hold the stones together, and birds nest in the fallen towers.',
+    blurb: "Preah Khan Temple was built in the 12th century, in 1191, by King Jayavarman VII. But it was not finished in his time. Later kings kept adding to it through the 12th and 13th centuries AD. It was dedicated to the king's father. Its carving style is like Banteay Kdei and Ta Prohm temples.",
     facts: ['Ruins', 'Short walk'],
     km: {
       name: 'ព្រះខ័ន',
       subtitle: 'ប្រាសាទដ៏ស្ងាត់ស្ងៀម',
-      blurb: 'ធ្លាប់ជាទីក្រុងនៃព្រះសង្ឃ និងអ្នកប្រាជ្ញ ឥឡូវនេះព្រៃបានគ្របដណ្ដប់ថែវវែងៗដែលបាក់បែករបស់វា។ ឫសឈើចាប់ថ្មឱ្យនៅជាប់គ្នា ហើយសត្វស្លាបធ្វើសំបុកក្នុងប្រាង្គដែលរលំ។',
+      blurb: 'ប្រាសាទព្រះខ័នកសាងឡើងនៅសតវត្យរ៍ទី១២ ក្នុងឆ្នាំ១១៩១ ដោយព្រះបាទជ័យវរ្ម័នទី៧ តែពុំបានសង់រួចនៅក្នុងសម័យព្រះអង្គទេ មហាក្សត្រក្រោយៗ បានសង់បន្ថែមបន្ដបន្ទាប់នៅគ្រិស្តសតវត្សទី ១២ - ១៣ដើម្បីឧទ្ទិសដល់ព្រះវររាជបិតារបស់ព្រះអង្គ។ ក្បាច់រចនានៃប្រាសាទ មានលក្ខណៈដូចជាប្រាសាទបន្ទាយក្តី និង ប្រាសាទតាព្រហ្មដែរ',
       facts: ['ប្រាសាទបាក់បែក', 'ផ្លូវដើរខ្លី'],
     },
     x: -88,
@@ -154,7 +163,7 @@ export const PLACES: PlaceDef[] = [
     anchor: [-70, 26, -12],
     card: [108, -114],
     focus: { pos: [-25, 85, 55], target: [-80, 30, -45] },
-    href: './index.html?level=kit',
+    href: scene('./game.html?level=kit'),
   },
   {
     id: 'rivergate',
@@ -175,7 +184,7 @@ export const PLACES: PlaceDef[] = [
     anchor: [-82, 10, 45],
     card: [64, -106],
     focus: { pos: [-10, 55, 120], target: [-60, 10, 30] },
-    href: './index.html?spawn=0',
+    href: scene('./game.html?spawn=0'),
   },
 ];
 

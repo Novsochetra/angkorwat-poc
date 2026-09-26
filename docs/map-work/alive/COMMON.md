@@ -3,7 +3,7 @@
 # Make the world map alive — common brief for every builder
 
 Project: `/Users/sochetranov/Documents/workspace/personal/angkorwat-poc`.
-We are adding life to the world map screen (`map.html`, code in `src/map/`).
+We are adding life to the world map screen (`index.html`, code in `src/map/`).
 The full roadmap (phases 1–8) is `ROADMAP.md` next to this file. You build ONE
 piece of it (your prompt says which). Several builders work AT THE SAME TIME,
 each on their own files, and another Claude session may also edit map files.
@@ -92,11 +92,11 @@ home field is at (−32, −64) (roam/balloon.ts) — keep off it.
   Never leave debug files or console logs in the repo.
 
 ## Seeing your work (do it often; judge the pictures honestly)
-`SHOT_OUT=<your scratch folder> SHOT_W=1672 SHOT_H=941 npm run shots -- a="@map.html?shot=1&<params>" b="@map.html?…"`
+`SHOT_OUT=<your scratch folder> SHOT_W=1672 SHOT_H=941 npm run shots -- a="@index.html?shot=1&<params>" b="@index.html?…"`
 (several name="@…" pairs in one run are faster; one run ≈ 20–40 s; the machine is
 shared by many builders, so batch shots and do not re-run needlessly). View every
 PNG with the Read tool.
-- Overview: `m="@map.html?shot=1"` — take it before you start and at the end:
+- Overview: `m="@index.html?shot=1"` — take it before you start and at the end:
   the picker view must stay beautiful and uncluttered (compare with the concept art).
 - Params: `night=1`, `clock=0.75` (dawn), `t=<s>`, `focus=<place>`, `ui=0`,
   `parts=terrain,<yours>` (only those parts: fast), `cam=x,y,z,tx,ty,tz`, `lang=en`,

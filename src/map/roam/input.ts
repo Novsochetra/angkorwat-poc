@@ -18,7 +18,8 @@ const DRAG = { orbit: [0.005, 0.004], camera: [0.0035, 0.0035], selfie: [0.004, 
  *   jumps (and opens or closes the parachute), E / Enter uses, Esc goes back
  *   to the overview, Q / R held turn the camera round him (as a drag does);
  *   the explorer's tools and emotes (`TOOL_KEYS`: 1–5, Z, Y, O, F, C, U, P,
- *   H, G, X, V, ?) come as `taps` for tools.ts;
+ *   J, L, H, G, X, I, V, ?) come as `taps` for tools.ts, and so do the
+ *   explorer menu's buttons (`press`);
  * - mouse: drag the view (either button) to turn the camera, wheel to zoom,
  *   a click (no drag) is `click`, and where it points is `pointer`;
  * - touch: a joystick, Jump and Use buttons, drag to look, pinch to zoom
@@ -36,6 +37,8 @@ export class RoamControls {
   private on = false;
   private readonly keys = new Set<string>();
   private readonly hits = new Set<string>();
+  /** Keys pressed from the interface (`press`), for the next poll's taps. */
+  private readonly pressed = new Set<string>();
   private drag: { id: number; x: number; y: number; moved: number; t: number } | null = null;
   private clicked = false;
   private readonly look = { yaw: 0, pitch: 0, zoom: 0 };
@@ -166,6 +169,7 @@ export class RoamControls {
     s.zoom = this.look.zoom + t.look.zoom;
     this.taps.clear();
     for (const c of this.hits) if (TOOL_KEYS.has(c)) this.taps.add(c);
+    this.takePressed();
     s.click = this.clicked || t.shutterHit;
     this.pollPad(dt);
     const len = Math.hypot(s.move.x, s.move.y);
@@ -187,12 +191,28 @@ export class RoamControls {
    */
   clear(): void {
     this.hits.clear();
+    this.pressed.clear();
     this.taps.clear();
     this.clicked = false;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     const t = this.touch;
     t.jumpHit = t.useHit = t.shutterHit = t.closeHit = false;
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
+  }
+
+  /**
+   * A tool or emote key pressed from the interface (the explorer menu,
+   * tools.ts): one of `TOOL_KEYS`, in the next poll's `taps` as if hit on
+   * the keyboard (also while a script drives the input).
+   */
+  press(code: string): void {
+    if (this.on && TOOL_KEYS.has(code)) this.pressed.add(code);
+  }
+
+  /** The interface's presses into this poll's taps. */
+  private takePressed(): void {
+    for (const c of this.pressed) this.taps.add(c);
+    this.pressed.clear();
   }
 
   /** Photo mode (tools.ts): the drag moves the camera or the phone, and on touch a put-away button and a shutter for the camera (the selfie frame has its own) take the place of the stick and Jump. */
@@ -278,6 +298,7 @@ export class RoamControls {
     s.lookPitch = (step?.tilt ?? 0) * dt;
     s.zoom = 0;
     this.taps.clear();
+    this.takePressed();
     s.click = fresh && k.includes('c');
     return s;
   }
@@ -295,13 +316,15 @@ function albumOpen(): boolean {
  * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·
  * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie (T: stick) ·
  * F wave · C cheer · U look up · P peek · H hat · G outfit · X face ·
- * V album · ? all keys. (Not M, N, B, K or J: the mini-map and its nearest
- * glider ramp, the bug report, the block look panel and "Jump in" have them;
- * Q and R turn the camera.)
+ * J sit · L lie down · I the explorer menu (_explorerMenu.ts) ·
+ * V album · ? all keys. (Not M, N, B or K: the mini-map and its nearest
+ * glider ramp, the bug report and the block look panel have them; J is
+ * "Jump in" only in the overview, where these are off; Q and R turn the camera.)
  */
 export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5',
   'KeyZ', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'KeyH', 'KeyG', 'KeyX', 'KeyV', 'KeyT', 'Slash',
+  'KeyJ', 'KeyL', 'KeyI',
 ]);
 
 /**

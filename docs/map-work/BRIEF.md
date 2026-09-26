@@ -1,6 +1,6 @@
 # World map screen — brief for every part
 
-The world map screen (`map.html`, code in `src/map/`) is where the player picks
+The world map screen (`index.html`, code in `src/map/`) is where the player picks
 the next expedition. Target look: the concept art in
 `assets/world-map-selection-screen/` — `…01_48_18 PM.png` (golden hour) and
 `…01_51_11 PM.png` (moonlit night). Look at both pictures before you start,
@@ -87,7 +87,7 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   place names come from `placeText(p)`; prompts are made with `t()` each
   step, so the ខ្មែរ / EN switch shows at once.
   A drag, or holding **Q** / **R**, orbits the camera round him in every mode
-  (as on `index.html`: 1.8 rad/s); the follow camera eases back behind him
+  (as on `game.html`: 1.8 rad/s); the follow camera eases back behind him
   after a pause. It keeps him in view: walls, stone and land pull it in
   (`world.hardClearance`); tree leaves and bark, the parked gliders and the
   ramps dissolve in a dithered tube from the camera to him (`_nearFade.ts`,
@@ -119,18 +119,28 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   sign by the lane with a lantern lit after dark (a glow block, no light).
   E at the basket: it rights itself, he climbs in and stands at the burner
   line (`_balloonPoses.ts`), the fan fills the envelope with cold air, then
-  the burner stands it up (8 s; **W** / **Space** faster; **Esc** stops: he
+  the burner stands it up (8 s; **Space**, **S** or **W** faster; **Esc** stops: he
   hops out, it lies down again; the fan hum is `RoamLevels.fan`). Landed
   back home it stands inflated, the burner breathing now and then; leaving
   roaming lays it down again. Shots: `roam=balloon&balloon=parked` (on foot
   by the parked basket), `balloon=inflate:<s>` (inflating for s seconds),
   `roam=walk&balloon=up` (standing inflated at home). A bug report taken
-  mid-hop or while inflating replays it (`reportParams`). **W** /
-  **Space** burner (heats the envelope: lift off, climb; Shift both
-  burners), **S** vent (sink), hands off it cools and sinks slowly, **A** /
-  **D** turn the basket; the breeze carries it (low along the valley to the
-  east, higher up to the north over Angkor Wat) plus `MapWeather.wind`,
-  stronger and turning with height; up to 420 m over the land. **E** low
+  mid-hop or while inflating replays it (`reportParams`). **Easy flying**
+  (the glider's setting, on by default) flies it like the glider: it
+  cruises forward where the basket faces (8 m/s, **Shift** 15), **A** /
+  **D** turn it (the envelope leans into the turn, the camera swings
+  behind), **S** / **Space** climb (the burner roars), **W** descends (the
+  vent; it rounds out softly near the ground), both easing in and out and
+  quicker higher up, up to 700 m over the land; hands off it holds its
+  height (the burner breathing now and then) and climbs over land rising
+  ahead by itself; the day's wind only nudges it (at most 2.5 m/s), and at
+  the roaming area's edge turns it back towards the temples. Off: the real
+  balloon, **S** / **Space** burner (heats the envelope: lift off, climb;
+  Shift both burners), **W** vent (sink), hands off it cools and sinks
+  slowly, **A** / **D** turn the basket and it edges forward (2.5 m/s);
+  the breeze carries it (low along the valley to the east, higher up to
+  the north over Angkor Wat) plus `MapWeather.wind`, stronger and turning
+  with height; up to 420 m over the land. **E** low
   down lands it on fairly flat, dry, open ground (not water, temples or
   trees), **E** on the ground steps out; left away from home it stands
   there until roaming ends. The camera and the phone work in the basket.
@@ -157,15 +167,58 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   centre): **1** lantern, **2** torch, **3** flashlight (**O** beam ahead ↔
   follows the mouse), **4**/**Z** camera, **5**/**Y** selfie phone (**T**
   selfie stick: on by default, the wheel slides it out); emotes
-  **F** wave, **C** cheer, **U** look up, **P** peek; **H** hat, **G** outfit
-  (in a selfie: gesture), **X** face, **V** photo album, **?** all keys.
-  At a shrine he pays respect (`_pray.ts`): standing still for 1 s within
-  5 m of a worship spot, in front of it (`_worship.ts`: one or more per
-  temple, where he kneels and the point he faces), he turns to it, puts
-  away his tool, takes his hat off, kneels, sampeah and bows three times
-  (the `pray` action; `PRAY` times in `src/character/clips.ts`), a soft
-  bell at the first bow, then hat on and up. Once per spot until he has
-  been 12 m away; the stick, Space or a tool / emote key gets him up.
+  **F** wave, **C** cheer, **U** look up, **P** peek, **J** sit, **L** lie
+  down; **H** hat, **G** outfit (in a selfie: gesture), **X** face, **V**
+  photo album, **?** all keys.
+  **I** (or the button with his face on the bar) opens the Explorer menu
+  (`_explorerMenu.ts`), the viewer's options for a mouse or a finger, over
+  the bar where the key list opens (one of the two at a time; Esc shuts it):
+  Moves (wave, cheer, look up, peek, sit, lie down: each goes in as its key,
+  `RoamControls.press`, and the menu shuts so the move shows; greyed off
+  foot), Outfit (the four looks and the hat) and Face (the six faces), what
+  he wears and shows lit gold. It shuts with the camera or the phone up and
+  with the album open. On touch it stands left of the bar (under it with
+  the phone on its side), scrolls when it is too tall, a tap outside shuts
+  it, and the mini-map steps aside while it is open.
+  At a shrine he pays respect (`_pray.ts`): a golden lotus in pixel art
+  glows on the floor where he would kneel (`_prayMark.ts`: one flat
+  square, no light; it fades in from 16 m, breathes, glows over the bloom
+  at night, and goes while he kneels or has the camera up); within 5 m of
+  the worship spot and in front of it (`_worship.ts`: one or more per
+  temple, where he kneels and the point he faces) the walker offers
+  "E  Pray" (`rPrayHere`; on touch the Use button), after a golden figure
+  and before a boat, ramp, balloon, swing or beacon. E walks him onto the
+  lotus (`lead` steers him before the walker's step), he turns to the
+  shrine, puts away his tool, takes his hat off, kneels, sampeah and bows
+  three times (the `pray` action; `PRAY` times in
+  `src/character/clips.ts`), a soft bell at the first bow, then hat on
+  and up. E again, the stick, Space or a tool / emote key gets him up (or
+  stops his walk to the lotus). He no longer kneels by himself when he
+  stands still (he would kneel just as the player went to press E).
+  Watching the sky (`_rest.ts`; the poses in `src/character/rest.ts`, a
+  posture with `postureFeet = false`, also the viewer's `anim=sit|lie|sleep`):
+  **J** sits him down where he stands (turning to the nearest way with
+  room), upright, his legs out in front, his hands resting on them, looking
+  ahead; **L** lies him on his back, hands behind his head
+  (J / L again: up; the other one lies him back or sits him up). One value
+  `u` (0 standing, 1 sitting, 2 lying) runs through the shapes (stand,
+  crouch, sit, half back, lie), the legs and arms by IK so the seat, the
+  soles, the hands and the back of his hair rest on the ground; going down
+  he puts his pack on the ground on his right (his arms are short and the
+  pack deep: it goes back on as he gets up), lying his hat comes off (its
+  brim). Not in water, on stairs or steep ground, or with a wall in the
+  way (a short message: `rRestWater` / `rRestSteep` / `rRestRoom`). The
+  follow camera comes down low at his left side and looks up
+  (`FollowCam.pitchMin` lets a drag look up further): he is small in the
+  lower right, the sky fills the view; it goes back when he gets up. A
+  prompt shows the keys ("J  Get up · L  Lie back"). Lying still 12 s he
+  falls asleep (`AngkorExplorer.asleep`: the `asleep` face in
+  `parts/face.ts`, not in the X cycle; slow breaths, the head rolled aside),
+  a pixel "Z z z" rises over his head (a DOM overlay in the roaming layer);
+  any key wakes him. The stick, Space or E gets him up, a light or an emote
+  key too (the light comes out once he stands: his hands are on the ground
+  meanwhile). The camera and the phone work sitting and lying (the camera
+  looks up at the sky).
   The camera and the phone also work in the boat (the paddle goes down
   on his lap) and on the hang glider (it flies on straight): the
   Animator's posture keeps the body, the device's arms go on top.
@@ -251,8 +304,10 @@ scripted input run before the shot (`input.ts parseScript`, e.g.
 `jumpmenu=1` the Jump in card open (`=key` with the focus ring) · `start=glider`
 with `roam=leap` the hang glider opens at the end of the leap · `easyfly=0|1` · `fauna=lineup` (every land animal in every
 pose on the valley road) · `wildlife=<s>` (run the water animals' reactions) ·
-`act=pray` (kneel and pray; with `sim=_:<s>` that far in) · `kneelat=x,z,fx,fz`
-or `x,y,z,fx,fz` (a worship spot of its own there, facing (fx, fz)) ·
+`act=pray` (kneel and pray; with `sim=_:<s>` that far in) · `act=sit|lie|sleep`
+(down on the ground there, asleep once lying: `sim=_:3`, sleep `sim=_:5.5`;
+with `rcam=` the camera stays put) · `kneelat=x,z,fx,fz`
+or `x,y,z,fx,fz` (a worship spot of its own there, facing (fx, fz); `sim=e:0.1,_:5` walks him onto its lotus and he kneels) ·
 `gold=all|none|<n>|<id>,…` which golden figures are found (shots start
 with none) · `gold=lineup` every figure in a row on the valley road ·
 `goldfound=<id>` as if it was just found (the message) ·
@@ -266,7 +321,8 @@ visit (not saved) · `journal=0` start empty, save nothing ·
 buttons · `quality=low|medium|high` · `story=<n>` open the story at page
 n (`story=0` never) · `vegstats` the vegetation's counts in the console.
 The explorer in shots: `look=<outfit>`, `hat=0|1`, `face=<expression>`,
-`keys=1` (the ? key list open), `beam=mouse` with `mouse=x,y` (0‥1 of
+`keys=1` (the ? key list open), `menu=1` (the Explorer menu open; with
+`touch=1` as on a phone), `beam=mouse` with `mouse=x,y` (0‥1 of
 the screen), the selfie's `gesture=peace|wave|thumbsUp|none` and
 `saim=yaw,pitch,reach`, the camera's `pview=yaw,pitch,fov`.
 
@@ -389,7 +445,7 @@ them) but plants and cloth. Roosters crow at dawn, hens cluck by day
 (`f.calls`). Checks: `cam=-285,22,95,-325,8,55` (over the village),
 `roam=walk&at=-304,63&yaw=225&sim=w:3&rcam=0,16,9` (the jetty),
 `roam=walk&at=-306,82&yaw=0&sim=w:3.2&rcam=0,20,10` (up the naga stair),
-`roam=walk&at=-306,10,95&yaw=0&sim=w:0.3,_:4.5` (he kneels at the pagoda),
+`roam=walk&at=-306,10,95&yaw=0&sim=w:0.3,e:0.1,_:4.5` (he kneels at the pagoda),
 `roam=boat&at=-360,40&yaw=90&sim=w:2&rcam=0,12,10`, with `night=1` or
 `clock=0.75`.
 
@@ -576,7 +632,7 @@ medium means the frame is over budget: `__mapResolution.ratio` shows it,
 - Types: `npx tsc --noEmit 2>&1 | grep src/map/<your files>` (others work at
   the same time: ignore their errors, fix yours).
 - Pictures (about 15 s each):
-  `SHOT_W=1672 SHOT_H=941 SHOT_OUT=<your scratch dir> npm run shots -- name="@map.html?shot=1&<params>"`
+  `SHOT_W=1672 SHOT_H=941 SHOT_OUT=<your scratch dir> npm run shots -- name="@index.html?shot=1&<params>"`
   then view the PNG. Useful params: `night=1` · `t=<s>` (time for moving
   things) · `focus=<place id>` (closer camera on a place) · `ui=0` (no
   interface) · `parts=terrain,sanctuary` (build only these parts — faster, and

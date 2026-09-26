@@ -1,7 +1,7 @@
 # World map: make it alive (roadmap)
 
 ## Context
-The user wants the world map (`map.html`, `src/map/`) to feel more alive.
+The user wants the world map (`index.html`, `src/map/`) to feel more alive.
 The main pain: walking in the jungle shows only trees and a few animals.
 The user likes all of these ideas: people, weather, festivals, goals, a hot air
 balloon, a lake with a floating village, and temple sounds and events. (No kid guide: the user dropped it.)
@@ -55,11 +55,11 @@ he kneels to show respect, the Khmer way.
 - Sound: a soft temple bell at the first bow (the existing `'enter'` bell, quieter).
 - `src/map/ui/lang.ts`: Khmer and English words for the key list.
 
-**The same pose in the game:** `clips.ts` is shared with `index.html`, so the game can use `'pray'` later too. For now we trigger it on the map only.
+**The same pose in the game:** `clips.ts` is shared with `game.html`, so the game can use `'pray'` later too. For now we trigger it on the map only.
 
 **Checks:**
 - `npm run typecheck`, `npm run build`, and `npm run playtest` (the character changed).
-- Pose: `npm run shots -- k1="@map.html?shot=1&roam=walk&at=<spot x,z>&yaw=<face the shrine>&act=pray&t=3&rcam=90,10,6"`. Take shots at about `t=1`, `t=3` and `t=5` to see kneel, palms together and bow. Also take one from the side (`rcam` yaw 90).
+- Pose: `npm run shots -- k1="@index.html?shot=1&roam=walk&at=<spot x,z>&yaw=<face the shrine>&act=pray&t=3&rcam=90,10,6"`. Take shots at about `t=1`, `t=3` and `t=5` to see kneel, palms together and bow. Also take one from the side (`rcam` yaw 90).
 - Trigger: walk up to a spot with `sim=`, then stand still. He should turn and kneel.
 - Look for: knees on the ground, no feet in the floor, the hat off, no pop at the start or end.
 
@@ -136,7 +136,7 @@ he kneels to show respect, the Khmer way.
 - `npm run typecheck` and `npm run build`.
 - The `[map] built in …` console line gives the block count and ms for the new part.
 - Shots (1672×941, `SHOT_W=1672 SHOT_H=941`):
-  - Phase 1: `npm run shots -- j1="@map.html?shot=1&roam=walk&at=-200,-20&yaw=180&sim=w:3&rcam=0,15,8"`, then the same with `night=1` for the incense glow, and `parts=terrain,path,jungle,vegetation` for a fast check.
-  - The picker view must look the same: `npm run shots -- m="@map.html?shot=1"`.
+  - Phase 1: `npm run shots -- j1="@index.html?shot=1&roam=walk&at=-200,-20&yaw=180&sim=w:3&rcam=0,15,8"`, then the same with `night=1` for the incense glow, and `parts=terrain,path,jungle,vegetation` for a fast check.
+  - The picker view must look the same: `npm run shots -- m="@index.html?shot=1"`.
   - Later phases add params: `weather=`, `clock=`, `fest=`, `roam=balloon`, `roam=boat&at=-350,20`.
 - Update `docs/map-work/BRIEF.md` and `CLAUDE.md` for new parts and params.

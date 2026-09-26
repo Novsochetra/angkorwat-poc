@@ -551,7 +551,7 @@ body.st-after :is(.map-ui, .rt) {
   opacity: 1;
 }
 
-/* "Start playing": the map's gold button, stepped corners. */
+/* The last beat's button: the map's gold button, stepped corners. */
 .st-start {
   position: relative;
   isolation: isolate;

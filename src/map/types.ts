@@ -2,7 +2,7 @@ import type { Object3D, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 
 import type { HeightField } from './heightfield';
 
 /**
- * World map screen ("Angkor Heritage", map.html): a small voxel diorama of
+ * World map screen ("Angkor Heritage", index.html): a small voxel diorama of
  * the Angkor highlands seen from a high ledge, with a pin for every place the
  * player can travel to. Scale: 1 unit = 1 m, like the game. The map is built
  * of 1–2 m blocks (the game uses 0.5 m and smaller), because it is seen from

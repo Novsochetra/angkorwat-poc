@@ -1,7 +1,7 @@
 # Angkor Heritage — notes for Claude
 
 - Checks: `npm run typecheck`, `npm run build`, `npm run playtest` (headless play test).
-- `npm run shots -- name="@index.html?shot=1&…"` renders a page headlessly into
+- `npm run shots -- name="@game.html?shot=1&…"` renders a page headlessly into
   `screenshots/<name>.png`; view the PNG to check visual changes.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
 
@@ -17,7 +17,7 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
 - Look at an asset beside its sheet crop with
   `npm run shots -- a="@studio.html?asset=18.1/large-tree&shot=1"`, and a whole
   section with `@studio.html?section=20&shot=1&refs=1` (add `&examples=1` for its
-  scenes). Walk it at true scale with `index.html?level=kit`.
+  scenes). Walk it at true scale with `game.html?level=kit`.
 - Colours: sample the sheet (`python3 docs/kit-work/measure.py`) and wrap the
   colour in `fromSheet()`. Sizes are real-world; record the sheet's estimate in
   the asset's `size` field. Refresh the docs table with
@@ -49,12 +49,16 @@ into the chat:
    pick covers every block seen inside it, grouped by the code that made them,
    the group filling most of the area first.
 3. Reproduce with the report's headless command
-   (`npm run shots -- repro="@index.html?shot=1&at=…&cam=…"`), fix, and re-run it
+   (`npm run shots -- repro="@game.html?shot=1&at=…&cam=…"`), fix, and re-run it
    to compare. Then run the checks.
 4. Delete the report's folder in the commit that fixes it, and name the report
    in the commit message.
 
-## World map screen (`map.html`)
+## World map screen (`index.html`)
+
+The entry page: `/` opens it (the real-scale test level is `game.html`, not
+linked from the map while `SCENES_OPEN` in `src/map/layout.ts` is off: every
+place is "coming soon", no "Begin expedition", no "E  Enter …").
 
 The expedition picker: a voxel diorama of the Angkor highlands (Angkor Wat,
 Bayon, Preah Khan, Ta Prohm, Phnom Kulen, River Gate) with pin cards, sound
@@ -66,7 +70,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
   the settings). The word list is `src/map/ui/lang.ts`; place texts are in
   `layout.ts` (`km`). Add `lang=en` to a shot for English.
-- Look at it: `npm run shots -- m="@map.html?shot=1"` (1672×941 with
+- Look at it: `npm run shots -- m="@index.html?shot=1"` (1672×941 with
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`,
   `loading=0‥1` (hold the loading screen there: Angkor Wat `ui/_loadTemple.ts`,
@@ -77,19 +81,31 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   frame. Parts spread over the map cull per place (`src/map/cull.ts`).
 - Roaming (Jump in: pick parachute or hang glider, then walk, boat, hang
   glider from cliff-top ramps; Q / R or a drag orbits the camera):
-  `src/map/roam/`. Easy flying (glider holds its height, S climbs, W dives)
-  is a setting (`roam/prefs.ts`); the Cambodian flag helper is `roam/_flag.ts`.
+  `src/map/roam/`. Easy flying (glider and balloon hold their height, S climbs,
+  W dives) is a setting (`roam/prefs.ts`); the Cambodian flag helper is `roam/_flag.ts`.
   A hot air balloon lies deflated on its field below Angkor Wat
   (`roam/balloon.ts`: E rides it, the fan fills it, then the burner stands
-  it up; W / Space burner, S vent, E lands and steps out;
-  `balloon=parked|inflate:<s>|up` in shots).
+  it up; with easy flying it flies like the glider: cruises forward, A / D
+  turn, S / Space climb (the burner), W descends (the vent), Shift fast,
+  hands-off it holds its height; easy flying off: the real balloon, burner,
+  vent and wind; E lands and steps out; `balloon=parked|inflate:<s>|up` in shots).
   Check it with `roam=leap|glide|walk|boat|hang|balloon&at=x,z&yaw=<deg>&sim=w:2,wr:3`
   (scripted keys run before the shot) and `rcam=yaw,pitch,dist`.
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
   a selfie stick (T); `tool=`, `stick=` in shots; camera and selfie also in
   the boat and on the glider), emotes and photos (`roam/tools.ts`, `roam/photo.ts`),
-  kneels to pray when he stands still at a shrine (`roam/_pray.ts`, spots in
-  `roam/_worship.ts`; `act=pray`, `kneelat=x,z,fx,fz` in shots),
+  the Explorer menu (I, or the face button on the tool bar: moves, outfits
+  and faces for a mouse or a finger; `roam/_explorerMenu.ts`, `menu=1` in shots,
+  `touch=1` for the touch layout),
+  sits (J) or lies down (L) to watch the sky (`roam/_rest.ts`, poses in
+  `src/character/rest.ts`: he puts his pack down beside him; the camera comes
+  down low and looks up; lying still 12 s he falls asleep, eyes closed and
+  a "Z z z"; J / L again, the stick or Space gets him up; `act=sit|lie|sleep`
+  in shots, viewer `anim=sit|lie|sleep`),
+  kneels to pray at a shrine with E ("E  Pray" in front of one; a golden
+  lotus glows on the floor where he kneels, `roam/_prayMark.ts`; he walks
+  onto it, turns and kneels: `roam/_pray.ts`, spots in `roam/_worship.ts`;
+  `act=pray`, `kneelat=x,z,fx,fz` in shots),
   and a mini-map (`src/map/ui/minimap.ts`, M for the big map, N the nearest
   glider ramp).
 - Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);

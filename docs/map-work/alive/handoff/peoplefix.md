@@ -27,10 +27,10 @@ wrapped round the head reads as a plain red cap (`src/map/people/_personModel.ts
 - `npx tsc --noEmit`, `npm run build`.
 - Krama close-ups (lineup, kinds row: fishermen at (−26.4, 7.0) and (−25.3, 6.0),
   krama villager at (−18.2, 0.5); poses row: krama pole-carrier at (−1.9, −23.5)):
-  `SHOT_W=1200 SHOT_H=700 npm run shots -- lk1="@map.html?shot=1&people=lineup&ui=0&cam=-22.5,11.2,7.3,-25.9,10,6.5" lk2="@map.html?shot=1&people=lineup&ui=0&cam=-15.2,11,1.3,-18.2,10,0.5" lp="@map.html?shot=1&people=lineup&ui=0&cam=1.2,11.3,-22.6,-2.6,10,-22.2"`
-- Fishers: `fish="@map.html?shot=1&fish=5.3&ui=0&cam=-352,14,78,-366,6,88"`.
-- Farmers: `farm="@map.html?shot=1&season=0.2&ui=0&cam=-240,20,50,-250,8,70"`,
-  `harvest="@map.html?shot=1&season=0.68&ui=0&cam=-240,20,50,-250,8,70"`.
+  `SHOT_W=1200 SHOT_H=700 npm run shots -- lk1="@index.html?shot=1&people=lineup&ui=0&cam=-22.5,11.2,7.3,-25.9,10,6.5" lk2="@index.html?shot=1&people=lineup&ui=0&cam=-15.2,11,1.3,-18.2,10,0.5" lp="@index.html?shot=1&people=lineup&ui=0&cam=1.2,11.3,-22.6,-2.6,10,-22.2"`
+- Fishers: `fish="@index.html?shot=1&fish=5.3&ui=0&cam=-352,14,78,-366,6,88"`.
+- Farmers: `farm="@index.html?shot=1&season=0.2&ui=0&cam=-240,20,50,-250,8,70"`,
+  `harvest="@index.html?shot=1&season=0.68&ui=0&cam=-240,20,50,-250,8,70"`.
 
 ## Files changed
 - `src/map/people/_sceneFarm.ts`, `_actor.ts`, `_personModel.ts`, `_monks.ts`, `_tour.ts`, `index.ts`.

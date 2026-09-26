@@ -24,7 +24,7 @@ Draw calls / triangles are for one frame that includes a shadow pass. The baseli
 | forest Buddha walk `at=-52,-300&yaw=180` | 548 / 17.57 M | 526 / 16.30 M |
 | lake walk `at=-380,20&yaw=270` | 535 / 15.29 M | 518 / 13.85 M |
 | lake, Water Festival night | 536 / 15.83 M | 517 / 14.34 M |
-| overview `map.html` | 738 / 24.70 M | 765 / 24.18 M |
+| overview `index.html` | 738 / 24.70 M | 765 / 24.18 M |
 
 Per part (main pass, then shadow pass):
 - **Jungle**
@@ -58,10 +58,10 @@ Per part (main pass, then shadow pass):
 ## How to check
 - `npx tsc --noEmit`, `npm run build`.
 - Shots:
-  - `m="@map.html?shot=1"`
-  - `vil="@map.html?shot=1&roam=walk&at=-285,62&yaw=250&sim=_:1"`. Roam shots need `sim=_:1`, or the camera comes out upside down.
-  - `raftn="@map.html?shot=1&ui=0&night=1&cam=-295,22,85,-335,5,50"`
-  - `fw="@map.html?shot=1&fest=water"`
+  - `m="@index.html?shot=1"`
+  - `vil="@index.html?shot=1&roam=walk&at=-285,62&yaw=250&sim=_:1"`. Roam shots need `sim=_:1`, or the camera comes out upside down.
+  - `raftn="@index.html?shot=1&ui=0&night=1&cam=-295,22,85,-335,5,50"`
+  - `fw="@index.html?shot=1&fest=water"`
 - Draw counts: wrap `renderer.renderBufferDirect` to count calls and triangles per part (walk up to the part's object) and per pass (shadow camera = `parts[0].key.shadow.camera`), like the review's `probe.mjs` (in the old scratchpad).
 
 ## Files changed

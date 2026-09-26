@@ -90,13 +90,13 @@ until roaming ends; going home makes it parked (deflated) again.
 ## How to check
 ```
 SHOT_OUT=<dir> SHOT_W=1672 SHOT_H=941 npm run shots -- \
-  ov="@map.html?shot=1" ovn="@map.html?shot=1&night=1" \
-  top="@map.html?shot=1&ui=0&cam=-32,70,-40,-32,0,-64" \
-  close="@map.html?shot=1&ui=0&cam=-10,14,-30,-32,6,-64" \
-  closen="@map.html?shot=1&ui=0&night=1&cam=-10,14,-30,-32,6,-64" \
-  inf3="@map.html?shot=1&roam=balloon&balloon=inflate:3" \
-  inf6="@map.html?shot=1&roam=balloon&balloon=inflate:6" \
-  ride="@map.html?shot=1&roam=balloon&sim=w:6,_:3"
+  ov="@index.html?shot=1" ovn="@index.html?shot=1&night=1" \
+  top="@index.html?shot=1&ui=0&cam=-32,70,-40,-32,0,-64" \
+  close="@index.html?shot=1&ui=0&cam=-10,14,-30,-32,6,-64" \
+  closen="@index.html?shot=1&ui=0&night=1&cam=-10,14,-30,-32,6,-64" \
+  inf3="@index.html?shot=1&roam=balloon&balloon=inflate:3" \
+  inf6="@index.html?shot=1&roam=balloon&balloon=inflate:6" \
+  ride="@index.html?shot=1&roam=balloon&sim=w:6,_:3"
 ```
 Also check boarding from walk: `roam=walk&at=-30,-60&sim=e:0.1,_:10`. Check Esc
 with `sim=e:0.1,_:3,x:0.1,_:3`. Then `npx tsc --noEmit` and `npm run build`.

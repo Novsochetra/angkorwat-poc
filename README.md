@@ -5,18 +5,20 @@ character reference sheets (turnaround, close-up details, colour palette,
 expressions, variations, action poses) and scaled to sit correctly in a
 real-size Angkor Wat map.
 
-- **`index.html`** — real-scale test level: walk the explorer across the western
+- **`index.html`** (`/`) — the world map, the entry screen: a voxel diorama of
+  the Angkor highlands to roam on foot, by boat, hang glider and hot air balloon.
+- **`game.html`** — real-scale test level: walk the explorer across the western
   causeway, through the west gopura's doorway and up to the 65 m central tower.
 - **`viewer.html`** — character studio: turnaround, expressions, outfits and
   animations on a backdrop that mimics the reference sheet.
 - **`studio.html`** — the world kit's asset studio: the landscape, stone and
   props of the component plan's sections 18–20, laid out like their reference
-  sheets. `index.html?level=kit` lets you walk among them at true scale. See
+  sheets. `game.html?level=kit` lets you walk among them at true scale. See
   [World kit](#world-kit-sections-1820).
 
 ```bash
 npm install
-npm run dev        # open http://localhost:5173/ (game) and /viewer.html (viewer)
+npm run dev        # open http://localhost:5173/ (world map), /game.html (test level) and /viewer.html (viewer)
 npm run build      # typecheck + production build into dist/
 ```
 
@@ -65,7 +67,7 @@ with offerings. They are six of the twelve.
   as cards like its sheet, with its environment scenes underneath.
   `?asset=18.1/large-tree` shows one asset beside its sheet crop: every view and
   variant, plus a scale view with the explorer. `?scene=…` opens a diorama.
-- `index.html?level=kit` is a walkable specimen garden of every asset, plus the
+- `game.html?level=kit` is a walkable specimen garden of every asset, plus the
   dioramas at true scale. Keys `1`–`9` and `[` `]` jump between spots.
 - **B** reports a problem from any of these pages. The report names the line of
   the asset module that made each block.
@@ -210,7 +212,7 @@ cloud). See [`feedback/README.md`](feedback/README.md).
 
 - `npm run shots -- name=query …` — headless screenshots of viewer states, e.g.
   `npm run shots -- front="view=0" happy="expr=happy&zoom=head"`; prefix with
-  `@page?` for another page (`game="@index.html?shot=1&spawn=1"`).
+  `@page?` for another page (`game="@game.html?shot=1&spawn=1"`).
 - `npm run playtest` — headless play test that drives the explorer with real key
   presses: walks through the gopura doorway, runs, hits a wall, climbs the temple
   stairs, jumps, opens a door, turns on the flashlight and raises the camera —

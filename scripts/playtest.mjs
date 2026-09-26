@@ -43,7 +43,7 @@ const hold = async (keys, seconds) => {
   for (const k of keys) await page.keyboard.up(k);
 };
 
-await page.goto(`${url}index.html?test=1`, { waitUntil: 'load' });
+await page.goto(`${url}game.html?test=1`, { waitUntil: 'load' });
 await page.waitForFunction(() => !!window.__step, null, { timeout: 120_000 });
 
 // 1. Walk east through the gopura doorway (spawn 1 faces the door).
@@ -143,7 +143,7 @@ check('Z puts the camera away', away.action === null && away.view === 0, `action
 // must name the exact lines that built them (source-mapped from the served JS).
 const game = await browser.newPage({ viewport: { width: 800, height: 500 } }); // desktop layout: panel on the right
 game.on('pageerror', (e) => errors.push(e.message));
-await game.goto(`${url}index.html?at=-526,1.5,-5.5,90&cam=0,5,4`, { waitUntil: 'load' });
+await game.goto(`${url}game.html?at=-526,1.5,-5.5,90&cam=0,5,4`, { waitUntil: 'load' });
 await game.waitForFunction(() => !!window.feedback, null, { timeout: 120_000 });
 await game.keyboard.press('KeyB');
 await game.mouse.click(400, 117); // the wall above the explorer's head

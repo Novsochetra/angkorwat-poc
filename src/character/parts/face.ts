@@ -9,9 +9,15 @@ import { FACE_COLUMNS, FACE_LAYER, FACE_ROWS, HEAD, HEAD_GRID, skullHas } from '
  */
 export const EXPRESSIONS = ['neutral', 'happy', 'determined', 'surprised', 'curious', 'focused'] as const;
 export type ExpressionName = (typeof EXPRESSIONS)[number];
+/**
+ * Every face that can be built: the expressions, and asleep (eyes closed in
+ * soft downward curves, brows relaxed, the mouth a little open; not in the
+ * X cycle: `AngkorExplorer.asleep` shows it).
+ */
+export type FaceName = ExpressionName | 'asleep';
 
 type MouthShape = 'smile' | 'grin' | 'flat' | 'o' | 'smallO';
-type LidDecal = 'none' | 'arc' | 'lash';
+type LidDecal = 'none' | 'arc' | 'lash' | 'sleep';
 
 interface ExpressionDef {
   /**
@@ -26,7 +32,7 @@ interface ExpressionDef {
   lids: LidDecal;
 }
 
-const DEFS: Record<ExpressionName, ExpressionDef> = {
+const DEFS: Record<FaceName, ExpressionDef> = {
   neutral: {
     cells: ['ssss', 'wkkw', 'wkkw', 'bssb'],
     browRight: { dy: 0, tilt: 0.04 },
@@ -69,12 +75,19 @@ const DEFS: Record<ExpressionName, ExpressionDef> = {
     mouth: 'flat',
     lids: 'lash',
   },
+  asleep: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: -0.1, tilt: -0.08 },
+    browLeft: { dy: -0.1, tilt: -0.08 },
+    mouth: 'smallO',
+    lids: 'sleep',
+  },
 };
 
 const FRONT = HEAD.maxZ; // z of the face plane
 const EYE_X = [-2.5, 2.5] as const;
 
-export function buildFace(expression: ExpressionName, blink = false): VoxelBuilder {
+export function buildFace(expression: FaceName, blink = false): VoxelBuilder {
   const def = DEFS[expression];
   const b = new VoxelBuilder();
   const P = PALETTE;
@@ -139,6 +152,12 @@ export function buildFace(expression: ExpressionName, blink = false): VoxelBuild
       decal(cx - 0.52, 22.86, 0.72, 0.24, P.eyeDark, 0.08, 0.6);
       decal(cx + 0.52, 22.86, 0.72, 0.24, P.eyeDark, 0.08, -0.6);
       decal(cx, 23.1, 0.52, 0.24, P.eyeDark);
+    } else if (lids === 'sleep') {
+      // (closed and at rest: a curve bowed down, lashes at the outer end)
+      decal(cx - 0.5, 23.0, 0.72, 0.22, P.eyeDark, 0.08, -0.45);
+      decal(cx + 0.5, 23.0, 0.72, 0.22, P.eyeDark, 0.08, 0.45);
+      decal(cx, 22.78, 0.56, 0.22, P.eyeDark);
+      decal(cx + Math.sign(cx) * 1.02, 22.92, 0.3, 0.16, P.eyeDark, 0.08, Math.sign(cx) * 0.6);
     } else if (lids === 'lash') {
       const y = blink && !def.cells[1].includes('l') ? 22.95 : 23.42;
       decal(cx, y, 1.9, 0.2, P.eyeDark);

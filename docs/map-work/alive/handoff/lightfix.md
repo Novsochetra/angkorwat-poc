@@ -33,11 +33,11 @@ Task: 4 look fixes from the visual review: (1) the forest floor is too dark when
 - Plan (still physically plausible): centre it opposite the key light's bearing, but at the real sun's low height (about 2°, `SUN_E` in palette.ts) instead of the key's 25°. A low sun makes a tall, almost upright bow. Its right leg moves about 7–14° to the right into the open sky between the title card and the Angkor Wat card. Build `anti` from `bearingOf(keyDir)` + 180° and elevation −max(sunEl, 2°). The overview camera never sees the apex. The visible sun disc in the overview is in front of the camera, so no real bow could be in that view: the key light is the reference that matches the shading.
 
 ## How to check
-- Overview (must stay the same except the rain and rainbow shots): `SHOT_W=1672 SHOT_H=941 npm run shots -- m="@map.html?shot=1"`. Compare it pixel-wise before and after.
-- Forest: `j_spirit=@map.html?shot=1&roam=walk&sim=_:1&at=-124.6,82&yaw=6&rcam=20,8,7`, `j_wall=…&at=-132,-236.9&yaw=84&rcam=0,12,9`, `j_bridge=…&at=-390,-168&yaw=50&rcam=0,14,10`, `w_rainwalk=@map.html?shot=1&weather=rain&roam=walk&at=-200,-20&yaw=180&sim=_:1&rcam=0,10,8`. Measure the mean grey of the lower screen (rows 50–88 %, away from the HUD).
-- Rain: `w_storm=@map.html?shot=1&weather=storm&flash=1`, `ov_rain=@map.html?shot=1&weather=rain`.
-- Rainbow: `w_rainbow=@map.html?shot=1&weather=rainbow`.
-- Edge: `j_lakeshrine=@map.html?shot=1&roam=walk&sim=_:1&at=-437.1,-72.7&yaw=341&rcam=20,10,8`.
+- Overview (must stay the same except the rain and rainbow shots): `SHOT_W=1672 SHOT_H=941 npm run shots -- m="@index.html?shot=1"`. Compare it pixel-wise before and after.
+- Forest: `j_spirit=@index.html?shot=1&roam=walk&sim=_:1&at=-124.6,82&yaw=6&rcam=20,8,7`, `j_wall=…&at=-132,-236.9&yaw=84&rcam=0,12,9`, `j_bridge=…&at=-390,-168&yaw=50&rcam=0,14,10`, `w_rainwalk=@index.html?shot=1&weather=rain&roam=walk&at=-200,-20&yaw=180&sim=_:1&rcam=0,10,8`. Measure the mean grey of the lower screen (rows 50–88 %, away from the HUD).
+- Rain: `w_storm=@index.html?shot=1&weather=storm&flash=1`, `ov_rain=@index.html?shot=1&weather=rain`.
+- Rainbow: `w_rainbow=@index.html?shot=1&weather=rainbow`.
+- Edge: `j_lakeshrine=@index.html?shot=1&roam=walk&sim=_:1&at=-437.1,-72.7&yaw=341&rcam=20,10,8`.
 - Animals under trees: find the sounders with `window.__jungle.agents` (fauna/jungle.ts line 176) and take roam=walk shots there. `fauna=jungle` with a fixed `cam` is overview mode, so there is no canopy lift in it.
 
 ## Files changed
