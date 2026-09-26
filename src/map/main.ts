@@ -14,7 +14,8 @@ import type { MapRoam } from './roam/roam';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
-import { ICON } from './ui/icons';
+import { loadingHero } from './ui/_loadHero';
+import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
@@ -28,7 +29,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
  * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
  * `story=<n>` the story from beat n (1‥; shots: that beat), `story=0` never
- * (else it plays before the map on the first visit).
+ * (else it plays before the map on the first visit) ·
+ * `loading=0‥1` hold the loading screen at that point, and build nothing.
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -148,14 +150,28 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
-// The loading screen follows the build (map.html): the title card's temple rises
-// row by row (27 rows) and the bar fills block by block (20); a frame in between lets it paint.
+// The loading screen follows the build (map.html): Angkor Wat rises row by row
+// from its grey outline with light on the stones being laid, the bar fills block by block (20) and the explorer walks
+// below it to the bar's end; a frame in between lets it paint.
 const loading = document.getElementById('loading');
-for (const s of loading?.querySelectorAll('.ld-ghost, .ld-built') ?? []) s.innerHTML = ICON.temple;
+for (const s of loading?.querySelectorAll('.ld-ghost, .ld-built, .ld-lit') ?? []) s.innerHTML = LOAD_TEMPLE.svg;
+loading?.style.setProperty('--ld-rows', String(LOAD_TEMPLE.rows));
+loading?.style.setProperty('--ld-cols', String(LOAD_TEMPLE.cols));
+const hero = loading?.querySelector('.ld-hero');
+if (hero) hero.innerHTML = loadingHero();
 function showProgress(p: number): void {
-  loading?.style.setProperty('--ld-cut', `${+((1 - Math.round(p * 27) / 27) * 100).toFixed(3)}%`);
+  const rows = LOAD_TEMPLE.rows;
+  loading?.style.setProperty('--ld-cut', `${+((1 - Math.round(p * rows) / rows) * 100).toFixed(3)}%`);
   loading?.style.setProperty('--ld-segs', String(Math.round(p * 20)));
+  loading?.style.setProperty('--ld-p', p.toFixed(4));
   loading?.classList.toggle('is-built', p >= 1);
+}
+// (shots: hold it at one point, build nothing)
+if (params.has('loading')) {
+  showProgress(Math.min(1, Math.max(0, Number(params.get('loading')) || 0)));
+  await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 4000))]);
+  requestAnimationFrame(() => ((window as unknown as { __ready: boolean }).__ready = true));
+  await new Promise(() => undefined);
 }
 const nextFrame = () => (shot || document.hidden ? Promise.resolve() : new Promise<void>((r) => requestAnimationFrame(() => r())));
 for (const [i, [name, load]] of BUILDERS.entries()) {
@@ -490,13 +506,13 @@ if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0'
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, __frame: frame, __mapStats: { timings, blocks, failed } });
 
-/** Fade the loading screen out once the map is drawn. */
+/** Fade the loading screen out once the map is drawn (after the explorer's wave has begun). */
 function hideLoading(): void {
   if (!loading) return;
   showProgress(1);
   if (shot) return loading.remove();
-  loading.classList.add('done');
-  setTimeout(() => loading.remove(), 1000);
+  setTimeout(() => loading.classList.add('done'), 700);
+  setTimeout(() => loading.remove(), 1700);
 }
 
 // ── Resolution follows the frame rate ─────────────────────────────────────

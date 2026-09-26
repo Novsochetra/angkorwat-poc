@@ -68,7 +68,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `layout.ts` (`km`). Add `lang=en` to a shot for English.
 - Look at it: `npm run shots -- m="@map.html?shot=1"` (1672×941 with
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
-  `parts=terrain,water` (only those parts), `uistate=hover:<place>`.
+  `parts=terrain,water` (only those parts), `uistate=hover:<place>`,
+  `loading=0‥1` (hold the loading screen there: Angkor Wat `ui/_loadTemple.ts`,
+  the explorer below the bar `ui/_loadHero.ts`; nothing is built).
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads);
   `[map] shaders compiled in N ms` follows. `window.__frame` is the live
