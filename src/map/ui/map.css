@@ -1157,6 +1157,11 @@
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* A choice over the whole row (the graphics' Auto, above its four levels). */
+.mu-seg .is-wide {
+  grid-column: 1 / -1;
+}
+
 /* The note under a choice (the weather or graphics level chosen). */
 .mu-set-note {
   margin: calc(6 * var(--px)) calc(2 * var(--px)) 0;

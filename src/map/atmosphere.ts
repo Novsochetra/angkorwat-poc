@@ -1,5 +1,5 @@
 import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3 } from 'three';
-import { graphicsNow } from './graphics';
+import { graphicsNow, STILL_LAYER, STILL_TURN } from './graphics';
 import { MAP_BOUNDS } from './layout';
 import { skipDarkLights } from './sky/darkLights';
 import { HAZE, installHaze } from './sky/haze';
@@ -117,10 +117,12 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   }
 
   // The shadow map is 4096² over ≈ 400 k blocks: it is drawn every third
-  // frame (for things that move; graphics.ts: 2048² on the low level, 8192²
-  // and every frame on max), and the key light turns only on those
-  // frames, so a moving sun or moon adds no shadow pass (at 60 fps it turns
-  // 20 times a second, in steps too small to see).
+  // frame (for things that move; graphics.ts: 8192² and every frame on max),
+  // and the key light turns only on those frames, so a moving sun or moon
+  // adds no shadow pass (at 60 fps it turns 20 times a second, in steps too
+  // small to see). The low level's shadows are still (2048², graphics.ts):
+  // only what never moves casts, and the map is drawn again only once the
+  // light has turned a little, so while it stands no frame draws shadows.
   const shadows = ctx.renderer.shadowMap;
   shadows.autoUpdate = false;
   shadows.needsUpdate = true;
@@ -144,8 +146,17 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
         key.shadow.map = null;
         shadowDirty = true;
       }
-      const redraw = ctx.shot || ++frames % graphicsNow.shadowEvery === 0;
-      if (redraw || shadowDirty) fitShadow(s.keyDir);
+      const casters = graphicsNow.stillShadows ? 1 << STILL_LAYER : 1;
+      if (key.shadow.camera.layers.mask !== casters) {
+        key.shadow.camera.layers.mask = casters;
+        shadowDirty = true;
+      }
+      frames++;
+      const redraw = ctx.shot || (graphicsNow.stillShadows ? frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN : frames >= graphicsNow.shadowEvery);
+      if (redraw || shadowDirty) {
+        fitShadow(s.keyDir);
+        frames = 0;
+      }
       f.lightDir.copy(fitted);
 
       // Under the jungle's leaves (roaming on foot or by boat; 0 in the overview)

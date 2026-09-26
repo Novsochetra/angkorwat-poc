@@ -552,9 +552,16 @@ posed in the vertex shader, only animals near the camera or the explorer
 are updated, far ones hidden. Keep each part's build
 under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
 The player picks a **Graphics** level in the settings (`graphics.ts`,
-`settings.graphics`, `graphics=low|medium|high|max` in the URL): low draws
-half the pixels, the map's blocks as plain boxes, no MSAA, no glow; medium
-(the default) drops to half the pixels while frames stay under ~40 a second
+`settings.graphics`, `graphics=auto|low|medium|high|max` in the URL). Auto
+(the default) starts on low on a phone and medium elsewhere, steps down a
+level when frames stay under 30 a second, and keeps that level for the
+device (`AutoGraphics`; shots use medium). A phone draws at most 30 frames a
+second, evenly (`MAX_FPS`; `phone=1` acts as one). Low draws
+half the pixels, the map's blocks as plain boxes, no MSAA, no glow, and
+still shadows: only parts marked with `markStill` (main.ts) cast, and the
+shadow map is drawn again only when the key light turns, never every third
+frame (no slow frame while the light stands; a part that moves must not be
+marked). Medium drops to half the pixels while frames stay under ~40 a second
 (`adaptResolution` in `main.ts`: the screen's ratio or 1, never a step
 between, which blurs and lays a grid over the map); high always keeps the
 screen's pixels; max adds MSAA ×4, a 8192² shadow map drawn every frame.

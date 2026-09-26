@@ -1,5 +1,6 @@
 import { Box3, Frustum, Matrix4, Sphere, Vector3, type InstancedMesh, type Mesh, type Object3D } from 'three';
 import { VoxelBuilder } from '../voxel/VoxelBuilder';
+import { graphicsNow } from './graphics';
 import type { MapFrame } from './types';
 
 /**
@@ -17,7 +18,9 @@ import type { MapFrame } from './types';
  *   padded for the camera turning until the next shadow redraw. Out of
  *   view, none of its shadow can be seen: the picture is the same. In the
  *   first frames every gated mesh casts (and, if asked, is drawn wherever
- *   the camera looks), so its shaders are compiled at load.
+ *   the camera looks), so its shaders are compiled at load. Still shadows
+ *   (the low graphics level, graphics.ts) are drawn once for wherever the
+ *   camera goes next: every gated mesh casts then.
  */
 
 /** Frames at load when every gated mesh casts and is drawn wherever the camera looks (its shaders compile then). */
@@ -126,6 +129,10 @@ export class ShadowGate {
         if (this.cull) it.obj.frustumCulled = !warm;
       }
       if (warm) return;
+    }
+    if (graphicsNow.stillShadows) {
+      for (const it of this.items) it.obj.castShadow = true;
+      return;
     }
     this.view.set(f);
     for (const it of this.items) it.obj.castShadow = this.view.seesShadow(it.c, it.r, it.h);

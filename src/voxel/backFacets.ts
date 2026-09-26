@@ -1,4 +1,4 @@
-import { BufferAttribute, FrontSide, Matrix4, Vector3, type BufferGeometry, type Camera, type InstancedMesh, type Object3D, type PerspectiveCamera } from 'three';
+import { BackSide, BufferAttribute, FrontSide, Matrix4, Vector3, type BufferGeometry, type Camera, type InstancedMesh, type Material, type Object3D, type OrthographicCamera, type PerspectiveCamera } from 'three';
 
 /**
  * Voxel meshes that never move draw only the block sides that can face the
@@ -14,10 +14,14 @@ import { BufferAttribute, FrontSide, Matrix4, Vector3, type BufferGeometry, type
  * left out of this draw. The GPU would have dropped all of it, so the picture
  * is the same.
  *
- * The full index is put back right after the draw, so shadows, picking and
- * everything else still see every side; an orthographic camera (the mini-map)
- * gets every side too. Meshes with turned blocks, a mirroring transform, a
- * two-sided material or a rounder shape (over 30 side directions) draw whole.
+ * The shadow pass does the same with the light: it leaves out the sides that
+ * face the light (a shadow is drawn from the blocks' back sides, so the GPU
+ * would drop those too). That pass drew more triangles than the picture.
+ *
+ * The full index is put back right after each draw, so picking and everything
+ * else still see every side; an orthographic camera (the mini-map) gets every
+ * side too. Meshes with turned blocks, a mirroring transform, a two-sided
+ * material or a rounder shape (over 30 side directions) draw whole.
  * Blocks may move later (the instance matrices are read again when they
  * change), but a mesh that moves every frame gains nothing from this.
  */
@@ -27,6 +31,8 @@ export function skipBackFacets(root: Object3D): void {
     if (!mesh.isInstancedMesh || !mesh.geometry.index || !mesh.geometry.getAttribute('voxOpen')) return;
     mesh.onBeforeRender = drawFacing;
     mesh.onAfterRender = restore;
+    mesh.onBeforeShadow = shadeFacing;
+    mesh.onAfterShadow = restoreShadow;
   });
 }
 
@@ -62,11 +68,14 @@ const MAX_DIRS = 30;
  * corner), plus `m` metres.
  */
 const EDGE_ON = { angle: 0.1, m: 0.05 };
+/** The same for the light: each axis of a side left out faces the light by more than this (about 1°). */
+const EDGE_ON_LIGHT = 0.02;
 
 const shapes = new WeakMap<BufferAttribute, Facets | null>();
 const meshes = new WeakMap<InstancedMesh, Blocks>();
 const _inv = new Matrix4();
 const _eye = new Vector3();
+const _light = new Vector3();
 const _a = new Vector3();
 const _b = new Vector3();
 const _c = new Vector3();
@@ -99,7 +108,59 @@ function drawFacing(this: Object3D, _renderer: unknown, _scene: unknown, camera:
         break;
       }
     }
-  if (mask === facets.all) return;
+  if (mask !== facets.all) swapIn(geometry, full, facets, mask);
+}
+
+function restore(this: Object3D, _renderer: unknown, _scene: unknown, _camera: Camera, geometry: BufferGeometry): void {
+  putBack(geometry);
+}
+
+/**
+ * The shadow pass: three draws a one-sided block's shadow from its back sides
+ * (`shadowSide`), so the GPU drops every side that faces the light. Here those
+ * sides are left out before the draw. The key light is a directional light:
+ * "toward the light" is the same for every block (the shadow camera's +Z).
+ * Blocks are scaled per instance, which tilts a slanted side (a chamfer, a
+ * corner) by some amount: such a side is left out only when each of its axes
+ * faces the light on its own, so it faces the light at any block size.
+ */
+function shadeFacing(this: Object3D, _renderer: unknown, _object: unknown, _camera: unknown, shadowCamera: Camera, geometry: BufferGeometry, depthMaterial: Material): void {
+  const mesh = this as InstancedMesh;
+  const full = geometry.index;
+  if (!full || !(shadowCamera as OrthographicCamera).isOrthographicCamera || Array.isArray(mesh.material)) return;
+  if (mesh.material.side !== FrontSide || mesh.material.shadowSide != null || depthMaterial.side !== BackSide) return;
+  if (mesh.matrixWorld.determinant() <= 0) return;
+  const facets = facetsOf(geometry, full);
+  const blocks = blocksOf(mesh);
+  if (!facets || !blocks.ok) return;
+  // Toward the light, in the mesh's space.
+  _light.setFromMatrixColumn(shadowCamera.matrixWorld, 2).transformDirection(_inv.copy(mesh.matrixWorld).invert());
+  const tests = blocks.loose ? facets.loose : facets.exact;
+  let mask = 0;
+  for (let d = 0; d < tests.length; d++) if (!tests[d].every(facesLight)) mask |= 1 << d;
+  if (mask !== facets.all) swapIn(geometry, full, facets, mask);
+}
+
+function restoreShadow(this: Object3D, _renderer: unknown, _object: unknown, _camera: unknown, _shadowCamera: unknown, geometry: BufferGeometry): void {
+  putBack(geometry);
+}
+
+/** Every axis of normal `n` faces the light (`_light`, set just before); a degenerate triangle (no axes) is kept. */
+function facesLight(n: number[]): boolean {
+  let axes = 0;
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(n[i]) < 1e-3) continue;
+    if (n[i] * _light.getComponent(i) <= EDGE_ON_LIGHT) return false;
+    axes++;
+  }
+  return axes > 0;
+}
+
+/**
+ * Draw only the directions in `mask` (until `putBack`). Each hook pair runs
+ * right around one draw (camera or shadow), so one swap is out at a time.
+ */
+function swapIn(geometry: BufferGeometry, full: BufferAttribute, facets: Facets, mask: number): void {
   let index = facets.byMask.get(mask);
   if (!index) facets.byMask.set(mask, (index = subset(full, facets.dirOf, mask)));
   swapped = geometry;
@@ -107,7 +168,7 @@ function drawFacing(this: Object3D, _renderer: unknown, _scene: unknown, camera:
   geometry.setIndex(index);
 }
 
-function restore(this: Object3D, _renderer: unknown, _scene: unknown, _camera: Camera, geometry: BufferGeometry): void {
+function putBack(geometry: BufferGeometry): void {
   if (swapped !== geometry) return;
   geometry.setIndex(swappedFull);
   swapped = swappedFull = null;

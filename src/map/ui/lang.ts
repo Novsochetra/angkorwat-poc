@@ -75,13 +75,15 @@ const WORDS = {
   wClearNote: { km: 'គ្មានភ្លៀងទេ មានតែខ្យល់បក់រំភើយ', en: 'No rain, only a light breeze' },
   wRainyNote: { km: 'ភ្លៀងមួយមេ ប្រហែលរៀងរាល់ ១០ នាទីម្ដង', en: 'A shower every ten minutes or so' },
   wStormyNote: { km: 'ព្យុះផ្គររន្ទះញឹកញាប់ មានភ្លៀងធម្មតាចន្លោះ', en: 'Thunderstorms often, showers in between' },
-  // (the graphics setting: a note under it for the level chosen, graphics.ts)
+  // (the graphics setting: a note under it for the choice, graphics.ts; Auto's names the level in use)
   graphics: { km: 'គុណភាពរូបភាព', en: 'Graphics' },
+  gAuto: { km: 'ស្វ័យប្រវត្តិ', en: 'Auto' },
   gLow: { km: 'ទាប', en: 'Low' },
   gMedium: { km: 'មធ្យម', en: 'Medium' },
   gHigh: { km: 'ខ្ពស់', en: 'High' },
   gMax: { km: 'អតិបរមា', en: 'Max' },
-  gLowNote: { km: 'លឿនបំផុត៖ រូបភាពមិនសូវច្បាស់ ប្លុកសាមញ្ញ គ្មានពន្លឺចែងចាំង', en: 'Fastest: a softer picture, plain blocks, no glow' },
+  gAutoNote: { km: 'ជ្រើសរើសកម្រិតដែលឧបករណ៍នេះដើររលូន ហើយបន្ថយពេលវាយឺត។ ឥឡូវ៖ {level}', en: 'Picks what runs smoothly on this device, and goes lower if it gets slow. Now: {level}' },
+  gLowNote: { km: 'លឿនបំផុត៖ រូបភាពមិនសូវច្បាស់ ប្លុកសាមញ្ញ គ្មានពន្លឺចែងចាំង មានតែស្រមោលរបស់ដែលនៅស្ងៀម', en: 'Fastest: a softer picture, plain blocks, no glow, shadows of still things only' },
   gMediumNote: { km: 'ច្បាស់ តែបន្ថយភាពច្បាស់ពេលផែនទីដើរយឺត', en: 'Sharp, softer only while the map runs slow' },
   gHighNote: { km: 'ច្បាស់ជានិច្ច ទោះផែនទីរលូនតិចជាងមុន', en: 'Always sharp, even if the map runs less smoothly' },
   gMaxNote: { km: 'ច្បាស់ជានិច្ច គែមរលោងជាងមុន ស្រមោលរលូន', en: 'Always sharp, smoother edges and shadows' },

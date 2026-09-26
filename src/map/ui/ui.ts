@@ -1,5 +1,5 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, GRAPHICS_LEVELS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsLevel, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { framed, setSteppedVars } from './shape';
@@ -70,6 +70,8 @@ export interface MapUI {
   setRoaming(mode: RoamMode): void;
   /** Change (and keep) the language from outside: the story's ខ្មែរ / EN switch. */
   setLang(l: Lang): void;
+  /** The graphics level in use now (graphics.ts: Auto's pick, else the level chosen); Auto's note names it. */
+  setGraphicsLevel(level: GraphicsLevel): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
@@ -100,8 +102,12 @@ const WEATHER_CHOICE: Record<WeatherSetting, { icon: string; word: WordKey; note
   rainy: { icon: ICON.rain, word: 'wRainy', note: 'wRainyNote' },
   stormy: { icon: ICON.storm, word: 'wStormy', note: 'wStormyNote' },
 };
-/** The graphics setting's choices, the same way (graphics.ts says what each level draws). */
-const GRAPHICS_CHOICE: Record<GraphicsLevel, { icon: string; word: WordKey; note: WordKey }> = {
+/**
+ * The graphics setting's choices, the same way (graphics.ts says what each
+ * level draws). Auto's note names the level in use (`setGraphicsLevel`).
+ */
+const GRAPHICS_CHOICE: Record<GraphicsChoice, { icon: string; word: WordKey; note: WordKey }> = {
+  auto: { icon: ICON.auto, word: 'gAuto', note: 'gAutoNote' },
   low: { icon: ICON.bars1, word: 'gLow', note: 'gLowNote' },
   medium: { icon: ICON.bars2, word: 'gMedium', note: 'gMediumNote' },
   high: { icon: ICON.bars3, word: 'gHigh', note: 'gHighNote' },
@@ -169,6 +175,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   let night = -1;
   /** The explorer is roaming the map: the cards are name pins, the keys are the roaming's. */
   let roaming = false;
+  /** The graphics level in use now (`setGraphicsLevel`): Auto's note names it. */
+  let graphicsLevel: GraphicsLevel = 'medium';
   /** Interface scale (`--u`). */
   let unit = 1;
   const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -264,7 +272,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       <div class="mu-set-group">
         <h3 id="mu-graphics-h" data-t="graphics"></h3>
         <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-graphics-h" aria-describedby="mu-graphics-note">
-          ${GRAPHICS_LEVELS.map((g) => `<button type="button" data-graphics="${g}">${GRAPHICS_CHOICE[g].icon}<span data-t="${GRAPHICS_CHOICE[g].word}"></span></button>`).join('')}
+          ${GRAPHICS_CHOICES.map((g) => `<button type="button"${g === 'auto' ? ' class="is-wide"' : ''} data-graphics="${g}">${GRAPHICS_CHOICE[g].icon}<span data-t="${GRAPHICS_CHOICE[g].word}"></span></button>`).join('')}
         </div>
         <p class="mu-set-note" id="mu-graphics-note"></p>
       </div>
@@ -319,6 +327,15 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const flyNote = panel.querySelector<HTMLElement>('.mu-fly-note')!;
   let touchUse = matchMedia('(pointer: coarse)').matches;
   const fillFlyNote = () => (flyNote.textContent = t(touchUse ? 'easyFlyNoteTouch' : 'easyFlyNote'));
+  /**
+   * The note under the graphics choice: the chosen level's, or Auto's with
+   * the level in use in it (no `data-t`: `fillWords` and `syncSettings` fill
+   * it, so a language change puts the level's word in again too).
+   */
+  function fillGraphicsNote(): void {
+    const g = GRAPHICS_CHOICE[settings.graphics] ?? GRAPHICS_CHOICE.auto;
+    graphicsNote.textContent = g === GRAPHICS_CHOICE.auto ? t(g.note, { level: t(GRAPHICS_CHOICE[graphicsLevel].word) }) : t(g.note);
+  }
   addEventListener(
     'pointerdown',
     (e) => {
@@ -333,6 +350,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillFlyNote();
+    fillGraphicsNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-title]')) e.title = t(e.dataset.tTitle as WordKey);
     for (const c of cards) {
@@ -539,9 +557,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     weatherNote.dataset.t = WEATHER_CHOICE[settings.weather]?.note ?? 'wSeasonNote';
     weatherNote.textContent = t(weatherNote.dataset.t as WordKey);
     for (const b of graphicsBtns) b.setAttribute('aria-pressed', String(b.dataset.graphics === settings.graphics));
-    // (and the graphics level's)
-    graphicsNote.dataset.t = GRAPHICS_CHOICE[settings.graphics]?.note ?? 'gMediumNote';
-    graphicsNote.textContent = t(graphicsNote.dataset.t as WordKey);
+    // (and the graphics choice's)
+    fillGraphicsNote();
     for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
     const muted = isMuted();
     muteBtn.innerHTML = '';
@@ -625,7 +642,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     });
   for (const b of graphicsBtns)
     b.addEventListener('click', () => {
-      const graphics = b.dataset.graphics as GraphicsLevel;
+      const graphics = b.dataset.graphics as GraphicsChoice;
       if (graphics === settings.graphics) return;
       change({ graphics });
       h.onSound('toggle');
@@ -1001,6 +1018,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     setRoaming,
     setLang(l) {
       if (l !== settings.lang) change({ lang: l });
+    },
+    setGraphicsLevel(level) {
+      if (level === graphicsLevel) return;
+      graphicsLevel = level;
+      fillGraphicsNote();
     },
   };
 }

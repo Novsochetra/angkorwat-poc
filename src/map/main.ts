@@ -5,7 +5,7 @@ import { installLookPanel } from '../voxel/LookPanel';
 import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
-import { GRAPHICS, graphicsNow, setGraphics } from './graphics';
+import { AutoGraphics, autoLevel, FRAME_TIME, GRAPHICS, graphicsNow, markStill, MAX_FPS, resetAutoLevel, setGraphics } from './graphics';
 import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
 import type { Foreground } from './foreground';
@@ -15,7 +15,7 @@ import type { MapRoam } from './roam/roam';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
-import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_LEVELS, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_CHOICES, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
@@ -26,8 +26,9 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  *
  * URL: `shot=1` headless still · `t=` seconds into the scene (shots) ·
  * `night=0‥1` time of day · `focus=<place>` camera on a place ·
- * `ui=0` no interface · `graphics=low|medium|high|max` the graphics level
- * (graphics.ts) · `quality=low|medium|high` only the built detail ·
+ * `ui=0` no interface · `graphics=auto|low|medium|high|max` the graphics
+ * level (graphics.ts; auto is medium in shots) · `phone=1` act as a phone ·
+ * `quality=low|medium|high` only the built detail ·
  * `parts=terrain,water,…` build only these parts (checking one part) ·
  * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
  * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
@@ -69,10 +70,10 @@ function loadSettings(): MapSettings {
     }
     // (the "Always sharp" switch of before is the high graphics level)
     if (saved.sharp !== undefined) {
-      saved.graphics ??= saved.sharp ? 'high' : 'medium';
+      saved.graphics ??= saved.sharp ? 'high' : 'auto';
       delete saved.sharp;
     }
-    if (!GRAPHICS_LEVELS.includes(saved.graphics as GraphicsLevel)) delete saved.graphics;
+    if (!GRAPHICS_CHOICES.includes(saved.graphics as GraphicsChoice)) delete saved.graphics;
     return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -81,10 +82,16 @@ function loadSettings(): MapSettings {
 let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
 if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
 roamPrefs.easyFly = settings.easyFly;
-if (GRAPHICS_LEVELS.includes(params.get('graphics') as GraphicsLevel)) settings.graphics = params.get('graphics') as GraphicsLevel;
-setGraphics(settings.graphics, scene);
+if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) settings.graphics = params.get('graphics') as GraphicsChoice;
+/** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
+const levelOf = (g: GraphicsChoice): GraphicsLevel => (g !== 'auto' ? g : shot ? 'medium' : autoLevel());
+setGraphics(levelOf(settings.graphics), scene);
+/** Auto's watch over the frames (graphics.ts): it steps the level down on a device that stays slow. */
+const autoWatch = new AutoGraphics();
+/** The frame loop has begun (the resolution below follows the level from then on). */
+let drawing = false;
 /** Built detail: the graphics level's (a new level is built the next time the map opens), or `quality=` to check one. */
-const quality = (['low', 'medium', 'high'].includes(params.get('quality') ?? '') ? params.get('quality') : GRAPHICS[settings.graphics].build) as MapQuality;
+const quality = (['low', 'medium', 'high'].includes(params.get('quality') ?? '') ? params.get('quality') : GRAPHICS[graphicsNow.level].build) as MapQuality;
 if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
@@ -219,8 +226,14 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+// What never moves casts the low graphics level's still shadows (graphics.ts): the land, trees, temples, road, jungle
+// sites, the village (its rafts bob a little: their shadows stand) and the ledge, not the explorer on it; nor the
+// people, animals and boats.
+for (const p of parts) if (['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'foreground'].includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
+const ledgeExplorer = (parts.find((p) => p.name === 'foreground') as Foreground | undefined)?.explorer?.object;
+if (ledgeExplorer) markStill(ledgeExplorer, false);
 // (the low graphics level's plain blocks, now that they are built)
-setGraphics(settings.graphics, scene);
+setGraphics(graphicsNow.level, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
 const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.name, p.blocks!]));
 
@@ -260,10 +273,12 @@ const handlers = {
     if (href) setTimeout(() => location.assign(href), 2000);
   },
   onSettings: (s: MapSettings) => {
+    const was = settings.graphics;
     settings = s;
-    if (s.graphics !== graphicsNow.level) {
-      setGraphics(s.graphics, scene);
-      newLevelRatio();
+    if (s.graphics !== was) {
+      // (auto picked again starts over from its guess)
+      if (s.graphics === 'auto') resetAutoLevel();
+      useLevel(levelOf(s.graphics));
     }
     rig.calm = s.calm;
     roamPrefs.easyFly = s.easyFly;
@@ -278,7 +293,8 @@ const handlers = {
   onFirstGesture: () => void audio.start(),
   onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {} }));
+ui.setGraphicsLevel(graphicsNow.level);
 
 // ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
 const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);
@@ -536,8 +552,9 @@ function hideLoading(): void {
 // ── Resolution follows the frame rate ─────────────────────────────────────
 /**
  * The pixel ratio drops to 1 while frames stay slower than about 40 a second
- * (two checks in a row: one hitch is not enough), and goes back to the
- * screen's own when they keep up with the screen: the haze, mist, bloom and
+ * (20 on a phone, which draws at most 30: graphics.ts; two checks in a row:
+ * one hitch is not enough), and goes back to the screen's own when they keep
+ * up again: the haze, mist, bloom and
  * grading run on every pixel, so fewer pixels keep a slow machine smooth.
  * Only the screen's ratio or 1, never a step between: 1.5 on a 2× screen is
  * stretched by 4/3, which blurs the whole map and lays a fine grid over it.
@@ -584,15 +601,25 @@ function adaptResolution(dt: number): void {
   if (res.frames < 45 || res.since < 1.5) return;
   const avg = res.time / res.frames;
   res.time = res.frames = 0;
-  res.slow = avg > 1 / 40 ? res.slow + 1 : 0;
+  res.slow = avg > 1.5 * FRAME_TIME ? res.slow + 1 : 0;
   let next = res.ratio;
   if (res.slow >= 2 && res.ratio > 1) {
     res.ceiling = 1;
     res.ceilingAge = 0;
     res.wait = Math.min(600, res.wait * 2);
     next = 1;
-  } else if (avg < 1 / 57 && res.ratio < res.ceiling) next = res.ceiling;
+  } else if (avg < 1.05 * FRAME_TIME && res.ratio < res.ceiling) next = res.ceiling;
   if (next !== res.ratio) setRatio(next);
+}
+drawing = true;
+/** Use a graphics level now: what it draws, its resolution, auto's note; auto's watch starts over. */
+function useLevel(level: GraphicsLevel): void {
+  autoWatch.reset();
+  if (level === graphicsNow.level) return;
+  setGraphics(level, scene);
+  ui.setGraphicsLevel(level);
+  // (before the first frame the resolution is set up with the level in use)
+  if (drawing) newLevelRatio();
 }
 Object.assign(window, { __mapResolution: res });
 
@@ -620,6 +647,11 @@ if (shot) {
   const t0 = performance.now();
   let last = t0;
   const tick = (now: number) => {
+    // (a phone draws at most MAX_FPS frames a second, evenly: a refresh a few ms early is on time)
+    if (now - last < 1000 / MAX_FPS - 4) {
+      requestAnimationFrame(tick);
+      return;
+    }
     const raw = Math.max(0, (now - last) / 1000);
     const dt = Math.min(0.05, raw);
     last = now;
@@ -627,7 +659,12 @@ if (shot) {
     if (!feedback?.active) step(Math.max(0, (now - t0) / 1000), dt);
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
     const drawn = !story?.covered;
-    if (now - t0 > 3000 && drawn) adaptResolution(raw);
+    if (now - t0 > 3000 && drawn) {
+      adaptResolution(raw);
+      // (auto: a level lower once this one proves too slow, its own resolution as low as it goes)
+      const lower = settings.graphics === 'auto' ? autoWatch.watch(raw, graphicsNow.ratio !== 'auto' || res.ratio <= 1) : null;
+      if (lower) useLevel(lower);
+    }
     if (drawn) post.render(frame);
     for (const p of parts) p.afterRender?.();
     feedback?.update();

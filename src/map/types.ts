@@ -256,13 +256,16 @@ export interface MapSettings {
   lang: Lang;
   /** Easy flying for the hang glider: it holds its height hands-off, S climbs, W dives, no ceiling to speak of (roam/prefs.ts). Off: the real glider (it sinks, rising air keeps it up). */
   easyFly: boolean;
-  /** Graphics level (graphics.ts): how much the picture draws, from the fastest to the finest. */
-  graphics: GraphicsLevel;
+  /** Graphics (graphics.ts): `auto` (the level this device can keep smooth), or a level, from the fastest to the finest. */
+  graphics: GraphicsChoice;
 }
 
 /** Graphics levels, fastest first (graphics.ts says what each one draws). */
 export const GRAPHICS_LEVELS = ['low', 'medium', 'high', 'max'] as const;
 export type GraphicsLevel = (typeof GRAPHICS_LEVELS)[number];
+/** The graphics setting's choices, in panel order: auto (graphics.ts picks and watches the level), then the levels. */
+export const GRAPHICS_CHOICES = ['auto', ...GRAPHICS_LEVELS] as const;
+export type GraphicsChoice = (typeof GRAPHICS_CHOICES)[number];
 
 /** Interface languages: Khmer and English. */
 export type Lang = 'km' | 'en';
@@ -271,7 +274,7 @@ export type Lang = 'km' | 'en';
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 0.7, time: 'day', weather: 'season', calm: false, lang: 'km', easyFly: true, graphics: 'medium' };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 0.7, time: 'day', weather: 'season', calm: false, lang: 'km', easyFly: true, graphics: 'auto' };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
