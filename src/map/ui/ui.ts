@@ -92,7 +92,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly';
+type SwitchKey = 'calm' | 'easyFly' | 'sharp';
 /** The weather setting's choices: icon, word, and the note under them while chosen (lang.ts). */
 const WEATHER_CHOICE: Record<WeatherSetting, { icon: string; word: WordKey; note: WordKey }> = {
   season: { icon: ICON.season, word: 'wSeason', note: 'wSeasonNote' },
@@ -261,6 +261,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       <div class="mu-set-row">
         <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span class="mu-knob"></span></button>
+      </div>
+      <div class="mu-set-row">
+        <span id="mu-sharp-l"><span data-t="sharp"></span><small data-t="sharpNote"></small></span>
+        <button type="button" class="mu-switch" role="switch" data-set="sharp" aria-labelledby="mu-sharp-l"><span class="mu-knob"></span></button>
       </div>
       <div class="mu-set-row">
         <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>

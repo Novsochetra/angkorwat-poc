@@ -73,6 +73,7 @@ function loadSettings(): MapSettings {
 let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
 if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
 roamPrefs.easyFly = settings.easyFly;
+if (params.has('sharp')) settings.sharp = params.get('sharp') !== '0';
 if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get('lang') as Lang;
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
@@ -517,36 +518,51 @@ function hideLoading(): void {
 
 // ── Resolution follows the frame rate ─────────────────────────────────────
 /**
- * The pixel ratio steps down (to 1 at least) while frames come slower than
- * about 48 a second, and back up when they keep up with the screen: the
- * haze, mist, bloom and grading run on every pixel, so fewer pixels keep
- * the map smooth on any machine. A ratio that proved too slow is not tried
- * again for a minute (no see-sawing).
+ * The pixel ratio drops to 1 while frames stay slower than about 40 a second
+ * (two checks in a row: one hitch is not enough), and goes back to the
+ * screen's own when they keep up with the screen: the haze, mist, bloom and
+ * grading run on every pixel, so fewer pixels keep a slow machine smooth.
+ * Only the screen's ratio or 1, never a step between: 1.5 on a 2× screen is
+ * stretched by 4/3, which blurs the whole map and lays a fine grid over it.
+ * A ratio that proved too slow waits a minute before it is tried again, twice
+ * as long each time it fails again (up to ten minutes: no see-sawing).
+ * The "Always sharp" setting (`settings.sharp`, `sharp=0|1` in the URL) keeps
+ * the screen's ratio whatever the frame rate.
  */
 const MAX_RATIO = renderer.getPixelRatio();
-const res = { ratio: MAX_RATIO, ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0 };
-function adaptResolution(dt: number): void {
-  if (dt > 0.25) return; // (a hitch: a tab switch, a build)
-  res.time += dt;
-  res.frames++;
-  res.since += dt;
-  res.ceilingAge += dt;
-  if (res.ceilingAge > 60) res.ceiling = MAX_RATIO;
-  if (res.frames < 45 || res.since < 1.5) return;
-  const avg = res.time / res.frames;
-  res.time = res.frames = 0;
-  let next = res.ratio;
-  if (avg > 1 / 48 && res.ratio > 1) {
-    res.ceiling = res.ratio - 0.25;
-    res.ceilingAge = 0;
-    next = Math.max(1, res.ratio - 0.25);
-  } else if (avg < 1 / 57 && res.ratio < res.ceiling) next = Math.min(res.ceiling, res.ratio + 0.25);
-  if (next === res.ratio) return;
+const res = { ratio: MAX_RATIO, ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0, slow: 0, wait: 30 };
+function setRatio(next: number): void {
   res.ratio = next;
   res.since = 0;
   renderer.setPixelRatio(next);
   renderer.setSize(innerWidth, innerHeight);
   post.setSize(innerWidth, innerHeight);
+}
+function adaptResolution(dt: number): void {
+  if (settings.sharp) {
+    if (res.ratio !== MAX_RATIO) setRatio(MAX_RATIO);
+    res.ceiling = MAX_RATIO;
+    res.time = res.frames = res.slow = 0;
+    return;
+  }
+  if (dt > 0.25) return; // (a hitch: a tab switch, a build)
+  res.time += dt;
+  res.frames++;
+  res.since += dt;
+  res.ceilingAge += dt;
+  if (res.ceilingAge > res.wait) res.ceiling = MAX_RATIO;
+  if (res.frames < 45 || res.since < 1.5) return;
+  const avg = res.time / res.frames;
+  res.time = res.frames = 0;
+  res.slow = avg > 1 / 40 ? res.slow + 1 : 0;
+  let next = res.ratio;
+  if (res.slow >= 2 && res.ratio > 1) {
+    res.ceiling = 1;
+    res.ceilingAge = 0;
+    res.wait = Math.min(600, res.wait * 2);
+    next = 1;
+  } else if (avg < 1 / 57 && res.ratio < res.ceiling) next = res.ceiling;
+  if (next !== res.ratio) setRatio(next);
 }
 Object.assign(window, { __mapResolution: res });
 

@@ -82,6 +82,8 @@ const WORDS = {
   easyFlyNote: { km: 'ខ្លែងហោះរក្សាកម្ពស់៖ S ឡើង W ចុះ', en: 'Glider holds its height: S climbs, W dives' },
   // (on a touch screen: the stick of the touch controls, roam/touch.ts)
   easyFlyNoteTouch: { km: 'ខ្លែងហោះរក្សាកម្ពស់៖ ទាញដងបញ្ជាមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ', en: 'Glider holds its height: pull the stick back to climb, push to dive' },
+  sharp: { km: 'រូបភាពច្បាស់ជានិច្ច', en: 'Always sharp' },
+  sharpNote: { km: 'មិនបន្ថយភាពច្បាស់ ទោះផែនទីរលូនតិចជាងមុន', en: 'Full detail, even if the map runs less smoothly' },
   mute: { km: 'បិទសំឡេង', en: 'Mute sound' },
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
