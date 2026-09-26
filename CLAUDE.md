@@ -76,6 +76,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   and delete the PNG. The tab icon `public/favicon.svg` is the loading screen's temple.
   The map's bug report (B) and block look panel (K) are on the dev server
   only: a build shows neither.
+- Credits: the heart button by the gear opens them in the settings panel;
+  the names are `src/map/ui/credits.ts` (`uistate=credits` in shots).
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
 - Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
   the settings). The word list is `src/map/ui/lang.ts`; place texts are in

@@ -1,7 +1,8 @@
 import type { PlaceDef } from '../layout';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import { CREDITS } from './credits';
 import { ICON } from './icons';
-import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
+import { lang, num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { framed, setSteppedVars } from './shape';
 
 /**
@@ -27,7 +28,7 @@ import { framed, setSteppedVars } from './shape';
  * Shots (`?shot=1`) can show states: `uistate=` a comma list of
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
- * `settings`, `muted`, `begin` (the fade to black), `roam` (the interface
+ * `settings`, `credits` (the settings' credits page), `muted`, `begin` (the fade to black), `roam` (the interface
  * while roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
@@ -238,7 +239,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   gearBtn.dataset.tAria = 'settings';
   gearBtn.setAttribute('aria-controls', 'mu-settings');
   gearBtn.setAttribute('aria-expanded', 'false');
-  corner.append(langSwitch, muteBtn, gearBtn);
+  /** Credits (credits.ts): opens the panel on its credits page. */
+  const creditsBtn = framed(el('button', 'mu-round mu-cr-btn', ICON.heart), 'md');
+  creditsBtn.type = 'button';
+  creditsBtn.dataset.tAria = 'credits';
+  creditsBtn.dataset.tTitle = 'credits';
+  creditsBtn.setAttribute('aria-controls', 'mu-settings');
+  creditsBtn.setAttribute('aria-expanded', 'false');
+  corner.append(langSwitch, muteBtn, creditsBtn, gearBtn);
 
   const slider = (k: VolumeKey) =>
     `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`;
@@ -248,7 +256,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     return p ? `<div class="mu-set-sub" role="group" aria-labelledby="mu-${p}-h"><h4 id="mu-${p}-h" data-t="${p}"></h4>${rows}</div>` : rows;
   });
   const panel = framed(el('section', 'mu-settings', `
-    <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x" data-t-aria="closeSettings">${ICON.close}</button></div>
+    <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x mu-close" data-t-aria="closeSettings">${ICON.close}</button></div>
     <div class="mu-set-body">
       <div class="mu-set-group" role="group" data-t-aria="sound">
         <h3 data-t="sound"></h3>
@@ -286,15 +294,16 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       </div>
       <div class="mu-set-row">
         <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
-        <button type="button" class="mu-watch" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
+        <button type="button" class="mu-watch mu-story-go" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
       </div>
-    </div>`), 'lg');
+    </div>
+    <div class="mu-set-body mu-cr-body" hidden></div>`), 'lg');
   // (the choices, the story button and the switches in the stepped frames of the buttons above)
   for (const seg of panel.querySelectorAll<HTMLElement>('.mu-seg')) {
     framed(seg, 'sm');
     for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) framed(b, 'xs');
   }
-  framed(panel.querySelector<HTMLButtonElement>('.mu-watch')!, 'sm');
+  for (const b of panel.querySelectorAll<HTMLButtonElement>('.mu-watch')) framed(b, 'sm');
   for (const s of panel.querySelectorAll<HTMLButtonElement>('.mu-switch')) framed(s, 'xs');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
@@ -309,6 +318,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch')];
   /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
   const setBody = panel.querySelector<HTMLElement>('.mu-set-body')!;
+  /** The credits page (credits.ts): in place of the settings' body (the corner's credits button). */
+  const crBody = panel.querySelector<HTMLElement>('.mu-cr-body')!;
+  const panelHead = panel.querySelector<HTMLElement>('.mu-set-head h2')!;
+  let creditsOpen = false;
 
   // ── Hint, fade, live region ─────────────────────────────────────────────
   const hint = el('p', 'mu-hint', `${ICON.plane}<span data-t="hint"></span>`);
@@ -332,6 +345,15 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
    * the level in use in it (no `data-t`: `fillWords` and `syncSettings` fill
    * it, so a language change puts the level's word in again too).
    */
+  function fillCredits(): void {
+    const l = lang();
+    crBody.innerHTML = CREDITS.map(
+      (g) =>
+        `<div class="mu-set-group" role="group"><h3>${g.head[l]}</h3>${g.lines
+          .map((c) => `<p class="mu-cr-line">${c.name ? `<span lang="en">${c.name}</span>` : ''}${c.note ? `<small>${c.note[l]}</small>` : ''}</p>`)
+          .join('')}</div>`,
+    ).join('');
+  }
   function fillGraphicsNote(): void {
     const g = GRAPHICS_CHOICE[settings.graphics] ?? GRAPHICS_CHOICE.auto;
     graphicsNote.textContent = g === GRAPHICS_CHOICE.auto ? t(g.note, { level: t(GRAPHICS_CHOICE[graphicsLevel].word) }) : t(g.note);
@@ -349,6 +371,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   /** Every word in the language in use: the marked elements, the cards and the open panel. */
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
+    fillCredits();
     fillFlyNote();
     fillGraphicsNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
@@ -581,32 +604,64 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function toggleSettings(open = !settingsOpen, sound = true): void {
     if (open === settingsOpen) return;
     settingsOpen = open;
+    const fromCredits = creditsOpen;
+    if (!open) showCredits(false);
     panel.classList.toggle('is-open', open);
     // (the roaming mini-map, under the gear, fades while the panel is open: map.css)
     root.classList.toggle('mu-set-open', open);
     panel.inert = !open;
     if (open) panel.removeAttribute('aria-hidden');
     else panel.setAttribute('aria-hidden', 'true');
-    gearBtn.setAttribute('aria-expanded', String(open));
-    gearBtn.classList.toggle('is-on', open);
+    cornerOn();
     if (sound) h.onSound(open ? 'open' : 'close');
     if (open) sliders[0].focus({ preventScroll: true });
-    else if (panel.contains(document.activeElement)) gearBtn.focus({ preventScroll: true });
+    else if (panel.contains(document.activeElement)) (fromCredits ? creditsBtn : gearBtn).focus({ preventScroll: true });
+  }
+  /** The panel shows the credits page (open) or the settings. */
+  function showCredits(open: boolean): void {
+    if (open === creditsOpen) return;
+    creditsOpen = open;
+    setBody.hidden = open;
+    crBody.hidden = !open;
+    panelHead.dataset.t = open ? 'credits' : 'settings';
+    panelHead.textContent = t(panelHead.dataset.t as WordKey);
+    crBody.scrollTop = 0;
+    scrollEdges();
+    cornerOn();
+  }
+  /** The gear or the credits button lit, for what the panel shows. */
+  function cornerOn(): void {
+    gearBtn.setAttribute('aria-expanded', String(settingsOpen && !creditsOpen));
+    gearBtn.classList.toggle('is-on', settingsOpen && !creditsOpen);
+    creditsBtn.setAttribute('aria-expanded', String(settingsOpen && creditsOpen));
+    creditsBtn.classList.toggle('is-on', settingsOpen && creditsOpen);
+  }
+  /** The corner's gear (`credits` false) or credits button: opens the panel on its page, or closes it. */
+  function panelButton(credits: boolean): void {
+    if (settingsOpen && creditsOpen === credits) return toggleSettings(false);
+    if (!settingsOpen) toggleSettings(true);
+    else h.onSound('toggle');
+    showCredits(credits);
+    if (credits) panel.querySelector<HTMLElement>('.mu-close')!.focus({ preventScroll: true });
   }
   /** Soft edges on the panel's body where there is more to scroll to (map.css). */
   function scrollEdges(): void {
-    setBody.classList.toggle('is-more-up', setBody.scrollTop > 1);
-    setBody.classList.toggle('is-more-down', setBody.scrollTop + setBody.clientHeight < setBody.scrollHeight - 1);
+    for (const b of [setBody, crBody]) {
+      b.classList.toggle('is-more-up', b.scrollTop > 1);
+      b.classList.toggle('is-more-down', b.scrollTop + b.clientHeight < b.scrollHeight - 1);
+    }
   }
   setBody.addEventListener('scroll', scrollEdges, { passive: true });
+  crBody.addEventListener('scroll', scrollEdges, { passive: true });
   panel.inert = true;
   panel.setAttribute('aria-hidden', 'true');
   info.inert = true;
   info.setAttribute('aria-hidden', 'true');
 
-  gearBtn.addEventListener('click', () => toggleSettings());
-  panel.querySelector('.mu-x')!.addEventListener('click', () => toggleSettings(false));
-  panel.querySelector('.mu-watch')!.addEventListener('click', () => {
+  gearBtn.addEventListener('click', () => panelButton(false));
+  creditsBtn.addEventListener('click', () => panelButton(true));
+  panel.querySelector('.mu-close')!.addEventListener('click', () => toggleSettings(false));
+  panel.querySelector('.mu-story-go')!.addEventListener('click', () => {
     toggleSettings(false, false);
     h.onStory();
   });
@@ -824,6 +879,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'pressed' && c) c.button.classList.add('is-hover', 'is-press');
       if (k === 'selected' && c) applySelected(c.place.id);
       if (k === 'settings') toggleSettings(true, false);
+      if (k === 'credits') {
+        toggleSettings(true, false);
+        showCredits(true);
+      }
       if (k === 'muted') {
         settings = { ...settings, master: 0 };
         syncSettings();

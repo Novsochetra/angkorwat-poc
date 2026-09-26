@@ -98,6 +98,8 @@ const WORDS = {
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
   km: { km: 'គ.ម', en: 'km' },
+  // The credits button by the gear and its page (the names: credits.ts).
+  credits: { km: 'អ្នករួមចំណែក', en: 'Credits' },
   // The story before the map (story/story.ts; its own words are in story/beats.ts), and its row in the settings:
   stStory: { km: 'រឿងរ៉ាវរបស់យើង', en: 'Our story' },
   stStoryNote: { km: 'ពាក្យផ្ដាំជូនយុវជនខ្មែរ', en: 'A message to the young people of Cambodia' },

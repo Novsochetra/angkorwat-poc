@@ -526,6 +526,16 @@
   color: var(--mu-gold-hi);
 }
 
+.mu-cr-btn.is-on {
+  --mu-edge: var(--mu-gold-hi);
+  color: var(--mu-gold-hi);
+}
+
+.mu-cr-btn .mu-icon {
+  width: calc(19 * var(--px));
+  height: calc(19 * var(--px));
+}
+
 .mu-gear.is-on .mu-icon {
   transform: rotate(60deg);
 }
@@ -1275,6 +1285,28 @@
   transition-duration: 0.08s;
 }
 
+/* The credits page (credits.ts): in place of the settings' body (the corner's credits button). */
+.mu-settings [hidden] {
+  display: none !important;
+}
+
+.mu-cr-line {
+  margin: 0 0 calc(8 * var(--px));
+  font-size: calc(14.5 * var(--px));
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--mu-ink);
+}
+
+.mu-cr-line small {
+  display: block;
+  margin-top: calc(2 * var(--px));
+  font-size: calc(12 * var(--px));
+  font-weight: 400;
+  color: var(--mu-dim);
+  text-wrap: pretty;
+}
+
 /* ── Hint ───────────────────────────────────────────────────────────────── */
 
 .mu-hint {
@@ -1720,7 +1752,7 @@ body.reporting .map-ui {
   font-weight: 700;
 }
 
-:lang(km) :is(.mu-set-sub h4, .mu-set-row small, .mu-set-note) {
+:lang(km) :is(.mu-set-sub h4, .mu-set-row small, .mu-set-note, .mu-cr-line small) {
   font-size: calc(13 * var(--px));
 }
 
@@ -1745,11 +1777,11 @@ body.reporting .map-ui {
     font-size: 13.5px;
   }
 
-  /* (under the mute and gear buttons: the title needs the width) */
+  /* (under the mute, credits and gear buttons: the title needs the width) */
   .mu-corner {
     flex-wrap: wrap;
     justify-content: flex-end;
-    width: 82px;
+    width: 114px;
     row-gap: 6px;
   }
 
