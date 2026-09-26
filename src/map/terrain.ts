@@ -1,7 +1,7 @@
 import { Group } from 'three';
 import { VoxelBuilder } from '../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../voxel/VoxelMesh';
-import type { HeightField } from './heightfield';
+import { buildVoxelMesh, type CoverGround } from '../voxel/VoxelMesh';
+import { CELL, type HeightField } from './heightfield';
 import { ColumnMaker } from './terrain/columns';
 import { ChunkGrid, ChunkLods } from './terrain/lod';
 import { placeRocks } from './terrain/rocks';
@@ -16,13 +16,16 @@ import type { MapContext, MapPart } from './types';
  * The blocks are split into 150 m chunks (terrain/lod.ts), each with its
  * own meshes, so a camera low among the hills only draws the chunks in front
  * of it. Far blocks are plain boxes (quality 'low'), and so are the 2 m
- * blocks of chunks far from the camera.
+ * blocks of chunks far from the camera. A block draws only the sides that
+ * can be seen (`hideCovered`, with the hollow under the land): 3 in 4 are
+ * tops that show only their top face, the rest lies against the columns
+ * around.
  */
 
 const GRID = new ChunkGrid(150);
 
-/** The land's blocks per chunk: [near (2 m blocks), far (4 and 8 m)], no meshes yet. */
-export function layTerrain(f: HeightField): [VoxelBuilder, VoxelBuilder][] {
+/** The land's blocks per chunk: [near (2 m blocks), far (4 and 8 m)], no meshes yet; and the hollow under them. */
+export function layTerrain(f: HeightField): { chunks: [VoxelBuilder, VoxelBuilder][]; ground: CoverGround } {
   const chunks: [VoxelBuilder, VoxelBuilder][] = [];
   for (let n = 0; n < GRID.count; n++) chunks.push([new VoxelBuilder(), new VoxelBuilder()]);
   const sink = (x: number, z: number, lod: number) => chunks[GRID.at(x, z)][lod === 0 ? 0 : 1];
@@ -40,7 +43,7 @@ export function layTerrain(f: HeightField): [VoxelBuilder, VoxelBuilder][] {
       }
     }
   placeRocks(f, sink, maker.wet);
-  return chunks;
+  return { chunks, ground: { x0: f.x0, z0: f.z0, cell: CELL, nx, nz, floor: maker.floor } };
 }
 
 export function buildTerrain(ctx: MapContext): MapPart {
@@ -49,16 +52,17 @@ export function buildTerrain(ctx: MapContext): MapPart {
   let blocks = 0;
   const lowOnly = ctx.quality === 'low';
   const lods = new ChunkLods();
-  layTerrain(ctx.field).forEach(([near, far], n) => {
+  const { chunks, ground } = layTerrain(ctx.field);
+  chunks.forEach(([near, far], n) => {
     if (near.boxes.length) {
       blocks += near.boxes.length;
-      const mesh = buildVoxelMesh(near, { quality: lowOnly ? 'low' : 'medium', name: `terrain:${n}:near` });
+      const mesh = buildVoxelMesh(near, { quality: lowOnly ? 'low' : 'medium', name: `terrain:${n}:near`, hideCovered: { ground } });
       if (lowOnly) object.add(mesh);
       else lods.add(object, GRID.box(n), mesh);
     }
     if (far.boxes.length) {
       blocks += far.boxes.length;
-      object.add(buildVoxelMesh(far, { quality: 'low', name: `terrain:${n}:far` }));
+      object.add(buildVoxelMesh(far, { quality: 'low', name: `terrain:${n}:far`, hideCovered: { ground } }));
     }
   });
   return { name: 'terrain', object, blocks, update: (f) => lods.update(f.camera, f.roam !== 'overview') };

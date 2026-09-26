@@ -608,6 +608,15 @@ landmark ≤ 20 k · road ≤ 20 k · foreground ≈ 3 k. Animals (fauna, wildli
 posed in the vertex shader, only animals near the camera or the explorer
 are updated, far ones hidden. Keep each part's build
 under ~600 ms. The page must stay smooth (60 fps) on a MacBook (M1 Max).
+The frame is bound by triangles more than pixels (at a quarter of the
+pixels it takes 14 ms of 17 on low). The land draws only the block sides
+that can be seen (`buildVoxelMesh(…, { hideCovered: { ground } })`,
+VoxelMesh.ts): a side its builder marks covered is left out only where
+everything just outside it is solid, another block or the hollow under the
+columns (`floor` in terrain/columns.ts); 3 in 4 blocks then show only their
+top. The land's triangles on low: 0.7 M instead of 1.35 M (the whole frame
+−15 %, the shadow pass −21 %), and about 115 ms more to build. For parts that
+never move only (a swaying leaf would show what it covered).
 The player picks a **Graphics** level in the settings (`graphics.ts`,
 `settings.graphics`, `graphics=auto|low|medium|high|max` in the URL). Auto
 (the default) starts on low on a phone and medium elsewhere, steps down a

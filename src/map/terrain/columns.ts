@@ -36,6 +36,12 @@ export class ColumnMaker {
   readonly strata = new Strata(3);
   /** Cells by a waterfall (dark wet rock, no shaping). */
   readonly wet: Uint8Array;
+  /**
+   * Per cell: the foot of its column's lowest block (m). Below it lies the
+   * hollow under the land, closed off by the columns around: no camera sees
+   * into it (VoxelMesh.ts `hideCovered` leaves out the sides against it).
+   */
+  readonly floor: Float32Array;
   private readonly splits: number[] = [];
   private readonly hard = new Set<number>();
   // What the bug report tool names as the maker of each block (one trace per
@@ -52,6 +58,7 @@ export class ColumnMaker {
     private readonly sink: Sink,
   ) {
     this.wet = new Uint8Array(f.nx * f.nz);
+    this.floor = new Float32Array(f.nx * f.nz).fill(-Infinity);
     for (const fall of f.falls) {
       const r = fall.width / 2 + 5;
       const len = 10 + (fall.top - fall.bottom) * 0.3;
@@ -256,6 +263,8 @@ export class ColumnMaker {
     // (a top with no wall under it goes 1 m deeper, past the next step's edge)
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
     b.span(x - CELL / 2 - oW, bottom, z - CELL / 2 - oN, x + CELL / 2 + oE, h, z + CELL / 2 + oS, color, mat, { open, shade, src: this.srcTop });
+    // (the wall's lowest band goes 1 m past the neighbour's top)
+    this.floor[c] = low >= h - CELL ? bottom : low - 1;
     if (low >= h - CELL) return;
 
     // Wall: split at the strata, at each neighbour's top (shaping stops
@@ -368,6 +377,7 @@ export class ColumnMaker {
     const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0) | (hN < h ? 32 : 0);
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
     b.span(x - size / 2, bottom, z - size / 2, x + size / 2, h, z + size / 2, color, mat, { open, shade: 0.96 + hash3(i, h, k, 17) * 0.08, src });
+    for (let a = k; a < Math.min(k + g, f.nz); a++) this.floor.fill(low >= h - CELL ? bottom : low - 1, i + a * nx, i + Math.min(g, nx - i) + a * nx);
     if (low >= h - CELL) return;
     const w = Strata.warp(x, z);
     const splits = this.splits;

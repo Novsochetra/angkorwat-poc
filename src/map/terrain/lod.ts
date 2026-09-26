@@ -1,6 +1,6 @@
 import { Box3, BufferGeometry, Group, InstancedMesh, Vector3, type Camera } from 'three';
 import { VOXEL_MATERIALS } from '../../voxel/materials';
-import { unitVoxelGeometry } from '../../voxel/VoxelMesh';
+import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
 import { MAP_BOUNDS } from '../layout';
 
 /**
@@ -66,7 +66,8 @@ export function lowTwin(src: Group): Group {
     const spec = VOXEL_MATERIALS[m.name.slice(m.name.lastIndexOf(':') + 1) as keyof typeof VOXEL_MATERIALS];
     const unit = unitVoxelGeometry(spec?.bevel ?? 0.1, 0);
     const geo = new BufferGeometry();
-    geo.setIndex(unit.index);
+    // (only the sides its blocks show, if the mesh leaves some out)
+    geo.setIndex(openSidesIndex(unit, m.userData.voxelSides ?? 63));
     geo.setAttribute('position', unit.getAttribute('position'));
     geo.setAttribute('normal', unit.getAttribute('normal'));
     for (const name of ['voxOpen', 'voxRadius', 'voxSurf']) {

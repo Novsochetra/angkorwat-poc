@@ -1,6 +1,6 @@
 import type { BufferAttribute, InstancedMesh, Object3D } from 'three';
 import { VOXEL_MATERIALS, type VoxelMaterialKey } from '../voxel/materials';
-import { unitVoxelGeometry } from '../voxel/VoxelMesh';
+import { openSidesIndex, unitVoxelGeometry } from '../voxel/VoxelMesh';
 import { GRAPHICS_LEVELS, type GraphicsLevel, type MapQuality } from './types';
 
 /**
@@ -85,7 +85,8 @@ export function setGraphics(level: GraphicsLevel, scene: Object3D): void {
     if (plain && !own) own = mesh.userData.voxelOwnShape = { index: geo.index!, position: geo.getAttribute('position') as BufferAttribute, normal: geo.getAttribute('normal') as BufferAttribute };
     if (!own) return;
     const to = plain ? unitVoxelGeometry(VOXEL_MATERIALS[key].bevel, 0) : null;
-    const index = to ? to.index! : own.index;
+    // (only the sides the mesh's blocks show, if it leaves some out: VoxelMesh.ts `hideCovered`)
+    const index = to ? openSidesIndex(to, mesh.userData.voxelSides ?? 63) : own.index;
     if (geo.index === index) return;
     geo.setIndex(index);
     geo.setAttribute('position', to ? to.getAttribute('position') : own.position);

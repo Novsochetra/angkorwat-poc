@@ -15,7 +15,7 @@ import {
 } from 'three';
 import type GUI from 'three/addons/libs/lil-gui.module.min.js';
 import { VOXEL_MATERIALS, voxelBevelUniform, voxelFamiliesInUse, type VoxelLookUniforms, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
-import { unitVoxelGeometry } from './VoxelMesh';
+import { openSidesIndex, unitVoxelGeometry } from './VoxelMesh';
 
 /**
  * Block look panel (K): sliders for every block family on the page (edge
@@ -195,7 +195,7 @@ class LookPanel {
         // (plain boxes far away have no edges to change)
         if (!mesh.isInstancedMesh || mesh.material !== f.material || !shape || shape.segments === 0) return;
         const g = unitVoxelGeometry(bevel.value, shape.segments, flat);
-        mesh.geometry.setIndex(g.index);
+        mesh.geometry.setIndex(openSidesIndex(g, mesh.userData.voxelSides ?? 63));
         mesh.geometry.setAttribute('position', g.getAttribute('position'));
         mesh.geometry.setAttribute('normal', g.getAttribute('normal'));
       });

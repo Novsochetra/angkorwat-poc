@@ -1,5 +1,6 @@
 import {
   BoxGeometry,
+  BufferAttribute,
   BufferGeometry,
   Color,
   Euler,
@@ -186,6 +187,299 @@ export function roundedBlockGeometry(sx: number, sy: number, sz: number, radius:
   return geo;
 }
 
+/**
+ * For each triangle of a unit block, the sides (bits as a box's `open`:
+ * +x −x +y −y +z −z) whose being seen can show it. A face: its own side. An
+ * edge strip between two faces: those two, and the sides at either end of
+ * the edge (where four blocks meet, their rounded edges leave a narrow shaft
+ * between them, seen from above down to where the tops are, so a top-only
+ * block keeps its upright edges). A corner: its three sides. The kind comes
+ * from the triangle's own normal (one, two or three axes), so every rounding
+ * step counts.
+ */
+function sidesOfTriangles(geometry: BufferGeometry): Uint8Array {
+  const index = geometry.index!;
+  const pos = geometry.getAttribute('position');
+  const sides = new Uint8Array(index.count / 3);
+  const a = new Vector3();
+  const b = new Vector3();
+  const c = new Vector3();
+  for (let t = 0; t < sides.length; t++) {
+    a.fromBufferAttribute(pos, index.getX(t * 3));
+    b.fromBufferAttribute(pos, index.getX(t * 3 + 1)).sub(a);
+    c.fromBufferAttribute(pos, index.getX(t * 3 + 2)).sub(a);
+    const n = b.cross(c).normalize();
+    let m = 0;
+    let axes = 0;
+    let free = 0;
+    for (let k = 0; k < 3; k++) {
+      const v = n.getComponent(k);
+      if (v > 1e-3) m |= 1 << (k * 2);
+      else if (v < -1e-3) m |= 2 << (k * 2);
+      else {
+        free = 3 << (k * 2);
+        continue;
+      }
+      axes++;
+    }
+    // (a triangle with no size has no side: always kept)
+    sides[t] = axes === 0 ? 63 : axes === 2 ? m | free : m;
+  }
+  return sides;
+}
+
+const sidesIndexCache = new WeakMap<BufferAttribute, Map<number, BufferAttribute>>();
+
+/**
+ * The index of a unit block's triangles that can show while only the sides
+ * in `shown` can be seen (see sidesOfTriangles). All sides: the block's own
+ * index.
+ */
+export function openSidesIndex(geometry: BufferGeometry, shown: number): BufferAttribute {
+  const full = geometry.index!;
+  if ((shown & 63) === 63) return full;
+  let byShown = sidesIndexCache.get(full);
+  if (!byShown) sidesIndexCache.set(full, (byShown = new Map()));
+  let index = byShown.get(shown & 63);
+  if (!index) {
+    const sides = sidesOfTriangles(geometry);
+    const keep: number[] = [];
+    for (let t = 0; t < sides.length; t++) if (sides[t] & shown) keep.push(full.getX(t * 3), full.getX(t * 3 + 1), full.getX(t * 3 + 2));
+    index = new BufferAttribute(full.array instanceof Uint32Array ? new Uint32Array(keep) : new Uint16Array(keep), 1);
+    byShown.set(shown & 63, index);
+  }
+  return index;
+}
+
+/**
+ * The land under a builder's blocks, for `hideCovered`: a grid of cells, each
+ * solid below its `floor` (the hollow under the land, closed off all round).
+ */
+export interface CoverGround {
+  /** The grid's corner (m), cell size (m) and cells across x and z. */
+  x0: number;
+  z0: number;
+  cell: number;
+  nx: number;
+  nz: number;
+  /** Per cell (i + k · nx): solid below this height (m); −Infinity: nothing. */
+  floor: Float32Array;
+}
+
+/**
+ * How far out a side is tested (m): past the shader's overlap of flush faces
+ * (1.2 cm), well inside any block. A side's own border is left out of the
+ * test by `EDGE` (m), so blocks meeting it at the same line cover it.
+ */
+const COVER = { out: 0.02, edge: 0.01, hash: 2 };
+
+/** Rectangles (u0, u1, v0, v1 each) to test a side against, and the two work lists of `coveredBy`. */
+const RECTS = 2048;
+const rectBuf = new Float64Array(RECTS * 4);
+const workA = new Float64Array(RECTS * 4);
+const workB = new Float64Array(RECTS * 4);
+
+/**
+ * Whether rectangle [u0, u1] × [v0, v1] lies inside the union of the first
+ * `count` rectangles of `rectBuf`: each one is cut out of what is left. Too
+ * many pieces left: not covered (the side is drawn).
+ */
+function coveredBy(u0: number, u1: number, v0: number, v1: number, count: number): boolean {
+  let left = workA;
+  let next = workB;
+  left[0] = u0;
+  left[1] = u1;
+  left[2] = v0;
+  left[3] = v1;
+  let nl = 1;
+  for (let r = 0; r < count; r++) {
+    const ru0 = rectBuf[r * 4];
+    const ru1 = rectBuf[r * 4 + 1];
+    const rv0 = rectBuf[r * 4 + 2];
+    const rv1 = rectBuf[r * 4 + 3];
+    let nn = 0;
+    for (let p = 0; p < nl && nn + 4 <= RECTS; p++) {
+      const pu0 = left[p * 4];
+      const pu1 = left[p * 4 + 1];
+      const pv0 = left[p * 4 + 2];
+      const pv1 = left[p * 4 + 3];
+      if (ru1 <= pu0 || ru0 >= pu1 || rv1 <= pv0 || rv0 >= pv1) {
+        nn = piece(next, nn, pu0, pu1, pv0, pv1);
+        continue;
+      }
+      // (the parts of p outside r)
+      if (pu0 < ru0) nn = piece(next, nn, pu0, ru0, pv0, pv1);
+      if (pu1 > ru1) nn = piece(next, nn, ru1, pu1, pv0, pv1);
+      const a = Math.max(pu0, ru0);
+      const b = Math.min(pu1, ru1);
+      if (pv0 < rv0) nn = piece(next, nn, a, b, pv0, rv0);
+      if (pv1 > rv1) nn = piece(next, nn, a, b, rv1, pv1);
+    }
+    if (nn + 4 > RECTS) return false;
+    const t = left;
+    left = next;
+    next = t;
+    nl = nn;
+    if (!nl) return true;
+  }
+  return false;
+}
+/** Put a rectangle in a work list at `n`; returns the new length. */
+function piece(list: Float64Array, n: number, a: number, b: number, c: number, d: number): number {
+  list[n * 4] = a;
+  list[n * 4 + 1] = b;
+  list[n * 4 + 2] = c;
+  list[n * 4 + 3] = d;
+  return n + 1;
+}
+
+/**
+ * The sides of each block that can be seen: those its builder marks open,
+ * and any other side with somewhere just outside it that is not solid (not
+ * inside another block, not below the ground's floor). The builder's `open`
+ * marks what the blocks look like (a side against a neighbour shades as a
+ * seam), and a side it marks covered may still stick out a little (a grass
+ * lip over a cliff, a pillar out of the wall): only this test leaves sides
+ * out. Turned blocks show every side and cover nothing.
+ */
+function shownSides(boxes: VoxelBox[], ground?: CoverGround): Uint8Array {
+  const n = boxes.length;
+  const shown = new Uint8Array(n);
+  const lo = new Float64Array(n * 3);
+  const hi = new Float64Array(n * 3);
+  const still = new Uint8Array(n);
+  let [gx0, gx1, gz0, gz1] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (let j = 0; j < n; j++) {
+    const b = boxes[j];
+    lo[j * 3] = b.x - b.sx / 2;
+    lo[j * 3 + 1] = b.y - b.sy / 2;
+    lo[j * 3 + 2] = b.z - b.sz / 2;
+    hi[j * 3] = b.x + b.sx / 2;
+    hi[j * 3 + 1] = b.y + b.sy / 2;
+    hi[j * 3 + 2] = b.z + b.sz / 2;
+    if (b.rx || b.ry || b.rz) continue;
+    still[j] = 1;
+    gx0 = Math.min(gx0, lo[j * 3]);
+    gx1 = Math.max(gx1, hi[j * 3]);
+    gz0 = Math.min(gz0, lo[j * 3 + 2]);
+    gz1 = Math.max(gz1, hi[j * 3 + 2]);
+  }
+  // Blocks by squares of the ground plan (a flat list per square: `first`, `items`).
+  const H = COVER.hash;
+  const ox = Math.floor(gx0 / H);
+  const oz = Math.floor(gz0 / H);
+  const w = Math.max(1, Math.floor(gx1 / H) - ox + 1);
+  const d = Math.max(1, Math.floor(gz1 / H) - oz + 1);
+  const first = new Int32Array(w * d + 1);
+  const each = (j: number, fn: (sq: number) => void) => {
+    for (let i = Math.floor(lo[j * 3] / H) - ox; i <= Math.floor(hi[j * 3] / H) - ox; i++)
+      for (let k = Math.floor(lo[j * 3 + 2] / H) - oz; k <= Math.floor(hi[j * 3 + 2] / H) - oz; k++) fn(i + k * w);
+  };
+  for (let j = 0; j < n; j++) if (still[j]) each(j, (sq) => first[sq + 1]++);
+  for (let q = 0; q < w * d; q++) first[q + 1] += first[q];
+  const items = new Int32Array(first[w * d]);
+  const fill = first.slice(0, w * d);
+  for (let j = 0; j < n; j++) if (still[j]) each(j, (sq) => (items[fill[sq]++] = j));
+
+  for (let j = 0; j < n; j++) {
+    let m = (boxes[j].open ?? 63) & 63;
+    if (!still[j]) m = 63;
+    for (let s = 0; s < 6 && m !== 63; s++) {
+      if (m & (1 << s)) continue;
+      const a = s >> 1;
+      const u = (a + 1) % 3;
+      const v = (a + 2) % 3;
+      const q = s & 1 ? lo[j * 3 + a] - COVER.out : hi[j * 3 + a] + COVER.out;
+      const e = COVER.edge;
+      const u0 = lo[j * 3 + u] + e;
+      const u1 = hi[j * 3 + u] - e;
+      const v0 = lo[j * 3 + v] + e;
+      const v1 = hi[j * 3 + v] - e;
+      let count = 0;
+      // The ground's solid part in the plane just outside (u, v: y, z for an x side · z, x for a y side · x, y for a z side).
+      if (ground) {
+        const { x0, z0, cell, nx, nz, floor } = ground;
+        const i0 = Math.floor(((a === 0 ? q : lo[j * 3]) - x0) / cell);
+        const i1 = a === 0 ? i0 : Math.floor((hi[j * 3] - 1e-6 - x0) / cell);
+        const k0 = Math.floor(((a === 2 ? q : lo[j * 3 + 2]) - z0) / cell);
+        const k1 = a === 2 ? k0 : Math.floor((hi[j * 3 + 2] - 1e-6 - z0) / cell);
+        for (let i = Math.max(0, i0); i <= Math.min(nx - 1, i1); i++)
+          for (let k = Math.max(0, k0); k <= Math.min(nz - 1, k1); k++) {
+            const top = floor[i + k * nx];
+            if (top === -Infinity || count >= RECTS || (a === 1 && top <= q)) continue;
+            if (a === 0) count = piece(rectBuf, count, -Infinity, top, z0 + k * cell, z0 + (k + 1) * cell);
+            else if (a === 2) count = piece(rectBuf, count, x0 + i * cell, x0 + (i + 1) * cell, -Infinity, top);
+            else count = piece(rectBuf, count, z0 + k * cell, z0 + (k + 1) * cell, x0 + i * cell, x0 + (i + 1) * cell);
+          }
+      }
+      // Other blocks through the plane just outside (one of them often covers the whole side).
+      let whole = false;
+      const i0 = Math.floor((a === 0 ? q : lo[j * 3]) / H) - ox;
+      const i1 = Math.floor((a === 0 ? q : hi[j * 3]) / H) - ox;
+      const k0 = Math.floor((a === 2 ? q : lo[j * 3 + 2]) / H) - oz;
+      const k1 = Math.floor((a === 2 ? q : hi[j * 3 + 2]) / H) - oz;
+      for (let i = Math.max(0, i0); i <= Math.min(w - 1, i1) && !whole; i++)
+        for (let k = Math.max(0, k0); k <= Math.min(d - 1, k1) && !whole; k++)
+          for (let t = first[i + k * w]; t < first[i + k * w + 1]; t++) {
+            const o = items[t];
+            const o3 = o * 3;
+            if (o === j || lo[o3 + a] >= q || hi[o3 + a] <= q) continue;
+            const ou0 = lo[o3 + u];
+            const ou1 = hi[o3 + u];
+            const ov0 = lo[o3 + v];
+            const ov1 = hi[o3 + v];
+            if (ou1 <= u0 || ou0 >= u1 || ov1 <= v0 || ov0 >= v1) continue;
+            if (ou0 <= u0 && ou1 >= u1 && ov0 <= v0 && ov1 >= v1) {
+              whole = true;
+              break;
+            }
+            if (count < RECTS) count = piece(rectBuf, count, ou0, ou1, ov0, ov1);
+          }
+      if (!whole && !(count && coveredBy(u0, u1, v0, v1, count))) m |= 1 << s;
+    }
+    shown[j] = m;
+  }
+  return shown;
+}
+
+/**
+ * A family's blocks grouped by the sides they show (`hideCovered`): a group
+ * of its own for each set of shown sides common enough (the land's tops, 3
+ * in 4 of its blocks), the rest together, drawn with every side any of them
+ * shows. Each group is one more draw call, so rare sets stay in the rest:
+ * a group of its own needs 1000 blocks (on the low graphics level a top-only
+ * block saves about 4 triangles: less than 4000 is not worth a draw call on
+ * a phone).
+ */
+const COMMON_SIDES = { blocks: 1000, share: 0.15 };
+function bySides(boxes: VoxelBox[], shown: Uint8Array): { sides: number; list: VoxelBox[] }[] {
+  const families = new Map<string, Map<number, VoxelBox[]>>();
+  for (let j = 0; j < boxes.length; j++) {
+    const b = boxes[j];
+    let groups = families.get(b.mat);
+    if (!groups) families.set(b.mat, (groups = new Map()));
+    let g = groups.get(shown[j]);
+    if (!g) groups.set(shown[j], (g = []));
+    g.push(b);
+  }
+  const out: { sides: number; list: VoxelBox[] }[] = [];
+  for (const groups of families.values()) {
+    let total = 0;
+    for (const g of groups.values()) total += g.length;
+    const min = Math.max(COMMON_SIDES.blocks, total * COMMON_SIDES.share);
+    const rest: VoxelBox[] = [];
+    let restSides = 0;
+    for (const [m, g] of groups)
+      if (m !== 63 && g.length >= min) out.push({ sides: m, list: g });
+      else {
+        for (const b of g) rest.push(b);
+        restSides |= m;
+      }
+    if (rest.length) out.push({ sides: restSides, list: rest });
+  }
+  return out;
+}
+
 export interface VoxelMeshOptions {
   quality?: VoxelQuality;
   /** Subtracted from every box position (e.g. the joint pivot the part hangs from). */
@@ -193,6 +487,15 @@ export interface VoxelMeshOptions {
   castShadow?: boolean;
   receiveShadow?: boolean;
   name?: string;
+  /**
+   * Leave out the sides no one can see: every side the builder does not
+   * mark open, where just outside it is all solid (other blocks of this
+   * builder; with `ground`, the hollow under the land too). The blocks of a
+   * family are then split by the sides they show (a few meshes each,
+   * `userData.voxelSides`: the sides drawn, bits as `open`). For blocks that
+   * never move (a swaying leaf would show what it covered).
+   */
+  hideCovered?: boolean | { ground?: CoverGround };
 }
 
 const _m = new Matrix4();
@@ -241,7 +544,9 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
   group.name = options.name ?? 'voxels';
   // Builder space = instance position + offset (the feedback tool reports picks in it).
   group.userData.voxelOffset = offset.clone();
-  for (const list of buckets.values()) {
+  const hide = options.hideCovered;
+  const lists = hide ? bySides(builder.boxes, shownSides(builder.boxes, hide === true ? undefined : hide.ground)) : [...buckets.values()].map((l) => ({ sides: 63, list: l }));
+  for (const { sides, list } of lists) {
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
     const chamfer = (spec as VoxelMaterialSpec).chamfer ?? false;
@@ -250,7 +555,7 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     // A thin geometry wrapper per mesh: shares the cached index/position/normal
     // buffers and adds the per-instance side masks and bevel radius.
     const geo = new BufferGeometry();
-    geo.setIndex(geometry.index);
+    geo.setIndex(openSidesIndex(geometry, sides));
     geo.setAttribute('position', geometry.getAttribute('position'));
     geo.setAttribute('normal', geometry.getAttribute('normal'));
     const open = new Float32Array(list.length);
@@ -261,6 +566,8 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     mesh.name = `${group.name}:${mat}`;
     // (the look panel rebuilds the edges from this: segments, flat cut or round)
     mesh.userData.voxelShape = { segments, flat: chamfer };
+    // (the sides drawn, when some are left out: a new shape of block keeps to them, openSidesIndex)
+    if (sides !== 63) mesh.userData.voxelSides = sides;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       // Bits 0–5: exposed sides; bits 6–11: joints to other blocks.
