@@ -16,7 +16,7 @@ import type { VoxelBuilder } from '../voxel/VoxelBuilder';
  *  - Builds are deterministic: the same seed + variant gives the same piece.
  */
 
-export type KitSection = '18.1' | '18.2' | '19.1' | '19.2' | '20';
+export type KitSection = '15' | '16' | '17.1' | '17.2' | '18.1' | '18.2' | '19.1' | '19.2' | '20' | '21.1' | '21.2' | '21.3';
 
 /** An axis-aligned collision box in piece space (metres). */
 export interface KitCollider {

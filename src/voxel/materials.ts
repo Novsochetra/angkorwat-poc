@@ -1,10 +1,12 @@
-import { Color, MeshBasicMaterial, MeshStandardMaterial, type Material, type WebGLProgramParametersWithUniforms } from 'three';
+import { Color, DataTexture, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, RGBAFormat, type Material, type WebGLProgramParametersWithUniforms } from 'three';
+import { SHEET_DOTS } from './sheetDots';
 
 /**
  * Pixel-art surfaces of the world kit (plan §19). Every face of a block with a
- * pattern is drawn as texels of 1/16 m, like the reference sheets' block textures:
- * a speckle of 3–4 tones, then per-block amounts of moss, lichen, cracks and dark
- * weathering (stone), grass drips (soil), flowers (leaves)… from its `surf`.
+ * pattern is drawn as texels (1/16 m, sandstone 1/24 m), like the reference
+ * sheets' block textures: a speckle of 3–4 tones (sandstone: the sheet's own
+ * stone dots, see sheetDots.ts), then per-block amounts of moss, lichen, cracks
+ * and dark weathering (stone), grass drips (soil), flowers (leaves)… from its `surf`.
  *
  *   stone  surf = [moss, lichen, cracks, stain]
  *   soil   surf = [grass, moss, dry (paler + cracks), wet (darker)]
@@ -71,8 +73,14 @@ export interface VoxelMaterialSpec {
   opacity?: number;
   /** Pixel-art surface drawn on every face (world kit), see {@link VoxelPattern}. */
   pattern?: VoxelPattern;
-  /** Share of stone texels that are dark pores (0‥1). */
-  pits?: number;
+  /** Pattern texels per metre (default {@link KIT_TEXELS_PER_M}). */
+  texels?: number;
+  /**
+   * Darkness of the gap between two touching stones (0‥1): each stone's round
+   * edge darkens as it falls into the joint, so the stones read one by one like
+   * the sheets' blocks, with a dark line between them.
+   */
+  groove?: number;
   /**
    * Chiselled surface: each texel's normal (1/16 m on patterned families, one
    * grain cell on others) leans up to this much (tangent of the angle) its own
@@ -116,8 +124,10 @@ export const VOXEL_MATERIALS = {
   bark: { roughness: 0.97, metalness: 0, bevel: 0.12, chamfer: true, edgeTint: 0x9c7552, edgeStrength: 0.08, grain: 0.1, grainScale: 8, relief: 0.08 },
   ground: { roughness: 1, metalness: 0, bevel: 0.06, chamfer: true, edgeTint: 0x9fbf66, edgeStrength: 0.05, grain: 0.12, grainScale: 3, relief: 0.06 },
   // ── World kit (plan §18–20): pixel-art surfaces, see SURFACE_COLORS ───────
-  // 5 cm flat-cut edges on a 0.5 m block; a matte, chiselled surface.
-  sandstone: { roughness: 0.96, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.09, edgeWidth: 0.75, grain: 0.19, grainScale: KIT_TEXELS_PER_M, pattern: 'stone', pits: 0.045, relief: 0.07 },
+  // Sandstone as on the §19.1 sheet: 3 cm flat-cut edges on a 0.5 m block, a
+  // soft dark line where two stones touch, the sheet's own stone dots (grain 1 =
+  // as strong as on the sheet) and a smooth, matte face.
+  sandstone: { roughness: 0, metalness: 0, bevel: 0.065, chamfer: true, edgeTint: 0xf6e2bd, edgeStrength: 0.07, edgeWidth: 0.3, grain: 0.77, grainScale: 24, texels: 24, pattern: 'stone', relief: 0, groove: 0.12 },
   soil: { roughness: 1, metalness: 0, bevel: 0.05, chamfer: true, edgeTint: 0xc39a6a, edgeStrength: 0.05, edgeWidth: 0.6, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'soil', relief: 0.07 },
   leaves: { roughness: 0.92, metalness: 0, bevel: 0.1, chamfer: true, edgeTint: 0xd8ec8e, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.2, grainScale: KIT_TEXELS_PER_M, pattern: 'leaf', relief: 0.1 },
   trunk: { roughness: 0.97, metalness: 0, bevel: 0.09, chamfer: true, edgeTint: 0xc2946a, edgeStrength: 0.08, edgeWidth: 0.7, grain: 0.14, grainScale: KIT_TEXELS_PER_M, pattern: 'bark', relief: 0.08 },
@@ -154,6 +164,7 @@ export interface VoxelLookUniforms {
   uGrain: { value: number };
   uRelief: { value: number };
   uSpecular: { value: number };
+  uGroove: { value: number };
   /** 0‥1: paints the family pink, to show where it is used. */
   uHighlight: { value: number };
 }
@@ -230,7 +241,7 @@ function glslColor(hex: number): string {
  */
 const PATTERN_GLSL = /* glsl */ `
 uniform float uTexel;
-uniform float uPits;
+uniform sampler2D uDots;
 flat varying vec4 vVoxSurf;
 flat varying vec3 vVoxS;
 const vec3 MOSS_0 = ${glslColor(SURFACE_COLORS.moss[0])};
@@ -315,6 +326,19 @@ float voxLichenMask(vec3 T, float amount, float h1) {
   return step(1.0 - amount * 0.62, l);
 }
 
+// The sheet's stone dots (sheetDots.ts) at texel T of face f: brightness ratios
+// around 1, shifted and turned per block so neighbouring stones differ.
+vec3 voxSheetDots(vec3 T, vec3 f) {
+  vec2 t = f.x != 0.0 ? T.zy : (f.y != 0.0 ? T.xz : T.xy);
+  vec3 id = floor(vVoxSeed * 8.0 + 0.5) + f * 5.0;
+  if (voxHash(id + 3.0) < 0.5) t = t.yx;
+  if (voxHash(id + 4.0) < 0.5) t.x = -t.x;
+  vec2 size = vec2(${SHEET_DOTS.width}.0, ${SHEET_DOTS.height}.0);
+  t += floor(vec2(voxHash(id + 1.0), voxHash(id + 2.0)) * size);
+  vec3 v = texelFetch(uDots, ivec2(mod(t, size)), 0).rgb;
+  return ${SHEET_DOTS.lo} + ${(SHEET_DOTS.hi - SHEET_DOTS.lo).toFixed(4)} * v;
+}
+
 vec3 voxPattern(vec3 base, vec3 n) {
   vec3 an = abs(n);
   // The block face this fragment belongs to (bevels take the nearest face).
@@ -334,15 +358,9 @@ vec3 voxPattern(vec3 base, vec3 n) {
   float blot = voxNoise(T * 0.33 + vec3(3.1, 7.7, 1.3));
   vec3 c = base;
 #if VOX_PAT == 1
-  // Sandstone: 3–4 tones in soft blotches, then the sheets' bold grains —
-  // small clusters of pale cream and of cool grey-brown — and dark pores.
-  c *= 1.0 + ((h1 - 0.5) * uGrain + (blot - 0.5) * uGrain * 0.9) * fine;
-  float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  float pale = step(0.76, voxNoise(T * 0.55 + 17.0) * 0.75 + h1 * 0.25);
-  c = mix(c, mix(c, vec3(lum), 0.35) * 1.22, pale * 0.85 * fine);
-  float grey = step(0.78, voxNoise(T * 0.6 + 43.0) * 0.75 + h2 * 0.25);
-  c = mix(c, mix(c, vec3(lum), 0.2) * 0.52, grey * fine);
-  c = mix(c, c * vec3(0.5, 0.48, 0.48), step(h2, uPits) * fine);
+  // Sandstone: the stone dots cut from the §19.1 sheet's tiles on the block's
+  // own tone (uGrain 1 = as strong as on the sheet).
+  c *= max(vec3(0.0), 1.0 + (voxSheetDots(T, f) - 1.0) * uGrain * fine);
   if (sB.y > 0.001) {
     // Dark weathering: a harsher mottle, vertical run-off streaks, grime low on blocks.
     c *= 1.0 + (voxHash(T + 3.0) - 0.5) * sB.y * 0.45 * fine;
@@ -415,6 +433,7 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     uGrain: { value: spec.grain },
     uRelief: { value: spec.relief ?? 0 },
     uSpecular: { value: spec.specular ?? 0 },
+    uGroove: { value: spec.groove ?? 0 },
     uHighlight: { value: 0 },
   };
   const lit = !spec.unlit;
@@ -427,8 +446,8 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
     // (shared objects, so the look panel's changes reach the compiled shader)
     Object.assign(shader.uniforms, look);
     shader.uniforms.uGrainScale = { value: spec.grainScale };
-    shader.uniforms.uTexel = { value: KIT_TEXELS_PER_M };
-    shader.uniforms.uPits = { value: spec.pits ?? 0 };
+    shader.uniforms.uTexel = { value: spec.texels ?? KIT_TEXELS_PER_M };
+    shader.uniforms.uDots = { value: sheetDotsTexture() };
 
     injectVoxelVertex(shader, spec);
 
@@ -447,6 +466,7 @@ uniform float uGrain;
 uniform float uGrainScale;
 uniform float uRelief;
 uniform float uSpecular;
+uniform float uGroove;
 uniform float uHighlight;
 float voxHash(vec3 p) {
   p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
@@ -458,6 +478,7 @@ vec2 voxFaceUV(vec3 p, vec3 f) {
   return f.x != 0.0 ? p.zy : (f.y != 0.0 ? p.xz : p.xy);
 }
 #ifdef VOX_PAT
+flat varying float vVoxR;
 ${PATTERN_GLSL}
 // Surface detail cells per metre: the pattern's texels.
 #define VOX_TEXEL uTexel
@@ -484,6 +505,7 @@ float voxEdge = smoothstep(0.29 - 0.2 * uEdgeWidth, 0.29, 1.0 - max(max(abs(voxN
   voxEdge *= mix(0.1, 1.0, w);
 }
 float voxSeam = 0.0;
+float voxGroove = 0.0;
 #ifdef VOX_PAT
 {
   // Where two stones meet, the V of their bevels closes in a thin shadow line.
@@ -494,9 +516,17 @@ float voxSeam = 0.0;
     vVoxP.z > 0.0 ? float((j >> 4) & 1) : float((j >> 5) & 1));
   vec3 sd = vVoxS * 0.5 - abs(vVoxP);
   vec3 sl = js * (1.0 - smoothstep(vec3(0.003), vec3(0.014), sd));
+  float px = length(fwidth(vVoxP));
   // (a line thinner than a pixel far away would only flicker)
-  voxSeam = max(max(sl.x, sl.y), sl.z) * (1.0 - smoothstep(0.004, 0.012, length(fwidth(vVoxP))));
+  voxSeam = max(max(sl.x, sl.y), sl.z) * (1.0 - smoothstep(0.004, 0.012, px));
   voxEdge *= 1.0 - voxSeam;
+  // The gap: the round edge darkens as it falls into the joint (little light
+  // reaches the bottom of the V), eased so the rim near the face stays lit.
+  // Faded out once the edge is under a couple of pixels, before it flickers.
+  vec3 gd = js * (1.0 - smoothstep(vec3(0.0), vec3(vVoxR * 1.05), sd));
+  float g = max(max(gd.x, gd.y), gd.z);
+  voxGroove = pow(g, 1.25) * (1.0 - smoothstep(vVoxR * 0.5, vVoxR * 1.5, px));
+  voxEdge *= 1.0 - voxGroove;
 }
 #if VOX_PAT == 1
 // Worn stone edges: the light rim breaks up texel by texel (evened out far away).
@@ -550,7 +580,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.05, 0.55), uHighlight);`,
     voxFacing = smoothstep(-0.2, 0.5, dot(normal, directionalLights[0].direction));
   #endif
   diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength * mix(0.3, 1.0, voxFacing));
-  diffuseColor.rgb *= 1.0 - 0.5 * voxSeam;
+  diffuseColor.rgb *= (1.0 - 0.5 * voxSeam) * (1.0 - uGroove * voxGroove);
 }`,
       )
       .replace(
@@ -564,7 +594,7 @@ reflectedLight.indirectSpecular *= uSpecular;
       );
   };
   // Families inject identical code (only uniforms and the pattern define differ).
-  material.customProgramCacheKey = () => `voxel-shading-v10${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
+  material.customProgramCacheKey = () => `voxel-shading-v11${spec.pattern ? `:${spec.pattern}` : ''}${defines.VOX_RELIEF !== undefined ? ':relief' : ''}`;
   return look;
 }
 
@@ -590,6 +620,7 @@ flat varying float vVoxOpen;
 attribute vec4 voxSurf;
 flat varying vec4 vVoxSurf;
 flat varying vec3 vVoxS;
+flat varying float vVoxR;
 #endif
 uniform float uBevel;
 uniform float uSeamless;
@@ -664,9 +695,11 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
   float voxR = voxRadius > 0.0 ? min(voxRadius, voxMin * 0.45) : voxMin * uBevel;
   vec3 voxT = clamp((abs(position) - (0.5 - uBevel)) / uBevel, 0.0, 1.0);
   // An edge between two joints lies inside the masonry: keep it square, so no
-  // channel opens between the stones where four of them meet.
+  // channel opens between the stones where four of them meet. (A point that
+  // also rounds into an open side stays put: that edge keeps its round profile.)
   vec3 voxJ = voxJointOf(voxOpen, position);
   float voxOnJoint = max(max(voxJ.x * step(1e-3, voxT.x), voxJ.y * step(1e-3, voxT.y)), voxJ.z * step(1e-3, voxT.z));
+  voxOnJoint *= step(dot(voxT, 1.0 - voxJ), 1e-3);
   voxT = max(voxT, voxJ * voxOnJoint);
   vec3 voxPush = voxPushOf(voxOpen, position);
   #ifdef VOX_PAT
@@ -685,6 +718,7 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
   vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
   #ifdef VOX_PAT
     vVoxS = voxS;
+    vVoxR = voxR;
     vVoxSurf = voxSurf;
   #endif
 }
@@ -695,4 +729,19 @@ vVoxOpen = voxOpen;
   vVoxSeed = vec3(0.0);
 #endif`,
     );
+}
+
+let dotsTexture: DataTexture | undefined;
+
+/** The sheet's stone dots (sheetDots.ts) as a texture of ratio bytes, read texel by texel. */
+function sheetDotsTexture(): DataTexture {
+  if (dotsTexture) return dotsTexture;
+  const { width, height } = SHEET_DOTS;
+  const rgb = Uint8Array.from(atob(SHEET_DOTS.rgb), (ch) => ch.charCodeAt(0));
+  const rgba = new Uint8Array(width * height * 4).fill(255);
+  for (let i = 0; i < width * height; i++) rgba.set(rgb.subarray(i * 3, i * 3 + 3), i * 4);
+  dotsTexture = new DataTexture(rgba, width, height, RGBAFormat);
+  dotsTexture.magFilter = dotsTexture.minFilter = NearestFilter;
+  dotsTexture.needsUpdate = true;
+  return dotsTexture;
 }

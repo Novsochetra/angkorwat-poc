@@ -2,7 +2,7 @@
   "name": "angkorwat-poc",
   "private": true,
   "version": "0.1.0",
-  "description": "Angkor Quest \u2014 voxel explorer character and real-scale Angkor Wat test world",
+  "description": "Angkor Heritage \u2014 voxel explorer character and real-scale Angkor Wat test world",
   "type": "module",
   "scripts": {
     "dev": "vite",

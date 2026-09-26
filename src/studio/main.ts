@@ -112,7 +112,7 @@ function link(text: string, q: Record<string, string>, cls = ''): HTMLAnchorElem
   return a;
 }
 
-const VIEW_NAMES: Record<KitView, string> = { iso: 'Isometric view', 'iso-low': 'Front view', front: 'Front view', side: 'Side view', back: 'Back view', top: 'Top view', elevation: 'Elevation' };
+const VIEW_NAMES: Record<KitView, string> = { iso: 'Isometric view', 'iso-low': 'Low three-quarter view', front: 'Front view', side: 'Side view', back: 'Back view', top: 'Top view', elevation: 'Elevation' };
 
 /** 22.4 m · 1.25 m · 35 cm */
 const metres = (m: number) => (m >= 10 ? `${m.toFixed(1)} m` : m >= 1 ? `${m.toFixed(2)} m` : `${Math.round(m * 100)} cm`);
@@ -128,7 +128,7 @@ function header(info: KitSectionInfo | null, crumb?: string): HTMLElement {
   brand.href = '?';
   brand.innerHTML = '<b>Angkor Wat</b><span>Voxel Asset Studio</span>';
   const title = el('div', 'st-title');
-  title.append(el('h1', '', info ? info.sheet : 'World kit'), el('p', '', crumb ?? (info ? `${info.title} — ${info.subtitle}` : 'Sections 18–20 of the component plan')));
+  title.append(el('h1', '', info ? info.sheet : 'World kit'), el('p', '', crumb ?? (info ? `${info.title} — ${info.subtitle}` : 'Sections 15–21 of the component plan')));
   const nav = el('nav', 'st-nav');
   for (const s of KIT_SECTIONS) {
     const a = link(s.title, { section: s.id });

@@ -31,7 +31,8 @@ names the exact line of the asset module that made each block.
 
 - **Pixel-art surfaces (§19)** — the kit's material families (`sandstone`,
   `soil`, `leaves`, `trunk`, `water`…) draw a texture of 1/16 m texels on every
-  face in the shader: a 3–4 tone speckle and pores, then per-block amounts of
+  face in the shader: a 3–4 tone speckle and pores (sandstone: the stone dots
+  cut from the §19.1 sheet, 1/24 m, `src/voxel/sheetDots.ts`), then per-block amounts of
   moss (on tops, creeping down), lichen, crack lines and dark weathering streaks
   for stone; grass cover with drips over the edges for soil; flowers and
   yellowing for leaves. One block per stone gets the sheets' textured look, so
@@ -40,12 +41,12 @@ names the exact line of the asset module that made each block.
   and damages it: `remove` (missing block), `carve` / `carveSphere` (broken
   corners, bites), `erode` (worn edges). Damaged blocks are emitted as merged
   cells that still read as one stone, the broken faces in rougher stone.
-  Sandstone blocks have flat-cut (chamfered) edges, 10 % of the block, and a
-  chiselled, matte surface (`chamfer`, `relief` and `specular` in
-  `src/voxel/materials.ts`; every world family shares them, and only water
-  keeps a reflection);
-  neighbouring stones touch, and the cells of a damaged block keep the chamfer
-  of the whole stone.
+  Sandstone blocks have flat-cut edges, 6.5 % of the block (3 cm on a 0.5 m
+  stone), a soft dark line where two stones touch and a smooth, matte face
+  (`bevel`, `chamfer`, `groove`, `relief` and `specular` in
+  `src/voxel/materials.ts`; the other world families have a chiselled
+  `relief`, and only water keeps a reflection); neighbouring stones touch,
+  and the cells of a damaged block keep the edge of the whole stone.
 - **Colours** — `src/kit/palette.ts`, sampled from the sheets and corrected in
   linear light so the studio render matches the sheets (`fromSheet()` does the
   correction for any colour sampled off a sheet).

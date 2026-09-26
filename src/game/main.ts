@@ -30,10 +30,10 @@ import { buildAngkorScaleWorld } from './world/AngkorScaleWorld';
 import type { KitLabel } from './world/KitWorld';
 
 /**
- * Angkor Quest — real-scale test level. Walk the explorer across the western
+ * Angkor Heritage — real-scale test level. Walk the explorer across the western
  * causeway, through the gopura's 3.4 m doorway and up to the 65 m central tower
  * to judge the character against the map at true size (1 unit = 1 m).
- * `?level=kit` loads the world-kit specimen garden instead (sections 18–20).
+ * `?level=kit` loads the world-kit specimen garden instead (sections 15–21).
  */
 const params = new URLSearchParams(location.search);
 const level = params.get('level') === 'kit' ? 'kit' : 'angkor';
@@ -340,10 +340,10 @@ function renderHud(fps: number): void {
   const near = level === 'kit' ? nearestLabel() : null;
   const title =
     level === 'kit'
-      ? `<div class="title">Angkor Quest · world kit (sections 18–20)</div>
+      ? `<div class="title">Angkor Heritage · world kit (sections 15–21)</div>
     Explorer <b>${CHARACTER_HEIGHT_M.toFixed(2)} m</b> · ${near ? `near <b>${near.name}</b> — ${near.detail}` : 'walk up to an asset to see its name and size'}<br>
     ${sp.toFixed(1)} m/s · (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) · y ${p.y.toFixed(2)} m · ${fps.toFixed(0)} fps<br>`
-      : `<div class="title">Angkor Quest · scale test</div>
+      : `<div class="title">Angkor Heritage · scale test</div>
     Explorer <b>${CHARACTER_HEIGHT_M.toFixed(2)} m</b> · doorway <b>${ANGKOR.doorwayHeight} m</b> · causeway <b>${ANGKOR.causewayWidth} m</b> wide · central tower <b>${ANGKOR.centralTowerHeight} m</b><br>
     ${sp.toFixed(1)} m/s · ${dCentre.toFixed(0)} m to the central tower · y ${p.y.toFixed(2)} m · ${fps.toFixed(0)} fps<br>`;
   hud.innerHTML = `${title}

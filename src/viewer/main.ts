@@ -187,7 +187,7 @@ settle(num('t', shot ? 0.5 : 0));
 // ── UI ──────────────────────────────────────────────────────────────────────
 const panel = document.getElementById('panel')!;
 const caption = document.getElementById('caption')!;
-caption.textContent = `Angkor Quest · Explorer · ${CHARACTER_HEIGHT_M.toFixed(2)} m tall`;
+caption.textContent = `Angkor Heritage · Explorer · ${CHARACTER_HEIGHT_M.toFixed(2)} m tall`;
 
 function chipGroup<T extends string>(title: string, items: readonly T[], current: () => T, pick: (v: T) => void, label: (v: T) => string = (v) => v): void {
   const h = document.createElement('h2');
@@ -210,7 +210,7 @@ function chipGroup<T extends string>(title: string, items: readonly T[], current
 }
 
 if (!shot) {
-  panel.innerHTML = `<h1>Angkor Quest Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit · B to report a bug · K for block look</p>`;
+  panel.innerHTML = `<h1>Angkor Heritage Explorer</h1><p class="sub">Voxel character · ${CHARACTER_HEIGHT_M.toFixed(2)} m · drag to orbit · B to report a bug · K for block look</p>`;
   const pretty = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
   chipGroup('Outfit', Object.keys(OUTFITS) as OutfitName[], () => outfit, (v) => {
     outfit = v;

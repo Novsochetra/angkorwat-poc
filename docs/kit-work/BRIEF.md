@@ -50,8 +50,9 @@ details that give it charm. It must look good from every view (iso, front, side,
   edges), `find`, `emit(builder)`, and `masonry(set, box…, {length, course, depth, axis, palette, style, seed})`
   for walls/platforms/steps with staggered joints. Intact blocks = 1 box each; carved blocks are
   emitted as merged cells that still read as one stone, broken faces in rough stone colour.
-  Sides against another block are masonry joints: their chamfer keeps its light rim, so every
-  block edge gets the same flat 5 cm chamfer; neighbouring stones touch (no gap).
+  Sides against another block are masonry joints: neighbouring stones touch, and every stone
+  keeps its flat 3 cm edge cut there, darkening a little into the joint, so each stone reads on
+  its own with a soft dark line between stones, like the sheet's blocks.
 - `src/kit/palette.ts` — calibrated colours: `SANDSTONE` (clean, warm, dark, cracked, weathered, mossy,
   broken, cavity), `SOIL`, `GRASS`, `MOSS`, `LICHEN`, `LEAF`, `FLOWER`, `BARK`, `LITTER`, `WATER`,
   `OFFERING`, and **`fromSheet(hex)`**: give it a colour sampled from a lit face of a reference
@@ -68,8 +69,10 @@ details that give it charm. It must look good from every view (iso, front, side,
 ### Material families (the `mat` argument) and the pixel-art patterns
 The world-kit families draw a **pixel-art texture on every face in 1/16 m texels** (speckle,
 pores) plus per-block overlays from the block's `surf` (see `src/voxel/materials.ts`):
-- `sandstone` — stone pattern; surf = [moss, lichen, cracks, stain]. Moss grows on tops and
-  creeps down; stain = dark weathering streaks; cracks = one-texel crack lines.
+- `sandstone` — stone pattern in 1/24 m texels: the stone dots cut from the §19.1 sheet's tiles
+  (`src/voxel/sheetDots.ts`, made by `docs/kit-work/sheet-dots.py`) on the block's colour;
+  surf = [moss, lichen, cracks, stain]. Moss grows on tops and creeps down; stain = dark
+  weathering streaks; cracks = one-texel crack lines.
 - `soil` — dirt with grit; surf = [grass, moss, dry, wet]. Grass covers the top and hangs 1–4
   texels over the sides **measured from the top of that one block** (so for grass drips use one
   tall soil block, not a stack of tiny ones; paint grass cells yourself on small cells).

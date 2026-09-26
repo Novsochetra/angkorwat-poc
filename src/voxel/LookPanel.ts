@@ -19,7 +19,7 @@ import { unitVoxelGeometry } from './VoxelMesh';
 
 /**
  * Block look panel (K): sliders for every block family on the page (edge
- * strip, speckle, bumps, shine…), changed live on every block of the family.
+ * strip, speckle, bumps, gap darkness, shine…), changed live on every block of the family.
  * "Pick a block" names the family of the block you click next; "show where"
  * paints a family pink. "Lights" turns the scene's lights, room light and
  * exposure. "Copy changes" puts the values that differ from the code on the
@@ -70,7 +70,7 @@ interface Family {
   material: Material;
   u: VoxelLookUniforms;
   folder: GUI;
-  s: { where: boolean; strip: number; width: number; stripColour: string; speckle: number; bumps: number; shine: number; shineBlur: number; edgeSize: number; edgeShape: string };
+  s: { where: boolean; strip: number; width: number; stripColour: string; speckle: number; bumps: number; gap: number; shine: number; shineBlur: number; edgeSize: number; edgeShape: string };
   /** The edge size and shape the blocks have now (reshaped only when they change). */
   shaped: string;
 }
@@ -123,6 +123,7 @@ class LookPanel {
         stripColour: `#${u.uEdgeTint.value.getHexString()}`,
         speckle: spec.grain,
         bumps: spec.relief ?? 0,
+        gap: spec.groove ?? 0,
         shine: spec.specular ?? 0,
         shineBlur: spec.roughness,
         edgeSize: spec.bevel,
@@ -134,9 +135,11 @@ class LookPanel {
       folder.add(s, 'strip', 0, 1, 0.01).name('edge strip');
       folder.add(s, 'width', 0, 1.5, 0.05).name('edge strip width');
       folder.addColor(s, 'stripColour').name('edge strip colour');
-      folder.add(s, 'speckle', 0, 0.6, 0.01).name('speckle');
+      folder.add(s, 'speckle', 0, 1.5, 0.01).name('speckle');
       // (bumps only exist on families built with a relief)
       if (lit && spec.relief) folder.add(s, 'bumps', 0, 0.3, 0.005).name('bumps');
+      // (the dark gap between touching stones: families built with a groove)
+      if (spec.groove !== undefined) folder.add(s, 'gap', 0, 1, 0.01).name('gap darkness');
       if (lit) {
         folder.add(s, 'shine', 0, 1, 0.01).name('shine');
         folder.add(s, 'shineBlur', 0, 1, 0.01).name('shine blur');
@@ -161,6 +164,7 @@ class LookPanel {
       u.uEdgeTint.value.set(s.stripColour);
       u.uGrain.value = s.speckle;
       u.uRelief.value = s.bumps;
+      u.uGroove.value = s.gap;
       u.uSpecular.value = s.shine;
       u.uHighlight.value = s.where || (this.flash && key === this.top.picked) ? PINK : 0;
       if ('roughness' in material) (material as MeshStandardMaterial).roughness = s.shineBlur;
@@ -290,6 +294,7 @@ class LookPanel {
       if (u.uEdgeTint.value.getHex() !== spec.edgeTint) out.push(`edgeTint: 0x${u.uEdgeTint.value.getHexString()}`);
       diff('grain', s.speckle, spec.grain);
       if (spec.relief) diff('relief', s.bumps, spec.relief);
+      if (spec.groove !== undefined) diff('groove', s.gap, spec.groove);
       if (!spec.unlit) {
         diff('specular', s.shine, spec.specular ?? 0);
         diff('roughness', s.shineBlur, spec.roughness);

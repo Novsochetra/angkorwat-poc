@@ -1,4 +1,4 @@
-# Angkor Quest — Explorer character
+# Angkor Heritage — Explorer character
 
 A fully rigged, animated voxel explorer for the Angkor Wat game, rebuilt from the
 character reference sheets (turnaround, close-up details, colour palette,
@@ -154,15 +154,19 @@ occlusion and colour jitter are baked per block. The face family is
 *seamless*: each block pushes its bevel into covered neighbours, so the face
 reads as one smooth surface with only its silhouette rounded, as on the sheet.
 World families (stone, soil, leaves, bark, props) have *chamfered* edges
-instead: one flat cut on every edge that catches the light (worn texel by
-texel on sandstone), on a surface whose texels each lean a little their own
-way (`relief`), so they read as rough stone, bark and leaves.
+instead: one flat cut on every edge that catches the light, on a surface
+whose texels each lean a little their own way (`relief`), so they read as
+rough stone, bark and leaves. Kit sandstone follows the §19.1 sheet: 3 cm
+flat-cut edges (worn texel by texel), a soft dark line where two stones touch
+(`groove`), the sheet's own stone dots on every face and a smooth face (no
+`relief`).
 The character keeps its soft rounded blocks. Every block is matte (no sun
 highlight or reflection, `specular`); only water shines.
 
 **Block look panel (K)** — in the game and the studio, **K** (or `?look=1`)
 opens sliders for every block family on the page: edge strip, its width and
-colour, speckle, bumps, shine, cut edge size and shape (flat cut or round).
+colour, speckle, bumps, gap darkness, shine, cut edge size and shape (flat
+cut or round).
 They change every block of the family live. *Lights* turns the scene's named
 lights, the room light (environment) and the exposure: the cool fill light and
 the room light are what make shaded stone read grey-blue, like a reflection.

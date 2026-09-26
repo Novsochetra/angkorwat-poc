@@ -19,11 +19,18 @@ export interface KitSectionInfo {
 }
 
 export const KIT_SECTIONS: KitSectionInfo[] = [
+  { id: '15', sheet: '15 — Wall System', title: '15 Walls', subtitle: 'Modular wall kit for temples, galleries and enclosures', image: 'section 15/ChatGPT Image Sep 22, 2026, 10_38_08 AM.png' },
+  { id: '16', sheet: '16 — Terrace System', title: '16 Terraces', subtitle: 'Layered terraces for grand temple structures', image: 'section 16/51F119C4-CD9A-4DB5-BCFD-840E8D3A151C.PNG' },
+  { id: '17.1', sheet: '17 — Moat & Water', title: '17.1 Moat', subtitle: 'Core moat and shoreline elements', image: 'section 17/9CD32C14-908E-487E-9287-BF45055F93A6.PNG' },
+  { id: '17.2', sheet: '17 — Moat & Water', title: '17.2 Water details', subtitle: 'Additional water details for realism and atmosphere', image: 'section 17/9CD32C14-908E-487E-9287-BF45055F93A6.PNG' },
   { id: '18.1', sheet: '18 — Landscape / Vegetation', title: '18.1 Trees', subtitle: 'Trees, palms, bushes and jungle foliage for the temple environment', image: 'section 18/section 18.1.png' },
   { id: '18.2', sheet: '18 — Landscape / Vegetation', title: '18.2 Ground', subtitle: 'Terrain and surface detail for the temple environment', image: 'section 18/section 18.2.png' },
   { id: '19.1', sheet: '19 — Stone / Material System', title: '19.1 Sandstone', subtitle: 'Variations for an authentic and atmospheric temple look', image: 'section 19/85D8F367-EBB2-45B5-94C0-E9ED5A7CE350.PNG' },
   { id: '19.2', sheet: '19 — Stone / Material System', title: '19.2 Stone damage', subtitle: 'Wear, aging and destruction variations', image: 'section 19/DC8CFA59-53FC-45C2-9C62-F650EC8907C8.PNG' },
   { id: '20', sheet: '20 — Small Props', title: '20 Small props', subtitle: 'Every detail brings the temple to life', image: 'section 20/6706F03E-0DFA-4AFA-80F0-5C031D4F49D5.PNG' },
+  { id: '21.1', sheet: '21 — Voxel Building Kit', title: '21.1 Basic blocks', subtitle: 'Core building blocks for flexible construction', image: 'section 21/Codex Image Sep 22, 2026, 12_44_48 PM.png' },
+  { id: '21.2', sheet: '21 — Voxel Building Kit', title: '21.2 Architectural', subtitle: 'Common architectural elements and details', image: 'section 21/Codex Image Sep 22, 2026, 12_46_24 PM.png' },
+  { id: '21.3', sheet: '21 — Voxel Building Kit', title: '21.3 Large modules', subtitle: 'Pre-built sections for faster world building', image: 'section 21/Codex Image Sep 22, 2026, 12_48_32 PM.png' },
 ];
 
 const idOf = (path: string) => path.replace(/^\.\/assets\//, '').replace(/\.ts$/, '');

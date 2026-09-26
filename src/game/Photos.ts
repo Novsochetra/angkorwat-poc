@@ -292,5 +292,5 @@ const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: '
 function fileName(t: number): string {
   const d = new Date(t);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `angkor-quest-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.jpg`;
+  return `angkor-heritage-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.jpg`;
 }

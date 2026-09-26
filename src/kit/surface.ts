@@ -37,11 +37,12 @@ export interface StoneFinish {
 
 export const STONE_FINISH: Record<SandstoneFinish, StoneFinish> = {
   clean: { palette: SANDSTONE.clean, surf: stoneSurf(), wear: 0 },
-  warm: { palette: SANDSTONE.warm, surf: stoneSurf({ stain: 0.05 }), wear: 0.05 },
-  dark: { palette: SANDSTONE.dark, surf: stoneSurf({ stain: 0.25, lichen: 0.05 }), wear: 0.1 },
-  cracked: { palette: SANDSTONE.cracked, surf: stoneSurf({ crack: 0.42, stain: 0.05 }), wear: 0.15 },
+  // (only the weathered finish has chipped edges on the sheet; the others are neat blocks)
+  warm: { palette: SANDSTONE.warm, surf: stoneSurf({ stain: 0.05 }), wear: 0 },
+  dark: { palette: SANDSTONE.dark, surf: stoneSurf({ stain: 0.25, lichen: 0.05 }), wear: 0 },
+  cracked: { palette: SANDSTONE.cracked, surf: stoneSurf({ crack: 0.42, stain: 0.05 }), wear: 0.04 },
   weathered: { palette: SANDSTONE.weathered, surf: stoneSurf({ stain: 0.6, moss: 0.18, lichen: 0.12 }), wear: 0.32 },
-  mossy: { palette: SANDSTONE.mossy, surf: stoneSurf({ moss: 0.6, stain: 0.15 }), wear: 0.15 },
+  mossy: { palette: SANDSTONE.mossy, surf: stoneSurf({ moss: 0.6, stain: 0.15 }), wear: 0 },
   broken: { palette: SANDSTONE.broken, surf: stoneSurf({ stain: 0.1 }), wear: 0.3 },
   cavity: { palette: SANDSTONE.cavity, surf: stoneSurf(), wear: 0 },
 };

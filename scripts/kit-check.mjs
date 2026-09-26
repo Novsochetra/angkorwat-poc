@@ -13,9 +13,9 @@ import { chromium } from 'playwright';
 import { chromiumPath } from './chromium.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sections = process.argv.slice(2).length ? process.argv.slice(2) : ['18.1', '18.2', '19.1', '19.2', '20'];
+const sections = process.argv.slice(2).length ? process.argv.slice(2) : ['15', '16', '17.1', '17.2', '18.1', '18.2', '19.1', '19.2', '20', '21.1', '21.2', '21.3'];
 /** Blocks per piece (see the kit brief in docs/world-kit.md). */
-const BUDGET = { '18.1/large-tree': 22000, '18.1/medium-tree': 8000, '18.1/jungle-cluster': 60000, '18.1/ground-foliage': 8000, '18.2/combinations': 5000, '18.1/palm-tree': 4000, '18.1/small-tree': 3000, '18.2': 1500, '19.1': 2500, '19.2': 3000, '20/broken-statue': 6000, '20/small-shrine': 6000, '20/offering-platform': 6000, '20/small-pond': 4000, default: 2500 };
+const BUDGET = { '18.1/large-tree': 22000, '18.1/medium-tree': 8000, '18.1/jungle-cluster': 60000, '18.1/ground-foliage': 8000, '18.2/combinations': 5000, '18.1/palm-tree': 4000, '18.1/small-tree': 3000, '18.2': 1500, '19.1': 2500, '19.2': 3000, '20/broken-statue': 6000, '20/small-shrine': 6000, '20/offering-platform': 6000, '20/small-pond': 4000, '15': 8000, '16': 10000, '17.1': 5000, '17.2': 5000, '21.1': 1500, '21.2': 6000, '21.2/naga': 10000, '21.2/tower-tier': 30000, '21.2/lion': 8000, '21.3': 40000, default: 2500 };
 const budgetOf = (id) => BUDGET[id] ?? BUDGET[id.split('/')[0]] ?? BUDGET.default;
 /**
  * Build times are wall time in the page, so a busy machine inflates them all:

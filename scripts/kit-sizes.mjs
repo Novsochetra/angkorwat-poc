@@ -4,12 +4,12 @@
 // between the SIZE TABLE / SCENE TABLE markers.
 //
 //   node scripts/kit-sizes.mjs [--write]
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'vite';
 
 const root = resolve(import.meta.dirname, '..');
-const sections = ['18.1', '18.2', '19.1', '19.2', '20'];
+const sections = ['15', '16', '17.1', '17.2', '18.1', '18.2', '19.1', '19.2', '20', '21.1', '21.2', '21.3'];
 const server = await createServer({ root, logLevel: 'error', server: { middlewareMode: true, hmr: false }, appType: 'custom' });
 const cell = (s) => (s ?? '—').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 const rows = ['| § | Asset | Built to (real world) | Sheet said | Why |', '| --- | --- | --- | --- | --- |'];
@@ -17,6 +17,7 @@ const scenes = ['| Scene | Recreates | Size | Page |', '| --- | --- | --- | --- 
 try {
   for (const section of sections) {
     const dir = resolve(root, 'src/kit/assets', section);
+    if (!existsSync(dir)) continue;
     const assets = [];
     for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.startsWith('_'))) {
       const a = (await server.ssrLoadModule(`/src/kit/assets/${section}/${f}`)).default;

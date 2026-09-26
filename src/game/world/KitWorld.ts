@@ -43,12 +43,28 @@ const AVENUE_W = 6;
 const AVENUE_Z0 = 64;
 const GARDEN_X = 9;
 
+/** Garden rows, north to south: the ground and props first, then the trees, then the architecture kit. */
+const ROWS = ['18.2', '19.1', '19.2', '20', '18.1', '21.1', '21.2', '15', '16', '17.1', '17.2', '21.3'] as const;
+/** Room between plots and between a plot's variants (m): trees and buildings need space to walk round. */
+function spacing(section: string): { plot: number; variant: number } {
+  if (section === '18.1') return { plot: 6, variant: 4 };
+  if (section === '21.3') return { plot: 8, variant: 6 };
+  if (section === '15' || section === '16' || section === '21.2') return { plot: 4, variant: 3 };
+  return { plot: 2.5, variant: 1.5 };
+}
+/**
+ * Water pieces (their surface at y = 0, bed below) sit in the lawn like a pond
+ * instead of being lifted onto it: the lawn drops to their floor under their
+ * footprint, and their own bed and banks fill it.
+ */
+const sunk = (section: string, id: string) => section === '17.1' || section === '17.2' || id === '21.3/moat-section';
+
 /**
  * Walkable test level for the world kit (`index.html?level=kit`): every asset
- * of sections 18–20 in a specimen garden east of a paved avenue — one row per
+ * of sections 15–21 in a specimen garden east of a paved avenue — one row per
  * sheet section, each asset on its own plot with its variants lined up behind
- * it — and the kit's dioramas along the west side. Walk the 1.70 m explorer
- * among them to judge the sizes at true scale.
+ * it, water pieces set into the lawn — and the kit's dioramas along the west
+ * side. Walk the 1.70 m explorer among them to judge the sizes at true scale.
  */
 export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<KitWorld> {
   const w = new WorldBuilder(quality);
@@ -60,19 +76,21 @@ export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<K
   });
   const extras = new Group();
   extras.name = 'kit-extras';
+  /** Footprints of sunk water pieces and how deep they go (see {@link sunk}). */
+  const pits: { rect: Rect; floor: number }[] = [];
 
   // ── Specimen garden: a row per section, a plot per asset ─────────────────
-  const order = ['18.2', '19.1', '19.2', '20', '18.1'] as const;
   let rowZ = AVENUE_Z0 - 8;
   // How far the content reaches (east, west, south): the lawn and the avenue are sized to it.
   let east = GARDEN_X;
   let west = -AVENUE_W / 2;
-  for (const sectionId of order) {
+  for (const sectionId of ROWS) {
     const section = KIT_SECTIONS.find((s) => s.id === sectionId)!;
     const { assets, errors } = await loadKitSection(sectionId);
     for (const e of errors) console.warn(`[kit] level: ${e.id} failed to load`, e.error);
     let x = GARDEN_X;
     let rowDepth = 0;
+    const gap = spacing(sectionId);
     for (const asset of assets) {
       // Its variants lined up behind each other on one plot.
       const built: { piece: KitPiece; name: string; fp: [number, number, number, number] }[] = [];
@@ -91,19 +109,22 @@ export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<K
         const depth = b.fp[3] - b.fp[1];
         const cx = x + plotW / 2 - (b.fp[0] + b.fp[2]) / 2;
         const cz = z - b.fp[3];
-        // Specimens stand on the lawn: ground tiles (walkable top at y = 0) are lifted so their soil shows.
+        // Specimens stand on the lawn: ground tiles (walkable top at y = 0) are lifted so their soil shows;
+        // water pieces are sunk into it.
         const size = b.piece.voxels.bounds();
-        const lift = Math.max(0, -size.min[1]);
+        const sink = sunk(sectionId, asset.id) && size.min[1] < 0;
+        const lift = sink ? 0 : Math.max(0, -size.min[1]);
+        if (sink) pits.push({ rect: [cx + b.fp[0], cz + b.fp[1], cx + b.fp[2], cz + b.fp[3]], floor: size.min[1] - 0.02 });
         placePiece({ ...into(`garden:${sectionId}`), extra: (o) => extras.add(o) }, b.piece, { x: cx, y: lift, z: cz });
         labels.push({ x: x + plotW / 2, z: z - depth / 2, name: `${asset.name}${asset.variants.length > 1 ? ` — ${b.name}` : ''}`, detail: `§${asset.section} ${asset.order} · ${(size.max[1] - size.min[1]).toFixed(2)} m tall · real ${asset.size.real}` });
-        z -= depth + (sectionId === '18.1' ? 4 : 1.5);
+        z -= depth + gap.variant;
       }
       rowDepth = Math.max(rowDepth, rowZ - z);
-      x += plotW + (sectionId === '18.1' ? 6 : 2.5);
+      x += plotW + gap.plot;
       east = Math.max(east, x);
     }
     if (x > GARDEN_X) spawns.push({ name: `Garden: ${section.title}`, x: GARDEN_X - 2.5, y: 0, z: rowZ - 1, yaw: Math.PI / 2 });
-    rowZ -= rowDepth + (sectionId === '20' ? 12 : 6);
+    rowZ -= rowDepth + (sectionId === '20' || sectionId === '18.1' ? 12 : 8);
   }
 
   // ── Dioramas along the west side of the avenue, facing it ─────────────────
@@ -150,12 +171,13 @@ export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<K
   const lawnSurf = { surf: soilSurf({ grass: 0.94 }), merge: 1 | 2 | 16 | 32 };
   const lawn = w.chunk('lawn');
   let open: Rect[] = [[lx0, lz0, lx1, lz1]];
-  for (const g of sceneGround) open = open.flatMap((r) => subtract(r, g.rect));
+  const lowered = [...sceneGround, ...pits];
+  for (const g of lowered) open = open.flatMap((r) => subtract(r, g.rect));
   for (const [x0, z0, x1, z1] of open) {
     lawn.box((x0 + x1) / 2, -0.5, (z0 + z1) / 2, x1 - x0, 1, z1 - z0, SOIL.dirt[0], 'soil', lawnSurf);
     w.colliders.addBox(x0, -1, z0, x1, 0, z1);
   }
-  for (const { rect: [x0, z0, x1, z1], floor } of sceneGround) {
+  for (const { rect: [x0, z0, x1, z1], floor } of lowered) {
     lawn.box((x0 + x1) / 2, floor - 0.5, (z0 + z1) / 2, x1 - x0, 1, z1 - z0, SOIL.dirt[0], 'soil', lawnSurf);
     w.colliders.addBox(x0, floor - 1, z0, x1, floor, z1);
   }
@@ -172,7 +194,7 @@ export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<K
     });
   paving.emit(w.chunk('avenue'), { seed: 2 });
   w.colliders.addBox(-AVENUE_W / 2, -0.25, south, AVENUE_W / 2, 0.0625, AVENUE_Z0);
-  spawns.unshift({ name: 'Specimen garden (sections 18–20)', x: 0, y: 0.07, z: AVENUE_Z0 - 4, yaw: Math.PI });
+  spawns.unshift({ name: 'Specimen garden (sections 15–21)', x: 0, y: 0.07, z: AVENUE_Z0 - 4, yaw: Math.PI });
 
   const root = new Group();
   root.name = 'KitWorld';
@@ -182,7 +204,7 @@ export async function buildKitWorld(quality: VoxelQuality = 'medium'): Promise<K
     colliders: w.colliders,
     spawns,
     // Below the deepest scene (moats, ponds), so the explorer can walk down into them.
-    baseGround: Math.min(0, ...sceneGround.map((g) => g.floor)) - 1,
+    baseGround: Math.min(0, ...lowered.map((g) => g.floor)) - 1,
     stats: { instances: w.instanceCount },
     labels,
     update: () => {},
