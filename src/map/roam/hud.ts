@@ -45,20 +45,20 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   wrap.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2));
   wrap.innerHTML = `
     <button type="button" class="rh-jump mu-frame mu-sm" aria-haspopup="dialog" aria-expanded="false" aria-controls="rh-jumps" aria-keyshortcuts="J">
-      <span class="mu-bg"></span><span class="mu-glow"></span><span class="rh-jump-icon"></span><span class="rh-jump-text"></span><kbd>J</kbd>
+      <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span><span class="rh-jump-icon"></span><span class="rh-jump-text"></span><kbd>J</kbd>
     </button>
     <section id="rh-jumps" class="rh-jumps mu-frame mu-md" role="dialog" aria-labelledby="rh-jumps-title" aria-hidden="true">
       <span class="mu-bg"></span>
       <h2 id="rh-jumps-title"></h2>
       <div class="rh-picks">${JUMPS.map((j, i) => `
         <button type="button" class="rh-pick mu-frame mu-sm" data-kind="${j.kind}" aria-labelledby="rh-pick-${j.kind}" aria-describedby="rh-pick-${j.kind}-note" aria-keyshortcuts="${i + 1}">
-          <span class="mu-bg"></span><span class="mu-glow"></span>${j.icon}<span class="rh-pick-name" id="rh-pick-${j.kind}"></span><span class="rh-pick-note" id="rh-pick-${j.kind}-note"></span><kbd>${i + 1}</kbd>
+          <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${j.icon}<span class="rh-pick-name" id="rh-pick-${j.kind}"></span><span class="rh-pick-note" id="rh-pick-${j.kind}-note"></span><kbd>${i + 1}</kbd>
         </button>`).join('')}
       </div>
       <button type="button" class="rh-jumps-x" aria-keyshortcuts="Escape">${ICON.close}<kbd>Esc</kbd></button>
     </section>
     <button type="button" class="rh-back mu-frame mu-sm">
-      <span class="mu-bg"></span>${BACK_ICON}<span class="rh-back-text"></span><kbd>Esc</kbd>
+      <span class="mu-bg"></span><span class="mu-focus"></span>${BACK_ICON}<span class="rh-back-text"></span><kbd>Esc</kbd>
     </button>
     <div class="rh-help mu-frame mu-sm" aria-hidden="true"><span class="mu-bg"></span><span class="rh-keys"></span></div>
     <div class="rh-prompt mu-frame mu-sm" role="status"><span class="mu-bg"></span><kbd></kbd><span class="rh-prompt-text"></span></div>
@@ -430,7 +430,6 @@ function injectStyle(): void {
     .rh-jump:hover, .rh-jump:focus-visible { --mu-edge: var(--mu-gold-hi); transform: translate(-50%, calc(-100% + var(--mu-lift))); }
     .rh-jump:hover .mu-glow, .rh-jump:focus-visible .mu-glow { opacity: 1; }
     .rh-jump:active { transform: translate(-50%, -100%) scale(0.97); }
-    .rh-jump:focus-visible { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 3px; border-radius: calc(8 * var(--px)); }
     .rh-jump.is-away, .rh.is-roam .rh-jump { opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, calc(-100% + 8px));
       transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s; }
     .rh.is-choosing .rh-jump { opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -100%) scale(0.96);
@@ -479,8 +478,8 @@ function injectStyle(): void {
       .rh-pick.is-last:hover { --mu-edge: var(--mu-gold-hi); }
       .rh-pick.is-last:hover > .mu-glow { opacity: 0.8; }
     }
-    .rh-pick:focus-visible, .rh-pick.is-focus { transform: translateY(var(--mu-lift)); color: var(--mu-gold-hi); outline: 2px solid rgba(255, 244, 214, 0.95);
-      outline-offset: 3px; border-radius: calc(8 * var(--px)); }
+    .rh-pick:focus-visible, .rh-pick.is-focus { transform: translateY(var(--mu-lift)); color: var(--mu-gold-hi); }
+    .rh-pick.is-focus > .mu-focus { opacity: 1; }
     .rh-pick:active { transform: scale(0.97); transition-duration: 0.08s; }
 
     /* Back to map: top left, where the title card was. */
@@ -489,7 +488,6 @@ function injectStyle(): void {
       opacity: 0; visibility: hidden; transition: opacity 0.4s, visibility 0s 0.4s; }
     .rh-back-icon { width: calc(18 * var(--px)); height: calc(18 * var(--px)); color: var(--mu-gold-hi); }
     .rh-back:hover, .rh-back:focus-visible { --mu-edge: var(--mu-line-hi); }
-    .rh-back:focus-visible { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 3px; border-radius: calc(8 * var(--px)); }
 
     /* Keys of the mode: bottom left, small and calm (clear of the bug-report button). */
     .rh-help { left: calc(24 * var(--px)); bottom: calc(22 * var(--px)); padding: calc(7 * var(--px)) calc(12 * var(--px));

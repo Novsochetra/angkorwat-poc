@@ -1,7 +1,7 @@
 import type { Duck, Lang, PlaceId, TypeKey, UISound } from '../types';
 import { ICON } from '../ui/icons';
 import { lang, onLang, t, type WordKey } from '../ui/lang';
-import { steppedShape } from '../ui/shape';
+import { framed, setSteppedVars, steppedShape } from '../ui/shape';
 import { BEATS, SCENE_PLACE, type Scene, type StoryLine } from './beats';
 import mapSvg from './empire-900.svg?raw';
 import { createWavingFlag } from './flag';
@@ -163,6 +163,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   root.dataset.tAria = 'stStory';
   if (shot) root.classList.add('st-instant');
   root.style.setProperty('--st-shape', steppedShape(10, 5));
+  setSteppedVars(root);
 
   const temple = createDotTemple();
   const flag = createWavingFlag({ shot });
@@ -170,7 +171,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   const stage = el('div', 'st-stage');
   stage.setAttribute('aria-live', 'polite');
   const langBtns = (['km', 'en'] as Lang[]).map((l) => {
-    const b = el('button', 'st-lang', l === 'km' ? 'ខ្មែរ' : 'EN');
+    const b = framed(el('button', 'st-lang', l === 'km' ? 'ខ្មែរ' : 'EN'), 'xs');
     b.type = 'button';
     b.lang = l;
     b.addEventListener('click', () => {
@@ -179,21 +180,22 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
     });
     return b;
   });
-  const skip = el('button', 'st-skip', `<span data-t="stSkip"></span>${ICON.chevron}`);
+  // (the map's buttons: ui/map.css `.mu-lang`, `.mu-frame`)
+  const skip = framed(el('button', 'st-skip', `<span data-t="stSkip"></span>${ICON.chevron}`), 'md');
   skip.type = 'button';
   skip.addEventListener('click', () => close('close'));
   const top = el('div', 'st-top');
-  const langGroup = el('div', 'st-langs');
+  const langGroup = framed(el('div', 'st-langs mu-lang'), 'md');
   langGroup.setAttribute('role', 'group');
   langGroup.dataset.tAria = 'language';
   langGroup.append(...langBtns);
   top.append(langGroup, skip);
 
-  const prevBtn = el('button', 'st-arrow', ICON.back);
+  const prevBtn = framed(el('button', 'st-arrow', ICON.back), 'sm');
   prevBtn.type = 'button';
   prevBtn.dataset.tAria = 'stPrev';
   prevBtn.addEventListener('click', () => prev(true));
-  const nextBtn = el('button', 'st-arrow', ICON.chevron);
+  const nextBtn = framed(el('button', 'st-arrow', ICON.chevron), 'sm');
   nextBtn.type = 'button';
   nextBtn.dataset.tAria = 'stNext';
   nextBtn.addEventListener('click', () => next(true));

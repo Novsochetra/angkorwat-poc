@@ -14,6 +14,7 @@ import type { MapRoam } from './roam/roam';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { ICON } from './ui/icons';
 import { onLang, setLang, t } from './ui/lang';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
@@ -147,12 +148,18 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
-// The loading screen's bar follows the build; a frame in between lets it paint.
+// The loading screen follows the build (map.html): the title card's temple rises
+// row by row (27 rows) and the bar fills block by block (20); a frame in between lets it paint.
 const loading = document.getElementById('loading');
-const bar = loading?.querySelector<HTMLElement>('.bar span');
+for (const s of loading?.querySelectorAll('.ld-ghost, .ld-built') ?? []) s.innerHTML = ICON.temple;
+function showProgress(p: number): void {
+  loading?.style.setProperty('--ld-cut', `${+((1 - Math.round(p * 27) / 27) * 100).toFixed(3)}%`);
+  loading?.style.setProperty('--ld-segs', String(Math.round(p * 20)));
+  loading?.classList.toggle('is-built', p >= 1);
+}
 const nextFrame = () => (shot || document.hidden ? Promise.resolve() : new Promise<void>((r) => requestAnimationFrame(() => r())));
 for (const [i, [name, load]] of BUILDERS.entries()) {
-  if (bar) bar.style.width = `${Math.round(((i + 1) / (BUILDERS.length + 1)) * 100)}%`;
+  showProgress((i + 1) / (BUILDERS.length + 1));
   await nextFrame();
   if (only && !only.includes(name)) continue;
   // The hang glider's take-off ramps are picked on the bare land, before the jungle is planted: no tree grows on them.
@@ -486,7 +493,7 @@ Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, rende
 /** Fade the loading screen out once the map is drawn. */
 function hideLoading(): void {
   if (!loading) return;
-  if (bar) bar.style.width = '100%';
+  showProgress(1);
   if (shot) return loading.remove();
   loading.classList.add('done');
   setTimeout(() => loading.remove(), 1000);

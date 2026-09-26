@@ -116,7 +116,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
   const wrap = el('div', 'map-ui mm');
   wrap.innerHTML = `
     <button type="button" class="mm-mini mu-frame" data-t-aria="mmOpen">
-      <span class="mu-bg"></span>
+      <span class="mu-bg"></span><span class="mu-focus"></span>
       <span class="mm-face"><canvas class="mm-canvas"></canvas></span>
       <span class="mm-cap">
         <span class="mm-cap-to">${ICON.pin}<b></b><em></em></span>
@@ -153,8 +153,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       <header class="mm-head">
         <span class="mm-head-icon">${ICON.temple}</span>
         <div class="mm-head-text"><h2 id="mm-big-title" data-t="mmTitle"></h2><p data-t="mmSub"></p></div>
-        <button type="button" class="mm-find mu-frame mu-sm" data-t-aria="mmNearest"${ramps.length ? '' : ' hidden'}><span class="mu-bg"></span><span class="mu-glow"></span>${wingSvg('mm-find-icon')}<span class="mm-find-text" data-t="mmNearest"></span><kbd>N</kbd></button>
-        <button type="button" class="mm-x mu-frame mu-sm" data-t-aria="mmClose"><span class="mu-bg"></span>${ICON.close}<kbd>M</kbd></button>
+        <button type="button" class="mm-find mu-frame mu-sm" data-t-aria="mmNearest"${ramps.length ? '' : ' hidden'}><span class="mu-bg"></span><span class="mu-focus"></span><span class="mu-glow"></span>${wingSvg('mm-find-icon')}<span class="mm-find-text" data-t="mmNearest"></span><kbd>N</kbd></button>
+        <button type="button" class="mm-x mu-frame mu-sm" data-t-aria="mmClose"><span class="mu-bg"></span><span class="mu-focus"></span>${ICON.close}<kbd>M</kbd></button>
       </header>
       <div class="mm-view">
         <canvas class="mm-land"></canvas>
@@ -1138,7 +1138,7 @@ function injectStyle(): void {
     /* Mini-map: top right, under the mute and gear buttons. */
     .mm-mini { position: absolute; right: calc(22 * var(--px)); top: calc(96 * var(--px)); display: flex; flex-direction: column; align-items: center;
       gap: calc(5 * var(--px)); padding: calc(6 * var(--px)) calc(6 * var(--px)) calc(5 * var(--px)); border: 0; background: none; cursor: pointer;
-      pointer-events: auto; outline: none; touch-action: manipulation; --mu-shape: var(--mm-shape); --mu-ring: var(--mm-ring);
+      pointer-events: auto; outline: none; touch-action: manipulation; --mu-shape: var(--mm-shape); --mu-ring: var(--mm-ring); --mu-focus: var(--mu-focus-lg);
       --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.3), rgba(180, 204, 255, 0.28) var(--mu-night));
       opacity: 0; visibility: hidden; transition: opacity 0.4s, visibility 0s 0.4s; }
     .mm.is-on .mm-mini { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
@@ -1147,7 +1147,6 @@ function injectStyle(): void {
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
     .mm-mini::after { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     .mm-mini:hover, .mm-mini:focus-visible { --mu-edge: var(--mu-line-hi); }
-    .mm-mini:focus-visible { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 3px; border-radius: calc(8 * var(--px)); }
     .mm-face { position: relative; display: block; width: calc(${FACE} * var(--px)); height: calc(${FACE} * var(--px)); }
     .mm-canvas { position: absolute; left: calc(-${BEZEL} * var(--px)); top: calc(-${BEZEL} * var(--px));
       width: calc(${FACE + 2 * BEZEL} * var(--px)); height: calc(${FACE + 2 * BEZEL} * var(--px)); }
@@ -1217,7 +1216,7 @@ function injectStyle(): void {
       border: 0; background: none; color: var(--mu-ink); cursor: pointer; outline: none; }
     .mm-x .mu-icon { width: calc(18 * var(--px)); height: calc(18 * var(--px)); }
     .mm-x:hover { --mu-edge: var(--mu-line-hi); }
-    .mm-x:focus-visible, .mm-find:focus-visible, :is(.mm-place, .mm-ramp):focus-visible .mm-place-label { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 2px; }
+    :is(.mm-place, .mm-ramp):focus-visible .mm-place-label { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 2px; }
     .mm-view { position: relative; width: min(calc(100vw - 60px), calc((100vh - 170 * var(--px) - 40px) * var(--mm-aspect)), calc(1060 * var(--px)));
       aspect-ratio: var(--mm-aspect); clip-path: var(--mm-face); }
     .mm-view::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 calc(40 * var(--px)) rgba(4, 8, 16, 0.5); }

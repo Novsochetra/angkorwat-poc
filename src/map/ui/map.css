@@ -6,7 +6,9 @@
  * times --u (set from the window size): `calc(N * var(--px))`.
  */
 
-.map-ui {
+/* (the story's top bar and arrows use the same buttons: story/story.css) */
+.map-ui,
+.st {
   --u: 1;
   --px: calc(1px * var(--u));
   /* Night 0‥1 (set every frame from the time of day). */
@@ -32,7 +34,9 @@
   --mu-btn-edge: rgba(255, 236, 205, 0.16);
   --mu-lift: calc(-3 * var(--px));
   --mu-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
+.map-ui {
   position: fixed;
   inset: 0;
   z-index: 5;
@@ -72,24 +76,28 @@
   --mu-shape: var(--mu-shape-xs);
   --mu-ring: var(--mu-ring-xs);
   --mu-halo: var(--mu-halo-xs);
+  --mu-focus: var(--mu-focus-xs);
 }
 
 .mu-sm {
   --mu-shape: var(--mu-shape-sm);
   --mu-ring: var(--mu-ring-sm);
   --mu-halo: var(--mu-halo-sm);
+  --mu-focus: var(--mu-focus-sm);
 }
 
 .mu-md {
   --mu-shape: var(--mu-shape-md);
   --mu-ring: var(--mu-ring-md);
   --mu-halo: var(--mu-halo-md);
+  --mu-focus: var(--mu-focus-md);
 }
 
 .mu-lg {
   --mu-shape: var(--mu-shape-lg);
   --mu-ring: var(--mu-ring-lg);
   --mu-halo: var(--mu-halo-lg);
+  --mu-focus: var(--mu-focus-lg);
 }
 
 /* Soft drop shadow (under everything). */
@@ -161,6 +169,28 @@
   inset: 0;
   background: rgb(255, 214, 120);
   clip-path: var(--mu-shape);
+}
+
+/* Keyboard focus: a light ring 3 px out, on the same steps as the corners
+ * (shape.ts `setSteppedVars`). A card shows it when its button has focus. */
+.mu-frame > .mu-focus {
+  position: absolute;
+  inset: -5px;
+  background: rgba(255, 244, 214, 0.95);
+  clip-path: var(--mu-focus);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.mu-frame:focus-visible > .mu-focus,
+.mu-pin:focus-visible .mu-focus,
+.mu-pin.is-focus .mu-focus {
+  opacity: 1;
+}
+
+.mu-frame:focus-visible:has(> .mu-focus) {
+  outline: none;
 }
 
 /* ── Title ──────────────────────────────────────────────────────────────── */
@@ -235,10 +265,7 @@
   gap: calc(12 * var(--px));
   min-height: calc(48 * var(--px));
   padding: calc(8 * var(--px)) calc(12 * var(--px)) calc(8 * var(--px)) calc(15 * var(--px));
-  border-radius: calc(8 * var(--px));
-  transition: transform 0.35s var(--mu-ease), outline-color 0.2s;
-  outline: 2px solid transparent;
-  outline-offset: 3px;
+  transition: transform 0.35s var(--mu-ease);
 }
 
 .mu-pin-in > * {
@@ -370,11 +397,6 @@
 .mu-pin.is-main:hover .mu-glow,
 .mu-pin.is-main.is-hover .mu-glow {
   opacity: 0.6;
-}
-
-.mu-pin:focus-visible .mu-pin-in,
-.mu-pin.is-focus .mu-pin-in {
-  outline-color: rgba(255, 244, 214, 0.95);
 }
 
 /* Pressed. */
@@ -586,17 +608,17 @@
   box-shadow: inset 0 0 calc(12 * var(--px)) rgba(255, 190, 70, 0.3);
 }
 
-.mu-lang button:focus-visible,
-.mu-round:focus-visible,
+/* (the framed buttons show the stepped focus ring, `.mu-focus`) */
 .mu-back:focus-visible,
-.mu-x:focus-visible,
-.mu-seg button:focus-visible,
-.mu-watch:focus-visible,
-.mu-switch:focus-visible,
-.mu-begin:focus-visible {
+.mu-x:focus-visible {
   outline: 2px solid rgba(255, 244, 214, 0.95);
   outline-offset: 3px;
   border-radius: calc(8 * var(--px));
+}
+
+/* (over its neighbours) */
+:is(.mu-lang, .mu-seg) button:focus-visible {
+  z-index: 1;
 }
 
 /* ── Info panel (right side; a bottom sheet on phones) ─────────────────── */
@@ -1027,8 +1049,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The bar: a flat dark slot, gold up to the value (its top rows lighter,
+ * like a block's lit face). Hover: a whiter knob; keyboard focus: a gold
+ * knob and a light edge on the slot. */
 .mu-slider input {
   --v: 50%;
+  --mu-knob: #fff4da;
+  --mu-slot-edge: var(--mu-line);
+  --mu-slot-fill: linear-gradient(180deg, var(--mu-gold-hi) 0 calc(3 * var(--px)), var(--mu-gold) 0);
   width: 100%;
   height: calc(24 * var(--px));
   margin: 0;
@@ -1040,52 +1068,54 @@
 }
 
 .mu-slider input::-webkit-slider-runnable-track {
-  height: calc(6 * var(--px));
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--mu-gold) var(--v), rgba(255, 255, 255, 0.14) var(--v));
+  height: calc(8 * var(--px));
+  background: var(--mu-slot-fill) 0 0 / var(--v) 100% no-repeat, rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px var(--mu-slot-edge);
 }
 
 .mu-slider input::-moz-range-track {
-  height: calc(6 * var(--px));
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.14);
+  height: calc(8 * var(--px));
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px var(--mu-slot-edge);
 }
 
 .mu-slider input::-moz-range-progress {
-  height: calc(6 * var(--px));
-  border-radius: 3px;
-  background: var(--mu-gold);
+  height: calc(8 * var(--px));
+  background: var(--mu-slot-fill);
 }
 
+/* The switches' knob: a stepped square with a darker lower lip. */
 .mu-slider input::-webkit-slider-thumb {
-  width: calc(15 * var(--px));
-  height: calc(15 * var(--px));
-  margin-top: calc(-4.5 * var(--px));
+  width: calc(18 * var(--px));
+  height: calc(18 * var(--px));
+  margin-top: calc(-5 * var(--px));
   border: 0;
-  border-radius: 3px;
-  background: #fff4da;
-  box-shadow: 0 0 0 3px rgba(247, 183, 51, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
-  transform: rotate(45deg);
+  background: var(--mu-knob);
+  box-shadow: inset 0 calc(-3 * var(--px)) 0 rgba(120, 76, 16, 0.35);
+  clip-path: var(--mu-shape-xxs);
   -webkit-appearance: none;
-  transition: box-shadow 0.2s;
 }
 
 .mu-slider input::-moz-range-thumb {
-  width: calc(14 * var(--px));
-  height: calc(14 * var(--px));
+  width: calc(18 * var(--px));
+  height: calc(18 * var(--px));
   border: 0;
-  border-radius: 3px;
-  background: #fff4da;
-  box-shadow: 0 0 0 3px rgba(247, 183, 51, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4);
-  transform: rotate(45deg);
+  border-radius: 0;
+  background: var(--mu-knob);
+  box-shadow: inset 0 calc(-3 * var(--px)) 0 rgba(120, 76, 16, 0.35);
+  clip-path: var(--mu-shape-xxs);
 }
 
-.mu-slider input:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(255, 244, 214, 0.9), 0 2px 6px rgba(0, 0, 0, 0.4);
+@media (hover: hover) {
+  .mu-slider input:hover {
+    --mu-knob: #fffdf6;
+    --mu-slot-edge: var(--mu-line-hi);
+  }
 }
 
-.mu-slider input:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 4px rgba(255, 244, 214, 0.9), 0 2px 6px rgba(0, 0, 0, 0.4);
+.mu-slider input:focus-visible {
+  --mu-knob: linear-gradient(180deg, #ffe07c, #f2ab2e);
+  --mu-slot-edge: rgba(255, 244, 214, 0.9);
 }
 
 .mu-seg {

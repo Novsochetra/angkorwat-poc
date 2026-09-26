@@ -647,51 +647,57 @@ body.st-after :is(.map-ui, .rt) {
   gap: 10px;
 }
 
-.st-langs,
-.st-skip {
-  border: 1px solid rgba(255, 229, 188, 0.22);
-  border-radius: 8px;
-  background: rgba(10, 16, 26, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-
-.st-langs {
-  display: flex;
-  padding: 3px;
-}
-
-.st-lang {
-  padding: 8px 11px;
-  border: 0;
-  border-radius: 5px;
-  background: none;
-  color: var(--st-dim);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.st-lang[aria-pressed='true'] {
-  background: rgba(247, 183, 51, 0.18);
-  color: var(--st-gold-hi);
-}
-
+/* ខ្មែរ / EN and Skip: the map's corner buttons (ui/map.css `.mu-lang`, `.mu-frame`). */
 .st-skip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 38px;
-  padding: 0 10px 0 14px;
-  font-size: 14px;
+  height: 44px;
+  padding: 0 11px 0 16px;
+  border: 0;
+  background: none;
+  color: #f8ecd9;
+  font-size: 14.5px;
   font-weight: 700;
   cursor: pointer;
+  outline: none;
+  --mu-edge: var(--mu-btn-edge);
+}
+
+:is(.st-skip, .st-arrow) > .mu-bg {
+  background: var(--mu-btn);
+}
+
+/* (the blur behind, on its own layer like the map's glass panels) */
+:is(.st-skip, .st-arrow)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  clip-path: var(--mu-shape);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
 }
 
 .st-skip .mu-icon {
   width: 16px;
   height: 16px;
+  transition: transform 0.35s var(--st-ease);
+}
+
+@media (hover: hover) {
+  :is(.st-skip, .st-arrow:not(:disabled)):hover {
+    --mu-edge: var(--mu-line-hi);
+  }
+
+  :is(.st-skip, .st-arrow:not(:disabled)):hover > .mu-bg {
+    background: var(--mu-btn-hi);
+  }
+
+  .st-skip:hover .mu-icon {
+    transform: translateX(3px);
+  }
 }
 
 .st-foot {
@@ -715,12 +721,14 @@ body.st-after :is(.map-ui, .rt) {
 .st-arrow {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: rgba(10, 16, 26, 0.45);
+  background: none;
   cursor: pointer;
+  outline: none;
+  --mu-edge: var(--mu-btn-edge);
 }
 
 .st-arrow .mu-icon {

@@ -2,7 +2,7 @@ import type { PlaceDef } from '../layout';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, WEATHER_SETTINGS, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, setLang, t, type WordKey } from './lang';
-import { setSteppedVars } from './shape';
+import { framed, setSteppedVars } from './shape';
 
 /**
  * The map's interface over the 3D view, after the concept art
@@ -130,14 +130,6 @@ function loadFonts(): void {
   l.rel = 'stylesheet';
   l.href = FONTS_HREF;
   document.head.append(l);
-}
-
-/** A panel's layers: fill with its stepped border (`mu-bg`), and an optional glow ring. */
-function framed<T extends HTMLElement>(host: T, size: 'xs' | 'sm' | 'md' | 'lg', glow = false): T {
-  host.classList.add('mu-frame', `mu-${size}`);
-  host.prepend(el('span', 'mu-bg'));
-  if (glow) host.querySelector('.mu-bg')!.after(el('span', 'mu-glow'));
-  return host;
 }
 
 interface Card {

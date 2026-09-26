@@ -42,6 +42,20 @@ export function steppedRing(cut: number, steps: number, width: number): string {
   return `polygon(evenodd,${[...o, o[0], ...i, i[0]].join(',')})`;
 }
 
+/**
+ * A panel's layers (map.css `.mu-frame`): the fill with its stepped border
+ * (`mu-bg`), an optional glow ring, and the keyboard-focus ring (`mu-focus`).
+ */
+export function framed<T extends HTMLElement>(host: T, size: 'xs' | 'sm' | 'md' | 'lg', glow = false): T {
+  const span = (cls: string) => Object.assign(document.createElement('span'), { className: cls });
+  host.classList.add('mu-frame', `mu-${size}`);
+  const bg = span('mu-bg');
+  host.prepend(bg);
+  bg.after(span('mu-focus'));
+  if (glow) bg.after(span('mu-glow'));
+  return host;
+}
+
 /** Everything outside the shape, `pad` px out (where a glow around its edge shows). */
 export function steppedOutside(cut: number, steps: number, pad = 64): string {
   const o = outline(cut, steps, 0);
@@ -60,12 +74,18 @@ const SIZES: Record<string, [number, number, number]> = {
   lg: [12, 4, 1.5],
 };
 
-/** Sets each size's shape, edge ring and glow area (`--mu-shape-sm`, `--mu-ring-sm`, `--mu-halo-sm`, …) on `host`. */
+/**
+ * Sets each size's shape, edge ring, glow area and keyboard-focus ring
+ * (`--mu-shape-sm`, `--mu-ring-sm`, `--mu-halo-sm`, `--mu-focus-sm`, …) on
+ * `host`. The focus ring is for a box 5 px bigger all round (map.css
+ * `.mu-focus`): 2 px wide, 3 px out from the shape, on the same steps.
+ */
 export function setSteppedVars(host: HTMLElement): void {
   for (const [k, [cut, steps, edge]] of Object.entries(SIZES)) {
     host.style.setProperty(`--mu-shape-${k}`, steppedShape(cut, steps));
     host.style.setProperty(`--mu-ring-${k}`, steppedRing(cut, steps, edge));
     host.style.setProperty(`--mu-halo-${k}`, steppedOutside(cut, steps));
+    host.style.setProperty(`--mu-focus-${k}`, steppedRing(cut, steps, 2));
   }
   // (the picked card's thicker edge)
   host.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2.5));
