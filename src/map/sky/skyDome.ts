@@ -17,9 +17,8 @@ import { createMeteors, METEOR_GLSL } from './stars';
  *
  * The moon shows its phase (`SkyState.moonLight`): the sunlit part bright,
  * a soft, slightly ragged terminator (crater rims catch the light first),
- * and on the dark side the face still there, asleep in the faint blue
- * earthshine (brightest when the moon is a thin crescent). Its rim and halo
- * glow only as much as it is lit.
+ * and the dark side hidden: only the sky there (without its stars). Its rim
+ * and halo glow only beside the lit part.
  *
  * Weather (`SkyState.cloud`, `flash`): cloud cover spreads the heaped clouds
  * over the sky, closes a grey veil over it and hides the sun, moon and
@@ -233,6 +232,8 @@ export function buildSkyDome(): SkyDome {
         low = mix(low, haze, hazeDistance(max(cameraPosition.y - 20.0, 1.0) / max(-e, 0.002)));
         col = mix(col, low, smoothstep(0.0, -0.05, e));
 
+        // (the sky without stars: what the moon's dark side shows)
+        vec3 bare = col;
         // Stars.
         if (uAmounts.z > 0.001 && e > 0.0) {
           vec3 sp = d * 420.0;
@@ -258,8 +259,8 @@ export function buildSkyDome(): SkyDome {
         }
         // Moon: its face (seas and highlands, a slightly darker limb) under the
         // bloom threshold, so it reads; a bright rim just outside that blooms,
-        // and a soft blue halo. Its phase: lit where the sun reaches the sphere,
-        // the face asleep in earthshine on the dark side.
+        // and a soft blue halo. Its phase: lit where the sun reaches the sphere;
+        // the dark side is just the sky (with no stars: the moon hides them).
         float moonMu = max(dot(d, uMoonDir), 0.0);
         if (moonA > 0.001 && moonMu > 0.99) {
           vec2 q = discUV(d, uMoonDir, ${MOON_RADIUS});
@@ -273,15 +274,14 @@ export function buildSkyDome(): SkyDome {
           vec3 L = uMoonLight.xyz;
           vec3 nrm = vec3(q, sqrt(max(1.0 - dot(q, q), 0.0)));
           float lit = smoothstep(-0.05, 0.1, dot(nrm, L) + (face.b - 0.5) * 0.3 * (1.0 - L.z * L.z));
-          float earth = 0.03 + 0.06 * (1.0 - uMoonLight.w) * (1.0 - uMoonLight.w);
-          vec3 moon = albedo * ((1.0 - 0.22 * pow(r, 4.0)) * lit + vec3(0.5, 0.66, 1.0) * earth * (1.0 - lit));
-          // (the sky's own light lies in front of it: a pale disc by day, bright at night; the dark side hides the sky behind)
-          col = mix(col, col * mix(0.8, 0.4, lit) + moon, disc * moonA);
+          vec3 moon = albedo * (1.0 - 0.22 * pow(r, 4.0)) * lit;
+          // (the sky's own light lies in front of the lit part: a pale disc by day, bright at night)
+          col = mix(col, bare * mix(1.0, 0.4, lit) + moon, disc * moonA);
           float past = max(r - 1.0, 0.0);
-          // (the rim only where the limb is lit; the halo as bright as the moon is full)
+          // (the rim and the halo only beside the lit limb, so the dark side's edge never shows; the halo as bright as the moon is full)
           float limb = smoothstep(-0.05, 0.25, dot(vec3(q / max(r, 1e-4) * 0.97, 0.243), L));
           float halo = 0.2 + 0.8 * uMoonLight.w;
-          col += (vec3(0.8, 0.9, 1.0) * 1.5 * exp(-past / 0.05) * limb * moonA + vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-past * 2.4)) * (1.0 - disc) * moonA;
+          col += (vec3(0.8, 0.9, 1.0) * 1.5 * exp(-past / 0.05) + vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-past * 2.4)) * limb * (1.0 - disc) * moonA;
         }
 
         // Clouds.
