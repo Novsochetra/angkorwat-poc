@@ -478,8 +478,8 @@
 .mu-round {
   display: grid;
   place-items: center;
-  width: calc(60 * var(--px));
-  height: calc(60 * var(--px));
+  width: calc(44 * var(--px));
+  height: calc(44 * var(--px));
   padding: 0;
   border: 0;
   background: none;
@@ -490,23 +490,13 @@
 }
 
 .mu-round .mu-icon {
-  width: calc(34 * var(--px));
-  height: calc(34 * var(--px));
+  width: calc(22 * var(--px));
+  height: calc(22 * var(--px));
   transition: transform 0.6s var(--mu-ease), color 0.25s;
 }
 
 .mu-round > .mu-bg {
   background: var(--mu-btn);
-}
-
-.mu-mute {
-  width: calc(44 * var(--px));
-  height: calc(44 * var(--px));
-}
-
-.mu-mute .mu-icon {
-  width: calc(22 * var(--px));
-  height: calc(22 * var(--px));
 }
 
 .mu-mute.is-off {
@@ -626,10 +616,10 @@
 .mu-info {
   position: absolute;
   right: calc(24 * var(--px));
-  top: calc(100 * var(--px));
+  top: calc(84 * var(--px));
   z-index: 6;
   width: calc(384 * var(--px));
-  max-height: calc(100% - 128 * var(--px));
+  max-height: calc(100% - 112 * var(--px));
   display: flex;
   flex-direction: column;
   padding: calc(16 * var(--px)) calc(24 * var(--px)) calc(24 * var(--px));
@@ -892,7 +882,7 @@
 
 .mu-settings {
   /* (under the corner buttons; the bottom stays clear on low screens: the body scrolls) */
-  --mu-set-top: calc(94 * var(--px));
+  --mu-set-top: calc(78 * var(--px));
   position: absolute;
   right: calc(22 * var(--px));
   top: var(--mu-set-top);
@@ -1537,21 +1527,11 @@
   }
 
   .mu-round {
-    width: 42px;
-    height: 42px;
-  }
-
-  .mu-round .mu-icon {
-    width: 24px;
-    height: 24px;
-  }
-
-  .mu-mute {
     width: 34px;
     height: 34px;
   }
 
-  .mu-mute .mu-icon {
+  .mu-round .mu-icon {
     width: 18px;
     height: 18px;
   }
@@ -1653,14 +1633,14 @@
 
   /* (under both rows of corner buttons; roaming: one row, below) */
   .mu-settings {
-    --mu-set-top: 100px;
+    --mu-set-top: 92px;
     left: 8px;
     right: 8px;
     width: auto;
   }
 
   .mu-roam .mu-settings {
-    --mu-set-top: 62px;
+    --mu-set-top: 54px;
   }
 
   .mu-hint {

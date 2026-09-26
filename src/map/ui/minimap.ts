@@ -1136,7 +1136,7 @@ function injectStyle(): void {
       border: 1px solid var(--mu-line-hi); border-bottom-width: 2px; border-radius: calc(3 * var(--px)); }
 
     /* Mini-map: top right, under the mute and gear buttons. */
-    .mm-mini { position: absolute; right: calc(22 * var(--px)); top: calc(96 * var(--px)); display: flex; flex-direction: column; align-items: center;
+    .mm-mini { position: absolute; right: calc(22 * var(--px)); top: calc(80 * var(--px)); display: flex; flex-direction: column; align-items: center;
       gap: calc(5 * var(--px)); padding: calc(6 * var(--px)) calc(6 * var(--px)) calc(5 * var(--px)); border: 0; background: none; cursor: pointer;
       pointer-events: auto; outline: none; touch-action: manipulation; --mu-shape: var(--mm-shape); --mu-ring: var(--mm-ring); --mu-focus: var(--mu-focus-lg);
       --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.3), rgba(180, 204, 255, 0.28) var(--mu-night));
@@ -1316,7 +1316,7 @@ function injectStyle(): void {
     .mu-calm ~ .mm-bigwrap :is(.mm-place, .mm-ramp)::before, .mu-calm ~ .mm-bigwrap .mm-you-ring { animation: none; }
 
     @media (max-width: 639px) {
-      .mm-mini { right: 10px; top: 62px; padding: 4px 4px 3px; gap: 3px; }
+      .mm-mini { right: 10px; top: 54px; padding: 4px 4px 3px; gap: 3px; }
       .mm-face { width: 118px; height: 118px; }
       .mm-canvas { left: -5px; top: -5px; width: 128px; height: 128px; }
       .mm-cap { max-width: 118px; height: 16px; font-size: 11px; }

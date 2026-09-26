@@ -59,6 +59,9 @@ const camera = new PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 9000);
 
 // ── Settings (gear button), kept between visits ─────────────────────────────
 const SETTINGS_KEY = 'angkor-map-settings';
+/** Which defaults the kept settings have seen (a new version gives them the new defaults once). */
+const DEFAULTS_KEY = 'angkor-map-defaults';
+const DEFAULTS_VERSION = '2';
 function loadSettings(): MapSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number; sharp?: boolean };
@@ -75,12 +78,21 @@ function loadSettings(): MapSettings {
       delete saved.sharp;
     }
     if (!GRAPHICS_CHOICES.includes(saved.graphics as GraphicsChoice)) delete saved.graphics;
+    // (settings kept before the new defaults — cycling time, clear weather, the interface at full, easy flying — take them once)
+    if (localStorage.getItem(DEFAULTS_KEY) !== DEFAULTS_VERSION) {
+      delete saved.time;
+      delete saved.weather;
+      delete saved.ui;
+      delete saved.easyFly;
+      localStorage.setItem(DEFAULTS_KEY, DEFAULTS_VERSION);
+    }
     return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
-let settings = shot ? { ...DEFAULT_SETTINGS } : loadSettings();
+// (shots hold the day unless they ask for another time, so they look the same whenever they are taken)
+let settings: MapSettings = shot ? { ...DEFAULT_SETTINGS, time: 'day' } : loadSettings();
 if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
 roamPrefs.easyFly = settings.easyFly;
 if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) settings.graphics = params.get('graphics') as GraphicsChoice;

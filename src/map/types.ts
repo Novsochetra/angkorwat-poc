@@ -274,7 +274,7 @@ export type Lang = 'km' | 'en';
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 0.7, time: 'day', weather: 'season', calm: false, lang: 'km', easyFly: true, graphics: 'auto' };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, graphics: 'auto' };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
