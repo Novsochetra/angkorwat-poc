@@ -95,6 +95,8 @@ const ALBUM_KEY: Record<AlbumWord, WordKey> = {
   delete: 'alDelete',
   all: 'alAll',
   saved: 'alSaved',
+  markTitle: 'alMarkTitle',
+  markBy: 'alMarkBy',
 };
 const ALBUM_TEXT: AlbumText = {
   word: (key, vars) => t(ALBUM_KEY[key], vars),

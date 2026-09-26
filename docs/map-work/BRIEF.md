@@ -169,7 +169,10 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   The camera and the phone also work in the boat (the paddle goes down
   on his lap) and on the hang glider (it flies on straight): the
   Animator's posture keeps the body, the device's arms go on top.
-  Photos go to the game's album (`src/game/Photos.ts`, IndexedDB). The
+  Photos go to the game's album (`src/game/Photos.ts`, IndexedDB), each
+  new one with the maker's mark in its bottom-right corner (the game's name
+  over "Made with ❤️ By Sochetra NOV": `markTitle` / `markBy`, on the map
+  `alMarkTitle` / `alMarkBy` in `ui/lang.ts`). The
   explorer is made with `propLights: false`: the tools own one PointLight and
   one SpotLight (no shadow) that are always in the scene (intensity 0 when
   unused), so the light count never changes (no shader recompiles).

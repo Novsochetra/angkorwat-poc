@@ -48,6 +48,9 @@ export const ALBUM_WORDS_EN = {
   delete: 'Delete',
   all: 'All photos',
   saved: 'Saved to the album',
+  /** The maker's mark in the corner of every new photo: the game's name, and who made it. */
+  markTitle: 'Angkor Heritage',
+  markBy: 'Made with ❤️ By Sochetra NOV',
 };
 export type AlbumWord = keyof typeof ALBUM_WORDS_EN;
 
@@ -61,6 +64,10 @@ export interface AlbumText {
   /** The keys named in the empty album (the game's: Z, Y). */
   keys?: { camera: string; selfie: string };
 }
+
+/** The maker's mark's fonts (px: the size on a 720-pixel-high photo, scaled with it). */
+const MARK_TITLE_FONT = (px: number) => `500 ${px}px 'Pixelify Sans', Koulen, system-ui, sans-serif`;
+const MARK_BY_FONT = (px: number) => `600 ${px}px 'Nunito Sans', 'Kantumruy Pro', system-ui, sans-serif`;
 
 const EN_TEXT: AlbumText = {
   word: (key, vars = {}) => ALBUM_WORDS_EN[key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? ''),
@@ -154,6 +161,9 @@ export class PhotoAlbum {
     this.closeBtn.title = w('close');
     const printText = this.print.querySelector('span');
     if (printText) printText.textContent = w('saved');
+    // (the mark's fonts and letters, ready before the next photo; a page without them draws the system's)
+    void document.fonts?.load(MARK_TITLE_FONT(30), w('markTitle')).catch(() => undefined);
+    void document.fonts?.load(MARK_BY_FONT(15), w('markBy')).catch(() => undefined);
     this.refresh();
     if (this.isOpen && this.shown) this.showPhoto(this.shown);
   }
@@ -191,17 +201,42 @@ export class PhotoAlbum {
   }
 
   /**
-   * Take the photo. Call it right after rendering the frame, while the canvas
-   * still holds the picture.
+   * Take the photo (with the maker's mark in its corner). Call it right after
+   * rendering the frame, while the canvas still holds the picture.
    */
   capture(canvas: HTMLCanvasElement, place: string): void {
-    const blob = dataUrlBlob(canvas.toDataURL('image/jpeg', 0.92));
+    const blob = dataUrlBlob(this.marked(canvas).toDataURL('image/jpeg', 0.92));
     const photo: Photo = { id: 0, blob, time: Date.now(), place, url: URL.createObjectURL(blob) };
     this.photos.unshift(photo);
     this.shutter();
     this.showPrint(photo);
     this.refresh();
     void this.store(photo);
+  }
+
+  /**
+   * The picture with the maker's mark in the bottom-right corner, in the
+   * language in use: the game's name over who made it (`markTitle`, `markBy`),
+   * white with a soft shadow, sized to the photo.
+   */
+  private marked(src: HTMLCanvasElement): HTMLCanvasElement {
+    const c = Object.assign(document.createElement('canvas'), { width: src.width, height: src.height });
+    const g = c.getContext('2d');
+    if (!g) return src;
+    g.drawImage(src, 0, 0);
+    const s = Math.max(0.6, Math.min(c.width / 1280, c.height / 720));
+    const x = c.width - 22 * s;
+    const y = c.height - 18 * s;
+    g.textAlign = 'right';
+    g.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    g.shadowColor = 'rgba(0, 0, 0, 0.75)';
+    g.shadowBlur = 6 * s;
+    g.shadowOffsetY = s;
+    g.font = MARK_BY_FONT(15 * s);
+    g.fillText(this.word('markBy'), x, y);
+    g.font = MARK_TITLE_FONT(30 * s);
+    g.fillText(this.word('markTitle'), x, y - 24 * s);
+    return c;
   }
 
   openAlbum(photo?: Photo): void {

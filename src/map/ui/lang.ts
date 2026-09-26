@@ -298,6 +298,9 @@ const WORDS = {
   alDelete: { km: 'លុប', en: 'Delete' },
   alAll: { km: 'រូបថតទាំងអស់', en: 'All photos' },
   alSaved: { km: 'បានរក្សាទុកក្នុងអាល់ប៊ុម', en: 'Saved to the album' },
+  // (the maker's mark in the corner of every new photo)
+  alMarkTitle: { km: 'មរតកអង្គរ', en: 'Angkor Heritage' },
+  alMarkBy: { km: 'បង្កើតដោយក្ដីស្រឡាញ់ ❤️ ពី នៅ សុចិត្រា', en: 'Made with ❤️ By Sochetra NOV' },
   // The album's nature book and temple passport (roam/_book.ts, _bookUi.ts; names and facts: roam/_bookData.ts):
   bkTabs: { km: 'ផ្នែកនៃអាល់ប៊ុម', en: 'Album sections' },
   bkPhotos: { km: 'រូបថត', en: 'Photos' },
