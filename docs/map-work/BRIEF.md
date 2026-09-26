@@ -285,8 +285,9 @@ where the art has it at midnight and sets before dawn (≈ 0.68). The key
 light swings and drops a little with them, and turns only on the frames the
 shadow map is drawn anyway (every third), so it costs no extra shadow pass.
 The moon shows its phase from `f.day` (29.53-day month, day 0 = new moon):
-lit side and soft ragged terminator, its face asleep in earthshine on the
-dark side; a full-moon night is a little brighter. Shooting stars on clear
+lit side and soft ragged terminator, the dark side hidden (only the sky);
+its glow spreads from the lit part, all round it (`moonLitDist`), so a half
+moon shines too; a full-moon night is a little brighter. Shooting stars on clear
 nights, one every 20–60 s (`sky/stars.ts`; never in the first 40 s, so not
 in a default still: `t=224.3` shows one). Weather on the light
 (`f.weather`): clouds dim and hide the sun and moon and soften the shadows,

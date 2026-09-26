@@ -18,7 +18,10 @@ import { createMeteors, METEOR_GLSL } from './stars';
  * The moon shows its phase (`SkyState.moonLight`): the sunlit part bright,
  * a soft, slightly ragged terminator (crater rims catch the light first),
  * and the dark side hidden: only the sky there (without its stars). Its rim
- * and halo glow only beside the lit part.
+ * glows beside the lit limb, a softer glow off the terminator, and the halo
+ * spreads round all the lit part (over the dark side too), so a half moon
+ * shines as a full one does, a crescent on both its curves, and the dark
+ * side's edge never shows.
  *
  * Weather (`SkyState.cloud`, `flash`): cloud cover spreads the heaped clouds
  * over the sky, closes a grey veil over it and hides the sun, moon and
@@ -203,6 +206,34 @@ export function buildSkyDome(): SkyDome {
         if (cv.z > -0.05 || dv.z > -0.05) return vec2(1e3);
         return (dv.xy / -dv.z - cv.xy / -cv.z) * (-cv.z / r);
       }
+      // Distance from p to the ellipse with semi-axes ab (a few steps of
+      // 0xfaded's evolute method: good to ≈ 0.001 even when it is thin).
+      float ellipseDist(vec2 p, vec2 ab) {
+        p = abs(p);
+        vec2 t = vec2(0.70710678);
+        vec2 k = vec2(ab.x * ab.x - ab.y * ab.y, ab.y * ab.y - ab.x * ab.x) / ab;
+        for (int i = 0; i < 3; i++) {
+          vec2 ev = k * t * t * t;
+          vec2 pe = p - ev;
+          t = clamp((pe * length(ab * t - ev) / max(length(pe), 1e-5) + ev) / ab, 0.0, 1.0);
+          t /= max(length(t), 1e-5);
+        }
+        return length(p - ab * t);
+      }
+      // How far q (on the moon's disc frame, disc radii) is from its lit part, 0 on it.
+      // Along the light (u, toward the sun) and across it (v), the lit part runs from the
+      // terminator, a half ellipse u = −L.z·√(1 − v²), to the limb's sunward half circle.
+      float moonLitDist(vec2 q, vec3 L) {
+        vec2 lx = dot(L.xy, L.xy) > 1e-8 ? normalize(L.xy) : vec2(1.0, 0.0);
+        vec2 p = vec2(dot(q, lx), dot(q, vec2(-lx.y, lx.x)));
+        if (dot(p, p) <= 1.0 && p.x >= -L.z * sqrt(max(1.0 - p.y * p.y, 0.0))) return 0.0;
+        // (the sunward half of the limb)
+        float a = clamp(atan(p.y, p.x), -1.5707963, 1.5707963);
+        float arc = length(p - vec2(cos(a), sin(a)));
+        // (the terminator; from the other side of the u = 0 line its nearest point is a horn)
+        float term = p.x * L.z <= 0.0 ? ellipseDist(p, vec2(max(abs(L.z), 0.02), 1.0)) : length(vec2(p.x, abs(p.y) - 1.0));
+        return min(arc, term);
+      }
       // The low clouds' body at sheet point q (already bent by the warp): 0‥1.
       float lowClouds(vec2 q) {
         return texture2D(uNoise, CM1 * q + uCloudOff[1]).g * 0.52
@@ -274,14 +305,26 @@ export function buildSkyDome(): SkyDome {
           vec3 L = uMoonLight.xyz;
           vec3 nrm = vec3(q, sqrt(max(1.0 - dot(q, q), 0.0)));
           float lit = smoothstep(-0.05, 0.1, dot(nrm, L) + (face.b - 0.5) * 0.3 * (1.0 - L.z * L.z));
-          vec3 moon = albedo * (1.0 - 0.22 * pow(r, 4.0)) * lit;
+          // (a crescent, thinner than half: 0 at half, 1 by a quarter lit)
+          float cres = smoothstep(0.0, 0.5, -L.z);
+          // (a crescent shines a little brighter, so the thin sliver still reads as bright)
+          vec3 moon = albedo * (1.0 - 0.22 * pow(r, 4.0)) * lit * (1.0 + 0.25 * cres);
           // (the sky's own light lies in front of the lit part: a pale disc by day, bright at night)
           col = mix(col, bare * mix(1.0, 0.4, lit) + moon, disc * moonA);
           float past = max(r - 1.0, 0.0);
-          // (the rim and the halo only beside the lit limb, so the dark side's edge never shows; the halo as bright as the moon is full)
+          // Its light spreads from the lit part, over the dark side too (the air in front of
+          // the moon scatters it), so the dark side's own edge never shows.
+          float fromLit = moonLitDist(q, L);
+          // (the bright rim beside the lit limb; a softer glow off the terminator, as bright
+          // as the rim on a crescent, so both its curves shine; the halo round all the lit
+          // part, a little less bright as the moon wanes)
           float limb = smoothstep(-0.05, 0.25, dot(vec3(q / max(r, 1e-4) * 0.97, 0.243), L));
-          float halo = 0.2 + 0.8 * uMoonLight.w;
-          col += (vec3(0.8, 0.9, 1.0) * 1.5 * exp(-past / 0.05) + vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-past * 2.4)) * limb * (1.0 - disc) * moonA;
+          float halo = 0.5 + 0.5 * uMoonLight.w;
+          float off = 1.0 - disc * lit;
+          // (not where the rim already shines; on a crescent its inner curve faces the sun's side too)
+          float inner = mix(0.45, 1.5, cres) * exp(-fromLit / mix(0.07, 0.05, cres)) * (1.0 - limb * (1.0 - disc * cres));
+          col += vec3(0.8, 0.9, 1.0) * (1.5 * exp(-past / 0.05) * limb * (1.0 - disc) + inner * off) * moonA;
+          col += vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-fromLit * 2.4) * off * moonA;
         }
 
         // Clouds.
