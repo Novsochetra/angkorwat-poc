@@ -20,6 +20,7 @@ import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_CHOICES, type GraphicsChoice, 
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
+import { steppedShape } from './ui/shape';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 
 /**
@@ -35,7 +36,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
  * `story=<n>` the story from beat n (1‥; shots: that beat), `story=0` never
  * (else it plays before the map on the first visit) ·
- * `loading=0‥1` hold the loading screen at that point, and build nothing.
+ * `loading=0‥1` hold the loading screen at that point, and build nothing
+ * (1: built, with its button).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -109,7 +111,7 @@ if (['km', 'en'].includes(params.get('lang') ?? '')) settings.lang = params.get(
 // The page's own words (tab title, loading screen) in that language (ui/lang.ts).
 function pageWords(): void {
   document.title = t('title');
-  for (const [sel, key] of [['#loading h1', 'title'], ['#loading p', 'loading']] as const) {
+  for (const [sel, key] of [['#loading h1', 'title'], ['#loading p', 'loading'], ['#loading .ld-go span', 'loadGo']] as const) {
     const e = document.querySelector(sel);
     if (e) e.textContent = t(key);
   }
@@ -184,8 +186,11 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
 const only = params.get('parts')?.split(',');
 // The loading screen follows the build (index.html): Angkor Wat rises row by row
 // from its grey outline with light on the stones being laid, the bar fills block by block (20) and the explorer walks
-// below it to the bar's end; a frame in between lets it paint.
+// below it to the bar's end; a frame in between lets it paint. Built, it waits for its button (enter()).
 const loading = document.getElementById('loading');
+loading?.style.setProperty('--ld-shape', steppedShape(10, 5));
+/** The loading screen's button was pressed (or there is none). */
+let entered = false;
 for (const s of loading?.querySelectorAll('.ld-ghost, .ld-built, .ld-lit') ?? []) s.innerHTML = LOAD_TEMPLE.svg;
 loading?.style.setProperty('--ld-rows', String(LOAD_TEMPLE.rows));
 loading?.style.setProperty('--ld-cols', String(LOAD_TEMPLE.cols));
@@ -202,6 +207,8 @@ function showProgress(p: number): void {
 if (params.has('loading')) {
   showProgress(Math.min(1, Math.max(0, Number(params.get('loading')) || 0)));
   await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 4000))]);
+  // (the ones that run once — the temple coming in, his hop, the button rising — at their end, whenever the shot is taken)
+  for (const a of loading?.getAnimations({ subtree: true }) ?? []) if (a.effect?.getTiming().iterations !== Infinity) a.finish();
   requestAnimationFrame(() => ((window as unknown as { __ready: boolean }).__ready = true));
   await new Promise(() => undefined);
 }
@@ -508,8 +515,8 @@ if (focus) {
 // ── The story (story/): before the map on the first visit; "Our story" in the settings shows it again ──
 const STORY_KEY = 'angkor-story-seen';
 let story: Story | null = null;
-async function openStory(from: number): Promise<void> {
-  story ??= await safe<Story | null>(
+async function loadStory(): Promise<Story | null> {
+  return (story ??= await safe<Story | null>(
     'story',
     async () =>
       (await import('./story/story')).createStory(
@@ -522,7 +529,8 @@ async function openStory(from: number): Promise<void> {
           },
           setLang: (l) => ui.setLang(l),
           sound: (s) => audio.play(s),
-          soundOn: () => audio.started,
+          // (the loading screen's button was the click the sound needs: its first beat does not ask again)
+          soundOn: () => audio.started || entered,
           startSound: () => audio.start(),
           type: (k, pan, delay) => audio.type(k, pan, delay),
           duck: (d) => audio.duck(d),
@@ -542,8 +550,10 @@ async function openStory(from: number): Promise<void> {
         { shot },
       ),
     () => null,
-  );
-  story?.play(from);
+  ));
+}
+async function openStory(from: number): Promise<void> {
+  (await loadStory())?.play(from);
 }
 const storyAt = Number(params.get('story') ?? 0);
 let seenStory = false;
@@ -552,7 +562,9 @@ try {
 } catch {
   /* no storage */
 }
-if (storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0')) await openStory(Math.max(0, storyAt - 1));
+const storyDue = storyAt > 0 || (!shot && !seenStory && !focus && params.get('story') !== '0' && params.get('ui') !== '0');
+// (shots: at once; else it opens with the loading screen's button, loaded now so it shows at once then)
+if (storyDue) await (shot ? openStory(storyAt - 1) : loadStory());
 
 console.info(`[map] built in ${Object.entries(timings).map(([k, v]) => `${k} ${v}`).join(', ')} ms · blocks ${JSON.stringify(blocks)}${failed.length ? ` · FAILED: ${failed.join(', ')}` : ''}`);
 posthogLogger.info('map initialized', {
@@ -562,13 +574,33 @@ posthogLogger.info('map initialized', {
 });
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed } });
 
-/** Fade the loading screen out once the map is drawn (after the explorer's wave has begun). */
-function hideLoading(): void {
-  if (!loading) return;
+/**
+ * The map is drawn: the explorer turns and waves, and the loading screen's
+ * gold button waits (a shot takes the screen away at once). Its click lets
+ * the browser play sound (it plays none before one, a phone most of all).
+ */
+function mapReady(): void {
+  const go = loading?.querySelector<HTMLButtonElement>('.ld-go');
+  if (!loading || !go || shot) {
+    entered = true;
+    loading?.remove();
+    return;
+  }
   showProgress(1);
-  if (shot) return loading.remove();
-  setTimeout(() => loading.classList.add('done'), 700);
-  setTimeout(() => loading.remove(), 1700);
+  // (the map's keys and cards wait behind it)
+  uiRoot.inert = true;
+  go.addEventListener('click', enter, { once: true });
+  go.focus({ preventScroll: true });
+}
+/** The button: the sound starts (inside the click), the story opens on the first visit, and the loading screen fades out. */
+function enter(): void {
+  if (entered || !loading) return;
+  entered = true;
+  uiRoot.inert = false;
+  void audio.start().then(() => audio.play('select'));
+  if (storyDue) void openStory(Math.max(0, storyAt - 1));
+  loading.classList.add('done');
+  setTimeout(() => loading.remove(), 1000);
 }
 
 // ── Resolution follows the frame rate ─────────────────────────────────────
@@ -647,7 +679,7 @@ Object.assign(window, { __mapResolution: res });
 
 if (shot) {
   document.body.classList.add('shot');
-  hideLoading();
+  mapReady();
   // (statues are sculpted in workers: wait for them, sacred/pending.ts)
   const sculpted = await sacredReady();
   console.info(`[map] sacred pieces sculpted ${sculpted.ms.toFixed(0)} ms after the build${sculpted.left ? ` · ${sculpted.left} NOT READY` : ''}`);
@@ -692,7 +724,7 @@ if (shot) {
     feedback?.update();
     if (first) {
       first = false;
-      hideLoading();
+      mapReady();
     }
     requestAnimationFrame(tick);
   };

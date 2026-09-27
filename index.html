@@ -28,8 +28,9 @@
        * Loading screen while the map builds: a pixel Angkor Wat (ui/_loadTemple.ts)
        * rises row by row from its grey outline, the bar fills block by block and
        * the explorer (ui/_loadHero.ts) walks below it (main.ts sets --ld-cut,
-       * --ld-segs and --ld-p), under a dusk sky with stars and fireflies. Then it
-       * fades out.
+       * --ld-segs and --ld-p), under a dusk sky with stars and fireflies. Once the
+       * map is drawn he waves, and the gold button waits for a click (browsers
+       * play no sound before one); then it fades out.
        */
       body.map {
         background: #121726;
@@ -100,8 +101,8 @@
       /* The temple: its grey outline, and the built part (the same art) above it. */
       .ld-temple {
         position: relative;
-        /* (4 px a cell on a desktop: 93 cells; smaller in a short window, so the explorer below the bar still shows) */
-        width: min(372px, 90vw, calc((100vh - 280px) * var(--ld-cols, 36) / var(--ld-rows, 27)));
+        /* (4 px a cell on a desktop: 93 cells; smaller in a short window, so the explorer and the button below the bar still show) */
+        width: min(372px, 90vw, calc((100vh - 360px) * var(--ld-cols, 36) / var(--ld-rows, 27)));
         aspect-ratio: var(--ld-cols, 36) / var(--ld-rows, 27);
         margin-bottom: 26px;
         animation: ld-in 0.8s ease both;
@@ -275,6 +276,68 @@
           transform: translateY(-2px);
         }
       }
+      /*
+       * Built: the gold "Start" button (the story's, stepped corners: --ld-shape
+       * from main.ts) rises in below him. Its place is kept from the start, so
+       * nothing moves when it shows.
+       */
+      .ld-go {
+        position: relative;
+        isolation: isolate;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        height: 56px;
+        margin-top: 22px;
+        padding: 0 30px;
+        border: 0;
+        background: none;
+        color: #2b1904;
+        font: 800 18px/1 'Nunito Sans', 'Kantumruy Pro', system-ui, sans-serif;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        filter: drop-shadow(0 0 16px #ffb02880) drop-shadow(0 6px 14px #28140066);
+        visibility: hidden;
+        transition:
+          transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+          filter 0.3s;
+      }
+      .ld-go::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 55%, #eba52a 100%);
+        clip-path: var(--ld-shape, none);
+      }
+      .ld-go svg {
+        width: 20px;
+        height: 20px;
+        transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      /* (shown at once, so main.ts can focus it: Enter or Space presses it; it rises in after his hop) */
+      .map-loading.is-built .ld-go {
+        visibility: visible;
+        animation: ld-go-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.5s backwards;
+      }
+      @keyframes ld-go-in {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+      }
+      .ld-go:focus-visible {
+        outline: none;
+        filter: drop-shadow(0 0 3px #fff3d0) drop-shadow(0 0 18px #ffb028cc) drop-shadow(0 6px 14px #28140066);
+      }
+      @media (hover: hover) {
+        .map-loading.is-built .ld-go:hover {
+          transform: translateY(-3px);
+        }
+        .ld-go:hover svg {
+          transform: translateX(4px);
+        }
+      }
       /* (less motion: he stands, and steps along instead of gliding) */
       @media (prefers-reduced-motion: reduce) {
         .ld-hero {
@@ -327,6 +390,7 @@
       <h1>មរតកអង្គរ</h1>
       <div class="ld-bar" aria-hidden="true"><span></span></div>
       <div class="ld-walk" aria-hidden="true"><div class="ld-hero"></div></div>
+      <button class="ld-go" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 5.2v13.6c0 .8.9 1.3 1.6.8l10-6.8c.6-.4.6-1.2 0-1.6l-10-6.8C8.9 3.9 8 4.4 8 5.2Z" /></svg><span>ចាប់ផ្ដើម</span></button>
       <p>Clearing the path through the jungle…</p>
       <i class="ld-fly" style="--x: 14%; --y: 16%; --d: 0s" aria-hidden="true"></i>
       <i class="ld-fly" style="--x: 24%; --y: 28%; --d: -2.1s; --t: 7s" aria-hidden="true"></i>

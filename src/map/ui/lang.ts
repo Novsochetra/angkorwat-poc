@@ -18,6 +18,8 @@ const WORDS = {
   title: { km: 'មរតកអង្គរ', en: 'Angkor Heritage' },
   tagline: { km: 'ជ្រើសរើសដំណើរផ្សងព្រេងបន្ទាប់របស់អ្នក', en: 'Choose your next expedition' },
   loading: { km: 'កំពុងឈូសឆាយផ្លូវកាត់ព្រៃ…', en: 'Clearing the path through the jungle…' },
+  // (the loading screen's button once the map is built: its click also turns the sound on)
+  loadGo: { km: 'ចាប់ផ្ដើម', en: 'Start' },
   hint: { km: 'រុករកតំបន់ខ្ពង់រាបបុរាណនៃអង្គរ', en: 'Explore the ancient highlands of Angkor' },
   jumpIn: { km: 'លោតចុះ', en: 'Jump in' },
   jumpInAria: { km: 'លោតចុះ៖ ជ្រើសរើសឆ័ត្រយោង ឬខ្លែងហោះ (J)', en: 'Jump in: choose a parachute or a hang glider (J)' },

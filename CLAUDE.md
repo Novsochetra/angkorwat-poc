@@ -86,7 +86,12 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`,
   `loading=0‥1` (hold the loading screen there: Angkor Wat `ui/_loadTemple.ts`,
-  the explorer below the bar `ui/_loadHero.ts`; nothing is built).
+  the explorer below the bar `ui/_loadHero.ts`; nothing is built; at 1 its
+  gold button shows).
+- Built, the loading screen stays until its button ("ចាប់ផ្ដើម" / "Start",
+  `loadGo` in `lang.ts`) is pressed: that click turns the sound on (browsers
+  play none before a click), then the story (first visit) or the map shows
+  (`mapReady` / `enter` in `src/map/main.ts`).
 - The console line `[map] built in …` lists build times and blocks per part,
   and names any part that failed (the rest of the map still loads);
   `[map] shaders compiled in N ms` follows. `window.__frame` is the live
