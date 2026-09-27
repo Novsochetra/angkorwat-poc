@@ -24,19 +24,21 @@ export const FLAG_ASPECT = 25 / 16;
 /** The red band (v). */
 const RED = [0.25, 0.75] as const;
 
-/** Spires: centre (u), half width at the foot (u), foot and tip (v). */
+/**
+ * Spires: centre (u), half width at the foot (u), foot and tip (v) — THREE, measured from the
+ * official drawing (five towers is the 1979–89 flag, which a Cambodian would notice at once).
+ */
 const TOWERS: readonly (readonly [number, number, number, number])[] = [
-  [0.5, 0.045, 0.56, 0.3],
-  [0.415, 0.032, 0.57, 0.39],
-  [0.585, 0.032, 0.57, 0.39],
-  [0.338, 0.026, 0.59, 0.47],
-  [0.662, 0.026, 0.59, 0.47],
+  [0.5, 0.043, 0.469, 0.292],
+  [0.38, 0.03, 0.469, 0.367],
+  [0.62, 0.03, 0.469, 0.367],
 ];
 /** Flat parts: galleries and the stepped base (u0, u1, v0, v1). */
 const BLOCKS: readonly (readonly [number, number, number, number])[] = [
-  [0.36, 0.64, 0.5, 0.57],
-  [0.32, 0.68, 0.57, 0.65],
-  [0.3, 0.7, 0.65, 0.7],
+  [0.339, 0.661, 0.469, 0.583],
+  [0.325, 0.675, 0.583, 0.62],
+  [0.304, 0.696, 0.62, 0.677],
+  [0.294, 0.706, 0.677, 0.708],
 ];
 
 /** (u, v) is on the white temple. */

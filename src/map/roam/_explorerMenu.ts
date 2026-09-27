@@ -8,12 +8,15 @@ import { FACE_NAME } from './photo';
  * the viewer's chips offer, for a mouse or a finger. Three rows of buttons
  * over the tool bar, in the key list's panel:
  *
- * - Moves: wave, cheer, look up, peek, sit, lie down. Each goes in as its
- *   key (`press`: the same path as the keyboard, tools.ts), and the panel
- *   shuts so the move (and the sky, sitting or lying down) shows. On foot
- *   only: off it (boat, hang glider, balloon) they are greyed.
+ * - Moves: greet (the sampeah), wave, cheer, look up, peek, sit, lie down.
+ *   Each goes in as its key (`press`: the same path as the keyboard,
+ *   tools.ts; Greet and Wave both as F, saying which: _greet.ts), and the
+ *   panel shuts so the move (and the sky, sitting or lying down) shows. On
+ *   foot only: off it (boat, hang glider, balloon) they are greyed.
  * - Outfit: the four looks and the hat (H); the one he wears is lit gold.
  * - Face: the six faces; the one he shows is lit gold.
+ * - In my bag (roam/_shopBag.ts, `extra`): the purse, and what he keeps to
+ *   eat or drink later (a tap: he has it now).
  *
  * On touch it stands left of the bar (up the right edge), or under it with
  * the phone on its side; it scrolls when it is taller than the room, and a
@@ -30,8 +33,8 @@ export interface ExplorerMenu {
 }
 
 export interface ExplorerMenuDeps {
-  /** A move or the hat, as its key (RoamControls.press: read as a key hit on the next step). */
-  press(code: string): void;
+  /** A move or the hat, as its key (RoamControls.press: read as a key hit on the next step); the greeting's F says how (Greet: a sampeah, Wave). */
+  press(code: string, how?: 'sampeah' | 'wave'): void;
   /** The looks (tools.ts `LOOKS`: outfit and word), the one he wears, and put one on. */
   looks: readonly (readonly [OutfitName, WordKey])[];
   look(): number;
@@ -44,11 +47,14 @@ export interface ExplorerMenuDeps {
   onFoot(): boolean;
   /** It opened or shut (the tool bar lights its button, shuts the key list). */
   onToggle(on: boolean): void;
+  /** More sections after the faces, each its own (roam/_shopBag.ts: "In my bag", what he keeps to eat and drink). */
+  extra?: readonly HTMLElement[];
 }
 
-/** The moves: key code, the key shown, the word. */
-const MOVES: readonly [code: string, key: string, word: WordKey][] = [
-  ['KeyF', 'F', 'rWave'],
+/** The moves: key code, the key shown, the word (and for the greeting's two, how it greets). */
+const MOVES: readonly [code: string, key: string, word: WordKey, how?: 'sampeah' | 'wave'][] = [
+  ['KeyF', 'F', 'grGreet', 'sampeah'],
+  ['KeyF', '', 'rWave', 'wave'],
   ['KeyC', 'C', 'rCheer'],
   ['KeyU', 'U', 'rLookUp'],
   ['KeyP', 'P', 'rPeek'],
@@ -70,12 +76,14 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   el.innerHTML = `<span class="mu-bg"></span>
     <div class="rxm-in">
       <section class="rxm-sec">${head('rMoves')}<span class="rxm-note" data-w="rOnFootOnly"></span>
-        <div class="rxm-grid">${MOVES.map(([code, key, w]) => chip(`data-move="${code}"`, MOVE_ICONS[code], w, key)).join('')}</div></section>
+        <div class="rxm-grid">${MOVES.map(([code, key, w, how]) => chip(`data-move="${code}"${how ? ` data-how="${how}"` : ''}`, MOVE_ICONS[how ?? code], w, key)).join('')}</div></section>
       <section class="rxm-sec">${head('rOutfit', 'G')}
         <div class="rxm-grid">${d.looks.map(([o, w], i) => chip(`data-look="${i}"`, lookIcon(o), w)).join('')}${chip('data-hat', HAT_ICON, 'rHat', 'H')}</div></section>
       <section class="rxm-sec">${head('rFace', 'X')}
         <div class="rxm-grid">${EXPRESSIONS.map((e, i) => chip(`data-face="${i}"`, FACE_ICONS[e], FACE_NAME[e])).join('')}</div></section>
     </div>`;
+  // (sections of others, after the faces: their buttons are their own, not `.rxm-b`)
+  if (d.extra?.length) el.querySelector('.rxm-in')!.append(...d.extra);
   const all = [...el.querySelectorAll<HTMLButtonElement>('.rxm-b')];
   const moves = all.filter((b) => b.dataset.move);
   const looks = all.filter((b) => b.dataset.look);
@@ -137,9 +145,9 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
     if (!b || b.disabled) return;
     // (let go of the focus: Space is the jump and the shutter)
     b.blur();
-    const { move, look, face } = b.dataset;
+    const { move, look, face, how } = b.dataset;
     if (move) {
-      d.press(move);
+      d.press(move, how === 'sampeah' || how === 'wave' ? how : undefined);
       // (the panel goes, so the move shows: and the sky, sitting or lying down)
       api.toggle(false);
     } else if (look) d.setLook(Number(look));
@@ -168,8 +176,11 @@ const px = (body: string) => `<svg class="rxm-icon" viewBox="0 0 16 16" aria-hid
 const GOLD = '#ffe07c';
 
 const MOVE_ICONS: Record<string, string> = {
+  // (the sampeah: elbows out, the palms together up the middle of his chest, gold)
+  sampeah: px(`<path fill="currentColor" d="M7 1h3v3H7zM7 5h3v5H7zM7 10h1v6H7zM9 10h1v6H9zM6 5h1v1H6zM5 6h1v2H5zM5 8h2v1H5zM10 5h1v1h-1zM11 6h1v2h-1zM10 8h2v1h-2z"/>
+    <path fill="${GOLD}" d="M8 4h1v5H8z"/><path fill="${GOLD}" opacity="0.55" d="M4 2h1v1H4zM12 2h1v1h-1z"/>`),
   // (one arm up, waving)
-  KeyF: px(`<path fill="currentColor" d="M7 1h3v3H7zM7 5h3v5H7zM7 10h1v6H7zM9 10h1v6H9zM5 5h2v1H5zM5 6h1v4H5zM10 5h2v1h-2zM12 1h1v5h-1z"/>
+  wave: px(`<path fill="currentColor" d="M7 1h3v3H7zM7 5h3v5H7zM7 10h1v6H7zM9 10h1v6H9zM5 5h2v1H5zM5 6h1v4H5zM10 5h2v1h-2zM12 1h1v5h-1z"/>
     <path fill="${GOLD}" d="M14 1h2v1h-2zM14 4h2v1h-2z"/>`),
   // (both arms up, a spark or two)
   KeyC: px(`<path fill="currentColor" d="M7 2h3v3H7zM7 6h3v5H7zM7 11h1v5H7zM9 11h1v5H9zM6 6h1v1H6zM5 5h1v1H5zM4 4h1v1H4zM3 2h1v2H3zM10 6h1v1h-1zM11 5h1v1h-1zM12 4h1v1h-1zM13 2h1v2h-1z"/>

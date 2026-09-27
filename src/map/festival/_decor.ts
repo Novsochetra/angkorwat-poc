@@ -10,6 +10,21 @@ import { ANIM, perPeriod, type BoxOpts, type Kit } from './_kit';
 /** The flag of Cambodia: blue, red, blue; the temple in white. */
 export const KH_BLUE = 0x032ea1;
 export const KH_RED = 0xe00025;
+/**
+ * The flag's Angkor Wat in boxes, as its official drawing has it — the
+ * stepped base, the body, three towers (the middle one tallest; five was the
+ * flag of 1979–89): [u0, u1, v0, v1], u across from the hoist (0‥1), v up
+ * from the flag's middle (−0.5‥0.5).
+ */
+const KH_TEMPLE: readonly (readonly [number, number, number, number])[] = [
+  [0.294, 0.706, -0.208, -0.14],
+  [0.325, 0.675, -0.14, -0.083],
+  [0.339, 0.661, -0.083, 0.031],
+  [0.465, 0.535, 0.031, 0.14],
+  [0.482, 0.518, 0.14, 0.208],
+  [0.36, 0.4, 0.031, 0.1375],
+  [0.6, 0.64, 0.031, 0.1375],
+];
 /** The Buddhist flag's colours (blue, yellow, red, white, orange), seen at every pagoda at New Year. */
 export const BUDDHIST = [0x2a5fd0, 0xf6c21a, 0xd8312a, 0xf4f0e6, 0xef8a1c];
 /** Pennants on the strings. */
@@ -47,16 +62,16 @@ export function flag(kit: Kit, x: number, y: number, z: number, w: number, h: nu
   const phase = hash3(x, y, z, 5) * 6.28;
   const amp = 0.12;
   const at = (u: number) => [x + s * u, z + c * u] as const;
-  const cloth = (u0: number, du: number, dy: number, hh: number, color: number, depth = 0) => {
+  const cloth = (u0: number, du: number, dy: number, hh: number, color: number, thick = 0.03) => {
     const [cx, cz] = at(u0 + du / 2);
-    kit.box(cx - c * depth, y + dy, cz + s * depth, du, hh, 0.03, color, { ...o, yaw, anim: ANIM.wave, a: [amp, u0, WAVE], b: [phase, 0, 0, 0] });
+    kit.box(cx, y + dy, cz, du, hh, thick, color, { ...o, yaw, anim: ANIM.wave, a: [amp, u0, WAVE], b: [phase, 0, 0, 0] });
   };
   if (kind === 'khmer') {
     cloth(0, w, h * 0.375, h / 4, KH_BLUE);
     cloth(0, w, 0, h / 2, KH_RED);
     cloth(0, w, -h * 0.375, h / 4, KH_BLUE);
-    // The temple (a small white shape, just proud of the red).
-    cloth(w * 0.36, w * 0.28, -h * 0.02, h * 0.26, 0xf4f2ec, 0.025);
+    // The temple in white, a little thicker than the cloth: it shows on both sides.
+    for (const [u0, u1, v0, v1] of KH_TEMPLE) cloth(w * u0, w * (u1 - u0), (h * (v0 + v1)) / 2, h * (v1 - v0), 0xf4f2ec, 0.05);
   } else if (kind === 'buddhist') {
     const n = BUDDHIST.length;
     for (let i = 0; i < n; i++) cloth((w * i) / n, w / n, 0, h, BUDDHIST[i]);

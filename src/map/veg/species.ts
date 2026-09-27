@@ -1,6 +1,7 @@
 import { traceSource } from '../../feedback/sourceTrace';
 import { BARK as BARK_TONES, LEAF as LEAF_TONES } from '../../kit/palette';
 import { pick } from '../../voxel/random';
+import { palmProto } from './palms';
 import { barkLine, fillBlobs, finishProto, rng, RAMP_ID, Vol, type Blob, type FreeBox, type Proto, type RampName } from './proto';
 
 /**
@@ -9,7 +10,8 @@ import { barkLine, fillBlobs, finishProto, rng, RAMP_ID, Vol, type Blob, type Fr
  *  - broadleaf: most of the jungle, 8–14 m tall, canopy 6–10 m wide, a lumpy
  *    round crown on a brown trunk, big ones with branches under the lumps;
  *  - emergent: a tall pale trunk (18–25 m) with a flat, wide crown above the rest;
- *  - sugar palm: a ringed trunk 9–14 m with a star of fronds and dry ones hanging;
+ *  - palm: a sugar palm (a straight dark trunk 9–14 m, a round crown of fans,
+ *    dead ones hanging) or a coconut palm (leaning, feather fronds): veg/palms.ts;
  *  - bush: low clumps 2–3 m;
  *  - flowering: a broadleaf with pink or orange blossom on its sunny side;
  *  - bamboo: a clump of thin yellow-green culms 10–15 m, arching out like a
@@ -199,60 +201,14 @@ export interface PalmOpts {
   seed: number;
 }
 
-/** A sugar palm: ringed trunk, a star of fronds (drooping at the tips), dry fronds hanging under. */
+/**
+ * A palm (veg/palms.ts `palmProto`): two in three a sugar palm (a straight
+ * dark trunk, a round crown of upright fans, dead fans under it), the rest
+ * a coconut palm (a leaning pale trunk, fronds reaching out and bending
+ * down), in about the old palm's blocks.
+ */
 export function palm(o: PalmOpts): Proto {
-  const src = traceSource();
-  const rand = rng(o.seed);
-  const s = o.s;
-  const H = Math.round(o.h / s);
-  const L = s === 1 ? 3 + Math.floor(rand() * 2) : s < 2 ? 3 : s < 3 ? 2 : 1;
-  const v = new Vol(L + 1, H + 4);
-  const fr = RAMP_ID.palm;
-  const dry = RAMP_ID.dry;
-  // Crown heart.
-  v.leaf(0, H, 0, fr, 0.9);
-  v.leaf(0, H + 1, 0, fr, 1.05);
-  if (s === 1) v.leaf(0, H + 2, 0, fr, 1.1);
-  // Fronds along the 8 lattice directions; the straight ones longer.
-  const dirs: [number, number][] = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [1, 1],
-    [1, -1],
-    [-1, 1],
-    [-1, -1],
-  ];
-  for (const [dx, dz] of dirs) {
-    const diag = dx !== 0 && dz !== 0;
-    const len = diag ? L - 1 : L;
-    // Rise, level, then droop.
-    const lift = s === 1 ? [1, 1, 0, -1, -2] : [1, 0, -1];
-    for (let t = 1; t <= len; t++) {
-      const y = H + lift[Math.min(lift.length - 1, t - 1)];
-      v.leaf(dx * t, y, dz * t, fr, 0.9 + t * 0.06);
-      // Tips droop one more cell on the long fronds.
-      if (t === len && !diag && s === 1 && rand() < 0.6) v.leaf(dx * t, y - 1, dz * t, fr, 0.85);
-    }
-  }
-  // Dry fronds and fruit hanging under the crown.
-  for (const [dx, dz] of dirs.slice(0, 4)) {
-    if (rand() < 0.35) continue;
-    v.leaf(dx, H - 1, dz, dry, 0.85);
-    if (s === 1 && rand() < 0.5) v.leaf(dx, H - 2, dz, dry, 0.75);
-  }
-  const boxes: FreeBox[] = [];
-  const tones = BARK_TONES.palm;
-  // Ringed trunk: 1 m bands near, a few long segments far; a slight lean.
-  const band = s === 1 ? 1.5 : 1e3;
-  const lean = (rand() - 0.5) * 0.5;
-  for (let y = -0.5; y < H * s; y += band) {
-    const seg = Math.min(band, H * s - y);
-    const t = y / (H * s);
-    boxes.push({ x: lean * t, y: y + seg / 2, z: lean * 0.5 * t, sx: s === 1 ? 0.8 : 1, sy: seg, sz: s === 1 ? 0.8 : 1, color: pick(tones, rand()), shade: 1 - t * 0.12 });
-  }
-  return finishProto(v, { s, r: (L + 0.5) * s, h: (H + 2) * s, seed: o.seed, boxes, src, lift: 0.6 });
+  return palmProto(o);
 }
 
 export interface BushOpts {

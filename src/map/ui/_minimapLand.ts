@@ -2,7 +2,7 @@ import { Matrix4, type InstancedMesh } from 'three';
 import { hash3 } from '../../voxel/random';
 import { fbm, SURFACE, type HeightField } from '../heightfield';
 import * as P from '../terrain/palette';
-import { ROAM_AREA } from '../terrain/views';
+import { ROAM_AREA, roamInside } from '../terrain/views';
 import type { MapPart } from '../types';
 
 /**
@@ -254,7 +254,7 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
   const lightRow = (k: number) => {
     const z = z0 + k + 0.5;
     // (the front edge has no sinking land past it: fade over its last 40 m instead)
-    const oz = z < A.z0 ? A.z0 - z : z > A.z1 - 40 ? (z - A.z1 + 40) * 1.5 : 0;
+    const oz = z > A.z1 - 40 ? (z - A.z1 + 40) * 1.5 : 0;
     const row = (k >> 1) * nx;
     const up = k > 0 ? -W : 0;
     const down = k < H - 1 ? W : 0;
@@ -289,9 +289,9 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
       let r = ((base >> 16) & 255) * s;
       let g = ((base >> 8) & 255) * s;
       let b = (base & 255) * s;
-      // Past the roaming area: into the mist.
+      // Past the roaming area (views.ts: its boxes; not the front edge): into the mist.
       const x = x0 + i + 0.5;
-      const ox = x < A.x0 ? A.x0 - x : x > A.x1 ? x - A.x1 : 0;
+      const ox = Math.max(0, -roamInside(x, z, false));
       if (ox > 0 || oz > 0) {
         let f = Math.sqrt(ox * ox + oz * oz) / 90;
         if (f > 0.85) f = 0.85;

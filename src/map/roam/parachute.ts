@@ -3,6 +3,7 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { clamp, lerp, mixPose, smoothstep, type Pose } from '../../character/pose';
 import { JOINTS } from '../../character/skeleton';
 import { OVERVIEW, placeById } from '../layout';
+import { roamHeading } from '../terrain/views';
 import { t } from '../ui/lang';
 import { Canopy, OPEN_TIME, type CanopyPose } from './_canopy';
 import { HARNESS, hangPose, leapPose, readyPose, tilt, type HangParams } from './_chutePoses';
@@ -85,8 +86,9 @@ const FOCUS_UP = 4.6;
  * with a margin): it is not in the walk map the camera keeps out of.
  */
 const LEDGE = { x0: -8.5, x1: 4.5, z0: -4, z1: 5.5, top: 3 };
-/** Where the wind turns him at the edges: Angkor Wat. */
+/** Where the wind turns him at the edges: Angkor Wat (round the roaming area's inner corner: views.ts `roamHeading`). */
 const HOME = placeById('sanctuary');
+const _home = { x: 0, z: 0 };
 
 const UP = new Vector3(0, 1, 0);
 /** The harness point in the chest's own space (BU). */
@@ -584,7 +586,8 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
       // Turning; at the roaming area's edge the wind turns him back towards the temples.
       omega = turnS * TURN * open * (1 - flare);
       if (!world.inBounds(body.pos.x + fx * 45, body.pos.z + fz * 45)) {
-        const home = Math.atan2(HOME.x - body.pos.x, HOME.z - body.pos.z);
+        const to = roamHeading(body.pos.x, body.pos.z, HOME.x, HOME.z, _home);
+        const home = Math.atan2(to.x - body.pos.x, to.z - body.pos.z);
         const back = clamp(angleDiff(home, body.yaw) * 1.5, -0.9, 0.9);
         omega = lerp(omega, back, 0.8);
         if (!turnedBack && Math.abs(back) > 0.3) {

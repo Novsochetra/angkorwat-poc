@@ -1,44 +1,72 @@
+import { Vector3 } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
 import { buddhaStatue } from '../sacred/buddha';
 import { SACRED_LAMPS } from '../sacred/finish';
 import { gable } from '../sacred/gable';
+import { nagaFanReady, roofNaga, stairNaga, type RoofNagaSpec } from '../sacred/naga';
 import { offering, type OfferingKind, type OfferingOptionsByKind, type OfferingPiece } from '../sacred/offerings';
 import { trackSacred } from '../sacred/pending';
 import type { SacredSet } from '../sacred/set';
 import { stupa, stupaNiche } from '../sacred/stupa';
 import { Local, tone, type GlowFn, type Tones } from './_kit';
 import { GLOW } from './_lights';
-import { auraMesh, carpetMesh, ceilingMesh, floorMesh, friezeMesh, lacquerMesh, matMesh, muralMesh, shutterMesh, wallMesh, type Face } from './_pagodaArt';
+import { auraMesh, carpetMesh, ceilingMesh, doorPediment, floorMesh, friezeMesh, lacquerMesh, matMesh, muralMesh, shutterMesh, wallMesh, type Face } from './_pagodaArt';
 import { GROUND, PAGODA } from './_spots';
 
 /**
- * The village pagoda (wat): on a white terrace on the rise south of the
- * village, facing north over the houses to the lake. A naga stair climbs to
- * the terrace between two serpents rearing up in fans of heads; the hall
- * (vihara) stands on its own plinth inside a colonnade of white pillars,
- * white walls with red shutters in gold frames; the roof in two tiers of
- * orange tiles edged in green, gold barge boards ending in hooks (hang
- * hong), gold finials (chofa) at the ridge's ends, the front part of the
- * roof stepped lower over the porch. Inside (a vihara, preah vihear), the
- * gilt Buddha calling the earth to witness high on a tiered red and gold
- * altar under a flame arch, the Bodhi tree painted on the wall behind him,
- * smaller Buddhas, parasols, candles and offerings on the steps, mats and a
- * red carpet before them (the painted surfaces: _pagodaArt.ts); two white
- * stupas and a Buddhist flag by the stair.
+ * The village pagoda (វត្ត wat): on a white terrace on the rise south of the
+ * village, facing north over the houses to the lake — Khmer, as the wats of
+ * Siem Reap (Wat Bo, Wat Preah Prom Rath) and Phnom Penh (Wat Ounalom, the
+ * Silver Pagoda), not Thai:
  *
- * World metres; the hall's axis runs north–south at `PAGODA.x`.
+ * - the naga stair: the balustrades are the serpents' smooth stone bodies
+ *   on short posts, as on Angkor Wat's causeway; at the stair's foot each
+ *   rears up into a fan of seven cobra heads under one smooth hood, a halo
+ *   of kbach flame leaves round them (sacred/naga.ts, grey-green stone);
+ * - the hall (vihear, វិហារ) on its plinth inside a colonnade of white
+ *   pillars with gilt lotus capitals, ochre-yellow walls, red shutters in
+ *   gold frames; its roof in two tiers of red-orange terracotta (the eaves'
+ *   row deeper red: no green edge, which reads Thai), the porch's part
+ *   stepped lower; along every gable's slopes a gilt barge board, the
+ *   naga's body, ending at each eave in a five-headed naga hood; on each
+ *   ridge's end a slender hooked chovea (ជហ្វា: sacred/naga.ts); a gold line
+ *   along the ridge;
+ * - the gables: gold kbach on red lacquer round Brahma's four faces under
+ *   a broad tiered crown (the Bayon's faces; sacred/gable.ts, kbach.ts); over
+ *   the door, a gilt pediment with Reahu swallowing the moon (_pagodaArt.ts);
+ * - round the hall the eight seima (សីមា) boundary stones, leaf-shaped,
+ *   each in a little shrine with a tiered roof (the front one a pair either
+ *   side of the way in); two stupas by the way up (sacred/stupa.ts); the
+ *   crocodile flag (ទង់ក្រពើ, the multicoloured festive one) on a tall pole
+ *   with a golden hamsa at its top; a drum pavilion (the skor, a barrel
+ *   drum on its cradle) and a bell pavilion, each under a small tiered
+ *   roof with a lotus-bud spire.
+ *
+ * Inside (a vihear, preah vihear): the gilt Buddha calling the earth to
+ * witness high on a tiered red and gold altar under a flame arch, the
+ * Bodhi tree painted on the wall behind him, smaller Buddhas, parasols,
+ * candles and offerings on the steps, mats and a red carpet before them
+ * (the painted surfaces: _pagodaArt.ts).
+ *
+ * World metres; the hall's axis runs north–south at `PAGODA.x`. The
+ * sculpted and painted pieces are made just after the build (in `later`);
+ * the console line `[map] village pagoda: …` gives its blocks.
  */
 
 const WHITE: Tones = [0xf0e9da, 0xe9e1cf, 0xf4eee2, 0xe4dccb];
 const TERRACE: Tones = [0xd6cfc0, 0xcdc5b4, 0xdcd5c6, 0xc6bdab];
+/** The hall's walls: the warm yellow of a Cambodian pagoda. */
+const OCHRE: Tones = [0xe3bb66, 0xdcb25e, 0xe8c272, 0xd6ab57];
 const YELLOW: Tones = [0xe2b85a, 0xd9ad4e];
-const ORANGE: Tones = [0xd4632c, 0xc95a28, 0xdc6e34, 0xc2532a, 0xd06a30];
-const GREEN: Tones = [0x2f7050, 0x356f4c, 0x2a6648];
+/** Roof tiles: red-orange terracotta; the eaves' row a deeper red. */
+const TILE: Tones = [0xc8582a, 0xbf5026, 0xd0632f, 0xb84a24, 0xc55c2c];
+const TILE_EDGE: Tones = [0x9a3a22, 0xa3402a, 0x8f341e];
 const RED: Tones = [0x9c2e24, 0xa8342a, 0x922a22];
 const GOLD: Tones = [0xd9a93a, 0xe6b84a, 0xcc9a32];
-const NAGA: Tones = [0x3f8a5a, 0x4a9a64, 0x378050];
+/** Grey-green sandstone: the stair's naga posts, the seima stones. */
+const STONE: Tones = [0x9ea48c, 0x959b83, 0xa7ac95, 0x8f957e];
 
 /** The roof: eaves at ±`EAVE` m from the axis over the colonnade, a lower skirt up to ±`SKIRT`, the upper roof from ±`UPPER` to the ridge. */
 const EAVE = 7;
@@ -67,12 +95,19 @@ function roofBottom(a: number, eave: number): number {
   return Math.min(up, skirt);
 }
 
+/**
+ * The line through the outer top corners of a roof tier's stepped rows
+ * (its gable's slope), a little over them (m): for a tier from ±`from` (its
+ * eaves at `y0`), at |x − axis| = `a`.
+ */
+const slopeAt = (from: number, y0: number, a: number) => y0 + RISE + 0.1 + (from - a) * (RISE / RUN);
+
 export interface PagodaOut {
   /** Where the explorer kneels (on the porch, before the door) and what he faces (the Buddha through the door). */
   worship: { x: number; y: number; z: number; fx: number; fz: number };
 }
 
-/** `sacred` takes the sculpted pieces (the Buddha, the gables' carvings), in world metres. */
+/** `sacred` takes the sculpted pieces (the Buddha, the gables' carvings, the naga), in world metres. */
 export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowFn, sacred: SacredSet): PagodaOut {
   const src = traceSource();
   const lb = new VoxelBuilder();
@@ -81,6 +116,22 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
   const T = PAGODA.terrace;
   const F = PAGODA.floor;
   const g = (x: number, z: number) => field.heightAt(x, z);
+  const V = (x: number, y: number, z: number) => new Vector3(x, y, z);
+
+  // The sculpted and painted pieces are made just after the build (sculpting and painting take a few hundred
+  // ms, off the part's build time); shots wait for them (sacred/pending.ts).
+  const later = (make: () => void | Promise<void>) =>
+    void trackSacred(
+      new Promise<void>((done) =>
+        setTimeout(async () => {
+          try {
+            await make();
+          } finally {
+            done();
+          }
+        }, 0),
+      ),
+    );
 
   // ── The terrace: 2 m stones from the ground up, a coping and a low white balustrade ──
   for (let z = T.z0; z < T.z1 - 0.01; z += 2)
@@ -100,45 +151,64 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
   rail(T.x0, T.z0 + 0.4, T.x0 + 0.4, T.z1 - 0.4);
   rail(T.x1 - 0.4, T.z0 + 0.4, T.x1, T.z1 - 0.4);
 
-  // ── The naga stair: six steps, the serpents' bodies along its cheeks, their heads fanned at its foot ──
+  // ── The naga stair: six steps between two balustrades, as Angkor Wat's causeway ──
+  // White cheek walls with a stone coping step down with the stair; on them short stone posts carry the
+  // naga's smooth body (sacred, made later), which runs on a little onto the terrace and ends there in its
+  // tail curling up; at the stair's foot the body bends down and rears up again into the fan of heads, on a
+  // white pedestal.
   const steps = Math.round((T.y - GROUND) / 0.5);
   const run = (S.z1 - S.z0) / steps;
+  const NAGA_R = 0.26;
+  /** The middle of the naga's body over the stair at z (m). */
+  const railY = (z: number) => GROUND + (0.5 / run) * (z - S.z0) + 1.3;
+  const cheeks: [number, number][] = [
+    [S.x0 - 1, S.x0],
+    [S.x1, S.x1 + 1],
+  ];
   for (let i = 0; i < steps; i++) {
     const z = S.z0 + i * run;
     const top = GROUND + (i + 1) * 0.5;
     L.span(S.x0, Math.min(g(S.x0, z), g(S.x1, z)) - 0.3, z, S.x1, top, z + run, tone(TERRACE, L.r(i, 4)), 'mapStone', 0.96);
-    for (const [c0, c1] of [
-      [S.x0 - 1, S.x0],
-      [S.x1, S.x1 + 1],
-    ]) {
-      L.span(c0, g(c0 + 0.5, z) - 0.3, z, c1, top + 0.45, z + run, tone(WHITE, L.r(i, c0, 5)), 'mapStone');
-      // The body: green scales, a gold crest.
-      L.span(c0 + 0.15, top + 0.45, z - 0.05, c1 - 0.15, top + 0.9, z + run + 0.05, tone(NAGA, L.r(i, c0, 6)), 'mapStone');
-      L.span(c0 + 0.35, top + 0.9, z, c1 - 0.35, top + 1.05, z + run, tone(GOLD, 0.2), 'brass');
+    for (const [c0, c1] of cheeks) {
+      L.span(c0, g(c0 + 0.5, z) - 0.3, z, c1, top + 0.3, z + run, tone(WHITE, L.r(i, c0, 5)), 'mapStone');
+      L.span(c0 - 0.04, top + 0.3, z, c1 + 0.04, top + 0.38, z + run, tone(TERRACE, L.r(i, c0, 6)), 'mapStone', 1.04);
+      // (a post under the body at each step but the lowest, where the body bends down to the fan)
+      if (i === 0) continue;
+      const cx = (c0 + c1) / 2;
+      const zm = z + run / 2;
+      L.span(cx - 0.14, top + 0.38, zm - 0.14, cx + 0.14, railY(zm) - NAGA_R * 0.7, zm + 0.14, tone(STONE, L.r(i, c0, 7)), 'mapStone');
+      L.span(cx - 0.18, top + 0.38, zm - 0.18, cx + 0.18, top + 0.46, zm + 0.18, tone(STONE, L.r(c0, i, 8)), 'mapStone', 0.95);
     }
   }
-  // Pedestals at the foot, the bodies rearing into fans of seven heads looking north down the path.
+  // (the balustrades run on onto the terrace, a post under the body where its tail rises)
+  const zTop = S.z1;
+  for (const [c0, c1] of cheeks) {
+    const cx = (c0 + c1) / 2;
+    L.span(c0, T.y, zTop, c1, T.y + 0.3, zTop + 0.8, tone(WHITE, L.r(c0, 9)), 'mapStone');
+    L.span(c0 - 0.04, T.y + 0.3, zTop, c1 + 0.04, T.y + 0.38, zTop + 0.8, tone(TERRACE, L.r(c0, 10)), 'mapStone', 1.04);
+    L.span(cx - 0.14, T.y + 0.38, zTop + 0.26, cx + 0.14, railY(zTop) - NAGA_R * 0.7, zTop + 0.54, tone(STONE, L.r(c0, 11)), 'mapStone');
+  }
+  // The pedestals at the foot, the fans on them looking north down the way.
+  const fanY = GROUND + 0.98;
+  const fanZ = S.z0 - 0.6;
   for (const cx of [S.x0 - 0.5, S.x1 + 0.5]) {
-    const z = S.z0 - 0.6;
-    L.span(cx - 0.8, g(cx, z) - 0.3, z - 0.7, cx + 0.8, GROUND + 1.0, z + 0.7, tone(WHITE, 0.4), 'mapStone');
-    L.span(cx - 0.85, GROUND + 1.0, z - 0.75, cx + 0.85, GROUND + 1.12, z + 0.75, tone(YELLOW, 0.5), 'mapStone');
-    L.span(cx - 0.3, GROUND + 1.12, z + 0.1, cx + 0.3, GROUND + 2.2, z + 0.55, tone(NAGA, 0.5), 'mapStone');
-    // The hood: a flat fan widening upward, seven heads along its rim, each snout pointing north.
-    const hood = [0.3, 0.5, 0.68, 0.82, 0.92];
-    hood.forEach((hw, r) => {
-      L.span(cx - hw, GROUND + 1.9 + r * 0.3, z - 0.12, cx + hw, GROUND + 2.2 + r * 0.3, z + 0.18, tone(GOLD, L.r(r, cx, 7)), 'brass');
-    });
-    L.span(cx - 0.55, GROUND + 2.0, z - 0.16, cx + 0.55, GROUND + 3.2, z - 0.1, tone(NAGA, 0.2), 'mapStone');
-    for (let k = -3; k <= 3; k++) {
-      const a = (k / 3) * 1.05;
-      const hx = cx + Math.sin(a) * 0.95;
-      const hy = GROUND + 2.95 + Math.cos(a) * 0.55;
-      L.box(hx, hy, z - 0.05, 0.24, 0.3, 0.3, tone(GOLD, L.r(k, cx, 8)), 'brass');
-      L.box(hx, hy - 0.05, z - 0.3, 0.16, 0.14, 0.24, tone(GOLD, 0.9), 'brass');
-    }
-    glow(cx, GROUND + 3.95, z + 0.1, 0.18, 0.26, 0.18, GLOW.lantern, 1.4);
-    L.box(cx, GROUND + 3.72, z + 0.1, 0.3, 0.12, 0.3, tone(GOLD, 0.1), 'brass');
+    L.span(cx - 0.62, g(cx, fanZ) - 0.3, fanZ - 0.62, cx + 0.62, GROUND + 0.9, fanZ + 0.62, tone(WHITE, 0.4), 'mapStone');
+    L.span(cx - 0.68, GROUND + 0.9, fanZ - 0.68, cx + 0.68, fanY, fanZ + 0.68, tone(TERRACE, 0.5), 'mapStone', 1.04);
+    L.span(cx - 0.66, GROUND + 0.12, fanZ - 0.66, cx + 0.66, GROUND + 0.22, fanZ + 0.66, tone(YELLOW, 0.5), 'mapStone');
+    // (a lamp at the pedestal's foot, lit at night)
+    glow(cx, GROUND + 0.4, fanZ - 0.7, 0.14, 0.2, 0.06, GLOW.lantern, 0.9);
   }
+  // (the fans are sculpted in a worker: sacred/naga.ts `nagaFanReady`)
+  later(async () => {
+    await Promise.all([nagaFanReady('stair'), nagaFanReady('stairFar')]);
+    const fans = [S.x0 - 0.5, S.x1 + 0.5].map((cx) => ({ at: V(cx, fanY, fanZ), look: V(0, 0, -1), height: 2.75 }));
+    const top = railY(S.z1);
+    const bodies = [S.x0 - 0.5, S.x1 + 0.5].map((cx) => ({
+      path: [V(cx, fanY + 0.24, fanZ + 0.6), V(cx, fanY + 0.42, fanZ + 1.15), V(cx, railY(S.z0 + 1.5), S.z0 + 1.5), V(cx, railY(S.z1 - 0.4), S.z1 - 0.4), V(cx, top + 0.02, S.z1 + 0.12), V(cx, top + 0.1, S.z1 + 0.42), V(cx, top + 0.32, S.z1 + 0.64), V(cx, top + 0.55, S.z1 + 0.6), V(cx, top + 0.62, S.z1 + 0.44)],
+      tail: 0.9,
+    }));
+    sacred.add(stairNaga({ fans, bodies, radius: NAGA_R, look: 'stone' }));
+  });
 
   // ── The hall's plinth and front steps ─────────────────────────────────────
   const px0 = X - 6;
@@ -150,13 +220,15 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
   L.span(px0 - 0.05, T.y + 0.15, pz0 - 0.05, px1 + 0.05, T.y + 0.4, pz1 + 0.05, tone(YELLOW, 0.2), 'mapStone');
   L.span(X - 2, T.y, pz0 - 1, X + 2, T.y + 0.5, pz0, tone(TERRACE, 0.5), 'mapStone');
 
-  // ── The colonnade ─────────────────────────────────────────────────────────
+  // ── The colonnade: white pillars on lotus bases, gilt lotus capitals ─────
   const eaveAt = (z: number) => (z < Z_STEP ? EAVE_Y - PORCH_DROP : EAVE_Y);
   const pillar = (x: number, z: number, beam: number) => {
     const top = beam - 0.35;
-    L.span(x - 0.25, F, z - 0.25, x + 0.25, top - 0.3, z + 0.25, tone(WHITE, L.r(x, z, 9)), 'mapStone');
-    L.span(x - 0.35, top - 0.3, z - 0.35, x + 0.35, top, z + 0.35, tone(GOLD, L.r(x, z, 10)), 'brass');
-    L.span(x - 0.32, F, z - 0.32, x + 0.32, F + 0.4, z + 0.32, tone(YELLOW, 0.6), 'mapStone');
+    L.span(x - 0.34, F, z - 0.34, x + 0.34, F + 0.2, z + 0.34, tone(WHITE, L.r(x, z, 9)), 'mapStone', 0.97);
+    L.span(x - 0.3, F + 0.2, z - 0.3, x + 0.3, F + 0.36, z + 0.3, tone(GOLD, L.r(z, x, 9)), 'brass');
+    L.span(x - 0.25, F + 0.36, z - 0.25, x + 0.25, top - 0.42, z + 0.25, tone(WHITE, L.r(x, z, 10)), 'mapStone');
+    L.span(x - 0.29, top - 0.42, z - 0.29, x + 0.29, top - 0.3, z + 0.29, tone(GOLD, L.r(x, z, 11)), 'brass');
+    L.span(x - 0.37, top - 0.3, z - 0.37, x + 0.37, top, z + 0.37, tone(GOLD, L.r(z, x, 12)), 'brass');
   };
   const colZ: number[] = [];
   for (let i = 0; i < 9; i++) colZ.push(95 + ((pz1 - 0.5 - 95) * i) / 8);
@@ -183,7 +255,7 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
     }
   }
 
-  // ── The hall: walls up under the roof, tall windows with red shutters, the open door ──
+  // ── The hall: ochre walls up under the roof, tall windows with red shutters, the open door ──
   const Z0 = PAGODA.doorZ;
   const wallTop = roofBottom(HALL, EAVE_Y);
   const winZ: number[] = [];
@@ -197,44 +269,31 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
       z = wz + 0.55;
     }
     segs.push([z, HALL_BACK]);
-    for (const [a, b] of segs) L.span(x - 0.2, F, a, x + 0.2, wallTop, b, tone(WHITE, L.r(a, s, 11)), 'mapStone');
+    for (const [a, b] of segs) L.span(x - 0.2, F, a, x + 0.2, wallTop, b, tone(OCHRE, L.r(a, s, 11)), 'mapStone');
     for (const wz of winZ) {
-      L.span(x - 0.2, F, wz - 0.55, x + 0.2, F + 1.4, wz + 0.55, tone(WHITE, L.r(wz, s, 12)), 'mapStone');
-      L.span(x - 0.2, F + 3.4, wz - 0.55, x + 0.2, wallTop, wz + 0.55, tone(WHITE, L.r(wz, s, 13)), 'mapStone');
+      L.span(x - 0.2, F, wz - 0.55, x + 0.2, F + 1.4, wz + 0.55, tone(OCHRE, L.r(wz, s, 12)), 'mapStone');
+      L.span(x - 0.2, F + 3.4, wz - 0.55, x + 0.2, wallTop, wz + 0.55, tone(OCHRE, L.r(wz, s, 13)), 'mapStone');
       glow(x, F + 2.4, wz, 0.2, 2.0, 1.1, GLOW.hall);
       // Gold frame, red shutters opened out.
       L.span(x + s * 0.2, F + 1.3, wz - 0.65, x + s * 0.3, F + 1.45, wz + 0.65, tone(GOLD, 0.5), 'brass');
       L.span(x + s * 0.2, F + 3.35, wz - 0.65, x + s * 0.3, F + 3.6, wz + 0.65, tone(GOLD, 0.5), 'brass');
       for (const d of [-1, 1]) L.span(x + s * 0.22, F + 1.45, wz + d * 0.6, x + s * 0.3, F + 3.35, wz + d * 1.15, tone(RED, L.r(wz, d, 14)), 'mapStone');
     }
-    L.span(x - 0.25, F, Z0, x + 0.25, F + 0.35, HALL_BACK, tone(YELLOW, 0.4), 'mapStone');
+    L.span(x - 0.25, F, Z0, x + 0.25, F + 0.35, HALL_BACK, tone(WHITE, 0.4), 'mapStone');
   }
-  // Front wall: the door (2 m by 3 m) in a gold frame, its red leaves open; back wall plain.
-  const front = (a: number, b: number, y0: number, y1: number) => L.span(a, y0, Z0 - 0.2, b, y1, Z0 + 0.2, tone(WHITE, L.r(a, y0, 15)), 'mapStone');
+  // Front wall: the door (2 m by 3 m) in a gold frame, its red leaves open, the gilt pediment over it; back wall plain.
+  const front = (a: number, b: number, y0: number, y1: number) => L.span(a, y0, Z0 - 0.2, b, y1, Z0 + 0.2, tone(OCHRE, L.r(a, y0, 15)), 'mapStone');
   front(X - HALL, X - 1, F, wallTop);
   front(X + 1, X + HALL, F, wallTop);
   front(X - 1, X + 1, F + 3, wallTop);
+  for (const s of [-1, 1]) L.span(Math.min(X + s * 1.2, X + s * HALL), F, Z0 - 0.25, Math.max(X + s * 1.2, X + s * HALL), F + 0.35, Z0 + 0.25, tone(WHITE, 0.4), 'mapStone');
   L.span(X - 1.2, F, Z0 - 0.3, X - 1.0, F + 3.2, Z0 - 0.2, tone(GOLD, 0.2), 'brass');
   L.span(X + 1.0, F, Z0 - 0.3, X + 1.2, F + 3.2, Z0 - 0.2, tone(GOLD, 0.2), 'brass');
   L.span(X - 1.2, F + 3.0, Z0 - 0.3, X + 1.2, F + 3.25, Z0 - 0.2, tone(GOLD, 0.2), 'brass');
   for (const s of [-1, 1]) L.span(X + s * 1.05, F, Z0 - 1.0, X + s * 1.15, F + 2.95, Z0 - 0.3, tone(RED, 0.5), 'mapStone');
-  L.span(X - HALL, F, HALL_BACK - 0.2, X + HALL, wallTop, HALL_BACK + 0.2, tone(WHITE, 0.6), 'mapStone');
+  L.span(X - HALL, F, HALL_BACK - 0.2, X + HALL, wallTop, HALL_BACK + 0.2, tone(OCHRE, 0.6), 'mapStone');
 
   // ── Inside: a golden Buddha on a red altar at the back, candles before him ──
-  // The sculpted and painted pieces are made just after the build (a few hundred ms of sculpting and
-  // painting, off the part's build time); shots wait for them (sacred/pending.ts).
-  const later = (make: () => void) =>
-    void trackSacred(
-      new Promise<void>((done) =>
-        setTimeout(() => {
-          try {
-            make();
-          } finally {
-            done();
-          }
-        }, 0),
-      ),
-    );
   // The hall inside: ±IN m from the axis, from the front wall's inside (zIn) to the back wall's (zBack), a ceiling at CEIL.
   const IN = HALL - 0.2;
   const zIn = Z0 + 0.2;
@@ -384,6 +443,8 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
     sacred.add(carpetMesh(carpet));
     sacred.add(matMesh(mats));
     sacred.add(lacquerMesh(tops));
+    // Over the door outside: the gilt pediment, Reahu swallowing the moon in a frame of flames.
+    sacred.add(doorPediment()).position.set(X, F + 3.27, Z0 - 0.215);
   });
   // (one at a time: the first of each kind is sculpted, the rest share it)
   for (const p of props)
@@ -414,11 +475,14 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
   });
 
   // ── The roof ──────────────────────────────────────────────────────────────
+  // Rows of red-orange tiles, the eaves' row deeper red, a gold line along the ridge. The gilt naga (barge
+  // boards over the rows' stepped ends, their five-headed hoods at the eaves, the chovea) are sculpted later.
   // (za, zb, eaves, the ends that show: the porch's back end is under the hall's roof)
   const sections: [number, number, number, number[]][] = [
     [Z_FRONT, Z_STEP, EAVE_Y - PORCH_DROP, [Z_FRONT]],
     [Z_STEP, Z_BACK, EAVE_Y, [Z_STEP, Z_BACK]],
   ];
+  const naga: RoofNagaSpec = { rakes: [], fans: [], choveas: [] };
   for (const [za, zb, eave, ends] of sections) {
     const tiers: [number, number, number][] = [
       [EAVE, SKIRT, eave],
@@ -431,7 +495,7 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
         const inner = Math.max(to, outer - RUN);
         const y = y0 + k * RISE;
         const ridge = to === 0 && inner <= 1e-6;
-        const color = (z: number) => (k === 0 ? tone(GREEN, L.r(z, k, 16)) : tone(ORANGE, L.r(z, k + y0, 17)));
+        const color = (z: number) => (k === 0 ? tone(TILE_EDGE, L.r(z, k, 16)) : tone(TILE, L.r(z, k + y0, 17)));
         for (const s of [-1, 1]) {
           if (ridge && s > 0) break;
           const xa = ridge ? X - outer : s < 0 ? X - outer : X + inner;
@@ -441,35 +505,29 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
             L.span(xa, y, z, xb, y + RISE + 0.05, e, color(z + i), 'mapStone', k % 3 === 2 ? 0.92 : 1);
             z = e;
           }
-          // Gold barge boards at the gable ends, ending low in upturned hooks.
-          for (const zg of ends) {
-            const out = zg === za ? -1 : 1;
-            L.span(xa, y + 0.1, zg + out * 0.15 - 0.15, xb, y + RISE + 0.2, zg + out * 0.15 + 0.15, tone(GOLD, L.r(k, zg, 19)), 'brass');
-            if (k === 0 && !ridge) {
-              const hx = s < 0 ? X - outer - 0.1 : X + outer + 0.1;
-              L.box(hx, y + 0.35, zg + out * 0.15, 0.3, 0.3, 0.3, tone(GOLD, 0.6), 'brass');
-              L.box(hx + s * 0.2, y + 0.65, zg + out * 0.15, 0.2, 0.35, 0.2, tone(GOLD, 0.6), 'brass');
-            }
-          }
         }
         if (ridge) {
-          // The ridge: gold spikes along it, a chofa rising and curling out at each end.
           const top = y + RISE + 0.05;
-          for (let z = za + 1; z < zb - 0.6; z += 1.2) L.box(X, top + 0.2, z, 0.18, 0.4, 0.18, tone(GOLD, 0.4), 'brass');
-          for (const zg of ends) {
-            const out = zg === za ? -1 : 1;
-            L.box(X, top + 0.35, zg + out * 0.1, 0.34, 0.7, 0.34, tone(GOLD, 0.1), 'brass');
-            L.box(X, top + 0.9, zg + out * 0.3, 0.28, 0.5, 0.28, tone(GOLD, 0.5), 'brass');
-            L.box(X, top + 1.3, zg + out * 0.55, 0.22, 0.4, 0.22, tone(GOLD, 0.9), 'brass');
-            L.box(X, top + 1.5, zg + out * 0.85, 0.2, 0.2, 0.4, tone(GOLD, 0.3), 'brass');
-          }
+          L.span(X - 0.14, top, za + 0.05, X + 0.14, top + 0.12, zb - 0.05, tone(GOLD, 0.4), 'brass');
         }
+      }
+      // The naga at each gable end: a barge board down each slope (the skirt's tucked in under the upper
+      // roof), a fan of heads at each eave, the chovea on the ridge's end.
+      for (const zg of ends) {
+        const out = zg === za ? -1 : 1;
+        const zo = zg + out * 0.02;
+        const aTop = to === 0 ? 0 : 5.05;
+        for (const s of [-1, 1]) {
+          naga.rakes.push({ from: V(X + s * (from + 0.04), slopeAt(from, y0, from + 0.04), zo), to: V(X + s * aTop, slopeAt(from, y0, aTop), zo), out: V(0, 0, out) });
+          naga.fans.push({ at: V(X + s * (from + 0.18), y0 + 0.12, zg + out * 0.12), look: V(s, 0, out * 0.95).normalize(), height: 1.1 });
+        }
+        if (to === 0) naga.choveas.push({ at: V(X, slopeAt(from, y0, 0) - 0.06, zg + out * 0.08), out: V(0, 0, out), height: eave === EAVE_Y ? 1.75 : 1.5 });
       }
     }
     // The gable ends: over the nave, a painted panel fills the triangle under the upper roof
-    // (sacred/gable.ts: gold kbach on red lacquer, a gilt Buddha in high relief in its niche), stepped like the roof and
-    // framed in by the gold barge boards, on a gold line; red boards behind it are its back, seen
-    // from under the roof. The skirt's ends stay open.
+    // (sacred/gable.ts: gold kbach on red lacquer round Brahma's four faces), stepped like the roof and
+    // framed by the barge boards, on a gold line; red boards behind it are its back, seen from under the
+    // roof. The skirt's ends stay open.
     for (const zg of ends) {
       const out = zg === za ? 1 : -1;
       const zc = zg + out * 0.4;
@@ -489,15 +547,18 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
       const base = upperEave(eave) - from;
       const inner = UPPER - RUN;
       const spec = { steps, foot: 0.15, half: inner + (base - 0.15) / (RISE / RUN), apex: base + (RISE / RUN) * inner };
-      // (the hall's front gable stands behind the porch's roof, its niche out of sight: no Buddha there)
-      sacred.add(gable(spec, { x: X, y: from, z: zc - out * 0.15, facing: out > 0 ? -1 : 1 }, zg === Z_STEP ? { buddha: 0 } : {}));
+      // (the hall's front gable stands behind the porch's roof: only its top shows)
+      sacred.add(gable(spec, { x: X, y: from, z: zc - out * 0.15, facing: out > 0 ? -1 : 1 }, { figure: 'brahma' }));
     }
   }
+  later(async () => {
+    await nagaFanReady('roof');
+    sacred.add(roofNaga(naga));
+  });
 
-  // ── Two stupas flanking the way up, a Buddhist flag by the stair ──────────
-  // Whitewashed chedei with gold bands and a gold spire (sacred/stupa.ts), each on a white plinth, a
-  // gilt Buddha in the niche of its base looking down the way up (north), a lamp before him at night.
-  // Blocks hidden inside the base make it solid (he walks round it).
+  // ── Two stupas flanking the way up ────────────────────────────────────────
+  // Khmer chedei (sacred/stupa.ts), each on a white plinth, a gilt Buddha in the niche of its base looking
+  // down the way up (north), a lamp before him at night. Blocks hidden inside the base make it solid.
   const SH = 5.2;
   const niche = stupaNiche({ height: SH, look: 'white' });
   for (const sx of [X - 9.5, X + 9.5]) {
@@ -512,7 +573,7 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
     L.span(sx - nw * 1.1, y, z - back, sx + nw * 1.1, y + niche.at.y + niche.height, z + nw * 1.1, tone(WHITE, 0.3), 'mapStone');
     glow(sx, y + niche.at.y + 0.04, z - niche.at.z - niche.depth * 0.35, 0.03, 0.05, 0.03, GLOW.lantern, 0.8);
     later(() => {
-      const s = sacred.add(stupa({ height: SH, look: 'white', niche: true }));
+      const s = sacred.add(stupa({ height: SH, look: 'white', niche: true, form: 'faces' }));
       s.position.set(sx, y, z);
       s.rotation.y = Math.PI;
       const b = buddhaStatue({ kind: 'meditate', look: 'gilt', height: niche.height * 0.72, farOnly: true, hide: 120 });
@@ -521,47 +582,226 @@ export function buildPagoda(field: HeightField, world: VoxelBuilder, glow: GlowF
       SACRED_LAMPS.push({ x: sx, y: y + niche.at.y + 0.3, z: z - niche.at.z - niche.depth * 0.6, range: 1.2, color: [1.2, 0.68, 0.3], day: 0 });
     });
   }
-  {
-    const fx = S.x1 + 2.6;
-    const fz = S.z0 - 0.5;
-    L.span(fx - 0.08, g(fx, fz), fz - 0.08, fx + 0.08, g(fx, fz) + 7.5, fz + 0.08, 0xd8d0c0, 'metal');
-    L.box(fx, g(fx, fz) + 7.6, fz, 0.2, 0.2, 0.2, tone(GOLD, 0.2), 'brass');
-    // Five colours in bands along the flag: blue, yellow, red, white, orange.
-    const bands = [0x2a5ab8, 0xf0c030, 0xc8302a, 0xf2eee6, 0xe8801a];
-    bands.forEach((c, i) => L.span(fx + 0.08 + i * 0.36, g(fx, fz) + 6.3, fz - 0.03, fx + 0.08 + (i + 1) * 0.36, g(fx, fz) + 7.4, fz + 0.03, c, 'petal'));
-  }
+
+  // ── The eight seima round the hall ────────────────────────────────────────
+  // At its corners and the middles of its sides (the front one a pair, either side of the way in), each a
+  // leaf-shaped stone on a lotus base in a little shrine: a white plinth, four slender posts, a two-tier
+  // roof of tiles with a gold lotus bud. Their broad faces look out from the hall.
+  const seimaAt: [number, number, 'x' | 'z'][] = [
+    [-3.0, 93.45, 'z'],
+    [3.0, 93.45, 'z'],
+    [-7.1, 93.45, 'z'],
+    [7.1, 93.45, 'z'],
+    [-7.1, 104.25, 'x'],
+    [7.1, 104.25, 'x'],
+    [-7.1, 114.9, 'z'],
+    [7.1, 114.9, 'z'],
+    [0, 114.9, 'z'],
+  ];
+  for (const [a, z, face] of seimaAt) seima(L, X + a, T.y, z, face);
+
+  // ── The crocodile flag on its tall pole, a golden hamsa on top ────────────
+  crocodileFlag(L, S.x1 + 2.6, g(S.x1 + 2.6, S.z0 - 0.5), S.z0 - 0.5);
+
   // ── A bell pavilion and a drum pavilion at the terrace's back corners ────
   for (const [px, drum] of [
     [T.x1 - 2.6, false],
     [T.x0 + 2.6, true],
-  ] as [number, boolean][]) {
-    const pz = T.z1 - 3;
-    for (const [dx, dz] of [
-      [-1.1, -1.1],
-      [1.1, -1.1],
-      [-1.1, 1.1],
-      [1.1, 1.1],
-    ])
-      L.span(px + dx - 0.15, T.y, pz + dz - 0.15, px + dx + 0.15, T.y + 3.2, pz + dz + 0.15, tone(WHITE, L.r(dx, dz, 24)), 'mapStone');
-    L.span(px - 1.5, T.y + 3.2, pz - 1.5, px + 1.5, T.y + 3.45, pz + 1.5, tone(GOLD, 0.5), 'brass');
-    for (let k = 0; k < 3; k++) L.span(px - 1.7 + k * 0.45, T.y + 3.45 + k * 0.4, pz - 1.7 + k * 0.45, px + 1.7 - k * 0.45, T.y + 3.85 + k * 0.4, pz + 1.7 - k * 0.45, k === 0 ? tone(GREEN, 0.3) : tone(ORANGE, L.r(k, px, 25)), 'mapStone');
-    L.box(px, T.y + 5.1, pz, 0.2, 0.5, 0.2, tone(GOLD, 0.2), 'brass');
-    if (drum) {
-      // The big temple drum (skor) on its stand, its skin facing the hall.
-      L.span(px - 0.5, T.y, pz - 0.5, px + 0.5, T.y + 0.6, pz + 0.5, tone(RED, 0.4), 'mapStone');
-      L.span(px - 0.7, T.y + 0.6, pz - 0.45, px + 0.7, T.y + 1.9, pz + 0.45, 0x7a3a22, 'mapStone');
-      for (const s of [-1, 1]) L.span(px + s * 0.7, T.y + 0.7, pz - 0.4, px + s * 0.76, T.y + 1.8, pz + 0.4, 0xe0cfa8, 'mapStone');
-    } else {
-      // The bronze bell hung from a beam, a log striker beside it.
-      L.span(px - 1.1, T.y + 2.9, pz - 0.08, px + 1.1, T.y + 3.05, pz + 0.08, tone(RED, 0.2), 'mapStone');
-      L.box(px, T.y + 2.6, pz, 0.12, 0.4, 0.12, 0x6a5a3a, 'brass');
-      L.box(px, T.y + 2.1, pz, 0.6, 0.7, 0.6, 0xb08a3a, 'brass');
-      L.box(px, T.y + 1.65, pz, 0.8, 0.3, 0.8, 0xa07a30, 'brass');
-      L.span(px + 0.55, T.y + 1.9, pz - 0.08, px + 1.05, T.y + 2.05, pz + 0.08, 0x6a4a30, 'mapStone');
-    }
-  }
+  ] as [number, boolean][])
+    pavilion(L, px, T.y, T.z1 - 3, drum);
+
+  console.info(`[map] village pagoda: ${lb.boxes.length} blocks (the naga, gables, Buddhas and offerings sculpted after the build)`);
   world.append(lb);
 
   // He kneels on the porch before the open door, facing the Buddha inside.
   return { worship: { x: X, y: F, z: Z0 - 2.2, fx: X, fz: bz } };
+}
+
+/**
+ * A seima (សីមា) at (x, y, z) on the terrace: a leaf-shaped stone of grey-green
+ * sandstone on a lotus base, its broad face across `face` (it looks along
+ * the other level axis), in a little shrine — a white plinth with a gold
+ * coping, four slender white posts, a two-tier roof of tiles, a gold
+ * lotus bud.
+ */
+function seima(L: Local, x: number, y: number, z: number, face: 'x' | 'z'): void {
+  const r = (k: number) => L.r(x, z, k);
+  L.span(x - 0.42, y, z - 0.42, x + 0.42, y + 0.3, z + 0.42, tone(WHITE, r(40)), 'mapStone');
+  L.span(x - 0.45, y + 0.3, z - 0.45, x + 0.45, y + 0.36, z + 0.45, tone(GOLD, r(41)), 'brass');
+  // The lotus base (gold petals over a white cushion) and the stone: rows narrowing to a point.
+  const along = (w: number, d: number, y0: number, y1: number, c: number, mat: 'mapStone' | 'brass') => (face === 'z' ? L.span(x - w, y0, z - d, x + w, y1, z + d, c, mat) : L.span(x - d, y0, z - w, x + d, y1, z + w, c, mat));
+  along(0.26, 0.15, y + 0.36, y + 0.44, tone(GOLD, r(42)), 'brass');
+  along(0.22, 0.12, y + 0.44, y + 0.5, tone(WHITE, r(43)), 'mapStone');
+  const stone = tone(STONE, r(44));
+  let sy = y + 0.5;
+  for (const [w, h] of [
+    [0.2, 0.28],
+    [0.18, 0.16],
+    [0.14, 0.12],
+    [0.09, 0.09],
+    [0.04, 0.08],
+  ]) {
+    along(w, 0.06, sy, sy + h, stone, 'mapStone');
+    sy += h;
+  }
+  // (a ridge down its middle)
+  along(0.025, 0.075, y + 0.52, y + 1.05, tone(STONE, r(45)), 'mapStone');
+  // The shrine: posts, the two-tier roof, the bud.
+  for (const [dx, dz] of [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ])
+    L.span(x + dx * 0.36 - 0.035, y + 0.36, z + dz * 0.36 - 0.035, x + dx * 0.36 + 0.035, y + 1.55, z + dz * 0.36 + 0.035, tone(WHITE, r(46)), 'mapStone');
+  L.span(x - 0.5, y + 1.55, z - 0.5, x + 0.5, y + 1.66, z + 0.5, tone(TILE_EDGE, r(47)), 'mapStone');
+  L.span(x - 0.38, y + 1.66, z - 0.38, x + 0.38, y + 1.8, z + 0.38, tone(TILE, r(48)), 'mapStone');
+  L.span(x - 0.24, y + 1.8, z - 0.24, x + 0.24, y + 1.93, z + 0.24, tone(TILE, r(49)), 'mapStone');
+  L.span(x - 0.08, y + 1.93, z - 0.08, x + 0.08, y + 2.1, z + 0.08, tone(GOLD, r(50)), 'brass');
+  L.span(x - 0.035, y + 2.1, z - 0.035, x + 0.035, y + 2.24, z + 0.035, tone(GOLD, r(51)), 'brass');
+}
+
+/**
+ * The crocodile flag (ទង់ក្រពើ) on its pole at (x, y, z) on the ground: a
+ * tall pole on a white plinth, a golden hamsa (the swan, Brahma's mount) on
+ * its top over a short crossbar, and hanging from the bar the long flag cut
+ * in a crocodile's shape — its head up, four legs, a long tapering tail —
+ * stiffened by bamboo rods across it, in bands of festive colours (the
+ * white one is for funerals).
+ */
+function crocodileFlag(L: Local, x: number, y: number, z: number): void {
+  const H = 11;
+  L.span(x - 0.45, y - 0.2, z - 0.45, x + 0.45, y + 0.3, z + 0.45, tone(WHITE, 0.3), 'mapStone');
+  L.span(x - 0.3, y + 0.3, z - 0.3, x + 0.3, y + 0.5, z + 0.3, tone(WHITE, 0.6), 'mapStone');
+  L.span(x - 0.08, y + 0.5, z - 0.08, x + 0.08, y + H, z + 0.08, 0x8a5a36, 'mapBark');
+  for (const t of [0.25, 0.5, 0.75]) L.span(x - 0.1, y + H * t, z - 0.1, x + 0.1, y + H * t + 0.12, z + 0.1, tone(GOLD, t), 'brass');
+  // The hamsa: a gold bird standing on the pole's top, looking east, its tail up behind.
+  const hy = y + H;
+  L.box(x, hy + 0.06, z, 0.22, 0.12, 0.22, tone(GOLD, 0.2), 'brass');
+  L.box(x, hy + 0.24, z, 0.42, 0.2, 0.2, tone(GOLD, 0.5), 'brass');
+  L.box(x + 0.2, hy + 0.44, z, 0.08, 0.3, 0.08, tone(GOLD, 0.7), 'brass');
+  L.box(x + 0.26, hy + 0.6, z, 0.16, 0.1, 0.1, tone(GOLD, 0.9), 'brass');
+  L.box(x - 0.24, hy + 0.36, z, 0.12, 0.2, 0.16, tone(GOLD, 0.3), 'brass');
+  // The crossbar, and the flag hanging from its end (in the plane x–y, facing north and south).
+  const bx = x + 0.55;
+  L.span(x, hy - 0.52, z - 0.03, bx + 0.12, hy - 0.46, z + 0.03, 0x6a4a30, 'mapBark');
+  const top = hy - 0.55;
+  // (the cloth hangs in soft folds: each band a little forward or back of the last)
+  let fold = 0;
+  const cloth = (cx: number, w: number, y0: number, y1: number, c: number) => {
+    const dz = 0.035 * Math.sin(fold++ * 1.9);
+    L.span(cx - w / 2, y0, z + dz - 0.015, cx + w / 2, y1, z + dz + 0.015, c, 'petal');
+  };
+  const BANDS = [0xc8302a, 0xf0c030, 0x2f6ab8, 0x3a9a5a, 0xe8801a, 0x8a3a8c];
+  // The head: the snout up (at the bar), widening to the neck; two eyes.
+  const head: [number, number][] = [
+    [0.16, 0.25],
+    [0.3, 0.3],
+    [0.46, 0.35],
+  ];
+  let fy = top;
+  for (const [w, h] of head) {
+    cloth(bx, w, fy - h, fy, 0xc8302a);
+    fy -= h;
+  }
+  cloth(bx - 0.1, 0.07, fy + 0.18, fy + 0.26, 0xf2eee6);
+  cloth(bx + 0.1, 0.07, fy + 0.18, fy + 0.26, 0xf2eee6);
+  // The body: bands between the rods, a leg out each side at the shoulders and the hips.
+  const bodyTop = fy;
+  for (let i = 0; i < 6; i++) {
+    const y1 = bodyTop - i * 0.42;
+    cloth(bx, 0.66, y1 - 0.42, y1, BANDS[i % BANDS.length]);
+    L.span(bx - 0.42, y1 - 0.03, z - 0.03, bx + 0.42, y1 + 0.02, z + 0.03, 0xd8c08a, 'mapBark');
+  }
+  for (const ly of [bodyTop - 0.5, bodyTop - 2.0])
+    for (const s of [-1, 1]) {
+      cloth(bx + s * 0.5, 0.26, ly - 0.16, ly, 0x3a9a5a);
+      cloth(bx + s * 0.6, 0.12, ly - 0.36, ly - 0.14, 0x3a9a5a);
+    }
+  // The tail, tapering down in bands.
+  fy = bodyTop - 6 * 0.42;
+  let w = 0.52;
+  for (let i = 0; i < 6; i++) {
+    cloth(bx, w, fy - 0.4, fy, BANDS[(i + 3) % BANDS.length]);
+    fy -= 0.4;
+    w *= 0.74;
+  }
+}
+
+/**
+ * A pavilion at the terrace's back corner (its middle at (px, y, pz)): four
+ * white posts on a gold beam frame, a Khmer two-tier roof of tiles with
+ * gold corners and a lotus-bud spire; under it the bronze bell with its log
+ * striker, or (`drum`) the skor: a big barrel drum on its side on a wooden
+ * cradle, its skins to the east and west.
+ */
+function pavilion(L: Local, px: number, y: number, pz: number, drum: boolean): void {
+  for (const [dx, dz] of [
+    [-1.1, -1.1],
+    [1.1, -1.1],
+    [-1.1, 1.1],
+    [1.1, 1.1],
+  ]) {
+    L.span(px + dx - 0.18, y, pz + dz - 0.18, px + dx + 0.18, y + 0.2, pz + dz + 0.18, tone(WHITE, 0.2), 'mapStone');
+    L.span(px + dx - 0.13, y + 0.2, pz + dz - 0.13, px + dx + 0.13, y + 3.2, pz + dz + 0.13, tone(WHITE, L.r(dx, dz, 24)), 'mapStone');
+  }
+  L.span(px - 1.4, y + 3.05, pz - 1.4, px + 1.4, y + 3.3, pz + 1.4, tone(GOLD, 0.5), 'brass');
+  // The roof: the lower tier stepping in twice, the upper three times, the corners turned up in gold, the bud.
+  const rows: [number, number, Tones][] = [
+    [1.85, 0.2, TILE_EDGE],
+    [1.55, 0.24, TILE],
+    [1.2, 0.2, TILE_EDGE],
+    [0.95, 0.24, TILE],
+    [0.66, 0.24, TILE],
+    [0.38, 0.22, TILE],
+  ];
+  let ry = y + 3.3;
+  rows.forEach(([hw, h, tones], k) => {
+    L.span(px - hw, ry, pz - hw, px + hw, ry + h, pz + hw, tone(tones, L.r(k, px, 25)), 'mapStone', k % 2 ? 0.96 : 1);
+    ry += h;
+  });
+  for (const [dx, dz] of [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ]) {
+    L.box(px + dx * 1.8, y + 3.55, pz + dz * 1.8, 0.14, 0.34, 0.14, tone(GOLD, 0.4), 'brass');
+    L.box(px + dx * 1.16, y + 4.0, pz + dz * 1.16, 0.12, 0.3, 0.12, tone(GOLD, 0.6), 'brass');
+  }
+  L.box(px, ry + 0.15, pz, 0.3, 0.3, 0.3, tone(GOLD, 0.2), 'brass');
+  L.box(px, ry + 0.45, pz, 0.2, 0.3, 0.2, tone(GOLD, 0.5), 'brass');
+  L.box(px, ry + 0.72, pz, 0.1, 0.26, 0.1, tone(GOLD, 0.8), 'brass');
+  if (drum) {
+    // The skor thom on its cradle: the barrel dark red with brass tacks round each skin.
+    for (const s of [-1, 1]) {
+      L.span(px + s * 0.55 - 0.08, y, pz - 0.5, px + s * 0.55 + 0.08, y + 0.75, pz - 0.36, 0x6a4a30, 'mapBark');
+      L.span(px + s * 0.55 - 0.08, y, pz + 0.36, px + s * 0.55 + 0.08, y + 0.75, pz + 0.5, 0x6a4a30, 'mapBark');
+      L.span(px + s * 0.55 - 0.08, y + 0.6, pz - 0.5, px + s * 0.55 + 0.08, y + 0.72, pz + 0.5, 0x6a4a30, 'mapBark');
+    }
+    L.span(px - 0.72, y + 0.72, pz - 0.5, px + 0.72, y + 1.72, pz + 0.5, 0x7a2e20, 'mapBark');
+    L.span(px - 0.62, y + 0.66, pz - 0.56, px + 0.62, y + 1.78, pz + 0.56, 0x8a3424, 'mapBark');
+    for (const s of [-1, 1]) {
+      L.span(px + s * 0.72 - 0.04, y + 0.8, pz - 0.42, px + s * 0.72 + 0.04, y + 1.64, pz + 0.42, 0xe0cfa8, 'mapStone');
+      L.span(px + s * 0.68 - 0.03, y + 0.76, pz - 0.47, px + s * 0.68 + 0.03, y + 1.68, pz + 0.47, tone(GOLD, 0.5), 'brass');
+    }
+  } else {
+    // The bronze bell hung from a beam, a log striker on ropes beside it.
+    L.span(px - 1.1, y + 2.9, pz - 0.08, px + 1.1, y + 3.05, pz + 0.08, tone(RED, 0.2), 'mapStone');
+    L.box(px, y + 2.72, pz, 0.08, 0.3, 0.08, 0x6a5a3a, 'metal');
+    const bell: [number, number][] = [
+      [0.3, 0.14],
+      [0.42, 0.18],
+      [0.52, 0.22],
+      [0.62, 0.16],
+      [0.7, 0.08],
+    ];
+    let by = y + 2.58;
+    for (const [w, h] of bell) {
+      L.box(px, by - h / 2, pz, w, h, w, 0xa8823a, 'brass');
+      by -= h;
+    }
+    for (const dz of [-0.35, 0.35]) L.box(px + 0.75, y + 2.35, pz + dz, 0.03, 1.1, 0.03, 0xc8b88a, 'petal');
+    L.span(px + 0.62, y + 1.72, pz - 0.5, px + 0.88, y + 1.94, pz + 0.5, 0x6a4a30, 'mapBark');
+  }
 }

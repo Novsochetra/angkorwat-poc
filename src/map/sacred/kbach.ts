@@ -7,7 +7,8 @@ import { CanvasTexture, NoColorSpace, SRGBColorSpace, type Texture } from 'three
  *
  * An ornament is drawn in metres (x right, y up) into the layers of a
  * `KbachPen`: the gold (only its shape counts), lines cut into the gold,
- * glass mosaic and the lacquer ground. `gild` then lays the gold on the
+ * colour laid over the gold (unused: Khmer kbach is carved and gilded — the
+ * glass mosaic of Thai gables is left out) and the lacquer ground. `gild` then lays the gold on the
  * ground with its relief (a soft shadow on the lacquer, lit and shaded
  * edges, dark grooves) and makes the maps a lit material needs: the colour,
  * and the relief (red: height for the bump, green: roughness, blue:
@@ -20,9 +21,10 @@ import { CanvasTexture, NoColorSpace, SRGBColorSpace, type Texture } from 'three
  * - `flameRow`: flames along any path (an arch, a halo, a frame);
  * - `lotusBand`: a row of lotus petals under a line of beads;
  * - `flameArch`: the pointed flame arch of a niche;
- * - `glass`: a glass inlay in a gold setting.
- * `paintGable` puts them together for a pagoda's gable; `gableTextures`
- * makes (and keeps) its maps.
+ * - `boss`: a gold stud with a ring cut round it (the jewel of the gold).
+ * `paintGable` puts them together for a pagoda's gable (and `paintFigures`
+ * the figures in its middle: Brahma's four faces, two tep prânâm);
+ * `gableTextures` and `figureTextures` make (and keep) their maps.
  *
  * Everything is drawn from fixed numbers: the same picture on every run.
  */
@@ -41,7 +43,7 @@ export interface KbachPen {
   gold: Ctx2D;
   /** Lines cut into the gilt (veins, folds, the face): shape only. */
   cut: Ctx2D;
-  /** Glass mosaic, in its own colours (it lies over the gold). */
+  /** Colour over the gold (glass or paint; the Khmer ornament leaves it empty). */
   glass: Ctx2D;
   /** The lacquer ground, in its own colours. */
   ground: Ctx2D;
@@ -51,8 +53,6 @@ export interface KbachPen {
 
 export const LACQUER = '#a01d18';
 export const LACQUER_DEEP = '#4a0c0a';
-export const GLASS_BLUE = '#2d6fd6';
-export const GLASS_GREEN = '#18a07a';
 
 const TAU = Math.PI * 2;
 
@@ -248,22 +248,6 @@ export function flame(pen: KbachPen, x: number, y: number, ang: number, len: num
   return pts;
 }
 
-/** A glass inlay (colour `color`) of radius `r` in a gold setting. */
-export function glass(pen: KbachPen, x: number, y: number, r: number, color: string): void {
-  pen.gold.fillStyle = '#fff';
-  dot(pen.gold, x, y, r * 1.5);
-  const g = pen.glass;
-  g.fillStyle = color;
-  dot(g, x, y, r);
-  g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  g.beginPath();
-  g.arc(x, y, r, Math.PI * 1.1, Math.PI * 1.9);
-  g.arc(x, y + r * 0.25, r * 0.85, Math.PI * 1.9, Math.PI * 1.1, true);
-  g.fill();
-  g.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  dot(g, x - r * 0.35, y + r * 0.35, r * 0.32);
-}
-
 export interface ScrollSpec {
   /** The spiral's centre and outer radius (m). */
   cx: number;
@@ -290,8 +274,10 @@ export interface ScrollSpec {
   minUp?: number;
   /** Leaves along the vine too, every so many metres (default 0: none), on its upper side. */
   vineLeaves?: number;
-  /** A glass inlay in the eye (colour), none if null. */
-  eye?: string | null;
+  /** A gold boss in the eye (where the spiral ends). */
+  eye?: boolean | null;
+  /** The leaves' width as a share of their length (default 0.44; Khmer kbach phni tes is fleshy: ≈ 0.54). */
+  fat?: number;
 }
 
 /**
@@ -352,7 +338,7 @@ export function scroll(pen: KbachPen, o: ScrollSpec): P[] {
     const w = width(vineShare + t * (1 - vineShare));
     const fx = o.cx + Math.cos(ang) * (rr + w * 0.3);
     const fy = o.cy + Math.sin(ang) * (rr + w * 0.3);
-    flame(pen, fx, fy, ang - o.dir * lean, len, len * 0.44, o.dir * curl, { tongue: 0.45 });
+    flame(pen, fx, fy, ang - o.dir * lean, len, len * (o.fat ?? 0.44), o.dir * curl, { tongue: 0.45 });
   }
   // Leaves along the vine, on each side in turn, leaning on the way it runs.
   if (o.from && o.vineLeaves) {
@@ -365,9 +351,9 @@ export function scroll(pen: KbachPen, o: ScrollSpec): P[] {
       side = -side as 1 | -1;
     }
   }
-  // The eye: a bud of glass.
+  // The eye: a gold boss.
   const tip = sp[sp.length - 1];
-  if (o.eye) glass(pen, tip[0], tip[1], Math.max(o.r * end * 0.55, 1.8 / pen.ppm), o.eye);
+  if (o.eye) boss(pen, tip[0], tip[1], Math.max(o.r * end * 0.55, 1.8 / pen.ppm));
   return path;
 }
 
@@ -404,9 +390,10 @@ export function flameRow(pen: KbachPen, pts: readonly P[], o: FlameRowSpec): voi
 
 /**
  * A row of lotus petals from x0 to x1, standing on y, `h` m tall to the top
- * of the beads over them; a gold fillet under them.
+ * of the beads over them; a gold fillet under them; with `bosses`, every
+ * other bead a boss.
  */
-export function lotusBand(pen: KbachPen, x0: number, x1: number, y: number, h: number, beadColor: string | null = GLASS_GREEN): void {
+export function lotusBand(pen: KbachPen, x0: number, x1: number, y: number, h: number, bosses = false): void {
   const g = pen.gold;
   g.fillStyle = '#fff';
   g.fillRect(x0, y, x1 - x0, h * 0.13);
@@ -437,7 +424,7 @@ export function lotusBand(pen: KbachPen, x0: number, x1: number, y: number, h: n
   const m = Math.max(1, Math.round((x1 - x0) / (br * 2.6)));
   for (let i = 0; i < m; i++) {
     const bx = x0 + ((i + 0.5) * (x1 - x0)) / m;
-    if (beadColor && i % 2 === 1) glass(pen, bx, by, br * 0.62, beadColor);
+    if (bosses && i % 2 === 1) boss(pen, bx, by, br * 0.62);
     else {
       g.fillStyle = '#fff';
       dot(g, bx, by, br);
@@ -448,9 +435,9 @@ export function lotusBand(pen: KbachPen, x0: number, x1: number, y: number, h: n
 /**
  * A halo (the light round a Buddha's head): a gold ring of radius `r` round
  * (cx, cy), `w` wide, a fine ring inside it, and a fringe of flames licking
- * out and up round its upper half; glass set in the ring if `inlay`.
+ * out and up round its upper half; bosses set in the ring if `inlay`.
  */
-export function halo(pen: KbachPen, cx: number, cy: number, r: number, o: { w?: number; flames?: number; inlay?: string | null } = {}): void {
+export function halo(pen: KbachPen, cx: number, cy: number, r: number, o: { w?: number; flames?: number; inlay?: boolean | null } = {}): void {
   const w = o.w ?? r * 0.1;
   const circle = (rr: number): P[] => Array.from({ length: 97 }, (_, i) => [cx + Math.cos((i / 96) * TAU) * rr, cy + Math.sin((i / 96) * TAU) * rr] as P);
   pen.gold.fillStyle = '#fff';
@@ -466,7 +453,7 @@ export function halo(pen: KbachPen, cx: number, cy: number, r: number, o: { w?: 
     }
     flameRow(pen, arc, { len: fl, gap: fl * 0.7, from: fl * 0.5, side: s > 0 ? 1 : -1, lean: -0.55, curl: -1.0, taper: 0.7 });
   }
-  if (o.inlay) for (let i = 0; i < 12; i++) glass(pen, cx + Math.cos((i / 12) * TAU) * r, cy + Math.sin((i / 12) * TAU) * r, w * 0.3, o.inlay);
+  if (o.inlay) for (let i = 0; i < 12; i++) boss(pen, cx + Math.cos((i / 12) * TAU) * r, cy + Math.sin((i / 12) * TAU) * r, w * 0.3);
 }
 
 /**
@@ -491,9 +478,9 @@ export interface ArchSpec {
   /** The frame's width (m), the fringe's flame length (m). */
   frame?: number;
   flames?: number;
-  /** The niche's ground (colour), glass along the frame (colour or null). */
+  /** The niche's ground (colour), bosses along the frame. */
   fill?: string | CanvasGradient;
-  inlay?: string | null;
+  inlay?: boolean | null;
 }
 
 /**
@@ -525,7 +512,7 @@ export function flameArch(pen: KbachPen, cx: number, y: number, o: ArchSpec): vo
   flame(pen, cx, ty - fw, Math.PI / 2, fl * 2.4, fl * 0.62, 0);
   flame(pen, cx - fw * 0.3, ty, Math.PI / 2 + 0.55, fl * 1.1, fl * 0.34, 1.2);
   flame(pen, cx + fw * 0.3, ty, Math.PI / 2 - 0.55, fl * 1.1, fl * 0.34, -1.2);
-  if (o.inlay) for (const side of sides) for (const q of along(side, 0.22, 0.2)) glass(pen, q.p[0], q.p[1], fw * 0.24, o.inlay);
+  if (o.inlay) for (const side of sides) for (const q of along(side, 0.22, 0.2)) boss(pen, q.p[0], q.p[1], fw * 0.24);
 }
 
 // ── Gilding ──────────────────────────────────────────────────────────────
@@ -691,15 +678,20 @@ export const GABLE_NICHE = { y: 0.3, w: 0.96, shoulder: 1.25, tip: 2.72, figure:
 
 /**
  * A pagoda's gable (the triangle under the roof, `GABLE` wide and tall, its
- * foot on y = 0, drawn in its own metres): gold kbach on red lacquer. In
- * the middle a deep niche under a pointed flame arch (`GABLE_NICHE`), for
- * a Buddha in high relief; on each side flame scrolls spread out and up
- * to the corners; a gold band runs up each slope with flame teeth along
- * it; lotus petals and beads along the foot; blue and green glass in the
- * eyes of the scrolls, on the arch and in the beads. Outside the triangle
- * the lacquer lies in the roof's shadow.
+ * foot on y = 0, drawn in its own metres): gold kbach on red lacquer, all
+ * of it gilt relief (Khmer kbach is carved and gilded: no glass mosaic,
+ * which is the Thai way). A gold band runs up each slope with a row of
+ * bosses and small flame teeth along its inner edge; lotus petals and
+ * beads along the foot; on each side scrolls of fleshy flame leaves (kbach
+ * phni tes) curl out and up to the corners. In the middle, by `figure`:
+ * `buddha`, a deep niche under a pointed flame arch (`GABLE_NICHE`) for a
+ * Buddha in high relief, a halo painted behind his head; `brahma`, the
+ * ground left clear for the figures' own sharper panel (`paintFigures`:
+ * Brahma's four faces between two kneeling tep prânâm, `FIGURES`), the
+ * scrolls kept round them. Outside the triangle the lacquer lies in the
+ * roof's shadow.
  */
-export function paintGable(pen: KbachPen): void {
+export function paintGable(pen: KbachPen, figure: GableFigure = 'buddha'): void {
   const { half, height } = GABLE;
   const k = height / half;
   const tri: P[] = [
@@ -727,7 +719,7 @@ export function paintGable(pen: KbachPen): void {
     g.clip();
   }
 
-  // The bands up the slopes, flame teeth climbing along their inner edge.
+  // The bands up the slopes, a row of bosses on them, small flame teeth along their inner edge.
   const bw = 0.085;
   for (const s of [-1, 1]) {
     const slope: P[] = [
@@ -739,54 +731,89 @@ export function paintGable(pen: KbachPen): void {
     pen.gold.fillStyle = '#fff';
     ribbon(pen.gold, inside, bw, bw, false);
     const edge = offset(line, s * (bw + 0.02));
-    flameRow(pen, edge, { len: 0.27, gap: 0.19, from: 0.3, side: s > 0 ? 1 : -1, lean: 0.45, curl: 1.6 });
-    for (const q of along(inside, 0.36, 0.3)) glass(pen, q.p[0], q.p[1], 0.019, s * q.s > 0 ? GLASS_BLUE : GLASS_GREEN);
+    flameRow(pen, edge, { len: 0.2, gap: 0.17, from: 0.3, side: s > 0 ? 1 : -1, lean: 0.4, curl: 1.5, wid: 0.09 });
+    for (const q of along(inside, 0.3, 0.25)) boss(pen, q.p[0], q.p[1], 0.017);
   }
 
   // Lotus petals and beads along the foot.
-  lotusBand(pen, -half, half, 0, 0.3, GLASS_BLUE);
+  lotusBand(pen, -half, half, 0, 0.3);
 
-  // Scrolls on each side (drawn for the left, mirrored for the right): big ones low, spreading out to the corner.
-  const wing = (s: 1 | -1) => {
+  const wing = (s: 1 | -1, draw: (S: (o: ScrollSpec) => P[], X: (x: number) => number, A: (a: number) => number) => void) => {
     const X = (x: number) => s * x;
     const A = (a: number) => (s > 0 ? a : Math.PI - a);
     const dir = (d: 1 | -1) => (s > 0 ? d : (-d as 1 | -1));
-    const S = (o: ScrollSpec) => scroll(pen, { ...o, cx: X(o.cx), at: A(o.at), dir: dir(o.dir), from: o.from ? [X(o.from[0]), o.from[1]] : undefined, fromAng: o.fromAng === undefined ? undefined : A(o.fromAng) });
+    const S = (o: ScrollSpec) => scroll(pen, { fat: 0.54, ...o, cx: X(o.cx), at: A(o.at), dir: dir(o.dir), from: o.from ? [X(o.from[0]), o.from[1]] : undefined, fromAng: o.fromAng === undefined ? undefined : A(o.fromAng) });
     pen.gold.fillStyle = '#fff';
-    // The ground vine along the foot, from the niche out to the corner, small flames standing on it.
-    const foot = bezier([X(-1.05), 0.36], [X(-2.0), 0.3], [X(-3.0), 0.44], [X(-3.95), 0.33], 40);
-    ribbon(pen.gold, foot, 0.06, 0.025);
-    flameRow(pen, s > 0 ? foot : foot.map(([x, y]) => [x, y] as P), { len: 0.16, gap: 0.2, from: 0.15, side: s > 0 ? -1 : 1, lean: 0.5, curl: 1.2, taper: 0.7 });
-    // A big scroll rising from it, rolling out toward the corner.
-    S({ cx: -2.15, cy: 1.08, r: 0.5, at: -0.15, dir: 1, turns: 1.55, from: [-1.35, 0.36], fromAng: 1.9, stem: 0.08, eye: GLASS_BLUE, vineLeaves: 0.17, leaf: 1.1 });
-    // Out along the foot, smaller and smaller.
-    S({ cx: -3.1, cy: 0.74, r: 0.3, at: -0.3, dir: 1, turns: 1.45, from: [-2.55, 0.38], fromAng: 1.2, stem: 0.055, eye: GLASS_GREEN, leaf: 1.2 });
-    S({ cx: -3.68, cy: 0.5, r: 0.15, at: -0.4, dir: 1, turns: 1.3, from: [-3.4, 0.37], fromAng: 1.0, stem: 0.036, eye: null, leaf: 1.2 });
-    // A scroll rising along the niche to the slope, rolling out under it.
-    S({ cx: -1.62, cy: 2.14, r: 0.32, at: -0.2, dir: 1, turns: 1.45, from: [-1.4, 1.2], fromAng: 1.35, stem: 0.055, eye: GLASS_GREEN, vineLeaves: 0.16, leaf: 1.1 });
-    // Under the big scroll, a small one turning back toward the niche.
-    S({ cx: -1.55, cy: 0.66, r: 0.16, at: Math.PI + 0.3, dir: -1, turns: 1.3, from: [-1.95, 0.4], fromAng: 0.6, stem: 0.04, eye: null, minUp: -0.1 });
-    // By the point of the arch, a scroll under the apex.
-    S({ cx: -0.8, cy: 3.0, r: 0.21, at: -0.3, dir: 1, turns: 1.4, from: [-0.6, 2.55], fromAng: 1.9, stem: 0.042, eye: GLASS_BLUE, leaf: 1.2 });
-    // Flames filling the gaps: between the big scroll and the slope, and out toward the corner.
-    for (const [x, y, a, len] of [
-      [-2.62, 1.72, 2.1, 0.34],
-      [-2.95, 1.25, 2.0, 0.3],
-      [-3.45, 0.95, 2.2, 0.24],
-      [-1.2, 2.72, 1.85, 0.28],
-      [-2.05, 1.95, 1.6, 0.26],
-    ] as const)
-      flame(pen, X(x), y, A(a), len, len * 0.42, s * 1.8, { tongue: 0.4 });
+    draw(S, X, A);
   };
-  wing(1);
-  wing(-1);
+
+  if (figure === 'brahma') {
+    // Round the figures (`paintFigures`: Brahma in the middle, a tep prânâm kneeling each side): a ground
+    // vine along the foot out to the corner, a big scroll rising behind each tep prânâm, smaller ones out
+    // to the corner, others up under the slope toward the point, flames in the gaps.
+    for (const s of [1, -1] as const)
+      wing(s, (S, X, A) => {
+        const foot = bezier([X(-2.1), 0.36], [X(-2.8), 0.3], [X(-3.4), 0.42], [X(-4.1), 0.33], 40);
+        ribbon(pen.gold, foot, 0.055, 0.022);
+        flameRow(pen, foot, { len: 0.15, gap: 0.19, from: 0.12, side: s > 0 ? -1 : 1, lean: 0.5, curl: 1.2, taper: 0.7, wid: 0.075 });
+        // Beyond the tep prânâm: a big scroll rolling out toward the corner, smaller ones after it.
+        S({ cx: -2.75, cy: 0.86, r: 0.36, at: -0.1, dir: 1, turns: 1.75, from: [-2.12, 0.38], fromAng: 1.55, stem: 0.065, eye: true, vineLeaves: 0.15, leaf: 1.05 });
+        S({ cx: -3.5, cy: 0.52, r: 0.18, at: -0.3, dir: 1, turns: 1.6, from: [-3.12, 0.37], fromAng: 1.1, stem: 0.042, eye: true, leaf: 1.15 });
+        S({ cx: -4.0, cy: 0.36, r: 0.09, at: -0.4, dir: 1, turns: 1.4, from: [-3.8, 0.35], fromAng: 0.9, stem: 0.028, eye: null, leaf: 1.2 });
+        // Over him: a vine rising behind his back, curling in toward Brahma; others up under the slope.
+        S({ cx: -1.7, cy: 1.86, r: 0.29, at: Math.PI + 0.2, dir: -1, turns: 1.6, from: [-2.2, 1.3], fromAng: 1.3, stem: 0.05, eye: true, vineLeaves: 0.14, leaf: 1.1, minUp: -0.2 });
+        S({ cx: -1.25, cy: 2.45, r: 0.2, at: -0.2, dir: 1, turns: 1.5, from: [-1.55, 2.1], fromAng: 1.0, stem: 0.04, eye: true, leaf: 1.15 });
+        S({ cx: -0.72, cy: 3.0, r: 0.13, at: -0.3, dir: 1, turns: 1.45, from: [-0.95, 2.72], fromAng: 1.2, stem: 0.032, eye: null, leaf: 1.2 });
+        for (const [x, y, a, len] of [
+          [-2.35, 1.4, 1.6, 0.3],
+          [-3.1, 1.2, 2.1, 0.24],
+          [-2.35, 1.95, 1.9, 0.22],
+          [-3.75, 0.72, 2.2, 0.17],
+          [-1.55, 2.78, 1.9, 0.18],
+          [-2.05, 2.2, 2.2, 0.16],
+          [-2.45, 0.46, 1.4, 0.2],
+        ] as const)
+          flame(pen, X(x), y, A(a), len, len * 0.5, s * 1.8, { tongue: 0.5 });
+      });
+    for (const g of [pen.gold, pen.cut, pen.glass, pen.ground]) g.restore();
+    return;
+  }
+
+  // Scrolls on each side (drawn for the left, mirrored for the right): big ones low, spreading out to the corner.
+  for (const s of [1, -1] as const)
+    wing(s, (S, X, A) => {
+      // The ground vine along the foot, from the niche out to the corner, small flames standing on it.
+      const foot = bezier([X(-1.05), 0.36], [X(-2.0), 0.3], [X(-3.0), 0.44], [X(-3.95), 0.33], 40);
+      ribbon(pen.gold, foot, 0.06, 0.025);
+      flameRow(pen, foot, { len: 0.16, gap: 0.2, from: 0.15, side: s > 0 ? -1 : 1, lean: 0.5, curl: 1.2, taper: 0.7, wid: 0.075 });
+      // A big scroll rising from it, rolling out toward the corner.
+      S({ cx: -2.15, cy: 1.08, r: 0.5, at: -0.15, dir: 1, turns: 1.7, from: [-1.35, 0.36], fromAng: 1.9, stem: 0.08, eye: true, vineLeaves: 0.17, leaf: 1.1 });
+      // Out along the foot, smaller and smaller.
+      S({ cx: -3.1, cy: 0.74, r: 0.3, at: -0.3, dir: 1, turns: 1.6, from: [-2.55, 0.38], fromAng: 1.2, stem: 0.055, eye: true, leaf: 1.2 });
+      S({ cx: -3.68, cy: 0.5, r: 0.15, at: -0.4, dir: 1, turns: 1.4, from: [-3.4, 0.37], fromAng: 1.0, stem: 0.036, eye: null, leaf: 1.2 });
+      // A scroll rising along the niche to the slope, rolling out under it.
+      S({ cx: -1.62, cy: 2.14, r: 0.32, at: -0.2, dir: 1, turns: 1.6, from: [-1.4, 1.2], fromAng: 1.35, stem: 0.055, eye: true, vineLeaves: 0.16, leaf: 1.1 });
+      // Under the big scroll, a small one turning back toward the niche.
+      S({ cx: -1.55, cy: 0.66, r: 0.16, at: Math.PI + 0.3, dir: -1, turns: 1.4, from: [-1.95, 0.4], fromAng: 0.6, stem: 0.04, eye: null, minUp: -0.1 });
+      // By the point of the arch, a scroll under the apex.
+      S({ cx: -0.8, cy: 3.0, r: 0.21, at: -0.3, dir: 1, turns: 1.5, from: [-0.6, 2.55], fromAng: 1.9, stem: 0.042, eye: null, leaf: 1.2 });
+      // Flames filling the gaps: between the big scroll and the slope, and out toward the corner.
+      for (const [x, y, a, len] of [
+        [-2.62, 1.72, 2.1, 0.34],
+        [-2.95, 1.25, 2.0, 0.3],
+        [-3.45, 0.95, 2.2, 0.24],
+        [-1.2, 2.72, 1.85, 0.28],
+        [-2.05, 1.95, 1.6, 0.26],
+      ] as const)
+        flame(pen, X(x), y, A(a), len, len * 0.5, s * 1.8, { tongue: 0.5 });
+    });
 
   // The niche: deep lacquer, darker up under its point.
   const N = GABLE_NICHE;
   const deep = pen.ground.createLinearGradient(0, N.y, 0, N.y + N.tip);
   deep.addColorStop(0, '#4c0c0a');
   deep.addColorStop(1, '#2a0605');
-  flameArch(pen, 0, N.y, { w: N.w, shoulder: N.shoulder, tip: N.tip, frame: 0.09, flames: 0.3, inlay: GLASS_GREEN, fill: deep });
+  flameArch(pen, 0, N.y, { w: N.w, shoulder: N.shoulder, tip: N.tip, frame: 0.09, flames: 0.3, inlay: null, fill: deep });
   // The halo behind the Buddha's head, and a soft light on the niche's back round him.
   const hy = N.y + N.tip * N.figure * N.head;
   const glowR = pen.ground.createRadialGradient(0, hy - 0.5, 0.1, 0, hy - 0.5, 1.2);
@@ -805,9 +832,524 @@ export function paintGable(pen: KbachPen): void {
   for (const g of [pen.gold, pen.cut, pen.glass, pen.ground]) g.restore();
 }
 
+// ── The figures in a gable's middle ─────────────────────────────────────────
+
+/**
+ * The figures' panel of a `brahma` gable (m, in `GABLE`'s frame): it
+ * stands on the lotus band (`y` over the gable's foot), `w` wide and `h`
+ * tall; Brahma's lotus at its foot's middle, a tep prânâm kneeling
+ * `deva` m out each side. Painted sharper than the gable (it is small).
+ */
+export const FIGURES = { y: 0.3, w: 4.7, h: 3.2, deva: 1.74 };
+
+/** A smooth closed outline through the points (Catmull–Rom), `n` points a span. */
+function smooth(pts: readonly P[], n = 6, closed = true): P[] {
+  const out: P[] = [];
+  const m = pts.length;
+  const at = (i: number) => (closed ? pts[(i + m) % m] : pts[Math.max(0, Math.min(m - 1, i))]);
+  const last = closed ? m : m - 1;
+  for (let i = 0; i < last; i++) {
+    const p0 = at(i - 1);
+    const p1 = at(i);
+    const p2 = at(i + 1);
+    const p3 = at(i + 2);
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      out.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+      ]);
+    }
+  }
+  if (!closed) out.push(pts[m - 1]);
+  return out;
+}
+
+/** The points mirrored across x = 0 (and in reverse order, so a half outline runs on round the other side). */
+const mirror = (pts: readonly P[]): P[] => pts.map(([x, y]) => [-x, y] as P).reverse();
+
+/** A groove along a smooth open line through the points. */
+function groove(pen: KbachPen, pts: readonly P[], w0: number, w1 = w0): void {
+  cutLine(pen, smooth(pts, 6, false), w0, w1);
+}
+
+/**
+ * A gold boss: a raised stud with a ring cut round it (the jewel of carved
+ * Khmer kbach, where Thai work sets glass).
+ */
+export function boss(pen: KbachPen, x: number, y: number, r: number): void {
+  pen.gold.fillStyle = '#fff';
+  dot(pen.gold, x, y, r * 1.45);
+  const ring: P[] = Array.from({ length: 25 }, (_, i) => [x + Math.cos((i / 24) * TAU) * r, y + Math.sin((i / 24) * TAU) * r] as P);
+  ribbon(pen.cut, ring, Math.max(1.3 / pen.ppm, r * 0.22), Math.max(1.3 / pen.ppm, r * 0.22), false);
+}
+
+/**
+ * One of Brahma's faces seen from the side (for the right one; the left is
+ * its mirror): the brow, the downcast eye, the broad nose, full smiling
+ * lips, the long ear lobe with its ring — as the Bayon's faces. Its back
+ * runs in under the front face.
+ */
+function sideFace(pen: KbachPen, s: 1 | -1): void {
+  const X = (p: P): P => [s * p[0], p[1]];
+  const outline: P[] = ([
+    [0.26, 1.28],
+    [0.6, 1.28],
+    [0.665, 1.2],
+    [0.688, 1.12],
+    [0.707, 1.07],
+    [0.698, 1.036],
+    [0.712, 1.0],
+    [0.745, 0.925],
+    [0.776, 0.858],
+    [0.766, 0.834],
+    [0.742, 0.826],
+    [0.746, 0.8],
+    [0.758, 0.776],
+    [0.748, 0.756],
+    [0.754, 0.736],
+    [0.736, 0.714],
+    [0.728, 0.69],
+    [0.742, 0.645],
+    [0.726, 0.6],
+    [0.68, 0.566],
+    [0.6, 0.55],
+    [0.5, 0.52],
+    [0.26, 0.5],
+  ] as [number, number][]).map((p) => X(p));
+  pen.gold.fillStyle = '#fff';
+  poly(pen.gold, smooth(outline, 5));
+  // The ear, its long lobe, the ring in it.
+  groove(pen, [X([0.49, 1.08]), X([0.535, 1.03]), X([0.545, 0.93]), X([0.525, 0.84]), X([0.505, 0.76]), X([0.5, 0.69]), X([0.478, 0.665])], 0.013, 0.009);
+  groove(pen, [X([0.5, 1.0]), X([0.515, 0.94]), X([0.505, 0.88])], 0.008);
+  boss(pen, s * 0.476, 0.64, 0.026);
+  // The brow, the eye (downcast), the nostril, the lips' line, the smile's fold.
+  groove(pen, [X([0.6, 1.056]), X([0.64, 1.069]), X([0.69, 1.058])], 0.014, 0.009);
+  groove(pen, [X([0.622, 1.003]), X([0.652, 1.013]), X([0.684, 0.997])], 0.013, 0.009);
+  groove(pen, [X([0.63, 0.992]), X([0.66, 0.989]), X([0.68, 0.993])], 0.007);
+  groove(pen, [X([0.726, 0.842]), X([0.742, 0.83]), X([0.733, 0.816])], 0.008);
+  groove(pen, [X([0.694, 0.764]), X([0.72, 0.755]), X([0.75, 0.756])], 0.011, 0.008);
+  groove(pen, [X([0.7, 0.87]), X([0.712, 0.81]), X([0.7, 0.772])], 0.007);
+  // The jaw, down from the ear.
+  groove(pen, [X([0.52, 0.76]), X([0.57, 0.63]), X([0.665, 0.572])], 0.008);
+}
+
+/**
+ * Brahma's front face: broad and square, the brows joined in one line, the
+ * eyes lowered, the nose broad, full lips in the Angkor smile, the long
+ * ear lobes with rings.
+ */
+function frontFace(pen: KbachPen): void {
+  const half: P[] = [
+    [0, 0.49],
+    [0.1, 0.505],
+    [0.19, 0.55],
+    [0.255, 0.63],
+    [0.29, 0.73],
+    [0.305, 0.85],
+    [0.31, 0.98],
+    [0.31, 1.12],
+    [0.3, 1.28],
+  ];
+  const outline = [...half, ...mirror(half).slice(0, -1)];
+  // The ears between it and the side faces, the lobes with their rings.
+  pen.gold.fillStyle = '#fff';
+  for (const s of [-1, 1] as const) {
+    const ear: P[] = [
+      [0.29, 1.1],
+      [0.36, 1.08],
+      [0.39, 0.98],
+      [0.38, 0.86],
+      [0.36, 0.72],
+      [0.345, 0.62],
+      [0.31, 0.6],
+      [0.29, 0.7],
+    ].map(([x, y]) => [s * x, y] as P);
+    poly(pen.gold, smooth(ear, 5));
+    groove(pen, [[s * 0.33, 1.05], [s * 0.365, 0.98], [s * 0.36, 0.88], [s * 0.345, 0.76], [s * 0.34, 0.66]], 0.011, 0.008);
+    boss(pen, s * 0.33, 0.585, 0.03);
+  }
+  poly(pen.gold, smooth(outline, 5));
+  // Its edge, cut: it stands in front of the ears and the side faces.
+  cutLine(pen, smooth([...half.slice().reverse(), ...half.slice(1).map(([x, y]) => [-x, y] as P)], 5, false), 0.016, 0.016);
+  // The brows, joined in one line (dipping a little over the nose).
+  const brow: P[] = [
+    [0.265, 1.064],
+    [0.2, 1.1],
+    [0.1, 1.108],
+    [0.035, 1.09],
+    [0, 1.084],
+  ];
+  groove(pen, [...brow, ...mirror(brow).slice(1)], 0.018, 0.018);
+  // The eyes, lowered: a heavy upper lid, a light lower one.
+  for (const s of [-1, 1]) {
+    groove(pen, [[s * 0.05, 1.0], [s * 0.1, 1.032], [s * 0.18, 1.028], [s * 0.235, 0.995]], 0.02, 0.012);
+    groove(pen, [[s * 0.065, 0.99], [s * 0.12, 0.974], [s * 0.19, 0.977], [s * 0.228, 0.99]], 0.009, 0.007);
+  }
+  // The nose: its sides down from the brows, its broad wings.
+  for (const s of [-1, 1]) groove(pen, [[s * 0.034, 1.07], [s * 0.04, 0.97], [s * 0.05, 0.875]], 0.008, 0.007);
+  const nose: P[] = [
+    [0.09, 0.86],
+    [0.078, 0.822],
+    [0.035, 0.812],
+    [0, 0.826],
+  ];
+  groove(pen, [...nose, ...mirror(nose).slice(1)], 0.013, 0.013);
+  for (const s of [-1, 1]) groove(pen, [[s * 0.07, 0.845], [s * 0.056, 0.836], [s * 0.05, 0.824]], 0.008);
+  // The lips: the upper one's outline, the smile between them (its corners turned up), the lower one's foot.
+  const upper: P[] = [
+    [0.145, 0.722],
+    [0.075, 0.736],
+    [0.022, 0.744],
+    [0, 0.737],
+  ];
+  groove(pen, [...upper, ...mirror(upper).slice(1)], 0.009, 0.009);
+  const smile: P[] = [
+    [0.162, 0.726],
+    [0.14, 0.712],
+    [0.09, 0.702],
+    [0.04, 0.698],
+    [0, 0.7],
+  ];
+  groove(pen, [...smile, ...mirror(smile).slice(1)], 0.014, 0.014);
+  const lower: P[] = [
+    [0.1, 0.672],
+    [0.05, 0.657],
+    [0, 0.654],
+  ];
+  groove(pen, [...lower, ...mirror(lower).slice(1)], 0.008, 0.008);
+  groove(pen, [[-0.05, 0.605], [0, 0.598], [0.05, 0.605]], 0.007);
+}
+
+/**
+ * Brahma's four faces (ព្រហ្មមុខបួន: three seen), on a lotus, a collar
+ * under them, a diadem over them and a broad, short tiered crown (the
+ * mukuta of Angkor's gods, not a needle) ending in a lotus bud; a pointed
+ * halo of flames behind. Drawn with its foot's middle at the origin.
+ */
+function paintBrahma(pen: KbachPen): void {
+  // The halo: deep lacquer in a gold frame, flames licking up its outside, a tall flame on its point.
+  const deep = pen.ground.createLinearGradient(0, 0.3, 0, 2.6);
+  deep.addColorStop(0, '#3e0a08');
+  deep.addColorStop(1, '#2a0605');
+  flameArch(pen, 0, 0.26, { w: 0.9, shoulder: 1.05, tip: 2.34, frame: 0.07, flames: 0.19, inlay: null, fill: deep });
+  // The lotus: a band, a row of petals, a band.
+  pen.gold.fillStyle = '#fff';
+  pen.gold.fillRect(-0.8, 0, 1.6, 0.05);
+  lotusBand(pen, -0.78, 0.78, 0.03, 0.3);
+  pen.gold.fillRect(-0.64, 0.31, 1.28, 0.06);
+  cutLine(pen, [[-0.62, 0.34], [0.62, 0.34]], 0.01);
+  // The collar under the faces, a row of beads cut in it.
+  const collar: P[] = [
+    [-0.66, 0.37],
+    [-0.62, 0.5],
+    [0.62, 0.5],
+    [0.66, 0.37],
+  ];
+  poly(pen.gold, collar);
+  for (let i = 0; i < 13; i++) boss(pen, -0.54 + i * 0.09, 0.435, 0.016);
+  // The faces: the sides first, the front over them.
+  sideFace(pen, 1);
+  sideFace(pen, -1);
+  frontFace(pen);
+  // The diadem over all three: a band, bosses along it, a lotus jewel before each face, petals along its top.
+  const dia: P[] = [
+    [-0.74, 1.26],
+    [-0.72, 1.41],
+    [0.72, 1.41],
+    [0.74, 1.26],
+  ];
+  pen.gold.fillStyle = '#fff';
+  poly(pen.gold, dia);
+  cutLine(pen, [[-0.72, 1.285], [0.72, 1.285]], 0.009);
+  cutLine(pen, [[-0.71, 1.385], [0.71, 1.385]], 0.009);
+  for (let i = 0; i < 15; i++) {
+    const x = -0.63 + i * 0.09;
+    if (Math.abs(x) > 0.05 && Math.abs(Math.abs(x) - 0.54) > 0.05) boss(pen, x, 1.335, 0.014);
+  }
+  for (const x of [-0.54, 0, 0.54]) {
+    boss(pen, x, 1.335, 0.03);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      flame(pen, x + Math.cos(a) * 0.035, 1.335 + Math.sin(a) * 0.035, a, 0.045, 0.028, 0.3, { vein: false });
+    }
+  }
+  // The crown: tiers drawing in, a row of small upright petals along each one's top, the lotus bud.
+  let y = 1.41;
+  const tiers: [number, number, number][] = [
+    [0.64, 0.17, 7],
+    [0.52, 0.16, 5],
+    [0.4, 0.15, 5],
+    [0.29, 0.14, 3],
+  ];
+  for (const [w, h, n] of tiers) {
+    const top = w * 0.93;
+    pen.gold.fillStyle = '#fff';
+    poly(pen.gold, [
+      [-w, y],
+      [-top, y + h],
+      [top, y + h],
+      [w, y],
+    ]);
+    cutLine(pen, [[-w * 0.98, y + 0.025], [w * 0.98, y + 0.025]], 0.01);
+    for (let i = 0; i < n * 2 + 1; i++) boss(pen, -w * 0.9 + (i * 1.8 * w) / (n * 2), y + 0.065, 0.011);
+    for (let i = 0; i < n; i++) {
+      const x = -top * 0.84 + (i * 2 * top * 0.84) / Math.max(1, n - 1);
+      flame(pen, x, y + h - 0.035, Math.PI / 2 + (x / top) * 0.25, h * 1.05, h * 0.62, (-x / top) * 0.5, { vein: true });
+    }
+    y += h;
+  }
+  const bud: P[] = [...bezier([-0.16, y], [-0.2, y + 0.16], [-0.06, y + 0.3], [0, y + 0.38], 16), ...bezier([0, y + 0.38], [0.06, y + 0.3], [0.2, y + 0.16], [0.16, y], 16)];
+  pen.gold.fillStyle = '#fff';
+  poly(pen.gold, bud);
+  groove(pen, [[-0.1, y + 0.02], [-0.09, y + 0.16], [0, y + 0.33]], 0.01, 0.007);
+  groove(pen, [[0.1, y + 0.02], [0.09, y + 0.16], [0, y + 0.33]], 0.01, 0.007);
+}
+
+/**
+ * A tep prânâm (ទេពប្រណម្យ): a deva kneeling, sitting back on the heels, the
+ * hands joined before the chest in greeting (anjali), a pointed tiered
+ * crown with a flower tassel by the ear, armlets, a necklace, the sampot
+ * falling in a fold before the knees; `s` +1 faces +x (the right way).
+ * Drawn from its knees' ground point at (x, 0).
+ */
+function tepPranam(pen: KbachPen, x0: number, s: 1 | -1, k = 1): void {
+  const X = (p: readonly [number, number]): P => [x0 + s * p[0] * k, p[1] * k];
+  const fill = (pts: readonly (readonly [number, number])[], n = 5) => {
+    pen.gold.fillStyle = '#fff';
+    poly(pen.gold, smooth(pts.map(X), n));
+  };
+  // A lotus mat under the knees.
+  pen.gold.fillStyle = '#fff';
+  poly(pen.gold, [X([-0.3, -0.02]), X([-0.26, 0.035]), X([0.42, 0.035]), X([0.46, -0.02])]);
+  // Legs and the sampot, sitting back on the heels.
+  fill([
+    [0.36, 0.03],
+    [0.38, 0.09],
+    [0.33, 0.15],
+    [0.12, 0.215],
+    [-0.08, 0.25],
+    [-0.17, 0.2],
+    [-0.19, 0.1],
+    [-0.15, 0.03],
+  ]);
+  // The torso, a narrow waist, the chest.
+  fill([
+    [-0.075, 0.24],
+    [-0.095, 0.36],
+    [-0.085, 0.49],
+    [-0.045, 0.555],
+    [0.05, 0.56],
+    [0.095, 0.5],
+    [0.085, 0.37],
+    [0.07, 0.25],
+  ]);
+  // The arms: the upper arm down to the elbow, the forearm up to the joined hands.
+  ribbon(pen.gold, smooth([X([0.02, 0.53]), X([0.04, 0.45]), X([0.06, 0.37])], 6, false), 0.06 * k, 0.05 * k);
+  ribbon(pen.gold, smooth([X([0.06, 0.37]), X([0.13, 0.42]), X([0.2, 0.47])], 6, false), 0.05 * k, 0.045 * k);
+  // (the joined hands: a bud pointing up)
+  fill([
+    [0.19, 0.44],
+    [0.225, 0.47],
+    [0.24, 0.54],
+    [0.232, 0.62],
+    [0.21, 0.56],
+    [0.185, 0.49],
+  ]);
+  // The neck and the head, looking along +x.
+  fill([
+    [-0.005, 0.545],
+    [0.045, 0.545],
+    [0.05, 0.6],
+    [0.0, 0.6],
+  ]);
+  fill([
+    [-0.055, 0.66],
+    [-0.035, 0.725],
+    [0.05, 0.73],
+    [0.085, 0.69],
+    [0.09, 0.665],
+    [0.106, 0.63],
+    [0.092, 0.618],
+    [0.097, 0.6],
+    [0.083, 0.584],
+    [0.04, 0.576],
+    [-0.005, 0.59],
+  ]);
+  // The crown: tiers to a point, a tassel of flowers by the ear.
+  fill(
+    [
+      [-0.045, 0.72],
+      [-0.03, 0.8],
+      [-0.005, 0.88],
+      [0.02, 0.97],
+      [0.04, 0.88],
+      [0.06, 0.8],
+      [0.07, 0.72],
+    ],
+    4,
+  );
+  for (const y of [0.76, 0.83, 0.9]) cutLine(pen, [X([-0.04 + (y - 0.72) * 0.3, y]), X([0.065 - (y - 0.72) * 0.32, y])], 0.008 * k);
+  pen.gold.fillStyle = '#fff';
+  poly(pen.gold, smooth([X([-0.02, 0.66]), X([0.0, 0.62]), X([-0.01, 0.56]), X([-0.035, 0.6])], 4));
+  // Cut lines: the eye, the mouth, the ear; the necklace, the armlet, the belt, the sampot's fold, the fingers.
+  groove(pen, [X([0.06, 0.668]), X([0.078, 0.672]), X([0.09, 0.664])], 0.008);
+  groove(pen, [X([0.078, 0.608]), X([0.094, 0.606])], 0.006);
+  groove(pen, [X([0.012, 0.69]), X([0.02, 0.65]), X([0.008, 0.625])], 0.008);
+  groove(pen, [X([-0.04, 0.54]), X([0.02, 0.51]), X([0.085, 0.52])], 0.009);
+  groove(pen, [X([0.0, 0.47]), X([0.045, 0.465])], 0.009);
+  groove(pen, [X([-0.08, 0.27]), X([0.0, 0.26]), X([0.075, 0.27])], 0.01);
+  groove(pen, [X([0.1, 0.22]), X([0.22, 0.14]), X([0.3, 0.07])], 0.009, 0.007);
+  groove(pen, [X([0.05, 0.215]), X([0.1, 0.12]), X([0.12, 0.04])], 0.008, 0.006);
+  groove(pen, [X([0.2, 0.45]), X([0.222, 0.53]), X([0.228, 0.6])], 0.006);
+}
+
+/**
+ * Reahu (រាហ៊ូ, Rahu) swallowing the moon, as over the doors of Angkor's
+ * temples and Cambodian pagodas: a demon's face, `k` m across, its middle
+ * at (cx, cy) — a diadem with flame points, ear flaps curling out, brows of
+ * curling flame, round staring eyes, a broad nose, a mustache curling into
+ * spirals, the mouth open wide on the moon, teeth and two fangs over it, a
+ * hand at each side gripping the moon; from the corners of his mouth
+ * garlands of kbach flow out to the sides (`garland` m each way).
+ */
+export function reahu(pen: KbachPen, cx: number, cy: number, k: number, garland = 0): void {
+  const X = (p: readonly [number, number]): P => [cx + p[0] * k, cy + p[1] * k];
+  const g = pen.gold;
+  const cut = (pts: readonly (readonly [number, number])[], w0: number, w1 = w0) => cutLine(pen, smooth(pts.map(X), 6, false), w0 * k, w1 * k);
+  const fill = (pts: readonly (readonly [number, number])[], n = 5) => {
+    g.fillStyle = '#fff';
+    poly(g, smooth(pts.map(X), n));
+  };
+  // The garlands first (the face lies over their roots): out from the mouth's corners to the sides.
+  if (garland > 0)
+    for (const s of [-1, 1] as const) {
+      const r = garland * 0.18;
+      scroll(pen, { cx: cx + s * (0.55 * k + garland * 0.72), cy: cy - 0.12 * k, r, at: s > 0 ? -0.2 : Math.PI + 0.2, dir: s > 0 ? 1 : -1, turns: 1.6, from: [cx + s * 0.4 * k, cy - 0.3 * k], fromAng: s > 0 ? -0.3 : Math.PI + 0.3, stem: r * 0.24, eye: true, vineLeaves: r * 0.55, leaf: 1.1, fat: 0.54 });
+      flame(pen, cx + s * (0.62 * k + garland * 0.25), cy - 0.36 * k, s > 0 ? -0.5 : Math.PI + 0.5, garland * 0.28, garland * 0.14, s * 1.4, { tongue: 0.5 });
+      flame(pen, cx + s * (0.6 * k + garland * 0.4), cy + 0.08 * k, s > 0 ? 0.7 : Math.PI - 0.7, garland * 0.24, garland * 0.12, -s * 1.3, { tongue: 0.4 });
+    }
+  // The ear flaps: flames curling out and up from his temples, a ring at each ear.
+  for (const s of [-1, 1] as const) {
+    const out = (a: number) => (s > 0 ? a : Math.PI - a);
+    flame(pen, cx + s * 0.44 * k, cy + 0.2 * k, out(0.45), 0.36 * k, 0.2 * k, s * 1.3, { tongue: 0.5 });
+    flame(pen, cx + s * 0.5 * k, cy + 0.0 * k, out(-0.15), 0.28 * k, 0.16 * k, -s * 1.1, { tongue: 0.45 });
+    boss(pen, cx + s * 0.57 * k, cy - 0.12 * k, 0.04 * k);
+  }
+  // The face.
+  const half: [number, number][] = [
+    [0, 0.44],
+    [0.2, 0.46],
+    [0.38, 0.4],
+    [0.5, 0.24],
+    [0.55, 0.03],
+    [0.51, -0.18],
+    [0.45, -0.34],
+    [0.31, -0.47],
+    [0.12, -0.53],
+    [0, -0.54],
+  ];
+  fill([...half, ...half.slice(1, -1).reverse().map(([x, y]) => [-x, y] as [number, number])], 5);
+  // The diadem: a band over the brow, flame points along its top, a tall one in the middle.
+  fill([
+    [-0.46, 0.36],
+    [-0.44, 0.5],
+    [0.44, 0.5],
+    [0.46, 0.36],
+  ], 2);
+  cut([[-0.43, 0.395], [0.43, 0.395]], 0.012);
+  for (let i = 0; i < 9; i++) boss(pen, cx + (-0.36 + i * 0.09) * k, cy + 0.445 * k, 0.018 * k);
+  for (let i = -3; i <= 3; i++) {
+    const x = i * 0.13;
+    flame(pen, cx + x * k, cy + 0.49 * k, Math.PI / 2 - i * 0.12, (i === 0 ? 0.32 : 0.17 - Math.abs(i) * 0.012) * k, (i === 0 ? 0.13 : 0.09) * k, -i * 0.25, { vein: true });
+  }
+  // The brows: flames sweeping out and up from over the nose, curling back in.
+  for (const s of [-1, 1]) {
+    cut([[s * 0.04, 0.24], [s * 0.16, 0.3], [s * 0.3, 0.3], [s * 0.4, 0.24], [s * 0.38, 0.16], [s * 0.3, 0.17]], 0.03, 0.016);
+    cut([[s * 0.1, 0.25], [s * 0.2, 0.275], [s * 0.3, 0.265]], 0.01);
+  }
+  // The eyes: round, staring, the balls raised.
+  for (const s of [-1, 1]) {
+    const e: P[] = Array.from({ length: 25 }, (_, i) => [s * 0.19 + Math.cos((i / 24) * TAU) * 0.09, 0.1 + Math.sin((i / 24) * TAU) * 0.075] as P);
+    cutLine(pen, e.map(X), 0.018 * k, 0.018 * k);
+    boss(pen, cx + s * 0.19 * k, cy + 0.1 * k, 0.038 * k);
+  }
+  // The nose: broad, the wings flared, the nostrils curled.
+  cut([[-0.05, 0.2], [-0.06, 0.08], [-0.13, -0.01], [-0.1, -0.06], [-0.03, -0.05], [0, -0.03], [0.03, -0.05], [0.1, -0.06], [0.13, -0.01], [0.06, 0.08], [0.05, 0.2]], 0.018, 0.018);
+  for (const s of [-1, 1]) cut([[s * 0.1, -0.015], [s * 0.07, -0.035], [s * 0.05, -0.015]], 0.012);
+  // The mustache over the mouth, curling up into spirals at its ends.
+  for (const s of [-1, 1]) cut([[0, -0.1], [s * 0.14, -0.085], [s * 0.28, -0.09], [s * 0.38, -0.04], [s * 0.37, 0.02], [s * 0.31, 0.01], [s * 0.32, -0.03]], 0.028, 0.012);
+  // The mouth open wide (the gold taken out there), the moon in it, teeth and fangs over it.
+  const mouth: [number, number][] = [
+    [-0.34, -0.14],
+    [-0.2, -0.13],
+    [0, -0.12],
+    [0.2, -0.13],
+    [0.34, -0.14],
+    [0.32, -0.3],
+    [0.2, -0.42],
+    [0, -0.45],
+    [-0.2, -0.42],
+    [-0.32, -0.3],
+  ];
+  g.save();
+  g.globalCompositeOperation = 'destination-out';
+  poly(g, smooth(mouth.map(X), 5));
+  g.restore();
+  pen.ground.fillStyle = '#2a0605';
+  poly(pen.ground, smooth(mouth.map(X), 5));
+  g.fillStyle = '#fff';
+  dot(g, cx, cy - 0.33 * k, 0.17 * k);
+  const moon: P[] = Array.from({ length: 33 }, (_, i) => [cx + Math.cos((i / 32) * TAU) * 0.12 * k, cy - 0.33 * k + Math.sin((i / 32) * TAU) * 0.12 * k] as P);
+  cutLine(pen, moon, 0.01 * k, 0.01 * k);
+  for (let i = -3; i <= 3; i++) {
+    const x = i * 0.075;
+    fill([
+      [x - 0.03, -0.12],
+      [x + 0.03, -0.12],
+      [x + 0.025, -0.175],
+      [x - 0.025, -0.175],
+    ], 1);
+  }
+  for (const s of [-1, 1])
+    fill([
+      [s * 0.25, -0.12],
+      [s * 0.31, -0.12],
+      [s * 0.27, -0.27],
+    ], 1);
+  // His hands at the mouth's sides, gripping the moon: a fist, the fingers' lines.
+  for (const s of [-1, 1]) {
+    fill([
+      [s * 0.22, -0.26],
+      [s * 0.3, -0.2],
+      [s * 0.4, -0.22],
+      [s * 0.44, -0.33],
+      [s * 0.38, -0.44],
+      [s * 0.26, -0.44],
+      [s * 0.2, -0.36],
+    ]);
+    for (const y of [-0.27, -0.32, -0.37]) cut([[s * 0.25, y], [s * 0.36, y - 0.01]], 0.01);
+    cut([[s * 0.3, -0.2], [s * 0.42, -0.24]], 0.012, 0.008);
+  }
+}
+
+/** The figures of a `brahma` gable (`FIGURES`): Brahma in the middle, a tep prânâm kneeling each side, turned to him. */
+export function paintFigures(pen: KbachPen): void {
+  paintBrahma(pen);
+  tepPranam(pen, -FIGURES.deva - 0.1, 1, 1.25);
+  tepPranam(pen, FIGURES.deva + 0.1, -1, 1.25);
+}
+
 // ── The gable's maps ─────────────────────────────────────────────────────
 
+/** What a gable shows in its middle (gable.ts `GableOptions.figure`). */
+export type GableFigure = 'buddha' | 'brahma';
+
 export interface GableArtSpec {
+  /** The figure in its middle (default `buddha`: the niche for a sculpted relief Buddha). */
+  figure?: GableFigure;
   /** The canvas's extent (m): from −width/2 to width/2, and from 0 up to `height`. */
   width: number;
   height: number;
@@ -858,29 +1400,55 @@ export function gableTextures(spec: GableArtSpec): GableArt {
       g.scale(sx, sy);
     },
     ppm * Math.sqrt(sx * sy),
-    paintGable,
+    (pen) => paintGable(pen, spec.figure ?? 'buddha'),
   );
+  const art = { ...gildedTextures(canvases, 'gable'), canvases, ms: performance.now() - t0 };
+  made.set(key, art);
+  return art;
+}
+
+/** Textures for gilded canvases (`name`): the colour, the relief, and the lamps' light fading up from the foot. */
+function gildedTextures(canvases: Gilded, name: string): { map: Texture; relief: Texture; glow: Texture } {
   const map = new CanvasTexture(canvases.color);
   map.colorSpace = SRGBColorSpace;
   map.anisotropy = 8;
-  map.name = 'gable';
+  map.name = name;
   const relief = new CanvasTexture(canvases.relief);
   relief.colorSpace = NoColorSpace;
   relief.anisotropy = 8;
-  relief.name = 'gable relief';
+  relief.name = `${name} relief`;
   // (the lamps hang under the eaves at the foot: their light fades up the gable)
   const W = ctx(canvases.glow);
+  const h = canvases.glow.height;
   const fade = W.createLinearGradient(0, h, 0, 0);
   fade.addColorStop(0, '#fff');
   fade.addColorStop(0.35, '#b0b0b0');
   fade.addColorStop(1, '#484848');
   W.globalCompositeOperation = 'multiply';
   W.fillStyle = fade;
-  W.fillRect(0, 0, w, h);
+  W.fillRect(0, 0, canvases.glow.width, h);
   const glow = new CanvasTexture(canvases.glow);
   glow.colorSpace = SRGBColorSpace;
-  glow.name = 'gable glow';
-  const art = { map, relief, glow, canvases, ms: performance.now() - t0 };
+  glow.name = `${name} glow`;
+  return { map, relief, glow };
+}
+
+/**
+ * The maps of a `brahma` gable's figures (made once; `px` across, default
+ * 1024): `paintFigures` over `FIGURES`, its foot's middle at the bottom
+ * middle, sharper than the gable's own painting. A cut-out: where nothing
+ * is painted it is clear (alpha 0) and the gable shows through.
+ */
+export function figureTextures(px = 1024): GableArt {
+  const key = `figures:${px}`;
+  const had = made.get(key);
+  if (had) return had;
+  const t0 = performance.now();
+  const ppm = px / FIGURES.w;
+  const h = Math.round(FIGURES.h * ppm);
+  const canvases = gild(px, h, (g) => g.setTransform(ppm, 0, 0, -ppm, px / 2, h), ppm, paintFigures);
+  const art = { ...gildedTextures(canvases, 'gable figures'), canvases, ms: performance.now() - t0 };
   made.set(key, art);
   return art;
 }
+

@@ -17,7 +17,10 @@ import type { MapPart } from '../types';
  * (canopies and bushes don't block), light (glow), water and moving things
  * (the explorer, birds). The land's own column blocks are left out where
  * they only repeat the height field (they are hollow: only their shells are
- * blocks); rocks, pillars and lips that stand out of it are kept.
+ * blocks); rocks, pillars and lips that stand out of it are kept. A block
+ * fills the columns whose middles it covers; a long, thin one (a plank
+ * wall, a rail) also every column along its middle line, so a house's
+ * walls turned off the grid have no holes.
  *
  * Two more kinds for the follow camera: `hard`, the same less tree bark, and
  * `soft`, the leaves (crowns, bushes, vines) and bark alone over the land:
@@ -34,6 +37,18 @@ const RES = 0.5;
 const CN = 32;
 /** Gaps between two solids thinner than this are filled (m). */
 const SEAM = 0.5;
+/**
+ * A block narrower than a column across (half of it under `THIN`, m) and
+ * longer than 0.6 m (half over `LONG`) is thin: its middle line is sampled
+ * every `LINE_STEP` m, but for `LINE_END` m at each end (an opening beside
+ * it — a doorway, a stair's gap in a railing — stays as wide).
+ */
+const THIN = RES / 2;
+const LONG = 0.3;
+const LINE_STEP = 0.1;
+const LINE_END = 0.15;
+/** Checks: `thinwalk=0` leaves the thin blocks' middle lines out (as before, to compare). */
+const THIN_LINES = typeof location === 'undefined' || new URLSearchParams(location.search).get('thinwalk') !== '0';
 /** The map's edges and a margin round them (the explorer's ledge by the overview camera is past the south edge). */
 const BOUNDS = { x0: MAP_BOUNDS.x0 - 64, x1: MAP_BOUNDS.x1 + 64, z0: MAP_BOUNDS.z0 - 64, z1: MAP_BOUNDS.z1 + 96 };
 
@@ -306,7 +321,24 @@ export class WalkMap {
           add(i + k * CN, f.y0, f.y1);
           hit = true;
         }
-      if (!hit) {
+      // A long, thin block (a plank wall's run, a rail, a board: under a column across, longer than one) also
+      // takes every column along its middle line: a column's centre seldom falls on it, and a wall of planks
+      // turned off the grid would be full of holes the explorer walks through.
+      const lu = f.ux * f.ux + f.uz * f.uz;
+      const lv = f.vx * f.vx + f.vz * f.vz;
+      const long = Math.sqrt(Math.max(lu, lv));
+      const thin = THIN_LINES && Math.min(lu, lv) < THIN * THIN && long > LONG;
+      if (thin) {
+        const reach = (long - LINE_END) / long;
+        const ax = (lu >= lv ? f.ux : f.vx) * reach;
+        const az = (lu >= lv ? f.uz : f.vz) * reach;
+        const n = Math.ceil((long - LINE_END) / LINE_STEP);
+        for (let s = -n; s <= n; s++) {
+          const i = Math.floor((f.x + (ax * s) / n - cx0) / RES);
+          const k = Math.floor((f.z + (az * s) / n - cz0) / RES);
+          if (i >= 0 && k >= 0 && i < CN && k < CN) add(i + k * CN, f.y0, f.y1);
+        }
+      } else if (!hit) {
         const i = Math.floor((f.x - cx0) / RES);
         const k = Math.floor((f.z - cz0) / RES);
         if (i >= 0 && k >= 0 && i < CN && k < CN) add(i + k * CN, f.y0, f.y1);

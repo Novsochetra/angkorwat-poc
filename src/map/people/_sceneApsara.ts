@@ -17,6 +17,8 @@ import { Rig, RigDef } from './_things';
  * ensemble sits on a mat to the west, a roneat (xylophone) and a pair of
  * skor thom drums before them; its music (`pinpeat`) comes from there. A few
  * visitors sit on the grass watching, now and then one stands for a photo.
+ * The show goes on when the explorer greets them: the dancers and the
+ * players only turn their heads to him (`Actor.performing`).
  *
  * They come out of the gate at dusk (`clock` ≈ 0.22), dance from ≈ 0.28
  * to midnight (0.51) and go back in.
@@ -229,6 +231,7 @@ export class Apsara implements PeopleScene {
       if (!on) {
         p.state = 'back';
         p.leg = 0;
+        a.performing = false;
       } else this.perform(p, now, f, ex);
     }
     a.step(dt, now);
@@ -238,6 +241,8 @@ export class Apsara implements PeopleScene {
   private perform(p: Performer, now: number, f: MapFrame, ex: Obstacle | null): void {
     const a = p.a;
     const dancing = f.clock >= SHOW;
+    // (the show on: a greeting only turns the dancers' and the players' heads, _greetBack.ts)
+    a.performing = dancing && (p.role === 'dancer' || p.role === 'music');
     if (p.role === 'dancer') {
       // (a slow figure: each drifts round her place, turning a little, the four out of step)
       const u = now * 0.045 + p.delay;
@@ -284,6 +289,7 @@ export class Apsara implements PeopleScene {
     this.music.hide();
     for (const p of this.people) {
       p.state = 'off';
+      p.a.performing = false;
       if (p.a.shown) p.a.hide();
     }
   }

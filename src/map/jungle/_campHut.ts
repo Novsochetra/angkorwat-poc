@@ -4,8 +4,8 @@ import type { CampLights } from './_campFx';
 
 /**
  * A forest monk's hut (kuti) in its clearing: a one-room house of woven
- * bamboo on stilts, a steep thatched roof of dried palm leaves with the
- * small upturned ends of a Khmer gable, a plank veranda in front under the
+ * bamboo on stilts, a steep thatched roof of dried palm leaves, its ridge
+ * tied off plainly at the gables (no horns: those read Thai), a plank veranda in front under the
  * roof, a ladder down to the ground. By it: an orange robe and its shoulder
  * cloth drying on a line to a bamboo pole, a big glazed water jar with a
  * coconut-shell dipper, a palm-rib broom against a stilt, sandals at the
@@ -181,15 +181,16 @@ export function buildMonkHut(s: Site, lights: CampLights): void {
       s.box(x, y - len / 2, z, 0.08, len, 0.2, tone(THATCH, z * 10, sx, 31), 'mapBark', { shade: 0.85 });
     }
   }
-  // Ridge: a bundled cap along the top, dark, and the upturned ends of the gable (Khmer kbach horns).
+  // Ridge: a bundled cap along the top, dark, its ends tied off plainly (a Khmer thatched hut has no horns at the
+  // gable peaks: upturned hooks there read as Thai), a band of bamboo lashing round each end.
   const ry = top + RISE + 0.36;
   for (let p = 0; p < pieces; p++) s.box(0, ry, zr0 + (p + 0.5) * pl, 0.5, 0.3, pl + 0.02, tone(THATCH, p, 40, 41), 'mapBark', { shade: 0.72 });
   for (const [z, dir] of [
     [zr1 + 0.05, 1],
     [zr0 - 0.05, -1],
   ]) {
-    s.beam([0, ry, z - dir * 0.2], [0, ry + 0.5, z + dir * 0.25], 0.14, 0.14, tone(POST, dir, 42, 43), 'mapBark');
-    s.beam([0, ry + 0.48, z + dir * 0.22], [0, ry + 0.75, z + dir * 0.12], 0.1, 0.1, tone(POST, dir, 44, 45), 'mapBark');
+    s.box(0, ry - 0.02, z - dir * 0.06, 0.44, 0.26, 0.14, tone(THATCH, dir, 42, 43), 'mapBark', { shade: 0.64 });
+    s.box(0, ry, z - dir * 0.34, 0.54, 0.34, 0.07, tone(BAMBOO, dir, 44, 45), 'wood', { shade: 0.9 });
   }
   // Gables: boards filling the triangle over the front beam and the back wall, a bargeboard along each edge.
   for (const [z, id] of [

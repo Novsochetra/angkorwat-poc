@@ -8,7 +8,9 @@ import { SEAT } from './_boatModel';
  * The explorer in the boat (a posture for `Animator.posture`): sitting on
  * the rear thwart, legs forward, a double-bladed paddle in both hands.
  * Strokes alternate sides while he paddles (or keep to the outside of a
- * turn); over a fall he holds the paddle up and braces.
+ * turn); over a fall he holds the paddle up and braces. With the camera or
+ * the phone up, or fishing, the paddle lies across his lap; fishing poses
+ * his arms, chest and head over this (`RideState.fish`: _fishPoses.ts).
  *
  * The paddle hangs from his chest joint and both fists reach it by arm IK,
  * so the hands stay on the shaft whatever the stroke does. The hips carry
@@ -158,8 +160,13 @@ export interface RideState {
   brace: number;
   /** Head turn (radians, + = to his left): he looks into turns. */
   look: number;
-  /** The paddle laid across his lap, the hands free (the camera or the phone is up), 0‥1. */
+  /** The paddle laid across his lap, the hands free (the camera or the phone is up, or he fishes), 0‥1. */
   rest?: number;
+  /**
+   * Fishing (_fishPoses.ts `FishHold`): the pole in his right fist, the fish
+   * in his left, his chest and head as the moment wants, over this pose.
+   */
+  fish?: { apply(pose: Pose, pitch: number, roll: number): void } | null;
 }
 
 /** Hips joint over the seat (m, true size): sitting on the pelvis, a little back. */
@@ -213,6 +220,8 @@ export function ridePose(r: RideState, paddle: Object3D | null): Pose {
   }
   Object.assign(pose, solveArm('L', _t.copy(_c).addScaledVector(_a, HAND), POLE.L));
   Object.assign(pose, solveArm('R', _t.copy(_c).addScaledVector(_a, -HAND), POLE.R));
+  // (fishing: the pole and the fish in his hands, over the paddler)
+  r.fish?.apply(pose, r.pitch, r.roll);
   return pose;
 }
 

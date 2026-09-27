@@ -335,9 +335,11 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
   const { x0, z0, nx, nz } = f;
   const x1 = x0 + nx * CELL;
   const z1 = z0 + nz * CELL;
+  // (rows of samples keep to the rows the map was first made with, as it grows north: heightfield.ts `row0`)
+  const zFrom = (step: number) => z0 + f.row0 * CELL - Math.floor((f.row0 * CELL) / step) * step;
 
   // 1. Emergents: a few tall crowns over the canopy.
-  for (let z = z0; z < z1; z += 16)
+  for (let z = zFrom(16); z < z1; z += 16)
     for (let x = x0; x < x1; x += 16) {
       const h = hash3(x, z, 1, 11);
       const px = x + hash3(x, z, 2, 11) * 16;
@@ -358,12 +360,12 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
       if (drop < CELL * 3) continue;
       const y = f.heightAt(x, z);
       const run = fbm(x / 30, z / 30, 505);
-      if (hash3(i, k, 7, 12) > opts.lip * smooth(0.3, 0.5, run) * Math.min(1, opts.density) * opts.lipLod[lodAt(x, y, z)]) continue;
+      if (hash3(i, k - f.row0, 7, 12) > opts.lip * smooth(0.3, 0.5, run) * Math.min(1, opts.density) * opts.lipLod[lodAt(x, y, z)]) continue;
       if (padDist(x, z) < 6) continue;
-      const size = hash3(i, k, 8, 12) < 0.4 ? 2 : 1;
-      const r = size === 2 ? 4.2 + hash3(i, k, 9, 12) * 0.8 : 3.2 + hash3(i, k, 9, 12) * 0.8;
+      const size = hash3(i, k - f.row0, 8, 12) < 0.4 ? 2 : 1;
+      const r = size === 2 ? 4.2 + hash3(i, k - f.row0, 9, 12) * 0.8 : 3.2 + hash3(i, k - f.row0, 9, 12) * 0.8;
       const lod = lodAt(x, y, z);
-      const t: TreeSpot = { x: Math.floor(x), z: Math.floor(z), y, kind: 'broadleaf', size, r, lod, cell: cellLod(lod, x, z), seed: Math.floor(hash3(i, k, 10, 12) * 1e6) };
+      const t: TreeSpot = { x: Math.floor(x), z: Math.floor(z), y, kind: 'broadleaf', size, r, lod, cell: cellLod(lod, x, z), seed: Math.floor(hash3(i, k - f.row0, 10, 12) * 1e6) };
       place(t, true);
     }
 
@@ -387,7 +389,7 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
   ];
   for (const lod of [0, 1, 2, 3]) {
     const step = STEP[lod];
-    for (let z = z0; z < z1; z += step)
+    for (let z = zFrom(step); z < z1; z += step)
       for (let x = x0; x < x1; x += step) {
         const px = x + hash3(x, z, 1, 13) * step;
         const pz = z + hash3(x, z, 2, 13) * step;
@@ -408,7 +410,7 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
   }
 
   // 4. Bushes in the gaps, most at the edges of the forest and by the water.
-  for (let z = z0; z < z1; z += 4)
+  for (let z = zFrom(4); z < z1; z += 4)
     for (let x = x0; x < x1; x += 4) {
       const px = x + hash3(x, z, 1, 14) * 4;
       const pz = z + hash3(x, z, 2, 14) * 4;

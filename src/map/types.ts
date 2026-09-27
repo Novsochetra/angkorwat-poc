@@ -26,6 +26,8 @@ export interface MapContext {
   quality: MapQuality;
   /** Headless still (`?shot=1`): build, pose at time `t`, render once. */
   shot: boolean;
+  /** A shot that then moves frame by frame (`video=1`, scripts/video.mjs): the explorer roams on in it. */
+  video?: boolean;
 }
 
 /** One frame. */
@@ -116,10 +118,14 @@ export interface MapWeather {
   flashAt: number;
   flashX: number;
   flashZ: number;
+  /** Snow falling (0 none … 1 thick): only the Weather setting's "snow" (a dream: it never snows at Angkor). */
+  snow: number;
+  /** How white the land lies under snow (0 bare … 1 covered): up over a minute or two of snowfall, melting after. */
+  snowCover: number;
 }
 
 /** Calm, clear weather (no wind, no rain). */
-export const CALM_WEATHER: Readonly<MapWeather> = { wind: 0, windDir: 0, cloud: 0, rain: 0, storm: 0, flash: 0, rainbow: 0, wet: 0, flashAt: -1e9, flashX: 0, flashZ: 0 };
+export const CALM_WEATHER: Readonly<MapWeather> = { wind: 0, windDir: 0, cloud: 0, rain: 0, storm: 0, flash: 0, rainbow: 0, wet: 0, flashAt: -1e9, flashX: 0, flashZ: 0, snow: 0, snowCover: 0 };
 
 /** Kinds of animal call (audio/animals.ts makes them). */
 export type AnimalCallKind =
@@ -155,7 +161,31 @@ export type AnimalCallKind =
  * creak, a cast net slapping the water, children laughing far off, a phrase
  * of pinpeat music from the apsara dancers' ensemble at night.
  */
-export type PeopleCallKind = 'oxBell' | 'cartCreak' | 'netSplash' | 'laugh' | 'pinpeat';
+export type PeopleCallKind =
+  | 'oxBell'
+  | 'cartCreak'
+  | 'netSplash'
+  | 'laugh'
+  | 'pinpeat'
+  // The new life (made by audio/people.ts; a kind whose level there is 0 is not made yet): the khleng
+  // ek's humming bow, the market's murmur and a seller's call, a knife chopping, a wok sizzling, palm
+  // syrup bubbling, a cooking fire crackling, bamboo knocks (the palm tapper's tubes and ladder), a
+  // bicycle bell, a moto going by, a greeting ("ជម្រាបសួរ", an adult; "សួស្ដី!", a child), a cow's
+  // bell, children splashing in water.
+  | 'kiteHum'
+  | 'market'
+  | 'vendorCall'
+  | 'chop'
+  | 'sizzle'
+  | 'bubble'
+  | 'crackle'
+  | 'knock'
+  | 'bikeBell'
+  | 'moto'
+  | 'hello'
+  | 'kidHello'
+  | 'cowBell'
+  | 'splashPlay';
 
 /** One animal call at a point of the map (m); `gain` 0‥1 (1 = a full call close by). */
 export interface AnimalCall {
@@ -164,6 +194,8 @@ export interface AnimalCall {
   y: number;
   z: number;
   gain: number;
+  /** The caller's size (m), for the sounds it changes (optional): a khleng ek's height — the bigger the kite, the lower its ek hums (`kiteHum`); a greeter's height — a woman's or a man's voice, a small child's (`hello`, `kidHello`). */
+  size?: number;
 }
 
 /**
@@ -200,7 +232,21 @@ export type RoamSound =
   | 'boatOut'
   | 'enter'
   // The treasure part's (treasure/): a golden figure goes into his bag.
-  | 'gold';
+  | 'gold'
+  // Fishing from the boat (roam/): the cast's swish, the reel, a bite on the float, a fish landed, one let go.
+  | 'cast'
+  | 'reel'
+  | 'bite'
+  | 'catch'
+  | 'release'
+  // His own greeting (a sampeah to the people near him), and a footstep in snow.
+  | 'greet'
+  | 'stepSnow'
+  // Buying at a stall (roam/_shop.ts): paying (riel notes counted out), a sip through a straw, a bite chewed, a satisfied breath after a drink.
+  | 'coin'
+  | 'sip'
+  | 'munch'
+  | 'ahh';
 
 /** Sounds of the roaming explorer that last (0‥1 each, set every frame). */
 export interface RoamLevels {
@@ -248,7 +294,7 @@ export interface MapSettings {
   ui: number;
   /** Time of day: follow the clock of the page (a slow cycle) or stay. */
   time: 'day' | 'night' | 'cycle';
-  /** Weather (sky/weather.ts): follow the season (rain in the wet season, dry December–April), never rain, showers often, storms often. */
+  /** Weather (sky/weather.ts): follow the season (rain in the wet season, dry December–April), never rain, showers often, storms often, or snow (a dream: it never snows at Angkor). */
   weather: WeatherSetting;
   /** No camera sway, short flights, no drifting clouds. */
   calm: boolean;
@@ -271,7 +317,7 @@ export type GraphicsChoice = (typeof GRAPHICS_CHOICES)[number];
 export type Lang = 'km' | 'en';
 
 /** The weather setting's choices, in panel order. */
-export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy'] as const;
+export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy', 'snow'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
 export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, graphics: 'auto' };
@@ -339,7 +385,21 @@ export type SubjectKind =
   | 'villager'
   | 'bamboo'
   | 'lotus'
-  | 'festival';
+  | 'festival'
+  // The east side and the new life round the map: the sugar palm, its tapper (the palm sugar family),
+  // the market's sellers and its crowd, the pilgrims on Phnom Kulen; the fish the explorer catches.
+  | 'sugarPalm'
+  | 'tapper'
+  | 'vendor'
+  | 'market'
+  | 'pilgrim'
+  | 'riel'
+  | 'snakehead'
+  | 'catfish'
+  | 'perch'
+  | 'featherback'
+  // A flying khleng ek, the humming kite (people/_sceneKites.ts).
+  | 'khlengEk';
 
 /** One living thing on the map as a part shows it now: its middle (m) and rough radius (m: how big it is). */
 export interface Subject {

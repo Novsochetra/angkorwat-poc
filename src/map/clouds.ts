@@ -1,6 +1,7 @@
 import { BackSide, Color, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector2, Vector3 } from 'three';
 import { hash3 } from '../voxel/random';
 import { MAP_BOUNDS } from './layout';
+import { EDGE_BAND, pastLand, ROAM_BOXES } from './terrain/views';
 import { buildBackdrop, RING_CENTRE } from './sky/backdrop';
 import { HAZE, HAZE_FUNCS, HAZE_PARS, hazeUniforms, WIND } from './sky/haze';
 import { MIST_WET, mistBankMaterial, mistLayerMaterial } from './sky/mist';
@@ -116,16 +117,22 @@ export function buildClouds(ctx: MapContext): MapPart {
   };
   const still = { orbit: 0, r: 0, a: 0 };
 
-  // Along the side and back edges: tall where the land is high at the edge.
-  const edgeRuns: [number, number, number, number][] = [
-    [MAP_BOUNDS.x0, MAP_BOUNDS.z0, MAP_BOUNDS.x1, MAP_BOUNDS.z0],
-    [MAP_BOUNDS.x0, MAP_BOUNDS.z0, MAP_BOUNDS.x0, -240],
-    [MAP_BOUNDS.x1, MAP_BOUNDS.z0, MAP_BOUNDS.x1, -240],
-  ];
+  // Along the side and back edges, where the land has sunk into the mist (the
+  // sinking band's outer edge round each box of the roaming area, views.ts;
+  // not where another box's land goes on): tall where the land is high there.
+  const edgeRuns: [number, number, number, number][] = ROAM_BOXES.flatMap((b): [number, number, number, number][] => {
+    const [x0, x1, z0] = [b.x0 - EDGE_BAND, b.x1 + EDGE_BAND, b.z0 - EDGE_BAND];
+    return [
+      [x0, z0, x1, z0],
+      [x0, z0, x0, -240],
+      [x1, z0, x1, -240],
+    ];
+  });
   for (const [xa, za, xb, zb] of edgeRuns) {
     const len = Math.hypot(xb - xa, zb - za);
     for (let s = 0; s <= len; s += 58) {
       const t = s / len;
+      if (pastLand(xa + (xb - xa) * t, za + (zb - za) * t) < -1) continue;
       const x = xa + (xb - xa) * t + (rnd(s, xa, 1) - 0.5) * 30;
       const z = za + (zb - za) * t + (rnd(s, za, 2) - 0.5) * 30;
       const ground = maxAround(Math.min(MAP_BOUNDS.x1 - 2, Math.max(MAP_BOUNDS.x0 + 2, x)), Math.max(MAP_BOUNDS.z0 + 2, z), 50);

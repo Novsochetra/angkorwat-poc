@@ -1,4 +1,4 @@
-import { Group, PerspectiveCamera, Vector3 } from 'three';
+import { DataTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from 'three';
 import { AngkorExplorer, OUTFITS } from '../character/AngkorExplorer';
 import { LEAF, SANDSTONE } from '../kit/palette';
 import { leafSurf, stoneSurf } from '../kit/surface';
@@ -6,18 +6,33 @@ import { traceSource } from '../feedback/sourceTrace';
 import { hash3 } from '../voxel/random';
 import { VoxelBuilder } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
+import { graphicsNow, STILL_LAYER } from './graphics';
+import { len2 } from './fauna/_len';
 import { EXPLORER_SPOT, OVERVIEW } from './layout';
+import type { RoamWorld } from './roam/types';
+import { SKY } from './sky/palette';
 import type { MapContext, MapFrame, MapPart } from './types';
 
 /** Size of the ledge's sandstone blocks (m): the game's own temple block. */
 const B = 0.5;
 /** While roaming, the ledge shows only while the explorer is this close to it (m). */
 const LEDGE_SEEN = 90;
+/**
+ * The disc under the roaming explorer on the low level ({@link footShadow}):
+ * its radius at his true size (m; it grows with him), how dark its middle is
+ * in the golden-hour sun, how far it leans away from the light (it is drawn
+ * out that way as the light is low, at most `lean` times its width, its
+ * near end kept under his feet), and the height over the floor (in his
+ * heights) where it starts to fade and where it is gone.
+ */
+const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 };
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
  * with the explorer standing on its corner looking out over the highlands
- * (true size, 1.70 m, so the map reads as far away and huge).
+ * (true size, 1.70 m, so the map reads as far away and huge). Roaming on the
+ * low level, a soft dark disc lies under his feet ({@link footShadow};
+ * `foot=0` in the URL: none, to compare).
  */
 export interface Foreground extends MapPart {
   explorer: AngkorExplorer;
@@ -26,6 +41,8 @@ export interface Foreground extends MapPart {
   yaw: number;
   /** The explorer leaves the ledge to roam (true), or is back (false): the ledge stops / starts driving him. */
   release(roaming: boolean): void;
+  /** The roaming world (floors, steps, bridges, water): what the disc under his feet lies on, on the low level (main.ts). */
+  follow(world: RoamWorld): void;
 }
 
 export function buildForeground(ctx: MapContext): Foreground {
@@ -89,8 +106,12 @@ export function buildForeground(ctx: MapContext): Foreground {
 
   // Hat and the big pack, as in the concept art. (No lights of his own: the
   // roaming tools keep one lamp and one flashlight always in the scene, so
-  // lighting a lantern never changes the light count: roam/tools.ts.)
-  const explorer = new AngkorExplorer({ quality: 'high', outfit: { ...OUTFITS.explorerGear, hat: true }, propLights: false, beam: true });
+  // lighting a lantern never changes the light count: roam/tools.ts.) Built
+  // for the low level, his blocks are rounded in one step, not two (44
+  // triangles a block, not 92): what that level draws of him anyway
+  // (graphics.ts `setGraphics`), and so are the outfits, tools and faces
+  // made while he roams, which that swap never sees.
+  const explorer = new AngkorExplorer({ quality: ctx.quality === 'low' ? 'medium' : 'high', outfit: { ...OUTFITS.explorerGear, hat: true }, propLights: false, beam: true });
   explorer.blinking = !ctx.shot;
   explorer.object.position.copy(feet);
   const [fx, , fz] = EXPLORER_SPOT.facing;
@@ -98,6 +119,43 @@ export function buildForeground(ctx: MapContext): Foreground {
   explorer.object.rotation.y = yaw;
   object.add(explorer.object);
   let roaming = false;
+  const foot = footShadow();
+  object.add(foot);
+  let world: RoamWorld | null = null;
+  const footOn = new URLSearchParams(location.search).get('foot') !== '0';
+  /** The disc under his feet (the low level, roaming): on the floor under him, fading as he goes up; none in the boat or the balloon, nor over water. */
+  function placeFoot(f: MapFrame): void {
+    let dark = 0;
+    const p = explorer.object.position;
+    const s = explorer.object.scale.x;
+    if (roaming && world && footOn && graphicsNow.stillShadows && (f.roam === 'walk' || f.roam === 'leap' || f.roam === 'glide' || f.roam === 'hang')) {
+      // (the solid under his feet, a roof or a bridge too; the land where the walk map has none)
+      let floor = world.standAt?.(p.x, p.z, p.y + 0.2 * s, 0.2 * s, 0) ?? NaN;
+      if (!Number.isFinite(floor)) floor = world.groundAt(p.x, p.z);
+      const water = world.waterAt(p.x, p.z);
+      const up = (p.y - floor) / (1.7 * s);
+      if (up > -0.15 && (water === null || water < floor - 0.05)) {
+        const fade = 1 - Math.min(1, Math.max(0, (up - FOOT.fadeFrom) / (FOOT.fadeTo - FOOT.fadeFrom)));
+        // (as dark as the key light's shadows: paler under cloud, in the dawn haze, by moonlight)
+        const key = SKY.keyIntensity / Math.max(1e-3, SKY.keyIntensity + SKY.fillIntensity);
+        dark = FOOT.dark * Math.min(1, (SKY.shadow * key) / 0.73) * fade * fade;
+        // (drawn out away from the light, as his real shadow is: long in the low sun, shorter under the higher moon)
+        const l = f.lightDir;
+        const flat = len2(l.x, l.z);
+        const lean = Math.min(FOOT.lean, 1 + (0.35 * flat) / Math.max(0.1, l.y));
+        const r = FOOT.radius * s * (1 + 0.5 * Math.max(0, up));
+        const ax = flat > 1e-3 ? -l.x / flat : 1;
+        const az = flat > 1e-3 ? -l.z / flat : 0;
+        foot.position.set(p.x + ax * r * (lean - 1), floor + 0.02, p.z + az * r * (lean - 1));
+        foot.rotation.y = Math.atan2(-az, ax);
+        foot.scale.set(2 * r * lean, 1, 2 * r);
+      }
+    }
+    foot.visible = dark > 0.01;
+    foot.material.opacity = dark;
+    // (main.ts marks the whole foreground still: the disc moves with him)
+    if (foot.layers.isEnabled(STILL_LAYER)) foot.layers.disable(STILL_LAYER);
+  }
 
   return {
     name: 'foreground',
@@ -109,10 +167,14 @@ export function buildForeground(ctx: MapContext): Foreground {
     release(on) {
       roaming = on;
     },
+    follow(w) {
+      world = w;
+    },
     update(f: MapFrame) {
       // The ledge hangs in the air by the overview camera: seen from the land
       // it would float in the sky, so it goes once the explorer is far off.
       ledge.visible = !roaming || explorer.object.position.distanceTo(feet) < LEDGE_SEEN;
+      placeFoot(f);
       if (roaming) return;
       // After dark the explorer lights a lantern.
       const lantern = f.night > 0.55;
@@ -121,6 +183,44 @@ export function buildForeground(ctx: MapContext): Foreground {
       explorer.update(f.dt);
     },
   };
+}
+
+/**
+ * A soft dark disc under the roaming explorer's feet on the low graphics
+ * level. Its shadows are still (graphics.ts): only what never moves casts,
+ * so once he leaves his ledge he casts none there, and would float over the
+ * land. One draw of two triangles, drawn over the floor after the land (no
+ * depth written, pulled a little towards the camera); no haze of its own
+ * (it would turn into a pale spot in the mist). It is not still, casts
+ * nothing and is never picked.
+ */
+function footShadow(): Mesh<PlaneGeometry, MeshBasicMaterial> {
+  // Dark in the middle, soft all the way out to its rim.
+  const n = 64;
+  const data = new Uint8Array(n * n * 4);
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const x = ((i + 0.5) / n) * 2 - 1;
+      const y = ((j + 0.5) / n) * 2 - 1;
+      const r2 = x * x + y * y;
+      const rim = Math.min(1, Math.max(0, (1 - Math.sqrt(r2)) / 0.3));
+      const v = Math.round(255 * Math.exp(-2.6 * r2) * rim * rim * (3 - 2 * rim));
+      const k = (j * n + i) * 4;
+      data[k] = data[k + 1] = data[k + 2] = v;
+      data[k + 3] = 255;
+    }
+  const alpha = new DataTexture(data, n, n);
+  alpha.magFilter = alpha.minFilter = LinearFilter;
+  alpha.needsUpdate = true;
+  const material = new MeshBasicMaterial({ color: 0x000000, alphaMap: alpha, transparent: true, depthWrite: false, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  material.name = 'foreground:footShadow';
+  material.userData.noSnow = true;
+  const mesh = new Mesh(new PlaneGeometry(1, 1).rotateX(-Math.PI / 2), material);
+  mesh.name = 'foreground:footShadow';
+  mesh.castShadow = mesh.receiveShadow = false;
+  mesh.raycast = () => {};
+  mesh.visible = false;
+  return mesh;
 }
 
 /** Map point under a screen spot of the overview camera (0‥1 from the top left), `distance` m away. */

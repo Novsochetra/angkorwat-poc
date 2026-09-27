@@ -101,11 +101,16 @@ const RATE = 48000;
 /** Samples made per slice (~1 ms of work). */
 const SLICE = 16384;
 
-type Job = Generator<void, AudioBuffer, void>;
+/** A buffer being made, a slice at a time (it yields between slices). */
+export type Job = Generator<void, AudioBuffer, void>;
 const ready = new Map<string, AudioBuffer>();
 const jobs = new Map<string, Job>();
 
-function obtain(key: string, make: () => Job): AudioBuffer {
+/** Whether the buffer under `key` is made (a big one is better left out than made at once in a frame). */
+export const isMade = (key: string): boolean => ready.has(key);
+
+/** The buffer made by `make` under `key`: made once (finishing its job at once if not warmed up yet), then reused. */
+export function obtain(key: string, make: () => Job): AudioBuffer {
   let b = ready.get(key);
   if (b) return b;
   const job = jobs.get(key) ?? make();
@@ -554,6 +559,49 @@ function* buzzJob(s: { freq: number; seconds: number; seed: number }): Job {
   return buf;
 }
 
+/**
+ * A wood fire's crackle: clusters of sharp clicks (0.2–2 ms, a few loud
+ * among many soft), some ringing a moment as the wood splits (a damped note,
+ * 1.5–4 kHz). Sparse, ~8 clusters a second. Mono loop.
+ */
+function* fireJob(): Job {
+  const seconds = 4.7;
+  const buf = newBuffer(1, seconds);
+  const n = buf.length;
+  const d = buf.getChannelData(0);
+  const rnd = mulberry32(3131);
+  let t = 0;
+  let made = 0;
+  while (t < seconds) {
+    const clicks = 1 + Math.floor(rnd() ** 2 * 7);
+    const big = rnd() ** 3;
+    let s = t;
+    for (let k = 0; k < clicks; k++) {
+      const i0 = Math.round(s * RATE);
+      const len = Math.round((0.0002 + rnd() ** 2 * 0.0018) * RATE);
+      const amp = (0.05 + 0.6 * big) * (0.3 + 0.7 * rnd());
+      for (let i = 0; i < len; i++) addWrapped(d, n, i0 + i, amp * Math.exp((-4 * i) / len) * (rnd() * 2 - 1));
+      if (rnd() < 0.2) {
+        const f = 1500 + rnd() * 2500;
+        const m = Math.round((0.005 + rnd() * 0.012) * RATE);
+        for (let i = 0; i < m; i++) addWrapped(d, n, i0 + i, amp * 0.5 * Math.exp((-5 * i) / m) * Math.sin((2 * Math.PI * f * i) / RATE));
+        made += m;
+      }
+      s += 0.002 + rnd() * 0.02;
+      made += len;
+    }
+    if (made > SLICE) {
+      made = 0;
+      yield;
+    }
+    t += -Math.log(1 - rnd() * 0.999) / 8;
+  }
+  highpass1(d, 300);
+  lowpass1(d, 7000);
+  normaliseRms(d, 0.08);
+  return buf;
+}
+
 /** Every source buffer, in the order they are warmed up (the day's first). */
 const SOURCES = {
   'noise-pink': () => noiseJob('pink'),
@@ -569,10 +617,11 @@ const SOURCES = {
   trill: () => trillJob({ freq: 3000, rate: 42, seconds: 7.9, seed: 5 }),
   buzz: () => buzzJob({ freq: 5600, seconds: 12.7, seed: 9 }),
   crunch: crunchJob,
+  fire: fireJob,
 } satisfies Record<string, () => Job>;
 
-export type SourceName = 'rustle' | 'roar' | 'splash' | 'babble' | 'cricket-a' | 'cricket-b' | 'trill' | 'buzz' | 'crunch';
-/** A named source loop (leaves, water, insects, grit under a sole). */
+export type SourceName = 'rustle' | 'roar' | 'splash' | 'babble' | 'cricket-a' | 'cricket-b' | 'trill' | 'buzz' | 'crunch' | 'fire';
+/** A named source loop (leaves, water, insects, grit under a sole, a wood fire). */
 export const source = (name: SourceName): AudioBuffer => obtain(name, SOURCES[name]);
 /** Looping stereo noise. */
 export const noise = (kind: NoiseKind): AudioBuffer => obtain(`noise-${kind}`, SOURCES[`noise-${kind}`]);
@@ -584,7 +633,12 @@ export const impulse = (ctx: BaseAudioContext): AudioBuffer => obtain(`impulse-$
  * Returns true once all are made. Call it from idle time before sound starts.
  */
 export function warmUp(timeLeft: () => number): boolean {
-  for (const [key, make] of Object.entries(SOURCES) as [string, () => Job][]) {
+  return warm(SOURCES, timeLeft);
+}
+
+/** Make `sources`' buffers (keyed like `obtain`) a slice at a time while `timeLeft()` (ms) allows; true once all are made. */
+export function warm(sources: Readonly<Record<string, () => Job>>, timeLeft: () => number): boolean {
+  for (const [key, make] of Object.entries(sources)) {
     if (ready.has(key)) continue;
     let job = jobs.get(key);
     if (!job) jobs.set(key, (job = make()));

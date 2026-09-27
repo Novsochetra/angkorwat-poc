@@ -6,22 +6,28 @@ import { buildRice } from './paddies/rice';
 import { PLOTS, setPaddySeason } from './paddies/stages';
 import { ROAM_SCALE } from './roam/types';
 import { SKY } from './sky/palette';
-import type { MapContext, MapFrame, MapPart } from './types';
+import type { MapContext, MapFrame, MapPart, Subject } from './types';
 import { stepWind, swayLand } from './veg/sway';
 
 /**
- * Rice paddies that follow the year (layout.ts `PADDIES`, south-west by the
- * great lake): the rice year of every plot on `f.season` is described in
- * paddies/stages.ts. Three kinds of draw:
+ * Rice paddies that follow the year (layout.ts `PADDIES`: south-west by the
+ * great lake, and five on the east lowland by the sugar-palm village): the
+ * rice year of every plot on `f.season` is described in paddies/stages.ts.
+ * Three kinds of draw:
  *  - `paddies:ground`: the plots' floor — cracked dry clay, wet mud and
  *    furrows, shallow water mirroring the sky, rain rings (ground.ts);
- *  - `paddies:rice`: the tufts in rows, seedlings to gold to stubble,
- *    swaying and waving in the wind (rice.ts; a draw per plot in view);
+ *  - `paddies:rice`: the hills in rows, seedlings to gold to stubble,
+ *    swaying and waving in the wind: near the camera clumps of thin blades
+ *    and heads (one draw), farther fans of three blades (one draw for every
+ *    plot's), thinning out far off (rice.ts: the hills of the cells in view
+ *    and in season);
  *  - `paddies:props`: fences, ting mong, stooks, straw stacks, sugar palms
  *    (props.ts; they also cast shadows, while those can be seen: cull.ts).
- * Every frame: uniforms only. Not solid (roam/walkmap.ts `SKIP_PARTS`): he
- * walks on the land's dikes and wades through the plots (walker.ts steps in
- * water while a plot is flooded: stages.ts `paddyFlooded`).
+ * Every frame: uniforms, the rice's cells near the camera (rice.ts) and
+ * the palms' far leaves (veg/palms.ts). Not solid (roam/walkmap.ts
+ * `SKIP_PARTS`): he walks on the land's dikes and wades through the plots
+ * (walker.ts steps in water while a plot is flooded: stages.ts
+ * `paddyFlooded`).
  */
 
 /** The listener is his head while roaming: his feet are this far below (m). */
@@ -42,7 +48,7 @@ export function buildPaddies(ctx: MapContext): MapPart {
   const meshes = [ground.mesh, ...rice.meshes, props.mesh];
   for (const m of meshes) m.frustumCulled = false;
   const shadows = new ShadowGate().add(props.mesh, boxOf(props.mesh));
-  console.info(`[map] paddies: ${PLOTS.length} plots, ${ground.cells} floor cells, ${rice.count} rice tufts, ${props.count} prop boxes · ${meshes.length} draws at most`);
+  console.info(`[map] paddies: ${PLOTS.length} plots, ${ground.cells} floor cells, ${rice.count} rice hills (${rice.summary}), ${props.count} prop boxes · ${rice.draws + 2} draws at most`);
 
   let frames = 0;
 
@@ -54,6 +60,8 @@ export function buildPaddies(ctx: MapContext): MapPart {
       if (frames === WARM_FRAMES) for (const m of meshes) m.frustumCulled = true;
       frames++;
       shadows.update(f);
+      // (the sugar palms on the dikes: the leaves of palms all far off are not drawn, veg/palms.ts)
+      props.palms.update(f);
       stepWind(f, 'paddies');
       season.value = f.season;
       setPaddySeason(f.season, f.weather.wet);
@@ -85,6 +93,12 @@ export function buildPaddies(ctx: MapContext): MapPart {
       const L = f.listener;
       if (f.roam === 'walk' || f.roam === 'boat') rice.uniforms.uFocus.value.set(L.x, L.y - HEAD, L.z);
       else rice.uniforms.uFocus.value.set(0, -1e4, 0);
+      // (the hills near the camera as clumps of blades, the plots out of season not drawn: rice.ts)
+      rice.update(f);
+    },
+    // The sugar palms on the dikes, for the nature book (`sugarPalm`).
+    subjects(out: Subject[]) {
+      props.palms.subjects(out);
     },
   };
 }

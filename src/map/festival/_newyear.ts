@@ -1,6 +1,6 @@
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
-import { CARRY, FEAT, POSE, type Crowd, type Look, type Pose } from '../people/_personModel';
+import { CARRY, POSE, type Crowd, type Look, type Pose } from '../people/_personModel';
 import type { MapFrame } from '../types';
 import { PAGODA } from '../village/_spots';
 import { bunting, BUDDHIST, flagPole, garland, PENNANTS, stupaGroup } from './_decor';
@@ -18,19 +18,23 @@ import { FESTIVAL_SCENE } from './_schedule';
  *   along the valley road at the River Gate and round the village, strings
  *   of pennants, marigold garlands at the pagoda door, and small coloured
  *   lights on the pagoda's strings at night;
- * - the village plays: children splash each other with water pistols (the
- *   water flies in arcs), young people play Chol Chhoung (two lines toss a
- *   knotted krama back and forth), elders sit on a mat while the young
- *   pour water over them for a blessing, families kneel before two monks
- *   on the pagoda porch, people build and tend the sand stupas, musicians
- *   (roneat and skor drums) play under the village's tamarind.
+ * - the village plays the New Year games: children play Bos Angkunh (two
+ *   teams face each other, each with a row of angkunh seeds standing on the
+ *   ground before it, and take turns throwing a seed to knock the other
+ *   team's down: the seed flies in an arc), young people play Chol Chhoung
+ *   (two lines toss a knotted krama back and forth), elders sit on a mat
+ *   while the young pour water over them for a blessing, families kneel
+ *   before two monks on the pagoda porch, people build and tend the sand
+ *   stupas, musicians (roneat and skor drums) play under the village's
+ *   tamarind. (No water-pistol fights: that is Thailand's Songkran.)
  */
 
 /** Chol Chhoung: slot seconds (a throw and the throw back), slots in a round. */
 const TOSS_T = 6;
 const TOSS_N = 5;
-/** Water pistols: a round of both sides shooting (s). */
-const SPLASH_T = 6;
+/** Bos Angkunh: a turn (s: one team throws, then the other), and the players on each team. */
+const ANGKUNH_T = 6;
+const ANGKUNH_N = 4;
 
 interface Person {
   x: number;
@@ -154,51 +158,53 @@ export function buildNewYear(kit: Kit, field: HeightField, villageBuilt: boolean
     kit.box(ax, ay - 0.2, az + 0.08, 0.1, 0.25, 0.08, 0xb8322c, o);
   }
 
-  // ── Water pistols: four pairs of children, each side in turn, the water in arcs ──
-  // (in the village square below the pagoda, between the stupas and the tamarind)
-  const kidsAt: [number, number, number, number][] = [
-    [-311.5, 77, -308, 80],
-    [-307, 75.5, -304.5, 78.8],
-    [-310.8, 81.2, -313.8, 78.6],
-    [-306.2, 82.4, -308.8, 84.8],
-  ];
-  const TOYS = [0x33c0ff, 0xff5ab4, 0x7cdd3a, 0xffb020, 0xa07aff];
-  kidsAt.forEach(([ax, az, bx, bz], i) => {
-    const ya = g(ax, az);
-    const yb = g(bx, bz);
-    const yawA = Math.atan2(bx - ax, bz - az);
-    const yawB = yawA + Math.PI;
-    const shooter = (half: number) => (now: number) => {
-      const c = ((now + i * 1.3) % SPLASH_T) / SPLASH_T;
-      const mine = half === 0 ? c < 0.42 : c >= 0.5 && c < 0.92;
-      const theirs = half === 0 ? c >= 0.5 && c < 0.92 : c < 0.42;
-      return mine ? POSE.point : theirs ? (hash3(i, half, Math.floor(now / SPLASH_T), 73) < 0.5 ? POSE.cheer : POSE.wave) : POSE.stand;
-    };
-    add(folk('kid', 600 + i * 2, { carry: CARRY.phone, props: [FEAT.phone], gear: TOYS[i % TOYS.length] }), { x: ax, y: ya, z: az, yaw: yawA, pose: shooter(0), late: false });
-    add(folk('kid', 601 + i * 2, { carry: CARRY.phone, props: [FEAT.phone], gear: TOYS[(i + 2) % TOYS.length] }), { x: bx, y: yb, z: bz, yaw: yawB, pose: shooter(1), late: false });
-    // The drops: a squirt of 8 from each, in its half of the round.
-    for (const [sx, sy, sz, tx, ty, tz, half] of [
-      [ax, ya, az, bx, yb, bz, 0],
-      [bx, yb, bz, ax, ya, az, 1],
-    ] as const) {
-      const d = Math.hypot(tx - sx, tz - sz) || 1;
-      const ux = (tx - sx) / d;
-      const uz = (tz - sz) / d;
-      const hx = sx + ux * 0.55 - uz * 0.25;
-      const hz = sz + uz * 0.55 + ux * 0.25;
-      const hy = sy + 1.2;
-      const fly = 0.62;
-      for (let k = 0; k < 8; k++) {
-        const spread = (hash3(i, k, half, 74) - 0.5) * 0.5;
-        const vx = ((tx - hx) / fly) * (0.85 + 0.1 * hash3(i, k, 2, 75)) + -uz * spread;
-        const vz = ((tz - hz) / fly) * (0.85 + 0.1 * hash3(i, k, 3, 76)) + ux * spread;
-        const vy = (ty + 1.3 - hy + 0.5 * 9.8 * fly * fly) / fly;
-        // Phase: this side's half of the round, the round shifted per pair like the poses.
-        const ph = (((half === 0 ? 0.04 : 0.54) + (k / 8) * 0.34 - (i * 1.3) / SPLASH_T) % 1 + 1) % 1;
-        kit.box(hx, hy, hz, 0.12, 0.12, 0.12, 0xd6eef8, { anim: ANIM.arc, a: [ph, SPLASH_T, fly], b: [vx, vy, vz, 9.8], show: SHOW.day });
-      }
+  // ── Bos Angkunh: two teams of children, a row of angkunh seeds standing before each, a seed thrown in turn ──
+  // (in the village square below the pagoda, between the stupas and the tamarind; the teams face each other across it)
+  const ROWS_Z = [76.2, 82.4];
+  const TEAM_X = [-310.6, -309.1, -307.6, -306.1];
+  const SEED = [0x6a3a1c, 0x5a3018, 0x7a4424];
+  const seedRow = (z: number) => {
+    for (let k = 0; k < 5; k++) {
+      const x = -310.2 + k * 0.9;
+      // (a flat round seed stood on its edge, a paler rim)
+      kit.box(x, g(x, z) + 0.06, z, 0.12, 0.12, 0.035, SEED[Math.floor(hash3(k, z, 1, 75) * SEED.length) % SEED.length], { show: SHOW.day });
+      kit.box(x, g(x, z) + 0.125, z, 0.07, 0.015, 0.04, 0xa06a3a, { show: SHOW.day });
     }
-  });
+  };
+  // (a row of seeds stands 1.2 m before each team's line: the other team aims across the square at it)
+  seedRow(ROWS_Z[0] + 1.2);
+  seedRow(ROWS_Z[1] - 1.2);
+  for (let team = 0; team < 2; team++) {
+    const z = ROWS_Z[team];
+    const to = ROWS_Z[1 - team] - Math.sign(ROWS_Z[1 - team] - z) * 1.2;
+    const yaw = team === 0 ? 0 : Math.PI;
+    TEAM_X.forEach((x, i) => {
+      const y = g(x, z);
+      // Whose turn: one throw a turn (the team's half of it), the players in order; a hit is cheered.
+      const player = (now: number) => {
+        const c = ((now % (ANGKUNH_T * ANGKUNH_N)) + ANGKUNH_T * ANGKUNH_N) % (ANGKUNH_T * ANGKUNH_N);
+        const turn = Math.floor(c / ANGKUNH_T);
+        const tau = c - turn * ANGKUNH_T;
+        const mine = team === 0 ? tau < ANGKUNH_T / 2 : tau >= ANGKUNH_T / 2;
+        const t = tau - (team === 0 ? 0 : ANGKUNH_T / 2);
+        if (mine && turn === i) return t < 0.9 ? POSE.point : t < 2.4 ? POSE.look : POSE.stand;
+        if (mine && t > 1.1 && t < 2.6) return hash3(i, turn, team, 73) < 0.45 ? POSE.cheer : POSE.stand;
+        return hash3(i, turn, team + 2, 74) < 0.25 ? POSE.wave : POSE.stand;
+      };
+      add(folk('kid', 600 + team * 4 + i), { x, y, z, yaw, pose: player, late: false });
+      // Its seed, thrown once a round from the hand, low over the square to the other team's row.
+      const hx = x + 0.25;
+      const hz = z + (team === 0 ? 0.45 : -0.45);
+      const hy = y + 1.05;
+      const fly = 0.85;
+      const tx = -310.2 + ((i * 2 + team) % 5) * 0.9;
+      const vx = (tx - hx) / fly;
+      const vz = (to - hz) / fly;
+      const vy = (g(tx, to) + 0.1 - hy + 0.5 * 9.8 * fly * fly) / fly;
+      const ph = (((i * ANGKUNH_T + (team === 0 ? 0.55 : ANGKUNH_T / 2 + 0.55)) / (ANGKUNH_T * ANGKUNH_N)) % 1 + 1) % 1;
+      kit.box(hx, hy, hz, 0.12, 0.12, 0.035, SEED[0], { anim: ANIM.arc, a: [1 - ph, ANGKUNH_T * ANGKUNH_N, fly], b: [vx, vy, vz, 9.8], show: SHOW.day, yaw: team ? Math.PI : 0 });
+    });
+  }
 
   // ── The pagoda: elders blessed with water, families before the monks, stupa builders ──
   const ex = PAGODA.x + 5.2;
@@ -219,7 +225,8 @@ export function buildNewYear(kit: Kit, field: HeightField, villageBuilt: boolean
   for (let i = 0; i < 4; i++) {
     const x = PAGODA.x - 2.4 + i * 1.6;
     const z = PAGODA.doorZ - 3.6 - (i % 2) * 0.6;
-    add(folk(i % 2 ? 'woman' : 'man', 730 + i), { x, y: terrace(x, z), z, yaw: 0, pose: still(POSE.kneel), late: true });
+    // (on the porch floor with the monks: the hall's plinth reaches out to z 94.5, a metre over the terrace)
+    add(folk(i % 2 ? 'woman' : 'man', 730 + i), { x, y: my, z, yaw: 0, pose: still(POSE.kneel), late: true });
   }
   // At the pagoda's stupas: kneeling, a child with a flag.
   for (let i = 0; i < 3; i++) {
@@ -278,7 +285,7 @@ export function buildNewYear(kit: Kit, field: HeightField, villageBuilt: boolean
           current[i] = pose;
           crowd.pose(i, pose, now, first);
         }
-        if (p.carry || looks[i].carry === CARRY.phone) crowd.carry(i, 1, now, first);
+        if (p.carry) crowd.carry(i, 1, now, first);
       }
     },
   };

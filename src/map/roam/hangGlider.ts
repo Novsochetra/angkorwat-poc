@@ -2,6 +2,7 @@ import { Group, Quaternion, Vector3 } from 'three';
 import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { placeById } from '../layout';
+import { roamHeading } from '../terrain/views';
 import type { MapFrame } from '../types';
 import { t } from '../ui/lang';
 import { GLIDER, Glider } from './_gliderModel';
@@ -150,7 +151,7 @@ const LAY = 0.45;
 const CAM_DIST = 17;
 const CAM_PITCH = 0.3;
 const FOCUS_UP = 0.55;
-/** Where the wind turns him at the edges: Angkor Wat. */
+/** Where the wind turns him at the edges: Angkor Wat (round the roaming area's inner corner: views.ts `roamHeading`). */
 const HOME = placeById('sanctuary');
 
 const UP = new Vector3(0, 1, 0);
@@ -162,6 +163,7 @@ const _v = new Vector3();
 const _w = new Vector3();
 const _hp = new Vector3();
 const _core = { x: 0, z: 0 };
+const _home = { x: 0, z: 0 };
 
 /** Ground or water under (x, z), whichever is higher. */
 const floorAt = (w: RoamWorld, x: number, z: number) => Math.max(w.groundAt(x, z), w.waterAt(x, z) ?? -Infinity);
@@ -691,10 +693,15 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
 
       // Turning; at the roaming area's edge the wind turns him back towards the temples.
       omega = (G * Math.tan(bank)) / Math.max(v, 6);
-      // (once it starts it turns him all the way round, one way, so he doesn't fly on along the edge)
-      const home = Math.atan2(HOME.x - hang.x, HOME.z - hang.z);
-      const off = angleDiff(home, yaw);
-      if (!homing && !world.inBounds(hang.x + fx * 45, hang.z + fz * 45) && Math.abs(off) > 0.6) {
+      // (once it starts it turns him all the way round, one way, so he doesn't fly on along the edge; towards home the way
+      // the area's outline goes, round its inner corner: never across the gap outside it)
+      const out = !world.inBounds(hang.x + fx * 45, hang.z + fz * 45);
+      let off = 0;
+      if (out || homing) {
+        const to = roamHeading(hang.x, hang.z, HOME.x, HOME.z, _home);
+        off = angleDiff(Math.atan2(to.x - hang.x, to.z - hang.z), yaw);
+      }
+      if (!homing && out && Math.abs(off) > 0.6) {
         // (straight away from home: round the way he is already banking)
         homing = Math.abs(off) > 2.8 && Math.abs(bank) > 0.1 ? Math.sign(bank) : off >= 0 ? 1 : -1;
         if (clock - toldAt > 8) ctx.hud.toast(t('rWindBack'));

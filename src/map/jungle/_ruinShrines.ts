@@ -1,4 +1,4 @@
-import { BoxGeometry, ConeGeometry, CylinderGeometry, Euler, ExtrudeGeometry, LOD, Matrix4, Mesh, Object3D, QuadraticBezierCurve3, Shape as Outline, SphereGeometry, TorusGeometry, TubeGeometry, Vector2, Vector3, type BufferGeometry } from 'three';
+import { BoxGeometry, ConeGeometry, CylinderGeometry, Euler, ExtrudeGeometry, LOD, Matrix4, Mesh, Object3D, Shape as Outline, SphereGeometry, Vector2, type BufferGeometry } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { traceSource } from '../../feedback/sourceTrace';
@@ -28,13 +28,15 @@ import { BRASS, clothBand, LACQUER, later, marigolds, offer, place, type Sculpte
  *   the serpent's coils under its seven heads, a saffron cloth the people
  *   tied over his shoulder, on a moulded plinth under a great bodhi tree,
  *   a red offering table before him;
- * - the spirit house (san preah phum) by the village trail: a little
- *   temple of the land's spirit on a post (smooth: crossed gable roofs in
- *   red and gold, chofa horns, a spire), garlands, a tray of small
- *   offerings;
- * - the lake shrine: a small whitewashed stupa on a laterite base, a gilt
- *   Buddha in its niche, candles on its step, a brass urn of incense
- *   before it and a frangipani beside it;
+ * - the spirit house (rean tevoda, the neak ta's house) by the village
+ *   trail: a little Khmer temple of the land's spirit on a post (smooth: a
+ *   tiny Angkor sanctuary, its porch under a pointed Khmer pediment with
+ *   naga ends, a lotus-bud tower over it — not the Thai spirit house's
+ *   crossed gables, chofa horns and spire of rings), a krama tied round
+ *   the post, garlands, a tray of small offerings;
+ * - the lake shrine: a small whitewashed Khmer stupa (chetdei) on a
+ *   laterite base, a gilt Buddha in its niche, candles on its step, a
+ *   brass urn of incense before it and a frangipani beside it;
  * - the Kulen shrine: a small stone sanctuary tower at the mountain's foot,
  *   a gilt Buddha in saffron on a pedestal inside its doorway, candles, an
  *   urn of incense on the step.
@@ -187,12 +189,22 @@ const HOUSE = {
   wallZ: -0.08,
   wallH: 0.62,
   plinth: 0.1,
-  /** The lower roofs: the eaves' half span and height, the pitch, the half lengths along z and x. */
-  span: 0.56,
+  /** The porch roof: the eaves' half span and height, the pitch; it runs from the cella's front (z) to the pediment. */
+  span: 0.52,
   eaveY: 0.7,
-  pitch: 0.92,
+  pitch: 0.62,
   front: 0.56,
-  side: 0.62,
+  /** The pediment over the porch: half width at its foot, height (a pointed Khmer flame arch). */
+  pedW: 0.54,
+  pedH: 0.64,
+  /** The lotus-bud tower over the cella: each tier's half width and height (m), bottom up (the corn-cob outline: slow to narrow, then closing in). */
+  tiers: [
+    [0.27, 0.13],
+    [0.255, 0.12],
+    [0.23, 0.11],
+    [0.195, 0.1],
+    [0.15, 0.09],
+  ] as const,
   /** Where a garland hangs from the front eave's corners. */
   eaveX: 0.5,
 };
@@ -200,13 +212,17 @@ const HOUSE = {
 let house: BufferGeometry | null = null;
 
 /**
- * The spirit house's little temple (smooth, made once; about 2.4 m tall):
- * a red plinth with a gold band, cream walls with gold pilasters, a porch
- * of two gold columns before a gold-framed doorway where the guardian
- * spirit's gilt figure stands, a window each side; two tiers of crossed
- * gable roofs in red tiles laid in courses, red gables with gold
- * medallions, gold naga bargeboards curling up at the eaves and a chofa
- * horn at each peak; a gold spire of rings over the crossing.
+ * The spirit house's little temple (smooth, made once; about 2 m tall), a
+ * tiny Angkor sanctuary as Cambodian spirit houses are: a red plinth with a
+ * gold band, cream walls with gold pilasters, a porch of two gold columns
+ * under a short red-tiled roof whose front is a Khmer pediment — a pointed
+ * flame arch, red within a gold frame, flame leaves (kbach) along its edge,
+ * a lotus medallion, a five-headed naga rearing at each lower end — before
+ * a gold-framed doorway where the guardian spirit's gilt figure stands, a
+ * window each side; over the cella a lotus-bud tower (prasat) of five
+ * redented tiers with gold cornices and leaf antefixes, a gold lotus bud
+ * on top. (No crossed gables, chofa horns or spire of rings: those are the
+ * Thai spirit house's.)
  */
 function spiritHouseModel(): Object3D {
   house ??= houseGeometry();
@@ -259,33 +275,49 @@ function houseGeometry(): BufferGeometry {
     put(new CylinderGeometry(0.026, 0.03, H.wallH, 10), SH.gold, [sx * 0.38, H.plinth + H.wallH / 2, 0.39]);
     for (const y of [H.plinth + 0.03, top - 0.05]) box(0.075, 0.04, 0.075, SH.lacquer, [sx * 0.38, y, 0.39]);
   }
-  // The lower roofs, crossed; a drum under the upper ones; the upper roofs; the spire.
-  gableRoof(put, box, { span: H.span, eave: H.eaveY, pitch: H.pitch, len: H.front, turn: 0 });
-  gableRoof(put, box, { span: H.span, eave: H.eaveY, pitch: H.pitch, len: H.side, turn: Math.PI / 2 });
-  put(new RoundedBoxGeometry(0.56, 0.4, 0.56, 2, 0.01), SH.plaster, [0, 1.05, 0]);
-  const up = { span: 0.34, eave: 1.2, pitch: 1.02, len: 0.38 };
-  gableRoof(put, box, { ...up, turn: 0 });
-  gableRoof(put, box, { ...up, turn: Math.PI / 2 });
-  const ridge = up.eave + up.span * Math.tan(up.pitch);
+  // The porch roof from the cella to the pediment, and the pediment.
+  porchRoof(box, { span: H.span, eave: H.eaveY, pitch: H.pitch, z0: H.wallZ + hd - 0.06, z1: H.front });
+  pediment(put, H.pedW, H.pedH, H.eaveY, H.front + 0.012);
+  // The lotus-bud tower over the cella: a base course, then the tiers (redented: two crossed blocks each), gold cornices and antefixes.
   const G = SH.gold;
   const T = SH.trim;
-  const spire: [number, number, Finish][] = [
-    [0.075, ridge - 0.08, G],
-    [0.075, ridge + 0.02, G],
-    [0.058, ridge + 0.04, T],
-    [0.062, ridge + 0.08, T],
-    [0.046, ridge + 0.1, G],
-    [0.05, ridge + 0.14, G],
-    [0.036, ridge + 0.16, T],
-    [0.04, ridge + 0.2, T],
-    [0.026, ridge + 0.22, G],
-    [0.03, ridge + 0.26, G],
-    [0.016, ridge + 0.3, T],
-    [0.011, ridge + 0.42, T],
-    [0.006, ridge + 0.56, G],
-    [0, ridge + 0.64, G],
+  let y = top + 0.02;
+  redented(box, 0.34, 0.1, SH.plaster, [0, y + 0.05, H.wallZ]);
+  y += 0.1;
+  redented(box, 0.36, 0.024, T, [0, y + 0.012, H.wallZ]);
+  y += 0.024;
+  H.tiers.forEach(([hw, h], i) => {
+    redented(box, hw, h, SH.plaster, [0, y + h / 2, H.wallZ]);
+    y += h;
+    redented(box, hw + 0.025, 0.022, i % 2 ? T : G, [0, y + 0.011, H.wallZ]);
+    y += 0.022;
+    // Leaf antefixes at the corners (and, on the lower tiers, in the middle of each side), leaning out a little.
+    const k = hw * 0.86;
+    const spots: [number, number][] = [
+      [k, k],
+      [-k, k],
+      [k, -k],
+      [-k, -k],
+    ];
+    if (i < 3) spots.push([0, hw + 0.012], [0, -hw - 0.012], [hw + 0.012, 0], [-hw - 0.012, 0]);
+    const s = 1 - i * 0.1;
+    for (const [ax, az] of spots) put(leaf(0.024 * s, 0.05 * s).rotateX(0.25).rotateY(Math.atan2(ax, az)), G, [ax, y + 0.035 * s, H.wallZ + az]);
+  });
+  // The lotus bud: a ring of petals, the bud swelling and closing to its tip.
+  const bud: [number, number, Finish][] = [
+    [0.1, 0, G],
+    [0.125, 0.035, T],
+    [0.1, 0.06, G],
+    [0.088, 0.1, G],
+    [0.078, 0.15, T],
+    [0.052, 0.2, G],
+    [0.022, 0.25, G],
+    [0.008, 0.31, T],
+    [0, 0.35, G],
   ];
-  parts.push(plainAttributes(revolve([{ r: 0, y: ridge - 0.08, f: G }, ...spire.map(([r, y, f]) => ({ r, y, f }))], 16)));
+  const lotus = revolve([{ r: 0, y: 0, f: G }, ...bud.map(([r, dy, f]) => ({ r, y: dy, f }))], 16);
+  lotus.translate(0, y, H.wallZ);
+  parts.push(plainAttributes(lotus));
   const g = mergeGeometries(parts)!;
   g.computeBoundingBox();
   g.computeBoundingSphere();
@@ -295,67 +327,122 @@ function houseGeometry(): BufferGeometry {
 type Put = (g: BufferGeometry, f: Finish, at?: V3, turn?: V3) => void;
 type BoxPut = (w: number, h: number, d: number, f: Finish, at: V3, turn?: V3) => void;
 
+/** A flame leaf (kbach) of gold: a flattened ellipsoid `w` wide and `h` long along +y, its flat face to +z. */
+function leaf(w: number, h: number): BufferGeometry {
+  return new SphereGeometry(1, 10, 6).scale(w, h, w * 0.45);
+}
+
+/** A redented square course (the stepped corners of Angkor's towers): two crossed blocks, half width `hw`, `h` high, centred on `at`. */
+function redented(box: BoxPut, hw: number, h: number, f: Finish, at: V3): void {
+  box(hw * 2, h, hw * 1.44, f, at);
+  box(hw * 1.44, h, hw * 2, f, at);
+}
+
 /**
- * A gable roof on the house (its ridge along z, turned `turn` about y):
- * the eaves `span` m out each side at height `eave`, the slopes at `pitch`
- * (rad), `len` m to each gable. Red tiles laid in courses (each lapping the
- * one below it), a gold ridge; at each end a red gable with a gold
- * medallion, gold naga bargeboards curling up at the eaves, a chofa horn
- * at the peak.
+ * The porch roof (its ridge along z, from `z0` to `z1`): the eaves `span` m
+ * out each side at height `eave`, the slopes at `pitch` (rad). Red tiles laid
+ * in courses (each lapping the one below it), a gold ridge. Its front is the
+ * pediment, its back runs into the tower's foot.
  */
-function gableRoof(put: Put, box: BoxPut, o: { span: number; eave: number; pitch: number; len: number; turn: number }): void {
-  const { span, eave, pitch, len, turn } = o;
-  const [c, s] = [Math.cos(turn), Math.sin(turn)];
-  // (roof space → house space: turned about y)
-  const at = (x: number, y: number, z: number): V3 => [c * x + s * z, y, -s * x + c * z];
+function porchRoof(box: BoxPut, o: { span: number; eave: number; pitch: number; z0: number; z1: number }): void {
+  const { span, eave, pitch, z0, z1 } = o;
   const rise = span * Math.tan(pitch);
   const slope = span / Math.cos(pitch);
   const ridge = eave + rise;
-  const n = 5;
+  const zc = (z0 + z1) / 2;
+  const len = z1 - z0;
+  const n = 4;
   const t = 0.026;
   for (const side of [-1, 1]) {
-    // Down the slope from the ridge: (sin, −cos) of the pitch outward; its normal (side·sin… up).
+    // Down the slope from the ridge: (cos, −sin) of the pitch outward; its normal (sin, cos).
     const dir = [side * Math.cos(pitch), -Math.sin(pitch)];
     const nor = [side * Math.sin(pitch), Math.cos(pitch)];
     for (let i = 0; i < n; i++) {
       const d = ((i + 0.5) * slope) / n + 0.012;
       const lift = t / 2 + (n - 1 - i) * 0.006;
-      const x = dir[0] * d + nor[0] * lift;
-      const y = ridge + dir[1] * d + nor[1] * lift;
-      box(slope / n + 0.03, t, len * 2 + 0.04, i & 1 ? SH.tileDark : SH.tile, at(x, y, 0), [0, turn, -side * pitch]);
+      box(slope / n + 0.03, t, len, i & 1 ? SH.tileDark : SH.tile, [dir[0] * d + nor[0] * lift, ridge + dir[1] * d + nor[1] * lift, zc], [0, 0, -side * pitch]);
     }
   }
-  box(0.05, 0.05, len * 2 + 0.06, SH.trim, at(0, ridge + 0.035, 0), [0, turn, 0]);
-  for (const end of [-1, 1]) {
-    const z = end * (len - 0.01);
-    // The gable: red, a gold medallion.
-    const tri = new Outline([new Vector2(-span * 0.96, 0), new Vector2(span * 0.96, 0), new Vector2(0, rise * 0.96)]);
-    put(new ExtrudeGeometry(tri, { depth: 0.02, bevelEnabled: false }), SH.lacquer, at(0, eave, z - 0.01), [0, turn, 0]);
-    put(new CylinderGeometry(rise * 0.17, rise * 0.17, 0.02, 20).rotateX(Math.PI / 2), SH.gold, at(0, eave + rise * 0.36, z + end * 0.012), [0, turn, 0]);
-    // The bargeboards along both slopes, and the curls at the eaves.
-    for (const side of [-1, 1]) {
-      const d = slope / 2 + 0.02;
-      const x = side * Math.cos(pitch) * d + side * Math.sin(pitch) * 0.045;
-      const y = ridge - Math.sin(pitch) * d + Math.cos(pitch) * 0.045;
-      box(slope + 0.06, 0.05, 0.03, SH.gold, at(x, y, end * (len + 0.02)), [0, turn, -side * pitch]);
-      const curl = new TorusGeometry(0.045, 0.012, 6, 12, Math.PI * 1.25);
-      put(curl, SH.gold, at(side * (span + 0.06), eave + 0.03, end * (len + 0.02)), [0, turn, side > 0 ? -Math.PI * 0.2 : Math.PI * 1.2 - Math.PI * 0.25]);
+  box(0.05, 0.05, len + 0.02, SH.trim, [0, ridge + 0.035, zc]);
+}
+
+/**
+ * The Khmer pediment over the porch, facing +z at `z`: a pointed flame arch
+ * (half width `w` at its foot, `h` high, its foot at `y`) — red within a
+ * gold frame, gold flame leaves (kbach) standing out along its edge and one
+ * at its point, a gold lotus medallion, and at each lower end a naga rearing
+ * its five-headed hood (the naga whose body is the frame), as on the
+ * pediments of Angkor.
+ */
+function pediment(put: Put, w: number, h: number, y: number, z: number): void {
+  /** The arch's edge, left half (s = −1) or right: t 0 at the foot ‥ 1 at the point. */
+  const edge = (s: number, t: number, k = 1): [number, number] => {
+    // (a cubic Bézier: out at the foot, swelling, then drawn in to the point)
+    const [p0, p1, p2, p3] = [
+      [s * w * k, 0],
+      [s * w * 0.96 * k, h * 0.46 * k],
+      [s * w * 0.34 * k, h * 0.64 * k],
+      [0, h * k],
+    ];
+    const u = 1 - t;
+    const a = u * u * u;
+    const b = 3 * u * u * t;
+    const c = 3 * u * t * t;
+    const d = t * t * t;
+    return [a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0], a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]];
+  };
+  const arch = (k: number) => {
+    const o = new Outline();
+    const N = 14;
+    const [x0, y0] = edge(-1, 0, k);
+    o.moveTo(x0, y0);
+    for (let i = 1; i <= N; i++) o.lineTo(...edge(-1, i / N, k));
+    for (let i = N - 1; i >= 0; i--) o.lineTo(...edge(1, i / N, k));
+    o.lineTo(x0, y0);
+    return o;
+  };
+  // The gold frame behind, the red field in front of it.
+  put(new ExtrudeGeometry(arch(1.1), { depth: 0.025, bevelEnabled: false }), SH.gold, [0, y - 0.01, z - 0.02]);
+  put(new ExtrudeGeometry(arch(0.93), { depth: 0.02, bevelEnabled: false }), SH.lacquer, [0, y + 0.01, z]);
+  // The lotus medallion.
+  put(new CylinderGeometry(0.085, 0.085, 0.02, 20).rotateX(Math.PI / 2), SH.gold, [0, y + h * 0.36, z + 0.024]);
+  put(new CylinderGeometry(0.045, 0.045, 0.02, 16).rotateX(Math.PI / 2), SH.lacquer, [0, y + h * 0.36, z + 0.034]);
+  put(new SphereGeometry(0.022, 10, 8), SH.gold, [0, y + h * 0.36, z + 0.045]);
+  // Flame leaves along the frame's edge, leaning out and up like the flames of the naga's halo.
+  for (const s of [-1, 1])
+    for (let i = 1; i <= 5; i++) {
+      const t = 0.12 + i * 0.14;
+      const [ex, ey] = edge(s, t, 1.1);
+      const [fx, fy] = edge(s, Math.min(1, t + 0.02), 1.1);
+      // (outward: the edge's direction turned a quarter away from the middle; then bent upward)
+      const [dx, dy] = [fx - ex, fy - ey];
+      const l = Math.hypot(dx, dy) || 1;
+      const [ox, oy] = s < 0 ? [-dy / l, dx / l] : [dy / l, -dx / l];
+      const m = Math.hypot(ox, oy + 0.9);
+      const [nx, ny] = [ox / m, (oy + 0.9) / m];
+      put(leaf(0.024, 0.052).rotateZ(Math.atan2(-nx, ny)), SH.gold, [ex + nx * 0.04, y + ey + ny * 0.04, z - 0.008]);
     }
-    // The chofa: a slim horn rising from the peak, curling out.
-    const [bx, by, bz] = at(0, ridge + 0.02, end * (len + 0.02));
-    const [ox, , oz] = at(0, 0, end * 0.1);
-    const horn = new QuadraticBezierCurve3(new Vector3(bx, by, bz), new Vector3(bx, by + 0.16, bz), new Vector3(bx + ox, by + 0.2, bz + oz));
-    put(new TubeGeometry(horn, 8, 0.014, 6), SH.gold);
+  put(leaf(0.028, 0.07), SH.gold, [0, y + h * 1.1 + 0.05, z - 0.008]);
+  // The naga's hoods at the foot of the arch, rearing up and out: a fan and five heads on it.
+  for (const s of [-1, 1]) {
+    const [hx, hy] = [s * (w * 1.1 + 0.03), y + 0.05];
+    // (a half disc: the cylinder's half on +x, stood up facing +z, turned to its upper half)
+    put(new CylinderGeometry(0.075, 0.075, 0.022, 14, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), SH.gold, [hx, hy, z]);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 4) * Math.PI;
+      put(new SphereGeometry(0.019, 8, 6), SH.trim, [hx + Math.cos(a) * 0.075, hy + Math.sin(a) * 0.075, z + 0.012]);
+    }
   }
 }
 
 /**
  * The spirit house on the village trail: a cream post on a white plinth,
- * red brackets, a red tray with a gold rim (blocks: solid), and on it the
- * little temple of the land's spirit (`spiritHouseModel`, smooth). On the
- * tray before it: an urn of incense between two candles, a plate of fruit,
- * a red soda with a straw, small bay sei by the house; marigold garlands
- * along the tray and hanging from its corners and the eaves.
+ * a red-and-white krama tied round it, red brackets, a red tray with a gold
+ * rim (blocks: solid), and on it the little temple of the land's spirit
+ * (`spiritHouseModel`, smooth). On the tray before it: an urn of incense
+ * between two candles, a plate of fruit, a young coconut, small bay sei by
+ * the house; marigold garlands along the tray and hanging from its corners
+ * and the eaves.
  */
 export function spiritHouse(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();
@@ -367,6 +454,7 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const postTop = 2.05;
   fr.b.box(cx, (gy + 0.42 + postTop) / 2, cz, 0.24, postTop - gy - 0.42, 0.24, 0xe4d9c1, 'wood', { src });
   for (const y of [gy + 0.5, postTop - 0.1]) fr.b.box(cx, y, cz, 0.3, 0.07, 0.3, BRASS[0], 'brass', { src });
+  kramaTied(fr, cx, cz, 0.12, gy + 1.25, src);
   // Brackets from the post to the tray.
   for (const s of [-1, 1]) {
     fr.b.box(cx + s * 0.28, postTop - 0.2, cz, 0.08, 0.5, 0.08, PAINT_RED[0], 'wood', { src, rz: s * 0.8 });
@@ -395,14 +483,48 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   for (const s of [-1, 1]) offer(fr, S, L, 'candle', cx + s * 0.34, floor, pz + 0.04, { scale: 1.1, lamp: 0.5 });
   offer(fr, S, L, 'fruitPlate', cx - 0.57, floor, pz, { scale: 1.1, ry: 0.4 });
   for (const s of [-1, 1]) offer(fr, S, L, 'baySei', cx + s * 0.63, floor, hz + 0.02, { tiers: 3, scale: 0.9 });
-  fr.b.box(cx + 0.55, floor + 0.1, pz - 0.02, 0.07, 0.2, 0.07, 0xd8263a, 'petal', { src }); // the red soda
-  fr.b.box(cx + 0.57, floor + 0.25, pz - 0.02, 0.015, 0.14, 0.015, 0xf2f2f2, 'petal', { src, rz: -0.3 }); // its straw
+  // A young coconut, its top cut open.
+  fr.b.box(cx + 0.55, floor + 0.1, pz - 0.02, 0.17, 0.19, 0.17, 0x6f9a3a, 'petal', { src });
+  fr.b.box(cx + 0.55, floor + 0.205, pz - 0.02, 0.11, 0.03, 0.11, 0xe8e2c8, 'petal', { src });
   // Garlands: along the tray's front, hanging from its corners and the roof's eaves.
   const front = tcz + trd / 2 + 0.04;
   marigolds(fr, S, [cx - trw / 2, ty - 0.02, front], [cx + trw / 2, ty - 0.02, front], 0.16, 720);
   for (const s of [-1, 1]) marigolds(fr, S, [cx + (s * trw) / 2, ty - 0.02, front], [cx + (s * trw) / 2, ty - 0.52, front], 0, 721 + s);
   for (const s of [-1, 1]) marigolds(fr, S, [cx + s * HOUSE.eaveX, floor + HOUSE.eaveY - 0.03, hz + HOUSE.front], [cx + s * HOUSE.eaveX, floor + HOUSE.eaveY - 0.4, hz + HOUSE.front], 0, 723 + s);
   L.halos.push({ at: fr.point(cx, floor + 0.5, pz + 0.1), size: 2.4 });
+}
+
+/** A krama's checks: red and white. */
+const KRAMA = [0xb8322c, 0xf0ebdc];
+
+/**
+ * A krama (the checked cotton scarf) tied round a post, as people tie one
+ * round a spirit house's post or a sacred tree: a band of red and white
+ * checks on its four sides (site space: the post's middle (x, z), its half
+ * width, the band's middle height), the knot and its two tails hanging on
+ * the front.
+ */
+function kramaTied(fr: SiteFrame, x: number, z: number, half: number, y: number, src = traceSource()): void {
+  const t = 0.025;
+  const n = 4;
+  const c = ((half + t) * 2) / n;
+  for (let side = 0; side < 4; side++)
+    for (let u = 0; u < n; u++)
+      for (let v = 0; v < 2; v++) {
+        // (along the side, from one corner to the other; out by the band's depth)
+        const a = -half - t + c * (u + 0.5);
+        const o = half + t / 2;
+        const [bx, bz, w, d] = side === 0 ? [a, o, c, t] : side === 1 ? [a, -o, c, t] : side === 2 ? [o, a, t, c] : [-o, a, t, c];
+        fr.b.box(x + bx, y + (v - 0.5) * 0.07, z + bz, w, 0.07, d, KRAMA[(u + v + side) % 2], 'krama', { src });
+      }
+  // The knot, and its tails hanging down the front.
+  fr.b.box(x + 0.03, y, z + half + t * 1.8, 0.09, 0.1, 0.05, KRAMA[0], 'krama', { src });
+  for (const [dx, rz, len] of [
+    [0.0, 0.1, 0.36],
+    [0.07, -0.14, 0.3],
+  ] as const)
+    for (let k = 0; k < 5; k++)
+      fr.b.box(x + dx - Math.sin(rz) * (0.06 + k * (len / 5)), y - 0.06 - (k + 0.5) * (len / 5), z + half + t * 1.6, 0.065, len / 5 + 0.004, 0.02, KRAMA[k % 2], 'krama', { src, rz });
 }
 
 // ── The lake shrine ──────────────────────────────────────────────────────
@@ -416,12 +538,11 @@ const FRANGIPANI = [0xf6f2e6, 0xf8f0d0, 0xf4e8b8];
 const LAKE_STUPA = 4;
 
 /**
- * A small whitewashed stupa on the lake's north shore (sacred/stupa.ts:
- * mouldings, a lotus band, the bell, the spire of gold rings) on a base
- * of two steps (0.25 m cells: laterite, a sandstone course on top, moss on
- * the lower tread). In its niche sits a small gilt Buddha, two candles on
- * the step before him; a brass urn of incense stands before it on a stone,
- * a frangipani beside it.
+ * A small whitewashed stupa on the lake's north shore (sacred/stupa.ts: the
+ * Khmer chetdei) on a base of two steps (0.25 m cells: laterite, a sandstone
+ * course on top, moss on the lower tread). In its niche sits a small gilt
+ * Buddha, two candles on the step before him; a brass urn of incense stands
+ * before it on a stone, a frangipani beside it.
  */
 export function lakeShrine(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   const src = traceSource();

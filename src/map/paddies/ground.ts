@@ -13,8 +13,11 @@ import { NURSERY, NURSERY_W, plotAt, STAGE_GLSL, SWEEP, type PlotPlan } from './
  *  - shallow water: a mirror of the sky (low sky colour at the horizon, the
  *    sky light above, the sun's or moon's glow and glints), ripples running
  *    downwind, rain rings; it breaks into puddles as it fills or drains;
- *  - under the rice, darker; seen from afar it takes the rice's colour (the
- *    tufts are finer than a pixel there, so the plot reads as one field).
+ *  - under young rice, darker; where the canopy closes, and from a few
+ *    metres off, the rice's own colour with the leaves' faint sheen (between
+ *    the thin blades of rice.ts the eye meets more leaves, not the floor; far
+ *    off they are finer than a pixel), so the plot reads as one field; the
+ *    water, its glints and the sun's highlight hide under the rice.
  */
 
 /** Height of the skin over the plot's land: when dry, and when full of water (m). */
@@ -234,12 +237,18 @@ float pdCracks(vec2 p) {
   return 1.0 - smoothstep(0.02, 0.07, sqrt(d2) - sqrt(d1));
 }`;
 
-/** Per fragment: the floor's colour, wetness, normal and mirror. */
+/**
+ * Per fragment: the floor's colour, wetness, normal and mirror, each worked
+ * out only where it shows (the earth where the rice lets it through, the
+ * ripples on water, the mirror on open water: the rest costs nothing).
+ */
 const FRAGMENT = /* glsl */ `
   vec3 wN = vec3(0.0, 1.0, 0.0);
   float wFres = 0.0;
   float wSpark = 0.0;
   float wWater = 0.0;
+  // (how much the rice hides the water: its glints and the sun's highlight too; the leaves' own faint sheen instead)
+  float wHide = 0.0;
   vec3 wRefl = vec3(0.0);
   {
     float s = fract(uSeason - vPd.x);
@@ -250,65 +259,89 @@ const FRAGMENT = /* glsl */ `
     float cover = max(pdWater(s), uWet * 0.35);
     float pn = wNoise(p * 0.16 + 3.1) * 0.65 + wNoise(p * 0.55 + 9.7) * 0.35;
     wWater = smoothstep(pn - 0.05, pn + 0.05, cover * 1.12 - 0.06);
-    // The earth: dry clay with cracks, darkening to wet mud (the season, the rain), furrows after ploughing.
-    float mud = max(pdMud(s), uWet * 0.85);
-    float grain = wNoise(p * 2.3) * 0.5 + wNoise(p * 0.7 + 5.0) * 0.5;
-    float crack = pdCracks(p * 1.4) * (1.0 - smoothstep(20.0, 80.0, dist)) * (1.0 - mud);
-    vec3 dry = mix(uDry * (0.9 + 0.2 * grain), uCrack, crack * 0.85);
-    float along = vRow.x > 0.5 ? p.y : p.x;
-    float furrow = pdFurrow(s) * smoothstep(0.35, 0.8, abs(fract(along / 0.9) - 0.5) * 2.0) * (1.0 - far);
-    vec3 wetMud = mix(uMud * (0.85 + 0.3 * grain), uFurrow, furrow * 0.8);
-    vec3 earth = mix(dry, wetMud, mud);
     // Rice cover on the floor (the tufts' stage, rice.ts): shade under it, its colour from afar.
     float planted = smoothstep(vPd.z + vPd.w * ${SWEEP.toFixed(3)}, vPd.z + vPd.w * ${SWEEP.toFixed(3)} + 0.012, s);
     float g = smoothstep(vPd.z, vPd.z + 0.3, s);
     float cutT = smoothstep(vPd.y + vPd.w * ${SWEEP.toFixed(3)}, vPd.y + vPd.w * ${SWEEP.toFixed(3)} + 0.006, s);
     float riceCover = planted * mix(0.12, 0.97, g) * (1.0 - cutT);
+    // (the canopy closing as it grows; the rice's colour taking over a few metres off: between thin blades the eye
+    // meets more leaves, not the floor)
+    float lush = smoothstep(0.3, 0.85, g) * riceCover;
+    float farR = smoothstep(3.0, 25.0, dist);
     float stubble = cutT * 0.35 * (1.0 - smoothstep(0.9, 1.0, s));
     // (the nursery bed: dense seedlings, sown early, pulled for planting out)
     float bed = vRow.y * smoothstep(0.062, 0.08, s) * (1.0 - smoothstep(vPd.z - 0.012, vPd.z + 0.002, s));
     riceCover = max(riceCover, bed * 0.85);
-    vec3 riceCol = mix(pdRiceCol(0.7, g, s), uSeedling, bed);
+    lush = max(lush, bed * 0.6);
+    // (the canopy's top: what shows of the rice from afar and from above, the heads' gold on it as it ripens)
+    vec3 riceCol = mix(mix(pdRiceCol(0.95, g, s), uRipeHead * 1.1, pdRipe(s) * 0.35), uSeedling, bed);
     vec3 stubCol = mix(uStraw, uStrawOld, smoothstep(vPd.y + 0.03, vPd.y + 0.2, s));
+    // (the rice hides the water, more so from afar and as the canopy closes)
+    float hide = max(riceCover * mix(mix(0.4, 0.95, lush), 0.95, farR), bed * 0.9);
+    wHide = hide;
+    // (how much of the floor's own colour shows through the rice's: the earth is worked out only where it shows)
+    float riceTop = max(lush, riceCover * farR);
+    float stubble2 = stubble * mix(0.3, 1.0, far);
+    float earthShows = (1.0 - riceTop) * (1.0 - stubble2);
+
+    // The earth: dry clay with cracks, darkening to wet mud (the season, the rain), furrows after ploughing.
+    float mud = max(pdMud(s), uWet * 0.85);
+    vec3 earth = uMud;
+    if (earthShows > 0.002) {
+      float grain = wNoise(p * 2.3) * 0.5 + wNoise(p * 0.7 + 5.0) * 0.5;
+      float crackW = (1.0 - smoothstep(20.0, 80.0, dist)) * (1.0 - mud);
+      float crack = crackW > 0.001 ? pdCracks(p * 1.4) * crackW : 0.0;
+      vec3 dry = mix(uDry * (0.9 + 0.2 * grain), uCrack, crack * 0.85);
+      float along = vRow.x > 0.5 ? p.y : p.x;
+      float furrow = pdFurrow(s) * smoothstep(0.35, 0.8, abs(fract(along / 0.9) - 0.5) * 2.0) * (1.0 - far);
+      vec3 wetMud = mix(uMud * (0.85 + 0.3 * grain), uFurrow, furrow * 0.8);
+      earth = mix(dry, wetMud, mud);
+    }
 
     // Water: ripples running downwind (stronger in the wind), rain rings, the sky mirrored.
     vec2 flow = uWindDir * (0.25 + 1.2 * uWind);
-    vec3 r1 = wNoiseD(p * 0.9 - flow * uTime * 0.9);
-    vec3 r2 = wNoiseD(p * 2.3 + 7.0 - flow * uTime * 1.6);
-    float amp = (0.025 + 0.14 * uWind) * (1.0 - 0.6 * far);
-    vec2 slope = (r1.yz * 0.6 + r2.yz * 0.4) * amp;
-    if (uRain > 0.001) {
-      vec3 rr = rainRings(p, uTime, uRain) * (1.0 - smoothstep(30.0, 100.0, dist));
-      slope += rr.xy * 0.45;
+    if (wWater > 0.001) {
+      vec3 r1 = wNoiseD(p * 0.9 - flow * uTime * 0.9);
+      vec3 r2 = wNoiseD(p * 2.3 + 7.0 - flow * uTime * 1.6);
+      float amp = (0.025 + 0.14 * uWind) * (1.0 - 0.6 * far);
+      vec2 slope = (r1.yz * 0.6 + r2.yz * 0.4) * amp;
+      if (uRain > 0.001) {
+        vec3 rr = rainRings(p, uTime, uRain) * (1.0 - smoothstep(30.0, 100.0, dist));
+        slope += rr.xy * 0.45;
+      }
+      vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
+      wN = normalize(mix(vec3(0.0, 1.0, 0.0), N, wWater));
     }
-    vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
-    wN = normalize(mix(vec3(0.0, 1.0, 0.0), N, wWater));
-    vec3 V = normalize(cameraPosition - vWPos);
-    vec3 R = reflect(-V, wN);
-    // The sky it mirrors: horizon to zenith, the glow round the sun or moon, and clouds where the ray meets a deck 300 m up.
-    float ry = max(R.y, 0.0);
-    vec3 sky = mix(uHorizon, uZenith, pow(smoothstep(0.0, 0.85, ry), 0.6));
-    sky += uGlow * pow(max(dot(R, uGlowDir), 0.0), 5.0);
-    vec2 cp = p + R.xz / max(ry, 0.06) * 300.0;
-    float cn = wNoise(cp * 0.004 + uTime * 0.003) * 0.6 + wNoise(cp * 0.011 + 3.0) * 0.4;
-    float cl = smoothstep(0.66 - 0.35 * uCloudCover, 0.88, cn);
-    wRefl = mix(sky, uCloud, cl * 0.65);
-    // The sun's or moon's disc and a path of glitter toward it on the ripples.
-    float gl = smoothstep(0.55, 0.9, wNoise(p * 3.7 - flow * uTime * 2.0 + 51.0));
-    float ds = max(dot(R, uSunDir), 0.0);
-    float dm = max(dot(R, uMoonDir), 0.0);
-    wRefl += (uSunCol * (pow(ds, 400.0) * 5.0 + pow(ds, 40.0) * gl * 1.2) + uMoonCol * (pow(dm, 400.0) * 5.0 + pow(dm, 40.0) * gl * 1.5)) * (1.0 - cl * 0.8);
-    // (the rice hides the water, more so from afar)
-    float hide = max(riceCover * mix(0.55, 0.95, far), bed * 0.9);
-    wFres = (0.25 + 0.75 * pow(1.0 - max(dot(wN, V), 0.0), 3.0)) * wWater * (1.0 - hide) * (1.0 - 0.35 * uRain);
-    float sp = wNoise(p * 3.1 - flow * uTime * 1.3 + 31.0);
-    wSpark = smoothstep(0.62, 0.9, sp) * wWater * (1.0 - hide);
+    // (the mirror only where it shows: open water, not under the rice)
+    if (wWater * (1.0 - hide) > 0.002) {
+      vec3 V = normalize(cameraPosition - vWPos);
+      vec3 R = reflect(-V, wN);
+      // The sky it mirrors: horizon to zenith, the glow round the sun or moon, and clouds where the ray meets a deck 300 m up.
+      float ry = max(R.y, 0.0);
+      vec3 sky = mix(uHorizon, uZenith, pow(smoothstep(0.0, 0.85, ry), 0.6));
+      sky += uGlow * pow(max(dot(R, uGlowDir), 0.0), 5.0);
+      vec2 cp = p + R.xz / max(ry, 0.06) * 300.0;
+      float cn = wNoise(cp * 0.004 + uTime * 0.003) * 0.6 + wNoise(cp * 0.011 + 3.0) * 0.4;
+      float cl = smoothstep(0.66 - 0.35 * uCloudCover, 0.88, cn);
+      wRefl = mix(sky, uCloud, cl * 0.65);
+      // The sun's or moon's disc and a path of glitter toward it on the ripples (none of it through the leaves).
+      float gl = smoothstep(0.55, 0.9, wNoise(p * 3.7 - flow * uTime * 2.0 + 51.0));
+      float ds = max(dot(R, uSunDir), 0.0);
+      float dm = max(dot(R, uMoonDir), 0.0);
+      wRefl += (uSunCol * (pow(ds, 400.0) * 5.0 + pow(ds, 40.0) * gl * 1.2) + uMoonCol * (pow(dm, 400.0) * 5.0 + pow(dm, 40.0) * gl * 1.5)) * (1.0 - cl * 0.8) * (1.0 - hide);
+      wFres = (0.25 + 0.75 * pow(1.0 - max(dot(wN, V), 0.0), 3.0)) * wWater * (1.0 - hide) * (1.0 - 0.35 * uRain);
+      float sp = wNoise(p * 3.1 - flow * uTime * 1.3 + 31.0);
+      wSpark = smoothstep(0.62, 0.9, sp) * wWater * (1.0 - hide);
+    }
 
-    // Under water the mud is darker and greener; under the rice darker still (up close) or rice-coloured (afar).
+    // Under water the mud is darker and greener; under young rice darker still, else rice-coloured.
     vec3 col = mix(earth, earth * vec3(0.55, 0.6, 0.5), wWater);
     col *= 1.0 - 0.45 * riceCover * (1.0 - far);
-    col = mix(col, riceCol * 0.82, riceCover * far);
-    col = mix(col, stubCol * 0.9, stubble * mix(0.3, 1.0, far));
+    // (where the canopy closes, and from a few metres off, the rice's colour: between the thin blades the eye meets
+    // more leaves, a little shaded when seen along the field up close)
+    float fromAbove = smoothstep(0.1, 0.8, normalize(cameraPosition - vWPos).y);
+    col = mix(col, riceCol * mix(mix(0.8, 1.0, fromAbove), 1.0, farR), riceTop);
+    col = mix(col, stubCol * 0.9, stubble2);
     diffuseColor.rgb = col;
   }`;
 
@@ -345,16 +378,16 @@ export function groundMaterial(season: { value: number }): { material: MeshStand
   material.polygonOffset = true;
   material.polygonOffsetFactor = -1;
   material.polygonOffsetUnits = -2;
-  material.customProgramCacheKey = () => 'map-paddies-ground-v1';
+  material.customProgramCacheKey = () => 'map-paddies-ground-v2';
   material.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms) => {
     Object.assign(shader.uniforms, uniforms, rice);
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${VERTEX_PARS}`).replace('#include <begin_vertex>', VERTEX);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${FRAGMENT_PARS}\n${RICE_COLOR_GLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${FRAGMENT}`)
-      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.12, wWater * (1.0 - 0.5 * uRain));')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(mix(roughness, 0.12, wWater * (1.0 - 0.5 * uRain)), 0.85, wHide);')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n  normal = normalize((viewMatrix * vec4(wN, 0.0)).xyz);')
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directSpecular *= (1.0 + wSpark * uSparkle) * wWater;\n  reflectedLight.indirectSpecular *= wWater;')
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directSpecular *= mix((1.0 + wSpark * uSparkle) * wWater, 0.25, wHide);\n  reflectedLight.indirectSpecular *= wWater * (1.0 - wHide);')
       .replace('#include <opaque_fragment>', 'outgoingLight = mix(totalDiffuse + totalEmissiveRadiance, wRefl, wFres) + totalSpecular;\n#include <opaque_fragment>');
   };
   return { material, uniforms };

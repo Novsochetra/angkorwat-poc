@@ -356,8 +356,8 @@ const WORDS = {
   bkPassportTitle: { km: 'លិខិតឆ្លងដែនប្រាសាទ', en: 'Temple passport' },
   bkBookHint: { km: 'ថតរូបសត្វ រុក្ខជាតិ និងមនុស្ស ដើម្បីបំពេញទំព័រ — ចូលទៅជិត ឬពង្រីករូប។', en: 'Photograph animals, plants and people to fill its pages — get close, or zoom in.' },
   bkPassportHint: {
-    km: 'ដើរទៅដល់ប្រាសាទ ទីកន្លែងក្នុងព្រៃ ឬវត្តក្នុងភូមិ ដើម្បីទទួលបានត្រា។ លុតជង្គង់ថ្វាយបង្គំនៅទីសក្ការៈ ដើម្បីទទួលបានត្រាផ្កាឈូក។',
-    en: 'Walk to a temple, a jungle place or the village pagoda for its stamp. Kneel and pray at its shrine for a lotus seal.',
+    km: 'ដើរទៅដល់ប្រាសាទ ទីកន្លែងលាក់កំបាំងក្នុងព្រៃ និងភូមិនានា ដើម្បីទទួលបានត្រា។ លុតជង្គង់ថ្វាយបង្គំនៅទីសក្ការៈ ដើម្បីទទួលបានត្រាផ្កាឈូក។',
+    en: 'Walk to the temples, the jungle’s hidden places and the villages for their stamps. Kneel and pray at a shrine for a lotus seal.',
   },
   bkNew: { km: 'ថ្មីក្នុងសៀវភៅធម្មជាតិ៖ {name}', en: 'New in your nature book: {name}' },
   bkStamped: { km: 'ត្រាថ្មីក្នុងលិខិតឆ្លងដែន៖ {name}', en: 'Passport stamp: {name}' },
@@ -370,7 +370,7 @@ const WORDS = {
   bkShots: { km: 'រូបថត៖ {n}', en: 'Photos: {n}' },
   bkBack: { km: 'ត្រឡប់ក្រោយ', en: 'Back' },
   bkTemples: { km: 'ប្រាសាទ', en: 'Temples' },
-  bkSites: { km: 'ព្រៃ និងភូមិ', en: 'Jungle and village' },
+  bkSites: { km: 'ក្នុងព្រៃ', en: 'In the jungle' },
   bkVisited: { km: 'បានទៅដល់ {date}', en: 'Visited {date}' },
   bkPrayedOn: { km: 'បានថ្វាយបង្គំ {date}', en: 'Prayed {date}' },
   bkNotVisited: { km: 'មិនទាន់ទៅដល់', en: 'Not visited yet' },
@@ -399,6 +399,153 @@ const WORDS = {
   tgFound: { km: 'រកឃើញ{name} — {n} / {total}', en: '{name} found — {n} / {total}' },
   tgAll: { km: 'អ្នករកឃើញរូបចម្លាក់មាសទាំង {total} ហើយ!', en: 'You found all {total} golden figures!' },
   tgCount: { km: 'រូបចម្លាក់មាសដែលបានរកឃើញ', en: 'Golden figures found' },
+  // ── Each new pass adds its words right under its own line here (keys with its prefix), never elsewhere ──
+  // Greeting (gr…): roam/_greet.ts, people/_greetBack.ts
+  grGreet: { km: 'សំពះ', en: 'greet' },
+  // (what people say back, in a bubble over their heads: people/_greetBack.ts)
+  grHello: { km: 'ជម្រាបសួរ', en: 'Hello!' },
+  grHowAreYou: { km: 'សុខសប្បាយទេ?', en: 'How are you?' },
+  grHi: { km: 'សួស្ដី', en: 'Hi!' },
+  grElder: { km: 'សុខសប្បាយទេ ចៅ?', en: 'Are you well, dear?' },
+  grWelcome: { km: 'អញ្ជើញ!', en: 'Please, come in!' },
+  grKid: { km: 'សួស្ដី!', en: 'Hello!' },
+  grKidBong: { km: 'សួស្ដីបង!', en: 'Hi there!' },
+  grMonk: { km: 'សូមឱ្យសុខសប្បាយ', en: 'May you be well' },
+  // (visitors from abroad say it in their own words)
+  grVisitor: { km: 'Hello!', en: 'Hello!' },
+  grVisitorHi: { km: 'Hi!', en: 'Hi!' },
+  // Fishing (fi…): roam/_fishing*.ts
+  fiFish: { km: 'ស្ទូចត្រី', en: 'Fish' },
+  // (the prompts while he fishes: F again puts the pole away; at a bite F, Space, a click or the touch button strikes)
+  fiStop: { km: 'ឈប់ស្ទូច', en: 'Stop fishing' },
+  fiStrike: { km: 'ទាញ!', en: 'Strike!' },
+  // (the first time in a visit: how it goes)
+  fiHowTo: { km: 'ស្ទូចត្រី៖ រង់ចាំកូនបណ្ដែតលិច រួចចុច F ឬ Space ដើម្បីទាញ · W A S D ឬ E ដើម្បីឈប់', en: 'Fishing: wait for the float to go under, then F or Space to strike · W A S D or E to stop' },
+  fiHowToTouch: { km: 'ស្ទូចត្រី៖ រង់ចាំកូនបណ្ដែតលិច រួចចុច «ទាញ!» · រុញដងបញ្ជា ដើម្បីឈប់', en: 'Fishing: wait for the float to go under, then tap Strike! · push the stick to stop' },
+  // (why not here: paddling, fast water, a fall ahead, no open water to cast to)
+  fiSlowDown: { km: 'ឈប់ចែវសិន ទើបអាចស្ទូចបាន', en: 'Stop paddling first' },
+  fiTooFast: { km: 'ទឹកហូរខ្លាំងពេក មិនអាចស្ទូចបានទេ', en: 'The water runs too fast to fish here' },
+  fiFalls: { km: 'ជិតទឹកធ្លាក់ពេក', en: 'Too close to the falls' },
+  fiNoRoom: { km: 'គ្មានទឹកទំនេរ សម្រាប់បោះសន្ទូចទេ', en: 'No open water to cast into' },
+  // (what happens at the float)
+  fiGotAway: { km: 'ត្រីរួចបាត់ហើយ', en: 'It got away' },
+  fiEarly: { km: 'លឿនពេក — ត្រីភ័យហែលបាត់ហើយ', en: 'Too soon — it swam off' },
+  // (the catch: "ត្រីរៀល — Trey riel · 12 cm", then he lets it go)
+  fiCaught: { km: '{km} — {say} · {cm} ស.ម.', en: '{km} — {say} · {cm} cm' },
+  // (its page in the nature book, filled by a catch: roam/_bookUi.ts)
+  fiFirstCaught: { km: 'ស្ទូចបានលើកដំបូង {date}', en: 'First caught {date}' },
+  fiCaughtMeta: { km: 'ស្ទូចបាន {n} ដង · ធំជាងគេ {cm} ស.ម.', en: 'Caught: {n} · biggest {cm} cm' },
+  // Snow (sn…): sky/snow.ts, sky/weather.ts, the settings' weather choice
+  snSnow: { km: 'ព្រិល', en: 'Snow' },
+  snSnowNote: { km: 'ក្ដីសុបិន៖ នៅអង្គរ មិនដែលមានព្រិលធ្លាក់ទេ', en: 'A dream: it never snows at Angkor' },
+  // The market (mk…): hamlet/_market.ts, people/_sceneMarket.ts
+  mkMarket: { km: 'ផ្សារ', en: 'Market' },
+  // (the sellers' calls, in their bubbles)
+  mkFreshFish: { km: 'ត្រីស្រស់ៗ!', en: 'Fresh fish!' },
+  mkCheap: { km: 'ថោកៗ!', en: 'Cheap, cheap!' },
+  mkWhatBuy: { km: 'ទិញអីដែរបង?', en: 'What are you buying?' },
+  mkLook: { km: 'អញ្ជើញមើលសិនបង!', en: 'Come and have a look!' },
+  mkGreens: { km: 'បន្លែស្រស់ៗ!', en: 'Fresh greens!' },
+  mkFruit: { km: 'ផ្លែឈើផ្អែមៗ!', en: 'Sweet fruit!' },
+  mkNoodles: { km: 'នំបញ្ចុកឆ្ងាញ់ៗ!', en: 'Tasty num banh chok!' },
+  mkSugar: { km: 'ស្ករត្នោតថ្មីៗ!', en: 'New palm sugar!' },
+  mkCakes: { km: 'នំខ្មែរឆ្ងាញ់ៗ!', en: 'Khmer cakes, tasty!' },
+  mkCane: { km: 'ទឹកអំពៅត្រជាក់ៗ!', en: 'Cold sugarcane juice!' },
+  mkGrill: { km: 'សាច់អាំងក្ដៅៗ!', en: 'Hot grilled skewers!' },
+  mkKrama: { km: 'ក្រមាល្អៗ!', en: 'Fine kramas!' },
+  mkFlowers: { km: 'ផ្កាឈូកសម្រាប់វត្ត!', en: 'Lotus for the pagoda!' },
+  // (the buyers bargaining)
+  mkHowMuch: { km: 'ប៉ុន្មាន?', en: 'How much?' },
+  mkLower: { km: 'ចុះថ្លៃបន្តិចបានទេ?', en: 'A little cheaper?' },
+  mkThanks: { km: 'អរគុណ!', en: 'Thank you!' },
+  // The palm sugar (ps…): hamlet/_palmSugar.ts, people/_scenePalmSugar.ts
+  psPalmSugar: { km: 'ស្ករត្នោត', en: 'Palm sugar' },
+  psTaste: { km: 'សាកភ្លក់ស្ករត្នោតមើល!', en: 'Have a taste of our palm sugar!' },
+  psSell: { km: 'ទិញស្ករត្នោតទេបង? មានទឹកត្នោតស្រស់ផង!', en: 'Palm sugar, bong? Fresh palm juice too!' },
+  // The east village (ev…): hamlet/_eastVillage.ts, people/_sceneEastVillage.ts
+  evVillage: { km: 'ភូមិត្នោត', en: 'Sugar Palm Village' },
+  // (speech bubbles: a grandmother's greeting, the children calling to the explorer, the shopkeeper)
+  evEaten: { km: 'ញ៉ាំបាយហើយឬនៅ ចៅ?', en: 'Have you eaten yet, dear?' },
+  evKids: { km: 'សួស្ដី! សួស្ដី!', en: 'Hello! Hello!' },
+  evShop: { km: 'ត្រូវការអីខ្លះ?', en: 'What can I get you?' },
+  // Kulen's people and the picnic place (kn…): hamlet/_kulenPicnic.ts, people/_sceneKulen.ts
+  knPicnic: { km: 'កន្លែងកម្សាន្តភ្នំគូលែន', en: 'Kulen picnic place' },
+  // (the painted sign where the picnic trail comes in: hamlet/_knSign.ts)
+  knSign: { km: 'ទឹកធ្លាក់ភ្នំគូលែន', en: 'Kulen Waterfall' },
+  knSignSub: { km: 'សូមស្វាគមន៍', en: 'Welcome' },
+  // Behind Angkor Wat (bh…): hamlet/_backHamlet.ts, people/_sceneBack.ts
+  bhHamlet: { km: 'ភូមិក្រោយអង្គរវត្ត', en: 'The hamlet behind Angkor Wat' },
+  // (the juice seller at the sala, people/_sceneBackFolk.ts)
+  bhCoconut: { km: 'ដូងខ្ចីត្រជាក់ៗ! អញ្ជើញ!', en: 'Cold young coconuts! Come, have one!' },
+  // (the market's sellers, people/_sceneBackMarket.ts; the others call the east market's mk… words)
+  bhBreakfast: { km: 'នំបញ្ចុក បបរក្ដៅៗ!', en: 'Num banh chok, hot rice porridge!' },
+  bhKrok: { km: 'នំគ្រក់ក្ដៅៗ!', en: 'Hot num krok!' },
+  // The Kulen reclining Buddha (rb…): landmarks/kulen.ts
+  rbBuddha: { km: 'ព្រះអង្គធំ', en: 'The reclining Buddha' },
+  // (the name board on the gate at the foot of his rock: landmarks/_kulenBuddha.ts)
+  rbGate: { km: 'វត្តព្រះអង្គធំ', en: 'Wat Preah Ang Thom' },
+  rbGateSub: { km: 'ភ្នំគូលែន', en: 'Phnom Kulen' },
+  // Kites (kt…): people/_sceneKites.ts
+  ktKite: { km: 'ខ្លែងឯក', en: 'Khleng ek kite' },
+  // (speech bubbles: the grandfather flying his khleng ek, the eldest of the children in the west)
+  ktHear: { km: 'ឮសំឡេងឯកទេ?', en: 'Can you hear the ek sing?' },
+  ktHighest: { km: 'ខ្លែងខ្ញុំហើរខ្ពស់ជាងគេ!', en: 'My kite flies the highest!' },
+  // The journal and mini-map for the new places (jn…): roam/_book*.ts, roam/_stamps.ts, ui/minimap.ts
+  jnNew: { km: 'ថ្មី', en: 'New' },
+  // (the new places on the mini-map and the big map, ui/_minimapSpots.ts: the name, then as said in a sentence; the village's is evVillage)
+  jnMarket: { km: 'ផ្សារព្រឹក', en: 'Morning market' },
+  jnTheMarket: { km: 'ផ្សារព្រឹក', en: 'the morning market' },
+  jnPalmSugar: { km: 'ខ្ទមស្ករត្នោត', en: 'Palm sugar hut' },
+  jnThePalmSugar: { km: 'ខ្ទមស្ករត្នោត', en: 'the palm sugar hut' },
+  jnFalls: { km: 'ទឹកធ្លាក់ភ្នំគូលែន', en: 'Kulen waterfall' },
+  jnTheFalls: { km: 'ទឹកធ្លាក់ភ្នំគូលែន', en: 'the Kulen waterfall' },
+  jnBuddha: { km: 'ព្រះអង្គធំ', en: 'Reclining Buddha' },
+  jnTheBuddha: { km: 'ព្រះអង្គធំ', en: 'the reclining Buddha' },
+  jnHamlet: { km: 'ភូមិក្រោយអង្គរវត្ត', en: 'Hamlet behind Angkor Wat' },
+  jnTheHamlet: { km: 'ភូមិក្រោយអង្គរវត្ត', en: 'the hamlet behind Angkor Wat' },
+  // (the passport's third section, roam/_bookUi.ts: after the temples and the jungle, bkTemples / bkSites)
+  jnVillages: { km: 'ភូមិ និងទីសក្ការៈ', en: 'Villages and holy places' },
+  // Perf (pf…) and the world size (ws…)
+  pfNote: { km: 'ល្បឿន', en: 'Speed' },
+  wsEdge: { km: 'ចុងផែនទី', en: 'Edge of the map' },
+  // Leaving roaming asks first (rl…): roam/_leave.ts
+  rlTitle: { km: 'ត្រឡប់ទៅផែនទីវិញ?', en: 'Back to the map?' },
+  rlNote: { km: 'អ្នករុករកនឹងឈប់ដើរលេង។ ចង់ដើរលេងទៀត ត្រូវលោតចុះម្ដងទៀត។', en: 'Your explorer stops roaming. To come back, you jump in again.' },
+  rlStay: { km: 'បន្តរុករក', en: 'Keep exploring' },
+  rlGo: { km: 'ត្រឡប់ទៅផែនទី', en: 'Back to the map' },
+  // Buying, eating and drinking (by…): roam/_shop*.ts, people/_saleBack.ts, hamlet/_shops.ts
+  byBuyAt: { km: 'ទិញ — {name}', en: 'Buy — {name}' },
+  byBuy: { km: 'ទិញនៅតូប', en: 'Buy at a stall' },
+  byClosed: { km: '{name} បិទហើយ', en: '{name} is closed now' },
+  byAsk: { km: 'ទិញអីដែរ បង?', en: 'What would you like?' },
+  byClose: { km: 'បិទ', en: 'Close' },
+  byPurse: { km: 'កាបូបលុយ', en: 'Purse' },
+  byPaid: { km: 'បានបង់ {price}', en: 'Paid {price}' },
+  byEatNow: { km: 'ញ៉ាំឥឡូវនេះ', en: 'Eat it now' },
+  byDrinkNow: { km: 'ផឹកឥឡូវនេះ', en: 'Drink it now' },
+  byKeep: { km: 'ទុកពេលក្រោយ', en: 'Keep for later' },
+  byBagFull: { km: 'កាបូបពេញហើយ', en: 'Bag full' },
+  byShort: { km: 'លុយមិនគ្រប់ទេ — ព្រលឹមស្អែកមានលុយហោប៉ៅថ្មី', en: 'Not enough riel: more pocket money comes at dawn' },
+  byThanks: { km: 'អរគុណបង!', en: 'Thank you!' },
+  byYum: { km: 'ឆ្ងាញ់!', en: 'Delicious!' },
+  byFresh: { km: 'ស្រស់ស្រាយ!', en: 'So refreshing!' },
+  byKept: { km: 'បានទុក {name} ({n}/{max})', en: 'Kept for later: {name} ({n}/{max})' },
+  byBag: { km: 'ក្នុងកាបូប', en: 'In my bag' },
+  byBagEmpty: { km: 'មិនទាន់មានអ្វីទុកទេ', en: 'Nothing kept yet' },
+  byEatThis: { km: 'ញ៉ាំ {name}', en: 'Eat: {name}' },
+  byDrinkThis: { km: 'ផឹក {name}', en: 'Drink: {name}' },
+  byEatKept: { km: 'ញ៉ាំ ឬផឹកអ្វីដែលបានទុក', en: 'Eat or drink what you kept' },
+  byOnFoot: { km: 'ញ៉ាំ និងផឹក ពេលដើរលើដី', en: 'Eat and drink on foot' },
+  bySitUp: { km: 'អង្គុយឡើងសិន (J) ទើបញ៉ាំបាន', en: 'Sit up first (J) to eat' },
+  byPocket: { km: 'លុយហោប៉ៅថ្មី៖ {n}', en: 'Fresh pocket money: {n}' },
+  // The floating village's market (fv…): village/_fvMarket.ts, people/_sceneVillageMarket.ts (the sellers also call the east market's mk… words)
+  fvPrahok: { km: 'ប្រហុកឆ្ងាញ់ៗ!', en: 'Good prahok!' },
+  fvGrill: { km: 'ត្រីអាំងក្ដៅៗ!', en: 'Hot grilled fish!' },
+  fvCoffee: { km: 'កាហ្វេទឹកកក!', en: 'Iced coffee!' },
+  fvBoatFruit: { km: 'ចេក ស្វាយ ទិញទេបង?', en: 'Bananas, mangoes — buy some?' },
+  fvBoatGreens: { km: 'ត្រកួនស្រស់ៗ!', en: 'Fresh morning glory!' },
+  fvBoatFish: { km: 'ត្រីទើបចាប់ថ្មីៗ!', en: 'Fish, just caught!' },
+  fvBoatNoodles: { km: 'គុយទាវក្ដៅៗ!', en: 'Hot noodle soup!' },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 

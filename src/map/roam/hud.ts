@@ -352,13 +352,15 @@ function helpFor(mode: RoamMode): string {
         item(key('N'), 'rRamp'),
         look,
         item(key('1') + '–' + key('5'), 'rTools'),
-        item(key('F') + key('C') + key('U') + key('P'), 'rEmotes'),
+        item(key('F'), 'grGreet'),
+        item(key('C') + key('U') + key('P'), 'rEmotes'),
         item(key('J') + key('L'), 'rSitLie'),
         item(key('I'), 'rExplorer'),
         item(key('?'), 'rAllKeys'),
       ].join('');
     case 'boat':
-      return [item(key('W') + key('S'), 'rPaddle'), item(key('A') + key('D'), 'rTurn'), item(key('E'), 'rAshore'), look, photo].join('');
+      // (F: fish from the boat, roam/_fishing.ts)
+      return [item(key('W') + key('S'), 'rPaddle'), item(key('A') + key('D'), 'rTurn'), item(key('E'), 'rAshore'), item(key('F'), 'fiFish'), look, photo].join('');
     case 'hang':
       return [
         item(key('A') + key('D'), 'rTurn'),

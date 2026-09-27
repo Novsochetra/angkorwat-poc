@@ -4,7 +4,9 @@ import type { Frame, Motif, StampDef } from './_bookData';
  * The temple passport's ink stamps (roam/_bookUi.ts shows them): each an
  * SVG in one ink — an outline (round, octagon, cut corners, rounded, a
  * temple-door arch, an oval or a lotus-petal edge), the temple's silhouette
- * or the site's motif, its name and the date — worn like a real rubber
+ * or the site's motif (a village's: its stilt house and sugar palm, the
+ * market's parasols, the palm sugar hut, the Kulen falls, the reclining
+ * Buddha, the hamlet by its lotus pond), its name and the date — worn like a real rubber
  * stamp (`inkFilters`: rough edges, specks, a lighter patch), turned a
  * little on the page. The lotus seal goes over a stamp when he prayed there.
  *
@@ -63,6 +65,52 @@ const FACE =
   'M51 55Q56.5 51 62 55Q56.5 57.5 51 55Z' +
   'M48 58L52 58L54 68L46 68Z' +
   'M40 74Q50 80 60 74Q50 77 40 74Z';
+
+/** A point `r` from (cx, cy) at angle `a` (radians, SVG: y down), as "x y". */
+const at = (cx: number, cy: number, a: number, r: number) => `${(cx + r * Math.cos(a)).toFixed(1)} ${(cy + r * Math.sin(a)).toFixed(1)}`;
+
+/** A sugar palm's round crown: its fan leaves all round (the lower ones hang shorter), centre (cx, cy), reaching r; one jagged ball. */
+function palmCrown(cx: number, cy: number, r: number, n = 14): string {
+  let d = '';
+  for (let k = 0; k < n; k++) {
+    const a = (k * Math.PI * 2) / n - Math.PI / 2;
+    d += `${k ? 'L' : 'M'}${at(cx, cy, a, r * (1 - 0.28 * Math.max(0, Math.sin(a))))}L${at(cx, cy, a + Math.PI / n, r * 0.6)}`;
+  }
+  return d + 'Z';
+}
+
+/** A tier of a Khmer base (x0‥x1, y0‥y1): its top corners stepped in twice, redented like Angkor's towers. */
+const redent = (x0: number, y0: number, x1: number, y1: number) =>
+  `M${x0} ${y1}V${y0 + 3}H${x0 + 1.5}V${y0 + 1.5}H${x0 + 3}V${y0}H${x1 - 3}V${y0 + 1.5}H${x1 - 1.5}V${y0 + 3}H${x1}V${y1}Z`;
+
+/**
+ * The Khmer ushnisha on a Buddha's head: a cone rising from `base` (just inside the crown of the
+ * head) at `cx`, a lotus bud on its tip — never the Thai flame; `s` its size. Its own paths, so
+ * its winding cannot cut a hole where it meets the head.
+ */
+function ushnisha(cx: number, base: number, s: number): string {
+  const w = 4.2 * s;
+  const apex = base - 7 * s;
+  const tip = apex - 5.5 * s;
+  const bw = 2.6 * s;
+  return (
+    fill(`M${cx - w} ${base}L${cx} ${apex + s}L${cx + w} ${base}Z`) +
+    fill(`M${cx} ${tip}C${cx + bw} ${apex - 2.2 * s} ${cx + bw} ${apex + 0.2 * s} ${cx} ${apex + s}C${cx - bw} ${apex + 0.2 * s} ${cx - bw} ${apex - 2.2 * s} ${cx} ${tip}Z`)
+  );
+}
+
+/** A market parasol (x0‥x1, its top at `top`, rim at `rim`): the dome, a scalloped rim, and two panels left out for its stripes (fill it even-odd: `fill(…, true)`). */
+function parasol(x0: number, x1: number, top: number, rim: number): string {
+  const w = x1 - x0;
+  const cx = (x0 + x1) / 2;
+  const h = rim - top;
+  let d = `M${x0} ${rim}C${x0 + w * 0.04} ${top + h * 0.3} ${cx - w * 0.28} ${top} ${cx} ${top}C${cx + w * 0.28} ${top} ${x1 - w * 0.04} ${top + h * 0.3} ${x1} ${rim}`;
+  const n = 6;
+  for (let k = n; k > 0; k--) d += `Q${x0 + (w * (k - 0.5)) / n} ${rim + w * 0.07} ${x0 + (w * (k - 1)) / n} ${rim}`;
+  d += 'Z';
+  for (const s of [-1, 1]) d += `M${cx + s * 2} ${top + 4}L${cx + s * w * 0.19} ${rim - 1}L${cx + s * w * 0.31} ${rim - 1}Z`;
+  return d;
+}
 
 /** The lotus flower (the prayer's seal, and the Buddha's pedestal). */
 const LOTUS =
@@ -141,18 +189,19 @@ const MOTIF: Record<Motif, () => string> = {
     line('M41 38V72M47 38V76M53 38V76M59 38V72', 2.4) +
     `<g fill="none" stroke="currentColor" stroke-width="2.2"><ellipse cx="50" cy="82" rx="36" ry="7"/><ellipse cx="50" cy="82" rx="20" ry="3.5"/></g>` +
     fill('M14 88C14 85 22 85 22 88ZM78 88C78 85 86 85 86 88Z'),
-  // A small stupa with incense burning before it.
+  // A Khmer stupa (chetdei): a lotus-bud tower like Angkor Wat's, a niche in it, on a square base
+  // stepped in three tiers with redented corners; incense burning in its urn before it.
   stupa: () =>
-    fill('M28 84H72V90H28ZM33 78H67V84H33ZM36 78C36 62 43 56 50 56C57 56 64 62 64 78ZM45 49H55V56H45ZM46.5 49L50 22L53.5 49Z') +
-    line('M18 84L16 64M21 84L21 62M24 84L26 64', 1.6) +
-    line('M16 60C13 54 19 50 16 44M21 58C24 52 18 48 21 42M26 60C29 54 23 50 26 44', 1.1) +
-    fill('M13 84H29L27 90H15Z'),
-  // A spirit house on its post (with a curved Khmer roof).
+    fill(tower(57, 71, 50, 22) + 'M53.5 71V64.5C53.5 62.5 55 61.5 57 61.5C59 61.5 60.5 62.5 60.5 64.5V71Z', true) +
+    fill(redent(39, 71, 75, 77) + redent(35, 77, 79, 83) + redent(31, 83, 83, 90)) +
+    line('M11 84L9 64M14 84L14 62M17 84L19 64', 1.6) +
+    line('M9 60C6 54 12 50 9 44M14 58C17 52 11 48 14 42M19 60C22 54 16 50 19 44', 1.1) +
+    fill('M6 84H22L20 90H8Z'),
+  // A spirit house (a neak ta shrine) on its post: a little Angkor tower over its arched door.
   spiritHouse: () =>
-    fill('M47 58H53V88H47ZM38 92L62 92L57 86L43 86ZM30 54H70V59H30Z') +
-    fill('M36 36H64V54H36ZM46 42H54V54H46Z', true) +
-    fill('M26 38C33 37 40 31 44 23L50 11L56 23C60 31 67 37 74 38C71 35 68 34 64 34L36 34C32 34 29 35 26 38Z') +
-    line('M26 38C23 36 22 33 23 30M74 38C77 36 78 33 77 30M50 11L50 5', 2),
+    fill('M47 61H53V88H47ZM38 92L62 92L57 86L43 86ZM30 56H70V61H30Z') +
+    fill('M37 56V39H63V56Z' + 'M45 56V47C45 44.5 47.3 43 50 43C52.7 43 55 44.5 55 47V56Z', true) +
+    fill(tower(50, 37, 31, 22)),
   // A fallen wall's carved lintel on its broken posts.
   ruinWall: () =>
     fill(
@@ -161,10 +210,12 @@ const MOTIF: Record<Motif, () => string> = {
     ) +
     fill('M14 55H28V90H14ZM72 55H86L84 62L86 70L86 90H72Z') +
     fill('M36 84H48V90H36ZM50 86L58 82L62 90L50 90Z'),
-  // The forest Buddha, seated in meditation on a lotus pedestal.
+  // The forest Buddha, seated in meditation on a lotus pedestal (the Khmer ushnisha: a cone, a
+  // lotus bud on it; never a flame).
   buddha: () =>
     `<circle cx="50" cy="30" r="17" fill="none" stroke="currentColor" stroke-width="2"/>` +
-    fill(circle(50, 31, 8) + circle(50, 21.5, 3.5)) +
+    fill(circle(50, 31, 8)) +
+    ushnisha(50, 24.5, 1) +
     fill('M36 74C36 58 41 44 50 42C59 44 64 58 64 74Z') +
     fill('M22 86C22 77 35 72 50 72C65 72 78 77 78 86Z') +
     fill('M18 88H82L77 95H23Z'),
@@ -187,14 +238,76 @@ const MOTIF: Record<Motif, () => string> = {
     line('M64 90L82 44', 3.4) +
     fill('M76 44L92 36L95 52L81 55Z') +
     fill('M4 90H96V94H4Z'),
-  // The village pagoda (a Khmer wat's vihara, from the front): its stacked gables, the
-  // chovea finial curling up at the peak and hooked eaves, the pediment's wheel, the door, the plinth and stair.
+  // The village pagoda (a Khmer wat's vihara, from the front): its stacked gables, the slender
+  // chovea hooked up at the peak and the naga-hooked eaves, a kbach flame leaf in the pediment,
+  // the door, the plinth and stair.
   pagoda: () =>
     fill('M6 68L28 54H72L94 68Z' + 'M32 42L50 12L68 42Z') +
-    fill('M22 62L50 24L78 62Z' + 'M33 58L50 34L67 58Z' + circle(50, 50, 4), true) +
+    fill('M22 62L50 24L78 62Z' + 'M33 58L50 34L67 58Z' + 'M50 43.5C53.4 47.2 53.4 51.4 50 55C46.6 51.4 46.6 47.2 50 43.5Z', true) +
     fill('M24 64H76V86H24Z' + 'M44 86V77C44 74 47 72 50 71C53 72 56 74 56 77V86Z', true) +
     fill('M16 86H84V91H16ZM41 91H59V96H41Z') +
     line('M50 12Q51 6 56 4M22 62Q18 61 18 56M78 62Q82 61 82 56M6 68Q2 67 2 62M94 68Q98 67 98 62', 2),
+  // The sugar-palm village: a Khmer house on stilts (the sun's rays in its gable, the stair up to
+  // its door) and a sugar palm beside it.
+  stiltHouse: () =>
+    fill('M12 90L14.6 37H17.4L20 90Z' + palmCrown(16, 28, 13)) +
+    fill('M30 48Q32 47 33.5 45L62 16L90.5 45Q92 47 94 48Z' + 'M47 44L62 28L77 44Z', true) +
+    line('M62 42V32M62 42L55 36M62 42L69 36', 1.5) +
+    fill('M34 48H90V66H34Z' + 'M57 52H67V66H57Z' + 'M40 52H49V59H40Z' + 'M75 52H84V59H75Z', true) +
+    fill('M30 66H94V70H30Z' + 'M35 70H39V90H35ZM45 70H49V90H45ZM75 70H79V90H75ZM85 70H89V90H85Z') +
+    line('M57.5 70L51 90M66.5 70L60 90', 2) +
+    line('M56 75H65M54.2 80H63.2M52.6 85H61.6', 1.5) +
+    fill('M2 90H98V94H2Z'),
+  // The morning market: parasols over the stalls, fruit piled high, a basket of greens, fish.
+  market: () =>
+    fill(parasol(6, 62, 12, 36) + parasol(60, 98, 30, 48), true) +
+    fill(circle(34, 10.5, 2) + circle(79, 28.6, 1.6)) +
+    fill('M33 38H35V62H33ZM78 50H80V70H78Z') +
+    fill('M10 62H58V66H10ZM13 66H16V90H13ZM52 66H55V90H52Z' + 'M63 70H96V74H63ZM65 74H68V90H65ZM91 74H94V90H91Z') +
+    fill(circle(18.5, 57.6, 4.2) + circle(27.3, 57.6, 4.2) + circle(22.9, 50.4, 4.2)) +
+    fill('M38 50H55L52.5 62H40.5Z' + 'M39 50C38 44 44 42 46.5 46C48 41 55 43 54 50Z') +
+    fill('M66 67Q71.5 62.5 78 67Q71.5 70.5 66 67ZM77.5 67L82 63.8V70.2Z' + 'M81 67Q86.5 62.5 93 67Q86.5 70.5 81 67Z') +
+    fill('M20 90C20 82.5 32 82.5 32 90ZM38 90C38 84.5 47 84.5 47 90Z') +
+    fill('M2 90H98V94H2Z'),
+  // The palm sugar hut: the tapper's bamboo ladder lashed up a sugar palm, his tubes hung under its
+  // crown; under the hut's roof the family's pan steaming on its clay stove.
+  palmSugar: () =>
+    fill('M27 91L30 29H34L37 91Z' + palmCrown(32, 20, 16)) +
+    line('M30.5 29L25 33M33.5 29L45 31', 1.4) +
+    fill('M23 33H26.4V41.5H23ZM43.6 31H47V39.5H43.6Z') +
+    line('M41.5 91V35', 2.2) +
+    line('M41.5 86L46 84M41.5 78L46 76M41.5 70L46 68M41.5 62L46 60M41.5 54L46 52M41.5 46L46 44', 1.8) +
+    fill('M52 58L74 40L96 58Z' + 'M56 58H59V91H56ZM89 58H92V91H89Z') +
+    fill('M64 91L66.5 79H83.5L86 91Z' + 'M71 91V85H79V91Z', true) +
+    fill('M61 78.5Q75 73 89 78.5Q75 82.5 61 78.5Z') +
+    line('M69 70C67 66.5 71 64 69 60.5M75 70C73 66.5 77 64 75 60.5M81 70C79 66.5 83 64 81 60.5', 1.4) +
+    fill('M4 91H96V95H4Z'),
+  // The Kulen falls: the river drops off its ledge between the wooded cliffs into the pool below.
+  falls: () =>
+    fill('M2 30L24 26L34 31L34 74L2 74Z' + 'M66 31L76 25L98 29L98 74L66 74Z') +
+    fill(circle(9, 23, 8) + circle(21, 19, 8.5) + circle(80, 18, 8.5) + circle(92, 22, 7)) +
+    line('M34 31Q50 27 66 31', 2.6) +
+    line('M38.5 34V75M44.5 33V78M50.5 32.5V78M56.5 33V78M62 34V75', 2.4) +
+    fill(circle(38, 78, 4.5) + circle(46, 80.5, 5.5) + circle(55, 80.5, 5.5) + circle(63, 78, 4.5)) +
+    waves(89, 2, 6, 94),
+  // The reclining Buddha (Preah Ang Thom) on his long plinth: lying on his right side, his head on
+  // his hand, the Khmer ushnisha and its lotus bud on his crown, a halo over it; a fold of his
+  // robe along him.
+  reclining: () =>
+    `<g transform="rotate(-30 18 50)">${line('M2 50A16 16 0 0 1 34 50', 2)}${fill(circle(18, 50, 9))}${ushnisha(18, 42.5, 1.1)}</g>` +
+    fill('M11.5 58.5H24.5L25.5 69H10.5Z') +
+    fill('M4 81V72C4 69.5 5.5 68 8 68H30V81Z') +
+    fill('M24 81L26 61C28 55.5 34 53.5 40 55.5C48 58.5 56 62.5 64 61.5C70 60.8 74 57.5 80 59.5C86 61.5 92 63.5 96 67L97 77L95 81Z' + 'M33 70C51 72.5 72 70.5 92 73.5L92 75.2C72 72.2 51 74.2 33 71.7Z', true) +
+    fill('M2 82H98V88H2ZM6 90H94V96H6Z'),
+  // The hamlet behind Angkor Wat: a thatched house on low stilts by the lotus pond, the temple's
+  // towers over it.
+  hamlet: () =>
+    fill(tower(66, 46, 26, 9) + tower(78, 46, 34, 11) + tower(90, 46, 26, 9) + 'M56 46H98V50H56Z') +
+    fill('M3 53L24 33L45 53Z' + 'M13 48L24 37.6L35 48L33.4 48L24 39.8L14.6 48Z' + 'M8 53H40V67H8Z' + 'M20 56.5H28V67H20Z', true) +
+    fill('M10 67H13V75H10ZM35 67H38V75H35Z' + 'M2 75H50V78H2Z') +
+    `<g transform="translate(58 52) scale(0.34)">${fill(LOTUS)}</g>` +
+    fill('M52 80C52 77.5 62 77.5 62 80ZM82 80C82 77 94 77 94 80Z') +
+    waves(84, 2, 8, 96, 8, 2.5),
 };
 
 /** Each outline (and a thin line inside it), in the 120 × 120 box. */

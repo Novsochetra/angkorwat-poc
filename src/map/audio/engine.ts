@@ -3,9 +3,10 @@ import type { EventState } from '../events';
 import { VOLUME_KEYS, type AnimalCall, type Duck, type MapWeather, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { Ambience } from './ambience';
 import { Animals } from './animals';
-import { clamp01, glide, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
+import { biquad, clamp01, glide, impulse, mulberry32, softClipCurve, type Rng } from './dsp';
 import { Explorer, roamBus } from './explorer';
 import type { StepSets } from './footsteps';
+import { HamletSound } from './hamlets';
 import type { Strike } from './typewriter';
 import { Music } from './music';
 import { Sfx } from './sfx';
@@ -28,7 +29,9 @@ import { WeatherSound } from './weather';
  *
  * One bus per volume slider (`MapSettings`, `VOLUME_KEYS`), and every sound
  * on exactly one: `music`; `ambience` (wind, birds, insects, frogs:
- * ambience.ts; the temples' chant, drum and bells: temple.ts); `water` (falls and rivers: water.ts); `animals` (their
+ * ambience.ts; the temples' chant, drum and bells: temple.ts; the people's
+ * sounds: people.ts; the market's, the villages' and the picnic's beds:
+ * hamlets.ts); `water` (falls and rivers: water.ts); `animals` (their
  * calls, placed on the map: animals.ts); `steps` (the explorer's footsteps)
  * and `moves` (his other sounds, the lasting wind, sail and wake too:
  * explorer.ts `roamBus`); `ui` (the interface and the camera's flights:
@@ -38,6 +41,11 @@ import { WeatherSound } from './weather';
  * While the story is open every bus but `ui` (`DUCKED`) ducks — steps back
  * to a lower level — and ducks further while its words type in (`duck()`);
  * when it closes, they come back to where their sliders are.
+ *
+ * In snow (a dream: the Weather setting's "snow") the world goes hushed:
+ * the ambience, the animals and a little the water are muffled (a low-pass
+ * closing on their bus, less of the valley's echo, a little quieter:
+ * `Bus.muffle`), and fewer birds and insects call (ambience.ts).
  *
  * `master` (the Master slider) comes after the compressor, so turning it
  * down makes everything quieter without changing the mix. `out` fades
@@ -55,6 +63,9 @@ export type BusName = Exclude<VolumeKey, 'master'>;
 export const BUSES: readonly BusName[] = VOLUME_KEYS.filter((k): k is BusName => k !== 'master');
 /** Buses that swell in on start (the lasting background); the explorer's sounds and the interface never wait. */
 const FADED: ReadonlySet<BusName> = new Set<BusName>(['music', 'ambience', 'water', 'animals']);
+/** Buses the snow hushes (the world round him; not his own sounds, the music or the interface), and how much. */
+const MUFFLED: ReadonlySet<BusName> = new Set<BusName>(['ambience', 'animals', 'water']);
+const MUFFLE: Partial<Record<BusName, number>> = { ambience: 1, animals: 1, water: 0.5 };
 /** Buses that duck for the story: all but the interface (the story's own sounds: its typing, its clicks, its camera flights). */
 const DUCKED: readonly BusName[] = BUSES.filter((b) => b !== 'ui');
 /** The level of every other sound while ducked (`DUCKED` buses), and how fast it goes down and comes back (time constants, s). */
@@ -65,6 +76,8 @@ const DUCK_UP = 0.9;
 export interface Mix {
   /** 0 day … 1 night. */
   night: number;
+  /** Where the day is (`MapFrame.clock`, 0‥1): the market's and the villages' hours (hamlets.ts). */
+  clock?: number;
   /** Leaves over the roaming explorer, 0‥1 (`MapFrame.canopy`): the day's cicadas are louder in the forest. */
   canopy?: number;
 }
@@ -76,25 +89,48 @@ const REVERB = 0.5;
 /** Level after the compressor (it adds make-up gain; this takes it back). */
 const TRIM = 0.62;
 
-/** A mixer channel: `dry` and `wet` (reverb send) inputs under one volume, with a fade-in and a duck. */
+/** A mixer channel: `dry` and `wet` (reverb send) inputs under one volume, with a fade-in, a duck, and (`muffled` buses) the snow's hush. */
 export class Bus {
   readonly dry: GainNode;
   readonly wet: GainNode;
   private readonly fades: GainNode[];
   private readonly ducks: GainNode[];
+  /** The snow's hush: a low-pass on the dry path, and the dry and wet levels (null: this bus is never muffled). */
+  private readonly hush: { tone: BiquadFilterNode; dry: GainNode; wet: GainNode; open: number; was: number } | null;
 
-  constructor(ctx: BaseAudioContext, out: AudioNode, reverb: AudioNode, faded: boolean) {
+  constructor(ctx: BaseAudioContext, out: AudioNode, reverb: AudioNode, faded: boolean, muffled = false) {
     this.dry = ctx.createGain();
     this.wet = ctx.createGain();
     const fd = ctx.createGain();
     const fw = ctx.createGain();
     const dd = ctx.createGain();
     const dw = ctx.createGain();
-    this.dry.connect(fd).connect(dd).connect(out);
-    this.wet.connect(fw).connect(dw).connect(reverb);
+    if (muffled) {
+      const open = Math.min(20000, ctx.sampleRate * 0.45);
+      const tone = biquad(ctx, 'lowpass', open, 0.6);
+      const hd = ctx.createGain();
+      const hw = ctx.createGain();
+      this.dry.connect(fd).connect(dd).connect(hd).connect(tone).connect(out);
+      this.wet.connect(fw).connect(dw).connect(hw).connect(reverb);
+      this.hush = { tone, dry: hd, wet: hw, open, was: 0 };
+    } else {
+      this.dry.connect(fd).connect(dd).connect(out);
+      this.wet.connect(fw).connect(dw).connect(reverb);
+      this.hush = null;
+    }
     this.fades = [fd, fw];
     this.ducks = [dd, dw];
     if (faded) for (const f of this.fades) f.gain.value = 0;
+  }
+
+  /** Snow's hush, `k` 0‥1: the top closes (to ~2.4 kHz), the echo thins, a little quieter; slow (tc s). */
+  muffle(k: number, t: number, tc: number): void {
+    const h = this.hush;
+    if (!h || Math.abs(k - h.was) < 0.01) return;
+    h.was = k;
+    glide(h.tone.frequency, h.open * (2400 / h.open) ** k, t, tc);
+    glide(h.dry.gain, 1 - 0.35 * k, t, tc);
+    glide(h.wet.gain, 1 - 0.6 * k, t, tc);
   }
 
   /** Step back to `g` (0‥1) or come back up (1), gliding with time constant `tc` (0: jump). */
@@ -144,8 +180,11 @@ export class SoundEngine {
   readonly out: GainNode;
   /** One bus per slider (see the top of this file for what plays on each). */
   readonly bus: Readonly<Record<BusName, Bus>>;
-  /** Current time of day (voices read it when they are scheduled). */
+  /** Current time of day (voices read it when they are scheduled), and where the day is (`Mix.clock`). */
   night = 0;
+  clock = 0;
+  /** Snow now (0‥1, `weather`): the world hushed. */
+  snow = 0;
   private readonly ambience: Ambience;
   private readonly music: Music;
   private readonly water: Water;
@@ -156,8 +195,10 @@ export class SoundEngine {
   private readonly weatherSound: WeatherSound;
   /** The temples' chant, drum and bells (temple.ts, on the ambience bus; public for checks). */
   readonly temple: TempleSound;
-  /** The people's sounds (people.ts: ox bells, the cart, a net's splash, laughter on ambience; the pinpeat on music). */
-  private readonly people: PeopleSound;
+  /** The people's sounds (people.ts: ox bells, the cart, a net's splash, laughter, the new life's work and voices on ambience; the pinpeat on music; public for checks). */
+  readonly people: PeopleSound;
+  /** The market's, the villages' and the picnic's lasting sound (hamlets.ts, on the ambience bus; public for checks). */
+  readonly hamlets: HamletSound;
   private applied: Mix = { night: -1, canopy: -1 };
   /** The background's duck level now (`DUCK`). */
   private ducked = 1;
@@ -190,7 +231,7 @@ export class SoundEngine {
     ret.gain.value = REVERB;
     reverbIn.connect(conv).connect(ret).connect(this.sum);
 
-    this.bus = Object.fromEntries(BUSES.map((b) => [b, new Bus(ctx, this.sum, reverbIn, FADED.has(b))])) as Record<BusName, Bus>;
+    this.bus = Object.fromEntries(BUSES.map((b) => [b, new Bus(ctx, this.sum, reverbIn, FADED.has(b), MUFFLED.has(b))])) as Record<BusName, Bus>;
 
     this.ambience = new Ambience(this);
     this.music = new Music(this);
@@ -202,6 +243,7 @@ export class SoundEngine {
     this.weatherSound = new WeatherSound(this);
     this.temple = new TempleSound(this);
     this.people = new PeopleSound(this);
+    this.hamlets = new HamletSound(this);
   }
 
   /** Every slider; a moved one glides there (no clicks), `immediate` jumps. */
@@ -228,6 +270,7 @@ export class SoundEngine {
     const night = clamp01(m.night);
     const canopy = clamp01(m.canopy ?? 0);
     this.night = night;
+    if (m.clock !== undefined && Number.isFinite(m.clock)) this.clock = ((m.clock % 1) + 1) % 1;
     if (!immediate && Math.abs(night - this.applied.night) < 0.01 && Math.abs(canopy - (this.applied.canopy ?? 0)) < 0.03) return;
     this.applied = { night, canopy };
     const t = this.ctx.currentTime;
@@ -245,7 +288,12 @@ export class SoundEngine {
    * `t`: the page time (s, `MapFrame.t`).
    */
   weather(w: MapWeather, ears: Ears, roaming: boolean, t: number, leaves = 0): void {
-    this.ambience.setRain(w.rain, this.ctx.currentTime);
+    const now = this.ctx.currentTime;
+    // (snow: what falls, and the white lying on the land after it has stopped hushes the world too, less)
+    this.snow = clamp01(Math.max(w.snow ?? 0, 0.7 * (w.snowCover ?? 0)));
+    this.ambience.setRain(w.rain, now);
+    this.ambience.setSnow(this.snow, now);
+    for (const b of MUFFLED) this.bus[b].muffle(this.snow * (MUFFLE[b] ?? 1), now, 1.5);
     this.weatherSound.set(w, ears, roaming, t, leaves);
   }
 
@@ -255,8 +303,9 @@ export class SoundEngine {
   }
 
   /** Where the waterfalls and rivers are (once, when the land is built). */
-  setWorld(field: Pick<HeightField, 'falls' | 'rivers'>): void {
+  setWorld(field: Pick<HeightField, 'falls' | 'rivers' | 'heightAt'>): void {
     this.water.setWorld(field.falls, field.rivers);
+    this.hamlets.setWorld(field);
   }
 
   /** Where the ears are (every frame; the water voices follow at ~15 Hz, animal calls read them when they come). `immediate`: no glide. */
@@ -265,6 +314,7 @@ export class SoundEngine {
     this.animals.listen(ears);
     this.people.listen(ears);
     this.temple.listen(ears, immediate);
+    this.hamlets.listen(ears, immediate);
   }
 
   /** Music, ambience, water and the animals swell in from silence (the explorer and the interface are never faded). */
@@ -293,9 +343,11 @@ export class SoundEngine {
     if (ambience) {
       this.weatherSound.schedule(now, until);
       this.temple.schedule(now, until);
+      this.hamlets.schedule(now, until, this.clock, this.ambience.rain, this.snow);
     } else {
       this.weatherSound.idle(now);
       this.temple.idle(now);
+      this.hamlets.idle(now);
     }
   }
 

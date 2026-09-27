@@ -342,7 +342,7 @@ function piece(list: Float64Array, n: number, a: number, b: number, c: number, d
  * lip over a cliff, a pillar out of the wall): only this test leaves sides
  * out. Turned blocks show every side and cover nothing.
  */
-function shownSides(boxes: VoxelBox[], ground?: CoverGround): Uint8Array {
+export function shownSides(boxes: VoxelBox[], ground?: CoverGround): Uint8Array {
   const n = boxes.length;
   const shown = new Uint8Array(n);
   const lo = new Float64Array(n * 3);
@@ -493,7 +493,10 @@ export interface VoxelMeshOptions {
    * builder; with `ground`, the hollow under the land too). The blocks of a
    * family are then split by the sides they show (a few meshes each,
    * `userData.voxelSides`: the sides drawn, bits as `open`). For blocks that
-   * never move (a swaying leaf would show what it covered).
+   * never move (a swaying leaf would show what it covered). Each block's
+   * sides shown are also kept per instance (`voxShown`: the bits as `open`,
+   * plus 64), for shaders that leave out the rest block by block (the world
+   * map's plain boxes: map/cull.ts `cutCovered`).
    */
   hideCovered?: boolean | { ground?: CoverGround };
 }
@@ -545,7 +548,9 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
   // Builder space = instance position + offset (the feedback tool reports picks in it).
   group.userData.voxelOffset = offset.clone();
   const hide = options.hideCovered;
-  const lists = hide ? bySides(builder.boxes, shownSides(builder.boxes, hide === true ? undefined : hide.ground)) : [...buckets.values()].map((l) => ({ sides: 63, list: l }));
+  const shown = hide ? shownSides(builder.boxes, hide === true ? undefined : hide.ground) : null;
+  const shownOf = shown ? new Map(builder.boxes.map((b, j) => [b, shown[j]])) : null;
+  const lists = shown ? bySides(builder.boxes, shown) : [...buckets.values()].map((l) => ({ sides: 63, list: l }));
   for (const { sides, list } of lists) {
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
@@ -587,6 +592,7 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
     geo.setAttribute('voxOpen', new InstancedBufferAttribute(open, 1));
     geo.setAttribute('voxRadius', new InstancedBufferAttribute(radius, 1));
     if (surf) geo.setAttribute('voxSurf', new InstancedBufferAttribute(surf, 4));
+    if (shownOf) geo.setAttribute('voxShown', new InstancedBufferAttribute(Float32Array.from(list, (b) => (shownOf.get(b) ?? 63) | 64), 1));
     // The code that made each instance (dev builds), for the feedback tool's picker.
     if (list.some((b) => b.src)) mesh.userData.voxelSources = list.map((b) => b.src);
     mesh.instanceMatrix.needsUpdate = true;

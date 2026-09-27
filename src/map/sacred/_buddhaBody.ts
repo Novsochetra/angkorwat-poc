@@ -844,3 +844,7 @@ const ARMS: Record<Mudra, { left: ArmPose; right: ArmPose; zones: Box[] }> = (()
   meditate.zones = [joinBox(handZone(meditate.left), handZone(meditate.right))];
   return { earth, meditate };
 })();
+
+// (the reclining Buddha, _buddhaReclining.ts, is made of the same shapes, cloth lines and hands)
+export { around, beltThick, bell, curve, ell, frame, growBox, handParts, hemThick, joinBox, limb, loft, onTorso, place, robeEdge, robeThick, sanghatiThick, SASH, sashLine, sashThick, slab, smoother, toWorld, union };
+export type { HandPose, Thick };

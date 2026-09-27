@@ -40,7 +40,7 @@ export class Floaters {
   /** Build into raft `owner` in a local frame. */
   put(fr: Frame, owner: number, seed: number, src: SourceTrace | undefined, fn: (L: Local) => void): void {
     const lb = new VoxelBuilder();
-    fn(new Local(lb, src, seed));
+    fn(new Local(lb, src, seed, fr.theta));
     fr.place(lb, this.b);
     for (let i = 0; i < lb.boxes.length; i++) this.owner.push(owner);
   }
@@ -69,7 +69,7 @@ export function floatingHome(fl: Floaters, f: FloatSpec, glowOf: (owner: number,
   });
 
   if (f.kind === 'house' || f.kind === 'shop') {
-    const body: HouseBody = { w: W - 1.2, d: D - 2.2, v: 1.6, floor: top, roof: f.roof, walls: f.walls, lit: f.lit, shop: f.kind === 'shop', gap: 0 };
+    const body: HouseBody = { w: W - 1.2, d: D - 2.2, v: 1.6, floor: top, roof: f.roof, walls: f.walls, lit: f.lit, shop: f.kind === 'shop', gap: 0, gable: f.kind === 'shop' ? 'kbach' : 'rays' };
     // (the house sits back on the raft: a strip of open deck in front)
     const hf = new Frame(fr.wx(0, -0.3), 0, fr.wz(0, -0.3), f.facing);
     fl.put(hf, own, f.seed * 131 + 1, src, (L) => {

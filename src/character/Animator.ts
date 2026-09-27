@@ -15,6 +15,8 @@ import {
   lookAlong,
   type ActionName,
 } from './clips';
+import { DEFAULT_FOOD, gripFrame, isMeal, itemPose, mealHands, mealPose, type MealAction } from './meals';
+import { FOOD_GRIPS, type FoodKind } from './parts/food';
 import { CAMERA_BODY_CENTER } from './parts/gear';
 import { PHONE_LENS, STICK_JOINT } from './parts/props';
 import { PoseBuffer, clamp, lerp, type JointPose, type Pose } from './pose';
@@ -266,6 +268,66 @@ const SELFIE_REST = {
   arm: ARMS.R.upper.length() + ARMS.R.fore.length() - 0.02,
 };
 
+// ── Meals: the food in his hands ──────────────────────────────────────────
+/** Which way the elbows point eating and drinking: down and out, a little back. */
+const MEAL_POLE = { L: new Vector3(0.8, -1, -0.25).normalize(), R: new Vector3(-0.8, -1, -0.25).normalize() };
+/** Arm bones for the fist with a turned wrist (BU): elbow → wrist, wrist → the fist's middle. */
+const WRIST = { L: sub('wristL', 'elbowL'), R: sub('wristR', 'elbowR') };
+const FIST = { L: sub('propL', 'wristL'), R: sub('propR', 'wristR') };
+const _mealL = itemPose();
+const _mealR = itemPose();
+const _fistPos = new Vector3();
+const _fistQuat = new Quaternion();
+const _aim = new Vector3();
+const _got = new Vector3();
+const _shrugL = new Vector3();
+const _elbowL = new Vector3();
+const _pole = new Vector3();
+const _mw = new Matrix4();
+const _mf = new Matrix4();
+
+/** Wrist rotation that turns the fist of an arm posed by `solveArm` to `quat` (chest space). */
+function wristTo(pose: Pose, side: 'L' | 'R', quat: Quaternion): JointPose {
+  const fore = forearmRotation(pose, side, _mf).transpose();
+  _e.setFromRotationMatrix(fore.multiply(_mw.makeRotationFromQuaternion(quat)), 'XYZ');
+  return { rx: _e.x, ry: _e.y, rz: _e.z };
+}
+
+/** Where the fist's middle is (chest space) for arm joints `pose` (with its shoulder's shift). */
+function fistAt(pose: Pose, side: 'L' | 'R', out: Vector3): Vector3 {
+  const sj = pose[`shoulder${side}`] ?? {};
+  const wj = pose[`wrist${side}`] ?? {};
+  const fore = forearmRotation(pose, side, _mf);
+  // (the wrist's pivot: the shoulder, down the upper arm, down the forearm to the wrist)
+  out.copy(FIST[side]).applyMatrix4(_mw.makeRotationFromEuler(_e.set(wj.rx ?? 0, wj.ry ?? 0, wj.rz ?? 0))).add(WRIST[side]).applyMatrix4(fore);
+  _v2.copy(ARMS[side].upper).applyMatrix4(_mw.makeRotationFromEuler(_e.set(sj.rx ?? 0, sj.ry ?? 0, sj.rz ?? 0)));
+  return out.add(_v2).add(ARMS[side].shoulder).add(_v.set(sj.px ?? 0, sj.py ?? 0, sj.pz ?? 0));
+}
+
+/** How far (BU) the last meal arms fell short of where the fists should be (checks: out of reach). */
+export const MEAL_REACH = { L: 0, R: 0, target: { L: new Vector3(), R: new Vector3() } };
+
+/**
+ * The arm that puts the fist's middle on `pos` turned to `quat` (chest
+ * space): arm IK to it, the wrist turned, then again with the target moved
+ * by how far the wrist's turn moved the fist (twice is close enough).
+ */
+function armTo(side: 'L' | 'R', pos: Vector3, quat: Quaternion, shrug: Vector3, elbow: Vector3): Pose {
+  // (the elbow the way the place says, else down and out)
+  const pole = elbow.lengthSq() > 1e-4 ? _pole.copy(elbow).normalize() : MEAL_POLE[side];
+  _aim.copy(pos);
+  let pose = solveArm(side, _aim, pole, shrug);
+  for (let i = 0; i < 2; i++) {
+    pose[`wrist${side}`] = wristTo(pose, side, quat);
+    _aim.add(_got.subVectors(pos, fistAt(pose, side, _got)));
+    pose = solveArm(side, _aim, pole, shrug);
+  }
+  pose[`wrist${side}`] = wristTo(pose, side, quat);
+  MEAL_REACH[side] = fistAt(pose, side, _got).distanceTo(pos);
+  MEAL_REACH.target[side].copy(pos);
+  return pose;
+}
+
 /**
  * How far from the head's middle the lens goes (BU) with the phone at `dir`
  * (chest space, unit) and the arm stretched to `length`: the grip, below and
@@ -362,6 +424,16 @@ export class Animator {
   private readonly gestureWrist = new Quaternion();
   onActionEnd?: (name: ActionName) => void;
   /**
+   * What he eats or drinks (AngkorExplorer.holdFood): held (the carry pose)
+   * until a meal action plays with it (`eat`, `bite`, `drink`; the kind is
+   * taken when it starts); null: nothing.
+   */
+  food: FoodKind | null = null;
+  /** The meal playing, for the explorer (what shows in his hands, his face): its action, kind and time (s), also while it fades out. */
+  readonly meal: { action: MealAction | null; kind: FoodKind; t: number; weight: number; stopping: boolean } = { action: null, kind: 'noodles', t: 0, weight: 0, stopping: false };
+  private mealKind: FoodKind = 'noodles';
+  private foodW = 0;
+  /**
    * A whole-body pose from outside, over everything else (hanging under a
    * parachute, sitting in a boat), as a function of time (s); null for none.
    * It eases in and out.
@@ -403,6 +475,8 @@ export class Animator {
   }
 
   play(name: ActionName): void {
+    // (a meal eats what he holds when it starts)
+    if (isMeal(name)) this.mealKind = this.food ?? DEFAULT_FOOD[name];
     if (this.action && this.action.name === name && !this.action.stopping) {
       if (!ACTIONS[name].loop) this.action.t = 0;
       return;
@@ -478,7 +552,7 @@ export class Animator {
     // The camera or the phone up in a vehicle (the boat, the hang glider): the
     // posture holds the body, the device's arms (and the selfie's turn of the
     // head) go on top of it. Else the posture is over everything.
-    const device = !!this.lastPosture && !!this.action && (this.action.name === 'photo' || this.action.name === 'selfie');
+    const device = !!this.lastPosture && !!this.action && (this.action.name === 'photo' || this.action.name === 'selfie' || isMeal(this.action.name));
     if (device) this.buf.override(this.lastPosture!(this.time), this.postureW, POSTURE_JOINTS);
 
     // ── Actions ──────────────────────────────────────────────────────────
@@ -492,16 +566,25 @@ export class Animator {
       a.weight = clamp(a.weight + Math.sign(target - a.weight) * rate * dt, 0, 1);
       const t = def.loop ? a.t % def.duration : Math.min(a.t, def.duration);
       let joints = this.hold !== 'none' ? def.joints.filter((j) => !ARM_JOINTS_L.includes(j) || a.name === 'peek' || a.name === 'pray') : def.joints;
-      // (in a vehicle only the arms: the posture keeps the body, the neck and the head)
-      if (device) joints = joints.filter((j) => ARM_JOINTS_L.includes(j) || ARM_JOINTS_R.includes(j));
-      buf.override(def.pose(t), a.weight, joints);
+      const meal = isMeal(a.name) ? a.name : null;
+      // (in a vehicle only the arms: the posture keeps the body, the neck and the head; eating sitting, the neck and head too)
+      if (device) joints = joints.filter((j) => ARM_JOINTS_L.includes(j) || ARM_JOINTS_R.includes(j) || (!!meal && (j === 'neck' || j === 'head')));
+      buf.override(meal ? mealPose(meal, t, this.mealKind) : def.pose(t), a.weight, joints);
       if (a.name === 'photo') this.holdCamera(a.weight);
       if (a.name === 'selfie') this.holdPhone(a.weight, a.stopping, dt);
+      if (meal) this.holdMeal(meal, this.mealKind, t, a.weight);
+      const ms = this.meal;
+      ms.action = meal;
+      ms.kind = this.mealKind;
+      ms.t = a.t;
+      ms.weight = a.weight;
+      ms.stopping = a.stopping;
       if (a.stopping && a.weight <= 0) {
         this.action = null;
         this.onActionEnd?.(a.name);
       }
     }
+    if (!this.action || !isMeal(this.action.name)) this.meal.action = null;
     if (this.action?.name !== 'photo') this.photoHold.weight = 0;
     if (this.action?.name !== 'selfie') {
       this.selfieWeight = 0;
@@ -510,7 +593,38 @@ export class Animator {
 
     if (this.lastPosture && !device) buf.override(this.lastPosture(this.time), this.postureW, POSTURE_JOINTS);
 
+    // ── Food in hand, no meal playing (from the seller to the first bite): standing or sitting ──
+    this.foodW = lerp(this.foodW, this.food && !this.meal.action ? 1 : 0, clamp(dt * 8, 0, 1));
+    if (this.foodW > 0.001 && this.food && !this.meal.action) this.holdMeal(null, this.food, 0, this.foodW);
+
     this.apply();
+  }
+
+  /**
+   * Eating or drinking (`action`; null: holding it, the carry places): the
+   * hands where meals.ts puts the items `t` s in, by arm IK with the
+   * wrists turned to the items (the coconut: both hands on it).
+   */
+  private holdMeal(action: MealAction | null, kind: FoodKind, t: number, w: number): void {
+    // Head in chest space, from this frame's pose (the mouth moves with it).
+    this.localMatrix('neck', _m).multiply(this.localMatrix('head', _m2));
+    const hands = mealHands(action, kind, t, _m, _mealL, _mealR);
+    const grips = FOOD_GRIPS[kind];
+    if (hands.left && grips.left) {
+      gripFrame(_mealL, grips.left, _fistPos, _fistQuat);
+      this.buf.override(armTo('L', _fistPos, _fistQuat, _mealL.shrug, _mealL.elbow), w, ARM_JOINTS_L);
+    }
+    if (grips.right) {
+      gripFrame(_mealR, grips.right, _fistPos, _fistQuat);
+      this.buf.override(armTo('R', _fistPos, _fistQuat, _mealR.shrug, _mealR.elbow), w, ARM_JOINTS_R);
+    }
+    if (grips.both) {
+      // (the other hand on the same item: its shoulder shifts the mirror way)
+      gripFrame(_mealR, grips.both, _fistPos, _fistQuat);
+      _shrugL.copy(_mealR.shrug).setX(-_mealR.shrug.x);
+      _elbowL.copy(_mealR.elbow).setX(-_mealR.elbow.x);
+      this.buf.override(armTo('L', _fistPos, _fistQuat, _shrugL, _elbowL), w, ARM_JOINTS_L);
+    }
   }
 
   /** Photo: look where the photo looks, and put the hands on the camera at the eye. */

@@ -1,5 +1,6 @@
 import type { HeightField } from '../heightfield';
 import { FACE_Z_MIN } from '../terrain/views';
+import type { VoxelMaterialKey } from '../../voxel/materials';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Proto } from './proto';
 
@@ -121,8 +122,8 @@ export class Lattice {
     return this.ci.length;
   }
 
-  /** Emit the visible cells and the free boxes into the builder of their chunk. Returns the number of boxes. */
-  emit(sink: (x: number, z: number) => VoxelBuilder): number {
+  /** Emit the visible cells and the free boxes into the builder of their tile (by place and family). Returns the number of boxes. */
+  emit(sink: (x: number, z: number, mat: VoxelMaterialKey) => VoxelBuilder): number {
     const s = this.s;
     let n = 0;
     const has = (i: number, j: number, k: number) => this.map.has(key(i, j, k));
@@ -138,10 +139,14 @@ export class Lattice {
       if (!(open & 4) && (has(i, j + 2, k) || has(i, j + 3, k))) shade *= 0.93;
       const x = (i + 0.5) * s;
       const z = (k + 0.5) * s;
-      sink(x, z).box(x, (j + 0.5) * s, z, s, s, s, this.color[c], this.mat[c] ? 'mapBark' : 'mapLeaf', { shade, open, src: this.proto[c]?.src });
+      const mat = this.mat[c] ? 'mapBark' : 'mapLeaf';
+      sink(x, z, mat).box(x, (j + 0.5) * s, z, s, s, s, this.color[c], mat, { shade, open, src: this.proto[c]?.src });
       n++;
     }
-    for (const f of this.free) sink(f.x, f.z).box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, f.leaf ? 'mapLeaf' : 'mapBark', { shade: f.shade, src: f.p.src });
+    for (const f of this.free) {
+      const mat = f.leaf ? 'mapLeaf' : 'mapBark';
+      sink(f.x, f.z, mat).box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, mat, { shade: f.shade, src: f.p.src });
+    }
     return n + this.free.length;
   }
 }

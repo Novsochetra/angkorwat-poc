@@ -1,7 +1,7 @@
 import type { HeightField } from '../heightfield';
 import { PLACES, type PlaceDef } from '../layout';
-// (the land is closed off round this box: the map less its sinking side and back edges)
-import { ROAM_AREA } from '../terrain/views';
+// (the land is closed off round the roaming area: the map less its sinking side and back edges)
+import { inRoam, roamInside } from '../terrain/views';
 import type { MapPart } from '../types';
 import { buildFlow, riverField } from './flow';
 import type { RoamWorld } from './types';
@@ -28,15 +28,14 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[]): R
   const wood = buildWoodFloor(parts);
   const ms = (m: WalkMap) => `${m.stats.blocks} blocks in ${m.stats.ms} ms`;
   console.info(`[map] roam walk map: ${ms(walk)} · the camera's: hard ${ms(hard)}, soft ${ms(soft)} · planks: ${wood.columns} columns`);
-  const a = ROAM_AREA;
   return {
     field,
     groundAt: (x, z) => walk.topAt(x, z),
     // (the water as drawn: the height field's cells run past the cliff lips)
     waterAt: (x, z) => river.levelAt(x, z),
     flowAt: (x, z, out) => flow(x, z, out),
-    inBounds: (x, z) => x > a.x0 && x < a.x1 && z > a.z0 && z < a.z1,
-    edgeDistance: (x, z) => Math.min(x - a.x0, a.x1 - x, z - a.z0, a.z1 - z),
+    inBounds: inRoam,
+    edgeDistance: (x, z) => roamInside(x, z),
     standAt: (x, z, y, up, height) => walk.standAt(x, z, y, up, height),
     woodAt: (x, z, y) => wood.at(x, z, y),
     ceilingAt: (x, z, y) => walk.ceilingAt(x, z, y),

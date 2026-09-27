@@ -1,7 +1,7 @@
 import { BufferAttribute, BufferGeometry, CanvasTexture, Color, Mesh, MeshStandardMaterial, NoColorSpace, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
 import { hash3 } from '../../voxel/random';
 import { sacredEnv } from '../sacred/finish';
-import { bezier, dot, flame, flameArch, gild, glass, GLASS_BLUE, GLASS_GREEN, halo, LACQUER, lotusBand, ribbon, type AnyCanvas, type Ctx2D, type Gilded, type GildLook, type KbachPen, type P } from '../sacred/kbach';
+import { along, archOutline, bezier, boss, dot, flame, flameArch, flameRow, gild, halo, LACQUER, lotusBand, poly, reahu, ribbon, type AnyCanvas, type Ctx2D, type Gilded, type GildLook, type KbachPen, type P } from '../sacred/kbach';
 import { SKY } from '../sky/palette';
 
 /**
@@ -12,10 +12,13 @@ import { SKY } from '../sky/palette';
  *   earth to witness under it, the night he became the Buddha), blue hills
  *   and clouds far off, a soft light round his head (`muralMesh`);
  * - the gilt flame arch standing behind him, a halo round his head (`auraMesh`);
- * - gold kbach on red lacquer: the fronts of the altar's tiers and the
+ * - gold kbach on red lacquer (carved and gilded, bosses for jewels: no
+ *   glass mosaic, which is Thai): the fronts of the altar's tiers and the
  *   frieze under the ceiling (`friezeMesh`), the window shutters inside
  *   (`shutterMesh`), the ceiling's coffers with a gold lotus in each
- *   (`ceilingMesh`).
+ *   (`ceilingMesh`);
+ * - over the door outside, the gilt pediment: Reahu swallowing the moon
+ *   in a frame of flames (`doorPediment`).
  *
  * Each is lit like the statues (the gold shines and stands out, the
  * lacquer does not; they mirror a warm room) and glows warm at night, as by
@@ -186,8 +189,8 @@ const once = (key: string, make: () => MeshStandardMaterial): MeshStandardMateri
 
 // ── Motifs ────────────────────────────────────────────────────────────────
 
-/** A flower of flames: `n` flame petals round a glass eye, a smaller row between them. */
-function rosette(pen: KbachPen, cx: number, cy: number, r: number, eye: string | null, n = 8, spin = 0): void {
+/** A flower of flames: `n` flame petals round a gold boss, a smaller row between them. */
+function rosette(pen: KbachPen, cx: number, cy: number, r: number, n = 8, spin = 0): void {
   for (let i = 0; i < n; i++) {
     const a = spin + ((i + 0.5) / n) * Math.PI * 2;
     flame(pen, cx + Math.cos(a) * r * 0.25, cy + Math.sin(a) * r * 0.25, a, r * 0.62, r * 0.3, 0.5, { vein: false });
@@ -198,7 +201,7 @@ function rosette(pen: KbachPen, cx: number, cy: number, r: number, eye: string |
   }
   pen.gold.fillStyle = '#fff';
   dot(pen.gold, cx, cy, r * 0.3);
-  if (eye) glass(pen, cx, cy, r * 0.17, eye);
+  boss(pen, cx, cy, r * 0.17);
 }
 
 // ── The frieze (the altar's tiers, under the ceiling) ─────────────────────
@@ -216,10 +219,10 @@ function paintFrieze(pen: KbachPen): void {
   g.fillRect(-0.1, h - 0.032, w + 0.2, 0.022);
   for (let i = 0; i < 12; i++) {
     const x = ((i + 0.5) * w) / 12;
-    if (i % 2) glass(pen, x, h - 0.062, 0.0085, GLASS_GREEN);
+    if (i % 2) boss(pen, x, h - 0.062, 0.0085);
     else dot(g, x, h - 0.062, 0.011);
   }
-  lotusBand(pen, 0, w, 0.012, 0.11, null);
+  lotusBand(pen, 0, w, 0.012, 0.11);
   // The vine: a wave from end to end (it meets the next repeat), flames curling off it.
   const cy = 0.245;
   const vine: P[] = [];
@@ -240,9 +243,9 @@ function paintFrieze(pen: KbachPen): void {
     const out = x < w / 2 ? -1 : 1;
     flame(pen, x, y, (up * Math.PI) / 2 - out * up * 0.6, 0.085, 0.036, -out * up * 1.4, { tongue: 0.4 });
   }
-  rosette(pen, w / 2, cy, 0.1, GLASS_BLUE);
-  // (half a gem at each end: they meet as one across the repeats)
-  for (const x of [0, w]) glass(pen, x, cy, 0.016, GLASS_GREEN);
+  rosette(pen, w / 2, cy, 0.1);
+  // (half a boss at each end: they meet as one across the repeats)
+  for (const x of [0, w]) boss(pen, x, cy, 0.016);
 }
 
 /** The frieze on these faces (repeating along them, stretched to each face's height). */
@@ -275,10 +278,10 @@ function paintShutter(pen: KbachPen): void {
     frame(0.065, 0.008);
     const cx = x0 + w / 4;
     g.fillRect(cx - 0.007, 0.3, 0.014, 1.35);
-    lotusBand(pen, x0 + 0.09, x1 - 0.09, 0.09, 0.12, null);
-    rosette(pen, cx, 0.52, 0.1, GLASS_GREEN);
-    rosette(pen, cx, 1.02, 0.13, GLASS_BLUE);
-    rosette(pen, cx, 1.52, 0.1, GLASS_GREEN);
+    lotusBand(pen, x0 + 0.09, x1 - 0.09, 0.09, 0.12);
+    rosette(pen, cx, 0.52, 0.1);
+    rosette(pen, cx, 1.02, 0.13);
+    rosette(pen, cx, 1.52, 0.1);
     for (const y of [0.77, 1.27])
       for (const s of [-1, 1]) flame(pen, cx + s * 0.01, y, Math.PI / 2 - s * 0.9, 0.16, 0.065, s * 1.5, { tongue: 0.45 });
     flame(pen, cx, 1.66, Math.PI / 2, 0.2, 0.08, 0.3);
@@ -313,7 +316,7 @@ function paintCeiling(pen: KbachPen): void {
   g.fillRect(0.075, c - 0.085, c - 0.15, 0.01);
   g.fillRect(0.075, 0.075, 0.01, c - 0.15);
   g.fillRect(c - 0.085, 0.075, 0.01, c - 0.15);
-  rosette(pen, c / 2, c / 2, 0.3, GLASS_GREEN, 8, Math.PI / 8);
+  rosette(pen, c / 2, c / 2, 0.3, 8, Math.PI / 8);
   for (const [x, y] of [
     [0, 0],
     [c, 0],
@@ -559,8 +562,8 @@ function paintAura(pen: KbachPen, head: number): void {
   fill.addColorStop(0, '#c0341f');
   fill.addColorStop(0.4, '#8f1a12');
   fill.addColorStop(1, '#4c0a07');
-  flameArch(pen, 0, 0.0, { w: 1.32, shoulder: 1.9, tip: 3.7, frame: 0.1, flames: 0.27, fill, inlay: GLASS_GREEN });
-  halo(pen, 0, head, 0.42, { w: 0.045, flames: 0.17, inlay: GLASS_BLUE });
+  flameArch(pen, 0, 0.0, { w: 1.32, shoulder: 1.9, tip: 3.7, frame: 0.1, flames: 0.27, fill, inlay: true });
+  halo(pen, 0, head, 0.42, { w: 0.045, flames: 0.17, inlay: true });
 }
 
 /** The gilt arch (a cut-out panel `AURA` big), its foot's middle at the origin, facing −z; `head` is his head's middle over its foot (m). */
@@ -727,4 +730,71 @@ export function muralMesh(w: number, h: number, head: number): Mesh {
     return mat;
   });
   return litMesh(faces([{ facing: '-z', at: 0, a0: -w / 2, a1: w / 2, b0: 0, b1: h }], 0, 0), m, { night: 0.75, env: 0.6 }, 'pagoda:mural');
+}
+
+// ── The pediment over the door ───────────────────────────────────────────
+
+/** The pediment's canvas (m): it stands on the door's gold lintel, on the wall. */
+export const PEDIMENT = { w: 3.4, h: 2.1 };
+
+/**
+ * The pediment over the door, as over the doors of Angkor: a pointed arch
+ * framed by the naga's body, flames licking up its outside, the naga's
+ * heads (a fan of five) curling up at its feet; within it, on deep lacquer,
+ * Reahu swallowing the moon, garlands of kbach flowing from his mouth to
+ * the sides; lotus petals along its foot.
+ */
+function paintPediment(pen: KbachPen): void {
+  const w = 1.34;
+  const shoulder = 0.38;
+  const tip = 1.62;
+  const y0 = 0.06;
+  // The ground inside the arch, deep lacquer darker up under its point.
+  const deep = pen.ground.createLinearGradient(0, y0, 0, y0 + tip);
+  deep.addColorStop(0, '#5a0e0b');
+  deep.addColorStop(1, '#2e0706');
+  pen.ground.fillStyle = deep;
+  poly(pen.ground, archOutline(0, y0, w, shoulder, tip));
+  // The frame: the naga's body (a band, a bead line cut along it), flames up its outside.
+  const out = archOutline(0, y0, w + 0.06, shoulder, tip + 0.04);
+  const halfN = Math.ceil(out.length / 2);
+  const sides = [out.slice(0, halfN), out.slice(halfN - 1).reverse()];
+  pen.gold.fillStyle = '#fff';
+  for (const side of sides) ribbon(pen.gold, side, 0.1, 0.08, false);
+  for (const side of sides) for (const q of along(side, 0.1, 0.1)) boss(pen, q.p[0], q.p[1], 0.014);
+  const flames = archOutline(0, y0, w + 0.12, shoulder, tip + 0.1);
+  const fh = Math.ceil(flames.length / 2);
+  flameRow(pen, flames.slice(0, fh), { len: 0.19, gap: 0.13, from: shoulder * 0.6, side: 1, lean: 0.35, curl: 1.5, taper: 0.75, wid: 0.09 });
+  flameRow(pen, flames.slice(fh - 1).reverse(), { len: 0.19, gap: 0.13, from: shoulder * 0.6, side: -1, lean: 0.35, curl: 1.5, taper: 0.75, wid: 0.09 });
+  flame(pen, 0, y0 + tip + 0.06, Math.PI / 2, 0.34, 0.1, 0);
+  // At its feet the naga rear up and out: a fan of five heads each side.
+  for (const s of [-1, 1]) {
+    const hx = s * (w + 0.12);
+    const hy = y0 + 0.06;
+    pen.gold.fillStyle = '#fff';
+    for (let i = 0; i < 5; i++) {
+      const a = -0.2 + i * 0.42;
+      const r = 0.2;
+      const x = hx + s * Math.cos(a) * r * 0.9;
+      const y = hy + 0.12 + Math.sin(a) * r;
+      dot(pen.gold, x, y, i === 2 ? 0.07 : 0.058);
+      boss(pen, x + s * 0.012, y + 0.012, 0.012);
+    }
+    poly(pen.gold, [
+      [hx - 0.1, hy - 0.04],
+      [hx + s * 0.22, hy + 0.02],
+      [hx + s * 0.16, hy + 0.24],
+      [hx - s * 0.02, hy + 0.2],
+    ]);
+  }
+  // Reahu, the garlands from his mouth.
+  reahu(pen, 0, y0 + 0.66, 0.84, 0.62);
+  // The lotus petals along the foot.
+  lotusBand(pen, -w, w, 0, 0.14);
+}
+
+/** The gilt pediment over the pagoda's door (a cut-out panel `PEDIMENT` big), its foot's middle at the origin, facing −z. */
+export function doorPediment(): Mesh {
+  const m = once('pediment', () => gildMaterial('pagoda pediment', gilded(PEDIMENT.w, PEDIMENT.h, 768, paintPediment, true), { cut: true, bump: 2 }));
+  return litMesh(faces([{ facing: '-z', at: 0, a0: -PEDIMENT.w / 2, a1: PEDIMENT.w / 2, b0: 0, b1: PEDIMENT.h }], 0, 0), m, { night: 0.7, env: 1 }, 'pagoda:pediment');
 }

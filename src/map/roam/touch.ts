@@ -4,8 +4,10 @@ import { steppedRing, steppedShape } from '../ui/shape';
 /**
  * Touch controls while roaming (phones, tablets): a joystick for the left
  * thumb (it appears where the thumb lands, in the lower left of the view;
- * pushed past its ring he runs), Jump and Use buttons for the right thumb,
- * a drag anywhere else on the view to look round, and a pinch to zoom.
+ * pushed past its ring he runs), Jump and Use buttons for the right thumb
+ * (and in the boat a Fish button over Use: "Fish", then "Strike!" at a bite,
+ * roam/_fishing.ts), a drag anywhere else on the view to look round, and a
+ * pinch to zoom.
  *
  * Shown while roaming once the page has seen a touch (or on a touch-first
  * device; `touch=1` in the URL forces them). While they show,
@@ -34,6 +36,9 @@ export class TouchControls {
   private readonly base: HTMLDivElement;
   private readonly knob: HTMLDivElement;
   private readonly useBtn: HTMLButtonElement;
+  /** In the boat: Fish (start fishing), Strike! at a bite (roam/_fishing.ts: `setTouchFish`, `takeTouchFish`). */
+  private readonly fishBtn: HTMLButtonElement;
+  fishHit = false;
   private stickId: number | null = null;
   private readonly origin = { x: 0, y: 0 };
   /** Look fingers: last point per pointer. */
@@ -48,6 +53,7 @@ export class TouchControls {
     this.wrap.innerHTML = `
       <div class="rt-stick"><div class="rt-knob"></div></div>
       <button type="button" class="rt-btn rt-use" data-t-aria="rtUse"><span class="rt-bg"></span><span class="rt-label"></span></button>
+      <button type="button" class="rt-btn rt-fish" data-t-aria="fiFish"><span class="rt-bg"></span>${FISH_ICON}<span class="rt-label"></span></button>
       <button type="button" class="rt-btn rt-jump" data-t-aria="rtJump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label" data-t="rtJump"></span></button>
       <button type="button" class="rt-btn rt-shutter" data-t-aria="rtShutter"><span class="rt-bg"></span><span class="rt-dot"></span></button>
       <button type="button" class="rt-btn rt-close" data-t-aria="rtClose"><span class="rt-bg"></span>${CLOSE_ICON}</button>`;
@@ -62,6 +68,7 @@ export class TouchControls {
     this.base = this.wrap.querySelector('.rt-stick')!;
     this.knob = this.wrap.querySelector('.rt-knob')!;
     this.useBtn = this.wrap.querySelector('.rt-use')!;
+    this.fishBtn = this.wrap.querySelector('.rt-fish')!;
     const jump = this.wrap.querySelector<HTMLButtonElement>('.rt-jump')!;
     const hold = (btn: HTMLButtonElement, down: () => void, up: () => void) => {
       btn.addEventListener('pointerdown', (e) => {
@@ -86,6 +93,11 @@ export class TouchControls {
     hold(
       this.useBtn,
       () => (this.useHit = true),
+      () => {},
+    );
+    hold(
+      this.fishBtn,
+      () => (this.fishHit = true),
       () => {},
     );
     hold(
@@ -186,13 +198,21 @@ export class TouchControls {
     if (label) this.useBtn.querySelector('.rt-label')!.textContent = label;
   }
 
+  /** The Fish button (in the boat): shown with this label ("Fish", "Strike!"), or hidden (null); `strike` lights it up. */
+  setFish(label: string | null, strike = false): void {
+    this.fishBtn.classList.toggle('is-on', !!label);
+    this.fishBtn.classList.toggle('is-strike', strike);
+    if (label) this.fishBtn.querySelector('.rt-label')!.textContent = label;
+    if (!label) this.fishHit = false;
+  }
+
   /** Let go of everything (switching modes, leaving). */
   release(): void {
     this.stickId = null;
     this.stick.x = this.stick.y = 0;
     this.stick.run = false;
     this.fingers.clear();
-    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = false;
+    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = this.fishHit = false;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     this.base.classList.remove('is-on');
     this.rest();
@@ -247,10 +267,24 @@ export function setTouchUse(label: string | null): void {
   active?.setUse(label);
 }
 
+/** The Fish button of the touch controls (the boat sets it: roam/_fishing.ts): its label, or null to hide it; `strike` at a bite. */
+export function setTouchFish(label: string | null, strike = false): void {
+  active?.setFish(label, strike);
+}
+
+/** The Fish button was pressed since the last call (then forgotten). */
+export function takeTouchFish(): boolean {
+  if (!active?.fishHit) return false;
+  active.fishHit = false;
+  return true;
+}
+
 /** Radius of the stick's ring (CSS px). */
 const stickRadius = () => (Math.min(innerWidth, innerHeight) < 500 ? 52 : 62);
 
 const CLOSE_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/></svg>`;
+/** A small fish (16 × 16 pixel art): the Fish button. */
+const FISH_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M5 4h5v1h2v1h1v1h1v2h-1v1h-1v1h-2v1H5v-1H4v-1H3V9H1V8h1V7h1V6h1V5h1zM0 5h2v1H0zM0 10h2v1H0z"/><path fill="#0d1927" d="M11 7h1v1h-1z"/></svg>`;
 const JUMP_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 2h2v1h1v1h1v1h1v1h1v2h-3v6H6V8H3V6h1V5h1V4h1V3h1z"/></svg>`;
 
 let styled = false;
@@ -279,19 +313,28 @@ function injectStyle(): void {
     .rt-use { right: 114px; bottom: 46px; width: auto; min-width: 84px; height: 52px; padding: 0 16px; display: none; color: #ffe07c; white-space: nowrap; font-size: 14px; }
     .rt-use.is-on { display: grid; }
     .rt-use .rt-bg::after { background: rgba(255, 208, 112, 0.8); }
+    /* (the Fish button, over the Use button; at a bite it glows) */
+    .rt-fish { right: 114px; bottom: 112px; width: auto; min-width: 84px; height: 52px; padding: 0 14px; display: none; grid-auto-flow: column; gap: 6px;
+      color: #ffe07c; white-space: nowrap; font-size: 14px; }
+    .rt-fish.is-on { display: grid; }
+    .rt-fish .rt-icon { width: 18px; height: 18px; }
+    .rt-fish .rt-bg::after { background: rgba(255, 208, 112, 0.8); }
+    .rt-fish.is-strike .rt-bg { background: rgba(120, 72, 16, 0.85); box-shadow: 0 0 16px rgba(255, 176, 40, 0.6); }
+    .rt-fish.is-strike .rt-bg::after { background: #ffe07c; }
     .rt-shutter { right: 26px; bottom: 50%; transform: translateY(50%); display: none; }
     .rt-dot { width: 40px; height: 40px; border-radius: 50%; background: #f8f0dc; box-shadow: inset 0 0 0 3px rgba(13, 25, 39, 0.55), 0 0 0 3px rgba(248, 240, 220, 0.5); }
     .rt-shutter.is-down .rt-dot { background: #ffe07c; transform: scale(0.9); }
     .rt.is-camera .rt-shutter { display: grid; }
     .rt-close { left: 24px; top: 24px; width: 52px; height: 52px; display: none; }
     .rt.is-photo .rt-close { display: grid; }
-    .rt.is-photo .rt-stick, .rt.is-photo .rt-jump, .rt.is-photo .rt-use { display: none; }
+    .rt.is-photo .rt-stick, .rt.is-photo .rt-jump, .rt.is-photo .rt-use, .rt.is-photo .rt-fish { display: none; }
     @media (max-width: 500px), (max-height: 500px) {
       .rt-stick::before { left: -52px; top: -52px; width: 104px; height: 104px; }
       .rt-knob { left: -22px; top: -22px; width: 44px; height: 44px; }
       .rt-btn { width: 64px; height: 64px; }
       .rt-jump { right: 18px; bottom: 22px; }
       .rt-use { right: 92px; bottom: 28px; width: auto; height: 46px; }
+      .rt-fish { right: 92px; bottom: 82px; width: auto; height: 46px; }
       .rt-shutter { right: 18px; }
     }`;
   document.head.append(style);

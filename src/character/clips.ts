@@ -1,5 +1,6 @@
 import { JOINTS, SOLE_POINTS, type JointName } from './skeleton';
 import { sampleKeys, type JointPose, type Pose } from './pose';
+import { DEFAULT_FOOD, MEAL, mealPose } from './meals';
 
 /**
  * Procedural animation clips (sheet 3.6 "Action Poses").
@@ -273,7 +274,7 @@ export function landing(k: number): Pose {
 
 // ─── One-shot / looping actions ─────────────────────────────────────────────
 
-export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo' | 'selfie' | 'pray';
+export type ActionName = 'openDoor' | 'interact' | 'lookUp' | 'peek' | 'wave' | 'cheer' | 'photo' | 'selfie' | 'pray' | 'greet' | 'greetHigh' | 'eat' | 'bite' | 'drink';
 
 /**
  * Times in the `pray` action (s from its start): the hat comes off and goes
@@ -469,6 +470,62 @@ const PRAY_KEYS: readonly (readonly [number, Pose])[] = [
   [8.55, PRAY_LIFTR],
   [8.9, PRAY_HAT],
   [9.3, PRAY_STAND],
+];
+
+// ─── Greet: the sampeah standing (the Khmer greeting) ───────────────────────
+// `greet`, about 2.3 s: the hands come up and meet at the chest, flat,
+// fingertips up (the prayer's sampeah arms, PRAY_CHEST: arms move with the
+// chest, so they meet there standing too), the chest and the head bow a
+// little, come up, and the hands go down. `greetHigh`, about 2.7 s, to a
+// monk or an elder: the palms go on up to the face (PRAY_FACE's arms), the
+// head bowed onto the fingertips, and the bow is deeper (the higher the
+// hands, the more respect). Upper body only: the legs keep their stance,
+// and he stands still while it plays. A hand holding a light (the lantern,
+// the torch, the flashlight) keeps it: the right hand alone comes up, flat
+// (the Animator leaves a held arm to its prop).
+/** When (s) in `greet` / `greetHigh` the hands open flat as they come together, and close again on the way down (AngkorExplorer). */
+export const GREET_PALMS = [0.26, 1.62] as const;
+export const GREET_HIGH_PALMS = [0.26, 2.05] as const;
+/** The arms of the sampeah at the chest: palms together, fingertips up. */
+const SAMPEAH_ARMS: Pose = {
+  shoulderL: { rx: -1.08, ry: -0.46, rz: -0.68, px: -0.6, pz: 1.2 }, elbowL: { rx: -0.45 }, wristL: { rx: -1.56, ry: -0.78, rz: 0.17 },
+  shoulderR: { rx: -1.08, ry: 0.46, rz: 0.68, px: 0.6, pz: 1.2 }, elbowR: { rx: -0.45 }, wristR: { rx: -1.56, ry: 0.78, rz: -0.17 },
+};
+/** Standing, the arms down (the idle stance's). */
+const GREET_STAND: Pose = {
+  chest: { rx: -0.02 }, head: { rx: -0.03 },
+  shoulderL: { rx: 0.02, rz: 0.06 }, elbowL: { rx: -0.12 },
+  shoulderR: { rx: 0.02, rz: -0.06 }, elbowR: { rx: -0.12 },
+};
+/** Palms together at the chest, looking at whom he greets. */
+const GREET_CHEST: Pose = { ...SAMPEAH_ARMS, chest: { rx: 0.03 }, neck: { rx: 0.02 }, head: { rx: 0.04 } };
+/** The small bow over the hands: the chest a little, the head more. */
+const GREET_BOW: Pose = { ...SAMPEAH_ARMS, chest: { rx: 0.22 }, neck: { rx: 0.1 }, head: { rx: 0.26 } };
+const GREET_KEYS: readonly (readonly [number, Pose])[] = [
+  [0, GREET_STAND],
+  [0.42, GREET_CHEST],
+  [0.6, GREET_CHEST],
+  [0.92, GREET_BOW],
+  [1.12, GREET_BOW],
+  [1.4, GREET_CHEST],
+  [1.85, GREET_STAND],
+];
+/** The sampeah raised to the face, the head bowed onto the fingertips. */
+const FACE_ARMS: Pose = {
+  shoulderL: { rx: -1.46, ry: -0.37, rz: -0.67, px: -0.6, py: 0.6, pz: 1.5 }, elbowL: { rx: -0.68 }, wristL: { rx: -0.58, ry: -0.54, rz: 0.55 },
+  shoulderR: { rx: -1.46, ry: 0.37, rz: 0.67, px: 0.6, py: 0.6, pz: 1.5 }, elbowR: { rx: -0.68 }, wristR: { rx: -0.58, ry: 0.54, rz: -0.55 },
+};
+const GREET_FACE: Pose = { ...FACE_ARMS, chest: { rx: 0.04 }, neck: { rx: 0.08 }, head: { rx: 0.2 } };
+const GREET_FACE_BOW: Pose = { ...FACE_ARMS, chest: { rx: 0.36 }, neck: { rx: 0.12 }, head: { rx: 0.26 } };
+const GREET_HIGH_KEYS: readonly (readonly [number, Pose])[] = [
+  [0, GREET_STAND],
+  [0.4, GREET_CHEST],
+  [0.72, GREET_FACE],
+  [1.05, GREET_FACE_BOW],
+  [1.38, GREET_FACE_BOW],
+  [1.7, GREET_FACE],
+  [1.95, GREET_CHEST],
+  [2.3, GREET_STAND],
 ];
 
 /**
@@ -715,6 +772,56 @@ export const ACTIONS: Record<ActionName, ActionDef> = {
     joints: FULL_BODY,
     allowLocomotion: false,
     pose: (t) => flowKeys(t, PRAY_KEYS),
+  },
+  // The sampeah standing (see GREET_KEYS): the map's F near people (roam/_greet.ts).
+  greet: {
+    duration: 2.25,
+    loop: false,
+    fadeIn: 0.2,
+    fadeOut: 0.35,
+    joints: UPPER_BODY,
+    allowLocomotion: false,
+    pose: (t) => flowKeys(t, GREET_KEYS),
+  },
+  // …raised to the face, bowing deeper: to a monk or an elder.
+  greetHigh: {
+    duration: 2.7,
+    loop: false,
+    fadeIn: 0.2,
+    fadeOut: 0.35,
+    joints: UPPER_BODY,
+    allowLocomotion: false,
+    pose: (t) => flowKeys(t, GREET_HIGH_KEYS),
+  },
+  // Eating and drinking what he holds (meals.ts; AngkorExplorer.holdFood / consume): the head and chest
+  // here (the Animator passes the food: a bottle tips his head back), the hands by the Animator's IK.
+  // He stands still; sitting, the rest posture keeps his body (only the neck, the head and the arms eat).
+  eat: {
+    duration: MEAL.eat.duration,
+    loop: false,
+    fadeIn: MEAL.eat.fadeIn,
+    fadeOut: MEAL.eat.fadeOut,
+    joints: ['chest', 'neck', 'head'],
+    allowLocomotion: false,
+    pose: (t) => mealPose('eat', t, DEFAULT_FOOD.eat),
+  },
+  bite: {
+    duration: MEAL.bite.duration,
+    loop: false,
+    fadeIn: MEAL.bite.fadeIn,
+    fadeOut: MEAL.bite.fadeOut,
+    joints: ['chest', 'neck', 'head'],
+    allowLocomotion: false,
+    pose: (t) => mealPose('bite', t, DEFAULT_FOOD.bite),
+  },
+  drink: {
+    duration: MEAL.drink.duration,
+    loop: false,
+    fadeIn: MEAL.drink.fadeIn,
+    fadeOut: MEAL.drink.fadeOut,
+    joints: ['chest', 'neck', 'head'],
+    allowLocomotion: false,
+    pose: (t) => mealPose('drink', t, DEFAULT_FOOD.drink),
   },
 };
 

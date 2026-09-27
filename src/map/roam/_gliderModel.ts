@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Matrix3, Mesh, Quaternion, Vector3, type InstancedMesh } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Euler, Group, LineBasicMaterial, LineSegments, Matrix3, Mesh, Quaternion, Vector3, type InstancedMesh, type Material } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -524,6 +524,16 @@ export class Glider {
 
   hide(): void {
     this.object.visible = false;
+  }
+
+  /**
+   * The glider as it was last posed, in its own space (without the hang
+   * point, turn and scale `pose` puts on it): its block families, its wires
+   * (pairs of points) and its flag panels. The gliders parked on the ramps
+   * are drawn from it, all together (_parkedGliders.ts).
+   */
+  shape(): { families: InstancedMesh[]; wires: Float32Array; wireMaterial: LineBasicMaterial; flags: BufferGeometry; flagMaterial: Material } {
+    return { families: this.families.map((f) => f.mesh), wires: this.linePos, wireMaterial: this.lines.material, flags: this.flags.geometry, flagMaterial: this.flags.material };
   }
 
   /** Where a wing-tip lamp is now (world, with `object` left untransformed): `side` 1 his left (red), −1 his right (green). */

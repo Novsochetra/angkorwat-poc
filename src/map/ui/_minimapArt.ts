@@ -2,7 +2,9 @@
  * Little pictures of the mini-map and the big map: the temple icon, the
  * hang glider of a take-off ramp and the hot air balloon (pixel art, as
  * canvas sprites and as SVG), the explorer's arrow, the boat, the rim arrow
- * and the beacon, as paths drawn round (0, 0) pointing up.
+ * and the beacon, as paths drawn round (0, 0) pointing up. The villages'
+ * and holy places' pictures are in _minimapSpots.ts (with `outlined`,
+ * `badgeSprite` and `pixelSvg` from here).
  */
 
 /** A temple (three towers over a gallery with a door), lit from the left. `.` = empty. */
@@ -84,7 +86,7 @@ const BALLOON_PAL: Record<string, string> = {
 };
 
 /** Pixel art with a one-pixel dark outline round every colour but the `bare` ones: rows of colour keys (`.` empty, `o` outline). */
-function outlined(art: string[], bare = ''): string[] {
+export function outlined(art: string[], bare = ''): string[] {
   const h = art.length + 2;
   const w = art[0].length + 2;
   const at = (x: number, y: number) => art[y - 1]?.[x - 1] ?? '.';
@@ -183,8 +185,32 @@ export function balloonSprite(k: number, gold = false): HTMLCanvasElement {
   return cv;
 }
 
+/**
+ * Pixel art on a small round badge, as the ramps and the balloon have it: dark, with a cream ring
+ * (a gold ring and a warm badge: the target), `k` device px per pixel (the new places, _minimapSpots.ts).
+ */
+export function badgeSprite(rows: string[], pal: Record<string, string>, k: number, gold = false): HTMLCanvasElement {
+  const w = rows[0].length * k;
+  const h = rows.length * k;
+  const ring = gold ? 1.6 * k : Math.max(1, 0.9 * k);
+  const r = Math.max(w, h) / 2 + k;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = Math.ceil(2 * r + ring);
+  const c = cv.width / 2;
+  const g = cv.getContext('2d')!;
+  g.beginPath();
+  g.arc(c, c, r, 0, Math.PI * 2);
+  g.fillStyle = gold ? 'rgba(58, 38, 8, 0.94)' : 'rgba(10, 18, 30, 0.86)';
+  g.fill();
+  g.lineWidth = ring;
+  g.strokeStyle = gold ? '#ffd54a' : 'rgba(255, 236, 200, 0.72)';
+  g.stroke();
+  paint(g, rows, pal, k, Math.round(c - w / 2), Math.round(c - h / 2));
+  return cv;
+}
+
 /** Pixel art as SVG: one rect per run of a colour, a group per palette (with its class). */
-function pixelSvg(rows: string[], cls: string, looks: [Record<string, string>, string][]): string {
+export function pixelSvg(rows: string[], cls: string, looks: [Record<string, string>, string][]): string {
   const rects = (pal: Record<string, string>, extra: string) => {
     let s = '';
     rows.forEach((row, y) => {

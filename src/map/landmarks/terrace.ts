@@ -714,17 +714,18 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
       const tones = hash3(x * 2, z * 2, 6, 79) < 0.6 ? FLOWER_PINK : FLOWER_ORANGE;
       b.box(x + 0.25, gy + 1.25, z + 0.25, 0.5, 0.5, 0.5, pick(tones, hash3(x * 2, z * 2, 7, 79)), 'mapLeaf', { src });
     }
-  // The stupas: weathered stone, sculpted (sacred/stupa.ts), each on a low
-  // stone plinth, their fronts to the road; offerings at the foot of the
-  // one by the road, where the explorer kneels on the lawn west of it
-  // (roam/_worship.ts `terrace-garden-stupa`).
+  // The stupas: weathered stone, sculpted (sacred/stupa.ts: Khmer towers,
+  // the one by the road with the Bayon's four faces, as Jayavarman VII
+  // built Ta Prohm), each on a low stone plinth, their fronts to the road;
+  // offerings at the foot of the one by the road, where the explorer
+  // kneels on the lawn west of it (roam/_worship.ts `terrace-garden-stupa`).
   for (const [n, [x, z]] of stupas.entries()) {
     const h = STUPA.plinth / 2;
     if (!onGarden(x, z) || !onGarden(x - h, z - h)) continue;
     const y = gy + 1;
     d.fill(x - h, y, z - h, x + h, y + 0.5, z + h, TP.light, { src });
     const west = -Math.PI / 2;
-    shrines.place(pad, stupa({ height: STUPA.height, look: 'stone' }), x, y + 0.5, z, west);
+    shrines.place(pad, stupa({ height: STUPA.height, look: 'stone', form: n === 0 ? 'faces' : 'tower' }), x, y + 0.5, z, west);
     // (the whole plinth: the explorer keeps off it and its offerings)
     shrines.solid(pad, x, y + 1.75, z, STUPA.plinth, 3.5, STUPA.plinth);
     if (n > 0) continue;

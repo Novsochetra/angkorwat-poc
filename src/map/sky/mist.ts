@@ -1,6 +1,7 @@
-import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGFormat, ShaderMaterial, Vector4 } from 'three';
+import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGBAFormat, ShaderMaterial, Vector4 } from 'three';
 import type { HeightField } from '../heightfield';
 import { MAP_BOUNDS, PLACES } from '../layout';
+import { pastLand } from '../terrain/views';
 import { hazeUniforms, WIND } from './haze';
 
 /**
@@ -8,9 +9,13 @@ import { hazeUniforms, WIND } from './haze';
  *
  * The land map is a small texture over the map (4 m texels): r = ground
  * height (m), g = how much mist may lie there (1 = free, 0 = keep clear: the
- * road, the places). Mist fades out where the ground comes up to it, so it
- * never cuts the land with a hard line. Outside the map the ground reads as
- * far below and the mist is free — a sea of cloud.
+ * road, the places), b = metres past the end of the land (where it has sunk
+ * into the mist all the way, past the roaming area: terrain/views.ts
+ * `pastLand`; negative inside), so the sea of mist and the edge mist
+ * (sky/haze.ts `hazeInside`) follow the land's outline, not the map's box.
+ * Mist fades out where the ground comes up to it, so it never cuts the land
+ * with a hard line. Outside the map the ground reads as far below and the
+ * mist is free — a sea of cloud.
  */
 
 const TEXEL = 4;
@@ -65,12 +70,15 @@ export function buildLandMap(field: HeightField): LandMap {
   for (const p of field.paths) for (let s = 0; s < p.samples.length; s += 3) clear(p.samples[s].x, p.samples[s].z, 8, 30, 0.2);
   for (const p of PLACES) clear(p.x, p.z, Math.max(...p.pad) * 0.8, Math.max(...p.pad) + 40, 0);
   for (const p of PLACES) clear(p.anchor[0], p.anchor[2], 10, 45, 0);
-  const data = new Uint16Array(w * d * 2);
-  for (let c = 0; c < w * d; c++) {
-    data[c * 2] = DataUtils.toHalfFloat(height[c]);
-    data[c * 2 + 1] = DataUtils.toHalfFloat(allow[c]);
-  }
-  const texture = new DataTexture(data, w, d, RGFormat, HalfFloatType);
+  const data = new Uint16Array(w * d * 4);
+  for (let k = 0; k < d; k++)
+    for (let i = 0; i < w; i++) {
+      const c = i + k * w;
+      data[c * 4] = DataUtils.toHalfFloat(height[c]);
+      data[c * 4 + 1] = DataUtils.toHalfFloat(allow[c]);
+      data[c * 4 + 2] = DataUtils.toHalfFloat(pastLand(MAP_BOUNDS.x0 + (i + 0.5) * TEXEL, MAP_BOUNDS.z0 + (k + 0.5) * TEXEL));
+    }
+  const texture = new DataTexture(data, w, d, RGBAFormat, HalfFloatType);
   texture.magFilter = texture.minFilter = LinearFilter;
   texture.needsUpdate = true;
   texture.name = 'mist land map';
@@ -99,11 +107,13 @@ vec2 landAt(vec2 p) {
   v.y = mix(v.y, 1.0, smoothstep(0.0, 40.0, out_));
   return v;
 }
-// Metres outside the land's edges (negative inside). The front edge (under the
-// overview camera) counts only when front = 1 (seen when roaming looks south).
+// Metres outside the land's edges (negative inside): past where it has sunk
+// into the mist (the land map's b), or outside the map. The front edge (under
+// the overview camera) counts only when front = 1 (seen when roaming looks south).
 float outsideLand(vec2 p, float front) {
   vec2 uv = (p - hazeLandBounds.xy) * hazeLandBounds.zw;
   float o = max(max(-uv.x / hazeLandBounds.z, (uv.x - 1.0) / hazeLandBounds.z), -uv.y / hazeLandBounds.w);
+  o = max(o, texture2D(hazeLand, clamp(uv, vec2(0.001), vec2(0.999))).b);
   return front > 0.5 ? max(o, (uv.y - 1.0) / hazeLandBounds.w) : o;
 }
 `;

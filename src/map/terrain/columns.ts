@@ -95,6 +95,8 @@ export class ColumnMaker {
   /** Top colour and family of a cell. */
   private topColor(c: number, i: number, k: number, x: number, z: number, h: number, lip: boolean): [number, VoxelMaterialKey] {
     const s = this.f.surface[c];
+    // (the row as the map was first made: heightfield.ts `row0`)
+    k -= this.f.row0;
     const r = hash3(i, h, k, 7);
     switch (s) {
       case SURFACE.grass: {
@@ -225,6 +227,7 @@ export class ColumnMaker {
     const f = this.f;
     const { nx, nz, height: H } = f;
     const c = i + k * nx;
+    const kh = k - f.row0;
     const h = H[c];
     const [x, z] = f.cellCenter(i, k);
     // Neighbours on sides some camera sees (a side no camera sees: no wall).
@@ -254,7 +257,7 @@ export class ColumnMaker {
     const oE = shapeE && h - hE >= 2 * CELL && this.hAt(i + 1, k - 1) < h && this.hAt(i + 1, k + 1) < h ? over : 0;
     const oW = shapeW && h - hW >= 2 * CELL && this.hAt(i - 1, k - 1) < h && this.hAt(i - 1, k + 1) < h ? over : 0;
     const oN = shapeN && h - hN >= 2 * CELL && this.hAt(i - 1, k - 1) < h && this.hAt(i + 1, k - 1) < h ? over : 0;
-    let shade = 0.96 + hash3(i, h, k, 17) * 0.08;
+    let shade = 0.96 + hash3(i, h, kh, 17) * 0.08;
     // Ground at the foot of a cliff lies in its shade.
     const rise = k > 0 ? H[c - nx] - h : 0;
     if (rise >= 2 * CELL) shade *= 0.86;
@@ -273,9 +276,9 @@ export class ColumnMaker {
     // cameras' view, and a block across it just keeps a flat north face.)
     const w = Strata.warp(x, z);
     const grassy = s === SURFACE.grass && natural;
-    const rv = hash3(i, 3, k, 31);
+    const rv = hash3(i, 3, kh, 31);
     // (longer on tall cliffs; never below the foot band)
-    const vine = grassy && edge && rv < 0.24 ? Math.min(CELL + Math.floor(hash3(i, 4, k, 31) * 5) * CELL, Math.max(0, h - (lip ? lowSEW : low) - 3 * CELL)) : 0;
+    const vine = grassy && edge && rv < 0.24 ? Math.min(CELL + Math.floor(hash3(i, 4, kh, 31) * 5) * CELL, Math.max(0, h - (lip ? lowSEW : low) - 3 * CELL)) : 0;
     const lipMoss = grassy && edge && rv >= 0.24 && rv < 0.55 ? (rv < 0.4 ? 1 : 2) : 0;
     const wallTop = h - CELL;
     const splits = this.splits;
@@ -295,8 +298,8 @@ export class ColumnMaker {
     const wetFall = this.wet[c] === 1;
     const footH = 3 + fbm(x / 15, z / 15, 44, 2) * 6;
     const [pS, gS, tS] = ColumnMaker.pillar(i, 101);
-    const [pE, gE, tE] = ColumnMaker.pillar(k, 102);
-    const [pW, gW, tW] = ColumnMaker.pillar(k, 103);
+    const [pE, gE, tE] = ColumnMaker.pillar(kh, 102);
+    const [pW, gW, tW] = ColumnMaker.pillar(kh, 103);
     const [pN, gN, tN] = ColumnMaker.pillar(i, 104);
     // The tint of the pillar on the side that shows most.
     const tint = hS < h ? tS : hE < h ? tE : hW < h ? tW : tN;
@@ -309,7 +312,7 @@ export class ColumnMaker {
       const mid = (y0 + y1) / 2;
       const bi = this.strata.indexAt(mid, w);
       const band = this.strata.bands[bi];
-      const rr = hash3(i, Math.round(y0 * 2), k, 13);
+      const rr = hash3(i, Math.round(y0 * 2), kh, 13);
       let col: number;
       let m: VoxelMaterialKey = 'mapRock';
       if (wetFall || (wl > NONE && mid < wl + 1.5)) col = P.pick(rr < 0.2 ? P.MOSS_ROCK : P.WET, rr);
@@ -321,7 +324,7 @@ export class ColumnMaker {
       } else if (y0 >= wallTop - lipMoss) {
         col = P.pick(P.LIP, rr);
         m = 'mapGrass';
-      } else if (mid < low + footH) col = P.pick(rr < 0.45 ? P.MOSS_ROCK : P.FOOT, hash3(i, bi, k, 14));
+      } else if (mid < low + footH) col = P.pick(rr < 0.45 ? P.MOSS_ROCK : P.FOOT, hash3(i, bi, kh, 14));
       else col = P.pick(P.STRATA_KINDS[band.kind], rr);
 
       // Shape the face above each neighbour's top: pillars, grooves, ledges;
@@ -359,6 +362,7 @@ export class ColumnMaker {
     const { nx, height: H } = f;
     const src = this.srcFar;
     const c = i + k * nx;
+    const kh = k - f.row0;
     const h = H[c];
     const size = g * CELL;
     const x = f.x0 + i * CELL + size / 2;
@@ -376,7 +380,7 @@ export class ColumnMaker {
     const [color, mat] = this.topColor(c, i, k, x, z, h, h - lowSEW >= 2 * CELL);
     const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0) | (hN < h ? 32 : 0);
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
-    b.span(x - size / 2, bottom, z - size / 2, x + size / 2, h, z + size / 2, color, mat, { open, shade: 0.96 + hash3(i, h, k, 17) * 0.08, src });
+    b.span(x - size / 2, bottom, z - size / 2, x + size / 2, h, z + size / 2, color, mat, { open, shade: 0.96 + hash3(i, h, kh, 17) * 0.08, src });
     for (let a = k; a < Math.min(k + g, f.nz); a++) this.floor.fill(low >= h - CELL ? bottom : low - 1, i + a * nx, i + Math.min(g, nx - i) + a * nx);
     if (low >= h - CELL) return;
     const w = Strata.warp(x, z);
@@ -393,7 +397,7 @@ export class ColumnMaker {
       while (y1 - y0 < minH && n + 1 < splits.length) y1 = splits[++n];
       const mid = (y0 + y1) / 2;
       const bi = this.strata.indexAt(mid, w);
-      const rr = hash3(i, Math.round(y0 * 2), k, 13);
+      const rr = hash3(i, Math.round(y0 * 2), kh, 13);
       const col = mid < low + footH ? P.pick(rr < 0.45 ? P.MOSS_ROCK : P.FOOT, rr) : P.pick(P.STRATA_KINDS[this.strata.bands[bi].kind], rr);
       const sh = (0.8 + 0.2 * Math.min(1, (mid - low) / 14)) * (0.95 + rr * 0.1);
       const op = (hE < y1 ? 1 : 0) | (hW < y1 ? 2 : 0) | (hS < y1 ? 16 : 0) | (hN < y1 ? 32 : 0);

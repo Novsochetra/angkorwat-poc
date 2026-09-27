@@ -10,7 +10,10 @@ import type { SoundEngine } from './engine';
  * Only a handful of voices: the four falls loudest at the ears each get one
  * (a voice fades out and over to another fall when the ears move on), the
  * other falls share one soft "bed"; the two nearest rivers each get a
- * babbling voice, and the nearest one scatters bubbly droplets.
+ * babbling voice, and the nearest one scatters bubbly droplets. Falls one
+ * after another down a river (a cascade: the next lip within `CASCADE` m)
+ * are one fall, as tall as all of them, from the first lip to the last pool:
+ * however the land steps a stream down a hillside, it stays a few voices.
  *
  *   fall:  roar loop ─────────────────┬─ air ─ level ─ pan ─ water bus (+ reverb, more when far)
  *          splash crackle (close up) ─┘   (air: a low-pass, darker far off)
@@ -60,6 +63,8 @@ const LEVEL = {
   wash: 0.35,
   drop: 0.9,
 };
+/** Falls of one river whose lips are closer than this (m) are one cascade. */
+const CASCADE = 14;
 /** How often the voices follow the ears (s), and how long a voice takes to fade over to another fall (s). */
 const EVERY = 1 / 15;
 const SWAP = 0.45;
@@ -338,13 +343,25 @@ export class Water {
 
   setWorld(falls: readonly Waterfall[], rivers: readonly { samples: readonly RiverSample[] }[]): void {
     if (this.falls.length || this.rivers.length) return;
-    this.falls = falls.map((f) => ({
+    // (a cascade is one fall: from the first lip down to the last one's pool)
+    const merged: (Waterfall & { fx: number; fz: number })[] = [];
+    for (const f of falls) {
+      const prev = merged[merged.length - 1];
+      const foot = { fx: f.x + f.dir[0] * 3, fz: f.z + f.dir[1] * 3 };
+      if (prev && prev.river === f.river && Math.hypot(f.x - prev.fx, f.z - prev.fz) < CASCADE) {
+        prev.bottom = Math.min(prev.bottom, f.bottom);
+        prev.width = Math.max(prev.width, f.width);
+        prev.fx = foot.fx;
+        prev.fz = foot.fz;
+      } else merged.push({ ...f, ...foot });
+    }
+    this.falls = merged.map((f) => ({
       x: f.x,
       z: f.z,
       top: f.top,
       bottom: f.bottom,
-      fx: f.x + f.dir[0] * 3,
-      fz: f.z + f.dir[1] * 3,
+      fx: f.fx,
+      fz: f.fz,
       width: f.width,
       strength: Math.min(2, Math.max(0.35, Math.sqrt(((f.top - f.bottom) / 12) * (f.width / 8)))),
     }));

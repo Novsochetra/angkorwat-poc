@@ -4,19 +4,20 @@ import { F, FIG, type HeadStyle } from './_buddhaFrame';
 
 /**
  * The Buddha's head (figure space, _buddhaFrame.ts): the neck with its three
- * folds, the face, the long ears, the curls, the ushnisha and — on a pagoda
- * Buddha — the flame (rasmi) rising from it.
+ * folds, the face, the long ears, the curls and the ushnisha with a lotus
+ * bud on top.
  *
- * Two faces, after the Buddhas Cambodians pray to:
+ * Two faces, after the Buddhas Cambodians pray to, both Khmer (Angkorian):
+ * the broad, square face, the brows joined in one raised line, full lips
+ * with the gentle Angkor smile, small curls, a conical ushnisha ending in a
+ * lotus bud — never the tall flame (rasmi) and slim oval face of Thai
+ * Buddhas.
  *
- * - `pagoda`: the gilded Buddha of today's pagodas (Wat Ounalom, Wat Preah
- *   Prom Rath): an oval face, brows in long arches that meet over a straight
- *   nose, heavy lids half closed looking down, a small smiling mouth, tight
- *   snail-shell curls, a round ushnisha and a tall slim flame.
- * - `angkor`: the naga Buddha of the Bayon's time: a broader, squarer face,
- *   eyes closed, one raised ridge for the brows, the wide gentle Bayon smile,
- *   a diadem over the brow, pointed ear jewels, and a cone of curls ending in
- *   a lotus bud.
+ * - `pagoda`: the Buddha of the pagodas, as the Khmer carve him: the eyes
+ *   lowered under heavy lids (painted dark in gilt), a cord of beads where
+ *   the hair meets the brow, the long plain ear lobes.
+ * - `angkor`: the naga Buddha of the Bayon's time: the eyes closed, a
+ *   diadem over the brow, pointed ear jewels.
  *
  * The head is one shape to the statue's sculpt (so a point far from the
  * face skips all its parts), with its colours painted on: hair, flame,
@@ -56,27 +57,28 @@ interface Face {
 }
 
 const FACES: Record<HeadStyle, Face> = {
+  // (the Angkorian face, as the naga Buddha's; the eyes lowered, not closed)
   pagoda: {
     loft: [
       [0.408, 0.016, 0.062, 2, 0.008],
-      [0.414, 0.027, 0.073, 2, 0.01],
-      [0.422, 0.036, 0.078, 2.1, 0.012],
-      [0.432, 0.044, 0.081, 2.2, 0.014],
-      [0.444, 0.051, 0.082, 2.3, 0.016],
-      [0.458, 0.057, 0.082, 2.45, 0.02],
-      [0.474, 0.062, 0.082, 2.55, 0.03],
-      [0.49, 0.066, 0.082, 2.6, 0.045],
-      [0.508, 0.068, 0.083, 2.6, 0.06],
-      [0.528, 0.067, 0.083, 2.4, 0.066],
-      [0.548, 0.064, 0.078, 2.2, 0.068],
-      [0.568, 0.057, 0.067, 2.1, 0.066],
-      [0.586, 0.045, 0.05, 2, 0.05],
+      [0.414, 0.028, 0.072, 2.1, 0.01],
+      [0.422, 0.038, 0.077, 2.3, 0.012],
+      [0.432, 0.047, 0.08, 2.5, 0.014],
+      [0.444, 0.055, 0.081, 2.6, 0.016],
+      [0.458, 0.061, 0.081, 2.7, 0.02],
+      [0.474, 0.066, 0.081, 2.8, 0.03],
+      [0.49, 0.069, 0.081, 2.8, 0.045],
+      [0.508, 0.071, 0.082, 2.7, 0.06],
+      [0.528, 0.07, 0.082, 2.5, 0.066],
+      [0.548, 0.067, 0.078, 2.3, 0.068],
+      [0.568, 0.06, 0.067, 2.1, 0.066],
+      [0.586, 0.047, 0.05, 2, 0.05],
     ],
-    chin: 0.02,
-    mouth: 0.0165,
-    smile: 0.0018,
+    chin: 0.024,
+    mouth: 0.021,
+    smile: 0.0026,
     eye: 0.0174,
-    slant: 7 * DEG,
+    slant: 4 * DEG,
     open: 0.0006,
   },
   angkor: {
@@ -107,36 +109,36 @@ const FACES: Record<HeadStyle, Face> = {
 /** The skull (under the curls): centre and radii. */
 const SKULL: { c: V3; r: V3 } = { c: [0, 0.512, -0.014], r: [0.072, 0.086, 0.082] };
 
-/** The pagoda Buddha's ushnisha, a round mound on the crown: centre and radii (Angkor: its cone's axis at z = c[2]). */
-const USH: { c: V3; r: V3 } = { c: [0, FIG.crown - 0.006, -0.016], r: [0.041, 0.035, 0.041] };
+/** The ushnisha, a cone on the crown: its axis at z = c[2]. */
+const USH: { c: V3 } = { c: [0, FIG.crown - 0.006, -0.016] };
 
 export function addHead(s: Sculpt, style: HeadStyle): void {
   const f = FACES[style];
-  const top = style === 'pagoda' ? FIG.crown + 0.2 : FIG.crown + 0.11;
-  // The fine zone: from across the plain neck up over the ushnisha (and flame).
+  const top = FIG.crown + 0.11;
+  // The fine zone: from across the plain neck up over the ushnisha and its bud.
   s.fine([-0.115, FIG.neck[1] + 0.01, -0.115, 0.115, top, 0.125]);
 
   // ── Neck and the head's masses (and the ushnisha: the surface the curls sit on) ──
-  const face = headMass(f, style, false);
-  const base = headMass(f, style, true);
+  const face = headMass(f, false);
+  const base = headMass(f, true);
   const c = new Clay();
   c.add(base, 0);
   c.group(neckFolds());
 
   // ── The face: nose, eyes and brows, mouth (made on his left side, mirrored) ──
   const paints: [Shape, string][] = [];
-  const nose = noseShape(face, style);
+  const nose = noseShape(face);
   const front = union([face, nose], 0.005);
   const features = new Clay();
   features.add(nose, 0.005);
-  features.group(eyes(front, f, style, paints));
-  features.group(mouth(front, f, style, paints));
+  features.group(eyes(front, f, paints));
+  features.group(mouth(front, f, paints));
   c.group(features, true);
 
   // ── Ears ──
   c.group(ears(style, paints), true);
 
-  // ── Curls, and the flame or the diadem ──
+  // ── Curls, the ushnisha and its lotus bud, the cord or the diadem ──
   const crown = new Clay();
   if (style === 'pagoda') pagodaCrown(crown, base, paints);
   else angkorCrown(crown, base, paints);
@@ -153,15 +155,15 @@ export function addHead(s: Sculpt, style: HeadStyle): void {
  * ushnisha: the surface the curls sit on). Written out as one function: it
  * is measured at every point the statue's mesh asks about.
  */
-function headMass(f: Face, style: HeadStyle, crown: boolean): Shape {
+function headMass(f: Face, crown: boolean): Shape {
   const neck = neckShape([0, FIG.neck[1] - 0.015, -0.026], [0, 0.44, -0.008], 0.05, 0.046);
   const face = loft(f.loft, -0.004);
   const [sx, sy, sz] = SKULL.c;
   const [srx, sry, srz] = SKULL.r;
   const chinC: V3 = [0, Y.chin + 0.006, 0.064];
   const chinR: V3 = [f.chin, 0.012, 0.015];
-  const ush = style === 'pagoda' ? upright(USH.c, USH.r) : cone([0, FIG.crown - 0.016, USH.c[2]], [0, FIG.crown + 0.046, USH.c[2]], 0.041, 0.013);
-  const ushK = style === 'pagoda' ? 0.016 : 0.01;
+  const ush = cone([0, FIG.crown - 0.016, USH.c[2]], [0, FIG.crown + 0.046, USH.c[2]], 0.041, 0.013);
+  const ushK = 0.01;
   const ushLow = ush.box[1] - ushK;
   const faceBox = face.box;
   const chinBox: Box = [chinC[0] - chinR[0], chinC[1] - chinR[1], chinC[2] - chinR[2], chinC[0] + chinR[0], chinC[1] + chinR[1], chinC[2] + chinR[2]];
@@ -212,13 +214,6 @@ function neckShape(a: V3, b: V3, ra: number, rb: number): Shape {
     },
     box: [ax - ra, ay - ra, Math.min(az, b[2]) - ra, ax + ra, b[1] + rb, Math.max(az, b[2]) + ra],
   };
-}
-
-/** An ellipsoid not turned (its axes along x, y, z). */
-function upright(c: V3, r: V3): Shape {
-  const [cx, cy, cz] = c;
-  const [rx, ry, rz] = r;
-  return { d: (x, y, z) => ellD(x - cx, y - cy, z - cz, rx, ry, rz), box: [cx - rx, cy - ry, cz - rz, cx + rx, cy + ry, cz + rz] };
 }
 
 /** An upright ellipsoid's distance (a close bound near its surface) at a point relative to its centre. */
@@ -646,20 +641,19 @@ function neckFolds(): Clay {
 
 // ── Nose ────────────────────────────────────────────────────────────────
 
-/** A straight nose: the bridge down from the brows, the tip, small wings. */
-function noseShape(mass: Shape, style: HeadStyle): Shape {
-  const long = style === 'pagoda' ? 0.0185 : 0.0165;
+/** A straight nose, broad as the Khmer carve it: the bridge down from the brows, the tip, small wings. */
+function noseShape(mass: Shape): Shape {
+  const long = 0.0165;
   const rootY = Y.brow - 0.009;
   const root: V3 = [0, rootY, frontZ(mass, 0, rootY) - 0.003];
   const tipY = Y.nose + 0.0055;
   const tip: V3 = [0, tipY, frontZ(mass, 0, tipY) + long - 0.006];
-  const wide = style === 'angkor';
   return union(
     [
-      cone(root, tip, wide ? 0.0062 : 0.0055, wide ? 0.0064 : 0.0056),
-      ell([0, tipY - 0.0012, tip[2] - 0.0016], [wide ? 0.0066 : 0.0058, 0.006, 0.0056]),
+      cone(root, tip, 0.0062, 0.0064),
+      ell([0, tipY - 0.0012, tip[2] - 0.0016], [0.0066, 0.006, 0.0056]),
       // (the wings: low, flat and set back, blended in)
-      mirrorX(ell([wide ? 0.0112 : 0.0094, Y.nose + 0.0026, tip[2] - 0.0108], [0.0062, 0.0046, 0.0066], turn(0.4, 0, 0))),
+      mirrorX(ell([0.0112, Y.nose + 0.0026, tip[2] - 0.0108], [0.0062, 0.0046, 0.0066], turn(0.4, 0, 0))),
     ],
     0.0075,
   );
@@ -671,9 +665,9 @@ function noseShape(mass: Shape, style: HeadStyle): Shape {
  * His left eye (a mirrored group): a broad shallow socket, the heavy upper
  * lid half closed and looking down, the dark crescent under its edge (on the
  * Angkor Buddha closed: only a fine line), the lower lid, and the brow's
- * long arch.
+ * long arch, joined to the other over the nose in one line.
  */
-function eyes(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][]): Clay {
+function eyes(face: Shape, f: Face, paints: [Shape, string][]): Clay {
   const g = new Clay();
   const ex = 0.0285;
   const zf = frontZ(face, ex, Y.eye);
@@ -687,10 +681,10 @@ function eyes(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][])
   g.carve(ell(at(0, -0.0071, 0.0006 + open), [f.eye * 0.9, 0.0026 + open, 0.004], R), 0.004);
   paints.push([mirrorX(ell(at(0, -0.0071, -0.004), [f.eye * 0.84, 0.002 + open * 1.5, 0.014], R)), 'eye']);
 
-  // Brows: long high arches from the nose's root out over the eyes (Angkor: one raised ridge across).
+  // Brows: one raised ridge across the nose's root, arching out over the eyes (as Angkor carves them).
   const pts: V3[] = [];
   const n = 14;
-  const x0 = style === 'angkor' ? -0.006 : 0.0055;
+  const x0 = -0.006;
   const x1 = 0.057;
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -699,10 +693,8 @@ function eyes(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][])
     const y = Y.brow - 0.0058 + 0.001 * u + (u > 0 ? 0.0122 * Math.sin(Math.PI * Math.pow(u, 0.85)) : 0.003 * u);
     pts.push([x, y, frontZ(face, x, y) - 0.0011]);
   }
-  const r = pts.map((_p, i) => (style === 'angkor' ? 0.0034 : 0.003) * (1 - 0.45 * (i / n) ** 2));
+  const r = pts.map((_p, i) => 0.0034 * (1 - 0.45 * (i / n) ** 2));
   g.add(tubeX(pts.map((p) => [p[0], p[1], p[2] - 0.0014] as V3), r), 0.004);
-  // (the pagoda Buddha's brows painted: a fine line along the ridge, thinning to its ends; the paint's soft edge keeps it smooth)
-  if (style === 'pagoda') paints.push([mirrorX(tubeX(pts.slice(0, -1), r.slice(0, -1).map((v) => v * 0.45 + 0.0006))), 'brow']);
   return g;
 }
 
@@ -713,10 +705,11 @@ function eyes(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][])
  * line between them rising to the corners in a gentle smile, the bow's dip
  * over the middle; the dip under the lower lip over the chin.
  */
-function mouth(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][]): Clay {
+function mouth(face: Shape, f: Face, paints: [Shape, string][]): Clay {
   const g = new Clay();
   const w = f.mouth;
-  const full = style === 'angkor' ? 1.18 : 1;
+  // (full lips, as the Khmer carve them)
+  const full = 1.18;
   const zAt = (x: number, y: number) => frontZ(face, x, y);
   const zm = zAt(0, Y.mouth);
   // Both lips as one soft mound, split by the line between them.
@@ -730,7 +723,7 @@ function mouth(face: Shape, f: Face, style: HeadStyle, paints: [Shape, string][]
     line.push([x, Y.mouth + f.smile * u * u + 0.0003, zm + 0.0026 - 0.0042 * u * u]);
   }
   g.carve(chain(line, 0.0017), 0.0026);
-  g.carve(ball([w + 0.0012, Y.mouth + f.smile + 0.0002, zAt(w, Y.mouth) - 0.0012], style === 'angkor' ? 0.0028 : 0.0024), 0.004);
+  g.carve(ball([w + 0.0012, Y.mouth + f.smile + 0.0002, zAt(w, Y.mouth) - 0.0012], 0.0028), 0.004);
   g.carve(ell([0, Y.mouth + 0.0082 * full, zm + 0.0012], [0.0034, 0.0026, 0.0032]), 0.003);
   // The dip under the lower lip, above the chin.
   g.carve(ell([0, Y.mouth - 0.0112 * full, zm + 0.0036], [w * 0.68, 0.0026, 0.004]), 0.004);
@@ -1010,17 +1003,17 @@ function hairPaint(base: Shape, lift = 0): Shape {
 
 // ── Pagoda crown ────────────────────────────────────────────────────────
 
-/** Snail-shell curls, the round ushnisha, the band at the hairline, the flame. */
+/**
+ * The Khmer pagoda Buddha's crown: small snail-shell curls in rows over the
+ * head, a cord of beads where the hair meets the brow, the ushnisha a cone
+ * of curls in four tiers, and on it a lotus bud (never the Thai flame).
+ */
 function pagodaCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void {
   const pitch = 0.0102;
   const cr = 0.0056;
-  const uc = USH.c;
-  const ur = USH.r;
-  const ushTop = uc[1] + ur[1];
   const list: number[] = [];
-  const onUsh = (p: V3) => p[1] > FIG.crown - 0.004 && Math.hypot(p[0], p[2] - uc[2]) < ur[0] + 0.004;
-  curlRows(list, baseShape, SKULL.c, SKULL.r, pitch, cr, (p) => p[1] > hairlineY(bearingOf(p[0], p[2])) + 0.0075 && !onUsh(p), 0.22, 2.4);
-  curlRows(list, baseShape, [uc[0], uc[1] - 0.01, uc[2]], ur, pitch * 0.96, cr * 0.95, onUsh, 0.2, 1.9);
+  curlRows(list, baseShape, SKULL.c, SKULL.r, pitch, cr, (p) => p[1] > hairlineY(bearingOf(p[0], p[2])) + 0.0075 && p[1] < FIG.crown - 0.008, 0.22, 2.4);
+  coneCurls(list, pitch, cr);
   // The band where the hair meets the brow (beads so close they make a smooth cord).
   const band: V3[] = [];
   for (let i = 0; i <= 24; i++) {
@@ -1030,67 +1023,15 @@ function pagodaCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void
   }
   cord(list, band, 0.0032);
   c.add(beads(list), 0.0024);
-
-  // The flame (rasmi): slim, pointed, its sides rippling like a flame's tongues, about 1.1 F tall, on a ring of beads.
-  const foot = ushTop - 0.006;
-  const flame = lathe(foot, 1.12 * F, uc[2], 0.85, (t) => {
-    // (a slim neck, the flame's body swelling low, then a long taper to the point, softly rippled)
-    const body = t < 0.17 ? 0.0094 + (0.0158 - 0.0094) * Math.sin(((t / 0.17) * Math.PI) / 2) : 0.0158 * Math.pow((1 - t) / 0.83, 1.12);
-    return body * (1 + 0.07 * Math.sin((t - 0.17) * 26) * (t > 0.17 ? 1 - t : 0));
-  });
-  c.add(flame, 0.004);
-  const collar = ring([0, foot + 0.003, uc[2]], 0.0122, 0.0036);
-  c.add(collar, 0.002);
+  const bud = lotusBud();
+  c.add(bud, 0.004);
   paints.push([hairPaint(baseShape, 0.0035), 'hair']);
-  paints.push([{ d: (_x, y) => foot - 0.003 - y, box: [-0.03, foot - 0.004, uc[2] - 0.03, 0.03, foot + 0.2, uc[2] + 0.03] }, 'flame']);
+  paints.push([grow2(bud, 0.002), 'flame']);
 }
 
-/**
- * A slim shape turned round an upright axis (the flame): radius `r(t)` at
- * the share `t` of its height `h` above `foot` (`squash` of it front to
- * back), the axis at z = `z0` swaying a little as it rises.
- */
-function lathe(foot: number, h: number, z0: number, squash: number, r: (t: number) => number): Shape {
-  const n = 240;
-  const R = new Float64Array(n + 1);
-  const Zs = new Float64Array(n + 1);
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    R[i] = r(t);
-    Zs[i] = z0 + 0.006 * Math.pow(t, 3) - 0.0035 * Math.sin(Math.PI * t) * t;
-  }
-  const rMax = Math.max(...R);
-  const iq = 1 / squash;
-  return {
-    d(x, y, z) {
-      const t = (y - foot) / h;
-      const tc = t < 0 ? 0 : t > 1 ? 1 : t;
-      const f = tc * n;
-      const i = Math.min(n - 1, Math.floor(f));
-      const u = f - i;
-      const rr = R[i] + (R[i + 1] - R[i]) * u;
-      const dz = (z - (Zs[i] + (Zs[i + 1] - Zs[i]) * u)) * iq;
-      const slope = ((R[i + 1] - R[i]) * n) / h;
-      const rho = Math.sqrt(x * x + dz * dz);
-      let d = ((rho - rr) * squash) / Math.sqrt(1 + slope * slope);
-      if (t < 0) d = Math.max(d, -t * h);
-      if (t > 1) d = Math.max(d, Math.sqrt(rho * rho * squash * squash + ((t - 1) * h) ** 2));
-      return d;
-    },
-    box: [-rMax, foot, z0 - rMax - 0.006, rMax, foot + h, z0 + rMax + 0.006],
-  };
-}
-
-// ── Angkor crown ────────────────────────────────────────────────────────
-
-/** Curls in rows, the diadem over the brow, a cone of curls with a lotus bud on top. */
-function angkorCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void {
-  const pitch = 0.0108;
-  const cr = 0.0058;
+/** The ushnisha's cone of curls: four tiers, each smaller, round its axis (x, y, z, r added to `out`). */
+function coneCurls(out: number[], pitch: number, cr: number): void {
   const cz = USH.c[2];
-  const list: number[] = [];
-  const band = 0.013;
-  curlRows(list, baseShape, SKULL.c, SKULL.r, pitch, cr, (p) => p[1] > hairlineY(bearingOf(p[0], p[2])) + band + 0.003 && p[1] < FIG.crown - 0.008, 0.3, 2.4);
   const tiers = 4;
   for (let i = 0; i < tiers; i++) {
     const y = FIG.crown - 0.004 + i * 0.0125;
@@ -1099,11 +1040,14 @@ function angkorCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void
     const n = Math.max(7, Math.round((2 * Math.PI * rr) / (pitch * k)));
     for (let j = 0; j < n; j++) {
       const a = ((j + (i % 2) * 0.5) / n) * 2 * Math.PI;
-      list.push(Math.sin(a) * rr, y, cz + Math.cos(a) * rr, cr * k);
+      out.push(Math.sin(a) * rr, y, cz + Math.cos(a) * rr, cr * k);
     }
   }
-  c.add(beads(list), 0.0022);
-  // The lotus bud: eight petals closed round a pointed heart, on a small ring.
+}
+
+/** The lotus bud on the ushnisha: eight petals closed round a pointed heart, on a small ring. */
+function lotusBud(): Shape {
+  const cz = USH.c[2];
   const bud = FIG.crown + 0.058;
   const petals: Shape[] = [];
   for (let i = 0; i < 8; i++) {
@@ -1111,7 +1055,22 @@ function angkorCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void
     const lean = i % 2 ? 0.2 : 0.12;
     petals.push(ell([Math.sin(a) * 0.0068, bud + (i % 2 ? 0.001 : 0), cz + Math.cos(a) * 0.0068], [0.0052, 0.0135, 0.0036], turn(a, -lean, 0)));
   }
-  const budShape = union([...petals, cone([0, bud - 0.004, cz], [0, bud + 0.024, cz], 0.0088, 0.0006), ring([0, bud - 0.0125, cz], 0.0112, 0.0026)], 0.0024);
+  return union([...petals, cone([0, bud - 0.004, cz], [0, bud + 0.024, cz], 0.0088, 0.0006), ring([0, bud - 0.0125, cz], 0.0112, 0.0026)], 0.0024);
+}
+
+// ── Angkor crown ────────────────────────────────────────────────────────
+
+/** Curls in rows, the diadem over the brow, a cone of curls with a lotus bud on top. */
+function angkorCrown(c: Clay, baseShape: Shape, paints: [Shape, string][]): void {
+  const pitch = 0.0108;
+  const cr = 0.0058;
+  const list: number[] = [];
+  const band = 0.013;
+  curlRows(list, baseShape, SKULL.c, SKULL.r, pitch, cr, (p) => p[1] > hairlineY(bearingOf(p[0], p[2])) + band + 0.003 && p[1] < FIG.crown - 0.008, 0.3, 2.4);
+  coneCurls(list, pitch, cr);
+  c.add(beads(list), 0.0022);
+  // The lotus bud.
+  const budShape = lotusBud();
   c.add(budShape, 0.004);
   // The diadem: a gold band round the brow, a row of rosettes along it.
   const pts: V3[] = [];

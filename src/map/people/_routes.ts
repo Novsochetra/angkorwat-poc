@@ -430,6 +430,8 @@ export class Traffic {
   private people: Obstacle[] = [];
   private used = 0;
   private lastEx = { x: 0, z: 0, ok: false };
+  /** The animals and the explorer this frame (all `dodge` looks at: the list also holds every group's people). */
+  private readonly movers: Obstacle[] = [];
 
   constructor(scene: Object3D) {
     this.elephantMesh = (scene.getObjectByName('fauna:elephant') as InstancedMesh | undefined) ?? null;
@@ -438,6 +440,7 @@ export class Traffic {
   /** Once a frame, before the groups move (`explorer` false: as if he were not there, for a shot's warm-up). */
   update(f: MapFrame, explorer = true): void {
     this.list.length = 0;
+    this.movers.length = 0;
     this.used = 0;
     this.explorer = null;
     for (const o of this.fixed) this.list.push(o);
@@ -458,6 +461,7 @@ export class Traffic {
       if (f.roam === 'walk' && explorer) {
         this.explorer = e;
         this.list.push(e);
+        this.movers.push(e);
       }
     } else this.lastEx.ok = false;
     const m = this.elephantMesh;
@@ -490,6 +494,7 @@ export class Traffic {
           el.vx = vx;
           el.vz = vz;
           this.list.push(el);
+          this.movers.push(el);
         }
       }
     }
@@ -505,8 +510,8 @@ export class Traffic {
    */
   dodge(out: { x: number; z: number }, y: number, who: string, ground: Ground | null): boolean {
     let moved = false;
-    // (indexed loops: this runs for everyone every frame, and makes no garbage)
-    const list = this.list;
+    // (indexed loops: this runs for everyone every frame, and makes no garbage; only the animals and the explorer)
+    const list = this.movers;
     for (let n = 0; n < list.length; n++) {
       const o = list[n];
       if (o.who === who || (o.who !== 'animal' && o.who !== 'explorer') || Math.abs(o.y - y) > 3) continue;

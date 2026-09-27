@@ -1,8 +1,15 @@
 # Angkor Heritage — notes for Claude
 
-- Checks: `npm run typecheck`, `npm run build`, `npm run playtest` (headless play test).
+- Checks: `npm run typecheck`, `npm run build`, `npm run playtest` (headless play test),
+  `npm run perf` (the world map's frame cost per view and graphics level, on the
+  GPU: `scripts/perf.mjs`; `only=`, `levels=low,medium,phone`, `ablate=<part>`, `out=`).
 - `npm run shots -- name="@game.html?shot=1&…"` renders a page headlessly into
   `screenshots/<name>.png`; view the PNG to check visual changes.
+- `npm run video` records the 15 s promo of the world map (`scripts/promo-cut.mjs`:
+  its shots, cameras, title, sound) into `screenshots/promo.mp4`, on the GPU,
+  frame by frame (`__videoFrame`, `video=1`). `npm run video -- preview` makes
+  3 stills a shot; `only=<shot>,…` redoes those shots. Promo words say the
+  game is playable now (never "coming soon").
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
 
 ## World kit (component plan sections 18–20)
@@ -82,6 +89,17 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
   the settings). The word list is `src/map/ui/lang.ts`; place texts are in
   `layout.ts` (`km`). Add `lang=en` to a shot for English.
+- **Khmer, not Thai**: everything must read Khmer (the player checks). Stupas are
+  Khmer chetdei (a stepped square base and an Angkor lotus-bud tower, or four Bayon
+  faces: `sacred/stupa.ts` `form: 'tower'|'faces'`), never a round bell with a ring
+  spire; Buddhas have a lotus-bud ushnisha, never a flame; naga are cobras with a
+  smooth fan hood; the flag of Cambodia has three towers (five is the 1979–89
+  flag); spirit houses are tiny Angkor towers; houses have no Thai gable horns;
+  apsara wear the three-spiked mokot; signs in Khmer script (Koulen pixels).
+- Esc while roaming asks first ("ត្រឡប់ទៅផែនទីវិញ?": `roam/_leave.ts`; Enter
+  leaves, Esc again stays; `leave=1` in shots). The walker's walk-map rules
+  (stairs, thin walls, no perching on sills) are in BRIEF.md "Roaming";
+  `thinwalk=0` / `perch=0` turn the newer rules off to compare.
 - Look at it: `npm run shots -- m="@index.html?shot=1"` (1672×941 with
   `SHOT_W=1672 SHOT_H=941`); add `night=1`, `focus=<place>`, `ui=0`,
   `parts=terrain,water` (only those parts), `uistate=hover:<place>`,
@@ -134,16 +152,21 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (auto is medium in shots), `phone=1` to act as a phone (auto starts on
   low, 30 frames a second).
 - Weather is a setting too (by season — dry December–April —, clear, rainy,
-  stormy): the schedule is `src/map/sky/weather.ts`. Shots are calm; add
-  `weather=season|rainy|stormy&t=<s>` (with `season=`) for a schedule, or
-  `weather=rain|storm|rainbow` to hold one.
+  stormy, and snow: a dream, only when picked; flakes and the white cover in
+  `src/map/sky/snow.ts`, snowmen in both villages): the schedule is
+  `src/map/sky/weather.ts`. Shots are calm; add
+  `weather=season|rainy|stormy|snowy&t=<s>` (with `season=`) for a schedule, or
+  `weather=rain|storm|rainbow|snow` to hold one (`snowtop=0`, `snowmen=0`).
 - Animals: land (`src/map/fauna/land.ts`) and water / air
   (`src/map/fauna/waterAir.ts`, lake and paddy birds `_waterLake.ts`); their
   calls go through `MapFrame.calls` to `src/map/audio/animals.ts`. In rain
   birds stay perched and people open umbrellas and hurry (`src/map/events.ts`).
-- Rice paddies by the great lake follow the year (`season=0‥1`, also their
-  colour on the mini-map): the stages are in `src/map/paddies/stages.ts`,
-  the part in `src/map/paddies.ts`.
+- Rice paddies by the great lake and by the sugar-palm village follow the year
+  (`season=0‥1`, also their colour on the mini-map): the stages are in
+  `src/map/paddies/stages.ts`, the part in `src/map/paddies.ts`; the rice is
+  clumps of thin blades near, fans farther (`paddies/rice.ts`, two draws).
+- Palms: real sugar palms (thnot) and coconut palms from one module,
+  `src/map/veg/palms.ts` (`palms=near|far`, `palmstats`).
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
@@ -168,6 +191,30 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   behind him (`roam/_pray.ts`). Walk shots need `foreground` in `parts=`,
   and `at=x,y,z` indoors (two values stand him on the roof).
 - People (`src/map/people/`): monks, a tour group, fishermen, an ox cart,
-  kite-flying children, farmers by the season, village life, apsara dancers
-  at night; `people=lineup|0|<scene>,…`, `fish=`, `cart=` in shots. Hats are
-  the Khmer palm-leaf hat or a krama (never a conical hat).
+  kites (children, and families flying khleng ek that hum over the east
+  fields: `_sceneKites.ts`, `_kite.ts`; `people=kites&season=0.9`), farmers by
+  the season, village life, apsara dancers at night, and the new places'
+  people (below); `people=lineup|0|<scene>,…`, `fish=`, `cart=` in shots. Hats are
+  the Khmer palm-leaf hat or a krama (never a conical hat). One crowd for all,
+  posed by a bone pass once a frame (`_personModel.ts`; `pbones=0` the old way).
+- The map is x −600‥760, z −800‥120 (`MAP_BOUNDS`); the roaming area is two boxes
+  (`terrain/views.ts` `inRoam`). The Kulen stream falls in three falls into a
+  pool by the picnic place.
+- New places (`src/map/hamlet/`, one piece each, spots in `layout.ts`): the
+  sugar-palm village on the east (`_ev*`), its morning market (`_mk*`), the palm
+  sugar family's yard with the tapper on his bamboo ladder (`_ps*`, `tap=<s>`),
+  the Kulen falls picnic place (`_kn*`), the hamlet behind Angkor Wat with its
+  market (`_bh*`), and the floating village's heart and Tonle Sap market
+  (`village/_fv*`). The reclining Buddha on Kulen is `landmarks/_kulenBuddha.ts`
+  (`sacred.html?piece=buddha-reclining`). Their people are `people/_scene*.ts`.
+- F greets: a sampeah (to a monk or an elder, palms to the face), or a wave to
+  visitors and children; people who see him greet back, monks nod
+  (`roam/_greet.ts`, `people/_greetBack.ts`; `act=greet`, `sim=f:0.1,_:1`).
+- F in a calm boat fishes (`roam/_fishing.ts`; five Khmer fish fill book pages;
+  `fishing=wait|bite|catch:<kind>` in shots).
+- Buying: E at a stall opens the buy menu (riel; a purse topped up each dawn):
+  shops register in `src/map/shop.ts`; the flow is `roam/_shop*.ts`, the seller
+  hands it over (`people/_saleBack.ts`), he eats or drinks it
+  (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
+  `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
+  `act=eat|bite|drink&food=<kind>`.

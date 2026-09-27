@@ -1,4 +1,4 @@
-import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, Sprite, SpriteMaterial, Vector3 } from 'three';
+import { AdditiveBlending, BoxGeometry, CanvasTexture, Group, Mesh, MeshBasicMaterial, Sprite, SpriteMaterial, Vector3, type InstancedMesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -9,8 +9,9 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
  * a narrow Khmer dugout about 3.2 m long and 0.9 m wide, low in the water,
  * its ends gently upturned, the bow post curling up with a small lantern
  * hanging in front. Teak outside with a red band and a cream line under the
- * gunwale, dark planks inside, two thwarts. The roaming code scales it with
- * the explorer (`body.scale`).
+ * gunwale, dark planks inside, two thwarts, and a bamboo fishing pole laid
+ * along its right side (`STOWED_ROD`). The roaming code scales it with the
+ * explorer (`body.scale`).
  *
  * Boat space: origin on the waterline in the middle, +z towards the bow,
  * +x to the left (port), like the explorer's own space.
@@ -48,6 +49,16 @@ export interface BoatModel {
   glass: Mesh;
   blocks: number;
 }
+
+/**
+ * The bamboo fishing pole laid in the boat along its right side, resting on
+ * the gunwale, its tip out past the bow (boat space, m, true size: the butt
+ * by his right hip, behind the seat). He takes it up to fish (_fishing.ts);
+ * its length is the pole's (_fishGear.ts `ROD_LEN`).
+ */
+export const STOWED_ROD = { butt: new Vector3(-0.3, 0.3, -0.72), tip: new Vector3(-0.16, 0.5, 2.27) };
+/** The stowed pole's blocks: the last ones of the hull's wood mesh (`boat:wood`), so it can be hidden while he holds it. */
+const ROD_BLOCKS = { first: -1, count: 0 };
 
 /** The glow of the lanterns: unlit, its colour scaled above 1 at night (bloom). */
 export function lanternMaterial(): MeshBasicMaterial {
@@ -134,6 +145,10 @@ export function buildBoat(glassMaterial: MeshBasicMaterial, haloMaterial: Sprite
   post(-nK - 1, endTop + 2, CAP, 12);
   g.commit();
 
+  // The fishing pole along the right side (last of the wood: see `stowedRod`).
+  ROD_BLOCKS.first = b.boxes.filter((x) => x.mat === 'wood').length;
+  ROD_BLOCKS.count = stowRod(b, src);
+
   // Lantern: hung under the curl of the bow post, a small brass cage round the glass.
   const L = LANTERN;
   b.box(0, L.y + 0.12, L.z, 0.02, 0.07, 0.02, BRASS, 'brass', { src });
@@ -157,6 +172,65 @@ export function buildBoat(glassMaterial: MeshBasicMaterial, haloMaterial: Sprite
   halo.scale.setScalar(HALO);
   object.add(glass, halo);
   return { object, glass, blocks: b.boxes.length };
+}
+
+/** Dry bamboo, its nodes, the rattan wrap of the grip, the dark tip (as the pole he holds: _fishGear.ts). */
+const BAMBOO = [0xcfae6a, 0xc6a460, 0xd6b877];
+const BAMBOO_NODE = 0x8e6a36;
+const RATTAN = 0x5b3a1e;
+const POLE_TIP = 0x4a3a28;
+
+/** The stowed pole's boxes (wood, after the hull's): pieces tapering to the tip, node rings, the grip's wrap. Returns how many. */
+function stowRod(b: VoxelBuilder, src: ReturnType<typeof traceSource>): number {
+  const n0 = b.boxes.length;
+  const { butt, tip } = STOWED_ROD;
+  const d = new Vector3().subVectors(tip, butt);
+  const len = d.length();
+  d.divideScalar(len);
+  // (its turn: about y towards the bow's middle, then up a little)
+  const ry = Math.atan2(d.x, d.z);
+  const rx = -Math.asin(d.y);
+  const at = (s: number) => new Vector3().copy(butt).addScaledVector(d, s);
+  const pieces = 10;
+  for (let i = 0; i < pieces; i++) {
+    const s = ((i + 0.5) / pieces) * len;
+    const w = 0.028 + (0.009 - 0.028) * ((i + 0.5) / pieces);
+    const p = at(s);
+    b.box(p.x, p.y, p.z, w, w, len / pieces + 0.004, i === pieces - 1 ? POLE_TIP : BAMBOO[i % 3], 'wood', { src, rx, ry });
+    if (i % 2 === 1) {
+      const q = at(((i + 1) / pieces) * len - 0.01);
+      b.box(q.x, q.y, q.z, w * 1.28, w * 1.28, 0.014, BAMBOO_NODE, 'wood', { src, rx, ry });
+    }
+  }
+  const g = at(0.3);
+  b.box(g.x, g.y, g.z, 0.034, 0.034, 0.24, RATTAN, 'wood', { src, rx, ry });
+  return b.boxes.length - n0;
+}
+
+/**
+ * Show or hide the pole laid in a boat (`buildBoat`'s object or a clone of
+ * it): while he holds it, the hull's own blocks of it shrink to nothing
+ * (kept where they are: the block shader needs a size), and come back when
+ * he lays it down again. Cheap: a few matrices, only when it changes.
+ */
+export function stowedRod(hull: Group, show: boolean): void {
+  const mesh = hull.children.find((c): c is InstancedMesh => (c as InstancedMesh).isInstancedMesh && c.name === 'boat:wood');
+  if (!mesh || ROD_BLOCKS.first < 0) return;
+  const saved = (mesh.userData.rodMatrices ??= (() => {
+    const a = mesh.instanceMatrix.array as Float32Array;
+    return a.slice(ROD_BLOCKS.first * 16, (ROD_BLOCKS.first + ROD_BLOCKS.count) * 16);
+  })()) as Float32Array;
+  if (mesh.userData.rodShown === show) return;
+  mesh.userData.rodShown = show;
+  const a = mesh.instanceMatrix.array as Float32Array;
+  for (let i = 0; i < ROD_BLOCKS.count; i++) {
+    const o = (ROD_BLOCKS.first + i) * 16;
+    for (let k = 0; k < 16; k++) a[o + k] = saved[i * 16 + k];
+    if (!show) for (const k of [0, 1, 2, 4, 5, 6, 8, 9, 10]) a[o + k] *= 1e-3;
+  }
+  mesh.instanceMatrix.clearUpdateRanges();
+  mesh.instanceMatrix.addUpdateRange(ROD_BLOCKS.first * 16, ROD_BLOCKS.count * 16);
+  mesh.instanceMatrix.needsUpdate = true;
 }
 
 /**

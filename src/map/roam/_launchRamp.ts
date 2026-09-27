@@ -1,10 +1,13 @@
-import { Color, Euler, Group, Matrix4, Vector3, type InstancedMesh, type Object3D } from 'three';
+import { Color, Euler, Group, Matrix4, Vector3, type Box3, type InstancedMesh, type Material } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
+import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
+import { graphicsNow, markStill } from '../graphics';
 import { weatherNow } from '../sky/weather';
-import { RampFlag } from './_rampFlag';
+import { SpotBatch } from './_rampBatch';
+import { RampFlags } from './_rampFlag';
 
 /**
  * A hang-glider take-off ramp at a cliff edge, as voxels at real size
@@ -19,6 +22,11 @@ import { RampFlag } from './_rampFlag';
  * Built up (`RampSite.stilts`, a hill with no flat cliff top): the deck
  * stands on a trestle whose posts reach down to the land under each one,
  * braced every few metres, with steps up to it at the back.
+ *
+ * All the ramps are drawn together (`LaunchRamps`): one mesh per block
+ * family for every ramp's still blocks (marked still: they cast the low
+ * level's still shadows), two for the windsocks, one for the flags, 10
+ * draws for the five ramps (50 when each ramp had its own).
  *
  * Ramp space: origin at the middle of the back end at the deck's foot
  * (the ground, on a flat cliff top), +z towards the lip (the take-off),
@@ -113,9 +121,16 @@ const RAIL_H = 0.8;
 const BAY = 2.8;
 const TALL_POST = 6;
 
-/** A ramp; `site` the land it stands on (without one: a flat cliff top). */
-export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; blocks: number; lamp: Vector3; flagAt: Object3D; update(night: number, t: number, flag?: boolean): void } {
+/**
+ * A ramp's blocks (ramp space); `site` the land it stands on (without one: a
+ * flat cliff top). `still`: all but the prayer flags and their rope; its glow
+ * blocks the lantern's glass, then the beacon's (`LaunchRamps` lights them).
+ * `rigging`: the prayer flags and their rope (not marked still: a thin rope
+ * seen from above would keep the snow off the ground under it, sky/snow.ts).
+ */
+export function buildLaunchRamp(seed: number, site?: RampSite): { still: VoxelBuilder; rigging: VoxelBuilder } {
   const b = new VoxelBuilder();
+  const rig = new VoxelBuilder();
   const src = traceSource();
   const tone = (list: readonly number[], i: number, j: number, k: number) => list[Math.floor(hash3(i, j, k, seed * 131 + 7) * list.length)];
   const L = RAMP.length;
@@ -314,12 +329,12 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
   const v = new Vector3();
   for (let i = 0; i <= knots; i++) {
     at(i / knots, v);
-    b.box(v.x, v.y, v.z, 0.035, 0.035, 0.035, ROPE, 'leather', { src });
+    rig.box(v.x, v.y, v.z, 0.035, 0.035, 0.035, ROPE, 'leather', { src });
   }
   const flagYaw = Math.atan2(rb.x - ra.x, rb.z - ra.z);
   for (let i = 1; i <= 7; i++) {
     at(i / 8, v);
-    b.box(v.x, v.y - 0.13, v.z, 0.02, 0.22, 0.17, FLAGS[(i - 1) % FLAGS.length], 'krama', { src, ry: flagYaw, rz: (hash3(i, 2, 0, seed) - 0.5) * 0.3 });
+    rig.box(v.x, v.y - 0.13, v.z, 0.02, 0.22, 0.17, FLAGS[(i - 1) % FLAGS.length], 'krama', { src, ry: flagYaw, rz: (hash3(i, 2, 0, seed) - 0.5) * 0.3 });
   }
 
   // The mast behind the back-right corner, on a stone: lengths of timber tapering up, brass collars at the joints.
@@ -350,15 +365,18 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
   b.box(M.x, beacon.y + 0.72, M.z, 0.06, 0.12, 0.06, GOLD[0], 'brass', { src });
   b.box(beacon.x, beacon.y, beacon.z, 0.4, 0.56, 0.4, 0xffffff, 'glow', { src });
 
-  const blocksMain = b.boxes.length;
-  const group = buildVoxelMesh(b, { quality: 'medium', name: 'launchRamp' });
-  group.name = 'launchRamp';
-  const glass = group.children.find((c) => c.name === 'launchRamp:glow') as InstancedMesh;
-  glass.castShadow = false;
+  return { still: b, rigging: rig };
+}
 
-  // Windsock: its own little group on the pole top, turned by the wind in `update`.
-  // It points downwind: the breeze comes up the cliff, into the pilot's face (a little from one side, `WIND`), so it trails back over the ramp's back.
+/**
+ * The windsock, the same on every ramp: its own space on the pole's top
+ * (`RAMP.pole`), turned by the wind (`LaunchRamps.update`). It points
+ * downwind: the breeze comes up the cliff, into the pilot's face (a little
+ * from one side, `WIND`), so it trails back over the ramp's back.
+ */
+function windsock(): VoxelBuilder {
   const ws = new VoxelBuilder();
+  const src = traceSource();
   ws.box(0, 0, 0.1, 0.04, 0.04, 0.2, 0x8e9398, 'metal', { src });
   const hoop = 0.36;
   for (const [x, y, sx, sy] of [
@@ -374,48 +392,162 @@ export function buildLaunchRamp(seed: number, site?: RampSite): { group: Group; 
     ws.box(0, -i * 0.012, sz + 0.13, w, w, 0.26, i % 2 === 0 ? SAFFRON[i % 4 === 0 ? 0 : 1] : RED[i % 4 === 1 ? 0 : 1], 'krama', { src });
     sz += 0.26;
   }
-  const sock = buildVoxelMesh(ws, { quality: 'medium', name: 'launchRamp:windsock' });
-  const pivot = new Group();
-  pivot.name = 'launchRamp:windsock';
-  pivot.position.set(P.x, P.height - 0.12, P.z);
-  pivot.add(sock);
-  group.add(pivot);
-  // The flag, hoisted from the mast's top just under the beacon; it streams downwind with the sock.
-  const flagCloth = new RampFlag(seed);
-  flagCloth.object.position.x = 0.14;
-  const flagPivot = new Group();
-  flagPivot.name = 'launchRamp:flag';
-  flagPivot.position.set(M.x, M.height - 0.3, M.z);
-  flagPivot.add(flagCloth.object);
-  group.add(flagPivot);
-  // (each ramp's wind gusts at its own pace, and comes from its own side)
-  const phase = hash3(seed, 3, 1, 61) * 20;
-  const wind = WIND * (site?.side ?? 1);
-  const c = new Color();
-
-  return {
-    group,
-    blocks: blocksMain + ws.boxes.length,
-    lamp,
-    flagAt: flagPivot,
-    // (`flag` false: the flag keeps its last shape, nothing uploaded, when it can't be seen)
-    update(night: number, t: number, flag = true) {
-      const tt = t + phase;
-      const k = Math.max(0, Math.min(1, night));
-      // The sock trails back (−z), swings a little across and lifts and droops with the gusts.
-      // (the weather's wind fills it out: it droops only in calm air)
-      const blow = weatherNow().wind;
-      const gust = (0.5 + 0.5 * Math.sin(tt * 0.37) * Math.sin(tt * 0.23 + 1)) * (1 - blow) + blow;
-      pivot.rotation.set(0.12 + 0.35 * (1 - gust) + 0.04 * Math.sin(tt * 2.3), Math.PI + wind + 0.22 * Math.sin(tt * 0.6) + 0.07 * Math.sin(tt * 1.9), 0, 'YXZ');
-      // The flag the same way (its +x downwind), a moment behind the light sock.
-      flagPivot.rotation.y = Math.PI / 2 + wind + 0.16 * Math.sin(tt * 0.6 - 0.5) + 0.04 * Math.sin(tt * 1.9 - 0.8);
-      flagCloth.update(tt, gust, k, flag);
-      // The lantern: soft by day, a warm flicker bright enough to bloom at night.
-      const flicker = 1 + k * (0.05 * Math.sin(tt * 11.3) + 0.04 * Math.sin(tt * 17.9));
-      glass.setColorAt(0, c.copy(LAMP).multiplyScalar((0.45 + k * 4.5) * flicker));
-      // The beacon: a soft glow by day; at night bright, breathing slowly, seen from far across the map.
-      glass.setColorAt(1, c.copy(BEACON).multiplyScalar((0.6 + k * 10) * (1 + k * 0.12 * Math.sin(tt * 1.2))));
-      if (glass.instanceColor) glass.instanceColor.needsUpdate = true;
-    },
-  };
+  return ws;
 }
+
+/** A ramp to build: where its back is (world, its deck's foot; heading `yaw`, 0 = toward +z), its seed and the land under it. */
+export interface RampPlace {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  seed: number;
+  site?: RampSite;
+}
+
+/** The windsock's pivot on its pole, and the flag's on its mast (ramp space). */
+const SOCK_AT = new Vector3(RAMP.pole.x, RAMP.pole.height - 0.12, RAMP.pole.z);
+const FLAG_AT = new Vector3(RAMP.mast.x, RAMP.mast.height - 0.3, RAMP.mast.z);
+/** The flag hangs this far out from the mast's middle (m). */
+const FLAG_OUT = 0.14;
+
+/**
+ * Every ramp on the map, drawn together (_rampBatch.ts): their still blocks
+ * (decks, trestles, rails, poles, masts, lanterns: one mesh per block family
+ * for all of them, marked still, so they cast the low level's still
+ * shadows), their windsocks (two meshes, turned block by block) and their
+ * flags (one mesh, _rampFlag.ts). Ramp `i` is `places[i]`.
+ */
+export class LaunchRamps {
+  readonly object = new Group();
+  readonly blocks: number;
+  /** Where each ramp's flag hangs from its mast (world): launchSpots.ts looks whether it can be seen. */
+  readonly flagAt: Vector3[];
+  private readonly still: SpotBatch;
+  private readonly socks: SpotBatch;
+  private readonly flags: RampFlags;
+  /** Ramp space → world, per ramp. */
+  private readonly place: Matrix4[];
+  /** Each ramp's wind: its gusts' own pace, and the side it comes from (rad). */
+  private readonly phase: number[];
+  private readonly wind: number[];
+  /** The windsock's blocks in its own space, per family. */
+  private readonly sock: { key: VoxelMaterialKey; local: Matrix4[] }[];
+  /** The lamps' light last written (lantern, beacon per ramp): written again only when it changes. */
+  private readonly lit: Float32Array;
+
+  constructor(places: readonly RampPlace[]) {
+    this.object.name = 'launchRamps';
+    const n = places.length;
+    this.place = places.map((p) => new Matrix4().makeRotationY(p.yaw).setPosition(p.x, p.y, p.z));
+    this.phase = places.map((p) => hash3(p.seed, 3, 1, 61) * 20);
+    this.wind = places.map((p) => WIND * (p.site?.side ?? 1));
+    this.lit = new Float32Array(n * 2).fill(-1);
+    // The still blocks, ramp by ramp (the glow's first block the lantern, its second the beacon); the windsocks
+    // (one model, placed on every pole: its blocks first in each ramp's share of a family) with the prayer flags.
+    this.still = new SpotBatch('launchRamp', n, { split: true, bare: true });
+    this.socks = new SpotBatch('launchRamp:windsock', n, { ownMaterials: true, dynamic: true, margin: 1.5 });
+    const ws = windsock();
+    const sockGroup = buildVoxelMesh(ws, { quality: 'medium', name: 'launchRamp:windsock' });
+    const sockMeshes = sockGroup.children as InstancedMesh[];
+    this.sock = sockMeshes.map((m) => ({
+      key: (m.material as Material).name.split(':')[1] as VoxelMaterialKey,
+      local: Array.from({ length: m.count }, (_, k) => m.getMatrixAt(k, new Matrix4())),
+    }));
+    let blocks = 0;
+    for (const [i, p] of places.entries()) {
+      const { still, rigging } = buildLaunchRamp(p.seed, p.site);
+      blocks += still.boxes.length + rigging.boxes.length + ws.boxes.length;
+      const group = buildVoxelMesh(still, { quality: 'medium', name: 'launchRamp' });
+      for (const m of group.children as InstancedMesh[]) if (m.name === 'launchRamp:glow') m.castShadow = false;
+      this.still.add(i, group.children as InstancedMesh[], this.place[i]);
+      this.socks.add(i, sockMeshes, this.sockPose(i, 0, 0.5, _w));
+      this.socks.add(i, buildVoxelMesh(rigging, { quality: 'medium', name: 'launchRamp:rigging' }).children as InstancedMesh[], this.place[i]);
+    }
+    this.still.finish();
+    this.socks.finish();
+    // (they never move: they cast the low level's still shadows)
+    markStill(this.still.object);
+    this.blocks = blocks;
+    // The flags.
+    this.flagAt = this.place.map((m) => FLAG_AT.clone().applyMatrix4(m));
+    this.flags = new RampFlags(this.flagAt, places.map((p) => p.seed));
+    for (let i = 0; i < n; i++) this.flags.update(i, 0, 0.5, 0, true, this.flagPose(i, this.phase[i], _w));
+    this.object.add(this.still.object, this.socks.object, this.flags.object);
+  }
+
+  /** The ramps whose blocks keep their edges on the low level (bits: near the camera). */
+  setNear(mask: number): void {
+    this.still.setNear(mask);
+    this.socks.setNear(mask);
+  }
+
+  /** The ramps that can be seen, their shadows too (bits); their still blocks all while still shadows stand (the low level: they are drawn into the still map only now and then). */
+  setShown(mask: number): void {
+    this.still.setShown(graphicsNow.stillShadows ? ~0 : mask);
+    this.socks.setShown(mask);
+  }
+
+  /** A box round ramp `i`'s blocks (world). */
+  bounds(i: number, out: Box3): Box3 {
+    return this.still.bounds(i, out);
+  }
+
+  /**
+   * Ramp `i` in the wind at time `t` (s), `night` 0‥1: the windsock and the flag (`move` false: out of sight,
+   * they keep as they are), the lantern and the beacon. Then `flush` once for them all.
+   */
+  update(i: number, night: number, t: number, move = true): void {
+    const tt = t + this.phase[i];
+    const k = Math.max(0, Math.min(1, night));
+    // The sock trails back (−z), swings a little across and lifts and droops with the gusts.
+    // (the weather's wind fills it out: it droops only in calm air)
+    const blow = weatherNow().wind;
+    const gust = (0.5 + 0.5 * Math.sin(tt * 0.37) * Math.sin(tt * 0.23 + 1)) * (1 - blow) + blow;
+    if (move) {
+      const at = this.sockPose(i, tt, gust, _w);
+      for (const { key, local } of this.sock) for (let j = 0; j < local.length; j++) this.socks.writeMatrix(key, i, j, _m.multiplyMatrices(at, local[j]));
+    }
+    // The flag the same way (its +x downwind), a moment behind the light sock.
+    this.flags.update(i, tt, gust, k, move, move ? this.flagPose(i, tt, _w) : _w);
+    // The lantern: soft by day, a warm flicker bright enough to bloom at night.
+    const lamp = (0.45 + k * 4.5) * (1 + k * (0.05 * Math.sin(tt * 11.3) + 0.04 * Math.sin(tt * 17.9)));
+    if (lamp !== this.lit[i * 2]) {
+      this.lit[i * 2] = lamp;
+      this.still.writeColor('glow', i, 0, _c.copy(LAMP).multiplyScalar(lamp));
+    }
+    // The beacon: a soft glow by day; at night bright, breathing slowly, seen from far across the map.
+    const beacon = (0.6 + k * 10) * (1 + k * 0.12 * Math.sin(tt * 1.2));
+    if (beacon !== this.lit[i * 2 + 1]) {
+      this.lit[i * 2 + 1] = beacon;
+      this.still.writeColor('glow', i, 1, _c.copy(BEACON).multiplyScalar(beacon));
+    }
+  }
+
+  /** What the ramps wrote this frame, to the GPU (and the graphics level's block shapes). */
+  flush(): void {
+    this.still.flush();
+    this.socks.flush();
+  }
+
+  /** The windsock's pivot on ramp `i` (world) at time `tt` in a `gust`. */
+  private sockPose(i: number, tt: number, gust: number, out: Matrix4): Matrix4 {
+    _e.set(0.12 + 0.35 * (1 - gust) + 0.04 * Math.sin(tt * 2.3), Math.PI + this.wind[i] + 0.22 * Math.sin(tt * 0.6) + 0.07 * Math.sin(tt * 1.9), 0, 'YXZ');
+    _t.makeRotationFromEuler(_e).setPosition(SOCK_AT);
+    return out.multiplyMatrices(this.place[i], _t);
+  }
+
+  /** The flag's space on ramp `i` (world) at time `tt`: on the mast's top, turned downwind. */
+  private flagPose(i: number, tt: number, out: Matrix4): Matrix4 {
+    const turn = Math.PI / 2 + this.wind[i] + 0.16 * Math.sin(tt * 0.6 - 0.5) + 0.04 * Math.sin(tt * 1.9 - 0.8);
+    _t.makeRotationY(turn).setPosition(FLAG_AT);
+    out.multiplyMatrices(this.place[i], _t);
+    return out.multiply(_t.makeTranslation(FLAG_OUT, 0, 0));
+  }
+}
+
+const _e = new Euler();
+const _t = new Matrix4();
+const _m = new Matrix4();
+const _w = new Matrix4();
+const _c = new Color();

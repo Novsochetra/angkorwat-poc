@@ -1,18 +1,21 @@
+import { Euler, Quaternion } from 'three';
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Frame } from '../landmarks/_prasatKit';
+import { Palms, type PalmSet } from '../veg/palms';
 import { GLOW } from './_lights';
 import type { RoofKind, WallKind } from './_spots';
 
 /**
  * Plumbing for the village's builds: colours, plank walls, stepped roofs and
- * small props (jars, pots, laundry, a dog, hens, boats, palms…), all as free
+ * small props (jars, pots, laundry, a dog, hens, boats…), all as free
  * boxes in a local frame (metres; y is the world height), turned into place
  * with `Frame.place`. Wood is `mapBark` (solid to walk on; the follow camera
  * sees through it near him, like the tree trunks), cloth and plants are
- * soft families (`petal`, `mapLeaf`: he walks through them).
+ * soft families (`petal`, `mapLeaf`: he walks through them). The coconut
+ * palms (`palm`) are veg/palms.ts's, in draws of their own (`villagePalms`).
  */
 
 export type Tones = readonly number[];
@@ -64,13 +67,46 @@ export const HULL: Tones = [0x6e4a2e, 0x7a5434, 0x634229];
 
 // ── Local builds ─────────────────────────────────────────────────────────────
 
-/** A local build: boxes in a frame's local metres (y = world height). */
+const _q = new Quaternion();
+const _e = new Euler();
+const _e2 = new Euler();
+
+/**
+ * A local build: boxes in a frame's local metres (y = world height).
+ * `theta` is the heading its frame will be placed with (`Frame.place`, which
+ * adds it to each box's turn about y): boxes tilted out of the level
+ * (`tilt`) need it; the rest do not.
+ */
 export class Local {
   constructor(
     readonly b: VoxelBuilder,
     readonly src: SourceTrace | undefined,
     readonly seed: number,
+    readonly theta = 0,
   ) {}
+
+  /**
+   * A box turned `ax` about the frame's own x axis (its +z end down for
+   * ax > 0): barge boards, the rays of a gable's sun. Right only if the
+   * frame is placed with this build's `theta`.
+   */
+  tilt(x: number, y: number, z: number, sx: number, sy: number, sz: number, ax: number, color: number, mat: VoxelMaterialKey, shade = 1): void {
+    // (on the map it turns by the frame's heading, then tilts: Ry(θ)·Rx(ax); Frame.place adds θ to ry)
+    _q.setFromEuler(_e.set(ax, this.theta, 0, 'YXZ'));
+    _e2.setFromQuaternion(_q, 'XYZ');
+    this.b.box(x, y, z, sx, sy, sz, color, mat, { src: this.src, shade, rx: _e2.x, ry: _e2.y - this.theta, rz: _e2.z });
+  }
+
+  /** A board in the plane x = `x` from (z0, y0) to (z1, y1), `w` wide below that line (or across it, `centred`), `t` thick. */
+  board(x: number, z0: number, y0: number, z1: number, y1: number, w: number, t: number, color: number, mat: VoxelMaterialKey = 'mapBark', shade = 1, centred = false): void {
+    const dz = z1 - z0;
+    const dy = y1 - y0;
+    const len = Math.sqrt(dz * dz + dy * dy);
+    // (moved down off the line by half its width, square to it)
+    const k = centred ? 0 : w / 2 / len;
+    const sgn = dz >= 0 ? 1 : -1;
+    this.tilt(x, (y0 + y1) / 2 - Math.abs(dz) * k, (z0 + z1) / 2 + sgn * dy * k, t, w, len, -Math.atan2(dy, dz), color, mat, shade);
+  }
 
   /** Box by min/max corners. */
   span(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, mat: VoxelMaterialKey, shade = 1): void {
@@ -287,30 +323,24 @@ export function skiff(L: Local, x: number, y: number, z: number, len = 4.2, seed
   L.span(x + 0.4, y + 0.32, z - 0.08, x + 1.7, y + 0.36, z + 0.08, 0xa07a4e, 'mapBark');
 }
 
-/** A coconut palm from (x, y, z): a leaning, curving trunk and a crown of fronds. */
+/** The coconut palms `palm` plants, built once by the village part (`villagePalms`). */
+let coconuts = new Palms();
+
+/**
+ * A coconut palm from (x, y, z), `h` m to its crown, its trunk leaning out
+ * by `lean` (x, z) per 5 m of height and curving back up: the real one of
+ * veg/palms.ts (feather fronds arching over, coconuts), drawn with the
+ * village's other palms in their own instanced draws (`villagePalms`).
+ */
 export function palm(L: Local, x: number, y: number, z: number, h: number, lean: [number, number]): void {
-  const n = Math.round(h / 0.7);
-  let px = x;
-  let pz = z;
-  for (let i = 0; i < n; i++) {
-    const t = i / n;
-    px += lean[0] * 0.7 * t * 0.5;
-    pz += lean[1] * 0.7 * t * 0.5;
-    L.box(px, y + i * 0.7 + 0.35, pz, 0.45, 0.72, 0.45, tone([0x7a6a58, 0x8a7864, 0x6e5f4f], L.r(i, x, 23)), 'mapBark');
-  }
-  const top = y + n * 0.7;
-  L.box(px, top + 0.2, pz, 0.8, 0.5, 0.8, 0x4d6a2a, 'mapLeaf');
-  L.box(px, top - 0.15, pz, 0.5, 0.35, 0.5, 0x7a5a2a, 'mapLeaf');
-  for (let k = 0; k < 7; k++) {
-    const a = (k / 7) * Math.PI * 2 + L.r(k, x, 24) * 0.5;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    for (let j = 1; j <= 4; j++) {
-      const d = j * 0.75;
-      const dy = j === 1 ? 0.25 : j === 2 ? 0.1 : -0.25 * (j - 2);
-      L.box(px + ca * d, top + 0.25 + dy, pz + sa * d, 0.8, 0.22, 0.8, tone(LEAF, L.r(k, j, 25)), 'mapLeaf', 0.9 + j * 0.03);
-    }
-  }
+  coconuts.add({ kind: 'coconut', x, y, z, h, seed: Math.floor(L.r(x, z, 23) * 1e6), lean: [lean[0] * h * 0.2, lean[1] * h * 0.2] });
+}
+
+/** The palms planted so far, built (the village part, once, after the shore): add its `object`, call its `update`. */
+export function villagePalms(): PalmSet {
+  const set = coconuts.build({ name: 'village:palms' });
+  coconuts = new Palms();
+  return set;
 }
 
 /** A banana plant: a short green stem and big leaves spreading up and out. */
@@ -446,18 +476,148 @@ export function moto(L: Local, x: number, y: number, z: number, color: number): 
   L.box(x + 0.65, y + 1.2, z, 0.1, 0.08, 0.7, 0x333333, 'metal');
 }
 
-/** A spirit house (a little shrine on a post) at (x, y, z), facing +z: its flame glows at `flame`. */
-export function spiritHouse(L: Local, x: number, y: number, z: number): [number, number, number] {
-  L.box(x, y + 0.75, z, 0.18, 1.5, 0.18, 0xd8d0c0, 'mapStone');
-  L.box(x, y + 1.55, z, 0.8, 0.12, 0.7, 0xd8b050, 'mapStone');
-  L.box(x, y + 1.9, z, 0.6, 0.6, 0.5, 0xefe6d2, 'mapStone');
-  L.box(x, y + 2.3, z, 0.8, 0.2, 0.7, 0xc8502a, 'mapStone');
-  L.box(x, y + 2.5, z, 0.5, 0.2, 0.5, 0xc8502a, 'mapStone');
-  L.box(x, y + 2.72, z, 0.12, 0.28, 0.12, 0xe0b040, 'brass');
-  // Offerings: a garland, a bowl.
-  L.box(x - 0.22, y + 1.66, z + 0.28, 0.14, 0.1, 0.14, 0xf2c14a, 'petal');
-  L.box(x + 0.2, y + 1.66, z + 0.28, 0.16, 0.08, 0.16, 0xe8e0d0, 'mapStone');
-  return [x, y + 1.72, z + 0.3];
+/**
+ * A Khmer spirit house (រានព្រះភូមិ, rean preah phum) at (x, y, z), facing
+ * +z: on a white post, a red tray with a gold rim, and on it a tiny Angkor
+ * tower (prasat) — a redented base (the square plan stepped in at the
+ * corners), the sanctum with its dark doorway in a gold frame, a gold
+ * cornice, the tower rising in four shrinking tiers with leaf antefixes at
+ * the corners, a gold lotus bud on top (not the Thai san phra phum's
+ * palace of crossed gables and a spire of rings). Before it on the tray: two
+ * little bay sei, a pot of incense, a candle. Returns where the candle's
+ * flame glows. About 2.9 m tall, 0.9 m across. `gold`: the gilt's block
+ * family (a build that keeps to its own families passes one of them). The
+ * sugar-palm village's spirit houses are this one too (hamlet/_evKit.ts).
+ */
+export function spiritHouse(L: Local, x: number, y: number, z: number, gold: VoxelMaterialKey = 'brass'): [number, number, number] {
+  const WHITE = 0xece4d2;
+  const OCHRE = 0xd8a85a;
+  const GOLD = 0xe0b040;
+  /** A redented square (a cross of two boxes: the Angkorian plan), `w` across, from y0 to y1. */
+  const cross = (w: number, y0: number, y1: number, c: number, mat: VoxelMaterialKey = 'mapStone', sh = 1) => {
+    L.box(x, (y0 + y1) / 2, z, w, y1 - y0, w * 0.72, c, mat, sh);
+    L.box(x, (y0 + y1) / 2, z, w * 0.72, y1 - y0, w, c, mat, sh);
+  };
+  // The post on its footing, a gold band under the tray.
+  L.box(x, y + 0.05, z, 0.34, 0.1, 0.34, WHITE, 'mapStone', 0.92);
+  L.box(x, y + 0.78, z, 0.16, 1.36, 0.16, WHITE, 'mapStone');
+  L.box(x, y + 1.43, z, 0.26, 0.08, 0.26, GOLD, gold);
+  // The tray: red lacquer, a gold rim.
+  L.box(x, y + 1.52, z + 0.04, 0.84, 0.1, 0.78, 0xa8322a, 'mapStone');
+  L.box(x, y + 1.585, z + 0.04, 0.88, 0.03, 0.82, GOLD, gold, 1.05);
+  // The base, the sanctum (its doorway on the front), the cornice.
+  cross(0.54, y + 1.6, y + 1.7, OCHRE);
+  cross(0.4, y + 1.7, y + 2.08, WHITE, 'mapStone', 1.03);
+  L.box(x, y + 1.85, z + 0.205, 0.13, 0.26, 0.02, 0x3a2418, 'mapStone', 0.8);
+  L.box(x, y + 2.0, z + 0.212, 0.2, 0.04, 0.02, GOLD, gold);
+  cross(0.48, y + 2.08, y + 2.13, GOLD, gold);
+  // The tower: tiers drawing in, leaf antefixes at the lower ones' corners, the lotus bud.
+  let ty = y + 2.13;
+  const tiers: [number, number][] = [
+    [0.38, 0.12],
+    [0.3, 0.11],
+    [0.23, 0.1],
+    [0.16, 0.09],
+  ];
+  tiers.forEach(([w, h], k) => {
+    cross(w, ty, ty + h, k % 2 ? OCHRE : WHITE, 'mapStone', 1 + k * 0.03);
+    if (k < 2)
+      for (const [dx, dz] of [
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+      ])
+        L.box(x + dx * w * 0.42, ty + h + 0.035, z + dz * w * 0.42, 0.045, 0.07, 0.045, GOLD, gold);
+    ty += h;
+  });
+  L.box(x, ty + 0.07, z, 0.12, 0.14, 0.12, GOLD, gold);
+  L.box(x, ty + 0.19, z, 0.07, 0.1, 0.07, GOLD, gold, 1.05);
+  L.box(x, ty + 0.275, z, 0.03, 0.07, 0.03, GOLD, gold, 1.1);
+  // Offerings on the tray before it: bay sei (banana-leaf cones) each side, incense, a candle.
+  for (const s of [-1, 1]) {
+    L.box(x + s * 0.3, y + 1.65, z + 0.3, 0.12, 0.1, 0.12, 0x6a9a3a, 'mapLeaf');
+    L.box(x + s * 0.3, y + 1.74, z + 0.3, 0.07, 0.08, 0.07, 0x7aaa44, 'mapLeaf');
+  }
+  L.box(x - 0.1, y + 1.64, z + 0.34, 0.1, 0.08, 0.1, 0x6a4a30, 'mapStone');
+  L.box(x - 0.1, y + 1.75, z + 0.34, 0.012, 0.16, 0.012, 0xc86a3a, 'petal');
+  L.box(x + 0.1, y + 1.65, z + 0.34, 0.035, 0.1, 0.035, 0xf2eee0, 'petal');
+  return [x + 0.1, y + 1.72, z + 0.34];
+}
+
+// ── Khmer gables ─────────────────────────────────────────────────────────────
+
+/** What a house's gable end shows: its planks only, a fan of rays out of a little sun, or a kbach flame leaf under the ridge. */
+export type GableStyle = 'plain' | 'rays' | 'kbach';
+
+/**
+ * Plain barge boards on a roof's gable end at x = `x` (the roof's own end,
+ * `r.x0` or `r.x1`, a little out toward `out`): one board down each slope
+ * over the rows' stepped ends, meeting under the ridge — Khmer gables keep
+ * them plain (no horns crossed over the peak, no hooks at the eaves). Needs
+ * `L.theta` (see `Local.tilt`).
+ */
+export function bargeBoards(L: Local, r: Roof, x: number, out: number, color: number): void {
+  const mid = (r.z0 + r.z1) / 2;
+  const k = r.rise / r.run;
+  // (the line over the rows' outer top corners)
+  const y0 = r.eave + r.rise + 0.08;
+  const top = y0 + (mid - r.z0) * k;
+  for (const s of [-1, 1]) {
+    const ze = s < 0 ? r.z0 - 0.04 : r.z1 + 0.04;
+    L.board(x + out * 0.05, ze, y0 - 0.04 * k, mid, top, 0.3, 0.08, color, 'mapBark', 0.95);
+  }
+}
+
+/**
+ * The Khmer gable on a house's end wall (its outer face at x = `x`, facing
+ * `out`), over the depths `za`‥`zb`, from `from` (the walls' top) up under
+ * the roof `r`: with `rays`, a tie beam across its foot, a little half sun
+ * in the middle and nine rays fanning out of it to the roof (as the old
+ * wooden houses of Siem Reap and Kampong Cham); with `kbach`, a pointed
+ * flame leaf of boards under the ridge. `color` the rays' and the leaf's,
+ * `sun` the sun's. Needs `L.theta` for the rays (see `Local.tilt`).
+ */
+export function khmerGable(L: Local, r: Roof, x: number, out: number, za: number, zb: number, from: number, style: GableStyle, color: number, sun = 0xe0b048): void {
+  if (style === 'plain') return;
+  const mid = (za + zb) / 2;
+  const hw = (zb - za) / 2;
+  const fx = x + out * 0.04;
+  if (style === 'kbach') {
+    const apex = r.eave + (Math.ceil((r.z1 - r.z0) / 2 / r.run) + 1) * r.rise;
+    const s = Math.min(0.9, (apex - from) * 0.45);
+    const y = from + (apex - from) * 0.45;
+    const rows: [number, number][] = [
+      [0.12, 0.5],
+      [0.34, 0.28],
+      [0.52, 0.08],
+      [0.46, -0.12],
+      [0.26, -0.3],
+      [0.1, -0.44],
+    ];
+    for (const [w, dy] of rows) L.box(fx, y + dy * s, mid, 0.06, s * 0.2, w * s, color, 'mapBark', 1.05);
+    L.box(fx, y - 0.46 * s, mid + 0.14 * s, 0.06, s * 0.1, 0.16 * s, color, 'mapBark', 1.05);
+    return;
+  }
+  // The rays: the apex of the gable's triangle over the tie beam, where each ray meets the roof.
+  const apex = r.eave + (hw / r.run + 1) * r.rise - 0.45;
+  const H = apex - from;
+  if (H < 0.6) return;
+  const y0 = from + 0.08;
+  L.span(fx - 0.05, from - 0.06, za, fx + 0.05, from + 0.08, zb, color, 'mapBark', 0.9);
+  L.box(fx, y0 + 0.13, mid, 0.07, 0.26, 0.62, sun, 'mapStone', 1.05);
+  L.box(fx, y0 + 0.29, mid, 0.07, 0.08, 0.36, sun, 'mapStone', 1.05);
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const phi = (Math.PI * (i + 0.5)) / n;
+    const c = Math.cos(phi);
+    const sn = Math.sin(phi);
+    const t = (H - 0.1) / (sn + (H * Math.abs(c)) / hw);
+    const a = 0.42;
+    const b = t - 0.12;
+    if (b - a < 0.2) continue;
+    L.board(fx, mid + c * a, y0 + sn * a, mid + c * b, y0 + sn * b, 0.1, 0.06, color, 'mapBark', i % 2 ? 1 : 0.9, true);
+  }
 }
 
 /** A glowing box (local m): centre, size, colour; `halo` (m) for a lantern's halo. */

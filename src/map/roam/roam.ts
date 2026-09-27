@@ -8,6 +8,7 @@ import { createBoat } from './boat';
 import { OrbitFollowCam } from './followCam';
 import { createHangGlider } from './hangGlider';
 import { createRoamHud, type JumpKind } from './hud';
+import { createLeaveConfirm } from './_leave';
 import { parseScript, RoamControls } from './input';
 import { createLaunchSpots, type LaunchSpot } from './launchSpots';
 import { createParachute } from './parachute';
@@ -99,11 +100,14 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   let leaving = false;
   const hud = createRoamHud(deps.uiRoot, {
     onJump: (kind) => api.start(kind),
-    onBack: () => void api.stop(),
+    // (the "Back to the map" button asks first, as Esc does: _leave.ts)
+    onBack: () => leave.ask(),
     sound: (s) => deps.uiSound?.(s),
   });
+  // "Back to the map?": Esc, the touch close button and "Back to the map" ask before roaming ends.
+  const leave = createLeaveConfirm(deps.uiRoot, { onLeave: () => void api.stop(), sound: (s) => deps.uiSound?.(s) });
 
-  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas, parts: deps.parts });
+  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas, parts: deps.parts, uiSound: deps.uiSound });
   object.add(tools.object);
 
   const chute = createParachute();
@@ -191,8 +195,14 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     // (Esc while the balloon is being boarded or inflated: he hops back out, it deflates)
     if (controls.state.exit && mode === 'balloon' && balloon.cancel(rctx)) controls.state.exit = false;
     if (controls.state.exit) {
-      void api.stop();
-      return;
+      // (asks first: a stray Esc must not end the walk — _leave.ts)
+      leave.ask();
+      controls.state.exit = false;
+    }
+    // (while it asks, he waits where he is)
+    if (leave.open) {
+      controls.state.move.x = controls.state.move.y = 0;
+      controls.state.run = controls.state.jump = controls.state.jumpHeld = controls.state.use = false;
     }
     levels.wind = levels.wake = levels.sail = levels.burner = levels.fan = 0;
     const next = handlers[mode as Exclude<RoamMode, 'overview'>].update(rctx, dt);
@@ -228,6 +238,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       switchTo('leap');
     },
     async stop() {
+      // (however roaming ends, the "Back to the map?" card goes with it)
+      leave.close();
       if (mode === 'overview' || leaving) return;
       leaving = true;
       controls.enabled = false;
@@ -273,6 +285,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
           ...t,
           ...(ride ? { sim: `e:0.1,_:${Math.max(0.1, ride.seconds - 0.1).toFixed(1)}` } : {}),
           ...hop?.params,
+          // (fishing from the boat: a shot that replays where he is in it — casting, waiting, a bite, a catch)
+          ...(mode === 'boat' ? (boat.reportParams() ?? {}) : {}),
         },
       };
     },
@@ -297,13 +311,13 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       // Moored boats rock and light their lanterns in every mode.
       boat.frame(f);
       if (mode !== 'overview') {
-        // (headless shots move only in `simulate`)
-        if (!ctx.shot && f.dt > 0) step(f, f.dt);
-        cam.update(ctx.shot ? 1 : f.dt, world);
+        // (headless shots move only in `simulate`; a video's frames move on)
+        if ((!ctx.shot || ctx.video) && f.dt > 0) step(f, f.dt);
+        cam.update(ctx.shot && !ctx.video ? 1 : f.dt, world);
         f.listener.set(body.pos.x, body.pos.y + 1.7 * body.scale, body.pos.z);
       } else f.listener.copy(f.camera.position);
       // (the near fade: what stands in front of the follow camera dissolves; not in a photo)
-      followNearFade(mode !== 'overview' && mode !== 'leap' ? cam.focus : null, ctx.shot ? 1 : f.dt, 1 - tools.photo.view);
+      followNearFade(mode !== 'overview' && mode !== 'leap' ? cam.focus : null, ctx.shot && !ctx.video ? 1 : f.dt, 1 - tools.photo.view);
       // The hang glider over him (after his step: they move together), a glider put away, the ramps' lanterns, the seed fluff.
       hang.frame(f, mode, body.pos);
       // The balloon where it stands or flies (back home once he leaves roaming).

@@ -328,7 +328,11 @@ export function tieredTop(d: Mason, cx: number, cz: number, y0: number, halves: 
   return y + 4 * c;
 }
 
-/** A small stupa on fine cells: plinth, drum, bell, box and spire. Height ≈ `h`. */
+/**
+ * A small Khmer stupa (chetdei) on fine cells: a stepped, redented square
+ * base, the square body, receding tiers and a lotus bud with a short tip
+ * (never the round bell and ring spire of a Thai chedi). Height ≈ `h`.
+ */
 export function stupa(d: Mason, cx: number, cz: number, y0: number, h: number, src?: SourceTrace, P: Palette = SANDSTONE): void {
   const c = d.cell;
   const s = (v: number) => snapTo(v, c);
@@ -343,7 +347,10 @@ export function stupa(d: Mason, cx: number, cz: number, y0: number, h: number, s
   layer(Math.max(c, w - c), s(h * 0.22), P.light);
   layer(Math.max(c, w - 2 * c), s(h * 0.08), P.stone);
   layer(Math.max(c / 2, s(w * 0.45)), s(h * 0.1), P.stone);
-  d.fill(cx - c / 2, y, cz - c / 2, cx + c / 2, y + s(h * 0.28), cz + c / 2, P.light, { src });
+  // The lotus bud, and its short tip.
+  const bud = Math.max(c / 2, s(w * 0.25));
+  d.fill(cx - bud, y, cz - bud, cx + bud, y + s(h * 0.14), cz + bud, P.light, { src });
+  d.fill(cx - c / 2, y + s(h * 0.14), cz - c / 2, cx + c / 2, y + s(h * 0.14) + s(h * 0.08), cz + c / 2, P.light, { src });
 }
 
 export interface GopuraOpts {

@@ -22,7 +22,7 @@ import { FESTIVAL_SCENE } from './_schedule';
  * start and finish buoys. The lit floats wait moored by the north shore.
  *
  * At night (glow and bloom only, no lights): the boats lie moored off the
- * beach; the three illuminated floats (Loy Pratip: Angkor Wat, the naga, a
+ * beach; the three illuminated floats (Bandaet Pratip: Angkor Wat, the naga, a
  * lotus) drift slowly up and down the lake, their light streaked on the
  * water; floating lotus candles drift out from the beach and float on
  * Angkor Wat's moat; families on the beach kneel facing the full moon with

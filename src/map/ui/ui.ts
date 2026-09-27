@@ -29,7 +29,8 @@ import { framed, setSteppedVars } from './shape';
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
  * `settings`, `credits` (the settings' credits page), `muted`, `held` (the
- * held-sound card), `begin` (the fade to black), `roam` (the interface
+ * held-sound card), `weather:<setting>` (the panel shows that weather
+ * chosen), `begin` (the fade to black), `roam` (the interface
  * while roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
@@ -101,12 +102,23 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
 };
 /** The on / off settings (a switch each in the panel). */
 type SwitchKey = 'calm' | 'easyFly';
-/** The weather setting's choices: icon, word, and the note under them while chosen (lang.ts). */
+/** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
+const SNOW_ICON =
+  '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+  [0, 60, 120].map((a) => `<path d="M12 2.6v18.8" transform="rotate(${a} 12 12)"/>`).join('') +
+  [0, 60, 120, 180, 240, 300].map((a) => `<path d="M9.7 4.5 12 6.8l2.3-2.3" transform="rotate(${a} 12 12)"/>`).join('') +
+  '</g></svg>';
+/**
+ * The weather setting's choices: icon, word, and the note under them while
+ * chosen (lang.ts). Snow, the dream (it never snows at Angkor), has the whole
+ * last row, under the four true to Cambodia.
+ */
 const WEATHER_CHOICE: Record<WeatherSetting, { icon: string; word: WordKey; note: WordKey }> = {
   season: { icon: ICON.season, word: 'wSeason', note: 'wSeasonNote' },
   clear: { icon: ICON.sun, word: 'wClear', note: 'wClearNote' },
   rainy: { icon: ICON.rain, word: 'wRainy', note: 'wRainyNote' },
   stormy: { icon: ICON.storm, word: 'wStormy', note: 'wStormyNote' },
+  snow: { icon: SNOW_ICON, word: 'snSnow', note: 'snSnowNote' },
 };
 /**
  * The graphics setting's choices, the same way (graphics.ts says what each
@@ -278,7 +290,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       <div class="mu-set-group">
         <h3 id="mu-weather-h" data-t="weather"></h3>
         <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-weather-h" aria-describedby="mu-weather-note">
-          ${WEATHER_SETTINGS.map((w) => `<button type="button" data-weather="${w}">${WEATHER_CHOICE[w].icon}<span data-t="${WEATHER_CHOICE[w].word}"></span></button>`).join('')}
+          ${WEATHER_SETTINGS.map((w) => `<button type="button"${w === 'snow' ? ' class="is-wide"' : ''} data-weather="${w}">${WEATHER_CHOICE[w].icon}<span data-t="${WEATHER_CHOICE[w].word}"></span></button>`).join('')}
         </div>
         <p class="mu-set-note" id="mu-weather-note"></p>
       </div>
@@ -908,6 +920,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'selected' && c) applySelected(c.place.id);
       if (k === 'settings') toggleSettings(true, false);
       if (k === 'held') setSoundHeld(true);
+      // (`weather:<setting>`: the panel shows that weather chosen, e.g. `uistate=settings,weather:snow`)
+      if (k === 'weather' && WEATHER_SETTINGS.includes(v as string as WeatherSetting)) {
+        settings = { ...settings, weather: v as string as WeatherSetting };
+        syncSettings();
+      }
       if (k === 'credits') {
         toggleSettings(true, false);
         showCredits(true);

@@ -15,7 +15,7 @@ import type { Ears } from './water';
  * - Khmer New Year: the musicians by the play field, a roneat (wooden
  *   xylophone: quick phrases on D E F♯ A B, the key of the map's own music,
  *   with the tremolo rolls it is known for) over the skor drums' slow
- *   pattern; the children's laughter now and then while they splash.
+ *   pattern; the children's laughter now and then while they play.
  *
  * Drums, shouts, crowd and laughter are on the ambience bus, the New Year
  * music on the music bus. Nothing is made far from them (the overview is

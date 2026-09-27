@@ -26,6 +26,10 @@ export const RAIN_PACE = { hurry: 1 };
  *   a.lookAt(point, now + 2);              // turn the head to a point for 2 s
  *   a.step(dt, now);                       // once a frame: moves, turns, writes
  *
+ * `step` sets the gait from the speed, except in `POSE.climb` and
+ * `POSE.ride`: there the scene drives the cycle (`crowd.gait(i, 1,
+ * crowd.climbRate(i, speed))`, pedal turns a second) and `step` leaves it.
+ *
  * After everyone has stepped, `keepApart` keeps bodies from overlapping.
  */
 export class Actor {
@@ -40,6 +44,8 @@ export class Actor {
   shown = false;
   /** Riding something (a boat, a cart): `ride` puts them, `step` leaves the floor alone. */
   riding = false;
+  /** Performing for others (the apsara dancers and the pinpeat players at their show): a greeting only turns their head (`_greetBack.ts`). */
+  performing = false;
   private gx = 0;
   private gz = 0;
   private want = 0;
@@ -139,12 +145,31 @@ export class Actor {
     return len(this.gx - this.x, this.gz - this.z);
   }
 
+  /**
+   * Greeting the explorer back (`_greetBack.ts`): while set, the head looks
+   * at `at` tilted by `nod` (−1 up ‥ 1 down), and (with `pose`) the scene's
+   * own `pose` waits, kept, while the greeting shows its own; `release`
+   * puts it back.
+   */
+  held: { at: Point; nod: number; pose: boolean } | null = null;
+  /** The pose the scene last asked for (shown unless `held.pose`). */
+  private scenePose: Pose = POSE.stand;
+
   pose(p: Pose, now: number): void {
-    this.crowd.pose(this.i, p, now);
+    this.scenePose = p;
+    if (!this.held?.pose) this.crowd.pose(this.i, p, now);
   }
 
   get currentPose(): Pose {
-    return this.crowd.poseOf(this.i);
+    return this.held?.pose ? this.scenePose : this.crowd.poseOf(this.i);
+  }
+
+  /** The greeting lets go: the scene's pose again (eased). */
+  release(now: number): void {
+    const h = this.held;
+    if (!h) return;
+    this.held = null;
+    if (h.pose) this.crowd.pose(this.i, this.scenePose, now);
   }
 
   /** Hold the prop the carry way (1) or let the arm go (0). */
@@ -236,20 +261,26 @@ export class Actor {
     // (the floor under them: up and down steps, onto beacon discs and bridges; where a wall is, they keep their height)
     const g = this.riding ? NaN : this.ground.at(this.x, this.z, this.y);
     if (Number.isFinite(g)) this.y += (g - this.y) * (dt > 0 ? Math.min(1, dt * 10) : 1);
-    // Gait: the stride follows the speed; turning on the spot shuffles.
-    const walk = this.speed > 0.05 ? Math.min(1, 0.35 + this.speed * 0.7) : Math.abs(err) > 0.35 ? 0.3 : 0;
-    const hz = this.speed > 0.05 ? c.stepRate(this.i, this.speed, walk) : 0.9;
-    c.gait(this.i, walk, hz, now);
-    // Head.
-    if (this.lookPt && now < this.lookUntil) {
-      const p = this.lookPt;
+    // Gait: the stride follows the speed; turning on the spot shuffles. (Climbing and pedalling, the scene drives
+    // the cycle itself: `crowd.gait(i, 1, climbRate…)`, before or after this step.)
+    const pose = c.poseOf(this.i);
+    if (pose !== POSE.climb && pose !== POSE.ride) {
+      const walk = this.speed > 0.05 ? Math.min(1, 0.35 + this.speed * 0.7) : Math.abs(err) > 0.35 ? 0.3 : 0;
+      const hz = this.speed > 0.05 ? c.stepRate(this.i, this.speed, walk) : 0.9;
+      c.gait(this.i, walk, hz, now);
+    }
+    // Head (held by a greeting: at the explorer).
+    const held = this.held;
+    const p = held ? held.at : now < this.lookUntil ? this.lookPt : null;
+    const tilt = held ? held.nod : this.lookPitch;
+    if (p) {
       const yaw = wrap(Math.atan2(p.x - this.x, p.z - this.z) - this.yaw);
       const h = len(p.x - this.x, p.z - this.z);
       const eye = this.y + 1.25 * c.scale(this.i);
-      const pitch = -Math.atan2(p.y - eye, Math.max(0.5, h)) / 0.6 + this.lookPitch;
+      const pitch = -Math.atan2(p.y - eye, Math.max(0.5, h)) / 0.6 + tilt;
       this.lookYaw = Math.abs(yaw) < 1.6 ? yaw : 0;
       c.look(this.i, this.lookYaw, pitch, now);
-    } else c.look(this.i, 0, this.lookPitch, now);
+    } else c.look(this.i, 0, tilt, now);
     if (this.shown) c.place(this.i, this.x, this.y, this.z, this.yaw);
   }
 }
@@ -262,16 +293,41 @@ export class Actor {
  * explorer count).
  */
 export function keepApart(actors: readonly Actor[], others: readonly { x: number; y: number; z: number; r: number; who: string }[]): void {
-  for (let i = 0; i < actors.length; i++) {
-    const a = actors[i];
+  // (the animals and the explorer, picked once: the list also holds every group's people)
+  let no = 0;
+  for (let k = 0; k < others.length; k++) {
+    const o = others[k];
+    if (o.who === 'animal' || o.who === 'explorer') APART_OTHERS[no++] = o;
+  }
+  // Everyone by x (an insertion sort: in order from the last frame but for a few), then the people shown swept:
+  // only those within reach along x are compared (≈ n, not n² / 2).
+  if (APART_ORDER.length !== actors.length || APART_FROM.list !== actors) {
+    APART_ORDER.length = 0;
+    APART_ORDER.push(...actors);
+    APART_FROM.list = actors;
+  }
+  const n = APART_ORDER.length;
+  for (let k = 1; k < n; k++) {
+    const a = APART_ORDER[k];
+    let j = k - 1;
+    while (j >= 0 && APART_ORDER[j].x > a.x) {
+      APART_ORDER[j + 1] = APART_ORDER[j];
+      j--;
+    }
+    APART_ORDER[j + 1] = a;
+  }
+  for (let i = 0; i < n; i++) {
+    const a = APART_ORDER[i];
     if (!a.shown) continue;
     const ra = 0.22 * a.crowd.scale(a.i);
-    for (let j = i + 1; j < actors.length; j++) {
-      const b = actors[j];
-      if (!b.shown || Math.abs(a.y - b.y) > 1.5) continue;
-      const min = ra + 0.22 * b.crowd.scale(b.i);
+    for (let j = i + 1; j < n; j++) {
+      const b = APART_ORDER[j];
       let dx = b.x - a.x;
+      if (dx >= APART_REACH) break;
+      if (!b.shown) continue;
+      const min = ra + 0.22 * b.crowd.scale(b.i);
       let dz = b.z - a.z;
+      if (dz >= min || dz <= -min || Math.abs(a.y - b.y) > 1.5) continue;
       const d = len(dx, dz);
       if (d >= min) continue;
       if (d < 1e-3) {
@@ -285,17 +341,25 @@ export function keepApart(actors: readonly Actor[], others: readonly { x: number
       a.nudge(-dx * push, -dz * push);
       b.nudge(dx * push, dz * push);
     }
-    for (const o of others) {
-      if ((o.who !== 'animal' && o.who !== 'explorer') || Math.abs(o.y - a.y) > 2.5) continue;
+    for (let k = 0; k < no; k++) {
+      const o = APART_OTHERS[k];
+      if (Math.abs(o.y - a.y) > 2.5) continue;
       const min = o.r + ra;
       const dx = a.x - o.x;
       const dz = a.z - o.z;
+      if (dx >= min || dx <= -min || dz >= min || dz <= -min) continue;
       const d = len(dx, dz);
       if (d >= min || d < 1e-3) continue;
       a.nudge((dx / d) * (min - d), (dz / d) * (min - d));
     }
   }
 }
+/** (keepApart's scratch: everyone in order of x, kept between frames for the list it was made from; the animals and the explorer) */
+const APART_ORDER: Actor[] = [];
+const APART_FROM: { list: readonly Actor[] | null } = { list: null };
+const APART_OTHERS: { x: number; y: number; z: number; r: number; who: string }[] = [];
+/** Farther apart along x than any two bodies reach (m: two of the biggest people at the drawn scale). */
+const APART_REACH = 0.8;
 
 export const TAU = Math.PI * 2;
 

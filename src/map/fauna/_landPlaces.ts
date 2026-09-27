@@ -4,7 +4,7 @@ import { CELL, SURFACE, type HeightField } from '../heightfield';
 import { PLACES } from '../layout';
 import { buildRoadNetwork, KIND, LIFT, type RoadNetwork } from '../road/line';
 import { WalkMap } from '../roam/walkmap';
-import { MAP_VIEWS, ROAM_AREA, viewDistance } from '../terrain/views';
+import { MAP_VIEWS, ROAM_AREA, roamInside, viewDistance } from '../terrain/views';
 import type { MapContext, MapPart } from '../types';
 import type { Ground } from './_landBrain';
 
@@ -165,7 +165,8 @@ export interface Spot {
   z: number;
 }
 
-const inRoam = (x: number, z: number, margin = 20) => x > ROAM_AREA.x0 + margin && x < ROAM_AREA.x1 - margin && z > ROAM_AREA.z0 + margin && z < ROAM_AREA.z1 - margin;
+// (inside the roaming area by `margin` m: views.ts, its boxes)
+const inRoam = (x: number, z: number, margin = 20) => roamInside(x, z) > margin;
 
 const nearPlace = (x: number, z: number, r: number) => PLACES.some((p) => Math.hypot(p.x - x, p.z - z) < Math.max(p.pad[0], p.pad[1]) + r);
 
@@ -260,6 +261,7 @@ export function meadows(sv: Survey, n: number, spacing: number, avoid: Spot[], r
   const cands: { x: number; z: number; score: number; c: number }[] = [];
   for (let z = ROAM_AREA.z0 + 40; z < ROAM_AREA.z1 - 30; z += 8)
     for (let x = ROAM_AREA.x0 + 40; x < ROAM_AREA.x1 - 40; x += 8) {
+      if (roamInside(x, z, false) < 40) continue;
       const c = f.index(x, z);
       if (c < 0 || Number.isNaN(G.open[c]) || f.surface[c] !== SURFACE.grass || G.road[c] < 10) continue;
       const i = c % f.nx;
@@ -294,6 +296,7 @@ export function edges(sv: Survey, n: number, spacing: number, avoid: Spot[], nea
   const cands: { x: number; z: number; score: number }[] = [];
   for (let z = ROAM_AREA.z0 + 40; z < ROAM_AREA.z1 - 30; z += 6)
     for (let x = ROAM_AREA.x0 + 40; x < ROAM_AREA.x1 - 40; x += 6) {
+      if (roamInside(x, z, false) < 40) continue;
       const c = f.index(x, z);
       if (c < 0 || Number.isNaN(G.open[c]) || (near && !near(x, z, c))) continue;
       const i = c % f.nx;

@@ -5,7 +5,7 @@ import type { HeightField } from '../heightfield';
 import { Frame } from '../landmarks/_prasatKit';
 import { mooredSkiff, type Floaters } from './_floating';
 import { houseBody, WALL_H } from './_house';
-import { BAMBOO, banana, bougainvillea, DECK, dog, drapedNet, hen, jar, khmerHat, lantern, laundry, Local, lotus, mat, moto, palm, POST, potPlant, shadeTree, skiff, spiritHouse, stove, tone, traps, TRIM, toWorld, type GlowFn } from './_kit';
+import { BAMBOO, banana, bougainvillea, DECK, dog, drapedNet, hen, jar, khmerHat, lantern, laundry, Local, lotus, mat, moto, palm, POST, potPlant, skiff, spiritHouse, stove, tone, traps, TRIM, toWorld, type GlowFn } from './_kit';
 import type { VillageLights } from './_lights';
 import type { SmokeSource } from './_smoke';
 import { frontStair, GROUND, JETTY, LAKE_LEVEL, STEP, type HomeSpec } from './_spots';
@@ -16,6 +16,8 @@ import { frontStair, GROUND, JETTY, LAKE_LEVEL, STEP, type HomeSpec } from './_s
  * water with boats tied at their foot, jars, pots, washing, a dog asleep
  * on a veranda, hens, a motorbike parked in the shade under a house, fish
  * traps and nets, palms and banana plants, a spirit house by the jetty.
+ * (The village tree, the gate, the market and the north street round them:
+ * `_fvVillage.ts`, `_fvMarket.ts`.)
  */
 
 export interface Env {
@@ -46,7 +48,8 @@ export function stiltHouse(h: HomeSpec, env: Env): void {
   const src = traceSource();
   const fr = new Frame(h.x, 0, h.z, h.facing);
   const lb = new VoxelBuilder();
-  const L = new Local(lb, src, h.seed * 97 + 5);
+  // (built with the frame's heading: its gables' boards are tilted, Local.tilt)
+  const L = new Local(lb, src, h.seed * 97 + 5, h.facing);
   const W = h.w;
   const zb = -(h.d + h.v) / 2;
   const zf = (h.d + h.v) / 2;
@@ -70,7 +73,7 @@ export function stiltHouse(h: HomeSpec, env: Env): void {
   for (const z of rows) L.span(-W / 2, F - 0.45, z - 0.17, W / 2, F - 0.2, z + 0.17, tone(POST, L.r(z, 2)), 'mapBark', 0.9);
   for (let x = -W / 2, i = 0; x < W / 2 - 0.05; x += 0.5, i++) L.span(x, F - 0.2, zb, Math.min(W / 2, x + 0.5), F, zf, tone(DECK, L.r(i, 3)), 'mapBark', 0.95 + L.r(i, 4) * 0.08);
 
-  houseBody(L, { w: W, d: h.d, v: h.v, floor: F, roof: h.roof, walls: h.walls, lit: h.lit, shop: h.shop, gap: h.shop ? null : st.x }, glow);
+  houseBody(L, { w: W, d: h.d, v: h.v, floor: F, roof: h.roof, walls: h.walls, lit: h.lit, shop: h.shop, gap: h.shop ? null : st.x, gapHalf: st.width / 2 + 0.4, gable: h.shop || h.seed % 3 === 1 ? 'kbach' : 'rays' }, glow);
 
   // ── The front stair: straight down from the veranda to the village ────────
   const sx0 = st.x - st.width / 2;
@@ -79,11 +82,19 @@ export function stiltHouse(h: HomeSpec, env: Env): void {
     const z = zf + (i - 1) * STEP;
     const y = F - i * STEP;
     L.span(sx0, y - 0.14, z, sx1, y, z + STEP, tone(DECK, L.r(i, 7)), 'mapBark');
-    // Stringers under the treads' ends; a handrail each side (posts every other step).
-    for (const x of [sx0, sx1 - 0.12]) {
+    // Stringers under the treads' ends; a handrail each side, just outside the treads (posts every other step), from
+    // the second step down: the top step lies under the eaves, and a rail there, 1.95 m under the thatch, would stop
+    // the roaming explorer coming down (he needs 2.26 m over what he steps on; the walk map takes the rail whole). The
+    // veranda's railing stops 0.4 m wide of the treads (`gapHalf`): its end's 0.5 m walk-map column stays off the way
+    // down, a little off the stair's middle too.
+    for (const [x, o] of [
+      [sx0, sx0 - 0.12],
+      [sx1 - 0.12, sx1 + 0.02],
+    ]) {
       L.span(x, y - 0.42, z, x + 0.12, y - 0.14, z + STEP, tone(POST, 0.3), 'mapBark', 0.9);
-      if (!h.shop) L.span(x, y + 0.85, z, x + 0.1, y + 0.95, z + STEP, tone(trim, 0.2), 'mapBark');
-      if (!h.shop && i % 2 === 1) L.span(x, y, z + 0.2, x + 0.1, y + 0.9, z + 0.28, tone(trim, 0.6), 'mapBark');
+      if (h.shop || i === 1) continue;
+      L.span(o, y + 0.85, z, o + 0.1, y + 0.95, z + STEP, tone(trim, 0.2), 'mapBark');
+      if (i % 2 === 0 || i === st.steps - 1) L.span(o, y, z + 0.2, o + 0.1, y + 0.9, z + 0.28, tone(trim, 0.6), 'mapBark');
     }
   }
 
@@ -218,15 +229,15 @@ export function jetty(env: Env): void {
   glow(sx, sy + 0.05, sz, 0.1, 0.12, 0.1, 0xffb050, 0.8);
   fr.place(lb, env.world);
   const boat = (x: number, z: number, yaw: number, seed: number) => mooredSkiff(env.floaters, fr.wx(x, z), fr.wz(x, z), fr.theta + yaw, seed, 4.4);
+  // (along its first ten metres the market's boats tie up in the morning: people/_sceneVillageMarket.ts)
   boat(3.3, len - 1.4, 0, 3);
-  boat(-2.9, len - 5.5, 0.1, 4);
-  boat(2.7, len - 8.5, -0.08, 5);
+  boat(-3.2, len - 3.9, 0.1, 4);
 }
 
 /**
  * The shore round the houses: net fences on bamboo poles in the shallows
  * north of the village, nets drying on a frame, boats pulled up on the
- * sand, palms and banana plants, a shade tree by the trail's end.
+ * sand, palms and banana plants, a bench by the trails' end.
  */
 export function shore(env: Env): void {
   const src = traceSource();
@@ -279,7 +290,8 @@ export function shore(env: Env): void {
   const palms: [number, number, number, number, number][] = [
     [-289.5, 36, 9, -0.6, 0.1],
     [-296, 52.5, 10, -0.8, 0.2],
-    [-302.5, 66, 8.5, -0.4, -0.3],
+    // (at the landing by the jetty's foot, leaning out over the water)
+    [-303.4, 59.4, 8.5, -0.7, -0.5],
     [-313.5, 73.5, 9.5, -0.3, -0.7],
     [-330, 80, 10, 0.1, -0.8],
     [-339.2, 83.7, 8, -0.4, -0.5],
@@ -289,18 +301,16 @@ export function shore(env: Env): void {
   for (const [x, z] of [
     [-284.5, 30],
     [-285.6, 48],
-    [-305, 72.5],
+    [-307.8, 74.4],
     [-321.5, 77.5],
     [-336.8, 85.5],
-    [-283, 78],
   ])
     banana(L, x, g(x, z), z);
-  potPlant(L, -300.5, GROUND, 71, true);
   for (const [x, z, seed] of [
-    [-290, 84.5, 51],
+    [-290.4, 85.2, 57],
     [-285, 67.5, 52],
     [-311.8, 84.2, 53],
-    [-300.8, 83.2, 54],
+    [-310.8, 87.2, 54],
     [-327.5, 82.5, 55],
   ])
     bougainvillea(L, x, g(x, z), z, seed);
@@ -311,9 +321,8 @@ export function shore(env: Env): void {
     [-356.5, 86, 6],
   ])
     lotus(L, x, LAKE_LEVEL, z, n);
-  // A tamarind shading the trails' end, the village's meeting place, a bench under it.
-  shadeTree(L, -297, g(-297, 81), 81, 911);
-  L.span(-299.4, GROUND, 79.4, -297.8, GROUND + 0.45, 79.9, tone(DECK, 0.3), 'mapBark');
+  // A bench under the village tree where the trails meet (the tree, its neak ta: _fvVillage.ts; the ox cart turns round it).
+  L.span(-296.4, GROUND, 82.2, -294.8, GROUND + 0.45, 82.7, tone(DECK, 0.3), 'mapBark');
   for (let k = 0; k < 4; k++) hen(L, -303 + k * 0.8, GROUND, 76 + L.r(k, 3) * 1.5, k === 1, k % 2 === 0);
   env.world.append(lb);
 }

@@ -1,6 +1,7 @@
-import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3 } from 'three';
-import { graphicsNow, STILL_LAYER, STILL_TURN } from './graphics';
+import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3, type Camera, type Light, type Scene } from 'three';
+import { dealStillParts, graphicsNow, STILL_LAYER, STILL_PART_LAYER, STILL_TURN, stillView } from './graphics';
 import { MAP_BOUNDS } from './layout';
+import { CAM_REACH, ROAM_AREA } from './terrain/views';
 import { skipDarkLights } from './sky/darkLights';
 import { HAZE, installHaze } from './sky/haze';
 import { buildLandMap } from './sky/mist';
@@ -29,6 +30,15 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   moving sun costs no extra shadow passes. `f.lightDir` is this direction.
  *   Clouds and dawn make its shadows paler and softer (`shadow.intensity`,
  *   `shadow.radius`: uniforms, no redraw).
+ * - The low level's still shadows (graphics.ts) are drawn again only once
+ *   the light has turned {@link STILL_TURN} (with the day's cycle about
+ *   every second at dusk and dawn), and then over 10–12 frames: the next
+ *   map is drawn a part of the casters a frame (graphics.ts
+ *   `dealStillParts`, ≈ 0.3 M triangles each) while the one shown stays,
+ *   and the two swap — the light turning with them — when it is done. The
+ *   whole map in one frame (2.8–3.5 M triangles, ≈ 4–6 ms more on an M1
+ *   Max, 20–45 on a phone) was a hitch each time; a part adds ≈ 0.5 ms of
+ *   GPU and 0.4 ms of CPU.
  * - A hemisphere fill: cool sky light from above, warm bounce from below; a
  *   lightning flash floods it for a moment (no light is ever added).
  * - Haze (sky/haze.ts): three's fog chunks are replaced here, before any
@@ -37,16 +47,37 @@ import type { MapContext, MapFrame, MapPart } from './types';
  * - Small lights (sky/darkLights.ts): a point or spot light is shaded only
  *   where it reaches, so the lamps and lanterns that wait in the dark cost
  *   next to nothing.
+ *
+ * URL (checks): `shadows=live` a shot draws the shadow map when the live
+ * page would (else every frame, so each picture is exact: scripts/perf.mjs
+ * uses it) · `shadowsteps=<n>` a still redraw over n frames (1: in one, as
+ * before; else as many as its size needs, at most 12).
  */
 export interface Atmosphere extends MapPart {
   /** The key light (sun by day, moon by night); casts the map's shadows. */
   key: DirectionalLight;
 }
 
-/** The land the shadow map must cover (m): the whole map, ground to the top of Phnom Kulen. */
-const SHADOW_BOX = { x0: MAP_BOUNDS.x0, x1: MAP_BOUNDS.x1, y0: -4, y1: 175, z0: MAP_BOUNDS.z0, z1: MAP_BOUNDS.z1 };
+/**
+ * The land the shadow map must cover (m), ground to the top of Phnom Kulen:
+ * in the overview (and the places' views) what those cameras see, the map as
+ * it was first made (the land that grew round Phnom Kulen is behind it or off
+ * the frame): the one shadow map stays as sharp there; roaming, the roaming
+ * area and most of the follow camera's reach round it.
+ */
+const SHADOW_BOX = {
+  overview: { x0: MAP_BOUNDS.x0, x1: 600, y0: -4, y1: 175, z0: -660, z1: MAP_BOUNDS.z1 },
+  roam: { x0: MAP_BOUNDS.x0, x1: ROAM_AREA.x1 + CAM_REACH * 0.75, y0: -4, y1: 175, z0: ROAM_AREA.z0 - CAM_REACH / 2, z1: MAP_BOUNDS.z1 },
+};
+type ShadowBox = (typeof SHADOW_BOX)['overview'];
 
 export function buildAtmosphere(ctx: MapContext): Atmosphere {
+  const params = new URLSearchParams(location.search);
+  /** The shadow map drawn as the live page draws it (a shot draws it every frame, unless `shadows=live`). */
+  const live = !ctx.shot || params.get('shadows') === 'live';
+  /** `shadowsteps=`: frames a still redraw takes (0: as many as its size needs). */
+  const steps = Math.max(0, Math.round(Number(params.get('shadowsteps')) || 0));
+
   const land = buildLandMap(ctx.field);
   skipDarkLights();
   installHaze(mistNoiseTexture(), land.texture);
@@ -80,16 +111,18 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   // Fit the shadow camera tightly around the map box, seen from the light.
   const lightView = new Matrix4();
   const corner = new Vector3();
-  const centre = new Vector3((SHADOW_BOX.x0 + SHADOW_BOX.x1) / 2, (SHADOW_BOX.y0 + SHADOW_BOX.y1) / 2, (SHADOW_BOX.z0 + SHADOW_BOX.z1) / 2);
+  const centre = new Vector3();
   const fitted = new Vector3(0, 0, 0);
-  function fitShadow(dir: Vector3): void {
-    if (fitted.distanceToSquared(dir) < 1e-10) return;
-    fitted.copy(dir);
-    key.position.copy(centre).addScaledVector(dir, 1500);
-    key.target.position.copy(centre);
-    key.updateMatrixWorld();
-    key.target.updateMatrixWorld();
-    lightView.lookAt(key.position, centre, corner.set(0, 1, 0)).setPosition(key.position).invert();
+  let box = SHADOW_BOX.overview;
+  let fittedBox: ShadowBox | null = null;
+  /** Point `light` along `dir` at the middle of `on`, its shadow camera fitted round the box as the light sees it. */
+  function aim(light: DirectionalLight, dir: Vector3, on: ShadowBox): void {
+    centre.set((on.x0 + on.x1) / 2, (on.y0 + on.y1) / 2, (on.z0 + on.z1) / 2);
+    light.position.copy(centre).addScaledVector(dir, 1500);
+    light.target.position.copy(centre);
+    light.updateMatrixWorld();
+    light.target.updateMatrixWorld();
+    lightView.lookAt(light.position, centre, corner.set(0, 1, 0)).setPosition(light.position).invert();
     let x0 = Infinity;
     let x1 = -Infinity;
     let y0 = Infinity;
@@ -97,7 +130,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     let z0 = Infinity;
     let z1 = -Infinity;
     for (let i = 0; i < 8; i++) {
-      corner.set(i & 1 ? SHADOW_BOX.x1 : SHADOW_BOX.x0, i & 2 ? SHADOW_BOX.y1 : SHADOW_BOX.y0, i & 4 ? SHADOW_BOX.z1 : SHADOW_BOX.z0).applyMatrix4(lightView);
+      corner.set(i & 1 ? on.x1 : on.x0, i & 2 ? on.y1 : on.y0, i & 4 ? on.z1 : on.z0).applyMatrix4(lightView);
       x0 = Math.min(x0, corner.x);
       x1 = Math.max(x1, corner.x);
       y0 = Math.min(y0, corner.y);
@@ -105,7 +138,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
       z0 = Math.min(z0, corner.z);
       z1 = Math.max(z1, corner.z);
     }
-    const cam = key.shadow.camera;
+    const cam = light.shadow.camera;
     cam.left = x0;
     cam.right = x1;
     cam.bottom = y0;
@@ -113,6 +146,12 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     cam.near = Math.max(1, -z1 - 20);
     cam.far = -z0 + 20;
     cam.updateProjectionMatrix();
+  }
+  function fitShadow(dir: Vector3): void {
+    if (fitted.distanceToSquared(dir) < 1e-10 && fittedBox === box) return;
+    fitted.copy(dir);
+    fittedBox = box;
+    aim(key, dir, box);
     shadowDirty = true;
   }
 
@@ -132,6 +171,94 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   /** How much the eye has got used to the shade under the leaves (0‥1, eased). */
   let under = 0;
 
+  // ── Still shadows drawn over a few frames ──
+  // The next map belongs to a light of its own that never lights anything
+  // (not in the scene: only its shadow map is drawn). Its casters are dealt
+  // into parts (graphics.ts, a layer each); each frame the picture's draw
+  // draws one part into it (three's shadow pass with the view camera seeing
+  // that part's layer, the map cleared only before the first); once all are
+  // in, the key light takes the map and its aim, and gives its old map back
+  // to be drawn over next time.
+  const next = new DirectionalLight(0xffffff, 0);
+  next.name = 'sun: the next still shadows';
+  next.castShadow = true;
+  const nextDir = new Vector3();
+  let nextBox = box;
+  /** Parts of the next map drawn so far, and how many it has (0: none on the way). */
+  let part = 0;
+  let parts = 0;
+  /** Still shadows are drawn over frames now (live, the low level, a map shown already). */
+  let spread = false;
+
+  /** Start the next map: aimed along `dir` over the box in use, its casters dealt into parts. */
+  function startNext(dir: Vector3): void {
+    nextDir.copy(dir);
+    nextBox = box;
+    next.shadow.mapSize.copy(key.shadow.mapSize);
+    aim(next, dir, box);
+    parts = dealStillParts(ctx.scene, steps);
+    part = 0;
+  }
+  /** No next map (off the low level, a new size): its target freed. */
+  function dropNext(): void {
+    part = parts = 0;
+    next.shadow.map?.dispose();
+    next.shadow.map = null;
+  }
+  /** The next map is done: it shows from now on, and the key light turns to where it was drawn from. */
+  function swapNext(): void {
+    const shown = key.shadow.map;
+    key.shadow.map = next.shadow.map;
+    next.shadow.map = shown;
+    key.position.copy(next.position);
+    key.target.position.copy(next.target.position);
+    key.updateMatrixWorld();
+    key.target.updateMatrixWorld();
+    const a = key.shadow.camera;
+    const b = next.shadow.camera;
+    a.left = b.left;
+    a.right = b.right;
+    a.bottom = b.bottom;
+    a.top = b.top;
+    a.near = b.near;
+    a.far = b.far;
+    a.updateProjectionMatrix();
+    // (the matrix the picture reads the map with)
+    key.shadow.updateMatrices(key);
+    fitted.copy(nextDir);
+    fittedBox = nextBox;
+    part = parts = 0;
+  }
+  // One part a frame, with the picture (not with another view of the scene: the snow's map from above).
+  const draw = shadows.render.bind(shadows);
+  const clear = ctx.renderer.clear;
+  const keep = () => {};
+  const one: Light[] = [next];
+  shadows.render = (lights: Light[], scene: Scene, camera: Camera) => {
+    if (spread && camera === ctx.camera && graphicsNow.stillShadows) {
+      // (asked for again — the explorer leaves his ledge, the land's cull changes —: a next map of what casts
+      // now, unless this frame's has just been dealt)
+      if (shadows.needsUpdate) {
+        if (parts === 0 || part > 0) startNext(parts === 0 ? fitted : nextDir);
+        shadows.needsUpdate = false;
+      }
+      if (part < parts) {
+        stillView.mask = 1 << (STILL_PART_LAYER + part);
+        if (part > 0) ctx.renderer.clear = keep;
+        shadows.needsUpdate = true;
+        try {
+          draw(one, scene, camera);
+        } finally {
+          ctx.renderer.clear = clear;
+          stillView.mask = 1 << STILL_LAYER;
+          shadows.needsUpdate = false;
+        }
+        part++;
+      }
+    }
+    draw(lights, scene, camera);
+  };
+
   return {
     name: 'atmosphere',
     object,
@@ -144,6 +271,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
         key.shadow.mapSize.set(size, size);
         key.shadow.map?.dispose();
         key.shadow.map = null;
+        dropNext();
         shadowDirty = true;
       }
       const casters = graphicsNow.stillShadows ? 1 << STILL_LAYER : 1;
@@ -152,10 +280,30 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
         shadowDirty = true;
       }
       frames++;
-      const redraw = ctx.shot || (graphicsNow.stillShadows ? frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN : frames >= graphicsNow.shadowEvery);
-      if (redraw || shadowDirty) {
-        fitShadow(s.keyDir);
-        frames = 0;
+      // (the box for what the camera sees now: roaming or not, drawn again when it changes)
+      const want = f.roam === 'overview' ? SHADOW_BOX.overview : SHADOW_BOX.roam;
+      if (want !== box) {
+        box = want;
+        shadowDirty = true;
+      }
+      // Still shadows, live, over a map already shown: the next one is drawn over the next frames (the render hook above).
+      spread = live && graphicsNow.stillShadows && key.shadow.map !== null;
+      if (spread) {
+        if (parts > 0 && part >= parts) swapNext();
+        if (shadowDirty || (parts === 0 && frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN)) {
+          startNext(s.keyDir);
+          frames = 0;
+        }
+        shadowDirty = false;
+      } else {
+        if (parts > 0 || next.shadow.map) dropNext();
+        const redraw = !live || (graphicsNow.stillShadows ? frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN : frames >= graphicsNow.shadowEvery);
+        if (redraw || shadowDirty) {
+          fitShadow(s.keyDir);
+          frames = 0;
+          shadows.needsUpdate = true;
+        }
+        shadowDirty = false;
       }
       f.lightDir.copy(fitted);
 
@@ -173,8 +321,6 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
       fill.color.copy(s.fillSky);
       fill.groundColor.copy(s.fillGround);
       fill.intensity = s.fillIntensity * (1 + 0.5 * under);
-      if (redraw || shadowDirty) shadows.needsUpdate = true;
-      shadowDirty = false;
 
       fog.color.copy(s.haze);
       fog.near = s.hazeNear;

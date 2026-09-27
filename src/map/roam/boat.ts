@@ -1,12 +1,14 @@
 import { Color, Euler, Group, PerspectiveCamera, PointLight, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
+import { len2 } from '../fauna/_len';
 import type { HeightField, RiverSample } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
 import type { MapFrame } from '../types';
 import { placeText, t } from '../ui/lang';
 import { JETTY } from '../village/_spots';
-import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANTERN, lanternHalo, lanternMaterial } from './_boatModel';
+import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANTERN, lanternHalo, lanternMaterial, stowedRod } from './_boatModel';
 import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
+import { createFishing, type FishBoat } from './_fishing';
 import { createWake } from './_wake';
 import { angleDiff } from './followCam';
 import { riverField, type RiverField } from './flow';
@@ -22,6 +24,11 @@ import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type Roa
  * seen from the overview, and a third at the floating village's jetty head
  * (the great lake): the walker boards them with E (`mooredBoatNear`). E
  * alongside the jetty steps up onto its planks (`onJetty`).
+ *
+ * Slow or still, F fishes (_fishing.ts): the paddle goes down on his lap,
+ * he takes up the bamboo pole laid along the boat's side, casts, waits for a
+ * bite, strikes, lifts the fish, shows it and lets it go; meanwhile the boat
+ * drifts slowly with the current. W A S D or E lays the pole down again.
  *
  * The boat's middle on the waterline is the explorer's feet point
  * (`body.pos`), and they share the heading; the posture (_boatPoses.ts) seats
@@ -92,6 +99,8 @@ export interface BoatMode extends RoamModeHandler {
   frame(f: MapFrame): void;
   /** Voxel blocks of the boats, paddle and landing. */
   readonly blocks: number;
+  /** For bug reports: URL params that replay his fishing as it is now (`fishing=…`, `sim=`), or null. */
+  reportParams(): Record<string, string> | null;
 }
 
 type Phase = 'board' | 'rise' | 'float' | 'drop';
@@ -117,6 +126,9 @@ export function createBoat(field?: HeightField): BoatMode {
   const paddle = buildPaddle();
   const wake = createWake();
   object.add(wake.object);
+  // Fishing from the boat: the pole, float, line and fish (drawn only while he fishes).
+  const fishing = createFishing();
+  object.add(fishing.object);
   let blocks = model.blocks * 2 + paddle.blocks;
 
   // The boat he rides (hidden until the first ride), the one at the landing and the one at the village jetty.
@@ -138,11 +150,13 @@ export function createBoat(field?: HeightField): BoatMode {
   dock.add(light);
 
   let river: RiverField | null = null;
+  let land: HeightField | null = null;
   let dockAt: Moored | null = null;
   let pierAt: Moored | null = null;
   const build = (f: HeightField) => {
     if (river) return;
     const t0 = performance.now();
+    land = f;
     river = riverField(f);
     const spot = findLanding(f, river);
     if (spot) {
@@ -180,6 +194,9 @@ export function createBoat(field?: HeightField): BoatMode {
   let roll = 0;
   let rollV = 0;
   let pushT = 0;
+  /** Speed through the water ahead (m/s) and the current's (m/s), last step (fishing asks). */
+  let lastVf = 0;
+  let current = 0;
   let wakeRun = 0;
   let lapT = 0;
   let spawnN = 0;
@@ -198,8 +215,32 @@ export function createBoat(field?: HeightField): BoatMode {
   let framed = false;
 
   const stroke = new PaddleStroke();
-  const rideState: RideState = { pitch: 0, roll: 0, stroke, brace: 0, look: 0 };
+  const rideState: RideState = { pitch: 0, roll: 0, stroke, brace: 0, look: 0, fish: fishing.hold };
   const posture = () => ridePose(rideState, paddle.object);
+  /** The boat as fishing sees it. */
+  const fishView: FishBoat = {
+    hull: ride,
+    get level() {
+      return level;
+    },
+    get river() {
+      return river!;
+    },
+    get field() {
+      return land!;
+    },
+    wake,
+    get speed() {
+      return Math.abs(lastVf);
+    },
+    get current() {
+      return current;
+    },
+    get afloat() {
+      return riding && phase === 'float';
+    },
+    stowed: (show) => stowedRod(ride, show),
+  };
 
   const rnd = (k: number) => hash3(spawnN, k, 7, 913);
 
@@ -314,6 +355,8 @@ export function createBoat(field?: HeightField): BoatMode {
     const hl = (BOAT_LENGTH / 2) * s * 0.82;
     const fwd = input.move.y;
     const turn = input.move.x;
+    // (fishing, the boat drifts with a share of the current: fishing.drift)
+    const drift = fishing.drift;
 
     if (stroke.update(h, fwd, turn)) {
       const c = stroke.catchAt;
@@ -330,6 +373,9 @@ export function createBoat(field?: HeightField): BoatMode {
     const rx = -hz;
     const rz = hx;
     r.flowAt(body.pos.x, body.pos.z, _flow);
+    current = len2(_flow.x, _flow.z);
+    _flow.x *= drift;
+    _flow.z *= drift;
     // Velocity through the water: ahead (vf) and sideways (vl).
     const wx = body.vel.x - _flow.x;
     const wz = body.vel.z - _flow.z;
@@ -340,11 +386,12 @@ export function createBoat(field?: HeightField): BoatMode {
     vl *= Math.exp(-GRIP * h);
     body.vel.x = _flow.x + hx * vf + rx * vl;
     body.vel.z = _flow.z + hz * vf + rz * vl;
+    lastVf = vf;
 
     // Turning, and the river turning the boat where bow and stern feel different currents.
     r.flowAt(body.pos.x + hx * hl, body.pos.z + hz * hl, _fb);
     r.flowAt(body.pos.x - hx * hl, body.pos.z - hz * hl, _fs);
-    const spin = -(((_fb.x - _fs.x) * rx + (_fb.z - _fs.z) * rz) / (2 * hl));
+    const spin = (-((_fb.x - _fs.x) * rx + (_fb.z - _fs.z) * rz) / (2 * hl)) * drift;
     const want = -turn * TURN * (1 + 0.2 * Math.min(1, Math.abs(vf) / 3));
     yawRate += (want - yawRate) * (1 - Math.exp(-h * 4)) + spin * h * 1.5;
     body.yaw += yawRate * h;
@@ -413,9 +460,9 @@ export function createBoat(field?: HeightField): BoatMode {
     rollV = spring(roll, rollV, rollT, 45, 7);
     roll += rollV * h;
     rideState.brace = Math.max(0, rideState.brace - h * 1.2);
-    // The camera or the phone up: the paddle goes down across his lap (the boat drifts on).
+    // The camera or the phone up, or fishing: the paddle goes down across his lap (the boat drifts on).
     const a = ctx.body.explorer.currentAction;
-    const free = a === 'photo' || a === 'selfie';
+    const free = a === 'photo' || a === 'selfie' || fishing.active;
     rideState.rest = Math.min(1, Math.max(0, (rideState.rest ?? 0) + h * (free ? 2.5 : -2.5)));
     rideState.look += (yawRate * 0.4 - rideState.look) * (1 - Math.exp(-h * 3));
 
@@ -732,6 +779,7 @@ export function createBoat(field?: HeightField): BoatMode {
     get blocks() {
       return blocks;
     },
+    reportParams: () => fishing.report(),
     enter(ctx, from) {
       const { body, cam } = ctx;
       build(ctx.world.field);
@@ -789,6 +837,12 @@ export function createBoat(field?: HeightField): BoatMode {
       body.explorer.animator.posture = posture;
       if (from === 'overview') {
         phase = 'float';
+        // Checks: `fishing=…` starts him fishing (the hull placed first: the pole goes on it).
+        const params = new URLSearchParams(location.search);
+        if (params.has('fishing')) {
+          placeRide(ctx, 0);
+          fishing.fromUrl(params, ctx, fishView);
+        }
       } else {
         phase = 'rise';
         inT = 0;
@@ -804,6 +858,8 @@ export function createBoat(field?: HeightField): BoatMode {
       const s = body.scale;
       clock += dt;
       cam.turn(input.lookYaw, input.lookPitch, input.zoom);
+      // Fishing first: F starts it; while he fishes it takes the paddling keys (the stick and E put the pole away).
+      if (phase === 'float' || fishing.active) fishing.input(ctx, fishView);
 
       let next: RoamMode | null = null;
       const n = Math.max(1, Math.ceil(dt / MAX_STEP - 1e-6));
@@ -837,20 +893,27 @@ export function createBoat(field?: HeightField): BoatMode {
         else next = float(ctx, h);
       }
       if (phase !== 'board') body.explorer.setMotion(0, true, 0);
+      // (over a fall: the pole is put away at once)
+      if (phase === 'drop' && fishing.active) fishing.stop(ctx, false);
       placeRide(ctx, dt);
+      // (after the hull is placed: the pole, the float, the fish, the camera's framing)
+      fishing.place(ctx, dt, fishView);
       wake.update(dt);
       lanterns(ctx.night, clock);
       if (next) return next;
 
       // What E does here: enter a place, step ashore.
       const spot = world.placeNear(body.pos.x, body.pos.z, level);
-      const land = phase === 'float' ? ashore(ctx) : null;
+      const bank = phase === 'float' && !fishing.active ? ashore(ctx) : null;
       const name = spot ? placeText(spot).name : '';
-      const text = spot?.href ? `E  ${t('rEnter', { name })}` : land ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
+      const use = spot?.href ? `E  ${t('rEnter', { name })}` : bank ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
+      // (and fishing's part: "F  Fish"; while he fishes, only it: E puts the pole away)
+      const fish = fishing.prompt(fishView);
+      const text = fishing.active ? fish : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
       if (text !== prompt) hud.prompt((prompt = text));
       if (input.use && phase === 'float') {
         if (spot?.href) ctx.enter(spot);
-        else if (land) return stepOut(ctx, land);
+        else if (bank) return stepOut(ctx, bank);
         else if (spot) hud.toast(t('rNotOpen', { name }));
         else hud.toast(t('rToBank'));
       }
@@ -859,6 +922,9 @@ export function createBoat(field?: HeightField): BoatMode {
     exit(ctx, to) {
       const { body } = ctx;
       riding = false;
+      // (the pole back in the boat at once)
+      fishing.stop(ctx, false);
+      stowedRod(ride, true);
       body.explorer.animator.posture = null;
       body.explorer.animator.postureFeet = true;
       body.explorer.rig.clearSlot('boatPaddle');
@@ -889,6 +955,7 @@ export function createBoat(field?: HeightField): BoatMode {
     },
     frame(f) {
       framed = true;
+      fishing.frame(f.night);
       if (!riding) {
         wake.update(f.dt);
         lanterns(f.night, f.t);

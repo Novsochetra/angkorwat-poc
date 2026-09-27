@@ -2,7 +2,7 @@ import type { InstancedMesh, Object3D } from 'three';
 import { hash3 } from '../../voxel/random';
 import { CELL, SURFACE, type HeightField } from '../heightfield';
 import { PLACES } from '../layout';
-import { MAP_VIEWS, ROAM_AREA, viewDistance } from '../terrain/views';
+import { MAP_VIEWS, ROAM_AREA, roamInside, viewDistance } from '../terrain/views';
 import type { MapContext } from '../types';
 import type { Ground } from './_landBrain';
 
@@ -218,7 +218,8 @@ export function marshGround(cn: Canopy): Ground {
 
 // ── Finding places ───────────────────────────────────────────────────────────
 
-const inRoam = (x: number, z: number, margin: number) => x > ROAM_AREA.x0 + margin && x < ROAM_AREA.x1 - margin && z > ROAM_AREA.z0 + margin && z < ROAM_AREA.z1 - margin;
+// (inside the roaming area by `margin` m: views.ts, its boxes)
+const inRoam = (x: number, z: number, margin: number) => roamInside(x, z) > margin;
 const nearPlace = (x: number, z: number, r: number) => PLACES.some((p) => Math.hypot(p.x - x, p.z - z) < Math.max(p.pad[0], p.pad[1]) + r);
 
 /** Summed-area table of a per-cell 0/1 test: window counts in O(1). */
@@ -300,6 +301,7 @@ export function forestFloors(s: Sites, n: number, spacing: number, avoid: Spot[]
   const cands: (Spot & { score: number })[] = [];
   for (let z = ROAM_AREA.z0 + 40; z < ROAM_AREA.z1 - 30; z += 8)
     for (let x = ROAM_AREA.x0 + 40; x < ROAM_AREA.x1 - 40; x += 8) {
+      if (roamInside(x, z, false) < 40) continue;
       if (Number.isNaN(s.floor(x, z)) || nearPlace(x, z, 30)) continue;
       const shade = s.shade.share(x, z, 5);
       const open = s.open.share(x, z, 5);
@@ -316,6 +318,7 @@ export function clearings(s: Sites, n: number, spacing: number, avoid: Spot[]): 
   const cands: (Spot & { score: number })[] = [];
   for (let z = ROAM_AREA.z0 + 40; z < ROAM_AREA.z1 - 30; z += 6)
     for (let x = ROAM_AREA.x0 + 40; x < ROAM_AREA.x1 - 40; x += 6) {
+      if (roamInside(x, z, false) < 40) continue;
       if (Number.isNaN(s.floor(x, z)) || nearPlace(x, z, 25)) continue;
       const open = s.open.share(x, z, 5);
       const shade = s.shade.share(x, z, 7);

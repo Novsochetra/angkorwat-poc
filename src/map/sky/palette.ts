@@ -9,7 +9,8 @@ import type { MapWeather } from '../types';
  * blended smoothly in between. The clock (`MapFrame.clock`: 0 afternoon,
  * 0.25 dusk, 0.5 night, 0.75 dawn) picks the side: dusk on the way into the
  * night, dawn on the way out. Then the weather leans on it (cloud cover,
- * rain, a lightning flash) and the moon's phase sets how bright the night is.
+ * rain, snow falling and lying, a lightning flash) and the moon's phase sets
+ * how bright the night is.
  * `SKY` holds the blend for the current frame (linear colours); the
  * atmosphere writes it first thing every frame, the mist and the picture
  * grade read it.
@@ -200,6 +201,12 @@ const NIGHT: Key = {
 
 /** Rain: the sky, haze and far hills go to these (a cool grey, darker in a storm). */
 const RAIN = { sky: 0x70788c, haze: 0x767e90, far: 0x3c4458, cloud: 0x5c6274, night: 0x101a30 };
+/**
+ * Snow (the snow setting, a dream): falling, it veils the sky, the haze and the
+ * far hills in these pale, soft whites (by night a deep, glowing blue); lying,
+ * it throws the sky light back up (`ground`: the hemisphere's light from below).
+ */
+const SNOW = { sky: 0xd2d6e0, haze: 0xcdd2dc, far: 0xa2aabc, cloud: 0xdfe2e8, mist: 0xeef0f6, key: 0xf2f4ff, ground: 0xc4ccdc, night: 0x243866, groundNight: 0x2c3c66 };
 /** A lightning flash: this cold white is added to the sky and the haze at its peak. */
 const FLASH = 0xc8d4ff;
 
@@ -463,7 +470,7 @@ export function updateSky(f: SkyInput): SkyState {
   return SKY;
 }
 
-/** The weather on the light: clouds dim the sun and soften shadows, rain cools and darkens, lightning flashes. */
+/** The weather on the light: clouds dim the sun and soften shadows, rain cools and darkens, snow pales and brightens, lightning flashes. */
 function weather(w: MapWeather): void {
   const cloud = MathUtils.clamp(Math.max(w.cloud, w.rain * 0.9, w.storm), 0, 1);
   const rain = MathUtils.clamp(w.rain, 0, 1);
@@ -472,7 +479,7 @@ function weather(w: MapWeather): void {
   SKY.cloud = cloud;
   SKY.rain = rain;
   SKY.flash = flash;
-  if (cloud + rain + storm + flash + w.wet <= 0) return;
+  if (cloud + rain + storm + flash + w.wet + w.snow + w.snowCover <= 0) return;
   const day = 1 - SKY.night;
 
   // Cloud cover: the sun and moon go behind it, the key light dims and its shadows go soft and pale; the sky light stays.
@@ -519,6 +526,32 @@ function weather(w: MapWeather): void {
   SKY.lowDensity *= 1 + 0.5 * soaked;
   SKY.lowH *= 1 - 0.2 * soaked;
   SKY.coverage -= 0.06 * soaked;
+
+  // Snow: the falling snow veils the sky, the haze and the far hills in soft whites (a glowing deep blue by
+  // night) and draws the haze in close; the light goes cooler and whiter. Lying on the land it lights the air
+  // from below (the sky light's ground colour), and the whole picture is a little brighter.
+  const snow = MathUtils.clamp(w.snow, 0, 1);
+  const cover = MathUtils.clamp(w.snowCover, 0, 1);
+  if (snow + cover > 0) {
+    const pale = (hex: number, night = SNOW.night) => _b.setHex(hex).lerp(_a.setHex(night), SKY.night);
+    const veil = Math.max(snow, 0.35 * cover);
+    for (const c of [SKY.zenith, SKY.horizon]) c.lerp(pale(SNOW.sky), 0.72 * veil);
+    for (const c of [SKY.haze, SKY.hazeSun]) c.lerp(pale(SNOW.haze), 0.68 * veil);
+    SKY.far.lerp(pale(SNOW.far), 0.6 * veil);
+    SKY.cloudBody.lerp(pale(SNOW.cloud), 0.75 * veil);
+    SKY.cloudLit.lerp(pale(SNOW.cloud), 0.45 * veil);
+    SKY.mistLit.lerp(pale(SNOW.mist), 0.5 * veil);
+    SKY.mistShade.lerp(pale(SNOW.haze), 0.35 * veil);
+    SKY.key.lerp(pale(SNOW.key, SNOW.key), 0.45 * veil * (1 - 0.5 * SKY.night));
+    SKY.fillSky.lerp(pale(SNOW.sky), 0.3 * veil);
+    SKY.hazeNear *= 1 - 0.4 * snow;
+    SKY.hazeFar *= 1 - 0.38 * snow;
+    SKY.stars *= 1 - snow;
+    SKY.fillGround.lerp(pale(SNOW.ground, SNOW.groundNight), 0.8 * cover);
+    // (a snowy night is never quite dark: the white land gives back every bit of light)
+    SKY.fillIntensity *= 1 + cover * (0.12 + 0.2 * SKY.night);
+    SKY.exposure *= 1 + 0.05 * snow * (1 - SKY.night);
+  }
 
   // Lightning: for a moment the sky, the haze and the clouds light up cold and white, and the sky light floods the land.
   if (flash > 0) {

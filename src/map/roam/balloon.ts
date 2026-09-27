@@ -3,6 +3,7 @@ import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { SURFACE, type HeightField } from '../heightfield';
 import { OVERVIEW, placeById } from '../layout';
+import { roamHeading } from '../terrain/views';
 import { CALM_WEATHER, type MapFrame, type MapWeather } from '../types';
 import { t } from '../ui/lang';
 import { BALLOON, Balloon, buildBalloonHome } from './_balloonModel';
@@ -161,7 +162,7 @@ const LEAN_FWD = 0.035;
 /** The wind turns it back at the roaming area's edge when the edge is this near ahead (m), or this many seconds of flight. */
 const EDGE_LOOK = 40;
 const EDGE_LOOK_S = 5;
-/** Where the wind turns it back to: Angkor Wat. */
+/** Where the wind turns it back to: Angkor Wat (round the roaming area's inner corner: views.ts `roamHeading`). */
 const HOME = placeById('sanctuary');
 
 // ── Wind ───────────────────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ const INFLATE_CAM = Math.PI * 0.72;
 
 const _v = new Vector3();
 const _wind = { x: 0, z: 0 };
+const _home = { x: 0, z: 0 };
 const _frustum = new Frustum();
 const _viewProj = new Matrix4();
 const _sphere = new Sphere();
@@ -817,9 +819,11 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       // ── Turning; easy flying: at the roaming area's edge the wind turns it back towards the temples ──
       yawV += (turn * (easy ? TURN : SPIN) - yawV) * (1 - Math.exp(-dt * (easy ? TURN_EASE : 1.5)));
       if (easy && phase === 'fly') {
-        const off = angleDiff(Math.atan2(HOME.x - pos.x, HOME.z - pos.z), yaw);
         const ahead = Math.max(EDGE_LOOK, v * EDGE_LOOK_S);
-        if (!homing && !world.inBounds(pos.x + Math.sin(yaw) * ahead, pos.z + Math.cos(yaw) * ahead) && Math.abs(off) > 0.6) {
+        const out = !world.inBounds(pos.x + Math.sin(yaw) * ahead, pos.z + Math.cos(yaw) * ahead);
+        const to = out || homing ? roamHeading(pos.x, pos.z, HOME.x, HOME.z, _home) : HOME;
+        const off = angleDiff(Math.atan2(to.x - pos.x, to.z - pos.z), yaw);
+        if (!homing && out && Math.abs(off) > 0.6) {
           // (once it starts it turns it all the way round, one way; straight away from home: the way it already turns)
           homing = Math.abs(off) > 2.8 && Math.abs(yawV) > 0.05 ? Math.sign(yawV) : off >= 0 ? 1 : -1;
           if (clock - edgeTold > 8) ctx.hud.toast(t('rWindBack'));

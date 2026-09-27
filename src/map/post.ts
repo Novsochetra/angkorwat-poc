@@ -1,6 +1,5 @@
 import { HalfFloatType, MathUtils, ShaderMaterial, Vector2, Vector3, WebGLRenderTarget } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -13,11 +12,12 @@ import type { MapContext, MapFrame } from './types';
  *  1. the scene into a half-float target (multisampled),
  *  2. bloom: everything above {@link BLOOM_THRESHOLD} in linear light glows
  *     softly (sun, moon, lamps, beacons, the road light); half resolution,
- *  3. grade (still linear): warm golden highlights and lavender shadows by
- *     day, cool blue by night, pale gold over cool blue at dawn, greyer in
- *     the rain, a touch of contrast, a soft vignette and a faint blur along
- *     the top edge (tilt-shift: the far hills look far),
- *  4. OutputPass: tone mapping (the renderer's, Neutral) and sRGB.
+ *  3. grade: warm golden highlights and lavender shadows by day, cool blue
+ *     by night, pale gold over cool blue at dawn, greyer in the rain, a
+ *     touch of contrast, a soft vignette and a faint blur along the top edge
+ *     (tilt-shift: the far hills look far); then, on the screen, tone mapping
+ *     (the renderer's, Neutral) and sRGB (three's chunks: what an OutputPass
+ *     did as a pass of its own, one full-screen read and write less a frame).
  */
 export interface MapPost {
   render(f: MapFrame): void;
@@ -91,6 +91,9 @@ const GradeShader = {
       vec2 q = (vUv - 0.5) * vec2(1.0, 0.8);
       c *= 1.0 - uVignette * smoothstep(0.18, 0.62, dot(q, q) * 2.0);
       gl_FragColor = vec4(c, 1.0);
+      // (drawn to the screen: tone mapping and sRGB; into a target: neither)
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
     }`,
 };
 
@@ -144,8 +147,8 @@ export function createPost(ctx: MapContext): MapPost {
     }`;
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
+  // (the last pass: it draws to the screen, tone mapped, in sRGB)
   composer.addPass(grade);
-  composer.addPass(new OutputPass());
 
   const setSize = (w: number, h: number) => {
     composer.setPixelRatio(renderer.getPixelRatio());

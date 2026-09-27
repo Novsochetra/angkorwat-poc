@@ -44,7 +44,7 @@ export function folk(role: Role, seed: number, opts: { carry?: Carry; props?: Fe
   if (role === 'monk') return dress('monk', seed);
   if (role === 'kid') {
     const l = dress('kid', seed, { carry: opts.carry, props: opts.props });
-    // (a bright toy: the "phone" in the fist is a water pistol)
+    // (a toy in the fist, when it carries one: `gear` colours it)
     if (opts.gear !== undefined) l.colors[SLOT.gear] = opts.gear;
     return l;
   }

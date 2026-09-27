@@ -55,7 +55,7 @@ export function buildFestival(ctx: MapContext): MapPart {
 
   const scenes = { water, newyear: newYear } as const;
   const capacity = Math.max(water.looks.length, newYear.looks.length);
-  const crowd = new Crowd(capacity, 'festival');
+  const crowd = new Crowd(capacity, 'festival', { renderer: ctx.renderer, still: ctx.shot && !ctx.video });
   for (let i = 0; i < capacity; i++) crowd.add(water.looks[i] ?? newYear.looks[i]);
   crowd.mesh.count = 0;
   // (the crowd is drawn only when its festival's ground is in view: the lake and its beach, or the village and Angkor Wat;

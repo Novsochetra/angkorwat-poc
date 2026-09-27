@@ -6,7 +6,8 @@ import { installLookPanel } from '../voxel/LookPanel';
 import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
-import { AutoGraphics, autoLevel, FRAME_TIME, GRAPHICS, graphicsNow, markStill, MAX_FPS, resetAutoLevel, setGraphics } from './graphics';
+import { cutCovered, ShadowGate } from './cull';
+import { AutoGraphics, autoLevel, FRAME_TIME, GRAPHICS, graphicsNow, markStill, MAX_FPS, plainFar, resetAutoLevel, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
 import type { Foreground } from './foreground';
@@ -37,7 +38,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * `story=<n>` the story from beat n (1‥; shots: that beat), `story=0` never
  * (else it plays before the map on the first visit) ·
  * `loading=0‥1` hold the loading screen at that point, and build nothing
- * (1: built, with its button).
+ * (1: built, with its button) · `video=1` a shot that then moves frame by
+ * frame (`__videoFrame`, scripts/video.mjs).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -55,6 +57,8 @@ renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = NeutralToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
+// (the low level's still shadows: only what is marked still casts, graphics.ts)
+stillCasters(renderer);
 
 const scene = new Scene();
 const camera = new PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 9000);
@@ -142,7 +146,7 @@ async function safe<T>(name: string, make: () => Promise<T>, fallback: () => T):
 }
 
 const field = timed('land', buildHeightField);
-const ctx: MapContext = { scene, renderer, camera, field, quality, shot };
+const ctx: MapContext = { scene, renderer, camera, field, quality, shot, video: shot && params.get('video') === '1' };
 const atmosphere: Atmosphere = await safe('atmosphere', async () => {
   const { buildAtmosphere } = await import('./atmosphere');
   return timed('atmosphere', () => buildAtmosphere(ctx));
@@ -169,10 +173,13 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   // (after the water: its stilts and rafts are not rocks in the lake, no foam round them)
   ['village', async () => (await import('./village')).buildVillage],
   ['paddies', async () => (await import('./paddies')).buildPaddies],
+  // (the east village, its market, the palm sugar grove, the Kulen picnic place, the hamlet behind Angkor Wat: before the trees, which keep off them)
+  ['hamlet', async () => (await import('./hamlet')).buildHamlets],
   ['vegetation', async () => (await import('./vegetation')).buildVegetation],
   ['undergrowth', async () => (await import('./veg/undergrowth')).buildUndergrowth],
   ['clouds', async () => (await import('./clouds')).buildClouds],
   ['rain', async () => (await import('./sky/rain')).buildRain],
+  ['snow', async () => (await import('./sky/snow')).buildSnow],
   ['rainbow', async () => (await import('./sky/rainbow')).buildRainbow],
   ['life', async () => (await import('./life')).buildLife],
   ['fauna', async () => (await import('./fauna/land')).buildLandFauna],
@@ -246,12 +253,29 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+// …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
+timings.covered = Math.round(cutCovered(parts.filter((p) => ['terrain', 'path', 'jungle', 'camps', 'village', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')).map((p) => p.object)).ms);
 // What never moves casts the low graphics level's still shadows (graphics.ts): the land, trees, temples, road, jungle
-// sites, the village (its rafts bob a little: their shadows stand) and the ledge, not the explorer on it; nor the
-// people, animals and boats.
-for (const p of parts) if (['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'foreground'].includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
+// sites, the village (its rafts bob a little: their shadows stand), the paddies' props (they change with the season
+// only), the hamlets and the ledge, and the explorer while he stands on it (the overview); nor the people, animals
+// and boats.
+for (const p of parts) if (['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'foreground'].includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
 const ledgeExplorer = (parts.find((p) => p.name === 'foreground') as Foreground | undefined)?.explorer?.object;
-if (ledgeExplorer) markStill(ledgeExplorer, false);
+/** Roaming, the explorer moves: he casts no still shadow then (the still map is drawn again as he leaves his ledge and comes back). */
+function explorerStill(still: boolean): void {
+  if (!ledgeExplorer || ledgeExplorer.layers.isEnabled(STILL_LAYER) === still) return;
+  markStill(ledgeExplorer, still);
+  renderer.shadowMap.needsUpdate = true;
+}
+// The land, the temples, the road and the ledge cast only while their shadows can be in view (cull.ts; the trees,
+// jungle sites, camps, village, paddies and hamlets gate their own): roaming, the shadow map draws a half to a third of
+// the map (the low level's still shadows: all of it).
+const castGate = new ShadowGate();
+for (const p of parts) if (p.name === 'path' || p.name.startsWith('landmark:')) castGate.addAll(p.object);
+const land = parts.find((p) => p.name === 'terrain');
+if (land) castGate.addLive(land.object);
+const ledge = scene.getObjectByName('foreground:ledge');
+if (ledge) castGate.addAll(ledge);
 // (the low graphics level's plain blocks, now that they are built)
 setGraphics(graphicsNow.level, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
@@ -335,6 +359,7 @@ const roam: MapRoam | null = foreground
           onMode: (mode) => {
             if (mode !== 'overview') select(null);
             ui.setRoaming(mode);
+            explorerStill(mode === 'overview');
           },
           onOverview: () => {
             rig.fit();
@@ -353,6 +378,10 @@ const roam: MapRoam | null = foreground
 if (roam) {
   parts.push(roam);
   scene.add(roam.object);
+  // (the disc under his feet on the low level lies on the roaming world's floors: foreground.ts)
+  foreground?.follow(roam.world);
+  // (the roaming's own blocks too: on low its ramps, parked gliders, boats and balloon plain from afar, graphics.ts)
+  setGraphics(graphicsNow.level, scene);
   // Mini-map while roaming, and the big map (M): a part, so the frame loop draws it after the roaming.
   const minimap = await safe('minimap', async () => (await import('./ui/minimap')).createMinimap({ root: uiRoot, field, parts: [...parts], roam, sound: (s) => audio.play(s) }), () => null);
   if (minimap) parts.push(minimap);
@@ -370,7 +399,7 @@ addEventListener('resize', () => {
 /** A full day↔night cycle in "cycle" mode (s). */
 const CYCLE = 360;
 /** `clock=` (checks): hold the day's cycle there (0 afternoon, 0.25 dusk, 0.5 night, 0.75 dawn). */
-const clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
+let clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
 const nightOf = (c: number) => 0.5 - 0.5 * Math.cos(c * Math.PI * 2);
 /** The clock on the dusk side for a time of day (0 afternoon … 0.5 night). */
 const duskClock = (n: number) => Math.acos(1 - 2 * Math.min(1, Math.max(0, n))) / (Math.PI * 2);
@@ -395,6 +424,8 @@ function nightTarget(): number {
 
 // ── Frame ───────────────────────────────────────────────────────────────────
 const fixedCam = params.get('cam')?.split(',').map(Number);
+/** The camera of a video frame (scripts/video.mjs: `__videoFrame`), else the URL's or the rig's. */
+let videoCam: number[] | null = null;
 // (the weather setting: follow the season, clear, rainy, stormy; a change eases in)
 const weather = createWeather(params, () => settings.weather);
 const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, clock: duskClock(night), day: DAY0, season: SEASON0, weather: { ...CALM_WEATHER }, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
@@ -454,14 +485,18 @@ function step(t: number, dt: number): void {
   frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
-  if (fixedCam) {
-    camera.position.set(fixedCam[0], fixedCam[1], fixedCam[2]);
-    camera.lookAt(fixedCam[3], fixedCam[4], fixedCam[5]);
+  const cam = videoCam ?? fixedCam;
+  if (cam) {
+    camera.position.set(cam[0], cam[1], cam[2]);
+    camera.lookAt(cam[3], cam[4], cam[5]);
   } else if (!roam?.active) rig.update(dt, t);
   // Roaming moves the explorer and the follow camera first: the other parts read the camera.
   runUpdate(roam, frame);
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
+  castGate.update(frame);
+  // (the low level: props, boats and houses far off drawn as plain boxes, graphics.ts)
+  plainFar(camera);
   projectAnchors();
   ui.update(anchors, dt);
   ui.setNight(night);
@@ -496,7 +531,7 @@ const feedback = !devTools
         q.set('day', String(frame.day));
         q.set('season', frame.season.toFixed(3));
         const w = frame.weather;
-        for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
+        for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
         if (selected) q.set('focus', selected);
         for (const [k, v] of Object.entries(roam?.report()?.params ?? {})) q.set(k, v);
         return q;
@@ -692,6 +727,22 @@ if (shot) {
   // (the interface's web fonts first, so shots don't show the fallback font)
   await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 4000))]);
   post.render(frame);
+  /**
+   * One frame of a video (scripts/video.mjs): the scene at `t`, `dt` after
+   * the last one, from a camera `[x, y, z, tx, ty, tz]` (null: the rig's or
+   * the explorer's) at a time of day `clock` (null: as it was), then drawn.
+   */
+  const videoFrame = (t: number, dt: number, cam: number[] | null, clock: number | null) => {
+    videoCam = cam;
+    if (clock !== null) {
+      clockParam = clock;
+      night = nightOf(clock);
+    }
+    step(t, dt);
+    post.render(frame);
+    for (const p of parts) p.afterRender?.();
+  };
+  Object.assign(window, { __videoFrame: videoFrame });
   requestAnimationFrame(() => ((window as unknown as { __ready: boolean }).__ready = true));
 } else {
   // (the shaders compile side by side while the loading screen still shows, not one by one in the first frame; never waits long)

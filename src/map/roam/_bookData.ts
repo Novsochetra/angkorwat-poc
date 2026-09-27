@@ -1,13 +1,16 @@
-import { JUNGLE_SITES, PLACES } from '../layout';
+import { BACK_HAMLET, EAST_VILLAGE, JUNGLE_SITES, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES, placeById } from '../layout';
 import type { Lang, PlaceId, SubjectKind } from '../types';
 import { PAGODA } from '../village/_spots';
+import { WORSHIP } from './_worship';
 
 /**
  * What the explorer's nature book and temple passport hold (roam/_book.ts):
  * every living thing he can photograph, with its Khmer and English names,
  * one short true fact and where to look; every stamp he can collect (the six
- * places, the jungle sites, the village pagoda) with the ink it is printed in and its motif
- * (roam/_stamps.ts draws them).
+ * places, the jungle sites, the villages and holy places: the village pagoda,
+ * the sugar-palm village, its morning market, the palm sugar hut, the Kulen
+ * falls, the reclining Buddha, the hamlet behind Angkor Wat) with the ink it
+ * is printed in and its motif (roam/_stamps.ts draws them).
  */
 
 /** A word in both languages (Khmer first). */
@@ -203,6 +206,57 @@ export const SPECIES: readonly Species[] = [
     fact: { km: 'បាយ និងត្រី ជាបេះដូងនៃម្ហូបខ្មែរ។', en: 'Rice and fish are the heart of a Khmer meal.' },
     where: { km: 'លោតក្នុងទន្លេ', en: 'on the rivers, where fish leap' },
   },
+  // (the fish he catches from the boat, F: a catch fills the page, roam/_fishing.ts; its picture is drawn, _fishPlate.ts)
+  {
+    kind: 'riel',
+    group: 'water',
+    name: { km: 'ត្រីរៀល', en: 'Trey riel (mud carp)' },
+    fact: {
+      km: 'គេនិយាយថា ប្រាក់រៀលរបស់កម្ពុជា បានឈ្មោះតាមត្រីតូចនេះ។ នៅរដូវប្រាំង ត្រីរៀលរាប់លានហែលចេញពីបឹងទន្លេសាប ហើយគេយកវាមកធ្វើប្រហុក។',
+      en: 'Cambodia’s money, the riel, is said to be named after this little fish. In the dry season millions swim out of the Tonle Sap, and many become prahok.',
+    },
+    where: { km: 'លើបឹងធំ និងទន្លេ — ស្ទូចពីលើទូក (F)', en: 'on the great lake and the rivers — fish from the boat (F)' },
+  },
+  {
+    kind: 'snakehead',
+    group: 'water',
+    name: { km: 'ត្រីរ៉ស់', en: 'Striped snakehead' },
+    fact: {
+      km: 'វាដកដង្ហើមយកខ្យល់បាន។ នៅរដូវប្រាំង វាអាចកប់ខ្លួនក្នុងភក់ នៃវាលស្រែរីងស្ងួត រង់ចាំភ្លៀងធ្លាក់មកវិញ។',
+      en: 'It breathes air: in the dry season it can wait, buried in the mud of a dried-up rice field, for the rains to come back.',
+    },
+    where: { km: 'ក្នុងត្រពាំង និងបឹងធំ — ស្ទូចពីលើទូក (F)', en: 'in ponds and on the great lake — fish from the boat (F)' },
+  },
+  {
+    kind: 'catfish',
+    group: 'water',
+    name: { km: 'ត្រីប្រា', en: 'Striped catfish' },
+    fact: {
+      km: 'ត្រីប្រាហែលឡើងទន្លេមេគង្គ ដើម្បីពងកូន ហើយកូនរបស់វាអណ្ដែតចុះមកធំឡើង នៅបឹងទន្លេសាប។ អ្នកភូមិបណ្ដែតទឹក ចិញ្ចឹមវាក្នុងទ្រុងនៅក្រោមផ្ទះ។',
+      en: 'Trey pra swim up the Mekong to spawn; their young drift down to the Tonle Sap to grow. Floating villages raise them in cages under the houses.',
+    },
+    where: { km: 'លើទន្លេ និងបឹងធំ — ស្ទូចពីលើទូក (F)', en: 'on the rivers and the great lake — fish from the boat (F)' },
+  },
+  {
+    kind: 'perch',
+    group: 'water',
+    name: { km: 'ត្រីក្រាញ់', en: 'Climbing perch' },
+    fact: {
+      km: 'វាដកដង្ហើមយកខ្យល់បាន ហើយអាចវារលើដីសើម ដោយប្រើព្រុយ និងគម្របស្រកី ពីត្រពាំងមួយទៅត្រពាំងមួយទៀត។',
+      en: 'It breathes air, and can crawl over wet ground on its fins and gill covers from one pond to the next.',
+    },
+    where: { km: 'ក្នុងអូរ ត្រពាំង និងទន្លេ — ស្ទូចពីលើទូក (F)', en: 'in the streams, ponds and rivers — fish from the boat (F)' },
+  },
+  {
+    kind: 'featherback',
+    group: 'water',
+    name: { km: 'ត្រីក្រាយ', en: 'Clown featherback' },
+    fact: {
+      km: 'សាច់ស្វិតរបស់វា គេយកមកកោស និងបុក ធ្វើជាប្រហិតត្រី។ វាប្រមាញ់ត្រីតូចៗនៅពេលយប់ ហើយងើបមកស្រូបខ្យល់លើផ្ទៃទឹក។',
+      en: 'Its springy flesh is scraped and pounded into prahet, Khmer fish balls. It hunts small fish at night, and gulps air at the surface.',
+    },
+    where: { km: 'លើបឹងធំ — ស្ទូចពីលើទូក (F)', en: 'on the great lake — fish from the boat (F)' },
+  },
   {
     kind: 'frog',
     group: 'water',
@@ -245,6 +299,16 @@ export const SPECIES: readonly Species[] = [
     },
     where: { km: 'ក្នុងត្រពាំងក្រោមទឹកធ្លាក់', en: 'in the pool below the waterfall' },
   },
+  {
+    kind: 'sugarPalm',
+    group: 'plants',
+    name: { km: 'ដើមត្នោត', en: 'Sugar palm' },
+    fact: {
+      km: 'ដើមត្នោត ជាដើមឈើជាតិរបស់កម្ពុជា។ គេយកទឹកត្នោតមកដាំធ្វើជាស្ករត្នោត ហើយយកស្លឹកវាមកប្រក់ដំបូលផ្ទះ ត្បាញកន្ទេល និងមួក។',
+      en: 'Cambodia’s national tree: its sap is boiled down into palm sugar, and its leaves thatch roofs and are woven into mats and hats.',
+    },
+    where: { km: 'តាមវាលស្រែ និងក្នុងចម្ការត្នោត', en: 'by the rice fields, and in the palm sugar grove' },
+  },
   // ── People of Angkor ──
   {
     kind: 'monk',
@@ -268,11 +332,31 @@ export const SPECIES: readonly Species[] = [
     where: { km: 'តាមក្រោយមគ្គុទ្ទេសក៍', en: 'behind a guide with a flag' },
   },
   {
+    kind: 'pilgrim',
+    group: 'people',
+    name: { km: 'អ្នកធម្មយាត្រា', en: 'Pilgrims' },
+    fact: {
+      km: 'ភ្នំគូលែន ជាភ្នំដ៏ពិសិដ្ឋបំផុតរបស់កម្ពុជា៖ អាណាចក្រខ្មែរកើតឡើងនៅទីនោះ ក្នុងឆ្នាំ ៨០២។ អ្នកធម្មយាត្រាឡើងទៅថ្វាយបង្គំព្រះអង្គធំ ដែលឆ្លាក់ក្នុងផ្ទាំងថ្មធំ ហើយងូតទឹកស្ទឹងដ៏ពិសិដ្ឋ ដើម្បីទទួលពរ។',
+      en: 'Phnom Kulen is Cambodia’s holiest mountain: the Khmer Empire was born there in 802. Pilgrims climb to the reclining Buddha carved in a great boulder, and bathe in its holy river for a blessing.',
+    },
+    where: { km: 'តាមផ្លូវឡើងភ្នំគូលែន', en: 'on the road up Phnom Kulen' },
+  },
+  {
     kind: 'villager',
     group: 'people',
     name: { km: 'កសិករ', en: 'Rice farmer' },
     fact: { km: 'គ្រួសារខ្មែរភាគច្រើនធ្វើស្រែ។ គេស្ទូងកូនស្រូវដោយដៃ នៅពេលភ្លៀងមកដល់។', en: 'Most Khmer families grow rice; the seedlings are planted by hand when the rains come.' },
     where: { km: 'វាលស្រែ', en: 'in the rice fields' },
+  },
+  {
+    kind: 'tapper',
+    group: 'people',
+    name: { km: 'អ្នកឡើងត្នោត', en: 'Palm sugar tapper' },
+    fact: {
+      km: 'រៀងរាល់ថ្ងៃ គាត់ឡើងដើមត្នោតតាមជណ្ដើរឫស្សីពីរដង ដើម្បីប្ដូរបំពង់ឫស្សីនៅក្រោមផ្កាវា។ ឈើពពេលមួយចំណិតក្នុងបំពង់ ជួយកុំឱ្យទឹកត្នោតជូរ។',
+      en: 'Twice a day he climbs the palm on a bamboo ladder to change the bamboo tubes under its flowers; a sliver of popel wood in each keeps the sweet sap from souring.',
+    },
+    where: { km: 'លើដើមត្នោត ក្បែរខ្ទមស្ករត្នោត', en: 'up a sugar palm by the palm sugar hut' },
   },
   {
     kind: 'fisherman',
@@ -282,14 +366,44 @@ export const SPECIES: readonly Species[] = [
     where: { km: 'លើបឹងធំ', en: 'on the great lake' },
   },
   {
+    kind: 'vendor',
+    group: 'people',
+    name: { km: 'អ្នកលក់ដូរ', en: 'Market seller' },
+    fact: {
+      km: 'អ្នកលក់ដូរតាមផ្សារ និងតាមផ្លូវនៅកម្ពុជា ប្រហែលបីនាក់ក្នុងចំណោមបួននាក់ ជាស្ត្រី។ គេរៀបតូបលក់ តាំងពីមុនថ្ងៃរះ។',
+      en: 'About three in four of Cambodia’s market and street sellers are women; they set out their stalls before sunrise.',
+    },
+    where: { km: 'នៅផ្សារព្រឹក', en: 'at the morning market' },
+  },
+  {
+    kind: 'market',
+    group: 'people',
+    name: { km: 'អ្នកដើរផ្សារ', en: 'Market crowd' },
+    fact: {
+      km: 'ផ្សារមានមនុស្សច្រើនជាងគេ ពីព្រលឹមដល់ម៉ោងប្រហែលប្រាំបួន ពេលត្រី និងបន្លែនៅស្រស់។ មនុស្សជាច្រើនញ៉ាំនំបញ្ចុក ជាអាហារពេលព្រឹកនៅទីនោះ។',
+      en: 'A market is busiest from first light to about nine, while the fish and greens are fresh; many stop for a breakfast of num banh chok, rice noodles in fish curry.',
+    },
+    where: { km: 'នៅផ្សារ ពេលព្រឹក', en: 'at the market, in the morning' },
+  },
+  {
     kind: 'kid',
     group: 'people',
     name: { km: 'ក្មេងបង្ហោះខ្លែង', en: 'Kite flyer' },
     fact: {
-      km: 'ខ្លែងអេកមានធ្នូធ្វើពីផ្ដៅ ដែលបន្លឺសំឡេងពេលខ្យល់បក់។ គេបង្ហោះវាក្រោយរដូវច្រូតកាត់។',
-      en: 'The Khmer kite “khleng ek” hums in the wind with a bow of rattan; it flies after the harvest.',
+      km: 'ខ្លែងឯកមានធ្នូឫស្សី និងអណ្ដាតផ្ដៅ ដែលបន្លឺសំឡេងពេលខ្យល់បក់។ គេបង្ហោះវាក្រោយរដូវច្រូតកាត់។',
+      en: 'The Khmer kite “khleng ek” hums in the wind with its bamboo bow and rattan tongue; it flies after the harvest.',
     },
     where: { km: 'វាលស្រែ ពេលខ្យល់បក់', en: 'over the fields on a windy day' },
+  },
+  {
+    kind: 'khlengEk',
+    group: 'people',
+    name: { km: 'ខ្លែងឯក', en: 'Khleng ek (humming kite)' },
+    fact: {
+      km: 'ឯក គឺធ្នូឫស្សីនៅលើក្បាលខ្លែង ដែលមានអណ្ដាតផ្ដៅស្ដើងៗ។ ពេលខ្យល់បក់ វាបន្លឺសំឡេងឡើងចុះ រហូតដល់ប្រាំពីរសំឡេង។ ពីដើម កសិករបង្ហោះវាពេញមួយយប់លើវាលស្រែ ដើម្បីបន្លាចសត្វកុំឱ្យស៊ីដំណាំ។',
+      en: 'Its ek, a bamboo bow on the kite’s head strung with a thin tongue of rattan, hums up and down through up to seven notes; farmers once flew them over the fields all night to keep animals off the crops.',
+    },
+    where: { km: 'លើវាលស្រែខាងកើត រដូវប្រាំង ពីរសៀលដល់យប់', en: 'over the east fields in the dry season, afternoon into the night' },
   },
   {
     kind: 'dancer',
@@ -340,16 +454,27 @@ export type Motif =
   | 'monkHut'
   | 'rootGate'
   | 'woodcutter'
-  | 'pagoda';
+  | 'pagoda'
+  // (the villages and holy places of the east side, behind Angkor Wat and on Phnom Kulen)
+  | 'stiltHouse'
+  | 'market'
+  | 'palmSugar'
+  | 'falls'
+  | 'reclining'
+  | 'hamlet';
 
 /** The stamp's outline. */
 export type Frame = 'round' | 'octagon' | 'cut' | 'rounded' | 'arch' | 'oval' | 'lotus';
 
+/** The passport's sections, in order: the six temples, the jungle's hidden places, the villages and holy places. */
+export type PassportGroup = 'temples' | 'jungle' | 'villages';
+export const PASSPORT_GROUPS: readonly PassportGroup[] = ['temples', 'jungle', 'villages'];
+
 export interface StampDef {
-  /** A place's id, or a jungle site's. */
+  /** A place's id, a jungle site's, or a village's (layout.ts `HAMLETS`). */
   id: string;
-  /** A temple (the six places) or a jungle site. */
-  temple: boolean;
+  /** Its section of the passport: a temple (the six places: reaching its beacon), a jungle site or a village (walking into it). */
+  group: PassportGroup;
   name: Both;
   motif: Motif;
   frame: Frame;
@@ -359,6 +484,10 @@ export interface StampDef {
   x: number;
   z: number;
   reach: number;
+  /** Counts only with his feet this high or higher (m): up on what he must climb to (the reclining Buddha's rock). */
+  minY?: number;
+  /** The worship spot (roam/_worship.ts `id`) whose prayer puts the lotus seal on it (else: the spot's place, or the stamp nearest it). */
+  spot?: string;
 }
 
 const INK = {
@@ -369,6 +498,7 @@ const INK = {
   ochre: '#9a5a14',
   teal: '#1d6a74',
   brown: '#6e3f24',
+  rose: '#a3345a',
 };
 
 /** The places' stamps: their look (the names come from layout.ts). */
@@ -401,17 +531,24 @@ const SITE_STAMP: Record<string, { km: string; motif: Motif; frame: Frame; ink: 
 /** A place's beacon counts from this near (m; roam/world.ts `placeNear` reach). */
 const PLACE_REACH = 16;
 
-/** Every stamp of the passport: the six places, then the jungle sites and the village pagoda. */
+/**
+ * The reclining Buddha on Phnom Kulen (ព្រះអង្គធំ): its worship spot (the statue is the point he
+ * faces), or, while there is none, the temple's pad on the summit.
+ */
+const RECLINING = WORSHIP.find((w) => w.id === 'kulen-buddha');
+const KULEN = placeById('kulen');
+
+/** Every stamp of the passport: the six places, the jungle sites, then the villages and holy places. */
 export const STAMPS: readonly StampDef[] = [
-  ...PLACES.map((p): StampDef => ({ id: p.id, temple: true, name: { km: p.km.name, en: p.name }, motif: p.id, ...PLACE_STAMP[p.id], x: p.anchor[0], z: p.anchor[2], reach: PLACE_REACH })),
+  ...PLACES.map((p): StampDef => ({ id: p.id, group: 'temples', name: { km: p.km.name, en: p.name }, motif: p.id, ...PLACE_STAMP[p.id], x: p.anchor[0], z: p.anchor[2], reach: PLACE_REACH })),
   ...JUNGLE_SITES.map((s): StampDef => {
     const look = SITE_STAMP[s.id] ?? { km: s.name ?? s.id, motif: 'stupa' as Motif, frame: 'round' as Frame, ink: INK.brown };
-    return { id: s.id, temple: false, name: { km: look.km, en: s.name ?? s.id }, motif: look.motif, frame: look.frame, ink: look.ink, x: s.x, z: s.z, reach: s.r + 4 };
+    return { id: s.id, group: 'jungle', name: { km: look.km, en: s.name ?? s.id }, motif: look.motif, frame: look.frame, ink: look.ink, x: s.x, z: s.z, reach: s.r + 4 };
   }),
   // The floating village's pagoda (village/_pagoda.ts): walking onto its terrace (its lotus seal: praying at its door, roam/_worship.ts).
   {
     id: 'village-pagoda',
-    temple: false,
+    group: 'villages',
     name: { km: 'វត្តក្នុងភូមិ', en: 'The village pagoda' },
     motif: 'pagoda',
     frame: 'lotus',
@@ -419,7 +556,34 @@ export const STAMPS: readonly StampDef[] = [
     x: PAGODA.x,
     z: (PAGODA.terrace.z0 + PAGODA.terrace.z1) / 2,
     reach: (PAGODA.terrace.x1 - PAGODA.terrace.x0) / 2 + 2,
+    spot: 'village-pagoda-door',
   },
+  // The sugar-palm village on the east lowland (hamlet/_eastVillage.ts): walking in among its houses.
+  { id: 'east-village', group: 'villages', name: { km: 'ភូមិត្នោត', en: 'Sugar Palm Village' }, motif: 'stiltHouse', frame: 'cut', ink: INK.green, x: EAST_VILLAGE.x, z: EAST_VILLAGE.z, reach: EAST_VILLAGE.r - 8 },
+  // Its morning market (hamlet/_market.ts): into the square among the stalls.
+  { id: 'market', group: 'villages', name: { km: 'ផ្សារព្រឹក', en: 'The morning market' }, motif: 'market', frame: 'round', ink: INK.rose, x: MARKET.x, z: MARKET.z, reach: MARKET.r - 4 },
+  // The palm sugar grove and the family's cooking hut (hamlet/_palmSugar.ts).
+  { id: 'palm-grove', group: 'villages', name: { km: 'ខ្ទមស្ករត្នោត', en: 'The palm sugar hut' }, motif: 'palmSugar', frame: 'rounded', ink: INK.ochre, x: PALM_GROVE.x, z: PALM_GROVE.z, reach: PALM_GROVE.r - 2 },
+  // The picnic place by the pool below the Kulen stream's big fall (hamlet/_kulenPicnic.ts).
+  { id: 'kulen-picnic', group: 'villages', name: { km: 'ទឹកធ្លាក់ភ្នំគូលែន', en: 'The Kulen falls' }, motif: 'falls', frame: 'arch', ink: INK.indigo, x: KULEN_PICNIC.x, z: KULEN_PICNIC.z, reach: KULEN_PICNIC.r + 2 },
+  // The reclining Buddha on the summit (landmarks/kulen.ts): coming up to him (its lotus seal: praying before him).
+  {
+    id: 'kulen-buddha',
+    group: 'villages',
+    name: { km: 'ព្រះអង្គធំ', en: 'The reclining Buddha' },
+    motif: 'reclining',
+    frame: 'oval',
+    ink: INK.plum,
+    // (round the place he kneels, near enough that he has climbed the rock's stair: not from its foot)
+    x: RECLINING?.x ?? KULEN.x,
+    z: RECLINING?.z ?? KULEN.z,
+    reach: RECLINING ? 8 : 24,
+    // (up on the rock's floor: not from its foot beside the stair)
+    minY: RECLINING ? RECLINING.y - 1.5 : undefined,
+    spot: 'kulen-buddha',
+  },
+  // The little hamlet behind Angkor Wat by the lotus pond (hamlet/_backHamlet.ts).
+  { id: 'back-hamlet', group: 'villages', name: { km: 'ភូមិក្រោយអង្គរវត្ត', en: 'The hamlet behind Angkor Wat' }, motif: 'hamlet', frame: 'octagon', ink: INK.teal, x: BACK_HAMLET.x, z: BACK_HAMLET.z, reach: BACK_HAMLET.r - 4 },
 ];
 
 export const STAMP_BY_ID = new Map(STAMPS.map((s) => [s.id, s]));

@@ -3,11 +3,13 @@ import { SURFACE } from '../heightfield';
 import type { PlaceDef } from '../layout';
 import type { RoamSound } from '../types';
 import { paddyFlooded } from '../paddies/stages';
+import { weatherNow } from '../sky/weather';
 import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
 import { shrine } from './_pray';
+import { stalls } from './_shop';
 import { createSwingRide, type SwingRide } from './_swingRide';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
 
@@ -27,6 +29,16 @@ const DROP = 1.1;
 const AIR_UP = 0.9;
 /** Stone whose underside is this share of his height over his feet is a lintel or a roof, not a step to hop onto: he walks on under it. */
 const LINTEL = 0.75;
+/**
+ * Up more than this (m) onto something, it must carry him (`carried`): a
+ * stair, a terrace, a land step does; a pot, a shutter, a sill, a rail's
+ * top does not (a small thing standing out of the floor is in his way).
+ */
+const PERCH = 0.35;
+/** He steps onto what is ahead of him, this far round from the way he goes at most (cosine): not onto a rail or a parapet beside him. */
+const AHEAD = 0.5;
+/** Checks: `perch=0` leaves those rules (`PERCH`, `AHEAD`, `carried` going on past his rim) out, as before, to compare. */
+const PERCH_RULE = typeof location === 'undefined' || new URLSearchParams(location.search).get('perch') !== '0';
 /** Walk and run pace over the true-size speeds (the map is big). */
 const PACE = 1.6;
 /** A jump pressed this long before landing still happens; after walking off an edge it still works this long (s). */
@@ -48,7 +60,8 @@ const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), M
  * ledges and cliffs (in a long fall Space opens the parachute, E the hang
  * glider), wade into deep water and take a boat, fly the hang glider from
  * a cliff-top ramp (E), climb into the hot air balloon's basket (E), kneel
- * to pray at a shrine (E: _pray.ts), and enter a place with E at its beacon.
+ * to pray at a shrine (E: _pray.ts), buy food and drink at a stall (E:
+ * _shop.ts), and enter a place with E at its beacon.
  *
  * Collisions use the walk map (world.standAt): the body is a circle of
  * probes; each must have ground within a step of the feet and room above
@@ -95,25 +108,58 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
    * Returns where it would stand (the highest ground under the middle of
    * the circle), or NaN when a probe hits a wall.
    * `loose`: only the middle counts (he is already inside something).
+   * (dx, dz): the way he goes (none: every way): he steps up onto what is
+   * ahead of him. Up more than `PERCH`, only onto what carries him: under
+   * his middle, anything else is in his way (NaN).
    */
-  const fit = (w: RoamWorld, x: number, z: number, y: number, up: number, s: number, loose = false): number => {
+  const fit = (w: RoamWorld, x: number, z: number, y: number, up: number, s: number, loose = false, dx = 0, dz = 0): number => {
     const r = radius(s);
     const h = height(s);
     let best = standAt(w, x, z, y, up, h);
     if (Number.isNaN(best)) return NaN;
+    if (PERCH_RULE && best > y + PERCH && !carried(w, x, z, y, best, s)) return NaN;
+    const dl = Math.hypot(dx, dz);
     for (const [cx, cz] of RING) {
       const g = standAt(w, x + cx * r, z + cz * r, y, up, h);
       if (Number.isNaN(g)) {
         if (!loose) return NaN;
         continue;
       }
-      // (the inner half of the circle carries him; the rim only has to be clear)
-      if (g > best) {
+      // (the inner half of the circle carries him, ahead of him; the rim only has to be clear)
+      if (g > best && (!PERCH_RULE || dl < 1e-6 || cx * dx + cz * dz >= AHEAD * dl)) {
         const gi = standAt(w, x + cx * r * 0.5, z + cz * r * 0.5, y, up, h);
-        if (!Number.isNaN(gi) && gi > best) best = gi;
+        if (!Number.isNaN(gi) && gi > best && (!PERCH_RULE || gi <= y + PERCH || carried(w, x, z, y, gi, s))) best = gi;
       }
     }
     return best;
+  };
+
+  /**
+   * Does the ground `top` under his middle carry his front too (three of the
+   * body's rim probes stand that high, or nearly, and it goes on past his rim
+   * the way they lie: a walk-map column alone can hold three probes)? A land
+   * step, a terrace, a stair's landing does; the top of a post, a jar or a
+   * window's shutter under his middle alone does not (a hop or a step up is
+   * for the former: a jump still gets him onto the latter).
+   */
+  const carried = (w: RoamWorld, x: number, z: number, y: number, top: number, s: number): boolean => {
+    const r = radius(s);
+    const h = height(s);
+    let n = 0;
+    let ax = 0;
+    let az = 0;
+    for (const [cx, cz] of RING) {
+      const g = standAt(w, x + cx * r, z + cz * r, y, HOP_UP, h);
+      if (Number.isNaN(g) || g <= top - 0.3) continue;
+      n++;
+      ax += cx;
+      az += cz;
+    }
+    if (n < 3) return false;
+    const l = Math.hypot(ax, az);
+    if (l < 1e-6 || !PERCH_RULE) return true;
+    const g = standAt(w, x + (ax / l) * r * 2, z + (az / l) * r * 2, y, HOP_UP, h);
+    return !Number.isNaN(g) && g > top - 0.3;
   };
 
   /** Which way the walls touching the body at (x, z) are (unit x, z; zero when none). */
@@ -131,16 +177,21 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
     return l > 1e-6 ? [ox / l, oz / l] : [0, 0];
   };
 
-  /** The nearest spot round (x, z) where he fits, or null (for getting unstuck). */
+  /**
+   * The nearest spot round (x, z) where he fits, or null (for getting unstuck):
+   * first at his own level (or the land's, if he sank under it), so he steps
+   * out beside the stair or the wall he was caught in, not onto the roof over
+   * it; only if there is none, on top of whatever is there.
+   */
   const freeSpot = (w: RoamWorld, x: number, z: number, y: number, s: number): [number, number, number] | null => {
-    for (let d = 0.5; d <= 10; d += 0.5)
-      for (let a = 0; a < 16; a++) {
-        const px = x + Math.cos((a * Math.PI) / 8) * d;
-        const pz = z + Math.sin((a * Math.PI) / 8) * d;
-        // (from well above: on top of whatever is there)
-        const g = fit(w, px, pz, Math.max(y, w.groundAt(px, pz)) + 0.1, HOP_UP, s);
-        if (!Number.isNaN(g)) return [px, pz, g];
-      }
+    for (const above of [false, true])
+      for (let d = 0.5; d <= 10; d += 0.5)
+        for (let a = 0; a < 16; a++) {
+          const px = x + Math.cos((a * Math.PI) / 8) * d;
+          const pz = z + Math.sin((a * Math.PI) / 8) * d;
+          const g = fit(w, px, pz, Math.max(y, above ? w.groundAt(px, pz) : w.field.heightAt(px, pz)) + 0.1, HOP_UP, s);
+          if (!Number.isNaN(g)) return [px, pz, g];
+        }
     return null;
   };
 
@@ -215,7 +266,7 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       const loose = Number.isNaN(fit(world, pos.x, pos.z, pos.y, up, s));
       // (outside the area, e.g. put there by a URL: any way back in is fine)
       const inside = world.inBounds(pos.x, pos.z);
-      const ok = (x: number, z: number) => (!inside || world.inBounds(x, z)) && !Number.isNaN(fit(world, x, z, pos.y, up, s, loose));
+      const ok = (x: number, z: number) => (!inside || world.inBounds(x, z)) && !Number.isNaN(fit(world, x, z, pos.y, up, s, loose, x - pos.x, z - pos.z));
       /**
        * Square against the end of a wall or the edge of a doorway: if the
        * way on is free a little to one side, step that way (he slips round
@@ -303,7 +354,10 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       if (input.jump) jumpWait = JUMP_BUFFER;
       else jumpWait = Math.max(0, jumpWait - dt);
       const h = height(s);
-      let under = fit(world, pos.x, pos.z, pos.y, body.grounded ? HOP_UP : AIR_UP, s, true);
+      // (the way he goes: where he is moving, else where he faces)
+      const gx = hspeed > 0.2 ? pos.x - x0 : Math.sin(body.yaw);
+      const gz = hspeed > 0.2 ? pos.z - z0 : Math.cos(body.yaw);
+      let under = fit(world, pos.x, pos.z, pos.y, body.grounded ? HOP_UP : AIR_UP, s, true, gx, gz);
       if (Number.isNaN(under)) {
         // Inside a wall: out to the nearest free spot (after a moment, so a hop can finish).
         stuck += dt;
@@ -330,11 +384,13 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
           body.grounded = false;
           ctx.sound('jump', 0.8);
         } else if (dh > STAIR) {
-          // One land block up: a small hop.
-          vel.y = Math.sqrt(2 * HOP_GRAVITY * (dh + 0.35));
-          body.grounded = false;
-          hopping = true;
-          ctx.sound('jump', 0.35);
+          // One land block up: a small hop (onto what carries his front too: `carried`).
+          if (carried(world, pos.x, pos.z, pos.y, under, s)) {
+            vel.y = Math.sqrt(2 * HOP_GRAVITY * (dh + 0.35));
+            body.grounded = false;
+            hopping = true;
+            ctx.sound('jump', 0.35);
+          }
         } else if (dh >= -DROP) {
           // Stairs and small steps: glide up or down (as fast as the stair needs, no faster).
           const rate = 2.5 + 1.4 * hspeed;
@@ -357,15 +413,16 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
         }
         vel.y = Math.max(-45, vel.y - (hopping ? HOP_GRAVITY : GRAVITY) * dt);
         pos.y += vel.y * dt;
-        // Head against a roof.
+        // Head against a roof. (What is within a ledge's reach over his feet is where he lands, not a roof; and the
+        // bump only stops the rise: never down through the floor, e.g. hopping at a stair's side under its treads.)
         if (vel.y > 0 && world.ceilingAt) {
-          const roof = world.ceilingAt(pos.x, pos.z, pos.y + 0.1);
+          const roof = world.ceilingAt(pos.x, pos.z, pos.y + AIR_UP);
           if (pos.y + h > roof) {
-            pos.y = roof - h;
+            pos.y = Math.max(roof - h, pos.y - vel.y * dt);
             vel.y = 0;
           }
         }
-        const floor = fit(world, pos.x, pos.z, pos.y, AIR_UP, s, true);
+        const floor = fit(world, pos.x, pos.z, pos.y, AIR_UP, s, true, gx, gz);
         const land = Number.isNaN(floor) ? -Infinity : floor;
         if (vel.y <= 0 && pos.y <= land) {
           const impact = -vel.y;
@@ -403,13 +460,15 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       // ── A golden figure, a boat tied up by the bank, a place's beacon ─────
       // (kneeling in prayer, or on his way to: no "E  Enter …" over him; E gets him up first: tools.ts, _pray.ts)
       // (sitting or lying on the ground, _rest.ts: its posture holds him, it shows its own keys; E gets him up)
-      if (body.explorer.currentAction === 'pray' || shrine.busy() || body.explorer.animator.posture) setPrompt(ctx, null);
+      // (at a stall's buy menu, taking what he bought or eating it: _shop.ts)
+      if (body.explorer.currentAction === 'pray' || shrine.busy() || stalls.busy() || body.explorer.animator.posture) setPrompt(ctx, null);
       else if (body.grounded) {
         // (a hidden golden figure within arm's reach comes first, before a shrine, a boat, a ramp, the
         // balloon, the swing or a beacon that is also in reach: E picks it up; treasure/)
         const gold = treasure.near(ctx);
         const boat = mooredBoatNear(pos.x, pos.z);
         const kneel = shrine.near();
+        const stall = stalls.near(pos.x, pos.y, pos.z);
         if (gold) {
           setPrompt(ctx, gold.prompt);
           if (input.use) {
@@ -423,6 +482,14 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
           if (input.use) {
             setPrompt(ctx, null);
             shrine.kneel(kneel);
+          }
+        } else if (stall?.open) {
+          // In front of a stall with its seller there (shop.ts): E opens the buy menu, after a shrine and before
+          // a boat; _shop.ts.
+          setPrompt(ctx, stall.prompt);
+          if (input.use) {
+            setPrompt(ctx, null);
+            stalls.buy(stall.shop);
           }
         } else if (boat && Math.abs(boat.level - pos.y) < 4) {
           setPrompt(ctx, `E  ${t('rBoard')}`);
@@ -453,7 +520,8 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
           }
         } else {
           const place = world.placeNear(pos.x, pos.z, pos.y);
-          setPrompt(ctx, place ? placePrompt(place) : null);
+          // (a closed stall only says so, when nothing else is in reach)
+          setPrompt(ctx, place ? placePrompt(place) : (stall?.prompt ?? null));
           if (place && input.use) {
             if (place.href) ctx.enter(place);
             else ctx.hud.toast(t('rNotOpen', { name: placeText(place).name }));
@@ -496,15 +564,17 @@ const fallPrompt = () => `Space  ${t('jumpChute')}  ·  E  ${t('jumpGlider')}`;
 
 /**
  * The footstep for the ground at the feet (x, y, z): wading in water over
- * the ankles; on a take-off ramp's deck (up on it, not on the land round
- * it) or on planks (the village's verandas, stairs, jetty and rafts, the
- * camps' bridges and hut: `woodAt`) wood; on something else built above the
- * land (the road's stairs and bridges, temple floors, walls) stone; else the
- * land's surface.
+ * the ankles; in snow lying under the open sky (the snow setting); on a
+ * take-off ramp's deck (up on it, not on the land round it) or on planks
+ * (the village's verandas, stairs, jetty and rafts, the camps' bridges and
+ * hut: `woodAt`) wood; on something else built above the land (the road's
+ * stairs and bridges, temple floors, walls) stone; else the land's surface.
  */
 export function stepSound(w: RoamWorld, x: number, y: number, z: number): RoamSound {
   const water = w.waterAt(x, z);
   if (water !== null && water > y + 0.08) return 'stepWater';
+  // (snow lying under the open sky, the snow setting's: sky/weather.ts; under a roof or the trees it stays bare)
+  if (weatherNow().snowCover > 0.35 && (w.ceilingAt?.(x, z, y + 0.3) ?? Infinity) === Infinity) return 'stepSnow';
   const f = w.field;
   const land = f.heightAt(x, z);
   if (y > land + 0.05 && (w.launchNear?.(x, z, y) || w.woodAt?.(x, z, y))) return 'stepWood';

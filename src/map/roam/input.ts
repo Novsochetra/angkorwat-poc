@@ -300,6 +300,9 @@ export class RoamControls {
     this.taps.clear();
     this.takePressed();
     s.click = fresh && k.includes('c');
+    // (f: F tapped at the step's start — the greeting, tools.ts; 6: eat or drink what he keeps, _shop.ts)
+    if (fresh && k.includes('f')) this.taps.add('KeyF');
+    if (fresh && k.includes('6')) this.taps.add('Digit6');
     return s;
   }
 }
@@ -315,9 +318,9 @@ function albumOpen(): boolean {
 /**
  * The explorer's tools and emotes (tools.ts): 1 lantern · 2 torch ·
  * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie (T: stick) ·
- * F wave · C cheer · U look up · P peek · H hat · G outfit · X face ·
+ * F greet (a sampeah or a wave) · C cheer · U look up · P peek · H hat · G outfit · X face ·
  * J sit · L lie down · I the explorer menu (_explorerMenu.ts) ·
- * V album · ? all keys. (Not M, N, B or K: the mini-map and its nearest
+ * 6 eat or drink what he keeps (_shop.ts) · V album · ? all keys. (Not M, N, B or K: the mini-map and its nearest
  * glider ramp, the bug report and the block look panel have them; J is
  * "Jump in" only in the overview, where these are off; Q and R turn the camera.)
  */
@@ -325,12 +328,15 @@ export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5',
   'KeyZ', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'KeyH', 'KeyG', 'KeyX', 'KeyV', 'KeyT', 'Slash',
   'KeyJ', 'KeyL', 'KeyI',
+  // (6: eat or drink what he keeps in his bag, roam/_shop.ts)
+  'Digit6', 'Numpad6',
 ]);
 
 /**
  * One step of a scripted input: keys held for some seconds. Keys: w a s d
  * (move), r (run), j (jump: pressed at the start of the step, held through
- * it), e (use), x (exit), c (a click on the view: in photo mode, a photo);
+ * it), e (use), x (exit), c (a click on the view: in photo mode, a photo),
+ * f (F tapped: the greeting), 6 (6 tapped: eat or drink what he keeps);
  * `turn` turns the camera (radians/s, + = left),
  * `tilt` tilts it (radians/s, + = look down more),
  * `orbit` holds Q (+1) or R (−1): the camera's eased turn round him.

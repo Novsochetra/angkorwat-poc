@@ -1,7 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import type { MapPart, RoamMode, Subject, SubjectKind } from '../types';
 import { SPECIES, SPECIES_BY_KIND, STAMP_BY_ID, STAMPS, type StampDef } from './_bookData';
-import type { WorshipSpot } from './_worship';
+import { WORSHIP, type WorshipSpot } from './_worship';
 import type { RoamWorld } from './types';
 
 /**
@@ -14,8 +14,12 @@ import type { RoamWorld } from './types';
  *   gives its page a picture (a crop round it from the photo), and a soft
  *   message says what is new.
  * - **Temple passport**: a stamp for each of the six places (reaching its
- *   beacon on foot) and each jungle site (walking into its clearing), with
- *   the date; a lotus seal on it when he kneels and prays there (_pray.ts).
+ *   beacon on foot), each jungle site (walking into its clearing) and each
+ *   village and holy place (walking into it: the village pagoda, the
+ *   sugar-palm village, its market, the palm sugar hut, the Kulen falls, the
+ *   reclining Buddha, the hamlet behind Angkor Wat), with the date; a lotus
+ *   seal on it when he kneels and prays there (_pray.ts: the stamp that
+ *   names his worship spot, else the spot's place, else the stamp nearest).
  *
  * Kept in this browser (localStorage `STORE`, versioned; the journal still
  * works for the visit without it). The album (V) shows both (_bookUi.ts).
@@ -35,6 +39,9 @@ export interface PageRecord {
   x: number;
   z: number;
   n: number;
+  /** A fish he caught (roam/_fishing.ts: `record`): how many times, and the biggest (cm, true size). */
+  caught?: number;
+  cm?: number;
 }
 
 /** A stamp: when he got there, and when he prayed there (the lotus seal). */
@@ -89,7 +96,17 @@ export interface Journal {
   stampNear(x: number, z: number, extra: number): StampDef | null;
   /** Something changed (a page, a stamp): the album shows it again. */
   onChange(fn: () => void): void;
+  /**
+   * A fish he caught fills its page (a catch, not a photo; its picture is
+   * drawn: _fishPlate.ts), at (x, z), `cm` long. No message (the catch has
+   * its own); true when the page is new.
+   */
+  record(kind: SubjectKind, x: number, z: number, cm: number): boolean;
 }
+
+/** The journal of this roaming (made with the photo album: photo.ts), for what fills pages without a photo (a catch: roam/_fishing.ts). */
+let current: Journal | null = null;
+export const activeJournal = (): Journal | null => current;
 
 const _v = new Vector3();
 
@@ -113,7 +130,9 @@ export function createJournal(d: JournalDeps): Journal {
   if (params.get('stamps') === 'all') {
     demo = true;
     const t = Date.now();
-    STAMPS.forEach((s, i) => (state.stamps[s.id] ??= { t: t - i * 86_400_000, ...(i % 3 === 0 ? { pray: t } : {}) }));
+    // (the lotus seal where there is a shrine to pray at)
+    const shrined = new Set(WORSHIP.map((w) => sealFor(w, w.x, w.z)?.id));
+    STAMPS.forEach((s, i) => (state.stamps[s.id] ??= { t: t - i * 86_400_000, ...(shrined.has(s.id) ? { pray: t } : {}) }));
   }
   if (params.get('book') === 'all') {
     demo = true;
@@ -180,16 +199,6 @@ export function createJournal(d: JournalDeps): Journal {
     } catch {
       return '';
     }
-  }
-
-  function stampNear(x: number, z: number, extra: number): StampDef | null {
-    let best: StampDef | null = null;
-    let bd = Infinity;
-    for (const s of STAMPS) {
-      const dd = Math.hypot(s.x - x, s.z - z) - s.reach;
-      if (dd < extra && dd < bd) [best, bd] = [s, dd];
-    }
-    return best;
   }
 
   function stamp(id: string): boolean {
@@ -269,9 +278,9 @@ export function createJournal(d: JournalDeps): Journal {
         return;
       }
       for (const s of STAMPS) {
-        if (s.temple || state.stamps[s.id]) continue;
+        if (s.group === 'temples' || state.stamps[s.id]) continue;
         if (Math.hypot(s.x - pos.x, s.z - pos.z) > s.reach) continue;
-        if (Math.abs(d.world.field.heightAt(s.x, s.z) - pos.y) > 8) continue;
+        if (Math.abs(d.world.field.heightAt(s.x, s.z) - pos.y) > 8 || (s.minY !== undefined && pos.y < s.minY)) continue;
         stamp(s.id);
         d.toast(d.words.stamp(d.name({ stamp: s })));
         changed();
@@ -279,7 +288,7 @@ export function createJournal(d: JournalDeps): Journal {
       }
     },
     prayed(spot, pos) {
-      const s = (spot?.place && STAMP_BY_ID.get(spot.place)) || stampNear(spot?.x ?? pos.x, spot?.z ?? pos.z, 25);
+      const s = sealFor(spot, pos.x, pos.z);
       if (!s) return;
       const rec = (state.stamps[s.id] ??= { t: Date.now() });
       if (rec.pray) return;
@@ -291,9 +300,40 @@ export function createJournal(d: JournalDeps): Journal {
     onChange(fn) {
       listeners.push(fn);
     },
+    record(kind, x, z, cm) {
+      const page = state.book[kind];
+      if (page) {
+        page.caught = (page.caught ?? 0) + 1;
+        page.cm = Math.max(page.cm ?? 0, cm);
+      } else state.book[kind] = { t: Date.now(), img: '', x: Math.round(x), z: Math.round(z), n: 0, caught: 1, cm };
+      changed();
+      return !page;
+    },
   };
   Object.assign(window, { __journal: api });
+  current = api;
   return api;
+}
+
+/** The stamp nearest (x, z) within `extra` m of its reach, or null. */
+function stampNear(x: number, z: number, extra: number): StampDef | null {
+  let best: StampDef | null = null;
+  let bd = Infinity;
+  for (const s of STAMPS) {
+    const dd = Math.hypot(s.x - x, s.z - z) - s.reach;
+    if (dd < extra && dd < bd) [best, bd] = [s, dd];
+  }
+  return best;
+}
+
+/**
+ * The stamp a prayer puts its lotus seal on: the one that names his worship
+ * spot (`StampDef.spot`), else the spot's place's, else the stamp nearest
+ * the spot (or where he knelt, `x`, `z`, at a spot of his own), within 25 m
+ * of its reach.
+ */
+function sealFor(spot: WorshipSpot | null, x: number, z: number): StampDef | null {
+  return (spot && STAMPS.find((s) => s.spot === spot.id)) || (spot?.place && STAMP_BY_ID.get(spot.place)) || stampNear(spot?.x ?? x, spot?.z ?? z, 25);
 }
 
 /**
@@ -332,8 +372,8 @@ function keep<T>(v: unknown, to: (r: Record<string, unknown>) => T | null): Reco
 
 function toPage(r: Record<string, unknown>): PageRecord | null {
   if (!isNum(r.t) || !isNum(r.n) || typeof r.img !== 'string') return null;
-  // (where it was taken: only for the page's "near …"; none, no words)
-  return { t: r.t, img: r.img, x: isNum(r.x) ? r.x : NaN, z: isNum(r.z) ? r.z : NaN, n: r.n };
+  // (where it was taken: only for the page's "near …"; none, no words; a catch: how many and the biggest)
+  return { t: r.t, img: r.img, x: isNum(r.x) ? r.x : NaN, z: isNum(r.z) ? r.z : NaN, n: r.n, ...(isNum(r.caught) && isNum(r.cm) ? { caught: r.caught, cm: r.cm } : {}) };
 }
 
 function toStamp(r: Record<string, unknown>): StampRecord | null {

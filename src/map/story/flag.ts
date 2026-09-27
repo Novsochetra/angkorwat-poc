@@ -3,8 +3,10 @@ import { FLAG_ASPECT, FLAG_BLUE, FLAG_RED } from '../roam/_flag';
 /**
  * The story's title flag (beats.ts scene `title`): the flag of Cambodia on a
  * thin gold pole, waving. The flag is painted once on a 2D canvas (blue, the
- * red band, Angkor Wat in white with fine black lines: five lotus-bud towers,
- * three galleries, the stepped base and the stair in the middle) and laid on
+ * red band, Angkor Wat in white with fine black lines as the flag's official
+ * drawing has it: three lotus-bud towers over their porches, a gallery with
+ * windows between them, the stepped base of five tiers with a stair under
+ * each tower — five towers was the flag of 1979–89, not today's) and laid on
  * a cloth of 60 × 40 cells that a small WebGL shader moves: waves run from
  * the pole to the free end, growing as they go, with a smaller wave and a
  * flutter at the end for life, lit by a warm light (brighter on the crests,
@@ -40,7 +42,7 @@ const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
 // ── The flag ────────────────────────────────────────────────────────────────
 // Drawn in a design box of 1000 × 640 (the flag's 25 : 16); the red band is
-// y 160‥480, the temple spans x 282‥718, y 186‥456.
+// y 160‥480, the temple spans x 293‥707, y 186‥453 (as the official drawing).
 const DW = 1000;
 const DH = 640;
 
@@ -65,25 +67,16 @@ function line(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y
   g.stroke();
 }
 
-/** A dark opening (a doorway, a window between columns), round-topped when `arch`. */
-function opening(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, arch = false): void {
-  g.fillStyle = '#000';
-  g.beginPath();
-  if (arch) {
-    const r = (x1 - x0) / 2;
-    g.moveTo(x0, y1);
-    g.lineTo(x0, y0 + r);
-    g.arc(x0 + r, y0 + r, r, Math.PI, 0);
-    g.lineTo(x1, y1);
-    g.closePath();
-  } else g.rect(x0, y0, x1 - x0, y1 - y0);
-  g.fill();
-  g.fillStyle = '#fff';
+/** A white rectangle outlined in black (a window, a door leaf: the flag draws no dark openings). */
+function outlined(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, lw = 1.3): void {
+  g.lineWidth = lw;
+  block(g, x0, y0, x1, y1);
+  g.lineWidth = 2;
 }
 
 /**
- * A lotus-bud tower from its foot to its tip: a porch with a doorway, then
- * tiers (each a flared ledge and a face stepping in, with its corner lines)
+ * A lotus-bud tower from its foot to its tip: a base course, then tiers
+ * (each a flared ledge and a face stepping in, with its corner lines)
  * swelling a little and closing in to a point, and a short spike.
  */
 function tower(g: CanvasRenderingContext2D, cx: number, foot: number, tip: number, hw: number, tiers: number): void {
@@ -110,25 +103,28 @@ function tower(g: CanvasRenderingContext2D, cx: number, foot: number, tip: numbe
   }
   const pw = hw * 1.12;
   block(g, cx - pw, budFoot, cx + pw, foot);
-  line(g, cx - pw, budFoot + porch * 0.28, cx + pw, budFoot + porch * 0.28);
-  opening(g, cx - hw * 0.2, budFoot + porch * 0.42, cx + hw * 0.2, foot, true);
+  line(g, cx - pw, budFoot + porch * 0.45, cx + pw, budFoot + porch * 0.45);
 }
 
-/** A gallery seen from the front: a two-step roof over a row of openings between columns. */
-function gallery(g: CanvasRenderingContext2D, x0: number, x1: number, top: number, bottom: number, pitch: number): void {
-  const roof = (bottom - top) * 0.3;
-  block(g, x0 - 4, top, x1 + 4, top + roof);
-  line(g, x0 - 4, top + roof * 0.5, x1 + 4, top + roof * 0.5);
-  block(g, x0, top + roof, x1, bottom);
-  const n = Math.floor((x1 - x0) / pitch);
-  const pad = (x1 - x0 - n * pitch) / 2;
-  for (let i = 0; i < n; i++) {
-    const x = x0 + pad + (i + 0.5) * pitch;
-    opening(g, x - pitch * 0.14, top + roof + 4, x + pitch * 0.14, bottom - 3);
+/**
+ * A tower's porch from `top` down to the ledge (y 373), `half` wide each
+ * side, its foot flared: two door frames one within the other, the door.
+ */
+function porch(g: CanvasRenderingContext2D, cx: number, top: number, half: number): void {
+  const foot = 373;
+  shape(g, [cx - half - 3.5, foot, cx - half, foot - 5, cx - half, top, cx + half, top, cx + half, foot - 5, cx + half + 3.5, foot]);
+  for (const [k, dy] of [
+    [0.7, 4],
+    [0.52, 8],
+  ]) {
+    const a = half * k;
+    const y = top + dy;
+    shape(g, [cx - a - 2.5, foot, cx - a, foot - 4, cx - a, y + 3.5, cx - a + 3.5, y, cx + a - 3.5, y, cx + a, y + 3.5, cx + a, foot - 4, cx + a + 2.5, foot]);
   }
+  outlined(g, cx - 7.2, top + 8, cx + 7.2, foot, 1.6);
 }
 
-/** The stair up the middle: its side walls and a line for each step. */
+/** A stair: its side walls and a line for each step. */
 function stair(g: CanvasRenderingContext2D, cx: number, bottom: number, top: number, wb: number, wt: number): void {
   shape(g, [cx - wb, bottom, cx - wt, top, cx + wt, top, cx + wb, bottom]);
   const n = Math.round((bottom - top) / 6);
@@ -142,32 +138,48 @@ function stair(g: CanvasRenderingContext2D, cx: number, bottom: number, top: num
   for (const k of [-0.74, 0.74]) line(g, cx + wb * k, bottom, cx + wt * k, top);
 }
 
-/** Angkor Wat as the flag shows it, white with black lines, back to front. */
+/**
+ * Angkor Wat as the flag of Cambodia draws it (the flag's official drawing,
+ * in the design box), white with black lines, back to front: the gallery
+ * with its windows between the side towers, a lower tower each side over
+ * its porch (at x 380 and 620, a wing's end post outside it), the middle
+ * tower over its porch, the ledge they stand on, the stepped base of five
+ * tiers and a stair under each tower. Three towers: five was the flag of
+ * 1979–89, not today's.
+ */
 function temple(g: CanvasRenderingContext2D): void {
   g.fillStyle = '#fff';
   g.strokeStyle = '#000';
   g.lineWidth = 2;
   g.lineJoin = 'miter';
-  tower(g, 500, 322, 186, 40, 8);
-  gallery(g, 388, 612, 322, 352, 11);
-  for (const cx of [416, 584]) tower(g, cx, 322, 240, 28, 6);
-  gallery(g, 352, 648, 352, 384, 12);
-  gallery(g, 318, 682, 384, 420, 12);
-  // The corner pavilions of the outer gallery, and the lower towers on them.
-  for (const [x0, x1] of [
-    [314, 356],
-    [644, 686],
-  ]) {
-    gallery(g, x0, x1, 366, 420, 14);
-    tower(g, (x0 + x1) / 2, 366, 300, 20, 5);
+  // The body: the gallery and the towers' porches in one white block (its upper band, the lower body a step in), a string course.
+  block(g, 339, 300, 661, 326);
+  block(g, 346, 326, 654, 373);
+  line(g, 339, 310, 661, 310);
+  // The gallery between the towers: two bands, five windows each side of the middle tower.
+  outlined(g, 410, 314, 590, 322);
+  outlined(g, 410, 329, 590, 334);
+  for (const x of [414.3, 425.6, 437.6, 449.6, 460.8, 539.2, 550.4, 562.4, 574.4, 585.7]) outlined(g, x - 2.9, 337.5, x + 2.9, 363);
+  // The side towers over their porches; the wings' end posts at the body's corners, hooked outward.
+  for (const s of [-1, 1]) {
+    const cx = 500 + s * 120;
+    const px = 500 + s * 157;
+    shape(g, [px - s * 3, 301, px - s * 3, 291, px + s * 1, 289, px + s * 4, 294, px + s * 4, 301]);
+    tower(g, cx, 301, 232, 25, 6);
+    porch(g, cx, 321, 35);
   }
-  block(g, 306, 420, 694, 432);
-  block(g, 294, 432, 706, 444);
-  block(g, 282, 444, 718, 456);
-  stair(g, 500, 456, 352, 30, 17);
-  // The west door of the upper gallery, where the stair arrives.
-  block(g, 484, 328, 516, 352);
-  opening(g, 493, 334, 507, 352, true);
+  // The middle tower over its porch.
+  tower(g, 500, 301, 187, 28, 8);
+  shape(g, [471, 318, 529, 318, 533, 309, 467, 309]);
+  porch(g, 500, 318, 30);
+  // The ledge, the stepped base of five tiers, a stair under each tower.
+  shape(g, [338, 373, 344, 366, 656, 366, 662, 373]);
+  block(g, 330, 373, 670, 383);
+  block(g, 324, 383, 676, 396);
+  block(g, 314, 396, 686, 413);
+  block(g, 304, 413, 696, 433);
+  block(g, 293, 433, 707, 453);
+  for (const cx of [380, 500, 620]) stair(g, cx, 453, 373, 12.8, 12.8);
 }
 
 /** Paint the flag into the rectangle (x, y, w, h). */

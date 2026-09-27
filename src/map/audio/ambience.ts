@@ -12,6 +12,8 @@ import type { SoundEngine } from './engine';
  * while roaming (`Cicadas`), fading at dusk; birds and cicadas hush in rain.
  * Night: crickets and a katydid (looping buffers, started only at night),
  * frogs now and then, an owl, softer wind.
+ * Snow (`setSnow`, a dream): hushed — the breeze softer, the leaves still,
+ * hardly a bird, no cicadas, crickets or frogs (it is cold); an owl still.
  * Muted (`idle`), the loops stop once silent.
  */
 
@@ -247,6 +249,10 @@ export class Ambience {
   private dayW = 1;
   /** Rain now (0‥1, `setRain`): the birds and the cicadas keep quiet in it. */
   rain = 0;
+  /** Snow now (0‥1, `setSnow`): the world hushed. */
+  snow = 0;
+  /** The snow the levels were last set for. */
+  private snowSet = 0;
   /** The rain and the leaves over him the cicadas' level was last set for. */
   private cicadaRain = 0;
   private canopy = 0;
@@ -314,8 +320,9 @@ export class Ambience {
   mix(night: number, t: number, tc: number, canopy = 0): void {
     this.dayW = Math.cos((night * Math.PI) / 2);
     this.nightW = Math.sin((night * Math.PI) / 2);
-    glide(this.windMix.gain, LEVEL.wind * (0.55 + 0.45 * this.dayW), t, tc);
-    glide(this.insects.gain, LEVEL.insects * this.nightW ** 1.5, t, tc);
+    const hush = this.snow;
+    glide(this.windMix.gain, LEVEL.wind * (0.55 + 0.45 * this.dayW) * (1 - 0.35 * hush), t, tc);
+    glide(this.insects.gain, LEVEL.insects * this.nightW ** 1.5 * (1 - 0.92 * hush), t, tc);
     this.canopy = Math.min(1, Math.max(0, canopy));
     this.cicadaLevel(t, tc * 3);
   }
@@ -328,9 +335,17 @@ export class Ambience {
     this.cicadaLevel(t, 1.5);
   }
 
-  /** Cicadas: soft over the map, loud under the trees; they fade with the light at dusk, and hush in heavy rain like the birds. */
+  /** Snow now (0‥1, every frame from engine.weather): the breeze, the insects and the cicadas step back (slowly). */
+  setSnow(snow: number, t: number): void {
+    this.snow = snow;
+    if (Math.abs(snow - this.snowSet) < 0.02) return;
+    this.snowSet = snow;
+    this.mix(Math.acos(Math.min(1, Math.max(0, this.dayW))) / (Math.PI / 2), t, 2, this.canopy);
+  }
+
+  /** Cicadas: soft over the map, loud under the trees; they fade with the light at dusk, and hush in heavy rain like the birds (and in snow). */
   private cicadaLevel(t: number, tc: number): void {
-    this.cicadas.heard = LEVEL.cicada * this.dayW ** 3 * (0.3 + 0.7 * this.canopy) * (1 - 0.9 * this.cicadaRain);
+    this.cicadas.heard = LEVEL.cicada * this.dayW ** 3 * (0.3 + 0.7 * this.canopy) * (1 - 0.9 * this.cicadaRain) * (1 - 0.95 * this.snow);
     glide(this.cicadas.level.gain, this.cicadas.heard, t, tc);
   }
 
@@ -363,7 +378,7 @@ export class Ambience {
     const tc = range(r, 1, 2.6);
     this.gust.gain.setTargetAtTime(g, t, tc);
     this.windTone.frequency.setTargetAtTime(260 + 520 * g, t, tc * 1.2);
-    this.leaves.gain.setTargetAtTime(LEVEL.leaves * g ** 1.8, t + 0.4, tc);
+    this.leaves.gain.setTargetAtTime(LEVEL.leaves * g ** 1.8 * (1 - 0.7 * this.snow), t + 0.4, tc);
     return t + range(r, 2.5, 7);
   }
 
@@ -390,8 +405,8 @@ export class Ambience {
 
   private birdAt(t: number): number {
     const r = this.rnd;
-    // Fewer birds as it gets dark; none at night.
-    if (r() >= this.dayW ** 2 * (1 - 0.9 * this.rain)) return t + range(r, 3, 8);
+    // Fewer birds as it gets dark; none at night; hardly one in snow.
+    if (r() >= this.dayW ** 2 * (1 - 0.9 * this.rain) * (1 - 0.85 * this.snow)) return t + range(r, 3, 8);
     const kinds: BirdKind[] = ['whistle', 'chirps', 'trill', 'cuckoo', 'dove'];
     const w = [3, 3, 2, t - this.lastCuckoo > 25 ? 1.3 : 0, t - this.lastDove > 14 ? 1.2 : 0];
     const kind = kinds[weighted(r, w)];
@@ -509,7 +524,7 @@ export class Ambience {
 
   private frogAt(t: number): number {
     const r = this.rnd;
-    if (r() >= this.nightW ** 1.5 * 0.9) return t + range(r, 2.5, 8);
+    if (r() >= this.nightW ** 1.5 * 0.9 * (1 - 0.9 * this.snow)) return t + range(r, 2.5, 8);
     const kind = weighted(r, [3, 2, 1.2]);
     const dist = range(r, 0.3, 0.9);
     let s = t;

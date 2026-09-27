@@ -1,6 +1,6 @@
-import { valueNoise3 } from '../voxel/random';
-import { JUNGLE_SITES, LAKES, MAP_BOUNDS, PADDIES, PATHS, PLACES, PLATEAUS, RIVERS, TRAILS, VILLAGE, type Lake, type Plateau } from './layout';
-import { CAM_REACH, MAP_VIEWS, roamDistance, viewDistance } from './terrain/views';
+import { hash3 } from '../voxel/random';
+import { HAMLETS, JUNGLE_SITES, LAKES, MAP_BOUNDS, PADDIES, PATHS, PLACES, PLATEAUS, RIVERS, TRAILS, VILLAGE, type Lake, type Plateau } from './layout';
+import { CAM_REACH, EDGE_BAND, MAP_VIEWS, pastLand, roamDistance, viewDistance } from './terrain/views';
 
 /**
  * The land of the world map as a grid of columns: ground height, water level
@@ -72,14 +72,49 @@ export interface PathSample {
 
 const NO_WATER = -1e4;
 
-/** 2D fractal value noise in [0, 1). */
+const smooth3 = (t: number) => t * t * (3 - 2 * t);
+/** Each octave's layer of the 3D value noise (voxel/random.ts `valueNoise3` at z = 0.5 + 7.3 o): its row and blend. */
+const LAYERS = Array.from({ length: 8 }, (_, o) => {
+  const z = 0.5 + o * 7.3;
+  const zi = Math.floor(z);
+  return { zi, tz: smooth3(z - zi) };
+});
+
+/**
+ * 2D fractal value noise in [0, 1): octaves of `valueNoise3` (voxel/random.ts)
+ * on layers of their own, worked out here in one go (the same numbers, twice
+ * as fast: the land and its blocks ask for it a few million times).
+ */
 export function fbm(x: number, z: number, seed: number, octaves = 3): number {
+  const hash = hash3;
   let sum = 0;
   let amp = 0.5;
   let norm = 0;
   let f = 1;
   for (let o = 0; o < octaves; o++) {
-    sum += valueNoise3(x * f, z * f, 0.5 + o * 7.3, seed + o * 31) * amp;
+    const px = x * f;
+    const pz = z * f;
+    const xi = Math.floor(px);
+    const yi = Math.floor(pz);
+    const tx = smooth3(px - xi);
+    const ty = smooth3(pz - yi);
+    const { zi, tz } = LAYERS[o];
+    const s = seed + o * 31;
+    const a0 = hash(xi, yi, zi, s);
+    const a1 = hash(xi + 1, yi, zi, s);
+    const b0 = hash(xi, yi + 1, zi, s);
+    const b1 = hash(xi + 1, yi + 1, zi, s);
+    const c0 = hash(xi, yi, zi + 1, s);
+    const c1 = hash(xi + 1, yi, zi + 1, s);
+    const d0 = hash(xi, yi + 1, zi + 1, s);
+    const d1 = hash(xi + 1, yi + 1, zi + 1, s);
+    const x00 = a0 + (a1 - a0) * tx;
+    const x10 = b0 + (b1 - b0) * tx;
+    const x01 = c0 + (c1 - c0) * tx;
+    const x11 = d0 + (d1 - d0) * tx;
+    const y0 = x00 + (x10 - x00) * ty;
+    const y1 = x01 + (x11 - x01) * ty;
+    sum += (y0 + (y1 - y0) * tz) * amp;
     norm += amp;
     amp *= 0.5;
     f *= 2.03;
@@ -87,10 +122,24 @@ export function fbm(x: number, z: number, seed: number, octaves = 3): number {
   return sum / norm;
 }
 
+/**
+ * The back edge the map was first made with (m): the land's grids keep to
+ * its rows as the map grows north (see `HeightField.row0`; the coarse tiles
+ * here, terrain/lod.ts `ChunkGrid`), so the land looks as it did where it was.
+ */
+export const FIRST_Z0 = -660;
+
 export class HeightField {
   readonly cell = CELL;
   readonly x0 = MAP_BOUNDS.x0;
   readonly z0 = MAP_BOUNDS.z0;
+  /**
+   * Cell rows the map has grown north of the back edge it was first made
+   * with: the land's random picks by cell (block tones, rocks, cliff greens,
+   * trees on the cliff lips) take the row as `k − row0`, so the land keeps its
+   * looks where it was as the map grows.
+   */
+  readonly row0 = Math.round((FIRST_Z0 - MAP_BOUNDS.z0) / CELL);
   readonly nx = Math.round((MAP_BOUNDS.x1 - MAP_BOUNDS.x0) / CELL);
   readonly nz = Math.round((MAP_BOUNDS.z1 - MAP_BOUNDS.z0) / CELL);
   /** Top of the ground per cell (m, a multiple of CELL but for paddies and shallow beds). Index: i + k * nx. */
@@ -233,8 +282,8 @@ function baseHeight(x: number, z: number): number {
 
 const snap = (h: number) => Math.round(h / CELL) * CELL;
 
-/** Width of the band along the west, east and north edges where the land sinks into the mist (m). */
-const EDGE_FALL = 150;
+/** Width of the band past the roaming area (the west, east and north edges) where the land sinks into the mist (m). */
+const EDGE_FALL = EDGE_BAND;
 /** The front edge sinks only west of these x (m: from none at x0 to all at x1), over this width (m). */
 const SOUTH_FALL_X0 = -345;
 const SOUTH_FALL_X1 = -380;
@@ -249,12 +298,14 @@ function frontFall(x: number): number {
 }
 
 /**
- * The land sinks away toward the far edges of the map (not the front one,
- * which is under the camera, except past the great lake), so no wall shows
- * where the map ends. The steps it makes face away from every camera.
+ * The land sinks away past the roaming area (views.ts `ROAM_BOXES`: toward the
+ * far edges of the map; not the front one, which is under the camera, except
+ * past the great lake), so no wall shows where the map ends. The steps it
+ * makes face away from every camera.
  */
 function edgeFall(x: number, z: number, h: number): number {
-  let e = Math.min(x - MAP_BOUNDS.x0, MAP_BOUNDS.x1 - x, z - MAP_BOUNDS.z0);
+  // (how far from where it has sunk all the way: the band's outer edge)
+  let e = -pastLand(x, z);
   // The front edge too, but only past the great lake (west of the village and
   // the paddies) and over a short fall: the thin strip of land beyond the water
   // showed edge-on from the lake's shore. The lake floods it (lakeMap), so its
@@ -262,6 +313,8 @@ function edgeFall(x: number, z: number, h: number): number {
   const west = frontFall(x);
   if (west > 0) e = Math.min(e, ((MAP_BOUNDS.z1 - z) * EDGE_FALL) / SOUTH_FALL + (1 - west) * 1000);
   if (e >= EDGE_FALL + 35) return h;
+  // (sunk all the way, whatever the noise)
+  if (e <= -35) return EDGE_Y;
   e += (fbm(x / 70, z / 70, 211) - 0.5) * 70;
   if (e >= EDGE_FALL) return h;
   const t = Math.max(0, e / EDGE_FALL);
@@ -273,16 +326,34 @@ export function buildHeightField(): HeightField {
   const f = new HeightField();
   const { nx, nz } = f;
 
-  // Land: the highest of the low ground and every plateau.
+  // Land: the highest of the low ground and every plateau (each over the cells round it only),
+  // sinking at the edges.
+  const { height } = f;
+  const X0 = f.x0 + CELL / 2;
+  const Z0 = f.z0 + CELL / 2;
+  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) height[i + k * nx] = baseHeight(X0 + i * CELL, Z0 + k * CELL);
+  // (benches after the rest: they cut into it)
+  const order = PLATEAUS.map((_, n) => n).sort((a, b) => Number(!!PLATEAUS[a].bench) - Number(!!PLATEAUS[b].bench));
+  for (const n of order) {
+    const p = PLATEAUS[n];
+    const R = Math.max(p.rx, p.rz) * (1 + (p.rough ?? 0.1));
+    const i0 = Math.max(0, Math.floor((p.x - R - f.x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((p.x + R - f.x0) / CELL));
+    const k0 = Math.max(0, Math.floor((p.z - R - f.z0) / CELL));
+    const k1 = Math.min(nz - 1, Math.floor((p.z + R - f.z0) / CELL));
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const c = i + k * nx;
+        const h = plateauHeight(p, X0 + i * CELL, Z0 + k * CELL, 1000 + n * 17);
+        if (p.bench) {
+          if (h > -Infinity) height[c] = h;
+        } else height[c] = Math.max(height[c], h);
+      }
+  }
   for (let k = 0; k < nz; k++)
     for (let i = 0; i < nx; i++) {
-      const [x, z] = f.cellCenter(i, k);
-      let h = baseHeight(x, z);
-      PLATEAUS.forEach((p, n) => {
-        h = Math.max(h, plateauHeight(p, x, z, 1000 + n * 17));
-      });
       const c = i + k * nx;
-      f.height[c] = snap(edgeFall(x, z, h));
+      height[c] = snap(edgeFall(X0 + i * CELL, Z0 + k * CELL, height[c]));
       f.surface[c] = SURFACE.grass;
     }
 
@@ -312,8 +383,8 @@ export function buildHeightField(): HeightField {
     const samples: RiverSample[] = [];
     let level = Infinity;
     for (let s = 0; s < r.points.length - 1; s++) {
-      const [ax, az] = r.points[s];
-      const [bx, bz] = r.points[s + 1];
+      const [ax, az, aw = r.w] = r.points[s];
+      const [bx, bz, bw = r.w] = r.points[s + 1];
       const len = Math.hypot(bx - ax, bz - az);
       const dir: [number, number] = [(bx - ax) / len, (bz - az) / len];
       for (let t = 0; t < len; t += 1) {
@@ -323,7 +394,7 @@ export function buildHeightField(): HeightField {
         // (into a lake: its level)
         const li = lakes.of[f.index(x, z)] ?? -1;
         if (li >= 0) level = Math.min(level, LAKES[li].level);
-        samples.push({ x, z, level, w: r.w, dir });
+        samples.push({ x, z, level, w: aw + ((bw - aw) * t) / len, dir });
       }
     }
     f.rivers.push({ name: r.name, samples });
@@ -333,12 +404,12 @@ export function buildHeightField(): HeightField {
       const lip = samples[s - 1];
       let e = s;
       while (e + 1 < samples.length && e - s < 4 && samples[e].level - samples[e + 1].level >= 1) e++;
-      f.falls.push({ x: lip.x, z: lip.z, top: lip.level, bottom: samples[e].level, width: r.w, dir: lip.dir, river: r.name });
+      f.falls.push({ x: lip.x, z: lip.z, top: lip.level, bottom: samples[e].level, width: lip.w, dir: lip.dir, river: r.name });
       s = e;
     }
     // Nearest sample per cell (within the banks).
-    const reach = r.w / 2 + CELL * 1.5;
     for (const sm of samples) {
+      const reach = sm.w / 2 + CELL * 1.5;
       const i0 = Math.floor((sm.x - reach - f.x0) / CELL);
       const i1 = Math.floor((sm.x + reach - f.x0) / CELL);
       const k0 = Math.floor((sm.z - reach - f.z0) / CELL);
@@ -408,6 +479,7 @@ export function buildHeightField(): HeightField {
   }
 
   clearSites(f);
+  clearHamlets(f);
   layTrails(f);
 
   coarsen(f);
@@ -708,6 +780,35 @@ function clearSites(f: HeightField): void {
   }
 }
 
+/**
+ * The settled spots (layout.ts `HAMLETS`: the east village, its market, the palm grove, the Kulen
+ * picnic place, the hamlet behind Angkor Wat): plain ground within a block of the middle's height is
+ * levelled to it, dirt in the middle (half the radius, or the spot's `dirt` share: most of the market
+ * square). Not occupied: trees may stand between the houses; each builder marks what it builds on
+ * (`occupy`).
+ */
+function clearHamlets(f: HeightField): void {
+  const { nx, nz } = f;
+  for (const s of HAMLETS) {
+    const h0 = f.heightAt(s.x, s.z);
+    const i0 = Math.max(0, Math.floor((s.x - s.r - f.x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((s.x + s.r - f.x0) / CELL));
+    const k0 = Math.max(0, Math.floor((s.z - s.r - f.z0) / CELL));
+    const k1 = Math.min(nz - 1, Math.floor((s.z + s.r - f.z0) / CELL));
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const [x, z] = f.cellCenter(i, k);
+        const d = Math.hypot(x - s.x, z - s.z);
+        const c = i + k * nx;
+        const sf = f.surface[c];
+        if (d > s.r || f.water[c] > -1000 || !isNatural(sf) || f.occupied[c]) continue;
+        if (Math.abs(f.height[c] - h0) > CELL) continue;
+        f.height[c] = h0;
+        if (d < s.r * (s.dirt ?? 0.5)) f.surface[c] = SURFACE.dirt;
+      }
+  }
+}
+
 /** Steepest a trail may climb (m per m): 2 m cells then differ by one step at most. */
 const TRAIL_SLOPE = 0.9;
 /** Beside the tread, trunks keep this far (m) from a trail's middle line. */
@@ -782,7 +883,13 @@ function layTrails(f: HeightField): void {
 
 /** Cells per LOD tile side (8 m). */
 const TILE = 4;
-/** Past the roaming area (m): 2 m columns as far as the follow camera goes, then 4 m ones this far out. */
+/**
+ * Past the roaming area (m): 2 m columns as far as the follow camera goes
+ * (`CAM_REACH`) where a map camera sees the land, else only this far (the
+ * sinking edges out of every map camera's sight, deep in the mist), then
+ * 4 m ones this far out.
+ */
+const ROAM_FINE = 12;
 const ROAM_MID = 110;
 
 /**
@@ -791,39 +898,46 @@ const ROAM_MID = 110;
  * block (the upper median of their cells). Tiles with a pad, road, river or
  * bank keep 2 m columns, and so does all the land the roaming explorer and
  * his camera get near; past it (the sinking edges, the far back) the roaming
- * camera only sees the land from afar.
+ * camera only sees the land from afar, and far out a lake's bed (all under
+ * water) is coarse too.
  */
 function coarsen(f: HeightField): void {
   const { nx, nz, height } = f;
   let top = -Infinity;
   for (let c = 0; c < nx * nz; c++) top = Math.max(top, height[c]);
   const hs: number[] = [];
-  for (let b = 0; b < nz; b += TILE)
+  // (tiles on the rows of the map as first made: a part tile at the back stays fine)
+  for (let b = tileRow(f) - TILE; b < nz; b += TILE)
     for (let a = 0; a < nx; a += TILE) {
-      const full = a + TILE <= nx && b + TILE <= nz;
+      const x = f.x0 + (a + TILE / 2) * CELL;
+      const z = f.z0 + (b + TILE / 2) * CELL;
+      // (distance from the tile's nearest point)
+      const dr = roamDistance(x, z) - (TILE * CELL) / 2;
+      if (dr <= ROAM_FINE) continue;
+      // (as far as the follow camera goes, where a map camera sees it)
+      const seen = dr <= CAM_REACH;
+      const full = a + TILE <= nx && b >= 0 && b + TILE <= nz;
       let forced = !full;
       let hmax = -Infinity;
+      let wet = 0;
       for (let k = b; k < Math.min(nz, b + TILE) && !forced; k++)
         for (let i = a; i < Math.min(nx, a + TILE); i++) {
           const c = i + k * nx;
           const s = f.surface[c];
-          if (f.occupied[c] || f.water[c] > -1000 || (s !== SURFACE.grass && s !== SURFACE.rock && s !== SURFACE.dirt)) {
+          if (f.water[c] > -1000 && s === SURFACE.bed) wet++;
+          else if (f.occupied[c] || f.water[c] > -1000 || (s !== SURFACE.grass && s !== SURFACE.rock && s !== SURFACE.dirt)) {
             forced = true;
             break;
           }
           hmax = Math.max(hmax, height[c]);
         }
-      if (forced) continue;
-      const x = f.x0 + (a + TILE / 2) * CELL;
-      const z = f.z0 + (b + TILE / 2) * CELL;
-      // (distance from the tile's nearest point)
-      const dr = roamDistance(x, z) - (TILE * CELL) / 2;
-      if (dr <= CAM_REACH) continue;
+      // (a bed under water, far out: only all of the tile, the shore stays fine)
+      if (forced || (wet > 0 && wet < TILE * TILE)) continue;
       let level = dr <= ROAM_MID ? 1 : 2;
       for (const v of MAP_VIEWS) {
         const d = viewDistance(v, x, hmax + 1, z);
         if (d < 0) continue;
-        const want = d < v.fine ? 0 : d < v.mid ? 1 : 2;
+        const want = seen ? 0 : d < v.fine ? 0 : d < v.mid ? 1 : 2;
         if (want >= level || occluded(f, x, hmax + 1, z, v.pos, top)) continue;
         level = want;
         if (level === 0) break;
@@ -844,6 +958,9 @@ function coarsen(f: HeightField): void {
         }
     }
 }
+
+/** The first row of the coarse tiles (0‥TILE − 1): rows of the map as first made (`row0`). */
+export const tileRow = (f: HeightField): number => (((f.row0 % TILE) + TILE) % TILE);
 
 /** Is the straight line from a point to a camera blocked by the land? */
 function occluded(f: HeightField, x: number, y: number, z: number, cam: readonly [number, number, number], top: number): boolean {

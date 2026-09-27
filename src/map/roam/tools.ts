@@ -3,12 +3,17 @@ import { OUTFITS, type AngkorExplorer, type OutfitName, type SelfieGesture } fro
 import type { HoldKind } from '../../character/Animator';
 import { ACTIONS, type ActionName } from '../../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
-import type { MapFrame, MapPart, RoamMode } from '../types';
+import { DEFAULT_FOOD, isMeal } from '../../character/meals';
+import { isFoodKind, type FoodKind } from '../../character/parts/food';
+import { REST_TIME } from '../../character/rest';
+import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { createExplorerMenu, type ExplorerMenu } from './_explorerMenu';
+import { createGreeter, type GreetHow } from './_greet';
 import { createPrayer } from './_pray';
 import { createRest } from './_rest';
+import { createShopping } from './_shop';
 import { angleDiff } from './followCam';
 import type { RoamControls } from './input';
 import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
@@ -76,8 +81,11 @@ export interface RoamTools {
   /** Right after a frame is drawn (the photo). */
   afterRender(): void;
   /**
-   * URL (checks): `tool=…` start with a tool out · `act=…` play an action (`act=pray`: kneel and pray, on foot;
-   * `act=sit|lie|sleep`: down on the ground there, asleep once lying: _rest.ts) ·
+   * URL (checks): `tool=…` start with a tool out · `act=…` play an action (`act=greet|greetHigh`: the sampeah, and the
+   * people near greet him back, _greet.ts; with `sim=f:…` F greets as the player's would; `act=pray`: kneel and pray, on foot;
+   * `act=sit|lie|sleep`: down on the ground there, asleep once lying: _rest.ts; `act=eat|bite|drink` his meal of the
+   * default food, `food=<kind>` (character/parts/food.ts, `foodcolors=hex,…`) eats or drinks that, with `act=sit` once
+   * he is down: the character alone, no shop — shops: _shop.ts `bought=`) ·
    * `kneelat=x,z,fx,fz` (or `x,y,z,fx,fz`) a worship spot of its own there, facing (fx, fz): E by it and he prays (_pray.ts) ·
    * `beam=mouse` + `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
    * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot · `gesture=peace|wave|thumbsUp|none`
@@ -100,6 +108,8 @@ export interface ToolDeps {
   canvas: HTMLCanvasElement;
   /** The map's parts (photos: what is in them, for the nature book). */
   parts?: readonly MapPart[];
+  /** Interface sounds (the buy menu's: _shop.ts). */
+  uiSound?(s: UISound): void;
 }
 
 /**
@@ -153,9 +163,26 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     onFinder: (on) => document.body.classList.toggle('roam-finder', on),
     parts: d.parts,
   });
-  // (the explorer menu, I: his moves, looks and faces for a click or a tap, _explorerMenu.ts)
-  const menu = createExplorerMenu({
+  // (E at a stall: the buy menu, the purse, eating and drinking, what he keeps in his bag: _shop.ts)
+  const shopping = createShopping({
+    explorer,
+    body,
+    cam,
+    hud,
+    layer: hud.layer ?? document.body,
     press: (code) => d.controls.press(code),
+    resting: () => rest.state,
+    occupied: () => prayer.handsBusy || !!photo.kind || photo.albumOpen,
+    closeMenus: () => menu.toggle(false),
+    uiSound: d.uiSound,
+  });
+  // (the explorer menu, I: his moves, looks and faces for a click or a tap, _explorerMenu.ts; his bag's things too)
+  const menu = createExplorerMenu({
+    press: (code, how) => {
+      // (the menu's Greet and Wave go in as F, saying which)
+      greetHow = how ?? null;
+      d.controls.press(code);
+    },
     looks: LOOKS,
     look: () => look,
     setLook,
@@ -170,6 +197,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (on) bar.toggleKeys(false);
       bar.update();
     },
+    extra: [shopping.bag.section],
   });
   const bar = createToolBar(hud.layer ?? document.body, {
     menu,
@@ -178,18 +206,25 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     held: () => explorer.currentOutfit.held,
     up: () => photo.kind,
     camera: () => explorer.currentOutfit.camera,
+    extra: shopping.bag.slot,
   });
   // (E at a shrine: he kneels to pray, a golden lotus on the floor where: _pray.ts)
   const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody(), onPrayed: (spot) => photo.journal.prayed(spot, body.pos) });
   object.add(prayer.object);
   // (J sits him down, L lies him down, watching the sky; asleep after a while: _rest.ts)
   const rest = createRest({ explorer, body, cam, hud, canvas: d.canvas, refreshBody: () => photo.refreshBody() });
+  // (F greets whoever is near in front of him: a sampeah, or a wave; the people greet him back: _greet.ts)
+  const greeter = createGreeter({ explorer, body });
+  /** A check's meal (`act=eat|bite|drink`, `food=`): what, and how long it waits (s: sitting down first). */
+  let urlMeal: { kind: FoodKind; colors?: number[]; wait: number } | null = null;
+  /** The explorer menu's Greet or Wave, for the F it pressed (null: the key itself, `auto`). */
+  let greetHow: GreetHow | null = null;
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  /** What his left hand should hold now (nothing while he prays, or while a posture holds him: the swing's rope grip). */
+  /** What his left hand should hold now (nothing while he prays, eats or drinks, or while a posture holds him: the swing's rope grip). */
   function wantHeld(): HoldKind {
-    if (mode !== 'walk' || prayer.handsBusy || explorer.animator.posture) return 'none';
+    if (mode !== 'walk' || prayer.handsBusy || shopping.handsBusy || explorer.animator.posture || explorer.foodHeld) return 'none';
     return handTool();
   }
 
@@ -338,6 +373,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       const input = ctx.input;
       const taps = input.taps;
       const tap = (...codes: string[]) => !!taps && codes.some((c) => taps.has(c));
+      // (the explorer menu's Greet or Wave rides on this step's F; else F greets as it sees fit)
+      const how: GreetHow = greetHow ?? 'auto';
+      greetHow = null;
 
       // The album open: roaming waits; Esc goes back through it, V closes it.
       if (photo.albumOpen) {
@@ -345,6 +383,12 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         else if (tap('KeyV')) photo.closeAlbum();
         stillInput(ctx);
         input.exit = false;
+        return;
+      }
+      // At a stall (its buy menu open, taking what he bought) or eating: he keeps still, the menu has its own keys;
+      // eating, the stick or a tool key stops it; 6 eats or drinks what he keeps (_shop.ts).
+      if (shopping.input(ctx, m, tap)) {
+        stillInput(ctx);
         return;
       }
       if (tap('Slash')) bar.toggleKeys();
@@ -447,7 +491,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       // Emotes (on foot, hands free of the camera; not while a posture holds him, e.g. on the
       // rope swing: the emote would not show and would hold his keys, so the swing could not be stopped).
       if (m === 'walk' && !explorer.animator.posture) {
-        if (tap('KeyF')) play('wave');
+        // (F greets: a sampeah to the people near in front of him, else a wave; they greet him back: _greet.ts)
+        if (tap('KeyF')) greeter.greet(ctx, how);
         if (tap('KeyC')) play('cheer');
         if (tap('KeyU')) play('lookUp');
         if (tap('KeyP')) play('peek');
@@ -459,7 +504,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
           if (a === 'pray' && (push || input.jump)) {
             prayer.stop(true);
             input.jump = false;
-          } else if (a && ACTIONS[a].loop && push) explorer.stop(a);
+          } else if (a && (ACTIONS[a].loop || greeter.over(a)) && push) explorer.stop(a);
           else {
             input.move.x = input.move.y = 0;
             input.jump = false;
@@ -472,6 +517,13 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (m === 'walk') {
         prayer.step(ctx, dt, !photo.kind && !photo.albumOpen);
         rest.step(ctx, dt, !photo.kind && !photo.albumOpen);
+        greeter.step(ctx, dt);
+        shopping.step(ctx, dt);
+        // (a check's meal: `act=eat|bite|drink`, `food=`; sitting, once he is down)
+        if (urlMeal && (urlMeal.wait -= dt) <= 0) {
+          explorer.consume(urlMeal.kind, urlMeal.colors);
+          urlMeal = null;
+        }
         setHeld(wantHeld());
       }
       // (the passport: a stamp for a temple or a jungle place he walks up to)
@@ -498,6 +550,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       lights(f.t);
       // (asleep on the ground: the "Z z z" over his head)
       rest.frame(cam.camera, photo.view);
+      // (the "Delicious!" over his head, pocket money at dawn, the shops' hours: _shop.ts)
+      shopping.frame(f);
       // Photo mode: the touch shutter and put-away instead of the stick, no roaming interface.
       const up = photo.kind;
       // (the explorer menu shuts with the camera or the phone up, the album open, or off the bar; else it shows him as he is now)
@@ -517,6 +571,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       // (praying is on foot: he gets up, the hat goes back on)
       if (next !== 'walk') prayer.stop();
       if (next !== 'walk') rest.stop();
+      if (next !== 'walk') shopping.stop();
       if (next !== 'walk') bar.toggleKeys(false);
       // (in the overview the ledge drives him: a lantern after dark)
       if (next === 'overview') setHeld('none');
@@ -541,10 +596,20 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         else setHeld((chosen = tool));
       }
       const a = params.get('act') as ActionName | null;
-      if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie' && (a !== 'pray' || mode === 'walk')) explorer.play(a);
+      // (act=greet|greetHigh: the sampeah on foot, out on the greeting bus too, so the people near greet him back: _greet.ts)
+      if ((a === 'greet' || a === 'greetHigh') && mode === 'walk') greeter.greet(ctx, 'sampeah', a === 'greetHigh');
+      else if (a && a in ACTIONS && a !== 'photo' && a !== 'selfie' && !isMeal(a) && (a !== 'pray' || mode === 'walk')) explorer.play(a);
       // (sit, lie or sleep on the ground where he stands: _rest.ts)
       const ra = params.get('act');
       if ((ra === 'sit' || ra === 'lie' || ra === 'sleep') && mode === 'walk') rest.start(ra, params.has('rcam'));
+      // (eating or drinking, the character alone: act=eat|bite|drink, food=<kind>; sitting, once he is down)
+      const fk = params.get('food');
+      if (mode === 'walk' && (isFoodKind(fk) || isMeal(a)))
+        urlMeal = {
+          kind: isFoodKind(fk) ? fk : DEFAULT_FOOD[a as 'eat' | 'bite' | 'drink'],
+          colors: params.get('foodcolors')?.split(',').map((c) => parseInt(c, 16)),
+          wait: ra === 'sit' ? REST_TIME.sit.down + 0.05 : 0,
+        };
       // A worship spot of its own (checks, new shrines): kneelat=x,z,fx,fz (y: the ground there) or x,y,z,fx,fz.
       const kn = params.get('kneelat')?.split(',').map(Number);
       if (kn && (kn.length === 4 || kn.length === 5) && kn.every(Number.isFinite)) {
@@ -574,6 +639,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         // (on foot he turns to it; the boat and the glider keep their heading)
         if (mode === 'walk') body.yaw = photo.shot.yaw;
       }
+      // (at a stall with its menu open, just bought, eating or drinking; the purse and the bag: _shop.ts)
+      shopping.fromUrl(params, ctx);
       bar.update();
     },
     report() {
@@ -585,7 +652,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (tool) out.tool = tool;
       if (hand === 'flashlight' && beamMouse) out.beam = 'mouse';
       const a = explorer.currentAction;
-      if (a && a !== 'photo' && a !== 'selfie') out.act = a;
+      // (eating or drinking: the shop's own params play it again, `bought=`)
+      if (a && a !== 'photo' && a !== 'selfie' && !shopping.eating) out.act = a;
+      if (a && isMeal(a) && !shopping.eating) out.food = explorer.animator.meal.kind;
       // (a shot of the prayer as far along as it is now: roam.ts takes this `sim`)
       if (a === 'pray') out.sim = `_:${Math.max(0.5, explorer.animator.actionTime).toFixed(1)}`;
       if (look !== 0) out.look = LOOKS[look][0];
@@ -605,6 +674,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         out.saim = `${deg(a.yaw)},${deg(a.pitch)},${a.reach.toFixed(2)}`;
         out.stick = photo.stick ? '1' : '0';
       }
+      // (the purse, the bag, a stall's menu, eating: _shop.ts)
+      Object.assign(out, shopping.report());
       return out;
     },
   };
@@ -645,7 +716,7 @@ interface ToolBar {
  */
 function createToolBar(
   layer: HTMLElement,
-  h: { menu: ExplorerMenu; onTool(t: ToolName): void; onAlbum(): void; held(): HoldKind; up(): ToolName | null; camera(): boolean },
+  h: { menu: ExplorerMenu; onTool(t: ToolName): void; onAlbum(): void; held(): HoldKind; up(): ToolName | null; camera(): boolean; extra?: HTMLElement },
 ): ToolBar {
   injectStyle();
   const wrap = document.createElement('div');
@@ -665,6 +736,8 @@ function createToolBar(
   layer.append(wrap);
   // (the explorer menu opens in the same place as the key list)
   wrap.append(h.menu.el);
+  // (after the selfie phone: the bag's slot, 6, while he carries something to eat or drink: roam/_shopBag.ts)
+  if (h.extra) wrap.querySelector('.rtb-slot[data-tool="selfie"]')!.after(h.extra);
   const me = wrap.querySelector<HTMLButtonElement>('.rtb-me')!;
   const keysEl = wrap.querySelector<HTMLElement>('.rtb-keys')!;
   const more = wrap.querySelector<HTMLButtonElement>('.rtb-more')!;
@@ -740,11 +813,11 @@ const row = (keys: string, what: WordKey) => `<span class="rtb-k">${keys}</span>
 const keyList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
-    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('V'), 'rAlbum')}
-    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
+    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('V'), 'rAlbum')}
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'byBuy')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(k('I'), 'rMenuKey')}
-    ${row(k('F'), 'rWave')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(k('J'), 'rSit')}${row(k('L'), 'rLieDown')}
+    ${row(k('F'), 'grGreet')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(k('J'), 'rSit')}${row(k('L'), 'rLieDown')}
     ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
     <b class="rtb-sub">${t('rView')}</b>${row(mouse('rDrag') + k('Q') + k('R'), 'rLookRound')}${row(mouse('rWheel'), 'rZoom')}
     <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}</div>

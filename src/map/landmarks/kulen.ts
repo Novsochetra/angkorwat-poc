@@ -6,6 +6,7 @@ import { PATHS, type PlaceDef } from '../layout';
 import { buddhaStatue } from '../sacred/buddha';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { FLOWER_PINK, gardenTree, Mason, type Palette, prasat, redent, SHADOW, SIDE, tieredTop } from './_prasat';
+import { buildReclining } from './_kulenBuddha';
 import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
 
 /**
@@ -30,6 +31,12 @@ import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
  * lotus and marigolds before him, a white tiered parasol either side of
  * the stair (sacred/, `Shrines`; its worship spot is roam/_worship.ts
  * `kulen-stair-foot`).
+ *
+ * On the plateau east of the temple lies Preah Ang Thom (ព្រះអង្គធំ), the
+ * reclining Buddha of Phnom Kulen, carved along the top of a great
+ * sandstone boulder under a Khmer roof, a stair between naga balustrades
+ * up its south face, a paved way to it from the grand stair's foot
+ * (_kulenBuddha.ts; worship spot `kulen-buddha`).
  */
 
 /** Weathered grey-brown sandstone and laterite, as at Bakheng. */
@@ -247,11 +254,15 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
     return (Math.abs(lx) < TIERS[0] + 1 && Math.abs(lz) < TIERS[0] + 1) || Math.abs(lx) > ex - 1.5 || Math.abs(lz) > ez - 1.5;
   });
   f.occupy(place.x - ex - 1, place.z - ez - 1, place.x + ex + 1, place.z + ez + rise + 1);
+  // The reclining Buddha on his boulder east of the temple.
+  const reclining = buildReclining(f, world, shrines, lamps);
+  console.info(`[map] kulen: ${reclining.note}`);
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
   object.add(buildVoxelMesh(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
   object.add(shrines.build());
+  object.add(reclining.object);
   object.add(lamps.addLight(fr.world(0, top - 2, TIERS[0] + 8), 1100, 60));
   const lampMesh = lamps.build(`landmark:${place.id}:lamps`);
   if (lampMesh) object.add(lampMesh);
@@ -262,6 +273,7 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
     update(fr: MapFrame) {
       lamps.update(fr.night, fr.t);
       shrines.update(fr);
+      reclining.update(fr);
     },
   };
 }

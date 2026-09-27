@@ -1,5 +1,6 @@
 import { BoxGeometry, Color, DynamicDrawUsage, Group, InstancedBufferAttribute, InstancedMesh, MeshStandardMaterial, Vector3, type WebGLProgramParametersWithUniforms } from 'three';
 import { hash3 } from '../../voxel/random';
+import { graphicsNow } from '../graphics';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { ROAM_SCALE } from '../roam/types';
 import type { MapContext, MapFrame, MapPart } from '../types';
@@ -19,8 +20,9 @@ import { stepWind, SWAY, SWAY_GLSL, swayLand } from './sway';
  * him is filled once from its own seed (the same spot always grows the same
  * plants), when he has moved a few metres, into the one InstancedMesh (plain
  * boxes, one draw call), packed one after the other: only the boxes filled
- * are drawn. Plants grow out of the ground at the pool's edge (32–44 m) and
- * are gone past it; cells left behind are let go (already gone from sight),
+ * are drawn. Plants grow out of the ground at the pool's edge (32–44 m; on
+ * the low level, phones, 24–32 m: half the boxes) and are gone past it;
+ * cells left behind are let go (already gone from sight),
  * and the pool is packed again once enough of them pile up. Dense under the
  * crowns (veg/canopy.ts), sparse on open grass, reeds on the river banks,
  * nothing on the roads, trails, pads, water, bare built ground
@@ -31,12 +33,14 @@ import { stepWind, SWAY, SWAY_GLSL, swayLand } from './sway';
 
 /** Pool cell (m): two by two land cells. */
 const POOL_CELL = 4;
-/** Plants start to shrink this far from him and are gone here (m). */
+/** Plants start to shrink this far from him and are gone here (m); nearer on the low graphics level (phones). */
 const FADE = { from: 32, to: 44 };
+const FADE_LOW = { from: 24, to: 32 };
 /** Plan the pool again once he is this far from where it was planned (m). */
 const REPLAN = 3;
-/** Cells whose middle is this close to the plan's centre are kept or filled (m). */
-const KEEP = FADE.to + POOL_CELL * Math.SQRT1_2 + REPLAN + 0.5;
+/** Cells whose middle is this close to the plan's centre are kept or filled (m), for a fade. */
+const keepFor = (fade: { to: number }) => fade.to + POOL_CELL * Math.SQRT1_2 + REPLAN + 0.5;
+const KEEP = keepFor(FADE);
 /** Boxes per cell at most. */
 const CAP = 80;
 const SLOTS = Math.ceil((Math.PI * (KEEP + POOL_CELL) ** 2) / (POOL_CELL * POOL_CELL));
@@ -156,9 +160,10 @@ class Pool implements PlantSink {
   private readonly linear = new Map<number, [number, number, number]>();
   private readonly spots: Spot[] = [0, 1, 2, 3].map(() => ({ x: 0, z: 0, y: 0, ground: 'floor', cover: 0, wet: false, tight: false }));
   private readonly trunks: number[] = [];
-  /** Where the pool was planned (NaN: never). */
+  /** Where the pool was planned (NaN: never), and how far round (m). */
   planX = NaN;
   planZ = NaN;
+  keep = KEEP;
   // The plant being written: its foot, turn, size, flex, tint, and the slot's next box.
   private px = 0;
   private py = 0;
@@ -206,16 +211,16 @@ class Pool implements PlantSink {
     const half = POOL_CELL / 2;
     // (a cell let go keeps its boxes till the next packing: past the fade, nothing of it shows)
     for (const [key, cell] of this.cells) {
-      if (keyDist(key, x, z) <= KEEP) continue;
+      if (keyDist(key, x, z) <= this.keep) continue;
       this.cells.delete(key);
       this.dropped += cell.n;
     }
-    const r = Math.ceil(KEEP / POOL_CELL) + 1;
+    const r = Math.ceil(this.keep / POOL_CELL) + 1;
     const c0 = Math.floor(x / POOL_CELL);
     const k0 = Math.floor(z / POOL_CELL);
     for (let ck = k0 - r; ck <= k0 + r; ck++)
       for (let ci = c0 - r; ci <= c0 + r; ci++) {
-        if (Math.hypot(ci * POOL_CELL + half - x, ck * POOL_CELL + half - z) > KEEP) continue;
+        if (Math.hypot(ci * POOL_CELL + half - x, ck * POOL_CELL + half - z) > this.keep) continue;
         const key = cellKey(ci, ck);
         if (this.cells.has(key) || this.queued.has(key)) continue;
         this.queued.add(key);
@@ -236,7 +241,7 @@ class Pool implements PlantSink {
       const key = this.queue.pop()!;
       this.queued.delete(key);
       // (planned again since: too far now)
-      if (keyDist(key, this.planX, this.planZ) > KEEP) continue;
+      if (keyDist(key, this.planX, this.planZ) > this.keep) continue;
       const at = this.used;
       this.fill(keyI(key), keyK(key), at);
       this.cells.set(key, { at, n: this.at - at });
@@ -568,6 +573,15 @@ export function buildUndergrowth(ctx: MapContext): MapPart {
       }
       UG.uFade.value.z = shown;
       UG.uFocus.value.set(L.x, feet, L.z);
+      // (the graphics level's reach: a new one plans the pool again)
+      const fade = graphicsNow.plainBlocks ? FADE_LOW : FADE;
+      UG.uFade.value.x = fade.from;
+      UG.uFade.value.y = fade.to;
+      const keep = keepFor(fade);
+      if (keep !== pool.keep) {
+        pool.keep = keep;
+        pool.planX = NaN;
+      }
       if (!(Math.hypot(L.x - pool.planX, L.z - pool.planZ) <= REPLAN)) pool.plan(L.x, L.z);
       pool.drain(ctx.shot ? Infinity : FILL_PER_FRAME);
       // (only the boxes filled: the rest of the pool is not drawn)

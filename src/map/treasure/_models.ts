@@ -111,16 +111,46 @@ function plinth(s: Sketch, r = 4.2): void {
   }
 }
 
-/** A tall pointed Khmer crown (mukuta) from row y. */
-function crown(s: Sketch, x: number, y: number, z: number, h = 4): void {
-  s.cyl(x, z, y, y, 1.3, B);
-  for (let i = 1; i < h; i++) s.cyl(x, z, y + i, y + i, Math.max(0, 1.1 - (i * 1.1) / h), i % 2 ? G : B);
-  s.set(x, y + h, z, P);
+/**
+ * The Khmer dancer's crown (mokot) from row y, as the apsaras of Angkor Wat
+ * and the Royal Ballet wear it: a jewelled band across the brow, three
+ * spikes standing apart on it (the middle one tallest, a jewel at each
+ * tip) and flower tassels hanging by the ears. (Never one tall tiered
+ * spire: that is the Thai chada.)
+ */
+function mokot(s: Sketch, x: number, y: number, z: number): void {
+  s.box(x - 2, x + 2, y, y, z - 1, z + 1, B);
+  s.set(x, y, z + 2, P);
+  // The middle spike.
+  s.set(x, y + 1, z, G);
+  s.set(x, y + 2, z, B);
+  s.set(x, y + 3, z, G);
+  s.set(x, y + 4, z, P);
+  for (const m of [-1, 1]) {
+    // A side spike, lower.
+    s.set(x + m * 2, y + 1, z, G);
+    s.set(x + m * 2, y + 2, z, P);
+    // Flower tassels by the ears.
+    s.set(x + m * 2, y - 1, z, B);
+    s.set(x + m * 2, y - 2, z, P);
+  }
+}
+
+/**
+ * The conical crown (mukuta) of Angkor's gods and heroes from row y: a
+ * jewelled diadem, a short cone in two tiers and a lotus-bud knob.
+ */
+function mukuta(s: Sketch, x: number, y: number, z: number): void {
+  s.box(x - 1, x + 1, y, y, z - 1, z + 1, B);
+  s.set(x, y, z + 2, P);
+  s.cyl(x, z, y + 1, y + 1, 1, G);
+  s.set(x, y + 2, z, B);
+  s.set(x, y + 3, z, P);
 }
 
 // ── The figures ─────────────────────────────────────────────────────────────
 
-/** A celestial dancer (apsara) of Angkor Wat's walls: knees bent out, one hand raised, fingers bent back, a tall crown. */
+/** A celestial dancer (apsara) of Angkor Wat's walls: knees bent out, one hand raised, fingers bent back, the three-spiked mokot. */
 function apsara(s: Sketch): void {
   plinth(s);
   // Legs in the plié of Khmer dance, feet turned out.
@@ -140,7 +170,7 @@ function apsara(s: Sketch): void {
   s.ell(0, 14.6, 0, 1.2, 1.4, 1.2);
   s.set(-1, 15, 1, K);
   s.set(1, 15, 1, K);
-  crown(s, 0, 16, 0, 4);
+  mokot(s, 0, 16, 0);
   // Arms: the right raised, the hand bent back; the left out and down, the hand flicked up.
   s.seg([[1.5, 12, 0], [3.5, 13, 0.3], [4, 16, 0.5]], 0.55);
   s.seg([[4, 16, 0.5], [5, 16.8, 0.2]], 0.45, 0.45, B);
@@ -148,7 +178,7 @@ function apsara(s: Sketch): void {
   s.seg([[-5, 9.5, 0.6], [-6, 10.5, 0.4]], 0.45, 0.45, B);
 }
 
-/** The seven-headed naga of the causeways: coils on the plinth, a hood of seven heads fanned out. */
+/** The seven-headed naga of the causeways: coils on the plinth, a hood of seven smooth cobra heads fanned out before a flame-leaf halo (no crests: the crested, dragon-like head is Thai). */
 function naga(s: Sketch): void {
   plinth(s);
   // Coils.
@@ -167,16 +197,15 @@ function naga(s: Sketch): void {
     const hx = Math.sin(a) * 5.6;
     const hy = 8.5 + Math.cos(a) * 5.2;
     s.seg([[hx * 0.5, 8.5 + (hy - 8.5) * 0.5, -0.2], [hx, hy, 0.2]], 0.8, 0.7);
-    // Head: a snout forward, eyes, a small crest.
+    // A cobra's head: smooth and round, a short snout forward, eyes.
     s.ell(hx, hy, 0.9, 1, 0.9, 1.4, B);
     s.set(hx, hy - 0.2, 2.3, G);
     s.set(hx - 0.7, hy + 0.5, 1.6, K);
     s.set(hx + 0.7, hy + 0.5, 1.6, K);
-    s.set(hx, hy + 1.1, 0.4, P);
   }
 }
 
-/** Garuda (krut), the bird-man who holds up the walls of Preah Khan: talons, raised arms, wings spread behind, a beak and crown. */
+/** Garuda (krut), the bird-man who holds up the walls of Preah Khan: talons, raised arms gripping a naga in each hand (as on those walls), wings spread behind, a beak and the conical crown. */
 function garuda(s: Sketch): void {
   plinth(s);
   s.both((m) => {
@@ -184,9 +213,16 @@ function garuda(s: Sketch): void {
     s.seg([[m * 1.2, 7, 0], [m * 2.8, 5, 0.6], [m * 2, 2.5, 0.5]], 0.75, 0.55);
     s.seg([[m * 2, 2, 0.5], [m * 2.3, 2, 2]], 0.45, 0.45, D);
     s.seg([[m * 2, 2, 0.5], [m * 3, 2, 1.4]], 0.45, 0.45, D);
-    // Arms up, holding the sky.
+    // Arms up, each fist gripping a naga that rises out of it, its three-headed hood fanned.
     s.seg([[m * 1.8, 11.5, 0], [m * 4, 12.5, 0.4], [m * 4, 15.5, 0.6]], 0.6);
     s.ball(m * 4, 16, 0.6, 0.6, B);
+    s.seg([[m * 4, 14.5, 1.3], [m * 4.2, 16.8, 1.1], [m * 5, 18.6, 0.8]], 0.5, 0.45, D);
+    for (const [dx, dy] of [
+      [-1, 0],
+      [0, 0.6],
+      [1, 0],
+    ])
+      s.set(m * 5 + dx, 19.4 + dy, 0.8, B);
     // Wings: feathers fanned up and out behind the shoulders.
     for (let f = 0; f < 5; f++) s.seg([[m * 1.5, 10.5, -1.2], [m * (3.5 + f * 0.9), 9 + f * 1.5, -1.8]], 0.6, 0.45, f % 2 ? G : D);
   });
@@ -199,7 +235,7 @@ function garuda(s: Sketch): void {
   s.seg([[0, 13.6, 1.2], [0, 13, 2.6], [0, 12.2, 2.8]], 0.55, 0.45, B);
   s.set(-1, 14, 1, K);
   s.set(1, 14, 1, K);
-  crown(s, 0, 15, 0, 3);
+  mukuta(s, 0, 15, 0);
 }
 
 /** One of the Bayon's calm smiling faces, on a small tower with a face on every side and a lotus-bud top. */
@@ -310,7 +346,7 @@ function lotus(s: Sketch): void {
     }
 }
 
-/** A kinnari: half woman, half bird, palms together, wings and a swept tail of feathers. */
+/** A kinnari (kenorey of the Royal Ballet's dance): half woman, half bird, palms together, wings and a swept tail of feathers, the dancers' three-spiked mokot. */
 function kinnari(s: Sketch): void {
   plinth(s);
   s.both((m) => {
@@ -330,7 +366,7 @@ function kinnari(s: Sketch): void {
   s.ell(0, 13, 0, 1.1, 1.3, 1.1);
   s.set(-1, 13.4, 1, K);
   s.set(1, 13.4, 1, K);
-  crown(s, 0, 14.3, 0, 4);
+  mokot(s, 0, 14.3, 0);
 }
 
 /** Kurma, the turtle of the Churning of the Ocean of Milk (Angkor Wat's long relief): a patterned shell, head out. */
@@ -414,7 +450,7 @@ function hanuman(s: Sketch): void {
   s.set(-1, 12.4, 2, K);
   s.set(1, 12.4, 2, K);
   s.set(0, 11, 2.6, K);
-  crown(s, 0, 13.3, 0.8, 3);
+  mukuta(s, 0, 13.3, 0.8);
   // The right arm raised with a small mace; the left forward, open-handed.
   s.seg([[1.6, 10, 0], [3.3, 11.8, 0.4], [3.4, 14, 0.4]], 0.55);
   s.seg([[3.4, 13.4, 0.4], [3.4, 17, 0.4]], 0.4, 0.4, D);

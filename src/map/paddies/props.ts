@@ -1,6 +1,7 @@
 import { BoxGeometry, Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshDepthMaterial, MeshStandardMaterial, Sphere, Vector3, type WebGLProgramParametersWithUniforms } from 'three';
 import { hash3 } from '../../voxel/random';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
+import { Palms, type PalmSet } from '../veg/palms';
 import { SWAY, SWAY_GLSL } from '../veg/sway';
 import { sweepOrder } from './ground';
 import { plotAt, SWEEP, type PlotPlan } from './stages';
@@ -10,13 +11,14 @@ import { plotAt, SWEEP, type PlotPlan } from './stages';
  * the vertex shader): bamboo fences on the outer dikes, two ting mong
  * (the Khmer scarecrow figure: an old shirt, a krama, a Khmer palm-leaf hat) while
  * the rice grows, sheaves stood in stooks behind the reapers, round straw
- * stacks on a pole after the threshing, and sugar palms (thnot, Cambodia's
- * tree) on the dikes.
+ * stacks on a pole after the threshing; and sugar palms (thnot, Cambodia's
+ * tree) on the dikes (veg/palms.ts: their own instanced draws, children of
+ * the props' mesh, `palms` in what `buildProps` returns).
  *
  * Each box has a season window (plot-local days folded into absolute
  * season in JS): it grows out of its foot as the window opens and sinks
- * back into it as it closes, so nothing pops. Palms and cloth sway with
- * the land's wind (veg/sway.ts). The same pose casts the shadows.
+ * back into it as it closes, so nothing pops. Cloth sways with the land's
+ * wind (veg/sway.ts). The same pose casts the shadows.
  */
 
 /** Colours (sRGB). */
@@ -26,9 +28,6 @@ const STRAW_OLD = 0xa69366;
 const SHEAF = [0xc9a95a, 0xd1b062, 0xbf9f52];
 const SHEAF_HEAD = [0xd8b04a, 0xdcb656, 0xcfa544];
 const SHEAF_TIE = 0x8a6a38;
-const PALM_TRUNK = [0x69635b, 0x736c63, 0x625c55];
-const PALM_LEAF = [0x6f8c45, 0x7a9650, 0x62803e, 0x86a15a];
-const PALM_DEAD = [0x8a6a3e, 0x7d6038, 0x96764a];
 const SHIRT = [0x5b7ca3, 0xd6cfbc];
 const KRAMA = 0xb03a32;
 const TROUSERS = 0x3f3b4c;
@@ -233,56 +232,12 @@ function strawStack(b: Boxes, x: number, y: number, z: number, seed: number, win
 }
 
 /**
- * A sugar palm (thnot): a tall grey trunk, a round open crown of stiff fan
- * leaves on long stalks, young fans upright at the top, dead fans hanging
- * brown under the crown.
+ * A sugar palm (thnot) on a dike: the real one of veg/palms.ts (a straight
+ * dark trunk, a round crown of pleated fans, dead fans and fruit under it),
+ * 11.5–15.5 m to the heart of its crown.
  */
-function sugarPalm(b: Boxes, x: number, y: number, z: number, seed: number): void {
-  b.foot.set(x, y, z);
-  b.win = ALWAYS;
-  const r = (q: number) => hash3(seed, q, 11, 9341);
-  const H = 11 + 4 * r(1);
-  // (a slight lean, curving)
-  const lx = (r(2) - 0.5) * 0.9;
-  const lz = (r(3) - 0.5) * 0.9;
-  b.sway = 0.02;
-  b.box(x, y + 0.3, z, 0.95, 0.6, 0.95, PALM_TRUNK[0], r(4));
-  b.box(x, y + 0.9, z, 0.75, 0.8, 0.75, PALM_TRUNK[1], r(4) + 0.4);
-  for (let s = 1; s < H; s++) {
-    const f = (s / H) ** 1.5;
-    b.sway = 0.06 * (s / H);
-    const w = 0.62 - 0.08 * (s / H);
-    b.box(x + lx * f, y + s + 0.5, z + lz * f, w, 1.02, w, pick(PALM_TRUNK, r(20 + s)), r(40 + s) * 0.3);
-  }
-  const cx = x + lx;
-  const cy = y + H + 0.7;
-  const cz = z + lz;
-  b.sway = 0.065;
-  b.box(cx, cy - 0.2, cz, 0.9, 1.1, 0.9, 0x4d4a36, r(5));
-  // Fans on stalks, all round (a spiral): mostly out and up, a few down.
-  const fans = 26;
-  for (let k = 0; k < fans; k++) {
-    const u = (k + 0.5) / fans;
-    const elev = -0.6 + 1.85 * u + (r(50 + k) - 0.5) * 0.2;
-    const az = k * 2.39996 + r(6) * 6;
-    const len = 0.9 + 0.45 * r(60 + k);
-    const ce = Math.cos(elev);
-    const dx = Math.sin(az) * ce;
-    const dz = Math.cos(az) * ce;
-    const dy = Math.sin(elev);
-    // (the stalk: from the core out along its way)
-    b.stick(cx, cy, cz, 0.1, len, 0.1, 0x6b6a40, az, Math.PI / 2 - elev, 0.3);
-    const rad = 0.3 + len + 0.55;
-    b.box(cx + dx * rad, cy + dy * rad, cz + dz * rad, 1.5, 1.3, 0.1, pick(PALM_LEAF, r(90 + k)), az + (r(70 + k) - 0.5) * 0.5, -elev - 0.25);
-  }
-  // Young fans, folded, standing up out of the top.
-  for (let k = 0; k < 2; k++) b.stick(cx + (k - 0.5) * 0.3, cy + 0.3, cz, 0.35, 1.6 + 0.4 * k, 0.12, PALM_LEAF[3], r(8) + k * 1.6, 0.15 - 0.3 * k);
-  // Dead fans hanging down round the top of the trunk.
-  for (let k = 0; k < 6; k++) {
-    const az = (k / 6) * Math.PI * 2 + r(7);
-    b.stick(cx, cy - 0.5, cz, 0.9, 1.6, 0.08, pick(PALM_DEAD, r(120 + k)), az, Math.PI - 0.3, 0.2);
-  }
-  b.sway = 0;
+function sugarPalm(palms: Palms, x: number, y: number, z: number, seed: number): void {
+  palms.add({ kind: 'sugar', x, y, z, h: 11.5 + 4 * hash3(seed, 1, 11, 9341), seed: 9341 + seed * 17 });
 }
 
 /** The nearest dike cell to (x, z) within 4 m, off the trail (its centre), or null. */
@@ -386,7 +341,7 @@ function propMaterials(season: { value: number }): { material: MeshStandardMater
   return { material, depth };
 }
 
-export function buildProps(field: HeightField, plots: PlotPlan[], season: { value: number }): { mesh: Mesh; count: number } {
+export function buildProps(field: HeightField, plots: PlotPlan[], season: { value: number }): { mesh: Mesh; count: number; palms: PalmSet } {
   const b = new Boxes();
   fences(b, field);
   for (const [pi, ox, oz, shirt] of SCARECROWS) {
@@ -417,9 +372,10 @@ export function buildProps(field: HeightField, plots: PlotPlan[], season: { valu
     const z = pl.paddy.z + oz;
     strawStack(b, x, field.heightAt(x, z) + 0.03, z, pi, { at: pl.lag + pl.cut + SWEEP + 0.035, len: 0.05, outAt: pl.lag + 1.03, outLen: 0.03 });
   }
+  const palms = new Palms();
   PALMS.forEach(([px, pz], i) => {
     const at = dikeNear(field, px, pz);
-    if (at) sugarPalm(b, at[0], field.heightAt(at[0], at[1]), at[1], i);
+    if (at) sugarPalm(palms, at[0], field.heightAt(at[0], at[1]), at[1], i);
   });
 
   const n = b.count;
@@ -455,5 +411,8 @@ export function buildProps(field: HeightField, plots: PlotPlan[], season: { valu
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.customDepthMaterial = depth;
-  return { mesh, count: n };
+  // The palms: drawn with the props (children of their mesh); `palms.subjects` for the nature book.
+  const palmSet = palms.build({ name: 'paddies:palms' });
+  mesh.add(palmSet.object);
+  return { mesh, count: n + palmSet.pieces, palms: palmSet };
 }

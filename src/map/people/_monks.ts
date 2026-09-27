@@ -18,10 +18,11 @@ import { BACK_OFF, GONE, isEvening, isMorning, STANDOFF, STANDOFF_LONG, type Peo
  *   At night they are inside. They keep to the right of the road, go round
  *   the beacons and whoever stands in the way, and stop at the roadside to
  *   let the explorer pass when he walks up towards them; as he passes a
- *   monk nods to him, or greets him with a sampeah when they have stopped.
+ *   monk nods to him; stopped, he turns to him with a nod and a hand raised
+ *   in blessing (monks do not sampeah lay people).
  * - **The sweeper**: a monk sweeping the stone landing below the gate's
  *   beacon, across the road and back, straightening up now and then; he
- *   greets the explorer with a sampeah. He goes in at dusk and comes out
+ *   greets the explorer with a nod and a blessing. He goes in at dusk and comes out
  *   at dawn.
  *
  * Shots: `monks=<m>` puts the procession's leader that many metres below
@@ -226,11 +227,11 @@ export class Monks implements PeopleScene {
     if (allIn) this.goIn(dir === 1 ? 'temple' : 'village', dir === 1 ? IN_TEMPLE : IN_VILLAGE);
   }
 
-  /** A nod as the explorer passes, a sampeah while they stand aside for him. */
+  /** A nod as the explorer passes; standing aside for him, a nod with a hand raised in blessing (never a sampeah: monks do not sampeah lay people). */
   private greet(m: Member, now: number, f: MapFrame, ex: Obstacle | null, waiting: boolean): void {
     const a = m.a;
     if (!ex || f.night > 0.7) {
-      if (a.currentPose === POSE.sampeah && now > m.nodAt + 2.2) a.pose(POSE.stand, now);
+      if (a.currentPose === POSE.nod && now > m.nodAt + 2.2) a.pose(POSE.stand, now);
       return;
     }
     const d = a.dist(ex.x, ex.z);
@@ -238,14 +239,14 @@ export class Monks implements PeopleScene {
       m.nodAt = now;
       a.lookAt({ x: ex.x, y: ex.y + 2, z: ex.z }, now + 2.4);
       if (waiting) {
-        a.pose(POSE.sampeah, now);
+        a.pose(POSE.nod, now);
         a.carry(0, now);
       }
     }
     // The nod: head down for a moment while looking at him.
     const since = now - m.nodAt;
     a.tilt(since > 0.4 && since < 1.2 && !waiting ? 0.7 : 0);
-    if (since > 2.2 && a.currentPose === POSE.sampeah) {
+    if (since > 2.2 && a.currentPose === POSE.nod) {
       a.pose(POSE.stand, now);
       a.carry(1, now);
     }
@@ -362,13 +363,13 @@ class Sweeper {
       if (a.dist(p.x, p.z) < 0.3) this.mode = 'sweep';
       return;
     }
-    // Greets the explorer: straightens up, turns to him, sampeah, then back to work.
+    // Greets the explorer: straightens up, turns to him, a nod and a blessing, then back to work.
     if (ex && a.dist(ex.x, ex.z) < 4.2 && now - this.greetAt > 60 && Math.abs(ex.y - a.y) < 2.5) this.greetAt = now;
     const g = now - this.greetAt;
     if (ex && g < 3.2) {
       a.stop(a.yawTo(ex.x, ex.z));
       a.lookAt({ x: ex.x, y: ex.y + 2, z: ex.z }, now + 0.2);
-      a.pose(g > 0.6 && g < 2.6 ? POSE.sampeah : POSE.stand, now);
+      a.pose(g > 0.6 && g < 2.6 ? POSE.nod : POSE.stand, now);
       a.carry(g > 0.6 && g < 2.6 ? 0 : 1, now);
       a.step(dt, now);
       return;

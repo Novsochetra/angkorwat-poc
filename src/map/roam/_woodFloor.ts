@@ -4,14 +4,15 @@ import type { MapPart } from '../types';
 /**
  * Planks underfoot: the tops of the wooden blocks of the built parts people
  * walk on (the village's verandas, stairs, jetty and rafts; the camps'
- * bridges and the monk's hut), in 0.5 m columns, so the footsteps there
+ * bridges and the monk's hut; the hamlets' verandas, stairs, bridge, jetties
+ * and salas), in 0.5 m columns, so the footsteps there
  * sound of wood (walker.ts `stepSound`), as on a take-off ramp's deck.
  * Read once from the voxel meshes when the roaming world is built (the
  * rafts bob a few centimetres: well inside the tolerance).
  */
 
 /** Parts with wooden floors, and the block families that are wood. */
-const PARTS = new Set(['village', 'camps']);
+const PARTS = new Set(['village', 'camps', 'hamlet']);
 const WOOD = new Set(['mapBark', 'wood', 'bark']);
 /** Column size (m), and how near the feet must be to a plank's top (m). */
 const RES = 0.5;

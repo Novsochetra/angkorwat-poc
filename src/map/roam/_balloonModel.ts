@@ -94,18 +94,18 @@ const CELL = 0.4;
 /** Gores (the panels the envelope is sewn from). */
 const GORES = 12;
 /**
- * Angkor Wat in white on the red band, front and back, as on the flag: five
- * towers, the gallery with its windows, the stepped base. Drawn in cells on
+ * Angkor Wat in white on the red band, front and back, as on the flag: three
+ * towers (never five: that is the 1979–89 flag), the gallery with its windows, the stepped base. Drawn in cells on
  * the cloth (one character a cell, the top row first), its middle on the
  * front (and the back) meridian.
  */
 const TEMPLE = [
   '.........#.........',
   '........###........',
-  '....#...###...#....',
-  '...###..###..###...',
-  '...###.#####.###...',
-  '.#.###.#####.###.#.',
+  '...#....###....#...',
+  '..###...###...###..',
+  '..###..#####..###..',
+  '.#####.#####.#####.',
   '###################',
   '#.#.#.#.#.#.#.#.#.#',
   '###################',

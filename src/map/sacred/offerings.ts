@@ -141,7 +141,12 @@ export interface ParasolOptions extends OfferingBase {
   height?: number;
   /** 5 or 7 tiers (default 7). */
   tiers?: 5 | 7;
-  /** White cloth with gold trims, or gold cloth (default white). */
+  /**
+   * White cloth with gold trims (default: the Buddhas of the temples, the
+   * Kulen shrines and the pagoda's altar), or gold cloth (the Bayon's
+   * sanctum). A stack of gold tiers reads from afar as the gold ring
+   * spire the player sees as Thai.
+   */
   look?: "white" | "gold";
 }
 
@@ -1632,44 +1637,69 @@ function parasolTiers(tiers: number): { y: number; r: number }[] {
   return out;
 }
 
-/** One tier of cloth (plain: cloth is thin): a shallow canopy, a valance with a pointed, gold-trimmed hem. */
+/**
+ * How far a valance's hem hangs at share f (0‥1) across one of its points:
+ * a kbach flame (the flame leaf of kbach phni tes): a long rise, the point
+ * leaning one way, a small tongue flicking off before it.
+ */
+function flamePoint(f: number): number {
+  const tongue = (c: number, left: number, right: number, k: number) => {
+    const d = f < c ? (c - f) / left : (f - c) / right;
+    return d >= 1 ? 0 : k * (1 - d) ** 1.15;
+  };
+  return Math.max(tongue(0.6, 0.5, 0.3, 1), tongue(0.15, 0.14, 0.12, 0.42));
+}
+
+/**
+ * One tier of cloth (plain: cloth is thin): a shallow canopy, and a valance
+ * whose gold-trimmed hem is cut in kbach flame points (finer at `near`).
+ */
 function parasolTier(
   y: number,
   r: number,
   look: "white" | "gold",
+  near: boolean,
 ): BufferGeometry {
   const cloth = look === "white" ? F.cloth : F.clothGold;
   const trim = F.gold;
   const drop = 0.012 + r * 0.24;
   const val = 0.03 + r * 0.06;
-  const teeth = Math.max(12, Math.round((Math.PI * 2 * r) / 0.07));
-  const p: RevolvePoint[] = [
+  const depth = 0.022 + r * 0.035;
+  const points = Math.max(12, Math.round((Math.PI * 2 * r) / 0.085));
+  const canopy: RevolvePoint[] = [
     { r: 0.016, y: y + drop + 0.015, f: trim },
     { r: 0.03, y: y + drop, f: trim },
     { r: 0.04, y: y + drop * 0.95, f: cloth },
     { r: r * 0.55, y: y + drop * 0.5, f: cloth },
     { r: r * 0.95, y: y + 0.004, f: trim },
     { r: r + 0.004, y: y - 0.004, f: trim, occ: 0.95 },
-    { r: r + 0.004, y: y - 0.004, f: trim, occ: 0.95 },
-    { r: r + 0.004, y: y - val * 0.62, f: cloth, occ: 0.88 },
-    { r: r + 0.005, y: y - val * 0.7, f: trim, occ: 0.85, hem: 0 },
-    { r: r + 0.006, y: y - val, f: trim, occ: 0.8, hem: 1 },
-    { r: r - 0.002, y: y - val, f: trim, occ: 0.5, hem: 1 },
     { r: r - 0.002, y: y - 0.01, f: cloth, occ: 0.45 },
     { r: r * 0.55, y: y + drop * 0.42, f: cloth, occ: 0.55 },
     { r: 0.014, y: y + drop, f: trim, occ: 0.6 },
   ];
-  return revolve(p, teeth * 2, (hem, a) => {
-    const f = ((((a * teeth) / (Math.PI * 2)) % 1) + 1) % 1;
-    return -hem * 0.028 * (1 - Math.abs(f - 0.5) * 2) ** 1.5;
-  });
+  const valance: RevolvePoint[] = [
+    { r: r + 0.004, y: y - 0.004, f: trim, occ: 0.95 },
+    { r: r + 0.004, y: y - val * 0.55, f: cloth, occ: 0.88 },
+    { r: r + 0.005, y: y - val * 0.62, f: trim, occ: 0.85, hem: 0 },
+    { r: r + 0.006, y: y - val, f: trim, occ: 0.8, hem: 1 },
+    { r: r - 0.002, y: y - val, f: trim, occ: 0.5, hem: 1 },
+    { r: r - 0.002, y: y - 0.01, f: cloth, occ: 0.45 },
+  ];
+  return mergeGeometries([
+    revolve(canopy, points * 2),
+    revolve(valance, points * (near ? 6 : 2), (hem, a) => {
+      const f = ((((a * points) / (Math.PI * 2)) % 1) + 1) % 1;
+      return -hem * depth * flamePoint(f);
+    }),
+  ]);
 }
 
 /**
- * A Khmer ceremonial parasol (chhatr, 2.2 m): 7 (or 5) tiers of white (or
- * gold) cloth, smaller upward, each with a gold-trimmed valance cut in
- * points, on a gilt pole with a lotus-bud finial, in a lotus stand. Stand
- * one on each side of a Buddha.
+ * A Khmer ceremonial parasol (chhatr, ឆ័ត្រ, 2.2 m): 7 (or 5) tiers of white
+ * (or gold) cloth, smaller upward, each valance's gold hem cut in kbach
+ * flame points that lean one way (not the plain teeth of the Thai royal
+ * white umbrella), on a gilt pole with a lotus-bud finial, in a lotus
+ * stand. Stand one on each side of a Buddha.
  */
 export function parasol(o: ParasolOptions = {}): OfferingPiece {
   const tiers = o.tiers ?? 7;
@@ -1680,7 +1710,7 @@ export function parasol(o: ParasolOptions = {}): OfferingPiece {
     statueMesh(
       merged(`parasol:${tiers}:${look}`, d, () => {
         const T = parasolTiers(tiers);
-        const parts = T.map((t) => parasolTier(t.y, t.r, look));
+        const parts = T.map((t) => parasolTier(t.y, t.r, look, d === "near"));
         // The gilt pole, and the finial: rings, a lotus bud, a spike.
         parts.push(
           finishGeometry(

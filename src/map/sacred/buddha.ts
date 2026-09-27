@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry, Group, LOD, Mesh, Object3D, Vector3 } 
 import { addBody } from './_buddhaBody';
 import type { HeadStyle, Mudra, Throne } from './_buddhaFrame';
 import { addHead } from './_buddhaHead';
+import { addReclining } from './_buddhaReclining';
 import { addThrone } from './_buddhaThrone';
 import { dress, PALETTES, statueMaterial, type Palette } from './finish';
 import { trackSacred } from './pending';
@@ -13,16 +14,24 @@ import type { SculptJob, SculptResult } from './sculptWorker';
  * hands in the mudra, a robe and a throne, in gilt, sandstone or bronze
  * (finish.ts). The head, body and throne are sculpted apart
  * (_buddhaHead.ts, _buddhaBody.ts, _buddhaThrone.ts) on the measures of
- * _buddhaFrame.ts.
+ * _buddhaFrame.ts. Every one is Khmer: the Angkorian face, a conical
+ * ushnisha with a lotus bud on it (never the Thai flame).
  *
  *   buddhaStatue({ kind: 'pagoda', look: 'gilt', height: 2.4 })
  *
  * gives an Object3D standing on y = 0 at its origin, facing +z, `height` m
- * tall from the throne's foot to the flame's tip: turn and place it. Its
- * shape is sculpted once per kind and detail and shared.
+ * tall from the throne's foot to the tip of the lotus bud: turn and place
+ * it. Its shape is sculpted once per kind and detail and shared.
+ *
+ * The reclining Buddha (kind `reclining`, _buddhaReclining.ts: Preah Ang
+ * Thom of Phnom Kulen) lies along x on his right side, his head at −x, on
+ * y = 0, facing +z, his middle at the origin; size him by `length` (the
+ * bud on his head to his soles) instead of `height`.
  */
 
-export interface BuddhaKind {
+/** A seated Buddha: the hands in a mudra, on a throne. */
+export interface SeatedKind {
+  pose?: undefined;
   mudra: Mudra;
   head: HeadStyle;
   throne: Throne;
@@ -30,8 +39,20 @@ export interface BuddhaKind {
   sash?: boolean;
 }
 
+/** A reclining Buddha (_buddhaReclining.ts): on his right side, the head on his right hand. */
+export interface RecliningKind {
+  pose: 'reclining';
+  head: HeadStyle;
+  /** The people's saffron cloth across his chest. */
+  sash?: boolean;
+  /** Gold leaf the pilgrims pressed onto his soles (region `leaf`). */
+  leaf?: boolean;
+}
+
+export type BuddhaKind = SeatedKind | RecliningKind;
+
 export const BUDDHA_KINDS = {
-  /** The pagoda's main Buddha: calling the earth to witness, flame on the head, on a lotus. */
+  /** The pagoda's main Buddha: calling the earth to witness, on a lotus. */
   pagoda: { mudra: 'earth', head: 'pagoda', throne: 'lotus' },
   /** A pagoda Buddha in meditation (the smaller ones on the altar's steps). */
   meditate: { mudra: 'meditate', head: 'pagoda', throne: 'lotus' },
@@ -41,9 +62,26 @@ export const BUDDHA_KINDS = {
   naga: { mudra: 'meditate', head: 'angkor', throne: 'naga' },
   /** The naga Buddha with a saffron cloth (the forest Buddha the people keep). */
   nagaSash: { mudra: 'meditate', head: 'angkor', throne: 'naga', sash: true },
+  /** The reclining Buddha of Phnom Kulen (Preah Ang Thom): a saffron cloth across his chest, gold leaf on his soles. */
+  reclining: { pose: 'reclining', head: 'pagoda', sash: true, leaf: true },
 } satisfies Record<string, BuddhaKind>;
 
 export type BuddhaKindName = keyof typeof BUDDHA_KINDS;
+
+/**
+ * The reclining Buddha of Phnom Kulen's look: sandstone, as carved out of
+ * the boulder — the skin a little paler (smoothed by the pilgrims' hands),
+ * the robe a little darker and its hems darker still, so the robe reads —,
+ * the gold leaf the pilgrims pressed onto his soles, and the saffron cloth
+ * (`sash`).
+ */
+export const KULEN_STONE: Palette = {
+  ...PALETTES.sandstone,
+  skin: { color: 0xc2a687, metal: 0, rough: 0.86, grain: 0.8 },
+  robe: { color: 0xa98c6c, metal: 0, rough: 0.93, grain: 0.9 },
+  hem: { color: 0x9a7e60, metal: 0, rough: 0.93, grain: 0.9 },
+  leaf: { color: 0xe3b24e, metal: 0.9, rough: 0.28, grain: 0.35 },
+};
 
 /**
  * Grid cells (m, at the reference size) for each detail: `near` for up
@@ -58,6 +96,8 @@ interface Sculpted {
   mesh: SculptMesh;
   /** Height from the throne's foot to the top (m, reference size). */
   height: number;
+  /** Length along x (m, reference size): a reclining Buddha's, head to soles. */
+  length: number;
 }
 
 const cache = new Map<string, Sculpted>();
@@ -65,13 +105,21 @@ const cache = new Map<string, Sculpted>();
 /** The Buddha of `kind` as a sculpt, its foot at y = 0 (reference size). */
 export function buddhaSculpt(kind: BuddhaKind): { sculpt: Sculpt; foot: number } {
   const s = new Sculpt();
+  if (kind.pose === 'reclining') {
+    addReclining(s, { head: kind.head, sash: !!kind.sash, leaf: !!kind.leaf });
+    return { sculpt: s, foot: 0 };
+  }
   const foot = addThrone(s, kind.throne);
   addBody(s, { mudra: kind.mudra, sash: !!kind.sash });
   addHead(s, kind.head);
   return { sculpt: s, foot };
 }
 
-const keyOf = (kind: BuddhaKind, detail: Detail) => `${kind.mudra}/${kind.head}/${kind.throne}/${kind.sash ? 1 : 0}/${detail}`;
+const keyOf = (kind: BuddhaKind, detail: Detail) =>
+  kind.pose === 'reclining' ? `reclining/${kind.head}/${kind.sash ? 1 : 0}/${kind.leaf ? 1 : 0}/${detail}` : `${kind.mudra}/${kind.head}/${kind.throne}/${kind.sash ? 1 : 0}/${detail}`;
+
+/** The mesh's height and length (m, reference size) from its bounding box. */
+const sizeOf = (g: BufferGeometry) => ({ height: g.boundingBox!.max.y, length: g.boundingBox!.max.x - g.boundingBox!.min.x });
 
 /** The Buddha's mesh at a detail (sculpted on first use, then shared). */
 export function buddhaMesh(kind: BuddhaKind, detail: Detail = 'near'): Sculpted {
@@ -83,7 +131,7 @@ export function buddhaMesh(kind: BuddhaKind, detail: Detail = 'near'): Sculpted 
     mesh.geometry.translate(0, foot, 0);
     mesh.geometry.computeBoundingBox();
     mesh.geometry.computeBoundingSphere();
-    got = { mesh, height: mesh.geometry.boundingBox!.max.y };
+    got = { mesh, ...sizeOf(mesh.geometry) };
     cache.set(key, got);
     console.info(`[sacred] buddha ${key}: ${(mesh.geometry.getIndex()!.count / 3) | 0} triangles in ${mesh.ms.toFixed(0)} ms`);
   }
@@ -145,7 +193,7 @@ export function buddhaMeshAsync(kind: BuddhaKind, detail: Detail): Promise<Sculp
         geometry.setIndex(new BufferAttribute(r.index, 1));
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
-        const got: Sculpted = { mesh: { geometry, regions: r.regions, ms: r.ms }, height: geometry.boundingBox!.max.y };
+        const got: Sculpted = { mesh: { geometry, regions: r.regions, ms: r.ms }, ...sizeOf(geometry) };
         cache.set(key, got);
         console.info(`[sacred] buddha ${key}: ${(r.index.length / 3) | 0} triangles in ${r.ms.toFixed(0)} ms (worker)`);
         resolve(got);
@@ -161,8 +209,10 @@ export interface StatueOptions {
   kind: BuddhaKindName | BuddhaKind;
   /** A palette or one of finish.ts `PALETTES`. */
   look: keyof typeof PALETTES | Palette;
-  /** Height from the throne's foot to the top (m). */
-  height: number;
+  /** Height from the throne's foot to the top of the lotus bud (m). */
+  height?: number;
+  /** Length along x (m) instead of the height: a reclining Buddha's, head to soles. */
+  length?: number;
   /** Up to this distance (m) the near mesh shows, the far one beyond it; none past `hide`. */
   near?: number;
   hide?: number;
@@ -187,14 +237,14 @@ export function buddhaStatue(o: StatueOptions & { sync?: boolean }): Object3D {
   lod.name = 'buddha';
   const nearGroup = new Group();
   const farGroup = new Group();
-  const nearDist = o.near ?? Math.max(12, o.height * 8);
+  const nearDist = o.near ?? Math.max(12, (o.height ?? o.length ?? 1) * 8);
   if (!o.farOnly) lod.addLevel(nearGroup, 0);
   lod.addLevel(farGroup, o.farOnly ? 0 : nearDist);
   lod.addLevel(new Object3D(), o.hide ?? 160);
   const make = (s: Sculpted) => {
     const m = new Mesh(dress(s.mesh, palette), statueMaterial());
     m.name = 'buddha';
-    m.scale.setScalar(o.height / s.height);
+    m.scale.setScalar(o.length !== undefined ? o.length / s.length : (o.height ?? 1) / s.height);
     m.castShadow = true;
     m.receiveShadow = true;
     return m;

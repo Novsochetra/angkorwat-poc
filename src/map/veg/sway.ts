@@ -69,7 +69,8 @@ vec2 swayAt(vec3 p) {
 `;
 
 /** The tree leaves' offset, before `project_vertex` (voxel blocks: moved in their own unscaled space). */
-const LEAF_VERTEX = /* glsl */ `
+const LEAF_SWAY = /* glsl */ `
+float swGone = 0.0;
 #ifdef USE_INSTANCING
 {
   vec3 swW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
@@ -77,9 +78,32 @@ const LEAF_VERTEX = /* glsl */ `
   float swK = clamp((swW.y - swayGround(swW.xz)) * 0.1, 0.0, 1.6);
   vec3 swS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   transformed.xz += swayAt(swW) * swK / swS.xz;
+  #ifdef SW_CUT
+  vec3 swA = abs(normal);
+  if (min(min(abs(position.x), abs(position.y)), abs(position.z)) > 0.499 && normal.y > -0.5) {
+    int swSide = swA.x > 0.5 ? (normal.x > 0.0 ? 1 : 2) : swA.y > 0.5 ? 4 : (normal.z > 0.0 ? 16 : 32);
+    swGone = (int(voxOpen + 0.5) & swSide) == 0 ? 1.0 : 0.0;
+  }
+  #endif
 }
 #endif
-#include <project_vertex>`;
+#include <project_vertex>
+if (swGone > 0.5) gl_Position = vec4(0.0, 0.0, -2.0, 1.0);`;
+
+/**
+ * The same, and on plain boxes (the low level; far trees) the sides of a
+ * leaf block that lie against the next block (not open: the jungle
+ * lattice's neighbours, veg/lattice.ts, exact) are drawn as nothing: their
+ * corners go out of the clip volume, so the GPU drops their triangles
+ * before it sets them up (half the leaves' sides; the sway moves neighbours
+ * together, no crack opens). A plain box's corners are its own for each
+ * side (and sit at ±0.5 on every axis). Not on the chamfered blocks: the
+ * groove between two neighbours' cut edges would open onto the sky there.
+ * Undersides stay: under a crown the cells left out close the holes with
+ * them. The shadow caster does the same (a covered side is never the
+ * crown's outside, which is what casts).
+ */
+const LEAF_SWAY_CUT = `#define SW_CUT\n${LEAF_SWAY}`;
 
 let owner: string | null = null;
 /** The frame's `drift` clock at the last step (NaN: not started). */
@@ -129,18 +153,28 @@ function swayCopy(base: Material, vertex: string, tag: string): Material {
   return m;
 }
 
-let leaf: { material: Material; depth: Material } | null = null;
+const leaves = new Map<string, { material: Material; depth: Material }>();
 
-/** The swaying leaf material and its shadow caster (made once, shared by every leaf mesh). */
-function leafMaterials(): { material: Material; depth: Material } {
-  leaf ??= { material: swayCopy(getVoxelMaterial('mapLeaf'), LEAF_VERTEX, 'sway'), depth: swayCopy(getVoxelDepthMaterial('mapLeaf'), LEAF_VERTEX, 'sway') };
-  return leaf;
+/** The swaying leaf material and its shadow caster (made once each, shared by every leaf mesh); `cut`: covered sides drawn as nothing. */
+function leafMaterials(cut: boolean): { material: Material; depth: Material } {
+  const tag = cut ? 'sway-cut' : 'sway';
+  let m = leaves.get(tag);
+  if (!m) {
+    const glsl = cut ? LEAF_SWAY_CUT : LEAF_SWAY;
+    leaves.set(tag, (m = { material: swayCopy(getVoxelMaterial('mapLeaf'), glsl, tag), depth: swayCopy(getVoxelDepthMaterial('mapLeaf'), glsl, tag) }));
+  }
+  return m;
 }
 
-/** Let every leaf block under `root` sway (its `mapLeaf` meshes get the swaying material). */
-export function swayLeaves(root: Object3D, field: HeightField): void {
+/**
+ * Let every leaf block under `root` sway (its `mapLeaf` meshes get the
+ * swaying material). `cut`: their blocks' `open` sides are exact (every side
+ * not open lies against another block, drawn or inside the crown), and the
+ * rest are left out (the jungle's lattice).
+ */
+export function swayLeaves(root: Object3D, field: HeightField, cut = false): void {
   swayLand(field);
-  const { material, depth } = leafMaterials();
+  const { material, depth } = leafMaterials(cut);
   root.traverse((o) => {
     const mesh = o as InstancedMesh;
     if (!mesh.isInstancedMesh || !mesh.name.endsWith(':mapLeaf')) return;

@@ -211,6 +211,12 @@ export interface Plateau {
   ledges?: { at: number; drop: number }[];
   /** A stepped cone (a mountain) instead of a flat top: terraces this many metres high. */
   cone?: number;
+  /**
+   * A bench levelled into the land (a ledge cut into a flank, a pool's floor): inside its outline
+   * the land is cut down or built up to `top`, whatever the other plateaus make there; benches
+   * later in the list over earlier ones.
+   */
+  bench?: boolean;
 }
 
 export const PLATEAUS: Plateau[] = [
@@ -236,6 +242,23 @@ export const PLATEAUS: Plateau[] = [
   { name: 'north hills', x: -100, z: -420, rx: 160, rz: 80, top: 36, rough: 0.2 },
   { name: 'north-east hills', x: 150, z: -480, rx: 140, rz: 80, top: 48, rough: 0.2 },
   { name: 'far west hills', x: -480, z: -520, rx: 160, rz: 110, top: 70, rough: 0.18, cone: 8 },
+  // ── Where the map grew: round Phnom Kulen and east of it (off the picker's frame, or behind the mountain).
+  // The Kulen falls: benches cut into the mountain's south-east flank, one under the other. The Kulen
+  // stream rises at the back of the high one and falls off each (`RIVERS`: 12, 16, then 18 m, a wide
+  // curtain), the last into the Kulen pool (`LAKES`) on its floor; the picnic place (`KULEN_PICNIC`) on a
+  // terrace beside it, at the mountain's foot.
+  { name: 'Kulen pool floor', x: 446, z: -303, rx: 13, rz: 11, top: 8, rough: 0.1, bench: true },
+  { name: 'Kulen picnic terrace', x: 421, z: -299, rx: 17, rz: 15, top: 10, rough: 0.08, bench: true },
+  { name: 'Kulen falls low bench', x: 447, z: -327, rx: 16, rz: 13, top: 26, rough: 0.1, bench: true },
+  { name: 'Kulen falls mid bench', x: 448, z: -349, rx: 14, rz: 11, top: 42, rough: 0.1, bench: true },
+  { name: 'Kulen falls high bench', x: 453, z: -371, rx: 13, rz: 11, top: 54, rough: 0.1, bench: true },
+  // East of the Kulen stream: a strip of lowland, then hills stepping down into the mist.
+  { name: 'east hills', x: 600, z: -170, rx: 62, rz: 120, top: 30, rough: 0.2, ledges: [{ at: 0.72, drop: 10 }] },
+  { name: 'south-east hills', x: 596, z: 36, rx: 48, rz: 64, top: 22, rough: 0.22 },
+  // East of Phnom Kulen, over a saddle: a lesser stepped hill.
+  { name: 'Kulen east shoulder', x: 700, z: -500, rx: 105, rz: 125, top: 72, rough: 0.12, cone: 8 },
+  // Behind the holy mountain: a ridge sinking into the mist.
+  { name: 'north ridge', x: 430, z: -735, rx: 190, rz: 62, top: 56, rough: 0.2, ledges: [{ at: 0.7, drop: 12 }] },
 ];
 
 /**
@@ -247,7 +270,8 @@ export const PLATEAUS: Plateau[] = [
 export interface River {
   name: string;
   w: number;
-  points: [number, number][];
+  /** Downstream; a third number is the width there (m; between points it changes evenly, else `w`). */
+  points: ([number, number] | [number, number, number])[];
 }
 
 export const RIVERS: River[] = [
@@ -326,6 +350,40 @@ export const RIVERS: River[] = [
       [-404, -80],
       [-406, -62],
       [-408, -40],
+    ],
+  },
+  {
+    // The Kulen stream: a spring at the back of the high bench of the Kulen falls, on Phnom Kulen's
+    // south-east flank (`PLATEAUS`); off each bench in a fall (12, 16, then 18 m, a wide curtain) into
+    // the Kulen pool by the picnic place (`KULEN_PICNIC`, `LAKES`); then south over the lowland, past
+    // the woodcutters' camp, along the sugar-palm village's east side (`EAST_VILLAGE`; the village
+    // street crosses it on a foot bridge), by the east paddies, and off the south-east edge. Wide
+    // enough for a boat below the pool.
+    name: 'Kulen stream',
+    w: 6,
+    points: [
+      [458, -379, 5],
+      [453, -370, 6],
+      [449, -361, 6],
+      [446, -350, 7],
+      [444, -339, 8],
+      [443, -328, 11],
+      [443, -315, 14],
+      [444, -303, 12],
+      [440, -289, 6],
+      [438, -272],
+      [436, -250],
+      [440, -210],
+      [444, -160],
+      [446, -120],
+      [448, -90],
+      [448, -60],
+      [450, -30],
+      [452, 0],
+      [456, 30],
+      [462, 60],
+      [476, 90],
+      [492, 118],
     ],
   },
 ];
@@ -514,6 +572,75 @@ export const TRAILS: Trail[] = [
       [-300, 74],
     ],
   },
+  // ── The east side: the sugar-palm village (`EAST_VILLAGE`), its morning market (`MARKET`), the palm
+  // sugar grove (`PALM_GROVE`) and the Kulen stream's picnic falls (`KULEN_PICNIC`); off the picker's frame.
+  {
+    // Off the garden and mountain road below Ta Prohm's hills, south-east over the lowland into the
+    // market square, then east along the village street, over the Kulen stream (a village foot
+    // bridge) to the village's east end. A little wider: carts and motos use it.
+    name: 'east village road',
+    w: 3,
+    points: [
+      [262, -205],
+      [286, -190],
+      [308, -166],
+      [324, -136],
+      [333, -108],
+      [336, -84],
+      [358, -72],
+      [384, -66],
+      [410, -62],
+      [436, -60],
+      [456, -60],
+      [472, -62],
+    ],
+  },
+  {
+    // From the village north over the lowland to the woodcutters' camp at the end of the back trail
+    // (so the back trail, Kulen's foot and the village join up).
+    name: 'kulen foot trail',
+    w: 2,
+    points: [
+      [410, -62],
+      [412, -96],
+      [414, -130],
+      [410, -170],
+      [404, -206],
+    ],
+  },
+  {
+    // From the woodcutters' camp up the Kulen stream's west bank to the picnic place below its falls.
+    name: 'picnic trail',
+    w: 2,
+    points: [
+      [406, -224],
+      [418, -250],
+      [428, -276],
+      [434, -296],
+    ],
+  },
+  {
+    // From the village street south to the palm sugar grove and on along the dikes of the east paddies.
+    name: 'palm lane',
+    w: 2,
+    points: [
+      [396, -64],
+      [398, -38],
+      [398, -12],
+      [396, 10],
+      [396, 23],
+    ],
+  },
+  {
+    // Behind Angkor Wat: off the back trail north into the little hamlet by the lotus pond.
+    name: 'hamlet lane',
+    w: 2,
+    points: [
+      [128, -306],
+      [136, -322],
+      [146, -336],
+    ],
+  },
 ];
 
 /** What stands at a jungle site (the jungle part builds it). */
@@ -610,6 +737,11 @@ export const LAKES: Lake[] = [
   { name: 'Great lake', x: -490, z: 22, rx: 206, rz: 78, rot: 0.05, level: 5, rough: 0.08 },
   // The pool under the Bayon stream's fall (the `stream-pool` site).
   { name: 'Stream pool', x: -400, z: -116, rx: 9, rz: 8, level: 7, rough: 0.12 },
+  // Behind Angkor Wat: the lotus pond by the little hamlet (`BACK_HAMLET`), where children swim and a buffalo wallows.
+  { name: 'Lotus pond', x: 104, z: -352, rx: 12, rz: 8, rot: 0.2, level: 7, rough: 0.1 },
+  // The Kulen pool under the Kulen stream's last, big fall, by the picnic place (`KULEN_PICNIC`): shallow
+  // all over (people wade and swim), a little over the stream below it.
+  { name: 'Kulen pool', x: 445, z: -302, rx: 11, rz: 9, rot: -0.2, level: 7, rough: 0.1 },
 ];
 
 /**
@@ -663,6 +795,54 @@ export const PADDIES: Paddy[] = [
   { x: -231, z: 95, w: 22, d: 22, rot: 0, level: 7.5 },
   { x: -207, z: 95, w: 22, d: 22, rot: 0, level: 8 },
   { x: -182, z: 95, w: 24, d: 22, rot: 0, level: 8.5 },
+  // The east paddies south of the sugar-palm village (`EAST_VILLAGE`), stepping down toward the Kulen
+  // stream on their east side; sugar palms stand on their dikes (the palm sugar grove, `PALM_GROVE`).
+  { x: 372, z: 35, w: 22, d: 22, rot: 0, level: 7.5 },
+  { x: 396, z: 35, w: 22, d: 22, rot: 0, level: 7 },
+  { x: 420, z: 35, w: 22, d: 22, rot: 0, level: 6.5 },
+  { x: 384, z: 59, w: 22, d: 22, rot: 0, level: 7 },
+  { x: 408, z: 59, w: 22, d: 22, rot: 0, level: 6.5 },
+];
+
+/** A settled spot on the map: its middle (m) and radius (m). */
+export interface Spot {
+  x: number;
+  z: number;
+  r: number;
+}
+
+/**
+ * The sugar-palm village (ភូមិត្នោត) on the east lowland at the foot of Phnom Kulen, "the other side"
+ * from the floating village (off the picker's frame): Khmer houses on stilts along the village street
+ * (the `east village road` trail), the Kulen stream running by its east side (a foot bridge where the
+ * street crosses it). Its market is `MARKET`, its palm sugar grove `PALM_GROVE`, its rice the last
+ * five `PADDIES`. Built by the hamlet part (`src/map/hamlet/`); its people are `people/_sceneEastVillage.ts`.
+ */
+export const EAST_VILLAGE: Spot = { x: 410, z: -62, r: 44 };
+
+/** The morning market (ផ្សារ) in the square where the east village road comes in (hamlet/_market.ts, people/_sceneMarket.ts). */
+export const MARKET: Spot = { x: 336, z: -84, r: 20 };
+
+/** The palm sugar grove and the family's cooking hut, between the village and the east paddies (hamlet/_palmSugar.ts, people/_scenePalmSugar.ts). */
+export const PALM_GROVE: Spot = { x: 392, z: 0, r: 18 };
+
+/** The picnic place below the Kulen stream's falls, on Phnom Kulen's lower slope (hamlet/_kulenPicnic.ts, people/_sceneKulen.ts). */
+export const KULEN_PICNIC: Spot = { x: 422, z: -298, r: 14 };
+
+/** The little hamlet behind Angkor Wat, by the lotus pond, off the back trail (hamlet/_backHamlet.ts, people/_sceneBack.ts). */
+export const BACK_HAMLET: Spot = { x: 146, z: -340, r: 26 };
+
+/**
+ * Ground the height field flattens (± one block, like a jungle site) and marks dirt in its middle, for
+ * the settled spots above. Trees keep off only what a builder marks occupied (`field.occupy`).
+ */
+export const HAMLETS: (Spot & { id: string; dirt?: number })[] = [
+  // (`dirt`: the share of the radius laid bare in the middle; 0.5 if not given)
+  { id: 'market', ...MARKET, dirt: 0.8 },
+  { id: 'east-village', ...EAST_VILLAGE },
+  { id: 'palm-grove', ...PALM_GROVE },
+  { id: 'kulen-picnic', ...KULEN_PICNIC },
+  { id: 'back-hamlet', ...BACK_HAMLET },
 ];
 
 /**
@@ -681,4 +861,4 @@ export const EXPLORER_SPOT = {
 };
 
 /** Edges of the built land (m); beyond it: sea of mist and far silhouettes. */
-export const MAP_BOUNDS = { x0: -600, x1: 600, z0: -660, z1: 120 };
+export const MAP_BOUNDS = { x0: -600, x1: 760, z0: -800, z1: 120 };

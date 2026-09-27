@@ -93,24 +93,31 @@ function onShore(s: number, out: number): { x: number; z: number; facing: number
 
 type Look = Omit<HomeSpec, 'id' | 'x' | 'z' | 'facing'>;
 
-/** The stilt houses along the shore, north to south: arc length, how far out over the water, and the look. */
-const STILT: [number, number, Look][] = [
-  [3, 0.5, { w: 6, d: 4.5, v: 2, floor: 9.5, roof: 'thatch', walls: 'grey', lit: true, smoke: false, laundry: true, boat: true, seed: 1 }],
-  [11.5, 0, { w: 7, d: 5, v: 2, floor: 10, roof: 'rust', walls: 'blue', lit: true, smoke: true, boat: true, seed: 2 }],
-  [20, 1, { w: 6, d: 4.5, v: 2.5, floor: 9.5, roof: 'thatch', walls: 'wood', lit: false, smoke: false, dog: true, hat: true, seed: 3 }],
-  [28.5, 0, { w: 6.5, d: 4.5, v: 2, floor: 9.5, roof: 'tin', walls: 'green', lit: true, smoke: true, laundry: true, boat: true, seed: 4 }],
-  // (the jetty: arc length 37)
-  [46, 0.5, { w: 6, d: 5, v: 2, floor: 10, roof: 'thatch', walls: 'wood', lit: true, smoke: false, boat: true, seed: 5 }],
-  [54.5, 0, { w: 7, d: 4.5, v: 2, floor: 9.5, roof: 'rust', walls: 'grey', lit: true, smoke: true, laundry: true, seed: 6 }],
-  [63, 1, { w: 6, d: 4.5, v: 2, floor: 10, roof: 'thatch', walls: 'ochre', lit: false, smoke: false, boat: true, hat: true, seed: 7 }],
-  [71.5, 0.5, { w: 6.5, d: 5, v: 2, floor: 9.5, roof: 'blue', walls: 'wood', lit: true, smoke: false, laundry: true, seed: 8 }],
-  [80, 0, { w: 6, d: 4.5, v: 2.5, floor: 9.5, roof: 'thatch', walls: 'grey', lit: true, smoke: true, boat: true, seed: 9 }],
+/**
+ * The stilt houses along the shore, north to south: arc length, how far out
+ * over the water, a turn of its own off the shore's line (radians), and the
+ * look. Not one even row: some stand further out over the shallows, some
+ * turn a little, and their floors are at different heights (the older ones
+ * lower, the newer ones up on taller stilts), so their roofs step along the
+ * shore.
+ */
+const STILT: [number, number, number, Look][] = [
+  [3, 0.5, 0.05, { w: 6, d: 4.5, v: 2, floor: 10, roof: 'thatch', walls: 'grey', lit: true, smoke: false, laundry: true, boat: true, seed: 1 }],
+  [11.5, 0, -0.06, { w: 7, d: 5, v: 2, floor: 11, roof: 'rust', walls: 'blue', lit: true, smoke: true, boat: true, seed: 2 }],
+  [20, 1.8, 0.1, { w: 6, d: 4.5, v: 2.5, floor: 9.5, roof: 'thatch', walls: 'wood', lit: false, smoke: false, dog: true, hat: true, seed: 3 }],
+  [28.5, 0, 0, { w: 6.5, d: 4.5, v: 2, floor: 9.5, roof: 'tin', walls: 'green', lit: true, smoke: true, laundry: true, boat: true, seed: 4 }],
+  // (the jetty: arc length 37; the market at its foot)
+  [46, 0.5, 0.08, { w: 6, d: 5, v: 2, floor: 11, roof: 'thatch', walls: 'wood', lit: true, smoke: false, boat: true, seed: 5 }],
+  [54.5, 1.6, -0.05, { w: 7, d: 4.5, v: 2, floor: 9.5, roof: 'rust', walls: 'grey', lit: true, smoke: true, laundry: true, seed: 6 }],
+  [63, 1, 0.12, { w: 6, d: 4.5, v: 2, floor: 10.5, roof: 'thatch', walls: 'ochre', lit: false, smoke: false, boat: true, hat: true, seed: 7 }],
+  [71.5, 0.5, -0.08, { w: 6.5, d: 5, v: 2, floor: 10, roof: 'blue', walls: 'wood', lit: true, smoke: false, laundry: true, seed: 8 }],
+  [80, 1.2, 0.06, { w: 6, d: 4.5, v: 2.5, floor: 11, roof: 'thatch', walls: 'grey', lit: true, smoke: true, boat: true, seed: 9 }],
 ];
 
 /** The stilt houses (world): their fronts face the land, away from the lake. */
-export const STILT_HOMES: HomeSpec[] = STILT.map(([s, out, look], i) => {
+export const STILT_HOMES: HomeSpec[] = STILT.map(([s, out, turn, look], i) => {
   const p = onShore(s, out);
-  return { id: `stilt-${i + 1}`, ...p, facing: p.facing + Math.PI, ...look };
+  return { id: `stilt-${i + 1}`, ...p, facing: p.facing + Math.PI + turn, ...look };
 });
 
 /** The shop on the land by the trail's end, its front (+z) facing the way down to the jetty. */
@@ -242,10 +249,12 @@ export function homeToWorld(h: HomeSpec, lx: number, lz: number): [number, numbe
 /**
  * The front stair of a house (local m): straight down from a gap in the
  * veranda's railing (at `x`, `width` wide) to the ground in front, a 0.5 m
- * step each 0.5 m; `steps` rises, the foot at `footZ`.
+ * step each 0.5 m; `steps` rises, the foot at `footZ`. Wide enough for the
+ * roaming explorer (1.4 × his size) to come up it onto the veranda between
+ * its handrails (the walk map's 0.5 m columns take them whole).
  */
 export function frontStair(h: HomeSpec): { x: number; width: number; steps: number; zf: number; footZ: number } {
   const zf = (h.d + h.v) / 2;
   const steps = Math.round((h.floor - GROUND) / STEP);
-  return { x: h.shop ? 0 : h.w / 2 - 1.3, width: h.shop ? 2.4 : 1.2, steps, zf, footZ: zf + (steps - 1) * STEP + 0.6 };
+  return { x: h.shop ? 0 : h.w / 2 - 1.3, width: h.shop ? 2.4 : 1.8, steps, zf, footZ: zf + (steps - 1) * STEP + 0.6 };
 }

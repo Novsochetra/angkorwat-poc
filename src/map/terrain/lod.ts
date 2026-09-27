@@ -1,6 +1,7 @@
 import { Box3, BufferGeometry, Group, InstancedMesh, Vector3, type Camera } from 'three';
 import { VOXEL_MATERIALS } from '../../voxel/materials';
 import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
+import { FIRST_Z0 } from '../heightfield';
 import { MAP_BOUNDS } from '../layout';
 
 /**
@@ -10,24 +11,32 @@ import { MAP_BOUNDS } from '../layout';
  * (the bevels are smaller than a pixel there).
  */
 
-/** The map cut into square chunks. */
+/**
+ * The map cut into square chunks (their rows on the back edge the map was
+ * first made with, heightfield.ts `FIRST_Z0`: as the map grows north, the
+ * land and the jungle keep their chunks, and so switch to plain boxes where
+ * they did).
+ */
 export class ChunkGrid {
   private readonly cx: number;
   private readonly cz: number;
+  /** North edge of the first row of chunks (m). */
+  private readonly z0: number;
   /** Number of chunks. */
   readonly count: number;
 
   /** `size`: chunk side (m). */
   constructor(readonly size: number) {
+    this.z0 = FIRST_Z0 - Math.ceil((FIRST_Z0 - MAP_BOUNDS.z0) / size) * size;
     this.cx = Math.ceil((MAP_BOUNDS.x1 - MAP_BOUNDS.x0) / size);
-    this.cz = Math.ceil((MAP_BOUNDS.z1 - MAP_BOUNDS.z0) / size);
+    this.cz = Math.ceil((MAP_BOUNDS.z1 - this.z0) / size);
     this.count = this.cx * this.cz;
   }
 
   /** Chunk of a map point (points off the map go to the nearest chunk). */
   at(x: number, z: number): number {
     const a = Math.min(this.cx - 1, Math.max(0, Math.floor((x - MAP_BOUNDS.x0) / this.size)));
-    const b = Math.min(this.cz - 1, Math.max(0, Math.floor((z - MAP_BOUNDS.z0) / this.size)));
+    const b = Math.min(this.cz - 1, Math.max(0, Math.floor((z - this.z0) / this.size)));
     return a + b * this.cx;
   }
 
@@ -36,7 +45,7 @@ export class ChunkGrid {
     const a = n % this.cx;
     const b = (n - a) / this.cx;
     const x0 = MAP_BOUNDS.x0 + a * this.size;
-    const z0 = MAP_BOUNDS.z0 + b * this.size;
+    const z0 = this.z0 + b * this.size;
     return new Box3(new Vector3(x0, -Infinity, z0), new Vector3(x0 + this.size, Infinity, z0 + this.size));
   }
 }
@@ -51,9 +60,16 @@ const PLAIN_FROM = { roam: 170, overview: 300 };
 /**
  * A plain-box twin of voxel meshes (from `buildVoxelMesh`): the same blocks
  * as plain boxes (12 triangles each instead of 44). The twin shares the
- * meshes' instance buffers (positions, sizes, colours, open sides), so it
- * costs no extra memory or upload; show one of the two at a time. It has no
- * `voxelShape`: the look panel and the roaming walk map read the originals.
+ * meshes' instance buffers (positions, sizes, colours, open sides, the
+ * sides that can be seen), so it costs no extra memory or upload; show one
+ * of the two at a time. It has no `voxelShape`: the look panel and the
+ * roaming walk map read the originals. It draws with the original's
+ * material, so where that leaves covered sides out (cull.ts `cutCovered`:
+ * the bevelled original keeps them, a plain box drops them) the twin does
+ * too (the land's meshes are already cut by the sides their blocks show,
+ * VoxelMesh.ts `hideCovered`: no gain measured there), and it is on the
+ * original's layers (made after the build, it still casts the low level's
+ * still shadows: a map opened on medium that auto steps down to low).
  */
 export function lowTwin(src: Group): Group {
   const twin = new Group();
@@ -70,7 +86,7 @@ export function lowTwin(src: Group): Group {
     geo.setIndex(openSidesIndex(unit, m.userData.voxelSides ?? 63));
     geo.setAttribute('position', unit.getAttribute('position'));
     geo.setAttribute('normal', unit.getAttribute('normal'));
-    for (const name of ['voxOpen', 'voxRadius', 'voxSurf']) {
+    for (const name of ['voxOpen', 'voxRadius', 'voxSurf', 'voxShown']) {
       const a = m.geometry.getAttribute(name);
       if (a) geo.setAttribute(name, a);
     }
@@ -80,13 +96,15 @@ export function lowTwin(src: Group): Group {
     t.instanceColor = m.instanceColor;
     t.castShadow = m.castShadow;
     t.receiveShadow = m.receiveShadow;
+    t.layers.mask = m.layers.mask;
     t.customDepthMaterial = m.customDepthMaterial;
     // (and draws the way it does, e.g. only the sides that face the camera, and in the shadow map those away from the light)
     t.onBeforeRender = m.onBeforeRender;
     t.onAfterRender = m.onAfterRender;
     t.onBeforeShadow = m.onBeforeShadow;
     t.onAfterShadow = m.onAfterShadow;
-    t.userData = { voxelSources: m.userData.voxelSources };
+    // (and how many of its blocks the overview camera sees, terrain/seen.ts)
+    t.userData = { voxelSources: m.userData.voxelSources, seenCount: m.userData.seenCount, allCount: m.userData.allCount };
     t.boundingSphere = m.boundingSphere;
     t.boundingBox = m.boundingBox;
     twin.add(t);

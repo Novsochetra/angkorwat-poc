@@ -24,6 +24,8 @@ import { posthogLogger } from '../posthog';
 import { AngkorExplorer, OUTFITS, type OutfitName, type SelfieGesture } from '../character/AngkorExplorer';
 import { ACTIONS, type ActionName } from '../character/clips';
 import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
+import { FOOD_KINDS, isFoodKind, type FoodKind } from '../character/parts/food';
+import { isMeal, MEAL_OF } from '../character/meals';
 import { REST_U, restDuration, restPose, type RestState } from '../character/rest';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { installLookPanel } from '../voxel/LookPanel';
@@ -38,6 +40,8 @@ import type { VoxelQuality } from '../voxel/VoxelMesh';
  *   viewer.html?view=45&expr=happy&outfit=withHat&anim=walk&t=0.4&shot=1
  *   viewer.html?view=30&anim=selfie&gesture=thumbsUp&saim=-30,10,1&t=1.2&shot=1
  *   viewer.html?view=90&anim=sleep&t=6&shot=1   (sit / lie / sleep: resting on the ground, character/rest.ts)
+ *   viewer.html?view=30&anim=eat&food=noodles&t=1.1&zoom=torso&shot=1   (eat / bite / drink what he holds:
+ *     `food=` a kind of character/parts/food.ts, `colors=` hex list; `sit=1` sitting on the ground; `anim=idle&food=…` holding it)
  */
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
@@ -108,6 +112,10 @@ const quality = (params.get('quality') as VoxelQuality) ?? 'high';
 let outfit = (params.get('outfit') as OutfitName) ?? 'default';
 let expression = (params.get('expr') as ExpressionName) ?? 'neutral';
 let anim = params.get('anim') ?? 'idle';
+/** Food or drink in his hands (with a meal `anim` he eats it; else he holds it), and sitting on the ground to eat. */
+let food: FoodKind | null = isFoodKind(params.get('food')) ? (params.get('food') as FoodKind) : null;
+const foodColors = params.get('colors')?.split(',').map((c) => parseInt(c, 16));
+const seated = params.get('sit') === '1';
 const turnaround = params.get('turnaround') === '1';
 const TURN_SPACING = 1.05;
 const TURN_LABELS = ['Front (0°)', 'Front-Left (45°)', 'Left (90°)', 'Back-Left (135°)', 'Back (180°)', 'Back-Right (225°)', 'Right (270°)', 'Front-Right (315°)'];
@@ -150,9 +158,14 @@ type RestAnim = (typeof RESTS)[number];
 function applyAnim(): void {
   for (const e of explorers) {
     e.setMotion(speedFor(anim), anim !== 'jump', anim === 'jump' ? 1.5 : 0);
-    if (anim in ACTIONS) e.play(anim as ActionName);
-    else e.stop();
-    rest(e, RESTS.includes(anim as RestAnim) ? (anim as RestAnim) : null);
+    // (a meal: the food given, or the action's own; else the food held, if any)
+    if (isMeal(anim) && food && MEAL_OF[food] === anim) e.consume(food, foodColors);
+    else if (anim in ACTIONS) e.play(anim as ActionName);
+    else {
+      e.stop();
+      e.holdFood(food, foodColors);
+    }
+    rest(e, RESTS.includes(anim as RestAnim) ? (anim as RestAnim) : seated ? 'sit' : null);
   }
 }
 
@@ -203,7 +216,7 @@ function frame(): void {
   } else {
     const zoom = params.get('zoom') ?? 'full';
     // (sitting or lying he is low: the view comes down with him)
-    const low = RESTS.includes(anim as RestAnim);
+    const low = RESTS.includes(anim as RestAnim) || seated;
     const targetY = num('ty', zoom === 'head' ? h * (low ? 0.4 : 0.78) : zoom === 'torso' ? h * 0.55 : zoom === 'feet' ? h * 0.14 : h * (low ? 0.28 : 0.5));
     const dist = num('dist', zoom === 'full' ? 5.6 : 2.2);
     const elev = (num('elev', 8) * Math.PI) / 180;
@@ -273,6 +286,12 @@ if (!shot) {
     anim = v;
     applyAnim();
     frame();
+  }, pretty);
+  // (a food: he eats or drinks it, the way it is taken; again after it is done)
+  chipGroup('Food', FOOD_KINDS, () => food ?? ('' as FoodKind), (v) => {
+    food = v;
+    anim = MEAL_OF[v];
+    applyAnim();
   }, pretty);
   const views: [string, number][] = [['Front', 0], ['Front-L', 45], ['Left', 90], ['Back', 180], ['Right', 270], ['Front-R', 315]];
   const h = document.createElement('h2');
@@ -352,6 +371,7 @@ const feedback = shot
         q.set('outfit', outfit);
         q.set('expr', expression);
         q.set('anim', anim);
+        if (food) q.set('food', food);
         const a = explorers[0]?.animator;
         if (a) q.set('t', (a.currentAction ? a.actionTime : a.time).toFixed(2));
         if (!turnaround) {

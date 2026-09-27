@@ -12,7 +12,7 @@ import { ANIM, type BoxOpts, type Kit } from './_kit';
  *   thwarts for nine pairs of rowers (their paddles swing with the boat's
  *   stroke), a drum at the front, the steering oar, the flag of Cambodia.
  *   `ROWERS` / `DRUMMER` / `CALLER` / `STEERER` say where the crew sits.
- * - `litFloat`: an illuminated float of the night (Loy Pratip): a barge
+ * - `litFloat`: an illuminated float of the night (Bandaet Pratip, បណ្ដែតប្រទីប): a barge
  *   with a frame of lights: Angkor Wat, the seven-headed naga or a lotus.
  */
 

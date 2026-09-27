@@ -5,14 +5,17 @@ import { warmUp } from './dsp';
 import { FestivalSound } from './festival';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
+import { warmSpeech } from './speech';
 import { loadTypewriter, prefetchTypewriter, typewriterState, type TypewriterState } from './typewriter';
 import type { Ears } from './water';
 
 /**
  * Sound of the map: ambience (wind, birds by day, insects and frogs by
  * night), the waterfalls and rivers where they are on the map, the animals'
- * calls where the animals are, calm generative music, the interface sounds
- * and the roaming explorer's. All made with the Web Audio API, except the
+ * calls where the animals are, the people's (their work, their voices, the
+ * kites) and the market's and the villages' beds where they are, calm
+ * generative music, the interface sounds and the roaming explorer's. All
+ * made with the Web Audio API (the voices too: speech.ts), except the
  * explorer's footsteps and the story's typewriter strikes: recordings from
  * `assets/sound/`, cut into single steps / strikes when they load
  * (`footsteps.ts`, `typewriter.ts`; synthesized until then).
@@ -104,18 +107,27 @@ const HELD_AFTER = 700;
  * Make the noise and insect buffers in idle moments, a millisecond at a
  * time, so starting never stalls a frame; then decode and cut the footstep
  * recordings (their slow part runs off the page's thread, the cutting in
- * slices), so they are ready before the first step.
+ * slices), so they are ready before the first step; then the people's
+ * voices (speech.ts: the greetings, the sellers' calls, the talk).
  */
 function warmInIdleTime(): void {
   type Idle = (cb: (d: { timeRemaining(): number }) => void, o?: { timeout: number }) => number;
   const ric = (window as unknown as { requestIdleCallback?: Idle }).requestIdleCallback;
   const later: Idle = ric ? (cb) => ric(cb, { timeout: 3000 }) : (cb) => window.setTimeout(() => cb({ timeRemaining: () => 4 }), 60);
+  const voices = (d: { timeRemaining(): number }) => {
+    try {
+      if (!warmSpeech(() => Math.min(d.timeRemaining(), 6))) later(voices);
+    } catch (e) {
+      console.warn('[map] audio voices warm-up failed:', e);
+    }
+  };
   const step = (d: { timeRemaining(): number }) => {
     try {
       if (!warmUp(() => Math.min(d.timeRemaining(), 6))) later(step);
       else {
         void loadFootsteps();
         void loadTypewriter();
+        later(voices);
       }
     } catch (e) {
       console.warn('[map] audio warm-up failed:', e);
@@ -399,6 +411,8 @@ export function createMapAudio(): MapAudio {
       // (the event clock: the temples' chant, drum and bells; worked out here too, so it runs without the animals)
       const ev = eventsNow(f);
       mix.night = f.night;
+      // (the market's and the villages' hours: hamlets.ts)
+      mix.clock = f.clock;
       // (the leaves over the roaming explorer, from the jungle animals part: the cicadas)
       mix.canopy = f.canopy ?? 0;
       // The ears: the camera in the overview (also if roaming failed to load), the explorer's head while roaming;

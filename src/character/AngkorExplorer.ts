@@ -17,9 +17,11 @@ import { BODY_UNIT_M } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
 import { Animator, clampSelfieAim, type HoldKind, type SelfieGesture } from './Animator';
-import { PRAY_PALMS, type ActionName } from './clips';
+import { GREET_HIGH_PALMS, GREET_PALMS, PRAY_PALMS, type ActionName } from './clips';
 import { Pendulum } from './Dynamics';
+import { DEFAULT_FOOD, isMeal, itemInFist, MEAL, MEAL_OF, mealFace, mealStage } from './meals';
 import { buildFace, EXPRESSIONS, type ExpressionName, type FaceName } from './parts/face';
+import { buildFood, FOOD_GRIPS, type FoodKind } from './parts/food';
 import { buildBackpack, buildCamera, buildCameraStraps, type PackStyle } from './parts/gear';
 import { buildHair, hairCovers } from './parts/hair';
 import { buildHead, buildNeck } from './parts/head';
@@ -78,6 +80,17 @@ export interface SelfieAim {
 }
 
 export type { HoldKind, SelfieGesture } from './Animator';
+export type { FoodKind } from './parts/food';
+
+/** What he holds of a meal: each hand's item, one group per stage (full first) under a root on the fist. */
+interface HeldFood {
+  kind: FoodKind;
+  /** Which kind and colours it was built for (a new pair builds anew). */
+  key: string;
+  hands: { side: Side; root: Group; stages: Group[] }[];
+  /** The hands' shapes holding it (flat under a bowl or round a coconut, a fist round the rest). */
+  pose: Record<Side, HandPose>;
+}
 
 export interface ExplorerOutfit {
   hat: boolean;
@@ -167,8 +180,20 @@ export class AngkorExplorer {
   private selfieUp = false;
   /** Eyes closed in prayer (the sampeah and the bows). */
   private eyesShut = false;
+  /** Greeting someone (the `greet` sampeah): a smile over the neutral face. */
+  private greetSmile = false;
   /** Asleep: the sleeping face (built on first use) instead of the expression. */
   private sleeping = false;
+  /** The food in his hands (holdFood), and the one built before (kept, detached, for the next time). */
+  private food: HeldFood | null = null;
+  private foodSpare: HeldFood | null = null;
+  /** The light he put away to take the food (it comes back when he is done). */
+  private lightBeforeFood: HoldKind = 'none';
+  /** A meal's face (meals.ts `mealFace`) over the expression, or null. */
+  private mealFaceNow: FaceName | null = null;
+  private readonly foodStage = { left: 0, right: 0, size: 1 };
+  /** Seconds since the food came into his hands (it pops in, as his arms come up to hold it). */
+  private foodAge = 0;
 
   constructor(opts: ExplorerOptions = {}) {
     this.object.name = 'AngkorExplorer';
@@ -286,12 +311,75 @@ export class AngkorExplorer {
     this.animator.setMotion(speed, grounded, verticalSpeed);
   }
 
+  // ── Food and drink ───────────────────────────────────────────────────────
+
+  /**
+   * Put food or drink in his hands (parts/food.ts; the kinds are the map's
+   * `ConsumeKind`, src/map/shop.ts), or take it away (null). `colors`
+   * (sRGB, the most visible first: `FOOD_COLORS`) replaces the kind's
+   * defaults (a shop item's `colors`). A lantern, torch or flashlight goes
+   * away while he holds it and comes back after. Held without a meal
+   * playing he carries it (standing or sitting); `play('eat' | 'bite' |
+   * 'drink')` eats it (see `consume`). Built on first use: nothing costs
+   * anything until then, and nothing is drawn once it is gone.
+   */
+  holdFood(kind: FoodKind | null, colors?: readonly number[]): void {
+    if (!kind) {
+      this.dropFood();
+      return;
+    }
+    const key = `${kind}|${colors?.join(',') ?? ''}`;
+    if (this.food?.key === key) return;
+    this.dropFood();
+    // The light goes away while his hands are full.
+    if (this.outfit.held !== 'none') {
+      this.lightBeforeFood = this.outfit.held;
+      this.setOutfit({ held: 'none' });
+    }
+    const food = this.foodSpare?.key === key ? this.foodSpare : this.buildFoodProps(kind, key, colors);
+    if (food === this.foodSpare) this.foodSpare = null;
+    for (const h of food.hands) {
+      this.rig.joints[h.side === 'L' ? 'propL' : 'propR'].add(h.root);
+      h.root.scale.setScalar(1);
+    }
+    this.food = food;
+    this.foodAge = 0;
+    this.animator.food = kind;
+    this.setHandPose('R', food.pose.R);
+    this.setHandPose('L', food.pose.L);
+    this.showFoodStage(0, 0, 0);
+  }
+
+  /**
+   * Eat or drink `kind` now: it goes in his hands (`holdFood`) and its meal
+   * plays (`eat`, `bite` or `drink`: meals.ts `MEAL_OF`), a few bites or
+   * sips, a happy face, then the empty things are gone and the light he put
+   * away comes back. Standing he stands still for it; sitting (the rest
+   * posture) he eats sitting. Returns how long it takes (s).
+   */
+  consume(kind: FoodKind, colors?: readonly number[]): number {
+    this.holdFood(kind, colors);
+    const action = MEAL_OF[kind];
+    this.play(action);
+    return MEAL[action].duration;
+  }
+
+  /** What he holds to eat or drink (null: nothing). */
+  get foodHeld(): FoodKind | null {
+    return this.food?.kind ?? null;
+  }
+
   play(action: ActionName): void {
-    // (another action over the prayer: its flat hands go first, before this one sets its own)
-    if (action !== 'pray' && this.animator.currentAction === 'pray') {
+    // (another action over the prayer or the greeting's sampeah: its flat hands go first, before this one sets its own)
+    const flat = this.animator.currentAction;
+    if ((flat === 'pray' || flat === 'greet' || flat === 'greetHigh') && action !== flat) {
       if (this.handPose.R === 'open') this.setHandPose('R', 'relaxed');
       if (this.outfit.held === 'none' && this.handPose.L === 'open') this.setHandPose('L', 'relaxed');
     }
+    // (a meal eats what he holds, or the action's own food; another action: the food goes first)
+    if (isMeal(action)) {
+      if (!this.food || MEAL_OF[this.food.kind] !== action) this.holdFood(DEFAULT_FOOD[action]);
+    } else if (this.food) this.dropFood();
     this.animator.play(action);
     if (action === 'interact') this.setHandPose('R', 'pointing');
     if (action === 'photo') {
@@ -404,13 +492,29 @@ export class AngkorExplorer {
       if (this.handPose.R !== hand) this.setHandPose('R', hand);
       if (this.outfit.held === 'none' && this.handPose.L !== hand) this.setHandPose('L', hand);
     }
+    // The sampeah standing (a greeting): flat hands while the palms are together, and a smile.
+    const greet = this.animator.currentAction;
+    const greeting = greet === 'greet' || greet === 'greetHigh';
+    if (greeting) {
+      const t = this.animator.actionTime;
+      const [open, close] = greet === 'greetHigh' ? GREET_HIGH_PALMS : GREET_PALMS;
+      const hand: HandPose = t >= open && t < close ? 'open' : 'relaxed';
+      if (this.handPose.R !== hand) this.setHandPose('R', hand);
+      if (this.outfit.held === 'none' && this.handPose.L !== hand) this.setHandPose('L', hand);
+    }
+    if (greeting !== this.greetSmile) {
+      this.greetSmile = greeting;
+      this.refreshFace();
+    }
     // (and the eyes closed while the palms are together)
     const shut = praying && this.animator.actionTime >= PRAY_PALMS[0] + 0.3 && this.animator.actionTime < PRAY_PALMS[1];
     if (shut !== this.eyesShut) {
       this.eyesShut = shut;
       this.refreshFace();
     }
-    if (!this.animator.currentAction && this.animator.photoHold.weight === 0 && this.animator.selfieWeight === 0) {
+    // (the food: what shows in his hands and his face as he eats; gone when he is done)
+    this.stepFood(dt);
+    if (!this.animator.currentAction && this.animator.photoHold.weight === 0 && this.animator.selfieWeight === 0 && !this.food) {
       if (this.handPose.R !== 'relaxed') this.setHandPose('R', 'relaxed');
       if (this.outfit.held === 'none' && this.handPose.L !== 'relaxed') this.setHandPose('L', 'relaxed');
     }
@@ -451,6 +555,8 @@ export class AngkorExplorer {
     if (this.stick) for (const g of [this.stick.grip, this.stick.shaft]) disposeVoxelMesh(g);
     for (const g of this.faces.values()) disposeVoxelMesh(g);
     this.faces.clear();
+    for (const f of [this.food, this.foodSpare]) for (const h of f?.hands ?? []) disposeVoxelMesh(h.root);
+    this.food = this.foodSpare = null;
     this.clearProp();
     this.object.removeFromParent();
   }
@@ -480,8 +586,96 @@ export class AngkorExplorer {
   }
 
   private refreshFace(): void {
-    const key = this.sleeping ? 'asleep' : `${this.expression}|${this.blinkLeft > 0 || this.eyesShut}`;
+    // (greeting, the neutral face smiles; a face the player picked stays)
+    const face = this.greetSmile && this.expression === 'neutral' ? 'happy' : this.expression;
+    // (eating: the meal's faces, built on first use)
+    const meal = this.mealFaceNow;
+    if (meal && !this.faces.has(meal)) {
+      this.faces.set(meal, this.faceMesh(meal, false));
+      this.applyShadowFlags();
+    }
+    const key = this.sleeping ? 'asleep' : (meal ?? `${face}|${this.blinkLeft > 0 || this.eyesShut}`);
     for (const [k, g] of this.faces) g.visible = k === key;
+  }
+
+  /** The food's blocks for a kind: each hand's item, its stages under a root turned so the fist holds it by its grip. */
+  private buildFoodProps(kind: FoodKind, key: string, colors?: readonly number[]): HeldFood {
+    const model = buildFood(kind, colors);
+    const grips = FOOD_GRIPS[kind];
+    const hands: HeldFood['hands'] = [];
+    for (const [side, item, grip] of [['L', model.left, grips.left], ['R', model.right, grips.right]] as const) {
+      if (!item || !grip) continue;
+      const root = new Group();
+      root.name = `food:${kind}:${side}`;
+      itemInFist(grip, root.position, root.quaternion);
+      const stages = item.stages.map((b, i) => {
+        const g = buildVoxelMesh(b, { quality: this.rig.quality, name: `food:${kind}:${i}`, castShadow: this.castShadow });
+        g.visible = i === 0;
+        root.add(g);
+        return g;
+      });
+      hands.push({ side, root, stages });
+    }
+    const pose = { L: model.left?.hand ?? (grips.both && model.right ? model.right.hand : 'relaxed'), R: model.right?.hand ?? 'relaxed' } satisfies Record<Side, HandPose>;
+    return { kind, key, hands, pose };
+  }
+
+  /** Let go of the food: off his fists (kept for the next time), the hands and the light as before. */
+  private dropFood(): void {
+    const food = this.food;
+    if (!food) return;
+    for (const h of food.hands) h.root.removeFromParent();
+    if (this.foodSpare && this.foodSpare !== food) for (const h of this.foodSpare.hands) disposeVoxelMesh(h.root);
+    this.foodSpare = food;
+    this.food = null;
+    this.animator.food = null;
+    this.setHandPose('R', 'relaxed');
+    this.setHandPose('L', this.outfit.held === 'none' ? 'relaxed' : 'holding');
+    if (this.mealFaceNow) {
+      this.mealFaceNow = null;
+      this.refreshFace();
+    }
+    if (this.lightBeforeFood !== 'none') {
+      const light = this.lightBeforeFood;
+      this.lightBeforeFood = 'none';
+      this.setOutfit({ held: light });
+    }
+  }
+
+  /** Show each hand's item at its stage (full first), `size` 1 ‥ 0 as it goes. */
+  private showFoodStage(left: number, right: number, size: number): void {
+    for (const h of this.food?.hands ?? []) {
+      const n = h.side === 'L' ? left : right;
+      h.stages.forEach((g, i) => (g.visible = i === Math.min(n, h.stages.length - 1)));
+      h.root.scale.setScalar(Math.max(1e-3, size));
+      h.root.visible = size > 0.01;
+    }
+  }
+
+  /** Each frame: how far the meal is (the stages, the face); done, the food goes. */
+  private stepFood(dt: number): void {
+    const m = this.animator.meal;
+    let face: FaceName | null = null;
+    if (this.food) this.foodAge += dt;
+    // (it pops in over FOOD_IN s, as his arms come up to hold it)
+    const k = Math.min(1, this.foodAge / FOOD_IN);
+    const popIn = k * k * (3 - 2 * k);
+    if (this.food && m.action) {
+      const st = this.foodStage;
+      mealStage(m.action, m.t, st);
+      // (stopped early: it goes as the meal fades)
+      const size = m.stopping ? Math.min(st.size, m.weight) : st.size;
+      this.showFoodStage(st.left, st.right, size * popIn);
+      face = mealFace(m.action, m.t);
+      if (m.t >= MEAL[m.action].gone[1] || (m.stopping && m.weight <= 0.02)) this.dropFood();
+    } else if (this.food && !this.animator.food) this.dropFood();
+    else if (this.food) this.showFoodStage(0, 0, popIn);
+    // (the face stays through the meal's fade-out; the happy one to the end)
+    if (m.action && !this.food) face = mealFace(m.action, m.t);
+    if (face !== this.mealFaceNow) {
+      this.mealFaceNow = face;
+      this.refreshFace();
+    }
   }
 
   private applyOutfit(next: ExplorerOutfit, first: boolean): void {
@@ -848,3 +1042,6 @@ function buildBeam(): Mesh<ConeGeometry, ShaderMaterial> {
   cone.renderOrder = 10;
   return cone;
 }
+
+/** Seconds the food takes to pop into his hands. */
+const FOOD_IN = 0.28;

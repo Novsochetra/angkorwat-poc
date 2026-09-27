@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "shots": "node scripts/screenshots.mjs",
     "playtest": "node scripts/playtest.mjs",
-    "kitcheck": "node scripts/kit-check.mjs"
+    "kitcheck": "node scripts/kit-check.mjs",
+    "video": "node scripts/video.mjs",
+    "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
     "posthog-js": "^1.434.14",

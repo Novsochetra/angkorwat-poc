@@ -7,7 +7,13 @@ import type { StepSet, StepSets } from './footsteps';
  * The roaming explorer's sounds: footsteps, the jump and the landing, the
  * parachute snapping open and folding away, splashes, the paddle, stepping
  * into and out of the boat, and a soft temple bell on entering a place, the
- * hang glider unfolding and put away. Lasting: rushing air while falling or
+ * hang glider unfolding and put away; fishing from the boat (the cast's
+ * swish and the line running out, the reel's clicking, a bite on the
+ * float, a fish landed flapping, one let go); his sampeah (a soft rustle of
+ * his sleeves and his palms meeting); footsteps in snow (the Weather
+ * setting's dream); buying at a stall (riel notes counted out, a small
+ * chime), a sip through a straw, a bite chewed, a satisfied "ahh" after a
+ * drink. Lasting: rushing air while falling or
  * gliding, the water along the boat's hull, the hang glider's sail
  * thrumming in the airflow, and the hot air balloon's burner roaring (a
  * low thump as it lights).
@@ -27,8 +33,8 @@ import type { StepSet, StepSets } from './footsteps';
  */
 
 /** Ground under a footstep (RoamSound `step*`). */
-type Ground = 'earth' | 'grass' | 'stone' | 'sand' | 'water' | 'wood';
-const GROUND: Partial<Record<RoamSound, Ground>> = { step: 'earth', stepGrass: 'grass', stepStone: 'stone', stepSand: 'sand', stepWater: 'water', stepWood: 'wood' };
+type Ground = 'earth' | 'grass' | 'stone' | 'sand' | 'water' | 'wood' | 'snow';
+const GROUND: Partial<Record<RoamSound, Ground>> = { step: 'earth', stepGrass: 'grass', stepStone: 'stone', stepSand: 'sand', stepWater: 'water', stepWood: 'wood', stepSnow: 'snow' };
 
 /** The bus (slider) a sound of the explorer plays on: his steps, the bell on entering a place (with the interface's gong), or his moves (anything else). */
 export function roamBus(s: RoamSound): BusName {
@@ -36,7 +42,7 @@ export function roamBus(s: RoamSound): BusName {
 }
 
 /** Each ground's level, so every synthesized step sounds about as loud (stone's tap is short and sand's thud soft: they need more; the water's long slosh less). */
-const GROUND_GAIN: Record<Ground, number> = { earth: 1.11, grass: 1, stone: 1.44, sand: 1.07, water: 0.36, wood: 1.27 };
+const GROUND_GAIN: Record<Ground, number> = { earth: 1.11, grass: 1, stone: 1.44, sand: 1.07, water: 0.36, wood: 1.27, snow: 0.6 };
 
 /**
  * One recorded step in a footfall: a step from `set` (`same`: the one the
@@ -54,9 +60,10 @@ interface Layer {
 /**
  * The recordings on each ground (the layers of a footfall start together);
  * `level` evens the grounds out (walking, each is as loud to within
- * 0.5 dB), `wet` is the reverb send, `run` the longest step when running (s).
+ * 0.5 dB), `wet` is the reverb send, `run` the longest step when running
+ * (s), `attack` a slower start (s: the snow packing down under the sole).
  */
-const RECORDED: Record<Ground, { layers: readonly Layer[]; level: number; wet: number; run: number }> = {
+const RECORDED: Record<Ground, { layers: readonly Layer[]; level: number; wet: number; run: number; attack?: number }> = {
   // Dry grass crunching (its hiss taken off) over a soft low thump of the body's weight (the boots on concrete, only their lows).
   grass: { level: 1, wet: 0.04, run: 0.26, layers: [{ set: 'grass', level: 1, lp: 6500 }, { set: 'concrete', level: 0.42, lp: 450, rate: 0.88 }] },
   // Packed earth: the boots on concrete softened (dull, a little deeper), a trace of grit from the grass.
@@ -69,6 +76,19 @@ const RECORDED: Record<Ground, { layers: readonly Layer[]; level: number; wet: n
   water: { level: 0.87, wet: 0.08, run: 0.32, layers: [{ set: 'water', level: 1 }, { set: 'water', same: true, level: 0.5, rate: 0.6, lp: 800 }] },
   // Planks: the take-off ramp, stepping off the boat (no boom under 70 Hz: an open deck, not a hollow floor).
   wood: { level: 1.02, wet: 0.07, run: 0.26, layers: [{ set: 'wood', level: 1, hp: 70 }] },
+  // Snow: the grass crunch slowed (the sole packing the snow down, grain by grain), its crisp top a little quicker
+  // over it, the body's weight muffled under it; a hushed place, little echo.
+  snow: {
+    level: 1.05,
+    wet: 0.02,
+    run: 0.3,
+    attack: 0.05,
+    layers: [
+      { set: 'grass', level: 1, rate: 0.76, lp: 4200, hp: 300 },
+      { set: 'grass', same: true, level: 0.3, rate: 1.12, lp: 7500, hp: 1800 },
+      { set: 'concrete', level: 0.25, lp: 300, rate: 0.85 },
+    ],
+  },
 };
 
 /** Peak levels (before the volume of their bus). */
@@ -86,6 +106,17 @@ const LEVEL = {
   paddle: 1,
   knock: 0.45,
   bell: 0.15,
+  /** Fishing (from the boat) and his sampeah. */
+  cast: 0.8,
+  reel: 0.18,
+  bite: 0.3,
+  fish: 0.9,
+  greet: 0.35,
+  /** Buying (roam/_shop.ts): paying, a sip, a bite chewed. */
+  coin: 0.5,
+  sip: 0.4,
+  munch: 0.55,
+  ahh: 0.5,
   wind: 0.85,
   wake: 0.24,
   sail: 0.3,
@@ -153,7 +184,7 @@ export class Explorer {
   /** The recorded steps, once loaded (`footsteps.ts`); until then the steps are synthesized. */
   steps: StepSets | null = null;
   /** Footsteps played so far on each ground: [recorded, synthesized] (for checks: `audio.debug()`). */
-  readonly played: Record<Ground, [number, number]> = { earth: [0, 0], grass: [0, 0], stone: [0, 0], sand: [0, 0], water: [0, 0], wood: [0, 0] };
+  readonly played: Record<Ground, [number, number]> = { earth: [0, 0], grass: [0, 0], stone: [0, 0], sand: [0, 0], water: [0, 0], wood: [0, 0], snow: [0, 0] };
   /** The bus the sound being made goes to (`roamBus`; the lasting sounds are on `moves`). */
   private to: Bus;
   private lastStep = -1;
@@ -284,6 +315,102 @@ export class Explorer {
         // A golden figure into his bag (treasure/): a small rising run of glassy chimes, a high one to end.
         [88, 91, 93, 100].forEach((m, i) => this.chime(t + i * 0.085 + (i === 3 ? 0.08 : 0), mtof(m), LEVEL.bell * (i === 3 ? 0.55 : 0.8) * (0.5 + 0.5 * g), -0.2 + i * 0.13));
         return;
+      case 'cast': {
+        // The rod whips through the air (a swish, the tip's thin whistle) and the line runs off the reel while the float
+        // flies (its plop as it lands is the fishing's own: roam/_fishing.ts).
+        const k = 0.5 + 0.5 * g;
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 450, f1: 2200, q: 1.6, attack: 0.09, tau: 0.05, dur: 0.14, level: LEVEL.cast * 1.1 * k, pan: range(r, 0.15, 0.3), wet: 0.06 });
+        this.tone(t + 0.05, { f0: 1700, f1: 2900, glide: 0.1, attack: 0.03, tau: 0.03, level: LEVEL.cast * 0.02 * k, pan: 0.2, wet: 0.05 });
+        this.ratchet(t + 0.12, range(r, 0.6, 0.85), 70, 18, 3800, LEVEL.cast * 0.11 * k, 0.1, 'line');
+        return;
+      }
+      case 'reel':
+        // The reel wound in: its pawl clicking over the gear, quicker as the handle turns, a little burst.
+        this.ratchet(t, range(r, 0.5, 0.9), range(r, 14, 18), range(r, 22, 30), range(r, 2700, 3400), LEVEL.reel * (0.6 + 0.4 * g), 0.18, 'pawl');
+        return;
+      case 'bite': {
+        // A bite: the float bobs — a tiny plip, another, and the ring spreading (a soft low dip of the float).
+        this.drops(t, 1, 0.01, LEVEL.bite * 0.5, 0);
+        this.drops(t + range(r, 0.09, 0.16), 1, 0.01, LEVEL.bite * 0.35, 0);
+        this.tone(t + 0.02, { f0: 320, f1: 190, glide: 0.06, attack: 0.004, tau: 0.03, level: LEVEL.bite * 0.12 * (0.6 + 0.4 * g), wet: 0.2 });
+        return;
+      }
+      case 'catch': {
+        // A fish pulled out: it breaks the surface (a splash, spray), then flaps and flops, water dripping off it.
+        const k = 0.5 + 0.5 * g;
+        this.burst(t, { kind: 'white', type: 'lowpass', f0: 4200, f1: 900, q: 0.7, attack: 0.003, tau: 0.07, dur: 0.2, level: LEVEL.fish * 0.8 * k, wet: 0.12 });
+        this.burst(t + 0.03, { kind: 'white', type: 'highpass', f0: 2800, q: 0.6, attack: 0.03, tau: 0.12, level: LEVEL.fish * 0.2 * k, pan: range(r, -0.2, 0.2), wet: 0.15 });
+        let s = t + range(r, 0.25, 0.35);
+        for (let i = 0, n = 4 + Math.floor(r() * 4); i < n; i++) {
+          const h = (1 - (0.5 * i) / n) * range(r, 0.7, 1) * k;
+          this.burst(s, { kind: 'white', type: 'bandpass', f0: range(r, 900, 1600), q: 1.2, attack: 0.0015, tau: 0.018, level: LEVEL.fish * 0.55 * h, pan: range(r, -0.15, 0.15), wet: 0.06 });
+          this.tone(s, { f0: range(r, 150, 190), f1: 90, glide: 0.03, attack: 0.002, tau: 0.02, level: LEVEL.fish * 0.12 * h, wet: 0.04 });
+          s += r() < 0.3 ? range(r, 0.06, 0.09) : range(r, 0.1, 0.18);
+        }
+        this.drops(t + 0.2, 5, 1.2, LEVEL.fish * 0.03 * k, 0);
+        return;
+      }
+      case 'release': {
+        // Let go: it slips back in with a soft "shloop" and a bubble, a drip or two.
+        const k = 0.5 + 0.5 * g;
+        this.burst(t, { kind: 'pink', type: 'lowpass', f0: 2400, f1: 500, q: 0.8, attack: 0.012, tau: 0.08, dur: 0.25, level: LEVEL.fish * 0.55 * k, wet: 0.12 });
+        this.tone(t + 0.03, { f0: 260, f1: 120, glide: 0.08, attack: 0.005, tau: 0.04, level: LEVEL.fish * 0.1 * k, wet: 0.08 });
+        this.drops(t + 0.12, 3, 0.5, LEVEL.fish * 0.025 * k, 0);
+        return;
+      }
+      case 'greet':
+        // His sampeah: the sleeves rustle as his hands come up, and his palms meet with a soft pat; subtle.
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 2200, f1: 3600, q: 0.9, attack: 0.09, tau: 0.08, dur: 0.25, level: LEVEL.greet * 0.8 * (0.6 + 0.4 * g), pan: -0.08, wet: 0.03 });
+        this.burst(t + 0.05, { kind: 'pink', type: 'bandpass', f0: 1800, f1: 3000, q: 0.9, attack: 0.08, tau: 0.07, dur: 0.22, level: LEVEL.greet * 0.6 * (0.6 + 0.4 * g), pan: 0.08, wet: 0.03 });
+        this.burst(t + range(r, 0.26, 0.32), { kind: 'pink', type: 'lowpass', f0: 900, q: 0.7, attack: 0.001, tau: 0.012, level: LEVEL.greet * 0.9 * (0.6 + 0.4 * g), wet: 0.04 });
+        return;
+      case 'coin': {
+        // Paying at a stall (roam/_shop.ts): riel notes counted out of the purse — two or three crisp flicks of paper over
+        // a soft slide — and a small warm two-note chime as the seller takes them.
+        const k = 0.5 + 0.5 * g;
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 1900, f1: 3200, q: 1.1, attack: 0.03, tau: 0.05, dur: 0.16, level: LEVEL.coin * 1.1 * k, pan: 0.1, wet: 0.03 });
+        let s = t + range(r, 0.05, 0.08);
+        for (let i = 0, n = 2 + Math.floor(r() * 2); i < n; i++) {
+          this.burst(s, { kind: 'white', type: 'bandpass', f0: range(r, 3000, 4600), q: 1.1, attack: 0.002, tau: range(r, 0.016, 0.026), level: LEVEL.coin * (1.9 - 0.3 * i) * k, pan: range(r, -0.05, 0.2), wet: 0.04 });
+          s += range(r, 0.07, 0.11);
+        }
+        this.chime(s + 0.06, mtof(84), LEVEL.coin * 0.08 * k, -0.1);
+        this.chime(s + 0.16, mtof(91), LEVEL.coin * 0.06 * k, 0.1);
+        return;
+      }
+      case 'sip': {
+        // A sip through a straw: the drink bubbling up it in quick little gurgles, then a soft swallow.
+        const k = 0.5 + 0.5 * g;
+        const n = 4 + Math.floor(r() * 3);
+        let s = t;
+        for (let i = 0; i < n; i++) {
+          const f = range(r, 520, 880) * (1 + 0.06 * i);
+          this.burst(s, { kind: 'pink', type: 'bandpass', f0: f, f1: f * 1.35, q: 3, attack: 0.004, tau: range(r, 0.016, 0.026), dur: 0.04, level: LEVEL.sip * range(r, 1.6, 2.6) * k, pan: range(r, -0.05, 0.05), wet: 0.03 });
+          s += range(r, 0.035, 0.06);
+        }
+        this.tone(s + range(r, 0.12, 0.2), { f0: 190, f1: 115, glide: 0.05, attack: 0.006, tau: 0.03, level: LEVEL.sip * 0.12 * k, wet: 0.02 });
+        return;
+      }
+      case 'ahh': {
+        // After a drink: a soft, satisfied breath out, "ahh" (breath through an open vowel, falling away).
+        const k = 0.5 + 0.5 * g;
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 820, f1: 620, q: 2.2, attack: 0.07, tau: 0.16, dur: 0.45, level: LEVEL.ahh * k, wet: 0.04 });
+        this.burst(t + 0.01, { kind: 'pink', type: 'bandpass', f0: 1350, f1: 1150, q: 3, attack: 0.07, tau: 0.14, dur: 0.4, level: LEVEL.ahh * 0.45 * k, wet: 0.04 });
+        this.burst(t, { kind: 'pink', type: 'bandpass', f0: 3000, q: 0.8, attack: 0.06, tau: 0.12, level: LEVEL.ahh * 0.1 * k, wet: 0.03 });
+        return;
+      }
+      case 'munch': {
+        // A bite chewed: two or three soft, muffled crunches, each a little quieter.
+        const k = 0.5 + 0.5 * g;
+        let s = t;
+        for (let i = 0, n = 2 + Math.floor(r() * 2); i < n; i++) {
+          const h = (1 - 0.25 * i) * k;
+          this.burst(s, { kind: 'pink', type: 'lowpass', f0: range(r, 1300, 1800), f1: 700, q: 0.8, attack: 0.012, tau: range(r, 0.04, 0.06), dur: 0.12, level: LEVEL.munch * h, pan: range(r, -0.04, 0.04), wet: 0.02 });
+          this.burst(s + 0.005, { buf: source('crunch'), type: 'bandpass', f0: range(r, 1800, 2600), q: 0.9, attack: 0.006, tau: 0.03, level: LEVEL.munch * 0.35 * h, wet: 0.02 });
+          s += range(r, 0.2, 0.26);
+        }
+        return;
+      }
     }
   }
 
@@ -343,6 +470,10 @@ export class Explorer {
     const pan = (this.foot = -this.foot) * range(r, 0.04, 0.12);
     const level = LEVEL.recorded * kind.level * g ** EFFORT * range(r, 0.85, 1.15);
     const env = this.gain(level);
+    if (kind.attack) {
+      env.gain.setValueAtTime(level * 0.3, t);
+      env.gain.linearRampToValueAtTime(level, t + kind.attack);
+    }
     const nodes: AudioNode[] = [env, ...this.out(env, pan, kind.wet)];
     // (one foot: the layers share the speed)
     const speed = range(r, 0.95, 1.05) * (0.98 + 0.05 * run);
@@ -460,6 +591,13 @@ export class Explorer {
         sub(95, 0.06);
         this.knock(t + 0.004, range(r, 140, 175) * k, L * 0.06, pan);
         if (toeLevel) thud(toe, 360, 210, 0.004, 0.024, 0.45 * toeLevel, 0.05);
+        break;
+      case 'snow':
+        // Snow: the sole packs it down — a soft, muffled thud, a crunch that runs on a moment (the flakes crushed), the toe's lighter one.
+        thud(t, 220, 140, 0.012, 0.045, 0.6 * heavy, 0.02);
+        sub(70, 0.05);
+        sole(t + 0.01, 3400, 1500, 0.035, 0.09, 0.45, 0.02);
+        if (toeLevel) sole(toe + 0.03, 2800, 1300, 0.02, 0.06, 0.3 * toeLevel, 0.02);
         break;
       case 'water':
         // Wading: a low slosh round the shin, a "bloop", a dull splash, the foot pulled out, a drop or two.
@@ -706,6 +844,51 @@ export class Explorer {
     const r = this.rnd;
     for (let i = 0; i < n; i++)
       this.burst(t + r() * spread, { type: 'highpass', f0: range(r, 2500, 4200), attack: 0.0008, tau: range(r, 0.002, 0.005), level: level * (0.3 + 0.7 * r()), pan: pan + range(r, -0.15, 0.15) });
+  }
+
+  /**
+   * Quick clicks over `dur` s, from `rate0` to `rate1` a second: a reel's pawl
+   * on its gear (`pawl`: a tick with a small metal ping at `f`) or line
+   * running off the spool (`line`: a soft brush of noise round `f`). One
+   * noise and one note struck again and again, not one node a click.
+   */
+  private ratchet(t: number, dur: number, rate0: number, rate1: number, f: number, level: number, pan: number, kind: 'pawl' | 'line'): void {
+    const ctx = this.ctx;
+    const r = this.rnd;
+    const end = t + dur + 0.1;
+    const src = ctx.createBufferSource();
+    src.buffer = noise('white');
+    const band = biquad(ctx, kind === 'pawl' ? 'highpass' : 'bandpass', kind === 'pawl' ? 3000 : f, kind === 'pawl' ? 0.7 : 1.4);
+    const tick = this.gain(0);
+    src.connect(band).connect(tick);
+    const ping = ctx.createOscillator();
+    ping.frequency.value = f;
+    const pg = this.gain(0);
+    ping.connect(pg);
+    const sum = this.gain(1);
+    tick.connect(sum);
+    pg.connect(sum);
+    const made = this.out(sum, pan, 0.05);
+    let s = t;
+    while (s < t + dur) {
+      const u = (s - t) / dur;
+      // (the line: every click a little softer as the spool slows)
+      const k = kind === 'line' ? 1 - 0.7 * u : range(r, 0.75, 1);
+      tick.gain.setTargetAtTime(level * k, s, 0.0004);
+      tick.gain.setTargetAtTime(0, s + 0.0015, kind === 'line' ? 0.006 : 0.002);
+      if (kind === 'pawl') {
+        pg.gain.setTargetAtTime(level * 0.35 * k, s, 0.0005);
+        pg.gain.setTargetAtTime(0, s + 0.002, 0.005);
+      }
+      s += (1 / (rate0 + (rate1 - rate0) * u)) * range(r, 0.92, 1.08);
+    }
+    src.start(t, r() * 3);
+    src.stop(end);
+    ping.start(t);
+    ping.stop(end);
+    src.onended = () => {
+      for (const n of [src, band, tick, ping, pg, sum, ...made]) n.disconnect();
+    };
   }
 
   /** Water drops and bubbles: short sines that rise as they pop, over `spread` s. */

@@ -13,7 +13,7 @@
    - It is used by the jungle, the camps, the village (`village/index.ts`) and the paddy props (`paddies.ts`, box from `aP0`/`aP1`).
    - The festival kit is posed in the shader, so three can't cull it. `src/map/festival/_kit.ts` `Kit.places()` + `KitMesh.inView(view, shadow)` compute spheres: static boxes grouped in 80 m squares, and each rig's sphere moved by its current `uRig` matrix. `festival/index.ts` sets the kit's `castShadow`, and its `visible` (drawn only if the kit or its shadow is in view), after the warm frames.
    - The festival crowd keeps its existing distance rule.
-5. **The rice is one mesh per plot.** `src/map/paddies/rice.ts` `buildRice` returns `meshes` (10 meshes, one shared material, so one program). `paddies.ts` warms them and then culls them. Before this, the field's single sphere contained the camera whenever you stood at the village, so it was never culled.
+5. **The rice** (as of 2026-09-27, superseded): it was one mesh per plot; now `src/map/paddies/rice.ts` draws all 15 plots' rice in two draws (near clumps, far fans), each a list of hills picked cell by cell (3.5 m cells in view and in season) from a float texture of hill values — see BRIEF.md "Rice paddies and the year".
 
 ## Numbers
 Draw calls / triangles are for one frame that includes a shadow pass. The baseline (a copy of the tree with my files restored) and the new tree were measured at the same time, on an M1 Max with ANGLE Metal.

@@ -1,15 +1,17 @@
-import { BufferAttribute, BufferGeometry, Color, CubeTexture, Group, Mesh, MeshStandardMaterial, SRGBColorSpace } from 'three';
+import { BufferAttribute, BufferGeometry, Color, CubeTexture, Group, Mesh, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace } from 'three';
 import { SKY } from '../sky/palette';
 import { buddhaStatue } from './buddha';
-import { GABLE, GABLE_NICHE, gableTextures, type GableArtSpec } from './kbach';
+import { FIGURES, figureTextures, GABLE, GABLE_NICHE, gableTextures, type GableArt, type GableArtSpec, type GableFigure } from './kbach';
 
 /**
  * A pagoda's gable: the triangle under the roof's end as a painted panel,
- * gold kbach on red lacquer round a deep niche (kbach.ts), lit like the
- * rest of the map (fog, shadows, the sun and the sky) with its gold a little
- * metallic and raised (bump), and softly lit by lamps at night; in the
- * niche a sculpted gilt Buddha in meditation, in high relief (buddha.ts,
- * pressed to a third of his depth).
+ * gold kbach on red lacquer (kbach.ts: carved and gilded, no glass mosaic),
+ * lit like the rest of the map (fog, shadows, the sun and the sky) with its
+ * gold a little metallic and raised (bump), and softly lit by lamps at
+ * night. In its middle (`figure`): a deep niche with a sculpted gilt Buddha
+ * in meditation in high relief (buddha.ts, pressed to a third of his depth),
+ * or Brahma's four faces under a broad tiered crown between two kneeling
+ * tep prânâm, painted on a sharper panel of their own just before it.
  *
  * The panel follows the roof's stepped outline: `steps` lists, from the
  * outside in, where each step of the roof starts (|x| from the axis) and
@@ -87,22 +89,37 @@ function outdoorEnv(): CubeTexture {
   return env;
 }
 
-/** The canvas extent and the triangle for a spec. */
-function artSpec(spec: GableSpec): GableArtSpec {
+/** The canvas extent and the triangle for a spec, and the figure in its middle. */
+function artSpec(spec: GableSpec, figure: GableFigure = 'buddha'): GableArtSpec {
   const tuck = spec.tuck ?? 0.25;
   const top = Math.max(...spec.steps.map((s) => s[1])) + tuck;
   const width = spec.steps[0][0] * 2;
   // (the canvas as tall as half its width, if that covers the panel: square pixels in 1024 × 512)
-  return { width, height: Math.max(top, width / 2), half: spec.half, foot: spec.foot, apex: spec.apex };
+  return { width, height: Math.max(top, width / 2), half: spec.half, foot: spec.foot, apex: spec.apex, ...(figure === 'buddha' ? {} : { figure }) };
 }
 
-/** The lit material for a gable (one per spec). */
-export function gableMaterial(spec: GableSpec): MeshStandardMaterial {
-  const art = artSpec(spec);
+/** The lit material for a gable (one per spec and figure). */
+export function gableMaterial(spec: GableSpec, figure: GableFigure = 'buddha'): MeshStandardMaterial {
+  const art = artSpec(spec, figure);
   const key = JSON.stringify(art);
   const had = materials.get(key);
   if (had) return had;
-  const t = gableTextures(art);
+  const m = giltMaterial(gableTextures(art), 'gable', false);
+  materials.set(key, m);
+  return m;
+}
+
+/** The lit material of a `brahma` gable's figures (a cut-out over the gable; one for all). */
+function figureMaterial(): MeshStandardMaterial {
+  const had = materials.get('figures');
+  if (had) return had;
+  const m = giltMaterial(figureTextures(), 'gable figures', true);
+  materials.set('figures', m);
+  return m;
+}
+
+/** Gold on lacquer from painted maps, lit out of doors (see the file's note); `cut`: clear where nothing is painted. */
+function giltMaterial(t: GableArt, name: string, cut: boolean): MeshStandardMaterial {
   const m = new MeshStandardMaterial({
     map: t.map,
     bumpMap: t.relief,
@@ -116,8 +133,9 @@ export function gableMaterial(spec: GableSpec): MeshStandardMaterial {
     emissiveMap: t.glow,
     emissive: new Color(1, 0.62, 0.3),
     emissiveIntensity: 0,
+    alphaTest: cut ? 0.5 : 0,
   });
-  m.name = 'gable';
+  m.name = name;
   // The mirrored sky follows the sky's own light (dim and blue at night); it lights the lacquer only a little (the sky light already does).
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uEnvTint = envTint;
@@ -130,8 +148,7 @@ radiance *= uEnvTint;
 iblIrradiance *= 0.2 * uEnvTint;`,
     );
   };
-  m.customProgramCacheKey = () => 'gable-1';
-  materials.set(key, m);
+  m.customProgramCacheKey = () => (cut ? 'gable-cut-1' : 'gable-1');
   return m;
 }
 
@@ -150,7 +167,14 @@ function light(m: MeshStandardMaterial): void {
 }
 
 export interface GableOptions {
-  /** The relief Buddha's height (m, from his throne's foot to the flame's tip; default: to fit the niche), 0 for none. */
+  /**
+   * What the gable shows in its middle: `buddha` (default) a niche under a
+   * flame arch with a sculpted gilt Buddha in high relief; `brahma` Brahma's
+   * four faces (three seen) under a broad tiered crown, in a halo of flames,
+   * on a lotus — the Bayon's faces, painted in raised gold (kbach.ts).
+   */
+  figure?: GableFigure;
+  /** The relief Buddha's height (m, from his throne's foot to the top of his head; default: to fit the niche; none with `brahma`), 0 for none. */
   buddha?: number;
   /** How deep he is pressed (share of a statue's depth, default 0.32). */
   depth?: number;
@@ -160,19 +184,30 @@ export interface GableOptions {
 
 /**
  * A gable for `spec`, its foot's middle at `at`, looking toward `at.facing`
- * (z): the painted panel and the relief Buddha in its niche. Casts and
- * takes shadows.
+ * (z): the painted panel and its figure (the relief Buddha in its niche, or
+ * Brahma's panel). Casts and takes shadows.
  */
 export function gable(spec: GableSpec, at: GablePlace, o: GableOptions = {}): Group {
   const g = new Group();
   g.name = 'gable';
   g.position.set(at.x, at.y, at.z);
   g.rotation.y = at.facing > 0 ? 0 : Math.PI;
-  g.add(gablePanel(spec, { x: 0, y: 0, z: 0, facing: 1 }));
+  const figure = o.figure ?? 'buddha';
+  g.add(gablePanel(spec, { x: 0, y: 0, z: 0, facing: 1 }, figure));
   // The niche's foot and size on this panel.
   const sy = (spec.apex - spec.foot) / GABLE.height;
-  // (his flame reaching four fifths of the way up the niche)
-  const height = o.buddha ?? GABLE_NICHE.tip * sy * GABLE_NICHE.figure;
+  if (figure === 'brahma') {
+    // The figures: their own sharper panel just before the gable's (a cut-out), on its lotus band.
+    const sx = spec.half / GABLE.half;
+    const fig = new Mesh(new PlaneGeometry(FIGURES.w * sx, FIGURES.h * sy), figureMaterial());
+    fig.name = 'gable figures';
+    fig.position.set(0, spec.foot + (FIGURES.y + FIGURES.h / 2) * sy, 0.012);
+    fig.receiveShadow = true;
+    fig.onBeforeRender = () => light(fig.material as MeshStandardMaterial);
+    g.add(fig);
+  }
+  // (the top of his head reaching four fifths of the way up the niche)
+  const height = o.buddha ?? (figure === 'buddha' ? GABLE_NICHE.tip * sy * GABLE_NICHE.figure : 0);
   if (height > 0) {
     const depth = o.depth ?? 0.32;
     const b = buddhaStatue({ kind: 'meditate', look: 'gilt', height, near: 30, hide: 250, sync: o.sync });
@@ -187,10 +222,10 @@ export function gable(spec: GableSpec, at: GablePlace, o: GableOptions = {}): Gr
 
 /**
  * The painted panel alone for `spec`, its foot's middle at `at`, painted
- * face toward `at.facing` (z). Casts and takes shadows.
+ * face toward `at.facing` (z), `figure` in its middle. Casts and takes shadows.
  */
-export function gablePanel(spec: GableSpec, at: GablePlace): Mesh {
-  const art = artSpec(spec);
+export function gablePanel(spec: GableSpec, at: GablePlace, figure: GableFigure = 'buddha'): Mesh {
+  const art = artSpec(spec, figure);
   const tuck = spec.tuck ?? 0.25;
   // Columns: each step of the roof on each side, and the middle.
   const cols: [number, number, number][] = [];
@@ -230,7 +265,7 @@ export function gablePanel(spec: GableSpec, at: GablePlace): Mesh {
   g.setIndex(idx);
   g.computeBoundingBox();
   g.computeBoundingSphere();
-  const m = gableMaterial(spec);
+  const m = gableMaterial(spec, figure);
   const mesh = new Mesh(g, m);
   mesh.name = 'gable';
   mesh.position.set(at.x, at.y, at.z);

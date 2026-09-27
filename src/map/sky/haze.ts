@@ -139,10 +139,13 @@ float hazeSunAmount(vec3 dir) {
 vec3 hazeColorDir(vec3 dir) {
   return mix(fogColor, hazeSunColor, hazeSunAmount(dir));
 }
-// Metres inside the side and back edges of the land (negative beyond them).
+// Metres inside the side and back edges of the land (negative beyond them):
+// the map's box, and where the land has sunk into the mist inside it (the land
+// map's b: metres past the land's end, sky/mist.ts).
 float hazeInside(vec2 xz) {
   vec2 uv = (xz - hazeLandBounds.xy) * hazeLandBounds.zw;
-  return min(min(uv.x, 1.0 - uv.x) / max(hazeLandBounds.z, 1e-6), uv.y / max(hazeLandBounds.w, 1e-6));
+  float box = min(min(uv.x, 1.0 - uv.x) / max(hazeLandBounds.z, 1e-6), uv.y / max(hazeLandBounds.w, 1e-6));
+  return min(box, -texture2D(hazeLand, clamp(uv, vec2(0.001), vec2(0.999))).b);
 }
 // How near the side and back edges of the land (0 inside, 1 at the edge and beyond).
 float hazeEdge(vec2 xz) {

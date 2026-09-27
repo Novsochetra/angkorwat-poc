@@ -10,14 +10,24 @@ import { FACE_COLUMNS, FACE_LAYER, FACE_ROWS, HEAD, HEAD_GRID, skullHas } from '
 export const EXPRESSIONS = ['neutral', 'happy', 'determined', 'surprised', 'curious', 'focused'] as const;
 export type ExpressionName = (typeof EXPRESSIONS)[number];
 /**
- * Every face that can be built: the expressions, and asleep (eyes closed in
- * soft downward curves, brows relaxed, the mouth a little open; not in the
- * X cycle: `AngkorExplorer.asleep` shows it).
+ * Faces while eating and drinking (character/meals.ts; not in the X cycle):
+ * `bite` the mouth wide open for the food (teeth showing), `chew` / `chew2`
+ * chewing with the eyes shut happily (the mouth a squiggle one way then the
+ * other, a cheek puffed on alternate sides), `look` / `look2` chewing while
+ * looking at what he eats, `sip` lips round the straw, eyes shut, `ahh` the
+ * satisfied breath after a drink, `yum` a big grin licking his lips.
  */
-export type FaceName = ExpressionName | 'asleep';
+export const MEAL_FACES = ['bite', 'chew', 'chew2', 'look', 'look2', 'sip', 'ahh', 'yum'] as const;
+export type MealFaceName = (typeof MEAL_FACES)[number];
+/**
+ * Every face that can be built: the expressions, asleep (eyes closed in
+ * soft downward curves, brows relaxed, the mouth a little open; not in the
+ * X cycle: `AngkorExplorer.asleep` shows it), and the meals' faces.
+ */
+export type FaceName = ExpressionName | 'asleep' | MealFaceName;
 
-type MouthShape = 'smile' | 'grin' | 'flat' | 'o' | 'smallO';
-type LidDecal = 'none' | 'arc' | 'lash' | 'sleep';
+type MouthShape = 'smile' | 'grin' | 'flat' | 'o' | 'smallO' | 'wide' | 'chewA' | 'chewB' | 'pout' | 'lick';
+type LidDecal = 'none' | 'arc' | 'lash' | 'sleep' | 'shut';
 
 interface ExpressionDef {
   /**
@@ -81,6 +91,62 @@ const DEFS: Record<FaceName, ExpressionDef> = {
     browLeft: { dy: -0.1, tilt: -0.08 },
     mouth: 'smallO',
     lids: 'sleep',
+  },
+  bite: {
+    cells: ['ssss', 'wkkw', 'wkkw', 'bssb'],
+    browRight: { dy: 0.28, tilt: -0.1 },
+    browLeft: { dy: 0.28, tilt: -0.1 },
+    mouth: 'wide',
+    lids: 'none',
+  },
+  chew: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: 0.12, tilt: -0.08 },
+    browLeft: { dy: 0.12, tilt: -0.08 },
+    mouth: 'chewA',
+    lids: 'arc',
+  },
+  chew2: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: 0.16, tilt: -0.1 },
+    browLeft: { dy: 0.16, tilt: -0.1 },
+    mouth: 'chewB',
+    lids: 'arc',
+  },
+  look: {
+    cells: ['ssss', 'wkkw', 'wkkw', 'bssb'],
+    browRight: { dy: 0.05, tilt: 0.02 },
+    browLeft: { dy: 0.3, tilt: -0.2 },
+    mouth: 'chewA',
+    lids: 'none',
+  },
+  look2: {
+    cells: ['ssss', 'wkkw', 'wkkw', 'bssb'],
+    browRight: { dy: 0.05, tilt: 0.02 },
+    browLeft: { dy: 0.3, tilt: -0.2 },
+    mouth: 'chewB',
+    lids: 'none',
+  },
+  sip: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: 0.1, tilt: -0.06 },
+    browLeft: { dy: 0.1, tilt: -0.06 },
+    mouth: 'pout',
+    lids: 'shut',
+  },
+  ahh: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: 0.34, tilt: -0.14 },
+    browLeft: { dy: 0.34, tilt: -0.14 },
+    mouth: 'o',
+    lids: 'arc',
+  },
+  yum: {
+    cells: ['ssss', 'ssss', 'ssss', 'bssb'],
+    browRight: { dy: 0.24, tilt: -0.12 },
+    browLeft: { dy: 0.24, tilt: -0.12 },
+    mouth: 'lick',
+    lids: 'arc',
   },
 };
 
@@ -158,6 +224,10 @@ export function buildFace(expression: FaceName, blink = false): VoxelBuilder {
       decal(cx + 0.5, 23.0, 0.72, 0.22, P.eyeDark, 0.08, 0.45);
       decal(cx, 22.78, 0.56, 0.22, P.eyeDark);
       decal(cx + Math.sign(cx) * 1.02, 22.92, 0.3, 0.16, P.eyeDark, 0.08, Math.sign(cx) * 0.6);
+    } else if (lids === 'shut') {
+      // (shut and at ease: a flat line, a little low, the lashes out at the end)
+      decal(cx, 22.9, 1.7, 0.2, P.eyeDark);
+      decal(cx + Math.sign(cx) * 0.95, 22.98, 0.3, 0.16, P.eyeDark, 0.08, Math.sign(cx) * 0.5);
     } else if (lids === 'lash') {
       const y = blink && !def.cells[1].includes('l') ? 22.95 : 23.42;
       decal(cx, y, 1.9, 0.2, P.eyeDark);
@@ -199,6 +269,35 @@ export function buildFace(expression: FaceName, blink = false): VoxelBuilder {
     case 'smallO':
       decal(0, 21.06, 0.42, 0.38, M);
       decal(0, 21.06, 0.2, 0.17, P.mouthDark, 0.08, 0, 0.02);
+      break;
+    case 'wide':
+      // (open for a bite: the top teeth showing)
+      decal(0, 20.98, 1.02, 0.74, M);
+      decal(0, 20.95, 0.76, 0.5, P.mouthDark, 0.08, 0, 0.02);
+      decal(0, 21.14, 0.62, 0.14, 0xf6f1ea, 0.08, 0, 0.04);
+      break;
+    case 'chewA':
+    case 'chewB': {
+      // (a squiggle, one way then the other, and the cheek on that side puffed out)
+      const s = def.mouth === 'chewA' ? 1 : -1;
+      decal(s * 0.2, 21.14, 0.46, 0.16, M, 0.08, s * 0.3);
+      decal(-s * 0.22, 21.04, 0.46, 0.16, M, 0.08, -s * 0.3);
+      b.box(s * 1.95, 21.4, FRONT + 0.06, 1.2, 1.0, 0.16, P.skin.warm, 'skin', { shade: 0.98 });
+      decal(s * 1.95, 21.45, 0.8, 0.5, P.blush, 0.08, 0, 0.09);
+      break;
+    }
+    case 'pout':
+      // (lips round the straw)
+      decal(0, 21.05, 0.5, 0.46, M);
+      decal(0, 21.05, 0.24, 0.22, P.mouthDark, 0.08, 0, 0.02);
+      break;
+    case 'lick':
+      // (a big grin, the tongue out at one corner licking his lips)
+      decal(0, 21.02, 1.0, 0.2, M);
+      decal(-0.64, 21.13, 0.4, 0.2, M, 0.08, -0.5);
+      decal(0.64, 21.13, 0.4, 0.2, M, 0.08, 0.5);
+      decal(0, 20.92, 0.62, 0.14, P.mouthDark, 0.06);
+      decal(0.5, 20.84, 0.42, 0.34, 0xe8747a, 0.1, 0.2, 0.03);
       break;
   }
   return b;

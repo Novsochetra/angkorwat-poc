@@ -1,14 +1,18 @@
 import type { RoofKind, WallKind } from './_spots';
-import { gableEnd, gableRoof, jar, lantern, Local, planks, potPlant, RIDGE, ROOFS, roofTop, roofUnder, tone, TRIM, WALLS, type GlowFn, type Hole, type Roof } from './_kit';
+import { bargeBoards, gableEnd, gableRoof, jar, khmerGable, lantern, Local, planks, potPlant, RIDGE, ROOFS, roofTop, roofUnder, tone, TRIM, WALLS, type GableStyle, type GlowFn, type Hole, type Roof } from './_kit';
 import { GLOW } from './_lights';
 
 /**
  * The body of a Khmer village house, on a floor already laid: plank walls
  * round the rooms at the back, an open veranda in front under the same
  * roof, a steep stepped roof (palm thatch or tin), windows with open
- * shutters, doors. Local frame (m): x across, +z to the front (the lake),
- * y the world height. The windows and the front doorway of a lived-in house
- * glow at night (`glow`); a lantern hangs on its veranda.
+ * shutters, doors; with `gable`, a Khmer gable on each end — plain barge
+ * boards over the roof's stepped ends and a fan of rays out of a little sun
+ * (`rays`) or a kbach flame leaf (`kbach`) on the end wall (_kit.ts
+ * `khmerGable`: straight walls, no horns, as the house forms of Cambodia,
+ * never the Thai ones). Local frame (m): x across, +z to the front (the
+ * lake), y the world height. The windows and the front doorway of a
+ * lived-in house glow at night (`glow`); a lantern hangs on its veranda.
  */
 
 export interface HouseBody {
@@ -26,6 +30,14 @@ export interface HouseBody {
   shop?: boolean;
   /** Where the railing opens at the veranda's front (x), or null for none. */
   gap: number | null;
+  /** Half the opening's width (m; default 0.55): a wider stair's (the back hamlet's, _bhHouses.ts; the stilt houses' leave room beside it, _houses.ts). */
+  gapHalf?: number;
+  /**
+   * The gables' look (default `plain`: the end walls' planks only, for a
+   * caller that adds its own). Other styles tilt boards: build into a
+   * `Local` made with the frame's heading (`Local.theta`).
+   */
+  gable?: GableStyle;
 }
 
 /** Height of the walls over the floor (m): the eaves over the veranda leave room for the explorer (2.4 m). */
@@ -131,12 +143,18 @@ export function houseBody(L: Local, o: HouseBody, glow: GlowFn): Roof {
       shutters(L, 'z', mid, F + 1.5, side * (W / 2 + 0.04), trim);
     }
     gableEnd(L, r, x, T, zb, zf, top, wall);
+    if (o.gable && o.gable !== 'plain') {
+      khmerGable(L, r, side * (W / 2), side, zb, zf, top, o.gable, tone(trim, 0.4));
+      bargeBoards(L, r, side > 0 ? r.x1 : r.x0, side, tone(trim, 0.7));
+    }
   }
 
   // ── Veranda: corner posts up to the eaves, a railing, pots ───────────────
   for (const side of [-1, 1]) L.span(side * (W / 2 - 0.3) - 0.14, F, zf - 0.28, side * (W / 2 - 0.3) + 0.14, top, zf, tone(wall, 0.9), 'mapBark', 0.85);
   const railY = F + 0.95;
   const rail = (x0: number, z0: number, x1: number, z1: number) => {
+    // (none where a stair's gap leaves too little of it: a stub by the corner post)
+    if (x1 - x0 < 0.3 && z1 - z0 < 0.3) return;
     L.span(x0, railY - 0.1, z0, x1, railY, z1, tone(trim, 0.2), 'mapBark');
     const along = x1 - x0 > z1 - z0;
     const len = along ? x1 - x0 : z1 - z0;
@@ -150,8 +168,9 @@ export function houseBody(L: Local, o: HouseBody, glow: GlowFn): Roof {
   if (!o.shop) {
     if (g === null) rail(-W / 2 + 0.3, zf - 0.1, W / 2 - 0.3, zf);
     else {
-      rail(-W / 2 + 0.3, zf - 0.1, g - 0.55, zf);
-      rail(g + 0.55, zf - 0.1, W / 2 - 0.3, zf);
+      const gh = o.gapHalf ?? 0.55;
+      rail(-W / 2 + 0.3, zf - 0.1, g - gh, zf);
+      rail(g + gh, zf - 0.1, W / 2 - 0.3, zf);
     }
     rail(-W / 2, zw + 0.05, -W / 2 + 0.1, zf - 0.28);
     rail(W / 2 - 0.1, zw + 0.05, W / 2, zf - 0.28);
@@ -163,8 +182,10 @@ export function houseBody(L: Local, o: HouseBody, glow: GlowFn): Roof {
   // ── Roof ──────────────────────────────────────────────────────────────────
   gableRoof(L, r, ROOFS[o.roof], RIDGE[o.roof], o.roof === 'thatch' ? 'mapBark' : 'metal', o.roof === 'thatch' ? 1.6 : 0.9);
 
-  // A lantern on the veranda of a lived-in house.
-  if (o.lit && !o.shop) lantern(L, W / 2 - 1.1, top - 0.5, zf - 0.5, glow);
+  // A lantern on the veranda of a lived-in house, at the end away from the stair (hung over its head, it would stop the
+  // roaming explorer stepping up onto the veranda: he is 2.4 m tall, and the walk map takes it whole).
+  const lx = o.gap !== null && o.gap > 0 ? -(W / 2 - 1.1) : W / 2 - 1.1;
+  if (o.lit && !o.shop) lantern(L, lx, top - 0.5, zf - 0.5, glow);
   return r;
 }
 

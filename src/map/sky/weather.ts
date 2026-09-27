@@ -29,9 +29,20 @@ import { WIND } from './haze';
  *   in four a storm (never the first).
  * - `stormy`: a storm every 7–11 minutes (rain from ≈ 2 minutes in), now and
  *   then a shower between two.
+ * - `snow`: a dream — it never snows at Angkor, so only this choice ever
+ *   brings snow, never the season. A pale grey-white overcast and light
+ *   flurries all along; snowfalls of 2½–5 minutes (big soft flakes, heavier
+ *   and lighter by turns) with pauses of 1½–3 minutes between; a low, soft
+ *   wind; no rain, storm or rainbow. The land whitens over the first minute
+ *   and a half of a snowfall (`snowCover`) and hardly melts in the pauses.
+ *   Picked, the first flakes come within seconds (the first snowfall ≈ 20 s
+ *   in, the land white ≈ 2½ minutes in); a page that opens with it is
+ *   already snowing on white land.
  * Changing the setting: what has begun runs its course and the new schedule
  * starts from then, fair at first (its first rain as above); a switch to
- * clear fades the rain out over `FADE` s (the land dries on its own).
+ * clear or to snow fades the rain out over `FADE` s (the land dries on its
+ * own), and a switch away from snow stops the snow over `FADE` s and melts
+ * the white off the land over two or three minutes (it runs wet, then dries).
  *
  * All of it is a closed-form function of `f.t` (page seconds), the day the
  * page opened (`f.day`, the seed), the setting (and when it changed) and
@@ -40,12 +51,14 @@ import { WIND } from './haze';
  * season)` lists the showers of a setting from the page's start.
  *
  * Headless shots (`shot=1`) are calm unless the URL holds a weather.
- * URL (checks): `weather=clear|rain|storm|rainbow` holds that weather ·
+ * URL (checks): `weather=clear|rain|storm|rainbow|snow` holds that weather
+ * (`snow`: snowing on white land) ·
  * `weather=auto` the schedule of the setting (the default on the live page;
  * in shots, the schedule at `t=`, the setting's default: the season) ·
  * `weather=season|rainy|stormy` that setting's schedule, whatever the
- * setting · `wind=0‥1` holds the wind · `cloud=`, `rain=`,
- * `storm=`, `rainbow=`, `wet=` (0‥1) hold one value · `flash=0‥1` a
+ * setting, and `weather=snowy` the snow setting's · `wind=0‥1` holds the
+ * wind · `cloud=`, `rain=`, `storm=`, `rainbow=`, `wet=`, `snow=`,
+ * `snowCover=` (0‥1) hold one value · `flash=0‥1` a
  * lightning flash at the shot's time (on a live page it strikes again, with
  * its thunder, every `HELD_FLASH_EVERY` s; live with `weather=storm` and no
  * `flash=`, flashes come on their own every few seconds).
@@ -61,9 +74,9 @@ export interface Weather {
   schedule(until: number, mode?: WeatherSetting, season?: number): readonly WeatherEvent[];
 }
 
-/** One passing shower or storm (page seconds). */
+/** One passing shower or storm, or a snowfall (the snow setting; its times are the flakes' where they say drops) (page seconds). */
 export interface WeatherEvent {
-  kind: 'shower' | 'storm';
+  kind: 'shower' | 'storm' | 'snowfall';
   /** The clouds begin to build. */
   start: number;
   /** The first drops (the gust front comes just before). */
@@ -73,12 +86,15 @@ export interface WeatherEvent {
   easeOff: number;
   /** The last drops. */
   dry: number;
-  /** The sky is clear again. */
+  /** The sky is clear again (a snowfall: back to the snow setting's pale overcast). */
   clear: number;
   /** Peaks: cloud cover, rain, wind of the gust front (0‥1). */
   cloud: number;
   rain: number;
   wind: number;
+  /** Peaks of a snowfall: the snow falling, and how white the land gets under it (0‥1; 0 for rain). */
+  snow: number;
+  cover: number;
   /** A rainbow after it (0 none … 1 full; by day only), from `bowOn` to `bowOff`. */
   bow: number;
   bowOn: number;
@@ -108,6 +124,15 @@ const DRY_TAU = 170;
 const FADE = 30;
 /** A held flash (`flash=` with a held weather) strikes again this often on a live page (s). */
 const HELD_FLASH_EVERY = 12;
+/**
+ * The snow setting's own sky between snowfalls: a pale overcast and light
+ * flurries, eased in over `ease` s when it is picked (and out with the fade
+ * when another is). A snowfall whitens the land over `build` s of full
+ * snowfall; in the pauses the white melts with a time constant of `melt` s
+ * (hardly: the flurries keep it), and once the setting is left, of `away` s
+ * (mostly gone in two or three minutes).
+ */
+const SNOW = { cloud: 0.62, flurries: 0.13, ease: 20, build: 90, melt: 900, away: 50 };
 
 const smooth = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 /** 0 before a, 1 after b, eased between. */
@@ -215,10 +240,49 @@ function passing(r: () => number, storm: boolean, start: number, light: number):
     cloud: storm ? 1 : (0.72 + r() * 0.18) * (1 - 0.3 * light),
     rain: storm ? 1 : (0.5 + r() * 0.35) * (1 - 0.5 * light),
     wind: storm ? 0.8 + r() * 0.15 : (0.4 + r() * 0.2) * (1 - 0.35 * light),
+    snow: 0,
+    cover: 0,
     bow,
     bowOn,
     bowOff,
     flashes: storm ? flashTrain(r, full - 12, easeOff + 15, [5, 17]) : [],
+  };
+}
+
+/**
+ * One snowfall (the snow setting), beginning at `start`: the clouds close over
+ * in ½–1 minute (`first`: the first of a new pick, in a few seconds), the
+ * flakes thicken for ¾–1 minute, then 2½–5 minutes of it, heavier or lighter,
+ * a soft steady breeze with it; it thins out over a minute and the sky
+ * lightens back to the setting's overcast. No rain, no rainbow, no lightning.
+ * (`opened`: the page opened with it: snowing since before, 2–4½ more minutes.)
+ */
+function snowfall(r: () => number, start: number, how: 'first' | 'opened' | 'next'): WeatherEvent {
+  const first = how === 'first';
+  const rainOn = start + (first ? 12 + r() * 6 : 40 + r() * 30);
+  const full = rainOn + (first ? 45 : 40 + r() * 20);
+  const easeOff = how === 'opened' ? 120 + r() * 150 : full + 150 + r() * 150;
+  const dry = easeOff + 50;
+  const clear = dry + 40 + r() * 30;
+  const snow = 0.55 + 0.45 * r();
+  return {
+    kind: 'snowfall',
+    start,
+    rainOn,
+    full,
+    easeOff,
+    dry,
+    clear,
+    cloud: 0.8 + 0.14 * r(),
+    rain: 0,
+    wind: 0.1 + 0.12 * r(),
+    snow,
+    // (a light one leaves the land a little less white)
+    cover: 0.8 + 0.2 * snow,
+    bow: 0,
+    bowOn: clear,
+    bowOff: clear,
+    flashes: [],
   };
 }
 
@@ -235,6 +299,9 @@ interface Passing {
   fl: Flash | null;
   /** Clouds of showers still building or raining (they hide a rainbow of one gone by). */
   build: number;
+  /** Snow falling, and the white on the land (the snow setting). */
+  snow: number;
+  cover: number;
 }
 
 /**
@@ -247,6 +314,8 @@ class Schedule {
   /** When the next fair spell may end (s): a shower or storm begins then (following the season: by its chance). */
   private next: number;
   private storms = 0;
+  /** When the setting was picked (s; the snow setting's own sky eases in from then). */
+  private readonly from: number;
 
   constructor(
     seed: number,
@@ -254,17 +323,28 @@ class Schedule {
     from: number,
   ) {
     const r = (this.r = rng(seed));
-    // The first rain: ≈ 2½–3 min in (rainy), ≈ 2 min (stormy), 3–8 min (the season, when it rains).
-    this.next = mode === 'clear' ? Infinity : from + (mode === 'rainy' ? 70 + r() * 40 : mode === 'stormy' ? 15 + r() * 20 : 110 + r() * 275);
+    // (snow from the page's start: it has been snowing a while, the land is white)
+    this.from = mode === 'snow' && from <= 0 ? -600 : from;
+    // The first rain: ≈ 2½–3 min in (rainy), ≈ 2 min (stormy), 3–8 min (the season, when it rains); the first
+    // snowfall a few seconds after snow is picked (from the page's start: going on).
+    if (mode === 'snow') this.next = from <= 0 ? -300 - r() * 40 : from + 2 + r() * 4;
+    else this.next = mode === 'clear' ? Infinity : from + (mode === 'rainy' ? 70 + r() * 40 : mode === 'stormy' ? 15 + r() * 20 : 110 + r() * 275);
   }
 
-  /** Make the showers and storms that begin by `t` (the year's rains as they are at `season`). */
+  /** Make the showers and storms (snowfalls) that begin by `t` (the year's rains as they are at `season`). */
   reach(t: number, season: number): void {
     const r = this.r;
     while (this.next <= t) {
       const start = this.next;
       const n = this.events.length;
       const prev = this.events[n - 1];
+      if (this.mode === 'snow') {
+        const e = snowfall(r, start, n > 0 ? 'next' : start < 0 ? 'opened' : 'first');
+        this.events.push(e);
+        // (a pause of 1½–3 minutes between the last big flakes of one and the first of the next, light flurries in it)
+        this.next = e.clear + r() * 45;
+        continue;
+      }
       let storm: boolean;
       let light = 0;
       if (this.mode === 'season') {
@@ -298,6 +378,7 @@ class Schedule {
    * `FADE` s from `fade` (a switch to clear).
    */
   sample(t: number, until: number, fade: number, p: readonly number[], a: Passing): void {
+    if (this.mode === 'snow') return this.sampleSnow(t, until, fade, p, a);
     const TAU = Math.PI * 2;
     const k = fade === Infinity ? 1 : 1 - ramp(t, fade, fade + FADE);
     // (faded: the rain stops half way through the fade, then no more lightning and the land dries)
@@ -329,6 +410,41 @@ class Schedule {
       }
     }
   }
+
+  /**
+   * The snow setting's weather at `t` into `a`: its own pale overcast and
+   * flurries, its snowfalls and the white they leave. Left (`fade`: another
+   * setting picked), the snow stops over `FADE` s and the white melts away,
+   * the land running wet as it goes.
+   */
+  private sampleSnow(t: number, until: number, fade: number, p: readonly number[], a: Passing): void {
+    const TAU = Math.PI * 2;
+    const k = fade === Infinity ? 1 : 1 - ramp(t, fade, fade + FADE);
+    // (the snow stops half way through the fade; the white stays put until then, and melts after)
+    const tw = Math.min(t, fade + FADE / 2);
+    const tu = Math.min(t, fade);
+    const on = k * ramp(t, this.from, this.from + SNOW.ease);
+    a.cloud = Math.max(a.cloud, SNOW.cloud * on);
+    // (the flurries come and go a little)
+    a.snow = Math.max(a.snow, SNOW.flurries * on * (0.75 + 0.25 * Math.sin((t * TAU) / 37 + p[4]) * Math.sin((t * TAU) / 13 + p[5])));
+    let cover = 0;
+    for (const e of this.events) {
+      if (e.start > t || e.start >= until) break;
+      // White over the first minute and a half of full snowfall; in the pauses it hardly melts.
+      const white = e.cover * ramp(tw, e.rainOn + 10, e.full + SNOW.build);
+      cover = Math.max(cover, tw < e.dry ? white : white * Math.exp(-(tw - e.dry) / SNOW.melt));
+      if (k <= 0 || t > e.clear) continue;
+      a.cloud = Math.max(a.cloud, k * e.cloud * ramp(tu, e.start, e.rainOn + 10) * (1 - ramp(t, e.easeOff, e.clear)));
+      // Heavier and lighter by turns, slowly.
+      const pulse = 0.78 + 0.22 * Math.sin((t * TAU) / 41 + p[4]) * Math.sin((t * TAU) / 17 + p[5]);
+      a.snow = Math.max(a.snow, k * e.snow * ramp(tu, e.rainOn, e.full) * (1 - ramp(t, e.easeOff, e.dry)) * pulse);
+      a.wind = Math.max(a.wind, k * e.wind * ramp(tu, e.rainOn - 20, e.full) * (1 - ramp(t, e.easeOff, e.dry + 30)));
+    }
+    const melt = Math.exp(-Math.max(0, t - tw) / SNOW.away);
+    a.cover = Math.max(a.cover, cover * melt);
+    // (melting, the land runs wet, then dries as after rain)
+    if (t > tw) a.wet = Math.max(a.wet, 0.6 * cover * (1 - melt) * Math.exp(-(t - tw) / DRY_TAU));
+  }
 }
 
 /** A stretch of play under one setting: its schedule, until the setting changed (`to`), faded out from `fade` (a switch to clear). */
@@ -346,6 +462,8 @@ class Skies {
   private readonly stretches: Stretch[] = [];
   /** How still the air is (the dry season), eased. */
   private still = NaN;
+  /** How soft the wind is (the snow setting: no gusts), eased. */
+  private soft = NaN;
 
   constructor(day: number) {
     this.day = Math.floor(day) || 0;
@@ -365,35 +483,42 @@ class Skies {
     const now = list[list.length - 1];
     if (!now) list.push({ s: this.plan(mode, 0, 0), to: Infinity, fade: Infinity });
     else if (now.s.mode !== mode) {
-      // The setting changed: what has begun runs its course (a switch to clear fades it out), the new
-      // schedule starts from now (fair at first).
+      // The setting changed: what has begun runs its course (a switch to clear or to snow fades it out; a switch
+      // away from snow stops the snow), the new schedule starts from now (fair at first; snow: at once).
       now.to = t;
-      if (mode === 'clear') for (const s of list) s.fade = Math.min(s.fade, t);
+      if (mode === 'clear' || mode === 'snow') for (const s of list) s.fade = Math.min(s.fade, t);
+      else if (now.s.mode === 'snow') now.fade = Math.min(now.fade, t);
       list.push({ s: this.plan(mode, t, list.length), to: Infinity, fade: Infinity });
       // (stretches long over are forgotten)
       while (list.length > 6 || list[0].to < t - 1500) list.shift();
     }
     list[list.length - 1].s.reach(t + 1, f.season);
-    const a: Passing = { cloud: 0, rain: 0, storm: 0, wind: 0, bow: 0, wet: 0, flash: 0, fl: null, build: 0 };
+    const a: Passing = { cloud: 0, rain: 0, storm: 0, wind: 0, bow: 0, wet: 0, flash: 0, fl: null, build: 0, snow: 0, cover: 0 };
     const p = this.phase;
     for (const s of list) s.s.sample(t, s.to, s.fade, p, a);
     // The air of the season: hot, hazy and still in the dry months (eased as the setting or the year turns).
     const still = mode === 'season' ? rainsOf(f.season).still : 0;
-    this.still = Number.isNaN(this.still) || f.dt <= 0 ? still : this.still + (still - this.still) * (1 - Math.exp(-f.dt / 20));
+    const ease = 1 - Math.exp(-f.dt / 20);
+    this.still = Number.isNaN(this.still) || f.dt <= 0 ? still : this.still + (still - this.still) * ease;
+    // (and under snow a soft, even air: a lighter breeze, hardly a gust)
+    const soft = mode === 'snow' ? 1 : 0;
+    this.soft = Number.isNaN(this.soft) || f.dt <= 0 ? soft : this.soft + (soft - this.soft) * ease;
     const TAU = Math.PI * 2;
     // The breeze: comes and goes over a minute or two, lulls between.
     const b = 0.5 + 0.3 * Math.sin((t * TAU) / 113 + p[0]) + 0.15 * Math.sin((t * TAU) / 47 + p[1]) + 0.05 * Math.sin((t * TAU) / 29 + p[2]);
-    const breeze = (0.04 + 0.26 * smooth(b)) * (1 - 0.4 * this.still);
+    const breeze = (0.04 + 0.26 * smooth(b)) * (1 - 0.4 * this.still) * (1 - 0.45 * this.soft);
     // Little gusts on top (a few seconds each).
-    const gust = Math.max(0, Math.sin((t * TAU) / 9.3 + p[3]) * Math.sin((t * TAU) / 5.7 + 1)) * (1 - 0.5 * this.still);
+    const gust = Math.max(0, Math.sin((t * TAU) / 9.3 + p[3]) * Math.sin((t * TAU) / 5.7 + 1)) * (1 - 0.5 * this.still) * (1 - 0.8 * this.soft);
     w.cloud = a.cloud;
     w.rain = a.rain;
     w.storm = a.storm;
+    w.snow = a.snow;
+    w.snowCover = a.cover;
     w.wind = clamp01(Math.max(breeze, a.wind) + gust * 0.06 * (0.5 + 2 * a.wind));
     // (it veers a little with the gust front)
     w.windDir = BASE_DIR + 0.22 * Math.sin((t * TAU) / 260 + p[5]) + 0.1 * Math.sin((t * TAU) / 71 + p[2]) + 0.25 * a.wind;
-    // (a new shower building after a change of setting hides the rainbow of the last)
-    w.rainbow = a.bow * (1 - ramp(a.build, 0.25, 0.7));
+    // (a new shower building after a change of setting hides the rainbow of the last; so does snow)
+    w.rainbow = a.bow * (1 - ramp(a.build, 0.25, 0.7)) * (1 - this.soft);
     w.wet = a.wet;
     w.flash = a.flash;
     if (a.fl) {
@@ -410,8 +535,10 @@ const HELD: Record<string, Held> = {
   rain: { cloud: 0.85, rain: 0.8, wind: 0.45, wet: 0.8 },
   storm: { cloud: 1, rain: 1, storm: 1, wind: 0.85, wet: 1 },
   rainbow: { cloud: 0.35, wind: 0.12, rainbow: 1, wet: 0.7 },
+  // (snowing on white land: the snow setting's snowfall)
+  snow: { cloud: 0.82, snow: 0.8, snowCover: 1, wind: 0.14 },
 };
-const NUMBERS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'flash'] as const;
+const NUMBERS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'flash', 'snow', 'snowCover'] as const;
 
 /** `v` if it is a weather setting (null: not one, e.g. a word of the URL or an older page's saved setting). */
 const asSetting = (v: unknown): WeatherSetting | null => (WEATHER_SETTINGS.includes(v as WeatherSetting) ? (v as WeatherSetting) : null);
@@ -421,8 +548,8 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
   const shot = params.get('shot') === '1';
   const kind = params.get('weather') ?? (shot ? 'clear' : 'auto');
   const auto = !(kind in HELD);
-  /** A setting's schedule the URL asks for (checks), whatever the setting. */
-  const forced = asSetting(kind);
+  /** A setting's schedule the URL asks for (checks), whatever the setting (`snowy`: the snow setting's, `snow` holds a snowfall). */
+  const forced = kind === 'snowy' ? 'snow' : asSetting(kind);
   const mode = () => forced ?? asSetting(setting()) ?? 'season';
   const held: Held = { ...(HELD[kind] ?? {}) };
   for (const k of NUMBERS) if (params.has(k)) held[k] = clamp01(Number(params.get(k)) || 0);

@@ -49,9 +49,9 @@ export function createTreasureHud(layer: HTMLElement): TreasureHud {
   };
 }
 
-/** A tiny golden apsara on a plinth (16 × 16 pixel art, like the map's icons). */
+/** A tiny golden apsara on a plinth (16 × 16 pixel art, like the map's icons), her three-pointed mokot on her head. */
 const FIGURE_ICON = `<svg class="tg-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">
-  <path fill="#ffe89a" d="M7 0h2v1h1v2H6V1h1z"/>
+  <path fill="#ffe89a" d="M7 0h2v2H7zM5 1h1v1H5zM10 1h1v1h-1zM5 2h6v1H5z"/>
   <path fill="#f3c24d" d="M6 3h4v2H9v1h2v1h2V6h1v2h-2v1h-2v2h1v1h1v1H3v-1h1v-1h1V9H4V8H2V6h1v1h2V6h2V5H6z"/>
   <path fill="#b27a1c" d="M7 3h1v1H7zM2 14h12v2H2zM6 9h4v1H6z"/>
   <path fill="#ffe89a" d="M3 13h10v1H3z"/>

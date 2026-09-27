@@ -1,11 +1,13 @@
-import { Frustum, Group, Matrix4, Quaternion, Sphere, Vector3, type Camera, type Object3D } from 'three';
+import { Box3, Frustum, Group, Matrix4, Quaternion, Sphere, Vector3, type Camera } from 'three';
 import { CELL, SURFACE, type HeightField } from '../heightfield';
 import { OVERVIEW, PLACES, PLATEAUS, type PlaceDef, type Plateau } from '../layout';
 import { buildRoadNetwork, KIND, LIFT, type Station } from '../road/line';
 import { sideInfo, WALL_V } from '../road/stone';
-import { MAP_VIEWS, ROAM_AREA, type MapView } from '../terrain/views';
-import { GLIDER, Glider } from './_gliderModel';
-import { buildLaunchRamp, RAMP, rampDeckY, rampStairs, rampStepY, WIND } from './_launchRamp';
+import { MAP_VIEWS, ROAM_BOXES, type MapView } from '../terrain/views';
+import { FAR_PLAIN } from '../graphics';
+import { GLIDER } from './_gliderModel';
+import { LaunchRamps, RAMP, rampDeckY, rampStairs, rampStepY, WIND } from './_launchRamp';
+import { ParkedGliders } from './_parkedGliders';
 import { FLAG } from './_rampFlag';
 import { ROAM_SCALE, type RoamWorld } from './types';
 
@@ -41,6 +43,11 @@ import { ROAM_SCALE, type RoamWorld } from './types';
  *
  * The ramps are walkable: `deckAt` gives their deck height (and their
  * steps'), and roam.ts lays it over the walk map.
+ *
+ * Drawn together: all the ramps (_launchRamp.ts `LaunchRamps`) and all the
+ * parked gliders (_parkedGliders.ts) in 16 draws (80 when each had its
+ * own); the ramps are marked still (they cast the low level's still
+ * shadows), their flags, windsocks and the gliders are not.
  */
 
 export interface LaunchSpot {
@@ -96,6 +103,12 @@ const FLAG_ROOM = 4;
 /** How tall the jungle grows (m, a typical crown's top over the land), and how far out the flight must clear it (m). */
 const TREE_TOP = 10;
 const CANOPY_RUN = 40;
+/**
+ * The ramps are found in the highlands of the six places, their first flights
+ * over them (the roaming area's first box, views.ts; the land that grew round
+ * Phnom Kulen is for walking and flying, and keeps the ramps where they were).
+ */
+const HIGHLANDS = ROAM_BOXES[0];
 /** The take-offs look over the temples if they can: Angkor Wat. */
 const HOME = PLACES[0];
 /** Only on ground this high (m) … and spots this far apart (m) at most this many. */
@@ -135,33 +148,34 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
   const list = pre ? pre.list.map((s) => settle(field, world, s)).filter((s) => s !== null) : findSpots(field, world);
   const object = new Group();
   object.name = 'roam:launchSpots';
-  let blocks = 0;
-  const ramps: { spot: LaunchSpot; update(night: number, t: number, flag?: boolean): void; flagAt: Object3D; flagT: number; glider: Glider; taken: boolean }[] = [];
-  const q = new Quaternion();
-  const p = new Vector3();
-  for (const [i, spot] of list.entries()) {
-    // (the land under it in ramp space: its posts and poles stand on it)
-    const fx = Math.sin(spot.yaw);
-    const fz = Math.cos(spot.yaw);
-    const ground = (x: number, z: number) => field.heightAt(spot.x + fx * z + fz * x, spot.z + fz * z - fx * x) - spot.y;
-    // (the breeze a little from whichever side shows the flag's face to the overview camera)
-    const [cu, cv] = local(spot, OVERVIEW.pos[0], OVERVIEW.pos[2]);
-    const side = Math.abs(cv * Math.cos(WIND) - cu * Math.sin(WIND)) >= Math.abs(cv * Math.cos(WIND) + cu * Math.sin(WIND)) ? 1 : -1;
-    const ramp = buildLaunchRamp(i + 1, { ground, stilts: spot.stilts, lift: spot.lift, side });
-    ramp.group.position.set(spot.x, spot.y, spot.z);
-    ramp.group.rotation.set(0, spot.yaw, 0);
-    object.add(ramp.group);
-    blocks += ramp.blocks;
-    // A glider waiting on the deck, nose to the edge, its bar on the planks.
-    const glider = new Glider();
-    object.add(glider.object);
-    blocks += glider.blocks;
-    ramps.push({ spot, update: ramp.update, flagAt: ramp.flagAt, flagT: -Infinity, glider, taken: false });
-  }
-  const park = (r: (typeof ramps)[number]) => {
-    api.parked(r.spot, p, q);
-    r.glider.pose({ position: p, quaternion: q, size: ROAM_SCALE, open: 1, flutter: 0.05, t: 0, night: 0 });
-  };
+  // Every ramp, and the glider waiting on each (nose to the edge, its bar on the planks), drawn together.
+  const ramps = new LaunchRamps(
+    list.map((spot, i) => {
+      // (the land under it in ramp space: its posts and poles stand on it)
+      const fx = Math.sin(spot.yaw);
+      const fz = Math.cos(spot.yaw);
+      const ground = (x: number, z: number) => field.heightAt(spot.x + fx * z + fz * x, spot.z + fz * z - fx * x) - spot.y;
+      // (the breeze a little from whichever side shows the flag's face to the overview camera)
+      const [cu, cv] = local(spot, OVERVIEW.pos[0], OVERVIEW.pos[2]);
+      const side = Math.abs(cv * Math.cos(WIND) - cu * Math.sin(WIND)) >= Math.abs(cv * Math.cos(WIND) + cu * Math.sin(WIND)) ? 1 : -1;
+      return { x: spot.x, y: spot.y, z: spot.z, yaw: spot.yaw, seed: i + 1, site: { ground, stilts: spot.stilts, lift: spot.lift, side } };
+    }),
+  );
+  const gliders = new ParkedGliders(
+    list.map((spot) => {
+      parkedAt(spot, _p, _pq);
+      return new Matrix4().compose(_p, _pq, _ps);
+    }),
+  );
+  object.add(ramps.object, gliders.object);
+  const blocks = ramps.blocks + gliders.blocks;
+  /** Round each ramp and its glider (world): how near the camera is to its blocks. */
+  const spheres = list.map((_, i) => gliders.bounds(i, ramps.bounds(i, new Box3())).getBoundingSphere(new Sphere()));
+  /** Each spot's glider is off with him; when its flag last waved (s). */
+  const taken = list.map(() => false);
+  const flagT = list.map(() => -Infinity);
+  let near = 0;
+  let shown = ~0;
 
   let warm = 3;
   const api: LaunchSpots = {
@@ -188,55 +202,101 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
       return top;
     },
     along(s, u, v, out) {
-      const f = fwd(s.yaw, _f);
-      return out.set(s.x + f.x * u + f.z * v, s.y + rampDeckY(Math.min(RAMP.length, Math.max(0, u))), s.z + f.z * u - f.x * v);
+      return alongRamp(s, u, v, out);
     },
     parked(s, pos, quat) {
-      // The middle of the base bar on the planks, the nose a little down.
-      quat.setFromAxisAngle(UP, s.yaw).multiply(_q.setFromAxisAngle(X, PARK_PITCH));
-      api.along(s, PARK_AT, 0, pos);
-      return pos.sub(_b.set(0, GLIDER.bar.y, GLIDER.bar.z).multiplyScalar(ROAM_SCALE).applyQuaternion(quat));
+      return parkedAt(s, pos, quat);
     },
     take(spot) {
-      const r = ramps.find((r) => r.spot === spot);
-      if (!r) return;
-      r.taken = true;
-      r.glider.hide();
+      const i = list.indexOf(spot);
+      if (i < 0) return;
+      taken[i] = true;
+      gliders.hide(i, true);
     },
     frame(night, t, at, flying, camera) {
-      // (the first frames move every flag: the camera's matrices may not be set yet)
-      // (and in a headless shot all of them always: its still stays as it was)
-      const see = warm === 0 && !SHOT ? camera : undefined;
+      // (the first frames show and move everything: the camera's matrices may not be set yet)
+      const view = warm === 0 ? camera : undefined;
+      // (and in a headless shot every flag always moves: its still stays as it was)
+      const see = SHOT ? undefined : view;
       if (warm > 0) warm--;
-      if (see) {
+      if (view) {
         // (roaming moves the camera before main.ts updates its matrices)
-        see.updateMatrixWorld();
-        _frustum.setFromProjectionMatrix(_m.multiplyMatrices(see.projectionMatrix, see.matrixWorldInverse));
+        view.updateMatrixWorld();
+        _frustum.setFromProjectionMatrix(_m.multiplyMatrices(view.projectionMatrix, view.matrixWorldInverse));
       }
-      for (const r of ramps) {
-        // (the flag waves only where it can be seen: every frame near, a few times a second far off)
+      // Only the ramps and gliders that can be seen are drawn (merged, three cannot leave one out): in view, or their
+      // shadows (a mast's is long in the low sun); once shown, a little further out before they go.
+      let show = ~0;
+      if (view) {
+        show = 0;
+        for (let i = 0; i < spheres.length; i++) {
+          _sphere.copy(spheres[i]);
+          _sphere.radius += SHADOW_REACH + (shown & (1 << i) ? SHOW_HOLD : 0);
+          if (_frustum.intersectsSphere(_sphere)) show |= 1 << i;
+        }
+      }
+      shown = show;
+      ramps.setShown(show);
+      gliders.setShown(show);
+      // On the low level the ramps and gliders near the camera keep their edges, the rest are plain boxes (graphics.ts
+      // `plainFar`, spot by spot: the nearest of a spot's blocks this far off, a little further to go plain again).
+      if (camera) {
+        _eye.setFromMatrixPosition(camera.matrixWorld);
+        let mask = 0;
+        for (let i = 0; i < spheres.length; i++) {
+          const s = spheres[i];
+          if (_eye.distanceTo(s.center) - s.radius < FAR_PLAIN + (near & (1 << i) ? 4 : 0)) mask |= 1 << i;
+        }
+        near = mask;
+        ramps.setNear(mask);
+        gliders.setNear(mask);
+      }
+      for (let i = 0; i < list.length; i++) {
+        // (the flag and the windsock move only where they can be seen: every frame near, a few times a second far off)
         let flag = true;
         if (see) {
-          r.flagAt.getWorldPosition(_sphere.center);
+          _sphere.center.copy(ramps.flagAt[i]);
           _sphere.radius = FLAG.width + 2;
           const far = _sphere.center.distanceToSquared(see.position) > FAR_FLAG * FAR_FLAG;
-          flag = _frustum.intersectsSphere(_sphere) && (!far || t - r.flagT >= 1 / FAR_FLAG_HZ || t < r.flagT);
-          if (flag) r.flagT = t;
+          flag = _frustum.intersectsSphere(_sphere) && (!far || t - flagT[i] >= 1 / FAR_FLAG_HZ || t < flagT[i]);
+          if (flag) flagT[i] = t;
         }
-        r.update(night, t, flag);
-        if (r.taken && !flying && Math.hypot(at.x - r.spot.x, at.z - r.spot.z) > RETURN_AT) {
-          r.taken = false;
-          park(r);
+        ramps.update(i, night, t, flag);
+        const s = list[i];
+        if (taken[i] && !flying && Math.hypot(at.x - s.x, at.z - s.z) > RETURN_AT) {
+          taken[i] = false;
+          gliders.hide(i, false);
         }
       }
+      ramps.flush();
+      gliders.flush();
     },
   };
-  for (const r of ramps) park(r);
   const built = (s: LaunchSpot) => (s.stilts ? ` built up ${s.lift}m` : '');
   console.info(`[map] launch spots: ${list.length} (${list.map((s) => `${s.x.toFixed(0)},${s.z.toFixed(0)} ↑${s.y.toFixed(0)}m yaw ${Math.round((s.yaw * 180) / Math.PI)}° ↓${s.drop.toFixed(0)}m${built(s)}`).join(' · ')}), ${blocks} blocks, ${pre ? `found in ${pre.ms.toFixed(0)} ms, ` : ''}built in ${(performance.now() - t0).toFixed(0)} ms`);
   return api;
 }
 
+/** Where a point `u` metres along a spot's ramp (from its back) and `v` across (+ = the take-off's left) is, deck top (world). */
+function alongRamp(s: LaunchSpot, u: number, v: number, out: Vector3): Vector3 {
+  const f = fwd(s.yaw, _f);
+  return out.set(s.x + f.x * u + f.z * v, s.y + rampDeckY(Math.min(RAMP.length, Math.max(0, u))), s.z + f.z * u - f.x * v);
+}
+
+/** Where the glider waiting on a spot's ramp is (its hang point, world) and how it is turned: the middle of the base bar on the planks, the nose a little down. */
+function parkedAt(s: LaunchSpot, pos: Vector3, quat: Quaternion): Vector3 {
+  quat.setFromAxisAngle(UP, s.yaw).multiply(_q.setFromAxisAngle(X, PARK_PITCH));
+  alongRamp(s, PARK_AT, 0, pos);
+  return pos.sub(_b.set(0, GLIDER.bar.y, GLIDER.bar.z).multiplyScalar(ROAM_SCALE).applyQuaternion(quat));
+}
+const _p = new Vector3();
+const _pq = new Quaternion();
+const _ps = new Vector3(ROAM_SCALE, ROAM_SCALE, ROAM_SCALE);
+const _eye = new Vector3();
+
+/** A ramp and its glider are drawn while this far (m) from the camera's view (their shadows reach into it), and a little further once they are. */
+const SHADOW_REACH = 60;
+const SHOW_HOLD = 10;
 /** Past this far from the camera (m) a flag is a few pixels: it waves at `FAR_FLAG_HZ` moves a second. */
 const FAR_FLAG = 250;
 const FAR_FLAG_HZ = 10;
@@ -402,7 +462,7 @@ function blocked(field: HeightField, world: RoamWorld, s: LaunchSpot): string | 
 
 /** Every cliff-top take-off that fits on the land, best first (`walk` from the road, on cells `free` of anything built). */
 function candidates(field: HeightField, walk: Float32Array, free: Uint8Array): Candidate[] {
-  const a = ROAM_AREA;
+  const a = HIGHLANDS;
   const L = RAMP.length;
   const { nx, nz, height } = field;
   const H = (x: number, z: number) => field.heightAt(x, z);
@@ -488,7 +548,7 @@ const ACROSS = [-1.4, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 1.4];
  * ahead is kept clear of trees (`reserveLaunchSpots`).
  */
 function perches(field: HeightField, place: PlaceDef, region: string, walk: Float32Array, free: Uint8Array): Candidate[] {
-  const a = ROAM_AREA;
+  const a = HIGHLANDS;
   const L = RAMP.length;
   const H = (x: number, z: number) => field.heightAt(x, z);
   const found: Candidate[] = [];
@@ -601,7 +661,7 @@ const PERCH_ACROSS = [-1.4, -0.7, 0, 0.7, 1.4];
  */
 function corridor(field: HeightField, x: number, y: number, z: number, fx: number, fz: number, land: (x: number, z: number) => number, crowns: (x: number, z: number) => number): number {
   const L = RAMP.length;
-  const a = ROAM_AREA;
+  const a = HIGHLANDS;
   let clear = Infinity;
   // (the middle first: most fail there)
   for (const v of [0, -CORRIDOR, CORRIDOR]) {

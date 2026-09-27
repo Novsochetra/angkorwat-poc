@@ -1,14 +1,18 @@
 import type { AnimalCall, AnimalCallKind, PeopleCallKind } from '../types';
-import { biquad, clamp01, mtof, noise, pick, range, strike, type NoiseKind, type Rng } from './dsp';
+import { clamp01, mtof, pick, range, strike } from './dsp';
 import type { BusName, SoundEngine } from './engine';
+import { KITE_SIZE, KiteVoice } from './kite';
+import { bikeBell, bubble, chop, cowBell, crackle, knock, laugh, MotoVoice, sizzle, splashPlay, type Placing } from './life';
+import { chatter, clip, talkReady, type ClipKind } from './speech';
+import { line, Voice } from './voice';
 import type { Ears } from './water';
 
 /**
- * The people's sounds on the map (people/: they push them into `f.calls`
- * like the animals; the engine hands the `PeopleCallKind`s here), each made
- * fresh from oscillators and noise and placed where it happens, like the
- * animal calls (audio/animals.ts: softer and duller far off, panned, a
- * little late, more of the valley's echo):
+ * The people's sounds on the map (people/ and hamlet/: they push them into
+ * `f.calls` like the animals; the engine hands the `PeopleCallKind`s here),
+ * each made fresh and placed where it happens, like the animal calls
+ * (audio/animals.ts: softer and duller far off, panned, a little late, more
+ * of the valley's echo):
  *
  * - `oxBell`: the bronze bell under an ox's neck, a soft clonk with each
  *   few steps (two oxen, two notes);
@@ -23,20 +27,59 @@ import type { Ears } from './water';
  *   music's pentatonic (D E F# A B), so the two sit together. Near the
  *   dancers it leads: the map's own music steps back while it plays
  *   (`SoundEngine.yieldMusic`, by how loud the pinpeat is there). A phrase
- *   is a few voices struck again and again (~40 nodes), not one a note.
+ *   is a few voices struck again and again (~40 nodes), not one a note;
+ * - `kiteHum`: a khleng ek's song (kite.ts `KiteVoice`: a lasting voice
+ *   per kite, stepping through its notes with the "miaow" rise and sag;
+ *   `size` the kite's, m: bigger is lower and steadier); push one per kite
+ *   every 3–5 s while it flies and is near: each keeps it singing 6 s more.
+ *   Five kites at once, a chorus; carries some 250 m;
+ * - `market`: a knot of people talking (at the market, at a picnic),
+ *   2.5–4 s of speech.ts's `chatter`; `gain` how busy (the market's crowd
+ *   all round is its bed's: hamlets.ts);
+ * - `vendorCall`: a seller calling out her goods, sing-song (speech.ts);
+ * - `chop`, `sizzle`, `bubble`, `crackle`, `knock`, `bikeBell`, `moto`,
+ *   `cowBell`, `splashPlay`: the village's work and play (life.ts: a knife
+ *   or a machete — high over the ears, the tapper's knife in a palm's
+ *   flower stalk —, a wok, palm syrup boiling, a wood fire, bamboo tubes and
+ *   the ladder, a bicycle's bell, a moto — a lasting voice that follows its
+ *   calls: push one every ~2–3 s as it rides (its speed and Doppler come
+ *   from how far it went), it dies away 3.5 s after the last —, the wooden
+ *   cattle bell, children splashing and laughing in the water: `gain` ≥ 0.7
+ *   a jump landing, less a splash fight). The wok, the syrup and the fire
+ *   are phrases of 3–5 s that fade in and out: push one every ~3 s while it
+ *   goes on, they overlap into one sound;
+ * - `hello`: an adult's soft "ជម្រាបសួរ" with the sampeah, `kidHello`: a
+ *   child's bright "សួស្ដី!" (speech.ts), when they greet the explorer back
+ *   (`size`, if sent, the speaker's height in m: a woman's voice under
+ *   1.63 m, a man's over; the smallest child's under 1.2 m).
  *
- * The music is on the Music bus (its slider), the rest on Ambience. Levels
- * are gentle: under the animals' calls close by, and the laughter carries
- * less than a hornbill. At most six at once, two of a kind.
+ * The pinpeat is on the Music bus (its slider), the rest on Ambience.
+ * Levels are gentle: under the animals' calls close by, the laughter
+ * carries less than a hornbill, a greeting is heard across a yard. At most
+ * eight at once, two of a kind; and five kites and two motos.
  */
 
-/** Each sound: its peak level close by, full within `near` m, silent past `reach` m; its bus. */
-const SOUNDS: Record<PeopleCallKind, { level: number; near: number; reach: number; bus: BusName }> = {
+/** Each sound: its peak level close by, full within `near` m, silent past `reach` m; its bus; how many may play at once (2). */
+const SOUNDS: Record<PeopleCallKind, { level: number; near: number; reach: number; bus: BusName; max?: number }> = {
   oxBell: { level: 0.09, near: 6, reach: 70, bus: 'ambience' },
   cartCreak: { level: 0.35, near: 5, reach: 45, bus: 'ambience' },
   netSplash: { level: 0.3, near: 8, reach: 110, bus: 'ambience' },
   laugh: { level: 0.14, near: 10, reach: 150, bus: 'ambience' },
   pinpeat: { level: 0.55, near: 16, reach: 190, bus: 'music' },
+  kiteHum: { level: 0.055, near: 20, reach: 250, bus: 'ambience' },
+  market: { level: 0.14, near: 12, reach: 120, bus: 'ambience' },
+  vendorCall: { level: 0.2, near: 8, reach: 100, bus: 'ambience' },
+  chop: { level: 0.11, near: 4, reach: 50, bus: 'ambience' },
+  sizzle: { level: 0.045, near: 4, reach: 40, bus: 'ambience' },
+  bubble: { level: 0.05, near: 3, reach: 30, bus: 'ambience' },
+  crackle: { level: 0.07, near: 4, reach: 45, bus: 'ambience' },
+  knock: { level: 0.07, near: 5, reach: 70, bus: 'ambience' },
+  bikeBell: { level: 0.03, near: 6, reach: 80, bus: 'ambience', max: 1 },
+  moto: { level: 0.12, near: 10, reach: 140, bus: 'ambience' },
+  hello: { level: 0.125, near: 5, reach: 40, bus: 'ambience' },
+  kidHello: { level: 0.2, near: 6, reach: 60, bus: 'ambience' },
+  cowBell: { level: 0.1, near: 6, reach: 70, bus: 'ambience' },
+  splashPlay: { level: 0.2, near: 8, reach: 90, bus: 'ambience' },
 };
 /** Seconds of one pinpeat phrase (12 beats of 0.6 s); the map's music stays back this long after one begins, and a little more (the next comes as it ends). */
 const PHRASE = 7.2;
@@ -48,8 +91,19 @@ export function isPeopleCall(k: AnimalCallKind): k is PeopleCallKind {
   return KINDS.has(k);
 }
 
-const MAX = 6;
+const MAX = 8;
 const MAX_KIND = 2;
+/** The synthesized voices (speech.ts). */
+const VOICES: ReadonlySet<PeopleCallKind> = new Set<PeopleCallKind>(['vendorCall', 'hello', 'kidHello', 'market']);
+/** Motos at once; a moto call within this far (m) of where one is now is that one; with no call this long (s) it dies away. */
+const MOTOS = 2;
+const MOTO_SAME = 40;
+const MOTO_QUIET = 3.5;
+/** Kites singing at once; a kite call of the same `size` within this far (m) of one is that one. */
+const KITES = 5;
+const KITE_SAME = 30;
+/** How often the lasting voices (motos, kites) follow the ears (s). */
+const LASTING_EVERY = 1 / 15;
 const FALLOFF = 0.8;
 const QUIET = 0.02;
 const SOUND_SPEED = 343;
@@ -62,74 +116,6 @@ function carry(d: number, near: number, reach: number): number {
 const air = (d: number): number => Math.min(18000, Math.max(1100, 18000 / (1 + d / 45) ** 0.85));
 const wetOf = (d: number): number => 0.06 + (0.5 * d) / (d + 100);
 
-/** One sound's nodes: made, started, and all let go when its last source ends. */
-class Voice {
-  readonly out: GainNode;
-  end = 0;
-  private readonly nodes: AudioNode[] = [];
-  private readonly srcs: [AudioScheduledSourceNode, number, number, number][] = [];
-
-  constructor(
-    readonly ctx: BaseAudioContext,
-    readonly r: Rng,
-  ) {
-    this.out = this.gain(1);
-  }
-
-  keep<T extends AudioNode>(n: T): T {
-    this.nodes.push(n);
-    return n;
-  }
-
-  gain(v = 0): GainNode {
-    const g = this.keep(this.ctx.createGain());
-    g.gain.value = v;
-    return g;
-  }
-
-  filter(type: BiquadFilterType, f: number, q = 0.7): BiquadFilterNode {
-    return this.keep(biquad(this.ctx, type, f, q));
-  }
-
-  osc(wave: OscillatorType | PeriodicWave, from: number, to: number, f: number): OscillatorNode {
-    const o = this.keep(this.ctx.createOscillator());
-    if (wave instanceof PeriodicWave) o.setPeriodicWave(wave);
-    else o.type = wave;
-    o.frequency.value = f;
-    this.srcs.push([o, from, to, -1]);
-    return o;
-  }
-
-  noise(kind: NoiseKind, from: number, to: number): AudioBufferSourceNode {
-    const s = this.keep(this.ctx.createBufferSource());
-    const buf = noise(kind);
-    s.buffer = buf;
-    s.loop = true;
-    this.srcs.push([s, from, to, this.r() * buf.duration]);
-    return s;
-  }
-
-  play(): void {
-    let left = this.srcs.length;
-    if (!left) return this.drop();
-    const done = () => {
-      if (--left === 0) for (const n of this.nodes) n.disconnect();
-    };
-    for (const [s, from, to, offset] of this.srcs) {
-      const stop = Math.max(to, from + 0.01);
-      this.end = Math.max(this.end, stop);
-      s.onended = done;
-      if (offset >= 0) (s as AudioBufferSourceNode).start(from, offset);
-      else s.start(from);
-      s.stop(stop);
-    }
-  }
-
-  drop(): void {
-    for (const n of this.nodes) n.disconnect();
-  }
-}
-
 /** Pentatonic notes of the map's music (D E F# A B), as MIDI numbers in a range. */
 function penta(lo: number, hi: number): number[] {
   const out: number[] = [];
@@ -139,6 +125,10 @@ function penta(lo: number, hi: number): number[] {
 
 export class PeopleSound {
   private ears: Ears | null = null;
+  /** The lasting voices: the motos on the move (`MotoVoice`), the kites singing (`KiteVoice`), and when they last followed the ears. */
+  private motos: MotoVoice[] = [];
+  private kites: KiteVoice[] = [];
+  private lastingAt = -1;
   private readonly playing: { kind: PeopleCallKind; end: number }[] = [];
   private bar: PeriodicWave | null = null;
   private reed: PeriodicWave | null = null;
@@ -149,6 +139,65 @@ export class PeopleSound {
 
   listen(ears: Ears): void {
     this.ears = ears;
+    if (!this.motos.length && !this.kites.length) return;
+    const now = this.e.ctx.currentTime;
+    if (now - this.lastingAt < LASTING_EVERY) return;
+    this.lastingAt = now;
+    if (!this.e.heard('ambience')) {
+      for (const m of this.motos) m.stop(now);
+      for (const k of this.kites) k.stop(now);
+      this.motos = [];
+      this.kites = [];
+      return;
+    }
+    for (const m of this.motos) m.update(now, this.placeMoto, MOTO_QUIET);
+    for (const k of this.kites) k.update(now, this.placeKite);
+    this.motos = this.motos.filter((m) => !m.done);
+    this.kites = this.kites.filter((k) => !k.done);
+  }
+
+  /** Where a lasting voice of `kind` is from the ears: its level (`SOUNDS`), air, pan, reverb send. */
+  private placing(kind: 'moto' | 'kiteHum'): Placing {
+    const spec = SOUNDS[kind];
+    return (x, y, z, gain) => {
+      const ears = this.ears!;
+      const rx = x - ears.x;
+      const ry = y - ears.y;
+      const rz = z - ears.z;
+      const d = Math.hypot(rx, ry, rz) || 1e-3;
+      const side = (rx * ears.right[0] + ry * ears.right[1] + rz * ears.right[2]) / d;
+      const behind = Math.max(0, -(rx * ears.forward[0] + ry * ears.forward[1] + rz * ears.forward[2]) / d);
+      return { level: spec.level * clamp01(gain) * carry(d, spec.near, spec.reach) * (1 - 0.3 * behind), air: air(d) * (1 - 0.4 * behind), pan: Math.max(-0.8, Math.min(0.8, 0.8 * side)), wet: wetOf(d), d, rx, ry, rz };
+    };
+  }
+  private readonly placeMoto = this.placing('moto');
+  private readonly placeKite = this.placing('kiteHum');
+
+  /** A kite's call: the kite it comes from sings on (or one starts, if there is room and it would be heard). */
+  private kite(c: AnimalCall, now: number, d: number): void {
+    const size = c.size ?? KITE_SIZE;
+    for (const k of this.kites) if (!k.fading && Math.abs(k.size - size) < 0.02 && Math.hypot(c.x - k.x, c.z - k.z) < KITE_SAME) return k.call(c, now);
+    const spec = SOUNDS.kiteHum;
+    if (this.kites.filter((k) => !k.fading).length >= KITES || clamp01(c.gain) * carry(d, spec.near, spec.reach) < QUIET) return;
+    const bus = this.e.bus[spec.bus];
+    const k = new KiteVoice(this.e.ctx, this.e.rnd, c, now + LEAD, bus.dry, bus.wet);
+    k.update(now, this.placeKite);
+    this.kites.push(k);
+  }
+
+  /** A moto's call: the moto it comes from goes on (or one starts, if there is room and it would be heard). */
+  private moto(c: AnimalCall, now: number, d: number): void {
+    for (const m of this.motos) {
+      if (m.fading) continue;
+      const [x, , z] = m.at(now);
+      if (Math.hypot(c.x - x, c.z - z) < MOTO_SAME) return m.call(c, now);
+    }
+    const spec = SOUNDS.moto;
+    if (this.motos.filter((m) => !m.fading).length >= MOTOS || clamp01(c.gain) * carry(d, spec.near, spec.reach) < QUIET) return;
+    const bus = this.e.bus[spec.bus];
+    const m = new MotoVoice(this.e.ctx, this.e.rnd, c, now, bus.dry, bus.wet);
+    m.update(now, this.placeMoto, MOTO_QUIET);
+    this.motos.push(m);
   }
 
   /** A sound at its place, from `now` (audio clock); dropped when too many play, its bus is muted, or it would not be heard. */
@@ -157,10 +206,17 @@ export class PeopleSound {
     if (!ears || !isPeopleCall(c.kind)) return;
     const kind = c.kind;
     const spec = SOUNDS[kind];
-    if (!this.e.heard(spec.bus)) return;
+    if (spec.level <= 0 || !this.e.heard(spec.bus)) return;
+    // (a moto and a kite are lasting voices that follow their calls)
+    if (kind === 'moto') return this.moto(c, now, Math.hypot(c.x - ears.x, c.y - ears.y, c.z - ears.z));
+    if (kind === 'kiteHum') return this.kite(c, now, Math.hypot(c.x - ears.x, c.y - ears.y, c.z - ears.z));
+    // (the talk is not made yet: skipped, not made in a frame)
+    if (kind === 'market' && !talkReady()) return;
     const playing = this.playing;
     for (let i = playing.length - 1; i >= 0; i--) if (playing[i].end <= now) playing.splice(i, 1);
-    if (playing.length >= MAX || playing.filter((p) => p.kind === kind).length >= MAX_KIND) return;
+    let same = 0;
+    for (const p of playing) if (p.kind === kind) same++;
+    if (playing.length >= MAX || same >= (spec.max ?? MAX_KIND)) return;
     const dx = c.x - ears.x;
     const dy = c.y - ears.y;
     const dz = c.z - ears.z;
@@ -174,18 +230,15 @@ export class PeopleSound {
     const t = now + LEAD + d / SOUND_SPEED + r() * 0.02;
     const v = new Voice(ctx, r);
     try {
-      if (kind === 'oxBell') this.bell(v, t, c.gain);
-      else if (kind === 'cartCreak') this.creak(v, t);
-      else if (kind === 'netSplash') this.splash(v, t);
-      else if (kind === 'laugh') this.laugh(v, t);
-      else this.pinpeat(v, t);
+      this.make(kind, v, t, c);
       const bus = this.e.bus[spec.bus];
       const lv = v.gain(spec.level * k);
       const lp = v.filter('lowpass', air(d) * (1 - 0.4 * behind), 0.5);
       const pan = v.keep(ctx.createStereoPanner());
       pan.pan.value = Math.max(-0.8, Math.min(0.8, 0.8 * side));
       v.out.connect(lv).connect(lp).connect(pan).connect(bus.dry);
-      pan.connect(v.gain(wetOf(d) * (kind === 'pinpeat' ? 1.4 : 1))).connect(bus.wet);
+      // (the pinpeat and the voices a little more in the valley's echo: a voice sits in its place, not at the ear)
+      pan.connect(v.gain(wetOf(d) * (kind === 'pinpeat' ? 1.4 : 1) + (VOICES.has(kind) ? 0.12 : 0))).connect(bus.wet);
       v.play();
     } catch (err) {
       v.drop();
@@ -196,7 +249,75 @@ export class PeopleSound {
     if (kind === 'pinpeat') this.e.yieldMusic(k, now, t + PHRASE + PHRASE_HOLD);
   }
 
+  /** The sound of `kind` into `v` from `t`. */
+  private make(kind: PeopleCallKind, v: Voice, t: number, c: AnimalCall): void {
+    switch (kind) {
+      case 'oxBell':
+        return this.bell(v, t, c.gain);
+      case 'cartCreak':
+        return this.creak(v, t);
+      case 'netSplash':
+        return this.splash(v, t);
+      case 'laugh':
+        return void laugh(v, t);
+      case 'pinpeat':
+        return this.pinpeat(v, t);
+      case 'market':
+        return this.talk(v, t);
+      case 'vendorCall':
+        return this.say(v, t, 'vendor');
+      case 'hello':
+        // (the greeter's height, if sent: a woman's voice under 1.63 m, a man's over)
+        return this.say(v, t, 'hello', c.size === undefined ? undefined : c.size < 1.63 ? [0, 2] : [1, 3]);
+      case 'kidHello':
+        return this.say(v, t, 'kidHello', c.size === undefined ? undefined : c.size < 1.2 ? [2] : [0, 1]);
+      case 'chop':
+        // (high over the ears: up a sugar palm, the tapper's knife in the flower stalk)
+        return void chop(v, t, !!this.ears && c.y - this.ears.y > 3.5);
+      case 'sizzle':
+        return void sizzle(v, t);
+      case 'bubble':
+        return void bubble(v, t);
+      case 'crackle':
+        return void crackle(v, t);
+      case 'knock':
+        return void knock(v, t);
+      case 'bikeBell':
+        return void bikeBell(v, t);
+      case 'cowBell':
+        return void cowBell(v, t);
+      case 'splashPlay':
+        // (a strong call: a jump landing; a softer one: a splash fight)
+        return void splashPlay(v, t, c.gain >= 0.7);
+    }
+  }
+
   // ── The sounds ──
+
+  /** A voice saying its clip (a greeting, a seller's call): one of its voices (among `from`), a shade higher or lower each time. */
+  private say(v: Voice, t: number, kind: ClipKind, from?: readonly number[]): void {
+    const buf = clip(kind, v.r, from);
+    const rate = range(v.r, 0.96, 1.04);
+    // (its top softened: a voice from across the yard, not a synthesizer's edge)
+    v.buffer(buf, t, t + buf.duration / rate + 0.02, 0, false, rate).connect(v.filter('lowpass', 5500, 0.6)).connect(v.out);
+  }
+
+  /** A knot of people talking (the market's, a picnic's): a stretch of the chatter, fading in and out (`gain`, how busy, sets its level; the market's crowd is its bed's, hamlets.ts). */
+  private talk(v: Voice, t: number): void {
+    const r = v.r;
+    const dur = range(r, 2.5, 4);
+    const env = v.gain(0);
+    line(env.gain, t, [
+      [0, 0],
+      [0.5, 1],
+      [dur - 0.7, 1],
+      [dur, 0],
+    ]);
+    const near = chatter();
+    v.buffer(near, t, t + dur, r() * near.duration, true, range(r, 0.95, 1.05)).connect(env);
+    env.connect(v.out);
+  }
+
 
   /** The ox's bronze bell: a soft clonk (two inharmonic partials and a wooden knock of the clapper). */
   private bell(v: Voice, t: number, gain: number): void {
@@ -259,43 +380,6 @@ export class PeopleSound {
       const g = v.gain();
       strike(g.gain, s, range(r, 0.08, 0.18), 0.002, 0.012);
       o.connect(g).connect(v.out);
-    }
-  }
-
-  /** Children laughing, far off: a run of short voiced "ha"s, falling a little, a second child now and then. */
-  private laugh(v: Voice, t: number): void {
-    const r = v.r;
-    const kids = r() < 0.4 ? 2 : 1;
-    for (let c = 0; c < kids; c++) {
-      let s = t + c * range(r, 0.15, 0.4);
-      const f0 = range(r, 360, 470) * (c ? 1.15 : 1);
-      const n = 3 + Math.floor(r() * 5);
-      const voice = v.osc('sawtooth', s, s + n * 0.22 + 0.2, f0);
-      const env = v.gain();
-      env.gain.setValueAtTime(0, s);
-      const breath = v.noise('pink', s, s + n * 0.22 + 0.2);
-      const benv = v.gain();
-      benv.gain.setValueAtTime(0, s);
-      for (let k = 0; k < n; k++) {
-        const len = range(r, 0.08, 0.13);
-        const f = f0 * (1.12 - (0.18 * k) / n) * range(r, 0.97, 1.03);
-        voice.frequency.setValueAtTime(f * 1.05, s);
-        voice.frequency.linearRampToValueAtTime(f * 0.92, s + len);
-        env.gain.setValueAtTime(0, s);
-        env.gain.linearRampToValueAtTime(0.5, s + 0.015);
-        env.gain.linearRampToValueAtTime(0, s + len);
-        benv.gain.setValueAtTime(0, s);
-        benv.gain.linearRampToValueAtTime(0.25, s + 0.01);
-        benv.gain.linearRampToValueAtTime(0, s + len * 0.7);
-        s += len + range(r, 0.06, 0.1);
-      }
-      // (the vowel "a": two formants)
-      const mix = v.gain(1);
-      voice.connect(env);
-      env.connect(v.filter('bandpass', range(r, 950, 1150), 4)).connect(mix);
-      env.connect(v.filter('bandpass', range(r, 1500, 1800), 5)).connect(v.gain(0.4)).connect(mix);
-      breath.connect(v.filter('bandpass', 1800, 1.5)).connect(benv).connect(mix);
-      mix.connect(v.out);
     }
   }
 

@@ -64,9 +64,11 @@ export function buildLamps(b: VoxelBuilder, net: RoadNetwork, field: HeightField
 }
 
 /**
- * A Khmer stone lamp, ≈ 1.5 m: a square post on a plinth, a little chamber
- * with a window of light on every side between four corner posts, and a roof
- * rising in tiers to a lotus bud.
+ * A Khmer stone lamp, ≈ 1.65 m: a square post on a plinth, a little chamber
+ * with a window of light on every side between four corner posts, and over
+ * it a small lotus-bud tower (a prasat's corn-cob outline: slow to narrow,
+ * then closing in to the bud's tip), so it reads as Angkor's, not as a
+ * garden lantern with a wide roof.
  */
 function lamp(b: VoxelBuilder, x: number, y: number, z: number, ry: number, tone: number, tone2: number, src: ReturnType<typeof traceSource>): void {
   const post = pick(WALL, tone);
@@ -88,10 +90,13 @@ function lamp(b: VoxelBuilder, x: number, y: number, z: number, ry: number, tone
     const e = w * 0.14;
     b.box(x + a * c + e * s, y + 0.98, z - a * s + e * c, 0.08, 0.28, 0.08, cap, 'mapStone', { ry, shade: 0.9, src });
   }
-  at(0.46, 1.12, 1.2, cap, 0.95);
-  at(0.32, 1.2, 1.3, cap, 0.97);
-  at(0.2, 1.3, 1.42, cap, 1);
-  at(0.1, 1.42, 1.52, cap, 1.02);
+  at(0.42, 1.12, 1.19, cap, 0.95);
+  at(0.34, 1.19, 1.27, cap, 0.97);
+  at(0.3, 1.27, 1.35, cap, 0.98);
+  at(0.25, 1.35, 1.43, cap, 0.99);
+  at(0.19, 1.43, 1.5, cap, 1);
+  at(0.12, 1.5, 1.57, cap, 1.01);
+  at(0.06, 1.57, 1.66, cap, 1.03);
 }
 
 /**

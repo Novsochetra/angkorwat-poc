@@ -16,21 +16,26 @@ import {
 } from "./offerings";
 import type { Piece, PieceMaker } from "./pieces";
 import { buddhaStatue } from "./buddha";
-import { stupa, stupaNiche, stupaStats, type StupaLook } from "./stupa";
+import { stupa, stupaNiche, stupaStats, type StupaForm, type StupaLook } from "./stupa";
 
 /**
  * Offerings and stupas for the preview (sacred.html):
  *
  * - `offering-<kind>` (candle, incense, lotusVase, baySei, fruitPlate,
  *   marigold, parasol, alms), `offering-<kind>-far` (the far mesh);
- *   `offering-candle-white`, `offering-parasol-gold`, `offering-parasol-5`,
+ *   `offering-candle-white`, `offering-parasol-white` (the parasol is white
+ *   by default), `offering-parasol-gold`, `offering-parasol-5`,
  *   `offering-baySei-3|7`.
  * - `offerings-all`: a row of them all but the parasol;
  *   `offerings-altar`: an altar table dressed with them, two parasols.
- * - `stupa-white`, `stupa-gold`, `stupa-stone` (4 m), `stupa-niche`
- *   (2.4 m, white), `stupa-niche-gold`, `stupa-niche-stone`; add `-far`
- *   for the far mesh (`stupa-white-far`…); `stupa-niche-buddha`: a small
- *   Buddha seated in the niche (where `stupaNiche` says).
+ * - Stupas (stupa.ts): `stupa-white`, `stupa-gold`, `stupa-stone` (the
+ *   Angkor Wat tower form, 4 m), `stupa-white-faces`, `stupa-gold-faces`,
+ *   `stupa-stone-faces` (four Bayon faces); `stupa-niche` (4.5 m, white),
+ *   `stupa-niche-gold`, `stupa-niche-stone`, `stupa-niche-faces` (5.2 m,
+ *   white, the village pagoda's); add `-far` for the far mesh
+ *   (`stupa-white-far`, `stupa-niche-faces-far`…); `stupa-niche-buddha`,
+ *   `stupa-niche-faces-buddha`: a small Buddha seated in the niche (where
+ *   `stupaNiche` says); `stupas-all`: the three looks in both forms.
  */
 
 const tris = (o: Object3D, far = false): number => {
@@ -90,6 +95,8 @@ for (const kind of OFFERING_KINDS) {
 }
 PIECES["offering-candle-white"] = () =>
   show(offering("candle", { wax: "white" }));
+PIECES["offering-parasol-white"] = () =>
+  show(offering("parasol", { look: "white" }));
 PIECES["offering-parasol-gold"] = () =>
   show(offering("parasol", { look: "gold" }));
 PIECES["offering-parasol-5"] = () => show(offering("parasol", { tiers: 5 }));
@@ -178,34 +185,44 @@ PIECES["offerings-altar"] = () => {
   return { object: g, size: [2.2, 2.2], note: `${stats()}` };
 };
 
+const stupaStatsNote = (): string =>
+  stupaStats()
+    .map((s) => `${s.key} ${s.triangles}▲ ${s.ms.toFixed(0)}ms`)
+    .join(", ");
+
 const stupaPiece = (
   look: StupaLook,
   height: number,
   niche: boolean,
+  form: StupaForm = "tower",
   far = false,
 ): Piece => {
-  const object = stupa({ height, look, niche });
+  const object = stupa({ height, look, niche, form, sync: true });
   if (far) onlyFar(object);
-  const st = stupaStats()
-    .map((s) => `${s.key} ${s.triangles}▲ ${s.ms.toFixed(0)}ms`)
-    .join(", ");
   return {
     object,
     size: [height * 0.5, height],
-    note: `${tris(object, far)} triangles · ${st}`,
+    note: `${tris(object, far)} triangles · ${stupaStatsNote()}`,
   };
 };
 for (const look of ["white", "gold", "stone"] as const) {
-  PIECES[`stupa-${look}`] = () => stupaPiece(look, 4, false);
-  PIECES[`stupa-${look}-far`] = () => stupaPiece(look, 4, false, true);
-  PIECES[`stupa-niche${look === "white" ? "" : "-" + look}`] = () =>
-    stupaPiece(look, 2.4, true);
+  for (const form of ["tower", "faces"] as const) {
+    const name = `stupa-${look}${form === "faces" ? "-faces" : ""}`;
+    PIECES[name] = () => stupaPiece(look, 4, false, form);
+    PIECES[`${name}-far`] = () => stupaPiece(look, 4, false, form, true);
+  }
+  const niche = `stupa-niche${look === "white" ? "" : "-" + look}`;
+  PIECES[niche] = () => stupaPiece(look, 4.5, true);
+  PIECES[`${niche}-far`] = () => stupaPiece(look, 4.5, true, "tower", true);
 }
+PIECES["stupa-niche-faces"] = () => stupaPiece("white", 5.2, true, "faces");
+PIECES["stupa-niche-faces-far"] = () =>
+  stupaPiece("white", 5.2, true, "faces", true);
 
-PIECES["stupa-niche-buddha"] = () => {
+/** A stupa with a small gilt Buddha seated in its niche. */
+const withBuddha = (height: number, form: StupaForm): Piece => {
   const g = new Group();
-  const height = 2.4;
-  g.add(stupa({ height, look: "white", niche: true }));
+  g.add(stupa({ height, look: "white", niche: true, form, sync: true }));
   const n = stupaNiche({ height, look: "white" });
   const b = buddhaStatue({
     kind: "meditate",
@@ -220,6 +237,26 @@ PIECES["stupa-niche-buddha"] = () => {
   return {
     object: g,
     size: [height * 0.5, height],
-    note: `niche ${n.width.toFixed(2)} × ${n.height.toFixed(2)} × ${n.depth.toFixed(2)} m at ${n.at.toArray().map((v) => v.toFixed(2))}`,
+    note: `niche ${n.width.toFixed(2)} × ${n.height.toFixed(2)} × ${n.depth.toFixed(2)} m at ${n.at.toArray().map((v) => v.toFixed(2))} · ${stupaStatsNote()}`,
   };
+};
+PIECES["stupa-niche-buddha"] = () => withBuddha(4.5, "tower");
+PIECES["stupa-niche-faces-buddha"] = () => withBuddha(5.2, "faces");
+
+PIECES["stupas-all"] = () => {
+  const g = new Group();
+  const all: [StupaLook, StupaForm][] = [
+    ["white", "tower"],
+    ["gold", "tower"],
+    ["stone", "tower"],
+    ["white", "faces"],
+    ["gold", "faces"],
+    ["stone", "faces"],
+  ];
+  all.forEach(([look, form], i) => {
+    const s = stupa({ height: 4, look, form, sync: true });
+    s.position.set((i - 2.5) * 2.3, 0, 0);
+    g.add(s);
+  });
+  return { object: g, size: [11, 4], note: stupaStatsNote() };
 };

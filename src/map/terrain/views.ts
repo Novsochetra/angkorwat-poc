@@ -65,19 +65,111 @@ export function viewDistance(v: MapView, x: number, y: number, z: number): numbe
   return Math.hypot(dx, dy, dz);
 }
 
+/** A box on the map (m). */
+export interface MapBox {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+}
+
 /**
- * Where the explorer can roam: the map less its sinking side and back edges
- * (the same box as roam/world.ts `inBounds`).
+ * Where the explorer can roam: the map less its sinking side and back edges,
+ * as boxes that overlap. The highlands of the six places, and the land round
+ * Phnom Kulen and east of it, where the map grew: walkable all round the holy
+ * mountain, over the Kulen stream and on to the hills east of it. Behind the
+ * north hills the land sinks into the mist from the first box's back edge on,
+ * as it always did. Past the roaming area the land sinks (heightfield.ts
+ * `edgeFall`), and so the mist (sky/mist.ts) and the edge banks (clouds.ts)
+ * follow its outline; roam/world.ts `inBounds` and `edgeDistance` read it.
  */
-export const ROAM_AREA = { x0: MAP_BOUNDS.x0 + 150, x1: MAP_BOUNDS.x1 - 150, z0: MAP_BOUNDS.z0 + 150, z1: MAP_BOUNDS.z1 };
+export const ROAM_BOXES: readonly MapBox[] = [
+  { x0: MAP_BOUNDS.x0 + 150, x1: 450, z0: -510, z1: MAP_BOUNDS.z1 },
+  { x0: 230, x1: MAP_BOUNDS.x1 - 160, z0: MAP_BOUNDS.z0 + 150, z1: MAP_BOUNDS.z1 },
+];
+/** The box round the whole roaming area (the big map shows it). */
+export const ROAM_AREA: MapBox = {
+  x0: Math.min(...ROAM_BOXES.map((b) => b.x0)),
+  x1: Math.max(...ROAM_BOXES.map((b) => b.x1)),
+  z0: Math.min(...ROAM_BOXES.map((b) => b.z0)),
+  z1: Math.max(...ROAM_BOXES.map((b) => b.z1)),
+};
 /** How far the follow camera gets from the explorer (m; followCam.ts `maxDistance`). */
 export const CAM_REACH = 40;
 
+/**
+ * How far (x, z) is inside the roaming area (m), or minus how far it is
+ * outside. Outside, `square` takes the larger of the two distances across and
+ * along (the land's sinking band has square corners, heightfield.ts
+ * `edgeFall`), else the straight one. Without `front` the map's front edge
+ * (under the overview camera, where the land does not sink) is no edge.
+ */
+export function roamInside(x: number, z: number, front = true, square = false): number {
+  let inside = -Infinity;
+  let out = Infinity;
+  for (const b of ROAM_BOXES) {
+    const z1 = front || b.z1 < MAP_BOUNDS.z1 ? b.z1 : Infinity;
+    const dx = Math.max(b.x0 - x, x - b.x1);
+    const dz = Math.max(b.z0 - z, z - z1);
+    if (dx <= 0 && dz <= 0) inside = Math.max(inside, -Math.max(dx, dz));
+    else out = Math.min(out, square ? Math.max(dx, dz) : Math.hypot(Math.max(0, dx), Math.max(0, dz)));
+  }
+  return inside > -Infinity ? inside : -out;
+}
+
+/**
+ * Metres past the end of the land at (x, z): where it has sunk all the way
+ * into the mist (the sinking band's outer edge, `EDGE_BAND` past the roaming
+ * area; negative inside). The front edge does not count.
+ */
+export const pastLand = (x: number, z: number): number => -roamInside(x, z, false, true) - EDGE_BAND;
+/** Width of the band past the roaming area where the land sinks into the mist (m; heightfield.ts `edgeFall`). */
+export const EDGE_BAND = 150;
+
+/** Is (x, z) in the roaming area? */
+export const inRoam = (x: number, z: number): boolean => roamInside(x, z) > 0;
+
 /** Distance (m) on the map from a point to the roaming area (0 inside). */
 export function roamDistance(x: number, z: number): number {
-  const dx = Math.max(0, ROAM_AREA.x0 - x, x - ROAM_AREA.x1);
-  const dz = Math.max(0, ROAM_AREA.z0 - z, z - ROAM_AREA.z1);
-  return Math.hypot(dx, dz);
+  return Math.max(0, -roamInside(x, z));
+}
+
+/** How far inside the boxes' overlap the way back round the area's inner corner heads (m, at most a third of its size). */
+const CORNER_IN = 60;
+
+/**
+ * Where to head for from (x, z), coming back into the roaming area on the
+ * way home to (hx, hz) (the wind at its edge turns the fliers towards the
+ * temples: roam/hangGlider.ts, parachute.ts, balloon.ts): home itself when
+ * the straight way there stays in the area, else a point `CORNER_IN` m
+ * inside the overlap of the box he is in (or nearest) and home's box — round
+ * the area's inner corner, never across the gap outside it. Writes `out`.
+ */
+export function roamHeading(x: number, z: number, hx: number, hz: number, out: { x: number; z: number }): { x: number; z: number } {
+  out.x = hx;
+  out.z = hz;
+  const n = Math.ceil(Math.hypot(hx - x, hz - z) / 10);
+  let straight = true;
+  for (let i = 1; i < n && straight; i++) straight = roamInside(x + ((hx - x) * i) / n, z + ((hz - z) * i) / n) > 0;
+  if (straight) return out;
+  // (his box: the one he is deepest in, or the nearest; home's box: the one it is deepest in)
+  const depth = (b: MapBox, px: number, pz: number) => -Math.max(b.x0 - px, px - b.x1, b.z0 - pz, pz - b.z1);
+  let mine = ROAM_BOXES[0];
+  let home = ROAM_BOXES[0];
+  for (const b of ROAM_BOXES) {
+    if (depth(b, x, z) > depth(mine, x, z)) mine = b;
+    if (depth(b, hx, hz) > depth(home, hx, hz)) home = b;
+  }
+  const x0 = Math.max(mine.x0, home.x0);
+  const x1 = Math.min(mine.x1, home.x1);
+  const z0 = Math.max(mine.z0, home.z0);
+  const z1 = Math.min(mine.z1, home.z1);
+  if (mine === home || x0 >= x1 || z0 >= z1) return out;
+  const mx = Math.min(CORNER_IN, (x1 - x0) / 3);
+  const mz = Math.min(CORNER_IN, (z1 - z0) / 3);
+  out.x = Math.min(x1 - mx, Math.max(x0 + mx, x));
+  out.z = Math.min(z1 - mz, Math.max(z0 + mz, z));
+  return out;
 }
 
 const camXs = MAP_VIEWS.map((v) => v.pos[0]);

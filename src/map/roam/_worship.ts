@@ -55,6 +55,12 @@ export const WORSHIP: WorshipSpot[] = [
   // south door of the sanctuary at the stair's top beyond him; knelt on the
   // pad before the altar (grass over 150).
   { id: 'kulen-stair-foot', place: 'kulen', x: 370, y: 150.25, z: -422.6, fx: 370, fz: -425.5 },
+  // Phnom Kulen: the reclining Buddha, Preah Ang Thom, along the top of his
+  // boulder east of the temple (landmarks/_kulenBuddha.ts: the rock's middle
+  // (409, −445), floor 150; the Buddha on his bed at z −448.7, his head to
+  // the west), knelt on the rock's floor before the altar at his chest, up
+  // the stair from the paved way (`RECLINING.way`; the pilgrims' spot too).
+  { id: 'kulen-buddha', place: 'kulen', x: 406.5, y: 150, z: -444.4, fx: 406.5, fz: -448.7 },
   // River Gate: the gilt Buddha in the door of the riverside shrine behind
   // the first gate (rivergate.ts `prasat` at road frame (cx, −16) →
   // (−85.97, 28.38); the Buddha 1 m out along its door's axis → (−85.41,

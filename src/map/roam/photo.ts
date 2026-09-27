@@ -8,7 +8,7 @@ import { PLACES, PLATEAUS } from '../layout';
 import type { MapPart, RoamMode } from '../types';
 import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import { createJournal, type Journal } from './_book';
-import { KHMER_MONTHS, SPECIES_BY_KIND } from './_bookData';
+import { KHMER_MONTHS, SPECIES_BY_KIND, STAMPS } from './_bookData';
 import { attachBookUi, type AlbumTab, type BookUi } from './_bookUi';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
@@ -497,9 +497,11 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
 }
 
 /**
- * Where a photo was taken, in words: at a place ("Near Angkor Wat"), on a
- * road ("On the valley road"), by or on a river, else on the mesa or hills
- * round him ("On the western cliffs"), else in the highlands.
+ * Where a photo was taken, in words: at a place ("Near Angkor Wat"), at a
+ * village, a holy place or a jungle site of the passport ("At the morning
+ * market", "At the woodcutters' camp": `STAMPS`, within a few metres of its
+ * reach), on a road ("On the valley road"), by or on a river, else on the
+ * mesa or hills round him ("On the western cliffs"), else in the highlands.
  */
 export function placeName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
   if (mode !== 'hang' && mode !== 'balloon') return groundName(world, at, mode);
@@ -519,6 +521,18 @@ function groundName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
     if (d < nd) [near, nd] = [p, d];
   }
   if (near && nd <= 0) return near.id === 'rivergate' ? 'At the River Gate' : `At ${near.name}`;
+  // (the passport's villages, holy places and jungle sites: the nearest whose reach he is in, or nearly)
+  let stamp: (typeof STAMPS)[number] | null = null;
+  let sd = STAMP_EXTRA;
+  for (const s of STAMPS) {
+    if (s.group === 'temples') continue;
+    const d = Math.hypot(s.x - at.x, s.z - at.z) - s.reach;
+    if (d < sd) [stamp, sd] = [s, d];
+  }
+  if (stamp) {
+    const n = /^The /.test(stamp.name.en) ? stamp.name.en.replace(/^The /, 'the ') : lower(stamp.name.en);
+    return /^[A-Z]/.test(n) || n.startsWith('the ') ? `At ${n}` : `At the ${n}`;
+  }
   if (near && nd < 45) return near.id === 'rivergate' ? 'By the River Gate' : `Near ${near.name}`;
   const f = world.field;
   for (const r of f.rivers)
@@ -536,6 +550,9 @@ function groundName(world: RoamWorld, at: Vector3, mode: RoamMode): string {
   if (hill) return hill === 'Phnom Kulen' ? 'On Phnom Kulen' : `On the ${lower(hill).replace(/ (low|mid) tier$| top$/, '')}`;
   return 'In the Angkor highlands';
 }
+
+/** A passport stamp names where a photo was taken this far past its reach (m). */
+const STAMP_EXTRA = 6;
 
 /** "Summit river" → "summit river" (names keep their capitals: "Phnom Kulen"). */
 const lower = (s: string) => (/^[A-Z][a-z]+ [A-Z]/.test(s) ? s : s.charAt(0).toLowerCase() + s.slice(1));

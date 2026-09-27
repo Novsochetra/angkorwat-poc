@@ -17,7 +17,11 @@ import type { Ears } from './water';
  *    later the farther it struck (sound: 340 m/s), a crack first when it is
  *    close, then a low rolling rumble, longer, lower and softer far off,
  *    from the side it struck on;
- *  - birds and cicadas keep quiet in the rain (Ambience.setRain).
+ *  - birds and cicadas keep quiet in the rain (Ambience.setRain);
+ *  - snow (`snow`, a dream: the Weather setting's "snow"): the hush of a
+ *    snowy day — a very soft, fine hiss of the air and the falling flakes,
+ *    a slow low breath of wind under it, swelling and settling; the rest of
+ *    the world muffled (engine.ts `Bus.muffle`, ambience.ts `setSnow`).
  * The loops run only while they are heard (nothing is made while it is dry
  * and calm, nor while the ambience is muted: `idle`).
  */
@@ -30,6 +34,9 @@ const LEVEL = {
   wind: 0.24,
   tap: 0.09,
   thunder: 0.9,
+  /** Snow: the fine hiss, the low breath of wind under it. */
+  snowHiss: 0.05,
+  snowWind: 0.1,
 };
 /** Speed of sound (m/s). */
 const SOUND = 340;
@@ -92,6 +99,13 @@ export class WeatherSound {
   private readonly gust: GainNode;
   private readonly windTone: BiquadFilterNode;
   private readonly loops: { loop: Loop; on: () => boolean }[];
+  /** The snow's hiss and breath of wind, and their slow swell. */
+  private readonly snowHiss: GainNode;
+  private readonly snowWind: GainNode;
+  private readonly snowSwell: GainNode;
+  private snow = 0;
+  private snowSet = -1;
+  private nextSwell = -1;
   /** The weather now (levels the voices read when they are scheduled). */
   private rain = 0;
   private blow = 0;
@@ -136,7 +150,19 @@ export class WeatherSound {
     const windIn = biquad(ctx, 'highpass', 90, 0.5);
     windIn.connect(this.windTone).connect(this.gust).connect(this.wind).connect(dry);
     this.wind.connect(gain(0.2)).connect(wet);
+    // Snow: a fine hiss (pink noise, only its top) and a low breath of wind, swelling slowly together.
+    this.snowSwell = gain(1);
+    this.snowSwell.connect(dry);
+    this.snowSwell.connect(gain(0.25)).connect(wet);
+    this.snowHiss = gain(0);
+    const snowHissIn = biquad(ctx, 'highpass', 1800, 0.5);
+    snowHissIn.connect(biquad(ctx, 'lowpass', 7000, 0.5)).connect(this.snowHiss).connect(this.snowSwell);
+    this.snowWind = gain(0);
+    const snowWindIn = biquad(ctx, 'bandpass', 320, 0.7);
+    snowWindIn.connect(this.snowWind).connect(this.snowSwell);
     this.loops = [
+      { loop: new Loop(ctx, () => noise('pink'), snowHissIn, this.rnd, 1.09), on: () => this.snow > 0.002 },
+      { loop: new Loop(ctx, () => noise('brown'), snowWindIn, this.rnd, 0.9), on: () => this.snow > 0.002 },
       { loop: new Loop(ctx, () => noise('pink'), hissIn, this.rnd), on: () => this.rain > 0.002 },
       { loop: new Loop(ctx, () => source('rustle'), patterIn, this.rnd, 1.7), on: () => this.rain > 0.002 },
       { loop: new Loop(ctx, () => noise('brown'), roarIn, this.rnd), on: () => this.rain > 0.4 },
@@ -152,6 +178,7 @@ export class WeatherSound {
    */
   set(w: MapWeather, ears: Ears, roaming: boolean, t: number, leaves = 0): void {
     this.rain = w.rain;
+    this.snow = Math.min(1, Math.max(0, w.snow ?? 0));
     this.blow = Math.max(0, (w.wind - 0.2) / 0.8);
     this.storm = w.storm;
     this.leaves = leaves;
@@ -170,6 +197,11 @@ export class WeatherSound {
       glide(this.patter.gain, LEVEL.patter * r * (roaming ? 1 : 0.45), now, 0.6);
       glide(this.roar.gain, LEVEL.roar * Math.max(0, (r - 0.4) / 0.6) * (0.7 + 0.3 * this.storm), now, 0.8);
       glide(this.wind.gain, LEVEL.wind * this.blow ** 1.3 * (0.8 + 0.4 * this.storm), now, 0.8);
+    }
+    if (Math.abs(this.snow - this.snowSet) > 0.01) {
+      this.snowSet = this.snow;
+      glide(this.snowHiss.gain, LEVEL.snowHiss * this.snow ** 0.8, now, 1.2);
+      glide(this.snowWind.gain, LEVEL.snowWind * this.snow ** 0.8, now, 1.5);
     }
     // Thunder after each new flash, later the farther it struck.
     if (w.flashAt !== this.lastFlash) {
@@ -196,6 +228,12 @@ export class WeatherSound {
     while (this.nextGust < until) this.nextGust = this.gustAt(this.nextGust);
     if (this.nextTap < now) this.nextTap = now + range(r, 0.05, 0.4);
     while (this.nextTap < until) this.nextTap = this.tapAt(this.nextTap);
+    // The snow's slow swells (the air moving a little, settling).
+    if (this.nextSwell < now) this.nextSwell = now;
+    while (this.nextSwell < until) {
+      if (this.snow > 0.002) this.snowSwell.gain.setTargetAtTime(range(r, 0.55, 1.25), this.nextSwell, range(r, 1, 2.5));
+      this.nextSwell += range(r, 2.5, 6);
+    }
   }
 
   /** The ambience is muted (nothing is scheduled): the rain and wind loops stop once silent. */

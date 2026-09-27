@@ -58,6 +58,7 @@ export function buildJungleRuins(ctx: MapContext): MapPart {
   const lights: ShrineLights = { candles: [], cores: [], tips: [], smoke: [], halos: [] };
   const sacred = new SacredSet('jungle');
   const built: { x: number; z: number }[] = [];
+  const log: string[] = [];
   for (const site of JUNGLE_SITES) {
     const make = site.kind === 'shrine' ? SHRINES[site.id] : KINDS[site.kind];
     if (!make) continue;
@@ -70,7 +71,12 @@ export function buildJungleRuins(ctx: MapContext): MapPart {
     // (the jungle keeps off what stands there; the site's own trees cover it)
     const [x0, z0, x1, z1] = fr.footprint(1);
     ctx.field.occupy(x0, z0, x1, z1);
+    // (a camera 7 m out in front of it, 3 m up, looking at its middle: for shots)
+    const [cx, cz] = fr.toMap(0, 7);
+    const f1 = (v: number) => v.toFixed(1);
+    log.push(`${site.id} cam=${f1(cx)},${f1(fr.y + 3)},${f1(cz)},${f1(fr.x)},${f1(fr.y + 1.2)},${f1(fr.z)}`);
   }
+  if (ctx.shot) console.info(`[map] jungle: ${b.boxes.length} blocks · ${log.join(' · ')}`);
   const object = new Group();
   object.name = 'jungle';
   // (the sculpted pieces are made just after the build, their lights with them: then the glow)

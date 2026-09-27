@@ -57,9 +57,9 @@ export type Mudra =
 
 /** The head's style. */
 export type HeadStyle =
-  /** Pagoda style: tight snail-shell curls, a rounded ushnisha, a tall flame (rasmi) rising from it, arched brows, downcast eyes. */
+  /** The Khmer pagoda Buddha: the broad Angkorian face, the brows joined in one line, the eyes lowered, the Angkor smile, small curls, a cord at the hairline, a conical ushnisha of curl rows ending in a lotus bud (no flame: that is Thai). */
   | 'pagoda'
-  /** Angkor style (the naga Buddha): a diadem band over the brow, a conical ushnisha of curl rows ending in a lotus bud, eyes closed, the Bayon smile. */
+  /** Angkor style (the naga Buddha): the same face with the eyes closed, a diadem band over the brow, pointed ear jewels, the conical ushnisha and its lotus bud. */
   | 'angkor';
 
 /** What he sits on. */
