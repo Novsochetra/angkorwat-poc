@@ -50,8 +50,38 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   Landmarks, the road and the sites call `field.occupy(...)` for what they
   cover, so trees keep off; the glider ramps and the balloon's field are
   reserved just before the vegetation.
-- After the build, `renderer.compileAsync` compiles every shader before the
-  first frame (at most 6 s); the console says `[map] shaders compiled in N ms`.
+- **Built only when wanted** (`src/map/lazy.ts`, main.ts `LATER`): `rain`,
+  `snow`, `rainbow` and `festival` may never show on a visit. They are built
+  in their place above only when the page opens wanting them: the URL holds
+  that weather or festival, the saved Weather setting is snow, the calendar
+  has a festival on (`weatherAtLoad` in sky/weather.ts, `festivalNow`); a
+  shot builds what its URL asks (a schedule that can rain builds the rain),
+  so shots look as before. Otherwise they wait: twice a second the live page
+  asks each (`Weather.wants`: rain and the rainbow once a shower's clouds
+  begin to build, a minute or more before the first drops; snow the moment
+  the setting is picked; `festivalSoon`: a festival within about a day of
+  the map's time), and a wanted one is built in the background, one at a
+  time: its module loaded, built in idle time, its shaders compiled off the
+  frame (`compileFor`: into a render target, as post.ts draws the scene, so
+  the programs are the ones drawn), then it joins the scene and `parts`
+  (main.ts `arrive`: the blocks line, the graphics level's block shapes; a
+  still part would be marked still and the still shadows drawn again). At
+  the snow's place the build still puts the white cover into the materials,
+  and a hidden stand-in with the flakes' material and the (hidden, small)
+  snowmen into the scene (`prepareSnow`; the part takes them over): they
+  compile at load, and picking snow costs no shader compile (a program's
+  first use was up to ≈ 0.1 s on an M1 Max). The console says
+  `[map] built only when wanted: …` and, for each built later, `[map] part
+  "x" built when wanted …`; `__mapStats.late` holds their states. The walk
+  maps are made once, as roaming is set up: a late part has nothing to stand
+  on (the snowmen are never solid, `noWalk`).
+- After the build, every shader is compiled side by side before the first
+  frame (at most 6 s; lazy.ts `compileFor`, three's `compileAsync` with a
+  render target set: the map is drawn into the post effects' target, with no
+  tone mapping and linear colour, and a program compiled for the screen is
+  another one: the first frame compiled all ~75 again, 1.3 s on an M1 Max
+  before the Start button showed, now 0.3); the console says `[map] shaders
+  compiled in N ms`.
   `window.__frame` is the live `MapFrame`, `window.__mapStats` the build
   times, blocks and failed parts (also `scene`, `parts`, `roam`, `audio`…).
 - `src/map/cull.ts`, for parts spread over the map: `splitByPlace` cuts a
@@ -62,6 +92,23 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   Used by the jungle ruins, the camps, the village and the
   paddies. `fauna/_len.ts` (`len2`, `len3`) replaces `Math.hypot` in
   per-frame code (it allocates).
+- Culling what moves: three leaves out a mesh whose bounding sphere is off
+  screen (and out of the light's view for its shadow). The sphere is made
+  once from the geometry (an `InstancedMesh`: from its instances), so a
+  mesh moved in the shader (puffs, halos, a quad per instance), posed or
+  rewritten each frame keeps culling on with a sphere that holds all it can
+  draw: set by hand, grown by the most the shader moves a vertex plus half
+  a point's size (smoke, steam, mist, spray, halos, the balloon's flames),
+  or worked out again when the CPU writes it (`Flock.bound`, the crowd's
+  lists, water rings, the elephants' splash, the birds, the tether). A
+  sphere that holds nothing yet is `Infinity` (drawn: a shader still to
+  compile). `frustumCulled = false` only where a sphere would be in view
+  anyway or cannot hold it, with a comment saying why: the undergrowth pool
+  round the camera, what he flies or holds (glider, parachute, fishing
+  gear, boat wake), the thermals, the people's things and the golden
+  figures (one draw all over the map), herds already picked in view one by
+  one (`View.sees`), the crowd's bone pass (not the map), the paddies' warm
+  frames.
 - `MapPart.afterRender()` runs right after each frame is drawn (the canvas
   still holds the picture: photos). `MapFrame.calls` is a list of animal
   calls (`{ kind, x, y, z, gain }`) parts push in `update`; main.ts hands them
@@ -120,6 +167,23 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   leaves the rule out, to compare). Caught inside something he steps out
   beside it at his own level first, never onto the roof over it; a bump of
   his head only stops a hop, never pushes him down through the floor.
+  When the roaming world is made (`world.ts`): the walk map with the map
+  (the take-off ramps and the balloon's field are put on it, and the
+  overview shows them); the follow camera's two walk maps (`hard`, `soft`),
+  the planks underfoot (`_woodFloor.ts`) and the rivers' current and bank
+  distances (`flow.ts`, in 64 m tiles: the boat's landing by the River Gate
+  asks for a few as the map is built) wait. Their meshes are noted as they
+  are at the build (a part may draw fewer of its blocks later:
+  `terrain/seen.ts`), and `roam.ts` makes them after Start in idle time (a
+  second in, `requestIdleCallback` slices of 2–8 ms, ≈ 80 ms of work in
+  all on an M1 Max), hurried when the "Jump in" card opens (10 ms slices
+  back to back), the rest at once as he leaps. A question before that
+  makes what it needs at once, so nothing is ever missing, and every answer
+  is the same as when all was made with the map (≈ 9 MB less held before
+  Start, ≈ 3.5 MB less after: the bank tiles far from water are one shared
+  tile). Headless shots and a page that starts roaming (`roam=`) make it
+  all with the map, as before. Console: `[map] roam walk map: …` at the
+  build, `[map] roam walk maps made in idle time: …` after.
 - `parachute.ts` (leap + glide), `boat.ts` + `flow.ts` (boat, river current;
   boats wait at the River Gate landing and at the village jetty's head;
   the wake `_wake.ts`). Every boat carries a bamboo fishing pole laid along
@@ -188,7 +252,7 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   flags; `_parkedGliders.ts`: one glider posed once, placed on every ramp,
   its wires and flags one mesh each), and leaves out a spot out of view
   (60 m beyond it: a mast's shadow is long) and a glider he took off with.
-  The ramps' still blocks are marked still (they cast the low level's still
+  The ramps' still blocks are marked still (they cast the low and medium levels' still
   shadows; their planks, runner and brass stay bare in snow, as before);
   the flags, windsocks, prayer flags and gliders are not.
 - `balloon.ts` (mode `balloon`): a hot air balloon in the flag of Cambodia
@@ -577,8 +641,8 @@ the right-hand hills by ≈ 0.16; the moon rises after dusk (≈ 0.33), is
 where the art has it at midnight and sets before dawn (≈ 0.68). The key
 light swings and drops a little with them, and turns only on the frames the
 shadow map is drawn anyway (every third), so it costs no extra shadow pass
-(on low, whose shadows are still, it turns in 0.3° steps, each drawn over
-10–12 frames: "Phones" below).
+(on low and medium, whose shadows are still, it turns in 0.3° steps, each
+drawn over 10–12 frames: "Phones" below).
 The moon shows its phase from `f.day` (29.53-day month, day 0 = new moon):
 lit side and soft ragged terminator, the dark side hidden (only the sky);
 its glow spreads from the lit part, all round it (`moonLitDist`), so a half
@@ -617,7 +681,10 @@ draw, hidden while it does not snow; big soft out-of-focus ones right by the
 lens on foot; fewer on low), catching the lamps and the explorer's lantern by
 night; the sky pales and the haze draws in while it falls, the light goes
 cooler and the white land lights the air from below (`sky/palette.ts`).
-The white cover is a shader patch put once, at build, into the lit
+The flakes and snowmen are built only when wanted (the snow setting saved or
+picked, or the URL's snow: "How the page is built"); the white cover is a
+shader patch put once, at the snow's place in the build whether or not the
+part is built then, into the lit
 materials of every part built before `snow` and into the world's block
 families (`coverMaterial` for a part's own still things;
 `userData.noSnow` keeps one bare), driven by one shared uniform: no shader
@@ -632,7 +699,7 @@ freed two minutes after the snow is gone), less on the roads and trails
 sculpted Buddhas stay bare (the families his things share with the world,
 wood and metal, get a covered copy for the world's blocks). While it lies
 thick, a snowman in a red krama stands in the floating village and one in
-the sugar-palm village. People carry on (no umbrellas: `events.ts` reads
+the sugar-palm village (never solid to walk into). People carry on (no umbrellas: `events.ts` reads
 only rain), footsteps crunch (`stepSnow`, roam/walker.ts: under open sky),
 the sound hushes (audio/engine.ts reads `snow`, `snowCover`).
 Checks: `clock=0‥1`, `day=0‥29` (7 first quarter, 15 full, 22 last quarter),
@@ -1924,7 +1991,9 @@ New Year (`_newyear.ts`: sand stupas, flags and bunting, the New Year games
 — Bos Angkunh, two teams of children throwing a seed to knock down the
 other team's row of angkunh seeds, and Chol Chhoung —, blessings of the
 elders, musicians; no water-pistol fights: that is Thailand's Songkran),
-`season` ≥ 0.98 or < 0.03. One draw for its kit
+`season` ≥ 0.98 or < 0.03. The part is built only for a visit that can see
+one: as the page opens when one is on or held, else in the background once
+`festivalSoon` says one is within about a day of the map's time. One draw for its kit
 (`_kit.ts`), one for its crowd (the people part's model), one additive glow
 (`_glow.ts`); nothing drawn without a festival. Its name shows under the
 title card and as a toast when roaming starts (`_banner.ts`); sound
@@ -1965,7 +2034,8 @@ mist there). Past the roaming area the land sinks into the mist over
 north hills that is from z −510 as it always was, so the overview's back is
 unchanged. The sea of mist (sky/mist.ts: the land map's b is `pastLand`), the
 edge mist (sky/haze.ts `hazeInside`) and the edge banks (clouds.ts) follow
-that outline; land sunk 40 m past its end draws no blocks. New land: the
+that outline (the mist planes' hole too: clouds.ts `mistPlaneShape`, built
+from `ROAM_BOXES`); land sunk 40 m past its end draws no blocks. New land: the
 east lowland past the stream (≈ 8 m) and two mesas east of it (`east hills`,
 `south-east hills`), the `Kulen east shoulder` (a lesser stepped hill over a
 saddle east of the mountain) and the `north ridge` behind it, stepping down
@@ -2196,15 +2266,48 @@ half the pixels, the map's blocks as plain boxes, no MSAA, no glow, and
 still shadows: only parts marked with `markStill` (main.ts) cast, and the
 shadow map is drawn again only when the key light turns, never every third
 frame, and then a part a frame (no slow frame while the light stands, nor
-when it turns; a part that moves must not be marked). The roaming explorer
-casts none there: a soft disc lies under his feet. Medium drops to half the pixels while frames stay under ~40 a second
+when it turns; a part that moves must not be marked). Medium's shadows are
+still too (4096², a part ≈ 0.8–0.9 M triangles): its shadow pass every
+third frame was 2.5–5 ms of that frame on an M1 Max (the medium overview
+16.0 → 14.9 ms a frame, the slowest frames ≈ 33 → 29 ms). What moves
+casts none on low and medium (people, animals, boats, parked gliders, the
+roaming explorer and what he rides): a soft disc lies under his feet.
+Medium drops to half the pixels while frames stay under ~40 a second
 (`adaptResolution` in `main.ts`: the screen's ratio or 1, never a step
 between, which blurs and lays a grid over the map); high always keeps the
-screen's pixels; max adds MSAA ×4, a 8192² shadow map drawn every frame.
+screen's pixels and draws the shadow map every third frame, what moves
+casting too; max adds MSAA ×4, a 8192² shadow map drawn every frame.
+Far blocks can be plain boxes on every level (graphics.ts `plainFar`,
+`PLAIN_PX`; "Far plain boxes" below): on medium and up with the rim a plain
+box stands in for painted (`RIM_PAINTED`, materials.ts `voxelRimMaterial`).
 All of it changes live; the built detail (`ctx.quality`: tree density,
 spray) follows the next time the map opens. A blurry map on a 2× screen on
 medium means the frame is over budget: `__mapResolution.ratio` shows it,
 `graphicsNow` the level's values.
+The **Fog** setting (sky/fogLevel.ts, `settings.fog`, `fog=auto|full|light|simple`
+in the URL; no "off": the mist hides the map's cut edges) picks how much
+mist is drawn, apart from the level; Auto follows it (low simple, medium
+light, high and max full). Full is all of it. Light keeps the haze in every
+material as it is and draws the sea of mist with 2 planes, not 5: each draws
+a stack of the layers at its point (sky/mist.ts `MIST_STACK`, clouds.ts
+`PLANES`), as thick a sea, only the parallax between the layers of a stack
+lost; of the far banks it keeps the two nearer rings (`BANKS_FOR`: 133 banks
+of 264; from the ground it looks the same). Simple also lays the valley mist even (as much as
+the banks make on the whole, `hazeEvenBank`), with an even veil where the
+wisps drift, and no cloud shadows: an `if` on one shared uniform
+(`HAZE.fog`, sky/haze.ts), one read of the land map a pixel instead of
+8–12; only the edge and front banks (65). On every step the edge mist, the sea
+reaching in over the front edge from high up and the edge banks stay, and
+the mist planes are a ring round the land (clouds.ts `mistPlaneShape`: the
+roaming boxes grown to where the sea starts, less 8 m; the strip over the
+front edge drawn only while the eye is high enough for it), so no pixel over
+the land runs their shader (the picture is the same). A change shows at
+once: no shader compiles again. On this Mac (M1 Max, 2560 × 1440, high,
+ms a frame): the overview 24.0 full (as before) → 23.8 light → 21.7 simple;
+the sea of mist from the glider's height (`cam=0,420,-300,0,0,160`) 20.3 →
+19.8 → 18.0 (full within ±0.3 of before). At 1280 × 720 the frame is bound by
+triangles: the overview's simple ≈ 1 ms quicker, the walks the same
+(`npm run perf -- url=fog=simple`).
 
 ### Phones: what a frame costs (the perf pass)
 
@@ -2304,7 +2407,7 @@ moment, before → after, M1 Max):
   522 + 475 on medium), the hang glider 452 → 418, a walk by a ramp 231 →
   212 (1.68 → 1.65 M triangles), the village walk 281 → 257 (the parked
   gliders were drawn wherever he was); the same triangles in the overview.
-  The ramps cast the low level's still shadows again (marked still); the
+  The ramps cast the still shadows of low and medium again (marked still); the
   ramps' frame 0.11 → 0.08 ms of CPU (the flags worked out in place, their
   normals from their strips).
 - **The undergrowth** reaches 24–32 m on low (32–44 m: half the boxes).
@@ -2331,7 +2434,8 @@ moment, before → after, M1 Max):
   redraw asked for from elsewhere (`shadowMap.needsUpdate`: the explorer
   leaving his ledge, the land's cull) starts a new one the same way. The
   picture is the same as the whole map drawn at once (checked pixel by
-  pixel). It needs a second 2048² map (16 MB, only on low), 0.2 ms to deal
+  pixel). It needs a second map of the same size (low 2048², medium 4096²:
+  depth and three's colour target, ≈ 32 and 128 MB), 0.2 ms to deal
   (a walk over ≈ 2,700 objects) and ≈ 0.4 ms of CPU a part (three walks
   the scene each pass). `shadowsteps=1` draws it in one frame as before;
   shots draw the map every frame unless `shadows=live`.
@@ -2345,7 +2449,7 @@ moment, before → after, M1 Max):
 
   (one frame, `shadowsteps=1`, → parts; runs made one after the other,
   ±0.5 ms of noise from the other work on the machine.)
-- **The roaming explorer on low**: a soft dark disc under his feet
+- **The roaming explorer on low** (and medium): a soft dark disc under his feet
   (foreground.ts `footShadow`; he casts nothing into the still map): on the
   floor under him (the walk map: floors, steps, bridges, roofs), drawn out
   away from the light as a low sun would (up to 1.8 × its width), as dark as
@@ -2363,6 +2467,56 @@ moment, before → after, M1 Max):
   they were not on the still layer). The covered sides they now leave out
   gain nothing measurable: the land's meshes are already cut by the sides
   their blocks show (`hideCovered`).
+- **Far plain boxes** (graphics.ts `plainFar`, `plainFrom`, `PLAIN_PX`,
+  `RIM_PAINTED`, `paintRim`; terrain/lod.ts `ChunkSwitch` for the land's and
+  the jungle's chunks; materials.ts `voxelRimMaterial`): a mesh of blocks is
+  drawn plain once its largest cut edge (its smallest side × the family's
+  `bevel`) spans under `PLAIN_PX` pixels where it comes nearest the camera
+  (medium and high 1, max ½): d = edge · √2 / (px · pixel), a pixel being
+  2 tan(fov / 2) / the scene's height in pixels a metre away (a zoomed photo
+  or a sharper resolution keeps the edges further). At 1 px in the overview
+  on a 2× screen (1800–1880 pixels high, 55–60°): a temple stone of 1 m
+  (edge 8 cm) 175–205 m, a leaf cell of 1 m (12 cm) 265–305 m, a 2 m block of
+  land (14 cm) 310–360 m, a road slab 0.3 m thick 55–60 m; roaming (50°)
+  1.1–1.25 × as far; half as far on a 1× screen. Under a pixel is not unseen
+  here: the map's families give every block a bright cut rim (`edgeTint`),
+  and unpainted plain boxes lose Angkor Wat's lines between the stones (rims
+  ≈ 0.6 px in the 2× overview), pop the temple smooth at the switch, and at
+  1672 × 941 soften the Bayon's faces from ¼ px. So a mesh drawn plain wears
+  its material's **rim variant** (`voxelRimMaterial`, `VOX_RIM`: a program of
+  its own, so the blocks that keep their edges, the game, the studio and the
+  sacred pieces draw exactly as before), which paints each cut edge's slanted
+  strip where the block would show it, by its share of the pixel: the band of
+  the cut's width along each edge of a face (a 45° strip is as wide, seen from
+  anywhere, as its two bands), its share of the pixel's part on the face
+  (MSAA splits a pixel between faces), the rim tint with the strip's own
+  facing, and the light of the strip (the normal leaning toward the edge by
+  that share: three's diffuse light is then the straight mean of the face's
+  and the strip's). The block's axes come per pixel from how its position and
+  the view position change across the pixel, the derivatives taken where
+  every pixel of the quad takes them (inside a branch they gave dark dots
+  along the edges); in a groove between two blocks, the strip leaning toward
+  the camera shows wider than its band, the other narrower. The plain box's
+  face axis and half size come in one flat value (`vVoxBox`); a chamfered
+  shape wearing the variant paints nothing. Its programs compile at load with
+  the rest (hidden meshes wearing each, `rimPrograms`: 30 on the map, none
+  compiled in a frame after Start). Checked on the GPU against every block
+  cut: the 2× and 1× overviews, the switch point, dusk, night, max at ½ px,
+  the hang glider and walks: the same by eye, a few levels apart pixel by
+  pixel along the blocks' edges (Angkor Wat 2× mean 2.0 of 255, 7 % of pixels
+  over 8; unpainted 3.8, 17 %); forced to 6 px up close the strips land
+  within a pixel of the cut ones. The gain (M1 Max, 1280 × 720, back to back,
+  twice): the medium overview 8.8 → 5.7 M triangles (shadow pass 9.5 → 5.2),
+  16.0–16.2 → 12.9 ms a frame; the hang glider 11.0–11.1 → 8.6–8.7; dusk
+  16.1–16.2 → 12.6–12.8; the village walk 6.3 → 5.9–6.0; high about the same;
+  max (½ px) overview 18.4–18.8 → 16.9–17.1, hang glider 13.7–13.8 →
+  12.1–12.3, village 7.8 → 7.4. Unpainted plain boxes would be ≈ 1.1 ms
+  quicker in the overview: about half of it three sorting the rim variants'
+  draws after all the others (grouped by material), half the shader.
+  `plainpx=<px>` tries a limit (0: never), `rim=0` leaves them unpainted.
+  Low as before (all map blocks plain, unpainted); a chunk past `PLAIN_FROM`
+  unpainted as before; copies of a model sharing a geometry (the boats) go
+  plain only when every shown copy is far; the explorer keeps his edges.
 - **People posed once a bone** (the perf-people pass; People, "Cost"): a
   bone pass poses each person shown into a small float texture once a
   frame (two textures in turn, read a frame later, so nothing waits on it),

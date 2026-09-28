@@ -198,6 +198,8 @@ export class Herd {
     this.geometry = g;
     this.mesh = new Mesh(g, material);
     this.mesh.name = name;
+    // (not culled: only the animals in view are added each frame (`View.sees`), and the mesh is hidden with none;
+    // the geometry's own bounds are the models at the origin)
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;

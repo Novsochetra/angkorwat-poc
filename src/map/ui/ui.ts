@@ -1,8 +1,9 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import { DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { PHONE } from '../graphics';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
+import { fogStepFor } from '../sky/fogLevel';
 import { createSupportCard } from './_support';
 import { CREDITS, SUPPORT_URL } from './credits';
 import { ICON } from './icons';
@@ -35,8 +36,9 @@ import { framed, setSteppedVars } from './shape';
  * `settings`, `credits` (the settings' credits page), `muted`, `held` (the
  * held-sound card), `weather:<setting>` (the panel shows that weather
  * chosen), `res:<share>` / `res:auto` (that resolution picked), `battery`
- * (the battery saver on), `scroll:<group>` (the settings scrolled to that
- * group: lang, time, weather, graphics, res, mini), `begin` (the fade to
+ * (the battery saver on), `fog:<choice>` (that fog picked: auto, full,
+ * light, simple), `scroll:<group>` (the settings scrolled to that group:
+ * lang, time, weather, graphics, res, fog, mini), `begin` (the fade to
  * black), `roam` (the interface while roaming, without the roaming itself:
  * add `cam=` to stand somewhere).
  */
@@ -139,6 +141,17 @@ const GRAPHICS_CHOICE: Record<GraphicsChoice, { icon: string; word: WordKey; not
   medium: { icon: ICON.bars2, word: 'gMedium', note: 'gMediumNote' },
   high: { icon: ICON.bars3, word: 'gHigh', note: 'gHighNote' },
   max: { icon: ICON.bars4, word: 'gMax', note: 'gMaxNote' },
+};
+/**
+ * The fog setting's choices, the same way (sky/fogLevel.ts says what each
+ * step keeps): Auto (the graphics' Auto icon and word) follows the graphics
+ * level, and its note names the step in use (`fogStepFor`).
+ */
+const FOG_CHOICE: Record<FogChoice, { icon: string; word: WordKey; note: WordKey }> = {
+  auto: { icon: ICON.auto, word: 'gAuto', note: 'fogAutoNote' },
+  full: { icon: ICON.mist3, word: 'fogFull', note: 'fogFullNote' },
+  light: { icon: ICON.mist2, word: 'fogLight', note: 'fogLightNote' },
+  simple: { icon: ICON.mist1, word: 'fogSimple', note: 'fogSimpleNote' },
 };
 /** The mini-map choices (minimap.ts): shown, the button only, hidden. */
 const MINI_CHOICE: Record<MiniMapChoice, { icon: string; word: WordKey; note: WordKey }> = {
@@ -332,6 +345,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         </div>
         <p class="mu-set-note" id="mu-res-note"></p>
       </div>
+      <div class="mu-set-group">
+        <h3 id="mu-fog-h" data-t="fog"></h3>
+        <div class="mu-seg mu-fog-seg" role="group" aria-labelledby="mu-fog-h" aria-describedby="mu-fog-note mu-fog-edge">
+          ${FOG_CHOICES.map((f) => `<button type="button"${f === 'auto' ? ' class="is-wide"' : ''} data-fog="${f}">${FOG_CHOICE[f].icon}<span data-t="${FOG_CHOICE[f].word}"></span></button>`).join('')}
+        </div>
+        <p class="mu-set-note" id="mu-fog-note"></p>
+        <p class="mu-set-note mu-fog-edge" id="mu-fog-edge" data-t="fogEdgeNote"></p>
+      </div>
       <div class="mu-set-row"${PHONE ? ' hidden' : ''}>
         <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
@@ -381,6 +402,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const resSeg = panel.querySelector<HTMLElement>('.mu-res-seg')!;
   const resAuto = resSeg.querySelector<HTMLButtonElement>('button[data-res="auto"]')!;
   const resNote = panel.querySelector<HTMLElement>('#mu-res-note')!;
+  const fogBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-fog]')];
+  const fogNote = panel.querySelector<HTMLElement>('#mu-fog-note')!;
   const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-minimap]')];
   const miniNote = panel.querySelector<HTMLElement>('#mu-mini-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
@@ -454,6 +477,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function fillGraphicsNote(): void {
     const g = GRAPHICS_CHOICE[settings.graphics] ?? GRAPHICS_CHOICE.auto;
     graphicsNote.textContent = g === GRAPHICS_CHOICE.auto ? t(g.note, { level: t(GRAPHICS_CHOICE[graphicsLevel].word) }) : t(g.note);
+  }
+  /** The note under the fog choice: the chosen step's, or Auto's with the step for the graphics level in use (filled like the graphics note). */
+  function fillFogNote(): void {
+    const f = FOG_CHOICE[settings.fog] ?? FOG_CHOICE.auto;
+    fogNote.textContent = f === FOG_CHOICE.auto ? t(f.note, { step: t(FOG_CHOICE[fogStepFor('auto', graphicsLevel)].word) }) : t(f.note);
   }
 
   // ── Resolution (resolution.ts): Auto, then the sizes for this window ────
@@ -570,6 +598,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     fillGraphicsNote();
     labelRes();
     fillResNote();
+    fillFogNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-title]')) e.title = t(e.dataset.tTitle as WordKey);
     for (const c of cards) {
@@ -781,6 +810,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     fillGraphicsNote();
     // (the resolution's size pressed, and its note)
     syncRes();
+    // (the fog choice, and its note)
+    for (const b of fogBtns) b.setAttribute('aria-pressed', String(b.dataset.fog === settings.fog));
+    fillFogNote();
     for (const b of miniBtns) b.setAttribute('aria-pressed', String(b.dataset.minimap === settings.miniMap));
     miniNote.dataset.t = MINI_CHOICE[settings.miniMap]?.note ?? 'miniMapShowNote';
     miniNote.textContent = t(miniNote.dataset.t as WordKey);
@@ -923,6 +955,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     change({ resolution: s ? s.share : 'auto' });
     h.onSound('toggle');
   });
+  for (const b of fogBtns)
+    b.addEventListener('click', () => {
+      const fog = b.dataset.fog as FogChoice;
+      if (fog === settings.fog) return;
+      change({ fog });
+      h.onSound('toggle');
+    });
   for (const b of miniBtns)
     b.addEventListener('click', () => {
       const miniMap = b.dataset.minimap as MiniMapChoice;
@@ -1122,6 +1161,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       }
       if (k === 'battery') {
         settings = { ...settings, battery: true };
+        syncSettings();
+      }
+      // (`fog:<choice>`: the panel shows that fog picked, e.g. `uistate=settings,scroll:fog,fog:light`)
+      if (k === 'fog' && FOG_CHOICES.includes(v as string as FogChoice)) {
+        settings = { ...settings, fog: v as string as FogChoice };
         syncSettings();
       }
       if (k === 'scroll' && v) scrollGroup = v;
@@ -1341,6 +1385,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (level === graphicsLevel) return;
       graphicsLevel = level;
       fillGraphicsNote();
+      // (Auto's fog follows the level: its note names the new step)
+      fillFogNote();
     },
     setDrawSize(w, ht) {
       if (drawSize?.w === w && drawSize.h === ht) return;

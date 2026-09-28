@@ -18,7 +18,8 @@ const B = 0.5;
 /** While roaming, the ledge shows only while the explorer is this close to it (m). */
 const LEDGE_SEEN = 90;
 /**
- * The disc under the roaming explorer on the low level ({@link footShadow}):
+ * The disc under the roaming explorer where shadows are still (the low and
+ * medium levels, {@link footShadow}):
  * its radius at his true size (m; it grows with him), how dark its middle is
  * in the golden-hour sun, how far it leans away from the light (it is drawn
  * out that way as the light is low, at most `lean` times its width, its
@@ -30,9 +31,9 @@ const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
  * with the explorer standing on its corner looking out over the highlands
- * (true size, 1.70 m, so the map reads as far away and huge). Roaming on the
- * low level, a soft dark disc lies under his feet ({@link footShadow};
- * `foot=0` in the URL: none, to compare).
+ * (true size, 1.70 m, so the map reads as far away and huge). Roaming where
+ * shadows are still (low and medium), a soft dark disc lies under his feet
+ * ({@link footShadow}; `foot=0` in the URL: none, to compare).
  */
 export interface Foreground extends MapPart {
   explorer: AngkorExplorer;
@@ -41,7 +42,7 @@ export interface Foreground extends MapPart {
   yaw: number;
   /** The explorer leaves the ledge to roam (true), or is back (false): the ledge stops / starts driving him. */
   release(roaming: boolean): void;
-  /** The roaming world (floors, steps, bridges, water): what the disc under his feet lies on, on the low level (main.ts). */
+  /** The roaming world (floors, steps, bridges, water): what the disc under his feet lies on, where shadows are still (main.ts). */
   follow(world: RoamWorld): void;
 }
 
@@ -123,7 +124,7 @@ export function buildForeground(ctx: MapContext): Foreground {
   object.add(foot);
   let world: RoamWorld | null = null;
   const footOn = new URLSearchParams(location.search).get('foot') !== '0';
-  /** The disc under his feet (the low level, roaming): on the floor under him, fading as he goes up; none in the boat or the balloon, nor over water. */
+  /** The disc under his feet (still shadows: low and medium; roaming): on the floor under him, fading as he goes up; none in the boat or the balloon, nor over water. */
   function placeFoot(f: MapFrame): void {
     let dark = 0;
     const p = explorer.object.position;
@@ -186,8 +187,8 @@ export function buildForeground(ctx: MapContext): Foreground {
 }
 
 /**
- * A soft dark disc under the roaming explorer's feet on the low graphics
- * level. Its shadows are still (graphics.ts): only what never moves casts,
+ * A soft dark disc under the roaming explorer's feet on the low and medium
+ * graphics levels. Their shadows are still (graphics.ts): only what never moves casts,
  * so once he leaves his ledge he casts none there, and would float over the
  * land. One draw of two triangles, drawn over the floor after the land (no
  * depth written, pulled a little towards the camera); no haze of its own

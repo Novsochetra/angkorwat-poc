@@ -1,4 +1,5 @@
 import {
+  Box3,
   BoxGeometry,
   Color,
   CustomBlending,
@@ -13,7 +14,9 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
   ShaderMaterial,
+  Sphere,
   Vector2,
+  Vector3,
 } from 'three';
 import { hazeUniforms } from '../sky/haze';
 import type { MapFrame } from '../types';
@@ -137,7 +140,14 @@ export class ShrineGlow {
     });
     const puffs = new Mesh(geo, material);
     puffs.name = 'jungle:smoke';
-    puffs.frustumCulled = false;
+    // (culled on the bowls and candles, grown by the most a puff goes in the shader, 1.6 m up and 2.9 m across with
+    // the wind and its sway, and half the biggest puff or halo; not on the quad's own bounds. The sphere stays round
+    // the origin, where the quad's was: three sorts the see-through draws by their spheres' middles, and the smoke
+    // is drawn where it always was among them)
+    let big = 0;
+    for (let k = 0; k < count; k++) big = Math.max(big, info[k * 4 + 2] * (info[k * 4] < 0.5 ? 2.55 : 1.11));
+    const box = new Box3().setFromArray(at.subarray(0, count * 3)).expandByVector(new Vector3(3 + big / 2, 1.6 + big / 2, 3 + big / 2));
+    geo.boundingSphere = new Sphere(new Vector3(), box.isEmpty() ? 0 : Math.hypot(Math.max(-box.min.x, box.max.x), Math.max(-box.min.y, box.max.y), Math.max(-box.min.z, box.max.z)));
     puffs.renderOrder = 3;
     puffs.raycast = () => {};
     this.object.add(puffs);

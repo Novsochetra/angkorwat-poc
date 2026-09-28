@@ -251,7 +251,7 @@ export class Canopy {
     this.straps = mesh('leather');
     this.lamp = mesh('glow');
     this.lamp.castShadow = false;
-    // (posed by hand every frame: the build-time bounds mean nothing)
+    // (posed by hand every frame: the build-time bounds mean nothing; not culled, he hangs under it: always in view)
     for (const m of [this.fabric, this.straps, this.lamp]) m.frustumCulled = false;
     this.object.add(g);
 
@@ -262,6 +262,7 @@ export class Canopy {
     geo.setAttribute('position', new BufferAttribute(this.linePos, 3));
     this.lines = new LineSegments(geo, new LineBasicMaterial({ color: LINE_COLOR, transparent: true, opacity: 0.8 }));
     this.lines.name = 'parachute:lines';
+    // (as the canopy: posed every frame, always in view)
     this.lines.frustumCulled = false;
     this.object.add(this.lines);
 
@@ -281,6 +282,7 @@ export class Canopy {
     fg.setIndex(index);
     this.flag = new Mesh(fg, flagMaterial());
     this.flag.name = 'parachute:flag';
+    // (as the canopy: posed every frame, always in view)
     this.flag.frustumCulled = false;
     this.flag.receiveShadow = true;
     this.object.add(this.flag);

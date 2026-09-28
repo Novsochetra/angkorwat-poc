@@ -414,7 +414,7 @@ const FLAG_OUT = 0.14;
 /**
  * Every ramp on the map, drawn together (_rampBatch.ts): their still blocks
  * (decks, trestles, rails, poles, masts, lanterns: one mesh per block family
- * for all of them, marked still, so they cast the low level's still
+ * for all of them, marked still, so they cast the low and medium levels' still
  * shadows), their windsocks (two meshes, turned block by block) and their
  * flags (one mesh, _rampFlag.ts). Ramp `i` is `places[i]`.
  */
@@ -466,7 +466,7 @@ export class LaunchRamps {
     }
     this.still.finish();
     this.socks.finish();
-    // (they never move: they cast the low level's still shadows)
+    // (they never move: they cast the still shadows of low and medium)
     markStill(this.still.object);
     this.blocks = blocks;
     // The flags.
@@ -482,7 +482,7 @@ export class LaunchRamps {
     this.socks.setNear(mask);
   }
 
-  /** The ramps that can be seen, their shadows too (bits); their still blocks all while still shadows stand (the low level: they are drawn into the still map only now and then). */
+  /** The ramps that can be seen, their shadows too (bits); their still blocks all while still shadows stand (low and medium: they are drawn into the still map only now and then). */
   setShown(mask: number): void {
     this.still.setShown(graphicsNow.stillShadows ? ~0 : mask);
     this.socks.setShown(mask);

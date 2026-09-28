@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, UniformsLib, UniformsUtils, Vector2, Vector3 } from 'three';
+import { Box3, BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector2, Vector3, type BufferAttribute } from 'three';
 import { hash3 } from '../../voxel/random';
 import { SKY } from '../sky/palette';
 import type { MapFrame } from '../types';
@@ -205,7 +205,9 @@ export function buildSteam(src: SteamSources): { object: Points; update(f: MapFr
   material.name = 'palmSugar:steam';
   const object = new Points(geo, material);
   object.name = 'palmSugar:steam';
-  object.frustumCulled = false;
+  // (culled on the woks and the chimney, grown by the most a puff goes in the shader: 10 m up, 12 m across with the
+  // vent, the breeze and its wander, and half its size, 2.9 m)
+  geo.boundingSphere = new Box3().setFromBufferAttribute(geo.getAttribute('position') as BufferAttribute).expandByVector(new Vector3(15, 13, 15)).getBoundingSphere(new Sphere());
   object.renderOrder = 3;
   object.castShadow = false;
   const u = material.uniforms as unknown as SteamUniforms;

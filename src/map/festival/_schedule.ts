@@ -13,6 +13,9 @@
  *
  * URL `fest=water|newyear` holds one (shots, and for the player to see it);
  * `fest=0` none.
+ *
+ * The festival part is built only for a visit that can see one: as the page
+ * opens when one is on (or held), else once `festivalSoon` says one is near.
  */
 
 export type Festival = 'water' | 'newyear';
@@ -57,6 +60,30 @@ export function festivalNow(f: { season: number; day: number }): Festival | null
 
 /** A festival is held by the URL (`fest=`). */
 export const festivalForced = (): boolean => forced !== undefined;
+
+/**
+ * How far `festivalSoon` looks: a day of the map's cycle ahead (six minutes
+ * of play), half a day back (a switch of the time of day moves the clock half
+ * a day either way), the season moving with it as it does in the cycle
+ * (main.ts `SEASON_PER_DAY`).
+ */
+const SOON_DAYS = 1;
+const SEASON_PER_DAY = 1 / 24;
+
+/**
+ * A festival is on now, or will be within a day of the map's time (or half
+ * a day back, the clock turned back): the festival part is built then, in
+ * the background (main.ts, lazy.ts), minutes of play before it shows. Never
+ * with `fest=0`.
+ */
+export function festivalSoon(f: { season: number; day: number }): boolean {
+  if (forced !== undefined) return forced !== null;
+  for (let k = -1; k <= 2; k++) {
+    const d = (k / 2) * SOON_DAYS;
+    if (festivalNow({ season: f.season + d * SEASON_PER_DAY, day: f.day + d })) return true;
+  }
+  return false;
+}
 
 /**
  * What the festival part shows now, for the sound (audio/festival.ts):

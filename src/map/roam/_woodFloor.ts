@@ -8,7 +8,10 @@ import type { MapPart } from '../types';
  * and salas), in 0.5 m columns, so the footsteps there
  * sound of wood (walker.ts `stepSound`), as on a take-off ramp's deck.
  * Read once from the voxel meshes when the roaming world is built (the
- * rafts bob a few centimetres: well inside the tolerance).
+ * rafts bob a few centimetres: well inside the tolerance). Made `later`
+ * (roam/world.ts), the meshes are noted as they are then (their block
+ * counts and places) and their planks read by `step`, in slices, or all at
+ * once by the first question.
  */
 
 /** Parts with wooden floors, and the block families that are wood. */
@@ -23,13 +26,24 @@ export interface WoodFloor {
   at(x: number, z: number, y: number): boolean;
   /** Columns with a plank top. */
   readonly columns: number;
+  /** All the planks are read. */
+  readonly ready: boolean;
+  /** Read more of them, for about `ms` milliseconds; true once all are. */
+  step(ms: number): boolean;
+  /** Time spent reading them (ms). */
+  readonly ms: number;
 }
 
 const _m = new Matrix4();
+/** Blocks read between two looks at the clock (`step`). */
+const STEP_BLOCKS = 1024;
 
-export function buildWoodFloor(parts: readonly MapPart[]): WoodFloor {
+export function buildWoodFloor(parts: readonly MapPart[], later = false): WoodFloor {
+  const t0 = performance.now();
   const tops = new Map<number, number[]>();
   const key = (i: number, k: number) => (i + 0x8000) * 0x10000 + (k + 0x8000);
+  // The wooden meshes as they are now: their blocks, their places.
+  const meshes: { mesh: InstancedMesh; count: number; world: Matrix4 }[] = [];
   for (const part of parts) {
     if (!PARTS.has(part.name)) continue;
     part.object.updateMatrixWorld(true);
@@ -37,8 +51,20 @@ export function buildWoodFloor(parts: readonly MapPart[]): WoodFloor {
       const mesh = o as InstancedMesh;
       if (!mesh.isInstancedMesh || !mesh.userData.voxelShape || !mesh.count || mesh.userData.noWalk) return;
       if (!WOOD.has(mesh.name.slice(mesh.name.lastIndexOf(':') + 1))) return;
-      for (let n = 0; n < mesh.count; n++) {
-        const e = mesh.getMatrixAt(n, _m).premultiply(mesh.matrixWorld).elements;
+      meshes.push({ mesh, count: mesh.count, world: mesh.matrixWorld.clone() });
+    });
+  }
+  let next = 0;
+  let from = 0;
+  let work = performance.now() - t0;
+  function step(ms: number): boolean {
+    const t1 = performance.now();
+    const until = t1 + ms;
+    while (next < meshes.length) {
+      const { mesh, count, world } = meshes[next];
+      const end = Math.min(count, from + STEP_BLOCKS);
+      for (let n = from; n < end; n++) {
+        const e = mesh.getMatrixAt(n, _m).premultiply(world).elements;
         // (a block turned about y: its x and z edges; its top)
         const x = e[12];
         const z = e[14];
@@ -66,11 +92,33 @@ export function buildWoodFloor(parts: readonly MapPart[]): WoodFloor {
             else if (!list.some((t) => Math.abs(t - top) < 0.05)) list.push(top);
           }
       }
-    });
+      from = end;
+      if (from >= count) {
+        next++;
+        from = 0;
+      }
+      if (performance.now() >= until) break;
+    }
+    // (the meshes' notes go once all is read)
+    if (next >= meshes.length) meshes.length = 0;
+    work += performance.now() - t1;
+    return next >= meshes.length;
   }
+  if (!later) step(Infinity);
   return {
-    columns: tops.size,
+    get columns() {
+      return tops.size;
+    },
+    get ready() {
+      return next >= meshes.length;
+    },
+    get ms() {
+      return Math.round(work);
+    },
+    step,
     at(x, z, y) {
+      // (made later and not all read yet: the rest now)
+      if (next < meshes.length) step(Infinity);
       const list = tops.get(key(Math.floor(x / RES), Math.floor(z / RES)));
       return !!list && list.some((t) => Math.abs(t - y) < NEAR);
     },

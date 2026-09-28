@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Group, Points, ShaderMaterial, UniformsLib, UniformsUtils, Vector3, type WebGLRenderer } from 'three';
+import { Box3, BufferGeometry, Color, Float32BufferAttribute, Group, Points, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector3, type BufferAttribute, type WebGLRenderer } from 'three';
 import { hash3 } from '../../voxel/random';
 import { GlowBlocks, glowMaterial, haloPoints, pointScale, type Halo } from '../road/glow';
 import type { MapFrame } from '../types';
@@ -187,7 +187,9 @@ function makeSmoke(sources: Vector3[]): { points: Points; update(f: MapFrame, sc
   });
   const points = new Points(geo, material);
   points.name = 'kulenPicnic:smoke';
-  points.frustumCulled = false;
+  // (culled on the fires, grown by the most a puff goes in the shader: 4.5 m up, 2.8 m across with the breeze and
+  // its curl, and half its size, 1.9 m)
+  geo.boundingSphere = new Box3().setFromBufferAttribute(geo.getAttribute('position') as BufferAttribute).expandByVector(new Vector3(5, 7, 5)).getBoundingSphere(new Sphere());
   points.renderOrder = 2;
   const u = material.uniforms;
   return {

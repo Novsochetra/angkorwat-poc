@@ -23,7 +23,8 @@ import { KEY_DAY, SKY } from './palette';
  * farther hills and haze show it in front of them. Light only adds (and the
  * dark band takes a little away): never garish. `f.weather.rainbow` fades
  * it in and out (sky/weather.ts: after rain, by day). One draw, only while
- * there is one (its shader is compiled on the first frame drawn).
+ * there is one (its shader is compiled on the first frame drawn). Built only
+ * when wanted, with the rain (main.ts, lazy.ts; sky/weather.ts `wants`).
  */
 
 /** Distance of the band (m). */

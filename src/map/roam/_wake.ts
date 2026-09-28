@@ -80,6 +80,8 @@ export function createWake(): Wake {
   material.uniforms.uColor.value = color;
   const object = new Mesh(geo, material);
   object.name = 'boat wake';
+  // (not culled: the marks are round his boat, in front of the camera, and gone in seconds; the quad's own bounds
+  // are round the origin)
   object.frustumCulled = false;
   object.renderOrder = 2;
 

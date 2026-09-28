@@ -46,7 +46,7 @@ import { ROAM_SCALE, type RoamWorld } from './types';
  *
  * Drawn together: all the ramps (_launchRamp.ts `LaunchRamps`) and all the
  * parked gliders (_parkedGliders.ts) in 16 draws (80 when each had its
- * own); the ramps are marked still (they cast the low level's still
+ * own); the ramps are marked still (they cast the low and medium levels' still
  * shadows), their flags, windsocks and the gliders are not.
  */
 

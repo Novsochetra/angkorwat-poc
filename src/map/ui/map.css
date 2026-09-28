@@ -1231,6 +1231,12 @@
   text-wrap: pretty;
 }
 
+/* The fog's second note, the same under every step (the mist at the map's
+ * edges stays: there is no "off"), close under the step's note. */
+.mu-set-note.mu-fog-edge {
+  margin-top: calc(2 * var(--px));
+}
+
 .mu-set-row {
   display: flex;
   align-items: center;

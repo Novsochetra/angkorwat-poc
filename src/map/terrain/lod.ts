@@ -1,6 +1,7 @@
 import { Box3, BufferGeometry, Group, InstancedMesh, Vector3, type Camera } from 'three';
 import { VOXEL_MATERIALS } from '../../voxel/materials';
 import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
+import { chamferOf, graphicsNow, paintRim, pixelSize, plainAt } from '../graphics';
 import { FIRST_Z0 } from '../heightfield';
 import { MAP_BOUNDS } from '../layout';
 
@@ -53,9 +54,72 @@ export class ChunkGrid {
 /**
  * Chunks farther than this from the camera (m, on the map) draw plain boxes:
  * while roaming, and in the overview (only the back hills and the top of
- * the holy mountain, deep in the haze, are that far there).
+ * the holy mountain, deep in the haze, are that far there). Nearer too once
+ * their blocks' cut edges are under the level's pixels there (graphics.ts
+ * `plainFrom`: a picture with fewer pixels, a 1× screen), never further.
  */
-const PLAIN_FROM = { roam: 170, overview: 300 };
+export const PLAIN_FROM = { roam: 170, overview: 300 };
+
+/**
+ * A chunk's (or tile's) bevelled meshes and their plain twin, shown by the
+ * camera's distance: the twin past {@link PLAIN_FROM} m (on the map, as
+ * before), or nearer where the blocks' cut edges are under the level's
+ * pixels (graphics.ts `plainAt`: the largest of them, from the nearest point
+ * of the box round them). A twin nearer than {@link PLAIN_FROM} stands in
+ * for the bevelled blocks: its meshes wear their materials' rim variants
+ * (graphics.ts `paintRim`: the cut edges' strips painted); past it, plain
+ * boxes as before (not on the plain level either). The twin is made the first
+ * time it is needed (`made`: told so). Marks the fine group `chunkLod`:
+ * graphics.ts `plainFar` leaves its meshes to the chunk.
+ */
+export class ChunkSwitch {
+  /** The box round the fine blocks (world, their height too) and their largest cut edge (graphics.ts `chamferOf`). */
+  readonly box: Box3;
+  readonly edge: number;
+  plain: Group | null = null;
+  private painted = false;
+
+  constructor(
+    readonly plan: Box3,
+    readonly fine: Group,
+    private readonly parent: Group,
+    private readonly made?: (twin: Group) => void,
+  ) {
+    fine.userData.chunkLod = true;
+    this.box = plan.clone();
+    this.box.min.y = Infinity;
+    this.box.max.y = -Infinity;
+    let edge = 0;
+    for (const child of fine.children) {
+      const m = child as InstancedMesh;
+      if (!m.isInstancedMesh) continue;
+      if (!m.boundingBox) m.computeBoundingBox();
+      this.box.min.y = Math.min(this.box.min.y, m.boundingBox!.min.y);
+      this.box.max.y = Math.max(this.box.max.y, m.boundingBox!.max.y);
+      edge = Math.max(edge, chamferOf(m));
+    }
+    if (this.box.min.y > this.box.max.y) this.box.min.y = this.box.max.y = 0;
+    this.edge = edge;
+  }
+
+  /** `eye`: the camera; `flat`: it on the ground (y 0); `from`: {@link PLAIN_FROM} now; `pixel`: graphics.ts `pixelSize`. */
+  update(eye: Vector3, flat: Vector3, from: number, pixel: number): void {
+    const past = this.plan.distanceToPoint(flat) > from;
+    const plain = past || plainAt(this.box.distanceToPoint(eye), this.edge, pixel, !!this.plain?.visible);
+    if (plain && !this.plain) {
+      this.parent.add((this.plain = lowTwin(this.fine)));
+      this.made?.(this.plain);
+    }
+    this.fine.visible = !plain;
+    if (!this.plain) return;
+    this.plain.visible = plain;
+    // (not on the plain level: its boxes stand in for nothing)
+    const paint = plain && !past && !graphicsNow.plainBlocks;
+    if (paint === this.painted) return;
+    this.painted = paint;
+    for (const c of this.plain.children) if ((c as InstancedMesh).isInstancedMesh) paintRim(c as InstancedMesh, paint);
+  }
+}
 
 /**
  * A plain-box twin of voxel meshes (from `buildVoxelMesh`): the same blocks
@@ -119,23 +183,19 @@ export function lowTwin(src: Group): Group {
  * once).
  */
 export class ChunkLods {
-  private readonly list: { box: Box3; parent: Group; fine: Group; plain: Group | null }[] = [];
+  private readonly list: ChunkSwitch[] = [];
   private readonly flat = new Vector3();
 
   /** Add the bevelled meshes of a chunk (`box`: its ground plan) to `parent`. */
   add(parent: Group, box: Box3, fine: Group): void {
     parent.add(fine);
-    this.list.push({ box, parent, fine, plain: null });
+    this.list.push(new ChunkSwitch(box, fine, parent));
   }
 
   update(camera: Camera, roaming: boolean): void {
     this.flat.set(camera.position.x, 0, camera.position.z);
     const from = roaming ? PLAIN_FROM.roam : PLAIN_FROM.overview;
-    for (const l of this.list) {
-      const plain = l.box.distanceToPoint(this.flat) > from;
-      if (plain && !l.plain) l.parent.add((l.plain = lowTwin(l.fine)));
-      l.fine.visible = !plain;
-      if (l.plain) l.plain.visible = plain;
-    }
+    const pixel = pixelSize(camera);
+    for (const l of this.list) l.update(camera.position, this.flat, from, pixel);
   }
 }

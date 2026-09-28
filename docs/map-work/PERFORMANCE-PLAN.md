@@ -1,7 +1,7 @@
 # World map: CPU / GPU / memory plan
 
-**Status: in three phases.** Phase 1 (items 1–4) is done: results in
-section 7. Phase 2 is items 5–8b, phase 3 is item 9. Pick up from "Next
+**Status: in three phases.** Phases 1 (items 1–4) and 2 (items 5–8b) are
+done: results in section 7. Phase 3 is item 9. Pick up from "Next
 steps" at the bottom.
 
 ## 1. The problem
@@ -63,7 +63,9 @@ only change opacity and transform. They cost almost nothing.
 Everything is built before Start:
 
 - ≈ 570 k map blocks as GPU buffers, plus the roaming walk maps
-  (≈ 143 k + 116 k + 201 k blocks) in JS memory;
+  (≈ 143 k + 116 k + 201 k blocks) in JS memory (measured in phase 2: the
+  block indexes are only ≈ 1.5 MB; the rivers' bank distances ≈ 6.8 MB and
+  current ≈ 2.4 MB were most of it);
 - things that may never show: 24 000 snowflakes and snowmen, the festival
   boats and crowds (≈ 8 k boxes), rain, rainbow, 174 people, hundreds of
   animals;
@@ -228,8 +230,8 @@ both the loading screen and play.
 - [x] Owner picked the items: phase 1 = 1–4, phase 2 = 5–8b, phase 3 = 9;
   one commit a phase.
 - [x] Phase 1: done and measured (section 7).
-- [ ] Phase 2: items 5, 6, 7, 8, 8b. Baseline with `npm run perf` on the
-  phase 1 commit first.
+- [x] Phase 2: items 5, 6, 7, 8, 8b, measured against the phase 1 commit
+  (section 7).
 - [ ] Phase 3: item 9.
 
 ## 7. Results
@@ -280,3 +282,83 @@ Notes:
 - Before, auto's medium level dropped to ratio 1 behind the loading screen
   (it was measuring frames nobody saw). Now it keeps the screen's ratio
   until the player is on the map.
+
+### Phase 2: items 5–8b
+
+What changed:
+
+5. **Far plain boxes on every level, with a painted rim.** A far voxel mesh
+   swaps its chamfered unit block (44 triangles) for a plain box (12) when
+   its largest cut edge spans under a pixel (`plainFar`, `PLAIN_PX`:
+   medium and high 1 px, max ½ px; terrain and jungle chunks through
+   `ChunkSwitch`, terrain/lod.ts). Plain boxes alone lost the bright rim the
+   map's blocks paint on their chamfer (the lines between temple stones), so
+   they wear a rim copy of their material (`voxelRimMaterial`, voxel/
+   materials.ts, `#define VOX_RIM`) that paints the chamfer's strip, weighted
+   by its share of the pixel. Near blocks keep their program untouched; the
+   rim programs compile at load. `plainpx=<px>`, `rim=0` to compare. Also a
+   fix on low: boats sharing one geometry went plain when only one copy was
+   far.
+6. **Still shadows on medium** (as on low): no shadow pass every third frame
+   (9.5 M triangles in the overview, +5 ms on that frame); what moves casts
+   none there, and the explorer gets the soft disc. The next still map needs
+   a second target: made lean (below).
+7. **Built only when needed.** Snow, rain, the rainbow and the festival are
+   built when the weather or the calendar wants them (`LateParts`,
+   src/map/lazy.ts; a shot builds what its URL asks). The roaming walk
+   maps, plank floor and river current are built in idle slices a second
+   after Start (at once when "Jump in" opens). The snowmen are no longer
+   solid (the explorer walks through them).
+8. **Frustum culling:** 25 of the 39 unculled meshes now have bounds that
+   hold everything they can draw (glows, halos, smoke, steam, spray, flocks,
+   rings, birds, butterflies, fireflies, the balloon's parts, the crowd);
+   the 14 others say why they stay unculled. A GPU checker drew each culled
+   object alone over 6 480 poses × day, night, dawn: 0 errors.
+8b. **Fog setting:** Auto / Full / Light / Simple (sky/fogLevel.ts),
+   live, no recompile. Light: the 5 mist planes drawn as 2 stacked planes
+   (the same sea), 133 banks of 264. Simple: also an even valley mist in
+   every material (one land-map read, not 8–12 texture reads), 65 banks.
+   Every step: the mist planes are a ring beyond the land (not shaded over
+   it), and the edge banks stay, so the cut edges stay hidden.
+
+Found on the way:
+
+- **Shader warm-up:** `compileAsync` compiled the screen's version of every
+  program (tone mapping, sRGB), but the scene draws into post.ts's target:
+  the first frame compiled all ~75 again. Compiled for a target now
+  (lazy.ts `compileFor`): the first frame under the loading screen 1.3 s →
+  0.3 s, programs 201 → 127.
+- **Lean shadow maps:** three gives each shadow map an RGBA colour texture
+  that PCF never reads (64 MB at 4096²). Made first with one byte a texel
+  (graphics.ts `leanShadowMaps`): 16 MB. With medium's second still map,
+  that keeps its memory near what one map cost before.
+
+
+Measured against the phase 1 commit (4ec7081), back to back on the same
+M1 Max. `npm run perf`, 1280 × 720 at ratio 1, ms a frame (GPU-bound):
+
+| view | low | medium | high | phone |
+|---|---|---|---|---|
+| overview | 6.2 → 5.9 | 15.6 → **11.3** | 15.2 → **12.7** | 5.7 → 5.2 |
+| night | 6.2 → 5.7 | 15.5 → **12.0** | 15.9 → **12.5** | 5.5 → 5.4 |
+| village walk | 4.0 → 3.1 | 6.3 → 5.0 | 6.4 → 5.9 | 3.3 → 3.0 |
+| east village | 4.0 → 3.6 | 7.0 → 5.8 | 6.8 → 6.4 | 3.8 → 3.3 |
+| hang glider | 5.2 → 4.4 | 11.4 → **7.9** | 11.2 → **8.5** | 5.1 → 4.3 |
+| dusk (day turning) | 6.2 → 5.8 | 15.9 → **12.4** | 16.3 → **13.1** | 5.7 → 5.6 |
+
+Triangles in the medium overview 8.81 + 9.50 M (picture + shadow pass
+every third frame) → 5.64 M + none while the light stands; draws 8–38
+fewer in every view.
+
+`npm run idle` (1440 × 900 at 2×, medium):
+
+- Start shows about 1 s sooner (the shader warm-up): 6.4–6.6 s → 5.3–5.4 s.
+- Medium now keeps the screen's full picture (ratio 2) on the overview
+  where before it dropped to ratio 1 (it stays over 40 frames a second),
+  so it looks sharper; its picture targets take more memory there
+  (GL 375 → 640 MB at ratio 2).
+- The same picture size on both (`resolution=0.5`): waiting on Start GL
+  301 → 251 MB (lean shadow map, lazy parts); on the overview GL 375 →
+  405 MB (+30: medium's second still map, 128 MB without the lean maps);
+  the GPU process 26 MB less; the tab about the same; moving the mouse
+  55 → 59 frames a second.

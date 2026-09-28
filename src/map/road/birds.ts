@@ -1,4 +1,4 @@
-import { BoxGeometry, Color, Euler, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, Color, Euler, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Sphere, Vector3 } from 'three';
 import { mulberry32 } from '../../voxel/random';
 
 /**
@@ -76,8 +76,8 @@ export function buildBirds(): Birds {
     body.setColorAt(i, c.setHex(m.f.color));
     for (let w = 0; w < 4; w++) wings.setColorAt(i * 4 + w, c.setHex(m.f.color));
   });
+  // (culled on the birds where they fly now: each frame, `cover`)
   for (const mesh of [body, wings]) {
-    mesh.frustumCulled = false;
     mesh.castShadow = false;
     mesh.receiveShadow = false;
   }
@@ -148,8 +148,32 @@ export function buildBirds(): Birds {
       });
       body.instanceMatrix.needsUpdate = true;
       wings.instanceMatrix.needsUpdate = true;
+      cover(body);
+      cover(wings);
     },
   };
+}
+
+const _m = new Matrix4();
+const _s = new Sphere();
+
+/**
+ * The sphere three culls a mesh of birds on, round where they fly now. Its
+ * middle stays where three put it the first time (from the birds then): the
+ * see-through draws are sorted by their spheres' middles, and the birds are
+ * drawn where they always were among them; only its radius follows them.
+ */
+function cover(mesh: InstancedMesh): void {
+  if (!mesh.boundingSphere) return mesh.computeBoundingSphere();
+  const s = mesh.boundingSphere;
+  const g = mesh.geometry.boundingSphere!;
+  let r = 0;
+  for (let i = 0; i < mesh.count; i++) {
+    mesh.getMatrixAt(i, _m);
+    _s.copy(g).applyMatrix4(_m);
+    r = Math.max(r, _s.center.distanceTo(s.center) + _s.radius);
+  }
+  s.radius = r;
 }
 
 function smooth(a: number, b: number, x: number): number {

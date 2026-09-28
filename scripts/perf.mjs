@@ -27,7 +27,7 @@
 //    per part (who each drawn object belongs to).
 // The shadow map is drawn when the live page would draw it (a still draws it
 // every frame): every `shadowEvery` frames, never while still shadows stand
-// (the low level) but the first. The M1 Max's GPU is about 5–8 times an
+// (low and medium) but the first. The M1 Max's GPU is about 5–8 times an
 // iPhone's (15–30 a mid Android's), its CPU about the same as an iPhone's:
 // a phone is GPU-bound where this machine is CPU-bound (the walks on low).
 // (GPU timer queries on ANGLE/Metal measure about twice the frame: only in
@@ -38,7 +38,7 @@
 // over the map, the overview and the market walk in snow, a walk by the east
 // paddies, the overview and the village walk at dusk with the day turning
 // (`dusk`, `duskwalk`: `TURNING`; with `shadows=live` the page draws the
-// shadow map as the live page does, the low level's still map again each
+// shadow map as the live page does, the still map (low, medium) again each
 // time the light has turned: `max` is the worst frame, `shadow +` the extra
 // of the frames that draw some of it) (`only=` picks; the default is all but
 // the snow, the dusk and the east paddies). Env: PERF_W / PERF_H the desktop viewport (1280×720);
@@ -82,7 +82,7 @@ const VIEWS = {
 /**
  * Views where the day turns: the clock at the start, and how many times as
  * fast as the live day (360 s): from dusk into the night the key light turns
- * fastest, and the low level's still shadow map is drawn again each time it
+ * fastest, and the still shadow map (low, medium) is drawn again each time it
  * has turned `STILL_TURN` (graphics.ts).
  */
 const TURNING = { dusk: [0.26, 4], duskwalk: [0.26, 4] };

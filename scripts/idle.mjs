@@ -33,7 +33,20 @@
 //    what Chrome's Task Manager shows. GPU util %: macOS's whole-machine GPU "Device Utilization %"
 //    (ioreg, sampled 4 times a second: other apps count too; `idle GPU` is the machine before the browser);
 //  - render / update ms a frame: JS time in `post.render` (three's draw calls: the GPU draws after)
-//    and in all the parts' `update` (window.parts, each wrapped), and their share of the main thread.
+//    and in all the parts' `update` (window.parts, each wrapped), and their share of the main thread;
+//  - mem (after the case, outside its seconds): heap MB, the JS heap at the case's end (`JSHeapUsedSize`;
+//    typed arrays' contents are not in it), and live MB, the same after a garbage collection; scene MB,
+//    what the GPU holds for `window.scene` by its sizes and types: every geometry's attributes and index
+//    under shown objects (the instances' matrices, colours and per-instance attributes apart), the
+//    textures its materials use that three has uploaded (also the uniforms `onBeforeCompile` added), and
+//    the render targets in use (the shadow maps, the post effects' targets, their multisampled buffers:
+//    every target three has drawn into); GL MB,
+//    what WebGL was asked to allocate (buffers, textures, renderbuffers, counted as three calls
+//    `bufferData`, `texStorage2D`, … on the page's context; the canvas's own buffers not counted);
+//    tab MB and GPU proc MB, macOS's `phys_footprint` of the page's renderer and of Chromium's GPU
+//    process (`footprint`: what Activity Monitor shows); geo/tex, `renderer.info.memory`. The JSON has
+//    the parts of each (geometry hidden: under an object not shown now), the render targets one by
+//    one, and the build: each part's ms from the page's `[map] built in …` line, and the shaders'.
 // Other work on the machine (a dev browser, builds, shots) makes the numbers noisy: run twice. A case
 // marked * had another Playwright browser (shots, perf, a video) running at its start or end.
 // Requests to other hosts than the preview and Google Fonts are not resolved (the analytics never leave).
@@ -137,8 +150,82 @@ function gpuSampler() {
 
 /** In the page, before its scripts: count and time `post.render`, each part's `update` and the animation frames. */
 function instrument() {
-  const S = { renders: 0, renderMs: 0, renderAt: [], updateMs: 0, steps: 0, parts: {}, ticks: 0, rafCalls: 0, rafMs: 0, lastTs: -1, post: false };
+  const S = { renders: 0, renderMs: 0, renderAt: [], updateMs: 0, steps: 0, parts: {}, ticks: 0, rafCalls: 0, rafMs: 0, lastTs: -1, post: false, targets: new Set() };
   window.__idle = S;
+  // (what WebGL allocates, per context, as asked for: each buffer's, texture's and renderbuffer's bytes, until
+  // deleted; only the calls that allocate are wrapped, not the ones a frame makes to fill them)
+  const K = globalThis.WebGL2RenderingContext;
+  if (K) {
+    const table = (o) => new Map(Object.entries(o).filter(([k]) => K[k] !== undefined).map(([k, v]) => [K[k], v]));
+    const SIZED = table({ R8: 1, R8_SNORM: 1, R8I: 1, R8UI: 1, STENCIL_INDEX8: 1, RG8: 2, RG8_SNORM: 2, RG8I: 2, RG8UI: 2, R16F: 2, R16I: 2, R16UI: 2, RGB565: 2, RGBA4: 2, RGB5_A1: 2, DEPTH_COMPONENT16: 2, RGB8: 3, SRGB8: 3, RGB8_SNORM: 3, RGB8I: 3, RGB8UI: 3, RGBA8: 4, SRGB8_ALPHA8: 4, RGBA8_SNORM: 4, RGBA8I: 4, RGBA8UI: 4, RGB10_A2: 4, RGB10_A2UI: 4, RG16F: 4, RG16I: 4, RG16UI: 4, R32F: 4, R32I: 4, R32UI: 4, R11F_G11F_B10F: 4, RGB9_E5: 4, DEPTH_COMPONENT24: 4, DEPTH_COMPONENT32F: 4, DEPTH24_STENCIL8: 4, RGB16F: 6, RGB16I: 6, RGB16UI: 6, RGBA16F: 8, RGBA16I: 8, RGBA16UI: 8, RG32F: 8, RG32I: 8, RG32UI: 8, DEPTH32F_STENCIL8: 8, RGB32F: 12, RGB32I: 12, RGB32UI: 12, RGBA32F: 16, RGBA32I: 16, RGBA32UI: 16 });
+    const CHANNELS = table({ RED: 1, RED_INTEGER: 1, ALPHA: 1, LUMINANCE: 1, DEPTH_COMPONENT: 1, RG: 2, RG_INTEGER: 2, LUMINANCE_ALPHA: 2, RGB: 3, RGB_INTEGER: 3, RGBA: 4, RGBA_INTEGER: 4 });
+    const TYPE = table({ BYTE: 1, UNSIGNED_BYTE: 1, SHORT: 2, UNSIGNED_SHORT: 2, HALF_FLOAT: 2, INT: 4, UNSIGNED_INT: 4, FLOAT: 4 });
+    const PACKED = table({ UNSIGNED_SHORT_4_4_4_4: 2, UNSIGNED_SHORT_5_5_5_1: 2, UNSIGNED_SHORT_5_6_5: 2, UNSIGNED_INT_24_8: 4, UNSIGNED_INT_2_10_10_10_REV: 4, UNSIGNED_INT_10F_11F_11F_REV: 4, UNSIGNED_INT_5_9_9_9_REV: 4, FLOAT_32_UNSIGNED_INT_24_8_REV: 8 });
+    /** Bytes a texel: a sized internal format's, or an unsized one's channels × its type's bytes. */
+    const texel = (ifmt, format, type) => SIZED.get(ifmt) ?? PACKED.get(type) ?? (CHANNELS.get(format ?? ifmt) ?? 4) * (TYPE.get(type) ?? 1);
+    S.texel = texel;
+    const BUF = table({ ARRAY_BUFFER: K.ARRAY_BUFFER_BINDING, ELEMENT_ARRAY_BUFFER: K.ELEMENT_ARRAY_BUFFER_BINDING, UNIFORM_BUFFER: K.UNIFORM_BUFFER_BINDING, COPY_READ_BUFFER: K.COPY_READ_BUFFER_BINDING, COPY_WRITE_BUFFER: K.COPY_WRITE_BUFFER_BINDING, PIXEL_PACK_BUFFER: K.PIXEL_PACK_BUFFER_BINDING, PIXEL_UNPACK_BUFFER: K.PIXEL_UNPACK_BUFFER_BINDING, TRANSFORM_FEEDBACK_BUFFER: K.TRANSFORM_FEEDBACK_BUFFER_BINDING });
+    const isFace = (t) => t >= K.TEXTURE_CUBE_MAP_POSITIVE_X && t <= K.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+    const TEX = table({ TEXTURE_2D: K.TEXTURE_BINDING_2D, TEXTURE_CUBE_MAP: K.TEXTURE_BINDING_CUBE_MAP, TEXTURE_3D: K.TEXTURE_BINDING_3D, TEXTURE_2D_ARRAY: K.TEXTURE_BINDING_2D_ARRAY });
+    const bound = (gl, target) => gl.getParameter(isFace(target) ? K.TEXTURE_BINDING_CUBE_MAP : TEX.get(target));
+    const mem = (gl) => (gl.__idleMem ??= { buffers: new Map(), textures: new Map(), renderbuffers: new Map() });
+    /** A texture's bytes: by (face, level) as `texImage*` fills them, or all at once (`texStorage*`). */
+    const setTex = (gl, t, key, bytes) => {
+      if (!t) return;
+      const m = mem(gl).textures;
+      const e = key === 'storage' ? {} : (m.get(t) ?? {});
+      e[key] = bytes;
+      m.set(t, e);
+    };
+    const levels = (n, w, h, d = 1) => {
+      let s = 0;
+      for (let l = 0; l < n; l++) s += Math.max(1, w >> l) * Math.max(1, h >> l) * Math.max(1, d >> l);
+      return s;
+    };
+    const P = K.prototype;
+    const after = (name, fn) => {
+      const f = P[name];
+      if (typeof f !== 'function') return;
+      P[name] = function (...a) {
+        const out = f.apply(this, a);
+        try {
+          fn(this, a);
+        } catch {
+          /* (a count missed, never the call) */
+        }
+        return out;
+      };
+    };
+    after('bufferData', (gl, [target, src, , off = 0, len = 0]) => {
+      const b = gl.getParameter(BUF.get(target));
+      if (!b) return;
+      const n = typeof src === 'number' ? src : ArrayBuffer.isView(src) && src.BYTES_PER_ELEMENT ? (len || src.length - off) * src.BYTES_PER_ELEMENT : (src?.byteLength ?? 0);
+      mem(gl).buffers.set(b, n);
+    });
+    after('deleteBuffer', (gl, [b]) => mem(gl).buffers.delete(b));
+    after('texStorage2D', (gl, [target, n, ifmt, w, h]) => setTex(gl, bound(gl, target), 'storage', levels(n, w, h) * texel(ifmt) * (target === K.TEXTURE_CUBE_MAP ? 6 : 1)));
+    after('texStorage3D', (gl, [target, n, ifmt, w, h, d]) => setTex(gl, bound(gl, target), 'storage', (target === K.TEXTURE_3D ? levels(n, w, h, d) : levels(n, w, h) * d) * texel(ifmt)));
+    after('texImage2D', (gl, a) => {
+      // (target, level, internalformat, width, height, border, format, type, …) or (target, level, internalformat, format, type, source)
+      const [target, level, ifmt] = a;
+      const s = a[5];
+      const [w, h, format, type] = a.length >= 9 ? [a[3], a[4], a[6], a[7]] : [s?.naturalWidth ?? s?.videoWidth ?? s?.displayWidth ?? s?.width ?? 0, s?.naturalHeight ?? s?.videoHeight ?? s?.displayHeight ?? s?.height ?? 0, a[3], a[4]];
+      setTex(gl, bound(gl, target), `${target}:${level}`, w * h * texel(ifmt, format, type));
+    });
+    after('texImage3D', (gl, [target, level, ifmt, w, h, d, , format, type]) => setTex(gl, bound(gl, target), `${target}:${level}`, w * h * d * texel(ifmt, format, type)));
+    after('copyTexImage2D', (gl, [target, level, ifmt, , , w, h]) => setTex(gl, bound(gl, target), `${target}:${level}`, w * h * texel(ifmt)));
+    after('compressedTexImage2D', (gl, [target, level, , , , , src]) => setTex(gl, bound(gl, target), `${target}:${level}`, typeof src === 'number' ? src : (src?.byteLength ?? 0)));
+    after('deleteTexture', (gl, [t]) => mem(gl).textures.delete(t));
+    after('renderbufferStorage', (gl, [, ifmt, w, h]) => {
+      const rb = gl.getParameter(K.RENDERBUFFER_BINDING);
+      if (rb) mem(gl).renderbuffers.set(rb, w * h * texel(ifmt));
+    });
+    after('renderbufferStorageMultisample', (gl, [, samples, ifmt, w, h]) => {
+      const rb = gl.getParameter(K.RENDERBUFFER_BINDING);
+      if (rb) mem(gl).renderbuffers.set(rb, Math.max(1, samples) * w * h * texel(ifmt));
+    });
+    after('deleteRenderbuffer', (gl, [rb]) => mem(gl).renderbuffers.delete(rb));
+  }
   // (rAF: the animation frames the page gets, and the JS they run: the map's tick and the rest)
   const raf = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = function (cb) {
@@ -199,9 +286,30 @@ function instrument() {
     v.render = w;
     S.post = true;
   };
+  // (the render targets drawn into — the post effects', the shadow maps', the people's bones —: counted after each case)
+  const wrapRenderer = (r) => {
+    const set = r?.setRenderTarget;
+    if (typeof set !== 'function' || set.__idle) return;
+    const w = function (target, face, level) {
+      if (target) S.targets.add(target);
+      return set.call(this, target, face, level);
+    };
+    w.__idle = true;
+    r.setRenderTarget = w;
+  };
   // (main.ts hands them to the window with Object.assign: caught as they are set, before the first frame)
   let post;
   let parts;
+  let renderer;
+  Object.defineProperty(window, 'renderer', {
+    configurable: true,
+    enumerable: true,
+    get: () => renderer,
+    set: (v) => {
+      renderer = v;
+      wrapRenderer(v);
+    },
+  });
   Object.defineProperty(window, 'post', {
     configurable: true,
     enumerable: true,
@@ -220,6 +328,181 @@ function instrument() {
       wrapParts();
     },
   });
+}
+
+/**
+ * In the page, after a case: the bytes the GPU holds for the map, by walking `window.scene` (geometry and
+ * instances: their arrays; textures and render targets: their sizes and types), next to what WebGL was
+ * asked to allocate (instrument's count) and three's own counts.
+ */
+function sceneMemory() {
+  const r = window.renderer;
+  const scene = window.scene;
+  const S = window.__idle;
+  if (!r || !scene || !S) return null;
+  const gl = r.getContext();
+  const props = r.properties;
+  // (three's formats and types: channels, bytes a channel, packed types' bytes a texel)
+  const CH = { 1021: 1, 1022: 3, 1023: 4, 1026: 1, 1027: 1, 1028: 1, 1029: 1, 1030: 2, 1031: 2, 1032: 3, 1033: 4 };
+  const TY = { 1009: 1, 1010: 1, 1011: 2, 1012: 2, 1013: 4, 1014: 4, 1015: 4, 1016: 2 };
+  const PK = { 1017: 2, 1018: 2, 1020: 4, 35899: 4, 35902: 4 };
+  const texel = (t) => (typeof t.internalFormat === 'string' && S.texel ? S.texel(gl[t.internalFormat]) : (PK[t.type] ?? (CH[t.format] ?? 4) * (TY[t.type] ?? 1)));
+  // (a mipmap chain as three makes one: generateMipmaps and a mipmap filter, or mipmaps given)
+  const mipped = (t) => t.generateMipmaps && t.minFilter !== 1003 && t.minFilter !== 1006;
+  const area = (w, h, mips) => {
+    if (!mips) return w * h;
+    let s = 0;
+    for (let x = w, y = h; ; x = Math.max(1, x >> 1), y = Math.max(1, y >> 1)) {
+      s += x * y;
+      if (x === 1 && y === 1) break;
+    }
+    return s;
+  };
+  const MB = 1048576;
+  const mark = (map, k, shown) => {
+    if (k) map.set(k, map.get(k) || shown);
+  };
+
+  // The scene, shown or not (an object is shown when it and all above it are visible).
+  const geoms = new Map();
+  const mats = new Map();
+  const texs = new Map();
+  const targets = new Set(S.targets);
+  const count = { objects: 0, meshes: 0, instanced: 0, instances: 0 };
+  const walk = (o, shown) => {
+    shown = shown && o.visible;
+    count.objects++;
+    if (o.isMesh || o.isPoints || o.isLine) count.meshes++;
+    if (o.geometry?.isBufferGeometry) mark(geoms, o.geometry, shown);
+    if (o.isInstancedMesh) {
+      count.instanced++;
+      count.instances += o.count;
+      mark(geoms, { attributes: { m: o.instanceMatrix, c: o.instanceColor } }, shown);
+      mark(texs, o.morphTexture, shown);
+    }
+    if (o.isBatchedMesh) for (const t of [o._matricesTexture, o._indirectTexture, o._colorsTexture]) mark(texs, t, shown);
+    if (o.isSkinnedMesh) mark(texs, o.skeleton?.boneTexture, shown);
+    for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) mark(mats, m, shown);
+    if (o.shadow?.map) targets.add(o.shadow.map);
+    if (o.shadow?.mapPass) targets.add(o.shadow.mapPass);
+    for (const c of o.children) walk(c, shown);
+  };
+  walk(scene, true);
+  for (const t of [scene.background, scene.environment]) if (t?.isTexture) mark(texs, t, true);
+  // Textures: the materials' own, and their uniforms' (also those onBeforeCompile added: in three's properties).
+  const fromValue = (v, shown) => {
+    if (v?.isTexture) mark(texs, v, shown);
+    else if (Array.isArray(v)) for (const x of v) if (x?.isTexture) mark(texs, x, shown);
+  };
+  for (const [m, shown] of mats) {
+    for (const k in m) fromValue(m[k], shown);
+    for (const u of Object.values(m.uniforms ?? {})) fromValue(u?.value, shown);
+    if (props.has(m)) for (const u of Object.values(props.get(m).uniforms ?? {})) fromValue(u?.value, shown);
+  }
+
+  // Geometry: each attribute's array once (an interleaved buffer once); per-instance data apart.
+  const bufs = new Map();
+  for (const [g, shown] of geoms) {
+    const all = [...Object.values(g.attributes ?? {}), g.index, ...Object.values(g.morphAttributes ?? {}).flat()];
+    for (const a of all) if (a) mark(bufs, a.isInterleavedBufferAttribute ? a.data : a, shown);
+  }
+  const geometry = { shown: 0, hidden: 0 };
+  const instances = { shown: 0, hidden: 0 };
+  for (const [a, shown] of bufs) {
+    const into = a.isInstancedBufferAttribute || a.isInstancedInterleavedBuffer ? instances : geometry;
+    into[shown ? 'shown' : 'hidden'] += a.array?.byteLength ?? 0;
+  }
+
+  // Textures by their sizes and types (a render target's texture: counted with its target); on the GPU once
+  // three has uploaded them (a texture of something not drawn yet waits: `waiting`). Textures with one source
+  // (an image, a canvas) share one GPU texture in three: counted once.
+  const textures = { uploaded: 0, waiting: 0, hidden: 0, count: 0, uploadedCount: 0 };
+  const texList = [];
+  const sources = new Map();
+  for (const [t, shown] of texs) {
+    if (t.renderTarget || t.isRenderTargetTexture) {
+      if (t.renderTarget) targets.add(t.renderTarget);
+      continue;
+    }
+    const up = props.has(t) && props.get(t).__webglTexture !== undefined;
+    const e = sources.get(t.source ?? t);
+    if (e) {
+      e.up ||= up;
+      e.shown ||= shown;
+    } else sources.set(t.source ?? t, { t, up, shown });
+  }
+  for (const { t, up, shown } of sources.values()) {
+    let bytes = 0;
+    if (t.isCompressedTexture) for (const m of t.mipmaps ?? []) bytes += m.data?.byteLength ?? 0;
+    else
+      for (const img of Array.isArray(t.image) ? t.image : [t.image]) {
+        if (!img) continue;
+        const w = img.naturalWidth ?? img.videoWidth ?? img.width ?? 0;
+        const h = img.naturalHeight ?? img.videoHeight ?? img.height ?? 0;
+        bytes += (t.mipmaps?.length > 1 ? area(w, h, true) : area(w, h, mipped(t))) * (img.depth ?? 1) * texel(t);
+      }
+    textures[up ? 'uploaded' : shown ? 'waiting' : 'hidden'] += bytes;
+    textures.count++;
+    if (up) textures.uploadedCount++;
+    const img = Array.isArray(t.image) ? t.image[0] : t.image;
+    texList.push({ name: t.name || t.constructor?.name || '', size: `${img?.naturalWidth ?? img?.videoWidth ?? img?.width ?? 0}×${img?.naturalHeight ?? img?.videoHeight ?? img?.height ?? 0}${img?.depth > 1 ? `×${img.depth}` : ''}`, format: t.format, type: t.type, mips: mipped(t), uploaded: up, shown, mb: +(bytes / MB).toFixed(2) });
+  }
+  texList.sort((a, b) => b.mb - a.mb);
+
+  // Render targets in use (three has a framebuffer for them): colour, depth, and the multisampled copies.
+  const list = [];
+  let targetBytes = 0;
+  for (const rt of targets) {
+    if (!props.has(rt) || props.get(rt).__webglFramebuffer === undefined) continue;
+    const { width: w, height: h } = rt;
+    const d = rt.depth ?? 1;
+    const faces = rt.isWebGLCubeRenderTarget ? 6 : 1;
+    let color = 0;
+    let perSample = 0;
+    for (const t of rt.textures ?? [rt.texture]) {
+      color += area(w, h, mipped(t)) * d * faces * texel(t);
+      perSample += texel(t);
+    }
+    const depthTexel = rt.depthTexture ? texel(rt.depthTexture) : rt.depthBuffer ? 4 : 0;
+    const depth = w * h * faces * depthTexel;
+    // (multisampled: three draws into renderbuffers with `samples` per pixel, colour and depth, then resolves)
+    const samples = Math.min(rt.samples ?? 0, r.capabilities.maxSamples ?? 4);
+    const msaa = props.get(rt).__webglMultisampledFramebuffer ? samples * w * h * (perSample + (rt.depthBuffer ? depthTexel || 4 : 0)) : 0;
+    const bytes = color + depth + msaa;
+    targetBytes += bytes;
+    const t = rt.texture;
+    list.push({ name: t?.name || rt.depthTexture?.name || '', size: `${w}×${h}${d > 1 ? `×${d}` : ''}`, format: t?.format, type: t?.type, samples, depthTexture: !!rt.depthTexture, mb: +(bytes / MB).toFixed(2), colorMB: +(color / MB).toFixed(2), depthMB: +(depth / MB).toFixed(2), msaaMB: +(msaa / MB).toFixed(2) });
+  }
+  list.sort((a, b) => b.mb - a.mb);
+
+  // What WebGL was asked to allocate on this context.
+  const m = gl.__idleMem;
+  const sum = (map) => {
+    let n = 0;
+    for (const v of map?.values() ?? []) for (const b of Object.values(typeof v === 'number' ? { v } : v)) n += b;
+    return n;
+  };
+  const glMem = m ? { buffers: sum(m.buffers) / MB, bufferCount: m.buffers.size, textures: sum(m.textures) / MB, textureCount: m.textures.size, renderbuffers: sum(m.renderbuffers) / MB, renderbufferCount: m.renderbuffers.size } : null;
+  if (glMem) glMem.total = glMem.buffers + glMem.textures + glMem.renderbuffers;
+
+  const mb = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k.endsWith('ount') ? v : v / MB]));
+  const shownMB = (geometry.shown + instances.shown + textures.uploaded + targetBytes) / MB;
+  const attrs = gl.getContextAttributes();
+  return {
+    sceneMB: shownMB,
+    sceneAllMB: shownMB + (geometry.hidden + instances.hidden + textures.waiting + textures.hidden) / MB,
+    geometry: mb(geometry),
+    instances: mb(instances),
+    textures: mb(textures),
+    texturesTop: texList.slice(0, 12),
+    targetsMB: targetBytes / MB,
+    targets: list,
+    gl: glMem,
+    three: { geometries: r.info.memory.geometries, textures: r.info.memory.textures, programs: r.info.programs?.length ?? 0 },
+    counts: { ...count, geometries: geoms.size - count.instanced, materials: mats.size },
+    canvas: [r.domElement.width, r.domElement.height],
+    antialias: !!attrs?.antialias,
+  };
 }
 
 // ── Build and serve ─────────────────────────────────────────────────────────
@@ -314,8 +597,53 @@ const q = (xs, p) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))];
 };
+const MB = 1048576;
+/**
+ * macOS's count of a process's memory (`phys_footprint`, what Activity Monitor shows), and the part of it
+ * that is graphics memory (the IOAccelerator and IOSurface regions): `footprint`, about 0.3 s a process.
+ */
+function footprint(pid) {
+  return new Promise((res) =>
+    execFile('footprint', ['-f', 'bytes', String(pid)], { timeout: 20_000, maxBuffer: 16 << 20 }, (err, out) => {
+      const phys = !err && /phys_footprint:\s*(\d+) B/.exec(out);
+      if (!phys) return res(null);
+      let accel = 0;
+      let surface = 0;
+      const top = [];
+      for (const l of out.split('\n')) {
+        const m = /^\s*(\d+) B\s+\d+ B\s+\d+ B\s+\d+\s+(.*\S)\s*$/.exec(l);
+        if (!m) continue;
+        if (/IOAccelerator/.test(m[2])) accel += Number(m[1]);
+        if (/IOSurface/.test(m[2])) surface += Number(m[1]);
+        top.push([m[2], +(Number(m[1]) / MB).toFixed(1)]);
+      }
+      // (the biggest regions by kind, dirty MB: where the footprint is)
+      top.sort((a, b) => b[1] - a[1]);
+      res({ pid, mb: Number(phys[1]) / MB, graphicsMB: accel / MB, surfaceMB: surface / MB, top: Object.fromEntries(top.slice(0, 8)) });
+    }),
+  );
+}
+/** The browser's processes now: the GPU process's footprint and the biggest renderer's (the map's page). */
+async function footprints() {
+  if (process.platform !== 'darwin') return null;
+  const { processInfo } = await bcdp.send('SystemInfo.getProcessInfo').catch(() => ({ processInfo: [] }));
+  const of = async (type) => (await Promise.all(processInfo.filter((p) => p.type === type).map((p) => footprint(p.id)))).filter(Boolean).sort((a, b) => b.mb - a.mb);
+  const [gpuProc, renderers, browserProc] = await Promise.all([of('GPU'), of('renderer'), of('browser')]);
+  return { gpu: gpuProc[0] ?? null, renderer: renderers[0] ?? null, renderers: renderers.length, browser: browserProc[0] ?? null };
+}
+/**
+ * After a case (outside its seconds): the scene's and WebGL's bytes (sceneMemory), the JS heap after a
+ * garbage collection, and the processes' footprints.
+ */
+async function memory() {
+  const scene = await page.evaluate(sceneMemory).catch((e) => ({ error: String(e.message ?? e) }));
+  await cdp.send('HeapProfiler.collectGarbage').catch(() => undefined);
+  const metric = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
+  return { heapLiveMB: metric.JSHeapUsedSize / MB, heapTotalMB: metric.JSHeapTotalSize / MB, ...scene, procs: await footprints() };
+}
+
 const cases = [];
-/** One case: counters before, `during` (it waits `secs`), counters after. */
+/** One case: counters before, `during` (it waits `secs`), counters after; then its memory. */
 async function measure(name, during) {
   const a = await snap();
   await during();
@@ -341,6 +669,7 @@ async function measure(name, during) {
       .map(([k, v]) => [k, +v.toFixed(3)]),
   );
   const g = gpu.mean(a.at, b.at);
+  const mem = await memory();
   const c = {
     name,
     secs: +wall.toFixed(2),
@@ -368,7 +697,8 @@ async function measure(name, during) {
     renderPct: renderMs / 10 / pageSecs,
     updatePct: updateMs / 10 / pageSecs,
     rafPct: (b.page.rafMs - a.page.rafMs) / 10 / pageSecs,
-    heapMB: b.metric.JSHeapUsedSize / 1048576,
+    heapMB: b.metric.JSHeapUsedSize / MB,
+    mem,
     parts,
     level: [a.page.level, b.page.level],
     ratio: [a.page.ratio, b.page.ratio],
@@ -380,7 +710,7 @@ async function measure(name, during) {
   };
   cases.push(c);
   const f1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '–');
-  console.log(`idle: ${name.padEnd(8)} ${f1(c.fps)} frames/s (last 5 s ${f1(c.fpsLast5)}) · rAF ${f1(c.rafPerSec)}/s · busy ${f1(c.busyPct)} % · per second ${perSecond.join(' ')}${c.otherBrowsers.length ? ` · NOISY: another headless browser ran (pid ${c.otherBrowsers.join(', ')})` : ''}`);
+  console.log(`idle: ${name.padEnd(8)} ${f1(c.fps)} frames/s (last 5 s ${f1(c.fpsLast5)}) · rAF ${f1(c.rafPerSec)}/s · busy ${f1(c.busyPct)} % · per second ${perSecond.join(' ')} · heap ${f1(c.heapMB)} MB, GL ${f1(mem.gl?.total)} MB, GPU proc ${f1(mem.procs?.gpu?.mb)} MB${c.otherBrowsers.length ? ` · NOISY: another headless browser ran (pid ${c.otherBrowsers.join(', ')})` : ''}`);
   return c;
 }
 
@@ -425,12 +755,43 @@ await browser.close();
 const noisy = cases.filter((c) => c.otherBrowsers.length).map((c) => c.name);
 await server.close();
 
+// The build, from the page's lines: each part's ms (`[map] built in terrain 1234, …, covered 12 ms · blocks {…}`), the shaders'.
+const mapBuild = (() => {
+  const m = /^\[map\] built in (.*?) ms(?: · blocks (\{.*\}))?(?: · FAILED: .*)?$/.exec(mapLog.find((l) => l.startsWith('[map] built in ')) ?? '');
+  if (!m) return null;
+  const partsMs = Object.fromEntries(
+    m[1].split(', ').map((x) => {
+      const i = x.lastIndexOf(' ');
+      return [x.slice(0, i), Number(x.slice(i + 1))];
+    }),
+  );
+  let blocks = null;
+  try {
+    blocks = m[2] ? JSON.parse(m[2]) : null;
+  } catch {
+    /* (not JSON: left out) */
+  }
+  const shaders = /shaders compiled in (\d+) ms/.exec(mapLog.find((l) => l.startsWith('[map] shaders compiled')) ?? '');
+  return {
+    partsMs,
+    sumMs: Object.values(partsMs).reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0),
+    blocks,
+    blocksTotal: blocks ? Object.values(blocks).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0) : null,
+    shadersMs: shaders ? Number(shaders[1]) : null,
+  };
+})();
+
 // ── The table ───────────────────────────────────────────────────────────────
-const f1 = (v) => (v === null || !Number.isFinite(v) ? '–' : v.toFixed(1));
+const f0 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : v.toFixed(0));
+const f1 = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '–' : v.toFixed(1));
 const f2 = (v) => (v === null || !Number.isFinite(v) ? '–' : v.toFixed(2));
 const d = (a, b, fmt) => (b === undefined || b === null || !Number.isFinite(b) || !Number.isFinite(a) ? '' : ` (${a - b >= 0 ? '+' : ''}${fmt(a - b)})`);
-console.log(`\nidle: ${dir} ${git.commit}${git.dirty ? ' + changes' : ''} · ${W}×${H} at ${DPR} · ${SECS} s a case · idle GPU ${f1(idleGpu?.pct ?? null)} %`);
-const cols = ['case', 'frames/s', 'last 5 s', 'rAF/s', 'busy %', 'script %', 'renderer %', 'GPU proc %', 'GPU util %', 'render ms/fr', 'update ms/fr', 'render %', 'update %', 'level', 'ratio', 'canvas', 'focus'];
+console.log(
+  `\nidle: ${dir} ${git.commit}${git.dirty ? ' + changes' : ''} · ${W}×${H} at ${DPR} · ${SECS} s a case · idle GPU ${f1(idleGpu?.pct ?? null)} % · Start after ${loadSecs.toFixed(1)} s${d(loadSecs, vs?.loadSecs, f1)} · build ${mapBuild ? (mapBuild.sumMs / 1000).toFixed(1) : '–'} s of parts${d((mapBuild?.sumMs ?? NaN) / 1000, vs?.build?.sumMs / 1000, f1)}, shaders ${mapBuild?.shadersMs != null ? (mapBuild.shadersMs / 1000).toFixed(1) : '–'} s${mapBuild?.blocksTotal ? ` · ${(mapBuild.blocksTotal / 1000).toFixed(0)} k blocks` : ''}`,
+);
+const cols = ['case', 'frames/s', 'last 5 s', 'rAF/s', 'busy %', 'script %', 'renderer %', 'GPU proc %', 'GPU util %', 'render ms/fr', 'update ms/fr', 'render %', 'update %', 'level', 'ratio', 'canvas', 'focus', 'heap MB', 'live MB', 'scene MB', 'GL MB', 'tab MB', 'GPU proc MB', 'geo/tex'];
+/** The first of the memory columns (their group, `mem`, is named above them). */
+const MEM0 = cols.indexOf('heap MB');
 const rows = cases.map((c) => {
   const was = vs?.cases?.find((x) => x.name === c.name);
   return [
@@ -451,12 +812,33 @@ const rows = cases.map((c) => {
     c.ratio[0] === c.ratio[1] ? String(c.ratio[1]) : c.ratio.join('→'),
     c.canvas ? c.canvas.join('×') : '–',
     c.focus[1] ? 'yes' : 'no',
+    f0(c.heapMB) + d(c.heapMB, was?.heapMB, f0),
+    f0(c.mem?.heapLiveMB) + d(c.mem?.heapLiveMB, was?.mem?.heapLiveMB, f0),
+    f0(c.mem?.sceneMB) + d(c.mem?.sceneMB, was?.mem?.sceneMB, f0),
+    f0(c.mem?.gl?.total) + d(c.mem?.gl?.total, was?.mem?.gl?.total, f0),
+    f0(c.mem?.procs?.renderer?.mb) + d(c.mem?.procs?.renderer?.mb, was?.mem?.procs?.renderer?.mb, f0),
+    f0(c.mem?.procs?.gpu?.mb) + d(c.mem?.procs?.gpu?.mb, was?.mem?.procs?.gpu?.mb, f0),
+    c.mem?.three ? `${c.mem.three.geometries}/${c.mem.three.textures}` : '–',
   ];
 });
 const widths = cols.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
 const line = (r) => r.map((v, i) => (i === 0 ? v.padEnd(widths[i]) : v.padStart(widths[i]))).join('  ');
+const lead = widths.slice(0, MEM0).reduce((a, w) => a + w + 2, 0);
+const span = widths.slice(MEM0).reduce((a, w) => a + w + 2, -2);
+console.log(' '.repeat(lead) + `── mem ${'─'.repeat(Math.max(0, span - 7))}`);
 console.log(line(cols));
 for (const r of rows) console.log(line(r));
+// (each case's memory in parts: MB)
+for (const c of cases) {
+  const m = c.mem;
+  if (!m?.geometry) continue;
+  const p = m.procs;
+  console.log(
+    `idle: mem ${c.name.padEnd(8)} scene ${f0(m.sceneMB)} = geometry ${f0(m.geometry.shown)} + instances ${f0(m.instances.shown)} + textures ${f0(m.textures.uploaded)} (${m.textures.uploadedCount} of ${m.textures.count}) + targets ${f0(m.targetsMB)} (${m.targets.length}); not on the GPU now: geometry and instances under hidden objects ${f0(m.geometry.hidden + m.instances.hidden)}, textures ${f0(m.textures.waiting + m.textures.hidden)} · GL ${f0(m.gl?.total)} = buffers ${f0(m.gl?.buffers)} (${m.gl?.bufferCount}) + textures ${f0(m.gl?.textures)} (${m.gl?.textureCount}) + renderbuffers ${f0(m.gl?.renderbuffers)} (${m.gl?.renderbufferCount}) · ${m.counts.objects} objects, ${m.counts.instanced} instanced (${(m.counts.instances / 1000).toFixed(0)} k), ${m.three.programs} programs · GPU proc ${f0(p?.gpu?.mb)} (IOAccelerator ${f0(p?.gpu?.graphicsMB)}, IOSurface ${f0(p?.gpu?.surfaceMB)}) · tab ${f0(p?.renderer?.mb)}`,
+  );
+}
+const lastMem = cases.at(-1)?.mem;
+if (lastMem?.targets?.length) console.log(`idle: render targets (${cases.at(-1).name}): ${lastMem.targets.map((t) => `${t.name || '?'} ${t.size}${t.samples ? ` ×${t.samples}` : ''} ${f1(t.mb)}`).join(', ')} MB`);
 if (noisy.length) console.warn(`idle: * another headless browser ran during ${noisy.join(', ')}: run again for clean numbers`);
 if (Object.keys(failedHosts).length) console.log(`idle: requests not let out: ${Object.entries(failedHosts).map(([h, n]) => `${h} ${n}`).join(', ')}`);
 
@@ -464,7 +846,7 @@ if (argv.out) {
   const out = file(argv.out);
   writeFileSync(
     out,
-    JSON.stringify({ date: new Date().toISOString(), dir, ...git, url: url.slice(origin.length), viewport: [W, H], dpr: DPR, secs: SECS, settle: SETTLE, chromium: chromiumVersion, gpu: gpuName, buildMs, loadSecs, idleGpuPct: idleGpu?.pct ?? null, otherBrowsersBefore: othersBefore, noisy, mapLog, failedHosts, cases }, null, 1),
+    JSON.stringify({ date: new Date().toISOString(), dir, ...git, url: url.slice(origin.length), viewport: [W, H], dpr: DPR, secs: SECS, settle: SETTLE, chromium: chromiumVersion, gpu: gpuName, buildMs, loadSecs, build: mapBuild, idleGpuPct: idleGpu?.pct ?? null, otherBrowsersBefore: othersBefore, noisy, mapLog, failedHosts, cases }, null, 1),
   );
   console.log(`idle: ${out}`);
 }

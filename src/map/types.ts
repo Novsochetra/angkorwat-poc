@@ -313,7 +313,16 @@ export interface MapSettings {
   resolution: ResolutionChoice;
   /** Battery saver: at most 30 frames a second (graphics.ts `frameCap`; a phone always). */
   battery: boolean;
+  /** Fog (sky/fogLevel.ts): `auto` (the graphics level's: low simple, medium light, high and max full), or a step. Never off: the mist hides the map's cut edges. */
+  fog: FogChoice;
 }
+
+/** The fog steps, from the finest to the cheapest (sky/fogLevel.ts says what each keeps). */
+export const FOG_STEPS = ['full', 'light', 'simple'] as const;
+export type FogStep = (typeof FOG_STEPS)[number];
+/** The fog setting's choices, in panel order: auto (the graphics level's step), then the steps. */
+export const FOG_CHOICES = ['auto', ...FOG_STEPS] as const;
+export type FogChoice = (typeof FOG_CHOICES)[number];
 
 /** Graphics levels, fastest first (graphics.ts says what each one draws). */
 export const GRAPHICS_LEVELS = ['low', 'medium', 'high', 'max'] as const;
@@ -333,7 +342,7 @@ export type MiniMapChoice = (typeof MINIMAP_CHOICES)[number];
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy', 'snow'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto', resolution: 'auto', battery: false };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto', resolution: 'auto', battery: false, fog: 'auto' };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;

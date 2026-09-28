@@ -1,13 +1,14 @@
-import { BackSide, Color, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector2, Vector3 } from 'three';
+import { BackSide, BufferGeometry, Color, Float32BufferAttribute, Group, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, ShapeUtils, SphereGeometry, Vector2, Vector3 } from 'three';
 import { hash3 } from '../voxel/random';
 import { MAP_BOUNDS } from './layout';
 import { EDGE_BAND, pastLand, ROAM_BOXES } from './terrain/views';
 import { buildBackdrop, RING_CENTRE } from './sky/backdrop';
-import { HAZE, HAZE_FUNCS, HAZE_PARS, hazeUniforms, WIND } from './sky/haze';
-import { MIST_WET, mistBankMaterial, mistLayerMaterial } from './sky/mist';
+import { fogNow } from './sky/fogLevel';
+import { FRONT_BANK, HAZE, HAZE_FUNCS, HAZE_PARS, hazeUniforms, WIND } from './sky/haze';
+import { MIST_STACK, MIST_WET, mistBankMaterial, mistLayerMaterial, SEA_FROM } from './sky/mist';
 import { mistNoiseTexture } from './sky/noise';
 import { SKY } from './sky/palette';
-import type { MapContext, MapFrame, MapPart } from './types';
+import type { FogStep, MapContext, MapFrame, MapPart } from './types';
 
 /**
  * Mist: the sea of cloud the mesas rise from, banks drifting between them,
@@ -30,13 +31,21 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   all round the map, paler with distance.
  * - Sea of mist beyond the land: five stacked planes (10–29 m) sharing one
  *   noise field that flows (≈ 3 m/s) and rolls; each higher one keeps only
- *   the thicker parts, so they build soft mounds. Clear over the land.
+ *   the thicker parts, so they build soft mounds. Clear over the land: the
+ *   planes are a ring round it ({@link mistPlaneShape}), so no pixel there
+ *   runs their shader.
  * - Banks: soft upright puffs along the map's side and back edges (so no cut
  *   land shows; they sway on their posts), beyond the front edge (seen when
  *   roaming looks south), and far out between the backdrop rings, where they
  *   drift slowly round the rings with long thin wisps between them. The
  *   mist inside every bank streams and rises, so its edges billow. One
  *   instanced draw, sorted back to front.
+ *
+ * The Fog setting (sky/fogLevel.ts, `fogNow.step`, read every frame: a change
+ * shows at once): full draws all of it; light two planes, each a stack of
+ * the layers ({@link PLANES}: as thick a sea), and the far banks of the two
+ * nearer rings only ({@link BANKS_FOR}); simple the two planes and the edge
+ * and front banks only (and the haze's simple step, sky/haze.ts).
  *
  * Weather (`f.weather`, sky/weather.ts):
  * - Rain clouds ({@link rainDeck}): as a shower comes, low dark clouds build
@@ -53,6 +62,42 @@ import type { MapContext, MapFrame, MapPart } from './types';
 
 /** Mist planes (m). */
 const LAYER_Y = [10, 14, 18, 23, 29];
+
+/**
+ * The mist planes for each Fog step: each draws a stack of LAYER_Y's layers
+ * (their indices, lowest first; sky/mist.ts `mistLayerMaterial`) at height
+ * `at` (m). Full: a plane a layer. Light and simple: two, the lower three
+ * layers and the upper two, so the sea stays as thick (only the parallax
+ * between the layers of a stack is lost); each about the middle of its
+ * layers (off the blocks' whole metres, so no block top lies in it).
+ */
+const PLANES: Record<FogStep, { layers: number[]; at: number }[]> = {
+  full: LAYER_Y.map((y, i) => ({ layers: [i], at: y })),
+  light: [
+    { layers: [0, 1, 2], at: 13.75 },
+    { layers: [3, 4], at: 25.75 },
+  ],
+  simple: [
+    { layers: [0, 1, 2], at: 13.75 },
+    { layers: [3, 4], at: 25.75 },
+  ],
+};
+
+/** What kind of bank (the Fog step picks by it: {@link BANKS_FOR}). */
+type BankKind = 'edge' | 'front' | 'far' | 'wisp';
+/** The light step keeps the far banks of the rings nearer than this (m): the two that show most, whole. */
+const LIGHT_RINGS = 1200;
+/**
+ * The banks each Fog step draws. Every step keeps the edge banks (the map's
+ * cut edges never show) and the front's (the land's end reads as a shore);
+ * light keeps the two nearer rings of far banks (not the two farther ones,
+ * paler in the haze, nor the wisps between them), simple none.
+ */
+const BANKS_FOR: Record<FogStep, (b: Bank) => boolean> = {
+  full: () => true,
+  light: (b) => b.kind === 'edge' || b.kind === 'front' || (b.kind === 'far' && b.r < LIGHT_RINGS),
+  simple: (b) => b.kind === 'edge' || b.kind === 'front',
+};
 
 /** Cloud shadows by day: darkening, patch size (m), cover (0‥1, higher = fewer). */
 const SHADE = { amount: 0.14, size: 1100, cover: 0.48 };
@@ -80,6 +125,81 @@ interface Bank {
   orbit: number;
   r: number;
   a: number;
+  kind: BankKind;
+}
+
+/**
+ * The mist planes' shape: the 9000 m square less the land, where every layer
+ * is clear anyway (sky/mist.ts: from `SEA_FROM` m inside the land's end at
+ * the side and back edges, and up to the front edge), so no pixel over the
+ * land runs their shader. The hole is the roaming boxes (all reach the front
+ * edge) grown to where the sea starts, less a margin, cut to the map's box.
+ * Seen from high over the land the sea reaches in over the front edge
+ * (sky/haze.ts `FRONT_BANK`): a strip there, drawn only then — its triangles
+ * come last, so the draw range leaves them out (`ring` indices, or `all`).
+ */
+function mistPlaneShape(): { geometry: BufferGeometry; ring: number; all: number } {
+  /** (a little inside where the sea starts, for the land map's 4 m texels) */
+  const MARGIN = 8;
+  const grow = EDGE_BAND - SEA_FROM - MARGIN;
+  const inset = SEA_FROM + MARGIN;
+  const [x0, x1] = [MAP_BOUNDS.x0 + inset, MAP_BOUNDS.x1 - inset];
+  const zBack = MAP_BOUNDS.z0 + inset;
+  /** The hole's front: at the front edge (the sea starts past it), and with the strip where the front bank reaches. */
+  const front = MAP_BOUNDS.z1 - 2;
+  const frontHigh = MAP_BOUNDS.z1 - FRONT_BANK.reach - MARGIN;
+  // (boxes that stop short of the front edge have an edge there too: left in the plane, which is always right)
+  const boxes = ROAM_BOXES.filter((b) => b.z1 >= MAP_BOUNDS.z1).map((b) => ({ x0: Math.max(x0, b.x0 - grow), x1: Math.min(x1, b.x1 + grow), z0: Math.max(zBack, b.z0 - grow) }));
+  // The hole's back edge along x: the deepest box over each stretch; runs of stretches with a box are holes.
+  const xs = [...new Set(boxes.flatMap((b) => [b.x0, b.x1]))].sort((a, b) => a - b);
+  const holes: Vector2[][] = [];
+  /** The front strip's pieces: x from, x to, back z (never deeper than the hole there). */
+  const strips: [number, number, number][] = [];
+  let run: Vector2[] = [];
+  let runX0 = 0;
+  const close = (xEnd: number) => {
+    if (!run.length) return;
+    // (earcut takes holes either way round; this one runs front → back → front)
+    holes.push([new Vector2(runX0, front), ...run, new Vector2(xEnd, front)]);
+    run = [];
+  };
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const [xa, xb] = [xs[i], xs[i + 1]];
+    const over = boxes.filter((b) => b.x0 <= xa && b.x1 >= xb);
+    if (!over.length) {
+      close(xa);
+      continue;
+    }
+    const z = Math.min(...over.map((b) => b.z0));
+    if (!run.length) runX0 = xa;
+    const last = run[run.length - 1];
+    if (last && last.y === z) last.x = xb;
+    else run.push(new Vector2(xa, z), new Vector2(xb, z));
+    const zs = Math.max(z, frontHigh);
+    const s = strips[strips.length - 1];
+    if (s && s[1] === xa && s[2] === zs) s[1] = xb;
+    else strips.push([xa, xb, zs]);
+  }
+  close(xs[xs.length - 1]);
+  // The square (as the single plane was: 9000 m, its middle at z −300).
+  const S = 4500;
+  const square = [new Vector2(-S, -300 - S), new Vector2(S, -300 - S), new Vector2(S, -300 + S), new Vector2(-S, -300 + S)];
+  const faces = ShapeUtils.triangulateShape(square, holes);
+  const points = [square, ...holes].flat();
+  const pos: number[] = points.flatMap((p) => [p.x, 0, p.y]);
+  const index: number[] = faces.flat();
+  const ring = index.length;
+  for (const [xa, xb, zs] of strips) {
+    if (zs >= front) continue;
+    const k = pos.length / 3;
+    pos.push(xa, 0, zs, xb, 0, zs, xb, 0, front, xa, 0, front);
+    index.push(k, k + 1, k + 2, k, k + 2, k + 3);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  geometry.setIndex(index);
+  geometry.computeBoundingSphere();
+  return { geometry, ring, all: index.length };
 }
 
 export function buildClouds(ctx: MapContext): MapPart {
@@ -91,17 +211,40 @@ export function buildClouds(ctx: MapContext): MapPart {
   object.add(backdrop.object);
 
   // ── Sea of mist ─────────────────────────────────────────────────────────
-  const plane = new PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2);
+  // (a mesh a plane of the full step; the other steps use the first ones: `PLANES`)
+  const shape = mistPlaneShape();
+  const plane = shape.geometry;
   const layers = LAYER_Y.map((y, i) => {
     const mesh = new Mesh(plane, mistLayerMaterial(y, i / (LAYER_Y.length - 1)));
     mesh.name = `mist ${y} m`;
-    mesh.position.set(0, y, -300);
+    mesh.position.set(0, y, 0);
     mesh.renderOrder = 2 + i;
     mesh.frustumCulled = false;
     mesh.raycast = () => {};
     object.add(mesh);
     return mesh;
   });
+  /** Point the planes at a Fog step's stacks, their heights (m) sunk by `sink` (after rain). */
+  function stackPlanes(step: FogStep, sink: number): void {
+    const stacks = PLANES[step];
+    layers.forEach((mesh, i) => {
+      const s = stacks[i];
+      mesh.visible = !!s;
+      if (!s) return;
+      const u = (mesh.material as ShaderMaterial).uniforms;
+      mesh.position.y = s.at - sink;
+      // (a layer a component, lowest first; while the land dries this runs every frame: nothing allocated)
+      const n = Math.min(s.layers.length, MIST_STACK);
+      const ys = u.uY.value as Vector3;
+      const ks = u.uK.value as Vector3;
+      for (let j = 0; j < MIST_STACK; j++) {
+        const l = s.layers[Math.min(j, n - 1)];
+        ys.setComponent(j, LAYER_Y[l] - sink);
+        ks.setComponent(j, l / (LAYER_Y.length - 1));
+      }
+      u.uN.value = n;
+    });
+  }
 
   // ── Banks ───────────────────────────────────────────────────────────────
   const banks: Bank[] = [];
@@ -138,7 +281,7 @@ export function buildClouds(ctx: MapContext): MapPart {
       const ground = maxAround(Math.min(MAP_BOUNDS.x1 - 2, Math.max(MAP_BOUNDS.x0 + 2, x)), Math.max(MAP_BOUNDS.z0 + 2, z), 50);
       const h = Math.max(40, ground + 20 + rnd(s, 3, 3) * 18);
       const seed = rnd(s, 5, 5);
-      banks.push({ x, y: -8, z, w: Math.max(h * 1.6, 120 + rnd(s, 4, 4) * 90), h: h + 8, seed, wisp: 0, roll: 2.5 + rnd(s, 6, 6) * 1.5, alpha: 0.95, sway: 12 + seed * 14, ...still });
+      banks.push({ x, y: -8, z, w: Math.max(h * 1.6, 120 + rnd(s, 4, 4) * 90), h: h + 8, seed, wisp: 0, roll: 2.5 + rnd(s, 6, 6) * 1.5, alpha: 0.95, sway: 12 + seed * 14, ...still, kind: 'edge' });
     }
   }
 
@@ -147,7 +290,7 @@ export function buildClouds(ctx: MapContext): MapPart {
   // looks south.
   for (let x = MAP_BOUNDS.x0 - 40; x <= MAP_BOUNDS.x1 + 40; x += 75) {
     const seed = rnd(x, 7, 7);
-    banks.push({ x: x + (rnd(x, 8, 8) - 0.5) * 30, y: 0, z: MAP_BOUNDS.z1 + 90 + rnd(x, 9, 9) * 70, w: 150 + rnd(x, 10, 10) * 90, h: 50 + seed * 20, seed, wisp: 0, roll: 3, alpha: 0.95, sway: 15, ...still });
+    banks.push({ x: x + (rnd(x, 8, 8) - 0.5) * 30, y: 0, z: MAP_BOUNDS.z1 + 90 + rnd(x, 9, 9) * 70, w: 150 + rnd(x, 10, 10) * 90, h: 50 + seed * 20, seed, wisp: 0, roll: 3, alpha: 0.95, sway: 15, ...still, kind: 'front' });
   }
 
   // Far out, between the backdrop rings, all the way round (cloud layers
@@ -165,12 +308,12 @@ export function buildClouds(ctx: MapContext): MapPart {
     for (let i = 0; i < n; i++) {
       const a = ((i + (rnd(i, r, 41) - 0.5) * 0.6) / n) * Math.PI * 2;
       const seed = rnd(i, r, 44);
-      banks.push({ x: 0, y: 0, z: 0, w: wide * (0.7 + rnd(i, r, 42) * 0.6), h: tall * (0.8 + rnd(i, r, 43) * 0.8), seed, wisp: 0, roll: speed * 1.4, alpha: 0.85, sway: 0, orbit: -speed / r, r, a });
+      banks.push({ x: 0, y: 0, z: 0, w: wide * (0.7 + rnd(i, r, 42) * 0.6), h: tall * (0.8 + rnd(i, r, 43) * 0.8), seed, wisp: 0, roll: speed * 1.4, alpha: 0.85, sway: 0, orbit: -speed / r, r, a, kind: 'far' });
       // A wisp between this ring and the next, now and then.
       if (rnd(i, r, 45) < 0.45) {
         const rw = r * 1.2 + rnd(i, r, 46) * r * 0.1;
         const aw = a + Math.PI / n;
-        banks.push({ x: 0, y: 12 + rnd(i, r, 47) * tall * 0.3, z: 0, w: wide * (0.9 + rnd(i, r, 48) * 0.8), h: tall * 0.28, seed: rnd(i, r, 49), wisp: 1, roll: speed * 2, alpha: 0.7, sway: 0, orbit: (-speed * 1.25) / rw, r: rw, a: aw });
+        banks.push({ x: 0, y: 12 + rnd(i, r, 47) * tall * 0.3, z: 0, w: wide * (0.9 + rnd(i, r, 48) * 0.8), h: tall * 0.28, seed: rnd(i, r, 49), wisp: 1, roll: speed * 2, alpha: 0.7, sway: 0, orbit: (-speed * 1.25) / rw, r: rw, a: aw, kind: 'wisp' });
       }
     }
   }
@@ -193,13 +336,24 @@ export function buildClouds(ctx: MapContext): MapPart {
   bankMesh.raycast = () => {};
   object.add(bankMesh);
 
-  // Where each bank is now (x, y, z, w, h), and the draw order.
+  // Where each bank is now (x, y, z, w, h), and the draw order of those the Fog step shows.
   const now = new Float32Array(banks.length * 5);
-  const order = banks.map((_, i) => i);
+  let order = banks.map((_, i) => i);
+  const shown = banks.map(() => true);
   const dist = new Float32Array(banks.length);
   let lastT = NaN;
+  /** The banks a Fog step shows (placed from the next frame on). */
+  function showBanks(step: FogStep): void {
+    const keep = BANKS_FOR[step];
+    banks.forEach((b, i) => void (shown[i] = keep(b)));
+    order = banks.flatMap((_, i) => (shown[i] ? [i] : []));
+    geo.instanceCount = order.length;
+    lastT = NaN;
+  }
+  // (a walk over the whole list with forEach: scripts/bake-native.mjs finds the banks so)
   function place(t: number): void {
     banks.forEach((b, i) => {
+      if (!shown[i]) return;
       let x = b.x;
       let z = b.z;
       if (b.orbit) {
@@ -223,7 +377,7 @@ export function buildClouds(ctx: MapContext): MapPart {
   }
   /** Back to front for the camera (they blend over each other); `settle` lowers their tops (after rain). */
   function sortBanks(cam: { x: number; y: number; z: number }, settle: number): void {
-    for (let i = 0; i < banks.length; i++) {
+    for (const i of order) {
       const k = i * 5;
       dist[i] = (now[k] - cam.x) ** 2 + (now[k + 1] + now[k + 4] * 0.4 - cam.y) ** 2 + (now[k + 2] - cam.z) ** 2;
     }
@@ -242,12 +396,18 @@ export function buildClouds(ctx: MapContext): MapPart {
   const deck = rainDeck(ctx);
   object.add(deck.mesh);
 
+  /** The Fog step the planes and banks were last set for. */
+  let stepNow: FogStep | null = null;
+  let sinkNow = NaN;
+
   return {
     name: 'clouds',
     object,
     update(f: MapFrame) {
       const w = f.weather;
+      const step = fogNow.step;
       backdrop.update(SKY, f.drift);
+      if (step !== stepNow) showBanks(step);
       if (f.drift !== lastT) {
         lastT = f.drift;
         place(f.drift);
@@ -255,11 +415,13 @@ export function buildClouds(ctx: MapContext): MapPart {
       sortBanks(f.camera.position, WET_SETTLE * w.wet);
       // After rain the sea of mist lies a little lower and thicker.
       MIST_WET.value = w.wet;
-      for (let i = 0; i < layers.length; i++) {
-        const y = LAYER_Y[i] - WET_SINK * w.wet;
-        layers[i].position.y = y;
-        (layers[i].material as ShaderMaterial).uniforms.uY.value = y;
-      }
+      const sink = WET_SINK * w.wet;
+      if (step !== stepNow || sink !== sinkNow) stackPlanes(step, sink);
+      stepNow = step;
+      sinkNow = sink;
+      // (the strip over the front edge only while the sea can reach in over it: FRONT_BANK)
+      const cam = f.camera.position;
+      plane.setDrawRange(0, cam.y > FRONT_BANK.eyeY - 2 && cam.z < FRONT_BANK.eyeZ + 2 ? shape.all : shape.ring);
       // Cloud shadows by day only (the moon's would be too faint to read): more and darker as
       // the clouds build, gone under a closed sky (then all the light dims instead).
       const day = 1 - Math.min(1, Math.max(0, (f.night - 0.1) / 0.4));

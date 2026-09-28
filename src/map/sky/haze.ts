@@ -1,4 +1,6 @@
 import { ShaderChunk, ShaderLib, UniformsLib, type Color, type Texture, type Vector3 } from 'three';
+import type { FogStep } from '../types';
+import { fogNow } from './fogLevel';
 
 /**
  * The map's haze, in every material: three's fog chunks are replaced once
@@ -14,6 +16,13 @@ import { ShaderChunk, ShaderLib, UniformsLib, type Color, type Texture, type Vec
  *  - cloud shadows: soft darker patches drifting over the land by day;
  *  - seen from high up (the hang glider), the sea of mist reaching in over
  *    the land's front edge, so it never shows as a straight cut.
+ *
+ * The Fog setting's simple step (sky/fogLevel.ts) keeps the distance haze
+ * and the edge mist, and lays the valley mist even, with a thin even veil
+ * where the wisps would drift (no banks, wisps or cloud shadows): one read of
+ * the land map a pixel instead of 8–12 (noise and land map). It is an `if` on
+ * a shared uniform ({@link HAZE}`.fog`): every pixel takes the same branch,
+ * and the step changes live, with no shader compiled again.
  *
  * `scene.fog` is a plain `Fog`: its colour is the haze away from the sun,
  * `near` where haze starts, `far` the distance of about 63 % haze.
@@ -50,6 +59,24 @@ export class Shared4 extends Shared3 {
   w = 0;
 }
 
+/** The fog steps as the haze shader reads them (`hazeFog.x`). */
+const FOG_CODE: Record<FogStep, number> = { full: 0, light: 1, simple: 2 };
+
+/**
+ * The fog step in use, as a vec4 uniform value shared by every material:
+ * x = 0 full, 1 light, 2 simple, read live from `fogNow` (sky/fogLevel.ts)
+ * each time three sends it, so nothing needs to write it (y, z, w unused).
+ * (A float uniform could not be shared: three copies numbers per material.)
+ */
+class FogStepValue {
+  get x(): number {
+    return FOG_CODE[fogNow.step] ?? 0;
+  }
+  y = 0;
+  z = 0;
+  w = 0;
+}
+
 /** Haze values beyond `scene.fog` (linear colours), written by the atmosphere each frame. */
 export const HAZE = {
   /** Direction towards the glow in the haze (the visible sun, or the moon), unit. */
@@ -74,6 +101,8 @@ export const HAZE = {
    * (0 = none, e.g. at night or while it is not built).
    */
   shade: new Shared4(),
+  /** The Fog setting's step (x: 0 full, 1 light, 2 simple), live from `fogNow` (sky/fogLevel.ts). */
+  fog: new FogStepValue() as Readonly<FogStepValue>,
 };
 
 const EXTRA_UNIFORMS: Record<string, { value: unknown }> = {
@@ -86,6 +115,7 @@ const EXTRA_UNIFORMS: Record<string, { value: unknown }> = {
   hazeMist: { value: HAZE.mist },
   hazeLandBounds: { value: HAZE.landBounds },
   hazeShade: { value: HAZE.shade },
+  hazeFog: { value: HAZE.fog },
   hazeNoise: { value: null },
   hazeLand: { value: null },
 };
@@ -102,6 +132,7 @@ uniform vec4 hazeHeight;
 uniform vec4 hazeMist;
 uniform vec4 hazeLandBounds;
 uniform vec4 hazeShade;
+uniform vec4 hazeFog;
 uniform sampler2D hazeNoise;
 uniform sampler2D hazeLand;
 #ifdef FOG_EXP2
@@ -118,6 +149,14 @@ uniform sampler2D hazeLand;
  * mist, banks) and the cloud shadows go this way.
  */
 export const WIND = { x: -0.94, z: -0.342 };
+
+/**
+ * The sea of mist reaching in over the land's front edge (`hazeFrontBank`):
+ * only from an eye higher than `eyeY` m and north of z `eyeZ` (the hang
+ * glider; not the overview camera), at most `reach` m in. The mist planes
+ * draw their strip over the front edge only then (clouds.ts).
+ */
+export const FRONT_BANK = { eyeY: 90, eyeZ: 140, reach: 40 + 150 };
 
 /** GLSL: haze functions (need {@link HAZE_PARS}). */
 export const HAZE_FUNCS = /* glsl */ `
@@ -185,13 +224,31 @@ vec2 hazeBanks(vec2 xz) {
   float m = smoothstep(cov - 0.16, cov + 0.24, n) * allow;
   return vec2(m, clamp(0.5 + (nl - n) * 6.0, 0.0, 1.0));
 }
+// The simple fog step: the valley mist lies even, as much of it as the banks
+// make on the whole (the bank noise's value whose even mist matches their
+// average share of mist over the valleys best: a little under its middle, as
+// thick banks count for more than thin ones), thicker towards the side and
+// back edges and kept off the road and the places, like the banks; one read
+// of the land map. x = thickness 0‥1, y = sunlit (a little over half: from above, what
+// shows of banks is mostly their lit tops), z = hazeInside (metres inside the
+// side and back edges), w = where the wisps may drift (low open ground).
+vec4 hazeEvenBank(vec2 xz) {
+  vec2 uv = (xz - hazeLandBounds.xy) * hazeLandBounds.zw;
+  vec3 land = texture2D(hazeLand, clamp(uv, vec2(0.001), vec2(0.999))).rgb;
+  float box = min(min(uv.x, 1.0 - uv.x) / max(hazeLandBounds.z, 1e-6), uv.y / max(hazeLandBounds.w, 1e-6));
+  float inside = min(box, -land.b);
+  float edge = 1.0 - smoothstep(10.0, 150.0, inside);
+  float cov = hazeMist.w - edge * 0.32;
+  float m = smoothstep(cov - 0.16, cov + 0.24, 0.47) * mix(land.g, 1.0, edge);
+  return vec4(m, 0.6, inside, smoothstep(18.0, 10.0, land.r) * land.g);
+}
 // Seen from high over the land (the hang glider climbs to 700 m), its front
 // edge would show as a straight cut into the sea of mist: the sea reaches in
 // over it, its inland side ragged and drifting with the wind. (The overview
 // camera, beyond that edge, and the places' cameras never see it.) How much
 // of it lies over xz, 0‥1, seen from the eye.
 float hazeFrontBank(vec2 xz, vec3 eye) {
-  float high = smoothstep(90.0, 300.0, eye.y) * smoothstep(140.0, 115.0, eye.z);
+  float high = smoothstep(${FRONT_BANK.eyeY.toFixed(1)}, 300.0, eye.y) * smoothstep(${FRONT_BANK.eyeZ.toFixed(1)}, 115.0, eye.z);
   if (high <= 0.0) return 0.0;
   float inside = (1.0 - (xz.y - hazeLandBounds.y) * hazeLandBounds.w) / max(hazeLandBounds.w, 1e-6);
   // (it reaches further in the higher the eye: 40‥190 m at the top)
@@ -297,20 +354,43 @@ const FOG_FRAGMENT = /* glsl */ `
     // points differ only across).
     vec2 hzBank = vec2(0.5);
   #else
-    gl_FragColor.rgb *= hazeCloudShade(vFogWorld);
-    vec2 hzBank = hazeBanks(vFogWorld.xz);
+    // (the Fog setting's simple step, hazeFog.x = 2: an even valley mist, no
+    // cloud shadows or wisps; the same branch for every pixel)
+    bool hzFine = hazeFog.x < 1.5;
+    vec2 hzBank;
+    float hzInside;
+    vec4 hzEven = vec4(0.0);
+    if (hzFine) {
+      gl_FragColor.rgb *= hazeCloudShade(vFogWorld);
+      hzBank = hazeBanks(vFogWorld.xz);
+      hzInside = hazeInside(vFogWorld.xz);
+    } else {
+      hzEven = hazeEvenBank(vFogWorld.xz);
+      hzBank = hzEven.xy;
+      hzInside = hzEven.z;
+    }
   #endif
   float hzLow = hazeLowAmount(cameraPosition, vFogWorld, hzDist, hzBank.x);
   #ifndef HAZE_MIST
     // Where the land sinks away at its side and back edges, the mist swallows
     // it whole (seen up close when roaming, the land's end never shows).
-    hzLow = mix(hzLow, 1.0, (1.0 - smoothstep(40.0, 200.0, hazeInside(vFogWorld.xz))) * smoothstep(8.0, -6.0, vFogWorld.y));
+    hzLow = mix(hzLow, 1.0, (1.0 - smoothstep(40.0, 200.0, hzInside)) * smoothstep(8.0, -6.0, vFogWorld.y));
   #endif
   gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(hzBank, hzCol), hzLow);
   #ifndef HAZE_MIST
     // Wisps between the mesas, drifting over the valley mist.
-    float hzWisp = hazeWisps(cameraPosition, vFogWorld, hzDist);
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), hzWisp * 0.45);
+    if (hzFine) {
+      float hzWisp = hazeWisps(cameraPosition, vFogWorld, hzDist);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), hzWisp * 0.45);
+    } else {
+      // (simple: where the ray crosses the wisps' layer, an even veil as thick
+      // as they are on the whole; no reads)
+      float hzThru = abs(smoothstep(20.0, 34.0, vFogWorld.y) - smoothstep(20.0, 34.0, cameraPosition.y));
+      if (hzThru > 0.02) {
+        float hzK = clamp((27.0 - cameraPosition.y) / (vFogWorld.y - cameraPosition.y), 0.0, 1.0);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), 0.1 * hzThru * hzEven.w * smoothstep(40.0, 130.0, hzDist * hzK));
+      }
+    }
   #endif
   float fogFactor = hazeDistance(hzDist);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, hzCol, fogFactor);

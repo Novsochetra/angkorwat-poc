@@ -27,10 +27,15 @@ import { buildWaterFestival } from './_water';
  * the shadow, `_kit.ts`), its people (one crowd of the people part's model:
  * one draw and its shadow) and, for the Water Festival, its glow (one
  * additive draw: halos and streaks on the water, `_glow.ts`). With no
- * festival nothing is drawn; the shaders are compiled at load all the same
- * (the meshes stay in the scene with no instances). The kit casts shadows
- * only while they can be seen, and is drawn only while it or they can
- * (`KitMesh.inView`; three cannot cull what the shader poses).
+ * festival nothing is drawn (the meshes stay in the scene with no
+ * instances). The kit casts shadows only while they can be seen, and is
+ * drawn only while it or they can (`KitMesh.inView`; three cannot cull what
+ * the shader poses).
+ *
+ * The part is built only for a visit that can see a festival (main.ts,
+ * lazy.ts): as the page opens when one is on (or `fest=` holds one), else in
+ * the background once `festivalSoon` says one is within about a day of the
+ * map's time; its shaders are compiled before it joins the scene.
  *
  * The festival's name shows under the title card, and once as a toast when
  * roaming starts (`_banner.ts`, words in ui/lang.ts). Its sounds are in

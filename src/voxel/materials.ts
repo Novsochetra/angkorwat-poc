@@ -1,4 +1,4 @@
-import { Color, DataTexture, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, RGBAFormat, type Material, type WebGLProgramParametersWithUniforms } from 'three';
+import { Color, DataTexture, MeshBasicMaterial, MeshStandardMaterial, NearestFilter, RGBAFormat, Vector2, type Material, type WebGLProgramParametersWithUniforms, type WebGLRenderer } from 'three';
 import { SHEET_DOTS } from './sheetDots';
 
 /**
@@ -228,6 +228,38 @@ export function getVoxelMaterial(key: VoxelMaterialKey): Material {
   return material;
 }
 
+const rims = new WeakMap<Material, Material>();
+
+/**
+ * The rim variant of a voxel material (a family's, or a copy of one: cull.ts
+ * `cut`, veg/sway.ts…), for a mesh whose blocks with cut edges are drawn as
+ * plain boxes far away (the world map: map/graphics.ts `paintRim`): the same
+ * shading, and on each plain box the cut edges' strips painted where the
+ * block would show them, by their share of the pixel ({@link RIM_PARS}), so
+ * the blocks keep the lines between them. A program of its own (`VOX_RIM`):
+ * the meshes that keep their edges draw as before, at no cost, and so do
+ * the game, the studio and the sacred pieces (they never ask for one). Made
+ * once per material, compiling what the material compiles (its own changes
+ * made since too, e.g. the snow's); made again when the material is
+ * (`version`).
+ */
+export function voxelRimMaterial(base: Material): Material {
+  let rim = rims.get(base);
+  if (!rim) {
+    rim = base.clone();
+    rim.name = `${base.name}:rim`;
+    rim.onBeforeCompile = (shader: WebGLProgramParametersWithUniforms, renderer: WebGLRenderer) => base.onBeforeCompile.call(base, shader, renderer);
+    rim.customProgramCacheKey = () => `${base.customProgramCacheKey.call(base)}|rim`;
+    rims.set(base, rim);
+  }
+  if (rim.userData.voxRimOf !== base.version) {
+    rim.userData.voxRimOf = base.version;
+    rim.defines = { ...(base.defines ?? {}), VOX_RIM: '' };
+    rim.needsUpdate = true;
+  }
+  return rim;
+}
+
 /** Linear-space GLSL vec3 literal of an sRGB hex colour. */
 function glslColor(hex: number): string {
   const c = new Color(hex);
@@ -425,6 +457,147 @@ vec3 voxPattern(vec3 base, vec3 n) {
 }
 `;
 
+/**
+ * The rim variant's shading ({@link voxelRimMaterial}, `VOX_RIM`): a plain
+ * box standing in for a block with cut edges far away is painted with the
+ * cut edges' slanted strips, where the block would show them. A strip spans
+ * the cut's width `r` on each of its two faces as seen from any side (its
+ * 45° slant is as wide, seen from anywhere, as the two bands together), so
+ * each face paints the last `r` along its edges, by the share of the pixel
+ * that falls there: a strip of a tenth of a pixel is a tenth of its colour,
+ * as with the edges cut (MSAA's samples share a pixel between two faces: the
+ * share is of the pixel's part on this face). Seen aslant, a strip leaning
+ * away from the camera shows narrower than its band, one leaning toward it
+ * wider: in a groove between two blocks the band of the one leaning away
+ * shows the other's strip for the rest ({@link RIM_LIGHT}). The strip's
+ * colour: the rim tint (`voxEdge` on it: bright between two open sides,
+ * faint against a neighbour) with the strip's own facing, and its light, the
+ * normal leaning toward the edge by that share (a plain mean of the face's
+ * and the strip's normals: three's diffuse light is a straight mean of the
+ * two then).
+ */
+const RIM_PARS = /* glsl */ `
+flat varying vec4 vVoxBox;
+// (the strip's mean normal over the sum of the face's and its neighbour's: a flat cut 1/√2, a rounded edge less;
+// and the share of the strip its rim tint covers: a flat cut all of it)
+uniform vec2 uRimShape;
+// The share of a pixel's part on this face that lies on a cut edge's strip, along one axis of the face: the pixel
+// at p reaching f across it, the face from -h to h, the strips the last r at either end (m).
+float voxRimCover(float p, float f, float h, float r) {
+  float a = max(p - 0.5 * f, -h);
+  float b = min(p + 0.5 * f, h);
+  // (a pixel whose centre lies off the face: its part on the face is at the edge)
+  if (b <= a) return 1.0;
+  return clamp((max(0.0, min(b, r - h) - a) + max(0.0, b - max(a, h - r))) / (b - a), 0.0, 1.0);
+}
+// How much of the rim tint a strip (normal s, √2 long) takes with the key light l: as voxFacing on the strip.
+float voxRimFacing(vec3 s, vec3 l) {
+  return mix(0.3, 1.0, smoothstep(-0.2, 0.5, dot(s, l) * 0.70710678));
+}
+// The block's sides at the ends of its axes toward p: open (1), a joint to the next stone (0.6), covered (0).
+vec3 voxRimOpen(float open, vec3 p) {
+  int m = int(open + 0.5) & 63;
+  int j = (int(open + 0.5) >> 6) & 63;
+  ivec3 b = ivec3(p.x > 0.0 ? 0 : 1, p.y > 0.0 ? 2 : 3, p.z > 0.0 ? 4 : 5);
+  return vec3(
+    max(float((m >> b.x) & 1), 0.6 * float((j >> b.x) & 1)),
+    max(float((m >> b.y) & 1), 0.6 * float((j >> b.y) & 1)),
+    max(float((m >> b.z) & 1), 0.6 * float((j >> b.z) & 1)));
+}`;
+
+/** The strips' shares of the pixel, per block axis (voxRimW: a corner halved between its two edges), their rim glow (voxRimE), and the sides they lean to (voxRimO: open, a joint, covered). */
+const RIM_COVER = /* glsl */ `
+// (derivatives out here, where every pixel of the quad takes them)
+vec3 voxRimDx = dFdx(vVoxP);
+vec3 voxRimDy = dFdy(vVoxP);
+vec3 voxRimW = vec3(0.0);
+vec3 voxRimE = vec3(0.0);
+vec3 voxRimO = vec3(1.0);
+if (vVoxBox.w > 0.0) {
+  vec3 reach = abs(voxRimDx) + abs(voxRimDy);
+  vec3 across = step(abs(voxN), vec3(0.5));
+  vec3 size = abs(vVoxBox.xyz);
+  vec3 c = across * vec3(
+    voxRimCover(vVoxP.x, reach.x, size.x, vVoxBox.w),
+    voxRimCover(vVoxP.y, reach.y, size.y, vVoxBox.w),
+    voxRimCover(vVoxP.z, reach.z, size.z, vVoxBox.w));
+  #ifdef VOX_PAT
+    // (none toward a side merged into the same stone: the cut goes on flat there)
+    int mg = int(vVoxSurf.w + 0.5);
+    c *= 1.0 - vec3(
+      float(vVoxP.x > 0.0 ? (mg & 1) : ((mg >> 1) & 1)),
+      float(vVoxP.y > 0.0 ? ((mg >> 2) & 1) : ((mg >> 3) & 1)),
+      float(vVoxP.z > 0.0 ? ((mg >> 4) & 1) : ((mg >> 5) & 1)));
+  #endif
+  voxRimW = c * (1.0 - 0.5 * (dot(c, vec3(1.0)) - c));
+  voxRimO = voxRimOpen(vVoxOpen, vVoxP);
+  voxRimE = across * mix(vec3(0.1), vec3(1.0), voxRimO * dot(voxRimO, 1.0 - across));
+}`;
+
+/** The strips' light and tint (lit families). */
+const RIM_LIGHT = /* glsl */ `
+{
+  // The block's two axes on this face in view space, from how its own position and the view position change
+  // across the pixel (exact on a flat face; the derivatives out here, where every pixel of the quad takes them).
+  vec3 rqx = dFdx(-vViewPosition);
+  vec3 rqy = dFdy(-vViewPosition);
+  vec3 ra = abs(voxN);
+  vec3 rf = ra.x > ra.y && ra.x > ra.z ? vec3(sign(voxN.x), 0.0, 0.0) : (ra.y > ra.z ? vec3(0.0, sign(voxN.y), 0.0) : vec3(0.0, 0.0, sign(voxN.z)));
+  vec2 rw = voxFaceUV(voxRimW, rf);
+  if (rw.x + rw.y > 0.0) {
+    vec2 du = voxFaceUV(voxRimDx, rf);
+    vec2 dv = voxFaceUV(voxRimDy, rf);
+    float det = du.x * dv.y - dv.x * du.y;
+    // (each toward the edge the pixel is near)
+    vec2 side = voxFaceUV(sign(vVoxP), rf) * sign(det);
+    vec3 tu = rqx * dv.y - rqy * du.y;
+    vec3 tv = rqy * du.x - rqx * dv.x;
+    vec3 au = tu * (side.x * inversesqrt(max(dot(tu, tu), 1e-30)));
+    vec3 av = tv * (side.y * inversesqrt(max(dot(tv, tv), 1e-30)));
+    // A strip leaning away from the camera shows narrower than its band on the face, one leaning toward it wider
+    // (the two bands of a groove are as wide as its two strips together): each band shows its own strip by that
+    // share, and the rest of it the next block's strip (leaning back toward the camera) where one lies against
+    // that side (covered, or a joint), else what lies behind the block's outline (the face's colour stays there).
+    vec3 rv = isOrthographic ? vec3(0.0, 0.0, 1.0) : normalize(vViewPosition);
+    vec2 own = clamp(1.0 + vec2(dot(au, rv), dot(av, rv)) / max(dot(normal, rv), 1e-3), 0.0, 1.0);
+    vec2 wo = rw * own;
+    vec2 wm = rw * (1.0 - own) * (1.0 - step(0.99, voxFaceUV(voxRimO, rf)));
+    // (the strips' normals, √2 long: this face's and the next face's; the next block's: this face's and the other way)
+    vec3 su = normal + au;
+    vec3 sv = normal + av;
+    vec3 mu = normal - au;
+    vec3 mv = normal - av;
+    vec2 re = voxFaceUV(voxRimE, rf);
+    float rt = dot(wo + wm, re);
+    #if NUM_DIR_LIGHTS > 0
+      vec3 rl = directionalLights[0].direction;
+      rt = re.x * (wo.x * voxRimFacing(su, rl) + wm.x * voxRimFacing(mu, rl)) + re.y * (wo.y * voxRimFacing(sv, rl) + wm.y * voxRimFacing(mv, rl));
+    #endif
+    diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, rt * uEdgeStrength * uRimShape.y);
+    normal = normal * (1.0 - wo.x - wo.y - wm.x - wm.y) + (su * wo.x + sv * wo.y + mu * wm.x + mv * wm.y) * uRimShape.x;
+  }
+}`;
+
+/**
+ * A family's strip as {@link RIM_LIGHT} paints it: the length of its mean
+ * normal over the sum of the two faces' (a flat cut 1/√2; a rounded edge's
+ * normals sweep from one face's to the other's, their mean ≈ 0.62), and the
+ * share of it the rim tint covers (a flat cut all; a rounded edge only its
+ * middle, where `voxEdge` rises: its mean over the sweep).
+ */
+function rimShapeOf(spec: VoxelMaterialSpec): Vector2 {
+  if (spec.chamfer) return new Vector2(Math.SQRT1_2, 1);
+  const lo = 0.29 - 0.2 * (spec.edgeWidth ?? 1);
+  let tint = 0;
+  const n = 64;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    const k = Math.min(1, Math.max(0, (1 - Math.max(t, 1 - t) / Math.hypot(t, 1 - t) - lo) / (0.29 - lo)));
+    tint += k * k * (3 - 2 * k);
+  }
+  return new Vector2(0.6232, tint / n);
+}
+
 function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, spec: VoxelMaterialSpec): VoxelLookUniforms {
   const look: VoxelLookUniforms = {
     uEdgeTint: { value: new Color(spec.edgeTint) },
@@ -442,12 +615,14 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
   if (spec.pattern) defines.VOX_PAT = String(PATTERN_ID[spec.pattern]);
   if (lit && spec.relief) defines.VOX_RELIEF = '';
   material.defines = defines;
+  const rimShape = rimShapeOf(spec);
   material.onBeforeCompile = (shader) => {
     // (shared objects, so the look panel's changes reach the compiled shader)
     Object.assign(shader.uniforms, look);
     shader.uniforms.uGrainScale = { value: spec.grainScale };
     shader.uniforms.uTexel = { value: spec.texels ?? KIT_TEXELS_PER_M };
     shader.uniforms.uDots = { value: sheetDotsTexture() };
+    shader.uniforms.uRimShape = { value: rimShape };
 
     injectVoxelVertex(shader, spec);
 
@@ -455,7 +630,9 @@ function injectVoxelShading(material: MeshStandardMaterial | MeshBasicMaterial, 
       .replace(
         '#include <common>',
         /* glsl */ `#include <common>
+#ifndef VOX_RIM
 varying vec3 vVoxN;
+#endif
 varying vec3 vVoxP;
 varying vec3 vVoxSeed;
 flat varying float vVoxOpen;
@@ -484,12 +661,20 @@ ${PATTERN_GLSL}
 #define VOX_TEXEL uTexel
 #else
 #define VOX_TEXEL uGrainScale
+#endif
+#ifdef VOX_RIM
+${RIM_PARS}
 #endif`,
       )
       .replace(
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
+#ifdef VOX_RIM
+// (a plain box: the axis of its face is the one whose half size is negative, its side the position's)
+vec3 voxN = vec3(lessThan(vVoxBox.xyz, vec3(0.0))) * sign(vVoxP);
+#else
 vec3 voxN = normalize(vVoxN);
+#endif
 // 0 on the flat faces, 1 on the outer half of the rounded bevel.
 float voxEdge = smoothstep(0.29 - 0.2 * uEdgeWidth, 0.29, 1.0 - max(max(abs(voxN.x), abs(voxN.y)), abs(voxN.z)));
 {
@@ -504,6 +689,9 @@ float voxEdge = smoothstep(0.29 - 0.2 * uEdgeWidth, 0.29, 1.0 - max(max(abs(voxN
   if (abs(voxN.z) > 0.12) w *= voxN.z > 0.0 ? max(float((m >> 4) & 1), 0.6 * float((j >> 4) & 1)) : max(float((m >> 5) & 1), 0.6 * float((j >> 5) & 1));
   voxEdge *= mix(0.1, 1.0, w);
 }
+#ifdef VOX_RIM
+${RIM_COVER}
+#endif
 float voxSeam = 0.0;
 float voxGroove = 0.0;
 #ifdef VOX_PAT
@@ -540,6 +728,10 @@ float voxGrain = voxHash(floor(vVoxP * uGrainScale) + floor(vVoxSeed * 7.0));
 diffuseColor.rgb *= 1.0 + (voxGrain - 0.5) * uGrain;
 #endif
 #ifndef VOX_LIT
+#ifdef VOX_RIM
+// (unlit: the painted strip's tint, as voxEdge's)
+voxEdge = max(voxEdge, dot(voxRimW, voxRimE) * uRimShape.y);
+#endif
 diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength);
 #endif
 // (look panel: "show where")
@@ -581,7 +773,10 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.05, 0.55), uHighlight);`,
   #endif
   diffuseColor.rgb = mix(diffuseColor.rgb, uEdgeTint, voxEdge * uEdgeStrength * mix(0.3, 1.0, voxFacing));
   diffuseColor.rgb *= (1.0 - 0.5 * voxSeam) * (1.0 - uGroove * voxGroove);
-}`,
+}
+#ifdef VOX_RIM
+${RIM_LIGHT}
+#endif`,
       )
       .replace(
         '#include <aomap_fragment>',
@@ -610,7 +805,9 @@ export function injectVoxelVertex(shader: WebGLProgramParametersWithUniforms, sp
     .replace(
       '#include <common>',
       /* glsl */ `#include <common>
+#ifndef VOX_RIM
 varying vec3 vVoxN;
+#endif
 varying vec3 vVoxP;
 varying vec3 vVoxSeed;
 attribute float voxOpen;
@@ -621,6 +818,9 @@ attribute vec4 voxSurf;
 flat varying vec4 vVoxSurf;
 flat varying vec3 vVoxS;
 flat varying float vVoxR;
+#endif
+#ifdef VOX_RIM
+flat varying vec4 vVoxBox;
 #endif
 uniform float uBevel;
 uniform float uSeamless;
@@ -715,7 +915,15 @@ vec3 objectNormal = voxFlatNormal(vec3(normal), voxPushN, voxOpen) * voxNS;
   vec3 voxPw = sign(position) * (voxS * 0.5 - voxR + voxT * voxR + voxPush * (voxR + voxLap));
   transformed = voxPw / voxS;
   vVoxP = voxPw;
-  vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
+  #ifdef VOX_RIM
+    // A plain box (its corners at ±0.5 on every axis) standing in for this block with its edges cut: its half
+    // size, the axis of the face negative (the fragment's block normal, in place of vVoxN), and the cut's width,
+    // for the strip to be painted (voxelRimMaterial). Any other shape, or a family whose flush sides merge: none
+    // (w < 0).
+    vVoxBox = vec4(voxS * 0.5 * (1.0 - 2.0 * step(0.5, abs(normal))), min(min(abs(position.x), abs(position.y)), abs(position.z)) > 0.499 && uSeamless < 0.5 ? voxR : -1.0);
+  #else
+    vVoxN = voxFlatNormal(normal, voxPush, voxOpen);
+  #endif
   #ifdef VOX_PAT
     vVoxS = voxS;
     vVoxR = voxR;

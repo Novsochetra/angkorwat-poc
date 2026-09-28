@@ -1,4 +1,4 @@
-import { Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, UniformsLib, UniformsUtils } from 'three';
+import { Box3, Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, PlaneGeometry, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector3 } from 'three';
 import { mulberry32 } from '../../voxel/random';
 import type { MapQuality } from '../types';
 import type { FallFoot } from './falls';
@@ -78,9 +78,26 @@ export function buildSpray(feet: FallFoot[], quality: MapQuality): { mesh: Mesh;
   Object.assign(material.uniforms, uniforms);
   const mesh = new Mesh(geo, material);
   mesh.name = 'waterfall spray';
-  mesh.frustumCulled = false;
+  // (culled on the puffs as the shader moves them, not on the quad's own bounds: each from its base down the river
+  // by its drift, up by its rise, swaying 0.5 m, and 0.75 of its biggest size round it, half across and a quarter
+  // pulled towards the camera. The sphere stays round the origin, where the quad's was: three sorts the see-through
+  // draws by their spheres' middles, and the spray is drawn where it always was among them)
+  const box = new Box3();
+  for (let i = 0; i < base.length / 3; i++) {
+    const r = 0.75 * 1.45 * params[i * 4 + 2];
+    const x = base[i * 3];
+    const y = base[i * 3 + 1];
+    const z = base[i * 3 + 2];
+    const dx = drift[i * 3];
+    const dz = drift[i * 3 + 2];
+    box.expandByPoint(_v.set(Math.min(x, x + dx) - 0.5 - r, y - r, Math.min(z, z + dz) - 0.5 - r));
+    box.expandByPoint(_v.set(Math.max(x, x + dx) + 0.5 + r, y + params[i * 4 + 3] + r, Math.max(z, z + dz) + 0.5 + r));
+  }
+  geo.boundingSphere = new Sphere(new Vector3(), box.isEmpty() ? 0 : Math.hypot(Math.max(-box.min.x, box.max.x), Math.max(-box.min.y, box.max.y), Math.max(-box.min.z, box.max.z)));
   return { mesh, uniforms };
 }
+
+const _v = new Vector3();
 
 const SPRAY_VERT = /* glsl */ `
 attribute vec3 aBase;

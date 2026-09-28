@@ -143,6 +143,8 @@ export function buildTreasure(ctx: MapContext): MapPart {
   gold.customProgramCacheKey = () => 'treasure-gold';
   const figMesh = new Mesh(geo, gold);
   figMesh.name = 'treasure:figures';
+  // (not culled: one draw for the figures all over the map, placed in the shader, so bounds round them would be in
+  // view from anywhere; the mesh is hidden while none is near, `update`)
   figMesh.frustumCulled = false;
   figMesh.receiveShadow = true;
   object.add(figMesh);
@@ -167,6 +169,7 @@ export function buildTreasure(ctx: MapContext): MapPart {
     }),
   );
   glints.name = 'treasure:glints';
+  // (as the figures: placed in the shader, all over the map)
   glints.frustumCulled = false;
   glints.renderOrder = 4;
   object.add(glints);

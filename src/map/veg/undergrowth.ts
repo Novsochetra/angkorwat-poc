@@ -198,7 +198,7 @@ class Pool implements PlantSink {
     this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
     this.mesh.instanceColor.setUsage(DynamicDrawUsage);
     this.col = this.mesh.instanceColor.array as Float32Array;
-    // (the pool moves with him: never culled as a whole; shadows from the crowns, none cast)
+    // (the pool moves with him, round the camera: never culled as a whole; shadows from the crowns, none cast)
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = true;

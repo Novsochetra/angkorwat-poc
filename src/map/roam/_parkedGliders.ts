@@ -11,8 +11,8 @@ import { SpotBatch } from './_rampBatch';
  * five gliders (30 when each was its own Glider). A glider he took off with
  * is left out (`hide`) until it is back on its ramp.
  *
- * They cast shadows on the medium level and up, not the low level's still
- * ones (one is lifted off its ramp now and then: a still shadow would stay).
+ * They cast shadows on the high level and up, not the still shadows of low
+ * and medium (one is lifted off its ramp now and then: a still shadow would stay).
  */
 export class ParkedGliders {
   readonly object = new Group();

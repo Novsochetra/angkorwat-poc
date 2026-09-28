@@ -136,7 +136,9 @@ export function buildFireflies(field: HeightField, feet: Vector3, camera: Vector
   material.name = 'map:fireflies';
   const points = new Points(geo, material);
   points.name = 'life:fireflies';
-  points.frustumCulled = false;
+  // (culled on the swarms, grown by the wander the shader gives them, 2.7 m, and some for their glow)
+  geo.computeBoundingSphere();
+  geo.boundingSphere!.radius += 5;
   points.renderOrder = 3;
   return { points, uniforms: material.uniforms as unknown as FireflyUniforms };
 }

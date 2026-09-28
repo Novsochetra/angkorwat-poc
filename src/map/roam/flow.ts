@@ -10,6 +10,13 @@ import { buildWaterGrid, NONE } from '../water/grid';
  *    of 2 m cells read bilinearly;
  *  - the distance to the bank on a 1 m grid (+ on open water, − on land), for
  *    the boat to slide along the banks.
+ *
+ * Only the water level is made at once. The current and the bank distances
+ * wait: the bank distances are made a tile at a time (64 m) where they are
+ * first asked for (the landing by the River Gate, as the map is built:
+ * boat.ts), the current all at once at its first question; `step` makes
+ * the rest in slices (roam/world.ts: in idle time, before he roams). The
+ * values are the same either way.
  */
 export interface RiverField {
   /** Water surface as drawn at (x, z), or null where there is none. */
@@ -24,6 +31,12 @@ export interface RiverField {
   bankAt(x: number, z: number, level: number): number;
   /** The fall whose lip is nearest to (x, z), within `reach` m. */
   fallNear(x: number, z: number, reach: number): Waterfall | null;
+  /** The current and every bank tile are made. */
+  readonly ready: boolean;
+  /** Make more of them, for about `ms` milliseconds; true once all are. */
+  step(ms: number): boolean;
+  /** Tiles of bank distances made so far (with water near), of all; time spent on the current and the tiles (ms). */
+  readonly stats: { tiles: number; wetTiles: number; of: number; ms: number };
 }
 
 /** Current of a calm reach about 9 m wide (m/s). */
@@ -31,6 +44,10 @@ const CALM = 1.15;
 /** Bank distance map: texel size and the farthest distance kept (m; the hull needs about 1). */
 const TEXEL = 1;
 const BANK_MAX = 5;
+/** Bank distance tiles: texels a side. */
+const TILE = 64;
+/** Rows of the current made between two looks at the clock (`step`). */
+const STEP_ROWS = 8;
 
 const fields = new WeakMap<HeightField, RiverField>();
 
@@ -47,6 +64,13 @@ export function buildFlow(field: HeightField): (x: number, z: number, out: { x: 
   return (x, z, out) => r.flowAt(x, z, out);
 }
 
+/** One tile of bank distances (see `buildRiverField`). */
+interface BankTile {
+  dist: Float32Array;
+  dry: Float32Array;
+  level: Float32Array;
+}
+
 function buildRiverField(field: HeightField): RiverField {
   const g = buildWaterGrid(field);
   const { nx, nz } = field;
@@ -54,15 +78,19 @@ function buildRiverField(field: HeightField): RiverField {
   const L = g.level;
   const wet = (c: number) => c >= 0 && L[c] > NONE;
   const sameLevel = (c: number, lv: number) => c >= 0 && L[c] > NONE && Math.abs(L[c] - lv) < 0.5;
+  let work = 0;
 
   // ── Current per cell ───────────────────────────────────────────────────
   // Direction and the lip / fall-foot speed-up come from the water grid (so
   // the boat drifts the way the ripples run); the width across the flow
   // sets the rest: narrow runs fast, a pool is nearly still, and the water
-  // slows towards either bank.
+  // slows towards either bank. Made row by row (`current`): the raw current,
+  // then two passes smoothing it.
   let fx = new Float32Array(n);
   let fz = new Float32Array(n);
-  for (let k = 0; k < nz; k++)
+  /** Where the current's making is: the pass (0 raw, 1‥2 smoothing, 3 done) and its next row. */
+  const cur = { pass: 0, k: 0, ox: fx, oz: fz };
+  const rawRow = (k: number) => {
     for (let i = 0; i < nx; i++) {
       const c = i + k * nx;
       const lv = L[c];
@@ -83,31 +111,57 @@ function buildRiverField(field: HeightField): RiverField {
       fx[c] = ux * v;
       fz[c] = uz * v;
     }
+  };
   // Smooth it (only over water of the same level), so it never jerks.
-  for (let pass = 0; pass < 2; pass++) {
-    const ox = new Float32Array(n);
-    const oz = new Float32Array(n);
-    for (let k = 1; k < nz - 1; k++)
-      for (let i = 1; i < nx - 1; i++) {
-        const c = i + k * nx;
-        if (L[c] <= NONE) continue;
-        let sx = 0;
-        let sz = 0;
-        let w = 0;
-        for (let dk = -1; dk <= 1; dk++)
-          for (let di = -1; di <= 1; di++) {
-            const m = c + di + dk * nx;
-            if (!sameLevel(m, L[c])) continue;
-            const wt = di === 0 && dk === 0 ? 2 : 1;
-            sx += fx[m] * wt;
-            sz += fz[m] * wt;
-            w += wt;
+  const smoothRow = (k: number, ox: Float32Array, oz: Float32Array) => {
+    for (let i = 1; i < nx - 1; i++) {
+      const c = i + k * nx;
+      if (L[c] <= NONE) continue;
+      let sx = 0;
+      let sz = 0;
+      let w = 0;
+      for (let dk = -1; dk <= 1; dk++)
+        for (let di = -1; di <= 1; di++) {
+          const m = c + di + dk * nx;
+          if (!sameLevel(m, L[c])) continue;
+          const wt = di === 0 && dk === 0 ? 2 : 1;
+          sx += fx[m] * wt;
+          sz += fz[m] * wt;
+          w += wt;
+        }
+      ox[c] = sx / w;
+      oz[c] = sz / w;
+    }
+  };
+  /** Make more of the current, until `until` (ms); true once it is made. */
+  function current(until: number): boolean {
+    while (cur.pass < 3) {
+      if (cur.pass === 0) {
+        const end = Math.min(nz, cur.k + STEP_ROWS);
+        for (; cur.k < end; cur.k++) rawRow(cur.k);
+        if (cur.k >= nz) {
+          cur.pass = 1;
+          cur.k = 1;
+          cur.ox = new Float32Array(n);
+          cur.oz = new Float32Array(n);
+        }
+      } else {
+        const end = Math.min(nz - 1, cur.k + STEP_ROWS);
+        for (; cur.k < end; cur.k++) smoothRow(cur.k, cur.ox, cur.oz);
+        if (cur.k >= nz - 1) {
+          fx = cur.ox;
+          fz = cur.oz;
+          cur.pass++;
+          cur.k = 1;
+          if (cur.pass < 3) {
+            cur.ox = new Float32Array(n);
+            cur.oz = new Float32Array(n);
           }
-        ox[c] = sx / w;
-        oz[c] = sz / w;
+        }
       }
-    fx = ox;
-    fz = oz;
+      if (performance.now() >= until) break;
+    }
+    return cur.pass >= 3;
   }
 
   // ── Distance to the bank (1 m texels over the wet part of the map) ────
@@ -130,9 +184,8 @@ function buildRiverField(field: HeightField): RiverField {
   const D = Math.ceil((zb + BANK_MAX + CELL - Z0) / TEXEL);
   // Per texel: distance to the bank for its own level (dry land or higher
   // water), and to dry land only (for a boat above it, about to drop in).
-  const dist = new Float32Array(W * D).fill(-BANK_MAX);
-  const dry = new Float32Array(W * D).fill(-BANK_MAX);
-  const texLevel = new Float32Array(W * D).fill(NONE);
+  // Made a tile at a time (`tile`); a tile with no water near shares one of
+  // the far values.
   const R = Math.ceil(BANK_MAX / CELL) + 1;
   // Cells within R of water (only those get a distance; the rest keep −BANK_MAX):
   // wet cells counted along each row, then down each column, with running sums.
@@ -151,66 +204,110 @@ function buildRiverField(field: HeightField): RiverField {
   const dryAt = (c: number) => c >= 0 && c < n && L[c] <= NONE;
   const near: number[] = [];
   const per = CELL / TEXEL;
-  for (let k = 0; k < nz; k++)
-    for (let i = 0; i < nx; i++) {
-      const c = i + k * nx;
-      if (!close[c]) continue;
-      const lv = L[c];
-      const isWet = lv > NONE;
-      near.length = 0;
-      for (let dk = -R; dk <= R; dk++)
-        for (let di = -R; di <= R; di++) {
-          const ii = i + di;
-          const kk = k + dk;
-          if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
-          const m = ii + kk * nx;
-          // Water cells measure to the nearest bank (dry: 0, higher water: 1);
-          // land cells to the nearest water of any level. (Only cells on the
-          // edge between the two can be the nearest: the list stays short.)
-          if (isWet) {
-            const kind = L[m] <= NONE ? 0 : L[m] > lv + 0.5 ? 1 : -1;
-            if (kind < 0 || !(openFor(m - 1, lv) || openFor(m + 1, lv) || openFor(m - nx, lv) || openFor(m + nx, lv))) continue;
-            near.push(field.x0 + (ii + 0.5) * CELL, field.z0 + (kk + 0.5) * CELL, kind);
-          } else if (L[m] > NONE && (dryAt(m - 1) || dryAt(m + 1) || dryAt(m - nx) || dryAt(m + nx)))
-            near.push(field.x0 + (ii + 0.5) * CELL, field.z0 + (kk + 0.5) * CELL, 0);
-        }
-      if (!isWet && near.length === 0) continue;
-      const tx0 = Math.round((field.x0 + i * CELL - X0) / TEXEL);
-      const tz0 = Math.round((field.z0 + k * CELL - Z0) / TEXEL);
-      for (let b = 0; b < per; b++)
-        for (let a = 0; a < per; a++) {
-          const tx = tx0 + a;
-          const tz = tz0 + b;
-          if (tx < 0 || tz < 0 || tx >= W || tz >= D) continue;
-          const x = X0 + (tx + 0.5) * TEXEL;
-          const z = Z0 + (tz + 0.5) * TEXEL;
-          let bestDry = BANK_MAX * BANK_MAX;
-          let bestHigh = BANK_MAX * BANK_MAX;
-          for (let q = 0; q < near.length; q += 3) {
-            const ex = Math.max(0, Math.abs(x - near[q]) - CELL / 2);
-            const ez = Math.max(0, Math.abs(z - near[q + 1]) - CELL / 2);
-            if (near[q + 2]) bestHigh = Math.min(bestHigh, ex * ex + ez * ez);
-            else bestDry = Math.min(bestDry, ex * ex + ez * ez);
+  const tilesX = Math.max(0, Math.ceil(W / TILE));
+  const tilesZ = Math.max(0, Math.ceil(D / TILE));
+  const tiles: (BankTile | undefined)[] = new Array(tilesX * tilesZ);
+  const newTile = (): BankTile => ({ dist: new Float32Array(TILE * TILE).fill(-BANK_MAX), dry: new Float32Array(TILE * TILE).fill(-BANK_MAX), level: new Float32Array(TILE * TILE).fill(NONE) });
+  /** The far values (no water near). */
+  const FAR = newTile();
+  let made = 0;
+  let wetTiles = 0;
+  /** The texels of tile (a, b): each from its cell, as the whole map's would be. */
+  function tile(a: number, b: number): BankTile {
+    const tx0 = a * TILE;
+    const tz0 = b * TILE;
+    const tx1 = Math.min(W, tx0 + TILE);
+    const tz1 = Math.min(D, tz0 + TILE);
+    let out: BankTile | null = null;
+    // (the cells whose texels can fall in it, a cell more each way)
+    const i0 = Math.max(0, Math.floor((X0 + tx0 * TEXEL - field.x0) / CELL) - 1);
+    const i1 = Math.min(nx - 1, Math.floor((X0 + tx1 * TEXEL - field.x0) / CELL) + 1);
+    const k0 = Math.max(0, Math.floor((Z0 + tz0 * TEXEL - field.z0) / CELL) - 1);
+    const k1 = Math.min(nz - 1, Math.floor((Z0 + tz1 * TEXEL - field.z0) / CELL) + 1);
+    for (let k = k0; k <= k1; k++)
+      for (let i = i0; i <= i1; i++) {
+        const c = i + k * nx;
+        if (!close[c]) continue;
+        const ctx0 = Math.round((field.x0 + i * CELL - X0) / TEXEL);
+        const ctz0 = Math.round((field.z0 + k * CELL - Z0) / TEXEL);
+        if (ctx0 + per <= tx0 || ctx0 >= tx1 || ctz0 + per <= tz0 || ctz0 >= tz1) continue;
+        const lv = L[c];
+        const isWet = lv > NONE;
+        near.length = 0;
+        for (let dk = -R; dk <= R; dk++)
+          for (let di = -R; di <= R; di++) {
+            const ii = i + di;
+            const kk = k + dk;
+            if (ii < 0 || kk < 0 || ii >= nx || kk >= nz) continue;
+            const m = ii + kk * nx;
+            // Water cells measure to the nearest bank (dry: 0, higher water: 1);
+            // land cells to the nearest water of any level. (Only cells on the
+            // edge between the two can be the nearest: the list stays short.)
+            if (isWet) {
+              const kind = L[m] <= NONE ? 0 : L[m] > lv + 0.5 ? 1 : -1;
+              if (kind < 0 || !(openFor(m - 1, lv) || openFor(m + 1, lv) || openFor(m - nx, lv) || openFor(m + nx, lv))) continue;
+              near.push(field.x0 + (ii + 0.5) * CELL, field.z0 + (kk + 0.5) * CELL, kind);
+            } else if (L[m] > NONE && (dryAt(m - 1) || dryAt(m + 1) || dryAt(m - nx) || dryAt(m + nx)))
+              near.push(field.x0 + (ii + 0.5) * CELL, field.z0 + (kk + 0.5) * CELL, 0);
           }
-          const t = tx + tz * W;
-          dry[t] = isWet ? Math.sqrt(bestDry) : -Math.sqrt(bestDry);
-          dist[t] = isWet ? Math.sqrt(Math.min(bestDry, bestHigh)) : dry[t];
-          texLevel[t] = lv;
-        }
-    }
+        if (!isWet && near.length === 0) continue;
+        for (let q2 = 0; q2 < per; q2++)
+          for (let q1 = 0; q1 < per; q1++) {
+            const tx = ctx0 + q1;
+            const tz = ctz0 + q2;
+            if (tx < tx0 || tz < tz0 || tx >= tx1 || tz >= tz1) continue;
+            const x = X0 + (tx + 0.5) * TEXEL;
+            const z = Z0 + (tz + 0.5) * TEXEL;
+            let bestDry = BANK_MAX * BANK_MAX;
+            let bestHigh = BANK_MAX * BANK_MAX;
+            for (let q = 0; q < near.length; q += 3) {
+              const ex = Math.max(0, Math.abs(x - near[q]) - CELL / 2);
+              const ez = Math.max(0, Math.abs(z - near[q + 1]) - CELL / 2);
+              if (near[q + 2]) bestHigh = Math.min(bestHigh, ex * ex + ez * ez);
+              else bestDry = Math.min(bestDry, ex * ex + ez * ez);
+            }
+            out ??= newTile();
+            const t = tx - tx0 + (tz - tz0) * TILE;
+            out.dry[t] = isWet ? Math.sqrt(bestDry) : -Math.sqrt(bestDry);
+            out.dist[t] = isWet ? Math.sqrt(Math.min(bestDry, bestHigh)) : out.dry[t];
+            out.level[t] = lv;
+          }
+      }
+    made++;
+    if (out) wetTiles++;
+    return out ?? FAR;
+  }
+  /** The tile of texel (tx, tz) (inside the map), made if it is not yet. */
+  const tileOf = (tx: number, tz: number): BankTile => {
+    const a = Math.floor(tx / TILE);
+    const b = Math.floor(tz / TILE);
+    const id = a + b * tilesX;
+    return tiles[id] ?? (tiles[id] = timed(() => tile(a, b)));
+  };
+  /** (the time spent, for the log) */
+  function timed<T>(fn: () => T): T {
+    const t0 = performance.now();
+    const v = fn();
+    work += performance.now() - t0;
+    return v;
+  }
+  let nextTile = 0;
 
   const tex = (tx: number, tz: number, level: number): number => {
     if (tx < 0 || tz < 0 || tx >= W || tz >= D) return -BANK_MAX;
-    const t = tx + tz * W;
-    const lv = texLevel[t];
+    const T = tileOf(tx, tz);
+    const t = tx - Math.floor(tx / TILE) * TILE + (tz - Math.floor(tz / TILE) * TILE) * TILE;
+    const lv = T.level[t];
     // Water up a step is a wall for this boat; water down one is open but for its dry banks.
-    if (lv > level + 0.5) return Math.min(dist[t], -1);
-    return lv > NONE && lv < level - 0.5 ? dry[t] : dist[t];
+    if (lv > level + 0.5) return Math.min(T.dist[t], -1);
+    return lv > NONE && lv < level - 0.5 ? T.dry[t] : T.dist[t];
   };
 
-  return {
+  const api: RiverField = {
     levelAt: (x, z) => g.levelAt(x, z),
     flowAt(x, z, out) {
+      // (not made yet: all of it now)
+      if (cur.pass < 3) timed(() => current(Infinity));
       const gx = (x - field.x0) / CELL - 0.5;
       const gz = (z - field.z0) / CELL - 0.5;
       const i = Math.max(0, Math.min(nx - 2, Math.floor(gx)));
@@ -250,5 +347,21 @@ function buildRiverField(field: HeightField): RiverField {
       }
       return best;
     },
+    get ready() {
+      return cur.pass >= 3 && made >= tiles.length;
+    },
+    step(ms) {
+      const t0 = performance.now();
+      const until = t0 + ms;
+      if (current(until)) {
+        for (; nextTile < tiles.length && performance.now() < until; nextTile++) if (!tiles[nextTile]) tiles[nextTile] = tile(nextTile % tilesX, Math.floor(nextTile / tilesX));
+      }
+      work += performance.now() - t0;
+      return this.ready;
+    },
+    get stats() {
+      return { tiles: made, wetTiles, of: tiles.length, ms: Math.round(work) };
+    },
   };
+  return api;
 }

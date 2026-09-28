@@ -62,9 +62,17 @@ import { WIND } from './haze';
  * lightning flash at the shot's time (on a live page it strikes again, with
  * its thunder, every `HELD_FLASH_EVERY` s; live with `weather=storm` and no
  * `flash=`, flashes come on their own every few seconds).
+ *
+ * The parts that draw it — rain, the rainbow, snow — are built only when
+ * they are wanted (main.ts, lazy.ts): as the page opens when the URL or the
+ * saved setting asks (`weatherAtLoad`), else when `wants` says so: rain and
+ * the rainbow once a shower's clouds begin to build (a minute or more before
+ * the first drops), snow the moment the snow setting is picked.
  */
 export interface Weather {
   update(f: MapFrame): void;
+  /** The weather parts wanted now (after `update`, this frame's; the same object every call). */
+  wants(f: MapFrame): Readonly<WeatherWants>;
   /**
    * The showers and storms that begin before `until` (s) under the setting
    * `mode` (default: the one in use) held from the page's start, at the time
@@ -72,6 +80,13 @@ export interface Weather {
    * URL holds a weather).
    */
   schedule(until: number, mode?: WeatherSetting, season?: number): readonly WeatherEvent[];
+}
+
+/** The parts that draw the weather, wanted (built) or not yet (lazy.ts). */
+export interface WeatherWants {
+  rain: boolean;
+  rainbow: boolean;
+  snow: boolean;
 }
 
 /** One passing shower or storm, or a snowfall (the snow setting; its times are the flakes' where they say drops) (page seconds). */
@@ -302,6 +317,8 @@ interface Passing {
   /** Snow falling, and the white on the land (the snow setting). */
   snow: number;
   cover: number;
+  /** A shower or storm under way (its clouds building, its rain, its rainbow): the rain's parts are wanted. */
+  coming: boolean;
 }
 
 /**
@@ -392,6 +409,7 @@ class Schedule {
       const soak = e.rain * ramp(tw, e.rainOn, e.full + 40);
       a.wet = Math.max(a.wet, (tw < e.dry ? soak : soak * Math.exp(-(tw - e.dry) / DRY_TAU)) * drying);
       if (k <= 0 || t > Math.max(e.clear, e.bowOff)) continue;
+      a.coming = true;
       const cloud = k * e.cloud * ramp(tu, e.start, e.rainOn + 10) * (1 - ramp(t, e.easeOff, e.clear));
       a.cloud = Math.max(a.cloud, cloud);
       if (t < e.easeOff) a.build = Math.max(a.build, cloud);
@@ -464,6 +482,8 @@ class Skies {
   private still = NaN;
   /** How soft the wind is (the snow setting: no gusts), eased. */
   private soft = NaN;
+  /** A shower or storm is under way (the last `sample`): its clouds build a minute or more before the drops. */
+  coming = false;
 
   constructor(day: number) {
     this.day = Math.floor(day) || 0;
@@ -493,9 +513,10 @@ class Skies {
       while (list.length > 6 || list[0].to < t - 1500) list.shift();
     }
     list[list.length - 1].s.reach(t + 1, f.season);
-    const a: Passing = { cloud: 0, rain: 0, storm: 0, wind: 0, bow: 0, wet: 0, flash: 0, fl: null, build: 0, snow: 0, cover: 0 };
+    const a: Passing = { cloud: 0, rain: 0, storm: 0, wind: 0, bow: 0, wet: 0, flash: 0, fl: null, build: 0, snow: 0, cover: 0, coming: false };
     const p = this.phase;
     for (const s of list) s.s.sample(t, s.to, s.fade, p, a);
+    this.coming = a.coming;
     // The air of the season: hot, hazy and still in the dry months (eased as the setting or the year turns).
     const still = mode === 'season' ? rainsOf(f.season).still : 0;
     const ease = 1 - Math.exp(-f.dt / 20);
@@ -543,17 +564,45 @@ const NUMBERS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'flash', 's
 /** `v` if it is a weather setting (null: not one, e.g. a word of the URL or an older page's saved setting). */
 const asSetting = (v: unknown): WeatherSetting | null => (WEATHER_SETTINGS.includes(v as WeatherSetting) ? (v as WeatherSetting) : null);
 
-/** `setting`: the weather setting in use (the settings panel; read every frame). */
-export function createWeather(params: URLSearchParams, setting: () => WeatherSetting = () => 'season'): Weather {
+/**
+ * What the URL asks for (shared by `createWeather` and `weatherAtLoad`): a
+ * schedule (`auto`) or a weather it holds, the setting whose schedule it
+ * forces (null: the player's), the values it holds.
+ */
+function fromUrl(params: URLSearchParams): { shot: boolean; auto: boolean; forced: WeatherSetting | null; held: Held } {
   const shot = params.get('shot') === '1';
   const kind = params.get('weather') ?? (shot ? 'clear' : 'auto');
   const auto = !(kind in HELD);
   /** A setting's schedule the URL asks for (checks), whatever the setting (`snowy`: the snow setting's, `snow` holds a snowfall). */
   const forced = kind === 'snowy' ? 'snow' : asSetting(kind);
-  const mode = () => forced ?? asSetting(setting()) ?? 'season';
   const held: Held = { ...(HELD[kind] ?? {}) };
   for (const k of NUMBERS) if (params.has(k)) held[k] = clamp01(Number(params.get(k)) || 0);
+  return { shot, auto, forced, held };
+}
+
+/**
+ * The weather parts wanted as the page opens (main.ts builds them in their
+ * place, before the first frame; the others wait for `Weather.wants`), from
+ * the URL and the saved setting: snow when it holds snow or the snow
+ * setting is picked (the page opens snowing on white land); rain and the
+ * rainbow when it holds rain, a storm or a rainbow. A shot (`shot=1`) with a
+ * schedule that can rain (`weather=auto|season|rainy|stormy`) builds them
+ * too: its moment `t=` may be in a shower.
+ */
+export function weatherAtLoad(params: URLSearchParams, setting: WeatherSetting): WeatherWants {
+  const { shot, auto, forced, held } = fromUrl(params);
+  const mode = forced ?? asSetting(setting) ?? 'season';
+  const has = (k: (typeof NUMBERS)[number]) => (held[k] ?? 0) > 0;
+  const rain = has('rain') || has('storm') || (auto && shot && mode !== 'clear' && mode !== 'snow');
+  return { rain, rainbow: rain || has('rainbow'), snow: has('snow') || has('snowCover') || (auto && mode === 'snow') };
+}
+
+/** `setting`: the weather setting in use (the settings panel; read every frame). */
+export function createWeather(params: URLSearchParams, setting: () => WeatherSetting = () => 'season'): Weather {
+  const { shot, auto, forced, held } = fromUrl(params);
+  const mode = () => forced ?? asSetting(setting()) ?? 'season';
   let skies: Skies | null = null;
+  const wanted: WeatherWants = { rain: false, rainbow: false, snow: false };
   // (a held storm on the live page: lightning every few seconds, on its own train)
   const heldFlashes = !auto && !shot && (held.storm ?? 0) > 0 && !params.has('flash') ? flashTrain(rng(5), 3, 1e7, [6, 16]) : [];
   const ensure = (day: number) => (skies ??= new Skies(day));
@@ -592,6 +641,15 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
       // A rainbow only while the sun is up (and low: all the map's day is golden hour).
       w.rainbow *= 1 - ramp(f.night, 0.2, 0.42);
       current = w;
+    },
+    wants(f) {
+      const w = f.weather;
+      // Snow the moment its setting is picked (its flurries ease in over 20 s), or while any falls or lies.
+      wanted.snow = (auto && mode() === 'snow') || w.snow > 0 || w.snowCover > 0;
+      // Rain once a shower's clouds begin to build (its first drops a minute or more later); its rainbow with it.
+      wanted.rain = (auto && (skies?.coming ?? false)) || w.rain > 0 || w.storm > 0;
+      wanted.rainbow = wanted.rain || w.rainbow > 0;
+      return wanted;
     },
     schedule(until, m = mode(), at = season) {
       if (!auto) return [];

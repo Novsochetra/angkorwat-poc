@@ -34,7 +34,7 @@ export type JumpKind = 'chute' | 'glider';
  * Shots: `jumpmenu=1` shows the card open (`jumpmenu=key`: as a key opens
  * it, with the focus ring) · `start=chute|glider` the last pick.
  */
-export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): void; onBack(): void; sound?(s: UISound): void }): RoamHud {
+export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): void; onBack(): void; sound?(s: UISound): void; onOpen?(): void }): RoamHud {
   injectStyle();
   const params = new URLSearchParams(location.search);
   const shot = params.get('shot') === '1';
@@ -146,6 +146,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
     jump.setAttribute('aria-expanded', String(on));
     if (!quiet) h.sound?.(on ? 'open' : 'close');
     if (on) {
+      // (roam.ts: the walk maps are made now, if they are not yet)
+      h.onOpen?.();
       placeCard();
       picks.find((b) => b.dataset.kind === last)!.focus({ preventScroll: true });
     } else if (!quiet) jump.focus({ preventScroll: true });

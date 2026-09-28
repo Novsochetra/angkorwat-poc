@@ -7,8 +7,10 @@ import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
+import { festivalNow, festivalSoon } from './festival/_schedule';
 import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { buildHeightField } from './heightfield';
+import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
 import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
 import type { Foreground } from './foreground';
@@ -17,8 +19,9 @@ import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
-import { createWeather } from './sky/weather';
-import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
+import { setFog } from './sky/fogLevel';
+import { createWeather, weatherAtLoad } from './sky/weather';
+import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
@@ -42,7 +45,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * (1: built, with its button) · `video=1` a shot that then moves frame by
  * frame (`__videoFrame`, scripts/video.mjs) · `resolution=auto|<share>` the
  * Resolution setting (resolution.ts: 0.5 draws half across) ·
- * `battery=1` the battery saver (30 frames a second) · `idle=0` no idle
+ * `battery=1` the battery saver (30 frames a second) ·
+ * `fog=auto|full|light|simple` the Fog setting (sky/fogLevel.ts) · `idle=0` no idle
  * slow-down (the frame loop, below).
  *
  * Every part is its own module, loaded on its own: a part that fails to
@@ -63,7 +67,7 @@ renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = NeutralToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = PCFShadowMap;
-// (the low level's still shadows: only what is marked still casts, graphics.ts)
+// (the low and medium levels' still shadows: only what is marked still casts, graphics.ts)
 stillCasters(renderer);
 
 const scene = new Scene();
@@ -97,6 +101,7 @@ function loadSettings(): MapSettings {
     if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
+    if (!FOG_CHOICES.includes(saved.fog as FogChoice)) delete saved.fog;
     // (settings kept before the new defaults — cycling time, clear weather, the interface at full, easy flying — take them once)
     if (localStorage.getItem(DEFAULTS_KEY) !== DEFAULTS_VERSION) {
       delete saved.time;
@@ -125,9 +130,12 @@ if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
 setBatterySaver(settings.battery);
+if (FOG_CHOICES.includes(params.get('fog') as FogChoice)) settings.fog = params.get('fog') as FogChoice;
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
 const levelOf = (g: GraphicsChoice): GraphicsLevel => (g !== 'auto' ? g : shot ? 'medium' : autoLevel());
 setGraphics(levelOf(settings.graphics), scene);
+// (after the level: auto's fog is the level's step)
+setFog(settings.fog, graphicsNow.level);
 /** Auto's watch over the frames (graphics.ts): it steps the level down on a device that stays slow. */
 const autoWatch = new AutoGraphics();
 /** The frame loop has begun (the resolution below follows the level from then on). */
@@ -146,6 +154,13 @@ function pageWords(): void {
 setLang(settings.lang);
 pageWords();
 onLang(pageWords);
+
+// (the time of day's calendar, here before the build: the festival part is built as the page opens when one is on)
+/** Days since a new moon (6 Jan 2000) when the page opened, for the moon's phase (`day=` in shots, else 15 there: a full moon, as in the concept art). */
+const DAY0 = shot ? Number(params.get('day') ?? 15) || 0 : Math.floor((Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86_400_000);
+/** The time of the year when the page opened (0 = Khmer New Year, mid-April), and how far it moves per day of `clock`. */
+const SEASON0 = params.has('season') ? Number(params.get('season')) || 0 : shot ? 0.45 : (((Date.now() - Date.UTC(new Date().getUTCFullYear(), 3, 14)) / 86_400_000 / 365) % 1 + 1) % 1;
+const SEASON_PER_DAY = params.has('season') || shot ? 0 : 1 / 24;
 
 // ── Build ───────────────────────────────────────────────────────────────────
 const timings: Record<string, number> = {};
@@ -214,6 +229,36 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 const only = params.get('parts')?.split(',');
+/**
+ * Parts built only when wanted (lazy.ts): the weather's and the festival's may never show on a visit. Built in their
+ * place, as before, when the page opens wanting them (the URL, the saved weather setting, the calendar: a shot builds
+ * what its URL asks), else later in the background, once the weather or the festival calendar wants them (`wanted`,
+ * asked twice a second on the live page). `prepare`: what still happens in their place (the snow's white cover goes
+ * into the materials built so far, so they compile with it at load and none again when it first snows; its flakes'
+ * material and snowmen, hidden, so their shaders compile at load with the rest).
+ */
+const loadWants = weatherAtLoad(params, settings.weather);
+const LATER: Record<string, { atLoad: boolean; wanted: (f: MapFrame) => boolean; now?: (f: MapFrame) => boolean; prepare?: () => Promise<void> }> = {
+  rain: { atLoad: loadWants.rain, wanted: (f) => weather.wants(f).rain },
+  snow: {
+    atLoad: loadWants.snow,
+    wanted: (f) => weather.wants(f).snow,
+    prepare: async () => {
+      const { prepareSnow } = await import('./sky/snow');
+      timed('snowCover', () => prepareSnow(ctx));
+    },
+  },
+  rainbow: { atLoad: loadWants.rainbow, wanted: (f) => weather.wants(f).rainbow },
+  festival: { atLoad: festivalNow({ season: SEASON0, day: DAY0 }) !== null, wanted: festivalSoon, now: (f) => festivalNow(f) !== null },
+};
+const late = new LateParts({
+  ctx,
+  arrive: (name, part, ms) => arrive(name, part, ms),
+  fail: (name, e) => {
+    failed.push(name);
+    console.error(`[map] part "${name}" failed:`, e);
+  },
+});
 // The loading screen follows the build (index.html): Angkor Wat rises row by row
 // from its grey outline with light on the stones being laid, the bar fills block by block (20) and the explorer walks
 // below it to the bar's end; a frame in between lets it paint. Built, it waits for its button (enter()).
@@ -247,6 +292,19 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
   showProgress((i + 1) / (BUILDERS.length + 1));
   await nextFrame();
   if (only && !only.includes(name)) continue;
+  // (a part built only when wanted: the work of its place now; the part itself now, or later)
+  const later = Object.hasOwn(LATER, name) ? LATER[name] : undefined;
+  if (later) {
+    try {
+      await later.prepare?.();
+    } catch (e) {
+      console.warn(`[map] ${name}: its place in the build failed:`, e);
+    }
+    if (!later.atLoad) {
+      late.defer({ name, load, wanted: later.wanted, now: later.now });
+      continue;
+    }
+  }
   // The hang glider's take-off ramps are picked on the bare land, before the jungle is planted: no tree grows on them.
   if (name === 'vegetation')
     try {
@@ -273,16 +331,18 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
     console.error(`[map] part "${name}" failed:`, e);
   }
 }
+if (Object.keys(late.states).length) console.info(`[map] built only when wanted: ${Object.keys(late.states).join(', ')}`);
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 // …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
 timings.covered = Math.round(cutCovered(parts.filter((p) => ['terrain', 'path', 'jungle', 'camps', 'village', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')).map((p) => p.object)).ms);
-// What never moves casts the low graphics level's still shadows (graphics.ts): the land, trees, temples, road, jungle
+// What never moves casts the low and medium levels' still shadows (graphics.ts): the land, trees, temples, road, jungle
 // sites, the village (its rafts bob a little: their shadows stand), the paddies' props (they change with the season
 // only), the hamlets and the ledge, and the explorer while he stands on it (the overview); nor the people, animals
 // and boats.
-for (const p of parts) if (['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'foreground'].includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
+const STILL_PARTS = ['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'foreground'];
+for (const p of parts) if (STILL_PARTS.includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
 const ledgeExplorer = (parts.find((p) => p.name === 'foreground') as Foreground | undefined)?.explorer?.object;
 /** Roaming, the explorer moves: he casts no still shadow then (the still map is drawn again as he leaves his ledge and comes back). */
 function explorerStill(still: boolean): void {
@@ -292,7 +352,7 @@ function explorerStill(still: boolean): void {
 }
 // The land, the temples, the road and the ledge cast only while their shadows can be in view (cull.ts; the trees,
 // jungle sites, camps, village, paddies and hamlets gate their own): roaming, the shadow map draws a half to a third of
-// the map (the low level's still shadows: all of it).
+// the map (the still shadows of low and medium: all of it).
 const castGate = new ShadowGate();
 for (const p of parts) if (p.name === 'path' || p.name.startsWith('landmark:')) castGate.addAll(p.object);
 const land = parts.find((p) => p.name === 'terrain');
@@ -303,6 +363,26 @@ if (ledge) castGate.addAll(ledge);
 setGraphics(graphicsNow.level, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
 const blocks = Object.fromEntries(parts.filter((p) => p.blocks).map((p) => [p.name, p.blocks!]));
+/**
+ * A part built later (lazy.ts) joins the map as the ones built with it did: the scene, the frame's updates (after
+ * the others'), the blocks line, the bug report's and the look panel's picks (they read `parts`), the nature book
+ * (roaming reads `parts`), and the graphics level's block shapes for its voxel meshes (plain on low: the scene
+ * again). Were it still, it would cast the still shadows (low, medium), drawn again. (Not in the walk maps, made once
+ * as roaming is set up: the late parts have nothing to stand on; the snowmen are never solid.)
+ */
+function arrive(name: string, part: MapPart, ms: { build: number; compile: CompileTimes }): void {
+  timings[name] = Math.round(ms.build);
+  parts.push(part);
+  scene.add(part.object);
+  if (part.blocks) blocks[name] = part.blocks;
+  if (STILL_PARTS.includes(name)) {
+    markStill(part.object);
+    renderer.shadowMap.needsUpdate = true;
+  }
+  setGraphics(graphicsNow.level, scene);
+  const c = ms.compile;
+  console.info(`[map] part "${name}" built when wanted, in ${ms.build.toFixed(0)} ms · its ${c.link.length} shaders started in ${c.start.toFixed(0)} ms, ready in ${c.ready.toFixed(0)}, linked in ${c.link.map((l) => l.toFixed(0)).join(' + ')} ms${c.slow.length ? ` (slow: ${c.slow.join(', ')})` : ''}${part.blocks ? ` · ${part.blocks} blocks` : ''}`);
+}
 
 // ── Camera, sound, interface ────────────────────────────────────────────────
 const rig = new MapCameraRig(camera);
@@ -352,6 +432,7 @@ const handlers = {
       autoWatch.reset();
       newLevelRatio();
     }
+    if (s.fog !== was.fog) setFog(s.fog, graphicsNow.level);
     if (s.battery !== was.battery) {
       setBatterySaver(s.battery);
       autoWatch.reset();
@@ -413,7 +494,7 @@ const roam: MapRoam | null = foreground
 if (roam) {
   parts.push(roam);
   scene.add(roam.object);
-  // (the disc under his feet on the low level lies on the roaming world's floors: foreground.ts)
+  // (the disc under his feet with still shadows (low, medium) lies on the roaming world's floors: foreground.ts)
   foreground?.follow(roam.world);
   // (the roaming's own blocks too: on low its ramps, parked gliders, boats and balloon plain from afar, graphics.ts)
   setGraphics(graphicsNow.level, scene);
@@ -441,11 +522,7 @@ let clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1)
 const nightOf = (c: number) => 0.5 - 0.5 * Math.cos(c * Math.PI * 2);
 /** The clock on the dusk side for a time of day (0 afternoon … 0.5 night). */
 const duskClock = (n: number) => Math.acos(1 - 2 * Math.min(1, Math.max(0, n))) / (Math.PI * 2);
-/** Days since a new moon (6 Jan 2000) when the page opened, for the moon's phase (`day=` in shots, else 15 there: a full moon, as in the concept art). */
-const DAY0 = shot ? Number(params.get('day') ?? 15) || 0 : Math.floor((Date.now() - Date.UTC(2000, 0, 6, 18, 14)) / 86_400_000);
-/** The time of the year when the page opened (0 = Khmer New Year, mid-April), and how far it moves per day of `clock`. */
-const SEASON0 = params.has('season') ? Number(params.get('season')) || 0 : shot ? 0.45 : (((Date.now() - Date.UTC(new Date().getUTCFullYear(), 3, 14)) / 86_400_000 / 365) % 1 + 1) % 1;
-const SEASON_PER_DAY = params.has('season') || shot ? 0 : 1 / 24;
+// (DAY0, SEASON0 and SEASON_PER_DAY: above the build)
 let night = clockParam !== null ? nightOf(clockParam) : params.has('night') ? Number(params.get('night')) : settings.time === 'night' ? 1 : 0;
 /** Days of the cycle so far (its fraction is always the clock): runs with `t` while cycling, else follows the eased clock, so a switch in or out of "cycle" (and the moon, the season) never jumps. */
 let cycleDays = duskClock(night);
@@ -532,6 +609,8 @@ function step(t: number, dt: number): void {
   frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
+  // (parts built only when wanted: the rain, snow, the festival, lazy.ts; a shot builds what its URL asks with the map)
+  if (!shot) late.watch(frame);
   const cam = videoCam ?? fixedCam;
   if (cam) {
     camera.position.set(cam[0], cam[1], cam[2]);
@@ -654,7 +733,7 @@ posthogLogger.info('map initialized', {
   built_part_count: parts.length,
   failed_part_count: failed.length,
 });
-Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed } });
+Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed, late: late.states } });
 
 /** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
 let wakeLoop: () => void = () => undefined;
@@ -787,6 +866,8 @@ function useLevel(level: GraphicsLevel): void {
   autoWatch.reset();
   if (level === graphicsNow.level) return;
   setGraphics(level, scene);
+  // (auto's fog follows the level)
+  setFog(settings.fog, level);
   ui.setGraphicsLevel(level);
   // (before the first frame the resolution is set up with the level in use)
   if (drawing) newLevelRatio();
@@ -801,6 +882,8 @@ if (shot) {
   console.info(`[map] sacred pieces sculpted ${sculpted.ms.toFixed(0)} ms after the build${sculpted.left ? ` · ${sculpted.left} NOT READY` : ''}`);
   const t = Number(params.get('t') ?? 12);
   step(t, 0);
+  // (a late part this moment wants but the URL did not ask for — none should be — built now, and its update)
+  for (const p of await late.settle(frame)) runUpdate(p, frame);
   roam?.simulate(frame);
   // Let the scene settle (animated parts ease in), then render once.
   for (let i = 0; i < 30; i++) step(t, 1 / 60);
@@ -826,9 +909,11 @@ if (shot) {
   Object.assign(window, { __videoFrame: videoFrame });
   requestAnimationFrame(() => ((window as unknown as { __ready: boolean }).__ready = true));
 } else {
-  // (the shaders compile side by side while the loading screen still shows, not one by one in the first frame; never waits long)
+  // (the shaders compile side by side while the loading screen still shows, not one by one in the first frame; never waits long.
+  // As the map draws them — into the post effects' target, lazy.ts `compileFor` —: compiled for the screen, with its tone
+  // mapping and sRGB, they were other programs, and the first frame compiled all ~75 again: 1.3 s on an M1 Max, now 0.3)
   const c0 = performance.now();
-  await Promise.race([renderer.compileAsync(scene, camera).catch(() => undefined), new Promise((r) => setTimeout(r, 6000))]);
+  await compileFor(renderer, scene, camera, scene, false, 6000);
   console.info(`[map] shaders compiled in ${(performance.now() - c0).toFixed(0)} ms`);
   const t0 = performance.now();
   /** When the last frame was drawn, and when the next one is due (ms). */

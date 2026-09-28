@@ -480,7 +480,7 @@ export class Glider {
     const g = buildVoxelMesh(b, { quality: 'medium', name: 'glider' });
     const fam = (name: Fam, moving: number): Family => {
       const mesh = g.children.find((c) => c.name === `glider:${name}`) as InstancedMesh;
-      // (posed by hand every frame: the build-time bounds mean nothing)
+      // (posed by hand every frame: the build-time bounds mean nothing; not culled, he flies it: always in view)
       mesh.frustumCulled = false;
       const n = mesh.count;
       const seed = new Float32Array(n);
@@ -510,10 +510,12 @@ export class Glider {
     geo.setAttribute('position', new BufferAttribute(this.linePos, 3));
     this.lines = new LineSegments(geo, new LineBasicMaterial({ color: LINE_COLOR, transparent: true, opacity: 0.8 }));
     this.lines.name = 'glider:wires';
+    // (as the blocks: posed every frame, always in view)
     this.lines.frustumCulled = false;
     this.rig.add(this.lines);
     // The flags (one mesh: lit like the sail, in its shadows, casting none of their own).
     this.flags.name = 'glider:flags';
+    // (as the blocks: posed every frame, always in view)
     this.flags.frustumCulled = false;
     this.flags.receiveShadow = true;
     this.flagOpen = (this.flags.geometry.attributes.position.array as Float32Array).slice();

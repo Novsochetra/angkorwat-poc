@@ -1,4 +1,4 @@
-import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGBAFormat, ShaderMaterial, Vector4 } from 'three';
+import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGBAFormat, ShaderMaterial, Vector3, Vector4 } from 'three';
 import type { HeightField } from '../heightfield';
 import { MAP_BOUNDS, PLACES } from '../layout';
 import { pastLand } from '../terrain/views';
@@ -128,6 +128,16 @@ const MIST_DEFINES = { HAZE_MIST: '' };
  */
 export const MIST_WET = { value: 0 };
 
+/** How many layers of the sea of mist one plane can draw (mistLayerMaterial: its uY and uK are vec3s). */
+export const MIST_STACK = 3;
+/**
+ * The sea of mist starts this far (m) inside the land's end at its side and
+ * back edges (`pastLand`), and at the front edge itself (from high up it
+ * reaches in over it: sky/haze.ts `FRONT_BANK`). Nearer in, every layer is
+ * clear: clouds.ts leaves the planes out there.
+ */
+export const SEA_FROM = 60;
+
 /**
  * A layer of the sea of mist beyond the land: a big flat plane at height `y`.
  * The layers share one noise field and each higher one keeps only its
@@ -137,6 +147,13 @@ export const MIST_WET = { value: 0 };
  * there is in the haze, sky/haze.ts, so it never cuts trees with a hard line).
  * Seen edge-on or from below (roaming near its height) a layer thins out, so
  * it never shows as a hard line or streaks.
+ *
+ * One plane can also draw a stack of up to {@link MIST_STACK} layers at once
+ * (the Fog setting's light and simple steps: 2 planes, not 5): the layers of
+ * a point share its noise, so the stack costs a few sums more, not more
+ * reads, and the sea stays as thick; only the layers' parallax is lost.
+ * `uY` (heights, m) and `uK` (0 lowest ‥ 1 highest) hold them, lowest
+ * first, `uN` how many (clouds.ts sets them).
  * @param k layer 0 (lowest) ‥ 1 (highest)
  */
 export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
@@ -147,7 +164,7 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
     side: DoubleSide,
     fog: true,
     defines: MIST_DEFINES,
-    uniforms: { ...hazeUniforms(), uY: { value: y }, uK: { value: k }, uWet: MIST_WET },
+    uniforms: { ...hazeUniforms(), uY: { value: new Vector3(y, y, y) }, uK: { value: new Vector3(k, k, k) }, uN: { value: 1 }, uWet: MIST_WET },
     vertexShader: /* glsl */ `
       #include <fog_pars_vertex>
       varying vec3 vWorld;
@@ -161,13 +178,44 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
     fragmentShader: /* glsl */ `
       #include <fog_pars_fragment>
       ${MIST_COMMON}
-      uniform float uY;
-      uniform float uK;
+      uniform vec3 uY;
+      uniform vec3 uK;
+      uniform float uN;
       uniform float uWet;
       varying vec3 vWorld;
+      // How thick a layer (height y m, k 0 lowest ‥ 1 highest) lies at this
+      // point: n its noise, fade what the stack shares (the land's end, land
+      // rising into it, near the eye), across the eye's distance over the ground.
+      float mistLayer(float y, float k, float n, float fade, float t, float swx, float across) {
+        // Breathing: the mounds swell and settle (≈ 25 s), each layer a little out of step.
+        float lo = 0.12 + k * 0.5 - 0.09 * uWet + 0.045 * sin(t * 0.25 + swx * 12.0 - k * 1.6);
+        float dens = smoothstep(lo, lo + 0.2, n) * fade;
+        // Seen at a grazing angle its noise smears into streaks, and edge-on it
+        // is a hard line: thin it out, all the sooner the nearer the eye is to
+        // its height (roaming). From below, the eye is in the mist: no layer.
+        // (the layer's own slope: in a stack it lies above or below the plane)
+        float dy = cameraPosition.y - y;
+        float near = 1.0 - smoothstep(6.0, 30.0, dy);
+        dens *= smoothstep(mix(0.004, 0.015, near), mix(0.03, 0.06, near), abs(dy) / max(length(vec2(across, dy)), 1e-3));
+        return dens * smoothstep(-1.0, 3.0, dy);
+      }
+      // Lays a layer (thickness dens, k as above) over the colour and share so far.
+      void mistOver(float dens, float k, float relief, vec3 hazeCol, inout vec3 col, inout float alpha) {
+        // Brighter up the stack (the tops catch the light), a little relief towards the key light.
+        vec3 c = hazeMistColor(vec2(1.0, clamp(0.22 + 0.68 * k + relief, 0.0, 1.0)), hazeCol);
+        float a = min(1.0, dens * mix(0.92, 0.6, k) * (1.0 + 0.2 * uWet));
+        if (alpha <= 0.0) {
+          col = c;
+          alpha = a;
+          return;
+        }
+        float over = a + alpha * (1.0 - a);
+        col = (c * a + col * alpha * (1.0 - a)) / max(over, 1e-4);
+        alpha = over;
+      }
       void main() {
         vec2 p = vWorld.xz;
-        float vis = smoothstep(-60.0, 40.0, outsideLand(p, 0.0));
+        float vis = smoothstep(${(-SEA_FROM).toFixed(1)}, 40.0, outsideLand(p, 0.0));
         // (beyond the front edge it starts at the edge: the land runs to it; seen
         // from high up it reaches in over the edge, sky/haze.ts hazeFrontBank)
         float front = hazeFrontBank(p, cameraPosition);
@@ -186,27 +234,29 @@ export function mistLayerMaterial(y: number, k: number): ShaderMaterial {
         vec2 k = hazeKeyDir.xz;
         float nl = hazeBankNoise(q + k / max(length(k), 1e-3) * 20.0 * scale, drift);
         n = n * 0.85 + texture2D(hazeNoise, (p - HAZE_WIND * t * 4.5) / 170.0).b * 0.15;
-        // Breathing: the mounds swell and settle (≈ 25 s), each layer a little out of step.
-        float lo = 0.12 + uK * 0.5 - 0.09 * uWet + 0.045 * sin(t * 0.25 + sw.x * 12.0 - uK * 1.6);
-        float dens = smoothstep(lo, lo + 0.2, n) * vis;
         // Where land rises into the sea, the whole stack gives way at once (per
         // layer it would repeat the land's shape at each height: streaks).
-        dens *= max(smoothstep(0.0, 8.0, 10.0 - landAt(p).x), front);
+        float landF = max(smoothstep(0.0, 8.0, 10.0 - landAt(p).x), front);
         vec3 ray = vWorld - cameraPosition;
         float dist = length(ray);
-        dens *= smoothstep(30.0, 140.0, dist);
-        // Seen at a grazing angle its noise smears into streaks, and edge-on it
-        // is a hard line: thin it out, all the sooner the nearer the eye is to
-        // its height (roaming). From below, the eye is in the mist: no layer.
-        float dy = cameraPosition.y - uY;
-        float near = 1.0 - smoothstep(6.0, 30.0, dy);
-        dens *= smoothstep(mix(0.004, 0.015, near), mix(0.03, 0.06, near), abs(ray.y) / dist);
-        dens *= smoothstep(-1.0, 3.0, dy);
-        if (dens < 0.004) discard;
-        // Brighter up the stack (the tops catch the light), a little relief towards the key light.
-        float lit = 0.22 + 0.68 * uK + clamp((nl - n) * 3.0, -0.12, 0.12);
-        vec3 col = hazeMistColor(vec2(1.0, clamp(lit, 0.0, 1.0)), hazeColorDir(ray / dist));
-        gl_FragColor = vec4(col, min(1.0, dens * mix(0.92, 0.6, uK) * (1.0 + 0.2 * uWet)));
+        float fade = vis * landF * smoothstep(30.0, 140.0, dist);
+        float across = length(ray.xz);
+        // The plane's layers (one, or a stack of up to ${MIST_STACK}: the same branch for every pixel).
+        float d0 = mistLayer(uY.x, uK.x, n, fade, t, sw.x, across);
+        float d1 = 0.0;
+        float d2 = 0.0;
+        if (uN > 1.5) d1 = mistLayer(uY.y, uK.y, n, fade, t, sw.x, across);
+        if (uN > 2.5) d2 = mistLayer(uY.z, uK.z, n, fade, t, sw.x, across);
+        if (max(d0, max(d1, d2)) < 0.004) discard;
+        vec3 hazeCol = hazeColorDir(ray / dist);
+        float relief = clamp((nl - n) * 3.0, -0.12, 0.12);
+        // (lowest first, each over the ones below it)
+        vec3 col = vec3(0.0);
+        float alpha = 0.0;
+        if (d0 >= 0.004) mistOver(d0, uK.x, relief, hazeCol, col, alpha);
+        if (d1 >= 0.004) mistOver(d1, uK.y, relief, hazeCol, col, alpha);
+        if (d2 >= 0.004) mistOver(d2, uK.z, relief, hazeCol, col, alpha);
+        gl_FragColor = vec4(col, alpha);
         #include <fog_fragment>
       }`,
   });

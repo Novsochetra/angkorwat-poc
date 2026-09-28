@@ -37,6 +37,12 @@ import { buildRoamWorld } from './world';
  * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot (degrees) ·
  * `gesture=…` and `saim=yaw,pitch,reach` the selfie · `stick=0|1` its stick ·
  * `keys=1` the key list.
+ *
+ * The follow camera's walk maps, the planks underfoot and the rivers' current
+ * and banks (world.ts) are made after Start, in idle time, hurried when the
+ * "Jump in" card opens, the rest at once when roaming starts; a headless
+ * shot, or a page that starts roaming (`roam=`), makes them with the map,
+ * as before.
  */
 export interface MapRoam extends MapPart {
   readonly mode: RoamMode;
@@ -84,12 +90,49 @@ export interface RoamDeps {
 }
 
 const STEP = 1 / 30;
+/**
+ * Seconds after Start (its first frame) before the walk maps are made in
+ * idle time; an idle slice's time (ms): at least, at most, and with no idle
+ * time to go by (a browser without `requestIdleCallback`: a slice every 16 ms).
+ */
+const PREP_AFTER = 1;
+const PREP_MIN = 2;
+const PREP_MAX = 8;
+const PREP_TIMER = 4;
+/** Idle time is waited for at most this long (ms); the card open, slices this long (ms) follow each other. */
+const PREP_WAIT = 1000;
+const PREP_HURRY = 10;
 
 export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   const params = new URLSearchParams(location.search);
   const object = new Group();
   object.name = 'roam';
-  const world = buildRoamWorld(ctx.field, deps.parts);
+  const startMode = params.get('roam') as RoamMode | null;
+  const made = buildRoamWorld(ctx.field, deps.parts, !ctx.shot && !startMode);
+  const world = made.world;
+  /** Frames updated, and when the first after Start was (ms); the walk maps' making: waiting, in idle time, or hurried (the card is open); its turn. */
+  let frames = 0;
+  let since = -1;
+  let prep: 'wait' | 'idle' | 'hurry' = 'wait';
+  let turn = 0;
+  function prepare(hurry: boolean): void {
+    if (prep === 'hurry' || (prep === 'idle' && !hurry)) return;
+    prep = hurry ? 'hurry' : 'idle';
+    if (made.ready) return;
+    const id = ++turn;
+    const slice = (d?: IdleDeadline) => {
+      // (the idle slices stop once hurried ones take over)
+      if (id !== turn) return;
+      // (idle time: what is left of it, a few ms at least; the card open: a slice, the frame, the next slice)
+      const ms = hurry ? PREP_HURRY : d && !d.didTimeout ? Math.min(PREP_MAX, Math.max(PREP_MIN, d.timeRemaining() - 1)) : PREP_TIMER;
+      if (!made.step(ms, hurry)) next();
+    };
+    const next = () => {
+      if (!hurry && typeof requestIdleCallback === 'function') requestIdleCallback(slice, { timeout: PREP_WAIT });
+      else setTimeout(slice, hurry ? 0 : 16);
+    };
+    next();
+  }
   const cam = new OrbitFollowCam(ctx.camera);
   const controls = new RoamControls(deps.canvas);
   const explorer = deps.explorer;
@@ -100,6 +143,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   let leaving = false;
   const hud = createRoamHud(deps.uiRoot, {
     onJump: (kind) => api.start(kind),
+    // (the walk maps made now, if they are not yet: he may jump in a moment)
+    onOpen: () => prepare(true),
     // (the "Back to the map" button asks first, as Esc does: _leave.ts)
     onBack: () => leave.ask(),
     sound: (s) => deps.uiSound?.(s),
@@ -232,6 +277,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     },
     start(kind = 'chute') {
       if (mode !== 'overview' || leaving) return;
+      // (the camera's walk maps, the planks, the rivers: the rest of them now, before the first step)
+      made.finish();
       chute.leap.opens = kind === 'glider' ? 'hang' : 'glide';
       deps.release(true);
       body.scale = 1;
@@ -307,6 +354,12 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       }
     },
     update(f) {
+      // (a second after Start: the walk maps in idle time; the first frame is drawn under the loading screen, and
+      // the next once its button is pressed, main.ts)
+      if (prep === 'wait' && frames++ > 0 && !document.body.classList.contains('map-waiting')) {
+        if (since < 0) since = performance.now();
+        else if (performance.now() - since >= PREP_AFTER * 1000) prepare(false);
+      }
       hud.update(f.dt);
       // Moored boats rock and light their lanterns in every mode.
       boat.frame(f);
@@ -334,7 +387,6 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   };
 
   // ── Start in a mode from the URL (checking) ──────────────────────────────
-  const startMode = params.get('roam') as RoamMode | null;
   if (startMode && startMode !== 'overview' && startMode in handlers) {
     deps.release(true);
     const at = params.get('at')?.split(',').map(Number);

@@ -46,6 +46,7 @@ export function buildPaddies(ctx: MapContext): MapPart {
   object.name = 'paddies';
   object.add(ground.mesh, ...rice.meshes, props.mesh);
   const meshes = [ground.mesh, ...rice.meshes, props.mesh];
+  // (drawn wherever the camera looks for the first frames, so their shaders compile at load; then culled on their own bounds)
   for (const m of meshes) m.frustumCulled = false;
   const shadows = new ShadowGate().add(props.mesh, boxOf(props.mesh));
   console.info(`[map] paddies: ${PLOTS.length} plots, ${ground.cells} floor cells, ${rice.count} rice hills (${rice.summary}), ${props.count} prop boxes · ${rice.draws + 2} draws at most`);

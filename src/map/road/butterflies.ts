@@ -36,7 +36,7 @@ export function buildButterflies(feet: Vector3): Butterflies {
   material.name = 'map:butterflies';
   const mesh = new InstancedMesh(geo, material, COUNT * 2);
   mesh.name = 'life:butterflies';
-  mesh.frustumCulled = false;
+  // (culled on where they flew first, `update`, and 5 m more: each wanders within 2.2 m of its home)
   mesh.castShadow = false;
   const c = new Color();
   flies.forEach((f, i) => {
@@ -79,6 +79,11 @@ export function buildButterflies(feet: Vector3): Butterflies {
         }
       });
       mesh.instanceMatrix.needsUpdate = true;
+      // (made once, as three would when first drawing them: its middle is where the see-through draws are sorted)
+      if (!mesh.boundingSphere) {
+        mesh.computeBoundingSphere();
+        mesh.boundingSphere!.radius += 5;
+      }
     },
   };
 }

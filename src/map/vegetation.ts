@@ -4,9 +4,9 @@ import { VoxelBuilder } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import type { VoxelMaterialKey } from '../voxel/materials';
 import { CastView } from './cull';
-import { graphicsNow } from './graphics';
+import { graphicsNow, pixelSize } from './graphics';
 import type { HeightField } from './heightfield';
-import { ChunkGrid, lowTwin } from './terrain/lod';
+import { ChunkGrid, ChunkSwitch, PLAIN_FROM } from './terrain/lod';
 import type { MapContext, MapFrame, MapPart, Subject } from './types';
 import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
@@ -31,10 +31,12 @@ import { stepWind, swayLeaves } from './veg/sway';
  * front of the camera: roaming, a third to a tenth of the jungle's
  * triangles of 300 m chunks (the camera stood in a chunk, and drew it
  * whole). Per tile a near mesh (1 m and 1.5 m cells: medium blocks, plain
- * boxes from 170 m while roaming, 300 m in the overview) and a far one (2 m
- * and 3 m cells, plain boxes); on the low level one plain mesh a tile.
+ * boxes from 170 m while roaming, 300 m in the overview, nearer where their
+ * cut edges are under the level's pixels: terrain/lod.ts `ChunkSwitch`) and a
+ * far one (2 m and 3 m cells, plain boxes); on the low level one plain mesh a
+ * tile.
  * A tile casts its shadow only while it can be seen (`CastView`, as
- * cull.ts `ShadowGate`; every tile casts the low level's still shadows).
+ * cull.ts `ShadowGate`; every tile casts the still shadows of low and medium).
  * The leaves sway in the wind (veg/sway.ts). The trees where the explorer
  * roams are handed to the undergrowth (veg/canopy.ts).
  */
@@ -219,27 +221,21 @@ export function plantJungle(f: HeightField, density: number): Planted & { thin: 
   return { ...r, thin, ms: [t1 - t0, performance.now() - t1] };
 }
 
-/**
- * Near meshes farther than this from the camera (m, on the map) draw plain
- * boxes: while roaming, and in the overview (as the land's chunks,
- * terrain/lod.ts).
- */
-const PLAIN_FROM = { roam: 170, overview: 300 };
 /** Frames at load when every tile casts (the shadow shaders compile then; cull.ts `ShadowGate`). */
 const WARM = 3;
 
 /** One tile (or chunk) of the jungle as drawn: its meshes, where its blocks are, its plain twin. */
 interface Tile {
-  /** Ground plan (for the distance to the camera). */
-  plan: Box3;
   /** Round its blocks (world), and their height, for the shadow's reach. */
   c: Vector3;
   r: number;
   h: number;
-  /** Near blocks with their edges (medium and up; null on the low level, where all is plain). */
-  fine: Group | null;
-  /** The fine meshes' plain twin (made the first time the tile is far). */
-  plain: Group | null;
+  /**
+   * Its near blocks with their edges and their plain twin, shown by the
+   * distance (terrain/lod.ts `ChunkSwitch`; null on the low level, where
+   * all is plain).
+   */
+  lod: ChunkSwitch | null;
   /** Every mesh the tile draws (fine, twin, far): they cast together. */
   meshes: InstancedMesh[];
   casts: boolean;
@@ -249,7 +245,7 @@ interface Tile {
  * The jungle's tiles: each shows its near blocks with their edges or as
  * plain boxes by its distance from the camera, and casts its shadow only
  * while the shadow can be in view (the box round its blocks swept away from
- * the light: cull.ts `CastView`). Still shadows (the low level) are drawn
+ * the light: cull.ts `CastView`). Still shadows (low and medium) are drawn
  * for wherever the camera goes next: every tile casts then.
  */
 class Tiles {
@@ -278,7 +274,11 @@ class Tiles {
     }
     if (!meshes.length) return;
     const s = box.getBoundingSphere(new Sphere());
-    this.list.push({ plan, c: s.center, r: s.radius, h: box.max.y - box.min.y, fine, plain: null, meshes, casts: true });
+    // (its twin's meshes cast with the rest, from the time it is made)
+    const lod = fine ? new ChunkSwitch(plan, fine, this.parent, (twin) => twin.traverse((o) => void ((o as InstancedMesh).isInstancedMesh && meshes.push(o as InstancedMesh)))) : null;
+    // (the fine blocks' box a metre out, as they sway)
+    lod?.box.expandByScalar(1);
+    this.list.push({ c: s.center, r: s.radius, h: box.max.y - box.min.y, lod, meshes, casts: true });
   }
 
   get count(): number {
@@ -289,19 +289,12 @@ class Tiles {
     const cam = f.camera.position;
     this.flat.set(cam.x, 0, cam.z);
     const from = f.roam !== 'overview' ? PLAIN_FROM.roam : PLAIN_FROM.overview;
+    const pixel = pixelSize(f.camera);
     const warm = this.frames++ < WARM;
     const all = warm || graphicsNow.stillShadows;
     if (!all) this.view.set(f);
     for (const t of this.list) {
-      if (t.fine) {
-        const plain = t.plan.distanceToPoint(this.flat) > from;
-        if (plain && !t.plain) {
-          this.parent.add((t.plain = lowTwin(t.fine)));
-          t.plain.traverse((o) => void ((o as InstancedMesh).isInstancedMesh && t.meshes.push(o as InstancedMesh)));
-        }
-        t.fine.visible = !plain;
-        if (t.plain) t.plain.visible = plain;
-      }
+      t.lod?.update(cam, this.flat, from, pixel);
       const casts = all || this.view.seesShadow(t.c, t.r, t.h);
       if (casts === t.casts) continue;
       t.casts = casts;

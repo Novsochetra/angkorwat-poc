@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, UniformsLib, UniformsUtils, Vector2, type BufferAttribute } from 'three';
+import { Box3, BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector2, Vector3, type BufferAttribute } from 'three';
 import { hash3 } from '../../voxel/random';
 import type { MapFrame } from '../types';
 import type { Puff } from './_mkStalls';
@@ -87,7 +87,9 @@ export function buildSteam(pots: Puff[]): MarketSteam {
   material.name = 'market:steam';
   const object = new Points(geo, material);
   object.name = 'market:steam';
-  object.frustumCulled = false;
+  // (culled on the pots, grown by the most a puff goes in the shader: 1.3 m up, 1.8 m across with the breeze and
+  // its curl, and half its size, 0.6 m)
+  geo.boundingSphere = new Box3().setFromBufferAttribute(geo.getAttribute('position') as BufferAttribute).expandByVector(new Vector3(3, 2.5, 3)).getBoundingSphere(new Sphere());
   object.renderOrder = 3;
   object.castShadow = false;
   const u = material.uniforms;

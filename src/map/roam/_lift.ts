@@ -83,6 +83,8 @@ export class Lift {
     const mat = new PointsMaterial({ size: MOTE_SIZE, map: fluffTexture(), color: new Color(1, 0.8, 0.42), transparent: true, opacity: 0, depthWrite: false, fog: true });
     this.object = new Points(geo, mat);
     this.object.name = 'roam:thermals';
+    // (not culled: the columns stand all over the map and he flies among them, so bounds round them all are always in
+    // view; shown only while he flies)
     this.object.frustumCulled = false;
     this.object.visible = false;
   }

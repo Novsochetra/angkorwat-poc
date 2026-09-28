@@ -77,7 +77,10 @@ export class GlowBlocks {
     geo.setAttribute('aGlow', new InstancedBufferAttribute(glow, 2));
     mesh.castShadow = false;
     mesh.receiveShadow = false;
-    mesh.frustumCulled = false;
+    // (culled on the blocks' own bounds, made here: later the floating village's panes bob a few cm with their
+    // rafts (village/_floating.ts: a metre spare) and lamps put out fold to nothing, so none of them leave it)
+    mesh.computeBoundingSphere();
+    if (n) mesh.boundingSphere!.radius += 1;
     return mesh;
   }
 }
@@ -247,7 +250,10 @@ export function haloPoints(halos: Halo[]): { points: Points; uniforms: HaloUnifo
   material.name = 'map:halo';
   const points = new Points(geo, material);
   points.name = 'road:halos';
-  points.frustumCulled = false;
+  // (culled on the lamps' points, and the biggest halo more: the shader pulls each towards the camera by half its
+  // size, and a size grows at most 1.9 times after this: the picked place's beacon, path.ts)
+  geo.computeBoundingSphere();
+  if (halos.length) geo.boundingSphere!.radius += Math.max(...size);
   points.renderOrder = 2;
   const u = material.uniforms as unknown as HaloUniforms;
   return { points, uniforms: u };
@@ -345,7 +351,8 @@ export class LightPools {
     const mesh = new Mesh(geo, material);
     mesh.name = name;
     mesh.renderOrder = 1;
-    mesh.frustumCulled = false;
+    // (culled on its own quads: they never move)
+    geo.computeBoundingSphere();
     return { mesh, uniforms: material.uniforms as unknown as PoolUniforms };
   }
 }

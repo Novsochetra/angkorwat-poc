@@ -145,6 +145,7 @@ export function createFishGear(): FishGear {
   (mesh.instanceMatrix.array as Float32Array).fill(0);
   mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
   mesh.instanceColor.setUsage(DynamicDrawUsage);
+  // (not culled: posed every frame in his hands and on the water in front of him, always in view)
   mesh.frustumCulled = false;
   mesh.castShadow = false;
   mesh.receiveShadow = true;
@@ -180,6 +181,7 @@ export function createFishGear(): FishGear {
   lineMat.name = 'fishing line';
   const line = new Line(lineGeo, lineMat);
   line.name = 'fishing:line';
+  // (as the rod: rewritten every frame, always in view)
   line.frustumCulled = false;
   line.raycast = () => {};
   line.renderOrder = 3;

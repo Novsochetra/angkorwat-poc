@@ -7,8 +7,10 @@ import {
   InterleavedBufferAttribute,
   Mesh,
   ShaderMaterial,
+  Sphere,
   UniformsLib,
 } from 'three';
+import { len3 } from './_len';
 
 /**
  * Rings on the water: a splash that spreads into a fading ripple where a fish
@@ -52,7 +54,10 @@ export class Rings {
     material.name = 'map:water rings';
     this.mesh = new Mesh(g, material);
     this.mesh.name = 'wildlife:rings';
-    this.mesh.frustumCulled = false;
+    // (culled on the rings written each frame, `end`, not on the quad's own bounds; the sphere stays round the
+    // origin, where the quad's was: three sorts the see-through draws by their spheres' middles, and the rings are
+    // drawn where they always were among them)
+    g.boundingSphere = new Sphere();
     this.mesh.renderOrder = 2;
     this.mesh.visible = false;
     this.mesh.raycast = () => {};
@@ -87,6 +92,11 @@ export class Rings {
     this.geometry.instanceCount = this.count;
     this.mesh.visible = this.count > 0;
     if (!this.count) return;
+    // (the bounds: every ring at its widest, round the origin)
+    const d = this.data;
+    let far = 0;
+    for (let o = 0; o < this.count * STRIDE; o += STRIDE) far = Math.max(far, len3(d[o], d[o + 1], d[o + 2]) + d[o + 4]);
+    this.geometry.boundingSphere!.radius = far;
     this.buffer.clearUpdateRanges();
     this.buffer.addUpdateRange(0, this.count * STRIDE);
     this.buffer.needsUpdate = true;

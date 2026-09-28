@@ -30,15 +30,16 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   moving sun costs no extra shadow passes. `f.lightDir` is this direction.
  *   Clouds and dawn make its shadows paler and softer (`shadow.intensity`,
  *   `shadow.radius`: uniforms, no redraw).
- * - The low level's still shadows (graphics.ts) are drawn again only once
- *   the light has turned {@link STILL_TURN} (with the day's cycle about
- *   every second at dusk and dawn), and then over 10–12 frames: the next
- *   map is drawn a part of the casters a frame (graphics.ts
- *   `dealStillParts`, ≈ 0.3 M triangles each) while the one shown stays,
- *   and the two swap — the light turning with them — when it is done. The
- *   whole map in one frame (2.8–3.5 M triangles, ≈ 4–6 ms more on an M1
- *   Max, 20–45 on a phone) was a hitch each time; a part adds ≈ 0.5 ms of
- *   GPU and 0.4 ms of CPU.
+ * - The still shadows of the low and medium levels (graphics.ts) are drawn
+ *   again only once the light has turned {@link STILL_TURN} (with the day's
+ *   cycle about every second at dusk and dawn), and then over 10–12 frames:
+ *   the next map is drawn a part of the casters a frame (graphics.ts
+ *   `dealStillParts`, ≈ 0.3 M triangles each on low, 0.8–0.9 M on medium)
+ *   while the one shown stays, and the two swap — the light turning with
+ *   them — when it is done. The whole map in one frame (low: 2.8–3.5 M
+ *   triangles, ≈ 4–6 ms more on an M1 Max, 20–45 on a phone) was a hitch
+ *   each time; a part adds ≈ 0.5 ms of GPU and 0.4 ms of CPU (medium:
+ *   ≈ 0.3–0.5 ms a frame in all).
  * - A hemisphere fill: cool sky light from above, warm bounce from below; a
  *   lightning flash floods it for a moment (no light is ever added).
  * - Haze (sky/haze.ts): three's fog chunks are replaced here, before any
@@ -155,11 +156,11 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     shadowDirty = true;
   }
 
-  // The shadow map is 4096² over ≈ 400 k blocks: it is drawn every third
-  // frame (for things that move; graphics.ts: 8192² and every frame on max),
-  // and the key light turns only on those frames, so a moving sun or moon
-  // adds no shadow pass (at 60 fps it turns 20 times a second, in steps too
-  // small to see). The low level's shadows are still (2048², graphics.ts):
+  // On high the shadow map is 4096² over ≈ 400 k blocks: it is drawn every
+  // third frame (for things that move; graphics.ts: 8192² and every frame on
+  // max), and the key light turns only on those frames, so a moving sun or
+  // moon adds no shadow pass (at 60 fps it turns 20 times a second, in steps
+  // too small to see). The shadows of low and medium are still (graphics.ts):
   // only what never moves casts, and the map is drawn again only once the
   // light has turned a little, so while it stands no frame draws shadows.
   const shadows = ctx.renderer.shadowMap;
@@ -187,7 +188,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   /** Parts of the next map drawn so far, and how many it has (0: none on the way). */
   let part = 0;
   let parts = 0;
-  /** Still shadows are drawn over frames now (live, the low level, a map shown already). */
+  /** Still shadows are drawn over frames now (live, a level of still shadows, a map shown already). */
   let spread = false;
 
   /** Start the next map: aimed along `dir` over the box in use, its casters dealt into parts. */
@@ -199,7 +200,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     parts = dealStillParts(ctx.scene, steps);
     part = 0;
   }
-  /** No next map (off the low level, a new size): its target freed. */
+  /** No next map (a level without still shadows, a new size): its target freed. */
   function dropNext(): void {
     part = parts = 0;
     next.shadow.map?.dispose();

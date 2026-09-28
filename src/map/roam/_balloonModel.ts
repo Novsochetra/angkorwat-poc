@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  Box3,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -12,6 +13,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   Quaternion,
+  Sphere,
   Vector2,
   Vector3,
   type InstancedMesh,
@@ -376,7 +378,9 @@ export class Balloon {
     for (let c = 0; c < CANS.length; c++) fb.box(CANS[c], NOZZLE + 0.04, 0, 0.05, 0.08, 0.05, 0xffffff, 'glow', { src: bsrc });
     const fg = buildVoxelMesh(fb, { quality: 'medium', name: 'balloon:flame', castShadow: false, receiveShadow: false });
     this.flames = fg.children[0] as InstancedMesh;
-    this.flames.frustumCulled = false;
+    // (posed every frame round the burner: culled on a box that holds the flames at their tallest and widest, in
+    // the cradle's space)
+    this.flames.boundingSphere = new Box3(new Vector3(-0.45, NOZZLE - 0.3, -0.35), new Vector3(0.45, NOZZLE + 2.2, 0.35)).getBoundingSphere(new Sphere());
     this.blocks += fb.boxes.length;
 
     // ── The inside glow: a smooth shell just over the cloth, additive, tinted as the cloth it shines through (the red band
@@ -399,8 +403,8 @@ export class Balloon {
     lathe.setAttribute('color', new BufferAttribute(col, 3));
     this.glow = new Mesh(lathe, new MeshBasicMaterial({ color: 0x000000, vertexColors: true, transparent: true, opacity: 1, blending: AdditiveBlending, depthWrite: false, fog: false }));
     this.glow.name = 'balloon:lantern';
-    // (always drawn, black while unlit: compiled at load, nothing stutters the first time it glows)
-    this.glow.frustumCulled = false;
+    // (always in the scene, black while unlit: its shader is compiled at load with the rest, main.ts, so nothing
+    // stutters the first time it glows; culled on its own shell, which goes with the envelope)
     this.glow.renderOrder = 2;
 
     // ── The burner line, and the tether ropes at home ──
@@ -422,12 +426,14 @@ export class Balloon {
     cables.setAttribute('color', new BufferAttribute(new Float32Array(cc), 3));
     this.cord = new LineSegments(cables, new LineBasicMaterial({ vertexColors: true }));
     this.cord.name = 'balloon:lines';
-    this.cord.frustumCulled = false;
+    // (culled on its lines as made, and half a metre more: only the burner line's handle moves, a few cm)
+    cables.computeBoundingSphere();
+    cables.boundingSphere!.radius += 0.5;
     const tetherGeo = new BufferGeometry();
     tetherGeo.setAttribute('position', new BufferAttribute(new Float32Array(6 * BALLOON.tether.length), 3));
     this.tether = new LineSegments(tetherGeo, new LineBasicMaterial({ color: 0xcbb688 }));
     this.tether.name = 'balloon:tether';
-    this.tether.frustumCulled = false;
+    // (culled on the ropes as they are each frame: `pose`)
 
     // ── Parked: the heap on the grass, the fan ──
     const hb = new VoxelBuilder();
@@ -595,6 +601,7 @@ export class Balloon {
         tp.set([_w.x, _w.y, _w.z, p.tether[i].x, p.tether[i].y, p.tether[i].z], i * 6);
       }
       this.tether.geometry.attributes.position.needsUpdate = true;
+      this.tether.geometry.computeBoundingSphere();
     }
     this.tether.visible = !!p.tether;
   }

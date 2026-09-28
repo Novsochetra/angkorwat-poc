@@ -1933,8 +1933,10 @@ export class Crowd {
     if (own) mesh.instanceMatrix = new InstancedBufferAttribute(this.mat, 16);
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     (mesh.instanceMatrix.array as Float32Array).fill(0);
-    // (people are spread over the whole map: one draw, no culling)
-    mesh.frustumCulled = false;
+    // (lod: culled as a whole on a sphere round the list's people, worked out each frame, `pack`: everywhere until
+    // then; without lod (the festival) not culled, its instances are where the festival puts them)
+    if (this.lod) mesh.boundingSphere = new Sphere(undefined, Infinity);
+    else mesh.frustumCulled = false;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.customDepthMaterial = depth;
@@ -1997,6 +1999,7 @@ export class Crowd {
         depthWrite: false,
       }),
     );
+    // (drawn into the bone texture, not the map: its vertex shader puts each quad on its row)
     quad.frustumCulled = false;
     const scene = new Scene();
     scene.matrixWorldAutoUpdate = false;
@@ -2313,7 +2316,42 @@ export class Crowd {
       b.mesh.count = b.n;
       // (nobody in a list: no draw at all)
       b.mesh.visible = b.n > 0;
+      if (b.n) this.bound(b);
     }
+  }
+
+  /**
+   * (lod) The sphere three culls a list on: round its people, each as far as
+   * the sphere they are culled on one by one (`CULL_R` round the chest). All
+   * of a list can be out of view while their shadows are drawn (then they
+   * are not culled one by one).
+   */
+  private bound(b: Batch): void {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let z0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    let z1 = -Infinity;
+    let big = 0;
+    for (let j = 0; j < b.n; j++) {
+      const i = b.who[j];
+      const o = j * 16;
+      const k = this.size[i];
+      const x = b.mat[o + 12];
+      const y = b.mat[o + 13] + CULL_Y * k;
+      const z = b.mat[o + 14];
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+      if (z < z0) z0 = z;
+      if (z > z1) z1 = z;
+      if (k > big) big = k;
+    }
+    const s = b.mesh.boundingSphere!;
+    s.center.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    s.radius = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2) / 2 + CULL_R * big;
   }
 
   /** Person `i` into list `to` (0: none): out of their slot (the list's last person fills it), into the end of the other. */

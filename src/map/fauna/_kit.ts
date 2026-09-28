@@ -1,4 +1,5 @@
 import {
+  Box3,
   BufferGeometry,
   Color,
   DynamicDrawUsage,
@@ -7,6 +8,7 @@ import {
   InstancedMesh,
   MeshDepthMaterial,
   MeshStandardMaterial,
+  Sphere,
   Uint16BufferAttribute,
   Vector3,
   type WebGLProgramParametersWithUniforms,
@@ -57,6 +59,10 @@ interface Bone {
 
 /** All variants. */
 const ALL = 0xff;
+/** The most a species' `faunaRootMove` shifts the body (model units: a lying elephant's 1.3). */
+const LIFT = 1.5;
+const _box = new Box3();
+const _v = new Vector3();
 
 /**
  * A model: boxes on bones, in the rest pose. `*` in a bone name stands for
@@ -131,6 +137,29 @@ export class Model {
       d = Math.max(d, n);
     }
     return d;
+  }
+
+  /**
+   * How far from its root (model units) any pose can take a point of the
+   * model: each bone turns about its pivot, so a point stays as far from its
+   * bone's pivot, and each pivot from its parent's, as at rest; the top
+   * bone's pivot stays put. The body's lift (`faunaRootMove`) comes on top.
+   */
+  get reach(): number {
+    let r = 0;
+    for (let v = 0; v < this.pos.length / 3; v++) {
+      let b = this.part[v * 3];
+      const pv = this.bones[b].pivot;
+      let d = Math.hypot(this.pos[v * 3] - pv[0], this.pos[v * 3 + 1] - pv[1], this.pos[v * 3 + 2] - pv[2]);
+      for (let p = this.bones[b].parent; p >= 0; b = p, p = this.bones[p].parent) {
+        const a = this.bones[b].pivot;
+        const c = this.bones[p].pivot;
+        d += Math.hypot(a[0] - c[0], a[1] - c[1], a[2] - c[2]);
+      }
+      const top = this.bones[b].pivot;
+      r = Math.max(r, d + Math.hypot(top[0], top[1], top[2]));
+    }
+    return r;
   }
 
   geometry(): BufferGeometry {
@@ -348,6 +377,8 @@ export class Flock {
   private dirtyCh = 0;
   /** Time origin of the shader clock (it is rebased now and then, so floats stay exact). */
   private base = 0;
+  /** How far a pose takes a point of the model from its root (model units, `Model.reach` and the lift). */
+  private readonly reach: number;
 
   constructor(
     readonly species: Species,
@@ -381,8 +412,10 @@ export class Flock {
     const mesh = new InstancedMesh(geo, material, count);
     mesh.name = `fauna:${species.name}`;
     mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-    // (animals are spread over the whole map: one draw, no culling)
-    mesh.frustumCulled = false;
+    // (animals are spread over the whole map, one draw, posed in the shader: culled on a sphere round the ones
+    // shown, `bound`, as far as a pose and the body's lift can take them)
+    mesh.boundingSphere = new Sphere(new Vector3(), Infinity);
+    this.reach = species.model.reach + LIFT;
     mesh.castShadow = species.shadows ?? false;
     mesh.receiveShadow = true;
     if (mesh.castShadow) mesh.customDepthMaterial = depth;
@@ -497,12 +530,36 @@ export class Flock {
       this.dirtyCh = 0b11111;
     }
     this.uniforms.uFaunaTime.value = t - this.base;
-    if (this.dirtyRoot) this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.dirtyRoot) {
+      this.mesh.instanceMatrix.needsUpdate = true;
+      this.bound();
+    }
     for (let c = 0; c < 5; c++) if (this.dirtyCh & (1 << c)) this.attrs[c].needsUpdate = true;
     this.dirtyRoot = false;
     this.dirtyCh = 0;
     let any = false;
     for (let i = 0; i < this.count && !any; i++) any = this.shown[i] === 1;
     this.mesh.visible = any;
+  }
+
+  /** The sphere three culls the mesh on: round every animal shown, as far as each one's pose can reach (none shown: everywhere, so a mesh shown anyway, e.g. to compile its shaders, is drawn). */
+  private bound(): void {
+    const m = this.mesh.instanceMatrix.array as Float32Array;
+    const s = this.mesh.boundingSphere!;
+    _box.makeEmpty();
+    let big = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (!this.shown[i]) continue;
+      const o = i * 16;
+      _box.expandByPoint(_v.set(m[o + 12], m[o + 13], m[o + 14]));
+      big = Math.max(big, m[o + 5]);
+    }
+    if (_box.isEmpty()) {
+      s.center.set(0, 0, 0);
+      s.radius = Infinity;
+      return;
+    }
+    _box.getBoundingSphere(s);
+    s.radius += this.reach * big;
   }
 }

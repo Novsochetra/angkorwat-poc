@@ -29,6 +29,12 @@ import type { MapPart } from '../types';
  *
  * Cheap to make: the blocks are only sorted into 16 m chunks up front; a
  * chunk's columns are built the first time something asks about it.
+ *
+ * Made `later` (roam/world.ts), the map only notes its meshes as they are
+ * now (their block counts and places: a part may draw fewer of its blocks
+ * later, terrain/seen.ts), and sorts their blocks in slices (`step`, in
+ * idle time); the first question finishes it at once. Either way it holds
+ * the same columns.
  */
 
 /** Column size (m). */
@@ -81,7 +87,23 @@ interface Source {
   array: Float32Array;
   /** The mesh's world matrix, when it is not the identity. */
   world: Matrix4 | null;
+  /** Its blocks when the map was made. */
+  count: number;
+  /** The land's (its blocks that only repeat the height field are left out). */
+  land: boolean;
 }
+
+/** The sorting still to do: the next source and block, and the chunks' list so far. */
+interface Job {
+  s: number;
+  i: number;
+  n: number;
+  chunkOf: Uint32Array;
+  itemOf: Uint32Array;
+}
+
+/** Blocks sorted between two looks at the clock (`step`). */
+const STEP_BLOCKS = 1024;
 
 /** One block's footprint (a box turned about y, or its bounding box if tilted) and its bottom and top. */
 interface Foot {
@@ -104,23 +126,31 @@ interface Foot {
 const _m = new Matrix4();
 
 export class WalkMap {
-  /** Build time of the chunk index (ms) and blocks it holds. */
-  readonly stats = { ms: 0, blocks: 0, chunks: 0 };
+  /** Time spent making the chunk index (ms), the blocks it holds, the chunks built so far and the meshes read. */
+  readonly stats = { ms: 0, blocks: 0, chunks: 0, sources: 0 };
   private readonly x0 = BOUNDS.x0;
   private readonly z0 = BOUNDS.z0;
   private readonly ci: number;
   private readonly ck: number;
   private readonly sources: Source[] = [];
   /** Blocks per chunk: `items[start[c] … start[c + 1]]` (mesh << 22 | instance). */
-  private readonly start: Uint32Array;
-  private readonly items: Uint32Array;
+  private start = new Uint32Array(0);
+  private items = new Uint32Array(0);
   private readonly chunks: (Chunk | undefined)[];
   private readonly foot: Foot = { x: 0, z: 0, ux: 0, uz: 0, vx: 0, vz: 0, iu: 0, iv: 0, hx: 0, hz: 0, y0: 0, y1: 0 };
+  /** The blocks still to sort into chunks (null: ready). */
+  private job: Job | null;
+  private work = 0;
 
+  /**
+   * `later`: only note the meshes now; their blocks are sorted by `step`
+   * (in slices), or all at once by the first question.
+   */
   constructor(
     private readonly field: HeightField,
     parts: readonly MapPart[],
     kind: WalkMapKind = 'walk',
+    later = false,
   ) {
     const t0 = performance.now();
     const size = CN * RES;
@@ -128,22 +158,7 @@ export class WalkMap {
     this.ck = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / size);
     this.chunks = new Array(this.ci * this.ck);
 
-    // Every solid block: which chunks it touches.
-    let chunkOf = new Uint32Array(1 << 16);
-    let itemOf = new Uint32Array(1 << 16);
-    let n = 0;
-    const push = (c: number, item: number) => {
-      if (n === chunkOf.length) {
-        const a = new Uint32Array(n * 2);
-        a.set(chunkOf);
-        chunkOf = a;
-        const b = new Uint32Array(n * 2);
-        b.set(itemOf);
-        itemOf = b;
-      }
-      chunkOf[n] = c;
-      itemOf[n++] = item;
-    };
+    // Every solid mesh, as it is now: its blocks, their places.
     for (const part of parts) {
       if (SKIP_PARTS.has(part.name)) continue;
       const land = part.name === 'terrain';
@@ -158,27 +173,86 @@ export class WalkMap {
         const keep = kind === 'soft' ? SEE_THROUGH.has(mat) : !SOFT.has(mat) && !(kind === 'hard' && SEE_THROUGH.has(mat));
         if (!keep || (skip && isUnder(mesh, skip))) return;
         if (this.sources.length >= 1 << MESH_BITS || mesh.count > INST_MASK) return;
-        const s = this.sources.length;
-        this.sources.push({ array: mesh.instanceMatrix.array as Float32Array, world: mesh.matrixWorld.equals(IDENTITY) ? null : mesh.matrixWorld.clone() });
-        for (let i = 0; i < mesh.count; i++) {
-          const f = this.footOf(s, i);
-          if (land && f.y1 <= this.landUnder(f) + 0.05) continue;
-          if (f.x + f.hx < BOUNDS.x0 || f.x - f.hx > BOUNDS.x1 || f.z + f.hz < BOUNDS.z0 || f.z - f.hz > BOUNDS.z1) continue;
-          const [a0, a1] = this.chunkSpan(f.x - f.hx, f.x + f.hx, this.x0, this.ci);
-          const [b0, b1] = this.chunkSpan(f.z - f.hz, f.z + f.hz, this.z0, this.ck);
-          for (let b = b0; b <= b1; b++) for (let a = a0; a <= a1; a++) push(a + b * this.ci, (s << INST_BITS) | i);
-          this.stats.blocks++;
-        }
+        this.sources.push({ array: mesh.instanceMatrix.array as Float32Array, world: mesh.matrixWorld.equals(IDENTITY) ? null : mesh.matrixWorld.clone(), count: mesh.count, land });
       });
     }
-    // Sort the list by chunk (counting sort).
-    this.start = new Uint32Array(this.ci * this.ck + 1);
-    for (let j = 0; j < n; j++) this.start[chunkOf[j] + 1]++;
-    for (let c = 0; c < this.ci * this.ck; c++) this.start[c + 1] += this.start[c];
-    this.items = new Uint32Array(n);
-    const fill = this.start.slice(0, -1);
-    for (let j = 0; j < n; j++) this.items[fill[chunkOf[j]]++] = itemOf[j];
-    this.stats.ms = Math.round(performance.now() - t0);
+    this.stats.sources = this.sources.length;
+    // (the lists get their room at the first step)
+    this.job = { s: 0, i: 0, n: 0, chunkOf: new Uint32Array(0), itemOf: new Uint32Array(0) };
+    this.work = performance.now() - t0;
+    if (!later) this.finish();
+    this.stats.ms = Math.round(this.work);
+  }
+
+  /** The blocks are all sorted into chunks. */
+  get ready(): boolean {
+    return !this.job;
+  }
+
+  /** Sort more blocks into chunks, for about `ms` milliseconds; true once the map is ready. */
+  step(ms: number): boolean {
+    const job = this.job;
+    if (!job) return true;
+    const t0 = performance.now();
+    const until = t0 + ms;
+    // Every solid block: which chunks it touches.
+    let { chunkOf, itemOf, n, s, i } = job;
+    if (!chunkOf.length) {
+      chunkOf = new Uint32Array(1 << 16);
+      itemOf = new Uint32Array(1 << 16);
+    }
+    const push = (c: number, item: number) => {
+      if (n === chunkOf.length) {
+        const a = new Uint32Array(n * 2);
+        a.set(chunkOf);
+        chunkOf = a;
+        const b = new Uint32Array(n * 2);
+        b.set(itemOf);
+        itemOf = b;
+      }
+      chunkOf[n] = c;
+      itemOf[n++] = item;
+    };
+    while (s < this.sources.length) {
+      const { count, land } = this.sources[s];
+      const end = Math.min(count, i + STEP_BLOCKS);
+      for (; i < end; i++) {
+        const f = this.footOf(s, i);
+        if (land && f.y1 <= this.landUnder(f) + 0.05) continue;
+        if (f.x + f.hx < BOUNDS.x0 || f.x - f.hx > BOUNDS.x1 || f.z + f.hz < BOUNDS.z0 || f.z - f.hz > BOUNDS.z1) continue;
+        const [a0, a1] = this.chunkSpan(f.x - f.hx, f.x + f.hx, this.x0, this.ci);
+        const [b0, b1] = this.chunkSpan(f.z - f.hz, f.z + f.hz, this.z0, this.ck);
+        for (let b = b0; b <= b1; b++) for (let a = a0; a <= a1; a++) push(a + b * this.ci, (s << INST_BITS) | i);
+        this.stats.blocks++;
+      }
+      if (i >= count) {
+        s++;
+        i = 0;
+      }
+      if (performance.now() >= until) break;
+    }
+    Object.assign(job, { chunkOf, itemOf, n, s, i });
+    // Sort the list by chunk (counting sort), in a slice of its own if this one is used up.
+    if (s >= this.sources.length && performance.now() < until) {
+      const cn = this.ci * this.ck;
+      const start = new Uint32Array(cn + 1);
+      for (let j = 0; j < n; j++) start[chunkOf[j] + 1]++;
+      for (let c = 0; c < cn; c++) start[c + 1] += start[c];
+      const items = new Uint32Array(n);
+      const fill = start.slice(0, -1);
+      for (let j = 0; j < n; j++) items[fill[chunkOf[j]]++] = itemOf[j];
+      this.start = start;
+      this.items = items;
+      this.job = null;
+    }
+    this.work += performance.now() - t0;
+    this.stats.ms = Math.round(this.work);
+    return !this.job;
+  }
+
+  /** Sort the rest of the blocks now. */
+  finish(): void {
+    this.step(Infinity);
   }
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -264,6 +338,8 @@ export class WalkMap {
 
   /** Column index of (x, z) in its chunk (built on first use; sets `at`), or −1 off the map. */
   private cell(x: number, z: number): number {
+    // (made later and not ready yet: all of it now)
+    if (this.job) this.finish();
     const i = Math.floor((x - this.x0) / RES);
     const k = Math.floor((z - this.z0) / RES);
     const a = Math.floor(i / CN);

@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Group, Points, ShaderMaterial, UniformsLib, UniformsUtils, Vector3, type InstancedMesh, type Object3D, type WebGLRenderer } from 'three';
+import { Box3, BufferGeometry, Color, Float32BufferAttribute, Group, Points, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector3, type BufferAttribute, type InstancedMesh, type Object3D, type WebGLRenderer } from 'three';
 import { hash3 } from '../../voxel/random';
 import { haloPoints, pointScale, type Halo } from '../road/glow';
 import type { MapFrame } from '../types';
@@ -178,7 +178,9 @@ export class CampFx implements CampLights {
     this.smokeMat = material;
     const points = new Points(geo, material);
     points.name = 'camps:smoke';
-    points.frustumCulled = false;
+    // (culled on the fires, grown by the most a puff goes in the shader: 7.5 m up, 5.6 m across with the breeze and
+    // its curl, and half its size, 1.2 m)
+    geo.boundingSphere = new Box3().setFromBufferAttribute(geo.getAttribute('position') as BufferAttribute).expandByVector(new Vector3(7, 9, 7)).getBoundingSphere(new Sphere());
     points.renderOrder = 2;
     return points;
   }

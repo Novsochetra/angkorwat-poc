@@ -95,7 +95,16 @@ import { view } from '../resolution';
  * snowman in the floating village (by a stilt house's stair) and one in the
  * sugar-palm village, each in a red-and-white krama (≈ 200 blocks each, a few
  * draws, only while there is snow); they rise as it thickens and slump as it
- * melts.
+ * melts. They are never solid to walk into (`noWalk`).
+ *
+ * Built only when wanted (main.ts, lazy.ts; sky/weather.ts `weatherAtLoad`,
+ * `wants`): as the page opens when the URL holds snow or the snow setting is
+ * saved, else in the background the moment the snow setting is picked (the
+ * flakes, the snowmen, the trodden-ground map). At the snow's place in the
+ * build the white cover goes into the materials all the same, and a hidden
+ * stand-in with the flakes' material and the (hidden) snowmen into the scene
+ * (`prepareSnow`): they compile with the map at load, and none when it first
+ * snows.
  *
  * No allocation per frame (but lamps gathered once, the first night it
  * snows). URL (checks): `weather=snow|snowy`, `snow=`, `snowCover=`
@@ -298,11 +307,20 @@ function coverMesh(o: Object3D): void {
 /** World families first used by parts built after this one (the ledge's): covered now, so they compile with it. */
 const LATER_FAMILIES: VoxelMaterialKey[] = ['sandstone', 'leaves'];
 
+/** The cover is in the materials (`installSnowCover` ran). */
+let installed = false;
+
 /**
  * The cover for the map: every part built so far (all the still ones but the
- * ledge), and the world's families wherever they are used later.
+ * ledge), and the world's families wherever they are used later. main.ts
+ * calls it at the snow's place in the build (after the clouds and the rain,
+ * before the animals and people), whether the snow part is built then or
+ * only once it is wanted: the materials compile with it at load, and none
+ * compiles again when it first snows. Once.
  */
-function installSnowCover(scene: Object3D): void {
+export function installSnowCover(scene: Object3D): void {
+  if (installed) return;
+  installed = true;
   for (const key of LATER_FAMILIES) coverMaterial(getVoxelMaterial(key));
   scene.traverse(coverMesh);
 }
@@ -522,41 +540,18 @@ function buildSnowmen(ctx: MapContext): Group[] {
     g.rotation.y = s.facing;
     g.visible = false;
     g.userData.blocks = b.boxes.length;
+    // (never solid to walk into: the walk maps are made once, as roaming is set up, and a snowman comes and goes, or
+    // is built only when the snow setting is picked: roam/walkmap.ts `noWalk`)
+    g.traverse((o) => void (o.userData.noWalk = true));
     out.push(g);
   });
   return out;
 }
 
-// ── The part ────────────────────────────────────────────────────────────────
-
-export function buildSnow(ctx: MapContext): MapPart {
-  const t0 = performance.now();
-  const object = new Group();
-  object.name = 'snow';
-
-  // The flakes: one quad each, the layers mixed through the list (a light snowfall thins every layer alike).
-  const quad = new PlaneGeometry(1, 1);
-  const geo = new InstancedBufferGeometry();
-  geo.index = quad.index;
-  geo.setAttribute('position', quad.getAttribute('position'));
-  const n = FLAKES[ctx.quality];
-  const flake = new Float32Array(n * 3);
-  const info = new Float32Array(n * 2);
-  for (let i = 0; i < n; i++) {
-    flake[i * 3] = hash3(i, 1, 9, 911);
-    flake[i * 3 + 1] = hash3(i, 2, 9, 912);
-    flake[i * 3 + 2] = hash3(i, 3, 9, 913);
-    let k = hash3(i, 5, 9, 915);
-    let layer = 0;
-    while (layer < LAYERS.length - 1 && k >= LAYERS[layer].share) k -= LAYERS[layer++].share;
-    info[i * 2] = layer;
-    info[i * 2 + 1] = hash3(i, 4, 9, 914);
-  }
-  geo.setAttribute('aFlake', new InstancedBufferAttribute(flake, 3));
-  geo.setAttribute('aInfo', new InstancedBufferAttribute(info, 2));
-  geo.instanceCount = n;
-
-  const u = {
+/** The flakes' material and its uniforms (made once: a hidden stand-in warms its shader at load, `prepareSnow`; the part draws with it). */
+let flakes: { material: ShaderMaterial; u: ReturnType<typeof flakeUniforms> } | null = null;
+function flakeUniforms() {
+  return {
     uBox: { value: LAYERS.map((l) => new Vector3(l.box, l.tall, l.box)) },
     /** Per layer: flake radius (m), opacity, the share shown now (the near one over the picker), —. */
     uShape: { value: LAYERS.map((l) => new Vector4(l.size, l.alpha, 1, 0)) },
@@ -571,6 +566,10 @@ export function buildSnow(ctx: MapContext): MapPart {
     uLamps: { value: Array.from({ length: LAMPS }, () => new Vector4()) },
     uOpacity: { value: 0 },
   };
+}
+function flakeMaterial(): NonNullable<typeof flakes> {
+  if (flakes) return flakes;
+  const u = flakeUniforms();
   const material = new ShaderMaterial({
     name: 'snow',
     transparent: true,
@@ -674,6 +673,77 @@ export function buildSnow(ctx: MapContext): MapPart {
         #include <fog_fragment>
       }`,
   });
+  return (flakes = { material, u });
+}
+
+/** A hidden stand-in with the flakes' material, and the snowmen (hidden too), in the scene until the part is built. */
+let warm: { flakes: Mesh; snowmen: Group[] } | null = null;
+
+/**
+ * The snow's place in the build (main.ts), whether the part is built then or
+ * only once it is wanted: the flakes' material with a hidden stand-in, and
+ * the snowmen (small, hidden until the land lies thick), in the scene, so the
+ * map's shaders compiled at load take theirs in too (a program's first use
+ * costs up to ≈ 0.1 s on an M1 Max: under the loading screen, not a hitch the
+ * moment snow is picked); then the white cover into the materials built so
+ * far (`installSnowCover`). The part takes them over when it is built.
+ */
+export function prepareSnow(ctx: MapContext): void {
+  if (!warm) {
+    // (the flakes' attributes, no normal or uv: a program's key follows them)
+    const quad = new PlaneGeometry(1, 1);
+    const geo = new InstancedBufferGeometry();
+    geo.index = quad.index;
+    geo.setAttribute('position', quad.getAttribute('position'));
+    geo.instanceCount = 0;
+    const flakes = new Mesh(geo, flakeMaterial().material);
+    flakes.name = 'snow:warm';
+    flakes.visible = false;
+    flakes.raycast = () => {};
+    const snowmen = new URLSearchParams(location.search).get('snowmen') === '0' ? [] : buildSnowmen(ctx);
+    ctx.scene.add(flakes, ...snowmen);
+    warm = { flakes, snowmen };
+  }
+  installSnowCover(ctx.scene);
+}
+
+// ── The part ────────────────────────────────────────────────────────────────
+
+export function buildSnow(ctx: MapContext): MapPart {
+  const t0 = performance.now();
+  const object = new Group();
+  object.name = 'snow';
+
+  // The flakes: one quad each, the layers mixed through the list (a light snowfall thins every layer alike).
+  const quad = new PlaneGeometry(1, 1);
+  const geo = new InstancedBufferGeometry();
+  geo.index = quad.index;
+  geo.setAttribute('position', quad.getAttribute('position'));
+  const n = FLAKES[ctx.quality];
+  const flake = new Float32Array(n * 3);
+  const info = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    flake[i * 3] = hash3(i, 1, 9, 911);
+    flake[i * 3 + 1] = hash3(i, 2, 9, 912);
+    flake[i * 3 + 2] = hash3(i, 3, 9, 913);
+    let k = hash3(i, 5, 9, 915);
+    let layer = 0;
+    while (layer < LAYERS.length - 1 && k >= LAYERS[layer].share) k -= LAYERS[layer++].share;
+    info[i * 2] = layer;
+    info[i * 2 + 1] = hash3(i, 4, 9, 914);
+  }
+  geo.setAttribute('aFlake', new InstancedBufferAttribute(flake, 3));
+  geo.setAttribute('aInfo', new InstancedBufferAttribute(info, 2));
+  geo.instanceCount = n;
+
+  const { material, u } = flakeMaterial();
+  // (the stand-in that warmed its shader at load goes; its snowmen are the part's)
+  const prepared = warm;
+  if (warm) {
+    warm.flakes.removeFromParent();
+    warm.flakes.geometry.dispose();
+    warm = null;
+  }
   const mesh = new Mesh(geo, material);
   mesh.name = 'snow';
   mesh.frustumCulled = false;
@@ -681,13 +751,14 @@ export function buildSnow(ctx: MapContext): MapPart {
   mesh.raycast = () => {};
   object.add(mesh);
 
-  // The white cover, on every material of the world built so far (and the world's families).
+  // The white cover, on every material of the world built before the snow's place in the build (and the world's
+  // families): put in there by main.ts (built later, the snow finds it in; alone, it puts it in now).
   installSnowCover(ctx.scene);
   COVER.uSnowTrod.value = trodTexture(ctx.field);
   const params = new URLSearchParams(location.search);
   const top = params.get('snowtop') === '0' ? null : new TopView(ctx);
 
-  const snowmen = params.get('snowmen') === '0' ? [] : buildSnowmen(ctx);
+  const snowmen = prepared?.snowmen ?? (params.get('snowmen') === '0' ? [] : buildSnowmen(ctx));
   for (const s of snowmen) object.add(s);
 
   // Lamps the flakes catch: the lamps of the road and the villages (their halos), and the lights that move (the explorer's lantern, the boat's).

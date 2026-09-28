@@ -1,4 +1,5 @@
-import { Color, DynamicDrawUsage, Float32BufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InterleavedBufferAttribute, Mesh, ShaderMaterial, UniformsLib } from 'three';
+import { Color, DynamicDrawUsage, Float32BufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InterleavedBufferAttribute, Mesh, ShaderMaterial, Sphere, UniformsLib } from 'three';
+import { len3 } from './_len';
 
 /**
  * Water thrown about by the bathing elephants (_landBath.ts): drops sprayed
@@ -27,6 +28,8 @@ export class Splash {
   private dirty = false;
   /** The last particle's end (s): nothing is drawn after it. */
   private until = -1e9;
+  /** The clock at the last `flush`. */
+  private now = -1e9;
 
   constructor() {
     const g = new InstancedBufferGeometry();
@@ -49,7 +52,10 @@ export class Splash {
     material.name = 'fauna:splash';
     this.mesh = new Mesh(g, material);
     this.mesh.name = 'fauna:splash';
-    this.mesh.frustumCulled = false;
+    // (culled on where the particles thrown can go, `reach`, not on the quad's own bounds; the sphere stays round
+    // the origin, where the quad's was: three sorts the see-through draws by their spheres' middles, and the splash
+    // is drawn where it always was among them)
+    g.boundingSphere = new Sphere();
     this.mesh.renderOrder = 2;
     this.mesh.raycast = () => {};
   }
@@ -67,6 +73,7 @@ export class Splash {
     const o = this.slot();
     const d = this.data;
     d.set([x, y + 0.04, z, t0, burst, 0, 0, life, 0, radius, y, strength], o);
+    this.reach(x - radius, y, z - radius, x + radius, y + 0.04, z + radius);
     this.until = Math.max(this.until, t0 + life);
   }
 
@@ -74,11 +81,22 @@ export class Splash {
   drop(x: number, y: number, z: number, t0: number, vx: number, vy: number, vz: number, size: number, life: number, floor: number, strength = 0.85): void {
     const o = this.slot();
     this.data.set([x, y, z, t0, vx, vy, vz, life, 1, size, floor, strength], o);
+    // (its flight: along (vx, vz) for its life, up to the top of its arc, down to the water)
+    const top = y + Math.max(0, vy) ** 2 / 9.8;
+    this.reach(Math.min(x, x + vx * life) - size, Math.min(y, floor) - size, Math.min(z, z + vz * life) - size, Math.max(x, x + vx * life) + size, top + size, Math.max(z, z + vz * life) + size);
     this.until = Math.max(this.until, t0 + life);
+  }
+
+  /** The bounds (round the origin) grown by a particle's reach (a box, min and max); started afresh once every earlier particle has ended. */
+  private reach(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
+    const s = this.geometry.boundingSphere!;
+    if (this.until <= this.now) s.radius = 0;
+    s.radius = Math.max(s.radius, len3(Math.max(-x0, x1), Math.max(-y0, y1), Math.max(-z0, z1)));
   }
 
   /** Once a frame: the clock (the animals' own), the light, and what was thrown. */
   flush(t: number, night: number): void {
+    this.now = t;
     this.uniforms.uTime.value = t;
     // Foam white by day, a pale moonlit blue at night.
     this.uniforms.uColor.value.setRGB(0.93 - 0.55 * night, 0.95 - 0.5 * night, 0.97 - 0.35 * night);

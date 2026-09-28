@@ -23,6 +23,31 @@ const bars = (lit: number, extra = '') =>
     ' shape-rendering="crispEdges"',
   );
 
+/**
+ * The fog setting: three wavy lines of mist on the bars' 16 grid, each 2
+ * cells thick and a cell up and down (`MIST_WAVE`: a cell lower in each
+ * column x 0–15), the lowest `lit` of them full and the rest faint, so the
+ * step reads like the bars: full all three, light two, simple one (the haze
+ * low over the land). `MIST_LINES`: each line's top row and first and last
+ * column.
+ */
+const MIST_WAVE = [1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0];
+const MIST_LINES = [
+  [3, 3, 14],
+  [7, 1, 14],
+  [11, 1, 12],
+];
+const mist = (lit: number) =>
+  svg(
+    MIST_LINES.map(([y, a, b], i) => {
+      let d = '';
+      for (let x = a; x <= b; x++) d += `M${x} ${y + MIST_WAVE[x]}h1v2h-1z`;
+      return `<path fill="currentColor"${MIST_LINES.length - 1 - i < lit ? '' : ' fill-opacity=".3"'} d="${d}"/>`;
+    }).join(''),
+    '0 0 16 16',
+    ' shape-rendering="crispEdges"',
+  );
+
 /** A four-point sparkle, 7 × 7 cells in the bars' empty top-left corner (x 0–6, y 0–6). */
 const SPARKLE = '<path fill="currentColor" d="M3 0h1v2h1v1h2v1h-2v1h-1v2h-1v-2h-1v-1h-2v-1h2v-1h1z"/>';
 
@@ -96,4 +121,8 @@ export const ICON = {
   bars4: bars(4),
   /** The resolution's whole steps (crisp: each pixel a square of screen dots): the sparkle alone, on its 7 × 7 cells. */
   sharp: svg(SPARKLE, '0 0 7 7', ' shape-rendering="crispEdges"'),
+  /** The fog setting's steps (Auto is `auto`): three mist lines lit (full), two (light), the lowest one (simple). */
+  mist3: mist(3),
+  mist2: mist(2),
+  mist1: mist(1),
 };

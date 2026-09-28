@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, UniformsLib, UniformsUtils, Vector2 } from 'three';
+import { Box3, BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, Sphere, UniformsLib, UniformsUtils, Vector2, Vector3, type BufferAttribute } from 'three';
 import { hash3 } from '../../voxel/random';
 import type { MapFrame } from '../types';
 
@@ -134,7 +134,9 @@ export function buildSmoke(sources: SmokeSource[]): { object: Points; update(f: 
   material.name = 'village:smoke';
   const object = new Points(geo, material);
   object.name = 'village:smoke';
-  object.frustumCulled = false;
+  // (culled on the fires, grown by the most a puff goes in the shader: 6.3 m up, 7.6 m with the wind and 1.1 m of
+  // sway, and half its size, 2.2 m)
+  geo.boundingSphere = new Box3().setFromBufferAttribute(geo.getAttribute('position') as BufferAttribute).expandByVector(new Vector3(11, 9, 11)).getBoundingSphere(new Sphere());
   object.renderOrder = 3;
   const u = material.uniforms as unknown as SmokeUniforms;
   const day = new Color(0.82, 0.82, 0.84);

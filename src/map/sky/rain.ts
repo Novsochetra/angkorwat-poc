@@ -28,7 +28,9 @@ import { view } from '../resolution';
  * base: gliding over it, it is dry).
  *
  * Nothing is drawn while it is dry (hidden; its shader is compiled on the
- * first frames). No allocation per frame.
+ * first frames). No allocation per frame. Built only when wanted (main.ts,
+ * lazy.ts; sky/weather.ts `weatherAtLoad`, `wants`): as the page opens when
+ * the URL holds rain, else once a shower's clouds begin to build.
  *
  * `RAIN_RINGS_GLSL`: rings and splash dots where drops hit water, for water
  * shaders (water/surface.ts: the rivers and the lake).
