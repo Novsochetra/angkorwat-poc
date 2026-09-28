@@ -96,7 +96,17 @@ const WORDS = {
   easyFlyNote: { km: 'ខ្លែងហោះ និងបាឡុងរក្សាកម្ពស់៖ S ឡើង W ចុះ', en: 'Glider and balloon hold their height: S climbs, W dives' },
   // (on a touch screen: the stick of the touch controls, roam/touch.ts)
   easyFlyNoteTouch: { km: 'ខ្លែងហោះ និងបាឡុងរក្សាកម្ពស់៖ ទាញដងបញ្ជាមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ', en: 'Glider and balloon hold their height: pull the stick back to climb, push to dive' },
-  mute: { km: 'បិទសំឡេង', en: 'Mute sound' },
+  // (the mini-map while roaming: shown, only its caption, a button for the big map, or hidden: minimap.ts)
+  miniMap: { km: 'ផែនទីតូច', en: 'Mini-map' },
+  mmShowChoice: { km: 'បង្ហាញ', en: 'Show' },
+  mmButtonChoice: { km: 'តែប៊ូតុង', en: 'Button' },
+  mmHideChoice: { km: 'លាក់', en: 'Hide' },
+  miniMapShowNote: { km: 'ផែនទីតូចនៅជ្រុងខាងលើស្ដាំ ពេលដើរលេង', en: 'The small map in the top right corner while you roam' },
+  miniMapButtonNote: { km: 'នៅសល់តែប៊ូតុង «ផែនទី» សម្រាប់បើកផែនទីធំ', en: 'Only the Map button stays, for the big map' },
+  miniMapHideNote: { km: 'លាក់ទាំងស្រុង។ ចុច M ដើម្បីបើកផែនទីធំ', en: 'Hidden completely. M still opens the big map' },
+  // (the keys of the mode, bottom left while roaming: hud.ts)
+  keyHelp: { km: 'ជំនួយគ្រាប់ចុច', en: 'Key help' },
+  keyHelpNote: { km: 'គ្រាប់ចុចនៅជ្រុងខាងក្រោមឆ្វេង។ ចុច ? ដើម្បីមើលទាំងអស់', en: 'The keys in the bottom left corner. ? shows them all' },
   // (back on the page, the browser still holds the sound: the card that asks for a tap, ui.ts)
   soundHeld: { km: 'សំឡេងបានផ្អាក', en: 'The sound is paused' },
   soundHeldNote: { km: 'ប៉ះទីនេះដើម្បីបើកសំឡេងវិញ', en: 'Tap here to turn it back on' },
@@ -109,6 +119,14 @@ const WORDS = {
   stStory: { km: 'រឿងរ៉ាវរបស់យើង', en: 'Our story' },
   stStoryNote: { km: 'ពាក្យផ្ដាំជូនយុវជនខ្មែរ', en: 'A message to the young people of Cambodia' },
   stWatch: { km: 'មើល', en: 'Watch' },
+  support: { km: 'គាំទ្រហ្គេមនេះ', en: 'Support the game' },
+  supportNote: { km: 'ចូលចិត្តហ្គេមនេះទេ? ទិញកាហ្វេមួយកែវឱ្យខ្ញុំ ដើម្បីជួយខ្ញុំបន្តកសាងវា', en: 'Enjoying the game? Buy me a coffee to help me keep building it' },
+  supportGo: { km: 'ទិញកាហ្វេឱ្យខ្ញុំ', en: 'Buy me a coffee' },
+  // (the corner's coffee button asks with a card: ui/_support.ts)
+  supportLong: { km: 'បើអ្នកចូលចិត្តមរតកអង្គរ សូមទិញកាហ្វេមួយកែវឱ្យខ្ញុំ។ វាជួយខ្ញុំបន្តកសាងពិភពនេះ។', en: 'If you enjoy Angkor Heritage, buy me a coffee. It helps me keep building this world.' },
+  supportLater: { km: 'ពេលក្រោយ', en: 'Maybe later' },
+  // (the sound on / off switch, first in the settings' sound part: ui.ts)
+  soundOn: { km: 'បើកសំឡេង', en: 'Sound on' },
   stSkip: { km: 'រំលង', en: 'Skip' },
   stPrev: { km: 'មុន', en: 'Back' },
   stNext: { km: 'បន្ទាប់', en: 'Next' },

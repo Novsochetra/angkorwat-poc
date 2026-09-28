@@ -17,7 +17,7 @@ import type { MapRoam } from './roam/roam';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { createWeather } from './sky/weather';
-import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_CHOICES, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type PlaceId } from './types';
+import { CALM_WEATHER, DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
@@ -84,6 +84,11 @@ function loadSettings(): MapSettings {
       delete saved.sharp;
     }
     if (!GRAPHICS_CHOICES.includes(saved.graphics as GraphicsChoice)) delete saved.graphics;
+    // (the mini-map was a switch: on, shown; off, the button only)
+    const mini: unknown = saved.miniMap;
+    if (typeof mini === 'boolean') saved.miniMap = mini ? 'show' : 'button';
+    else if (!MINIMAP_CHOICES.includes(mini as MiniMapChoice)) delete saved.miniMap;
+    if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
     // (settings kept before the new defaults — cycling time, clear weather, the interface at full, easy flying — take them once)
     if (localStorage.getItem(DEFAULTS_KEY) !== DEFAULTS_VERSION) {
       delete saved.time;
@@ -101,6 +106,12 @@ function loadSettings(): MapSettings {
 let settings: MapSettings = shot ? { ...DEFAULT_SETTINGS, time: 'day' } : loadSettings();
 if (params.has('easyfly')) settings.easyFly = params.get('easyfly') !== '0';
 roamPrefs.easyFly = settings.easyFly;
+// (`minimap=show|button|hide`; 1 and 0 as before: shown, the button only)
+const urlMini = ({ '1': 'show', '0': 'button' } as Record<string, MiniMapChoice>)[params.get('minimap') ?? ''] ?? params.get('minimap');
+if (MINIMAP_CHOICES.includes(urlMini as MiniMapChoice)) settings.miniMap = urlMini as MiniMapChoice;
+roamPrefs.miniMap = settings.miniMap;
+if (params.has('keyhelp')) settings.keyHelp = params.get('keyhelp') !== '0';
+roamPrefs.keyHelp = settings.keyHelp;
 if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) settings.graphics = params.get('graphics') as GraphicsChoice;
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
 const levelOf = (g: GraphicsChoice): GraphicsLevel => (g !== 'auto' ? g : shot ? 'medium' : autoLevel());
@@ -326,6 +337,8 @@ const handlers = {
     }
     rig.calm = s.calm;
     roamPrefs.easyFly = s.easyFly;
+    roamPrefs.miniMap = s.miniMap;
+    roamPrefs.keyHelp = s.keyHelp;
     audio.setVolumes(s);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));

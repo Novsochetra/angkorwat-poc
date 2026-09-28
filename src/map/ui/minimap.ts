@@ -2,11 +2,12 @@ import { Group } from 'three';
 import type { HeightField } from '../heightfield';
 import { PLACES, type PlaceDef } from '../layout';
 import type { LaunchSpot } from '../roam/launchSpots';
+import { roamPrefs } from '../roam/prefs';
 import type { MapRoam } from '../roam/roam';
 import { RAMP } from '../roam/_launchRamp';
 import { ROAM_AREA } from '../terrain/views';
 import { treasure } from '../treasure/hooks';
-import type { MapFrame, MapPart, PlaceId, RoamMode, UISound } from '../types';
+import type { MapFrame, MapPart, MiniMapChoice, PlaceId, RoamMode, UISound } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, t, type WordKey } from './lang';
 import { setSteppedVars, steppedRing, steppedShape } from './shape';
@@ -42,6 +43,10 @@ import { MAP_SPOTS, spotSprite, spotSvg, type MapSpot, type SpotId } from './_mi
  *   capture phase); M, Esc or the close button shut it.
  * - N, or "Nearest glider ramp" on the big map: the nearest ramp (not the
  *   one he stands on) becomes the target, and a banner says how far it is.
+ * - The mini-map setting (roam/prefs.ts `miniMap`, `minimap=` in shots):
+ *   `button`, the land goes and only the caption stays ("M  Map", or the
+ *   target and how far it is), still a button for the big map; `hide`,
+ *   nothing stays (M still opens the big map, the banners still show).
  *
  * Words: lang.ts (`data-t` / `data-t-aria` name the word an element shows;
  * `fillWords` fills them in the language).
@@ -257,6 +262,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let landFailed = false;
   let builder: LandBuilder | null = null;
   let shown = false;
+  /** The mini-map setting in use (roamPrefs.miniMap): its land shown, only its caption, or nothing. */
+  let look: MiniMapChoice = 'show';
+  /** The mini-map shows its land (so it is drawn). */
+  let faceOn = true;
   let bigOpen = false;
   let span = SPAN.walk;
   let acc = 1;
@@ -392,7 +401,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
     resize();
     // (a shot has no next frame: the canvas, cleared by its new size, is drawn again now)
     const cls = document.body.classList;
-    if (shot && shown && size !== was && !cls.contains('photo-mode') && !cls.contains('selfie-mode')) drawMini(lastT, lastAspect);
+    if (shot && shown && faceOn && size !== was && !cls.contains('photo-mode') && !cls.contains('selfie-mode')) drawMini(lastT, lastAspect);
   }).observe(canvas);
   /** Size the big map's canvas to its box (true when it changed). */
   function sizeBig(): boolean {
@@ -1171,6 +1180,13 @@ export function createMinimap(d: MinimapDeps): Minimap {
         if (!on) openBig(false);
         acc = 1;
       }
+      if (roamPrefs.miniMap !== look) {
+        look = roamPrefs.miniMap;
+        faceOn = look === 'show';
+        wrap.classList.toggle('is-small', look === 'button');
+        wrap.classList.toggle('is-hidden', look === 'hide');
+        acc = 1;
+      }
       if (!on) {
         // (made in small slices while the overview is on, so roaming starts with it)
         if (!land && !shot && f.t > 3) makeLand(3);
@@ -1220,7 +1236,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
         placeBalloon();
       }
       const cls = document.body.classList;
-      if (cls.contains('photo-mode') || cls.contains('selfie-mode')) return;
+      if (!faceOn || cls.contains('photo-mode') || cls.contains('selfie-mode')) return;
       lastT = f.t;
       lastAspect = f.camera.aspect;
       drawMini(f.t, f.camera.aspect);
@@ -1284,6 +1300,9 @@ function injectStyle(): void {
     .mm-mini::after { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     .mm-mini:hover, .mm-mini:focus-visible { --mu-edge: var(--mu-line-hi); }
     .mm-face { position: relative; display: block; width: calc(${FACE} * var(--px)); height: calc(${FACE} * var(--px)); }
+    /* (the mini-map setting: \`button\`, only the caption, a button for the big map; \`hide\`, nothing) */
+    .mm.is-small .mm-face { display: none; }
+    .mm.is-hidden .mm-mini { display: none; }
     .mm-canvas { position: absolute; left: calc(-${BEZEL} * var(--px)); top: calc(-${BEZEL} * var(--px));
       width: calc(${FACE + 2 * BEZEL} * var(--px)); height: calc(${FACE + 2 * BEZEL} * var(--px)); }
     .mm-cap { display: flex; align-items: center; justify-content: center; max-width: calc(${FACE} * var(--px)); height: calc(20 * var(--px));
@@ -1336,7 +1355,7 @@ function injectStyle(): void {
     .mm-bigwrap.is-open .mm-shade, .mm-bigwrap.is-open .mm-big { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.3s, transform 0.35s var(--mu-ease); }
     .mm-bigwrap.is-open .mm-big { transform: translate(-50%, -50%); }
     .mm-head { display: flex; align-items: center; gap: calc(14 * var(--px)); }
-    .mm-head-icon .mu-icon { width: calc(54 * var(--px)); height: auto; filter: drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
+    .mm-head-icon .mu-icon { width: calc(60 * var(--px)); height: auto; filter: drop-shadow(0 0 calc(8 * var(--px)) rgba(255, 196, 110, 0.32)) drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
     .mm-head h2 { margin: 0; font: 700 calc(28 * var(--px)) / 1 var(--mu-display); letter-spacing: 0.01em; text-shadow: 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.3); }
     .mm-head p { margin: calc(5 * var(--px)) 0 0; font-size: calc(15 * var(--px)); color: var(--mu-ink2); }
     .mm-head-text { margin-right: auto; }

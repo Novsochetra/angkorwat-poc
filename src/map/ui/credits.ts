@@ -5,6 +5,12 @@ import type { Lang } from '../types';
  * group, then its lines: a name (kept as written in both languages) and a
  * short note in Khmer and English. Add a line here to credit someone.
  */
+/**
+ * Support the game: the "Buy me a coffee" page. Its button is on top of the
+ * credits page and at the foot of the settings (ui.ts).
+ */
+export const SUPPORT_URL = 'https://buymeacoffee.com/sochetra12y';
+
 export interface CreditGroup {
   head: Record<Lang, string>;
   lines: { name: string; note?: Record<Lang, string> }[];

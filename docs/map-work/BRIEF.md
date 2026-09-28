@@ -88,7 +88,7 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   Every word shown while roaming (key help, prompts, messages, the tools,
   the touch buttons) is in `ui/lang.ts` (`r…`, `rt…`): keys stay keys,
   place names come from `placeText(p)`; prompts are made with `t()` each
-  step, so the ខ្មែរ / EN switch shows at once.
+  step, so a change of language (settings) shows at once.
   A drag, or holding **Q** / **R**, orbits the camera round him in every mode
   (as on `game.html`: 1.8 rad/s); the follow camera eases back behind him
   after a pause. It keeps him in view: walls, stone and land pull it in

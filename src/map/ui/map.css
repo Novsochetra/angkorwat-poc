@@ -207,10 +207,11 @@
   --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.22), rgba(180, 204, 255, 0.2) var(--mu-night));
 }
 
+/* (the loading screen's temple, ui/_loadTemple.ts, in its warm glow) */
 .mu-title-icon .mu-icon {
   width: calc(82 * var(--px));
   height: auto;
-  filter: drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 0 calc(10 * var(--px)) rgba(255, 196, 110, 0.32)) drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35));
 }
 
 .mu-title h1 {
@@ -499,8 +500,19 @@
   background: var(--mu-btn);
 }
 
-.mu-mute.is-off {
-  color: #aab2bf;
+/* Support the game: the coffee cup in gold, a soft glow around it (ui/_support.ts asks). */
+.mu-coffee-btn {
+  color: var(--mu-gold-hi);
+  --mu-edge: rgba(255, 208, 112, 0.7);
+}
+
+.mu-coffee-btn > .mu-glow {
+  opacity: 0.35;
+}
+
+.mu-coffee-btn .mu-icon {
+  width: calc(23 * var(--px));
+  height: calc(23 * var(--px));
 }
 
 @media (hover: hover) {
@@ -514,6 +526,18 @@
 
   .mu-gear:hover .mu-icon {
     transform: rotate(30deg);
+  }
+
+  .mu-coffee-btn:hover {
+    --mu-edge: var(--mu-gold-hi);
+  }
+
+  .mu-coffee-btn:hover > .mu-glow {
+    opacity: 0.85;
+  }
+
+  .mu-coffee-btn:hover .mu-icon {
+    transform: translateY(calc(-1.5 * var(--px))) rotate(-6deg);
   }
 }
 
@@ -984,6 +1008,24 @@
   opacity: 0.9;
 }
 
+/* Language: first in the settings. */
+.mu-settings .mu-lang-h {
+  margin-top: calc(10 * var(--px));
+}
+
+.mu-seg.mu-lang-seg {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.mu-lang-seg button[lang='km'] {
+  font-family: 'Kantumruy Pro', var(--mu-font);
+}
+
+/* Sound on / off: right under the sound heading. */
+.mu-set-row.mu-sound-row {
+  margin: calc(2 * var(--px)) 0 calc(4 * var(--px));
+}
+
 /* A part of the sound (around you, your own): a small heading with a hairline to the edge. */
 .mu-set-sub h4 {
   display: flex;
@@ -1307,6 +1349,87 @@
   text-wrap: pretty;
 }
 
+/* Support the game (credits.ts `SUPPORT_URL`): the gold "Buy me a coffee"
+ * button ("Begin expedition"'s gold) in a card on top of the credits page
+ * (the corner's coffee cup asks with its own card: ui/_support.ts). */
+.mu-coffee {
+  text-decoration: none;
+  white-space: nowrap;
+  color: #2b1904;
+  --mu-edge: rgba(255, 250, 225, 0.85);
+}
+
+.mu-coffee > .mu-bg {
+  background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 55%, #eba52a 100%);
+}
+
+.mu-coffee .mu-icon {
+  width: calc(16 * var(--px));
+  height: calc(16 * var(--px));
+}
+
+@media (hover: hover) {
+  .mu-coffee:hover {
+    transform: translateY(var(--mu-lift));
+    --mu-edge: rgba(255, 250, 225, 0.85);
+  }
+
+  .mu-coffee:hover > .mu-bg {
+    background: linear-gradient(180deg, #ffe49a 0%, #fac552 55%, #f0ae36 100%);
+  }
+
+  .mu-coffee:hover > .mu-glow {
+    opacity: 0.9;
+  }
+}
+
+.mu-cr-sup {
+  margin: calc(14 * var(--px)) 0 calc(4 * var(--px));
+  padding: calc(12 * var(--px)) calc(14 * var(--px)) calc(14 * var(--px));
+  --mu-edge: rgba(255, 208, 112, 0.5);
+  --mu-shadow: none;
+}
+
+.mu-cr-sup > .mu-bg {
+  background: rgba(255, 214, 120, 0.08);
+  box-shadow: inset 0 0 calc(18 * var(--px)) rgba(255, 190, 70, 0.14);
+}
+
+.mu-cr-sup-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--px));
+  margin: 0;
+  font: 700 calc(17 * var(--px)) / 1.2 var(--mu-display);
+  color: var(--mu-ink);
+}
+
+.mu-cr-sup-head .mu-icon {
+  width: calc(20 * var(--px));
+  height: calc(20 * var(--px));
+  color: var(--mu-gold-hi);
+}
+
+.mu-cr-sup-note {
+  margin: calc(4 * var(--px)) 0 calc(12 * var(--px));
+  font-size: calc(13 * var(--px));
+  line-height: 1.45;
+  color: var(--mu-ink2);
+  text-wrap: pretty;
+}
+
+.mu-cr-sup .mu-coffee {
+  display: flex;
+  justify-content: center;
+  height: calc(40 * var(--px));
+  font-size: calc(14.5 * var(--px));
+  --mu-shadow: 0 calc(4 * var(--px)) calc(12 * var(--px)) rgba(40, 20, 0, 0.3);
+}
+
+.mu-cr-sup .mu-coffee > .mu-glow {
+  opacity: 0.35;
+}
+
 /* ── Hint ───────────────────────────────────────────────────────────────── */
 
 .mu-hint {
@@ -1523,6 +1646,256 @@
   .mu-wake-icon {
     animation: none;
   }
+}
+
+/* ── A card that asks (ui/ask.ts) ───────────────────────────────────────────
+ * "Back to the map?" (roam/_leave.ts) and "Support the game" (ui/_support.ts):
+ * the settings' strong glass with a warm gold edge (the Jump in card's), an
+ * icon by the question, the info card's ornament line, a quiet button to
+ * stay and the gold "Begin expedition" button to go, the keys on key caps. */
+
+.mu-ask {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.mu-ask::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(6, 10, 18, 0.28), rgba(6, 10, 18, 0.58));
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.mu-ask.is-open {
+  pointer-events: auto;
+}
+
+.mu-ask.is-open::before {
+  opacity: 1;
+}
+
+.mu-ask-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(480 * var(--px)), 100%);
+  box-sizing: border-box;
+  padding: calc(20 * var(--px)) calc(22 * var(--px)) calc(22 * var(--px));
+  outline: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(calc(10 * var(--px))) scale(0.96);
+  transition: opacity 0.2s, transform 0.3s var(--mu-ease), visibility 0s 0.3s;
+  --mu-edge: rgba(255, 208, 112, 0.5);
+}
+
+.mu-ask.is-open .mu-ask-card {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.22s, transform 0.4s var(--mu-ease), visibility 0s;
+}
+
+.mu-ask-card > .mu-bg {
+  background: var(--mu-panel-strong);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.mu-ask-head {
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--px));
+}
+
+.mu-ask-icon .mu-icon {
+  width: calc(56 * var(--px));
+  height: auto;
+  filter: drop-shadow(0 0 calc(8 * var(--px)) rgba(255, 196, 110, 0.32)) drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35));
+}
+
+/* (the coffee: dark on a gold round, like the held sound's card) */
+.mu-sup .mu-ask-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: calc(46 * var(--px));
+  height: calc(46 * var(--px));
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe07c, #f2ab2e);
+  color: #3a2608;
+  box-shadow: 0 0 0 calc(5 * var(--px)) rgba(255, 214, 120, 0.14);
+}
+
+.mu-sup .mu-ask-icon .mu-icon {
+  width: 58%;
+  height: 58%;
+  filter: none;
+}
+
+.mu-ask-card h2 {
+  margin: 0;
+  font: 700 calc(24 * var(--px)) / 1.15 var(--mu-display);
+  color: var(--mu-ink);
+  letter-spacing: 0.01em;
+  text-shadow: 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.3);
+}
+
+.mu-ask-orn {
+  margin: calc(14 * var(--px)) 0 calc(12 * var(--px));
+}
+
+.mu-ask-card p {
+  margin: 0;
+  font-size: calc(15 * var(--px));
+  line-height: 1.5;
+  color: var(--mu-ink2);
+  text-wrap: pretty;
+}
+
+/* Two buttons side by side, each its words on one line (one over the other when there is no room). */
+.mu-ask-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(10 * var(--px));
+  margin-top: calc(20 * var(--px));
+}
+
+.mu-ask-row > * {
+  position: relative;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(10 * var(--px));
+  min-height: calc(46 * var(--px));
+  padding: calc(8 * var(--px)) calc(14 * var(--px));
+  border: 0;
+  background: none;
+  cursor: pointer;
+  outline: none;
+  font: 700 calc(16 * var(--px)) / 1.15 var(--mu-display);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  touch-action: manipulation;
+  transition: transform 0.3s var(--mu-ease);
+}
+
+.mu-ask-stay {
+  color: var(--mu-ink);
+  --mu-edge: var(--mu-btn-edge);
+  --mu-shadow: none;
+}
+
+.mu-ask-stay > .mu-bg {
+  background: var(--mu-btn);
+}
+
+.mu-ask-go {
+  color: #2b1904;
+  --mu-edge: rgba(255, 250, 225, 0.85);
+  --mu-shadow: 0 calc(6 * var(--px)) calc(18 * var(--px)) rgba(40, 20, 0, 0.35);
+}
+
+.mu-ask-go > .mu-bg {
+  background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 55%, #eba52a 100%);
+}
+
+.mu-ask-go > .mu-glow {
+  opacity: 0.45;
+}
+
+.mu-ask-go > .mu-icon {
+  width: calc(18 * var(--px));
+  height: calc(18 * var(--px));
+  margin-right: calc(-2 * var(--px));
+}
+
+@media (hover: hover) {
+  .mu-ask-row > :hover {
+    transform: translateY(var(--mu-lift));
+  }
+
+  .mu-ask-stay:hover {
+    --mu-edge: var(--mu-line-hi);
+  }
+
+  .mu-ask-stay:hover > .mu-bg {
+    background: var(--mu-btn-hi);
+  }
+
+  .mu-ask-go:hover > .mu-glow {
+    opacity: 1;
+  }
+}
+
+.mu-ask-row > :active {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+
+/* The keys on key caps (the roaming keys' look, roam/hud.ts), dark on the gold button. */
+.mu-ask kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(20 * var(--px));
+  height: calc(20 * var(--px));
+  padding: 0 calc(5 * var(--px));
+  box-sizing: border-box;
+  font: 600 calc(11.5 * var(--px)) / 1 var(--mu-display);
+  letter-spacing: 0;
+  color: var(--mu-ink2);
+  background: rgba(255, 244, 222, 0.1);
+  border: 1px solid var(--mu-line-hi);
+  border-bottom-width: 2px;
+  border-radius: calc(3 * var(--px));
+}
+
+.mu-ask-go kbd {
+  color: #4a2e08;
+  background: rgba(90, 50, 0, 0.12);
+  border-color: rgba(90, 50, 0, 0.4);
+}
+
+:lang(km) .mu-ask-card h2 {
+  font-size: calc(23 * var(--px));
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+:lang(km) .mu-ask-card p {
+  line-height: 1.7;
+}
+
+:lang(km) .mu-ask-row > * {
+  font-size: calc(17 * var(--px));
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+@media (pointer: coarse) {
+  .mu-ask kbd {
+    display: none;
+  }
+
+  .mu-ask-row > * {
+    min-height: 48px;
+  }
+}
+
+.mu-calm ~ .mu-ask .mu-ask-card,
+.mu-calm ~ .mu-ask .mu-ask-row > * {
+  transform: none !important;
 }
 
 /* ── Fade to black ("Begin expedition") ─────────────────────────────────── */
@@ -1844,6 +2217,15 @@ body.reporting .map-ui {
   line-height: 1.65;
 }
 
+:lang(km) .mu-cr-sup-head {
+  line-height: 1.35;
+}
+
+:lang(km) .mu-cr-sup-note {
+  font-size: calc(13.5 * var(--px));
+  line-height: 1.6;
+}
+
 @media (max-width: 639px) {
   :lang(km) .mu-pin-name {
     font-size: 13.5px;
@@ -1874,6 +2256,7 @@ body.reporting .map-ui {
     height: 34px;
     padding: 0 3px;
   }
+
 
   .mu-lang button {
     min-width: 30px;

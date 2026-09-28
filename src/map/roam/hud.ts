@@ -311,6 +311,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       const away = root.classList.contains('mu-has-pick') || root.classList.contains('mu-begun');
       jump.classList.toggle('is-away', away);
       if (away) openCard(false, true);
+      // (the key help setting: off, the keys of the mode go; ? still lists them all)
+      wrap.classList.toggle('no-help', !roamPrefs.keyHelp);
     },
   };
 }
@@ -537,7 +539,7 @@ function injectStyle(): void {
     body:has(.mm-toast.is-on) .rh-toast { top: calc(13vh + 72 * var(--px)); }
 
     .rh.is-roam .rh-back, .rh.is-roam .rh-help { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
-    .rh[data-mode='leap'] .rh-help { opacity: 0; visibility: hidden; }
+    .rh[data-mode='leap'] .rh-help, .rh.no-help .rh-help { opacity: 0; visibility: hidden; }
     .rh-fade { position: absolute; inset: 0; background: #05070c; opacity: 0; pointer-events: none; }
 
     /* (Khmer letters look smaller and stack signs above and below: map.css) */

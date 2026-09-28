@@ -199,8 +199,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       leave.ask();
       controls.state.exit = false;
     }
-    // (while it asks, he waits where he is)
-    if (leave.open) {
+    // (while it asks, or another card asks — "Support the game": ui/ask.ts —, he waits where he is)
+    if (leave.open || document.body.classList.contains('mu-asking')) {
       controls.state.move.x = controls.state.move.y = 0;
       controls.state.run = controls.state.jump = controls.state.jumpHeld = controls.state.use = false;
     }

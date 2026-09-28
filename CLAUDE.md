@@ -83,12 +83,18 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   and delete the PNG. The tab icon `public/favicon.svg` is the loading screen's temple.
   The map's bug report (B) and block look panel (K) are on the dev server
   only: a build shows neither.
-- Credits: the heart button by the gear opens them in the settings panel;
-  the names are `src/map/ui/credits.ts` (`uistate=credits` in shots).
+- The corner (top right) has three buttons: the coffee, the heart, the gear.
+  The coffee asks "Support the game" (`ui/_support.ts`, `uistate=support`):
+  its gold "Buy me a coffee" opens `SUPPORT_URL` (`src/map/ui/credits.ts`)
+  in a new tab; the same button tops the credits page. Credits: the heart
+  opens them in the settings panel; the names are `credits.ts`
+  (`uistate=credits` in shots). Cards that ask ("Back to the map?", the
+  coffee) are `ui/ask.ts`, their look `.mu-ask` in `ui/map.css`.
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
-- Words: Khmer first, English on the ខ្មែរ / EN switch (top right, kept with
-  the settings). The word list is `src/map/ui/lang.ts`; place texts are in
-  `layout.ts` (`km`). Add `lang=en` to a shot for English.
+- Words: Khmer first, English on the language choice at the top of the
+  settings (the story has its own ខ្មែរ / EN). The word list is
+  `src/map/ui/lang.ts`; place texts are in `layout.ts` (`km`). Add `lang=en`
+  to a shot for English.
 - **Khmer, not Thai**: everything must read Khmer (the player checks). Stupas are
   Khmer chetdei (a stepped square base and an Angkor lotus-bud tower, or four Bayon
   faces: `sacred/stupa.ts` `form: 'tower'|'faces'`), never a round bell with a ring
@@ -142,8 +148,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   onto it, turns and kneels: `roam/_pray.ts`, spots in `roam/_worship.ts`;
   `act=pray`, `kneelat=x,z,fx,fz` in shots),
   and a mini-map (`src/map/ui/minimap.ts`, M for the big map, N the nearest
-  glider ramp).
-- Sound: one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
+  glider ramp; the Mini-map setting: show, only its "Map" button, or hide,
+  `minimap=show|button|hide` in shots). The key help bottom left has a
+  setting too (Key help; `keyhelp=0` in shots; ? still lists every key).
+- Sound: a Sound on switch and one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
   Back on the page, a phone may hold the sound until a tap: a card in the
   middle asks for it (`onHeld` in `audio/audio.ts`; `uistate=held` in shots).

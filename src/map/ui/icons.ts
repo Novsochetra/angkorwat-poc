@@ -1,3 +1,5 @@
+import { LOAD_TEMPLE } from './_loadTemple';
+
 /**
  * Inline SVG icons of the map interface. All use `currentColor` unless they
  * carry their own palette (the temple), so CSS colours them per state.
@@ -24,82 +26,9 @@ const bars = (lit: number, extra = '') =>
 /** A four-point sparkle, 7 × 7 cells in the bars' empty top-left corner (x 0–6, y 0–6). */
 const SPARKLE = '<path fill="currentColor" d="M3 0h1v2h1v1h2v1h-2v1h-1v2h-1v-2h-1v-1h-2v-1h2v-1h1z"/>';
 
-/**
- * The title's temple: a pixel-art Angkor front — five lotus-bud towers over a
- * long gallery with a gate. Drawn on a grid (one rect per run of same-colour
- * cells), sandstone lit from the left.
- */
-function templeIcon(): string {
-  const W = 36;
-  const H = 27;
-  const grid: string[][] = Array.from({ length: H }, () => Array<string>(W).fill(''));
-  const put = (x: number, y: number, c: string) => {
-    if (x >= 0 && x < W && y >= 0 && y < H) grid[y][x] = c;
-  };
-  // Sandstone tones: highlight, light, mid, shade, deep shade, dark openings.
-  const C = { h: '#fde7c4', l: '#f3cfa3', m: '#e0b387', s: '#bf8d68', d: '#94684c', k: '#3a2a26' };
-  /** A lotus-bud tower: stepped tiers every other row, lit left, shaded right. */
-  const tower = (cx: number, top: number, base: number, hw: number) => {
-    const n = base - top;
-    for (let y = top; y <= base; y++) {
-      const t = (y - top) / n;
-      const ledge = (base - y) % 2 === 0 && y > top + 1;
-      const w = Math.round(hw * Math.pow(t, 0.62)) + (ledge ? 1 : 0);
-      for (let x = cx - w; x <= cx + w; x++) {
-        const side = x - cx;
-        let c = side < 0 ? C.l : side === 0 ? C.m : C.s;
-        if (ledge) c = side < 0 ? C.h : side === 0 ? C.l : C.m;
-        if (side === w && w > 0) c = C.d;
-        put(x, y, c);
-      }
-    }
-    put(cx, top - 1, C.m); // finial
-  };
-  // Back to front: outer pair, inner pair, centre.
-  tower(4, 10, 17, 3);
-  tower(31, 10, 17, 3);
-  tower(10, 6, 17, 3.4);
-  tower(25, 6, 17, 3.4);
-  // The centre tower is two cells wide at its tip (the grid is even).
-  tower(17, 1, 16, 4.6);
-  tower(18, 1, 16, 4.6);
-  // Gallery roof (two stepped rows), wall, base.
-  for (let x = 2; x <= 33; x++) put(x, 17, x < 18 ? C.h : C.l);
-  for (let x = 1; x <= 34; x++) put(x, 18, x < 18 ? C.m : C.s);
-  for (let y = 19; y <= 23; y++)
-    for (let x = 2; x <= 33; x++) {
-      const pillar = (x - 2) % 4 === 0;
-      put(x, y, pillar ? C.h : x < 18 ? C.l : C.m);
-    }
-  // Windows between pillars.
-  for (const wx of [4, 8, 27, 31]) for (let y = 20; y <= 22; y++) put(wx, y, C.k), put(wx + 1, y, C.k);
-  // The gate: a pediment rising above the roof, a dark door.
-  for (let y = 14; y <= 18; y++) {
-    const w = y - 13;
-    for (let x = 17 - w - 1; x <= 18 + w + 1; x++) put(x, y, x <= 17 ? C.h : C.m);
-  }
-  for (let y = 15; y <= 18; y++) put(17, y, C.l), put(18, y, C.l);
-  put(17, 16, C.d), put(18, 16, C.d);
-  for (let y = 19; y <= 24; y++) for (let x = 14; x <= 21; x++) put(x, y, x === 14 || x === 21 ? C.h : C.l);
-  for (let y = 20; y <= 24; y++) for (let x = 16; x <= 19; x++) put(x, y, C.k);
-  // Base platform.
-  for (let x = 0; x <= 35; x++) put(x, 24, x >= 16 && x <= 19 ? C.k : C.h), put(x, 25, C.m), put(x, 26, C.d);
-  let rects = '';
-  for (let y = 0; y < H; y++) {
-    let x = 0;
-    while (x < W) {
-      const c = grid[y][x];
-      let e = x + 1;
-      while (e < W && grid[y][e] === c) e++;
-      if (c) rects += `<rect x="${x}" y="${y}" width="${e - x}" height="1" fill="${c}"/>`;
-      x = e;
-    }
-  }
-  return svg(rects, `0 0 ${W} ${H}`, ' shape-rendering="crispEdges"');
-}
-
 export const ICON = {
-  temple: templeIcon(),
+  /** The game's logo: the loading screen's Angkor Wat (_loadTemple.ts), on the title card, the cards that ask and the big map. */
+  temple: LOAD_TEMPLE.svg.replace('<svg ', '<svg class="mu-icon mu-temple" '),
   /** Map pin with a hole (evenodd). */
   pin: svg('<path fill="currentColor" fill-rule="evenodd" d="M12 1.6c-4.6 0-8.2 3.5-8.2 8 0 5.4 6.6 11.6 7.4 12.3.46.42 1.14.42 1.6 0 .8-.7 7.4-6.9 7.4-12.3 0-4.5-3.6-8-8.2-8Zm0 4.9a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z"/>'),
   chevron: svg('<path d="M9 5.5 15.5 12 9 18.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>'),
@@ -130,6 +59,21 @@ export const ICON = {
       '<path fill="currentColor" d="m18.6 3.4.3 4.9-4.9-.3zM5.4 20.6l-.3-4.9 4.9.3z"/>',
   ),
   heart: svg('<path fill="currentColor" d="M12 20.6 10.6 19.3C5.6 14.8 2.4 11.9 2.4 8.3 2.4 5.4 4.7 3.2 7.5 3.2c1.7 0 3.3.8 4.5 2 1.2-1.2 2.8-2 4.5-2 2.8 0 5.1 2.2 5.1 5.1 0 3.6-3.2 6.5-8.2 11L12 20.6Z"/>'),
+  /** The mini-map setting: shown (a folded map), the button only (a small bar), hidden (an eye struck through). */
+  mapShow: svg('<path d="M3.5 6.2 9 4.2l6 2 5.5-2v13.6l-5.5 2-6-2-5.5 2z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 4.2v13.6M15 6.2v13.6" stroke="currentColor" stroke-width="1.9"/>'),
+  mapButton: svg('<rect x="3.2" y="8.2" width="17.6" height="7.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M7.2 12h9.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
+  mapHide: svg(
+    '<mask id="mu-eye-cut"><rect width="24" height="24" fill="#fff"/><path d="M4.2 20.4 19.8 3.6" stroke="#000" stroke-width="5"/></mask>' +
+      '<g mask="url(#mu-eye-cut)"><path d="M2.6 12s3.5-6 9.4-6 9.4 6 9.4 6-3.5 6-9.4 6-9.4-6-9.4-6Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" fill="currentColor"/></g>' +
+      '<path d="M5 19.6 19 4.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  ),
+  /** A cup of coffee, steaming, on a saucer (the support button): pixel cells on a 16 grid. */
+  coffee: svg(
+    '<g fill="currentColor"><path d="M5 1h1v1H5zM4 2h1v1H4zM5 3h1v1H5zM9 1h1v1H9zM8 2h1v1H8zM9 3h1v1H9z" fill-opacity=".6"/>' +
+      '<path d="M2 5h10v6h-1v1H3v-1H2zM12 6h2v1h-2zM14 7h1v2h-1zM12 9h2v1h-2zM1 13h14v1H1z"/><path d="M3 6h8v1H3z" fill="#000" fill-opacity=".28"/></g>',
+    '0 0 16 16',
+    ' shape-rendering="crispEdges"',
+  ),
   close: svg('<path d="m6.5 6.5 11 11m0-11-11 11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'),
   /** Hourglass: "coming soon". */
   hourglass: svg('<path d="M7 3.5h10M7 20.5h10M8 3.5c0 5 8 5 8 8.5s-8 3.5-8 8.5m8-17c0 5-8 5-8 8.5s8 3.5 8 8.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'),

@@ -1,6 +1,8 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
-import { CREDITS } from './credits';
+import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import posthog, { isPostHogConfigured } from '../../posthog';
+import { createSupportCard } from './_support';
+import { CREDITS, SUPPORT_URL } from './credits';
 import { ICON } from './icons';
 import { lang, num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { framed, setSteppedVars } from './shape';
@@ -101,7 +103,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp';
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -131,8 +133,14 @@ const GRAPHICS_CHOICE: Record<GraphicsChoice, { icon: string; word: WordKey; not
   high: { icon: ICON.bars3, word: 'gHigh', note: 'gHighNote' },
   max: { icon: ICON.bars4, word: 'gMax', note: 'gMaxNote' },
 };
-/** The language switch: each button shows its language in that language. */
-const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'EN' };
+/** The mini-map choices (minimap.ts): shown, the button only, hidden. */
+const MINI_CHOICE: Record<MiniMapChoice, { icon: string; word: WordKey; note: WordKey }> = {
+  show: { icon: ICON.mapShow, word: 'mmShowChoice', note: 'miniMapShowNote' },
+  button: { icon: ICON.mapButton, word: 'mmButtonChoice', note: 'miniMapButtonNote' },
+  hide: { icon: ICON.mapHide, word: 'mmHideChoice', note: 'miniMapHideNote' },
+};
+/** The language choice (in the settings): each button shows its language in that language. */
+const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'English' };
 /** Latin fonts, and the Khmer ones they fall back to (lang.ts). */
 const FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Pixelify+Sans:wght@500;600;700&family=Kantumruy+Pro:wght@400;600;700&family=Koulen&display=swap';
 
@@ -243,14 +251,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const backBtn = info.querySelector<HTMLButtonElement>('.mu-back')!;
 
   // ── Corner buttons and settings ─────────────────────────────────────────
+  // (the coffee, the credits and the gear; the language and the sound on / off are in the settings)
   const corner = el('div', 'mu-corner');
-  const langSwitch = framed(el('div', 'mu-lang', (['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')), 'md');
-  langSwitch.setAttribute('role', 'group');
-  langSwitch.dataset.tAria = 'language';
-  const langBtns = [...langSwitch.querySelectorAll<HTMLButtonElement>('button')].map((b) => framed(b, 'xs'));
-  const muteBtn = framed(el('button', 'mu-round mu-mute'), 'md');
-  muteBtn.type = 'button';
-  muteBtn.dataset.tAria = 'mute';
   const gearBtn = framed(el('button', 'mu-round mu-gear', ICON.gear), 'md');
   gearBtn.type = 'button';
   gearBtn.dataset.tAria = 'settings';
@@ -263,7 +265,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   creditsBtn.dataset.tTitle = 'credits';
   creditsBtn.setAttribute('aria-controls', 'mu-settings');
   creditsBtn.setAttribute('aria-expanded', 'false');
-  corner.append(langSwitch, muteBtn, creditsBtn, gearBtn);
+  /** Support the game: a gold coffee cup that asks with a card (_support.ts: "Buy me a coffee" opens the page). */
+  const coffeeBtn = framed(el('button', 'mu-round mu-coffee-btn', ICON.coffee), 'md', true);
+  coffeeBtn.type = 'button';
+  coffeeBtn.dataset.tAria = 'support';
+  coffeeBtn.dataset.tTitle = 'support';
+  corner.append(coffeeBtn, creditsBtn, gearBtn);
 
   const slider = (k: VolumeKey) =>
     `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`;
@@ -275,8 +282,18 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const panel = framed(el('section', 'mu-settings', `
     <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x mu-close" data-t-aria="closeSettings">${ICON.close}</button></div>
     <div class="mu-set-body">
+      <div class="mu-set-group">
+        <h3 id="mu-lang-h" class="mu-lang-h" data-t="language"></h3>
+        <div class="mu-seg mu-lang-seg" role="group" aria-labelledby="mu-lang-h">
+          ${(['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')}
+        </div>
+      </div>
       <div class="mu-set-group" role="group" data-t-aria="sound">
         <h3 data-t="sound"></h3>
+        <div class="mu-set-row mu-sound-row">
+          <span id="mu-sound-l" data-t="soundOn"></span>
+          <button type="button" class="mu-switch mu-sound-sw" role="switch" aria-labelledby="mu-sound-l"><span class="mu-knob"></span></button>
+        </div>
         ${soundParts.join('')}
       </div>
       <div class="mu-set-group">
@@ -301,6 +318,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         </div>
         <p class="mu-set-note" id="mu-graphics-note"></p>
       </div>
+      <div class="mu-set-group">
+        <h3 id="mu-mini-h" data-t="miniMap"></h3>
+        <div class="mu-seg" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
+          ${MINIMAP_CHOICES.map((m) => `<button type="button" data-minimap="${m}">${MINI_CHOICE[m].icon}<span data-t="${MINI_CHOICE[m].word}"></span></button>`).join('')}
+        </div>
+        <p class="mu-set-note" id="mu-mini-note"></p>
+      </div>
       <div class="mu-set-row">
         <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span class="mu-knob"></span></button>
@@ -308,6 +332,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       <div class="mu-set-row">
         <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
         <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span class="mu-knob"></span></button>
+      </div>
+      <div class="mu-set-row">
+        <span id="mu-keys-l"><span data-t="keyHelp"></span><small data-t="keyHelpNote"></small></span>
+        <button type="button" class="mu-switch" role="switch" data-set="keyHelp" aria-labelledby="mu-keys-l"><span class="mu-knob"></span></button>
       </div>
       <div class="mu-set-row">
         <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
@@ -331,8 +359,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const weatherNote = panel.querySelector<HTMLElement>('#mu-weather-note')!;
   const graphicsBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-graphics]')];
   const graphicsNote = panel.querySelector<HTMLElement>('#mu-graphics-note')!;
+  const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-minimap]')];
+  const miniNote = panel.querySelector<HTMLElement>('#mu-mini-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
-  const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch')];
+  const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch[data-set]')];
+  /** Sound on / off: the mute (the master down, the mix kept). */
+  const soundSw = panel.querySelector<HTMLButtonElement>('.mu-sound-sw')!;
+  const langBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-lang]')];
   /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
   const setBody = panel.querySelector<HTMLElement>('.mu-set-body')!;
   /** The credits page (credits.ts): in place of the settings' body (the corner's credits button). */
@@ -385,7 +418,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
    */
   function fillCredits(): void {
     const l = lang();
-    crBody.innerHTML = CREDITS.map(
+    // (on top: support the game, its gold coffee button; the frames' layers written in, as framed() would add them)
+    const support = `<div class="mu-cr-sup mu-frame mu-sm"><span class="mu-bg"></span>
+        <p class="mu-cr-sup-head">${ICON.coffee}<span>${t('support')}</span></p><p class="mu-cr-sup-note">${t('supportNote')}</p>
+        <a class="mu-watch mu-coffee mu-frame mu-sm" href="${SUPPORT_URL}" target="_blank" rel="noopener" data-from="credits"><span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${ICON.coffee}<span>${t('supportGo')}</span></a></div>`;
+    crBody.innerHTML = support + CREDITS.map(
       (g) =>
         `<div class="mu-set-group" role="group"><h3>${g.head[l]}</h3>${g.lines
           .map((c) => `<p class="mu-cr-line">${c.name ? `<span lang="en">${c.name}</span>` : ''}${c.note ? `<small>${c.note[l]}</small>` : ''}</p>`)
@@ -622,13 +659,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     for (const b of graphicsBtns) b.setAttribute('aria-pressed', String(b.dataset.graphics === settings.graphics));
     // (and the graphics choice's)
     fillGraphicsNote();
+    for (const b of miniBtns) b.setAttribute('aria-pressed', String(b.dataset.minimap === settings.miniMap));
+    miniNote.dataset.t = MINI_CHOICE[settings.miniMap]?.note ?? 'miniMapShowNote';
+    miniNote.textContent = t(miniNote.dataset.t as WordKey);
     for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
-    const muted = isMuted();
-    muteBtn.innerHTML = '';
-    muteBtn.append(el('span', 'mu-bg'));
-    muteBtn.insertAdjacentHTML('beforeend', muted ? ICON.muted : ICON.speaker);
-    muteBtn.setAttribute('aria-pressed', String(muted));
-    muteBtn.classList.toggle('is-off', muted);
+    soundSw.setAttribute('aria-checked', String(!isMuted()));
     for (const b of langBtns) b.setAttribute('aria-pressed', String(b.dataset.lang === settings.lang));
     applyCalm();
     // (a new language fills the words again: `onLang` above)
@@ -705,6 +740,19 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     toggleSettings(false, false);
     h.onStory();
   });
+  // (the coffee buttons open the support page in a new tab: count where from)
+  const countSupport = (e: MouseEvent) => {
+    const a = (e.target as Element).closest<HTMLElement>('.mu-coffee');
+    if (a && isPostHogConfigured) posthog.capture('support_clicked', { from: a.dataset.from ?? '' });
+  };
+  panel.addEventListener('click', countSupport);
+  // (the corner's coffee asks first, with a card: _support.ts)
+  const support = createSupportCard(root, { sound: (s) => h.onSound(s) });
+  coffeeBtn.addEventListener('click', () => {
+    coffeeBtn.blur();
+    support.ask();
+    if (isPostHogConfigured) posthog.capture('support_opened');
+  });
 
   let lastTick = 0;
   for (const s of sliders) {
@@ -740,6 +788,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       const graphics = b.dataset.graphics as GraphicsChoice;
       if (graphics === settings.graphics) return;
       change({ graphics });
+      h.onSound('toggle');
+    });
+  for (const b of miniBtns)
+    b.addEventListener('click', () => {
+      const miniMap = b.dataset.minimap as MiniMapChoice;
+      if (miniMap === settings.miniMap) return;
+      change({ miniMap });
       h.onSound('toggle');
     });
   for (const b of switches)
@@ -780,8 +835,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (PART_KEYS.every((k) => settings[k] === 0)) for (const k of PART_KEYS) out[k] = kept[k];
     return out;
   }
-  // Mute turns the master down (the mix stays as it was); unmute brings it back.
-  muteBtn.addEventListener('click', () => {
+  // Sound off turns the master down (the mix stays as it was); on brings it back.
+  soundSw.addEventListener('click', () => {
     if (isMuted()) {
       change(unmuted());
       h.onSound('toggle');
@@ -929,6 +984,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         toggleSettings(true, false);
         showCredits(true);
       }
+      if (k === 'support') queueMicrotask(() => support.ask());
       if (k === 'muted') {
         settings = { ...settings, master: 0 };
         syncSettings();

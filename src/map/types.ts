@@ -302,6 +302,10 @@ export interface MapSettings {
   lang: Lang;
   /** Easy flying for the hang glider: it holds its height hands-off, S climbs, W dives, no ceiling to speak of (roam/prefs.ts). Off: the real glider (it sinks, rising air keeps it up). */
   easyFly: boolean;
+  /** The mini-map while roaming (roam/prefs.ts, ui/minimap.ts): shown; `button`, only its caption (the map button, the target's distance); `hide`, nothing (M still opens the big map). */
+  miniMap: MiniMapChoice;
+  /** The keys of the mode, bottom left while roaming (roam/hud.ts); off, hidden (? still lists them all). */
+  keyHelp: boolean;
   /** Graphics (graphics.ts): `auto` (the level this device can keep smooth), or a level, from the fastest to the finest. */
   graphics: GraphicsChoice;
 }
@@ -317,10 +321,14 @@ export type GraphicsChoice = (typeof GRAPHICS_CHOICES)[number];
 export type Lang = 'km' | 'en';
 
 /** The weather setting's choices, in panel order. */
+/** The mini-map choices, in panel order. */
+export const MINIMAP_CHOICES = ['show', 'button', 'hide'] as const;
+export type MiniMapChoice = (typeof MINIMAP_CHOICES)[number];
+
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy', 'snow'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, graphics: 'auto' };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto' };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
