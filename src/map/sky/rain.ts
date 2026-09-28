@@ -3,6 +3,7 @@ import { hash3 } from '../../voxel/random';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { hazeUniforms } from './haze';
 import { SKY } from './palette';
+import { view } from '../resolution';
 
 /**
  * Rain (the part `rain`): falling streaks round the camera, one instanced
@@ -184,7 +185,8 @@ export function buildRain(ctx: MapContext): MapPart {
       u.uShape.value[1].set(LAYERS[1].len * (over ? OVER_MID.len : 1), LAYERS[1].width, LAYERS[1].alpha * (over ? OVER_MID.alpha : 1));
       ctx.renderer.getDrawingBufferSize(buf);
       const cam = f.camera;
-      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, buf.y) / cam.zoom;
+      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts)
+      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom;
       // Lit by the sky: the haze colour and a little of the sky fill and the key light; a flash lights every drop.
       u.uColor.value
         .copy(SKY.haze)

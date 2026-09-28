@@ -564,6 +564,20 @@ const WORDS = {
   fvBoatGreens: { km: 'ត្រកួនស្រស់ៗ!', en: 'Fresh morning glory!' },
   fvBoatFish: { km: 'ត្រីទើបចាប់ថ្មីៗ!', en: 'Fish, just caught!' },
   fvBoatNoodles: { km: 'គុយទាវក្ដៅៗ!', en: 'Hot noodle soup!' },
+  // The settings' resolution and battery saver (res…, battery…): ui/ui.ts; the sizes: resolution.ts. Auto's button is gAuto.
+  resolution: { km: 'កម្រិតភាពច្បាស់', en: 'Resolution' },
+  // (the note under the sizes: Auto's names the size drawn now; a picked size says what it means)
+  resAutoNote: { km: 'ទៅតាមកម្រិតគុណភាពរូបភាព។ ឥឡូវ៖ {size}', en: 'Follows the graphics level. Now: {size}' },
+  resFullNote: { km: 'គ្រប់ចំណុចនៃអេក្រង់៖ ច្បាស់បំផុត តែធ្ងន់ម៉ាស៊ីនបំផុត', en: 'Every dot of the screen: the sharpest, but the most work' },
+  resWholeNote: { km: 'ភីកសែលមួយស្មើ {n} × {n} ចំណុចលើអេក្រង់៖ គែមប្លុកនៅតែមុតច្បាស់', en: 'Each pixel is {n} × {n} screen dots: crisp blocks' },
+  resSmoothNote: { km: 'ពង្រីកឱ្យពេញអេក្រង់យ៉ាងរលូន៖ មុតតិចជាងបន្តិច', en: 'Scaled up smoothly: a little softer' },
+  // (a size kept from another window size or screen: none of these is pressed)
+  resOtherNote: { km: 'ជម្រើសមុនរបស់អ្នក។ ឥឡូវ៖ {size}', en: 'Your earlier pick. Now: {size}' },
+  // (the mark on a whole step's size: its tooltip, and the size's name for a screen reader)
+  resSharp: { km: 'មុតច្បាស់', en: 'Sharp' },
+  resSharpSize: { km: '{size} មុតច្បាស់', en: '{size}, sharp' },
+  battery: { km: 'សន្សំថ្ម', en: 'Battery saver' },
+  batteryNote: { km: 'យ៉ាងច្រើន ៣០ រូបភាពក្នុងមួយវិនាទី៖ ឧបករណ៍មិនសូវក្ដៅ ហើយថ្មប្រើបានយូរជាង', en: 'At most 30 frames a second: cooler and longer on battery' },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 

@@ -94,4 +94,6 @@ export const ICON = {
   bars2: bars(2),
   bars3: bars(3),
   bars4: bars(4),
+  /** The resolution's whole steps (crisp: each pixel a square of screen dots): the sparkle alone, on its 7 × 7 cells. */
+  sharp: svg(SPARKLE, '0 0 7 7', ' shape-rendering="crispEdges"'),
 };

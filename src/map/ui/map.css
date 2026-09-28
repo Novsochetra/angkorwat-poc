@@ -1204,6 +1204,24 @@
   grid-column: 1 / -1;
 }
 
+/* The resolution's sizes (ui.ts `buildRes`), two by two under Auto: the
+ * digits keep one width, and a whole step (crisp) has a small gold sparkle. */
+.mu-res-seg button {
+  gap: calc(5 * var(--px));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mu-res-mark {
+  display: flex;
+  color: var(--mu-gold);
+}
+
+.mu-seg .mu-res-mark .mu-icon {
+  width: calc(10.5 * var(--px));
+  height: calc(10.5 * var(--px));
+}
+
 /* The note under a choice (the weather or graphics level chosen). */
 .mu-set-note {
   margin: calc(6 * var(--px)) calc(2 * var(--px)) 0;
@@ -1640,6 +1658,18 @@
   font-size: max(13px, calc(14 * var(--px)));
   font-weight: 400;
   color: var(--mu-dim);
+}
+
+/* (while the loading screen covers the map and its button waits, the interface under it stands still: main.ts `mapReady`) */
+.map-waiting .map-ui *,
+.map-waiting .map-ui *::before,
+.map-waiting .map-ui *::after {
+  animation-play-state: paused !important;
+}
+
+/* (hidden, the pulse stops: a box-shadow running under visibility:hidden still painted every refresh) */
+.mu-wake:not(.is-on) .mu-wake-icon {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

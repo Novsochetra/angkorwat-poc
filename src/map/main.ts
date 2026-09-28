@@ -7,9 +7,10 @@ import type { Atmosphere } from './atmosphere';
 import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
-import { AutoGraphics, autoLevel, FRAME_TIME, GRAPHICS, graphicsNow, markStill, MAX_FPS, plainFar, resetAutoLevel, setGraphics, STILL_LAYER, stillCasters } from './graphics';
+import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { buildHeightField } from './heightfield';
 import { PLACES } from './layout';
+import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
 import type { Foreground } from './foreground';
 import type { MapPost } from './post';
 import { roamPrefs } from './roam/prefs';
@@ -39,7 +40,10 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * (else it plays before the map on the first visit) ·
  * `loading=0‥1` hold the loading screen at that point, and build nothing
  * (1: built, with its button) · `video=1` a shot that then moves frame by
- * frame (`__videoFrame`, scripts/video.mjs).
+ * frame (`__videoFrame`, scripts/video.mjs) · `resolution=auto|<share>` the
+ * Resolution setting (resolution.ts: 0.5 draws half across) ·
+ * `battery=1` the battery saver (30 frames a second) · `idle=0` no idle
+ * slow-down (the frame loop, below).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
@@ -53,6 +57,8 @@ const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
 renderer.setPixelRatio(Math.min(devicePixelRatio, shot ? 1 : 2));
 renderer.setSize(innerWidth, innerHeight);
+// (what is drawn: the scene at the canvas's ratio, until the resolution below sets it)
+view.scene = view.canvas = renderer.getPixelRatio();
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = NeutralToneMapping;
 renderer.shadowMap.enabled = true;
@@ -89,6 +95,8 @@ function loadSettings(): MapSettings {
     if (typeof mini === 'boolean') saved.miniMap = mini ? 'show' : 'button';
     else if (!MINIMAP_CHOICES.includes(mini as MiniMapChoice)) delete saved.miniMap;
     if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
+    if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
+    if (typeof saved.battery !== 'boolean') delete saved.battery;
     // (settings kept before the new defaults — cycling time, clear weather, the interface at full, easy flying — take them once)
     if (localStorage.getItem(DEFAULTS_KEY) !== DEFAULTS_VERSION) {
       delete saved.time;
@@ -113,6 +121,10 @@ roamPrefs.miniMap = settings.miniMap;
 if (params.has('keyhelp')) settings.keyHelp = params.get('keyhelp') !== '0';
 roamPrefs.keyHelp = settings.keyHelp;
 if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) settings.graphics = params.get('graphics') as GraphicsChoice;
+if (params.get('resolution') === 'auto') settings.resolution = 'auto';
+else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
+if (params.has('battery')) settings.battery = params.get('battery') !== '0';
+setBatterySaver(settings.battery);
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
 const levelOf = (g: GraphicsChoice): GraphicsLevel => (g !== 'auto' ? g : shot ? 'medium' : autoLevel());
 setGraphics(levelOf(settings.graphics), scene);
@@ -328,12 +340,22 @@ const handlers = {
     if (href) setTimeout(() => location.assign(href), 2000);
   },
   onSettings: (s: MapSettings) => {
-    const was = settings.graphics;
+    const was = settings;
     settings = s;
-    if (s.graphics !== was) {
+    if (s.graphics !== was.graphics) {
       // (auto picked again starts over from its guess)
       if (s.graphics === 'auto') resetAutoLevel();
       useLevel(levelOf(s.graphics));
+    }
+    // (a new resolution: drawn at once; auto's watches start over)
+    if (s.resolution !== was.resolution && drawing) {
+      autoWatch.reset();
+      newLevelRatio();
+    }
+    if (s.battery !== was.battery) {
+      setBatterySaver(s.battery);
+      autoWatch.reset();
+      if (drawing) newLevelRatio();
     }
     rig.calm = s.calm;
     roamPrefs.easyFly = s.easyFly;
@@ -351,7 +373,7 @@ const handlers = {
   onWake: () => audio.wake(),
   onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
 audio.onHeld((held) => ui.setSoundHeld(held));
 
@@ -402,10 +424,13 @@ if (roam) {
 
 addEventListener('pointermove', (e) => rig.setPointer((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1));
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   rig.fit();
+  // (a picked resolution is a share of the screen's width: its sizes follow the window, and the screen when the window moves to another)
+  if (drawing) holdRatio(true);
+  renderer.setSize(innerWidth, innerHeight);
   post.setSize(innerWidth, innerHeight);
+  ui.setDrawSize?.(Math.round(innerWidth * view.scene), Math.round(innerHeight * view.scene));
 });
 
 // ── Time of day ─────────────────────────────────────────────────────────────
@@ -436,6 +461,15 @@ function nightTarget(): number {
 }
 
 // ── Frame ───────────────────────────────────────────────────────────────────
+/** The frame loop's pace: every frame the cap allows, fewer while idle, few while the window has no focus. */
+type LoopMode = 'full' | 'idle' | 'blurred';
+/** No input for this long (ms) on the overview, and no camera flight: idle. */
+const IDLE_AFTER = 4000;
+/** Frames a second while idle (half the desktop's 60), and on a phone or the battery saver (30 already). */
+const IDLE_FPS = 30;
+const IDLE_FPS_SLOW = 20;
+/** Frames a second while the window has no focus (another window in front; still on screen). */
+const BLURRED_FPS = 10;
 const fixedCam = params.get('cam')?.split(',').map(Number);
 /** The camera of a video frame (scripts/video.mjs: `__videoFrame`), else the URL's or the rig's. */
 let videoCam: number[] | null = null;
@@ -622,6 +656,9 @@ posthogLogger.info('map initialized', {
 });
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed } });
 
+/** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
+let wakeLoop: () => void = () => undefined;
+
 /**
  * The map is drawn: the explorer turns and waves, and the loading screen's
  * gold button waits (a shot takes the screen away at once). Its click lets
@@ -635,8 +672,9 @@ function mapReady(): void {
     return;
   }
   showProgress(1);
-  // (the map's keys and cards wait behind it)
+  // (the map's keys and cards wait behind it, their animations still: map.css `.map-waiting`)
   uiRoot.inert = true;
+  document.body.classList.add('map-waiting');
   go.addEventListener('click', enter, { once: true });
   go.focus({ preventScroll: true });
 }
@@ -645,6 +683,9 @@ function enter(): void {
   if (entered || !loading) return;
   entered = true;
   uiRoot.inert = false;
+  document.body.classList.remove('map-waiting');
+  // (the frame loop rests while the button waits: it draws again from now, under the fading screen)
+  wakeLoop();
   void audio.start().then(() => audio.play('select'));
   if (storyDue) void openStory(Math.max(0, storyAt - 1));
   loading.classList.add('done');
@@ -664,33 +705,60 @@ function enter(): void {
  * as long each time it fails again (up to ten minutes: no see-sawing).
  * That is the medium graphics level's `auto`; the others hold one ratio
  * (graphics.ts: the screen's on high and max, 1 on low).
+ *
+ * The Resolution setting (resolution.ts) overrides all of it: a picked size
+ * is a share of the screen's own width, held whatever the frames do. A whole
+ * step draws a canvas that size, stretched by the browser with nearest
+ * pixels; a size between keeps the canvas at the screen's own size and draws
+ * the scene smaller (post.ts scales it up). Auto is the level's, as above.
  */
 const MAX_RATIO = Math.min(devicePixelRatio, shot ? 1 : 2);
 const res = { ratio: renderer.getPixelRatio(), ceiling: MAX_RATIO, time: 0, frames: 0, since: 0, ceilingAge: 0, slow: 0, wait: 30 };
-function setRatio(next: number): void {
-  res.ratio = next;
+/** The scene's pixel ratio `scene`, the canvas's and its stretch as the Resolution setting wants them; `force`: set again even if the same (a resize). */
+function setRatio(scene: number, force = false): void {
+  const pick = settings.resolution;
+  let canvasRatio = scene;
+  let pixelated = false;
+  if (pick !== 'auto') {
+    const { step, whole } = stepOf(pick);
+    if (whole) pixelated = Math.round(step) > 1;
+    else canvasRatio = screenRatio();
+  }
+  const same = view.scene === scene && view.canvas === canvasRatio && view.pixelated === pixelated;
+  res.ratio = scene;
+  if (same && !force) return;
   res.since = 0;
-  renderer.setPixelRatio(next);
+  view.scene = scene;
+  view.canvas = canvasRatio;
+  view.pixelated = pixelated;
+  canvas.style.imageRendering = pixelated ? 'pixelated' : '';
+  renderer.setPixelRatio(canvasRatio);
   renderer.setSize(innerWidth, innerHeight);
   post.setSize(innerWidth, innerHeight);
+  ui.setDrawSize?.(Math.round(innerWidth * scene), Math.round(innerHeight * scene));
 }
-/** A graphics level with its own ratio gets it (true); `auto` is left to {@link adaptResolution} (false). */
-function holdRatio(): boolean {
+/** A picked resolution, or a graphics level with its own ratio, gets it (true); `auto` is left to {@link adaptResolution} (false). */
+function holdRatio(force = false): boolean {
+  const pick = settings.resolution;
   const want = graphicsNow.ratio;
-  if (want === 'auto') return false;
-  const ratio = want === 'screen' ? MAX_RATIO : Math.min(MAX_RATIO, want);
-  if (res.ratio !== ratio) setRatio(ratio);
+  if (pick === 'auto' && want === 'auto') {
+    // (back to auto from a picked size: the canvas as the scene again)
+    if (force || view.canvas !== view.scene || view.pixelated) setRatio(res.ratio, true);
+    return false;
+  }
+  const ratio = pick !== 'auto' ? pick * screenRatio() : typeof want === 'number' ? Math.min(MAX_RATIO, want) : MAX_RATIO;
+  setRatio(ratio, force);
   res.ceiling = MAX_RATIO;
   res.time = res.frames = res.slow = 0;
   return true;
 }
 // (from the first frame: the low level never draws a full-size picture)
 holdRatio();
-/** A new graphics level: its own ratio, or (auto) the screen's again, dropping only if it proves slow there. */
+/** A new graphics level (or resolution, or frame cap): its own ratio, or (auto) the screen's again, dropping only if it proves slow there. */
 function newLevelRatio(): void {
   if (holdRatio()) return;
   Object.assign(res, { ceiling: MAX_RATIO, ceilingAge: 0, time: 0, frames: 0, slow: 0, wait: 30 });
-  if (res.ratio !== MAX_RATIO) setRatio(MAX_RATIO);
+  setRatio(MAX_RATIO);
 }
 function adaptResolution(dt: number): void {
   if (holdRatio()) return;
@@ -703,14 +771,14 @@ function adaptResolution(dt: number): void {
   if (res.frames < 45 || res.since < 1.5) return;
   const avg = res.time / res.frames;
   res.time = res.frames = 0;
-  res.slow = avg > 1.5 * FRAME_TIME ? res.slow + 1 : 0;
+  res.slow = avg > 1.5 * frameCap.time ? res.slow + 1 : 0;
   let next = res.ratio;
   if (res.slow >= 2 && res.ratio > 1) {
     res.ceiling = 1;
     res.ceilingAge = 0;
     res.wait = Math.min(600, res.wait * 2);
     next = 1;
-  } else if (avg < 1.05 * FRAME_TIME && res.ratio < res.ceiling) next = res.ceiling;
+  } else if (avg < 1.05 * frameCap.time && res.ratio < res.ceiling) next = res.ceiling;
   if (next !== res.ratio) setRatio(next);
 }
 drawing = true;
@@ -763,26 +831,90 @@ if (shot) {
   await Promise.race([renderer.compileAsync(scene, camera).catch(() => undefined), new Promise((r) => setTimeout(r, 6000))]);
   console.info(`[map] shaders compiled in ${(performance.now() - c0).toFixed(0)} ms`);
   const t0 = performance.now();
+  /** When the last frame was drawn, and when the next one is due (ms). */
   let last = t0;
-  const tick = (now: number) => {
-    // (a phone draws at most MAX_FPS frames a second, evenly: a refresh a few ms early is on time)
-    if (now - last < 1000 / MAX_FPS - 4) {
+  let due = t0;
+  let first = true;
+  /** The loop has a frame asked for (it rests while the loading screen's button waits). */
+  let looping = true;
+  // Idle: the overview, hands off, draws fewer frames (the water, people and clouds still move, only less often);
+  // any input, a camera flight or roaming brings them all back at once. A window without focus draws few.
+  let lastInput = t0;
+  let focused = document.hasFocus();
+  /** A slow pace sleeps between frames (a timer, not a wake-up every refresh); this one, if it does. */
+  let sleep = 0;
+  const touched = () => {
+    lastInput = performance.now();
+    // (a frame at once, not when the slow pace would have drawn one)
+    due = Math.min(due, lastInput);
+    if (sleep) {
+      clearTimeout(sleep);
+      sleep = 0;
       requestAnimationFrame(tick);
+    }
+  };
+  for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, touched, { capture: true, passive: true });
+  addEventListener('focus', () => {
+    focused = true;
+    touched();
+  });
+  addEventListener('blur', () => (focused = false));
+  const idleOff = params.get('idle') === '0';
+  /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 on a phone and the battery saver), fewer while idle or unfocused. */
+  const pace = (now: number): { fps: number; mode: LoopMode } => {
+    if (idleOff || feedback?.active) return { fps: frameCap.fps, mode: 'full' };
+    if (!focused) return { fps: BLURRED_FPS, mode: 'blurred' };
+    if (roam?.active || rig.flying || now - lastInput < IDLE_AFTER) return { fps: frameCap.fps, mode: 'full' };
+    return { fps: frameCap.fps > 30 ? IDLE_FPS : IDLE_FPS_SLOW, mode: 'idle' };
+  };
+  /** The loop's state, for checks (scripts/idle.mjs): frames drawn, the pace now. */
+  const loop = { drawn: 0, fps: frameCap.fps, mode: 'full' as LoopMode | 'waiting' };
+  Object.assign(window, { __loop: loop });
+  /** The last frame was at full pace (the resolution and auto's watch measure only such frames). */
+  let wasFull = false;
+  const tick = (now: number) => {
+    // (built, the loading screen's button waits: one frame was drawn under it — the shaders, the buffers — and the loop rests until it is pressed)
+    if (!first && !entered) {
+      looping = false;
+      loop.mode = 'waiting';
       return;
     }
+    const { fps, mode } = pace(now);
+    const interval = 1000 / fps;
+    // (a pace that got faster draws soon, not when the slower one would have)
+    due = Math.min(due, last + interval);
+    // (evenly: a refresh a few ms early is on time; a 120 Hz screen draws every other refresh at 60)
+    if (!first && now < due - Math.min(4, interval / 4)) {
+      // (more than a refresh or two to wait: sleep until just before it, then wait for the refresh)
+      const wait = due - now - 12;
+      if (wait > 0)
+        sleep = window.setTimeout(() => {
+          sleep = 0;
+          requestAnimationFrame(tick);
+        }, wait);
+      else requestAnimationFrame(tick);
+      return;
+    }
+    due = now - due > interval ? now + interval : due + interval;
+    loop.fps = fps;
+    loop.mode = mode;
+    loop.drawn++;
     const raw = Math.max(0, (now - last) / 1000);
-    const dt = Math.min(0.05, raw);
+    // (slow paces step further a frame; roaming's physics keep short steps)
+    const dt = Math.min(roam?.active ? 0.05 : 0.1, raw);
     last = now;
     // (the first frame's time can come a hair before t0)
     if (!feedback?.active) step(Math.max(0, (now - t0) / 1000), dt);
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
     const drawn = !story?.covered;
-    if (now - t0 > 3000 && drawn) {
+    const full = mode === 'full';
+    if (now - t0 > 3000 && drawn && full && wasFull) {
       adaptResolution(raw);
       // (auto: a level lower once this one proves too slow, its own resolution as low as it goes)
-      const lower = settings.graphics === 'auto' ? autoWatch.watch(raw, graphicsNow.ratio !== 'auto' || res.ratio <= 1) : null;
+      const lower = settings.graphics === 'auto' ? autoWatch.watch(raw, settings.resolution !== 'auto' || graphicsNow.ratio !== 'auto' || res.ratio <= 1) : null;
       if (lower) useLevel(lower);
     }
+    wasFull = full;
     if (drawn) post.render(frame);
     for (const p of parts) p.afterRender?.();
     feedback?.update();
@@ -792,6 +924,13 @@ if (shot) {
     }
     requestAnimationFrame(tick);
   };
-  let first = true;
+  /** The loading screen's button was pressed: the loop runs again. */
+  wakeLoop = () => {
+    if (looping) return;
+    looping = true;
+    last = due = performance.now();
+    wasFull = false;
+    requestAnimationFrame(tick);
+  };
   requestAnimationFrame(tick);
 }

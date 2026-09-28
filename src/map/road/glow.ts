@@ -24,6 +24,7 @@ import {
   type PerspectiveCamera,
   type WebGLRenderer,
 } from 'three';
+import { view } from '../resolution';
 
 /**
  * Light of the road: glowing blocks (the inlay down the middle, lamp glass,
@@ -349,8 +350,8 @@ export class LightPools {
   }
 }
 
-/** Pixels per metre at 1 m for point sizes, from the camera and the drawing buffer. */
+/** Pixels per metre at 1 m for point sizes, from the camera and the scene's height in pixels (the drawing buffer's, or the smaller scene of a picked resolution: resolution.ts). */
 export function pointScale(renderer: WebGLRenderer, camera: PerspectiveCamera): number {
-  const h = renderer.getContext().drawingBufferHeight;
+  const h = (renderer.getContext().drawingBufferHeight * view.scene) / view.canvas;
   return h / (2 * Math.tan((camera.fov * Math.PI) / 360));
 }

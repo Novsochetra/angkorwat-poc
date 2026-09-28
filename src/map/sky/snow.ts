@@ -41,6 +41,7 @@ import { VILLAGE_SPOTS } from '../village/_spots';
 import { hazeUniforms } from './haze';
 import { mistNoiseTexture } from './noise';
 import { SKY } from './palette';
+import { view } from '../resolution';
 
 /**
  * Snow (the part `snow`): the Weather setting's "snow", a dream — it never
@@ -808,7 +809,8 @@ export function buildSnow(ctx: MapContext): MapPart {
       u.uShape.value[1].x = LAYERS[1].size * (over ? OVER.mid : 1);
       ctx.renderer.getDrawingBufferSize(buf);
       const cam = f.camera;
-      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, buf.y) / cam.zoom;
+      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts)
+      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom;
       // Lit all round, a little brighter than the snow on the land (so they read against it): the sky light from
       // above, its bounce off the snow below and the key light (the moon, by night); a flash lights every flake.
       const c = u.uColor.value

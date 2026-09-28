@@ -445,6 +445,7 @@ function injectStyle(): void {
       fill: #f6efe2; filter: drop-shadow(0 0 calc(1 * var(--px, 1px)) rgba(20, 16, 30, 0.9)) drop-shadow(0 calc(1 * var(--px, 1px)) 0 rgba(20, 16, 30, 0.6));
       opacity: 0; animation: rr-z 3.6s linear infinite; }
     .rr-zzz svg:nth-child(2) { animation-delay: -1.2s; }
+    .rr-zzz:not(.is-on) svg { animation-play-state: paused; }
     .rr-zzz svg:nth-child(3) { animation-delay: -2.4s; }
     /* (still, as in shots: animations off) */
     .mu-shot .rr-zzz svg:nth-child(1) { transform: translate(calc(4 * var(--px, 1px)), calc(-8 * var(--px, 1px))) scale(0.85); opacity: 0.95; }

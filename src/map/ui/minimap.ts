@@ -1354,6 +1354,8 @@ function injectStyle(): void {
     .mm-big > .mu-bg { background: var(--mu-panel-strong); }
     .mm-bigwrap.is-open .mm-shade, .mm-bigwrap.is-open .mm-big { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.3s, transform 0.35s var(--mu-ease); }
     .mm-bigwrap.is-open .mm-big { transform: translate(-50%, -50%); }
+    /* (closed, its rings stand still: an animation under visibility:hidden still ran every refresh) */
+    .mm-bigwrap:not(.is-open) .mm-big * { animation-play-state: paused; }
     .mm-head { display: flex; align-items: center; gap: calc(14 * var(--px)); }
     .mm-head-icon .mu-icon { width: calc(60 * var(--px)); height: auto; filter: drop-shadow(0 0 calc(8 * var(--px)) rgba(255, 196, 110, 0.32)) drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
     .mm-head h2 { margin: 0; font: 700 calc(28 * var(--px)) / 1 var(--mu-display); letter-spacing: 0.01em; text-shadow: 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.3); }

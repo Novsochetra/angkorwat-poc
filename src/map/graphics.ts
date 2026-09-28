@@ -16,6 +16,9 @@ import { GRAPHICS_LEVELS, type GraphicsLevel, type MapQuality } from './types';
  *  high     the screen's, always    chamfered    2 / 4  4096, 3rd frame    on
  *  max      the screen's, always    chamfered    4      8192, every frame  on
  *
+ * (The picture's size is the level's while the Resolution setting is Auto;
+ * a picked size overrides it: resolution.ts, main.ts `holdRatio`.)
+ *
  * Measured on an M1 Max (the overview, 696 × 925, the scene about 10 M
  * triangles, most of the cost): a frame takes ≈ 11 ms on low, 30 on high,
  * 36 on max. Plain boxes (12 triangles, not 44) alone take 31 ms to 19; a
@@ -32,7 +35,7 @@ import { GRAPHICS_LEVELS, type GraphicsLevel, type MapQuality } from './types';
  * was a hitch each time; a part is ≈ 0.3 M. What moves casts nothing there: the roaming explorer gets a soft
  * disc under his feet (foreground.ts), and is built with one rounding step
  * (the level draws him so anyway). On a phone the map also draws at
- * most 30 frames a second (`MAX_FPS`), and the `auto` choice picks the level
+ * most 30 frames a second (`frameCap`), and the `auto` choice picks the level
  * (`AutoGraphics`). On low, other families' blocks are plain from
  * {@link FAR_PLAIN} m too (`plainFar`).
  *
@@ -263,13 +266,19 @@ export const PHONE =
   new URLSearchParams(location.search).get('phone') === '1' ||
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (hover: none)').matches && Math.min(screen.width, screen.height) < 600);
 /**
- * Frames a second at most: 30 on a phone, else as many as the screen shows.
- * An even 30 (every other refresh) looks smoother than 40 to 60 that come
- * unevenly, and the phone keeps cooler.
+ * Frames a second at most (main.ts paces its loop by it): 30 on a phone or
+ * with the Battery saver setting, else 60. An even 30 (every other refresh)
+ * looks smoother than 40 to 60 that come unevenly, and the device keeps
+ * cooler; a 120 Hz screen drew twice the frames for little the eye keeps.
+ * `time`: the time a frame has (s), what the resolution and auto's watch
+ * measure frames against.
  */
-export const MAX_FPS = PHONE ? 30 : Infinity;
-/** The time a frame has (s): at 60 a second, or at {@link MAX_FPS} under it. */
-export const FRAME_TIME = 1 / Math.min(60, MAX_FPS);
+export const frameCap = { fps: PHONE ? 30 : 60, time: 1 / (PHONE ? 30 : 60) };
+/** Battery saver on or off (the settings): 30 frames a second, or 60 (a phone keeps 30). */
+export function setBatterySaver(on: boolean): void {
+  frameCap.fps = PHONE || on ? 30 : 60;
+  frameCap.time = 1 / frameCap.fps;
+}
 
 const AUTO_KEY = 'angkor-map-graphics-auto';
 /** Auto's level: the one it stepped down to on this device before, else a guess (low on a phone, medium on the rest). */
@@ -293,8 +302,8 @@ export function resetAutoLevel(): void {
 
 /**
  * Auto's watch over the frames. Every 2 s of drawn frames it takes their mean
- * time. Three means in a row slower than 2 × {@link FRAME_TIME} (under 30
- * frames a second, or 15 on a phone: choppy), and it steps down one level
+ * time. Three means in a row slower than 2 × `frameCap.time` (under 30
+ * frames a second, or 15 on a phone or the battery saver: choppy), and it steps down one level
  * and keeps that level for this device. It waits while the level can still
  * lower its own resolution (medium: main.ts, under 40 a second), and for a
  * new level to settle. (An M1 Max runs medium at about 39 a second: it keeps
@@ -324,7 +333,7 @@ export class AutoGraphics {
     if (this.time < 2) return null;
     const avg = this.time / this.frames;
     this.time = this.frames = 0;
-    this.slow = settled && avg > 2 * FRAME_TIME ? this.slow + 1 : 0;
+    this.slow = settled && avg > 2 * frameCap.time ? this.slow + 1 : 0;
     const at = GRAPHICS_LEVELS.indexOf(graphicsNow.level);
     if (this.slow < 3 || at <= 0) return null;
     this.reset();

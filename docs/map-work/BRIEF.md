@@ -2173,8 +2173,25 @@ The player picks a **Graphics** level in the settings (`graphics.ts`,
 `settings.graphics`, `graphics=auto|low|medium|high|max` in the URL). Auto
 (the default) starts on low on a phone and medium elsewhere, steps down a
 level when frames stay under 30 a second, and keeps that level for the
-device (`AutoGraphics`; shots use medium). A phone draws at most 30 frames a
-second, evenly (`MAX_FPS`; `phone=1` acts as one). Low draws
+device (`AutoGraphics`; shots use medium). The map draws at most 60 frames
+a second, and 30 on a phone or with the **Battery saver** setting, evenly
+(`frameCap`, `setBatterySaver` in graphics.ts; `phone=1` acts as a phone,
+`battery=1` turns the saver on). The frame loop (main.ts `tick`) rests while
+the loading screen's button waits (one frame is drawn under it, then none
+until Start), and slows while idle: the overview with no input for 4 s and
+no camera flight draws 30 a second (20 on a phone or the saver), a window
+without focus 10; any input brings the full pace back at once (`idle=0`
+turns this off; `window.__loop` counts the frames drawn and names the pace).
+The **Resolution** setting (resolution.ts, `settings.resolution`,
+`resolution=auto|<share>` in the URL) picks the pixels apart from the level:
+Auto is the level's own (below); a size is a share of the screen's own width,
+shown in the menu as exact sizes (`resolutionSizes()`), whole steps marked.
+A whole step draws a smaller canvas stretched by the browser with nearest
+pixels (crisp 2 × 2, 3 × 3 … squares); a size between keeps the canvas at
+the screen's size and draws the scene into smaller targets that the grade
+pass scales up with a smooth filter and a light sharpen (post.ts). Point
+sprites (lamp halos, fireflies, smoke, rain, snow) size themselves by the
+scene's height (`view.scene`), not the canvas's. Low draws
 half the pixels, the map's blocks as plain boxes, no MSAA, no glow, and
 still shadows: only parts marked with `markStill` (main.ts) cast, and the
 shadow map is drawn again only when the key light turns, never every third

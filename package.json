@@ -13,7 +13,8 @@
     "playtest": "node scripts/playtest.mjs",
     "kitcheck": "node scripts/kit-check.mjs",
     "video": "node scripts/video.mjs",
-    "perf": "node scripts/perf.mjs"
+    "perf": "node scripts/perf.mjs",
+    "idle": "node scripts/idle.mjs"
   },
   "dependencies": {
     "posthog-js": "^1.434.14",

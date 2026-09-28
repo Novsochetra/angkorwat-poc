@@ -1,5 +1,6 @@
 import type { Object3D, PerspectiveCamera, Scene, Vector3, WebGLRenderer } from 'three';
 import type { HeightField } from './heightfield';
+import type { ResolutionChoice } from './resolution';
 
 /**
  * World map screen ("Angkor Heritage", index.html): a small voxel diorama of
@@ -308,6 +309,10 @@ export interface MapSettings {
   keyHelp: boolean;
   /** Graphics (graphics.ts): `auto` (the level this device can keep smooth), or a level, from the fastest to the finest. */
   graphics: GraphicsChoice;
+  /** Resolution (resolution.ts): `auto` (the graphics level's own), or a share of the screen's own width (1 every dot, 0.5 half across). */
+  resolution: ResolutionChoice;
+  /** Battery saver: at most 30 frames a second (graphics.ts `frameCap`; a phone always). */
+  battery: boolean;
 }
 
 /** Graphics levels, fastest first (graphics.ts says what each one draws). */
@@ -328,7 +333,7 @@ export type MiniMapChoice = (typeof MINIMAP_CHOICES)[number];
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy', 'snow'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto' };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto', resolution: 'auto', battery: false };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;

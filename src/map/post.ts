@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { graphicsNow, samplesAt } from './graphics';
+import { view } from './resolution';
 import { SKY } from './sky/palette';
 import type { MapContext, MapFrame } from './types';
 
@@ -18,11 +19,19 @@ import type { MapContext, MapFrame } from './types';
  *     (tilt-shift: the far hills look far); then, on the screen, tone mapping
  *     (the renderer's, Neutral) and sRGB (three's chunks: what an OutputPass
  *     did as a pass of its own, one full-screen read and write less a frame).
+ *
+ * The scene and its targets are drawn at the scene's pixel ratio
+ * (resolution.ts `view.scene`). With a picked resolution between whole steps
+ * the canvas is bigger than that: the grade reads the smaller picture with a
+ * smooth filter and sharpens it lightly as it fills the screen.
  */
 export interface MapPost {
   render(f: MapFrame): void;
   setSize(width: number, height: number): void;
 }
+
+/** How much the grade sharpens a scene scaled up to the screen (a picked resolution between whole steps). */
+const SHARPEN = 0.35;
 
 /** Linear brightness where bloom starts (it is full by +0.6 above). Glowing things should go above it at night. */
 export const BLOOM_THRESHOLD = 1.0;
@@ -39,6 +48,7 @@ const GradeShader = {
     uContrast: { value: 1 },
     uVignette: { value: 0.3 },
     uTilt: { value: 0 },
+    uSharp: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -56,6 +66,7 @@ const GradeShader = {
     uniform float uContrast;
     uniform float uVignette;
     uniform float uTilt;
+    uniform float uSharp;
     varying vec2 vUv;
 
     // (a broken pixel from anywhere shows black here, and spreads nowhere)
@@ -65,6 +76,12 @@ const GradeShader = {
 
     void main() {
       vec3 c = clean(texture2D(tDiffuse, vUv).rgb);
+      // Scaled up to the screen (a picked resolution between whole steps): a light sharpen against the smooth filter.
+      if (uSharp > 0.0) {
+        vec3 n = clean(texture2D(tDiffuse, vUv + vec2(uTexel.x, 0.0)).rgb) + clean(texture2D(tDiffuse, vUv - vec2(uTexel.x, 0.0)).rgb)
+          + clean(texture2D(tDiffuse, vUv + vec2(0.0, uTexel.y)).rgb) + clean(texture2D(tDiffuse, vUv - vec2(0.0, uTexel.y)).rgb);
+        c = max(c + uSharp * (c - 0.25 * n), 0.0);
+      }
       // Tilt-shift: a soft blur that grows towards the top edge only.
       float r = uTilt * smoothstep(0.8, 1.0, vUv.y);
       if (r > 0.35) {
@@ -120,7 +137,7 @@ const mixGrade = (out: Grade, a: Grade, b: Grade, t: number): Grade => {
 export function createPost(ctx: MapContext): MapPost {
   const { renderer, scene, camera } = ctx;
   // Multisampling: the voxel edges crawl without it. Fewer samples on dense screens (graphics.ts: none on low).
-  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: samplesAt(graphicsNow, renderer.getPixelRatio()) });
+  const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: samplesAt(graphicsNow, view.scene) });
   target.texture.name = 'map scene';
   const composer = new EffectComposer(renderer, target);
 
@@ -151,9 +168,11 @@ export function createPost(ctx: MapContext): MapPost {
   composer.addPass(grade);
 
   const setSize = (w: number, h: number) => {
-    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setPixelRatio(view.scene);
     composer.setSize(w, h);
-    grade.uniforms.uTexel.value.set(1 / (w * renderer.getPixelRatio()), 1 / (h * renderer.getPixelRatio()));
+    grade.uniforms.uTexel.value.set(1 / (w * view.scene), 1 / (h * view.scene));
+    // (smooth filter and sharpen only when the scene is scaled up to a bigger canvas)
+    grade.uniforms.uSharp.value = view.canvas > view.scene * 1.01 && !view.pixelated ? SHARPEN : 0;
   };
   const size = renderer.getSize(new Vector2());
   setSize(size.x, size.y);
@@ -169,7 +188,7 @@ export function createPost(ctx: MapContext): MapPost {
 
   /** The graphics level's multisampling (it changes with the level and the pixel ratio): the targets are made again. */
   const matchSamples = () => {
-    const samples = samplesAt(graphicsNow, renderer.getPixelRatio());
+    const samples = samplesAt(graphicsNow, view.scene);
     if (composer.renderTarget1.samples === samples) return;
     for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
       rt.samples = samples;
@@ -194,7 +213,7 @@ export function createPost(ctx: MapContext): MapPost {
       u.uContrast.value = g.contrast * (1 - 0.03 * wet);
       u.uVignette.value = g.vignette + 0.06 * wet;
       // Blur radius at the very top (px): only in the wide views. Glow and blur are off on the low graphics level.
-      u.uTilt.value = graphicsNow.glow ? 2.2 * renderer.getPixelRatio() : 0;
+      u.uTilt.value = graphicsNow.glow ? 2.2 * view.scene : 0;
       bloom.enabled = graphicsNow.glow;
       bloom.strength = g.bloom;
       renderer.toneMappingExposure = SKY.exposure || 1;

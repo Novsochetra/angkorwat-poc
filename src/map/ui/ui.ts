@@ -1,6 +1,8 @@
 import type { PlaceDef } from '../layout';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
+import { PHONE } from '../graphics';
+import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
 import { createSupportCard } from './_support';
 import { CREDITS, SUPPORT_URL } from './credits';
 import { ICON } from './icons';
@@ -32,8 +34,11 @@ import { framed, setSteppedVars } from './shape';
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
  * `settings`, `credits` (the settings' credits page), `muted`, `held` (the
  * held-sound card), `weather:<setting>` (the panel shows that weather
- * chosen), `begin` (the fade to black), `roam` (the interface
- * while roaming, without the roaming itself: add `cam=` to stand somewhere).
+ * chosen), `res:<share>` / `res:auto` (that resolution picked), `battery`
+ * (the battery saver on), `scroll:<group>` (the settings scrolled to that
+ * group: lang, time, weather, graphics, res, mini), `begin` (the fade to
+ * black), `roam` (the interface while roaming, without the roaming itself:
+ * add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
   /** A card is hovered (null: none). */
@@ -79,6 +84,8 @@ export interface MapUI {
   setLang(l: Lang): void;
   /** The graphics level in use now (graphics.ts: Auto's pick, else the level chosen); Auto's note names it. */
   setGraphicsLevel(level: GraphicsLevel): void;
+  /** The size the map is drawn at now, in pixels (main.ts, whenever it changes); the Resolution's Auto note names it. */
+  setDrawSize(w: number, h: number): void;
   /** Back on the page, the browser still holds the sound: a card in the middle asks for a tap (audio.ts `onHeld`). */
   setSoundHeld(held: boolean): void;
 }
@@ -103,7 +110,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'keyHelp';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery';
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -319,6 +326,17 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         <p class="mu-set-note" id="mu-graphics-note"></p>
       </div>
       <div class="mu-set-group">
+        <h3 id="mu-res-h" data-t="resolution"></h3>
+        <div class="mu-seg is-pairs mu-res-seg" role="group" aria-labelledby="mu-res-h" aria-describedby="mu-res-note">
+          <button type="button" class="is-wide" data-res="auto">${ICON.auto}<span data-t="gAuto"></span></button>
+        </div>
+        <p class="mu-set-note" id="mu-res-note"></p>
+      </div>
+      <div class="mu-set-row"${PHONE ? ' hidden' : ''}>
+        <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
+        <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
+      </div>
+      <div class="mu-set-group">
         <h3 id="mu-mini-h" data-t="miniMap"></h3>
         <div class="mu-seg" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
           ${MINIMAP_CHOICES.map((m) => `<button type="button" data-minimap="${m}">${MINI_CHOICE[m].icon}<span data-t="${MINI_CHOICE[m].word}"></span></button>`).join('')}
@@ -359,6 +377,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const weatherNote = panel.querySelector<HTMLElement>('#mu-weather-note')!;
   const graphicsBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-graphics]')];
   const graphicsNote = panel.querySelector<HTMLElement>('#mu-graphics-note')!;
+  /** The resolution's choice: Auto, then this window's sizes after it (`buildRes`), and its note. */
+  const resSeg = panel.querySelector<HTMLElement>('.mu-res-seg')!;
+  const resAuto = resSeg.querySelector<HTMLButtonElement>('button[data-res="auto"]')!;
+  const resNote = panel.querySelector<HTMLElement>('#mu-res-note')!;
   const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-minimap]')];
   const miniNote = panel.querySelector<HTMLElement>('#mu-mini-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
@@ -433,6 +455,102 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const g = GRAPHICS_CHOICE[settings.graphics] ?? GRAPHICS_CHOICE.auto;
     graphicsNote.textContent = g === GRAPHICS_CHOICE.auto ? t(g.note, { level: t(GRAPHICS_CHOICE[graphicsLevel].word) }) : t(g.note);
   }
+
+  // ── Resolution (resolution.ts): Auto, then the sizes for this window ────
+  /** The sizes in the menu now, biggest first, and their buttons (after Auto, in the same order). */
+  let resSizes: ResolutionSize[] = [];
+  let resBtns: HTMLButtonElement[] = [];
+  /** The size drawn now (main.ts `setDrawSize`; until it says, from resolution.ts `view`): Auto's note names it. */
+  let drawSize: { w: number; h: number } | null = null;
+  /** "2880 × 1800": Khmer digits in Khmer, the × kept with its numbers (no-break spaces). */
+  const sizeText = (w: number, ht: number) => `${num(w)}\u00a0×\u00a0${num(ht)}`;
+  /**
+   * The size buttons for this window on this screen (`resolutionSizes`),
+   * made again only when the list changes (the panel opens, the window is
+   * resized or moves to another screen). A size that had the keyboard's
+   * focus hands it on to the nearest new one.
+   */
+  function buildRes(): void {
+    const sizes = resolutionSizes();
+    const same = sizes.length === resSizes.length && sizes.every((s, i) => s.w === resSizes[i].w && s.h === resSizes[i].h && s.whole === resSizes[i].whole);
+    if (!same) {
+      const had = resBtns.indexOf(document.activeElement as HTMLButtonElement);
+      const hadShare = had >= 0 ? resSizes[had].share : null;
+      for (const b of resBtns) b.remove();
+      resBtns = sizes.map((s, i) => {
+        const b = el('button', '', `<span class="mu-res-size"></span>${s.whole ? `<span class="mu-res-mark">${ICON.sharp}</span>` : ''}`);
+        b.type = 'button';
+        b.dataset.i = String(i);
+        resSeg.append(framed(b, 'xs'));
+        return b;
+      });
+      resSizes = sizes;
+      if (hadShare !== null && sizes.length) {
+        let near = 0;
+        for (let i = 1; i < sizes.length; i++) if (Math.abs(sizes[i].share - hadShare) < Math.abs(sizes[near].share - hadShare)) near = i;
+        resBtns[near].focus({ preventScroll: true });
+      }
+    }
+    labelRes();
+    syncRes();
+    scrollEdges();
+  }
+  /** The sizes' words: "2880 × 1800", and a whole step's mark named ("sharp"). */
+  function labelRes(): void {
+    resSizes.forEach((s, i) => {
+      const b = resBtns[i];
+      const text = sizeText(s.w, s.h);
+      b.querySelector('.mu-res-size')!.textContent = text;
+      if (!s.whole) return;
+      b.setAttribute('aria-label', t('resSharpSize', { size: text }));
+      b.title = t('resSharp');
+    });
+  }
+  /** The choice pressed (a size kept from another window size or screen: none of them), and the note. */
+  function syncRes(): void {
+    const r = settings.resolution;
+    const pick = isResolutionShare(r) ? sizeForShare(r, resSizes) : null;
+    resAuto.setAttribute('aria-pressed', String(!isResolutionShare(r)));
+    resBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(resSizes[i] === pick)));
+    fillResNote();
+  }
+  /**
+   * The note under the sizes: Auto's names the size drawn now; a size says
+   * what it means (every screen dot; each pixel a crisp square of dots; or
+   * scaled up smoothly); a size kept from another window size or screen,
+   * the size it draws at now.
+   */
+  function fillResNote(): void {
+    const r = settings.resolution;
+    if (!isResolutionShare(r)) {
+      const d = drawSize ?? { w: Math.round(innerWidth * view.scene), h: Math.round(innerHeight * view.scene) };
+      resNote.textContent = t('resAutoNote', { size: sizeText(d.w, d.h) });
+      return;
+    }
+    const pick = sizeForShare(r, resSizes);
+    if (!pick) {
+      const here = sizeOfShare(r);
+      resNote.textContent = t('resOtherNote', { size: sizeText(here.w, here.h) });
+      return;
+    }
+    const n = Math.round(stepOf(pick.share).step);
+    resNote.textContent = !pick.whole ? t('resSmoothNote') : n <= 1 ? t('resFullNote') : t('resWholeNote', { n: num(n) });
+  }
+  buildRes();
+  // (while the panel shows: a new window size, or another screen or zoom, which may come without a resize)
+  addEventListener('resize', () => settingsOpen && buildRes());
+  let dprQuery: MediaQueryList | null = null;
+  function watchDpr(): void {
+    dprQuery?.removeEventListener?.('change', onDpr);
+    dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    dprQuery.addEventListener?.('change', onDpr);
+  }
+  function onDpr(): void {
+    watchDpr();
+    if (settingsOpen) buildRes();
+  }
+  watchDpr();
+
   addEventListener(
     'pointerdown',
     (e) => {
@@ -450,6 +568,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     for (const e of wakeBtn.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillFlyNote();
     fillGraphicsNote();
+    labelRes();
+    fillResNote();
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-title]')) e.title = t(e.dataset.tTitle as WordKey);
     for (const c of cards) {
@@ -659,6 +779,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     for (const b of graphicsBtns) b.setAttribute('aria-pressed', String(b.dataset.graphics === settings.graphics));
     // (and the graphics choice's)
     fillGraphicsNote();
+    // (the resolution's size pressed, and its note)
+    syncRes();
     for (const b of miniBtns) b.setAttribute('aria-pressed', String(b.dataset.minimap === settings.miniMap));
     miniNote.dataset.t = MINI_CHOICE[settings.miniMap]?.note ?? 'miniMapShowNote';
     miniNote.textContent = t(miniNote.dataset.t as WordKey);
@@ -681,6 +803,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     settingsOpen = open;
     const fromCredits = creditsOpen;
     if (!open) showCredits(false);
+    // (the resolution's sizes for the window and screen as they are now)
+    if (open) buildRes();
     panel.classList.toggle('is-open', open);
     // (the roaming mini-map, under the gear, fades while the panel is open: map.css)
     root.classList.toggle('mu-set-open', open);
@@ -790,6 +914,15 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       change({ graphics });
       h.onSound('toggle');
     });
+  // (the sizes are made again with the window: one listener for Auto and them all)
+  resSeg.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('button');
+    if (!b || !resSeg.contains(b) || b.getAttribute('aria-pressed') === 'true') return;
+    const s = b === resAuto ? null : resSizes[Number(b.dataset.i)];
+    if (b !== resAuto && !s) return;
+    change({ resolution: s ? s.share : 'auto' });
+    h.onSound('toggle');
+  });
   for (const b of miniBtns)
     b.addEventListener('click', () => {
       const miniMap = b.dataset.minimap as MiniMapChoice;
@@ -963,6 +1096,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   // ── Shot states (`uistate=`) ─────────────────────────────────────────────
   if (shot) {
+    /** `scroll:<group>`: the settings' body scrolled to that group's heading (`#mu-<group>-h`). */
+    let scrollGroup = '';
     for (const s of (params.get('uistate') ?? '').split(',').filter(Boolean)) {
       const [k, v] = s.split(':') as [string, PlaceId | undefined];
       const c = v ? cardById.get(v) : undefined;
@@ -980,6 +1115,16 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         settings = { ...settings, weather: v as string as WeatherSetting };
         syncSettings();
       }
+      // (`res:<share>` or `res:auto`: the panel shows that resolution picked, e.g. `uistate=settings,res:0.5`; `battery`: the battery saver on)
+      if (k === 'res' && ((v as string) === 'auto' || isResolutionShare(Number(v)))) {
+        settings = { ...settings, resolution: (v as string) === 'auto' ? 'auto' : Number(v) };
+        syncSettings();
+      }
+      if (k === 'battery') {
+        settings = { ...settings, battery: true };
+        syncSettings();
+      }
+      if (k === 'scroll' && v) scrollGroup = v;
       if (k === 'credits') {
         toggleSettings(true, false);
         showCredits(true);
@@ -995,6 +1140,17 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         fade.querySelector('p')!.textContent = t('settingOut', { name: placeText(p).name });
         fade.classList.add('is-on', 'is-half');
       }
+    }
+    if (scrollGroup) {
+      // (again once the web fonts are in: the words change size)
+      const scrollThere = () => {
+        const head = setBody.querySelector<HTMLElement>(`#mu-${scrollGroup}-h`);
+        if (!head) return;
+        setBody.scrollTop += head.getBoundingClientRect().top - setBody.getBoundingClientRect().top - 8 * unit;
+        scrollEdges();
+      };
+      scrollThere();
+      void document.fonts?.ready.then(scrollThere);
     }
   }
 
@@ -1185,6 +1341,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (level === graphicsLevel) return;
       graphicsLevel = level;
       fillGraphicsNote();
+    },
+    setDrawSize(w, ht) {
+      if (drawSize?.w === w && drawSize.h === ht) return;
+      drawSize = { w, h: ht };
+      if (!isResolutionShare(settings.resolution)) fillResNote();
     },
     setSoundHeld,
   };
