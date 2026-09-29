@@ -169,14 +169,21 @@ export class HeightField {
   /** The jungle trails, a sample every metre (ground `y`; `wet` over water, where a bridge site is). */
   readonly trails: { name: string; samples: PathSample[] }[] = [];
 
-  constructor() {
+  /** A new, empty land; or one made elsewhere (`data`: `fieldData`, e.g. from a build worker, map/work/). */
+  constructor(data?: FieldData) {
     const n = this.nx * this.nz;
-    this.height = new Float32Array(n);
-    this.water = new Float32Array(n).fill(NO_WATER);
-    this.surface = new Uint8Array(n);
-    this.occupied = new Uint8Array(n);
-    this.lod = new Uint8Array(n);
-    this.trail = new Uint8Array(n);
+    this.height = data?.height ?? new Float32Array(n);
+    this.water = data?.water ?? new Float32Array(n).fill(NO_WATER);
+    this.surface = data?.surface ?? new Uint8Array(n);
+    this.occupied = data?.occupied ?? new Uint8Array(n);
+    this.lod = data?.lod ?? new Uint8Array(n);
+    this.trail = data?.trail ?? new Uint8Array(n);
+    if (!data) return;
+    if (this.height.length !== n) throw new Error(`HeightField: ${this.height.length} cells, not ${n}`);
+    this.falls.push(...data.falls);
+    this.rivers.push(...data.rivers);
+    this.paths.push(...data.paths);
+    this.trails.push(...data.trails);
   }
 
   /** Cell index of a map point, or −1 outside the grid. */
@@ -245,6 +252,29 @@ export class HeightField {
     for (let k = Math.max(0, k0); k <= Math.min(this.nz - 1, k1); k++)
       for (let i = Math.max(0, i0); i <= Math.min(this.nx - 1, i1); i++) this.occupied[i + k * this.nx] = 1;
   }
+}
+
+/**
+ * A land as plain data: its cell arrays and lists (what a structured clone or
+ * a transfer between threads keeps). `new HeightField(data)` takes it back.
+ */
+export interface FieldData {
+  height: Float32Array;
+  water: Float32Array;
+  surface: Uint8Array;
+  occupied: Uint8Array;
+  lod: Uint8Array;
+  trail: Uint8Array;
+  falls: Waterfall[];
+  rivers: { name: string; samples: RiverSample[] }[];
+  paths: { name: string; samples: PathSample[] }[];
+  trails: { name: string; samples: PathSample[] }[];
+}
+
+/** A land's data (its own arrays and lists, not copies). */
+export function fieldData(f: HeightField): FieldData {
+  const { height, water, surface, occupied, lod, trail, falls, rivers, paths, trails } = f;
+  return { height, water, surface, occupied, lod, trail, falls, rivers, paths, trails };
 }
 
 /** Height of one plateau at a point, or −Infinity outside it. */
@@ -321,44 +351,67 @@ function edgeFall(x: number, z: number, h: number): number {
   return EDGE_Y + (h - EDGE_Y) * t * t * (3 - 2 * t);
 }
 
-/** Build the land from layout.ts. */
-export function buildHeightField(): HeightField {
-  const f = new HeightField();
-  const { nx, nz } = f;
-
-  // Land: the highest of the low ground and every plateau (each over the cells round it only),
-  // sinking at the edges.
-  const { height } = f;
-  const X0 = f.x0 + CELL / 2;
-  const Z0 = f.z0 + CELL / 2;
-  for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) height[i + k * nx] = baseHeight(X0 + i * CELL, Z0 + k * CELL);
+/**
+ * The land's first shape on cell rows `k0` ‥ `k1` − 1: the highest of the low
+ * ground and every plateau (each over the cells round it only; benches cut
+ * in after), sinking at the edges, in whole steps: `k1 − k0` rows of `nx`
+ * heights (into `out`, else a new array). Each cell on its own: a build
+ * worker makes a share of the rows (map/work/), the same numbers.
+ */
+export function firstShape(k0: number, k1: number, out?: Float32Array): Float32Array {
+  const x0 = MAP_BOUNDS.x0;
+  const z0 = MAP_BOUNDS.z0;
+  const nx = Math.round((MAP_BOUNDS.x1 - MAP_BOUNDS.x0) / CELL);
+  const height = out ?? new Float32Array((k1 - k0) * nx);
+  const X0 = x0 + CELL / 2;
+  const Z0 = z0 + CELL / 2;
+  for (let k = k0; k < k1; k++) for (let i = 0; i < nx; i++) height[i + (k - k0) * nx] = baseHeight(X0 + i * CELL, Z0 + k * CELL);
   // (benches after the rest: they cut into it)
   const order = PLATEAUS.map((_, n) => n).sort((a, b) => Number(!!PLATEAUS[a].bench) - Number(!!PLATEAUS[b].bench));
   for (const n of order) {
     const p = PLATEAUS[n];
     const R = Math.max(p.rx, p.rz) * (1 + (p.rough ?? 0.1));
-    const i0 = Math.max(0, Math.floor((p.x - R - f.x0) / CELL));
-    const i1 = Math.min(nx - 1, Math.floor((p.x + R - f.x0) / CELL));
-    const k0 = Math.max(0, Math.floor((p.z - R - f.z0) / CELL));
-    const k1 = Math.min(nz - 1, Math.floor((p.z + R - f.z0) / CELL));
-    for (let k = k0; k <= k1; k++)
+    const i0 = Math.max(0, Math.floor((p.x - R - x0) / CELL));
+    const i1 = Math.min(nx - 1, Math.floor((p.x + R - x0) / CELL));
+    const pk0 = Math.max(k0, Math.floor((p.z - R - z0) / CELL));
+    const pk1 = Math.min(k1 - 1, Math.floor((p.z + R - z0) / CELL));
+    for (let k = pk0; k <= pk1; k++)
       for (let i = i0; i <= i1; i++) {
-        const c = i + k * nx;
+        const c = i + (k - k0) * nx;
         const h = plateauHeight(p, X0 + i * CELL, Z0 + k * CELL, 1000 + n * 17);
         if (p.bench) {
           if (h > -Infinity) height[c] = h;
         } else height[c] = Math.max(height[c], h);
       }
   }
-  for (let k = 0; k < nz; k++)
+  for (let k = k0; k < k1; k++)
     for (let i = 0; i < nx; i++) {
-      const c = i + k * nx;
+      const c = i + (k - k0) * nx;
       height[c] = snap(edgeFall(X0 + i * CELL, Z0 + k * CELL, height[c]));
-      f.surface[c] = SURFACE.grass;
     }
+  return height;
+}
+
+/** Build the land from layout.ts (`first`: its first shape made already, `firstShape` of every row). */
+export function buildHeightField(ms?: Record<string, number>, first?: Float32Array): HeightField {
+  let t = performance.now();
+  const lap = (step: string) => {
+    const now = performance.now();
+    if (ms) ms[step] = (ms[step] ?? 0) + now - t;
+    t = now;
+  };
+  const f = new HeightField();
+  const { nx, nz } = f;
+
+  // Land: the highest of the low ground and every plateau, sinking at the edges; all grass so far.
+  if (first) f.height.set(first);
+  else firstShape(0, nz, f.height);
+  f.surface.fill(SURFACE.grass);
+  lap('shape');
 
   // Lakes: where they lie, and their shores shaped (the water comes after the rivers).
   const lakes = lakeMap(f);
+  lap('lakes');
 
   // Landmark pads: flat, exactly at the place's height (a cell of margin round them).
   for (const p of PLACES) {
@@ -449,9 +502,11 @@ export function buildHeightField(): HeightField {
     }
   }
 
+  lap('rivers');
   fillLakes(f, lakes);
   const paddyCells = layPaddies(f);
   layVillage(f, lakes, paddyCells);
+  lap('paddies');
 
   // Road: samples every metre on the ground; its cells turn to dirt and stay free of trees.
   for (const p of PATHS) {
@@ -478,11 +533,13 @@ export function buildHeightField(): HeightField {
     }
   }
 
+  lap('road');
   clearSites(f);
   clearHamlets(f);
   layTrails(f);
-
+  lap('trails');
   coarsen(f);
+  lap('coarse');
 
   // Bare rock on cliff lips.
   for (let k = 0; k < nz; k++)
@@ -492,6 +549,7 @@ export function buildHeightField(): HeightField {
       const [x, z] = f.cellCenter(i, k);
       if (f.dropAt(x, z) >= CELL * 3 && fbm(x / 6, z / 6, 77, 2) > 0.55) f.surface[c] = SURFACE.rock;
     }
+  lap('lips');
   return f;
 }
 

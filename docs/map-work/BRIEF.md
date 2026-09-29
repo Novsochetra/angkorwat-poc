@@ -50,6 +50,48 @@ the look for Phnom Kulen — ≈ (1150, 570, 1400, 760)).
   Landmarks, the road and the sites call `field.occupy(...)` for what they
   cover, so trees keep off; the glider ramps and the balloon's field are
   reserved just before the vegetation.
+- **Build workers** (`src/map/work/`: `build.ts` on the page, `build.worker.ts`
+  in each worker): the heavy pure-data work runs in Web Workers, a few at
+  once (the cores less two, at most 4; `workers=<n>` in the URL), and the
+  page's thread makes only the three.js objects, in the same order as before:
+  - the land (heightfield.ts), from the moment the page opens: its first
+    shape (`firstShape`: the low ground, mesas, benches, the sinking edges,
+    each cell on its own) a share of the rows in every worker, the rest in
+    the first; the others get a copy;
+  - the land's blocks (terrain/lay.ts `layTerrain`): each worker lays a share
+    of the 150 m chunks (`shareChunks`: about the same work each) and packs
+    them into their meshes' arrays (VoxelMesh.ts `packVoxelMesh`: matrices,
+    colours, sides shown, bounds). Each also sets the floor under every
+    column (`fineFloor`, `coarseFloor`: its blocks' sides are tested against
+    their neighbours') and places all the rocks (each takes its cells before
+    the next is placed), keeping only its chunks' blocks. This runs while
+    the page builds the atmosphere; in the terrain's place the page makes the
+    meshes (`unpackVoxelMesh`) and marks the cells the rocks took;
+  - the jungle's prototypes early (vegetation.ts `makeKits`), and in the
+    vegetation's place the jungle planted (`plantJungle`) on the land as the
+    page has it then (its surface and `occupied` are sent: what the
+    landmarks, the road and the sites took, the reserved spots); the builders
+    come back as typed arrays (transfer.ts);
+  - while the page waits for the jungle, another worker works out the sides
+    `cutCovered` (cull.ts) leaves out after the build (`coverGroups`,
+    `coverBoxes`), used only if those meshes are still the same by then.
+  The same code runs in a worker as on the page, on a copy of the land: the
+  same blocks, colours, instance order, bounds and block counts, and the
+  objects made in the same order (three sorts draws by id);
+  `node scripts/build-check.mjs work=".|" main=".|work=0"` hashes every part,
+  the land and the draw order both ways (`before="<checkout>|"` against
+  another commit, `live=1`, `prod=1`, `url=`). Blocks keep their code line
+  for the bug report (B): a worker sends each trace's stack as text, one
+  trace a line of code. A module a worker runs must not touch the DOM as it
+  loads, and reads the worker's URL, not the page's: send what a job needs
+  (protocol.ts). `work=0` builds all on the page; if a worker cannot start,
+  or a job fails or takes over 30 s, the rest is built on the page (logged
+  once: `[work] the build workers failed (…)`). The console's `[work] …` line
+  gives the workers, each job's ms in them, how long the page waited for each
+  part and when it asked (`__mapStats.work`); `land` in the `[map] built in`
+  line is now the page's wait for it. The statues sculpted in workers
+  (sacred/) are marked still (`markStill`) whenever they come, as the other
+  blocks of their part.
 - **Built only when wanted** (`src/map/lazy.ts`, main.ts `LATER`): `rain`,
   `snow`, `rainbow` and `festival` may never show on a visit. They are built
   in their place above only when the page opens wanting them: the URL holds
@@ -2093,7 +2135,9 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
 - Build with `VoxelBuilder` (`src/voxel/VoxelBuilder.ts`): `box`, `span`, or
   `grid({ cell, origin, mat })` → `set/put/fill` → `commit()` (hides buried
   cells, bakes soft AO). Then `buildVoxelMesh(builder, { quality: 'medium', name })`
-  (one `InstancedMesh` per family; casts and gets shadows).
+  (one `InstancedMesh` per family; casts and gets shadows; in two steps:
+  `packVoxelMesh`, plain arrays a build worker can make, then
+  `unpackVoxelMesh`, the meshes).
 - Families for the map (`src/voxel/materials.ts`, end of `VOXEL_MATERIALS`):
   `mapRock`, `mapGrass`, `mapLeaf`, `mapBark`, `mapStone` — plain faces, a
   soft rim that catches the low sun. Other families work too (`glow` is unlit;
@@ -2382,7 +2426,30 @@ moment, before → after, M1 Max):
   Roaming, the camera draws a third to a tenth of the jungle's triangles of
   the 300 m chunks (it stood in one, and drew it whole); the overview draws
   the jungle in ≈ 130 draws (was 40). `LEAF_GRID` is the knob: 150 m tiles
-  halve those draws for about a third more triangles roaming.
+  halve those draws for about a third more triangles roaming. The far trees
+  (2 m and 3 m cells, the `:far` meshes) cost ≈ 0.9–1.1 ms of the overview
+  on medium and high, ≈ 0.5 on low and the phone (not drawn at all); their
+  sway costs nothing measurable. On a computer impostors for them do not pay
+  (PERFORMANCE-PLAN.md, section 7, phase 3): pictures change the look where
+  the blocks are over a pixel, and exact ones (a ray walked through the
+  blocks' cells) cost more than the blocks.
+- **Pictures of the far trees on a phone** (veg/impostors.ts: the low level
+  on a phone screen only; `imp=0` off, `imppx=<px>` another limit): where a
+  leaf tile's far blocks are under 1.5 px, its far trees are one
+  camera-facing quad each, a picture of the tree's leaves from an atlas drawn
+  at load (74 far prototypes × 8 directions × 3 heights, 24² texels:
+  1776 × 576, 3.9 MB, 22–44 ms on the M1 Max), lit as the leaf blocks are
+  (colour, side, depth per texel: the sun or moon, the sky light, the still
+  shadow map at the leaf's point, haze, fog steps, snow) and writing the
+  leaf's depth; trunks and branches stay blocks. The tile's far blocks (the
+  last instances of its low-level leaf mesh) are left out of the picture
+  pass only (`count` for the view camera): they still cast the still
+  shadows, the snow's map sees them, and the bug report's picks name them.
+  A tile switches with a 0.4 s dither fade, blocks first kept until every
+  tree reaching in is a picture. The phone overview: −55 draws,
+  −0.27 M triangles, ≈ 0.3–0.4 ms here (the glider ≈ 0.1–0.2, walks 0);
+  the same look by eye (single pixels inside far crowns differ). Every other
+  level and screen draws exactly as before.
 - **Covered sides left out** on plain boxes, block by block (they lie against
   the next block; the GPU drops them before it sets them up): the leaves by
   the lattice's own open sides (veg/sway.ts `cut`), the land, temples,

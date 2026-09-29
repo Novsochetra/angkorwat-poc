@@ -1,8 +1,9 @@
 # World map: CPU / GPU / memory plan
 
-**Status: in three phases.** Phases 1 (items 1–4) and 2 (items 5–8b) are
-done: results in section 7. Phase 3 is item 9. Pick up from "Next
-steps" at the bottom.
+**Status: done, in three phases.** Phase 1 (items 1–4), phase 2 (items
+5–8b) and phase 3 (item 9: the build in workers, and pictures of the far
+trees on a phone) are done and measured: section 7. What is left is under
+"Next steps" at the bottom.
 
 ## 1. The problem
 
@@ -202,7 +203,7 @@ and banks' ms per frame. The haze inside materials has no switch yet; a
 | 7 | Build snow / festival / rain / walk maps lazily | `main.ts` `BUILDERS`, `roam/` | Less memory, faster load | Medium |
 | 8 | Review the 52 `frustumCulled = false` meshes | many files | Small–medium | Low |
 | 8b | Fog setting: **Auto / Full / Light / Simple, no Off**, separate from the Graphics level; mist planes only beyond the land (see 3c) | `sky/haze.ts`, `clouds.ts`, `graphics.ts`, settings UI | Small–medium, grows with resolution | Low–medium (check the look) |
-| 9 | Later: build parts in workers; impostors for far trees | build pipeline, `vegetation.ts` | Smoother load; fewer triangles | High (big change) |
+| 9 | Later: build parts in workers; impostors for far trees | build pipeline, `vegetation.ts` | Smoother load (workers: done, the land, its blocks, the jungle's planting and the covered sides; Start ≈ 0.45 s sooner, the longest task on the page 0.55–0.7 s → 0.25 s: section 7); fewer triangles (impostors: only on a phone, pictures of the far trees; elsewhere they do not pay: section 7) | High (big change) |
 
 **Recommended first batch: 1, 2, 3, 4.** They are small, safe, and cover
 both the loading screen and play.
@@ -232,7 +233,17 @@ both the loading screen and play.
 - [x] Phase 1: done and measured (section 7).
 - [x] Phase 2: items 5, 6, 7, 8, 8b, measured against the phase 1 commit
   (section 7).
-- [ ] Phase 3: item 9.
+- [x] Phase 3: item 9: the build in workers, and pictures of the far trees
+  on a phone (section 7). Far-tree impostors elsewhere were measured and do
+  not pay.
+- [ ] Later, small: start the build workers from a first module in
+  `index.html` (≈ 0.25 s sooner); pack the jungle's meshes in its worker
+  (≈ 0.1 s); move the landmarks' block work to workers (≈ 0.7 s of the
+  page's work, each part split into a data step and an objects step);
+  sort opaque draws front to back (≈ 0.5 ms with the rim copies, item 5).
+- [ ] Known: snowmen are not solid any more (item 7); the kit studio's
+  `water-fx` shader error and the lily pads over budget were there before
+  (`npm run kitcheck`).
 
 ## 7. Results
 
@@ -362,3 +373,197 @@ fewer in every view.
   405 MB (+30: medium's second still map, 128 MB without the lean maps);
   the GPU process 26 MB less; the tab about the same; moving the mouse
   55 → 59 frames a second.
+
+### Phase 3, item 9 (first half): the build in Web Workers
+
+What changed (`src/map/work/`; the guide: BRIEF.md "How the page is built"):
+
+- **The land** (heightfield.ts) is built from the moment main.ts runs: its
+  first shape (`firstShape`: low ground, mesas, benches, the sinking edges,
+  each cell on its own) a share of the rows in each of 4 workers (53 ms),
+  the rest in the first (150 ms). The page gets a copy, the other workers
+  too.
+- **The land's blocks** (terrain/lay.ts): each worker lays a share of the
+  70 chunks (`shareChunks`, by their columns' walls) and packs them into the
+  meshes' arrays (VoxelMesh.ts `packVoxelMesh`: matrices, colours, sides
+  shown, bounds: `buildVoxelMesh` is now `packVoxelMesh` + `unpackVoxelMesh`),
+  315–340 ms each, while the page builds the atmosphere. Each also sets the
+  floor under every column and places all the rocks (each rock takes its
+  cells before the next is placed), keeping only its own chunks' blocks. In
+  the terrain's place the page only makes the meshes.
+- **The jungle**: its prototypes are made early in a worker; it is planted
+  there in the vegetation's place, on the land as the page has it then
+  (surface and `occupied` sent), and its builders come back as typed arrays
+  (transfer.ts). The page waits for it: the planting needs what the
+  landmarks, road, sites and reserved spots took, and the meshes are made in
+  their place.
+- **The covered sides** (cull.ts `cutCovered`, after the build): worked out in
+  another worker while the page waits for the jungle (`coverGroups`,
+  `coverBoxes`), used if those meshes are unchanged by then.
+- **The objects are made on the page in the same order as before**: three
+  sorts draws of the same material and depth by object id. Only the ids of
+  what comes after the jungle shift, all by 7 (scatter.ts makes 7 cameras
+  while planting, now in a worker), which keeps their order.
+- **Found on the way:** the statues sculpted in workers (sacred/) were marked
+  still (low and medium's still shadows) only if they came before the still
+  marking: most did on the live page, none in a shot, and the workers' waits
+  let some in first. They are marked as they come now (main.ts).
+- Left on the page: the landmarks, road, sites, village, hamlets, water and
+  the rest. Their blocks are made between three.js objects (lights, glows,
+  sculpted statues, materials) and read the scene and the land as the parts
+  before them left it: moving them needs each rewritten into a data step and
+  an objects step, for about 0.7 s of the page's work.
+
+Measured on the M1 Max (production build, 1440 × 900 at 2, Chromium on
+Metal; before 50d5972, after with the workers; the runs taken in turn, 4 of
+each; `npm run idle` twice each gave the same Start and build):
+
+| | before | after |
+|---|---|---|
+| Start shows after | 5.13–5.38 s (5.24) | 4.62–5.03 s (4.81) |
+| the build (the page's time in each part's place) | 3.07–3.21 s | 2.59–2.64 s, of it ≈ 0.7 s waiting for workers |
+| main thread busy from the page opening to Start | 89–93 % (4.6–4.9 s of tasks) | 75–79 % (3.5–3.9 s) |
+| long tasks (over 50 ms): all, the longest | 3.6–3.8 s, 554–690 ms | 2.2–2.4 s, 223–247 ms |
+| frames the loading screen got | 97–136 | 174–225 |
+| `phone=1` (low): Start, busy, longest task | 5.10–5.16 s, 88–89 %, 554–558 ms | 4.57–4.74 s, 72–77 %, 208–216 ms |
+
+Per part, the page's time (ms): land 291–299 → 240–268 (waiting), terrain
+554–690 → 99–130, vegetation 425–441 → 482–490 (≈ 385 waiting, then its
+meshes: the planting is slower in a worker, ≈ 355–380), covered 131–132 → 3.
+Waiting on Start, the overview, the mouse and a window without focus: the
+same frames and busy % (`npm run idle`); the tab ≈ 10 MB more on the loading
+screen (the workers stop after the build). 4 workers (of the 10 cores): 6
+were slower each (the land's blocks 360–410 ms), 1 or 2 give the same map.
+
+The same map, proved by `scripts/build-check.mjs` (every part's geometry,
+attributes, instance matrices and colours, bounds, names, flags, user data,
+each block's code line, the draw order by id rank, the land's arrays and
+lists, the blocks line): workers = the page alone (`work=0`) = the phase 2
+commit, in shots (twice) and on the live page, on the dev server and in a
+production build, at `quality=low`, `phone=1`, `parts=`, with 1, 2 and 6
+workers, and with workers missing, failing to start, failing a job or never
+answering (built on the page). The shots (overview, night, a walk, the
+glider, low, the cards) are pixel for pixel the same; the walk maps' answers
+on a 2.3 m grid, the kit studio's 12 sections, and the bug report's code
+lines (B) too. What differs from the phase 2 commit: the land's code lines
+in columns.ts moved (lines added above them), and the jungle's meshes are
+made far before near (the impostors' change, below).
+
+Next: start the workers from a small first module in index.html (they
+start 310–520 ms into the page now, once the page's modules are loaded and
+run; the land would be ready as the page asks: ≈ 0.25 s sooner here, more
+over a slow network); pack the jungle's meshes in its worker too (≈ 0.1 s).
+
+### Phase 3, item 9 (second half): impostors for far trees (only on a phone)
+
+The far trees are the jungle's 2 m and 3 m cells (vegetation.ts's far
+meshes: 2 205 trees, ≈ 79 k leaf blocks and 1 278 free leaf boxes in 106
+leaf tiles, and their bark). Since phase 2 they are plain boxes with their
+covered sides cut (≈ 8 triangles a block drawn), unpainted, and they no
+longer cost much. Measured on the M1 Max against the phase 2 commit, each
+case in one page with the variants taken in turn (3 rounds, ms a frame):
+"not drawn" is the most any impostor could save; "pictures" is a quad per
+tree with an alpha-tested picture in their place; "exact" is the impostor
+below, against the real blocks.
+
+| view | frame | far trees not drawn | pictures in place | exact impostors |
+|---|---|---|---|---|
+| overview, medium, 1280 × 720 | 12.3 | −0.91 | −0.82 | +0.30 (slower) |
+| overview, medium, 2880 × 1800 | 24.6 | −0.90 | −0.80 | +2.03 |
+| the glider's height (`cam=0,160,60,0,110,-240`), medium | 9.1 | −1.01 | −0.81 | −0.11 |
+| walk on Kulen, medium | 4.8 | −0.29 | −0.17 | +0.18 |
+| overview, high, 1280 × 720 | 12.9 | −0.84 | −0.86 | +0.67 |
+| overview, high, 2880 × 1800 | 25.5 | −1.07 | −0.91 | +3.02 |
+| overview, low, 1280 × 720 (leaves) | 5.9 | −0.50 | −0.49 | +0.24 |
+| phone (low, 844 × 390; leaves) | 5.4 | −0.43 … −0.60 (two runs) | −0.51 | −0.10 |
+
+- **Pictures cannot hold the look where they pay.** A far block is 3–8 px
+  across in the overview at 2880 × 1800 (441–927 m away), 4–12 px from the
+  glider's height, 1.5–4 px at 1280 × 720: the blocks of a crown read one by
+  one, and a picture taken from a few angles slides and changes them as the
+  view turns (and lights them, sways them and shades them from each other
+  only roughly). Only on a phone are they about a pixel (0.7–2 px: pictures
+  of ≈ 8 px trees would pass); there they would save ≈ 0.5 ms here, ≈ 9 %
+  of the phone's overview, and only past ≈ 550 m while roaming.
+- **Exact impostors cost more than the blocks.** Built and checked (not
+  kept): a tile's far leaves cut into bricks of 8³ cells, their colours in a
+  3D texture (3.0 MB, 38 ms at load), each brick drawn as the box round its
+  cells, each pixel walking its ray cell by cell to the first block and
+  shading it with the leaf family's own material (grain, relief, sway, the
+  light, shadows, haze, snow), writing its depth. The picture is the blocks'
+  own (overview 2×: mean 0.16 of 255; only the MSAA-smoothed edges differ,
+  the ray gives one sample a pixel). But a pixel that writes its own depth
+  gets no hidden-surface removal: every crown shell a ray crosses is shaded
+  and then covered (1280 × 720: ≈ 0.4 ms the walk, ≈ 1.1 ms the shading, for
+  ≈ 1 ms of blocks), and it grows with the pixels.
+- Also measured: the far leaves without their sway (the cut kept) are no
+  faster (±0.1 ms): their cost is the blocks' vertices, not the wind.
+
+So on a computer the far trees stay blocks: ≈ 1 ms of a 12–25 ms frame is
+left in them, and every impostor either changes the look or costs more.
+
+**On a phone: pictures of the far trees** (veg/impostors.ts; the low level
+on a phone screen, `phone=1`; nothing else changes, nothing is built
+elsewhere). Where a leaf tile's far blocks are under 1.5 px across, its far
+trees are drawn as one camera-facing quad each, showing a picture of the
+tree's leaves:
+
+- **The atlas**, drawn at load from the far prototypes the jungle was
+  planted from (74 kinds, 1 776 trees on the low build): 8 directions × 3
+  heights over the horizon (3°, 15°, 30°), 24 × 24 texels a picture: the
+  leaf's colour as built (baked shade, the family's grain), the side it
+  shows and its depth; its bark (trunk, branches) a hole. One RGBA8 texture,
+  1776 × 576 (3.9 MB), 24 draws: 22–44 ms on the M1 Max as busy as it was
+  (15–25 of it the atlas, most of that its little program compiling; a
+  phone's CPU is about this one's, its GPU 5–8 times slower on 24 small
+  draws). The planting (in a build
+  worker or on the page) passes the far trees on as plain arrays.
+- **Drawn** as the blocks are lit: a tree picks the view nearest to how the
+  camera sees it (its stamp's quarter turn and mirror undone), and each
+  texel is shaded by the leaf family's light on the side it shows (the sun
+  or the moon, the sky light, the still shadow map at the texel's point),
+  the haze and fog steps and the snow, and writes the leaf's own depth (so
+  crowns, trunks and the land sort as the blocks did). The real trunks and
+  branches stay blocks.
+- **The blocks**: the low level puts a tile's near and far blocks in one
+  mesh, the far ones last: while a tile is pictures, the picture pass draws
+  only the instances before them (`count`, for the view camera only). No
+  draw more; tiles with only far trees draw nothing. The shadow passes, the
+  snow's map from above and the bug report's picks still see every block:
+  the trees keep casting the still shadows, and a pick on a picture names
+  the tree's block and its code (checked: 6 of 6 picks, species.ts).
+- **The switch**: per tile (with 6 % hold); a tree whose crown reaches into
+  a tile under the limit is a picture, and a tile's blocks are left out
+  only once every tree reaching in is one; the pictures fade in over 0.4 s
+  (a dither) before the blocks go, and fade out over them when they come
+  back.
+
+Look (M1 Max, before | after | ×8 diff): the landscape phone overview
+(844 × 390) mean 0.25 of 255, 0.74 % of pixels over 8 levels, single pixels
+inside the far crowns (Kulen's slope, the back of the western mesa); by eye
+the same, by day, at dusk, by moonlight, at dawn and in rain (every phone
+shot is the Simple fog step: Auto → low → Simple). The glider's height:
+0.26 % of pixels. Portrait (390 × 844, its pixels smaller: few tiles under
+1.5 px): ≤ 16 levels on a pixel, none over 8 in the overview. Walks looking
+out past ≈ 550 m: no pixel changes (the far trees there are in the haze or
+behind the land). Moving (the glider's height flying toward Kulen, 90
+frames, tiles switching both ways): the frame-to-frame change the same as
+with blocks (9.09 and 9.09, the worst frame +0.02): no pop. Every other level
+and screen, pixel for pixel the same (desktop low, medium, high by night, a
+phone on medium; and the blocks' path on a phone, pictures off).
+
+Speed, `npm run perf -- levels=phone,low` before → after, back to back,
+twice (ms a frame; other GPU work ran at the same time: ±0.3):
+
+| view | phone (low, 844 × 390) | draws | triangles M |
+|---|---|---|---|
+| overview | 5.3 / 5.5 → 5.2 / 5.0 | 517 → 462 | 3.38 → 3.11 |
+| night | 5.4 / 5.5 → 5.0 / 5.1 | 518 → 463 | 3.39 → 3.12 |
+| dusk (day turning) | 5.5 / 5.7 → 5.3 / 5.3 | 520 → 465 | 3.40 → 3.13 |
+| hang glider | 4.7 / 4.9 → 4.7 / 4.8 | 457 → 426 | 2.96 → 2.82 |
+| Kulen walk, village walk | the same | the same (+1) | the same |
+
+The same page with the pictures switched off and on in turn (5 rounds,
+steadier): the overview 0.34 ms, night 0.38, the glider's height 0.22, the
+Kulen walk 0. Low on a desktop, medium and high: the same draws and
+triangles, ms within the noise.

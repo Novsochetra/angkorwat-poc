@@ -1,4 +1,5 @@
 import {
+  Box3,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -10,9 +11,11 @@ import {
   InstancedMesh,
   Matrix4,
   Quaternion,
+  Sphere,
   Vector3,
 } from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { SourceTrace } from '../feedback/sourceTrace';
 import { getVoxelMaterial, VOXEL_MATERIALS, voxelPatternOf, type VoxelMaterialKey, type VoxelMaterialSpec } from './materials';
 import { getVoxelDepthMaterial } from './shadow';
 import type { Surf, VoxelBox, VoxelBuilder } from './VoxelBuilder';
@@ -452,30 +455,34 @@ export function shownSides(boxes: VoxelBox[], ground?: CoverGround): Uint8Array 
  * a phone).
  */
 const COMMON_SIDES = { blocks: 1000, share: 0.15 };
-function bySides(boxes: VoxelBox[], shown: Uint8Array): { sides: number; list: VoxelBox[] }[] {
-  const families = new Map<string, Map<number, VoxelBox[]>>();
+/** The groups, each with its blocks and (`at`) where each is in `boxes` (its sides shown: `shown[at[i]]`). */
+function bySides(boxes: VoxelBox[], shown: Uint8Array): { sides: number; list: VoxelBox[]; at: number[] }[] {
+  const families = new Map<string, Map<number, { list: VoxelBox[]; at: number[] }>>();
   for (let j = 0; j < boxes.length; j++) {
     const b = boxes[j];
     let groups = families.get(b.mat);
     if (!groups) families.set(b.mat, (groups = new Map()));
     let g = groups.get(shown[j]);
-    if (!g) groups.set(shown[j], (g = []));
-    g.push(b);
+    if (!g) groups.set(shown[j], (g = { list: [], at: [] }));
+    g.list.push(b);
+    g.at.push(j);
   }
-  const out: { sides: number; list: VoxelBox[] }[] = [];
+  const out: { sides: number; list: VoxelBox[]; at: number[] }[] = [];
   for (const groups of families.values()) {
     let total = 0;
-    for (const g of groups.values()) total += g.length;
+    for (const g of groups.values()) total += g.list.length;
     const min = Math.max(COMMON_SIDES.blocks, total * COMMON_SIDES.share);
     const rest: VoxelBox[] = [];
+    const restAt: number[] = [];
     let restSides = 0;
     for (const [m, g] of groups)
-      if (m !== 63 && g.length >= min) out.push({ sides: m, list: g });
+      if (m !== 63 && g.list.length >= min) out.push({ sides: m, list: g.list, at: g.at });
       else {
-        for (const b of g) rest.push(b);
+        for (const b of g.list) rest.push(b);
+        for (const j of g.at) restAt.push(j);
         restSides |= m;
       }
-    if (rest.length) out.push({ sides: restSides, list: rest });
+    if (rest.length) out.push({ sides: restSides, list: rest, at: restAt });
   }
   return out;
 }
@@ -532,48 +539,126 @@ const patterned = (mat: VoxelMaterialKey) => voxelPatternOf(mat) !== undefined;
  * Turn a builder into instanced voxel meshes: one InstancedMesh per material
  * family (sizes live in the instance matrices), so a whole character is a
  * dozen draw calls and a world region only a few.
+ *
+ * In two steps: {@link packVoxelMesh} works out every instance's data (plain
+ * arrays, no three.js objects: it also runs in a Web Worker, map/work/), and
+ * {@link unpackVoxelMesh} turns that into the meshes.
  */
 export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions = {}): Group {
+  const traces = new TraceTable();
+  return unpackVoxelMesh(packVoxelMesh(builder, options, traces), traces.list);
+}
+
+/**
+ * The code lines that made the blocks (dev builds: `VoxelBox.src`), each
+ * kept once: a packed mesh names a block's by its index here.
+ */
+export class TraceTable {
+  readonly list: SourceTrace[] = [];
+  private readonly index = new Map<SourceTrace, number>();
+
+  /** Index of a trace (added the first time), −1 for none. */
+  of(trace: SourceTrace | undefined): number {
+    if (!trace) return -1;
+    let i = this.index.get(trace);
+    if (i === undefined) {
+      i = this.list.length;
+      this.list.push(trace);
+      this.index.set(trace, i);
+    }
+    return i;
+  }
+}
+
+/** One family's instanced mesh as plain data ({@link packVoxelMesh}), per instance in the order drawn. */
+export interface PackedVoxelMesh {
+  mat: VoxelMaterialKey;
+  /** The sides drawn, bits as `open` (63: all). */
+  sides: number;
+  /** The block's shape (`userData.voxelShape`). */
+  segments: number;
+  flat: boolean;
+  count: number;
+  /** 16 a block: its matrix (`instanceMatrix`). */
+  matrix: Float32Array;
+  /** 3 a block: its linear colour (times its shade, but for patterned families: `instanceColor`). */
+  color: Float32Array;
+  /** `voxOpen`, `voxRadius`, `voxSurf` (patterned families), `voxShown` (`hideCovered`). */
+  open: Float32Array;
+  radius: Float32Array;
+  surf: Float32Array | null;
+  shown: Float32Array | null;
+  /** Per block: its trace's index in the pack's {@link TraceTable}, −1 for none (null: no block has one). */
+  src: Int32Array | null;
+  /** Round every block, as `InstancedMesh.computeBoundingSphere` / `computeBoundingBox` make them: centre and radius; min and max. */
+  sphere: Float64Array;
+  box: Float64Array;
+}
+
+/** A builder's meshes as plain data ({@link packVoxelMesh}), for {@link unpackVoxelMesh}. */
+export interface PackedVoxelGroup {
+  name: string;
+  offset: [number, number, number];
+  castShadow: boolean;
+  receiveShadow: boolean;
+  /** Blocks in all its meshes (the builder's). */
+  blocks: number;
+  meshes: PackedVoxelMesh[];
+}
+
+const _sphere = new Sphere();
+const _box = new Box3();
+
+/** Every instance's data of {@link buildVoxelMesh}, as plain arrays (their buffers can be moved to another thread). */
+export function packVoxelMesh(builder: Pick<VoxelBuilder, 'boxes'>, options: VoxelMeshOptions = {}, traces = new TraceTable(), ms?: Record<string, number>): PackedVoxelGroup {
+  let t = ms ? performance.now() : 0;
+  const lap = (step: string) => {
+    if (!ms) return;
+    const now = performance.now();
+    ms[step] = (ms[step] ?? 0) + now - t;
+    t = now;
+  };
   const quality = options.quality ?? 'high';
   const offset = options.offset ?? new Vector3();
-  const buckets = new Map<string, VoxelBox[]>();
-  for (const b of builder.boxes) {
-    let list = buckets.get(b.mat);
-    if (!list) buckets.set(b.mat, (list = []));
-    list.push(b);
-  }
-
-  const group = new Group();
-  group.name = options.name ?? 'voxels';
-  // Builder space = instance position + offset (the feedback tool reports picks in it).
-  group.userData.voxelOffset = offset.clone();
+  const out: PackedVoxelGroup = {
+    name: options.name ?? 'voxels',
+    offset: [offset.x, offset.y, offset.z],
+    castShadow: options.castShadow ?? true,
+    receiveShadow: options.receiveShadow ?? true,
+    blocks: builder.boxes.length,
+    meshes: [],
+  };
   const hide = options.hideCovered;
   const shown = hide ? shownSides(builder.boxes, hide === true ? undefined : hide.ground) : null;
-  const shownOf = shown ? new Map(builder.boxes.map((b, j) => [b, shown[j]])) : null;
-  const lists = shown ? bySides(builder.boxes, shown) : [...buckets.values()].map((l) => ({ sides: 63, list: l }));
-  for (const { sides, list } of lists) {
+  lap('shown');
+  // A mesh per family (per family and the sides its blocks show, `hideCovered`), its blocks in the builder's order.
+  // (`at`: where each block is in the builder, for its sides shown.)
+  let lists: { sides: number; list: VoxelBox[]; at?: number[] }[];
+  if (shown) lists = bySides(builder.boxes, shown);
+  else {
+    const buckets = new Map<string, VoxelBox[]>();
+    for (const b of builder.boxes) {
+      let list = buckets.get(b.mat);
+      if (!list) buckets.set(b.mat, (list = []));
+      list.push(b);
+    }
+    lists = [...buckets.values()].map((l) => ({ sides: 63, list: l }));
+  }
+  lap('sides');
+  for (const { sides, list, at } of lists) {
     const { mat } = list[0];
     const spec = VOXEL_MATERIALS[mat];
     const chamfer = (spec as VoxelMaterialSpec).chamfer ?? false;
     const segments = chamfer ? Math.min(1, SEGMENTS[quality]) : SEGMENTS[quality];
     const geometry = unitVoxelGeometry(spec.bevel, segments, chamfer);
-    // A thin geometry wrapper per mesh: shares the cached index/position/normal
-    // buffers and adds the per-instance side masks and bevel radius.
-    const geo = new BufferGeometry();
-    geo.setIndex(openSidesIndex(geometry, sides));
-    geo.setAttribute('position', geometry.getAttribute('position'));
-    geo.setAttribute('normal', geometry.getAttribute('normal'));
-    const open = new Float32Array(list.length);
-    const radius = new Float32Array(list.length);
+    const n = list.length;
+    const matrix = new Float32Array(n * 16);
+    const color = new Float32Array(n * 3);
+    const open = new Float32Array(n);
+    const radius = new Float32Array(n);
     // Patterned families carry their surf amounts + shade; their colour stays pure.
-    const surf = patterned(mat) ? new Float32Array(list.length * 4) : null;
-    const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), list.length);
-    mesh.name = `${group.name}:${mat}`;
-    // (the look panel rebuilds the edges from this: segments, flat cut or round)
-    mesh.userData.voxelShape = { segments, flat: chamfer };
-    // (the sides drawn, when some are left out: a new shape of block keeps to them, openSidesIndex)
-    if (sides !== 63) mesh.userData.voxelSides = sides;
-    for (let i = 0; i < list.length; i++) {
+    const surf = patterned(mat) ? new Float32Array(n * 4) : null;
+    for (let i = 0; i < n; i++) {
       const b = list[i];
       // Bits 0–5: exposed sides; bits 6–11: joints to other blocks.
       open[i] = (b.open ?? 63) | ((b.joint ?? 0) << 6);
@@ -583,29 +668,106 @@ export function buildVoxelMesh(builder: VoxelBuilder, options: VoxelMeshOptions 
       else _q.identity();
       _s.set(b.sx, b.sy, b.sz);
       _m.compose(_p, _q, _s);
-      mesh.setMatrixAt(i, _m);
+      // (as InstancedMesh.setMatrixAt and setColorAt write them)
+      _m.toArray(matrix, i * 16);
       _c.setHex(b.color);
       if (surf) packSurf(surf, i, b.surf, b.shade, b.merge);
       else _c.multiplyScalar(b.shade);
-      mesh.setColorAt(i, _c);
+      _c.toArray(color, i * 3);
     }
-    geo.setAttribute('voxOpen', new InstancedBufferAttribute(open, 1));
-    geo.setAttribute('voxRadius', new InstancedBufferAttribute(radius, 1));
-    if (surf) geo.setAttribute('voxSurf', new InstancedBufferAttribute(surf, 4));
-    if (shownOf) geo.setAttribute('voxShown', new InstancedBufferAttribute(Float32Array.from(list, (b) => (shownOf.get(b) ?? 63) | 64), 1));
+    lap('instances');
+    // The bounds three works out from the instances (InstancedMesh.computeBoundingSphere, computeBoundingBox): from
+    // the matrices as stored, round the block's own (its geometry's: the unit block's, the same buffer).
+    const sphere = new Sphere();
+    sphere.makeEmpty();
+    const box = new Box3();
+    box.makeEmpty();
+    const unitBox = new Box3().setFromBufferAttribute(geometry.getAttribute('position') as BufferAttribute);
+    for (let i = 0; i < n; i++) {
+      _m.fromArray(matrix, i * 16);
+      sphere.union(_sphere.copy(geometry.boundingSphere!).applyMatrix4(_m));
+    }
+    for (let i = 0; i < n; i++) {
+      _m.fromArray(matrix, i * 16);
+      box.union(_box.copy(unitBox).applyMatrix4(_m));
+    }
+    lap('bounds');
+    out.meshes.push({
+      mat,
+      sides,
+      segments,
+      flat: chamfer,
+      count: n,
+      matrix,
+      color,
+      open,
+      radius,
+      surf,
+      shown: shown && at ? Float32Array.from(at, (j) => shown[j] | 64) : null,
+      // The code that made each instance (dev builds), for the feedback tool's picker.
+      src: list.some((b) => b.src) ? Int32Array.from(list, (b) => traces.of(b.src)) : null,
+      sphere: Float64Array.of(sphere.center.x, sphere.center.y, sphere.center.z, sphere.radius),
+      box: Float64Array.of(box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z),
+    });
+    lap('lists');
+  }
+  return out;
+}
+
+/** The meshes of a {@link packVoxelMesh} result (`traces`: the table its `src` indexes point into). */
+export function unpackVoxelMesh(packed: PackedVoxelGroup, traces: readonly (SourceTrace | undefined)[] = []): Group {
+  const group = new Group();
+  group.name = packed.name;
+  // Builder space = instance position + offset (the feedback tool reports picks in it).
+  group.userData.voxelOffset = new Vector3(...packed.offset);
+  for (const p of packed.meshes) {
+    const { mat, sides, segments, flat } = p;
+    const geometry = unitVoxelGeometry(VOXEL_MATERIALS[mat].bevel, segments, flat);
+    // A thin geometry wrapper per mesh: shares the cached index/position/normal
+    // buffers and adds the per-instance side masks and bevel radius.
+    const geo = new BufferGeometry();
+    geo.setIndex(openSidesIndex(geometry, sides));
+    geo.setAttribute('position', geometry.getAttribute('position'));
+    geo.setAttribute('normal', geometry.getAttribute('normal'));
+    // (made empty, then given the packed matrices: the same as setMatrixAt for each)
+    const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), 0);
+    mesh.instanceMatrix = new InstancedBufferAttribute(p.matrix, 16);
+    mesh.count = p.count;
+    mesh.name = `${group.name}:${mat}`;
+    // (the look panel rebuilds the edges from this: segments, flat cut or round)
+    mesh.userData.voxelShape = { segments, flat };
+    // (the sides drawn, when some are left out: a new shape of block keeps to them, openSidesIndex)
+    if (sides !== 63) mesh.userData.voxelSides = sides;
+    mesh.instanceColor = new InstancedBufferAttribute(p.color, 3);
+    geo.setAttribute('voxOpen', new InstancedBufferAttribute(p.open, 1));
+    geo.setAttribute('voxRadius', new InstancedBufferAttribute(p.radius, 1));
+    if (p.surf) geo.setAttribute('voxSurf', new InstancedBufferAttribute(p.surf, 4));
+    if (p.shown) geo.setAttribute('voxShown', new InstancedBufferAttribute(p.shown, 1));
     // The code that made each instance (dev builds), for the feedback tool's picker.
-    if (list.some((b) => b.src)) mesh.userData.voxelSources = list.map((b) => b.src);
+    if (p.src) mesh.userData.voxelSources = Array.from(p.src, (i) => (i < 0 ? undefined : traces[i]));
     mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = options.castShadow ?? true;
-    mesh.receiveShadow = options.receiveShadow ?? true;
+    mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = packed.castShadow;
+    mesh.receiveShadow = packed.receiveShadow;
     // Shadows are cast by the re-bevelled block, not its square box.
     mesh.customDepthMaterial = getVoxelDepthMaterial(mat);
-    mesh.computeBoundingSphere();
-    mesh.computeBoundingBox();
+    // (the bounds, packed; the wrapper's own as InstancedMesh.computeBoundingSphere and computeBoundingBox leave them)
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
+    const s = p.sphere;
+    const b = p.box;
+    mesh.boundingSphere = new Sphere(new Vector3(s[0], s[1], s[2]), s[3]);
+    mesh.boundingBox = new Box3(new Vector3(b[0], b[1], b[2]), new Vector3(b[3], b[4], b[5]));
     group.add(mesh);
   }
   return group;
+}
+
+/** The buffers of a packed group (to move it to another thread without a copy). */
+export function packedBuffers(packed: PackedVoxelGroup, out: ArrayBufferLike[] = []): ArrayBufferLike[] {
+  for (const m of packed.meshes)
+    for (const a of [m.matrix, m.color, m.open, m.radius, m.surf, m.shown, m.src, m.sphere, m.box]) if (a) out.push(a.buffer);
+  return out;
 }
 
 /** Dispose instanced meshes created by {@link buildVoxelMesh} (geometry/material are shared caches). */

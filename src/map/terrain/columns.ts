@@ -19,6 +19,12 @@ const FRONT_FOOT = -24;
 /** How far a pillar stands out of a cliff face (m). */
 const PILLAR_OFFSETS = [-1, -0.5, -0.5, 0, 0, 0.5, 1];
 const isNatural = (s: number) => s === SURFACE.grass || s === SURFACE.rock || s === SURFACE.dirt;
+/**
+ * The foot of a column's lowest block (m: `ColumnMaker.floor`) for its top
+ * `h` and the lowest ground beside it: its top block's bottom if it has no
+ * wall, else 1 m under that ground.
+ */
+const floorOf = (h: number, low: number): number => (low >= h - CELL ? h - CELL - 1 : low - 1);
 
 /**
  * The land's columns as blocks. A column is its top block (2 m of grass,
@@ -222,6 +228,39 @@ export class ColumnMaker {
     return this.rch;
   }
 
+  /** Scratch: the ground beside the column last asked (`sidesFine`, `sidesCoarse`): south, east, west, north (m). */
+  private readonly nb = new Float64Array(4);
+
+  /**
+   * The ground beside the 2 m column (i, k) at (x, z) into `nb` (S, E, W, N):
+   * on a side no camera sees, the column's own top (no wall there).
+   */
+  private sidesFine(i: number, k: number, x: number, z: number): void {
+    const { nx, height: H } = this.f;
+    const c = i + k * nx;
+    const h = H[c];
+    const nb = this.nb;
+    nb[0] = this.hAt(i, k + 1);
+    nb[1] = i + 1 < nx && x + 1 < FACE_X_MAX ? H[c + 1] : h;
+    nb[2] = i > 0 && x - 1 > FACE_X_MIN ? H[c - 1] : h;
+    nb[3] = k > 0 && z - 1 > FACE_Z_MIN ? H[c - nx] : h;
+  }
+
+  /**
+   * Only the floor under the 2 m column (i, k), as `fine` sets it (no
+   * blocks): for the land's blocks laid elsewhere (terrain/lay.ts, a chunk of
+   * the land in each build worker), whose sides the blocks here test.
+   */
+  fineFloor(i: number, k: number): void {
+    const f = this.f;
+    const c = i + k * f.nx;
+    const h = f.height[c];
+    const [x, z] = f.cellCenter(i, k);
+    this.sidesFine(i, k, x, z);
+    const nb = this.nb;
+    this.floor[c] = floorOf(h, Math.min(Math.min(nb[0], nb[1], nb[2], h - CELL), nb[3]));
+  }
+
   /** One 2 m column (cell i, k). */
   fine(i: number, k: number): void {
     const f = this.f;
@@ -231,10 +270,12 @@ export class ColumnMaker {
     const h = H[c];
     const [x, z] = f.cellCenter(i, k);
     // Neighbours on sides some camera sees (a side no camera sees: no wall).
-    const hS = this.hAt(i, k + 1);
-    const hE = i + 1 < nx && x + 1 < FACE_X_MAX ? H[c + 1] : h;
-    const hW = i > 0 && x - 1 > FACE_X_MIN ? H[c - 1] : h;
-    const hN = k > 0 && z - 1 > FACE_Z_MIN ? H[c - nx] : h;
+    this.sidesFine(i, k, x, z);
+    const nb = this.nb;
+    const hS = nb[0];
+    const hE = nb[1];
+    const hW = nb[2];
+    const hN = nb[3];
     // (the south, east and west walls are the ones the fixed cameras see)
     const lowSEW = Math.min(hS, hE, hW, h - CELL);
     const low = Math.min(lowSEW, hN);
@@ -267,7 +308,7 @@ export class ColumnMaker {
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
     b.span(x - CELL / 2 - oW, bottom, z - CELL / 2 - oN, x + CELL / 2 + oE, h, z + CELL / 2 + oS, color, mat, { open, shade, src: this.srcTop });
     // (the wall's lowest band goes 1 m past the neighbour's top)
-    this.floor[c] = low >= h - CELL ? bottom : low - 1;
+    this.floor[c] = floorOf(h, low);
     if (low >= h - CELL) return;
 
     // Wall: split at the strata, at each neighbour's top (shaping stops
@@ -356,6 +397,41 @@ export class ColumnMaker {
     }
   }
 
+  /**
+   * The ground beside the coarse column of g × g cells at (i, k), centred on
+   * (x, z), into `nb` (S, E, W, N: the lowest along each side; on a side no
+   * camera sees, the column's own top).
+   */
+  private sidesCoarse(i: number, k: number, g: number, x: number, z: number): void {
+    const { nx, height: H } = this.f;
+    const h = H[i + k * nx];
+    const size = g * CELL;
+    const hS = Math.min(h, this.minH(i, i + g - 1, k + g, k + g));
+    let hE = h;
+    let hW = h;
+    let hN = h;
+    if (i + g < nx && x + size / 2 < FACE_X_MAX) for (let a = k; a < k + g; a++) hE = Math.min(hE, H[i + g + a * nx]);
+    if (i > 0 && x - size / 2 > FACE_X_MIN) for (let a = k; a < k + g; a++) hW = Math.min(hW, H[i - 1 + a * nx]);
+    if (k > 0 && z - size / 2 > FACE_Z_MIN) for (let a = i; a < i + g; a++) hN = Math.min(hN, H[a + (k - 1) * nx]);
+    const nb = this.nb;
+    nb[0] = hS;
+    nb[1] = hE;
+    nb[2] = hW;
+    nb[3] = hN;
+  }
+
+  /** Only the floor under a coarse column, as `coarse` sets it (no blocks; see `fineFloor`). */
+  coarseFloor(i: number, k: number, g: number): void {
+    const f = this.f;
+    const { nx } = f;
+    const h = f.height[i + k * nx];
+    const size = g * CELL;
+    this.sidesCoarse(i, k, g, f.x0 + i * CELL + size / 2, f.z0 + k * CELL + size / 2);
+    const nb = this.nb;
+    const floor = floorOf(h, Math.min(Math.min(nb[0], nb[1], nb[2], h - CELL), nb[3]));
+    for (let a = k; a < Math.min(k + g, f.nz); a++) this.floor.fill(floor, i + a * nx, i + Math.min(g, nx - i) + a * nx);
+  }
+
   /** A coarse column: g × g cells (4 or 8 m) that share one height, seen from far. */
   coarse(i: number, k: number, g: number): void {
     const f = this.f;
@@ -367,13 +443,12 @@ export class ColumnMaker {
     const size = g * CELL;
     const x = f.x0 + i * CELL + size / 2;
     const z = f.z0 + k * CELL + size / 2;
-    const hS = Math.min(h, this.minH(i, i + g - 1, k + g, k + g));
-    let hE = h;
-    let hW = h;
-    let hN = h;
-    if (i + g < nx && x + size / 2 < FACE_X_MAX) for (let a = k; a < k + g; a++) hE = Math.min(hE, H[i + g + a * nx]);
-    if (i > 0 && x - size / 2 > FACE_X_MIN) for (let a = k; a < k + g; a++) hW = Math.min(hW, H[i - 1 + a * nx]);
-    if (k > 0 && z - size / 2 > FACE_Z_MIN) for (let a = i; a < i + g; a++) hN = Math.min(hN, H[a + (k - 1) * nx]);
+    this.sidesCoarse(i, k, g, x, z);
+    const nb = this.nb;
+    const hS = nb[0];
+    const hE = nb[1];
+    const hW = nb[2];
+    const hN = nb[3];
     const lowSEW = Math.min(hS, hE, hW, h - CELL);
     const low = Math.min(lowSEW, hN);
     const b = this.sink(x, z, g === 2 ? 1 : 2);
@@ -381,7 +456,7 @@ export class ColumnMaker {
     const open = 4 | (hE < h ? 1 : 0) | (hW < h ? 2 : 0) | (hS < h ? 16 : 0) | (hN < h ? 32 : 0);
     const bottom = low >= h - CELL ? h - CELL - 1 : h - CELL;
     b.span(x - size / 2, bottom, z - size / 2, x + size / 2, h, z + size / 2, color, mat, { open, shade: 0.96 + hash3(i, h, kh, 17) * 0.08, src });
-    for (let a = k; a < Math.min(k + g, f.nz); a++) this.floor.fill(low >= h - CELL ? bottom : low - 1, i + a * nx, i + Math.min(g, nx - i) + a * nx);
+    for (let a = k; a < Math.min(k + g, f.nz); a++) this.floor.fill(floorOf(h, low), i + a * nx, i + Math.min(g, nx - i) + a * nx);
     if (low >= h - CELL) return;
     const w = Strata.warp(x, z);
     const splits = this.splits;

@@ -10,6 +10,7 @@ import { ChunkGrid, ChunkSwitch, PLAIN_FROM } from './terrain/lod';
 import type { MapContext, MapFrame, MapPart, Subject } from './types';
 import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
+import { FarTreeList, TREE_PICTURES, TreePictures, type FarLeaves, type FarTrees } from './veg/impostors';
 import { Lattice } from './veg/lattice';
 import { isSugarPalmProto } from './veg/palms';
 import type { Proto } from './veg/proto';
@@ -139,7 +140,7 @@ function jungle(density: number, thin: number): ScatterOptions {
 }
 
 /** Kits by level of detail and cells: `lod * 4 + cell`. */
-type Kits = Map<number, Kit>;
+export type Kits = Map<number, Kit>;
 
 /** A tile's (or chunk's) blocks: near (1 m and 1.5 m cells, cliff greens) and far (2 m and 3 m cells). */
 type Pair = [VoxelBuilder, VoxelBuilder];
@@ -158,6 +159,8 @@ interface Planted {
   near: CanopyTree[];
   /** The sugar palms there, for the nature book (their crowns: where the flower stalks are). */
   sugarPalms: Subject[];
+  /** The far trees (2 m and 3 m cells) as stamped, for their pictures on a phone (veg/impostors.ts). */
+  far: FarTrees;
 }
 
 /** Scatter the trees, stamp them on the lattices and emit the visible blocks (no meshes yet). */
@@ -168,6 +171,7 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   const perLod = [0, 0, 0, 0];
   const nearTrees: CanopyTree[] = [];
   const sugarPalms: Subject[] = [];
+  const farTrees = new FarTreeList();
   for (const t of spots) {
     const p = protoFor(kits.get(t.lod * 4 + t.cell)!, t);
     if (!p) continue;
@@ -175,6 +179,7 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
     const y = Math.min(t.y, f.heightAt(t.x - 1, t.z - 1), f.heightAt(t.x + 1, t.z + 1), f.heightAt(t.x - 1, t.z + 1), f.heightAt(t.x + 1, t.z - 1));
     const shade = 0.94 + hash3(t.x, t.z, 1, 41) * 0.12;
     lattices[t.cell].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
+    if (t.cell >= 2) farTrees.add(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
     counts[t.kind] = (counts[t.kind] ?? 0) + 1;
     perLod[t.cell]++;
     // (the trunk's middle: the lattice cell's centre)
@@ -200,16 +205,22 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   buildCliffGreens(f, (x, z) => ({ box: (...a: Parameters<VoxelBuilder['box']>) => near(x, z, a[7]).box(...a) }) as VoxelBuilder, opts.density);
   let blocks = 0;
   for (const [n, fa] of [...leaves, ...rest]) blocks += n.boxes.length + fa.boxes.length;
-  return { leaves, rest, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks, near: nearTrees, sugarPalms };
+  return { leaves, rest, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks, near: nearTrees, sugarPalms, far: farTrees.done() };
 }
 
-/** The whole jungle's blocks (no meshes yet), thinned to the budget. */
-export function plantJungle(f: HeightField, density: number): Planted & { thin: number; ms: [number, number] } {
-  const t0 = performance.now();
+/** Every prototype set the jungle is planted from (the same every run: a build worker makes them early, map/work/). */
+export function makeKits(): Kits {
   const kits: Kits = new Map();
   for (const lod of [0, 1, 2, 3]) kits.set(lod * 4 + lod, makeKit(lod));
   // (the back hills' trees where the explorer roams: their size, smaller cells)
   kits.set(3 * 4 + 2, makeKit(3, 2));
+  return kits;
+}
+
+/** The whole jungle's blocks (no meshes yet), thinned to the budget (`kits`: made already, else here). */
+export function plantJungle(f: HeightField, density: number, made?: Kits): Planted & { thin: number; ms: [number, number] } {
+  const t0 = performance.now();
+  const kits = made ?? makeKits();
   const t1 = performance.now();
   // Over budget (the land changed, more mesa top to cover)? Thin the groves and plant again.
   let thin = 0;
@@ -303,37 +314,56 @@ class Tiles {
   }
 }
 
-export function buildVegetation(ctx: MapContext): MapPart {
+/** The jungle planted (`plantJungle`): what a build worker sends (map/work/). */
+export type PlantedJungle = ReturnType<typeof plantJungle>;
+
+/** `planted`: the jungle planted already (by a build worker, map/work/: the same blocks), else here. */
+export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null): MapPart {
   const f = ctx.field;
   const object = new Group();
   object.name = 'vegetation';
   const density = ctx.quality === 'low' ? 0.7 : 1;
 
-  const r = plantJungle(f, density);
+  const r = planted ?? plantJungle(f, density);
   const { thin } = r;
   setCanopy(f, r.near);
   const t2 = performance.now();
   const lowOnly = ctx.quality === 'low';
   const tiles = new Tiles(object);
+  // (a phone: the leaf tiles' far leaves, the last instances of a mesh, for their pictures: veg/impostors.ts)
+  const farLeaves: FarLeaves[] = [];
+  const leafOf = (g: Group | null) => g?.children.find((o) => o.name.endsWith(':mapLeaf')) as InstancedMesh | undefined;
   const meshes = (grid: ChunkGrid, pairs: Pair[], kind: string) =>
     pairs.forEach(([near, far], n) => {
       const name = `vegetation:${kind}${n}`;
+      const pictures = TREE_PICTURES && kind === 'leaf' && far.boxes.length > 0;
       if (lowOnly) {
         // (all plain boxes: one mesh a tile)
+        const first = pictures ? near.boxes.reduce((k, b) => k + (b.mat === 'mapLeaf' ? 1 : 0), 0) : 0;
         for (const b of far.boxes) near.boxes.push(b);
-        tiles.add(grid.box(n), null, near.boxes.length ? buildVoxelMesh(near, { quality: 'low', name }) : null);
-      } else tiles.add(grid.box(n), near.boxes.length ? buildVoxelMesh(near, { quality: 'medium', name }) : null, far.boxes.length ? buildVoxelMesh(far, { quality: 'low', name: `${name}:far` }) : null);
+        const g = near.boxes.length ? buildVoxelMesh(near, { quality: 'low', name }) : null;
+        tiles.add(grid.box(n), null, g);
+        const leaf = pictures ? leafOf(g) : undefined;
+        if (leaf && leaf.count > first) farLeaves.push({ tile: n, mesh: leaf, first });
+      } else {
+        const g = far.boxes.length ? buildVoxelMesh(far, { quality: 'low', name: `${name}:far` }) : null;
+        tiles.add(grid.box(n), near.boxes.length ? buildVoxelMesh(near, { quality: 'medium', name }) : null, g);
+        const leaf = pictures ? leafOf(g) : undefined;
+        if (leaf) farLeaves.push({ tile: n, mesh: leaf, first: 0 });
+      }
     });
   meshes(LEAF_GRID, r.leaves, 'leaf');
   meshes(REST_GRID, r.rest, 'rest');
   // (before the plain twins are made: they share the meshes' materials; the lattice's open sides are exact: the
   // covered ones are left out, veg/sway.ts)
   swayLeaves(object, f, true);
+  const pictures = TREE_PICTURES ? new TreePictures(ctx.renderer, r.far, farLeaves, (x, z) => LEAF_GRID.at(x, z), LEAF_GRID.count) : null;
+  if (pictures) object.add(pictures.object);
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (new URLSearchParams(location.search).has('vegstats'))
     console.info(
-      `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ${tiles.count} tiles · ${r.sugarPalms.length} sugar palms in the nature book · ms kits ${Math.round(r.ms[0])}, plant ${Math.round(r.ms[1])}, mesh ${Math.round(t3 - t2)}`,
+      `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ${tiles.count} tiles · ${r.sugarPalms.length} sugar palms in the nature book · ms kits ${Math.round(r.ms[0])}, plant ${Math.round(r.ms[1])}, mesh ${Math.round(t3 - t2)}${pictures ? ` · pictures of ${pictures.stats.trees} far trees, ${pictures.stats.protos} kinds: atlas ${pictures.stats.size.join('×')} (${(pictures.stats.bytes / 2 ** 20).toFixed(1)} MB) in ${Math.round(pictures.stats.ms)} ms (the atlas ${Math.round(pictures.stats.atlasMs)})` : ''}`,
     );
   // (the nature book, roam/_book.ts: the bamboo clumps and sugar palms where the explorer roams, as they stand)
   const bamboo: Subject[] = r.near.filter((t) => t.kind === 'bamboo').map((t) => ({ kind: 'bamboo', x: t.x, y: t.y + t.h * 0.4, z: t.z, r: Math.min(t.r, t.h * 0.3) }));
@@ -344,6 +374,7 @@ export function buildVegetation(ctx: MapContext): MapPart {
     update(fr) {
       stepWind(fr, 'vegetation');
       tiles.update(fr);
+      pictures?.update(fr);
     },
     subjects(out) {
       for (const b of bamboo) out.push(b);

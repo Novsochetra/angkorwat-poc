@@ -9,7 +9,6 @@ import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
 import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
-import { buildHeightField } from './heightfield';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
 import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
@@ -27,6 +26,7 @@ import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
 import { steppedShape } from './ui/shape';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
+import { BuildWork } from './work/build';
 
 /**
  * World map screen — "Angkor Heritage: choose your next expedition".
@@ -53,6 +53,8 @@ import type { AnchorOnScreen, MapUI } from './ui/ui';
  * load or build is logged and left out, and the rest of the map still runs.
  */
 const params = new URLSearchParams(location.search);
+// (the build workers start at once: the land is built in one while the page sets up, work/build.ts)
+const work = new BuildWork(params);
 const shot = params.get('shot') === '1';
 const placeIds = PLACES.map((p) => p.id);
 const asPlace = (v: string | null) => (placeIds.includes(v as PlaceId) ? (v as PlaceId) : null);
@@ -183,10 +185,21 @@ async function safe<T>(name: string, make: () => Promise<T>, fallback: () => T):
   }
 }
 
-const field = timed('land', buildHeightField);
+/** `parts=terrain,water,…`: build only these parts (checking one part). */
+const only = params.get('parts')?.split(',');
+// The heavy pure-data work runs in the build workers (work/build.ts): the land (being built since the page opened),
+// then the land's blocks in all of them while the atmosphere is built here, the jungle's prototypes; the jungle is
+// planted there in its place below. The page makes the three.js objects, in the same order as before.
+work.plan({ quality, terrain: !only || only.includes('terrain'), vegetation: !only || only.includes('vegetation') });
+// (the atmosphere's module loads while the land is built)
+const atmosphereModule = import('./atmosphere');
+atmosphereModule.catch(() => undefined);
+const landT0 = performance.now();
+const field = await work.field();
+timings.land = Math.round(performance.now() - landT0);
 const ctx: MapContext = { scene, renderer, camera, field, quality, shot, video: shot && params.get('video') === '1' };
 const atmosphere: Atmosphere = await safe('atmosphere', async () => {
-  const { buildAtmosphere } = await import('./atmosphere');
+  const { buildAtmosphere } = await atmosphereModule;
   return timed('atmosphere', () => buildAtmosphere(ctx));
 }, () => {
   const key = new DirectionalLight(0xffffff, 2);
@@ -197,9 +210,15 @@ const atmosphere: Atmosphere = await safe('atmosphere', async () => {
 const parts: MapPart[] = [atmosphere];
 
 type Builder = (ctx: MapContext) => MapPart | Promise<MapPart>;
+/** The parts `cutCovered` leaves covered sides out of (below, after the build: cull.ts). */
+const coverRoots = () => parts.filter((p) => ['terrain', 'path', 'jungle', 'camps', 'village', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')).map((p) => p.object);
 /** Parts in build order (landmarks and the road first: they mark the ground trees must keep off). */
 const BUILDERS: [string, () => Promise<Builder>][] = [
-  ['terrain', async () => (await import('./terrain')).buildTerrain],
+  // (its blocks laid and packed in the build workers: here only made into meshes; else laid here)
+  ['terrain', async () => {
+    const { buildTerrain } = await import('./terrain');
+    return async (c) => buildTerrain(c, await work.terrain(c.field, c.quality));
+  }],
   ...PLACES.map((p): [string, () => Promise<Builder>] => [p.id, async () => {
     const { LANDMARKS } = await import('./landmarks');
     return (c) => LANDMARKS[p.id](c, p);
@@ -213,7 +232,16 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['paddies', async () => (await import('./paddies')).buildPaddies],
   // (the east village, its market, the palm sugar grove, the Kulen picnic place, the hamlet behind Angkor Wat: before the trees, which keep off them)
   ['hamlet', async () => (await import('./hamlet')).buildHamlets],
-  ['vegetation', async () => (await import('./vegetation')).buildVegetation],
+  // (planted in a build worker on the land as it is here now, the reserved spots too; else here. While the page waits,
+  // another works out the covered sides of the parts built so far, for `cutCovered` after the build)
+  ['vegetation', async () => {
+    const { buildVegetation } = await import('./vegetation');
+    return async (c) => {
+      const planted = work.vegetation(c.field, c.quality);
+      work.covers(coverRoots());
+      return buildVegetation(c, await planted);
+    };
+  }],
   ['undergrowth', async () => (await import('./veg/undergrowth')).buildUndergrowth],
   ['clouds', async () => (await import('./clouds')).buildClouds],
   ['rain', async () => (await import('./sky/rain')).buildRain],
@@ -228,7 +256,6 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['treasure', async () => (await import('./treasure')).buildTreasure],
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
-const only = params.get('parts')?.split(',');
 /**
  * Parts built only when wanted (lazy.ts): the weather's and the festival's may never show on a visit. Built in their
  * place, as before, when the page opens wanting them (the URL, the saved weather setting, the calendar: a shot builds
@@ -331,18 +358,28 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
     console.error(`[map] part "${name}" failed:`, e);
   }
 }
+// (the build workers are done: they stop, their memory freed)
+work.done();
+console.info(work.line());
 if (Object.keys(late.states).length) console.info(`[map] built only when wanted: ${Object.keys(late.states).join(', ')}`);
 scene.add(atmosphere.object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 // …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
-timings.covered = Math.round(cutCovered(parts.filter((p) => ['terrain', 'path', 'jungle', 'camps', 'village', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')).map((p) => p.object)).ms);
+timings.covered = Math.round(cutCovered(coverRoots(), undefined, work.knownCover).ms);
 // What never moves casts the low and medium levels' still shadows (graphics.ts): the land, trees, temples, road, jungle
 // sites, the village (its rafts bob a little: their shadows stand), the paddies' props (they change with the season
 // only), the hamlets and the ledge, and the explorer while he stands on it (the overview); nor the people, animals
 // and boats.
 const STILL_PARTS = ['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'foreground'];
 for (const p of parts) if (STILL_PARTS.includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
+// The statues sculpted in workers (sacred/: Buddhas, offerings, the pagoda's naga) join their part when they are done:
+// still as it is, whenever they come. (They were only if they came before the line above: on the live page most did, in
+// a shot, which waits less, none did; the build workers' waits let some in first. Not the ledge: its explorer comes and goes.)
+const sculptedStill = sacredReady().then(() => {
+  for (const p of parts) if ((STILL_PARTS.includes(p.name) && p.name !== 'foreground') || p.name.startsWith('landmark:')) markStill(p.object);
+  renderer.shadowMap.needsUpdate = true;
+});
 const ledgeExplorer = (parts.find((p) => p.name === 'foreground') as Foreground | undefined)?.explorer?.object;
 /** Roaming, the explorer moves: he casts no still shadow then (the still map is drawn again as he leaves his ledge and comes back). */
 function explorerStill(still: boolean): void {
@@ -733,7 +770,7 @@ posthogLogger.info('map initialized', {
   built_part_count: parts.length,
   failed_part_count: failed.length,
 });
-Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed, late: late.states } });
+Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed, late: late.states, work: work.stats } });
 
 /** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
 let wakeLoop: () => void = () => undefined;
@@ -879,6 +916,7 @@ if (shot) {
   mapReady();
   // (statues are sculpted in workers: wait for them, sacred/pending.ts)
   const sculpted = await sacredReady();
+  await sculptedStill;
   console.info(`[map] sacred pieces sculpted ${sculpted.ms.toFixed(0)} ms after the build${sculpted.left ? ` · ${sculpted.left} NOT READY` : ''}`);
   const t = Number(params.get('t') ?? 12);
   step(t, 0);

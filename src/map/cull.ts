@@ -258,48 +258,26 @@ function cutCopy(base: Material): Material {
  * groups and light, water and wax are left as they are. Families with at
  * least `min` blocks there get the cut materials (each is a shader program
  * more). Returns the blocks looked at and the time taken.
+ *
+ * `known`: the sides each block shows, worked out already for a group's
+ * meshes (map/work/: in a build worker while the page waited, from these
+ * same meshes: `coverGroups`, `coverBoxes`), or null to work them out here.
  */
-export function cutCovered(roots: readonly Object3D[], min = 1500): { blocks: number; ms: number } {
+export function cutCovered(roots: readonly Object3D[], min = 1500, known?: (group: Object3D, meshes: readonly InstancedMesh[]) => Uint8Array | null): { blocks: number; ms: number } {
   const t0 = performance.now();
-  const groups = new Set<Object3D>();
-  const shown = (o: Object3D) => {
-    for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
-    return true;
-  };
-  for (const root of roots)
-    root.traverse((o) => {
-      const mesh = o as InstancedMesh;
-      if (mesh.isInstancedMesh && mesh.geometry.getAttribute('voxOpen') && mesh.parent?.userData.voxelOffset && shown(mesh)) groups.add(mesh.parent);
-    });
   let blocks = 0;
   const count = new Map<string, number>();
   const cut: InstancedMesh[] = [];
-  for (const g of groups) {
-    const meshes = g.children.filter((o) => {
-      const m = o as InstancedMesh;
-      return m.isInstancedMesh && m.count > 0 && m.geometry.getAttribute('voxOpen') && !NO_COVER.has(familyOf(m));
-    }) as InstancedMesh[];
-    if (!meshes.length) continue;
-    if (!meshes.every((m) => m.geometry.getAttribute('voxShown'))) {
-      // Each block as a box of the builder (the meshes sit in their group as built: no transform of their own).
-      const boxes: VoxelBox[] = [];
-      for (const m of meshes) {
-        const e = m.instanceMatrix.array;
-        const open = m.geometry.getAttribute('voxOpen').array;
-        for (let i = 0; i < m.count; i++) {
-          const k = i * 16;
-          const turned = Math.abs(e[k + 1]) + Math.abs(e[k + 2]) + Math.abs(e[k + 4]) + Math.abs(e[k + 6]) + Math.abs(e[k + 8]) + Math.abs(e[k + 9]) > 1e-6 || !(e[k] > 0 && e[k + 5] > 0 && e[k + 10] > 0);
-          boxes.push({ x: e[k + 12], y: e[k + 13], z: e[k + 14], sx: Math.abs(e[k]), sy: Math.abs(e[k + 5]), sz: Math.abs(e[k + 10]), color: 0, shade: 1, mat: 'mapStone', open: (open[i] as number) & 63, rx: turned ? 1 : 0 });
-        }
-      }
-      const sides = shownSides(boxes);
+  for (const { group: g, meshes, open } of coverGroups(roots)) {
+    if (open) {
+      const sides = known?.(g, meshes) ?? shownSides(coverBoxes(meshes));
       let j = 0;
       for (const m of meshes) {
         const a = new Float32Array(m.count);
         for (let i = 0; i < m.count; i++, j++) a[i] = sides[j] | 64;
         m.geometry.setAttribute('voxShown', new InstancedBufferAttribute(a, 1));
       }
-      blocks += boxes.length;
+      blocks += j;
     }
     for (const m of meshes) {
       count.set(familyOf(m), (count.get(familyOf(m)) ?? 0) + m.count);
@@ -312,6 +290,49 @@ export function cutCovered(roots: readonly Object3D[], min = 1500): { blocks: nu
     if (m.material === getVoxelMaterial(key)) m.material = cutCopy(m.material);
   }
   return { blocks, ms: performance.now() - t0 };
+}
+
+/**
+ * The voxel groups under `roots` that `cutCovered` cuts (shown, a
+ * `buildVoxelMesh` group), in order, each with its meshes that cover and are
+ * cut, and `open`: their blocks' shown sides are still to be worked out (not
+ * built with `hideCovered`).
+ */
+export function coverGroups(roots: readonly Object3D[]): { group: Object3D; meshes: InstancedMesh[]; open: boolean }[] {
+  const groups = new Set<Object3D>();
+  const shown = (o: Object3D) => {
+    for (let x: Object3D | null = o; x; x = x.parent) if (!x.visible) return false;
+    return true;
+  };
+  for (const root of roots)
+    root.traverse((o) => {
+      const mesh = o as InstancedMesh;
+      if (mesh.isInstancedMesh && mesh.geometry.getAttribute('voxOpen') && mesh.parent?.userData.voxelOffset && shown(mesh)) groups.add(mesh.parent);
+    });
+  const out: { group: Object3D; meshes: InstancedMesh[]; open: boolean }[] = [];
+  for (const g of groups) {
+    const meshes = g.children.filter((o) => {
+      const m = o as InstancedMesh;
+      return m.isInstancedMesh && m.count > 0 && m.geometry.getAttribute('voxOpen') && !NO_COVER.has(familyOf(m));
+    }) as InstancedMesh[];
+    if (meshes.length) out.push({ group: g, meshes, open: !meshes.every((m) => m.geometry.getAttribute('voxShown')) });
+  }
+  return out;
+}
+
+/** Each block of a group's meshes as a box of the builder (the meshes sit in their group as built: no transform of their own), for `shownSides`. */
+export function coverBoxes(meshes: readonly InstancedMesh[]): VoxelBox[] {
+  const boxes: VoxelBox[] = [];
+  for (const m of meshes) {
+    const e = m.instanceMatrix.array;
+    const open = m.geometry.getAttribute('voxOpen').array;
+    for (let i = 0; i < m.count; i++) {
+      const k = i * 16;
+      const turned = Math.abs(e[k + 1]) + Math.abs(e[k + 2]) + Math.abs(e[k + 4]) + Math.abs(e[k + 6]) + Math.abs(e[k + 8]) + Math.abs(e[k + 9]) > 1e-6 || !(e[k] > 0 && e[k + 5] > 0 && e[k + 10] > 0);
+      boxes.push({ x: e[k + 12], y: e[k + 13], z: e[k + 14], sx: Math.abs(e[k]), sy: Math.abs(e[k + 5]), sz: Math.abs(e[k + 10]), color: 0, shade: 1, mat: 'mapStone', open: (open[i] as number) & 63, rx: turned ? 1 : 0 });
+    }
+  }
+  return boxes;
 }
 
 /** A voxel mesh's family (its name is "<group>:<family>"). */
