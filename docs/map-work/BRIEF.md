@@ -745,6 +745,8 @@ the sugar-palm village (never solid to walk into). People carry on (no umbrellas
 only rain), footsteps crunch (`stepSnow`, roam/walker.ts: under open sky),
 the sound hushes (audio/engine.ts reads `snow`, `snowCover`).
 Checks: `clock=0‥1`, `day=0‥29` (7 first quarter, 15 full, 22 last quarter),
+`moon=0‥1` (the moon's age held, whatever the day: 0 new, 0.25 first quarter,
+0.5 full, 0.75 last quarter; only the sky reads it, the festivals keep to `day`),
 `night=` still works (dusk side), `weather=rain|storm|rainbow|snow|clear`
 (held; `snow`: snowing on white land), `weather=season|rainy|stormy|snowy`
 (that setting's schedule at `t=`, with `season=`; `snowy` is the snow

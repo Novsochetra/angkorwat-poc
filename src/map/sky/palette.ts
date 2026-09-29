@@ -405,6 +405,8 @@ export interface SkyInput {
   night: number;
   clock: number;
   day: number;
+  /** The moon's age held (0‥1), else its phase follows `day` and `clock`. */
+  moonAge?: number;
   weather: MapWeather;
 }
 
@@ -429,8 +431,8 @@ export function updateSky(f: SkyInput): SkyState {
   SKY.moon = band(-0.05, -0.01, moonEl);
   const moonUp = band(-0.07, 0.02, moonEl);
 
-  // The moon's phase: the month's age from the days gone by (the clock's day turns in the afternoon).
-  const age = (((f.day + clock) / SYNODIC_MONTH) % 1 + 1) % 1;
+  // The moon's phase: the month's age from the days gone by (the clock's day turns in the afternoon), or the age held.
+  const age = (((f.moonAge ?? (f.day + clock) / SYNODIC_MONTH) % 1) + 1) % 1;
   const phase = age * Math.PI * 2;
   SKY.moonAge = age;
   SKY.moonLit = (1 - Math.cos(phase)) / 2;

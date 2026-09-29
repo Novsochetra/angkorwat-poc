@@ -2,6 +2,7 @@ import { MathUtils, Vector3, type Object3D, type PerspectiveCamera } from 'three
 import type GUI from 'three/addons/libs/lil-gui.module.min.js';
 import type { HeightField } from '../heightfield';
 import { MAP_BOUNDS } from '../layout';
+import { SKY, SYNODIC_MONTH } from '../sky/palette';
 import { HELD_WEATHER } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
 import { CALM_WEATHER, type MapWeather } from '../types';
@@ -20,8 +21,8 @@ import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, ty
  * - The frame: a shape (a desktop, a phone, an iPad…) with its guide on the
  *   screen and a thirds grid; the lens is the vertical field of view of what
  *   the guide holds, so a picture has exactly what the guide shows.
- * - The scene: hold the time of day, hold a weather, freeze the scene's time,
- *   show or leave out the explorer.
+ * - The scene: hold the time of day, hold the moon's phase (full, half, a crescent…),
+ *   hold a weather, freeze the scene's time, show or leave out the explorer.
  * - V saves a view into `wallpapers/views.json`, R records a flight into
  *   `wallpapers/paths/<name>.json`; "Render" draws either at full quality
  *   with scripts/wallpaper.mjs (headless, on the graphics card) into
@@ -48,6 +49,10 @@ export interface FreeCamOptions {
   clockHeld(): number | null;
   /** The day's clock now. */
   clock(): number;
+  /** Hold the moon's age (0 new … 0.5 full … 1 new again), or let the calendar's moon show (null). */
+  setMoon(age: number | null): void;
+  /** The age the moon is held at now (null: not held). */
+  moonHeld(): number | null;
   /** The camera is given back: the map's own field of view again. */
   restore(): void;
   /** The explorer, to leave him out of the picture. */
@@ -99,6 +104,33 @@ const TIMES: [string, number][] = [
   ['Night', 0.5],
   ['Dawn', 0.82],
 ];
+
+/**
+ * Moon phases by name, as the moon's age (0 new … 0.5 full … back to new). Growing is lit on the right, shrinking on
+ * the left: the way the sky draws it, seen from Cambodia (sky/palette.ts).
+ */
+const MOONS: [string, number][] = [
+  ['New (dark)', 0],
+  ['Crescent, growing', 0.135],
+  ['Half, growing', 0.25],
+  ['Nearly full, growing', 0.375],
+  ['Full', 0.5],
+  ['Nearly full, shrinking', 0.625],
+  ['Half, shrinking', 0.75],
+  ['Crescent, shrinking', 0.865],
+];
+/** The panel's moon choices besides the phases: the calendar's own moon, and an age set by the slider (between two phases). */
+const GAME_MOON = 'Game moon';
+const CUSTOM_MOON = 'Custom';
+const moonName = (age: number): string => MOONS.find(([, at]) => Math.abs(at - age) < 0.0005 || Math.abs(at + 1 - age) < 0.0005)?.[0] ?? CUSTOM_MOON;
+
+/** The moon's age (0‥1) that a saved moment draws: the one it holds (`moon=`), else the phase its date gives (`day=` and `clock=`, as the sky counts it); null: neither is there. */
+function savedMoon(q: URLSearchParams): number | null {
+  const held = q.has('moon') ? Number(q.get('moon')) : NaN;
+  const dated = q.has('day') && q.has('clock') ? (Number(q.get('day')) + Number(q.get('clock'))) / SYNODIC_MONTH : NaN;
+  const age = Number.isFinite(held) ? held : dated;
+  return Number.isFinite(age) ? ((age % 1) + 1) % 1 : null;
+}
 
 /** Loop videos the panel makes from the view: a camera path that comes round to where it began. */
 const LOOPS = ['Orbit round what I look at', 'Sway, gently', 'Push in and out', 'Day and night'] as const;
@@ -174,6 +206,9 @@ interface Panel {
   clock: number;
   /** A time of day picked by name ("—": the clock is where the slider is). */
   preset: string;
+  /** The moon: the calendar's (`GAME_MOON`), a phase by name, or `CUSTOM_MOON` (the age is where the slider is). */
+  moon: string;
+  moonAge: number;
   weather: string;
   freeze: boolean;
   explorer: boolean;
@@ -242,6 +277,8 @@ class FreeCamTool implements FreeCam {
     time: 'Game time',
     clock: 0.22,
     preset: '—',
+    moon: GAME_MOON,
+    moonAge: 0.5,
     weather: 'Game weather',
     freeze: false,
     explorer: false,
@@ -257,6 +294,7 @@ class FreeCamTool implements FreeCam {
   private held: Partial<MapWeather> | null = null;
   private viewWeather: Partial<MapWeather> = {};
   private prevHold: number | null = null;
+  private prevMoon: number | null = null;
   private explorerWas = true;
   private rec: Recording | null = null;
   private list: WallpaperList = { views: [], flights: [], out: {} };
@@ -412,6 +450,7 @@ class FreeCamTool implements FreeCam {
     const aim = this._t.copy(this.pos).addScaledVector(fwd, AIM);
     this.o.setCamera([this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.camFov()]);
     if (this.s.time === 'Game time') this.s.clock = round(this.o.clock(), 3);
+    if (this.s.moon === GAME_MOON) this.s.moonAge = round(SKY.moonAge, 3);
     if (this.rec) {
       this.rec.rows.push([now, this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.s.lens, this.o.clock()]);
       if (now - this.rec.start > FLIGHT_MAX * 1000) void this.stopRecord();
@@ -470,6 +509,8 @@ class FreeCamTool implements FreeCam {
     this.prevHold = this.o.clockHeld();
     this.s.time = this.prevHold === null ? 'Game time' : 'Hold';
     this.s.clock = round(this.prevHold ?? this.o.clock(), 3);
+    this.prevMoon = this.o.moonHeld();
+    this.moonFields(this.prevMoon);
     this.s.freeze = false;
     this.explorerWas = this.o.explorer()?.visible ?? true;
     this.layout();
@@ -492,6 +533,7 @@ class FreeCamTool implements FreeCam {
     this.o.setCamera(null);
     this.o.restore();
     this.o.setClock(this.prevHold);
+    this.o.setMoon(this.prevMoon);
     this.held = null;
     this.s.weather = 'Game weather';
     const ex = this.o.explorer();
@@ -642,6 +684,23 @@ class FreeCamTool implements FreeCam {
     this.s.clock = clock;
     if (!TIMES.some(([label, at]) => label === this.s.preset && at === clock)) this.s.preset = '—';
     this.o.setClock(clock);
+  }
+
+  /** The panel's moon fields for an age (null: the calendar's own moon, which the slider then follows). */
+  private moonFields(age: number | null): void {
+    if (age === null) {
+      this.s.moon = GAME_MOON;
+      this.s.moonAge = round(SKY.moonAge, 3);
+      return;
+    }
+    this.s.moonAge = round(MathUtils.clamp(age, 0, 1), 3);
+    this.s.moon = moonName(this.s.moonAge);
+  }
+
+  /** Hold the moon at an age (0 new … 0.5 full), or let the calendar's own moon show (null). */
+  private holdMoon(age: number | null): void {
+    this.moonFields(age);
+    this.o.setMoon(age === null ? null : this.s.moonAge);
   }
 
   // ── Saving and drawing ───────────────────────────────────────────────────
@@ -941,6 +1000,8 @@ class FreeCamTool implements FreeCam {
       this.applyExplorer();
       const q = new URLSearchParams(query);
       if (q.has('clock')) this.holdClock(Number(q.get('clock')));
+      // (the moon the picture will show, not today's: the one it holds, else the phase its date gave it)
+      this.holdMoon(savedMoon(q));
       this.viewWeather = {};
       for (const k of WEATHER_KEYS) if (q.has(k)) this.viewWeather[k] = Number(q.get(k));
       this.s.weather = 'From the saved view';
@@ -1102,6 +1163,16 @@ class FreeCamTool implements FreeCam {
         if (time) this.holdClock(time[1]);
       })
       .listen();
+    scene
+      .add(s, 'moon', [GAME_MOON, ...MOONS.map(([label]) => label), CUSTOM_MOON])
+      .name('Moon phase')
+      .onChange(() => {
+        const phase = MOONS.find(([label]) => label === s.moon);
+        if (s.moon === GAME_MOON) this.holdMoon(null);
+        else this.holdMoon(phase ? phase[1] : s.moonAge);
+      })
+      .listen();
+    scene.add(s, 'moonAge', 0, 1, 0.005).name('Moon age (0 new · 0.5 full)').onChange(() => this.holdMoon(s.moonAge)).listen();
     scene.add(s, 'weather', Object.keys(WEATHERS)).name('Weather').onChange(() => this.pickWeather());
     scene.add(s, 'freeze').name('Freeze time (F)').listen();
     scene.add(s, 'explorer').name('Show the explorer').onChange(() => this.applyExplorer());

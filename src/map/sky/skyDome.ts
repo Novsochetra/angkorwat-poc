@@ -323,8 +323,10 @@ export function buildSkyDome(): SkyDome {
           float off = 1.0 - disc * lit;
           // (not where the rim already shines; on a crescent its inner curve faces the sun's side too)
           float inner = mix(0.45, 1.5, cres) * exp(-fromLit / mix(0.07, 0.05, cres)) * (1.0 - limb * (1.0 - disc * cres));
-          col += vec3(0.8, 0.9, 1.0) * (1.5 * exp(-past / 0.05) * limb * (1.0 - disc) + inner * off) * moonA;
-          col += vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-fromLit * 2.4) * off * moonA;
+          // (a new moon has nothing lit to shine: its rim and glow grow in over the first day, not a bright ring at age 0)
+          float shine = moonA * smoothstep(0.0, 0.015, uMoonLight.w);
+          col += vec3(0.8, 0.9, 1.0) * (1.5 * exp(-past / 0.05) * limb * (1.0 - disc) + inner * off) * shine;
+          col += vec3(0.16, 0.32, 0.8) * 0.35 * halo * exp(-fromLit * 2.4) * off * shine;
         }
 
         // Clouds.

@@ -32,7 +32,8 @@ import { BuildWork } from './work/build';
  * World map screen — "Angkor Heritage: choose your next expedition".
  *
  * URL: `shot=1` headless still · `t=` seconds into the scene (shots) ·
- * `night=0‥1` time of day · `focus=<place>` camera on a place ·
+ * `night=0‥1` time of day · `moon=0‥1` hold the moon's age (0 new, 0.5 full) ·
+ * `focus=<place>` camera on a place ·
  * `ui=0` no interface · `graphics=auto|low|medium|high|max` the graphics
  * level (graphics.ts; auto is medium in shots) · `phone=1` act as a phone ·
  * `quality=low|medium|high` only the built detail ·
@@ -559,6 +560,8 @@ addEventListener('resize', () => {
 const CYCLE = 360;
 /** `clock=` (checks): hold the day's cycle there (0 afternoon, 0.25 dusk, 0.5 night, 0.75 dawn). */
 let clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
+/** `moon=` (checks): hold the moon's age there (0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter), else it follows the date (`day=`). */
+let moonParam = params.has('moon') ? (((Number(params.get('moon')) || 0) % 1) + 1) % 1 : null;
 const nightOf = (c: number) => 0.5 - 0.5 * Math.cos(c * Math.PI * 2);
 /** The clock on the dusk side for a time of day (0 afternoon … 0.5 night). */
 const duskClock = (n: number) => Math.acos(1 - 2 * Math.min(1, Math.max(0, n))) / (Math.PI * 2);
@@ -662,6 +665,8 @@ function step(t: number, dt: number): void {
     frame.clock = clock;
   }
   frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
+  // (the sky's moon only: the festivals and the daily seeds go by `day`)
+  frame.moonAge = moonParam ?? undefined;
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
   // (the free camera's panel can hold a weather: dev/freecam.ts)
@@ -705,6 +710,7 @@ function momentQuery(q: URLSearchParams, t: number): URLSearchParams {
   q.set('night', night.toFixed(2));
   q.set('clock', frame.clock.toFixed(3));
   q.set('day', String(frame.day));
+  if (moonParam !== null) q.set('moon', moonParam.toFixed(3));
   q.set('season', frame.season.toFixed(3));
   const w = frame.weather;
   for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
@@ -752,6 +758,10 @@ if (devTools)
       },
       clockHeld: () => clockParam,
       clock: () => frame.clock,
+      setMoon: (m) => {
+        moonParam = m;
+      },
+      moonHeld: () => moonParam,
       restore: () => {
         if (!roam?.active) rig.fit();
       },

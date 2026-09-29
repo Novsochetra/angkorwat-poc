@@ -253,7 +253,8 @@ along the view, Q / E (or Space) go down / up, Shift is fast, the wheel sets the
 speed, a trackpad pinch the lens, H hides the panel, Esc leaves. The panel: the
 picture's shape (a desktop, an ultrawide, a phone, an iPad, custom: its guide and a
 thirds grid show what the picture holds; the lens is the field of view of that
-frame), a held time of day and weather, F freezes the scene's time.
+frame), a held time of day, moon phase (full, a half, a crescent…: a list of names and
+an age slider) and weather, F freezes the scene's time.
 
 - **V** saves a view into `wallpapers/views.json`; **R** records a flight (`wallpapers/paths/<name>.json`).
   "Render at full quality" in the panel, or `npm run wallpaper` (`-- flights` adds the
@@ -270,8 +271,9 @@ frame), a held time of day and weather, F freezes the scene's time.
   the colours are tagged BT.709, `codec=hevc|h264` and `crf=` are its options. 4K at 30 fps draws about five
   frames a second (20 s in 2 minutes). Any video-wallpaper app plays the MP4 on repeat.
 - A saved view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size, with the moment
-  (`t`, `clock`, `day`, `season`, weather; the explorer's spot when he is in it): what
-  the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical
+  (`t`, `clock`, `day`, `season`, weather, `moon` when the panel holds the moon's age
+  (0 new, 0.5 full; only the sky reads it, `moon=` in any shot); the explorer's spot when he
+  is in it): what the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical
   field of view, degrees) and `explorer=0` leaves him out of any shot. `?freecam=1` opens
   the camera on the first frames (with `cam=`, at that camera).
 - The free camera is the overview's, wherever it is: main.ts `step` puts the camera

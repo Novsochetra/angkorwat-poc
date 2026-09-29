@@ -55,6 +55,12 @@ export interface MapFrame {
   /** Days gone by since the page opened (whole cycles of `clock`): moon phases, seasons. */
   day: number;
   /**
+   * The moon's age held there (0‥1: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter), else it follows the
+   * calendar (`day` and `clock`). URL `moon=0‥1`; the free camera's panel holds it too. Only the sky reads it:
+   * the festivals and the daily seeds keep to `day`.
+   */
+  moonAge?: number;
+  /**
    * Time of the year (0‥1, wraps), from the real date, moving on a year every
    * 24 days of `clock` (so a visit sees the fields change): 0 = mid-April,
    * Khmer New Year (hot, dry; fields bare) · ~0.1 the rains begin, rice is
