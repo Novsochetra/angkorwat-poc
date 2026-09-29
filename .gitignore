@@ -3,5 +3,7 @@ dist/
 .DS_Store
 *.log
 screenshots/
+# (the free camera's saved views and flights in wallpapers/ are kept; what they draw is not)
+wallpapers/out/
 .claude/worktrees/
 .env

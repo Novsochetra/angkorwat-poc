@@ -560,6 +560,8 @@ const HELD: Record<string, Held> = {
   snow: { cloud: 0.82, snow: 0.8, snowCover: 1, wind: 0.14 },
 };
 const NUMBERS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'flash', 'snow', 'snowCover'] as const;
+/** The weathers the URL holds (`weather=`), by name: the free camera's panel holds one too (dev/freecam.ts). */
+export const HELD_WEATHER: Readonly<Record<string, Readonly<Partial<MapWeather>>>> = HELD;
 
 /** `v` if it is a weather setting (null: not one, e.g. a word of the URL or an older page's saved setting). */
 const asSetting = (v: unknown): WeatherSetting | null => (WEATHER_SETTINGS.includes(v as WeatherSetting) ? (v as WeatherSetting) : null);

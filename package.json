@@ -13,6 +13,7 @@
     "playtest": "node scripts/playtest.mjs",
     "kitcheck": "node scripts/kit-check.mjs",
     "video": "node scripts/video.mjs",
+    "wallpaper": "node scripts/wallpaper.mjs",
     "perf": "node scripts/perf.mjs",
     "idle": "node scripts/idle.mjs"
   },

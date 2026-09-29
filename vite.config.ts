@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 import { feedbackPlugin } from './src/feedback/vitePlugin.ts';
+import { wallpaperPlugin } from './src/map/dev/wallpaperPlugin.ts';
 import { seoPlugin } from './src/seo/vitePlugin.ts';
 
 export default defineConfig(({ mode }) => ({
@@ -8,6 +9,9 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     // In-game bug reports (B) are saved to feedback/ through the dev server.
     feedbackPlugin(),
+    // The free camera's saved views and flights (`) are kept in wallpapers/ by the dev server, which also draws them.
+    // Dev server only.
+    wallpaperPlugin(),
     // Search and share tags for the world map (SITE_URL in .env: the site's address).
     seoPlugin(loadEnv(mode, import.meta.dirname, '').SITE_URL),
   ],

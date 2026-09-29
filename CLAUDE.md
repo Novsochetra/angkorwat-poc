@@ -10,6 +10,8 @@
   frame by frame (`__videoFrame`, `video=1`). `npm run video -- preview` makes
   3 stills a shot; `only=<shot>,…` redoes those shots. Promo words say the
   game is playable now (never "coming soon").
+- `npm run wallpaper` draws the saved views and flights of the free camera
+  (dev server only: see "Free camera and wallpapers" below) into `wallpapers/out/`.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
 
 ## World kit (component plan sections 18–20)
@@ -240,3 +242,42 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
   `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
   `act=eat|bite|drink&food=<kind>`.
+
+## Free camera and wallpapers (dev server only)
+
+`` ` `` (or the 📷 button beside 🐞 Report) opens a camera that depends on
+nothing (`src/map/dev/freecam.ts`): the interface goes, the explorer's keys stop,
+and it flies anywhere over the map, from the overview or while roaming (the
+explorer stays where he is; hide him or not in the panel). Drag looks, W A S D fly
+along the view, Q / E (or Space) go down / up, Shift is fast, the wheel sets the
+speed, a trackpad pinch the lens, H hides the panel, Esc leaves. The panel: the
+picture's shape (a desktop, an ultrawide, a phone, an iPad, custom: its guide and a
+thirds grid show what the picture holds; the lens is the field of view of that
+frame), a held time of day and weather, F freezes the scene's time.
+
+- **V** saves a view into `wallpapers/views.json`; **R** records a flight (`wallpapers/paths/<name>.json`).
+  "Render at full quality" in the panel, or `npm run wallpaper` (`-- flights` adds the
+  videos, `-- only=a,b`, `-- list`; `scripts/wallpaper.mjs`), draws them headless on the
+  GPU: a picture `wallpapers/out/<name>.png` (4K in about 11 s), a flight `<name>.mp4`
+  (frame by frame into ffmpeg, as `npm run video`). What is drawn is not kept in git.
+- A saved view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size, with the moment
+  (`t`, `clock`, `day`, `season`, weather; the explorer's spot when he is in it): what
+  the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical
+  field of view, degrees) and `explorer=0` leaves him out of any shot. `?freecam=1` opens
+  the camera on the first frames (with `cam=`, at that camera).
+- The free camera is the overview's, wherever it is: main.ts `step` puts the camera
+  (`freeCam`, `videoCam`, `fixedCam`) after the roaming and gives the parts
+  `frame.roam = 'overview'`, so the rain, shadows and detail are those of a shot.
+- The land is built with big blocks past the roaming area (terrain/views.ts, where no
+  camera of the map goes): the notes under the camera say so when it is out there.
+- Dev server only: `import.meta.env.DEV && !shot`, the module loaded by `import()`; its
+  plugin (`src/map/dev/wallpaperPlugin.ts`, `apply: 'serve'`, this computer's own pages
+  only) keeps the views and runs the render jobs. A build has none of it.
+
+## Native app (`native/`)
+
+Swift + SwiftUI (+ a Metal sky shader) for iPhone, iPad and Mac: only the
+loading screen so far, ported cell for cell from `ui/_loadTemple.ts` and
+`ui/_loadHero.ts`. Guide: `native/README.md`. Make the project with
+`cd native && xcodegen`; build with `xcodebuild -project native/AngkorHeritage.xcodeproj
+-scheme AngkorHeritage -destination 'platform=macOS' -derivedDataPath native/build build`.

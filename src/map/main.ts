@@ -37,7 +37,8 @@ import { BuildWork } from './work/build';
  * level (graphics.ts; auto is medium in shots) · `phone=1` act as a phone ·
  * `quality=low|medium|high` only the built detail ·
  * `parts=terrain,water,…` build only these parts (checking one part) ·
- * `cam=x,y,z,tx,ty,tz` a fixed camera (m) instead of the overview ·
+ * `cam=x,y,z,tx,ty,tz[,fov]` a fixed camera (m; its vertical field of view in
+ * degrees) instead of the overview · `explorer=0` leave the explorer out ·
  * `lang=km|en` the interface's language (else the saved one; Khmer first) ·
  * `story=<n>` the story from beat n (1‥; shots: that beat), `story=0` never
  * (else it plays before the map on the first visit) ·
@@ -497,6 +498,8 @@ audio.onHeld((held) => ui.setSoundHeld(held));
 
 // ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
 const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);
+// (`explorer=0`: he is left out of the picture: the wallpaper script's shots, dev/freecam.ts)
+if (params.get('explorer') === '0' && foreground) foreground.explorer.object.visible = false;
 const roam: MapRoam | null = foreground
   ? await safe<MapRoam | null>(
       'roam',
@@ -584,9 +587,14 @@ const IDLE_FPS = 30;
 const IDLE_FPS_SLOW = 20;
 /** Frames a second while the window has no focus (another window in front; still on screen). */
 const BLURRED_FPS = 10;
+/** `cam=x,y,z,tx,ty,tz` or with a seventh value, the vertical field of view (degrees). */
 const fixedCam = params.get('cam')?.split(',').map(Number);
 /** The camera of a video frame (scripts/video.mjs: `__videoFrame`), else the URL's or the rig's. */
 let videoCam: number[] | null = null;
+/** The free camera's (dev server only: dev/freecam.ts), the same seven values; it goes before the other two. */
+let freeCam: number[] | null = null;
+/** The free camera's panel (dev server only; set below, once its module has loaded). */
+let free: import('./dev/freecam').FreeCam | null = null;
 // (the weather setting: follow the season, clear, rainy, stormy; a change eases in)
 const weather = createWeather(params, () => settings.weather);
 const frame: MapFrame = { t: 0, dt: 0, drift: 0, night, clock: duskClock(night), day: DAY0, season: SEASON0, weather: { ...CALM_WEATHER }, camera, lightDir: new Vector3(0, 1, 0), listener: new Vector3(), roam: 'overview', roamLevels: { wind: 0, wake: 0, sail: 0 }, calls: [] };
@@ -614,6 +622,16 @@ function runUpdate(p: MapPart | null | undefined, f: MapFrame): void {
   } catch (e) {
     broken.add(p);
     console.error(`[map] part "${p.name}" failed to update (left still from now on):`, e);
+  }
+}
+
+/** Put the camera at `cam` (`[x, y, z, tx, ty, tz]`, m: where it is and what it looks at) and, if a seventh value is there, its vertical field of view (degrees). */
+function placeCamera(cam: number[]): void {
+  camera.position.set(cam[0], cam[1], cam[2]);
+  camera.lookAt(cam[3], cam[4], cam[5]);
+  if (cam[6] > 0 && cam[6] !== camera.fov) {
+    camera.fov = cam[6];
+    camera.updateProjectionMatrix();
   }
 }
 
@@ -646,15 +664,24 @@ function step(t: number, dt: number): void {
   frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
+  // (the free camera's panel can hold a weather: dev/freecam.ts)
+  free?.weather(frame.weather);
   // (parts built only when wanted: the rain, snow, the festival, lazy.ts; a shot builds what its URL asks with the map)
   if (!shot) late.watch(frame);
-  const cam = videoCam ?? fixedCam;
-  if (cam) {
-    camera.position.set(cam[0], cam[1], cam[2]);
-    camera.lookAt(cam[3], cam[4], cam[5]);
-  } else if (!roam?.active) rig.update(dt, t);
+  // (the free camera moves first: it sets `freeCam`)
+  free?.step();
+  const cam = freeCam ?? videoCam ?? fixedCam;
+  if (cam && !roam?.active) placeCamera(cam);
+  else if (!roam?.active) rig.update(dt, t);
   // Roaming moves the explorer and the follow camera first: the other parts read the camera.
   runUpdate(roam, frame);
+  // (the free camera, and the shots that draw what it saved, win over the follow camera too: the explorer stays where he
+  // is, and the parts see the overview's rules with it: the rain, the shadows and the detail as a shot from `cam=` has
+  // them. Not on the live page, where `?cam=` never held the camera while roaming)
+  if (cam && roam?.active && (freeCam || shot)) {
+    placeCamera(cam);
+    frame.roam = 'overview';
+  }
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
   castGate.update(frame);
@@ -669,7 +696,22 @@ function step(t: number, dt: number): void {
   frame.calls.length = 0;
 }
 
-// ── Tools: bug reports (B) and block look panel (K) ────────────────────────
+/**
+ * The moment as URL values, for a shot to bring it back: the scene's time `t`, the time of day (the day's cycle, the
+ * moon, the season) and the weather as they are now: dawn is not dusk, the balloon keeps its wind.
+ */
+function momentQuery(q: URLSearchParams, t: number): URLSearchParams {
+  q.set('t', t.toFixed(1));
+  q.set('night', night.toFixed(2));
+  q.set('clock', frame.clock.toFixed(3));
+  q.set('day', String(frame.day));
+  q.set('season', frame.season.toFixed(3));
+  const w = frame.weather;
+  for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
+  return q;
+}
+
+// ── Tools: bug reports (B), block look panel (K) and the free camera (`) ───
 // (dev server only: reports are saved through it, and a deployed map shows no tools)
 const devTools = import.meta.env.DEV && !shot;
 const feedback = !devTools
@@ -686,21 +728,46 @@ const feedback = !devTools
         Blocks: Object.entries(blocks).map(([k, v]) => `${k} ${v}`).join(' · '),
       }),
       repro: () => {
-        const q = new URLSearchParams(location.search);
-        q.set('t', frame.t.toFixed(1));
-        q.set('night', night.toFixed(2));
-        // (the day's cycle, the moon, the season and the weather as they are now: dawn is not dusk, the balloon keeps its wind)
-        q.set('clock', frame.clock.toFixed(3));
-        q.set('day', String(frame.day));
-        q.set('season', frame.season.toFixed(3));
-        const w = frame.weather;
-        for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
+        const q = momentQuery(new URLSearchParams(location.search), frame.t);
         if (selected) q.set('focus', selected);
         for (const [k, v] of Object.entries(roam?.report()?.params ?? {})) q.set(k, v);
         return q;
       },
     });
 if (devTools) installLookPanel({ viewAt: () => ({ camera, rect: canvas.getBoundingClientRect() }), pickables: () => parts.map((p) => p.object), scene, renderer });
+// The free camera (dev/freecam.ts; `wallpapers/`, `npm run wallpaper`): a camera that goes anywhere, for wallpapers and videos.
+if (devTools)
+  void import('./dev/freecam').then(({ installFreeCam }) => {
+    free = installFreeCam({
+      camera,
+      canvas,
+      field,
+      setCamera: (c) => {
+        freeCam = c;
+      },
+      setClock: (c) => {
+        clockParam = c;
+        // (at once, not eased over a few seconds)
+        if (c !== null) night = nightOf(c);
+      },
+      clockHeld: () => clockParam,
+      clock: () => frame.clock,
+      restore: () => {
+        if (!roam?.active) rig.fit();
+      },
+      explorer: () => foreground?.explorer.object ?? null,
+      redrawShadows: () => {
+        renderer.shadowMap.needsUpdate = true;
+      },
+      roaming: () => !!roam?.active,
+      // (the sky moves with `drift`, which a shot sets from its `t=`)
+      moment: (withExplorer) => {
+        const q = momentQuery(new URLSearchParams(), frame.drift);
+        if (withExplorer) for (const [k, v] of Object.entries(roam?.report()?.params ?? {})) if (k !== 'rcam') q.set(k, v);
+        return q;
+      },
+    });
+  });
 
 // ── Start ───────────────────────────────────────────────────────────────────
 const focus = asPlace(params.get('focus'));
@@ -985,7 +1052,7 @@ if (shot) {
   const idleOff = params.get('idle') === '0';
   /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 on a phone and the battery saver), fewer while idle or unfocused. */
   const pace = (now: number): { fps: number; mode: LoopMode } => {
-    if (idleOff || feedback?.active) return { fps: frameCap.fps, mode: 'full' };
+    if (idleOff || feedback?.active || free?.active) return { fps: frameCap.fps, mode: 'full' };
     if (!focused) return { fps: BLURRED_FPS, mode: 'blurred' };
     if (roam?.active || rig.flying || now - lastInput < IDLE_AFTER) return { fps: frameCap.fps, mode: 'full' };
     return { fps: frameCap.fps > 30 ? IDLE_FPS : IDLE_FPS_SLOW, mode: 'idle' };
@@ -995,6 +1062,8 @@ if (shot) {
   Object.assign(window, { __loop: loop });
   /** The last frame was at full pace (the resolution and auto's watch measure only such frames). */
   let wasFull = false;
+  /** Seconds the free camera stood the scene's time still so far (s). */
+  let stoodStill = 0;
   const tick = (now: number) => {
     // (built, the loading screen's button waits: one frame was drawn under it — the shaders, the buffers — and the loop rests until it is pressed)
     if (!first && !entered) {
@@ -1026,8 +1095,11 @@ if (shot) {
     // (slow paces step further a frame; roaming's physics keep short steps)
     const dt = Math.min(roam?.active ? 0.05 : 0.1, raw);
     last = now;
+    // (the free camera can stand the scene's time still: the clock loses the seconds it stood, and goes on from there)
+    const still = free?.frozen === true;
+    if (still) stoodStill += raw;
     // (the first frame's time can come a hair before t0)
-    if (!feedback?.active) step(Math.max(0, (now - t0) / 1000), dt);
+    if (!feedback?.active) step(Math.max(0, (now - t0) / 1000 - stoodStill), still ? 0 : dt);
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
     const drawn = !story?.covered;
     const full = mode === 'full';

@@ -1,0 +1,8 @@
+[
+  {"name":"angkor-wat-dusk","cam":[-40,96,-73,-3.35,68.51,-161.89,54.1],"w":3840,"h":2160,"shape":"4K · 16:9 (3840×2160)","query":"t=12&clock=0.2&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"},
+  {"name":"sanctuary-dawn","cam":[70,150,-30,0,80,-200,55],"w":3840,"h":2160,"shape":"4K · 16:9 (3840×2160)","query":"t=12&clock=0.82&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"},
+  {"name":"kulen-sunset","cam":[330,230,-220,370,150,-440,55],"w":3840,"h":2160,"shape":"4K · 16:9 (3840×2160)","query":"t=12&clock=0.22&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"},
+  {"name":"overlook-afternoon","cam":[-200,120,-60,-300,50,-230,55],"w":3840,"h":2160,"shape":"4K · 16:9 (3840×2160)","query":"t=12&clock=0.04&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"},
+  {"name":"map-under-the-moon","cam":[0,111.5,174,0,20,-80,55],"w":3840,"h":2160,"shape":"4K · 16:9 (3840×2160)","query":"t=12&clock=0.5&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"},
+  {"name":"phone-angkor-wat-dusk","cam":[0,72,-40,0,84,-170,62],"w":1290,"h":2796,"shape":"iPhone tall (1290×2796)","query":"t=12&clock=0.2&day=15&season=0.4","noExplorer":true,"saved":"2026-09-29T07:05:00.000Z"}
+]
