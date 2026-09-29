@@ -3,7 +3,9 @@
 **Status: done, in three phases.** Phase 1 (items 1–4), phase 2 (items
 5–8b) and phase 3 (item 9: the build in workers, and pictures of the far
 trees on a phone) are done and measured: section 7. What is left is under
-"Next steps" at the bottom.
+"Next steps" at the bottom. A later look (section 8) found that on Low the
+3D map is under half of the tab's CPU: a glow that never stopped, the sound
+and the day/night colour were the rest.
 
 ## 1. The problem
 
@@ -236,6 +238,11 @@ both the loading screen and play.
 - [x] Phase 3: item 9: the build in workers, and pictures of the far trees
   on a phone (section 7). Far-tree impostors elsewhere were measured and do
   not pay.
+- [x] Section 8: the Jump in glow rests after three breaths (it never
+  stopped), the night colour changes in steps of 2 %.
+- [ ] Owner's calls from section 8: a light sound (24 kHz) on Low; Low
+  drawn at 30 frames a second; fewer draws (merge the far vegetation and
+  land tiles, and the explorer's meshes); PostHog's session recording.
 - [ ] Later, small: start the build workers from a first module in
   `index.html` (≈ 0.25 s sooner); pack the jungle's meshes in its worker
   (≈ 0.1 s); move the landmarks' block work to workers (≈ 0.7 s of the
@@ -567,3 +574,102 @@ The same page with the pictures switched off and on in turn (5 rounds,
 steadier): the overview 0.34 ms, night 0.38, the glider's height 0.22, the
 Kulen walk 0. Low on a desktop, medium and high: the same draws and
 triangles, ms within the noise.
+
+## 8. The page around the map (a look after phase 3)
+
+The owner's report: on Low, Simple fog and the smallest size (484 × 444) the
+tab still took 65–83 % CPU in Chrome's Task Manager (dev server), and the GPU
+stayed high. A smaller picture cannot help there: the pixels were already
+few. So each piece of the page was switched off in turn, on the production
+build (Chromium on Metal, M1 Max, 967 × 887 at 2, Low, Simple fog,
+`resolution=0.25`, sound on). Numbers are the tab's CPU (its renderer
+process, what the Task Manager shows) and the GPU process's CPU, 100 = one
+core; the threads come from macOS `sample <pid>`. Runs move 5–10 points
+between one another (other GPU work counts): read the differences of runs
+taken back to back, not the levels.
+
+Hands off (the overview at the idle pace, 30 frames a second):
+
+| piece switched off | tab | GPU process |
+|---|---|---|
+| nothing | 41–46 | 39–44 |
+| the interface (`ui=0`) | 35 | 15 |
+| CSS animations and transitions | 36 | 16 |
+| only the Jump in glow's animation | 44 | 21 (same batch: 41, 39) |
+| `backdrop-filter` blur | 46 | 40 (no change) |
+| the day/night cycle (`night=0`) | 35 | 36 |
+| the sound (context suspended) | 25 | 37 |
+| the map not drawn (`post.render` a no-op) | 33 | 29 |
+
+What it says:
+
+1. **A CSS animation that never ends** cost the most. The Jump in button's
+   glow breathed for ever (`rh-breathe`, 3.2 s, infinite) on a layer whose
+   halo is three drop-shadows: the browser drew the whole page at every
+   screen refresh (120 Hz on a ProMotion Mac) and redid the shadows each
+   time. About 18 points of the GPU process hands off, 10–13 with the mouse
+   moving; the tab did not change. (While roaming the button is hidden and
+   it cost nothing.) The selected card's glow (`mu-breathe`, 4.5 s, infinite)
+   is the same kind and got the same fix (not measured alone).
+2. **The day/night colour** (`--mu-n`, changed at every 0.004 all day in the
+   cycle) restyled and repainted every panel and restarted their background
+   transitions: 5–6 % of the main thread was style recalculation.
+3. **The sound** is about 16 points of the tab: the audio thread (11–14 %)
+   and the reverb's two threads. 257 gain, 58 filter, 40 panner and 74
+   oscillator nodes, a 4.2 s stereo convolver, all at 48 kHz.
+4. **The map's own drawing** is 13–17 points of the tab and 11–19 of the GPU
+   process (30 and 60 frames a second): 476–480 draws and 3.3 M triangles in
+   the low overview (vegetation 125 draws and 0.96 M triangles, the land 111
+   and 0.73 M, the explorer on his ledge 50 and 0.24 M, roaming props 37, the
+   landmarks about 100 and 0.7 M); 228–313 in a walk. The tab and the GPU
+   process together spend ≈ 12 µs of CPU a draw: 100 fewer draws are worth ≈ 7
+   points at 60 frames a second. While roaming the top JS function is
+   three's `updateMatrixWorld` (2 641 objects, ≈ 0.6 ms a frame in dev).
+5. Not the cause: the blur behind the glass panels, the open settings panel
+   (+3 points), the loading screen (gone at Start).
+
+Changed (three small edits):
+
+- `roam/hud.ts`: the Jump in glow breathes three times, then rests in the
+  middle of its breath; `ui/map.css`: the selected card's glow, three
+  breaths; `ui/ui.ts` `setNight`: the colour changes in steps of 2 % (a
+  colour level or less).
+
+Measured back to back on the production build (two rounds each):
+
+| case | tab before → after | GPU process before → after |
+|---|---|---|
+| hands off | 41.7 / 43.2 → 35.2 / 34.2 | 41.4 / 43.5 → 15.3 / 15.4 |
+| mouse moving (63 frames a second) | 61.9 / 67.1 → 59.4 / 57.4 | 55.5 / 56.5 → 45.3 / 42.3 |
+
+Style recalculation fell from 5.6–6.5 % to 0.3 % of the main thread. The look
+is the same (the glow rests at the middle of its breath).
+
+Found, not changed (they change the game, the owner's call):
+
+- **Battery saver** (30 frames a second) with the mouse moving: the tab 50 →
+  40, the GPU process 37 → 28. Low could draw at 30 by itself.
+- **A lighter sound**, hands off (tab, after the fixes above): a 24 kHz
+  context 34 → 24 (the audio thread 11 → 6 %), no reverb 34 → 30, a 1.2 s
+  reverb 34 → 32, `latencyHint: 'playback'` 34 → 33. A 24 kHz context loses
+  what is above 12 kHz; `AudioContext({ sampleRate })` may be ignored by
+  older Safari.
+- **PostHog's session recording** is on for the project (its remote config:
+  every session, canvas off, console logs on) on localhost as well. Every
+  script here blocks the analytics hosts, so the numbers above leave it out:
+  with its recorder loaded (`us-assets.i.posthog.com` allowed, events blocked)
+  the tab took 1.4 points more hands off and 5 more with the mouse moving.
+- **Freezing the static parts' matrices** (terrain, vegetation, jungle, path,
+  landmarks: 70 % of the 2 641 objects; a per-part audit first, then
+  `matrixAutoUpdate = false` or the scene's `matrixWorldAutoUpdate = false`
+  with the moving parts updated by hand): ≈ 3–4 points.
+- **Fewer draws**: merge the far vegetation and land tiles into a few meshes
+  for the overview (the far layer is drawn whole anyway), and the explorer's
+  50 meshes into a few. A merged copy costs GPU memory (the instances are 46
+  MB now), and the tiles stay for roaming.
+
+How to see it again: `npm run idle -- w=967 h=887 url="graphics=low&fog=simple&resolution=0.25"`
+gives the tab and GPU process CPU for the four cases. Switching one piece off
+in the page and measuring again is how the table above was made (a CSS rule
+added with `page.addStyleTag`, `ui=0`, `AudioContext.suspend()`, and
+`post.render = () => {}`).

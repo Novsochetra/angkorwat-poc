@@ -1480,7 +1480,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (id !== selected) applySelected(id);
     },
     setNight(n) {
-      if (Math.abs(n - night) < 0.004) return;
+      // (steps of 2 %, a colour level or less: the cycle turns it all day, and each change restyles and repaints every panel and restarts their background transitions)
+      if (Math.abs(n - night) < 0.02) return;
       night = n;
       root.style.setProperty('--mu-n', n.toFixed(3));
       wakeLayer.style.setProperty('--mu-n', n.toFixed(3));

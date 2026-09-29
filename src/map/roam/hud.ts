@@ -441,7 +441,8 @@ function injectStyle(): void {
       border: 0; background: none; cursor: pointer; pointer-events: auto; outline: none; color: var(--mu-gold-hi);
       --mu-edge: rgba(255, 208, 112, 0.7); transition: opacity 0.4s, transform 0.4s var(--mu-ease), visibility 0s; }
     .rh-jump .mu-glow { opacity: 0.55; }
-    .rh-jump .mu-glow::before { animation: rh-breathe 3.2s ease-in-out infinite; }
+    /* (three breaths when the map comes up, then it rests in the middle of them: a glow that breathes for ever makes the browser draw the whole page at every screen refresh and redo the halo's three drop-shadows each time) */
+    .rh-jump .mu-glow::before { opacity: 0.72; animation: rh-breathe 3.2s ease-in-out 3; }
     .rh-jump-text { font: 700 calc(19 * var(--px)) / 1 var(--mu-display); color: var(--mu-ink); letter-spacing: 0.01em; text-shadow: 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.3); }
     .rh-jump-icon { display: flex; }
     .rh-icon { flex: none; width: calc(26 * var(--px)); height: calc(26 * var(--px)); filter: drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
@@ -454,7 +455,7 @@ function injectStyle(): void {
       transition: opacity 0.3s, transform 0.3s, visibility 0s 0.3s; }
     .rh.is-choosing .rh-jump { opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -100%) scale(0.96);
       transition: opacity 0.15s, transform 0.2s, visibility 0s 0.2s; }
-    @keyframes rh-breathe { 50% { opacity: 0.45; } }
+    @keyframes rh-breathe { 0%, 100% { opacity: 0.72; } 25% { opacity: 1; } 75% { opacity: 0.45; } }
 
     /* The choice, parachute or hang glider: a card where the button was, growing out of its tail. */
     .rh > .rh-jumps { flex-direction: column; align-items: stretch; gap: calc(12 * var(--px)); padding: calc(13 * var(--px)) calc(14 * var(--px)) calc(14 * var(--px));

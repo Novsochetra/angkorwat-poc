@@ -426,8 +426,9 @@
   opacity: 1;
 }
 
+/* (a few breaths, then it rests: one that runs for ever keeps the browser drawing the page at every screen refresh, and redoes the halo's drop-shadows each time) */
 .mu-pin.is-selected .mu-glow::before {
-  animation: mu-breathe 4.5s ease-in-out infinite;
+  animation: mu-breathe 4.5s ease-in-out 3;
 }
 
 @keyframes mu-breathe {
