@@ -248,19 +248,41 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 `` ` `` (or the 📷 button beside 🐞 Report) opens a camera that depends on
 nothing (`src/map/dev/freecam.ts`): the interface goes, the explorer's keys stop,
 and it flies anywhere over the map, from the overview or while roaming (the
-explorer stays where he is; hide him or not in the panel). Drag looks, W A S D fly
-along the view, Q / E (or Space) go down / up, Shift is fast, the wheel sets the
-speed, a trackpad pinch the lens, H hides the panel, Esc leaves. The panel: the
-picture's shape (a desktop, an ultrawide, a phone, an iPad, custom: its guide and a
-thirds grid show what the picture holds; the lens is the field of view of that
-frame), a held time of day, moon phase (full, a half, a crescent…: a list of names and
-an age slider) and weather, F freezes the scene's time.
+explorer stays where he is). Drag looks, W A S D fly along the view, Q / E (or
+Space) go down / up, Shift is fast, the wheel sets the speed, a trackpad pinch
+zooms, F freezes the scene's time, H hides the panel, ? shows the keys (they show for
+the first 15 s), Esc leaves.
 
-- **V** saves a view into `wallpapers/views.json`; **R** records a flight (`wallpapers/paths/<name>.json`).
-  "Render at full quality" in the panel, or `npm run wallpaper` (`-- flights` adds the
-  videos, `-- only=a,b`, `-- list`; `scripts/wallpaper.mjs`), draws them headless on the
-  GPU: a picture `wallpapers/out/<name>.png` (4K in about 11 s), a flight `<name>.mp4`
-  (frame by frame into ffmpeg, as `npm run video`). What is drawn is not kept in git.
+The panel is at the right; the frame (the picture's shape: a desktop, 5K, an
+ultrawide, a phone, an iPad, custom; a thirds grid) fills the room left of it, so
+the panel never covers the picture (the camera's centre is the frame's: a view
+offset, `placed()` after roaming, which clears one). From the top: **📸 Take
+picture (V)**, **● Record video (R)**, **🔁 Loop video**, the name (empty: made
+from the place in the frame and the time, "angkor-wat-night"; a typed name that is
+saved already is replaced: the button says so), the status with a progress bar;
+Frame (size, zoom, speed); Moment (time chips Game / Afternoon / Sunset / Night /
+Dawn and a slider, the moon's phase, weather chips, freeze, explorer: shown while
+roaming unless unticked); Video settings (folded); the gallery: every picture and
+video with its thumbnail (ffmpeg, `wallpapers/out/.thumbs/`), newest first; a
+click picks one (Go there, Draw again, Open, Finder, Forget), a double-click goes
+there. Go there puts back the camera, the moment, the frame and the explorer
+where the picture has him (roam.ts `placeFrom`: his mode, at `at=`, posed), and a
+picture's time stands still. Checks: a Playwright script in GPU Chromium (headless) with the saving
+endpoints stubbed (the user's `wallpapers/` is theirs), controls by role and name
+(`getByRole('button', { name: 'Night' })`, `.fc-tile`).
+
+- **V** saves the view into `wallpapers/views.json` and draws it at once; **R** records a
+  flight (`wallpapers/paths/<name>.json`), drawn when it stops. One draw at a time, the
+  next waits its turn. `npm run wallpaper` (`-- flights` adds the videos, `-- only=a,b`,
+  `-- list`; `scripts/wallpaper.mjs`) draws them headless on the GPU: a picture
+  `wallpapers/out/<name>.png` (4K in about 11 s), a flight `<name>.mp4` (frame by frame
+  into ffmpeg, as `npm run video`). What is drawn is not kept in git.
+- The picture looks like the frame did: `screenH` (the frame's height in drawn pixels,
+  saved with it) gives `pxscale=` (the picture's height over it: the glow and the
+  fireflies are drawn as big for it), and the explorer is where he was: a shot that
+  starts him roaming without `sim=` lets his mode settle first (on the hang glider, the
+  wing over him), ending at `at=`; a video's warm-up frames move him on, so it passes
+  `lead=1.5` (roam.ts).
 - **Video for a live wallpaper.** By default **R** flies a recorded flight back to its start, so it is a
   loop; the panel's "Video" folder also makes a loop from the view (orbit round what you look at, sway, push
   in and out, day and night) and picks the format (HEVC, 10-bit `hvc1`: about 40 MB for 20 s at 4K; H.264 plays

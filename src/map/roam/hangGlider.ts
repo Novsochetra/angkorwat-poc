@@ -470,9 +470,10 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         v = 0;
         vy = 0;
       } else if (from === 'overview') {
-        // (a URL start: already flying)
+        // (a URL start: already flying. Its bob from the start: a shot that starts it again flies the same way, roam.ts `settle`)
         spot = null;
         phase = 'fly';
+        clock = 0;
         pt = 10;
         ps.prone = 1;
         openK = 1;
@@ -480,6 +481,10 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         v = V_TRIM;
         vy = easyNow ? 0 : -SINK_MIN;
         hangFromFeet(ctx);
+        // (the wing over him and his hands on its bar at once, as in flight: a picture may come before the first step)
+        wingQuat(quat, yaw, pitch, bank);
+        wingOverHang();
+        fists(ctx);
         ex.animator.postureFeet = false;
         cam.distance = zoomBase = CAM_DIST;
         cam.pitch = camTilt();

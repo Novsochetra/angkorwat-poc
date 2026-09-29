@@ -3,7 +3,7 @@ import { hash3 } from '../../voxel/random';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { hazeUniforms } from './haze';
 import { SKY } from './palette';
-import { view } from '../resolution';
+import { PX_SCALE, view } from '../resolution';
 
 /**
  * Rain (the part `rain`): falling streaks round the camera, one instanced
@@ -79,7 +79,7 @@ export function buildRain(ctx: MapContext): MapPart {
     /** How far the wind has carried the drops (m, x and z), and the time they have fallen (s, y). */
     uDrift: { value: new Vector3() },
     uWind: { value: new Vector2() },
-    /** Metres a pixel covers 1 m from the camera. */
+    /** Metres a pixel covers 1 m from the camera (a pixel of the screen: `pxscale` pixels in a picture drawn bigger). */
     uPixel: { value: 0.001 },
     uColor: { value: new Color() },
     uOpacity: { value: 0 },
@@ -145,7 +145,8 @@ export function buildRain(ctx: MapContext): MapPart {
       varying float vAlpha;
       void main() {
         // Brightest at the head (vUv.y 0), fading along the tail; soft across.
-        float a = vAlpha * uOpacity * (1.0 - abs(vUv.x)) * smoothstep(0.0, 0.08, vUv.y) * pow(1.0 - vUv.y, 0.8);
+        // (pow of a hair below 0, where vUv.y comes out a hair over 1, is NaN: a black dot)
+        float a = vAlpha * uOpacity * (1.0 - abs(vUv.x)) * smoothstep(0.0, 0.08, vUv.y) * pow(max(1.0 - vUv.y, 0.0), 0.8);
         if (a < 0.002) discard;
         gl_FragColor = vec4(uColor, a);
         #include <fog_fragment>
@@ -187,8 +188,9 @@ export function buildRain(ctx: MapContext): MapPart {
       u.uShape.value[1].set(LAYERS[1].len * (over ? OVER_MID.len : 1), LAYERS[1].width, LAYERS[1].alpha * (over ? OVER_MID.alpha : 1));
       ctx.renderer.getDrawingBufferSize(buf);
       const cam = f.camera;
-      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts)
-      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom;
+      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts;
+      // a picture drawn k times bigger than the screen, `PX_SCALE`: the thinnest drop is as wide as on the screen)
+      u.uPixel.value = ((2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom) * PX_SCALE;
       // Lit by the sky: the haze colour and a little of the sky fill and the key light; a flash lights every drop.
       u.uColor.value
         .copy(SKY.haze)

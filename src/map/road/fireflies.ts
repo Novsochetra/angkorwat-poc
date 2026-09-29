@@ -1,6 +1,7 @@
 import { AdditiveBlending, BufferGeometry, Color, Float32BufferAttribute, Points, ShaderMaterial, UniformsLib, UniformsUtils, type Vector3 } from 'three';
 import { mulberry32 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
+import { PX_SCALE } from '../resolution';
 
 /**
  * Fireflies at night: warm points of light drifting slowly a metre or two over
@@ -15,6 +16,8 @@ export interface FireflyUniforms {
   /** 0 by day, 1 at night. */
   uNight: { value: number };
   uScale: { value: number };
+  /** The picture's size over the screen's it was framed on (resolution.ts `PX_SCALE`): the dot's smallest and biggest size grow with it. */
+  uPx: { value: number };
   uColor: { value: Color };
 }
 
@@ -69,13 +72,14 @@ export function buildFireflies(field: HeightField, feet: Vector3, camera: Vector
   geo.setAttribute('aSeed', new Float32BufferAttribute(seed, 4));
   geo.setAttribute('aSize', new Float32BufferAttribute(size, 1));
   const material = new ShaderMaterial({
-    uniforms: UniformsUtils.merge([UniformsLib.fog, { uTime: { value: 0 }, uNight: { value: 0 }, uScale: { value: 800 }, uColor: { value: new Color(1.0, 0.78, 0.3) } }]),
+    uniforms: UniformsUtils.merge([UniformsLib.fog, { uTime: { value: 0 }, uNight: { value: 0 }, uScale: { value: 800 }, uPx: { value: PX_SCALE }, uColor: { value: new Color(1.0, 0.78, 0.3) } }]),
     vertexShader: /* glsl */ `
       attribute vec4 aSeed;
       attribute float aSize;
       uniform float uTime;
       uniform float uNight;
       uniform float uScale;
+      uniform float uPx;
       varying float vI;
       #include <common>
       #include <fog_pars_vertex>
@@ -95,14 +99,15 @@ export function buildFireflies(field: HeightField, feet: Vector3, camera: Vector
         // The lowland ones glow big to be seen from the overview; walking among
         // them (roaming) they shrink towards a firefly's own small light.
         float near = aSize > 0.2 ? mix(0.1, 1.0, smoothstep(6.0, 60.0, dist)) : 1.0;
-        gl_PointSize = clamp(px * 6.0 * near, 2.5, 28.0);
+        // (the limits are the screen's pixels: a picture drawn bigger, pxscale, grows them with it)
+        gl_PointSize = clamp(px * 6.0 * near, 2.5 * uPx, 28.0 * uPx);
         // A soft glow for about a second every 3–6 s, and a faint ember between.
         float period = 3.0 + aSeed.x * 3.0;
         float ph = fract(t / period + aSeed.y);
         float flash = smoothstep(0.0, 0.18, ph) * (1.0 - smoothstep(0.22, 0.5, ph));
         float on = smoothstep(0.35, 0.85, uNight);
         // Sub-pixel far ones: keep their light, spread over the smallest dot.
-        float cover = clamp(px * 6.0 / 2.5, 0.35, 1.0);
+        float cover = clamp(px * 6.0 / (2.5 * uPx), 0.35, 1.0);
         vI = on * (0.12 + 1.9 * flash) * cover;
         #include <fog_vertex>
       }`,

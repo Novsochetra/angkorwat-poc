@@ -41,7 +41,7 @@ import { VILLAGE_SPOTS } from '../village/_spots';
 import { hazeUniforms } from './haze';
 import { mistNoiseTexture } from './noise';
 import { SKY } from './palette';
-import { view } from '../resolution';
+import { PX_SCALE, view } from '../resolution';
 
 /**
  * Snow (the part `snow`): the Weather setting's "snow", a dream — it never
@@ -558,7 +558,7 @@ function flakeUniforms() {
     /** How far the wind has carried the flakes (m, x and z), and the time they have fallen (s, y). */
     uDrift: { value: new Vector3() },
     uTime: { value: 0 },
-    /** Metres a pixel covers 1 m from the camera. */
+    /** Metres a pixel covers 1 m from the camera (a pixel of the screen: `pxscale` pixels in a picture drawn bigger). */
     uPixel: { value: 0.001 },
     uColor: { value: new Color() },
     /** Lamplight on the flakes near a lamp (linear), and the lamps (x, y, z, strength). */
@@ -880,8 +880,9 @@ export function buildSnow(ctx: MapContext): MapPart {
       u.uShape.value[1].x = LAYERS[1].size * (over ? OVER.mid : 1);
       ctx.renderer.getDrawingBufferSize(buf);
       const cam = f.camera;
-      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts)
-      u.uPixel.value = (2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom;
+      // (the scene's height: a picked resolution between whole steps draws the scene smaller than the canvas, resolution.ts;
+      // a picture drawn k times bigger than the screen, `PX_SCALE`: the smallest flake is as big as on the screen)
+      u.uPixel.value = ((2 * Math.tan((cam.fov * Math.PI) / 360)) / Math.max(1, (buf.y * view.scene) / view.canvas) / cam.zoom) * PX_SCALE;
       // Lit all round, a little brighter than the snow on the land (so they read against it): the sky light from
       // above, its bounce off the snow below and the key light (the moon, by night); a flash lights every flake.
       const c = u.uColor.value

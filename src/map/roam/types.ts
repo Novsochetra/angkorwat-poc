@@ -165,6 +165,8 @@ export interface RoamCtx {
   shot: boolean;
   /** Where the explorer stood on the ledge (true scale) and which way he faced. */
   ledge: { feet: Vector3; yaw: number };
+  /** The URL values a start from the overview reads (`at=`, `balloon=`, `fishing=`…): the page's, or a saved view's (roam.ts `placeFrom`). */
+  start: URLSearchParams;
   /** Enter a place (fade out and open its page). */
   enter(place: PlaceDef): void;
 }

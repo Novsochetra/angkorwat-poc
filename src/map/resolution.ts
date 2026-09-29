@@ -42,6 +42,22 @@ export const view = { scene: 1, canvas: 1, pixelated: false };
 /** The scene's height in pixels now: point sprites size themselves by it (road/glow.ts `pointScale`, sky/rain.ts, sky/snow.ts). */
 export const sceneHeight = (): number => Math.max(1, Math.floor(innerHeight * view.scene));
 
+/**
+ * A shot drawn k times bigger than the screen it was framed on (`pxscale=<k>`,
+ * shots only: the free camera's wallpapers, dev/freecam.ts and
+ * scripts/wallpaper.mjs), 0.25‥8; 1 on the live page and in any shot without
+ * it. What is sized in pixels grows k times with it, so the big picture looks
+ * like the screen's: the fireflies' smallest and biggest dot
+ * (road/fireflies.ts), the bloom's spread (post.ts, drawn at the screen's
+ * size), the moon's soft edge, whose rim blooms (sky/skyDome.ts), and the
+ * thinnest raindrop and smallest snowflake (sky/rain.ts, sky/snow.ts).
+ */
+export const PX_SCALE: number = (() => {
+  if (!SHOT) return 1;
+  const k = Number(new URLSearchParams(location.search).get('pxscale'));
+  return Number.isFinite(k) && k > 0 ? Math.min(8, Math.max(0.25, k)) : 1;
+})();
+
 /** Screen dots per game pixel for a share (1 / share), and whether that is a whole number (a clean stretch). */
 export function stepOf(share: number): { step: number; whole: boolean } {
   const step = 1 / share;

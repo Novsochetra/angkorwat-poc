@@ -647,7 +647,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       ex.animator.postureFeet = true;
       if (from === 'overview') {
         // (a URL start: where `at` says, on the ground or in the air; else at home)
-        const q = new URLSearchParams(location.search);
+        const q = ctx.start;
         if (q.has('at')) {
           pos.copy(body.pos);
           yaw = body.yaw;

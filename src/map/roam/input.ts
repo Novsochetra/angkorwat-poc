@@ -138,8 +138,8 @@ export class RoamControls {
     if (!on) this.releaseAll();
   }
 
-  /** Drive the input from a script (headless shots) instead of the keys. */
-  runScript(steps: ScriptStep[]): void {
+  /** Drive the input from a script (headless shots; a saved view put back: roam.ts `placeFrom`) instead of the keys; null: the keys again. */
+  runScript(steps: ScriptStep[] | null): void {
     this.script = steps;
     this.scriptT = 0;
     this.scriptStep = null;

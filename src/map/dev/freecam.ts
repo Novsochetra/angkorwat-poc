@@ -1,7 +1,7 @@
 import { MathUtils, Vector3, type Object3D, type PerspectiveCamera } from 'three';
-import type GUI from 'three/addons/libs/lil-gui.module.min.js';
 import type { HeightField } from '../heightfield';
-import { MAP_BOUNDS } from '../layout';
+import { HAMLETS, JUNGLE_SITES, MAP_BOUNDS, PLACES, VILLAGE } from '../layout';
+import { view as drawn } from '../resolution';
 import { SKY, SYNODIC_MONTH } from '../sky/palette';
 import { HELD_WEATHER } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
@@ -18,19 +18,22 @@ import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, ty
  *
  * - Drag looks, W A S D fly along the view, Q / E (or Space) go down and up,
  *   Shift is fast, the wheel sets the speed, a trackpad pinch the lens.
- * - The frame: a shape (a desktop, a phone, an iPad…) with its guide on the
- *   screen and a thirds grid; the lens is the vertical field of view of what
- *   the guide holds, so a picture has exactly what the guide shows.
- * - The scene: hold the time of day, hold the moon's phase (full, half, a crescent…),
- *   hold a weather, freeze the scene's time, show or leave out the explorer.
- * - V saves a view into `wallpapers/views.json`, R records a flight into
- *   `wallpapers/paths/<name>.json`; "Render" draws either at full quality
- *   with scripts/wallpaper.mjs (headless, on the graphics card) into
- *   `wallpapers/out/`. `npm run wallpaper` draws them all.
- * - Video for a live wallpaper: a flight can be a loop (R flies back to the start
- *   by itself, or the panel makes one from the view: an orbit, a sway, a push in
- *   and out, a day turning to night), and the video is drawn so that it repeats
- *   with no jump, small (HEVC) or for everywhere (H.264).
+ * - The panel is at the right. The frame (the picture's shape: a desktop, a
+ *   phone, an iPad…) fills the room left of it, so the panel never covers the
+ *   picture; the camera's centre is the frame's centre (a view offset), and the
+ *   lens is the frame's vertical field of view: what the frame shows is what
+ *   the picture has.
+ * - V takes a picture: it is saved into `wallpapers/views.json` and drawn at
+ *   once at full quality (scripts/wallpaper.mjs, headless, on the graphics
+ *   card) into `wallpapers/out/`. R records a flight into
+ *   `wallpapers/paths/<name>.json`, and it is drawn as a video when it stops.
+ *   A loop video (orbit, sway, push in and out, day and night) is made from the
+ *   view. Names are made from the place looked at and the time of day unless
+ *   one is typed.
+ * - The moment: the time of day (the game's, or held), the moon's phase, the
+ *   weather, time frozen, the explorer shown or not.
+ * - The gallery lists every picture and video with its thumbnail: go back to
+ *   one, draw it again, open it, show it in the Finder, forget it.
  *
  * The land is built with big blocks past the roaming area, where no camera
  * of the map goes (terrain/views.ts): the notes say so when the camera is
@@ -63,6 +66,8 @@ export interface FreeCamOptions {
   roaming(): boolean;
   /** The moment as URL values, with his spot too (`roam=`, `at=`…) when he is in the picture. */
   moment(withExplorer: boolean): URLSearchParams;
+  /** Put the explorer back as a saved view's query has him, posed (roam.ts `placeFrom`); false: no spot of his in it. */
+  placeExplorer(q: URLSearchParams): boolean;
 }
 
 /** What the map's frame loop asks of the free camera. */
@@ -73,15 +78,17 @@ export interface FreeCam {
   readonly frozen: boolean;
   /** Once a step, before the camera is placed: moves the camera. */
   step(): void;
+  /** Once a step, after the camera is placed (and after roaming, which may clear a view offset): the frame's view offset. */
+  placed(): void;
   /** Once a step, after the weather: puts the panel's weather over it. */
   weather(w: MapWeather): void;
 }
 
-/** Picture shapes: width × height in pixels (a `Custom` takes its own). */
+/** Picture shapes: width × height in pixels (a `Custom` takes its own). The names are kept in the saved views. */
 const SHAPES: Record<string, [number, number]> = {
   '4K · 16:9 (3840×2160)': [3840, 2160],
-  '1440p · 16:9 (2560×1440)': [2560, 1440],
   '5K · 16:9 (5120×2880)': [5120, 2880],
+  '1440p · 16:9 (2560×1440)': [2560, 1440],
   'Mac · 16:10 (3840×2400)': [3840, 2400],
   'Ultrawide · 21:9 (5120×2160)': [5120, 2160],
   'iPhone tall (1290×2796)': [1290, 2796],
@@ -93,8 +100,16 @@ const SHAPES: Record<string, [number, number]> = {
 };
 const DEFAULT_SHAPE = '4K · 16:9 (3840×2160)';
 
-/** The weather choices: null is the game's own, a name a held weather (sky/weather.ts `HELD_WEATHER`). */
-const WEATHERS: Record<string, string | null> = { 'Game weather': null, Clear: 'clear', Rain: 'rain', Storm: 'storm', Rainbow: 'rainbow', Snow: 'snow', 'From the saved view': 'view' };
+/** The weather choices: null is the game's own, a name a held weather (sky/weather.ts `HELD_WEATHER`), `view` the one a saved picture had. */
+const WEATHERS: [string, string | null][] = [
+  ['Game', null],
+  ['Clear', 'clear'],
+  ['Rain', 'rain'],
+  ['Storm', 'storm'],
+  ['Rainbow', 'rainbow'],
+  ['Snow', 'snow'],
+];
+const VIEW_WEATHER = 'view';
 const WEATHER_KEYS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const;
 
 /** Times of day (the `clock` of the map: 0 afternoon, 0.22 sunset, 0.5 night, 0.82 dawn: the promo's). */
@@ -104,6 +119,11 @@ const TIMES: [string, number][] = [
   ['Night', 0.5],
   ['Dawn', 0.82],
 ];
+/** The time of day's word (for a name): the nearest of {@link TIMES} round the dial. */
+const timeWord = (clock: number): string => {
+  const dial = (a: number, b: number) => Math.abs(((a - b + 1.5) % 1) - 0.5);
+  return TIMES.reduce((best, t) => (dial(t[1], clock) < dial(best[1], clock) ? t : best))[0].toLowerCase();
+};
 
 /**
  * Moon phases by name, as the moon's age (0 new … 0.5 full … back to new). Growing is lit on the right, shrinking on
@@ -119,7 +139,7 @@ const MOONS: [string, number][] = [
   ['Half, shrinking', 0.75],
   ['Crescent, shrinking', 0.865],
 ];
-/** The panel's moon choices besides the phases: the calendar's own moon, and an age set by the slider (between two phases). */
+/** The moon choices besides the phases: the calendar's own moon, and an age set by the slider (between two phases). */
 const GAME_MOON = 'Game moon';
 const CUSTOM_MOON = 'Custom';
 const moonName = (age: number): string => MOONS.find(([, at]) => Math.abs(at - age) < 0.0005 || Math.abs(at + 1 - age) < 0.0005)?.[0] ?? CUSTOM_MOON;
@@ -132,12 +152,23 @@ function savedMoon(q: URLSearchParams): number | null {
   return Number.isFinite(age) ? ((age % 1) + 1) % 1 : null;
 }
 
-/** Loop videos the panel makes from the view: a camera path that comes round to where it began. */
+/** Loop videos made from the view: a camera path that comes round to where it began; the word goes in its name. */
 const LOOPS = ['Orbit round what I look at', 'Sway, gently', 'Push in and out', 'Day and night'] as const;
 type LoopKind = (typeof LOOPS)[number];
+const LOOP_WORD: Record<LoopKind, string> = { 'Orbit round what I look at': 'orbit', 'Sway, gently': 'sway', 'Push in and out': 'push', 'Day and night': 'day-night' };
 
 /** Video formats: HEVC is small (a wallpaper's file), H.264 plays everywhere. */
 const FORMATS: Record<string, VideoCodec> = { 'HEVC · small, for a wallpaper': 'hevc', 'H.264 · plays everywhere': 'h264' };
+
+/** Places a picture is named after: the landmarks, the jungle's sites, the villages (x, z; `reach`, m: how far off it still names a picture — a landmark (450) from afar, and first, as it is big; a small site only near). */
+const NAMED: { word: string; x: number; z: number; reach: number }[] = [
+  ...PLACES.map((p) => ({ word: p.name, x: p.x, z: p.z, reach: 450 })),
+  ...JUNGLE_SITES.map((s) => ({ word: s.name ?? s.id, x: s.x, z: s.z, reach: 60 + s.r * 4 })),
+  ...HAMLETS.map((h) => ({ word: ({ market: 'Morning market', 'east-village': 'Sugar palm village', 'palm-grove': 'Palm sugar yard', 'kulen-picnic': 'Kulen falls' } as Record<string, string>)[h.id] ?? h.id, x: h.x, z: h.z, reach: 80 + h.r * 3 })),
+  { word: 'Floating village', x: VILLAGE.x, z: VILLAGE.z, reach: 300 },
+];
+/** A place's words as a name ("The monk's hut" → "monks-hut"). */
+const slug = (v: string): string => safeName(v.toLowerCase().replace(/^the\s+/, '').replace(/'/g, '')).toLowerCase();
 
 const UP = new Vector3(0, 1, 0);
 
@@ -166,31 +197,89 @@ const FLIGHT_MAX = 120;
 /** Room kept over the ground and the water (m), and the highest the camera goes. */
 const CLEARANCE = 1.5;
 const CEILING = 900;
+/** Speeds (m/s): the slider's ends (it is even in steps of ×, not of +). */
+const SPEED_MIN = 2;
+const SPEED_MAX = 400;
+/** The keys are shown under the frame this long after it opens (s); ? shows or hides them. */
+const KEYS_FOR = 15;
+/** The panel's width (px), and the room kept round the frame. */
+const PANEL_W = 300;
+const ROOM = 16;
 
 const CSS = `
 body.freecam #ui, body.freecam .map-ui, body.freecam .rt, body.freecam .fb-button, body.freecam .fc-open { display: none !important; }
 body.freecam canvas#scene { cursor: grab; }
 .fc-open { left: 124px !important; }
-.fc-guide { position: fixed; z-index: 20; pointer-events: none; display: none; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5); }
+.fc-guide { position: fixed; z-index: 20; pointer-events: none; display: none; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.55); }
 .fc-guide.thirds {
   background:
     linear-gradient(to right, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.32) calc(33.333% - 0.5px), rgba(255, 255, 255, 0.32) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.32) calc(66.666% - 0.5px), rgba(255, 255, 255, 0.32) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px)),
     linear-gradient(to bottom, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.32) calc(33.333% - 0.5px), rgba(255, 255, 255, 0.32) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.32) calc(66.666% - 0.5px), rgba(255, 255, 255, 0.32) calc(66.666% + 0.5px), transparent calc(66.666% + 0.5px));
 }
-.fc-hud { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 21; pointer-events: none; display: none; white-space: pre-wrap; max-width: calc(100vw - 24px); text-align: center; padding: 6px 12px; border-radius: 8px; background: rgba(20, 24, 28, 0.62); color: #f3efe7; font: 12px/1.5 ui-monospace, Menlo, monospace; }
+.fc-guide.rec { border: 2px solid #ff5a4a; }
+.fc-hud { position: fixed; bottom: 12px; transform: translateX(-50%); z-index: 21; pointer-events: none; display: none; white-space: pre-wrap; max-width: calc(100vw - ${PANEL_W + 24}px); text-align: center; padding: 6px 12px; border-radius: 8px; background: rgba(20, 24, 28, 0.62); color: #f3efe7; font: 12px/1.5 ui-monospace, Menlo, monospace; }
 .fc-hud b { color: #ffd27a; font-weight: 600; }
 .fc-hud i { color: #ff9a6b; font-style: normal; }
-.fc-gui.lil-gui { --width: 330px; z-index: 30; }
-.fc-status { padding: 8px 10px 10px; font: 12px/1.45 system-ui, sans-serif; color: #ddd; word-break: break-word; }
-.fc-status.error { color: #ff9a8a; }
-.fc-status img, .fc-status video { display: block; width: 100%; max-height: 180px; object-fit: contain; margin-top: 8px; border-radius: 4px; background: #000; }
-.fc-status a { color: #ffd27a; }
+.fc-panel { position: fixed; top: 0; right: 0; bottom: 0; width: ${PANEL_W}px; z-index: 30; display: none; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; background: rgba(17, 19, 23, 0.96); border-left: 1px solid rgba(255, 255, 255, 0.08); color: #e9e6df; font: 12px/1.4 system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none; }
+.fc-panel.open { display: flex; }
+.fc-panel * { box-sizing: border-box; }
+.fc-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgb(17, 19, 23); font-size: 13px; font-weight: 650; }
+.fc-head .fc-btn { margin-left: auto; padding: 3px 8px; font-weight: 400; }
+.fc-sec { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+.fc-sec h3 { margin: 0; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: #8f98a3; }
+.fc-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.fc-row > .fc-label { color: #aeb5bd; }
+.fc-row.two { grid-template-columns: 58px minmax(0, 1fr); }
+.fc-btn { appearance: none; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.07); color: #eee; border-radius: 7px; padding: 6px 9px; font: inherit; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.fc-btn:disabled { opacity: 0.4; cursor: default; }
+.fc-btn.big { font-size: 14px; font-weight: 700; padding: 10px 9px; background: #e7b64a; border-color: #e7b64a; color: #1d1605; }
+.fc-btn.big:hover:not(:disabled) { background: #f4c862; }
+.fc-btn.rec.on { background: #cf3a2e; border-color: #cf3a2e; color: #fff; }
+.fc-btn.warn { color: #ffb0a4; }
+.fc-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fc-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.fc-chip { appearance: none; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); color: #ddd; border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 11.5px; cursor: pointer; }
+.fc-chip:hover { background: rgba(255, 255, 255, 0.14); }
+.fc-chip.on { background: #e7b64a; border-color: #e7b64a; color: #1d1605; font-weight: 600; }
+.fc-panel input[type='range'] { width: 100%; margin: 0; accent-color: #e7b64a; cursor: pointer; }
+.fc-val { min-width: 52px; text-align: right; color: #ffd27a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fc-panel select, .fc-panel input[type='text'], .fc-panel input[type='number'] { width: 100%; min-width: 0; padding: 5px 7px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 6px; background: #22262c; color: #eee; font: inherit; -webkit-user-select: text; user-select: text; }
+.fc-panel input::placeholder { color: #7f8791; }
+.fc-check { display: flex; align-items: center; gap: 6px; color: #ddd; cursor: pointer; }
+.fc-check input { margin: 0; accent-color: #e7b64a; }
+.fc-note { color: #8f98a3; font-size: 11px; }
+.fc-status { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); color: #d7d3cb; word-break: break-word; }
+.fc-status:empty { display: none; }
+.fc-status.error { color: #ffab9e; background: rgba(255, 80, 60, 0.1); }
+.fc-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.fc-bar > i { display: block; height: 100%; width: 0; background: #e7b64a; transition: width 0.4s; }
+.fc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.fc-tile { position: relative; aspect-ratio: 16 / 10; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: #2a2f36; cursor: pointer; }
+.fc-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fc-tile.on { border-color: #e7b64a; }
+.fc-tile .fc-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 4px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-tile .fc-kind { position: absolute; top: 2px; right: 3px; font-size: 11px; text-shadow: 0 1px 2px #000; }
+.fc-tile .fc-none { position: absolute; inset: 0 0 14px; display: grid; place-items: center; color: #7f8791; font-size: 10px; }
+.fc-tile.busy::after { content: ''; position: absolute; inset: 0; background: rgba(231, 182, 74, 0.25); animation: fc-pulse 1.2s ease-in-out infinite; }
+@keyframes fc-pulse { 50% { opacity: 0.2; } }
+.fc-pick { display: flex; flex-direction: column; gap: 6px; }
+.fc-shot { display: grid; place-items: center; height: 158px; border-radius: 6px; background: #000; overflow: hidden; color: #7f8791; font-size: 11px; }
+.fc-shot img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer; }
+.fc-pick .fc-title { font-weight: 650; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-pick .fc-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-acts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
+.fc-panel details > summary { cursor: pointer; color: #8f98a3; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; list-style: none; }
+.fc-panel details > summary::before { content: '▸ '; }
+.fc-panel details[open] > summary::before { content: '▾ '; }
+.fc-panel details > div { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.fc-panel a { color: #ffd27a; }
 `;
 
 const rad = MathUtils.degToRad;
 const deg = MathUtils.radToDeg;
 const round = (v: number, n = 2): number => Math.round(v * 10 ** n) / 10 ** n;
-/** A field where keys are typed (not a slider or a checkbox: those keep flying). */
+/** A field where keys are typed (not a slider, a checkbox or a button: those keep flying). */
 const typing = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.isContentEditable || ['TEXTAREA', 'SELECT'].includes(t.tagName) || (t.tagName === 'INPUT' && !['range', 'checkbox', 'button'].includes((t as HTMLInputElement).type)));
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -202,30 +291,37 @@ interface Panel {
   customW: number;
   customH: number;
   thirds: boolean;
-  time: 'Game time' | 'Hold';
+  /** The time of day: the game's own (it moves), or held at `clock`. */
+  hold: boolean;
   clock: number;
-  /** A time of day picked by name ("—": the clock is where the slider is). */
-  preset: string;
   /** The moon: the calendar's (`GAME_MOON`), a phase by name, or `CUSTOM_MOON` (the age is where the slider is). */
   moon: string;
   moonAge: number;
-  weather: string;
+  /** A weather of {@link WEATHERS} (null: the game's), or {@link VIEW_WEATHER}. */
+  weather: string | null;
   freeze: boolean;
   explorer: boolean;
+  /** A name typed for what is saved next ('': one is made from the place and the time). */
   name: string;
-  /** Video: its format, whether to draw it as soon as it is saved, whether R closes a flight into a loop, and the loop the panel makes. */
+  /** Video: its format, whether to draw it as soon as it is saved, whether R closes a flight into a loop, and the loop made from the view. */
   format: string;
   drawNow: boolean;
   closeLoop: boolean;
-  loopKind: string;
+  loopKind: LoopKind;
   loopSeconds: number;
   loopReverse: boolean;
 }
 
-/** A saved thing in the list: a picture or a video. */
-interface Saved {
+/** A picture or a video in the gallery. */
+interface Item {
   kind: 'view' | 'flight';
   name: string;
+  w: number;
+  h: number;
+  saved: string;
+  /** A video's length (s), and whether it is a loop. */
+  seconds?: number;
+  loop?: boolean;
 }
 
 /** A flight while it is flown: a row a frame (ms, x, y, z, tx, ty, tz, lens, clock). */
@@ -239,12 +335,21 @@ interface Recording {
   frozen: boolean;
   query: string;
   noExplorer: boolean;
+  screenH: number;
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${WALLPAPER_ENDPOINT}${path}`, init);
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
   return (await res.json()) as T;
+}
+
+/** An element with a class and words. */
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text) e.textContent = text;
+  return e;
 }
 
 class FreeCamTool implements FreeCam {
@@ -262,6 +367,10 @@ class FreeCamTool implements FreeCam {
   private auto = 0;
   private last = 0;
   private hudAt = 0;
+  private syncAt = 0;
+  /** When the camera opened (ms), and whether ? shows the keys (null: for the first seconds). */
+  private openedAt = 0;
+  private keysShown: boolean | null = null;
   private readonly _f = new Vector3();
   private readonly _r = new Vector3();
   private readonly _w = new Vector3();
@@ -274,15 +383,14 @@ class FreeCamTool implements FreeCam {
     customW: 3000,
     customH: 2000,
     thirds: true,
-    time: 'Game time',
+    hold: false,
     clock: 0.22,
-    preset: '—',
     moon: GAME_MOON,
     moonAge: 0.5,
-    weather: 'Game weather',
+    weather: null,
     freeze: false,
     explorer: false,
-    name: 'view-1',
+    name: '',
     format: 'HEVC · small, for a wallpaper',
     drawNow: true,
     closeLoop: true,
@@ -290,43 +398,40 @@ class FreeCamTool implements FreeCam {
     loopSeconds: 40,
     loopReverse: false,
   };
-  /** The weather the panel holds (null: the game's), and the one a saved view has. */
+  /** The explorer's box was ticked or unticked by hand (else it follows roaming: shown while he roams). */
+  private explorerPicked = false;
+  /** The weather the panel holds (null: the game's), and the one a saved picture has. */
   private held: Partial<MapWeather> | null = null;
-  private viewWeather: Partial<MapWeather> = {};
+  private viewWeather: Partial<MapWeather> | null = null;
   private prevHold: number | null = null;
   private prevMoon: number | null = null;
   private explorerWas = true;
   private rec: Recording | null = null;
-  private list: WallpaperList = { views: [], flights: [], out: {} };
-  /** The picked saved thing (`view:<name>` or `flight:<name>`), and the things listed. */
-  private pick = { label: '' };
-  private saved: Saved[] = [];
+  private list: WallpaperList = { views: [], flights: [], out: {}, drawn: {} };
+  /** The picked picture or video (`view:<name>` or `flight:<name>`). */
+  private pick = '';
+  /** What is being drawn, what waits, and how far the one drawn is (0‥1, null: not known). */
+  private drawing: Item | null = null;
+  private readonly queue: Item[] = [];
+  private stopped = false;
+  /** The last thing drawn (its file under wallpapers/), shown under the words. */
+  private result: { item: Item; file: string } | null = null;
 
-  private gui: GUI | null = null;
-  private building: Promise<void> | null = null;
-  private savedFolder: GUI | null = null;
-  /** The record button, whose words change while a flight is flown. */
-  private recordButton: { name(text: string): unknown } | null = null;
-  private chromeHidden = false;
-  /** Shows the custom size's fields only for the Custom picture (set with the panel). */
-  private syncShape: () => void = () => undefined;
   private readonly button = document.createElement('button');
-  private readonly guide = document.createElement('div');
-  private readonly hud = document.createElement('div');
-  private readonly status = document.createElement('div');
+  private readonly guide = el('div', 'fc-guide');
+  private readonly hud = el('div', 'fc-hud');
+  private readonly panel = el('div', 'fc-panel');
+  private readonly status = el('div', 'fc-status');
+  private readonly bar = el('div', 'fc-bar');
+  private readonly grid = el('div', 'fc-grid');
+  private readonly picked = el('div', 'fc-pick');
+  private readonly galleryTitle = el('h3');
+  private chromeHidden = false;
   private box = { x: 0, y: 0, w: 0, h: 0 };
-
-  /** The panel's buttons. */
-  private readonly act: Record<string, () => void> = {
-    exit: () => this.exit(),
-    save: () => void this.saveView(),
-    record: () => this.toggleRecord(),
-    goTo: () => void this.goTo(),
-    render: () => void this.renderSelected(),
-    forget: () => void this.forget(),
-    stop: () => void this.stopRender(),
-    makeLoop: () => void this.makeLoop(),
-  };
+  /** Each control shows the value it holds (after a key, the wheel, or a change made in code). */
+  private readonly syncs: (() => void)[] = [];
+  private statusText = '';
+  private statusError = false;
 
   constructor(private readonly o: FreeCamOptions) {
     const style = document.createElement('style');
@@ -335,12 +440,11 @@ class FreeCamTool implements FreeCam {
     this.button.type = 'button';
     this.button.className = 'fb-button fc-open';
     this.button.textContent = '📷 Free camera';
-    this.button.title = 'Fly a free camera and save wallpapers (`)';
+    this.button.title = 'Fly a free camera and make wallpapers (`)';
     this.button.onclick = () => this.enter();
-    this.guide.className = 'fc-guide';
-    this.hud.className = 'fc-hud';
-    this.status.className = 'fc-status';
-    document.body.append(this.button, this.guide, this.hud);
+    this.bar.append(el('i'));
+    this.buildPanel();
+    document.body.append(this.button, this.guide, this.hud, this.panel);
 
     addEventListener('keydown', (e) => this.key(e, true), true);
     addEventListener('keyup', (e) => this.key(e, false), true);
@@ -389,27 +493,50 @@ class FreeCamTool implements FreeCam {
     return w > 0 ? [w, h] : [even(this.s.customW), even(this.s.customH)];
   }
 
-  /** The camera's own vertical field of view: the guide is a part of the window's height, and the lens is its field of view. */
+  /** The camera's own vertical field of view: the frame is a part of the window's height, and the lens is its field of view. */
   private camFov(): number {
     const part = this.box.h > 0 ? innerHeight / this.box.h : 1;
     return MathUtils.clamp(deg(2 * Math.atan(Math.tan(rad(this.s.lens) / 2) * part)), 5, 140);
   }
 
-  /** The guide: the largest frame of the picture's shape that fits the window. */
+  /** The frame's height in the pixels the map draws now: a picture this many pixels high looks the way the frame does (its glow, its fireflies). */
+  private screenH(): number {
+    return Math.max(1, Math.round(this.box.h * drawn.scene));
+  }
+
+  /** The frame: the largest of the picture's shape that fits the room left of the panel, in the middle of the window's height. */
   private layout(): void {
     const [w, h] = this.size();
-    const room = 14;
-    const maxW = Math.max(50, innerWidth - 2 * room);
-    const maxH = Math.max(50, innerHeight - 2 * room);
+    const areaW = Math.max(120, innerWidth - (this.open && !this.chromeHidden ? PANEL_W : 0));
+    const maxW = Math.max(50, areaW - 2 * ROOM);
+    const maxH = Math.max(50, innerHeight - 2 * ROOM);
     let gw = maxW;
     let gh = (gw * h) / w;
     if (gh > maxH) {
       gh = maxH;
       gw = (gh * w) / h;
     }
-    this.box = { x: (innerWidth - gw) / 2, y: (innerHeight - gh) / 2, w: gw, h: gh };
+    this.box = { x: (areaW - gw) / 2, y: (innerHeight - gh) / 2, w: gw, h: gh };
     Object.assign(this.guide.style, { left: `${this.box.x}px`, top: `${this.box.y}px`, width: `${gw}px`, height: `${gh}px`, display: this.open && !this.chromeHidden ? 'block' : 'none' });
     this.guide.classList.toggle('thirds', this.s.thirds);
+    this.hud.style.left = `${this.box.x + gw / 2}px`;
+    this.placed();
+  }
+
+  /**
+   * The camera's centre is the frame's (the frame is left of the panel, not in the middle of the window): the window
+   * is a part of a wider view whose middle is the frame's. Only across: the frame is in the middle of the height, so the
+   * field of view stays the frame's (and the detail and the point sprites, which read it, stay right).
+   */
+  placed(): void {
+    if (!this.open) return;
+    const c = this.o.camera;
+    const W = innerWidth;
+    const H = innerHeight;
+    const cx = this.box.x + this.box.w / 2;
+    const full = 2 * Math.max(cx, W - cx);
+    c.aspect = full / H;
+    c.setViewOffset(full, H, full / 2 - cx, 0, W, H);
   }
 
   step(): void {
@@ -449,7 +576,7 @@ class FreeCamTool implements FreeCam {
     this.limit();
     const aim = this._t.copy(this.pos).addScaledVector(fwd, AIM);
     this.o.setCamera([this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.camFov()]);
-    if (this.s.time === 'Game time') this.s.clock = round(this.o.clock(), 3);
+    if (!this.s.hold) this.s.clock = round(this.o.clock(), 3);
     if (this.s.moon === GAME_MOON) this.s.moonAge = round(SKY.moonAge, 3);
     if (this.rec) {
       this.rec.rows.push([now, this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.s.lens, this.o.clock()]);
@@ -458,6 +585,11 @@ class FreeCamTool implements FreeCam {
     if (now - this.hudAt > 120) {
       this.hudAt = now;
       this.showHud(now);
+    }
+    // (the values that move by themselves: the game's clock and moon, the speed and lens set by the wheel)
+    if (now - this.syncAt > 150) {
+      this.syncAt = now;
+      this.sync();
     }
   }
 
@@ -481,13 +613,14 @@ class FreeCamTool implements FreeCam {
     const pitch = deg(this.pitchNow);
     // (the land is finely built as far as the follow camera goes past the roaming area, and in front of the map, where the overview looks from)
     const out = roamInside(p.x, p.z, false) < -CAM_REACH;
+    // (the keys for the first seconds, then only when asked for: they would cover the bottom of a tall picture)
+    const keys = this.keysShown ?? now - this.openedAt < KEYS_FOR * 1000;
     const lines = [
-      `x <b>${p.x.toFixed(1)}</b>  y <b>${p.y.toFixed(1)}</b>  z <b>${p.z.toFixed(1)}</b>   <b>${Math.max(0, p.y - ground).toFixed(0)}</b> m over the ground   look <b>${bearing.toFixed(0)}°</b> ${pitch >= 0 ? '↑' : '↓'}<b>${Math.abs(pitch).toFixed(0)}°</b>   lens <b>${this.s.lens.toFixed(0)}°</b>   speed <b>${this.s.speed.toFixed(0)}</b> m/s${this.s.freeze ? '   <b>❄ time stands still</b>' : ''}`,
-      'W A S D fly · Q E down / up · Shift fast · drag look · wheel speed · pinch lens',
-      'V save view · R record a flight · F freeze time · H hide the panel · Esc leave',
+      `<b>${Math.max(0, p.y - ground).toFixed(0)}</b> m up · look <b>${bearing.toFixed(0)}°</b> ${pitch >= 0 ? '↑' : '↓'}<b>${Math.abs(pitch).toFixed(0)}°</b> · lens <b>${this.s.lens.toFixed(0)}°</b> · <b>${this.s.speed.toFixed(0)}</b> m/s${this.s.freeze ? ' · <b>❄ time stands still</b>' : ''}${keys ? '' : ' · ? keys'}`,
+      ...(keys ? ['W A S D fly · Q E down / up · Shift fast · drag to look · wheel: speed · pinch: zoom', 'V picture · R video · F freeze time · H hide the panel · ? keys · Esc leave'] : []),
     ];
     if (out) lines.push('<i>⚠ past the detailed land: the far edges are built with big blocks</i>');
-    if (this.rec) lines.unshift(`<i>● recording "${this.rec.name}" ${((now - this.rec.start) / 1000).toFixed(1)} s</i>`);
+    if (this.rec) lines.unshift(`<i>● recording “${this.rec.name}” ${((now - this.rec.start) / 1000).toFixed(1)} s · R stops</i>`);
     this.hud.innerHTML = lines.join('\n');
   }
 
@@ -505,22 +638,27 @@ class FreeCamTool implements FreeCam {
     this.vel.set(0, 0, 0);
     this.open = true;
     this.chromeHidden = false;
-    this.last = performance.now();
+    this.last = this.openedAt = performance.now();
     this.prevHold = this.o.clockHeld();
-    this.s.time = this.prevHold === null ? 'Game time' : 'Hold';
+    this.s.hold = this.prevHold !== null;
     this.s.clock = round(this.prevHold ?? this.o.clock(), 3);
     this.prevMoon = this.o.moonHeld();
     this.moonFields(this.prevMoon);
     this.s.freeze = false;
     this.explorerWas = this.o.explorer()?.visible ?? true;
+    // (roaming, he is in the picture unless unticked; on the overview he is not)
+    if (!this.explorerPicked) this.s.explorer = this.o.roaming();
+    const fov = c.fov;
     this.layout();
     // (the lens starts as the view is, so nothing jumps)
-    this.s.lens = MathUtils.clamp(round(deg(2 * Math.atan(Math.tan(rad(c.fov) / 2) * (this.box.h / innerHeight))), 1), 12, 100);
+    this.s.lens = MathUtils.clamp(round(deg(2 * Math.atan(Math.tan(rad(fov) / 2) * (this.box.h / innerHeight))), 1), 12, 100);
     document.body.classList.add('freecam');
     (document.activeElement as HTMLElement | null)?.blur?.();
     this.applyExplorer();
     this.hud.style.display = 'block';
-    this.showPanel();
+    this.panel.classList.add('open');
+    this.sync();
+    this.refreshList();
   }
 
   private exit(): void {
@@ -530,12 +668,16 @@ class FreeCamTool implements FreeCam {
     this.keys.clear();
     this.drag = null;
     document.body.classList.remove('freecam');
+    const c = this.o.camera;
+    c.clearViewOffset();
+    c.aspect = innerWidth / innerHeight;
+    c.updateProjectionMatrix();
     this.o.setCamera(null);
     this.o.restore();
     this.o.setClock(this.prevHold);
     this.o.setMoon(this.prevMoon);
     this.held = null;
-    this.s.weather = 'Game weather';
+    this.s.weather = null;
     const ex = this.o.explorer();
     if (ex && ex.visible !== this.explorerWas) {
       ex.visible = this.explorerWas;
@@ -543,15 +685,15 @@ class FreeCamTool implements FreeCam {
     }
     this.guide.style.display = 'none';
     this.hud.style.display = 'none';
-    this.gui?.hide();
+    this.panel.classList.remove('open');
     this.o.canvas.style.cursor = '';
   }
 
-  /** H: the panel, the guide and the notes away, for a clean look. */
+  /** H: the panel, the frame and the notes away, for a clean look (the frame then has the whole window). */
   private hideChrome(hide: boolean): void {
     this.chromeHidden = hide;
     this.hud.style.display = hide ? 'none' : 'block';
-    this.gui?.show(!hide);
+    this.panel.classList.toggle('open', !hide);
     this.layout();
   }
 
@@ -565,7 +707,7 @@ class FreeCamTool implements FreeCam {
   // ── Keys, the pointer ────────────────────────────────────────────────────
 
   private inPanel(t: EventTarget | null): boolean {
-    return t instanceof Node && !!this.gui?.domElement.contains(t);
+    return t instanceof Node && this.panel.contains(t);
   }
 
   private key(e: KeyboardEvent, down: boolean): void {
@@ -593,6 +735,8 @@ class FreeCamTool implements FreeCam {
     if (MOVE[e.code] || SHIFT.has(e.code)) {
       e.preventDefault();
       this.keys.add(e.code);
+      // (a slider or a button of the panel that has the focus must not take the arrows or Space too)
+      if (this.inPanel(document.activeElement)) (document.activeElement as HTMLElement).blur();
       return;
     }
     if (e.repeat) return;
@@ -603,16 +747,21 @@ class FreeCamTool implements FreeCam {
         this.exit();
         break;
       case 'KeyV':
-        void this.saveView();
+        void this.takePicture();
         break;
       case 'KeyR':
         this.toggleRecord();
         break;
       case 'KeyF':
         this.s.freeze = !this.s.freeze;
+        this.sync();
         break;
       case 'KeyH':
         this.hideChrome(!this.chromeHidden);
+        break;
+      case 'Slash':
+        this.keysShown = !(this.keysShown ?? performance.now() - this.openedAt < KEYS_FOR * 1000);
+        this.hudAt = 0;
         break;
     }
   }
@@ -659,7 +808,7 @@ class FreeCamTool implements FreeCam {
     e.stopPropagation();
     // (a pinch on a trackpad comes as a wheel with Ctrl held)
     if (e.ctrlKey) this.s.lens = MathUtils.clamp(this.s.lens * Math.exp(e.deltaY * 0.01), 12, 100);
-    else this.s.speed = MathUtils.clamp(this.s.speed * Math.exp(-e.deltaY * 0.0015), 2, 400);
+    else this.s.speed = MathUtils.clamp(this.s.speed * Math.exp(-e.deltaY * 0.0015), SPEED_MIN, SPEED_MAX);
   }
 
   // ── Time and weather ─────────────────────────────────────────────────────
@@ -672,18 +821,20 @@ class FreeCamTool implements FreeCam {
     w.windDir = dir;
   }
 
-  private pickWeather(): void {
-    const key = WEATHERS[this.s.weather];
-    if (key === null || key === undefined) this.held = null;
-    else if (key === 'view') this.held = this.viewWeather;
+  private pickWeather(key: string | null): void {
+    this.s.weather = key;
+    if (key === null) this.held = null;
+    else if (key === VIEW_WEATHER) this.held = this.viewWeather ?? {};
     else this.held = HELD_WEATHER[key] ?? {};
+    this.sync();
   }
 
-  private holdClock(clock: number): void {
-    this.s.time = 'Hold';
-    this.s.clock = clock;
-    if (!TIMES.some(([label, at]) => label === this.s.preset && at === clock)) this.s.preset = '—';
-    this.o.setClock(clock);
+  /** Hold the time of day at a clock, or let the game's own time run (null). */
+  private holdClock(clock: number | null): void {
+    this.s.hold = clock !== null;
+    if (clock !== null) this.s.clock = round(((clock % 1) + 1) % 1, 3);
+    this.o.setClock(clock === null ? null : this.s.clock);
+    this.sync();
   }
 
   /** The panel's moon fields for an age (null: the calendar's own moon, which the slider then follows). */
@@ -701,33 +852,81 @@ class FreeCamTool implements FreeCam {
   private holdMoon(age: number | null): void {
     this.moonFields(age);
     this.o.setMoon(age === null ? null : this.s.moonAge);
+    this.sync();
   }
 
-  // ── Saving and drawing ───────────────────────────────────────────────────
+  // ── Saving ───────────────────────────────────────────────────────────────
 
-  /** The camera as saved: `cam=` values, the lens as the field of view (the picture is cut to the guide's shape). */
+  /** The camera as saved: `cam=` values, the lens as the field of view (the picture is cut to the frame's shape). */
   private frameCam(): number[] {
     const fwd = this.forward(this._f);
     const aim = this._t.copy(this.pos).addScaledVector(fwd, AIM);
     return [this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.s.lens].map((v) => round(v, 2));
   }
 
-  private nextName(base: 'view' | 'flight' | 'loop'): string {
-    const taken = new Set([...this.list.views.map((v) => v.name), ...this.list.flights.map((f) => f.name)]);
-    for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  private taken(): Set<string> {
+    return new Set([...this.list.views.map((v) => v.name), ...this.list.flights.map((f) => f.name)]);
+  }
+
+  /**
+   * A name from the place in the picture and the time of day ("angkor-wat-night"; "-2", "-3"… when it is taken), and
+   * what it is (a word after it). The place: of those in the frame and within their reach, the one nearest the frame's
+   * middle, a far one counting as further off it.
+   */
+  private autoName(what = ''): string {
+    const fwd = this.forward(this._f);
+    const [w, h] = this.size();
+    const halfV = rad(this.s.lens) / 2;
+    const halfH = Math.atan(Math.tan(halfV) * (w / h));
+    const right = this._r.set(Math.cos(this.yawNow), 0, -Math.sin(this.yawNow));
+    const up = this._w.crossVectors(right, fwd);
+    let best: { word: string; k: number } | null = null;
+    for (const n of NAMED) {
+      const to = this._t.set(n.x - this.pos.x, Math.max(0, this.o.field.standY(n.x, n.z)) + 4 - this.pos.y, n.z - this.pos.z);
+      const dist = to.length();
+      const ahead = to.dot(fwd);
+      if (dist > n.reach || ahead <= 0) continue;
+      const across = Math.abs(Math.atan2(to.dot(right), ahead));
+      const upDown = Math.abs(Math.atan2(to.dot(up), ahead));
+      if (across > halfH || upDown > halfV) continue;
+      const k = Math.acos(MathUtils.clamp(ahead / dist, -1, 1)) * (1 + dist / n.reach) * (n.reach >= 450 ? 0.5 : 1);
+      if (!best || k < best.k) best = { word: n.word, k };
+    }
+    const place = best ? slug(best.word) : this.pos.y - Math.max(0, this.o.field.standY(this.pos.x, this.pos.z)) > 200 ? 'highlands' : 'jungle';
+    const base = [place, timeWord(this.s.clock), what].filter(Boolean).join('-');
+    const taken = this.taken();
+    if (!taken.has(base)) return base;
+    for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  }
+
+  /** The typed name, if there is one and it is not another kind's (a view and a flight never share a name). */
+  private typedName(kind: 'view' | 'flight'): string {
+    const name = safeName(this.s.name);
+    if (!name) return '';
+    const other = kind === 'view' ? this.list.flights : this.list.views;
+    return other.some((x) => x.name === name) ? '' : name;
+  }
+
+  /** The words for the picture button: a typed name that is saved already is replaced. */
+  private replacing(): string | null {
+    const name = safeName(this.s.name);
+    return name && this.list.views.some((v) => v.name === name) ? name : null;
   }
 
   private say(text: string, error = false): void {
-    this.status.className = `fc-status${error ? ' error' : ''}`;
-    this.status.textContent = text;
+    this.statusText = text;
+    this.statusError = error;
+    this.showStatus();
   }
 
-  private async saveView(): Promise<void> {
+  /** V: save the view as a picture and draw it at once. */
+  private async takePicture(): Promise<void> {
     if (!this.open) return;
     const [w, h] = this.size();
-    const name = safeName(this.s.name) || this.nextName('view');
+    const replaced = this.replacing();
+    const name = this.typedName('view') || this.autoName();
     const withExplorer = this.s.explorer;
-    const view: WallpaperView = {
+    const v: WallpaperView = {
       name,
       cam: this.frameCam(),
       w,
@@ -735,13 +934,16 @@ class FreeCamTool implements FreeCam {
       shape: this.s.shape,
       query: this.o.moment(withExplorer && this.o.roaming()).toString(),
       noExplorer: !withExplorer,
+      screenH: this.screenH(),
       saved: '',
     };
     try {
-      this.list = await call<WallpaperList>('/view', { method: 'POST', body: JSON.stringify(view) });
-      this.s.name = this.nextName('view');
-      this.buildSaved(`view:${name}`);
-      this.say(`Saved the view "${name}" (${w}×${h}). Pick it under Saved and press Render, or run: npm run wallpaper`);
+      this.list = await call<WallpaperList>('/view', { method: 'POST', body: JSON.stringify(v) });
+      // (a new name is used once; a picture being replaced keeps its name, to try another time of day on it)
+      if (!replaced) this.s.name = '';
+      this.pick = `view:${name}`;
+      this.showList();
+      this.draw(this.itemOf('view', name)!, `${replaced ? 'Replaced' : 'Saved'} “${name}”.`);
     } catch (err) {
       this.say(`Not saved: ${message(err)}`, true);
     }
@@ -760,16 +962,18 @@ class FreeCamTool implements FreeCam {
     const t0 = Number(q.get('t')) || 0;
     // (each frame of the flight has its own clock; the scene's time goes on from `t0` unless it stands still)
     for (const k of ['t', 'clock']) q.delete(k);
-    const named = safeName(this.s.name);
-    this.rec = { name: !named || /^view-\d+$/.test(named) ? this.nextName('flight') : named, start: performance.now(), rows: [], w, h, t0, frozen: this.s.freeze, query: q.toString(), noExplorer: !withExplorer };
-    this.recordButton?.name('■ Stop recording (R)');
-    this.say(`Recording. Fly, then press R to stop.${this.s.drawNow ? ' The video is drawn as soon as you stop.' : ' It is drawn later, frame by frame.'}`);
+    const name = this.typedName('flight') || this.autoName(this.s.closeLoop ? 'loop' : 'video');
+    this.rec = { name, start: performance.now(), rows: [], w, h, t0, frozen: this.s.freeze, query: q.toString(), noExplorer: !withExplorer, screenH: this.screenH() };
+    this.guide.classList.add('rec');
+    this.sync();
+    this.say(`● Recording “${name}”. Fly, then press R to stop.${this.s.closeLoop ? ' The camera flies back to the start by itself, so the video can repeat.' : ''}`);
   }
 
   private async stopRecord(): Promise<void> {
     const rec = this.rec;
     this.rec = null;
-    this.recordButton?.name('● Record a flight (R)');
+    this.guide.classList.remove('rec');
+    this.sync();
     if (!rec || rec.rows.length < 3) return this.say('That flight was too short: nothing saved.', true);
     // (the frames the game drew, an even thirty a second)
     const { rows } = rec;
@@ -792,7 +996,7 @@ class FreeCamTool implements FreeCam {
     // (a loop flies back to where it began: what the video needs to repeat)
     const loop = this.s.closeLoop;
     const all = loop ? this.closePath(samples) : samples;
-    const flight: WallpaperFlight = { name: rec.name, w: rec.w, h: rec.h, fps: FLIGHT_FPS, frozen: rec.frozen, t0: rec.t0, query: rec.query, noExplorer: rec.noExplorer, samples: all, loop, saved: '' };
+    const flight: WallpaperFlight = { name: rec.name, w: rec.w, h: rec.h, fps: FLIGHT_FPS, frozen: rec.frozen, t0: rec.t0, query: rec.query, noExplorer: rec.noExplorer, screenH: rec.screenH, samples: all, loop, saved: '' };
     await this.saveFlight(flight, loop ? `it flies back to the start over ${((all.length - samples.length + 1) / FLIGHT_FPS).toFixed(1)} s, so that it can repeat` : '');
   }
 
@@ -919,10 +1123,10 @@ class FreeCamTool implements FreeCam {
     return { rows, raised };
   }
 
-  /** Make a loop video from the view the camera has now (the panel's kind and seconds), and draw it. */
+  /** Make a loop video from the view the camera has now (the kind and the seconds of the Video settings), and draw it. */
   private async makeLoop(): Promise<void> {
     if (!this.open) return;
-    const kind = this.s.loopKind as LoopKind;
+    const kind = this.s.loopKind;
     const seconds = MathUtils.clamp(Math.round(this.s.loopSeconds), 4, 180);
     const { rows, raised } = this.loopSamples(kind, seconds, this.s.loopReverse);
     const [w, h] = this.size();
@@ -930,34 +1134,268 @@ class FreeCamTool implements FreeCam {
     const q = this.o.moment(withExplorer && this.o.roaming());
     const t0 = Number(q.get('t')) || 0;
     for (const k of ['t', 'clock']) q.delete(k);
-    const named = safeName(this.s.name);
-    const name = !named || /^(view|flight|loop)-\d+$/.test(named) ? this.nextName('loop') : named;
-    const flight: WallpaperFlight = { name, w, h, fps: FLIGHT_FPS, frozen: this.s.freeze, t0, query: q.toString(), noExplorer: !withExplorer, samples: rows, loop: true, kind, saved: '' };
+    const name = this.typedName('flight') || this.autoName(LOOP_WORD[kind]);
+    const flight: WallpaperFlight = { name, w, h, fps: FLIGHT_FPS, frozen: this.s.freeze, t0, query: q.toString(), noExplorer: !withExplorer, screenH: this.screenH(), samples: rows, loop: true, kind, saved: '' };
     await this.saveFlight(flight, `${kind.toLowerCase()}${raised ? `; lifted over the land in ${raised} frames` : ''}`);
   }
 
   /** How long a video takes to draw, in words (a rough guess: the frames, a JPEG each, and the encoder). */
-  private estimate(flight: WallpaperFlight): string {
-    const frames = flight.samples.length + (flight.loop && !flight.frozen ? Math.round(flight.fps * 1.2) : 0);
-    const seconds = 15 + frames * (0.032 + (0.0104 * flight.w * flight.h) / 1e6) * 1.4;
-    return seconds < 90 ? 'a minute' : `${Math.round(seconds / 60)} minutes`;
+  private estimate(frames: number, w: number, h: number): string {
+    const seconds = 15 + frames * (0.032 + (0.0104 * w * h) / 1e6) * 1.4;
+    return seconds < 90 ? 'about a minute' : `about ${Math.round(seconds / 60)} minutes`;
   }
 
-  /** Save a flight (flown, or a loop the panel made), and draw its video at once if the panel says so. */
+  /** Save a flight (flown, or a loop made from the view), and draw its video at once if the Video settings say so. */
   private async saveFlight(flight: WallpaperFlight, note: string): Promise<void> {
     try {
       this.list = await call<WallpaperList>('/flight', { method: 'POST', body: JSON.stringify(flight) });
-      this.buildSaved(`flight:${flight.name}`);
-      const what = `${flight.loop ? 'the loop' : 'the flight'} "${flight.name}" (${(flight.samples.length / FLIGHT_FPS).toFixed(1)} s, ${flight.w}×${flight.h}${note ? `; ${note}` : ''})`;
-      if (this.s.drawNow) await this.startRender({ kind: 'flight', name: flight.name }, `about ${this.estimate(flight)}`, `Saved ${what}. `);
-      else this.say(`Saved ${what}. Pick it under Saved and press Render, or run: npm run wallpaper -- flights`);
+      this.s.name = '';
+      this.pick = `flight:${flight.name}`;
+      this.showList();
+      const what = `${flight.loop ? 'the loop' : 'the video'} “${flight.name}” (${(flight.samples.length / FLIGHT_FPS).toFixed(1)} s${note ? `; ${note}` : ''})`;
+      if (this.s.drawNow) this.draw(this.itemOf('flight', flight.name)!, `Saved ${what}.`);
+      else this.say(`Saved ${what}. Press “Draw” under it to make the video.`);
     } catch (err) {
       this.say(`Not saved: ${message(err)}`, true);
     }
   }
 
-  private selected(): Saved | null {
-    return this.saved.find((s) => `${s.kind}:${s.name}` === this.pick.label) ?? null;
+  // ── Drawing ──────────────────────────────────────────────────────────────
+
+  /** Draw a picture or a video at full quality; one at a time (the graphics card is shared): the next waits its turn. */
+  private draw(item: Item, lead = ''): void {
+    const key = `${item.kind}:${item.name}`;
+    if (this.drawing) {
+      if (`${this.drawing.kind}:${this.drawing.name}` !== key && !this.queue.some((q) => `${q.kind}:${q.name}` === key)) this.queue.push(item);
+      this.say(`${lead ? `${lead} ` : ''}“${item.name}” waits its turn: “${this.drawing.name}” is being drawn.`);
+      this.showList();
+      return;
+    }
+    void this.startRender(item, lead);
+  }
+
+  private async startRender(item: Item, lead = ''): Promise<void> {
+    this.drawing = item;
+    this.stopped = false;
+    this.result = null;
+    this.progress(0);
+    this.showList();
+    const hint = item.kind === 'flight' ? ` (${this.estimate(Math.round((item.seconds ?? 10) * FLIGHT_FPS), item.w, item.h)})` : '';
+    this.say(`${lead ? `${lead} ` : ''}Drawing “${item.name}” at full quality…${hint}`);
+    try {
+      const codec = FORMATS[this.s.format] ?? 'hevc';
+      const job = await call<WallpaperJob>('/render', { method: 'POST', body: JSON.stringify({ names: [item.name], codec }) });
+      await this.watch(job.id, item, lead, hint);
+    } catch (err) {
+      this.say(`${lead ? `${lead} ` : ''}Not drawn: ${message(err)}`, true);
+    }
+    this.drawing = null;
+    this.progress(null);
+    const next = this.stopped ? undefined : this.queue.shift();
+    if (this.stopped) this.queue.length = 0;
+    this.showStatus();
+    this.showList();
+    if (next) void this.startRender(next);
+  }
+
+  /** Follow a render until it is done, and show what it drew. */
+  private async watch(id: string, item: Item, lead: string, hint: string): Promise<void> {
+    const started = performance.now();
+    for (;;) {
+      const job = await call<WallpaperJob>(`/job?id=${id}`);
+      const secs = ((performance.now() - started) / 1000).toFixed(0);
+      if (job.status === 'running') {
+        const frames = job.now && job.now.total > 1 ? job.now : null;
+        this.progress(frames ? frames.done / frames.total : null);
+        const waiting = this.queue.length ? ` · ${this.queue.length} more to draw after it` : '';
+        this.say(`${lead ? `${lead} ` : ''}Drawing “${item.name}” at full quality… ${frames ? `frame ${frames.done} of ${frames.total}, ` : ''}${secs} s${hint}${waiting}`);
+        await new Promise((r) => setTimeout(r, 600));
+        continue;
+      }
+      if (job.status === 'failed') {
+        this.say(this.stopped ? `Stopped drawing “${item.name}”.` : `Could not draw “${item.name}”: ${job.error ?? job.log.slice(-2).join(' · ')}`, !this.stopped);
+        return;
+      }
+      const file = job.files.find((f) => f.name === item.name)?.file ?? '';
+      this.list = await call<WallpaperList>('/list').catch(() => this.list);
+      this.result = file ? { item, file } : null;
+      this.pick = `${item.kind}:${item.name}`;
+      this.say(`Done in ${secs} s: wallpapers/${file}`);
+      return;
+    }
+  }
+
+  /** Stop the render that is running (a video can take an hour at 4K), and what waits. */
+  private async stopRender(): Promise<void> {
+    this.stopped = true;
+    this.queue.length = 0;
+    try {
+      await call<unknown>('/cancel', { method: 'POST' });
+      this.say('Stopping…');
+    } catch (err) {
+      this.say(`Could not stop it: ${message(err)}`, true);
+    }
+  }
+
+  private progress(k: number | null): void {
+    this.bar.style.display = k === null && !this.drawing ? 'none' : 'block';
+    (this.bar.firstElementChild as HTMLElement).style.width = `${Math.round((k ?? 0.08) * 100)}%`;
+  }
+
+  // ── The gallery ──────────────────────────────────────────────────────────
+
+  private items(): Item[] {
+    const all: Item[] = [...this.list.views.map((v): Item => ({ kind: 'view', name: v.name, w: v.w, h: v.h, saved: v.saved })), ...this.list.flights.map((f): Item => ({ kind: 'flight', name: f.name, w: f.w, h: f.h, saved: f.saved, seconds: f.seconds, loop: f.loop }))];
+    return all.sort((a, b) => (b.saved > a.saved ? 1 : b.saved < a.saved ? -1 : 0));
+  }
+
+  private itemOf(kind: Item['kind'], name: string): Item | null {
+    return this.items().find((i) => i.kind === kind && i.name === name) ?? null;
+  }
+
+  private selected(): Item | null {
+    return this.items().find((i) => `${i.kind}:${i.name}` === this.pick) ?? null;
+  }
+
+  private thumb(name: string): string | null {
+    const at = this.list.drawn?.[name];
+    return this.list.out[name] ? `${WALLPAPER_ENDPOINT}/thumb/${encodeURIComponent(name)}?v=${Math.round(at ?? 0)}` : null;
+  }
+
+  private refreshList(): void {
+    call<WallpaperList>('/list').then(
+      (list) => {
+        this.list = list;
+        this.showList();
+      },
+      (err) => this.say(`Wallpapers: ${message(err)}`, true),
+    );
+  }
+
+  /** The gallery: a tile for each picture and video, newest first; the picked one bigger, with what can be done with it. */
+  private showList(): void {
+    const items = this.items();
+    if (!items.some((i) => `${i.kind}:${i.name}` === this.pick)) this.pick = items[0] ? `${items[0].kind}:${items[0].name}` : '';
+    this.galleryTitle.textContent = `My pictures and videos (${items.length})`;
+    const busy = new Set([this.drawing, ...this.queue].filter(Boolean).map((i) => `${i!.kind}:${i!.name}`));
+    const tiles = items.map((it) => {
+      const key = `${it.kind}:${it.name}`;
+      const tile = el('button', `fc-tile${key === this.pick ? ' on' : ''}${busy.has(key) ? ' busy' : ''}`);
+      tile.type = 'button';
+      tile.title = `${it.name} · ${it.w}×${it.h}${it.kind === 'flight' ? ` · a ${it.loop ? 'loop ' : ''}video of ${(it.seconds ?? 0).toFixed(0)} s` : ''}\nClick: pick it · Double-click: go there`;
+      const src = this.thumb(it.name);
+      if (src) {
+        const img = el('img');
+        img.loading = 'lazy';
+        img.src = src;
+        img.alt = '';
+        tile.append(img);
+      } else tile.append(el('span', 'fc-none', busy.has(key) ? 'drawing…' : 'not drawn'));
+      if (it.kind === 'flight') tile.append(el('span', 'fc-kind', it.loop ? '🔁' : '🎞'));
+      tile.append(el('span', 'fc-name', it.name));
+      tile.dataset.key = key;
+      tile.onclick = () => {
+        this.pick = key;
+        // (only the marks and the picked one: a list made again under the pointer would take a double-click's second click)
+        for (const t of this.grid.querySelectorAll<HTMLElement>('.fc-tile')) t.classList.toggle('on', t.dataset.key === key);
+        this.showPicked();
+      };
+      tile.ondblclick = () => {
+        this.pick = key;
+        void this.goTo();
+      };
+      return tile;
+    });
+    this.grid.replaceChildren(...tiles);
+    if (!items.length) this.grid.replaceChildren(el('div', 'fc-note', 'Nothing yet. Fly somewhere you like and press V.'));
+    this.showPicked();
+    this.sync();
+  }
+
+  private showPicked(): void {
+    const it = this.selected();
+    this.picked.replaceChildren();
+    if (!it) return;
+    const src = this.thumb(it.name);
+    // (always as tall: a picture that loads late must not move the tiles under the pointer, between the two clicks of a double-click)
+    const shot = el('div', 'fc-shot', src ? '' : 'not drawn yet');
+    if (src) {
+      const img = el('img');
+      img.src = src;
+      img.alt = '';
+      img.title = 'Open it';
+      img.onclick = () => this.openFile(it);
+      shot.append(img);
+    }
+    this.picked.append(shot);
+    const kind = it.kind === 'view' ? 'picture' : `${it.loop ? 'loop ' : ''}video, ${(it.seconds ?? 0).toFixed(0)} s`;
+    this.picked.append(el('div', 'fc-title', it.name), el('div', 'fc-note', `${kind} · ${it.w}×${it.h}${src ? '' : ' · not drawn yet'}`));
+    const acts = el('div', 'fc-acts');
+    const busy = this.drawing?.name === it.name || this.queue.some((q) => q.name === it.name);
+    acts.append(
+      this.button2('📍 Go there', 'Put the camera, the time, the moon, the weather, the frame and the explorer back as they were', () => void this.goTo()),
+      this.button2(src ? '↻ Draw again' : '▶ Draw', 'Draw it at full quality (a video takes a while)', () => this.draw(it), busy),
+      this.button2('↗ Open', 'Open the picture or the video in a new tab', () => this.openFile(it), !src),
+      this.button2('📂 Finder', 'Show the file in the Finder', () => void this.reveal(it), !src),
+      this.forgetButton(it),
+    );
+    this.picked.append(acts);
+  }
+
+  private button2(text: string, title: string, onClick: () => void, disabled = false): HTMLButtonElement {
+    const b = el('button', 'fc-btn', text);
+    b.type = 'button';
+    b.title = title;
+    b.disabled = disabled;
+    b.onclick = () => {
+      b.blur();
+      onClick();
+    };
+    return b;
+  }
+
+  /** Forget: a second click within a few seconds does it (the drawn file stays in wallpapers/out/). */
+  private forgetButton(it: Item): HTMLButtonElement {
+    let armed = 0;
+    const b = this.button2('🗑 Forget', 'Take it off the list (its file stays in wallpapers/out/)', () => {
+      if (performance.now() - armed > 3000) {
+        armed = performance.now();
+        b.textContent = 'Sure? Click';
+        b.classList.add('warn');
+        setTimeout(() => {
+          b.textContent = '🗑 Forget';
+          b.classList.remove('warn');
+        }, 3000);
+        return;
+      }
+      void this.forget(it);
+    });
+    return b;
+  }
+
+  private openFile(it: Item): void {
+    const file = this.list.out[it.name];
+    if (file) window.open(`${WALLPAPER_ENDPOINT}/file/${file}?at=${Math.round(this.list.drawn?.[it.name] ?? 0)}`, '_blank');
+  }
+
+  private async reveal(it: Item): Promise<void> {
+    try {
+      await call<unknown>(`/reveal?name=${encodeURIComponent(it.name)}`, { method: 'POST' });
+    } catch (err) {
+      this.say(`Could not show it: ${message(err)}`, true);
+    }
+  }
+
+  private async forget(it: Item): Promise<void> {
+    try {
+      this.list = await call<WallpaperList>(`/${it.kind}?name=${encodeURIComponent(it.name)}`, { method: 'DELETE' });
+      // (its name typed to replace it is not wanted any more)
+      if (safeName(this.s.name) === it.name) this.s.name = '';
+      this.showList();
+      this.say(`Forgot “${it.name}” (a file already drawn stays in wallpapers/out/).`);
+    } catch (err) {
+      this.say(`Not forgotten: ${message(err)}`, true);
+    }
   }
 
   /** The shape that has these pixels, else Custom with them. */
@@ -969,7 +1407,7 @@ class FreeCamTool implements FreeCam {
     return 'Custom';
   }
 
-  /** Fly back to a saved view (or a flight's start), with its time of day, its weather, its shape and its explorer. */
+  /** Back to a saved picture (or a video's start), with its time of day, its moon, its weather, its shape and its explorer. */
   private async goTo(): Promise<void> {
     const item = this.selected();
     if (!this.open || !item) return;
@@ -982,12 +1420,13 @@ class FreeCamTool implements FreeCam {
         const v = this.list.views.find((x) => x.name === item.name);
         if (!v) return;
         [cam, query, explorer, size] = [v.cam, v.query, !v.noExplorer, [v.w, v.h]];
+        // (a picture is one moment: it stands still, as it was; F lets it run)
+        this.s.freeze = true;
       } else {
-        const res = await fetch(`${WALLPAPER_ENDPOINT}/file/paths/${item.name}.json`);
-        const f = (await res.json()) as WallpaperFlight;
-        [cam, query, explorer, size] = [f.samples[0].slice(0, 7), f.query, !f.noExplorer, [f.w, f.h]];
+        const f = await call<WallpaperFlight>(`/file/paths/${encodeURIComponent(item.name)}.json`);
         // (a flight's clock is in its frames, not in its query)
-        query = `${f.query}&clock=${f.samples[0][7]}`;
+        [cam, query, explorer, size] = [f.samples[0].slice(0, 7), `${f.query}&clock=${f.samples[0][7]}`, !f.noExplorer, [f.w, f.h]];
+        this.s.freeze = f.frozen;
       }
       const d = new Vector3(cam[3] - cam[0], cam[4] - cam[1], cam[5] - cam[2]).normalize();
       this.pos.set(cam[0], cam[1], cam[2]);
@@ -997,227 +1436,302 @@ class FreeCamTool implements FreeCam {
       this.s.lens = cam[6];
       this.s.shape = this.shapeOf(size[0], size[1]);
       this.s.explorer = explorer;
+      this.explorerPicked = true;
       this.applyExplorer();
       const q = new URLSearchParams(query);
       if (q.has('clock')) this.holdClock(Number(q.get('clock')));
-      // (the moon the picture will show, not today's: the one it holds, else the phase its date gave it)
+      // (the moon the picture shows, not today's: the one it holds, else the phase its date gave it)
       this.holdMoon(savedMoon(q));
       this.viewWeather = {};
       for (const k of WEATHER_KEYS) if (q.has(k)) this.viewWeather[k] = Number(q.get(k));
-      this.s.weather = 'From the saved view';
-      this.pickWeather();
+      this.pickWeather(VIEW_WEATHER);
+      // (roaming when it was saved: he is put back where the picture has him, in its mode, posed)
+      const placed = explorer && q.has('roam') && this.o.placeExplorer(q);
       this.layout();
-      this.s.name = item.name;
-      this.refreshPanel();
-      this.say(`At "${item.name}". Change it, then save it under the same name to replace it.`);
+      // (a picture's name stays typed: V replaces it; a video is not replaced by V)
+      this.s.name = item.kind === 'view' ? item.name : '';
+      this.sync();
+      const him = placed ? ' The explorer is back where it has him.' : explorer && q.has('roam') ? ' The explorer could not be put back: a new picture shows him where he is now.' : '';
+      this.say(`At “${item.name}”.${him}${item.kind === 'view' ? ' Time stands still (F lets it run). Change what you like; V replaces it.' : ''}`);
     } catch (err) {
       this.say(`Could not go there: ${message(err)}`, true);
     }
   }
 
-  private async renderSelected(): Promise<void> {
-    if (!this.open) return;
-    const item = this.selected();
-    if (!item) return this.say('Nothing saved yet: press V first.', true);
-    await this.startRender(item);
-  }
-
-  /** Draw a saved view or flight (a video in the panel's format); `lead` and `hint` go in the words while it draws. */
-  private async startRender(item: Saved, hint = '', lead = ''): Promise<void> {
-    try {
-      const codec = FORMATS[this.s.format] ?? 'hevc';
-      const job = await call<WallpaperJob>('/render', { method: 'POST', body: JSON.stringify({ names: [item.name], codec }) });
-      void this.watch(job.id, item, hint, lead);
-    } catch (err) {
-      this.say(`${lead}Not started: ${message(err)}`, true);
-    }
-  }
-
-  /** Follow a render job until it is done, and show what it drew. */
-  private async watch(id: string, item: Saved, hint = '', lead = ''): Promise<void> {
-    const started = performance.now();
-    for (;;) {
-      let job: WallpaperJob;
-      try {
-        job = await call<WallpaperJob>(`/job?id=${id}`);
-      } catch (err) {
-        return this.say(`Lost the render: ${message(err)}`, true);
-      }
-      const secs = ((performance.now() - started) / 1000).toFixed(0);
-      if (job.status === 'running') {
-        this.say(`${lead}Drawing "${item.name}" at full quality… ${job.now && job.now.total > 1 ? `frame ${job.now.done} of ${job.now.total}, ` : ''}${secs} s${hint ? ` (${hint})` : ''}`);
-        await new Promise((r) => setTimeout(r, 700));
-        continue;
-      }
-      if (job.status === 'failed') return this.say(`Render failed: ${job.error ?? job.log.slice(-2).join(' · ')}`, true);
-      const file = job.files.find((f) => f.name === item.name)?.file;
-      this.say(`Drawn in ${secs} s → wallpapers/${file ?? ''}`);
-      if (file) {
-        const url = `${WALLPAPER_ENDPOINT}/file/${file}?at=${Date.now()}`;
-        const media = document.createElement(item.kind === 'flight' ? 'video' : 'img');
-        media.src = url;
-        if (media instanceof HTMLVideoElement) Object.assign(media, { controls: true, loop: true, muted: true, autoplay: true });
-        const link = Object.assign(document.createElement('a'), { href: url, target: '_blank', textContent: ' open' });
-        this.status.append(link, media);
-      }
-      this.list = await call<WallpaperList>('/list').catch(() => this.list);
-      this.buildSaved(this.pick.label);
-      return;
-    }
-  }
-
-  /** Stop the render that is running (a flight can take an hour at 4K). */
-  private async stopRender(): Promise<void> {
-    try {
-      await call<unknown>('/cancel', { method: 'POST' });
-      this.say('Stopping the render.');
-    } catch (err) {
-      this.say(`Could not stop it: ${message(err)}`, true);
-    }
-  }
-
-  private async forget(): Promise<void> {
-    const item = this.selected();
-    if (!item) return;
-    try {
-      this.list = await call<WallpaperList>(`/${item.kind}?name=${encodeURIComponent(item.name)}`, { method: 'DELETE' });
-      this.buildSaved();
-      this.say(`Forgot "${item.name}" (a picture already drawn stays in wallpapers/out/).`);
-    } catch (err) {
-      this.say(`Not deleted: ${message(err)}`, true);
-    }
-  }
-
   // ── The panel ────────────────────────────────────────────────────────────
 
-  /** Show what the values are now (after a change made in code). */
-  private refreshPanel(): void {
-    this.syncShape();
-    this.gui?.controllersRecursive().forEach((c) => c.updateDisplay());
+  /** Show every control's value, the buttons' words and the status. */
+  private sync(): void {
+    for (const s of this.syncs) s();
   }
 
-  private showPanel(): void {
-    this.building ??= this.buildPanel();
-    void this.building.then(() => {
-      // (the camera may have been left while the panel was still being made)
-      this.gui?.show(this.open && !this.chromeHidden);
-      this.refreshPanel();
-    });
-    call<WallpaperList>('/list').then(
-      (list) => {
-        this.list = list;
-        this.s.name = this.nextName('view');
-        void this.building?.then(() => {
-          this.buildSaved();
-          this.refreshPanel();
-        });
-      },
-      (err) => this.say(`Wallpapers: ${message(err)}`, true),
-    );
-  }
-
-  private async buildPanel(): Promise<void> {
-    const { default: G } = await import('three/addons/libs/lil-gui.module.min.js');
-    const gui = new G({ title: '📷 Free camera' });
-    gui.domElement.classList.add('fc-gui');
-    this.gui = gui;
-    // (a dropdown or a button that was used keeps the focus: the keys would go to it, and a dropdown would pick by typing, not fly)
-    gui.onChange(() => {
-      const a = document.activeElement;
-      if (a instanceof HTMLSelectElement || a instanceof HTMLButtonElement) a.blur();
-    });
-    const s = this.s;
-    const act = this.act;
-    gui.add(act, 'exit').name('Leave the free camera (Esc)');
-
-    const cam = gui.addFolder('Camera');
-    cam.add(s, 'speed', 2, 400, 1).name('Speed (wheel)').listen();
-    cam.add(s, 'lens', 12, 100, 0.5).name('Lens: view angle (pinch)').listen();
-    const shape = cam.add(s, 'shape', Object.keys(SHAPES)).name('Picture');
-    const customW = cam.add(s, 'customW', 64, 16384, 1).name('Custom width').onChange(() => this.layout());
-    const customH = cam.add(s, 'customH', 64, 16384, 1).name('Custom height').onChange(() => this.layout());
-    // (the custom size is only for the Custom picture)
-    this.syncShape = () => {
-      customW.show(s.shape === 'Custom');
-      customH.show(s.shape === 'Custom');
-    };
-    shape.onChange(() => {
-      this.syncShape();
-      this.layout();
-    });
-    this.syncShape();
-    cam.add(s, 'thirds').name('Thirds grid').onChange(() => this.layout());
-
-    const scene = gui.addFolder('Scene');
-    scene
-      .add(s, 'time', ['Game time', 'Hold'])
-      .name('Time of day')
-      .onChange(() => (s.time === 'Hold' ? this.holdClock(s.clock) : this.o.setClock(null)))
-      .listen();
-    scene.add(s, 'clock', 0, 1, 0.005).name('Clock (0 day · 0.5 night)').onChange(() => this.holdClock(s.clock)).listen();
-    scene
-      .add(s, 'preset', ['—', ...TIMES.map(([label]) => label)])
-      .name('Time preset')
-      .onChange(() => {
-        const time = TIMES.find(([label]) => label === s.preset);
-        if (time) this.holdClock(time[1]);
-      })
-      .listen();
-    scene
-      .add(s, 'moon', [GAME_MOON, ...MOONS.map(([label]) => label), CUSTOM_MOON])
-      .name('Moon phase')
-      .onChange(() => {
-        const phase = MOONS.find(([label]) => label === s.moon);
-        if (s.moon === GAME_MOON) this.holdMoon(null);
-        else this.holdMoon(phase ? phase[1] : s.moonAge);
-      })
-      .listen();
-    scene.add(s, 'moonAge', 0, 1, 0.005).name('Moon age (0 new · 0.5 full)').onChange(() => this.holdMoon(s.moonAge)).listen();
-    scene.add(s, 'weather', Object.keys(WEATHERS)).name('Weather').onChange(() => this.pickWeather());
-    scene.add(s, 'freeze').name('Freeze time (F)').listen();
-    scene.add(s, 'explorer').name('Show the explorer').onChange(() => this.applyExplorer());
-
-    const save = gui.addFolder('Save');
-    save.add(s, 'name').name('Name').listen();
-    save.add(act, 'save').name('Save this view (V)');
-    this.recordButton = save.add(act, 'record').name('● Record a flight (R)');
-
-    const video = gui.addFolder('Video (for a live wallpaper)');
-    video.add(s, 'format', Object.keys(FORMATS)).name('Format');
-    video.add(s, 'drawNow').name('Draw it when it is saved');
-    video.add(s, 'closeLoop').name('R: fly back to the start (a loop)');
-    video.add(s, 'loopKind', [...LOOPS]).name('Loop from this view');
-    video.add(s, 'loopSeconds', 4, 180, 1).name('Loop seconds');
-    video.add(s, 'loopReverse').name('Turn the other way');
-    video.add(act, 'makeLoop').name('Make the loop video');
-
-    gui.domElement.append(this.status);
-    this.say('Fly to a place you like. V saves the view.');
-    this.buildSaved();
-  }
-
-  /** The "Saved" folder: pictures and flights to go to, draw or forget. It is the last folder, so it is made again each time. */
-  private buildSaved(select?: string): void {
-    const gui = this.gui;
-    if (!gui) return;
-    this.savedFolder?.destroy();
-    const folder = gui.addFolder(`Saved (${this.list.views.length + this.list.flights.length})`);
-    this.savedFolder = folder;
-    this.saved = [...this.list.views.map((v): Saved => ({ kind: 'view', name: v.name })), ...this.list.flights.map((f): Saved => ({ kind: 'flight', name: f.name }))];
-    const labels: Record<string, string> = {};
-    for (const it of this.saved) labels[`${it.kind === 'view' ? '🖼' : '🎞'} ${it.name}${this.list.out[it.name] ? ' ✓' : ''}`] = `${it.kind}:${it.name}`;
-    const values = Object.values(labels);
-    if (!values.length) {
-      folder.add({ note: 'nothing saved yet' }, 'note').name('Saved').disable();
-      return;
+  private showStatus(): void {
+    this.status.className = `fc-status${this.statusError ? ' error' : ''}`;
+    this.status.replaceChildren();
+    if (!this.statusText && !this.drawing) return;
+    if (this.statusText) this.status.append(el('div', '', this.statusText));
+    if (this.drawing) {
+      const stop = this.button2('■ Stop drawing', 'Stop the picture or video being drawn (and what waits)', () => void this.stopRender());
+      this.status.append(this.bar, stop);
     }
-    if (select && values.includes(select)) this.pick.label = select;
-    else if (!values.includes(this.pick.label)) this.pick.label = values[0];
-    folder.add(this.pick, 'label', labels).name('Pick');
-    folder.add(this.act, 'goTo').name('Go there');
-    folder.add(this.act, 'render').name('Render at full quality');
-    folder.add(this.act, 'stop').name('Stop the render');
-    folder.add(this.act, 'forget').name('Forget it');
+    const r = this.result;
+    if (r && !this.drawing) {
+      const links = el('div', 'fc-pair');
+      links.append(
+        this.button2('↗ Open', 'Open it in a new tab', () => this.openFile(r.item)),
+        this.button2('📂 Show in Finder', 'Show the file in the Finder', () => void this.reveal(r.item)),
+      );
+      this.status.append(links);
+    }
+  }
+
+  private section(title: string): HTMLDivElement {
+    const sec = el('div', 'fc-sec');
+    if (title) sec.append(el('h3', '', title));
+    this.panel.append(sec);
+    return sec;
+  }
+
+  private row(label: string, control: HTMLElement, value?: () => string, title = ''): HTMLDivElement {
+    const r = el('div', value ? 'fc-row' : 'fc-row two');
+    const l = el('span', 'fc-label', label);
+    if (title) r.title = title;
+    r.append(l, control);
+    if (value) {
+      const v = el('span', 'fc-val');
+      this.syncs.push(() => (v.textContent = value()));
+      r.append(v);
+    }
+    return r;
+  }
+
+  private chips<T>(options: [string, T][], get: () => T, set: (v: T) => void, titles: Record<string, string> = {}): HTMLDivElement {
+    const box = el('div', 'fc-chips');
+    const chips = options.map(([label, value]) => {
+      const c = el('button', 'fc-chip', label);
+      c.type = 'button';
+      if (titles[label]) c.title = titles[label];
+      c.onclick = () => {
+        c.blur();
+        set(value);
+      };
+      box.append(c);
+      return [c, value] as const;
+    });
+    this.syncs.push(() => {
+      const now = get();
+      for (const [c, value] of chips) c.classList.toggle('on', value === now);
+    });
+    return box;
+  }
+
+  private range(min: number, max: number, step: number, get: () => number, set: (v: number) => void): HTMLInputElement {
+    const r = el('input');
+    Object.assign(r, { type: 'range', min: String(min), max: String(max), step: String(step) });
+    let held = false;
+    r.onpointerdown = () => (held = true);
+    r.onpointerup = r.onblur = () => (held = false);
+    r.oninput = () => set(Number(r.value));
+    r.onchange = () => r.blur();
+    this.syncs.push(() => {
+      if (!held) r.value = String(get());
+    });
+    return r;
+  }
+
+  private select<T extends string>(options: [string, T][], get: () => T, set: (v: T) => void): HTMLSelectElement {
+    const s = el('select');
+    for (const [label, value] of options) s.append(new Option(label, value));
+    s.onchange = () => {
+      set(s.value as T);
+      // (a dropdown that keeps the focus picks by typing: the keys would not fly)
+      s.blur();
+    };
+    this.syncs.push(() => {
+      if (document.activeElement !== s) s.value = get();
+    });
+    return s;
+  }
+
+  private check(label: string, title: string, get: () => boolean, set: (v: boolean) => void): HTMLLabelElement {
+    const l = el('label', 'fc-check');
+    l.title = title;
+    const c = el('input');
+    c.type = 'checkbox';
+    c.onchange = () => {
+      set(c.checked);
+      c.blur();
+    };
+    this.syncs.push(() => (c.checked = get()));
+    l.append(c, document.createTextNode(label));
+    return l;
+  }
+
+  private buildPanel(): void {
+    const s = this.s;
+    const p = this.panel;
+    const head = el('div', 'fc-head', '📷 Free camera');
+    head.append(this.button2('Leave (Esc)', 'Back to the map', () => this.exit()));
+    p.append(head);
+
+    // What it is for: a picture, a video.
+    const top = this.section('');
+    const shoot = this.button2('📸 Take picture (V)', 'Save this view and draw it at full quality', () => void this.takePicture());
+    shoot.classList.add('big');
+    const rec = this.button2('● Record video (R)', 'Fly while it records; R again stops, and the video is drawn', () => this.toggleRecord());
+    rec.classList.add('rec');
+    const loop = this.button2('🔁 Loop video', 'A video that repeats with no jump, made from this view (the kind is under “Video settings”)', () => void this.makeLoop());
+    const pair = el('div', 'fc-pair');
+    pair.append(rec, loop);
+    const name = el('input');
+    let hintAt = -1e9;
+    name.type = 'text';
+    name.spellcheck = false;
+    name.oninput = () => {
+      s.name = name.value;
+      this.sync();
+    };
+    top.append(shoot, pair, this.row('Name', name), this.status);
+    this.syncs.push(() => {
+      const r = this.replacing();
+      shoot.textContent = r ? `📸 Replace “${r}” (V)` : '📸 Take picture (V)';
+      rec.textContent = this.rec ? '■ Stop (R)' : '● Record video (R)';
+      rec.classList.toggle('on', !!this.rec);
+      if (document.activeElement !== name) name.value = s.name;
+      // (the name it would get: the place looked at changes as the camera flies; worked out now and then)
+      if (this.open && performance.now() - hintAt > 700) {
+        hintAt = performance.now();
+        name.placeholder = `${this.autoName()} (automatic)`;
+      }
+    });
+
+    // The frame.
+    const frame = this.section('Frame');
+    const shape = this.select(
+      Object.keys(SHAPES).map((k): [string, string] => [k, k]),
+      () => s.shape,
+      (v) => {
+        s.shape = v;
+        this.layout();
+        this.sync();
+      },
+    );
+    const customW = el('input');
+    const customH = el('input');
+    const custom = el('div', 'fc-pair');
+    for (const [input, key] of [
+      [customW, 'customW'],
+      [customH, 'customH'],
+    ] as const) {
+      Object.assign(input, { type: 'number', min: '64', max: '16384', step: '2' });
+      input.onchange = () => {
+        s[key] = MathUtils.clamp(Number(input.value) || 64, 64, 16384);
+        this.layout();
+      };
+      this.syncs.push(() => {
+        if (document.activeElement !== input) input.value = String(s[key]);
+      });
+      custom.append(input);
+    }
+    const customRow = this.row('W × H', custom);
+    this.syncs.push(() => (customRow.style.display = s.shape === 'Custom' ? '' : 'none'));
+    const speedLog = (v: number) => Math.log(v / SPEED_MIN) / Math.log(SPEED_MAX / SPEED_MIN);
+    frame.append(
+      this.row('Size', shape, undefined, 'The picture’s shape and pixels: the frame on the screen has this shape'),
+      customRow,
+      this.row('Zoom', this.range(12, 100, 0.5, () => 112 - s.lens, (v) => (s.lens = round(112 - v, 1))), () => `${s.lens.toFixed(0)}°`, 'Right zooms in, left sees wider (a trackpad pinch does it too). The number is the picture’s view angle'),
+      this.row('Speed', this.range(0, 1, 0.001, () => speedLog(s.speed), (v) => (s.speed = round(SPEED_MIN * (SPEED_MAX / SPEED_MIN) ** v, 1))), () => `${s.speed.toFixed(0)} m/s`, 'How fast W A S D fly (the mouse wheel sets it too; Shift is four times as fast)'),
+      this.check(
+        'Thirds grid',
+        'Lines that cut the frame in three each way, to place things on',
+        () => s.thirds,
+        (v) => {
+          s.thirds = v;
+          this.layout();
+        },
+      ),
+    );
+
+    // The moment.
+    const moment = this.section('Moment');
+    moment.append(
+      this.row(
+        'Time',
+        this.chips<number | null>([['Game', null], ...TIMES], () => (s.hold ? (TIMES.find(([, at]) => at === s.clock)?.[1] ?? -1) : null), (v) => this.holdClock(v), { Game: 'The game’s own time of day (it moves on)' }),
+      ),
+      this.row('', this.range(0, 1, 0.005, () => s.clock, (v) => this.holdClock(v)), () => (s.hold ? timeWord(s.clock) : 'game'), 'Any time of day: 0 afternoon, 0.22 sunset, 0.5 night, 0.82 dawn'),
+      this.row(
+        'Moon',
+        this.select(
+          [[GAME_MOON, GAME_MOON], ...MOONS.map(([label]): [string, string] => [label, label]), [CUSTOM_MOON, CUSTOM_MOON]],
+          () => s.moon,
+          (v) => {
+            const phase = MOONS.find(([label]) => label === v);
+            this.holdMoon(v === GAME_MOON ? null : phase ? phase[1] : s.moonAge);
+          },
+        ),
+        undefined,
+        'The moon’s phase (it shows at night)',
+      ),
+    );
+    const moonAge = this.row('', this.range(0, 1, 0.005, () => s.moonAge, (v) => this.holdMoon(v)), () => (s.moonAge < 0.02 || s.moonAge > 0.98 ? 'new' : Math.abs(s.moonAge - 0.5) < 0.02 ? 'full' : s.moonAge < 0.5 ? 'growing' : 'shrinking'), 'The moon’s age: 0 new, 0.5 full, 1 new again');
+    this.syncs.push(() => (moonAge.style.display = s.moon === GAME_MOON ? 'none' : ''));
+    const weathers = el('div');
+    const weatherChips = this.chips<string | null>([...WEATHERS, ['Saved', VIEW_WEATHER]], () => s.weather, (v) => this.pickWeather(v), { Game: 'The game’s own weather', Saved: 'The weather the saved picture had' });
+    const savedChip = weatherChips.lastElementChild as HTMLElement;
+    this.syncs.push(() => (savedChip.style.display = this.viewWeather ? '' : 'none'));
+    weathers.append(weatherChips);
+    const toggles = el('div', 'fc-pair');
+    toggles.append(
+      this.check('Freeze time (F)', 'The scene stands still: water, clouds, people and the explorer', () => s.freeze, (v) => (s.freeze = v)),
+      this.check(
+        'Explorer',
+        'Show the explorer in the picture',
+        () => s.explorer,
+        (v) => {
+          s.explorer = v;
+          this.explorerPicked = true;
+          this.applyExplorer();
+        },
+      ),
+    );
+    moment.append(moonAge, this.row('Weather', weathers), toggles);
+
+    // Video settings (folded).
+    const video = this.section('');
+    const more = el('details');
+    const inner = el('div');
+    more.append(el('summary', '', 'Video settings'), inner);
+    inner.append(
+      this.row(
+        'Loop',
+        this.select(
+          LOOPS.map((k): [string, LoopKind] => [k, k]),
+          () => s.loopKind,
+          (v) => (s.loopKind = v),
+        ),
+        undefined,
+        'What “Loop video” makes from the view',
+      ),
+      this.row('Length', this.range(4, 120, 1, () => s.loopSeconds, (v) => (s.loopSeconds = v)), () => `${s.loopSeconds.toFixed(0)} s`, 'How long a loop video lasts'),
+      this.check('Turn the other way', 'An orbit or a sway the other way round', () => s.loopReverse, (v) => (s.loopReverse = v)),
+      this.check('Recording flies back to the start (a loop)', 'When R stops, the camera flies back to where it began, so the video repeats with no jump', () => s.closeLoop, (v) => (s.closeLoop = v)),
+      this.row(
+        'Format',
+        this.select(
+          Object.keys(FORMATS).map((k): [string, string] => [k, k]),
+          () => s.format,
+          (v) => (s.format = v),
+        ),
+      ),
+      this.check('Draw videos as soon as they are saved', 'Else press “Draw” under the video later', () => s.drawNow, (v) => (s.drawNow = v)),
+    );
+    video.append(more);
+
+    // The gallery.
+    const gallery = this.section('');
+    gallery.append(this.galleryTitle, this.grid, this.picked);
+    this.bar.style.display = 'none';
   }
 }
 

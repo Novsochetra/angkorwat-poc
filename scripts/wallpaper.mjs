@@ -25,6 +25,9 @@
 // A view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size (the moment:
 // its `t`, time of day, moon, season and weather come with it); a flight moves the
 // camera frame by frame (`__videoFrame`, as scripts/video.mjs does).
+// The picture looks the way the free camera's frame did on the screen: `pxscale=` (its
+// height over the frame's, `screenH`) draws the glow and the fireflies as big for it, and
+// the explorer is where he was (`lead=`: a video's warm-up frames move him on first).
 // Lines that begin with `@@` are for the free camera's panel (start, progress, done, fail).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
@@ -112,6 +115,12 @@ const browser = await chromium.launch({
   args: exe ? ['--use-angle=metal', '--ignore-gpu-blocklist', '--enable-gpu'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 
+/** Frames drawn before a video's first (s): the parts that ease in come to rest. */
+const WARMUP = 1.5;
+
+/** How much bigger than the free camera's frame on the screen the picture is (a view saved before `screenH`: a screen 1800 pixels high). */
+const pxScale = (item, h) => (item.screenH > 0 ? h / item.screenH : Math.max(1, h / 1800)).toFixed(3);
+
 /** The map's page for a view or a flight: a shot of its moment (`extra`: more values). */
 function pageUrl(item, extra) {
   const q = new URLSearchParams(item.query);
@@ -144,7 +153,7 @@ async function openMap(item, w, h, extra) {
 
 async function drawView(v) {
   const [w, h] = [sizeW || v.w, sizeH || v.h];
-  const page = await openMap(v, w, h, { cam: v.cam.join(',') });
+  const page = await openMap(v, w, h, { cam: v.cam.join(','), pxscale: pxScale(v, h) });
   try {
     const file = join(out, `${v.name}.${jpg ? 'jpg' : 'png'}`);
     await page.screenshot({ path: file, type: jpg ? 'jpeg' : 'png', ...(jpg ? { quality: 95 } : {}), timeout: 240_000 });
@@ -192,7 +201,8 @@ async function drawFlight(f) {
   try {
     // (it is running before the map loads, which takes a while: a missing ffmpeg is found now, not at the first frame)
     await Promise.race([new Promise((res) => ffmpeg.once('spawn', res)), finished]);
-    page = await openMap(f, w, h, { video: 1, t: f.t0.toFixed(1), cam: samples[0].slice(0, 7).join(',') });
+    // (the warm-up frames step the explorer on too: he starts `lead` s back, so the first frame has him where he was)
+    page = await openMap(f, w, h, { video: 1, t: f.t0.toFixed(1), cam: samples[0].slice(0, 7).join(','), pxscale: pxScale(f, h), lead: WARMUP });
     const draw = (s, t, dt) => page.evaluate(([t, dt, cam, clock]) => window.__videoFrame(t, dt, cam, clock), [t, dt, s.slice(0, 7), s[7]]);
     const grab = () => page.screenshot({ type: png ? 'png' : 'jpeg', ...(png ? {} : { quality: 97 }), timeout: 240_000 });
     if (seam) {
@@ -209,7 +219,7 @@ async function drawFlight(f) {
     }
     // (frames before the first: the parts that ease in come to rest, as in scripts/video.mjs, but for longer: the first
     // frames of a clip that repeats must be as steady as the rest, or its seam shows them)
-    const before = Math.round(fps * 1.5);
+    const before = Math.round(fps * WARMUP);
     for (let k = before; k > 0; k--) await draw(samples[0], f.frozen ? f.t0 : f.t0 - k / fps, 1 / fps);
     /** The first frames, kept for the seam. */
     const head = [];

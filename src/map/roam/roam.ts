@@ -36,7 +36,17 @@ import { buildRoamWorld } from './world';
  * `mouse=x,y` (0‥1 of the view) · `look=<outfit>` · `hat=0|1` ·
  * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot (degrees) ·
  * `gesture=…` and `saim=yaw,pitch,reach` the selfie · `stick=0|1` its stick ·
- * `keys=1` the key list.
+ * `keys=1` the key list · `lead=<s>` a video's frames before its first (below).
+ *
+ * A shot with no `sim=` lets the mode settle first (`SETTLE`, no keys): the
+ * glider is over him, he lies on it with his hands on the bar, the follow
+ * camera is behind him. A mode that moves on by itself (the hang glider, the
+ * parachute, a boat on a river, the balloon in the air) is then started again
+ * as far back as it went and settles again, so the picture has him where
+ * `at=` says. A video (`video=1`) goes on moving after the page is ready:
+ * with `lead=<s>` he is at `at=` that many seconds of its frames later
+ * (scripts/wallpaper.mjs: the frames before the first). Not the leap, nor
+ * the balloon's `balloon=parked|inflate:<s>`: they play their own moment.
  *
  * The follow camera's walk maps, the planks underfoot and the rivers' current
  * and banks (world.ts) are made after Start, in idle time, hurried when the
@@ -64,6 +74,15 @@ export interface MapRoam extends MapPart {
   stop(): Promise<void>;
   /** Headless shots: run the `sim=` script now (fixed steps). */
   simulate(f: MapFrame): void;
+  /**
+   * Put him back as a saved view has him (the free camera's "Go there", dev/freecam.ts), from the overview or
+   * from any mode: roaming starts (or goes on) in the view's mode (`roam=`) at `at=`, facing `yaw=`, with its
+   * tools and looks (`tool=`, `hat=`, `act=`…), as a shot's URL start does; then it settles as a shot does
+   * (or runs the view's `sim=`), all at once and silent, so the next frame has him posed where `at=` says even
+   * with the time held still. Roaming goes on from there. False, and nothing changed: no `roam=` or no `at=`,
+   * the overview, the leap, a mode it does not know, or roaming is ending.
+   */
+  placeFrom(q: URLSearchParams, f: MapFrame): boolean;
   /** For bug reports: where the explorer is, and URL params that start a shot there (null in the overview). */
   report(): { text: string; params: Record<string, string> } | null;
 }
@@ -90,6 +109,14 @@ export interface RoamDeps {
 }
 
 const STEP = 1 / 30;
+/**
+ * A shot that starts in a mode with no `sim=` runs it this long (s) with no
+ * keys before the picture: what eases in has come (the glider over him, his
+ * pose on it, his hands on the bar, the follow camera behind him).
+ */
+const SETTLE = 0.8;
+/** main.ts: after `simulate` a shot takes 30 steps of 1/60 s to settle; in a video he moves on in them. */
+const SHOT_EASE = 30 / 60;
 /**
  * Seconds after Start (its first frame) before the walk maps are made in
  * idle time; an idle slice's time (ms): at least, at most, and with no idle
@@ -141,18 +168,23 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
 
   let mode: RoamMode = 'overview';
   let leaving = false;
+  /** Putting him back as a saved view has him (`placeFrom`): its moments go by at once, not heard. */
+  let quiet = false;
+  const uiSound = (s: UISound) => {
+    if (!quiet) deps.uiSound?.(s);
+  };
   const hud = createRoamHud(deps.uiRoot, {
     onJump: (kind) => api.start(kind),
     // (the walk maps made now, if they are not yet: he may jump in a moment)
     onOpen: () => prepare(true),
     // (the "Back to the map" button asks first, as Esc does: _leave.ts)
     onBack: () => leave.ask(),
-    sound: (s) => deps.uiSound?.(s),
+    sound: uiSound,
   });
   // "Back to the map?": Esc, the touch close button and "Back to the map" ask before roaming ends.
-  const leave = createLeaveConfirm(deps.uiRoot, { onLeave: () => void api.stop(), sound: (s) => deps.uiSound?.(s) });
+  const leave = createLeaveConfirm(deps.uiRoot, { onLeave: () => void api.stop(), sound: uiSound });
 
-  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas, parts: deps.parts, uiSound: deps.uiSound });
+  const tools = createRoamTools({ explorer, body, cam, world, hud, controls, canvas: deps.canvas, parts: deps.parts, uiSound });
   object.add(tools.object);
 
   const chute = createParachute();
@@ -195,12 +227,15 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     input: controls.state,
     cam,
     hud,
-    sound: (s, gain = 1) => deps.playSound(s, gain),
+    sound: (s, gain = 1) => {
+      if (!quiet) deps.playSound(s, gain);
+    },
     levels,
     t: 0,
     night: 0,
     shot: ctx.shot,
     ledge: { feet: deps.feet.clone(), yaw: deps.yaw },
+    start: params,
     enter: (place) => {
       if (leaving) return;
       leaving = true;
@@ -227,6 +262,43 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     explorer.object.position.copy(body.pos);
     explorer.object.rotation.set(0, body.yaw, 0);
     explorer.object.scale.setScalar(body.scale);
+  }
+
+  /** Headless shots: `n` fixed steps of the roaming modes (with the `sim=` script's keys, or none). */
+  function run(f: MapFrame, n: number): void {
+    for (let i = 0; i < n; i++) {
+      step(f, STEP);
+      cam.update(STEP, world);
+      // (the glider put away and the seed fluff move on too)
+      hang.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode, body.pos);
+      balloon.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode);
+    }
+  }
+
+  /**
+   * Headless shots with no `sim=`: the mode runs a moment (`SETTLE`) so the
+   * picture has what eases in. One that moves on by itself (the hang glider
+   * flies, the parachute sinks, a boat drifts, the balloon cruises) is started
+   * again as far back as it went, and settles again: the picture has him where
+   * `at=` says (`q`: the URL's values, or a saved view's). In a video he is
+   * there `lead` seconds of its frames after the page is ready (its frames
+   * before the first: scripts/wallpaper.mjs).
+   */
+  function settle(f: MapFrame, q: URLSearchParams, lead: number): void {
+    // (the leap is a moment from the ledge; the balloon's `balloon=parked|inflate:<s>` replay theirs: both as they were)
+    if (mode === 'leap' || (mode === 'balloon' && /^(parked|inflate)/.test(q.get('balloon') ?? ''))) return;
+    const first = mode;
+    // (where and which way the mode started him: a boat is put on open water, along the river)
+    const from = body.pos.clone();
+    const yaw = body.yaw;
+    // (on foot he stays where he is)
+    run(f, Math.round((SETTLE + (mode === 'walk' ? 0 : lead)) / STEP));
+    const d = body.pos.clone().sub(from);
+    // (on foot a move is a fall to the floor or a step out of a wall: kept. Landed meanwhile: kept too)
+    if (mode !== first || mode === 'walk' || d.length() < 0.05) return;
+    enterAt(from.sub(d), yaw);
+    urlCam(q);
+    run(f, Math.round(SETTLE / STEP));
   }
 
   /** One fixed step of the roaming modes. */
@@ -342,16 +414,63 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     },
     simulate(f) {
       const spec = params.get('sim');
-      if (!spec || mode === 'overview') return;
+      if (mode === 'overview') return;
+      // (no script: the mode settles, and he is where `at=` says; a video moves on after this: main.ts's settling steps, then `lead` s of frames)
+      if (!spec) return settle(f, params, Math.max(0, Number(params.get('lead')) || 0) + (ctx.video ? SHOT_EASE : 0));
       controls.runScript(parseScript(spec));
-      const n = Math.ceil(controls.scriptLength / STEP);
-      for (let i = 0; i < n; i++) {
-        step(f, STEP);
-        cam.update(STEP, world);
-        // (the glider put away and the seed fluff move on too)
-        hang.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode, body.pos);
-        balloon.frame({ ...f, t: f.t + i * STEP, dt: STEP }, mode);
+      run(f, Math.ceil(controls.scriptLength / STEP));
+    },
+    placeFrom(q, f) {
+      const next = q.get('roam') as RoamMode | null;
+      const at = q.get('at')?.split(',').map(Number);
+      if (leaving || !next || next === 'overview' || next === 'leap' || !(next in handlers)) return false;
+      if (!at || (at.length !== 2 && at.length !== 3) || !at.every(Number.isFinite)) return false;
+      quiet = true;
+      rctx.start = q;
+      // (its moments are no frames: the camera the map draws from stays as it is, the next frame places it)
+      const c = ctx.camera;
+      const was = { pos: c.position.clone(), quat: c.quaternion.clone(), fov: c.fov };
+      try {
+        // (the walk maps, the planks, the rivers: the rest of them now, if roaming has not started yet)
+        made.finish();
+        leave.close();
+        if (mode === 'overview') deps.release(true);
+        else {
+          // Out of what he is in, nothing left behind: the glider and the canopy put away at once, the balloon back
+          // home (as back to the map); the boat he is in goes too (back to the map would leave it afloat there).
+          const prev = mode;
+          handlers[prev].exit(rctx, prev === 'boat' ? 'walk' : 'overview');
+          mode = 'overview';
+          tools.setMode('overview', prev);
+          explorer.animator.posture = null;
+        }
+        controls.clear();
+        // (the view's time of day: the lantern after dark, as the picture has it)
+        const night = Number(q.get('night') ?? NaN);
+        const g: MapFrame = { ...f, night: Number.isFinite(night) ? night : f.night };
+        startFrom(q, next as Exclude<RoamMode, 'overview' | 'leap'>);
+        urlCam(q);
+        rctx.night = g.night;
+        tools.fromUrl(q, rctx);
+        // No keys meanwhile: the view's `sim=` script (as its picture has it played), else none while it settles.
+        const spec = q.get('sim');
+        controls.runScript(spec ? parseScript(spec) : []);
+        if (spec) run(g, Math.ceil(controls.scriptLength / STEP));
+        else settle(g, q, 0);
+        controls.runScript(null);
+        controls.clear();
+        pose();
+      } finally {
+        quiet = false;
+        rctx.start = params;
+        c.position.copy(was.pos);
+        c.quaternion.copy(was.quat);
+        if (c.fov !== was.fov) {
+          c.fov = was.fov;
+          c.updateProjectionMatrix();
+        }
       }
+      return true;
     },
     update(f) {
       // (a second after Start: the walk maps in idle time; the first frame is drawn under the loading screen, and
@@ -386,39 +505,59 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     },
   };
 
-  // ── Start in a mode from the URL (checking) ──────────────────────────────
+  // ── Start in a mode from the URL (checking), or from a saved view (`placeFrom`) ──
+  /** Put him at `p` (his feet) facing `yaw` (rad), at the roaming size, for mode `m`. */
+  function placeAt(p: Vector3, yaw: number, m: RoamMode): void {
+    body.pos.copy(p);
+    body.vel.set(0, 0, 0);
+    body.yaw = yaw;
+    body.scale = ROAM_SCALE;
+    body.grounded = m !== 'glide' && m !== 'hang';
+    cam.yaw = body.yaw;
+  }
+  /** Into the mode at `p` again, as the URL start does (a shot that settles: `settle`). */
+  function enterAt(p: Vector3, yaw: number): void {
+    placeAt(p, yaw, mode);
+    handlers[mode as Exclude<RoamMode, 'overview'>].enter(rctx, 'overview');
+    cam.blendFrom(0);
+  }
+  /** The follow camera's orbit from the URL (`rcam`), after the mode's own. */
+  function urlCam(q: URLSearchParams): void {
+    const rc = q.get('rcam')?.split(',').map(Number);
+    if (!rc) return;
+    cam.yaw = body.yaw + ((rc[0] ?? 0) * Math.PI) / 180;
+    cam.pitch = ((rc[1] ?? 20) * Math.PI) / 180;
+    if (rc[2]) cam.distance = rc[2];
+    cam.follow = 0;
+  }
+  /** From the overview into `m` at `q`'s `at=` (y: the ground or water there when left out), facing its `yaw=`. */
+  function startFrom(q: URLSearchParams, m: Exclude<RoamMode, 'overview' | 'leap'>): void {
+    const at = q.get('at')?.split(',').map(Number);
+    const yawDeg = Number(q.get('yaw') ?? NaN);
+    if (!Number.isNaN(yawDeg)) body.yaw = (yawDeg * Math.PI) / 180;
+    if (at && at.length >= 2) {
+      const [x, z] = at.length === 2 ? [at[0], at[1]] : [at[0], at[2]];
+      const y = at.length === 3 ? at[1] : Math.max(world.groundAt(x, z), world.waterAt(x, z) ?? -Infinity);
+      body.pos.set(x, y, z);
+    }
+    placeAt(body.pos, body.yaw, m);
+    mode = m;
+    controls.enabled = true;
+    hud.setMode(mode);
+    deps.onMode(mode);
+    handlers[mode].enter(rctx, 'overview');
+    cam.blendFrom(0);
+    tools.setMode(mode, 'overview');
+  }
   if (startMode && startMode !== 'overview' && startMode in handlers) {
     deps.release(true);
-    const at = params.get('at')?.split(',').map(Number);
-    const yawDeg = Number(params.get('yaw') ?? NaN);
-    if (!Number.isNaN(yawDeg)) body.yaw = (yawDeg * Math.PI) / 180;
     if (startMode === 'leap') {
+      const yawDeg = Number(params.get('yaw') ?? NaN);
+      if (!Number.isNaN(yawDeg)) body.yaw = (yawDeg * Math.PI) / 180;
       chute.leap.opens = params.get('start') === 'glider' ? 'hang' : 'glide';
       switchTo('leap');
-    } else {
-      if (at && at.length >= 2) {
-        const [x, z] = at.length === 2 ? [at[0], at[1]] : [at[0], at[2]];
-        const y = at.length === 3 ? at[1] : Math.max(world.groundAt(x, z), world.waterAt(x, z) ?? -Infinity);
-        body.pos.set(x, y, z);
-      }
-      body.scale = ROAM_SCALE;
-      body.grounded = startMode !== 'glide' && startMode !== 'hang';
-      cam.yaw = body.yaw;
-      mode = startMode;
-      controls.enabled = true;
-      hud.setMode(mode);
-      deps.onMode(mode);
-      handlers[mode].enter(rctx, 'overview');
-      cam.blendFrom(0);
-      tools.setMode(mode, 'overview');
-    }
-    const rc = params.get('rcam')?.split(',').map(Number);
-    if (rc) {
-      cam.yaw = body.yaw + ((rc[0] ?? 0) * Math.PI) / 180;
-      cam.pitch = ((rc[1] ?? 20) * Math.PI) / 180;
-      if (rc[2]) cam.distance = rc[2];
-      cam.follow = 0;
-    }
+    } else startFrom(params, startMode);
+    urlCam(params);
     // (after the camera: a photo looks the way the view does)
     rctx.night = Number(params.get('night') ?? 0);
     tools.fromUrl(params, rctx);

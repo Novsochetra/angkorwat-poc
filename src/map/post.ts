@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { graphicsNow, samplesAt } from './graphics';
-import { view } from './resolution';
+import { PX_SCALE, view } from './resolution';
 import { SKY } from './sky/palette';
 import type { MapContext, MapFrame } from './types';
 
@@ -154,14 +154,31 @@ export function createPost(ctx: MapContext): MapPost {
     uniform float defaultOpacity;
     uniform float luminosityThreshold;
     uniform float smoothWidth;
+    uniform vec2 uTap;
     varying vec2 vUv;
+    vec3 read(vec2 uv) {
+      vec3 c = texture2D(tDiffuse, uv).rgb;
+      return (any(isnan(c)) || any(isinf(c))) ? vec3(0.0) : min(c, vec3(60.0));
+    }
     void main() {
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
-      c = (any(isnan(c)) || any(isinf(c))) ? vec3(0.0) : min(c, vec3(60.0));
+      #if PX_TAPS > 1
+        vec3 c = vec3(0.0);
+        for (int i = 0; i < PX_TAPS; i++) for (int j = 0; j < PX_TAPS; j++) c += read(vUv + (vec2(float(i), float(j)) - 0.5 * float(PX_TAPS - 1)) * uTap);
+        c /= float(PX_TAPS * PX_TAPS);
+      #else
+        vec3 c = read(vUv);
+      #endif
       float v = luminance(c);
       float alpha = smoothstep(luminosityThreshold, luminosityThreshold + smoothWidth, v);
       gl_FragColor = mix(vec4(defaultColor, defaultOpacity), vec4(c, 1.0), alpha);
     }`;
+  // (drawn k times bigger than the screen, resolution.ts `PX_SCALE`: a texel of the bloom's half-size picture
+  // covers 2k × 2k pixels, so it reads k × k taps of 2 × 2 (one read, as on the screen, would see only a ninth
+  // of them at k = 3): each small light glows as it did there, and as steadily in a flight)
+  const TAPS = Math.max(1, Math.ceil(PX_SCALE - 0.01));
+  highPass.materialHighPassFilter.defines.PX_TAPS = TAPS;
+  const tap = new Vector2();
+  highPass.materialHighPassFilter.uniforms.uTap = { value: tap };
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   // (the last pass: it draws to the screen, tone mapped, in sRGB)
@@ -170,6 +187,14 @@ export function createPost(ctx: MapContext): MapPost {
   const setSize = (w: number, h: number) => {
     composer.setPixelRatio(view.scene);
     composer.setSize(w, h);
+    // (a picture drawn k times bigger than the screen it was framed on, resolution.ts `PX_SCALE`: the bloom
+    // works at the screen's size, so its glow spreads as far over the picture as it did there)
+    if (PX_SCALE !== 1) {
+      const bw = Math.round((w * view.scene) / PX_SCALE);
+      const bh = Math.round((h * view.scene) / PX_SCALE);
+      bloom.setSize(bw, bh);
+      tap.set(1 / (Math.round(bw / 2) * TAPS), 1 / (Math.round(bh / 2) * TAPS));
+    }
     grade.uniforms.uTexel.value.set(1 / (w * view.scene), 1 / (h * view.scene));
     // (smooth filter and sharpen only when the scene is scaled up to a bigger canvas)
     grade.uniforms.uSharp.value = view.canvas > view.scene * 1.01 && !view.pixelated ? SHARPEN : 0;

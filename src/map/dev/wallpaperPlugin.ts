@@ -3,7 +3,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { extname, join, resolve, sep } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream';
 import type { Plugin, ViteDevServer } from 'vite';
 import { safeName, WALLPAPER_DIR, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes.ts';
@@ -24,6 +24,8 @@ import { safeName, WALLPAPER_DIR, WALLPAPER_ENDPOINT, type VideoCodec, type Wall
  *   POST   /__wallpaper/cancel          stop the render that is running
  *   GET    /__wallpaper/job?id=         how far a render is
  *   GET    /__wallpaper/file/<path>     a picture or video under wallpapers/
+ *   GET    /__wallpaper/thumb/<name>    a small JPEG of what was drawn (made with ffmpeg, kept in wallpapers/out/.thumbs/)
+ *   POST   /__wallpaper/reveal?name=    show what was drawn in the Finder
  */
 export function wallpaperPlugin(): Plugin {
   let root = process.cwd();
@@ -61,6 +63,9 @@ const TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg
 const LIMIT = 24 << 20;
 /** Lines of a job's log kept for the panel. */
 const LOG_LINES = 40;
+/** A thumbnail's width (px: the panel's picture at a 2× screen), and how many ffmpeg makes at once. */
+const THUMB_W = 560;
+const THUMB_JOBS = 2;
 
 class Wallpapers {
   private job: WallpaperJob | null = null;
@@ -68,6 +73,10 @@ class Wallpapers {
   private jobs = 0;
   /** The last change of views.json: the next waits for it (read, change, write are one step). */
   private lock: Promise<unknown> = Promise.resolve();
+  /** Thumbnails being made (name → done), and ffmpeg's turns. */
+  private readonly making = new Map<string, Promise<void>>();
+  private thumbJobs = 0;
+  private readonly thumbWait: (() => void)[] = [];
   private readonly server: ViteDevServer;
   private readonly root: () => string;
 
@@ -105,6 +114,8 @@ class Wallpapers {
         return job && job.id === url.searchParams.get('id') ? json(res, job) : reply(res, 404, 'No such job');
       }
       if (method === 'GET' && route.startsWith('/file/')) return await this.file(req, res, decodeURIComponent(route.slice('/file/'.length)));
+      if (method === 'GET' && route.startsWith('/thumb/')) return await this.thumb(req, res, safeName(decodeURIComponent(route.slice('/thumb/'.length))));
+      if (method === 'POST' && route === '/reveal') return json(res, await this.reveal(safeName(url.searchParams.get('name') ?? '')));
       reply(res, 404, 'Not found');
     } catch (err) {
       reply(res, 400, err instanceof Error ? err.message : String(err));
@@ -163,12 +174,20 @@ class Wallpapers {
         // (a file that is not a flight: left out)
       }
     }
+    const out = await this.drawnFiles();
+    const drawn: Record<string, number> = {};
+    for (const [name, file] of Object.entries(out)) drawn[name] = (await stat(join(this.dir, file)).catch(() => null))?.mtimeMs ?? 0;
+    return { views, flights, out, drawn };
+  }
+
+  /** What is drawn: name → file under wallpapers/. */
+  private async drawnFiles(): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     for (const file of await readdir(join(this.dir, 'out')).catch(() => [] as string[])) {
       const m = /^(.+)\.(png|jpg|mp4)$/.exec(file);
       if (m) out[m[1]] = `out/${file}`;
     }
-    return { views, flights, out };
+    return out;
   }
 
   private async saveView(raw: Partial<WallpaperView>): Promise<WallpaperList> {
@@ -186,6 +205,7 @@ class Wallpapers {
       shape: String(raw.shape ?? ''),
       query: String(raw.query ?? ''),
       noExplorer: raw.noExplorer !== false,
+      ...screenH(raw.screenH),
       saved: new Date().toISOString(),
     };
     await this.changeViews((views) => {
@@ -217,6 +237,7 @@ class Wallpapers {
       t0: Number(raw.t0) || 0,
       query: String(raw.query ?? ''),
       noExplorer: raw.noExplorer !== false,
+      ...screenH(raw.screenH),
       samples: rows,
       loop: raw.loop === true,
       kind: String(raw.kind ?? '').slice(0, 40),
@@ -308,6 +329,45 @@ class Wallpapers {
     return { stopped: true };
   }
 
+  /** A small JPEG of a drawn picture (a video's first frame), made when it is first asked for or the picture is newer. */
+  private async thumb(req: IncomingMessage, res: ServerResponse, name: string): Promise<void> {
+    const file = (await this.drawnFiles())[name];
+    if (!name || !file) return reply(res, 404, 'Not drawn');
+    const thumb = join(this.dir, 'out', '.thumbs', `${name}.jpg`);
+    const [src, made] = await Promise.all([stat(join(this.dir, file)), stat(thumb).catch(() => null)]);
+    if (!made || made.mtimeMs < src.mtimeMs) {
+      let job = this.making.get(name);
+      if (!job) {
+        job = this.turn(() => makeThumb(join(this.dir, file), thumb)).finally(() => this.making.delete(name));
+        this.making.set(name, job);
+      }
+      await job;
+    }
+    await this.file(req, res, `out/.thumbs/${name}.jpg`);
+  }
+
+  /** Run `make` when ffmpeg has a turn (a gallery asks for many at once). */
+  private async turn(make: () => Promise<void>): Promise<void> {
+    while (this.thumbJobs >= THUMB_JOBS) await new Promise<void>((r) => this.thumbWait.push(r));
+    this.thumbJobs++;
+    try {
+      await make();
+    } finally {
+      this.thumbJobs--;
+      this.thumbWait.shift()?.();
+    }
+  }
+
+  /** Show a drawn file in the Finder (another system: its folder). */
+  private async reveal(name: string): Promise<{ shown: boolean }> {
+    const file = (await this.drawnFiles())[name];
+    if (!name || !file) throw new Error('Not drawn yet');
+    const full = join(this.dir, file);
+    const child = process.platform === 'darwin' ? spawn('open', ['-R', full]) : spawn(process.platform === 'win32' ? 'explorer' : 'xdg-open', [dirname(full)]);
+    child.on('error', () => undefined);
+    return { shown: true };
+  }
+
   /** A picture or video under `wallpapers/`, with byte ranges (a video seeks by them). */
   private async file(req: IncomingMessage, res: ServerResponse, rel: string): Promise<void> {
     const full = resolve(this.dir, rel);
@@ -336,6 +396,29 @@ class Wallpapers {
     res.setHeader('Content-Length', size);
     pipeline(createReadStream(full), res, () => undefined);
   }
+}
+
+/** A saved frame height (px), when it is one. */
+function screenH(v: unknown): { screenH?: number } {
+  const h = Math.round(Number(v));
+  return h >= 16 && h <= 16384 ? { screenH: h } : {};
+}
+
+/** A thumbnail with ffmpeg: the first frame, `THUMB_W` wide (written beside, then moved: a half-made one is never served). */
+function makeThumb(src: string, out: string): Promise<void> {
+  return new Promise((done, fail) => {
+    const tmp = `${out}.${process.pid}.tmp.jpg`;
+    void mkdir(dirname(out), { recursive: true }).then(() => {
+      const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', src, '-frames:v', '1', '-vf', `scale=${THUMB_W}:-2`, '-q:v', '4', tmp], { stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      ff.stderr.on('data', (c: Buffer) => (err += c.toString()));
+      ff.on('error', (e) => fail(new Error(`ffmpeg: ${e.message} (brew install ffmpeg)`)));
+      ff.on('close', (code) => {
+        if (code !== 0) return fail(new Error(`ffmpeg: ${err.trim().split('\n').pop() ?? code}`));
+        rename(tmp, out).then(done, fail);
+      });
+    }, fail);
+  });
 }
 
 function json(res: ServerResponse, value: unknown): void {

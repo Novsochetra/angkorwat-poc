@@ -838,7 +838,7 @@ export function createBoat(field?: HeightField): BoatMode {
       if (from === 'overview') {
         phase = 'float';
         // Checks: `fishing=…` starts him fishing (the hull placed first: the pole goes on it).
-        const params = new URLSearchParams(location.search);
+        const params = ctx.start;
         if (params.has('fishing')) {
           placeRide(ctx, 0);
           fishing.fromUrl(params, ctx, fishView);

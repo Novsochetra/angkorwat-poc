@@ -37,6 +37,11 @@ export interface WallpaperView {
   query: string;
   /** The explorer is left out of the picture (`explorer=0`). */
   noExplorer: boolean;
+  /**
+   * The frame's height on the screen when it was saved, in the pixels the map drew: the picture's glow and fireflies
+   * are drawn that big for it (`pxscale=` = the picture's height over this; none: a screen 1800 pixels high).
+   */
+  screenH?: number;
   /** When it was saved (ISO). */
   saved: string;
 }
@@ -55,6 +60,8 @@ export interface WallpaperFlight {
   /** The moment's URL values, without `t` and `clock` (the frames have their own clock). */
   query: string;
   noExplorer: boolean;
+  /** As a view's (`WallpaperView.screenH`). */
+  screenH?: number;
   /** One row a frame: x, y, z, tx, ty, tz, field of view, and the day's clock (0‥1). */
   samples: number[][];
   /**
@@ -74,6 +81,8 @@ export interface WallpaperList {
   flights: { name: string; w: number; h: number; fps: number; seconds: number; loop: boolean; saved: string }[];
   /** Pictures and videos drawn so far: name → file under `wallpapers/`. */
   out: Record<string, string>;
+  /** When each was drawn (ms): its thumbnail's address changes with it. */
+  drawn: Record<string, number>;
 }
 
 /** A render job (`POST /__wallpaper/render`, `GET /__wallpaper/job?id=`). */

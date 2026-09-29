@@ -4,6 +4,7 @@ import { moonTexture } from './moon';
 import { mistNoiseTexture } from './noise';
 import type { SkyState } from './palette';
 import { createMeteors, METEOR_GLSL } from './stars';
+import { PX_SCALE } from '../resolution';
 
 /**
  * The sky: a dome that follows the camera. A gradient from the haze at the
@@ -296,7 +297,8 @@ export function buildSkyDome(): SkyDome {
         if (moonA > 0.001 && moonMu > 0.99) {
           vec2 q = discUV(d, uMoonDir, ${MOON_RADIUS});
           float r = length(q);
-          float aa = clamp(fwidth(r) * 1.5, 0.01, 0.2);
+          // (the edge's soft band: a pixel and a half of the screen, pxscale: its bright rim blooms as it did there)
+          float aa = clamp(fwidth(r) * ${(1.5 * PX_SCALE).toFixed(4)}, 0.01, 0.2);
           float disc = 1.0 - smoothstep(1.0 - aa, 1.0, r);
           vec4 face = texture2D(uMoonMap, q * 0.5 + 0.5);
           vec3 albedo = face.r * mix(vec3(0.84, 0.93, 1.06), vec3(0.58, 0.8, 1.2), face.g);

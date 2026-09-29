@@ -687,6 +687,8 @@ function step(t: number, dt: number): void {
     placeCamera(cam);
     frame.roam = 'overview';
   }
+  // (the free camera's frame is left of its panel: its view offset, after roaming, which clears one)
+  free?.placed();
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
   castGate.update(frame);
@@ -770,6 +772,7 @@ if (devTools)
         renderer.shadowMap.needsUpdate = true;
       },
       roaming: () => !!roam?.active,
+      placeExplorer: (q) => roam?.placeFrom(q, frame) ?? false,
       // (the sky moves with `drift`, which a shot sets from its `t=`)
       moment: (withExplorer) => {
         const q = momentQuery(new URLSearchParams(), frame.drift);
