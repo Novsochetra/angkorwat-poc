@@ -260,6 +260,15 @@ frame), a held time of day and weather, F freezes the scene's time.
   videos, `-- only=a,b`, `-- list`; `scripts/wallpaper.mjs`), draws them headless on the
   GPU: a picture `wallpapers/out/<name>.png` (4K in about 11 s), a flight `<name>.mp4`
   (frame by frame into ffmpeg, as `npm run video`). What is drawn is not kept in git.
+- **Video for a live wallpaper.** By default **R** flies a recorded flight back to its start, so it is a
+  loop; the panel's "Video" folder also makes a loop from the view (orbit round what you look at, sway, push
+  in and out, day and night) and picks the format (HEVC, 10-bit `hvc1`: about 40 MB for 20 s at 4K; H.264 plays
+  everywhere) and whether it is drawn as soon as it is saved. A loop (`loop: true` in its path file) repeats
+  with no jump: the camera comes round to where it began, but the world (clouds, mist, water) moves on, so
+  `scripts/wallpaper.mjs` draws it 1.2 s longer and cross-fades the same view at two times over the seam
+  (`seam=0` shows it without). Frames are JPEG (`frames=png` keeps every pixel: about nine times slower at 4K),
+  the colours are tagged BT.709, `codec=hevc|h264` and `crf=` are its options. 4K at 30 fps draws about five
+  frames a second (20 s in 2 minutes). Any video-wallpaper app plays the MP4 on repeat.
 - A saved view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size, with the moment
   (`t`, `clock`, `day`, `season`, weather; the explorer's spot when he is in it): what
   the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical

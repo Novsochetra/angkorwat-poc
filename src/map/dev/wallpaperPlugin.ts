@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { extname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream';
 import type { Plugin, ViteDevServer } from 'vite';
-import { safeName, WALLPAPER_DIR, WALLPAPER_ENDPOINT, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes.ts';
+import { safeName, WALLPAPER_DIR, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes.ts';
 
 /**
  * The free camera's saved views and flights (src/map/dev/freecam.ts), kept in
@@ -20,7 +20,7 @@ import { safeName, WALLPAPER_DIR, WALLPAPER_ENDPOINT, type WallpaperFlight, type
  *   POST   /__wallpaper/flight          save a flight
  *   DELETE /__wallpaper/view?name=      forget a view (its picture stays)
  *   DELETE /__wallpaper/flight?name=    forget a flight
- *   POST   /__wallpaper/render          { names } start drawing them: { id }
+ *   POST   /__wallpaper/render          { names, codec? } start drawing them (a video as `hevc` or `h264`): { id }
  *   POST   /__wallpaper/cancel          stop the render that is running
  *   GET    /__wallpaper/job?id=         how far a render is
  *   GET    /__wallpaper/file/<path>     a picture or video under wallpapers/
@@ -158,7 +158,7 @@ class Wallpapers {
     for (const name of await this.flightNames()) {
       try {
         const f = JSON.parse(await readFile(this.flightFile(name), 'utf8')) as WallpaperFlight;
-        flights.push({ name: f.name, w: f.w, h: f.h, fps: f.fps, seconds: f.samples.length / f.fps, saved: f.saved });
+        flights.push({ name: f.name, w: f.w, h: f.h, fps: f.fps, seconds: f.samples.length / f.fps, loop: f.loop === true, saved: f.saved });
       } catch {
         // (a file that is not a flight: left out)
       }
@@ -218,6 +218,8 @@ class Wallpapers {
       query: String(raw.query ?? ''),
       noExplorer: raw.noExplorer !== false,
       samples: rows,
+      loop: raw.loop === true,
+      kind: String(raw.kind ?? '').slice(0, 40),
       saved: new Date().toISOString(),
     };
     await mkdir(join(this.dir, 'paths'), { recursive: true });
@@ -243,7 +245,8 @@ class Wallpapers {
   // ── Rendering ──────────────────────────────────────────────────────────────
 
   /** Draw views and flights with scripts/wallpaper.mjs, on this dev server (one job at a time: the graphics card is shared). */
-  private async render(raw: { names?: unknown }): Promise<WallpaperJob> {
+  private async render(raw: { names?: unknown; codec?: unknown }): Promise<WallpaperJob> {
+    const codec: VideoCodec = raw.codec === 'h264' ? 'h264' : 'hevc';
     const names = (Array.isArray(raw.names) ? raw.names : []).map((n) => safeName(String(n))).filter(Boolean);
     if (!names.length) throw new Error('Nothing to render');
     if (this.job?.status === 'running') throw new Error('A render is running: wait for it, or stop it');
@@ -260,7 +263,7 @@ class Wallpapers {
     }
     const addr = this.server.httpServer?.address();
     const port = addr && typeof addr === 'object' ? (addr as AddressInfo).port : 5173;
-    const child = spawn(process.execPath, [join(this.root(), 'scripts/wallpaper.mjs'), `only=${names.join(',')}`, `base=http://127.0.0.1:${port}`], { cwd: this.root(), stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [join(this.root(), 'scripts/wallpaper.mjs'), `only=${names.join(',')}`, `codec=${codec}`, `base=http://127.0.0.1:${port}`], { cwd: this.root(), stdio: ['ignore', 'pipe', 'pipe'] });
     this.child = child;
     // (a render does not outlive the dev server: a restart, for one, would leave it running with nobody to ask)
     const stop = () => void child.kill();

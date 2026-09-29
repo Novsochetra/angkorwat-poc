@@ -7,11 +7,20 @@
 //   node scripts/wallpaper.mjs only=a,b        # only these (views or flights)
 //   node scripts/wallpaper.mjs list            # what is saved
 //
-// Options (name=value): graphics=max|high|medium|low (max) · fmt=png|jpg (png) ·
+// Options (name=value): graphics=max|high|medium|low (max) · fmt=png|jpg (png: a view's file) ·
 // out=<folder> (wallpapers/out) · w= h= (a size for every view, over its own) ·
 // base=http://127.0.0.1:5173 (a dev server that is running; else this starts its own).
+// For a flight's video: codec=hevc|h264 (hevc: small, 10-bit, plays on a Mac and modern PCs; h264 plays
+// everywhere) · crf= (its quality: hevc 22, h264 14; lower is finer) · frames=jpg|png (jpg: about nine times
+// faster at 4K, and as good once the video is made; png keeps every pixel) · seam=0 (a loop without the
+// cross-fade that hides its seam, to see what it does).
 // Env: CHROMIUM=path a Chromium with a GPU (else Playwright's full Chromium; the
 // headless shell draws with no GPU and is far slower). A flight needs ffmpeg.
+//
+// A flight that is a loop (`loop: true`: the frame after its last is its first) is made to repeat with no
+// jump. The camera is already continuous; the world is not (its clouds and water have moved on), so the
+// clip is drawn a little longer and the seam is a cross-fade of the same view at two times: the start of
+// the clip, and what the world looks like just after its end.
 //
 // A view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size (the moment:
 // its `t`, time of day, moon, season and weather come with it); a flight moves the
@@ -34,6 +43,10 @@ const out = resolve(root, opt('out', 'wallpapers/out'));
 const only = opt('only', '').split(',').filter(Boolean);
 const sizeW = Number(opt('w', 0));
 const sizeH = Number(opt('h', 0));
+const codec = opt('codec', 'hevc') === 'h264' ? 'h264' : 'hevc';
+const crf = opt('crf', codec === 'h264' ? '14' : '22');
+const png = opt('frames', 'jpg') === 'png';
+const withSeam = opt('seam', '1') !== '0';
 
 /** A line for the free camera's panel. */
 const say = (tag, ...rest) => console.log(['@@' + tag, ...rest].join(' '));
@@ -147,33 +160,95 @@ async function drawFlight(f) {
   const even = (n) => n + (n % 2);
   const [w, h] = [even(sizeW || f.w), even(sizeH || f.h)];
   const { fps, samples } = f;
+  const n = samples.length;
+  // A loop whose world moves has a seam to hide (see the top): the clip is drawn `fade` frames longer, and the first
+  // `fade` frames are kept back until the end, where they are laid over the frames that follow the clip's last one.
+  const seam = f.loop === true && !f.frozen && withSeam && n >= 6;
+  const fade = seam ? Math.max(2, Math.min(Math.round(fps * 1.2), Math.floor(n / 3))) : 0;
+  const total = n + fade;
   const file = join(out, `${f.name}.mp4`);
-  // (the frames go to ffmpeg as they are drawn: none are kept)
-  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-', '-c:v', 'libx264', '-preset', 'slow', '-crf', '14', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file], { stdio: ['pipe', 'inherit', 'inherit'] });
+  // The video: the frames go to ffmpeg as they are drawn, none are kept. The picture's colours are sRGB, which a player
+  // reads as BT.709 in a video: said outright (ffmpeg's own guess is BT.601: a shift in hue and saturation).
+  const matrix = 'out_color_matrix=bt709:out_range=tv' + (png ? '' : ':in_color_matrix=bt601:in_range=pc');
+  const encode =
+    codec === 'h264'
+      ? ['-c:v', 'libx264', '-preset', 'slow', '-crf', crf, '-pix_fmt', 'yuv420p']
+      : ['-c:v', 'libx265', '-preset', 'medium', '-crf', crf, '-pix_fmt', 'yuv420p10le', '-tag:v', 'hvc1', '-x265-params', 'log-level=error:colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited'];
+  const ffmpeg = spawn(
+    'ffmpeg',
+    ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', png ? 'png' : 'mjpeg', '-i', '-', '-vf', `scale=${matrix}`, ...encode, '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv', '-movflags', '+faststart', file],
+    { stdio: ['pipe', 'inherit', 'inherit'] },
+  );
   const finished = new Promise((res, rej) => {
     ffmpeg.on('error', (e) => rej(new Error(`ffmpeg: ${e.message} (brew install ffmpeg)`)));
     ffmpeg.on('close', (code) => (code === 0 ? res() : rej(new Error(`ffmpeg stopped with ${code}`))));
   });
   finished.catch(() => undefined);
   ffmpeg.stdin.on('error', () => undefined);
+  const put = async (buf) => {
+    if (!ffmpeg.stdin.write(buf)) await Promise.race([new Promise((r) => ffmpeg.stdin.once('drain', r)), finished]);
+  };
   let page = null;
   try {
     // (it is running before the map loads, which takes a while: a missing ffmpeg is found now, not at the first frame)
     await Promise.race([new Promise((res) => ffmpeg.once('spawn', res)), finished]);
     page = await openMap(f, w, h, { video: 1, t: f.t0.toFixed(1), cam: samples[0].slice(0, 7).join(',') });
-    const frame = (i, t, dt) => page.evaluate(([t, dt, cam, clock]) => window.__videoFrame(t, dt, cam, clock), [t, dt, samples[i].slice(0, 7), samples[i][7]]);
-    // (a few frames before the first: the parts that ease in come to rest, as in scripts/video.mjs)
-    for (let k = 10; k > 0; k--) await frame(0, f.frozen ? f.t0 : f.t0 - k / fps, 1 / fps);
-    for (let i = 0; i < samples.length; i++) {
-      await frame(i, f.frozen ? f.t0 : f.t0 + i / fps, f.frozen ? 0 : 1 / fps);
-      const png = await page.screenshot({ type: 'png', timeout: 240_000 });
-      if (!ffmpeg.stdin.write(png)) await Promise.race([new Promise((r) => ffmpeg.stdin.once('drain', r)), finished]);
-      say('progress', f.name, i + 1, samples.length);
+    const draw = (s, t, dt) => page.evaluate(([t, dt, cam, clock]) => window.__videoFrame(t, dt, cam, clock), [t, dt, s.slice(0, 7), s[7]]);
+    const grab = () => page.screenshot({ type: png ? 'png' : 'jpeg', ...(png ? {} : { quality: 97 }), timeout: 240_000 });
+    if (seam) {
+      // (a canvas over the picture, for the cross-fade: the frame now, and over it the kept one at some strength)
+      await page.evaluate(() => {
+        const gl = document.getElementById('scene');
+        const c = document.createElement('canvas');
+        c.width = gl.width;
+        c.height = gl.height;
+        Object.assign(c.style, { position: 'fixed', left: '0', top: '0', width: '100vw', height: '100vh', zIndex: '2147483647', display: 'none' });
+        document.body.append(c);
+        window.__seam = { gl, c, g: c.getContext('2d') };
+      });
+    }
+    // (frames before the first: the parts that ease in come to rest, as in scripts/video.mjs, but for longer: the first
+    // frames of a clip that repeats must be as steady as the rest, or its seam shows them)
+    const before = Math.round(fps * 1.5);
+    for (let k = before; k > 0; k--) await draw(samples[0], f.frozen ? f.t0 : f.t0 - k / fps, 1 / fps);
+    /** The first frames, kept for the seam. */
+    const head = [];
+    for (let i = 0; i < total; i++) {
+      if (seam && i === total - 1) {
+        // (the seam's last frame is all of the start's frame that was kept: nothing to blend, and no second JPEG)
+        await put(head[fade - 1]);
+        say('progress', f.name, total, total);
+        break;
+      }
+      // (a loop's path repeats: what follows the last frame is the first again, at a later time)
+      await draw(samples[i % n], f.frozen ? f.t0 : f.t0 + i / fps, f.frozen ? 0 : 1 / fps);
+      if (i < fade) head.push(await grab());
+      else if (i < n) await put(await grab());
+      else {
+        // (the clip's end: this view, a moment after the clip, turning into the same view at the clip's start)
+        const k = i - n;
+        await page.evaluate(
+          async ([b64, strength, type]) => {
+            const { gl, c, g } = window.__seam;
+            g.globalAlpha = 1;
+            g.drawImage(gl, 0, 0);
+            const image = await createImageBitmap(await (await fetch(`data:image/${type};base64,${b64}`)).blob());
+            g.globalAlpha = strength;
+            g.drawImage(image, 0, 0);
+            image.close();
+            c.style.display = 'block';
+          },
+          [head[k].toString('base64'), k / (fade - 1), png ? 'png' : 'jpeg'],
+        );
+        await put(await grab());
+        await page.evaluate(() => (window.__seam.c.style.display = 'none'));
+      }
+      say('progress', f.name, i + 1, total);
     }
     ffmpeg.stdin.end();
     await finished;
     say('done', f.name, relative(dir, file));
-    return `${w}×${h}, ${(samples.length / fps).toFixed(1)} s at ${fps} fps → ${relative(root, file)}`;
+    return `${w}×${h}, ${(n / fps).toFixed(1)} s at ${fps} fps, ${codec === 'h264' ? 'H.264' : 'HEVC'}${f.loop ? (seam ? ', a loop (seam blended)' : ', a loop') : ''} → ${relative(root, file)}`;
   } finally {
     // (every way out lets ffmpeg go: no process is left waiting for frames)
     ffmpeg.stdin.end();

@@ -5,7 +5,7 @@ import { MAP_BOUNDS } from '../layout';
 import { HELD_WEATHER } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
 import { CALM_WEATHER, type MapWeather } from '../types';
-import { safeName, WALLPAPER_ENDPOINT, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes';
+import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes';
 
 /**
  * The free camera (dev server only; ` opens it, Esc leaves): a camera that
@@ -26,6 +26,10 @@ import { safeName, WALLPAPER_ENDPOINT, type WallpaperFlight, type WallpaperJob, 
  *   `wallpapers/paths/<name>.json`; "Render" draws either at full quality
  *   with scripts/wallpaper.mjs (headless, on the graphics card) into
  *   `wallpapers/out/`. `npm run wallpaper` draws them all.
+ * - Video for a live wallpaper: a flight can be a loop (R flies back to the start
+ *   by itself, or the panel makes one from the view: an orbit, a sway, a push in
+ *   and out, a day turning to night), and the video is drawn so that it repeats
+ *   with no jump, small (HEVC) or for everywhere (H.264).
  *
  * The land is built with big blocks past the roaming area, where no camera
  * of the map goes (terrain/views.ts): the notes say so when the camera is
@@ -96,6 +100,15 @@ const TIMES: [string, number][] = [
   ['Dawn', 0.82],
 ];
 
+/** Loop videos the panel makes from the view: a camera path that comes round to where it began. */
+const LOOPS = ['Orbit round what I look at', 'Sway, gently', 'Push in and out', 'Day and night'] as const;
+type LoopKind = (typeof LOOPS)[number];
+
+/** Video formats: HEVC is small (a wallpaper's file), H.264 plays everywhere. */
+const FORMATS: Record<string, VideoCodec> = { 'HEVC · small, for a wallpaper': 'hevc', 'H.264 · plays everywhere': 'h264' };
+
+const UP = new Vector3(0, 1, 0);
+
 /** Keys that move the camera: right, up, forward. */
 const MOVE: Record<string, [number, number, number]> = {
   KeyW: [0, 0, 1],
@@ -165,6 +178,13 @@ interface Panel {
   freeze: boolean;
   explorer: boolean;
   name: string;
+  /** Video: its format, whether to draw it as soon as it is saved, whether R closes a flight into a loop, and the loop the panel makes. */
+  format: string;
+  drawNow: boolean;
+  closeLoop: boolean;
+  loopKind: string;
+  loopSeconds: number;
+  loopReverse: boolean;
 }
 
 /** A saved thing in the list: a picture or a video. */
@@ -226,6 +246,12 @@ class FreeCamTool implements FreeCam {
     freeze: false,
     explorer: false,
     name: 'view-1',
+    format: 'HEVC · small, for a wallpaper',
+    drawNow: true,
+    closeLoop: true,
+    loopKind: LOOPS[0],
+    loopSeconds: 40,
+    loopReverse: false,
   };
   /** The weather the panel holds (null: the game's), and the one a saved view has. */
   private held: Partial<MapWeather> | null = null;
@@ -261,6 +287,7 @@ class FreeCamTool implements FreeCam {
     render: () => void this.renderSelected(),
     forget: () => void this.forget(),
     stop: () => void this.stopRender(),
+    makeLoop: () => void this.makeLoop(),
   };
 
   constructor(private readonly o: FreeCamOptions) {
@@ -626,7 +653,7 @@ class FreeCamTool implements FreeCam {
     return [this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.s.lens].map((v) => round(v, 2));
   }
 
-  private nextName(base: 'view' | 'flight'): string {
+  private nextName(base: 'view' | 'flight' | 'loop'): string {
     const taken = new Set([...this.list.views.map((v) => v.name), ...this.list.flights.map((f) => f.name)]);
     for (let n = 1; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
   }
@@ -677,7 +704,7 @@ class FreeCamTool implements FreeCam {
     const named = safeName(this.s.name);
     this.rec = { name: !named || /^view-\d+$/.test(named) ? this.nextName('flight') : named, start: performance.now(), rows: [], w, h, t0, frozen: this.s.freeze, query: q.toString(), noExplorer: !withExplorer };
     this.recordButton?.name('■ Stop recording (R)');
-    this.say('Recording. Fly, then press R to stop. It is drawn later, frame by frame.');
+    this.say(`Recording. Fly, then press R to stop.${this.s.drawNow ? ' The video is drawn as soon as you stop.' : ' It is drawn later, frame by frame.'}`);
   }
 
   private async stopRecord(): Promise<void> {
@@ -703,11 +730,168 @@ class FreeCamTool implements FreeCam {
         }),
       );
     }
-    const flight: WallpaperFlight = { name: rec.name, w: rec.w, h: rec.h, fps: FLIGHT_FPS, frozen: rec.frozen, t0: rec.t0, query: rec.query, noExplorer: rec.noExplorer, samples, saved: '' };
+    // (a loop flies back to where it began: what the video needs to repeat)
+    const loop = this.s.closeLoop;
+    const all = loop ? this.closePath(samples) : samples;
+    const flight: WallpaperFlight = { name: rec.name, w: rec.w, h: rec.h, fps: FLIGHT_FPS, frozen: rec.frozen, t0: rec.t0, query: rec.query, noExplorer: rec.noExplorer, samples: all, loop, saved: '' };
+    await this.saveFlight(flight, loop ? `it flies back to the start over ${((all.length - samples.length + 1) / FLIGHT_FPS).toFixed(1)} s, so that it can repeat` : '');
+  }
+
+  /**
+   * A flown path made a loop: the way back to its start is added, smooth where it leaves the last frame and where it
+   * reaches the first (a cubic with the speeds the path has at those two frames). The frame after the last is the
+   * first again.
+   */
+  private closePath(rows: number[][]): number[][] {
+    const n = rows.length;
+    const first = rows[0];
+    const last = rows[n - 1];
+    // (the day's clock is a dial: the short way from one value to another)
+    const short = (a: number, b: number) => ((b - a + 1.5) % 1) - 0.5;
+    const speed = (from: number[], to: number[]) => to.map((v, k) => (k === 7 ? short(from[k], v) : v - from[k]) * FLIGHT_FPS);
+    const v1 = speed(rows[n - 2], last);
+    const v0 = speed(first, rows[1]);
+    const dist = Math.hypot(first[0] - last[0], first[1] - last[1], first[2] - last[2]);
+    const seconds = MathUtils.clamp(2 + dist / 20, 2.5, 10);
+    const m = Math.round(seconds * FLIGHT_FPS);
+    const out = rows.slice();
+    for (let j = 1; j < m; j++) {
+      const u = j / m;
+      const h00 = 2 * u ** 3 - 3 * u ** 2 + 1;
+      const h10 = u ** 3 - 2 * u ** 2 + u;
+      const h01 = -2 * u ** 3 + 3 * u ** 2;
+      const h11 = u ** 3 - u ** 2;
+      out.push(
+        last.map((v, k) => {
+          const end = k === 7 ? v + short(v, first[7]) : first[k];
+          const x = h00 * v + h10 * seconds * v1[k] + h01 * end + h11 * seconds * v0[k];
+          return k === 7 ? round(((x % 1) + 1) % 1, 4) : round(x, 2);
+        }),
+      );
+    }
+    return out;
+  }
+
+  /** Where the view meets the ground (or the water): the point an orbit goes round. Nothing within reach: a point in the air ahead. */
+  private groundAhead(): Vector3 {
+    const f = this.forward(new Vector3());
+    const p = this.pos;
+    const at = (d: number) => this._t.set(p.x + f.x * d, p.y + f.y * d, p.z + f.z * d);
+    const below = (d: number) => {
+      const q = at(d);
+      return q.y <= this.o.field.standY(q.x, q.z);
+    };
+    let near = 0;
+    for (let d = 4; d <= 1600; d += 4) {
+      if (below(d)) {
+        let far = d;
+        for (let k = 0; k < 10; k++) {
+          const mid = (near + far) / 2;
+          if (below(mid)) far = mid;
+          else near = mid;
+        }
+        return at(far).clone();
+      }
+      near = d;
+    }
+    return at(160).clone();
+  }
+
+  /**
+   * The frames of a loop made from the view: a camera path that comes round to where it began (the frame after the
+   * last is the first), whatever its kind, and the same lens.
+   * - Orbit: the whole view turns once about a vertical line through the point it meets the ground, so the picture keeps
+   *   its composition while the world goes round behind it.
+   * - Sway: a slow turn and a little sideways.
+   * - Push in and out: forward some metres and back.
+   * - Day and night: the light goes round once (the clock 0 → 1) while the camera drifts a little.
+   */
+  private loopSamples(kind: LoopKind, seconds: number, reverse: boolean): { rows: number[][]; raised: number } {
+    const n = Math.max(FLIGHT_FPS, Math.round(seconds * FLIGHT_FPS));
+    const p0 = this.pos.clone();
+    const yaw0 = this.yawNow;
+    const pitch0 = this.pitchNow;
+    const clock0 = this.o.clock();
+    const centre = kind === LOOPS[0] ? this.groundAhead() : p0;
+    const sign = reverse ? -1 : 1;
+    const right0 = new Vector3(Math.cos(yaw0), 0, -Math.sin(yaw0));
+    const fwd0 = new Vector3(-Math.sin(yaw0) * Math.cos(pitch0), Math.sin(pitch0), -Math.cos(yaw0) * Math.cos(pitch0));
+    const pos = new Vector3();
+    const f = new Vector3();
+    const aim = new Vector3();
+    const rows: number[][] = [];
+    let raised = 0;
+    for (let i = 0; i < n; i++) {
+      const u = i / n;
+      const a = Math.PI * 2 * u;
+      let yaw = yaw0;
+      let pitch = pitch0;
+      let clock = clock0;
+      pos.copy(p0);
+      if (kind === LOOPS[0]) {
+        const turn = a * sign;
+        const dx = p0.x - centre.x;
+        const dz = p0.z - centre.z;
+        pos.x = centre.x + dx * Math.cos(turn) + dz * Math.sin(turn);
+        pos.z = centre.z - dx * Math.sin(turn) + dz * Math.cos(turn);
+        yaw = yaw0 + turn;
+      } else if (kind === LOOPS[1]) {
+        yaw = yaw0 + rad(7) * Math.sin(a);
+        pitch = pitch0 + rad(1.2) * Math.sin(a + Math.PI / 2);
+        pos.addScaledVector(right0, 3 * Math.sin(a)).addScaledVector(UP, 0.8 * Math.sin(2 * a));
+      } else if (kind === LOOPS[2]) {
+        pos.addScaledVector(fwd0, 30 * (0.5 - 0.5 * Math.cos(a)));
+      } else {
+        yaw = yaw0 + rad(3) * Math.sin(a);
+        pos.addScaledVector(right0, 1.5 * Math.sin(a));
+        clock = (((clock0 + u) % 1) + 1) % 1;
+      }
+      // (over the ground and the water: lifted where the path would touch them)
+      const floor = Math.max(0, this.o.field.standY(pos.x, pos.z)) + CLEARANCE;
+      if (pos.y < floor) {
+        pos.y = floor;
+        raised++;
+      }
+      pos.y = Math.min(pos.y, CEILING);
+      f.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
+      aim.copy(pos).addScaledVector(f, AIM);
+      rows.push([pos.x, pos.y, pos.z, aim.x, aim.y, aim.z, this.s.lens, clock].map((v, k) => round(v, k === 7 ? 4 : 2)));
+    }
+    return { rows, raised };
+  }
+
+  /** Make a loop video from the view the camera has now (the panel's kind and seconds), and draw it. */
+  private async makeLoop(): Promise<void> {
+    if (!this.open) return;
+    const kind = this.s.loopKind as LoopKind;
+    const seconds = MathUtils.clamp(Math.round(this.s.loopSeconds), 4, 180);
+    const { rows, raised } = this.loopSamples(kind, seconds, this.s.loopReverse);
+    const [w, h] = this.size();
+    const withExplorer = this.s.explorer;
+    const q = this.o.moment(withExplorer && this.o.roaming());
+    const t0 = Number(q.get('t')) || 0;
+    for (const k of ['t', 'clock']) q.delete(k);
+    const named = safeName(this.s.name);
+    const name = !named || /^(view|flight|loop)-\d+$/.test(named) ? this.nextName('loop') : named;
+    const flight: WallpaperFlight = { name, w, h, fps: FLIGHT_FPS, frozen: this.s.freeze, t0, query: q.toString(), noExplorer: !withExplorer, samples: rows, loop: true, kind, saved: '' };
+    await this.saveFlight(flight, `${kind.toLowerCase()}${raised ? `; lifted over the land in ${raised} frames` : ''}`);
+  }
+
+  /** How long a video takes to draw, in words (a rough guess: the frames, a JPEG each, and the encoder). */
+  private estimate(flight: WallpaperFlight): string {
+    const frames = flight.samples.length + (flight.loop && !flight.frozen ? Math.round(flight.fps * 1.2) : 0);
+    const seconds = 15 + frames * (0.032 + (0.0104 * flight.w * flight.h) / 1e6) * 1.4;
+    return seconds < 90 ? 'a minute' : `${Math.round(seconds / 60)} minutes`;
+  }
+
+  /** Save a flight (flown, or a loop the panel made), and draw its video at once if the panel says so. */
+  private async saveFlight(flight: WallpaperFlight, note: string): Promise<void> {
     try {
       this.list = await call<WallpaperList>('/flight', { method: 'POST', body: JSON.stringify(flight) });
-      this.buildSaved(`flight:${rec.name}`);
-      this.say(`Saved the flight "${rec.name}" (${(samples.length / FLIGHT_FPS).toFixed(1)} s, ${rec.w}×${rec.h}). Pick it under Saved and press Render, or run: npm run wallpaper -- flights`);
+      this.buildSaved(`flight:${flight.name}`);
+      const what = `${flight.loop ? 'the loop' : 'the flight'} "${flight.name}" (${(flight.samples.length / FLIGHT_FPS).toFixed(1)} s, ${flight.w}×${flight.h}${note ? `; ${note}` : ''})`;
+      if (this.s.drawNow) await this.startRender({ kind: 'flight', name: flight.name }, `about ${this.estimate(flight)}`, `Saved ${what}. `);
+      else this.say(`Saved ${what}. Pick it under Saved and press Render, or run: npm run wallpaper -- flights`);
     } catch (err) {
       this.say(`Not saved: ${message(err)}`, true);
     }
@@ -774,16 +958,22 @@ class FreeCamTool implements FreeCam {
     if (!this.open) return;
     const item = this.selected();
     if (!item) return this.say('Nothing saved yet: press V first.', true);
+    await this.startRender(item);
+  }
+
+  /** Draw a saved view or flight (a video in the panel's format); `lead` and `hint` go in the words while it draws. */
+  private async startRender(item: Saved, hint = '', lead = ''): Promise<void> {
     try {
-      const job = await call<WallpaperJob>('/render', { method: 'POST', body: JSON.stringify({ names: [item.name] }) });
-      void this.watch(job.id, item);
+      const codec = FORMATS[this.s.format] ?? 'hevc';
+      const job = await call<WallpaperJob>('/render', { method: 'POST', body: JSON.stringify({ names: [item.name], codec }) });
+      void this.watch(job.id, item, hint, lead);
     } catch (err) {
-      this.say(`Not started: ${message(err)}`, true);
+      this.say(`${lead}Not started: ${message(err)}`, true);
     }
   }
 
   /** Follow a render job until it is done, and show what it drew. */
-  private async watch(id: string, item: Saved): Promise<void> {
+  private async watch(id: string, item: Saved, hint = '', lead = ''): Promise<void> {
     const started = performance.now();
     for (;;) {
       let job: WallpaperJob;
@@ -794,7 +984,7 @@ class FreeCamTool implements FreeCam {
       }
       const secs = ((performance.now() - started) / 1000).toFixed(0);
       if (job.status === 'running') {
-        this.say(`Drawing "${item.name}" at full quality… ${job.now && job.now.total > 1 ? `frame ${job.now.done} of ${job.now.total}, ` : ''}${secs} s`);
+        this.say(`${lead}Drawing "${item.name}" at full quality… ${job.now && job.now.total > 1 ? `frame ${job.now.done} of ${job.now.total}, ` : ''}${secs} s${hint ? ` (${hint})` : ''}`);
         await new Promise((r) => setTimeout(r, 700));
         continue;
       }
@@ -920,6 +1110,15 @@ class FreeCamTool implements FreeCam {
     save.add(s, 'name').name('Name').listen();
     save.add(act, 'save').name('Save this view (V)');
     this.recordButton = save.add(act, 'record').name('● Record a flight (R)');
+
+    const video = gui.addFolder('Video (for a live wallpaper)');
+    video.add(s, 'format', Object.keys(FORMATS)).name('Format');
+    video.add(s, 'drawNow').name('Draw it when it is saved');
+    video.add(s, 'closeLoop').name('R: fly back to the start (a loop)');
+    video.add(s, 'loopKind', [...LOOPS]).name('Loop from this view');
+    video.add(s, 'loopSeconds', 4, 180, 1).name('Loop seconds');
+    video.add(s, 'loopReverse').name('Turn the other way');
+    video.add(act, 'makeLoop').name('Make the loop video');
 
     gui.domElement.append(this.status);
     this.say('Fly to a place you like. V saves the view.');

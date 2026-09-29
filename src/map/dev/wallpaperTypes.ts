@@ -19,6 +19,9 @@ export const safeName = (v: string): string =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 
+/** How a video is made: HEVC (small: for a wallpaper) or H.264 (plays everywhere). */
+export type VideoCodec = 'hevc' | 'h264';
+
 /** A view: where the free camera stands, how the picture is cut, and the moment. */
 export interface WallpaperView {
   /** Its picture is `wallpapers/out/<name>.png`. */
@@ -54,13 +57,21 @@ export interface WallpaperFlight {
   noExplorer: boolean;
   /** One row a frame: x, y, z, tx, ty, tz, field of view, and the day's clock (0‥1). */
   samples: number[][];
+  /**
+   * A loop: the path comes round to where it began (the frame after the last is the first), and the video is
+   * made to repeat with no jump: the world moves on while the camera comes round, so the seam is a cross-fade of
+   * the same view at two times (scripts/wallpaper.mjs).
+   */
+  loop?: boolean;
+  /** What made it: a loop preset's name; none when it was flown. */
+  kind?: string;
   saved: string;
 }
 
 /** What `GET /__wallpaper/list` answers. */
 export interface WallpaperList {
   views: WallpaperView[];
-  flights: { name: string; w: number; h: number; fps: number; seconds: number; saved: string }[];
+  flights: { name: string; w: number; h: number; fps: number; seconds: number; loop: boolean; saved: string }[];
   /** Pictures and videos drawn so far: name → file under `wallpapers/`. */
   out: Record<string, string>;
 }
