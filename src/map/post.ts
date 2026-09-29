@@ -66,6 +66,9 @@ const GradeShader = {
     void main() {
       vec3 c = clean(texture2D(tDiffuse, vUv).rgb);
       // Tilt-shift: a soft blur that grows towards the top edge only.
+      // (textureLod, not texture2D, in the loop: Direct3D, what WebGL runs on
+      // in Windows browsers, fails to link a shader that samples with
+      // derivatives in a loop under a per-pixel if. The target has no mips.)
       float r = uTilt * smoothstep(0.8, 1.0, vUv.y);
       if (r > 0.35) {
         vec3 sum = c;
@@ -74,7 +77,7 @@ const GradeShader = {
           float fi = float(i);
           float a = fi * 2.39996;
           float d = sqrt((fi + 0.5) / 12.0) * r;
-          sum += clean(texture2D(tDiffuse, vUv + vec2(cos(a), sin(a)) * d * uTexel).rgb);
+          sum += clean(textureLod(tDiffuse, vUv + vec2(cos(a), sin(a)) * d * uTexel, 0.0).rgb);
           n += 1.0;
         }
         c = sum / n;
