@@ -84,6 +84,23 @@ export const ICON = {
       '<path fill="currentColor" d="m18.6 3.4.3 4.9-4.9-.3zM5.4 20.6l-.3-4.9 4.9.3z"/>',
   ),
   heart: svg('<path fill="currentColor" d="M12 20.6 10.6 19.3C5.6 14.8 2.4 11.9 2.4 8.3 2.4 5.4 4.7 3.2 7.5 3.2c1.7 0 3.3.8 4.5 2 1.2-1.2 2.8-2 4.5-2 2.8 0 5.1 2.2 5.1 5.1 0 3.6-3.2 6.5-8.2 11L12 20.6Z"/>'),
+  /**
+   * The settings' tabs (ui.ts; sound is `speaker`): General (three sliders), Graphics (a picture
+   * with a sun and hills), Play (a game pad), About (the heart, outlined).
+   */
+  sliders: svg(
+    '<path d="M4 7h8M18 7h2M4 12h2M12 12h8M4 17h9M19 17h1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '<circle cx="15" cy="7" r="2.6" fill="currentColor"/><circle cx="9" cy="12" r="2.6" fill="currentColor"/><circle cx="16" cy="17" r="2.6" fill="currentColor"/>',
+  ),
+  picture: svg(
+    '<rect x="3.2" y="4.6" width="17.6" height="14.8" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="16.2" cy="9.6" r="1.7" fill="currentColor"/>' +
+      '<path d="M5.4 17l4-5 3.2 3.6 2.2-2.4 3.8 3.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>',
+  ),
+  gamepad: svg(
+    '<path d="M7.6 7.4h8.8a4.6 4.6 0 0 1 4.5 5.4l-.7 3.6a2.6 2.6 0 0 1-4.3 1.5L14.2 15.6H9.8l-1.7 2.3a2.6 2.6 0 0 1-4.3-1.5l-.7-3.6a4.6 4.6 0 0 1 4.5-5.4Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>' +
+      '<path d="M8.4 10.2v3.4M6.7 11.9h3.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="15.6" cy="11" r="1.15" fill="currentColor"/><circle cx="17.9" cy="13.2" r="1.15" fill="currentColor"/>',
+  ),
+  heartLine: svg('<path d="M12 20.6 10.6 19.3C5.6 14.8 2.4 11.9 2.4 8.3 2.4 5.4 4.7 3.2 7.5 3.2c1.7 0 3.3.8 4.5 2 1.2-1.2 2.8-2 4.5-2 2.8 0 5.1 2.2 5.1 5.1 0 3.6-3.2 6.5-8.2 11L12 20.6Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>'),
   /** The mini-map setting: shown (a folded map), the button only (a small bar), hidden (an eye struck through). */
   mapShow: svg('<path d="M3.5 6.2 9 4.2l6 2 5.5-2v13.6l-5.5 2-6-2-5.5 2z" fill="currentColor" fill-opacity=".25" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 4.2v13.6M15 6.2v13.6" stroke="currentColor" stroke-width="1.9"/>'),
   mapButton: svg('<rect x="3.2" y="8.2" width="17.6" height="7.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M7.2 12h9.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),

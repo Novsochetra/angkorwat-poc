@@ -5,6 +5,7 @@ import { PHONE } from '../graphics';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
 import { fogStepFor } from '../sky/fogLevel';
 import { createSupportCard } from './_support';
+import { createTabs, type TabDef } from './_tabs';
 import { CREDITS, SUPPORT_URL } from './credits';
 import { ICON } from './icons';
 import { lang, num, onLang, placeText, setLang, t, type WordKey } from './lang';
@@ -14,11 +15,18 @@ import { framed, setSteppedVars } from './shape';
  * The map's interface over the 3D view, after the concept art
  * (assets/world-map-selection-screen/): the title card (top left), a pin card
  * per place (placed from the place's beacon on screen), the info panel with
- * "Begin expedition" (right side; a bottom sheet on phones), the gear and
- * mute buttons with the settings panel and the ខ្មែរ / EN switch (top
- * right) and the hint line (bottom right). Styles: map.css (classes start
- * with `mu-`). Words: lang.ts (`data-t` / `data-t-aria` / `data-t-title`
- * name the word an element shows; `fillWords` fills them in the language).
+ * "Begin expedition" (right side; a bottom sheet on phones), the coffee,
+ * credits and gear buttons with the settings panel (top right) and the hint
+ * line (bottom right). Styles: map.css (classes start with `mu-`). Words:
+ * lang.ts (`data-t` / `data-t-aria` / `data-t-title` name the word an element
+ * shows; `fillWords` fills them in the language).
+ *
+ * The settings panel has five tabs (`_tabs.ts`), one page each, so it is only
+ * as tall as the page you are on and the map stays in view: General (the
+ * language, the time of day, the weather), Sound, Graphics (the graphics
+ * level, the resolution, the fog, the battery saver), Play (the mini-map, the
+ * key help, easy flying, reduce motion) and About (support the game, our
+ * story, the credits). The gear opens the tab last used; the heart opens About.
  *
  * Keys: Tab / arrows move between cards, Enter picks, Esc goes back (or
  * closes the settings). A click on the empty map goes back too.
@@ -26,21 +34,22 @@ import { framed, setSteppedVars } from './shape';
  * While the explorer roams the map (`setRoaming`), the picker steps back:
  * no title, hint or info panel; the cards become small name pins over their
  * beacons that fade with distance and cannot be clicked; the keys and clicks
- * are the roaming's. The gear and mute buttons stay (top right), the
- * mini-map under them fades while the settings are open; the roaming HUD has
- * the top-left and bottom-left corners and the bottom centre.
+ * are the roaming's. The corner buttons stay (top right), the mini-map
+ * under them fades while the settings are open; the roaming HUD has the
+ * top-left and bottom-left corners and the bottom centre.
  *
  * Shots (`?shot=1`) can show states: `uistate=` a comma list of
  * `hover:<id>`, `focus:<id>` (keyboard ring), `pressed:<id>`,
  * `selected:<id>` (panel open, camera stays: add `focus=<id>` to fly it),
- * `settings`, `credits` (the settings' credits page), `muted`, `held` (the
- * held-sound card), `weather:<setting>` (the panel shows that weather
- * chosen), `res:<share>` / `res:auto` (that resolution picked), `battery`
- * (the battery saver on), `fog:<choice>` (that fog picked: auto, full,
- * light, simple), `scroll:<group>` (the settings scrolled to that group:
- * lang, time, weather, graphics, res, fog, mini), `begin` (the fade to
- * black), `roam` (the interface while roaming, without the roaming itself:
- * add `cam=` to stand somewhere).
+ * `settings`, `tab:<id>` (the settings on that tab: general, sound,
+ * graphics, play, about), `credits` (the settings on About, where the heart
+ * goes), `muted`, `held` (the held-sound card), `weather:<setting>` (the
+ * panel shows that weather chosen), `res:<share>` / `res:auto` (that
+ * resolution picked), `battery` (the battery saver on), `fog:<choice>` (that
+ * fog picked: auto, full, light, simple), `scroll:<group>` (the settings
+ * scrolled to that group, on its tab: lang, time, weather, graphics, res,
+ * fog, mini), `begin` (the fade to black), `roam` (the interface while
+ * roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
   /** A card is hovered (null: none). */
@@ -113,6 +122,20 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
 };
 /** The on / off settings (a switch each in the panel). */
 type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery';
+/**
+ * The settings' tabs, in the bar's order (each page is `mu-set-page-<id>`).
+ * Sound is the sound page's own word (lang.ts `sound`).
+ */
+type TabId = 'general' | 'sound' | 'graphics' | 'play' | 'about';
+const TABS: TabDef<TabId>[] = [
+  { id: 'general', word: 'tabGeneral', icon: ICON.sliders },
+  { id: 'sound', word: 'sound', icon: ICON.speaker },
+  { id: 'graphics', word: 'tabGraphics', icon: ICON.picture },
+  { id: 'play', word: 'tabPlay', icon: ICON.gamepad },
+  { id: 'about', word: 'tabAbout', icon: ICON.heartLine },
+];
+/** The tab of each choice's heading (`#mu-<group>-h`): a shot's `scroll:<group>` shows that tab first. */
+const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play' };
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -152,6 +175,13 @@ const FOG_CHOICE: Record<FogChoice, { icon: string; word: WordKey; note: WordKey
   full: { icon: ICON.mist3, word: 'fogFull', note: 'fogFullNote' },
   light: { icon: ICON.mist2, word: 'fogLight', note: 'fogLightNote' },
   simple: { icon: ICON.mist1, word: 'fogSimple', note: 'fogSimpleNote' },
+};
+/** The time of day's choices, the same way: day, night, or the cycle (the clock's own, so it is the automatic one). */
+const TIME_SETTINGS = ['day', 'night', 'cycle'] as const;
+const TIME_CHOICE: Record<MapSettings['time'], { icon: string; word: WordKey }> = {
+  day: { icon: ICON.sun, word: 'day' },
+  night: { icon: ICON.moon, word: 'night' },
+  cycle: { icon: ICON.cycle, word: 'cycle' },
 };
 /** The mini-map choices (minimap.ts): shown, the button only, hidden. */
 const MINI_CHOICE: Record<MiniMapChoice, { icon: string; word: WordKey; note: WordKey }> = {
@@ -299,124 +329,115 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const rows = VOLUME_KEYS.filter((k) => SOUND_PART[k] === p).map(slider).join('');
     return p ? `<div class="mu-set-sub" role="group" aria-labelledby="mu-${p}-h"><h4 id="mu-${p}-h" data-t="${p}"></h4>${rows}</div>` : rows;
   });
+  // (a choice's heading: its name, and its automatic choice, if it has one, as a chip at the right end; the others are the buttons under it)
+  const head = (id: string, word: WordKey, auto = '') => `<div class="mu-set-top"><h3 id="mu-${id}-h" data-t="${word}"></h3>${auto}</div>`;
+  const autoChip = <K extends string>(attr: string, value: K, of: Record<K, { icon: string; word: WordKey }>) =>
+    `<button type="button" class="mu-auto" data-${attr}="${value}">${of[value].icon}<span data-t="${of[value].word}"></span></button>`;
+  const choices = <K extends string>(attr: string, all: readonly K[], skip: K | null, of: Record<K, { icon: string; word: WordKey }>) =>
+    all.filter((k) => k !== skip).map((k) => `<button type="button" data-${attr}="${k}">${of[k].icon}<span data-t="${of[k].word}"></span></button>`).join('');
+  const page = (id: TabId, body: string) => `<div class="mu-page" id="mu-set-page-${id}" role="tabpanel" aria-labelledby="mu-set-tab-${id}"${id === 'general' ? '' : ' hidden'}>${body}</div>`;
+  const switchRow = (id: string, key: SwitchKey, word: WordKey, note: string) =>
+    `<div class="mu-set-row"><span id="mu-${id}-l"><span data-t="${word}"></span>${note}</span><button type="button" class="mu-switch" role="switch" data-set="${key}" aria-labelledby="mu-${id}-l"><span class="mu-knob"></span></button></div>`;
   const panel = framed(el('section', 'mu-settings', `
     <div class="mu-set-head"><h2 data-t="settings"></h2><button type="button" class="mu-x mu-close" data-t-aria="closeSettings">${ICON.close}</button></div>
-    <div class="mu-set-body">
-      <div class="mu-set-group">
-        <h3 id="mu-lang-h" class="mu-lang-h" data-t="language"></h3>
-        <div class="mu-seg mu-lang-seg" role="group" aria-labelledby="mu-lang-h">
-          ${(['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')}
+    <div class="mu-set-body"><div class="mu-set-pages">
+      ${page('general', `
+        <div class="mu-set-group" role="group" aria-labelledby="mu-lang-h">
+          ${head('lang', 'language')}
+          <div class="mu-seg mu-lang-seg">
+            ${(['km', 'en'] as Lang[]).map((l) => `<button type="button" lang="${l}" data-lang="${l}">${LANG_LABEL[l]}</button>`).join('')}
+          </div>
         </div>
-      </div>
-      <div class="mu-set-group" role="group" data-t-aria="sound">
-        <h3 data-t="sound"></h3>
+        <div class="mu-set-group" role="group" aria-labelledby="mu-time-h">
+          ${head('time', 'time', autoChip('time', 'cycle', TIME_CHOICE))}
+          <div class="mu-seg is-pairs">${choices('time', TIME_SETTINGS, 'cycle', TIME_CHOICE)}</div>
+        </div>
+        <div class="mu-set-group" role="group" aria-labelledby="mu-weather-h" aria-describedby="mu-weather-note">
+          ${head('weather', 'weather', autoChip('weather', 'season', WEATHER_CHOICE))}
+          <div class="mu-seg is-pairs">${choices('weather', WEATHER_SETTINGS, 'season', WEATHER_CHOICE)}</div>
+          <p class="mu-set-note" id="mu-weather-note"></p>
+        </div>`)}
+      ${page('sound', `
         <div class="mu-set-row mu-sound-row">
           <span id="mu-sound-l" data-t="soundOn"></span>
           <button type="button" class="mu-switch mu-sound-sw" role="switch" aria-labelledby="mu-sound-l"><span class="mu-knob"></span></button>
         </div>
-        ${soundParts.join('')}
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-time-h" data-t="time"></h3>
-        <div class="mu-seg" role="group" aria-labelledby="mu-time-h">
-          <button type="button" data-time="day">${ICON.sun}<span data-t="day"></span></button>
-          <button type="button" data-time="night">${ICON.moon}<span data-t="night"></span></button>
-          <button type="button" data-time="cycle">${ICON.cycle}<span data-t="cycle"></span></button>
+        ${soundParts.join('')}`)}
+      ${page('graphics', `
+        <div class="mu-set-group" role="group" aria-labelledby="mu-graphics-h" aria-describedby="mu-graphics-note">
+          ${head('graphics', 'graphics', autoChip('graphics', 'auto', GRAPHICS_CHOICE))}
+          <div class="mu-seg is-pairs">${choices('graphics', GRAPHICS_CHOICES, 'auto', GRAPHICS_CHOICE)}</div>
+          <p class="mu-set-note" id="mu-graphics-note"></p>
         </div>
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-weather-h" data-t="weather"></h3>
-        <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-weather-h" aria-describedby="mu-weather-note">
-          ${WEATHER_SETTINGS.map((w) => `<button type="button"${w === 'snow' ? ' class="is-wide"' : ''} data-weather="${w}">${WEATHER_CHOICE[w].icon}<span data-t="${WEATHER_CHOICE[w].word}"></span></button>`).join('')}
+        <div class="mu-set-group" role="group" aria-labelledby="mu-res-h" aria-describedby="mu-res-note">
+          ${head('res', 'resolution', `<button type="button" class="mu-auto" data-res="auto">${ICON.auto}<span data-t="gAuto"></span></button>`)}
+          <div class="mu-seg mu-res-seg"></div>
+          <p class="mu-set-note" id="mu-res-note"></p>
         </div>
-        <p class="mu-set-note" id="mu-weather-note"></p>
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-graphics-h" data-t="graphics"></h3>
-        <div class="mu-seg is-pairs" role="group" aria-labelledby="mu-graphics-h" aria-describedby="mu-graphics-note">
-          ${GRAPHICS_CHOICES.map((g) => `<button type="button"${g === 'auto' ? ' class="is-wide"' : ''} data-graphics="${g}">${GRAPHICS_CHOICE[g].icon}<span data-t="${GRAPHICS_CHOICE[g].word}"></span></button>`).join('')}
+        <div class="mu-set-group" role="group" aria-labelledby="mu-fog-h" aria-describedby="mu-fog-note mu-fog-edge">
+          ${head('fog', 'fog', autoChip('fog', 'auto', FOG_CHOICE))}
+          <div class="mu-seg mu-fog-seg">${choices('fog', FOG_CHOICES, 'auto', FOG_CHOICE)}</div>
+          <p class="mu-set-note" id="mu-fog-note"></p>
+          <p class="mu-set-note mu-fog-edge" id="mu-fog-edge" data-t="fogEdgeNote"></p>
         </div>
-        <p class="mu-set-note" id="mu-graphics-note"></p>
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-res-h" data-t="resolution"></h3>
-        <div class="mu-seg is-pairs mu-res-seg" role="group" aria-labelledby="mu-res-h" aria-describedby="mu-res-note">
-          <button type="button" class="is-wide" data-res="auto">${ICON.auto}<span data-t="gAuto"></span></button>
+        <div class="mu-set-row"${PHONE ? ' hidden' : ''}>
+          <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
+          <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
+        </div>`)}
+      ${page('play', `
+        <div class="mu-set-group" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
+          ${head('mini', 'miniMap')}
+          <div class="mu-seg">${choices('minimap', MINIMAP_CHOICES, null, MINI_CHOICE)}</div>
+          <p class="mu-set-note" id="mu-mini-note"></p>
         </div>
-        <p class="mu-set-note" id="mu-res-note"></p>
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-fog-h" data-t="fog"></h3>
-        <div class="mu-seg mu-fog-seg" role="group" aria-labelledby="mu-fog-h" aria-describedby="mu-fog-note mu-fog-edge">
-          ${FOG_CHOICES.map((f) => `<button type="button"${f === 'auto' ? ' class="is-wide"' : ''} data-fog="${f}">${FOG_CHOICE[f].icon}<span data-t="${FOG_CHOICE[f].word}"></span></button>`).join('')}
-        </div>
-        <p class="mu-set-note" id="mu-fog-note"></p>
-        <p class="mu-set-note mu-fog-edge" id="mu-fog-edge" data-t="fogEdgeNote"></p>
-      </div>
-      <div class="mu-set-row"${PHONE ? ' hidden' : ''}>
-        <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
-      </div>
-      <div class="mu-set-group">
-        <h3 id="mu-mini-h" data-t="miniMap"></h3>
-        <div class="mu-seg" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
-          ${MINIMAP_CHOICES.map((m) => `<button type="button" data-minimap="${m}">${MINI_CHOICE[m].icon}<span data-t="${MINI_CHOICE[m].word}"></span></button>`).join('')}
-        </div>
-        <p class="mu-set-note" id="mu-mini-note"></p>
-      </div>
-      <div class="mu-set-row">
-        <span id="mu-calm-l"><span data-t="calm"></span><small data-t="calmNote"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="calm" aria-labelledby="mu-calm-l"><span class="mu-knob"></span></button>
-      </div>
-      <div class="mu-set-row">
-        <span id="mu-fly-l"><span data-t="easyFly"></span><small class="mu-fly-note"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="easyFly" aria-labelledby="mu-fly-l"><span class="mu-knob"></span></button>
-      </div>
-      <div class="mu-set-row">
-        <span id="mu-keys-l"><span data-t="keyHelp"></span><small data-t="keyHelpNote"></small></span>
-        <button type="button" class="mu-switch" role="switch" data-set="keyHelp" aria-labelledby="mu-keys-l"><span class="mu-knob"></span></button>
-      </div>
-      <div class="mu-set-row">
-        <span id="mu-story-l"><span data-t="stStory"></span><small data-t="stStoryNote"></small></span>
-        <button type="button" class="mu-watch mu-story-go" aria-describedby="mu-story-l">${ICON.play}<span data-t="stWatch"></span></button>
-      </div>
-    </div>
-    <div class="mu-set-body mu-cr-body" hidden></div>`), 'lg');
-  // (the choices, the story button and the switches in the stepped frames of the buttons above)
+        ${switchRow('keys', 'keyHelp', 'keyHelp', '<small data-t="keyHelpNote"></small>')}
+        ${switchRow('fly', 'easyFly', 'easyFly', '<small class="mu-fly-note"></small>')}
+        ${switchRow('calm', 'calm', 'calm', '<small data-t="calmNote"></small>')}`)}
+      ${page('about', '')}
+    </div></div>`), 'lg');
+  // (the choices and the switches in the stepped frames of the buttons above)
   for (const seg of panel.querySelectorAll<HTMLElement>('.mu-seg')) {
     framed(seg, 'sm');
     for (const b of seg.querySelectorAll<HTMLButtonElement>('button')) framed(b, 'xs');
   }
-  for (const b of panel.querySelectorAll<HTMLButtonElement>('.mu-watch')) framed(b, 'sm');
+  for (const b of panel.querySelectorAll<HTMLButtonElement>('.mu-auto')) framed(b, 'xs');
   for (const s of panel.querySelectorAll<HTMLButtonElement>('.mu-switch')) framed(s, 'xs');
   panel.id = 'mu-settings';
   panel.setAttribute('role', 'dialog');
   panel.dataset.tAria = 'settings';
   const sliders = [...panel.querySelectorAll<HTMLInputElement>('input[type=range]')];
-  const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-time]')];
-  const weatherBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-weather]')];
+  const segBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-time]')];
+  const weatherBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-weather]')];
   const weatherNote = panel.querySelector<HTMLElement>('#mu-weather-note')!;
-  const graphicsBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-graphics]')];
+  const graphicsBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-graphics]')];
   const graphicsNote = panel.querySelector<HTMLElement>('#mu-graphics-note')!;
-  /** The resolution's choice: Auto, then this window's sizes after it (`buildRes`), and its note. */
+  /** The resolution's choice: Auto (the chip by the heading), then this window's sizes (`buildRes`) under it, and its note. */
   const resSeg = panel.querySelector<HTMLElement>('.mu-res-seg')!;
-  const resAuto = resSeg.querySelector<HTMLButtonElement>('button[data-res="auto"]')!;
+  const resAuto = panel.querySelector<HTMLButtonElement>('button[data-res="auto"]')!;
   const resNote = panel.querySelector<HTMLElement>('#mu-res-note')!;
-  const fogBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-fog]')];
+  const fogBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-fog]')];
   const fogNote = panel.querySelector<HTMLElement>('#mu-fog-note')!;
-  const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-minimap]')];
+  const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-minimap]')];
   const miniNote = panel.querySelector<HTMLElement>('#mu-mini-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
   const switches = [...panel.querySelectorAll<HTMLButtonElement>('.mu-switch[data-set]')];
   /** Sound on / off: the mute (the master down, the mix kept). */
   const soundSw = panel.querySelector<HTMLButtonElement>('.mu-sound-sw')!;
-  const langBtns = [...panel.querySelectorAll<HTMLButtonElement>('.mu-seg button[data-lang]')];
-  /** Everything under the panel's heading: it scrolls when the screen is too low for it all. */
+  const langBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-lang]')];
+  /** Everything under the tabs: as tall as the page in it (map.css eases the change), and it scrolls when the screen is too low for that. */
   const setBody = panel.querySelector<HTMLElement>('.mu-set-body')!;
-  /** The credits page (credits.ts): in place of the settings' body (the corner's credits button). */
-  const crBody = panel.querySelector<HTMLElement>('.mu-cr-body')!;
-  const panelHead = panel.querySelector<HTMLElement>('.mu-set-head h2')!;
-  let creditsOpen = false;
+  const pagesBox = panel.querySelector<HTMLElement>('.mu-set-pages')!;
+  /** One page a tab (`mu-set-page-<id>`): only the tab in use shows its page. About is filled with the words (`fillAbout`). */
+  const pages = new Map(TABS.map(({ id }) => [id, panel.querySelector<HTMLElement>(`#mu-set-page-${id}`)!]));
+  const soundPage = pages.get('sound')!;
+  const aboutPage = pages.get('about')!;
+  /** The tab in use, and the last settings tab (the gear goes back to it: the heart's About is not one). */
+  let tab: TabId = 'general';
+  let lastTab: TabId = 'general';
+  /** The timer of the body's height easing (0: none; ui.ts `scrollEdges` waits for it). */
+  let easing = 0;
+  const tabs = createTabs(TABS, { prefix: 'mu-set', label: 'settingsTabs', start: tab, onSelect: showPage });
+  panel.querySelector('.mu-set-head')!.after(tabs.bar);
 
   // ── Hint, fade, live region ─────────────────────────────────────────────
   const hint = el('p', 'mu-hint', `${ICON.plane}<span data-t="hint"></span>`);
@@ -457,23 +478,32 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   let touchUse = matchMedia('(pointer: coarse)').matches;
   const fillFlyNote = () => (flyNote.textContent = t(touchUse ? 'easyFlyNoteTouch' : 'easyFlyNote'));
   /**
-   * The note under the graphics choice: the chosen level's, or Auto's with
-   * the level in use in it (no `data-t`: `fillWords` and `syncSettings` fill
-   * it, so a language change puts the level's word in again too).
+   * The About page: support the game (its gold coffee button), our story (a
+   * button to watch it again), then the credits (credits.ts) under their own
+   * line. Written again with the words (`fillWords`), so the frames' layers
+   * are written in, as framed() would add them, and the story button is
+   * heard through the panel (below).
    */
-  function fillCredits(): void {
+  function fillAbout(): void {
     const l = lang();
-    // (on top: support the game, its gold coffee button; the frames' layers written in, as framed() would add them)
     const support = `<div class="mu-cr-sup mu-frame mu-sm"><span class="mu-bg"></span>
         <p class="mu-cr-sup-head">${ICON.coffee}<span>${t('support')}</span></p><p class="mu-cr-sup-note">${t('supportNote')}</p>
         <a class="mu-watch mu-coffee mu-frame mu-sm" href="${SUPPORT_URL}" target="_blank" rel="noopener" data-from="credits"><span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${ICON.coffee}<span>${t('supportGo')}</span></a></div>`;
-    crBody.innerHTML = support + CREDITS.map(
+    const story = `<div class="mu-set-row">
+        <span id="mu-story-l"><span>${t('stStory')}</span><small>${t('stStoryNote')}</small></span>
+        <button type="button" class="mu-watch mu-story-go mu-frame mu-sm" aria-describedby="mu-story-l"><span class="mu-bg"></span><span class="mu-focus"></span>${ICON.play}<span>${t('stWatch')}</span></button></div>`;
+    aboutPage.innerHTML = support + story + `<div class="mu-set-sub"><h4>${t('credits')}</h4></div>` + CREDITS.map(
       (g) =>
         `<div class="mu-set-group" role="group"><h3>${g.head[l]}</h3>${g.lines
           .map((c) => `<p class="mu-cr-line">${c.name ? `<span lang="en">${c.name}</span>` : ''}${c.note ? `<small>${c.note[l]}</small>` : ''}</p>`)
           .join('')}</div>`,
     ).join('');
   }
+  /**
+   * The note under the graphics choice: the chosen level's, or Auto's with
+   * the level in use in it (no `data-t`: `fillWords` and `syncSettings` fill
+   * it, so a language change puts the level's word in again too).
+   */
   function fillGraphicsNote(): void {
     const g = GRAPHICS_CHOICE[settings.graphics] ?? GRAPHICS_CHOICE.auto;
     graphicsNote.textContent = g === GRAPHICS_CHOICE.auto ? t(g.note, { level: t(GRAPHICS_CHOICE[graphicsLevel].word) }) : t(g.note);
@@ -484,8 +514,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     fogNote.textContent = f === FOG_CHOICE.auto ? t(f.note, { step: t(FOG_CHOICE[fogStepFor('auto', graphicsLevel)].word) }) : t(f.note);
   }
 
-  // ── Resolution (resolution.ts): Auto, then the sizes for this window ────
-  /** The sizes in the menu now, biggest first, and their buttons (after Auto, in the same order). */
+  // ── Resolution (resolution.ts): Auto (the chip by the heading), then the sizes for this window ────
+  /** The sizes in the menu now, biggest first, and their buttons (in the same order). */
   let resSizes: ResolutionSize[] = [];
   let resBtns: HTMLButtonElement[] = [];
   /** The size drawn now (main.ts `setDrawSize`; until it says, from resolution.ts `view`): Auto's note names it. */
@@ -592,7 +622,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   /** Every word in the language in use: the marked elements, the cards and the open panel. */
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
-    fillCredits();
+    fillAbout();
     for (const e of wakeBtn.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillFlyNote();
     fillGraphicsNote();
@@ -818,6 +848,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     miniNote.textContent = t(miniNote.dataset.t as WordKey);
     for (const b of switches) b.setAttribute('aria-checked', String(settings[b.dataset.set as SwitchKey]));
     soundSw.setAttribute('aria-checked', String(!isMuted()));
+    soundPage.classList.toggle('is-muted', isMuted());
     for (const b of langBtns) b.setAttribute('aria-pressed', String(b.dataset.lang === settings.lang));
     applyCalm();
     // (a new language fills the words again: `onLang` above)
@@ -833,8 +864,6 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function toggleSettings(open = !settingsOpen, sound = true): void {
     if (open === settingsOpen) return;
     settingsOpen = open;
-    const fromCredits = creditsOpen;
-    if (!open) showCredits(false);
     // (the resolution's sizes for the window and screen as they are now)
     if (open) buildRes();
     panel.classList.toggle('is-open', open);
@@ -845,45 +874,111 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     else panel.setAttribute('aria-hidden', 'true');
     cornerOn();
     if (sound) h.onSound(open ? 'open' : 'close');
-    if (open) sliders[0].focus({ preventScroll: true });
-    else if (panel.contains(document.activeElement)) (fromCredits ? creditsBtn : gearBtn).focus({ preventScroll: true });
+    // (open: the tab in use has the focus, so the arrow keys walk the bar; closed: the focus goes back to the corner button it came from)
+    if (open) tabs.button(tab).focus({ preventScroll: true });
+    else if (panel.contains(document.activeElement)) (tab === 'about' ? creditsBtn : gearBtn).focus({ preventScroll: true });
   }
-  /** The panel shows the credits page (open) or the settings. */
-  function showCredits(open: boolean): void {
-    if (open === creditsOpen) return;
-    creditsOpen = open;
-    setBody.hidden = open;
-    crBody.hidden = !open;
-    panelHead.dataset.t = open ? 'credits' : 'settings';
-    panelHead.textContent = t(panelHead.dataset.t as WordKey);
-    crBody.scrollTop = 0;
-    scrollEdges();
+  /**
+   * A tab was picked (`_tabs.ts`): its page shows and the last one hides.
+   * Picked by hand (`smooth`), the page eases in from the side its tab lies
+   * on, with a sound; picked by the code (a shot, the panel opening on its
+   * page), it just is there.
+   */
+  function showPage(id: TabId, prev: TabId, smooth: boolean): void {
+    tab = id;
+    if (id !== 'about') lastTab = id;
+    for (const [k, p] of pages) p.hidden = k !== id;
+    // (the height follows at once: open, it eases to the page's; shut, it is the page's when the panel opens)
+    fitBody(!settingsOpen);
+    setBody.scrollTop = 0;
+    const page = pages.get(id)!;
+    page.classList.remove('is-in');
+    if (smooth) {
+      const at = (x: TabId) => TABS.findIndex((d) => d.id === x);
+      page.style.setProperty('--dir', at(id) > at(prev) ? '1' : '-1');
+      // (a reflow, so the animation starts again)
+      void page.offsetWidth;
+      page.classList.add('is-in');
+      h.onSound('toggle');
+    }
     cornerOn();
+    scrollEdges();
   }
-  /** The gear or the credits button lit, for what the panel shows. */
+  /** The gear or the heart lit, for the page the panel shows: About is the heart's, the other tabs the gear's. */
   function cornerOn(): void {
-    gearBtn.setAttribute('aria-expanded', String(settingsOpen && !creditsOpen));
-    gearBtn.classList.toggle('is-on', settingsOpen && !creditsOpen);
-    creditsBtn.setAttribute('aria-expanded', String(settingsOpen && creditsOpen));
-    creditsBtn.classList.toggle('is-on', settingsOpen && creditsOpen);
+    const about = settingsOpen && tab === 'about';
+    gearBtn.setAttribute('aria-expanded', String(settingsOpen && !about));
+    gearBtn.classList.toggle('is-on', settingsOpen && !about);
+    creditsBtn.setAttribute('aria-expanded', String(about));
+    creditsBtn.classList.toggle('is-on', about);
   }
-  /** The corner's gear (`credits` false) or credits button: opens the panel on its page, or closes it. */
-  function panelButton(credits: boolean): void {
-    if (settingsOpen && creditsOpen === credits) return toggleSettings(false);
-    if (!settingsOpen) toggleSettings(true);
-    else h.onSound('toggle');
-    showCredits(credits);
-    if (credits) panel.querySelector<HTMLElement>('.mu-close')!.focus({ preventScroll: true });
-  }
-  /** Soft edges on the panel's body where there is more to scroll to (map.css). */
-  function scrollEdges(): void {
-    for (const b of [setBody, crBody]) {
-      b.classList.toggle('is-more-up', b.scrollTop > 1);
-      b.classList.toggle('is-more-down', b.scrollTop + b.clientHeight < b.scrollHeight - 1);
+  /** The corner's gear (`about` false: the tab last used) or heart (About): opens the panel on its page, or closes it. */
+  function panelButton(about: boolean): void {
+    if (settingsOpen && (tab === 'about') === about) return toggleSettings(false);
+    const to: TabId = about ? 'about' : lastTab;
+    if (settingsOpen) {
+      tabs.select(to, true);
+      tabs.button(tab).focus({ preventScroll: true });
+    } else {
+      // (on its page from the first frame: nothing slides)
+      tabs.select(to);
+      toggleSettings(true);
     }
   }
+  /**
+   * The body is as tall as the page in it: its height follows the page's
+   * (map.css eases the change while the panel shows). `snap`: at once, with
+   * nothing easing (the page changed while the panel was shut, so it opens on
+   * its page, at its height).
+   */
+  function fitBody(snap = false): void {
+    const h = pagesBox.getBoundingClientRect().height;
+    // (an interface that is hidden reads 0: keep the height it had)
+    if (!h) return;
+    const px = `${Math.ceil(h)}px`;
+    if (setBody.style.getPropertyValue('--mu-page-h') === px) return;
+    if (snap) setBody.style.transition = 'none';
+    else easeBody();
+    setBody.style.setProperty('--mu-page-h', px);
+    if (snap) {
+      // (a style flush with the transition off, then it is back on: nothing eases)
+      void setBody.offsetHeight;
+      setBody.style.transition = '';
+    }
+    scrollEdges();
+  }
+  /**
+   * The height is about to change while the panel shows: no scrollbar and no
+   * soft edges until it has (`is-easing`, map.css; 380 ms; not for reduce
+   * motion, where the change is at once, nor in shots).
+   */
+  function easeBody(): void {
+    if (!settingsOpen || shot || root.classList.contains('mu-calm')) return;
+    setBody.classList.add('is-easing');
+    clearTimeout(easing);
+    easing = window.setTimeout(() => {
+      easing = 0;
+      setBody.classList.remove('is-easing');
+      scrollEdges();
+    }, 380);
+  }
+  // (a page change fits at once, above; the other changes of height (words that wrap again, the resolution's sizes, a window resize) are
+  // asked in the next frame, not while the observer reports: a change made then moves what it watches, and the browser logs a loop)
+  let fitting = 0;
+  new ResizeObserver(() => {
+    if (!fitting)
+      fitting = requestAnimationFrame(() => {
+        fitting = 0;
+        fitBody();
+      });
+  }).observe(pagesBox);
+  /** Soft edges on the panel's body where there is more to scroll to (map.css). */
+  function scrollEdges(): void {
+    if (easing) return;
+    setBody.classList.toggle('is-more-up', setBody.scrollTop > 1);
+    setBody.classList.toggle('is-more-down', setBody.scrollTop + setBody.clientHeight < setBody.scrollHeight - 1);
+  }
   setBody.addEventListener('scroll', scrollEdges, { passive: true });
-  crBody.addEventListener('scroll', scrollEdges, { passive: true });
   panel.inert = true;
   panel.setAttribute('aria-hidden', 'true');
   info.inert = true;
@@ -892,7 +987,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   gearBtn.addEventListener('click', () => panelButton(false));
   creditsBtn.addEventListener('click', () => panelButton(true));
   panel.querySelector('.mu-close')!.addEventListener('click', () => toggleSettings(false));
-  panel.querySelector('.mu-story-go')!.addEventListener('click', () => {
+  // (a key pressed in the panel is the panel's: not the explorer's steps and tools behind it (roam/input.ts), nor the cards' arrows; Esc goes on to close it)
+  panel.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') e.stopPropagation();
+  });
+  // (the story button is on the About page, which is written again with the words: heard through the panel)
+  panel.addEventListener('click', (e) => {
+    if (!(e.target as Element).closest('.mu-story-go')) return;
     toggleSettings(false, false);
     h.onStory();
   });
@@ -946,14 +1047,16 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       change({ graphics });
       h.onSound('toggle');
     });
-  // (the sizes are made again with the window: one listener for Auto and them all)
+  // (the sizes are made again with the window: one listener for them all; Auto is the chip by the heading)
+  const pickRes = (resolution: MapSettings['resolution']) => {
+    change({ resolution });
+    h.onSound('toggle');
+  };
+  resAuto.addEventListener('click', () => resAuto.getAttribute('aria-pressed') !== 'true' && pickRes('auto'));
   resSeg.addEventListener('click', (e) => {
     const b = (e.target as Element).closest<HTMLButtonElement>('button');
-    if (!b || !resSeg.contains(b) || b.getAttribute('aria-pressed') === 'true') return;
-    const s = b === resAuto ? null : resSizes[Number(b.dataset.i)];
-    if (b !== resAuto && !s) return;
-    change({ resolution: s ? s.share : 'auto' });
-    h.onSound('toggle');
+    const size = b && resSeg.contains(b) && b.getAttribute('aria-pressed') !== 'true' ? resSizes[Number(b.dataset.i)] : undefined;
+    if (size) pickRes(size.share);
   });
   for (const b of fogBtns)
     b.addEventListener('click', () => {
@@ -1135,7 +1238,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   // ── Shot states (`uistate=`) ─────────────────────────────────────────────
   if (shot) {
-    /** `scroll:<group>`: the settings' body scrolled to that group's heading (`#mu-<group>-h`). */
+    /** `scroll:<group>`: the settings' body scrolled to that group's heading (`#mu-<group>-h`), on the group's tab. */
     let scrollGroup = '';
     for (const s of (params.get('uistate') ?? '').split(',').filter(Boolean)) {
       const [k, v] = s.split(':') as [string, PlaceId | undefined];
@@ -1148,6 +1251,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       if (k === 'pressed' && c) c.button.classList.add('is-hover', 'is-press');
       if (k === 'selected' && c) applySelected(c.place.id);
       if (k === 'settings') toggleSettings(true, false);
+      // (`tab:<id>`: the settings on that tab, e.g. `uistate=settings,tab:sound`; before or after `settings`)
+      if (k === 'tab' && TABS.some((d) => d.id === (v as string))) tabs.select(v as string as TabId);
       if (k === 'held') setSoundHeld(true);
       // (`weather:<setting>`: the panel shows that weather chosen, e.g. `uistate=settings,weather:snow`)
       if (k === 'weather' && WEATHER_SETTINGS.includes(v as string as WeatherSetting)) {
@@ -1170,8 +1275,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       }
       if (k === 'scroll' && v) scrollGroup = v;
       if (k === 'credits') {
+        tabs.select('about');
         toggleSettings(true, false);
-        showCredits(true);
       }
       if (k === 'support') queueMicrotask(() => support.ask());
       if (k === 'muted') {
@@ -1185,7 +1290,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         fade.classList.add('is-on', 'is-half');
       }
     }
+    // (opening the panel gave a tab the focus: a shot shows the panel at rest, without the keyboard's ring)
+    (document.activeElement as HTMLElement | null)?.blur();
     if (scrollGroup) {
+      tabs.select(GROUP_TAB[scrollGroup] ?? tab);
       // (again once the web fonts are in: the words change size)
       const scrollThere = () => {
         const head = setBody.querySelector<HTMLElement>(`#mu-${scrollGroup}-h`);

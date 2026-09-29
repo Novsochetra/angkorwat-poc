@@ -86,10 +86,24 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - The corner (top right) has three buttons: the coffee, the heart, the gear.
   The coffee asks "Support the game" (`ui/_support.ts`, `uistate=support`):
   its gold "Buy me a coffee" opens `SUPPORT_URL` (`src/map/ui/credits.ts`)
-  in a new tab; the same button tops the credits page. Credits: the heart
-  opens them in the settings panel; the names are `credits.ts`
+  in a new tab; the same button tops the About page. Credits: the heart
+  opens the settings panel on its About tab; the names are `credits.ts`
   (`uistate=credits` in shots). Cards that ask ("Back to the map?", the
   coffee) are `ui/ask.ts`, their look `.mu-ask` in `ui/map.css`.
+- Settings panel (the gear): five tabs, one page each, so it is only as tall
+  as the page you are on and the map stays in view. **General** (language,
+  time of day, weather), **Sound**, **Graphics** (graphics level, resolution,
+  fog, battery saver), **Play** (mini-map, key help, easy flying, reduce
+  motion), **About** (support the game, our story, the credits). The bar is
+  `ui/_tabs.ts` (a `tablist`: ← → Home End, one gold thumb that slides); the
+  pages are `#mu-set-page-<id>` in `ui.ts` (`TABS`), and the body's height
+  follows the page (`--mu-page-h`, eased in `map.css`). The gear opens the tab
+  last used, the heart opens About. A choice with an automatic mode has it as
+  a chip by its heading (`.mu-auto`: time's Cycle, weather's By season, Auto
+  for graphics, resolution and fog), the fixed choices under it. A new
+  setting goes on the page it belongs to (markup in `ui.ts`, words in
+  `lang.ts`). Shots: `uistate=settings,tab:<id>` (`general`, `sound`,
+  `graphics`, `play`, `about`); `scroll:<group>` shows that group's tab.
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
 - Words: Khmer first, English on the language choice at the top of the
   settings (the story has its own ខ្មែរ / EN). The word list is

@@ -923,7 +923,7 @@
   z-index: 8;
   display: flex;
   flex-direction: column;
-  width: calc(330 * var(--px));
+  width: calc(356 * var(--px));
   max-height: calc(100% - var(--mu-set-top) - 22 * var(--px));
   padding: calc(14 * var(--px)) calc(20 * var(--px)) calc(20 * var(--px));
   pointer-events: auto;
@@ -971,17 +971,152 @@
   color: var(--mu-ink);
 }
 
-/* Everything under the heading: scrolls when the screen is too low for it (the frame stays). */
+/* The tabs (ui/_tabs.ts): the choices' dark slot, an icon over a word in each button, and one gold
+ * thumb behind the tab in use that slides along (`--i`: the tab's number, `--n`: how many). */
+.mu-tabs {
+  flex: none;
+  display: grid;
+  /* (equal columns whatever the words: the thumb's width and place are worked out for equal ones) */
+  grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr));
+  gap: calc(4 * var(--px));
+  margin: calc(12 * var(--px)) 0 calc(2 * var(--px));
+  padding: calc(4 * var(--px));
+  --mu-edge: var(--mu-line);
+  --mu-shadow: none;
+}
+
+.mu-tabs > .mu-bg {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.mu-tab-thumb {
+  position: absolute;
+  left: calc(4 * var(--px));
+  top: calc(4 * var(--px));
+  bottom: calc(4 * var(--px));
+  width: calc((100% - 8 * var(--px) - (var(--n) - 1) * 4 * var(--px)) / var(--n));
+  transform: translateX(calc(var(--i, 0) * (100% + 4 * var(--px))));
+  transition: transform 0.36s var(--mu-ease);
+  pointer-events: none;
+  --mu-edge: var(--mu-gold-hi);
+  --mu-shadow: none;
+}
+
+.mu-tab-thumb > .mu-bg {
+  background: rgba(255, 214, 120, 0.14);
+  box-shadow: inset 0 0 calc(12 * var(--px)) rgba(255, 190, 70, 0.3);
+}
+
+.mu-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(4 * var(--px));
+  height: calc(50 * var(--px));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mu-ink2);
+  font-size: calc(11.5 * var(--px));
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: color 0.25s;
+  --mu-edge: transparent;
+  --mu-shadow: none;
+}
+
+.mu-tab > .mu-bg {
+  background: transparent;
+}
+
+.mu-tab .mu-icon {
+  width: calc(20 * var(--px));
+  height: calc(20 * var(--px));
+  transition: transform 0.25s var(--mu-ease);
+}
+
+/* (the tab in use stands a pixel higher; a press sinks it, like the corner buttons) */
+.mu-tab[aria-selected='true'] .mu-icon {
+  transform: translateY(calc(-1 * var(--px)));
+}
+
+.mu-tab:active .mu-icon {
+  transform: scale(0.88);
+}
+
+.mu-tab[aria-selected='true'] {
+  color: var(--mu-gold-hi);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .mu-tab[aria-selected='false']:hover {
+    color: var(--mu-ink);
+  }
+
+  .mu-tab[aria-selected='false']:hover > .mu-bg {
+    background: rgba(255, 255, 255, 0.07);
+  }
+}
+
+/* The pages, one a tab (ui.ts): only the tab in use shows its page, easing in from the side its tab lies on. */
+.mu-set-pages {
+  /* (a box of its own: its height is the page's, margins and all: ui.ts reads it for the body's) */
+  display: flow-root;
+}
+
+.mu-page {
+  padding-bottom: calc(4 * var(--px));
+}
+
+.mu-page.is-in {
+  animation: mu-page-in 0.3s var(--mu-ease);
+}
+
+@keyframes mu-page-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir, 1) * 12 * var(--px)));
+  }
+}
+
+/* (the first row of a page sits close under the tabs) */
+.mu-page > .mu-set-group:first-child > .mu-set-top {
+  margin-top: calc(8 * var(--px));
+}
+
+.mu-page > :is(.mu-set-row, .mu-cr-sup):first-child {
+  margin-top: calc(10 * var(--px));
+}
+
+/* Everything under the tabs: as tall as the page in it (ui.ts sets `--mu-page-h` from the page's height, and the change eases), never taller than a
+ * page of a good many rows; it scrolls when the page is taller or the screen too low for it (the frame and the tabs stay). */
 .mu-set-body {
+  box-sizing: border-box;
   min-height: 0;
+  height: min(var(--mu-page-h, 100vh), calc(620 * var(--px)));
   margin: 0 calc(-8 * var(--px));
-  padding: 0 calc(8 * var(--px)) calc(4 * var(--px));
+  padding: 0 calc(8 * var(--px));
+  /* (the fade of the panel's children, `.mu-settings > *`, and the height) */
+  transition: height 0.32s var(--mu-ease), opacity 0.25s;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 236, 205, 0.22) transparent;
   --mu-more-up: 0px;
   --mu-more-down: 0px;
+}
+
+/* (while the height eases: no scrollbar for a page taller than the body still is) */
+.mu-set-body.is-easing {
+  overflow: hidden;
 }
 
 /* Soft edges where there is more to scroll to (ui.ts `scrollEdges`). */
@@ -1008,11 +1143,6 @@
   opacity: 0.9;
 }
 
-/* Language: first in the settings. */
-.mu-settings .mu-lang-h {
-  margin-top: calc(10 * var(--px));
-}
-
 .mu-seg.mu-lang-seg {
   grid-template-columns: repeat(2, 1fr);
 }
@@ -1021,9 +1151,18 @@
   font-family: 'Kantumruy Pro', var(--mu-font);
 }
 
-/* Sound on / off: right under the sound heading. */
+/* Sound on / off: on top of the sound page. */
 .mu-set-row.mu-sound-row {
-  margin: calc(2 * var(--px)) 0 calc(4 * var(--px));
+  margin-bottom: calc(4 * var(--px));
+}
+
+/* Muted: the volumes step back (they still move, and moving one brings the sound back). */
+.mu-slider {
+  transition: opacity 0.25s;
+}
+
+.mu-page.is-muted .mu-slider {
+  opacity: 0.5;
 }
 
 /* A part of the sound (around you, your own): a small heading with a hairline to the edge. */
@@ -1194,20 +1333,20 @@
   height: calc(16 * var(--px));
 }
 
-/* Four choices (the weather, the graphics): two by two. */
+/* Two or four choices (the time, the weather, the graphics levels): one row, or two by two. */
 .mu-seg.is-pairs {
   grid-template-columns: repeat(2, 1fr);
 }
 
-/* A choice over the whole row (the graphics' Auto, above its four levels). */
-.mu-seg .is-wide {
-  grid-column: 1 / -1;
+/* The resolution's sizes (ui.ts `buildRes`), three across under the heading's Auto: the
+ * digits keep one width, and a whole step (crisp) has a small gold sparkle. */
+.mu-seg.mu-res-seg {
+  grid-template-columns: repeat(3, 1fr);
 }
 
-/* The resolution's sizes (ui.ts `buildRes`), two by two under Auto: the
- * digits keep one width, and a whole step (crisp) has a small gold sparkle. */
 .mu-res-seg button {
-  gap: calc(5 * var(--px));
+  gap: calc(4 * var(--px));
+  font-size: calc(12.5 * var(--px));
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -1235,6 +1374,75 @@
  * edges stays: there is no "off"), close under the step's note. */
 .mu-set-note.mu-fog-edge {
   margin-top: calc(2 * var(--px));
+}
+
+/* A choice's heading row: its name, and its automatic choice (a chip) at the right end. */
+.mu-set-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(10 * var(--px));
+  min-height: calc(26 * var(--px));
+  margin: calc(16 * var(--px)) 0 calc(6 * var(--px));
+}
+
+.mu-settings .mu-set-top h3 {
+  margin: 0;
+}
+
+/* The automatic choice of a group (the time's cycle, the weather by the season, Auto for the graphics,
+ * resolution and fog): a chip by the heading, the fixed choices under it. Dark slot, and the gold edge
+ * when it is the one in use, like the choices. */
+.mu-auto {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5 * var(--px));
+  height: calc(26 * var(--px));
+  padding: 0 calc(10 * var(--px)) 0 calc(8 * var(--px));
+  border: 0;
+  background: none;
+  color: var(--mu-ink2);
+  font-size: calc(12.5 * var(--px));
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: color 0.25s;
+  --mu-edge: var(--mu-line);
+  --mu-shadow: none;
+}
+
+.mu-auto > .mu-bg {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.mu-auto .mu-icon {
+  width: calc(14 * var(--px));
+  height: calc(14 * var(--px));
+}
+
+.mu-auto[aria-pressed='true'] {
+  --mu-edge: var(--mu-gold-hi);
+  color: var(--mu-gold-hi);
+  cursor: default;
+}
+
+.mu-auto[aria-pressed='true'] > .mu-bg {
+  background: rgba(255, 214, 120, 0.14);
+  box-shadow: inset 0 0 calc(12 * var(--px)) rgba(255, 190, 70, 0.3);
+}
+
+@media (hover: hover) {
+  .mu-auto[aria-pressed='false']:hover {
+    --mu-edge: var(--mu-line-hi);
+    color: var(--mu-ink);
+  }
+
+  .mu-auto[aria-pressed='false']:hover > .mu-bg {
+    background: rgba(255, 255, 255, 0.09);
+  }
 }
 
 .mu-set-row {
@@ -1351,7 +1559,7 @@
   transition-duration: 0.08s;
 }
 
-/* The credits page (credits.ts): in place of the settings' body (the corner's credits button). */
+/* The About page (ui.ts `fillAbout`, credits.ts) is one of the pages: the others' `hidden` must hide. */
 .mu-settings [hidden] {
   display: none !important;
 }
@@ -2005,11 +2213,18 @@
 }
 
 .mu-calm .mu-info-card,
-.mu-calm .mu-glow::before {
+.mu-calm .mu-glow::before,
+.mu-calm .mu-page.is-in {
   animation: none !important;
 }
 
+.mu-calm .mu-tab-thumb,
+.mu-calm .mu-set-body {
+  transition-duration: 0.01s;
+}
+
 .mu-calm .mu-gear .mu-icon,
+.mu-calm .mu-tab .mu-icon,
 .mu-calm .mu-pin-chev .mu-icon,
 .mu-calm .mu-begin .mu-icon {
   transform: none !important;
@@ -2156,9 +2371,11 @@
     font-size: 16px;
   }
 
-  /* (under both rows of corner buttons; roaming: one row, below) */
+  /* (under both rows of corner buttons; roaming: one row, below; the words a little bigger than the rest of the interface (0.74), they are read here) */
   .mu-settings {
     --mu-set-top: 92px;
+    --u: 0.94;
+    --px: calc(1px * var(--u));
     left: 8px;
     right: 8px;
     width: auto;
@@ -2243,6 +2460,15 @@ body.reporting .map-ui {
 :lang(km) .mu-settings h3 {
   font-size: calc(13.5 * var(--px));
   font-weight: 700;
+}
+
+:lang(km) .mu-tab {
+  font-size: calc(12.5 * var(--px));
+  line-height: 1.3;
+}
+
+:lang(km) .mu-auto {
+  font-size: calc(13.5 * var(--px));
 }
 
 :lang(km) :is(.mu-set-sub h4, .mu-set-row small, .mu-set-note, .mu-cr-line small) {

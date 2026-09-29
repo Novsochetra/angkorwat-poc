@@ -43,6 +43,12 @@ const WORDS = {
   exploring: { km: 'កំពុងរុករកផែនទី។', en: 'Exploring the map.' },
   settings: { km: 'ការកំណត់', en: 'Settings' },
   closeSettings: { km: 'បិទការកំណត់', en: 'Close settings' },
+  // (the settings' tabs, ui.ts: the sound tab is `sound`; the tab bar's name for a screen reader)
+  settingsTabs: { km: 'ផ្នែកនៃការកំណត់', en: 'Settings sections' },
+  tabGeneral: { km: 'ទូទៅ', en: 'General' },
+  tabGraphics: { km: 'រូបភាព', en: 'Graphics' },
+  tabPlay: { km: 'ការលេង', en: 'Play' },
+  tabAbout: { km: 'អំពី', en: 'About' },
   sound: { km: 'សំឡេង', en: 'Sound' },
   master: { km: 'សំឡេងរួម', en: 'Master' },
   masterTip: { km: 'គ្រប់សំឡេង', en: 'All sound' },
