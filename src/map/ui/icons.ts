@@ -54,6 +54,16 @@ export const ICON = {
       `<g stroke="currentColor" stroke-width="2" stroke-linecap="round">${Array.from({ length: 8 }, (_, i) => `<path d="M12 2.6v2.2" transform="rotate(${i * 45} 12 12)"/>`).join('')}</g>`,
   ),
   moon: svg('<path fill="currentColor" d="M19.6 14.6A8 8 0 0 1 9.4 4.4a8 8 0 1 0 10.2 10.2Z"/>'),
+  /** The moon's path setting: across the sky (the moon at the top of its dotted arc), low over the hills (the moon just above them). */
+  moonHigh: svg(
+    '<path d="M2.5 20.5h19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+      '<path d="M3.5 20.5a8.5 8.5 0 0 1 17 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="0 3.2"/>' +
+      '<path fill="currentColor" transform="translate(5.62 1.68) scale(.55)" d="M19.6 14.6A8 8 0 0 1 9.4 4.4a8 8 0 1 0 10.2 10.2Z"/>',
+  ),
+  moonLow: svg(
+    '<path fill="currentColor" d="M1.5 21 7 14.2l3.4 3.8 4.2-5.2 7.9 8.2Z"/>' +
+      '<path fill="currentColor" transform="translate(10.7 1.3) scale(.5)" d="M19.6 14.6A8 8 0 0 1 9.4 4.4a8 8 0 1 0 10.2 10.2Z"/>',
+  ),
   cycle: svg(
     '<path d="M4.6 12a7.4 7.4 0 0 1 12.9-5M19.4 12a7.4 7.4 0 0 1-12.9 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
       '<path fill="currentColor" d="m18.6 3.4.3 4.9-4.9-.3zM5.4 20.6l-.3-4.9 4.9.3z"/>',

@@ -675,12 +675,22 @@ the screen), the selfie's `gesture=peace|wave|thumbsUp|none` and
 the sky (`sky/palette.ts`): four keys — day, dusk (warm red and orange),
 night, dawn (cool blue and pink, pale gold low behind Angkor Wat, glowing
 mist, soft shadows) — dusk on the way into the night, dawn on the way out.
-Clock 0 is the concept art's look. The sun and moon move on paths low over
-the northern hills (`SUN_PATH`, `MOON_PATH`), left to right as the picker
-sees them: the sun comes up behind Angkor Wat's right-hand towers (right of
-its card) at dawn, stands where the art has it at clock 0 and sets behind
-the right-hand hills by ≈ 0.16; the moon rises after dusk (≈ 0.33), is
-where the art has it at midnight and sets before dawn (≈ 0.68). The key
+Clock 0 is the concept art's look. The sun moves on a path low over the
+northern hills (`SUN_PATH`), left to right as the picker sees it: it comes
+up behind Angkor Wat's right-hand towers (right of its card) at dawn, stands
+where the art has it at clock 0 and sets behind the right-hand hills by
+≈ 0.16. The moon has two paths, the Moon setting (General page; `moonPath`,
+`MapFrame.moonHigh`, `moonpath=high|low` in shots; a change eases over a
+couple of seconds). **Low over the hills** (`low`, the default, `MOON_PATH`,
+the concept art's): it rises after dusk (≈ 0.33), is where the art has it at
+midnight and sets before dawn (≈ 0.68); its key light is a cheat from the
+south-east, so faces toward the picker read; from some villages Kulen or the
+Bayon hill hides it. **High, across the sky** (`high`): up in the east at
+0.28, over the south 60° up at midnight (the full moon opposite the sun,
+which keeps to the north), down in the west at 0.72, so no hill hides it for
+long (at 0.32 and 0.68 it is ≈ 14° up, clear of Kulen and the Bayon hill
+from the villages); the night's key light comes from it, kept 20°–50° up.
+The key
 light swings and drops a little with them, and turns only on the frames the
 shadow map is drawn anyway (every third), so it costs no extra shadow pass
 (on low and medium, whose shadows are still, it turns in 0.3° steps, each
@@ -747,6 +757,7 @@ the sound hushes (audio/engine.ts reads `snow`, `snowCover`).
 Checks: `clock=0‥1`, `day=0‥29` (7 first quarter, 15 full, 22 last quarter),
 `moon=0‥1` (the moon's age held, whatever the day: 0 new, 0.25 first quarter,
 0.5 full, 0.75 last quarter; only the sky reads it, the festivals keep to `day`),
+`moonpath=high|low` (the moon's path held; `uistate=settings,scroll:moon,moon:low` shows the setting),
 `night=` still works (dusk side), `weather=rain|storm|rainbow|snow|clear`
 (held; `snow`: snowing on white land), `weather=season|rainy|stormy|snowy`
 (that setting's schedule at `t=`, with `season=`; `snowy` is the snow

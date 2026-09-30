@@ -20,7 +20,7 @@ import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { createWeather, weatherAtLoad } from './sky/weather';
-import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
+import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
@@ -33,6 +33,7 @@ import { BuildWork } from './work/build';
  *
  * URL: `shot=1` headless still · `t=` seconds into the scene (shots) ·
  * `night=0‥1` time of day · `moon=0‥1` hold the moon's age (0 new, 0.5 full) ·
+ * `moonpath=high|low` the moon's path (across the sky, or low over the hills) ·
  * `focus=<place>` camera on a place ·
  * `ui=0` no interface · `graphics=auto|low|medium|high|max` the graphics
  * level (graphics.ts; auto is medium in shots) · `phone=1` act as a phone ·
@@ -106,6 +107,7 @@ function loadSettings(): MapSettings {
     if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
+    if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
     // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
     delete saved.fog;
     if (saved.fogAmount !== undefined) saved.fogAmount = fogAmountOf(saved.fogAmount);
@@ -572,6 +574,11 @@ const CYCLE = 360;
 let clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
 /** `moon=` (checks): hold the moon's age there (0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter), else it follows the date (`day=`). */
 let moonParam = params.has('moon') ? (((Number(params.get('moon')) || 0) % 1) + 1) % 1 : null;
+/** `moonpath=high|low`: hold the moon's path (the free camera's panel holds it too), else the Moon setting's. */
+let moonPathParam: MoonPath | null = MOON_PATHS.find((p) => p === params.get('moonpath')) ?? null;
+const moonPathNow = (): MoonPath => moonPathParam ?? settings.moonPath;
+/** The moon's path now (`MapFrame.moonHigh`): 1 across the sky, 0 low; a change eases over a couple of seconds. */
+let moonHigh = moonPathNow() === 'high' ? 1 : 0;
 const nightOf = (c: number) => 0.5 - 0.5 * Math.cos(c * Math.PI * 2);
 /** The clock on the dusk side for a time of day (0 afternoon … 0.5 night). */
 const duskClock = (n: number) => Math.acos(1 - 2 * Math.min(1, Math.max(0, n))) / (Math.PI * 2);
@@ -677,6 +684,10 @@ function step(t: number, dt: number): void {
   frame.day = DAY0 + (clockParam !== null ? 0 : Math.floor(cycleDays));
   // (the sky's moon only: the festivals and the daily seeds go by `day`)
   frame.moonAge = moonParam ?? undefined;
+  const highTarget = moonPathNow() === 'high' ? 1 : 0;
+  moonHigh += (highTarget - moonHigh) * (dt > 0 && !shot ? 1 - Math.exp(-dt * 1.5) : 1);
+  if (Math.abs(highTarget - moonHigh) < 1e-3) moonHigh = highTarget;
+  frame.moonHigh = moonHigh;
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
   // (the free camera's panel can hold a weather: dev/freecam.ts)
@@ -723,6 +734,7 @@ function momentQuery(q: URLSearchParams, t: number): URLSearchParams {
   q.set('clock', frame.clock.toFixed(3));
   q.set('day', String(frame.day));
   if (moonParam !== null) q.set('moon', moonParam.toFixed(3));
+  q.set('moonpath', moonPathNow());
   q.set('season', frame.season.toFixed(3));
   // (the fog's thickness, when it is not the game's own: a picture keeps the fog it was framed in)
   if (fogNow.amount !== 1) q.set('fogamount', fogNow.amount.toFixed(2));
@@ -776,6 +788,13 @@ if (devTools)
         moonParam = m;
       },
       moonHeld: () => moonParam,
+      setMoonPath: (p) => {
+        moonPathParam = p;
+        // (at once, not eased: the panel shows it where it goes)
+        moonHigh = moonPathNow() === 'high' ? 1 : 0;
+      },
+      moonPathHeld: () => moonPathParam,
+      moonPath: () => settings.moonPath,
       setFogAmount: (v) => {
         fogAmountParam = v;
         applyFogAmount();

@@ -6,7 +6,7 @@ import { FOG_AMOUNT_MAX } from '../sky/fogLevel';
 import { SKY, SYNODIC_MONTH } from '../sky/palette';
 import { HELD_WEATHER } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
-import { CALM_WEATHER, type MapWeather } from '../types';
+import { CALM_WEATHER, DEFAULT_SETTINGS, MOON_PATHS, type MapWeather, type MoonPath } from '../types';
 import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes';
 
 /**
@@ -31,9 +31,10 @@ import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, ty
  *   A loop video (orbit, sway, push in and out, day and night) is made from the
  *   view. Names are made from the place looked at and the time of day unless
  *   one is typed.
- * - The moment: the time of day (the game's, or held), the moon's phase, the
- *   weather, the fog's thickness (the settings', or held: clear air for a
- *   sharp picture), time frozen, the explorer shown or not.
+ * - The moment: the time of day (the game's, or held), the moon's phase and
+ *   path (the Moon setting's, or held: low or across the sky), the weather,
+ *   the fog's thickness (the settings', or held: clear air for a sharp
+ *   picture), time frozen, the explorer shown or not.
  * - The gallery lists every picture and video with its thumbnail: go back to
  *   one, draw it again, open it, show it in the Finder, forget it.
  *
@@ -58,6 +59,12 @@ export interface FreeCamOptions {
   setMoon(age: number | null): void;
   /** The age the moon is held at now (null: not held). */
   moonHeld(): number | null;
+  /** Hold the moon's path (across the sky, or low over the hills), or let the Moon setting's show (null). */
+  setMoonPath(path: MoonPath | null): void;
+  /** The path the moon is held on now (null: not held). */
+  moonPathHeld(): MoonPath | null;
+  /** The Moon setting's path (what Game shows). */
+  moonPath(): MoonPath;
   /** Hold the fog's thickness (0 clear … 1 the game's own … 1.5, sky/fogLevel.ts), or let the setting's show (null). */
   setFogAmount(amount: number | null): void;
   /** The thickness the fog is held at now (null: not held). */
@@ -121,11 +128,16 @@ const WEATHERS: [string, string | null][] = [
 const VIEW_WEATHER = 'view';
 const WEATHER_KEYS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const;
 
-/** Times of day (the `clock` of the map: 0 afternoon, 0.22 sunset, 0.5 night, 0.82 dawn: the promo's). */
+/**
+ * Times of day (the `clock` of the map: 0 afternoon, 0.22 sunset, 0.5 night, 0.82 dawn: the promo's; moonrise and
+ * moonset: night, and the moon across the sky low in the east or the west, clear of the hills: sky/palette.ts).
+ */
 const TIMES: [string, number][] = [
   ['Afternoon', 0],
   ['Sunset', 0.22],
+  ['Moonrise', 0.32],
   ['Night', 0.5],
+  ['Moonset', 0.68],
   ['Dawn', 0.82],
 ];
 /** The time of day's word (for a name): the nearest of {@link TIMES} round the dial. */
@@ -314,6 +326,8 @@ interface Panel {
   /** The moon: the calendar's (`GAME_MOON`), a phase by name, or `CUSTOM_MOON` (the age is where the slider is). */
   moon: string;
   moonAge: number;
+  /** The moon's path held (null: the Moon setting's). */
+  moonPath: MoonPath | null;
   /** The fog's thickness: the settings' (it follows them), or held at `fog`. */
   fogHold: boolean;
   fog: number;
@@ -407,6 +421,7 @@ class FreeCamTool implements FreeCam {
     clock: 0.22,
     moon: GAME_MOON,
     moonAge: 0.5,
+    moonPath: null,
     fogHold: false,
     fog: 1,
     weather: null,
@@ -427,6 +442,7 @@ class FreeCamTool implements FreeCam {
   private viewWeather: Partial<MapWeather> | null = null;
   private prevHold: number | null = null;
   private prevMoon: number | null = null;
+  private prevMoonPath: MoonPath | null = null;
   private prevFog: number | null = null;
   private explorerWas = true;
   private rec: Recording | null = null;
@@ -668,6 +684,7 @@ class FreeCamTool implements FreeCam {
     this.s.clock = round(this.prevHold ?? this.o.clock(), 3);
     this.prevMoon = this.o.moonHeld();
     this.moonFields(this.prevMoon);
+    this.prevMoonPath = this.s.moonPath = this.o.moonPathHeld();
     this.prevFog = this.o.fogAmountHeld();
     this.s.fogHold = this.prevFog !== null;
     this.s.fog = this.prevFog ?? this.o.fogAmount();
@@ -703,6 +720,7 @@ class FreeCamTool implements FreeCam {
     this.o.restore();
     this.o.setClock(this.prevHold);
     this.o.setMoon(this.prevMoon);
+    this.o.setMoonPath(this.prevMoonPath);
     this.o.setFogAmount(this.prevFog);
     this.held = null;
     this.s.weather = null;
@@ -880,6 +898,13 @@ class FreeCamTool implements FreeCam {
   private holdMoon(age: number | null): void {
     this.moonFields(age);
     this.o.setMoon(age === null ? null : this.s.moonAge);
+    this.sync();
+  }
+
+  /** Hold the moon on a path (across the sky, or low over the hills), or let the Moon setting's show (null). */
+  private holdMoonPath(path: MoonPath | null): void {
+    this.s.moonPath = path;
+    this.o.setMoonPath(path);
     this.sync();
   }
 
@@ -1478,6 +1503,8 @@ class FreeCamTool implements FreeCam {
       if (q.has('clock')) this.holdClock(Number(q.get('clock')));
       // (the moon the picture shows, not today's: the one it holds, else the phase its date gave it)
       this.holdMoon(savedMoon(q));
+      // (on the path it had: a picture saved before the moon had two paths has the low one, as it was framed)
+      this.holdMoonPath(MOON_PATHS.find((p) => p === q.get('moonpath')) ?? DEFAULT_SETTINGS.moonPath);
       // (and its fog: the thickness it was framed in, the game's own when it has none)
       this.holdFog(q.has('fogamount') ? Number(q.get('fogamount')) : 1);
       this.viewWeather = {};
@@ -1714,6 +1741,23 @@ class FreeCamTool implements FreeCam {
     );
     const moonAge = this.row('', this.range(0, 1, 0.005, () => s.moonAge, (v) => this.holdMoon(v)), () => (s.moonAge < 0.02 || s.moonAge > 0.98 ? 'new' : Math.abs(s.moonAge - 0.5) < 0.02 ? 'full' : s.moonAge < 0.5 ? 'growing' : 'shrinking'), 'The moon’s age: 0 new, 0.5 full, 1 new again');
     this.syncs.push(() => (moonAge.style.display = s.moon === GAME_MOON ? 'none' : ''));
+    const moonPath = this.row(
+      'Moon path',
+      this.chips<MoonPath | null>(
+        [
+          ['Game', null],
+          ['Low', 'low'],
+          ['High', 'high'],
+        ],
+        () => s.moonPath,
+        (v) => this.holdMoonPath(v),
+        {
+          Game: 'The path of the settings (General → Moon)',
+          Low: 'Low over the northern hills all night, as the concept art has it (the game’s default; hills can hide it)',
+          High: 'Across the sky: up in the east as night falls, high over the south at midnight, down in the west at the night’s end (Time → Moonrise or Moonset puts it low in the picture)',
+        },
+      ),
+    );
     const weathers = el('div');
     const weatherChips = this.chips<string | null>([...WEATHERS, ['Saved', VIEW_WEATHER]], () => s.weather, (v) => this.pickWeather(v), { Game: 'The game’s own weather', Saved: 'The weather the saved picture had' });
     const savedChip = weatherChips.lastElementChild as HTMLElement;
@@ -1742,7 +1786,7 @@ class FreeCamTool implements FreeCam {
       }),
     );
     const fogAmount = this.row('', this.range(0, FOG_AMOUNT_MAX, 0.05, () => s.fog, (v) => this.holdFog(v)), () => `${Math.round(s.fog * 100)} %${s.fogHold ? '' : ' game'}`, 'How thick the fog is: 0 clear air, 100 the game’s own, 150 thick. The map’s edges keep their mist');
-    moment.append(moonAge, fog, fogAmount, this.row('Weather', weathers), toggles);
+    moment.append(moonAge, moonPath, fog, fogAmount, this.row('Weather', weathers), toggles);
 
     // Video settings (folded).
     const video = this.section('');

@@ -94,7 +94,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   coffee) are `ui/ask.ts`, their look `.mu-ask` in `ui/map.css`.
 - Settings panel (the gear): five tabs, one page each, so it is only as tall
   as the page you are on and the map stays in view. **General** (language,
-  time of day, weather), **Sound**, **Graphics** (graphics level, resolution,
+  time of day, weather, moon), **Sound**, **Graphics** (graphics level, resolution,
   fog: one slider, its thickness, battery saver), **Play** (mini-map, key help, easy flying, reduce
   motion), **About** (support the game, our story, the credits). The bar is
   `ui/_tabs.ts` (a `tablist`: ← → Home End, one gold thumb that slides); the
@@ -182,6 +182,12 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `src/map/sky/weather.ts`. Shots are calm; add
   `weather=season|rainy|stormy|snowy&t=<s>` (with `season=`) for a schedule, or
   `weather=rain|storm|rainbow|snow` to hold one (`snowtop=0`, `snowmen=0`).
+- The moon's path is a setting too (General → Moon, under the weather):
+  low over the northern hills (the default, the concept art's: hills can
+  hide it) or high, across the sky (up in the east as night falls, high over
+  the south at midnight, down in the west; its light comes from where it is,
+  so no hill hides it for long). Paths and key light: `src/map/sky/palette.ts` `moonPath`;
+  `moonpath=high|low` in shots, `uistate=settings,scroll:moon`.
 - Animals: land (`src/map/fauna/land.ts`) and water / air
   (`src/map/fauna/waterAir.ts`, lake and paddy birds `_waterLake.ts`); their
   calls go through `MapFrame.calls` to `src/map/audio/animals.ts`. In rain
@@ -261,8 +267,9 @@ offset, `placed()` after roaming, which clears one). From the top: **📸 Take
 picture (V)**, **● Record video (R)**, **🔁 Loop video**, the name (empty: made
 from the place in the frame and the time, "angkor-wat-night"; a typed name that is
 saved already is replaced: the button says so), the status with a progress bar;
-Frame (size, zoom, speed); Moment (time chips Game / Afternoon / Sunset / Night /
-Dawn and a slider, the moon's phase, fog chips Game / None / Light / Normal / Thick
+Frame (size, zoom, speed); Moment (time chips Game / Afternoon / Sunset / Moonrise /
+Night / Moonset / Dawn and a slider, the moon's phase, the moon's path chips Game /
+Low / High, fog chips Game / None / Light / Normal / Thick
 and a slider, weather chips, freeze, explorer: shown while roaming unless unticked); Video settings (folded); the gallery: every picture and
 video with its thumbnail (ffmpeg, `wallpapers/out/.thumbs/`), newest first; a
 click picks one (Go there, Draw again, Open, Finder, Forget), a double-click goes
@@ -295,7 +302,8 @@ endpoints stubbed (the user's `wallpapers/` is theirs), controls by role and nam
   frames a second (20 s in 2 minutes). Any video-wallpaper app plays the MP4 on repeat.
 - A saved view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size, with the moment
   (`t`, `clock`, `day`, `season`, weather, `moon` when the panel holds the moon's age
-  (0 new, 0.5 full; only the sky reads it, `moon=` in any shot), `fogamount` when the fog is
+  (0 new, 0.5 full; only the sky reads it, `moon=` in any shot), `moonpath` (the moon's path:
+  a view saved without one has the low moon), `fogamount` when the fog is
   not the game's own (0 clear air … 1 … 1.5 thick, `fogamount=` in any shot); the explorer's spot when he
   is in it): what the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical
   field of view, degrees) and `explorer=0` leaves him out of any shot. `?freecam=1` opens

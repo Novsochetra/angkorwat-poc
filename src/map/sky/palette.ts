@@ -18,9 +18,13 @@ import type { MapWeather } from '../types';
  * The sun and the moon move (`sunPath`, `moonPath`): the sun hugs the
  * northern horizon all day (the whole day of the map is golden light), comes
  * up behind Angkor Wat at dawn, stands where the concept art has it in the
- * afternoon and goes down over the eastern hills at dusk; the moon rises
- * after dusk, is where the art has it at midnight and sets before dawn.
- * Both travel left to right as the picker sees them.
+ * afternoon and goes down over the eastern hills at dusk. The moon has two
+ * paths (the Moon setting, `MapFrame.moonHigh`): low over the northern hills
+ * as the concept art has it (the default: up after dusk, where the art has it
+ * at midnight, down before dawn, left to right as the picker sees it), or
+ * across the sky (up in the east as the night falls, high over the south at
+ * midnight, down in the west at the night's end, so no hill hides it for long
+ * and its light comes from where it is).
  */
 
 interface Key {
@@ -241,7 +245,7 @@ export type SkyState = Record<ColorKey, Color> &
     flash: number;
     /** The glow in the haze: towards the sun by day, the moon by night. */
     glowDir: Vector3;
-    /** Towards the key light (a cheat: from the upper right and front, so faces toward the camera read). */
+    /** Towards the key light (a cheat by day and under the low moon: from the upper right and front, so faces toward the camera read; the moon's own under the moon across the sky). */
     keyDir: Vector3;
   };
 
@@ -305,9 +309,9 @@ const SUN_PATH: Path = [
 ];
 
 /**
- * The moon: comes up over the far hills after dusk (≈ 0.33), right of the
- * Angkor Wat card, stands where the art has it at midnight and goes down
- * on the right before dawn (≈ 0.68).
+ * The low moon (the Moon setting's "low over the hills"): comes up over the
+ * far hills after dusk (≈ 0.33), right of the Angkor Wat card, stands where
+ * the art has it at midnight and goes down on the right before dawn (≈ 0.68).
  */
 const MOON_PATH: Path = [
   [0, MOON_B, -24],
@@ -356,11 +360,49 @@ export function sunPath(out: Vector3, c: number): number {
   fromAngles(out, onPath(SUN_PATH, c, 1) * DEG, el);
   return el;
 }
-/** The moon at clock c: its direction (unit) → out; returns its elevation (rad). */
-export function moonPath(out: Vector3, c: number): number {
+/**
+ * The moon across the sky (the Moon setting's `high`): up in the east as the night falls, over the south at midnight (the full
+ * moon stands opposite the sun, which keeps to the north) and down in the west at the night's end; under the land it
+ * goes back round by the north. It stands clear of the hills round the villages a little after it rises.
+ */
+const MOON_RISE = 0.28;
+const MOON_SET = 0.72;
+/** How high it stands at midnight (degrees): near the tropics the moon goes high. */
+const MOON_TOP = 60;
+/** The moon's own light across the sky, kept this high (degrees): low enough for long shadows as it rises and sets, never so high the land looks flat. */
+const MOON_KEY_MIN = 20;
+const MOON_KEY_MAX = 50;
+const MOON_LEAN = (90 - MOON_TOP) * DEG;
+
+/** The low moon at clock c → out (unit); returns its elevation (rad). */
+function lowMoon(out: Vector3, c: number): number {
   const el = onPath(MOON_PATH, c, 2) * DEG;
   fromAngles(out, onPath(MOON_PATH, c, 1) * DEG, el);
   return el;
+}
+/** The moon across the sky at clock c → out (unit); returns its elevation (rad). */
+function highMoon(out: Vector3, c: number): number {
+  const up = MOON_SET - MOON_RISE;
+  // (the share of the day since it rose; the half circle over the land while it is up, the other half under it)
+  const a = c - MOON_RISE - Math.floor(c - MOON_RISE);
+  const th = a < up ? (Math.PI * a) / up : Math.PI * (1 + (a - up) / (1 - up));
+  const s = Math.sin(th);
+  out.set(Math.cos(th), s * Math.cos(MOON_LEAN), s * Math.sin(MOON_LEAN));
+  return Math.asin(out.y);
+}
+const _lo = new Vector3();
+/**
+ * The moon at clock c: its direction (unit) → out; returns its elevation (rad). `high`: 0 low over the northern hills
+ * (the default), 1 across the sky; between, on its way from one to the other.
+ */
+export function moonPath(out: Vector3, c: number, high = 0): number {
+  if (high <= 0) return lowMoon(out, c);
+  highMoon(out, c);
+  if (high < 1) {
+    lowMoon(_lo, c);
+    out.lerp(_lo, 1 - high).normalize();
+  }
+  return elevationOf(out);
 }
 
 /** Days from one new moon to the next. */
@@ -392,6 +434,7 @@ const _a = new Color();
 const _b = new Color();
 const _v = new Vector3();
 const _w = new Vector3();
+const _k = new Vector3();
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const band = (a: number, b: number, x: number) => smooth(MathUtils.clamp((x - a) / (b - a), 0, 1));
 
@@ -407,6 +450,8 @@ export interface SkyInput {
   day: number;
   /** The moon's age held (0‥1), else its phase follows `day` and `clock`. */
   moonAge?: number;
+  /** The moon's path: 0 low over the northern hills (the default), 1 across the sky (see {@link moonPath}). */
+  moonHigh?: number;
   weather: MapWeather;
 }
 
@@ -427,7 +472,8 @@ export function updateSky(f: SkyInput): SkyState {
   // The sun and the moon on their paths; each shows while it is over the far hills.
   const sunEl = sunPath(SKY.sunDir, clock);
   SKY.sun = band(-0.045, -0.012, sunEl);
-  const moonEl = moonPath(SKY.moonDir, clock);
+  const high = MathUtils.clamp(f.moonHigh ?? 0, 0, 1);
+  const moonEl = moonPath(SKY.moonDir, clock, high);
   SKY.moon = band(-0.05, -0.01, moonEl);
   const moonUp = band(-0.07, 0.02, moonEl);
 
@@ -462,10 +508,21 @@ export function updateSky(f: SkyInput): SkyState {
   SKY.hazeSun.lerp(SKY.haze, (1 - moonGlow) * 0.7 * g * g);
 
   // The key light turns with them: the sun's key swings round and drops as the sun
-  // goes down or comes up; the moon's as the moon crosses the sky. (The shadow map is
-  // drawn again when it turns: atmosphere.ts turns it only every few frames.)
+  // goes down or comes up. The low moon's does the same as it crosses the northern sky;
+  // the moon across the sky lights the land from where it is (kept a little up while it
+  // is low or under the land). (The shadow map is drawn again when it turns: atmosphere.ts
+  // turns it only every few frames.)
   turnKey(_v, KEY_DAY, (bearingOf(SKY.sunDir) - SUN_B * DEG) * 0.8, (sunEl - SUN_E * DEG) * 3, 10 * DEG);
-  turnKey(_w, KEY_NIGHT, (bearingOf(SKY.moonDir) - MOON_B * DEG) * 0.8, (moonEl - MOON_E * DEG) * 1.5, 18 * DEG);
+  if (high < 1) {
+    const lowEl = lowMoon(_w, clock);
+    turnKey(_w, KEY_NIGHT, (bearingOf(_w) - MOON_B * DEG) * 0.8, (lowEl - MOON_E * DEG) * 1.5, 18 * DEG);
+  }
+  if (high > 0) {
+    const highEl = highMoon(_k, clock);
+    fromAngles(_k, bearingOf(_k), MathUtils.clamp(highEl, MOON_KEY_MIN * DEG, MOON_KEY_MAX * DEG));
+    if (high < 1) _w.lerp(_k, high).normalize();
+    else _w.copy(_k);
+  }
   SKY.keyDir.copy(_v).lerp(_w, smooth(n)).normalize();
 
   weather(f.weather);

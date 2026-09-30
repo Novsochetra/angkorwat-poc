@@ -1,5 +1,5 @@
 import type { PlaceDef } from '../layout';
-import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
+import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { PHONE } from '../graphics';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
@@ -44,10 +44,11 @@ import { framed, setSteppedVars } from './shape';
  * `settings`, `tab:<id>` (the settings on that tab: general, sound,
  * graphics, play, about), `credits` (the settings on About, where the heart
  * goes), `muted`, `held` (the held-sound card), `weather:<setting>` (the
- * panel shows that weather chosen), `res:<share>` / `res:auto` (that
+ * panel shows that weather chosen), `moon:high|low` (that moon's path
+ * chosen; the sky's is `moonpath=`), `res:<share>` / `res:auto` (that
  * resolution picked), `battery` (the battery saver on), `fog:<0‥150>` (the
  * fog's thickness there), `scroll:<group>` (the settings
- * scrolled to that group, on its tab: lang, time, weather, graphics, res,
+ * scrolled to that group, on its tab: lang, time, weather, moon, graphics, res,
  * fog, mini), `begin` (the fade to black), `roam` (the interface while
  * roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
@@ -135,7 +136,7 @@ const TABS: TabDef<TabId>[] = [
   { id: 'about', word: 'tabAbout', icon: ICON.heartLine },
 ];
 /** The tab of each choice's heading (`#mu-<group>-h`): a shot's `scroll:<group>` shows that tab first. */
-const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play' };
+const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', moon: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play' };
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -167,6 +168,11 @@ const GRAPHICS_CHOICE: Record<GraphicsChoice, { icon: string; word: WordKey; not
 };
 /** The time of day's choices, the same way: day, night, or the cycle (the clock's own, so it is the automatic one). */
 const TIME_SETTINGS = ['day', 'night', 'cycle'] as const;
+/** The moon's paths (sky/palette.ts `moonPath`): across the sky, or low over the hills as the concept art has it. */
+const MOON_CHOICE: Record<MoonPath, { icon: string; word: WordKey; note: WordKey }> = {
+  high: { icon: ICON.moonHigh, word: 'moonHigh', note: 'moonHighNote' },
+  low: { icon: ICON.moonLow, word: 'moonLow', note: 'moonLowNote' },
+};
 const TIME_CHOICE: Record<MapSettings['time'], { icon: string; word: WordKey }> = {
   day: { icon: ICON.sun, word: 'day' },
   night: { icon: ICON.moon, word: 'night' },
@@ -345,6 +351,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           ${head('weather', 'weather', autoChip('weather', 'season', WEATHER_CHOICE))}
           <div class="mu-seg is-pairs">${choices('weather', WEATHER_SETTINGS, 'season', WEATHER_CHOICE)}</div>
           <p class="mu-set-note" id="mu-weather-note"></p>
+        </div>
+        <div class="mu-set-group" role="group" aria-labelledby="mu-moon-h" aria-describedby="mu-moon-note">
+          ${head('moon', 'moonPath')}
+          <div class="mu-seg is-pairs">${choices('moon', MOON_PATHS, null, MOON_CHOICE)}</div>
+          <p class="mu-set-note" id="mu-moon-note"></p>
         </div>`)}
       ${page('sound', `
         <div class="mu-set-row mu-sound-row">
@@ -405,6 +416,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const resSeg = panel.querySelector<HTMLElement>('.mu-res-seg')!;
   const resAuto = panel.querySelector<HTMLButtonElement>('button[data-res="auto"]')!;
   const resNote = panel.querySelector<HTMLElement>('#mu-res-note')!;
+  const moonBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-moon]')];
+  const moonNote = panel.querySelector<HTMLElement>('#mu-moon-note')!;
   const miniBtns = [...panel.querySelectorAll<HTMLButtonElement>('button[data-minimap]')];
   const miniNote = panel.querySelector<HTMLElement>('#mu-mini-note')!;
   /** The on / off settings: a switch each (`data-set` names the setting). */
@@ -828,6 +841,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     fogAmount.style.setProperty('--v', `${(fogV / FOG_AMOUNT_MAX)}%`);
     fogAmount.nextElementSibling!.textContent = num(fogV);
     fogAmount.setAttribute('aria-valuetext', t('percent', { n: String(fogV) }));
+    for (const b of moonBtns) b.setAttribute('aria-pressed', String(b.dataset.moon === settings.moonPath));
+    moonNote.dataset.t = MOON_CHOICE[settings.moonPath]?.note ?? 'moonLowNote';
+    moonNote.textContent = t(moonNote.dataset.t as WordKey);
     for (const b of miniBtns) b.setAttribute('aria-pressed', String(b.dataset.minimap === settings.miniMap));
     miniNote.dataset.t = MINI_CHOICE[settings.miniMap]?.note ?? 'miniMapShowNote';
     miniNote.textContent = t(miniNote.dataset.t as WordKey);
@@ -1051,6 +1067,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const size = b && resSeg.contains(b) && b.getAttribute('aria-pressed') !== 'true' ? resSizes[Number(b.dataset.i)] : undefined;
     if (size) pickRes(size.share);
   });
+  for (const b of moonBtns)
+    b.addEventListener('click', () => {
+      const moonPath = b.dataset.moon as MoonPath;
+      if (moonPath === settings.moonPath) return;
+      change({ moonPath });
+      h.onSound('toggle');
+    });
   for (const b of miniBtns)
     b.addEventListener('click', () => {
       const miniMap = b.dataset.minimap as MiniMapChoice;
@@ -1243,6 +1266,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       // (`weather:<setting>`: the panel shows that weather chosen, e.g. `uistate=settings,weather:snow`)
       if (k === 'weather' && WEATHER_SETTINGS.includes(v as string as WeatherSetting)) {
         settings = { ...settings, weather: v as string as WeatherSetting };
+        syncSettings();
+      }
+      // (`moon:high|low`: the panel shows that moon's path chosen, e.g. `uistate=settings,scroll:moon,moon:low`)
+      if (k === 'moon' && MOON_PATHS.includes(v as string as MoonPath)) {
+        settings = { ...settings, moonPath: v as string as MoonPath };
         syncSettings();
       }
       // (`res:<share>` or `res:auto`: the panel shows that resolution picked, e.g. `uistate=settings,res:0.5`; `battery`: the battery saver on)

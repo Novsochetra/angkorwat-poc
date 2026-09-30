@@ -61,6 +61,12 @@ export interface MapFrame {
    */
   moonAge?: number;
   /**
+   * The moon's path (sky/palette.ts `moonPath`): 0 low over the northern hills (the Moon setting's `low`, the
+   * default, as the concept art has it), 1 across the sky (`high`); between, on its way after a change. URL
+   * `moonpath=high|low`; the free camera's panel holds it too.
+   */
+  moonHigh?: number;
+  /**
    * Time of the year (0‥1, wraps), from the real date, moving on a year every
    * 24 days of `clock` (so a visit sees the fields change): 0 = mid-April,
    * Khmer New Year (hot, dry; fields bare) · ~0.1 the rains begin, rice is
@@ -303,6 +309,8 @@ export interface MapSettings {
   time: 'day' | 'night' | 'cycle';
   /** Weather (sky/weather.ts): follow the season (rain in the wet season, dry December–April), never rain, showers often, storms often, or snow (a dream: it never snows at Angkor). */
   weather: WeatherSetting;
+  /** The moon's path (sky/palette.ts `moonPath`): across the sky (up in the east, high over the south, down in the west), or low over the northern hills as the concept art has it. */
+  moonPath: MoonPath;
   /** No camera sway, short flights, no drifting clouds. */
   calm: boolean;
   /** Language of the interface (ui/lang.ts): Khmer first. */
@@ -348,7 +356,11 @@ export type MiniMapChoice = (typeof MINIMAP_CHOICES)[number];
 export const WEATHER_SETTINGS = ['season', 'clear', 'rainy', 'stormy', 'snow'] as const;
 export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto', resolution: 'auto', battery: false, fogAmount: 1 };
+/** The moon's paths, in panel order: low over the hills (the default), across the sky. */
+export const MOON_PATHS = ['low', 'high'] as const;
+export type MoonPath = (typeof MOON_PATHS)[number];
+
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, graphics: 'auto', resolution: 'auto', battery: false, fogAmount: 1 };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;

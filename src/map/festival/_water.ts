@@ -299,7 +299,7 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
         }
       }
       // The watchers.
-      moonPath(moon, f.clock);
+      moonPath(moon, f.clock, f.moonHigh);
       const moonYaw = Math.atan2(moon.x, moon.z);
       FESTIVAL_SCENE.crowd = { x: edge(8) + 3, y: 7, z: 8, cheer: night ? 0 : 0.25 + 0.75 * excite };
       for (let w = 0; w < watchers.length; w++) {

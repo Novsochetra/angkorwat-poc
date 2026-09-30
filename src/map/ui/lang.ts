@@ -83,6 +83,12 @@ const WORDS = {
   wClearNote: { km: 'គ្មានភ្លៀងទេ មានតែខ្យល់បក់រំភើយ', en: 'No rain, only a light breeze' },
   wRainyNote: { km: 'ភ្លៀងមួយមេ ប្រហែលរៀងរាល់ ១០ នាទីម្ដង', en: 'A shower every ten minutes or so' },
   wStormyNote: { km: 'ព្យុះផ្គររន្ទះញឹកញាប់ មានភ្លៀងធម្មតាចន្លោះ', en: 'Thunderstorms often, showers in between' },
+  // (the moon's path, under the weather: sky/palette.ts `moonPath`; a note under it for the one chosen)
+  moonPath: { km: 'ព្រះច័ន្ទ', en: 'Moon' },
+  moonHigh: { km: 'ខ្ពស់លើមេឃ', en: 'High' },
+  moonLow: { km: 'ទាបលើភ្នំ', en: 'Low' },
+  moonHighNote: { km: 'រះពីទិសខាងកើត ឡើងខ្ពស់លើមេឃ ហើយលិចនៅទិសខាងលិច៖ ពន្លឺរបស់វាបំភ្លឺគ្រប់ភូមិ', en: 'It rises in the east, climbs high and sets in the west: its light reaches every village' },
+  moonLowNote: { km: 'នៅទាបលើជួរភ្នំខាងជើង ដូចក្នុងគំនូរផែនទី៖ ភ្នំខ្លះអាចបាំងវា', en: "It stays low over the northern hills, as in the map's painting: some hills can hide it" },
   // (the graphics setting: a note under it for the choice, graphics.ts; Auto's names the level in use)
   graphics: { km: 'គុណភាពរូបភាព', en: 'Graphics' },
   gAuto: { km: 'ស្វ័យប្រវត្តិ', en: 'Auto' },
