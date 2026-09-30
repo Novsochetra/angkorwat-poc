@@ -253,7 +253,7 @@ Space) go down / up, Shift is fast, the wheel sets the speed, a trackpad pinch
 zooms, F freezes the scene's time, H hides the panel, ? shows the keys (they show for
 the first 15 s), Esc leaves.
 
-The panel is at the right; the frame (the picture's shape: a desktop, 5K, an
+The panel is at the right; the frame (the picture's shape: a desktop, 5K, 8K, an
 ultrawide, a phone, an iPad, custom; a thirds grid) fills the room left of it, so
 the panel never covers the picture (the camera's centre is the frame's: a view
 offset, `placed()` after roaming, which clears one). From the top: **📸 Take
@@ -275,7 +275,7 @@ endpoints stubbed (the user's `wallpapers/` is theirs), controls by role and nam
   flight (`wallpapers/paths/<name>.json`), drawn when it stops. One draw at a time, the
   next waits its turn. `npm run wallpaper` (`-- flights` adds the videos, `-- only=a,b`,
   `-- list`; `scripts/wallpaper.mjs`) draws them headless on the GPU: a picture
-  `wallpapers/out/<name>.png` (4K in about 11 s), a flight `<name>.mp4` (frame by frame
+  `wallpapers/out/<name>.png` (4K in about 11 s, 8K in about 15 s), a flight `<name>.mp4` (frame by frame
   into ffmpeg, as `npm run video`). What is drawn is not kept in git.
 - The picture looks like the frame did: `screenH` (the frame's height in drawn pixels,
   saved with it) gives `pxscale=` (the picture's height over it: the glow and the
