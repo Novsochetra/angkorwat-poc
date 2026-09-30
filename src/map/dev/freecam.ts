@@ -2,6 +2,7 @@ import { MathUtils, Vector3, type Object3D, type PerspectiveCamera } from 'three
 import type { HeightField } from '../heightfield';
 import { HAMLETS, JUNGLE_SITES, MAP_BOUNDS, PLACES, VILLAGE } from '../layout';
 import { view as drawn } from '../resolution';
+import { FOG_AMOUNT_MAX } from '../sky/fogLevel';
 import { SKY, SYNODIC_MONTH } from '../sky/palette';
 import { HELD_WEATHER } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
@@ -31,7 +32,8 @@ import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, ty
  *   view. Names are made from the place looked at and the time of day unless
  *   one is typed.
  * - The moment: the time of day (the game's, or held), the moon's phase, the
- *   weather, time frozen, the explorer shown or not.
+ *   weather, the fog's thickness (the settings', or held: clear air for a
+ *   sharp picture), time frozen, the explorer shown or not.
  * - The gallery lists every picture and video with its thumbnail: go back to
  *   one, draw it again, open it, show it in the Finder, forget it.
  *
@@ -56,6 +58,12 @@ export interface FreeCamOptions {
   setMoon(age: number | null): void;
   /** The age the moon is held at now (null: not held). */
   moonHeld(): number | null;
+  /** Hold the fog's thickness (0 clear … 1 the game's own … 1.5, sky/fogLevel.ts), or let the setting's show (null). */
+  setFogAmount(amount: number | null): void;
+  /** The thickness the fog is held at now (null: not held). */
+  fogAmountHeld(): number | null;
+  /** The settings' fog thickness (what Game shows). */
+  fogAmount(): number;
   /** The camera is given back: the map's own field of view again. */
   restore(): void;
   /** The explorer, to leave him out of the picture. */
@@ -125,6 +133,14 @@ const timeWord = (clock: number): string => {
   const dial = (a: number, b: number) => Math.abs(((a - b + 1.5) % 1) - 0.5);
   return TIMES.reduce((best, t) => (dial(t[1], clock) < dial(best[1], clock) ? t : best))[0].toLowerCase();
 };
+
+/** Fog thicknesses by name (sky/fogLevel.ts `fogNow.amount`: 0 clear air, 1 the game's own; the edges keep their mist). */
+const FOGS: [string, number][] = [
+  ['None', 0],
+  ['Light', 0.5],
+  ['Normal', 1],
+  ['Thick', FOG_AMOUNT_MAX],
+];
 
 /**
  * Moon phases by name, as the moon's age (0 new … 0.5 full … back to new). Growing is lit on the right, shrinking on
@@ -298,6 +314,9 @@ interface Panel {
   /** The moon: the calendar's (`GAME_MOON`), a phase by name, or `CUSTOM_MOON` (the age is where the slider is). */
   moon: string;
   moonAge: number;
+  /** The fog's thickness: the settings' (it follows them), or held at `fog`. */
+  fogHold: boolean;
+  fog: number;
   /** A weather of {@link WEATHERS} (null: the game's), or {@link VIEW_WEATHER}. */
   weather: string | null;
   freeze: boolean;
@@ -388,6 +407,8 @@ class FreeCamTool implements FreeCam {
     clock: 0.22,
     moon: GAME_MOON,
     moonAge: 0.5,
+    fogHold: false,
+    fog: 1,
     weather: null,
     freeze: false,
     explorer: false,
@@ -406,6 +427,7 @@ class FreeCamTool implements FreeCam {
   private viewWeather: Partial<MapWeather> | null = null;
   private prevHold: number | null = null;
   private prevMoon: number | null = null;
+  private prevFog: number | null = null;
   private explorerWas = true;
   private rec: Recording | null = null;
   private list: WallpaperList = { views: [], flights: [], out: {}, drawn: {} };
@@ -579,6 +601,7 @@ class FreeCamTool implements FreeCam {
     this.o.setCamera([this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.camFov()]);
     if (!this.s.hold) this.s.clock = round(this.o.clock(), 3);
     if (this.s.moon === GAME_MOON) this.s.moonAge = round(SKY.moonAge, 3);
+    if (!this.s.fogHold) this.s.fog = this.o.fogAmount();
     if (this.rec) {
       this.rec.rows.push([now, this.pos.x, this.pos.y, this.pos.z, aim.x, aim.y, aim.z, this.s.lens, this.o.clock()]);
       if (now - this.rec.start > FLIGHT_MAX * 1000) void this.stopRecord();
@@ -645,6 +668,9 @@ class FreeCamTool implements FreeCam {
     this.s.clock = round(this.prevHold ?? this.o.clock(), 3);
     this.prevMoon = this.o.moonHeld();
     this.moonFields(this.prevMoon);
+    this.prevFog = this.o.fogAmountHeld();
+    this.s.fogHold = this.prevFog !== null;
+    this.s.fog = this.prevFog ?? this.o.fogAmount();
     this.s.freeze = false;
     this.explorerWas = this.o.explorer()?.visible ?? true;
     // (roaming, he is in the picture unless unticked; on the overview he is not)
@@ -677,6 +703,7 @@ class FreeCamTool implements FreeCam {
     this.o.restore();
     this.o.setClock(this.prevHold);
     this.o.setMoon(this.prevMoon);
+    this.o.setFogAmount(this.prevFog);
     this.held = null;
     this.s.weather = null;
     const ex = this.o.explorer();
@@ -853,6 +880,14 @@ class FreeCamTool implements FreeCam {
   private holdMoon(age: number | null): void {
     this.moonFields(age);
     this.o.setMoon(age === null ? null : this.s.moonAge);
+    this.sync();
+  }
+
+  /** Hold the fog at a thickness (0 clear … 1.5 thick), or let the settings' show (null). */
+  private holdFog(amount: number | null): void {
+    this.s.fogHold = amount !== null;
+    this.s.fog = amount === null ? this.o.fogAmount() : round(MathUtils.clamp(amount, 0, FOG_AMOUNT_MAX), 2);
+    this.o.setFogAmount(amount === null ? null : this.s.fog);
     this.sync();
   }
 
@@ -1334,7 +1369,7 @@ class FreeCamTool implements FreeCam {
     const acts = el('div', 'fc-acts');
     const busy = this.drawing?.name === it.name || this.queue.some((q) => q.name === it.name);
     acts.append(
-      this.button2('📍 Go there', 'Put the camera, the time, the moon, the weather, the frame and the explorer back as they were', () => void this.goTo()),
+      this.button2('📍 Go there', 'Put the camera, the time, the moon, the fog, the weather, the frame and the explorer back as they were', () => void this.goTo()),
       this.button2(src ? '↻ Draw again' : '▶ Draw', 'Draw it at full quality (a video takes a while)', () => this.draw(it), busy),
       this.button2('↗ Open', 'Open the picture or the video in a new tab', () => this.openFile(it), !src),
       this.button2('📂 Finder', 'Show the file in the Finder', () => void this.reveal(it), !src),
@@ -1408,7 +1443,7 @@ class FreeCamTool implements FreeCam {
     return 'Custom';
   }
 
-  /** Back to a saved picture (or a video's start), with its time of day, its moon, its weather, its shape and its explorer. */
+  /** Back to a saved picture (or a video's start), with its time of day, its moon, its fog, its weather, its shape and its explorer. */
   private async goTo(): Promise<void> {
     const item = this.selected();
     if (!this.open || !item) return;
@@ -1443,6 +1478,8 @@ class FreeCamTool implements FreeCam {
       if (q.has('clock')) this.holdClock(Number(q.get('clock')));
       // (the moon the picture shows, not today's: the one it holds, else the phase its date gave it)
       this.holdMoon(savedMoon(q));
+      // (and its fog: the thickness it was framed in, the game's own when it has none)
+      this.holdFog(q.has('fogamount') ? Number(q.get('fogamount')) : 1);
       this.viewWeather = {};
       for (const k of WEATHER_KEYS) if (q.has(k)) this.viewWeather[k] = Number(q.get(k));
       this.pickWeather(VIEW_WEATHER);
@@ -1696,7 +1733,16 @@ class FreeCamTool implements FreeCam {
         },
       ),
     );
-    moment.append(moonAge, this.row('Weather', weathers), toggles);
+    const fog = this.row(
+      'Fog',
+      this.chips<number | null>([['Game', null], ...FOGS], () => (s.fogHold ? (FOGS.find(([, at]) => at === s.fog)?.[1] ?? -1) : null), (v) => this.holdFog(v), {
+        Game: 'The fog of the settings (Graphics → Fog → Thickness)',
+        None: 'Clear air: no haze or valley mist (the map’s edges keep theirs)',
+        Thick: 'Half again the game’s own fog',
+      }),
+    );
+    const fogAmount = this.row('', this.range(0, FOG_AMOUNT_MAX, 0.05, () => s.fog, (v) => this.holdFog(v)), () => `${Math.round(s.fog * 100)} %${s.fogHold ? '' : ' game'}`, 'How thick the fog is: 0 clear air, 100 the game’s own, 150 thick. The map’s edges keep their mist');
+    moment.append(moonAge, fog, fogAmount, this.row('Weather', weathers), toggles);
 
     // Video settings (folded).
     const video = this.section('');

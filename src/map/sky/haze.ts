@@ -22,7 +22,10 @@ import { fogNow } from './fogLevel';
  * where the wisps would drift (no banks, wisps or cloud shadows): one read of
  * the land map a pixel instead of 8–12 (noise and land map). It is an `if` on
  * a shared uniform ({@link HAZE}`.fog`): every pixel takes the same branch,
- * and the step changes live, with no shader compiled again.
+ * and the step changes live, with no shader compiled again. The fog's
+ * thickness (`HAZE.fog` y, sky/fogLevel.ts `fogNow.amount`) scales the valley
+ * mist, the wisps and the distance haze over the land the same live way (the
+ * mist itself, the edge mist and the front bank keep theirs).
  *
  * `scene.fog` is a plain `Fog`: its colour is the haze away from the sun,
  * `near` where haze starts, `far` the distance of about 63 % haze.
@@ -64,15 +67,18 @@ const FOG_CODE: Record<FogStep, number> = { full: 0, light: 1, simple: 2 };
 
 /**
  * The fog step in use, as a vec4 uniform value shared by every material:
- * x = 0 full, 1 light, 2 simple, read live from `fogNow` (sky/fogLevel.ts)
- * each time three sends it, so nothing needs to write it (y, z, w unused).
+ * x = 0 full, 1 light, 2 simple, y = the fog's thickness (0 clear … 1 the
+ * game's own … 1.5), read live from `fogNow` (sky/fogLevel.ts) each time
+ * three sends it, so nothing needs to write it (z, w unused).
  * (A float uniform could not be shared: three copies numbers per material.)
  */
 class FogStepValue {
   get x(): number {
     return FOG_CODE[fogNow.step] ?? 0;
   }
-  y = 0;
+  get y(): number {
+    return fogNow.amount;
+  }
   z = 0;
   w = 0;
 }
@@ -101,7 +107,7 @@ export const HAZE = {
    * (0 = none, e.g. at night or while it is not built).
    */
   shade: new Shared4(),
-  /** The Fog setting's step (x: 0 full, 1 light, 2 simple), live from `fogNow` (sky/fogLevel.ts). */
+  /** The Fog setting's step (x: 0 full, 1 light, 2 simple) and thickness (y: 0‥1.5, 1 the game's own), live from `fogNow` (sky/fogLevel.ts). */
   fog: new FogStepValue() as Readonly<FogStepValue>,
 };
 
@@ -372,6 +378,9 @@ const FOG_FRAGMENT = /* glsl */ `
   #endif
   float hzLow = hazeLowAmount(cameraPosition, vFogWorld, hzDist, hzBank.x);
   #ifndef HAZE_MIST
+    // (the fog's thickness, hazeFog.y: as that much mist would hide, 0 none; the edge mist
+    // below, the front bank and the mist itself keep theirs, so no cut edge shows)
+    hzLow = 1.0 - pow(max(1.0 - hzLow, 1e-4), hazeFog.y);
     // Where the land sinks away at its side and back edges, the mist swallows
     // it whole (seen up close when roaming, the land's end never shows).
     hzLow = mix(hzLow, 1.0, (1.0 - smoothstep(40.0, 200.0, hzInside)) * smoothstep(8.0, -6.0, vFogWorld.y));
@@ -381,18 +390,22 @@ const FOG_FRAGMENT = /* glsl */ `
     // Wisps between the mesas, drifting over the valley mist.
     if (hzFine) {
       float hzWisp = hazeWisps(cameraPosition, vFogWorld, hzDist);
-      gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), hzWisp * 0.45);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), hzWisp * 0.45 * hazeFog.y);
     } else {
       // (simple: where the ray crosses the wisps' layer, an even veil as thick
       // as they are on the whole; no reads)
       float hzThru = abs(smoothstep(20.0, 34.0, vFogWorld.y) - smoothstep(20.0, 34.0, cameraPosition.y));
       if (hzThru > 0.02) {
         float hzK = clamp((27.0 - cameraPosition.y) / (vFogWorld.y - cameraPosition.y), 0.0, 1.0);
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), 0.1 * hzThru * hzEven.w * smoothstep(40.0, 130.0, hzDist * hzK));
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeMistColor(vec2(1.0, 0.8), hzCol), 0.1 * hazeFog.y * hzThru * hzEven.w * smoothstep(40.0, 130.0, hzDist * hzK));
       }
     }
   #endif
   float fogFactor = hazeDistance(hzDist);
+  #ifndef HAZE_MIST
+    // (the thickness again: the distance haze of that much air)
+    fogFactor = 1.0 - pow(max(1.0 - fogFactor, 1e-4), hazeFog.y);
+  #endif
   gl_FragColor.rgb = mix(gl_FragColor.rgb, hzCol, fogFactor);
   #ifndef HAZE_MIST
     // From high up, the land's front edge sinks into the sea of mist beyond it

@@ -2330,10 +2330,11 @@ All of it changes live; the built detail (`ctx.quality`: tree density,
 spray) follows the next time the map opens. A blurry map on a 2× screen on
 medium means the frame is over budget: `__mapResolution.ratio` shows it,
 `graphicsNow` the level's values.
-The **Fog** setting (sky/fogLevel.ts, `settings.fog`, `fog=auto|full|light|simple`
-in the URL; no "off": the mist hides the map's cut edges) picks how much
-mist is drawn, apart from the level; Auto follows it (low simple, medium
-light, high and max full). Full is all of it. Light keeps the haze in every
+The fog's **step** (sky/fogLevel.ts; `fog=auto|full|light|simple` in the URL
+for checks; no "off": the mist hides the map's cut edges) is how much mist is
+drawn. It was a setting of its own; now it follows the graphics level (low
+simple, medium light, high and max full), and the settings' Fog is one
+slider, its thickness (below). Full is all of it. Light keeps the haze in every
 material as it is and draws the sea of mist with 2 planes, not 5: each draws
 a stack of the layers at its point (sky/mist.ts `MIST_STACK`, clouds.ts
 `PLANES`), as thick a sea, only the parallax between the layers of a stack
@@ -2354,6 +2355,13 @@ the sea of mist from the glider's height (`cam=0,420,-300,0,0,160`) 20.3 →
 19.8 → 18.0 (full within ±0.3 of before). At 1280 × 720 the frame is bound by
 triangles: the overview's simple ≈ 1 ms quicker, the walks the same
 (`npm run perf -- url=fog=simple`).
+The fog's **Thickness** (the settings' Fog slider, `settings.fogAmount`
+0‥1.5, 1 the game's own; the free camera holds its own; `fogamount=` in the
+URL) is apart from the step and costs nothing: `HAZE.fog` y, read live, thins
+or thickens the valley mist, the wisps and the distance haze over the land as
+that much air would (`1 − (1 − a)^k`). The mist itself (the sea, the banks),
+the edge mist and the front bank keep theirs, so at 0 (clear air) no cut edge
+shows either; the sky and the far backdrop keep their haze.
 
 ### Phones: what a frame costs (the perf pass)
 

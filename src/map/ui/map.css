@@ -1371,12 +1371,6 @@
   text-wrap: pretty;
 }
 
-/* The fog's second note, the same under every step (the mist at the map's
- * edges stays: there is no "off"), close under the step's note. */
-.mu-set-note.mu-fog-edge {
-  margin-top: calc(2 * var(--px));
-}
-
 /* A choice's heading row: its name, and its automatic choice (a chip) at the right end. */
 .mu-set-top {
   display: flex;

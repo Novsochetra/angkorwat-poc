@@ -18,7 +18,7 @@ import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
-import { setFog } from './sky/fogLevel';
+import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -48,7 +48,8 @@ import { BuildWork } from './work/build';
  * frame (`__videoFrame`, scripts/video.mjs) · `resolution=auto|<share>` the
  * Resolution setting (resolution.ts: 0.5 draws half across) ·
  * `battery=1` the battery saver (30 frames a second) ·
- * `fog=auto|full|light|simple` the Fog setting (sky/fogLevel.ts) · `idle=0` no idle
+ * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
+ * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `idle=0` no idle
  * slow-down (the frame loop, below).
  *
  * Every part is its own module, loaded on its own: a part that fails to
@@ -84,7 +85,7 @@ const DEFAULTS_KEY = 'angkor-map-defaults';
 const DEFAULTS_VERSION = '2';
 function loadSettings(): MapSettings {
   try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number; sharp?: boolean };
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<MapSettings> & { sfx?: number; sharp?: boolean; fog?: unknown };
     // (older visits kept one "effects" volume: it becomes the interface and the explorer's moves; the steps start quieter)
     if (typeof saved.sfx === 'number') {
       saved.ui ??= saved.sfx;
@@ -105,7 +106,9 @@ function loadSettings(): MapSettings {
     if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
-    if (!FOG_CHOICES.includes(saved.fog as FogChoice)) delete saved.fog;
+    // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
+    delete saved.fog;
+    if (saved.fogAmount !== undefined) saved.fogAmount = fogAmountOf(saved.fogAmount);
     // (settings kept before the new defaults — cycling time, clear weather, the interface at full, easy flying — take them once)
     if (localStorage.getItem(DEFAULTS_KEY) !== DEFAULTS_VERSION) {
       delete saved.time;
@@ -134,12 +137,19 @@ if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
 setBatterySaver(settings.battery);
-if (FOG_CHOICES.includes(params.get('fog') as FogChoice)) settings.fog = params.get('fog') as FogChoice;
+/** `fog=` (checks): hold the fog's step (sky/fogLevel.ts); else auto, the graphics level's. */
+const fogChoice: FogChoice = FOG_CHOICES.includes(params.get('fog') as FogChoice) ? (params.get('fog') as FogChoice) : 'auto';
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
 const levelOf = (g: GraphicsChoice): GraphicsLevel => (g !== 'auto' ? g : shot ? 'medium' : autoLevel());
 setGraphics(levelOf(settings.graphics), scene);
 // (after the level: auto's fog is the level's step)
-setFog(settings.fog, graphicsNow.level);
+setFog(fogChoice, graphicsNow.level);
+/** `fogamount=` (shots), or the free camera's: the fog's thickness held over the setting's (sky/fogLevel.ts), null: the setting's. */
+let fogAmountParam: number | null = params.has('fogamount') ? fogAmountOf(Number(params.get('fogamount'))) : null;
+const applyFogAmount = () => {
+  fogNow.amount = fogAmountParam ?? settings.fogAmount;
+};
+applyFogAmount();
 /** Auto's watch over the frames (graphics.ts): it steps the level down on a device that stays slow. */
 const autoWatch = new AutoGraphics();
 /** The frame loop has begun (the resolution below follows the level from then on). */
@@ -471,7 +481,7 @@ const handlers = {
       autoWatch.reset();
       newLevelRatio();
     }
-    if (s.fog !== was.fog) setFog(s.fog, graphicsNow.level);
+    if (s.fogAmount !== was.fogAmount) applyFogAmount();
     if (s.battery !== was.battery) {
       setBatterySaver(s.battery);
       autoWatch.reset();
@@ -714,6 +724,8 @@ function momentQuery(q: URLSearchParams, t: number): URLSearchParams {
   q.set('day', String(frame.day));
   if (moonParam !== null) q.set('moon', moonParam.toFixed(3));
   q.set('season', frame.season.toFixed(3));
+  // (the fog's thickness, when it is not the game's own: a picture keeps the fog it was framed in)
+  if (fogNow.amount !== 1) q.set('fogamount', fogNow.amount.toFixed(2));
   const w = frame.weather;
   for (const k of ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const) if (w[k] > 0.005) q.set(k, w[k].toFixed(2));
   return q;
@@ -764,6 +776,12 @@ if (devTools)
         moonParam = m;
       },
       moonHeld: () => moonParam,
+      setFogAmount: (v) => {
+        fogAmountParam = v;
+        applyFogAmount();
+      },
+      fogAmountHeld: () => fogAmountParam,
+      fogAmount: () => settings.fogAmount,
       restore: () => {
         if (!roam?.active) rig.fit();
       },
@@ -983,8 +1001,8 @@ function useLevel(level: GraphicsLevel): void {
   autoWatch.reset();
   if (level === graphicsNow.level) return;
   setGraphics(level, scene);
-  // (auto's fog follows the level)
-  setFog(settings.fog, level);
+  // (the fog's step follows the level)
+  setFog(fogChoice, level);
   ui.setGraphicsLevel(level);
   // (before the first frame the resolution is set up with the level in use)
   if (drawing) newLevelRatio();

@@ -95,17 +95,18 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Settings panel (the gear): five tabs, one page each, so it is only as tall
   as the page you are on and the map stays in view. **General** (language,
   time of day, weather), **Sound**, **Graphics** (graphics level, resolution,
-  fog, battery saver), **Play** (mini-map, key help, easy flying, reduce
+  fog: one slider, its thickness, battery saver), **Play** (mini-map, key help, easy flying, reduce
   motion), **About** (support the game, our story, the credits). The bar is
   `ui/_tabs.ts` (a `tablist`: ← → Home End, one gold thumb that slides); the
   pages are `#mu-set-page-<id>` in `ui.ts` (`TABS`), and the body's height
   follows the page (`--mu-page-h`, eased in `map.css`). The gear opens the tab
   last used, the heart opens About. A choice with an automatic mode has it as
   a chip by its heading (`.mu-auto`: time's Cycle, weather's By season, Auto
-  for graphics, resolution and fog), the fixed choices under it. A new
+  for graphics and resolution), the fixed choices under it. A new
   setting goes on the page it belongs to (markup in `ui.ts`, words in
   `lang.ts`). Shots: `uistate=settings,tab:<id>` (`general`, `sound`,
-  `graphics`, `play`, `about`); `scroll:<group>` shows that group's tab.
+  `graphics`, `play`, `about`); `scroll:<group>` shows that group's tab;
+  `fog:<0‥150>` puts the fog slider there (the map's own fog: `fogamount=0‥1.5`).
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
 - Words: Khmer first, English on the language choice at the top of the
   settings (the story has its own ខ្មែរ / EN). The word list is
@@ -261,8 +262,8 @@ picture (V)**, **● Record video (R)**, **🔁 Loop video**, the name (empty: m
 from the place in the frame and the time, "angkor-wat-night"; a typed name that is
 saved already is replaced: the button says so), the status with a progress bar;
 Frame (size, zoom, speed); Moment (time chips Game / Afternoon / Sunset / Night /
-Dawn and a slider, the moon's phase, weather chips, freeze, explorer: shown while
-roaming unless unticked); Video settings (folded); the gallery: every picture and
+Dawn and a slider, the moon's phase, fog chips Game / None / Light / Normal / Thick
+and a slider, weather chips, freeze, explorer: shown while roaming unless unticked); Video settings (folded); the gallery: every picture and
 video with its thumbnail (ffmpeg, `wallpapers/out/.thumbs/`), newest first; a
 click picks one (Go there, Draw again, Open, Finder, Forget), a double-click goes
 there. Go there puts back the camera, the moment, the frame and the explorer
@@ -294,7 +295,8 @@ endpoints stubbed (the user's `wallpapers/` is theirs), controls by role and nam
   frames a second (20 s in 2 minutes). Any video-wallpaper app plays the MP4 on repeat.
 - A saved view is `index.html?shot=1&cam=x,y,z,tx,ty,tz,fov&…` at its size, with the moment
   (`t`, `clock`, `day`, `season`, weather, `moon` when the panel holds the moon's age
-  (0 new, 0.5 full; only the sky reads it, `moon=` in any shot); the explorer's spot when he
+  (0 new, 0.5 full; only the sky reads it, `moon=` in any shot), `fogamount` when the fog is
+  not the game's own (0 clear air … 1 … 1.5 thick, `fogamount=` in any shot); the explorer's spot when he
   is in it): what the free camera showed is what `cam=` draws. `cam=` takes a seventh value (the vertical
   field of view, degrees) and `explorer=0` leaves him out of any shot. `?freecam=1` opens
   the camera on the first frames (with `cam=`, at that camera).

@@ -584,17 +584,11 @@ const WORDS = {
   resSharpSize: { km: '{size} មុតច្បាស់', en: '{size}, sharp' },
   battery: { km: 'សន្សំថ្ម', en: 'Battery saver' },
   batteryNote: { km: 'យ៉ាងច្រើន ៣០ រូបភាពក្នុងមួយវិនាទី៖ ឧបករណ៍មិនសូវក្ដៅ ហើយថ្មប្រើបានយូរជាង', en: 'At most 30 frames a second: cooler and longer on battery' },
-  // The settings' fog (fog…): ui/ui.ts; the steps: sky/fogLevel.ts. Auto's button is gAuto; its note names the step in use.
+  // The settings' fog: one slider, its thickness 0‥150 (ui/ui.ts; sky/fogLevel.ts `fogNow.amount`); the step follows the graphics level.
   fog: { km: 'អ័ព្ទ', en: 'Fog' },
-  fogFull: { km: 'ពេញលេញ', en: 'Full' },
-  fogLight: { km: 'ស្រាល', en: 'Light' },
-  fogSimple: { km: 'សាមញ្ញ', en: 'Simple' },
-  fogAutoNote: { km: 'ទៅតាមកម្រិតគុណភាពរូបភាព។ ឥឡូវ៖ {step}', en: 'Follows the graphics level. Now: {step}' },
-  fogFullNote: { km: 'អ័ព្ទគ្រប់យ៉ាង៖ ផ្ទាំងអ័ព្ទរសាត់ ខ្សែអ័ព្ទស្ដើងៗ និងស្រមោលពពក', en: 'All the mist: drifting banks, wisps and cloud shadows' },
-  fogLightNote: { km: 'ស្រទាប់អ័ព្ទតិចជាង៖ លឿនជាងបន្តិច', en: 'Fewer layers of mist: a little faster' },
-  fogSimpleNote: { km: 'អ័ព្ទស្មើៗក្នុងជ្រលងភ្នំ គ្មានផ្ទាំងអ័ព្ទរសាត់៖ លឿនបំផុត', en: 'An even haze in the valleys, no drifting banks: the fastest' },
-  // (under every step's note: there is no "off", the mist hides the map's cut edges)
-  fogEdgeNote: { km: 'គែមផែនទីនៅតែមានអ័ព្ទជានិច្ច', en: "The mist always stays at the map's edges" },
+  fogAmount: { km: 'កម្រាស់', en: 'Thickness' },
+  // (under the slider: at 0 the mist still hides the map's cut edges)
+  fogNote: { km: 'ទៅឆ្វេង អ័ព្ទស្ដើង ទៅស្ដាំ អ័ព្ទក្រាស់ ១០០ ជាអ័ព្ទធម្មតារបស់ហ្គេម។ គែមផែនទីនៅតែមានអ័ព្ទជានិច្ច', en: "Left thins the fog, right thickens it; 100 is the game's own. The mist always stays at the map's edges" },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 
