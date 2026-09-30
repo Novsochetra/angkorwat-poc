@@ -131,6 +131,25 @@ export function keepOverLedge(ctx: RoamCtx, dt: number): void {
   if (to > ctx.cam.pitch) ctx.cam.pitch += (to - ctx.cam.pitch) * (1 - Math.exp(-dt * 6));
 }
 
+/** When "fly back over the land first" was last said (ctx.t, s). */
+let letGoToldAt = -99;
+
+/**
+ * Space to let go of the canopy or the hang glider past the roaming area's
+ * edge (just after the leap he is still out over the ledge's drop): he
+ * would fall off the land, so he flies on (the wind turns him back) and a
+ * message says why. True when he is out there.
+ */
+export function letGoOut(ctx: RoamCtx): boolean {
+  const { x, z } = ctx.body.pos;
+  if (ctx.world.inBounds(x, z)) return false;
+  if (Math.abs(ctx.t - letGoToldAt) > 4) {
+    ctx.hud.toast(t('rLetGoLand'));
+    letGoToldAt = ctx.t;
+  }
+  return true;
+}
+
 /** The leap off the ledge, and what opens over him at the end of the fall (roam.ts sets it from the player's pick). */
 export interface LeapMode extends RoamModeHandler {
   /** The parachute (`glide`, the default) or the hang glider (`hang`). */
@@ -563,8 +582,12 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
       const ahead = Math.max(3, hs * 0.7);
       const height = body.pos.y - Math.max(floorAt(world, body.pos.x, body.pos.z), floorAt(world, body.pos.x + fx * ahead, body.pos.z + fz * ahead));
 
-      // Space high up: let the canopy go and fall (Space in the fall opens a new one).
-      if (input.jump && open >= 1 && height > LET_GO_ABOVE) {
+      // Space high up: let the canopy go and fall (Space in the fall opens a new one). Only over the
+      // roaming area (letGoOut: past its edge he would fall off the land).
+      const letGo = input.jump && open >= 1 && height > LET_GO_ABOVE;
+      // (out there he glides on: letGoOut says why, and the wind's message below does not cover it)
+      if (letGo && letGoOut(ctx)) turnedBack = true;
+      else if (letGo) {
         chute = 'stow';
         since = clock();
         ctx.sound('chuteClose', 0.7);
@@ -585,7 +608,8 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
 
       // Turning; at the roaming area's edge the wind turns him back towards the temples.
       omega = turnS * TURN * open * (1 - flare);
-      if (!world.inBounds(body.pos.x + fx * 45, body.pos.z + fz * 45)) {
+      // (and all the time he is out past it, e.g. just after the leap: never circling out there, he comes in)
+      if (!world.inBounds(body.pos.x + fx * 45, body.pos.z + fz * 45) || !world.inBounds(body.pos.x, body.pos.z)) {
         const to = roamHeading(body.pos.x, body.pos.z, HOME.x, HOME.z, _home);
         const home = Math.atan2(to.x - body.pos.x, to.z - body.pos.z);
         const back = clamp(angleDiff(home, body.yaw) * 1.5, -0.9, 0.9);
@@ -610,10 +634,12 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
       body.yaw += omega * dt;
       const nfx = Math.sin(body.yaw);
       const nfz = Math.cos(body.yaw);
-      // Into a cliff: no further forward (he can steer away); he still sinks.
+      // Into a cliff: no further forward (he can steer away); he still sinks. So at the roaming area's
+      // edge, once he is over the area: steered hard against the wind there, he never comes down past it.
       const nx = body.pos.x + nfx * hs * dt;
       const nz = body.pos.z + nfz * hs * dt;
-      if (world.groundAt(nx, nz) > body.pos.y + 0.6) hs *= 0.3;
+      const edge = world.inBounds(body.pos.x, body.pos.z) && !world.inBounds(nx, nz);
+      if (edge || world.groundAt(nx, nz) > body.pos.y + 0.6) hs *= 0.3;
       else {
         body.pos.x = nx;
         body.pos.z = nz;

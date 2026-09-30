@@ -11,7 +11,7 @@ import { RAMP } from './_launchRamp';
 import { Lift } from './_lift';
 import { angleDiff } from './followCam';
 import type { LaunchSpot, LaunchSpots } from './launchSpots';
-import { keepOverLedge, outOfLeap } from './parachute';
+import { keepOverLedge, letGoOut, outOfLeap } from './parachute';
 import { roamPrefs } from './prefs';
 import type { RoamCtx, RoamMode, RoamModeHandler, RoamWorld } from './types';
 import { stepSound } from './walker';
@@ -615,8 +615,13 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       const low = lowest(ctx);
       const height = low - floor;
 
-      // Space high up: let go (the walker falls; Space again opens the parachute).
-      if (input.jump && phase === 'fly' && openK >= 1 && height > LET_GO_ABOVE) {
+      // Space high up: let go (the walker falls; Space again opens the parachute). Only over the roaming
+      // area: past its edge he would fall off the land (just after the leap he is still out over the ledge's
+      // drop), and the walker keeps him in from there.
+      const letGo = input.jump && phase === 'fly' && openK >= 1 && height > LET_GO_ABOVE;
+      // (out there he flies on: letGoOut says why, and the wind's message below does not cover it)
+      if (letGo && letGoOut(ctx)) toldAt = clock;
+      else if (letGo) {
         putAway('air', ctx);
         body.grounded = false;
         body.vel.set(fx * v * 0.8, vy, fz * v * 0.8);
@@ -700,7 +705,8 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       omega = (G * Math.tan(bank)) / Math.max(v, 6);
       // (once it starts it turns him all the way round, one way, so he doesn't fly on along the edge; towards home the way
       // the area's outline goes, round its inner corner: never across the gap outside it)
-      const out = !world.inBounds(hang.x + fx * 45, hang.z + fz * 45);
+      // (and all the time he is out past it, e.g. just after the leap: never circling out there, he comes in)
+      const out = !world.inBounds(hang.x + fx * 45, hang.z + fz * 45) || !world.inBounds(hang.x, hang.z);
       let off = 0;
       if (out || homing) {
         const to = roamHeading(hang.x, hang.z, HOME.x, HOME.z, _home);
@@ -771,7 +777,10 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       let nz = hang.z + nfz * v * dt;
       // (a wall is met at his feet, a little ahead of the strap's end: they never end up in it, so he lands at its foot, not on top)
       const reach = FEET_AHEAD * size;
-      const clear = (x: number, z: number) => clearAt(world, x + nfx * reach, z + nfz * reach, low);
+      // (the roaming area's edge is a wall too, once his feet are over the area: steered hard against the wind
+      // there, he never comes down past it)
+      const inArea = world.inBounds(hang.x + nfx * reach, hang.z + nfz * reach);
+      const clear = (x: number, z: number) => clearAt(world, x + nfx * reach, z + nfz * reach, low) && (!inArea || world.inBounds(x + nfx * reach, z + nfz * reach));
       // (not in the first moment off a ramp's end: a tuft of moss at the lip must not stop the take-off)
       if (!clear(nx, nz) && !(phase === 'fly' && pt < 0.4)) {
         const alongX = clear(nx, hang.z) ? Math.abs(nfx) : 0;
@@ -813,7 +822,7 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         const inside = Math.abs(bank) > 0.2 ? lift.toCore(hang.x, hang.y, hang.z, _core) : 0;
         if (inside > 0) {
           const k = CENTRE * inside * Math.min(1, Math.abs(bank) / BANK_MAX) * dt;
-          if (world.groundAt(hang.x + _core.x * k, hang.z + _core.z * k) < low) {
+          if (world.groundAt(hang.x + _core.x * k, hang.z + _core.z * k) < low && clear(hang.x + _core.x * k, hang.z + _core.z * k)) {
             hang.x += _core.x * k;
             hang.z += _core.z * k;
           }

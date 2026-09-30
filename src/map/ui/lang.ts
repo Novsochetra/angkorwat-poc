@@ -214,6 +214,7 @@ const WORDS = {
   rToBank: { km: 'ចែវចូលជិតច្រាំងបន្តិចទៀត', en: 'Paddle closer to the bank' },
   rMist: { km: 'អ័ព្ទក្រាស់ពេក មិនអាចទៅមុខទៀតបានទេ', en: 'The mist is too thick to go further' },
   rWindBack: { km: 'ខ្យល់បក់នាំអ្នកត្រឡប់ទៅរកប្រាសាទវិញ', en: 'The wind turns you back towards the temples' },
+  rLetGoLand: { km: 'ហោះត្រឡប់មកលើដីសិន ទើបលែងដៃបាន', en: 'Fly back over the land first, then let go' },
   rThinAir: { km: 'ខ្យល់ស្ដើងណាស់នៅកម្ពស់នេះ', en: 'The air is thin up here' },
   // The hot air balloon (balloon.ts): where it will not come down, the mist at the edge, its keys on the first ride.
   rNoLand: { km: 'មិនអាចចុះនៅទីនេះបានទេ៖ រកដីរាបស្មើ និងទំនេរ', en: 'Not here: find flat, open ground' },
