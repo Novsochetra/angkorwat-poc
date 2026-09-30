@@ -1,3 +1,4 @@
+import { pad } from '../pad/pad';
 import type { Shop, ShopItem } from '../shop';
 import type { UISound } from '../types';
 import { num, onLang, t } from '../ui/lang';
@@ -28,6 +29,12 @@ import { CARRY_MAX, nameOf, riel, type Purse } from './_shopPurse';
  * mini-map steps aside); on a phone held upright it is a sheet along the
  * bottom (the touch buttons and the tool bar step aside), on one on its
  * side it stands at the right edge, scrolling.
+ *
+ * With the game pad (pad/pad.ts) it is a layer while open: the pad's arrows
+ * (the stick, the d-pad) come in as the arrow keys and move the ring, ✕ as
+ * Enter buys the one in it (takes the choice), ○ as Esc shuts it. The keys'
+ * digits go while the pad is in use; ✕ shows on the row in the ring, ○ on
+ * the close button.
  */
 export interface ShopMenu {
   /** The panel (its place on the page: the camera's lens shift, _shop.ts). */
@@ -46,9 +53,7 @@ export interface ShopMenu {
   refresh(): void;
   /** Checks: the keyboard's focus ring shown on item `i` (the list) or choice `i` (0 now, 1 keep). */
   focus(i: number): void;
-  /** A pad's d-pad: the ring one row (choice) on, or back. */
-  move(by: number): void;
-  /** A pad's button (or a check's `e`): buy the item in the ring, or take the choice. */
+  /** Touch's Use (or a check's `e`): buy the item in the ring, or take the choice. */
   confirm(): void;
 }
 
@@ -74,14 +79,14 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-labelledby', 'by-title');
   el.innerHTML = `<span class="mu-bg"></span>
-    <header class="by-head">${STALL_ICON}<h2 id="by-title"></h2><button type="button" class="by-x"><svg class="by-x-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/></svg><kbd>Esc</kbd></button></header>
+    <header class="by-head">${STALL_ICON}<h2 id="by-title"></h2><button type="button" class="by-x"><svg class="by-x-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/></svg><kbd data-pad="east">Esc</kbd></button></header>
     <p class="by-ask"></p>
     <div class="by-list" role="list"></div>
     <div class="by-take" hidden>
       <div class="by-got"><span class="by-got-icon"></span><b class="by-got-name"></b><span class="by-paid"></span></div>
       <div class="by-choose">
-        <button type="button" class="by-c by-now" data-c="eat"><span class="by-bg"></span><kbd>1</kbd><span class="by-c-t"></span></button>
-        <button type="button" class="by-c by-keep" data-c="keep"><span class="by-bg"></span><kbd>2</kbd><span class="by-c-t"></span><small class="by-c-n"></small></button>
+        <button type="button" class="by-c by-now" data-c="eat"><span class="by-bg"></span><kbd>1</kbd>${PAD_X}<span class="by-c-t"></span></button>
+        <button type="button" class="by-c by-keep" data-c="keep"><span class="by-bg"></span><kbd>2</kbd>${PAD_X}<span class="by-c-t"></span><small class="by-c-n"></small></button>
       </div>
     </div>
     <footer class="by-foot">${RIEL_ICON}<span class="by-purse-label"></span><b class="by-riel"></b><span class="by-bagline" aria-hidden="true"></span></footer>`;
@@ -118,7 +123,7 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
     list.innerHTML = shop.items
       .map(
         (it, i) =>
-          `<button type="button" class="by-item" data-i="${i}" role="listitem"><span class="by-bg"></span>${i < 9 ? `<kbd>${i + 1}</kbd>` : '<kbd hidden></kbd>'}${itemIcon(it)}<span class="by-name">${esc(nameOf(it))}<small class="by-short">${esc(t('byShort'))}</small></span><span class="by-price">${riel(it.price)}</span></button>`,
+          `<button type="button" class="by-item" data-i="${i}" role="listitem"><span class="by-bg"></span>${i < 9 ? `<kbd>${i + 1}</kbd>` : '<kbd hidden></kbd>'}${PAD_X}${itemIcon(it)}<span class="by-name">${esc(nameOf(it))}<small class="by-short">${esc(t('byShort'))}</small></span><span class="by-price">${riel(it.price)}</span></button>`,
       )
       .join('');
     rows = [...list.querySelectorAll<HTMLButtonElement>('.by-item')];
@@ -268,6 +273,11 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
     fill();
   });
 
+  /** The game pad's layer while it is open (its keys come in as the keyboard's: the handler above). */
+  let padClose: (() => void) | null = null;
+  /** The row or choice in the ring (the pad's focus sits there: it draws no ring of its own on them). */
+  const ringed = () => (step === 'take' ? (focus === 1 && canKeep ? keep : now) : (rows[focus] ?? null));
+
   function setStep(s: 'list' | 'take' | null): void {
     step = s;
     el.classList.toggle('is-on', s !== null);
@@ -276,6 +286,13 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
     ask.hidden = s === 'take';
     takeEl.hidden = s !== 'take';
     document.body.classList.toggle('roam-shop', s !== null);
+    if (s && !padClose) padClose = pad.openLayer(el, { first: ringed, back: () => d.onClose() });
+    else if (!s && padClose) {
+      padClose();
+      padClose = null;
+    }
+    // (shut: the pad's focus leaves it, so Enter and Space are his again)
+    if (!s && document.activeElement instanceof HTMLElement && el.contains(document.activeElement)) document.activeElement.blur();
   }
 
   return {
@@ -335,10 +352,6 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
       focus = i;
       light();
     },
-    move(by) {
-      const n = step === 'list' ? rows.length : canKeep ? 2 : 1;
-      if (n) setFocus((((focus + by) % n) + n) % n);
-    },
     confirm() {
       if (step === 'list') pick(focus);
       else if (step === 'take') choose(focus === 1 && canKeep ? 'keep' : 'eat');
@@ -347,6 +360,8 @@ export function createShopMenu(d: ShopMenuDeps): ShopMenu {
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+/** The game pad's ✕ on a row or choice (shown only on the one in the ring, while the pad is in use). */
+const PAD_X = '<kbd class="by-padx" data-pad="south" aria-hidden="true"></kbd>';
 
 let styled = false;
 function injectStyle(): void {
@@ -389,6 +404,12 @@ function injectStyle(): void {
     .by-item.is-focus .by-bg, .by-c.is-focus .by-bg { background: rgba(58, 44, 20, 0.7); box-shadow: 0 0 calc(10 * var(--px)) rgba(255, 176, 40, 0.35); }
     .by-item.is-focus .by-bg::after, .by-c.is-focus .by-bg::after { background: var(--mu-gold-hi); }
     .by-item.is-focus kbd, .by-c.is-focus kbd { color: var(--mu-gold-hi); border-color: rgba(255, 208, 112, 0.7); }
+    /* (the game pad in use: no digits; ✕ on the row or choice in the ring, as wide as a digit so nothing moves; ○ on the close button) */
+    .by-menu kbd.by-padx { display: none; }
+    body.pad-on .by-menu :is(.by-item, .by-c) > kbd:not(.by-padx) { display: none; }
+    body.pad-on .by-menu kbd.by-padx { display: inline-flex; justify-content: center; visibility: hidden; font-size: calc(13 * var(--px)); }
+    body.pad-on .by-menu .is-focus > kbd.by-padx { visibility: visible; }
+    .by-x kbd.is-pad { font-size: calc(14 * var(--px)); }
     .by-item:active, .by-c:active { transform: scale(0.97); }
     .by-item.is-short { color: var(--mu-ink2); }
     .by-item.is-short .by-icon { opacity: 0.55; filter: grayscale(0.5); }

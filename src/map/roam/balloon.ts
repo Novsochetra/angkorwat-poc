@@ -3,6 +3,8 @@ import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { SURFACE, type HeightField } from '../heightfield';
 import { OVERVIEW, placeById } from '../layout';
+import { padName } from '../pad/glyphs';
+import { pad } from '../pad/pad';
 import { roamHeading } from '../terrain/views';
 import { CALM_WEATHER, type MapFrame, type MapWeather } from '../types';
 import { t } from '../ui/lang';
@@ -348,6 +350,17 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
   let heat = REST;
   /** The burner's flame now (0‥1), eased: the look and the roar. */
   let flame = 0;
+  /** The pad (pad.ts `rumble`): the burner fired last step, and when a burst last pulsed (clock s). */
+  let burning = false;
+  let pulsedAt = -9;
+  /** One gentle pulse as a burst of the burner starts: not a buzz while it roars on, nor for its breaths hands-off. */
+  const burst = (on: boolean) => {
+    if (on && !burning && clock - pulsedAt > 0.6) {
+      pulsedAt = clock;
+      pad.rumble('burner');
+    }
+    burning = on;
+  };
   let atHome = true;
   let riding = false;
   let phase: 'board' | 'inflate' | 'ground' | 'fly' | 'land' | 'out' = 'ground';
@@ -539,7 +552,9 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
     hinted = easyNow;
     // (on a touch screen the stick and the Jump button, not keys: touch.ts)
     const touch = document.body.classList.contains('roam-touch');
-    ctx.hud.toast(t(easyNow ? (touch ? 'rBalloonTouch' : 'rBalloonKeys') : touch ? 'rBalloonRealTouch' : 'rBalloonReal'));
+    // (a game pad in use: its stick and buttons, by the names the pad in hand has, pad.ts)
+    if (pad.active) ctx.hud.toast(t(easyNow ? 'rBalloonPad' : 'rBalloonRealPad', { jump: padName('south', pad.kind), fast: padName('r2', pad.kind) }));
+    else ctx.hud.toast(t(easyNow ? (touch ? 'rBalloonTouch' : 'rBalloonKeys') : touch ? 'rBalloonRealTouch' : 'rBalloonReal'));
   }
 
   /** The follow camera: behind him (a little into the turn), over the basket; up high it looks down more; a little wider going fast. */
@@ -640,6 +655,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       drift.x = drift.z = v = vyA = leanX = leanZ = 0;
       homing = 0;
       flame = 0;
+      burning = false;
       cam.minDistance = 7;
       cam.maxDistance = 60;
       cam.follow = easyNow ? FOLLOW_EASY : FOLLOW;
@@ -771,7 +787,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         const hot = prog > INFLATE_FAN;
         const fire = hot ? (fast ? 1 : (prog - INFLATE_FAN) % 1.7 < 1.2 ? 0.8 : 0) : 0;
         flame += (fire - flame) * (1 - Math.exp(-dt * (fire > flame ? 12 : 5)));
-        setPrompt(ctx, t('rInflating'));
+        burst(fire > 0);
+        setPrompt(ctx, t(pad.active ? 'rInflatingPad' : 'rInflating'));
         body.pos.copy(pos);
         body.yaw = yaw;
         body.vel.set(0, 0, 0);
@@ -894,6 +911,7 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       const breathe = easy && phase === 'fly' && !up && !down && clock % HOLD_EVERY < BREATH_LONG ? 0.6 : 0;
       const fire = easy ? Math.max(up, rise > 0.5 ? 0.8 : 0, breathe) : burn ? 1 : 0;
       flame += (fire - flame) * (1 - Math.exp(-dt * (fire > flame ? 12 : 5)));
+      burst(easy ? up > 0.3 || rise > 0.5 : burn);
 
       // ── The drift (easy flying: the wind only nudges it), and forward where it faces ──
       if (phase === 'ground') {
@@ -959,6 +977,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
       if (pos.y <= fl) {
         if (phase === 'fly' || phase === 'land') {
           if (vel.y < -0.4) ctx.sound('land', clamp(-vel.y / 3, 0.2, 0.8));
+          // (the pad: the basket's bump on the ground)
+          if (vel.y < -0.4) pad.rumble('land', clamp(-vel.y / 3, 0.3, 0.8));
           phase = 'ground';
           heat = Math.min(heat, REST);
         }

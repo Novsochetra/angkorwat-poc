@@ -10,6 +10,9 @@ import { CREDITS, SUPPORT_URL } from './credits';
 import { ICON } from './icons';
 import { lang, num, onLang, placeText, setLang, t, type WordKey } from './lang';
 import { framed, setSteppedVars } from './shape';
+import { padGlyph, type PadGlyph } from '../pad/glyphs';
+import { clearMark, markFocus, moveFocusIn } from '../pad/nav';
+import { pad } from '../pad/pad';
 
 /**
  * The map's interface over the 3D view, after the concept art
@@ -31,6 +34,12 @@ import { framed, setSteppedVars } from './shape';
  * Keys: Tab / arrows move between cards, Enter picks, Esc goes back (or
  * closes the settings). A click on the empty map goes back too.
  *
+ * A game pad (pad/pad.ts) works it as the keys do: the stick or the d-pad
+ * between the cards (and on to the corner's buttons), ✕ picks, ○ goes back,
+ * Options opens the settings, where L1 / R1 change the tab. The Play tab's
+ * Controller group has the pad's vibration switch and its buttons; shots
+ * draw them with `pad=ps|xbox` (`scroll:pad`).
+ *
  * While the explorer roams the map (`setRoaming`), the picker steps back:
  * no title, hint or info panel; the cards become small name pins over their
  * beacons that fade with distance and cannot be clicked; the keys and clicks
@@ -49,7 +58,7 @@ import { framed, setSteppedVars } from './shape';
  * resolution picked), `battery` (the battery saver on), `fog:<0‥150>` (the
  * fog's thickness there), `scroll:<group>` (the settings
  * scrolled to that group, on its tab: lang, time, weather, moon, graphics, res,
- * fog, mini), `begin` (the fade to black), `roam` (the interface while
+ * fog, mini, pad), `begin` (the fade to black), `roam` (the interface while
  * roaming, without the roaming itself: add `cam=` to stand somewhere).
  */
 export interface MapUIHandlers {
@@ -122,7 +131,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'padRumble';
 /**
  * The settings' tabs, in the bar's order (each page is `mu-set-page-<id>`).
  * Sound is the sound page's own word (lang.ts `sound`).
@@ -136,7 +145,7 @@ const TABS: TabDef<TabId>[] = [
   { id: 'about', word: 'tabAbout', icon: ICON.heartLine },
 ];
 /** The tab of each choice's heading (`#mu-<group>-h`): a shot's `scroll:<group>` shows that tab first. */
-const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', moon: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play' };
+const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', moon: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play', pad: 'play' };
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -184,6 +193,32 @@ const MINI_CHOICE: Record<MiniMapChoice, { icon: string; word: WordKey; note: Wo
   button: { icon: ICON.mapButton, word: 'mmButtonChoice', note: 'miniMapButtonNote' },
   hide: { icon: ICON.mapHide, word: 'mmHideChoice', note: 'miniMapHideNote' },
 };
+/**
+ * The game pad's buttons in the Controller group (Play tab), as pad/pad.ts maps them: on the map screen and in the
+ * menus, and on foot (R2 runs, L3 too). Drawn as the pad in hand has them (glyphs.ts), again when it changes.
+ */
+const PAD_ON_MAP: [PadGlyph[], WordKey][] = [
+  [['lstick', 'dpad'], 'padPlaces'],
+  [['south'], 'padPick'],
+  [['east'], 'padBack'],
+  [['north'], 'jumpIn'],
+  [['start'], 'settings'],
+  [['l1', 'r1'], 'padTabs'],
+];
+const PAD_ON_FOOT: [PadGlyph[], WordKey][] = [
+  [['lstick'], 'padWalk'],
+  [['r2'], 'padRun'],
+  [['rstick'], 'padLook'],
+  [['l1', 'r1'], 'padZoom'],
+  [['south'], 'padJump'],
+  [['west'], 'padUse'],
+  [['north'], 'padMenu'],
+  [['east'], 'padToMap'],
+  [['dpad'], 'padTools'],
+  [['select'], 'padBigMap'],
+  [['r3'], 'padRamp'],
+  [['start'], 'settings'],
+];
 /** The language choice (in the settings): each button shows its language in that language. */
 const LANG_LABEL: Record<Lang, string> = { km: 'ខ្មែរ', en: 'English' };
 /** Latin fonts, and the Khmer ones they fall back to (lang.ts). */
@@ -391,7 +426,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         </div>
         ${switchRow('keys', 'keyHelp', 'keyHelp', '<small data-t="keyHelpNote"></small>')}
         ${switchRow('fly', 'easyFly', 'easyFly', '<small class="mu-fly-note"></small>')}
-        ${switchRow('calm', 'calm', 'calm', '<small data-t="calmNote"></small>')}`)}
+        ${switchRow('calm', 'calm', 'calm', '<small data-t="calmNote"></small>')}
+        <div class="mu-set-group mu-pad-group" role="group" aria-labelledby="mu-pad-h">
+          ${head('pad', 'padHead', '<span class="mu-pad-state"></span>')}
+          ${switchRow('rumble', 'padRumble', 'padRumble', '<small data-t="padRumbleNote"></small>')}
+          <div class="mu-pad-map"></div>
+        </div>`)}
       ${page('about', '')}
     </div></div>`), 'lg');
   // (the choices and the switches in the stepped frames of the buttons above)
@@ -462,11 +502,22 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   document.body.append(wakeLayer);
   // (it goes once the sound plays: audio.ts `onHeld`)
   wakeBtn.addEventListener('click', () => h.onWake());
+  const wakeNote = wakeBtn.querySelector<HTMLElement>('small')!;
+  /**
+   * The card's note: a tap, or, while the game pad is in use, a key or a click (a browser may not count a pad's
+   * press as the gesture it waits for: the pad's ✕ on the loading screen can leave the sound held, audio.ts).
+   */
+  function fillWake(): void {
+    const k: WordKey = pad.active ? 'soundHeldPadNote' : 'soundHeldNote';
+    wakeNote.dataset.t = k;
+    wakeNote.textContent = t(k);
+  }
   function setSoundHeld(on: boolean): void {
     if (on === wakeBtn.classList.contains('is-on')) return;
     wakeBtn.classList.toggle('is-on', on);
     wakeBtn.inert = !on;
-    if (on) live.textContent = `${t('soundHeld')}. ${t('soundHeldNote')}`;
+    fillWake();
+    if (on) live.textContent = `${t('soundHeld')}. ${wakeNote.textContent}`;
   }
 
   // ── Words (lang.ts) ──────────────────────────────────────────────────────
@@ -499,6 +550,23 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           .map((c) => `<p class="mu-cr-line">${c.name ? `<span lang="en">${c.name}</span>` : ''}${c.note ? `<small>${c.note[l]}</small>` : ''}</p>`)
           .join('')}</div>`,
     ).join('');
+  }
+  /**
+   * The Controller group (Play tab): with a game pad connected, its kind by the heading and its buttons on the map
+   * and on foot (`PAD_ON_MAP`, `PAD_ON_FOOT`) drawn as that pad has them; without one, a line saying one works.
+   * Written again with the words and whenever the pad changes (`pad.onChange`).
+   */
+  const padState = panel.querySelector<HTMLElement>('.mu-pad-state')!;
+  const padMap = panel.querySelector<HTMLElement>('.mu-pad-map')!;
+  function fillPad(): void {
+    const on = pad.connected || pad.active;
+    const k = pad.kind;
+    padState.innerHTML = on ? `${ICON.gamepad}<span${k === 'other' ? '' : ' lang="en"'}>${k === 'ps' ? 'PlayStation' : k === 'xbox' ? 'Xbox' : esc(t('padOther'))}</span>` : '';
+    const list = (head: WordKey, rows: [PadGlyph[], WordKey][]) =>
+      `<div class="mu-set-sub"><h4>${esc(t(head))}</h4></div><ul class="mu-pad-list">${rows
+        .map(([gs, w]) => `<li><span class="mu-pad-keys">${gs.map((g) => padGlyph(g, k)).join('')}</span><span>${esc(t(w))}</span></li>`)
+        .join('')}</ul>`;
+    padMap.innerHTML = on ? list('padOnMap', PAD_ON_MAP) + list('padOnFoot', PAD_ON_FOOT) : `<p class="mu-set-note">${esc(t('padNone'))}</p>`;
   }
   /**
    * The note under the graphics choice: the chosen level's, or Auto's with
@@ -619,6 +687,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   function fillWords(): void {
     for (const e of root.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillAbout();
+    fillPad();
     for (const e of wakeBtn.querySelectorAll<HTMLElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     fillFlyNote();
     fillGraphicsNote();
@@ -643,6 +712,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     // Khmer and English words differ in size.
     measure();
   });
+  // (a game pad connected or gone, or it or the keys and mouse in use now: the Controller group's buttons, the held card's note)
+  pad.onChange(() => {
+    fillPad();
+    fillWake();
+  });
+  // (unplugged while the keys or the mouse were in use, the pad core tells no change: pad/pad.ts)
+  addEventListener('gamepaddisconnected', () => requestAnimationFrame(fillPad));
 
   // ── Sizes ────────────────────────────────────────────────────────────────
   /** Screen boxes cards keep out of: title and corner buttons (cards go below), the hint line (cards go above). */
@@ -763,7 +839,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     h.onSound('back');
     applySelected(null);
     h.onSelect(null);
-    if (hadFocus) cardById.get(was)?.button.focus({ preventScroll: true });
+    if (!hadFocus) return;
+    const c = cardById.get(was);
+    c?.button.focus({ preventScroll: true });
+    // (its card hidden, under the panel or off the view, takes no focus: the nearest shown one does, so the keys and the pad go on from there)
+    if (c && document.activeElement !== c.button) {
+      const near = cards.filter((k) => k.shown).sort((a, b) => Math.hypot(a.cx - c.cx, a.cy - c.cy) - Math.hypot(b.cx - c.cx, b.cy - c.cy))[0];
+      near?.button.focus({ preventScroll: true });
+    }
   }
 
   function beginExpedition(p: PlaceDef): void {
@@ -800,7 +883,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       h.onHover(null);
     });
     b.addEventListener('focus', () => {
-      if (!b.matches(':focus-visible')) return;
+      // (the keyboard's focus, or the game pad's: its ring comes just after, pad/nav.ts)
+      if (!b.matches(':focus-visible') && !pad.active) return;
       hovered = id;
       h.onHover(id);
     });
@@ -878,6 +962,27 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     // (open: the tab in use has the focus, so the arrow keys walk the bar; closed: the focus goes back to the corner button it came from)
     if (open) tabs.button(tab).focus({ preventScroll: true });
     else if (panel.contains(document.activeElement)) (tab === 'about' ? creditsBtn : gearBtn).focus({ preventScroll: true });
+    // (the game pad: the panel has it while open (every way it shuts comes through here); shut while roaming with the
+    // pad, the corner's button keeps no ring: the pad walks the explorer, not the buttons)
+    if (open && !shot) closePanelPad = pad.openLayer(panel, { back: () => toggleSettings(false), tabs: padTab, first: () => tabs.button(tab) });
+    else if (!open) {
+      closePanelPad();
+      // (the coffee's note back to its own words, if the pad's press held its link)
+      if (aboutPage.querySelector('.mu-cr-sup-note.is-held')) fillAbout();
+      if (roaming && pad.active && corner.contains(document.activeElement)) {
+        clearMark();
+        (document.activeElement as HTMLElement).blur();
+      }
+    }
+  }
+  /** The settings panel's hold on the game pad (let go as it shuts). */
+  let closePanelPad: () => void = () => undefined;
+  /** L1 / R1 with the settings open: the tab before or after (round the bar, as its arrow keys), the focus on it. */
+  function padTab(dir: -1 | 1): void {
+    const i = TABS.findIndex((d) => d.id === tab);
+    const to = TABS[(i + dir + TABS.length) % TABS.length].id;
+    tabs.select(to, true);
+    markFocus(tabs.button(to));
   }
   /**
    * A tab was picked (`_tabs.ts`): its page shows and the last one hides.
@@ -992,11 +1097,60 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   panel.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') e.stopPropagation();
   });
+  /**
+   * The game pad's arrows in the panel (its keys are the page's own, `isTrusted` false: pad/pad.ts): ← → move a
+   * slider in fives (a press a step; the keys' ones would take the pad twenty presses for a volume), and ↑ ↓ scroll
+   * a long page — the credits — a step where no control lies near that way (else the focus moves, and its box
+   * scrolls it into view: pad/nav.ts).
+   */
+  panel.addEventListener('keydown', (e) => {
+    if (e.isTrusted || !pad.active || !(e.target instanceof HTMLElement)) return;
+    const at = e.target;
+    if (at instanceof HTMLInputElement && at.type === 'range' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      const step = Math.max(5, Number(at.step) || 1);
+      const v = clamp(Math.round(Number(at.value) / step) * step + (e.key === 'ArrowRight' ? step : -step), Number(at.min), Number(at.max));
+      if (String(v) !== at.value) {
+        at.value = String(v);
+        at.dispatchEvent(new Event('input', { bubbles: true }));
+        at.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      e.preventDefault();
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const down = e.key === 'ArrowDown';
+    const room = down ? setBody.scrollHeight - setBody.clientHeight - setBody.scrollTop : setBody.scrollTop;
+    if (room < 1) return;
+    const box = setBody.getBoundingClientRect();
+    const stepPx = setBody.clientHeight * 0.35;
+    const next = moveFocusIn(panel, at, down ? 'down' : 'up')?.getBoundingClientRect();
+    if (next && (down ? next.bottom <= box.bottom + stepPx : next.top >= box.top - stepPx)) return;
+    // (gliding, so the eye keeps its line; at once for reduce motion)
+    setBody.scrollBy({ top: (down ? 1 : -1) * Math.min(room, stepPx), behavior: root.classList.contains('mu-calm') ? 'auto' : 'smooth' });
+    e.preventDefault();
+  });
   // (the story button is on the About page, which is written again with the words: heard through the panel)
   panel.addEventListener('click', (e) => {
     if (!(e.target as Element).closest('.mu-story-go')) return;
     toggleSettings(false, false);
     h.onStory();
+  });
+  // (the About page's "Buy me a coffee" pressed with the game pad: a browser opens a new tab only from a click, a tap
+  // or a key, and may not count a pad's press as one (Chrome does). Then the page stays, and the note over the button
+  // says to click it or gives the address, gold, as the coffee card does (ask.ts `padLink`); the panel shut, it is the
+  // plain note again. Not counted as a support click)
+  panel.addEventListener('click', (e) => {
+    const a = (e.target as Element).closest<HTMLElement>('.mu-coffee');
+    const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    if (!a || e.isTrusted || !ua || ua.isActive) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const note = aboutPage.querySelector<HTMLElement>('.mu-cr-sup-note');
+    if (note) {
+      note.textContent = t('supportPadLink', { url: SUPPORT_URL.replace(/^https?:\/\//, '') });
+      note.classList.add('is-held');
+    }
+    h.onSound('tick');
   });
   // (the coffee buttons open the support page in a new tab: count where from)
   const countSupport = (e: MouseEvent) => {
@@ -1007,6 +1161,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   // (the corner's coffee asks first, with a card: _support.ts)
   const support = createSupportCard(root, { sound: (s) => h.onSound(s) });
   coffeeBtn.addEventListener('click', () => {
+    // (and the game pad's ring, which a blur alone leaves: pad/nav.ts)
+    if (pad.active) clearMark();
     coffeeBtn.blur();
     support.ask();
     if (isPostHogConfigured) posthog.capture('support_opened');
@@ -1152,14 +1308,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
 
   const reporting = () => document.body.classList.contains('reporting');
 
-  /** Arrow keys: the nearest shown card that way from the focused one. */
-  function moveFocus(dx: number, dy: number): void {
+  /** Arrow keys: the nearest shown card that way from the focused one (false: none that way). */
+  function moveFocus(dx: number, dy: number): boolean {
     const shown = cards.filter((c) => c.shown);
-    if (!shown.length) return;
+    if (!shown.length) return false;
     const from = cards.find((c) => c.button === document.activeElement) ?? (selected ? cardById.get(selected) : undefined);
     if (!from || !from.shown) {
       (shown.find((c) => c.place.id === 'sanctuary') ?? shown[0]).button.focus();
-      return;
+      return true;
     }
     let best: Card | null = null;
     let bestCost = Infinity;
@@ -1180,6 +1336,78 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       best.button.focus();
       hoverSound();
     }
+    return !!best;
+  }
+
+  // ── The game pad (pad/pad.ts) ────────────────────────────────────────────
+  // The map screen is the pad's base: its arrows and ✕ ○ come as the keys (above and below: the cards' arrows, Enter
+  // picks, Esc goes back); ✕ with nothing in focus, and an arrow no key handler took, start from `padFirst`. Options
+  // opens or shuts the settings anywhere (also roaming, and over a menu). A control the focus moves to while the pad
+  // is in use shows the ring (pad/nav.ts `markFocus`), however it moved. Shots show the pad's buttons (`pad=ps`) but
+  // take no pad.
+  /** The corner's buttons, left to right: the pad's arrows reach them too (the keys: Tab). */
+  const cornerBtns = [coffeeBtn, creditsBtn, gearBtn];
+  /** Where the pad starts on the map: the picked place's card, else Angkor Wat's, else any shown. */
+  function padFirst(): HTMLElement | null {
+    const c = (selected ? cardById.get(selected) : undefined) ?? cardById.get('sanctuary');
+    return c?.shown ? c.button : (cards.find((k) => k.shown)?.button ?? null);
+  }
+  /** A pad's arrow on a corner button: along them, or down to the nearest card under them; up, nothing (true: it was on one). */
+  function padCorner(at: HTMLElement | null, dx: number, dy: number): boolean {
+    const i = cornerBtns.indexOf(at as HTMLButtonElement);
+    if (i < 0 || !at) return false;
+    let to: HTMLElement | null = null;
+    if (dx) to = cornerBtns[i + dx] ?? null;
+    else if (dy > 0) {
+      const r = at.getBoundingClientRect();
+      const x = (r.left + r.right) / 2;
+      const far = (c: Card) => Math.hypot(c.cx - x, c.cy - r.bottom);
+      let best: Card | null = null;
+      for (const c of cards) if (c.shown && c.cy > r.bottom && (!best || far(c) < far(best))) best = c;
+      to = best?.button ?? null;
+    }
+    if (to) {
+      to.focus({ preventScroll: true });
+      hoverSound();
+    }
+    return true;
+  }
+  /** A pad's arrow up or right from a card with no card that way: the corner's nearest button that way. */
+  function padToCorner(dx: number, dy: number): void {
+    const from = document.activeElement;
+    if (!(from instanceof HTMLElement) || !pinsNav.contains(from) || dx < 0 || dy > 0) return;
+    const to = moveFocusIn(corner, from, dy < 0 ? 'up' : 'right');
+    if (!to) return;
+    to.focus({ preventScroll: true });
+    hoverSound();
+  }
+  if (!shot) {
+    pad.setBase({
+      root,
+      first: padFirst,
+      // (○ where Esc did nothing: the overview, nothing picked: the card in focus lets go)
+      back: () => {
+        const at = document.activeElement;
+        if (!(at instanceof HTMLElement) || !root.contains(at)) return;
+        clearMark();
+        at.blur();
+      },
+    });
+    pad.onPress(
+      'start',
+      () => {
+        const b = document.body.classList;
+        // (not over the story, the loading screen, a bug report, or once an expedition begins)
+        if (begun || b.contains('st-on') || b.contains('map-waiting') || reporting()) return false;
+        if (settingsOpen) toggleSettings(false);
+        else panelButton(false);
+      },
+      { always: true },
+    );
+    root.addEventListener('focusin', (e) => {
+      const at = e.target;
+      if (pad.active && at instanceof HTMLElement && at !== root && !at.classList.contains('pad-focus')) markFocus(at);
+    });
   }
 
   addEventListener('keydown', (e) => {
@@ -1204,8 +1432,12 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const dir = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[e.key];
     if (!dir || begun) return;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || panel.contains(t))) return;
+    // (the game pad's arrows: the cards are the base's; a menu or card over them (pad.ts layers) moves in itself)
+    const fromPad = !e.isTrusted && pad.active;
+    if (fromPad && pad.inMenu) return;
     e.preventDefault();
-    moveFocus(dir[0], dir[1]);
+    if (fromPad && padCorner(t, dir[0], dir[1])) return;
+    if (!moveFocus(dir[0], dir[1]) && fromPad) padToCorner(dir[0], dir[1]);
   });
 
   // A click (not a drag) on the empty map: close the settings, else go back.
@@ -1306,6 +1538,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     }
     // (opening the panel gave a tab the focus: a shot shows the panel at rest, without the keyboard's ring)
     (document.activeElement as HTMLElement | null)?.blur();
+    // (and the game pad's ring, with `pad=ps|xbox`)
+    clearMark();
     if (scrollGroup) {
       tabs.select(GROUP_TAB[scrollGroup] ?? tab);
       // (again once the web fonts are in: the words change size)

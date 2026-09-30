@@ -14,7 +14,8 @@ import { CARRY_MAX, nameOf, riel, type Purse } from './_shopPurse';
  *   he carries something. 6, a click or a tap eats or drinks it;
  * - **the explorer menu's "In my bag"** (I, or his face on the tool bar):
  *   the purse, and each thing he carries as a button (a tap eats or drinks
- *   that one) — the touch player's way to it.
+ *   that one) — the touch player's way to it, and the game pad's (△, then
+ *   ✕ on one).
  */
 export interface ShopBag {
   /** The tool bar's slot (tools.ts puts it after the selfie phone's). */
@@ -170,6 +171,8 @@ function injectStyle(): void {
     .rtb-slot.by-slot.is-pop .rtb-bg { box-shadow: 0 0 calc(12 * var(--px)) rgba(255, 176, 40, 0.55); }
     @keyframes by-bag { 25% { transform: translateY(calc(-5 * var(--px))) scale(1.08); } }
     body.roam-touch .by-slot-n { font-size: 11px; }
+    /* (no pad button of its own: with the game pad, the explorer menu's "In my bag") */
+    body.pad-on .by-slot kbd { display: none; }
 
     /* In my bag (the explorer menu). */
     .by-sec-purse { display: flex; align-items: center; gap: calc(6 * var(--px)); margin-top: calc(-2 * var(--px)); font: 700 calc(13 * var(--px)) / 1 var(--mu-display); color: var(--mu-gold-hi); }
@@ -185,6 +188,8 @@ function injectStyle(): void {
     .by-bagb:hover, .by-bagb:focus-visible { color: var(--mu-ink); }
     .by-bagb:hover .by-bagb-bg { background: rgba(255, 244, 222, 0.1); }
     .by-bagb:hover .by-bagb-bg::after { background: var(--mu-line-hi); }
+    /* (the game pad's ring, as the explorer menu's buttons: _explorerMenu.ts) */
+    .by-bagb.pad-focus .by-bagb-bg::after { background: rgba(255, 244, 214, 0.95); }
     .by-bagb:active { transform: scale(0.96); }
     body.roam-touch .by-bagb { min-height: 44px; gap: 7px; padding: 4px 8px; white-space: normal; line-height: 1.15; }
     body.roam-touch .by-sec .rxm-grid { grid-template-columns: 1fr; }

@@ -3,6 +3,7 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { clamp, lerp, mixPose, smoothstep, type Pose } from '../../character/pose';
 import { JOINTS } from '../../character/skeleton';
 import { OVERVIEW, placeById } from '../layout';
+import { pad } from '../pad/pad';
 import { roamHeading } from '../terrain/views';
 import { t } from '../ui/lang';
 import { Canopy, OPEN_TIME, type CanopyPose } from './_canopy';
@@ -479,6 +480,8 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
     const ex = body.explorer;
     landed = 0;
     runV = water ? 0 : Math.min(hs, 5);
+    // (the pad: a soft landing, firmer the faster he sinks; on water the boat's own, boat.ts)
+    if (!water) pad.rumble('land', 0.45 - vy / 8);
     vy = 0;
     body.grounded = true;
     release(ex);

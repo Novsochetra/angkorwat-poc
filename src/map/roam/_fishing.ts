@@ -4,6 +4,8 @@ import { mulberry32 } from '../../voxel/random';
 import { len2 } from '../fauna/_len';
 import type { HeightField } from '../heightfield';
 import { LAKES } from '../layout';
+import { padName } from '../pad/glyphs';
+import { pad } from '../pad/pad';
 import { lang, num, t } from '../ui/lang';
 import { activeJournal } from './_book';
 import { SPECIES_BY_KIND } from './_bookData';
@@ -540,6 +542,7 @@ export function createFishing(): Fishing {
   function landed(ctx: RoamCtx): void {
     const f = FISH[kind];
     ctx.sound('catch', 0.9);
+    pad.rumble('catch');
     ctx.hud.toast(t('fiCaught', { km: f.km, say: f.say, cm: num(cm) }));
     newPage = activeJournal()?.record(kind, ctx.body.pos.x, ctx.body.pos.z, cm) ?? false;
     const ex = ctx.body.explorer;
@@ -653,7 +656,9 @@ export function createFishing(): Fishing {
     frameTo(ctx, 'side');
     if (!howToShown) {
       howToShown = true;
-      hud.toast(t(document.body.classList.contains('roam-touch') ? 'fiHowToTouch' : 'fiHowTo'));
+      // (a game pad in use: its buttons, by the names the pad in hand has, pad.ts)
+      if (pad.active) hud.toast(t('fiHowToPad', { strike: padName('down', pad.kind), jump: padName('south', pad.kind), use: padName('west', pad.kind) }));
+      else hud.toast(t(document.body.classList.contains('roam-touch') ? 'fiHowToTouch' : 'fiHowTo'));
     }
   }
 
@@ -754,6 +759,7 @@ export function createFishing(): Fishing {
         for (const n of nibbles)
           if (waitT >= n && waitT - dt < n) {
             dip = 0.25;
+            pad.rumble('tick', 0.6);
             boat.wake.ring(fp.x, level + 0.03, fp.z, 0.04, 0.32 * k, 0.9, 0.22);
           }
         if (waitT >= nextBite) {
@@ -762,6 +768,7 @@ export function createFishing(): Fishing {
           cm = catchLength(kind, rnd());
           floatYaw = rnd() * Math.PI * 2;
           ctx.sound('bite', 1);
+          pad.rumble('bite');
           boat.wake.ring(fp.x, level + 0.03, fp.z, 0.06, 0.9 * k, 1.3, 0.45);
           boat.wake.ring(fp.x, level + 0.03, fp.z, 0.04, 0.5 * k, 0.9, 0.35);
           go('bite');

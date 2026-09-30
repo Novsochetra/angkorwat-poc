@@ -1510,6 +1510,70 @@
   transform: translateX(calc(22 * var(--px)));
 }
 
+/* The Controller group (Play tab; ui.ts `fillPad`): the game pad in hand by the heading, its vibration switch close
+ * under it, then its buttons on the map and on foot, two to a row, each drawn as that pad has it (pad/glyphs.ts)
+ * at the right of a cell as wide as the widest pair, by its word. */
+.mu-pad-state {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6 * var(--px));
+  font-size: calc(12.5 * var(--px));
+  font-weight: 700;
+  color: var(--mu-gold-hi);
+  white-space: nowrap;
+}
+
+.mu-pad-state .mu-icon {
+  width: calc(17 * var(--px));
+  height: calc(17 * var(--px));
+}
+
+.mu-pad-group > .mu-set-row {
+  margin-top: calc(2 * var(--px));
+}
+
+.mu-pad-map > .mu-set-note {
+  margin-top: calc(10 * var(--px));
+}
+
+.mu-pad-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(6 * var(--px)) calc(12 * var(--px));
+  margin: calc(8 * var(--px)) 0 calc(2 * var(--px));
+  padding: 0;
+  list-style: none;
+  font-size: calc(12.5 * var(--px));
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--mu-ink2);
+}
+
+.mu-pad-list li {
+  display: flex;
+  align-items: center;
+  gap: calc(7 * var(--px));
+  min-width: 0;
+}
+
+.mu-pad-keys {
+  flex: none;
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: calc(2 * var(--px));
+  min-width: calc(48 * var(--px));
+  font-size: calc(14 * var(--px));
+}
+
+/* (the shoulder buttons' pills a little lower, so a pair fits the cell) */
+.mu-pad-keys :is(.pad-g-l1, .pad-g-r1) {
+  height: 1.3em;
+}
+
+:lang(km) .mu-pad-list {
+  font-size: calc(13 * var(--px));
+}
+
 /* "Our story": watch the story again (story/story.ts). */
 .mu-watch {
   flex: none;
@@ -1643,6 +1707,11 @@
   line-height: 1.45;
   color: var(--mu-ink2);
   text-wrap: pretty;
+}
+
+/* (the game pad pressed "Buy me a coffee", which the browser would not open: the note says to click it, ui.ts) */
+.mu-cr-sup-note.is-held {
+  color: var(--mu-gold-hi);
 }
 
 .mu-cr-sup .mu-coffee {
@@ -1800,6 +1869,13 @@
   display: grid;
   place-items: center;
   padding: 16px;
+}
+
+/* (over the story, whose words stand in the middle: at the top, clear of them; a game pad's Start can leave the
+ * sound held as the story opens, audio.ts) */
+body.st-on .mu-wake-layer {
+  place-items: start center;
+  padding-top: max(20px, calc(26 * var(--px)));
 }
 
 .mu-wake {

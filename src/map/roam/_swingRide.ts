@@ -3,6 +3,7 @@ import type { Pose } from '../../character/pose';
 import { JOINTS } from '../../character/skeleton';
 import { BODY_UNIT_M } from '../../world/scale';
 import { swingSpot, type SwingSpot } from '../jungle/_swing';
+import { pad } from '../pad/pad';
 import { t } from '../ui/lang';
 import { solveArm } from './_boatPoses';
 import { angleDiff } from './followCam';
@@ -149,6 +150,8 @@ export function createSwingRide(): SwingRide {
       const w = Math.sqrt(9.8 / s.length);
       phase += w * dt;
       const a = amp * Math.sin(phase);
+      // (the pad: a faint tick at the bottom of each swing out, where the ropes pull hardest; none braking)
+      if (on >= 1 && off < 0 && !braking && Math.sin(phase - w * dt) < 0 && Math.sin(phase) >= 0) pad.rumble('tick', amp / AMP / 2);
       s.angle = a;
       seatAt(s, a, seat);
       // Facing out over the view.

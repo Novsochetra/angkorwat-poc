@@ -12,6 +12,8 @@ import { t } from '../ui/lang';
  * or "Keep exploring") stays, as a stray second Esc must never leave. While
  * it is open the explorer stands still (roam.ts reads `open`). The card and
  * its keys are ui/ask.ts, with the title card's temple beside the question.
+ * With a game pad: ○ (back while roaming) asks, ○ again stays, ✕ leaves; the
+ * d-pad moves between the two buttons (ask.ts).
  *
  * Shots: `leave=1` shows it (roaming).
  */

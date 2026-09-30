@@ -64,6 +64,8 @@ export interface AlbumText {
   date?(time: number): string | undefined;
   /** The keys named in the empty album (the game's: Z, Y). */
   keys?: { camera: string; selfie: string };
+  /** The game pad's buttons for those keys (glyph names, map/pad/glyphs.ts: e.g. `left`, `right`): a page with the pad's glyphs shows them instead while a pad is in use. */
+  padKeys?: { camera: string; selfie: string };
 }
 
 /** The maker's mark's fonts (px: the size on a 720-pixel-high photo, scaled with it). */
@@ -73,6 +75,18 @@ const MARK_BY_FONT = (px: number) => `600 ${px}px 'Nunito Sans', 'Kantumruy Pro'
 const EN_TEXT: AlbumText = {
   word: (key, vars = {}) => ALBUM_WORDS_EN[key].replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? ''),
 };
+
+/** Each album by its box (`.photo-album`). */
+const ALBUMS = new WeakMap<Element, PhotoAlbum>();
+
+/**
+ * The album whose box `el` is in (null: none). A page's own glue for it
+ * finds it from there (the map's game pad: map/roam/_bookUi.ts).
+ */
+export function albumOf(el: Element): PhotoAlbum | null {
+  const box = el.closest('.photo-album');
+  return (box && ALBUMS.get(box)) ?? null;
+}
 
 /**
  * The explorer's photos: the viewfinder drawn over the view while his camera
@@ -108,6 +122,8 @@ export class PhotoAlbum {
   private shown: Photo | null = null;
   private printTimer = 0;
   private audio: AudioContext | null = null;
+  /** Told when it opens or shuts (`onToggle`). */
+  private readonly toggles = new Set<(open: boolean) => void>();
 
   constructor(private readonly text: AlbumText = EN_TEXT) {
     this.finder.innerHTML = `<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
@@ -144,8 +160,25 @@ export class PhotoAlbum {
     this.view.hidden = true;
 
     document.body.append(this.finder, this.selfie, this.flash, this.print, this.button, this.album);
+    ALBUMS.set(this.album, this);
     this.relabel();
     void this.load();
+  }
+
+  /** The album's box (`.photo-album`: its backdrop, with the panel in it). */
+  get el(): HTMLElement {
+    return this.album;
+  }
+
+  /** Tell `fn` when the album opens or shuts (a page's own controls take it meanwhile: the map's game pad). Returns: stop telling. */
+  onToggle(fn: (open: boolean) => void): () => void {
+    this.toggles.add(fn);
+    return () => this.toggles.delete(fn);
+  }
+
+  /** Is one photo open (not all of them)? */
+  get photoShown(): boolean {
+    return !this.view.hidden;
   }
 
   /** Fill the album's words (again, when the page's language changes). */
@@ -242,16 +275,20 @@ export class PhotoAlbum {
   }
 
   openAlbum(photo?: Photo): void {
+    const was = this.isOpen;
     this.isOpen = true;
     this.album.hidden = false;
     this.print.classList.remove('show');
     if (photo) this.showPhoto(photo);
     else this.showGrid();
+    if (!was) for (const fn of this.toggles) fn(true);
   }
 
   closeAlbum(): void {
+    const was = this.isOpen;
     this.isOpen = false;
     this.album.hidden = true;
+    if (was) for (const fn of this.toggles) fn(false);
   }
 
   /** Esc in the album: from one photo back to all of them, then close. */
@@ -278,7 +315,9 @@ export class PhotoAlbum {
     this.grid.replaceChildren();
     if (!this.photos.length) {
       const keys = this.text.keys ?? { camera: 'Z', selfie: 'Y' };
-      this.grid.append(Object.assign(el('p', 'photo-empty'), { innerHTML: this.word('empty', { camera: `<kbd>${keys.camera}</kbd>`, selfie: `<kbd>${keys.selfie}</kbd>` }) }));
+      const pk = this.text.padKeys;
+      const kbd = (key: string, g?: string) => `<kbd${g ? ` data-pad="${g}"` : ''}>${key}</kbd>`;
+      this.grid.append(Object.assign(el('p', 'photo-empty'), { innerHTML: this.word('empty', { camera: kbd(keys.camera, pk?.camera), selfie: kbd(keys.selfie, pk?.selfie) }) }));
       return;
     }
     for (const p of this.photos) {

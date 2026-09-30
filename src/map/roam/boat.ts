@@ -3,6 +3,7 @@ import { hash3 } from '../../voxel/random';
 import { len2 } from '../fauna/_len';
 import type { HeightField, RiverSample } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
+import { pad } from '../pad/pad';
 import type { MapFrame } from '../types';
 import { placeText, t } from '../ui/lang';
 import { JETTY } from '../village/_spots';
@@ -44,6 +45,8 @@ const TURN = 1.15;
 const GRIP = 2.5;
 /** Gravity over a fall (m/s²; a little light, so the drop can be watched). */
 const FALL_G = 16;
+/** The pad bumps as the hull meets a bank or a rock this fast (m/s into it) or faster (drifting onto one: not). */
+const BUMP_AT = 0.8;
 /** Highest bank he steps up onto (m): one land block, as the walker. */
 const STEP_UP = 2.3;
 /** How close the walker must be to a moored boat to board it (m). */
@@ -194,6 +197,13 @@ export function createBoat(field?: HeightField): BoatMode {
   let roll = 0;
   let rollV = 0;
   let pushT = 0;
+  /** When the hull last touched a bank or a rock (clock s). */
+  let touchedAt = -9;
+  /** The pad (pad.ts `rumble`): a bump as the hull meets a bank or a rock at `into` m/s, once (not again while it slides along it). */
+  const bumped = (into: number) => {
+    if (into > BUMP_AT && clock - touchedAt > 0.5) pad.rumble('bump', into / 2.5);
+    touchedAt = clock;
+  };
   /** Speed through the water ahead (m/s) and the current's (m/s), last step (fishing asks). */
   let lastVf = 0;
   let current = 0;
@@ -429,6 +439,7 @@ export function createBoat(field?: HeightField): BoatMode {
     const HL = (BOAT_LENGTH / 2) * s;
     const hit = (x: number, z: number) => HULL.some(([fa]) => blocked(ctx, x + hx * fa * HL, z + hz * fa * HL));
     if (hit(nx, nz) && !hit(body.pos.x, body.pos.z)) {
+      bumped(Math.hypot(body.vel.x, body.vel.z));
       if (!hit(nx, body.pos.z)) {
         nz = body.pos.z;
         body.vel.z = 0;
@@ -565,6 +576,7 @@ export function createBoat(field?: HeightField): BoatMode {
     const ux = nx / nl;
     const uz = nz / nl;
     const vn = body.vel.x * ux + body.vel.z * uz;
+    bumped(-vn);
     if (vn < 0) {
       body.vel.x -= ux * vn * 1.15;
       body.vel.z -= uz * vn * 1.15;
@@ -678,6 +690,8 @@ export function createBoat(field?: HeightField): BoatMode {
     body.vel.set(drop.dx * mean * 0.6, 0, drop.dz * mean * 0.6);
     ctx.sound('splash', Math.min(1, 0.35 + H / 14));
     splash(body.pos.x, level, body.pos.z, Math.min(1.6, 0.5 + H / 12), s);
+    // (the pad: down a river's step a bump, over a fall a landing, a big fall a hard one)
+    pad.rumble(H >= 6 ? 'hard' : H >= 2 ? 'land' : 'bump', 0.5 + H / 10);
   }
 
   /** Out onto the bank; the boat stays tied up where he left it. */
@@ -830,6 +844,8 @@ export function createBoat(field?: HeightField): BoatMode {
       // A boat under him: where the water is open, along the river if the bank is close.
       moored.left = null;
       const w = openWaterNear(body.pos.x, body.pos.z, 12, hb, body.pos.y) ?? { x: body.pos.x, z: body.pos.z, level: r.levelAt(body.pos.x, body.pos.z) ?? body.pos.y };
+      // (how fast he came down into it: a long fall, m/s)
+      const fell = Math.max(0, -body.vel.y);
       level = w.level;
       body.pos.set(w.x, w.level, w.z);
       body.yaw = fitHeading(w.x, w.z, w.level, body.yaw, s);
@@ -849,6 +865,8 @@ export function createBoat(field?: HeightField): BoatMode {
         heave = -0.6 * s;
         ctx.sound('splash', from === 'glide' ? 0.8 : 0.45);
         splash(w.x, w.level, w.z, from === 'glide' ? 1 : 0.6, s);
+        // (the pad: waded in, a bump as the boat comes up under him; down from the air or a long fall, a landing)
+        pad.rumble(from === 'walk' && fell < 14.5 ? 'bump' : 'land', from === 'walk' ? 0.5 + fell / 30 : 0.7);
       }
       ctx.sound('boatIn');
     },
@@ -880,6 +898,7 @@ export function createBoat(field?: HeightField): BoatMode {
             body.explorer.animator.posture = posture;
             heave = -0.12 * s;
             ctx.sound('boatIn');
+            pad.rumble('bump', 0.8);
             wake.ring(boardAt.x, level + 0.05 * s, boardAt.z, 1 * s, 3 * s, 1.8, 0.3, 2.2, body.yaw);
           }
           continue;

@@ -1,6 +1,8 @@
 import { Group } from 'three';
 import type { HeightField } from '../heightfield';
 import { PLACES, type PlaceDef } from '../layout';
+import { markFocus } from '../pad/nav';
+import { pad } from '../pad/pad';
 import type { LaunchSpot } from '../roam/launchSpots';
 import { roamPrefs } from '../roam/prefs';
 import type { MapRoam } from '../roam/roam';
@@ -43,6 +45,12 @@ import { MAP_SPOTS, spotSprite, spotSvg, type MapSpot, type SpotId } from './_mi
  *   capture phase); M, Esc or the close button shut it.
  * - N, or "Nearest glider ramp" on the big map: the nearest ramp (not the
  *   one he stands on) becomes the target, and a banner says how far it is.
+ * - The game pad (pad/pad.ts): Create (or the touchpad) opens the big map,
+ *   R3 heads for the nearest ramp (on foot). The big map is a layer while
+ *   open: the stick or the d-pad move between the places, ramps, villages
+ *   and the balloon (the nearest that way; it starts on the target, else
+ *   by "You are here"), ✕ sets the one in focus as the target, R3 the
+ *   nearest ramp, ○ or Create shut it.
  * - The mini-map setting (roam/prefs.ts `miniMap`, `minimap=` in shots):
  *   `button`, the land goes and only the caption stays ("M  Map", or the
  *   target and how far it is), still a button for the big map; `hide`,
@@ -132,8 +140,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       <span class="mm-face"><canvas class="mm-canvas"></canvas></span>
       <span class="mm-cap">
         <span class="mm-cap-to">${ICON.pin}<b></b><em></em></span>
-        <span class="mm-cap-map"><kbd>M</kbd><span data-t="map"></span></span>
-        ${ramps.length ? '<span class="mm-cap-ramp"><kbd>N</kbd><span data-t="mmRamp"></span></span>' : ''}
+        <span class="mm-cap-map"><kbd data-pad="select">M</kbd><span data-t="map"></span></span>
+        ${ramps.length ? '<span class="mm-cap-ramp"><kbd data-pad="r3">N</kbd><span data-t="mmRamp"></span></span>' : ''}
       </span>
       <span class="mm-tip" aria-hidden="true"></span>
     </button>
@@ -170,8 +178,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       <header class="mm-head">
         <span class="mm-head-icon">${ICON.temple}</span>
         <div class="mm-head-text"><h2 id="mm-big-title" data-t="mmTitle"></h2><p data-t="mmSub"></p></div>
-        <button type="button" class="mm-find mu-frame mu-sm" data-t-aria="mmNearest"${ramps.length ? '' : ' hidden'}><span class="mu-bg"></span><span class="mu-focus"></span><span class="mu-glow"></span>${wingSvg('mm-find-icon')}<span class="mm-find-text" data-t="mmNearest"></span><kbd>N</kbd></button>
-        <button type="button" class="mm-x mu-frame mu-sm" data-t-aria="mmClose"><span class="mu-bg"></span><span class="mu-focus"></span>${ICON.close}<kbd>M</kbd></button>
+        <button type="button" class="mm-find mu-frame mu-sm" data-t-aria="mmNearest"${ramps.length ? '' : ' hidden'}><span class="mu-bg"></span><span class="mu-focus"></span><span class="mu-glow"></span>${wingSvg('mm-find-icon')}<span class="mm-find-text" data-t="mmNearest"></span><kbd data-pad="r3">N</kbd></button>
+        <button type="button" class="mm-x mu-frame mu-sm" data-t-aria="mmClose"><span class="mu-bg"></span><span class="mu-focus"></span>${ICON.close}<kbd data-pad="east">M</kbd></button>
       </header>
       <div class="mm-view">
         <canvas class="mm-land"></canvas>
@@ -648,6 +656,32 @@ export function createMinimap(d: MinimapDeps): Minimap {
   }
 
   // ── Big map ──────────────────────────────────────────────────────────────
+  /** The game pad's layer while the big map is open (pad/pad.ts). */
+  let padClose: (() => void) | null = null;
+
+  /** The marks a pad can move between (a place, a ramp, a village, the balloon), as shown now. */
+  const marks = () => [...bigWrap.querySelectorAll<HTMLButtonElement>('.mm-place, .mm-ramp')].filter((b) => !b.hidden && b.checkVisibility());
+  /** Where the pad's focus starts on the big map: the target's mark, else the one nearest "You are here". */
+  function padFirst(): HTMLElement | null {
+    const all = marks();
+    const on = all.find((b) => b.classList.contains('is-target'));
+    if (on) return on;
+    const y = you.getBoundingClientRect();
+    const yx = y.left + y.width / 2;
+    const yy = y.top + y.height / 2;
+    let best: HTMLElement | null = null;
+    let bestD = Infinity;
+    for (const b of all) {
+      const r = b.getBoundingClientRect();
+      const dd = Math.hypot(r.left + r.width / 2 - yx, r.top + r.height / 2 - yy);
+      if (dd < bestD) {
+        bestD = dd;
+        best = b;
+      }
+    }
+    return best;
+  }
+
   function openBig(on: boolean): void {
     if (on && (!shown || bigOpen)) return;
     if (!on && !bigOpen) return;
@@ -670,7 +704,22 @@ export function createMinimap(d: MinimapDeps): Minimap {
       placeLabels();
       drawBig();
       if (!shot) big.focus({ preventScroll: true });
+      // (the game pad: a layer while it is open; R3 the nearest ramp, as N)
+      const shut = () => openBig(false);
+      padClose = pad.openLayer(big, {
+        first: padFirst,
+        back: shut,
+        buttons: {
+          select: shut,
+          touchpad: shut,
+          r3: () => {
+            findRamp();
+          },
+        },
+      });
     } else {
+      padClose?.();
+      padClose = null;
       (document.activeElement as HTMLElement | null)?.blur?.();
       acc = 1;
     }
@@ -1085,6 +1134,15 @@ export function createMinimap(d: MinimapDeps): Minimap {
       if (bigOpen) {
         if (ev.code === 'KeyB' || ev.key === 'Tab') return;
         ev.stopPropagation();
+        // (the game pad's arrows and ✕, pad/pad.ts: an arrow moves its focus to the nearest mark that way, unused here;
+        // with the map itself in focus — opened before the pad was in hand — they start it on the first mark)
+        if (!ev.isTrusted && (ev.key.startsWith('Arrow') || ev.key === 'Enter')) {
+          if (ev.target !== big) return;
+          ev.preventDefault();
+          const to = padFirst();
+          if (to) markFocus(to);
+          return;
+        }
         if (ev.code === 'KeyM' || ev.key === 'Escape') {
           ev.preventDefault();
           if (!ev.repeat) openBig(false);
@@ -1136,6 +1194,21 @@ export function createMinimap(d: MinimapDeps): Minimap {
   }
   fillWords();
   onLang(fillWords);
+
+  // The game pad while roaming (no menu open): Create or the touchpad open the big map, R3 heads for the nearest ramp on foot (as N).
+  const padBig = () => {
+    if (!shown) return false;
+    openBig(true);
+    return true;
+  };
+  pad.onPress('select', padBig);
+  pad.onPress('touchpad', padBig);
+  pad.onPress('r3', () => {
+    const cls = document.body.classList;
+    if (!shown || roam.mode !== 'walk' || !ramps.length || cls.contains('photo-mode') || cls.contains('selfie-mode')) return false;
+    findRamp();
+    return true;
+  });
 
   // ── Frame ────────────────────────────────────────────────────────────────
   // (the target from the URL once roaming shows: `target=ramp` looks from where he is then)
@@ -1373,7 +1446,6 @@ function injectStyle(): void {
       border: 0; background: none; color: var(--mu-ink); cursor: pointer; outline: none; }
     .mm-x .mu-icon { width: calc(18 * var(--px)); height: calc(18 * var(--px)); }
     .mm-x:hover { --mu-edge: var(--mu-line-hi); }
-    :is(.mm-place, .mm-ramp):focus-visible .mm-place-label { outline: 2px solid rgba(255, 244, 214, 0.95); outline-offset: 2px; }
     .mm-view { position: relative; width: min(calc(100vw - 60px), calc((100vh - 170 * var(--px) - 40px) * var(--mm-aspect)), calc(1060 * var(--px)));
       aspect-ratio: var(--mm-aspect); clip-path: var(--mm-face); }
     .mm-view::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 calc(40 * var(--px)) rgba(4, 8, 16, 0.5); }
@@ -1425,6 +1497,12 @@ function injectStyle(): void {
     .mm-ramp.is-target .mm-place-label b { color: var(--mu-ink); }
     .mm-ramp:is(.is-target, .is-near)::before { content: ''; position: absolute; left: 50%; top: 50%; width: 150%; aspect-ratio: 1; border-radius: 50%;
       transform: translate(-50%, -50%); border: calc(2 * var(--px)) solid rgba(255, 213, 74, 0.8); animation: mm-ping 1.8s ease-out infinite; pointer-events: none; }
+    /* The focus (the keys' or the game pad's), over the target's gold: a light ring inside the name's tag (an outline would be cut off by its
+       stepped corners), and round a badge. */
+    :is(.mm-place, .mm-ramp):focus-visible { z-index: 4; }
+    :is(.mm-place, .mm-ramp):focus-visible .mm-place-label { background: rgba(38, 44, 58, 0.95); box-shadow: inset 0 0 0 calc(2 * var(--px)) rgba(255, 244, 214, 0.95); }
+    :is(.mm-place, .mm-ramp):focus-visible .mm-place-label b { color: var(--mu-ink); }
+    .mm-ramp:focus-visible .mm-ramp-badge { box-shadow: inset 0 0 0 calc(2 * var(--px)) rgba(255, 244, 214, 0.95), 0 0 calc(10 * var(--px)) rgba(255, 244, 214, 0.45), 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35); }
     .mm-ramp.is-near:not(.is-target)::before { border-color: rgba(255, 244, 222, 0.6); animation-duration: 2.2s; }
     .mm-beacon { position: absolute; width: calc(10 * var(--px)); height: calc(10 * var(--px)); transform: translate(-50%, -50%) rotate(45deg); display: none;
       background: #ffd54a; box-shadow: 0 0 0 calc(1.5 * var(--px)) rgba(40, 22, 4, 0.9), 0 0 calc(10 * var(--px)) rgba(255, 180, 40, 0.9); }

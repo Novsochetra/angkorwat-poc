@@ -1,6 +1,7 @@
 import { Group, Vector3 } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { PlaceDef } from '../layout';
+import { pad } from '../pad/pad';
 import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UISound } from '../types';
 import { followNearFade, installNearFade } from './_nearFade';
 import { createBalloon, type BalloonInfo } from './balloon';
@@ -250,6 +251,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     if (prev !== 'overview') handlers[prev].exit(rctx, next);
     mode = next;
     controls.enabled = next !== 'overview';
+    // (the game pad drives him while he roams; in the overview it works the map screen: pad.ts)
+    pad.setRoaming(next !== 'overview');
     controls.clear();
     hud.setMode(next);
     deps.onMode(next);
@@ -362,6 +365,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       if (mode === 'overview' || leaving) return;
       leaving = true;
       controls.enabled = false;
+      // (on the way out the pad is the map screen's again)
+      pad.setRoaming(false);
       await hud.fade(1, 0.45);
       switchTo('overview');
       explorer.animator.posture = null;
@@ -543,6 +548,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     placeAt(body.pos, body.yaw, m);
     mode = m;
     controls.enabled = true;
+    pad.setRoaming(true);
     hud.setMode(mode);
     deps.onMode(mode);
     handlers[mode].enter(rctx, 'overview');

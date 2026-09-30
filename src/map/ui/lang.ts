@@ -122,6 +122,32 @@ const WORDS = {
   // (back on the page, the browser still holds the sound: the card that asks for a tap, ui.ts)
   soundHeld: { km: 'សំឡេងបានផ្អាក', en: 'The sound is paused' },
   soundHeldNote: { km: 'ប៉ះទីនេះដើម្បីបើកសំឡេងវិញ', en: 'Tap here to turn it back on' },
+  // (game pad: the held card's note while the pad is in use — a browser may not count a pad's press as the click the
+  // sound needs, a key or a click it does —, the Controller group on the Play tab (ui.ts), the story's hint (story.ts))
+  soundHeldPadNote: { km: 'ចុចគ្រាប់ចុចណាមួយ ឬចុចទីនេះ ដើម្បីបើកសំឡេង', en: 'Press any key or click here to turn it on' },
+  padHead: { km: 'ឧបករណ៍បញ្ជាហ្គេម', en: 'Controller' },
+  padRumble: { km: 'ការញ័រ', en: 'Vibration' },
+  padRumbleNote: { km: 'ឧបករណ៍បញ្ជាញ័រ៖ ពេលចុះចត ពេលត្រីស៊ីនុយ និងពេលផ្គរលាន់', en: 'The controller shakes: landings, a fish biting, thunder' },
+  padNone: { km: 'ឧបករណ៍បញ្ជា PS5 ឬ Xbox ក៏ប្រើបានដែរ៖ ភ្ជាប់វា រួចចុចប៊ូតុងណាមួយ', en: 'A PS5 or Xbox controller works too: connect it and press a button' },
+  padOther: { km: 'បានភ្ជាប់', en: 'Connected' },
+  padOnMap: { km: 'លើផែនទី', en: 'On the map' },
+  padOnFoot: { km: 'ពេលដើរ', en: 'On foot' },
+  padPlaces: { km: 'ទីកន្លែង', en: 'Places' },
+  padPick: { km: 'ជ្រើសរើស', en: 'Pick' },
+  padBack: { km: 'ត្រឡប់ក្រោយ', en: 'Back' },
+  padTabs: { km: 'ផ្ទាំង', en: 'Tabs' },
+  padWalk: { km: 'ដើរ', en: 'Walk' },
+  padRun: { km: 'រត់', en: 'Run' },
+  padLook: { km: 'មើលជុំវិញ', en: 'Look around' },
+  padZoom: { km: 'ពង្រីក · បង្រួម', en: 'Zoom' },
+  padJump: { km: 'លោត', en: 'Jump' },
+  padUse: { km: 'ប្រើ', en: 'Use' },
+  padMenu: { km: 'ម៉ឺនុយអ្នករុករក', en: 'Explorer menu' },
+  padToMap: { km: 'ត្រឡប់ទៅផែនទី', en: 'Back to the map' },
+  padTools: { km: 'ភ្លើង កាមេរ៉ា សំពះ', en: 'Light, camera, greet' },
+  padBigMap: { km: 'ផែនទីធំ', en: 'Big map' },
+  padRamp: { km: 'ជម្រាលខ្លែងហោះ', en: 'Glider ramp' },
+  stHintPad: { km: 'ដើម្បីបន្ត', en: 'to continue' },
   language: { km: 'ភាសា', en: 'Language' },
   m: { km: 'ម', en: 'm' },
   km: { km: 'គ.ម', en: 'km' },
@@ -137,6 +163,9 @@ const WORDS = {
   // (the corner's coffee button asks with a card: ui/_support.ts)
   supportLong: { km: 'បើអ្នកចូលចិត្តមរតកអង្គរ សូមទិញកាហ្វេមួយកែវឱ្យខ្ញុំ។ វាជួយខ្ញុំបន្តកសាងពិភពនេះ។', en: 'If you enjoy Angkor Heritage, buy me a coffee. It helps me keep building this world.' },
   supportLater: { km: 'ពេលក្រោយ', en: 'Maybe later' },
+  // (game pad: its press on "Buy me a coffee" cannot open a new tab — a browser opens one only from a click, a tap or a
+  // key —, so the card stays and says so: ui/ask.ts, _support.ts)
+  supportPadLink: { km: 'កម្មវិធីរុករកបើកទំព័រនេះបាន លុះត្រាតែអ្នកចុចដោយកណ្ដុរ ឬប៉ះលើអេក្រង់៖ សូមចុចប៊ូតុងពណ៌មាស ឬចូលទៅកាន់ {url}', en: 'Your browser opens this page only from a click or a tap: click the gold button, or visit {url}' },
   // (the sound on / off switch, first in the settings' sound part: ui.ts)
   soundOn: { km: 'បើកសំឡេង', en: 'Sound on' },
   stSkip: { km: 'រំលង', en: 'Skip' },
@@ -217,6 +246,8 @@ const WORDS = {
   rStepOut: { km: 'ចេញពីកន្ត្រក', en: 'Step out' },
   // The parked balloon filling up before the ride (roam/balloon.ts).
   rInflating: { km: 'កំពុងបំប៉ោងបាឡុង · Space ឲ្យលឿន · Esc ឈប់', en: 'Inflating the balloon · Space faster · Esc stop' },
+  // (game pad: the same while the pad is in use, in the prompt's "key  what" form: hud.ts draws Space as ✕, Esc as ○)
+  rInflatingPad: { km: 'កំពុងបំប៉ោងបាឡុង  ·  Space  ឲ្យលឿន  ·  Esc  ឈប់', en: 'Inflating the balloon  ·  Space  faster  ·  Esc  stop' },
   rToBank: { km: 'ចែវចូលជិតច្រាំងបន្តិចទៀត', en: 'Paddle closer to the bank' },
   rMist: { km: 'អ័ព្ទក្រាស់ពេក មិនអាចទៅមុខទៀតបានទេ', en: 'The mist is too thick to go further' },
   rWindBack: { km: 'ខ្យល់បក់នាំអ្នកត្រឡប់ទៅរកប្រាសាទវិញ', en: 'The wind turns you back towards the temples' },
@@ -245,6 +276,16 @@ const WORDS = {
     km: 'បាឡុងខ្យល់ក្ដៅ៖ ទាញដងបញ្ជាមកក្រោយ ឬសង្កត់ «លោត» ដើម្បីបាញ់ភ្លើង (ទាញហួសរង្វង់៖ ភ្លើងទាំងពីរ) · រុញទៅមុខដើម្បីបើករន្ធខ្យល់ · ទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ខ្យល់នាំអ្នកទៅ',
     en: 'Hot air balloon: pull the stick back or hold Jump for the burner (past its ring: both burners) · push to vent · left / right turns · the wind carries you',
   },
+  // (game pad: the same while the pad is in use; the left stick ← → ↓ (pulled back) ↑ (pushed); {jump} ✕ / A,
+  // {fast} R2 / RT: the pad's own names, glyphs.ts `padName`)
+  rBalloonPad: {
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ ដងបញ្ជា ← → បត់ · ↓ ឬ {jump} ឡើង (បាញ់ភ្លើង) · ↑ ចុះ (បើករន្ធខ្យល់) · {fast} លឿន · វារក្សាកម្ពស់ដោយខ្លួនឯង',
+    en: 'Hot air balloon: stick ← → turn · ↓ or {jump} climb (the burner) · ↑ descend (the vent) · {fast} fast · it holds its height by itself',
+  },
+  rBalloonRealPad: {
+    km: 'បាឡុងខ្យល់ក្ដៅ៖ ដងបញ្ជា ↓ / {jump} បាញ់ភ្លើងដើម្បីឡើង ({fast}៖ ភ្លើងទាំងពីរ) · ↑ បើករន្ធខ្យល់ដើម្បីចុះ · ← → បត់ · ខ្យល់នាំអ្នកទៅ ហើយប្ដូរទិសតាមកម្ពស់',
+    en: 'Hot air balloon: stick ↓ / {jump} burner (climb; with {fast} both burners) · ↑ vent (sink) · ← → turn · the wind carries you, and turns with height',
+  },
   // The hang glider's keys on the first flight (hangGlider.ts): easy flying, the real glider; on touch the stick and Jump.
   rGliderKeys: { km: 'ខ្លែងហោះ៖ A / D បត់ · S ឡើង · W ចុះ · Shift លឿន · Space លែងដៃ', en: 'Hang glider: A / D turn · S climb · W dive · Shift fast · Space let go' },
   rGliderTouch: { km: 'ខ្លែងហោះ៖ ដងបញ្ជាទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ទាញមកក្រោយដើម្បីឡើង រុញទៅមុខដើម្បីចុះ · «លោត» ដើម្បីលែងដៃ', en: 'Hang glider: stick left / right turns · pull back to climb, push to dive · Jump lets go' },
@@ -256,6 +297,13 @@ const WORDS = {
     km: 'ខ្លែងហោះ៖ ដងបញ្ជាទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · រុញទៅមុខឱ្យលឿន ទាញមកក្រោយឱ្យយឺត · ឡើងកម្ពស់តាមច្រាំងថ្មចោទ ឬហោះវិលក្នុងសំឡីពណ៌មាស',
     en: 'Hang glider: stick left / right turns · push faster, pull back slower · climb along cliffs, or circle in the golden seed fluff',
   },
+  // (game pad: the same while the pad is in use; the left stick ← → ↓ (pulled back) ↑ (pushed); {jump} ✕ / A,
+  // {fast} R2 / RT: the pad's own names, glyphs.ts `padName`)
+  rGliderPad: { km: 'ខ្លែងហោះ៖ ដងបញ្ជា ← → បត់ · ↓ ឡើង · ↑ ចុះ · {fast} លឿន · {jump} លែងដៃ', en: 'Hang glider: stick ← → turn · ↓ climb · ↑ dive · {fast} fast · {jump} let go' },
+  rGliderRealPad: {
+    km: 'ខ្លែងហោះ៖ ដងបញ្ជា ← → បត់ · ↑ បង្កើនល្បឿន · ↓ បន្ថយល្បឿន · ឡើងកម្ពស់តាមច្រាំងថ្មចោទ ឬហោះវិលក្នុងសំឡីពណ៌មាស',
+    en: 'Hang glider: stick ← → turn · ↑ faster · ↓ slower · climb along cliffs, or circle in the golden seed fluff',
+  },
   // The explorer's tools (tools.ts; the list's words are these in lower case):
   rTools: { km: 'ឧបករណ៍', en: 'Tools' },
   rToolsAria: { km: 'ឧបករណ៍របស់អ្នករុករក', en: "The explorer's tools" },
@@ -266,6 +314,8 @@ const WORDS = {
   rSelfie: { km: 'ទូរស័ព្ទសែលហ្វី', en: 'Selfie phone' },
   rAlbum: { km: 'អាល់ប៊ុមរូបថត', en: 'Photo album' },
   rAllKeys: { km: 'គ្រាប់ចុចទាំងអស់', en: 'All keys' },
+  // (game pad: the explorer menu's button for the list of them while the pad is in use, roam/_explorerMenu.ts; with the keys it says rAllKeys)
+  rAllButtons: { km: 'ប៊ូតុងទាំងអស់', en: 'All buttons' },
   rKeys: { km: 'គ្រាប់ចុច', en: 'Keys' },
   rPutAway: { km: 'ទុក{name}វិញ', en: '{name} put away' },
   rHandsPaddle: { km: 'ដៃកំពុងកាន់ច្រវ៉ា (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ៖ 4, 5)', en: 'Hands on the paddle (the camera and the phone work here: 4, 5)' },
@@ -277,6 +327,9 @@ const WORDS = {
   rBeamMouse: { km: 'ចាំងតាមកណ្ដុរ', en: 'follows the mouse' },
   rStickOn: { km: 'ដងសែលហ្វី៖ បើក (រំកិលដើម្បីពន្លូត)', en: 'Selfie stick: on (wheel slides it out)' },
   rStickOff: { km: 'ដងសែលហ្វី៖ បិទ (កាន់ដោយលាតដៃ)', en: 'Selfie stick: off (at arm’s length)' },
+  // (game pad: roaming, roam/tools.ts and _rest.ts; {keys}: the pad's own name for L1, "L1" or "LB")
+  rStickOnPad: { km: 'ដងសែលហ្វី៖ បើក (ចុច {keys} ដើម្បីពន្លូត)', en: 'Selfie stick: on ({keys} slides it out)' },
+  rAsleepPad: { km: 'លង់លក់បាត់ហើយ… ចុចប៊ូតុងណាក៏បាន ដើម្បីដាស់', en: 'Fast asleep… any button wakes him' },
   rHatOn: { km: 'ពាក់មួក', en: 'Hat on' },
   rHatOff: { km: 'ដោះមួក', en: 'Hat off' },
   // (he kneels to pray at a shrine: roam/_pray.ts; the prompt in front of one, "E  Pray")
@@ -453,6 +506,9 @@ const WORDS = {
   // (the first time in a visit: how it goes)
   fiHowTo: { km: 'ស្ទូចត្រី៖ រង់ចាំកូនបណ្ដែតលិច រួចចុច F ឬ Space ដើម្បីទាញ · W A S D ឬ E ដើម្បីឈប់', en: 'Fishing: wait for the float to go under, then F or Space to strike · W A S D or E to stop' },
   fiHowToTouch: { km: 'ស្ទូចត្រី៖ រង់ចាំកូនបណ្ដែតលិច រួចចុច «ទាញ!» · រុញដងបញ្ជា ដើម្បីឈប់', en: 'Fishing: wait for the float to go under, then tap Strike! · push the stick to stop' },
+  // (game pad: the same while the pad is in use; {strike} the d-pad's ↓ (F), {jump} ✕ / A (Space), {use} □ / X (E):
+  // the pad's own names, glyphs.ts `padName`)
+  fiHowToPad: { km: 'ស្ទូចត្រី៖ រង់ចាំកូនបណ្ដែតលិច រួចចុច {strike} ឬ {jump} ដើម្បីទាញ · រុញដងបញ្ជា ឬចុច {use} ដើម្បីឈប់', en: 'Fishing: wait for the float to go under, then {strike} or {jump} to strike · the stick or {use} to stop' },
   // (why not here: paddling, fast water, a fall ahead, no open water to cast to)
   fiSlowDown: { km: 'ឈប់ចែវសិន ទើបអាចស្ទូចបាន', en: 'Stop paddling first' },
   fiTooFast: { km: 'ទឹកហូរខ្លាំងពេក មិនអាចស្ទូចបានទេ', en: 'The water runs too fast to fish here' },

@@ -1,3 +1,4 @@
+import { pad } from '../pad/pad';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 
@@ -14,7 +15,10 @@ import { steppedRing, steppedShape } from '../ui/shape';
  * `body.roam-touch` is set (the key help hides). With the camera or the
  * selfie phone up, a shutter button takes the place of the stick and Jump
  * (the selfie phone's screen has its own), and a button to put it away
- * (`setShutter`).
+ * (`setShutter`). While a game pad is in use (pad.ts: its last input was
+ * the pad) they step aside, and `body.roam-touch` goes with them (the key
+ * help and the prompts' buttons show the pad's); the next touch brings them
+ * back.
  */
 export class TouchControls {
   /** The stick: x right, y forward (−1‥1 each); `run` when pushed past the ring. */
@@ -65,6 +69,11 @@ export class TouchControls {
     };
     fillWords();
     onLang(fillWords);
+    // (a game pad taken up: the stick and the buttons step aside, nothing held; a touch turns the pad off and they come back)
+    pad.onChange(() => {
+      if (pad.active) this.release();
+      this.show();
+    });
     this.base = this.wrap.querySelector('.rt-stick')!;
     this.knob = this.wrap.querySelector('.rt-knob')!;
     this.useBtn = this.wrap.querySelector('.rt-use')!;
@@ -224,7 +233,7 @@ export class TouchControls {
   }
 
   private show(): void {
-    const on = this.enabled && this.seen;
+    const on = this.enabled && this.seen && !pad.active;
     this.wrap.classList.toggle('is-on', on);
     document.body.classList.toggle('roam-touch', on);
     if (on && this.stickId === null) this.rest();

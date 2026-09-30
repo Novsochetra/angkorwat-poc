@@ -669,6 +669,57 @@ The explorer in shots: `look=<outfit>`, `hat=0|1`, `face=<expression>`,
 the screen), the selfie's `gesture=peace|wave|thumbsUp|none` and
 `saim=yaw,pitch,reach`, the camera's `pview=yaw,pitch,fov`.
 
+## Game pads
+
+A PS5 DualSense, a PS4 pad, an Xbox pad and most others (the browser's
+"standard" layout: Chrome, Edge, Safari) play the whole map. One module
+reads the pad (`src/map/pad/pad.ts`, its own animation frame, only while a
+pad is connected) and hands it on:
+
+- **Roaming** with no menu open: `roam/input.ts` reads `pad.stick`,
+  `pad.held`, `pad.value`, `pad.take` (a press waits for a slow frame).
+- **Menus, cards, the map screen**: the pad works the page as the keys do.
+  The d-pad and the left stick send arrow keys, ✕ Enter (then presses the
+  focused button), ○ Esc (then the layer's `back`), L1 / R1 the layer's
+  `tabs`. These events are not trusted (`isTrusted` false): the roaming keys
+  ignore them. An arrow nobody used moves the focus to the nearest control
+  (`pad/nav.ts`); left / right change a focused slider.
+- A menu that takes the pad while open calls `pad.openLayer(root, …)` and
+  its `close()` when it shuts; the explorer stands still meanwhile. The map
+  screen is `pad.setBase` (ui.ts). A button with a job of its own:
+  `pad.onPress` (Options: the settings; Create / touchpad: the big map;
+  R3: the nearest ramp).
+- Buttons are named by where they sit (`south` ✕ / A, `east` ○ / B, `west`
+  □ / X, `north` △ / Y, …). `pad/glyphs.ts` draws them as the pad in hand
+  has them. While the pad is the input in use the body has `pad-on` and
+  `pad-ps` / `pad-xbox` / `pad-other`, and every `<kbd data-pad="west">E</kbd>`
+  shows the pad's button (`setKbd` to change one later). A real key, a click
+  or a touch turns it off. The focus ring: every `:focus-visible` style also
+  matches `.pad-focus`.
+- Shakes: `pad.rumble(kind)` (landings, the parachute, the glider, the
+  balloon's burner, the boat's bumps, a fish biting, thunder, a photo); the
+  Vibration switch is in the settings (Play tab, Controller group, which
+  also draws the pad's buttons).
+- A pad press is not a click for the browser: the sound may stay off after
+  ✕ on Start (the held-sound card asks for a key or a click), and a new tab
+  (the coffee link) is refused (the card says to click it).
+
+The buttons (PS names; Xbox: A B X Y, LB RB LT RT, View, Menu):
+
+| Where | Buttons |
+|---|---|
+| Map screen | stick / d-pad between the places, ✕ pick, ○ back, △ Jump in, Options settings; loading screen and story: ✕ |
+| On foot | left stick walk (L3 or R2: run), right stick look, R1 / L1 zoom in / out, ✕ jump, □ use, ○ back to the map, △ Explorer menu (album, all buttons), d-pad ↑ light · ← camera · → selfie · ↓ greet, R3 nearest ramp, Create or touchpad big map |
+| Boat, parachute, glider, balloon | as their keys: ✕ is Space, □ is E, R2 is Shift; the boat fishes with ↓ |
+| Camera / selfie | R2 or ✕ take, right stick aim, ○ put away, △ album; selfie: □ gesture, ↓ face, L3 stick |
+| Menus | stick / d-pad move, ✕ press, ○ back, L1 / R1 tabs |
+
+Checks: `npm run padtest` (`scripts/padtest.mjs`: a fake DualSense plays
+from the loading screen to the map and back; `only=`, `kind=xbox`,
+`headed=1`); `scripts/_padFake.mjs` for your own Playwright checks; `pad=ps|xbox`
+in a shot draws the pad's buttons without a pad (`uistate=settings,scroll:pad`
+the Controller group). `window.__pad` holds the state.
+
 ## Time of day and the sky
 
 `f.clock` (0 golden afternoon, 0.25 dusk, 0.5 midnight, 0.75 dawn) drives
@@ -2673,6 +2724,7 @@ as the picture's; a part that moves must not be marked still.
 | sound | `src/map/audio/*` |
 | day's events | `src/map/events.ts` (sound: `audio/temple.ts`; animals: `fauna/_landBath.ts`, `_landCrossing.ts`, `_landSplash.ts`) |
 | roaming | `src/map/roam/*` (`roam.ts` and `types.ts` belong to the lead) |
+| game pads (the core: reading, menus, glyphs, focus) | `src/map/pad/*`; checks `scripts/padtest.mjs`, `scripts/_padFake.mjs` |
 | paddies | `src/map/paddies.ts`, `src/map/paddies/*` |
 | village (stilt houses, floating houses, jetty, pagoda) | `src/map/village/*` |
 | people (and their sounds) | `src/map/people/*`, `src/map/audio/people.ts` |

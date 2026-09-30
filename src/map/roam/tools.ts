@@ -6,6 +6,8 @@ import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
 import { DEFAULT_FOOD, isMeal } from '../../character/meals';
 import { isFoodKind, type FoodKind } from '../../character/parts/food';
 import { REST_TIME } from '../../character/rest';
+import { padGlyph, padName, type PadGlyph } from '../pad/glyphs';
+import { pad } from '../pad/pad';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
@@ -15,13 +17,15 @@ import { createPrayer } from './_pray';
 import { createRest } from './_rest';
 import { createShopping } from './_shop';
 import { angleDiff } from './followCam';
-import type { RoamControls } from './input';
+import { PAD_LIGHT, type RoamControls } from './input';
 import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
 import type { FollowCam, RoamBody, RoamCtx, RoamHud, RoamWorld } from './types';
 
 /** What the tool bar holds: three lights for the left hand, the camera and the selfie phone. */
 export type ToolName = 'lantern' | 'torch' | 'flashlight' | 'camera' | 'selfie';
 const TOOLS: readonly ToolName[] = ['lantern', 'torch', 'flashlight', 'camera', 'selfie'];
+/** The lights the game pad's d-pad ↑ steps through, in turn (then put away, then the first again). */
+const LIGHTS: readonly ToolName[] = ['lantern', 'torch', 'flashlight'];
 /** The tools' names (words: ui/lang.ts). */
 const TOOL_NAME: Record<ToolName, WordKey> = { lantern: 'rLantern', torch: 'rTorch', flashlight: 'rFlashlight', camera: 'rCamera', selfie: 'rSelfie' };
 
@@ -48,10 +52,10 @@ const AIM_RANGE = 220;
 const PHONE_FILL_AT = 0.55;
 /** After dark (night over this) he takes a lantern, until the player picks a tool. */
 const DUSK = 0.55;
-/** Keys that get him up from a prayer and do nothing else (tools, camera, phone, beam, emotes). */
-const PRAYER_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
+/** Keys that get him up from a prayer and do nothing else (tools, camera, phone, beam, emotes; the pad's next light). */
+const PRAYER_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', PAD_LIGHT];
 /** Keys that get him up from sitting or lying (a light comes out once he stands; the camera and the phone work on the ground). */
-const REST_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
+const REST_BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP', PAD_LIGHT];
 /** His camera raised sitting or lying looks up this far (radians): at the sky. */
 const SKY_SHOT = 0.55;
 
@@ -261,6 +265,21 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     bar.update();
   }
 
+  /**
+   * The game pad's d-pad ↑: the next light from the one he has out (or will have once he stands up):
+   * lantern → torch → flashlight → put away → lantern… (the keys 1–3 each take out or put away their own).
+   */
+  function nextLight(ctx: RoamCtx): void {
+    // (in the boat, on the glider, in the balloon: the keys' message, his hands are busy)
+    if (mode !== 'walk') return useTool('lantern', ctx);
+    const next = LIGHTS[LIGHTS.indexOf(handTool() as ToolName) + 1];
+    if (next) return useTool(next, ctx);
+    chosen = 'none';
+    setHeld(wantHeld());
+    hud.toast(t('rPutAway', { name: t(TOOL_NAME.flashlight) }));
+    bar.update();
+  }
+
   const beamLabel = () => t(beamMouse ? 'rBeamMouse' : 'rBeamAhead');
 
   function play(a: ActionName): void {
@@ -436,9 +455,11 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (tap('Digit3', 'Numpad3')) useTool('flashlight', ctx);
       if (tap('Digit4', 'Numpad4', 'KeyZ')) useTool('camera', ctx);
       if (tap('Digit5', 'Numpad5', 'KeyY')) useTool('selfie', ctx);
+      if (tap(PAD_LIGHT)) nextLight(ctx);
       if (tap('KeyT')) {
         photo.stick = !photo.stick;
-        hud.toast(t(photo.stick ? 'rStickOn' : 'rStickOff'));
+        // (with the game pad, L1 slides it out: the wheel's steps out)
+        hud.toast(photo.stick ? (pad.active ? t('rStickOnPad', { keys: padName('l1', pad.kind) }) : t('rStickOn')) : t('rStickOff'));
       }
       if (tap('KeyO') && m === 'walk') {
         if (explorer.currentOutfit.held === 'flashlight') beamMouse = !beamMouse;
@@ -713,6 +734,9 @@ interface ToolBar {
  * menu (I: moves, looks, faces; _explorerMenu.ts) and the key list (?).
  * Pixel-art icons with their key; the one in use is lit gold.
  * On touch it stands at the right edge, above the Jump button.
+ * With the game pad in use the keys show its buttons (the d-pad: ↑ the
+ * lights, ← the camera, → the phone; △ the menu, where the album is too),
+ * and the key list lists the pad's buttons.
  */
 function createToolBar(
   layer: HTMLElement,
@@ -721,15 +745,15 @@ function createToolBar(
   injectStyle();
   const wrap = document.createElement('div');
   wrap.className = 'rtb-wrap';
-  const slot = (tool: ToolName, key: string) =>
-    `<button type="button" class="rtb-slot" data-tool="${tool}" data-key="${key}" aria-pressed="false"><span class="rtb-bg"></span>${ICONS[tool]}<kbd>${key}</kbd></button>`;
+  const slot = (tool: ToolName, key: string, g: PadGlyph) =>
+    `<button type="button" class="rtb-slot" data-tool="${tool}" data-key="${key}" aria-pressed="false"><span class="rtb-bg"></span>${ICONS[tool]}<kbd data-pad="${g}">${key}</kbd></button>`;
   wrap.innerHTML = `
     <div class="rtb mu-frame mu-sm" role="toolbar">
       <span class="mu-bg"></span>
-      ${slot('lantern', '1')}${slot('torch', '2')}${slot('flashlight', '3')}${slot('camera', '4')}${slot('selfie', '5')}
+      ${slot('lantern', '1', 'up')}${slot('torch', '2', 'up')}${slot('flashlight', '3', 'up')}${slot('camera', '4', 'left')}${slot('selfie', '5', 'right')}
       <span class="rtb-sep" aria-hidden="true"></span>
       <button type="button" class="rtb-slot rtb-album"><span class="rtb-bg"></span>${ICONS.album}<kbd>V</kbd></button>
-      <button type="button" class="rtb-slot rtb-me" aria-expanded="false"><span class="rtb-bg"></span>${ICONS.explorer}<kbd>I</kbd></button>
+      <button type="button" class="rtb-slot rtb-me" aria-expanded="false"><span class="rtb-bg"></span>${ICONS.explorer}<kbd data-pad="north">I</kbd></button>
       <button type="button" class="rtb-slot rtb-more" aria-expanded="false"><span class="rtb-bg"></span><span class="rtb-q">?</span></button>
     </div>
     <div class="rtb-keys mu-frame mu-sm" role="dialog"></div>`;
@@ -755,6 +779,8 @@ function createToolBar(
   };
   fillWords();
   onLang(fillWords);
+  // (the key list: the pad's buttons while it is in use, the keys again after)
+  pad.onChange(fillWords);
   // (let go of the focus: Space is the jump and the shutter)
   for (const b of slots)
     b.addEventListener('click', () => {
@@ -808,9 +834,10 @@ const k = (s: string) => `<kbd>${s}</kbd>`;
 /** A mouse action, as a key: drag, wheel, click. */
 const mouse = (w: WordKey) => `<i>${t(w)}</i>`;
 /** Keys and what they do (in English in lower case, as a list). */
-const row = (keys: string, what: WordKey) => `<span class="rtb-k">${keys}</span><span>${t(what).toLowerCase()}</span>`;
-/** All the keys (?), in the language in use. */
-const keyList = () => `
+const row = (keys: string, what: WordKey | { text: string }) => `<span class="rtb-k">${keys}</span><span>${(typeof what === 'string' ? t(what) : what.text).toLowerCase()}</span>`;
+/** All the keys (?), in the language in use; the game pad's buttons while it is in use. */
+const keyList = () => (pad.active ? padList() : keysList());
+const keysList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
     ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('V'), 'rAlbum')}
@@ -824,6 +851,29 @@ const keyList = () => `
   <div class="rtb-col"><b>${t('rCamera')}</b>
     ${row(mouse('rClick') + k('Space'), 'rTakePhoto')}${row(mouse('rDrag') + k('Q') + k('R'), 'rLook')}${row(mouse('rWheel'), 'rZoom')}${row(k('Esc'), 'rStow')}
     <b class="rtb-sub">${t('rSelfieHead')}</b>${row(mouse('rDrag'), 'rMovePhone')}${row(mouse('rWheel'), 'rReach')}${row(k('T'), 'rStick')}${row(k('G'), 'rGesture')}</div>`;
+
+/**
+ * The game pad's buttons for all of it (pad.ts has the map): what has no button of its own (the
+ * emotes, sitting, the hat, the looks, the album, what he keeps) is in the explorer menu (△).
+ * R1 before L1: in before out, closer before further (the Khmer words go in that order).
+ */
+const padList = () => {
+  const g = (...gs: PadGlyph[]) => gs.map((x) => padGlyph(x)).join('');
+  const lights = { text: [t('rLantern'), t('rTorch'), t('rFlashlight')].join(' → ') };
+  // (the big map: Create or the touchpad on a PlayStation pad, View on the others)
+  const bigMap = pad.kind === 'ps' ? g('select', 'touchpad') : g('select');
+  return `
+  <div class="rtb-col"><b>${t('rTools')}</b>
+    ${row(g('up'), lights)}${row(g('left'), 'rCamera')}${row(g('right'), 'rSelfie')}
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(g('west'), 'tgPickAny')}${row(g('west'), 'rPrayAt')}${row(g('west'), 'byBuy')}${row(g('west'), 'rSwing')}${row(g('west'), 'rBalloon')}</div>
+  <div class="rtb-col"><b>${t('rExplorer')}</b>
+    ${row(g('lstick'), 'rMove')}${row(g('r2', 'l3'), 'rRun')}${row(g('south'), 'rJump')}${row(g('down'), 'grGreet')}${row(g('north'), 'rMenuKey')}
+    <b class="rtb-sub">${t('rView')}</b>${row(g('rstick'), 'rLookRound')}${row(g('r1', 'l1'), 'rZoom')}
+    <b class="rtb-sub">${t('map')}</b>${row(bigMap, 'rBigMap')}${row(g('r3'), 'mmNearest')}${row(g('east'), 'backToMap')}</div>
+  <div class="rtb-col"><b>${t('rCamera')}</b>
+    ${row(g('south', 'r2'), 'rTakePhoto')}${row(g('rstick'), 'rLook')}${row(g('r1', 'l1'), 'rZoom')}${row(g('north'), 'rAlbum')}${row(g('east'), 'rStow')}
+    <b class="rtb-sub">${t('rSelfieHead')}</b>${row(g('rstick'), 'rMovePhone')}${row(g('r1', 'l1'), 'rReach')}${row(g('l3'), 'rStick')}${row(g('west'), 'rGesture')}${row(g('down'), 'rFace')}</div>`;
+};
 
 /** 16 × 16 pixel-art icons (currentColor, with their own glow colours). */
 const px = (body: string) => `<svg class="rtb-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges">${body}</svg>`;
@@ -878,6 +928,9 @@ function injectStyle(): void {
     .rtb-slot.is-on .rtb-bg::after { background: var(--mu-gold-hi); }
     .rtb-slot.is-on kbd { color: var(--mu-gold-hi); }
     .rtb-slot.is-off { opacity: 0.4; }
+    /* (the pad's buttons in the corner, a little smaller than in the text; the album is in the explorer menu with the pad: △) */
+    .rtb-slot kbd.is-pad { left: calc(1 * var(--px)); top: calc(1 * var(--px)); font-size: calc(10 * var(--px)); }
+    body.pad-on .rtb-album kbd { display: none; }
     .rtb-sep { width: 1px; height: calc(24 * var(--px)); margin: 0 calc(3 * var(--px)); background: var(--mu-line); }
     .rtb-more { width: calc(28 * var(--px)); }
     /* (the key help at the bottom left stops short of the bar) */

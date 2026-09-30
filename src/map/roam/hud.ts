@@ -1,5 +1,8 @@
 import { OVERVIEW, SCENES_OPEN } from '../layout';
 import posthog, { isPostHogConfigured } from '../../posthog';
+import { padForKey, padGlyph, padKbd, type PadGlyph } from '../pad/glyphs';
+import { clearMark, markFocus } from '../pad/nav';
+import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
 import { onLang, t, type WordKey } from '../ui/lang';
@@ -31,6 +34,12 @@ export type JumpKind = 'chute' | 'glider';
  * It sits beside the picker's root (`#ui`) and follows its size (`--u`) and
  * time of day (`--mu-n`).
  *
+ * With a game pad in use (pad/pad.ts) the keys show as the pad's buttons: the
+ * prompt's keys (E □, Space ✕, F the d-pad's ↓: `promptPad`), the keys of the
+ * mode (`padHelp`: the sticks, ✕ □ △, the d-pad…), Jump in △, Back ○. △ on
+ * the map opens the Jump in card, a pad layer while it is open: ← → move,
+ * ✕ (or △ again) jumps with the one in focus, ○ closes it.
+ *
  * Shots: `jumpmenu=1` shows the card open (`jumpmenu=key`: as a key opens
  * it, with the focus ring) · `start=chute|glider` the last pick.
  */
@@ -46,23 +55,23 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   wrap.style.setProperty('--mu-ring-sm-b', steppedRing(8, 4, 2));
   wrap.innerHTML = `
     <button type="button" class="rh-jump mu-frame mu-sm" aria-haspopup="dialog" aria-expanded="false" aria-controls="rh-jumps" aria-keyshortcuts="J">
-      <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span><span class="rh-jump-icon"></span><span class="rh-jump-text"></span><kbd>J</kbd>
+      <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span><span class="rh-jump-icon"></span><span class="rh-jump-text"></span><kbd data-pad="north">J</kbd>
     </button>
     <section id="rh-jumps" class="rh-jumps mu-frame mu-md" role="dialog" aria-labelledby="rh-jumps-title" aria-hidden="true">
       <span class="mu-bg"></span>
       <h2 id="rh-jumps-title"></h2>
       <div class="rh-picks">${JUMPS.map((j, i) => `
         <button type="button" class="rh-pick mu-frame mu-sm" data-kind="${j.kind}" aria-labelledby="rh-pick-${j.kind}" aria-describedby="rh-pick-${j.kind}-note" aria-keyshortcuts="${i + 1}">
-          <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${j.icon}<span class="rh-pick-name" id="rh-pick-${j.kind}"></span><span class="rh-pick-note" id="rh-pick-${j.kind}-note"></span><kbd>${i + 1}</kbd>
+          <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${j.icon}<span class="rh-pick-name" id="rh-pick-${j.kind}"></span><span class="rh-pick-note" id="rh-pick-${j.kind}-note"></span><kbd data-pad="south">${i + 1}</kbd>
         </button>`).join('')}
       </div>
-      <button type="button" class="rh-jumps-x" aria-keyshortcuts="Escape">${ICON.close}<kbd>Esc</kbd></button>
+      <button type="button" class="rh-jumps-x" aria-keyshortcuts="Escape">${ICON.close}<kbd data-pad="east">Esc</kbd></button>
     </section>
     <button type="button" class="rh-back mu-frame mu-sm">
-      <span class="mu-bg"></span><span class="mu-focus"></span>${BACK_ICON}<span class="rh-back-text"></span><kbd>Esc</kbd>
+      <span class="mu-bg"></span><span class="mu-focus"></span>${BACK_ICON}<span class="rh-back-text"></span><kbd data-pad="east">Esc</kbd>
     </button>
     <div class="rh-help mu-frame mu-sm" aria-hidden="true"><span class="mu-bg"></span><span class="rh-keys"></span></div>
-    <div class="rh-prompt mu-frame mu-sm" role="status"><span class="mu-bg"></span><kbd></kbd><span class="rh-prompt-text"></span></div>
+    <div class="rh-prompt mu-frame mu-sm" role="status"><span class="mu-bg"></span></div>
     <div class="rh-toast mu-frame mu-sm" role="status"><span class="mu-bg"></span><span class="rh-toast-text"></span></div>
     <div class="rh-fade"></div>`;
   root.after(wrap);
@@ -74,8 +83,6 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   const closeBtn = q('.rh-jumps-x');
   const keys = q('.rh-keys');
   const promptEl = q('.rh-prompt');
-  const promptKey = q('.rh-prompt kbd');
-  const promptText = q('.rh-prompt-text');
   const toastEl = q('.rh-toast');
   const toastText = q('.rh-toast-text');
   const fadeEl = q('.rh-fade');
@@ -109,12 +116,17 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   }
   fillWords();
   onLang(fillWords);
+  // (the pad taken up or put down: the keys of the mode as its buttons or as the keys; the prompt's and the
+  // buttons' kbds swap by themselves, glyphs.ts)
+  pad.onChange(() => (keys.innerHTML = helpFor(mode)));
 
   // ── Jump in: parachute or hang glider ────────────────────────────────────
   const urlPick = params.get('start');
   let last: JumpKind = urlPick === 'chute' || urlPick === 'glider' ? urlPick : (keptPick() ?? 'chute');
   /** The card is open. */
   let choosing = false;
+  /** The card's pad layer while it is open (pad.ts `openLayer`): its close. */
+  let closePad: (() => void) | null = null;
 
   /** The last pick: its icon on the button, its choice marked in gold. */
   function showLast(): void {
@@ -150,9 +162,33 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       h.onOpen?.();
       placeCard();
       picks.find((b) => b.dataset.kind === last)!.focus({ preventScroll: true });
-    } else if (!quiet) jump.focus({ preventScroll: true });
+      // The pad while it is open: ← → (the keys below) move, ✕ or △ again jumps with the one in focus, ○ closes.
+      closePad?.();
+      closePad = pad.openLayer(card, {
+        back: () => openCard(false),
+        buttons: { south: pickFocused, north: pickFocused },
+        onMove: hoverSound,
+      });
+    } else {
+      closePad?.();
+      closePad = null;
+      // (the pad's ring off the hidden pick)
+      if (card.querySelector('.pad-focus')) clearMark();
+      if (!quiet) jump.focus({ preventScroll: true });
+    }
   }
   card.inert = true;
+  /** The one in focus, else the last pick. */
+  function pickFocused(): void {
+    const i = picks.indexOf(document.activeElement as HTMLButtonElement);
+    pick(i >= 0 ? JUMPS[i].kind : last);
+  }
+  // △ on the map (no menu open) opens the card, as J does.
+  pad.onPress('north', () => {
+    if (mode !== 'overview' || choosing || !jump.offsetParent || jump.classList.contains('is-away') || document.body.classList.contains('mu-asking')) return false;
+    openCard(true);
+    return true;
+  });
 
   /** Go: keep the pick for the visit, close the card, leap off the ledge. */
   function pick(kind: JumpKind): void {
@@ -218,7 +254,9 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const to = picks[e.key === 'ArrowLeft' ? 0 : 1];
         if (to !== document.activeElement) {
-          to.focus({ preventScroll: true });
+          // (from the pad, its ring goes with it: nav.ts)
+          if (!e.isTrusted && pad.active) markFocus(to);
+          else to.focus({ preventScroll: true });
           hoverSound();
         }
       } else if (e.code === 'KeyJ' || ((e.key === 'Enter' || e.key === ' ') && !card.contains(document.activeElement))) {
@@ -281,12 +319,22 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
         setTouchUse(null);
         return;
       }
-      // "E  Enter Angkor Wat": a key, two spaces, what it does.
-      const m = /^(\S{1,6})\s{2,}(.+)$/.exec(text);
-      promptKey.textContent = m?.[1] ?? '';
-      promptKey.hidden = !m;
-      promptText.textContent = m?.[2] ?? text;
-      promptEl.classList.toggle('is-soon', !m);
+      // "E  Enter Angkor Wat": a key, two spaces, what it does; parts joined by "  ·  " ("Space  Parachute  ·  E
+      // Hang glider"), each with its own key (the pad's button while the pad is in use: `promptPad`).
+      let html = '<span class="mu-bg"></span>';
+      let keyed = false;
+      text.split(/\s{2,}·\s{2,}/).forEach((part, i) => {
+        const m = /^(\S{1,6})\s{2,}(.+)$/.exec(part);
+        if (i) html += '<span class="rh-prompt-sep" aria-hidden="true">·</span>';
+        if (m) {
+          keyed = true;
+          const g = promptPad(m[1]);
+          html += g ? padKbd(esc(m[1]), g) : `<kbd>${esc(m[1])}</kbd>`;
+        }
+        html += `<span class="rh-prompt-text">${esc(m?.[2] ?? part)}</span>`;
+      });
+      promptEl.innerHTML = html;
+      promptEl.classList.toggle('is-soon', !keyed);
       promptEl.classList.add('is-on');
       // (the Use button takes the E part wherever it is: "Space  Parachute  ·  E  Hang glider" in a long fall)
       const use = /(?:^|·\s+)E\s{2,}([^·]+?)\s*(?:·|$)/.exec(text);
@@ -338,8 +386,87 @@ function explorerOnScreen(): { x: number; y: number } {
 const key = (k: string) => `<kbd>${k}</kbd>`;
 /** A key and what it does (in English in lower case, as a list). */
 const item = (keys: string, what: WordKey) => `<span class="rh-k">${keys}<em>${t(what).toLowerCase()}</em></span>`;
-/** The keys of a mode (bottom left) in the language in use; the hang glider's and the balloon's with easy flying off (roam/prefs.ts) are the real ones'. */
+/** The keys of a mode (bottom left) in the language in use: the pad's buttons while the pad is in use. */
 function helpFor(mode: RoamMode): string {
+  return pad.active ? padHelp(mode) : keyHelp(mode);
+}
+
+/**
+ * The pad's buttons of a mode (pad.ts's map), as short as the keys' list:
+ * the left stick moves (an arrow beside it: which way, in the air and the
+ * boat), the right stick looks, ✕ is Space, □ is E, R2 is Shift, the d-pad's
+ * ← → the camera and the selfie, ↓ greets (in the boat: fishes).
+ */
+function padHelp(mode: RoamMode): string {
+  const g = (b: PadGlyph) => padGlyph(b, pad.kind);
+  /** The left stick pushed one way (↔ left / right, ↕ forward / back, ↑ forward, ↓ back). */
+  const ls = (d: keyof typeof STICK_WAY) => `<span class="rh-st">${g('lstick')}${STICK_WAY[d]}</span>`;
+  const look = item(g('rstick'), 'rLook');
+  const letGo = item(g('south'), 'rLetGo');
+  const photo = item(g('dpadx'), 'rPhoto');
+  switch (mode) {
+    case 'glide':
+      return [item(ls('x'), 'rSteer'), item(ls('up'), 'rChuteDive'), item(ls('down'), 'rBrake'), letGo, look].join('');
+    case 'walk':
+      return [
+        item(g('lstick'), 'rMove'),
+        item(g('r2'), 'rRun'),
+        item(g('south'), 'rJump'),
+        item(g('west'), SCENES_OPEN ? 'rEnterFly' : 'rUseFly'),
+        item(g('r3'), 'rRamp'),
+        look,
+        item(g('r1') + g('l1'), 'rZoom'),
+        // (↑ a light, ← the camera, → the selfie; ↓ greets)
+        item(g('dpad'), 'rTools'),
+        item(g('down'), 'grGreet'),
+        // (the moves, sitting and lying down, the album: the Explorer menu)
+        item(g('north'), 'rExplorer'),
+      ].join('');
+    case 'boat':
+      return [item(ls('y'), 'rPaddle'), item(ls('x'), 'rTurn'), item(g('west'), 'rAshore'), item(g('down'), 'fiFish'), look, photo].join('');
+    case 'hang':
+      return [
+        item(ls('x'), 'rTurn'),
+        ...(roamPrefs.easyFly ? [item(ls('down'), 'rClimb'), item(ls('up'), 'rDive')] : [item(ls('up'), 'rFaster'), item(ls('down'), 'rSlowerClimb')]),
+        item(g('r2'), 'rFast'),
+        letGo,
+        look,
+        photo,
+      ].join('');
+    case 'balloon':
+      return [
+        item(ls('x'), 'rTurn'),
+        item(ls('down') + g('south'), 'rBurn'),
+        item(ls('up'), 'rVent'),
+        item(g('r2'), roamPrefs.easyFly ? 'rFast' : 'rBothBurners'),
+        item(g('west'), 'rLandOut'),
+        look,
+        photo,
+      ].join('');
+    default:
+      return '';
+  }
+}
+
+/** Small arrows beside the left stick: which way it is pushed. */
+const way = (w: number, d: string) =>
+  `<svg class="rh-way" viewBox="0 0 ${w} 12" width="${w}" height="12" aria-hidden="true" focusable="false"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const STICK_WAY = {
+  x: way(14, 'M1.5 6h11M4.5 3L1.5 6l3 3M9.5 3l3 3-3 3'),
+  y: way(10, 'M5 1.5v9M2 4.5l3-3 3 3M2 7.5l3 3 3-3'),
+  up: way(10, 'M5 10.5V1.5M2 4.5l3-3 3 3'),
+  down: way(10, 'M5 1.5v9M2 7.5l3 3 3-3'),
+};
+
+/** A prompt's key as a pad button (glyphs.ts `padForKey`: E □, Space ✕…; F, greet or fish, is the d-pad's ↓). Null: it keeps the key. */
+function promptPad(k: string): PadGlyph | null {
+  return padForKey(k) ?? (k === 'F' ? 'down' : null);
+}
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** The keys of a mode (bottom left) in the language in use; the hang glider's and the balloon's with easy flying off (roam/prefs.ts) are the real ones'. */
+function keyHelp(mode: RoamMode): string {
   const look = item(`<i>${t('rDrag')}</i> / ${key('Q')}${key('R')}`, 'rLook');
   const letGo = item(key('Space'), 'rLetGo');
   const photo = item(key('4') + key('5'), 'rPhoto');
@@ -527,6 +654,13 @@ function injectStyle(): void {
     .rh-prompt.is-on { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity 0.35s, transform 0.35s var(--mu-ease); }
     .rh-prompt kbd { min-width: calc(26 * var(--px)); height: calc(26 * var(--px)); font-size: calc(15 * var(--px)); color: var(--mu-gold-hi); border-color: rgba(255, 208, 112, 0.8); }
     .rh-prompt-text { font: 700 calc(18 * var(--px)) / 1.1 var(--mu-display); letter-spacing: 0.01em; }
+    .rh-prompt-sep { margin: 0 calc(-2 * var(--px)); font: 700 calc(18 * var(--px)) / 1 var(--mu-font); color: var(--mu-ink2); }
+
+    /* (the pad: its buttons as big as the key caps; the left stick's arrow beside it; on a pick the ✕ only on the one in focus) */
+    .rh-k .pad-g { height: calc(20 * var(--px)); vertical-align: middle; }
+    .rh-st { display: inline-flex; align-items: center; gap: calc(1 * var(--px)); }
+    .rh-way { flex: none; width: auto; height: calc(12 * var(--px)); color: #f0c46a; }
+    body.pad-on .rh-pick:not(:focus) kbd { visibility: hidden; }
     .rh-prompt.is-soon { --mu-edge: var(--mu-line); padding-left: calc(18 * var(--px)); }
     .rh-prompt.is-soon .rh-prompt-text { font: 600 calc(16 * var(--px)) / 1.1 var(--mu-font); color: var(--mu-ink2); }
     body.roam-touch .rh-prompt kbd { display: none; }
@@ -569,6 +703,9 @@ function injectStyle(): void {
       .rh-jumps kbd { display: none; }
       .rh-jumps h2 { margin-right: calc(30 * var(--px)); }
       .rh-jumps-x { padding: calc(6 * var(--px)); }
+      /* (a pad in hand on a tablet or a phone: its buttons show) */
+      body.pad-on .rh-jumps kbd, body.pad-on .rh-back kbd { display: inline-grid; }
+      body.pad-on .rh-jumps h2 { margin-right: calc(70 * var(--px)); }
     }
     .mu-calm ~ .rh { --mu-lift: 0px; }
     .mu-calm ~ .rh .rh-jump .mu-glow::before { animation: none; }

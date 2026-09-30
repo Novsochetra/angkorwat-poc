@@ -2,6 +2,8 @@ import { Group, Quaternion, Vector3 } from 'three';
 import { clamp, lerp, smoothstep } from '../../character/pose';
 import { BODY_UNIT_M } from '../../world/scale';
 import { placeById } from '../layout';
+import { padName } from '../pad/glyphs';
+import { pad } from '../pad/pad';
 import { roamHeading } from '../terrain/views';
 import type { MapFrame } from '../types';
 import { t } from '../ui/lang';
@@ -359,7 +361,9 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
     hinted = easyNow;
     // (on a touch screen the stick and the Jump button, not keys: touch.ts)
     const touch = document.body.classList.contains('roam-touch');
-    ctx.hud.toast(t(easyNow ? (touch ? 'rGliderTouch' : 'rGliderKeys') : touch ? 'rGliderRealTouch' : 'rGliderReal'));
+    // (a game pad in use: its stick and buttons, by the names the pad in hand has, pad.ts)
+    if (pad.active) ctx.hud.toast(t(easyNow ? 'rGliderPad' : 'rGliderRealPad', { jump: padName('south', pad.kind), fast: padName('r2', pad.kind) }));
+    else ctx.hud.toast(t(easyNow ? (touch ? 'rGliderTouch' : 'rGliderKeys') : touch ? 'rGliderRealTouch' : 'rGliderReal'));
   }
 
   /** Lay the glider down (and away): where it is now. */
@@ -874,6 +878,8 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
         body.grounded = true;
         const hard = phase !== 'flare' ? 1 : clamp(-vy / 4, 0.3, 0.8);
         ctx.sound('land', hard);
+        // (the pad: a landing, firmer the faster he comes down; down with no flare, or stalled against a wall, a hard one)
+        pad.rumble(phase !== 'flare' || stalled ? 'hard' : 'land', phase !== 'flare' || stalled ? 0.75 : 0.3 + hard);
         phase = 'runout';
         pt = 0;
         runSpeed = Math.min(v, 6);

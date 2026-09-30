@@ -255,17 +255,32 @@ export function createMapAudio(): MapAudio {
   let waiting = false;
   /** If the browser still holds the sound back, try again on each gesture until it plays. */
   function resumeOnGesture(): void {
-    if (waiting) return;
     waiting = true;
-    const again = () => {
-      if (ctx && ctx.state === 'running' && !stale) return stop();
-      wake();
-    };
-    const stop = () => {
+  }
+  // (listening from the start, before the story's and the interface's own key handlers: the story stops every key it
+  // takes from going further, and a key or a click in it must still wake the sound. A game pad's presses come as keys
+  // and clicks the page makes (pad/pad.ts): a browser that counts a pad press as a gesture (Chrome) lets them start it)
+  const again = () => {
+    if (!waiting) return;
+    if (ctx && ctx.state === 'running' && !stale) {
       waiting = false;
-      for (const ev of GESTURES) removeEventListener(ev, again, { capture: true });
-    };
-    for (const ev of GESTURES) addEventListener(ev, again, { capture: true });
+      return;
+    }
+    wake();
+  };
+  if (!still) for (const ev of GESTURES) addEventListener(ev, again, { capture: true });
+  /**
+   * The sound was started but the browser holds it (no gesture it counts: a game pad's press, in a browser that does
+   * not count one): after a moment the held card asks for a key or a click (`onHeld`), as when the page comes back.
+   */
+  function heldIfSilent(): void {
+    clearTimeout(heldTimer);
+    const c = ctx;
+    heldTimer = window.setTimeout(() => {
+      if (!c || c !== ctx || hidden() || c.state === 'running') return;
+      console.info(`[map] sound held at the start (${c.state}): the browser waits for a key, a click or a tap`);
+      if (volumes.master > 0) setHeld(true);
+    }, HELD_AFTER);
   }
 
   /** A context and everything on it (inside a gesture: browsers start sound only then). */
@@ -317,7 +332,11 @@ export function createMapAudio(): MapAudio {
     wake,
 
     start() {
-      if (starting) return starting;
+      if (starting) {
+        // (asked again, from another gesture — the story's Start, a first key — while the browser still holds it: try again inside this one)
+        if (ctx && (ctx.state !== 'running' || stale)) wake();
+        return starting;
+      }
       starting = (async () => {
         try {
           // Made synchronously, inside the user's gesture.
@@ -329,6 +348,7 @@ export function createMapAudio(): MapAudio {
           addEventListener('pageshow', onVisibility);
           if (ctx.state !== 'running') {
             resumeOnGesture();
+            heldIfSilent();
             await ctx.resume();
           }
           pump();

@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { REST_U, restDuration, restPose, type RestState } from '../../character/rest';
+import { pad } from '../pad/pad';
 import { t } from '../ui/lang';
 import { angleDiff } from './followCam';
 import type { FollowCam, RoamBody, RoamCtx, RoamHud } from './types';
@@ -371,7 +372,7 @@ export function createRest(d: RestDeps): Rest {
         still += dt;
         if (!asleep && still >= SLEEP_AFTER) {
           asleep = true;
-          hud.toast(t('rAsleep'));
+          hud.toast(t(pad.active ? 'rAsleepPad' : 'rAsleep'));
         }
       } else if (asleep || !free) wake();
       sleep = Math.max(0, Math.min(1, sleep + (asleep ? dt : -3 * dt) / DOZE));
@@ -383,8 +384,17 @@ export function createRest(d: RestDeps): Rest {
       state.knife = o.legs === 'shorts';
       body.vel.x = body.vel.z = 0;
       frame(dt);
-      // The keys to get up (not asleep: the "Z z z" says it; not while a photo is up).
-      setPrompt(to === 0 || asleep ? null : to === REST_U.sit ? `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}` : `L  ${t('rGetUp')}  ·  J  ${t('rSitUp')}`);
+      // The keys to get up (not asleep: the "Z z z" says it; not while a photo is up). With the game pad
+      // ✕ (Space, as hud.ts shows it) or the stick gets him up; sitting or lying is in the explorer menu (△).
+      setPrompt(
+        to === 0 || asleep
+          ? null
+          : pad.active
+            ? `Space  ${t('rGetUp')}`
+            : to === REST_U.sit
+              ? `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}`
+              : `L  ${t('rGetUp')}  ·  J  ${t('rSitUp')}`,
+      );
     },
     frame(camera, photoView) {
       const on = asleep && sleep > 0.5 && photoView < 0.3;

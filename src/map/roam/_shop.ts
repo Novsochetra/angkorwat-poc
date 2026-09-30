@@ -1,12 +1,14 @@
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { MEAL, MEAL_OF, type MealAction } from '../../character/meals';
 import { nearby, type Nearby } from '../greet';
+import { pad } from '../pad/pad';
 import { Bubble } from '../people/_bubble';
 import type { Point } from '../people/_routes';
 import { browse, SHOPS, shopNear, sold, type ConsumeKind, type Shop, type ShopItem } from '../shop';
 import type { MapFrame, RoamMode, UISound } from '../types';
 import { num, onLang, t, type WordKey } from '../ui/lang';
 import { angleDiff } from './followCam';
+import { PAD_LIGHT } from './input';
 import { createShopBag, type ShopBag } from './_shopBag';
 import { createShopMenu, isDrink, type ShopMenu } from './_shopMenu';
 import { CARRY_MAX, createPurse, keptOf, nameOf, POCKET, POCKET_EVERY, riel, type Kept, type Purse } from './_shopPurse';
@@ -183,8 +185,8 @@ const VIEW_TRIES: readonly (readonly [number, number])[] = [
 ];
 /** Nobody within this angle (radians, either side) of the way from him to the camera (a stall's customer's head filling the view). */
 const PEOPLE_CONE = 0.3;
-/** Keys that stop eating (and do nothing else that step): the tools, the camera and the phone, the emotes. */
-const BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
+/** Keys that stop eating (and do nothing else that step): the tools (the game pad's d-pad ↑ light too), the camera and the phone, the emotes. */
+const BREAKERS = ['Digit1', 'Numpad1', 'Digit2', 'Numpad2', 'Digit3', 'Numpad3', PAD_LIGHT, 'Digit4', 'Numpad4', 'KeyZ', 'Digit5', 'Numpad5', 'KeyY', 'KeyO', 'KeyF', 'KeyC', 'KeyU', 'KeyP'];
 
 // ── The character (src/character: parts/food.ts, meals.ts): what he holds and the meals ─────
 
@@ -274,18 +276,6 @@ export function createShopping(d: ShoppingDeps): Shopping {
 
   const busy = () => !!menu?.open || paid !== null || meal !== null || turn !== null;
 
-  /** A pad's d-pad up and down move the menu's ring (pressed this step, not held). */
-  let padKeys = 0;
-  function padMenu(): void {
-    const pad = navigator.getGamepads?.().find((p) => p?.connected && p.mapping === 'standard');
-    if (!pad || !menu) return;
-    const now = (pad.buttons[12]?.pressed ? 1 : 0) | (pad.buttons[13]?.pressed ? 2 : 0) | (pad.buttons[14]?.pressed ? 4 : 0) | (pad.buttons[15]?.pressed ? 8 : 0);
-    const hit = now & ~padKeys;
-    padKeys = now;
-    if (hit & 5) menu.move(-1);
-    if (hit & 10) menu.move(1);
-  }
-
   /** The buy menu (made the first time he buys: nothing until then). */
   function theMenu(): ShopMenu {
     return (menu ??= createShopMenu({
@@ -363,6 +353,8 @@ export function createShopping(d: ShoppingDeps): Shopping {
       return;
     }
     lastCtx?.sound('coin', 1);
+    // (the game pad in hand: a light tick as the notes go)
+    pad.rumble('tick');
     bag.update('purse');
     sold(lastCtx?.t ?? 0, s, item);
     paid = { shop: s, item, t: 0, choice: null, inHand: false };
@@ -577,7 +569,7 @@ export function createShopping(d: ShoppingDeps): Shopping {
         }
         return false;
       }
-      // At the stall: the menu's keys are its own (_shopMenu.ts); the pad's X takes the choice, B shuts it.
+      // At the stall: the menu's keys are its own (_shopMenu.ts), and so is the game pad (a layer: its arrows, ✕ and ○ come in as keys).
       if (menu?.open || paid) {
         if (menu?.step === 'list' && push) {
           // (walking away: the list shuts, he walks on this very step)
@@ -585,9 +577,8 @@ export function createShopping(d: ShoppingDeps): Shopping {
           return false;
         }
         if (i.exit) closeOrKeep();
-        // (a pad's X, or a check's `e` — the keyboard's keys the menu takes itself: buy the one in the ring, take the choice)
+        // (a check's `e`, or touch's Use — the keyboard's keys the menu takes itself: buy the one in the ring, take the choice)
         else if (i.use) menu?.confirm();
-        padMenu();
         i.exit = i.use = false;
         return true;
       }

@@ -172,6 +172,12 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
   Back on the page, a phone may hold the sound until a tap: a card in the
   middle asks for it (`onHeld` in `audio/audio.ts`; `uistate=held` in shots).
+- Game pads (a PS5 DualSense, Xbox, most others) play the whole map:
+  `src/map/pad/` (the core `pad.ts`, the button pictures `glyphs.ts`, focus
+  moving `nav.ts`); the guide is BRIEF.md "Game pads". A menu that opens
+  takes the pad with `pad.openLayer`; a key shown as `<kbd data-pad="west">E</kbd>`
+  shows the pad's button while the pad is in use. `pad=ps|xbox` in a shot
+  draws the pad's buttons; `npm run padtest` plays it with a fake DualSense.
 - Graphics is a setting (auto, low, medium, high, max: what each draws is in
   `src/map/graphics.ts`; it changes live); add `graphics=<level>` to a shot
   (auto is medium in shots), `phone=1` to act as a phone (auto starts on

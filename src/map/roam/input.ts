@@ -1,3 +1,4 @@
+import { pad } from '../pad/pad';
 import { TouchControls } from './touch';
 import type { RoamInput } from './types';
 
@@ -10,6 +11,22 @@ const ORBIT_EASE = 10;
  * phone round his head.
  */
 const DRAG = { orbit: [0.005, 0.004], camera: [0.0035, 0.0035], selfie: [0.004, 0.003] } as const;
+/**
+ * The game pad's right stick pushed all the way turns the view this fast
+ * (radians/s; across, up and down), as `DRAG`: round him, through the camera
+ * (slower zoomed in: photo.ts), the selfie phone round his head.
+ */
+const PAD_LOOK = { orbit: [3.2, 2.0], camera: [1.5, 1.1], selfie: [2.4, 1.8] } as const;
+/** The right stick's push is taken to this power: a small push turns slowly (aiming a photo), a full one at full speed. */
+const PAD_CURVE = 1.6;
+/** The right stick's turn eases to its push at this rate (1/s): no jolt as it starts or stops. */
+const PAD_EASE = 14;
+/** L1 / R1 held zoom out / in this many wheel steps a second (the view round him, the camera's lens, the phone's reach). */
+const PAD_ZOOM = { orbit: 4, camera: 6, selfie: 5 } as const;
+/** A click of L3 keeps him running until the left stick comes back under this push. */
+const SPRINT_STOP = 0.3;
+/** The d-pad's ↑ (tools.ts): the next light (lantern → torch → flashlight → put away → lantern…), a tap of its own among the keys'. */
+export const PAD_LIGHT = 'PadLight';
 
 /**
  * Input while roaming, all mapped onto one `RoamInput`:
@@ -24,8 +41,16 @@ const DRAG = { orbit: [0.005, 0.004], camera: [0.0035, 0.0035], selfie: [0.004, 
  *   a click (no drag) is `click`, and where it points is `pointer`;
  * - touch: a joystick, Jump and Use buttons, drag to look, pinch to zoom
  *   (touch.ts);
- * - a gamepad: left stick moves (pushed in: run), right stick looks, A jumps,
- *   X uses, B or Start goes back.
+ * - a game pad (the core src/map/pad/pad.ts reads it; nothing while a menu
+ *   has it), as its button map says: the left stick moves (as far as it is
+ *   pushed: a half push walks slowly), R2 or L3 held runs (a click of L3
+ *   runs until the stick comes back), the right stick looks, L1 / R1 zoom
+ *   out / in, ✕ jumps (Space), □ uses (E), ○ goes back (Esc), △ the explorer
+ *   menu (I), the d-pad ↑ the next light (`PAD_LIGHT`), ← the camera (4),
+ *   → the selfie phone (5), ↓ greets (F; in the boat F fishes). With the
+ *   camera or the phone up: ✕ or R2 takes the photo, △ the album (V), and
+ *   the selfie's □ gesture (G), ↓ face (X), L3 stick (T). The pad's own key
+ *   events (menus: `isTrusted` false) are not his.
  *
  * `script` replaces the real input with a list of timed steps, for headless
  * shots (`sim=` in the URL, see `parseScript`).
@@ -47,7 +72,9 @@ export class RoamControls {
   /** The camera or the selfie phone is up (the drag moves that instead). */
   private photo: 'camera' | 'selfie' | null = null;
   private readonly touch: TouchControls;
-  private pad = { jump: false, use: false, exit: false };
+  /** The right stick's turn speed now (radians/s, eased: `padTurn`), and L3's run (on until the left stick comes back). */
+  private readonly padLook = { yaw: 0, pitch: 0 };
+  private sprint = false;
   private script: ScriptStep[] | null = null;
   private scriptT = 0;
   private scriptStep: ScriptStep | null = null;
@@ -55,8 +82,9 @@ export class RoamControls {
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.touch = new TouchControls(canvas);
     addEventListener('keydown', (e) => {
-      // (not a key the page already used, e.g. Esc closing the settings)
-      if (!this.on || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      // (not a key the page already used, e.g. Esc closing the settings; nor the game pad's own
+      // arrows, Enter and Esc in a menu, pad.ts: made by the page, not the keyboard)
+      if (!this.on || !e.isTrusted || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       // ("?" is Shift + / on most keyboards, elsewhere on some)
@@ -74,7 +102,9 @@ export class RoamControls {
       this.keys.add(code);
       e.preventDefault();
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('keyup', (e) => {
+      if (e.isTrusted) this.keys.delete(e.code);
+    });
     addEventListener('blur', () => this.releaseAll());
     // Mouse and pen: drag to look (touch: touch.ts).
     canvas.addEventListener('pointerdown', (e) => {
@@ -195,6 +225,8 @@ export class RoamControls {
     this.taps.clear();
     this.clicked = false;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
+    // (L3's run is for the way he was going: a new mode (a leap off a cliff into the parachute) starts without it)
+    this.sprint = false;
     const t = this.touch;
     t.jumpHit = t.useHit = t.shutterHit = t.closeHit = false;
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
@@ -227,6 +259,8 @@ export class RoamControls {
     this.keys.clear();
     this.drag = null;
     this.orbit = 0;
+    this.padLook.yaw = this.padLook.pitch = 0;
+    this.sprint = false;
     this.touch.release();
   }
 
@@ -246,24 +280,81 @@ export class RoamControls {
     return turn;
   }
 
-  /** The first connected gamepad, added onto the state (standard mapping). */
+  /**
+   * The game pad, added onto the state (pad.ts reads it: sticks with their dead middle taken
+   * out, presses kept until taken; nothing at all while a menu, card or panel has it, the
+   * free camera is open or a bug report is being written). Every press read here is taken
+   * each frame, used or not, so none waits to fire in another mode (R2 on foot is no photo later).
+   */
   private pollPad(dt: number): void {
-    const pad = navigator.getGamepads?.().find((p) => p?.connected && p.mapping === 'standard');
-    if (!pad) return;
     const s = this.state;
-    const dead = (v: number) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
-    s.move.x += dead(pad.axes[0] ?? 0);
-    s.move.y -= dead(pad.axes[1] ?? 0);
-    s.lookYaw -= dead(pad.axes[2] ?? 0) * 2.6 * dt;
-    s.lookPitch += dead(pad.axes[3] ?? 0) * 1.8 * dt;
-    const b = (i: number) => !!pad.buttons[i]?.pressed;
-    s.run ||= b(10) || b(7);
-    s.jumpHeld ||= b(0);
-    s.jump ||= b(0) && !this.pad.jump;
-    s.use ||= b(2) && !this.pad.use;
-    s.exit ||= (b(1) || b(9)) && !this.pad.exit;
-    s.zoom += (b(4) ? 1 : 0) * dt * 4 - (b(5) ? 1 : 0) * dt * 4;
-    this.pad = { jump: b(0), use: b(2), exit: b(1) || b(9) };
+    if (!pad.connected) {
+      this.padLook.yaw = this.padLook.pitch = 0;
+      this.sprint = false;
+      return;
+    }
+    const photo = this.photo;
+    const tap = (code: string) => this.taps.add(code);
+    // The left stick walks (as far as it is pushed), steers, paddles.
+    const l = pad.stick('left');
+    s.move.x += l.x;
+    s.move.y += l.y;
+    // Run (Shift): R2 or L3 held; a click of L3 runs on until the stick comes back (as games sprint).
+    const l3 = pad.take('l3');
+    if (l3 && !photo) this.sprint = true;
+    if (photo || Math.hypot(l.x, l.y) < SPRINT_STOP) this.sprint = false;
+    s.run ||= pad.held('r2') || pad.held('l3') || this.sprint;
+    // The right stick turns the view (round him, through the camera, the phone round his head): push up, look up.
+    const r = pad.stick('right');
+    const len = Math.hypot(r.x, r.y);
+    const curve = len > 1e-4 ? Math.pow(Math.min(1, len), PAD_CURVE) / len : 0;
+    const [kYaw, kPitch] = PAD_LOOK[photo ?? 'orbit'];
+    s.lookYaw += this.padTurn('yaw', -r.x * curve * kYaw, dt);
+    s.lookPitch += this.padTurn('pitch', -r.y * curve * kPitch, dt);
+    // L1 / R1 held: out / in (the lens; the phone further / closer).
+    s.zoom += ((pad.held('l1') ? 1 : 0) - (pad.held('r1') ? 1 : 0)) * PAD_ZOOM[photo ?? 'orbit'] * dt;
+    // ✕ jumps (Space: opens the parachute, lets go, the burner; with the camera up it takes the photo), ○ back (Esc).
+    // (each taken whatever the keys did: `||=` would leave a press for the next frame)
+    const south = pad.take('south');
+    const east = pad.take('east');
+    s.jump ||= south;
+    s.jumpHeld ||= pad.held('south');
+    s.exit ||= east;
+    const west = pad.take('west');
+    const north = pad.take('north');
+    const down = pad.take('down');
+    // (R2 is the shutter too with the camera or the phone up)
+    if (pad.take('r2') && photo) s.click = true;
+    if (pad.take('up')) tap(PAD_LIGHT);
+    if (pad.take('left')) tap('Digit4');
+    if (pad.take('right')) tap('Digit5');
+    if (!photo) {
+      // □ uses (E), △ the explorer menu (I), ↓ greets (F; in the boat: fish).
+      s.use ||= west;
+      if (north) tap('KeyI');
+      if (down) tap('KeyF');
+      return;
+    }
+    // The camera or the phone up: △ the album (V); the selfie's □ gesture (G), ↓ face (X), L3 stick (T).
+    if (north) tap('KeyV');
+    if (photo !== 'selfie') return;
+    if (west) tap('KeyG');
+    if (down) tap('KeyX');
+    if (l3) tap('KeyT');
+  }
+
+  /**
+   * The right stick's turn this frame on one axis: its speed eases to `goal` (radians/s),
+   * and the turn is the exact sum over the frame, so any frame rate turns alike (as `orbitTurn`).
+   * Let go, it stops at zero: the follow camera's own swing comes back.
+   */
+  private padTurn(axis: 'yaw' | 'pitch', goal: number, dt: number): number {
+    const v = this.padLook[axis];
+    const k = 1 - Math.exp(-PAD_EASE * dt);
+    const turn = goal * dt + ((v - goal) * k) / PAD_EASE;
+    const next = v + (goal - v) * k;
+    this.padLook[axis] = !goal && Math.abs(next) < 0.01 ? 0 : next;
+    return turn;
   }
 
   private pollScript(dt: number): RoamInput {

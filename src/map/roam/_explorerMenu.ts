@@ -1,5 +1,6 @@
 import type { OutfitName } from '../../character/AngkorExplorer';
 import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
+import { pad } from '../pad/pad';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { FACE_NAME } from './photo';
 
@@ -17,10 +18,18 @@ import { FACE_NAME } from './photo';
  * - Face: the six faces; the one he shows is lit gold.
  * - In my bag (roam/_shopBag.ts, `extra`): the purse, and what he keeps to
  *   eat or drink later (a tap: he has it now).
+ * - Under the bag: the photo album (V as its key: the photos, the nature
+ *   book, the passport) and all the keys (?; with the game pad in use, all
+ *   its buttons): the game pad's way to them. Not on touch (no keys).
  *
  * On touch it stands left of the bar (up the right edge), or under it with
  * the phone on its side; it scrolls when it is taller than the room, and a
  * tap outside shuts it.
+ *
+ * With the game pad (pad/pad.ts) it is a layer while open: the stick or the
+ * d-pad move between its buttons (from the first move), ✕ presses one, ○
+ * or △ shut it. The keys' letters on its buttons are not the pad's: they
+ * go while the pad is in use.
  */
 export interface ExplorerMenu {
   /** The panel (tools.ts puts it over the tool bar). */
@@ -81,18 +90,24 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
         <div class="rxm-grid">${d.looks.map(([o, w], i) => chip(`data-look="${i}"`, lookIcon(o), w)).join('')}${chip('data-hat', HAT_ICON, 'rHat', 'H')}</div></section>
       <section class="rxm-sec">${head('rFace', 'X')}
         <div class="rxm-grid">${EXPRESSIONS.map((e, i) => chip(`data-face="${i}"`, FACE_ICONS[e], FACE_NAME[e])).join('')}</div></section>
+      <div class="rxm-col"><section class="rxm-sec rxm-more"><div class="rxm-grid">${chip('data-album', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-keys', KEYS_ICON, 'rAllKeys', '?')}</div></section></div>
     </div>`;
-  // (sections of others, after the faces: their buttons are their own, not `.rxm-b`)
-  if (d.extra?.length) el.querySelector('.rxm-in')!.append(...d.extra);
+  // (sections of others, after the faces, over the album: their buttons are their own, not `.rxm-b`)
+  if (d.extra?.length) el.querySelector('.rxm-col')!.prepend(...d.extra);
   const all = [...el.querySelectorAll<HTMLButtonElement>('.rxm-b')];
   const moves = all.filter((b) => b.dataset.move);
   const looks = all.filter((b) => b.dataset.look);
   const faces = all.filter((b) => b.dataset.face);
   const hat = all.find((b) => b.hasAttribute('data-hat'))!;
+  /** All the keys (?): "All buttons" while the game pad is in use (tools.ts lists its buttons then). */
+  const keysWord = all.find((b) => b.hasAttribute('data-keys'))!.querySelector<HTMLElement>('.rxm-t')!;
+  /** Where the game pad's focus starts: the first move (off foot, greyed: his first look). */
+  const firstChip = () => all.find((b) => !b.disabled) ?? null;
 
   /** The words in the language in use (ui/lang.ts); a button's name says its key. */
   const fillWords = () => {
     el.setAttribute('aria-label', t('rExplorer'));
+    keysWord.dataset.w = pad.active ? 'rAllButtons' : 'rAllKeys';
     for (const s of el.querySelectorAll<HTMLElement>('[data-w]')) s.textContent = cap(t(s.dataset.w as WordKey));
     for (const b of all) {
       const name = b.querySelector('.rxm-t')!.textContent!;
@@ -102,8 +117,11 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   };
   fillWords();
   onLang(fillWords);
+  pad.onChange(fillWords);
 
   let open = false;
+  /** The game pad's layer while it is open (pad/pad.ts). */
+  let padClose: (() => void) | null = null;
   /** What the buttons show now (to touch them only when it changes). */
   let shown = '';
   const light = (b: HTMLButtonElement, on: boolean) => {
@@ -122,6 +140,15 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       el.classList.toggle('is-on', on);
       shown = '';
       api.update();
+      if (on) {
+        const shut = () => api.toggle(false);
+        padClose = pad.openLayer(el, { first: firstChip, back: shut, buttons: { north: shut } });
+      } else {
+        padClose?.();
+        padClose = null;
+        // (the pad's focus leaves it, so Space is the jump again)
+        if (document.activeElement instanceof HTMLElement && el.contains(document.activeElement)) document.activeElement.blur();
+      }
       d.onToggle(on);
     },
     update() {
@@ -143,12 +170,20 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   el.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.rxm-b');
     if (!b || b.disabled) return;
-    // (let go of the focus: Space is the jump and the shutter)
-    b.blur();
+    // (let go of the focus: Space is the jump and the shutter; the game pad's stays, it goes on from there)
+    if (!pad.active) b.blur();
     const { move, look, face, how } = b.dataset;
     if (move) {
       d.press(move, how === 'sampeah' || how === 'wave' ? how : undefined);
       // (the panel goes, so the move shows: and the sky, sitting or lying down)
+      api.toggle(false);
+    } else if (b.hasAttribute('data-album')) {
+      // (as V: tools.ts opens the album, and this shuts with it)
+      d.press('KeyV');
+      api.toggle(false);
+    } else if (b.hasAttribute('data-keys')) {
+      // (as ?: tools.ts opens the list of keys, or of the pad's buttons; this shuts so it shows)
+      d.press('Slash');
       api.toggle(false);
     } else if (look) d.setLook(Number(look));
     else if (face) d.setFace(Number(face));
@@ -209,6 +244,12 @@ const LOOK_OVER: Partial<Record<OutfitName, string>> = {
 };
 const lookIcon = (o: OutfitName) =>
   px(`<path fill="currentColor" d="M4 2h3v1h2V2h3v1h2v1h1v3h-3v7H4V7H1V4h1V3h2z"/><path fill="#0d1927" opacity="0.4" d="M7 2h2v1H7z"/>${LOOK_OVER[o] ?? ''}`);
+/** The photo album (as the tool bar's V: tools.ts). */
+const ALBUM_ICON = px(`<path fill="currentColor" opacity="0.55" d="M4 1h11v10H4z"/><path fill="currentColor" d="M1 4h11v11H1z"/><path fill="#0d1927" d="M2 5h9v7H2z"/>
+    <path fill="${GOLD}" d="M8 6h2v2H8z"/><path fill="#7fa36a" d="M2 11h2V9h1V8h1v1h1v1h1v1h1v-1h1v1h1v1H2z"/>`);
+/** A key cap with a question mark (the list of all the keys: ?). */
+const KEYS_ICON = px(`<path fill="currentColor" d="M2 1h12v1h1v11h-1v1H2v-1H1V2h1z"/><path fill="#0d1927" d="M3 2h10v10H3z"/>
+    <path fill="${GOLD}" d="M7 3h3v1H7zM6 4h1v1H6zM10 4h1v2h-1zM9 6h1v1H9zM8 7h1v2H8zM8 10h1v1H8z"/>`);
 /** His straw hat with the red band. */
 const HAT_ICON = px(`<path fill="#e2b35c" d="M5 4h6v1h1v3H4V5h1z"/><path fill="#c8453a" d="M4 7h8v1H4z"/><path fill="#f0c874" d="M1 8h14v1h-1v1H2V9H1z"/>`);
 
@@ -239,6 +280,8 @@ function injectStyle(): void {
     .rxm-in { display: flex; gap: calc(18 * var(--px)); padding: calc(12 * var(--px)) calc(14 * var(--px)); max-height: calc(100vh - 110 * var(--px) - 40px);
       overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--mu-line) transparent; }
     .rxm-sec { display: grid; gap: calc(6 * var(--px)); align-content: start; min-width: 0; }
+    /* (the last column: the bag over the album) */
+    .rxm-col { display: grid; gap: calc(14 * var(--px)); align-content: start; min-width: 0; }
     .rxm-h { display: flex; align-items: center; gap: calc(6 * var(--px)); font: 700 calc(14 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-gold-hi); letter-spacing: 0.02em; }
     .rxm-h kbd { min-width: calc(17 * var(--px)); height: calc(17 * var(--px)); padding: 0 calc(4 * var(--px)); font-size: calc(10.5 * var(--px)); letter-spacing: 0; }
     .rxm-note { display: none; margin-top: calc(-3 * var(--px)); font-size: calc(12 * var(--px)); color: var(--mu-dim); }
@@ -266,11 +309,16 @@ function injectStyle(): void {
     /* (Khmer letters look smaller at the same size, and take no letter spacing: map.css) */
     :lang(km) .rxm { font-size: calc(14 * var(--px)); }
     :lang(km) .rxm-h { letter-spacing: 0; }
+    /* (the game pad in use: the keys' letters are not its buttons) */
+    body.pad-on .rxm kbd { display: none; }
 
     /* Touch: left of the bar up the right edge, two buttons a row, big enough for a thumb; no keys. */
     body.roam-touch .rxm { position: absolute; right: calc(100% + 8px); bottom: 0; width: min(330px, calc(100vw - 100% - 32px)); font-size: 14px; }
     body.roam-touch .rxm-in { flex-direction: column; gap: 12px; padding: 12px; max-height: calc(100dvh - 128px - 76px); }
     body.roam-touch .rxm-sec { gap: 6px; }
+    body.roam-touch .rxm-col { gap: 12px; }
+    body.roam-touch .rxm-more .rxm-grid { grid-template-columns: 1fr; }
+    body.roam-touch .rxm-b[data-keys] { display: none; }
     body.roam-touch .rxm-h { font-size: 15px; }
     body.roam-touch .rxm-note { font-size: 12.5px; margin-top: -2px; }
     body.roam-touch .rxm-grid { grid-template-columns: 1fr 1fr; gap: 5px; }
@@ -283,7 +331,7 @@ function injectStyle(): void {
     @media (max-height: 500px) {
       body.roam-touch .rxm { right: auto; bottom: auto; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); width: min(760px, calc(100vw - 24px)); }
       body.roam-touch .rxm-in { flex-direction: row; max-height: calc(100dvh - 82px); }
-      body.roam-touch .rxm-sec { flex: 1; }
+      body.roam-touch .rxm-sec, body.roam-touch .rxm-col { flex: 1; }
       body.roam-touch .rxm-b { min-height: 40px; }
     }`;
   document.head.append(style);

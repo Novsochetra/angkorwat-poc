@@ -3,6 +3,7 @@ import { SURFACE } from '../heightfield';
 import type { PlaceDef } from '../layout';
 import type { RoamSound } from '../types';
 import { paddyFlooded } from '../paddies/stages';
+import { pad } from '../pad/pad';
 import { weatherNow } from '../sky/weather';
 import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
@@ -44,6 +45,14 @@ const PACE = 1.6;
 /** A jump pressed this long before landing still happens; after walking off an edge it still works this long (s). */
 const JUMP_BUFFER = 0.15;
 const COYOTE = 0.12;
+/**
+ * The pad shakes (pad.ts `rumble`) for a landing this hard (m/s down) and
+ * up: a real fall (4.4 m walked off, or a jump down 2.5 m), not a jump on
+ * the flat (9.5) or down a 2 m land step (13.7). From `HARD_LANDING` (a fall
+ * of 14 m, no canopy opened) a hard one.
+ */
+const SHAKE_LANDING = 14.5;
+const HARD_LANDING = 26;
 /** A fall this high (m) is long enough for the parachute. */
 const LONG_FALL = 10;
 /** The roaming area's edge slows him from this far in (m). */
@@ -430,6 +439,7 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
           body.grounded = true;
           vel.y = 0;
           if (!hopping && impact > 4) ctx.sound('land', Math.min(1, impact / 22));
+          if (!hopping && impact > SHAKE_LANDING) pad.rumble(impact > HARD_LANDING ? 'hard' : 'land', 0.4 + (impact - SHAKE_LANDING) / 20);
           if (!hopping && impact > 15) recover = Math.min(0.5, impact * 0.018);
           hopping = false;
         }

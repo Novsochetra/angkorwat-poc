@@ -1,5 +1,8 @@
 import type { Duck, Lang, PlaceId, TypeKey, UISound } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
+import { padGlyph } from '../pad/glyphs';
+import { clearMark, markFocus } from '../pad/nav';
+import { pad } from '../pad/pad';
 import { ICON } from '../ui/icons';
 import { lang, onLang, t, type WordKey } from '../ui/lang';
 import { framed, setSteppedVars, steppedShape } from '../ui/shape';
@@ -25,6 +28,12 @@ import { createDotTemple } from './temple';
  * then the next one; ← goes back, a swipe too; Esc or "Skip" closes it.
  * The ខ្មែរ / EN switch at the top changes the saved language
  * (`hooks.setLang`). The last beat waits for its gold button.
+ *
+ * A game pad (pad/pad.ts) has it while it is open, as the keys: ✕ is Space
+ * (the whole beat, then the next; on the last beat, once it is all in, its
+ * gold button), ← → and L1 / R1 go back and on, ○ closes it; ↑ goes up to
+ * the ខ្មែរ / EN switch (the other language: ✕ picks it, ← → the other),
+ * ↓ back down. The hint under the arrows shows the pad's ✕.
  *
  * While the map's sound is still off (a browser plays none before a click
  * or a key), the first beat waits for "Start" in place of the arrows: that
@@ -241,7 +250,16 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
     for (const e of root.querySelectorAll<HTMLElement | SVGElement>('[data-t]')) e.textContent = t(e.dataset.t as WordKey);
     for (const e of root.querySelectorAll<HTMLElement>('[data-t-aria]')) e.setAttribute('aria-label', t(e.dataset.tAria as WordKey));
     for (const b of langBtns) b.setAttribute('aria-pressed', String(b.lang === lang()));
-    hint.textContent = t(touchFirst ? 'stHintTouch' : 'stHint');
+    fillHint();
+  }
+  /** "Click to continue" (a tap on a touch screen; the game pad's ✕ while it is in use). */
+  function fillHint(): void {
+    if (!pad.active) {
+      hint.textContent = t(touchFirst ? 'stHintTouch' : 'stHint');
+      return;
+    }
+    hint.innerHTML = `${padGlyph('south', pad.kind)} `;
+    hint.append(t('stHintPad'));
   }
   fillWords();
   onLang(() => {
@@ -249,6 +267,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
     // The beat again in the new language, all at once.
     if (open) render(true);
   });
+  pad.onChange(fillHint);
 
   /**
    * The beat's words (and the Start button on the last one); `whole`: all in at once.
@@ -397,6 +416,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   function close(sound: UISound): void {
     if (!open) return;
     open = false;
+    closePad();
     if (sound === 'begin' && isPostHogConfigured) posthog.capture('story_completed');
     flag.stop();
     hooks.sound(sound);
@@ -422,6 +442,7 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
     (e) => {
       if (!open || e.ctrlKey || e.metaKey || e.altKey || /^[bk]$/i.test(e.key)) return;
       e.stopImmediatePropagation();
+      if (!e.isTrusted && pad.active && padArrow(e)) return;
       const onButton = e.target instanceof HTMLButtonElement && root.contains(e.target);
       if ((e.key === ' ' || e.key === 'Enter') && onButton) return;
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'PageDown') next(true);
@@ -454,6 +475,42 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
   });
   addEventListener('resize', () => {
     if (open) temple.resize();
+  });
+
+  // ── Game pad (pad/pad.ts) ─────────────────────────────────────────────────
+  /** The story's hold on the pad while it is open (`play`; let go in `close`). */
+  let closePad: () => void = () => undefined;
+  /** ✕ on the last beat, its words all in and nothing else in focus: its gold button (the keys' Enter there waits for Tab). */
+  function padSouth(): boolean {
+    if (index !== BEATS.length - 1 || gated || document.activeElement !== root) return false;
+    if (clock < revealEnd && !text?.classList.contains('is-done')) return false;
+    close('begin');
+    return true;
+  }
+  /**
+   * The pad's ↑ ↓ (the keys have none here): up to the ខ្មែរ / EN switch, on the language not in use (✕ picks it),
+   * and down again; on the switch, ← → go between its two. True: done (the arrow is not the story's back / on).
+   */
+  function padArrow(e: KeyboardEvent): boolean {
+    const onLangBtn = langBtns.includes(e.target as HTMLButtonElement);
+    let to: HTMLButtonElement | undefined;
+    if (e.key === 'ArrowUp') to = onLangBtn ? undefined : langBtns.find((b) => b.lang !== lang());
+    else if (onLangBtn && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) to = langBtns.find((b) => b !== e.target);
+    else if (onLangBtn && e.key === 'ArrowDown') {
+      clearMark();
+      root.focus({ preventScroll: true });
+    } else return false;
+    if (to) {
+      markFocus(to);
+      hooks.sound('hover');
+    }
+    e.preventDefault();
+    return true;
+  }
+  // (a control the focus moves to while the pad is in use shows the ring, however it moved: pad/nav.ts)
+  root.addEventListener('focusin', (e) => {
+    const at = e.target;
+    if (pad.active && at instanceof HTMLElement && at !== root && !at.classList.contains('pad-focus')) markFocus(at);
   });
 
   // ── Frame ─────────────────────────────────────────────────────────────────
@@ -491,6 +548,8 @@ export function createStory(hooks: StoryHooks, opts: { shot: boolean }): Story {
         hooks.duck('story');
         hooks.onOpen();
         root.focus({ preventScroll: true });
+        // (the pad starts on the story itself, not on its first button: ✕ goes on, as Space)
+        if (!shot) closePad = pad.openLayer(root, { first: () => root, back: () => close('close'), tabs: (d) => (d < 0 ? prev(true) : next(true)), buttons: { south: padSouth } });
         last = 0;
         if (!shot) requestAnimationFrame(tick);
       }

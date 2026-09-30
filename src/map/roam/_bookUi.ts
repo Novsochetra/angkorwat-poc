@@ -1,3 +1,6 @@
+import { albumOf } from '../../game/Photos';
+import { markFocus } from '../pad/nav';
+import { pad } from '../pad/pad';
 import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import type { SubjectKind } from '../types';
 import type { Journal } from './_book';
@@ -51,14 +54,22 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
     tabBtn.set(id, b);
     nav.append(b);
   }
-  // (← / → move between the tabs)
+  // (← / → move between the tabs; used: the game pad's arrow moves no focus of its own, pad/pad.ts)
   nav.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     const i = (TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
     ui.setTab(TABS[i]);
-    tabBtn.get(TABS[i])!.focus();
+    const b = tabBtn.get(TABS[i])!;
+    if (pad.active) markFocus(b);
+    else b.focus();
+    e.preventDefault();
     e.stopPropagation();
   });
+  // (with the game pad: L1 and R1 either side of the tabs, and its back button on the close ✕)
+  nav.insertAdjacentHTML('afterbegin', '<kbd class="bk-padk" data-pad="l1" aria-hidden="true"></kbd>');
+  nav.insertAdjacentHTML('beforeend', '<kbd class="bk-padk" data-pad="r1" aria-hidden="true"></kbd>');
+  const closeBtn = panel.querySelector<HTMLElement>('.photo-close');
+  if (closeBtn) closeBtn.innerHTML = '<span class="bk-x">✕</span><kbd class="bk-padk" data-pad="east" aria-hidden="true"></kbd>';
   head.insertBefore(nav, countEl ?? head.lastChild);
 
   const bookPane = el('div', 'bk-pane bk-book');
@@ -125,7 +136,10 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
     if (rec) {
       (c as HTMLButtonElement).type = 'button';
       c.addEventListener('click', () => openPage(s.kind));
-    } else c.append(Object.assign(el('span', 'bk-where'), { textContent: t('bkLook', { where: s.where[lang()] }) }));
+    } else {
+      c.append(Object.assign(el('span', 'bk-where'), { textContent: t('bkLook', { where: s.where[lang()] }) }));
+      padStop(c);
+    }
     return c;
   }
 
@@ -198,6 +212,7 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
   function slot(s: StampDef): HTMLElement {
     const rec = journal.stamps[s.id];
     const c = el('div', `bk-slot${rec ? ' is-done' : ''}${s.group === 'temples' ? ' is-temple' : ''}`);
+    padStop(c);
     const name = s.name[lang()];
     if (!rec) {
       c.append(el('span', 'bk-ring'), Object.assign(el('span', 'bk-slot-name'), { textContent: name }));
@@ -269,7 +284,147 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
   };
   panel.dataset.tab = tab;
   fillTabs();
+  padAlbum(panel, {
+    tab: () => tab,
+    tabs: tabBtn,
+    page: () => page,
+    book: bookPane,
+    passport: passPane,
+    setTab: (next) => ui.setTab(next),
+    back: () => ui.back(),
+  });
   return ui;
+}
+
+// ── The game pad (pad/pad.ts) ────────────────────────────────────────────────
+
+/**
+ * The album with the game pad: while it is open it is a layer of its own
+ * (roaming reads nothing). The stick and the d-pad move between the tabs,
+ * the photos, the book's cards and the passport's stamps (the panel scrolls
+ * along), ✕ opens what is in focus, ○ goes back (a photo or a page → all
+ * of them → shut), L1 / R1 the tab before / after. Where the focus was
+ * goes (a photo opened, a page turned, a tab changed), it goes to the
+ * photo or card that was open, else the first thing there.
+ */
+function padAlbum(
+  panel: HTMLElement,
+  b: {
+    tab(): AlbumTab;
+    tabs: ReadonlyMap<AlbumTab, HTMLButtonElement>;
+    page(): SubjectKind | null;
+    book: HTMLElement;
+    passport: HTMLElement;
+    setTab(tab: AlbumTab): void;
+    back(): boolean;
+  },
+): void {
+  injectPadStyle();
+  const album = albumOf(panel);
+  if (!album) return;
+  const box = album.el;
+  /** The photo last opened (its place in the grid) and the book's card last opened. */
+  let lastThumb = 0;
+  let lastCard = '';
+  box.addEventListener(
+    'click',
+    (e) => {
+      const at = e.target as HTMLElement;
+      const thumb = at.closest('.photo-thumb');
+      if (thumb) lastThumb = Math.max(0, [...panel.querySelectorAll('.photo-thumb')].indexOf(thumb));
+      const card = at.closest<HTMLElement>('.bk-card.is-found');
+      if (card) lastCard = card.dataset.kind ?? '';
+    },
+    true,
+  );
+  const shown = (e: Element | null | undefined): HTMLElement | null => (e instanceof HTMLElement && e.checkVisibility() ? e : null);
+
+  /** Where the pad's focus goes in the album now. */
+  function first(): HTMLElement | null {
+    const tab = b.tab();
+    const tabEl = b.tabs.get(tab) ?? null;
+    if (tab === 'photos') {
+      // (a photo open: "All photos", the way back; else the photo that was open)
+      if (album!.photoShown) return shown(panel.querySelector('.photo-view .photo-action:last-child')) ?? tabEl;
+      const thumbs = panel.querySelectorAll('.photo-thumb');
+      return shown(thumbs[Math.min(lastThumb, thumbs.length - 1)]) ?? tabEl;
+    }
+    if (tab === 'book') {
+      if (b.page()) return shown(b.book.querySelector('.bk-back')) ?? tabEl;
+      return shown(lastCard ? b.book.querySelector(`.bk-card[data-kind="${lastCard}"]`) : null) ?? shown(b.book.querySelector('.bk-card')) ?? tabEl;
+    }
+    return shown(b.passport.querySelector('.bk-slot')) ?? tabEl;
+  }
+
+  let close: (() => void) | null = null;
+  let later = 0;
+  /** What had the focus went: the focus to where it goes now (after the change is drawn). */
+  const refocus = () => {
+    if (later) return;
+    later = requestAnimationFrame(() => {
+      later = 0;
+      if (!close || !pad.active) return;
+      const at = document.activeElement;
+      if (at instanceof HTMLElement && at !== box && box.contains(at) && at.checkVisibility()) return;
+      const to = first();
+      if (to) markFocus(to);
+    });
+  };
+  const watch = new MutationObserver(refocus);
+  album.onToggle((open) => {
+    if (open) {
+      close ??= pad.openLayer(box, {
+        first,
+        back: () => {
+          if (!b.back()) album.back();
+        },
+        tabs: (dir) => {
+          const i = (TABS.indexOf(b.tab()) + dir + TABS.length) % TABS.length;
+          b.setTab(TABS[i]);
+          const to = first();
+          if (to) markFocus(to);
+        },
+      });
+      watch.observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'data-tab'] });
+      padStops(panel);
+    } else {
+      close?.();
+      close = null;
+      watch.disconnect();
+    }
+  });
+  // (the book's empty cards and the stamps are stops for the pad only: the keys' Tab stays as it was)
+  pad.onChange(() => padStops(panel));
+}
+
+/** An empty card or a stamp: a stop for the game pad while it is in use (else none, as for the keys). */
+function padStop(c: HTMLElement): void {
+  if (pad.active) c.tabIndex = 0;
+  else c.removeAttribute('tabindex');
+}
+
+function padStops(panel: HTMLElement): void {
+  for (const c of panel.querySelectorAll<HTMLElement>('.bk-card:not(.is-found), .bk-slot')) padStop(c);
+}
+
+let padStyled = false;
+/** The pad's ring on the album's things that have none of their own (only for the pad: the keys' look stays), and its buttons shown. */
+function injectPadStyle(): void {
+  if (padStyled) return;
+  padStyled = true;
+  const style = document.createElement('style');
+  style.textContent = `
+    .photo-album kbd.bk-padk { display: none; }
+    body.pad-on .photo-album kbd.bk-padk { display: inline-flex; align-self: center; font-size: 15px; }
+    body.pad-on .bk-tabs > .bk-padk { margin: 0 4px 3px; opacity: 0.9; }
+    body.pad-on .photo-close .bk-x { display: none; }
+    body.pad-on .photo-close { display: inline-flex; align-items: center; }
+    .photo-album :is(.photo-thumb, .photo-action, .photo-close, .bk-back, .bk-card:not(.is-found), .bk-slot).pad-focus {
+      outline: 3px solid rgba(179, 57, 43, 0.72); outline-offset: 2px; }
+    .photo-album .photo-thumb.pad-focus img { transform: scale(1.04); }
+    .photo-album .bk-card:not(.is-found).pad-focus { border-color: rgba(179, 57, 43, 0.6); }
+    .photo-album .bk-slot.pad-focus { border-radius: 50%; outline-offset: -2px; }`;
+  document.head.append(style);
 }
 
 /** Months in English (upper case on the stamps). */

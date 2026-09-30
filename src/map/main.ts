@@ -27,6 +27,8 @@ import { onLang, setLang, t } from './ui/lang';
 import { steppedShape } from './ui/shape';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 import { BuildWork } from './work/build';
+// (game pads: read from the start, so the loading screen's Start works with ✕)
+import { pad, padPrefs } from './pad/pad';
 
 /**
  * World map screen — "Angkor Heritage: choose your next expedition".
@@ -105,6 +107,7 @@ function loadSettings(): MapSettings {
     if (typeof mini === 'boolean') saved.miniMap = mini ? 'show' : 'button';
     else if (!MINIMAP_CHOICES.includes(mini as MiniMapChoice)) delete saved.miniMap;
     if (typeof saved.keyHelp !== 'boolean') delete saved.keyHelp;
+    if (typeof saved.padRumble !== 'boolean') delete saved.padRumble;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
     if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
@@ -134,6 +137,8 @@ if (MINIMAP_CHOICES.includes(urlMini as MiniMapChoice)) settings.miniMap = urlMi
 roamPrefs.miniMap = settings.miniMap;
 if (params.has('keyhelp')) settings.keyHelp = params.get('keyhelp') !== '0';
 roamPrefs.keyHelp = settings.keyHelp;
+// (the game pad's shakes: the Controller group on the Play tab)
+padPrefs.rumble = settings.padRumble;
 if (GRAPHICS_CHOICES.includes(params.get('graphics') as GraphicsChoice)) settings.graphics = params.get('graphics') as GraphicsChoice;
 if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
@@ -493,6 +498,7 @@ const handlers = {
     roamPrefs.easyFly = s.easyFly;
     roamPrefs.miniMap = s.miniMap;
     roamPrefs.keyHelp = s.keyHelp;
+    padPrefs.rumble = s.padRumble;
     audio.setVolumes(s);
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
@@ -508,6 +514,8 @@ const handlers = {
 const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
 audio.onHeld((held) => ui.setSoundHeld(held));
+// (the game pad's moves in the menus and on the map sound like the mouse over a card)
+pad.setSounds({ move: () => audio.play('hover') });
 
 // ── Roaming: the explorer leaps off the ledge to walk, glide and paddle ────
 const foreground = parts.find((p): p is Foreground => p.name === 'foreground' && 'explorer' in p);
@@ -910,11 +918,16 @@ function mapReady(): void {
   document.body.classList.add('map-waiting');
   go.addEventListener('click', enter, { once: true });
   go.focus({ preventScroll: true });
+  // (a game pad: ✕ presses it, and nothing behind the screen takes the pad meanwhile)
+  closeLoadPad = pad.openLayer(loading, { first: () => go });
 }
+/** The loading screen's hold on the game pad (let go when its button is pressed). */
+let closeLoadPad: () => void = () => undefined;
 /** The button: the sound starts (inside the click), the story opens on the first visit, and the loading screen fades out. */
 function enter(): void {
   if (entered || !loading) return;
   entered = true;
+  closeLoadPad();
   uiRoot.inert = false;
   document.body.classList.remove('map-waiting');
   // (the frame loop rests while the button waits: it draws again from now, under the fading screen)
@@ -1093,7 +1106,8 @@ if (shot) {
       requestAnimationFrame(tick);
     }
   };
-  for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, touched, { capture: true, passive: true });
+  // (`padinput`: a game pad pressed or pushed, pad/pad.ts)
+  for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'padinput']) addEventListener(type, touched, { capture: true, passive: true });
   addEventListener('focus', () => {
     focused = true;
     touched();

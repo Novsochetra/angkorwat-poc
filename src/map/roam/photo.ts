@@ -5,6 +5,8 @@ import type { ExpressionName } from '../../character/parts/face';
 import { PHOTO_FOV, PhotoAlbum, type AlbumText, type AlbumWord } from '../../game/Photos';
 import { BODY_UNIT_M } from '../../world/scale';
 import { PLACES, PLATEAUS } from '../layout';
+import { padGlyph, type PadGlyph } from '../pad/glyphs';
+import { pad } from '../pad/pad';
 import type { MapPart, RoamMode } from '../types';
 import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import { createJournal, type Journal } from './_book';
@@ -58,23 +60,44 @@ const HELD_NAME: Record<Exclude<HoldKind, 'none'>, WordKey> = { lantern: 'rLante
 
 /**
  * The map's keys under the viewfinder and the selfie shutter (M is the
- * mini-map here), in the language in use (ui/lang.ts; in English in lower case).
+ * mini-map here), in the language in use (ui/lang.ts; in English in lower case);
+ * with the game pad in use, its buttons instead (roam/input.ts maps them).
  */
 const kbd = (k: string) => `<kbd>${k}</kbd>`;
 const low = (w: WordKey) => t(w).toLowerCase();
-const takeKeys = () => `${kbd('Space')} / ${low('rClick')} ${low('rTake')}`;
-const cameraHint = () => [takeKeys(), low('rDragLook'), low('rWheelZoom'), `${kbd('4')} / ${kbd('Esc')} ${low('rStow')}`, `${kbd('V')} ${low('rAlbum')}`].join(' · ');
+/** The pad's buttons for one thing (glyphs.ts), "a / b". */
+const pads = (...gs: PadGlyph[]) => gs.map((g) => padGlyph(g)).join(' / ');
+const takeKeys = () => (pad.active ? `${pads('south', 'r2')} ${low('rTake')}` : `${kbd('Space')} / ${low('rClick')} ${low('rTake')}`);
+/** The camera: the right stick aims, R1 / L1 zoom in / out (in that order: the Khmer word is "in · out"), ← (its own d-pad arm) or ○ puts it away, △ the album. */
+const cameraHint = () =>
+  (pad.active
+    ? [takeKeys(), `${pads('rstick')} ${low('rLook')}`, `${pads('r1', 'l1')} ${low('rZoom')}`, `${pads('left', 'east')} ${low('rStow')}`, `${pads('north')} ${low('rAlbum')}`]
+    : [takeKeys(), low('rDragLook'), low('rWheelZoom'), `${kbd('4')} / ${kbd('Esc')} ${low('rStow')}`, `${kbd('V')} ${low('rAlbum')}`]
+  ).join(' · ');
+/** The phone: with the pad the right stick moves it, R1 / L1 closer / further, L3 the stick, □ gesture, ↓ face, → or ○ puts it away. */
 const selfieHint = () =>
-  [
-    takeKeys(),
-    low('rDragPhone'),
-    `${low('rWheel')} ${low('rReach')}`,
-    `${kbd('T')} ${low('rStick')}`,
-    `${kbd('G')} ${low('rGesture')}`,
-    `${kbd('X')} ${low('rFace')}`,
-    `${kbd('5')} / ${kbd('Esc')} ${low('rStow')}`,
-    `${kbd('V')} ${low('rAlbum')}`,
-  ].join(' · ');
+  (pad.active
+    ? [
+        takeKeys(),
+        `${pads('rstick')} ${low('rMovePhone')}`,
+        `${pads('r1', 'l1')} ${low('rReach')}`,
+        `${pads('l3')} ${low('rStick')}`,
+        `${pads('west')} ${low('rGesture')}`,
+        `${pads('down')} ${low('rFace')}`,
+        `${pads('right', 'east')} ${low('rStow')}`,
+        `${pads('north')} ${low('rAlbum')}`,
+      ]
+    : [
+        takeKeys(),
+        low('rDragPhone'),
+        `${low('rWheel')} ${low('rReach')}`,
+        `${kbd('T')} ${low('rStick')}`,
+        `${kbd('G')} ${low('rGesture')}`,
+        `${kbd('X')} ${low('rFace')}`,
+        `${kbd('5')} / ${kbd('Esc')} ${low('rStow')}`,
+        `${kbd('V')} ${low('rAlbum')}`,
+      ]
+  ).join(' · ');
 
 /** The album's own words in the language in use (ui/lang.ts `al…`; the keys here: 4 camera, 5 selfie). */
 const ALBUM_KEY: Record<AlbumWord, WordKey> = {
@@ -109,6 +132,8 @@ const ALBUM_TEXT: AlbumText = {
     return `${num(d.getDate())} ${KHMER_MONTHS[d.getMonth()]} ${num(d.getFullYear())} ម៉ោង ${num(two(d.getHours()))}:${num(two(d.getMinutes()))}`;
   },
   keys: { camera: '4', selfie: '5' },
+  // (with the pad: d-pad ← the camera, → the selfie)
+  padKeys: { camera: 'left', selfie: 'right' },
 };
 
 const _e = new Euler(0, 0, 0, 'YXZ');
@@ -253,6 +278,11 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     album?.relabel();
   }
   onLang(showCameraHint);
+  // (the pad in use or not: its buttons or the keys; the selfie frame's line on its next frame)
+  pad.onChange(() => {
+    showCameraHint();
+    selfieInfo = '\u0000';
+  });
 
   /** The camera at his eye, looking along the shot (world). In the boat, the air or a posture (the swing), from his head wherever it is. */
   function eye(out: Vector3): Vector3 {
@@ -471,6 +501,8 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       const s = body.scale;
       if (lensCam) journal.photographed(lensCam, d.canvas, last === 'selfie' ? { kind: 'visitor', x: body.pos.x, y: body.pos.y + 0.9 * s, z: body.pos.z, r: 0.75 * s } : null);
       album.capture(d.canvas, placeName(d.world, body.pos, d.mode()));
+      // (the shutter felt in the hand)
+      pad.rumble('tick');
     },
     openAlbum() {
       getAlbum().openAlbum();

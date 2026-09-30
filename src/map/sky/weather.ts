@@ -1,3 +1,4 @@
+import { pad } from '../pad/pad';
 import { CALM_WEATHER, WEATHER_SETTINGS, type MapFrame, type MapWeather, type WeatherSetting } from '../types';
 import { WIND } from './haze';
 
@@ -643,6 +644,7 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
       // A rainbow only while the sun is up (and low: all the map's day is golden hour).
       w.rainbow *= 1 - ramp(f.night, 0.2, 0.42);
       current = w;
+      thunderShake(f, w);
     },
     wants(f) {
       const w = f.weather;
@@ -663,6 +665,28 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
 }
 
 let current: MapWeather = { ...CALM_WEATHER, windDir: BASE_DIR };
+
+/** The flash whose thunder last shook the pad (its `flashAt`). */
+let shookFor = CALM_WEATHER.flashAt;
+
+/**
+ * The pad's thunder (pad.ts `rumble`): after each new flash, as its sound
+ * gets to the ears (340 m/s, as audio/weather.ts hears it: the camera over
+ * the map, the explorer's head while roaming), softer the farther it
+ * struck; none past where it is heard. Sound on or off: the pad feels it.
+ */
+function thunderShake(f: MapFrame, w: MapWeather): void {
+  if (w.flashAt === shookFor) return;
+  shookFor = w.flashAt;
+  const since = f.t - w.flashAt;
+  if (!(since >= 0 && since < 2)) return;
+  const at = f.roam === 'overview' ? f.camera.position : f.listener;
+  // (the nearest part of the bolt: a few hundred metres up)
+  const d = Math.hypot(w.flashX - at.x, w.flashZ - at.z, 300);
+  if (d >= 4000) return;
+  const near = 1 - Math.min(1, (d - 300) / 1500);
+  setTimeout(() => pad.rumble('thunder', 0.25 + 0.75 * near * near), Math.max(0, d / 340 - since) * 1000);
+}
 
 /**
  * The weather of this frame, for things that are not handed the frame (the
