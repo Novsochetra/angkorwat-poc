@@ -204,6 +204,9 @@ export function buildZipLine(field: HeightField, plan: ZipPlan, soft?: (x: numbe
     const hanger = buildVoxelMesh(lanyardBlocks(), { quality: 'medium', name: `zipLine:lanyard${line.n}` });
     const brake = buildVoxelMesh(brakeBlocks(), { quality: 'medium', name: `zipLine:brake${line.n}` });
     const spring = buildVoxelMesh(springBlocks(), { quality: 'medium', name: `zipLine:spring${line.n}` });
+    // (the brake and its spring sit over a deck's edge: they dissolve in front of the follow camera too)
+    installNearFade(brake);
+    installNearFade(spring);
     object.add(trolley, hanger, brake, spring);
     const r: Rig = { line, trolley, hanger, brake, spring, u: 0, swing: 0, roll: 0, block: line.length - BRAKE_TRAVEL, away: false };
     return r;
@@ -342,7 +345,7 @@ function springBlocks(): VoxelBuilder {
   const src = traceSource();
   // (a coil: thin turns round the cable, light and dark in turn as the wire catches the light)
   const n = Math.round(SPRING_LEN / 0.09);
-  for (let i = 0; i < n; i++) b.box(0, 0, (i + 0.5) * (SPRING_LEN / n), 0.1, 0.1, (SPRING_LEN / n) * 0.62, i % 2 ? 0x6f7478 : 0xa9aeb2, 'metal', { src });
+  for (let i = 0; i < n; i++) b.box(0, 0, (i + 0.5) * (SPRING_LEN / n), 0.1, 0.1, (SPRING_LEN / n) * 0.62, i % 2 ? 0x83888c : 0x9ba0a4, 'metal', { src });
   return b;
 }
 

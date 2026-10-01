@@ -12,7 +12,7 @@ import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, t } from '../ui/lang';
-import { registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { angleDiff } from './followCam';
 import type { RoamCtx, RoamWorld } from './types';
 import { stepSound } from './walker';
@@ -426,6 +426,8 @@ function write(): void {
 
 /** Give it back to its own life: it grazes where it is (its legs still, its tilt gone). */
 function release(): void {
+  // (the touch controls' Jump button is back: he is off)
+  touchJump(null);
   const a = ag;
   if (!a) return;
   const now = BUFFALO_RIDE.now;
@@ -486,6 +488,8 @@ function startMount(a: Agent, ctx: RoamCtx): void {
   swayVel.pitch = swayVel.roll = 0;
   body.explorer.animator.posture = posture;
   body.explorer.animator.postureFeet = false;
+  // (on a touch screen the Jump button does nothing on its back: hidden while he rides; the stick past its ring urges it on)
+  touchJump('hide');
   grazeLeft = 0;
   idle = 0;
   walked = 0;
@@ -1039,6 +1043,15 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
 
 // ── The add-on ─────────────────────────────────────────────────────────────
 
+/** Its keys (the key help while he rides): keyboard, and the game pad's (the left stick, R2, □, the right stick). */
+const RIDE_KEYS: readonly AddonKey[] = [
+  ['W S', 'bufKeyWalk', 'lstick'],
+  ['A D', 'rTurn', 'lstick'],
+  ['Shift', 'bufKeyFast', 'r2'],
+  ['E', 'bufKeyOff', 'west'],
+  ['Q R', 'rLook', 'rstick'],
+];
+
 registerAddon({
   id: 'buffalo',
   // (before a boat tied up by the bank, a ramp or a beacon that is also in reach: the herds graze by the River Gate's landing)
@@ -1088,6 +1101,8 @@ registerAddon({
   get handsBusy() {
     return state !== 'none';
   },
+  // (the key help, bottom left, while he rides: no jump, no tools; the same array each time)
+  keys: () => RIDE_KEYS,
   offer(ctx, mode) {
     if (mode !== 'walk' || state !== 'none' || env?.busy()) return null;
     if (!nearest(ctx)) return null;

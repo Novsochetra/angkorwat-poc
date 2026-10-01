@@ -8,9 +8,10 @@ import { PAGODA } from '../village/_spots';
  * objects. No three.js, nothing allocated per frame.
  *
  * - **The seats** (`BLESS_SEATS`): where a monk sits for blessings — the
- *   floating village pagoda's hall, on a low dais against its east wall, to
+ *   floating village pagoda's hall, on a raised dais against its east wall, to
  *   the Buddha's right, facing across the hall (west) — and where the
- *   explorer kneels before him.
+ *   explorer kneels before him (the monk sits higher than the one before him:
+ *   his head always above the explorer's, the tie included).
  * - **The monk** (`BLESS.monks`): the people part writes whether he sits there
  *   now, free to bless (by day; not at his meal before noon; not while the
  *   pagoda keeps a festival: Pchum Ben, Visak Bochea), and where his hands
@@ -38,10 +39,20 @@ export const CHANT_FOR = 8.2;
 /**
  * The tie (s into `tie`): he comes in on his knees and holds out his hand; the monk's hands go out to it (`reach`),
  * the cord goes under his wrist (`wind`, the murmured blessing), round it (`round`), knotted (`knot`: on him for
- * good); the monk's hands come back (`back`); he raises his wrist to look at the string (`look`), and is back in
- * his sampeah by `for`.
+ * good); the monk's hands come back (`back`) and he goes back to his place on his knees; there he raises his wrist
+ * to look at the string (`look`: not so close to the monk, whose face is near his while he holds out his hand), and is
+ * back in his sampeah by `for`.
  */
-export const TIE = { reach: 1.0, wind: 1.75, round: 2.65, knot: 3.6, back: 3.95, look: 4.0, for: 5.9 } as const;
+export const TIE = { reach: 1.0, wind: 1.75, round: 2.65, knot: 3.6, back: 3.95, look: 5.0, for: 6.6 } as const;
+
+/** A box on the floor (m): its middle, its half length along the monk's facing and across it, its top. */
+export interface BlessBox {
+  readonly x: number;
+  readonly z: number;
+  readonly along: number;
+  readonly across: number;
+  readonly top: number;
+}
 
 export interface BlessSeat {
   /** Short name (bug reports, `bless=` checks). */
@@ -54,7 +65,9 @@ export interface BlessSeat {
   /** The floor before the dais (m). */
   readonly floor: number;
   /** The dais: its middle (m), its half length along his facing and across it, its top. */
-  readonly dais: { readonly x: number; readonly z: number; readonly along: number; readonly across: number; readonly top: number };
+  readonly dais: BlessBox;
+  /** The wooden step before the dais at his left end (the same measures): his way up and down. */
+  readonly step: BlessBox;
   /**
    * The explorer kneels this far before him (m from the seat along his facing; feet), and comes in this close on his
    * knees for the string, this far to his own left (m: his right hand before the monk's hands).
@@ -73,7 +86,14 @@ export interface BlessSeat {
  */
 const X = PAGODA.x;
 const F = PAGODA.floor;
-const DAIS_TOP = F + 0.3;
+/**
+ * The dais's top (m): a monk's raised seat (អាសនៈ), knee high to a man standing, so that seated cross-legged his head
+ * is clearly above the head of the one kneeling before him (the explorer is big-headed: on his heels his head's top is
+ * ≈ 2.0 m up, ≈ 2.05 up on his knees; the monk's ≈ 1.62‥1.64 m over the dais, 2.27 m up). The step before its left
+ * end is half as high.
+ */
+const DAIS_TOP = F + 0.65;
+const STEP_TOP = F + 0.33;
 export const BLESS_SEATS: readonly BlessSeat[] = [
   {
     id: 'village',
@@ -84,9 +104,12 @@ export const BLESS_SEATS: readonly BlessSeat[] = [
     floor: F,
     // (from the wall behind him to 0.62 m before him: his knees on it, the bowl and the plate at his sides)
     dais: { x: X + 3.115, z: 103.3, along: 0.685, across: 0.9, top: DAIS_TOP },
+    // (before the dais's front at his left end, the south: clear of the one kneeling close for the string)
+    step: { x: X + 3.05 - 0.78, z: 103.3 + 0.66, along: 0.16, across: 0.22, top: STEP_TOP },
     kneel: 2.2,
+    // (close for the string: his hand reaches the monk's, their faces a hand and more apart, his head well below)
     close: 1.24,
-    closeLeft: 0.16,
+    closeLeft: 0.26,
     reach: 2.6,
   },
 ];

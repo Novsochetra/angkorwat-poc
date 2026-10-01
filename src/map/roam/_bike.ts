@@ -5,9 +5,11 @@ import '../audio/_bike';
 import { SFX } from '../audio/addonSfx';
 import { Things } from '../people/_things';
 import { pad } from '../pad/pad';
+import { SEY, SEY_R, SEY_SPOT } from '../sey';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, t } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { registerAddon, touchJump, type AddonEnv, type AddonKey } from './_addons';
+import { buildCanopies, canopyAt } from './_bikeCanopy';
 import { BikeModel, type BikeTurns } from './_bikeModel';
 import { BIKE_SPOTS, type BikeSpot } from './_bikeSpots';
 import { angleDiff } from './followCam';
@@ -128,6 +130,34 @@ const ACROSS = [0.3, -0.3];
 const SLIDES = [0.35, -0.35, 0.7, -0.7, 1.05, -1.05];
 const SLIDE_TURN = 1.6;
 const LOOPS = ['bikeChain', 'bikeFree', 'bikeDirt', 'bikeGrass', 'bikeStone'];
+/**
+ * His head's height riding (m over the wheels' ground at his roaming size): under the hat's brim, and its crown;
+ * across, the middle of his head and its sides (his head is wide). What hangs ahead of him there stops the bicycle
+ * before it: a stall's umbrella, an awning, cloth on a line, vines hanging from a wall (_bikeCanopy.ts: as they are
+ * now — a market folds its umbrellas away at closing), or a lintel or a beam lower than his hat (the walk map).
+ */
+const HEAD_Y = [2.1, 2.45];
+const HEAD_SIDE = [0, 0.38, -0.38];
+const HAT_TOP = 2.55;
+const CHEST_Y = 1.2;
+/** Its look ahead goes in steps this long (m: the walk maps' half column). */
+const LOOK_STEP = 0.25;
+/** His head's middle ahead of the saddle point, and how far the hat's brim reaches in front of it with a little room (m). */
+const HEAD_AHEAD = 0.25;
+const BRIM = 0.45;
+/** The children's sey circle (sey.ts): he keeps this far from its middle (m: the children, their kicks, a little room). */
+const SEY_KEEP = SEY_R + 1.5;
+/** The bicycle's front tyre ahead of the saddle point (m). */
+const NOSE = 1.1;
+/** The key help (bottom left) while he rides: the keys, their words, the pad's buttons. */
+const KEYS: readonly AddonKey[] = [
+  ['W S', 'bikePedal', 'lstick'],
+  ['A D', 'bikeSteer', 'lstick'],
+  ['Shift', 'bikeFast', 'r2'],
+  ['Space', 'bikeBell', 'south'],
+  ['E', 'bikeOff', 'west'],
+  ['Q R', 'rLook', 'rstick'],
+];
 
 interface Bike {
   readonly spot: BikeSpot;
@@ -195,6 +225,8 @@ let bumpAt = 0;
 let edgeToast = 0;
 /** When he got on (`clock`): the keys show over him a few seconds. */
 let onAt = 0;
+/** When the touch jump button's "Bell" is checked again (`clock`: the touch controls may appear later). */
+let jumpAt = 0;
 /** The ground under the wheels (`stepSound` asked a few times a second) and the tyres' sound on it. */
 let ground: Ground = 'dirt';
 let groundAt = 0;
@@ -237,6 +269,10 @@ function prompts(): void {
 
 function build(e: AddonEnv): void {
   if (things) return;
+  // (what hangs at his head's height: made now, before the parts' first update fold any stall's umbrella away)
+  const t0 = performance.now();
+  const hanging = buildCanopies(e.parts, e.world.field);
+  console.info(`[map] bicycles: ${BIKE_SPOTS.length} · ${hanging} things hanging at head height (umbrellas, awnings, vines) indexed in ${(performance.now() - t0).toFixed(1)} ms`);
   things = new Things(BIKE_SPOTS.reduce((n, s) => n + BikeModel.boxes(s.seed), 0));
   things.mesh.name = 'roam:bikes';
   e.scene.add(things.mesh);
@@ -396,10 +432,70 @@ function wheelGround(w: RoamWorld, x: number, z: number, y: number, k: number): 
 }
 
 /** A short message (not again for a few seconds). */
-function say(ctx: RoamCtx, key: 'bikeUp' | 'bikeDown' | 'bikeDeep'): void {
+function say(ctx: RoamCtx, key: 'bikeUp' | 'bikeDown' | 'bikeDeep' | 'bikeLow' | 'bikeSey'): void {
   if (clock < toastAt) return;
   toastAt = clock + 4;
   ctx.hud.toast(t(key));
+}
+
+/** Checks: the room ahead last found (m). */
+let lastRoom = Infinity;
+/** What `roomAhead` last found in the way: something low at his head's height, or the sey circle. */
+let aheadIs: 'bikeLow' | 'bikeSey' = 'bikeLow';
+
+/**
+ * Something hangs at his head's height at (x, z) over ground at `y` (his head's middle there, heading (fx, fz)): a
+ * box of _bikeCanopy.ts at his head, or a gap in the walk map under something lower than his hat.
+ */
+function lowAt(w: RoamWorld, x: number, y: number, z: number, fx: number, fz: number, k: number): boolean {
+  if (w.ceilingAt && w.ceilingAt(x, z, y + CHEST_Y * k) < y + HAT_TOP * k) return true;
+  for (const side of HEAD_SIDE) {
+    const sx = x + fz * side * k;
+    const sz = z - fx * side * k;
+    for (const h of HEAD_Y) if (canopyAt(sx, y + h * k, sz)) return true;
+  }
+  return false;
+}
+
+/**
+ * How far (m) he can still ride straight on before something hangs in the way at his head's height (`lowAt`) or the
+ * children's sey circle is, looking `look` m ahead; Infinity: nothing there.
+ */
+function roomAhead(ctx: RoamCtx, look: number): number {
+  const w = ctx.world;
+  const k = sc(ctx);
+  const p = ctx.body.pos;
+  const fx = Math.sin(ctx.body.yaw);
+  const fz = Math.cos(ctx.body.yaw);
+  let room = Infinity;
+  // From his head's middle on; what hangs over him already does not count (he rides on out from under it).
+  let clear = false;
+  for (let d = 0; d <= look; d += LOOK_STEP * k) {
+    const x = p.x + fx * (HEAD_AHEAD * k + d);
+    const z = p.z + fz * (HEAD_AHEAD * k + d);
+    const low = lowAt(w, x, p.y, z, fx, fz, k);
+    if (!low) clear = true;
+    else if (clear) {
+      room = d - BRIM * k;
+      aheadIs = 'bikeLow';
+      break;
+    }
+  }
+  // The sey circle while the children play: its edge, along the way he goes (from the front tyre).
+  if (SEY.out) {
+    const dx = p.x - SEY_SPOT.x;
+    const dz = p.z - SEY_SPOT.z;
+    const along = dx * fx + dz * fz;
+    const c = dx * dx + dz * dz - SEY_KEEP * SEY_KEEP;
+    const disc = along * along - c;
+    // (inside it already: only going in further is in the way)
+    const s = c < 0 ? (along < 0 ? 0 : Infinity) : along < 0 && disc > 0 ? -along - Math.sqrt(disc) - NOSE * k : Infinity;
+    if (s < room) {
+      room = s;
+      aheadIs = 'bikeSey';
+    }
+  }
+  return room;
 }
 
 /** A knock against something (a sound and the pad's shake for a hard one). */
@@ -526,6 +622,9 @@ function start(ctx: RoamCtx, b: Bike, at = false): void {
   if (followWas > 0) ctx.cam.follow = 0.95;
   writePose(ctx, at);
   if (!at) SFX.play('bikeStand', 0.8);
+  // (on a touch screen the jump button rings the bell while he rides)
+  touchJump('bikeBellBtn');
+  jumpAt = clock + 0.5;
 }
 
 /** Off at once (back to the map, the mode changed): the bicycle stays on its stand where it is. */
@@ -541,6 +640,7 @@ function stop(ctx: RoamCtx | null): void {
   ride = null;
   phase = 'off';
   quiet();
+  touchJump(null);
   if (ctx) {
     ctx.cam.distance = camBase;
     ctx.cam.follow = followWas;
@@ -645,11 +745,18 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   }
 
   // ── Riding ──
-  const fwd = clamp(input.move.y, -1, 1);
-  const side = clamp(input.move.x, -1, 1);
-  if (input.use) leaving = true;
+  // (a card or a menu has roaming paused — "Back to the map?", the calendar, the explorer menu, the name, clothes or
+  // dog cards, the big map, the settings: whatever takes the game pad, or asks — so nobody steers: he brakes to a stop)
+  const paused = pad.inMenu || document.body.classList.contains('mu-asking');
+  const fwd = paused ? 0 : clamp(input.move.y, -1, 1);
+  const side = paused ? 0 : clamp(input.move.x, -1, 1);
+  if (clock >= jumpAt) {
+    jumpAt = clock + 0.5;
+    touchJump('bikeBellBtn');
+  }
+  if (input.use && !paused) leaving = true;
   // The bell (Space): kring-kring.
-  if (input.jump && clock >= bellAt) {
+  if (input.jump && !paused && clock >= bellAt) {
     bellAt = clock + 0.85;
     SFX.play('bikeBell', 1);
   }
@@ -671,6 +778,7 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
     b.pitch = 0;
     v = 0;
     quiet();
+    touchJump(null);
     SFX.play('bikeStand', 0.7);
     return { prompt: null };
   }
@@ -683,7 +791,7 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
 
   // ── Speed: pedalling builds it up, the brakes and the ground take it, a rise slows it, a fall speeds it ──
   // (his camera or phone up, the album open: no hands on the bars, so he brakes to a stop and puts a foot down)
-  const handsOff = !!e.photo.kind || e.photo.albumOpen;
+  const handsOff = !!e.photo.kind || e.photo.albumOpen || paused;
   const pedal = !leaving && !handsOff && fwd > 0.08 ? fwd : 0;
   const hard = pedal > 0 && input.run;
   let a = 0;
@@ -699,9 +807,10 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   // Rolling resistance (never past a standstill).
   const roll = ROLL[ground] * k * dt;
   v = v > 0 ? Math.max(0, v - roll) : Math.min(0, v + roll);
-  const brake = leaving || handsOff ? BRAKE_OFF / BRAKE : fwd < -0.08 && v > 0.05 ? -fwd : 0;
+  // (paused by a card: a firm stop where he is; getting off, the camera or the phone up: a gentle one)
+  const brake = paused ? 1 : leaving || handsOff ? BRAKE_OFF / BRAKE : fwd < -0.08 && v > 0.05 ? -fwd : 0;
   if (brake > 0 && v > 0) {
-    if (!braked && v > 4.5 * k && !leaving) SFX.play('bikeBrake', clamp((v / k - 4) / 6, 0.2, 1));
+    if (!braked && v > 4.5 * k && !leaving && !paused) SFX.play('bikeBrake', clamp((v / k - 4) / 6, 0.2, 1));
     v = Math.max(0, v - BRAKE * k * brake * dt);
   }
   braked = brake > 0.4 && v > 0.3;
@@ -719,8 +828,27 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   let yawRate = (v * Math.tan(steer)) / L;
   // Stopped (or held against something), A / D shuffle it round with his foot down: out of a corner.
   if (sp < 0.3 * k && Math.abs(side) > 0.3 && !handsOff) yawRate = -side * PIVOT;
+  // Something low at his head's height ahead, or the children's sey circle: he slows to stop short of it.
+  /** Held where he is by what is in the way (he puts his foot down, pedalling or not). */
+  let held = false;
+  if (v > 0.05 * k) {
+    const room = roomAhead(ctx, Math.min(10 * k, (v * v) / (2 * BRAKE * k) + 2 * k));
+    lastRoom = room;
+    if (room < Infinity) {
+      const cap = Math.sqrt(2 * BRAKE * k * Math.max(0, room - 0.1 * k));
+      if (v > cap) v = cap;
+      // (right up to it: he stops there and puts his foot down)
+      if (cap < 0.35 * k) {
+        v = 0;
+        held = true;
+        if (pedal > 0) say(ctx, aheadIs);
+      }
+    }
+  }
   // (pushed back by a wall meanwhile: the step's turn is undone with it)
+  const going = v;
   move(ctx, v * dt, yawRate * dt, dt);
+  if (going > 0.05 && v === 0) held = true;
 
   // ── The wheels on the ground: up and over small steps, the bicycle pitching between them; a bump ──
   for (let i = 0; i < 2; i++) {
@@ -746,7 +874,7 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   body.vel.set(Math.sin(body.yaw) * v, 0, Math.cos(body.yaw) * v);
 
   // ── The foot down when stopped, walking it back, the lean ──
-  const stopped = Math.abs(v) < 0.45 * k && (pedal === 0 || v < 0);
+  const stopped = Math.abs(v) < 0.45 * k && (pedal === 0 || v < 0 || held);
   down += ((stopped ? 1 : 0) - down) * damp(stopped ? 5 : 8, dt);
   // (walking it back, or shuffling it round: his left foot steps)
   const pivoting = sp < 0.3 * k && Math.abs(yawRate) > 0.1;
@@ -898,6 +1026,7 @@ registerAddon({
     if (b) start(ctx, b);
   },
   hold,
+  keys: () => KEYS,
   frame,
   setMode(next, _prev, ctx) {
     roamMode = next;
@@ -945,6 +1074,7 @@ registerAddon({
 export function bikeDebug(): unknown {
   return {
     phase,
+    ahead: lastRoom === Infinity ? null : { room: +lastRoom.toFixed(2), what: aheadIs },
     v: +v.toFixed(2),
     steer: +steer.toFixed(3),
     lean: +lean.toFixed(3),

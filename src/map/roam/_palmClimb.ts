@@ -16,7 +16,7 @@ import { TIME } from '../time';
 import type { MapFrame } from '../types';
 import { num, onLang, t } from '../ui/lang';
 import { palmBend, sugarPalmWork, type PalmSpec } from '../veg/palms';
-import { registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { angleDiff } from './followCam';
 import { CARRY_MAX, nameOf, type Kept } from './_shopPurse';
 import type { RoamCtx } from './types';
@@ -669,8 +669,37 @@ function startWait(ctx: RoamCtx): void {
   h.z = ctx.body.pos.z;
 }
 
+// ── The key help (bottom left) and the touch Jump button while it holds him ──
+
+const LOOK: AddonKey = ['Q R', 'rLook', 'rstick'];
+const KEYS = {
+  climb: [['W S', 'palmKeyClimb', 'lstick'], ['Shift', 'palmKeyQuick', 'r2'], LOOK],
+  low: [['W S', 'palmKeyClimb', 'lstick'], ['Shift', 'palmKeyQuick', 'r2'], ['Space', 'palmJump', 'south'], LOOK],
+  bottom: [['W', 'palmClimb', 'lstick'], ['E S', 'palmOff', 'west'], ['Space', 'palmJump', 'south'], LOOK],
+  topSwap: [['S', 'palmKeyDown', 'lstick'], ['E', 'palmSwap', 'west'], ['4 5', 'rPhoto', 'dpadx'], LOOK],
+  top: [['S', 'palmKeyDown', 'lstick'], ['4 5', 'rPhoto', 'dpadx'], LOOK],
+  busy: [LOOK],
+} satisfies Record<string, readonly AddonKey[]>;
+
+/** The key help's lines for where he is now (one of the kept lists: the hud compares them). */
+function keysNow(): readonly AddonKey[] {
+  if (state !== 'climb' || !L) return KEYS.busy;
+  if (s >= L.sTop - 0.005) return swapCheck(L) === 'ok' ? KEYS.topSwap : KEYS.top;
+  if (s <= S_MIN + 0.005) return KEYS.bottom;
+  return s < JUMP_MAX ? KEYS.low : KEYS.climb;
+}
+
+/** What the touch Jump button says now (Space jumps off only from the lowest rungs; else it is hidden). */
+let jumpShown: 'palmJump' | 'hide' | null = null;
+function showJump(k: 'palmJump' | 'hide' | null): void {
+  if (k === jumpShown) return;
+  jumpShown = k;
+  touchJump(k);
+}
+
 /** The ladder lets him go: the walk has him again. */
 function release(ctx: RoamCtx): void {
+  showJump(null);
   state = 'idle';
   ctx.cam.follow = followBefore;
   PALM_CLIMB.palm = null;
@@ -708,6 +737,7 @@ function stopAll(ctx: RoamCtx | null): void {
     }
   }
   if (state === 'on' || state === 'climb' || state === 'swap' || state === 'off') hatBack();
+  if (state !== 'idle') showJump(null);
   state = 'idle';
   full = false;
   jumped = false;
@@ -1036,6 +1066,8 @@ function hold(ctx: RoamCtx, dt: number): AddonHold {
   h.head.x = body.pos.x;
   h.head.y = body.pos.y + 2.35 * (body.scale / 1.4);
   h.head.z = body.pos.z;
+  const k = keysNow();
+  showJump(k === KEYS.low || k === KEYS.bottom ? 'palmJump' : 'hide');
   return { prompt: e.photo.kind || e.photo.albumOpen ? null : prompt };
 }
 
@@ -1226,6 +1258,8 @@ registerAddon({
 
   hold,
 
+  keys: keysNow,
+
   after(ctx, mode) {
     // Jumped off with the full tube: once he has landed, he waits for the cook with it.
     if (jumped && state === 'idle' && mode === 'walk' && ctx.body.grounded) {
@@ -1348,6 +1382,8 @@ registerAddon({
               : s >= L.sTop - 0.005
                 ? 'top'
                 : k;
-    return { palm: v, palmtree: L.id };
+    // (his hat is only off for the ladder: the shot puts it on, the climb takes it off again and gives it back at the foot)
+    const hatHeld = hatBefore && (state === 'on' || state === 'climb' || state === 'swap' || state === 'off');
+    return { palm: v, palmtree: L.id, ...(hatHeld ? { hat: '1' } : {}) };
   },
 });

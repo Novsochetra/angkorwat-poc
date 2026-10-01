@@ -173,6 +173,8 @@ interface Reading {
 const KHMER = /[ក-៿᧠-᧿]/;
 /** Some Khmer letters in it. */
 export const isKhmer = (s: string): boolean => KHMER.test(s);
+/** Only Khmer letters and marks (and spaces, zero-width spaces between words): a name in Khmer script. */
+export const khmerOnly = (s: string): boolean => /^[\u1780-\u17ff\u19e0-\u19ff\u200b\u200c\u200d ]+$/.test(s) && isKhmer(s);
 
 /** One word in lower case, accents folded (é stays: it is said; è ê ë: ɛ; ñ stays). */
 function fold(w: string): string {
@@ -1237,10 +1239,12 @@ function fromUrl(): PlayerName | null {
   return { km: isKhmer(t) ? t : toKhmer(t), latin: latinPart(t) };
 }
 
+/** The name kept: its Khmer letters only if they are Khmer script (an old or broken "abc" is written again from the Latin spelling, or dropped). */
 function saved(): PlayerName | null {
-  const km = progress.get('name.km', '', isString).trim();
-  if (!km) return null;
-  return { km, latin: progress.get('name.latin', '', isString).trim() };
+  const latin = latinPart(progress.get('name.latin', '', isString)).trim();
+  let km = tidyName(progress.get('name.km', '', isString)).trim();
+  if (km && !khmerOnly(km)) km = latin ? toKhmer(latin) : '';
+  return km && khmerOnly(km) ? { km, latin } : null;
 }
 
 let current: PlayerName | null = fromUrl() ?? saved();
@@ -1260,7 +1264,7 @@ export function onName(fn: (n: PlayerName | null) => void): () => void {
 /** Give him a name (kept between visits; Khmer letters needed), or null to forget it. */
 export function setPlayerName(n: PlayerName | null): void {
   const km = n ? tidyName(n.km).trim() : '';
-  const next: PlayerName | null = km && isKhmer(km) ? { km, latin: n ? latinPart(n.latin).trim() : '' } : null;
+  const next: PlayerName | null = km && khmerOnly(km) ? { km, latin: n ? latinPart(n.latin).trim() : '' } : null;
   if (next?.km === current?.km && next?.latin === current?.latin) return;
   current = next;
   progress.set('name.km', next ? next.km : null);

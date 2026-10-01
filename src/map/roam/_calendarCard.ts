@@ -316,7 +316,8 @@ export function createCalendarCard(d: CardDeps): CalendarCard {
  * next waits its turn.
  */
 export interface CalendarToast {
-  show(e: CalendarEvent, kicker: string, line: string, place: string, seconds?: number): void;
+  /** `first`: before what waits, and the one showing (a day's moment) gives way to it at once (the event waited for). */
+  show(e: CalendarEvent, kicker: string, line: string, place: string, seconds?: number, first?: boolean): void;
   /** Hold the queue (the view is faded out): they show once it is let go. */
   hold(on: boolean): void;
   /** Forget what waits, and put away the one showing (the time jumped: old news). */
@@ -341,10 +342,13 @@ export function createCalendarToast(layer: HTMLElement): CalendarToast {
   const queue: { e: CalendarEvent; kicker: string; line: string; place: string; at: number; seconds: number }[] = [];
   let left = 0;
   let held = false;
+  /** The event of the banner showing (or last shown). */
+  let showing: CalendarEvent | null = null;
   const next = () => {
     let n = queue.shift();
     while (n && n.e.kind === 'daily' && performance.now() - n.at > STALE) n = queue.shift();
     if (!n) return;
+    showing = n.e;
     ico.innerHTML = eventSvg(n.e, 'wh-toast-icon');
     kick.textContent = n.kicker;
     big.textContent = n.line;
@@ -356,11 +360,16 @@ export function createCalendarToast(layer: HTMLElement): CalendarToast {
     left = SHOT ? Infinity : n.seconds;
   };
   return {
-    show(e, kicker, line, place, seconds = 5) {
+    show(e, kicker, line, place, seconds = 5, first = false) {
       // (the same one again while it shows or waits: once)
-      if (queue.some((q) => q.e === e) || (left > 0 && big.textContent === line)) return;
-      queue.push({ e, kicker, line, place, at: performance.now(), seconds });
-      if (queue.length > 3) queue.shift();
+      if (queue.some((q) => q.e === e && q.line === line) || (left > 0 && big.textContent === line)) return;
+      const item = { e, kicker, line, place, at: performance.now(), seconds };
+      if (first) {
+        queue.unshift(item);
+        // (a day's moment showing gives way now)
+        if (left > 0 && showing?.kind === 'daily' && showing !== e) left = Math.min(left, 0.01);
+      } else queue.push(item);
+      if (queue.length > 3) queue.pop();
       if (left <= 0 && !held) next();
     },
     hold(on) {
@@ -510,6 +519,12 @@ function injectStyle(): void {
     @media (max-width: 639px) {
       .rh > .wh-toast, body.roam-when .rh > .wh-toast { top: 250px; left: 50%; max-width: calc(100vw - 40px); }
       body:has(.mm-toast.is-on) .rh > .wh-toast, body:has(.rh-toast.is-on) .rh > .wh-toast { top: calc(250px + 76 * var(--px)); }
+    }
+    /* (a phone on its side: under the tool bar along the top and the festival's banner; with the card open, in the room left of it) */
+    @media (max-height: 500px) {
+      .rh > .wh-toast { top: 82px; }
+      body:has(.mm-toast.is-on) .rh > .wh-toast, body:has(.rh-toast.is-on) .rh > .wh-toast { top: 156px; }
+      body.roam-when .rh > .wh-toast { left: calc((100% - min(420px, 56vw) - 8px) / 2); max-width: calc(100% - min(420px, 56vw) - 32px); }
     }`;
   document.head.append(style);
 }

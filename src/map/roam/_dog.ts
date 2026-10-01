@@ -3,6 +3,7 @@ import { dogPetPose, newDogPet } from '../../character/dogPet';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_dog';
 import { CH } from '../fauna/_kit';
+import { len2, len3 } from '../fauna/_len';
 import { GREET } from '../greet';
 import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
@@ -11,10 +12,10 @@ import type { MapFrame, MapPart, RoamMode, Subject } from '../types';
 import { t } from '../ui/lang';
 import { BODY_UNIT_M } from '../../world/scale';
 import { ADDONS, registerAddon, type AddonEnv, type AddonHold } from './_addons';
-import { closeDogCard, DEFAULT_DOG_NAME, DOG_NAMES, dogCardOpen, dogNameIn, findDogName, openDogCard, pickDogCard, setDogCardDeps, type DogName } from './_dogCard';
+import { closeDogCard, DEFAULT_DOG_NAME, DOG_NAMES, dogCalled, dogCardOpen, dogNameIn, dogQuoted, findDogName, openDogCard, pickDogCard, setDogCardDeps, type DogName } from './_dogCard';
 import { DOG_MENU } from './_dogHook';
 import { DOG_HEAD, DOG_SCALE, DogMesh, dogHeadLocal, dogPoint, newLook, type DogLook } from './_dogModel';
-import { ground, lineWalk, PathSearch, STEP_UP, stepKind, stepTo, Trail } from './_dogPath';
+import { ground, hallAt, KERB, lineWalk, onLand, PathSearch, STEP_UP, stepKind, stepTo, Trail, type Hall } from './_dogPath';
 import { mooredBoatNear } from './boat';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
@@ -90,6 +91,8 @@ const FOLLOW_STOP = 2.4;
 const FOLLOW_GO = 3.6;
 /** How far behind him it keeps while he walks on (m). */
 const FOLLOW_KEEP = 3.2;
+/** He is on its level within this up or down (m: a crate he stands on, a step): more, and it is not beside him (a deck, a ledge). */
+const LEVEL = 1.3;
 /** Its fastest (m/s, drawn: he runs at ≈ 10), and how quickly it gets going and stops (m/s²). */
 const TOP = 11;
 const ACCEL = 10;
@@ -123,7 +126,7 @@ const approach = (v: number, to: number, rate: number, dt: number) => v + (to - 
 
 // ── State ──────────────────────────────────────────────────────────────────
 
-type Life = 'nap' | 'awake' | 'follow' | 'wait' | 'come' | 'away' | 'bed' | 'none';
+type Life = 'nap' | 'awake' | 'follow' | 'wait' | 'come' | 'door' | 'away' | 'bed' | 'none';
 type Act = 'none' | 'sniff' | 'bark';
 
 let env: AddonEnv | null = null;
@@ -146,6 +149,10 @@ let act: Act = 'none';
 let roamMode: RoamMode = 'overview';
 /** It is to come in by where he is the next time he is on foot (a visit begun, `dogHome(false)`). */
 let arrive = false;
+/** Looked for ground by him to come in on again in this long (s); he has stood on his feet this long (s), and must have to be come to. */
+let arriveIn = 0;
+let landedFor = 0;
+const LANDED = 1.8;
 /** He is home (his stilt house): it sleeps on its bed. */
 let atHome = false;
 const bed = { x: HOME.x, y: NaN, z: HOME.z, yaw: HOME.yaw, set: false };
@@ -171,7 +178,9 @@ let ri = 0;
 const SPOT = { x: 0, y: 0, z: 0 };
 const trail = new Trail();
 const search = new PathSearch();
-let searchFor: 'come' | 'call' | 'bed' | 'none' = 'none';
+let searchFor: 'come' | 'call' | 'bed' | 'door' | 'reach' | 'none' = 'none';
+/** Its way goes to the foot of where he is (no way up to him: `PathSearch` `near`): there it waits. */
+let toFoot = false;
 let retryIn = 0;
 /** Its way to him (m), and it is on its way (not settled). */
 let wayLeft = 0;
@@ -232,7 +241,7 @@ const othersHolding = (): boolean => {
 function near(gain: number): number {
   if (!lastCtx) return 0;
   const p = lastCtx.body.pos;
-  const d = Math.hypot(D.x - p.x, D.y - p.y, D.z - p.z);
+  const d = len3(D.x - p.x, D.y - p.y, D.z - p.z);
   return gain * clamp(1 - (d - 3) / 40, 0, 1) ** 1.4;
 }
 
@@ -245,7 +254,9 @@ function sound(name: string, gain: number): void {
 /** The key that calls it, as the player plays (0, or none on a pad and on touch: the explorer menu). */
 const viaMenu = () => pad.active || document.body.classList.contains('roam-touch');
 const greetKey = () => (pad.active ? padName('down', pad.kind) : 'F');
-const named = () => dogNameIn(name);
+/** Its name in a prompt or a toast ("ឆ្កែស": a one-letter name reads as a name), and on its own in quotes («ស»). */
+const named = () => dogCalled(name);
+const quoted = () => dogQuoted(name);
 
 function toast(text: string): void {
   env?.hud.toast(text);
@@ -268,13 +279,14 @@ const standing = () => pose.rest === 0 && mesh !== null && mesh.value(CH.rest, c
 
 // ── Where it goes ──────────────────────────────────────────────────────────
 
-/** Put it at (x, z) on the ground near height `y` (or the land), facing `yaw`. */
+/** Put it at (x, z) facing `yaw`: on the floor there at height `y` (never on another level: the tier under a terrace's edge, the land under a deck), or on the top there when no `y` is given. */
 function putAt(x: number, z: number, yaw: number, y = NaN): void {
   const w = env?.world;
   let gy = y;
   if (w) {
     const g = ground(w, x, z, Number.isNaN(y) ? w.groundAt(x, z) : y + 0.5, Number.isNaN(y) ? 0.1 : STEP_UP);
-    gy = Number.isNaN(g) ? (Number.isNaN(y) ? w.groundAt(x, z) : y) : g;
+    if (Number.isNaN(y)) gy = Number.isNaN(g) ? w.groundAt(x, z) : g;
+    else gy = !Number.isNaN(g) && Math.abs(g - y) <= STEP_UP ? g : y;
   }
   D.x = x;
   D.z = z;
@@ -313,9 +325,17 @@ function homeSpot(): void {
 }
 const HOME_AT = { x: HOME.x, y: 0, z: HOME.z };
 
+/** Stop looking (a look whether it can come up to him is forgotten: looked again when asked). */
+function stopSearch(): void {
+  search.cancel();
+  if (searchFor === 'reach' && REACH.state === 'busy') REACH.state = 'none';
+  searchFor = 'none';
+}
+
 /** Start looking for a way from it to (tx, ty, tz), for `why`. */
-function seek(why: 'come' | 'call' | 'bed', tx: number, ty: number, tz: number, limit: number): void {
+function seek(why: 'come' | 'call' | 'bed' | 'door', tx: number, ty: number, tz: number, limit: number): void {
   if (!env) return;
+  if (searchFor === 'reach' && REACH.state === 'busy') REACH.state = 'none';
   search.start(env.world, D.x, D.y, D.z, tx, ty, tz, limit);
   searchFor = why;
 }
@@ -329,7 +349,7 @@ function drive(dt: number, tx: number, tz: number, speed: number): void {
   if (AIR.on) return flyOn(dt);
   const dx = tx - D.x;
   const dz = tz - D.z;
-  const dist = Math.hypot(dx, dz);
+  const dist = len2(dx, dz);
   // (a sharp turn: round on the spot first, then off; nowhere to go: no turn)
   const off = dist > 0.05 ? angleDiff(Math.atan2(dx, dz), D.yaw) : 0;
   const turnRate = 5 + D.speed * 0.6;
@@ -338,7 +358,7 @@ function drive(dt: number, tx: number, tz: number, speed: number): void {
   const facing = Math.abs(off) < 1.2 ? 1 : 0.15;
   const goal = dist < 0.05 ? 0 : Math.min(speed, dist / Math.max(dt, 1e-3)) * facing;
   D.speed += clamp(goal - D.speed, -BRAKE * dt, ACCEL * dt);
-  let move = Math.min(dist, D.speed * dt);
+  let move = jammed > 0 ? 0 : Math.min(dist, D.speed * dt);
   if (move < 1e-4) {
     settleY(dt, D.y);
     return;
@@ -353,18 +373,32 @@ function drive(dt: number, tx: number, tz: number, speed: number): void {
     const nz = D.z + uz * s;
     const g = stepTo(w, D.y, nx, nz, ux, uz);
     if (Number.isNaN(g)) {
-      // (a wall met at a slant: slide along it)
-      const ax = D.x + ux * s;
-      const ga = Math.abs(ux) > 0.3 ? stepTo(w, D.y, ax, D.z, ux, 0) : NaN;
-      const bz = D.z + uz * s;
-      const gb = Math.abs(uz) > 0.3 ? stepTo(w, D.y, D.x, bz, 0, uz) : NaN;
-      if (!Number.isNaN(ga) && stepKind === 'walk') {
-        D.x = ax;
-        gy = ga;
-      } else if (!Number.isNaN(gb) && stepKind === 'walk') {
-        D.z = bz;
-        gy = gb;
-      } else {
+      // (a wall met at a slant: slide along it; a post or a stair's stringer across the way: a small step aside, round it)
+      let ok = false;
+      if (Math.abs(ux) > 0.3) {
+        const ga = stepTo(w, D.y, D.x + ux * s, D.z, ux, 0);
+        if (!Number.isNaN(ga) && stepKind === 'walk') {
+          D.x += ux * s;
+          gy = ga;
+          ok = true;
+        }
+      }
+      if (!ok && Math.abs(uz) > 0.3) {
+        const gb = stepTo(w, D.y, D.x, D.z + uz * s, 0, uz);
+        if (!Number.isNaN(gb) && stepKind === 'walk') {
+          D.z += uz * s;
+          gy = gb;
+          ok = true;
+        }
+      }
+      if (!ok) {
+        const gs = sidestep(w, ux, uz, s);
+        if (!Number.isNaN(gs)) {
+          gy = gs;
+          ok = true;
+        }
+      }
+      if (!ok) {
         stuck += dt;
         D.speed *= 0.5;
         break;
@@ -386,6 +420,31 @@ function drive(dt: number, tx: number, tz: number, speed: number): void {
   if (moved > 0) stuck = Math.max(0, stuck - dt);
   settleY(dt, gy);
 }
+
+/** Checks (`__dog.jam(s)`, dev server): it cannot step for that long, as if every step were blocked. */
+let jammed = 0;
+
+/**
+ * Something thin across its way (a post, a stringer under a stair): a little to one side (up to 0.4 m) the way on is
+ * free? It moves that way (no faster than `s`) and gives the floor there; NaN: no way round.
+ */
+function sidestep(w: AddonEnv['world'], ux: number, uz: number, s: number): number {
+  for (const o of SIDE)
+    for (let side = -1; side <= 1; side += 2) {
+      const px = D.x - uz * o * side;
+      const pz = D.z + ux * o * side;
+      const g1 = stepTo(w, D.y, px, pz, -uz * side, ux * side);
+      if (Number.isNaN(g1) || stepKind !== 'walk') continue;
+      const g2 = stepTo(w, g1, px + ux * s, pz + uz * s, ux, uz);
+      if (Number.isNaN(g2) || stepKind !== 'walk') continue;
+      const k = Math.min(1, s / o);
+      D.x += (px - D.x) * k;
+      D.z += (pz - D.z) * k;
+      return g1;
+    }
+  return NaN;
+}
+const SIDE = [0.12, 0.25, 0.4] as const;
 
 /** Its feet onto the ground under it (stairs as fast as it climbs them), and its body tilted with the ground. */
 function settleY(dt: number, gy: number): void {
@@ -458,7 +517,8 @@ const AIM = { x: 0, y: 0, z: 0 };
 /** Follow him: the way along his trail (or straight, where free), the point to head for, how far it is. */
 function wayToHim(ctx: RoamCtx): number {
   const p = ctx.body.pos;
-  const direct = Math.hypot(p.x - D.x, p.z - D.z);
+  // (up or down a stair to him counts too: he is not by it two metres over it)
+  const direct = len2(p.x - D.x, p.z - D.z) + Math.max(0, Math.abs(p.y - D.y) - KERB) * 1.5;
   if (route === 'direct') {
     AIM.x = p.x;
     AIM.y = p.y;
@@ -467,7 +527,7 @@ function wayToHim(ctx: RoamCtx): number {
   }
   if (route === 'trail') {
     // (crumbs it has reached: on to the next)
-    while (trail.has(ri) && Math.hypot(trail.x(ri) - D.x, trail.z(ri) - D.z) < 0.4 && Math.abs(trail.y(ri) - D.y) < 1.5) ri++;
+    while (trail.has(ri) && len2(trail.x(ri) - D.x, trail.z(ri) - D.z) < 0.4 && Math.abs(trail.y(ri) - D.y) < 1.5) ri++;
     if (!trail.has(ri)) {
       AIM.x = p.x;
       AIM.y = p.y;
@@ -477,14 +537,14 @@ function wayToHim(ctx: RoamCtx): number {
     AIM.x = trail.x(ri);
     AIM.y = trail.y(ri);
     AIM.z = trail.z(ri);
-    let len = Math.hypot(AIM.x - D.x, AIM.z - D.z);
-    for (let i = ri + 1; i < trail.n; i++) len += Math.hypot(trail.x(i) - trail.x(i - 1), trail.z(i) - trail.z(i - 1));
+    let len = len2(AIM.x - D.x, AIM.z - D.z);
+    for (let i = ri + 1; i < trail.n; i++) len += len2(trail.x(i) - trail.x(i - 1), trail.z(i) - trail.z(i - 1));
     const last = trail.n - 1;
-    return len + Math.hypot(p.x - trail.x(last), p.z - trail.z(last));
+    return len + len2(p.x - trail.x(last), p.z - trail.z(last));
   }
   if (route === 'path') {
     const pp = search.path;
-    while (ri < pp.count && Math.hypot(pp.x[ri] - D.x, pp.z[ri] - D.z) < 0.4 && Math.abs(pp.y[ri] - D.y) < 1.5) ri++;
+    while (ri < pp.count && len2(pp.x[ri] - D.x, pp.z[ri] - D.z) < reachAt(ri) && Math.abs(pp.y[ri] - D.y) < 1.5) ri++;
     if (ri >= pp.count) {
       AIM.x = p.x;
       AIM.y = p.y;
@@ -494,14 +554,36 @@ function wayToHim(ctx: RoamCtx): number {
     AIM.x = pp.x[ri];
     AIM.y = pp.y[ri];
     AIM.z = pp.z[ri];
-    let len = Math.hypot(AIM.x - D.x, AIM.z - D.z);
-    for (let i = ri + 1; i < pp.count; i++) len += Math.hypot(pp.x[i] - pp.x[i - 1], pp.z[i] - pp.z[i - 1]);
-    return len + Math.hypot(p.x - pp.x[pp.count - 1], p.z - pp.z[pp.count - 1]);
+    let len = len2(AIM.x - D.x, AIM.z - D.z);
+    for (let i = ri + 1; i < pp.count; i++) len += len2(pp.x[i] - pp.x[i - 1], pp.z[i] - pp.z[i - 1]);
+    return len + len2(p.x - pp.x[pp.count - 1], p.z - pp.z[pp.count - 1]);
   }
   AIM.x = D.x;
   AIM.y = D.y;
   AIM.z = D.z;
   return direct;
+}
+
+/**
+ * How near (m) to path point `i` counts as there: before a step up or down to the next point (a hop, a jump, a stair's
+ * tall tread) its column's middle, so it goes on straight across as the search went (the same step, the same checks).
+ */
+function reachAt(i: number): number {
+  const pp = search.path;
+  return i + 1 < pp.count && Math.abs(pp.y[i + 1] - pp.y[i]) > KERB ? 0.12 : 0.4;
+}
+
+/** Along its way to (ex, ez) (its bed, a hall's door): the next point of the way found (or the end). */
+function wayAlong(ex: number, ez: number): void {
+  const pp = search.path;
+  while (ri < pp.count && len2(pp.x[ri] - D.x, pp.z[ri] - D.z) < reachAt(ri) && Math.abs(pp.y[ri] - D.y) < 1.5) ri++;
+  if (ri < pp.count) {
+    AIM.x = pp.x[ri];
+    AIM.z = pp.z[ri];
+  } else {
+    AIM.x = ex;
+    AIM.z = ez;
+  }
 }
 
 /** A gap in his trail between crumb `from` and the newest (he jumped, fell, rode, sailed). */
@@ -517,7 +599,7 @@ function toTrail(): void {
   let best = trail.n - 1;
   let bd = Infinity;
   for (let i = Math.max(trail.first, trail.n - 60); i < trail.n; i++) {
-    const dd = Math.hypot(trail.x(i) - D.x, trail.z(i) - D.z) + Math.abs(trail.y(i) - D.y) * 2;
+    const dd = len2(trail.x(i) - D.x, trail.z(i) - D.z) + Math.abs(trail.y(i) - D.y) * 2;
     if (dd < bd) {
       bd = dd;
       best = i;
@@ -530,7 +612,7 @@ function toTrail(): void {
 function shortcut(ctx: RoamCtx): void {
   const w = ctx.world;
   const p = ctx.body.pos;
-  const d = Math.hypot(p.x - D.x, p.z - D.z);
+  const d = len2(p.x - D.x, p.z - D.z);
   if (d < 40) {
     const y = lineWalk(w, D.x, D.y, D.z, p.x, p.z);
     if (!Number.isNaN(y) && Math.abs(y - p.y) < 0.9) {
@@ -566,16 +648,83 @@ function shortcut(ctx: RoamCtx): void {
 
 // ── Coming in by him ───────────────────────────────────────────────────────
 
-/** It comes in near him (out from behind a bush, or out of view), faded in: on landing, called with no way, home again. */
-function appearNear(ctx: RoamCtx): void {
+/** The floor under his feet (he may be in the air a moment). */
+function hisLevel(ctx: RoamCtx): number {
+  const p = ctx.body.pos;
+  const g = ground(ctx.world, p.x, p.z, p.y + 0.5, STEP_UP);
+  return Number.isNaN(g) ? p.y : g;
+}
+
+/**
+ * The floor at (x, z) on his level — within a step of the floor under him `py` (not the tier under a terrace's edge,
+ * not the land under his deck) — from where it can walk to him (a straight way, hops allowed, ending on his level); NaN
+ * where there is none.
+ */
+function onHisLevel(ctx: RoamCtx, x: number, z: number, py: number): number {
+  const w = ctx.world;
+  const g = ground(w, x, z, py, STEP_UP);
+  // (his floor, give or take a kerb; a step higher or lower only on a wide floor: never a stall's table or a bench)
+  if (Number.isNaN(g) || Math.abs(g - py) > STEP_UP || (Math.abs(g - py) > KERB && !wideFloor(w, x, z, g))) return NaN;
+  // (not in a temple's or a pagoda's hall)
+  if (hallAt(x, g, z)) return NaN;
+  const p = ctx.body.pos;
+  const y = lineWalk(w, x, g, z, p.x, p.z, true);
+  return Number.isNaN(y) || Math.abs(y - py) > STEP_UP ? NaN : g;
+}
+
+/** A floor at least 2 m across at (x, z), height `g` (three of the four points a metre round it as high, give or take a kerb). */
+function wideFloor(w: AddonEnv['world'], x: number, z: number, g: number): boolean {
+  let n = 0;
+  for (let k = 0; k < 4; k++) {
+    const h = ground(w, x + (k === 0 ? 1 : k === 1 ? -1 : 0), z + (k === 2 ? 1 : k === 3 ? -1 : 0), g, KERB);
+    if (!Number.isNaN(h) && Math.abs(h - g) <= KERB) n++;
+  }
+  return n >= 3;
+}
+
+/** Checks: put it on his level at (x, z) if it can be there, else the nearest spot round him on his level, else at his feet. */
+function besideHim(ctx: RoamCtx, x: number, z: number, yaw: number): void {
+  const p = ctx.body.pos;
+  const hall = hallAt(p.x, p.y, p.z);
+  if (hall && doorSpot(ctx, hall)) {
+    putAt(DOOR.x, DOOR.z, DOOR.yaw, DOOR.y);
+    return;
+  }
+  const py = hisLevel(ctx);
+  let g = onHisLevel(ctx, x, z, py);
+  const r0 = len2(x - p.x, z - p.z);
+  const a0 = Math.atan2(x - p.x, z - p.z);
+  for (let k = 1; Number.isNaN(g) && k <= 48; k++) {
+    // (all round him from the wanted spot, either way, then a little nearer and further)
+    const r = Math.max(1.2, r0 + (k > 32 ? 1 : k > 16 ? -0.8 : 0));
+    const a = a0 + (k % 2 ? 1 : -1) * Math.ceil((k % 16 || 16) / 2) * (Math.PI / 8);
+    x = p.x + Math.sin(a) * r;
+    z = p.z + Math.cos(a) * r;
+    g = onHisLevel(ctx, x, z, py);
+  }
+  if (Number.isNaN(g)) {
+    x = p.x;
+    z = p.z;
+    g = py;
+  }
+  putAt(x, z, Number.isNaN(yaw) ? Math.atan2(p.x - x, p.z - z) : yaw, g);
+}
+
+/**
+ * It comes in near him (out from behind a bush, or out of view), faded in: on landing, called with no way, home
+ * again. Only onto ground on his level that it can walk to him from; with none round him (up a deck, a tree, a
+ * narrow ledge) it does not come, and the caller says so: false.
+ */
+function appearNear(ctx: RoamCtx): boolean {
   const w = ctx.world;
   const p = ctx.body.pos;
+  // (he is in a hall: at its door, waiting)
+  const hall = hallAt(p.x, p.y, p.z);
+  if (hall) return appearAtDoor(ctx, hall);
   const cam = ctx.cam.camera.position;
   const fx = Math.sin(ctx.cam.yaw);
   const fz = Math.cos(ctx.cam.yaw);
-  // (where his feet stand: he may be in the air a moment)
-  const under = ground(w, p.x, p.z, p.y + 0.5, STEP_UP);
-  const py = Number.isNaN(under) ? p.y : under;
+  const py = hisLevel(ctx);
   let best = -Infinity;
   let bx = NaN;
   let bz = NaN;
@@ -585,10 +734,8 @@ function appearNear(ctx: RoamCtx): void {
       const ang = (a * TAU) / 16;
       const x = p.x + Math.sin(ang) * r;
       const z = p.z + Math.cos(ang) * r;
-      const g = ground(w, x, z, py + 1, STEP_UP + 1);
-      if (Number.isNaN(g) || Math.abs(g - py) > 2.4) continue;
-      const y = lineWalk(w, x, g, z, p.x, p.z, true);
-      if (Number.isNaN(y) || Math.abs(y - py) > 1.2) continue;
+      const g = onHisLevel(ctx, x, z, py);
+      if (Number.isNaN(g)) continue;
       // Best: hidden from the camera by leaves or bark; else out of its view; else beside him, not in front of the camera.
       let score = 0;
       const soft = w.softClearance?.(cam.x, cam.y, cam.z, x, g + 0.5, z) ?? 1;
@@ -596,7 +743,7 @@ function appearNear(ctx: RoamCtx): void {
       if (soft < 0.97 || hard < 0.97) score += 3;
       const vx = x - cam.x;
       const vz = z - cam.z;
-      const ahead = (vx * fx + vz * fz) / Math.hypot(vx, vz);
+      const ahead = (vx * fx + vz * fz) / len2(vx, vz);
       if (ahead < 0.2) score += 2;
       score -= Math.abs(r - 6.5) * 0.1;
       if (score > best) {
@@ -607,18 +754,18 @@ function appearNear(ctx: RoamCtx): void {
       }
     }
   if (Number.isNaN(bx)) {
-    // (no spot round him — a narrow bridge, a ledge: back along his trail, else behind him)
-    for (let i = trail.n - 1; i >= trail.first && Number.isNaN(bx); i--)
-      if (Math.hypot(trail.x(i) - p.x, trail.z(i) - p.z) > 3) {
-        bx = trail.x(i);
-        by = trail.y(i);
-        bz = trail.z(i);
-      }
-    if (Number.isNaN(bx)) {
-      bx = p.x - Math.sin(ctx.body.yaw) * 2.5;
-      bz = p.z - Math.cos(ctx.body.yaw) * 2.5;
-      by = py;
+    // (no spot round him — a narrow bridge, a ledge: back along his trail, on his level and a walk from him)
+    for (let i = trail.n - 1, k = 0; i >= trail.first && Number.isNaN(bx) && k < 40; i--) {
+      if (len2(trail.x(i) - p.x, trail.z(i) - p.z) < 3) continue;
+      k++;
+      const g = onHisLevel(ctx, trail.x(i), trail.z(i), py);
+      if (Number.isNaN(g)) continue;
+      bx = trail.x(i);
+      by = g;
+      bz = trail.z(i);
     }
+    // (nowhere: it stays where it is)
+    if (Number.isNaN(bx)) return false;
   }
   putAt(bx, bz, Math.atan2(p.x - bx, p.z - bz), by);
   // (it comes in softly: from nothing to all of it)
@@ -628,8 +775,247 @@ function appearNear(ctx: RoamCtx): void {
   setChannels(true);
   life = 'come';
   route = 'direct';
+  toFoot = false;
   joy = 2.5;
   sound('dogWhine', 0.8);
+  return true;
+}
+
+/** Could a dog come up to where he stands on foot? Looked for once a spot (a way from his floor down to the land). */
+const REACH = { state: 'none' as 'none' | 'busy' | 'done', ok: false, call: false, x: NaN, y: NaN, z: NaN };
+
+/**
+ * Could it come up to him here on foot: true on the land or with a way down from his floor to it (a terrace, a deck by
+ * its stair), false where there is none (a roof he landed on), null while it looks (`call`: a toast says when done).
+ */
+function reachHim(ctx: RoamCtx, call: boolean): boolean | null {
+  const p = ctx.body.pos;
+  const py = hisLevel(ctx);
+  if (onLand(ctx.world, p.x, py, p.z)) return true;
+  const here = len2(p.x - REACH.x, p.z - REACH.z) < 3 && Math.abs(py - REACH.y) < 1;
+  if (REACH.state === 'busy') {
+    REACH.call ||= call;
+    return null;
+  }
+  if (REACH.state === 'done' && here) return REACH.ok;
+  if (search.state === 'busy') stopSearch();
+  search.start(ctx.world, p.x, py, p.z, p.x, py, p.z, 160, true);
+  searchFor = 'reach';
+  REACH.state = 'busy';
+  REACH.call = call;
+  REACH.x = p.x;
+  REACH.y = py;
+  REACH.z = p.z;
+  return null;
+}
+
+/** It cannot get to him up there: it waits at the foot (where it is), looking up; looked for again once he moves on. */
+function waitBelow(ctx: RoamCtx): void {
+  life = 'wait';
+  settled = 0;
+  route = 'none';
+  toFoot = false;
+  const p = ctx.body.pos;
+  FAILED.x = p.x;
+  FAILED.z = p.z;
+  FAILED.wait = Math.max(FAILED.wait, 6);
+}
+
+// ── Halls it waits outside ─────────────────────────────────────────────────
+
+/** The hall he is in (`HALLS`: a pagoda's vihara, Angkor Wat's upper levels) and where it waits for him there. */
+const DOOR = { hall: null as Hall | null, x: 0, y: 0, z: 0, yaw: 0, set: false, back: 6 };
+
+/**
+ * Where it waits at hall `h` (into `DOOR`): the hall's door, on the ground outside it (or the nearest free spot round
+ * it); else where he went in (his trail's last crumb outside it). False: nowhere known (it waits where it is).
+ */
+function doorSpot(ctx: RoamCtx, h: Hall): boolean {
+  const w = ctx.world;
+  DOOR.set = false;
+  if (h.door) {
+    for (let k = 0; k <= 16; k++) {
+      const r = k === 0 ? 0 : k <= 8 ? 0.6 : 1.2;
+      const a = (k * TAU) / 8;
+      const x = h.door.x + Math.sin(a) * r;
+      const z = h.door.z + Math.cos(a) * r;
+      const g = ground(w, x, z, h.y0, STEP_UP);
+      if (Number.isNaN(g) || hallAt(x, g, z)) continue;
+      DOOR.x = x;
+      DOOR.y = g;
+      DOOR.z = z;
+      DOOR.yaw = h.door.yaw;
+      DOOR.set = true;
+      return true;
+    }
+  }
+  const p = ctx.body.pos;
+  for (let i = trail.n - 1, k = 0; i >= trail.first && k < 240; i--, k++) {
+    const x = trail.x(i);
+    const y = trail.y(i);
+    const z = trail.z(i);
+    if (hallAt(x, y, z)) continue;
+    if (len2(x - p.x, z - p.z) > 60) break;
+    DOOR.x = x;
+    DOOR.y = y;
+    DOOR.z = z;
+    DOOR.yaw = Math.atan2(p.x - x, p.z - z);
+    DOOR.set = true;
+    return true;
+  }
+  return false;
+}
+
+/** He went into hall `h`: it goes to the door (straight, or by a way looked for) and waits there. */
+function toDoor(ctx: RoamCtx, h: Hall): void {
+  DOOR.hall = h;
+  life = 'door';
+  act = 'none';
+  settled = 0;
+  going = false;
+  toFoot = false;
+  route = 'none';
+  BACK_OFF.on = false;
+  if (search.state === 'busy') stopSearch();
+  if (!doorSpot(ctx, h) || !D.placed) return;
+  const y = lineWalk(ctx.world, D.x, D.y, D.z, DOOR.x, DOOR.z, true);
+  if (!Number.isNaN(y) && Math.abs(y - DOOR.y) < 0.6) route = 'spot';
+  else seek('door', DOOR.x, DOOR.y, DOOR.z, SEARCH_MAX);
+}
+
+/** In at hall `h`'s door, faded in (he landed in it, or it was far): false when no door is known. */
+function appearAtDoor(ctx: RoamCtx, h: Hall): boolean {
+  if (!doorSpot(ctx, h)) return false;
+  putAt(DOOR.x, DOOR.z, DOOR.yaw, DOOR.y);
+  look.fade = 0;
+  D.seen = 1;
+  pose.rest = pose.restGoal = 1;
+  setChannels(true);
+  DOOR.hall = h;
+  life = 'door';
+  settled = 2;
+  return true;
+}
+
+/** Waiting at the door: there first (or where it is, with no way there), then sitting, an eye on the door; up and aside when someone comes by. */
+function doorLife(ctx: RoamCtx, dt: number): void {
+  const d = DOOR.set ? len2(DOOR.x - D.x, DOOR.z - D.z) : 0;
+  if (d > 0.45 && (route === 'spot' || route === 'path')) {
+    restTo(0);
+    if (!standing()) return;
+    if (route === 'path') wayAlong(DOOR.x, DOOR.z);
+    else {
+      AIM.x = DOOR.x;
+      AIM.z = DOOR.z;
+    }
+    drive(dt, AIM.x, AIM.z, clamp(2.2 + d * 0.4, 2.2, 6));
+    unstall(ctx, dt, 'door');
+    return;
+  }
+  if (route !== 'none' && search.state !== 'busy') route = 'none';
+  giveWay(ctx, dt);
+  if (backOff(ctx, dt)) return;
+  drive(dt, D.x, D.z, 0);
+  settled += dt;
+  // (moved off it to let someone by: back to the door after a while, when the way there is clear)
+  if (d > 0.6 && (DOOR.back -= dt) <= 0 && search.state !== 'busy') {
+    DOOR.back = 6;
+    const y = lineWalk(ctx.world, D.x, D.y, D.z, DOOR.x, DOOR.z, true);
+    if (!Number.isNaN(y) && Math.abs(y - DOOR.y) < 0.6 && PERSON.d > 2.5) route = 'spot';
+  }
+  const round = faceHim(ctx, dt);
+  restTo(round ? 0 : settled > 40 ? 2 : settled > 0.8 ? 1 : 0);
+}
+
+// ── Not getting on ─────────────────────────────────────────────────────────
+
+/** Where it was a moment ago, how long it has hardly moved since while it means to go (s), and what was tried. */
+const STALL = { x: 0, y: 0, z: 0, t: 0, tries: 0 };
+const STALL_AFTER = 2.5;
+
+/**
+ * Called while it means to go somewhere: when it has not got on for a few seconds (a step it cannot take, wedged by a
+ * post), it takes the way's next step as the search did; then looks for the way again; then (coming to him) comes in
+ * by him if it can be there, or at a door, or its bed; else it waits where it is.
+ */
+function unstall(ctx: RoamCtx | null, dt: number, goal: 'come' | 'door' | 'bed'): void {
+  if (AIR.on || !ctx) {
+    STALL.t = 0;
+    return;
+  }
+  if (len3(D.x - STALL.x, D.y - STALL.y, D.z - STALL.z) > 0.35) {
+    STALL.x = D.x;
+    STALL.y = D.y;
+    STALL.z = D.z;
+    STALL.t = 0;
+    STALL.tries = 0;
+    return;
+  }
+  STALL.t += dt;
+  if (STALL.t < STALL_AFTER) return;
+  STALL.t = 0;
+  STALL.tries++;
+  if (route === 'path' && STALL.tries <= 2 && pathStep()) return;
+  if (STALL.tries <= 2 && search.state !== 'busy') {
+    stuck = 0;
+    halted = 0;
+    if (goal === 'bed') seek('bed', bed.x, Number.isNaN(bed.y) ? D.y : bed.y, bed.z, SEARCH_MAX);
+    else if (goal === 'door') seek('door', DOOR.x, DOOR.y, DOOR.z, SEARCH_MAX);
+    else seek('come', ctx.body.pos.x, hisLevel(ctx), ctx.body.pos.z, SEARCH_MAX);
+    route = 'none';
+    return;
+  }
+  STALL.tries = 0;
+  if (goal === 'bed') putAt(bed.x, bed.z, bed.yaw, bed.y);
+  else if (goal === 'door') route = 'none';
+  else if (!appearNear(ctx)) waitBelow(ctx);
+}
+
+/** The way's next point, a step from where it stands (it is at the point before): it takes that step as the search did (a hop, a jump down, past a post). */
+function pathStep(): boolean {
+  const pp = search.path;
+  if (ri >= pp.count) return false;
+  const x = pp.x[ri];
+  const y = pp.y[ri];
+  const z = pp.z[ri];
+  const dx = x - D.x;
+  const dz = z - D.z;
+  const d = len2(dx, dz);
+  if (d > 0.95 || d < 0.05 || Math.abs(y - D.y) > 2.7) return false;
+  leap(x, z, y, y > D.y, dx / d, dz / d);
+  ri++;
+  return true;
+}
+
+/** Wedged in something (a wall, a deck, deep water: no floor with room for it at its feet) a moment: out onto the nearest free spot. */
+let wedgedFor = 0;
+function wedged(ctx: RoamCtx): void {
+  const w = ctx.world;
+  if (AIR.on || !D.placed || PET.on || !(life === 'follow' || life === 'come' || life === 'wait' || life === 'door')) {
+    wedgedFor = 0;
+    return;
+  }
+  if (!Number.isNaN(ground(w, D.x, D.z, D.y, STEP_UP))) {
+    wedgedFor = 0;
+    return;
+  }
+  wedgedFor += 0.25;
+  if (wedgedFor < 0.75) return;
+  wedgedFor = 0;
+  for (let r = 0.5; r <= 3; r += 0.5)
+    for (let a = 0; a < 12; a++) {
+      const x = D.x + Math.sin((a * TAU) / 12) * r;
+      const z = D.z + Math.cos((a * TAU) / 12) * r;
+      const g = ground(w, x, z, D.y + 0.5, STEP_UP);
+      if (Number.isNaN(g) || Math.abs(g - D.y) > 1.2 || hallAt(x, g, z)) continue;
+      const keep = life;
+      putAt(x, z, D.yaw, g);
+      life = keep;
+      return;
+    }
+  if (life === 'door') {
+    if (DOOR.hall) appearAtDoor(ctx, DOOR.hall);
+  } else if (!appearNear(ctx)) waitBelow(ctx);
 }
 
 // ── His dog's life ─────────────────────────────────────────────────────────
@@ -651,7 +1037,7 @@ function followLife(ctx: RoamCtx, dt: number): void {
   if ((Math.floor(clock * 5) !== Math.floor((clock - dt) * 5) || route === 'none') && !AIR.on) shortcut(ctx);
   wayLeft = wayToHim(ctx);
   // (beside him already, whatever the way says: he may stand up on something it cannot climb)
-  if (Math.hypot(p.x - D.x, p.z - D.z) < FOLLOW_STOP && Math.abs(p.y - D.y) < 2.5) wayLeft = Math.min(wayLeft, FOLLOW_STOP - 0.1);
+  if (len2(p.x - D.x, p.z - D.z) < FOLLOW_STOP && Math.abs(p.y - D.y) < LEVEL) wayLeft = Math.min(wayLeft, FOLLOW_STOP - 0.1);
   // A bark at an animal, a sniff about: only while he lingers.
   if (act === 'bark') return barkLife(ctx, dt);
   if (act === 'sniff') return sniffLife(ctx, dt);
@@ -663,6 +1049,7 @@ function followLife(ctx: RoamCtx, dt: number): void {
     // (as fast as he goes, a little faster while it is behind, slower close up; no faster than it can)
     const speed = clamp(HIM.speed + clamp((wayLeft - FOLLOW_KEEP) * 0.9, -2, 7), 1.4, TOP);
     drive(dt, AIM.x, AIM.z, speed);
+    unstall(ctx, dt, 'come');
     // (not getting on — a wall, a step it cannot take, a crumb it cannot reach: it looks for a way)
     halted = D.speed < 0.3 && !AIR.on ? halted + dt : 0;
     if ((stuck > 0.8 || halted > 1.2) && search.state !== 'busy') {
@@ -676,6 +1063,8 @@ function followLife(ctx: RoamCtx, dt: number): void {
   halted = 0;
   going = false;
   makeWay(ctx);
+  giveWay(ctx, dt);
+  offHisFeet(ctx);
   if (backOff(ctx, dt)) return;
   // Settled by him: stop, turn to him, sit, lie down after a while, sleep when he does.
   drive(dt, D.x, D.z, 0);
@@ -697,7 +1086,7 @@ function followLife(ctx: RoamCtx, dt: number): void {
     nextSniff -= dt;
     if (nextSniff <= 0) {
       nextSniff = 9 + rnd() * 12;
-      if (pickSniffSpot(w)) {
+      if (pickSniffSpot(w, p.x, p.z)) {
         act = 'sniff';
         actT = 0;
       }
@@ -721,20 +1110,23 @@ function faceHim(ctx: RoamCtx, dt: number): boolean {
     TURN.rate = off;
     pose.turn = 0;
   } else pose.turn = clamp(off / 1.04, -1, 1);
-  // (looking up at him close by: he is tall)
-  const d = Math.hypot(p.x - D.x, p.z - D.z);
-  pose.head = d < 4 ? -0.6 : d < 10 ? -0.3 : 0;
+  // (looking up at him close by — he is tall —, or up there on his deck)
+  const d = len2(p.x - D.x, p.z - D.z);
+  pose.head = p.y - D.y > 2 && d < 25 ? -1 : d < 4 ? -0.6 : d < 10 ? -0.3 : 0;
   return round && Math.abs(off) > 0.25;
 }
 
-function pickSniffSpot(w: AddonEnv['world']): boolean {
+function pickSniffSpot(w: AddonEnv['world'], hx: number, hz: number): boolean {
   for (let k = 0; k < 6; k++) {
     const a = rnd() * TAU;
     const r = 2 + rnd() * 2.5;
     const x = D.x + Math.sin(a) * r;
     const z = D.z + Math.cos(a) * r;
+    // (on its floor, a walk away, not at his feet nor off out of his reach)
+    const dh = len2(x - hx, z - hz);
+    if (dh < 1.8 || dh > FOLLOW_GO + 1) continue;
     const y = lineWalk(w, D.x, D.y, D.z, x, z);
-    if (Number.isNaN(y)) continue;
+    if (Number.isNaN(y) || Math.abs(y - D.y) > KERB) continue;
     SPOT.x = x;
     SPOT.y = y;
     SPOT.z = z;
@@ -748,7 +1140,7 @@ function sniffLife(_ctx: RoamCtx, dt: number): void {
   restTo(0);
   pose.turn = 0;
   if (!standing()) return;
-  const d = Math.hypot(SPOT.x - D.x, SPOT.z - D.z);
+  const d = len2(SPOT.x - D.x, SPOT.z - D.z);
   // (he moves on: it leaves off and follows)
   if (HIM.speed > 1 || wayLeft > FOLLOW_GO + 2 || actT > 9) {
     act = 'none';
@@ -785,7 +1177,7 @@ function barkScan(ctx: RoamCtx, dt: number): void {
   let found = false;
   for (const s of _subjects) {
     if (s.kind !== 'macaque' && s.kind !== 'junglefowl') continue;
-    const d = Math.hypot(s.x - D.x, s.z - D.z);
+    const d = len2(s.x - D.x, s.z - D.z);
     if (d < bd && Math.abs(s.y - D.y) < 4) {
       bd = d;
       BARK_AT.x = s.x;
@@ -829,22 +1221,26 @@ const BARK_PULSE = { t: 0 };
 
 /** Waiting where he left it (he is in the boat, in the air, on a ride): it sits and watches him. */
 function waitLife(ctx: RoamCtx, dt: number): void {
+  giveWay(ctx, dt);
+  if (backOff(ctx, dt)) return;
   drive(dt, D.x, D.z, 0);
   settled += dt;
   const round = faceHim(ctx, dt);
   restTo(round ? 0 : settled > 25 ? 2 : settled > 1 ? 1 : 0);
   const p = ctx.body.pos;
-  if (Math.hypot(p.x - D.x, p.z - D.z) > 60) pose.head = 0;
+  if (len2(p.x - D.x, p.z - D.z) > 60) pose.head = 0;
 }
 
 /** Coming to him along the way it found (or straight). */
 function comeLife(ctx: RoamCtx, dt: number): void {
   const p = ctx.body.pos;
   if (Math.floor(clock * 4) !== Math.floor((clock - dt) * 4) && !AIR.on) {
-    const d = Math.hypot(p.x - D.x, p.z - D.z);
+    const d = len2(p.x - D.x, p.z - D.z);
     const y = d < 40 ? lineWalk(ctx.world, D.x, D.y, D.z, p.x, p.z) : NaN;
-    if (!Number.isNaN(y) && Math.abs(y - p.y) < 0.9) route = 'direct';
-    else if (route === 'direct') {
+    if (!Number.isNaN(y) && Math.abs(y - p.y) < 0.9) {
+      route = 'direct';
+      toFoot = false;
+    } else if (route === 'direct') {
       // (no straight way after all: look for one)
       if (search.state !== 'busy') seek('come', p.x, p.y, p.z, SEARCH_MAX);
       route = 'none';
@@ -858,7 +1254,9 @@ function comeLife(ctx: RoamCtx, dt: number): void {
     faceHim(ctx, dt);
     return;
   }
-  if (route === 'path' && ri >= search.path.count && Math.hypot(p.x - D.x, p.z - D.z) > 4 && search.state !== 'busy') {
+  // (at the foot of where he is, up there: it waits)
+  if (toFoot && route === 'path' && ri >= search.path.count) return waitBelow(ctx);
+  if (route === 'path' && ri >= search.path.count && len2(p.x - D.x, p.z - D.z) > 4 && search.state !== 'busy') {
     // (at the end of its way, but he went on: look again)
     seek('come', p.x, p.y, p.z, SEARCH_MAX);
     route = 'none';
@@ -868,15 +1266,16 @@ function comeLife(ctx: RoamCtx, dt: number): void {
   const far = wayLeft > 60;
   const speed = clamp(far ? 5.5 : 4 + wayLeft * 0.35, 2, TOP);
   drive(dt, AIM.x, AIM.z, speed);
+  unstall(ctx, dt, 'come');
+  if (life !== 'come') return;
   if (stuck > 1 && search.state !== 'busy') {
     stuck = 0;
     seek('come', p.x, p.y, p.z, SEARCH_MAX);
     route = 'none';
   }
-  // (there: its way is short, or it is close to him with nothing between)
-  // (he may stand up on something it cannot climb: by him, below, is there too)
-  const close = Math.hypot(p.x - D.x, p.z - D.z) < FOLLOW_STOP + 0.4 && Math.abs(p.y - D.y) < 2.5;
-  if (wayLeft < FOLLOW_STOP + 0.4 || close) {
+  // (there: its way to him is short, or it is close to him on about his level — he may stand on a crate or a step)
+  const close = len2(p.x - D.x, p.z - D.z) < FOLLOW_STOP + 0.4 && Math.abs(p.y - D.y) < LEVEL;
+  if ((wayLeft < FOLLOW_STOP + 0.4 && !toFoot) || close) {
     life = 'follow';
     route = 'none';
     going = false;
@@ -888,7 +1287,7 @@ function comeLife(ctx: RoamCtx, dt: number): void {
 
 /** Going to its bed and sleeping there (he is home: `dogHome`). */
 function bedLife(dt: number): void {
-  const d = Math.hypot(bed.x - D.x, bed.z - D.z);
+  const d = len2(bed.x - D.x, bed.z - D.z);
   if (d > 0.4 && route === 'path') {
     restTo(0);
     if (!standing()) return;
@@ -896,8 +1295,9 @@ function bedLife(dt: number): void {
       drive(dt, bed.x, bed.z, 2.5);
       if (stuck > 1) putAt(bed.x, bed.z, bed.yaw, bed.y);
     } else {
-      wayToHimFromPath();
+      wayAlong(bed.x, bed.z);
       drive(dt, AIM.x, AIM.z, 3.5);
+      unstall(lastCtx, dt, 'bed');
     }
     return;
   }
@@ -908,30 +1308,21 @@ function bedLife(dt: number): void {
   settled += dt;
   restTo(settled > 2 ? 3 : 2);
 }
-function wayToHimFromPath(): void {
-  const pp = search.path;
-  while (ri < pp.count && Math.hypot(pp.x[ri] - D.x, pp.z[ri] - D.z) < 0.4) ri++;
-  if (ri < pp.count) {
-    AIM.x = pp.x[ri];
-    AIM.z = pp.z[ri];
-  } else {
-    AIM.x = bed.x;
-    AIM.z = bed.z;
-  }
-}
 
 // ── The village dog's life (not his yet) ───────────────────────────────────
 
 function villageLife(ctx: RoamCtx, dt: number): void {
   const p = ctx.body.pos;
-  const d = Math.hypot(p.x - D.x, p.z - D.z);
+  const d = len2(p.x - D.x, p.z - D.z);
   const onFoot = roamMode === 'walk' && Math.abs(p.y - D.y) < 3;
   if (life === 'nap') {
     drive(dt, D.x, D.z, 0);
     pose.head = 1;
     pose.turn = 0;
     restTo(3);
-    if (onFoot && d < WAKE) {
+    // (him coming, or someone walking right up to it: it wakes)
+    if (Math.floor(clock * 2) !== Math.floor((clock - dt) * 2)) nearestPerson();
+    if ((onFoot && d < WAKE) || PERSON.d < 1.4) {
       life = 'awake';
       settled = 0;
       awayFor = 0;
@@ -941,9 +1332,10 @@ function villageLife(ctx: RoamCtx, dt: number): void {
   }
   // Awake: up off its side, then sitting up watching him, standing and wagging when he is close; never far from its spot.
   settled += dt;
+  giveWay(ctx, dt);
   if (backOff(ctx, dt)) return;
   const round = faceHim(ctx, dt);
-  const home = Math.hypot(HOME_AT.x - D.x, HOME_AT.z - D.z);
+  const home = len2(HOME_AT.x - D.x, HOME_AT.z - D.z);
   if (d < 3.4 && onFoot && settled > 1.4) {
     restTo(0);
     if (standing() && d > 1.6 && home < 2.2) drive(dt, p.x, p.z, 1.1);
@@ -969,7 +1361,7 @@ function moods(ctx: RoamCtx | null, dt: number): void {
   effort = clamp(effort + (D.speed > 5 ? (D.speed / TOP) * 0.12 : -0.05) * dt, 0, 1);
   const sleeping = pose.rest >= 3 && pose.restGoal >= 3;
   const p = ctx?.body.pos;
-  const d = p ? Math.hypot(p.x - D.x, p.z - D.z) : 99;
+  const d = p ? len2(p.x - D.x, p.z - D.z) : 99;
   let wag = 0;
   let ears = 0;
   if (PET.on) {
@@ -1091,7 +1483,7 @@ function canPet(ctx: RoamCtx): boolean {
   const p = ctx.body.pos;
   const dx = D.x - p.x;
   const dz = D.z - p.z;
-  const d = Math.hypot(dx, dz);
+  const d = len2(dx, dz);
   if (d > PET_REACH || d < 0.25 || Math.abs(D.y - p.y) > 1) return false;
   return Math.abs(angleDiff(Math.atan2(dx, dz), ctx.body.yaw)) < PET_CONE;
 }
@@ -1120,7 +1512,7 @@ function startPet(ctx: RoamCtx, kind: 'pet' | 'scratch'): void {
   const crown = sitCrownAhead();
   const ux = cx - p.x;
   const uz = cz - p.z;
-  const ul = Math.hypot(ux, uz) || 1;
+  const ul = len2(ux, uz) || 1;
   const sx = cx + (ux / ul) * crown;
   const sz = cz + (uz / ul) * crown;
   const y = lineWalk(ctx.world, D.x, D.y, D.z, sx, sz);
@@ -1176,7 +1568,7 @@ function endPet(ctx: RoamCtx | null, finished: boolean): void {
     const p = ctx.body.pos;
     const dx = D.x - p.x;
     const dz = D.z - p.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = len2(dx, dz) || 1;
     const x = p.x + (dx / d) * 1.6;
     const z = p.z + (dz / d) * 1.6;
     const y = lineWalk(ctx.world, D.x, D.y, D.z, x, z);
@@ -1209,8 +1601,34 @@ function adopt(ask: boolean): void {
   if (ask) ASK.in = 1.6;
 }
 const ASK = { in: -1 };
+/** The name card, to open once the map has started (the loading screen gone: `started`); the name to pick in it (checks). */
+const CARD = { pending: false, pick: -1 };
+const started = (): boolean => {
+  const l = document.getElementById('loading');
+  return !l || l.classList.contains('done');
+};
 /** After a pet: a step or two back off his feet (to here). */
 const BACK_OFF = { on: false, x: 0, z: 0, t: 0 };
+
+/** Settled closer than a metre to him (he stepped up to it, a sniff ended there): a step or two back. */
+function offHisFeet(ctx: RoamCtx): void {
+  if (BACK_OFF.on || PET.on) return;
+  const p = ctx.body.pos;
+  const dx = D.x - p.x;
+  const dz = D.z - p.z;
+  const d = len2(dx, dz);
+  if (d > 1 || Math.abs(p.y - D.y) > LEVEL || HIM.speed > 0.6) return;
+  const ux = d > 0.05 ? dx / d : -Math.sin(ctx.body.yaw);
+  const uz = d > 0.05 ? dz / d : -Math.cos(ctx.body.yaw);
+  const x = p.x + ux * 1.8;
+  const z = p.z + uz * 1.8;
+  const y = lineWalk(ctx.world, D.x, D.y, D.z, x, z);
+  if (Number.isNaN(y) || Math.abs(y - D.y) > KERB) return;
+  BACK_OFF.on = true;
+  BACK_OFF.x = x;
+  BACK_OFF.z = z;
+  BACK_OFF.t = 0;
+}
 
 /** He walks at it: it trots a step aside off his way (the side it is on). */
 function makeWay(ctx: RoamCtx): void {
@@ -1238,14 +1656,75 @@ function backOff(_ctx: RoamCtx, dt: number): boolean {
   BACK_OFF.t += dt;
   restTo(0);
   if (!standing()) return true;
-  const d = Math.hypot(BACK_OFF.x - D.x, BACK_OFF.z - D.z);
-  if (d < 0.15 || BACK_OFF.t > 2.5) {
+  const d = len2(BACK_OFF.x - D.x, BACK_OFF.z - D.z);
+  if (d < 0.15 || BACK_OFF.t > 3) {
     BACK_OFF.on = false;
     return false;
   }
-  drive(dt, BACK_OFF.x, BACK_OFF.z, HIM.speed > 1.5 ? 3 : 1.3);
+  drive(dt, BACK_OFF.x, BACK_OFF.z, HIM.speed > 1.5 || BACK_OFF.t < 0 ? 3 : 1.6);
   return true;
 }
+
+/** The people part's walkers this frame (people/_routes.ts `Traffic.list`, as the land animals read it). */
+type Passer = { x: number; y: number; z: number; who: string };
+/** The nearest of them to it on its floor (m), and where. */
+const PERSON = { x: 0, z: 0, d: Infinity };
+
+function nearestPerson(): void {
+  PERSON.d = Infinity;
+  const list = (window as unknown as { __people?: { traffic?: { list: readonly Passer[] } } }).__people?.traffic?.list;
+  if (!list) return;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (o.who === 'explorer' || o.who === 'animal' || o.who === 'beacon' || Math.abs(o.y - D.y) > 1.5) continue;
+    const dx = o.x - D.x;
+    const dz = o.z - D.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d < PERSON.d) {
+      PERSON.d = d;
+      PERSON.x = o.x;
+      PERSON.z = o.z;
+    }
+  }
+}
+
+/**
+ * Someone comes right up to where it sits or lies (a monk's line after the alms, the market's lanes): it gets up and
+ * moves off a little way, away from them, on its floor (by him, while it follows him). True as it starts to.
+ */
+function giveWay(ctx: RoamCtx, dt: number): boolean {
+  if (BACK_OFF.on || AIR.on || clock < GIVE_WAY.next || Math.floor(clock * 4) === Math.floor((clock - dt) * 4)) return false;
+  nearestPerson();
+  if (PERSON.d > (pose.restGoal >= 2 ? 2.4 : 1.5)) return false;
+  const w = ctx.world;
+  const p = ctx.body.pos;
+  let best = -Infinity;
+  for (let k = 0; k < 12; k++) {
+    const a = (k * TAU) / 12;
+    const x = D.x + Math.sin(a) * 1.9;
+    const z = D.z + Math.cos(a) * 1.9;
+    const y = lineWalk(w, D.x, D.y, D.z, x, z);
+    if (Number.isNaN(y) || Math.abs(y - D.y) > KERB) continue;
+    let score = len2(x - PERSON.x, z - PERSON.z);
+    // (following him: not off out of his reach, nor onto his feet)
+    if (adopted && life === 'follow') {
+      const dh = len2(x - p.x, z - p.z);
+      if (dh > FOLLOW_GO - 0.3 || dh < 1.2) score -= 3;
+    }
+    if (score > best) {
+      best = score;
+      BACK_OFF.x = x;
+      BACK_OFF.z = z;
+    }
+  }
+  if (best === -Infinity) return false;
+  BACK_OFF.on = true;
+  BACK_OFF.t = 0;
+  GIVE_WAY.next = clock + 3;
+  settled = 0;
+  return true;
+}
+const GIVE_WAY = { next: 0 };
 
 /** His step while petting (it holds him: `hold`). */
 function petStep(ctx: RoamCtx, dt: number): AddonHold {
@@ -1256,7 +1735,7 @@ function petStep(ctx: RoamCtx, dt: number): AddonHold {
   const T = PET.t;
   cam.turn(input.lookYaw, input.lookPitch, input.zoom);
   // E, Space or the stick: he stands up (after the first moment).
-  if (PET.leaving < 0 && T > 0.5 && (input.use || input.jump || Math.hypot(input.move.x, input.move.y) > 0.4)) PET.leaving = T;
+  if (PET.leaving < 0 && T > 0.5 && (input.use || input.jump || len2(input.move.x, input.move.y) > 0.4)) PET.leaving = T;
   // He turns to the dog.
   const p = b.pos;
   b.yaw += angleDiff(PET.face, b.yaw) * (1 - Math.exp(-7 * dt));
@@ -1264,7 +1743,7 @@ function petStep(ctx: RoamCtx, dt: number): AddonHold {
   b.explorer.setMotion(0, true, 0);
   // Down, the hand to its head; up again at the end.
   const up = PET.leaving >= 0 ? T - PET.leaving : -1;
-  const ready = Math.hypot(PET.sx - D.x, PET.sz - D.z) < 0.1 || T > 1.3;
+  const ready = len2(PET.sx - D.x, PET.sz - D.z) < 0.1 || T > 1.3;
   PET.crouch = up >= 0 ? Math.max(0, 1 - up / 0.55) : ready ? Math.min(1, PET.crouch + dt / 0.5) : PET.crouch;
   PET.reach = up >= 0 ? Math.max(0, PET.reach - dt / 0.3) : PET.crouch > 0.6 ? Math.min(1, PET.reach + dt / 0.35) : 0;
   // Where its head is, in his space (body units).
@@ -1343,7 +1822,7 @@ function toHim(b: RoamCtx['body'], world: Vector3, out: Vector3): void {
 /** The dog's own step while petting (it comes to the spot in front of him, sits facing him). */
 function petDogStep(ctx: RoamCtx, dt: number): void {
   const p = ctx.body.pos;
-  const d = Math.hypot(PET.sx - D.x, PET.sz - D.z);
+  const d = len2(PET.sx - D.x, PET.sz - D.z);
   if (d > 0.06 && PET.t < 1.8) {
     restTo(0);
     if (standing()) drive(dt, PET.sx, PET.sz, Math.min(1.6, 0.4 + d * 3));
@@ -1368,14 +1847,23 @@ function call(ctx: RoamCtx): void {
   TILT.v = 0.7;
   if (roamMode !== 'walk' || othersHolding()) return;
   const p = ctx.body.pos;
-  const d = Math.hypot(p.x - D.x, p.z - D.z);
+  const d = len2(p.x - D.x, p.z - D.z);
   act = 'none';
-  if (life === 'bed' || life === 'away' || !D.placed || look.fade < 0.5) {
-    appearNear(ctx);
-    toast(t('dogComing', { name: named() }));
+  // (he is in a hall: it waits at the door, and says so)
+  if (life === 'door') {
+    if (!DOOR.set || len2(DOOR.x - D.x, DOOR.z - D.z) > 40) appearAtDoor(ctx, DOOR.hall!);
+    toast(t('dogDoor', { name: named() }));
     return;
   }
-  if (d < 5 && !Number.isNaN(lineWalk(ctx.world, D.x, D.y, D.z, p.x, p.z))) {
+  // (from home, or nowhere near: in by him if it can be there; else it stays where it is, and says so)
+  const comeIn = () => {
+    // (where a dog could come up on foot — not a roof —: the look's end says, if it is still looking)
+    const can = reachHim(ctx, true);
+    if (can !== null) toast(can && appearNear(ctx) ? t('dogComing', { name: named() }) : t('dogNoWay', { name: named() }));
+  };
+  if (life === 'bed' || life === 'away' || !D.placed || look.fade < 0.5) return comeIn();
+  const py = hisLevel(ctx);
+  if (d < 5 && Math.abs(D.y - py) <= STEP_UP && !Number.isNaN(onHisLevel(ctx, D.x, D.z, py))) {
     toast(t('dogHere', { name: named() }));
     life = 'come';
     route = 'direct';
@@ -1383,12 +1871,8 @@ function call(ctx: RoamCtx): void {
     sound('dogWhine', 0.8);
     return;
   }
-  if (d > SEARCH_MAX * 0.8) {
-    appearNear(ctx);
-    toast(t('dogComing', { name: named() }));
-    return;
-  }
-  seek('call', p.x, p.y, p.z, Math.min(SEARCH_MAX, d * 3 + 60));
+  if (d > SEARCH_MAX * 0.8) return comeIn();
+  seek('call', p.x, py, p.z, Math.min(SEARCH_MAX, d * 3 + 60));
   life = 'come';
   route = 'none';
   BARK_PULSE.t = 0.22;
@@ -1403,7 +1887,7 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
   const b = ctx.body;
   const p = b.pos;
   // His speed (from where he was), and his trail while he walks free on the ground.
-  if (HIM.set && dt > 0) HIM.speed = approach(HIM.speed, Math.hypot(p.x - HIM.x, p.z - HIM.z) / dt, 10, dt);
+  if (HIM.set && dt > 0) HIM.speed = approach(HIM.speed, len2(p.x - HIM.x, p.z - HIM.z) / dt, 10, dt);
   HIM.x = p.x;
   HIM.y = p.y;
   HIM.z = p.z;
@@ -1417,7 +1901,7 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
   // (he greeted with nobody near: it looks up at him, a tilt of the head)
   if (GREET.n !== lastGreet) {
     lastGreet = GREET.n;
-    if (Math.hypot(p.x - D.x, p.z - D.z) < 10) {
+    if (len2(p.x - D.x, p.z - D.z) < 10) {
       TILT.t = 1.1;
       TILT.v = rnd() < 0.5 ? 0.7 : -0.7;
       joy = Math.max(joy, 1);
@@ -1428,13 +1912,13 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
     CAM_BACK.left = ctx.input.zoom || rm !== 'walk' ? 0 : CAM_BACK.left - dt;
     ctx.cam.distance = approach(ctx.cam.distance, CAM_BACK.to, 2.4, dt);
   }
-  if (ASK.in > 0 && (ASK.in -= dt) <= 0 && !env?.shot) openDogCard(true);
+  if (ASK.in > 0 && (ASK.in -= dt) <= 0 && !env?.shot) CARD.pending = true;
   // The way being looked for: a slice a step.
   if (search.state === 'busy') search.step();
-  if (search.state === 'found' || search.state === 'none') foundWay(ctx);
+  if (search.state === 'found' || search.state === 'near' || search.state === 'none') foundWay(ctx);
 
   if (!adopted) {
-    if (Math.hypot(p.x - D.x, p.z - D.z) > THINK_FAR && camFar(ctx)) return;
+    if (len2(p.x - D.x, p.z - D.z) > THINK_FAR && camFar(ctx)) return;
     if (PET.on) petDogStep(ctx, dt);
     else villageLife(ctx, dt);
     return;
@@ -1444,7 +1928,7 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
     if (life !== 'bed') {
       life = 'bed';
       settled = 0;
-      const far = Math.hypot(bed.x - D.x, bed.z - D.z);
+      const far = len2(bed.x - D.x, bed.z - D.z);
       if (!D.placed || far > SEARCH_MAX * 0.8) putAt(bed.x, bed.z, bed.yaw, bed.y);
       else {
         seek('bed', bed.x, Number.isNaN(bed.y) ? D.y : bed.y, bed.z, SEARCH_MAX);
@@ -1453,11 +1937,37 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
     }
     return bedLife(dt);
   }
-  if (onFoot && b.grounded && (arrive || life === 'away' || life === 'bed' || !D.placed)) {
+  landedFor = onFoot && b.grounded && !b.explorer.animator.posture ? landedFor + dt : 0;
+  if (onFoot && (arrive || life === 'away' || life === 'bed' || !D.placed)) {
+    // (in by him once he has landed — on his feet a moment: a start on a roof drops him off it first — and there is
+    // ground on his level round him: up a deck or a tree it waits at home; looked for again twice a second)
+    arriveIn -= dt;
+    if (arriveIn > 0 || landedFor < LANDED) return;
+    arriveIn = 0.5;
+    // (only where a dog could come up on foot: not a roof)
+    if (reachHim(ctx, false) !== true || !appearNear(ctx)) return;
     arrive = false;
     farSaid = false;
-    appearNear(ctx);
     return;
+  }
+  // (wedged in something — a wall, a deck, deep water — for a moment: out to the nearest free spot)
+  if (Math.floor(clock * 4) !== Math.floor((clock - dt) * 4)) wedged(ctx);
+  // He is in a temple's or a pagoda's hall: it waits at the door (also while he kneels there for a blessing).
+  const hall = rm === 'walk' && (life === 'follow' || life === 'come' || life === 'wait' || life === 'door') ? hallAt(p.x, p.y, p.z) : null;
+  if (hall) {
+    if (life !== 'door' || DOOR.hall !== hall) toDoor(ctx, hall);
+    return doorLife(ctx, dt);
+  }
+  if (life === 'door') {
+    // (he came out: to him)
+    DOOR.hall = null;
+    settled = 0;
+    if (onFoot) {
+      life = 'come';
+      route = 'none';
+      seek('come', p.x, hisLevel(ctx), p.z, SEARCH_MAX);
+      joy = Math.max(joy, 1.5);
+    } else life = 'wait';
   }
   if (!onFoot) {
     if (life === 'follow' || life === 'come') {
@@ -1465,8 +1975,8 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
       settled = 0;
       act = 'none';
       route = 'none';
-      if (search.state === 'busy') search.cancel();
-      if (Math.hypot(p.x - D.x, p.z - D.z) < 30) sound('dogWhine', 0.6);
+      if (search.state === 'busy') stopSearch();
+      if (len2(p.x - D.x, p.z - D.z) < 30) sound('dogWhine', 0.6);
     }
     if (life === 'wait') waitLife(ctx, dt);
     return;
@@ -1476,9 +1986,9 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
     waitLife(ctx, dt);
     retryIn -= dt;
     // (again now and then: sooner once he has moved on from where no way was found)
-    if (retryIn <= 0 && search.state !== 'busy' && (Math.hypot(p.x - FAILED.x, p.z - FAILED.z) > 6 || retryIn < -FAILED.wait)) {
+    if (retryIn <= 0 && search.state !== 'busy' && (len2(p.x - FAILED.x, p.z - FAILED.z) > 6 || retryIn < -FAILED.wait)) {
       retryIn = RETRY;
-      const d = Math.hypot(p.x - D.x, p.z - D.z);
+      const d = len2(p.x - D.x, p.z - D.z);
       const y = d < 40 ? lineWalk(ctx.world, D.x, D.y, D.z, p.x, p.z) : NaN;
       if (!Number.isNaN(y) && Math.abs(y - p.y) < 0.9) {
         life = 'come';
@@ -1501,13 +2011,31 @@ function farHint(): void {
 /** A search ended: on its way, or it waits. */
 function foundWay(ctx: RoamCtx): void {
   const why = searchFor;
-  const ok = search.state === 'found';
+  const st = search.state;
+  const ok = st === 'found';
   search.state = 'idle';
   searchFor = 'none';
+  if (why === 'reach') {
+    // (a look that ran out of room does not know: it comes)
+    REACH.state = 'done';
+    REACH.ok = ok || search.full;
+    const ok2 = REACH.ok;
+    if (REACH.call) {
+      REACH.call = false;
+      toast(ok2 && appearNear(ctx) ? t('dogComing', { name: named() }) : t('dogNoWay', { name: named() }));
+    }
+    return;
+  }
   if (why === 'bed') {
     route = ok ? 'path' : 'none';
     ri = 0;
     if (!ok) putAt(bed.x, bed.z, bed.yaw, bed.y);
+    return;
+  }
+  if (why === 'door') {
+    // (no way to the door: it waits where it is)
+    route = ok || (st === 'near' && search.path.count > 1) ? 'path' : 'none';
+    ri = 0;
     return;
   }
   if (!adopted || atHome) return;
@@ -1516,6 +2044,7 @@ function foundWay(ctx: RoamCtx): void {
     FAILED.x = FAILED.z = Infinity;
     route = 'path';
     ri = 0;
+    toFoot = false;
     if (life === 'wait') {
       life = 'come';
       joy = 1.5;
@@ -1527,22 +2056,30 @@ function foundWay(ctx: RoamCtx): void {
   FAILED.x = p0.x;
   FAILED.z = p0.z;
   FAILED.wait = Math.min(40, FAILED.wait * 2 || 6);
-  if (why === 'call') {
-    appearNear(ctx);
+  // Called: in by him if it can be there; else to the foot of where he is (if it can get near) and it says so.
+  if (why === 'call' && appearNear(ctx)) return;
+  if (st === 'near' && search.path.count > 1) {
+    route = 'path';
+    ri = 0;
+    toFoot = true;
+    life = 'come';
+    if (why === 'call') toast(t('dogNoWay', { name: named() }));
     return;
   }
   route = 'none';
+  toFoot = false;
   if (life === 'come' || life === 'follow') {
     life = 'wait';
     settled = 0;
   }
   const p = ctx.body.pos;
-  if (!farSaid && Math.hypot(p.x - D.x, p.z - D.z) > FAR) farHint();
+  if (why === 'call') toast(t('dogNoWay', { name: named() }));
+  else if (!farSaid && len3(p.x - D.x, p.y - D.y, p.z - D.z) > FAR) farHint();
 }
 
 const camFar = (ctx: RoamCtx) => {
   const c = ctx.cam.camera.position;
-  return Math.hypot(c.x - D.x, c.z - D.z) > THINK_FAR;
+  return len2(c.x - D.x, c.z - D.z) > THINK_FAR;
 };
 
 // ── Drawing ────────────────────────────────────────────────────────────────
@@ -1553,7 +2090,7 @@ function draw(f: MapFrame, mode: RoamMode): void {
   if (!mesh) return;
   const cam = f.camera.position;
   const show =
-    !hidden && D.placed && (adopted ? life !== 'away' && mode !== 'overview' : true) && Math.hypot(cam.x - D.x, cam.y - D.y, cam.z - D.z) < DRAW_FAR && look.fade > 0.01;
+    !hidden && D.placed && (adopted ? life !== 'away' && mode !== 'overview' : true) && len3(cam.x - D.x, cam.y - D.y, cam.z - D.z) < DRAW_FAR && look.fade > 0.01;
   if (show) {
     PLACE.x = D.x;
     PLACE.y = D.y;
@@ -1594,7 +2131,7 @@ registerAddon({
       current: () => name,
       onPick: (n) => {
         setName(n);
-        toast(t('dogNamed', { name: named() }));
+        toast(t('dogNamed', { name: quoted() }));
         hintAfterAdopt();
       },
       onClose: (fresh) => {
@@ -1611,36 +2148,42 @@ registerAddon({
     pose.rest = pose.restGoal = adopted ? 0 : 3;
     setChannels(true);
     want.shut = look.shut = adopted ? 0 : 1;
-    Object.assign(window, {
-      __dog: {
-        state: () => dogState(),
-        get life() {
-          return life;
+    // (checks: the dev server and its shots only)
+    if (import.meta.env.DEV)
+      Object.assign(window, {
+        __dog: {
+          state: () => dogState(),
+          get life() {
+            return life;
+          },
+          get act() {
+            return act;
+          },
+          get route() {
+            return route;
+          },
+          get search() {
+            return { state: search.state, looked: search.looked, path: search.path.count, toFoot };
+          },
+          /** The way found (feet: x, y, z each). */
+          way: () => Array.from({ length: search.path.count }, (_, i) => [search.path.x[i], search.path.y[i], search.path.z[i]]),
+          D,
+          pose,
+          look,
+          pet: PET,
+          petState,
+          get debug() {
+            return { AIM, AIR, ri, n: trail.n, first: trail.first, stuck, going, wayLeft, act, rest: pose.rest, restGoal: pose.restGoal, standing: standing(), stall: STALL, door: DOOR };
+          },
+          /** It cannot step for `s` seconds (the stall watch's checks). */
+          jam: (s: number) => (jammed = s),
+          trail,
+          call: () => lastCtx && call(lastCtx),
+          adopt: () => adopt(false),
+          home: dogHome,
+          bed: dogBed,
         },
-        get act() {
-          return act;
-        },
-        get route() {
-          return route;
-        },
-        get search() {
-          return { state: search.state, looked: search.looked, path: search.path.count };
-        },
-        D,
-        pose,
-        look,
-        pet: PET,
-        petState,
-        get debug() {
-          return { AIM, AIR, ri, n: trail.n, first: trail.first, stuck, going, wayLeft, act, rest: pose.rest, restGoal: pose.restGoal, standing: standing() };
-        },
-        trail,
-        call: () => lastCtx && call(lastCtx),
-        adopt: () => adopt(false),
-        home: dogHome,
-        bed: dogBed,
-      },
-    });
+      });
   },
   get holding() {
     return PET.on;
@@ -1663,7 +2206,8 @@ registerAddon({
     return false;
   },
   offer(ctx, mode) {
-    if (mode !== 'walk' || !canPet(ctx)) return null;
+    // (not under its name card)
+    if (mode !== 'walk' || dogCardOpen() || CARD.pending || !canPet(ctx)) return null;
     // (a boat tied up here, a ramp, the balloon: theirs is the E)
     const p = ctx.body.pos;
     if (ctx.world.launchNear?.(p.x, p.z, p.y) || ctx.world.balloonNear?.(p.x, p.z, p.y)) return null;
@@ -1683,12 +2227,18 @@ registerAddon({
     clock += dt;
     stepped = true;
     TURN.rate = 0;
+    if (jammed > 0) jammed -= dt;
     think(ctx, mode, dt);
     moods(ctx, dt);
     setChannels();
     animate(dt);
   },
   frame(f, mode) {
+    if (CARD.pending && started() && mode !== 'overview') {
+      CARD.pending = false;
+      openDogCard(true);
+      if (CARD.pick >= 0) pickDogCard(CARD.pick);
+    }
     if (!stepped) {
       clock += f.dt;
       if (mode === 'overview' && !adopted) {
@@ -1709,7 +2259,7 @@ registerAddon({
       // Back to the map: his dog goes home (and comes in by him the next time he lands); the village dog naps.
       endPet(null, false);
       closeDogCard();
-      if (search.state === 'busy') search.cancel();
+      if (search.state === 'busy') stopSearch();
       act = 'none';
       route = 'none';
       atHome = false;
@@ -1745,12 +2295,15 @@ registerAddon({
   report(): Record<string, string> | null {
     if (hidden) return { dog: '0' };
     const p = lastCtx?.body.pos;
-    const d = p ? Math.hypot(p.x - D.x, p.z - D.z) : Infinity;
+    const d = p ? len2(p.x - D.x, p.z - D.z) : Infinity;
     if (!adopted) {
       if (d > 40) return pets ? { dogpets: String(pets) } : null;
       return { dog: life === 'nap' ? 'nap' : pets >= 1 ? 'adopt' : 'wake', ...(pets ? { dogpets: String(pets) } : {}) };
     }
-    const what = PET.on ? PET.kind : life === 'wait' ? 'wait' : pose.restGoal >= 3 ? 'sleep' : pose.restGoal === 2 ? 'lie' : pose.restGoal === 1 ? 'sit' : 'follow';
+    // (as it really is: gone home (or asleep on its bed while he is home: his house's own values bring that back) comes in
+    // by him again; waiting where he left it; else by him, as it stands, sits or lies)
+    if (life === 'away' || life === 'bed' || !D.placed) return { dog: 'away', dogname: name.id };
+    const what = PET.on ? PET.kind : life === 'wait' || life === 'door' ? 'wait' : pose.restGoal >= 3 ? 'sleep' : pose.restGoal === 2 ? 'lie' : pose.restGoal === 1 ? 'sit' : 'follow';
     return {
       dog: what,
       dogname: name.id,
@@ -1761,7 +2314,7 @@ registerAddon({
 
 /** The hints after it came along: how to call it, and the scratch. */
 function hintAfterAdopt(kept = false): void {
-  if (kept) toast(t('dogNamed', { name: named() }));
+  if (kept) toast(t('dogNamed', { name: quoted() }));
   toastLater(viaMenu() ? t('dogFollowsMenu', { name: named() }) : t('dogFollows', { name: named(), key: '0' }), 3);
   toastLater(t('dogScratchHint', { name: named(), key: greetKey() }), 6.2);
 }
@@ -1803,9 +2356,8 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     adopted = false;
     pets = Math.max(pets, PETS_TO_ADOPT - 1);
     // (the village dog awake in front of him)
-    const fx = p.x + Math.sin(b.yaw) * 1.6;
-    const fz = p.z + Math.cos(b.yaw) * 1.6;
-    putAt(has ? bx : fx, has ? bz : fz, Math.atan2(p.x - fx, p.z - fz), p.y);
+    if (has) putAt(bx, bz, face);
+    else besideHim(ctx, p.x + Math.sin(b.yaw) * 1.6, p.z + Math.cos(b.yaw) * 1.6, NaN);
     life = 'awake';
     settled = 2;
     pose.rest = pose.restGoal = 0;
@@ -1825,16 +2377,16 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     return;
   }
   if (v === 'pet' || v === 'scratch') {
-    const fx = p.x + Math.sin(b.yaw) * 1.4;
-    const fz = p.z + Math.cos(b.yaw) * 1.4;
-    putAt(fx, fz, Math.atan2(p.x - fx, p.z - fz), p.y);
+    besideHim(ctx, p.x + Math.sin(b.yaw) * 1.4, p.z + Math.cos(b.yaw) * 1.4, NaN);
     life = 'follow';
     pose.rest = pose.restGoal = 1;
     setChannels(true);
     startPet(ctx, v);
     return;
   }
-  putAt(bx, bz, face, p.y);
+  // (`dogat=`: there, on the top; else beside him on his level)
+  if (has) putAt(bx, bz, face);
+  else besideHim(ctx, bx, bz, NaN);
   look.fade = want.fade = 1;
   D.seen = 1;
   life = 'follow';
@@ -1864,8 +2416,8 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     fauna?.subjects?.(_subjects);
     let bd = 40;
     for (const s of _subjects)
-      if ((s.kind === 'macaque' || s.kind === 'junglefowl') && Math.hypot(s.x - D.x, s.z - D.z) < bd) {
-        bd = Math.hypot(s.x - D.x, s.z - D.z);
+      if ((s.kind === 'macaque' || s.kind === 'junglefowl') && len2(s.x - D.x, s.z - D.z) < bd) {
+        bd = len2(s.x - D.x, s.z - D.z);
         BARK_AT.x = s.x;
         BARK_AT.z = s.z;
       }
@@ -1873,9 +2425,10 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     startBark();
   } else if (v === 'name') {
     pose.rest = pose.restGoal = 1;
-    openDogCard(true);
+    // (opened once the map has started: never over the loading screen and its Start button)
+    CARD.pending = true;
     const i = Number(q.get('dognamepick'));
-    if (Number.isInteger(i)) pickDogCard(i);
+    CARD.pick = Number.isInteger(i) ? i : -1;
   } else pose.rest = pose.restGoal = 0;
   HOLD.stand = v === 'stand';
   HOLD.gait = q.has('doggait') ? clamp(Number(q.get('doggait')) || 0, 0, 3) : -1;
@@ -1922,7 +2475,8 @@ export function dogState(): Readonly<DogInfo> {
   INFO.y = D.y;
   INFO.z = D.z;
   const p = lastCtx?.body.pos;
-  INFO.far = p && roamMode !== 'overview' ? Math.hypot(p.x - D.x, p.z - D.z) : Infinity;
+  // (in 3D: a dog 12 m below his deck is far)
+  INFO.far = p && roamMode !== 'overview' ? len3(p.x - D.x, p.y - D.y, p.z - D.z) : Infinity;
   INFO.asleep = pose.restGoal >= 3 && look.shut > 0.5;
   return INFO;
 }
@@ -1975,7 +2529,7 @@ export function dogHome(on: boolean): void {
 export const dogAdopted = (): boolean => adopted;
 
 /** Its name in the language in use, or null while he has none. */
-export const dogNameNow = (): string | null => (adopted ? named() : null);
+export const dogNameNow = (): string | null => (adopted ? dogNameIn(name) : null);
 
 /** The explorer menu's "Dog's name": the card (only once he has a dog). */
 export function openDogName(): void {

@@ -1,8 +1,7 @@
-import { BoxGeometry, BufferGeometry, CanvasTexture, DoubleSide, Frustum, Group, Matrix4, Mesh, MeshStandardMaterial, Object3D, RepeatWrapping, Sphere, SRGBColorSpace, Vector3 } from 'three';
+import { BufferGeometry, CanvasTexture, DoubleSide, Float32BufferAttribute, Frustum, Group, Matrix4, Mesh, MeshLambertMaterial, Object3D, RepeatWrapping, Sphere, SRGBColorSpace, Vector3 } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ShadowGate } from '../cull';
 import { Frame } from '../landmarks/_prasatKit';
 import type { MapContext, MapFrame } from '../types';
@@ -108,9 +107,10 @@ export function buildHome(ctx: MapContext): HamletPiece {
     }
   for (const z of zs) L.span(-W / 2, F - 0.45, z - 0.16, W / 2, F - 0.2, z + 0.16, tone(FLOOR, L.r(z, 3) * 0.4), 'mapBark', 0.85);
   for (let x = -W / 2, i = 0; x < W / 2 - 0.05; x += 0.5, i++) L.span(x, F - 0.2, zb, Math.min(W / 2, x + 0.5), F, zf, tone(FLOOR, L.r(i, 4)), 'mapBark', 0.95 + L.r(i, 5) * 0.08);
-  // A fascia board round the floor's edge, in the trim colour.
-  L.span(-W / 2 - 0.04, F - 0.32, zf - 0.02, W / 2 + 0.04, F - 0.04, zf + 0.05, tone(TRIM, 0.3), 'mapBark');
-  for (const s of [-1, 1]) L.span(s * W / 2 - 0.04, F - 0.32, zb, s * W / 2 + 0.04, F - 0.04, zf, tone(TRIM, 0.6), 'mapBark');
+  // A fascia board round the floor's edge, in the trim colour. (A soft family: in the walk map its long thin run would
+  // fill the 0.5 m columns just outside the railing at the floor's height, a ledge he could walk along outside it.)
+  L.span(-W / 2 - 0.04, F - 0.32, zf - 0.02, W / 2 + 0.04, F - 0.04, zf + 0.05, tone(TRIM, 0.3), 'petal');
+  for (const s of [-1, 1]) L.span(s * W / 2 - 0.04, F - 0.32, zb, s * W / 2 + 0.04, F - 0.04, zf, tone(TRIM, 0.6), 'petal');
 
   // ── Walls round the rooms: the doorway, open windows with their shutters out ──
   const win = (a: number, half: number): Hole => ({ a0: a - half, a1: a + half, y0: F + 1.05, y1: F + 2.0 });
@@ -380,15 +380,19 @@ function inside(L: Local, F: number, glow: (x: number, y: number, z: number, sx:
   L.box(M.x0 + 0.32, F + 0.17, (M.z0 + M.z1) / 2, 0.3, 0.02, 0.56, 0xc8d8e8, 'petal');
   // (a krama folded at the foot: red and white checks)
   for (let k = 0; k < 4; k++) L.box(M.x1 - 0.28, F + 0.06 + k * 0.025, (M.z0 + M.z1) / 2 - 0.2 + (k % 2) * 0.02, 0.4, 0.024, 0.5, k % 2 ? 0xf0ece0 : 0xb8322c, 'petal');
-  // The net's four cords: from its top corners up to the tie beam and the back wall.
+  // The net's four cords: from its top corners up to nails in the back wall, and to a bamboo pole laid across the room
+  // from wall to wall over its front edge (soft families: neither solid nor in the camera's way).
   const N = I.net;
-  const ny = F + N.top;
-  for (const x of [N.x0, N.x1])
-    for (const z of [N.z0, N.z1]) {
-      const toZ = z === N.z0 ? HOME_Z.back + HOME_T : z;
-      const toY = F + HOME_SIZE.wall - 0.25;
-      L.span(x - 0.012, ny, Math.min(z, toZ) - 0.012, x + 0.012, toY, Math.max(z, toZ) + 0.012, 0xe8e4dc, 'petal');
-    }
+  const ny = F + N.top + 0.07;
+  const toY = F + HOME_SIZE.wall - 0.25;
+  const inner = HOME_SIZE.w / 2 - HOME_T - 0.03;
+  L.span(-inner, toY - 0.02, N.z1 - 0.025, inner, toY + 0.03, N.z1 + 0.025, 0xc8b27a, 'petal');
+  for (const x of [N.x0, N.x1]) {
+    L.span(x - 0.008, ny, N.z1 - 0.008, x + 0.008, toY - 0.02, N.z1 + 0.008, 0xe8e4dc, 'petal');
+    L.span(x - 0.008, ny, N.z0 - 0.008, x + 0.008, toY, N.z0 + 0.008, 0xe8e4dc, 'petal');
+    L.span(x - 0.008, toY - 0.016, HOME_Z.back + HOME_T + 0.03, x + 0.008, toY, N.z0 + 0.008, 0xe8e4dc, 'petal');
+    L.box(x, toY, HOME_Z.back + HOME_T + 0.03, 0.03, 0.03, 0.04, 0x5a5550, 'mapStone');
+  }
   // ── The altar shelf (high on the west wall, facing into the room): a red cloth with a gold hem, the Buddha in the middle ──
   const A = I.altar;
   const ax = A.x - HOME_T - A.d / 2;
@@ -529,60 +533,175 @@ function buildDoors(fr: Frame, F: number): { object: Group; set(v: number): void
 
 // ── The mosquito net ───────────────────────────────────────────────────────
 
-/** The net's fine mesh: white threads on a faint white (a small canvas, repeated). */
+/** Its fine mesh: thin threads on nothing (a small canvas, repeated: a cell `NET_CELL` m), a knot where they cross. */
+const NET_CELL = 0.03;
+/** A texel's middle that is a knot (fully opaque): the hems and ties sample only this (their UV, before the repeat). */
+const NET_SOLID = 0.5 / 8 * NET_CELL;
+
 function netTexture(): CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 8;
   const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(246, 243, 236, 0.16)';
+  g.fillStyle = 'rgba(255, 255, 255, 0.025)';
   g.fillRect(0, 0, 8, 8);
-  g.fillStyle = 'rgba(250, 248, 242, 0.62)';
+  g.fillStyle = 'rgba(255, 255, 255, 0.3)';
   g.fillRect(0, 0, 8, 1);
   g.fillRect(0, 0, 1, 8);
+  g.fillStyle = 'rgba(255, 255, 255, 1)';
+  g.fillRect(0, 0, 1, 1);
   const t = new CanvasTexture(c);
   t.wrapS = t.wrapT = RepeatWrapping;
-  t.repeat.set(36, 26);
+  t.repeat.set(1 / NET_CELL, 1 / NET_CELL);
   t.colorSpace = SRGBColorSpace;
   t.anisotropy = 4;
   return t;
 }
 
+/** Plain arrays for a geometry: positions, uvs, colours (linear), indices. */
+class NetBuild {
+  readonly pos: number[] = [];
+  readonly uv: number[] = [];
+  readonly col: number[] = [];
+  readonly idx: number[] = [];
+
+  /**
+   * A cloth panel: `at(a, b)` its point for a 0‥1 across and b 0‥1 down (house-local m, y over the floor), `nu` × `nw`
+   * cells; its mesh is laid by the cloth's own length (`wide`, `tall` m), so the threads keep their size.
+   */
+  panel(at: (a: number, b: number) => [number, number, number], nu: number, nw: number, wide: number, tall: number, shade: number): void {
+    const base = this.pos.length / 3;
+    for (let j = 0; j <= nw; j++)
+      for (let i = 0; i <= nu; i++) {
+        const [x, y, z] = at(i / nu, j / nw);
+        this.pos.push(x, y, z);
+        this.uv.push((i / nu) * wide, (j / nw) * tall);
+        this.col.push(shade, shade, shade * 0.985);
+      }
+    for (let j = 0; j < nw; j++)
+      for (let i = 0; i < nu; i++) {
+        const a = base + j * (nu + 1) + i;
+        this.idx.push(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2);
+      }
+  }
+
+  /** A solid band (a hem, a tie, the roll): a strip of quads along points, `w` wide across `side` (unit), all on the knot texel. */
+  band(pts: readonly [number, number, number][], side: [number, number, number], w: number, shade: number): void {
+    const base = this.pos.length / 3;
+    for (const [x, y, z] of pts)
+      for (const k of [-0.5, 0.5]) {
+        this.pos.push(x + side[0] * w * k, y + side[1] * w * k, z + side[2] * w * k);
+        this.uv.push(NET_SOLID, NET_SOLID);
+        this.col.push(shade, shade, shade * 0.97);
+      }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = base + i * 2;
+      this.idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+
+  geometry(): BufferGeometry {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('uv', new Float32BufferAttribute(this.uv, 2));
+    g.setAttribute('color', new Float32BufferAttribute(this.col, 3));
+    g.setIndex(this.idx);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+
 /**
- * The mosquito net over the mat: fine white mesh (a pale, half-clear material: one draw for its back, ends
- * and top, one for its front), its front rolled up on the top bar by day and let down while he sleeps
- * (`set(0‥1)`); the roll on the bar thins as it comes down.
+ * The mosquito net over the mat (មុង): fine white netting you see through, hung by its four top corners on cords
+ * (the top sagging between them, each top edge a little), the sides falling to the floor in soft folds, a lighter
+ * hem along the top and the foot, a tie at each corner. One material for all of it (one program): the netting's
+ * alpha is a small repeated texture (threads and knots), the hems and ties sample its one opaque texel. By day its
+ * front is gathered up in a roll along the top front edge; while he sleeps it is let down to the floor
+ * (`set(0‥1)`: its points rewritten, a few hundred, only while it moves).
  */
 function buildNet(fr: Frame, F: number): { object: Group; set(v: number): void } {
   const object = new Group();
   object.name = 'home:net';
   const N = HOME_IN.net;
   const H = N.top;
-  const material = new MeshStandardMaterial({ color: 0xffffff, map: netTexture(), roughness: 0.95, transparent: true, depthWrite: false, side: DoubleSide, name: 'home:net' });
-  const edge = new MeshStandardMaterial({ color: 0xece6da, roughness: 0.9, name: 'home:net-edge' });
-  const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => {
-    const g = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
-    g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-    return g;
-  };
-  const t = 0.012;
-  // (in the house's local frame, then placed: a group turned by the frame's heading)
-  const shell = mergeGeometries([box(N.x0, 0, N.z0, N.x1, H, N.z0 + t), box(N.x0, 0, N.z0, N.x0 + t, H, N.z1), box(N.x1 - t, 0, N.z0, N.x1, H, N.z1), box(N.x0, H - t, N.z0, N.x1, H, N.z1)]);
-  const frame = mergeGeometries([box(N.x0, H - 0.03, N.z0, N.x1, H, N.z0 + 0.03), box(N.x0, H - 0.03, N.z1 - 0.03, N.x1, H, N.z1), box(N.x0, H - 0.03, N.z0, N.x0 + 0.03, H, N.z1), box(N.x1 - 0.03, H - 0.03, N.z0, N.x1, H, N.z1)]);
-  const front = box(N.x0, -1, N.z1 - t, N.x1, 0, N.z1);
-  const roll = box(N.x0 + 0.05, -0.05, N.z1 - 0.05, N.x1 - 0.05, 0.05, N.z1 + 0.05);
+  const W = N.x1 - N.x0;
+  const D = N.z1 - N.z0;
+  const material = new MeshLambertMaterial({ color: 0xffffff, map: netTexture(), vertexColors: true, transparent: true, depthWrite: false, side: DoubleSide, name: 'home:net' });
+  /** The top's sag between the corners (m), each top edge's, how far the folds swing out at the foot, their length (m). */
+  const SAG = 0.11;
+  const EDGE = 0.045;
+  const FOLD = 0.03;
+  const FOLD_LEN = 0.32;
+  const BODY = 0.9;
+  const HEM = 1.0;
+  const edgeY = (a: number) => H - EDGE * Math.sin(Math.PI * a);
+  /** A fold's push out of a side (0 at the top, more toward the foot), and the foot's lean out onto the floor. */
+  const fold = (s: number, b: number, phase: number) => FOLD * Math.sin((s / FOLD_LEN) * Math.PI * 2 + phase) * (0.25 + 0.75 * b);
+  const shell = new NetBuild();
+  // The top: sagging in the middle, its edges as the sides' tops.
+  shell.panel((a, b) => [N.x0 + W * a, H - EDGE * Math.max(Math.sin(Math.PI * a), Math.sin(Math.PI * b)) - (SAG - EDGE) * Math.sin(Math.PI * a) * Math.sin(Math.PI * b), N.z0 + D * b], 12, 6, W, D, BODY);
+  // The back (against the wall: hardly any lean), the two ends (the room's end leans out a little onto the floor).
+  shell.panel((a, b) => [N.x0 + W * a, edgeY(a) * (1 - b) + 0.01 * b, N.z0 + fold(W * a, b, 0) * 0.4], 14, 8, W, H, BODY);
+  for (const [x, out, lean] of [
+    [N.x0, -1, 0.02],
+    [N.x1, 1, 0.07],
+  ] as const)
+    shell.panel((a, b) => [x + out * (fold(D * a, b, 1.3) + lean * b * b), edgeY(a) * (1 - b) + 0.01 * b, N.z0 + D * a], 6, 8, D, H, BODY);
+  // The hems: round the top's four edges and along the feet; a tie (a short loop of cord) at each top corner.
+  const n = 12;
+  const along = (x0: number, z0: number, x1: number, z1: number, y: (a: number) => number) => Array.from({ length: n + 1 }, (_, i): [number, number, number] => [x0 + ((x1 - x0) * i) / n, y(i / n), z0 + ((z1 - z0) * i) / n]);
+  const up: [number, number, number] = [0, 1, 0];
+  shell.band(along(N.x0, N.z0, N.x1, N.z0, edgeY), up, 0.035, HEM);
+  shell.band(along(N.x0, N.z1, N.x1, N.z1, edgeY), up, 0.035, HEM);
+  shell.band(along(N.x0, N.z0, N.x0, N.z1, edgeY), up, 0.035, HEM);
+  shell.band(along(N.x1, N.z0, N.x1, N.z1, edgeY), up, 0.035, HEM);
+  shell.band(along(N.x0, N.z0 + 0.004, N.x1, N.z0 + 0.004, () => 0.03), up, 0.05, HEM);
+  shell.band(along(N.x0 - 0.02, N.z0, N.x0 - 0.02, N.z1, () => 0.03), up, 0.05, HEM);
+  shell.band(along(N.x1 + 0.07, N.z0, N.x1 + 0.07, N.z1, () => 0.03), up, 0.05, HEM);
+  for (const x of [N.x0, N.x1])
+    for (const z of [N.z0, N.z1]) {
+      shell.band([[x, H - 0.02, z], [x, H + 0.07, z]], [1, 0, 0], 0.03, HEM * 0.96);
+      shell.band([[x, H - 0.02, z], [x, H + 0.07, z]], [0, 0, 1], 0.03, HEM * 0.96);
+    }
+  // The front: let down from its top edge to the floor (`e` of the way), or gathered in a roll on that edge.
+  const NU = 14;
+  const NW = 8;
+  const front = new NetBuild();
+  front.panel(() => [0, 0, 0], NU, NW, W, H, BODY);
+  front.band(along(N.x0, N.z1, N.x1, N.z1, () => 0), up, 0.05, HEM);
+  const frontGeo = front.geometry();
+  const roll = new NetBuild();
+  // (a gathered roll: four bands round the edge, a square tube; scaled about the edge as it unrolls)
+  const ring: [number, number][] = [[0, 0.06], [0.06, 0], [0, -0.06], [-0.06, 0], [0, 0.06]];
+  for (let k = 0; k < 4; k++) {
+    const [y0, z0] = ring[k];
+    const [y1, z1] = ring[k + 1];
+    const pts = along(N.x0 + 0.04, N.z1 + z0 * 0, N.x1 - 0.04, N.z1, (a) => edgeY(a) - 0.06 + y0).map(([x, y, z]): [number, number, number] => [x, y, z + z0]);
+    const side: [number, number, number] = [0, y1 - y0, z1 - z0];
+    const l = Math.hypot(side[1], side[2]);
+    roll.band(
+      pts.map(([x, y, z]): [number, number, number] => [x, y + (y1 - y0) / 2, z + (z1 - z0) / 2]),
+      [0, side[1] / l, side[2] / l],
+      l,
+      0.93 - 0.03 * k,
+    );
+  }
   const holder = new Group();
   holder.position.set(fr.wx(0, 0), F, fr.wz(0, 0));
   holder.rotation.y = fr.theta;
-  const shellMesh = new Mesh(shell, material);
-  shellMesh.renderOrder = 2;
-  const frontMesh = new Mesh(front, material);
-  frontMesh.renderOrder = 2;
-  frontMesh.position.y = H;
-  const rollMesh = new Mesh(roll, edge);
-  rollMesh.position.y = H - 0.05;
-  holder.add(shellMesh, new Mesh(frame, edge), frontMesh, rollMesh);
+  const shellMesh = new Mesh(shell.geometry(), material);
+  const frontMesh = new Mesh(frontGeo, material);
+  const rollMesh = new Mesh(roll.geometry(), material);
+  for (const m of [shellMesh, frontMesh, rollMesh]) {
+    m.renderOrder = 2;
+    m.castShadow = false;
+  }
+  // (the roll shrinks about the top front edge)
+  rollMesh.position.set(0, H - 0.06, N.z1);
+  rollMesh.geometry.translate(0, -(H - 0.06), -N.z1);
+  holder.add(shellMesh, frontMesh, rollMesh);
   object.add(holder);
-  for (const g of [shell, frame] as BufferGeometry[]) g.computeBoundingSphere();
+  const fp = frontGeo.getAttribute('position') as Float32BufferAttribute;
   let at = -1;
   return {
     object,
@@ -590,10 +709,36 @@ function buildNet(fr: Frame, F: number): { object: Group; set(v: number): void }
       if (Math.abs(v - at) < 1e-4) return;
       at = v;
       const e = v * v * (3 - 2 * v);
-      // (the front hangs from the top bar down to `e` of the net's height; the roll on the bar thins as it unrolls)
       frontMesh.visible = e > 0.01;
-      frontMesh.scale.y = Math.max(0.01, e * (H - 0.02));
-      rollMesh.scale.set(1, 1.6 - 1.1 * e, 1.6 - 1.1 * e);
+      rollMesh.visible = e < 0.98;
+      rollMesh.scale.set(1, 1 - 0.8 * e, 1 - 0.8 * e);
+      if (!frontMesh.visible) return;
+      // The front's points: from the top edge down `e` of the way to the floor, in folds, leaning out onto the floor at its foot.
+      const a = fp.array as Float32Array;
+      let k = 0;
+      for (let j = 0; j <= NW; j++)
+        for (let i = 0; i <= NU; i++) {
+          const u = i / NU;
+          const b = j / NW;
+          const top = edgeY(u);
+          const y = top - b * e * (top - 0.01);
+          const d = b * e;
+          a[k++] = N.x0 + W * u;
+          a[k++] = y;
+          a[k++] = N.z1 + fold(W * u, d, 2.1) + 0.08 * d * d * e;
+        }
+      // (its hem along the foot)
+      for (let i = 0; i <= 12; i++)
+        for (const s of [-0.5, 0.5]) {
+          const u = i / 12;
+          const top = edgeY(u);
+          a[k++] = N.x0 + W * u;
+          a[k++] = top - e * (top - 0.01) + s * 0.05 + 0.025;
+          a[k++] = N.z1 + fold(W * u, e, 2.1) + 0.08 * e * e + 0.004;
+        }
+      fp.needsUpdate = true;
+      frontGeo.computeVertexNormals();
+      frontGeo.computeBoundingSphere();
     },
   };
 }

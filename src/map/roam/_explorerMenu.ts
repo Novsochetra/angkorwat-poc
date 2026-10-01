@@ -368,6 +368,10 @@ function injectStyle(): void {
     body.roam-touch .rxm kbd { display: none; }
     /* (it reaches up under the mini-map on a phone: the mini-map steps aside while it is open) */
     body.roam-touch:has(.rxm.is-on) .mm { opacity: 0 !important; visibility: hidden !important; transition: opacity 0.2s, visibility 0s 0.2s !important; }
+    /* (and the stick and the Use / Jump buttons, which stand over its chips: every chip takes its tap; a tap outside still shuts it. As the buy menu) */
+    body.roam-touch:has(.rxm.is-on) .rt.is-on { display: none !important; }
+    /* (the gold figures' count and the purse at the top left sit over its top, upright or on its side: they step aside while it is open; the bag's own line shows the riel) */
+    body.roam-touch:has(.rxm.is-on) .rh > :is(.tg-count, .by-purse) { opacity: 0 !important; visibility: hidden !important; }
     /* (a phone on its side: the bar is along the top; the panel hangs under it, the three side by side) */
     @media (max-height: 500px) {
       body.roam-touch .rxm { right: auto; bottom: auto; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); width: min(760px, calc(100vw - 24px)); }

@@ -1,4 +1,4 @@
-import { Vector3, type Group } from 'three';
+import { InstancedMesh, Matrix4, Vector3, type Group } from 'three';
 import { BLESS_BOWS, BLESS_HAT, BLESS_KNEEL, BLESS_RISE, blessPose, blessState } from '../../character/blessing';
 import { PRAY, PRAY_PALMS } from '../../character/clips';
 import { buildHand } from '../../character/parts/limbs';
@@ -12,10 +12,11 @@ import { registerEvent } from '../calendar';
 import { festivalAt, festivalNow } from '../festival/_schedule';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
+import { PAGODA } from '../village/_spots';
 import type { MapFrame, RoamMode } from '../types';
 import { onLang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
-import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, CHANT_FOR, SCRIPT_AT, seatFront, TIE, type BlessSeat, type BlessState } from './_blessingHooks';
+import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, CHANT_FOR, SCRIPT_AT, seatFront, TIE, type BlessBox, type BlessSeat, type BlessState } from './_blessingHooks';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
@@ -78,6 +79,16 @@ const KNEEL_RATE = 1.15;
 const SETTLE_T = 0.8;
 /** His words, the bows' speed (prayer time a second), a leaving off part way (s), the second time's greeting (s). */
 const WORDS_FOR = 3.6;
+/**
+ * Kneeling low before the monk (character/blessing.ts `rise`, `bowHead`): up off his heels this much to move on his
+ * knees; bowed this much at the tie, under the monk's words (his head always clearly below the monk's, who sits on
+ * his raised dais: `BLESS_SEATS`).
+ */
+const KNEE_WALK = 0.25;
+/** Held close for the string, he looks this high (m over the floor: the monk's hands and chest), not down at his own hand. */
+const TIE_LOOK = 1.6;
+const TIE_BOW = 0.45;
+const WORDS_BOW = 0.8;
 const BOW_RATE = 1.0;
 const LEAVE_T = 0.6;
 const AGAIN_FOR = 3.0;
@@ -88,7 +99,7 @@ const AGAIN_FOR = 3.0;
  * hall's door behind them), and back after; a little wider (`fov`: the camera keeps off the hall's walls). Eased
  * there over `for` s at each change, then it is the player's (a drag looks round); back to where it was after.
  */
-const FRAME = { side: -1.45, tieSide: 1.4, pitch: 0.17, near: 2.8, far: 3.5, fov: 60, rate: 1.8, back: 2.2, for: 3.2 };
+const FRAME = { side: -1.45, tieSide: 1.4, pitch: 0.17, near: 3.0, far: 3.6, fov: 60, rate: 1.8, back: 2.2, for: 3.2 };
 /** Where he looks as he looks at the string on his wrist (BU, his space: before him, a little to his right). */
 const ADMIRE = new Vector3(-1.2, 14.5, 6.5);
 
@@ -119,6 +130,15 @@ let goSince = 0;
 const ps = blessState();
 /** The hat came off for it (it goes back on). */
 let hatTaken = false;
+/**
+ * The pagoda's hall (village/_pagoda.ts: its walls ± 4 m from the axis, from the door's wall to the back wall at
+ * z 112.5), its floor (the altar's steps over it too): he is in it past the door's threshold by `in` (m), out once
+ * back over it.
+ */
+const HALL = { x0: PAGODA.x - 4, x1: PAGODA.x + 4, z0: PAGODA.doorZ, z1: 112.5, floor: PAGODA.floor, in: 0.3 } as const;
+let inHall = false;
+/** His hat taken off as he stepped into the hall, to put back on as he steps out. */
+let hallHatOff = false;
 /** The string was knotted in this blessing (the toast at its end), and he wears it (kept, or a check's). */
 let tied = false;
 let worn = false;
@@ -154,6 +174,7 @@ words();
 onLang(words);
 /** Scratch (no allocation a step). */
 const _v = new Vector3();
+const _m = new Matrix4();
 const _f = { x: 0, z: 0 };
 const posture = () => blessPose(ps);
 
@@ -168,7 +189,9 @@ registerEvent({
   begins: 'blessCalBegins',
   where: { x: S0.x, z: S0.z },
   near: 120,
-  on: (m) => blessHour(m.clock) === 'sit' && !pagodaFestival(festivalAt(m.season, m.day)),
+  // (the monk's own rule, people/_sceneBlessing.ts: the hour, and the pagoda's festival of that moment — its day goes
+  // afternoon to afternoon, so the clock counts)
+  on: (m) => blessHour(m.clock) === 'sit' && !pagodaFestival(festivalAt(m.season, m.day, m.clock)),
   // (as the map shows it: a festival the URL holds, or none, as the monk's scene plays it)
   shown: (m) => blessHour(m.clock) === 'sit' && !pagodaFestival(festivalNow(m)),
 });
@@ -192,30 +215,34 @@ function seatNear(ctx: RoamCtx): BlessSeat | null {
   return null;
 }
 
-/** He never stands on a monk's dais (it is not on the walk map): out to its nearest open side. */
+/** He never stands on a monk's dais or its step (they are not on the walk map): out to the nearest open side. */
 function keepOffDais(ctx: RoamCtx): void {
+  for (const s of BLESS_SEATS) {
+    keepOff(ctx, s, s.dais);
+    keepOff(ctx, s, s.step);
+  }
+}
+
+function keepOff(ctx: RoamCtx, s: BlessSeat, d: BlessBox): void {
   const p = ctx.body.pos;
   const r = 0.3 * ctx.body.scale;
-  for (const s of BLESS_SEATS) {
-    const d = s.dais;
-    if (p.y > d.top + 0.6 || p.y < s.floor - 0.6) continue;
-    const sn = Math.sin(s.yaw);
-    const cs = Math.cos(s.yaw);
-    const dx = p.x - d.x;
-    const dz = p.z - d.z;
-    const a = dx * sn + dz * cs;
-    const c = dx * cs - dz * sn;
-    const ea = d.along + r - Math.abs(a);
-    const ec = d.across + r - Math.abs(c);
-    if (ea <= 0 || ec <= 0) continue;
-    // (the back of it is the wall: out the front, or a side, whichever is nearer)
-    let na = a;
-    let nc = c;
-    if (ec < d.along + r - a) nc = Math.sign(c || 1) * (d.across + r);
-    else na = d.along + r;
-    p.x = d.x + na * sn + nc * cs;
-    p.z = d.z + na * cs - nc * sn;
-  }
+  if (p.y > d.top + 0.6 || p.y < s.floor - 0.6) return;
+  const sn = Math.sin(s.yaw);
+  const cs = Math.cos(s.yaw);
+  const dx = p.x - d.x;
+  const dz = p.z - d.z;
+  const a = dx * sn + dz * cs;
+  const c = dx * cs - dz * sn;
+  const ea = d.along + r - Math.abs(a);
+  const ec = d.across + r - Math.abs(c);
+  if (ea <= 0 || ec <= 0) return;
+  // (the back of it is the wall, or the dais: out the front, or a side, whichever is nearer)
+  let na = a;
+  let nc = c;
+  if (ec < d.along + r - a) nc = Math.sign(c || 1) * (d.across + r);
+  else na = d.along + r;
+  p.x = d.x + na * sn + nc * cs;
+  p.z = d.z + na * cs - nc * sn;
 }
 
 // ── The blessing ─────────────────────────────────────────────────────────────
@@ -295,6 +322,35 @@ function setHat(on: boolean): void {
   e.photo.refreshBody();
 }
 
+/**
+ * In the pagoda's hall he goes bareheaded (one wears no hat before the Buddha and the monks): his hat off as he steps in
+ * past the door, on again as he steps out (unless he put it back on meanwhile: H); off his feet, or back to the map, on
+ * again at once (`inside` false).
+ */
+function hallHat(ctx: RoamCtx | null, mode: RoamMode | null): void {
+  const e = env;
+  if (!e) return;
+  const was = inHall;
+  const p = ctx?.body.pos;
+  inHall = !!p && mode === 'walk' && p.y > HALL.floor - 0.6 && p.y < HALL.floor + 3 && p.x > HALL.x0 && p.x < HALL.x1 && p.z > HALL.z0 + (was ? 0.05 : HALL.in) && p.z < HALL.z1;
+  if (inHall && !was) {
+    if (e.explorer.currentOutfit.hat && !e.explorer.animator.posture) {
+      setHat(false);
+      hallHatOff = true;
+    }
+  } else if (!inHall && hallHatOff) {
+    hallHatOff = false;
+    setHat(true);
+  }
+}
+
+/** The hat the blessing took back on him — or, in the hall, left off until he steps out (the hall's then). */
+function hatBack(): void {
+  hatTaken = false;
+  if (inHall) hallHatOff = true;
+  else setHat(true);
+}
+
 /** Flat hands (the sampeah, the hand held out, the bows) or his own. */
 function openHands(on: boolean): void {
   const e = env!;
@@ -367,8 +423,7 @@ function end(): void {
   openHands(false);
   showFace(null);
   if (hatTaken) {
-    hatTaken = false;
-    setHat(true);
+    hatBack();
   }
   e.explorer.animator.posture = null;
   e.explorer.animator.postureFeet = true;
@@ -464,9 +519,10 @@ function stepBlessing(ctx: RoamCtx, dt: number): string | null {
       break;
     }
     case 'chant': {
-      // His head bowed under the chant and the water; his eyes shut as the drops land.
+      // Bowed under the chant and the water (leaning forward, his head well below the monk's: never level with it); his
+      // eyes shut as the drops land.
       ps.palms = 1;
-      ps.bowHead = 0.75 * bump(st, 0, 1.4, CHANT_FOR - 1.2, CHANT_FOR);
+      ps.bowHead = Math.max(bump(st, 0, 1.4, CHANT_FOR - 1.2, CHANT_FOR), TIE_BOW * over(st, CHANT_FOR - 1.2, CHANT_FOR));
       ps.lookW = 0.8 - 0.5 * over(st, 0, 1.2);
       toBody(ctx, monkFace(_v).x, _v.y, _v.z, ps.look);
       for (const d of BLESS_SCRIPT.dips) if (cue(SCRIPT_AT + d, dt)) SFX.play('blessDip', 0.8);
@@ -484,21 +540,27 @@ function stepBlessing(ctx: RoamCtx, dt: number): string | null {
       break;
     }
     case 'tie': {
-      // In on his knees, the right hand out, palm up, the left under its forearm; the string round his wrist; he looks at it.
+      // In on his knees, the right hand out, palm up, the left under its forearm; the string round his wrist; back on
+      // his knees to his place, where he looks at it.
       const m = BLESS.monks[seat.id];
+      const out = TIE.back + 0.1;
       ps.palms = Math.max(1 - over(st, 0, 0.45), over(st, TIE.for - 0.6, TIE.for));
-      ps.rise = over(st, 0, 0.4);
-      ps.bowHead = 0;
-      const walk = over(st, 0.35, 1.35);
-      body.pos.lerpVectors(kneelAt, closeAt, walk);
-      ps.step = walk * Math.PI * 2;
-      ps.stepW = bump(st, 0.35, 0.55, 1.15, 1.35);
-      ps.offer = bump(st, 0.95, 1.65, TIE.look, TIE.look + 0.6);
-      // (then his hand up before him, the palm to his face: he looks at the string on his wrist)
-      ps.admire = bump(st, TIE.look, TIE.look + 0.6, TIE.for - 0.75, TIE.for - 0.15);
-      if (cue(0.4, dt) || cue(0.9, dt)) SFX.play('blessCloth', 0.6);
+      // (low: a little up off his heels to move on his knees, on them between; his head up as he comes in and his hand
+      // goes out — the monk's face is near —, bowed again as his palms come together)
+      ps.rise = KNEE_WALK * Math.max(bump(st, 0, 0.35, 1.2, 1.6), bump(st, out - 0.2, out + 0.1, out + 0.9, out + 1.2));
+      ps.bowHead = TIE_BOW * Math.max(1 - over(st, 0, 0.5), over(st, TIE.for - 0.6, TIE.for));
+      const walkIn = over(st, 0.35, 1.35);
+      const walkOut = over(st, out, out + 1.0);
+      body.pos.lerpVectors(kneelAt, closeAt, walkIn - walkOut);
+      ps.step = (walkIn - walkOut) * Math.PI * 3;
+      ps.stepW = Math.max(bump(st, 0.35, 0.55, 1.15, 1.35), bump(st, out, out + 0.2, out + 0.8, out + 1.0));
+      ps.offer = bump(st, 0.95, 1.65, TIE.back, TIE.back + 0.5);
+      // (back at his place, his hand up before him, the palm to his face: he looks at the string on his wrist)
+      ps.admire = bump(st, TIE.look, TIE.look + 0.5, TIE.for - 0.75, TIE.for - 0.15);
+      if (cue(0.4, dt) || cue(0.9, dt) || cue(out + 0.1, dt) || cue(out + 0.6, dt)) SFX.play('blessCloth', 0.6);
       if (Number.isFinite(m.hx)) toBody(ctx, m.hx, m.hy, m.hz, ps.reach);
-      ps.look.copy(ps.reach).lerp(ADMIRE, ps.admire);
+      // (his eyes lowered to the monk's hands and chest, his big head kept back from the monk's face; then the string)
+      toBody(ctx, seat.x, seat.floor + TIE_LOOK, seat.z, ps.look).lerp(ADMIRE, ps.admire);
       ps.lookW = 0.9;
       openHands(true);
       if (cue(TIE.wind - 0.1, dt)) SFX.play('blessMurmur', 0.8);
@@ -515,19 +577,14 @@ function stepBlessing(ctx: RoamCtx, dt: number): string | null {
       break;
     }
     case 'words': {
-      // The monk's blessing in Khmer; back on his knees to his place, on his heels again.
+      // The monk's blessing in Khmer: on his heels at his place, palms together, bowed low.
       ps.palms = 1;
-      ps.offer = ps.admire = 0;
-      const back = over(st, 0.5, 1.5);
-      body.pos.lerpVectors(closeAt, kneelAt, back);
-      ps.step = -back * Math.PI * 2;
-      ps.stepW = bump(st, 0.5, 0.7, 1.3, 1.5);
-      ps.rise = 1 - over(st, 1.5, 2.1);
-      ps.bowHead = 0.2 * over(st, 1.5, 2.4);
+      ps.offer = ps.admire = ps.stepW = ps.rise = 0;
+      body.pos.copy(kneelAt);
+      ps.bowHead = TIE_BOW + (WORDS_BOW - TIE_BOW) * over(st, 0.3, 1.2);
       toBody(ctx, monkFace(_v).x, _v.y, _v.z, ps.look);
-      ps.lookW = 0.8;
+      ps.lookW = 0.8 - 0.4 * over(st, 0.3, 1.2);
       showFace(st > 0.3 && st < WORDS_FOR - 0.4 ? 'happy' : null);
-      if (cue(0.55, dt) || cue(1.05, dt)) SFX.play('blessCloth', 0.6);
       if (st >= WORDS_FOR) {
         ps.pray = BLESS_BOWS;
         go('bow');
@@ -553,8 +610,7 @@ function stepBlessing(ctx: RoamCtx, dt: number): string | null {
       ps.pray = Math.min(PRAY.duration, BLESS_RISE + st * KNEEL_RATE);
       openHands(false);
       if (hatTaken && ps.pray >= BLESS_HAT.on) {
-        hatTaken = false;
-        setHat(true);
+        hatBack();
       }
       prompt = null;
       if (ps.pray >= PRAY.duration - 0.05) {
@@ -587,8 +643,7 @@ function stepBlessing(ctx: RoamCtx, dt: number): string | null {
       // (left off while kneeling down: back up the same way)
       ps.pray = Math.max(0, ps.pray - dt * KNEEL_RATE * 1.3);
       if (hatTaken && ps.pray < BLESS_HAT.off) {
-        hatTaken = false;
-        setHat(true);
+        hatBack();
       }
       prompt = null;
       if (ps.pray <= 0) {
@@ -642,7 +697,8 @@ function frame(ctx: RoamCtx, dt: number): void {
   const tie = step === 'tie';
   // (between him and the monk; at the tie, at his hand)
   const k = tie ? 0.62 : 0.5;
-  cam.focus.set(body.pos.x + (seat.x - body.pos.x) * k, seat.floor + (tie ? 1.0 : 1.2) * s, body.pos.z + (seat.z - body.pos.z) * k);
+  // (as high as the faces: the monk's on his raised dais is over his)
+  cam.focus.set(body.pos.x + (seat.x - body.pos.x) * k, seat.floor + (tie ? 1.3 : 1.4) * s, body.pos.z + (seat.z - body.pos.z) * k);
   cam.behindYaw = camYaw;
   // (a little wider: the hall is narrow, the camera keeps off its walls)
   cam.fov = FRAME.fov;
@@ -681,8 +737,23 @@ registerAddon({
     if (worn) string(2);
     Object.assign(window, {
       __bless: {
-        now: () => ({ step, st: +st.toFixed(2), seat: seat.id, ask: { ...BLESS.ask }, monk: { ...BLESS.monks[seat.id] }, worn, blessed: [...blessed] }),
+        now: () => ({ step, st: +st.toFixed(2), seat: seat.id, ask: { ...BLESS.ask }, monk: { ...BLESS.monks[seat.id] }, worn, blessed: [...blessed], hat: e.explorer.currentOutfit.hat, inHall, hallHatOff, hatTaken }),
         probe: () => ({ near: seatNear({ body: e.body } as RoamCtx)?.id ?? null, busy: e.busy(), now: BLESS.now, pos: e.body.pos.toArray(), grounded: e.body.grounded }),
+        /** His head's top (the highest drawn point of his head and hair, as posed) and the seated monk's (the people model: his head's top 1.1975 model m over the dais sitting, × 1.37), m over the floor. */
+        heads: () => {
+          let top = -Infinity;
+          e.explorer.rig.joints.head.updateWorldMatrix(true, true);
+          // (each block's top corners: the meshes are instanced unit blocks)
+          e.explorer.rig.joints.head.traverseVisible((o) => {
+            if (!(o instanceof InstancedMesh)) return;
+            for (let i = 0; i < o.count; i++) {
+              o.getMatrixAt(i, _m);
+              _m.premultiply(o.matrixWorld);
+              for (const x of [-0.5, 0.5]) for (const z of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) top = Math.max(top, _v.set(x, y, z).applyMatrix4(_m).y);
+            }
+          });
+          return { his: +(top - seat.floor).toFixed(3), monk: +(seat.y + 1.1975 * 1.37 - seat.floor).toFixed(3) };
+        },
       },
     });
   },
@@ -740,6 +811,7 @@ registerAddon({
   },
 
   after(ctx, mode, dt) {
+    hallHat(ctx, mode);
     if (mode !== 'walk') return;
     if (step === 'off' || step === 'go') keepOffDais(ctx);
     if (step !== 'go') return;
@@ -759,7 +831,9 @@ registerAddon({
     }
   },
 
-  setMode(next) {
+  setMode(next, _prev, ctx) {
+    // (off his feet, or back to the map: his hat back on if the hall had it)
+    if (next !== 'walk') hallHat(ctx, next);
     // (off his feet, or back to the map: it stops at once)
     if (step !== 'off' && next !== 'walk') {
       if (step === 'tie' && st >= TIE.wind) knotted();
@@ -809,7 +883,7 @@ registerAddon({
       return;
     }
     const at = sec !== undefined ? Number(sec) || 0 : want === 'tie' ? TIE.round + 0.25 : 1;
-    ctx.body.pos.copy(want === 'tie' && at > 1.35 && at < 4.65 ? closeAt : kneelAt);
+    ctx.body.pos.copy(want === 'tie' && at > 1.35 && at < TIE.back + 0.1 ? closeAt : kneelAt);
     ctx.body.yaw = facing;
     hatTaken = env.explorer.currentOutfit.hat;
     setHat(false);
@@ -856,6 +930,8 @@ registerAddon({
       const name = step === 'turn' || step === 'down' || step === 'settle' ? 'kneel' : step === 'leave' || step === 'back' ? 'up' : step;
       out.bless = `${name}:${st.toFixed(1)}`;
     } else if (step === 'go') out.bless = '1';
+    // (his hat is only off for the blessing or in the hall: the link puts it on, they take it off again)
+    if (hatTaken || hallHatOff) out.hat = '1';
     return Object.keys(out).length ? out : null;
   },
 });

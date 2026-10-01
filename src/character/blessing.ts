@@ -40,7 +40,7 @@ export interface BlessPoseState {
   readonly reach: Vector3;
   /** He looks at the string on his wrist: the hand up before him, the palm to his face (0‥1). */
   admire: number;
-  /** His head bowed a little more (0‥1), under the chant and the water. */
+  /** His head bowed and his body leaning forward from the waist (0‥1): under the chant and the water, as the string is tied. */
   bowHead: number;
   /** A step on his knees: its phase (radians: a step each π) and how much (0‥1). */
   step: number;
@@ -173,8 +173,9 @@ const SHOULDER_R = new Vector3(...JOINTS.shoulderR.pivot).sub(new Vector3(...JOI
 const POLE_R = new Vector3(-0.8, -0.6, 0).normalize();
 /** From the wrist to the middle of the fist (the IK's end: the prop joint), BU. */
 const WRIST_FIST = JOINTS.wristR.pivot[1] - JOINTS.propR.pivot[1];
-/** How far his chest turns to his left as he holds out his right hand (radians). */
-const OFFER_TURN = 0.4;
+/** How far his chest turns to his left as he holds out his right hand (radians), and his right shoulder goes forward (BU). */
+const OFFER_TURN = 0.6;
+const REACH_SHOULDER = new Vector3(0, 0.3, 1.6);
 /** Elbows out and down for the hand under the right forearm (chest space). */
 const POLE_UNDER = new Vector3(0.6, -0.8, -0.2).normalize();
 /** Looking at the string: the right wrist up before him (chest space), the forearm forward and up, the elbow out and down. */
@@ -251,7 +252,8 @@ export function blessPose(s: BlessPoseState): Pose {
   // Kneeling: up on the knees ‥ back on the heels; breathing; a step on the knees; the head bowed a little more.
   mix(OUT, rest, knees, s.rise, ALL);
   const br = 0.015 * Math.sin(s.t * 1.6);
-  OUT.chest!.rx = (OUT.chest!.rx ?? 0) + br + 0.05 * s.bowHead;
+  // (bowed: leaning forward from the waist too, his head well below the monk's)
+  OUT.chest!.rx = (OUT.chest!.rx ?? 0) + br + 0.3 * s.bowHead;
   OUT.head!.rx = (OUT.head!.rx ?? 0) + 0.22 * s.bowHead;
   OUT.neck!.rx = (OUT.neck!.rx ?? 0) + 0.08 * s.bowHead;
   if (s.stepW > 0) {
@@ -289,15 +291,15 @@ export function blessPose(s: BlessPoseState): Pose {
   }
   if (s.offer > 0) {
     // Right: the hand at `reach` (the monk's hands hold it, the string goes round the wrist behind it), palm up, the
-    // fingers out along the line from the shoulder.
+    // fingers out along the line from the shoulder; the shoulder forward too (he reaches: he kneels back from the monk).
     _t.copy(s.reach).applyMatrix4(_inv);
     _d.subVectors(_t, SHOULDER_R).normalize();
     armsFrom(OUT, ARM_TMP);
-    setArm('R', solveArm('R', _t, POLE_R));
+    setArm('R', solveArm('R', _t, POLE_R, REACH_SHOULDER));
     handFrame(_d, UP, _w);
     wristFor(ARM_TMP, 'R', _w, ARM_TMP.wristR!);
     // Left: under the right forearm, palm up, holding it (the Khmer way of giving and taking with respect).
-    _x.copy(SHOULDER_R).lerp(_t, 0.62);
+    _x.copy(SHOULDER_R).add(REACH_SHOULDER).lerp(_t, 0.62);
     _x.y -= 1.2;
     _x.x += 0.6;
     setArm('L', solveArm('L', _x, POLE_UNDER));

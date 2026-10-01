@@ -7,7 +7,7 @@ import { paddyFlooded, PLOTS } from '../paddies/stages';
 import { pad } from '../pad/pad';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
-import { registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { FARM, farmAsk, type FarmAct } from './_farmLink';
 import { FarmMarks } from './_farmMarks';
 import { BUNDLE_STAGES, FarmProps, SHEAF_STAGES } from './_farmProps';
@@ -100,11 +100,12 @@ const WAIT = 6;
 /** The stick held away this long (s) walks him out of it. */
 const PUSH = 0.18;
 /**
- * The camera at his work: at his side away from the farmers' row (so it stands beyond him), a little round to
- * his front: his bent back, the hand going down to the clump, the rows; reaping higher, over the standing rice.
+ * The camera at his work: at his side away from the farmers' row, a little round to his front (planting: the
+ * row ahead of him stands clear beyond him), his bent back, the hand going down to the clump, the rows; reaping
+ * from nearly in front and higher, over the standing rice (the reapers are beside and behind him: clear of him too).
  * Handing over: from the side. Eased there over `FRAME_FOR` s (then the player's).
  */
-const FRAME = { plant: { yaw: Math.PI - 1.2, pitch: 0.32, distance: 5.4 }, reap: { yaw: Math.PI - 1.05, pitch: 0.46, distance: 6.0 }, rate: 2.2 };
+const FRAME = { plant: { yaw: Math.PI - 1.2, pitch: 0.32, distance: 5.4 }, reap: { yaw: Math.PI - 0.45, pitch: 0.46, distance: 6.0 }, rate: 2.2 };
 const SIDE = { yaw: 1.75, pitch: 0.22, distance: 6.4 };
 const FRAME_FOR = 2.2;
 /** The farmers' gift: a num ansom (as the floating village's market sells it), and riel when his bag is full. */
@@ -333,10 +334,8 @@ function nearestRow(x: number, z: number, maxD = Infinity): number {
 function plantStrip(e: number): Strip | null {
   const k = kept;
   if (k && k.strip.plot === FARM.plot) return k.strip;
-  const end = FARM.ends[e];
-  workWay(_w);
   const sl = localSeason(FARM.plot, season);
-  const s = findStrip('plant', FARM.plot, end.x, end.z, _w.x, _w.z, sl);
+  const s = stripAt('plant', e, PLANT_AHEAD);
   if (!s) return null;
   if (k) release(k.strip);
   // (where the player may see it, the seedlings up there now shrink back into the water as she hands him the bundle)
@@ -391,7 +390,8 @@ function keep(): void {
     return;
   }
   // (where it is now beside the row: as it is; else a new place, only where nobody would see the seedlings go)
-  if (k && FARM.ends[k.e].ok && Math.hypot(k.strip.hills[0].x - FARM.ends[k.e].x, k.strip.hills[0].z - FARM.ends[k.e].z) < 1.4) return;
+  // (its first clump lies ≈ a metre out from the end: `SPACE`)
+  if (k && FARM.ends[k.e].ok && Math.hypot(k.strip.hills[0].x - FARM.ends[k.e].x, k.strip.hills[0].z - FARM.ends[k.e].z) < 2.2) return;
   if (k && stripSeen(k.strip)) return;
   const e = endNearCamera();
   if (e < 0) return;
@@ -408,17 +408,44 @@ function landAt0(x: number, z: number): number {
 
 // ── Starting, stopping ─────────────────────────────────────────────────────
 
-/** Reaping, the strip is looked for this far ahead of the reapers' line (m), then further on (past a ragged edge of their cut). */
-const REAP_AHEAD = [0.3, 1.0, 1.8];
+/**
+ * Planting, his strip begins this far back from the farmers' line (m, on its side not planted yet); reaping, this far
+ * ahead of the reapers' line, then further on (past a ragged edge of their cut). With `SPACE` across, nobody of the
+ * row stands behind him from the side.
+ */
+const PLANT_AHEAD = 1.0;
+const REAP_AHEAD = [1.6, 2.2, 1.0, 0.6];
+/**
+ * His strip is set this much further out from the row's end (m), beyond the farmers' own spacing (2.4 m), then
+ * nearer where the plot's edge is close: he works ≈ 3 m from the nearest farmer.
+ */
+const SPACE = [0.95, 0.6, 0.3, 0];
 
-/** A reaping strip at the row's end `e`: standing rice a little ahead of the reapers' line, or null. */
-function reapStrip(e: number): Strip | null {
+/**
+ * His strip at the row's end `e`, `ahead` (m) on from the farmers' line the way the work goes: set out from the end
+ * farmer a little more than they are from each other (`SPACE` m further out across the plot: his hat and theirs,
+ * bent over, keep clear of each other from every side), nearer in only where the plot's edge leaves no room.
+ */
+function stripAt(kind: FarmKind, e: number, ahead: number): Strip | null {
   const end = FARM.ends[e];
   if (!end.ok) return null;
   workWay(_w);
   const sl = localSeason(FARM.plot, season);
+  // (out across the plot, away from the row: the row's ends lie at −v (0) and +v (1); v runs along x where the sweep runs along z)
+  const out = e === 0 ? -1 : 1;
+  const ox = FARM.uz !== 0 ? out : 0;
+  const oz = FARM.uz !== 0 ? 0 : out;
+  for (const space of SPACE) {
+    const s = findStrip(kind, FARM.plot, end.x + ox * space, end.z + oz * space, _w.x, _w.z, sl, ahead);
+    if (s) return s;
+  }
+  return null;
+}
+
+/** A reaping strip at the row's end `e`: standing rice a little ahead of the reapers' line, or null. */
+function reapStrip(e: number): Strip | null {
   for (const ahead of REAP_AHEAD) {
-    const s = findStrip('reap', FARM.plot, end.x, end.z, _w.x, _w.z, sl, ahead);
+    const s = stripAt('reap', e, ahead);
     if (s) return s;
   }
   return null;
@@ -428,9 +455,7 @@ function reapStrip(e: number): Strip | null {
 function roomAt(e: number): boolean {
   if (e < 0 || !FARM.ends[e].ok) return false;
   if (FARM.work === 'harvest') return reapStrip(e) !== null;
-  const end = FARM.ends[e];
-  workWay(_w);
-  return findStrip('plant', FARM.plot, end.x, end.z, _w.x, _w.z, localSeason(FARM.plot, season)) !== null;
+  return stripAt('plant', e, PLANT_AHEAD) !== null;
 }
 
 /** The row's end he would work at: planting, the one with his strip kept there; else the nearer with room, or the other (−1: neither). */
@@ -529,6 +554,7 @@ function finish(ctx: RoamCtx | null): void {
   }
   props?.clear();
   marks?.showGuide(null);
+  touch(null);
   farmAsk(-1, 'none');
   FARM.helper.working = false;
   FARM.helper.sickle = false;
@@ -1008,8 +1034,55 @@ function step(ctx: RoamCtx, dt: number): AddonHold {
       break;
     }
   }
-  if (S) frameCam(ctx, s, dt);
+  if (S) {
+    frameCam(ctx, s, dt);
+    touch(s);
+  }
   return { prompt };
+}
+
+// ── His keys while he works (the key help, bottom left; touch's jump button) ──
+
+/** At the work: E and Space plant or cut, the stick walks away; elsewhere (on his way, handing over) the stick stops it. */
+const KEYS: Record<FarmKind, readonly AddonKey[]> = {
+  plant: [
+    ['E', 'farmKeyPlant', 'west'],
+    ['Space', 'farmKeyPlant', 'south'],
+    ['W A S D', 'farmStop', 'lstick'],
+    ['Q R', 'rLook', 'rstick'],
+  ],
+  reap: [
+    ['E', 'farmKeyReap', 'west'],
+    ['Space', 'farmKeyReap', 'south'],
+    ['W A S D', 'farmStop', 'lstick'],
+    ['Q R', 'rLook', 'rstick'],
+  ],
+};
+const KEYS_GOING: readonly AddonKey[] = [
+  ['W A S D', 'farmStop', 'lstick'],
+  ['Q R', 'rLook', 'rstick'],
+];
+const KEYS_LOOK: readonly AddonKey[] = [['Q R', 'rLook', 'rstick']];
+
+/** The phases where E or Space plants or cuts. */
+const atWork = (p: Phase) => p === 'work' || p === 'step';
+
+/** The key help's lines now (the same array while nothing changes). */
+function keysNow(): readonly AddonKey[] | null {
+  const s = S;
+  if (!s) return null;
+  if (atWork(s.phase)) return KEYS[s.kind];
+  // (the stick stops him on his way and while she hands it over; not while he carries, lays down or is thanked)
+  return s.phase === 'fetch' || s.phase === 'take' || s.phase === 'wade' || s.phase === 'return' ? KEYS_GOING : KEYS_LOOK;
+}
+
+/** Touch's jump button: "Plant" / "Cut" at the work, hidden meanwhile, its own again after. */
+let touchShown: string | null = null;
+function touch(s: Session | null): void {
+  const want = !s ? null : atWork(s.phase) ? (s.kind === 'plant' ? 'farmBtnPlant' : 'farmBtnReap') : 'hide';
+  if (want === touchShown) return;
+  touchShown = want;
+  touchJump(want as 'farmBtnPlant' | 'farmBtnReap' | 'hide' | null);
 }
 
 /** A clump planted or cut now: the field's hill changes, a splash or a swish, his bundle thins or his sheaf grows. */
@@ -1151,6 +1224,7 @@ function place(ctx: RoamCtx, want: NonNullable<typeof pending>): void {
   cam.focus.set(body.pos.x, body.pos.y + (working ? 0.95 : 1.15), body.pos.z);
   framed = FRAME_FOR;
   lastPhase = s.phase;
+  touch(s);
   // (the prompt as the work's step would show it: a still has no steps after this)
   ctx.hud.prompt(s.phase === 'work' ? workPrompt(s.kind, s.n) : s.phase === 'lay' ? words('farmCarry', false) : null);
   console.info(`[map] farm: ${want.kind}:${want.at === 'work' ? n : want.at} in plot ${s.strip.plot} (season ${season.toFixed(3)}), at (${body.pos.x.toFixed(1)}, ${body.pos.z.toFixed(1)}), with farmer ${s.giver}`);
@@ -1205,6 +1279,9 @@ registerAddon({
   hold(ctx, dt) {
     if (!S) return { prompt: null };
     return step(ctx, dt);
+  },
+  keys() {
+    return keysNow();
   },
   get handsBusy() {
     return S !== null;

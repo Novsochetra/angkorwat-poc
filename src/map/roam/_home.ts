@@ -87,10 +87,10 @@ const AFTERNOON = 0.0;
  * In his room the follow camera stands up toward a corner of it under the roof, looking across the room at him (the
  * room is small for a camera behind his shoulder: his walls are solid to it, hamlet/_home.ts): of four places by
  * the corners (local x, z; none over the mosquito net, which is not solid to it), the one behind him and far from
- * him (or, `front`, before him: his stretch), kept until another is clearly better; at this height over the
+ * him, kept until another is clearly better; at this height over the
  * floor (m), eased at `rate` (1/s). A drag looks round as anywhere, for `drag` s. Back as it was out on the veranda.
  */
-const INDOOR = { corners: [[2.35, -2.4], [-2.4, -0.95], [-2.35, 0.3], [2.35, 0.3]] as readonly [number, number][], y: 3.65, yFront: 2.75, fov: 60, behind: 3.5, rate: 3.5, out: 2, drag: 3, keep: 1.2, enter: 0.45 };
+const INDOOR = { corners: [[2.35, -2.4], [-2.4, -0.95], [-2.35, 0.3], [2.35, 0.3]] as readonly [number, number][], y: 3.65, fov: 60, behind: 3.5, rate: 3.5, out: 2, drag: 3, keep: 1.2, enter: 0.45 };
 
 type Offer = 'talk' | 'door' | 'locked' | 'sleep' | null;
 
@@ -141,7 +141,7 @@ function houseHat(inside: boolean): void {
 }
 
 /** The follow camera in the room (see `INDOOR`), and back out. */
-function roomCamera(ctx: RoamCtx, inside: boolean, dt: number, front = false): void {
+function roomCamera(ctx: RoamCtx, inside: boolean, dt: number): void {
   const cam = ctx.cam;
   const body = ctx.body;
   if (inside) {
@@ -165,7 +165,7 @@ function roomCamera(ctx: RoamCtx, inside: boolean, dt: number, front = false): v
       const dx = fx - cx;
       const dz = fz - cz;
       const d = Math.hypot(dx, dz);
-      const score = d + (front ? -INDOOR.behind : INDOOR.behind) * ((dx * hx + dz * hz) / Math.max(0.01, d));
+      const score = d + INDOOR.behind * ((dx * hx + dz * hz) / Math.max(0.01, d));
       if (k === corner) curScore = score;
       if (score > bestScore) {
         bestScore = score;
@@ -174,8 +174,7 @@ function roomCamera(ctx: RoamCtx, inside: boolean, dt: number, front = false): v
     }
     if (corner < 0 || bestScore > curScore + INDOOR.keep) corner = best;
     const [cx, cz] = homeToWorld(INDOOR.corners[corner][0], INDOOR.corners[corner][1]);
-    // (before him lower, nearer his face: his stretch)
-    const cy = floor + (front ? INDOOR.yFront : INDOOR.y);
+    const cy = floor + INDOOR.y;
     const h = Math.hypot(fx - cx, fz - cz);
     const yaw = Math.atan2(fx - cx, fz - cz);
     const pitch = Math.atan2(cy - fy, h);
@@ -303,7 +302,7 @@ function openCard(ctx: RoamCtx, force = false): void {
     (id) => {
       const c = list.find((x) => x.words().id === id);
       if (!c || session || !lastCtx) return;
-      session = startSleep(e, lastCtx, c.plan, 'stand', (cx, dt, front) => roomCamera(cx, true, dt, front));
+      session = startSleep(e, lastCtx, c.plan);
     },
   );
 }
@@ -388,7 +387,7 @@ registerAddon({
             if (!lastCtx || session) return false;
             const list = plans(TIME.cycling());
             const c = list.find((x) => x.plan.kind === kind) ?? list[0];
-            session = startSleep(e, lastCtx, c.plan, 'stand', (cx, dt, front) => roomCamera(cx, true, dt, front));
+            session = startSleep(e, lastCtx, c.plan);
             return c.plan;
           },
           card: (force = false) => lastCtx && openCard(lastCtx, force),
@@ -531,7 +530,10 @@ registerAddon({
       if (!q.has('rcam')) roomCamera(ctx, true, 10);
     }
     else if (v === 'sleep' || v === 'stretch') {
-      session = startSleep(env, ctx, { kind: env.shot ? 'still' : 'rest' }, v === 'sleep' ? 'lying' : 'stretch', (cx, dt, front) => roomCamera(cx, true, dt, front));
+      // (in his room: his hat off at the door, as when he walks in)
+      inRoom = true;
+      houseHat(true);
+      session = startSleep(env, ctx, { kind: env.shot ? 'still' : 'rest' }, v === 'sleep' ? 'lying' : 'stretch');
     } else if (v === 'call') {
       called = true;
       granCue('call' as GranCue, body.pos);
@@ -551,9 +553,12 @@ registerAddon({
     }
   },
   report() {
+    // (his hat is only off while the house or the sleep has it: a replay puts it on, and they take it off again; up and
+    // out, it is on — as roam/_zip.ts does)
+    const hat: Record<string, string> = hatOff || (session?.kind === 'sleep' && session.hatTaken) ? { hat: '1' } : {};
     if (session?.kind === 'talk') return { home: 'key' };
-    if (session?.kind === 'sleep') return { home: 'sleep' };
-    if (!HOME.owned) return null;
-    return { home: HOME.inside && lastCtx && inRooms(lastCtx.body.pos.x, lastCtx.body.pos.z) ? 'inside' : HOME.opened ? '1' : 'shut' };
+    if (session?.kind === 'sleep') return { home: 'sleep', ...hat };
+    if (!HOME.owned) return Object.keys(hat).length ? hat : null;
+    return { home: HOME.inside && lastCtx && inRooms(lastCtx.body.pos.x, lastCtx.body.pos.z) ? 'inside' : HOME.opened ? '1' : 'shut', ...hat };
   },
 });

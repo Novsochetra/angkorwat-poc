@@ -48,12 +48,18 @@ export const HOME_STAIR_FOOT = HOME_Z.front + (HOME_SIZE.lift / HOME_STAIR.step 
  * window's sill.
  */
 export const HOME_IN = {
-  mat: { x0: -3.12, x1: -0.12, z0: -3.25, z1: -1.85 },
-  net: { x0: -3.24, x1: 0.02, z0: -3.3, z1: -1.72, top: 2.55 },
+  mat: { x0: -3.12, x1: -0.12, z0: -3.14, z1: -1.85 },
+  net: { x0: -3.2, x1: 0.02, z0: -3.2, z1: -1.72, top: 2.5 },
   /** Where his feet stand to lie down (local), facing local +x: his head goes to the mat's east end, on the pillow. */
   lie: { x: -0.32, z: -2.55 },
-  /** Where he stands to stretch on waking: off the mat, out from under the net, turned to the room. */
-  wake: { x: 0.5, z: -0.8 },
+  /**
+   * On waking he steps out of the net's open front (`out`), then to the middle of the room (`wake`) and stretches
+   * turned to the east window (local −x); the camera frames him from by the window, up near the eaves (`cam`, its
+   * height over the floor).
+   */
+  out: { x: -0.3, z: -1.35 },
+  wake: { x: 1.1, z: -0.45 },
+  stretchCam: { x: -1.75, y: 3.0, z: -0.8 },
   altar: { x: 3.3, z: -1.0, y: 2.05, w: 1.25, d: 0.46 },
   shelf: { x0: 0.5, x1: 3.12, z: -3.32, d: 0.38, ys: [1.0, 1.52] as readonly number[] },
   kite: { x: 1.8, y: 2.55, z: -3.3 },

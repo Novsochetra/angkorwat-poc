@@ -5,8 +5,9 @@ import { clearMark, markFocus } from '../pad/nav';
 import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
-import { onLang, t, type WordKey } from '../ui/lang';
+import { lang, onLang, t, type WordKey } from '../ui/lang';
 import { setSteppedVars, steppedRing } from '../ui/shape';
+import { addonKeys, type AddonKey } from './_addons';
 import { roamPrefs } from './prefs';
 import { setTouchUse } from './touch';
 import type { RoamHud, RoamMode } from './types';
@@ -93,6 +94,10 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   });
 
   let mode: RoamMode = 'overview';
+  /** The key help shown now: an add-on's lines (or null: the mode's), with the pad and the language it was drawn for. */
+  let shownKeys: readonly AddonKey[] | null = null;
+  let shownPad = false;
+  let shownLang = '';
   let toastLeft = 0;
   let u = '';
   let n = '';
@@ -311,6 +316,12 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       wrap.dataset.mode = next;
       wrap.classList.toggle('is-roam', next !== 'overview');
       keys.innerHTML = helpFor(next);
+      shownKeys = null;
+      // (back to the map: a roaming message goes with the roaming interface)
+      if (next === 'overview') {
+        toastLeft = 0;
+        toastEl.classList.remove('is-on');
+      }
       this.prompt(null);
     },
     prompt(text) {
@@ -341,6 +352,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       setTouchUse(use ? use[1] : null);
     },
     toast(text) {
+      // (none on the map screen: what ends as he leaves — the blessing, an offering — says nothing over the pin cards)
+      if (mode === 'overview') return;
       toastText.textContent = text;
       toastEl.classList.add('is-on');
       toastLeft = 2.8;
@@ -363,6 +376,14 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       if (away) openCard(false, true);
       // (the key help setting: off, the keys of the mode go; ? still lists them all)
       wrap.classList.toggle('no-help', !roamPrefs.keyHelp);
+      // (an add-on holding him shows its own keys: the bicycle's bell, the hammock's swing; _addons.ts `keys`)
+      const ak = mode === 'overview' ? null : addonKeys();
+      if (ak !== shownKeys || (ak && (pad.active !== shownPad || lang() !== shownLang))) {
+        shownKeys = ak;
+        shownPad = pad.active;
+        shownLang = lang();
+        keys.innerHTML = ak ? addonHelp(ak) : helpFor(mode);
+      }
     },
   };
 }
@@ -386,6 +407,13 @@ function explorerOnScreen(): { x: number; y: number } {
 const key = (k: string) => `<kbd>${k}</kbd>`;
 /** A key and what it does (in English in lower case, as a list). */
 const item = (keys: string, what: WordKey) => `<span class="rh-k">${keys}<em>${t(what).toLowerCase()}</em></span>`;
+/** An add-on's key lines (bottom left): its pad buttons while the pad is in use, else its keys. */
+function addonHelp(lines: readonly AddonKey[]): string {
+  return lines
+    .map(([k, what, p]) => item(pad.active && p ? p.split(' ').map((g) => padGlyph(g as PadGlyph, pad.kind)).join('') : k.split(' ').map(key).join(''), what))
+    .join('');
+}
+
 /** The keys of a mode (bottom left) in the language in use: the pad's buttons while the pad is in use. */
 function helpFor(mode: RoamMode): string {
   return pad.active ? padHelp(mode) : keyHelp(mode);
@@ -483,6 +511,8 @@ function keyHelp(mode: RoamMode): string {
         item(key('N'), 'rRamp'),
         look,
         item(key('1') + '–' + key('5'), 'rTools'),
+        // (the calendar of events: roam/_calendar.ts)
+        item(key('9'), 'whenButton'),
         item(key('F'), 'grGreet'),
         item(key('C') + key('U') + key('P'), 'rEmotes'),
         item(key('J') + key('L'), 'rSitLie'),

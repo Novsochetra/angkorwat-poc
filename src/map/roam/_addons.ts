@@ -1,6 +1,7 @@
 import type { Object3D } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
+import { t, type WordKey } from '../ui/lang';
 import type { RoamControls } from './input';
 import type { RoamPhoto } from './photo';
 import type { Purse } from './_shopPurse';
@@ -70,6 +71,13 @@ export interface AddonEnv {
 
 export type AddonTap = (...codes: string[]) => boolean;
 
+/**
+ * A line of the key help (bottom left) while an add-on holds him: the keyboard's keys (space-separated:
+ * `'W S'`, `'Space'`, `'A D'`), what they do, and the game pad's buttons (glyph names, space-separated:
+ * `'lstick'`, `'south'`, `'r2'`; pad/glyphs.ts `PadGlyph`), else the keys show with the pad too.
+ */
+export type AddonKey = readonly [keys: string, what: WordKey, pad?: string];
+
 /** What `hold` returns: the prompt to show over him (or null), and a mode to switch to (or null to stay). */
 export interface AddonHold {
   prompt: string | null;
@@ -96,6 +104,11 @@ export interface RoamAddon {
   hold?(ctx: RoamCtx, dt: number): AddonHold;
   /** His hands are its (the lantern, the torch, the flashlight go away). */
   readonly handsBusy?: boolean;
+  /**
+   * While it holds him: the key help's lines (bottom left) instead of the mode's (`'Space'` rings the bicycle's
+   * bell, not "jump"), or null for the mode's own. Return the same array while nothing changes (the hud compares it).
+   */
+  keys?(): readonly AddonKey[] | null;
   /** After the mode's step, every roaming mode. */
   after?(ctx: RoamCtx, mode: RoamMode, dt: number): void;
   /** Every frame, every mode (the overview too). */
@@ -124,7 +137,8 @@ export function registerAddon(a: RoamAddon): void {
   const i = ADDONS.findIndex((o) => o.id === a.id);
   if (i >= 0) ADDONS[i] = a;
   else ADDONS.push(a);
-  ADDONS.sort((p, q) => (p.order ?? 50) - (q.order ?? 50));
+  // (the same order on every load, whichever module arrived first: by `order`, then by id)
+  ADDONS.sort((p, q) => (p.order ?? 50) - (q.order ?? 50) || (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
   if (!envNow) return;
   try {
     a.init?.(envNow);
@@ -160,6 +174,12 @@ export function addonHolding(mode: 'walk' | 'boat'): RoamAddon | null {
   return null;
 }
 
+/** The key help of the add-on holding him now (null: the mode's own). */
+export function addonKeys(): readonly AddonKey[] | null {
+  for (const a of ADDONS) if (a.holding && a.keys) return a.keys();
+  return null;
+}
+
 /** Any add-on holds him (in any mode). */
 export const addonBusy = (): boolean => ADDONS.some((a) => a.holding);
 
@@ -190,4 +210,23 @@ export function eachAddon(what: string, fn: (a: RoamAddon) => void): void {
     } catch (e) {
       console.error(`[roam] add-on "${a.id}" ${what} failed:`, e);
     }
+}
+
+/**
+ * On a touch screen: what the jump button says while an add-on holds him (`key`: the bicycle's bell, the sey's kick…),
+ * the button hidden while it does nothing ('hide'), or its own "Jump" again (null: call it as he gets off). The touch
+ * controls' language switch reads the same `data-t`. Nothing happens without touch controls.
+ */
+export function touchJump(key: WordKey | 'hide' | null): void {
+  if (typeof document === 'undefined') return;
+  const btn = document.querySelector<HTMLElement>('.rt .rt-jump');
+  const label = btn?.querySelector<HTMLElement>('.rt-label');
+  if (!btn || !label) return;
+  btn.style.display = key === 'hide' ? 'none' : '';
+  const k: WordKey = key === null || key === 'hide' ? 'rtJump' : key;
+  if (label.dataset.t === k) return;
+  label.dataset.t = k;
+  label.textContent = t(k);
+  btn.dataset.tAria = k;
+  btn.setAttribute('aria-label', t(k));
 }

@@ -692,15 +692,18 @@ const WORDS = {
   whenInSec: { km: '{n} វិនាទីទៀត', en: 'in {n} s' },
   whenInMin: { km: '{n} នាទីទៀត', en: 'in {n} min' },
   whenInHm: { km: '{h} ម៉ោង {m} នាទីទៀត', en: 'in {h} h {m} min' },
+  whenInH: { km: '{h} ម៉ោងទៀត', en: 'in {h} h' },
   whenSoon: { km: 'បន្តិចទៀតនេះ', en: 'any moment' },
   whenLeftSec: { km: 'នៅសល់ {n} វិនាទី', en: '{n} s left' },
   whenLeftMin: { km: 'នៅសល់ {n} នាទី', en: '{n} min left' },
   whenLeftDays: { km: 'នៅ {n} ថ្ងៃទៀតលើផែនទី', en: '{n} more days on the map' },
+  whenLeftDay1: { km: 'នៅមួយថ្ងៃទៀតលើផែនទី', en: 'one more day on the map' },
   whenDays: { km: '{n} ថ្ងៃទៀតលើផែនទី', en: 'in {n} days of the map' },
   whenDay1: { km: 'ប្រហែលមួយថ្ងៃទៀតលើផែនទី', en: 'in about a day of the map' },
   whenPlay: { km: 'លេងប្រហែល {t} ទៀត', en: 'about {t} of play' },
   whenMin: { km: '{n} នាទី', en: '{n} min' },
   whenHm: { km: '{h} ម៉ោង {m} នាទី', en: '{h} h {m} min' },
+  whenH: { km: '{h} ម៉ោង', en: '{h} h' },
   // (the next one in real life: the Khmer calendar's dates, roam/_calendarKhmer.ts)
   whenReal: { km: 'ក្នុងជីវិតពិត៖ {date}', en: 'In real life: {date}' },
   whenRealOn: { km: 'ក្នុងជីវិតពិត៖ កំពុងប្រារព្ធ ({date})', en: 'In real life: on now ({date})' },
@@ -747,6 +750,9 @@ const WORDS = {
   whenAlmsBegins: { km: 'ព្រះសង្ឃនិមន្តបិណ្ឌបាតហើយ', en: 'A monk sets out on his alms round' },
   whenAlmsBackNote: { km: 'ព្រះសង្ឃនៅព្រៃជិះកង់មកភូមិ ឈប់ទទួលចង្ហាន់នៅផ្សារ', en: 'The forest monk rides his bicycle to the hamlet, stopping at the market' },
   whenAlmsBackBegins: { km: 'ព្រះសង្ឃជិះកង់មកបិណ្ឌបាតហើយ', en: 'The forest monk rides in for alms' },
+  whenAlmsAwNote: { km: 'ព្រះសង្ឃប្រាំអង្គកាន់បាត្រ និមន្តឡើងផ្លូវទៅអង្គរវត្ត', en: 'Five monks walk up the road to Angkor Wat with their alms bowls' },
+  whenAlmsAwBegins: { km: 'ព្រះសង្ឃកាន់បាត្រនិមន្តឡើងទៅអង្គរវត្តហើយ', en: 'The monks walk up to Angkor Wat with their bowls' },
+  whenAtRoadAw: { km: 'ផ្លូវឡើងទៅអង្គរវត្ត', en: 'The road up to Angkor Wat' },
   whenMarketNote: { km: 'ត្រី បន្លែ ផ្លែឈើ នំបញ្ចុក ទឹកអំពៅ', en: 'Fish, greens, fruit, num banh chok, cane juice' },
   whenMarketBegins: { km: 'ផ្សារព្រឹកបើកហើយ', en: 'The morning market is open' },
   whenMarketBack: { km: 'ផ្សារតូច', en: 'Little market' },
@@ -777,6 +783,15 @@ const WORDS = {
   bikeRide: { km: 'ជិះកង់', en: 'Ride the bicycle' },
   bikeOff: { km: 'ចុះពីកង់', en: 'Get off' },
   bikeBell: { km: 'ចុចកណ្ដឹង', en: 'Ring the bell' },
+  // (the touch jump button while he rides: short)
+  bikeBellBtn: { km: 'កណ្ដឹង', en: 'Bell' },
+  // (the key help while he rides, bottom left)
+  bikePedal: { km: 'ធាក់ · ហ្វ្រាំង', en: 'Pedal · brake' },
+  bikeSteer: { km: 'បត់', en: 'Steer' },
+  bikeFast: { km: 'ធាក់ឱ្យលឿន', en: 'Pedal hard' },
+  // (stopped before something low at his head's height: a stall's umbrella, an awning, a low branch; at the sey circle)
+  bikeLow: { km: 'ទាបពេក ជិះកាត់មិនបានទេ', en: 'Too low to ride under' },
+  bikeSey: { km: 'ក្មេងៗកំពុងលេងទាត់សី', en: 'The children are playing sey' },
   bikeUp: { km: 'ចុះពីកង់សិន ទើបដើរឡើងបាន', en: 'Get off the bicycle to climb up' },
   bikeDown: { km: 'ចុះពីកង់សិន ទើបដើរចុះបាន', en: 'Get off the bicycle to climb down' },
   bikeDeep: { km: 'ទឹកជ្រៅពេក ជិះកង់កាត់មិនបានទេ', en: 'Too deep to ride through' },
@@ -790,22 +805,30 @@ const WORDS = {
   cartGo: { km: 'តោះ ទៅមុខទៀត!', en: 'On we go!' },
   cartNight: { km: 'យប់ហើយ គោត្រូវសម្រាក', en: "It's late: the oxen need their rest" },
   cartBye: { km: 'ដើរលេងឱ្យសប្បាយណា ក្មួយ!', en: 'Enjoy your walk!' },
+  // (the cart waiting for him in its way: the farmer asks for the way)
+  cartPass: { km: 'សុំផ្លូវបន្តិចណា ក្មួយ!', en: 'Excuse us, may we pass?' },
   // Riding a water buffalo (buf…): roam/_buffalo*.ts
   bufRide: { km: 'ជិះក្របី', en: 'Ride the buffalo' },
   bufOff: { km: 'ចុះពីក្របី', en: 'Get off' },
   // (its keys, the first ride: keyboard, touch, game pad ({fast}: R2 / RT))
   bufKeys: { km: 'ជិះក្របី៖ W ដើរទៅមុខ · A / D បត់ · Shift លឿនបន្តិច · S ថយក្រោយ · E ចុះ', en: 'Riding the buffalo: W walk on · A / D turn · Shift a little faster · S back up · E get off' },
-  bufTouch: { km: 'ជិះក្របី៖ រុញដងបញ្ជាទៅមុខដើម្បីដើរ · ទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ទាញមកក្រោយដើម្បីថយក្រោយ', en: 'Riding the buffalo: push the stick to walk on · left / right turns · pull back to back up' },
+  bufTouch: { km: 'ជិះក្របី៖ រុញដងបញ្ជាទៅមុខដើម្បីដើរ (ហួសរង្វង់៖ លឿនបន្តិច) · ទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ទាញមកក្រោយដើម្បីថយក្រោយ', en: 'Riding the buffalo: push the stick to walk on (past its ring: a little faster) · left / right turns · pull back to back up' },
   bufPad: { km: 'ជិះក្របី៖ ដងបញ្ជា ↑ ដើរ · ← → បត់ · ↓ ថយក្រោយ · {fast} លឿនបន្តិច', en: 'Riding the buffalo: stick ↑ walk on · ← → turn · ↓ back up · {fast} a little faster' },
   // (what it will not do; the first stop to graze)
   bufDeep: { km: 'ទឹកជ្រៅពេក ក្របីមិនព្រមចុះទេ', en: 'Too deep: the buffalo won’t go in' },
   bufBuilt: { km: 'ក្របីមិនព្រមឡើងទីនោះទេ', en: 'The buffalo won’t climb up there' },
   bufNoOff: { km: 'ចុះនៅទីនេះមិនបានទេ៖ ជិះទៅដីគោក ឬទឹករាក់សិន', en: 'Can’t get off here: ride to dry land or shallow water first' },
   bufGraze: { km: 'ក្របីឈប់ស៊ីស្មៅបន្តិច…', en: 'The buffalo stops for a bite of grass…' },
+  // (the key help, bottom left, while he rides; the turn and the look are rTurn, rLook)
+  bufKeyWalk: { km: 'ដើរ · ថយក្រោយ', en: 'walk on · back up' },
+  bufKeyFast: { km: 'លឿនបន្តិច', en: 'a little faster' },
+  bufKeyOff: { km: 'ចុះពីក្របី', en: 'get off' },
   // The zip line (zip…): roam/_zip*.ts, jungle/_zipLine.ts
   zipRide: { km: 'ជិះខ្សែរអិល', en: 'Ride the zip line' },
   // (while riding, with Shift: he tucks his legs up and goes faster)
   zipFaster: { km: 'បង្កើនល្បឿន', en: 'Speed up' },
+  // (the touch jump button while he is clipped in: hold it to tuck up and go faster)
+  zipTouch: { km: 'លឿន', en: 'Faster' },
   // (as he clips in: which line of the chain)
   zipLineOf: { km: 'ខ្សែទី {n} នៃ {of}', en: 'Line {n} of {of}' },
   // (landed on the last platform)
@@ -834,6 +857,10 @@ const WORDS = {
   palmGift: { km: 'ទឹកត្នោតស្រស់មួយកែវ សម្រាប់ក្មួយ!', en: 'Fresh palm juice, for you!' },
   palmCallUp: { km: 'ប្រយ័ត្នរអិលណាក្មួយ!', en: 'Careful up there, it is slippery!' },
   palmCallTop: { km: 'ពីលើនេះមើលឃើញឆ្ងាយណាស់ មែនទេ?', en: 'You can see so far from up here, eh?' },
+  // (the key help, bottom left, while he is on the ladder)
+  palmKeyClimb: { km: 'ឡើង / ចុះ', en: 'climb up / down' },
+  palmKeyQuick: { km: 'ឡើងលឿន', en: 'quicker' },
+  palmKeyDown: { km: 'ចុះមកវិញ', en: 'climb down' },
   // The hammock (ham…): roam/_hammock.ts
   hamLie: { km: 'ដេកអង្រឹង', en: 'Lie in the hammock' },
   // (the prompt while he lies: "E  Get up · A/D  Swing it"; the toast as he gets in, on a pad or a touch screen with the stick's way)
@@ -852,7 +879,7 @@ const WORDS = {
   dakKept: { km: '{name} នៅក្នុងកាបូបហើយ — រង់ចាំព្រះសង្ឃនិមន្តបិណ្ឌបាតពេលព្រឹក', en: "{name} is in your bag: wait by the road for the monks' alms round at dawn" },
   // (the calendar: the village round)
   dakCalNote: { km: 'ព្រះសង្ឃបីអង្គនិមន្តបិណ្ឌបាតតាមផ្លូវភូមិ អ្នកភូមិរង់ចាំដាក់បាត្រនៅមុខផ្ទះ', en: 'Three monks walk their alms round down the village street; families wait by their gates to give rice' },
-  dakCalBegins: { km: 'ព្រះសង្ឃនិមន្តបិណ្ឌបាតក្នុងភូមិត្នោតហើយ', en: 'The monks set out on their alms round in the Sugar Palm Village' },
+  dakCalBegins: { km: 'ព្រះសង្ឃនិមន្តបិណ្ឌបាតហើយ', en: 'The monks set out on their alms round' },
   // A monk's blessing, the red string (bless…): roam/_blessing.ts
   blessAsk: { km: 'សុំពរពីព្រះសង្ឃ', en: 'Ask for a blessing' },
   blessUp: { km: 'ក្រោកឡើង', en: 'Get up' },
@@ -898,8 +925,6 @@ const WORDS = {
   // Flying his own kite (kite…): roam/_kiteFly.ts
   kiteFly: { km: 'បង្ហោះខ្លែង', en: 'Fly your kite' },
   kiteReel: { km: 'ទាញខ្លែងចុះ', en: 'Reel it in' },
-  kiteLine: { km: 'ខ្សែ', en: 'Line' },
-  kiteSteer: { km: 'បត់', en: 'Steer' },
   kiteAsk: { km: 'សុំខ្លែងពីលោកតា', en: 'Ask for a kite' },
   kiteGive: { km: 'នេះ ចៅ! យកខ្លែងតូចនេះទៅហោះលេងចុះ', en: 'Here, child! Take this little kite and fly it!' },
   kiteGot: { km: 'បានខ្លែងមួយហើយ! ទៅបង្ហោះនៅវាលធំៗ ពេលមានខ្យល់', en: 'You have a kite! Fly it in an open field when the wind blows' },
@@ -929,6 +954,13 @@ const WORDS = {
   kiteTrees: { km: 'កុំដើរក្រោមដើមឈើ ឬដំបូល ខ្សែខ្លែងនឹងជាប់', en: 'Not under trees or roofs: the line would catch' },
   kiteMax: { km: 'ខ្សែអស់ហើយ!', en: "That's all the line!" },
   kiteHum: { km: 'ស្ដាប់! ឯកលើខ្លែងរបស់អ្នកកំពុងបន្លឺសំឡេង', en: 'Listen: the bow on your kite is humming' },
+  // (the key help while he flies it, bottom left: the keys, or the pad's stick, R2 and □ / X)
+  kiteKeyOut: { km: '↑ បណ្ដោយខ្សែ', en: '↑ let out line' },
+  kiteKeyIn: { km: '↓ រមូរខ្សែ', en: '↓ reel in' },
+  kiteKeySteer: { km: '← → បត់', en: '← → steer' },
+  kiteKeyWalk: { km: 'ដើរទាំងបង្ហោះ', en: 'walk with it' },
+  // (out of the kite season, once a visit, as he comes onto the families' kite field with his kite)
+  kiteSeasonHint: { km: 'ខ្លែងហោះលើវាលនេះ នៅរដូវប្រាំង ពីបុណ្យអុំទូក ដល់ខែមីនា', en: 'Kites fly over this field in the dry season, from the Water Festival to March' },
   // Helping the farmers (farm…): roam/_farmWork.ts
   farmHelpPlant: { km: 'ជួយស្ទូងស្រូវ', en: 'Help plant rice' },
   farmHelpReap: { km: 'ជួយច្រូតស្រូវ', en: 'Help with the harvest' },
@@ -936,6 +968,11 @@ const WORDS = {
   farmPlant: { km: 'ស្ទូង ({n}/{max})', en: 'Plant ({n}/{max})' },
   farmReap: { km: 'ច្រូត ({n}/{max})', en: 'Cut ({n}/{max})' },
   farmStop: { km: 'ដើរចេញ ដើម្បីឈប់', en: 'Walk away to stop' },
+  // (the key help while he works, and the touch jump button: what E and Space do)
+  farmKeyPlant: { km: 'ស្ទូង', en: 'plant' },
+  farmKeyReap: { km: 'ច្រូត', en: 'cut' },
+  farmBtnPlant: { km: 'ស្ទូង', en: 'Plant' },
+  farmBtnReap: { km: 'ច្រូត', en: 'Cut' },
   farmCarry: { km: 'យកកណ្ដាប់ស្រូវទៅដាក់លើភ្លឺស្រែ', en: 'Taking the sheaf to the bund' },
   // (the farmer's bubble, and what she gives him: a num ansom for his bag, or riel when it is full)
   farmThanks: { km: 'អរគុណ!', en: 'Thank you!' },
@@ -949,6 +986,8 @@ const WORDS = {
   raceJoin: { km: 'ចូលរួមអុំទូកង', en: 'Join a racing boat' },
   // (a toast the first time he comes near the landing by day: the way there)
   raceNear: { km: 'ទូកងនៅមាត់បឹងខាងជើង ខ្វះអ្នកអុំម្នាក់!', en: 'A racing boat on the north shore is one paddler short!' },
+  // (at the gangway after dusk: a note with no key)
+  raceNight: { km: 'ការប្រណាំងទូកងមានតែពេលថ្ងៃ · មកវិញពេលព្រឹក', en: 'The boat races are by day · come back in the morning' },
   raceReady: { km: 'ត្រៀម…', en: 'Ready…' },
   raceGo: { km: 'ទៅ!', en: 'Go!' },
   // (under the drum: the keys, then this)
@@ -985,6 +1024,8 @@ const WORDS = {
   seyJoin: { km: 'លេងសីជាមួយក្មេងៗ', en: 'Play sey with the children' },
   seyKick: { km: 'ទាត់', en: 'Kick' },
   seyLeave: { km: 'ឈប់លេង', en: 'Stop playing' },
+  // (the key help while he plays: the stick walks him out of the game)
+  seyAway: { km: 'ដើរចេញ', en: 'Walk away' },
   // (the counter while he plays: his kicks in a row, his best)
   seyStreak: { km: 'ទាត់ជាប់គ្នា', en: 'Kicks in a row' },
   seyBest: { km: 'កំណត់ត្រា {n}', en: 'Best {n}' },
@@ -1021,6 +1062,8 @@ const WORDS = {
   dogHere: { km: '{name} នៅក្បែរអ្នកហើយ', en: '{name} is right here' },
   dogFar: { km: '{name} នៅឆ្ងាយ · ចុច {key} ហៅវាមក', en: '{name} is far away · {key} calls it' },
   dogFarMenu: { km: '{name} នៅឆ្ងាយ · ហៅវាមកពីម៉ឺនុយ', en: '{name} is far away · call it from the menu' },
+  dogNoWay: { km: '{name} មិនអាចមកដល់ទីនេះបានទេ · វានៅរង់ចាំអ្នក', en: "{name} can't get up here · it waits for you" },
+  dogDoor: { km: 'ឆ្កែមិនចូលទីសក្ការៈទេ · {name} រង់ចាំអ្នកនៅខាងក្រៅ', en: "Dogs stay out of holy halls · {name} waits for you outside" },
   dogNone: { km: 'អ្នកមិនទាន់មានឆ្កែទេ — មានឆ្កែស្រុកមួយក្បាលដេកក្បែរហាងលក់ទំនិញ នៅភូមិត្នោត', en: 'No dog yet: a friendly village dog naps by the little shop in the sugar-palm village' },
   // His stilt house (home…): roam/_home*.ts
   homeMap: { km: 'ផ្ទះខ្ញុំ', en: 'My home' },
@@ -1084,6 +1127,8 @@ const WORDS = {
   umbRain: { km: 'ភ្លៀងហើយ! បើកឆ័ត្រ', en: "It's raining: umbrella up" },
   umbSnow: { km: 'ព្រិលធ្លាក់ហើយ! បើកឆ័ត្រ', en: "It's snowing: umbrella up" },
   umbHint: { km: 'ចុច {key} ដើម្បីបិទ', en: '{key} closes it' },
+  // (8 while a ride or another add-on has him: as the binoculars say it)
+  umbHandsBusy: { km: 'ដៃគាត់កំពុងរវល់', en: 'His hands are busy' },
   // The binoculars (bino…): roam/_binoculars.ts
   binoName: { km: 'កែវយឹត', en: 'Binoculars' },
   // (the touch layout's ✕ while they are up; the key hint's "pinch to zoom" on touch)

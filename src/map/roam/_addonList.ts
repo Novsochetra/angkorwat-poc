@@ -3,11 +3,11 @@
  * each, in the group it belongs to; a new add-on adds its line under its
  * group's comment, never elsewhere.
  *
- * The modules are not in the map's first download: `loadAddons` brings them in
- * (chunks of their own) after Start, in idle time, at once when the "Jump in"
- * card opens or roaming starts, and before the first frame of a headless shot or
- * a page that starts roaming (roam.ts). One that fails to load is logged and left
- * out; the others go on.
+ * The modules are chunks of their own, not in the code the map needs first:
+ * `loadAddons` starts their download as the map's build begins (main.ts), and
+ * roaming (roam.ts `buildRoam`) waits for them, so their meshes are in the scene
+ * when the map compiles its shaders, before Start (none is compiled in the middle
+ * of play). One that fails to load is logged and left out; the others go on.
  */
 const MODULES: readonly (() => Promise<unknown>)[] = [
   // ── Knowing what is on (the calendar of events) ──

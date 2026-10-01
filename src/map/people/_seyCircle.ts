@@ -65,6 +65,9 @@ const SPIN = 7;
 
 /** With him in the circle, the children stand this far round from his place (radians; + is his right): the gap on his right wider, where his camera looks from. */
 const WITH_ME = [100, 165, 230, 295].map((d) => (d * Math.PI) / 180);
+/** The children's words are said only with the camera this near the child (m), and him this near when he only watches. */
+const HEARD = 35;
+const WATCH = 22;
 /** What a child calls out after his good kick now and then. */
 const CHEERS: readonly WordKey[] = ['seyNice', 'seyGood', 'seyAgain'];
 
@@ -126,6 +129,9 @@ export class SeyCircle {
   private out = false;
   private shown = false;
   private tabled = '';
+  /** This step's frame and where he is (for who may hear the children: `talk`). */
+  private frame: MapFrame | null = null;
+  private ex: Point | null = null;
   private tabledAt = 0;
   /** The circle's ground (m). */
   private y = 0;
@@ -144,6 +150,8 @@ export class SeyCircle {
     homes: readonly { x: number; z: number }[],
     /** A child's words in a bubble over them (roaming only). */
     private readonly say: (key: WordKey, a: Actor) => void,
+    /** Someone's words are showing now (the people's one bubble). */
+    private readonly speaking: () => boolean,
   ) {
     kids.slice(0, KIDS).forEach((a, k) => {
       const h = homes[k % Math.max(1, homes.length)] ?? { x: SEY_SPOT.x, z: SEY_SPOT.z + 12 };
@@ -153,8 +161,10 @@ export class SeyCircle {
   }
 
   /** The circle's step: `seen` the camera is near enough to see them walk. */
-  update(dt: number, now: number, f: MapFrame, first: boolean, rain: boolean): void {
+  update(dt: number, now: number, f: MapFrame, first: boolean, rain: boolean, ex: Point | null): void {
     const S = SEY;
+    this.frame = f;
+    this.ex = ex;
     const still = S.shot !== '';
     if (first || !this.shown) {
       this.y = this.groundY(SEY_SPOT.x, SEY_SPOT.z, this.ground.field.heightAt(SEY_SPOT.x, SEY_SPOT.z) + 1);
@@ -248,7 +258,7 @@ export class SeyCircle {
     this.toMe = S.joined;
     this.readyAt = -1;
     // (the child nearest his place says so: come and play, or bye-bye)
-    this.say(S.joined ? 'seyCome' : 'seyBye', this.kids[this.nearest(SEY_SPOT.x + Math.sin(S.angle) * SEY_R, SEY_SPOT.z + Math.cos(S.angle) * SEY_R)].a);
+    this.talk(S.joined ? 'seyCome' : 'seyBye', this.kids[this.nearest(SEY_SPOT.x + Math.sin(S.angle) * SEY_R, SEY_SPOT.z + Math.cos(S.angle) * SEY_R)].a);
   }
 
   /**
@@ -309,7 +319,7 @@ export class SeyCircle {
   /** Dusk, or rain: they say so (if he plays) and walk home (`walk`), or are gone at once. */
   private goHome(walk: boolean): void {
     const S = SEY;
-    if (S.joined && walk) this.say('seyHome', this.kids[0].a);
+    if (S.joined && walk) this.talk('seyHome', this.kids[0].a);
     for (const k of this.kids) {
       if (walk && k.a.shown) this.set(k, 'home', S.t);
       else {
@@ -429,7 +439,7 @@ export class SeyCircle {
     // (his miss: the child across laughs, "oops!"; a child's own: another one laughs)
     if (S.joined || this.whiff) {
       const who = this.kids[this.farthest(this.gx, this.gz)];
-      this.say('seyOops', who.a);
+      this.talk('seyOops', who.a);
       who.cheer = t + 0.9;
       if (f.dt > 0) f.calls.push({ kind: 'laugh', x: who.a.x, y: who.a.y + 1.2, z: who.a.z, gain: 0.8 });
       seyEvent('laugh', who.a.x, who.a.y + 1.2, who.a.z, 0.8);
@@ -437,6 +447,23 @@ export class SeyCircle {
     this.whiff = false;
     this.falling = false;
     this.toMe = S.joined;
+  }
+
+  /**
+   * A child's words, only where they are heard: the camera near the child (`HEARD`) and he playing, or standing by
+   * watching (`WATCH`); never over words showing already (the people share one bubble: a guide's or a seller's
+   * nearer words stay). The laughter and the claps are sounds placed on the map, heard as near
+   * as they are.
+   */
+  private talk(key: WordKey, a: Actor): void {
+    const f = this.frame;
+    if (!f || f.roam === 'overview') return;
+    const c = f.camera.position;
+    if (Math.hypot(a.x - c.x, a.z - c.z) > HEARD) return;
+    const ex = this.ex;
+    if (!SEY.joined && (!ex || Math.hypot(ex.x - a.x, ex.z - a.z) > WATCH)) return;
+    if (this.speaking()) return;
+    this.say(key, a);
   }
 
   /** The nearest child standing at their place to (x, z) (anyone, if nobody is). */
@@ -487,7 +514,7 @@ export class SeyCircle {
     if (heel) {
       for (let i = 0; i < KIDS; i++) if (i !== to) this.kids[i].cheer = t + 1.1;
       const k = this.kids[pick(1)];
-      this.say('seyWow', k.a);
+      this.talk('seyWow', k.a);
       seyEvent('cheer', k.a.x, k.a.y + 1.2, k.a.z, 1);
       if (f.dt > 0) f.calls.push({ kind: 'laugh', x: k.a.x, y: k.a.y + 1.2, z: k.a.z, gain: 0.6 });
       return;
@@ -498,7 +525,7 @@ export class SeyCircle {
     const k = this.kids[pick(2)];
     k.cheer = t + 0.9;
     seyEvent('cheer', k.a.x, k.a.y + 1.2, k.a.z, milestone ? 0.7 : 0.35);
-    if (milestone || hash3(n, 3, 75) < 0.3) this.say(milestone ? 'seyOn' : CHEERS[Math.floor(hash3(n, 5, 77) * CHEERS.length) % CHEERS.length], k.a);
+    if (milestone || hash3(n, 3, 75) < 0.3) this.talk(milestone ? 'seyOn' : CHEERS[Math.floor(hash3(n, 5, 77) * CHEERS.length) % CHEERS.length], k.a);
   }
 
   // ── The children ─────────────────────────────────────────────────────────

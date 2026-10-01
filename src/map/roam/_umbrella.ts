@@ -33,8 +33,10 @@ import type { RoamCtx } from './types';
  * room for it (a low ceiling, a doorway, a take-off ramp under its glider;
  * it leans away from a wall beside it). His wide palm-leaf hat comes off while it is up (the hat's brim is
  * wider than the arm can hold the shaft out), and goes back on once it is
- * put away for good (dry again, or 8) or as he sits down — not for a moment's
- * fold; H puts the hat on instead (the umbrella folds: the player's choice).
+ * put away for good (dry again, or 8) and he is free (no posture, no add-on
+ * holding him) — not for a moment's fold; H puts the hat on instead (the
+ * umbrella folds: the player's choice). 8 while a ride or another add-on has
+ * him says his hands are busy (the choice stays).
  *
  * While it is open: it keeps the rain off him (nothing wet is drawn on him,
  * so there is nothing to stop), a few drops gather at the rib tips and drip
@@ -47,7 +49,7 @@ import type { RoamCtx } from './types';
  * `umbrella=auto` (the default: in rain or snow) · `umbhand=L|R` the hand ·
  * `umbspread=0‥1` the canopy held that far open · `umbcolor=blue|black|green`.
  * A shot starts it as it would be (no opening on the way). `window.__umbrella`
- * is its state (dev builds and shots).
+ * is its state (the dev server, so shots too; not in a build).
  */
 
 type Choice = 'auto' | 'open' | 'closed';
@@ -155,6 +157,9 @@ let spreadHold: number | null = null;
 const lean = { x: 0, z: 0 };
 let run = 0;
 let rain = 0;
+/** H pressed this step (and the hat before it): `after` follows what it did to the hat. */
+let hKey = false;
+let hatBefore = false;
 /** Folded for a quick reason (the camera, an action, no room): faster. */
 let quick = false;
 /** A headless still (not a video's frames): no easing, it is where it would be. */
@@ -243,12 +248,6 @@ function freeHand(e: AddonEnv): Hand | null {
   return !right ? 'R' : !left ? 'L' : null;
 }
 
-/** His chest leans back from upright (lying down, or on the way down to it). */
-function reclined(e: AddonEnv): boolean {
-  e.explorer.rig.joints.chest.getWorldQuaternion(_q);
-  return _w.set(0, 1, 0).applyQuaternion(_q).y < 0.8;
-}
-
 /** Another add-on has him or his hands (a ride, the binoculars…). */
 function others(): boolean {
   for (const a of ADDONS) if (a !== addon && (a.holding || a.handsBusy)) return true;
@@ -323,6 +322,9 @@ function toggle(e: AddonEnv, m: RoamMode): void {
   if (m === 'hang') return e.hud.toast(t('rHandsBar'));
   if (m === 'balloon') return e.hud.toast(t('rHandsBurner'));
   if (m !== 'walk') return;
+  // (a ride holds him, another add-on has his hands, or he prays, sits, eats, has the camera up: nothing would open
+  // until he is free; the choice stays)
+  if (others() || e.busy()) return e.hud.toast(t('umbHandsBusy'));
   const on = !intent();
   choice = on ? 'open' : 'closed';
   // (he knows the key now)
@@ -334,11 +336,15 @@ function toggle(e: AddonEnv, m: RoamMode): void {
 
 const addon: RoamAddon = {
   id: 'umbrella',
+  // (last of the add-ons: a card or a ride that takes the step's input — the clothes, the name, the dog's, the
+  // calendar's, the binoculars — has its keys first, and then 8 and H never reach this one; nothing in the E row)
+  order: 1000,
 
   init(e) {
     env = e;
     still = e.shot && e.params.get('video') !== '1';
-    if (import.meta.env.DEV || e.shot)
+    // (checks on the dev server: shots run there too; not in a build)
+    if (import.meta.env.DEV)
       Object.assign(window, {
         __umbrella: {
           get state() {
@@ -357,15 +363,10 @@ const addon: RoamAddon = {
     const e = env;
     if (!e) return false;
     if (tap('Digit8', 'Numpad8')) toggle(e, m);
-    // H: the hat. With the umbrella up it would go on under it: the umbrella folds away instead (the player chose the hat).
+    // H: the hat (tools.ts has the key after this): what it did is seen after the step (`after`), and only that is followed.
     if (tap('KeyH') && m === 'walk') {
-      const willWear = !e.explorer.currentOutfit.hat;
-      // (also while it waits, folded a moment: else it would take the hat off again as it comes back)
-      if (willWear && (hand || intent())) {
-        putAway();
-        choice = 'closed';
-      }
-      hatTaken = false;
+      hKey = true;
+      hatBefore = e.explorer.currentOutfit.hat;
     }
     return false;
   },
@@ -375,9 +376,23 @@ const addon: RoamAddon = {
     mode = m;
     if (!e) return;
     const ex = e.explorer;
+    const pressedH = hKey;
+    hKey = false;
     if (m !== 'walk') {
       if (hand) putAway();
       return;
+    }
+    // H this step, as tools.ts took it: the hat on (with the umbrella up, or waiting folded: it goes, the player chose
+    // the hat), or off (in rain or snow, the umbrella then: H never leaves him with neither). The hat is the player's now.
+    if (pressedH) {
+      const hat = ex.currentOutfit.hat;
+      if (hat && !hatBefore) {
+        if (hand || intent()) {
+          putAway();
+          choice = 'closed';
+        }
+      } else if (!hat && wet && !intent()) choice = 'auto';
+      hatTaken = false;
     }
     // The weather: enough rain or snow (with a margin), for a moment.
     const w = ctx.weather;
@@ -410,7 +425,10 @@ const addon: RoamAddon = {
     const act = ex.currentAction;
     const meal = act === 'eat' || act === 'bite' || act === 'drink';
     const praying = act === 'pray' || shrine.busy();
-    quick = !!e.photo.kind || (!!act && !meal && act !== 'pray') || others() || tight;
+    // (another add-on takes him or his hands — a ride, the zip line, the binoculars: its pose has his arms at once, as the boat's)
+    const taken = others();
+    if (taken && hand) putAway();
+    quick = !!e.photo.kind || (!!act && !meal && act !== 'pray') || taken || tight;
     const away = quick || praying || !!ex.animator.posture || sheltered;
     const target = want && !away ? freeHand(e) : null;
 
@@ -457,15 +475,16 @@ const addon: RoamAddon = {
         }
       }
     }
-    // His hat: off while it is up (its brim is in the way). Back on once it is put away for good (dry again, or 8),
-    // or as he sits down; not for a moment's fold (a greeting, the camera, an eave, under a roof), so it does not
-    // flick on and off. Never while he prays (the prayer takes it off once, at its time) or lies back (the rest has
-    // it off then: its brim).
-    const lying = !!ex.animator.posture && reclined(e);
+    // His hat: off while it is up (its brim is in the way). Back on only once it is put away for good (dry again, or
+    // 8) and he is free: not for a moment's fold (a greeting, the camera, an eave, under a roof), so it does not flick
+    // on and off; never while he prays, a posture is on him (sitting, lying, the rope swing) or another add-on holds
+    // him or has his hands (the zip line, the bicycle, the hammock, the blessing…: they take the hat off themselves
+    // when it is on, and put back only what they took). After them, if it still rains, the umbrella comes back
+    // and the hat stays off.
     if (hand && ex.currentOutfit.hat) {
       setHat(e, false);
       hatTaken = true;
-    } else if (!hand && hatTaken && !praying && !lying && (!want || !!ex.animator.posture)) {
+    } else if (!hand && hatTaken && !want && !praying && !ex.animator.posture && !taken) {
       hatTaken = false;
       setHat(e, true);
     }

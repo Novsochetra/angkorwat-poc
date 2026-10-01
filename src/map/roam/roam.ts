@@ -138,8 +138,8 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
   const object = new Group();
   object.name = 'roam';
   const startMode = params.get('roam') as RoamMode | null;
-  // (the add-ons, _addonList.ts: a shot, or a page that starts roaming, has them from its first frame; else they load after Start)
-  if (ctx.shot || (startMode && startMode !== 'overview')) await loadAddons();
+  // (the add-ons, _addonList.ts: downloading since the build began (main.ts); here before the shaders are compiled)
+  await loadAddons();
   const made = buildRoamWorld(ctx.field, deps.parts, !ctx.shot && !startMode);
   const world = made.world;
   /** Frames updated, and when the first after Start was (ms); the walk maps' making: waiting, in idle time, or hurried (the card is open); its turn. */
@@ -150,8 +150,6 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
   function prepare(hurry: boolean): void {
     if (prep === 'hurry' || (prep === 'idle' && !hurry)) return;
     prep = hurry ? 'hurry' : 'idle';
-    // (the add-ons' modules too: a chunk of their own, _addonList.ts)
-    void loadAddons();
     if (made.ready) return;
     const id = ++turn;
     const slice = (d?: IdleDeadline) => {
@@ -390,7 +388,6 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
     },
     start(kind = 'chute') {
       if (mode !== 'overview' || leaving) return;
-      void loadAddons();
       // (the camera's walk maps, the planks, the rivers: the rest of them now, before the first step)
       made.finish();
       chute.leap.opens = kind === 'glider' ? 'hang' : 'glide';

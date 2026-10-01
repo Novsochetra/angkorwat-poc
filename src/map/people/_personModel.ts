@@ -935,8 +935,8 @@ const BLESS_ARM = {
   dip: [-0.229, -0.315, -0.469, -1.527, 1.45],
   up: [-1.39, 0.13, 0.11, -1.38, -1.15],
   flick: [-1.56, 0.13, 0.12, -0.2, 0.2],
-  tie: [-1.329, 0.267, 0.534, -0.083, 0],
-  tieL: [-0.891, -0.209, -0.28, -1.059, 0],
+  tie: [-1.083, 0.251, 0.453, 0, 0],
+  tieL: [-0.757, -0.257, -0.376, -0.69, 0],
 } as const;
 const BLESS_KEYS: readonly (readonly [number, keyof typeof BLESS_ARM])[] = [
   [0, 'dip'],
@@ -960,11 +960,13 @@ if (FLICKS.some((t, i) => Math.abs(t - (FLICKS[0] + i * FLICK_STEP)) > 1e-6) || 
 const blessBones = (shape: Partial<Record<BoneName, V3>>) => BONES.map((b) => `vec3(${(shape[b] ?? [0, 0, 0]).map(f).join(', ')})`).join(', ');
 const SIT_LEGS: Partial<Record<BoneName, V3>> = { legL: [-1.5, 0.6, 0], shinL: [-0.2, 0, -2.5], legR: [-1.5, -0.6, 0], shinR: [-0.2, 0, 2.5] };
 const [TIE_R, TIE_L] = [BLESS_ARM.tie, BLESS_ARM.tieL];
+/** At the tie he sits up, leaning in only a little (his big head kept back from the face of the one kneeling close). */
+const BLESS_TIE_LEAN = 0.06;
 const GLSL_BLESS = /* glsl */ `
 // The monk's blessing (P_BLESS): his bones at rest and at the tie (a turn a bone), how much the breath (x) and the
 // knot's work (y) move them; the right arm's script: its keys (armR x, y, z; foreR x) and their (time, sprig's tilt).
 const vec3 P_BLESS_REST[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [0.1, 0, 0], head: [0.12, 0, 0], armL: [-0.55, 0, 0.2], foreL: [-0.55, 0, 0], armR: [-0.55, 0, -0.2], foreR: [-0.55, 0, 0] })});
-const vec3 P_BLESS_TIE[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [0.18, 0, 0], head: [0.04, 0, 0], armL: [TIE_L[0], TIE_L[1], TIE_L[2]], foreL: [TIE_L[3], 0, 0], armR: [TIE_R[0], TIE_R[1], TIE_R[2]], foreR: [TIE_R[3], 0, 0] })});
+const vec3 P_BLESS_TIE[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [BLESS_TIE_LEAN, 0, 0], head: [0.04, 0, 0], armL: [TIE_L[0], TIE_L[1], TIE_L[2]], foreL: [TIE_L[3], 0, 0], armR: [TIE_R[0], TIE_R[1], TIE_R[2]], foreR: [TIE_R[3], 0, 0] })});
 const vec2 P_BLESS_MOVE[${BONES.length}] = vec2[${BONES.length}](${BONES.map((b) => (b === 'chest' ? 'vec2(0.012, 0.0)' : b === 'foreR' ? 'vec2(0.0, 0.08)' : b === 'foreL' ? 'vec2(0.0, -0.08)' : 'vec2(0.0)')).join(', ')});
 const int P_BLESS_N = ${BLESS_KEYS.length};
 const vec4 P_BLESS_KEY[P_BLESS_N] = vec4[P_BLESS_N](${BLESS_KEYS.map(([, k]) => blessArm(k)).join(', ')});

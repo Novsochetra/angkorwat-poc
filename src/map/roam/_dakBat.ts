@@ -83,9 +83,12 @@ const BLESS = 6.6;
 const BOW = 1.5;
 /** Leaving off part way: the hands back (s). */
 const LEAVE = 0.55;
-/** No monk answers his asking within this (s), or none comes to him within this (s): he gets up. */
+/**
+ * No monk answers his asking within this (s): he gets up. Once a line has answered (a monk is coming, maybe after a
+ * family's stop) it is the line's to say: only a safety beyond any stop and walk (s).
+ */
 const ANSWER = 5.5;
-const WAIT_MAX = 26;
+const WAIT_MAX = 90;
 /** How far forward he leans to reach (radians). */
 const LEAN = 0.16;
 /**
@@ -448,8 +451,8 @@ registerAddon({
   id: ID,
   init(e) {
     env = e;
-    // (checks: the offering's state from the console, `__dak.now()`)
-    Object.assign(window, { __dak: { DAK, now: () => ({ step, st: +st.toFixed(2), facing: +facing.toFixed(2), way: +way.toFixed(2), camYaw: +camYaw.toFixed(2), given, spooned, ask: { ...DAK.ask } }) } });
+    // (checks, on the dev server only — shots run there too: the offering's state from the console, `__dak.now()`)
+    if (import.meta.env.DEV) Object.assign(window, { __dak:{ DAK, now: () => ({ step, st: +st.toFixed(2), facing: +facing.toFixed(2), way: +way.toFixed(2), camYaw: +camYaw.toFixed(2), given, spooned, ask: { ...DAK.ask } }) } });
     // (the stall's floor now)
     registerStall(e.world.field.heightAt(STALL.x, STALL.z));
     KEEPSAKES.set(RICE_ID, {

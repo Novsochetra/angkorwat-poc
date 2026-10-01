@@ -35,6 +35,8 @@ export const POCKET = 20_000;
 export const POCKET_EVERY = 360;
 /** Things he carries at most (kept for later). */
 export const CARRY_MAX = 3;
+/** The most a saved purse may hold (riel): far over what play earns. */
+const RIEL_MAX = 10_000_000;
 
 /** One thing in his bag: which shop and item it came from, and enough to eat it without them. */
 export interface Kept {
@@ -187,7 +189,8 @@ function load(): Saved {
     const kept = Array.isArray(raw.kept) ? raw.kept.map(toKept).filter((k): k is Kept => !!k).slice(0, CARRY_MAX) : [];
     const tasted: Record<string, number> = {};
     if (isRecord(raw.tasted)) for (const [k, v] of Object.entries(raw.tasted)) if (isNum(v) && v > 0) tasted[k] = Math.round(v);
-    return { v: 1, riel: isNum(raw.riel) ? Math.max(0, Math.round(raw.riel)) : 0, kept, tasted };
+    // (a saved amount is kept within what a visit could earn: a broken or edited one cannot show a 16-digit purse)
+    return { v: 1, riel: isNum(raw.riel) ? Math.min(RIEL_MAX, Math.max(0, Math.round(raw.riel))) : 0, kept, tasted };
   } catch {
     return empty;
   }

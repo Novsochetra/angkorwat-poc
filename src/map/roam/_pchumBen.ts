@@ -12,6 +12,7 @@ import { PAGODA } from '../village/_spots';
 import { registerAddon, type AddonEnv, type RoamAddon } from './_addons';
 import { LUNAR, nextLunarSpan } from './_calendarKhmer';
 import { createLineWalk, type LineWalk } from './_procession';
+import { angleDiff } from './followCam';
 
 /**
  * Pchum Ben's bay ben (festival/_pchumBen.ts), joined: before dawn, near the
@@ -70,12 +71,59 @@ function createPchumAddon(): RoamAddon {
   /** A shot's throw (`bayben=throw`): started on the first step in the line, so the ball is in the air at the end of the shot's settling. */
   let urlThrow = false;
 
+  /** His balls in the air and lying where they fell, and the one in his hand from the basket to the throw. */
+  const drawBalls = () => {
+    if (!balls || !env) return;
+    let n = 0;
+    for (const b of flying) {
+      const age = clock - b.t;
+      if (age < 0 || age > b.land + LIE) continue;
+      const tau = Math.min(age, b.land);
+      const k = age > b.land + LIE - 0.6 ? Math.max(0.01, (b.land + LIE - age) / 0.6) : 1;
+      v.set(b.p.x + b.v.x * tau, b.p.y + b.v.y * tau - 0.5 * G * tau * tau + (age >= b.land ? BALL_SIZE * 0.4 : 0), b.p.z + b.v.z * tau);
+      sc.setScalar(BALL_SIZE * k);
+      m4.compose(v, q, sc);
+      balls.setMatrixAt(n++, m4);
+    }
+    if (n || balls.count) balls.instanceMatrix.needsUpdate = true;
+    balls.count = n;
+    // The ball in his hand from the basket to the throw.
+    const pose = walk?.pose;
+    if (throwing && pose && pose.throwT >= THROW.take && pose.throwT < THROW.release && n < BALLS) {
+      throwHand(pose.throwT, tmp);
+      env.explorer.rig.joints.chest.localToWorld(v.copy(tmp));
+      sc.setScalar(BALL_SIZE);
+      m4.compose(v, q, sc);
+      balls.setMatrixAt(n, m4);
+      balls.count = n + 1;
+      balls.instanceMatrix.needsUpdate = true;
+    }
+  };
+
   const holding = () => (walk?.stage ?? 'off') !== 'off' || thanks > 0;
+
+  /**
+   * His thrown balls' mesh: made and put in the scene the first time he is handed the basket (none on a page that
+   * never sees Pchum Ben: no program to link), kept after.
+   */
+  const ensureBalls = () => {
+    if (balls || !env) return;
+    const mat = new MeshStandardMaterial({ color: 0xf4f0e4, roughness: 0.95 });
+    mat.name = 'roam:bayben';
+    balls = new InstancedMesh(new BoxGeometry(1, 0.85, 1), mat, BALLS);
+    balls.name = 'roam:bayben';
+    balls.instanceMatrix.setUsage(DynamicDrawUsage);
+    balls.count = 0;
+    balls.frustumCulled = false;
+    balls.raycast = () => {};
+    env.scene.add(balls);
+  };
 
   /** The basket in his right hand with `n` balls (or none). */
   const showBasket = (n: number) => {
     if (!env || n === basket) return;
     basket = n;
+    if (n >= 0) ensureBalls();
     if (n < 0) env.explorer.rig.clearSlot('pchumBasket');
     else env.explorer.rig.setSlot('pchumBasket', 'chest', buildBasket(n));
   };
@@ -123,16 +171,6 @@ function createPchumAddon(): RoamAddon {
     init(e) {
       env = e;
       walk = createLineWalk(e, 'pchumben', 'basket');
-      const geo = new BoxGeometry(1, 0.85, 1);
-      const mat = new MeshStandardMaterial({ color: 0xf4f0e4, roughness: 0.95 });
-      mat.name = 'roam:bayben';
-      balls = new InstancedMesh(geo, mat, BALLS);
-      balls.name = 'roam:bayben';
-      balls.instanceMatrix.setUsage(DynamicDrawUsage);
-      balls.count = 0;
-      balls.frustumCulled = false;
-      balls.raycast = () => {};
-      e.scene.add(balls);
     },
 
     offer(ctx, mode) {
@@ -159,6 +197,9 @@ function createPchumAddon(): RoamAddon {
         const body = ctx.body;
         const h = 1.7 * body.scale * 0.95;
         ctx.cam.focus.set(body.pos.x, body.pos.y + h * 0.86, body.pos.z);
+        // (behind him as he faces the hall, his palms joined: out on the open side, not from among the shrines)
+        ctx.cam.behindYaw = body.yaw;
+        if (!ctx.input.lookYaw && !ctx.input.lookPitch) ctx.cam.yaw += angleDiff(body.yaw, ctx.cam.yaw) * (1 - Math.exp(-dt * 2.2));
         ctx.cam.turn(ctx.input.lookYaw, ctx.input.lookPitch, ctx.input.zoom);
         env.explorer.setMotion(0, true, 0);
         return { prompt: null };
@@ -229,32 +270,8 @@ function createPchumAddon(): RoamAddon {
     },
 
     frame(f: MapFrame) {
-      if (!env || !balls) return;
-      // His balls in the air, and lying where they fell for a while.
-      let n = 0;
-      for (const b of flying) {
-        const age = clock - b.t;
-        if (age < 0 || age > b.land + LIE) continue;
-        const tau = Math.min(age, b.land);
-        const k = age > b.land + LIE - 0.6 ? Math.max(0.01, (b.land + LIE - age) / 0.6) : 1;
-        v.set(b.p.x + b.v.x * tau, b.p.y + b.v.y * tau - 0.5 * G * tau * tau + (age >= b.land ? BALL_SIZE * 0.4 : 0), b.p.z + b.v.z * tau);
-        sc.setScalar(BALL_SIZE * k);
-        m4.compose(v, q, sc);
-        balls.setMatrixAt(n++, m4);
-      }
-      if (n || balls.count) balls.instanceMatrix.needsUpdate = true;
-      balls.count = n;
-      // The ball in his hand from the basket to the throw.
-      const pose = walk?.pose;
-      if (throwing && pose && pose.throwT >= THROW.take && pose.throwT < THROW.release && n < BALLS) {
-        throwHand(pose.throwT, tmp);
-        env.explorer.rig.joints.chest.localToWorld(v.copy(tmp));
-        sc.setScalar(BALL_SIZE);
-        m4.compose(v, q, sc);
-        balls.setMatrixAt(n, m4);
-        balls.count = n + 1;
-        balls.instanceMatrix.needsUpdate = true;
-      }
+      if (!env) return;
+      if (balls) drawBalls();
       // The chant for the ancestors, from the hall (before dawn) or the porch (the morning).
       const c = PROCESSION.kind === 'pchumben' ? PROCESSION.chant : null;
       if (!c) {

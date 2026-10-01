@@ -859,6 +859,16 @@ export function kitesFlying(season: number, clock: number): boolean {
 export const KITE_FIELD = { x: EAST[1].spot[0], z: EAST[1].spot[1] };
 
 /**
+ * The kite fields (m: the middle and how far round): the families' grass south of the east paddies (their spots,
+ * `EAST`) and the children's grass south of the west paddies (`WEST`). The explorer flies his own kite there and
+ * over the dry rice fields (roam/_kiteFly.ts).
+ */
+export const KITE_FIELDS = {
+  east: { x: (EAST[0].spot[0] + EAST[2].spot[0]) / 2, z: (EAST[0].spot[1] + EAST[2].spot[1]) / 2, r: 28 },
+  west: { x: (WEST[0][0] + WEST[2][0]) / 2, z: (WEST[0][1] + WEST[2][1]) / 2 - 3, r: 22 },
+} as const;
+
+/**
  * A spot near (x, z) with room to fly a kite: grass or dirt, dry, fairly
  * flat, no trunk within reach, and no crown over the line's first 30 m
  * downwind (the trees are the vegetation's, planted before the people).

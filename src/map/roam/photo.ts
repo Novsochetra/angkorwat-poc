@@ -12,6 +12,7 @@ import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import { createJournal, type Journal } from './_book';
 import { KHMER_MONTHS, SPECIES_BY_KIND, STAMPS } from './_bookData';
 import { attachBookUi, type AlbumTab, type BookUi } from './_bookUi';
+import { whenMapShown } from './_nameCard';
 import { signPhoto } from './_nameMark';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
@@ -524,8 +525,11 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
   const at = new URLSearchParams(location.search).get('album');
   if (at) {
     const [tab, page] = at.split(':');
-    api.openAlbum();
-    if (['photos', 'book', 'passport'].includes(tab)) (bookUi as BookUi | null)?.setTab(tab as AlbumTab, page as never);
+    // (a live page: once the loading screen's Start is pressed, never over its button: _nameCard.ts `whenMapShown`)
+    whenMapShown(() => {
+      api.openAlbum();
+      if (['photos', 'book', 'passport'].includes(tab)) (bookUi as BookUi | null)?.setTab(tab as AlbumTab, page as never);
+    });
   }
   return api;
 }

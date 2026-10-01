@@ -232,6 +232,19 @@ const EQUINOX = [
   'kkkkkkkkkkkkk',
   'BBaBBBBBBBaBB',
 ];
+/** A monk's blessing: a monk in saffron, the red string (ksae kat dai) laid before him. */
+const BLESS = [
+  '.....nnn.....',
+  '.....nnn.....',
+  '....OOOOO....',
+  '...OOOOOOO...',
+  '..OOOOOOOOh..',
+  '.OOOOOOOOOOh.',
+  '.hhhhhhhhhhh.',
+  '..RRRRRRRRR..',
+  '.R.........R.',
+  '..RRRRRRRRR..',
+];
 /** A lotus in flower (a festival). */
 const LOTUS = [
   '.....P.....',
@@ -300,6 +313,7 @@ export const EVENT_ART: Record<string, string[]> = {
   duskDrum: outlined(DRUM),
   dakbat: outlined(ALMS),
   'dakbat-back': outlined(ALMS),
+  'dakbat-aw': outlined(ALMS),
   market: outlined(MARKET),
   'market-back': outlined(MARKET),
   'market-float': outlined(BOATS),
@@ -312,6 +326,7 @@ export const EVENT_ART: Record<string, string[]> = {
   // (the other add-ons' events: the boat race, the east village's dak bat, Pchum Ben, Visak Bochea, the equinox)
   boatrace: outlined(WATER),
   'dakbat-village': outlined(ALMS),
+  'bless-village': outlined(BLESS),
   pchumben: outlined(BAYBEN),
   visak: outlined(CANDLE),
   equinox: outlined(EQUINOX),

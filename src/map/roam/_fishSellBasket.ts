@@ -13,9 +13,11 @@ import { FISH, FISH_KINDS, type FishKind } from './_fishKinds';
  * (_fishSell.ts `setMode`); it is never saved (a new visit starts with an
  * empty basket).
  *
- * URL (checks): `fishbasket=<kind>:<cm>,…` fills it when the page opens
- * (kinds: riel, snakehead, catfish, perch, featherback; the length in cm,
- * or the kind's middle size without one), e.g.
+ * URL (checks): `fishbasket=<kind>:<cm>,…` fills it when roaming starts from
+ * the URL or from a saved view (a shot, the free camera's "Go there", a bug
+ * report's replay: roam.ts `placeFrom`; _fishSell.ts `fromUrl`). Kinds:
+ * riel, snakehead, catfish, perch, featherback; the length in cm, or the
+ * kind's middle size without one; e.g.
  * `fishbasket=snakehead:42,riel:12`.
  */
 
@@ -101,6 +103,12 @@ export const basket = {
     changed();
     return f;
   },
+  /** Its fish as these, at most `BASKET_MAX` (checks: `fishbasket=`, read by _fishSell.ts `fromUrl`). */
+  set(list: readonly BasketFish[]): void {
+    fish.length = 0;
+    for (const f of list.slice(0, BASKET_MAX)) fish.push({ kind: f.kind, cm: Math.round(f.cm) });
+    changed();
+  },
   /** Empty it (back to the map: fish do not keep; or all sold). */
   clear(): void {
     if (!fish.length) return;
@@ -141,10 +149,4 @@ export function parseBasket(spec: string): BasketFish[] {
     if (out.length >= BASKET_MAX) break;
   }
   return out;
-}
-
-// (checks: the URL's basket, filled once when the page opens)
-if (typeof location !== 'undefined') {
-  const spec = new URLSearchParams(location.search).get('fishbasket');
-  if (spec) for (const f of parseBasket(spec)) basket.add(f.kind, f.cm);
 }

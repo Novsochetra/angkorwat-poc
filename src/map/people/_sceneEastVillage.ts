@@ -250,7 +250,7 @@ export class EastVillageLife implements PeopleScene {
     // ── The children kicking the sey (from the houses round the yard) ──
     const seyKids = [0, 1, 2, 3].map((k) => actor(dress('kid', 3171 + k * 2, { young: k === 3 })));
     const kidHomes = ['n3', 'n4', 's4', 's2'].map((id) => H(id)?.stairFoot).filter((p): p is { x: number; z: number } => !!p);
-    this.sey = new SeyCircle(seyKids, env.things, this.ground, kidHomes, (key, a) => this.say(key, a, true));
+    this.sey = new SeyCircle(seyKids, env.things, this.ground, kidHomes, (key, a) => this.say(key, a, true), () => env.bubble.showing);
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
@@ -271,7 +271,7 @@ export class EastVillageLife implements PeopleScene {
     const rain = f.weather.rain > DOWNPOUR;
     for (const v of this.folk) this.live(v, dt, now, f, ex, first);
     this.play(dt, now, f, ex, first, rain);
-    this.sey?.update(dt, now, f, first, rain);
+    this.sey?.update(dt, now, f, first, rain, ex);
     for (const r of this.riders) r.ride(dt, now, f, ex, rain, this.env.traffic.list);
     this.herd.update(dt, now, f, ex, first);
     for (const c of this.callouts) {

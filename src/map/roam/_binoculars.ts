@@ -562,14 +562,16 @@ function lookAtMiddle(): void {
     setTarget(`s:${s.kind}`, SPECIES_BY_KIND.get(s.kind)!.name, Math.hypot(s.x - o.x, s.y - o.y, s.z - o.z), s.kind, s);
     return;
   }
-  // Where the view lands on the land or the water.
+  // Where the view lands on the land or the water, or first meets something solid near him (a wall, a house, a
+  // trunk, a floating shop): nothing farther than that is in sight along the middle of the view.
   const land = landHit(o, d, 2400);
-  // A temple: its pad as a box, the nearest the view goes into before the land (not one he is in).
+  const solid = Math.min(land, blockHit(o, d));
+  // A temple: its pad as a box, the nearest the view goes into before anything solid (not one he is in).
   let place: PlaceDef | null = null;
   let pt = Infinity;
   for (const p of PLACES) {
     const tIn = boxHit(o, d, p);
-    if (tIn > 0 && tIn < pt && tIn <= land + 2) [place, pt] = [p, tIn];
+    if (tIn > 0 && tIn < pt && tIn <= solid + 2) [place, pt] = [p, tIn];
   }
   if (place) {
     const st = STAMP_BY_ID.get(place.id);
@@ -592,10 +594,12 @@ function lookAtMiddle(): void {
     if (along <= 0) continue;
     const off = Math.hypot(dx - d.x * along, dy - d.y * along, dz - d.z * along);
     const reach = s.reach + 4 + along * 0.01;
-    if (off > reach || land < along - s.reach - 6) continue;
+    if (off > reach || solid < along - s.reach - 6) continue;
     if (off / reach < best) [stamp, best, sd] = [s, off / reach, dist];
   }
   if (stamp) return setTarget(`t:${stamp.id}`, stamp.name, sd, null, null);
+  // (something solid near him fills the middle, a temple or a stamp's place far behind it: nothing is named)
+  if (solid < land) return setTarget('', null, 0, null, null);
   // Phnom Kulen's slopes (not from on them).
   if (land < Infinity) {
     const kulen = PLATEAUS.find((p) => p.name === 'Phnom Kulen');
@@ -604,6 +608,20 @@ function lookAtMiddle(): void {
     if (st && inK(o.x + d.x * land, o.z + d.z * land) && !inK(o.x, o.z)) return setTarget('k', st.name, land, null, null);
   }
   setTarget('', null, 0, null, null);
+}
+
+/**
+ * How far along the ray from `o` (unit `d`) the first solid block is (the walk map: stone, walls, houses, trunks;
+ * not leaves), within `NEAR_BLOCKS` m (from a little ahead of his face), or Infinity.
+ */
+function blockHit(o: Vector3, d: Vector3): number {
+  const w = env!.world;
+  const clear = w.clearance ?? w.hardClearance;
+  if (!clear) return Infinity;
+  const a = 0.3;
+  const len = NEAR_BLOCKS - a;
+  const free = clear(o.x + d.x * a, o.y + d.y * a, o.z + d.z * a, o.x + d.x * NEAR_BLOCKS, o.y + d.y * NEAR_BLOCKS, o.z + d.z * NEAR_BLOCKS);
+  return free >= 1 ? Infinity : a + free * len;
 }
 
 /** Where the ray from `o` along `d` goes into a place's box (its pad, up its height), or −1 (missed, or from inside). */
@@ -900,20 +918,21 @@ registerAddon({
   init(e) {
     env = e;
     ui = createUi(e);
-    // (checks: what they look at, and the middle of the view looked at again now)
-    Object.assign(window, {
-      __bino: {
-        aim,
-        target,
-        get up() {
-          return up;
+    // (checks, dev server only: what they look at, and the middle of the view looked at again now)
+    if (import.meta.env.DEV)
+      Object.assign(window, {
+        __bino: {
+          aim,
+          target,
+          get up() {
+            return up;
+          },
+          get view() {
+            return view;
+          },
+          look: () => (lookAtMiddle(), { ...target, name: target.name?.en ?? null }),
         },
-        get view() {
-          return view;
-        },
-        look: () => (lookAtMiddle(), { ...target, name: target.name?.en ?? null }),
-      },
-    });
+      });
   },
 
   input(ctx, m, tap, dt) {

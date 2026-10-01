@@ -69,9 +69,9 @@ const PACE_HIDE = 220;
 /** Seen by the camera: within this (m) and inside this cone round its view (cos of the angle). */
 const SEEN_NEAR = 34;
 const SEEN_CONE = Math.cos((62 * Math.PI) / 180);
-/** Getting up or sitting down (s), stepping off the dais or onto it (s), his walking pace (m/s). */
+/** Getting up or sitting down (s), stepping off the dais by its step or up onto it (s, both steps), his walking pace (m/s). */
 const RISE_T = 0.75;
-const STEP_T = 0.9;
+const STEP_T = 1.4;
 const PACE = 0.55;
 /** The drops of a flick: how many, how long they fly (s), their size (m). */
 const DROPS = 7;
@@ -149,15 +149,17 @@ export class BlessingMonk implements PeopleScene {
     this.sprig = new Rig(env.things, sprigDef());
     this.drops = env.things.alloc(DROPS);
     for (let k = 0; k < DROPS; k++) env.things.paint(this.drops + k, C.drop, 0.35);
-    // His way out: off the dais to the floor before it, to the door, onto the porch and along it (past the door's jamb).
-    const front = seatFront(s, 1.05, { x: 0, z: 0 });
+    // His way out: off the dais by its step to the floor before it, to the door, onto the porch and along it (past the
+    // door's jamb).
     const X = s.dais.x - 3.0;
     this.way = [
-      { x: front.x, y: s.floor, z: front.z },
+      { x: s.step.x + Math.sin(s.yaw) * 0.42, y: s.floor, z: s.step.z + Math.cos(s.yaw) * 0.42 },
       { x: X + 0.6, y: s.floor, z: 101.2 },
       { x: X, y: s.floor, z: 99.9 },
-      { x: X, y: s.floor, z: 97.7 },
-      { x: X + 3.2, y: s.floor, z: 97.7 },
+      // (along the porch behind where the festivals' monks sit, between them and the wall: Pchum Ben's at x ± 2.35,
+      // ± 3.65 and Visak's at ± 4.35, z ≈ 97.55 — festival/_pchumBen.ts, _visak.ts —, never through them)
+      { x: X, y: s.floor, z: 98.4 },
+      { x: X + 3.2, y: s.floor, z: 98.4 },
     ];
     this.workOutHands();
     const q = env.params;
@@ -186,12 +188,14 @@ export class BlessingMonk implements PeopleScene {
     const step = this.pace.step(dt, viewDist(f, s.x, s.z));
     if (step < 0) {
       this.hideAll();
+      this.quiet(f);
       m.there = want;
       m.away = away;
       return;
     }
     if (step === 0 && this.shown) {
-      if (this.bubbleUntil > now) this.bubble.update(dt, f.camera, f.roam !== 'overview');
+      if (!mine) this.quiet(f);
+      this.talk(dt, now, f);
       return;
     }
     dt = step;
@@ -205,17 +209,35 @@ export class BlessingMonk implements PeopleScene {
 
     if (this.life === 'sit') this.bless(now, ex, mine);
     else this.offScript(now);
+    // (the blessing cut off, or he is off his seat: his words go with it)
+    if (!mine || this.life !== 'sit') this.quiet(f);
     this.monk.step(dt, now);
     // The sprig: in his hand or resting in the bowl.
     if (this.sprigInHand) this.sprig.hide();
     else this.sprig.place(s.x, s.y, s.z, s.yaw).write();
     this.drawDrops(mine && ask.state === 'chant');
-    if (this.bubbleUntil > now) {
-      this.head.x = this.monk.x;
-      this.head.y = this.monk.y + 1.42 * this.env.crowd.scale(this.monk.i);
-      this.head.z = this.monk.z;
-      this.bubble.update(dt, f.camera, f.roam !== 'overview');
+    this.talk(dt, now, f);
+  }
+
+  /** His words over his head while they last, then gone for good (not left faint, nor where he no longer is). */
+  private talk(dt: number, now: number, f: MapFrame): void {
+    if (this.bubbleUntil <= now) {
+      this.quiet(f);
+      return;
     }
+    this.head.x = this.monk.x;
+    this.head.y = this.monk.y + 1.42 * this.env.crowd.scale(this.monk.i);
+    this.head.z = this.monk.z;
+    this.bubble.update(dt, f.camera, f.roam !== 'overview');
+  }
+
+  /** His words gone at once: the blessing cut off, the scene hidden far off, he gets up (nothing said: nothing to do). */
+  private quiet(f: MapFrame): void {
+    if (this.bubbleUntil === -1e9) return;
+    this.bubbleUntil = -1e9;
+    this.saying = null;
+    // (a whole second off the roaming: its time and its fade both end now, so it hides)
+    this.bubble.update(1, f.camera, false);
   }
 
   // ── His day: sitting, getting up and walking out, walking in and sitting down ──
@@ -255,11 +277,11 @@ export class BlessingMonk implements PeopleScene {
         if (this.lt >= RISE_T) this.go('stepDown');
         break;
       case 'stepDown': {
-        // Off the dais's front onto the floor before it.
-        const k = smooth(this.lt / STEP_T);
-        const p = this.way[0];
-        a.ride(s.x + (p.x - s.x) * k, s.y + (p.y - s.y) * k + Math.sin(Math.PI * k) * 0.08, s.z + (p.z - s.z) * k, s.yaw);
+        // Down off the dais by its step: onto the step, then the floor before it.
+        const k = Math.min(1, this.lt / STEP_T);
+        this.stairs(k, k < 0.5 ? this.downYaw : s.yaw);
         if (this.lt >= STEP_T) {
+          const p = this.way[0];
           a.warp(p.x, p.y, p.z, s.yaw);
           this.leg = 1;
           this.go('walkOut');
@@ -303,11 +325,10 @@ export class BlessingMonk implements PeopleScene {
         break;
       }
       case 'stepUp': {
-        // Turned round to face the hall, up onto the dais, to his place.
-        const p = this.way[0];
-        const k = smooth(this.lt / STEP_T);
-        const yaw = s.yaw + wrap(Math.PI) * (1 - smooth(Math.min(1, this.lt / (STEP_T * 0.6))));
-        a.ride(p.x + (s.x - p.x) * k, p.y + (s.y - p.y) * k + Math.sin(Math.PI * k) * 0.08, p.z + (s.z - p.z) * k, yaw);
+        // Up onto the step and the dais, round to face the hall at his place.
+        const k = Math.min(1, this.lt / STEP_T);
+        const up = this.downYaw + Math.PI;
+        this.stairs(1 - k, k < 0.5 ? s.yaw + Math.PI : up + wrap(s.yaw - up) * smooth((k - 0.5) / 0.5));
         if (this.lt >= STEP_T) {
           a.ride(s.x, s.y, s.z, s.yaw);
           a.pose(POSE.sit, now);
@@ -325,6 +346,23 @@ export class BlessingMonk implements PeopleScene {
   private go(l: Life): void {
     this.life = l;
     this.lt = 0;
+  }
+
+  /** Facing from his place down to the step (radians). */
+  private get downYaw(): number {
+    const s = this.seat;
+    return Math.atan2(s.step.x - s.x, s.step.z - s.z);
+  }
+
+  /** On the way between his place and the floor before the step (`k` 0 his place ‥ ½ on the step ‥ 1 the floor), a little hop each. */
+  private stairs(k: number, yaw: number): void {
+    const s = this.seat;
+    const st = s.step;
+    const p = this.way[0];
+    const u = smooth(k < 0.5 ? k * 2 : k * 2 - 1);
+    const hop = Math.sin(Math.PI * u) * 0.07;
+    if (k < 0.5) this.monk.ride(s.x + (st.x - s.x) * u, s.y + (st.top - s.y) * u + hop, s.z + (st.z - s.z) * u, yaw);
+    else this.monk.ride(st.x + (p.x - st.x) * u, st.top + (p.y - st.top) * u + hop, st.z + (p.z - st.z) * u, yaw);
   }
 
   /** On his dais at once (out of sight, or a still). */
@@ -401,9 +439,10 @@ export class BlessingMonk implements PeopleScene {
       this.saying = null;
     }
     const t = ask.t;
-    // He looks at the one before him (kneeling: his face; tying, his lean and the pose's head bring his eyes to the wrist).
+    // He looks at the one before him (kneeling: his face; tying, a little higher, his head kept up and back from the face
+    // so close: the pose's head brings his eyes down to the wrist).
     this.look.x = ask.x;
-    this.look.y = ask.y + 1.7 + SEATED_EYE;
+    this.look.y = ask.y + (ask.state === 'tie' ? 2.0 : 1.7) + SEATED_EYE;
     this.look.z = ask.z;
     a.lookAt(this.look, now + 1);
     switch (ask.state) {
@@ -578,9 +617,9 @@ export class BlessingMonk implements PeopleScene {
   /** Where his hands meet at the tie and where the sprig's tip is at a flick (the people model's bones, as the shader poses them). */
   private workOutHands(): void {
     const k = this.env.crowd.scale(this.monk.i);
-    // (_personModel.ts `BLESS_ARM.tie`, `tieL`, the chest leaning 0.18)
-    const r = fist('R', [-1.329, 0.267, 0.534], -0.083, 0.18);
-    const l = fist('L', [-0.891, -0.209, -0.28], -1.059, 0.18);
+    // (_personModel.ts `BLESS_ARM.tie`, `tieL`, the chest leaning `BLESS_TIE_LEAN`)
+    const r = fist('R', [-1.083, 0.251, 0.453], 0, 0.06);
+    const l = fist('L', [-0.757, -0.257, -0.376], -0.69, 0.06);
     this.toWorld((r[0] + l[0]) / 2, (r[1] + l[1]) / 2 - 0.035, (r[2] + l[2]) / 2, k, this.hands);
     // The flick: the fist forward, the sprig's lotus 0.32 out along its grip, tipped 0.2 below level.
     const f = fist('R', [-1.56, 0.13, 0.12], -0.2, 0.1);
@@ -678,6 +717,14 @@ function daisDef(): RigDef {
   d.box([0, -h + 0.03, zc], [half * 2 + 0.04, 0.06, len + 0.04], C.woodDark);
   d.box([0, -0.025, ahead + 0.005], [half * 2 + 0.01, 0.03, 0.02], C.gold);
   for (const sx of [-1, 1]) d.box([sx * (half + 0.005), -0.025, zc], [0.02, 0.03, len], C.gold);
+  // Its wooden step before his left end (`BlessSeat.step`), its top half as high, a gold line along its front edge.
+  const st = s.step;
+  const sa = (st.x - s.x) * Math.sin(s.yaw) + (st.z - s.z) * Math.cos(s.yaw);
+  const sc = (st.x - s.x) * Math.cos(s.yaw) - (st.z - s.z) * Math.sin(s.yaw);
+  const sh = st.top - s.floor;
+  d.box([sc, -h + sh / 2, sa], [st.across * 2, sh - 0.02, st.along * 2], C.wood);
+  d.box([sc, -h + 0.03, sa], [st.across * 2 + 0.04, 0.06, st.along * 2 + 0.04], C.woodDark);
+  d.box([sc, -h + sh - 0.015, sa + st.along + 0.005], [st.across * 2 + 0.01, 0.03, 0.02], C.gold);
   // The mat (kantel): cream, a red border and a green line inside it.
   d.box([0, 0.006, zc], [half * 2 - 0.08, 0.012, len - 0.08], C.mat);
   d.box([0, 0.013, ahead - 0.1], [half * 2 - 0.12, 0.004, 0.05], C.matRed);

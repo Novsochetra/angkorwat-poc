@@ -9,7 +9,7 @@ import type { MapFrame, RoamMode } from '../types';
 import { num, onLang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { BASKET_ICON, fishIcon } from './_fishSellArt';
-import { basket, BASKET_MAX, fishName, fishPrice, type BasketFish } from './_fishSellBasket';
+import { basket, BASKET_MAX, fishName, fishPrice, parseBasket, type BasketFish } from './_fishSellBasket';
 import { createSaleCard, type SaleCard } from './_fishSellCard';
 import { catchChoice, sellUi } from './_fishSellChoice';
 import { basketBuilder, heldFishBuilder } from './_fishSellModel';
@@ -98,13 +98,28 @@ const FRAME = { side: -1.1, pitch: 0.24, distance: 8.2, rate: 2.2, back: 2.4, fo
 /** The views tried (pitch and distance times these), the camera's clear margins, the cone kept free of people. */
 const VIEW_TRIES: readonly (readonly [number, number])[] = [
   [1, 1],
-  [0.3, 1],
+  [1, 0.8],
+  [1.5, 0.8],
+  [0.6, 0.9],
+  [1.5, 0.62],
   [0.3, 0.7],
   [0, 0.55],
 ];
+/** The sides tried (radians from behind him, − round to his left). */
+const SIDES = [-1.1, 1.1, -0.8, 0.8, -1.4, 1.4, -0.5, 0.5, -0.25, 0.25];
 const OUT = 1.2;
 const SIDE = 0.6;
 const PEOPLE_CONE = 0.3;
+/**
+ * Nothing near the lens (a post, a roof's edge, leaves): rays this long (m) from the camera across what it sees
+ * (left, middle, right, and the bottom of the picture); nobody within `NEAR_PEOPLE` m of it; the seller looked for
+ * `HER_AHEAD` m in front of where he stands to sell, at `HER_UP` m over its floor (squatting or standing: her chest).
+ */
+const LENS_CLEAR = 3.5;
+const LENS_FAN = [-0.45, -0.22, 0, 0.22, 0.45];
+const NEAR_PEOPLE = 2.4;
+const HER_AHEAD = 2.0;
+const HER_UP = 1.2;
 /** The picture slides (a lens shift) so he stands in the middle of what the card leaves free: at most this share, at this rate (1/s). */
 const SHIFT_MAX = 0.3;
 const SHIFT_RATE = 4;
@@ -215,7 +230,7 @@ function open(ctx: RoamCtx, b: FishBuyer, turnNow: boolean): void {
   theCard(e).show(() => t(b.name), e.purse.riel);
   count = null;
   framed = 0;
-  view = clearView(ctx, b.facing);
+  view = clearView(ctx, b);
   ctx.hud.prompt(null);
 }
 
@@ -317,7 +332,7 @@ function step(ctx: RoamCtx, dt: number): void {
   if (!s.looked && s.t >= 0.15) {
     s.looked = true;
     const was = view;
-    view = clearView(ctx, s.buyer.facing);
+    view = clearView(ctx, s.buyer);
     if ((view.side !== was.side || view.pitch !== was.pitch) && !keepView) {
       if (env?.shot) frameNow(ctx);
       else framed = Math.min(framed, FRAME.for - 1);
@@ -366,41 +381,88 @@ function step(ctx: RoamCtx, dt: number): void {
 // ── The camera (the buy menu's ways: _shop.ts) ───────────────────────────────
 
 /**
- * The side the camera takes (behind his left shoulder, else the other side, else nearer, else lower): the first
- * from which nothing stands between it and him (the world's clearances) and, when it can be, nobody.
+ * The side the camera takes at a seller: a side, a height and a distance from which both he and she show — nothing
+ * solid between the camera and him, nor between it and her (the world's clearances, as far out and as wide as the
+ * follow camera looks; leaves too), nothing right in front of the lens (a post, a stall's tarp: rays across the
+ * picture), and, when it can be, nobody at the camera nor across the lines to them (greet.ts `nearby`). Behind his
+ * left shoulder first, then round both sides, nearer and higher (over heads); then without the people, then only
+ * the line to him (the buy menu's rule: _shop.ts `clearView`).
  */
-function clearView(ctx: RoamCtx, yaw: number): { side: number; pitch: number; distance: number } {
+function clearView(ctx: RoamCtx, b: FishBuyer): { side: number; pitch: number; distance: number } {
+  const t0 = env?.shot ? performance.now() : 0;
   const w: RoamWorld = ctx.world;
   const { body, cam } = ctx;
-  const c = { x: body.pos.x, y: body.pos.y + CHEST * (body.scale / 1.4), z: body.pos.z };
+  const yaw = b.facing;
+  const c = { x: body.pos.x, y: body.pos.y + CHEST * body.scale, z: body.pos.z };
+  const her = { x: b.x + Math.sin(b.facing) * HER_AHEAD, y: b.y + HER_UP, z: b.z + Math.cos(b.facing) * HER_AHEAD };
   const hard = w.hardClearance ?? w.clearance;
   const soft = w.softClearance;
-  const free = (a: number, pitch: number, dist: number) => {
+  const floor = body.pos.y;
+  const p = { x: 0, y: 0, z: 0 };
+  /** The camera's place for this side, tilt and distance (into `p`). */
+  const place = (a: number, pitch: number, dist: number) => {
     const d = dist + OUT;
     const cp = Math.cos(pitch);
-    const x = c.x - Math.sin(a) * cp * d;
-    const y = c.y + Math.sin(pitch) * d;
-    const z = c.z - Math.cos(a) * cp * d;
+    p.x = c.x - Math.sin(a) * cp * d;
+    p.y = c.y + Math.sin(pitch) * d;
+    p.z = c.z - Math.cos(a) * cp * d;
+  };
+  /** Clear from the camera (and a little to either side of it) to point q: nothing solid, no leaves. */
+  const sees = (a: number, q: { x: number; y: number; z: number }) => {
     for (const k of [0, 1, -1]) {
-      const px = x + Math.cos(a) * SIDE * k;
-      const pz = z - Math.sin(a) * SIDE * k;
-      if ((hard?.(c.x, c.y, c.z, px, y, pz) ?? 1) < 0.98) return false;
-      if (soft && (soft(c.x, c.y, c.z, px, y, pz, true) < 0.95 || soft(px, y, pz, c.x, c.y, c.z) < 0.95)) return false;
+      const px = p.x + Math.cos(a) * SIDE * k;
+      const pz = p.z - Math.sin(a) * SIDE * k;
+      if ((hard?.(q.x, q.y, q.z, px, p.y, pz) ?? 1) < 0.98) return false;
+      if (soft && (soft(q.x, q.y, q.z, px, p.y, pz, true) < 0.95 || soft(px, p.y, pz, q.x, q.y, q.z) < 0.95)) return false;
     }
     return true;
   };
-  const clearOfPeople = (a: number, dist: number) => !nearby(body.pos.x, body.pos.y, body.pos.z, a + Math.PI, dist + OUT, PEOPLE_CONE, seen);
-  const f = FRAME;
-  const sides = [f.side, -f.side, f.side * 0.75, -f.side * 0.75, f.side * 0.5, -f.side * 0.5, f.side * 0.25, -f.side * 0.25];
-  const far = cam.camera.aspect < 0.8 ? NARROW_FAR : 1;
-  for (const [pk, dk] of VIEW_TRIES)
-    for (const pass of [true, false])
-      for (const sd of sides) {
-        const pitch = f.pitch * pk;
-        const distance = Math.max(4, f.distance * dk * far);
-        if (free(yaw + sd, pitch, distance) && (!pass || clearOfPeople(yaw + sd, distance))) return { side: sd, pitch, distance };
+  /** Nothing right in front of the lens: rays across the picture, and one to its bottom. */
+  const lensClear = (a: number, pitch: number) => {
+    for (const da of LENS_FAN) {
+      for (const dp of da === 0 ? [0, 0.3] : [0]) {
+        const yy = a + da;
+        const pp = pitch + dp;
+        const cp = Math.cos(pp);
+        const qx = p.x + Math.sin(yy) * cp * LENS_CLEAR;
+        const qy = p.y - Math.sin(pp) * LENS_CLEAR;
+        const qz = p.z + Math.cos(yy) * cp * LENS_CLEAR;
+        if ((hard?.(p.x, p.y, p.z, qx, qy, qz) ?? 1) < 0.999) return false;
+        if (soft && soft(p.x, p.y, p.z, qx, qy, qz) < 0.97) return false;
       }
-  return { side: f.side * 0.25, pitch: f.pitch * 0.3, distance: Math.max(4, f.distance * 0.7 * far) };
+    }
+    return true;
+  };
+  /** Nobody between him and the camera, at the camera, or across the line from it to her. */
+  const clearOfPeople = (a: number, dist: number) => {
+    if (nearby(body.pos.x, floor, body.pos.z, a + Math.PI, dist + OUT, PEOPLE_CONE, seen)) return false;
+    if (nearby(p.x, floor, p.z, 0, NEAR_PEOPLE, Math.PI, seen)) return false;
+    const dh = Math.hypot(her.x - p.x, her.z - p.z);
+    return !nearby(p.x, floor, p.z, Math.atan2(her.x - p.x, her.z - p.z), Math.max(0, dh - 1.2), 0.22, seen);
+  };
+  const far = cam.camera.aspect < 0.8 ? NARROW_FAR : 1;
+  let out: { side: number; pitch: number; distance: number } | null = null;
+  let passUsed = -1;
+  // (strict first: both lines, the lens, the people; then without the people; then the line to him with them; then alone)
+  for (let pass = 0; pass < 4 && !out; pass++)
+    for (const [pk, dk] of VIEW_TRIES) {
+      if (out) break;
+      for (const sd of SIDES) {
+        const a = yaw + sd;
+        const pitch = FRAME.pitch * pk;
+        const distance = Math.max(4, FRAME.distance * dk * far);
+        place(a, pitch, distance);
+        if (!sees(a, c)) continue;
+        if (pass < 2 && (!sees(a, her) || !lensClear(a, pitch))) continue;
+        if ((pass === 0 || pass === 2) && !clearOfPeople(a, distance)) continue;
+        out = { side: sd, pitch, distance };
+        passUsed = pass;
+        break;
+      }
+    }
+  out ??= { side: FRAME.side * 0.25, pitch: FRAME.pitch * 0.3, distance: Math.max(4, FRAME.distance * 0.7 * far) };
+  if (env?.shot) console.info(`[map] sellfish: the camera's side ${out.side.toFixed(2)}, pitch ${out.pitch.toFixed(2)}, ${out.distance.toFixed(1)} m (pass ${passUsed}) in ${(performance.now() - t0).toFixed(1)} ms`);
+  return out;
 }
 
 /** While selling: the camera eases to its side, then it is the player's; after, back to the player's pitch and distance. */
@@ -431,7 +493,7 @@ function frameNow(ctx: RoamCtx): void {
   before ??= { pitch: cam.pitch, distance: cam.distance };
   framed = FRAME.for;
   cam.focus.set(body.pos.x, body.pos.y + CHEST * body.scale, body.pos.z);
-  cam.yaw = body.yaw + view.side;
+  cam.yaw = (sale ? sale.buyer.facing : body.yaw) + view.side;
   cam.behindYaw = cam.yaw;
   cam.pitch = view.pitch;
   cam.distance = view.distance;
@@ -589,6 +651,10 @@ registerAddon({
   fromUrl(q, ctx) {
     lastCtx = ctx;
     keepView = q.has('rcam');
+    // (the basket's fish: a shot's URL, or a saved view's — "Go there", a bug report's replay — through roam.ts placeFrom,
+    // which first went back through the overview, where the basket emptied; before `sellfish=`, which sells them)
+    const fb = q.get('fishbasket');
+    if (fb !== null) basket.set(parseBasket(fb));
     syncHip(curMode);
     const spec = q.get('sellfish');
     if (!spec || !env) return;
@@ -608,9 +674,9 @@ registerAddon({
       }
     }
     if (!b) return;
-    // (the time of day: the frame's; before the first, the URL's own `clock=`, else the map's time, src/map/time.ts)
+    // (the time of day: the view's own `clock=` when it has one — Go there puts its moment back — else the frame's, else the map's)
     const qc = Number(q.get('clock'));
-    const clock = lastFrame?.clock ?? (q.has('clock') && Number.isFinite(qc) ? ((qc % 1) + 1) % 1 : TIME.moment(TIME.days()).clock);
+    const clock = q.has('clock') && Number.isFinite(qc) ? ((qc % 1) + 1) % 1 : (lastFrame?.clock ?? TIME.moment(TIME.days()).clock);
     if (!basket.n) {
       console.warn('[map] sellfish: the basket is empty (fishbasket=<kind>:<cm>,…)');
       return;
@@ -622,8 +688,11 @@ registerAddon({
       console.info(`[map] sellfish: ${b.id} is away at clock ${clock.toFixed(2)}`);
       return;
     }
+    // (the sale frames itself, whatever camera the URL had: a report's `rcam=` is where the camera stood then — with
+    // other people round her now, the side is looked for again)
+    keepView = false;
     open(ctx, b, false);
-    if (!keepView) frameNow(ctx);
+    frameNow(ctx);
     const buy = q.get('sellbuy');
     if (buy && sale) sale.auto = buy === 'all' ? 'all' : Math.max(0, Math.round(Number(buy)) - 1);
     const fo = Number(q.get('sellfocus'));

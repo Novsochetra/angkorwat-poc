@@ -22,9 +22,15 @@ import type { RoamCtx } from './types';
  */
 
 /** The timeline (s from E): she talks, holds out the key, he takes it, it is his, he thanks her, she sends him in. */
-export const TALK = { give: 2.7, take: 3.7, taken: 4.4, thank: 5.0, leave: 7.4 } as const;
-/** How far in front of her he stands (m, at his roaming size), how fast he steps there (m/s), how fast he turns (1/s). */
+export const TALK = { give: 2.7, take: 3.7, taken: 4.4, back: 4.7, thank: 5.3, leave: 7.7 } as const;
+/**
+ * How far in front of her he stands (m, at his roaming size), how fast he steps there (m/s), how fast he turns (1/s);
+ * and the half step back he takes before he bows to thank her (his hat's brim is wide: bowing from where he took
+ * the key it would go through her head).
+ */
 const GAP = 1.45;
+const STEP_BACK = 0.62;
+const BACK_SPEED = 0.9;
 const STEP = 1.3;
 const TURN = 7;
 /** The camera on their side: how far, how high (radians), and how fast it comes round (1/s). */
@@ -91,6 +97,8 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, owned: () => void, at = 0
   const before = { pitch: ctx.cam.pitch, distance: ctx.cam.distance };
   let time = at;
   let done = false;
+  /** He has taken his half step back (he keeps facing her as he steps). */
+  let stepped = false;
   let fired = at > 0 ? (Object.keys(TALK) as (keyof typeof TALK)[]).filter((k) => TALK[k] <= at) : [];
   const fire = (k: keyof typeof TALK) => {
     if (fired.includes(k) || time < TALK[k]) return false;
@@ -122,17 +130,17 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, owned: () => void, at = 0
       cam.turn(c.input.lookYaw, c.input.lookPitch, c.input.zoom);
       body.vel.set(0, 0, 0);
       body.grounded = true;
-      // He steps up to her and turns to face her.
+      // He steps up to her and turns to face her (and, before he bows, half a step back, still facing her).
       const ddx = sx - body.pos.x;
       const ddz = sz - body.pos.z;
       const dist = Math.hypot(ddx, ddz);
       if (dist > 0.03) {
-        const v = STEP * (body.scale / 1.4);
+        const v = (stepped ? BACK_SPEED : STEP) * (body.scale / 1.4);
         const step = Math.min(dist, v * dt);
         body.pos.x += (ddx / dist) * step;
         body.pos.z += (ddz / dist) * step;
         body.pos.y += (sy - body.pos.y) * Math.min(1, dt * 10);
-        const want = dist > 0.3 ? Math.atan2(ddx, ddz) : face;
+        const want = dist > 0.3 && !stepped ? Math.atan2(ddx, ddz) : face;
         body.yaw += angleDiff(want, body.yaw) * Math.min(1, dt * TURN);
         ex.setMotion(step / Math.max(1e-3, dt) / body.scale, true, 0);
       } else {
@@ -150,6 +158,19 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, owned: () => void, at = 0
         SFX.play('homeKey', 0.9);
         owned();
         c.hud.toast(t('homeGot'));
+      }
+      if (fire('back')) {
+        // (half a step back from her, where the ground is free: then the bow has room)
+        const k = STEP_BACK * (body.scale / 1.4);
+        const bx = sx + dx * k;
+        const bz = sz + dz * k;
+        const by = w.standAt ? w.standAt(bx, bz, sy + 0.4, 0.5, h) : w.groundAt(bx, bz);
+        if (Number.isFinite(by) && Math.abs(by - sy) < 0.5) {
+          sx = bx;
+          sz = bz;
+          sy = by;
+          stepped = true;
+        }
       }
       if (fire('thank')) ex.play('greetHigh');
       if (fire('leave')) {

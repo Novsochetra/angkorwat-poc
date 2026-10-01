@@ -52,6 +52,10 @@ export function findDogName(s: string | null | undefined): DogName | null {
 
 /** The name as shown in the language in use (Khmer letters in Khmer, the Latin spelling in English). */
 export const dogNameIn = (n: DogName): string => (lang() === 'km' ? n.km : n.latin);
+/** The name in a sentence: in Khmer after ឆ្កែ, "ឆ្កែស" (a one-letter name, ស, reads as a name, not a word). */
+export const dogCalled = (n: DogName): string => (lang() === 'km' ? `ឆ្កែ${n.km}` : n.latin);
+/** The name on its own in a sentence: in Khmer in quotes, «ស». */
+export const dogQuoted = (n: DogName): string => (lang() === 'km' ? `«${n.km}»` : n.latin);
 
 export interface DogCardDeps {
   /** The name now (the chip lit when it opens). */
@@ -155,7 +159,7 @@ function makeCard(): Card {
       b.classList.toggle('is-on', i === chosen);
       b.setAttribute('aria-checked', String(i === chosen));
     });
-    if (fresh) later.querySelector('.mu-ask-t')!.textContent = t('dogNameKeep', { name: dogNameIn(deps!.current()) });
+    if (fresh) later.querySelector('.mu-ask-t')!.textContent = t('dogNameKeep', { name: dogQuoted(deps!.current()) });
   }
 
   function pick(i: number): void {

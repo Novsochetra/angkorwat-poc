@@ -751,6 +751,10 @@ export class AlmsRound implements PeopleScene {
     // (a check's pin holds the stop where it is)
     if (!this.pins) h.t += dt;
     const ms = this.monks;
+    // The explorer kneeling meanwhile: answered now (a monk will come), served once the family's blessing is over.
+    const ask = DAK.ask;
+    if (ask.line === ALMS_LINE && ask.state === 'ask' && ask.n !== this.taken) this.take(true);
+    if (this.claim && (ask.n !== this.claim.n || ask.state === 'none')) this.claim = null;
     if (h.step === 'settle') {
       let there = true;
       for (const m of ms) if (m.aside && m.a.shown && (m.a.dist(m.gx, m.gz) >= 0.15 || Math.abs(wrap((m.face ?? m.a.yaw) - m.a.yaw)) >= 0.08 || m.a.speed >= 0.02)) there = false;
@@ -780,10 +784,10 @@ export class AlmsRound implements PeopleScene {
         this.chant(f, st.goals[1] ?? st.goals[0], now);
       }
     } else if (h.t > HALT) {
-      // The blessing over: on along the way.
+      // The blessing over: on along the way (or, the explorer waiting, a monk to him).
       st.done = true;
       this.halt = null;
-      this.phase = 'walk';
+      this.phase = this.claim ? 'claim' : 'walk';
       for (const m of ms) m.aside = false;
     }
     for (const m of ms) {
@@ -805,8 +809,11 @@ export class AlmsRound implements PeopleScene {
 
   // ── The explorer's offering (DAK.ask) ────────────────────────────────────────
 
-  /** His ask: the first monk not past him yet goes to him; the others wait. None (all past): refused. */
-  private take(): void {
+  /**
+   * His ask: the first monk not past him yet goes to him; the others wait. None (all past): refused. `queued`: the
+   * line is halted at a family's stop: answered now, it goes to him once the stop is over.
+   */
+  private take(queued = false): void {
     const ask = DAK.ask;
     this.taken = ask.n;
     let pick = -1;
@@ -826,7 +833,7 @@ export class AlmsRound implements PeopleScene {
     }
     ask.k = pick;
     ask.state = 'coming';
-    this.phase = 'claim';
+    if (!queued) this.phase = 'claim';
     // (the line walks on until he is near: then he steps over to stand before him, the others halt)
     this.claim = { k: pick, t: 0, step: 'go', n: ask.n, fill0: this.monks[pick].b.fill, sSpot: this.route.nearest(ask.mx, ask.mz) };
   }

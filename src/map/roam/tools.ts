@@ -870,7 +870,7 @@ const keysList = () => `
     ${row(k('F'), 'grGreet')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(k('J'), 'rSit')}${row(k('L'), 'rLieDown')}
     ${row(k('H'), 'rHat')}${row(k('G'), 'rOutfit')}${row(k('X'), 'rFace')}
     <b class="rtb-sub">${t('rView')}</b>${row(mouse('rDrag') + k('Q') + k('R'), 'rLookRound')}${row(mouse('rWheel'), 'rZoom')}
-    <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}</div>
+    <b class="rtb-sub">${t('map')}</b>${row(k('M'), 'rBigMap')}${row(k('N'), 'mmNearest')}${row(k('9'), 'whenTitle')}</div>
   <div class="rtb-col"><b>${t('rCamera')}</b>
     ${row(mouse('rClick') + k('Space'), 'rTakePhoto')}${row(mouse('rDrag') + k('Q') + k('R'), 'rLook')}${row(mouse('rWheel'), 'rZoom')}${row(k('Esc'), 'rStow')}
     <b class="rtb-sub">${t('rSelfieHead')}</b>${row(mouse('rDrag'), 'rMovePhone')}${row(mouse('rWheel'), 'rReach')}${row(k('T'), 'rStick')}${row(k('G'), 'rGesture')}</div>`;

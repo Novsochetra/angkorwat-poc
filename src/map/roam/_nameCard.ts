@@ -57,15 +57,57 @@ interface Card {
 
 let card: Card | null = null;
 
-/** Open the name card (`text`: typed in already; `from`: the passport says what it is for). */
+/**
+ * The map is shown to the player: not under the loading screen (its Start
+ * button waiting, or still fading: main.ts `map-waiting`, `#loading`) nor the
+ * story. The card never comes in over those (a check's `namecard=` or
+ * `album=passport` on a live page would hide the Start button).
+ */
+export function mapShown(): boolean {
+  if (document.body.classList.contains('map-waiting')) return false;
+  const ld = document.getElementById('loading');
+  if (ld && !ld.classList.contains('done')) return false;
+  return !document.querySelector('.st');
+}
+
+/** Call `fn` once the map is shown (at once if it is; a shot at once: no Start button there). */
+export function whenMapShown(fn: () => void): void {
+  if (SHOT || mapShown()) fn();
+  else window.setTimeout(() => whenMapShown(fn), 400);
+}
+
+/** An open asked for while the map is not shown yet (done once it is), and the spelling a check picks then. */
+let pending: { text?: string; from: 'menu' | 'passport' | 'url'; alt: number } | null = null;
+let pendingTimer = 0;
+function openPending(): void {
+  pendingTimer = 0;
+  if (!pending) return;
+  if (!mapShown()) {
+    pendingTimer = window.setTimeout(openPending, 400);
+    return;
+  }
+  const p = pending;
+  pending = null;
+  (card ??= makeCard()).open(p.text, p.from);
+  if (p.alt > 0) card.pickAlt(p.alt);
+}
+
+/** Open the name card (`text`: typed in already; `from`: the passport says what it is for). Under the loading screen or the story: once they have gone. */
 export function openNameCard(text?: string, from: 'menu' | 'passport' | 'url' = 'menu'): void {
+  // (shots have no Start button: at once)
+  if (!SHOT && !mapShown()) {
+    pending = { text, from, alt: 0 };
+    if (!pendingTimer) pendingTimer = window.setTimeout(openPending, 400);
+    return;
+  }
   (card ??= makeCard()).open(text, from);
 }
 // (the explorer menu's "My name" opens it without loading this module: _addons.ts MENU_HOOKS)
 MENU_HOOKS.openNameCard = () => openNameCard();
 
-/** Shut it (nothing saved). */
+/** Shut it (nothing saved; one waiting to open does not). */
 export function closeNameCard(): void {
+  pending = null;
   card?.close();
 }
 
@@ -74,7 +116,8 @@ export const nameCardOpen = (): boolean => !!card?.isOpen;
 
 /** Checks: pick spelling `i` of the ones shown. */
 export function pickNameAlt(i: number): void {
-  card?.pickAlt(i);
+  if (pending) pending.alt = i;
+  else card?.pickAlt(i);
 }
 
 const SHOT = typeof location !== 'undefined' && new URLSearchParams(location.search).get('shot') === '1';

@@ -3,13 +3,13 @@ import { SFX } from '../audio/addonSfx';
 import { CALENDAR, eventById, NEAR, nextOf, ON_NOW, type CalendarEvent, type EventTime } from '../calendar';
 import { TIME, type MapMoment } from '../time';
 import type { MapFrame, MapPart, RoamMode } from '../types';
-import { num, onLang, t } from '../ui/lang';
+import { onLang, t } from '../ui/lang';
 import type { Minimap } from '../ui/minimap';
 import { registerAddon, type AddonEnv } from './_addons';
 import { createCalendarCard, createCalendarToast, type CalendarCard, type CalendarToast, type CardModel, type CardRow, type CardSection } from './_calendarCard';
 import './_calendarEvents';
 import { calendarSvg } from './_calendarIcons';
-import { atWords, daysWords, inWords, leftWords, momentWords, realWords, untilWords } from './_calendarText';
+import { atWords, daysWords, inWords, leftDaysWords, leftWords, momentWords, realWords, untilWords } from './_calendarText';
 
 /**
  * The calendar of events while roaming ("right now we don't know when each
@@ -51,8 +51,9 @@ import { atWords, daysWords, inWords, leftWords, momentWords, realWords, untilWo
 /** Seconds of play to land before an event when waiting for it; a far one first lands this many days before it (the festival is built meanwhile). */
 const LEAD = 6;
 const PREP = 0.5;
-/** Longest wait for what is built late after a jump (ms). */
+/** Longest wait for what is built late after a jump (ms), and for the parts to see the last jump (ms). */
 const BUILD_WAIT = 12_000;
+const SEE = 1_200;
 /** The detection's pace (s), and the button's line (s). */
 const CHECK = 0.5;
 const LABEL = 1;
@@ -139,6 +140,11 @@ function model(): CardModel {
   const held = !TIME.cycling();
   const now = nowDays();
   const len = TIME.dayLength;
+  // (the year stands still — the clock held by the URL, a still: its days and season do not move — so what comes by
+  // the season or the moon is not found ahead: it comes once time runs)
+  const year = TIME.moment(now);
+  const later = TIME.moment(now + 12);
+  const still = held || (year.season === later.season && year.day === later.day);
   const mm = minimap();
   const target = mm?.target;
   const nowRows: CardRow[] = [];
@@ -156,7 +162,7 @@ function model(): CardModel {
       let when = '';
       if (tt?.now && Number.isFinite(tt.end)) {
         const left = tt.end - now;
-        when = left > 1 ? t('whenLeftDays', { n: num(Math.round(left)) }) : held ? untilWords(tt.end) : `${untilWords(tt.end)} · ${leftWords(left * len)}`;
+        when = left > 1 ? leftDaysWords(left) : held ? untilWords(tt.end) : `${untilWords(tt.end)} · ${leftWords(left * len)}`;
       }
       nowRows.push({ e, when, real: real(e), muted: false, show, wait: false });
       continue;
@@ -169,7 +175,8 @@ function model(): CardModel {
     const tt = timeOf(e, now);
     const fest = e.kind === 'festival' || e.kind === 'rare';
     if (!Number.isFinite(tt.start)) {
-      if (fest) ahead.push({ e, when: t('whenNoneAhead'), real: real(e), muted: true, show, wait: false, at: Infinity });
+      if (fest) ahead.push({ e, when: t(still ? 'whenRuns' : 'whenNoneAhead'), real: real(e), muted: true, show, wait: false, at: Infinity });
+      else if (e.kind === 'season' && still) seasons.push({ e, when: t('whenRuns'), real: '', muted: true, show, wait: false, at: Infinity });
       continue;
     }
     const dd = tt.start - now;
@@ -246,27 +253,40 @@ async function waitFor(id: string): Promise<void> {
   try {
     await env.hud.fade(1, 0.6);
     if (w.cancel) return;
-    if (tt.start - now > PREP + lead) {
+    // A far one: first to half a day before it, so what is built late for it (the festival) builds there.
+    if (tt.start - nowDays() > PREP + lead) {
       TIME.skipTo(tt.start - PREP);
       era++;
-      await settle(BUILD_WAIT);
-      if (w.cancel) return;
     }
-    if (!TIME.skipTo(Math.max(nowDays(), tt.start - lead))) {
+    // (what is built late: before the last jump, so the landing is never late)
+    await settle(BUILD_WAIT);
+    if (w.cancel) return;
+    // Then to a few seconds before it (from where it is, if the build took that long).
+    const to = tt.start - lead;
+    if (nowDays() < to && !TIME.skipTo(to)) {
       env.hud.toast(t('whenCantWait'));
       return;
     }
     era++;
-    await settle(BUILD_WAIT / 2);
+    // (the parts see the new time; nothing is built again)
+    await settle(SEE);
     if (w.cancel) return;
+    // (what began in the jumps' frames, or was waiting to be said, is old news)
+    toast?.clear();
     // (heading there, when it is not here: the mini-map's arrow)
     const mm = minimap();
     const at = whereOf(e);
     if (mm && at && Math.hypot(at.x - env.body.pos.x, at.z - env.body.pos.z) > HERE) mm.setTarget({ kind: 'event', id });
-    awaited = id;
-    say(e, true);
+    // About to begin; or, the build having taken that long, begun (its own banner, as `check` would have said it)
+    if (onNow(e, false)) say(e);
+    else {
+      awaited = id;
+      say(e, true);
+    }
   } finally {
     if (waiting === w) waiting = null;
+    // (a far day's moment right after the jump is noise: none for a while)
+    farSaid = performance.now();
     // (back to the map meanwhile: roam.ts fades in by itself)
     if (!w.cancel) void env.hud.fade(0, 0.8);
     toast?.hold(false);
@@ -279,7 +299,9 @@ function say(e: CalendarEvent, soon = false): void {
   said.add(e.id);
   const line = soon ? t('whenKickSoon') : t('whenKickNow');
   // (about to begin: gone again by the time it begins, `LEAD` s later)
-  toast.show(e, line, t(soon ? e.name : (e.begins ?? e.name)), e.place ? t(e.place) : '', soon ? LEAD - 1.5 : 5);
+  // (the one waited for, and a festival, before the rest)
+  const first = e.id === awaited || e.kind === 'festival' || e.kind === 'rare';
+  toast.show(e, line, t(soon ? e.name : (e.begins ?? e.name)), e.place ? t(e.place) : '', soon ? LEAD - 1.5 : 5, first);
   SFX.play('whenChime', soon ? 0.7 : 1);
 }
 
@@ -299,7 +321,8 @@ function check(mode: RoamMode): void {
     const on = onNow(e, held);
     const before = was.get(e.id);
     was.set(e.id, on);
-    if (on && before === false && !jumped && roaming(mode) && (!held || e.heldDay)) {
+    // (not while waiting: the view is faded out, the time jumping; `waitFor` says what it waited for)
+    if (on && before === false && !jumped && !waiting && roaming(mode) && (!held || e.heldDay)) {
       // (the festivals and rare moments always, and a season's first day; a day's moment, or a season's other days,
       // near him, or the first time in a visit)
       const where = whereOf(e);
@@ -500,7 +523,7 @@ registerAddon({
 });
 
 // (checks: the state, and the same steps as the buttons, for a live page's script)
-if (typeof window !== 'undefined')
+if (import.meta.env.DEV && typeof window !== 'undefined')
   Object.assign(window, {
     __calendar: {
       get open() {

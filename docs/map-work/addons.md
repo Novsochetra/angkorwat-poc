@@ -13,12 +13,13 @@ per add-on at the end: what it does, its keys, its URL values for shots).
 
 An add-on module calls `registerAddon({ id, … })` when it is loaded. Its
 loader line (`() => import('./_yours')`) goes in `src/map/roam/_addonList.ts`,
-under its group's comment. The add-ons are not in the map's first download:
-`loadAddons()` brings them in after Start (in idle time, at once when the
-"Jump in" card opens or roaming starts) and before the first frame of a shot or
-a page that starts roaming (`roam=`); one that arrives once roaming is built is
-started there and then (`init`, then `setMode` with the mode he is in). So no
-other module may import an add-on's module: what the shared interface needs from
+under its group's comment. The add-ons are chunks of their own, not in the code
+the map needs first: `loadAddons()` starts their download as the map's build
+begins (main.ts) and roaming waits for them (roam.ts `buildRoam`), so their
+meshes are in the scene when the map compiles its shaders before Start (none is
+compiled in the middle of play; one that arrives late anyway is started there
+and then: `init`, then `setMode` with the mode he is in). So no other module may
+import an add-on's module: what the shared interface needs from
 one goes through a small hook object (`MENU_HOOKS` in `_addons.ts`, the add-ons'
 own `_…Hook.ts` files).
 
@@ -33,6 +34,7 @@ What roaming does with a `RoamAddon` (all members optional but `id`):
 | `order` | the E row | ≤ 15 (`BEFORE_SHRINE`): right after a golden figure, before a shrine; else after a stall, before a moored boat, a ramp, the balloon, the swing and a place's beacon (default 50) |
 | `holding` + `hold(ctx, dt)` | while `holding` is true, instead of the walker's step (`holdIn: 'boat'`: the boat's) | you move the body (`ctx.body.pos/vel/yaw`), set the pose (`explorer.animator.posture`, `explorer.setMotion`), the camera (`ctx.cam.focus`, `behindYaw`, `distance`, `fov`), turn the camera with `ctx.cam.turn(input.lookYaw, input.lookPitch, input.zoom)`; return `{ prompt, mode }` |
 | `handsBusy` | read each step | true: the lantern, torch or flashlight is put away |
+| `keys()` | read each frame while it holds him | the key help's lines (bottom left) instead of the mode's: `[['W S', 'bikePedal', 'lstick'], ['Space', 'bikeBell', 'south']]` (keys, words, pad glyphs); return the same array while nothing changes |
 | `after(ctx, mode, dt)` | each roaming step after the mode's (every mode) | follow-ups (the dog follows, the umbrella's pose) |
 | `frame(f, mode)` | every frame, every mode (the overview too) | visuals that move on their own |
 | `setMode(next, prev, ctx)` | the mode changed | stop what cannot go on (`next === 'overview'`: back to the map: stop at once, put things back) |
@@ -44,6 +46,9 @@ Rules:
 - **No new roaming modes.** A ride (the bicycle, the cart, the buffalo, the zip
   line, the ladder, the race boat) is a walk-mode add-on that holds him
   (`holding`), as the rope swing does (`_swingRide.ts`: read it first).
+- **Touch**: while a ride holds him, say what the touch Jump button does
+  (`touchJump('bikeBell')`), or hide it while it does nothing (`touchJump('hide')`);
+  `touchJump(null)` as he gets off (roam/_addons.ts).
 - **Prompts** are `` `E  ${t('yourKey')}` `` (the key, two spaces, the words). The
   hud draws E as the pad's □ / X while a pad is in use. Hide your prompt while
   `env.busy()` (praying, resting, at a stall, the camera up, the album).
@@ -131,7 +136,9 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
   New Year (`festival/_schedule.ts festivalAt`; `fest=` holds one: `shown`),
   the monks' dawn chant and the pagoda's dusk drum (`events.ts SLOTS`,
   `slotOpensAt`), the alms rounds (`people/_sceneVillage.ts ALMS_ROUND`, the
-  forest monk's `_sceneBackFolk.ts MONK_AT`), the three morning markets
+  forest monk's `_sceneBackFolk.ts MONK_AT`, Angkor Wat's procession walking
+  up the valley road with its bowls `people/_monks.ts almsWalkAt`, where it
+  takes dak bat; the sugar-palm village's is `_dakBat.ts`'s), the three morning markets
   (`hamlet/_mkPlan.ts BUSY`, `_bhMarketPlan.ts BUSY`, the floating village's
   boats `village/_fvPlan.ts FV_BOATS`), the apsara dance (`_sceneApsara.ts
   SHOW`‥`END`), the elephants' bath and the macaques' crossing (`events.ts`'s
@@ -148,7 +155,8 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
   follow. `real(from)` gives its next days in real life (`_calendarKhmer.ts
   nextLunarSpan(from, LUNAR.<month>, <day 0‥29>, before, after)`).
 - **The card**: **9**, the button under the mini-map (its line: what is on
-  now, a gold dot, or what comes next, "Morning market · in 3 min"), or the
+  now, a gold dot, or what comes next, "Morning market · in 3 min"; on touch,
+  upright, left of the mini-map, clear of the tool bar), or the
   explorer menu's Calendar (I; the pad: △ → Calendar). Its title, the map's
   moment (the part of the day, the season by its rains, the moon's Khmer day:
   "ព្រលឹម · រដូវវស្សា · ថ្ងៃ៥កើត"); **Now** (where, "until midnight · 2 min
@@ -215,7 +223,8 @@ each other).
   the front with a dynamo lamp under it, a rack with a red reflector, mudguards,
   a chain case, a side stand; each carries something: a krama on the rack, morning
   glory or a coconut in the basket, a sack of rice) stand on their stands: on the
-  grass by the head of Angkor Wat's road (bicycles are hired out by the real
+  forecourt's grass east of the head of Angkor Wat's road, by the pad's edge, clear
+  of the apsara stage and the equinox crowd (bicycles are hired out by the real
   temple's west entrance), at the end of the morning market's row of parked motos
   and bicycles, at the sugar-palm village's west end in front of its first house
   (which keeps its own bicycles under it), and with the bicycles at the foot of the
@@ -238,8 +247,15 @@ each other).
   and he leans into the turn with it; stopped, A / D shuffle it round with his foot
   down (out of a corner). Space rings the bell, "kring-kring". The camera or the
   phone up, the album open: he brakes to a stop (no hands on the bars) and the
-  camera works as in the boat. The keys show over him ("E  Get off · Space  Ring
-  the bell") for 5 s after getting on and whenever he is slow.
+  camera works as in the boat. A card or a menu that pauses roaming ("Back to the
+  map?", the calendar, the explorer menu, the name, clothes or dog cards, the big
+  map, the settings: whatever takes the game pad, `pad.inMenu`, or asks,
+  `body.mu-asking`) stops it firmly where it is: nobody steers meanwhile. The keys
+  show over him ("E  Get off · Space  Ring the bell") for 5 s after getting on and
+  whenever he is slow; on a touch screen the jump button says "កណ្ដឹង / Bell" while
+  he rides (`touchJump`), "Jump" again once he is off. The key help (bottom left)
+  shows his keys while he rides (`keys()`: W S pedal · brake, A D steer, Shift pedal
+  hard, Space the bell, E get off, Q R look; the pad's buttons with a pad).
 - **The ground** (the walk map, `world.standAt`, probed along the bicycle and his
   shoulders): roads, paths, fields, courtyards; steps up to 0.42 m it bumps over
   (a thud, the basket rattling, he sinks a little), the bicycle pitching between its
@@ -252,6 +268,18 @@ each other).
   speed that went into it); head on it stops. The roaming area's edge slows it as on
   foot (`rMist`). The people step aside for him as for him on foot (he is in walk
   mode: people/_routes.ts `Traffic`).
+- **What hangs at his head's height** (his hat's brim 2.1 m, its crown 2.45 m, and
+  its sides: his head is wide) he slows for and stops short of, his foot down,
+  "ទាបពេក ជិះកាត់មិនបានទេ / Too low to ride under": a stall's umbrella, an awning,
+  cloth on a line, vines hanging from a wall (`roam/_bikeCanopy.ts`: the soft boxes of
+  the built parts that hang 1‥2.6 m over the land, indexed when roaming is built,
+  before any part's first update; each read as it is now, so a market's umbrellas
+  folded away at closing are not there and stop nothing), or a lintel or a beam lower
+  than his hat (`world.ceilingAt`). A tarp up over his hat he rides under; the trees'
+  low leaves he rides through, as he walks through them. While the children kick the
+  sey in the sugar-palm village (`SEY.out`, sey.ts) he stops 4.4 m from the circle's
+  middle (its children stand at 2.9 m), "ក្មេងៗកំពុងលេងទាត់សី / The children are
+  playing sey"; riding away from it is free.
 - **His posture** (`character/bike.ts`, `postureFeet = false`): the sit bones on
   the saddle, the fists on the grips (arm IK, the bars turning with the steering),
   the balls of his boots on the pedals (leg IK in the leg's own plane, the ankles
@@ -278,10 +306,11 @@ each other).
   a bicycle left away from its place (`wat`, `market`, `village`, `hamlet`). The
   bug report gives both. E.g. `roam=walk&at=325,-84&yaw=270&bike=ride&sim=w:2,wa:1`
   (the market's lowland, riding west then turning left), `…&sim=_:1` (stopped,
-  his foot down), `…&night=1&sim=w:2` (the lamp), `roam=walk&at=-7.6,-158.3&yaw=300`
+  his foot down), `…&night=1&sim=w:2` (the lamp), `roam=walk&at=10,-151.3&yaw=180`
   (on foot by the Angkor Wat bicycle: its prompt).
 - **Checks**: `(await import('/src/map/roam/_bike.ts')).bikeDebug()` in the
-  console (the phase, the speed, the steering, the lean, the lamp, each bicycle).
+  console (the phase, the speed, the steering, the lean, the lamp, each bicycle); the
+  console line `[map] bicycles: 4 · N things hanging at head height … indexed in N ms`.
 
 ### Ox cart ride
 
@@ -314,7 +343,16 @@ map, who rides, the farmer's cues).
   over the cart at him).
 - **On foot**: he cannot walk into the cart or the oxen (they are not on the walk
   map): eased out to the nearest side, as the cart also eases him aside when it
-  swings round at a turn; it still stops for him in its way.
+  swings round at a turn. It stops for him only when he is really in its way (on
+  its loop just ahead, within the width of the cart and the oxen: `LANE_HALF`);
+  beside the trail (the jungle spirit house's prayer spot, 2.7 m off) it goes by.
+  Near its lane it eases aside where the ground is open and dry (≤ 1.5 m, steering
+  out and back along the loop, slower meanwhile); in the middle of its way it
+  stops, after 4 s the farmer asks "សុំផ្លូវបន្តិចណា ក្មួយ! / Excuse us, may we
+  pass?" (again every 15 s), and after 8 s it goes round him if there is room
+  (≤ 2.3 m).
+- **Key help** while riding: E / Space hop off, Q R look, 4 5 photo (`keys()`); on
+  a touch screen the Jump button hides (the E button, with the prompt, hops off).
 - **At night** a kerosene lantern hangs from a bamboo pole at the cart's front
   corner (from dusk, `night` > 0.32), swinging on its cord, the flame flickering.
 - **Sounds**: the cart's creak (a little softer with him on it) and the oxen's
@@ -376,6 +414,12 @@ land.ts's clock, whether he comes up calmly).
   It grazes where he left it; back to the map (Esc) he is off at once and every
   buffalo he rode goes home. His lights go away while he rides (his hands are on
   the rope); the camera and the phone work from its back.
+- **Keys shown**: while he rides the key help (bottom left) is the ride's (`keys()`:
+  W S walk on · back up, A D turn, Shift a little faster, E get off, Q R look;
+  with a pad the left stick, R2, □, the right stick). On a touch screen the Jump
+  button is hidden while he rides (`touchJump('hide')`: it would do nothing; the
+  stick past its ring urges it on, as the first ride's toast says) and back as he
+  gets off or leaves (`touchJump(null)`).
 - **Camera**: behind it and above (eased back to 9 m and up to 18° if closer or
   lower as he gets on; a zoom stops that), following its heading; its rocking
   eased out of the view.
@@ -432,10 +476,13 @@ walk map's part `roam/_zipWalk.ts`, the ride `roam/_zipRide.ts`, the meshes
   in the harness and rolls off. His speed comes from the cable's slope (steep at
   first, then the sag flattens it, a little uphill at the end), less the air and
   the pulleys (`GAIN`, `AIR`, `ROLL`; never under 6 m/s before the brake), about
-  13 m/s at most: 21, 14 and 11 s a line. Shift (pad R2) tucks his knees up: less
-  air, faster ("Shift  បង្កើនល្បឿន"). He swings on the lanyard as it speeds up and
-  slows (a pendulum, 2.4 m), sways softly (more in the wind), his legs swing. No
-  letting go: E and Space do nothing on the line. In the last 7 m the brake slows
+  13 m/s at most: 21, 14 and 11 s a line. Shift or Space held (pad R2 or ✕; on touch
+  the jump button, which says "លឿន / Faster" while he is clipped in: `touchJump`)
+  tucks his knees up: less air, faster ("Shift  បង្កើនល្បឿន", not shown on touch).
+  The key help (bottom left) gives the line's keys meanwhile (`keys()`: faster, look,
+  photo). He swings on the lanyard as it speeds up and slows (a pendulum, 2.4 m),
+  sways softly (more in the wind), his legs swing. No letting go: E does nothing on
+  the line. In the last 7 m the brake slows
   him; 2.4 m from the end the trolley hits the brake block (a thud, the spring, the
   cable's twang; the pad shakes), the block and its spring are pushed home, he
   swings forward and comes to rest over the next deck: feet down, stands, unclips
@@ -501,7 +548,11 @@ is the tapper's).
   foot under it, by IK, as fast as he climbs; his hips in to the pole, his body
   leaning back from it (his big head clear of the pole), his head up the ladder
   going up, at his feet coming down. The first climb of a visit says the keys
-  (a toast: W / S, or "push forward, back" with a pad or on touch).
+  (a toast: W / S, or "push forward, back" with a pad or on touch). The key help
+  (bottom left, `keys()`) shows the ladder's own: W S climb · Shift quicker ·
+  Space jump off (the lowest rungs) · E S step off (the bottom) · E swap the tube,
+  4 5 photo (the top) · Q R look; with a pad, its buttons. On touch the Jump
+  button says "លោតចុះ" on the lowest rungs and is hidden higher up.
 - **The top**: his feet on the crossbar under the crown; once he stops, the camera
   pulls back and up (15 m) over the yard — the shed's steam, the house, the other
   palms, the fields — and he looks out where the camera looks (drag to look round);
@@ -613,6 +664,8 @@ sounds `audio/_hammock.ts`, the list of hammocks and the people's hook
   camera eases back to where it was. E or Space while he is still getting in: back
   up from there. **Esc** / back to the map: out at once, all as it was.
 - **Prompt** while lying: "E  ក្រោកឈរ  ·  A/D  យោលអង្រឹង" (pad / touch: "E  ក្រោកឈរ").
+  The key help (bottom left, `keys()`) while he is in it: A D swing it (the left
+  stick), E Space get up (□ ✕), 4 5 photo (d-pad ← →), Q R look round (the right stick).
 - **Sounds** (`audio/_hammock.ts`, moves bus): `hamCreak` (a rope's stick-slip squeak
   on the post with a hollow knock, the other rope answering on a hard swing; gain =
   how hard it swings), `hamRustle` (the cloth: a swish, a few ruffles, a low flump as
@@ -630,10 +683,13 @@ sounds `audio/_hammock.ts`, the list of hammocks and the people's hook
 - **URL**: `hammock=1` (lying in the nearest one to `at=`, within 40 m), `hammock=sleep`
   (asleep: the "Z z z"), `hammock=in` (getting in from beside it: `sim=_:<s>`),
   `hamswing=<radians>` (swinging that hard, from its far end), `hamside=1|-1` (the side
-  he got in from). With `rcam=` the camera stays as given. A shot logs
+  he got in from), `hamfeet=a|b` (the end his feet are at: its tie `a` or `b`, as the
+  console line names them; else the most open view decides). With `rcam=` the camera stays as given. A shot logs
   `[map] hammocks: …` (each one's middle) and `[map] hammock: in "<id>" …` (where he
-  stands, which end his feet go to, the camera's side); a bug report gives
-  `hammock`, `hamside`, `hamswing`. E.g. the sugar-palm village at night swinging:
+  stands, which end his feet go to, the camera's side); a bug report (and the free
+  camera's "Go there") gives `hammock`, `hamside`, `hamfeet`, `hamswing`, and `hat=1` while the
+  hammock holds his hat (the replay takes it off again and gives it back as he gets
+  up). E.g. the sugar-palm village at night swinging:
   `roam=walk&at=437,-66.8&yaw=180&night=1&hammock=1&hamswing=0.48&sim=_:1.25`;
   the floating village asleep: `at=-321,71.3&hammock=sleep&sim=_:3`; Kulen's hut:
   `at=423.7,-298.6&hammock=1&sim=_:3`.
@@ -668,7 +724,9 @@ prop `src/character/binoculars.ts`; sounds `src/map/audio/_bino.ts`).
   2 % of its half-height, nothing but the land or water between, and no
   stone, wall or trunk within 120 m), else a temple (a place's pad as a box), a
   village, holy place or jungle site of the passport where the view lands,
-  else Phnom Kulen's slopes. Held one more second on an animal or a bird
+  else Phnom Kulen's slopes, each only when nothing solid is nearer along the
+  view's middle (the land and water, and the walk map's blocks within 120 m:
+  a floating shop at the jetty fills the view, nothing far is named). Held one more second on an animal or a bird
   the nature book does not have (a gold line fills under the name), it goes
   into the book as seen: `Journal.seen` (_book.ts) with a crop of the drawn
   view (taken in a microtask right after the frame is drawn) and the book's
@@ -691,7 +749,7 @@ prop `src/character/binoculars.ts`; sounds `src/map/audio/_bino.ts`).
   `roam=balloon` too); `pview=yaw,pitch,fov` where they look (degrees, yaw the
   map's heading as the camera's, fov 4‥8); `sview=0‥1` holds the view there
   (0: the follow camera, to see him hold them). `report()` gives `bino=1` and
-  `pview`. `window.__bino`: `aim` (yaw, pitch radians, fov degrees: set it to
+  `pview`. `window.__bino` (dev server only): `aim` (yaw, pitch radians, fov degrees: set it to
   look elsewhere), `target`, `up`, `view`, `look()` (the middle looked at now).
   The view's frustum culls the water birds and others: aim from the follow
   camera first when looking for one in a check.
@@ -720,7 +778,12 @@ curved (J) handle. Not a paper parasol, not a wagasa.
   snow, he opens it by himself (a toast the first time in a visit, with the
   key on a keyboard). **8** opens or folds it any time (a sun umbrella is
   Cambodian too), and that choice holds for the visit (closed in rain: closed
-  until 8 again; open in the sun: open), across going back to the map.
+  until 8 again; open in the sun: open), across going back to the map. While
+  a ride holds him, another add-on has his hands, or he prays, sits, eats or
+  has the camera up, 8 says "ដៃគាត់កំពុងរវល់ / His hands are busy" and the
+  choice stays. Its `order` is 1000 (it offers nothing on E): its keys come
+  last, so a card or a ceremony that takes the step's input (the clothes, the
+  name, the dog's, the calendar's, the blessing, dak bat) keeps 8 and H.
 - **Hands**: in his right hand (the lantern, torch and flashlight are the
   left's: both at once at night); in the left while the right holds
   something to eat or drink (a skewer, a cup: `FOOD_GRIPS`; the light stays
@@ -731,16 +794,22 @@ curved (J) handle. Not a paper parasol, not a wagasa.
   (from E at the shrine until he stands), sitting and lying on the ground (he
   sits with both hands; lying, the rest watches the sky), the camera or the
   phone up, an action of his arms (a greeting, a wave, a cheer: quickly), an
-  add-on that holds him or his hands (`holding`, `handsBusy`), under a roof
+  add-on that holds him or his hands (`holding`, `handsBusy`: at once, its pose
+  takes his arms), under a roof
   (all round him within 12 m, for 0.35 s) and where there is no room for it
   (a ceiling under the canopy, walls on both sides, a take-off ramp under its
   glider: at once). Beside one wall it leans away from it.
 - **His hat**: the palm-leaf hat's brim is wider than his arm holds the shaft
-  out, so the hat comes off while the umbrella is up, and goes back on once it
-  is put away for good (dry, 8) or as he sits down; not for a moment's fold (a
-  greeting, the camera, an eave), and never while he prays (the prayer has it)
-  or lies back (the rest has it). **H** puts the hat on instead: the umbrella
-  folds (choice closed).
+  out, so the hat comes off while the umbrella is up, and goes back on only
+  once it is put away for good (dry, 8) and he is free: never while he prays,
+  a posture is on him (sitting, lying, the swing) or another add-on holds him
+  or has his hands (the rides take the hat off themselves when it is on and
+  put back only what they took: after them, in rain, the umbrella comes back
+  and the hat stays off: no hat change from E until he is free); not for a
+  moment's fold (a greeting, the camera, an eave). **H** is followed by what
+  it did (tools.ts has the key; seen after the step): the hat on puts the
+  umbrella away (choice closed); the hat off in rain or snow brings the
+  umbrella (choice auto): H never leaves him with neither.
 - **Open**: rain does not reach him (nothing wet is drawn on him); a few drops
   gather at the rib tips and drip (14 small streaks at most, one draw, in
   rain); the rain patters on the cloth over his head (levelled with the rain;
@@ -753,7 +822,7 @@ curved (J) handle. Not a paper parasol, not a wagasa.
   the canopy held that far open (the fold) · `umbcolor=blue|black|green`. A
   shot or a saved view starts it as it would be by then (no opening on the
   way). `report()` gives `umbrella=`, `hat=1` when it has the hat off,
-  `umbhand=L`. `window.__umbrella.state` (dev, shots): choice, hand, held,
+  `umbhand=L`. `window.__umbrella.state` (the dev server, so shots too; not in a build): choice, hand, held,
   spread, cover, tight, sheltered, lean, push, run.
 - **Shots**: `weather=rain&roam=walk&at=-200,-20&yaw=180&sim=_:1&rcam=0,15,9`
   (from behind), `rcam=180,8,6` (the front); `night=1&tool=lantern` (both
@@ -816,7 +885,10 @@ The player names the explorer and sees the name written in Khmer letters.
 
 - **The name card** (`roam/_nameCard.ts`; the add-on `roam/_name.ts`): from the
   explorer menu's "ឈ្មោះខ្ញុំ / My name" (I), or offered by itself the first time
-  the passport is opened without a name (once: `name.asked`). Type in Latin
+  the passport is opened without a name (once: `name.asked`, set only when it
+  really shows). It never comes in over the loading screen or the story: a live
+  page's `namecard=`, `album=passport` and the offer wait for Start
+  (`_nameCard.ts` `mapShown` / `whenMapShown`; shots at once). Type in Latin
   letters and it is written as you type, big, in Koulen on a palm leaf; or type
   Khmer straight in (a Khmer keyboard, an input method: nothing is taken while it
   composes); or pick one of twelve common Khmer names (Latin under each). When a
@@ -881,15 +953,18 @@ in a downpour) they walk home; in the morning they come out again.
   best, kept in progress.ts `sey.best`; a new best is told as the run ends. After every
   good kick a child's arms go up and the children clap; bubbles now and then:
   "ល្អណាស់!", "ពូកែមែន បង!", "ម្ដងទៀត!", "កុំឱ្យធ្លាក់!" at 5, 10, 20…,
-  "អស្ចារ្យ! ទាត់កែងជើង!" for the heel (everyone cheers).
+  "អស្ចារ្យ! ទាត់កែងជើង!" for the heel (everyone cheers). The children's words show only
+  with the camera within 35 m of the child and him playing, or watching within 22 m,
+  and never over words showing already (the people share one bubble); their laughter
+  and claps are sounds placed on the map, as loud as near they are.
 - **Leave**: the move stick (walking away), or E while nothing is coming to him; the
   children close the circle (four places, his spot between two). At dusk (or in a
   downpour) the game ends by itself ("ក្មេងៗត្រឡប់ទៅផ្ទះវិញហើយ", the children walk home);
   at night there is no prompt. Esc's "Back to the map?" card holds the game (the sey
   waits in the air); staying, it goes on.
 - **While he plays** the stick, Space and E are the game's (no tools, emotes or
-  sitting); on touch the jump button says "ទាត់" (Kick) and kicks, the Use button
-  "ឈប់លេង" (Stop playing).
+  sitting); the key help (bottom left) lists them (`keys()`); on touch the jump button
+  says "ទាត់" (Kick) and kicks (`touchJump`), the Use button "ឈប់លេង" (Stop playing).
 - **Camera**: round at his right side (from behind the sey would come down behind his
   back), framed for a moment, then the player's (drag, Q / R). The children leave a
   wider gap on his right, so none stands between it and him.
@@ -935,15 +1010,20 @@ the `KITE_HOOK` between the two sides) and `people/_sceneKites.ts`.
   and thanks him (`SALE`: people/_saleBack.ts). shop.ts is left to food: its flow
   (the menu, eating, the bag) is about eating, a kite is one thing bought once
   and kept, so it has its own small card and only tells the people part.
-- **Flying it**: in an open field (on the land, dry, nothing over him, the sky
-  down the wind clear of trees, roofs and walls: `clearance`, `softClearance`;
-  not where a place's beacon, a moored boat, a ramp or the balloon has the E),
-  "E  Fly your kite". Rain or snow: a toast, not in this weather. Too little wind
-  aloft (`_kiteSky.ts windAloft`: the people's kites' steady breeze, but only in
-  the kite season, the north wind from after the Water Festival to March;
-  `people/_kite.ts seasonBreeze`): a toast, the wind is too weak, kites fly in
-  the dry season (the calendar lists the families' kite flying: `kitesFlying`).
-  Else he turns into the wind, the kite held up past his right shoulder, runs a
+- **Flying it**: "E  Fly your kite" is offered only where and when it really
+  flies — fair weather and the kite season's wind aloft (`_kiteSky.ts
+  windAloft`: the people's kites' steady breeze, only in the kite season, the
+  north wind from after the Water Festival to March; `people/_kite.ts
+  seasonBreeze`), on the kite fields (`people/_sceneKites.ts KITE_FIELDS`: the
+  families' east, the children's west) or a dry rice field, away from the
+  villages, the markets, the sey circle, a place's entrance and the stalls, with
+  nothing over him or down the wind (`clearance`, `hardClearance`,
+  `softClearance`; not where a beacon, a moored boat, a ramp or the balloon has
+  the E). It is last in the E row (`order` 90, after every other add-on): the dog,
+  the sey, the farmers' work in reach win. Out of the season (or in a calm), on
+  the families' field, a toast once a visit says kites fly there in the dry
+  season (no E; the calendar lists the families' kite flying: `kitesFlying`).
+  Then he turns into the wind, the kite held up past his right shoulder, runs a
   few steps and lets go; it climbs behind him; he turns round and it climbs on
   to 24 m of line. **W** lets out line (to 80 m: higher and further, sinking a
   little while it pays out), **S** reels in, **A / D** steer it across the wind
@@ -953,8 +1033,10 @@ the `KITE_HOOK` between the two sides) and `people/_sceneKites.ts`.
   make it dance; high up its bow hums (the people's `kiteHum`, its own voice).
   Sunk into a tree it snags, onto the ground it lies: S or E, a tug, it comes in.
   Rain brings it in by itself. A pad: the left stick (↑ out, ↓ in, ← → steer), R2
-  walks, □ / X is E; touch: the stick, past its ring walks, the Use button. The
-  first flight's toast says the keys; the prompt shows them on a keyboard.
+  walks, □ / X is E; touch: the stick, past its ring walks, the Use button. While
+  it flies the key help (bottom left) lists its keys (`keys`: W, S, A D, Shift, E;
+  caught: S E), the prompt is "E  Reel it in", and the first flight's toast says
+  the keys too (on touch: the stick). The buy card hides the E prompt while it asks.
 - The line: one `Line` strip from his right fist, sagging; the bamboo spool in
   his left fist (a rig slot, `kiteSpool`). The camera looks up past him at the
   kite (never down into the terrace behind him); taking the kite it comes round
@@ -1006,10 +1088,16 @@ a stall, or from his bag with 6), sitting (J) too.
   sleep), in a storm (they huddle), in the boat, on a ride, or where they do not
   go (he must stand on their ground: up a roof, on the swing… no). Never from his
   bag.
-- **The camera**: from the side of the line between him and the monkey, looking
-  between them (both in view, his face in profile), as far off as they are apart;
-  it eases back to him 3 s into its meal, or as soon as he moves or the player
-  turns the camera. Not with the URL's `rcam` (shots frame it themselves).
+- **The camera**: both of them in the picture (within ~70 % of its half width and
+  height, standing or sitting), looking at the point between them from near square
+  on to the line between them, as far back as that takes (5–14 m, out quickly as the
+  monkey runs off). The way it looks from is one with no wall or roof between and
+  nobody hiding them: nobody on the lines to him and to it, nobody in the picture
+  nearer the lens than they are (people/_greetBack.ts's finder, greet.ts `nearby`);
+  it keeps that way while it stays clear (blocked twice running, 0.8 s, it takes the
+  clear way least far round). It eases back to him 3 s into the monkey's meal, or as
+  soon as he moves or the player turns the camera. Not with the URL's `rcam` (shots
+  frame it themselves).
 - **Its moves** keep to the troop's own: on their ground (`templeGround`), no
   step higher than they climb (1.3 m), never through a wall; up a wall only with
   a leap (rising first, then over the edge). The wall is looked for while it comes
@@ -1033,7 +1121,7 @@ a stall, or from his bag with 6), sitting (J) too.
   group, built at the snatch). No allocation a step.
 - **URL**: `monkey=steal` the nearest troop's boldest macaque comes now for what he
   eats (`bought=<item>`, _shop.ts, or `act=eat&food=<kind>`), whatever the odds (not
-  at night: they sleep; `sim=_:<s>` that far in) ·
+  at night, by `night=` or `clock=`: they sleep; `sim=_:<s>` that far in) ·
   `monkey=feast:<item>` a macaque up on the wall nearest him eating that (a shop
   item, `shop:item`, or a food kind; a bug report gives this) · `monkey=always` at
   every meal near a troop, no wait · `monkey=0` never. `window.__monkeys.state`.
@@ -1108,9 +1196,11 @@ alms bowls; families give rice by the road; the explorer gives too.
   between him and the monk; after 3 s it is the player's; back as it was after.
 - **Leaving off**: E, Space or the stick while he waits gets him up the way he
   went down (the rice stays in his bag; the monk goes back to his line); once the
-  rice is in, it is given (counted) and the monks finish their blessing; no monk
-  answers within 5.5 s or none comes within 26 s: "ព្រះសង្ឃនិមន្តហួសទៅហើយ" / "The
-  monks have walked on". Back to the map or another mode: all stops at once (his
+  rice is in, it is given (counted) and the monks finish their blessing. A line
+  halted at a family's stop answers at once and sends a monk to him once the
+  family's blessing is over (he waits kneeling). No line answers within 5.5 s, or
+  every monk is past him (or, as a safety, none has come in 90 s):
+  "ព្រះសង្ឃនិមន្តហួសទៅហើយ" / "The monks have walked on". Back to the map or another mode: all stops at once (his
   pose, hands and hat back, the monk let go). Tools, emotes and the camera wait
   while he gives (`input` takes them).
 - **The other lines**: Angkor Wat's morning procession up the valley road (five
@@ -1155,7 +1245,9 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
 `TIE`: when the sprig dips and flicks, when the string goes round; `blessHour`).
 
 - **Where**: in the floating village pagoda's hall, against its east wall (to the
-  Buddha's right), over the end of the east mats: a low dark dais with a kantel mat, a
+  Buddha's right), over the end of the east mats: a raised dark dais (អាសនៈ, 0.65 m:
+  knee high, so the monk's head is always clearly above the explorer's, kneeling or on his
+  heels, the tie included) with a wooden step before its south end, a kantel mat, a
   seat cushion and a triangular cushion (ខ្នើយ) behind him; an elder monk cross-legged on
   it, a silver bowl of lustral water (ផ្តិលទឹកមន្ត) on its foot at his right knee (lotus
   petals on the water, a sprig of leaves with a lotus bud in it), a silver plate with a
@@ -1167,15 +1259,21 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   while the pagoda keeps Pchum Ben or Visak Bochea (`festivalNow`: the monks are on the
   porch with the faithful; the festivals' crowds keep the porch and the terrace, the dais
   is inside). Out of sight he simply comes or goes; seen (the camera near, him in its
-  view, no wall between) he gets up, steps off the dais and walks out of the door and
-  along the porch (or back in, up onto the dais, and sits); never in a blessing. The
-  calendar lists it (`bless-village`, daily, "Blessings with the red string").
+  view, no wall between) he gets up, steps down by the step and walks out of the door and
+  along the porch behind where the festivals' monks sit (z 98.4: never through them), or
+  back in, up by the step, and sits; never in a blessing. The calendar lists it
+  (`bless-village`, daily, "Blessings with the red string") by the monk's own rule (the
+  hour, and the pagoda's festival of that moment: `festivalAt` with the clock).
 - **Ask**: on foot before the dais (on its floor, ≈ 1–5 m before him), while he sits
   there: "E  សុំពរពីព្រះសង្ឃ / Ask for a blessing" (the pad's □ / X, the touch Use
   button). By the empty dais the reason, no E: his meal, the night, a festival
-  (`blessMeal`, `blessNight`, `blessFest`). He never stands on the dais (it is not on the
-  walk map: put back off it, to the front or a side).
-- **The blessing** (≈ 27 s): he walks to his place 2.2 m before the monk (the stick,
+  (`blessMeal`, `blessNight`, `blessFest`). He never stands on the dais or its step (not
+  on the walk map: put back off them, to the front or a side).
+- **Bareheaded in the hall**: his hat comes off as he steps into the pagoda's hall past
+  the door (one wears no hat before the Buddha and the monks) and goes back on as he
+  steps out (unless he put it back on meanwhile: H), or leaves his feet; the blessing
+  leaves it off at its end while he is inside. (His boots stay on.)
+- **The blessing** (≈ 28 s): he walks to his place 2.2 m before the monk (the stick,
   Space or E: never mind), turns to him, kneels the prayer's way (hat off), sits back on
   his heels, palms together at his face. The monk chants the Pali blessing
   (`blessChant`, one old voice, ≈ 7 s; bubbles in Khmer letters: "♪ សព្វីតិយោ វិវជ្ជន្តុ
@@ -1183,17 +1281,23 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   the sprig from the bowl, dips it (`blessDip`) and flicks the water over him three
   times: seven drops fly to his face each time (worked out from the time since the
   flick: no state), he shuts his eyes as they land (`blessDrops`); the sprig goes back.
-  He comes in on his knees (a few steps on them), turns his chest a little and holds out
-  his right hand, palm up, his left hand under its forearm (giving and taking with
-  respect); the monk leans forward and takes the hand in both of his, murmuring "♪ អាយុ
-  វណ្ណោ សុខំ ពលំ" (`blessMurmur`): the cord goes under the wrist, round it, knotted
-  (`blessTie`, `blessKnot`, a pad tick); he raises his hand and looks at it, then palms
+  He comes in on his knees, low and bowed (three small steps on them), to 1.24 m before
+  the monk, sits back on his heels, turns his chest and holds out his right hand, the
+  shoulder forward, palm up, his left hand under its forearm (giving and taking with
+  respect), his eyes lowered to the monk's hands; the monk, sitting up, reaches out and
+  takes the hand in both of his, murmuring "♪ អាយុ វណ្ណោ សុខំ ពលំ" (`blessMurmur`): the
+  cord goes under the wrist, round it, knotted (`blessTie`, `blessKnot`, a pad tick).
+  Their faces stay a hand and more apart, the top of his head ≈ 0.3 m below the monk's
+  (never under 0.19 m, moving on his knees; `__bless.heads()`). Back at
+  his place on his knees, he raises his hand and looks at the string, then palms
   together again. The monk says "សូមឱ្យញោមសុខសប្បាយ ធ្វើដំណើរដោយសុវត្ថិភាព" (a bubble), he
-  smiles, goes back on his knees, bows three times (the prayer's bows, the temple bell at
+  smiles, bowed low, bows three times (the prayer's bows, the temple bell at
   the first) and gets up, hat on: "ព្រះសង្ឃបានប្រទានពរដល់អ្នក។ អំបោះក្រហមនឹងការពារអ្នកគ្រប់ដំណើរ /
   A monk blessed you. The red string protects you on your travels." E, Space or the stick
   gets him up at any time (the string stays once it goes round his wrist: the monk ties it
-  off); back to the map stops it at once. His lantern and umbrella go away meanwhile.
+  off); back to the map stops it at once. His lantern and umbrella go away meanwhile. The
+  monk's bubbles go with the blessing: cut off, him gone or out of sight, they hide at
+  once (never left on the screen).
 - **Camera**: from his left side, low, square to the line between them (the hall's
   Buddha behind), for the tie round behind him to his right side, nearer (the string on
   his right wrist; the door behind), then back; a little wider (60°: the hall is narrow).
@@ -1207,7 +1311,7 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
 - **Once a visit** for each monk: a second time he smiles (`FEAT.grin`) and nods, "ញោម
   បានទទួលពររួចហើយ សូមឱ្យសុខសប្បាយណា / You have your blessing already. Be well!", and the
   explorer greets him with the high sampeah.
-- **Cost**: the monk is one person of the crowd, his things 45 boxes of the people's
+- **Cost**: the monk is one person of the crowd, his things 48 boxes of the people's
   things (no draw of their own), the drops 7 more; nothing allocated a frame; the add-on
   reads two numbers a step when off. The people's bone shader: tables and one call site
   (`P_BLESS_*`, `pBlessArm` once in `pStateOf`), its compile time as before (≈ 0.3 s on
@@ -1217,7 +1321,9 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   `bless=tie` alone: the cord going round; a still's 0.8 s of settling counted in);
   `redstring=1` (or `0`) the string on him (or off) in any shot; `blessmonk=1|0` the
   monk there (or away) whatever the clock; the monk alone: `blesspose=<state>:<s>`.
-  `report()` gives `bless=` and `redstring=1`. Checks: `__bless.now()`, `__bless.probe()`.
+  `report()` gives `bless=`, `redstring=1` and `hat=1` while the blessing or the hall has
+  his hat. Checks: `__bless.now()`, `__bless.probe()`, `__bless.heads()` (his head's top
+  and the monk's, m over the floor).
   E.g. `roam=walk&at=-305.3,10,103.3&yaw=90&clock=0.9&people=blessing` (the prompt),
   `…&bless=chant:3.12` (the drops), `…&bless=tie` (the string going round), `…&bless=tie:4.75`
   (he looks at it), `…&bless=words:1.0`, `…&bless=bow:0.9`, `…&bless=again:1.2`,
@@ -1275,7 +1381,10 @@ laid at a shrine `roam/_lotusLaid.ts`, the hook for others `roam/_lotusHook.ts`
   there beside it. "You offered a lotus at Angkor Wat" (the place, or the pagoda, the
   forest Buddha, the shrine by the lake, the shrine at the foot of Phnom Kulen, the
   spirit house); progress.ts `lotus.offered`. E or the stick before it is down: he
-  gets up as from any prayer, the lotus stays in his bag. Praying without a lotus is
+  gets up as from any prayer, the lotus stays in his bag. While "Back to the map?"
+  asks (and on the way there) the offering and the picking wait: back to the map
+  before it is down, the lotus is still in his bag (not laid, not counted); a bud
+  already snapped goes into his bag. Praying without a lotus is
   as before (`_pray.ts` is not changed).
 - **Visak Bochea**: at the tray, with a lotus he picked, his own is the one laid with
   the candle (`LOTUS_HOOK.offerWith('visak')`, two lines in `_visak.ts`): out of his
@@ -1340,9 +1449,13 @@ He earns riel (៛) with the fish he catches from the boat (add-on `sellfish`).
   hold them open or shut as their places do.
 - **Selling** (`_fishSell.ts`, the card `_fishSellCard.ts`): at a seller with fish,
   "E  Sell your fish (3)" (after a stall in the E row). E turns him to her, holds
-  him (`holding`: the walker's step is the sale's), the camera comes round behind
-  his shoulder (a side nothing and nobody stands in, as the buy menu's; looked
-  for again a moment in) and the sale card opens in the buy menu's look: her
+  him (`holding`: the walker's step is the sale's), the camera comes round to a
+  side from which both he and the seller show (`clearView`: nothing solid on the
+  lines to him and to her, no post, tarp or leaves right in front of the lens,
+  nobody at the camera or across either line; behind his shoulder first, then
+  round both sides, nearer and higher over heads; looked for again a moment in,
+  and in a replay: `sellfish=` frames the sale whatever `rcam=` says) and the
+  sale card opens in the buy menu's look: her
   words ("Let me weigh them…"), each fish (pixels, name in the language in use,
   size) with her hanging dial scale swinging as she weighs it (one every 0.4 s, a
   tick and the spring's wobble: `sellScale`), then its price; "Sell all" with the
@@ -1504,6 +1617,14 @@ floor and his sheaves on the bund `_farmMarks.ts`; the farmers' side through
   and she comes for the bundle or the sickle (the stick again: at once). Esc
   (back to the map), another mode, the night, a meal (6): he stops at once.
   J, L, F, C, U, P, 1–3, O, I do nothing meanwhile; the camera (4, 5) works.
+  The key help (bottom left) shows his keys meanwhile (`keys()`: E / Space
+  plant or cut, the stick stops, Q R look; on his way only the last two), and
+  touch's jump button says "Plant" / "Cut" at the work (hidden on his way).
+- **His place**: his strip begins ≈ 1 m further out across the plot than the
+  farmers' own spacing (`SPACE`, nearer where the plot's edge is close) and a
+  step along the row from their line (`PLANT_AHEAD` behind it, `REAP_AHEAD`
+  ahead of it), so he works ≈ 3 m from the nearest farmer and nobody of the row
+  stands behind him from the side or the default camera.
 - **Camera**: walking, behind him; at the work at his side away from the
   farmers' row, a little in front (reaping higher); handing over, from the
   side; eased there for 2 s, then the player's; back as it was after.
@@ -1559,30 +1680,54 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   nobody near: it looks up at him, a tilt of the head.
 - **It comes along**: two pets or scratches (kept in `dog.pets`): the first "ឆ្កែគ្រវីកន្ទុយ
   — វាចូលចិត្តអ្នកហើយ!", the second "ឆ្កែចង់ទៅជាមួយអ្នក!" (a happy bark) and the name card:
-  "ដាក់ឈ្មោះឱ្យឆ្កែរបស់អ្នក / Give your dog a name", six village dog names, each in Koulen with
+  "ដាក់ឈ្មោះឱ្យឆ្កែរបស់អ្នក / Give your dog a name" (only once the map has started: never over
+  the loading screen; the E prompt hides while it is open), six village dog names, each in Koulen with
   its Latin spelling: លឿង Leung "Yellow" (his tan dog: the default), ខ្មៅ Khmao, ស Sar, ក្រហម
   Krahom, តូច Touch "Little one", សំណាង Samnang "Lucky"; the one picked big in gold. ← → or
   1–6 pick, Enter "យកឈ្មោះនេះ" keeps it, Esc "ទុកឈ្មោះ លឿង" keeps the default; the pad: the
   d-pad, ✕ picks, △ keeps, ○ shuts; on a phone three chips a row. Then two hints: "{name}
   ដើរតាមអ្នកហើយ · ចុច 0 ហៅវាមក" (with a pad or on touch: "… call it from the menu"), "នៅក្បែរ
   {name}៖ ចុច F អេះត្រចៀកវា". Kept: progress.ts `dog.adopted`, `dog.name` (the id). The
-  explorer menu's "ឈ្មោះឆ្កែ / Dog's name" opens the card again. (No snack: food in his
+  explorer menu's "ឈ្មោះឆ្កែ / Dog's name" opens the card again. In prompts and toasts its
+  name is "ឆ្កែ" + the name in Khmer ("អង្អែលឆ្កែស", "នៅក្បែរឆ្កែស៖": a one-letter name never
+  reads as a word), and in «» where it is named ("ឆ្កែរបស់អ្នកឈ្មោះ «ស»"). (No snack: food in his
   hands is the Animator's carry pose, laid over any posture's arms, so he could not hold it
   out to the dog cleanly; two pets it is.)
 - **Following** (on foot): along his trail (`Trail`: his feet every 0.6 m while he walks
   free, a gap after a jump, a fall, a ride), cutting straight where a straight way is free
   (`lineWalk`, 5 times a second, four tries), so it goes where he went: round walls and
   trees, over the bridges (the deck, not the water), up the temple stairs, up a land step
-  with a hop (≤ 2.3 m, onto the land only) or a terrace's edge (≤ 1.2 m), down with a jump
-  (≤ 2.7 m); never through a wall, never into water deeper than 0.32 m. It keeps 3.2 m
-  behind: walking, trotting at his walk (4.3 m/s), galloping when he runs (to 11 m/s).
-  A gap in the trail, a wall, a step it cannot take, or 1.2 s without getting on: it looks
-  for a way (`PathSearch`: A* over the walk map's half-metre columns, each a floor at its
-  height, 260 columns a step, at most 65 536, 420 m of way) and follows that. He walks at
-  it: it trots a step aside. He stops: it turns to him, sits (1.2 s), lies down (14 s),
+  with a hop (≤ 2.3 m, onto the land only) or a terrace's edge (≤ 1.2 m), over a low wall
+  (0.85‥1.2 m high, ≤ 1 m thick: the moat's kerb), down with a jump (≤ 2.7 m); never through
+  a wall, never into water deeper than 0.32 m. Up more than a kerb (0.3 m) only onto a stair
+  (rising on) or a floor people walk: wide (on ahead and to a side) and, just over the land,
+  bigger than 16 m² or with a stair up from it — never a stall's platform among the goods, a
+  table, a bench (`goesOn`, `island` in `_dogPath.ts`). It keeps 3.2 m behind (up or down a
+  stair counts: the climb × 1.5): walking, trotting at his walk (4.3 m/s), galloping when he
+  runs (to 11 m/s). A gap in the trail, a wall, a step it cannot take, or 1.2 s without
+  getting on: it looks for a way (`PathSearch`: A* over the walk map's half-metre columns,
+  each a floor at its height, 260 columns a step, at most 65 536, 420 m of way) and follows
+  that; the search and the dog take each step alike (its checks look from the column's
+  middle, and before a step up or down it comes to the column's middle first). Not got on
+  for 2.5 s: it takes the way's next step as the search did (a hop), or looks again; still
+  stuck: it looks again; then it comes in by him (or waits). Wedged (no floor with room at
+  its feet for 0.75 s): out onto the nearest free spot within 3 m. Someone walks up to it
+  (a person within 1.5 m, 2.4 lying: the people part's traffic, `window.__people.traffic`,
+  four times a second: the monks' line, the market's lanes): it gets up and moves 1.9 m off, away from them (not off out of his reach); he walks
+  at it: it trots a step aside. He stops: it turns to him, sits (1.2 s), lies down (14 s),
   sleeps flat out (45 s, or 4 s once he sleeps: J / L); now and then it sniffs about a few
-  metres off; by day it barks two or three times at a macaque or a junglefowl within 15 m
-  (fauna's `subjects`, every 2.5 s, at most once in 35–70 s, two times in three).
+  metres off (never at his feet); by day it barks two or three times at a macaque or a
+  junglefowl within 15 m (fauna's `subjects`, every 2.5 s, at most once in 35–70 s, two
+  times in three).
+- **Halls: it waits outside** (`HALLS` in `_dogPath.ts`): out of respect it never steps into
+  the village pagoda's vihara (its plinth, from the porch's front step: porch, hall,
+  colonnade) nor up Angkor Wat's upper levels (the middle terrace and the Bakan); it may
+  walk out of one it is in. He goes in: it goes to the door — the pagoda's: on the terrace
+  before the porch, east of the way in between two front seima, clear of the processions'
+  way; else where he went in (his trail's last crumb outside) — and sits there watching for
+  him, also while he is held inside (a blessing, Visak Bochea's candle); moved off to let
+  someone by, back after a while. He comes out: it comes to him. 0 there: "ឆ្កែមិនចូលទីសក្ការៈ
+  ទេ · {name} រង់ចាំអ្នកនៅខាងក្រៅ". A start or a landing in a hall puts it at the door.
 - **Waiting**: in the boat, under the glider or the parachute, in the balloon, or while
   another add-on holds him (the bicycle, the cart, the buffalo, the zip line, the hammock,
   the ladder, the kite, the sey, the farm work…): it stops where it is, sits watching him (a
@@ -1595,18 +1740,27 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   (△) or touch, shown once he has a dog): "{name} កំពុងរត់មករកអ្នក!" and it comes along the
   way it finds (a bark as it sets off); with none, or more than 336 m off, it comes out by
   him 5–9 m off, from behind leaves or bark seen from the camera, else out of the camera's
-  view (a soft dissolve, 0.7 s: a dither in its shader, its shadow too) and runs to him.
-  Close by: "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានឆ្កែទេ — មានឆ្កែស្រុកមួយក្បាលដេក
+  view (a soft dissolve, 0.7 s: a dither in its shader, its shadow too) and runs to him —
+  only onto a floor on his level (within a step of his, never the tier under a terrace's
+  edge or the land under his deck, never a hall) from where it can walk to him, and only
+  where a dog could come up on foot (below). With no such spot it stays where it is and says
+  so: "{name} មិនអាចមកដល់ទីនេះបានទេ · វានៅរង់ចាំអ្នក"; a way that only gets near (him up a
+  deck): to its foot, where it waits looking up. Close by (on his level: distances count
+  height): "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានឆ្កែទេ — មានឆ្កែស្រុកមួយក្បាលដេក
   ក្បែរហាងលក់ទំនិញ នៅភូមិត្នោត".
 - **Back to the map**: it goes home (to its bed when it has one) and is not drawn; the next
-  time he is on his feet (landed from the leap, a shot's start) it comes in by where he is,
-  as when called with no way.
+  time he is on his feet 1.8 s (landed from the leap, a shot's start) it comes in by where
+  he is, as when called with no way — where a dog could come up on foot: on the land, or a
+  floor with a way down to it (a search from his floor to the land, `toLand`: a terrace, a
+  deck by its stair; a roof has none: it stays home until he is down, and 0 there says it
+  cannot get up).
 - **For his stilt house** (`_home.ts` uses it): `dogBed({ x, z, y?, yaw? } | null)` where it
   sleeps (its bed: null, the village); `dogHome(true)`: he is home (asleep): it goes to its
   bed (a way, else it is there) and sleeps flat out; `dogHome(false)`: it wakes and comes to
   him (a way; it waits there while there is none). `dogState()` (one object, filled each
   call): `adopted`, `name` (km, latin), `life` (`nap` / `awake`: the village dog; `follow`,
-  `come`, `wait`: his, roaming; `bed`; `away`), `x, y, z`, `far` (m from him), `asleep`.
+  `come`, `wait`, `door` (at a hall's door): his, roaming; `bed`; `away`), `x, y, z`, `far`
+  (m from him), `asleep`.
   Also `dogAdopted()`, `dogNameNow()` (its name in the language in use, or null).
 - **Sounds** (`audio/_dog.ts`, measured offline, the loudest 100 ms): `dogBark` (the village
   dogs' own synthesized bark, speech.ts `bark`, one or two "wau"s, its top softened: −29 dBFS
@@ -1614,7 +1768,8 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   (−40) on the animals bus, `dogPant` (lasting: −38 at its fullest, its nodes gone 3 s after
   it stops), `dogPat` (moves, −33), `dogThump` (steps, −32); each softer the further it is
   from him (silent past 43 m).
-- **URL** (checks): `dog=follow` (his dog beside him at `at=`, behind at his left) ·
+- **URL** (checks): `dog=follow` (his dog beside him at `at=`, behind at his left, else the
+  nearest spot all round him on his level, else at his feet; at the door when he is in a hall) ·
   `dog=sit|lie|sleep` (settled by him so) · `dog=stand` (held standing) · `dog=pet|scratch`
   (petting it: `sim=_:2.2` well into it) · `dog=adopt` (the village dog awake in front of him,
   petted once: E the second time, `sim=e:0.1,_:4`) · `dog=name` (the name card open;
@@ -1623,8 +1778,13 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   (barking at the nearest monkey or junglefowl, else ahead of it) · `dog=away` (gone home: it
   comes in by him once he is on his feet: with `roam=glide`, on landing) · `dog=0` (none
   drawn) · `dogat=x,z` · `dogname=<id|Khmer|Latin>` · `dogpets=<n>` · `doggait=1|2|3` (walk,
-  trot, gallop on the spot) · `dogfade=0‥1` (the dissolve held). The bug report gives
-  `dog=…&dogname=…` (and `dogat=` when waiting or off), the village dog `dog=nap|wake|adopt`.
+  trot, gallop on the spot) · `dogfade=0‥1` (the dissolve held). The bug report gives the
+  state it is really in: `dog=away` (gone home, or on its bed while he is home), `dog=wait&dogat=`
+  (waiting where he left it, or at a hall's door), else `dog=follow|sit|lie|sleep` (and
+  `dogat=` when off), with `dogname=`; the village dog `dog=nap|wake|adopt`. A hall:
+  `roam=walk&at=-306,10,104&dog=follow` (it sits at the pagoda's door); a roof:
+  `roam=walk&at=334,-80&dog=away` (it stays home); the market:
+  `roam=walk&at=348,-92&yaw=250&clock=0.78&dog=follow`.
   E.g. `roam=walk&at=418.6,-61.4&yaw=10&dog=adopt&sim=e:0.1,_:2.4` (the pat by the shop),
   `roam=walk&at=392,-63&yaw=270&dog=pet&sim=_:2.3`, `roam=walk&at=400,-65.6&yaw=0&dog=stand&dogat=400,-63&explorer=0&cam=403.3,10.95,-63,400,10.4,-63,32`
   (its side), `roam=walk&at=396,-63&yaw=90&dog=call&dogat=0,-160&sim=_:2.5` (it comes in by
@@ -1634,10 +1794,12 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   (`DogLook`); its pose is tables of coefficients (no GLSL `if` chains) and the kit's chain
   walk is made a loop the compiler cannot unroll: it compiles in 40 ms on ANGLE OpenGL (the
   other animals 26). CPU ≈ 0.03 ms a frame following (0.2 at most, a path search's slice),
-  nothing allocated a step; the village dog is not stepped beyond 110 m of him and the
+  nothing allocated a step (no `Math.hypot`: fauna/_len.ts); the village dog is not stepped beyond 110 m of him and the
   camera, nor drawn beyond 170 m.
-- **Checks**: `window.__dog` (`state()`, `life`, `act`, `route`, `search`, `D`, `pose`,
-  `look`, `trail`, `debug`, `call()`, `adopt()`, `home(on)`, `bed(spot)`).
+- **Checks** (the dev server and its shots only, not in a build): `window.__dog` (`state()`,
+  `life`, `act`, `route`, `search`, `way()` (the way found), `D`, `pose`, `look`, `trail`,
+  `debug` (with the stall watch and the door), `call()`, `adopt()`, `home(on)`, `bed(spot)`,
+  `jam(s)`: it cannot step for that long, to try the stall watch).
 - Shared edits: `ui/lang.ts` (`dog…`), `_addonList.ts`, tools.ts (the key list's 0 row),
   `_explorerMenu.ts` (the two buttons, from `_dogHook.ts`).
 
@@ -1773,7 +1935,10 @@ are, the `CHALLENGE` hook) and `festival/_water.ts` (draws it).
   good player wins by a few boat lengths, a careless one loses (rules and
   numbers: `_raceRowGame.ts`). The course bar (top) shows both boats and the
   metres to go; the gold ring closes on the drum on the beat; marks and the run
-  of beats on time over and beside it.
+  of beats on time over and beside it. The key help (bottom left, `keys()`) shows
+  "Space E  paddle as the drum strikes" while racing, "Space  race again · E  step
+  ashore" at the result (E only after dusk), and Q R to look round (the pad's ✕ □
+  and right stick with a pad).
 - **The finish**: the officials raise the flag and blow the long whistle, the
   landing's people and the beach cheer; the boats coast on and the result
   comes up. Won: his crew stands up cheering, the chhing ring, 10 000 ៛ into
@@ -1856,7 +2021,9 @@ what he holds `character/procession.ts`; sounds `audio/_pchum.ts`, `audio/_visak
   terrace's front corners, strings of small coloured lights to the porch, oil lamps
   along the front balustrade, the hall lit. The banner (`festival/_banner.ts`): a
   tiffin carrier for Pchum Ben, a lotus and candle under the full moon for Visak
-  Bochea; the calendar lists both (`registerEvent` in the add-ons: id `pchumben`,
+  Bochea (every festival's ribbon and roaming toast now fit phones and tablets: no
+  wider than the screen, one line on a short one, and moved below any control they
+  would cover); the calendar lists both (`registerEvent` in the add-ons: id `pchumben`,
   `visak`, kind `festival`, at the pagoda; real days: Phatrabot's waning half to the
   1st of Assoch, the full moon of Pisakh).
 - **Joining** (`_procession.ts`): near the line (2.6 m from the way) or the elder by
@@ -1866,8 +2033,13 @@ what he holds `character/procession.ts`; sounds `audio/_pchum.ts`, `audio/_visak
   walkers behind step back to make room, and whoever is beside him (the grandmother
   when he is by her: her words in the toast) hands over what they carry. The way
   leads him in his place at the line's pace (no steering; the look drag and the
-  wheel move the camera; the camera stays behind him). The walkers the camera sees
-  through (the near fade) take their candle's halo with them.
+  wheel move the camera). The camera keeps to the open side: behind him and out to
+  his left, over the terrace's open strip and the balustrade, high enough to look
+  over the seima shrines and the stupas (never among the hall's pillars); stepped
+  out, straight behind him as he faces the hall. The walkers the camera sees through
+  (the near fade) take their candle's halo with them. His meshes (the thrown rice
+  balls, his candle's glow, the candle he places) are made the first time they are
+  needed: a page that never sees these festivals links none of their programs.
 - **Pchum Ben's add-on**: a little basket of five rice balls in his right hand; E or
   Space throws one ("E  Throw a rice ball (n left)"): he takes it from the basket,
   draws back by his ear and casts it out to the left, into the dark (it falls and

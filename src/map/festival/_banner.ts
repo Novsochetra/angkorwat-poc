@@ -9,19 +9,30 @@ import type { Festival } from './_schedule';
  *    seconds.
  * Made on the first frame (the interface fills its root after the parts are
  * built), inside the interface's root, with its panel look (map.css).
+ *
+ * It never covers a control: it is no wider than the screen less a margin (its
+ * lines wrap on a phone), and where it would lie over a button, a counter or a
+ * toolbar of the interface (the roaming "Back to the map", the gold figures and
+ * the purse, the corner buttons, the mini-map, the calendar's button, the
+ * roaming toasts' place) it goes down below them (`clear`, measured twice a
+ * second); with no room in the top half of the screen it is not shown. The
+ * place cards of the picker move with the map: they are not in its way.
  */
 
 const STYLE = `
 .mu-fest { position: absolute; left: calc(24 * var(--px)); top: 0; display: flex; align-items: center; gap: calc(12 * var(--px));
   padding: calc(8 * var(--px)) calc(18 * var(--px)) calc(9 * var(--px)) calc(14 * var(--px)); opacity: 0; transition: opacity 0.8s, transform 0.8s var(--mu-ease);
-  transform: translateY(calc(-6 * var(--px))); pointer-events: none; }
+  transform: translateY(calc(-6 * var(--px))); pointer-events: none; max-width: calc(100% - 24px); box-sizing: border-box; }
+.mu-fest.is-hidden { visibility: hidden; }
 .mu-fest.is-on { opacity: 1; transform: none; }
 .mu-fest .mu-fest-icon { width: calc(30 * var(--px)); height: calc(30 * var(--px)); flex: none; color: var(--mu-gold); }
 .mu-fest .mu-fest-kick { display: block; font-size: calc(12 * var(--px)); letter-spacing: 0.08em; color: var(--mu-gold); text-transform: uppercase; }
 :lang(km) .mu-fest .mu-fest-kick { letter-spacing: 0; text-transform: none; }
-.mu-fest .mu-fest-name { display: block; font: 400 calc(21 * var(--px)) / 1.15 var(--mu-display); color: var(--mu-ink); white-space: nowrap; }
-.mu-fest .mu-fest-note { display: block; font-size: calc(13.5 * var(--px)); color: var(--mu-ink2); white-space: nowrap; margin-top: calc(2 * var(--px)); }
-.mu-fest.is-toast { left: 50%; top: calc(20 * var(--px)); transform: translate(-50%, calc(-8 * var(--px))); }
+.mu-fest .mu-fest-name { display: block; font: 400 calc(21 * var(--px)) / 1.15 var(--mu-display); color: var(--mu-ink); }
+.mu-fest .mu-fest-note { display: block; font-size: calc(13.5 * var(--px)); color: var(--mu-ink2); margin-top: calc(2 * var(--px)); }
+.mu-fest.is-toast { left: 50%; top: calc(20 * var(--px)); transform: translate(-50%, calc(-8 * var(--px))); text-align: left; width: max-content; }
+.mu-fest.is-compact .mu-fest-note { display: none; }
+.mu-fest.is-compact { padding-top: calc(6 * var(--px)); padding-bottom: calc(6 * var(--px)); }
 .mu-fest.is-toast.is-on { transform: translate(-50%, 0); }
 .mu-shot .mu-fest { transition: none; }
 `;
@@ -57,6 +68,8 @@ export function createBanner(): FestivalBanner {
   let toastUntil = -1;
   let wasRoaming = false;
   let placedAt = -1e9;
+  /** Frames since it was last placed afresh: the first few are measured each frame (the interface still laying out). */
+  let framesSince = 0;
   /** Toasts already shown (once per festival a visit). */
   const toasted = new Set<Festival>();
 
@@ -85,13 +98,46 @@ export function createBanner(): FestivalBanner {
     return e;
   };
 
-  /** Under the title card (measured: its size follows the window and the language). */
-  const place = () => {
-    const title = document.querySelector<HTMLElement>('.mu-title');
-    if (!el || !title) return;
-    const r = title.getBoundingClientRect();
+  /**
+   * Where it goes (measured: the window's size, the language, what the interface shows): in the picker under the
+   * title card, roaming at the top in the middle; then down below whatever control it would cover there (`clear`),
+   * hidden when that is past the screen's top half.
+   */
+  const place = (roaming: boolean) => {
+    if (!el) return;
     const root = el.parentElement!.getBoundingClientRect();
-    el.style.top = `${Math.round(r.bottom - root.top + 10)}px`;
+    // (a short screen, a phone held sideways: one line, its name, without the line of what is on)
+    el.classList.toggle('is-compact', root.height < SHORT);
+    el.style.left = '';
+    let top: number;
+    let left: number;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    if (roaming) {
+      // (the style's own top first: 20 px of the interface's scale)
+      el.style.top = '';
+      top = el.offsetTop;
+      left = (root.width - w) / 2;
+    } else {
+      const title = document.querySelector<HTMLElement>('.mu-title');
+      if (!title) return;
+      const tr = title.getBoundingClientRect();
+      top = tr.bottom - root.top + 10;
+      left = el.offsetLeft;
+      // (short: beside the title card when it fits there, not over the place cards below it)
+      if (root.height < SHORT) {
+        const x = tr.right - root.left + 12;
+        const y = tr.top - root.top;
+        if (clear(el, root, x, y, w, h, true) === y && x + w < root.width - 12) {
+          top = y;
+          left = x;
+          el.style.left = `${Math.round(x)}px`;
+        }
+      }
+    }
+    const y = clear(el, root, left, top, w, h, !roaming);
+    el.classList.toggle('is-hidden', y + h > root.height * 0.5);
+    el.style.top = `${Math.round(y)}px`;
   };
 
   return {
@@ -106,6 +152,7 @@ export function createBanner(): FestivalBanner {
         if (kind) {
           el.querySelector('.mu-fest-ico')!.innerHTML = ICON[kind];
           fill();
+          placedAt = -1e9;
         }
       }
       // A toast once when roaming starts during a festival.
@@ -113,15 +160,56 @@ export function createBanner(): FestivalBanner {
         toasted.add(kind);
         toastUntil = time + 7;
       }
+      const was = wasRoaming;
       wasRoaming = roaming;
       const toast = roaming && time < toastUntil;
       el.classList.toggle('is-toast', roaming);
-      // (measured twice a second: the title's size follows the window and the language)
-      if (!roaming && Math.abs(time - placedAt) > 0.5) {
+      // (measured twice a second while it shows, and as it comes up: the window, the language, the interface)
+      const on = !!kind && (!roaming || toast);
+      const fresh = roaming !== was || !el.classList.contains('is-on');
+      framesSince = fresh ? 0 : framesSince + 1;
+      if (on && (fresh || framesSince < 12 || Math.abs(time - placedAt) > 0.5)) {
         placedAt = time;
-        place();
+        place(roaming);
       }
-      el.classList.toggle('is-on', !!kind && (!roaming || toast));
+      el.classList.toggle('is-on', on);
     },
   };
+}
+
+/** Screens shorter than this (px) get it on one line (a phone held sideways). */
+const SHORT = 520;
+
+/** What it must not cover: the interface's controls and counters (the picker's place cards move with the map: not those). */
+const CONTROLS = 'button, a[href], [role="button"], [role="toolbar"], [role="status"]';
+
+/**
+ * The lowest top (px in the root, from `top` down) where a box `w` × `h` at `left` covers none of the interface's
+ * controls: each one it would cover pushes it down below that one, a few times over. Toasts and counters
+ * (`role="status"`) keep their place even while they are not showing (they come and go: the banner does not jump).
+ */
+function clear(self: HTMLElement, root: DOMRect, left: number, top: number, w: number, h: number, picker: boolean): number {
+  const boxes: { l: number; t: number; r: number; b: number }[] = [];
+  for (const c of document.querySelectorAll<HTMLElement>(CONTROLS)) {
+    if (self.contains(c) || (picker && c.closest('.mu-pin'))) continue;
+    const r = c.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.top - root.top > root.height * 0.5) continue;
+    const cs = getComputedStyle(c);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    // (in the picker a faded control is not in the way; roaming, its controls may still be fading in as it comes up: they are)
+    if (picker && c.getAttribute('role') !== 'status' && Number(cs.opacity) < 0.05) continue;
+    boxes.push({ l: r.left - root.left, t: r.top - root.top, r: r.right - root.left, b: r.bottom - root.top });
+  }
+  const gap = 6;
+  let y = top;
+  for (let pass = 0; pass < 12; pass++) {
+    let moved = false;
+    for (const o of boxes)
+      if (left < o.r + gap && left + w > o.l - gap && y < o.b + gap && y + h > o.t - gap) {
+        y = o.b + gap + 2;
+        moved = true;
+      }
+    if (!moved) break;
+  }
+  return y;
 }

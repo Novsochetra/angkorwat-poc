@@ -83,6 +83,11 @@ function createVisakAddon(): RoamAddon {
   const hold = (on: boolean) => {
     if (!env || on === handed) return;
     handed = on;
+    // (his candle's glow: made and put in the scene the first time he holds one: none on a page that never sees Visak Bochea)
+    if (on && !glow) {
+      glow = candleGlow(0.55);
+      env.scene.add(glow);
+    }
     if (on) env.explorer.rig.setSlot('visakOffering', 'chest', buildOffering());
     else env.explorer.rig.clearSlot('visakOffering');
   };
@@ -164,8 +169,6 @@ function createVisakAddon(): RoamAddon {
     init(e) {
       env = e;
       walk = createLineWalk(e, 'visak', 'candle');
-      glow = candleGlow(0.55);
-      e.scene.add(glow);
     },
 
     offer(ctx, mode) {

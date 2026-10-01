@@ -214,6 +214,9 @@ work.plan({ quality, terrain: !only || only.includes('terrain'), vegetation: !on
 // (the atmosphere's module loads while the land is built)
 const atmosphereModule = import('./atmosphere');
 atmosphereModule.catch(() => undefined);
+// (the roaming add-ons' modules too, chunks of their own: they download while the map is built, and roaming waits for them,
+// so their meshes are in the scene when the shaders are compiled below, not compiled in the middle of play: roam/_addonList.ts)
+if (!only || only.includes('foreground')) void import('./roam/_addonList').then((m) => m.loadAddons()).catch(() => undefined);
 const landT0 = performance.now();
 const field = await work.field();
 timings.land = Math.round(performance.now() - landT0);

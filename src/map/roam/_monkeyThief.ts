@@ -7,7 +7,7 @@ import { SFX } from '../audio/addonSfx';
 import { EVENTS } from '../events';
 import type { Activity, Agent } from '../fauna/_landBrain';
 import { borrow, giveBack, THIEF, thiefHand, type ThiefFood } from '../fauna/_landMacaque';
-import { GREET } from '../greet';
+import { GREET, nearby, type Nearby } from '../greet';
 import { pad } from '../pad/pad';
 import { SHOPS } from '../shop';
 import type { Lang, MapFrame, RoamMode } from '../types';
@@ -16,7 +16,7 @@ import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { meals } from './_shop';
 import { nameOf } from './_shopPurse';
 import { angleDiff } from './followCam';
-import type { RoamCtx } from './types';
+import type { RoamBody, RoamCtx, RoamWorld } from './types';
 
 /**
  * Monkeys steal his snack. The long-tailed macaques of the temple troops
@@ -118,21 +118,28 @@ const WATCH_IT = 1.6;
 const HOP_UP = 3.3;
 const HOP_BACK = 2.1;
 /**
- * The camera while it comes and goes: from the side of the line between him and the monkey (both in view, his face
- * in profile), looking at a point `share` of the way from him to it, as far off as they are apart (`near` + `per`
- * × m, within `min`‥`max`), a little from above. Once it climbs up to eat, on the monkey (`up`: from his way,
- * `side` radians off the line, near it and a little zoomed in: `fov`°), as he sees it. Easing there at `rate` (1/s),
- * and back to him at `back` (1/s) once it has eaten a while (`holdFeast` s), or he moves, or the player turns it.
+ * The camera while it comes and goes: both of them in view (within `fill` of the view's half width and height, as far
+ * back as that takes: `min`‥`max` m), looking at the point between them, from a way round the line between them
+ * (`ways`: degrees off it, near square on, so neither is far behind the other nor runs at the lens; `pitches`: a little
+ * from above, then higher) from
+ * which nothing hides either of them: no wall or roof between (the follow camera would pull in), nobody within
+ * `person` m of the lines to him and to it, nobody in the picture nearer the lens than they are (`front` m nearer
+ * than the point between them: a passer-by filling the foreground). It looks for that way again
+ * every `every` s (keeping the one it has while it stays clear). Easing there at `rate` (1/s; back from them at `out`,
+ * so the monkey running off stays in view), and back to him at
+ * `back` (1/s) once it has eaten a while up on its wall (`holdFeast` s), or he moves, or the player turns it.
  */
 const CAM = {
-  share: 0.45,
-  near: 3.2,
-  per: 0.75,
-  min: 5.2,
-  max: 11.5,
-  pitch: 0.2,
-  up: { side: 0.3, share: 0.82, near: 4.2, per: 0.08, min: 4.5, max: 6, pitch: 0.06, fov: 42 },
+  ways: [90, 70, 110, 50, 130],
+  pitches: [0.2, 0.45],
+  min: 5,
+  max: 14,
+  fill: 0.72,
+  person: 0.9,
+  front: 1.5,
+  every: 0.4,
   rate: 2.2,
+  out: 7,
   back: 2.5,
   holdFeast: 3,
 };
@@ -203,7 +210,11 @@ let faceUntil = -1;
 let faceOurs = false;
 let watchUntil = -1;
 let heyAt = -1;
-/** The camera: steering it now (the URL's `rcam` holds it: never), letting go, its side, our eased orbit and focus share. */
+/**
+ * The camera: steering it now (the URL's `rcam` holds it: never), letting go, the side it began on, our eased orbit
+ * and how far the focus is ours (0 the game's ‥ 1 between them); the way picked (off the line between them, radians;
+ * the tilt) and when to look again (s, `clock`); the way from him to the monkey.
+ */
 let steer = false;
 let camOut = false;
 let keepView = false;
@@ -211,8 +222,19 @@ let camSide = 1;
 let camYaw = 0;
 let camPitch = 0;
 let camDist = 0;
-let camK = 0;
+let camW = 0;
+let camOff = Math.PI / 2;
+let camTilt = 0.2;
+let camAt = -1;
+let camMiss = 0;
 let lookAt = 0;
+/** His middle and the monkey's, the point between, the ends of each of them for the framing (world, m); the camera tried. */
+const camH = new Vector3();
+const camM = new Vector3();
+const camF = new Vector3();
+const camC = new Vector3();
+const camPts = [new Vector3(), new Vector3(), new Vector3(), new Vector3()];
+const camSeen: Nearby = { x: 0, y: 0, z: 0, d: 0, kind: '', elder: false };
 /** Chatters: when next while it eats, the last scold. */
 let chatterAt = 0;
 let scoldAt = -1e9;
@@ -658,10 +680,14 @@ function steal(force: boolean): boolean {
   camYaw = c.yaw;
   camPitch = c.pitch;
   camDist = c.distance;
-  camK = 0;
+  camW = 0;
+  camAt = -1;
+  camMiss = 1;
   lookAt = Math.atan2(a.x - env!.body.pos.x, a.z - env!.body.pos.z);
   // (the side of the line between them the camera is on now: the least swing)
   camSide = angleDiff(c.yaw, lookAt) >= 0 ? 1 : -1;
+  camOff = camSide * (Math.PI / 2);
+  camTilt = CAM.pitches[0];
   return true;
 }
 
@@ -1037,44 +1063,166 @@ function answer(ctx: RoamCtx): void {
   setPhase('answer');
 }
 
+/** His middle and the monkey's, the point between them, and the ends of each (his feet and head, its feet and top). */
+function subjects(b: RoamBody): void {
+  const ex = explorer!;
+  const k = b.scale / 1.4;
+  // (sitting on the ground: the rest's posture)
+  const sitting = !!ex.animator.posture;
+  const p = THIEF.pose;
+  camH.set(b.pos.x, b.pos.y + (sitting ? 1.25 : 1.6) * k, b.pos.z);
+  camM.set(p.x, p.y + 0.35, p.z);
+  camF.lerpVectors(camH, camM, 0.5);
+  camPts[0].set(b.pos.x, b.pos.y + 0.3, b.pos.z);
+  camPts[1].set(b.pos.x, b.pos.y + (sitting ? 1.9 : 2.7) * k, b.pos.z);
+  camPts[2].set(p.x, p.y, p.z);
+  camPts[3].set(p.x, p.y + 0.75, p.z);
+}
+
+/** How far back from the point between them (m) the camera must stand at `yaw` / `pitch` to have both in view (`CAM.fill`). */
+function fitDistance(yaw: number, pitch: number, aspect: number, fov: number): number {
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  // (forward, right and up of such a camera)
+  const fx = Math.sin(yaw) * cp;
+  const fy = -sp;
+  const fz = Math.cos(yaw) * cp;
+  const rx = Math.cos(yaw);
+  const rz = -Math.sin(yaw);
+  const ux = Math.sin(yaw) * sp;
+  const uy = cp;
+  const uz = Math.cos(yaw) * sp;
+  const tv = Math.tan(((fov / 2) * Math.PI) / 180);
+  const th = Math.tan(Math.atan(tv * aspect) * CAM.fill);
+  const tvf = Math.tan(Math.atan(tv) * CAM.fill);
+  let need = CAM.min;
+  for (const q of camPts) {
+    const x = q.x - camF.x;
+    const y = q.y - camF.y;
+    const z = q.z - camF.z;
+    const d = x * fx + y * fy + z * fz;
+    const sx = Math.abs(x * rx + z * rz);
+    const sy = Math.abs(x * ux + y * uy + z * uz);
+    need = Math.max(need, sx / th - d, sy / tvf - d);
+  }
+  return need;
+}
+
+/** Someone within `CAM.person` m of the way from (tx, ty, tz) to the camera at `camC` (people/_greetBack.ts's finder, from both ends). */
+function personOnLine(tx: number, ty: number, tz: number): boolean {
+  const d = len(camC.x - tx, camC.z - tz);
+  if (d < 0.5) return false;
+  const cone = Math.atan(CAM.person / (d / 2));
+  const yaw = Math.atan2(camC.x - tx, camC.z - tz);
+  return !!nearby(tx, ty, tz, yaw, d, cone, camSeen) || !!nearby(camC.x, ty, camC.z, yaw + Math.PI, d, cone, camSeen);
+}
+
 /**
- * The camera while it comes and goes (see `CAM`): our own orbit, eased, and the focus drawn towards the monkey; then
- * back to him (the focus eased home first: no jump) and the follow camera's own again.
+ * The camera `dist` m back from the point between them at `yaw` / `pitch` (into `camC`): clear of walls and roofs on
+ * the way to it (the follow camera would pull in) and between it and either of them, above the ground, nobody on the
+ * lines to them nor right in front of the lens (`people`: false, only the walls).
+ */
+function clearCam(w: RoamWorld, yaw: number, pitch: number, dist: number, people: boolean): boolean {
+  const cp = Math.cos(pitch);
+  camC.set(camF.x - Math.sin(yaw) * cp * dist, camF.y + Math.sin(pitch) * dist, camF.z - Math.cos(yaw) * cp * dist);
+  if (camC.y < w.groundAt(camC.x, camC.z) + 0.8) return false;
+  const hard = w.hardClearance ?? w.clearance;
+  const soft = w.softClearance;
+  if (hard) {
+    // (a little past the camera too, as the follow camera looks)
+    const ox = camC.x + (camC.x - camF.x) * (1.2 / dist);
+    const oy = camC.y + (camC.y - camF.y) * (1.2 / dist);
+    const oz = camC.z + (camC.z - camF.z) * (1.2 / dist);
+    if (hard(camF.x, camF.y, camF.z, ox, oy, oz) < 0.98) return false;
+    // (to its top: sitting on a wall, the wall's edge may graze the line to its middle)
+    if (hard(camC.x, camC.y, camC.z, camH.x, camH.y, camH.z) < 0.97 || hard(camC.x, camC.y, camC.z, camM.x, camM.y + 0.3, camM.z) < 0.95) return false;
+  }
+  if (soft && (soft(camC.x, camC.y, camC.z, camH.x, camH.y, camH.z) < 0.9 || soft(camC.x, camC.y, camC.z, camM.x, camM.y, camM.z) < 0.9)) return false;
+  if (!people) return true;
+  const b = env!.body.pos;
+  const p = THIEF.pose;
+  if (personOnLine(b.x, b.y, b.z) || personOnLine(p.x, Math.min(p.y, b.y + 1), p.z)) return false;
+  // (nobody in the picture nearer the lens than they are: in front of them, filling it; beside or behind them is fine)
+  const toF = len(camF.x - camC.x, camF.z - camC.z);
+  return !nearby(camC.x, b.y, camC.z, Math.atan2(camF.x - camC.x, camF.z - camC.z), Math.max(1.5, toF - CAM.front), 0.62, camSeen);
+}
+
+/**
+ * The way to look from (`camOff`, `camTilt`): the one it has while it stays clear (blocked twice running, it looks
+ * again: a passer-by does not swing it round), else the clear one most square on and least far round from where the
+ * camera is (people kept out first, then only walls). Not while the monkey leaps (on its way past a wall's edge).
+ */
+function pickWay(ctx: RoamCtx): void {
+  if (phase === 'leap' || phase === 'climb') return;
+  const w = ctx.world;
+  const aspect = ctx.cam.camera.aspect;
+  const fov = ctx.cam.camera.fov;
+  const clear = (off: number, tilt: number, people: boolean) => {
+    const yaw = lookAt + off;
+    return clearCam(w, yaw, tilt, Math.min(CAM.max, fitDistance(yaw, tilt, aspect, fov)), people);
+  };
+  if (clear(camOff, camTilt, true)) {
+    camMiss = 0;
+    return;
+  }
+  if (++camMiss < 2) return;
+  camMiss = 0;
+  for (const people of [true, false]) {
+    let best = Infinity;
+    for (const tilt of CAM.pitches)
+      for (const deg of CAM.ways)
+        for (const side of [1, -1]) {
+          const off = (side * deg * Math.PI) / 180;
+          // (square on, the least swing from where the camera is; a little more for the higher tilt)
+          const swing = (Math.abs(deg - 90) * Math.PI) / 180 + 0.6 * Math.abs(angleDiff(lookAt + off, camYaw)) + (tilt - CAM.pitches[0]) * 0.8;
+          if (swing >= best || !clear(off, tilt, people)) continue;
+          best = swing;
+          camOff = off;
+          camTilt = tilt;
+        }
+    if (best < Infinity) return;
+  }
+}
+
+/**
+ * The camera while it comes and goes (see `CAM`): our own orbit, eased, and the focus drawn to the point between
+ * them; then back to him (the focus eased home first: no jump) and the follow camera's own again.
  */
 function camera(ctx: RoamCtx, dt: number): void {
   if (!steer) return;
   const i = ctx.input;
   const c = ctx.cam;
-  const b = ctx.body.pos;
+  const b = ctx.body;
   const p = THIEF.pose;
   // (the player turns the camera or walks off, or it has eaten a while: let go)
   if (i.lookYaw || i.lookPitch || i.zoom || Math.abs(i.move.x) + Math.abs(i.move.y) > 0.2) camOut = true;
   if (phase === 'off' || (phase === 'feast' && pt > CAM.holdFeast) || phase === 'finish' || phase === 'down' || phase === 'home' || phase === 'sulk' || phase === 'backoff' || phase === 'answer') camOut = true;
-  const up = phase === 'climb' || phase === 'settle' || phase === 'feast';
-  camK += ((camOut ? 0 : up ? CAM.up.share : CAM.share) - camK) * (1 - Math.exp(-(camOut ? CAM.back : CAM.rate) * dt));
-  if (camOut && camK < 0.01) {
+  camW += ((camOut ? 0 : 1) - camW) * (1 - Math.exp(-(camOut ? CAM.back : CAM.rate) * dt));
+  if (camOut && camW < 0.01) {
     steer = false;
     return;
   }
-  // The focus: from his chest (the walker's) towards the monkey's middle.
-  c.focus.x += (p.x - c.focus.x) * camK;
-  c.focus.y += (p.y + 0.35 - c.focus.y) * camK;
-  c.focus.z += (p.z - c.focus.z) * camK;
+  subjects(b);
+  // The focus: from where the game has it (his chest; sitting, the rest's) to the point between them.
+  c.focus.lerp(camF, camW);
   if (camOut) return;
   // (the way to it from him, kept while it is right by him: no swinging round at the grab)
-  const sep = Math.sqrt((p.x - b.x) ** 2 + (p.z - b.z) ** 2 + (p.y - b.y) ** 2);
-  if (len(p.x - b.x, p.z - b.z) > 2.2) lookAt = Math.atan2(p.x - b.x, p.z - b.z);
+  if (len(p.x - b.pos.x, p.z - b.pos.z) > 2.2) lookAt = Math.atan2(p.x - b.pos.x, p.z - b.pos.z);
+  if (clock >= camAt) {
+    camAt = clock + CAM.every;
+    pickWay(ctx);
+  }
+  const yaw = lookAt + camOff;
   const k = 1 - Math.exp(-CAM.rate * dt);
-  const v = up ? CAM.up : CAM;
-  camYaw += angleDiff(lookAt + camSide * (up ? CAM.up.side : Math.PI / 2), camYaw) * k;
-  camPitch += (v.pitch - camPitch) * k;
-  camDist += (Math.max(v.min, Math.min(v.max, v.near + v.per * sep)) - camDist) * k;
+  camYaw += angleDiff(yaw, camYaw) * k;
+  camPitch += (camTilt - camPitch) * k;
+  // (far enough back for both as the camera stands now, on its way round too: the monkey runs fast; out quickly, in slowly)
+  const need = Math.min(CAM.max, fitDistance(camYaw, camPitch, c.camera.aspect, c.camera.fov));
+  camDist += (need - camDist) * (1 - Math.exp(-(need > camDist ? CAM.out : CAM.rate) * dt));
   c.yaw = camYaw;
   c.behindYaw = camYaw;
   c.pitch = camPitch;
   c.distance = camDist;
-  // (the follow camera eases its field of view: in a little on the monkey up there, back to the walk's after)
-  if (up) c.fov = CAM.up.fov;
 }
 
 /** His side: the face, turning to watch it go, the "hey!". */
@@ -1127,6 +1275,12 @@ function maybe(ctx: RoamCtx, mode: RoamMode, dt: number): void {
 
 /** The URL's `monkey=steal`: the nearest troop's boldest macaque comes for what he eats (as soon as he eats: a second at most). */
 function forced(ctx: RoamCtx): void {
+  // (the night as the frame has it: a shot's `clock=` sets it, not only `night=`; roaming's first step reads it)
+  if (night > NIGHT) {
+    forceAt = -1;
+    console.info('[map] monkey=steal: night, the monkeys sleep (no theft)');
+    return;
+  }
   if (!eatingNow()) {
     if (clock > forceAt) {
       forceAt = -1;
@@ -1207,7 +1361,7 @@ registerAddon({
     Object.assign(window, {
       __monkeys: {
         get state() {
-          return { phase, pt, st, agent: ag?.i ?? null, pose: { ...THIEF.pose }, food: THIEF.food && { ...THIEF.food }, nearEat, nextAt, clock, climbs, foot: foot.toArray(), seat: seat.toArray(), takeoff: takeoff.toArray(), perch: { ...perch.stats } };
+          return { phase, pt, st, agent: ag?.i ?? null, pose: { ...THIEF.pose }, food: THIEF.food && { ...THIEF.food }, nearEat, nextAt, clock, climbs, foot: foot.toArray(), seat: seat.toArray(), takeoff: takeoff.toArray(), perch: { ...perch.stats }, cam: { steer, out: camOut, off: camOff, tilt: camTilt, dist: camDist, w: camW } };
         },
         ground: (x: number, z: number) => [G(x, z), W(x, z)],
       },
@@ -1254,10 +1408,9 @@ registerAddon({
     if (!v) return;
     if (!THIEF.ground) return void console.warn('[map] monkey=: no troops (the fauna part is not on the map)');
     if (v === 'steal') {
-      night = ctx.night;
-      if (night > NIGHT) console.info('[map] monkey=steal: night, the monkeys sleep (no theft)');
-      // (now, or on the first step his meal is in his hands: `act=eat&food=…` starts it then)
-      else forceAt = clock + 1;
+      // (on the first step his meal is in his hands — `act=eat&food=…` starts it then — and not at night: the night is
+      // read then, from the frame: here `ctx.night` is only the URL's `night=`, not a `clock=`'s)
+      forceAt = clock + 1;
     } else if (v.startsWith('feast')) feastFromUrl(v.slice(6) || 'fruit', ctx);
   },
   report() {

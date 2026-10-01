@@ -42,7 +42,8 @@ export function inWords(s: number): string {
   if (s < 60) return t('whenInSec', { n: num(Math.round(s)) });
   const min = Math.max(1, Math.round(s / 60));
   if (min < 60) return t('whenInMin', { n: num(min) });
-  return t('whenInHm', { h: num(Math.floor(min / 60)), m: num(min % 60) });
+  const h = num(Math.floor(min / 60));
+  return min % 60 ? t('whenInHm', { h, m: num(min % 60) }) : t('whenInH', { h });
 }
 
 /** "42 s left", "3 min left". */
@@ -54,7 +55,15 @@ export function leftWords(s: number): string {
 /** "72 min", "2 h 30 min" (seconds of play). */
 export function playWords(s: number): string {
   const min = Math.max(1, Math.round(s / 60));
-  return min < 60 ? t('whenMin', { n: num(min) }) : t('whenHm', { h: num(Math.floor(min / 60)), m: num(min % 60) });
+  if (min < 60) return t('whenMin', { n: num(min) });
+  const h = num(Math.floor(min / 60));
+  return min % 60 ? t('whenHm', { h, m: num(min % 60) }) : t('whenH', { h });
+}
+
+/** "one more day on the map", "3 more days on the map" (`days` of the cycle still to come). */
+export function leftDaysWords(days: number): string {
+  const n = Math.max(1, Math.round(days));
+  return n === 1 ? t('whenLeftDay1') : t('whenLeftDays', { n: num(n) });
 }
 
 /** "in 12 days of the map · about 1 h 12 min of play" (`days` of the cycle, `dayLength` s of play each; `held`: the clock stands still). */

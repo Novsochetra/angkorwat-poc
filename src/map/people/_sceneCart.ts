@@ -25,9 +25,12 @@ import { Rig, RigDef } from './_things';
  * the grass and goes back; stops by the village shop, turns round, and so
  * on through the day. At night it stands by the village, the oxen dozing.
  *
- * It stops for the explorer (and for anyone else) in its way, the farmer
- * nodding to him; people step round it (it goes into the traffic as an
- * animal, like the elephants). The oxen's bronze bells clonk with their
+ * It stops for anyone right in its way, the farmer nodding to him; people
+ * step round it (it goes into the traffic as an animal, like the elephants).
+ * For the explorer only when he is really in its way (on its loop ahead,
+ * within its width: `LANE_HALF`); near its lane it eases aside to pass him
+ * where the ground is open, and waiting for him the farmer asks for the way
+ * ("សុំផ្លូវបន្តិចណា ក្មួយ!"), then it goes round him if it can. The oxen's bronze bells clonk with their
  * steps and the cart creaks (`oxBell`, `cartCreak`). From dusk a lantern
  * hangs at its front corner, by the farmer.
  *
@@ -57,9 +60,30 @@ const TURN_FAR: [number, number] = [-103.5, 64.5];
 const TURN_HOME: [number, number] = [-297, 81];
 /** How far the valley road is followed past the trail's end (m). */
 const ROAD_ON = 6;
-/** The explorer (or anyone) this far ahead in its way, this far across: it stops (m). */
+/** Anyone this far ahead in its way, this far across: it stops (m). (The explorer: `LANE_HALF`, along the loop.) */
 const BLOCK_AHEAD = 5.5;
 const BLOCK_ACROSS = 2.2;
+/**
+ * The explorer stops it only when he is really in its way: on its loop ahead (it
+ * curves), within the width of the cart and the oxen (half of it, m) and his own.
+ * Near its lane it eases aside to pass him where there is room (at most `SIDE_MAX`
+ * m, `SIDE_FAR` once it has waited `ASK_AFTER` + 4 s), steering out over
+ * `SIDE_RAMP` m of the loop before him and back after, full `SIDE_FULL` m either
+ * side of him; meanwhile it slows. Waiting for him `ASK_AFTER` s, the farmer asks
+ * him for the way (a bubble), again every `ASK_AGAIN` s: it never just stands.
+ */
+const LANE_HALF = 1.25;
+const SIDE_MAX = 1.5;
+const SIDE_FAR = 2.3;
+const SIDE_RAMP = 6;
+const SIDE_FULL = 2.5;
+/** How fast it steers aside (m/s across), and its pace meanwhile (of `SPEED`). */
+const SIDE_RATE = 0.8;
+const SIDE_PACE = 0.55;
+const ASK_AFTER = 4;
+const ASK_AGAIN = 15;
+/** How far ahead of the yoke it looks for him along its loop (m): a pass is planned from there. */
+const LOOK_AHEAD = 16;
 
 /** A disc (x, y, z, r) in the lane ahead of the yoke `y`, heading (tx, tz)? (no allocation: runs each frame) */
 function inPath(x: number, oy: number, z: number, r: number, y: { x: number; y: number; z: number }, tx: number, tz: number): boolean {
@@ -274,6 +298,14 @@ const Q = new Vector3();
 const A = new Vector3();
 const Y = new Vector3();
 const H = new Vector3();
+const T1 = new Vector3();
+const T2 = new Vector3();
+/** `d` wrapped round a loop of length `L` into −L/2‥L/2. */
+const wrapSigned = (d: number, L: number) => ((((d % L) + L * 1.5) % L) - L / 2);
+const smooth01 = (x: number) => {
+  const c = Math.min(1, Math.max(0, x));
+  return c * c * (3 - 2 * c);
+};
 /** The farmer's look point (copied by `lookAt`). */
 const LOOK = { x: 0, y: 0, z: 0 };
 
@@ -315,6 +347,17 @@ export class OxCart implements PeopleScene {
   private nightSaid = false;
   /** Out with the cart at night for a rider (until he is down and gone). */
   private stayOut = false;
+  /**
+   * Passing the explorer (`LANE_HALF`): where he is along the loop (m), how far
+   * aside it goes there (m, + its left: eased to `sideWant`), whether a pass is on;
+   * how long it has stood waiting for him (s) and when the farmer last asked.
+   */
+  private passS = 0;
+  private side = 0;
+  private sideWant = 0;
+  private passing = false;
+  private exWait = 0;
+  private askAt = -1e9;
   private readonly pace = new Pace(160, 420);
   private s = 0;
   private speed = 0;
@@ -394,7 +437,9 @@ export class OxCart implements PeopleScene {
     if (f.night > DARK) this.night = true;
     else if (f.night < LIGHT) this.night = false;
     // ── Where it goes: on round the loop, stopping at the ends and for whoever is in the way ──
-    const blocked = this.blocked(ex);
+    // (the explorer: only when he is really in its way, else it passes him, easing aside where there is room; people: ahead of the oxen)
+    const forHim = this.explorerWay(ex, dt, now);
+    const blocked = forHim || this.blocked();
     const toFar = loop.wrap(loop.far - this.s);
     const toHome = loop.wrap(loop.home - this.s);
     const waiting = this.wait > 0;
@@ -415,6 +460,7 @@ export class OxCart implements PeopleScene {
       want = Math.min(SPEED, Math.max(0.15, Math.min(toFar, toHome) * 0.4));
       if (this.night) want = Math.min(want, Math.max(0.15, toHome * 0.4));
     }
+    if (this.passing) want = Math.min(want, SPEED * SIDE_PACE);
     if (blocked) want = 0;
     this.speed += Math.max(-EASE * 2 * dt, Math.min(EASE * dt, want - this.speed));
     const ds = this.speed * dt;
@@ -423,12 +469,13 @@ export class OxCart implements PeopleScene {
     // ── Place the oxen, the cart, the farmer ──
     const k = PEOPLE_SCALE;
     const front = this.s;
-    const ahead = loop.at(front + 0.8, P);
-    const behind = loop.at(front - 0.8, Q);
+    // (aside from the loop while passing the explorer: `at`)
+    const ahead = this.at(front + 0.8, P);
+    const behind = this.at(front - 0.8, Q);
     const yawOx = Math.atan2(ahead.x - behind.x, ahead.z - behind.z);
-    const yoke = loop.at(front, A);
+    const yoke = this.at(front, A);
     // The cart: axle REACH behind the yoke, along the loop (a chord of it), pitched to the yoke's height.
-    const axle = loop.at(front - REACH * k, Y);
+    const axle = this.at(front - REACH * k, Y);
     const yawCart = Math.atan2(yoke.x - axle.x, yoke.z - axle.z);
     const rx = yoke.x - axle.x;
     const rz = yoke.z - axle.z;
@@ -571,8 +618,8 @@ export class OxCart implements PeopleScene {
     for (let i = 0; i < n; i++) this.cart.paint(l0 + i, colors[i]);
   }
 
-  /** Someone in the way ahead (the explorer on foot, people, an animal)? */
-  private blocked(ex: Obstacle | null): boolean {
+  /** People in the way right before the oxen (the explorer: `explorerWay`)? */
+  private blocked(): boolean {
     const loop = this.loop!;
     const k = PEOPLE_SCALE;
     const a = loop.at(this.s + 0.8, P);
@@ -580,7 +627,6 @@ export class OxCart implements PeopleScene {
     const tx = (a.x - b.x) / 1.6;
     const tz = (a.z - b.z) / 1.6;
     const y = loop.at(this.s, A);
-    if (ex && inPath(ex.x, ex.y, ex.z, ex.r, y, tx, tz)) return true;
     const near = 2.6 * k;
     for (const o of this.env.traffic.list) {
       if (o.who === 'animal' || o.who === 'explorer' || o.who === 'beacon' || o.who === this.name) continue;
@@ -591,6 +637,141 @@ export class OxCart implements PeopleScene {
       if (Math.sqrt(dx * dx + dz * dz) < near) return true;
     }
     return false;
+  }
+
+  /**
+   * The explorer and the cart's way (`LANE_HALF`): true when it must stop for
+   * him (on its loop ahead, within its width, with it aside as it is now). Near
+   * its lane ahead it plans a pass: aside to the side away from him (or round
+   * the other side), where the ground is open and dry; the pass ends once the
+   * cart's back is a ramp past him. Waiting for him, the farmer asks for the way.
+   */
+  private explorerWay(ex: Obstacle | null, dt: number, now: number): boolean {
+    const loop = this.loop!;
+    const L = loop.len;
+    const tail = this.s - REACH * PEOPLE_SCALE - 2.2;
+    // (a pass over, nothing of the cart aside any more: done)
+    if (this.passing && wrapSigned(tail - this.passS, L) > SIDE_RAMP) this.endPass();
+    this.side += Math.max(-SIDE_RATE * dt, Math.min(SIDE_RATE * dt, this.sideWant - this.side));
+    const y = loop.at(this.s, A);
+    const far = !ex || CART.rider !== RIDER.none || Math.abs(ex.y - y.y) > 3 || (ex.x - y.x) ** 2 + (ex.z - y.z) ** 2 > 22 * 22;
+    // (a pass not begun yet, nothing of it aside: let go when he is gone)
+    const unbegun = this.passing && wrapSigned(this.s + 0.8 - this.passS, L) < -SIDE_RAMP;
+    if (far || !ex) {
+      if (unbegun) this.endPass();
+      this.exWait = 0;
+      return false;
+    }
+    // Where he is from its way: the nearest point of its loop (from the cart's back to well ahead), and how near he is
+    // to the lane it drives now (aside or not) from the oxen to just ahead of them.
+    const need = LANE_HALF + ex.r;
+    const stopTo = this.s + BLOCK_AHEAD + ex.r;
+    let best = Infinity;
+    let bs = 0;
+    let bc = 0;
+    let lane = Infinity;
+    for (let sq = tail; sq <= this.s + LOOK_AHEAD; sq += 0.5) {
+      const p = loop.at(sq, T1);
+      const q = loop.at(sq + 0.5, T2);
+      const l = Math.sqrt((q.x - p.x) ** 2 + (q.z - p.z) ** 2) || 1;
+      const tx = (q.x - p.x) / l;
+      const tz = (q.z - p.z) / l;
+      const dx = ex.x - p.x;
+      const dz = ex.z - p.z;
+      const d2 = dx * dx + dz * dz;
+      const c = dx * tz - dz * tx;
+      if (d2 < best) {
+        best = d2;
+        bs = sq;
+        bc = c;
+      }
+      if (sq >= this.s - 0.5 && sq <= stopTo) {
+        // (to the lane's middle there: along and across, it aside as it is)
+        const a = dx * tx + dz * tz;
+        const e = c - this.offsetAt(sq);
+        lane = Math.min(lane, a * a + e * e);
+      }
+    }
+    const along = wrapSigned(bs - this.s, L);
+    // In its way as it goes now: by the oxen or just ahead of them, within its width.
+    const stop = lane < need * need;
+    if (along > -0.5 && Math.sqrt(best) < need + 0.45) {
+      // Near its lane ahead: a pass, aside away from him (or round his other side), where the ground lets it.
+      const clear = need + 0.15;
+      const max = this.exWait > ASK_AFTER + 4 ? SIDE_FAR : SIDE_MAX;
+      let t = bc >= 0 ? bc - clear : bc + clear;
+      if (Math.abs(t) > max || !this.roomAside(t, bs)) {
+        const t2 = bc >= 0 ? bc + clear : bc - clear;
+        t = Math.abs(t2) <= max && this.roomAside(t2, bs) ? t2 : Number.NaN;
+      }
+      if (Number.isFinite(t) && (!this.passing || Math.abs(wrapSigned(bs - this.passS, L)) < 2.5)) {
+        this.passing = true;
+        this.passS = bs;
+        this.sideWant = t;
+      }
+    } else if (unbegun) this.endPass();
+    // Waiting for him: after a moment the farmer asks him for the way, now and then.
+    if (stop) {
+      this.exWait += dt;
+      if (this.exWait > ASK_AFTER && now - this.askAt > ASK_AGAIN && this.farmer.shown) {
+        this.askAt = now;
+        this.nodAt = now;
+        this.bubble.say('cartPass', this.headAt, TALK);
+      }
+    } else this.exWait = 0;
+    return stop;
+  }
+
+  private endPass(): void {
+    this.passing = false;
+    this.side = 0;
+    this.sideWant = 0;
+  }
+
+  /** How far aside (m, + its left) the cart is at `sq` along its loop, passing the explorer: full by him, eased in and out along the loop. */
+  private offsetAt(sq: number): number {
+    if (this.side === 0) return 0;
+    const d = wrapSigned(sq - this.passS, this.loop!.len);
+    const r = SIDE_RAMP - SIDE_FULL;
+    return this.side * (d < 0 ? smooth01((d + SIDE_RAMP) / r) : 1 - smooth01((d - SIDE_FULL) / r));
+  }
+
+  /** The loop at `sq`, aside as the cart is there now (on the ground beside the trail), into `out`. */
+  private at(sq: number, out: Vector3): Vector3 {
+    const loop = this.loop!;
+    loop.at(sq, out);
+    const off = this.offsetAt(sq);
+    if (off === 0) return out;
+    const a = loop.at(sq + 0.5, T1);
+    const b = loop.at(sq - 0.5, T2);
+    const tx = a.x - b.x;
+    const tz = a.z - b.z;
+    const l = Math.sqrt(tx * tx + tz * tz) || 1;
+    const x = out.x + (tz / l) * off;
+    const z = out.z - (tx / l) * off;
+    const g = this.env.ground.at(x, z, out.y);
+    if (Number.isFinite(g) && Math.abs(g - out.y) < 1.2) out.y += (g - out.y) * Math.min(1, Math.abs(off) / 0.6);
+    out.x = x;
+    out.z = z;
+    return out;
+  }
+
+  /** Open, dry ground for the cart `t` m aside (+ its left) by `s0` on its loop: its middle and its outer wheel, before, by and after him. */
+  private roomAside(t: number, s0: number): boolean {
+    const loop = this.loop!;
+    for (let j = -1; j <= 1; j++) {
+      const sq = s0 + j * 3;
+      const p = loop.at(sq, T1);
+      const q = loop.at(sq + 0.5, T2);
+      const tx = q.x - p.x;
+      const tz = q.z - p.z;
+      const l = Math.sqrt(tx * tx + tz * tz) || 1;
+      // (its middle, then its outer wheel)
+      const w = t + Math.sign(t) * 1.05;
+      if (!this.env.ground.free(p.x + (tz / l) * t, p.z - (tx / l) * t, p.y)) return false;
+      if (!this.env.ground.free(p.x + (tz / l) * w, p.z - (tx / l) * w, p.y)) return false;
+    }
+    return true;
   }
 
   private hide(): void {

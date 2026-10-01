@@ -55,6 +55,8 @@ const TURN = 7;
 const HAT_OFF = 1.25;
 /** The camera beside the mat: its heading off the map's +z (radians), tilt, distance (m at his roaming size), how fast it comes (1/s). */
 const CAM = { yaw: 0.5, pitch: 0.55, dist: 3.5, rate: 1.4 };
+/** How fast the camera comes to the stretch's view (1/s). */
+const STRETCH_RATE = 2.2;
 /** He gets up for the stick past this, or E, or Space. */
 const STICK = 0.4;
 
@@ -65,6 +67,8 @@ export interface SleepSession {
   readonly done: boolean;
   /** In the dark, or fading (no input, no camera keys). */
   readonly dark: boolean;
+  /** It has his hat off (lying down: the brim; it goes back on as he gets up). */
+  readonly hatTaken: boolean;
   /** The step's input, before it is taken (roam/_home.ts `input`): E, Space or the stick. */
   poke(up: boolean, stick: number): void;
   hold(ctx: RoamCtx, dt: number): AddonHold;
@@ -78,15 +82,14 @@ const smooth = (v: number) => {
   return c * c * (3 - 2 * c);
 };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** A card asks something just now ("Back to the map?": ui/ask.ts puts `mu-asking` on the body). */
+const asking = () => typeof document !== 'undefined' && document.body.classList.contains('mu-asking');
 const _v = new Vector3();
 
 let snore: { show(on: boolean): void; place(x: number, y: number): void } | null = null;
 
-/**
- * Start (from where he stands in the room; `lying`: already down and asleep, a URL's `home=sleep`; `stretch`: a URL's
- * `home=stretch`). `room`: the room's own camera (roam/_home.ts), for once he is up again.
- */
-export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: 'stand' | 'lying' | 'stretch' = 'stand', room?: (ctx: RoamCtx, dt: number, front: boolean) => void): SleepSession {
+/** Start (from where he stands in the room; `lying`: already down and asleep, a URL's `home=sleep`; `stretch`: a URL's `home=stretch`). */
+export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: 'stand' | 'lying' | 'stretch' = 'stand'): SleepSession {
   const body = ctx.body;
   const ex = env.explorer;
   const cam = ctx.cam;
@@ -97,7 +100,14 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
   // (up again, he steps off the mat and out from under the net to stretch, turned to the room)
   const [ox, oz] = homeToWorld(HOME_IN.wake.x, HOME_IN.wake.z);
   const outSpot = new Vector3(ox, floor, oz);
-  const outYaw = homeYaw(0);
+  const outYaw = homeYaw(-Math.PI / 2);
+  // (first out of the net's open front, then to the stretch's spot)
+  const [vx, vz] = homeToWorld(HOME_IN.out.x, HOME_IN.out.z);
+  const via = new Vector3(vx, floor, vz);
+  let viaDone = false;
+  // The camera for the stretch: by the east window up near the eaves, looking across the room at him.
+  const [scx, scz] = homeToWorld(HOME_IN.stretchCam.x, HOME_IN.stretchCam.z);
+  const stretchCam = new Vector3(scx, floor + HOME_IN.stretchCam.y, scz);
   // (facing the house's +x: his head goes back toward the pillow at the mat's east end)
   const yaw = homeYaw(Math.PI / 2);
   const before = { pitch: cam.pitch, distance: cam.distance, pitchMin: cam.pitchMin };
@@ -120,7 +130,6 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
   let framed = 0;
   /** The fade, the jump and the fade back run on their own (promises); this says when it is over. */
   let darkDone = false;
-  let lastCtx: RoamCtx | null = null;
 
   const go = (to: number) => {
     uFrom = u;
@@ -169,13 +178,18 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
     SFX.play('homeSleep');
     await env.hud.fade(1, T.fadeOut);
     if (cancelled) return;
+    // The dark first, and nothing moves while a card asks ("Back to the map?", roam/_leave.ts) or while roaming is on
+    // its way back to the map (its controls off: roam.ts `stop`, which ends this a moment later): back to the map
+    // from the dark moves nothing. Only then the time moves on.
     const t0 = performance.now();
-    if (plan.to !== undefined) TIME.skipTo(Math.max(TIME.days(), plan.to));
+    const waitOn = () => performance.now() - t0 < T.dark * 1000 || asking() || !env.controls.enabled;
+    while (waitOn() && !cancelled) await sleep(50);
+    if (cancelled) return;
+    const t1 = performance.now();
+    if (plan.to !== undefined && env.controls.enabled) TIME.skipTo(Math.max(TIME.days(), plan.to));
     // (two frames for the late parts to be asked for, then what is built late: a few seconds at most)
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-    while (TIME.building() && performance.now() - t0 < T.buildWait * 1000 && !cancelled) await sleep(80);
-    const left = T.dark * 1000 - (performance.now() - t0);
-    if (left > 0) await sleep(left);
+    while (TIME.building() && performance.now() - t1 < T.buildWait * 1000 && !cancelled) await sleep(80);
     if (cancelled) return;
     await env.hud.fade(0, T.fadeIn);
     dark = false;
@@ -237,12 +251,14 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
     get dark() {
       return dark;
     },
+    get hatTaken() {
+      return hatTaken;
+    },
     poke(u0, s) {
       up ||= u0;
       stick = s;
     },
     hold(c, dt) {
-      lastCtx = c;
       time += dt;
       pt += dt;
       const ctrl = !dark;
@@ -350,8 +366,10 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
           }
           break;
         case 'out': {
-          const dx = outSpot.x - body.pos.x;
-          const dz = outSpot.z - body.pos.z;
+          const goal = viaDone ? outSpot : via;
+          if (!viaDone && Math.hypot(via.x - body.pos.x, via.z - body.pos.z) < 0.12) viaDone = true;
+          const dx = goal.x - body.pos.x;
+          const dz = goal.z - body.pos.z;
           const d = Math.hypot(dx, dz);
           if (d > 0.03) {
             const step = Math.min(d, STEP * (body.scale / 1.4) * dt);
@@ -434,11 +452,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
     snore?.show(false);
     HOME.netDown = false;
     c.cam.pitchMin = before.pitchMin;
-    // (got up before sleeping: the view as it was; else the room's camera has him already)
-    if (!room) {
-      c.cam.pitch = before.pitch;
-      c.cam.distance = before.distance;
-    }
+    // (the room's camera, roam/_home.ts, takes him over from here)
     phase = 'done';
   }
 
@@ -446,14 +460,23 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
   function camera(dt: number): void {
     const lying = smooth(u - 0.6);
     framed += dt;
-    if ((phase === 'out' || phase === 'stretch' || (phase === 'up' && u < 0.6)) && room && lastCtx) {
-      // (standing again: the room's camera, in a corner looking across at him)
-      room(lastCtx, dt, phase === 'stretch');
+    if (phase === 'out' || phase === 'stretch' || (phase === 'up' && u < 0.6)) {
+      // (standing again: from by the east window up near the eaves, looking across the room at him: all of him in view,
+      // arms up and all; the room's own camera, roam/_home.ts, takes him over once he is done)
       const s = body.scale;
-      cam.focus.set(body.pos.x, body.pos.y + s * 1.7 * 0.86, body.pos.z);
+      const fy = body.pos.y + s * 1.7 * 0.62;
+      cam.focus.set(body.pos.x, fy, body.pos.z);
+      const dx = body.pos.x - stretchCam.x;
+      const dz = body.pos.z - stretchCam.z;
+      const h = Math.hypot(dx, dz);
+      const k = 1 - Math.exp(-STRETCH_RATE * dt);
+      cam.yaw += angleDiff(Math.atan2(dx, dz), cam.yaw) * k;
+      cam.pitch += (Math.atan2(stretchCam.y - fy, h) - cam.pitch) * k;
+      cam.distance += (Math.hypot(h, stretchCam.y - fy) - cam.distance) * k;
+      cam.behindYaw = cam.yaw;
       return;
     }
-    if (framed < 3 && phase !== 'stretch' && phase !== 'done') {
+    if (framed < 3 && phase !== 'done') {
       const k = 1 - Math.exp(-CAM.rate * dt);
       cam.yaw += angleDiff(homeYaw(0) + Math.PI + CAM.yaw, cam.yaw) * k;
       cam.pitch += (CAM.pitch - cam.pitch) * k;

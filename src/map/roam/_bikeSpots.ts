@@ -7,9 +7,13 @@ import { EAST_DIR, EAST_N, MK } from '../hamlet/_mkPlan';
  * mini-map's badges (ui/_minimapSpots.ts) read them too. Each is a black
  * Khmer town bicycle on its side stand, parked where people leave theirs:
  *
- * - `wat`: on the grass by the head of the road's stairs in front of Angkor
- *   Wat's gate (bicycles are hired out by the real temple's west entrance);
- *   from there he can ride round the forecourt and into the courtyards;
+ * - `wat`: on the forecourt's grass east of the head of the road's stairs, by
+ *   the pad's south edge, pointing back to the road (bicycles are hired out by
+ *   the real temple's west entrance); clear of the apsara stage, its torches,
+ *   dancers and watchers (people/_sceneApsara.ts, west of the road), of the
+ *   equinox crowd (people/_sceneEquinox.ts: the monks and the family east of the
+ *   road sit 8 m and more north of it) and of the stair and the ways from its
+ *   head; from there he can ride round the forecourt and into the courtyards;
  * - `market`: at the end of the row of motos and bicycles parked south of
  *   the morning market's village street (hamlet/_mkPlan.ts `PARKED`);
  * - `village`: at the sugar-palm village's west end, by the street in
@@ -47,7 +51,7 @@ const [villageX, villageZ] = [street.x + street.tz * 3.4, street.z - street.tx *
 const villageYaw = Math.atan2(street.tx, street.tz) - 0.3;
 
 export const BIKE_SPOTS: readonly BikeSpot[] = [
-  { id: 'bike-wat', x: -8.6, z: -157.2, yaw: Math.PI / 2 - 0.12, seed: 1, badge: true },
+  { id: 'bike-wat', x: 10.2, z: -152.6, yaw: -Math.PI / 2 + 0.15, seed: 1, badge: true },
   { id: 'bike-market', x: marketX, z: marketZ, yaw: TO_ROAD_S + 0.4, seed: 2, badge: true },
   { id: 'bike-village', x: villageX, z: villageZ, yaw: villageYaw, seed: 3, badge: false },
   { id: 'bike-hamlet', x: bmX(11.3, 5.1), z: bmZ(11.3, 5.1), yaw: bmYaw(1.3), seed: 4, badge: true },

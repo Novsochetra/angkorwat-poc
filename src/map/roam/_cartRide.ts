@@ -5,7 +5,7 @@ import { SFX } from '../audio/addonSfx';
 import { CART, RIDER, type CartPoint } from '../people/_cartHook';
 import { pad } from '../pad/pad';
 import { lang, t } from '../ui/lang';
-import { addonBusy, registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { addonBusy, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 import { stepSound } from './walker';
@@ -137,6 +137,12 @@ const seat = new Vector3();
 const _p = new Vector3();
 const _cand = new Vector3();
 const ps: CartSeatState = { u: 0, roll: 0, pitch: 0, bump: 0, go: 0, t: 0 };
+/** The key help (bottom left) while he is on it: E or Space hops off, the look, the camera and the phone. */
+const KEYS: readonly AddonKey[] = [
+  ['E Space', 'cartOff', 'west south'],
+  ['Q R', 'rLook', 'rstick'],
+  ['4 5', 'rPhoto', 'dpadx'],
+];
 /** What `hold` returns (one object, filled each step). */
 const HELD: AddonHold = { prompt: null, mode: null };
 const held = (prompt: string | null): AddonHold => {
@@ -387,6 +393,8 @@ function finish(ctx: RoamCtx | null, hard: boolean): void {
   lastS = Number.NaN;
   CART.rider = RIDER.none;
   SFX.level('cartRoll', 0);
+  // (the touch screen's Jump button back)
+  touchJump(null);
   if (!e) return;
   e.explorer.animator.posture = null;
   e.explorer.animator.postureFeet = true;
@@ -421,6 +429,8 @@ function begin(ctx: RoamCtx, next: Phase): void {
   body.explorer.animator.postureFeet = false;
   cam.minDistance = 3.5;
   cam.maxDistance = 25;
+  // (on a touch screen the E button, shown with the prompt, hops him off: no Jump button meanwhile)
+  touchJump('hide');
 }
 
 /** Start climbing on from where he stands (E, or the URL's `cartride=on`). */
@@ -505,6 +515,10 @@ registerAddon({
   },
   get handsBusy() {
     return phase !== 'none';
+  },
+
+  keys() {
+    return KEYS;
   },
 
   init(e) {

@@ -423,11 +423,19 @@ function endPick(ctx: RoamCtx | null, kept: boolean, quiet = false): void {
   if (ctx && camBefore) ctx.cam.follow = camBefore.follow;
 }
 
+/** A card asks something just now ("Back to the map?": ui/ask.ts), or roaming is on its way back to the map: what he does waits. */
+const asking = (): boolean => (typeof document !== 'undefined' && document.body.classList.contains('mu-asking')) || !(env?.controls.enabled ?? true);
+
 /** One step of picking (the boat's step: it holds him). */
 function stepPick(ctx: RoamCtx, dt: number): void {
   const e = env!;
   const { body, cam } = ctx;
   const u = bud!;
+  // (asked "Back to the map?": he waits as he is; snapped already, it goes into his bag as roaming ends)
+  if (asking()) {
+    body.vel.set(0, 0, 0);
+    return;
+  }
   st += dt;
   body.vel.set(0, 0, 0);
   // (the boat posture came back under ours: a new boat's, a settled shot's)
@@ -629,10 +637,13 @@ function stepLay(ctx: RoamCtx, dt: number): void {
     endLay();
     return;
   }
-  lt += dt;
-  ls.t += dt;
   // The prayer waits at the kneel (the Animator adds this step's time as it poses him next).
   clock.t = LAY_KNEEL - Math.min(dt, 0.1);
+  // ("Back to the map?" asks, or he is on his way there: it waits too, so it is laid, taken from his bag and counted
+  // only if he stays; gone back to the map, it is still in his bag: `setMode`)
+  if (asking()) return;
+  lt += dt;
+  ls.t += dt;
   const b = ctx.body;
   const s = b.scale;
   // Out of his bag into his right hand, before his chest.

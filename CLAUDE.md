@@ -261,8 +261,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 
 The ideas picked from `docs/ideas.md` (October 2026) are roaming add-ons: the
 contract is `src/map/roam/_addons.ts`, one loader line each in
-`roam/_addonList.ts` (they load after Start in chunks of their own; shots and
-`roam=` pages load them first; nothing else may import an add-on's module). The
+`roam/_addonList.ts` (chunks of their own, downloaded while the map builds;
+roaming waits for them, so their shaders compile before Start; nothing else may
+import an add-on's module). The
 guide, with every add-on's keys and URL values for shots, is
 `docs/map-work/addons.md`: read its section before changing one.
 

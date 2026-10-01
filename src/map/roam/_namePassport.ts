@@ -1,7 +1,7 @@
 import { onName, playerName } from '../khmerName';
 import { progress } from '../progress';
 import { lang, onLang, t } from '../ui/lang';
-import { openNameCard } from './_nameCard';
+import { mapShown, openNameCard } from './_nameCard';
 
 /**
  * His name on the temple passport (the album's third section, _bookUi.ts):
@@ -11,8 +11,10 @@ import { openNameCard } from './_nameCard';
  * name card (_nameCard.ts) over the album.
  *
  * The first time he opens the passport without a name the card is offered
- * by itself, once (`name.asked` in map/progress.ts): not in shots, unless
- * `nameoffer=1`.
+ * by itself, once (`name.asked` in map/progress.ts): only once the map is
+ * shown (never over the loading screen or the story: a check's
+ * `album=passport` opens the album under them) and the passport is still open
+ * then; not in shots, unless `nameoffer=1`.
  */
 
 let line: HTMLElement | null = null;
@@ -55,13 +57,34 @@ function fill(): void {
 const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
 const SHOT = params.get('shot') === '1';
 
-/** The passport opened: with no name yet, the first time, the card offers to write one. */
+/** No name yet, and not offered before (shots: only with `nameoffer=1`). */
+const due = () => !playerName() && !(SHOT ? params.get('nameoffer') !== '1' : progress.get('name.asked', false));
+
+/** The album is open at the passport, for the player to see. */
+function passportShown(): boolean {
+  const album = document.querySelector<HTMLElement>('.photo-album');
+  const panel = document.querySelector<HTMLElement>('.photo-album .photo-panel[data-tab="passport"]');
+  return !!album && !album.hidden && !!panel && !panel.closest('[hidden]');
+}
+
+let offerTimer = 0;
+/** The passport opened: with no name yet, the first time, the card offers to write one (once the map is shown). */
 export function offerName(): void {
-  if (playerName()) return;
-  if (SHOT ? params.get('nameoffer') !== '1' : progress.get('name.asked', false)) return;
-  progress.set('name.asked', true);
+  if (offerTimer || !due()) return;
+  const tryNow = () => {
+    offerTimer = 0;
+    // (the album shut meanwhile, or a name came: nothing; offered the next time the passport opens)
+    if (!due() || !passportShown()) return;
+    // (the loading screen or the story is up: wait for the map, without a word, and look again)
+    if (!SHOT && !mapShown()) {
+      offerTimer = window.setTimeout(tryNow, 400);
+      return;
+    }
+    progress.set('name.asked', true);
+    openNameCard(undefined, 'passport');
+  };
   // (after the album has drawn the passport: the card comes in over it)
-  requestAnimationFrame(() => openNameCard(undefined, 'passport'));
+  offerTimer = window.setTimeout(tryNow, 0);
 }
 
 let styled = false;

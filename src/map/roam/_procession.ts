@@ -57,6 +57,10 @@ const SHRINES = {
   giver: { r: 1.0 },
   rail: { x: 11.15, z0: 92.85, z1: 115.15 },
 };
+/** The camera behind him and this far round to his left in the line (radians: out over the open strip, the hall ahead on the right). */
+const CAM_OUT = 0.5;
+/** …and no lower than this (radians down): over the balustrade and the shrines. */
+const CAM_PITCH = 0.58;
 /** E offered this near (m): the elder by the stair, the way. */
 const NEAR_GIVER = 3.4;
 const NEAR_WAY = 2.6;
@@ -127,6 +131,8 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
   let outYaw = 0;
   let outFor = OUT_T;
   const pose: ProcessionPose = { mode, walk: 0, phase: 0, hold: 0, throwT: -1, t: 0 };
+  /** When (stage time) the player last turned the camera. */
+  let lookedAt = -1e9;
   const posture = () => processionPose(pose);
   const last = new Vector3();
 
@@ -158,10 +164,20 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
     outTo.set(pt.x, pt.y, pt.z);
   };
 
-  const camera = (ctx: RoamCtx) => {
+  /**
+   * The camera on the open side of him: in the line behind him and out to his left (over the terrace's open strip,
+   * the balustrade and the dark beyond, never between him and the hall's pillars), looking along the way and at the
+   * hall; stepped out, straight behind him as he faces the hall. It swings there by itself (the follow camera's own
+   * swing while he walks; eased here while he stands), unless the player turns it.
+   */
+  const camera = (ctx: RoamCtx, dt: number) => {
     const h = 1.7 * body.scale * 0.95;
     cam.focus.set(body.pos.x, body.pos.y + h * 0.86, body.pos.z);
-    cam.behindYaw = body.yaw;
+    const want = stage === 'join' || stage === 'walk' ? body.yaw - CAM_OUT : body.yaw;
+    cam.behindYaw = want;
+    const turning = ctx.input.lookYaw !== 0 || ctx.input.lookPitch !== 0;
+    if (turning) lookedAt = stageT;
+    if (stage === 'out' && stageT - lookedAt > 1) cam.yaw += angleDiff(want, cam.yaw) * (1 - Math.exp(-dt * 2.2));
     cam.turn(ctx.input.lookYaw, ctx.input.lookPitch, ctx.input.zoom);
   };
 
@@ -221,6 +237,8 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
       explorer.animator.posture = posture;
       explorer.animator.postureFeet = true;
       body.vel.set(0, 0, 0);
+      cam.pitch = Math.max(cam.pitch, CAM_PITCH);
+      lookedAt = -1e9;
       if (instant) {
         pathAt(s, pt);
         body.pos.set(pt.x, pt.y, pt.z);
@@ -272,7 +290,7 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
           explorer.animator.posture = null;
           explorer.animator.postureFeet = true;
           explorer.setMotion(0, true, 0);
-          camera(ctx);
+          camera(ctx, dt);
           return false;
         }
       }
@@ -286,7 +304,7 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
       body.vel.set(0, 0, 0);
       body.grounded = true;
       explorer.setMotion(0, true, 0);
-      camera(ctx);
+      camera(ctx, dt);
       return true;
     },
 
@@ -308,6 +326,7 @@ export function createLineWalk(env: AddonEnv, kind: 'pchumben' | 'visak', mode: 
       outFor = Math.max(OUT_T, Math.hypot(outTo.x - from.x, outTo.z - from.z) / 1.1);
       stage = 'out';
       stageT = 0;
+      lookedAt = -1e9;
     },
 
     stop() {

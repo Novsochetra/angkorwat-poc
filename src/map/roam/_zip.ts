@@ -1,7 +1,7 @@
 import '../audio/_zip';
 import { buildZipLine, type ZipLineMeshes } from '../jungle/_zipLine';
 import { t } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { registerAddon, type AddonEnv, type AddonKey } from './_addons';
 import type { RoamCtx } from './types';
 import { HANG, SAG, ZIP_LINES, zipPlan, type ZipPlan } from './_zipPlan';
 import { createZipRide, type ZipRide } from './_zipRide';
@@ -39,6 +39,13 @@ const BEHIND = 0.52;
 /** Seconds after Start (frames drawn, the loading screen gone) before the meshes are built in idle time; built at once within this far (m). */
 const BUILD_AFTER = 2;
 const BUILD_NEAR = 220;
+
+/** The key help (bottom left) while he is clipped in: faster (Shift, Space; on touch the jump button "Faster"), look, photos. */
+const KEYS: readonly AddonKey[] = [
+  ['Shift Space', 'zipFaster', 'r2 south'],
+  ['Q R', 'rLook', 'rstick'],
+  ['4 5', 'rPhoto', 'left right'],
+];
 
 let env: AddonEnv | null = null;
 let plan: ZipPlan | null = null;
@@ -113,6 +120,9 @@ registerAddon({
   },
   get handsBusy() {
     return !!ride && ride.phase !== 'idle';
+  },
+  keys() {
+    return ride && ride.phase !== 'idle' ? KEYS : null;
   },
   init(e) {
     env = e;

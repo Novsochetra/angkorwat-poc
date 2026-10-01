@@ -92,7 +92,7 @@ function local(name: JointName, jp: JointPose | undefined, out: Matrix4): Matrix
 
 /** Two-bone leg IK in the side plane: the thigh's angle in the world and the knee's bend that put the ankle `dy`, `dz` from the hip joint. */
 function legIK(dy: number, dz: number): [number, number] {
-  const d = Math.min(THIGH + SHIN - 1e-3, Math.max(Math.abs(THIGH - SHIN) + 1e-3, Math.hypot(dy, dz)));
+  const d = Math.min(THIGH + SHIN - 1e-3, Math.max(Math.abs(THIGH - SHIN) + 1e-3, Math.sqrt(dy * dy + dz * dz)));
   const bend = Math.acos(clamp((d * d - THIGH * THIGH - SHIN * SHIN) / (2 * THIGH * SHIN), -1, 1));
   const aim = Math.atan2(-dz, -dy);
   return [aim - Math.atan2(SHIN * Math.sin(bend), THIGH + SHIN * Math.cos(bend)), bend - SHIN_LEAN];
@@ -126,7 +126,7 @@ export function dogPetPose(s: DogPetState): Pose {
   const dz = s.look.z - ex.z;
   const yaw = clamp(Math.atan2(dx, Math.max(0.5, dz)), -0.9, 0.9);
   // (his head is big and his hat's brim wide: he looks down with his eyes more than his head, so his face shows)
-  const pitch = clamp(clamp(Math.atan2(-dy, Math.hypot(dx, dz)), -0.4, 1.1) * 0.45 - SQUAT.hips * k - SQUAT.chest * k, -0.3, LOOK_DOWN);
+  const pitch = clamp(clamp(Math.atan2(-dy, Math.sqrt(dx * dx + dz * dz)), -0.4, 1.1) * 0.45 - SQUAT.hips * k - SQUAT.chest * k, -0.3, LOOK_DOWN);
   pose.neck = { rx: 0.35 * pitch * k, ry: 0.3 * yaw * k };
   pose.head = { rx: 0.65 * pitch * k + 0.04 * Math.sin(s.t * 0.9) * k, ry: 0.7 * yaw * k, rz: -0.1 * k };
 

@@ -4,13 +4,14 @@ import { festivalAt, festivalNow } from '../festival/_schedule';
 import { BM, BUSY as BH_BUSY, inWin } from '../hamlet/_bhMarketPlan';
 import { ALMS as BH_ALMS } from '../hamlet/_bhSpots';
 import { BUSY as MK_BUSY, inWindow } from '../hamlet/_mkPlan';
-import { MARKET, PADDIES, RACE_COURSE, VILLAGE } from '../layout';
+import { MARKET, PADDIES, PATHS, RACE_COURSE, VILLAGE } from '../layout';
 import { MONK_AT } from '../people/_sceneBackFolk';
 import { within } from '../people/_sceneBackKit';
 import { END as APSARA_END, SHOW as APSARA_SHOW, STAGE } from '../people/_sceneApsara';
 import { FARM_DARK, farmModeOf } from '../people/_sceneFarm';
 import { KITE_FIELD, kitesFlying } from '../people/_sceneKites';
 import { ALMS_ROUND } from '../people/_sceneVillage';
+import { almsWalkAt } from '../people/_monks';
 import { TIME, type MapMoment } from '../time';
 import { FV_BOATS } from '../village/_fvPlan';
 import { PAGODA } from '../village/_spots';
@@ -25,7 +26,9 @@ import { LUNAR, nextLunarSpan, nextNewYear } from './_calendarKhmer';
  *   life (the Khmer calendar, _calendarKhmer.ts);
  * - the day's moments: the monks' dawn chant and the pagoda's dusk drum
  *   (events.ts' hours), the alms rounds (people/_sceneVillage.ts, the forest
- *   monk's in _sceneBackFolk.ts), the three morning markets (hamlet/_mkPlan.ts
+ *   monk's in _sceneBackFolk.ts, Angkor Wat's procession up the valley road
+ *   in _monks.ts `almsWalkAt`; the sugar-palm village's is roam/_dakBat.ts'
+ *   `dakbat-village`), the three morning markets (hamlet/_mkPlan.ts
  *   `BUSY`, _bhMarketPlan.ts `BUSY`, the floating village's boats
  *   village/_fvPlan.ts), the apsara dance (_sceneApsara.ts), the elephants'
  *   bath and the monkeys' crossing (events.ts' daylight: on the held day's
@@ -139,6 +142,19 @@ registerEvent({
   begins: 'whenAlmsBackBegins',
   where: { x: BH_ALMS.monk[0], z: BH_ALMS.monk[1] },
   on: (m) => within(m.clock, MONK_AT, 1),
+});
+// (Angkor Wat's monks walking up the valley road with their bowls in the morning: they take dak bat there, roam/_dakBat.ts)
+const ROAD = PATHS.find((p) => p.name === 'valley road')?.points;
+const ROAD_MID = ROAD ? { x: ROAD[ROAD.length >> 1][0], z: ROAD[ROAD.length >> 1][1] } : null;
+registerEvent({
+  id: 'dakbat-aw',
+  kind: 'daily',
+  name: 'whenAlms',
+  note: 'whenAlmsAwNote',
+  place: 'whenAtRoadAw',
+  begins: 'whenAlmsAwBegins',
+  where: ROAD_MID,
+  on: (m) => almsWalkAt(m.clock, nightOf(m.clock)),
 });
 registerEvent({ id: 'market', kind: 'daily', name: 'jnMarket', note: 'whenMarketNote', place: 'evVillage', begins: 'whenMarketBegins', where: { x: MARKET.x, z: MARKET.z }, on: (m) => inWindow(m.clock, MK_BUSY) });
 registerEvent({ id: 'market-back', kind: 'daily', name: 'whenMarketBack', note: 'whenMarketBackNote', place: 'jnHamlet', begins: 'whenMarketBackBegins', where: { x: BM.x, z: BM.z }, on: (m) => inWin(m.clock, BH_BUSY) });

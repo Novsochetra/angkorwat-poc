@@ -9,7 +9,7 @@ import { progress } from '../progress';
 import { flightAt, flightDown, ME, newPoint, SEY, SEY_EVENTS, SEY_HEEL, SEY_KICK_Y, SEY_R_ME, SEY_SNAP, SEY_SPOT, type SeyFlight, type SeyResult } from '../sey';
 import type { MapFrame } from '../types';
 import { lang, num, onLang, t } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { registerAddon, touchJump, type AddonEnv, type AddonKey } from './_addons';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx } from './types';
 
@@ -70,6 +70,13 @@ const CAM = { side: 1.45, pitch: 0.34, dist: 6.2, for: 1.8, rate: 2.4, back: 2.2
 /** The rings: the soft one where it comes down (m), the timing ring closing on it from this far out. */
 const RING_R = 0.3;
 const RING_FROM = 1.8;
+/** The key help (bottom left) while he plays: Space kicks, E stops (or kicks, as it comes), the stick walks away, the drag looks. */
+const KEYS: readonly AddonKey[] = [
+  ['Space', 'seyKick', 'south'],
+  ['E', 'seyLeave', 'west'],
+  ['W A S D', 'seyAway', 'lstick'],
+  ['Q R', 'rLook', 'rstick'],
+];
 /** A kick's whole move (s after the press): up, through, back down. */
 const KICK_TIME = 0.6;
 
@@ -312,24 +319,8 @@ function inPlace(ctx: RoamCtx): void {
   footSpots(b);
   b.explorer.animator.posture = posture;
   b.explorer.animator.postureFeet = true;
-  touchKick(true);
-}
-
-/**
- * On touch the jump button kicks while he plays: it says so ("ទាត់", Kick) instead of "Jump" (the touch controls'
- * own words come back as he leaves; their language switch reads the same `data-t`).
- */
-function touchKick(on: boolean): void {
-  if (typeof document === 'undefined') return;
-  const btn = document.querySelector<HTMLElement>('.rt .rt-jump');
-  const label = btn?.querySelector<HTMLElement>('.rt-label');
-  if (!btn || !label) return;
-  const key = on ? 'seyKick' : 'rtJump';
-  if (label.dataset.t === key) return;
-  label.dataset.t = key;
-  label.textContent = t(key);
-  btn.dataset.tAria = key;
-  btn.setAttribute('aria-label', t(key));
+  // (on touch the jump button kicks while he plays: it says so)
+  touchJump('seyKick');
 }
 
 /** Out of the game (the stick, E, the children gone home, another mode): the walk is his again; the children close the circle. */
@@ -343,7 +334,7 @@ function leave(ctx: RoamCtx, why: 'left' | 'gone' | 'quiet'): void {
   b.explorer.animator.posture = null;
   b.explorer.animator.postureFeet = true;
   b.explorer.setMotion(0, true, 0);
-  touchKick(false);
+  touchJump(null);
   if (faceBefore) b.explorer.setExpression(faceBefore);
   faceBefore = null;
   showHud(false);
@@ -432,6 +423,10 @@ registerAddon({
 
   get handsBusy() {
     return phase !== 'off';
+  },
+
+  keys() {
+    return phase === 'off' ? null : KEYS;
   },
 
   init(e) {

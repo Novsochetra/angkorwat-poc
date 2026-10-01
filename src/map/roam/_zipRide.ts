@@ -5,7 +5,7 @@ import { SFX } from '../audio/addonSfx';
 import { hangerQuat, trolleyPin, type ZipLineMeshes } from '../jungle/_zipLine';
 import { pad } from '../pad/pad';
 import { num, t } from '../ui/lang';
-import type { AddonEnv } from './_addons';
+import { touchJump, type AddonEnv } from './_addons';
 import { angleDiff } from './followCam';
 import { BRAKE, cableSlope, STRAP, ZIP_LINES, type ZipLineDef, type ZipPlan } from './_zipPlan';
 import type { RoamCtx } from './types';
@@ -226,6 +226,8 @@ export function createZipRide(env: AddonEnv, plan: ZipPlan, meshes: () => ZipLin
     wear(true);
     hat(true);
     meshes()?.park(i);
+    // (on a touch screen the jump button is his speed-up while he is clipped in: hold it to tuck)
+    touchJump('zipTouch');
   }
 
   function finish(ctx: RoamCtx): void {
@@ -234,6 +236,7 @@ export function createZipRide(env: AddonEnv, plan: ZipPlan, meshes: () => ZipLin
     explorer.animator.postureFeet = true;
     wear(false);
     hat(false);
+    touchJump(null);
     SFX.level('zipWhirr', 0);
     ctx.levels.wind = 0;
     ctx.body.grounded = true;
@@ -332,8 +335,8 @@ export function createZipRide(env: AddonEnv, plan: ZipPlan, meshes: () => ZipLin
       }
 
       if (phase === 'ride') {
-        // Shift: tucked up, faster.
-        tuck += ((input.run ? 1 : 0) - tuck) * (1 - Math.exp(-dt * 4));
+        // Shift (a pad's R2), or the jump button held (Space, a pad's ✕, the touch button "Faster"): tucked up, faster.
+        tuck += ((input.run || input.jumpHeld ? 1 : 0) - tuck) * (1 - Math.exp(-dt * 4));
         const v0 = v;
         if (step > 0) {
           rideT += step;
@@ -378,7 +381,8 @@ export function createZipRide(env: AddonEnv, plan: ZipPlan, meshes: () => ZipLin
           tau = 0;
           SFX.level('zipWhirr', 0);
         }
-        return v > 3 && !blocked ? `Shift  ${t('zipFaster')}` : null;
+        // (on touch the jump button says it: no Shift there)
+        return v > 3 && !blocked && !document.body.classList.contains('roam-touch') ? `Shift  ${t('zipFaster')}` : null;
       }
 
       if (phase === 'land') {

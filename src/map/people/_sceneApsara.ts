@@ -33,14 +33,19 @@ export const STAGE = { x: -16.5, z: -158.6 };
 /** The gate's passage (they come out and go in there) and the causeway's foot (round the pool). */
 const DOOR: Point = { x: -1.8, y: 58, z: -169.5 };
 const CAUSEWAY: Point = { x: -5.2, y: 56, z: -160.8 };
-/** The visitors come up the road's last stair (on its west lane) and across the grass. */
+/**
+ * The visitors come up the road's last stair and across the grass: from the mid tier a little before its foot, past
+ * its top on the pad (the walk map's stair climbs from z −138 at 44 m to −151 at 56.25 m, x ≈ 0‥4; as
+ * people/_sceneEquinox.ts), then west onto the grass. They come and go at the first point, below the pad's edge.
+ */
 const STAIR: Point[] = [
-  { x: 1.0, y: 44.25, z: -146.5 },
-  { x: 1.0, y: 56.25, z: -157.2 },
+  { x: 3.0, y: 44.25, z: -133 },
+  { x: 2.2, y: 56.25, z: -153.5 },
   { x: -3.2, y: 56, z: -157 },
 ];
-/** Walking pace (m/s). */
+/** Walking pace (m/s); the visitors a little quicker (their way up the whole stair is longer: there before the show). */
 const WALK = 0.8;
+const WALK_UP = 1.05;
 /** Seconds of one phrase of the music (a `pinpeat` call each). */
 const PHRASE = 7.2;
 /** Where the torch bearers, the players and the watchers look (the stage), and the explorer's face (scratch). */
@@ -215,7 +220,7 @@ export class Apsara implements PeopleScene {
       const route = p.state === 'in' ? p.routeIn : p.routeBack;
       const goal = route[Math.min(p.leg, route.length - 1)];
       a.pose(POSE.stand, now);
-      a.goTo(goal.x, goal.z, WALK);
+      a.goTo(goal.x, goal.z, p.role === 'watch' ? WALK_UP : WALK);
       a.face(null);
       if (a.dist(goal.x, goal.z) < 0.35) {
         if (p.leg < route.length - 1) p.leg++;

@@ -6,7 +6,6 @@ import { browse, SALE, SHOPS, type Shop } from '../shop';
 import type { MapFrame, RoamMode } from '../types';
 import { onLang, t } from '../ui/lang';
 import { MENU_HOOKS, registerAddon, type AddonEnv } from './_addons';
-import { umbrellaUp } from './_umbrella';
 import { createWearCard, type WearCard } from './_wardrobeCard';
 import { Wardrobe, WEAR_ITEMS, WEAR_KINDS, wearItem, wearName, type WearItem, type WearKind } from './_wardrobeItems';
 import { angleDiff } from './followCam';
@@ -253,7 +252,7 @@ function putOn(it: WearItem, bought: boolean): void {
       showKind(it.kind);
       // (the hat: on his head — not while the umbrella is up (its brim), nor sitting, lying or praying (those keep
       // his hat for him: H puts it on after))
-      if (it.kind === 'hat' && !e.explorer.currentOutfit.hat && !umbrellaUp() && !e.busy()) {
+      if (it.kind === 'hat' && !e.explorer.currentOutfit.hat && !MENU_HOOKS.umbrellaUp() && !e.busy()) {
         e.explorer.setOutfit({ hat: true });
         e.photo.refreshBody();
       }

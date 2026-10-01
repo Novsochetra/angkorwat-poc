@@ -6,16 +6,20 @@ import '../audio/_kiteFly';
 import { SFX } from '../audio/addonSfx';
 import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
+import { SURFACE } from '../heightfield';
+import { BACK_HAMLET, EAST_VILLAGE, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES, VILLAGE } from '../layout';
+import { paddyFlooded } from '../paddies/stages';
 import { KITE_HOOK } from '../people/_kite';
+import { KITE_FIELDS } from '../people/_sceneKites';
 import { progress } from '../progress';
-import { browse } from '../shop';
+import { SEY_SPOT } from '../sey';
+import { browse, SHOPS } from '../shop';
 import { weatherNow } from '../sky/weather';
 import { TIME } from '../time';
-import { MARKET } from '../layout';
 import type { MapFrame, MapWeather } from '../types';
 import { createAskCard, type AskCard } from '../ui/ask';
 import { lang, t } from '../ui/lang';
-import { addonHands, registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { addonHands, registerAddon, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { createKiteGear, followWind, HIS_VOICE, kiteWeather, LIFT, windAloft, type KiteGear } from './_kiteSky';
 import { createKiteStall, KITE_PRICE, type KiteStall } from './_kiteStall';
 import { riel } from './_shopPurse';
@@ -38,12 +42,17 @@ import { stepSound } from './walker';
  * asks with a card of its own (ui/ask.ts), the seller hands it over. He keeps
  * it (progress.ts `kite.have`).
  *
- * **Flying it.** In an open field (no tree, roof or wall over him or down the
- * wind: the walk maps' `clearance` and `softClearance`), "E  Fly your kite":
- * in rain or snow a toast says not in this weather; with too little wind
- * aloft (the wet months: the kites' north wind blows from after the Water
- * Festival to March, _kiteSky.ts `windAloft`) a toast says so and when kites
- * fly. Else he turns into the wind with the kite held up at arm's length past
+ * **Flying it.** "E  Fly your kite" is offered only where and when it really
+ * flies: in fair weather with the kite season's wind aloft (the north wind
+ * from after the Water Festival to March, _kiteSky.ts `windAloft`), on the
+ * kite fields (the families' east, the children's west) or a dry rice field,
+ * away from the villages, the markets, the sey circle, a place's entrance and
+ * the stalls (`kiteGround`), with nothing over him or down the wind (the walk
+ * maps' `clearance`, `hardClearance`, `softClearance`: `flyHere`). It comes
+ * last in the E row (`ORDER`): anything else in reach (the dog, the sey, the
+ * farmers' work) wins. Out of the season, on the families' field, a toast once
+ * a visit says when kites fly there (no E). Then he turns into the wind with
+ * the kite held up at arm's length past
  * his right shoulder, runs a few steps and lets it go: it climbs behind him on
  * its line; he turns round to it and it climbs on to `LINE_START` m of line.
  * Then:
@@ -108,6 +117,33 @@ const HUM_EVERY = 1.6;
 const HUM_HIGH = 14;
 /** Saved: he has a kite. */
 const HAVE_KEY = 'kite.have';
+/** Its place in the E row: after every other add-on (they come at 60 at most), so anything else in reach wins. */
+const ORDER = 90;
+/** The key help (bottom left) while it flies (`keys`) and while it is caught (S or E reels it in); else the walk's. */
+const FLY_KEYS: readonly AddonKey[] = [
+  ['W', 'kiteKeyOut', 'lstick'],
+  ['S', 'kiteKeyIn', 'lstick'],
+  ['A D', 'kiteKeySteer', 'lstick'],
+  ['Shift', 'kiteKeyWalk', 'r2'],
+  ['E', 'kiteReel', 'west'],
+];
+const SNAG_KEYS: readonly AddonKey[] = [['S E', 'kiteReel', 'lstick west']];
+/**
+ * Where it is not offered, however open (m round: the villages, the markets, the hamlets, the picnic place, the
+ * children's sey circle): people live and work there; a kite is flown out on the fields. And this near a place's
+ * entrance or a stall (m).
+ */
+const SETTLED = [
+  { x: EAST_VILLAGE.x, z: EAST_VILLAGE.z, r: EAST_VILLAGE.r + 20 },
+  { x: MARKET.x, z: MARKET.z, r: MARKET.r + 40 },
+  { x: PALM_GROVE.x, z: PALM_GROVE.z, r: PALM_GROVE.r + 12 },
+  { x: KULEN_PICNIC.x, z: KULEN_PICNIC.z, r: KULEN_PICNIC.r + 20 },
+  { x: BACK_HAMLET.x, z: BACK_HAMLET.z, r: BACK_HAMLET.r + 20 },
+  { x: VILLAGE.x, z: VILLAGE.z, r: 90 },
+  { x: SEY_SPOT.x, z: SEY_SPOT.z, r: 25 },
+] as const;
+const PLACE_CLEAR = 60;
+const SHOP_CLEAR = 30;
 /** His left fist's slot for the spool (rig `setSlotObject`). */
 const SPOOL_SLOT = 'kiteSpool';
 
@@ -169,6 +205,7 @@ let camBefore: { pitch: number; pitchMin: number; distance: number } | null = nu
 let takeView: { side: number; pitch: number; distance: number } | null = null;
 /** Toasts said once (a visit): the keys; the hum; all the line (a flight); the trees (s until again). */
 let keysSaid = false;
+let seasonSaid = false;
 let humSaid = false;
 let maxSaid = false;
 let treesAt = 0;
@@ -196,8 +233,8 @@ function say(): typeof words {
   words.buy = `E  ${t('kiteBuy', { price: riel(KITE_PRICE) })}`;
   words.fly = `E  ${t('kiteFly')}`;
   words.reel = `E  ${t('kiteReel')}`;
-  // (the keys on a keyboard; a pad's stick and a touch stick are told by the first flight's toast)
-  words.flying = pad.active || touch ? words.reel : `E  ${t('kiteReel')}  ·  W/S  ${t('kiteLine')}  ·  A/D  ${t('kiteSteer')}`;
+  // (the other keys are in the key help while it flies: `keys`; on touch the first flight's toast says them)
+  words.flying = words.reel;
   return words;
 }
 
@@ -320,7 +357,7 @@ function turnTo(ctx: RoamCtx, yaw: number, r: number, dt: number): void {
   ctx.body.yaw += angleDiff(yaw, ctx.body.yaw) * damp(r, dt);
 }
 
-// ── The open field (E "Fly your kite") ──
+// ── Where he may fly it (E "Fly your kite") ──
 
 /** Rays from his hand: down the wind low and high, out to both sides, straight up (yaw from downwind, elevation, length m). */
 const RAYS = [
@@ -331,12 +368,27 @@ const RAYS = [
   [0, 1.45, 16],
 ] as const;
 
+const within = (x: number, z: number, s: { readonly x: number; readonly z: number; readonly r: number }) => (x - s.x) ** 2 + (z - s.z) ** 2 < s.r * s.r;
+
 /**
- * An open field here: on the land (not a terrace or a roof), dry, nothing over him, and the sky down the wind
- * and over him clear of trees, roofs and walls (the walk map's solid and the camera's leaves). Looked at again
- * once he has moved a metre or half a second has gone.
+ * A field to fly it over: the kite fields (the families' east, the children's west: people/_sceneKites.ts
+ * `KITE_FIELDS`) or a rice field that is dry (after the harvest: paddies/stages.ts), away from the villages,
+ * the markets, a place's entrance and the stalls (`SETTLED`).
  */
-function openField(ctx: RoamCtx): boolean {
+function kiteGround(w: RoamWorld, x: number, z: number): boolean {
+  for (const s of SETTLED) if (within(x, z, s)) return false;
+  for (const p of PLACES) if ((x - p.anchor[0]) ** 2 + (z - p.anchor[2]) ** 2 < PLACE_CLEAR * PLACE_CLEAR) return false;
+  for (const s of SHOPS) if ((x - s.x) ** 2 + (z - s.z) ** 2 < SHOP_CLEAR * SHOP_CLEAR) return false;
+  if (within(x, z, KITE_FIELDS.east) || within(x, z, KITE_FIELDS.west)) return true;
+  return w.field.surfaceAt(x, z) === SURFACE.paddy && !paddyFlooded(x, z);
+}
+
+/**
+ * He may fly it here: on a kite field or a dry rice field (`kiteGround`), on the land (not a terrace or a roof),
+ * dry, and nothing over him or down the wind (trees, roofs, walls, a sign: the walk maps' solid, the camera's hard
+ * map and its leaves). Looked at again once he has moved a metre or half a second has gone.
+ */
+function flyHere(ctx: RoamCtx): boolean {
   const p = ctx.body.pos;
   if (Math.abs(p.x - openAt.x) < 0.8 && Math.abs(p.z - openAt.z) < 0.8 && Math.abs(ctx.t - openAt.t) < 0.5) return openAt.ok;
   openAt.x = p.x;
@@ -344,14 +396,16 @@ function openField(ctx: RoamCtx): boolean {
   openAt.t = ctx.t;
   const w = ctx.world;
   openAt.ok = false;
-  if (!w.inBounds(p.x, p.z) || p.y > w.field.heightAt(p.x, p.z) + 1.2) return false;
+  if (!w.inBounds(p.x, p.z) || p.y > w.field.heightAt(p.x, p.z) + 1.2 || !kiteGround(w, p.x, p.z)) return false;
   const water = w.waterAt(p.x, p.z);
   if (water !== null && water > p.y - 0.1) return false;
   if ((w.ceilingAt?.(p.x, p.z, p.y + 0.5) ?? Infinity) < p.y + 30) return false;
-  // (nothing else's E here: a place's beacon, a boat by the bank, a ramp, the balloon come after the add-ons)
+  // (nothing else's E here: a place's beacon, a boat by the bank, a ramp, the balloon)
   if (w.placeNear(p.x, p.z, p.y) || w.launchNear?.(p.x, p.z, p.y) || w.balloonNear?.(p.x, p.z, p.y) || mooredBoatNear(p.x, p.z)) return false;
-  const dir = ctx.weather?.windDir ?? Math.atan2(wind.x, wind.z);
   const hy = p.y + 1.6 * (ctx.body.scale / 1.4);
+  // (straight up: also what only the camera's maps hold)
+  if (w.hardClearance && w.hardClearance(p.x, hy, p.z, p.x, hy + 25, p.z) < 1) return false;
+  const dir = ctx.weather?.windDir ?? Math.atan2(wind.x, wind.z);
   for (const [a, el, len] of RAYS) {
     const c = Math.cos(el) * len;
     const bx = p.x + Math.sin(dir + a) * c;
@@ -362,6 +416,15 @@ function openField(ctx: RoamCtx): boolean {
   }
   openAt.ok = true;
   return true;
+}
+
+/** Out of the kite season (or a calm), coming onto the families' field with his kite: once a visit, a word on when kites fly (no E). */
+function seasonHint(ctx: RoamCtx): void {
+  if (seasonSaid) return;
+  const p = ctx.body.pos;
+  if (!within(p.x, p.z, KITE_FIELDS.east)) return;
+  seasonSaid = true;
+  ctx.hud.toast(t('kiteSeasonHint'));
 }
 
 // ── Starting and stopping ──
@@ -1070,11 +1133,16 @@ function draw(f: MapFrame): void {
 
 registerAddon({
   id: 'kite',
+  order: ORDER,
   get holding() {
     return stage !== 'none';
   },
   get handsBusy() {
     return stage !== 'none';
+  },
+
+  keys() {
+    return stage === 'fly' || stage === 'launch' ? FLY_KEYS : stage === 'snag' ? SNAG_KEYS : null;
   },
 
   init(e0) {
@@ -1087,7 +1155,8 @@ registerAddon({
   offer(ctx, mode) {
     lastCtx = ctx;
     // (not while something else has him or his hands: praying, resting, at a stall, the camera up, the umbrella…)
-    if (mode !== 'walk' || stage !== 'none' || !env || env.busy() || addonHands() || !ctx.body.grounded) return null;
+    // (nor under the buy card: it asks, the E there is its own)
+    if (mode !== 'walk' || stage !== 'none' || !env || env.busy() || addonHands() || !ctx.body.grounded || card?.open) return null;
     const p = ctx.body.pos;
     const sw = say();
     if (!have) {
@@ -1098,7 +1167,14 @@ registerAddon({
       if (stall?.near(p.x, p.y, p.z, clockNow())) return sw.buy;
       return null;
     }
-    return openField(ctx) ? sw.fly : null;
+    // Only where and when it really flies: fair weather, the kite season's wind aloft, a field for it.
+    const w = ctx.weather ?? weatherNow();
+    if (!kiteWeather(w)) return null;
+    if (windNow(w) < LIFT) {
+      seasonHint(ctx);
+      return null;
+    }
+    return flyHere(ctx) ? sw.fly : null;
   },
 
   use(ctx) {

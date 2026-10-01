@@ -6,7 +6,7 @@ import { boatToWorld, CH_CREWS, CH_GANGWAY, CH_LANES, CH_LENGTH, CH_SEAT, CH_STA
 import { FESTIVAL_SCENE, festivalAt, festivalNow } from '../festival/_schedule';
 import { pad } from '../pad/pad';
 import { num, t } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { registerAddon, type AddonEnv, type AddonKey } from './_addons';
 import { RaceGame, type Judgement } from './_raceRowGame';
 import { createRaceUi, type RaceUi } from './_raceRowUi';
 import { riel } from './_shopPurse';
@@ -138,6 +138,13 @@ const head = new Vector3(...CH_GANGWAY.head);
 const seat = new Vector3();
 const _v = new Vector3();
 const _w = new Vector3();
+/** The key help's lines while he is held (constant arrays: the hud compares them). */
+const KEYS_LOOK: readonly AddonKey[] = [['Q R', 'rLook', 'rstick']];
+const KEYS_RACE: readonly AddonKey[] = [['Space E', 'raceHint', 'south west'], ...KEYS_LOOK];
+const KEYS_RESULT: readonly AddonKey[] = [['Space', 'raceAgain', 'south'], ['E', 'raceOut', 'west'], ...KEYS_LOOK];
+const KEYS_RESULT_DUSK: readonly AddonKey[] = [['E', 'raceOut', 'west'], ...KEYS_LOOK];
+/** Racing again is offered at this result (by day). */
+let againShown = true;
 /** The result: shown yet, the prize paid for this race; the first boat over the line told. */
 let resultShown = false;
 let paid = false;
@@ -395,6 +402,13 @@ registerAddon({
     return stage !== 'off';
   },
 
+  keys() {
+    // (the key help, bottom left: the stroke while racing, the result's two choices; looking round meanwhile)
+    if (stage === 'count' || stage === 'race') return KEYS_RACE;
+    if (stage === 'result' && resultShown) return againShown ? KEYS_RESULT : KEYS_RESULT_DUSK;
+    return KEYS_LOOK;
+  },
+
   init(e) {
     env = e;
     // (checks: the page's own `raceauto=`, also for a race joined by hand)
@@ -404,13 +418,15 @@ registerAddon({
 
   offer(ctx, mode) {
     const e = env;
-    if (!e || mode !== 'walk' || stage !== 'off' || e.busy() || FESTIVAL_SCENE.kind !== 'water' || ctx.night >= JOIN_NIGHT) return null;
+    if (!e || mode !== 'walk' || stage !== 'off' || e.busy() || FESTIVAL_SCENE.kind !== 'water') return null;
     const p = ctx.body.pos;
     if (Math.hypot(p.x - foot.x, p.z - foot.z) > NEAR || Math.abs(p.y - foot.y) > RISE) return null;
-    return `E  ${t('raceJoin')}`;
+    // (after dusk: a note with no key, as a closed stall's; E does nothing)
+    return ctx.night >= JOIN_NIGHT ? t('raceNight') : `E  ${t('raceJoin')}`;
   },
 
   use(ctx) {
+    if (ctx.night >= JOIN_NIGHT) return;
     board(ctx);
   },
 
@@ -789,7 +805,7 @@ function showResult(ctx: RoamCtx): void {
     time: game.finish[0],
     counts: game.counts,
     prize: won ? riel(PRIZE) : null,
-    again: ctx.night < AGAIN_NIGHT,
+    again: (againShown = ctx.night < AGAIN_NIGHT),
   });
 }
 

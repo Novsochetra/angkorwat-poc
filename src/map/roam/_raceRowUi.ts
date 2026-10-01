@@ -20,9 +20,9 @@ import type { Judgement } from './_raceRowGame';
  * - **The result** (a card in the middle): won or beaten, by how far, the time
  *   and the strokes, the prize; "Race again" (Space) and "Step ashore" (E).
  *
- * While it is up the body has `roam-race`: the tool bar, the key help, the
- * explorer menu and the touch stick and buttons go (the drum is the touch
- * paddle). Every word comes from ui/lang.ts (`race…`), filled again when the
+ * While it is up the body has `roam-race`: the tool bar, the explorer menu
+ * and the touch stick and buttons go (the drum is the touch paddle); the key
+ * help (bottom left) shows the race's keys (`keys()` in _raceRow.ts). Every word comes from ui/lang.ts (`race…`), filled again when the
  * language changes. Per frame only transforms change, and only when they move
  * (`frame`).
  */
@@ -175,7 +175,8 @@ export function createRaceUi(layer: HTMLElement, shot: boolean): RaceUi {
       const key = wild ? 'raceMiss' : j === 'perfect' ? 'racePerfect' : j === 'good' ? 'raceGood' : j === 'early' ? 'raceEarly' : j === 'late' ? 'raceLate' : 'raceMiss';
       mark.textContent = t(key);
       mark.dataset.j = wild ? 'miss' : j;
-      if (!shot) mark.animate([{ transform: 'translate(-50%, 6px) scale(0.8)', opacity: 0 }, { transform: 'translate(-50%, 0) scale(1.08)', opacity: 1, offset: 0.18 }, { transform: 'translate(-50%, 0) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(-50%, -8px) scale(1)', opacity: 0 }], { duration: 650, easing: 'ease-out', fill: 'forwards' });
+      // (its own place is the stylesheet's, by the view's size: the pop moves and scales round it)
+      if (!shot) mark.animate([{ translate: '0 6px', scale: '0.8', opacity: 0 }, { translate: '0 0', scale: '1.08', opacity: 1, offset: 0.18 }, { translate: '0 0', scale: '1', opacity: 1, offset: 0.7 }, { translate: '0 -8px', scale: '1', opacity: 0 }], { duration: 650, easing: 'ease-out', fill: 'forwards' });
       streakEl.classList.toggle('is-on', streak >= 3);
       if (streak >= 3) streakEl.querySelector('b')!.textContent = num(streak);
     },
@@ -185,8 +186,8 @@ export function createRaceUi(layer: HTMLElement, shot: boolean): RaceUi {
       if (!text || shot) return;
       bigEl.animate(
         kind === 'call'
-          ? [{ transform: 'translate(-50%, -50%) scale(0.7)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1.1)', opacity: 1, offset: 0.2 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.75 }, { transform: 'translate(-50%, -60%) scale(1)', opacity: 0 }]
-          : [{ transform: 'translate(-50%, -50%) scale(1.5)', opacity: 0 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.25 }, { transform: 'translate(-50%, -50%) scale(1)', opacity: 1, offset: 0.7 }, { transform: 'translate(-50%, -50%) scale(0.9)', opacity: 0 }],
+          ? [{ scale: '0.7', opacity: 0 }, { scale: '1.1', opacity: 1, offset: 0.2 }, { scale: '1', translate: '0 0', opacity: 1, offset: 0.75 }, { scale: '1', translate: '0 -12px', opacity: 0 }]
+          : [{ scale: '1.5', opacity: 0 }, { scale: '1', opacity: 1, offset: 0.25 }, { scale: '1', opacity: 1, offset: 0.7 }, { scale: '0.9', opacity: 0 }],
         { duration: kind === 'call' ? 1300 : kind === 'go' ? 900 : 820, easing: 'ease-out', fill: 'forwards' },
       );
     },
@@ -239,17 +240,17 @@ function injectStyle(): void {
     .rr { position: absolute; inset: 0; pointer-events: none; }
     .rr[hidden] { display: none; }
     /* While racing the walking tools step aside (the drum is the touch paddle). */
-    body.roam-race .rtb-wrap, body.roam-race .rtb-keys, body.roam-race .rxm, body.roam-race .rh-help, body.roam-race .rh-prompt, body.roam-race .mu-fest { display: none !important; }
+    body.roam-race .rtb-wrap, body.roam-race .rtb-keys, body.roam-race .rxm, body.roam-race .rh-prompt, body.roam-race .mu-fest { display: none !important; }
     body.roam-race.roam-touch .rt { display: none !important; }
 
-    /* The course, top middle. */
+    /* The course, top middle (a touch screen's and a small view's: along the bottom, below). */
     .rr-course { position: absolute; left: 50%; top: calc(16 * var(--px)); transform: translateX(-50%); display: flex; align-items: center; gap: calc(14 * var(--px));
       padding: calc(9 * var(--px)) calc(16 * var(--px)) calc(9 * var(--px)) calc(14 * var(--px)); transition: opacity 0.4s; }
     .rr-lanes { position: relative; width: calc(300 * var(--px)); display: grid; gap: calc(5 * var(--px)); }
     .rr-lane { position: relative; height: calc(18 * var(--px)); border-radius: calc(3 * var(--px)); background: rgba(120, 190, 220, 0.16); }
     .rr-name { position: absolute; left: calc(6 * var(--px)); top: 50%; transform: translateY(-50%); font: 600 calc(11 * var(--px)) / 1 var(--mu-font); color: var(--mu-ink2); opacity: 0.75; white-space: nowrap; }
-    .rr-boat { --p: 0; position: absolute; top: 50%; left: 0; width: calc(40 * var(--px)); height: calc(12 * var(--px));
-      transform: translate(calc(var(--p) * (300 * var(--px) - 40 * var(--px))), -50%); filter: drop-shadow(0 calc(1 * var(--px)) 0 rgba(0, 0, 0, 0.4)); }
+    .rr-boat { --p: 0; position: absolute; top: 50%; left: calc(var(--p) * (100% - 40 * var(--px))); width: calc(40 * var(--px)); height: calc(12 * var(--px));
+      transform: translateY(-50%); filter: drop-shadow(0 calc(1 * var(--px)) 0 rgba(0, 0, 0, 0.4)); }
     .rr-boat svg { display: block; width: 100%; height: 100%; }
     .rr-us { color: #b066e0; }
     .rr-them { color: #2ec4b6; }
@@ -330,12 +331,33 @@ function injectStyle(): void {
     :lang(km) .rr-card .mu-ask-row > * { font-size: calc(17 * var(--px)); line-height: 1.3; letter-spacing: 0; }
 
     /* A phone held upright: the course narrower, the drum a thumb's size. */
+    /* A touch screen (its calendar chip sits top middle) or a short view (a phone on its side): the course along the
+       bottom left, clear of the purse, the chip and the mini-map; the drum stays bottom right. */
+    body.roam-touch .rr-course { left: 16px; top: auto; bottom: 20px; transform: none; }
+    @media (max-height: 500px) {
+      /* (bottom middle: the key help keeps the bottom left with a keyboard) */
+      .rr-course, body.roam-touch .rr-course { left: 50%; top: auto; bottom: 14px; transform: translateX(-50%); }
+      /* (the marks and the run left of the drum: over it they would meet the calendar chip under the mini-map) */
+      .rr-mark { left: auto; right: calc(100% + 14px); bottom: auto; top: 4px; transform: none; text-align: right; }
+      .mu-shot .rr-mark { transform: none; }
+      .rr-pad > .rr-streak { top: 52px; right: calc(100% + 14px); }
+      .rr-lanes { width: min(calc(300 * var(--px)), calc(100vw - 640px)); min-width: 150px; }
+      .rr-pad { bottom: 14px; right: 20px; }
+      .rr-big { top: 45%; }
+      .rr-card { top: 50%; }
+      .rr-card.is-open { transform: translate(-50%, -50%); }
+    }
+    /* A phone held upright: the course across the bottom, the drum (a thumb's size) over it on the right, the result
+       card at the bottom (the top is the purse's, the chip's and the mini-map's). */
     @media (max-width: 639px) {
-      .rr-lanes { width: calc(min(300 * var(--px), 100vw - 150px)); }
-      .rr-boat { transform: translate(calc(var(--p) * (min(300 * var(--px), 100vw - 150px) - 40 * var(--px))), -50%); }
-      .rr-course { top: 64px; }
-      .rr-pad { bottom: 28px; right: 28px; }
-      .rr-drum { width: 104px; height: 104px; }
+      body.roam-race .rh-help { display: none; }
+      .rr-course, body.roam-touch .rr-course { left: 12px; right: 12px; top: auto; bottom: 14px; transform: none; padding: 8px 12px; gap: 10px; }
+      .rr-lanes { flex: 1; width: auto; min-width: 0; }
+      .rr-pad { bottom: 92px; right: 20px; }
+      .rr-drum { width: 100px; height: 100px; }
+      .rr-big { top: 46%; }
+      .rr-card { top: auto; bottom: 16px; transform: translate(-50%, 10px) scale(0.96); }
+      .rr-card.is-open { transform: translate(-50%, 0); }
     }
     .mu-calm ~ .rh .rr-card { transition: opacity 0.2s, visibility 0s 0.2s; }
   `;

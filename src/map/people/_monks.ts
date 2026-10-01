@@ -56,6 +56,15 @@ const NOD_AT = 3.6;
 const NOD_EVERY = 45;
 /** The gate's glowing door (sanctuary.ts: the passage floor at 58, the door at z −169). */
 const DOOR: Point = { x: 0, y: 58, z: -170.4 };
+/**
+ * The procession walks up with its alms bowls at this moment (`night`: the day's darkness then): out in the morning
+ * once it is light (`isMorning`, `LIGHT`), when it sets out with bowls and takes dak bat (rain aside: umbrellas then).
+ * The calendar of events asks it (map/calendar.ts, roam/_calendarEvents.ts).
+ */
+export function almsWalkAt(clock: number, night: number): boolean {
+  return isMorning(clock) && night <= LIGHT;
+}
+
 /** The procession's name in `DAK` (dak bat); a monk steps over to the explorer from this near (m). */
 const DAK_LINE = 'aw';
 const DAK_ASIDE = 9;

@@ -284,7 +284,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let eventsN = -1;
   const eventTags = new Map<string, string>();
   // (under the mini-map: as high as the mini-map is now, nothing when it is hidden)
-  new ResizeObserver(() => wrap.style.setProperty('--mm-h', `${mini.offsetHeight}px`)).observe(mini);
+  new ResizeObserver(() => {
+    wrap.style.setProperty('--mm-h', `${mini.offsetHeight}px`);
+    wrap.style.setProperty('--mm-w', `${mini.offsetWidth}px`);
+  }).observe(mini);
 
   // ── State ────────────────────────────────────────────────────────────────
   let target: MapTarget | null = null;
@@ -1758,6 +1761,13 @@ function injectStyle(): void {
     .mm-sw-event { width: calc(9 * var(--px)); height: calc(9 * var(--px)); border-radius: 50%; background: #ffd54a; box-shadow: 0 0 0 1px rgba(60, 36, 6, 0.85), 0 0 calc(6 * var(--px)) rgba(255, 190, 60, 0.8); }
     .mm-legend-event[hidden] { display: none; }
     .mu-calm ~ .mm-bigwrap .mm-event::before { animation: none; }
+    /* (touch, upright: the tool bar stands up the right edge under the mini-map, so the column goes left of the mini-map, at its top) */
+    @media (min-height: 501px) {
+      body.roam-touch .mm-under { top: calc(80 * var(--px)); right: calc(22 * var(--px) + var(--mm-w, 0px) + 8px); }
+    }
+    @media (min-height: 501px) and (max-width: 639px) {
+      body.roam-touch .mm-under { top: 54px; right: calc(10px + var(--mm-w, 0px) + 6px); }
+    }
     @media (max-width: 639px) {
       .mm-under { right: 10px; top: calc(54px + var(--mm-h, 0px) + 4px); }
       .mm.is-hidden .mm-under { top: 54px; }

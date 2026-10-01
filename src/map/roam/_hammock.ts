@@ -17,7 +17,7 @@ import type { MapFrame, RoamMode } from '../types';
 import { t } from '../ui/lang';
 import { FV_HOMES } from '../village/_fvPlan';
 import { GROUND as VILLAGE_GROUND, STILT_HOMES } from '../village/_spots';
-import { registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { registerAddon, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { addHammock, HAMMOCK_IN_USE, hammocks, hammocksVersion, type HammockBlock, type HammockPoint, type HammockSpot } from './_hammockSpots';
 import { createSnore } from './_rest';
 import { angleDiff } from './followCam';
@@ -569,15 +569,15 @@ function inReach(e: AddonEnv, ctx: RoamCtx): { p: Prep; side: 1 | -1 } | null {
  * The view of him lying (`dir`: his feet toward b (1) or a (−1); `camSide`: the camera on the side `n` points to
  * (1) or the other): of the four, the one whose camera spot is most open — the way to him clear of what the camera
  * cannot see through, open sky over it (not under the house's floor) —, the end the camera is at now and the side
- * he came from winning a tie.
+ * he came from winning a tie. `feet`: his feet's end given (a replay's `hamfeet`): only the camera's side is picked.
  */
-function bestView(e: AddonEnv, p: Prep, side: 1 | -1): { dir: 1 | -1; camSide: 1 | -1 } {
+function bestView(e: AddonEnv, p: Prep, side: 1 | -1, feet?: 1 | -1): { dir: 1 | -1; camSide: 1 | -1 } {
   const look = p.look!;
   const cam = e.cam.camera.position;
   const near: 1 | -1 = (cam.x - p.mid.x) * p.d.x + (cam.z - p.mid.z) * p.d.z >= 0 ? 1 : -1;
   const w = e.world;
-  let best = { dir: near, camSide: side, score: -Infinity };
-  for (const dir of [near, -near as 1 | -1])
+  let best = { dir: feet ?? near, camSide: side, score: -Infinity };
+  for (const dir of feet ? [feet] : [near, -near as 1 | -1])
     for (const cs of [side, -side as 1 | -1]) {
       const sh = dir > 0 ? look.c0 + (look.c1 - look.c0) * U_HIPS : look.c1 - (look.c1 - look.c0) * U_HIPS;
       const f = framePoint(p, sh, clothY(look, sh, 1, sh) + 0.6, 0, _c);
@@ -603,15 +603,15 @@ function standable(e: AddonEnv, p: Prep, side: 1 | -1): boolean {
   return Number.isFinite(g) && Math.abs(g - p.ground) < 0.15;
 }
 
-/** Start: walk to beside it, turn his back to it, sit, lie. `lying`: already lying (a URL's), `side` forced. */
-function begin(e: AddonEnv, ctx: RoamCtx, p: Prep, side: 1 | -1, lying = false): void {
+/** Start: walk to beside it, turn his back to it, sit, lie. `lying`: already lying (a URL's), `side` forced; `feet`: his feet's end (a replay's). */
+function begin(e: AddonEnv, ctx: RoamCtx, p: Prep, side: 1 | -1, lying = false, feet?: 1 | -1): void {
   const look = p.look!;
   const body = ctx.body;
   // (no room to stand on his side — off a hut's deck, against a post —: from the other)
   if (!standable(e, p, side) && standable(e, p, -side as 1 | -1)) side = -side as 1 | -1;
   // Which end his feet go to, and the camera's side (it comes down at his feet, looking along him): the most open
   // view (nothing solid in the way, no floor low over it), else the end the camera is at now and the side he is on.
-  const { dir, camSide } = bestView(e, p, side);
+  const { dir, camSide } = bestView(e, p, side, feet);
   const sMid = (look.c0 + look.c1) / 2;
   const sHips = dir > 0 ? look.c0 + (look.c1 - look.c0) * U_HIPS : look.c1 - (look.c1 - look.c0) * U_HIPS;
   const width = look.stripes[look.stripes.length >> 1].width;
@@ -1148,6 +1148,14 @@ function camera(ctx: RoamCtx, s: Session, dt: number): void {
 
 // ── The add-on ─────────────────────────────────────────────────────────────
 
+/** The key help while he is in it (one array: the hud compares it): swing it, get up, the camera and the phone, look round. */
+const KEYS: readonly AddonKey[] = [
+  ['A D', 'hamSwing', 'lstick'],
+  ['E Space', 'rGetUp', 'west south'],
+  ['4 5', 'rPhoto', 'dpadx'],
+  ['Q R', 'rLook', 'rstick'],
+];
+
 registerAddon({
   id: 'hammock',
   get holding() {
@@ -1156,6 +1164,8 @@ registerAddon({
   get handsBusy() {
     return session !== null;
   },
+  // (the key help, bottom left, while he is in it)
+  keys: () => (session ? KEYS : null),
 
   init(e) {
     env = e;
@@ -1284,7 +1294,9 @@ registerAddon({
     _v.subVectors(ctx.body.pos, best.a);
     const hs = Number(q.get('hamside'));
     const side: 1 | -1 = hs === 1 || hs === -1 ? hs : _v.dot(best.n) >= 0 ? 1 : -1;
-    begin(e, ctx, best, side, v !== 'in');
+    // (which end his feet are at, as the report has it: else the view decides)
+    const hf = q.get('hamfeet');
+    begin(e, ctx, best, side, v !== 'in', hf === 'b' ? 1 : hf === 'a' ? -1 : undefined);
     const s = session!;
     const f = (w: Vector3) => `(${w.x.toFixed(1)}, ${w.y.toFixed(2)}, ${w.z.toFixed(1)})`;
     console.info(`[map] hammock: ${v === 'in' ? 'getting into' : 'in'} "${best.spot.id}"${v === 'sleep' ? ', asleep' : ''}, feet toward ${s.dir > 0 ? 'b' : 'a'}, from side ${s.side} (stands at ${f(s.stand)}; under it ${best.ground.toFixed(2)}; the camera's side ${s.camSide})`);
@@ -1311,9 +1323,11 @@ registerAddon({
   report() {
     const s = session;
     if (!s) return null;
-    const out: Record<string, string> = { hammock: s.asleep ? 'sleep' : '1', hamside: String(s.side) };
+    const out: Record<string, string> = { hammock: s.asleep ? 'sleep' : '1', hamside: String(s.side), hamfeet: s.dir > 0 ? 'b' : 'a' };
     const amp = amplitude(s.roll, s.rate, swingW2(s));
     if (amp > 0.06) out.hamswing = amp.toFixed(2);
+    // (his hat is only off for the hammock: the replay puts it on, lying in it takes it off again, getting up gives it back)
+    if (s.hatTaken) out.hat = '1';
     return out;
   },
 });
