@@ -94,6 +94,8 @@ export interface Shopping {
   readonly eating: boolean;
   /** The tool bar's slot (6) and the explorer menu's "In my bag" (_shopBag.ts). */
   readonly bag: ShopBag;
+  /** His riel and what he keeps (_shopPurse.ts; the add-ons pay and earn with it too). */
+  readonly purse: Purse;
   /**
    * Before the walker's step (tools.ts): the menu's own input (a push of the
    * stick walks away), eating (the stick or a key stops it after the first
@@ -558,6 +560,7 @@ export function createShopping(d: ShoppingDeps): Shopping {
       return meal !== null;
     },
     bag,
+    purse,
     input(ctx, mode, tap) {
       lastCtx = ctx;
       const i = ctx.input;

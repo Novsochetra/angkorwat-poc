@@ -52,6 +52,8 @@ export interface Purse {
   readonly tasted: Readonly<Record<string, number>>;
   /** Pay `n` riel; false (nothing taken) when he has not that much. */
   pay(n: number): boolean;
+  /** He earns `n` riel (fish he sold, a farmer's thanks): into the purse, kept past the pocket money. */
+  earn(n: number): void;
   /** Put a thing in his bag; false when it is full. */
   keep(k: Kept): boolean;
   /** Take thing `i` out of his bag (to eat it), or null. */
@@ -126,6 +128,12 @@ export function createPurse(params: URLSearchParams, shot: boolean, find: (id: s
       state.riel -= n;
       changed();
       return true;
+    },
+    earn(n) {
+      const add = Math.max(0, Math.round(n));
+      if (!add) return;
+      state.riel += add;
+      changed();
     },
     keep(k) {
       if (state.kept.length >= CARRY_MAX) return false;

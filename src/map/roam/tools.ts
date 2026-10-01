@@ -11,11 +11,13 @@ import { pad } from '../pad/pad';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
+import { addonHands, ADDONS } from './_addons';
 import { createExplorerMenu, type ExplorerMenu } from './_explorerMenu';
 import { createGreeter, type GreetHow } from './_greet';
 import { createPrayer } from './_pray';
 import { createRest } from './_rest';
 import { createShopping } from './_shop';
+import type { Purse } from './_shopPurse';
 import { angleDiff } from './followCam';
 import { PAD_LIGHT, type RoamControls } from './input';
 import { createRoamPhoto, FACE_NAME, PHOTO_MODES, type PhotoKind, type RoamPhoto } from './photo';
@@ -70,6 +72,10 @@ export interface RoamTools {
   readonly object: Group;
   /** The camera and the selfie phone. */
   readonly photo: RoamPhoto;
+  /** His riel and his bag (the shops', and the add-ons': _addons.ts). */
+  readonly purse: Purse;
+  /** Something else has him now: praying, resting on the ground, at a stall or eating, a posture, the camera or the phone up, the album (an add-on offers nothing then). */
+  busy(): boolean;
   /**
    * Before the mode's step: the tool and emote keys, the album, and photo
    * mode's input (it takes what it uses: no walking with the camera up,
@@ -228,7 +234,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
 
   /** What his left hand should hold now (nothing while he prays, eats or drinks, or while a posture holds him: the swing's rope grip). */
   function wantHeld(): HoldKind {
-    if (mode !== 'walk' || prayer.handsBusy || shopping.handsBusy || explorer.animator.posture || explorer.foodHeld) return 'none';
+    if (mode !== 'walk' || prayer.handsBusy || shopping.handsBusy || explorer.animator.posture || explorer.foodHeld || addonHands()) return 'none';
     return handTool();
   }
 
@@ -387,6 +393,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
   const api: RoamTools = {
     object,
     photo,
+    get purse() {
+      return shopping.purse;
+    },
+    busy: () => prayer.handsBusy || rest.active || shopping.handsBusy || shopping.menuOpen || !!explorer.animator.posture || !!photo.kind || photo.albumOpen,
     input(ctx, m, dt) {
       lastCtx = ctx;
       const input = ctx.input;
@@ -409,6 +419,19 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (shopping.input(ctx, m, tap)) {
         stillInput(ctx);
         return;
+      }
+      // The add-ons' keys (_addons.ts): one that takes the step's input keeps him still.
+      for (const a of ADDONS) {
+        let took = false;
+        try {
+          took = !!a.input?.(ctx, m, tap, dt);
+        } catch (e) {
+          console.error(`[roam] add-on "${a.id}" input failed:`, e);
+        }
+        if (took) {
+          stillInput(ctx);
+          return;
+        }
       }
       if (tap('Slash')) bar.toggleKeys();
       if (input.exit && bar.keysOpen) {

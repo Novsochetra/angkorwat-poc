@@ -11,6 +11,7 @@ import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANT
 import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
 import { createFishing, type FishBoat } from './_fishing';
 import { createWake } from './_wake';
+import { addonHolding, addonOffer } from './_addons';
 import { angleDiff } from './followCam';
 import { riverField, type RiverField } from './flow';
 import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type RoamWorld } from './types';
@@ -875,6 +876,16 @@ export function createBoat(field?: HeightField): BoatMode {
       build(world.field);
       const s = body.scale;
       clock += dt;
+      // An add-on holding him in the boat (picking a lotus…: _addons.ts): its step, not the paddling's.
+      const held = phase === 'float' && !fishing.active ? addonHolding('boat') : null;
+      if (held?.hold) {
+        const r = held.hold(ctx, dt);
+        if (r.prompt !== prompt) hud.prompt((prompt = r.prompt));
+        placeRide(ctx, dt);
+        wake.update(dt);
+        lanterns(ctx.night, clock);
+        return r.mode ?? null;
+      }
       cam.turn(input.lookYaw, input.lookPitch, input.zoom);
       // Fishing first: F starts it; while he fishes it takes the paddling keys (the stick and E put the pole away).
       if (phase === 'float' || fishing.active) fishing.input(ctx, fishView);
@@ -921,17 +932,21 @@ export function createBoat(field?: HeightField): BoatMode {
       lanterns(ctx.night, clock);
       if (next) return next;
 
-      // What E does here: enter a place, step ashore.
+      // What E does here: an add-on's (a lotus to pick…: _addons.ts), enter a place, step ashore.
       const spot = world.placeNear(body.pos.x, body.pos.z, level);
-      const bank = phase === 'float' && !fishing.active ? ashore(ctx) : null;
+      const addon = phase === 'float' && !fishing.active ? addonOffer(ctx, 'boat') : null;
+      const bank = phase === 'float' && !fishing.active && !addon ? ashore(ctx) : null;
       const name = spot ? placeText(spot).name : '';
-      const use = spot?.href ? `E  ${t('rEnter', { name })}` : bank ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
+      const use = addon ? addon.prompt : spot?.href ? `E  ${t('rEnter', { name })}` : bank ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
       // (and fishing's part: "F  Fish"; while he fishes, only it: E puts the pole away)
       const fish = fishing.prompt(fishView);
       const text = fishing.active ? fish : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
       if (text !== prompt) hud.prompt((prompt = text));
       if (input.use && phase === 'float') {
-        if (spot?.href) ctx.enter(spot);
+        if (addon) {
+          const next = addon.addon.use?.(ctx, 'boat');
+          if (next && next !== 'boat') return next;
+        } else if (spot?.href) ctx.enter(spot);
         else if (bank) return stepOut(ctx, bank);
         else if (spot) hud.toast(t('rNotOpen', { name }));
         else hud.toast(t('rToBank'));

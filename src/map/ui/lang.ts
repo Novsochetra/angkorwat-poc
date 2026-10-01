@@ -652,6 +652,33 @@ const WORDS = {
   fogAmount: { km: 'កម្រាស់', en: 'Thickness' },
   // (under the slider: at 0 the mist still hides the map's cut edges)
   fogNote: { km: 'ទៅឆ្វេង អ័ព្ទស្ដើង ទៅស្ដាំ អ័ព្ទក្រាស់ ១០០ ជាអ័ព្ទធម្មតារបស់ហ្គេម។ គែមផែនទីនៅតែមានអ័ព្ទជានិច្ច', en: "Left thins the fog, right thickens it; 100 is the game's own. The mist always stays at the map's edges" },
+  // ── The new things to do (docs/ideas.md): each adds its words right under its own line, keys with its prefix ──
+  // The calendar of events (when…): roam/_calendar*.ts, calendar.ts
+  // The bicycle (bike…): roam/_bike*.ts
+  // Riding the ox cart (cart…): roam/_cartRide.ts
+  // Riding a water buffalo (buf…): roam/_buffalo*.ts
+  // The zip line (zip…): roam/_zip*.ts, jungle/_zipLine.ts
+  // Climbing the sugar palm ladder (palm…): roam/_palmClimb.ts
+  // The hammock (ham…): roam/_hammock.ts
+  // The alms round at dawn (dak…): roam/_dakBat.ts
+  // A monk's blessing, the red string (bless…): roam/_blessing.ts
+  // Lotus from the boat, offered at a shrine (lotus…): roam/_lotus.ts
+  // Monkeys steal his snack (monkey…): roam/_monkeyThief.ts
+  // Flying his own kite (kite…): roam/_kiteFly.ts
+  // Helping the farmers (farm…): roam/_farmWork.ts
+  // The Water Festival boat race (race…): roam/_raceRow.ts
+  // Kick the sey with the children (sey…): roam/_sey.ts
+  // The dog (dog…): roam/_dog*.ts
+  // His stilt house (home…): roam/_home*.ts
+  // His name in Khmer letters (name…): roam/_name*.ts, khmerName.ts
+  // The umbrella (umb…): roam/_umbrella.ts
+  // The binoculars (bino…): roam/_binoculars.ts
+  // Smiles for his camera (smile…): smile.ts, people/_smileBack.ts
+  // Selling his fish (sell…): roam/_fishSell.ts
+  // Clothes from the market (wear…): roam/_wardrobe*.ts
+  // Pchum Ben (pchum…): festival/_pchumBen.ts
+  // Visak Bochea (visak…): festival/_visak.ts
+  // The equinox sunrise over Angkor Wat (equi…): sky/_equinox.ts
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 

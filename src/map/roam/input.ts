@@ -421,6 +421,8 @@ export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'KeyJ', 'KeyL', 'KeyI',
   // (6: eat or drink what he keeps in his bag, roam/_shop.ts)
   'Digit6', 'Numpad6',
+  // (the add-ons' keys, roam/_addons.ts: 7 the binoculars, 8 the umbrella, 9 the calendar, 0 calls the dog; , and . spare)
+  'Digit7', 'Numpad7', 'Digit8', 'Numpad8', 'Digit9', 'Numpad9', 'Digit0', 'Numpad0', 'Comma', 'Period',
 ]);
 
 /**

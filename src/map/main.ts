@@ -25,6 +25,7 @@ import { loadingHero } from './ui/_loadHero';
 import { LOAD_TEMPLE } from './ui/_loadTemple';
 import { onLang, setLang, t } from './ui/lang';
 import { steppedShape } from './ui/shape';
+import { TIME } from './time';
 import type { AnchorOnScreen, MapUI } from './ui/ui';
 import { BuildWork } from './work/build';
 // (game pads: read from the start, so the loading screen's Start works with ✕)
@@ -663,8 +664,32 @@ function placeCamera(cam: number[]): void {
   }
 }
 
+/** The clock runs: the Time setting is "Cycle" and nothing in the URL holds it. */
+const isCycling = () => clockParam === null && !params.has('night') && settings.time === 'cycle';
+// (for the calendar of events and the stilt house's bed: time.ts)
+Object.assign(TIME, {
+  days: () => cycleDays,
+  cycling: isCycling,
+  dayLength: CYCLE,
+  moment: (d: number) => ({
+    clock: (((d % 1) + 1) % 1),
+    day: DAY0 + (clockParam !== null ? 0 : Math.floor(d)),
+    season: (((SEASON0 + (d - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1,
+  }),
+  skipTo: (d: number) => {
+    if (shot || !isCycling() || !Number.isFinite(d)) return false;
+    const to = Math.max(d, cycleDays);
+    cycleOff -= (to - cycleDays) * CYCLE;
+    cycleDays = to;
+    // (the light there at once: no slow dusk)
+    night = nightOf(to % 1);
+    return true;
+  },
+  building: () => Object.values(late.states).includes('building'),
+} satisfies Partial<typeof TIME>);
+
 function step(t: number, dt: number): void {
-  const cycling = clockParam === null && !params.has('night') && settings.time === 'cycle';
+  const cycling = isCycling();
   // (entering the cycle: start it at the current clock and day, so the sun, the moon and the festivals carry on)
   if (cycling && !wasCycling) cycleOff = t - cycleDays * CYCLE;
   wasCycling = cycling;

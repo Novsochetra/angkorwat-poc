@@ -8,6 +8,7 @@ import { weatherNow } from '../sky/weather';
 import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
+import { addonHolding, addonOffer, BEFORE_SHRINE } from './_addons';
 import { angleDiff } from './followCam';
 import { shrine } from './_pray';
 import { stalls } from './_shop';
@@ -232,6 +233,13 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       if (swing.riding) {
         setPrompt(ctx, swing.update(ctx, dt));
         return null;
+      }
+      // An add-on holding him (on the bicycle, in the hammock, on the zip line…: _addons.ts): its step, not the walk's.
+      const held = addonHolding('walk');
+      if (held?.hold) {
+        const r = held.hold(ctx, dt);
+        setPrompt(ctx, r.prompt);
+        return r.mode ?? null;
       }
       const s = body.scale;
       const pos = body.pos;
@@ -479,11 +487,22 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
         const boat = mooredBoatNear(pos.x, pos.z);
         const kneel = shrine.near();
         const stall = stalls.near(pos.x, pos.y, pos.z);
+        // (the add-ons' E: before a shrine those that ask to be, the others after a stall: _addons.ts)
+        const first = gold ? null : addonOffer(ctx, 'walk', -Infinity, BEFORE_SHRINE);
+        const later = gold || first || kneel || stall?.open ? null : addonOffer(ctx, 'walk', BEFORE_SHRINE + 1e-9);
+        const addon = first ?? later;
         if (gold) {
           setPrompt(ctx, gold.prompt);
           if (input.use) {
             setPrompt(ctx, null);
             treasure.pick(ctx, gold.id);
+          }
+        } else if (addon) {
+          setPrompt(ctx, addon.prompt);
+          if (input.use) {
+            setPrompt(ctx, null);
+            const next = addon.addon.use?.(ctx, 'walk');
+            if (next && next !== 'walk') return next;
           }
         } else if (kneel) {
           // In front of a shrine (its lotus glows on the floor): E walks him onto it to pray, before a boat

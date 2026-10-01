@@ -3,6 +3,8 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { PlaceDef } from '../layout';
 import { pad } from '../pad/pad';
 import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UISound } from '../types';
+import { eachAddon } from './_addons';
+import './_addonList';
 import { followNearFade, installNearFade } from './_nearFade';
 import { createBalloon, type BalloonInfo } from './balloon';
 import { createBoat } from './boat';
@@ -221,6 +223,26 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     balloon,
   };
   for (const h of new Set(Object.values(handlers))) if (h.object) object.add(h.object);
+  // The add-ons (_addons.ts, listed in _addonList.ts): a bicycle, the hammock, the kite, the dog…
+  const addonEnv = {
+    explorer,
+    body,
+    cam,
+    world,
+    hud,
+    layer: hud.layer ?? deps.uiRoot,
+    controls,
+    canvas: deps.canvas,
+    parts: deps.parts,
+    scene: object,
+    photo: tools.photo,
+    purse: tools.purse,
+    params,
+    shot: ctx.shot,
+    uiSound,
+    busy: () => tools.busy(),
+  };
+  eachAddon('init', (a) => a.init?.(addonEnv));
 
   const rctx: RoamCtx = {
     world,
@@ -258,6 +280,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     deps.onMode(next);
     if (next !== 'overview') handlers[next].enter(rctx, prev);
     tools.setMode(next, prev);
+    eachAddon('setMode', (a) => a.setMode?.(next, prev, rctx));
   }
 
   /** Put the body on the explorer's object. */
@@ -304,6 +327,13 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     run(f, Math.round(SETTLE / STEP));
   }
 
+  /** The add-ons' URL params for a bug report's shot. */
+  function addonParams(): Record<string, string> {
+    const out: Record<string, string> = {};
+    eachAddon('report', (a) => Object.assign(out, a.report?.() ?? {}));
+    return out;
+  }
+
   /** One fixed step of the roaming modes. */
   function step(f: MapFrame, dt: number): void {
     rctx.t = f.t;
@@ -332,6 +362,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     }
     // What he holds (a lantern after dark, until the player picks), where the flashlight points.
     if (mode !== 'overview') tools.after(rctx, mode, dt);
+    if (mode !== 'overview') eachAddon('after', (a) => a.after?.(rctx, mode, dt));
     pose();
     explorer.update(dt);
   }
@@ -411,6 +442,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
           ...hop?.params,
           // (fishing from the boat: a shot that replays where he is in it — casting, waiting, a bite, a catch)
           ...(mode === 'boat' ? (boat.reportParams() ?? {}) : {}),
+          // (the add-ons': on the bicycle, in the hammock…)
+          ...addonParams(),
         },
       };
     },
@@ -447,6 +480,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
           handlers[prev].exit(rctx, prev === 'boat' ? 'walk' : 'overview');
           mode = 'overview';
           tools.setMode('overview', prev);
+          eachAddon('setMode', (a) => a.setMode?.('overview', prev, rctx));
           explorer.animator.posture = null;
         }
         controls.clear();
@@ -457,6 +491,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
         urlCam(q);
         rctx.night = g.night;
         tools.fromUrl(q, rctx);
+        eachAddon('fromUrl', (a) => a.fromUrl?.(q, rctx));
         // No keys meanwhile: the view's `sim=` script (as its picture has it played), else none while it settles.
         const spec = q.get('sim');
         controls.runScript(spec ? parseScript(spec) : []);
@@ -501,6 +536,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
       balloon.frame(f, mode);
       // The view through his camera, the lights of his lantern, torch or flashlight (the ledge's too).
       tools.frame(f);
+      eachAddon('frame', (a) => a.frame?.(f, mode));
       f.roam = mode;
       f.roamLevels.wind = mode === 'overview' ? 0 : levels.wind;
       f.roamLevels.wake = mode === 'overview' ? 0 : levels.wake;
@@ -554,6 +590,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     handlers[mode].enter(rctx, 'overview');
     cam.blendFrom(0);
     tools.setMode(mode, 'overview');
+    eachAddon('setMode', (a) => a.setMode?.(mode, 'overview', rctx));
   }
   if (startMode && startMode !== 'overview' && startMode in handlers) {
     deps.release(true);
@@ -567,6 +604,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     // (after the camera: a photo looks the way the view does)
     rctx.night = Number(params.get('night') ?? 0);
     tools.fromUrl(params, rctx);
+    eachAddon('fromUrl', (a) => a.fromUrl?.(params, rctx));
     pose();
   }
   return api;

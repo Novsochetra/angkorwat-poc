@@ -3,6 +3,7 @@ import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { FestivalSound } from './festival';
+import { attachSfx, tickSfx } from './addonSfx';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
 import { warmSpeech } from './speech';
@@ -290,6 +291,8 @@ export function createMapAudio(): MapAudio {
     ctx = new AC({ latencyHint: 'balanced' });
     engine = new SoundEngine(ctx);
     fest = new FestivalSound(engine);
+    // (the roaming add-ons' own sounds: addonSfx.ts)
+    attachSfx(engine, live);
     engine.setVolumes(volumes, true);
     engine.setMix(mix, true);
     engine.duck(ducked, true);
@@ -428,6 +431,8 @@ export function createMapAudio(): MapAudio {
     },
 
     update(f) {
+      // (the add-ons' lasting sounds at their levels: addonSfx.ts)
+      tickSfx();
       // (the event clock: the temples' chant, drum and bells; worked out here too, so it runs without the animals)
       const ev = eventsNow(f);
       mix.night = f.night;
