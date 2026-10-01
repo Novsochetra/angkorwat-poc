@@ -163,7 +163,8 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   // too small to see). The shadows of low and medium are still (graphics.ts):
   // only what never moves casts, and the map is drawn again only once the
   // light has turned a little, so while it stands no frame draws shadows.
-  const shadows = ctx.renderer.shadowMap;
+  // (three's shadow pass; a new one once the GPU has given a lost picture back: `restored`)
+  let shadows = ctx.renderer.shadowMap;
   shadows.autoUpdate = false;
   shadows.needsUpdate = true;
   let shadowDirty = true;
@@ -231,39 +232,55 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     part = parts = 0;
   }
   // One part a frame, with the picture (not with another view of the scene: the snow's map from above).
-  const draw = shadows.render.bind(shadows);
   const clear = ctx.renderer.clear;
   const keep = () => {};
   const one: Light[] = [next];
-  shadows.render = (lights: Light[], scene: Scene, camera: Camera) => {
-    if (spread && camera === ctx.camera && graphicsNow.stillShadows) {
-      // (asked for again — the explorer leaves his ledge, the land's cull changes —: a next map of what casts
-      // now, unless this frame's has just been dealt)
-      if (shadows.needsUpdate) {
-        if (parts === 0 || part > 0) startNext(parts === 0 ? fitted : nextDir);
-        shadows.needsUpdate = false;
-      }
-      if (part < parts) {
-        stillView.mask = 1 << (STILL_PART_LAYER + part);
-        if (part > 0) ctx.renderer.clear = keep;
-        shadows.needsUpdate = true;
-        try {
-          draw(one, scene, camera);
-        } finally {
-          ctx.renderer.clear = clear;
-          stillView.mask = 1 << STILL_LAYER;
+  /** Hook three's shadow pass (the one in use: `shadows`). */
+  const hook = () => {
+    const draw = shadows.render.bind(shadows);
+    shadows.render = (lights: Light[], scene: Scene, camera: Camera) => {
+      if (spread && camera === ctx.camera && graphicsNow.stillShadows) {
+        // (asked for again — the explorer leaves his ledge, the land's cull changes —: a next map of what casts
+        // now, unless this frame's has just been dealt)
+        if (shadows.needsUpdate) {
+          if (parts === 0 || part > 0) startNext(parts === 0 ? fitted : nextDir);
           shadows.needsUpdate = false;
         }
-        part++;
+        if (part < parts) {
+          stillView.mask = 1 << (STILL_PART_LAYER + part);
+          if (part > 0) ctx.renderer.clear = keep;
+          shadows.needsUpdate = true;
+          try {
+            draw(one, scene, camera);
+          } finally {
+            ctx.renderer.clear = clear;
+            stillView.mask = 1 << STILL_LAYER;
+            shadows.needsUpdate = false;
+          }
+          part++;
+        }
       }
-    }
-    draw(lights, scene, camera);
+      draw(lights, scene, camera);
+    };
   };
+  hook();
 
   return {
     name: 'atmosphere',
     object,
     key,
+    restored() {
+      // (three made a new shadow pass: hooked as the old one was — main.ts has put `stillCasters` on it first —;
+      // the maps were drawn into GPU memory that is gone: new ones, the whole map drawn at once as at the start.
+      // The old targets are let go, not disposed: their GL objects went with the lost context.)
+      shadows = ctx.renderer.shadowMap;
+      shadows.autoUpdate = false;
+      hook();
+      key.shadow.map = null;
+      next.shadow.map = null;
+      part = parts = 0;
+      shadowDirty = true;
+    },
     update(f: MapFrame) {
       const s = updateSky(f);
       // (the graphics level sets the map's size and how often it is drawn: graphics.ts)

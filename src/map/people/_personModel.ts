@@ -849,6 +849,35 @@ const CARRY_CONSTS = Object.entries(CARRY).map(([k, v]) => `const int C_${k.toUp
 const SHOW_CONSTS = Object.entries(SHOW).map(([k, v]) => `const int SHOW_${k.toUpperCase()} = ${v};`).join('\n');
 const BONE_CONSTS = BONES.map((b, i) => `const int B_${b.toUpperCase()} = ${i};`).join('\n');
 const SHOW_COUNT = Object.keys(SHOW).length;
+type CarryName = Exclude<keyof typeof CARRY, 'none'>;
+/** The arm bones a carry turns (`pCarryRot`), in their order in `P_CARRY_ROT`. */
+const CARRY_BONES = ['armL', 'foreL', 'armR', 'foreR'] as const;
+/**
+ * The arms' turns of each carry style (a bone not named keeps the pose's).
+ * A table, not GLSL ifs: as a chain of `if (c == …) { if (b == …) return …; }`
+ * it took some GPUs' compilers seconds to minutes (ANGLE on OpenGL: the bone
+ * pass over 2 minutes, the page frozen), the likely cause of a PC's lost map
+ * (shader errors with empty logs, then "Context Lost").
+ */
+const CARRY_ROT: Record<CarryName, Partial<Record<(typeof CARRY_BONES)[number], V3>>> = {
+  umbrella: { armR: [-0.35, 0, -0.2], foreR: [-1.2, 0, 0] },
+  flag: { armR: [-2.6, 0, -0.3], foreR: [-0.3, 0, 0] },
+  torch: { armR: [-1.2, 0, -0.14], foreR: [-0.4, 0, 0] },
+  broom: { armR: [-0.2, 0, -0.12], foreR: [-0.9, 0, 0] },
+  bowl: { armL: [-0.25, 0, 0.05], foreL: [-1.3, -0.55, 0], armR: [-0.25, 0, -0.05], foreR: [-1.3, 0.55, 0] },
+  net: { armL: [-0.3, 0, 0.14], foreL: [-0.8, 0, 0] },
+  kite: { armR: [-1.9, 0.2, -0.1], foreR: [-0.5, 0, 0], armL: [-1.3, -0.3, 0.1], foreL: [-0.6, 0, 0] },
+  phone: { armR: [-0.15, 0.2, 0], foreR: [-1.1, 0, 0] },
+  pole: { armR: [-1.3, 0, -0.1], foreR: [-1.5, 0, 0] },
+  // (the right arm up along the side of the head, the hand reaching on to the basket's side)
+  head: { armR: [-2.96, -0.1, -0.2], foreR: [-0.22, 0, 0] },
+  tray: { armL: [-0.69, -0.08, -0.15], foreL: [-0.06, 0, 0], armR: [-0.69, 0.08, 0.15], foreR: [-0.06, 0, 0] },
+};
+/** `CARRY_ROT` for the shader: four turns a carry style (`CARRY_BONES`), style 1 first. */
+const CARRY_ROTS = (Object.keys(CARRY) as (keyof typeof CARRY)[])
+  .filter((k): k is CarryName => k !== 'none')
+  .sort((a, b) => CARRY[a] - CARRY[b])
+  .flatMap((k) => CARRY_BONES.map((b) => CARRY_ROT[k][b] ?? [0, 0, 0]));
 /** Texels in a person's row of the bone texture: three a bone (its turn's columns, the shift in w), then the show rules. */
 const BONE_W = BONES.length * 3 + 1;
 
@@ -1316,35 +1345,11 @@ float pFlat(int p) {
 }
 
 // Carry styles: the arm turns, which arms, and the world tilt of the prop in the hand.
+// (the arms' turns: CARRY_ROT, four a style — left arm, forearm, right arm, forearm —, style 1 first)
+const vec3 P_CARRY_ROT[${CARRY_ROTS.length}] = vec3[${CARRY_ROTS.length}](${CARRY_ROTS.map((v) => `vec3(${v.map(f).join(', ')})`).join(', ')});
 vec3 pCarryRot(int c, int b) {
-  if (c == 1) { if (b == B_ARMR) return vec3(-0.35, 0.0, -0.2); if (b == B_FORER) return vec3(-1.2, 0.0, 0.0); }
-  if (c == 2) { if (b == B_ARMR) return vec3(-2.6, 0.0, -0.3); if (b == B_FORER) return vec3(-0.3, 0.0, 0.0); }
-  if (c == 3) { if (b == B_ARMR) return vec3(-1.2, 0.0, -0.14); if (b == B_FORER) return vec3(-0.4, 0.0, 0.0); }
-  if (c == 4) { if (b == B_ARMR) return vec3(-0.2, 0.0, -0.12); if (b == B_FORER) return vec3(-0.9, 0.0, 0.0); }
-  if (c == 5) {
-    if (b == B_ARML) return vec3(-0.25, 0.0, 0.05);
-    if (b == B_FOREL) return vec3(-1.3, -0.55, 0.0);
-    if (b == B_ARMR) return vec3(-0.25, 0.0, -0.05);
-    if (b == B_FORER) return vec3(-1.3, 0.55, 0.0);
-  }
-  if (c == 6) { if (b == B_ARML) return vec3(-0.3, 0.0, 0.14); if (b == B_FOREL) return vec3(-0.8, 0.0, 0.0); }
-  if (c == 7) {
-    if (b == B_ARMR) return vec3(-1.9, 0.2, -0.1);
-    if (b == B_FORER) return vec3(-0.5, 0.0, 0.0);
-    if (b == B_ARML) return vec3(-1.3, -0.3, 0.1);
-    if (b == B_FOREL) return vec3(-0.6, 0.0, 0.0);
-  }
-  if (c == 8) { if (b == B_ARMR) return vec3(-0.15, 0.2, 0.0); if (b == B_FORER) return vec3(-1.1, 0.0, 0.0); }
-  if (c == 9) { if (b == B_ARMR) return vec3(-1.3, 0.0, -0.1); if (b == B_FORER) return vec3(-1.5, 0.0, 0.0); }
-  // (the right arm up along the side of the head, the hand reaching on to the basket's side)
-  if (c == C_HEAD) { if (b == B_ARMR) return vec3(-2.96, -0.1, -0.2); if (b == B_FORER) return vec3(-0.22, 0.0, 0.0); }
-  if (c == C_TRAY) {
-    if (b == B_ARML) return vec3(-0.69, -0.08, -0.15);
-    if (b == B_FOREL) return vec3(-0.06, 0.0, 0.0);
-    if (b == B_ARMR) return vec3(-0.69, 0.08, 0.15);
-    if (b == B_FORER) return vec3(-0.06, 0.0, 0.0);
-  }
-  return vec3(0.0);
+  int s = b == B_ARML ? 0 : b == B_FOREL ? 1 : b == B_ARMR ? 2 : b == B_FORER ? 3 : -1;
+  return c < 1 || c > ${CARRY_ROTS.length / 4} || s < 0 ? vec3(0.0) : P_CARRY_ROT[4 * (c - 1) + s];
 }
 float pCarrySide(int c, bool left) {
   if (c == 0) return 0.0;
@@ -1369,10 +1374,21 @@ float pGripTarget(int p, PP P, bool left) {
   return pCarrySide(P.ctype, left) > 0.0 ? pCarryGrip(P.ctype) : 0.0;
 }
 
-vec3 pArm(int b, PP P) {
+// Bone b's turn in the pose, from pose \`from\` to \`to\` (k). The one call of pRot, the bulk of the pose code: a
+// compiler copies a function into every call, and a copy for each pose, bone and link of the chain (≈ 100) made
+// the bone pass slow to compile (ANGLE on OpenGL: 1.6 s, 0.2 s with one; with the carry's ifs, minutes:
+// CARRY_ROT). So the calls are loops whose counts the compiler cannot know (it cannot unroll them into copies).
+vec3 pPoseRot(int b, PP P) {
+  int n = P.from == P.to ? 1 : 2;
+  vec3 r = vec3(0.0);
+  for (int i = 0; i < n; i++) r += pRot(i == 0 ? P.from : P.to, b, P) * (n == 1 ? 1.0 : i == 0 ? 1.0 - P.k : P.k);
+  return r;
+}
+
+// An arm's turn \`r\` in the pose, with the carry and the swing of the walk.
+vec3 pArm(int b, PP P, vec3 r) {
   bool left = b == B_ARML || b == B_FOREL;
   bool upper = b == B_ARML || b == B_ARMR;
-  vec3 r = mix(pRot(P.from, b, P), pRot(P.to, b, P), P.k);
   vec3 fr = mix(pFree(P.from), pFree(P.to), P.k);
   float free = left ? fr.x : fr.y;
   float cw = P.carry * pCarrySide(P.ctype, left) * free;
@@ -1385,10 +1401,10 @@ vec3 pArm(int b, PP P) {
   return r;
 }
 
-vec3 pLeg(int b, PP P) {
+// A leg's turn \`r\` in the pose, with the stride.
+vec3 pLeg(int b, PP P, vec3 r) {
   bool left = b == B_LEGL || b == B_SHINL;
   bool upper = b == B_LEGL || b == B_LEGR;
-  vec3 r = mix(pRot(P.from, b, P), pRot(P.to, b, P), P.k);
   float w = P.walk * mix(pFree(P.from).z, pFree(P.to).z, P.k);
   float th = P.ph + (left ? 0.0 : 3.14159);
   if (upper) r.x -= 0.46 * sin(th) * w;
@@ -1396,8 +1412,8 @@ vec3 pLeg(int b, PP P) {
   return r;
 }
 
-vec3 pBody(int b, PP P) {
-  vec3 r = mix(pRot(P.from, b, P), pRot(P.to, b, P), P.k);
+// The hips', the chest's or the head's turn \`r\` in the pose, with the walk's sway and the look.
+vec3 pBody(int b, PP P, vec3 r) {
   float w = P.walk * mix(pFree(P.from).z, pFree(P.to).z, P.k);
   if (b == B_HIPS) r.y += 0.07 * sin(P.ph) * w;
   if (b == B_CHEST) {
@@ -1411,36 +1427,16 @@ vec3 pBody(int b, PP P) {
   return r;
 }
 
-// A foot: it follows the shin, or (pFlat) stays level: its pitch undoes the hips', the thigh's and the shin's.
-vec3 pFoot(int b, PP P) {
-  float fl = mix(pFlat(P.from), pFlat(P.to), P.k);
-  if (fl <= 0.0) return vec3(0.0);
-  bool left = b == B_FOOTL;
-  float pitch = pBody(B_HIPS, P).x + pLeg(left ? B_LEGL : B_LEGR, P).x + pLeg(left ? B_SHINL : B_SHINR, P).x;
-  return vec3(-pitch * fl, 0.0, 0.0);
-}
-
 mat3 pEuler(vec3 r) {
   return pRotY(r.y) * pRotX(r.x) * pRotZ(r.z);
 }
 
-// A hand's grip: undoes the turns of the body and the arm above it, so the
-// prop keeps its own tilt (pGripTarget) whatever the arm does, turning only
-// with the torso's heading (an umbrella stands upright, the broom sweeps).
-mat3 pGrip(int b, PP P) {
-  bool left = b == B_GRIPL;
-  vec3 h = pBody(B_HIPS, P);
-  vec3 c = pBody(B_CHEST, P);
-  mat3 chain = pEuler(h) * pEuler(c) * pEuler(pArm(left ? B_ARML : B_ARMR, P)) * pEuler(pArm(left ? B_FOREL : B_FORER, P));
-  float target = mix(pGripTarget(P.from, P, left), pGripTarget(P.to, P, left), P.k);
-  return transpose(chain) * pRotY(h.y + c.y) * pRotX(target);
-}
-
+// Bone b's turn (not a foot's or a grip's: pBoneMat): the pose's, with the walk, the carry and the look.
 vec3 pBoneRot(int b, PP P) {
-  if (b == B_ARML || b == B_ARMR || b == B_FOREL || b == B_FORER) return pArm(b, P);
-  if (b == B_FOOTL || b == B_FOOTR) return pFoot(b, P);
-  if (b >= B_LEGL) return pLeg(b, P);
-  return pBody(b, P);
+  vec3 r = pPoseRot(b, P);
+  if (b == B_ARML || b == B_ARMR || b == B_FOREL || b == B_FORER) return pArm(b, P, r);
+  if (b >= B_LEGL) return pLeg(b, P, r);
+  return pBody(b, P, r);
 }
 
 float pWeight(int p, PP P) {
@@ -1476,12 +1472,35 @@ int pShowMask(PP P) {
   return m;
 }
 
-// Bone b's turn against its parent (about its pivot).
+// Bone b's turn against its parent (about its pivot). Most bones: their own turn. A foot follows the shin, or
+// (pFlat) stays level: its pitch undoes the hips', the thigh's and the shin's. A hand's grip undoes the turns
+// of the body and the arm above it, so the prop keeps its own tilt (pGripTarget) whatever the arm does,
+// turning only with the torso's heading (an umbrella stands upright, the broom sweeps). The bones they read
+// are turned in one loop (one call of pBoneRot: pPoseRot).
 mat3 pBoneMat(int b, PP P) {
+  bool grip = b == B_GRIPL || b == B_GRIPR;
+  bool foot = b == B_FOOTL || b == B_FOOTR;
   // (dancing, the wrists bend back from the forearms, swaying a little: the apsara's hands)
-  if (b == B_GRIPL || b == B_GRIPR)
-    return pWeight(P_DANCE, P) >= 0.5 ? pEuler(vec3(-1.25 + 0.15 * sin(P.t * 0.8 + P.seed * 6.2831 + float(b)), 0.0, 0.0)) : pGrip(b, P);
-  return pEuler(pBoneRot(b, P));
+  if (grip && pWeight(P_DANCE, P) >= 0.5) return pEuler(vec3(-1.25 + 0.15 * sin(P.t * 0.8 + P.seed * 6.2831 + float(b)), 0.0, 0.0));
+  float fl = foot ? mix(pFlat(P.from), pFlat(P.to), P.k) : 1.0;
+  if (fl <= 0.0) return pEuler(vec3(0.0));
+  bool left = b == B_GRIPL || b == B_FOOTL;
+  int n = grip ? 4 : foot ? 3 : 1;
+  mat3 chain = mat3(1.0);
+  float pitch = 0.0;
+  float yaw = 0.0;
+  for (int i = 0; i < n; i++) {
+    int q = b;
+    if (grip) q = i == 0 ? B_HIPS : i == 1 ? B_CHEST : i == 2 ? (left ? B_ARML : B_ARMR) : (left ? B_FOREL : B_FORER);
+    if (foot) q = i == 0 ? B_HIPS : i == 1 ? (left ? B_LEGL : B_LEGR) : (left ? B_SHINL : B_SHINR);
+    vec3 r = pBoneRot(q, P);
+    chain = chain * pEuler(r);
+    pitch += r.x;
+    if (i < 2) yaw += r.y;
+  }
+  if (grip) return transpose(chain) * pRotY(yaw) * pRotX(mix(pGripTarget(P.from, P, left), pGripTarget(P.to, P, left), P.k));
+  if (foot) return pEuler(vec3(-pitch * fl, 0.0, 0.0));
+  return chain;
 }
 
 // The step's bob less the pose's drop (m, up).
@@ -1495,8 +1514,8 @@ float pLift(PP P) {
 void pChain(int b, PP P, out mat3 M, out vec3 c) {
   M = mat3(1.0);
   c = vec3(0.0);
-  for (int i = 0; i < 5; i++) {
-    if (b < 0) break;
+  // (up to the hips: five bones at most; a while, so the compiler keeps one pBoneMat, pPoseRot)
+  while (b >= 0) {
     mat3 R = pBoneMat(b, P);
     vec3 pv = P_PIVOT[b];
     M = R * M;
@@ -1533,8 +1552,8 @@ const GLSL_SKIN = /* glsl */ `
 ${GLSL_POSE}
 void pSkin(inout vec3 p, inout vec3 n, PP P) {
   int b = int(aPart.x + 0.5);
-  for (int i = 0; i < 5; i++) {
-    if (b < 0) break;
+  // (as pChain: a while, one pBoneMat)
+  while (b >= 0) {
     mat3 R = pBoneMat(b, P);
     vec3 pv = P_PIVOT[b];
     p = pv + R * (p - pv);

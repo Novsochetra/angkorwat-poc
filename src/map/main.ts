@@ -8,7 +8,7 @@ import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
-import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
+import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
 import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
@@ -1040,6 +1040,23 @@ function useLevel(level: GraphicsLevel): void {
   if (drawing) newLevelRatio();
 }
 Object.assign(window, { __mapResolution: res });
+
+// The GPU lost the picture (WebGL context lost: a GPU reset, a driver update, too little memory). three asks for it
+// back and, once the browser gives it, uploads again what it holds as it draws; the parts draw again what they drew
+// only once (`restored`: the still shadows, the far trees' pictures, the snow's map from above). On auto the level
+// steps down one, kept on this device as auto's watch does, lest the next frames lose it again. (Its shader errors
+// with empty logs come first: three links programs on a context that is already gone.)
+canvas.addEventListener('webglcontextlost', () => {
+  const lower = settings.graphics === 'auto' ? lowerAutoLevel() : null;
+  console.warn(`[map] the GPU lost the picture (WebGL context lost) ${(performance.now() / 1000).toFixed(0)} s into the page, graphics ${graphicsNow.level}${lower ? `: auto steps down to ${lower}` : ''}`);
+  if (lower) useLevel(lower);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  console.info('[map] the picture is back: what was drawn once is drawn again');
+  // (three has made a new shadow pass: what only still casters draw goes on it again, before the atmosphere's hook)
+  stillCasters(renderer);
+  for (const p of parts) p.restored?.();
+});
 
 if (shot) {
   document.body.classList.add('shot');

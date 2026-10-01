@@ -420,10 +420,15 @@ class TopView {
   /** Let it go (the snow melted away and the setting is not snow): it is drawn again if it snows again. */
   free(): void {
     if (!this.target) return;
-    COVER.uSnowTopY.value.z = 0;
-    COVER.uSnowTop.value = null;
     this.target.depthTexture?.dispose();
     this.target.dispose();
+    this.forget();
+  }
+
+  /** No map from above (the GPU lost the picture: its texture went with it, not disposed): drawn again while it snows. */
+  forget(): void {
+    COVER.uSnowTopY.value.z = 0;
+    COVER.uSnowTop.value = null;
     this.target = null;
   }
 }
@@ -840,6 +845,9 @@ export function buildSnow(ctx: MapContext): MapPart {
     name: 'snow',
     object,
     blocks,
+    restored() {
+      top?.forget();
+    },
     update(f: MapFrame) {
       const w = f.weather;
       const snow = w.snow;

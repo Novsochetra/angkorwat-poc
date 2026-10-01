@@ -376,6 +376,9 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
       tiles.update(fr);
       pictures?.update(fr);
     },
+    restored() {
+      pictures?.restored();
+    },
     subjects(out) {
       for (const b of bamboo) out.push(b);
       for (const p of r.sugarPalms) out.push(p);

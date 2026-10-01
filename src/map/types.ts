@@ -383,6 +383,13 @@ export interface MapPart {
    */
   afterRender?(): void;
   /**
+   * The GPU lost the picture (WebGL context lost) and it is back: three has
+   * uploaded nothing yet and will upload what it holds (buffers, textures) as
+   * it draws, but what a part drew only once into a texture is gone (main.ts).
+   * The part draws it again, or forgets it so it is drawn again when wanted.
+   */
+  restored?(): void;
+  /**
    * The living things this part shows now (drawn this frame: animals, people,
    * special plants), for the nature book (roam/_book.ts): push one `Subject`
    * each into `out`. Read-only and cheap (called when a photo is taken).

@@ -600,6 +600,18 @@ export function resetAutoLevel(): void {
     /* no storage */
   }
 }
+/** Auto one level down from the one in use, kept for this device: the level, or null on the lowest. */
+export function lowerAutoLevel(): GraphicsLevel | null {
+  const at = GRAPHICS_LEVELS.indexOf(graphicsNow.level);
+  if (at <= 0) return null;
+  const next = GRAPHICS_LEVELS[at - 1];
+  try {
+    localStorage.setItem(AUTO_KEY, next);
+  } catch {
+    /* this visit only */
+  }
+  return next;
+}
 
 /**
  * Auto's watch over the frames. Every 2 s of drawn frames it takes their mean
@@ -627,23 +639,17 @@ export class AutoGraphics {
    * low as it goes. Returns the level to step down to, or null.
    */
   watch(dt: number, settled: boolean): GraphicsLevel | null {
-    // (a hitch: a tab switch, a build)
-    if (dt > 0.25) return null;
-    this.time += dt;
+    // (a hitch — a tab switch, a build — counts as a quarter second: one is lost among a window's other frames; left
+    // out, a device that draws every frame that slowly, a few a second, was never stepped down)
+    this.time += Math.min(dt, 0.25);
     this.frames++;
     if (this.time < 2) return null;
     const avg = this.time / this.frames;
     this.time = this.frames = 0;
     this.slow = settled && avg > 2 * frameCap.time ? this.slow + 1 : 0;
-    const at = GRAPHICS_LEVELS.indexOf(graphicsNow.level);
-    if (this.slow < 3 || at <= 0) return null;
-    this.reset();
-    const next = GRAPHICS_LEVELS[at - 1];
-    try {
-      localStorage.setItem(AUTO_KEY, next);
-    } catch {
-      /* this visit only */
-    }
+    if (this.slow < 3) return null;
+    const next = lowerAutoLevel();
+    if (next) this.reset();
     return next;
   }
 }

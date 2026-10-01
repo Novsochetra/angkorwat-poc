@@ -494,12 +494,15 @@ export class TreePictures {
   private readonly eye = new Vector3();
   /** Off: every tile as blocks (to compare, from the console or a tool: `userData.pictures` on the mesh). */
   enabled = true;
+  /** Draw the atlas again (the GPU lost the picture: `restored`). */
+  private readonly redraw: () => FramebufferTexture;
 
   /** `far`: the trees; `leaves`: the tiles' far leaves; `tileOf`: the leaf tile of a point; `tiles`: how many; `plan`: a tile's ground plan. */
   constructor(renderer: WebGLRenderer, far: FarTrees, leaves: FarLeaves[], tileOf: (x: number, z: number) => number, tiles: number) {
     const t0 = performance.now();
     const spheres = far.protos.map(leafSphere);
-    const atlas = drawAtlas(renderer, far.protos, spheres);
+    this.redraw = () => drawAtlas(renderer, far.protos, spheres);
+    const atlas = this.redraw();
     const atlasMs = performance.now() - t0;
     UNIFORMS.uImpAtlas.value = atlas;
     UNIFORMS.uImpProtos.value = far.protos.length;
@@ -580,6 +583,11 @@ export class TreePictures {
     this.object.userData.pictures = this;
     const bytes = atlas.image.width * atlas.image.height * 4;
     this.stats = { trees: count, protos: far.protos.length, bytes, size: [atlas.image.width, atlas.image.height], ms: performance.now() - t0, atlasMs };
+  }
+
+  /** The GPU lost the picture and it is back: the atlas drawn again (the old one's texture went with it, not disposed). */
+  restored(): void {
+    UNIFORMS.uImpAtlas.value = this.redraw();
   }
 
   /** Every frame (the vegetation's update). */
