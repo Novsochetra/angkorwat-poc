@@ -1,5 +1,9 @@
 import { BACK_HAMLET, EAST_VILLAGE, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES } from '../layout';
 import { WORSHIP } from '../roam/_worship';
+import { BIKE_SPOTS, type BikeSpotId } from '../roam/_bikeSpots';
+import { ZIP_START } from '../roam/_zipPlan';
+import { LOTUS_BED } from '../roam/_lotusHook';
+import { HOME_AT } from '../hamlet/_homePlan';
 import type { WordKey } from './lang';
 import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
 
@@ -20,7 +24,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home';
 
 export interface MapSpot {
   id: SpotId;
@@ -159,6 +163,61 @@ const HAMLET = [
   '.BBBBBBBBB.',
 ];
 
+/** A town bicycle (roam/_bikeSpots.ts: where the bicycles to ride stand): its frame in gold on the dark badge, the saddle, the basket on the front. */
+const BIKE_ART = [
+  '...dd....uu....',
+  '....u.....u.mm.',
+  '....u.....u.mm.',
+  '..KKKu...u.KKK.',
+  '.K...Ku.u.Ku..K',
+  '.K.kuuuuu.K.k.K',
+  '.K...K....K...K',
+  '..KKK......KKK.',
+];
+
+/** The zip line (roam/_zipPlan.ts: its first stair's foot): a cable from a tall tree's platform down to the next, a rider under his red trolley. */
+const ZIP_ART = [
+  'GGG..........',
+  'GgGG.........',
+  'gGgG.........',
+  '.bkk.........',
+  'mmmmkk.......',
+  '.b...ckk...GG',
+  '.b...n..kkGgG',
+  '.b..wnw...kgG',
+  '.b...d...mmmm',
+  '.b.........b.',
+  '.b.........b.',
+];
+
+/** The lotus bed in the great lake (roam/_lotusBed.ts): a pink bud on its stem over round leaves on the water. */
+const LOTUS_ART = [
+  '.....P.....',
+  '....PPP....',
+  '....PPP....',
+  '.....G.....',
+  '..GG.g.....',
+  '.GgGGg..GG.',
+  'BaGGBBBGgGB',
+  'BBBBaBBBBBa',
+  '.BBaBBBaBB.',
+];
+
+/** His stilt house (hamlet/_home.ts, roam/_home.ts): its tiled gable with the little sun in it, the lamps lit in its windows, the door, the stair. */
+const HOME_ART = [
+  '......R......',
+  '.....RRR.....',
+  '....RRYRR....',
+  '...RRrYrrR...',
+  '..RRrrrrrrR..',
+  '.RRrrrrrrrrR.',
+  '..wYwwddwYw..',
+  '..wYwwddwYw..',
+  '..mmmmmmmmm..',
+  '..p..p...pm..',
+  '..p..p...m...',
+];
+
 /**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
  * (m) would sit on it: it goes out to this far along the line from the temple (east if on it).
@@ -188,6 +247,14 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   spot('palm-grove', PALM_GROVE.x, PALM_GROVE.z, 14, 'jnPalmSugar', 'jnThePalmSugar', outlined(PALM, 'l')),
   spot('market', MARKET.x, MARKET.z, 14, 'jnMarket', 'jnTheMarket', outlined(MARKET_ART)),
   spot('east-village', EAST_VILLAGE.x, EAST_VILLAGE.z, 30, 'evVillage', 'evVillage', outlined(VILLAGE)),
+  // (the bicycles' places: roam/_bike.ts)
+  ...BIKE_SPOTS.filter((b) => b.badge).map((b) => spot(b.id, b.x, b.z, 6, 'bikeMap', 'bikeTheMap', outlined(BIKE_ART))),
+  // (the zip line: at its first stair's foot by the back trail, roam/_zip.ts)
+  spot('zip-line', ZIP_START.x, ZIP_START.z, 12, 'zipMap', 'zipTheMap', outlined(ZIP_ART)),
+  // (the lotus to pick from the boat: roam/_lotus.ts)
+  spot('lotus-bed', LOTUS_BED.x, LOTUS_BED.z, LOTUS_BED.r, 'lotusMap', 'lotusTheMap', outlined(LOTUS_ART)),
+  // (his stilt house at the sugar-palm village's north-east edge: roam/_home.ts)
+  spot('home', HOME_AT.x, HOME_AT.z, 9, 'homeMap', 'homeTheMap', outlined(HOME_ART)),
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

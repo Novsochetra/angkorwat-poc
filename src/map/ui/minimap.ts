@@ -1,4 +1,5 @@
 import { Group } from 'three';
+import { eventById, ON_NOW, type CalendarEvent } from '../calendar';
 import type { HeightField } from '../heightfield';
 import { PLACES, type PlaceDef } from '../layout';
 import { markFocus } from '../pad/nav';
@@ -7,6 +8,7 @@ import type { LaunchSpot } from '../roam/launchSpots';
 import { roamPrefs } from '../roam/prefs';
 import type { MapRoam } from '../roam/roam';
 import { RAMP } from '../roam/_launchRamp';
+import { eventSprite, eventSvg } from '../roam/_calendarIcons';
 import { ROAM_AREA } from '../terrain/views';
 import { treasure } from '../treasure/hooks';
 import type { MapFrame, MapPart, MiniMapChoice, PlaceId, RoamMode, UISound } from '../types';
@@ -64,11 +66,19 @@ import { MAP_SPOTS, spotSprite, spotSvg, type MapSpot, type SpotId } from './_mi
  * part of it turned round the explorer, and a few markers. The rice paddies
  * are painted over it in the colour of their season (_minimapPaddies.ts).
  *
+ * - The calendar of events (map/calendar.ts, roam/_calendar.ts): a gold
+ *   badge with its picture where an event is on now (`ON_NOW`), on both maps
+ *   (named on the big map, "Now · 240 m"); an event is a target like a
+ *   village ("Show on map": `{ kind: 'event', id }`; reached within
+ *   `EVENT_ARRIVE` on foot or by boat). Under the mini-map, `under` holds the
+ *   calendar's button (it follows the mini-map's height and setting).
+ *
  * URL: `bigmap=1` opens the big map (roaming) · `target=<place id>` sets a
  * place as the target, `target=ramp:<i>` a ramp (`roam.launchSpots[i]`),
  * `target=ramp` the nearest one (as N does, with its banner), `target=balloon`
  * the hot air balloon, `target=<id>` a village or holy place (`east-village`,
- * `market`, `palm-grove`, `kulen-picnic`, `kulen-buddha`, `back-hamlet`).
+ * `market`, `palm-grove`, `kulen-picnic`, `kulen-buddha`, `back-hamlet`),
+ * `target=event:<id>` an event of the calendar (`event:market`).
  */
 export interface MinimapDeps {
   /** The picker's root (`#ui`): the maps follow its size (`--u`) and time of day (`--mu-n`); hidden with `ui=0`. */
@@ -81,7 +91,7 @@ export interface MinimapDeps {
 }
 
 /** Where the mini-map shows the way to: a place (its beacon), a hang glider ramp (the back of its deck, where he steps on), the hot air balloon (its basket) or a village or holy place (its middle). */
-export type MapTarget = { kind: 'place'; id: PlaceId } | { kind: 'ramp'; spot: LaunchSpot } | { kind: 'balloon' } | { kind: 'spot'; id: SpotId };
+export type MapTarget = { kind: 'place'; id: PlaceId } | { kind: 'ramp'; spot: LaunchSpot } | { kind: 'balloon' } | { kind: 'spot'; id: SpotId } | { kind: 'event'; id: string };
 
 export interface Minimap extends MapPart {
   /** Where to head for (null: nowhere). */
@@ -92,7 +102,14 @@ export interface Minimap extends MapPart {
   /** The big map is open. */
   readonly bigOpen: boolean;
   openBig(on: boolean): void;
+  /** A column under the mini-map for small buttons of others (the calendar's: roam/_calendar.ts): it follows the mini-map's height. */
+  readonly under: HTMLElement;
 }
+
+/** An event of the calendar is reached this near (m), on foot or by boat. */
+const EVENT_ARRIVE = 24;
+/** Events this near each other on the big map (CSS px) share one badge there: their names would meet. */
+const EVENT_GROUP = 70;
 
 /** Metres across the mini-map, per mode (high up under the parachute: further). */
 const SPAN: Record<RoamMode, number> = { overview: 240, leap: 420, glide: 420, walk: 240, boat: 300, hang: 520, balloon: 520 };
@@ -145,6 +162,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
       </span>
       <span class="mm-tip" aria-hidden="true"></span>
     </button>
+    <div class="mm-under"></div>
     <div class="mm-toast mu-frame mu-sm" role="status">
       <span class="mu-bg"></span><span class="mu-glow"></span>${templeSvg('mm-toast-icon')}${wingSvg('mm-toast-wing')}${balloonSvg('mm-toast-balloon')}<span class="mm-toast-spot"></span>
       <span class="mm-toast-text"><em></em><b></b></span>
@@ -199,6 +217,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
           <span><i class="mm-sw-river"></i><span data-t="mmRiver"></span></span>
           <span><i class="mm-sw-you">${ARROW_SVG}</i><span data-t="mmYou"></span></span>
           <span class="mm-legend-gold" hidden><i class="mm-sw-gold"></i><span data-t="tgCount"></span></span>
+          <span class="mm-legend-event" hidden><i class="mm-sw-event"></i><span data-t="whenNow"></span></span>
         </span>
         <span class="mm-status" aria-live="polite"></span>
       </footer>
@@ -251,6 +270,21 @@ export function createMinimap(d: MinimapDeps): Minimap {
   const rampEms = rampEls.map((b) => b.querySelector('em')!);
   const balloonEl = q<HTMLButtonElement>(bigWrap, '.mm-balloon');
   const balloonEm = q(balloonEl, 'em');
+  const under = q(wrap, '.mm-under');
+  // (the calendar's events on the big map, under the places: placeEvents)
+  const eventMarks = document.createElement('div');
+  eventMarks.className = 'mm-events';
+  q(bigWrap, '.mm-marks').prepend(eventMarks);
+  const eventLegend = q(bigWrap, '.mm-legend-event');
+  /** Their buttons as last built (`eventsKey`), and each one's tag as last written. */
+  let eventEls: HTMLButtonElement[] = [];
+  /** The events shown, in groups of one place (`placeEvents`). */
+  const eventGroups: CalendarEvent[][] = [];
+  let eventsKey = '';
+  let eventsN = -1;
+  const eventTags = new Map<string, string>();
+  // (under the mini-map: as high as the mini-map is now, nothing when it is hidden)
+  new ResizeObserver(() => wrap.style.setProperty('--mm-h', `${mini.offsetHeight}px`)).observe(mini);
 
   // ── State ────────────────────────────────────────────────────────────────
   let target: MapTarget | null = null;
@@ -260,6 +294,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let targetBalloon = false;
   /** The target's village or holy place (null: none), and each one's tag on the big map as last written. */
   let targetSpot: MapSpot | null = null;
+  /** The target's event of the calendar (null: none). */
+  let targetEvent: CalendarEvent | null = null;
   const spotTag = MAP_SPOTS.map(() => '');
   let tx = 0;
   let tz = 0;
@@ -300,6 +336,16 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let balloonGold: HTMLCanvasElement | null = null;
   let spotSpr: HTMLCanvasElement[] = [];
   let spotGold: HTMLCanvasElement[] = [];
+  /** The calendar's events' badges, by id and gold (made for this size, `ks`). */
+  const eventSpr = new Map<string, HTMLCanvasElement>();
+  const eventSprOff = new Map<string, HTMLCanvasElement>();
+  let eventK = 0;
+  /** Where each event's badge was drawn on the mini-map (CSS px), for the hover names. */
+  const evX = new Float32Array(16).fill(NaN);
+  const evY = new Float32Array(16).fill(NaN);
+  const evIds: string[] = [];
+  /** Hover names: an event's index is past every other icon's. */
+  const EVENT_I = 1000;
   let cone: CanvasGradient | null = null;
   let bg = '';
   let bgNight = -1;
@@ -425,6 +471,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
   new ResizeObserver(() => {
     if (!sizeBig() || !bigOpen) return;
     drawBig();
+    eventsKey = '';
+    placeEvents();
     placeLabels();
   }).observe(view);
 
@@ -434,11 +482,15 @@ export function createMinimap(d: MinimapDeps): Minimap {
     targetRamp = to?.kind === 'ramp' ? ramps.indexOf(to.spot) : -1;
     targetBalloon = to?.kind === 'balloon';
     targetSpot = to?.kind === 'spot' ? (MAP_SPOTS.find((s) => s.id === to.id) ?? null) : null;
-    target = targetPlace || targetRamp >= 0 || targetBalloon || targetSpot ? to : null;
+    const ev = to?.kind === 'event' ? eventById(to.id) : null;
+    targetEvent = ev?.where && Number.isFinite(ev.where.x) ? ev : null;
+    target = targetPlace || targetRamp >= 0 || targetBalloon || targetSpot || targetEvent ? to : null;
     if (targetPlace) [tx, , tz] = targetPlace.anchor;
     else if (targetRamp >= 0) ({ x: tx, z: tz } = ramps[targetRamp]);
     else if (targetBalloon) ({ x: tx, z: tz } = roam.balloon.pos);
     else if (targetSpot) ({ x: tx, z: tz } = targetSpot);
+    else if (targetEvent?.where) ({ x: tx, z: tz } = targetEvent.where);
+    eventsKey = '';
     spotEls.forEach((b, i) => {
       b.classList.toggle('is-target', MAP_SPOTS[i] === targetSpot);
       b.setAttribute('aria-pressed', String(MAP_SPOTS[i] === targetSpot));
@@ -463,6 +515,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
     if (bigOpen) {
       writeRampTags();
       writeSpotTags();
+      placeEvents();
       // (the target's name is a line taller)
       placeLabels();
     }
@@ -470,7 +523,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
   }
 
   /** The target's name in the language (a ramp: "Glider ramp"; the balloon: "Hot air balloon"; a village: its name). */
-  const targetName = () => (targetPlace ? placeText(targetPlace).name : targetRamp >= 0 ? t('mmRamp') : targetBalloon ? t('mmBalloon') : targetSpot ? t(targetSpot.name) : '');
+  const targetName = () =>
+    targetPlace ? placeText(targetPlace).name : targetRamp >= 0 ? t('mmRamp') : targetBalloon ? t('mmBalloon') : targetSpot ? t(targetSpot.name) : targetEvent ? t(targetEvent.name) : '';
 
   /** The words that name the target: under the mini-map, the buttons' labels for screen readers, the distance. */
   function targetWords(): void {
@@ -506,7 +560,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
     const text = distText(shown);
     capDist.textContent = text;
     if (targetPlace) buttons.get(targetPlace.id)!.querySelector('em')!.textContent = `${t('mmTarget')} · ${text}`;
-    setStatus(t('mmHeading', { name: targetPlace ? placeText(targetPlace).name : targetSpot ? t(targetSpot.the) : targetBalloon ? t('mmTheBalloon') : t('mmTheRamp'), d: text }));
+    setStatus(t('mmHeading', { name: targetPlace ? placeText(targetPlace).name : targetSpot ? t(targetSpot.the) : targetEvent ? t(targetEvent.name) : targetBalloon ? t('mmTheBalloon') : t('mmTheRamp'), d: text }));
   }
 
   /** He stands on (or at the back of) this ramp. */
@@ -530,11 +584,12 @@ export function createMinimap(d: MinimapDeps): Minimap {
   }
 
   /** The banner at the top centre: a small line over a big one (a name, or a distance: `dist`), by the temple, the glider, the balloon or the village's picture. */
-  function toast(ramp: boolean | 'balloon' | MapSpot, line: string, name: string, dist = false): void {
+  function toast(ramp: boolean | 'balloon' | MapSpot | CalendarEvent, line: string, name: string, dist = false): void {
     toastEl.classList.toggle('is-ramp', ramp === true);
     toastEl.classList.toggle('is-balloon', ramp === 'balloon');
     toastEl.classList.toggle('is-spot', typeof ramp === 'object');
-    if (typeof ramp === 'object') toastSpot.innerHTML = spotSvg(ramp, 'mm-toast-spot-icon');
+    // (a calendar's event: its picture, as on its badge)
+    if (typeof ramp === 'object') toastSpot.innerHTML = 'rows' in ramp ? spotSvg(ramp, 'mm-toast-spot-icon') : eventSvg(ramp, 'mm-toast-spot-icon');
     toastLine.textContent = line;
     toastName.textContent = name;
     toastName.classList.toggle('is-dist', dist);
@@ -548,11 +603,11 @@ export function createMinimap(d: MinimapDeps): Minimap {
     const p = roam.body.pos;
     if (targetBalloon) {
       if (!roam.balloon.riding && !roam.world.balloonNear?.(p.x, p.z, p.y)) return;
-    } else if (targetSpot) {
+    } else if (targetSpot || targetEvent) {
       // (walking in, or paddling up; not flying over it)
-      if ((roam.mode !== 'walk' && roam.mode !== 'boat') || Math.hypot(tx - p.x, tz - p.z) > targetSpot.arrive) return;
+      if ((roam.mode !== 'walk' && roam.mode !== 'boat') || Math.hypot(tx - p.x, tz - p.z) > (targetSpot ? targetSpot.arrive : EVENT_ARRIVE)) return;
     } else if (targetPlace ? roam.world.placeNear(p.x, p.z, p.y)?.id !== targetPlace.id : !onRamp(ramps[targetRamp])) return;
-    toast(targetBalloon ? 'balloon' : (targetSpot ?? !targetPlace), t('mmArrived'), targetName());
+    toast(targetBalloon ? 'balloon' : (targetSpot ?? targetEvent ?? !targetPlace), t('mmArrived'), targetName());
     d.sound?.('select');
     setTarget(null);
   }
@@ -583,6 +638,66 @@ export function createMinimap(d: MinimapDeps): Minimap {
         rampEms[i].textContent = tagText[i] = text;
         moved = true;
       }
+    });
+    if (moved) placeLabels();
+  }
+
+  /**
+   * The calendar's events on the big map (calendar.ts `ON_NOW`): a gold badge with its picture where each is on now,
+   * and the target's (on or not), named, "Now · 240 m" / "Target · 240 m". Events in one place (`EVENT_GROUP`: the
+   * floating village's alms round and its boat market) share a badge, their names one under the other (a click heads
+   * for the first). The buttons are made again when the list changes (`ON_NOW.n`, the target); the tags written only
+   * when they change (and the groups again when the map's size changes).
+   */
+  function placeEvents(): void {
+    if (ON_NOW.n !== eventsN) {
+      eventsN = ON_NOW.n;
+      eventsKey = '';
+    }
+    const groups = eventGroups;
+    if (!eventsKey) {
+      const list: CalendarEvent[] = [];
+      for (const e of ON_NOW.events) if (e.where && Number.isFinite(e.where.x)) list.push(e);
+      if (targetEvent && !list.includes(targetEvent)) list.push(targetEvent);
+      eventsKey = `${list.map((e) => e.id).join(',')}|${targetEvent?.id ?? ''}`;
+      groups.length = 0;
+      // (px a metre on the big map now: events closer than `EVENT_GROUP` px there share a badge)
+      const k = (view.clientWidth || 600) / BIG_W;
+      for (const e of list) {
+        const g = groups.find((q) => Math.hypot(q[0].where!.x - e.where!.x, q[0].where!.z - e.where!.z) * k < EVENT_GROUP);
+        if (g) g.push(e);
+        else groups.push([e]);
+      }
+      eventTags.clear();
+      eventMarks.innerHTML = groups
+        .map((g) => {
+          const now = g.some((e) => ON_NOW.events.includes(e));
+          const on = targetEvent !== null && g.includes(targetEvent);
+          const w = g[0].where!;
+          return `<button type="button" class="mm-ramp mm-event${now ? ' is-now' : ''}${on ? ' is-target' : ''}" data-id="${g[0].id}" aria-pressed="${on}" style="left:${pct(w.x - BIG.x0, BIG_W)};top:${pct(w.z - BIG.z0, BIG_H)}">
+          <span class="mm-ramp-badge">${eventSvg(g[0], 'mm-event-icon')}</span><span class="mm-place-label">${g.map(() => '<b></b>').join('')}<em></em></span></button>`;
+        })
+        .join('');
+      eventEls = [...eventMarks.querySelectorAll<HTMLButtonElement>('.mm-event')];
+      eventEls.forEach((b, i) => {
+        const names = groups[i].map((e) => t(e.name));
+        b.querySelectorAll('b').forEach((el, k) => (el.textContent = names[k]));
+        const name = names.join(', ');
+        b.setAttribute('aria-label', targetEvent && groups[i].includes(targetEvent) ? t('mmIsTarget', { name }) : t('mmHeadFor', { name }));
+      });
+      eventLegend.hidden = !ON_NOW.events.length;
+      placeLabels();
+    }
+    const p = roam.body.pos;
+    let moved = false;
+    eventEls.forEach((b, i) => {
+      const e = groups[i][0];
+      const on = targetEvent !== null && groups[i].includes(targetEvent);
+      const tag = `${t(on ? 'mmTarget' : 'whenNow')} · ${distText(Math.hypot(e.where!.x - p.x, e.where!.z - p.z))}`;
+      if (eventTags.get(e.id) === tag) return;
+      eventTags.set(e.id, tag);
+      b.querySelector('em')!.textContent = tag;
+      moved = true;
     });
     if (moved) placeLabels();
   }
@@ -653,6 +768,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
     flip(balloonEl, temples);
     const marks = [...temples, ...badges];
     for (const b of spotEls) flip(b, marks);
+    for (const b of eventEls) flip(b, marks);
+    // (an event's names near the map's bottom edge go over its badge)
+    const vb = view.getBoundingClientRect().bottom;
+    for (const b of eventEls) if (b.querySelector('.mm-place-label')!.getBoundingClientRect().bottom > vb - 2) b.classList.add('is-up');
   }
 
   // ── Big map ──────────────────────────────────────────────────────────────
@@ -699,6 +818,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       balloonX = balloonY = NaN;
       placeBalloon();
       placeGold();
+      eventsKey = '';
+      placeEvents();
       // (where he is first: the names keep clear of it)
       placeYou();
       placeLabels();
@@ -947,6 +1068,53 @@ export function createMinimap(d: MinimapDeps): Minimap {
       iconY[j] = y / dpr;
     }
 
+    // The calendar's events on now: a gold badge with its picture, a soft gold ring pinging out from it; the target's
+    // too (a plain badge, when it is not on now). (Its sprites made once for this size.)
+    {
+      const kr = Math.max(1, Math.round(ks));
+      if (kr !== eventK) {
+        eventK = kr;
+        eventSpr.clear();
+        eventSprOff.clear();
+      }
+      const list = ON_NOW.events;
+      const extra = targetEvent && !list.includes(targetEvent) ? 1 : 0;
+      const n = Math.min(evX.length, list.length + extra);
+      for (let i = 0; i < evX.length; i++) {
+        const ev = i < list.length ? list[i] : i < n ? targetEvent : null;
+        const w = ev?.where;
+        if (!ev || !w || i >= n) {
+          evX[i] = evY[i] = NaN;
+          continue;
+        }
+        const on = i < list.length;
+        const sprites = on ? eventSpr : eventSprOff;
+        let spr = sprites.get(ev.id);
+        if (!spr) {
+          spr = eventSprite(ev, kr, on);
+          sprites.set(ev.id, spr);
+        }
+        const x = C + a * (w.x - p.x) + c * (w.z - p.z);
+        const y = C + b * (w.x - p.x) + e * (w.z - p.z);
+        if (Math.abs(x - C) > F + spr.width || Math.abs(y - C) > F + spr.width) {
+          evX[i] = evY[i] = NaN;
+          continue;
+        }
+        if (on) {
+          const ph = (t * 0.45 + i * 0.37) % 1;
+          g.beginPath();
+          g.arc(x, y, spr.width / 2 + ph * 12 * ks, 0, Math.PI * 2);
+          g.lineWidth = 1.8 * ks;
+          g.strokeStyle = `rgba(255, 213, 74, ${(0.85 * (1 - ph) * (1 - ph)).toFixed(3)})`;
+          g.stroke();
+        }
+        g.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height / 2));
+        evX[i] = x / dpr;
+        evY[i] = y / dpr;
+        evIds[i] = ev.id;
+      }
+    }
+
     // The temples (over the ramps where they meet).
     const edge = F + sprite.width;
     for (let j = 0; j < PLACES.length; j++) {
@@ -1075,10 +1243,25 @@ export function createMinimap(d: MinimapDeps): Minimap {
         best = j;
       }
     }
+    // (the calendar's events: over the rest)
+    for (let j = 0; j < evX.length; j++) {
+      const dd = Math.hypot(evX[j] - x, evY[j] - y);
+      if (dd < bestD) {
+        bestD = dd;
+        best = EVENT_I + j;
+      }
+    }
     if (best === tipFor) return;
     tipFor = best;
     tip.classList.toggle('is-on', best >= 0);
     if (best < 0) return;
+    if (best >= EVENT_I) {
+      const e = eventById(evIds[best - EVENT_I]);
+      tip.textContent = e?.where ? `${t(e.name)} · ${distText(Math.hypot(e.where.x - roam.body.pos.x, e.where.z - roam.body.pos.z))}` : '';
+      tip.style.left = `${r.left - mini.getBoundingClientRect().left + evX[best - EVENT_I]}px`;
+      tip.style.top = `${r.top - mini.getBoundingClientRect().top + evY[best - EVENT_I] - 10}px`;
+      return;
+    }
     const s = ramps[best - PLACES.length];
     const bp = roam.balloon.pos;
     const v = MAP_SPOTS[best - SPOT_I];
@@ -1121,6 +1304,14 @@ export function createMinimap(d: MinimapDeps): Minimap {
       d.sound?.(next ? 'select' : 'back');
     }),
   );
+  eventMarks.addEventListener('click', (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLButtonElement>('.mm-event');
+    const id = b?.dataset.id;
+    if (!b || !id) return;
+    const on = b.classList.contains('is-target');
+    setTarget(on ? null : { kind: 'event', id });
+    d.sound?.(on ? 'back' : 'select');
+  });
   q(bigWrap, '.mm-find').addEventListener('click', findRamp);
   q(bigWrap, '.mm-x').addEventListener('click', () => openBig(false));
   q(bigWrap, '.mm-shade').addEventListener('click', () => openBig(false));
@@ -1186,9 +1377,11 @@ export function createMinimap(d: MinimapDeps): Minimap {
     tipFor = -1;
     tip.classList.remove('is-on');
     targetWords();
+    eventsKey = '';
     if (bigOpen) {
       writeRampTags();
       writeSpotTags();
+      placeEvents();
     }
     acc = 1;
   }
@@ -1228,6 +1421,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
       return bigOpen;
     },
     openBig,
+    under,
     update(f: MapFrame) {
       // Follow the picker's size and time of day.
       const nu = d.root.style.getPropertyValue('--u');
@@ -1281,6 +1475,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
         else if (spot) setTarget({ kind: 'ramp', spot });
         else if (village) setTarget({ kind: 'spot', id: village.id });
         else if (w === 'balloon') setTarget({ kind: 'balloon' });
+        else if (w.startsWith('event:')) setTarget({ kind: 'event', id: w.slice(6) });
         else if (w === 'ramp') findRamp();
       }
       if (wantBig) {
@@ -1307,6 +1502,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
         writeRampTags();
         writeSpotTags();
         placeBalloon();
+        placeEvents();
       }
       const cls = document.body.classList;
       if (!faceOn || cls.contains('photo-mode') || cls.contains('selfie-mode')) return;
@@ -1543,6 +1739,32 @@ function injectStyle(): void {
     .mm-legend-gold[hidden] { display: none; }
     .mm-sw-you svg { display: block; width: 100%; }
     .mm-status { text-align: right; color: var(--mu-ink); font-weight: 600; }
+
+    /* Under the mini-map: a column for small buttons of others (the calendar's), as high as the mini-map is (--mm-h). */
+    .mm-under { position: absolute; right: calc(22 * var(--px)); top: calc(80 * var(--px) + var(--mm-h, 0px) + 6 * var(--px)); display: flex; flex-direction: column;
+      align-items: flex-end; gap: calc(6 * var(--px)); opacity: 0; visibility: hidden; transition: opacity 0.4s, visibility 0s 0.4s; }
+    .mm.is-on .mm-under { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
+    .mm.is-hidden .mm-under { top: calc(80 * var(--px)); }
+    /* The calendar's events on the big map: a gold badge (the target's only, when it is not on now, a plain one), its name and how far, always. */
+    .mm-events { position: absolute; inset: 0; pointer-events: none; }
+    .mm-event { z-index: 2; width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
+    .mm-event.is-now .mm-ramp-badge { background: rgba(58, 38, 8, 0.94);
+      box-shadow: inset 0 0 0 calc(2 * var(--px)) #ffd54a, 0 0 calc(10 * var(--px)) rgba(255, 180, 40, 0.7), 0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35); }
+    .mm-event-icon { display: block; width: calc(var(--w) * 1.3 * var(--px)); height: auto; }
+    .mm-event .mm-place-label b { color: var(--mu-ink); }
+    .mm-ramp.mm-event .mm-place-label em { display: block; }
+    .mm-event.is-now:not(.is-target)::before { content: ''; position: absolute; left: 50%; top: 50%; width: 150%; aspect-ratio: 1; border-radius: 50%;
+      transform: translate(-50%, -50%); border: calc(2 * var(--px)) solid rgba(255, 213, 74, 0.8); animation: mm-ping 2s ease-out infinite; pointer-events: none; }
+    .mm-sw-event { width: calc(9 * var(--px)); height: calc(9 * var(--px)); border-radius: 50%; background: #ffd54a; box-shadow: 0 0 0 1px rgba(60, 36, 6, 0.85), 0 0 calc(6 * var(--px)) rgba(255, 190, 60, 0.8); }
+    .mm-legend-event[hidden] { display: none; }
+    .mu-calm ~ .mm-bigwrap .mm-event::before { animation: none; }
+    @media (max-width: 639px) {
+      .mm-under { right: 10px; top: calc(54px + var(--mm-h, 0px) + 4px); }
+      .mm.is-hidden .mm-under { top: 54px; }
+      .mm-event { width: 22px; height: 22px; }
+      .mm-event-icon { width: calc(var(--w) * 0.9px); }
+      .mm-ramp.mm-event:not(.is-target) .mm-place-label { display: none; }
+    }
 
     body.photo-mode .mm, body.selfie-mode .mm { display: none; }
 

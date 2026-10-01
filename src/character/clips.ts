@@ -487,7 +487,7 @@ const PRAY_KEYS: readonly (readonly [number, Pose])[] = [
 export const GREET_PALMS = [0.26, 1.62] as const;
 export const GREET_HIGH_PALMS = [0.26, 2.05] as const;
 /** The arms of the sampeah at the chest: palms together, fingertips up. */
-const SAMPEAH_ARMS: Pose = {
+export const SAMPEAH_ARMS: Pose = {
   shoulderL: { rx: -1.08, ry: -0.46, rz: -0.68, px: -0.6, pz: 1.2 }, elbowL: { rx: -0.45 }, wristL: { rx: -1.56, ry: -0.78, rz: 0.17 },
   shoulderR: { rx: -1.08, ry: 0.46, rz: 0.68, px: 0.6, pz: 1.2 }, elbowR: { rx: -0.45 }, wristR: { rx: -1.56, ry: 0.78, rz: -0.17 },
 };
@@ -511,7 +511,7 @@ const GREET_KEYS: readonly (readonly [number, Pose])[] = [
   [1.85, GREET_STAND],
 ];
 /** The sampeah raised to the face, the head bowed onto the fingertips. */
-const FACE_ARMS: Pose = {
+export const FACE_ARMS: Pose = {
   shoulderL: { rx: -1.46, ry: -0.37, rz: -0.67, px: -0.6, py: 0.6, pz: 1.5 }, elbowL: { rx: -0.68 }, wristL: { rx: -0.58, ry: -0.54, rz: 0.55 },
   shoulderR: { rx: -1.46, ry: 0.37, rz: 0.67, px: 0.6, py: 0.6, pz: 1.5 }, elbowR: { rx: -0.68 }, wristR: { rx: -0.58, ry: 0.54, rz: -0.55 },
 };

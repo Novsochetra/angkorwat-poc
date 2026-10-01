@@ -1,19 +1,19 @@
 import { Group } from 'three';
 import { hash3 } from '../../voxel/random';
-import { eventsNow, type EventState } from '../events';
+import { EVENT_LIVE, EVENT_SPOTS, eventsNow, type EventState } from '../events';
 import { PLACES } from '../layout';
 import { ROAM_HEIGHT } from '../roam/types';
 import type { AnimalCallKind, MapContext, MapFrame, MapPart, Subject, SubjectKind } from '../types';
 import { CH, Flock, type Species } from './_kit';
 import { Agent, Herd, type Ground, type Habits, type Walker } from './_landBrain';
-import { BUFFALO, BUFFALO_HABITS } from './_landBuffalo';
+import { BUFFALO, BUFFALO_HABITS, BUFFALO_RIDE, BUFFALO_SIZE, drawRidden } from './_landBuffalo';
 import { DEER, MUNTJAC_HABITS, SAMBAR_HABITS } from './_landDeer';
 import { ELEPHANT } from './_landElephant';
 import { FOWL, FOWL_HABITS } from './_landFowl';
 import { findBathSite, sunBlockers } from './_landBath';
 import { Crossing, findCrossSite } from './_landCrossing';
 import { buildLineup } from './_landLineup';
-import { MACAQUE, MACAQUE_HABITS } from './_landMacaque';
+import { linkThief, MACAQUE, MACAQUE_HABITS } from './_landMacaque';
 import { bankGround, banks, edges, flatStretch, meadows, openGround, roadside, scatter, survey, templeGround, type Spot } from './_landPlaces';
 import { Splash } from './_landSplash';
 import { COW_SIDE, Trek, type Passer, type TrekWorld } from './_landTrek';
@@ -198,7 +198,8 @@ export function buildLandFauna(ctx: MapContext): MapPart {
       ground: bank,
       herd: new Herd(`buffalo ${h}`),
       alarm: 'buffalo',
-      members: spots.map((s, k) => ({ ...s, yaw: hash3(k, h, 10) * Math.PI * 2, variant: 0, scale: 0.92 + 0.1 * hash3(k, h, 11) })),
+      // (village buffaloes, as big as the hamlet's beside the people: he can ride one, _landBuffalo.ts `BUFFALO_SIZE`)
+      members: spots.map((s, k) => ({ ...s, yaw: hash3(k, h, 10) * Math.PI * 2, variant: 0, scale: BUFFALO_SIZE * (0.92 + 0.1 * hash3(k, h, 11)) })),
     });
   }
 
@@ -257,6 +258,15 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     crossing = new Crossing(flocks.get(MACAQUE)!, first, crossSite, 4242);
   }
   const plansByHerd = new Map(plans.map((p) => [p.herd, p]));
+  // (the macaque that steals the explorer's snack, roam/_monkeyThief.ts: one of the temple troops', not a mother with her baby; it holds the snack)
+  const thief = linkThief(agents.filter((ag) => ag.flock.species === MACAQUE && !riders.some((r) => r.mother === ag)), temple, sv, object);
+  // (the buffaloes he can ride: roam/_buffaloRide.ts)
+  BUFFALO_RIDE.herd = agents.filter((ag) => ag.flock.species === BUFFALO);
+  // (where the calendar of events marks the bath and the crossing on the maps: events.ts)
+  const bathEnd = bathSite?.path.at(-1);
+  if (bathEnd) EVENT_SPOTS.elephantBath = { x: bathEnd.x, z: bathEnd.z };
+  if (crossSite) EVENT_SPOTS.monkeyCrossing = { x: crossSite.x, z: crossSite.z };
+  if (trek) EVENT_LIVE.elephantBath = () => trek.bathing;
   Object.assign(window, { __fauna: { plans, agents, riders, trek, crossing, bathSite, crossSite } });
 
   const buildMs = performance.now() - t0;
@@ -289,6 +299,16 @@ export function buildLandFauna(ctx: MapContext): MapPart {
     const huddle = Math.max(f.night, shelter);
     for (let a = 0; a < agents.length; a++) {
       const ag = agents[a];
+      // (the thief: the add-on drives it meanwhile)
+      if (ag === thief.agent) {
+        thief.place(now, cam);
+        continue;
+      }
+      // (the buffalo he rides: the ride moves and poses it, roam/_buffaloRide.ts)
+      if (ag === BUFFALO_RIDE.ridden) {
+        drawRidden(ag);
+        continue;
+      }
       // (sqrt of the squares, not Math.hypot: this runs for every animal every frame)
       const cx = ag.x - cam.x;
       const cy = ag.y - cam.y;
@@ -301,7 +321,8 @@ export function buildLandFauna(ctx: MapContext): MapPart {
         de = Math.sqrt(ax * ax + az * az);
       }
       const sp = ag.flock.species;
-      if (Math.min(dc, de) < ACTIVE) ag.step(dt, now, ex, big, sp === MACAQUE || sp === FOWL ? huddle : f.night);
+      // (buffaloes let him come up calmly: he may ride one)
+      if (Math.min(dc, de) < ACTIVE) ag.step(dt, now, sp === BUFFALO && BUFFALO_RIDE.calm ? null : ex, big, sp === MACAQUE || sp === FOWL ? huddle : f.night);
       else ag.freeze(now);
       if (dc < far[a]) ag.flock.place(ag.i, ag.x, ag.y, ag.z, ag.yaw, ag.scale);
       else ag.flock.hide(ag.i);
@@ -437,6 +458,7 @@ export function buildLandFauna(ctx: MapContext): MapPart {
       live(f.dt, f, ex);
       if (!ctx.shot && f.dt > 0) calls(f);
       else for (const ag of agents) ag.event = null;
+      BUFFALO_RIDE.now = now;
       for (const fl of flocks.values()) fl.flush(now);
       splash?.flush(now, f.night);
     },

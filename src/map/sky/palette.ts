@@ -1,6 +1,7 @@
 import { Color, MathUtils, Vector3 } from 'three';
 import { OVERVIEW, PLACES } from '../layout';
 import type { MapWeather } from '../types';
+import { riseBearing } from './_equinox';
 
 /**
  * The look of the map at each time of day: colours (sRGB hex, as sampled
@@ -18,7 +19,11 @@ import type { MapWeather } from '../types';
  * The sun and the moon move (`sunPath`, `moonPath`): the sun hugs the
  * northern horizon all day (the whole day of the map is golden light), comes
  * up behind Angkor Wat at dawn, stands where the concept art has it in the
- * afternoon and goes down over the eastern hills at dusk. The moon has two
+ * afternoon and goes down over the eastern hills at dusk. Where it comes up
+ * moves with the time of year (sky/_equinox.ts): right behind the central
+ * tower at the equinoxes, left of it in the hot season, right of it in the
+ * cool season; the afternoon, the dusk and the night keep the art's path. The
+ * key light, the haze's glow and the sky's disc follow it. The moon has two
  * paths (the Moon setting, `MapFrame.moonHigh`): low over the northern hills
  * as the concept art has it (the default: up after dusk, where the art has it
  * at midnight, down before dawn, left to right as the picker sees it), or
@@ -277,9 +282,10 @@ const MOON_E = elevationOf(MOON_DIR) / DEG;
 const AW = PLACES.find((p) => p.id === 'sanctuary')!;
 const AW_B = Math.atan2(AW.x - OVERVIEW.pos[0], OVERVIEW.pos[2] - AW.z) / DEG;
 /**
- * Where the sun comes up (degrees): behind Angkor Wat's right-hand towers,
- * where the far ridges dip to ≈ 1.5° (right behind the central tower they
- * stand ≈ 3° high, behind the temple's card).
+ * Where the sun comes up in the concept art (degrees): behind Angkor Wat's
+ * right-hand towers, where the far ridges dip to ≈ 1.5° (right behind the
+ * central tower they stand ≈ 3° high, behind the temple's card): as it rises in
+ * mid-October. The time of year turns the morning from there (`morning`).
  */
 const RISE_B = AW_B + 7.5;
 
@@ -354,10 +360,34 @@ function onPath(path: Path, c: number, col: 1 | 2): number {
   return (2 * t3 - 3 * t2 + 1) * v1 + (t3 - 2 * t2 + t) * m1 + (-2 * t3 + 3 * t2) * v2 + (t3 - t2) * m2;
 }
 
-/** The sun at clock c: its direction (unit) → out; returns its elevation (rad). */
-export function sunPath(out: Vector3, c: number): number {
-  const el = onPath(SUN_PATH, c, 2) * DEG;
-  fromAngles(out, onPath(SUN_PATH, c, 1) * DEG, el);
+/**
+ * How much of a turn of the dawn sun (the time of year's) the path takes at clock c (0‥1): none in the afternoon, at
+ * dusk and in the night's first half (the art's path, the moon's glow), in while the sun is under the land after
+ * midnight, all of it from the blue hour through the morning, and out again as it slides to the afternoon's place.
+ */
+function morning(c: number): number {
+  c -= Math.floor(c);
+  return band(0.45, 0.62, c) * (1 - band(0.86, 0.99, c));
+}
+
+/**
+ * How much higher a morning sun coming up at compass bearing `b` (degrees) climbs than the art's (degrees): round the
+ * temple's axis the far ridges behind the central tower stand ≈ 3.5° high from the overview (where the art's dawn
+ * comes up they dip to ≈ 1.5°), so a sun rising there (the equinoxes) clears them as the art's clears its dip; none
+ * off the axis (June's and December's come up over low ridges, or behind Phnom Kulen's shoulder).
+ */
+function ridgeLift(b: number): number {
+  return 2.2 * band(-16, -8, b) * (1 - band(1.5, 5, b));
+}
+
+/**
+ * The sun at clock c: its direction (unit) → out; returns its elevation (rad). `swing`: degrees its morning is turned
+ * by (the time of year: sky/_equinox.ts), `lift`: degrees it stands higher through the morning.
+ */
+export function sunPath(out: Vector3, c: number, swing = 0, lift = 0): number {
+  const m = morning(c);
+  const el = (onPath(SUN_PATH, c, 2) + lift * m) * DEG;
+  fromAngles(out, (onPath(SUN_PATH, c, 1) + swing * m) * DEG, el);
   return el;
 }
 /**
@@ -452,6 +482,8 @@ export interface SkyInput {
   moonAge?: number;
   /** The moon's path: 0 low over the northern hills (the default), 1 across the sky (see {@link moonPath}). */
   moonHigh?: number;
+  /** The time of year (0 = 14 April): where the dawn sun comes up (sky/_equinox.ts). Absent: the concept art's dawn. */
+  season?: number;
   weather: MapWeather;
 }
 
@@ -469,8 +501,10 @@ export function updateSky(f: SkyInput): SkyState {
   SKY.clock = clock;
   SKY.dawn = mid === DAWN ? (n < 0.5 ? t : 1 - t) : 0;
 
-  // The sun and the moon on their paths; each shows while it is over the far hills.
-  const sunEl = sunPath(SKY.sunDir, clock);
+  // The sun and the moon on their paths; each shows while it is over the far hills. (The dawn sun comes up where the
+  // time of year has it: its morning turned from the art's by the difference.)
+  const rise = f.season === undefined ? null : riseBearing(f.season, clock);
+  const sunEl = rise === null ? sunPath(SKY.sunDir, clock) : sunPath(SKY.sunDir, clock, rise - RISE_B, ridgeLift(rise));
   SKY.sun = band(-0.045, -0.012, sunEl);
   const high = MathUtils.clamp(f.moonHigh ?? 0, 0, 1);
   const moonEl = moonPath(SKY.moonDir, clock, high);

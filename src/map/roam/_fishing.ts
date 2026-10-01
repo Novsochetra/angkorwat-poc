@@ -1,6 +1,9 @@
-import { Matrix4, Vector3, type Group, type Object3D } from 'three';
+import { Group, Matrix4, Vector3, type Object3D } from 'three';
 import type { ExpressionName } from '../../character/parts/face';
+import { buildVoxelMesh, disposeVoxelMesh } from '../../voxel/VoxelMesh';
 import { mulberry32 } from '../../voxel/random';
+import { BODY_UNIT_M } from '../../world/scale';
+import { SFX } from '../audio/addonSfx';
 import { len2 } from '../fauna/_len';
 import type { HeightField } from '../heightfield';
 import { LAKES } from '../layout';
@@ -13,6 +16,9 @@ import { STOWED_ROD } from './_boatModel';
 import { createFishGear, LINE_POINTS, ROD_HOLD } from './_fishGear';
 import { catchLength, FISH, FISH_KINDS, pickFish, type FishKind, type FishWater } from './_fishKinds';
 import { FishHold } from './_fishPoses';
+import { basket, BASKET_MAX, told } from './_fishSellBasket';
+import { catchChoice, type CatchPick } from './_fishSellChoice';
+import { BASKET_H, basketBuilder } from './_fishSellModel';
 import type { Wake } from './_wake';
 import type { RiverField } from './flow';
 import { angleDiff } from './followCam';
@@ -36,9 +42,14 @@ import type { RoamCtx } from './types';
  * the button within 1.2 s strikes: the pole bends, the line goes taut, the
  * fish runs this way and that and splashes, then he lifts it out, catches
  * it in his left hand, lays the pole down and holds the fish up by its lip
- * at his side for a moment, smiling (the camera comes round to his front;
- * "ត្រីរៀល — Trey riel · 12 cm"; its page in the nature book), then leans
- * over, lets it go back into the water, takes the pole up and casts again. Too
+ * at his side, smiling (the camera comes round to his front; its page in
+ * the nature book), and the catch card asks (_fishSellChoice.ts: the fish,
+ * "ត្រីរៀល — Trey riel · 12 cm", what a fish seller would pay): **Keep** it
+ * — he lowers it into his fish basket, hung over the boat's left side in
+ * the water (five fish at most; selling them: _fishSell.ts) — or **Let
+ * go**: he leans over, lets it go back into the water. Either way he takes
+ * the pole up and casts again. A push of the stick lets it go and lays the
+ * pole down. Too
  * late: "It got away". Too soon (while it nibbles): it swims off. Space or
  * a click while he waits twitches the float. W A S D, E, or F while he
  * waits lays the pole down again and puts the paddle back in his hands.
@@ -56,13 +67,17 @@ import type { RoamCtx } from './types';
  * `sim=_:5`) · `fishing=cast` the cast (`sim=_:1` the float in the air) ·
  * `fishing=wait` the float out, no bite (`sim=_:3`) · `fishing=bite` the
  * float going under (`sim=_:0.4`) · `fishing=fight[:<kind>]` the struggle
- * (`sim=_:1`) · `fishing=catch:<kind>` holding it up (`sim=_:1.5`) ·
+ * (`sim=_:1`) · `fishing=catch:<kind>` holding it up, the catch card
+ * asking keep or let go (`sim=_:1.5`; `fishchoice=0|1` the ring on keep or
+ * let go; `sim=_:1.5,e:0.1,_:1` takes the one in the ring) ·
+ * `fishing=keep:<kind>` putting it in the basket (`sim=_:0.6`) ·
  * `fishing=release:<kind>` letting it go (`sim=_:0.8`) · `fishcm=<n>` its
- * length. Kinds: riel, snakehead, catfish, perch, featherback. `rcam=`
- * keeps the camera where it says.
+ * length · `fishbasket=<kind>:<cm>,…` what the basket holds already
+ * (_fishSellBasket.ts). Kinds: riel, snakehead, catfish, perch,
+ * featherback. `rcam=` keeps the camera where it says.
  */
 
-type Phase = 'off' | 'take' | 'cast' | 'wait' | 'bite' | 'fight' | 'lift' | 'hold' | 'release' | 'stow';
+type Phase = 'off' | 'take' | 'cast' | 'wait' | 'bite' | 'fight' | 'lift' | 'hold' | 'keep' | 'release' | 'stow';
 
 /** What fishing needs of the boat this step. */
 export interface FishBoat {
@@ -120,9 +135,13 @@ const T_RELEASE = 0.66;
 const T_SETTLE = 0.6;
 const BITE_WINDOW = 1.2;
 const T_LIFT = 0.95;
-/** The catch held up (the pole laid down first, the right hand back to the paddle), then shown. */
-const T_HOLD = 3.3;
+/** The catch held up (the pole laid down first, the right hand back to the paddle), then shown: the catch card asks from `T_ASK` (keep or let go). */
 const T_LAY = 0.55;
+const T_ASK = T_LAY + 0.3;
+/** Keeping it: his fist over the basket, then down into it (the fish slips in tail first, gone once its mouth is in), then back; then he takes the pole up again. */
+const T_KEEP_OVER = 0.45;
+const T_KEEP_IN = 0.5;
+const T_KEEP_ALL = 1.4;
 const T_LET_GO_ALL = 1.45;
 /** He lets go of the fish this far into the release. */
 const T_LET_GO = 0.72;
@@ -185,6 +204,15 @@ const LIFT = pose(-0.18, 0.7, -0.14, 0.15, 1.25);
  */
 const SHOW_AT = new Vector3(0.42, 0.8, -0.1);
 const LET_GO_AT = new Vector3(0.47, 0.34, -0.06);
+/**
+ * His fish basket (boat space, m, true size: _fishSellModel.ts), hung over the boat's left side behind his hip,
+ * its belly in the water (the fish keep fresh; clear of the paddle's sweep): its bottom's middle, its mouth's
+ * height; where his fist goes over it, and down into it.
+ */
+const BASKET_AT = new Vector3(0.56, -0.13, -0.42);
+const BASKET_MOUTH = BASKET_AT.y + BASKET_H * BODY_UNIT_M;
+const KEEP_OVER = new Vector3(0.56, 0.8, -0.42);
+const KEEP_IN = new Vector3(0.56, 0.3, -0.42);
 const GRIP = 0.02;
 /** The fish hangs from the bottom of his fist, not its middle (m, true size): his fist only pinches its lip. */
 const FIST_LOW = 0.075;
@@ -329,6 +357,17 @@ export function createFishing(): Fishing {
   let propW = 0;
   let calmT = 0;
   let lastNight = -1;
+  /** The catch card: asked yet (this catch), what the player chose (carried out on the next step), the ring for a check (`fishchoice=`). */
+  let asked = false;
+  let chosen: CatchPick | null = null;
+  let ringAt = -1;
+  // What fishing adds to the boat: the gear, and his fish basket hung over the left side (made when first wanted,
+  // again when what is in it changes: _fishSellModel.ts).
+  const root = new Group();
+  root.name = 'fishing:root';
+  root.add(gear.object);
+  let basketMesh: Group | null = null;
+  let basketV = -1;
 
   const line: Vector3[] = Array.from({ length: LINE_POINTS }, () => new Vector3());
 
@@ -538,16 +577,76 @@ export function createFishing(): Fishing {
     go('fight');
   }
 
-  /** In his hand: the sound, the words, its page in the nature book, a smile. */
+  /** In his hand: the sound, its page in the nature book, a smile (its name and size: the catch card, `ask`). */
   function landed(ctx: RoamCtx): void {
-    const f = FISH[kind];
     ctx.sound('catch', 0.9);
     pad.rumble('catch');
-    ctx.hud.toast(t('fiCaught', { km: f.km, say: f.say, cm: num(cm) }));
+    asked = false;
+    chosen = null;
     newPage = activeJournal()?.record(kind, ctx.body.pos.x, ctx.body.pos.z, cm) ?? false;
     const ex = ctx.body.explorer;
     if (ex.currentExpression !== 'happy') faceBefore = ex.currentExpression;
     ex.setExpression('happy');
+  }
+
+  /** The catch card: keep it in the basket, or let it go (carried out on the next step: `chosen`). */
+  function ask(ctx: RoamCtx): void {
+    asked = true;
+    chosen = null;
+    catchChoice.show(ctx.hud.layer ?? document.body, kind, cm, (c) => (chosen = c));
+    if (ringAt >= 0) catchChoice.focus(ringAt);
+    ringAt = -1;
+  }
+
+  /** In the basket: it slips in with a splash in the water there, the basket's count, the words; its page in the nature book. */
+  function kept(ctx: RoamCtx, boat: FishBoat, k: number): void {
+    fell = true;
+    hideFish();
+    const first = !told.get();
+    const added = basket.add(kind, cm);
+    if (added) told.set();
+    SFX.play('sellBasket', 0.85);
+    pad.rumble('tick', 0.5);
+    // (water flies up out of the basket's mouth, and a ring round it)
+    _v.set(BASKET_AT.x, BASKET_MOUTH, BASKET_AT.z).applyMatrix4(boat.hull.matrix);
+    for (let q = 0; q < 5; q++) {
+      const a = rnd() * Math.PI * 2;
+      const sp = (0.25 + rnd() * 0.35) * k;
+      boat.wake.drop(_v.x, _v.y, _v.z, Math.cos(a) * sp, (0.9 + rnd() * 0.8) * k, Math.sin(a) * sp, (0.03 + rnd() * 0.03) * k, 1.0, boat.level);
+    }
+    _w.set(BASKET_AT.x, 0, BASKET_AT.z).applyMatrix4(boat.hull.matrix);
+    boat.wake.ring(_w.x, boat.level + 0.03, _w.z, 0.12 * k, 0.55 * k, 1.0, 0.25);
+    faceBack(ctx);
+    const words = [t('sellKept', { n: num(basket.n), max: num(BASKET_MAX) })];
+    if (newPage) words.push(t('bkNew', { name: SPECIES_BY_KIND.get(kind)?.name[lang()] ?? kind }));
+    else if (first && added) words.push(t('sellWhere'));
+    newPage = false;
+    ctx.hud.toast(words.join('  ·  '));
+  }
+
+  /** His basket in the boat (hung over the left side): shown while he fishes or it holds fish, on the hull as it rocks. */
+  function placeBasket(ctx: RoamCtx, boat: FishBoat): void {
+    if (phase === 'off' && basket.n === 0) {
+      if (basketMesh) basketMesh.visible = false;
+      return;
+    }
+    if (!basketMesh || basketV !== basket.version) {
+      if (basketMesh) {
+        basketMesh.removeFromParent();
+        disposeVoxelMesh(basketMesh);
+      }
+      basketMesh = buildVoxelMesh(basketBuilder(basket.fish, 'boat'), { quality: ctx.body.explorer.rig.quality, name: 'fishing:basket' });
+      basketMesh.matrixAutoUpdate = false;
+      root.add(basketMesh);
+      basketV = basket.version;
+    }
+    boat.hull.updateMatrix();
+    basketMesh.visible = true;
+    basketMesh.matrix
+      .copy(boat.hull.matrix)
+      .multiply(_m.makeTranslation(BASKET_AT.x, BASKET_AT.y, BASKET_AT.z))
+      .scale(_w.set(BODY_UNIT_M, BODY_UNIT_M, BODY_UNIT_M));
+    basketMesh.matrixWorldNeedsUpdate = true;
   }
 
   /** The smile goes (unless the player changed his face meanwhile). */
@@ -909,9 +1008,52 @@ export function createFishing(): Fishing {
           _v.copy(fishAt).addScaledVector(fishAxis, -(cm / 100) * k * 0.9);
           boat.wake.drop(_v.x + (rnd() - 0.5) * 0.05 * k, _v.y, _v.z + (rnd() - 0.5) * 0.05 * k, 0, -0.2, 0, 0.025 * k, 1.2, level);
         }
-        if (pt >= T_HOLD) {
+        // The catch card asks once he holds it up: keep it in his basket, or let it go (he holds it meanwhile).
+        if (!asked && pt >= T_ASK) ask(ctx);
+        if (chosen) {
+          const c = chosen;
+          chosen = null;
           fell = false;
-          go('release');
+          go(c === 'keep' && !basket.full ? 'keep' : 'release');
+        }
+        break;
+      }
+      case 'keep': {
+        // He swings it over his basket (hung over the left side, behind his hip), leaning out, and lowers it in tail
+        // first; it slips in (a splash in the basket); his hand comes back and he takes the pole up again.
+        hold.w = 1;
+        Object.assign(rod, STOWED);
+        rightOnRod = false;
+        hold.right.set(STOWED.x, STOWED.y, STOWED.z);
+        hold.rightW = 0;
+        const over = ease(pt / T_KEEP_OVER);
+        const down = ease((pt - T_KEEP_OVER) / T_KEEP_IN);
+        const back = ease((pt - T_KEEP_OVER - T_KEEP_IN - 0.05) / 0.5);
+        if (down > 0) hold.left.lerpVectors(KEEP_OVER, KEEP_IN, down);
+        else hold.left.lerpVectors(SHOW_AT, KEEP_OVER, over);
+        hold.leftW = 1 - back;
+        const out = over * (1 - back);
+        hold.lean = lerp(0.02, 0.22, out);
+        hold.tilt = lerp(-0.06, -0.3, out);
+        hold.twist = lerp(0.18, 0.5, out);
+        looking = true;
+        lookAt.set(BASKET_AT.x, BASKET_MOUTH, BASKET_AT.z).applyMatrix4(hull.matrix);
+        if (!fell) {
+          // (it hangs straight down from his fist, still now, over the basket's mouth)
+          fishAt.copy(hold.left).addScaledVector(UP, -FIST_LOW).applyMatrix4(hull.matrix);
+          fishBack.copy(SHOW_BACK).applyQuaternion(hull.quaternion);
+          fishAxis.copy(UP).applyQuaternion(hull.quaternion);
+          grip = GRIP;
+          flex = 0.35 * Math.sin(clock * 11) * (1 - over);
+          // (in once its mouth is down in the basket's, or his hand is as low as it goes)
+          if (down >= 1 || (down > 0 && hold.left.y - FIST_LOW <= BASKET_MOUTH + 0.02)) kept(ctx, boat, k);
+        }
+        if (pt >= T_KEEP_ALL) {
+          grace = 0.3;
+          frameTo(ctx, 'side');
+          // (and he takes the pole up again)
+          retake = true;
+          go('take');
         }
         break;
       }
@@ -998,7 +1140,7 @@ export function createFishing(): Fishing {
       return;
     }
     // (hanging from the tip: before a cast, and off the hook once the fish is in his hands)
-    if ((phase === 'cast' && !thrown) || phase === 'hold' || phase === 'release' || phase === 'take') dangle(dt, k, level);
+    if ((phase === 'cast' && !thrown) || phase === 'hold' || phase === 'keep' || phase === 'release' || phase === 'take') dangle(dt, k, level);
     else if (phase === 'lift') {
       // (on the line between the tip and the fish's mouth)
       floatOn = true;
@@ -1067,7 +1209,7 @@ export function createFishing(): Fishing {
     const pull = onFish ? _w.subVectors(phase === 'fight' ? fishAt : mouthAt, tip) : phase === 'wait' || phase === 'bite' ? _w.subVectors(fp, tip) : null;
     if (pull) pull.normalize();
     drawRod(boat, k, pull);
-    if (phase === 'lift' || phase === 'hold' || (phase === 'release' && !fell)) placeFish(k);
+    if (phase === 'lift' || phase === 'hold' || ((phase === 'release' || phase === 'keep') && !fell)) placeFish(k);
     if (phase === 'fight') curve(fishAt, 0, level - 10);
     else if (onFish) curve(mouthAt, 0, level);
     else if (floatOn) {
@@ -1079,7 +1221,7 @@ export function createFishing(): Fishing {
   }
 
   const api: Fishing = {
-    object: gear.object,
+    object: root,
     hold,
     get active() {
       return phase !== 'off';
@@ -1098,6 +1240,15 @@ export function createFishing(): Fishing {
       }
       const move = len2(i.move.x, i.move.y) > 0.3;
       const strike = f || i.jump || i.click;
+      if (catchChoice.open || phase === 'keep' || (phase === 'hold' && chosen)) {
+        // The catch card asks (its keys are its own: _fishSellChoice.ts): touch's Use, or a check's `e`, takes the one in
+        // the ring; a push of the stick lets it go and lays the pole down. Putting it in the basket: nothing until done.
+        if (move && phase === 'hold') api.stop(ctx, true);
+        else if (i.use && catchChoice.open) catchChoice.confirm();
+        i.move.x = i.move.y = 0;
+        i.use = i.jump = i.click = false;
+        return;
+      }
       if (phase === 'stow') {
         // (laying the pole down: nothing more to do)
       } else if (move || i.use) api.stop(ctx, true);
@@ -1127,6 +1278,7 @@ export function createFishing(): Fishing {
       if (phase === 'off') {
         calmT = canFish(boat) ? calmT + dt : 0;
         frameCam(ctx, dt);
+        placeBasket(ctx, boat);
         return;
       }
       const perf0 = ctx.shot ? performance.now() : 0;
@@ -1139,6 +1291,7 @@ export function createFishing(): Fishing {
       // (put away just now: the camera goes back)
       if ((phase as Phase) === 'off') {
         frameCam(ctx, dt);
+        placeBasket(ctx, boat);
         return;
       }
       floatStep(ctx, dt, boat);
@@ -1158,8 +1311,8 @@ export function createFishing(): Fishing {
       }
       // The camera: between him and the float (or the fish in his hand).
       const chest = body.pos.y + 1.15 * k;
-      if (phase === 'lift' || phase === 'hold' || (phase === 'release' && !fell)) {
-        // (his face and the fish's middle)
+      if (phase === 'lift' || phase === 'hold' || phase === 'keep' || (phase === 'release' && !fell)) {
+        // (his face and the fish's middle; putting it in the basket, over the basket)
         _v.copy(fishAt).addScaledVector(fishAxis, -(cm / 200) * k);
         focusAt.set((body.pos.x + _v.x) / 2, (chest + 0.35 * k + _v.y) / 2, (body.pos.z + _v.z) / 2);
       }
@@ -1168,6 +1321,7 @@ export function createFishing(): Fishing {
         focusAt.set(body.pos.x + (f.x - body.pos.x) * 0.35, chest - 0.2 * k, body.pos.z + (f.z - body.pos.z) * 0.35);
       }
       frameCam(ctx, dt);
+      placeBasket(ctx, boat);
       // (checks: its cost, once, in a shot)
       if (ctx.shot && perfN < 60) {
         perfMs += performance.now() - perf0;
@@ -1191,6 +1345,10 @@ export function createFishing(): Fishing {
       return text;
     },
     stop(ctx, soft) {
+      // (the catch card shuts: a fish in his hand drops back into the water)
+      catchChoice.close();
+      chosen = null;
+      if (!soft && basketMesh) basketMesh.visible = false;
       if (phase === 'off') {
         if (!soft && touchLabel) setTouchFish((touchLabel = null));
         return;
@@ -1242,7 +1400,7 @@ export function createFishing(): Fishing {
       drawRod(boat, k, null);
       noBite = what !== 'bite';
       if (what === 'cast') return toCast(ctx);
-      frameTo(ctx, what === 'catch' || what === 'hold' || what === 'release' ? 'show' : 'side');
+      frameTo(ctx, what === 'catch' || what === 'hold' || what === 'keep' || what === 'release' ? 'show' : 'side');
       fp.copy(target);
       floatOn = thrown = true;
       lineLen = Math.max(4, fp.distanceTo(tip) * 1.03);
@@ -1250,15 +1408,17 @@ export function createFishing(): Fishing {
       go('wait');
       if (what === 'bite') nextBite = 0;
       else if (what === 'fight') startFight(ctx, boat);
-      else if (what === 'catch' || what === 'hold' || what === 'release') {
-        // (the fish in his hand, the pole laid down)
+      else if (what === 'catch' || what === 'hold' || what === 'keep' || what === 'release') {
+        // (the fish in his hand, the pole laid down; the catch card asks from `T_ASK`, its ring where `fishchoice=` says)
         Object.assign(rod, STOWED);
         showPose(boat.hull);
         landed(ctx);
         floatOn = false;
         fell = false;
-        go(what === 'release' ? 'release' : 'hold');
-        if (what !== 'release') pt = T_LAY;
+        const ring = Number(params.get('fishchoice'));
+        ringAt = params.has('fishchoice') && (ring === 0 || ring === 1) ? ring : -1;
+        go(what === 'release' ? 'release' : what === 'keep' ? 'keep' : 'hold');
+        if (what === 'catch' || what === 'hold') pt = T_LAY;
       }
     },
     frame(night) {
@@ -1266,7 +1426,7 @@ export function createFishing(): Fishing {
     },
     report() {
       if (phase === 'off' || phase === 'stow') return null;
-      const at = phase === 'take' || phase === 'cast' ? 'cast' : phase === 'wait' ? 'wait' : phase === 'bite' ? 'bite' : phase === 'fight' ? `fight:${kind}` : phase === 'release' ? `release:${kind}` : `catch:${kind}`;
+      const at = phase === 'take' || phase === 'cast' ? 'cast' : phase === 'wait' ? 'wait' : phase === 'bite' ? 'bite' : phase === 'fight' ? `fight:${kind}` : phase === 'release' ? `release:${kind}` : phase === 'keep' ? `keep:${kind}` : `catch:${kind}`;
       const sim = phase === 'cast' ? pt : phase === 'take' ? 0 : Math.max(0.4, Math.min(pt, 2));
       return { fishing: at, fishcm: String(cm), sim: `_:${sim.toFixed(1)}` };
     },

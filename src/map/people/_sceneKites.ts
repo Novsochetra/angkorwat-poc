@@ -5,7 +5,7 @@ import type { MapFrame, Subject } from '../types';
 import { canopyOf } from '../veg/canopy';
 import { Actor, wrap } from './_actor';
 import { dress } from './_kinds';
-import { Kite, type KiteLook, type KiteWind } from './_kite';
+import { Kite, KITE_HOOK, type KiteLook, type KiteWind } from './_kite';
 import { CARRY, FEAT, POSE, type Look, type Pose } from './_personModel';
 import { len, type Obstacle, type Point, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
@@ -61,6 +61,14 @@ import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
  * small or a female one), so several make a chorus. Close by, the
  * grandfather asks the explorer if he hears the ek (`ktHear`), the eldest
  * child boasts (`ktHighest`).
+ *
+ * The explorer may ask the grandfather for a kite of his own (roam/_kiteFly.ts,
+ * `KITE_HOOK` in _kite.ts): the grandfather looks at him and says "Here,
+ * child! Take this little kite and fly it!" (`kiteGive`), and his son walks up
+ * to the explorer and holds it out in both hands (`POSE.give`; roaming draws
+ * the kite there and has him take it), then goes back to his place. While the
+ * grandfather's family is out flying, the scene tells roaming where he stands
+ * (`KITE_HOOK.giver`).
  *
  * Cost: 12 people, 204 thing boxes (a khleng ek 44 with its line and
  * tails, a kandaung 12, the mat, two stakes), < 0.1 ms a frame. Far off the
@@ -151,6 +159,15 @@ const HUM_REACH = 240;
 /** Seconds between words to the explorer (and how near he must be, m). */
 const SAY_EVERY = 90;
 const SAY_NEAR = 5;
+/**
+ * The explorer asks the grandfather for a kite (KITE_HOOK.gift, roam/_kiteFly.ts): his son stands this far in
+ * front of the explorer to hand it over (m between their feet), walking up at this pace (m/s); his hands in
+ * the give pose, from his feet (model metres: × his drawn size), and how long the pose takes to come (s).
+ */
+const GIFT_GAP = 1.55;
+const GIFT_WALK = 1.6;
+const GIFT_HANDS = { y: 0.86, z: 0.4 };
+const GIFT_POSE = 0.45;
 
 type Job = 'line' | 'watch' | 'sit' | 'run';
 
@@ -225,6 +242,10 @@ export class KiteFlyers implements PeopleScene {
   private logged = false;
   /** Whom each runner runs to (in turn). */
   private readonly runTo = new Map<Member, Member[]>();
+  /** The explorer's last ask for a kite answered (KITE_HOOK.gift `n`), where the son hands it over, since when he holds it out (−1: not yet). */
+  private giftSeen = 0;
+  private readonly giftAt = { x: 0, z: 0 };
+  private giftFrom = -1;
 
   constructor(private readonly env: PeopleEnv) {
     const field = env.ground.field;
@@ -381,6 +402,7 @@ export class KiteFlyers implements PeopleScene {
     let st = g.pace.step(dt, d);
     if (st < 0) {
       this.hideAll(g);
+      if (g.id === 'grandfather') KITE_HOOK.giver.out = false;
       return;
     }
     if (st === 0 && g.drawn) return;
@@ -405,6 +427,15 @@ export class KiteFlyers implements PeopleScene {
     }
     this.flyKites(g, now, f);
     g.drawn = true;
+    // (the grandfather out flying: the explorer may ask him for a kite, roam/_kiteFly.ts)
+    if (g.id === 'grandfather') {
+      const h = g.lines[0].holder.a;
+      const o = KITE_HOOK.giver;
+      o.out = g.state === 'flying' && g.seen && h.shown;
+      o.x = h.x;
+      o.y = h.y;
+      o.z = h.z;
+    }
   }
 
   /** The group's state straight from the clock (far off, or when first seen). */
@@ -569,6 +600,9 @@ export class KiteFlyers implements PeopleScene {
 
   /** One person's step: where to go and how to stand for the group's state and their job. */
   private person(g: Group, m: Member, dt: number, now: number): void {
+    // (the explorer asked the grandfather for a kite: his son hands it over)
+    const gift = g.id === 'grandfather' && g.state === 'flying' && KITE_HOOK.gift.t >= 0;
+    if (gift && this.giveKite(g, m, dt, now)) return;
     const a = m.a;
     const kite = (m.line ?? g.lines[0]).kite;
     let gx = m.x;
@@ -619,8 +653,76 @@ export class KiteFlyers implements PeopleScene {
     a.face(faceYaw);
     a.pose(pose, now);
     a.carry(carry, now);
-    a.lookAt(up && g.state !== 'going' ? kite.mid : null, now + 1);
+    // (asked for a kite, the grandfather looks at the explorer)
+    a.lookAt(gift && m === g.lines[0].holder ? EX : up && g.state !== 'going' ? kite.mid : null, now + 1);
     a.step(dt, now);
+  }
+
+  /**
+   * The explorer asked the grandfather for a kite (KITE_HOOK.gift): the grandfather says so and looks at him
+   * (`person`); his son comes up to the explorer, turns to him and holds a small kite out in both hands
+   * (`giving`, where his hands are: roaming draws the kite there and has the explorer take it) until roaming
+   * says it is his (`t` −1); then he goes back to his place. True: the son's step is done here.
+   */
+  private giveKite(g: Group, m: Member, dt: number, now: number): boolean {
+    const q = KITE_HOOK.gift;
+    const son = g.members[1];
+    EX.x = q.x;
+    EX.y = q.y + 2;
+    EX.z = q.z;
+    if (q.n !== this.giftSeen) {
+      // A new ask: the grandfather answers; where his son will stand (in front of the explorer, on the son's side of him).
+      this.giftSeen = q.n;
+      this.giftFrom = -1;
+      const a = g.lines[0].holder.a;
+      const crowd = this.env.crowd;
+      this.env.bubble.say('kiteGive', () => ({ x: a.x, y: a.y + 2.9 * (crowd.scale(a.i) / 1.4), z: a.z }), 3.8);
+      let ux = son.a.x - q.x;
+      let uz = son.a.z - q.z;
+      const l = len(ux, uz);
+      if (l < 0.3) {
+        ux = Math.sin(q.yaw);
+        uz = Math.cos(q.yaw);
+      } else {
+        ux /= l;
+        uz /= l;
+      }
+      this.giftAt.x = q.x + ux * GIFT_GAP;
+      this.giftAt.z = q.z + uz * GIFT_GAP;
+    }
+    // (a still: the grandfather's words over him, whenever the bubble is free)
+    if (this.env.shot && !this.env.bubble.showing) {
+      const h = g.lines[0].holder.a;
+      const crowd = this.env.crowd;
+      this.env.bubble.say('kiteGive', () => ({ x: h.x, y: h.y + 2.9 * (crowd.scale(h.i) / 1.4), z: h.z }), 3.8);
+    }
+    if (m !== son) return false;
+    const a = son.a;
+    const face = Math.atan2(q.x - a.x, q.z - a.z);
+    if (a.dist(this.giftAt.x, this.giftAt.z) > 0.2) {
+      // (a still: he is there already)
+      if (this.env.shot) a.warp(this.giftAt.x, this.floor(this.giftAt.x, this.giftAt.z), this.giftAt.z, face);
+      else {
+        a.goTo(this.giftAt.x, this.giftAt.z, GIFT_WALK);
+        this.giftFrom = -1;
+        q.giving = false;
+      }
+    }
+    if (a.dist(this.giftAt.x, this.giftAt.z) <= 0.2) {
+      a.stop(face);
+      if (this.giftFrom < 0) this.giftFrom = now;
+      a.pose(POSE.give, now);
+      const k = this.env.crowd.scale(a.i);
+      q.hx = a.x + Math.sin(a.yaw) * GIFT_HANDS.z * k;
+      q.hy = a.y + GIFT_HANDS.y * k;
+      q.hz = a.z + Math.cos(a.yaw) * GIFT_HANDS.z * k;
+      q.giving = now - this.giftFrom >= GIFT_POSE || this.env.shot;
+    } else a.pose(POSE.stand, now);
+    a.face(face);
+    a.carry(0, now);
+    a.lookAt(EX, now + 1);
+    a.step(dt, now);
+    return true;
   }
 
   /** Words to the explorer close by (roaming only; one bubble at a time, now and then), laughter from the small ones. */
@@ -746,6 +848,15 @@ function inSeason(s: number, [a, b]: [number, number]): boolean {
 function inWindow(c: number, from: number, to: number): boolean {
   return from <= to ? c >= from && c < to : c >= from || c < to;
 }
+
+/**
+ * The families fly their khleng ek over the east fields now (in the kite season, in their hours; fair weather
+ * aside): the rule `wantOut` plays by, for the calendar of events (map/calendar.ts), and where they fly.
+ */
+export function kitesFlying(season: number, clock: number): boolean {
+  return EAST.some((g) => inSeason(season, g.season) && inWindow(clock, g.from, g.to));
+}
+export const KITE_FIELD = { x: EAST[1].spot[0], z: EAST[1].spot[1] };
 
 /**
  * A spot near (x, z) with room to fly a kite: grass or dirt, dry, fairly

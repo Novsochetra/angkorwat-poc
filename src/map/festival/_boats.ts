@@ -36,8 +36,8 @@ export const DRUMMER = { x: 0, y: FLOOR, z: 8.1 };
 export const CALLER = { x: 0, y: 0.42, z: 9.2 };
 export const STEERER = { x: 0, y: 0.42, z: -8.5 };
 
-const halfBeam = (z: number) => 1.15 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(z) / (HALF + 0.4), 2.6)));
-const sheer = (z: number) => 0.45 + 0.5 * Math.pow(Math.abs(z) / HALF, 3);
+export const halfBeam = (z: number) => 1.15 * Math.sqrt(Math.max(0, 1 - Math.pow(Math.abs(z) / (HALF + 0.4), 2.6)));
+export const sheer = (z: number) => 0.45 + 0.5 * Math.pow(Math.abs(z) / HALF, 3);
 
 /** A racing boat (ngo) on rig `rig`, painted `crew`. */
 export function raceBoat(kit: Kit, rig: number, crew: (typeof CREWS)[number], seed: number): void {

@@ -102,6 +102,18 @@ export interface Journal {
    * its own); true when the page is new.
    */
   record(kind: SubjectKind, x: number, z: number, cm: number): boolean;
+  /**
+   * A stamp given by what it marks, not by walking near (the rare moments' section: the equinox sunrise, given for
+   * its photo by roam/_equinox.ts): stamped now, with the passport's message; false when it has it already.
+   */
+  award(id: string): boolean;
+  /**
+   * Seen through the binoculars (roam/_binoculars.ts) from (x, z): a new
+   * page with no photo yet (`n` 0: the page says "seen through the
+   * binoculars"), its picture `img` (a crop of the view, or ''), and the
+   * book's message. Nothing when it has its page already (false).
+   */
+  seen(kind: SubjectKind, x: number, z: number, img: string): boolean;
 }
 
 /** The journal of this roaming (made with the photo album: photo.ts), for what fills pages without a photo (a catch: roam/_fishing.ts). */
@@ -257,8 +269,9 @@ export function createJournal(d: JournalDeps): Journal {
         const page = state.book[kind];
         if (page) {
           page.n++;
-          // (a page filled by a check has no picture yet: the first real one gives it)
-          if (!page.img) page.img = thumb(canvas, b.u, b.v, b.size);
+          // (a page filled by a check has no picture yet: the first real one gives it; so does the first photo
+          // of a page seen through the binoculars, over the view's crop: `seen`)
+          if (!page.img || (page.n === 1 && !page.caught)) page.img = thumb(canvas, b.u, b.v, b.size);
           continue;
         }
         state.book[kind] = { t: Date.now(), img: thumb(canvas, b.u, b.v, b.size), x: Math.round(eye.x), z: Math.round(eye.z), n: 1 };
@@ -308,6 +321,20 @@ export function createJournal(d: JournalDeps): Journal {
       } else state.book[kind] = { t: Date.now(), img: '', x: Math.round(x), z: Math.round(z), n: 0, caught: 1, cm };
       changed();
       return !page;
+    },
+    award(id) {
+      const s = STAMP_BY_ID.get(id);
+      if (!s || !stamp(id)) return false;
+      d.toast(d.words.stamp(d.name({ stamp: s })));
+      changed();
+      return true;
+    },
+    seen(kind, x, z, img) {
+      if (state.book[kind]) return false;
+      state.book[kind] = { t: Date.now(), img, x: Math.round(x), z: Math.round(z), n: 0 };
+      d.toast(d.words.page(d.name({ kind })));
+      changed();
+      return true;
     },
   };
   Object.assign(window, { __journal: api });

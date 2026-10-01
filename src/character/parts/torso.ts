@@ -1,5 +1,6 @@
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { hash3 } from '../../voxel/random';
+import type { ShirtTones } from '../clothes';
 import { PALETTE } from '../palette';
 
 /** Shirt body: 11 × 9 × 7 blocks of 0.8 BU (the shirt weave is finer than the hair). */
@@ -10,11 +11,13 @@ export interface TorsoOptions {
   satchelStrap?: boolean;
   /** Backpack shoulder straps. */
   packStraps?: boolean;
+  /** Another shirt's tones (clothes.ts: the market's); his own by default. */
+  shirt?: ShirtTones | null;
 }
 
 export function buildTorso(opts: TorsoOptions = {}): VoxelBuilder {
   const b = new VoxelBuilder();
-  const S = PALETTE.shirt;
+  const S = opts.shirt ?? PALETTE.shirt;
   const g = b.grid({ cell: TORSO.cell, origin: [TORSO.minX, TORSO.minY, TORSO.minZ], mat: 'shirt', jitter: 0.03, ao: 0.22, seed: 21 });
   const tone = (i: number, j: number, k: number) => {
     const r = hash3(i, j, k, 5);

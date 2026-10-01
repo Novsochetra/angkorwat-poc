@@ -2,6 +2,10 @@ import type { OutfitName } from '../../character/AngkorExplorer';
 import { EXPRESSIONS, type ExpressionName } from '../../character/parts/face';
 import { pad } from '../pad/pad';
 import { onLang, t, type WordKey } from '../ui/lang';
+import { calendarSvg } from './_calendarIcons';
+import { DOG_MENU, DOG_MENU_ICON, DOG_NAME_ICON } from './_dogHook';
+import { MENU_HOOKS } from './_addons';
+import { WARDROBE_ICON } from './_wardrobeIcons';
 import { FACE_NAME } from './photo';
 
 /**
@@ -19,8 +23,10 @@ import { FACE_NAME } from './photo';
  * - In my bag (roam/_shopBag.ts, `extra`): the purse, and what he keeps to
  *   eat or drink later (a tap: he has it now).
  * - Under the bag: the photo album (V as its key: the photos, the nature
- *   book, the passport) and all the keys (?; with the game pad in use, all
- *   its buttons): the game pad's way to them. Not on touch (no keys).
+ *   book, the passport), the calendar of events (9: roam/_calendar.ts), his
+ *   name in Khmer letters (the name card: roam/_nameCard.ts), his clothes
+ *   from the market (the wardrobe: roam/_wardrobe.ts) and all the keys (?;
+ *   with the game pad in use, all its buttons): the game pad's way to them. Not on touch (no keys: the album and the calendar stay).
  *
  * On touch it stands left of the bar (up the right edge), or under it with
  * the phone on its side; it scrolls when it is taller than the room, and a
@@ -87,10 +93,10 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       <section class="rxm-sec">${head('rMoves')}<span class="rxm-note" data-w="rOnFootOnly"></span>
         <div class="rxm-grid">${MOVES.map(([code, key, w, how]) => chip(`data-move="${code}"${how ? ` data-how="${how}"` : ''}`, MOVE_ICONS[how ?? code], w, key)).join('')}</div></section>
       <section class="rxm-sec">${head('rOutfit', 'G')}
-        <div class="rxm-grid">${d.looks.map(([o, w], i) => chip(`data-look="${i}"`, lookIcon(o), w)).join('')}${chip('data-hat', HAT_ICON, 'rHat', 'H')}</div></section>
+        <div class="rxm-grid">${d.looks.map(([o, w], i) => chip(`data-look="${i}"`, lookIcon(o), w)).join('')}${chip('data-hat', HAT_ICON, 'rHat', 'H')}${chip('data-umbrella', UMBRELLA_ICON, 'umbName', '8')}</div></section>
       <section class="rxm-sec">${head('rFace', 'X')}
         <div class="rxm-grid">${EXPRESSIONS.map((e, i) => chip(`data-face="${i}"`, FACE_ICONS[e], FACE_NAME[e])).join('')}</div></section>
-      <div class="rxm-col"><section class="rxm-sec rxm-more"><div class="rxm-grid">${chip('data-album', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-keys', KEYS_ICON, 'rAllKeys', '?')}</div></section></div>
+      <div class="rxm-col"><section class="rxm-sec rxm-more"><div class="rxm-grid">${chip('data-album', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-calendar', calendarSvg('rxm-icon'), 'whenButton', '9')}${chip('data-name', NAME_ICON, 'nameMenu')}${chip('data-dog', DOG_MENU_ICON, 'dogCall', '0')}${chip('data-dogname', DOG_NAME_ICON, 'dogNameMenu')}${chip('data-wear', WARDROBE_ICON, 'wearTitle')}${chip('data-keys', KEYS_ICON, 'rAllKeys', '?')}</div></section></div>
     </div>`;
   // (sections of others, after the faces, over the album: their buttons are their own, not `.rxm-b`)
   if (d.extra?.length) el.querySelector('.rxm-col')!.prepend(...d.extra);
@@ -99,6 +105,10 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   const looks = all.filter((b) => b.dataset.look);
   const faces = all.filter((b) => b.dataset.face);
   const hat = all.find((b) => b.hasAttribute('data-hat'))!;
+  /** The umbrella (8: roam/_umbrella.ts), lit while it is his choice. */
+  const umbrella = all.find((b) => b.hasAttribute('data-umbrella'))!;
+  /** His dog's: "Call the dog" (as 0) and its name (roam/_dog.ts), shown once he has one. */
+  const dogChips = all.filter((b) => b.hasAttribute('data-dog') || b.hasAttribute('data-dogname'));
   /** All the keys (?): "All buttons" while the game pad is in use (tools.ts lists its buttons then). */
   const keysWord = all.find((b) => b.hasAttribute('data-keys'))!.querySelector<HTMLElement>('.rxm-t')!;
   /** Where the game pad's focus starts: the first move (off foot, greyed: his first look). */
@@ -156,7 +166,7 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       const foot = d.onFoot();
       const look = d.look();
       const face = d.face();
-      const now = `${foot} ${look} ${d.hat()} ${face}`;
+      const now = `${foot} ${look} ${d.hat()} ${face} ${MENU_HOOKS.umbrellaUp()} ${DOG_MENU.adopted()}`;
       if (now === shown) return;
       shown = now;
       el.classList.toggle('is-busy', !foot);
@@ -164,6 +174,8 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       for (const b of looks) light(b, Number(b.dataset.look) === look);
       for (const b of faces) light(b, Number(b.dataset.face) === face);
       light(hat, d.hat());
+      light(umbrella, MENU_HOOKS.umbrellaUp());
+      for (const b of dogChips) b.style.display = DOG_MENU.adopted() ? '' : 'none';
     },
   };
 
@@ -181,12 +193,34 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       // (as V: tools.ts opens the album, and this shuts with it)
       d.press('KeyV');
       api.toggle(false);
+    } else if (b.hasAttribute('data-calendar')) {
+      // (as 9: the calendar of events opens, roam/_calendar.ts; this shuts so it shows)
+      d.press('Digit9');
+      api.toggle(false);
+    } else if (b.hasAttribute('data-name')) {
+      // (his name in Khmer letters: the name card, roam/_nameCard.ts; this shuts under it)
+      api.toggle(false);
+      MENU_HOOKS.openNameCard();
+    } else if (b.hasAttribute('data-dog')) {
+      // (as 0: his dog comes to him, roam/_dog.ts; this shuts so it shows)
+      d.press('Digit0');
+      api.toggle(false);
+    } else if (b.hasAttribute('data-dogname')) {
+      // (his dog's name: its card, roam/_dogCard.ts; this shuts under it)
+      api.toggle(false);
+      DOG_MENU.rename();
+    } else if (b.hasAttribute('data-wear')) {
+      // (his clothes from the market: the wardrobe card, roam/_wardrobe.ts; this shuts under it)
+      api.toggle(false);
+      MENU_HOOKS.openWardrobe();
     } else if (b.hasAttribute('data-keys')) {
       // (as ?: tools.ts opens the list of keys, or of the pad's buttons; this shuts so it shows)
       d.press('Slash');
       api.toggle(false);
     } else if (look) d.setLook(Number(look));
     else if (face) d.setFace(Number(face));
+    // (as 8: the umbrella opens or folds, roam/_umbrella.ts; the panel stays, as for the hat)
+    else if (b.hasAttribute('data-umbrella')) d.press('Digit8');
     else d.press('KeyH');
     api.update();
   });
@@ -247,11 +281,18 @@ const lookIcon = (o: OutfitName) =>
 /** The photo album (as the tool bar's V: tools.ts). */
 const ALBUM_ICON = px(`<path fill="currentColor" opacity="0.55" d="M4 1h11v10H4z"/><path fill="currentColor" d="M1 4h11v11H1z"/><path fill="#0d1927" d="M2 5h9v7H2z"/>
     <path fill="${GOLD}" d="M8 6h2v2H8z"/><path fill="#7fa36a" d="M2 11h2V9h1V8h1v1h1v1h1v1h1v-1h1v1h1v1H2z"/>`);
+/** His name: a strip of palm leaf with lines of script, its string through the middle (the name card, _nameCard.ts). */
+const NAME_ICON = px(`<path fill="currentColor" d="M1 5h14v1h1v5h-1v1H1v-1H0V6h1z"/>
+    <path fill="#0d1927" opacity="0.6" d="M2 7h3v1H2zM5 7h1v1H5zM10 7h4v1h-4zM2 9h2v1H2zM5 9h2v1H5zM10 9h2v1h-2zM13 9h1v1h-1z"/><path fill="#0d1927" d="M8 8h1v1H8z"/>
+    <path fill="${GOLD}" d="M8 2h1v3H8zM7 1h1v1H7zM8 12h1v3H8zM9 15h1v1H9z"/>`);
 /** A key cap with a question mark (the list of all the keys: ?). */
 const KEYS_ICON = px(`<path fill="currentColor" d="M2 1h12v1h1v11h-1v1H2v-1H1V2h1z"/><path fill="#0d1927" d="M3 2h10v10H3z"/>
     <path fill="${GOLD}" d="M7 3h3v1H7zM6 4h1v1H6zM10 4h1v2h-1zM9 6h1v1H9zM8 7h1v2H8zM8 10h1v1H8z"/>`);
 /** His straw hat with the red band. */
 const HAT_ICON = px(`<path fill="#e2b35c" d="M5 4h6v1h1v3H4V5h1z"/><path fill="#c8453a" d="M4 7h8v1H4z"/><path fill="#f0c874" d="M1 8h14v1h-1v1H2V9H1z"/>`);
+/** His umbrella (roam/_umbrella.ts): a deep blue canopy on its ribs, the shaft and its curved handle. */
+const UMBRELLA_ICON = px(`<path fill="#3b5c9e" d="M6 2h4v1h2v1h1v1h1v1h1v2H1V6h1V5h1V4h1V3h2z"/><path fill="#5e82c8" d="M6 3h3v1H6zM4 4h2v1H4zM3 5h1v1H3z"/>
+    <path fill="#d8dde3" d="M1 8h1v1H1zM5 8h1v1H5zM10 8h1v1h-1zM14 8h1v1h-1zM7 1h1v1H7z"/><path fill="currentColor" d="M7 8h1v5H7zM8 13h1v1H8zM9 14h1v1H9zM10 12h1v2h-1z"/>`);
 
 /** The faces: a round face with the eyes, brows and mouth of each. */
 const face = (f: string) => px(`<path fill="#dcae8f" d="M3 2h10v1h1v10h-1v1H3v-1H2V3h1z"/><path fill="#3a2a26" d="${f}"/>`);

@@ -9,7 +9,7 @@ import type { MapFrame, RoamMode, UISound } from '../types';
 import { num, onLang, t, type WordKey } from '../ui/lang';
 import { angleDiff } from './followCam';
 import { PAD_LIGHT } from './input';
-import { createShopBag, type ShopBag } from './_shopBag';
+import { createShopBag, firstFood, KEEPSAKES, type ShopBag } from './_shopBag';
 import { createShopMenu, isDrink, type ShopMenu } from './_shopMenu';
 import { CARRY_MAX, createPurse, keptOf, nameOf, POCKET, POCKET_EVERY, riel, type Kept, type Purse } from './_shopPurse';
 import type { FollowCam, RoamBody, RoamCtx, RoamHud, RoamWorld } from './types';
@@ -84,6 +84,12 @@ export interface StallHooks {
 
 /** The walker's link to buying (filled by `createShopping`; until then no stall is near). */
 export const stalls: StallHooks = { busy: () => false, near: () => null, buy() {} };
+
+/**
+ * The meal he is having now, for the add-ons (a monkey snatching it from his hands: _monkeyThief.ts): what it is and
+ * how far in (s), or null; `snatch` ends it at once, as the stick does (no "Delicious!"). Filled by `createShopping`.
+ */
+export const meals: { now(): { readonly what: Kept; readonly t: number } | null; snatch(): void } = { now: () => null, snatch() {} };
 
 export interface Shopping {
   /** The buy menu is open: roaming waits behind it (its keys are its own). */
@@ -324,6 +330,7 @@ export function createShopping(d: ShoppingDeps): Shopping {
     },
     buy: (s: Shop) => openAt(s, true),
   } satisfies StallHooks);
+  Object.assign(meals, { now: () => meal, snatch: () => endMeal(false) });
 
   /** At stall `s`: turn to its seller (`turnNow`, else face it at once), the menu, the seller looks up. */
   function openAt(s: Shop, turnNow: boolean): void {
@@ -350,6 +357,9 @@ export function createShopping(d: ShoppingDeps): Shopping {
     const s = shop;
     const item = s?.items[i];
     if (!s || !item || paid) return;
+    // (a keepsake, not food — the rice for the monks, _shopBag.ts `KEEPSAKES` —: it goes into his bag, so it needs room there)
+    const keepsake = KEEPSAKES.has(item.id);
+    if (keepsake && purse.kept.length >= CARRY_MAX) return hud.toast(t('byBagFull'));
     if (!purse.pay(item.price)) {
       menu?.short(i);
       return;
@@ -359,8 +369,9 @@ export function createShopping(d: ShoppingDeps): Shopping {
     pad.rumble('tick');
     bag.update('purse');
     sold(lastCtx?.t ?? 0, s, item);
-    paid = { shop: s, item, t: 0, choice: null, inHand: false };
-    menu?.take(item, purse.kept.length < CARRY_MAX);
+    paid = { shop: s, item, t: 0, choice: keepsake ? 'keep' : null, inHand: false };
+    if (keepsake) menu?.close();
+    else menu?.take(item, purse.kept.length < CARRY_MAX);
   }
 
   /** Now or later: carried out once it is in his hands (`step`). */
@@ -419,6 +430,10 @@ export function createShopping(d: ShoppingDeps): Shopping {
       hud.toast(t('byBagEmpty'));
       return;
     }
+    // (a keepsake is not eaten: it says what it is for; one being given, the rice for the monks, holds the bag)
+    const keepsake = KEEPSAKES.get(k.id);
+    if (keepsake) return keepsake.pick();
+    for (const v of KEEPSAKES.values()) if (v.busy()) return;
     if (mode !== 'walk') return hud.toast(t('byOnFoot'));
     const r = d.resting();
     // (asleep, a key only wakes him: _rest.ts; lying, he sits up first)
@@ -595,7 +610,7 @@ export function createShopping(d: ShoppingDeps): Shopping {
         return true;
       }
       // The bag: 6 (or its slot) eats or drinks the first thing; the explorer menu's picks any.
-      if (tap('Digit6', 'Numpad6')) eatKept(0, mode);
+      if (tap('Digit6', 'Numpad6')) eatKept(Math.max(0, firstFood(purse.kept)), mode);
       else if (pending >= 0) eatKept(pending, mode);
       pending = -1;
       return meal !== null;
@@ -629,9 +644,10 @@ export function createShopping(d: ShoppingDeps): Shopping {
           browse(ctx.t, null);
           if (keep) {
             hold(explorer, null);
-            hud.toast(t('byKept', { name: nameOf(k), n: num(purse.kept.length), max: num(CARRY_MAX) }));
+            hud.toast(KEEPSAKES.get(k.id)?.kept(nameOf(k)) ?? t('byKept', { name: nameOf(k), n: num(purse.kept.length), max: num(CARRY_MAX) }));
             bag.update('bag');
-          } else startMeal(k, counter);
+          } else if (KEEPSAKES.has(k.id)) hold(explorer, null);
+          else startMeal(k, counter);
         }
       }
       // Eating: a munch or a sip on each bite; over when the action is.

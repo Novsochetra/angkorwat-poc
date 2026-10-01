@@ -1,13 +1,15 @@
 import type { Object3D } from 'three';
+import { DAK, type AlmsMonk } from '../roam/_dakBatHooks';
 import { WalkMap } from '../roam/walkmap';
 import type { MapFrame, MapPart } from '../types';
 import { FV_STALLS } from '../village/_fvPlan';
 import { JETTY, PAGODA, STILT_HOMES, VILLAGE_SPOTS, type HomeSpec } from '../village/_spots';
-import { Actor } from './_actor';
+import { Actor, wrap } from './_actor';
 import { dress } from './_kinds';
 import { CARRY, POSE, type Pose } from './_personModel';
 import { Ground, type Obstacle, type Point, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
+import { AlmsBowl, OpenBowl, Receiving } from './_sceneAlms';
 
 /**
  * Life in the floating village (the `village` part, village/: its spots,
@@ -22,7 +24,11 @@ import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
  *   stair to the market's fruit stall, where the fruit seller gives and
  *   kneels (`ALMS`: the market's people, _sceneVillageMarket.ts, see him
  *   there), and back; in the late afternoon coming home along the village
- *   trail, up the stair and into the pagoda.
+ *   trail, up the stair and into the pagoda. On his alms round he takes the
+ *   explorer's rice too (dak bat: roam/_dakBat.ts, `DAK`, line `fv`): the
+ *   explorer kneeling ahead of him on the village's ground, he comes to
+ *   stand before him, holds his bowl out and lifts its lid
+ *   (people/_sceneAlms.ts `Receiving`), blesses him, and walks on his way.
  *
  * The market's sellers, the women selling from boats, its buyers and eaters
  * are the market's own scene (`villagemarket`, _sceneVillageMarket.ts).
@@ -41,6 +47,8 @@ const STALL = { x: FRUIT.x + Math.sin(FRUIT.yaw) * (FRUIT.d / 2 + 1.1), z: FRUIT
  * and kneels while he is there).
  */
 export const ALMS = { until: -1e9, x: 0, z: 0 };
+/** The monk's morning alms round: out between these clocks, and where he stops (the calendar of events asks them too: map/calendar.ts). */
+export const ALMS_ROUND = { from: 0.76, to: 0.94, x: STALL.x, z: STALL.z };
 
 /** The village's floors (its verandas, the jetty, the pagoda's stair, the market's stalls), a walk map made once for its scenes. */
 const GROUNDS = new WeakMap<Object3D, Ground>();
@@ -66,6 +74,9 @@ const JUNCTION: Point = { x: -300.3, y: 6, z: 74.6 };
 const TRAIL_END: Point = { x: -284, y: 7.5, z: 83 };
 /** The monk's walking pace (m/s). */
 const PACE = 0.55;
+/** His name in `DAK` (dak bat), and from how near he comes over to the explorer (m). */
+const DAK_LINE = 'fv';
+const DAK_ASIDE = 9;
 
 interface Walker {
   a: Actor;
@@ -82,6 +93,13 @@ export class VillageLife implements PeopleScene {
   private readonly sitters: { a: Actor; x: number; y: number; z: number; yaw: number; until: number }[] = [];
   private readonly kids: Actor[];
   private readonly monk: Walker & { mode: 'in' | 'alms' | 'home'; done: string };
+  /** Dak bat: his bowl open for alms, his slot, the explorer's offering (its step, time, whether he stands before him), the ask answered last. */
+  private readonly bowl: OpenBowl;
+  private readonly recv: Receiving;
+  private readonly slot: AlmsMonk;
+  private claim: { n: number; step: 'go' | 'settle' | 'open' | 'there' | 'close' | 'bless' | 'back'; t: number; aside: boolean } | null = null;
+  private taken = -1;
+  private readonly pt: Point = { x: 0, y: 0, z: 0 };
   private shown = false;
   private laughAt = 0;
 
@@ -120,6 +138,9 @@ export class VillageLife implements PeopleScene {
     }
     this.kids = [actor(dress('kid', 1021)), actor(dress('kid', 1023, { young: true }))];
     this.monk = { a: actor(dress('monk', 1031, { carry: CARRY.bowl })), path: [], leg: 0, wait: 0, mode: 'in', done: '' };
+    this.bowl = new OpenBowl(env.things, this.monk.a.look);
+    this.recv = new Receiving(this.bowl);
+    this.slot = DAK.slot(DAK_LINE, 0);
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
@@ -198,7 +219,7 @@ export class VillageLife implements PeopleScene {
     const m = this.monk;
     const a = m.a;
     const c = f.clock;
-    const morning = c > 0.76 && c < 0.94;
+    const morning = c > ALMS_ROUND.from && c < ALMS_ROUND.to;
     const afternoon = c > 0.06 && c < 0.22;
     if (!m.path.length) {
       const window = morning ? 'morning' : afternoon ? 'afternoon' : '';
@@ -216,13 +237,22 @@ export class VillageLife implements PeopleScene {
       const s = m.path[0];
       a.warp(s.x, s.y, s.z, 0);
       a.show();
-      const look = dress('monk', 1031, { carry: morning ? CARRY.bowl : CARRY.umbrella });
+      // (the morning's look is his bowl's: `OpenBowl`, the same dress)
+      const look = morning ? this.bowl.look : dress('monk', 1031, { carry: CARRY.umbrella });
       a.look = look;
       this.env.crowd.dress(a.i, look);
       a.carry(1, now);
     }
     const goal = m.path[m.leg];
     let pose: Pose = POSE.stand;
+    // Dak bat: standing before the explorer for his rice, his own way waits.
+    if (this.alms(dt, now, f, goal)) {
+      if (!this.recv.busy) a.pose(POSE.stand, now);
+      a.step(dt, now);
+      this.recv.step(a, dt, now);
+      this.writeSlot(f, goal);
+      return;
+    }
     if (m.wait > 0) {
       m.wait -= dt;
       a.stop(STALL.yaw + Math.PI);
@@ -241,6 +271,7 @@ export class VillageLife implements PeopleScene {
           m.path = [];
           // (not out again until the next morning / afternoon)
           m.mode = 'in';
+          this.slot.on = false;
           return;
         } else m.leg++;
       }
@@ -248,11 +279,129 @@ export class VillageLife implements PeopleScene {
     if (m.mode === 'alms' && m.wait > 0) pose = POSE.stand;
     a.pose(pose, now);
     a.step(dt, now);
+    this.recv.step(a, dt, now);
+    this.writeSlot(f, goal);
+  }
+
+  /** His `DAK` slot: on his alms round (walking, or at the stall), where he is and the way he goes. */
+  private writeSlot(f: MapFrame, goal: Point): void {
+    const a = this.monk.a;
+    const sl = this.slot;
+    // (not while he stands at the fruit stall: the seller is giving)
+    sl.on = this.monk.mode === 'alms' && a.shown && this.monk.wait <= 0;
+    sl.x = a.x;
+    sl.y = a.y;
+    sl.z = a.z;
+    sl.yaw = a.dist(goal.x, goal.z) > 0.3 ? a.yawTo(goal.x, goal.z) : a.yaw;
+    sl.t = f.t;
+  }
+
+  /**
+   * Dak bat (roam/_dakBat.ts): his ask taken while on his alms round and walking toward him (ahead of him on his
+   * way), the monk comes over to stand before him once near, holds his bowl out and lifts the lid; the rice in, the
+   * lid back, the blessing; then on his way. True while he stands before him (his own way waits).
+   */
+  private alms(dt: number, now: number, f: MapFrame, goal: Point): boolean {
+    const ask = DAK.ask;
+    const m = this.monk;
+    const a = m.a;
+    if (ask.line === DAK_LINE && ask.state === 'ask' && ask.n !== this.taken) {
+      this.taken = ask.n;
+      const yaw = a.yawTo(goal.x, goal.z);
+      const ahead = (ask.x - a.x) * Math.sin(yaw) + (ask.z - a.z) * Math.cos(yaw) > 0.4;
+      if (m.mode !== 'alms' || !a.shown || !ahead) ask.state = 'none';
+      else {
+        ask.k = 0;
+        ask.state = 'coming';
+        this.claim = { n: ask.n, step: 'go', t: 0, aside: false };
+      }
+    }
+    // (a check, `dakbat=give|bless` by his way: he stands before him at once)
+    if (ask.snap && ask.line === '' && ask.state !== 'none' && m.mode === 'alms' && a.shown && a.dist(ask.mx, ask.mz) < 12) {
+      ask.snap = false;
+      ask.line = DAK_LINE;
+      ask.k = 0;
+      this.taken = ask.n;
+      const bless = ask.state === 'bless';
+      this.claim = { n: ask.n, step: bless ? 'bless' : 'there', t: 0, aside: true };
+      a.warp(ask.mx, this.ground.at(ask.mx, ask.mz, a.y + 0.5), ask.mz, ask.myaw);
+      a.carry(1, now);
+      this.bowl.fill = 0.35;
+      if (!bless) this.recv.open(a, now, true);
+      AlmsBowl.mouth(a, 1, this.pt);
+      ask.bx = this.pt.x;
+      ask.by = this.pt.y;
+      ask.bz = this.pt.z;
+    }
+    const c = this.claim;
+    if (!c) return false;
+    c.t += dt;
+    const gone = ask.n !== c.n || ask.state === 'none' || ask.state === 'done';
+    if (gone && c.step !== 'back') {
+      c.step = 'back';
+      this.recv.close();
+    }
+    switch (c.step) {
+      case 'go':
+        if (!c.aside && a.dist(ask.mx, ask.mz) < DAK_ASIDE) c.aside = true;
+        if (c.aside && a.dist(ask.mx, ask.mz) < 0.12 && Math.abs(wrap(ask.myaw - a.yaw)) < 0.08 && a.speed < 0.02) {
+          c.step = 'settle';
+          c.t = 0;
+        }
+        break;
+      case 'settle':
+        if (c.t > 0.35) {
+          c.step = 'open';
+          this.recv.open(a, now);
+        }
+        break;
+      case 'open':
+        if (this.recv.phase === 'open') {
+          c.step = 'there';
+          AlmsBowl.mouth(a, 1, this.pt);
+          ask.bx = this.pt.x;
+          ask.by = this.pt.y;
+          ask.bz = this.pt.z;
+          ask.state = 'there';
+        }
+        break;
+      case 'there':
+        this.bowl.fill = Math.min(1, 0.3 + 0.4 * ask.rice);
+        if (ask.state === 'given' || ask.state === 'bless') {
+          c.step = 'close';
+          this.recv.close();
+        }
+        break;
+      case 'close':
+        if (!this.recv.busy) c.step = 'bless';
+        break;
+      case 'bless':
+        break;
+      case 'back':
+        // (the bowl back: on his way, his head up; past a point of it already, on to the next, not back to it)
+        if (!this.recv.busy) {
+          this.claim = null;
+          a.tilt(0);
+          const p = m.path;
+          // (never past the fruit stall's stop: leg 5)
+          while (m.wait <= 0 && m.leg < p.length - 1 && !(m.mode === 'alms' && m.leg === 5) && a.dist(p[m.leg + 1].x, p[m.leg + 1].z) < Math.hypot(p[m.leg + 1].x - p[m.leg].x, p[m.leg + 1].z - p[m.leg].z)) m.leg++;
+        }
+        return this.claim !== null;
+    }
+    if (!c.aside) return false;
+    a.goTo(ask.mx, ask.mz, 0.7);
+    a.face(ask.myaw);
+    a.lookAt(null);
+    a.tilt(c.step === 'bless' ? 0.38 : 0.3);
+    void f;
+    return true;
   }
 
   private hideAll(): void {
     if (!this.shown) return;
     this.shown = false;
+    this.recv.stop(this.monk.a);
+    this.slot.on = false;
     for (const a of this.actors) if (a.shown) a.hide();
     this.monk.path = [];
   }

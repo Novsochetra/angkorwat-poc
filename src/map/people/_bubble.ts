@@ -30,10 +30,10 @@ export class Bubble {
     ALL.push(this);
   }
 
-  /** Say `key` (ui/lang.ts) over the point `head()` returns, for `seconds`. */
-  say(key: WordKey, head: () => Point, seconds = 3.2): void {
+  /** Say `key` (ui/lang.ts) over the point `head()` returns, for `seconds` (`vars`: its `{x}`, e.g. his name). */
+  say(key: WordKey, head: () => Point, seconds = 3.2, vars?: Record<string, string>): void {
     if (!this.make()) return;
-    this.text!.textContent = t(key);
+    this.text!.textContent = t(key, vars);
     this.who = head;
     this.left = seconds;
     this.w = this.el!.offsetWidth;

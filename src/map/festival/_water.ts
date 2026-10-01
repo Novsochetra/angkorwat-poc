@@ -1,16 +1,16 @@
 import { Euler, Matrix4, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
-import { CARRY, FEAT, POSE, ROW_HZ, type Crowd, type Look, type Pose } from '../people/_personModel';
+import { CARRY, FEAT, POSE, ROW_HZ, SLOT, type Crowd, type Look, type Pose } from '../people/_personModel';
 import { moonPath } from '../sky/palette';
 import type { MapFrame } from '../types';
 import { LAKE_LEVEL } from '../village/_spots';
-import { CALLER, CREWS, DRUMMER, FLOOR, litFloat, raceBoat, ROW_X, ROW_Z, STEERER, type FloatKind } from './_boats';
+import { CALLER, CREWS, DRUMMER, FLOOR, halfBeam, litFloat, raceBoat, ROW_X, ROW_Z, STEERER, type FloatKind } from './_boats';
 import { bunting, flag, flagPole, garland } from './_decor';
 import { folk, rower } from './_folk';
 import { GLOW_MODE, type Glow } from './_glow';
 import { ANIM, perPeriod, SHOW, type Kit, type KitUniforms } from './_kit';
-import { boatAt, BOATS, MOORINGS, type BoatPose } from './_race';
+import { boatAt, BOATS, CH_BUOYS_Z, CH_CREWS, CH_FINISH, CH_GANGWAY, CH_JUDGES, CH_SEAT, CH_START, CH_WATCHERS, CH_YAW, CHALLENGE, chMoored, MOORINGS, type BoatPose, type ChallengeBoat } from './_race';
 import { FESTIVAL_SCENE } from './_schedule';
 
 /**
@@ -27,11 +27,25 @@ import { FESTIVAL_SCENE } from './_schedule';
  * water; floating lotus candles drift out from the beach and float on
  * Angkor Wat's moat; families on the beach kneel facing the full moon with
  * offerings (Sampeah Preah Khae), others sit and watch the floats.
+ *
+ * The challenge (_race.ts `CHALLENGE`, the player's race: roam/_raceRow.ts):
+ * two more ngo with their crews wait by the north shore at a small landing
+ * (a gangway down to the inshore boat, mooring posts, flags, a few people
+ * watching), the start and finish buoys of their own lanes, the officials'
+ * boat at the finish. While the player is in one, the add-on says where both
+ * boats are and how their crews row (their stroke follows his); else they
+ * wait at their moorings (their crews go home at night). Their people are the
+ * crowd's last ones, drawn only near (`CH_NEAR`) or while he races.
  */
 
-/** Rigs: 1‥4 the racing boats (ngo), 5‥7 the floats. */
+/** Rigs: 1‥4 the racing boats (ngo), 5‥7 the floats, 8‥9 the challenge's boats, 10 its officials' boat. */
 const BOAT_RIG = 1;
 const FLOAT_RIG = 5;
+const CH_RIG = 8;
+const JUDGE_RIG = 10;
+/** The challenge's people are drawn while the camera is this near the landing (m), or while he races. */
+const CH_NEAR = 300;
+const CH_HUB = { x: -400, z: -32 };
 const FLOATS: { kind: FloatKind; x: number; moor: [number, number] }[] = [
   { kind: 'angkor', x: -374, moor: [-512, -38] },
   { kind: 'naga', x: -406, moor: [-540, -39] },
@@ -67,6 +81,8 @@ function edge(z: number): number {
 
 /** Night: the moment the boats go to their moorings and the lights come out. */
 const NIGHT = 0.5;
+/** The challenge crews' stroke seeds while they wait (any: they rest; fixed, so nothing is sent up every frame). */
+const CH_REST = [0.31, 0.74];
 
 interface Seat {
   boat: number;
@@ -145,6 +161,35 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
   /** At night the watchers put their umbrellas and flags away. */
   const plain = looks.slice(watchFirst).map((l) => ({ ...l, carry: CARRY.none, feats: l.feats.filter((f) => f !== FEAT.umbrella && f !== FEAT.flag) }));
 
+  // ── The challenge (the player's race, _race.ts): its two crews, the officials, the landing's people (the crowd's last ones) ──
+  const chFirst = looks.length;
+  const chSeats: Seat[] = [];
+  CH_CREWS.forEach((crew, k) => {
+    for (const z of ROW_Z)
+      for (const side of [1, -1]) {
+        chSeats.push({ boat: k, x: side * ROW_X, y: FLOOR, z, back: false, pose: POSE.row, side });
+        looks.push(rower(crew.shirt, 600 + k * 40 + chSeats.length, CH_REST[k]));
+      }
+    chSeats.push({ boat: k, x: DRUMMER.x, y: DRUMMER.y, z: DRUMMER.z, back: true, pose: POSE.row, side: 0 });
+    looks.push(rower(crew.shirt, 600 + k * 40 + 30, CH_REST[k]));
+    chSeats.push({ boat: k, x: CALLER.x, y: CALLER.y, z: CALLER.z, back: true, pose: POSE.cheer, side: 0 });
+    looks.push({ ...folk('man', 600 + k * 40 + 31), seed: CH_REST[k] });
+    chSeats.push({ boat: k, x: STEERER.x, y: STEERER.y, z: STEERER.z, back: false, pose: POSE.stand, side: 0 });
+    looks.push(rower(crew.shirt, 600 + k * 40 + 32, CH_REST[k]));
+  });
+  /** The officials in their boat (its space): the one at the bow raises the flag of Cambodia as the boats cross, two sit on the benches. */
+  const officials: { x: number; z: number; pose: Pose; flag: boolean }[] = [
+    { x: -0.05, z: 1.75, pose: POSE.stand, flag: true },
+    { x: 0.05, z: 0.15, pose: POSE.stool, flag: false },
+    { x: 0.05, z: -1.25, pose: POSE.stool, flag: false },
+  ];
+  const officialFirst = looks.length;
+  officials.forEach((o, i) => looks.push(official(700 + i, o.flag)));
+  const chWatchFirst = looks.length;
+  const chWatchY = CH_WATCHERS.map(([x, z]) => ground(x, z));
+  CH_WATCHERS.forEach((_, i) => looks.push(folk(i === 2 || i === 5 ? 'kid' : i % 2 ? 'woman' : 'man', 720 + i, { carry: i === 1 || i === 4 ? CARRY.flag : CARRY.none })));
+  const chSlot = new Int32Array(CH_WATCHERS.length).fill(-1);
+
   // ── The beach: bunting, flags, the judges' pavilion, offering trays for the moon ──
   const poles = [-4, 2, 8, 14, 19].map((z) => [edge(z) + 0.4, z] as const);
   poles.forEach(([x, z], i) => {
@@ -168,6 +213,47 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
       kit.box(x, LAKE_LEVEL + 1.9, z, 0.07, 3.2, 0.07, 0xd8d0c0);
       flag(kit, x, LAKE_LEVEL + 3.2, z, 0.9, 0.55, Math.PI, x > -400 ? 0xd8312a : 0xf6c21a);
     }
+
+  // ── The challenge: its two boats (his with a thwart of his own behind the last pair), the landing, its buoys, the officials' boat ──
+  CH_CREWS.forEach((crew, k) => raceBoat(kit, CH_RIG + k, crew, 20 + k));
+  {
+    const o = { rig: CH_RIG };
+    const x1 = halfBeam(CH_SEAT.z) - 0.12;
+    kit.box((x1 - 0.06) / 2, CH_SEAT.y - 0.035, CH_SEAT.z, x1 + 0.06, 0.07, 0.32, 0x5c3a22, o);
+    kit.box(x1 / 2, (FLOOR + CH_SEAT.y - 0.07) / 2, CH_SEAT.z, 0.08, CH_SEAT.y - 0.07 - FLOOR, 0.08, 0x4a2e1a, o);
+  }
+  gangway(kit, ground);
+  // Mooring stakes along the shore, the flag of Cambodia and bunting over the landing, a striped pole on the finish line.
+  for (const [x, z] of [
+    [-378.2, -41.8],
+    [-401.6, -42.4],
+    [-405.6, -42.1],
+    [-427.8, -41.2],
+  ])
+    stake(kit, x, z, ground(x, z));
+  const flagA: [number, number] = [-389.6, -46.6];
+  const flagB: [number, number] = [-371.2, -41.4];
+  flagPole(kit, flagA[0], ground(...flagA), flagA[1], 5.2, 1.3, 0.85, Math.PI * 0.95, 'khmer');
+  flagPole(kit, flagB[0], ground(...flagB), flagB[1], 4.6, 0.9, 0.5, Math.PI * 0.9, CH_CREWS[0].band);
+  bunting(kit, flagA[0], ground(...flagA) + 4.6, flagA[1], flagB[0], ground(...flagB) + 4.1, flagB[1], 0.8, undefined, undefined, undefined, ground);
+  {
+    const x = CH_FINISH;
+    const z = -41.3;
+    const y = ground(x, z);
+    for (let i = 0; i < 6; i++) kit.box(x, y + 0.3 + i * 0.6, z, 0.14, 0.6, 0.14, i % 2 ? 0xf4f0e6 : 0xd8312a);
+    flag(kit, x, y + 3.6, z, 1.0, 0.6, Math.PI, 0xd8312a);
+  }
+  for (const [x, color] of [
+    [CH_START, 0xf6c21a],
+    [CH_FINISH, 0xd8312a],
+  ] as const)
+    for (const z of CH_BUOYS_Z) {
+      kit.box(x, LAKE_LEVEL + 0.1, z, 0.7, 0.45, 0.7, 0xd8312a);
+      kit.box(x, LAKE_LEVEL + 0.35, z, 0.72, 0.1, 0.72, 0xf4f0e6);
+      kit.box(x, LAKE_LEVEL + 1.9, z, 0.07, 3.2, 0.07, 0xd8d0c0);
+      flag(kit, x, LAKE_LEVEL + 3.2, z, 0.9, 0.55, Math.PI, color);
+    }
+  judgesBoat(kit, JUDGE_RIG);
 
   // ── The lit floats ──
   FLOATS.forEach((fl, i) => {
@@ -218,6 +304,9 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
   const moon = new Vector3();
   const boats = FESTIVAL_SCENE.boats;
   for (let k = 0; k < 4; k++) boats.push({ x: 0, y: 0, z: 0, row: 0, stroke: 0, racing: false });
+  /** A challenge boat at its mooring (worked out each frame while the add-on does not hold them), and the landing's cheer as last picked. */
+  const idle: ChallengeBoat = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, speed: 0, stroke: 0, row: 0, mood: 0 };
+  let chCheer = 0;
   /** The pose now of each watcher (writes only on change), re-picked every few seconds. */
   const slot = new Int32Array(watchers.length).fill(-1);
   let lastNight = -1;
@@ -298,6 +387,84 @@ export function buildWaterFestival(kit: Kit, glow: Glow, u: KitUniforms, field: 
           crowd.look(i, s.side * 0.4, 0, now, first);
         }
       }
+      // The challenge (_race.ts): its boats where the add-on puts them while he is in one, else at their moorings.
+      const ch = CHALLENGE;
+      for (let k = 0; k < 2; k++) {
+        const b = ch.active ? ch.boats[k] : chMoored(k, now, idle);
+        M.makeRotationFromEuler(eul.set(b.pitch, b.yaw, b.roll, 'YXZ'));
+        M.setPosition(b.x, b.y, b.z);
+        u.uRig.value[CH_RIG + k].copy(M);
+        u.uRigRow.value[CH_RIG + k].set(ch.active ? b.row : 0, ch.active ? fractional(b.stroke - now * ROW_HZ) : CH_REST[k], ch.active ? Math.min(1, b.speed / 3.4) : 0, 0);
+      }
+      // (the officials' boat rocks at its anchor)
+      M.makeRotationFromEuler(eul.set(0.008 * Math.sin(now * 0.7), CH_YAW, 0.014 * Math.sin(now * 0.9 + 1), 'YXZ'));
+      M.setPosition(CH_JUDGES[0], LAKE_LEVEL + Math.sin(now * 1.0 + 0.4) * 0.03, CH_JUDGES[1]);
+      u.uRig.value[JUDGE_RIG].copy(M);
+      // Their people: by day (at night they go home, unless he is racing), drawn only near the landing or while he races.
+      const chOn = ch.active || !night;
+      const cam = f.camera.position;
+      crowd.mesh.count = ch.active || Math.hypot(cam.x - CH_HUB.x, cam.z - CH_HUB.z) < CH_NEAR ? looks.length : chFirst;
+      for (let s = 0; s < chSeats.length; s++) {
+        const i = chFirst + s;
+        const st = chSeats[s];
+        if (!chOn) {
+          crowd.hide(i);
+          continue;
+        }
+        const b = ch.boats[st.boat];
+        const Mb = u.uRig.value[CH_RIG + st.boat];
+        v.set(st.x, st.y, st.z).applyMatrix4(Mb);
+        const e = Mb.elements;
+        crowd.place(i, v.x, v.y, v.z, Math.atan2(e[8], e[10]) + (st.back ? Math.PI : 0));
+        // (the crew rows to the add-on's stroke, his; a crew that won stands up cheering, one that lost rests, heads down)
+        const row = ch.active ? b.row : 0;
+        const mood = ch.active ? b.mood : 0;
+        crowd.reseed(i, ch.active ? fractional(b.stroke - now * ROW_HZ) : CH_REST[st.boat]);
+        const p: Pose = mood > 0 ? POSE.cheer : st.pose === POSE.cheer ? (row >= 0.3 ? POSE.cheer : POSE.stand) : st.pose;
+        crowd.pose(i, p, now, first);
+        if (p === POSE.row) {
+          crowd.gait(i, Math.round(row * 20) / 20, 0, now);
+          crowd.look(i, mood < 0 ? 0 : st.side * 0.4, mood < 0 ? 0.4 : 0, now, first);
+        }
+      }
+      const MJ = u.uRig.value[JUDGE_RIG];
+      for (let j = 0; j < officials.length; j++) {
+        const i = officialFirst + j;
+        if (!chOn) {
+          crowd.hide(i);
+          continue;
+        }
+        const o = officials[j];
+        v.set(o.x, 0.1, o.z).applyMatrix4(MJ);
+        // (facing the lanes, south)
+        crowd.place(i, v.x, v.y, v.z, CH_YAW - Math.PI / 2);
+        crowd.pose(i, o.pose, now, first);
+        if (o.flag) crowd.carry(i, ch.flag, now, first);
+      }
+      // (the landing's people: watching, pointing, cheering as the boats come in; a new mood every few seconds, at once when the cheer changes)
+      const cheerJump = Math.abs(ch.cheer - chCheer) > 0.25;
+      if (cheerJump) chCheer = ch.cheer;
+      for (let j = 0; j < CH_WATCHERS.length; j++) {
+        const i = chWatchFirst + j;
+        if (!chOn) {
+          crowd.hide(i);
+          continue;
+        }
+        const [wx, wz, wyaw] = CH_WATCHERS[j];
+        crowd.place(i, wx, chWatchY[j], wz, wyaw);
+        const k = Math.floor(now / 4 + hash3(j, 2, 2, 81) * 4);
+        if (k !== chSlot[j] || first || cheerJump) {
+          chSlot[j] = k;
+          const r = hash3(j, k, 4, 82);
+          const c = chCheer;
+          const next: Pose = r < c * 0.75 ? POSE.cheer : r < c * 0.92 ? POSE.wave : r < 0.3 ? POSE.look : r < 0.42 ? POSE.point : r < 0.5 ? POSE.photo : POSE.stand;
+          const flagged = looks[i].carry !== CARRY.none;
+          crowd.pose(i, flagged ? (next === POSE.cheer || next === POSE.wave ? POSE.wave : POSE.stand) : next, now, first);
+          crowd.look(i, (hash3(j, k, 5, 83) - 0.5) * 0.8, -0.05, now, first);
+        }
+        if (looks[i].carry !== CARRY.none) crowd.carry(i, 1, now, first);
+      }
+      excite = Math.max(excite, ch.cheer);
       // The watchers.
       moonPath(moon, f.clock, f.moonHigh);
       const moonYaw = Math.atan2(moon.x, moon.z);
@@ -391,4 +558,92 @@ function tray(kit: Kit, glow: Glow, x: number, y: number, z: number): void {
   }
   kit.box(x, y + 0.45, z + 0.2, 0.02, 0.4, 0.02, 0xb8402a, o);
   kit.box(x, y + 0.66, z + 0.2, 0.03, 0.03, 0.03, 0xff8a3a, { ...o, glow: 1.5 });
+}
+
+/** An official of the race: a white shirt with a collar, dark trousers; the flag of Cambodia in the hand of the one who signals. */
+function official(seed: number, withFlag: boolean): Look {
+  const l = folk('man', seed, { carry: withFlag ? CARRY.flag : CARRY.none });
+  for (const slot of [SLOT.top, SLOT.sleeveL, SLOT.sleeveR]) l.colors[slot] = 0xf6f4ee;
+  l.colors[SLOT.hips] = l.colors[SLOT.thigh] = 0x2a2e3a;
+  l.feats = l.feats.filter((f) => f !== FEAT.kramaNeck);
+  if (!l.feats.includes(FEAT.collar)) l.feats.push(FEAT.collar);
+  return l;
+}
+
+/**
+ * The landing's gangway (_race.ts `CH_GANGWAY`): a plank from the grass down onto his boat's gunwale, cleats across
+ * it, resting at its head on two stakes in the water (the boat may be out racing).
+ */
+function gangway(kit: Kit, ground: (x: number, z: number) => number): void {
+  const [fx, fy, fz] = CH_GANGWAY.foot;
+  const [hx, hy, hz] = CH_GANGWAY.head;
+  const run = Math.hypot(hx - fx, hz - fz);
+  const len = Math.hypot(run, hy - fy);
+  const yaw = Math.atan2(hx - fx, hz - fz);
+  // (+pitch dips the box's +z end: the head is lower than the foot)
+  const pitch = Math.atan2(fy - hy, run);
+  const w = CH_GANGWAY.width;
+  kit.box((fx + hx) / 2, (fy + hy) / 2 - 0.04, (fz + hz) / 2, w, 0.08, len + 0.3, 0x8a6440, { yaw, pitch });
+  for (let i = 1; i < 9; i++) {
+    const t = i / 9;
+    kit.box(fx + (hx - fx) * t, fy + (hy - fy) * t + 0.01, fz + (hz - fz) * t, w, 0.05, 0.07, 0x6a4a2e, { yaw, pitch });
+  }
+  // (the stakes under its head, and a short log it rests on at its foot)
+  const sx = Math.cos(yaw) * (w / 2 - 0.05);
+  const sz = -Math.sin(yaw) * (w / 2 - 0.05);
+  for (const k of [-1, 1]) {
+    const x = hx - Math.sin(yaw) * 0.25 + sx * k;
+    const z = hz - Math.cos(yaw) * 0.25 + sz * k;
+    const bed = Math.min(ground(x, z), LAKE_LEVEL - 0.4);
+    kit.box(x, (bed + hy) / 2 - 0.05, z, 0.1, hy - bed + 0.1, 0.1, 0x5a3e26);
+  }
+  kit.box(fx, fy - 0.12, fz, w + 0.3, 0.16, 0.22, 0x5a3e26, { yaw });
+}
+
+/** A mooring stake in the shallows or on the bank: a post and its darker cap, a few turns of rope. */
+function stake(kit: Kit, x: number, z: number, g: number): void {
+  const bed = Math.min(g, LAKE_LEVEL - 0.4);
+  const top = Math.max(g, LAKE_LEVEL) + 1.1;
+  kit.box(x, (bed + top) / 2, z, 0.14, top - bed, 0.14, 0x6a4a2e);
+  kit.box(x, top + 0.04, z, 0.17, 0.08, 0.17, 0x4a3220);
+  kit.box(x, top - 0.3, z, 0.2, 0.12, 0.2, 0xc8b48a);
+}
+
+/**
+ * The officials' boat at the finish (rig `rig`: +z ahead, +x port, y 0 the water): a plain wooden boat 6 m long,
+ * a white awning over its two benches, the flag of Cambodia at the stern, a red-and-white board on its side
+ * facing the lanes.
+ */
+function judgesBoat(kit: Kit, rig: number): void {
+  const o = { rig };
+  const HULL = 0x6a4a2e;
+  const RIM = 0x2f6aa8;
+  const L = 3.1;
+  const hb = (z: number) => 0.78 * Math.sqrt(Math.max(0.04, 1 - Math.pow(Math.abs(z) / (L + 0.15), 4)));
+  for (let z = -L + 0.25; z < L; z += 0.5) {
+    const w = hb(z);
+    for (const sx of [-1, 1]) {
+      kit.box(sx * (w - 0.05), 0.08, z, 0.1, 0.56, 0.52, HULL, o);
+      kit.box(sx * (w - 0.04), 0.38, z, 0.12, 0.08, 0.52, RIM, o);
+    }
+    kit.box(0, 0.06, z, 2 * w - 0.12, 0.08, 0.52, 0x7a5636, o);
+    kit.box(0, -0.2, z, 2 * w - 0.3, 0.08, 0.52, HULL, o);
+  }
+  // Bow and stern caps.
+  for (const k of [-1, 1]) kit.box(0, 0.12, k * (L + 0.02), 0.3, 0.56, 0.2, HULL, o);
+  // Benches across (the seated officials), an awning on four poles over them.
+  for (const z of [0.15, -1.25]) kit.box(0.25, 0.32, z, 2 * hb(z) - 0.16, 0.07, 0.34, 0x8a6440, o);
+  for (const [x, z] of [
+    [-0.6, -2.05],
+    [0.6, -2.05],
+    [-0.6, 0.85],
+    [0.6, 0.85],
+  ])
+    kit.box(x, 1.2, z, 0.06, 1.7, 0.06, 0xd8d0c0, o);
+  kit.box(0, 2.08, -0.6, 1.5, 0.06, 3.2, 0xf4f0e6, o);
+  for (const k of [-1, 1]) kit.box(k * 0.76, 1.98, -0.6, 0.04, 0.16, 3.2, 0xb02a22, o);
+  // The flag of Cambodia at the stern; a board striped red and white on the side facing the lanes (the finish).
+  kit.box(0.1, 1.3, -L + 0.35, 0.05, 2.4, 0.05, 0xd8c8a0, o);
+  flag(kit, 0.1, 2.2, -L + 0.35, 1.0, 0.66, Math.PI, 'khmer', o);
+  for (let i = 0; i < 4; i++) kit.box(-hb(0) - 0.02, 0.62, -0.9 + i * 0.5, 0.04, 0.4, 0.5, i % 2 ? 0xf4f0e6 : 0xd8312a, o);
 }

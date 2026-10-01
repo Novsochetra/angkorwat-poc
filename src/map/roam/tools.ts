@@ -863,7 +863,7 @@ const keyList = () => (pad.active ? padList() : keysList());
 const keysList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
-    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('V'), 'rAlbum')}
+    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('7'), 'binoName')}${row(k('8'), 'umbName')}${row(k('0'), 'dogCall')}${row(k('V'), 'rAlbum')}
     <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'byBuy')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(k('I'), 'rMenuKey')}
@@ -887,7 +887,7 @@ const padList = () => {
   const bigMap = pad.kind === 'ps' ? g('select', 'touchpad') : g('select');
   return `
   <div class="rtb-col"><b>${t('rTools')}</b>
-    ${row(g('up'), lights)}${row(g('left'), 'rCamera')}${row(g('right'), 'rSelfie')}
+    ${row(g('up'), lights)}${row(g('left'), 'rCamera')}${row(g('right'), 'rSelfie')}${row(g('l2'), 'binoName')}
     <b class="rtb-sub">${t('rCloseBy')}</b>${row(g('west'), 'tgPickAny')}${row(g('west'), 'rPrayAt')}${row(g('west'), 'byBuy')}${row(g('west'), 'rSwing')}${row(g('west'), 'rBalloon')}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(g('lstick'), 'rMove')}${row(g('r2', 'l3'), 'rRun')}${row(g('south'), 'rJump')}${row(g('down'), 'grGreet')}${row(g('north'), 'rMenuKey')}

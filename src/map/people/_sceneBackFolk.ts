@@ -11,7 +11,8 @@ import { dress } from './_kinds';
 import { CARRY, FEAT, FIT, POSE, SLOT, type Look, type Pose } from './_personModel';
 import type { Ground, Obstacle, Point } from './_routes';
 import type { PeopleEnv } from './_scene';
-import { hammockDef, since, Way, within, type WayPoint } from './_sceneBackKit';
+import { hammockHidden, hammockTaken } from '../roam/_hammockSpots';
+import { GRANDPA_HAMMOCK, hammockDef, since, Way, within, type WayPoint } from './_sceneBackKit';
 import { Rig } from './_things';
 
 /**
@@ -54,8 +55,8 @@ import { Rig } from './_things';
 /** Riding pace (m/s), walking. */
 const RIDE = 3.3;
 const WALK = 0.9;
-/** The monk's dawn round begins, the villager rides out and back (clock). */
-const MONK_AT = 0.76;
+/** The monk's dawn round begins, the villager rides out and back (clock; the calendar of events asks `MONK_AT` too: map/calendar.ts). */
+export const MONK_AT = 0.76;
 const BIKE_OUT = 0.8;
 const BIKE_BACK = 0.97;
 /** The alms: how long he stands in the yard (s); how long he stops at the market on his way in (s). */
@@ -594,8 +595,8 @@ export class HomeFolk {
     const [bx, bz] = homeToWorld(h, t.b[0], t.b[1]);
     const half = len2(bx - ax, bz - az) / 2;
     const g = ground.field.heightAt((ax + bx) / 2, (az + bz) / 2);
-    this.tie = { x: (ax + bx) / 2, y: g + t.up, z: (az + bz) / 2, yaw: Math.atan2(-(bz - az), bx - ax), half, sag: 0.62 };
-    const hd = hammockDef(half - 0.12, this.tie.sag, 0x3a6ab8, 0xe0c040);
+    this.tie = { x: (ax + bx) / 2, y: g + t.up, z: (az + bz) / 2, yaw: Math.atan2(-(bz - az), bx - ax), half, sag: GRANDPA_HAMMOCK.sag };
+    const hd = hammockDef(half - GRANDPA_HAMMOCK.inset, this.tie.sag, GRANDPA_HAMMOCK.cloth, GRANDPA_HAMMOCK.stripe);
     this.hammock = new Rig(env.things, hd.def);
     this.swing = hd.swing;
     // The weaver's shuttle.
@@ -672,10 +673,14 @@ export class HomeFolk {
   private grandpaStep(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
     const a = this.grandpa;
     const t = this.tie;
-    const napping = within(f.clock, 0.9, 0.22) && f.night < 0.6;
+    // (the explorer lying in it, or only just up from it: no nap meanwhile; while he is in it his own is drawn: roam/_hammock.ts)
+    const napping = within(f.clock, 0.9, 0.22) && f.night < 0.6 && !hammockTaken(t.x, t.z);
     const swing = napping ? 0.13 * Math.sin(now * 1.4) : 0;
-    this.hammock.place(t.x, t.y, t.z, t.yaw).turn(this.swing, swing);
-    this.hammock.write();
+    if (hammockHidden(t.x, t.z)) this.hammock.hide();
+    else {
+      this.hammock.place(t.x, t.y, t.z, t.yaw).turn(this.swing, swing);
+      this.hammock.write();
+    }
     if (napping) {
       // (the hammock's low point, swung out: the seat of the sag)
       const s = Math.sin(swing);

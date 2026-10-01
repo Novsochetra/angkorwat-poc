@@ -111,13 +111,48 @@ export interface RoamAddon {
 /** Every add-on, in E-row order. */
 export const ADDONS: RoamAddon[] = [];
 
-/** An add-on module registers itself when imported (one with the same id replaces the old one). */
+/** Roaming's shared things once it is built (`initAddons`), and what roaming does with an add-on that comes later. */
+let envNow: AddonEnv | null = null;
+let lateHook: ((a: RoamAddon) => void) | null = null;
+
+/**
+ * An add-on module registers itself when imported (one with the same id replaces the old one). The modules load
+ * after the map (_addonList.ts `loadAddons`): one that comes once roaming is built is started there and then
+ * (`init`, and roaming tells it the mode it is in).
+ */
 export function registerAddon(a: RoamAddon): void {
   const i = ADDONS.findIndex((o) => o.id === a.id);
   if (i >= 0) ADDONS[i] = a;
   else ADDONS.push(a);
   ADDONS.sort((p, q) => (p.order ?? 50) - (q.order ?? 50));
+  if (!envNow) return;
+  try {
+    a.init?.(envNow);
+    lateHook?.(a);
+  } catch (e) {
+    console.error(`[roam] add-on "${a.id}" init failed:`, e);
+  }
 }
+
+/** roam.ts, once: the shared things, every add-on registered so far started, and what to do with a late one. */
+export function initAddons(env: AddonEnv, late: (a: RoamAddon) => void): void {
+  envNow = env;
+  lateHook = late;
+  eachAddon('init', (a) => a.init?.(env));
+}
+
+/**
+ * What the explorer menu (_explorerMenu.ts) asks of the add-ons, so it does not load them with it: each add-on fills
+ * its own when its module loads (the umbrella, the clothes, the name card); until then these do nothing.
+ */
+export const MENU_HOOKS = {
+  /** The umbrella is his choice now (_umbrella.ts). */
+  umbrellaUp: (): boolean => false,
+  /** Open the wardrobe (_wardrobe.ts). */
+  openWardrobe: (): void => undefined,
+  /** Open the name card (_nameCard.ts). */
+  openNameCard: (): void => undefined,
+};
 
 /** The add-on holding him in `mode`, or null. */
 export function addonHolding(mode: 'walk' | 'boat'): RoamAddon | null {

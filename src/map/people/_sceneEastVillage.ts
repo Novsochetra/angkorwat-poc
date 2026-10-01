@@ -4,6 +4,7 @@ import { CH, Flock } from '../fauna/_kit';
 import { EV_BUILT, EV_HERD_WAY, EV_KIOSK, EV_MEADOW, EV_PEN, EV_PLAY, EV_SALA, EV_SPOTS, EV_TAMARIND, EV_WASH_AT, evDeck, evToWorld, type EvHomeSpots } from '../hamlet/_evSpots';
 import type { HeightField } from '../heightfield';
 import { WalkMap } from '../roam/walkmap';
+import { hammockTaken } from '../roam/_hammockSpots';
 import type { MapFrame, MapPart, Subject } from '../types';
 import type { WordKey } from '../ui/lang';
 import { Actor } from './_actor';
@@ -13,6 +14,8 @@ import { OX } from './_ox';
 import { CARRY, FEAT, FIT, PEOPLE_SCALE, POSE, type Pose } from './_personModel';
 import { Ground, len, type Obstacle, type Point, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
+import { SeyCircle } from './_seyCircle';
+import { SEY } from '../sey';
 
 /**
  * Life in the sugar-palm village (hamlet/_eastVillage.ts; its spots
@@ -31,7 +34,8 @@ import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
  *   the stream to splash in the late afternoon (`splashPlay`; not in snow), two kicking
  *   a ball at the Kulen trail's corner under the tamarind; they call
  *   "hello!" to the explorer when he comes near (`kidHello`) and laugh
- *   (`laugh`);
+ *   (`laugh`); four more kicking the sey in a circle in the yard north of
+ *   the sala by day (`_seyCircle.ts`: the explorer can join them, roam/_sey.ts);
  * - bicycles along the street all day (a woman with a basket, a boy) over
  *   the foot bridge, ringing their bells as they pass him (`bikeBell`); the
  *   shopkeeper on her stool behind her counter;
@@ -128,6 +132,8 @@ export class EastVillageLife implements PeopleScene {
   private readonly ballers: Actor[] = [];
   private readonly riders: Rider[] = [];
   private readonly herd: Herd | null = null;
+  /** The children kicking the sey north of the sala (the explorer can join in). */
+  private readonly sey: SeyCircle | null = null;
   private readonly ball: number = -1;
   private shown = false;
   private laughAt = 0;
@@ -241,6 +247,10 @@ export class EastVillageLife implements PeopleScene {
     const hold = env.params.get('evherd');
     this.herd = new Herd(actor(dress('kid', 3161)), env.ground.field, hold !== null ? Number(hold) || 0 : null);
     this.object = this.herd.flock.mesh;
+    // ── The children kicking the sey (from the houses round the yard) ──
+    const seyKids = [0, 1, 2, 3].map((k) => actor(dress('kid', 3171 + k * 2, { young: k === 3 })));
+    const kidHomes = ['n3', 'n4', 's4', 's2'].map((id) => H(id)?.stairFoot).filter((p): p is { x: number; z: number } => !!p);
+    this.sey = new SeyCircle(seyKids, env.things, this.ground, kidHomes, (key, a) => this.say(key, a, true));
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
@@ -261,6 +271,7 @@ export class EastVillageLife implements PeopleScene {
     const rain = f.weather.rain > DOWNPOUR;
     for (const v of this.folk) this.live(v, dt, now, f, ex, first);
     this.play(dt, now, f, ex, first, rain);
+    this.sey?.update(dt, now, f, first, rain);
     for (const r of this.riders) r.ride(dt, now, f, ex, rain, this.env.traffic.list);
     this.herd.update(dt, now, f, ex, first);
     for (const c of this.callouts) {
@@ -288,7 +299,8 @@ export class EastVillageLife implements PeopleScene {
     const a = v.a;
     const c = f.clock;
     let act: Act | null = null;
-    for (const s of v.acts) if (inWindow(c, s)) act = s;
+    // (not into a hammock the explorer is lying in, or has only just got out of: roam/_hammock.ts)
+    for (const s of v.acts) if (inWindow(c, s) && !(s.pose === POSE.hammock && hammockTaken(s.x, s.z))) act = s;
     // (heavy rain: the washing waits, she sits on her veranda)
     if (act?.via && act.lift === 0 && f.weather.rain > DOWNPOUR) act = v.acts.find((s) => s.lift > 1) ?? act;
     if (act !== v.cur) {
@@ -493,9 +505,9 @@ export class EastVillageLife implements PeopleScene {
     this.say('evKids', a);
   }
 
-  /** A few words in a bubble over someone's head (roaming only; never in a still). */
-  private say(key: WordKey, a: Actor): void {
-    if (this.env.shot) return;
+  /** A few words in a bubble over someone's head (roaming only; never in a still, but the sey circle's held moment: `sey=`). */
+  private say(key: WordKey, a: Actor, sey = false): void {
+    if (this.env.shot && !(sey && SEY.shot)) return;
     const h = this.head;
     this.env.bubble.say(
       key,
@@ -519,6 +531,7 @@ export class EastVillageLife implements PeopleScene {
     }
     for (const r of this.riders) r.hide();
     this.herd?.hide();
+    this.sey?.hide();
     if (this.ball >= 0) this.env.things.hide(this.ball);
   }
 

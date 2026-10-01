@@ -17,6 +17,7 @@ import { BODY_UNIT_M } from '../world/scale';
 import type { VoxelQuality } from '../voxel/VoxelMesh';
 import { buildVoxelMesh, disposeVoxelMesh } from '../voxel/VoxelMesh';
 import { Animator, clampSelfieAim, type HoldKind, type SelfieGesture } from './Animator';
+import { NO_CLOTHES, type ExplorerClothes } from './clothes';
 import { GREET_HIGH_PALMS, GREET_PALMS, PRAY_PALMS, type ActionName } from './clips';
 import { Pendulum } from './Dynamics';
 import { DEFAULT_FOOD, isMeal, itemInFist, MEAL, MEAL_OF, mealFace, mealStage } from './meals';
@@ -80,6 +81,7 @@ export interface SelfieAim {
 }
 
 export type { HoldKind, SelfieGesture } from './Animator';
+export type { ExplorerClothes } from './clothes';
 export type { FoodKind } from './parts/food';
 
 /** What he holds of a meal: each hand's item, one group per stage (full first) under a root on the fist. */
@@ -157,6 +159,8 @@ export class AngkorExplorer {
   private stick: { grip: Group; shaft: Group; clamp: Group } | null = null;
   private readonly scaler = new Group();
   private outfit: ExplorerOutfit = { ...OUTFITS.default };
+  /** Clothes from the market over his own (`setClothes`; none: his own). */
+  private clothes: ExplorerClothes = { ...NO_CLOTHES };
   private expression: ExpressionName = 'neutral';
   private readonly faces = new Map<string, Group>();
   private blinkIn = 2.5;
@@ -191,6 +195,8 @@ export class AngkorExplorer {
   private lightBeforeFood: HoldKind = 'none';
   /** A meal's face (meals.ts `mealFace`) over the expression, or null. */
   private mealFaceNow: FaceName | null = null;
+  /** Any face held over everything (`showFace`: the stickers), or null. */
+  private heldFace: FaceName | null = null;
   private readonly foodStage = { left: 0, right: 0, size: 1 };
   /** Seconds since the food came into his hands (it pops in, as his arms come up to hold it). */
   private foodAge = 0;
@@ -237,9 +243,62 @@ export class AngkorExplorer {
     this.applyShadowFlags();
   }
 
+  /** The clothes from the market he wears (each null: his own). */
+  get currentClothes(): Readonly<ExplorerClothes> {
+    return this.clothes;
+  }
+
+  /**
+   * Clothes from the market (clothes.ts; the map's clothes stall and his
+   * wardrobe) over his own: another krama, shirt, long loose trousers, the
+   * palm-leaf hat's band (null: his own again). They colour what the outfit
+   * shows: the krama while it has the scarf, the shirt in every outfit, the
+   * trousers in place of the shorts (the sampot stays the sampot), the band
+   * while he has the hat on; the rest waits for an outfit that shows it.
+   * Only the parts that change are built again (once, on the change).
+   */
+  setClothes(c: Partial<ExplorerClothes>): void {
+    const prev = this.clothes;
+    const next = { ...prev, ...c };
+    this.clothes = next;
+    const o = this.outfit;
+    const r = this.rig;
+    let built = false;
+    if (next.krama !== prev.krama && o.scarf) {
+      this.buildScarf(true);
+      built = true;
+    }
+    if (next.shirt !== prev.shirt) {
+      r.setSlot('torso', 'chest', buildTorso({ packStraps: o.pack !== 'none', satchelStrap: true, shirt: next.shirt }));
+      for (const s of ['L', 'R'] as Side[]) r.setSlot(`upperArm${s}`, `shoulder${s}`, buildUpperArm(s, next.shirt));
+      // (the phone's arm stays as `hidePhone` has it)
+      this.showPhoneMeshes(!!this.phone?.visible);
+      built = true;
+    }
+    if (next.trousers !== prev.trousers && o.legs === 'shorts') {
+      this.buildLegs(o.legs);
+      built = true;
+    }
+    if (next.hat !== prev.hat && o.hat) {
+      r.setSlot('hat', 'head', buildHat(next.hat));
+      built = true;
+    }
+    if (built) this.applyShadowFlags();
+  }
+
   setExpression(name: ExpressionName): void {
     this.faceBeforeSelfie = null;
     this.showExpression(name);
+  }
+
+  /** Hold any face (the stickers' too, parts/face.ts) over the expression and the meal's, or null to let go. */
+  showFace(face: FaceName | null): void {
+    this.heldFace = face;
+    if (face && !this.faces.has(face)) {
+      this.faces.set(face, this.faceMesh(face, false));
+      this.applyShadowFlags();
+    }
+    this.refreshFace();
   }
 
   /**
@@ -594,7 +653,7 @@ export class AngkorExplorer {
       this.faces.set(meal, this.faceMesh(meal, false));
       this.applyShadowFlags();
     }
-    const key = this.sleeping ? 'asleep' : (meal ?? `${face}|${this.blinkLeft > 0 || this.eyesShut}`);
+    const key = this.heldFace ?? (this.sleeping ? 'asleep' : (meal ?? `${face}|${this.blinkLeft > 0 || this.eyesShut}`));
     for (const [k, g] of this.faces) g.visible = k === key;
   }
 
@@ -686,30 +745,18 @@ export class AngkorExplorer {
 
     if (changed('hat')) {
       r.setSlot('hair', 'head', buildHair(next.hat ? { clipAboveY: HAT_CLIP_Y } : {}));
-      r.setSlot('hat', 'head', next.hat ? buildHat() : null);
+      r.setSlot('hat', 'head', next.hat ? buildHat(this.clothes.hat) : null);
     }
     if (changed('pack') || changed('legs') || changed('camera')) {
-      r.setSlot('torso', 'chest', buildTorso({ packStraps: next.pack !== 'none', satchelStrap: true }));
+      r.setSlot('torso', 'chest', buildTorso({ packStraps: next.pack !== 'none', satchelStrap: true, shirt: this.clothes.shirt }));
       r.setSlot('pack', 'backpack', next.pack === 'none' ? null : buildBackpack(next.pack));
     }
     if (changed('camera')) {
       r.setSlot('camera', 'camera', next.camera ? buildCamera() : null);
       r.setSlot('cameraStrap', 'camera', next.camera ? buildCameraStraps() : null);
     }
-    if (changed('scarf')) {
-      r.setSlot('scarfCollar', 'chest', next.scarf ? buildScarfCollar() : null);
-      r.setSlot('scarf1', 'scarf1', next.scarf ? buildScarfTail(1) : null);
-      r.setSlot('scarf2', 'scarf2', next.scarf ? buildScarfTail(2) : null);
-      r.setSlot('scarf3', 'scarf3', next.scarf ? buildScarfTail(3) : null);
-    }
-    if (changed('legs')) {
-      r.setSlot('pelvis', 'hips', buildPelvis(next.legs));
-      r.setSlot('belt', 'hips', buildBelt({ pouches: true, sheath: next.legs === 'shorts' }));
-      for (const s of ['L', 'R'] as Side[]) {
-        r.setSlot(`thigh${s}`, `hip${s}`, buildThigh(s, next.legs));
-        r.setSlot(`shin${s}`, `knee${s}`, buildShin(s, next.legs));
-      }
-    }
+    if (changed('scarf')) this.buildScarf(next.scarf);
+    if (changed('legs')) this.buildLegs(next.legs, true);
     if (changed('held')) {
       this.animator.setHold(next.held);
       this.clearProp();
@@ -721,6 +768,28 @@ export class AngkorExplorer {
       if (next.held === 'flashlight') this.attachFlashlight();
     }
     this.rebuildPendulums();
+  }
+
+  /** The krama's collar and its three tail segments (in the market krama he wears, or his own), or none. */
+  private buildScarf(on: boolean): void {
+    const r = this.rig;
+    const k = this.clothes.krama ?? undefined;
+    r.setSlot('scarfCollar', 'chest', on ? buildScarfCollar(k) : null);
+    r.setSlot('scarf1', 'scarf1', on ? buildScarfTail(1, k) : null);
+    r.setSlot('scarf2', 'scarf2', on ? buildScarfTail(2, k) : null);
+    r.setSlot('scarf3', 'scarf3', on ? buildScarfTail(3, k) : null);
+  }
+
+  /** The seat and legs for a style (the shorts, or the market trousers in their place; the sampot), and the belt for it (`belt`). */
+  private buildLegs(legs: LegStyle, belt = false): void {
+    const r = this.rig;
+    const tr = this.clothes.trousers;
+    r.setSlot('pelvis', 'hips', buildPelvis(legs, tr));
+    if (belt) r.setSlot('belt', 'hips', buildBelt({ pouches: true, sheath: legs === 'shorts' }));
+    for (const s of ['L', 'R'] as Side[]) {
+      r.setSlot(`thigh${s}`, `hip${s}`, buildThigh(s, legs, tr));
+      r.setSlot(`shin${s}`, `knee${s}`, buildShin(s, legs, tr));
+    }
   }
 
   private attachLantern(): void {

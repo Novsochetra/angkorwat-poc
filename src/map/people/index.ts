@@ -5,6 +5,7 @@ import { keepApart, RAIN_PACE, type Actor } from './_actor';
 import { Bubble } from './_bubble';
 import { GreetBack } from './_greetBack';
 import { SaleBack } from './_saleBack';
+import { SmileBack } from './_smileBack';
 import { buildPeopleLineup } from './_lineup';
 import { Crowd, PEOPLE_SCALE } from './_personModel';
 import { Ground, RoadGraph, Traffic } from './_routes';
@@ -59,14 +60,14 @@ import { Things } from './_things';
  * life's; `_lineup.ts`), `lod=near|far` (everyone in one model), `people=0`
  * (none), `people=<scene>,<scene>` (only those: monks, tour, fish, cart,
  * apsara, farm, kites, village, villagemarket, market, palmsugar,
- * eastvillage, kulen, back), `monks=<m>` (the procession that far below
+ * eastvillage, kulen, back, alms), `monks=<m>` (the procession that far below
  * Angkor Wat's gate), `tour=<place>[:<s>]` (the visitors at that temple's
  * stop), `fish=<s>` (every fisherman that far into a throw), `cart=<m>`
  * (the ox cart that far round its loop).
  */
 
 /** Room in the crowd (people the scenes add, and some to spare for more scenes). */
-const CAPACITY = 240;
+const CAPACITY = 276;
 /** Room in the things (boxes of boats, the cart, kites, torches…: `_things.ts`). */
 const THINGS = 2200;
 /** A scene's maker (its module is loaded on its own: one that fails to load or to build is logged and left out). */
@@ -89,6 +90,14 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   eastvillage: async () => ((m) => (e, c) => new m.EastVillageLife(e, c.scene))(await import('./_sceneEastVillage')),
   kulen: async () => ((m) => (e) => new m.KulenLife(e))(await import('./_sceneKulen')),
   back: async () => ((m) => (e) => new m.BackLife(e))(await import('./_sceneBack')),
+  // The alms round at dawn in the sugar-palm village: three monks, the families giving by the road (dak bat).
+  alms: async () => ((m) => (e) => new m.AlmsRound(e))(await import('./_sceneAlms')),
+  // The equinox sunrise's dawn crowd in front of Angkor Wat (sky/_equinox.ts: on the equinox mornings only).
+  equinox: async () => ((m) => (e) => new m.EquinoxCrowd(e))(await import('./_sceneEquinox')),
+  // The monk who blesses in the floating village pagoda's hall: lustral water and the red string (roam/_blessing.ts).
+  blessing: async () => ((m) => (e, c) => new m.BlessingMonk(e, c.scene))(await import('./_sceneBlessing')),
+  // The grandmother who keeps the key to the empty stilt house at the sugar-palm village's edge (roam/_home.ts).
+  home: async () => ((m) => (e) => new m.HomeGran(e))(await import('./_sceneHome')),
 };
 /**
  * People, their things and the oxen cast shadows only while someone shown is
@@ -144,6 +153,8 @@ export async function buildPeople(ctx: MapContext): Promise<MapPart> {
   const greetBack = new GreetBack(env, actors);
   // (the explorer buys at a stall: its seller looks up, hands it over and thanks him, _saleBack.ts)
   const saleBack = new SaleBack(env, actors);
+  // (his camera or selfie phone up: those in the picture smile and pose for it, _smileBack.ts)
+  const smileBack = new SmileBack(env, actors);
   Object.assign(window, { __people: { scenes, crowd, traffic, graph } });
   const buildMs = performance.now() - t0;
   // (the crowd near and far, the things: each a draw and its shadow; the far list is drawn only while someone is in it)
@@ -178,6 +189,7 @@ export async function buildPeople(ctx: MapContext): Promise<MapPart> {
     }
     greetBack.update(dt, now, f);
     saleBack.update(dt, now, f);
+    smileBack.update(dt, now, f);
     if (measure) lap(scenes.length + 1);
     keepApart(actors, traffic.list);
     if (measure) lap(scenes.length + 2);

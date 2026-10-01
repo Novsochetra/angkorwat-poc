@@ -1,7 +1,7 @@
 import { num, onLang, t } from '../ui/lang';
 import { itemIcon, RIEL_ICON } from './_shopIcons';
 import { isDrink } from './_shopMenu';
-import { CARRY_MAX, nameOf, riel, type Purse } from './_shopPurse';
+import { CARRY_MAX, nameOf, riel, type Kept, type Purse } from './_shopPurse';
 
 /**
  * The purse and the bag in the roaming interface (buying: _shop.ts):
@@ -35,6 +35,28 @@ export interface ShopBagDeps {
   /** Thing `i` of the bag was picked in the explorer menu. */
   onPick(i: number): void;
 }
+
+/**
+ * More in "In my bag" than what he bought (the add-ons: his fish basket, roam/_fishSell.ts): each its own element,
+ * put after his things; `has()` (anything in it) hides the "nothing kept" note. `bagNotify.update` shows the purse
+ * and the bag again (`'purse'`: the purse glows, as when he pays: he was paid for his fish).
+ */
+export const BAG_MORE: { el: HTMLElement; has(): boolean }[] = [];
+export const bagNotify: { update(pop?: 'purse' | 'bag'): void } = { update() {} };
+
+/**
+ * Things kept in his bag that are not eaten or drunk (the rice for the monks' alms round: roam/_dakBat.ts), by item
+ * id: the slot (6) shows, and 6 eats, the first thing that is food (`firstFood`); in "In my bag" a keepsake's button
+ * says what it is for (`label`) and picking it says so (`pick`, as 6 does when it is all he carries); bought, it
+ * goes straight into his bag (`kept`: the message), never "eat it now". While one is being given (`busy`), nothing
+ * in the bag is eaten.
+ */
+export const KEEPSAKES = new Map<string, { label(name: string): string; pick(): void; kept(name: string): string; busy(): boolean }>();
+/** The first thing in `kept` that is food (not a keepsake), or −1. */
+export const firstFood = (kept: readonly Kept[]): number => {
+  for (let i = 0; i < kept.length; i++) if (!KEEPSAKES.has(kept[i].id)) return i;
+  return -1;
+};
 
 export function createShopBag(d: ShopBagDeps): ShopBag {
   injectStyle();
@@ -79,28 +101,32 @@ export function createShopBag(d: ShopBagDeps): ShopBag {
   let shown = '';
   function fill(): void {
     const kept = purse.kept;
-    const key = `${purse.riel}|${kept.map((k) => k.shop + k.id).join(',')}|${num(1)}`;
+    const key = `${purse.riel}|${kept.map((k) => k.shop + k.id + (KEEPSAKES.has(k.id) ? '*' : '')).join(',')}|${num(1)}|${BAG_MORE.map((m) => (m.has() ? 1 : 0)).join('')}`;
     if (key === shown) return;
     shown = key;
+    for (const m of BAG_MORE) if (m.el.parentNode !== section) section.insertBefore(m.el, secNone);
     chipN.textContent = riel(purse.riel);
     chip.setAttribute('aria-label', `${t('byPurse')}: ${riel(purse.riel)}`);
     chip.title = t('byPurse');
-    const first = kept[0];
+    // (the first thing to eat: a keepsake is not, KEEPSAKES)
+    const fi = firstFood(kept);
+    const first = fi >= 0 ? kept[fi] : undefined;
+    const foods = kept.length - kept.filter((k) => KEEPSAKES.has(k.id)).length;
     slot.hidden = !first;
     if (first) {
       slotArt.innerHTML = itemIcon(first, 'rtb-icon by-slot-icon');
-      slotN.textContent = kept.length > 1 ? num(kept.length) : '';
+      slotN.textContent = foods > 1 ? num(foods) : '';
       slot.title = `${t(isDrink(first.consume) ? 'byDrinkThis' : 'byEatThis', { name: nameOf(first) })} (6)`;
       slot.setAttribute('aria-label', slot.title);
     }
     section.querySelector('.by-sec-h')!.textContent = `${t('byBag')} ${num(kept.length)}/${num(CARRY_MAX)}`;
     section.querySelector('.by-sec-purse b')!.textContent = riel(purse.riel);
     secNone.textContent = t('byBagEmpty');
-    secNone.hidden = kept.length > 0;
+    secNone.hidden = kept.length > 0 || BAG_MORE.some((m) => m.has());
     secGrid.innerHTML = kept
       .map(
         (k, i) =>
-          `<button type="button" class="by-bagb" data-i="${i}"><span class="by-bagb-bg"></span>${itemIcon(k, 'rxm-icon')}<span class="rxm-t">${esc(t(isDrink(k.consume) ? 'byDrinkThis' : 'byEatThis', { name: nameOf(k) }))}</span>${i === 0 ? '<kbd>6</kbd>' : ''}</button>`,
+          `<button type="button" class="by-bagb" data-i="${i}"><span class="by-bagb-bg"></span>${itemIcon(k, 'rxm-icon')}<span class="rxm-t">${esc(KEEPSAKES.get(k.id)?.label(nameOf(k)) ?? t(isDrink(k.consume) ? 'byDrinkThis' : 'byEatThis', { name: nameOf(k) }))}</span>${i === fi ? '<kbd>6</kbd>' : ''}</button>`,
       )
       .join('');
   }
@@ -110,7 +136,7 @@ export function createShopBag(d: ShopBagDeps): ShopBag {
     fill();
   });
 
-  return {
+  const api: ShopBag = {
     slot,
     section,
     update(pop) {
@@ -130,6 +156,8 @@ export function createShopBag(d: ShopBagDeps): ShopBag {
       }
     },
   };
+  bagNotify.update = (pop) => api.update(pop);
+  return api;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);

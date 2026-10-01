@@ -4,7 +4,10 @@ import { CH, Flock } from '../fauna/_kit';
 import type { HeightField } from '../heightfield';
 import { LIFT } from '../road/line';
 import type { MapFrame, Subject } from '../types';
+import type { WordKey } from '../ui/lang';
 import { Actor } from './_actor';
+import { Bubble } from './_bubble';
+import { CART, RIDER, type CartPoint } from './_cartHook';
 import { dress } from './_kinds';
 import { OX } from './_ox';
 import { PEOPLE_SCALE, POSE } from './_personModel';
@@ -25,10 +28,18 @@ import { Rig, RigDef } from './_things';
  * It stops for the explorer (and for anyone else) in its way, the farmer
  * nodding to him; people step round it (it goes into the traffic as an
  * animal, like the elephants). The oxen's bronze bells clonk with their
- * steps and the cart creaks (`oxBell`, `cartCreak`).
+ * steps and the cart creaks (`oxBell`, `cartCreak`). From dusk a lantern
+ * hangs at its front corner, by the farmer.
+ *
+ * The explorer can ride on its back (roam/_cartRide.ts; they share
+ * `_cartHook.ts`): as he climbs on the farmer lets the tailboard down flat for
+ * him to sit on and turns round to welcome him aboard (a bubble), says "on we
+ * go" as it leaves a stop with him, wishes him well as he hops off; he stays
+ * out with the cart at night until he gets down. The cart goes its way at its
+ * own pace whoever rides.
  *
  * Shots: `cart=<m>` puts it that far along its round (0 leaving the village,
- * ≈ 230 the far stop, ≈ 470 home).
+ * ≈ 202 the far stop, then its turn; ≈ 434 the home stop; 462 m round).
  */
 
 /** Walking pace (m/s), easing (m/s²). */
@@ -184,7 +195,13 @@ const REACH = 3.55;
 /** Where the farmer sits (cart space). */
 const SEAT: [number, number, number] = [0, 0.96, 1.05];
 
-function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, number] } {
+/** The tailboard's hinge (cart space: the bottom of its back face); let down flat behind for a rider (radians about x). */
+const GATE_HINGE: [number, number, number] = [0, 0.87, -1.055];
+const GATE_DOWN = -Math.PI / 2;
+/** Seconds to let it down or put it up. */
+const GATE_TIME = 0.5;
+
+function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, number]; gate: number } {
   const d = new RigDef();
   const wheels: [number, number] = [0, 0];
   [1, -1].forEach((sx, w) => {
@@ -207,7 +224,9 @@ function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, numb
     d.box([sx * 0.48, 1.08, 0.2], [0.05, 0.05, 2.5], WOOD_PALE);
     for (const z of [-1.0, -0.2, 0.6, 1.4]) d.box([sx * 0.48, 0.97, z], [0.05, 0.22, 0.05], WOOD_DARK);
   }
-  d.box([0, 0.97, -1.03], [0.96, 0.2, 0.05], WOOD_DARK);
+  // (the tailboard, on its hinge: let down for a rider)
+  const gate = d.part(GATE_HINGE);
+  d.box([0, 0.97, -1.03], [0.96, 0.2, 0.05], WOOD_DARK, { part: gate });
   // The pole, rising from the bed's front to the yoke, and the yoke across both necks.
   const rise = Math.atan2(1.3 - 0.9, REACH - 1.45);
   d.box([0, 1.1, (1.45 + REACH) / 2], [0.1, 0.1, Math.hypot(REACH - 1.45, 0.4)], WOOD_DARK, { rot: [-rise, 0, 0] })
@@ -220,15 +239,51 @@ function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, numb
     .box([0, 1.55, -0.3], [0.7, 0.2, 1.2], STRAW)
     .box([0, 1.3, -0.25], [0.9, 0.06, 1.52], STRAW_DARK)
     .box([0, 1.2, 0.35], [0.86, 0.5, 0.06], STRAW_DARK);
-  return { def: d, wheels, load: [l0, d.boxes.length - l0] };
+  return { def: d, wheels, load: [l0, d.boxes.length - l0], gate };
+}
+
+const LAMP_METAL = 0x34302c;
+const LAMP_GLASS = 0xffc35a;
+const BAMBOO = 0xb89a5a;
+/** The lantern's hook at the end of its arm (cart space): it hangs and swings from there. */
+const LAMP_HOOK: [number, number, number] = [0.67, 1.545, 1.4];
+/** Lit from this far into the dusk (`night`). */
+const LAMP_ON = 0.32;
+
+/**
+ * The lantern for the night (a kerosene lamp, changkieng koum): a bamboo pole
+ * lashed to the bed's front left post, an arm out over the side, the lamp
+ * hanging from it on a short cord (its own part: it swings with the cart).
+ */
+function lampDef(): { def: RigDef; lamp: number; glass: number } {
+  const d = new RigDef();
+  d.box([0.48, 1.32, 1.4], [0.035, 0.5, 0.035], BAMBOO).box([0.575, 1.555, 1.4], [0.21, 0.03, 0.03], BAMBOO);
+  const lamp = d.part(LAMP_HOOK);
+  const [x, , z] = LAMP_HOOK;
+  d.box([x, 1.51, z], [0.012, 0.07, 0.012], LAMP_METAL, { part: lamp })
+    .box([x, 1.47, z], [0.05, 0.03, 0.05], LAMP_METAL, { part: lamp })
+    .box([x, 1.45, z], [0.12, 0.03, 0.12], LAMP_METAL, { part: lamp });
+  const glass = d.boxes.length;
+  d.box([x, 1.375, z], [0.09, 0.12, 0.09], LAMP_GLASS, { part: lamp, glow: 1 })
+    .box([x, 1.305, z], [0.12, 0.025, 0.12], LAMP_METAL, { part: lamp });
+  return { def: d, lamp, glass };
 }
 
 const P = new Vector3();
 const Q = new Vector3();
 const A = new Vector3();
 const Y = new Vector3();
+const H = new Vector3();
 /** The farmer's look point (copied by `lookAt`). */
 const LOOK = { x: 0, y: 0, z: 0 };
+
+/** Where the rider's head is (cart space, true m: on the let-down tailboard) for the farmer to look at. */
+const RIDER_HEAD: [number, number, number] = [0, 2.1, -1.2];
+/** The farmer turning round on his seat to the rider behind him (rad: his head turns the rest of the way), and for how long (s). */
+const TURN_BACK = 1.75;
+const TALK = 3.4;
+/** His words over his head this high (m over his seat). */
+const SAY_UP = 1.75;
 
 export class OxCart implements PeopleScene {
   readonly name = 'cart';
@@ -240,6 +295,26 @@ export class OxCart implements PeopleScene {
   private readonly farmer: Actor;
   private readonly wheels: [number, number];
   private readonly load: [number, number];
+  /** The tailboard's part, and how far it is let down (0 up ‥ 1 flat, for a rider). */
+  private readonly gate: number;
+  private gateDown = 0;
+  /** The lantern (shown from dusk) and its hanging part, its glass box. */
+  private readonly lamp: Rig;
+  private readonly lampPart: number;
+  private readonly lampGlass: number;
+  /** The farmer's own bubble (his words to the rider), what he says, until when (people's clock), how far he has turned round. */
+  private readonly bubble = new Bubble();
+  private readonly head = { x: 0, y: 0, z: 0 };
+  private readonly headAt = () => this.head;
+  private talkUntil = -1e9;
+  private turnBack = 0;
+  /** The rider's greetings answered (`CART.hello`, `bye`), and whether "on we go" / "night" were said for this stop. */
+  private hello = CART.hello;
+  private bye = CART.bye;
+  private waited = false;
+  private nightSaid = false;
+  /** Out with the cart at night for a rider (until he is down and gone). */
+  private stayOut = false;
   private readonly pace = new Pace(160, 420);
   private s = 0;
   private speed = 0;
@@ -265,13 +340,31 @@ export class OxCart implements PeopleScene {
     this.cart = new Rig(env.things, c.def);
     this.wheels = c.wheels;
     this.load = c.load;
+    this.gate = c.gate;
+    const l = lampDef();
+    this.lamp = new Rig(env.things, l.def);
+    this.lampPart = l.lamp;
+    this.lampGlass = l.glass;
     this.farmer = new Actor(env.crowd, dress('villager', 611, { sex: 'm', hat: 'palm' }), env.ground);
     this.actors.push(this.farmer);
+    // (the ride, roam/_cartRide.ts: points of the cart on the map)
+    CART.live = false;
+    CART.scale = PEOPLE_SCALE;
+    CART.pace = SPEED;
+    CART.point = (x: number, y: number, z: number, out: CartPoint) => {
+      this.cart.point(x, y, z, H);
+      out.x = H.x;
+      out.y = H.y;
+      out.z = H.z;
+      return out;
+    };
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
     const loop = this.loop;
     if (!loop) return;
+    // (the farmer's words to the rider follow him on the screen every frame)
+    this.bubble.update(dt, f.camera, f.roam !== 'overview');
     if (!this.started) {
       this.started = true;
       const q = this.env.params.get('cart');
@@ -304,6 +397,7 @@ export class OxCart implements PeopleScene {
     const blocked = this.blocked(ex);
     const toFar = loop.wrap(loop.far - this.s);
     const toHome = loop.wrap(loop.home - this.s);
+    const waiting = this.wait > 0;
     let want = SPEED;
     if (this.wait > 0) {
       this.wait -= dt;
@@ -343,9 +437,24 @@ export class OxCart implements PeopleScene {
     // (the pole's end rides at the yoke: the axle comes forward on a tight turn)
     const fx = yoke.x - Math.sin(yawCart) * REACH * k;
     const fz = yoke.z - Math.cos(yawCart) * REACH * k;
-    this.cart.place(fx, axle.y, fz, yawCart, pitch, 0.015 * Math.sin(this.roll * 1.7), k);
+    const sway = 0.015 * Math.sin(this.roll * 1.7);
+    this.cart.place(fx, axle.y, fz, yawCart, pitch, sway, k);
     this.cart.turn(this.wheels[0], this.roll).turn(this.wheels[1], this.roll);
+    // (the tailboard let down flat for a rider to sit on, put up again once he is off: roam/_cartRide.ts)
+    const riding = CART.rider !== RIDER.none;
+    const gateWant = riding ? 1 : 0;
+    this.gateDown = CART.snap ? gateWant : this.gateDown + Math.max(-dt / GATE_TIME, Math.min(dt / GATE_TIME, gateWant - this.gateDown));
+    const gd = this.gateDown;
+    this.cart.turn(this.gate, GATE_DOWN * gd * gd * (3 - 2 * gd));
     this.cart.write();
+    // The lantern from dusk, swinging a little on its cord as the cart rolls, its flame flickering.
+    if (f.night > LAMP_ON) {
+      const go = Math.min(1, this.speed / SPEED);
+      this.lamp.place(fx, axle.y, fz, yawCart, pitch, sway, k);
+      this.lamp.turn(this.lampPart, 0.05 * Math.sin(now * 2.2) * go, 0, 0.08 * Math.sin(now * 1.6 + 1) * (0.25 + 0.75 * go) - 0.5 * sway);
+      this.lamp.paint(this.lampGlass, LAMP_GLASS, 0.88 + 0.12 * Math.sin(now * 13.1) * Math.sin(now * 7.3));
+      this.lamp.write();
+    } else this.lamp.hide();
     // (straw in the harvest and dry season, pots the rest of the year)
     this.paintLoad(f.season > 0.62 || f.season < 0.08 ? false : this.pots);
     // The oxen: side by side under the yoke; each one's middle 1.09 m (drawn) behind its neck.
@@ -365,17 +474,31 @@ export class OxCart implements PeopleScene {
     this.flock.flush(now);
     this.flock.mesh.visible = true;
     // The farmer, sitting cross-legged at the front, nodding to the explorer when the cart waits for him.
+    // (at night he has gone in, unless the explorer rides with him: then he stays out until he is down and gone)
     const a = this.farmer;
-    if (this.night && !walking) {
+    const parked = this.night && this.wait > 0 && loop.wrap(loop.home - this.s) > loop.len - 2;
+    if (riding && this.night) this.stayOut = true;
+    else if (this.stayOut && (!ex || (ex.x - a.x) ** 2 + (ex.z - a.z) ** 2 > 15 * 15 || !this.night)) this.stayOut = false;
+    if (this.night && !walking && !this.stayOut) {
       if (a.shown) a.hide();
     } else {
+      // (the rider: he turns round on his seat to him and speaks: welcome aboard, on we go, the night, farewell)
+      if (a.shown) this.talkToRider(now, waiting, parked);
+      const talking = now < this.talkUntil;
+      this.turnBack += ((talking ? TURN_BACK : 0) - this.turnBack) * (dt > 0 ? 1 - Math.exp(-dt * 4) : 1);
       this.cart.point(SEAT[0], SEAT[1], SEAT[2], P);
-      a.ride(P.x, P.y, P.z, yawCart);
+      a.ride(P.x, P.y, P.z, yawCart + this.turnBack);
       if (!a.shown) a.show();
       a.pose(POSE.sit, now);
       const ax = ex ? ex.x - a.x : 0;
       const az = ex ? ex.z - a.z : 0;
-      if (ex && blocked && Math.sqrt(ax * ax + az * az) < 9) {
+      if (talking) {
+        this.cart.point(RIDER_HEAD[0], RIDER_HEAD[1], RIDER_HEAD[2], Q);
+        LOOK.x = Q.x;
+        LOOK.y = Q.y;
+        LOOK.z = Q.z;
+        a.lookAt(LOOK, now + 0.5);
+      } else if (ex && blocked && Math.sqrt(ax * ax + az * az) < 9) {
         if (now - this.nodAt > 30) this.nodAt = now;
         LOOK.x = ex.x;
         LOOK.y = ex.y + 2;
@@ -385,6 +508,9 @@ export class OxCart implements PeopleScene {
       const u = now - this.nodAt;
       a.tilt(u > 0.4 && u < 1.3 ? 0.7 : 0);
       a.step(dt, now);
+      this.head.x = a.x;
+      this.head.y = a.y + SAY_UP;
+      this.head.z = a.z;
     }
     // ── Sounds: the bells with the oxen's steps, a creak now and then ──
     this.vel.x = (Math.sin(yawOx) * this.speed);
@@ -398,9 +524,29 @@ export class OxCart implements PeopleScene {
       this.creakAt -= dt;
       if (this.creakAt <= 0) {
         this.creakAt = 2.2 + 2.5 * hash3(Math.floor(now), 3, 7);
-        f.calls.push({ kind: 'cartCreak', x: axle.x, y: axle.y + 0.8, z: axle.z, gain: 0.7 });
+        // (a little softer with him sitting right over it)
+        f.calls.push({ kind: 'cartCreak', x: axle.x, y: axle.y + 0.8, z: axle.z, gain: riding ? 0.5 : 0.7 });
       }
     }
+    // (for the ride on its back, roam/_cartRide.ts)
+    const h = CART;
+    h.live = true;
+    h.s = this.s;
+    h.speed = this.speed;
+    h.parked = parked;
+    h.yaw = yawCart;
+    h.oxYaw = yawOx;
+    h.vx = Math.sin(yawCart) * this.speed;
+    h.vz = Math.cos(yawCart) * this.speed;
+    h.pitch = pitch;
+    h.roll = sway;
+    h.axle.x = fx;
+    h.axle.y = axle.y;
+    h.axle.z = fz;
+    h.yoke.x = yoke.x;
+    h.yoke.y = yoke.y;
+    h.yoke.z = yoke.z;
+    h.snap = false;
     // (for the people: the pair of oxen and the cart, as three discs)
     const o = this.obstacles;
     o[0].x = yoke.x - Math.sin(yawOx) * 0.9 * k;
@@ -449,9 +595,46 @@ export class OxCart implements PeopleScene {
 
   private hide(): void {
     this.cart.hide();
+    this.lamp.hide();
     this.flock.hide(0);
     this.flock.hide(1);
     if (this.farmer.shown) this.farmer.hide();
+    CART.live = false;
+  }
+
+  /**
+   * The rider and the farmer (roam/_cartRide.ts): he welcomes him aboard as
+   * he climbs on, says "on we go" as the cart leaves a stop with him, tells
+   * him the oxen need their rest once it stands for the night, and wishes him
+   * well as he hops off: each time he turns round on his seat and says it
+   * over his head (`talkUntil`).
+   */
+  private talkToRider(now: number, waiting: boolean, parked: boolean): void {
+    const on = CART.rider === RIDER.riding;
+    if (CART.hello !== this.hello) {
+      this.hello = CART.hello;
+      this.waited = false;
+      this.say('cartHello', now);
+    } else if (CART.bye !== this.bye) {
+      this.bye = CART.bye;
+      this.say('cartBye', now);
+    } else if (on && parked && !this.nightSaid) {
+      this.nightSaid = true;
+      this.say('cartNight', now);
+    } else if (on && this.waited && !waiting && this.speed > 0.05 && now > this.talkUntil) {
+      this.waited = false;
+      this.say('cartGo', now);
+    }
+    if (on && waiting && !parked) this.waited = true;
+    if (!on) this.waited = false;
+    if (!parked) this.nightSaid = false;
+  }
+
+  /** The farmer turns round and says `key` over his head (and nods as he begins). */
+  private say(key: WordKey, now: number): void {
+    this.talkUntil = now + TALK;
+    this.nodAt = now;
+    this.bubble.say(key, this.headAt, TALK);
   }
 
   // (the nature book, roam/_book.ts: the two oxen where they are drawn; read only)

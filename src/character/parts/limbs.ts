@@ -1,11 +1,17 @@
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { hash3 } from '../../voxel/random';
+import type { ShirtTones, TrouserTones } from '../clothes';
 import { PALETTE } from '../palette';
 import { ARM_CENTER_X, LEG_CENTER_X, LEG_CENTER_Z } from '../skeleton';
 
 /**
  * Arms and legs. Everything is authored for the character's LEFT side (+X) and
  * mirrored for the right, like the reference turnaround.
+ *
+ * Clothes from the market (clothes.ts) come in as tones: another shirt's for
+ * the sleeves, and long loose trousers in place of the shorts (`trousers`:
+ * with the shorts' style only; the sampot stays the sampot). Without them
+ * every part is his own, block for block.
  */
 export type Side = 'L' | 'R';
 /** Fist shapes, plus the selfie gestures: two fingers up, an open hand to wave, a thumb up. */
@@ -20,10 +26,10 @@ const finish = (b: VoxelBuilder, side: Side) => (side === 'R' ? b.mirrorX() : b)
 
 // ─── Arms ──────────────────────────────────────────────────────────────────
 
-/** Short puffy sleeve with a rolled cuff (sheet 3.3.4). Shoulder joint. */
-export function buildUpperArm(side: Side): VoxelBuilder {
+/** Short puffy sleeve with a rolled cuff (sheet 3.3.4), in his shirt's tones or another's. Shoulder joint. */
+export function buildUpperArm(side: Side, shirt?: ShirtTones | null): VoxelBuilder {
   const b = new VoxelBuilder();
-  const S = PALETTE.shirt;
+  const S = shirt ?? PALETTE.shirt;
   const tone = (i: number, j: number, k: number) => {
     const r = hash3(i, j, k, seedOf(side, 41));
     return r < 0.55 ? S.base : r < 0.85 ? S.light : S.mid;
@@ -112,10 +118,10 @@ export function buildHand(side: Side, pose: HandPose = 'relaxed'): VoxelBuilder 
 
 // ─── Legs ──────────────────────────────────────────────────────────────────
 
-/** Seat / waist of the shorts (or sampot). Hips joint. */
-export function buildPelvis(style: LegStyle = 'shorts'): VoxelBuilder {
+/** Seat / waist of the shorts (or the trousers in their place, or the sampot). Hips joint. */
+export function buildPelvis(style: LegStyle = 'shorts', trousers?: TrouserTones | null): VoxelBuilder {
   const b = new VoxelBuilder();
-  const C = style === 'shorts' ? PALETTE.shorts : null;
+  const C = style === 'shorts' ? (trousers ?? PALETTE.shorts) : null;
   const T = PALETTE.sampot;
   const g = b.grid({ cell: [1, 1, 0.933], origin: [-4.5, 9.6, -3.0], mat: 'shorts', jitter: 0.04, ao: 0.2, seed: 51 });
   g.fill(0, 8, 0, 1, 0, 5, (i, j, k) => {
@@ -128,13 +134,26 @@ export function buildPelvis(style: LegStyle = 'shorts'): VoxelBuilder {
   return b;
 }
 
-/** Shorts leg with the outset hem. Hip joint. */
-export function buildThigh(side: Side, style: LegStyle = 'shorts'): VoxelBuilder {
+/** Shorts leg with the outset hem (or a loose trouser leg, or the sampot's). Hip joint. */
+export function buildThigh(side: Side, style: LegStyle = 'shorts', trousers?: TrouserTones | null): VoxelBuilder {
   const b = new VoxelBuilder();
   if (style === 'sampot') {
     const T = PALETTE.sampot;
     const g = b.grid({ cell: [1.1, 1, 1.12], origin: [LX - 2.2, 7.0, LZ - 2.8], mat: 'shorts', jitter: 0.05, ao: 0.22, seed: seedOf(side, 53) });
     g.fill(0, 3, 0, 3, 0, 4, (i, j, k) => (j === 1 && (i + k) % 2 === 0 ? T.gold : hash3(i, j, k, 3) < 0.6 ? T.base : T.light));
+    g.commit();
+    return finish(b, side);
+  }
+  if (style === 'shorts' && trousers) {
+    // Loose trousers: a wide leg from the seat to below the knee joint (it bends with the shin's part), a soft fold
+    // down the front of each leg.
+    const T = trousers;
+    const g = b.grid({ cell: [1.1, 1, 1.12], origin: [LX - 2.2, 7.0, LZ - 2.8], mat: 'shorts', jitter: 0.05, ao: 0.22, seed: seedOf(side, 53) });
+    g.fill(0, 3, 0, 3, 0, 4, (i, j, k) => {
+      const r = hash3(i, j, k, 54);
+      if (k === 4 && i === 2 && j <= 2) return T.dark;
+      return r < 0.6 ? T.base : r < 0.85 ? T.dark : T.light;
+    });
     g.commit();
     return finish(b, side);
   }
@@ -152,8 +171,8 @@ export function buildThigh(side: Side, style: LegStyle = 'shorts'): VoxelBuilder
   return finish(b, side);
 }
 
-/** Knee, cream sock, boot shaft and cuff. Knee joint. */
-export function buildShin(side: Side, style: LegStyle = 'shorts'): VoxelBuilder {
+/** Knee, cream sock, boot shaft and cuff (or the trousers' or the sampot's leg over the boot). Knee joint. */
+export function buildShin(side: Side, style: LegStyle = 'shorts', trousers?: TrouserTones | null): VoxelBuilder {
   const b = new VoxelBuilder();
   const K = PALETTE.skin;
   const B = PALETTE.boot;
@@ -162,6 +181,19 @@ export function buildShin(side: Side, style: LegStyle = 'shorts'): VoxelBuilder 
     const g = b.grid({ cell: [1.05, 1, 1.07], origin: [LX - 2.1, 4.4, LZ - 2.65], mat: 'shorts', jitter: 0.05, ao: 0.22, seed: seedOf(side, 57) });
     g.fill(0, 3, 0, 2, 0, 4, (i, j, k) => (j === 0 ? T.dark : hash3(i, j, k, 8) < 0.6 ? T.base : T.light));
     g.commit();
+  } else if (trousers) {
+    // The loose leg down over the boot's top, the fold carried on, and a turned-up hem a little proud all round.
+    const T = trousers;
+    const g = b.grid({ cell: [1.05, 1, 1.07], origin: [LX - 2.1, 4.4, LZ - 2.65], mat: 'shorts', jitter: 0.05, ao: 0.22, seed: seedOf(side, 57) });
+    g.fill(0, 3, 0, 2, 0, 4, (i, j, k) => {
+      const r = hash3(i, j, k, 8);
+      if (k === 4 && i === 2 && j >= 1) return T.dark;
+      return r < 0.6 ? T.base : r < 0.85 ? T.dark : T.light;
+    });
+    g.commit();
+    const h = b.grid({ cell: [1.12, 0.62, 1.14], origin: [LX - 2.24, 4.24, LZ - 2.85], mat: 'shorts', jitter: 0.04, ao: 0.16, seed: seedOf(side, 63) });
+    h.fill(0, 3, 0, 0, 0, 4, (i, _j, k) => (hash3(i, 0, k, 64) < 0.7 ? T.hem : T.light));
+    h.commit();
   } else {
     const kg = b.grid({ cell: 1, origin: [LX - 1.5, 5.6, LZ - 1.5], mat: 'skin', jitter: 0.02, ao: 0.1, seed: seedOf(side, 57) });
     kg.fill(0, 2, 0, 1, 0, 2, (_i, j) => (j === 1 ? K.warm : K.base));

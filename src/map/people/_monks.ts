@@ -1,10 +1,12 @@
 import { eventsNow } from '../events';
+import { DAK, type AlmsMonk } from '../roam/_dakBatHooks';
 import type { MapFrame } from '../types';
-import { Actor } from './_actor';
+import { Actor, wrap } from './_actor';
 import { dress } from './_kinds';
 import { CARRY, POSE, type Look } from './_personModel';
 import { Route, ROAD_HALF, type Obstacle, type Point, type Traffic } from './_routes';
 import { BACK_OFF, GONE, isEvening, isMorning, STANDOFF, STANDOFF_LONG, type PeopleEnv, type PeopleScene } from './_scene';
+import { AlmsBowl, OpenBowl, Receiving } from './_sceneAlms';
 
 /**
  * The monks of Angkor Wat.
@@ -25,8 +27,16 @@ import { BACK_OFF, GONE, isEvening, isMorning, STANDOFF, STANDOFF_LONG, type Peo
  *   greets the explorer with a nod and a blessing. He goes in at dusk and comes out
  *   at dawn.
  *
+ * - **Dak bat**: in the morning, carrying their bowls up the road, they
+ *   take the explorer's rice (roam/_dakBat.ts, `DAK`, line `aw`): kneeling by
+ *   the road ahead of them, the first monk not past him yet steps over to
+ *   stand before him (the others wait), holds his bowl out and lifts its lid
+ *   (people/_sceneAlms.ts `Receiving`), the monks bless him, and he steps
+ *   back into the file.
+ *
  * Shots: `monks=<m>` puts the procession's leader that many metres below
- * the gate, walking up.
+ * the gate, walking up; with `dakbat=1` (and `at=` by the road, in the
+ * morning) they come up to him, about 7 m off.
  */
 
 /** Walking speed (m/s), the gap between monks (m), how many. */
@@ -46,6 +56,9 @@ const NOD_AT = 3.6;
 const NOD_EVERY = 45;
 /** The gate's glowing door (sanctuary.ts: the passage floor at 58, the door at z −169). */
 const DOOR: Point = { x: 0, y: 58, z: -170.4 };
+/** The procession's name in `DAK` (dak bat); a monk steps over to the explorer from this near (m). */
+const DAK_LINE = 'aw';
+const DAK_ASIDE = 9;
 
 interface Member {
   a: Actor;
@@ -56,6 +69,10 @@ interface Member {
   nodAt: number;
   /** Standing aside for the explorer. */
   hold: boolean;
+  /** His bowl, open for alms (dak bat), and his slot in `DAK`. */
+  ob: OpenBowl;
+  r: Receiving;
+  slot: AlmsMonk;
 }
 
 export class Monks implements PeopleScene {
@@ -75,6 +92,9 @@ export class Monks implements PeopleScene {
   private wet = false;
   private readonly sweeper: Sweeper;
   private readonly tmp: Point & { yaw?: number } = { x: 0, y: 0, z: 0 };
+  /** The explorer's offering (dak bat): which monk, its step and time (s), whether he stands aside before him; the ask answered last. */
+  private claim: { k: number; n: number; step: 'go' | 'settle' | 'open' | 'there' | 'close' | 'bless' | 'back'; t: number; aside: boolean } | null = null;
+  private taken = -1;
 
   constructor(private readonly env: PeopleEnv) {
     const { crowd, graph, ground } = env;
@@ -85,7 +105,8 @@ export class Monks implements PeopleScene {
       const seed = 101 + k;
       const looks: [Look, Look] = [dress('monk', seed, { carry: CARRY.bowl, young }), dress('monk', seed, { carry: CARRY.umbrella, young })];
       const a = new Actor(crowd, looks[0], ground).avoid(env.traffic, this.name);
-      this.members.push({ a, s: 0, lane: -0.9, looks, nodAt: -1e9, hold: false });
+      const ob = new OpenBowl(env.things, looks[0]);
+      this.members.push({ a, s: 0, lane: -0.9, looks, nodAt: -1e9, hold: false, ob, r: new Receiving(ob), slot: DAK.slot(DAK_LINE, k) });
       this.actors.push(a);
     }
     this.sweeper = new Sweeper(env, this.route, road.len);
@@ -105,6 +126,13 @@ export class Monks implements PeopleScene {
     // (so a page opens on them climbing the summit's long stair)
     let u = now + (L - 110) / SPEED;
     if (q !== null) u = (L - Math.max(0, Number(q) || 0)) / SPEED;
+    // (dak bat's check: the morning's file coming up to him by the road, about 7 m off once a shot's run-up is walked)
+    const pin = DAK.pin;
+    if (pin && morning) {
+      const sp = this.route.nearest(pin.x, pin.z);
+      const p = this.route.at(sp, 0, this.tmp);
+      if (Math.hypot(p.x - pin.x, p.z - pin.z) < 10) u = Math.max(0, sp - (this.env.shot ? 7 + 10.2 * SPEED : 9)) / SPEED;
+    }
     const cycle = morning ? walk + IN_TEMPLE : 2 * walk + IN_TEMPLE + IN_VILLAGE;
     u = ((u % cycle) + cycle) % cycle;
     if (u < walk) this.goOut(1, u * SPEED, morning);
@@ -117,7 +145,13 @@ export class Monks implements PeopleScene {
     this.mode = 'in';
     this.door = door;
     this.timer = wait;
-    for (const m of this.members) m.a.hide();
+    for (const m of this.members) {
+      m.r.stop(m.a);
+      m.a.hide();
+      m.slot.on = false;
+    }
+    if (this.claim && DAK.ask.line === DAK_LINE && DAK.ask.n === this.claim.n) DAK.ask.state = 'none';
+    this.claim = null;
   }
 
   /** Out of a door (dir 1: up from the village; −1: down from the temple), the leader at `s`. */
@@ -136,6 +170,8 @@ export class Monks implements PeopleScene {
   /** Bowls in the morning, else umbrellas (against the sun, or the rain). */
   private dressAll(): void {
     for (const m of this.members) {
+      // (one taking alms keeps his open bowl until it is put back)
+      if (m.r.busy) continue;
       const look = m.looks[this.morning && !this.wet ? 0 : 1];
       if (m.a.look !== look) {
         m.a.look = look;
@@ -158,6 +194,7 @@ export class Monks implements PeopleScene {
       this.dressAll();
     }
     if (this.mode === 'in') {
+      this.refuse();
       this.timer -= dt;
       // (no setting out with the evening coming: they stay in for the night)
       if (f.night > LIGHT || (isEvening(f.clock) && f.night > EVENING)) this.timer = Math.max(this.timer, 1);
@@ -178,10 +215,12 @@ export class Monks implements PeopleScene {
     this.stuck = choice.wait && !choice.explorer ? this.stuck + dt : 0;
     // (and for anyone left behind)
     const lag = this.members.some((m) => m.a.shown && m.a.behind > 2.5);
-    const waiting = ((choice.wait && this.stuck < (choice.onlyPeople ? STANDOFF : STANDOFF_LONG)) || lag) && lead.s > 0 && lead.s < L;
+    // (dak bat: a monk standing before the explorer, the file waits for him)
+    const alms = this.alms(dt, now, f);
+    const waiting = (((choice.wait && this.stuck < (choice.onlyPeople ? STANDOFF : STANDOFF_LONG)) || lag) && lead.s > 0 && lead.s < L) || alms;
     if (!waiting) lead.s += dir * SPEED * dt;
     // (an elephant coming down the road at them, and no way past: back off before it)
-    else if (choice.backOff) lead.s -= dir * BACK_OFF * dt;
+    else if (choice.backOff && !alms) lead.s -= dir * BACK_OFF * dt;
     lead.lane = ease(lead.lane, taper(choice.side, lead.s, L), dt, waiting || choice.obstacle);
     lead.hold = waiting && !!choice.explorer;
     for (let k = 1; k < FILE; k++) {
@@ -208,6 +247,7 @@ export class Monks implements PeopleScene {
       if (!passed) allIn = false;
       if (inside) {
         if (m.a.shown) m.a.hide();
+        m.slot.on = false;
         continue;
       }
       this.route.at(m.s, m.lane * dir, p);
@@ -217,14 +257,162 @@ export class Monks implements PeopleScene {
         m.a.pose(POSE.stand, now);
         m.a.carry(1, now);
       }
-      // (quick when stepping aside or backing off before an elephant)
-      m.a.goTo(p.x, p.z, m.hold || waiting ? 1.5 : SPEED * 1.4);
-      m.a.face(m.hold && ex ? m.a.yawTo(ex.x, ex.z) : null);
-      this.greet(m, now, f, ex, m.hold);
+      const c = this.claim;
+      if (c && c.aside && this.members[c.k] === m) {
+        // Standing before the explorer for his rice (dak bat): his bowl out, then back; heads bowed for the blessing.
+        const ask = DAK.ask;
+        m.a.goTo(ask.mx, ask.mz, 0.7);
+        m.a.face(ask.myaw);
+        m.a.lookAt(null);
+        m.a.tilt(c.step === 'bless' ? 0.38 : 0.3);
+        if (!m.r.busy) m.a.pose(POSE.stand, now);
+      } else {
+        // (quick when stepping aside or backing off before an elephant)
+        m.a.goTo(p.x, p.z, m.hold || waiting ? 1.5 : SPEED * 1.4);
+        m.a.face(m.hold && ex ? m.a.yawTo(ex.x, ex.z) : null);
+        if (c && c.step === 'bless') {
+          m.a.tilt(0.38);
+          m.a.lookAt(null);
+        } else this.greet(m, now, f, ex, m.hold);
+      }
       m.a.step(dt, now);
+      m.r.step(m.a, dt, now);
+      // (on the morning's walk with his bowl: roaming may offer him rice)
+      const sl = m.slot;
+      sl.on = this.morning && !this.wet && dir === 1;
+      sl.x = m.a.x;
+      sl.y = m.a.y;
+      sl.z = m.a.z;
+      sl.yaw = this.route.yawAt(clamp(m.s, 0, L), dir);
+      sl.t = f.t;
     }
     // (night falling on the road: they carry on to the door at the same pace)
     if (allIn) this.goIn(dir === 1 ? 'temple' : 'village', dir === 1 ? IN_TEMPLE : IN_VILLAGE);
+  }
+
+  /** Dak bat: no file out now (in the temple or the village): an ask to it is refused at once. */
+  private refuse(): void {
+    const ask = DAK.ask;
+    if (ask.line === DAK_LINE && ask.state === 'ask' && ask.n !== this.taken) {
+      this.taken = ask.n;
+      ask.state = 'none';
+    }
+  }
+
+  /**
+   * Dak bat (roam/_dakBat.ts): his ask taken (the first monk with his bowl not past him yet), the monk walks on
+   * with the file until near, steps over to stand before him (`DAK_STAND` off, facing him), holds his bowl out and
+   * lifts the lid; the rice in, the lid back, the blessing; then back into the file. True while he stands aside
+   * (the file waits for him).
+   */
+  private alms(dt: number, now: number, f: MapFrame): boolean {
+    const ask = DAK.ask;
+    const dir = this.dir;
+    if (ask.line === DAK_LINE && ask.state === 'ask' && ask.n !== this.taken) {
+      this.taken = ask.n;
+      let pick = -1;
+      if (this.morning && !this.wet && dir === 1)
+        for (let k = 0; k < FILE; k++) {
+          const m = this.members[k];
+          if (!m.a.shown) continue;
+          const yaw = this.route.yawAt(clamp(m.s, 0, this.route.len), dir);
+          if ((ask.x - m.a.x) * Math.sin(yaw) + (ask.z - m.a.z) * Math.cos(yaw) > 0.4) {
+            pick = k;
+            break;
+          }
+        }
+      if (pick < 0) ask.state = 'none';
+      else {
+        ask.k = pick;
+        ask.state = 'coming';
+        this.claim = { k: pick, n: ask.n, step: 'go', t: 0, aside: false };
+      }
+    }
+    // (a check, `dakbat=give|bless`: the leader stands before him at once, by the road)
+    if (ask.snap && ask.line === '' && ask.state !== 'none' && this.mode === 'out' && dir === 1 && this.morning) {
+      const sp = this.route.nearest(ask.mx, ask.mz);
+      const p = this.route.at(sp, 0, this.tmp);
+      if (Math.hypot(p.x - ask.mx, p.z - ask.mz) < 8) {
+        ask.snap = false;
+        ask.line = DAK_LINE;
+        ask.k = 0;
+        this.taken = ask.n;
+        const bless = ask.state === 'bless';
+        this.claim = { k: 0, n: ask.n, step: bless ? 'bless' : 'there', t: 0, aside: true };
+        this.members.forEach((m, k) => {
+          m.s = sp + 0.5 - k * GAP;
+          m.a.hide();
+        });
+        const m = this.members[0];
+        m.a.warp(ask.mx, this.env.ground.at(ask.mx, ask.mz, p.y), ask.mz, ask.myaw);
+        m.a.show();
+        m.a.carry(1, now);
+        m.ob.fill = 0.35;
+        if (!bless) m.r.open(m.a, now, true);
+        AlmsBowl.mouth(m.a, 1, this.tmp);
+        ask.bx = this.tmp.x;
+        ask.by = this.tmp.y;
+        ask.bz = this.tmp.z;
+      }
+    }
+    const c = this.claim;
+    if (!c) return false;
+    const m = this.members[c.k];
+    c.t += dt;
+    const gone = ask.n !== c.n || ask.state === 'none' || ask.state === 'done';
+    if (gone && c.step !== 'back') {
+      c.step = 'back';
+      c.t = 0;
+      m.r.close();
+    }
+    switch (c.step) {
+      case 'go':
+        // (with the file until near him, then over to him)
+        if (!c.aside && m.a.shown && m.a.dist(ask.mx, ask.mz) < DAK_ASIDE) c.aside = true;
+        if (c.aside && m.a.dist(ask.mx, ask.mz) < 0.12 && Math.abs(wrap(ask.myaw - m.a.yaw)) < 0.08 && m.a.speed < 0.02) {
+          c.step = 'settle';
+          c.t = 0;
+        }
+        break;
+      case 'settle':
+        if (c.t > 0.35) {
+          c.step = 'open';
+          m.r.open(m.a, now);
+        }
+        break;
+      case 'open':
+        if (m.r.phase === 'open') {
+          c.step = 'there';
+          AlmsBowl.mouth(m.a, 1, this.tmp);
+          ask.bx = this.tmp.x;
+          ask.by = this.tmp.y;
+          ask.bz = this.tmp.z;
+          ask.state = 'there';
+        }
+        break;
+      case 'there':
+        m.ob.fill = Math.min(1, 0.3 + 0.4 * ask.rice);
+        if (ask.state === 'given' || ask.state === 'bless') {
+          c.step = 'close';
+          m.r.close();
+        }
+        break;
+      case 'close':
+        if (!m.r.busy) c.step = 'bless';
+        break;
+      case 'bless':
+        break;
+      case 'back':
+        // (the bowl back, then into his place in the file, his head up)
+        if (!m.r.busy) c.aside = false;
+        if (!c.aside && (m.a.behind < 0.3 || c.t > 6)) {
+          this.claim = null;
+          for (const mm of this.members) mm.a.tilt(0);
+        }
+        break;
+    }
+    void f;
+    return c.aside;
   }
 
   /** A nod as the explorer passes; standing aside for him, a nod with a hand raised in blessing (never a sampeah: monks do not sampeah lay people). */

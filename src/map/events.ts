@@ -102,7 +102,7 @@ const DAY_SPAN = 0.4;
 const LOG = 96;
 
 /** A window: when it opens in its day (0‥1 of the clock, or of the daylight) and how long it stays open. */
-interface Slot {
+export interface Slot {
   name: TempleEvent;
   /** On the clock, or in the daylight. */
   kind: 'clock' | 'day';
@@ -114,7 +114,7 @@ interface Slot {
   lasting?: boolean;
 }
 
-const SLOTS: Slot[] = [
+export const SLOTS: readonly Slot[] = [
   { name: 'dawnChant', kind: 'clock', at: 0.71, jitter: 0.02, len: 0.1, lasting: true },
   { name: 'duskDrum', kind: 'clock', at: 0.217, jitter: 0.01, len: 0.04 },
   { name: 'noonBell', kind: 'day', at: 0.44, jitter: 0.02, len: 0.03 },
@@ -126,7 +126,7 @@ const SLOTS: Slot[] = [
 
 const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
 /** A still leaves the daylight events out (the overview stays as it is) unless one is asked for (`event=`) or all are (`events=1`). */
-const QUIET_DAY = params.get('shot') === '1' && params.get('events') !== '1';
+export const QUIET_DAY = params.get('shot') === '1' && params.get('events') !== '1';
 const FORCED = TEMPLE_EVENTS.includes(params.get('event') as TempleEvent) ? (params.get('event') as TempleEvent) : null;
 
 const record = <T>(v: T) => Object.fromEntries(TEMPLE_EVENTS.map((k) => [k, v])) as Record<TempleEvent, T>;
@@ -154,6 +154,21 @@ let heldPhase = Number.NaN;
 let heldLoops = 0;
 /** Seconds the clock has stood still. */
 let heldFor = 0;
+/**
+ * Where slot `i`'s window opens in its day (`SLOTS[i].kind`: on the clock, or in the daylight) on the map's day
+ * `day`, the daylight's loops held so far `loops` (the clock held in the day: its own loop, `HELD_DAY`): the rule
+ * `eventsNow` plays by, for the calendar of events (map/calendar.ts) to ask of any moment.
+ */
+export function slotOpensAt(i: number, day: number, loops = heldLoops): number {
+  const s = SLOTS[i];
+  return s.kind === 'clock' ? s.at + s.jitter * (hash3(day, i, 41) - 0.5) : s.at + s.jitter * hash3(day * 97 + loops, i, 43);
+}
+/** The daylight's loops so far while the clock was held in the day (the key of the daylight events' times: `slotOpensAt`). */
+export const heldLoopsNow = (): number => heldLoops;
+/** Where the animals' events happen, as their part found it at its build (fauna/land.ts: the elephants' bath, the monkeys' crossing), for the calendar's maps. */
+export const EVENT_SPOTS: Partial<Record<TempleEvent, { x: number; z: number }>> = {};
+/** Whether an animals' event still goes on after its window closed (the elephants bathe on for a while): set by their part at its build (fauna/land.ts). */
+export const EVENT_LIVE: Partial<Record<TempleEvent, () => boolean>> = {};
 /** Per slot: open last frame, and the page time it last fired. */
 const wasOpen = SLOTS.map(() => false);
 const firedAt = SLOTS.map(() => -1e9);
@@ -232,16 +247,15 @@ export function eventsNow(f: MapFrame): Readonly<EventState> {
   // (daylight events wait out a storm or a downpour)
   const calm = w.storm < 0.35 && w.rain < 0.8;
 
-  // ── The windows ──
-  const dayKey = f.day * 97 + heldLoops;
+  // ── The windows (`slotOpensAt`: the daylight's keyed by the day and the held loops) ──
   for (const name of TEMPLE_EVENTS) EVENTS.on[name] = false;
   SLOTS.forEach((s, i) => {
     let open = false;
     if (s.kind === 'clock') {
-      const at = s.at + s.jitter * (hash3(f.day, i, 41) - 0.5);
+      const at = slotOpensAt(i, f.day);
       open = inside(clock, at, s.len);
     } else if (!Number.isNaN(phase) && !switching && calm && !QUIET_DAY) {
-      const at = s.at + s.jitter * hash3(dayKey, i, 43);
+      const at = slotOpensAt(i, f.day);
       open = phase >= at && phase < at + s.len;
     }
     if (open) EVENTS.on[s.name] = true;

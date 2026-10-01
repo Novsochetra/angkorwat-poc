@@ -6,6 +6,7 @@ import type { SubjectKind } from '../types';
 import type { Journal } from './_book';
 import { BOOK_GROUPS, GROUP_NAME, KHMER_MONTHS, PASSPORT_GROUPS, SPECIES, SPECIES_BY_KIND, STAMPS, type BookGroup, type PassportGroup, type Species, type StampDef } from './_bookData';
 import { fishPlate } from './_fishPlate';
+import { offerName, passportName } from './_namePassport';
 import { inkFilters, lotusSvg, stampSvg } from './_stamps';
 
 /** The album's sections. */
@@ -13,7 +14,7 @@ export type AlbumTab = 'photos' | 'book' | 'passport';
 const TABS: readonly AlbumTab[] = ['photos', 'book', 'passport'];
 
 /** The passport's section headings (ui/lang.ts). */
-const PASSPORT_HEAD: Record<PassportGroup, WordKey> = { temples: 'bkTemples', jungle: 'bkSites', villages: 'jnVillages' };
+const PASSPORT_HEAD: Record<PassportGroup, WordKey> = { temples: 'bkTemples', jungle: 'bkSites', villages: 'jnVillages', moments: 'equiMoments' };
 
 export interface BookUi {
   /** Show a section (and, in the book, a page, or scrolled to a chapter; in the passport, to one of its sections: checks, `album=book:plants`, `album=passport:villages`). */
@@ -192,7 +193,8 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
         // (a fish he caught: when first, how many, the biggest; photos too if any)
         textContent: (rec.caught
           ? [t('fiFirstCaught', { date: dateText(rec.t) }) + (near ? ` · ${near}` : ''), t('fiCaughtMeta', { n: num(rec.caught), cm: num(rec.cm ?? 0) }), ...(rec.n ? [t('bkShots', { n: num(rec.n) })] : [])]
-          : [t('bkFirstSeen', { date: dateText(rec.t) }) + (near ? ` · ${near}` : ''), t('bkShots', { n: num(rec.n) })]
+          : // (seen through the binoculars, no photo yet: roam/_binoculars.ts)
+            [t('bkFirstSeen', { date: dateText(rec.t) }) + (near ? ` · ${near}` : ''), rec.n ? t('bkShots', { n: num(rec.n) }) : t('binoSeen')]
         ).join(' · '),
       }),
     );
@@ -229,6 +231,8 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
     passPane.replaceChildren();
     const intro = el('div', 'bk-intro bk-pass-intro');
     intro.append(Object.assign(el('h3', ''), { textContent: t('bkPassportTitle') }), Object.assign(el('p', ''), { textContent: t('bkPassportHint') }));
+    // (the holder's name, in Khmer letters: _namePassport.ts)
+    intro.append(passportName());
     passPane.append(intro);
     for (const group of PASSPORT_GROUPS) {
       const list = STAMPS.filter((s) => s.group === group);
@@ -271,6 +275,8 @@ export function attachBookUi(panel: HTMLElement, journal: Journal, closeAlbum: (
       if (kind !== undefined && !group) page = journal.book[kind as SubjectKind] ? (kind as SubjectKind) : null;
       if (!same) render();
       else fillTabs();
+      // (no name yet: the first time, the passport offers to write it, _namePassport.ts)
+      if (next === 'passport') offerName();
       const at = group ?? chapter;
       const head = at ? (group ? passPane : bookPane).querySelector<HTMLElement>(`[data-group="${at}"]`) : null;
       panel.scrollTop = head ? head.offsetTop - 8 : 0;

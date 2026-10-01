@@ -1,5 +1,6 @@
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { hash3 } from '../../voxel/random';
+import type { KramaLook, KramaTones } from '../clothes';
 import { PALETTE } from '../palette';
 import { JOINTS } from '../skeleton';
 
@@ -12,18 +13,37 @@ import { JOINTS } from '../skeleton';
  * swatch: wide red bands, narrow maroon bands and thin salmon threads, crossed
  * in both directions. Gold threads along the block edges come from the
  * material's edge tint.
+ *
+ * Another krama (the market's, clothes.ts `KramaLook`) is the same cloth in
+ * its own weave and tones; without one it is his own, block for block.
  */
-const K = PALETTE.krama;
+const K: KramaTones = PALETTE.krama;
 
 /** R = red band, D = narrow maroon band, L = salmon thread. */
 type Band = 'R' | 'D' | 'L';
 
-/** Colour where a warp band (along the cloth) crosses a weft band (across it). */
-export function plaid(warp: Band, weft: Band, n = 0.5): number {
-  if (warp === 'D' && weft === 'D') return K.darkest;
-  if (warp === 'D' || weft === 'D') return warp === 'L' || weft === 'L' ? K.lightDark : K.dark;
-  if (warp === 'L' || weft === 'L') return K.light;
-  return n < 0.3 ? K.red2 : n > 0.78 ? K.redLight : K.red;
+/** Colour where a warp band (along the cloth) crosses a weft band (across it), in the tones `k` (his own by default). */
+export function plaid(warp: Band, weft: Band, n = 0.5, k: KramaTones = K): number {
+  if (warp === 'D' && weft === 'D') return k.darkest;
+  if (warp === 'D' || weft === 'D') return warp === 'L' || weft === 'L' ? k.lightDark : k.dark;
+  if (warp === 'L' || weft === 'L') return k.light;
+  return n < 0.3 ? k.red2 : n > 0.78 ? k.redLight : k.red;
+}
+
+/**
+ * A cell of the cloth for a krama `look` (none: his own `plaid`): `u` its
+ * place along the cloth's run, `v` across it (a check is woven by them, a
+ * plaid by its bands).
+ */
+function cellOf(look: KramaLook | undefined, warp: Band, weft: Band, n: number, u: number, v: number): number {
+  if (!look) return plaid(warp, weft, n);
+  const k = look.tones;
+  if (look.weave === 'plaid') return plaid(warp, weft, n, k);
+  // (gingham: the colour where two coloured bands cross, white where two white ones do, the tint between)
+  const a = (u & 1) === 0;
+  const b = (v & 1) === 0;
+  if (a && b) return n < 0.3 ? k.red2 : n > 0.78 ? k.redLight : k.red;
+  return a || b ? k.dark : k.light;
 }
 
 /** Relative width of each band type. */
@@ -61,10 +81,12 @@ interface Wrap {
   /** skip side cells nearer the back than this (0 = back, 1 = front) */
   minT?: number;
   seed: number;
+  /** Its row in the collar, from the top (a check's rows). */
+  row: number;
 }
 
-/** One wrap of the collar: front row, both sides and the back row. */
-function wrapCells(b: VoxelBuilder, w: Wrap): void {
+/** One wrap of the collar: front row, both sides and the back row (in a krama `look`'s cloth: none, his own). */
+function wrapCells(b: VoxelBuilder, w: Wrap, look?: KramaLook): void {
   const { hx, z0, z1, d } = w;
   let n = 0;
   const put = (x: number, z: number, sx: number, sz: number, band: Band, frontRow: boolean) => {
@@ -74,7 +96,7 @@ function wrapCells(b: VoxelBuilder, w: Wrap): void {
     const r = hash3(n, w.y * 10, 3, w.seed);
     const wob = (hash3(n, 1, 1, w.seed) - 0.5) * 0.12;
     const tilt = (hash3(n, 2, 2, w.seed) - 0.5) * 0.1;
-    b.box(x, w.y + w.h / 2 - dip, z, sx * 1.01, w.h, sz * 1.01, plaid(band, w.weft, r), 'krama', {
+    b.box(x, w.y + w.h / 2 - dip, z, sx * 1.01, w.h, sz * 1.01, cellOf(look, band, w.weft, r, n, w.row), 'krama', {
       rz: frontRow ? wob : 0,
       rx: frontRow ? tilt : 0,
       ry: frontRow ? 0 : wob * 0.6,
@@ -95,24 +117,24 @@ function wrapCells(b: VoxelBuilder, w: Wrap): void {
   for (const c of bands(hx * 2, backSeq)) put(-hx + c.at, z0 + d / 2, c.w, d, c.band, false);
 }
 
-/** Collar wrapped around the neck. Chest joint. */
-export function buildScarfCollar(): VoxelBuilder {
+/** Collar wrapped around the neck (a krama `look`: the market's; none, his own). Chest joint. */
+export function buildScarfCollar(look?: KramaLook): VoxelBuilder {
   const b = new VoxelBuilder();
   // Upper wrap hugs the neck under the chin (mostly shaded by the head).
   wrapCells(b, {
     y: 19.5, h: 1.0, hx: 3.45, z0: -3.0, z1: 3.2, d: 1.0, drop: 0.1, sag: 0,
-    weft: 'R', front: ['R', 'D', 'R', 'R', 'L', 'R', 'D', 'R'], seed: 71,
-  });
+    weft: 'R', front: ['R', 'D', 'R', 'R', 'L', 'R', 'D', 'R'], seed: 71, row: 0,
+  }, look);
   // Lower drape: wider over the shoulders, two rows deep across the front.
   const front: Band[] = ['R', 'R', 'D', 'R', 'L', 'R', 'R', 'D', 'R', 'R'];
   wrapCells(b, {
     y: 18.55, h: 1.0, hx: 4.3, z0: -3.5, z1: 3.85, d: 1.0, drop: 0.15, sag: 0.12,
-    weft: 'R', front, seed: 72,
-  });
+    weft: 'R', front, seed: 72, row: 1,
+  }, look);
   wrapCells(b, {
     y: 17.55, h: 1.0, hx: 4.2, z0: -3.4, z1: 3.8, d: 1.0, drop: 0.15, sag: 0.16,
-    weft: 'R', front: front.map((c, i) => (i === 5 ? 'L' : c)), minT: 0.3, seed: 73,
-  });
+    weft: 'R', front: front.map((c, i) => (i === 5 ? 'L' : c)), minT: 0.3, seed: 73, row: 2,
+  }, look);
   return b;
 }
 
@@ -143,8 +165,8 @@ const TAIL_ROWS: { h: number; band: Band; seg: 1 | 2 | 3 }[] = [
   { h: 0.75, band: 'R', seg: 3 },
 ];
 
-/** Tail segments, top to bottom. Each lives on its own swinging joint. */
-export function buildScarfTail(segment: 1 | 2 | 3): VoxelBuilder {
+/** Tail segments, top to bottom (a krama `look`: the market's; none, his own). Each lives on its own swinging joint. */
+export function buildScarfTail(segment: 1 | 2 | 3, look?: KramaLook): VoxelBuilder {
   const b = new VoxelBuilder();
   const [cx, top, z] = JOINTS.scarf1.pivot;
   let y = top;
@@ -162,7 +184,7 @@ export function buildScarfTail(segment: 1 | 2 | 3): VoxelBuilder {
       // Salmon threads stand slightly proud, the narrow maroon band sits back.
       const depth = row.band === 'L' ? 0.58 : thread ? 0.46 : 0.52;
       const wob = (hash3(u, v, 5, 74) - 0.5) * 0.06;
-      b.box(x + col.w / 2, (y + y1) / 2, z, col.w * 1.01, row.h * 1.01, depth, plaid(warp, row.band, r), 'krama', { rz: wob });
+      b.box(x + col.w / 2, (y + y1) / 2, z, col.w * 1.01, row.h * 1.01, depth, cellOf(look, warp, row.band, r, u, v), 'krama', { rz: wob });
       x += col.w;
     });
   });
@@ -171,7 +193,8 @@ export function buildScarfTail(segment: 1 | 2 | 3): VoxelBuilder {
     for (let t = 0; t < 5; t++) {
       const len = (t % 2 ? 0.78 : 1.0) + hash3(t, 9, 9, 75) * 0.18;
       const tx = cx - TAIL_WIDTH / 2 + 0.2 + t * ((TAIL_WIDTH - 0.4) / 4);
-      b.box(tx, lowest - len / 2 + 0.05, z, 0.26, len, 0.3, t % 2 ? K.fringe : K.fringeDark, 'krama', {
+      const f = look?.tones ?? K;
+      b.box(tx, lowest - len / 2 + 0.05, z, 0.26, len, 0.3, t % 2 ? f.fringe : f.fringeDark, 'krama', {
         rz: (hash3(t, 1, 1, 75) - 0.5) * 0.14,
       });
     }

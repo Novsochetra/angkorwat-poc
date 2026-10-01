@@ -210,8 +210,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`veg/undergrowth.ts`) and jungle animals (`fauna/jungle.ts`,
   `fauna=jungle` lines them up).
 - Festivals (`src/map/festival/`, when `festival/_schedule.ts` says, or
-  `fest=water|newyear`): the Water Festival with Khmer ngo racing boats
-  (never dragon boats), and Khmer New Year.
+  `fest=water|newyear|pchumben|visak`): the Water Festival with Khmer ngo racing
+  boats (never dragon boats), Khmer New Year, and Pchum Ben and Visak Bochea at the
+  village pagoda. A shot with none of `fest=`, `season=`, `day=` shows no festival.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
   hidden gold figures are in `src/map/treasure/`.
@@ -255,6 +256,45 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
   `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
   `act=eat|bite|drink&food=<kind>`.
+
+## Things to do while roaming (add-ons)
+
+The ideas picked from `docs/ideas.md` (October 2026) are roaming add-ons: the
+contract is `src/map/roam/_addons.ts`, one loader line each in
+`roam/_addonList.ts` (they load after Start in chunks of their own; shots and
+`roam=` pages load them first; nothing else may import an add-on's module). The
+guide, with every add-on's keys and URL values for shots, is
+`docs/map-work/addons.md`: read its section before changing one.
+
+- Shared with them: saved progress `src/map/progress.ts` (`angkor-map-progress-v1`;
+  shots and `progress=0` save nothing), riel (`purse.earn` / `pay`), the map's
+  time `src/map/time.ts` (`TIME.skipTo`: "Wait for it", sleeping), the calendar
+  of events `src/map/calendar.ts` (whatever happens at a time registers there
+  with the rule it plays by), their sounds `audio/addonSfx.ts`, keys 7
+  binoculars, 8 umbrella, 9 calendar, 0 call the dog.
+- The calendar (9, the button under the mini-map): now, today, festivals ahead
+  with their real-life dates (the Khmer lunar calendar: `roam/_calendarKhmer.ts`),
+  "Wait for it", a toast as each begins, gold marks on the maps (`calendar=1`).
+- Ways to move: bicycles (`bike=ride`), the ox cart (`cartride=1`), the water
+  buffaloes (`buffalo=ride`), the jungle zip line (`zip=<n>:<0‥1>`), the sugar
+  palm ladder (`palm=top`).
+- Village life: hammocks (`hammock=1`), dak bat at dawn (`dakbat=1`), a monk's
+  blessing and the red string in the village pagoda (`bless=1`, `redstring=1`),
+  a lotus picked from the boat and offered at a shrine (`lotus=pick|offer`),
+  monkeys stealing his snack (`monkey=steal`).
+- Fun: his own kite (`kite=fly`), helping the farmers (`farm=plant|reap`), the
+  Water Festival boat race (`fest=water&race=join`), kick the sey (`sey=1`).
+- A friend and a home: the dog (`dog=follow`), his stilt house at the
+  sugar-palm village's north-east edge (`home=1|sleep`), his name in Khmer
+  letters (`name=<latin>`; `src/map/khmerName.ts`).
+- Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
+  posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
+  `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).
+- Rare moments: the equinox sunrise over Angkor Wat's central tower
+  (`equinox=1`); the dawn sun's rising point swings with the season
+  (`sky/_equinox.ts`).
+- Shaders of people and animals stay quick to compile on slow drivers: tables
+  and one call site, never chains of `if` (commit b250279).
 
 ## Free camera and wallpapers (dev server only)
 

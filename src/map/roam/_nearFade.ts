@@ -27,6 +27,8 @@ const EASE = 4;
 
 /** Shared by every faded material: his point (world) and how strongly the tube clears (0‥1). */
 const uniforms = { uNearFocus: { value: new Vector3() }, uNearFade: { value: 0 } };
+/** The tube and its point and strength now, for what is not a lit material (the festival's candle halos: festival/_pagodaLine.ts). */
+export const NEAR_FADE = { tube: TUBE, uniforms } as const;
 
 const f = (v: number) => v.toFixed(2);
 const PARS = /* glsl */ `

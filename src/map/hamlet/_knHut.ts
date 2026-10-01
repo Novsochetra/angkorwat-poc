@@ -49,7 +49,8 @@ export const HAMMOCK_HANG = 1.3;
 export const HAMMOCK_SAG = 0.62;
 /** Huts (in `KulenSite.huts` order) where a family hangs a hammock (the people part's), and one hanging empty. */
 export const HAMMOCK_HUTS = [1, 2];
-const HAMMOCK_EMPTY = 3;
+/** (the empty one is the explorer's to lie in: roam/_hammock.ts) */
+export const HAMMOCK_EMPTY = 3;
 /** Huts with a lantern under the ridge. */
 const LANTERN_HUTS = [0, 1, 2, 4];
 

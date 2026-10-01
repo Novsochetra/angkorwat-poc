@@ -1,5 +1,6 @@
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { hash3 } from '../../voxel/random';
+import type { HatTones } from '../clothes';
 import { PALETTE } from '../palette';
 
 /**
@@ -20,15 +21,17 @@ export const HAT_CLIP_Y = 29.6;
  * streaks), stitch rings go round the brim and the top. Never the pointed
  * conical hat: that one is Vietnamese.
  */
-export function buildHat(): VoxelBuilder {
+export function buildHat(band?: HatTones | null): VoxelBuilder {
   const b = new VoxelBuilder();
   const H = PALETTE.hat;
+  // (the cloth band and binding: his own red, or the market hat's: clothes.ts)
+  const cl = band ?? H;
   const zc = -0.9;
   /** The leaf strip a direction falls in, and its straw tone (the same strips run over brim, crown and top). */
   const STRIPS = 20;
   const strip = (x: number, z: number) => Math.floor(((Math.atan2(z, x) + Math.PI) / (2 * Math.PI)) * STRIPS) % STRIPS;
   const leaf = (n: number) => (hash3(n, 0, 0, 151) < 0.2 ? H.shade : n % 2 ? H.light : H.base);
-  const cloth = (i: number, j: number, k: number) => (hash3(i, j, k, 114) < 0.7 ? H.red : H.redDark);
+  const cloth = (i: number, j: number, k: number) => (hash3(i, j, k, 114) < 0.7 ? cl.red : cl.redDark);
 
   // Brim: a disc of cells in three rings, each a step lower toward the
   // edge (the droop); the outermost cells (any of the eight around them

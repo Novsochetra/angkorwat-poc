@@ -461,14 +461,16 @@ export type Motif =
   | 'palmSugar'
   | 'falls'
   | 'reclining'
-  | 'hamlet';
+  | 'hamlet'
+  // (a rare moment: the sun rising over Angkor Wat's central tower at an equinox)
+  | 'equinox';
 
 /** The stamp's outline. */
 export type Frame = 'round' | 'octagon' | 'cut' | 'rounded' | 'arch' | 'oval' | 'lotus';
 
-/** The passport's sections, in order: the six temples, the jungle's hidden places, the villages and holy places. */
-export type PassportGroup = 'temples' | 'jungle' | 'villages';
-export const PASSPORT_GROUPS: readonly PassportGroup[] = ['temples', 'jungle', 'villages'];
+/** The passport's sections, in order: the six temples, the jungle's hidden places, the villages and holy places, the rare moments (given by what they mark: `Journal.award`). */
+export type PassportGroup = 'temples' | 'jungle' | 'villages' | 'moments';
+export const PASSPORT_GROUPS: readonly PassportGroup[] = ['temples', 'jungle', 'villages', 'moments'];
 
 export interface StampDef {
   /** A place's id, a jungle site's, or a village's (layout.ts `HAMLETS`). */
@@ -584,6 +586,9 @@ export const STAMPS: readonly StampDef[] = [
   },
   // The little hamlet behind Angkor Wat by the lotus pond (hamlet/_backHamlet.ts).
   { id: 'back-hamlet', group: 'villages', name: { km: 'ភូមិក្រោយអង្គរវត្ត', en: 'The hamlet behind Angkor Wat' }, motif: 'hamlet', frame: 'octagon', ink: INK.teal, x: BACK_HAMLET.x, z: BACK_HAMLET.z, reach: BACK_HAMLET.r - 4 },
+  // The equinox sunrise over Angkor Wat's central tower, photographed from the causeway in front of it (roam/_equinox.ts
+  // gives it: `Journal.award`). Never for walking near (its reach −∞), and no photo or page is named after it.
+  { id: 'equinox', group: 'moments', name: { km: 'ព្រះអាទិត្យរះចំកំពូល', en: 'Equinox sunrise' }, motif: 'equinox', frame: 'lotus', ink: INK.ochre, x: 0, z: -163, reach: -Infinity },
 ];
 
 export const STAMP_BY_ID = new Map(STAMPS.map((s) => [s.id, s]));

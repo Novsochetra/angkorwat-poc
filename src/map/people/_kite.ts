@@ -87,6 +87,36 @@ export interface KiteWind {
   k: number;
 }
 
+/**
+ * The kite season: the steady north wind aloft from after the Water Festival to the end of March (`season`,
+ * 0 = mid-April), when the families fly their khleng ek (the grandfather's weeks, _sceneKites.ts `EAST`).
+ */
+export const KITE_SEASON: readonly [number, number] = [0.6, 0.97];
+
+/** How much of the season's wind aloft blows at `season` (0 none, the wet months … 1 the kite season), eased in over the weeks before it and out after. */
+export function seasonBreeze(season: number): number {
+  const s = ((season % 1) + 1) % 1;
+  const ease = (v: number) => {
+    const c = Math.min(1, Math.max(0, v));
+    return c * c * (3 - 2 * c);
+  };
+  return ease((s - (KITE_SEASON[0] - 0.03)) / 0.03) * (1 - ease((s - KITE_SEASON[1]) / 0.03));
+}
+
+/**
+ * Between the kite flyers (_sceneKites.ts) and the explorer's own kite (roam/_kiteFly.ts): plain values, no
+ * three.js objects (as greet.ts).
+ * - `giver`: the grandfather on the east field with his khleng ek (the scene writes it each step it runs): out
+ *   there flying (`out`), where he stands (m).
+ * - `gift`: the explorer asked him for a kite. Roaming writes `n` (one more each time he asks), `t` (seconds
+ *   since he asked; −1: none now) and where he stands and faces; the scene answers: the grandfather looks at
+ *   him and says so, his son comes up and holds a small kite out to him (`giving`, his hands at `hx, hy, hz`).
+ */
+export const KITE_HOOK = {
+  giver: { out: false, x: 0, y: 0, z: 0 },
+  gift: { n: 0, t: -1, x: 0, y: 0, z: 0, yaw: 0, giving: false, hx: 0, hy: 0, hz: 0 },
+};
+
 const A = new Vector3();
 const B = new Vector3();
 const SPINE = new Vector3();
@@ -118,6 +148,8 @@ export class Kite {
     readonly look: KiteLook,
     /** 0‥1: its own rhythm. */
     readonly seed: number,
+    /** `line: false`: no line of boxes (the explorer's own kite draws its line itself: roam/_kiteSky.ts). */
+    opts: { line?: boolean } = {},
   ) {
     const { def, ribbon, paper, roots } = look.kind === 'ek' ? ekDef(look) : kandaungDef(look);
     this.rig = new Rig(things, def);
@@ -125,8 +157,8 @@ export class Kite {
     this.paper = paper;
     this.roots = roots;
     this.r = look.size * (look.kind === 'ek' ? 0.61 : 0.5);
-    this.line = things.alloc(LINE_SEGS);
-    for (let s = 0; s < LINE_SEGS; s++) things.paint(this.line + s, look.lineColor ?? 0xeee8d8);
+    this.line = opts.line === false ? -1 : things.alloc(LINE_SEGS);
+    if (this.line >= 0) for (let s = 0; s < LINE_SEGS; s++) things.paint(this.line + s, look.lineColor ?? 0xeee8d8);
     const nt = look.tails ? roots.length * TAIL_SEGS : 0;
     this.tail = nt ? things.alloc(nt) : -1;
     for (let s = 0; s < nt; s++) things.paint(this.tail + s, look.tail ?? 0xd8c890);
@@ -163,6 +195,41 @@ export class Kite {
       roll += 0.7 * sw * this.dartSide;
     }
     e = 0.14 + (e - 0.14) * o;
+    this.put(ax, ay, az, w, L, e, side, roll * o, o, live, now);
+  }
+
+  /**
+   * Fly it where the caller says (the explorer's own kite, roam/_kiteSky.ts): `L` m of line from the anchor at
+   * `e` over the level (radians), turned `side` from downwind about the vertical (+ to the flyer's left as he
+   * faces it), rolled `roll`; `out` as `fly`'s (0 low, being launched or brought in … 1 up), `now` (s).
+   */
+  flyAt(ax: number, ay: number, az: number, w: KiteWind, L: number, e: number, side: number, roll: number, out: number, now: number): void {
+    const live = this.look.kind === 'kandaung' ? 1 : this.look.size < 2.4 ? 0.65 : 0.35;
+    this.put(ax, ay, az, w, L, e, side, roll, out * out * (3 - 2 * out), live, now);
+  }
+
+  /**
+   * In a hand, or hung up by its head (the explorer's, the market's): the knot at (x, y, z), its face turned
+   * to `yaw`, tipped `pitch` (front down) and rolled; `scale` of its size; the tails hang `tails` m, swaying
+   * `sway` of a flight's wave; the ek's ribbon still.
+   */
+  hold(x: number, y: number, z: number, yaw: number, pitch: number, roll: number, now: number, tails: number, sway = 0.3, scale = 1): void {
+    const rig = this.rig;
+    rig.place(x, y, z, yaw, pitch, roll, (this.look.size / 2) * scale);
+    if (this.ribbon > 0) rig.turn(this.ribbon, 0);
+    rig.write();
+    this.knot.set(x, y, z);
+    rig.point(MID[0], MID[1], MID[2], this.mid);
+    if (this.line >= 0) this.things.hide(this.line, LINE_SEGS);
+    if (this.tail >= 0) this.tails(0, 0, 0, now + this.seed * 97, tails * scale, sway);
+    this.shown = true;
+  }
+
+  /** On its line: the knot `L` m from the anchor at `e` and `side`, its face down the line, the ribbon, its line of boxes (if any), the tails. */
+  private put(ax: number, ay: number, az: number, w: KiteWind, L: number, e: number, side: number, roll: number, o: number, live: number, now: number): void {
+    const look = this.look;
+    const k = w.k;
+    const t = now + this.seed * 97;
     const cs = Math.cos(side);
     const ss = Math.sin(side);
     // (downwind, turned `side` about the vertical)
@@ -176,44 +243,45 @@ export class Kite {
     const pitch = e + (0.16 - 0.08 * k) * o + 0.03 * Math.sin(t * 0.9 + 2);
     const S = look.size / 2;
     const rig = this.rig;
-    rig.place(kn.x, kn.y, kn.z, yaw, pitch, roll * o, S);
+    rig.place(kn.x, kn.y, kn.z, yaw, pitch, roll, S);
     // The ek's rattan ribbon: a fast shimmer (a twist about its length), livelier in a strong wind.
     if (this.ribbon > 0) rig.turn(this.ribbon, (0.25 + 0.5 * k) * Math.sin(now * 71 + this.seed * 13) * Math.min(1, o * 3));
     rig.write();
     rig.point(MID[0], MID[1], MID[2], this.mid);
     // The line from the hand, sagging (less in a strong wind).
-    const th = this.things;
-    const sag = L * (0.075 - 0.04 * k);
-    let px = ax;
-    let py = ay;
-    let pz = az;
-    for (let s = 1; s <= LINE_SEGS; s++) {
-      const u = s / LINE_SEGS;
-      const qx = ax + (kn.x - ax) * u;
-      const qy = ay + (kn.y - ay) * u - sag * 4 * u * (1 - u);
-      const qz = az + (kn.z - az) * u;
-      th.segment(this.line + s - 1, px, py, pz, qx, qy, qz, small ? 0.02 : 0.028);
-      px = qx;
-      py = qy;
-      pz = qz;
+    if (this.line >= 0) {
+      const th = this.things;
+      const sag = L * (0.075 - 0.04 * k);
+      let px = ax;
+      let py = ay;
+      let pz = az;
+      for (let s = 1; s <= LINE_SEGS; s++) {
+        const u = s / LINE_SEGS;
+        const qx = ax + (kn.x - ax) * u;
+        const qy = ay + (kn.y - ay) * u - sag * 4 * u * (1 - u);
+        const qz = az + (kn.z - az) * u;
+        th.segment(this.line + s - 1, px, py, pz, qx, qy, qz, look.kind === 'kandaung' ? 0.02 : 0.028);
+        px = qx;
+        py = qy;
+        pz = qz;
+      }
     }
-    if (this.tail >= 0) this.tails(dx, dz, k, t, o);
+    if (this.tail >= 0) this.tails(dx, dz, k, t, (look.tails ?? 0) * (0.35 + 0.65 * o));
     this.shown = true;
   }
 
   /**
    * The two tails of palm leaf from the duck's foot: down the spine at first,
    * then drooping and trailing downwind, a slow wave running along each (the
-   * two out of step), a flutter across.
+   * two out of step), a flutter across. `len`: each tail's length now (m); `sway`: of the flight's wave.
    */
-  private tails(dx: number, dz: number, k: number, t: number, o: number): void {
+  private tails(dx: number, dz: number, k: number, t: number, len: number, sway = 1): void {
     const rig = this.rig;
     // (the kite's axes on the map, from three of its points)
     rig.point(0, 0, 0, A);
     SPINE.copy(rig.point(0, 1, 0, B)).sub(A).normalize();
     ACROSS.copy(rig.point(1, 0, 0, B)).sub(A).normalize();
     FACE.copy(rig.point(0, 0, 1, B)).sub(A).normalize();
-    const len = (this.look.tails ?? 0) * (0.35 + 0.65 * o);
     const seg = len / TAIL_SEGS;
     const droop = 1.2 - 0.6 * k;
     const wide = 0.06 * Math.max(1, this.look.size * 0.4);
@@ -226,8 +294,8 @@ export class Kite {
       const splay = (j === 0 ? -1 : 1) * 0.12;
       for (let i = 0; i < TAIL_SEGS; i++) {
         const u = (i + 0.5) / TAIL_SEGS;
-        const wave = (0.45 + 0.35 * k) * u * Math.sin(t * 1.9 - i * 1.1 + ph);
-        const flutter = 0.18 * u * Math.sin(t * 3.3 - i * 0.9 + ph * 1.7);
+        const wave = (0.45 + 0.35 * k) * sway * u * Math.sin(t * 1.9 - i * 1.1 + ph);
+        const flutter = 0.18 * sway * u * Math.sin(t * 3.3 - i * 0.9 + ph * 1.7);
         D.copy(SPINE).multiplyScalar(-(1 - 0.6 * u));
         D.y -= (0.25 + 0.5 * u) * droop;
         D.x += dx * (0.35 + 0.45 * u);
@@ -254,7 +322,7 @@ export class Kite {
     if (!this.shown && !this.rig.shown) return;
     this.shown = false;
     this.rig.hide();
-    this.things.hide(this.line, LINE_SEGS);
+    if (this.line >= 0) this.things.hide(this.line, LINE_SEGS);
     if (this.tail >= 0) this.things.hide(this.tail, this.roots.length * TAIL_SEGS);
   }
 }

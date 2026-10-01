@@ -35,7 +35,7 @@ const PULL_C = new Vector3(0, 5.3, 4.6);
 /** Held up overhead (going over a fall). */
 const BRACE_C = new Vector3(0, 10.4, 3.4);
 /** Laid across the lap, the hands off it (BU, chest space: on his thighs). */
-const LAP_C = new Vector3(0, -1.2, 6.2);
+export const LAP_C = new Vector3(0, -1.2, 6.2);
 /** How far the shaft shifts towards the side that pulls (BU). */
 const SHIFT = 1.7;
 /** Half the distance between the hands on the shaft (BU): the leather wraps. */

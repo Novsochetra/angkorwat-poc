@@ -1,6 +1,7 @@
 import { hash3 } from '../../voxel/random';
 import { len2 } from '../fauna/_len';
-import { poleOut } from '../hamlet/_psPalms';
+import { PALM_CLIMB, poleOut } from '../hamlet/_psPalms';
+import { hammockTaken } from '../roam/_hammockSpots';
 import {
   BUY,
   DOOR,
@@ -40,6 +41,7 @@ import type { Obstacle, Point, Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
 import { PsYardAnimals } from './_scenePalmSugarYard';
 import { psRoute } from './_scenePalmSugarWays';
+import { PsClimb } from './_scenePalmSugarClimb';
 
 /**
  * The palm sugar family in their yard (layout.ts `PALM_GROVE`; the shed, the
@@ -166,6 +168,8 @@ export class PalmSugarFamily implements PeopleScene {
   private readonly family: Member[];
   private readonly everyone: Member[];
   private readonly animals: PsYardAnimals;
+  /** The explorer up the yard's ladders: the cook takes his tube, the tapper waits and calls, the child watches (_scenePalmSugarClimb.ts). */
+  private readonly climb: PsClimb;
   private shown = false;
   private started = false;
   private working = false;
@@ -233,6 +237,7 @@ export class PalmSugarFamily implements PeopleScene {
     this.everyone = [this.tapper, ...this.family];
     this.animals = new PsYardAnimals(ground);
     this.object = this.animals.object;
+    this.climb = new PsClimb(env, (a, path) => this.way(a, path), (x, z) => this.pt(x, z));
     // `tap=<s>` or `tap=<round>:<s>` (a still: the tapper that far into his round).
     const tap = env.params.get('tap');
     if (tap !== null) {
@@ -267,7 +272,13 @@ export class PalmSugarFamily implements PeopleScene {
     // (back in view after a while away: everyone who is out shows again)
     if (!this.shown) for (const m of this.everyone) if (!m.home && now >= m.outAt) m.a.show();
     this.shown = true;
+    this.climb.begin(f);
     this.tap(this.tapper, dt, now, f, ex);
+    // (the explorer up the yard's ladders: the palm that is the tapper's now, his calls across to him)
+    const tp = this.tapper;
+    const tpUp = this.isUp(tp);
+    this.climb.tapper(!tp.home && (tpUp || tp.job === 'waitEx' || (tp.job === 'walk' && tp.leg >= tp.path.length - 1)) ? ROUNDS[tp.round].palms[tp.pk] : null, tpUp);
+    this.climb.calls(tp.a, tpUp || tp.job === 'waitEx', now);
     this.cook(this.wife, dt, now);
     this.pour(this.granny, dt, now, ex);
     this.stoke(this.grandpa, dt, now, f);
@@ -464,7 +475,7 @@ export class PalmSugarFamily implements PeopleScene {
       if (t.home) return;
     }
     // A storm coming: nobody climbs a palm in the wind and lightning; back under the roof to wait it out.
-    if (t.job === 'walk' && f.weather.storm > STORM) {
+    if ((t.job === 'walk' || t.job === 'waitEx') && f.weather.storm > STORM) {
       this.dressAs(t, t.looks.bare);
       this.toSeat(t, t.pk > 0);
     }
@@ -474,7 +485,13 @@ export class PalmSugarFamily implements PeopleScene {
       case 'home':
       case 'toSeat': {
         if (this.walk(t, t.job === 'home' ? WALK * 1.05 : WALK, now)) {
-          if (t.job === 'walk') {
+          if (t.job === 'walk' && this.climb.blocks(p.id, a.x, a.z, ex)) {
+            // The explorer is up this palm (or in the way at its foot): he waits a few steps off (_scenePalmSugarClimb.ts).
+            t.job = 'waitEx';
+            t.since = now;
+            t.path = this.way(a, [this.climb.waitSpot(p.x, p.z, p.lx, p.lz)]);
+            t.leg = 0;
+          } else if (t.job === 'walk') {
             // At the ladder's foot: onto the ladder.
             t.job = 'up';
             t.since = now;
@@ -499,6 +516,23 @@ export class PalmSugarFamily implements PeopleScene {
         if (!t.home) {
           a.lookAt(null);
           a.step(dt, now);
+        }
+        return;
+      }
+      case 'waitEx': {
+        // Waiting for the explorer to be off his palm, looking up at him; then back to its foot and up.
+        const there = this.walk(t, WALK, now);
+        const d = poleOut(p, 0) + this.climbOut + 0.08;
+        const fx = p.x + p.lx * d;
+        const fz = p.z + p.lz * d;
+        a.pose(POSE.stand, now);
+        a.carry(1, now);
+        a.lookAt(there && PALM_CLIMB.palm === p.id ? this.climb.exHead() : null, now + 0.5);
+        a.step(dt, now);
+        if (there && now - t.since > 1.5 && !this.climb.blocks(p.id, fx, fz, ex)) {
+          t.job = 'walk';
+          t.path = this.way(a, [this.pt(fx, fz)]);
+          t.leg = 0;
         }
         return;
       }
@@ -770,9 +804,15 @@ export class PalmSugarFamily implements PeopleScene {
   /** The yard palm father is climbing (or about to), if near: the child goes to watch (its index in the plan's palms). */
   private watchPalm(): number {
     const t = this.tapper;
-    if (t.home || (!this.isUp(t) && !(t.job === 'walk' && t.leg >= t.path.length - 1))) return -1;
+    if (t.home || (!this.isUp(t) && !(t.job === 'walk' && t.leg >= t.path.length - 1))) return this.exPalm();
     const id = ROUNDS[t.round].palms[t.pk];
-    return id.startsWith('g') ? this.plan.palms.findIndex((p) => p.id === id) : -1;
+    return id.startsWith('g') ? this.plan.palms.findIndex((p) => p.id === id) : this.exPalm();
+  }
+
+  /** The yard palm the explorer is climbing (father is not up one near): the child goes to watch him (its index in the plan's palms), or −1. */
+  private exPalm(): number {
+    const id = PALM_CLIMB.palm;
+    return id && id.startsWith('g') ? this.plan.palms.findIndex((p) => p.id === id) : -1;
   }
 
   /** Walk the member's path; true on arrival at its end. */
@@ -814,8 +854,18 @@ export class PalmSugarFamily implements PeopleScene {
 
   /** The wife: stirring, wok to wok; now and then fresh juice from the jars into the first wok. */
   private cook(m: Member, dt: number, now: number): void {
+    // The explorer's tube (he swapped one up a yard palm): she meets him at its foot, takes it and gives him a cup,
+    // then pours his juice into the first wok (her `fill`; _scenePalmSugarClimb.ts).
+    const c = this.climb.cook(m.a, dt, now, m.home || m.outAt > 0 || m.stairs.length > 0 || m.job === 'home' || m.job === 'in');
+    if (c === 'busy') return;
+    if (c) {
+      m.turn++;
+      this.setJob(m, c === 'fill' ? 'fill' : 'stir', now, c === 'fill' ? 0 : 1, false);
+    }
     const pose = m.job === 'stir' ? POSE.stir : POSE.give;
-    this.member(m, dt, now, pose);
+    const there = this.member(m, dt, now, pose);
+    // (pouring his juice in: she stays on the job until it is all in)
+    if (this.climb.pouring(m.a, !m.home && (m.job === 'fill' || m.job === 'home' || m.job === 'in'), there && m.job === 'fill', now)) m.until = Math.max(m.until, now + 0.1);
     if (!this.idle(m, now)) return;
     m.turn++;
     if (m.job === 'ladle') this.setJob(m, 'fill', now, 0, false);
@@ -849,12 +899,16 @@ export class PalmSugarFamily implements PeopleScene {
       const a = m.a;
       const hz = HOME.z + (HAMMOCK.z0 + HAMMOCK.z1) / 2 + 0.35;
       const sway = 0.05 * Math.sin(now * 1.1);
-      a.ride(HOME.x + HAMMOCK.x + sway, this.groundY + HAMMOCK.y + 0.02, hz, 0);
-      a.pose(POSE.hammock, now);
-      a.lookAt(null);
-      a.step(dt, now);
+      // (the explorer got into it while he came: no nap, back to the fire; roam/_hammock.ts)
+      const taken = hammockTaken(HOME.x + HAMMOCK.x, HOME.z + (HAMMOCK.z0 + HAMMOCK.z1) / 2);
+      if (!taken) {
+        a.ride(HOME.x + HAMMOCK.x + sway, this.groundY + HAMMOCK.y + 0.02, hz, 0);
+        a.pose(POSE.hammock, now);
+        a.lookAt(null);
+        a.step(dt, now);
+      }
       const c = f.clock - Math.floor(f.clock);
-      if ((c < NAP[0] || c > NAP[1] || !this.working) && now >= m.since + 20) {
+      if (taken || ((c < NAP[0] || c > NAP[1] || !this.working) && now >= m.since + 20)) {
         // (up again: back to the fire)
         a.riding = false;
         const [x, z] = [HOME.x + HAMMOCK.x + 0.7, hz - 0.35];
@@ -869,7 +923,7 @@ export class PalmSugarFamily implements PeopleScene {
     if (!this.idle(m, now)) return;
     m.turn++;
     const c = f.clock - Math.floor(f.clock);
-    if (c >= NAP[0] && c < NAP[1] && m.job === 'fire') this.setJob(m, 'nap', now, 0, false);
+    if (c >= NAP[0] && c < NAP[1] && m.job === 'fire' && !hammockTaken(HOME.x + HAMMOCK.x, HOME.z + (HAMMOCK.z0 + HAMMOCK.z1) / 2)) this.setJob(m, 'nap', now, 0, false);
     else if (m.job === 'fire' && m.turn % 3 === 2) this.setJob(m, 'fetch', now, 0, false);
     else this.setJob(m, 'fire', now, [1, 2, 0][m.turn % 3], false);
   }
@@ -897,11 +951,12 @@ export class PalmSugarFamily implements PeopleScene {
     const pose = m.job === 'help' ? POSE.squat : m.job === 'eat' ? POSE.eat : m.job === 'watch' ? POSE.look : POSE.stand;
     const there = this.member(m, dt, now, pose, m.job === 'play' || m.job === 'watch' ? RUN : WALK * 1.1);
     if (m.job === 'watch' && there) {
+      // (at father, or at the explorer up the palm)
       const a = this.tapper.a;
       _look.x = a.x;
       _look.y = a.y + 1.6;
       _look.z = a.z;
-      m.a.lookAt(_look, now + 0.5);
+      m.a.lookAt(PALM_CLIMB.palm && PALM_CLIMB.palm === this.plan.palms[m.k]?.id ? this.climb.exHead() : _look, now + 0.5);
     }
     if (m.home || m.job === 'home' || m.job === 'in' || m.stairs.length || m.outAt > 0) return;
     const done = m.job === 'play' ? m.leg >= m.path.length : m.job === 'watch' ? p < 0 : now >= m.until && m.leg >= m.path.length;

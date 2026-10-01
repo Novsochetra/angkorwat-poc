@@ -1,6 +1,6 @@
 import { traceSource } from '../../feedback/sourceTrace';
 import type { HeightField } from '../heightfield';
-import { cloth, goods, hang, heap, jar } from './_mkGoods';
+import { cloth, garments, goods, hang, heap, jar } from './_mkGoods';
 import { bambooPole, BAMBOO, groundMat, MkBuild, PARASOLS, parasol, platform, POST, RUST, STOOLS, stool, table, TARPS, tarp, tone, wheel, WOOD } from './_mkKit';
 import { EDGES, HALL, MK, NODES, NOODLE_BULB, PARKED, SHRINE, SIGN, STALLS, STOOL_AT, TABLE_BULB, TABLES, TREE, stallPoint, type Stall } from './_mkPlan';
 import { SURFACE } from '../heightfield';
@@ -158,10 +158,10 @@ function stall(mk: MkBuild, s: Stall, i: number, out: Stalls, lamp: LampFn): voi
       mk.tag = open;
       goods(mk, s.goods, { x0: -(w - 1.2) / 2 + 0.1, x1: (w - 1.2) / 2 - 0.1, z0: tz - 0.32, z1: tz + 0.32, y: 0.95 });
       cloth(mk, -bx + 0.1, bx - 0.1, bz + 0.05, 2.4, i);
-      // (along the sides too, facing out)
+      // (along the sides, facing out: fisherman trousers and linen shirts on hangers — the explorer buys them: roam/_wardrobe.ts)
       for (const sx of [-1, 1]) {
         mk.at(mk.wx(sx * bx, 0), mk.ground, mk.wz(sx * bx, 0), s.yaw + (sx * Math.PI) / 2, mk.seed);
-        cloth(mk, bz + 0.2, front - 0.4, 0.04, 2.23, i + sx + 5);
+        garments(mk, bz + 0.2, front - 0.4, 0.04, 2.23, sx);
         mk.at(MK.x + s.x, mk.ground, MK.z + s.z, s.yaw, mk.seed);
       }
       break;

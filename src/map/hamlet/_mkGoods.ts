@@ -1,3 +1,4 @@
+import { HAT_BANDS, KRAMAS, SHIRTS, TROUSERS, type KramaLook } from '../../character/clothes';
 import { tone, type MkBuild, type Tones } from './_mkKit';
 import type { Goods } from './_mkPlan';
 
@@ -233,14 +234,51 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
       break;
     }
     case 'cloth': {
-      // Folded kramas and sarongs in stacks on the table.
-      for (let s = 0; s < 4; s++) {
-        const [sx, sz] = at(0.14 + s * 0.24, 0.55);
-        for (let k = 0; k < 4; k++) {
-          const c = tone(s % 2 ? C.sarong : C.krama, mk.r(s, k, 81));
-          mk.box(sx, y + 0.04 + k * 0.07, sz, 0.42, 0.065, 0.34, c, 'petal', 0.95 + (k % 2) * 0.08);
+      // The krama stall (the explorer buys here: roam/_wardrobe.ts): folded kramas in their six colours, two rows of
+      // stacks, the top one showing its weave (a check's white bands both ways, a plaid's thread and its dark band);
+      // folded linen shirts (white, sand; indigo) and fisherman trousers; a pile of palm-leaf hats (never conical),
+      // the top one with its blue band.
+      KRAMA_SIX.forEach((k, s) => {
+        const [sx, sz] = at(0.085 + (s % 3) * 0.15, s < 3 ? 0.72 : 0.27);
+        const T = k.tones;
+        const n = 3 + (s % 2);
+        for (let j = 0; j < n; j++) mk.box(sx, y + 0.032 + j * 0.064, sz, 0.34, 0.058, 0.27, j % 2 ? T.red2 : T.red, 'petal', 0.94 + (j % 2) * 0.08);
+        const top = y + n * 0.064 + 0.006;
+        if (k.weave === 'check') {
+          for (const d of [-0.09, 0.09]) {
+            mk.box(sx + d, top, sz, 0.055, 0.012, 0.272, T.light, 'petal');
+            mk.box(sx, top, sz + d, 0.342, 0.012, 0.05, T.light, 'petal');
+          }
+        } else {
+          mk.box(sx, top, sz - 0.04, 0.342, 0.012, 0.045, T.dark, 'petal');
+          mk.box(sx, top, sz + 0.06, 0.342, 0.012, 0.022, T.light, 'petal');
         }
+        // (the folds' fronts: a pale thread along each)
+        mk.box(sx, y + 0.032 + (n - 1) * 0.064, sz + 0.136, 0.34, 0.016, 0.006, T.light, 'petal');
+      });
+      const fold = (u: number, v: number, cols: readonly number[], collar: boolean) => {
+        const [fx, fz] = at(u, v);
+        cols.forEach((c, j) => {
+          mk.box(fx, y + 0.03 + j * 0.06, fz, 0.34, 0.054, 0.28, c, 'petal', 0.95 + (j % 2) * 0.06);
+          // (a shirt's collar at the back of the fold, a pair of trousers' fold line)
+          if (collar) mk.box(fx, y + 0.06 + j * 0.06, fz - 0.1, 0.14, 0.014, 0.06, c === SHIRTS.indigo.base ? SHIRTS.indigo.cuff : 0xfaf6ee, 'petal', 0.92);
+          else mk.box(fx, y + 0.058 + j * 0.06, fz, 0.012, 0.004, 0.27, 0x101014, 'petal');
+        });
+      };
+      fold(0.53, 0.72, [SHIRTS.white.base, SHIRTS.white.base, SHIRTS.sand.base], true);
+      fold(0.68, 0.72, [SHIRTS.indigo.base, SHIRTS.indigo.base], true);
+      fold(0.53, 0.27, [SHIRTS.sand.base, SHIRTS.sand.base], true);
+      fold(0.68, 0.27, [TROUSERS.navy.base, TROUSERS.black.base, TROUSERS.navy.base], false);
+      // Palm-leaf hats in a leaning pile: wide straw brims bound in cloth, the top one's crown and its blue band.
+      const [hx, hz] = at(0.895, 0.5);
+      for (let j = 0; j < 3; j++) {
+        const band = j === 2 ? HAT_BANDS.blue.red : 0xa02a24;
+        const ox = j * 0.02;
+        mk.box(hx + ox, y + 0.03 + j * 0.06, hz, 0.46, 0.03, 0.46, tone(C.straw, mk.r(j, 103)), 'petal');
+        mk.box(hx + ox, y + 0.03 + j * 0.06, hz, 0.48, 0.016, 0.48, band, 'petal');
       }
+      mk.box(hx + 0.04, y + 0.25, hz, 0.22, 0.13, 0.22, tone(C.straw, 0.5), 'petal');
+      mk.box(hx + 0.04, y + 0.2, hz, 0.235, 0.035, 0.235, HAT_BANDS.blue.red, 'petal');
       break;
     }
     case 'greens': {
@@ -503,20 +541,69 @@ export function hang(mk: MkBuild, kind: Goods, x0: number, x1: number, z: number
   }
 }
 
-/** Kramas and sarongs hanging on a rack's bars (the cloth stall): along x at `z`, from the bar at `top`. */
+/** The krama stall's six kramas (the ones the explorer buys: character/clothes.ts), in the order they hang. */
+const KRAMA_SIX: readonly KramaLook[] = [KRAMAS.redWhite, KRAMAS.blueWhite, KRAMAS.green, KRAMAS.purple, KRAMAS.orange, KRAMAS.red];
+
+/**
+ * Kramas and sarongs hanging on a rack's bars (the cloth stall): along x at `z`, from the bar at `top`. The kramas
+ * are the stall's six, each in its weave: a check's white bands across and two down, a plaid's dark bands and a
+ * thread; a sarong's printed hem.
+ */
 export function cloth(mk: MkBuild, x0: number, x1: number, z: number, top: number, seed: number): void {
   const n = Math.floor((x1 - x0) / 0.4);
+  let kr = 0;
   for (let i = 0; i < n; i++) {
     const x = x0 + (i + 0.5) * ((x1 - x0) / n);
     const sarong = (i + seed) % 3 === 0;
     const h = sarong ? 1.5 : 1.15;
-    const c = tone(sarong ? C.sarong : C.krama, mk.r(i, seed, 191));
-    mk.box(x, top - h / 2, z, 0.36, h, 0.03, c, 'petal', 0.95 + mk.r(i, 192) * 0.08);
-    // (a krama's checks: pale bands across; a sarong's printed hem)
-    if (sarong) mk.box(x, top - h + 0.12, z + 0.005, 0.37, 0.16, 0.03, 0xd8a040, 'petal');
-    else
-      for (const d of [0.25, 0.55, 0.85]) mk.box(x, top - d, z + 0.005, 0.37, 0.07, 0.03, 0xf0ece0, 'petal', 0.95);
+    if (sarong) {
+      mk.box(x, top - h / 2, z, 0.36, h, 0.03, tone(C.sarong, mk.r(i, seed, 191)), 'petal', 0.95 + mk.r(i, 192) * 0.08);
+      mk.box(x, top - h + 0.12, z + 0.005, 0.37, 0.16, 0.03, 0xd8a040, 'petal');
+      continue;
+    }
+    const k = KRAMA_SIX[(kr++ + seed) % KRAMA_SIX.length];
+    const T = k.tones;
+    mk.box(x, top - h / 2, z, 0.36, h, 0.03, T.red, 'petal', 0.95 + mk.r(i, 192) * 0.08);
+    if (k.weave === 'check') {
+      for (const d of [0.2, 0.45, 0.7, 0.95]) mk.box(x, top - d, z + 0.005, 0.37, 0.08, 0.03, T.light, 'petal', 0.97);
+      for (const d of [-0.09, 0.09]) mk.box(x + d, top - h / 2, z + 0.008, 0.07, h, 0.03, T.light, 'petal', 0.97);
+    } else {
+      for (const d of [0.3, 0.78]) mk.box(x, top - d, z + 0.005, 0.37, 0.06, 0.03, T.dark, 'petal');
+      mk.box(x, top - 0.55, z + 0.005, 0.37, 0.025, 0.03, T.light, 'petal');
+    }
+    // (the fringe at its foot)
+    mk.box(x, top - h - 0.05, z, 0.3, 0.1, 0.02, T.fringe, 'petal', 0.9);
   }
+}
+
+/**
+ * Clothes hanging on the krama stall's side bars, along x at `z` from the bar at `top`: fisherman trousers hung by
+ * the waist (navy, black: two loose legs), and linen shirts on wire hangers (white, indigo, sand: the body, short
+ * sleeves out, the collar).
+ */
+export function garments(mk: MkBuild, x0: number, x1: number, z: number, top: number, seed: number): void {
+  const list = seed > 0 ? (['navy', 'white', 'sand'] as const) : (['black', 'indigo', 'navy'] as const);
+  const n = list.length;
+  list.forEach((g, i) => {
+    const x = x0 + (i + 0.5) * ((x1 - x0) / n);
+    if (g === 'navy' || g === 'black') {
+      const T = TROUSERS[g];
+      mk.box(x, top - 0.06, z, 0.46, 0.1, 0.035, T.dark, 'petal');
+      for (const s of [-1, 1]) {
+        mk.box(x + s * 0.12, top - 0.62, z, 0.21, 1.05, 0.03, T.base, 'petal', 0.95 + (s > 0 ? 0.05 : 0));
+        mk.box(x + s * 0.12, top - 1.17, z, 0.22, 0.07, 0.035, T.hem, 'petal');
+      }
+      return;
+    }
+    const S = SHIRTS[g];
+    // (the hanger's hook and wire)
+    mk.box(x, top - 0.02, z, 0.02, 0.06, 0.02, 0x8a8a86, 'petal');
+    mk.box(x, top - 0.07, z, 0.4, 0.02, 0.02, 0x8a8a86, 'petal');
+    mk.box(x, top - 0.38, z, 0.4, 0.62, 0.03, S.base, 'petal', 0.96);
+    for (const s of [-1, 1]) mk.box(x + s * 0.25, top - 0.17, z, 0.14, 0.18, 0.03, S.mid, 'petal', 0.95, 0, 0, s * 0.35);
+    mk.box(x, top - 0.1, z + 0.006, 0.14, 0.05, 0.03, S.cuff, 'petal');
+    mk.box(x, top - 0.4, z + 0.006, 0.025, 0.5, 0.03, S.mid, 'petal');
+  });
 }
 
 /** A point of the surface and a height: the helpers' (x, y, z) argument list. */

@@ -1,7 +1,9 @@
 import { SURFACE, type HeightField } from '../heightfield';
 import { PLOTS, plotSeason, SWEEP, type PlotPlan } from '../paddies/stages';
+import { FARM } from '../roam/_farmLink';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
+import { Bubble } from './_bubble';
 import { dress } from './_kinds';
 import { CARRY, FEAT, POSE, SLOT, type Look, type Pose } from './_personModel';
 import type { Obstacle, Point, Traffic } from './_routes';
@@ -26,6 +28,14 @@ import { GONE, Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene
  *
  * Women and men of the village in palm-leaf hats or kramas. They greet the
  * explorer with a nod when he passes close. Home at night.
+ *
+ * The explorer may join them (roam/_farmWork.ts, through roam/_farmLink.ts
+ * `FARM`): the scene tells it where the row is and where each of them
+ * stands; the one at the row's end next to him straightens up, turns to him
+ * and holds out a bundle of seedlings or her sickle (`POSE.give`), goes back
+ * to work (without her sickle she gathers the cut stalks by hand), and at
+ * the end comes over, takes it back, says "អរគុណ!" and gives him a parcel
+ * of num ansom; the row waits for him while he works in it.
  */
 
 /** Walking pace, working drift (m/s). */
@@ -50,12 +60,28 @@ const DARK = 0.5;
 /** (scratch points: a place in the working row, the explorer's face; used at once) */
 const ROW_AT: Point = { x: 0, y: 0, z: 0 };
 const EX_AT: Point = { x: 0, y: 0, z: 0 };
+/** Working with the explorer: her walk over to him (m/s), her thanks' bubble (s), his eyes over his feet (m). */
+const COME = 1.1;
+const SAY = 2.6;
+const EX_EYE = 2.0;
+/** A parcel of num ansom (sticky rice in banana leaf) held out in thanks: the leaf, and its tie of banana fibre. */
+const ANSOM_LEAF = 0x5a9a3a;
 
 type Mode = 'plant' | 'grow' | 'harvest' | 'dry';
 
+/** The farmers' work at a time of the year (`season`): the calendar of events asks it too (map/calendar.ts). */
+export function farmModeOf(season: number): Mode {
+  if (season >= 0.08 && season < 0.3) return 'plant';
+  if (season >= 0.3 && season < 0.59) return 'grow';
+  if (season >= 0.59 && season < 0.8) return 'harvest';
+  return 'dry';
+}
+/** Night enough for the farmers to be home (`night`): the calendar's rice work is by day (map/calendar.ts). */
+export const FARM_DARK = DARK;
+
 interface Farmer {
   a: Actor;
-  looks: Record<'seedlings' | 'sickle' | 'pole' | 'bare' | 'sheaves', Look>;
+  looks: Record<'seedlings' | 'sickle' | 'pole' | 'bare' | 'sheaves' | 'gift', Look>;
   job: 'row' | 'carry' | 'walk' | 'rest';
   /** Their place in the row (0‥; set by `order`, so no one crosses another walking over). */
   k: number;
@@ -76,8 +102,15 @@ export class Farmers implements PeopleScene {
   private front = 0.3;
   private dir = 1;
   private shown = false;
+  /** The row is at its plot's planting or cutting line, moving with the season (else drifting back and forth). */
+  private sweeping = false;
   private readonly rest: Point[];
   private readonly field: HeightField;
+  /** Working with the explorer: the act last started (`FARM.helper.n`), her words over her head and until when. */
+  private seenAct = 0;
+  private readonly bubble = new Bubble();
+  private talking = -1e9;
+  private readonly head: Point = { x: 0, y: 0, z: 0 };
 
   constructor(private readonly env: PeopleEnv) {
     const { crowd, ground } = env;
@@ -108,6 +141,7 @@ export class Farmers implements PeopleScene {
           pole: look([FEAT.pole], CARRY.pole, 0x86b848, 0x5a4230),
           sheaves: look([FEAT.pole], CARRY.pole, 0xd8b860, 0x8a6a34),
           bare: look([], CARRY.none, 0xd8b860, 0x7a5a30),
+          gift: look([FEAT.parcel], CARRY.none, 0xd8b860, ANSOM_LEAF),
         },
         job: 'rest',
         k,
@@ -144,10 +178,7 @@ export class Farmers implements PeopleScene {
   }
 
   private modeOf(season: number): Mode {
-    if (season >= 0.08 && season < 0.3) return 'plant';
-    if (season >= 0.3 && season < 0.59) return 'grow';
-    if (season >= 0.59 && season < 0.8) return 'harvest';
-    return 'dry';
+    return farmModeOf(season);
   }
 
   /** The plot being worked (planted or cut now, else the one done last), and where its working line is (0‥1). */
@@ -174,7 +205,9 @@ export class Farmers implements PeopleScene {
     this.plot = best;
     if (moved) this.order();
     // (in the sweep: at its line; after it, drifting back and forth over the plot)
-    if (age >= 0 && age <= 1) this.front = age;
+    this.sweeping = age >= 0 && age <= 1;
+    // (the explorer working in the row: it waits for him, and catches up after)
+    if (this.sweeping && !FARM.helper.working) this.front = age;
   }
 
   /**
@@ -240,10 +273,13 @@ export class Farmers implements PeopleScene {
     const p = this.plot.paddy;
     const step = this.pace.step(dt, viewDist(f, p.x, p.z));
     const night = f.night > DARK || f.night > GONE;
+    // (her thanks over her head, every frame)
+    if (now <= this.talking) this.bubble.update(dt, f.camera, f.roam !== 'overview');
     if (step < 0 || night) {
       if (this.shown) for (const fm of this.farmers) fm.a.hide();
       this.shown = false;
       this.mode = null;
+      FARM.shown = false;
       return;
     }
     if (step === 0 && this.shown) return;
@@ -252,13 +288,122 @@ export class Farmers implements PeopleScene {
     this.pickPlot(f.season, mode);
     if (mode !== this.mode) this.assign(mode, now);
     this.shown = true;
-    // The working row drifts slowly along the plot, back and forth (planting: backwards; reaping: forwards).
-    this.front += this.dir * WORK * dt / Math.max(8, this.plot.rowsX ? p.d : p.w);
+    // The working row drifts slowly along the plot, back and forth (planting: backwards; reaping: forwards); it
+    // waits while the explorer works in it.
+    if (!FARM.helper.working) this.front += this.dir * WORK * dt / Math.max(8, this.plot.rowsX ? p.d : p.w);
     if (this.front > 0.95 || this.front < 0.05) {
       this.dir = this.front > 0.95 ? -1 : 1;
       this.front = Math.max(0.05, Math.min(0.95, this.front));
     }
-    for (const fm of this.farmers) this.farmer(fm, dt, now, mode, ex);
+    for (let k = 0; k < this.farmers.length; k++) this.farmer(this.farmers[k], k, dt, now, mode, ex, f);
+    this.link(mode);
+  }
+
+  /** Tell the explorer's side (roam/_farmLink.ts) where the row is, its ends, and where everyone stands. */
+  private link(mode: Mode): void {
+    const pl = this.plot;
+    const p = pl.paddy;
+    FARM.shown = true;
+    FARM.work = mode;
+    FARM.plot = pl.index;
+    FARM.front = this.front;
+    // (at the planting or cutting line the row goes on with the sweep; else the way it drifts)
+    FARM.ahead = this.sweeping ? 1 : this.dir;
+    FARM.ux = pl.rowsX ? 0 : -1;
+    FARM.uz = pl.rowsX ? 1 : 0;
+    let n = 0;
+    for (const fm of this.farmers) if (fm.job === 'row') n++;
+    const room = (pl.rowsX ? p.w : p.d) - 2 * 1.6;
+    const gap = n > 1 ? Math.min(ROW, room / (n - 1)) : ROW;
+    FARM.rowN = n;
+    FARM.gap = gap;
+    // (one more place at either end of the row, if it is on the plot's floor clear of its dikes)
+    const half = (pl.rowsX ? p.w : p.d) / 2 - 1.4 - 0.6;
+    for (let e = 0; e < 2; e++) {
+      const v = (e === 0 ? -1 - (n - 1) / 2 : n - (n - 1) / 2) * gap;
+      const at = this.inPlot(this.front, v);
+      const end = FARM.ends[e];
+      end.x = at.x;
+      end.z = at.z;
+      end.ok = n > 0 && Math.abs(v) <= half;
+    }
+    for (let k = 0; k < this.farmers.length && k < FARM.farmers.length; k++) {
+      const a = this.farmers[k].a;
+      const o = FARM.farmers[k];
+      o.x = a.x;
+      o.y = a.y;
+      o.z = a.z;
+      o.yaw = a.yaw;
+      o.job = this.farmers[k].job;
+      o.shown = a.shown;
+    }
+  }
+
+  /** What a farmer holds for her job in the season (the row's sickle lent to the explorer: her bare hands). */
+  private jobLook(fm: Farmer, k: number, mode: Mode): Look {
+    if (fm.job === 'row') {
+      if (mode === 'harvest') return FARM.helper.sickle && FARM.helper.with === k ? fm.looks.bare : fm.looks.sickle;
+      return mode === 'plant' ? fm.looks.seedlings : fm.looks.bare;
+    }
+    if (fm.job === 'carry') return mode === 'harvest' ? fm.looks.sheaves : fm.looks.pole;
+    return fm.looks.bare;
+  }
+
+  private dress(a: Actor, look: Look): void {
+    if (a.look === look) return;
+    a.look = look;
+    this.env.crowd.dress(a.i, look);
+  }
+
+  /**
+   * Working with the explorer (`FARM.helper`, roam/_farmWork.ts): she turns to him, holds out what she lends him,
+   * comes over, takes it back, thanks him with a parcel. True: she is his now (her own work waits).
+   */
+  private helping(fm: Farmer, k: number, now: number, mode: Mode, f: MapFrame): boolean {
+    const h = FARM.helper;
+    if (h.with !== k || h.act === 'none' || h.act === 'lent') return false;
+    const a = fm.a;
+    const fresh = h.n !== this.seenAct;
+    this.seenAct = h.n;
+    // What is in her hands: her tool (or nothing while he has her sickle), both hands out for it, the parcel.
+    const tool = mode === 'harvest' ? (h.sickle ? fm.looks.bare : fm.looks.sickle) : fm.looks.seedlings;
+    this.dress(a, h.act === 'thank' ? fm.looks.gift : h.act === 'take' ? fm.looks.bare : tool);
+    if (h.warp) {
+      // (a check's state from the URL: she is there already, facing him)
+      h.warp = false;
+      a.warp(h.tx, this.field.heightAt(h.tx, h.tz), h.tz, Math.atan2(h.x - h.tx, h.z - h.tz));
+    }
+    if (h.act === 'come') {
+      a.goTo(h.tx, h.tz, COME);
+      a.face(a.yawTo(h.x, h.z));
+    } else {
+      a.stop();
+      a.face(a.yawTo(h.x, h.z));
+    }
+    a.pose(h.act === 'give' || h.act === 'take' || h.act === 'thank' ? POSE.give : POSE.stand, now);
+    EX_AT.x = h.x;
+    EX_AT.y = h.y + EX_EYE;
+    EX_AT.z = h.z;
+    a.lookAt(EX_AT, now + 0.5);
+    a.tilt(0);
+    if (fresh && h.act === 'thank') {
+      // "អរគុណ!" over her head, and her voice (audio/people.ts).
+      this.bubble.say('farmThanks', this.headOf(a), SAY);
+      this.talking = now + SAY + 1;
+      const s = a.crowd.scale(a.i);
+      if (f.dt > 0 && !this.env.shot) f.calls.push({ kind: 'hello', x: a.x, y: a.y + 1.6 * s, z: a.z, gain: 0.8, size: 1.7 * s });
+    }
+    return true;
+  }
+
+  /** Her head (for the bubble), followed as she moves. */
+  private headOf(a: Actor): () => Point {
+    return () => {
+      this.head.x = a.x;
+      this.head.y = a.y + 2.9 * (a.crowd.scale(a.i) / 1.4);
+      this.head.z = a.z;
+      return this.head;
+    };
   }
 
   /** Jobs for the season, and the look for each. */
@@ -329,7 +474,7 @@ export class Farmers implements PeopleScene {
     return [...out, ...out.slice(0, -1).reverse()];
   }
 
-  private farmer(fm: Farmer, dt: number, now: number, mode: Mode, ex: Obstacle | null): void {
+  private farmer(fm: Farmer, k: number, dt: number, now: number, mode: Mode, ex: Obstacle | null, f: MapFrame): void {
     const a = fm.a;
     const at = this.place(fm, now);
     if (!at) {
@@ -340,8 +485,15 @@ export class Farmers implements PeopleScene {
       a.warp(at.x, at.y, at.z, this.sweepYaw());
       a.show();
     }
+    // (working with the explorer: what she does for him, her own work waiting)
+    if (this.helping(fm, k, now, mode, f)) {
+      a.step(dt, now);
+      return;
+    }
     let pose: Pose = POSE.stand;
     if (fm.job === 'row') {
+      // (back from lending him her bundle or sickle, or with it lent: what she holds for her work)
+      this.dress(a, this.jobLook(fm, k, mode));
       const working = mode === 'plant' || mode === 'harvest' || mode === 'grow';
       // (planters face the planted rows as they step back; reapers face the standing rice)
       const yaw = this.sweepYaw() + (mode === 'plant' ? (this.dir > 0 ? Math.PI : 0) : this.dir > 0 ? 0 : Math.PI);

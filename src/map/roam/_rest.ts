@@ -423,8 +423,8 @@ export function createRest(d: RestDeps): Rest {
 /** A pixel "Z" (5 × 5). */
 const Z = `<svg viewBox="0 0 5 5" aria-hidden="true" shape-rendering="crispEdges"><path d="M0 0h5v1H0zM3 1h1v1H3zM2 2h1v1H2zM1 3h1v1H1zM0 4h5v1H0z"/></svg>`;
 
-/** Three small pixel Z's rising from his head one after another, growing and fading (a DOM overlay: no draw calls). */
-function createSnore(layer: HTMLElement): { show(on: boolean): void; place(x: number, y: number): void } {
+/** Three small pixel Z's rising from his head one after another, growing and fading (a DOM overlay: no draw calls; the hammock's too, _hammock.ts). */
+export function createSnore(layer: HTMLElement): { show(on: boolean): void; place(x: number, y: number): void } {
   injectStyle();
   const el = document.createElement('div');
   el.className = 'rr-zzz';

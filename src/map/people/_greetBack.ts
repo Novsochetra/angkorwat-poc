@@ -1,7 +1,8 @@
 import { hash3 } from '../../voxel/random';
 import { GREET, setNearbyFinder, type Nearby } from '../greet';
+import { nameIn, playerName } from '../khmerName';
 import type { MapFrame, PeopleCallKind } from '../types';
-import type { WordKey } from '../ui/lang';
+import { lang, type WordKey } from '../ui/lang';
 import { wrap, type Actor } from './_actor';
 import { Bubble } from './_bubble';
 import { CARRY, FEAT, POSE, SLOT, type Feature, type Look, type Pose } from './_personModel';
@@ -280,6 +281,8 @@ export class GreetBack {
     // What they say (the nearest few): by who they are.
     const speaks = order < SPEAK && (kind !== 'monk' || (sampeah && r1 < 0.6));
     r.word = !speaks ? null : wordFor(kind, elder, sampeah, r1, r2);
+    // (the nearest, now and then, by his name: "សួស្ដី ដារ៉ា!", khmerName.ts)
+    if (r.word && order === 0) r.word = byName(r.word, kind, elder, r1);
     r.call = !r.word ? null : kid ? 'kidHello' : kind === 'monk' ? null : 'hello';
     this.live.push(r);
   }
@@ -306,7 +309,7 @@ export class GreetBack {
       s.lift = up;
       // (the words stay a moment longer than the pose: time to read them)
       s.until = r.to + SAY_MORE + 0.8;
-      s.bubble.say(r.word, s.at, r.to - now + SAY_MORE);
+      s.bubble.say(r.word, s.at, r.to - now + SAY_MORE, NAMED.has(r.word) ? { name: nameIn(lang()) } : undefined);
       this.talking = Math.max(this.talking, s.until);
     }
     // (`size`: the greeter's height, so the voice fits them: a woman's under 1.63 m, the smallest child's under 1.2 m — audio/speech.ts)
@@ -401,7 +404,7 @@ function bump(u: number, a: number, b: number): number {
 }
 
 /** An elder: grey or white hair (the kinds' old looks, _kinds.ts), not a monk's shaven head. */
-function isElder(look: Look): boolean {
+export function isElder(look: Look): boolean {
   if (look.kind === 'monk' || look.kind === 'kid') return false;
   const c = look.colors[SLOT.hair] ?? 0;
   const r = (c >> 16) & 255;
@@ -419,4 +422,24 @@ function wordFor(kind: string, elder: boolean, sampeah: boolean, r1: number, r2:
   if (kind === 'vendor') return 'grWelcome';
   if (elder) return 'grElder';
   return r2 < 0.5 ? 'grHello' : r1 < 0.5 ? 'grHowAreYou' : 'grHi';
+}
+
+/** The answers with his name in them (`{name}`). */
+const NAMED: ReadonlySet<WordKey> = new Set<WordKey>(['nameHi', 'nameKid', 'nameElder', 'nameSeller']);
+/** The name the people last greeted him by (the first greeting with a new name always says it). */
+let namedFor = '';
+
+/**
+ * His name in the answer, now and then (khmerName.ts): the first greeting once
+ * he has a name, then about one in three. Children call him "បង" + his name,
+ * an elder "ចៅ" + his name, a seller asks him in by it; visitors from abroad
+ * and monks do not know it.
+ */
+function byName(word: WordKey, kind: string, elder: boolean, r: number): WordKey {
+  const n = playerName();
+  if (!n || kind === 'visitor' || kind === 'monk' || (namedFor === n.km && r > 0.35)) return word;
+  namedFor = n.km;
+  if (kind === 'kid') return 'nameKid';
+  if (kind === 'vendor') return 'nameSeller';
+  return elder ? 'nameElder' : 'nameHi';
 }

@@ -97,14 +97,12 @@ export function psLadder(b: VoxelBuilder, p: PsPalm, small: Set<VoxelBox>): void
   }
   const [cx, cz] = at(end);
   b.box(cx, p.y + end + 0.02, cz, 0.11, 0.04, 0.11, 0xe0d2a4, 'mapBark', { src, ry: yaw });
-  // Stubs: footholds out to one side then the other, tipped a little up.
-  for (let k = 0, s = RUNG * 0.8; s < top - 0.3; k++, s += RUNG) {
-    const side = k % 2 ? 1 : -1;
+  // Stubs: footholds out to one side then the other, tipped a little up (`psRungs`: the roaming climber's too).
+  psRungs(p).forEach(({ s, side, len }, k) => {
     const [x, z] = at(s, 0.01);
-    const len = 0.26 + 0.06 * r(200 + k);
     b.box(x + tx * side * (0.05 + len / 2), p.y + s, z + tz * side * (0.05 + len / 2), len, 0.055, 0.06, pick(BAMBOO, r(220 + k)), 'mapBark', { src, shade: 0.9, ry: yaw + Math.PI / 2, rz: side * 0.3 });
     mark();
-  }
+  });
   // Lashings: a band of cord round trunk and pole about every metre (a little proud of the bark all round).
   for (let k = 0, s = 1.2; s < top + 0.5; k++, s += 1.0 + 0.3 * r(300 + k)) {
     const w = 2 * (sugarPalmTrunkRadius(p.h, Math.min(s, top - 0.01)) * 1.12 + 0.03);
@@ -123,3 +121,97 @@ export function psLadder(b: VoxelBuilder, p: PsPalm, small: Set<VoxelBox>): void
   b.box(bx, p.y + bar - 0.04, bz, 0.17, 0.11, 0.17, pick(CORD, r(401)), 'mapBark', { src, ry: yaw });
   mark();
 }
+
+// ── For the roaming explorer, who climbs these ladders too (roam/_palmClimb.ts) ──
+
+/** One stub of a ladder: its middle's height over the palm's foot (m), its side (+1 the climber's left as he faces the trunk, −1 his right), its length out from the pole's side. */
+export interface PsRung {
+  s: number;
+  side: 1 | -1;
+  len: number;
+}
+
+/** A tapped palm's stubs, bottom up (as `psLadder` builds them): every `RUNG` m, the first on the climber's right. */
+export function psRungs(p: PsPalm): PsRung[] {
+  const out: PsRung[] = [];
+  const top = p.crown - p.y;
+  for (let k = 0, s = RUNG * 0.8; s < top - 0.3; k++, s += RUNG) out.push({ s, side: k % 2 ? 1 : -1, len: 0.26 + 0.06 * hash3(p.seed, 200 + k, 11, 9141) });
+  return out;
+}
+
+/** The crossbar's top over the palm's foot (m): where the feet stand at work under the crown. */
+export const psBarTop = (p: PsPalm): number => p.crown - p.y - WORK_DROP - 0.0025;
+
+/**
+ * The roaming explorer on the yard's ladders and the palm sugar family, told
+ * each other (no three.js, no part imports another's objects: as
+ * map/greet.ts). The explorer's side (roam/_palmClimb.ts) writes his half
+ * every step, the family's (people/_scenePalmSugar.ts) theirs every update;
+ * each reads the other's.
+ *
+ * - On a ladder (`palm`), his feet `s` m up it, his head where those below
+ *   look; `climbs` counts his climbs (the tapper calls to him once a climb),
+ *   `top` while he stands on the crossbar.
+ * - `swaps` counts the full tubes he has brought down off the crown (`swapPalm`
+ *   the last one's palm): the family's cook leaves her woks for its foot and
+ *   waits there looking up. Stepped off with the tube (`hand.on`, where he
+ *   stands), she comes to stand before him (`cook.state` 'ready'); then
+ *   `hand.t` runs the exchange (he holds it out, she takes it and thanks
+ *   him, tucks it in her waist and hands him a cup of fresh palm juice), and
+ *   she takes it back to the woks ('back', 'pour'). `warp`: a shot put him
+ *   there: she is there at once.
+ * - The tapper: the palm he is up or about to climb (`tapperPalm`; the
+ *   explorer does not climb that one), `tapperUp` while he is on a ladder.
+ *   He waits at its foot while the explorer is on it.
+ * - `seen`: the family's last update (counts up; the explorer's side knows
+ *   whether anyone is there to take the tube).
+ */
+export interface PalmClimbHook {
+  palm: string | null;
+  s: number;
+  head: { x: number; y: number; z: number };
+  /** Where he steps off at its foot (on the ground, world m) and the ladder's way out from the trunk (unit x, z). */
+  stand: { x: number; y: number; z: number; ox: number; oz: number };
+  climbs: number;
+  top: boolean;
+  swaps: number;
+  swapPalm: string | null;
+  hand: { on: boolean; x: number; y: number; z: number; t: number };
+  warp: boolean;
+  tapperPalm: string | null;
+  tapperUp: boolean;
+  /**
+   * The cook: what she is at for him, where she stands (feet, m) and faces, her drawn size (`Crowd.scale`), and
+   * where her hands are (holding the tube out, the cup) and her waist on the right (the tube tucked in): world m.
+   */
+  cook: {
+    state: 'none' | 'coming' | 'waiting' | 'ready' | 'back' | 'pour';
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    hands: { x: number; y: number; z: number };
+    hip: { x: number; y: number; z: number };
+  };
+  seen: number;
+}
+
+export const PALM_CLIMB: PalmClimbHook = {
+  palm: null,
+  s: 0,
+  head: { x: 0, y: 0, z: 0 },
+  stand: { x: 0, y: 0, z: 0, ox: 1, oz: 0 },
+  climbs: 0,
+  top: false,
+  swaps: 0,
+  swapPalm: null,
+  hand: { on: false, x: 0, y: 0, z: 0, t: -1 },
+  warp: false,
+  tapperPalm: null,
+  tapperUp: false,
+  cook: { state: 'none', x: 0, y: 0, z: 0, yaw: 0, hands: { x: 0, y: 0, z: 0 }, hip: { x: 0, y: 0, z: 0 } },
+  seen: 0,
+};
+
+/** The yard's tapped palms the explorer may climb (the dikes' are out in the paddies, far from the cook). */
+export const PS_CLIMB_PALMS = ['g1', 'g2', 'g3', 'g4'] as const;

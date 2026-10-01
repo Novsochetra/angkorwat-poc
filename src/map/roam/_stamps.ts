@@ -308,6 +308,22 @@ const MOTIF: Record<Motif, () => string> = {
     `<g transform="translate(58 52) scale(0.34)">${fill(LOTUS)}</g>` +
     fill('M52 80C52 77.5 62 77.5 62 80ZM82 80C82 77 94 77 94 80Z') +
     waves(84, 2, 8, 96, 8, 2.5),
+  // The equinox sunrise (a rare moment): the sun's disc on the tip of Angkor Wat's central tower, its rays round it,
+  // the five towers over the reflecting pool.
+  equinox: () => {
+    let rays = '';
+    for (let k = 0; k < 9; k++) {
+      const a = Math.PI + (k + 0.5) * (Math.PI / 9);
+      rays += `M${at(50, 22, a, 13.5)}L${at(50, 22, a, 19.5)}`;
+    }
+    return (
+      `<circle cx="50" cy="22" r="8.5" fill="none" stroke="currentColor" stroke-width="3"/>` +
+      line(rays, 2.4) +
+      fill(tower(50, 70, 46, 16) + tower(33, 70, 32, 12) + tower(67, 70, 32, 12) + tower(18, 70, 22, 9) + tower(82, 70, 22, 9)) +
+      fill('M8 70H92V75H8Z') +
+      waves(83, 2, 14, 86, 7, 2.2)
+    );
+  },
 };
 
 /** Each outline (and a thin line inside it), in the 120 × 120 box. */

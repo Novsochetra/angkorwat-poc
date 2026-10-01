@@ -160,8 +160,8 @@ const ART: Record<ConsumeKind, Art> = {
   },
 };
 
-/** Pictures of their own for some items (by item id). */
-const OWN: Record<string, Art> = {
+/** Pictures of their own for some items (by item id; add-ons add theirs: roam/_lotus.ts). */
+export const OWN: Record<string, Art> = {
   // A banana, and a second one behind it.
   banana: (c) => {
     const a = c[0] ?? 0xf0d040;
@@ -260,7 +260,7 @@ const OWN: Record<string, Art> = {
 };
 
 /** The item ids that have a picture of their own. */
-const ICON_OF: Record<string, keyof typeof OWN> = {
+export const ICON_OF: Record<string, keyof typeof OWN> = {
   chek: 'banana',
   savMav: 'rambutan',
   krauchThlong: 'pomelo',

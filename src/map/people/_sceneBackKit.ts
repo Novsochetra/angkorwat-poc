@@ -175,6 +175,12 @@ export class Splash {
 }
 
 /**
+ * The grandfather's hammock under the old house (_sceneBackFolk.ts): its ends this far in from the stilts' middles
+ * (m), its sag (m), cloth and stripe colours. (The explorer may lie in it: roam/_hammock.ts draws it the same.)
+ */
+export const GRANDPA_HAMMOCK = { inset: 0.12, sag: 0.62, cloth: 0x3a6ab8, stripe: 0xe0c040 } as const;
+
+/**
  * A hammock from x = −half to +half (its ends at y = 0), sagging `sag` in
  * the middle: part `swing` is the whole of it, turning about the line
  * between its ends (it swings). Rig space: across x, +y up.

@@ -29,6 +29,7 @@ import {
   WebGLRenderTarget,
 } from 'three';
 import { graphicsNow } from '../graphics';
+import { BLESS_SCRIPT } from '../roam/_blessingHooks';
 import { ROAM_SCALE } from '../roam/types';
 import { SlotMarks } from './_things';
 
@@ -186,6 +187,13 @@ export const POSE = {
   hammock: 24,
   /** A monk's greeting back: a small slow nod as the pose begins (then the head stays a little bowed), the right hand raised a little in blessing (monks do not sampeah lay people). */
   nod: 25,
+  /**
+   * A monk blessing someone kneeling before him (people/_sceneBlessing.ts), seated cross-legged as `sit`: from the
+   * pose's start his right hand follows `BLESS_SCRIPT` (it takes the sprig, `FEAT.sprig`, from the bowl of lustral
+   * water by his right knee (roam/_blessingHooks.ts), dips it, raises it and flicks the water, puts it back), then rests on his knee;
+   * the carry channel's weight (`carry(i, 0‥1)`) leans him forward, both hands out to tie the red string round a wrist.
+   */
+  bless: 26,
 } as const;
 /** Rowing strokes a second (the `row` pose; a whole number in 600 s, so the clock's wrap does not jump). */
 export const ROW_HZ = 0.9;
@@ -219,6 +227,10 @@ export const CARRY = {
   head: 10,
   /** A flat woven tray of goods (`FEAT.tray`) held in front at the belly in both hands; it shows only while held (or offered: `give`). */
   tray: 11,
+  /** Posing for his camera (`Crowd.strike`, people/_smileBack.ts): the right hand up by the cheek, two fingers raised (`FEAT.vee`): the peace sign. */
+  peace: 12,
+  /** Posing for his camera: the right fist held out in front of the chest, the thumb up (`FEAT.thumb`). */
+  thumb: 13,
 } as const;
 export type Carry = (typeof CARRY)[keyof typeof CARRY];
 
@@ -361,6 +373,17 @@ export const FEAT = {
    * poses, else upright in the left hand (pilgrims, a prayer at a shrine).
    */
   offering: 41,
+  /**
+   * Posing for his camera (`Crowd.strike`, people/_smileBack.ts; worn only then): a grin, the mouth open over the
+   * small smile with the top teeth showing, its corners up, the cheeks raised under the eyes.
+   */
+  grin: 42,
+  /** The peace sign's two fingers, raised from the right fist (`CARRY.peace`). */
+  vee: 43,
+  /** A thumb up on the right fist (`CARRY.thumb`). */
+  thumb: 44,
+  /** A sprig for the blessing's water (`POSE.bless`): a stem (`wood`), a bunch of leaves (`prop2`), a lotus bud (`prop`), along the right fist's grip. */
+  sprig: 45,
 } as const;
 export type Feature = (typeof FEAT)[keyof typeof FEAT];
 
@@ -773,6 +796,24 @@ function buildModel(): Builder {
       .box('chest', [-0.2, 0.84, z], [0.28, 0.05, 0.24], S.prop2, F.pole)
       .box('chest', [-0.2, 0.95, z], [0.2, 0.08, 0.16], S.prop, F.pole);
   }
+  // Posing for his camera (people/_smileBack.ts). The grin: the mouth open over the small smile, the top teeth, the
+  // corners up; the cheeks raised over the eyes' lower edge (happy eyes). The peace sign's two fingers spread in a V
+  // and a thumbs-up's thumb, rising from the right fist: the grip keeps the torso's frame (`pCarryGrip` 0), so they
+  // stand upright whatever the arm does.
+  m.box('head', [0, 1.138, 0.252], [0.14, 0.046, 0.014], S.mouth, F.grin)
+    .box('head', [0, 1.152, 0.258], [0.11, 0.016, 0.008], S.white, F.grin)
+    .boxLR('head', [0.083, 1.168, 0.252], [0.03, 0.028, 0.014], S.mouth, F.grin)
+    .boxLR('head', [0.125, 1.223, 0.261], [0.08, 0.022, 0.01], S.skin, F.grin);
+  for (const s of [-1, 1]) {
+    inR([0.026 * s, 0.1, 0], [0.038, 0.075, 0.04], S.skin, F.vee);
+    inR([0.046 * s, 0.165, 0], [0.036, 0.065, 0.038], S.skin, F.vee);
+  }
+  inR([0.012, 0.105, 0.01], [0.048, 0.075, 0.048], S.skin, F.thumb);
+  // The blessing's sprig (`POSE.bless`): a stem out of the fist, a bunch of leaves crossed, a lotus bud at its tip.
+  inR([0, 0, 0.11], [0.018, 0.018, 0.2], S.wood, F.sprig)
+    .box('gripR', [fx, fy, fz + 0.25], [0.12, 0.014, 0.15], S.prop2, F.sprig)
+    .box('gripR', [fx, fy, fz + 0.24], [0.014, 0.11, 0.14], S.prop2, F.sprig)
+    .box('gripR', [fx, fy, fz + 0.32], [0.05, 0.05, 0.07], S.prop, F.sprig);
   return m;
 }
 
@@ -872,6 +913,9 @@ const CARRY_ROT: Record<CarryName, Partial<Record<(typeof CARRY_BONES)[number], 
   // (the right arm up along the side of the head, the hand reaching on to the basket's side)
   head: { armR: [-2.96, -0.1, -0.2], foreR: [-0.22, 0, 0] },
   tray: { armL: [-0.69, -0.08, -0.15], foreL: [-0.06, 0, 0], armR: [-0.69, 0.08, 0.15], foreR: [-0.06, 0, 0] },
+  // (posing for his camera: the fist up by the cheek, out from the face; the fist held out at the chest)
+  peace: { armR: [-2.2, -0.15, -0.3], foreR: [-0.35, 0, 0] },
+  thumb: { armR: [-0.8, 0.35, -0.1], foreR: [-1.3, 0, 0] },
 };
 /** `CARRY_ROT` for the shader: four turns a carry style (`CARRY_BONES`), style 1 first. */
 const CARRY_ROTS = (Object.keys(CARRY) as (keyof typeof CARRY)[])
@@ -880,6 +924,71 @@ const CARRY_ROTS = (Object.keys(CARRY) as (keyof typeof CARRY)[])
   .flatMap((k) => CARRY_BONES.map((b) => CARRY_ROT[k][b] ?? [0, 0, 0]));
 /** Texels in a person's row of the bone texture: three a bone (its turn's columns, the shift in w), then the show rules. */
 const BONE_W = BONES.length * 3 + 1;
+/**
+ * The monk's blessing (`POSE.bless`, `BLESS_SCRIPT`): his right arm's shapes (armR's turn, foreR's pitch) with the
+ * sprig's world tilt (0 level ahead, −π/2 up), and when (s into the pose) the arm is in each: from his knee to the
+ * bowl, dunked, raised (the flicks over it), the bowl (the sprig put back), his knee. `tie`:
+ * the right arm out to the wrist before him, a little to his left (`tieL`: the left arm there too).
+ */
+const BLESS_ARM = {
+  rest: [-0.55, 0, -0.2, -0.55, 0],
+  dip: [-0.229, -0.315, -0.469, -1.527, 1.45],
+  up: [-1.39, 0.13, 0.11, -1.38, -1.15],
+  flick: [-1.56, 0.13, 0.12, -0.2, 0.2],
+  tie: [-1.329, 0.267, 0.534, -0.083, 0],
+  tieL: [-0.891, -0.209, -0.28, -1.059, 0],
+} as const;
+const BLESS_KEYS: readonly (readonly [number, keyof typeof BLESS_ARM])[] = [
+  [0, 'dip'],
+  [1.05, 'dip'],
+  [1.6, 'up'],
+  [4.4, 'up'],
+  [4.85, 'dip'],
+  [5.15, 'dip'],
+  [BLESS_SCRIPT.end, 'rest'],
+];
+const blessArm = (k: keyof typeof BLESS_ARM) => `vec4(${BLESS_ARM[k].slice(0, 4).map(f).join(', ')})`;
+/** The blessing's flicks are evenly spaced (one formula finds the nearest in the shader), its dunk one. */
+const FLICKS = BLESS_SCRIPT.flicks;
+const FLICK_STEP = FLICKS.length > 1 ? FLICKS[1] - FLICKS[0] : 1;
+if (FLICKS.some((t, i) => Math.abs(t - (FLICKS[0] + i * FLICK_STEP)) > 1e-6) || BLESS_SCRIPT.dips.length !== 1) throw new Error('people: BLESS_SCRIPT');
+/**
+ * The monk's blessing (`POSE.bless`) in tables (not GLSL `if` chains: see `CARRY_ROT`): the bones, sitting
+ * cross-legged as `sit` (at rest, at the tie, and how much the breath and the knot's work move them), and the
+ * script's keys.
+ */
+const blessBones = (shape: Partial<Record<BoneName, V3>>) => BONES.map((b) => `vec3(${(shape[b] ?? [0, 0, 0]).map(f).join(', ')})`).join(', ');
+const SIT_LEGS: Partial<Record<BoneName, V3>> = { legL: [-1.5, 0.6, 0], shinL: [-0.2, 0, -2.5], legR: [-1.5, -0.6, 0], shinR: [-0.2, 0, 2.5] };
+const [TIE_R, TIE_L] = [BLESS_ARM.tie, BLESS_ARM.tieL];
+const GLSL_BLESS = /* glsl */ `
+// The monk's blessing (P_BLESS): his bones at rest and at the tie (a turn a bone), how much the breath (x) and the
+// knot's work (y) move them; the right arm's script: its keys (armR x, y, z; foreR x) and their (time, sprig's tilt).
+const vec3 P_BLESS_REST[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [0.1, 0, 0], head: [0.12, 0, 0], armL: [-0.55, 0, 0.2], foreL: [-0.55, 0, 0], armR: [-0.55, 0, -0.2], foreR: [-0.55, 0, 0] })});
+const vec3 P_BLESS_TIE[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [0.18, 0, 0], head: [0.04, 0, 0], armL: [TIE_L[0], TIE_L[1], TIE_L[2]], foreL: [TIE_L[3], 0, 0], armR: [TIE_R[0], TIE_R[1], TIE_R[2]], foreR: [TIE_R[3], 0, 0] })});
+const vec2 P_BLESS_MOVE[${BONES.length}] = vec2[${BONES.length}](${BONES.map((b) => (b === 'chest' ? 'vec2(0.012, 0.0)' : b === 'foreR' ? 'vec2(0.0, 0.08)' : b === 'foreL' ? 'vec2(0.0, -0.08)' : 'vec2(0.0)')).join(', ')});
+const int P_BLESS_N = ${BLESS_KEYS.length};
+const vec4 P_BLESS_KEY[P_BLESS_N] = vec4[P_BLESS_N](${BLESS_KEYS.map(([, k]) => blessArm(k)).join(', ')});
+const vec2 P_BLESS_AT[P_BLESS_N] = vec2[P_BLESS_N](${BLESS_KEYS.map(([t, k]) => `vec2(${f(t)}, ${f(BLESS_ARM[k][4])})`).join(', ')});
+float pBlessK(float s, float a, float b) {
+  float k = clamp((s - a) / (b - a), 0.0, 1.0);
+  return k * k * (3.0 - 2.0 * k);
+}
+// The right arm s s into the script, and the sprig's tilt: between two keys (found by a loop the compiler keeps), the
+// nearest flick (quickly forward and down, slower back up), the dunk.
+vec4 pBlessArm(float s, out float tilt) {
+  int i = 0;
+  while (i < P_BLESS_N - 2 && s >= P_BLESS_AT[i + 1].x) i++;
+  float k = pBlessK(s, P_BLESS_AT[i].x, P_BLESS_AT[i + 1].x);
+  vec4 r = mix(P_BLESS_KEY[i], P_BLESS_KEY[i + 1], k);
+  tilt = mix(P_BLESS_AT[i].y, P_BLESS_AT[i + 1].y, k);
+  float f = ${f(FLICKS[0])} + ${f(FLICK_STEP)} * clamp(floor((s - ${f(FLICKS[0])}) / ${f(FLICK_STEP)} + 0.5), 0.0, ${f(FLICKS.length - 1)});
+  float fl = s < f ? pBlessK(s, f - 0.12, f) : 1.0 - pBlessK(s, f, f + 0.3);
+  r = mix(r, ${blessArm('flick')}, fl);
+  tilt = mix(tilt, ${f(BLESS_ARM.flick[4])}, fl);
+  r.x += 0.14 * (1.0 - pBlessK(abs(s - ${f(BLESS_SCRIPT.dips[0])}), 0.0, 0.24));
+  return r;
+}
+`;
 
 /**
  * The pose GLSL (no attributes: the bone pass runs it once a bone, or the
@@ -921,7 +1030,11 @@ struct PP {
   float seed;
   // Seconds since the pose \`to\` began (a nod, a hand held out).
   float since;
+  // The blessing's right arm and its sprig's tilt (P_BLESS: pBlessArm, once here for pRot and pGripTarget).
+  vec4 bless;
+  float blessTilt;
 };
+${GLSL_BLESS}
 
 float pEase(vec4 c, float d) {
   float k = clamp((uPTime - c.z) / max(d, 1e-3), 0.0, 1.0);
@@ -944,6 +1057,10 @@ PP pStateOf(vec4 c0, vec4 c1, vec4 c2, vec4 c3, vec4 c4, vec4 look) {
   P.yaw = pEase(c3, uPEase.w);
   P.pitch = pEase(c4, uPEasePitch);
   P.seed = look.w;
+  // (blending out of the blessing: its script's end, the hand on his knee)
+  P.blessTilt = 0.0;
+  P.bless = vec4(0.0);
+  if (P.from == P_BLESS || P.to == P_BLESS) P.bless = pBlessArm(P.to == P_BLESS ? P.since : 99.0, P.blessTilt);
   return P;
 }
 
@@ -1309,6 +1426,15 @@ vec3 pRot(int p, int b, PP P) {
     if (b == B_FORER) return vec3(-1.72 + 0.06 * sin(t * 0.8 + s), 0.0, 0.0);
     return base;
   }
+  if (p == P_BLESS) {
+    // Seated as P_SIT, by the tables: at rest ‥ at the tie by the carry's weight, the breath, the knot's work; the
+    // right arm by the script (P.bless).
+    vec3 r = mix(P_BLESS_REST[b], P_BLESS_TIE[b], P.carry);
+    r.x += dot(P_BLESS_MOVE[b], vec2(br, sin(t * 6.5) * P.carry));
+    if (b == B_ARMR) return mix(P.bless.xyz, r, P.carry);
+    if (b == B_FORER) return vec3(mix(P.bless.w, r.x, P.carry), 0.0, 0.0);
+    return r;
+  }
   return base;
 }
 
@@ -1323,7 +1449,7 @@ vec3 pFree(int p) {
 
 // How far the hips go down (m, for a 1.7 m person; less than 0: up, onto a saddle).
 float pDrop(int p, PP P) {
-  if (p == P_SIT) return 0.4;
+  if (p == P_SIT || p == P_BLESS) return 0.4;
   if (p == P_KNEEL) return 0.33;
   if (p == P_PLANT) return 0.08;
   if (p == P_REAP) return 0.09;
@@ -1371,6 +1497,8 @@ float pGripTarget(int p, PP P, bool left) {
   if (p == P_STIR) return left ? 0.0 : 0.78;
   // (the knife's blade turned up and ahead to the flower stalks)
   if (p == P_CLIMB) return left ? 0.0 : -2.1;
+  // (the blessing's sprig: down into the bowl, up, flicked; none while tying)
+  if (p == P_BLESS) return left ? 0.0 : P.blessTilt * (1.0 - P.carry);
   return pCarrySide(P.ctype, left) > 0.0 ? pCarryGrip(P.ctype) : 0.0;
 }
 
@@ -1802,6 +1930,8 @@ export const STRIDE = 0.86;
 export const LOD_SHARE: Record<string, number> = { low: 0.056, medium: 0.036, high: 0.036, max: 0.025 };
 /** …and back to the near model only when this much bigger again (no flicker at the edge). */
 const LOD_BACK = 1.12;
+/** Values a person in `Crowd.posing` (posing for his camera: `strike`). */
+const POSING = 8;
 
 /** What the crowd needs of the camera to pick near and far (a PerspectiveCamera). */
 export interface CrowdView {
@@ -1883,6 +2013,12 @@ export class Crowd {
   private readonly dirtyList: Int16Array;
   private dirtyN = 0;
   private base = 0;
+  /**
+   * People posing for his camera (`strike`), `POSING` values each: posing (1) or not, the carry style held (−1:
+   * their own), the pose's feature bits (lo, hi), their own look's bits and carry style (lo, hi, style), the carry
+   * their scene asks for meanwhile. Made at the first pose.
+   */
+  private posing: Float32Array | null = null;
 
   constructor(capacity: number, name = 'people', opts: CrowdOptions = {}) {
     this.capacity = capacity;
@@ -2064,6 +2200,8 @@ export class Crowd {
     this.looks[o + 2] = look.carry;
     this.looks[o + 3] = look.seed;
     this.touch(i, LOOK_BIT);
+    // (posing for his camera meanwhile: this is their own look underneath, the pose's things go over it: `strike`)
+    if (this.posing?.[i * POSING]) this.overlay(i, true);
     const c = new Color();
     for (let s = 0; s < SLOTS; s++) {
       c.setHex(look.colors[s] ?? 0xff00ff);
@@ -2075,6 +2213,17 @@ export class Crowd {
     }
     this.palTex.needsUpdate = true;
     this.size[i] = PEOPLE_SCALE * look.height;
+  }
+
+  /**
+   * Person `i`'s seed alone (`Look.seed`: the row pose's stroke, the cheer's pumps), not dressing them again: a
+   * crew rowing to a beat that changes (festival/_water.ts, the player's race), set every frame. No allocation.
+   */
+  reseed(i: number, seed: number): void {
+    const o = i * 4 + 3;
+    if (this.looks[o] === Math.fround(seed)) return;
+    this.looks[o] = seed;
+    this.touch(i, LOOK_BIT);
   }
 
   /** Drawn size of person `i` (m per model metre). */
@@ -2202,7 +2351,66 @@ export class Crowd {
 
   /** How much person `i` holds their prop the carry way (0‥1, eased). */
   carry(i: number, w: number, t: number, snap = false): void {
+    // (posing for his camera with a carry style of the pose's: their scene's carry waits, kept for after: `strike`)
+    const p = this.posing;
+    if (p?.[i * POSING] && p[i * POSING + 1] >= 0) return void (p[i * POSING + 7] = w);
     this.set(i, CH.carry, w, t, snap);
+  }
+
+  /**
+   * Posing for his camera a moment (people/_smileBack.ts): person `i` wears `feats` over their own look (a grin, the
+   * peace sign's fingers) and, with a `style`, holds that carry style at `weight` (eased: 0 lets the arm down first),
+   * the carry their scene asks for meanwhile kept for after. Again: a new weight (the same `feats` and `style`).
+   * `unstrike` puts back their look and their scene's carry. CPU only (their look and carry channel: no new shader
+   * code); a scene's `dress` meanwhile changes the look underneath.
+   */
+  strike(i: number, feats: readonly Feature[], style: Carry | null, weight: number, t: number): void {
+    const p = (this.posing ??= new Float32Array(this.capacity * POSING));
+    const o = i * POSING;
+    let lo = 0;
+    let hi = 0;
+    for (const ft of feats) {
+      if (ft <= 24) lo |= 1 << (ft - 1);
+      else hi |= 1 << (ft - 25);
+    }
+    const fresh = !p[o];
+    if (fresh) p[o + 7] = this.ch[CH.carry][i * 4 + 1];
+    p[o] = 1;
+    p[o + 1] = style ?? -1;
+    p[o + 2] = lo;
+    p[o + 3] = hi;
+    this.overlay(i, fresh);
+    if (style !== null) this.set(i, CH.carry, weight, t, false);
+  }
+
+  /** Person `i` stops posing (`strike`): their own look, and their scene's carry (eased). */
+  unstrike(i: number, t: number): void {
+    const p = this.posing;
+    const o = i * POSING;
+    if (!p?.[o]) return;
+    p[o] = 0;
+    const l = i * 4;
+    this.looks[l] = p[o + 4];
+    this.looks[l + 1] = p[o + 5];
+    this.looks[l + 2] = p[o + 6];
+    this.touch(i, LOOK_BIT);
+    if (p[o + 1] >= 0) this.set(i, CH.carry, p[o + 7], t, false);
+  }
+
+  /** (posing) The pose's features and carry style over person `i`'s own look (`fresh`: the look written now is their own). */
+  private overlay(i: number, fresh: boolean): void {
+    const p = this.posing!;
+    const o = i * POSING;
+    const l = i * 4;
+    if (fresh) {
+      p[o + 4] = this.looks[l];
+      p[o + 5] = this.looks[l + 1];
+      p[o + 6] = this.looks[l + 2];
+    }
+    this.looks[l] = p[o + 4] | p[o + 2];
+    this.looks[l + 1] = p[o + 5] | p[o + 3];
+    this.looks[l + 2] = p[o + 1] >= 0 ? p[o + 1] : p[o + 6];
+    this.touch(i, LOOK_BIT);
   }
 
   /** Head of person `i`: turn (rad against the body, + = to their left; the chest takes a third) and tilt (−1 up ‥ 1 down). */
@@ -2468,4 +2676,6 @@ const HAND: V3[] = [
   [-0.3, 1.05, 0.27],
   [-0.38, 1.33, 0.02],
   [-0.215, 0.645, 0.25],
+  [-0.36, 1.21, 0.27],
+  [-0.21, 0.89, 0.3],
 ];

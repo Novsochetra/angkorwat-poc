@@ -24,12 +24,12 @@ import { Rig, RigDef } from './_things';
  * to midnight (0.51) and go back in.
  */
 
-/** Clock: set out from the gate, dance, go back in. */
-const OUT = 0.22;
-const SHOW = 0.28;
-const END = 0.51;
+/** Clock: set out from the gate, dance, go back in (the calendar of events asks them too: map/calendar.ts). */
+export const OUT = 0.22;
+export const SHOW = 0.28;
+export const END = 0.51;
 /** The stage's middle (on the grass before the west pool, 56 m up) and its facing (south, to the watchers). */
-const STAGE = { x: -16.5, z: -158.6 };
+export const STAGE = { x: -16.5, z: -158.6 };
 /** The gate's passage (they come out and go in there) and the causeway's foot (round the pool). */
 const DOOR: Point = { x: -1.8, y: 58, z: -169.5 };
 const CAUSEWAY: Point = { x: -5.2, y: 56, z: -160.8 };

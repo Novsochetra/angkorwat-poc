@@ -1,4 +1,4 @@
-import { onLang, t } from '../ui/lang';
+import { onLang, t, type WordKey } from '../ui/lang';
 import type { Festival } from './_schedule';
 
 /**
@@ -26,10 +26,24 @@ const STYLE = `
 .mu-shot .mu-fest { transition: none; }
 `;
 
-/** A boat's prow for the Water Festival, a small stupa with a flag for New Year (currentColor). */
+/**
+ * The festival's picture (currentColor): a racing boat's prow for the Water Festival, a small stupa with a flag
+ * for New Year, a tiffin carrier (chan srak, the stacked food pots families carry to the monks) for Pchum Ben, a
+ * lotus bud and a candle under the full moon for Visak Bochea.
+ */
 const ICON: Record<Festival, string> = {
   water: `<svg class="mu-fest-icon" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M3 20h20l3-6 2 1-2 7c-.3 1-1.2 2-2.4 2H7.5C6 24 4.2 22.4 3 20zm5-3 1.5-3h1l-1.5 3zm4 0 1.5-3h1l-1.5 3zm4 0 1.5-3h1l-1.5 3zm7-7c1.6-.3 3 .6 3.4 2l-2 .8c-.3-.6-.8-.9-1.4-.8z"/><path fill="currentColor" opacity=".55" d="M2 26c2 0 2 1 4 1s2-1 4-1 2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1 2 1 4 1v1.5c-2 0-2-1-4-1s-2 1-4 1-2-1-4-1-2 1-4 1-2-1-4-1-2 1-4 1-2-1-4-1z"/></svg>`,
   newyear: `<svg class="mu-fest-icon" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 4l1 5h-2zM13 10h6l1 4h-8zm-2 5h10l1.5 5h-13zm-3 6h16l1.5 5H6.5z"/><path fill="currentColor" opacity=".6" d="M17 3.5h6l-2 1.8 2 1.8h-6z"/></svg>`,
+  pchumben: `<svg class="mu-fest-icon" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M11.5 3.5h9v1.8h-1.6v2.4h-1.8V5.3h-2.2v2.4h-1.8V5.3h-1.6zM9 9h14v1.6H9zm.6 2.2h12.8v4H9.6zM9 16.4h14V18H9zm.6 2.2h12.8v4H9.6zM9 23.8h14v1.6H9zm.6 2.2h12.8v2.5c0 .6-.5 1-1 1H10.6c-.5 0-1-.4-1-1z"/><path fill="currentColor" opacity=".55" d="M7.4 8.6h1.2v21H7.4zm16 0h1.2v21h-1.2z"/></svg>`,
+  visak: `<svg class="mu-fest-icon" viewBox="0 0 32 32" aria-hidden="true"><circle cx="22.5" cy="8.5" r="5" fill="currentColor" opacity=".45"/><path fill="currentColor" d="M12.5 7.5c.9 1.4 1.5 2.9 1.5 4.2 0 1.4-.7 2.4-1.5 2.4S11 13.1 11 11.7c0-1.3.6-2.8 1.5-4.2z"/><path fill="currentColor" d="M11.6 15.2h1.8v8.3h-1.8z"/><path fill="currentColor" d="M19 12.5c2.6 2.3 4 5 4 7.5 0 3.4-2.4 5.6-5 5.6s-5-2.2-5-5.6c0-2.5 1.4-5.2 4-7.5l1 4.4z" opacity=".9"/><path fill="currentColor" d="M5 27.5c3.8-1.6 7.6-1.6 11.4 0 3.8 1.6 7.6 1.6 11.4 0v1.6c-3.8 1.6-7.6 1.6-11.4 0-3.8-1.6-7.6-1.6-11.4 0z" opacity=".6"/></svg>`,
+};
+
+/** Its name and its line of what is on (ui/lang.ts). */
+const WORDS: Record<Festival, [WordKey, WordKey]> = {
+  water: ['festWater', 'festWaterNote'],
+  newyear: ['festNewYear', 'festNewYearNote'],
+  pchumben: ['pchumName', 'pchumNote'],
+  visak: ['visakName', 'visakNote'],
 };
 
 export interface FestivalBanner {
@@ -49,8 +63,8 @@ export function createBanner(): FestivalBanner {
   const fill = () => {
     if (!el || !shown) return;
     el.querySelector('.mu-fest-kick')!.textContent = t('festKicker');
-    el.querySelector('.mu-fest-name')!.textContent = t(shown === 'water' ? 'festWater' : 'festNewYear');
-    el.querySelector('.mu-fest-note')!.textContent = t(shown === 'water' ? 'festWaterNote' : 'festNewYearNote');
+    el.querySelector('.mu-fest-name')!.textContent = t(WORDS[shown][0]);
+    el.querySelector('.mu-fest-note')!.textContent = t(WORDS[shown][1]);
   };
 
   const make = (): HTMLElement | null => {

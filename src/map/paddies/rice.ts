@@ -478,7 +478,15 @@ function sphereOf(data: Float32Array, i0: number, i1: number): Sphere {
 }
 
 /** Where hill `i`'s first texel starts in the hills' texture data (floats). */
-const texelOf = (i: number): number => (Math.floor(i / TEX_ROW) * TEX_ROW * 3 + (i % TEX_ROW) * 3) * 4;
+export const texelOf = (i: number): number => (Math.floor(i / TEX_ROW) * TEX_ROW * 3 + (i % TEX_ROW) * 3) * 4;
+
+/**
+ * The hills for helping the farmers (roam/_farmWork.ts): the explorer plants and cuts a few where he works, by
+ * rewriting their planting or cutting day (`aT1.y`, `aT1.z`, plot-local season) in `data` at `texelOf(i)` and
+ * uploading those texels (`tex`). `early[plot]` 1: that plot's rows are drawn before its own planting begins (his
+ * first clumps in a plot the farmers are just starting). Set when the rice is built.
+ */
+export const RICE_HILLS: { data: Float32Array | null; tex: DataTexture | null; count: number; early: Uint8Array } = { data: null, tex: null, count: 0, early: new Uint8Array(32) };
 
 export interface Rice {
   /** The fans (every plot's, one mesh) and the near clumps (one mesh). */
@@ -592,6 +600,7 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
   hillTex.minFilter = hillTex.magFilter = NearestFilter;
   hillTex.generateMipmaps = false;
   hillTex.needsUpdate = true;
+  Object.assign(RICE_HILLS, { data, tex: hillTex, count });
 
   const cells: Cell[] = [];
   /** Each plot's cells, and the sphere round its hills. */
@@ -740,7 +749,7 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
     }
     for (const pl of plots) {
       const s = plotSeason(f.season, pl.lag);
-      const rows = s >= pl.plant - 0.001;
+      const rows = s >= pl.plant - 0.001 || RICE_HILLS.early[pl.index] === 1;
       const bed = pl.index === NURSERY && s >= 0.06 && s <= pl.plant + 0.002;
       const code = rows ? STAGES.indexOf(stageOf(pl, s)) * 2 + (bed ? 1 : 0) : bed ? 1 : -1;
       if (seenPlot[pl.index] !== code) diff = true;
@@ -781,7 +790,7 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
       if (!pb) continue;
       // (in season: rows planted, or the nursery bed sown and not yet pulled)
       const s = plotSeason(f.season, pl.lag);
-      const rows = s >= pl.plant - 0.001;
+      const rows = s >= pl.plant - 0.001 || RICE_HILLS.early[pl.index] === 1;
       const bed = pl.index === NURSERY && s >= 0.06 && s <= pl.plant + 0.002;
       if (!(rows || bed)) continue;
       const dp = pb.center.distanceTo(eye);

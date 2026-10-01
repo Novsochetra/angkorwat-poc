@@ -3,8 +3,8 @@ import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import type { PlaceDef } from '../layout';
 import { pad } from '../pad/pad';
 import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UISound } from '../types';
-import { eachAddon } from './_addons';
-import './_addonList';
+import { eachAddon, initAddons } from './_addons';
+import { loadAddons } from './_addonList';
 import { followNearFade, installNearFade } from './_nearFade';
 import { createBalloon, type BalloonInfo } from './balloon';
 import { createBoat } from './boat';
@@ -133,11 +133,13 @@ const PREP_TIMER = 4;
 const PREP_WAIT = 1000;
 const PREP_HURRY = 10;
 
-export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
+export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoam> {
   const params = new URLSearchParams(location.search);
   const object = new Group();
   object.name = 'roam';
   const startMode = params.get('roam') as RoamMode | null;
+  // (the add-ons, _addonList.ts: a shot, or a page that starts roaming, has them from its first frame; else they load after Start)
+  if (ctx.shot || (startMode && startMode !== 'overview')) await loadAddons();
   const made = buildRoamWorld(ctx.field, deps.parts, !ctx.shot && !startMode);
   const world = made.world;
   /** Frames updated, and when the first after Start was (ms); the walk maps' making: waiting, in idle time, or hurried (the card is open); its turn. */
@@ -148,6 +150,8 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
   function prepare(hurry: boolean): void {
     if (prep === 'hurry' || (prep === 'idle' && !hurry)) return;
     prep = hurry ? 'hurry' : 'idle';
+    // (the add-ons' modules too: a chunk of their own, _addonList.ts)
+    void loadAddons();
     if (made.ready) return;
     const id = ++turn;
     const slice = (d?: IdleDeadline) => {
@@ -242,7 +246,10 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     uiSound,
     busy: () => tools.busy(),
   };
-  eachAddon('init', (a) => a.init?.(addonEnv));
+  // (one that loads once roaming has started is told the mode it is in)
+  initAddons(addonEnv, (a) => {
+    if (mode !== 'overview') a.setMode?.(mode, 'overview', rctx);
+  });
 
   const rctx: RoamCtx = {
     world,
@@ -383,6 +390,7 @@ export function buildRoam(ctx: MapContext, deps: RoamDeps): MapRoam {
     },
     start(kind = 'chute') {
       if (mode !== 'overview' || leaving) return;
+      void loadAddons();
       // (the camera's walk maps, the planks, the rivers: the rest of them now, before the first step)
       made.finish();
       chute.leap.opens = kind === 'glider' ? 'hang' : 'glide';
