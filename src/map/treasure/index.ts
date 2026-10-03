@@ -1,4 +1,4 @@
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshStandardMaterial, Points, ShaderMaterial, Vector3, Vector4, type WebGLProgramParametersWithUniforms } from 'three';
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, DynamicDrawUsage, Frustum, Group, Matrix4, Mesh, MeshStandardMaterial, Points, ShaderMaterial, Sphere, Vector3, Vector4, type WebGLProgramParametersWithUniforms } from 'three';
 import { hash3 } from '../../voxel/random';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { SFX } from '../audio/addonSfx';
@@ -43,7 +43,10 @@ import { installTreasure, type GoldNear } from './hooks';
  * The roaming modes reach it through `hooks.ts` (the walker's prompt and
  * E). Two draw calls: the figures (one mesh, each figure placed and turned
  * in the vertex shader) and their glints (points); nothing to do when
- * nothing is near.
+ * nothing is near. The figures' index holds only those that can be seen
+ * now (in view, within `FAR`, not found), made again when that changes:
+ * one figure is ≈ 1,300 triangles, all fifteen were drawn whenever one
+ * was near (19 k in every walk).
  *
  * URL (checks): `gold=all|none|<n>|<id>,<id>…` which are found (for the
  * visit; shots start with none) · `gold=lineup` every figure in a row on
@@ -75,6 +78,8 @@ const PICK_DELAY = 0.7;
 const PICK_FLY = 0.9;
 /** Figures this far from the camera (m, across) are not drawn at all. */
 const FAR = 180;
+/** A figure is drawn while a sphere this much bigger than it (m) is in view: the camera turns between the test and the picture. */
+const VIEW_PAD = 1.5;
 
 /** Figure tones (sRGB): gold, bright, deep, dark, pale. */
 const TONES = [0xe2a93b, 0xf6cf63, 0xa8741e, 0x5c3a10, 0xffefb8];
@@ -131,7 +136,10 @@ export function buildTreasure(ctx: MapContext): MapPart {
     for (const k of sketches[i].cells.keys()) top = Math.max(top, Number(k.split(',')[1]) + 1);
     return { def, x, y, z, turn, found: save.found.includes(def.id), pickAt: -1, height: top * CELL };
   });
-  const geo = bakeFigures(sketches);
+  const { geometry: geo, ranges } = bakeFigures(sketches);
+  /** The index as baked (every figure), and the one drawn: the figures that can be seen, one after the other. */
+  const allIndex = (geo.index!.array as Uint16Array | Uint32Array).slice();
+  const drawIndex = geo.index!.setUsage(DynamicDrawUsage);
   const blocks = sketches.reduce((n, s) => n + s.cells.size, 0);
   /** Per figure: where (x, y, z) and its turn (w); scale (x), glow (y). */
   const uFig = { value: figs.map(() => new Vector4()) };
@@ -176,8 +184,9 @@ export function buildTreasure(ctx: MapContext): MapPart {
   gold.customProgramCacheKey = () => 'treasure-gold';
   const figMesh = new Mesh(geo, gold);
   figMesh.name = 'treasure:figures';
-  // (not culled: one draw for the figures all over the map, placed in the shader, so bounds round them would be in
-  // view from anywhere; the mesh is hidden while none is near, `update`)
+  // (not culled by three: one draw for the figures all over the map, placed in the shader, so bounds round them would
+  // be in view from anywhere; its index holds the figures in view, near and not found, `update`, and it is hidden
+  // while there is none)
   figMesh.frustumCulled = false;
   figMesh.receiveShadow = true;
   object.add(figMesh);
@@ -386,6 +395,8 @@ export function buildTreasure(ctx: MapContext): MapPart {
 
   /** Frames drawn (the figures' mesh is drawn from the start, so its shader compiles at load). */
   let frames = 0;
+  /** The figures in the index now (bits), −1: not made yet. */
+  let drawn = -1;
 
   function update(f: MapFrame): void {
     clock += f.dt;
@@ -499,11 +510,48 @@ export function buildTreasure(ctx: MapContext): MapPart {
         lastShimmer = { gain, pan, id: best.def.id };
       }
     }
-    // (nothing to draw when every figure is far: they are specks past this)
+    // Which figures are drawn: in view and within `FAR` (specks past it), not found (or flying into his bag); every
+    // figure in the first frames (its shader compiles at load) and in the lineup.
+    const all = frames < 4 || lineup;
     let near = false;
-    for (const g of figs) if (!g.found || g.pickAt >= 0) near ||= Math.abs(g.x - cam.x) < FAR && Math.abs(g.z - cam.z) < FAR;
-    figMesh.visible = frames < 4 || lineup || (roaming && near);
-    glints.visible = figMesh.visible;
+    let mask = 0;
+    if (roaming || all) {
+      if (!all) {
+        f.camera.updateMatrixWorld();
+        _frustum.setFromProjectionMatrix(_m.multiplyMatrices(f.camera.projectionMatrix, f.camera.matrixWorldInverse));
+      }
+      for (const [i, g] of figs.entries()) {
+        // (all of them in the first frames, found ones too, as before: shrunk to nothing, so the shader compiles)
+        if (all) mask |= 1 << i;
+        if (all || (g.found && g.pickAt < 0)) continue;
+        const P = uFig.value[i];
+        const k = uFigB.value[i].x;
+        if (k > 0 && Math.abs(P.x - cam.x) < FAR && Math.abs(P.z - cam.z) < FAR) {
+          near = true;
+          _sphere.center.set(P.x, P.y + (g.height * k) / 2, P.z);
+          _sphere.radius = (g.height * k) / 2 + 0.6 * k + VIEW_PAD;
+          if (_frustum.intersectsSphere(_sphere)) mask |= 1 << i;
+        }
+      }
+    }
+    if (mask !== drawn) {
+      drawn = mask;
+      let n = 0;
+      const out = drawIndex.array as Uint16Array | Uint32Array;
+      for (let i = 0; i < figs.length; i++) {
+        if (!(mask & (1 << i))) continue;
+        const r = ranges[i];
+        out.set(allIndex.subarray(r.start, r.start + r.count), n);
+        n += r.count;
+      }
+      geo.setDrawRange(0, n);
+      drawIndex.clearUpdateRanges();
+      drawIndex.addUpdateRange(0, n);
+      drawIndex.needsUpdate = true;
+    }
+    figMesh.visible = mask !== 0;
+    // (the glints: whenever a figure is near, in view or not, as before; each fades out by its own distance)
+    glints.visible = all || (roaming && near);
     glintU.uTime.value = clock;
     glintU.uNight.value = night;
     glintU.uScale.value = innerHeight / (2 * Math.tan((f.camera.fov * Math.PI) / 360));
@@ -554,6 +602,9 @@ export function buildTreasure(ctx: MapContext): MapPart {
 }
 
 const _p = new Vector3();
+const _frustum = new Frustum();
+const _m = new Matrix4();
+const _sphere = new Sphere();
 const _right = new Vector3();
 const _to = new Vector3();
 
@@ -576,8 +627,9 @@ function glintFlash(t: number, i: number): number {
  * Positions are the figure's own (m, its plinth's foot at 0); the shader
  * turns and places it.
  */
-function bakeFigures(sketches: Sketch[]): BufferGeometry {
+function bakeFigures(sketches: Sketch[]): { geometry: BufferGeometry; ranges: { start: number; count: number }[] } {
   const pos: number[] = [];
+  const ranges: { start: number; count: number }[] = [];
   const nor: number[] = [];
   const col: number[] = [];
   const fig: number[] = [];
@@ -596,6 +648,7 @@ function bakeFigures(sketches: Sketch[]): BufferGeometry {
   ];
   sketches.forEach((s, fi) => {
     const has = (x: number, y: number, z: number) => s.cells.has(`${x},${y},${z}`);
+    const first = idx.length;
     for (const [key, tone] of s.cells) {
       const cell = key.split(',').map(Number);
       const vary = 0.9 + 0.16 * hash3(cell[0], cell[1], cell[2], fi * 7 + 3);
@@ -642,14 +695,17 @@ function bakeFigures(sketches: Sketch[]): BufferGeometry {
         else idx.push(start + 1, start + 2, start + 3, start + 1, start + 3, start);
       }
     }
+    ranges.push({ start: first, count: idx.length - first });
   });
   const g = new BufferGeometry();
   g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
   g.setAttribute('normal', new BufferAttribute(new Float32Array(nor), 3));
   g.setAttribute('color', new BufferAttribute(new Float32Array(col), 3));
   g.setAttribute('aFig', new BufferAttribute(new Float32Array(fig), 1));
-  g.setIndex(idx);
-  return g;
+  // (its own array: `update` writes the figures drawn into it, from a copy of this)
+  const index = pos.length / 3 > 65535 ? new Uint32Array(idx) : new Uint16Array(idx);
+  g.setIndex(new BufferAttribute(index, 1));
+  return { geometry: g, ranges };
 }
 
 const GLINT_VERTEX = /* glsl */ `
