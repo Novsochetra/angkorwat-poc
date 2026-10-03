@@ -3,6 +3,7 @@ import type { MapContext, MapFrame, MapPart } from './types';
 import { buildWaterData } from './water/data';
 import { buildFallGeometry, fallMaterial } from './water/falls';
 import { buildWaterGrid } from './water/grid';
+import { FallSheets } from './water/sheets';
 import { buildSpray } from './water/spray';
 import { buildSurfaceGeometry, surfaceMaterial } from './water/surface';
 
@@ -11,7 +12,8 @@ import { buildSurfaceGeometry, surfaceMaterial } from './water/surface';
  *  - `water surface`: every water cell of the height field, flowing along
  *    the rivers (surface.ts; its map of banks, foam and flow in data.ts);
  *  - `waterfalls`: a sheet down the cliff for every fall, and small cascades
- *    where a river steps down (falls.ts);
+ *    where a river steps down (falls.ts): only those in view, far ones with
+ *    fewer triangles (sheets.ts);
  *  - `waterfall spray`: mist puffs at the foot of the falls (spray.ts).
  * All follow the scene's lights (sun by day, moon by night) and fog.
  */
@@ -42,6 +44,7 @@ export function buildWater(ctx: MapContext): MapPart {
   const sheets = new Mesh(falls.geometry, fall.material);
   sheets.name = 'waterfalls';
   sheets.receiveShadow = true;
+  const sheetsInView = new FallSheets(sheets, falls.pieces);
 
   const spray = buildSpray(falls.feet, ctx.quality);
   object.add(surface, sheets, spray.mesh);
@@ -95,6 +98,7 @@ export function buildWater(ctx: MapContext): MapPart {
       s.uSparkle.value = 7 + 4 * n;
       s.uRain.value = f.weather.rain;
 
+      sheetsInView.update(f.camera);
       const u = fall.uniforms;
       u.uTime.value = f.t;
       mix(u.uWhite.value, FALL_WHITE, n);

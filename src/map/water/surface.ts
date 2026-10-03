@@ -5,59 +5,135 @@ import { NOISE_GLSL } from './glsl';
 import { NONE, type WaterGrid } from './grid';
 
 /**
- * River and pool surfaces: one quad per water cell at its level, and a short
- * side (1 m, down to the bed) wherever the ground or the water beside it is
+ * River and pool surfaces: the water cells at their level, and a short side
+ * (1 m, down to the bed) wherever the ground or the water beside it is
  * lower, so no water edge floats over a gap. Steps between two water levels
  * get a cascade (falls.ts) instead.
+ *
+ * Cells of one level are joined into rectangles (greedy: a run along x, as
+ * many rows on as the run stays the same). The shader works everything out
+ * per pixel from the world position (flow, foam, ripples, light, fog,
+ * shadows: no vertex moves, nothing is lit per vertex), so a big flat quad
+ * draws exactly what its cells did: 2,000 triangles, not 30,500 (two per
+ * cell: 15,200 cells, all but 1,900 at the lowland's level). No
+ * T-junctions: a rectangle's outline has a corner wherever what lies across
+ * it changes (another rectangle, a side down to the bed, the bank), so every
+ * corner of a neighbour and every side's top corner is one of its own (a
+ * corner in the middle of another's edge leaves hairline cracks onto the
+ * bed). A rectangle with more than its four corners is a fan round its
+ * middle; a side runs as far as the bank beside it stays the same.
  */
 export function buildSurfaceGeometry(g: WaterGrid): BufferGeometry {
   const f = g.field;
   const { nx, nz } = f;
+  const level = g.level;
   const pos: number[] = [];
   const nor: number[] = [];
+  const index: number[] = [];
   const h = CELL / 2;
-  const quad = (a: number[], b: number[], c: number[], d: number[], n: number[]) => {
+  const UP = [0, 1, 0] as const;
+  const vertex = (x: number, y: number, z: number, n: readonly number[]): number => {
+    pos.push(x, y, z);
+    nor.push(n[0], n[1], n[2]);
+    return pos.length / 3 - 1;
+  };
+  const side = (a: number[], b: number[], c: number[], d: number[], n: number[]) => {
     // Wind it to face n.
     const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     const facing = (u[1] * v[2] - u[2] * v[1]) * n[0] + (u[2] * v[0] - u[0] * v[2]) * n[1] + (u[0] * v[1] - u[1] * v[0]) * n[2];
-    if (facing >= 0) pos.push(...a, ...b, ...c, ...a, ...c, ...d);
-    else pos.push(...a, ...c, ...b, ...a, ...d, ...c);
-    for (let k = 0; k < 6; k++) nor.push(...n);
+    const [ia, ib, ic, id] = [a, b, c, d].map((p) => vertex(p[0], p[1], p[2], n));
+    if (facing >= 0) index.push(ia, ib, ic, ia, ic, id);
+    else index.push(ia, ic, ib, ia, id, ic);
   };
+
+  // The rectangles.
+  const rectOf = new Int32Array(nx * nz).fill(-1);
+  const rects: { i0: number; i1: number; k0: number; k1: number; L: number }[] = [];
   for (let k = 0; k < nz; k++)
     for (let i = 0; i < nx; i++) {
       const c = i + k * nx;
-      const L = g.level[c];
-      if (L <= NONE) continue;
-      const [x, z] = f.cellCenter(i, k);
-      quad([x - h, L, z - h], [x - h, L, z + h], [x + h, L, z + h], [x + h, L, z - h], [0, 1, 0]);
-      for (const [di, dk] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ]) {
-        const i2 = i + di;
-        const k2 = k + dk;
-        if (i2 < 0 || k2 < 0 || i2 >= nx || k2 >= nz) continue;
-        const m = i2 + k2 * nx;
-        if (g.level[m] > NONE) continue;
-        const low = Math.max(f.height[m], L - 1);
-        if (low >= L - 0.01) continue;
-        // Side face on the edge towards the lower neighbour, facing it.
-        const ex = x + di * h;
-        const ez = z + dk * h;
-        const ax = ex - dk * h;
-        const az = ez - di * h;
-        const bx = ex + dk * h;
-        const bz = ez + di * h;
-        quad([ax, L, az], [ax, low, az], [bx, low, bz], [bx, L, bz], [di, 0, dk]);
+      const L = level[c];
+      if (L <= NONE || rectOf[c] >= 0) continue;
+      let i1 = i;
+      while (i1 + 1 < nx && level[i1 + 1 + k * nx] === L && rectOf[i1 + 1 + k * nx] < 0) i1++;
+      let k1 = k;
+      grow: while (k1 + 1 < nz) {
+        for (let ii = i; ii <= i1; ii++) {
+          const m = ii + (k1 + 1) * nx;
+          if (level[m] !== L || rectOf[m] >= 0) break grow;
+        }
+        k1++;
+      }
+      const id = rects.length;
+      rects.push({ i0: i, i1, k0: k, k1, L });
+      for (let kk = k; kk <= k1; kk++) for (let ii = i; ii <= i1; ii++) rectOf[ii + kk * nx] = id;
+    }
+
+  /**
+   * What lies across the edge of cell (i, k) toward (di, dk), the water at L: `key` (a corner goes where it changes:
+   * −1 the map's edge, −2 a bank as high, a rectangle's number, or 1e6 + the foot of a side) and the side's foot (NaN:
+   * none). (As each cell's own sides were: one toward lower ground, down at most 1 m.)
+   */
+  const across = (i: number, k: number, di: number, dk: number, L: number): { key: number; low: number } => {
+    const i2 = i + di;
+    const k2 = k + dk;
+    if (i2 < 0 || k2 < 0 || i2 >= nx || k2 >= nz) return { key: -1, low: NaN };
+    const m = i2 + k2 * nx;
+    if (level[m] > NONE) return { key: rectOf[m], low: NaN };
+    const low = Math.max(f.height[m], L - 1);
+    if (low >= L - 0.01) return { key: -2, low: NaN };
+    return { key: 1e6 + low, low };
+  };
+
+  for (const { i0, i1, k0, k1, L } of rects) {
+    const xa = f.cellCenter(i0, k0)[0] - h;
+    const xb = f.cellCenter(i1, k0)[0] + h;
+    const za = f.cellCenter(i0, k0)[1] - h;
+    const zb = f.cellCenter(i0, k1)[1] + h;
+    // The outline (x, z pairs), corner by corner: +x along z = za, +z along x = xb, −x along z = zb, −z along x = xa.
+    const ring: number[] = [];
+    for (let e = 0; e < 4; e++) {
+      const n = e % 2 ? k1 - k0 : i1 - i0;
+      // (outward)
+      const di = e === 1 ? 1 : e === 3 ? -1 : 0;
+      const dk = e === 0 ? -1 : e === 2 ? 1 : 0;
+      // Cell j along the edge (0 … n) in the outline's direction, and the corner before it (j = n + 1: the edge's end).
+      const cell = (j: number): [number, number] => (e === 0 ? [i0 + j, k0] : e === 1 ? [i1, k0 + j] : e === 2 ? [i1 - j, k1] : [i0, k1 - j]);
+      const corner = (j: number): [number, number] => (e === 0 ? [xa + j * CELL, za] : e === 1 ? [xb, za + j * CELL] : e === 2 ? [xb - j * CELL, zb] : [xa, zb - j * CELL]);
+      let runStart = 0;
+      let run = across(...cell(0), di, dk, L);
+      ring.push(...corner(0));
+      for (let j = 1; j <= n + 1; j++) {
+        const next = j <= n ? across(...cell(j), di, dk, L) : null;
+        if (next && next.key === run.key) continue;
+        // A run of one kind ends at corner j: its side down to the bed, if it has one, and a corner of the outline.
+        if (!Number.isNaN(run.low)) {
+          const [ax, az] = corner(runStart);
+          const [bx, bz] = corner(j);
+          side([ax, L, az], [ax, run.low, az], [bx, run.low, bz], [bx, L, bz], [di, 0, dk]);
+        }
+        if (next) {
+          ring.push(...corner(j));
+          runStart = j;
+          run = next;
+        }
       }
     }
+    // Faces up: the outline turns from +x to +z, so a triangle (a, c, b) of it faces +y.
+    const n = ring.length / 2;
+    const first = pos.length / 3;
+    for (let j = 0; j < n; j++) vertex(ring[j * 2], L, ring[j * 2 + 1], UP);
+    if (n === 4) index.push(first, first + 2, first + 1, first, first + 3, first + 2);
+    else {
+      const mid = vertex((xa + xb) / 2, L, (za + zb) / 2, UP);
+      for (let j = 0; j < n; j++) index.push(mid, first + ((j + 1) % n), first + j);
+    }
+  }
   const geo = new BufferGeometry();
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
   geo.setAttribute('normal', new Float32BufferAttribute(nor, 3));
+  geo.setIndex(index);
   geo.computeBoundingSphere();
   return geo;
 }

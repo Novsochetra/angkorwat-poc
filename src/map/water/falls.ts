@@ -1,4 +1,4 @@
-import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute, MeshStandardMaterial, Vector3 } from 'three';
+import { Box3, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, MeshStandardMaterial, Sphere, Vector3 } from 'three';
 import { CELL } from '../heightfield';
 import { NOISE_GLSL } from './glsl';
 import type { WaterGrid } from './grid';
@@ -7,7 +7,9 @@ import type { WaterGrid } from './grid';
  * Waterfall sheets: for every fall of the height field a curtain that rolls
  * over the lip and drops down the cliff face, hugging it (it is pushed out
  * wherever the rock stands forward), and a small curtain on every lower step
- * of a river (1–2 m cascades). One geometry for all of them.
+ * of a river (1–2 m cascades). One geometry for all of them; each fall and
+ * step is a piece of its index (`FallPiece`: water.ts draws those in view,
+ * a fall far off with a quarter of its triangles).
  *
  * Attributes for the shader (`fallMaterial` below):
  *  - `aFall` (across m, along m from the roll start, drop m, seed)
@@ -29,24 +31,53 @@ export interface FallFoot {
   small: boolean;
 }
 
+/**
+ * A fall's or a step's own triangles in the geometry's index (water.ts draws
+ * only those in view, a fall far off with fewer: `FallSheets`).
+ */
+export interface FallPiece {
+  /** Its triangles: where in the index they start, and how many indices. */
+  start: number;
+  count: number;
+  /** A fall's triangles far off (the columns and rows of its grid that bend it most: `FAR_TOL`), or null (a step). */
+  far: number[] | null;
+  /**
+   * How far (m) the far triangles stray from the near ones at most: the sheet's shape, and where the streaks run
+   * along it (sheets.ts takes the far ones once this is under half a pixel).
+   */
+  err: number;
+  /** Round its vertices (world). */
+  sphere: Sphere;
+}
+
 /** How far the water shoots out over the lip: out = ARC · √drop (m). */
 const ARC = 0.34;
 /** Gap kept between the sheet and the rock (m). */
 const CLEAR = 0.3;
 /** Length of the roll over the lip, upstream of the face (m). */
 const ROLL = 1.4;
+/**
+ * A fall far off keeps the columns (0.25 m apart near) and rows of its grid where it bends: those left out lie within
+ * this (m) of the straight line between the kept ones beside them (its place, and the length along it that the streaks
+ * run by). The sheet is smooth across most of its width and down most of its drop; it bends at the lip and where the
+ * rock below pushes it out (a 2 m cell's step).
+ */
+const FAR_TOL = 0.08;
+const _v = new Vector3();
 
-export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; feet: FallFoot[] } {
+export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; feet: FallFoot[]; pieces: FallPiece[] } {
   const f = g.field;
   const pos: number[] = [];
   const fall: number[] = [];
   const edge: number[] = [];
   const index: number[] = [];
   const feet: FallFoot[] = [];
+  const pieces: FallPiece[] = [];
 
-  /** A grid of vertices, `cols` × `rows`, column by column; adds the triangles. */
-  const grid = (cols: number, rows: number, vertex: (j: number, r: number) => void) => {
+  /** A grid of vertices, `cols` × `rows`, column by column; adds the triangles. Returns its first vertex and its piece. */
+  const grid = (cols: number, rows: number, vertex: (j: number, r: number) => void): { base: number; piece: FallPiece } => {
     const base = pos.length / 3;
+    const start = index.length;
     for (let j = 0; j < cols; j++) for (let r = 0; r < rows; r++) vertex(j, r);
     for (let j = 0; j < cols - 1; j++)
       for (let r = 0; r < rows - 1; r++) {
@@ -54,6 +85,73 @@ export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; fee
         const b = a + rows;
         index.push(a, b, b + 1, a, b + 1, a + 1);
       }
+    const box = new Box3();
+    for (let v = base; v < pos.length / 3; v++) box.expandByPoint(_v.fromArray(pos, v * 3));
+    const piece: FallPiece = { start, count: index.length - start, far: null, err: 0, sphere: box.getBoundingSphere(new Sphere()) };
+    pieces.push(piece);
+    return { base, piece };
+  };
+
+  /**
+   * A fall's far triangles (the grid at `base`, `cols` × `rows`, its first `keep` rows all kept: the roll over the
+   * lip), and how far they stray from the near ones: each vertex left out against the far triangle over it.
+   */
+  const farOf = (piece: FallPiece, base: number, cols: number, rows: number, keep: number): void => {
+    const at = (j: number, r: number) => base + j * rows + r;
+    /** How far vertex v strays from the straight line between a and b, `t` of the way (its place and its length along the sheet). */
+    const off = (v: number, a: number, b: number, t: number) => {
+      let s = 0;
+      for (let q = 0; q < 3; q++) s += (pos[a * 3 + q] + (pos[b * 3 + q] - pos[a * 3 + q]) * t - pos[v * 3 + q]) ** 2;
+      return Math.max(Math.sqrt(s), Math.abs(fall[a * 4 + 1] + (fall[b * 4 + 1] - fall[a * 4 + 1]) * t - fall[v * 4 + 1]));
+    };
+    /** Lines kept (rows or columns), each as far on as those between stay within `FAR_TOL` of the straight line. */
+    const lines = (n: number, m: number, first: number[], vertexAt: (line: number, k: number) => number): number[] => {
+      const out = [...first];
+      let a = out[out.length - 1];
+      while (a < n - 1) {
+        let b = a + 1;
+        for (; b + 1 < n; b++) {
+          let ok = true;
+          for (let c = a + 1; c <= b && ok; c++) for (let k = 0; k < m && ok; k++) ok = off(vertexAt(c, k), vertexAt(a, k), vertexAt(b + 1, k), (c - a) / (b + 1 - a)) <= FAR_TOL;
+          if (!ok) break;
+        }
+        out.push(b);
+        a = b;
+      }
+      return out;
+    };
+    // (the roll over the lip kept whole: rows 0 … keep − 1)
+    const R = lines(rows, cols, Array.from({ length: keep }, (_, r) => r), (r, j) => at(j, r));
+    const J = lines(cols, rows, [0], (j, r) => at(j, r));
+    const far: number[] = [];
+    let err = 0;
+    // (position and the length along the sheet, each against the far triangle's: a + (b − a)·u + … per triangle)
+    const P = [0, 0, 0, 0];
+    const mix = (out: number[], a: number, b: number, c: number, wa: number, wb: number, wc: number) => {
+      for (let q = 0; q < 3; q++) out[q] = pos[a * 3 + q] * wa + pos[b * 3 + q] * wb + pos[c * 3 + q] * wc;
+      out[3] = fall[a * 4 + 1] * wa + fall[b * 4 + 1] * wb + fall[c * 4 + 1] * wc;
+    };
+    for (let x = 0; x < J.length - 1; x++)
+      for (let y = 0; y < R.length - 1; y++) {
+        const A = at(J[x], R[y]);
+        const B = at(J[x + 1], R[y]);
+        const C = at(J[x + 1], R[y + 1]);
+        const D = at(J[x], R[y + 1]);
+        far.push(A, B, C, A, C, D);
+        for (let j = J[x]; j <= J[x + 1]; j++)
+          for (let r = R[y]; r <= R[y + 1]; r++) {
+            const u = (j - J[x]) / (J[x + 1] - J[x]);
+            const w = (r - R[y]) / (R[y + 1] - R[y]);
+            // (as the index splits the quad: (A, B, C) where u ≥ w, (A, C, D) where u < w)
+            if (u >= w) mix(P, A, B, C, 1 - u, u - w, w);
+            else mix(P, A, D, C, 1 - w, w - u, u);
+            const v = at(j, r);
+            const dp = Math.hypot(P[0] - pos[v * 3], P[1] - pos[v * 3 + 1], P[2] - pos[v * 3 + 2]);
+            err = Math.max(err, dp, Math.abs(P[3] - fall[v * 4 + 1]));
+          }
+      }
+    piece.far = far;
+    piece.err = err;
   };
 
   f.falls.forEach((F, fi) => {
@@ -178,7 +276,7 @@ export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; fee
       }
       prof.push(o);
     }
-    grid(c1 - c0 + 1, rows, (jj, r) => {
+    const sheet = grid(c1 - c0 + 1, rows, (jj, r) => {
       const j = c0 + jj;
       const u = -half + j * du;
       const px = F.x + side[0] * u;
@@ -204,6 +302,7 @@ export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; fee
       fall.push(u, along, H, seed);
       edge.push(alpha[j], lipLen);
     });
+    farOf(sheet.piece, sheet.base, c1 - c0 + 1, rows, rollRows);
     const mid = Math.round((j0 + j1) / 2);
     const tFoot = out[mid][fallRows];
     const [fx, fz] = g.flowAt(F.x + d[0] * (tFoot + 3), F.z + d[1] * (tFoot + 3));
@@ -280,7 +379,7 @@ export function buildFallGeometry(g: WaterGrid): { geometry: BufferGeometry; fee
   geometry.setIndex(index);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  return { geometry, feet };
+  return { geometry, feet, pieces };
 }
 
 export interface FallUniforms {
