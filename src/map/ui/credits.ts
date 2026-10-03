@@ -9,7 +9,7 @@ import type { Lang } from '../types';
  * Support the game: the "Buy me a coffee" page. Its button is on top of the
  * credits page and at the foot of the settings (ui.ts).
  */
-export const SUPPORT_URL = 'https://buymeacoffee.com/sochetra12y';
+export const SUPPORT_URL = 'https://buymeacoffee.com/sochetranov';
 
 export interface CreditGroup {
   head: Record<Lang, string>;
