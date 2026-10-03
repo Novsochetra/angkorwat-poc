@@ -939,6 +939,8 @@ posthogLogger.info('map initialized', {
   failed_part_count: failed.length,
 });
 Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, renderer, post, graphicsNow, __frame: frame, __mapStats: { timings, blocks, failed, late: late.states, work: work.stats } });
+// (`speedtest=1`: this device's frame measured with parts of the map turned off one by one: speedtest.ts)
+if (!shot && params.get('speedtest') === '1') void import('./speedtest').then((m) => m.startSpeedTest());
 
 /** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
 let wakeLoop: () => void = () => undefined;
