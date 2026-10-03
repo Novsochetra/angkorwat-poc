@@ -8,6 +8,7 @@ import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
 import { warmSpeech } from './speech';
 import { loadTypewriter, prefetchTypewriter, typewriterState, type TypewriterState } from './typewriter';
+import { loadChants, prefetchChants } from './chants';
 import type { Ears } from './water';
 
 /**
@@ -128,6 +129,7 @@ function warmInIdleTime(): void {
       else {
         void loadFootsteps();
         void loadTypewriter();
+        void loadChants();
         later(voices);
       }
     } catch (e) {
@@ -144,6 +146,7 @@ export function createMapAudio(): MapAudio {
     // (the recordings download while the buffers are made)
     prefetchFootsteps();
     prefetchTypewriter();
+    prefetchChants();
     warmInIdleTime();
   }
   let ctx: AudioContext | null = null;
@@ -303,8 +306,16 @@ export function createMapAudio(): MapAudio {
     if (!still) {
       loadSteps(engine, ctx);
       loadStrikes(engine, ctx);
+      loadMonks(ctx);
     }
     ctx.addEventListener('statechange', onRunning);
+  }
+
+  /** The monks' chanting recordings (chants.ts: the chants play them once loaded); tried again a few times if it failed (`RETRY`). */
+  function loadMonks(c: AudioContext, tries = 0): void {
+    void loadChants(c).then((ok) => {
+      if (!ok && tries < RETRY.length) window.setTimeout(() => loadMonks(c, tries + 1), RETRY[tries] * 1000);
+    });
   }
 
   /** Hand the typewriter's strikes to the engine once cut; tried again a few times if it failed (`RETRY`). */

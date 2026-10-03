@@ -284,7 +284,7 @@ function createPchumAddon(): RoamAddon {
         chantAt = f.t;
         const e = f.camera.matrixWorld.elements;
         const side = d > 0.01 ? ((c.x - f.listener.x) * e[0] + (c.y - f.listener.y) * e[1] + (c.z - f.listener.z) * e[2]) / d : 0;
-        PCHUM_CHANT.place({ pan: Math.max(-0.85, Math.min(0.85, 0.85 * side * (d / (d + 12)))), air: chantAir(d), wet: chantWet(d) });
+        PCHUM_CHANT.place({ pan: Math.max(-0.85, Math.min(0.85, 0.85 * side * (d / (d + 12)))), air: chantAir(d), wet: chantWet(d), d });
       }
     },
 

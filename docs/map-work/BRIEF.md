@@ -609,6 +609,14 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   from the wooden blocks when the roaming world is built). In snow
   (`stepSnow`) the grass recording slowed, its crisp top over it, the
   weight muffled, a softer start (the snow packing down).
+- The monks' chanting is recorded too (`audio/chants.ts`): Cambodian monks in
+  a temple hall (cryany, Freesound 719878, CC BY-NC 4.0: credited) and far off
+  across Siem Reap (gazzaruddin, Freesound 192264, CC0), cleaned to mono at
+  about −20 LUFS. Endless chanting (`ChantStream`: dawn, Visak, Pchum Ben)
+  strings random pieces breath to breath with cross-fades; a one-off
+  (`chantShot`: the blessing, dak bat) plays one piece. Levels match the
+  synthesized chants they replace (measured in LUFS, within 0.5 dB), which
+  still play until the recordings are decoded or if they fail.
 - Sound settings: one slider per bus (`VOLUME_KEYS` in `types.ts`): master,
   music, ambience, water, animals, steps (footsteps), moves (the explorer's
   other sounds: jump, parachute, glider wind and sail, paddle, splash,
@@ -2070,7 +2078,8 @@ faster (`umbrellas`, `hurry`: the monks, the tour group, every `Actor`);
 birds stay on their perches, hunched (`fauna/_waterAirKit.ts
 birdShelter`: waders, jungle birds, the flocks over the road); only the
 explorer puts them up. (People do not yet go under cover in a storm.) Sound: `audio/temple.ts` (ambience bus) — the
-monks' Pali chanting at dawn, the skor drum and the bronze bell at dusk, a
+monks' Pali chanting at dawn (recorded monks, `audio/chants.ts`: the temple hall's chanting close by,
+the one heard across Siem Reap far off, blended by distance; synthesized while they load), the skor drum and the bronze bell at dusk, a
 bell before noon, from the village pagoda and Angkor Wat, placed and faded
 like the water. Animals (land fauna): the elephants' bath below the River
 Gate (`_landBath.ts`: a sunlit way down found at build; the cow sprays

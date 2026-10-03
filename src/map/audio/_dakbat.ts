@@ -1,4 +1,5 @@
 import { registerSfx, type SfxOut } from './addonSfx';
+import { chantShot } from './chants';
 import { biquad, mtof, noise, range, softWave, strike } from './dsp';
 
 /**
@@ -11,9 +12,11 @@ import { biquad, mtof, noise, range, softWave, strike } from './dsp';
  *   end … be happy and live long): low voices in near-unison on a
  *   reciting tone, a step up on some long syllables, the line falling at
  *   its end, a breath between the lines; a novice's higher voice faintly
- *   over it. Synthesized the way audio/temple.ts makes the dawn chant (a
- *   few detuned voices through one set of vowel formants that follows the
- *   syllables, a hiss for the consonants), about 6.5 s;
+ *   over it; about 6.5 s. The recorded monks (chants.ts: a piece of the
+ *   temple hall's chanting); until it is loaded, synthesized the way
+ *   audio/temple.ts makes the dawn chant (a few detuned voices through one
+ *   set of vowel formants that follows the syllables, a hiss for the
+ *   consonants);
  * - `dakLid` (ambience): the lid of an iron alms bowl lifted or put back, a
  *   soft dull knock with a faint ring;
  * - `dakSpoon` (moves): his spoon on the rim of the bowl, the rice dropping in;
@@ -66,10 +69,15 @@ const VOICES: readonly [number, number, number][] = [
 /** The reciting tone's root (D2, MIDI) and the whole chant's level. */
 const ROOT = 38;
 const CHANT = 1.25;
+/** The recording's level (chants.ts), to sit as the synthesized voices did, and its piece's length (s). */
+const REC = 0.4;
+const BLESS_LEN = 6;
 
 registerSfx(
   'dakChant',
   (o: SfxOut, gain: number, t0: number) => {
+    // (the recorded monks once loaded, chants.ts: a piece as long as the blessing)
+    if (chantShot(o, gain, t0, BLESS_LEN, REC, 0.15)) return;
     const { ctx, rnd } = o;
     const out = ctx.createGain();
     out.gain.value = CHANT * gain;

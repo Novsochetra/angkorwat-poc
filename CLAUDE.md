@@ -169,7 +169,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `minimap=show|button|hide` in shots). The key help bottom left has a
   setting too (Key help; `keyhelp=0` in shots; ? still lists every key).
 - Sound: a Sound on switch and one volume per bus in the settings (`VOLUME_KEYS` in `src/map/types.ts`);
-  footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`).
+  footsteps are the recordings in `assets/sound/` (`src/map/audio/footsteps.ts`), and so is
+  the monks' chanting (សូត្រមន្ត: dawn, blessing, dak bat, Visak, Pchum Ben), two
+  recordings from Cambodia, close by and far off (`src/map/audio/chants.ts`; synthesized
+  while they load).
   Back on the page, a phone may hold the sound until a tap: a card in the
   middle asks for it (`onHeld` in `audio/audio.ts`; `uistate=held` in shots).
 - Game pads (a PS5 DualSense, Xbox, most others) play the whole map:

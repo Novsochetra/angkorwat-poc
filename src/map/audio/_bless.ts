@@ -1,4 +1,5 @@
 import { registerSfx, type SfxOut } from './addonSfx';
+import { chantShot } from './chants';
 import { biquad, mtof, noise, range, softWave, strike } from './dsp';
 
 /**
@@ -11,9 +12,10 @@ import { biquad, mtof, noise, range, softWave, strike } from './dsp';
  *   bhava" (may every misfortune pass you by, every illness end, no harm come
  *   to you; be happy and live long). One elder's low voice on a reciting tone,
  *   a step up on some long syllables, each line falling at its end, a breath
- *   between the two; about 7 s. Synthesized the way audio/temple.ts makes the
- *   dawn chant (a voice through vowel formants that follow the syllables, a
- *   hiss for the consonants), alone and close by;
+ *   between the two; about 7 s. The recorded monks (chants.ts: a piece of
+ *   the temple hall's chanting); until it is loaded, synthesized the way
+ *   audio/temple.ts makes the dawn chant (a voice through vowel formants
+ *   that follow the syllables, a hiss for the consonants), alone and close by;
  * - `blessMurmur` (ambience): softer, as he ties the string: "āyu vaṇṇo sukhaṃ
  *   balaṃ" (long life, beauty, happiness, strength);
  * - `blessDip` (moves): the sprig dipped in the bowl of water;
@@ -68,6 +70,8 @@ const VOICE: readonly [number, number, number][] = [
 /** The reciting tone's root (D2, MIDI: the music's scale, as the temple chant), the levels. */
 const ROOT = 38;
 const LEVEL = { chant: 1.15, murmur: 0.62 };
+/** The recording's levels (chants.ts), to sit as the synthesized voice did. */
+const REC = { chant: 0.43, murmur: 0.3 };
 
 /** One voice chanting `text`, from `t0`: its beat (s a light syllable), its level, how breathy (the hiss's share). */
 function chant(o: SfxOut, gain: number, t0: number, text: Syl[][], beat: number, level: number, breath: number): void {
@@ -206,8 +210,9 @@ function chant(o: SfxOut, gain: number, t0: number, text: Syl[][], beat: number,
   };
 }
 
-registerSfx('blessChant', (o, gain, t) => chant(o, gain, t, CHANT, 0.135, LEVEL.chant, 0.08), 'ambience');
-registerSfx('blessMurmur', (o, gain, t) => chant(o, gain, t, MURMUR, 0.15, LEVEL.murmur, 0.3), 'ambience');
+// (the recorded monks once loaded, chants.ts: a piece as long as the blessing, and a short soft one over the string)
+registerSfx('blessChant', (o, gain, t) => chantShot(o, gain, t, 7, REC.chant, 0.15) || chant(o, gain, t, CHANT, 0.135, LEVEL.chant, 0.08), 'ambience');
+registerSfx('blessMurmur', (o, gain, t) => chantShot(o, gain, t, 2.2, REC.murmur, 0.15) || chant(o, gain, t, MURMUR, 0.15, LEVEL.murmur, 0.3), 'ambience');
 
 registerSfx('blessDip', (o: SfxOut, gain: number, t: number) => {
   const { ctx, rnd } = o;

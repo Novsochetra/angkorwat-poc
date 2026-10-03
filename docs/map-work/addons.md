@@ -1210,8 +1210,9 @@ alms bowls; families give rice by the road; the explorer gives too.
   unchanged (the floating village's monk: pixel-identical at 10, 20, 25, 35 and
   45 s against HEAD).
 - **Sounds** (audio/_dakbat.ts): `dakChant` (ambience: the monks' Pali blessing
-  "sabbītiyo vivajjantu, sabbarogo vinassatu … sukhī dīghāyuko bhava", low voices
-  in near-unison as audio/temple.ts makes the dawn chant; the families' stops play
+  "sabbītiyo vivajjantu, sabbarogo vinassatu … sukhī dīghāyuko bhava": a piece of
+  the recorded monks, audio/chants.ts, or until it loads low voices in
+  near-unison as audio/temple.ts makes the dawn chant; the families' stops play
   it by distance, gone past 48 m), `dakLid` (ambience: the iron lid's soft knock),
   `dakSpoon` and `dakCloth` (moves: the spoon on the rim and the rice; his clothes
   as he kneels and gets up).
@@ -1276,7 +1277,7 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
 - **The blessing** (≈ 28 s): he walks to his place 2.2 m before the monk (the stick,
   Space or E: never mind), turns to him, kneels the prayer's way (hat off), sits back on
   his heels, palms together at his face. The monk chants the Pali blessing
-  (`blessChant`, one old voice, ≈ 7 s; bubbles in Khmer letters: "♪ សព្វីតិយោ វិវជ្ជន្តុ
+  (`blessChant`, ≈ 7 s of the recorded monks, audio/chants.ts; one old voice synthesized until it loads; bubbles in Khmer letters: "♪ សព្វីតិយោ វិវជ្ជន្តុ
   សព្វរោគោ វិនស្សតុ", "♪ មា តេ ភវត្វន្តរាយោ សុខី ទីឃាយុកោ ភវ"; romanised in English), takes
   the sprig from the bowl, dips it (`blessDip`) and flicks the water over him three
   times: seven drops fly to his face each time (worked out from the time since the
@@ -2057,9 +2058,10 @@ what he holds `character/procession.ts`; sounds `audio/_pchum.ts`, `audio/_visak
   away and held half a second: he steps out to the left, his hands empty. Esc (back
   to the map), a new mode, or the festival going away: out at once.
 - **Sounds**: `visakChant` (the homage and the three refuges) and `pchumChant`
-  (the verses of impermanence, Aniccā vata saṅkhārā…), chanted in Pali as the dawn
-  chant is (audio/temple.ts), rendered once off the main thread into a loop and
-  heard from where the monks are (Visak Bochea: the line's head; Pchum Ben: the hall
+  (the verses of impermanence, Aniccā vata saṅkhārā…): the recorded monks
+  (audio/chants.ts, near and far blended by distance), or until they load chanted
+  in Pali as the dawn chant is synthesized (audio/temple.ts), rendered once off
+  the main thread into a loop; heard from where the monks are (Visak Bochea: the line's head; Pchum Ben: the hall
   while they walk, the porch in the morning); `visakGive`, `visakPlace`,
   `pchumGive`, `pchumToss`.
 - **Cost**: built with the festival part (lazy, when one is near: main.ts LATER

@@ -1,4 +1,5 @@
 import { registerLoop, registerSfx, type SfxOut } from './addonSfx';
+import { chantBlend, chantsReady, ChantStream } from './chants';
 import { biquad, glide, mtof, noise, softWave, strike } from './dsp';
 
 /**
@@ -10,9 +11,10 @@ import { biquad, glide, mtof, noise, softWave, strike } from './dsp';
  *   the homage to the Buddha (Namo tassa…, three times) and the three
  *   refuges — low voices in near-unison on a reciting tone, a rise on the
  *   long syllables, a fall at each line's end, a breath between lines (as
- *   the dawn chant, audio/temple.ts). Rendered once, off the main thread
- *   (an OfflineAudioContext), into a loop that plays from where the monks
- *   are: `placeChant` each frame (distance, side), `SFX.level` how loud;
+ *   the dawn chant, audio/temple.ts). The recorded monks (chants.ts), or
+ *   until they are loaded synthesized: rendered once, off the main thread
+ *   (an OfflineAudioContext), into a loop. Played from where the monks
+ *   are: `place` each frame (distance, side), `SFX.level` how loud;
  * - `visakGive`: a candle, incense and a lotus taken into his hands (a soft
  *   rustle of the stems, a tiny bell-like tick);
  * - `visakPlace`: the candle set in the tray's sand (a soft tap).
@@ -188,26 +190,72 @@ export async function renderChant(sampleRate: number, text: string, seed: number
   }
 }
 
-/** Where a chant is heard from: the distance's gain, the air (low-pass, Hz), the side (−1‥1), the reverb send. */
+/** Where a chant is heard from: the side (−1‥1), the air (low-pass, Hz), the reverb send, the distance (m: the recordings' blend, chants.ts). */
 export interface ChantPlace {
   pan: number;
   air: number;
   wet: number;
+  d?: number;
 }
 
-/** A chant as a lasting sound: rendered once, looped, placed (`place`) and levelled (`SFX.level`). */
+/** The recordings' level, to sit as the synthesized loop did. */
+const REC = 0.43;
+
+/**
+ * A chant as a lasting sound, placed (`place`) and levelled (`SFX.level`):
+ * the recorded monks (chants.ts: the near and the far recording, blended by
+ * the distance), or until they are loaded the synthesized loop, rendered
+ * once (it fades out as the recordings come in).
+ */
 export function chantLoop(text: string, seed: number, base: number): { make: (o: SfxOut) => { level(v: number, t: number): void }; place(p: ChantPlace): void } {
-  let nodes: { ctx: BaseAudioContext; air: BiquadFilterNode; pan: StereoPannerNode; send: GainNode; level: GainNode; src: AudioBufferSourceNode | null } | null = null;
+  interface Nodes {
+    ctx: BaseAudioContext;
+    rnd: () => number;
+    air: BiquadFilterNode;
+    pan: StereoPannerNode;
+    send: GainNode;
+    level: GainNode;
+    synth: GainNode;
+    src: AudioBufferSourceNode | null;
+    rec: { gains: GainNode[]; streams: ChantStream[] } | null;
+    d: number;
+  }
+  let nodes: Nodes | null = null;
+  const blend = (n: Nodes, tc: number) => {
+    if (n.rec) chantBlend(n.d).forEach((v, i) => glide(n.rec!.gains[i].gain, v * REC, n.ctx.currentTime, tc));
+  };
+  /** The recordings in, once loaded (the synthesized loop fades out). */
+  const recorded = (n: Nodes) => {
+    if (n.rec || !chantsReady()) return;
+    const ctx = n.ctx;
+    const t = ctx.currentTime;
+    const gains = [0, 1].map(() => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(n.air);
+      return g;
+    });
+    const streams = (['near', 'far'] as const).map((k, i) => new ChantStream(ctx, gains[i], k, n.rnd));
+    for (const s of streams) s.start(t, 0.8);
+    n.rec = { gains, streams };
+    blend(n, 0);
+    if (n.src) {
+      glide(n.synth.gain, 0, t, 0.8);
+      n.src.stop(t + 4);
+      n.src = null;
+    }
+  };
   return {
     make(o) {
       // (made again after the sound was restarted: the old loop stops)
       if (nodes) {
         try {
           nodes.src?.stop();
+          for (const s of nodes.rec?.streams ?? []) s.stop(nodes.ctx.currentTime, 0.05);
         } catch {
-          /* not started yet */
+          /* not started yet, or its context is closed */
         }
-        for (const n of [nodes.air, nodes.level, nodes.pan, nodes.send]) n.disconnect();
+        for (const n of [nodes.air, nodes.level, nodes.pan, nodes.send, nodes.synth]) n.disconnect();
       }
       const ctx = o.ctx;
       const air = biquad(ctx, 'lowpass', 3000, 0.5);
@@ -216,19 +264,22 @@ export function chantLoop(text: string, seed: number, base: number): { make: (o:
       const pan = ctx.createStereoPanner();
       const send = ctx.createGain();
       send.gain.value = 0.3;
-      air.connect(level).connect(pan).connect(o.dry);
+      const synth = ctx.createGain();
+      synth.connect(air).connect(level).connect(pan).connect(o.dry);
       pan.connect(send).connect(o.wet);
-      const mine = (nodes = { ctx, air, pan, send, level, src: null as AudioBufferSourceNode | null });
-      void renderChant(ctx.sampleRate, text, seed).then((buf) => {
-        if (!buf || ctx.state === 'closed' || nodes !== mine) return;
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        src.loop = true;
-        src.connect(air);
-        // (from a point in the text of its own, not always the first line)
-        src.start(ctx.currentTime + 0.05, (seed % 7) * 0.9);
-        mine.src = src;
-      });
+      const mine: Nodes = (nodes = { ctx, rnd: o.rnd, air, pan, send, level, synth, src: null, rec: null, d: 0 });
+      recorded(mine);
+      if (!mine.rec)
+        void renderChant(ctx.sampleRate, text, seed).then((buf) => {
+          if (!buf || ctx.state === 'closed' || nodes !== mine || mine.rec) return;
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.loop = true;
+          src.connect(synth);
+          // (from a point in the text of its own, not always the first line)
+          src.start(ctx.currentTime + 0.05, (seed % 7) * 0.9);
+          mine.src = src;
+        });
       return {
         level(v, t) {
           glide(level.gain, v * base, t, 0.6);
@@ -241,6 +292,9 @@ export function chantLoop(text: string, seed: number, base: number): { make: (o:
       glide(nodes.pan.pan, p.pan, t, 0.2);
       glide(nodes.air.frequency, p.air, t, 0.3);
       glide(nodes.send.gain, p.wet, t, 0.3);
+      if (p.d !== undefined) nodes.d = p.d;
+      if (nodes.rec) blend(nodes, 0.3);
+      else recorded(nodes);
     },
   };
 }

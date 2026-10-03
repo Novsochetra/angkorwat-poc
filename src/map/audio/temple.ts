@@ -1,6 +1,7 @@
 import type { EventState } from '../events';
 import { PLACES } from '../layout';
 import { PAGODA } from '../village/_spots';
+import { chantBlend, chantsReady, ChantStream } from './chants';
 import { biquad, glide, mtof, noise, range, softWave, strike, type Rng } from './dsp';
 import type { SoundEngine } from './engine';
 import type { Ears } from './water';
@@ -11,12 +12,14 @@ import type { Ears } from './water';
  *
  * - dawn (`dawnChant`): the monks' morning chanting in Pali — the homage
  *   (Namo tassa…), the three refuges, the praise of the Buddha (Itipi so…)
- *   — in low voices in near-unison, a reciting tone with a gentle rise on
- *   the long syllables and a fall at the end of each line, a breath between
- *   lines; from the village pagoda and from Angkor Wat's monastery.
- *   Synthesized: a few detuned voices through one set of vowel formants
- *   that follows the syllables (all voices sing the same syllable), a hiss
- *   for s and the breathy consonants, a very soft hum under it;
+ *   — from the village pagoda and from Angkor Wat's monastery. Recorded
+ *   monks (chants.ts: close by the temple hall's recording, far off the one
+ *   heard across Siem Reap, `RecChant`); until the recordings are loaded,
+ *   or if they fail, synthesized (`Chant`): low voices in near-unison, a
+ *   reciting tone with a gentle rise on the long syllables and a fall at the
+ *   end of each line, a breath between lines — a few detuned voices through
+ *   one set of vowel formants that follows the syllables, a hiss for s and
+ *   the breathy consonants, a very soft hum under it;
  * - dusk (`duskDrum`): the pagoda's skor drum — slow deep strokes that
  *   speed up into a roll and stop, twice — then the bronze bell, struck
  *   slowly; faintly the same from Angkor Wat a few seconds later;
@@ -58,7 +61,7 @@ export const TEMPLE_SITES: readonly TempleSite[] = [
  * 10–40 m about as loud as the jungle's), so the compressor never pulls
  * everything else down under them.
  */
-const LEVEL = { chant: 1.6, hum: 0.012, hiss: 0.25, drum: 0.18, bell: 0.12 };
+const LEVEL = { chant: 1.6, rec: 0.82, hum: 0.012, hiss: 0.25, drum: 0.18, bell: 0.12 };
 /** A stroke is not made when its site's distance gain is under this (too far off to be heard). */
 const FAINT = 0.05;
 /** Loudness with distance: [m, dB], straight lines on a log scale between them. */
@@ -98,8 +101,9 @@ class Site {
   private readonly pan: StereoPannerNode;
   private readonly send: GainNode;
   private readonly last = [-1, -1, -9, -1];
-  /** The distance's gain now (0‥1). */
+  /** The distance's gain now (0‥1), the distance (m). */
   amp = 0;
+  d = 0;
 
   constructor(
     e: SoundEngine,
@@ -121,7 +125,7 @@ class Site {
     const dx = s.x - e.x;
     const dy = s.y - e.y;
     const dz = s.z - e.z;
-    const d = Math.hypot(dx, dy, dz) || 1e-3;
+    const d = (this.d = Math.hypot(dx, dy, dz) || 1e-3);
     const side = (dx * e.right[0] + dy * e.right[1] + dz * e.right[2]) / d;
     const behind = Math.max(0, -(dx * e.forward[0] + dy * e.forward[1] + dz * e.forward[2]) / d);
     this.amp = ampAt(d) * s.gain;
@@ -394,6 +398,39 @@ class Chant {
   }
 }
 
+/** The chant from the recordings (chants.ts): the near one and the far one at once, blended by the site's distance. */
+class RecChant {
+  private readonly streams: [ChantStream, ChantStream];
+  private readonly gains: [GainNode, GainNode];
+  private lastD = -1;
+
+  constructor(
+    e: SoundEngine,
+    private readonly site: Site,
+  ) {
+    const ctx = e.ctx;
+    this.gains = [0, 1].map(() => {
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      g.connect(site.input);
+      return g;
+    }) as [GainNode, GainNode];
+    this.streams = [new ChantStream(ctx, this.gains[0], 'near', e.rnd), new ChantStream(ctx, this.gains[1], 'far', e.rnd)];
+  }
+
+  /** Start (fading in) or fade out and stop; the blend follows the distance. */
+  want(on: boolean, now: number): void {
+    for (const s of this.streams) {
+      if (on && !s.running) s.start(now, CHANT_IN);
+      else if (!on && s.running) s.stop(now, CHANT_OUT);
+    }
+    if (!on || Math.abs(this.site.d - this.lastD) < 1) return;
+    const tc = this.lastD < 0 ? 0 : 0.3;
+    this.lastD = this.site.d;
+    chantBlend(this.site.d).forEach((v, i) => glide(this.gains[i].gain, v * LEVEL.rec, now, tc));
+  }
+}
+
 // ── The drum and the bell ───────────────────────────────────────────────────
 
 interface Stroke {
@@ -443,6 +480,7 @@ export class TempleSound {
   private readonly rnd: Rng;
   private readonly sites: Site[];
   private readonly chants: Chant[];
+  private readonly recs: RecChant[];
   private queue: Stroke[] = [];
   private lastPlace = -1;
   private chanting = false;
@@ -454,6 +492,7 @@ export class TempleSound {
     this.rnd = e.rnd;
     this.sites = TEMPLE_SITES.map((s) => new Site(e, s));
     this.chants = this.sites.map((s, i) => new Chant(e, s, i));
+    this.recs = this.sites.map((s) => new RecChant(e, s));
   }
 
   /** Where the ears are (every frame; the sites follow ~15 times a second). */
@@ -522,10 +561,13 @@ export class TempleSound {
 
   /** Fill in chant syllables and strokes up to `until` (audio clock, s). */
   schedule(now: number, until: number): void {
+    // (the recordings once loaded: a synthesized chant under way fades out as they fade in)
+    const rec = chantsReady();
     for (const c of this.chants) {
-      c.want(this.chanting, now);
+      c.want(this.chanting && !rec, now);
       c.schedule(now, until);
     }
+    for (const c of this.recs) c.want(this.chanting && rec, now);
     while (this.queue.length && this.queue[0].t < until) {
       const s = this.queue.shift()!;
       // (late: the sound was held back, e.g. the tab was hidden)
@@ -542,6 +584,7 @@ export class TempleSound {
   /** The ambience is muted (nothing is scheduled): the chant's voices fade and stop, the strokes due now are dropped. */
   idle(now: number): void {
     for (const c of this.chants) c.want(false, now);
+    for (const c of this.recs) c.want(false, now);
     while (this.queue.length && this.queue[0].t < now) this.queue.shift();
   }
 

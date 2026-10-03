@@ -31,6 +31,8 @@ export const CREDITS: CreditGroup[] = [
       { name: 'GFX Sounds', note: { km: 'ជំហានលើថ្ម និងឈើ ម៉ាស៊ីនអង្គុលីលេខ', en: 'Steps on stone and wood, the typewriter' } },
       { name: 'SmartSound FX', note: { km: 'ជំហានលើស្មៅ', en: 'Steps on grass' } },
       { name: 'Vadi Sound', note: { km: 'ជំហានក្នុងទឹក និងភក់', en: 'Steps in water and mud' } },
+      { name: 'cryany', note: { km: 'ព្រះសង្ឃសូត្រមន្តក្នុងវិហារ (Freesound, CC BY-NC 4.0)', en: 'Monks chanting in a temple (Freesound, CC BY-NC 4.0)' } },
+      { name: 'gazzaruddin', note: { km: 'ព្រះសង្ឃសូត្រមន្តពីចម្ងាយ នៅសៀមរាប (Freesound, CC0)', en: 'Monks chanting far off in Siem Reap (Freesound, CC0)' } },
       { name: '', note: { km: 'សំឡេងផ្សេងទៀតទាំងអស់ បង្កើតផ្ទាល់នៅក្នុងកម្មវិធីរុករក', en: 'Every other sound is made live in the browser' } },
     ],
   },

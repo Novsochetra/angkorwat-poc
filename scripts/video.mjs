@@ -125,6 +125,11 @@ if (!preview && cut.audio) {
       const ctx = new OfflineAudioContext(2, Math.ceil((total + 0.5) * rate), rate);
       const engine = new SoundEngine(ctx, { seed: audio.seed });
       engine.setVolumes(audio.volumes, true);
+      // (the monks' chanting from the recordings, as in the game: audio/chants.ts; else it is synthesized)
+      if (audio.volumes.ambience > 0) {
+        const { loadChants } = await import('/src/map/audio/chants.ts');
+        await loadChants();
+      }
       engine.setMix({ night: night(0) }, true);
       engine.fadeIn(audio.fadeIn);
       engine.schedule(0.75);
