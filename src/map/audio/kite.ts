@@ -6,7 +6,7 @@ import { Voice } from './voice';
  * The khleng ek's song (`kiteHum`): the ek, a bamboo bow strung with a thin
  * ribbon of rattan (or palm leaf) across the kite's top, buzzes in the wind
  * like a reed — a reedy drone with a rattle in it. It sings in notes: every
- * 0.6–1.2 s it steps to another of a few (1, 9/8, 5/4, 3/2, 5/3 of its own
+ * 1.4–2.4 s it steps to another of a few (1, 9/8, 5/4, 3/2, 5/3 of its own
  * note, mostly the next one up or down), entering each with a quick rise
  * (~0.2 s) and sagging slower after it (~0.5 s) — the "miaow" the Khmer
  * hear in it — deeper in a gust, a dive now and then. The bigger the kite
@@ -16,8 +16,8 @@ import { Voice } from './voice';
  *
  * Each kite is one lasting voice (`KiteVoice`): its calls (one every 3–5 s
  * while it flies near: people/_sceneKites.ts) keep it singing 6 s past the
- * last; then it fades out. Several kites make a chorus (people.ts lets five
- * sing at once). Carries 250 m.
+ * last; then it fades out. Several kites make a chorus (people.ts lets two
+ * sing at once). Carries 110 m.
  *
  * Its voice: two reedy oscillators a little apart (the ribbon's beat), a
  * quick flutter on the pitch, a rattle on the level (the ribbon slapping
@@ -41,7 +41,7 @@ function reed(ctx: BaseAudioContext): PeriodicWave {
     const H = 28;
     const real = new Float32Array(H + 1);
     const imag = new Float32Array(H + 1);
-    for (let h = 1; h <= H; h++) imag[h] = (h % 2 ? 1 : 0.7) / h ** 1.1;
+    for (let h = 1; h <= H; h++) imag[h] = (h % 2 ? 1 : 0.7) / h ** 1.9;
     reeds.set(ctx, (w = ctx.createPeriodicWave(real, imag)));
   }
   return w;
@@ -110,16 +110,16 @@ export class KiteVoice {
     this.b.connect(v.gain(0.6)).connect(mix);
     // The rattle: the ribbon slapping the bow.
     const rattle = v.gain(0.8);
-    v.lfo(rattle.gain, range(r, 12, 19), 0.13, now, far, 'triangle');
-    v.lfo(rattle.gain, range(r, 23, 31), 0.07, now, far);
+    v.lfo(rattle.gain, range(r, 12, 19), 0.05, now, far, 'triangle');
+    v.lfo(rattle.gain, range(r, 23, 31), 0.03, now, far);
     // The bow and the sail sound with it: a lift round the third harmonic; the far top taken off; nothing under the note.
     const body = v.filter('peaking', this.f0 * range(r, 2.6, 3.4), 1.8, 5);
-    const top = v.filter('lowpass', range(r, 2200, 2800), 0.7);
+    const top = v.filter('lowpass', range(r, 900, 1300), 0.7);
     const floor = v.filter('highpass', this.f0 * 0.75, 0.7);
     this.env = v.gain(0);
     mix.connect(rattle).connect(body).connect(top).connect(floor).connect(this.env);
     // The wind over the ribbon: a soft hiss, with the song.
-    v.noise('pink', now, far).connect(v.filter('bandpass', range(r, 1600, 2400), 0.8)).connect(v.gain(0.05)).connect(this.env);
+    v.noise('pink', now, far).connect(v.filter('bandpass', range(r, 1600, 2400), 0.8)).connect(v.gain(0.02)).connect(this.env);
     this.level = v.gain(0);
     this.air = v.filter('lowpass', 8000, 0.5);
     this.pan = v.keep(ctx.createStereoPanner());
@@ -187,8 +187,8 @@ export class KiteVoice {
     if (r() < 0.2) this.idx = 0;
     const dive = r() < 0.12;
     const f = this.f0 * STEPS[this.idx];
-    const over = (0.012 + 0.02 * g) * this.glides;
-    const sag = (0.03 + 0.05 * g) * this.glides * (dive ? 2.5 : 1);
+    const over = (0.006 + 0.01 * g) * this.glides;
+    const sag = (0.015 + 0.025 * g) * this.glides * (dive ? 2 : 1);
     for (const o of [this.a, this.b]) {
       o.frequency.setTargetAtTime(f * (1 + over), t, 0.07);
       o.frequency.setTargetAtTime(f * (1 - sag), t + 0.2, 0.17);
@@ -197,6 +197,6 @@ export class KiteVoice {
     const loud = (0.75 + 0.25 * g) * (dive ? 0.8 : 1);
     this.env.gain.setTargetAtTime(loud, t, first ? 0.35 : 0.05);
     this.env.gain.setTargetAtTime(loud * (dive ? 0.55 : 0.72), t + (first ? 0.9 : 0.15), 0.25);
-    return t + range(r, 0.6, 1.2);
+    return t + range(r, 1.4, 2.4);
   }
 }

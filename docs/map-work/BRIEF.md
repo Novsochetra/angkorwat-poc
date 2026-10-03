@@ -1990,12 +1990,12 @@ valley's echo.
   `audio/people.ts`, ambience bus; at most eight at once, two of a kind):
   `kiteHum` (`kite.ts` `KiteVoice`: the khleng ek's ribbon buzzing like a
   reed, with a rattle; each kite one lasting voice that steps through its
-  notes — 1, 9/8, 5/4, 3/2, 5/3 of its own, one every 0.6–1.2 s — entering
+  notes — 1, 9/8, 5/4, 3/2, 5/3 of its own, one every 1.4–2.4 s — entering
   each with a quick rise and sagging slower after it, the "miaow", deeper
   in a gust, a dive now and then; a call keeps it singing 6 s more: push
-  one per kite every 3–5 s while it flies near; five kites at once; `size`
+  one per kite every 3–5 s while it flies near; two kites at once; `size`
   the kite's, m: ≈ 440 Hz for a 1 m kite down to 150 Hz for a 3.5 m one,
-  the big ones steadier; heard 250 m), `market` (a knot of people talking,
+  the big ones steadier; soft, heard 110 m), `market` (a knot of people talking,
   2.5–4 s; `gain` how busy), `vendorCall` (a seller calling out,
   sing-song), `hello` and `kidHello` (`size`, if sent, the
   greeter's height: a woman's voice under 1.63 m, a man's over; the

@@ -155,7 +155,7 @@ const COME_LEFT = 0.05;
 /** Seconds bent over the stake, tying the line or untying it. */
 const TIE = 2.5;
 /** The hum is sent while the listener is this near a kite (m). */
-const HUM_REACH = 240;
+const HUM_REACH = 110;
 /** Seconds between words to the explorer (and how near he must be, m). */
 const SAY_EVERY = 90;
 const SAY_NEAR = 5;

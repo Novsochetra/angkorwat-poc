@@ -56,7 +56,7 @@ import type { Ears } from './water';
  * The pinpeat is on the Music bus (its slider), the rest on Ambience.
  * Levels are gentle: under the animals' calls close by, the laughter
  * carries less than a hornbill, a greeting is heard across a yard. At most
- * eight at once, two of a kind; and five kites and two motos.
+ * eight at once, two of a kind; and two kites and two motos.
  */
 
 /** Each sound: its peak level close by, full within `near` m, silent past `reach` m; its bus; how many may play at once (2). */
@@ -66,7 +66,7 @@ const SOUNDS: Record<PeopleCallKind, { level: number; near: number; reach: numbe
   netSplash: { level: 0.3, near: 8, reach: 110, bus: 'ambience' },
   laugh: { level: 0.14, near: 10, reach: 150, bus: 'ambience' },
   pinpeat: { level: 0.55, near: 16, reach: 190, bus: 'music' },
-  kiteHum: { level: 0.055, near: 20, reach: 250, bus: 'ambience' },
+  kiteHum: { level: 0.03, near: 10, reach: 110, bus: 'ambience' },
   market: { level: 0.14, near: 12, reach: 120, bus: 'ambience' },
   vendorCall: { level: 0.2, near: 8, reach: 100, bus: 'ambience' },
   chop: { level: 0.11, near: 4, reach: 50, bus: 'ambience' },
@@ -100,7 +100,7 @@ const MOTOS = 2;
 const MOTO_SAME = 40;
 const MOTO_QUIET = 3.5;
 /** Kites singing at once; a kite call of the same `size` within this far (m) of one is that one. */
-const KITES = 5;
+const KITES = 2;
 const KITE_SAME = 30;
 /** How often the lasting voices (motos, kites) follow the ears (s). */
 const LASTING_EVERY = 1 / 15;
