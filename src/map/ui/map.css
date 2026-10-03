@@ -36,6 +36,74 @@
   --mu-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* (a browser without color-mix(), an older phone's: the day's colours, flat; else every panel would be clear and every edge gone) */
+@supports not (color: color-mix(in srgb, red, blue)) {
+  .map-ui,
+  .st {
+    --mu-ink2: #cfd6e3;
+    --mu-dim: #a3acb9;
+    --mu-panel: rgba(13, 25, 39, 0.86);
+    --mu-panel-strong: rgba(14, 24, 37, 0.93);
+    --mu-line: rgba(255, 229, 188, 0.2);
+    --mu-line-hi: rgba(255, 238, 212, 0.5);
+    --mu-btn: rgba(44, 44, 56, 0.82);
+    --mu-btn-hi: rgba(58, 58, 72, 0.88);
+  }
+
+  .map-ui .mu-title {
+    --mu-edge: rgba(255, 226, 180, 0.22);
+  }
+
+  .map-ui .mu-info,
+  .map-ui .mu-settings {
+    --mu-edge: rgba(255, 226, 180, 0.24);
+  }
+
+  .map-ui .mm-mini,
+  .map-ui .mm-big,
+  .map-ui .wh-btn {
+    --mu-edge: rgba(255, 226, 180, 0.3);
+  }
+
+  .map-ui .mu-info-blurb {
+    color: #ebe5d9;
+  }
+
+  /* (the panels that mix their fill with the night in place: a fill that cannot be worked out is none at all) */
+  .map-ui .rtb > .mu-bg,
+  .map-ui .wh-btn > .mu-bg,
+  .map-ui.rh > .tg-count > .mu-bg {
+    background: rgba(13, 25, 39, 0.62);
+  }
+
+  .map-ui .rh-help > .mu-bg,
+  .map-ui.rh > .by-purse > .mu-bg {
+    background: rgba(13, 25, 39, 0.55);
+  }
+
+  .map-ui .rh-pick > .mu-bg {
+    background: rgba(44, 58, 76, 0.5);
+  }
+
+  .map-ui .mm-shade {
+    background: rgba(6, 10, 18, 0.5);
+  }
+
+  .map-ui.mu-roam .mu-pin .mu-bg {
+    background: rgba(13, 25, 39, 0.6);
+  }
+
+  .map-ui .mu-pin:hover .mu-bg,
+  .map-ui .mu-pin.is-hover .mu-bg {
+    background: rgba(28, 41, 58, 0.84);
+  }
+
+  .map-ui .mu-pin:active .mu-bg,
+  .map-ui .mu-pin.is-press .mu-bg {
+    background: rgba(10, 18, 28, 0.9);
+  }
+}
+
 .map-ui {
   position: fixed;
   inset: 0;
@@ -1853,11 +1921,18 @@
 }
 
 /* The mini-map (ui/minimap.ts) sits under the gear, where the settings open:
-   it fades while they are open, and comes back after. */
-.map-ui.mu-set-open ~ .mm.is-on .mm-mini {
+   it fades while they are open, and comes back after; so do the buttons
+   under it (the calendar's) and, on touch, the right thumb's (roam/touch.ts),
+   which would stand over the panel's foot. */
+.map-ui.mu-set-open ~ .mm.is-on .mm-mini,
+.map-ui.mu-set-open ~ .mm.is-on .mm-under {
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.2s, visibility 0s 0.2s;
+}
+
+.map-ui.mu-set-open ~ .rt .rt-btn {
+  visibility: hidden;
 }
 
 /* ── Held sound (ui.ts `setSoundHeld`) ──────────────────────────────────────
@@ -2610,6 +2685,297 @@ body.reporting .map-ui {
 
   .mu-roam .mu-lang {
     order: 0;
+  }
+}
+
+/* ── Phones on their side ───────────────────────────────────────────────────
+ * Short and wide (a phone held sideways: 320‥430 px high, 640 px and more
+ * across): the interface keeps the desktop's sizes at 0.8 (ui.ts `measure`),
+ * which are made for a screen twice as high, so here the title and the
+ * cards take the upright phone's sizes (above), the corner buttons and the
+ * panels' buttons grow to a finger's 40 px, and the panels keep clear of the
+ * title and scroll inside. The notch's side keeps its safe area (env(): 0
+ * unless the page is drawn under it).
+ */
+@media (max-height: 500px) and (min-width: 640px) {
+  .mu-title {
+    left: max(calc(24 * var(--px)), env(safe-area-inset-left));
+    gap: 10px;
+    padding: 7px 14px 8px 10px;
+  }
+
+  .mu-title-icon .mu-icon {
+    width: 40px;
+  }
+
+  .mu-title h1 {
+    font-size: 22px;
+  }
+
+  .mu-title p {
+    margin-top: 4px;
+    font-size: 11.5px;
+  }
+
+  .mu-corner {
+    right: max(calc(22 * var(--px)), env(safe-area-inset-right));
+    gap: 8px;
+  }
+
+  .mu-round {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mu-round .mu-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .mu-coffee-btn .mu-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  .mu-cr-btn .mu-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* The cards (the overview's; the roaming pins keep their own: `.mu-roam`). */
+  .map-ui:not(.mu-roam) .mu-pin-in,
+  .map-ui:not(.mu-roam) .mu-pin.is-main .mu-pin-in {
+    gap: 8px;
+    min-height: 40px;
+    padding: 4px 8px 4px 10px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-icon .mu-icon,
+  .map-ui:not(.mu-roam) .mu-pin.is-main .mu-pin-icon .mu-icon {
+    width: 16px;
+    height: 19px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-name {
+    font-size: 13px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin.is-main .mu-pin-name {
+    font-size: 14.5px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-sub {
+    font-size: 11px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-chev .mu-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-text {
+    padding-right: 0;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-name:lang(km) {
+    font-size: 14px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin.is-main .mu-pin-name:lang(km) {
+    font-size: 15.5px;
+  }
+
+  .map-ui:not(.mu-roam) .mu-pin-sub:lang(km) {
+    font-size: 12px;
+  }
+
+  /* The info panel: under the corner buttons, clear of the title, its body scrolling. */
+  .mu-info {
+    right: max(calc(22 * var(--px)), env(safe-area-inset-right));
+    top: 66px;
+    width: 300px;
+    max-height: calc(100% - 76px);
+    padding: 8px 16px 14px;
+  }
+
+  .mu-info-head {
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .mu-info-pin .mu-icon {
+    width: 22px;
+    height: 27px;
+  }
+
+  .mu-info h2 {
+    font-size: 22px;
+  }
+
+  .mu-info-sub {
+    margin-top: 3px;
+    font-size: 13px;
+  }
+
+  .mu-orn {
+    margin: 10px 0 8px;
+  }
+
+  .mu-info-blurb {
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .mu-facts {
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .mu-facts li {
+    font-size: 12px;
+  }
+
+  .mu-begin {
+    height: 44px;
+    margin-top: 12px;
+    font-size: 15px;
+  }
+
+  .mu-back {
+    min-height: 40px;
+  }
+
+  /* The settings: under the corner buttons, to the foot of the view (the page scrolls), a little bigger than the
+     rest (0.9: the upright phone's are 0.94), its buttons a finger's size. */
+  .mu-settings {
+    --mu-set-top: 66px;
+    --u: 0.9;
+    --px: calc(1px * var(--u));
+    right: max(17.6px, env(safe-area-inset-right));
+    max-height: calc(100% - var(--mu-set-top) - 10px);
+    padding: 10px 16px 12px;
+  }
+
+  /* (the page gets the height: the word "Settings" goes (still read out), the close button beside the tabs) */
+  .mu-set-head {
+    position: absolute;
+    top: 16px;
+    right: 14px;
+    z-index: 2;
+  }
+
+  .mu-set-head h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .mu-tabs {
+    margin: 0 48px 2px 0;
+  }
+
+  .mu-tab {
+    height: 44px;
+  }
+
+  .mu-x {
+    width: 40px;
+    height: 40px;
+    margin-right: 0;
+  }
+
+  .mu-seg button {
+    height: 40px;
+  }
+
+  .mu-slider input {
+    height: 36px;
+  }
+
+  /* (the switches and the automatic chips keep their look; a finger reaches them a little round it) */
+  .mu-switch::after,
+  .mu-auto::after {
+    content: '';
+    position: absolute;
+    top: -8px;
+    right: -3px;
+    bottom: -8px;
+    left: -3px;
+  }
+
+  .mu-hint {
+    right: max(calc(24 * var(--px)), env(safe-area-inset-right));
+    bottom: 12px;
+  }
+
+  /* (a card open at the right edge: the stall's, the fish seller's, the calendar's: the HUD's messages in the room left of it,
+     under the left column: Back, the gold count, the purse) */
+  body.roam-shop .map-ui.rh > .rh-toast,
+  body.roam-sell .map-ui.rh > .rh-toast,
+  body.roam-when .map-ui.rh > .rh-toast {
+    top: 122px;
+  }
+
+  body.roam-shop .map-ui.rh > .rh-toast,
+  body.roam-sell .map-ui.rh > .rh-toast {
+    left: calc((100% - min(380px, 52vw) - 8px) / 2);
+    max-width: calc(100% - min(380px, 52vw) - 32px);
+  }
+
+  body.roam-when .map-ui.rh > .rh-toast {
+    left: calc((100% - min(420px, 56vw) - 8px) / 2);
+    max-width: calc(100% - min(420px, 56vw) - 32px);
+  }
+
+  /* (touch, the stall's or the fish seller's card open: the stick and the buttons are away, so the messages go to the foot of
+     that room, clear of the seller's words over her head) */
+  body.roam-touch.roam-shop .map-ui.rh > .rh-toast,
+  body.roam-touch.roam-sell .map-ui.rh > .rh-toast {
+    top: auto;
+    bottom: 12px;
+  }
+}
+
+/* Touch: the small close buttons of the roaming cards (the stall's, the fish seller's, the calendar's, the name card's) and
+ * the calendar's button reach a finger round them (their look as it was); the album's × is a finger's size. */
+body.roam-touch .wh-x {
+  position: relative;
+}
+
+body.roam-touch .by-x::after,
+body.roam-touch .sl-x::after,
+body.roam-touch .wh-x::after,
+body.roam-touch .nm-x::after,
+body.roam-touch .wh-btn::after {
+  content: '';
+  position: absolute;
+  left: min(0px, calc((100% - 44px) / 2));
+  right: min(0px, calc((100% - 44px) / 2));
+  top: min(0px, calc((100% - 44px) / 2));
+  bottom: min(0px, calc((100% - 44px) / 2));
+}
+
+body.roam-touch .wh-btn::after {
+  top: min(0px, calc((100% - 40px) / 2));
+  bottom: min(0px, calc((100% - 40px) / 2));
+}
+
+body.map.roam-touch .photo-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Settings open: on a phone held upright they cover the left and right edges, where the roaming HUD's purse, gold count and
+ * tool bar stand (over them: the HUD's layer is higher), so those step back meanwhile. */
+@media (max-width: 639px) {
+  .map-ui.mu-set-open ~ .rh .rtb-wrap,
+  .map-ui.mu-set-open ~ .rh > .tg-count,
+  .map-ui.mu-set-open ~ .rh > .by-purse {
+    opacity: 0 !important;
+    visibility: hidden !important;
   }
 }
 

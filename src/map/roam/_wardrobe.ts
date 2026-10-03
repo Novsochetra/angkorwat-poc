@@ -1,18 +1,21 @@
+import { OUTFITS } from '../../character/AngkorExplorer';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_wear';
 import { frontOf, inWindow, MK, stallById, stallPoint } from '../hamlet/_mkPlan';
 import { pad } from '../pad/pad';
 import { browse, SALE, SHOPS, type Shop } from '../shop';
 import type { MapFrame, RoamMode } from '../types';
-import { onLang, t } from '../ui/lang';
-import { MENU_HOOKS, registerAddon, type AddonEnv } from './_addons';
+import { onLang, t, type WordKey } from '../ui/lang';
+import { LOOK_HOOKS, LOOK_TOOLS, MENU_HOOKS, MENU_PAGES, registerAddon, type AddonEnv } from './_addons';
 import { createWearCard, type WearCard } from './_wardrobeCard';
 import { Wardrobe, WEAR_ITEMS, WEAR_KINDS, wearItem, wearName, type WearItem, type WearKind } from './_wardrobeItems';
+import { createLookPage, LOOK_PARTS, type LookChoice, type LookNow, type LookPage, type LookPart } from './_wardrobeLook';
 import { angleDiff } from './followCam';
 import type { RoamCtx, RoamWorld } from './types';
 
 /**
- * Clothes from the market (the roaming add-on `clothes`, words `wear…`).
+ * Clothes from the market, and the explorer menu's Look page (the roaming
+ * add-on `clothes`, words `wear…`, `look…`).
  *
  * - **The krama stall** of the morning market in the sugar-palm village (its
  *   `cloth` stall: hamlet/_mkPlan.ts; racks of kramas, folded stacks, shirts,
@@ -30,30 +33,46 @@ import type { RoamCtx, RoamWorld } from './types';
  *   the way round), the seller says it suits him, and it is his
  *   (map/progress.ts `wear.owned`; `wear.on` what he wears). What he owns says
  *   "Wear" there; what he wears "✓ Wearing" (taken again: off).
- * - **His wardrobe** (the explorer menu's "My clothes", I; the pad's △): what
- *   he owns by kind, tap to put on or take off, "Original look" for his own
- *   clothes; on foot the camera comes round to his front for it (and the small
- *   turn); in the boat, on the glider or in the balloon it changes at once.
- * - **With the looks (G)**: the clothes colour what his look shows — the
- *   krama on the looks with the scarf (gear, day pack), the shirt on all four,
- *   the trousers in place of the shorts (the temple clothes keep their
- *   sampot), the hat's blue band whenever the hat is on (H). Putting on a
- *   krama in the "no scarf" or temple look, or trousers in the temple look,
- *   puts the day pack look on (the explorer menu's own chip: G, the menu and
- *   the bug report stay in step); G afterwards goes on as before, and a look
- *   that hides it says so in his wardrobe ("Not shown in this look").
+ * - **The Look page** (រូបរាង: the explorer menu's Look tab, I; `MENU_PAGES.look`,
+ *   _wardrobeLook.ts): everything he wears, part by part — the outfit (his
+ *   explorer clothes or the temple clothes; the four ready looks of G; his
+ *   original look), the pack, the krama, the shirt, the legs, the hat, the
+ *   face. What the market sells shows there from the start: what he has not
+ *   bought yet dim with a lock, its price, and where it is sold. A choice is
+ *   on at once (`pick`); on foot, standing free, with a small turn on the spot
+ *   to show it off (`TWIRL`; another pick meanwhile goes on at once, the turn
+ *   goes on). While it shows, on foot (not among a market's stalls), the
+ *   camera comes round to his front and the picture slides left of the panel
+ *   (above it, on a phone held upright); back as it was after. In the boat, on
+ *   the glider or in the balloon it changes at once.
+ * - **The parts are the explorer's own** (character/AngkorExplorer.ts
+ *   `ExplorerOutfit`, `setClothes`): the outfit sets the legs (the shorts, or
+ *   the sampot) and the camera (none with the temple clothes); the pack, the
+ *   krama (`scarf`, and the market's colours), the hat (H; the market's band)
+ *   and the face (X) go with every outfit. The market's shirt shows on both,
+ *   its trousers only with the explorer clothes (in place of the shorts: with
+ *   the sampot they wait, and the page says so). G, H and X stay in step with
+ *   the page (it reads him each step: LOOK_TOOLS); a part the four looks do
+ *   not have (no pack with the shorts, a krama with the sampot) is fine, and
+ *   G goes on from the look before (`LOOK_HOOKS.changed`).
  * - The photos, the selfie and every roaming mode show them: it is the same
- *   explorer (character/AngkorExplorer.ts `setClothes`: the parts that change
- *   are built again once, on the change, from the tones in
- *   character/clothes.ts; never per frame).
+ *   explorer (the parts that change are built again once, on the change, from
+ *   the tones in character/clothes.ts; never per frame).
+ *
+ * Saved: what he owns and wears from the market (`wear.owned`, `wear.on`);
+ * the outfit, the pack, the krama on or off, the hat and the face are not
+ * (as G, H and X never were: each visit starts in his explorer gear).
  *
  * Shots: `wear=<item>,<item>` dresses him (no saving: ids in _wardrobeItems.ts;
  * `wear=0` his own), `wearown=<item>,…|all` owns those too; `clothes=1` stands
  * him at the stall facing its seller with the card open (`clothes=wardrobe`:
- * his wardrobe), `clothestab=krama|shirt|trousers|hat`, `clothesfocus=<i>`
- * the ring on row i, `clothesbuy=<item>` buys it there and then (`sim=_:<s>`:
- * the hand-over ≈ 0.5, the turn ≈ 1.3‥2.1). `report()` gives `wear`, `wearown`,
- * `clothes`, `clothestab`.
+ * the Look page, as `menu=1&menutab=look`), `clothestab=krama|shirt|trousers|hat`,
+ * `clothesfocus=<i>` the ring on row i, `clothesbuy=<item>` buys it there and
+ * then (`sim=_:<s>`: the hand-over ≈ 0.5, the turn ≈ 1.3‥2.1) · `lookpart=<part>`
+ * the Look page on a part (outfit, pack, krama, shirt, legs, hat, face) ·
+ * `kit=<shorts|sampot>,<explorer|default|none>,<0|1>` the outfit's legs, the
+ * pack, the krama on (a look that is not one of G's four; theirs: `look=`).
+ * `report()` gives `wear`, `wearown`, `clothes`, `clothestab`, `lookpart`, `kit`.
  */
 
 /** The buyer's spot: this far out from the market's own buyers' (m: the roaming explorer is big), and how near it he must be (as hamlet/_shops.ts). */
@@ -63,26 +82,28 @@ const REACH = 2.1;
 const HAND_AT = 0.95;
 const SPIN = 1.15;
 const DRESS_AT = 0.32;
+/** The Look page's turn (s): the choice is on at once, he turns round once to show it. */
+const TWIRL = 1.0;
 /** Turning to the seller (s, a half turn; a small one is quicker). */
 const TURN = 0.45;
-/** The stick past this walks away from the card. */
+/** The stick past this walks away from the card (and from the Look page's framing). */
 const STICK = 0.3;
 /**
  * The camera: at the stall behind his left shoulder (the seller and her goods
- * past him, left of the card: his front shows as he turns); his wardrobe on
+ * past him, left of the card: his front shows as he turns); the Look page on
  * foot, round to his front. `side` from behind him (radians, − round to his
  * left). It eases there over `for` s, then the player may look round; back as
  * it was after.
  */
 const FRAME = {
   stall: { side: -1.2, pitch: 0.22, distance: 8.2 },
-  wardrobe: { side: -2.6, pitch: 0.1, distance: 6.2 },
+  look: { side: -2.6, pitch: 0.1, distance: 6.2 },
   rate: 2.2,
   back: 2.4,
   for: 2.6,
 };
 type Framing = (typeof FRAME)['stall'];
-/** The lens shift while the card is open (as the buy menu's: _shop.ts), at most this share of the view, eased at this rate (1/s). */
+/** The lens shift while the card or the page is open (as the buy menu's: _shop.ts), at most this share of the view, eased at this rate (1/s). */
 const SHIFT_MAX = 0.3;
 const SHIFT_RATE = 4;
 /** His step while he turns on the spot (m/s at true size, at the turn's fastest). */
@@ -91,6 +112,11 @@ const SPIN_STEP = 0.75;
 let env: AddonEnv | null = null;
 let wardrobe: Wardrobe | null = null;
 let card: WearCard | null = null;
+let page: LookPage | null = null;
+/** The Look page shows (the explorer menu open on it). */
+let pageOn = false;
+/** He walked while it showed: the camera is the player's again until it shows anew. */
+let walked = false;
 let lastCtx: RoamCtx | null = null;
 let mode: RoamMode = 'overview';
 /** The map's clock last frame (the stall's hours). */
@@ -101,17 +127,19 @@ let marketUp = false;
 /** Turning to the seller. */
 let turn: { from: number; by: number; t: number; len: number } | null = null;
 /**
- * A change under way: bought (`wait`: the hand-over first), then the small
- * turn (`spin`; none off his feet or while something has him) and the clothes
- * on at `DRESS_AT` of it.
+ * A turn on the spot under way: after buying (`wait`: the hand-over first;
+ * the clothes on at `at` of it: `apply`), or the Look page's (`apply` null:
+ * already on). None off his feet or while something has him.
  */
-let change: { apply: () => void; t: number; wait: number; spin: boolean; from: number; applied: boolean; toast: string; bought: WearItem | null } | null = null;
-/** A toast to show on the next step (after a look's own "Outfit: …", which the switch gives at once). */
+let change: { apply: (() => void) | null; t: number; wait: number; len: number; at: number; spin: boolean; from: number; toast: string; bought: WearItem | null } | null = null;
+/** A toast to show on the next step. */
 let toastNext = '';
 /** The camera: the player's before (to go back to), the framing now, how long (s); the URL's camera kept. */
 let before: { pitch: number; distance: number } | null = null;
 let framing: Framing | null = null;
 let view: Framing = FRAME.stall;
+/** The framing found no clear view (the Look page's, his front against a wall): the camera is left alone. */
+let noRoom = false;
 let framed = 0;
 let keepView = false;
 let shiftX = 0;
@@ -143,27 +171,20 @@ function marketBuilt(): boolean {
   return marketUp;
 }
 
-/** The card (made the first time: nothing until then). */
+/** The stall's card (made the first time: nothing until then). */
 function theCard(e: AddonEnv): WearCard {
   return (card ??= createWearCard({
     layer: e.layer,
     riel: () => e.purse.riel,
     owned: (id) => !!wardrobe?.has(id),
     wearing: (id) => !!wardrobe?.wearing(id),
-    hidden: (it) => hiddenNow(it.kind),
-    dressed: () => (wardrobe?.on.size ?? 0) > 0,
+    waits: (it) => it.kind === 'trousers' && e.explorer.currentOutfit.legs !== 'shorts',
+    original: () => isOriginal(),
     onPick: pick,
-    onOriginal: original,
+    onOriginal: () => original(true),
     onClose: closeCard,
     sound: e.uiSound,
   }));
-}
-
-/** The look he has on does not show this kind (a krama without the scarf, trousers with the sampot). */
-function hiddenNow(kind: WearKind): boolean {
-  const o = env?.explorer.currentOutfit;
-  if (!o) return false;
-  return (kind === 'krama' && !o.scarf) || (kind === 'trousers' && o.legs !== 'shorts');
 }
 
 /** Dress him as the wardrobe says (only the parts that change are built again), the photo's hidden body kept hidden. */
@@ -173,24 +194,17 @@ function dress(): void {
   env.photo.refreshBody();
 }
 
-/** Put on the day pack look (the explorer menu's own chip, so G, the menu and the bug report stay in step) when his look hides `kind`. */
-function showKind(kind: WearKind): void {
-  if (!hiddenNow(kind)) return;
-  const chip = document.querySelector<HTMLElement>('.rxm-b[data-look] .rxm-t[data-w="rLookPack"]')?.closest<HTMLButtonElement>('button');
-  chip?.click();
-}
-
 /** On foot, standing free: the change comes with the small turn. */
 function canSpin(): boolean {
   return !!env && mode === 'walk' && env.body.grounded && !env.explorer.animator.posture && !env.explorer.currentAction && !env.photo.kind;
 }
 
-/** Start a change: `apply` puts it on (or off) a third of the way round the turn, or at once off his feet. */
+/** After buying: `apply` puts it on (or off) a third of the way round the turn, or at once off his feet. */
 function startChange(apply: () => void, toast: string, bought: WearItem | null): void {
   if (!env) return;
-  change?.apply();
+  change?.apply?.();
   const spin = canSpin();
-  change = { apply, t: 0, wait: bought ? HAND_AT : 0, spin, from: env.body.yaw, applied: false, toast, bought };
+  change = { apply, t: 0, wait: bought ? HAND_AT : 0, len: SPIN, at: DRESS_AT, spin, from: env.body.yaw, toast, bought };
   card?.busy(true, bought?.id ?? '');
   if (!spin && !bought) finishChange();
 }
@@ -200,15 +214,21 @@ function finishChange(): void {
   const c = change;
   if (!c) return;
   change = null;
-  if (!c.applied) c.apply();
+  c.apply?.();
   if (c.spin && env) env.body.yaw = c.from;
   card?.busy(false);
   card?.refresh();
   if (c.bought && card?.mode === 'stall') card.say('wearSuits');
-  toastNext = c.toast;
+  if (c.toast) toastNext = c.toast;
 }
 
-/** A row of the card: buy it (at the stall), put it on, or take it off. */
+/** The Look page's choice is on: on foot, standing free, he turns round once to show it (a turn under way goes on). */
+function twirl(): void {
+  if (!env || change || !canSpin()) return;
+  change = { apply: null, t: 0, wait: 0, len: TWIRL, at: 0, spin: true, from: env.body.yaw, toast: '', bought: null };
+}
+
+/** A row of the stall's card: buy it, put it on, or take it off. */
 function pick(it: WearItem): void {
   const e = env;
   const w = wardrobe;
@@ -238,27 +258,16 @@ function pick(it: WearItem): void {
   putOn(it, true);
 }
 
-/** Wear `it` (bought now: after the hand-over); the look that hides it gives way to the day pack. */
+/** Wear `it` (bought now: after the hand-over), the part it is shown on (`wearKind`). */
 function putOn(it: WearItem, bought: boolean): void {
-  const e = env;
-  const w = wardrobe;
-  if (!e || !w) return;
+  if (!env || !wardrobe) return;
   startChange(
     () => {
-      if (change) change.applied = true;
-      w.wear(it.kind, it);
-      dress();
-      // (then a look that shows it, if his hides it: built once, in the new clothes)
-      showKind(it.kind);
-      // (the hat: on his head — not while the umbrella is up (its brim), nor sitting, lying or praying (those keep
-      // his hat for him: H puts it on after))
-      if (it.kind === 'hat' && !e.explorer.currentOutfit.hat && !MENU_HOOKS.umbrellaUp() && !e.busy()) {
-        e.explorer.setOutfit({ hat: true });
-        e.photo.refreshBody();
-      }
+      wearKind(it.kind, it);
       SFX.play('wearOn', 1);
     },
-    t('wearNowWearing', { name: wearName(it) }),
+    // (trousers in the temple clothes wait for the explorer clothes: the toast says so)
+    it.kind === 'trousers' && env.explorer.currentOutfit.legs !== 'shorts' ? `${wearName(it)} · ${t('wearWithExplorer')}` : t('wearNowWearing', { name: wearName(it) }),
     bought ? it : null,
   );
 }
@@ -270,7 +279,6 @@ function takeOff(kind: WearKind): void {
   if (!w || !it) return;
   startChange(
     () => {
-      if (change) change.applied = true;
       w.wear(kind, null);
       dress();
       SFX.play('wearOff', 1);
@@ -280,49 +288,200 @@ function takeOff(kind: WearKind): void {
   );
 }
 
-/** His own clothes again (what he owns stays his). */
-function original(): void {
+/**
+ * The market's `it` (or his own: null) of `kind` on, and the part that shows it: the krama round his neck, the
+ * hat on his head (not while the umbrella is up, nor sitting, lying or praying: those keep his hat for him). The
+ * trousers wait for the explorer clothes when he has the sampot on.
+ */
+function wearKind(kind: WearKind, it: WearItem | null): void {
+  const e = env!;
+  const w = wardrobe!;
+  w.wear(kind, it);
+  // (first the colours, then the part: built once, in the new colours)
+  dress();
+  if (kind === 'krama' && !e.explorer.currentOutfit.scarf) {
+    e.explorer.setOutfit({ scarf: true });
+    e.photo.refreshBody();
+    LOOK_HOOKS.changed();
+  }
+  if (kind === 'hat' && !e.explorer.currentOutfit.hat && !MENU_HOOKS.umbrellaUp() && !e.busy()) LOOK_TOOLS.setHat(true);
+}
+
+/** He looks as he set out: his explorer gear (the big pack, his krama, the shorts, the camera), his own clothes, his hat on. */
+function isOriginal(): boolean {
+  const o = env?.explorer.currentOutfit;
+  const g = OUTFITS.explorerGear;
+  return !!o && !wardrobe?.on.size && o.legs === g.legs && o.pack === g.pack && o.scarf === g.scarf && o.camera === g.camera && LOOK_TOOLS.hat();
+}
+
+/** His original look again (what he bought stays his): `card` from the stall's card (after a turn there). */
+function original(fromCard = false): void {
+  const e = env;
   const w = wardrobe;
-  if (!w || !w.on.size || change) return;
-  startChange(
-    () => {
-      if (change) change.applied = true;
-      w.original();
+  if (!e || !w || isOriginal()) return;
+  const apply = () => {
+    w.original();
+    dress();
+    const gear = LOOK_TOOLS.looks.findIndex(([n]) => n === 'explorerGear');
+    const o = e.explorer.currentOutfit;
+    const g = OUTFITS.explorerGear;
+    if (gear >= 0 && (o.legs !== g.legs || o.pack !== g.pack || o.scarf !== g.scarf || o.camera !== g.camera)) LOOK_TOOLS.setLook(gear);
+    if (!LOOK_TOOLS.hat()) setHat(true);
+    SFX.play('wearOff', 1);
+  };
+  if (fromCard) {
+    if (change) return;
+    startChange(apply, t('wearBackOriginal'), null);
+  } else {
+    apply();
+    e.hud.toast(t('wearBackOriginal'));
+    twirl();
+  }
+}
+
+/** The hat on or off as H does (the umbrella up and the hat to go on: by H itself, so the umbrella folds for it: _umbrella.ts). */
+function setHat(on: boolean): void {
+  if (on && MENU_HOOKS.umbrellaUp() && !env?.explorer.currentOutfit.hat) env?.controls.press('KeyH');
+  else LOOK_TOOLS.setHat(on);
+}
+
+// ── The Look page ──────────────────────────────────────────────────────────
+
+/** What he has on now (one object, filled anew each time: the page compares it each step). */
+const NOW: LookNow = { outfit: 'explorer', pack: 'big', krama: 'own', shirt: 'own', legs: 'shorts', hat: 'own', face: 0, preset: -1 };
+function lookNow(): LookNow {
+  const e = env!;
+  const w = wardrobe!;
+  const o = e.explorer.currentOutfit;
+  NOW.outfit = o.legs === 'sampot' ? 'temple' : 'explorer';
+  NOW.pack = o.pack === 'explorer' ? 'big' : o.pack === 'default' ? 'day' : 'none';
+  NOW.krama = o.scarf ? (w.on.get('krama')?.id ?? 'own') : 'none';
+  NOW.shirt = w.on.get('shirt')?.id ?? 'own';
+  NOW.legs = o.legs === 'sampot' ? 'sampot' : (w.on.get('trousers')?.id ?? 'shorts');
+  NOW.hat = LOOK_TOOLS.hat() ? (w.on.get('hat')?.id ?? 'own') : 'none';
+  NOW.face = LOOK_TOOLS.face();
+  NOW.preset = -1;
+  const looks = LOOK_TOOLS.looks;
+  for (let i = 0; i < looks.length; i++) {
+    const l = OUTFITS[looks[i][0]];
+    if (l.legs === o.legs && l.pack === o.pack && l.scarf === o.scarf && l.camera === o.camera) {
+      NOW.preset = i;
+      break;
+    }
+  }
+  return NOW;
+}
+
+/** What the outfit he has on cannot show: shorts and trousers with the sampot, the sampot with the explorer clothes. */
+function blocked(c: LookChoice): WordKey | null {
+  if (c.part !== 'legs' || !env) return null;
+  const sampot = env.explorer.currentOutfit.legs === 'sampot';
+  if (c.id === 'sampot') return sampot ? null : 'lookSampotWhy';
+  return sampot ? 'lookLegsWhy' : null;
+}
+
+/** A choice of the Look page put on (at once; the turn on foot). */
+function pickLook(c: LookChoice): void {
+  const e = env;
+  const w = wardrobe;
+  if (!e || !w) return;
+  const o = e.explorer.currentOutfit;
+  let worn = true;
+  switch (c.part) {
+    case 'outfit':
+      if (c.id === 'original') return original();
+      if (c.preset !== undefined) LOOK_TOOLS.setLook(c.preset);
+      else {
+        const temple = c.id === 'temple';
+        e.explorer.setOutfit(temple ? { legs: 'sampot', camera: false } : { legs: 'shorts', camera: true });
+        // (no camera in the temple clothes: it goes away if it was up)
+        if (temple && e.photo.kind === 'camera') e.photo.lower();
+        LOOK_HOOKS.changed();
+      }
+      break;
+    case 'pack':
+      worn = c.id !== 'none';
+      e.explorer.setOutfit({ pack: c.id === 'big' ? 'explorer' : c.id === 'day' ? 'default' : 'none' });
+      LOOK_HOOKS.changed();
+      break;
+    case 'krama':
+      if (c.id === 'none') {
+        worn = false;
+        e.explorer.setOutfit({ scarf: false });
+        LOOK_HOOKS.changed();
+      } else wearKind('krama', c.item ?? null);
+      break;
+    case 'shirt':
+      w.wear('shirt', c.item ?? null);
       dress();
-      SFX.play('wearOff', 1);
+      break;
+    case 'legs':
+      if (o.legs !== 'shorts') return;
+      w.wear('trousers', c.item ?? null);
+      dress();
+      break;
+    case 'hat':
+      if (c.id === 'none') {
+        worn = false;
+        setHat(false);
+      } else {
+        w.wear('hat', c.item ?? null);
+        dress();
+        // (off for a prayer or lying down, it goes back on after, in this band)
+        if (!LOOK_TOOLS.hat()) setHat(true);
+      }
+      break;
+    case 'face':
+      LOOK_TOOLS.setFace(c.face ?? 0);
+      return;
+  }
+  e.photo.refreshBody();
+  SFX.play(worn ? 'wearOn' : 'wearOff', 1);
+  twirl();
+}
+
+/**
+ * The Look page shows on foot (not walked off): tools.ts turns his lantern, torch or flashlight low and, after dark,
+ * lights him softly from the camera's side (LOOK_HOOKS.showing), so the clothes read true; as it was once it goes.
+ */
+function lit(): void {
+  LOOK_HOOKS.showing = pageOn && mode === 'walk' && !walked;
+}
+
+function thePage(e: AddonEnv): LookPage {
+  return (page ??= createLookPage({
+    now: lookNow,
+    owned: (id) => !!wardrobe?.has(id),
+    blocked,
+    note: (p) => (p === 'legs' && e.explorer.currentOutfit.legs === 'sampot' ? 'lookLegsNote' : p === 'hat' && MENU_HOOKS.umbrellaUp() && !e.explorer.currentOutfit.hat ? 'lookHatUmbrella' : null),
+    pick: pickLook,
+    isOriginal,
+    sound: e.uiSound,
+    shown: (on) => {
+      pageOn = on;
+      walked = false;
+      if (on) frontOk = mode === 'walk' && frontFree();
+      lit();
     },
-    t('wearBackOriginal'),
-    null,
-  );
+  }));
+}
+
+function closeCard(): void {
+  if (!card?.open) return;
+  card.close();
+  turn = null;
+  browse(lastCtx?.t ?? 0, null);
 }
 
 /** At the stall: the card, turned to the seller (`turnNow`, else facing her at once), the seller looks up. */
 function openStall(turnNow: boolean): void {
   const e = env;
   if (!e || !stall) return;
-  theCard(e).show('stall');
+  theCard(e).show();
   const yaw = stall.facing ?? e.body.yaw;
   if (turnNow) turnTo(yaw);
   else e.body.yaw = yaw;
   browse(lastCtx?.t ?? 0, stall);
-}
-
-/** His wardrobe (the explorer menu's "My clothes"): in any roaming mode; on foot the camera comes round to his front. */
-export function openWardrobe(): void {
-  const e = env;
-  if (!e || mode === 'overview') return;
-  frontOk = frontFree();
-  theCard(e).show('wardrobe');
-}
-// (the explorer menu's "My clothes" opens it without loading this module: _addons.ts MENU_HOOKS)
-MENU_HOOKS.openWardrobe = openWardrobe;
-
-function closeCard(): void {
-  if (!card?.open) return;
-  const atStall = card.mode === 'stall';
-  card.close();
-  turn = null;
-  if (atStall) browse(lastCtx?.t ?? 0, null);
 }
 
 function turnTo(yaw: number): void {
@@ -331,8 +490,12 @@ function turnTo(yaw: number): void {
   turn = { from: b.yaw, by, t: 0, len: TURN * (0.45 + (0.55 * Math.abs(by)) / Math.PI) };
 }
 
-/** The view for a framing with him facing `yaw` (its side, the other, nearer, lower): the first with nothing between the camera and him. */
-function clearView(w: RoamWorld, yaw: number, f: Framing): Framing {
+/**
+ * The view for a framing with him facing `yaw` (its side, the other, nearer, lower): the first with nothing between
+ * the camera and him. None clear: the stall's nearer and lower all the same; the Look page's none (null: his front
+ * is against a wall, in a gallery: the camera stays the player's, never into the back of his head).
+ */
+function clearView(w: RoamWorld, yaw: number, f: Framing): Framing | null {
   const c = env!.cam.focus;
   const hard = w.hardClearance ?? w.clearance;
   const soft = w.softClearance;
@@ -350,7 +513,8 @@ function clearView(w: RoamWorld, yaw: number, f: Framing): Framing {
     }
     return true;
   };
-  const sides = [f.side, f.side * 0.8, f.side * 1.2, f.side * 0.6, -f.side, f.side * 0.4];
+  // (the Look page: his front, either way round, his side at most; the stall's: behind his shoulder, nearer his back too)
+  const sides = f === FRAME.look ? [f.side, f.side * 0.8, f.side * 1.2, -f.side, -f.side * 0.8, f.side * 0.6] : [f.side, f.side * 0.8, f.side * 1.2, f.side * 0.6, -f.side, f.side * 0.4];
   const far = env!.cam.camera.aspect < 0.8 ? 1.3 : 1;
   for (const [pk, dk] of [
     [1, 1],
@@ -362,15 +526,15 @@ function clearView(w: RoamWorld, yaw: number, f: Framing): Framing {
       const distance = Math.max(4, f.distance * dk * far);
       if (free(yaw + sd, pitch, distance)) return { side: sd, pitch, distance };
     }
-  return { side: f.side * 0.5, pitch: f.pitch * 0.5, distance: Math.max(4, f.distance * 0.7 * far) };
+  return f === FRAME.look ? null : { side: f.side * 0.5, pitch: f.pitch * 0.5, distance: Math.max(4, f.distance * 0.7 * far) };
 }
 
 /**
  * Among stalls (a shop within this, m: a market's goods, tarps and parasols are not in the walk map, so the
- * clearances cannot see them) the wardrobe leaves the camera where the player has it.
+ * clearances cannot see them) the Look page leaves the camera where the player has it.
  */
 const STALLS_NEAR = 9;
-/** His wardrobe may bring the camera round to his front here (on foot, free, not among a market's stalls). */
+/** The Look page may bring the camera round to his front here (on foot, free, not among a market's stalls). */
 let frontOk = false;
 function frontFree(): boolean {
   const p = env!.body.pos;
@@ -378,18 +542,23 @@ function frontFree(): boolean {
   return !!stall && (stall.x - p.x) ** 2 + (stall.z - p.z) ** 2 >= STALLS_NEAR * STALLS_NEAR;
 }
 
-/** The camera for the card (see `FRAME`), and back to the player's after. */
+/** The camera for the card or the page (see `FRAME`), and back to the player's after. */
 function frameCam(ctx: RoamCtx, dt: number): void {
   const e = env!;
-  const want = keepView || mode !== 'walk' ? null : card?.mode === 'stall' ? FRAME.stall : card?.mode === 'wardrobe' && frontOk && !e.busy() ? FRAME.wardrobe : null;
+  const want =
+    keepView || mode !== 'walk' ? null : card?.mode === 'stall' ? FRAME.stall : pageOn && frontOk && !walked && !e.busy() ? FRAME.look : null;
   const cam = ctx.cam;
   const facing = change?.spin ? change.from : turn ? turn.from + turn.by : e.body.yaw;
   if (want) {
     if (want !== framing) {
       framing = want;
       framed = 0;
-      view = clearView(ctx.world, facing, want);
+      const v = clearView(ctx.world, facing, want);
+      noRoom = !v;
+      if (v) view = v;
     }
+    // (no clear view of his front here: the camera stays as the player has it)
+    if (noRoom) return;
     before ??= { pitch: cam.pitch, distance: cam.distance };
     const yaw = facing + view.side;
     cam.behindYaw = yaw;
@@ -402,6 +571,7 @@ function frameCam(ctx: RoamCtx, dt: number): void {
     return;
   }
   framing = null;
+  noRoom = false;
   if (!before) return;
   const k = 1 - Math.exp(-FRAME.back * dt);
   cam.pitch += (before.pitch - cam.pitch) * k;
@@ -413,27 +583,39 @@ function frameCam(ctx: RoamCtx, dt: number): void {
 function frameNow(ctx: RoamCtx, f: Framing): void {
   const e = env!;
   const cam = ctx.cam;
-  before ??= { pitch: cam.pitch, distance: cam.distance };
   framing = f;
   framed = FRAME.for;
   cam.focus.set(e.body.pos.x, e.body.pos.y + 1.7 * 0.95 * 0.86 * e.body.scale, e.body.pos.z);
-  view = clearView(ctx.world, e.body.yaw, f);
+  const v = clearView(ctx.world, e.body.yaw, f);
+  noRoom = !v;
+  if (!v) return;
+  view = v;
+  before ??= { pitch: cam.pitch, distance: cam.distance };
   cam.yaw = e.body.yaw + view.side;
   cam.behindYaw = cam.yaw;
   cam.pitch = view.pitch;
   cam.distance = view.distance;
 }
 
-/** The lens shift while the card is open: he stands in the middle of the view the card leaves free (as the buy menu, _shop.ts). */
+/**
+ * The lens shift while the card or the Look page is open: he stands in the middle of the view it leaves free (as the
+ * buy menu, _shop.ts): left of a panel at the right, above one along the bottom (a phone held upright).
+ */
 function lens(f: MapFrame): void {
   let wx = 0;
   let wy = 0;
-  const el = card?.open ? card.el : null;
-  if (el && f.roam === 'walk' && !keepView) {
+  const menu = pageOn && page ? page.el.closest<HTMLElement>('.rxm') : null;
+  const box = card?.open ? card.el : (menu ?? (pageOn ? page?.el : null));
+  if (box && f.roam === 'walk' && !keepView) {
     const W = innerWidth;
     const H = innerHeight;
-    if (el.offsetWidth > W * 0.7) wy = Math.min(SHIFT_MAX, Math.max(0, 0.5 - el.offsetTop / 2 / H));
-    else wx = Math.min(SHIFT_MAX, Math.max(0, 0.5 - el.offsetLeft / 2 / W));
+    const r = box.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      // (the menu docked along the bottom, a phone held upright: _explorerMenu.ts `data-dock`; the card: a sheet as wide)
+      const below = menu ? menu.dataset.dock === 'bottom' : r.width > W * 0.7;
+      if (below) wy = Math.min(SHIFT_MAX, Math.max(0, 0.5 - r.top / 2 / H));
+      else wx = Math.min(SHIFT_MAX, Math.max(0, 0.5 - r.left / 2 / W));
+    }
   }
   const k = env?.shot || f.dt <= 0 ? 1 : 1 - Math.exp(-SHIFT_RATE * f.dt);
   const was = shiftX !== 0 || shiftY !== 0;
@@ -468,6 +650,8 @@ registerAddon({
       dress();
       if (e.shot) console.info(`[map] clothes: wearing ${[...wardrobe.on.values()].map((i) => i.id).join(', ')} (dressed in ${(performance.now() - t0).toFixed(1)} ms)`);
     }
+    // (the explorer menu's Look tab: _explorerMenu.ts puts the page in it)
+    MENU_PAGES.look = thePage(e);
     // (checks: the dev server and shots)
     if (import.meta.env.DEV || e.shot)
       (window as unknown as { __clothes: unknown }).__clothes = {
@@ -477,20 +661,29 @@ registerAddon({
           return {
             card: card?.mode ?? null,
             tab: card?.tab ?? null,
-            change: c ? { t: c.t, spin: c.spin, applied: c.applied, bought: c.bought?.id ?? null } : null,
+            change: c ? { t: c.t, spin: c.spin, applied: !c.apply, bought: c.bought?.id ?? null } : null,
             owned: [...w.owned],
             on: [...w.on.values()].map((i) => i.id),
             saving: w.saving,
             stall: stall && { x: stall.x, y: stall.y, z: stall.z, facing: stall.facing },
             open: stallOpen(),
-            framing: framing === FRAME.stall ? 'stall' : framing === FRAME.wardrobe ? 'wardrobe' : null,
+            framing: framing === FRAME.stall ? 'stall' : framing === FRAME.look ? (noRoom ? 'look:no-room' : 'look') : null,
+            // (the framing's view: its side from behind him, in degrees, as found clear; the camera's from his back now)
+            view: framing && { side: Math.round((view.side * 180) / Math.PI), pitch: +view.pitch.toFixed(2), distance: +view.distance.toFixed(1) },
+            camFromBack: Math.round((angleDiff(e.cam.yaw, e.body.yaw) * 180) / Math.PI),
             shift: [shiftX, shiftY],
+            page: pageOn ? page!.state() : null,
+            now: { ...lookNow() },
             // (what the explorer himself has on: the items whose tones he wears, and his look)
             explorer: Object.fromEntries(Object.entries(e.explorer.currentClothes).map(([k, v]) => [k, WEAR_ITEMS.find((i) => i.look === v)?.id ?? null])),
             outfit: { ...e.explorer.currentOutfit },
           };
         },
-        wardrobe: openWardrobe,
+        /** The Look page on a part (it shows only with the menu open on it). */
+        part: (p: LookPart) => page?.setPart(p),
+        /** Roaming's group (his lights in hand are in it: tools.ts `roam:tools`). */
+        scene: () => e.scene,
+        page: () => page,
       };
   },
 
@@ -512,7 +705,7 @@ registerAddon({
     const i = ctx.input;
     if (card?.open) {
       // (the stall's card is for standing at it: off his feet, it shuts)
-      if (card.mode === 'stall' && m !== 'walk') closeCard();
+      if (m !== 'walk') closeCard();
       else if (!change && Math.hypot(i.move.x, i.move.y) > STICK) {
         // (walking away: it shuts, he walks on this very step)
         closeCard();
@@ -525,6 +718,8 @@ registerAddon({
         return true;
       }
     }
+    // (the Look page open and he walks off: the camera is the player's again)
+    if (pageOn && !change && Math.hypot(i.move.x, i.move.y) > STICK) walked = true;
     // (handing over and the small turn: he keeps still)
     return change !== null && change.spin;
   },
@@ -532,6 +727,7 @@ registerAddon({
   after(ctx, m, dt) {
     lastCtx = ctx;
     const e = env!;
+    lit();
     if (toastNext) {
       e.hud.toast(toastNext);
       toastNext = '';
@@ -548,12 +744,16 @@ registerAddon({
       // (the seller's hand-over: it is in his hands, he shakes it out)
       if (c.bought && c.t >= c.wait && c.t - dt < c.wait) SFX.play('wearShake', 1);
       if (c.spin && m === 'walk') {
-        const u = Math.max(0, c.t - c.wait) / SPIN;
+        const u = Math.max(0, c.t - c.wait) / c.len;
         const k = Math.min(1, u);
         // (a full turn on the spot to his left, stepping round, eased in and out)
         e.body.yaw = c.from + Math.PI * 2 * k * k * k * (k * (k * 6 - 15) + 10);
         if (k > 0 && k < 1) e.explorer.setMotion(SPIN_STEP * Math.sin(Math.PI * k), true, 0);
-        if (!c.applied && k >= DRESS_AT) c.apply();
+        if (c.apply && k >= c.at) {
+          const a = c.apply;
+          c.apply = null;
+          a();
+        }
         if (k >= 1) finishChange();
       } else if (c.t >= c.wait) finishChange();
     }
@@ -572,7 +772,11 @@ registerAddon({
 
   setMode(next) {
     mode = next;
-    if (next === 'walk') return;
+    lit();
+    if (next === 'walk') {
+      if (pageOn) frontOk = frontFree();
+      return;
+    }
     // (off his feet: the change is done at once, the stall's card shuts; back to the map: everything)
     if (change) finishChange();
     turn = null;
@@ -585,6 +789,7 @@ registerAddon({
     keepView = q.has('rcam');
     if (q !== env?.params) wearFrom(q);
     const e = env!;
+    kitFrom(q);
     const which = q.get('clothes');
     if (which === '1' && stall) {
       // At its spot facing its seller (on the floor there), the card open.
@@ -597,10 +802,14 @@ registerAddon({
         const rc = q.get('rcam')!.split(',').map(Number);
         ctx.cam.yaw = e.body.yaw + ((rc[0] ?? 0) * Math.PI) / 180;
       }
-    } else if (which === 'wardrobe') {
-      openWardrobe();
-      if (!keepView && mode === 'walk' && frontOk) frameNow(ctx, FRAME.wardrobe);
+    } else if (which === 'wardrobe' && !pageOn) LOOK_HOOKS.open();
+    const part = q.get('lookpart') as LookPart | null;
+    if (part) {
+      if (LOOK_PARTS.includes(part)) page?.setPart(part);
+      else console.warn(`[map] clothes: no part "${part}" (${LOOK_PARTS.join(', ')})`);
     }
+    // (the Look page open in a shot: the camera at his front at once)
+    if (pageOn && !keepView && mode === 'walk' && frontOk && !e.busy()) frameNow(ctx, FRAME.look);
     const tab = q.get('clothestab') as WearKind | null;
     if (tab && WEAR_KINDS.includes(tab)) card?.setTab(tab);
     const fo = Number(q.get('clothesfocus'));
@@ -619,16 +828,25 @@ registerAddon({
 
   report() {
     const w = wardrobe;
-    if (!w) return null;
+    const e = env;
+    if (!w || !e) return null;
     const out: Record<string, string> = {};
     const on = [...w.on.values()].map((i) => i.id);
     if (on.length) out.wear = on.join(',');
     const more = [...w.owned].filter((id) => !w.wearing(id));
     if (more.length) out.wearown = more.join(',');
     if (card?.open) {
-      out.clothes = card.mode === 'stall' ? '1' : 'wardrobe';
+      out.clothes = '1';
       out.clothestab = card.tab;
     }
+    // (the Look page open: the menu on it, on its part; tools.ts may say `menu=1&menutab=look` too)
+    if (pageOn && page && !card?.open) {
+      out.clothes = 'wardrobe';
+      out.lookpart = page.part;
+    }
+    // (a look that is none of G's four: its parts; one of them is tools.ts's `look=`)
+    const o = e.explorer.currentOutfit;
+    if (lookNow().preset < 0) out.kit = `${o.legs},${o.pack},${o.scarf ? 1 : 0}`;
     return Object.keys(out).length ? out : null;
   },
 });
@@ -643,4 +861,19 @@ function wearFrom(q: URLSearchParams): void {
   if (wear === '0') w.original();
   else if (wear) w.fromIds(wear.split(',').map((s) => s.trim()).filter(Boolean), true);
   if (wear || own) dress();
+}
+
+/** Checks and bug reports: `kit=<legs>,<pack>,<krama 0|1>` (after tools.ts's `look=`): the outfit's legs (the camera with them), the pack, the krama. */
+function kitFrom(q: URLSearchParams): void {
+  const e = env;
+  const kit = q.get('kit')?.split(',');
+  if (!e || !kit) return;
+  const [legs, pk, sc] = kit;
+  if ((legs !== 'shorts' && legs !== 'sampot') || (pk !== 'explorer' && pk !== 'default' && pk !== 'none')) {
+    console.warn(`[map] clothes: kit=${kit.join(',')}: <shorts|sampot>,<explorer|default|none>,<0|1>`);
+    return;
+  }
+  e.explorer.setOutfit({ legs, camera: legs === 'shorts', pack: pk, scarf: sc === '1' });
+  e.photo.refreshBody();
+  LOOK_HOOKS.changed();
 }

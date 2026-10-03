@@ -188,6 +188,11 @@ function makeHud(e: AddonEnv): NonNullable<typeof hud> {
       .rh > .sey-hud { left: 10px; top: 168px; transform: translate(0, -8px); }
       .rh > .sey-hud.is-on { transform: none; }
     }
+    /* (touch on a phone on its side: the tool bar runs along the top, so the count stands at the left, under the purse) */
+    @media (max-height: 500px) and (min-width: 640px) {
+      body.roam-touch .rh > .sey-hud { left: calc(24 * var(--px)); top: 120px; transform: translate(0, -8px); }
+      body.roam-touch .rh > .sey-hud.is-on { transform: none; }
+    }
   `;
   document.head.append(s);
   const el = document.createElement('div');

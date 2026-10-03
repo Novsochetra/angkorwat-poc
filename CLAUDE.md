@@ -152,9 +152,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   On foot he has tools (1–5: lantern, torch, flashlight, camera, selfie with
   a selfie stick (T); `tool=`, `stick=` in shots; camera and selfie also in
   the boat and on the glider), emotes and photos (`roam/tools.ts`, `roam/photo.ts`),
-  the Explorer menu (I, or the face button on the tool bar: moves, outfits
-  and faces for a mouse or a finger; `roam/_explorerMenu.ts`, `menu=1` in shots,
-  `touch=1` for the touch layout),
+  the Explorer menu (I, or the face button on the tool bar: tabs Moves, Look,
+  Bag, Me for a mouse or a finger; `roam/_explorerMenu.ts`, `menu=1&menutab=<tab>`
+  in shots, `touch=1` for the touch layout),
   sits (J) or lies down (L) to watch the sky (`roam/_rest.ts`, poses in
   `src/character/rest.ts`: he puts his pack down beside him; the camera comes
   down low and looks up; lying still 12 s he falls asleep, eyes closed and
@@ -220,7 +220,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   village pagoda. A shot with none of `fest=`, `season=`, `day=` shows no festival.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
-  hidden gold figures are in `src/map/treasure/`.
+  hidden gold figures are in `src/map/treasure/` (their list of clues: a tap on the gold
+  counter or the explorer menu; "Show on map" puts a search circle on both maps;
+  `goldlist=1`, `goldtrack=<id>` in shots).
 - The floating village on the great lake (stilt houses, floating houses, the
   jetty, the pagoda): `src/map/village/`; where everything stands (and
   `VILLAGE_SPOTS` for people and festivals) is `src/map/village/_spots.ts`.

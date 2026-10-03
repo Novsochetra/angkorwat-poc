@@ -11,8 +11,8 @@ import { pad } from '../pad/pad';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
-import { addonHands, ADDONS } from './_addons';
-import { createExplorerMenu, type ExplorerMenu } from './_explorerMenu';
+import { addonHands, ADDONS, LOOK_HOOKS, LOOK_TOOLS } from './_addons';
+import { createExplorerMenu, MENU_TABS, type ExplorerMenu, type MenuTab } from './_explorerMenu';
 import { createGreeter, type GreetHow } from './_greet';
 import { createPrayer } from './_pray';
 import { createRest } from './_rest';
@@ -50,6 +50,14 @@ const FLASH_ANGLE = 0.36;
 /** Longest visible beam (m, true size) and how far the mouse aim looks (m). */
 const BEAM_MAX = 9;
 const AIM_RANGE = 220;
+/**
+ * The wardrobe's Look page on foot (the camera at his front): his light in hand at this share (seen from the front, its
+ * light a hand's width from his clothes blows them out to a red-orange blob), and after dark a soft fill on him from
+ * the camera's side, this far from his chest (m, true size) and this bright there (lux-like, at full night).
+ */
+const LOOK_LOW = 0.12;
+const LOOK_FILL_AT = 2.2;
+const LOOK_FILL = 0.8;
 /** How far from his head the phone's face light is as bright as it is in his hand (m, true size). */
 const PHONE_FILL_AT = 0.55;
 /** After dark (night over this) he takes a lantern, until the player picks a tool. */
@@ -101,7 +109,7 @@ export interface RoamTools {
    * `face=<expression>` · `pview=yaw,pitch,fov` the camera's shot · `gesture=peace|wave|thumbsUp|none`
    * and `saim=yaw,pitch,reach` the selfie (degrees round his head, 0‥1) · `stick=0|1` the selfie stick ·
    * `sview=0‥1` hold the view there (0: the follow camera, to see him hold the camera or the phone) · `keys=1` the key list ·
-   * `menu=1` the explorer menu open.
+   * `menu=1` the explorer menu open (`menutab=moves|look|bag|me` on that page; else Moves).
    */
   fromUrl(params: URLSearchParams, ctx: RoamCtx): void;
   /** URL params that put the tools back as they are (bug reports). */
@@ -186,28 +194,31 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     closeMenus: () => menu.toggle(false),
     uiSound: d.uiSound,
   });
-  // (the explorer menu, I: his moves, looks and faces for a click or a tap, _explorerMenu.ts; his bag's things too)
+  // (his looks for the explorer menu's Look page, the wardrobe's: _addons.ts LOOK_TOOLS; G, H and X do the same)
+  Object.assign(LOOK_TOOLS, {
+    looks: LOOKS,
+    look: () => look,
+    setLook,
+    // (the hat he has chosen: off for a prayer or lying down, it goes back on after)
+    hat: () => explorer.currentOutfit.hat || prayer.hatOff || rest.hatOff,
+    setHat,
+    face: () => EXPRESSIONS.indexOf(explorer.currentExpression),
+    setFace: showFace,
+  } satisfies typeof LOOK_TOOLS);
+  // (the explorer menu, I: his moves, his look, his bag, his name for a click or a tap, _explorerMenu.ts)
   const menu = createExplorerMenu({
     press: (code, how) => {
       // (the menu's Greet and Wave go in as F, saying which)
       greetHow = how ?? null;
       d.controls.press(code);
     },
-    looks: LOOKS,
-    look: () => look,
-    setLook,
-    hat: () => explorer.currentOutfit.hat,
-    face: () => EXPRESSIONS.indexOf(explorer.currentExpression),
-    setFace: (i) => {
-      setFace(i);
-      hud.toast(t('rFaceIs', { name: t(FACE_NAME[EXPRESSIONS[face]]) }));
-    },
     onFoot: () => mode === 'walk',
     onToggle: (on) => {
       if (on) bar.toggleKeys(false);
       bar.update();
     },
-    extra: [shopping.bag.section],
+    bag: shopping.bag.section,
+    sound: d.uiSound,
   });
   const bar = createToolBar(hud.layer ?? document.body, {
     menu,
@@ -218,6 +229,20 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     camera: () => explorer.currentOutfit.camera,
     extra: shopping.bag.slot,
   });
+  // (the wardrobe's Look page changed a part of his look itself — the pack, the krama, the outfit's legs: _wardrobe.ts,
+  // _addons.ts LOOK_HOOKS: G goes on from the look he has now when it is one of the four, the bar shows the camera or
+  // not; and the page's older URL, `clothes=wardrobe`, opens the menu on it)
+  Object.assign(LOOK_HOOKS, {
+    changed: () => {
+      const i = LOOKS.findIndex(([n]) => sameLook(explorer, n));
+      if (i >= 0) look = i;
+      bar.update();
+    },
+    open: () => {
+      menu.select('look');
+      menu.toggle(true);
+    },
+  } satisfies Pick<typeof LOOK_HOOKS, 'changed' | 'open'>);
   // (E at a shrine: he kneels to pray, a golden lotus on the floor where: _pray.ts)
   const prayer = createPrayer({ explorer, body, hud, refreshBody: () => photo.refreshBody(), onPrayed: (spot) => photo.journal.prayed(spot, body.pos) });
   object.add(prayer.object);
@@ -316,6 +341,34 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     explorer.setExpression(EXPRESSIONS[face]);
   }
 
+  /** Show a face and say which (X steps through them, the explorer menu's Look page picks one). */
+  function showFace(i: number): void {
+    setFace(i);
+    hud.toast(t('rFaceIs', { name: t(FACE_NAME[EXPRESSIONS[face]]) }));
+  }
+
+  /**
+   * The hat on or off (H turns it the other way, the explorer menu's Look page sets it). Lying down he has it off:
+   * off then keeps it off as he gets up. During a prayer, or lying down, it stays as the player left it.
+   */
+  function setHat(on: boolean): void {
+    if (rest.hatOff && !on) {
+      rest.hatChosen();
+      hud.toast(t('rHatOff'));
+      return;
+    }
+    prayer.hatChosen();
+    rest.hatChosen();
+    if (explorer.currentOutfit.hat !== on) {
+      explorer.setOutfit({ hat: on });
+      photo.refreshBody();
+    }
+    hud.toast(t(on ? 'rHatOn' : 'rHatOff'));
+  }
+
+  /** H: the hat the other way (lying down he has it off: H says it stays off as he gets up). */
+  const toggleHat = () => setHat(rest.hatOff ? false : !explorer.currentOutfit.hat);
+
   // ── Flashlight aim ───────────────────────────────────────────────────────
 
   /** Where the mouse points on the map (ground, walls, water), or null (sky, too far). */
@@ -365,6 +418,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     const held = explorer.currentOutfit.held;
     const s = explorer.object.scale.y;
     const boost = 1 + night * 5;
+    // (the wardrobe's Look page on foot, the camera at his front: his light low, a soft fill on him, below: LOOK_HOOKS)
+    const look = LOOK_HOOKS.showing && mode === 'walk' && !photo.kind;
+    const low = look ? LOOK_LOW : 1;
     if (photo.kind === 'selfie' && explorer.phoneLens(glow.position, _q)) {
       // A soft fill on his face from the phone (the sun is often behind him), warm with a flame in hand;
       // as bright on his face from the end of the selfie stick as from his hand.
@@ -377,16 +433,46 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       glow.color.setHex(held === 'torch' ? 0xff9a3c : 0xffb347);
       // A gentle flicker (a flame: livelier in the torch). The light grows with him (it reaches as far on his size).
       const f = held === 'torch' ? 0.84 + Math.sin(t * 17.3) * 0.08 + Math.sin(t * 29.7 + 2) * 0.06 + Math.sin(t * 7.1) * 0.03 : 0.9 + Math.sin(t * 11.3) * 0.04 + Math.sin(t * 23.9 + 1) * 0.03;
-      glow.intensity = (held === 'torch' ? TORCH_CD : LANTERN_CD) * s * s * boost * f;
+      glow.intensity = (held === 'torch' ? TORCH_CD : LANTERN_CD) * s * s * boost * f * low;
       glow.distance = GLOW_RANGE * (held === 'torch' ? 1.2 : 1) * (s / 1.4);
     } else glow.intensity = 0;
     if (held === 'flashlight' && explorer.flashlightRay(_o, _d)) {
       flash.position.copy(_o);
       flash.target.position.copy(_o).addScaledVector(_d, 10);
       flash.target.updateMatrixWorld();
-      flash.intensity = FLASH_CD * s * s * (1 + (boost - 1) * 0.5);
+      // (as made: the Look page's fill may have had it)
+      flash.angle = FLASH_ANGLE;
+      flash.penumbra = 0.5;
+      flash.distance = FLASH_RANGE;
+      flash.color.setHex(0xfff1dc);
+      flash.intensity = FLASH_CD * s * s * (1 + (boost - 1) * 0.5) * low;
     } else flash.intensity = 0;
+    if (look && night > 0.02) lookFill(held === 'flashlight' ? glow : flash, s);
   }
+
+  /**
+   * The Look page after dark: a soft, near-white light on him from the camera's side, a little above, aimed at his
+   * chest, reaching little past him — so the clothes he picks read true. It is the light his hand does not use now
+   * (the spot unless he holds the flashlight, then the point light): the scene's lights stay as many as ever.
+   */
+  function lookFill(l: PointLight | SpotLight, s: number): void {
+    const chest = explorer.rig.joints.chest.getWorldPosition(_fillTo);
+    const d = LOOK_FILL_AT * s;
+    _fillAt.copy(cam.camera.position).sub(chest).normalize().multiplyScalar(d).add(chest);
+    _fillAt.y += 0.5 * s;
+    l.position.copy(_fillAt);
+    l.color.setHex(0xfff2e2);
+    l.distance = d * 3;
+    l.intensity = LOOK_FILL * Math.min(1, night * 1.5) * d * d;
+    if (l instanceof SpotLight) {
+      l.target.position.copy(chest);
+      l.target.updateMatrixWorld();
+      l.angle = 0.6;
+      l.penumbra = 1;
+    }
+  }
+  const _fillAt = new Vector3();
+  const _fillTo = new Vector3();
 
   // ── The API ──────────────────────────────────────────────────────────────
 
@@ -493,30 +579,15 @@ export function createRoamTools(d: ToolDeps): RoamTools {
         hud.toast(t('rBeam', { beam: beamLabel() }));
         bar.update();
       }
-      // His look: in any roaming mode.
-      if (tap('KeyH')) {
-        // (lying down he has it off: H says whether it goes back on as he gets up)
-        if (rest.hatOff) {
-          rest.hatChosen();
-          hud.toast(t('rHatOff'));
-        } else {
-          // (during a prayer too: the hat stays as the player left it)
-          prayer.hatChosen();
-          rest.hatChosen();
-          explorer.setOutfit({ hat: !explorer.currentOutfit.hat });
-          photo.refreshBody();
-          hud.toast(t(explorer.currentOutfit.hat ? 'rHatOn' : 'rHatOff'));
-        }
-      }
+      // His look: in any roaming mode (lying down he has the hat off: H says whether it goes back on as he gets up;
+      // during a prayer too, the hat stays as the player left it).
+      if (tap('KeyH')) toggleHat();
       if (tap('KeyG')) {
         if (photo.kind === 'selfie') hud.toast(t('rGestureIs', { name: photo.nextGesture() }));
         else nextLook();
       }
-      if (tap('KeyX')) {
-        // (from the face he shows: the selfie makes him smile)
-        setFace(EXPRESSIONS.indexOf(explorer.currentExpression) + 1);
-        hud.toast(t('rFaceIs', { name: t(FACE_NAME[EXPRESSIONS[face]]) }));
-      }
+      // (from the face he shows: the selfie makes him smile)
+      if (tap('KeyX')) showFace(EXPRESSIONS.indexOf(explorer.currentExpression) + 1);
 
       if (photo.kind) {
         // Esc puts the camera away (not back to the map); no walking, jumping or entering
@@ -669,6 +740,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       const fc = EXPRESSIONS.indexOf(params.get('face') as ExpressionName);
       if (fc >= 0) setFace(fc);
       if (params.get('keys') === '1') bar.toggleKeys(true);
+      // (the explorer menu on a page: menutab=moves|look|bag|me)
+      const mt = params.get('menutab') as MenuTab | null;
+      if (mt && MENU_TABS.includes(mt)) menu.select(mt);
       if (params.get('menu') === '1') menu.toggle(true);
       // The selfie: the hand's gesture, where the phone is (degrees round his head, reach 0‥1).
       const g = params.get('gesture') as SelfieGesture | null;
@@ -754,7 +828,7 @@ interface ToolBar {
 /**
  * A small bar at the bottom centre while he walks: 1 lantern, 2 torch,
  * 3 flashlight, 4 camera, 5 selfie phone, then the album (V), the explorer
- * menu (I: moves, looks, faces; _explorerMenu.ts) and the key list (?).
+ * menu (I: moves, look, bag, me; _explorerMenu.ts) and the key list (?).
  * Pixel-art icons with their key; the one in use is lit gold.
  * On touch it stands at the right edge, above the Jump button.
  * With the game pad in use the keys show its buttons (the d-pad: ↑ the
@@ -781,8 +855,8 @@ function createToolBar(
     </div>
     <div class="rtb-keys mu-frame mu-sm" role="dialog"></div>`;
   layer.append(wrap);
-  // (the explorer menu opens in the same place as the key list)
-  wrap.append(h.menu.el);
+  // (the explorer menu: in the layer, placed from the bar's box: over it, beside it or under it, _explorerMenu.ts)
+  h.menu.mount(layer, wrap.querySelector<HTMLElement>('.rtb')!);
   // (after the selfie phone: the bag's slot, 6, while he carries something to eat or drink: roam/_shopBag.ts)
   if (h.extra) wrap.querySelector('.rtb-slot[data-tool="selfie"]')!.after(h.extra);
   const me = wrap.querySelector<HTMLButtonElement>('.rtb-me')!;
@@ -842,6 +916,8 @@ function createToolBar(
       if (on) h.menu.toggle(false);
       open = on;
       keysEl.classList.toggle('is-on', on);
+      // (the layer says so: the mode's key help steps aside; a class, not :has(), which some phones lack)
+      layer.classList.toggle('keys-on', on);
       more.classList.toggle('is-on', on);
       more.setAttribute('aria-expanded', String(on));
     },
@@ -965,7 +1041,7 @@ function injectStyle(): void {
       font-size: calc(13 * var(--px)); color: var(--mu-ink2); }
     .rtb-keys.is-on { display: flex; }
     /* (it has every key: the mode's key help at the bottom left steps aside for it) */
-    .rh:has(.rtb-keys.is-on) .rh-help { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
+    .rh.keys-on .rh-help { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
     .rtb-col { display: grid; grid-template-columns: auto auto; gap: calc(5 * var(--px)) calc(8 * var(--px)); align-content: start; align-items: center; }
     .rtb-col b { grid-column: 1 / -1; font: 700 calc(14 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-gold-hi); letter-spacing: 0.02em; }
     .rtb-col b.rtb-sub { margin-top: calc(6 * var(--px)); }
@@ -977,10 +1053,18 @@ function injectStyle(): void {
 
     /* The camera or the phone up: only the viewfinder. */
     body.roam-photo .rtb-wrap, body.roam-photo .rh-help, body.roam-photo .rh-back, body.roam-photo .rh-prompt,
+    body.roam-touch.roam-photo .rh > .tg-count, body.roam-touch.roam-photo .rh > .by-purse,
     body.roam-finder .map-ui:not(.rh) { opacity: 0 !important; visibility: hidden !important; transition: opacity 0.3s, visibility 0s 0.3s !important; }
     /* (the map has its own album button: the tool bar's V) */
     body.map .photo-album-button { display: none; }
     body.map .photo-print { bottom: calc(80px + 2vh); }
+    /* (touch: the keys' lines go, the shutter and the put-away button are there to tap; on a phone on its side the put-away
+       button has the top left corner, so the selfie's line goes under the notch, clear of it) */
+    body.roam-touch .photo-bar .hint, body.roam-touch .selfie-hint { display: none; }
+    @media (max-height: 500px) and (min-width: 640px) {
+      body.roam-touch .selfie-info { left: 50%; top: 58px; transform: translateX(-50%); max-width: calc(100vw - 200px); box-sizing: border-box;
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    }
 
     /* Touch: the bar stands up at the right edge, over the Jump button (under the mini-map). */
     body.roam-touch .rtb-wrap { left: auto; right: 12px; bottom: 128px; transform: none; }
@@ -1006,6 +1090,8 @@ function injectStyle(): void {
     @media (max-height: 500px) and (max-width: 720px) {
       body.roam-touch .rtb-slot { width: 36px; }
       body.roam-touch .rtb-sep { margin: 0 1px; }
+      /* (and a little left of the middle: "Back" is only its arrow here, hud.ts, and the corner's three buttons are wider; with the bag's slot too it fits) */
+      body.roam-touch .rtb-wrap { transform: translateX(calc(-50% - 22px)); }
     }`;
   document.head.append(style);
 }

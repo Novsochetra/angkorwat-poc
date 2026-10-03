@@ -203,6 +203,33 @@ export const POSE = {
 } as const;
 /** Rowing strokes a second (the `row` pose; a whole number in 600 s, so the clock's wrap does not jump). */
 export const ROW_HZ = 0.9;
+/** The people's clock goes back by this many seconds now and then (`Crowd.flush`: the shader's time stays small). */
+export const CLOCK_WRAP = 600;
+/** The rate (rad/s) nearest `w` that turns a whole number of times in `CLOCK_WRAP`: a motion at it does not jump when the clock goes back. */
+export const wholeTurns = (w: number): number => (Math.round((w * CLOCK_WRAP) / (Math.PI * 2)) * Math.PI * 2) / CLOCK_WRAP;
+/**
+ * The apsara dance's rates (`POSE.dance`, rad/s, all whole turns in `CLOCK_WRAP`): the foot lifted behind changes at
+ * every zero of `sin(t · step)` (every `π / step` ≈ 7.1 s, every dancer together: `danceSide`, `danceSteps`), the
+ * hips' slow sink and rise, the arms' and the wrists' sway.
+ */
+export const DANCE = { step: wholeTurns(0.44), breath: wholeTurns(0.9), arms: wholeTurns(0.7), wrist: wholeTurns(0.8) } as const;
+const smooth01 = (a: number, b: number, x: number) => {
+  const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return k * k * (3 - 2 * k);
+};
+/** Which foot the dance has lifted behind at the people's clock `t` (s): +1 the left … −1 the right (the shader's `pDanceSide`). */
+export function danceSide(t: number): number {
+  return 2 * smooth01(-0.4, 0.4, Math.sin(t * DANCE.step)) - 1;
+}
+/**
+ * The dance's foot changes by the people's clock `t` (s): it holds still while a foot is up and rises by one through
+ * each change, a whole number at its middle (both feet down: where the pinpeat's phrase begins, people/_sceneApsara.ts).
+ */
+export function danceSteps(t: number): number {
+  const g = t * DANCE.step;
+  const k = Math.round(g / Math.PI);
+  return k - 0.5 + smooth01(-0.4, 0.4, Math.sin(g - k * Math.PI));
+}
 export type Pose = (typeof POSE)[keyof typeof POSE];
 
 /** How the hands hold the person's prop while standing or walking (`Crowd.carry` eases it in and out). */
@@ -891,6 +918,8 @@ function buildFarModel(): Builder {
 // ── Shader ──────────────────────────────────────────────────────────────────
 
 const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(+v.toFixed(4)));
+/** A rate (rad/s) for the shader's clock, made whole turns in its wrap (`wholeTurns`): no jump when the clock goes back. */
+const w = (v: number) => wholeTurns(v).toFixed(7);
 const POSE_CONSTS = Object.entries(POSE).map(([k, v]) => `const int P_${k.toUpperCase()} = ${v};`).join('\n');
 const CARRY_CONSTS = Object.entries(CARRY).map(([k, v]) => `const int C_${k.toUpperCase()} = ${v};`).join('\n');
 const SHOW_CONSTS = Object.entries(SHOW).map(([k, v]) => `const int SHOW_${k.toUpperCase()} = ${v};`).join('\n');
@@ -1089,12 +1118,13 @@ mat3 pRotY(float a) { float c = cos(a); float s = sin(a); return mat3(c, 0.0, -s
 mat3 pRotZ(float a) { float c = cos(a); float s = sin(a); return mat3(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0); }
 
 // Standing: breathing, the weight shifting, the head looking round a little.
+// (its rates, and the breath's in pRot and the sitting head's, whole turns in the clock's wrap: no twitch when it goes back)
 vec3 pStand(int b, PP P) {
   float s = P.seed * 6.2831;
-  float br = sin(P.t * 1.35 + s);
-  if (b == B_HIPS) return vec3(0.0, 0.0, 0.025 * sin(P.t * 0.31 + s));
-  if (b == B_CHEST) return vec3(0.015 * br, 0.04 * sin(P.t * 0.27 + s * 2.0), -0.02 * sin(P.t * 0.31 + s));
-  if (b == B_HEAD) return vec3(0.04 * sin(P.t * 0.45 + s * 3.0), 0.14 * sin(P.t * 0.21 + s * 5.0), 0.0);
+  float br = sin(P.t * ${w(1.35)} + s);
+  if (b == B_HIPS) return vec3(0.0, 0.0, 0.025 * sin(P.t * ${w(0.31)} + s));
+  if (b == B_CHEST) return vec3(0.015 * br, 0.04 * sin(P.t * ${w(0.27)} + s * 2.0), -0.02 * sin(P.t * ${w(0.31)} + s));
+  if (b == B_HEAD) return vec3(0.04 * sin(P.t * ${w(0.45)} + s * 3.0), 0.14 * sin(P.t * ${w(0.21)} + s * 5.0), 0.0);
   if (b == B_ARML) return vec3(0.03 * br, 0.0, 0.08);
   if (b == B_ARMR) return vec3(0.03 * br, 0.0, -0.08);
   if (b == B_FOREL || b == B_FORER) return vec3(-0.18, 0.0, 0.0);
@@ -1135,11 +1165,21 @@ vec3 pClimbArm(bool upper, float h, bool right) {
   return right ? r * vec3(1.0, -1.0, -1.0) : r;
 }
 
+// The apsara dance (P_DANCE): the foot lifted behind (+1 the left … −1 the right), every dancer together (the scene
+// steps the figure and starts the pinpeat's phrases on its changes: danceSide, danceSteps), and how far the hips sink
+// (a slow breath). Rates of whole turns in the clock's wrap (DANCE): no jump when it goes back.
+float pDanceSide(float t) {
+  return 2.0 * smoothstep(-0.4, 0.4, sin(t * ${DANCE.step.toFixed(7)})) - 1.0;
+}
+float pDanceDrop(PP P) {
+  return 0.06 + 0.012 * sin(P.t * ${DANCE.breath.toFixed(7)} + P.seed * 6.0);
+}
+
 // One pose's bone turns (no gait, no carry, no look).
 vec3 pRot(int p, int b, PP P) {
   float s = P.seed * 6.2831;
   float t = P.t;
-  float br = sin(t * 1.35 + s);
+  float br = sin(t * ${w(1.35)} + s);
   vec3 base = pStand(b, P);
   bool arm = b == B_ARML || b == B_ARMR || b == B_FOREL || b == B_FORER;
   if (p == P_STAND) return base;
@@ -1184,7 +1224,7 @@ vec3 pRot(int p, int b, PP P) {
   }
   if (p == P_SIT) {
     if (b == B_CHEST) return vec3(0.05 + 0.012 * br, 0.0, 0.0);
-    if (b == B_HEAD) return vec3(0.12, 0.1 * sin(t * 0.2 + s), 0.0);
+    if (b == B_HEAD) return vec3(0.12, 0.1 * sin(t * ${w(0.2)} + s), 0.0);
     if (b == B_LEGL) return vec3(-1.5, 0.6, 0.0);
     if (b == B_SHINL) return vec3(-0.2, 0.0, -2.5);
     if (b == B_LEGR) return vec3(-1.5, -0.6, 0.0);
@@ -1221,20 +1261,29 @@ vec3 pRot(int p, int b, PP P) {
     return base;
   }
   if (p == P_DANCE) {
-    // f: +1 the left foot lifted behind, −1 the right; it changes slowly.
-    float fl = 2.0 * smoothstep(-0.4, 0.4, sin(t * 0.45 + s)) - 1.0;
+    // fl: +1 the left foot lifted behind, −1 the right; it changes slowly (pDanceSide). The hips roll up on its side.
+    float fl = pDanceSide(t);
     float L = max(fl, 0.0);
     float R = max(-fl, 0.0);
-    if (b == B_HIPS) return vec3(0.0, 0.0, 0.08 * fl);
+    float roll = 0.08 * fl;
+    if (b == B_HIPS) return vec3(0.0, 0.0, roll);
     if (b == B_CHEST) return vec3(0.02, 0.12 * fl, -0.16 * fl);
     if (b == B_HEAD) return vec3(0.08, 0.3 * fl, 0.18 * fl);
-    if (b == B_LEGL) return vec3(-0.4 + 0.7 * L, 0.25, 0.0);
-    if (b == B_SHINL) return vec3(0.75 + 1.0 * L, 0.0, 0.0);
-    if (b == B_LEGR) return vec3(-0.4 + 0.7 * R, -0.25, 0.0);
-    if (b == B_SHINR) return vec3(0.75 + 1.0 * R, 0.0, 0.0);
+    if (b >= B_LEGL && b <= B_SHINR) {
+      // The standing leg (both, while the feet change) bends its knee to the hips' sink, the ankle a little behind the
+      // hip (the roll taken back), so the foot (kept level: pFlat) stands flat on the ground and the knee stays in the
+      // sampot; the lifted one folds up behind (its foot following the shin, the sole turned up: pBoneMat). The knees
+      // turned out a little.
+      bool left = b <= B_SHINL;
+      float x = left ? ${f(LEG_X)} : -${f(LEG_X)};
+      vec2 st = pReach(vec2(0.52 + (0.07 + pDanceDrop(P) - 0.52 - x * sin(roll)) / cos(roll), -0.08));
+      vec2 r = mix(st, vec2(0.2, 1.9), left ? L : R);
+      bool upper = b == B_LEGL || b == B_LEGR;
+      return vec3(upper ? r.x : r.y, upper ? (left ? 0.18 : -0.18) : 0.0, 0.0);
+    }
     // The arm on the lifted side curves out and up, the other forward at the chest, hands bent back
     // (the wrists: pSkin); the forearms undulate slowly, never still.
-    float un = 0.1 * sin(t * 0.7 + s * 3.0);
+    float un = 0.1 * sin(t * ${DANCE.arms.toFixed(7)} + s * 3.0);
     if (b == B_ARML) return mix(vec3(-1.2, -0.3, 0.25), vec3(-0.35, 0.0, 1.25), L) + vec3(0.5 * un, 0.0, 0.0);
     if (b == B_FOREL) return mix(vec3(-1.1, 0.0, 0.0), vec3(-1.5, 0.0, 0.3), L) + vec3(un, 0.0, 0.0);
     if (b == B_ARMR) return mix(vec3(-1.2, 0.3, -0.25), vec3(-0.35, 0.0, -1.25), R) - vec3(0.5 * un, 0.0, 0.0);
@@ -1481,7 +1530,7 @@ float pDrop(int p, PP P) {
   if (p == P_REAP) return 0.09;
   if (p == P_ROW) return 0.2;
   if (p == P_SWEEP || p == P_CAST) return 0.03;
-  if (p == P_DANCE) return 0.075 + 0.015 * sin(P.t * 0.9 + P.seed * 6.0);
+  if (p == P_DANCE) return pDanceDrop(P);
   if (p == P_SQUAT) return 0.291;
   if (p == P_STOOL || p == P_EAT) return 0.262;
   if (p == P_HAMMOCK) return 0.38;
@@ -1493,7 +1542,7 @@ float pDrop(int p, PP P) {
 
 // How much the feet stay level (on the ground, a peg, a pedal) whatever the legs do (0: they follow the shins).
 float pFlat(int p) {
-  return p == P_SQUAT || p == P_STOOL || p == P_EAT || p == P_CLIMB || p == P_RIDE ? 1.0 : 0.0;
+  return p == P_SQUAT || p == P_STOOL || p == P_EAT || p == P_CLIMB || p == P_RIDE || p == P_DANCE ? 1.0 : 0.0;
 }
 
 // Carry styles: the arm turns, which arms, and the world tilt of the prop in the hand.
@@ -1635,10 +1684,12 @@ mat3 pBoneMat(int b, PP P) {
   bool grip = b == B_GRIPL || b == B_GRIPR;
   bool foot = b == B_FOOTL || b == B_FOOTR;
   // (dancing, the wrists bend back from the forearms, swaying a little: the apsara's hands)
-  if (grip && pWeight(P_DANCE, P) >= 0.5) return pEuler(vec3(-1.25 + 0.15 * sin(P.t * 0.8 + P.seed * 6.2831 + float(b)), 0.0, 0.0));
-  float fl = foot ? mix(pFlat(P.from), pFlat(P.to), P.k) : 1.0;
-  if (fl <= 0.0) return pEuler(vec3(0.0));
+  if (grip && pWeight(P_DANCE, P) >= 0.5) return pEuler(vec3(-1.25 + 0.15 * sin(P.t * ${DANCE.wrist.toFixed(7)} + P.seed * 6.2831 + float(b)), 0.0, 0.0));
   bool left = b == B_GRIPL || b == B_FOOTL;
+  float fl = foot ? mix(pFlat(P.from), pFlat(P.to), P.k) : 1.0;
+  // (dancing, the foot lifted behind is not kept level: once off the ground it follows the shin, its sole turned up behind)
+  if (foot) fl *= 1.0 - pWeight(P_DANCE, P) * smoothstep(0.3, 1.0, pDanceSide(P.t) * (left ? 1.0 : -1.0));
+  if (fl <= 0.0) return pEuler(vec3(0.0));
   int n = grip ? 4 : foot ? 3 : 1;
   mat3 chain = mat3(1.0);
   float pitch = 0.0;
@@ -2451,8 +2502,8 @@ export class Crowd {
    * changed.
    */
   flush(t: number, night = 0, view?: CrowdView): void {
-    if (t - this.base > 600) {
-      const shift = Math.floor((t - this.base) / 600) * 600;
+    if (t - this.base > CLOCK_WRAP) {
+      const shift = Math.floor((t - this.base) / CLOCK_WRAP) * CLOCK_WRAP;
       for (let i = 0; i < this.count; i++) {
         const o = i * 4;
         for (let c = 0; c < 5; c++) this.ch[c][o + 2] = Math.max(-1e4, this.ch[c][o + 2] - shift);

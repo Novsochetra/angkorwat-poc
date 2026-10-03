@@ -4,33 +4,54 @@ import { num, onLang, t } from '../ui/lang';
  * The treasure's bits of the roaming interface, in its layer (roam/hud.ts,
  * `.map-ui.rh`: the map's dark stepped panels, gold for what matters):
  * a small gold counter under "Back to map" while roaming ("4 / 15", a tiny
- * golden figure beside it; it glows for a moment when one is found).
+ * golden figure beside it; it glows for a moment when one is found). It is
+ * a button: a click or a tap opens the list of clues (_list.ts; again: shut),
+ * its focus ring for the keyboard, a thumb-sized reach on a touch screen.
  */
 export interface TreasureHud {
   /** Figures found and how many there are; `pop`: one was just found. */
   count(n: number, total: number, pop?: boolean): void;
+  /** The list of clues is open (the counter lit, `aria-expanded`). */
+  open(on: boolean): void;
+  /** The counter (a tap on it is not a tap outside the list). */
+  readonly el: HTMLElement;
 }
 
-export function createTreasureHud(layer: HTMLElement): TreasureHud {
+/** The tiny golden figure (the list's heading shows it too). */
+export const goldIcon = (cls = 'tg-icon'): string => FIGURE_ICON.replace('class="tg-icon"', `class="${cls}"`);
+
+export function createTreasureHud(layer: HTMLElement, onTap: () => void): TreasureHud {
   injectStyle();
-  const counter = document.createElement('div');
+  const counter = document.createElement('button');
+  counter.type = 'button';
   counter.className = 'tg-count mu-frame mu-sm';
-  counter.setAttribute('role', 'status');
-  counter.innerHTML = `<span class="mu-bg"></span><span class="mu-glow"></span>${FIGURE_ICON}<span class="tg-n"></span>`;
+  counter.setAttribute('aria-haspopup', 'dialog');
+  counter.setAttribute('aria-expanded', 'false');
+  counter.innerHTML = `<span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${FIGURE_ICON}<span class="tg-n" aria-live="polite"></span>`;
   layer.append(counter);
   const nEl = counter.querySelector<HTMLElement>('.tg-n')!;
+  counter.addEventListener('click', () => {
+    // (the focus leaves it, so Space and Enter are his again: the list takes its own)
+    counter.blur();
+    onTap();
+  });
 
   let found = -1;
   let of = 0;
   let popTimer = 0;
   const words = () => {
     nEl.textContent = `${num(found)} / ${num(of)}`;
-    counter.setAttribute('aria-label', `${t('tgCount')}: ${num(found)} / ${num(of)}`);
-    counter.title = t('tgCount');
+    counter.setAttribute('aria-label', `${t('tgCount')}: ${num(found)} / ${num(of)}. ${t('tgListOpen')}`);
+    counter.title = t('tgListOpen');
   };
   onLang(words);
 
   return {
+    el: counter,
+    open(on) {
+      counter.setAttribute('aria-expanded', String(on));
+      counter.classList.toggle('is-open', on);
+    },
     count(n, total, pop = false) {
       if (n !== found || total !== of) {
         found = n;
@@ -66,7 +87,19 @@ function injectStyle(): void {
     /* The gold counter: small, under "Back to map". */
     .rh > .tg-count { left: calc(24 * var(--px)); top: calc(76 * var(--px)); gap: calc(7 * var(--px)); padding: calc(6 * var(--px)) calc(12 * var(--px)) calc(6 * var(--px)) calc(9 * var(--px));
       font: 700 calc(15 * var(--px)) / 1 var(--mu-display); color: var(--mu-ink); letter-spacing: 0.02em; --mu-edge: rgba(255, 208, 112, 0.45);
+      border: 0; background: none; outline: none; cursor: pointer; touch-action: manipulation;
       opacity: 0; visibility: hidden; transition: opacity 0.6s, visibility 0s 0.6s; pointer-events: none; }
+    /* (a button: the list of clues; on a touch screen it reaches 44 px every way, the look as it was) */
+    body.roam-touch .rh > .tg-count::after { content: ''; position: absolute; left: min(0px, calc((100% - 44px) / 2)); right: min(0px, calc((100% - 44px) / 2));
+      top: min(0px, calc((100% - 44px) / 2)); bottom: min(0px, calc((100% - 44px) / 2)); }
+    @media (pointer: coarse) {
+      .rh > .tg-count::after { content: ''; position: absolute; left: min(0px, calc((100% - 44px) / 2)); right: min(0px, calc((100% - 44px) / 2));
+        top: min(0px, calc((100% - 44px) / 2)); bottom: min(0px, calc((100% - 44px) / 2)); }
+    }
+    .rh.is-roam > .tg-count { pointer-events: auto; }
+    .rh > .tg-count:hover, .rh > .tg-count:focus-visible, .rh > .tg-count.is-open { --mu-edge: var(--mu-gold-hi); }
+    .rh > .tg-count:hover .mu-glow, .rh > .tg-count.is-open .mu-glow { opacity: 0.55; }
+    .rh > .tg-count:active { transform: scale(0.96); }
     :lang(km) .rh > .tg-count { letter-spacing: 0; }
     .rh > .tg-count > .mu-bg { background: color-mix(in srgb, rgba(13, 25, 39, 0.62), rgba(4, 15, 32, 0.62) var(--mu-night)); }
     .rh > .tg-count .mu-glow { opacity: 0; transition: opacity 0.8s; }

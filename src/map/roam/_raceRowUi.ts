@@ -349,6 +349,10 @@ function injectStyle(): void {
     }
     /* A phone held upright: the course across the bottom, the drum (a thumb's size) over it on the right, the result
        card at the bottom (the top is the purse's, the chip's and the mini-map's). */
+    /* (a low phone on its side: the drum would stand on the mini-map's foot; the mini-map steps aside while he races) */
+    @media (max-height: 400px) and (min-width: 640px) {
+      body.roam-race .mm .mm-mini, body.roam-race .mm .mm-under { visibility: hidden; }
+    }
     @media (max-width: 639px) {
       body.roam-race .rh-help { display: none; }
       .rr-course, body.roam-touch .rr-course { left: 12px; right: 12px; top: auto; bottom: 14px; transform: none; padding: 8px 12px; gap: 10px; }

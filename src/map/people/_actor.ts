@@ -71,9 +71,10 @@ export class Actor {
   /**
    * Keep out of the way of animals (the elephants) and give the explorer a
    * little room, on their own: every goal is moved aside first (`group`:
-   * the group's own people are not in the way).
+   * the group's own people are not in the way). `null`: not (someone
+   * dancing or sitting at a show keeps their place).
    */
-  avoid(traffic: Traffic, group: string): this {
+  avoid(traffic: Traffic | null, group = this.group): this {
     this.traffic = traffic;
     this.group = group;
     return this;

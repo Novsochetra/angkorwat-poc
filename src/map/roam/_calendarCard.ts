@@ -508,23 +508,29 @@ function injectStyle(): void {
     .wh-toast-text b { font: 700 calc(19 * var(--px)) / 1.15 var(--mu-display); color: var(--mu-ink); letter-spacing: 0.01em; }
     .wh-toast-text span { font-size: calc(13 * var(--px)); color: var(--mu-ink2); }
     .wh-toast-text span[hidden] { display: none; }
-    body:has(.mm-toast.is-on) .rh > .wh-toast, body:has(.rh-toast.is-on) .rh > .wh-toast { top: calc(13vh + 76 * var(--px)); }
+    body.mm-toast-on .rh > .wh-toast, body.rh-toast-on .rh > .wh-toast { top: calc(13vh + 76 * var(--px)); }
+    /* (the map's banner and the HUD's message: classes on the page set as they show, mm-toast-on, rh-toast-on; not :has(), which some phones lack) */
     /* (the card open at the right: in the middle of the room left of it) */
     body.roam-when .rh > .wh-toast { left: calc((100% - 436 * var(--px)) / 2); max-width: calc(100% - 476 * var(--px)); }
-    body:has(.mm-toast.is-on):has(.rh-toast.is-on) .rh > .wh-toast { top: calc(13vh + 150 * var(--px)); }
+    body.mm-toast-on.rh-toast-on .rh > .wh-toast { top: calc(13vh + 150 * var(--px)); }
     :lang(km) .wh-toast-text em { letter-spacing: 0; font-size: calc(13.5 * var(--px)); }
     :lang(km) .wh-toast-text b { letter-spacing: 0; line-height: 1.4; }
     :lang(km) .wh-toast-text span { font-size: calc(14 * var(--px)); }
     body.roam-photo .rh > .wh-toast { opacity: 0 !important; }
     @media (max-width: 639px) {
       .rh > .wh-toast, body.roam-when .rh > .wh-toast { top: 250px; left: 50%; max-width: calc(100vw - 40px); }
-      body:has(.mm-toast.is-on) .rh > .wh-toast, body:has(.rh-toast.is-on) .rh > .wh-toast { top: calc(250px + 76 * var(--px)); }
+      body.mm-toast-on .rh > .wh-toast, body.rh-toast-on .rh > .wh-toast { top: calc(250px + 76 * var(--px)); }
     }
     /* (a phone on its side: under the tool bar along the top and the festival's banner; with the card open, in the room left of it) */
     @media (max-height: 500px) {
       .rh > .wh-toast { top: 82px; }
-      body:has(.mm-toast.is-on) .rh > .wh-toast, body:has(.rh-toast.is-on) .rh > .wh-toast { top: 156px; }
+      body.mm-toast-on .rh > .wh-toast, body.rh-toast-on .rh > .wh-toast { top: 156px; }
       body.roam-when .rh > .wh-toast { left: calc((100% - min(420px, 56vw) - 8px) / 2); max-width: calc(100% - min(420px, 56vw) - 32px); }
+    }
+    /* (a phone, upright or on its side: the explorer menu or the golden figures' list open would have the banner over its top,
+       so it steps aside meanwhile: their classes on the page, rxm-open and tg-list-on) */
+    @media (max-width: 639px), (max-height: 500px) {
+      body.rxm-open .rh > .wh-toast, body.tg-list-on .rh > .wh-toast { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
     }`;
   document.head.append(style);
 }

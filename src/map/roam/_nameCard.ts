@@ -487,7 +487,7 @@ function injectStyle(): void {
   style.textContent = `
     .mu-ask.nm { z-index: 66; }
     .nm .mu-ask-card { width: min(calc(560 * var(--px)), 100%); padding: 0; }
-    .nm-in { position: relative; display: flex; flex-direction: column; max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
+    .nm-in { position: relative; display: flex; flex-direction: column; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
       padding: calc(18 * var(--px)) calc(22 * var(--px)) calc(16 * var(--px)); scrollbar-width: thin; scrollbar-color: var(--mu-line) transparent; }
     .nm-head { padding-right: calc(64 * var(--px)); }
     .nm-icon { flex: none; display: grid; place-items: center; width: calc(64 * var(--px)); }
@@ -581,7 +581,7 @@ function injectStyle(): void {
     @media (max-width: 639px), (pointer: coarse) {
       .mu-ask.nm { align-items: flex-start; padding: 10px; }
       .nm .mu-ask-card { width: 100%; }
-      .nm-in { max-height: calc(100dvh - 20px); padding: 14px 14px 12px; }
+      .nm-in { max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); padding: 14px 14px 12px; }
       .nm-names { grid-template-columns: repeat(4, 1fr); }
       .nm-name, .nm-alt { min-height: 44px; }
       .nm .mu-ask kbd, .nm kbd { display: none; }
@@ -594,7 +594,7 @@ function injectStyle(): void {
     /* A phone on its side: the head and the leaf lower, the names in one wide grid. */
     @media (max-height: 520px) {
       .mu-ask.nm { align-items: flex-start; padding: 8px; }
-      .nm-in { max-height: calc(100dvh - 16px); padding: 10px 14px; }
+      .nm-in { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); padding: 10px 14px; }
       .nm-sub { display: none; }
       .nm-icon, .nm-leaf-icon { width: 44px; }
       .nm .mu-ask-orn { margin: 6px 0 8px; }

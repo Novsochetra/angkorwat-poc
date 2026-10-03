@@ -11,6 +11,7 @@ import { RAMP } from '../roam/_launchRamp';
 import { eventSprite, eventSvg } from '../roam/_calendarIcons';
 import { ROAM_AREA } from '../terrain/views';
 import { treasure } from '../treasure/hooks';
+import { drawSearchMini, searchMarkBig } from '../treasure/_mapMark';
 import type { MapFrame, MapPart, MiniMapChoice, PlaceId, RoamMode, UISound } from '../types';
 import { ICON } from './icons';
 import { num, onLang, placeText, t, type WordKey } from './lang';
@@ -597,6 +598,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
     toastName.textContent = name;
     toastName.classList.toggle('is-dist', dist);
     toastEl.classList.add('is-on');
+    // (a class on the page, not :has(), which some phones lack: the HUD's messages and the calendar's banner go under it)
+    document.body.classList.add('mm-toast-on');
     toastLeft = 3.4;
   }
 
@@ -852,7 +855,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
   /** The golden figures he found (treasure/): a small gold mark each on the big map (none for those still hidden). */
   function placeGold(): void {
     const found = treasure.found();
-    goldMarks.innerHTML = found.map((g) => `<span class="mm-gold" style="left:${pct(g.x - BIG.x0, BIG_W)};top:${pct(g.z - BIG.z0, BIG_H)}"></span>`).join('');
+    // (and the search area of the one he follows from its list of clues, under them: treasure/_mapMark.ts)
+    const gs = treasure.search();
+    goldMarks.innerHTML =
+      (gs ? searchMarkBig(gs, BIG.x0, BIG.z0, BIG_W, BIG_H) : '') + found.map((g) => `<span class="mm-gold" style="left:${pct(g.x - BIG.x0, BIG_W)};top:${pct(g.z - BIG.z0, BIG_H)}"></span>`).join('');
     goldLegend.hidden = !found.length;
   }
 
@@ -999,6 +1005,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
 
     g.fillStyle = vignette;
     g.fillRect(0, 0, S, S);
+
+    // The golden figure he follows from its list of clues (treasure/_mapMark.ts): a soft gold circle where to search, or a mark on the rim towards it.
+    const gs = treasure.search();
+    if (gs) drawSearchMini(g, C + a * (gs.x - p.x) + c * (gs.z - p.z), C + b * (gs.x - p.x) + e * (gs.z - p.z), gs.r * sc, C, F, ks, t);
 
     // The camera's view: a faint wedge up from him.
     const half = Math.atan(Math.tan((roam.cam.fov * Math.PI) / 360) * aspect);
@@ -1439,7 +1449,10 @@ export function createMinimap(d: MinimapDeps): Minimap {
         wrap.style.setProperty('--mu-n', nn || '0');
         bigWrap.style.setProperty('--mu-n', nn || '0');
       }
-      if (toastLeft > 0 && (toastLeft -= f.dt) <= 0) toastEl.classList.remove('is-on');
+      if (toastLeft > 0 && (toastLeft -= f.dt) <= 0) {
+        toastEl.classList.remove('is-on');
+        document.body.classList.remove('mm-toast-on');
+      }
       night = f.night;
       // (the paddies drawn only when their part is built: `parts=` in shots may leave it out)
       season = d.parts.some((q) => q.name === 'paddies') ? f.season : NaN;
@@ -1833,6 +1846,47 @@ function injectStyle(): void {
       .mm-canvas { left: -5px; top: -5px; width: 130px; height: 130px; }
       .mm-cap { max-width: 120px; }
       body:not(.roam-touch) .mm[data-mode='walk']:not(.has-target) .mm-cap-ramp { display: none; }
+      /* (touch: the tool bar runs along the top and the Jump and Use buttons stand at the foot: the banner under the bar, the
+         calendar's column beside the mini-map, level with its foot, clear of the messages under the bar; the mini-map hidden, in its place) */
+      body.roam-touch .mm-toast { top: 70px; }
+      /* (the explorer menu or the golden figures' list open: the arrival banner would stand over its top; it steps aside meanwhile) */
+      body.rxm-open .mm-toast, body.tg-list-on .mm-toast { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
+      body.roam-touch .mm:not(.is-hidden) .mm-under { top: calc(80 * var(--px) + var(--mm-h, 0px)); right: calc(22 * var(--px) + var(--mm-w, 0px) + 8px);
+        transform: translateY(-100%); }
+      /* The big map beside its words: the map as high as the view, the title, its buttons, the key and the line at its right. */
+      .mm-big { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 14px; width: calc(100vw - 24px);
+        height: calc(min(100vh - 36px, (100vw - 270px) / var(--mm-aspect)) + 20px); padding: 10px 12px; }
+      .mm-view { grid-row: 1 / 3; align-self: center; width: min(calc((100vh - 36px) * var(--mm-aspect)), calc(100vw - 270px)); }
+      .mm-head { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+      .mm-head-icon { display: none; }
+      .mm-head-text { grid-column: 1; grid-row: 1; margin: 0; }
+      .mm-head h2 { font-size: 22px; }
+      .mm-head p { margin-top: 4px; font-size: 12.5px; }
+      .mm-x { grid-column: 2; grid-row: 1; min-width: 40px; min-height: 40px; justify-content: center; }
+      .mm-find { grid-column: 1 / -1; grid-row: 2; justify-self: start; min-height: 40px; box-sizing: border-box; }
+      .mm-foot { grid-column: 2; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+      .mm-legend { flex-wrap: wrap; gap: 6px 12px; white-space: normal; }
+      .mm-status { order: -1; text-align: left; }
+      body.roam-touch .mm-big kbd { display: none; }
+      /* (a map this size: the upright phone's marks, the ramps' names only on the one picked) */
+      .mm-place { width: 24px; height: ${(24 * TEMPLE_SIZE.h) / TEMPLE_SIZE.w}px; }
+      .mm-place-label { padding: 2px 6px; }
+      .mm-place-label b { font-size: 11.5px; }
+      .mm-place-label em { font-size: 10px; }
+      :lang(km) .mm-head p { font-size: 13.5px; }
+      :lang(km) .mm-place-label b { font-size: 12px; }
+      :lang(km) .mm-place-label em { font-size: 11px; }
+      .mm-ramp { width: 22px; height: 22px; }
+      .mm-ramp-icon { width: 15px; }
+      .mm-balloon-icon { width: 11px; }
+      .mm-spot-icon { width: calc(var(--w) * 0.95px); }
+      .mm-ramp:not(.is-target) .mm-place-label { display: none; }
+      .mm-event { width: 24px; height: 24px; }
+      .mm-event-icon { width: calc(var(--w) * 0.95px); }
+      .mm-ramp.mm-event:not(.is-target) .mm-place-label { display: none; }
+      /* (Preah Khan is just north of the River Gate: its name above it) */
+      .mm-place[data-id='shrine'] .mm-place-label { top: auto; bottom: 100%; margin: 0 0 3px; }
+      .mm-compass { transform: scale(0.8); transform-origin: top right; }
     }`;
   document.head.append(style);
 }

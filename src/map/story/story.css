@@ -793,6 +793,72 @@ body.st-after :is(.map-ui, .rt) {
   opacity: 0.75;
 }
 
+/* A phone on its side (or any low view): the words between the top bar and the foot, never under them, a
+ * little smaller (their sizes above follow the width); the empire's map beside them stands above the foot. */
+@media (max-height: 500px) {
+  .st-text,
+  .st-text.is-low {
+    padding-top: max(56px, env(safe-area-inset-top));
+    padding-bottom: calc(max(3vh, env(safe-area-inset-bottom)) + 74px);
+  }
+
+  .st-line {
+    font-size: clamp(16px, 0.9vw + 11px, 22px);
+  }
+
+  .st-text:lang(km) .st-line {
+    line-height: 1.75;
+  }
+
+  .st-big {
+    font-size: clamp(20px, 1.2vw + 11px, 30px);
+  }
+
+  .st-lead {
+    margin-bottom: 0.5em;
+    font-size: clamp(14px, 0.6vw + 10px, 18px);
+  }
+
+  .st-list {
+    font-size: clamp(17px, 1vw + 11px, 24px);
+    line-height: 1.5;
+  }
+
+  .st-title {
+    font-size: clamp(30px, 2vw + 16px, 46px);
+  }
+
+  .st-flag {
+    width: min(clamp(140px, 10vw + 60px, 230px), 30vh);
+    margin-bottom: 1vh;
+  }
+
+  .st-orn {
+    margin: 1.6vh auto;
+  }
+
+  .st-start {
+    height: 48px;
+    margin-top: 2.5vh;
+  }
+}
+
+@media (max-height: 500px) and (min-aspect-ratio: 3 / 2) {
+  .st-map {
+    top: max(12px, env(safe-area-inset-top));
+    height: calc(100vh - max(12px, env(safe-area-inset-top)) - max(3vh, env(safe-area-inset-bottom)) - 70px);
+    transform: scale(1.04);
+  }
+
+  .st-map.is-on {
+    transform: none;
+  }
+
+  .st-text.is-map {
+    padding-left: calc(8vw + (100vh - max(12px, env(safe-area-inset-top)) - max(3vh, env(safe-area-inset-bottom)) - 70px) * 696 / 736);
+  }
+}
+
 /* ── Shots, calm ────────────────────────────────────────────────────────── */
 
 .st-instant,

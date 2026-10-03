@@ -375,15 +375,27 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   nearby`, asked only when he greets). The menu's Greet is always the
   sampeah, its Wave always a wave.
   **I** (or the button with his face on the bar) opens the Explorer menu
-  (`_explorerMenu.ts`), the viewer's options for a mouse or a finger, over
-  the bar where the key list opens (one of the two at a time; Esc shuts it):
-  Moves (greet — the sampeah —, wave, cheer, look up, peek, sit, lie down:
-  each goes in as its key, `RoamControls.press`, Greet and Wave both as F
-  saying which, and the menu shuts so the move shows; greyed off foot), Outfit (the four looks and the hat) and Face (the six faces), what
-  he wears and shows lit gold. It shuts with the camera or the phone up and
-  with the album open. On touch it stands left of the bar (under it with
-  the phone on its side), scrolls when it is too tall, a tap outside shuts
-  it, and the mini-map steps aside while it is open.
+  (`_explorerMenu.ts`), the viewer's options for a mouse or a finger (one of
+  it and the key list at a time; Esc, I, its ✕ shut it): the settings' tab
+  bar (`ui/_tabs.ts`) and one page at a time, only as tall as its page, on
+  the tab last used (`angkor-map-menu-tab`). **Moves** (ចលនា: greet — the
+  sampeah —, wave, cheer, look up, peek, sit, lie down, Call the dog: each
+  goes in as its key, `RoamControls.press`, Greet and Wave both as F saying
+  which, and the menu shuts so the move shows; greyed off foot), **Look**
+  (រូបរាង: the wardrobe's page, `MENU_PAGES.look`, with his looks as the
+  tools hold them, `LOOK_TOOLS`; `data-page="look"`), **Bag**
+  (កាបូប: the purse, what he keeps, the umbrella, the album, the calendar),
+  **Me** (ខ្ញុំ: his name, his dog's name, the golden figures, all the keys).
+  Every tab is in the same place and as wide, its tab bar never moving (only
+  the height follows the page, eased; Look has all the room): a side panel on
+  the right under the top row (a mouse, a tablet), so he stays in view on the
+  left; the right ~45% under the bar (a phone on its side); the lower part
+  (a phone upright, `data-dock="bottom"`). It is placed from the tool bar's
+  measured box (`data-bar="bottom|right|top"`). It shuts with the camera or
+  the phone up and with the album open; a tap outside shuts it on touch.
+  `body.rxm-open` (a class, not `:has()`) steps the mini-map and the calendar
+  button aside while it is open, and on touch the gold count, the purse, the
+  stick and Use / Jump. The pad: L1 / R1 change the tab.
   At a shrine he pays respect (`_pray.ts`): a golden lotus in pixel art
   glows on the floor where he would kneel (`_prayMark.ts`: one flat
   square, no light; it fades in from 16 m, breathes, glows over the bloom
@@ -479,6 +491,23 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   (`angkor-map-treasure-v1` in localStorage) and marked on the big map.
   A gold counter under "Back to map" while roaming (`_hud.ts`). Hidden in
   the overview. Two draw calls; words `tg…` in `ui/lang.ts`; sound `gold`.
+  The counter is a button: it opens the **list of clues** (`_list.ts`; also
+  the explorer menu's "Golden figures" through `MENU_HOOKS.goldCount` /
+  `openGoldList`, and so the game pad): found ones in gold (their picture
+  made from the voxel sketch, `_art.ts`) with name and where, the others a
+  dark silhouette, where to look (a temple, or an area `tgAt…`) and a light
+  riddle of a clue (`tgClue…`, from `where`); all found, a gold line says
+  so. Its own keys while open (↑ ↓, Enter, Esc; B and M still work), a pad
+  layer (○ shuts), a tap outside shuts it, and the roaming input stops (its
+  add-on `gold-list`). Upright on a phone a sheet along the bottom, on its
+  side a panel down the left. **Show on map** (a row; one at a time, kept in
+  the save as `tracked`: old saves load) follows that figure: a soft gold
+  circle of 34 m, its middle a little off the figure (`_spots.ts`
+  `searchAt`), on the mini-map (a gold mark on the rim while it is off it)
+  and the big map (`_mapMark.ts`, from `treasure.search()`); found, it goes.
+  Near one not found yet (25 m, on foot or afloat) a soft shimmer now and
+  then, louder and more often nearer, from its side (`_sound.ts`
+  `tgShimmer`); the one followed glints from 62 m (others 42 m), brighter.
 - The journal (`_book.ts`, data `_bookData.ts`, pages `_bookUi.ts`, stamps
   `_stamps.ts`): two more sections of the photo album (**V**: Photos ·
   Nature book · Passport). **Nature book**: a photo fills the page of each
@@ -657,7 +686,10 @@ with `rcam=` the camera stays put) · `kneelat=x,z,fx,fz`
 or `x,y,z,fx,fz` (a worship spot of its own there, facing (fx, fz); `sim=e:0.1,_:5` walks him onto its lotus and he kneels) ·
 `gold=all|none|<n>|<id>,…` which golden figures are found (shots start
 with none) · `gold=lineup` every figure in a row on the valley road ·
-`goldfound=<id>` as if it was just found (the message) ·
+`goldfound=<id>` as if it was just found (the message) · `goldlist=1` the
+list of clues open (`goldring=<id>` the focus ring on a row) ·
+`goldtrack=<id>` that one followed (its search circle on the maps, its
+brighter glint) ·
 `balloon=parked|inflate:<s>|up` (see the balloon) ·
 `fishing=1|cast|wait|bite|fight|catch|release` with `roam=boat` and a `sim=`
 (fishing: from the start, or straight into that moment; `fight`, `catch` and
@@ -672,8 +704,8 @@ visit (not saved) · `journal=0` start empty, save nothing ·
 buttons · `quality=low|medium|high` · `story=<n>` open the story at page
 n (`story=0` never) · `vegstats` the vegetation's counts in the console.
 The explorer in shots: `look=<outfit>`, `hat=0|1`, `face=<expression>`,
-`keys=1` (the ? key list open), `menu=1` (the Explorer menu open; with
-`touch=1` as on a phone), `beam=mouse` with `mouse=x,y` (0‥1 of
+`keys=1` (the ? key list open), `menu=1` (the Explorer menu open, on
+`menutab=moves|look|bag|me`; with `touch=1` as on a phone), `beam=mouse` with `mouse=x,y` (0‥1 of
 the screen), the selfie's `gesture=peace|wave|thumbsUp|none` and
 `saim=yaw,pitch,reach`, the camera's `pview=yaw,pitch,fov`.
 
@@ -717,7 +749,7 @@ The buttons (PS names; Xbox: A B X Y, LB RB LT RT, View, Menu):
 | Where | Buttons |
 |---|---|
 | Map screen | stick / d-pad between the places, ✕ pick, ○ back, △ Jump in, Options settings; loading screen and story: ✕ |
-| On foot | left stick walk (L3 or R2: run), right stick look, R1 / L1 zoom in / out, ✕ jump, □ use, ○ back to the map, △ Explorer menu (album, all buttons), d-pad ↑ light · ← camera · → selfie · ↓ greet, R3 nearest ramp, Create or touchpad big map |
+| On foot | left stick walk (L3 or R2: run), right stick look, R1 / L1 zoom in / out, ✕ jump, □ use, ○ back to the map, △ Explorer menu (its tabs L1 / R1: the album, all buttons…), d-pad ↑ light · ← camera · → selfie · ↓ greet, R3 nearest ramp, Create or touchpad big map |
 | Boat, parachute, glider, balloon | as their keys: ✕ is Space, □ is E, R2 is Shift; the boat fishes with ↓ |
 | Camera / selfie | R2 or ✕ take, right stick aim, ○ put away, △ album; selfie: □ gesture, ↓ face, L3 stick |
 | Menus | stick / d-pad move, ✕ press, ○ back, L1 / R1 tabs |
@@ -1773,7 +1805,8 @@ alms round; on the village's own walk map), the floating village's market
 (`_sceneVillageMarket.ts`: its sellers, the women selling from boats at the
 jetty, buyers and eaters), apsara dancers
 with torch bearers, standing torches and a pinpeat ensemble in front of
-Angkor Wat's gate at night (`_sceneApsara.ts`, `clock` 0.22‥0.51), and the
+Angkor Wat's gate at night (`_sceneApsara.ts`, `clock` 0.18‥0.51: out of the
+gate's passage, dancing from 0.28 together and on the pinpeat's phrases), and the
 new life: the morning market (`_sceneMarket.ts`), the palm sugar family
 (`_scenePalmSugar.ts`), the east village (`_sceneEastVillage.ts`), Kulen's
 pilgrims and picnickers (`_sceneKulen.ts`), the hamlet behind Angkor Wat
@@ -2717,6 +2750,21 @@ as the picture's; a part that moves must not be marked still.
   floor's height indoors (with two values he stands on whatever is highest).
   The console line `[map] built in … · blocks {…}` shows build times and block
   counts; `FAILED: …` names parts that broke.
+- Phones: upright is `max-width: 639px` (own sizes in px); on its side is
+  `max-height: 500px` (and `min-width: 640px`: the desktop's `--px` at 0.8,
+  so the title, the cards, the corner buttons, the info panel and the
+  settings get their own sizes there, map.css "Phones on their side"; on
+  touch the tool bar runs along the top, the messages and banners go under
+  it, cards at the right edge stand as tall as the view). Check 667×320,
+  667×375, 740×360, 844×390 and 932×430 with `touch=1&phone=1`, and 390×844.
+  Taps: 40 px or more on touch; panels taller than the room scroll inside
+  (`overscroll-behavior: contain`). No `:has()` (and no `:is()` in new
+  rules) for what matters on a phone: some phones lack it. A class set from
+  JS instead: `body.mm-toast-on` (the mini-map's banner), `body.rh-toast-on`
+  (the HUD's message), `body.rh-choosing` (the Jump in card), `.rh.keys-on`
+  (the key list), `.by-purse.is-top` (no gold counter), `body.rxm-open`,
+  `body.tg-list-on`. Colours made with `color-mix()` have flat day values
+  for a browser without it (map.css `@supports not`).
 - Put screenshots and scratch files in your scratch dir, not in the repo.
 - Do not start dev servers or use the in-app browser; `npm run shots` starts
   its own server.

@@ -1,5 +1,5 @@
 import type { Object3D } from 'three';
-import type { AngkorExplorer } from '../../character/AngkorExplorer';
+import type { AngkorExplorer, OutfitName } from '../../character/AngkorExplorer';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { t, type WordKey } from '../ui/lang';
 import type { RoamControls } from './input';
@@ -162,10 +162,63 @@ export function initAddons(env: AddonEnv, late: (a: RoamAddon) => void): void {
 export const MENU_HOOKS = {
   /** The umbrella is his choice now (_umbrella.ts). */
   umbrellaUp: (): boolean => false,
-  /** Open the wardrobe (_wardrobe.ts). */
-  openWardrobe: (): void => undefined,
   /** Open the name card (_nameCard.ts). */
   openNameCard: (): void => undefined,
+  /** The golden figures (map/treasure, not an add-on: it fills these as it is built): how many are found of how many, and open their list of clues. */
+  goldCount: (): readonly [found: number, total: number] => [0, 0],
+  openGoldList: (): void => undefined,
+};
+
+/**
+ * A page of the explorer menu that an add-on fills (the menu, _explorerMenu.ts, holds its tab and its place in the
+ * panel; the add-on what is on it). `look`: everything he wears and his face, part by part (_wardrobe.ts). Null
+ * until the add-on's module has loaded (roaming waits for the add-ons, so it is there before the menu first opens).
+ */
+export interface MenuPage {
+  /** What is on the page (the menu puts it in the tab's page, once). */
+  readonly el: HTMLElement;
+  /** The page came into view (the menu opened on it, or its tab was picked: true) or went (another tab, the menu shut: false). */
+  shown(on: boolean): void;
+  /** While it shows, each roaming step (light what he wears now). */
+  update?(): void;
+  /** Where the game pad's focus starts on the page (null: its first button). */
+  first?(): HTMLElement | null;
+}
+
+export const MENU_PAGES: { look: MenuPage | null } = { look: null };
+
+/**
+ * His looks as the tools hold them (tools.ts fills these when roaming is built), for the Look page: the four looks
+ * that G steps through (`looks`: outfit and word, as tools.ts `LOOKS`), the hat (H) and the face (X).
+ */
+export const LOOK_TOOLS = {
+  looks: [] as readonly (readonly [OutfitName, WordKey])[],
+  look: (): number => 0,
+  /** Put on look `i` (as G or the old menu's chip: the toast, the photo's body, the tool bar). */
+  setLook: (_i: number): void => undefined,
+  hat: (): boolean => false,
+  /** Put the hat on or off (as H). */
+  setHat: (_on: boolean): void => undefined,
+  /** The face he shows (in character/parts/face.ts `EXPRESSIONS`), and show one (as X or the old menu's chip: the toast). */
+  face: (): number => 0,
+  setFace: (_i: number): void => undefined,
+};
+
+/**
+ * What the Look page (_wardrobe.ts) asks of the tools when it changes a part of his look itself (the pack, the
+ * krama, the outfit's legs: not one of the four looks): tools.ts fills these when roaming is built.
+ */
+export const LOOK_HOOKS = {
+  /** A part of his look changed: G goes on from the look he has now (if it is one of the four), the tool bar shows the camera or not. */
+  changed: (): void => undefined,
+  /** Open the explorer menu on its Look page (the URL's older `clothes=wardrobe`). */
+  open: (): void => undefined,
+  /**
+   * The Look page shows on foot (_wardrobe.ts sets it each step): tools.ts turns his light in hand low (the lantern's
+   * or the torch's point light a hand's width from his clothes blows them out, seen from the front) and lights him
+   * softly from the camera's side after dark, with a light it already has (no light is added: the map's shaders stay).
+   */
+  showing: false,
 };
 
 /** The add-on holding him in `mode`, or null. */

@@ -21,7 +21,10 @@ compiled in the middle of play; one that arrives late anyway is started there
 and then: `init`, then `setMode` with the mode he is in). So no other module may
 import an add-on's module: what the shared interface needs from
 one goes through a small hook object (`MENU_HOOKS` in `_addons.ts`, the add-ons'
-own `_…Hook.ts` files).
+own `_…Hook.ts` files). The explorer menu's Look page is an add-on's too
+(`MENU_PAGES.look`: a `MenuPage`, its `el`, `shown(on)`, `update()`, `first()`;
+the menu holds its tab and its place), with his looks as the tools hold them
+(`LOOK_TOOLS`: the four looks, the hat, the face).
 
 What roaming does with a `RoamAddon` (all members optional but `id`):
 
@@ -157,7 +160,7 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
 - **The card**: **9**, the button under the mini-map (its line: what is on
   now, a gold dot, or what comes next, "Morning market · in 3 min"; on touch,
   upright, left of the mini-map, clear of the tool bar), or the
-  explorer menu's Calendar (I; the pad: △ → Calendar). Its title, the map's
+  explorer menu's Calendar (I, its Bag page; the pad: △, R1 to Bag). Its title, the map's
   moment (the part of the day, the season by its rains, the moon's Khmer day:
   "ព្រលឹម · រដូវវស្សា · ថ្ងៃ៥កើត"); **Now** (where, "until midnight · 2 min
   left"), **Today** (the next day of the map: "at dawn · in 3 min"),
@@ -770,8 +773,8 @@ curved (J) handle. Not a paper parasol, not a wagasa.
   blocks of the explorer's own families: no new shader); its sounds
   `audio/_umbrella.ts` (`umbOpen`, `umbClose` on moves, the `umbPatter` loop
   on ambience); words `umb…` in `ui/lang.ts`; a row in the key list
-  (tools.ts) and a chip "Umbrella 8" in the explorer menu's Outfit section,
-  next to the hat (`_explorerMenu.ts`: lit while it is his choice), so touch
+  (tools.ts) and a chip "Umbrella 8" on the explorer menu's Bag page
+  (`_explorerMenu.ts`: lit while it is his choice), so touch
   and the game pad (△) can open a sun umbrella too.
 - **When**: on foot in rain (as the people open theirs: rain over 0.27,
   down again under 0.21, for 0.6 s; dry 2.5 s and it folds) or in the dream's
@@ -828,8 +831,8 @@ curved (J) handle. Not a paper parasol, not a wagasa.
   (from behind), `rcam=180,8,6` (the front); `night=1&tool=lantern` (both
   hands); `kneelat=-200,-22,0,-1&sim=_:1,e:0.1,_:0.25` (folding for the
   prayer); `act=bite&food=skewer` (the left hand); `act=eat&food=noodles`
-  (folded, the hat back); `weather=storm`, `weather=snow`; `menu=1` (the
-  chip); `at=-306,10,95&yaw=0&sim=_:0.5,s:1.4` (out of the pagoda's porch: it
+  (folded, the hat back); `weather=storm`, `weather=snow`; `menu=1&menutab=bag`
+  (the chip); `at=-306,10,95&yaw=0&sim=_:0.5,s:1.4` (out of the pagoda's porch: it
   opens).
 ### Smiles for the camera
 
@@ -884,7 +887,7 @@ the balloon's basket.
 The player names the explorer and sees the name written in Khmer letters.
 
 - **The name card** (`roam/_nameCard.ts`; the add-on `roam/_name.ts`): from the
-  explorer menu's "ឈ្មោះខ្ញុំ / My name" (I), or offered by itself the first time
+  explorer menu's "ឈ្មោះខ្ញុំ / My name" (I, its Me page), or offered by itself the first time
   the passport is opened without a name (once: `name.asked`, set only when it
   really shows). It never comes in over the loading screen or the story: a live
   page's `namecard=`, `album=passport` and the offer wait for Start
@@ -1587,12 +1590,15 @@ He earns riel (៛) with the fish he catches from the boat (add-on `sellfish`).
   (`parts=terrain,water,foreground`), full with five in `fishbasket=`.
 ### Clothes from the market
 
-Buy kramas, shirts, trousers and a hat at the morning market and wear them (add-on
-`clothes`, words `wear…`): `roam/_wardrobe.ts` (the add-on: the stall's E, buying,
-the small turn, the camera, the URL), `_wardrobeCard.ts` (the card: the stall and his
-wardrobe), `_wardrobeItems.ts` (what is sold, prices, what he owns and wears:
-`Wardrobe`), `_wardrobeIcons.ts` (pixel pictures), `_wardrobeStyle.ts` (the buy
-menu's look), sounds `audio/_wear.ts`; the colours `character/clothes.ts`.
+Buy kramas, shirts, trousers and a hat at the morning market, and dress him part by
+part on the explorer menu's Look page (add-on `clothes`, words `wear…`, `look…`):
+`roam/_wardrobe.ts` (the add-on: the stall's E, buying, the small turn, the camera, the
+Look page's picks, the URL), `_wardrobeCard.ts` (the stall's card), `_wardrobeLook.ts`
+(the Look page: `MENU_PAGES.look`), `_wardrobeItems.ts` (what is sold, prices, what he
+owns and wears: `Wardrobe`), `_wardrobeIcons.ts`, `_wardrobeLookIcons.ts` (pixel
+pictures), `_wardrobeStyle.ts` (the card's and the page's look), sounds `audio/_wear.ts`;
+the colours `character/clothes.ts`; the parts `character/AngkorExplorer.ts`
+`ExplorerOutfit`.
 
 - **Where**: the morning market's krama stall in the sugar-palm village (its `cloth`
   stall, hamlet/_mkPlan.ts; open from dawn to the late afternoon, `[0.76, 0.2]` of the
@@ -1619,24 +1625,58 @@ menu's look), sounds `audio/_wear.ts`; the colours `character/clothes.ts`.
   "កំពុងពាក់៖ …". Short of riel: the row shakes and says so. What he owns says "Wear"
   ("Yours" under it); what he wears "✓ Wearing" — taken again ("Take off" in the ring)
   it comes off (`wearOff`). Bought hat with the hat off: it goes on (not while the
-  umbrella is up, nor sitting, lying or praying).
+  umbrella is up, nor sitting, lying or praying); a krama: round his neck (the scarf on).
+  Trousers bought in the temple clothes wait for the explorer clothes (their row and the
+  toast say "ស្លៀកជាមួយខោអាវអ្នករុករក / Worn with the explorer clothes"). After buying
+  it is on the Look page, his. **Original look** at the foot: as on the Look page.
 - **Keys** (the card's own while open): 1–6 a row, ↑ ↓ (Tab) the ring (down to "Original
   look"), ← → the tabs, Enter or Space take, E or Esc shut; W A S D or the stick walk
   away. Pad: a layer (stick and d-pad move, L1 / R1 the tabs, ✕ takes, ○ shuts). Touch:
   tap a row or a tab; on a phone a sheet along the bottom, a tap beside it shuts it.
-- **His wardrobe**: the explorer menu's "ខោអាវរបស់ខ្ញុំ / My clothes" (I; the pad: △).
-  What he owns by kind ("2 of 12"), tap to put on or take off, **Original look** (his own
-  clothes; what he bought stays his). A kind he has none of says where to buy it. On
-  foot and free it brings the camera round to his front (not among a market's stalls —
-  their goods and tarps are not in the walk map — nor while sitting or lying), with the
-  small turn; in the boat, on the glider or in the balloon the change is at once.
-- **With the looks (G)**: the clothes colour what the look shows — the krama on the
-  looks with the scarf (gear, day pack), the shirt on all four, the trousers in place of
-  the shorts (the temple clothes keep their sampot), the hat's band whenever the hat is
-  on (H keeps it). Putting on a krama in the "no scarf" or temple look, or trousers in
-  the temple look, puts on the day pack look (by the explorer menu's own chip, so G, the
-  menu and bug reports stay in step); G goes on as before, and a look that hides
-  something worn says so in his wardrobe ("Not shown in this look (G)").
+- **The Look page** (រូបរាង: the explorer menu's Look tab, I; the pad: △, L1 / R1 to the
+  tab; `MENU_PAGES.look`, the menu holds its tab and its place: a side panel at the right,
+  on a phone held upright the lower part of the screen). One place for everything he
+  wears, like a game's character screen: down the left the parts, each with the picture
+  of what he has on now (on a phone on its side, or a page under 240 px: a row of icons
+  along the top), beside them the choices of the part picked, what he wears lit gold
+  with a ✓:
+  - **Outfit** (ឈុត): explorer clothes (the shorts and the camera) or temple clothes (the
+    sampot, no camera); the **ready looks** (G's four: explorer gear, day pack, no krama,
+    temple clothes; the one he has on lit); **Original look** (as he set out: explorer
+    gear, his own clothes, his hat; greyed when he is).
+  - **Pack** (កាបូប): big pack (bedroll, canteen), day pack, no pack — with either outfit.
+  - **Krama** (ក្រមា): none, his own red krama, the six of the market — with either outfit.
+  - **Shirt** (អាវ): his khaki shirt, the market's three.
+  - **Legs** (ខោ): his shorts, the market's trousers (with the explorer clothes); the sampot
+    comes with the temple clothes. What the outfit he has on cannot show is greyed and
+    says why ("ស្លៀកពាក់ខោអាវអ្នករុករក ទើបស្លៀកខោបាន (ឈុត)"); the trousers he chose come
+    back with the explorer clothes.
+  - **Hat** (មួក, H): none, his palm-leaf hat (red band), the blue band. With the umbrella
+    up the hat is off; a hat folds it away (by H's own way: _umbrella.ts sees it).
+  - **Face** (ទឹកមុខ, X): the six faces.
+  What the market sells shows from the start: not bought yet, dim with a small lock and its
+  price; the line under the list says where ("នៅតូបក្រមា ផ្សារព្រឹក ភូមិត្នោត · ៥,០០០ ៛"),
+  for the one tapped, hovered or in focus. The part's head counts what he has bought of it.
+  A choice is on at once: on foot, standing free, with a small turn on the spot to show it
+  (1 s; another pick meanwhile is on at once, the turn goes on); in the boat, on the glider
+  or in the balloon, no turn. While the page shows on foot (not among a market's stalls —
+  their goods and tarps are not in the walk map — nor while sitting or lying) the camera
+  comes round to his front and the picture slides left of the panel (above it on a phone
+  held upright); walking off, or the page going, gives the camera back. Meanwhile his light in
+  hand is turned low (the lantern's or the torch's point light a hand's width from his clothes,
+  seen from the front, blew them out to a red-orange blob) and after dark a soft near-white fill
+  lights him from the camera's side: the light his hand does not use (tools.ts `lights`,
+  `LOOK_HOOKS.showing`), so no light is added and the map's shaders stay as they are. Keys and the pad
+  (the focus in the page): ↑ ↓ along the parts (each shows its choices), → into the
+  choices (onto what he wears), ← back; ✕ (Enter, Space) takes it; in a row of parts
+  ← → and ↓. The page reads him every step: G, H and X (and the hat a prayer or lying
+  down keeps for him) show at once.
+- **The parts are the explorer's** (`ExplorerOutfit`: `legs` and `camera` from the
+  outfit, `pack`, `scarf`, `hat`; `setClothes` for the market's colours): every part shows
+  with every outfit that can show it (a krama or a pack with the sampot too); the four
+  looks of G are four sets of them. A set none of the four is fine: G goes on from the look
+  before; parts that make one of the four are that look (tools.ts follows: `LOOK_HOOKS`
+  in _addons.ts, `changed` and `open`).
 - **The explorer** (`AngkorExplorer.setClothes`, tones in `character/clothes.ts`): the
   part builders take the tones in place of the palette's (scarf.ts `KramaLook`: a plaid
   like his own or a gingham check; torso.ts and limbs.ts a shirt's; limbs.ts long loose
@@ -1646,18 +1686,25 @@ menu's look), sounds `audio/_wear.ts`; the colours `character/clothes.ts`.
   stickers, his default look unchanged). Photos, the selfie and every mode show them
   (the same explorer).
 - **Saved**: map/progress.ts `wear.owned`, `wear.on` (item ids); not in shots, nor on a
-  page whose URL dresses him.
+  page whose URL dresses him. The outfit, the pack, the krama on or off, the hat and the
+  face are not (as G, H and X never were: each visit starts in his explorer gear).
 - **URL**: `wear=<item>,<item>` dresses him (and he owns them; no saving; `wear=0` his
   own), `wearown=<item>,…|all` owns those too · `clothes=1` stands him at the stall
-  facing its seller, the card open · `clothes=wardrobe` his wardrobe · `clothestab=krama|shirt|trousers|hat` ·
+  facing its seller, the card open · `clothes=wardrobe` the Look page (as `menu=1&menutab=look`) ·
+  `lookpart=outfit|pack|krama|shirt|legs|hat|face` its part · `kit=<shorts|sampot>,<explorer|default|none>,<0|1>`
+  a look none of G's four (legs, pack, krama; theirs: `look=`) · `clothestab=krama|shirt|trousers|hat` ·
   `clothesfocus=<i>` the ring on row i · `clothesbuy=<item>` buys it there and then
   (`sim=_:0.95` the hand-over, `_:1.5` half way round, `_:2.6` done). Items:
   `kramaRedWhite`, `kramaBlueWhite`, `kramaGreen`, `kramaPurple`, `kramaOrange`,
   `kramaRed`, `shirtWhite`, `shirtIndigo`, `shirtSand`, `trousersNavy`,
   `trousersBlack`, `hatBlue`. `report()` gives `wear`, `wearown`, `clothes`,
-  `clothestab`. Checks: `window.__clothes.state()` (dev, shots), `.wardrobe()`.
+  `clothestab`, `lookpart`, `kit`. Checks: `window.__clothes.state()` (dev, shots: the
+  page's part, its choices lit, locked or greyed, the line under them; the framing),
+  `.part(<part>)`.
   E.g. `roam=walk&at=334,-90&clothes=1&clothesbuy=kramaBlueWhite&sim=_:1.5&people=market&clock=0.85`
-  with `parts=terrain,hamlet,people,path,foreground`; `roam=walk&at=333,-112&yaw=0&rcam=180,6,5&wear=kramaRedWhite,shirtWhite,trousersBlack,hatBlue`.
+  with `parts=terrain,hamlet,people,path,foreground`; `roam=walk&at=333,-112&yaw=0&rcam=180,6,5&wear=kramaRedWhite,shirtWhite,trousersBlack,hatBlue`;
+  the Look page `roam=walk&at=30,-205&yaw=0&menu=1&menutab=look&lookpart=krama&clock=0.95&wearown=kramaBlueWhite&wear=kramaBlueWhite`
+  (`parts=terrain,water,foreground`; `touch=1&phone=1` a phone).
 
 ### Helping the farmers
 
@@ -1777,7 +1824,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   d-pad, ✕ picks, △ keeps, ○ shuts; on a phone three chips a row. Then two hints: "{name}
   ដើរតាមអ្នកហើយ · ចុច 0 ហៅវាមក" (with a pad or on touch: "… call it from the menu"), "នៅក្បែរ
   {name}៖ ចុច F អេះត្រចៀកវា". Kept: progress.ts `dog.adopted`, `dog.name` (the id). The
-  explorer menu's "ឈ្មោះឆ្កែ / Dog's name" opens the card again. In prompts and toasts its
+  explorer menu's "ឈ្មោះឆ្កែ / Dog's name" (its Me page) opens the card again. In prompts and toasts its
   name is "ឆ្កែ" + the name in Khmer ("អង្អែលឆ្កែស", "នៅក្បែរឆ្កែស៖": a one-letter name never
   reads as a word), and in «» where it is named ("ឆ្កែរបស់អ្នកឈ្មោះ «ស»"). (No snack: food in his
   hands is the Animator's carry pose, laid over any posture's arms, so he could not hold it
@@ -1825,8 +1872,8 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   after a way was not found only once he has moved 6 m on, or 6, 12, 24, 40 s later). With
   no way within 420 m (he landed far off, across a river): it waits, and says so once a
   landing: "{name} នៅឆ្ងាយ · ចុច 0 ហៅវាមក".
-- **0 "ហៅឆ្កែ / Call the dog"** (the key list's row; the explorer menu's "ហៅឆ្កែ" for a pad
-  (△) or touch, shown once he has a dog): "{name} កំពុងរត់មករកអ្នក!" and it comes along the
+- **0 "ហៅឆ្កែ / Call the dog"** (the key list's row; the explorer menu's "ហៅឆ្កែ" on its Moves
+  page, for a pad (△) or touch, shown once he has a dog): "{name} កំពុងរត់មករកអ្នក!" and it comes along the
   way it finds (a bark as it sets off); with none, or more than 336 m off, it comes out by
   him 5–9 m off, from behind leaves or bark seen from the camera, else out of the camera's
   view (a soft dissolve, 0.7 s: a dither in its shader, its shadow too) and runs to him —
@@ -1890,7 +1937,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   `debug` (with the stall watch and the door), `call()`, `adopt()`, `home(on)`, `bed(spot)`,
   `jam(s)`: it cannot step for that long, to try the stall watch).
 - Shared edits: `ui/lang.ts` (`dog…`), `_addonList.ts`, tools.ts (the key list's 0 row),
-  `_explorerMenu.ts` (the two buttons, from `_dogHook.ts`).
+  `_explorerMenu.ts` (the two buttons, on Moves and Me, from `_dogHook.ts`).
 
 ### His stilt house
 

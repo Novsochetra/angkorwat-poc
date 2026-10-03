@@ -728,6 +728,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     infoBox = selected ? { l: info.offsetLeft, t: info.offsetTop, r: info.offsetLeft + info.offsetWidth, b: info.offsetTop + info.offsetHeight } : null;
   }
   let lastAnchors: Record<PlaceId, AnchorOnScreen> | null = null;
+  /** The roaming HUD's "Jump in" over the explorer (roam/hud.ts): cards keep off it, to its nearer side. */
+  let jumpEl: HTMLElement | null = null;
+  let jumpBox: DOMRect | null = null;
+  function measureJump(): void {
+    jumpEl ??= document.querySelector<HTMLElement>('.rh-jump');
+    jumpBox = jumpEl?.getBoundingClientRect() ?? null;
+  }
   function measure(): void {
     // Interface scale: the art's size at 1672 × 941, never below 0.8 on a desktop (phones: own sizes in map.css).
     unit = innerWidth < 640 ? 0.74 : clamp(Math.min(innerWidth / ART.w, innerHeight / ART.h), 0.8, 1.3);
@@ -746,6 +753,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     scrollEdges();
     // Shots render once: place the cards again with the new sizes.
     if (lastAnchors) place(lastAnchors, 0);
+    // (the HUD moves its button on the same resize, after this: measured a frame later)
+    requestAnimationFrame(() => {
+      measureJump();
+      if (lastAnchors) place(lastAnchors, 0);
+    });
   }
   measure();
   addEventListener('resize', measure);
@@ -1564,6 +1576,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const k = innerWidth / CARD_REF_WIDTH;
     const phone = innerWidth < 640;
     const want = new Map<Card, number>();
+    /** Cards pushed down below the title or the corner buttons: the least they move (keeping others apart pushes them no higher). */
+    const floor = new Map<Card, number>();
     for (const c of cards) {
       const a = anchors[c.place.id];
       if (!a) continue;
@@ -1571,17 +1585,13 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       const s = phone ? 0.55 : 1;
       c.cx = clamp(a.x + ox * k * s, c.w / 2 + MARGIN, innerWidth - c.w / 2 - MARGIN);
       c.cy = clamp(a.y + oy * k * s, c.h / 2 + MARGIN, innerHeight - c.h / 2 - MARGIN);
-      const under = !!infoBox && c.cx + c.w / 2 > infoBox.l && c.cx - c.w / 2 < infoBox.r && c.cy + c.h / 2 > infoBox.t && c.cy - c.h / 2 < infoBox.b;
+      /** The card at `y` (its centre) would be under the open info panel. */
+      const underAt = (y: number) => !!infoBox && c.cx + c.w / 2 > infoBox.l && c.cx - c.w / 2 < infoBox.r && y + c.h / 2 > infoBox.t && y - c.h / 2 < infoBox.b;
       // The beacon must be on screen (a card pinned to the edge far from it
       // would mislead) — except on a phone's overview, whose narrow view
       // shows only the middle of the map: there cards wait at the edges.
       const edge = phone && !selected ? innerWidth * 0.6 : EDGE;
       const onScreen = a.x > -edge && a.x < innerWidth + edge && a.y > -EDGE && a.y < innerHeight + EDGE;
-      const shown = a.visible && onScreen && !begun && !under;
-      if (shown !== c.shown) {
-        c.shown = shown;
-        c.button.classList.toggle('is-off', !shown);
-      }
       // Below the title / corner buttons, above the hint, when on them.
       let down = 0;
       let up = 0;
@@ -1591,13 +1601,29 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         if (above) up = Math.max(up, c.cy + c.h / 2 - (r.top - GAP));
         else down = Math.max(down, r.bottom + GAP - (c.cy - c.h / 2));
       }
-      want.set(c, down > 0 ? down : -up);
+      let push = down > 0 ? down : -up;
+      if (down > 0) floor.set(c, down);
+      // Off "Jump in" (the HUD's, over the explorer), to the nearer side of it; it steps away while a place is picked.
+      if (!jumpEl) measureJump();
+      const j = jumpBox;
+      if (j && j.width > 0 && !selected && Math.abs(c.cx - (j.left + j.right) / 2) < (c.w + j.width) / 2 + GAP) {
+        const top = c.cy + push - c.h / 2;
+        const bottom = c.cy + push + c.h / 2;
+        if (bottom > j.top - GAP && top < j.bottom + GAP) push += c.cy + push > (j.top + j.bottom) / 2 ? j.bottom + GAP - top : j.top - GAP - bottom;
+      }
+      // (under the info panel where it is, or where the title pushes it to on a low screen: hidden)
+      const shown = a.visible && onScreen && !begun && !underAt(c.cy) && !(down > 0 && underAt(c.cy + down));
+      if (shown !== c.shown) {
+        c.shown = shown;
+        c.button.classList.toggle('is-off', !shown);
+      }
+      want.set(c, push);
     }
-    settle(want, dt);
+    settle(want, dt, floor);
   }
 
   /** Keep shown cards apart (push overlapping pairs up / down, from where `want` already moves them), then move them there. */
-  function settle(want: Map<Card, number>, dt: number): void {
+  function settle(want: Map<Card, number>, dt: number, floor?: Map<Card, number>): void {
     const shown = cards.filter((c) => c.shown).sort((a, b) => a.cy + want.get(a)! - (b.cy + want.get(b)!));
     for (let pass = 0; pass < 3; pass++)
       for (let i = 0; i < shown.length; i++)
@@ -1607,8 +1633,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           if (Math.abs(a.cx - b.cx) > (a.w + b.w) / 2 + GAP) continue;
           const overlap = (a.h + b.h) / 2 + GAP - (b.cy + want.get(b)! - (a.cy + want.get(a)!));
           if (overlap <= 0) continue;
-          want.set(a, want.get(a)! - overlap / 2);
-          want.set(b, want.get(b)! + overlap / 2);
+          // (the upper one goes up half the way, no higher than its floor; the lower one the rest)
+          const fa = floor?.get(a);
+          const up = fa === undefined ? overlap / 2 : Math.min(overlap / 2, Math.max(0, want.get(a)! - fa));
+          want.set(a, want.get(a)! - up);
+          want.set(b, want.get(b)! + overlap - up);
         }
     // Eased, so a push that starts (a card sliding under another) glides.
     const ease = dt > 0 ? 1 - Math.exp(-dt * 8) : 1;
@@ -1639,6 +1668,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   /** Screen boxes of the roaming HUD (px): its corners top left and bottom left, the prompt at the bottom. */
   /** The roaming mini-map and tool bar (found the first time pins are placed while roaming). */
   let roamHud: HTMLElement[] | null = null;
+  /** The explorer menu's and the golden figures' list's panels (live: `getElementsByClassName`). */
+  const roamPanels = [document.getElementsByClassName('rxm'), document.getElementsByClassName('tgl')];
   function hudZones(): { l: number; t: number; r: number; b: number }[] {
     const u = unit;
     const w = innerWidth;
@@ -1655,11 +1686,20 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     const zones = hudZones();
     const cr = corner.getBoundingClientRect();
     zones.push({ l: cr.left - GAP, t: 0, r: innerWidth, b: cr.bottom + GAP });
-    // The roaming mini-map and tool bar (theirs: ui/minimap.ts, roam/tools.ts), where they show.
-    for (const e of (roamHud ??= [...document.querySelectorAll<HTMLElement>('.mm-mini, .rtb')])) {
+    // The roaming mini-map, the buttons under it (the calendar's) and the tool bar (theirs: ui/minimap.ts, roam/tools.ts), where they show.
+    for (const e of (roamHud ??= [...document.querySelectorAll<HTMLElement>('.mm-mini, .mm-under, .rtb')])) {
       const r = e.getBoundingClientRect();
       if (r.width > 0) zones.push({ l: r.left - GAP, t: r.top - GAP, r: r.right + GAP, b: r.bottom + GAP });
     }
+    // The panels that open over roaming (the explorer menu, roam/_explorerMenu.ts; the golden figures' list, treasure/_list.ts):
+    // the pins are under their glass, so none where they stand while they show (`is-on`: shut, the list keeps its box, hidden;
+    // live lists: they may come after the first look).
+    for (const list of roamPanels)
+      for (const e of list) {
+        if (!e.classList.contains('is-on')) continue;
+        const r = e.getBoundingClientRect();
+        if (r.width > 0) zones.push({ l: r.left - GAP, t: r.top - GAP, r: r.right + GAP, b: r.bottom + GAP });
+      }
     const want = new Map<Card, number>();
     for (const c of cards) {
       const a = anchors[c.place.id];

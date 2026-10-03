@@ -12,15 +12,15 @@ import { CARRY_MAX, nameOf, riel, type Kept, type Purse } from './_shopPurse';
  * - **the bag's slot** on the tool bar, after the selfie phone (6): the
  *   first thing he keeps for later, how many he carries; only there while
  *   he carries something. 6, a click or a tap eats or drinks it;
- * - **the explorer menu's "In my bag"** (I, or his face on the tool bar):
- *   the purse, and each thing he carries as a button (a tap eats or drinks
- *   that one) — the touch player's way to it, and the game pad's (△, then
- *   ✕ on one).
+ * - **"In my bag" on the explorer menu's Bag page** (I, or his face on the
+ *   tool bar): the purse, and each thing he carries as a button (a tap eats
+ *   or drinks that one) — the touch player's way to it, and the game pad's
+ *   (△, R1 to the Bag tab, then ✕ on one).
  */
 export interface ShopBag {
   /** The tool bar's slot (tools.ts puts it after the selfie phone's). */
   readonly slot: HTMLButtonElement;
-  /** The explorer menu's section (_explorerMenu.ts puts it after the faces). */
+  /** The explorer menu's section (_explorerMenu.ts puts it at the top of the Bag page). */
   readonly section: HTMLElement;
   /** The purse or the bag changed (`pop`: the purse glows, e.g. he paid). */
   update(pop?: 'purse' | 'bag'): void;
@@ -68,6 +68,10 @@ export function createShopBag(d: ShopBagDeps): ShopBag {
   chip.innerHTML = `<span class="mu-bg"></span><span class="mu-glow"></span>${RIEL_ICON}<span class="by-purse-n"></span>`;
   d.layer.append(chip);
   const chipN = chip.querySelector<HTMLElement>('.by-purse-n')!;
+  // (no gold counter in the layer, treasure/_hud.ts: the purse takes its place; a class, not :has(), which some phones lack)
+  const noGold = () => chip.classList.toggle('is-top', !d.layer.querySelector(':scope > .tg-count'));
+  noGold();
+  new MutationObserver(noGold).observe(d.layer, { childList: true });
 
   // ── The tool bar's slot (6) ──
   const slot = document.createElement('button');
@@ -172,7 +176,7 @@ function injectStyle(): void {
     .rh > .by-purse { left: calc(24 * var(--px)); top: calc(112 * var(--px)); gap: calc(7 * var(--px)); padding: calc(5 * var(--px)) calc(11 * var(--px)) calc(5 * var(--px)) calc(8 * var(--px));
       font: 700 calc(14 * var(--px)) / 1 var(--mu-display); color: var(--mu-gold-hi); letter-spacing: 0.02em; --mu-edge: rgba(255, 229, 188, 0.2);
       opacity: 0; visibility: hidden; transition: opacity 0.6s, visibility 0s 0.6s; pointer-events: none; }
-    .rh:not(:has(> .tg-count)) > .by-purse { top: calc(76 * var(--px)); }
+    .rh > .by-purse.is-top { top: calc(76 * var(--px)); }
     :lang(km) .rh > .by-purse { letter-spacing: 0; }
     .rh > .by-purse > .mu-bg { background: color-mix(in srgb, rgba(13, 25, 39, 0.55), rgba(4, 15, 32, 0.55) var(--mu-night)); }
     .rh > .by-purse .mu-glow { opacity: 0; transition: opacity 0.8s; }
@@ -186,7 +190,7 @@ function injectStyle(): void {
     @keyframes by-note { 30% { transform: translateY(calc(-3 * var(--px))) rotate(-8deg); } }
     @media (max-width: 639px) {
       .rh > .by-purse { left: 10px; top: 92px; }
-      .rh:not(:has(> .tg-count)) > .by-purse { top: 58px; }
+      .rh > .by-purse.is-top { top: 58px; }
     }
 
     /* The bag's slot on the tool bar (6): only while he carries something. */
@@ -202,13 +206,18 @@ function injectStyle(): void {
     /* (no pad button of its own: with the game pad, the explorer menu's "In my bag") */
     body.pad-on .by-slot kbd { display: none; }
 
-    /* In my bag (the explorer menu). */
-    .by-sec-purse { display: flex; align-items: center; gap: calc(6 * var(--px)); margin-top: calc(-2 * var(--px)); font: 700 calc(13 * var(--px)) / 1 var(--mu-display); color: var(--mu-gold-hi); }
+    /* In my bag (the top of the explorer menu's Bag page): the title and the purse on one line, what he keeps under them
+       (the menu's chips: its columns, a long name wrapping inside its button). */
+    .by-sec { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: calc(10 * var(--px)); }
+    .by-sec > * { grid-column: 1 / -1; }
+    .by-sec > .rxm-h { grid-column: 1; }
+    .by-sec > .by-sec-purse { grid-column: 2; }
+    .by-sec-purse { display: flex; align-items: center; gap: calc(6 * var(--px)); font: 700 calc(14 * var(--px)) / 1 var(--mu-display); color: var(--mu-gold-hi); white-space: nowrap; }
     .by-sec-purse .by-icon { width: calc(18 * var(--px)); height: calc(18 * var(--px)); }
     .by-sec .rxm-note.by-sec-none { display: block; }
     .by-sec .rxm-note.by-sec-none[hidden] { display: none; }
-    .by-bagb { position: relative; display: flex; align-items: center; gap: calc(8 * var(--px)); min-height: calc(34 * var(--px)); padding: calc(4 * var(--px)) calc(8 * var(--px));
-      border: 0; background: none; cursor: pointer; outline: none; color: var(--mu-ink2); isolation: isolate; text-align: left; white-space: nowrap; font: inherit;
+    .by-bagb { position: relative; display: flex; align-items: center; gap: calc(8 * var(--px)); min-width: 0; min-height: calc(42 * var(--px)); padding: calc(5 * var(--px)) calc(9 * var(--px));
+      border: 0; background: none; cursor: pointer; outline: none; color: var(--mu-ink2); isolation: isolate; text-align: left; font: inherit; line-height: inherit;
       transition: color 0.2s, transform 0.2s var(--mu-ease); }
     .by-bagb-bg { position: absolute; inset: 0; z-index: -1; clip-path: var(--rtb-shape); background: rgba(255, 244, 222, 0.04); transition: background 0.2s; }
     .by-bagb-bg::after { content: ''; position: absolute; inset: 0; clip-path: var(--rtb-ring); background: rgba(255, 229, 188, 0.1); transition: background 0.2s; }
@@ -219,9 +228,12 @@ function injectStyle(): void {
     /* (the game pad's ring, as the explorer menu's buttons: _explorerMenu.ts) */
     .by-bagb.pad-focus .by-bagb-bg::after { background: rgba(255, 244, 214, 0.95); }
     .by-bagb:active { transform: scale(0.96); }
-    body.roam-touch .by-bagb { min-height: 44px; gap: 7px; padding: 4px 8px; white-space: normal; line-height: 1.15; }
-    body.roam-touch .by-sec .rxm-grid { grid-template-columns: 1fr; }
-    body.roam-touch .by-bagb kbd { display: none; }`;
+    body.roam-touch .by-bagb { min-height: 44px; gap: 7px; padding: 4px 8px; }
+    body.roam-touch .by-sec-purse { font-size: 15px; }
+    body.roam-touch .by-bagb kbd { display: none; }
+    @media (max-height: 500px) {
+      body.roam-touch .by-bagb { min-height: 40px; }
+    }`;
   document.head.append(style);
 }
 

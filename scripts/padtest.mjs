@@ -22,7 +22,8 @@
 //   walk      the stick walks him                                                  (input.ts)
 //   jump      ✕ jumps (up over a metre), no shake for it                           (input.ts, walker.ts)
 //   use       □ at a moored boat boards it (mode boat), one `bump` shake          (input.ts, boat.ts)
-//   menu      △ opens the Explorer menu (a pad layer: __pad.pad.inMenu), ○ shuts  (_explorerMenu.ts)
+//   menu      △ opens the Explorer menu (a pad layer: __pad.pad.inMenu), R1 / L1
+//             switch its tabs, ○ shuts                                             (_explorerMenu.ts)
 //   camera    d-pad ← raises the camera, ○ puts it away; → the selfie, ○ away     (input.ts, tools.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
@@ -462,9 +463,17 @@ const steps = [
       }
       await sleep(400);
       const open = await cls();
+      // (R1 / L1: the tab after, then back: its tabs are the settings' bar)
+      const tabNow = () => ev(() => document.querySelector('.rxm [role="tab"][aria-selected="true"]')?.id ?? null);
+      const t0 = await tabNow();
+      await tap(page, 'r1');
+      await until((t0) => document.querySelector('.rxm [role="tab"][aria-selected="true"]')?.id !== t0, t0, 3000, 'R1: the next tab');
+      const t1 = await tabNow();
+      await tap(page, 'l1');
+      await until((t0) => document.querySelector('.rxm [role="tab"][aria-selected="true"]')?.id === t0, t0, 3000, 'L1: back to the first tab');
       await tap(page, 'east');
       await until(() => !window.__pad.pad.inMenu, null, 3000, '○ shuts it');
-      return `△ opened it (${open}), ○ shut it`;
+      return `△ opened it (${open}), R1 / L1 tabs ${t0} → ${t1} → ${t0}, ○ shut it`;
     },
   },
   {

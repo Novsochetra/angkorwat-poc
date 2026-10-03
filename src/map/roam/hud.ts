@@ -158,6 +158,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
     if (on === choosing) return;
     choosing = on;
     wrap.classList.toggle('is-choosing', on);
+    // (on a phone on its side the card stands where the title is: it steps back meanwhile, map.css)
+    document.body.classList.toggle('rh-choosing', on);
     card.inert = !on;
     card.setAttribute('aria-hidden', String(!on));
     jump.setAttribute('aria-expanded', String(on));
@@ -321,6 +323,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       if (next === 'overview') {
         toastLeft = 0;
         toastEl.classList.remove('is-on');
+        document.body.classList.remove('rh-toast-on');
       }
       this.prompt(null);
     },
@@ -356,6 +359,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       if (mode === 'overview') return;
       toastText.textContent = text;
       toastEl.classList.add('is-on');
+      // (a class on the page, not :has(), which some phones lack: the calendar's banner goes under it, _calendarCard.ts)
+      document.body.classList.add('rh-toast-on');
       toastLeft = 2.8;
     },
     fade(to, seconds) {
@@ -364,7 +369,10 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       return new Promise((r) => setTimeout(r, seconds * 1000));
     },
     update(dt) {
-      if (toastLeft > 0 && (toastLeft -= dt) <= 0) toastEl.classList.remove('is-on');
+      if (toastLeft > 0 && (toastLeft -= dt) <= 0) {
+        toastEl.classList.remove('is-on');
+        document.body.classList.remove('rh-toast-on');
+      }
       // Follow the picker's size and time of day.
       const nu = root.style.getPropertyValue('--u');
       if (nu !== u) wrap.style.setProperty('--u', (u = nu) || '1');
@@ -703,7 +711,7 @@ function injectStyle(): void {
       opacity: 0; visibility: hidden; transition: opacity 0.5s, transform 0.5s var(--mu-ease), visibility 0s 0.5s; white-space: nowrap; }
     .rh-toast.is-on { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity 0.3s, transform 0.3s var(--mu-ease); }
     /* (under the mini-map's banner while it shows: "You have arrived", then E and the glider's keys) */
-    body:has(.mm-toast.is-on) .rh-toast { top: calc(13vh + 72 * var(--px)); }
+    body.mm-toast-on .rh-toast { top: calc(13vh + 72 * var(--px)); }
 
     .rh.is-roam .rh-back, .rh.is-roam .rh-help { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
     .rh[data-mode='leap'] .rh-help, .rh.no-help .rh-help { opacity: 0; visibility: hidden; }
@@ -723,7 +731,7 @@ function injectStyle(): void {
       .rh-prompt { bottom: 22vh; }
       /* (under the mini-map, and wrapping: a phone is narrow) */
       .rh-toast { top: 218px; width: max-content; max-width: calc(100vw - 40px); box-sizing: border-box; white-space: normal; text-align: center; }
-      body:has(.mm-toast.is-on) .rh-toast { top: calc(218px + 72 * var(--px)); }
+      body.mm-toast-on .rh-toast { top: calc(218px + 72 * var(--px)); }
       .rh-pick { width: calc(132 * var(--px)); }
       /* (the settings open across the whole screen: Jump in steps back under them) */
       .mu-set-open ~ .rh .rh-jump { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -736,6 +744,26 @@ function injectStyle(): void {
       /* (a pad in hand on a tablet or a phone: its buttons show) */
       body.pad-on .rh-jumps kbd, body.pad-on .rh-back kbd { display: inline-grid; }
       body.pad-on .rh-jumps h2 { margin-right: calc(70 * var(--px)); }
+    }
+    /* (a touch screen has no Esc key: its cap goes; with a pad in hand the pad's button shows, above) */
+    body.roam-touch .rh-back kbd { display: none; }
+    /* A phone on its side. */
+    @media (max-height: 500px) and (min-width: 640px) {
+      /* (the card over his head stands where the title is: the title steps back while it is open) */
+      body.rh-choosing .mu-title { opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0s 0.2s; }
+      /* (a long message wraps inside the view) */
+      .rh-toast { width: max-content; max-width: calc(100vw - 40px); box-sizing: border-box; white-space: normal; text-align: center; }
+      /* (touch: the tool bar runs along the top: the messages under it; Back as big as a finger) */
+      body.roam-touch .rh-toast { top: 70px; }
+      body.roam-touch.mm-toast-on .rh-toast { top: calc(78px + 72 * var(--px)); }
+      body.roam-touch .rh-back { min-height: 40px; box-sizing: border-box; }
+      /* (Jump in, over him on his ledge: a finger's height) */
+      .rh-jump { min-height: 42px; box-sizing: border-box; }
+    }
+    /* (a small phone on its side: the tool bar along the top needs the room, so Back is its arrow alone, its words still read out) */
+    @media (max-height: 500px) and (min-width: 640px) and (max-width: 720px) {
+      body.roam-touch .rh-back { min-width: 40px; justify-content: center; padding-left: 0; padding-right: 0; }
+      body.roam-touch .rh-back-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     }
     .mu-calm ~ .rh { --mu-lift: 0px; }
     .mu-calm ~ .rh .rh-jump .mu-glow::before { animation: none; }

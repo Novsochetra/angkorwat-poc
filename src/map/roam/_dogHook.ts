@@ -1,10 +1,11 @@
 /**
  * What the explorer menu (_explorerMenu.ts) asks of the dog, filled in by the
  * dog's add-on (_dog.ts) when it starts: the menu does not load the dog's
- * module. "Call the dog" goes in as its key (0), so it needs no hook.
+ * module. "Call the dog" (on the menu's Moves page) goes in as its key (0),
+ * so it needs no hook; its name is on the Me page.
  */
 export const DOG_MENU = {
-  /** He has a dog (its two buttons show). */
+  /** He has a dog (its two buttons show: Call the dog on Moves, its name on Me). */
   adopted: (): boolean => false,
   /** The card for its name. */
   rename: (): void => {},

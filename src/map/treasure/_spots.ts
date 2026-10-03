@@ -1,5 +1,6 @@
 import type { HeightField } from '../heightfield';
 import { JUNGLE_SITES } from '../layout';
+import type { PlaceId } from '../types';
 import { VILLAGE_SPOTS } from '../village/_spots';
 import type { WordKey } from '../ui/lang';
 import type { GoldModel } from './_models';
@@ -28,27 +29,31 @@ export interface GoldDef {
   turn: number;
   /** Why there (for the report and bug reports). */
   where: string;
+  /** Where to look, as its list of clues heads its row (_list.ts): a temple (its name, layout.ts) or an area (ui/lang.ts). */
+  area: PlaceId | WordKey;
+  /** Its clue (ui/lang.ts `tgClue…`): the kind of spot, from `where`, a light riddle. */
+  clue: WordKey;
 }
 
 export const GOLD: readonly GoldDef[] = [
   // ── Temples ────────────────────────────────────────────────────────────
-  { id: 'apsara', name: 'tgApsara', at: [-45.3, 56, -239.2], turn: 2.4, where: "Angkor Wat, the north-west corner of the outer courtyard, at the step of the corner pavilion, behind the galleries (its walls are lined with apsaras)" },
-  { id: 'bayonFace', name: 'tgBayonFace', at: [-274.5, 43, -256.5], turn: -2.4, where: 'Bayon, the far north-east corner of the upper terrace, behind the face towers' },
-  { id: 'garuda', name: 'tgGaruda', at: [-101.5, 24, -63.5], turn: 2.4, where: "Preah Khan, outside the back (north-west) corner of the enclosure wall (its outer walls are held up by garudas)" },
-  { id: 'singha', name: 'tgSingha', at: [158.5, 34, -145.5], turn: 0.3, where: "Ta Prohm, at the south-west corner of the temple's base, where lions guard the way up" },
-  { id: 'nandi', name: 'tgNandi', at: [387.5, 151, -457.5], turn: -0.8, where: "Phnom Kulen, the back corner of the mountain temple's pad, facing the sanctuary (Shiva's bull on Shiva's mountain)" },
-  { id: 'naga', name: 'tgNaga', at: [-67.5, 8, 41.5], turn: 2.2, where: "River Gate, at the foot of the bridge's naga balustrade, on the river bank" },
+  { id: 'apsara', name: 'tgApsara', at: [-45.3, 56, -239.2], turn: 2.4, where: "Angkor Wat, the north-west corner of the outer courtyard, at the step of the corner pavilion, behind the galleries (its walls are lined with apsaras)", area: 'sanctuary', clue: 'tgClueApsara' },
+  { id: 'bayonFace', name: 'tgBayonFace', at: [-274.5, 43, -256.5], turn: -2.4, where: 'Bayon, the far north-east corner of the upper terrace, behind the face towers', area: 'overlook', clue: 'tgClueBayonFace' },
+  { id: 'garuda', name: 'tgGaruda', at: [-101.5, 24, -63.5], turn: 2.4, where: "Preah Khan, outside the back (north-west) corner of the enclosure wall (its outer walls are held up by garudas)", area: 'shrine', clue: 'tgClueGaruda' },
+  { id: 'singha', name: 'tgSingha', at: [158.5, 34, -145.5], turn: 0.3, where: "Ta Prohm, at the south-west corner of the temple's base, where lions guard the way up", area: 'terrace', clue: 'tgClueSingha' },
+  { id: 'nandi', name: 'tgNandi', at: [387.5, 151, -457.5], turn: -0.8, where: "Phnom Kulen, the back corner of the mountain temple's pad, facing the sanctuary (Shiva's bull on Shiva's mountain)", area: 'kulen', clue: 'tgClueNandi' },
+  { id: 'naga', name: 'tgNaga', at: [-67.5, 8, 41.5], turn: 2.2, where: "River Gate, at the foot of the bridge's naga balustrade, on the river bank", area: 'rivergate', clue: 'tgClueNaga' },
   // ── Jungle sites ───────────────────────────────────────────────────────
-  { id: 'peacock', name: 'tgPeacock', site: { id: 'fallen-face', x: -2.5, z: -5.5 }, turn: 0.7, where: 'The fallen face: behind the giant stone head, in the ferns' },
-  { id: 'kinnari', name: 'tgKinnari', site: { id: 'rim-swing', x: 3.5, z: 4.5 }, turn: 0, where: 'The swing over the lake: on the cliff ledge by the rope swing, looking out (a kinnari loves high places)' },
-  { id: 'lotus', name: 'tgLotus', fall: 'Bayon stream', turn: 0, where: "The stream pool: behind the waterfall's curtain, at the foot of the cliff, in the shallow water (wade in)" },
-  { id: 'turtle', name: 'tgTurtle', site: { id: 'pool-bridge', x: 2.2, z: -1.2 }, turn: 1.6, where: 'Below the pool: under the end of the wooden foot bridge, on the stream bank' },
-  { id: 'makara', name: 'tgMakara', site: { id: 'ruin-wall', x: 5.5, z: -2.5 }, turn: -1.7, where: 'The carved lintel: at the end of the fallen wall (makaras curl out of Khmer lintels)' },
-  { id: 'rabbit', name: 'tgRabbit', site: { id: 'monk-hut', x: 0.9, z: -1.8 }, turn: 1.2, where: "The monk's hut: under the hut's floor between the stilts (Judge Rabbit, the clever hero of Khmer tales)" },
-  { id: 'hanuman', name: 'tgHanuman', site: { id: 'root-gate', x: 3.85, z: 2.93 }, turn: -1.2, where: 'The root gate: in the roots beside the gate (the monkey general among the trees)' },
-  { id: 'elephant', name: 'tgElephant', site: { id: 'woodcutters', x: -6, z: -4 }, turn: 1.5, where: "The woodcutters' camp: among the stumps of the trees they felled (elephants hauled the logs)" },
+  { id: 'peacock', name: 'tgPeacock', site: { id: 'fallen-face', x: -2.5, z: -5.5 }, turn: 0.7, where: 'The fallen face: behind the giant stone head, in the ferns', area: 'tgAtBayonWest', clue: 'tgCluePeacock' },
+  { id: 'kinnari', name: 'tgKinnari', site: { id: 'rim-swing', x: 3.5, z: 4.5 }, turn: 0, where: 'The swing over the lake: on the cliff ledge by the rope swing, looking out (a kinnari loves high places)', area: 'tgAtLakeCliff', clue: 'tgClueKinnari' },
+  { id: 'lotus', name: 'tgLotus', fall: 'Bayon stream', turn: 0, where: "The stream pool: behind the waterfall's curtain, at the foot of the cliff, in the shallow water (wade in)", area: 'tgAtBayonStream', clue: 'tgClueLotus' },
+  { id: 'turtle', name: 'tgTurtle', site: { id: 'pool-bridge', x: 2.2, z: -1.2 }, turn: 1.6, where: 'Below the pool: under the end of the wooden foot bridge, on the stream bank', area: 'tgAtBayonStream', clue: 'tgClueTurtle' },
+  { id: 'makara', name: 'tgMakara', site: { id: 'ruin-wall', x: 5.5, z: -2.5 }, turn: -1.7, where: 'The carved lintel: at the end of the fallen wall (makaras curl out of Khmer lintels)', area: 'tgAtWatWest', clue: 'tgClueMakara' },
+  { id: 'rabbit', name: 'tgRabbit', site: { id: 'monk-hut', x: 0.9, z: -1.8 }, turn: 1.2, where: "The monk's hut: under the hut's floor between the stilts (Judge Rabbit, the clever hero of Khmer tales)", area: 'tgAtWatBack', clue: 'tgClueRabbit' },
+  { id: 'hanuman', name: 'tgHanuman', site: { id: 'root-gate', x: 3.85, z: 2.93 }, turn: -1.2, where: 'The root gate: in the roots beside the gate (the monkey general among the trees)', area: 'tgAtRootJungle', clue: 'tgClueHanuman' },
+  { id: 'elephant', name: 'tgElephant', site: { id: 'woodcutters', x: -6, z: -4 }, turn: 1.5, where: "The woodcutters' camp: among the stumps of the trees they felled (elephants hauled the logs)", area: 'tgAtKulenFoot', clue: 'tgClueElephant' },
   // ── The floating village ───────────────────────────────────────────────
-  { id: 'hamsa', name: 'tgHamsa', at: [VILLAGE_SPOTS.jetty[0], VILLAGE_SPOTS.jetty[1], VILLAGE_SPOTS.jetty[2]], turn: -1.2, where: 'The floating village: at the head of the jetty, over the water among the floating houses (the sacred goose of the royal barges)' },
+  { id: 'hamsa', name: 'tgHamsa', at: [VILLAGE_SPOTS.jetty[0], VILLAGE_SPOTS.jetty[1], VILLAGE_SPOTS.jetty[2]], turn: -1.2, where: 'The floating village: at the head of the jetty, over the water among the floating houses (the sacred goose of the royal barges)', area: 'tgAtFloating', clue: 'tgClueHamsa' },
 ];
 
 /** Where a figure stands on the map (x, z; y the floor there when known, else NaN: the land). */
@@ -74,4 +79,17 @@ export function goldTurn(d: GoldDef, field: HeightField): number {
   if (fall) return d.turn + Math.atan2(fall.dir[0], fall.dir[1]);
   const site = d.site ? JUNGLE_SITES.find((j) => j.id === d.site!.id) : null;
   return d.turn + (site?.facing ?? 0);
+}
+
+/** The search area's radius (m): its list's "Show on map" marks a soft gold circle this big on the maps (_mapMark.ts). */
+export const SEARCH_R = 34;
+
+/**
+ * The search area of figure `i` standing at (x, z): its middle off the figure by a third to a half of the radius,
+ * each figure its own way (the same on every visit), so the circle is an area to search, not a pin on the spot.
+ */
+export function searchAt(i: number, x: number, z: number): { x: number; z: number; r: number } {
+  const a = i * 2.39996 + 0.9;
+  const d = SEARCH_R * (0.3 + 0.18 * ((i * 0.618034) % 1));
+  return { x: x + Math.cos(a) * d, z: z + Math.sin(a) * d, r: SEARCH_R };
 }

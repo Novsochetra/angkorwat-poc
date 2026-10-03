@@ -23,12 +23,18 @@ export interface TreasureHooks {
   pick(ctx: RoamCtx, id: string): void;
   /** Where the figures he found are (m), for the big map. */
   found(): readonly { id: string; x: number; z: number }[];
+  /**
+   * The search area of the figure he follows from its list of clues ("Show on map"): a circle (m) round a point a
+   * little off it, for the mini-map and the big map (treasure/_mapMark.ts draws it); null while he follows none.
+   */
+  search(): { x: number; z: number; r: number } | null;
 }
 
 export const treasure: TreasureHooks = {
   near: () => null,
   pick() {},
   found: () => [],
+  search: () => null,
 };
 
 /** The part puts its hooks in (treasure/index.ts). */

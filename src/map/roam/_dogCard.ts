@@ -282,7 +282,7 @@ function injectStyle(): void {
   style.textContent = `
     .mu-ask.dgc { z-index: 66; }
     .dgc .mu-ask-card { width: min(calc(500 * var(--px)), 100%); padding: 0; }
-    .dgc-in { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
+    .dgc-in { display: flex; flex-direction: column; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
       padding: calc(18 * var(--px)) calc(22 * var(--px)) calc(16 * var(--px)); scrollbar-width: thin; scrollbar-color: var(--mu-line) transparent; }
     .dgc-icon { flex: none; display: grid; place-items: center; width: calc(56 * var(--px)); }
     .dgc-dog { width: calc(48 * var(--px)); height: calc(48 * var(--px)); filter: drop-shadow(0 0 calc(8 * var(--px)) rgba(255, 196, 110, 0.3)) drop-shadow(0 calc(2 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
