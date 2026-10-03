@@ -2,7 +2,6 @@ import { Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3, valueNoise3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { bondTone, courseShade, tone } from './_faces';
@@ -12,6 +11,7 @@ import { FLOWER_ORANGE, FLOWER_PINK, gardenTree, GRASS, LEAF, Mason, pick, type 
 import { Frame, grassOverPad, Lamps, Pools, Shrines } from './_prasatKit';
 import { giantTree } from './_prasatTrees';
 import { chip, overgrow } from './_ruin';
+import { buildShell, commitGrid, groundFills } from './_shell';
 
 /**
  * Ta Prohm — "The Lost Gardens": a jungle temple swallowed by giant trees,
@@ -800,8 +800,9 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     }
   });
   for (const [i, j, k] of touch) d.grid.ghost(i, j, k);
-  g.commit();
-  d.commit();
+  // (the ghosts: the hill top under the bottom row where it is there, the cornices, the 1 m stone: solid)
+  commitGrid(b, g, { real: (i, j, k) => j >= 0 || groundFills(f, place.x + i, place.z + k, 1, 1, gy + j + 1) });
+  d.commit('solid');
 
   // ── Into place ───────────────────────────────────────────────────────────
   b.translate(place.x, 0, place.z);
@@ -821,7 +822,8 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(b, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  const shell = buildShell(b, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}`, field: f });
+  object.add(shell.object);
   object.add(shrines.build());
   const water = pools.build(`landmark:${place.id}:pools`);
   if (water) object.add(water);
@@ -838,6 +840,7 @@ export function buildTerrace(ctx: MapContext, place: PlaceDef): MapPart {
     object,
     blocks: b.boxes.length,
     update(fr: MapFrame) {
+      shell.update();
       lamps.update(fr.night, fr.t);
       windows.update(fr.night, fr.t);
       shrines.update(fr);

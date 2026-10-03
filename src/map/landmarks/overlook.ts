@@ -2,13 +2,13 @@ import { Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3, valueNoise3 } from '../../voxel/random';
 import { VoxelBuilder, type VoxelGrid } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
 import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { BAYON_STONE, bondTone, buildFaceTower, courseShade, FACE_LARGE, FACE_SMALL, FACE_TINY, fillBox, SIDE_AXES, tone, type FaceTower, type Side } from './_faces';
 import { CandleGlow, chip, growTree, overgrow } from './_ruin';
 import { AltarGlow, hiddenSolid, peoplesShrine, stepCloth, type ShrineSpec } from './_sanctuaryShrine';
+import { buildShell, commitGrid, groundFills } from './_shell';
 
 /**
  * Bayon — "The Stone Faces", on the western cliffs: a tight cluster of face
@@ -58,7 +58,12 @@ export function buildOverlook(ctx: MapContext, place: PlaceDef): MapPart {
   const keep = new Set<string>();
 
   // The ground under everything (not drawn): bottom blocks get their AO and are culled underneath.
-  for (let i = TER.i0 - 3; i <= TER.i1 + 3; i++) for (let k = TER.k0 - 3; k <= TER.k1 + 4; k++) g.ghost(i, -1, k);
+  const ghosts: [number, number, number][] = [];
+  for (let i = TER.i0 - 3; i <= TER.i1 + 3; i++)
+    for (let k = TER.k0 - 3; k <= TER.k1 + 4; k++) {
+      g.ghost(i, -1, k);
+      ghosts.push([i, -1, k]);
+    }
 
   // ── Terrace ─────────────────────────────────────────────────────────────
   const { i0, i1, k0, k1 } = TER;
@@ -180,7 +185,8 @@ export function buildOverlook(ctx: MapContext, place: PlaceDef): MapPart {
   const shrineGlow = new AltarGlow({ seed: 3, scale: 1.3, halo: { off: [0, 0.3, 0.4], size: 3 } });
   if (central.door) sanctum(b, g, hidden, sacred, shrineGlow, place, central.door);
 
-  g.commit();
+  // (the ghost row under the terrace is the ground, where it is there)
+  commitGrid(b, g, { cells: ghosts, real: (i, j, k) => groundFills(ctx.field, place.x + i, place.z + k, 1, 1, place.y + j + 1) });
   ctx.field.occupy(place.x + i0 - 2, place.z + k0 - 2, place.x + i1 + 2, place.z + k1 + 3);
 
   // ── Night: candles in the doorways of the other towers with a porch ─────
@@ -198,12 +204,14 @@ export function buildOverlook(ctx: MapContext, place: PlaceDef): MapPart {
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }), glow.object, shrineGlow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
+  const shell = buildShell(b, { quality: 'medium', name: `landmark:${place.id}`, field: ctx.field });
+  object.add(shell.object, glow.object, shrineGlow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
   return {
     name: `landmark:${place.id}`,
     object,
     blocks: b.boxes.length,
     update: (f: MapFrame) => {
+      shell.update();
       glow.update(f);
       shrineGlow.update(f);
       sacred.update(f);

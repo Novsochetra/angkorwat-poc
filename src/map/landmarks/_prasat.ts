@@ -2,6 +2,7 @@ import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder, VoxelGrid } from '../../voxel/VoxelBuilder';
+import { commitGrid, type Ghosts } from './_shell';
 
 /**
  * Shared masonry for the River Gate, Ta Prohm and Phnom Kulen:
@@ -157,8 +158,13 @@ export class Mason {
     return this;
   }
 
-  commit(): VoxelBuilder {
-    return this.grid.commit();
+  /**
+   * Emit the blocks, each marked with the sides against solid cells (for the
+   * shell: _shell.ts `commitGrid`); `ghosts`: what the grid's ghost cells
+   * stand for (`'none'`: it has none).
+   */
+  commit(ghosts?: Ghosts): VoxelBuilder {
+    return commitGrid(this.builder, this.grid, ghosts);
   }
 }
 

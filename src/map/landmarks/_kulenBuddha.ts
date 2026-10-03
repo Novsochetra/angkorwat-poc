@@ -14,6 +14,7 @@ import { trackSacred } from '../sacred/pending';
 import { noise3 } from '../sacred/sdf';
 import { Mason, MOSS, pick, SHADOW, type Tones } from './_prasat';
 import { Frame, type Lamps, type Shrines } from './_prasatKit';
+import { groundFills } from './_shell';
 
 /**
  * Preah Ang Thom (ព្រះអង្គធំ), the reclining Buddha of Phnom Kulen, on the
@@ -134,6 +135,7 @@ export function buildReclining(f: HeightField, world: VoxelBuilder, shrines: Shr
   const board = sign.mesh;
   const b = new VoxelBuilder();
   const rock = new Mason(b, 1, { seed: 71, jitter: 0.05, ao: 0.3 });
+  const rockGhosts: [number, number, number][] = [];
   const d = new Mason(b, 0.5, { seed: 72 });
   const ground = (x: number, z: number) => f.heightAt(fr.wx(x, z), fr.wz(x, z));
   const r = (i: number, j = 0, k = 0) => hash3(Math.round(i * 7.3), Math.round(j * 5.1), Math.round(k * 3.7), 7301);
@@ -173,7 +175,10 @@ export function buildReclining(f: HeightField, world: VoxelBuilder, shrines: Shr
         lowest = Math.min(lowest, j);
       }
       // (hidden under the lowest cell, so the bottom layer is not drawn)
-      if (lowest < Infinity) rock.grid.ghost(i, lowest - 1, k);
+      if (lowest < Infinity) {
+        rock.grid.ghost(i, lowest - 1, k);
+        rockGhosts.push([i, lowest - 1, k]);
+      }
     }
   // Moss and ferns on the rim and ledges (never on the floor), stains down the sides.
   rock.grid.forEach((i, j, k, cell) => {
@@ -503,8 +508,9 @@ export function buildReclining(f: HeightField, world: VoxelBuilder, shrines: Shr
       }
   }
 
-  rock.commit();
-  d.commit();
+  // (the ghost under each column's lowest cell is solid where the plateau is there)
+  rock.commit({ cells: rockGhosts, real: (i, j, k) => groundFills(f, fr.wx(i, k), fr.wz(i, k), 1, 1, j + 1) });
+  d.commit('none');
   const n0 = world.boxes.length;
   fr.place(b, world);
   for (let i = n0; i < world.boxes.length; i++) world.boxes[i].ry = undefined;

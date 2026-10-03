@@ -2,7 +2,6 @@ import { Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
 import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
@@ -11,6 +10,7 @@ import { Mason, PAD_Y } from './_sanctuaryMason';
 import { flight, galleryRing, gopura, steppedBase, terrace, tower, tree, vine, type GalleryStyle } from './_sanctuaryParts';
 import { AltarGlow, hiddenSolid, mainGateShrine } from './_sanctuaryShrine';
 import { buildPools, type Pool } from './_sanctuaryWater';
+import { buildShell } from './_shell';
 
 /**
  * Angkor Wat at real size on the summit mesa, the hero of the map: a temple
@@ -169,7 +169,8 @@ export function buildSanctuary(ctx: MapContext, place: PlaceDef): MapPart {
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }));
+  const shell = buildShell(b, { quality: 'medium', name: `landmark:${place.id}`, field: ctx.field });
+  object.add(shell.object);
   // (the door's light hangs out over the forecourt, clear of the passage: the Buddha in it stays candle-lit)
   const lights = buildLights(m.glows, [0, PAD_Y + 7, -158]);
   const pools = buildPools(
@@ -182,6 +183,7 @@ export function buildSanctuary(ctx: MapContext, place: PlaceDef): MapPart {
     object,
     blocks: b.boxes.length,
     update: (f: MapFrame) => {
+      shell.update();
       lights.update(f);
       pools.update(f);
       glow.update(f);

@@ -2,13 +2,13 @@ import { Color, Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { PATHS, type PlaceDef } from '../layout';
 import { buddhaStatue } from '../sacred/buddha';
 import { stupa, stupaNiche } from '../sacred/stupa';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { gopura, LATERITE, Mason, naga, pick, prasat, SHADOW, SIDE, STONE, STONE_DARK, STONE_LIGHT } from './_prasat';
 import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
+import { buildShell } from './_shell';
 
 /**
  * River Gate — "The Eastern Crossing": where the valley road crosses the
@@ -318,8 +318,9 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
     });
     gm.weather(0.14);
     gd.weather(0.1);
-    gm.commit();
-    gd.commit();
+    // (no ghost cells: _shell.ts)
+    gm.commit('none');
+    gd.commit('none');
     gb.translate(cx, 0, 0);
     local(q).b.append(gb);
     for (const p of spots) lamps.add(fr.world(cx + p[0], p[1], p[2]), 0.5);
@@ -352,7 +353,7 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
       sm.clear(-0.5, F, 0.5, 0.5, F + 2, 2.5);
       sm.paint(-1, F, 0, 1, F + 2.5, 2, SHADOW, { src });
       sm.fill(-0.5, F, 0.5, 0.5, F + 0.5, 1.5, STONE_LIGHT, { src });
-      sm.commit();
+      sm.commit('none');
       // (the shrine's own frame: its middle, +z out of that door)
       const sf = new Frame(wx, 0, wz, fr.theta);
       shrines.place(sf, buddhaStatue({ kind: 'shrine', look: 'gilt', height: SHRINE_BUDDHA }), 0, F + 0.5, 1);
@@ -410,8 +411,8 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
   for (const { fr, b, m, d } of perSeg.values()) {
     m.weather(0.12);
     d.weather(0.08);
-    m.commit();
-    d.commit();
+    m.commit('none');
+    d.commit('none');
     fr.place(b, world);
   }
 
@@ -459,7 +460,8 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
   // ── Meshes ───────────────────────────────────────────────────────────────
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  const shell = buildShell(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}`, field: f });
+  object.add(shell.object);
   object.add(shrines.build());
   // One warm light over the causeway at night.
   const lightAt = gates.length === 2 ? (gates[0] + gates[1]) / 2 : main ? (main[0] + main[1]) / 2 : (padIn + padOut) / 2;
@@ -474,6 +476,7 @@ export function buildRivergate(ctx: MapContext, place: PlaceDef): MapPart {
     object,
     blocks: world.boxes.length,
     update(fr: MapFrame) {
+      shell.update();
       lamps.update(fr.night, fr.t);
       line.update(fr.night, fr.t);
       shrines.update(fr);

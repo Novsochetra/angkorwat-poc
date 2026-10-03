@@ -1,13 +1,13 @@
 import { Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { PATHS, type PlaceDef } from '../layout';
 import { buddhaStatue } from '../sacred/buddha';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { FLOWER_PINK, gardenTree, Mason, type Palette, prasat, redent, SHADOW, SIDE, tieredTop } from './_prasat';
 import { buildReclining } from './_kulenBuddha';
 import { Frame, grassOverPad, Lamps, Shrines } from './_prasatKit';
+import { buildShell } from './_shell';
 
 /**
  * Phnom Kulen — "The Mountain Temple", in the manner of Phnom Bakheng: a
@@ -235,8 +235,9 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
 
   m.weather(0.14);
   d.weather(0.1);
-  m.commit();
-  d.commit();
+  // (no ghost cells: _shell.ts)
+  m.commit('none');
+  d.commit('none');
 
   // Trees on the pad's back corners, and grass on the open top.
   const trees: [number, number, number][] = [
@@ -260,7 +261,8 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}` }));
+  const shell = buildShell(world, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: `landmark:${place.id}`, field: f });
+  object.add(shell.object);
   object.add(shrines.build());
   object.add(reclining.object);
   object.add(lamps.addLight(fr.world(0, top - 2, TIERS[0] + 8), 1100, 60));
@@ -271,6 +273,7 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
     object,
     blocks: world.boxes.length,
     update(fr: MapFrame) {
+      shell.update();
       lamps.update(fr.night, fr.t);
       shrines.update(fr);
       reclining.update(fr);

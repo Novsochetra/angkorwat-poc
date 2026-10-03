@@ -3,6 +3,7 @@ import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder, VoxelGrid } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
+import { commitGrid, groundFills } from './_shell';
 
 /**
  * Angkor Wat's mason: one 1 m block grid for the whole temple, in
@@ -90,7 +91,7 @@ export class Mason {
   src: SourceTrace | undefined;
 
   constructor(
-    b: VoxelBuilder,
+    private readonly b: VoxelBuilder,
     readonly field: HeightField,
   ) {
     this.g = b.grid({ cell: 1, origin: [-0.5, PAD_Y, -0.5], mat: 'mapStone', jitter: 0.045, ao: 0.4, seed: 23 });
@@ -160,7 +161,8 @@ export class Mason {
     });
     // Blocks resting on the pad: the ground below counts as solid (no hidden undersides).
     for (const [i, j, k] of ground) if (!g.has(i, j, k)) g.ghost(i, j, k);
-    g.commit();
+    // (the sides against solid cells marked, for the shell: _shell.ts; the ground is there but where a stream runs under)
+    commitGrid(this.b, g, { cells: ground, real: (i, j, k) => groundFills(this.field, i - 0.5, k - 0.5, 1, 1, PAD_Y + j + 1) });
   }
 }
 

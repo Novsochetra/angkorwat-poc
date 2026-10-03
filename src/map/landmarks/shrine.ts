@@ -2,13 +2,13 @@ import { Group } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3, valueNoise3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { PlaceDef } from '../layout';
 import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { bondTone, courseShade, fillBox, tone } from './_faces';
 import { CANOPY, chip, drapeRoot, FIG_BARK, growTree, LATERITE, limb, overgrow, pickOf, RUIN_STONE } from './_ruin';
 import { AltarGlow, hiddenSolid, peoplesShrine, stepCloth, type ShrineSpec } from './_sanctuaryShrine';
+import { buildShell, commitGrid, groundFills } from './_shell';
 
 /**
  * Preah Khan — "The Silent Ruins": a ruined temple complex the jungle has
@@ -63,7 +63,12 @@ export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
   };
 
   // The ground (not drawn), for AO and culling under the bottom blocks.
-  for (let i = GA.i0 - 8; i <= GA.i1 + 8; i++) for (let k = GA.k0 - 6; k <= GA.k1 + 10; k++) g.ghost(i, -1, k);
+  const ghosts: [number, number, number][] = [];
+  for (let i = GA.i0 - 8; i <= GA.i1 + 8; i++)
+    for (let k = GA.k0 - 6; k <= GA.k1 + 10; k++) {
+      g.ghost(i, -1, k);
+      ghosts.push([i, -1, k]);
+    }
 
   const wall = (i: number, j: number, k: number) => bondTone(R.wall, i, j, k, 3);
   const ledge = (i: number, j: number, k: number) => tone(R.ledge, i, j, k, 4);
@@ -312,7 +317,8 @@ export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
       }
   }
 
-  g.commit();
+  // (the ghost row under the ruin is the ground, where it is there)
+  commitGrid(b, g, { cells: ghosts, real: (i, j, k) => groundFills(ctx.field, place.x + i, place.z + k, 1, 1, place.y + j + 1) });
 
   // Tumbled blocks, turned every which way, off the heap and the fallen corner.
   const toss = (x: number, z: number, n: number, spread: number, seed: number) => {
@@ -348,12 +354,14 @@ export function buildShrine(ctx: MapContext, place: PlaceDef): MapPart {
 
   const object = new Group();
   object.name = `landmark:${place.id}`;
-  object.add(buildVoxelMesh(b, { quality: 'medium', name: `landmark:${place.id}` }), glow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
+  const shell = buildShell(b, { quality: 'medium', name: `landmark:${place.id}`, field: ctx.field });
+  object.add(shell.object, glow.object, sacred.object, hiddenSolid(hidden, `landmark:${place.id}-solid`));
   return {
     name: `landmark:${place.id}`,
     object,
     blocks: b.boxes.length,
     update: (f: MapFrame) => {
+      shell.update();
       glow.update(f);
       sacred.update(f);
     },
