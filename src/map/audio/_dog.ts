@@ -1,5 +1,7 @@
+import whistleUrl from '../../../assets/sound/whistling-to-summon-ra-music-low-2-00-02.mp3?url';
 import { registerLoop, registerSfx, type LoopMaker, type SfxMaker, type SfxOut } from './addonSfx';
 import { biquad, noise, range, strike } from './dsp';
+import { decode, loudest } from './footsteps';
 import { clip } from './speech';
 
 /**
@@ -9,11 +11,19 @@ import { clip } from './speech';
  *   (speech.ts's `bark`, the same synthesized throat), its top softened — a
  *   friendly bark at the monkeys and the hens, or as it runs to him;
  * - `dogWhine` (animals): a happy whine, high through the nose, sliding up and
- *   down (petted, called, as he comes back to it);
+ *   down (petted, as he comes back to it after a wait; never when he calls);
  * - `dogYawn` (animals): waking from its nap, a squeaky yawn falling away;
  * - `dogSniff` (animals): three to five quick sniffs at the ground;
  * - `dogPant` (lasting, animals): panting after a run, "hah-hah-hah", the
  *   level how hard (the add-on sets it);
+ * - `dogWhistle` (moves): his own whistle when he calls it — the recording as it
+ *   was given (`assets/sound/whistling-to-summon-…mp3`: a whistle to summon, its
+ *   echo fading), fetched and decoded when this module loads, played at its own
+ *   pitch and with its whole echo (only the silence after it is cut), and loud:
+ *   a call is meant to be heard (its loudest 100 ms at −14 dBFS, the footsteps'
+ *   −20; the Moves slider turns it down). Nothing else stands in for it: a call
+ *   that comes before it has loaded waits for it (up to 1.5 s), and with no
+ *   recording there is no whistle. His, so not softer with the dog's distance;
  * - `dogPat` (moves): his hand patting its head, soft on short fur;
  * - `dogThump` (steps): the hind leg thumping the ground while he scratches
  *   behind its ears.
@@ -113,6 +123,106 @@ function nasal(o: SfxOut, t: number, dur: number, pitch: readonly (readonly [num
   };
 }
 
+// ── His whistle: the recording ─────────────────────────────────────────────
+
+/**
+ * The recording's loudest 100 ms RMS once levelled (−14 dBFS: the file itself is at −5, the bark −29, the footsteps −20),
+ * and where it is judged to have died away: this far (dB) under its loudest 20 ms (its echo is heard to the end).
+ */
+const WHISTLE_RMS = 0.2;
+const WHISTLE_DEAD = 60;
+/** The fade it ends with (s), and the one it starts with. */
+const WHISTLE_FADE = 0.08;
+const WHISTLE_IN = 0.002;
+
+/** The recording, trimmed and levelled (null until it has loaded). */
+let whistleRec: AudioBuffer | null = null;
+let whistleBusy = false;
+let whistleTries = 0;
+
+/** Cut the silence after it (where it has died away), fade both ends, level it: a buffer of its own, any context plays it. */
+function prepareWhistle(buf: AudioBuffer): AudioBuffer {
+  const sr = buf.sampleRate;
+  const ch = buf.numberOfChannels;
+  const mono = new Float32Array(buf.length);
+  for (let c = 0; c < ch; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < mono.length; i++) mono[i] += d[i] / ch;
+  }
+  // (the last 20 ms frame within `WHISTLE_DEAD` dB of the loudest one ends it)
+  const w = Math.round(sr * 0.02);
+  const top = loudest(mono, 0, mono.length, w);
+  let end = mono.length;
+  const floor = top * 10 ** (-WHISTLE_DEAD / 10);
+  while (end - w > 0 && loudest(mono, end - w, end, w) < floor) end -= w;
+  end = Math.min(mono.length, end + w);
+  const k = WHISTLE_RMS / Math.sqrt(loudest(mono, 0, end, Math.round(sr * 0.1)));
+  const out = new AudioBuffer({ numberOfChannels: ch, length: end, sampleRate: sr });
+  const fadeOut = Math.min(end, Math.round(sr * WHISTLE_FADE));
+  const fadeIn = Math.round(sr * WHISTLE_IN);
+  for (let c = 0; c < ch; c++) {
+    const d = buf.getChannelData(c);
+    const o = out.getChannelData(c);
+    for (let i = 0; i < end; i++) {
+      const f = Math.min(1, i / fadeIn, (end - i) / fadeOut);
+      o[i] = d[i] * k * f;
+    }
+  }
+  return out;
+}
+
+/** Fetch and decode the recording (three tries over the visit; the synthesized whistle stands in). Never rejects. */
+async function loadWhistle(): Promise<void> {
+  if (whistleRec || whistleBusy || whistleTries >= 3 || typeof OfflineAudioContext === 'undefined') return;
+  whistleBusy = true;
+  whistleTries++;
+  try {
+    const r = await fetch(whistleUrl);
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    whistleRec = prepareWhistle(await decode(await r.arrayBuffer()));
+  } catch (e) {
+    console.warn('[map] dog: could not load the whistle recording (no whistle without it):', e);
+  }
+  whistleBusy = false;
+  // (a call that came before it was here: heard now, if it is not long past)
+  if (whistleRec && waiting && performance.now() - waiting.at < WAIT) {
+    const w = waiting;
+    waiting = null;
+    play(w.o, w.gain, w.o.ctx.currentTime);
+  }
+  waiting = null;
+}
+void loadWhistle();
+
+/** Is the recording there (checks)? */
+export const whistleReady = (): boolean => !!whistleRec;
+
+/** A call that came before the recording had loaded, and for how long (ms) it is still worth playing. */
+let waiting: { o: SfxOut; gain: number; at: number } | null = null;
+const WAIT = 1500;
+
+/** Play the recording, as it was given. */
+function play(o: SfxOut, gain: number, t: number): void {
+  const ctx = o.ctx;
+  const src = ctx.createBufferSource();
+  src.buffer = whistleRec;
+  const env = ctx.createGain();
+  env.gain.value = gain;
+  src.connect(env);
+  const made = send(o, env, 0.05);
+  src.start(t);
+  src.onended = () => {
+    for (const n of [src, env, ...made]) n.disconnect();
+  };
+}
+
+/** The call: his recorded whistle, as it was given and nothing else (before it has loaded: it waits for it). */
+const whistle: SfxMaker = (o, gain, t) => {
+  if (whistleRec) return play(o, gain, t);
+  waiting = { o, gain, at: performance.now() };
+  void loadWhistle();
+};
+
 const whine: SfxMaker = (o, gain, t) => {
   const r = o.rnd;
   const f = range(r, 820, 980);
@@ -208,13 +318,14 @@ const pant: LoopMaker = (o) => {
 };
 
 /** The makers, by name (registered below; checks may measure them offline). */
-export const DOG_SOUNDS = { dogBark: bark, dogWhine: whine, dogYawn: yawn, dogSniff: sniff, dogPat: pat, dogThump: thump } as const;
+export const DOG_SOUNDS = { dogBark: bark, dogWhine: whine, dogYawn: yawn, dogSniff: sniff, dogWhistle: whistle, dogPat: pat, dogThump: thump } as const;
 export const DOG_LOOPS = { dogPant: pant } as const;
 
 registerSfx('dogBark', bark, 'animals');
 registerSfx('dogWhine', whine, 'animals');
 registerSfx('dogYawn', yawn, 'animals');
 registerSfx('dogSniff', sniff, 'animals');
+registerSfx('dogWhistle', whistle, 'moves');
 registerSfx('dogPat', pat, 'moves');
 registerSfx('dogThump', thump, 'steps');
 registerLoop('dogPant', pant, 'animals');

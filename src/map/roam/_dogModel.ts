@@ -3,7 +3,7 @@ import { CH, Flock, Model, type Species, type V3 } from '../fauna/_kit';
 
 /**
  * The village dog that becomes his friend (roam/_dog.ts): a Khmer village dog
- * (ឆ្កែស្រុក), lean and short-haired, tan with a cream muzzle, chest, belly
+ * (សុនខស្រុក), lean and short-haired, tan with a cream muzzle, chest, belly
  * and socks, a darker saddle, pricked pointed ears and a tail curled up over
  * its back. The colours are the villages' sleeping dogs' (village/_kit.ts
  * `dog`: fur 0xc49a62, shade 0x9a7446).

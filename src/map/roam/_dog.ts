@@ -12,7 +12,7 @@ import type { MapFrame, MapPart, RoamMode, Subject } from '../types';
 import { t } from '../ui/lang';
 import { BODY_UNIT_M } from '../../world/scale';
 import { ADDONS, registerAddon, type AddonEnv, type AddonHold } from './_addons';
-import { closeDogCard, DEFAULT_DOG_NAME, DOG_NAMES, dogCalled, dogCardOpen, dogNameIn, dogQuoted, findDogName, openDogCard, pickDogCard, setDogCardDeps, type DogName } from './_dogCard';
+import { closeDogCard, customDogName, dogCalled, dogCardOpen, dogNameIn, dogNameParam, dogQuoted, oldDogName, openDogCard, parseDogName, setDogCardDeps, typeDogCard, type DogName } from './_dogCard';
 import { DOG_MENU } from './_dogHook';
 import { DOG_HEAD, DOG_SCALE, DogMesh, dogHeadLocal, dogPoint, newLook, type DogLook } from './_dogModel';
 import { ground, hallAt, KERB, lineWalk, onLand, PathSearch, STEP_UP, stepKind, stepTo, Trail, type Hall } from './_dogPath';
@@ -33,9 +33,11 @@ import type { RoamCtx } from './types';
  *   close in front of it: he scratches behind its ear instead of greeting; it
  *   tilts its head into his hand and its hind leg thumps.
  * - **It comes along**: after the second pet (or scratch) "The dog wants to come
- *   with you!", and a card asks its name (_dogCard.ts: លឿង "Yellow" for his tan
- *   dog, ខ្មៅ, ស, ក្រហម, តូច, សំណាង; Esc keeps លឿង). Kept: progress.ts
- *   `dog.adopted`, `dog.name` (the pets before it: `dog.pets`).
+ *   with you!", and a card asks its name (_dogCard.ts: he writes it, in Latin or
+ *   Khmer letters; no names to pick, no default: Esc leaves it without a name,
+ *   "សុនខ" / "the dog" in its words). Kept: progress.ts `dog.adopted`, `dog.name.km`
+ *   and `dog.name.latin` (an older `dog.name` id, one of the six village names the
+ *   first card offered, is still read; the pets before it: `dog.pets`).
  * - **Following** on foot: a few metres behind along his trail (_dogPath.ts),
  *   walking, trotting to keep up, galloping when he runs; round walls and water
  *   as he went, cutting corners where a straight way is free; up the temple
@@ -137,7 +139,8 @@ let lastCtx: RoamCtx | null = null;
 
 let adopted = false;
 let pets = 0;
-let name: DogName = DEFAULT_DOG_NAME;
+/** Its name: none until he picks or writes one. */
+let name: DogName | null = null;
 /** No dog at all (`dog=0`). */
 let hidden = false;
 /** Checks only: held standing (`dog=stand`), a gait shown on the spot (`doggait=1|2|3`: walk, trot, gallop). */
@@ -254,9 +257,14 @@ function sound(name: string, gain: number): void {
 /** The key that calls it, as the player plays (0, or none on a pad and on touch: the explorer menu). */
 const viaMenu = () => pad.active || document.body.classList.contains('roam-touch');
 const greetKey = () => (pad.active ? padName('down', pad.kind) : 'F');
-/** Its name in a prompt or a toast ("ឆ្កែស": a one-letter name reads as a name), and on its own in quotes («ស»). */
+/** Its name in a prompt or a toast ("សុនខស": a one-letter name reads as a name; no name yet: "សុនខ" / "the dog"), and on its own in quotes («ស»). */
 const named = () => dogCalled(name);
-const quoted = () => dogQuoted(name);
+const quoted = () => (name ? dogQuoted(name) : named());
+/** A sentence with its name in it; an English one starts with a capital ("the dog is coming!" → "The dog is coming!"). */
+const say = (key: Parameters<typeof t>[0], vars: Record<string, string>): string => {
+  const s = t(key, vars);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 
 function toast(text: string): void {
   env?.hud.toast(text);
@@ -777,7 +785,6 @@ function appearNear(ctx: RoamCtx): boolean {
   route = 'direct';
   toFoot = false;
   joy = 2.5;
-  sound('dogWhine', 0.8);
   return true;
 }
 
@@ -1281,7 +1288,6 @@ function comeLife(ctx: RoamCtx, dt: number): void {
     going = false;
     settled = 0;
     joy = Math.max(joy, 2);
-    sound('dogWhine', 0.7);
   }
 }
 
@@ -1601,8 +1607,8 @@ function adopt(ask: boolean): void {
   if (ask) ASK.in = 1.6;
 }
 const ASK = { in: -1 };
-/** The name card, to open once the map has started (the loading screen gone: `started`); the name to pick in it (checks). */
-const CARD = { pending: false, pick: -1 };
+/** The name card, to open once the map has started (the loading screen gone: `started`); the text to write in it (checks). */
+const CARD = { pending: false, text: '' };
 const started = (): boolean => {
   const l = document.getElementById('loading');
   return !l || l.classList.contains('done');
@@ -1838,6 +1844,18 @@ function petDogStep(ctx: RoamCtx, dt: number): void {
 
 // ── Calling ────────────────────────────────────────────────────────────────
 
+/** When he last whistled (ms): a hammered key does not stack whistles. */
+let whistledAt = -1e9;
+
+/** He whistles for it: his own sound, the same whatever the dog's distance (no sound in a shot). The dog itself makes none: only the whistle is heard. */
+function whistle(): void {
+  if (!env || env.shot) return;
+  const now = performance.now();
+  if (now - whistledAt < 700) return;
+  whistledAt = now;
+  SFX.play('dogWhistle', 1);
+}
+
 function call(ctx: RoamCtx): void {
   if (!adopted || hidden) {
     toast(t('dogNone'));
@@ -1855,29 +1873,28 @@ function call(ctx: RoamCtx): void {
     toast(t('dogDoor', { name: named() }));
     return;
   }
+  // (a whistle, out in the open: not in a holy hall)
+  whistle();
   // (from home, or nowhere near: in by him if it can be there; else it stays where it is, and says so)
   const comeIn = () => {
     // (where a dog could come up on foot — not a roof —: the look's end says, if it is still looking)
     const can = reachHim(ctx, true);
-    if (can !== null) toast(can && appearNear(ctx) ? t('dogComing', { name: named() }) : t('dogNoWay', { name: named() }));
+    if (can !== null) toast(can && appearNear(ctx) ? say('dogComing', { name: named() }) : say('dogNoWay', { name: named() }));
   };
   if (life === 'bed' || life === 'away' || !D.placed || look.fade < 0.5) return comeIn();
   const py = hisLevel(ctx);
   if (d < 5 && Math.abs(D.y - py) <= STEP_UP && !Number.isNaN(onHisLevel(ctx, D.x, D.z, py))) {
-    toast(t('dogHere', { name: named() }));
+    toast(say('dogHere', { name: named() }));
     life = 'come';
     route = 'direct';
     joy = 2;
-    sound('dogWhine', 0.8);
     return;
   }
   if (d > SEARCH_MAX * 0.8) return comeIn();
   seek('call', p.x, py, p.z, Math.min(SEARCH_MAX, d * 3 + 60));
   life = 'come';
   route = 'none';
-  BARK_PULSE.t = 0.22;
-  sound('dogBark', 0.5);
-  toast(t('dogComing', { name: named() }));
+  toast(say('dogComing', { name: named() }));
 }
 
 // ── Each step ──────────────────────────────────────────────────────────────
@@ -2005,7 +2022,7 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
 /** He is far from it and no way was found: it waits; a hint says how to call it (once a landing). */
 function farHint(): void {
   farSaid = true;
-  toast(viaMenu() ? t('dogFarMenu', { name: named() }) : t('dogFar', { name: named(), key: '0' }));
+  toast(viaMenu() ? say('dogFarMenu', { name: named() }) : say('dogFar', { name: named(), key: '0' }));
 }
 
 /** A search ended: on its way, or it waits. */
@@ -2022,7 +2039,7 @@ function foundWay(ctx: RoamCtx): void {
     const ok2 = REACH.ok;
     if (REACH.call) {
       REACH.call = false;
-      toast(ok2 && appearNear(ctx) ? t('dogComing', { name: named() }) : t('dogNoWay', { name: named() }));
+      toast(ok2 && appearNear(ctx) ? say('dogComing', { name: named() }) : say('dogNoWay', { name: named() }));
     }
     return;
   }
@@ -2063,7 +2080,7 @@ function foundWay(ctx: RoamCtx): void {
     ri = 0;
     toFoot = true;
     life = 'come';
-    if (why === 'call') toast(t('dogNoWay', { name: named() }));
+    if (why === 'call') toast(say('dogNoWay', { name: named() }));
     return;
   }
   route = 'none';
@@ -2073,7 +2090,7 @@ function foundWay(ctx: RoamCtx): void {
     settled = 0;
   }
   const p = ctx.body.pos;
-  if (why === 'call') toast(t('dogNoWay', { name: named() }));
+  if (why === 'call') toast(say('dogNoWay', { name: named() }));
   else if (!farSaid && len3(p.x - D.x, p.y - D.y, p.z - D.z) > FAR) farHint();
 }
 
@@ -2108,12 +2125,15 @@ function draw(f: MapFrame, mode: RoamMode): void {
 function readSaved(): void {
   adopted = progress.get('dog.adopted', false);
   pets = progress.get('dog.pets', 0);
-  name = findDogName(progress.get('dog.name', DEFAULT_DOG_NAME.id)) ?? DEFAULT_DOG_NAME;
+  name = customDogName(progress.get('dog.name.km', ''), progress.get('dog.name.latin', '')) ?? oldDogName(progress.get<string>('dog.name', '')) ?? null;
 }
 
 function setName(n: DogName): void {
   name = n;
-  if (env && !env.shot) progress.set('dog.name', n.id);
+  if (!env || env.shot) return;
+  progress.set('dog.name', null);
+  progress.set('dog.name.km', n.km);
+  progress.set('dog.name.latin', n.latin ? n.latin : null);
 }
 
 registerAddon({
@@ -2135,7 +2155,7 @@ registerAddon({
         hintAfterAdopt();
       },
       onClose: (fresh) => {
-        if (fresh) hintAfterAdopt(true);
+        if (fresh) hintAfterAdopt();
       },
       sound: (s) => e.uiSound(s),
     });
@@ -2237,7 +2257,7 @@ registerAddon({
     if (CARD.pending && started() && mode !== 'overview') {
       CARD.pending = false;
       openDogCard(true);
-      if (CARD.pick >= 0) pickDogCard(CARD.pick);
+      if (CARD.text) typeDogCard(CARD.text);
     }
     if (!stepped) {
       clock += f.dt;
@@ -2302,20 +2322,20 @@ registerAddon({
     }
     // (as it really is: gone home (or asleep on its bed while he is home: his house's own values bring that back) comes in
     // by him again; waiting where he left it; else by him, as it stands, sits or lies)
-    if (life === 'away' || life === 'bed' || !D.placed) return { dog: 'away', dogname: name.id };
+    const kept: Record<string, string> = name ? { dogname: dogNameParam(name) } : {};
+    if (life === 'away' || life === 'bed' || !D.placed) return { dog: 'away', ...kept };
     const what = PET.on ? PET.kind : life === 'wait' || life === 'door' ? 'wait' : pose.restGoal >= 3 ? 'sleep' : pose.restGoal === 2 ? 'lie' : pose.restGoal === 1 ? 'sit' : 'follow';
     return {
       dog: what,
-      dogname: name.id,
+      ...kept,
       ...(what === 'wait' || d > 6 ? { dogat: `${D.x.toFixed(1)},${D.z.toFixed(1)}` } : {}),
     };
   },
 });
 
 /** The hints after it came along: how to call it, and the scratch. */
-function hintAfterAdopt(kept = false): void {
-  if (kept) toast(t('dogNamed', { name: quoted() }));
-  toastLater(viaMenu() ? t('dogFollowsMenu', { name: named() }) : t('dogFollows', { name: named(), key: '0' }), 3);
+function hintAfterAdopt(): void {
+  toastLater(viaMenu() ? say('dogFollowsMenu', { name: named() }) : say('dogFollows', { name: named(), key: '0' }), 3);
   toastLater(t('dogScratchHint', { name: named(), key: greetKey() }), 6.2);
 }
 
@@ -2323,7 +2343,7 @@ function hintAfterAdopt(kept = false): void {
 
 function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
   const v = q.get('dog');
-  const nm = findDogName(q.get('dogname'));
+  const nm = parseDogName(q.get('dogname'));
   if (nm) name = nm;
   if (q.has('dogpets')) pets = Math.max(0, Number(q.get('dogpets')) || 0);
   if (!v) return;
@@ -2427,8 +2447,7 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     pose.rest = pose.restGoal = 1;
     // (opened once the map has started: never over the loading screen and its Start button)
     CARD.pending = true;
-    const i = Number(q.get('dognamepick'));
-    CARD.pick = Number.isInteger(i) ? i : -1;
+    CARD.text = q.get('dognametype') ?? '';
   } else pose.rest = pose.restGoal = 0;
   HOLD.stand = v === 'stand';
   HOLD.gait = q.has('doggait') ? clamp(Number(q.get('doggait')) || 0, 0, 3) : -1;
@@ -2450,7 +2469,7 @@ export interface DogSpot {
 export interface DogInfo {
   /** He has a dog (it follows him). */
   adopted: boolean;
-  /** Its name (Khmer letters, Latin spelling); the default until one is picked. */
+  /** Its name (Khmer letters, Latin spelling); empty until one is picked. */
   name: { km: string; latin: string };
   /** `nap` / `awake`: the village dog, not his yet; `follow`, `come`, `wait`: his, roaming; `bed`: asleep on its bed (he is home); `away`: home while he is on the map. */
   life: Life;
@@ -2468,8 +2487,8 @@ const INFO: DogInfo = { adopted: false, name: { km: '', latin: '' }, life: 'nap'
 /** The dog now (one object, filled again each call). */
 export function dogState(): Readonly<DogInfo> {
   INFO.adopted = adopted;
-  INFO.name.km = name.km;
-  INFO.name.latin = name.latin;
+  INFO.name.km = name?.km ?? '';
+  INFO.name.latin = name?.latin ?? '';
   INFO.life = life;
   INFO.x = D.x;
   INFO.y = D.y;
@@ -2529,11 +2548,10 @@ export function dogHome(on: boolean): void {
 export const dogAdopted = (): boolean => adopted;
 
 /** Its name in the language in use, or null while he has none. */
-export const dogNameNow = (): string | null => (adopted ? dogNameIn(name) : null);
+export const dogNameNow = (): string | null => (adopted && name ? dogNameIn(name) : null);
 
 /** The explorer menu's "Dog's name": the card (only once he has a dog). */
 export function openDogName(): void {
   if (adopted) openDogCard(false);
 }
 
-export { DOG_NAMES };

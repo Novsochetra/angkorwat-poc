@@ -1785,7 +1785,7 @@ may go: the step rules, his trail, the path search), `roam/_dogModel.ts` (the do
 pose shader), `roam/_dogCard.ts` (its name: the names and the card), `roam/_dogHook.ts` (the
 explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog.ts`.
 
-- **The dog**: a Khmer village dog (ឆ្កែស្រុក): lean, short tan coat (the villages'
+- **The dog**: a Khmer village dog (សុនខស្រុក): lean, short tan coat (the villages'
   sleeping dogs' colours, village/_kit.ts `dog`), cream muzzle, chest, belly and socks, a
   darker saddle, pricked pointed ears (pink inside), a tail curled up over its back; drawn
   1.2 × a real dog's 0.46 m at the shoulder (beside the explorer drawn 1.4 × his size, with
@@ -1803,7 +1803,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   going; within 3.4 m it stands, wags harder and comes a step to him; it never goes far from
   its spot, and naps again once he has been 17 m off for 8 s.
 - **Petting** (on foot, ≤ 2.5 m, facing it within 49°; not while busy or held): E
-  "អង្អែលឆ្កែ / Pet the dog" ("អង្អែល{name} / Pet {name}" once it is his). He turns to it, it
+  "អង្អែលសុនខ / Pet the dog" ("អង្អែល{name} / Pet {name}" once it is his). He turns to it, it
   comes to sit at his front right facing him, he squats (knees out over his belly, leaning a
   little, his face to it: his hat's brim stays clear of his face) and his right hand pats
   its head three times (arm IK to its crown, read off its pose: `dogPoint`), his left fist
@@ -1814,19 +1814,29 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   instead of a greeting he scratches behind its left ear in small circles; it tilts its
   head into his hand, eyes shut, and its left hind leg thumps (a soft thump each). F with
   nobody near: it looks up at him, a tilt of the head.
-- **It comes along**: two pets or scratches (kept in `dog.pets`): the first "ឆ្កែគ្រវីកន្ទុយ
-  — វាចូលចិត្តអ្នកហើយ!", the second "ឆ្កែចង់ទៅជាមួយអ្នក!" (a happy bark) and the name card:
-  "ដាក់ឈ្មោះឱ្យឆ្កែរបស់អ្នក / Give your dog a name" (only once the map has started: never over
-  the loading screen; the E prompt hides while it is open), six village dog names, each in Koulen with
-  its Latin spelling: លឿង Leung "Yellow" (his tan dog: the default), ខ្មៅ Khmao, ស Sar, ក្រហម
-  Krahom, តូច Touch "Little one", សំណាង Samnang "Lucky"; the one picked big in gold. ← → or
-  1–6 pick, Enter "យកឈ្មោះនេះ" keeps it, Esc "ទុកឈ្មោះ លឿង" keeps the default; the pad: the
-  d-pad, ✕ picks, △ keeps, ○ shuts; on a phone three chips a row. Then two hints: "{name}
-  ដើរតាមអ្នកហើយ · ចុច 0 ហៅវាមក" (with a pad or on touch: "… call it from the menu"), "នៅក្បែរ
-  {name}៖ ចុច F អេះត្រចៀកវា". Kept: progress.ts `dog.adopted`, `dog.name` (the id). The
-  explorer menu's "ឈ្មោះឆ្កែ / Dog's name" (its Me page) opens the card again. In prompts and toasts its
-  name is "ឆ្កែ" + the name in Khmer ("អង្អែលឆ្កែស", "នៅក្បែរឆ្កែស៖": a one-letter name never
-  reads as a word), and in «» where it is named ("ឆ្កែរបស់អ្នកឈ្មោះ «ស»"). (No snack: food in his
+- **It comes along**: two pets or scratches (kept in `dog.pets`): the first "សុនខគ្រវីកន្ទុយ
+  — វាចូលចិត្តអ្នកហើយ!", the second "សុនខចង់ទៅជាមួយអ្នក!" (a happy bark) and the name card:
+  "ដាក់ឈ្មោះឱ្យសុនខរបស់អ្នក / Give your dog a name" (only once the map has started: never over
+  the loading screen; the E prompt hides while it is open). **The word for a dog is សុនខ**
+  (the polite one), never ឆ្កែ, in every word of the dog. **He writes its name** (as for the
+  explorer's, `_nameCard.ts`): a field, typed in Latin letters (khmerName.ts writes it in Khmer:
+  Mimi → មីមី; a name that can be written more than one way shows the other spellings as chips
+  "ឬសរសេរបែបនេះ") or in Khmer straight away; the big gold name, in Koulen, follows what is typed.
+  **There are no names to pick from and no default** (the six village names the first card
+  offered, លឿង ខ្មៅ ស ក្រហម តូច សំណាង, are gone; a dog already given one keeps it): the card opens
+  empty, the big name says "ឈ្មោះសុនខ / Dog's name" faded, and "យកឈ្មោះនេះ" is dim until
+  something is written (Enter with nothing shakes the field). The field has the focus on a desktop
+  keyboard (a letter anywhere else would reach the mini-map's M and N first), Enter keeps, Esc
+  "ពេលក្រោយ / Not now" shuts (the dog goes with him, unnamed); the pad: a letter board while the pad
+  is in use, the spellings, ✕ presses, △ keeps, ○ shuts; on a phone the card stands at the top (the
+  keyboard comes up under it). Unnamed it is "សុនខ" / "the dog" in prompts and toasts. Then two hints:
+  "{name} ដើរតាមអ្នកហើយ · ចុច 0 ហៅវាមក" (with a pad or on touch: "… call it from the menu"), "នៅក្បែរ
+  {name}៖ ចុច F អេះត្រចៀកវា". Kept: progress.ts `dog.adopted`, `dog.name.km` and `dog.name.latin`
+  (an older `dog.name` id, one of the six, is still read, and forgotten when a name is kept; nothing
+  kept: no name). The explorer menu's "ឈ្មោះសុនខ / Dog's name" (its Me page) opens the card again. In
+  prompts and toasts its name is "សុនខ" + the name in Khmer ("អង្អែលសុនខស", "នៅក្បែរសុនខស៖": a
+  one-letter name never reads as a word), and in «» where it is named ("សុនខរបស់អ្នកឈ្មោះ «ស»"); in
+  English the Latin spelling, or the Khmer letters for a name written in Khmer. (No snack: food in his
   hands is the Animator's carry pose, laid over any posture's arms, so he could not hold it
   out to the dog cleanly; two pets it is.)
 - **Following** (on foot): along his trail (`Trail`: his feet every 0.6 m while he walks
@@ -1862,7 +1872,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   before the porch, east of the way in between two front seima, clear of the processions'
   way; else where he went in (his trail's last crumb outside) — and sits there watching for
   him, also while he is held inside (a blessing, Visak Bochea's candle); moved off to let
-  someone by, back after a while. He comes out: it comes to him. 0 there: "ឆ្កែមិនចូលទីសក្ការៈ
+  someone by, back after a while. He comes out: it comes to him. 0 there: "សុនខមិនចូលទីសក្ការៈ
   ទេ · {name} រង់ចាំអ្នកនៅខាងក្រៅ". A start or a landing in a hall puts it at the door.
 - **Waiting**: in the boat, under the glider or the parachute, in the balloon, or while
   another add-on holds him (the bicycle, the cart, the buffalo, the zip line, the hammock,
@@ -1872,9 +1882,11 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   after a way was not found only once he has moved 6 m on, or 6, 12, 24, 40 s later). With
   no way within 420 m (he landed far off, across a river): it waits, and says so once a
   landing: "{name} នៅឆ្ងាយ · ចុច 0 ហៅវាមក".
-- **0 "ហៅឆ្កែ / Call the dog"** (the key list's row; the explorer menu's "ហៅឆ្កែ" on its Moves
-  page, for a pad (△) or touch, shown once he has a dog): "{name} កំពុងរត់មករកអ្នក!" and it comes along the
-  way it finds (a bark as it sets off); with none, or more than 336 m off, it comes out by
+- **0 "ហៅសុនខ / Call the dog"** (the key list's row; the explorer menu's "ហៅសុនខ" on its Moves
+  page, for a pad (△) or touch, shown once he has a dog): he whistles first (`dogWhistle`, his own
+  recorded whistle, the same whatever the dog's distance; a second call within 0.7 s adds none; none
+  in a hall: the call there only says the dog waits outside; none in a shot), then "{name}
+  កំពុងរត់មករកអ្នក!" and it comes along the way it finds (a bark as it sets off); with none, or more than 336 m off, it comes out by
   him 5–9 m off, from behind leaves or bark seen from the camera, else out of the camera's
   view (a soft dissolve, 0.7 s: a dither in its shader, its shadow too) and runs to him —
   only onto a floor on his level (within a step of his, never the tier under a terrace's
@@ -1882,7 +1894,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   where a dog could come up on foot (below). With no such spot it stays where it is and says
   so: "{name} មិនអាចមកដល់ទីនេះបានទេ · វានៅរង់ចាំអ្នក"; a way that only gets near (him up a
   deck): to its foot, where it waits looking up. Close by (on his level: distances count
-  height): "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានឆ្កែទេ — មានឆ្កែស្រុកមួយក្បាលដេក
+  height): "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានសុនខទេ — មានសុនខស្រុកមួយក្បាលដេក
   ក្បែរហាងលក់ទំនិញ នៅភូមិត្នោត".
 - **Back to the map**: it goes home (to its bed when it has one) and is not drawn; the next
   time he is on his feet 1.8 s (landed from the leap, a shot's start) it comes in by where
@@ -1902,18 +1914,26 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   dogs' own synthesized bark, speech.ts `bark`, one or two "wau"s, its top softened: −29 dBFS
   at 0.75, as soft as the monkey's chatter), `dogWhine` (−35), `dogYawn` (−36), `dogSniff`
   (−40) on the animals bus, `dogPant` (lasting: −38 at its fullest, its nodes gone 3 s after
-  it stops), `dogPat` (moves, −33), `dogThump` (steps, −32); each softer the further it is
-  from him (silent past 43 m).
+  it stops), `dogWhistle` (moves, −14: a call is meant to be heard; the recording
+  `assets/sound/whistling-to-summon-ra-music-low-2-00-02.mp3` as it was given, its own pitch (no
+  jitter), whole, its echo to the end: only the silence after it is cut, 60 dB under its loudest;
+  fetched and decoded when `audio/_dog.ts` loads (three tries over a visit), faded 2 ms in and 80 ms
+  out and levelled on its loudest 100 ms (`WHISTLE_RMS`; the file itself is at −5); until it has
+  loaded, or if it fails, a synthesized two-tone "fweet-fweeoo" — a pure sine sliding 1.5 → 2.3
+  kHz, a breath, then 1.9 → 2.7 → 2.1 kHz with a wavering end — stands in; `whistleSource()` says
+  which, for checks), `dogPat`
+  (moves, −33), `dogThump` (steps, −32); each softer the further the dog is from him (silent
+  past 43 m), except his whistle.
 - **URL** (checks): `dog=follow` (his dog beside him at `at=`, behind at his left, else the
   nearest spot all round him on his level, else at his feet; at the door when he is in a hall) ·
   `dog=sit|lie|sleep` (settled by him so) · `dog=stand` (held standing) · `dog=pet|scratch`
   (petting it: `sim=_:2.2` well into it) · `dog=adopt` (the village dog awake in front of him,
   petted once: E the second time, `sim=e:0.1,_:4`) · `dog=name` (the name card open;
-  `dognamepick=<i>`) · `dog=nap|wake` (the village dog at home) · `dog=wait` (his dog at
+  `dognametype=<text>` writes `text` in the field) · `dog=nap|wake` (the village dog at home) · `dog=wait` (his dog at
   `dogat=x,z`: it comes if it can) · `dog=call` (called from `dogat=` at once) · `dog=bark`
   (barking at the nearest monkey or junglefowl, else ahead of it) · `dog=away` (gone home: it
   comes in by him once he is on his feet: with `roam=glide`, on landing) · `dog=0` (none
-  drawn) · `dogat=x,z` · `dogname=<id|Khmer|Latin>` · `dogpets=<n>` · `doggait=1|2|3` (walk,
+  drawn) · `dogat=x,z` · `dogname=<any name>` (in Latin or Khmer letters; a bug report writes `<Khmer>|<Latin>`; an old village name's id still reads; none: no name) · `dogpets=<n>` · `doggait=1|2|3` (walk,
   trot, gallop on the spot) · `dogfade=0‥1` (the dissolve held). The bug report gives the
   state it is really in: `dog=away` (gone home, or on its bed while he is home), `dog=wait&dogat=`
   (waiting where he left it, or at a hall's door), else `dog=follow|sit|lie|sleep` (and
