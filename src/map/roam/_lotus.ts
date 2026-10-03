@@ -836,6 +836,8 @@ registerAddon({
         hull.s = r.scale.x;
       }
       bed.update(f.dt, r ? hull : null);
+      // (its far meshes past where what they leave out is under half a pixel)
+      bed.view(f.camera);
     }
     laid?.frame(f.camera);
     // Back from picking: the player's own pitch and distance again (eased).
