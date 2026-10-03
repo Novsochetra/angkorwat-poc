@@ -18,9 +18,10 @@ import { stepWind, swayLand } from './veg/sway';
  *    furrows, shallow water mirroring the sky, rain rings (ground.ts);
  *  - `paddies:rice`: the hills in rows, seedlings to gold to stubble,
  *    swaying and waving in the wind: near the camera clumps of thin blades
- *    and heads (one draw), farther fans of three blades (one draw for every
- *    plot's), thinning out far off (rice.ts: the hills of the cells in view
- *    and in season);
+ *    and heads (two draws: whole, and a few metres on with two-segment
+ *    blades), farther fans of three blades and far off of two (a draw each
+ *    for every plot's), thinning out far off (rice.ts: the hills of the
+ *    cells in view and in season);
  *  - `paddies:props`: fences, ting mong, stooks, straw stacks, sugar palms
  *    (props.ts; they also cast shadows, while those can be seen: cull.ts).
  * Every frame: uniforms, the rice's cells near the camera (rice.ts) and

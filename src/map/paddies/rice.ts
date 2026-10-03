@@ -23,17 +23,26 @@ import { NURSERY, NURSERY_W, plotAt, plotSeason, STAGE_GLSL, SWEEP, type PlotPla
  *    outer ones leaning out and curling over) and thin heads (panicles) that
  *    come out above the leaves, arch over as the grain fills and go gold
  *    (beaded grain up close); the phone level has fewer blades and a shorter
- *    reach;
+ *    reach; past `full` (10–16 m) the same clump with its blades bent in two
+ *    segments, not three (a centimetre or two off the arc, a pixel there);
  *  - farther, a fan of three broad blades from one foot standing for the
- *    clump;
+ *    clump; past `far` (40–70 m) two of them, broader (`FAR_WIDE`: which two
+ *    by the hill, so the field keeps all three ways they lean; the third
+ *    narrows away over `FAR_BAND` first);
  *  - far off, the hills thin out: every other one (a checkerboard) goes and
  *    the rest broaden, and on the low level every other one again farther
  *    still (`sparse`, `sparse2`).
- * Two draws for all the rice: the near clumps, and the fans of every plot.
- * Every hill's numbers sit in one float texture (three texels a hill, cell
- * by cell, `CELL`); each draw is a list of hill numbers, the hills of the
- * cells in view and in season (a cell far off lists only the hills it keeps
- * there), written again only when the cells change. The fans' shader is the
+ * Four draws for all the rice: the near clumps, the clumps past `full`, the
+ * fans, and the fans past `far`, every plot's in each. Every hill's numbers
+ * sit in one float texture (three texels a hill, cell by cell, `CELL`); each
+ * draw is a list of hill numbers, the hills of the cells in view and in
+ * season (a cell far off lists only the hills it keeps there), written again
+ * only when the cells change. A cell is in one list of the clumps and one of
+ * the fans, by how near and far its hills' feet are from the camera (whole
+ * clumps while any of them is short of `full`, three-blade fans while any is
+ * short of `far`), so no hill is drawn twice but in the clumps' and fans'
+ * blend. Zoomed in (binoculars, a photo's zoom) `full` and `far` grow with
+ * the zoom. The fans' shader is the
  * clumps' without the leaf and head code and without `discard` (the GPU
  * shades only the blade in front, and the floor hidden under it not at all).
  * The shapes follow the stage (`Stage`): heads only while they are out, one
@@ -67,17 +76,27 @@ const CELL = 3.5;
 const TEX_ROW = 512;
 
 /**
- * By graphics level: blades and heads of a near clump, how near to the camera (m) hills are clumps, from how far
- * (m) every other hill is left out (a checkerboard; the rest broader), and from how far every other one again.
+ * By graphics level: blades and heads of a near clump, how near to the camera (m) hills are whole clumps (`full`:
+ * past it their blades bend in two segments, not three) and clumps at all (`reach`), from how far (m) every other
+ * hill is left out (a checkerboard; the rest broader), and from how far every other one again; from how far the fans
+ * have two blades, not three (`far`: the third narrows away over `FAR_BAND` as the other two broaden).
  */
-const NEAR: Record<GraphicsLevel, { blades: number; heads: number; reach: number; sparse: number; sparse2: number }> = {
-  low: { blades: 5, heads: 2, reach: 16, sparse: 40, sparse2: 70 },
-  medium: { blades: 8, heads: 3, reach: 24, sparse: 60, sparse2: 1e5 },
-  high: { blades: 8, heads: 3, reach: 24, sparse: 60, sparse2: 1e5 },
-  max: { blades: 8, heads: 3, reach: 36, sparse: 90, sparse2: 1e5 },
+const NEAR: Record<GraphicsLevel, { blades: number; heads: number; full: number; reach: number; far: number; sparse: number; sparse2: number }> = {
+  low: { blades: 5, heads: 2, full: 10, reach: 16, far: 40, sparse: 40, sparse2: 70 },
+  medium: { blades: 8, heads: 3, full: 11, reach: 24, far: 45, sparse: 60, sparse2: 1e5 },
+  high: { blades: 8, heads: 3, full: 12, reach: 24, far: 50, sparse: 60, sparse2: 1e5 },
+  max: { blades: 8, heads: 3, full: 16, reach: 36, far: 70, sparse: 90, sparse2: 1e5 },
 };
+/** A walk's view (degrees): through binoculars or a zoomed photo camera, `full` and `far` grow with the zoom. */
+const WALK_FOV = 50;
+/** How much nearer than a walk's view the camera shows things: 1 or more. */
+const zoomOf = (cam: PerspectiveCamera): number => Math.max(1, (Math.tan(MathUtils.degToRad(WALK_FOV / 2)) * cam.zoom) / Math.tan(MathUtils.degToRad(cam.fov / 2)));
 /** Clumps and fans blend over this band (m) short of the reach. */
 const BAND = 5;
+/** A fan's third blade narrows away over this band (m) short of `far`, the two others broadening to make up for it. */
+const FAR_BAND = 6;
+/** How much a far fan's two blades broaden (the three's coverage). */
+const FAR_WIDE = 1.35;
 /** Far off, the hills kept broaden this much at each step of thinning. */
 const BROADEN = 1.6;
 /** Kinds of strip (the vertex shader poses each its own way). */
@@ -86,7 +105,7 @@ const KIND = { fan: 0, blade: 1, head: 2 };
  * Where along a strip its rows of vertices are (0 foot … 1 tip): a fan blade, a leaf blade, a head (a thin neck,
  * then the grain), a straw stub (straight: one triangle).
  */
-const ROWS = { fan: [0, 0.5, 1], blade: [0, 1 / 3, 2 / 3, 1], head: [0, 0.25, 0.5, 0.75, 1], stub: [0, 1] };
+const ROWS = { fan: [0, 0.5, 1], blade: [0, 1 / 3, 2 / 3, 1], bladeMid: [0, 0.5, 1], head: [0, 0.25, 0.5, 0.75, 1], stub: [0, 1] };
 
 /**
  * What a plot's rice needs drawn now: `heads` (out above the leaves, till the
@@ -105,6 +124,8 @@ export interface RiceUniforms {
   uFocus: { value: Vector3 };
   /** How near to the camera hills are clumps (m). */
   uNear: { value: number };
+  /** From how far fans have two blades (m). */
+  uFar: { value: number };
   /** Every other hill gone from this far (m), and every other one of the rest from this far. */
   uSparse: { value: number };
   uSparse2: { value: number };
@@ -118,15 +139,17 @@ export interface RiceUniforms {
 
 /**
  * Strips of one kind (`n` of them: a pair of vertices at each row up the
- * strip, one at its tip). Per vertex `position` = (side −1‥1, along 0‥1, 0),
- * `aBlade` = (kind, its number in the hill, 0 inner … 1 outer).
+ * strip, one at its tip). Per vertex `position` = (side −1‥1, along 0‥1,
+ * 0 for the shape drawn near, 1 for its simpler twin drawn farther: a
+ * clump past `full`, a fan past `far`), `aBlade` = (kind, its number in
+ * the hill, 0 inner … 1 outer).
  */
-function addStrips(pos: number[], blade: number[], idx: number[], kind: number, n: number, rows: number[]): void {
+function addStrips(pos: number[], blade: number[], idx: number[], kind: number, n: number, rows: number[], far = 0): void {
   for (let b = 0; b < n; b++) {
     const v0 = pos.length / 3;
     for (let j = 0; j < rows.length; j++)
       for (const side of j === rows.length - 1 ? [0] : [-1, 1]) {
-        pos.push(side, rows[j], 0);
+        pos.push(side, rows[j], far);
         blade.push(kind, b, n > 1 ? b / (n - 1) : 0.5);
       }
     for (let j = 0; j + 1 < rows.length; j++) {
@@ -147,27 +170,30 @@ interface Shape {
   tris: number;
 }
 
-function shape(...strips: [kind: number, n: number, rows: number[]][]): Shape {
+function shape(...strips: [kind: number, n: number, rows: number[], far?: number][]): Shape {
   const pos: number[] = [];
   const blade: number[] = [];
   const idx: number[] = [];
-  for (const [kind, n, rows] of strips) addStrips(pos, blade, idx, kind, n, rows);
+  for (const [kind, n, rows, far] of strips) addStrips(pos, blade, idx, kind, n, rows, far);
   const normal = new BufferAttribute(new Float32Array(pos.length), 3);
   return { index: new BufferAttribute(new Uint16Array(idx), 1), position: new BufferAttribute(new Float32Array(pos), 3), normal, aBlade: new BufferAttribute(new Float32Array(blade), 3), tris: idx.length / 3 };
 }
 
 /**
- * The far fan: three broad blades from one foot (a vertex they share: a pair halfway up each and its tip), three
- * stubs after the cut (a triangle each).
+ * The fan: three broad blades from one foot (a vertex they share: a pair halfway up each and its tip), three
+ * stubs after the cut (a triangle each). `far`: the fans drawn past `uFar`, two of those blades only (the shader
+ * picks which two, hill by hill; `FAR_WIDE` broader: 7 vertices and 4 triangles, not 10 and 6).
  */
-function fanShape(stage: Stage): Shape {
-  if (stage === 'stubs') return shape([KIND.fan, 3, ROWS.stub]);
-  const pos: number[] = [0, 0, 0];
+function fanShape(stage: Stage, far = false): Shape {
+  const z = far ? 1 : 0;
+  const n = far ? 2 : 3;
+  if (stage === 'stubs') return shape([KIND.fan, n, ROWS.stub, z]);
+  const pos: number[] = [0, 0, z];
   const blade: number[] = [KIND.fan, 1, 0.5];
   const idx: number[] = [];
-  for (let b = 0; b < 3; b++) {
+  for (let b = 0; b < n; b++) {
     const v = pos.length / 3;
-    pos.push(-1, ROWS.fan[1], 0, 1, ROWS.fan[1], 0, 0, 1, 0);
+    pos.push(-1, ROWS.fan[1], z, 1, ROWS.fan[1], z, 0, 1, z);
     blade.push(KIND.fan, b, b / 2, KIND.fan, b, b / 2, KIND.fan, b, b / 2);
     // (wound as the strips are: a blade's face is the same side, for anything that reads it, as the snow does)
     idx.push(0, v + 1, v, v, v + 1, v + 2);
@@ -175,12 +201,17 @@ function fanShape(stage: Stage): Shape {
   return { index: new BufferAttribute(new Uint16Array(idx), 1), position: new BufferAttribute(new Float32Array(pos), 3), normal: new BufferAttribute(new Float32Array(pos.length), 3), aBlade: new BufferAttribute(new Float32Array(blade), 3), tris: idx.length / 3 };
 }
 
-/** The near clump of a graphics level: its blades (straight stubs after the cut), and its heads while they are out. */
-function clumpShape(level: GraphicsLevel, stage: Stage): Shape {
+/**
+ * The near clump of a graphics level: its blades (straight stubs after the cut), and its heads while they are out.
+ * `mid`: the clumps past `uFull`, their blades bending in two segments, not three (the heads as near).
+ */
+function clumpShape(level: GraphicsLevel, stage: Stage, mid = false): Shape {
   const { blades, heads } = NEAR[level];
-  if (stage === 'stubs') return shape([KIND.blade, blades, ROWS.stub]);
-  if (stage === 'leaves') return shape([KIND.blade, blades, ROWS.blade]);
-  return shape([KIND.blade, blades, ROWS.blade], [KIND.head, heads, ROWS.head]);
+  const z = mid ? 1 : 0;
+  const rows = mid ? ROWS.bladeMid : ROWS.blade;
+  if (stage === 'stubs') return shape([KIND.blade, blades, ROWS.stub, z]);
+  if (stage === 'leaves') return shape([KIND.blade, blades, rows, z]);
+  return shape([KIND.blade, blades, rows, z], [KIND.head, heads, ROWS.head, z]);
 }
 
 /** Give a geometry a shape (the same instances: only the shared strips change). */
@@ -198,6 +229,7 @@ uniform sampler2D uRcHills;
 uniform float uSeason;
 uniform vec3 uFocus;
 uniform float uNear;
+uniform float uFar;
 uniform float uSparse;
 uniform float uSparse2;
 uniform float uPx;
@@ -271,6 +303,11 @@ vec3 objectNormal;
   float kind = aBlade.x;
 #endif
   float bi = aBlade.y;
+#ifdef RC_FAN
+  // (the blade a fan leaves out far off: one of its three, by the hill, so the field keeps all three ways they lean)
+  float rcDrop = floor(fract(rnd * 7.31) * 2.999);
+  if (position.z > 0.5) bi += step(rcDrop, bi);
+#endif
   float outer = aBlade.z;
   float t = position.y;
 #ifdef RC_FAN
@@ -348,6 +385,9 @@ vec3 objectNormal;
 #ifdef RC_FAN
   // (a fan's stub is one triangle whichever shape draws it: narrowing to its tip)
   width *= 1.0 - cutT * t;
+  // (short of uFar a fan's third blade narrows away and the two others broaden: past it the fan has two)
+  float rcThin = smoothstep(uFar - ${FAR_BAND.toFixed(1)}, uFar, camD);
+  width *= position.z > 0.5 ? ${FAR_WIDE.toFixed(2)} : abs(bi - rcDrop) < 0.5 ? 1.0 - rcThin : 1.0 + ${(FAR_WIDE - 1).toFixed(2)} * rcThin;
 #endif
   vec3 P = foot + vec3(dir.x * arc.x, arc.y, dir.y * arc.x) + side * position.x * width * 0.5;
   // The wind: the land's sway, and waves running across the field downwind.
@@ -460,6 +500,8 @@ interface Cell {
   i1: number;
   c: Vector3;
   r: number;
+  /** The box round its hills' feet (x0, y0, z0, x1, y1, z1): how near and far they are from the camera (the shader's distances). */
+  feet: Float32Array;
 }
 
 /** A sphere round hills `i0` ‥ `i1` (feet, `aT0` of each: 12 numbers a hill), their blades and their arching tips. */
@@ -614,7 +656,14 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
     const n = c.hills.length;
     const ranked = (rank: number) => c.hills.filter((h) => h[8] >= 2 * rank).length;
     const s = sphereOf(data, at, at + n);
-    cells.push({ plot: c.plot, bed: c.bed, i0: at, k0: at + n - ranked(1), k1: at + n - ranked(2), i1: at + n, c: s.center, r: s.radius });
+    const feet = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+    for (let h = at; h < at + n; h++)
+      for (let a = 0; a < 3; a++) {
+        const v = data[texelOf(h) + a];
+        feet[a] = Math.min(feet[a], v);
+        feet[3 + a] = Math.max(feet[3 + a], v);
+      }
+    cells.push({ plot: c.plot, bed: c.bed, i0: at, k0: at + n - ranked(1), k1: at + n - ranked(2), i1: at + n, c: s.center, r: s.radius, feet });
     at += n;
     cellsTo[c.plot] = cells.length;
   }
@@ -624,6 +673,7 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
     uSeason: season,
     uFocus: { value: new Vector3(0, -1e4, 0) },
     uNear: { value: NEAR.medium.reach },
+    uFar: { value: NEAR.medium.far },
     uSparse: { value: NEAR.medium.sparse },
     uSparse2: { value: NEAR.medium.sparse2 },
     uPx: { value: 0.001 },
@@ -656,21 +706,25 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
     return { mesh, geo, ids, shown: [] as number[], picked: [] as number[] };
   };
 
-  // The fans: every plot's in one mesh (full, or stubs while every fan drawn is cut).
-  const fanShapes = { full: fanShape('leaves'), stubs: fanShape('stubs') };
+  // The fans: every plot's in one mesh (full, or stubs while every fan drawn is cut), and past `far` those of two blades.
+  const fanShapes = { full: fanShape('leaves'), stubs: fanShape('stubs'), farFull: fanShape('leaves', true), farStubs: fanShape('stubs', true) };
   const fans = listMesh('paddies:rice', fanShapes.full, true);
+  const farFans = listMesh('paddies:rice-far', fanShapes.farFull, true);
   let fansStubs = false;
-  // The near clumps: one mesh, the shape of the graphics level and what the rice near the camera needs now.
+  let farStubs = false;
+  // The near clumps: one mesh, the shape of the graphics level and what the rice near the camera needs now; past
+  // `full` the clumps with blades of two segments.
   let level: GraphicsLevel = graphicsNow.level;
   let nearStage: Stage = 'heads';
   const clumps = new Map<string, Shape>();
-  const clumpOf = (lv: GraphicsLevel, st: Stage): Shape => {
-    const key = `${lv}:${st}`;
+  const clumpOf = (lv: GraphicsLevel, st: Stage, mid = false): Shape => {
+    const key = `${lv}:${st}:${mid}`;
     let sh = clumps.get(key);
-    if (!sh) clumps.set(key, (sh = clumpShape(lv, st)));
+    if (!sh) clumps.set(key, (sh = clumpShape(lv, st, mid)));
     return sh;
   };
   const near = listMesh('paddies:rice-near', clumpOf(level, nearStage), false);
+  const mid = listMesh('paddies:rice-mid', clumpOf(level, nearStage, true), false);
 
   /** Write a mesh's hill list again from its cells picked (codes: cell × 4 + 0 all its hills, 1 those kept past `sparse`, 2 past `sparse2`), if they changed. */
   const write = (m: typeof near) => {
@@ -760,7 +814,12 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
 
   const update = (f: MapFrame) => {
     const { reach, sparse, sparse2 } = NEAR[graphicsNow.level];
+    // (zoomed in, the simpler shapes start as far off as they look)
+    const zoom = zoomOf(f.camera);
+    const full = NEAR[graphicsNow.level].full * zoom;
+    const far = NEAR[graphicsNow.level].far * zoom;
     uniforms.uNear.value = reach;
+    uniforms.uFar.value = far;
     uniforms.uSparse.value = sparse;
     uniforms.uSparse2.value = sparse2;
     uniforms.uRcLight.value.copy(f.lightDir);
@@ -781,10 +840,13 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
     const ey = eye.y;
     const ez = eye.z;
     near.picked.length = 0;
+    mid.picked.length = 0;
     fans.picked.length = 0;
-    /** The most the near clumps and the fans need drawn (`STAGES` index; −1: nothing picked). */
+    farFans.picked.length = 0;
+    /** The most the clumps, the fans and the far fans need drawn (`STAGES` index; −1: nothing picked). */
     let needNear = -1;
     let needFans = -1;
+    let needFar = -1;
     for (const pl of plots) {
       const pb = plotBall[pl.index];
       if (!pb) continue;
@@ -801,12 +863,15 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
       const dMin = dp - pb.radius - 1;
       const dMax = dp + pb.radius + 1;
       const code = dMin >= sparse2 ? 2 : dMin >= sparse && dMax < sparse2 ? 1 : dMax < sparse ? 0 : -1;
-      if (seen === 2 && dMin > reach && code >= 0) {
+      // (and all of it fans of three blades, or all of two)
+      const whole = dMin >= far ? farFans : dMax < far ? fans : null;
+      if (seen === 2 && dMin > reach && code >= 0 && whole) {
         for (let i = cellsFrom[pl.index]; i < cellsTo[pl.index]; i++) {
           const c = cells[i];
           if (c.bed ? !bed : !rows) continue;
-          fans.picked.push(i * 4 + code);
-          needFans = Math.max(needFans, c.bed ? 1 : stage);
+          whole.picked.push(i * 4 + code);
+          if (whole === fans) needFans = Math.max(needFans, c.bed ? 1 : stage);
+          else needFar = Math.max(needFar, c.bed ? 1 : stage);
         }
         continue;
       }
@@ -817,19 +882,30 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
         const y = cellBall[i * 4 + 1];
         const z = cellBall[i * 4 + 2];
         const r = cellBall[i * 4 + 3];
-        const dc = Math.sqrt((x - ex) ** 2 + (y - ey) ** 2 + (z - ez) ** 2);
-        const d = dc - r;
+        const d = Math.sqrt((x - ex) ** 2 + (y - ey) ** 2 + (z - ez) ** 2) - r;
         // (a plot wholly in view: every cell of it too)
         if (seen === 1 && !inView(x, y, z, r, d)) continue;
         const st = c.bed ? 1 : stage;
-        if (d < reach) {
-          near.picked.push(i * 4);
+        // (how near and far its hills' feet are: the shader's distances; a cell is in one list of each kind)
+        const fb = c.feet;
+        const dn = Math.hypot(Math.max(0, fb[0] - ex, ex - fb[3]), Math.max(0, fb[1] - ey, ey - fb[4]), Math.max(0, fb[2] - ez, ez - fb[5]));
+        const df = Math.hypot(Math.max(ex - fb[0], fb[3] - ex), Math.max(ey - fb[1], fb[4] - ey), Math.max(ez - fb[2], fb[5] - ez));
+        // (clumps: whole, or of two-segment blades when every hill of the cell is past `full`)
+        if (dn < reach) {
+          (dn < full ? near : mid).picked.push(i * 4);
           needNear = Math.max(needNear, st);
         }
-        // (fans unless every hill of the cell is a whole clump; far off only the hills kept there)
-        if (dc + r > reach - BAND) {
-          fans.picked.push(i * 4 + (d >= sparse2 ? 2 : d >= sparse ? 1 : 0));
-          needFans = Math.max(needFans, st);
+        // (fans unless every hill of the cell is a whole clump, of two blades when every one is past `far`; far off
+        // only the hills kept there)
+        if (df > reach - BAND) {
+          const code = dn >= sparse2 ? 2 : dn >= sparse ? 1 : 0;
+          if (dn < far) {
+            fans.picked.push(i * 4 + code);
+            needFans = Math.max(needFans, st);
+          } else {
+            farFans.picked.push(i * 4 + code);
+            needFar = Math.max(needFar, st);
+          }
         }
       }
     }
@@ -839,20 +915,27 @@ export function buildRice(field: HeightField, plots: PlotPlan[], season: { value
       level = graphicsNow.level;
       nearStage = stage;
       useShape(near.geo, clumpOf(level, nearStage));
+      useShape(mid.geo, clumpOf(level, nearStage, true));
     }
     const stubs = needFans === 0;
     if (needFans >= 0 && stubs !== fansStubs) {
       fansStubs = stubs;
       useShape(fans.geo, stubs ? fanShapes.stubs : fanShapes.full);
     }
-    write(near);
-    write(fans);
-    near.mesh.visible = near.geo.instanceCount > 0;
-    fans.mesh.visible = fans.geo.instanceCount > 0;
+    const stubsFar = needFar === 0;
+    if (needFar >= 0 && stubsFar !== farStubs) {
+      farStubs = stubsFar;
+      useShape(farFans.geo, stubsFar ? fanShapes.farStubs : fanShapes.farFull);
+    }
+    for (const m of [near, mid, fans, farFans]) {
+      write(m);
+      m.mesh.visible = m.geo.instanceCount > 0;
+    }
   };
 
   const n = NEAR[level];
   const tris = STAGES.map((st) => clumpOf(level, st).tris).reverse();
-  const summary = `clumps of ${n.blades} blades and ${n.heads} heads (${tris.join(' / ')} triangles with heads / leaves / stubble) to ${n.reach} m, fans (${fanShapes.full.tris} / ${fanShapes.stubs.tris}) past it, every other hill past ${n.sparse} m${n.sparse2 < 1e4 ? `, every other again past ${n.sparse2} m` : ''}, ${cells.length} cells`;
-  return { meshes: [fans.mesh, near.mesh], uniforms, count, draws: 2, summary, update };
+  const midTris = STAGES.map((st) => clumpOf(level, st, true).tris).reverse();
+  const summary = `clumps of ${n.blades} blades and ${n.heads} heads (${tris.join(' / ')} triangles with heads / leaves / stubble) to ${n.full} m, then of two-segment blades (${midTris.join(' / ')}) to ${n.reach} m, fans (${fanShapes.full.tris} / ${fanShapes.stubs.tris}) past it, of two blades (${fanShapes.farFull.tris} / ${fanShapes.farStubs.tris}) past ${n.far} m, every other hill past ${n.sparse} m${n.sparse2 < 1e4 ? `, every other again past ${n.sparse2} m` : ''}, ${cells.length} cells`;
+  return { meshes: [fans.mesh, farFans.mesh, near.mesh, mid.mesh], uniforms, count, draws: 4, summary, update };
 }
