@@ -567,19 +567,114 @@ export const PHONE =
   new URLSearchParams(location.search).get('phone') === '1' ||
   (typeof matchMedia === 'function' && matchMedia('(pointer: coarse) and (hover: none)').matches && Math.min(screen.width, screen.height) < 600);
 /**
- * Frames a second at most (main.ts paces its loop by it): 30 on a phone or
- * with the Battery saver setting, else 60. An even 30 (every other refresh)
- * looks smoother than 40 to 60 that come unevenly, and the device keeps
- * cooler; a 120 Hz screen drew twice the frames for little the eye keeps.
- * `time`: the time a frame has (s), what the resolution and auto's watch
- * measure frames against.
+ * Frames a second at most (main.ts paces its loop by it): 60, or 30 with the
+ * Battery saver setting. A phone draws 60 while it keeps up and an even 30
+ * when it does not ({@link PhoneFrameRate}): an even 30 (every other
+ * refresh) looks smoother than 40 to 50 that come unevenly, and the device
+ * keeps cooler; a 120 Hz screen drew twice the frames for little the eye
+ * keeps. `time`: the time a frame has (s), what the resolution and auto's
+ * watch measure frames against.
  */
-export const frameCap = { fps: PHONE ? 30 : 60, time: 1 / (PHONE ? 30 : 60) };
-/** Battery saver on or off (the settings): 30 frames a second, or 60 (a phone keeps 30). */
+export const frameCap = { fps: 60, time: 1 / 60 };
+const setCap = (fps: number): void => {
+  frameCap.fps = fps;
+  frameCap.time = 1 / fps;
+};
+/** `fps=30|60` in the URL: that cap, held (a phone's watch off). */
+const FPS_HELD = ((v) => (v === 30 || v === 60 ? v : 0))(Number(new URLSearchParams(location.search).get('fps')));
+let saver = false;
+/** Battery saver on or off (the settings): 30 frames a second, or 60 (a phone: 60 while it keeps up). */
 export function setBatterySaver(on: boolean): void {
-  frameCap.fps = PHONE || on ? 30 : 60;
-  frameCap.time = 1 / frameCap.fps;
+  saver = on;
+  setCap(FPS_HELD || (on ? 30 : PHONE ? phoneRate.fps : 60));
 }
+
+const RATE_KEY = 'angkor-map-phone-fps';
+/**
+ * A phone's frame rate: 60 while the phone keeps up, else an even 30, and 60
+ * tried again later. Phones differ a lot (a new iPhone draws a walk in about
+ * 15 ms, a mid Android in 50), and one phone differs with the view (the
+ * overview draws twice a walk's triangles) and with its heat. It watches
+ * full-pace frames in windows of 2 s: two windows in a row under 52 frames
+ * a second at 60 (one frame in about eight missing its refresh), and it
+ * drops to 30. At 30 a frame's own cost cannot be seen (every frame waits
+ * for its turn), so after {@link wait} s of frames it tries 60 again; a try
+ * that drops at once doubles the wait (20 s, then 40 … up to 5 min), one
+ * that held a while starts it over. Roaming starting or ending tries at once
+ * ({@link retry}: a walk is lighter than the overview). The last rate is kept
+ * for this phone: the next visit starts with it. It waits while the level can
+ * still lower its own resolution (medium: main.ts), as auto's watch does.
+ */
+export class PhoneFrameRate {
+  fps: 30 | 60;
+  /** Seconds at 30 before 60 is tried again. */
+  wait = 20;
+  private time = 0;
+  private frames = 0;
+  private slow = 0;
+  /** Seconds at the rate in use (frames at full pace). */
+  private age = 0;
+
+  constructor() {
+    let kept: string | null = null;
+    try {
+      kept = localStorage.getItem(RATE_KEY);
+    } catch {
+      /* no storage */
+    }
+    this.fps = kept === '30' ? 30 : 60;
+  }
+
+  /** The watch runs: a phone, no battery saver, no held cap. */
+  get on(): boolean {
+    return PHONE && !saver && !FPS_HELD;
+  }
+
+  /** Try 60 at the next frame (roaming starts or ends). */
+  retry(): void {
+    if (this.on && this.fps === 30) this.age = this.wait;
+  }
+
+  /**
+   * A frame at full pace took `dt` s. `settled`: the level's own resolution
+   * is as low as it goes. Returns true when the rate changed (`frameCap`
+   * then holds the new one).
+   */
+  watch(dt: number, settled: boolean): boolean {
+    if (!this.on || dt > 0.25) return false;
+    this.age += dt;
+    if (this.fps === 30) {
+      if (this.age < this.wait) return false;
+      this.use(60);
+      return true;
+    }
+    this.time += dt;
+    this.frames++;
+    if (this.time < 2) return false;
+    const avg = this.time / this.frames;
+    this.time = this.frames = 0;
+    this.slow = settled && avg > 1 / 52 ? this.slow + 1 : 0;
+    if (this.slow < 2) return false;
+    // (a try that dropped within its first windows: wait longer; one that held a while: soon again)
+    this.wait = this.age < 8 ? Math.min(300, this.wait * 2) : 20;
+    this.use(30);
+    return true;
+  }
+
+  private use(fps: 30 | 60): void {
+    this.fps = fps;
+    this.time = this.frames = this.slow = this.age = 0;
+    setCap(fps);
+    try {
+      localStorage.setItem(RATE_KEY, String(fps));
+    } catch {
+      /* this visit only */
+    }
+  }
+}
+/** The phone's rate (main.ts feeds it frames). */
+export const phoneRate = new PhoneFrameRate();
+setCap(FPS_HELD || (PHONE ? phoneRate.fps : 60));
 
 const AUTO_KEY = 'angkor-map-graphics-auto';
 /** Auto's level: the one it stepped down to on this device before, else a guess (low on a phone, medium on the rest). */

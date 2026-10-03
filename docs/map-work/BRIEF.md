@@ -2361,9 +2361,18 @@ The player picks a **Graphics** level in the settings (`graphics.ts`,
 (the default) starts on low on a phone and medium elsewhere, steps down a
 level when frames stay under 30 a second, and keeps that level for the
 device (`AutoGraphics`; shots use medium). The map draws at most 60 frames
-a second, and 30 on a phone or with the **Battery saver** setting, evenly
-(`frameCap`, `setBatterySaver` in graphics.ts; `phone=1` acts as a phone,
-`battery=1` turns the saver on). The frame loop (main.ts `tick`) rests while
+a second, and 30 with the **Battery saver** setting, evenly (`frameCap`,
+`setBatterySaver` in graphics.ts; `phone=1` acts as a phone, `battery=1`
+turns the saver on, `fps=30|60` holds a cap). A phone (the saver shows there
+too) draws 60 while it keeps up and an even 30 when it does not
+(`PhoneFrameRate`, `window.__phoneRate`): two 2 s windows in a row under 52
+frames a second drop it to 30 (after the level's own resolution, as auto's
+watch); at 30 it tries 60 again after 20 s of frames (a try that drops at
+once doubles the wait, up to 5 min), and at once when roaming starts or ends
+(a walk draws about half the overview's triangles). The rate is kept for the
+phone (`angkor-map-phone-fps`). Checked in GPU Chromium as a phone (844 ×
+390): 60 walking; with the CPU 10 × slower, 30 after 3 s, a try at 60 20 s
+later, 30 again with the wait 40 s; the saver 30, idle 20, a computer 60. The frame loop (main.ts `tick`) rests while
 the loading screen's button waits (one frame is drawn under it, then none
 until Start), and slows while idle: the overview with no input for 4 s and
 no camera flight draws 30 a second (20 on a phone or the saver), a window
@@ -2676,9 +2685,13 @@ moment, before → after, M1 Max):
   shadow pass saves as much again). The same picture (a few edge pixels);
   +1 draw and ≈ 0.05‥0.09 ms of CPU (the pass's render target).
 
-Budgets for a phone (low): the overview ≈ 7 ms here now (≈ 30 fps on an
-iPhone 13–15, whose GPU is about a fifth of this one): keep it there, ≤ 600
-draws, ≤ 3.6 M triangles; a walk ≤ 2 M triangles and ≤ 350 draws;
+Budgets for a phone (low): the overview ≈ 7 ms here (≈ 30 fps on an
+iPhone 13–15, whose GPU is about a fifth of this one; 5.2 ms, 3.1 M
+triangles, 463 draws on 2026-10-03, the walks 2.5–3.6 ms, 1.1–1.9 M, the
+hang glider 4.6): keep it there, ≤ 600 draws, ≤ 3.6 M triangles; a walk
+≤ 2 M triangles and ≤ 350 draws (a phone holds 60 frames a second where
+the frame is ≈ 3.3 ms here or less: most walks on a new iPhone, not the
+overview);
 a new part ≤ 30 draws, ≤ 0.15 M triangles and ≤ 0.2 ms CPU in a view where
 it stands, and nothing (0 draws, ~0 CPU) where it does not; people: the crowd
 ≤ 0.1 M triangles in view and ≤ 0.15 ms of GPU here with its bone pass
@@ -2686,7 +2699,7 @@ it stands, and nothing (0 draws, ~0 CPU) where it does not; people: the crowd
 time the key light turns 0.3° (with the day's cycle, every 1–3 s), a part
 of ≈ 0.3 M triangles a frame over 10–12 frames: what is marked still adds
 to those frames (on a phone at 30 frames a second, about a third of them
-while the light turns fastest), so keep the still parts' triangles as low
+while the light turns fastest; at 60, a sixth), so keep the still parts' triangles as low
 as the picture's; a part that moves must not be marked still.
 
 ## Checking your work

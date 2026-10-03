@@ -327,7 +327,7 @@ export interface MapSettings {
   graphics: GraphicsChoice;
   /** Resolution (resolution.ts): `auto` (the graphics level's own), or a share of the screen's own width (1 every dot, 0.5 half across). */
   resolution: ResolutionChoice;
-  /** Battery saver: at most 30 frames a second (graphics.ts `frameCap`; a phone always). */
+  /** Battery saver: at most 30 frames a second (graphics.ts `frameCap`; a phone without it: 60 while it keeps up). */
   battery: boolean;
   /** The fog's thickness (sky/fogLevel.ts `fogNow.amount`): 0 clear air … 1 the game's own … 1.5 thick; the edges keep their mist. */
   fogAmount: number;

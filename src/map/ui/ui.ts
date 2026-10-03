@@ -1,7 +1,6 @@
 import type { PlaceDef } from '../layout';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
-import { PHONE } from '../graphics';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
 import { FOG_AMOUNT_MAX } from '../sky/fogLevel';
 import { createSupportCard } from './_support';
@@ -414,7 +413,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
           <label class="mu-slider mu-fog-amount"><span data-t="fogAmount"></span><input type="range" min="0" max="${FOG_AMOUNT_MAX * 100}" step="5" data-fogamount><output></output></label>
           <p class="mu-set-note" id="mu-fog-note" data-t="fogNote"></p>
         </div>
-        <div class="mu-set-row"${PHONE ? ' hidden' : ''}>
+        <div class="mu-set-row">
           <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
           <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
         </div>`)}

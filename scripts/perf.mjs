@@ -383,6 +383,8 @@ const M = (v) => (v / 1e6).toFixed(2);
 for (const setupName of setups) {
   const setup = SETUPS[setupName];
   const page = await browser.newPage({ viewport: { width: setup.w, height: setup.h } });
+  // (no analytics: its session recorder costs CPU and the runs would send events; the local src/posthog.ts still loads)
+  await page.route((u) => u.origin !== origin && /posthog/i.test(u.hostname), (r) => r.abort());
   page.on('pageerror', (e) => console.error('[pageerror]', e.message));
   page.on('console', (m) => {
     if (m.type() === 'error') console.log('[error]', m.text().slice(0, 300));

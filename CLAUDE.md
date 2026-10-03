@@ -184,7 +184,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Graphics is a setting (auto, low, medium, high, max: what each draws is in
   `src/map/graphics.ts`; it changes live); add `graphics=<level>` to a shot
   (auto is medium in shots), `phone=1` to act as a phone (auto starts on
-  low, 30 frames a second).
+  low; 60 frames a second while the phone keeps up, an even 30 when not,
+  60 tried again later: graphics.ts `PhoneFrameRate`; the Battery saver
+  holds 30; `fps=30|60` holds one in a check).
 - Weather is a setting too (by season — dry December–April —, clear, rainy,
   stormy, and snow: a dream, only when picked; flakes and the white cover in
   `src/map/sky/snow.ts`, snowmen in both villages): the schedule is

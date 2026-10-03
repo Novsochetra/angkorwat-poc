@@ -8,7 +8,7 @@ import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
-import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
+import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, PHONE, phoneRate, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
 import { isResolutionShare, screenRatio, stepOf, view } from './resolution';
@@ -51,7 +51,8 @@ import { pad, padPrefs } from './pad/pad';
  * (1: built, with its button) · `video=1` a shot that then moves frame by
  * frame (`__videoFrame`, scripts/video.mjs) · `resolution=auto|<share>` the
  * Resolution setting (resolution.ts: 0.5 draws half across) ·
- * `battery=1` the battery saver (30 frames a second) ·
+ * `battery=1` the battery saver (30 frames a second) · `fps=30|60` that cap, held (a phone's
+ * 60-or-30 watch off: graphics.ts `PhoneFrameRate`) ·
  * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
  * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `idle=0` no idle
  * slow-down (the frame loop, below).
@@ -614,7 +615,7 @@ function nightTarget(): number {
 type LoopMode = 'full' | 'idle' | 'blurred';
 /** No input for this long (ms) on the overview, and no camera flight: idle. */
 const IDLE_AFTER = 4000;
-/** Frames a second while idle (half the desktop's 60), and on a phone or the battery saver (30 already). */
+/** Frames a second while idle (half the desktop's 60), and on a phone or the battery saver. */
 const IDLE_FPS = 30;
 const IDLE_FPS_SLOW = 20;
 /** Frames a second while the window has no focus (another window in front; still on screen). */
@@ -1159,18 +1160,20 @@ if (shot) {
   });
   addEventListener('blur', () => (focused = false));
   const idleOff = params.get('idle') === '0';
-  /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 on a phone and the battery saver), fewer while idle or unfocused. */
+  /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 with the battery saver and on a phone that cannot keep up), fewer while idle or unfocused. */
   const pace = (now: number): { fps: number; mode: LoopMode } => {
     if (idleOff || feedback?.active || free?.active) return { fps: frameCap.fps, mode: 'full' };
     if (!focused) return { fps: BLURRED_FPS, mode: 'blurred' };
     if (roam?.active || rig.flying || now - lastInput < IDLE_AFTER) return { fps: frameCap.fps, mode: 'full' };
-    return { fps: frameCap.fps > 30 ? IDLE_FPS : IDLE_FPS_SLOW, mode: 'idle' };
+    return { fps: frameCap.fps > 30 && !PHONE ? IDLE_FPS : IDLE_FPS_SLOW, mode: 'idle' };
   };
   /** The loop's state, for checks (scripts/idle.mjs): frames drawn, the pace now. */
   const loop = { drawn: 0, fps: frameCap.fps, mode: 'full' as LoopMode | 'waiting' };
-  Object.assign(window, { __loop: loop });
+  Object.assign(window, { __loop: loop, __phoneRate: phoneRate });
   /** The last frame was at full pace (the resolution and auto's watch measure only such frames). */
   let wasFull = false;
+  /** Roaming at the last frame (a phone tries 60 again as it starts or ends: graphics.ts `PhoneFrameRate`). */
+  let wasRoaming = false;
   /** Seconds the free camera stood the scene's time still so far (s). */
   let stoodStill = 0;
   const tick = (now: number) => {
@@ -1212,11 +1215,20 @@ if (shot) {
     // (while the story hides the whole map, the map is not drawn: story/story.ts)
     const drawn = !story?.covered;
     const full = mode === 'full';
+    const roaming = !!roam?.active;
+    if (roaming !== wasRoaming) phoneRate.retry();
+    wasRoaming = roaming;
     if (now - t0 > 3000 && drawn && full && wasFull) {
       adaptResolution(raw);
+      const settled = settings.resolution !== 'auto' || graphicsNow.ratio !== 'auto' || res.ratio <= 1;
       // (auto: a level lower once this one proves too slow, its own resolution as low as it goes)
-      const lower = settings.graphics === 'auto' ? autoWatch.watch(raw, settings.resolution !== 'auto' || graphicsNow.ratio !== 'auto' || res.ratio <= 1) : null;
+      const lower = settings.graphics === 'auto' ? autoWatch.watch(raw, settled) : null;
       if (lower) useLevel(lower);
+      // (a phone: 60 while it keeps up, else an even 30; the watches measure against the new cap from here)
+      else if (phoneRate.watch(raw, settled)) {
+        autoWatch.reset();
+        res.time = res.frames = res.slow = 0;
+      }
     }
     wasFull = full;
     if (drawn) post.render(frame);
