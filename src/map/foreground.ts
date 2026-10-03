@@ -1,12 +1,13 @@
-import { DataTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from 'three';
+import { type Camera, DataTexture, Frustum, Group, type InstancedMesh, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Vector3 } from 'three';
 import { AngkorExplorer, OUTFITS } from '../character/AngkorExplorer';
 import { LEAF, SANDSTONE } from '../kit/palette';
 import { leafSurf, stoneSurf } from '../kit/surface';
 import { traceSource } from '../feedback/sourceTrace';
 import { hash3 } from '../voxel/random';
-import { VoxelBuilder } from '../voxel/VoxelBuilder';
+import { type VoxelBox, VoxelBuilder } from '../voxel/VoxelBuilder';
+import { skipBackFacets } from '../voxel/backFacets';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
-import { graphicsNow, STILL_LAYER } from './graphics';
+import { graphicsNow, pixelSize, STILL_LAYER } from './graphics';
 import { len2 } from './fauna/_len';
 import { EXPLORER_SPOT, OVERVIEW } from './layout';
 import type { RoamWorld } from './roam/types';
@@ -27,6 +28,21 @@ const LEDGE_SEEN = 90;
  * heights) where it starts to fade and where it is gone.
  */
 const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 };
+/**
+ * On medium and up the explorer is built rounded in two steps (92 triangles
+ * a block): where his largest rounding (the hair's and the krama's, 9 mm at
+ * his true size) spans fewer than `px` pixels on the screen, his blocks take
+ * one step (44, what low builds), and two again once it spans `px`; `hold`:
+ * the share under `px` it must fall to first (no flicker on the line).
+ * Measured from the nearest of him (his chest, `reach` m round it at his
+ * size). Two steps differ from one by at most 0.29 of the rounding (the arc
+ * against its chord): at 2 px, a walk at 1672 × 941 (1.6 px), the pictures
+ * are the same by eye, a few levels apart along the seams between blocks.
+ * A walk on a 2× screen, the selfie, the camera, the explorer menu keep two
+ * steps; the overview, a walk at 1× and a phone's (medium: 1.4 px) take one.
+ * `heropx=<px>` in the URL sets `px` (0: two steps always, to compare).
+ */
+const ROUND = { px: 2, hold: 0.1, reach: 1.2 };
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
@@ -102,7 +118,7 @@ export function buildForeground(ctx: MapContext): Foreground {
   bush(cr.x, cr.y, cr.z, 1.9, 0.5, 13, LEAF.bright);
   const cl = screenPoint(-0.01, 0.64, 14);
   bush(cl.x, cl.y, cl.z, 1.7, 0.5, 14, LEAF.jungle);
-  const ledge = buildVoxelMesh(b, { quality: 'high', name: 'foreground:ledge' });
+  const ledge = buildLedge(b);
   object.add(ledge);
 
   // Hat and the big pack, as in the concept art. (No lights of his own: the
@@ -111,8 +127,10 @@ export function buildForeground(ctx: MapContext): Foreground {
   // for the low level, his blocks are rounded in one step, not two (44
   // triangles a block, not 92): what that level draws of him anyway
   // (graphics.ts `setGraphics`), and so are the outfits, tools and faces
-  // made while he roams, which that swap never sees.
-  const explorer = new AngkorExplorer({ quality: ctx.quality === 'low' ? 'medium' : 'high', outfit: { ...OUTFITS.explorerGear, hat: true }, propLights: false, beam: true });
+  // made while he roams, which that swap never sees. The hat's turned knot
+  // is a mesh apart (Rig `turnedApart`): the hat's 558 square blocks then
+  // leave out their back sides too (`facing` below).
+  const explorer = new AngkorExplorer({ quality: ctx.quality === 'low' ? 'medium' : 'high', outfit: { ...OUTFITS.explorerGear, hat: true }, propLights: false, beam: true, turnedApart: true });
   explorer.blinking = !ctx.shot;
   explorer.object.position.copy(feet);
   const [fx, , fz] = EXPLORER_SPOT.facing;
@@ -120,6 +138,39 @@ export function buildForeground(ctx: MapContext): Foreground {
   explorer.object.rotation.y = yaw;
   object.add(explorer.object);
   let roaming = false;
+  // His rounding steps by his size on the screen (ROUND).
+  const roundPx = (() => {
+    const v = new URLSearchParams(location.search).get('heropx');
+    return v !== null && v !== '' && Number(v) >= 0 ? Number(v) : ROUND.px;
+  })();
+  // His meshes draw only the block sides that can face the camera (in the shadow pass, those away from the light):
+  // voxel/backFacets.ts, as the land's and the temples' do (hooked once each, as they are built; a mesh with turned
+  // blocks, or rounded in two steps, draws whole). Each part is small, so from 5–9 m nearly half its sides face away:
+  // the walks on low 152 → 91 k triangles, the same picture.
+  const facing = (m: InstancedMesh) => {
+    if (m.userData.backFacets) return;
+    m.userData.backFacets = true;
+    skipBackFacets(m);
+  };
+  let roundR = explorer.setRounding(null, facing);
+  let oneStep = false;
+  const eye = new Vector3();
+  const chest = new Vector3();
+  /** One rounding step or two for his blocks this frame (medium and up), by how many pixels his largest rounding spans. */
+  function roundHero(camera: PerspectiveCamera): void {
+    // (low: one step, as graphics.ts swaps his blocks there; it makes them plain boxes far off)
+    if (graphicsNow.plainBlocks) {
+      roundR = explorer.setRounding(1, facing);
+      return;
+    }
+    const s = explorer.object.getWorldScale(chest).x;
+    eye.setFromMatrixPosition(camera.matrixWorld);
+    explorer.rig.joints.chest.getWorldPosition(chest);
+    const d = Math.max(0.05, chest.distanceTo(eye) - ROUND.reach * s);
+    const px = (roundR * s) / (d * pixelSize(camera));
+    oneStep = roundPx > 0 && px < roundPx * (oneStep ? 1 : 1 - ROUND.hold);
+    roundR = explorer.setRounding(oneStep ? 1 : null, facing);
+  }
   const foot = footShadow();
   object.add(foot);
   let world: RoamWorld | null = null;
@@ -176,12 +227,15 @@ export function buildForeground(ctx: MapContext): Foreground {
       // it would float in the sky, so it goes once the explorer is far off.
       ledge.visible = !roaming || explorer.object.position.distanceTo(feet) < LEDGE_SEEN;
       placeFoot(f);
-      if (roaming) return;
-      // After dark the explorer lights a lantern.
-      const lantern = f.night > 0.55;
-      if (lantern !== (explorer.currentOutfit.held === 'lantern')) explorer.setOutfit({ held: lantern ? 'lantern' : 'none' });
-      explorer.propLightBoost = 1 + f.night * 5;
-      explorer.update(f.dt);
+      if (!roaming) {
+        // After dark the explorer lights a lantern.
+        const lantern = f.night > 0.55;
+        if (lantern !== (explorer.currentOutfit.held === 'lantern')) explorer.setOutfit({ held: lantern ? 'lantern' : 'none' });
+        explorer.propLightBoost = 1 + f.night * 5;
+        explorer.update(f.dt);
+      }
+      // (after what changed his blocks this frame: roaming moved him first, main.ts)
+      roundHero(f.camera);
     },
   };
 }
@@ -222,6 +276,107 @@ function footShadow(): Mesh<PlaneGeometry, MeshBasicMaterial> {
   mesh.raycast = () => {};
   mesh.visible = false;
   return mesh;
+}
+
+/**
+ * The ledge (`foreground:ledge`): of its ≈ 2,000 blocks (88 k triangles, a
+ * mesh a family) the overview shows a fifth to a third. Most of the rock
+ * lies under the picture's bottom edge (it holds him 7 m over the void) or
+ * off its left, and the framing bushes reach out of the picture, but a mesh
+ * is drawn whole when any of it is in view. So each family's blocks are laid
+ * in the order of how far out of the overview's view they lie (the camera at
+ * rest: first those a 16:9 window shows, then those a phone on its side
+ * shows too, then the rest), and each camera that draws the mesh draws them
+ * only up to the last one it sees ({@link drawnUpToLastSeen}): in the
+ * overview those it shows and a few round the edges (the window's shape, the
+ * camera's sway), anywhere else up to where its view ends (the jump off the
+ * ledge, the free camera). The same blocks, each as built (its shade and
+ * open sides were worked out with all of them, before), the same draws, the
+ * same picture (pixel for pixel); the shadow pass draws them all, as before.
+ * And of those, only the sides that can face the camera (voxel/backFacets.ts,
+ * as the land's). The overview on a phone (low): the ledge 88 → 21 k
+ * triangles.
+ */
+function buildLedge(b: VoxelBuilder): Group {
+  // (how far out of the overview's view a block's sphere lies, m: < 0 in it; in a 16:9 window and a phone's, wider)
+  const outOf = LEDGE_ASPECTS.map((aspect) => {
+    const cam = new PerspectiveCamera(OVERVIEW.fov, aspect, 0.5, 5000);
+    cam.position.set(...OVERVIEW.pos);
+    cam.lookAt(...OVERVIEW.target);
+    cam.updateMatrixWorld();
+    const view = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    const p = new Vector3();
+    return (box: VoxelBox) => Math.max(...view.planes.map((q) => -q.distanceToPoint(p.set(box.x, box.y, box.z)))) - 0.5 * Math.hypot(box.sx, box.sy, box.sz);
+  });
+  // (those the 16:9 window shows, then those the phone's shows, each the nearest its edge last; then the rest, the nearest the phone's view first)
+  const key = new Map<VoxelBox, number>();
+  for (const box of b.boxes) {
+    const [wide, phone] = outOf.map((f) => f(box));
+    key.set(box, wide <= 0 ? wide - 2000 : phone <= 0 ? wide - 1000 : phone);
+  }
+  b.boxes.sort((x, y) => key.get(x)! - key.get(y)!);
+  const ledge = buildVoxelMesh(b, { quality: 'high', name: 'foreground:ledge' });
+  // (and only the sides that can face the camera, or away from the light: voxel/backFacets.ts)
+  skipBackFacets(ledge);
+  for (const m of ledge.children) if ((m as InstancedMesh).isInstancedMesh) drawnUpToLastSeen(m as InstancedMesh);
+  return ledge;
+}
+
+/** The overview's windows the ledge's blocks are laid for ({@link buildLedge}): 16:9, then a phone on its side (19.5:9, wider: it sees a little more on the left). */
+const LEDGE_ASPECTS = [16 / 9, 19.5 / 9];
+const _seenM = new Matrix4();
+const _seenF = new Frustum();
+
+/**
+ * Each camera draws the mesh's blocks only up to the last one it sees: as it
+ * draws it (`onBeforeRender`), the blocks' spheres are tested against its
+ * view from the last block back, and `count` is set to the last one seen
+ * (all again after the draw: what reads the mesh between frames, the picks,
+ * sees every block). The shadow pass does not ask (three calls
+ * `onBeforeShadow` there): every block casts, as before. For a mesh that
+ * never moves within its group, its blocks laid so that those a camera sees
+ * come first ({@link buildLedge}).
+ */
+function drawnUpToLastSeen(mesh: InstancedMesh): void {
+  const n = mesh.count;
+  const e = mesh.instanceMatrix.array;
+  // (each block's sphere: centre and radius)
+  const s = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const k = i * 16;
+    s.set([e[k + 12], e[k + 13], e[k + 14], 0.5 * Math.hypot(Math.hypot(e[k], e[k + 1], e[k + 2]), Math.hypot(e[k + 4], e[k + 5], e[k + 6]), Math.hypot(e[k + 8], e[k + 9], e[k + 10]))], i * 4);
+  }
+  const pl = new Float32Array(24);
+  // (after what is hooked on it already: voxel/backFacets.ts)
+  const before = mesh.onBeforeRender;
+  const after = mesh.onAfterRender;
+  mesh.onBeforeRender = (renderer, scene, camera: Camera, geometry, material, group) => {
+    before.call(mesh, renderer, scene, camera, geometry, material, group);
+    // (the view's planes in the mesh's own space)
+    _seenF.setFromProjectionMatrix(_seenM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(mesh.matrixWorld));
+    for (let j = 0; j < 6; j++) {
+      const q = _seenF.planes[j];
+      pl[j * 4] = q.normal.x;
+      pl[j * 4 + 1] = q.normal.y;
+      pl[j * 4 + 2] = q.normal.z;
+      pl[j * 4 + 3] = q.constant;
+    }
+    let i = n - 1;
+    for (; i >= 0; i--) {
+      const x = s[i * 4];
+      const y = s[i * 4 + 1];
+      const z = s[i * 4 + 2];
+      const r = -s[i * 4 + 3];
+      let j = 0;
+      while (j < 24 && pl[j] * x + pl[j + 1] * y + pl[j + 2] * z + pl[j + 3] >= r) j += 4;
+      if (j === 24) break;
+    }
+    mesh.count = i + 1;
+  };
+  mesh.onAfterRender = (renderer, scene, camera, geometry, material, group) => {
+    mesh.count = n;
+    after.call(mesh, renderer, scene, camera, geometry, material, group);
+  };
 }
 
 /** Map point under a screen spot of the overview camera (0‥1 from the top left), `distance` m away. */

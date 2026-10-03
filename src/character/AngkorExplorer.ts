@@ -4,6 +4,7 @@ import {
   DoubleSide,
   Euler,
   Group,
+  type InstancedMesh,
   Matrix4,
   Mesh,
   type Object3D,
@@ -31,6 +32,7 @@ import { buildFlame, buildFlashlight, buildHat, buildLantern, buildPhone, buildS
 import { buildScarfCollar, buildScarfTail } from './parts/scarf';
 import { buildBelt, buildTorso } from './parts/torso';
 import { Rig } from './Rig';
+import { roundBlocks } from './rounding';
 import { JOINTS } from './skeleton';
 
 /** Prop light strengths (candela). Tuned so they light a dark temple interior
@@ -125,6 +127,8 @@ export interface ExplorerOptions {
   /** The flashlight's visible beam cone (default: with `propLights`). */
   beam?: boolean;
   castShadow?: boolean;
+  /** Mesh a few turned blocks apart from many square ones (Rig `turnedApart`: the map leaves out his blocks' back sides). */
+  turnedApart?: boolean;
 }
 
 /**
@@ -207,6 +211,7 @@ export class AngkorExplorer {
     this.scaler.scale.setScalar(BODY_UNIT_M);
     this.object.add(this.scaler);
     this.rig = new Rig(this.scaler, opts.quality ?? 'high');
+    this.rig.turnedApart = opts.turnedApart ?? false;
     this.animator = new Animator(this.rig);
     this.propLights = opts.propLights ?? true;
     this.beamOn = opts.beam ?? this.propLights;
@@ -520,6 +525,19 @@ export class AngkorExplorer {
     this.propRoot.getWorldPosition(origin);
     dir.set(0, 0, 1).applyQuaternion(this.propRoot.getWorldQuaternion(_q));
     return true;
+  }
+
+  /**
+   * His blocks rounded in at most `steps` steps (1: one chamfer, 44
+   * triangles a block, not the 92 of two), e.g. where he is small on the
+   * screen (the map's foreground.ts), or as built (null): only the shared
+   * unit block of each mesh changes (rounding.ts `roundBlocks`). Call it
+   * every frame: what is built meanwhile (outfits, tools, faces) follows;
+   * `each` is called with every one of his voxel meshes on the way.
+   * Returns the largest rounding radius of his blocks (m at his true size).
+   */
+  setRounding(steps: number | null, each?: (mesh: InstancedMesh) => void): number {
+    return roundBlocks(this.object, steps, each) * BODY_UNIT_M;
   }
 
   /** Show or hide the explorer's blocks (not his lights), e.g. while the view is through his camera. */
