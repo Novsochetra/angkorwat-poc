@@ -191,11 +191,15 @@
   transition: background 0.3s, box-shadow 0.3s, opacity 0.45s;
 }
 
-/* Blur behind the glass panels, on its own layer under the fill. (Blur and
+/* Blur behind the settings panel, on its own layer under the fill. (Blur and
  * the stepped clip on the fill itself draw the fill a pixel off its edge
  * when the panel sits between two screen pixels: a dark notch outside
- * every corner step.) */
-:is(.mu-title, .mu-pin-in, .mu-round, .mu-lang, .mu-info, .mu-settings)::after {
+ * every corner step.) The panels that stay over the map while it plays (the
+ * title, the pins, the round buttons, the language, the info card) have
+ * none: their fill lets 14 % of the map through, and a blur under it is
+ * drawn again with every frame of the map (a phone ≈ 0.7 ms a frame:
+ * `speedtest=1`) for little to see. */
+.mu-settings::after {
   content: '';
   position: absolute;
   inset: 0;

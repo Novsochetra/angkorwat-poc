@@ -1579,10 +1579,10 @@ function injectStyle(): void {
       --mu-edge: color-mix(in srgb, rgba(255, 226, 180, 0.3), rgba(180, 204, 255, 0.28) var(--mu-night));
       opacity: 0; visibility: hidden; transition: opacity 0.4s, visibility 0s 0.4s; }
     .mm.is-on .mm-mini { opacity: 1; visibility: visible; transition: opacity 0.6s 0.4s, visibility 0s; }
-    /* (the blur on its own layer under the fill, like map.css's glass panels) */
-    .mm-mini::after, .mm-big::after { content: ''; position: absolute; inset: 0; z-index: -2; clip-path: var(--mu-shape); pointer-events: none;
+    /* (the big map's blur on its own layer under the fill, like map.css's settings panel; the mini-map, always over the
+       playing map, has none: drawn again with every frame for little to see under its fill, map.css) */
+    .mm-big::after { content: ''; position: absolute; inset: 0; z-index: -2; clip-path: var(--mu-shape); pointer-events: none;
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-    .mm-mini::after { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
     .mm-mini:hover, .mm-mini:focus-visible { --mu-edge: var(--mu-line-hi); }
     .mm-face { position: relative; display: block; width: calc(${FACE} * var(--px)); height: calc(${FACE} * var(--px)); }
     /* (the mini-map setting: \`button\`, only the caption, a button for the big map; \`hide\`, nothing) */
