@@ -20,7 +20,7 @@ import type { SoundEngine } from './engine';
  */
 
 /** The chant's level (him kneeling two metres before the monk: as the blessing's chant, _bless.ts), its reverb share. */
-const LEVEL = 0.45;
+const LEVEL = 0.8;
 const WET = 0.15;
 /** Fading in and out (time constants, s). */
 const FADE_IN = 1.2;

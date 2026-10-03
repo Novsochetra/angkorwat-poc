@@ -1,5 +1,6 @@
 import { Vector3, type Object3D } from 'three';
 import { festivalNow } from '../festival/_schedule';
+import { RECLINING } from '../landmarks/_kulenBuddha';
 import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, blessMonk, SCRIPT_AT, seatFront, TIE, type BlessAsk, type BlessAway, type BlessSeat, type BlessState } from '../roam/_blessingHooks';
 import { CHANT_VERSES, LISTEN, type ListenAsk } from '../roam/_listenHooks';
 import type { MapFrame } from '../types';
@@ -14,22 +15,26 @@ import { villageGround } from './_sceneVillage';
 import { Rig, RigDef } from './_things';
 
 /**
- * A monk who blesses (roam/_blessing.ts, the link `BLESS`: roam/_blessingHooks.ts):
- * in the floating village pagoda's hall, on a low dais against the east
- * wall (to the Buddha's right), facing across the hall, an elder monk sits
- * cross-legged on a woven mat, a triangular cushion (ខ្នើយ) behind him; by his
- * right knee a silver bowl of lustral water (ផ្តិលទឹកមន្ត) on its foot, lotus
- * petals on the water and a sprig of leaves with a lotus bud resting in it; by
- * his left a silver plate with a ball of red cotton string (អំបោះក្រហម).
+ * A monk who blesses (roam/_blessing.ts, the link `BLESS`: roam/_blessingHooks.ts),
+ * one for each seat (`BLESS_SEATS`; the scene `blessing` is the village's,
+ * `kulenblessing` Kulen's): in the floating village pagoda's hall, on a low
+ * dais against the east wall (to the Buddha's right), facing across the hall;
+ * on Phnom Kulen, on a dais on the rock's floor by the reclining Buddha's head,
+ * facing south. An elder monk sits cross-legged on a woven mat, a triangular
+ * cushion (ខ្នើយ) behind him; by his right knee a silver bowl of lustral water
+ * (ផ្តិលទឹកមន្ត) on its foot, lotus petals on the water and a sprig of leaves
+ * with a lotus bud resting in it; by his left a silver plate with a ball of
+ * red cotton string (អំបោះក្រហម).
  *
  * - **When**: by day (`blessHour`: after the dawn chant until his meal before
  *   noon, and from after it until the dusk drum); not at night, not at his
- *   meal, not while the pagoda keeps Pchum Ben or Visak Bochea (the monks are
- *   on the porch with the faithful then: festival/_pchumBen.ts, _visak.ts).
- *   Out of sight he simply comes or goes; seen (the camera near, him in its
- *   view), he gets up, steps off the dais and walks out of the hall's door and
- *   along the porch (or back in, and sits down). Never in the middle of a
- *   blessing.
+ *   meal; in the village not while the pagoda keeps Pchum Ben or Visak Bochea
+ *   (the monks are on the porch with the faithful then: festival/_pchumBen.ts,
+ *   _visak.ts; `BlessSeat.fest`). Out of sight he simply comes or goes; seen
+ *   (the camera near, him in its view), he gets up, steps off the dais and
+ *   walks away (`WAYS`: out of the hall's door and along the porch; on Kulen
+ *   across the floor, down the rock's stair and along the pilgrims' paved way),
+ *   or back, and sits down. Never in the middle of a blessing.
  * - **Blessing** (`BLESS.ask`, led by roaming): he looks at the one kneeling
  *   and nods; chants the Pali blessing (bubbles: the verse in Khmer script, as
  *   Cambodians read Pali) while his right hand (`POSE.bless`, `BLESS_SCRIPT`)
@@ -97,9 +102,9 @@ const SEATED_EYE = (1.25 - 0.93) * 1.37;
 type Life = 'gone' | 'sit' | 'rise' | 'stepDown' | 'walkOut' | 'wait' | 'walkIn' | 'stepUp' | 'sitDown';
 
 export class BlessingMonk implements PeopleScene {
-  readonly name = 'blessing';
+  readonly name: string;
   readonly actors: Actor[] = [];
-  private readonly seat: BlessSeat = BLESS_SEATS[0];
+  private readonly seat: BlessSeat;
   private readonly pace = new Pace(PACE_NEAR, PACE_HIDE);
   private readonly monk: Actor;
   private readonly plain: Look;
@@ -117,8 +122,11 @@ export class BlessingMonk implements PeopleScene {
   /** On his walk: the nearest he has come to the point he walks to (m), and for how long no nearer (s). */
   private best = Infinity;
   private since = 0;
-  /** His way out of the hall (floor points, m): from before the dais to the porch beyond the door. */
+  /** His way out (floor points, m: `WAYS`): from before the dais to where he goes out of sight. */
   private readonly way: Point[];
+  /** At its end: the way he faces coming back in, and going on out (radians). */
+  private readonly inYaw: number;
+  private readonly outYaw: number;
   private shown = false;
   /** The blessing he follows (`BLESS.ask.n`), his script's start (people's clock) and what is said of it so far. */
   private askN = -1;
@@ -145,10 +153,17 @@ export class BlessingMonk implements PeopleScene {
   constructor(
     private readonly env: PeopleEnv,
     scene: Object3D,
+    seatId = 'village',
   ) {
-    const s = this.seat;
-    const ground = villageGround(env, scene);
-    const look = dress('monk', 1077);
+    const s = BLESS_SEATS.find((q) => q.id === seatId);
+    if (!s) throw new Error(`no blessing seat "${seatId}"`);
+    this.seat = s;
+    this.name = s.id === 'village' ? 'blessing' : `${s.id}blessing`;
+    // (the village's people walk its own walk map, its floors and porches; Kulen's the landmarks', as the pilgrims)
+    const ground = s.id === 'village' ? villageGround(env, scene) : env.ground;
+    // (each seat its own elder: Kulen's a little darker, his robe a deeper saffron; neither shorter than the village's,
+    // whose head the dais's height is measured by)
+    const look = dress('monk', s.id === 'village' ? 1077 : 1079);
     look.colors[SLOT.wood] = SPRIG.stem;
     look.colors[SLOT.prop2] = SPRIG.leaf;
     look.colors[SLOT.prop] = SPRIG.bud;
@@ -156,22 +171,16 @@ export class BlessingMonk implements PeopleScene {
     this.holding = { ...look, feats: [...look.feats, FEAT.sprig] };
     this.monk = new Actor(env.crowd, look, ground).avoid(env.traffic, this.name);
     this.actors.push(this.monk);
-    this.dais = new Rig(env.things, daisDef());
+    this.dais = new Rig(env.things, daisDef(s));
     this.sprig = new Rig(env.things, sprigDef());
     this.drops = env.things.alloc(DROPS);
     for (let k = 0; k < DROPS; k++) env.things.paint(this.drops + k, C.drop, 0.35);
-    // His way out: off the dais by its step to the floor before it, to the door, onto the porch and along it (past the
-    // door's jamb).
-    const X = s.dais.x - 3.0;
-    this.way = [
-      { x: s.step.x + Math.sin(s.yaw) * 0.42, y: s.floor, z: s.step.z + Math.cos(s.yaw) * 0.42 },
-      { x: X + 0.6, y: s.floor, z: 101.2 },
-      { x: X, y: s.floor, z: 99.9 },
-      // (along the porch behind where the festivals' monks sit, between them and the wall: Pchum Ben's at x ± 2.35,
-      // ± 3.65 and Visak's at ± 4.35, z ≈ 97.55 — festival/_pchumBen.ts, _visak.ts —, never through them)
-      { x: X, y: s.floor, z: 98.4 },
-      { x: X + 3.2, y: s.floor, z: 98.4 },
-    ];
+    // His way out: off the dais by its step to the floor before it, then on (`WAYS`).
+    this.way = [{ x: s.step.x + Math.sin(s.yaw) * 0.42, y: s.floor, z: s.step.z + Math.cos(s.yaw) * 0.42 }, ...WAYS[s.id](s)];
+    const end = this.way[this.way.length - 1];
+    const last = this.way[this.way.length - 2];
+    this.inYaw = Math.atan2(last.x - end.x, last.z - end.z);
+    this.outYaw = this.inYaw + Math.PI;
     this.workOutHands();
     const q = env.params;
     this.urlSits = q.has('bless') || q.has('blesspose') ? q.get('blessmonk') !== '0' : q.get('blessmonk') === '1' ? true : q.get('blessmonk') === '0' ? false : null;
@@ -184,14 +193,14 @@ export class BlessingMonk implements PeopleScene {
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
     const s = this.seat;
     const m = blessMonk(s.id);
-    // Where he should be: by the hours, the festivals; a blessing keeps him.
+    // Where he should be: by the hours, the pagoda's festivals (the village's); a blessing keeps him.
     const ask = this.ask();
     const mine = ask.id === s.id && ask.state !== 'none';
     // (one kneeling before him to listen to him chant: roam/_listen.ts)
     const la = LISTEN.ask;
     const listen = la.who === 'monk' && la.seat === s.id && la.state !== 'none';
     const hour = blessHour(f.clock);
-    const fest = festivalNow(f);
+    const fest = s.fest ? festivalNow(f) : null;
     const away: BlessAway = this.urlSits === true ? null : this.urlSits === false ? 'gone' : fest === 'pchumben' || fest === 'visak' ? 'fest' : hour === 'sit' ? null : hour;
     const want = mine || listen || away === null;
     // The link (his hands' place is fixed); far off he is not drawn, but he would be there as one comes.
@@ -273,10 +282,10 @@ export class BlessingMonk implements PeopleScene {
     this.lt += dt;
     switch (this.life) {
       case 'gone':
-        // (seen: he comes in from the porch's end, if that is out of sight; else he waits a little longer)
+        // (seen: he comes in from his way's end, if that is out of sight; else he waits a little longer)
         if (want && !this.seenAt(f, this.way[this.way.length - 1])) {
           const p = this.way[this.way.length - 1];
-          a.warp(p.x, p.y, p.z, -Math.PI / 2);
+          a.warp(p.x, p.y, p.z, this.inYaw);
           a.show();
           a.pose(POSE.stand, now);
           this.go('walkIn');
@@ -316,8 +325,8 @@ export class BlessingMonk implements PeopleScene {
         break;
       }
       case 'wait':
-        // (at the porch's end: gone once nobody sees him go; back in if he is wanted again)
-        a.stop(Math.PI / 2);
+        // (at his way's end: gone once nobody sees him go; back in if he is wanted again)
+        a.stop(this.outYaw);
         if (want) {
           this.leg = this.way.length - 2;
           this.go('walkIn');
@@ -737,6 +746,33 @@ export class BlessingMonk implements PeopleScene {
 /** The smile (`Crowd.strike`): his calm face lit up. */
 const SMILE = [FEAT.grin] as const;
 
+/**
+ * Each seat's way out (map m), on from the floor before the dais's step: to where he goes out of sight, and back in
+ * the same way. At its end he waits until nobody sees him go.
+ */
+const WAYS: Record<string, (s: BlessSeat) => Point[]> = {
+  // The village: to the hall's door, onto the porch and along it (past the door's jamb).
+  village: (s) => {
+    const X = s.dais.x - 3.0;
+    return [
+      { x: X + 0.6, y: s.floor, z: 101.2 },
+      { x: X, y: s.floor, z: 99.9 },
+      // (along the porch behind where the festivals' monks sit, between them and the wall: Pchum Ben's at x ± 2.35,
+      // ± 3.65 and Visak's at ± 4.35, z ≈ 97.55 — festival/_pchumBen.ts, _visak.ts —, never through them)
+      { x: X, y: s.floor, z: 98.4 },
+      { x: X + 3.2, y: s.floor, z: 98.4 },
+    ];
+  },
+  // Kulen (the Buddha's frame, landmarks/_kulenBuddha.ts): south across the rock's floor, west of the pilgrims' kneeling
+  // rows (x −5‥0) and inside the shelter's front post at (−7.4, 2.6); east along behind the stair's head (its cheek
+  // walls from z 5) to it; down the rock's stair and along the pilgrims' paved way (`RECLINING.way`, from its stair's
+  // top back) to the foot of the mountain temple's grand stair.
+  kulen: (s) => {
+    const at = (x: number, z: number): Point => ({ x: RECLINING.x + x, y: s.floor, z: RECLINING.z + z });
+    return [at(-6.4, 2.4), at(-5.9, 4.75), at(-2.5, 4.75), ...RECLINING.way.slice(0, 6).reverse().map(([x, y, z]) => ({ x, y, z }))];
+  },
+};
+
 const smooth = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 /** Up from `a`, down by `b` (0‥1‥0). */
 const bump = (t: number, a: number, b: number) => (t <= 0 || t >= b ? 0 : t < a ? smooth(t / a) : 1 - smooth((t - a) / (b - a)));
@@ -783,11 +819,10 @@ function turnAbout(p: [number, number, number], pivot: readonly number[], r: rea
 
 // ── His things (his frame: the seat on the dais's top, +z ahead toward the one kneeling, +x his left) ──
 
-/** The dais, its mat and cushions, the bowl of lustral water, the plate with the ball of red string. */
-function daisDef(): RigDef {
+/** The dais of seat `s`, its mat and cushions, the bowl of lustral water, the plate with the ball of red string. */
+function daisDef(s: BlessSeat): RigDef {
   const d = new RigDef();
-  const s = BLESS_SEATS[0];
-  // (the dais from the wall behind him to `ahead` before him; `half` either side)
+  // (the dais from `back` behind him — the wall, in the village — to `ahead` before him; `half` either side)
   const off = (s.dais.x - s.x) * Math.sin(s.yaw) + (s.dais.z - s.z) * Math.cos(s.yaw);
   const ahead = s.dais.along + off;
   const back = s.dais.along - off;
@@ -814,7 +849,7 @@ function daisDef(): RigDef {
   d.box([0, 0.013, -back + 0.1], [half * 2 - 0.12, 0.004, 0.05], C.matRed);
   for (const sx of [-1, 1]) d.box([sx * (half - 0.1), 0.013, zc], [0.05, 0.004, len - 0.16], C.matRed);
   d.box([0, 0.014, ahead - 0.18], [half * 2 - 0.3, 0.004, 0.025], C.matGreen);
-  // His seat cushion, and the triangular cushion (ខ្នើយ) behind him against the wall, red with gold ends.
+  // His seat cushion, and the triangular cushion (ខ្នើយ) behind him at the back edge, red with gold ends.
   d.box([0, 0.035, -0.05], [0.78, 0.05, 0.72], C.cushion);
   d.box([0, 0.15, -back + 0.2], [0.66, 0.24, 0.3], C.pillow);
   d.box([0, 0.34, -back + 0.13], [0.66, 0.16, 0.16], C.pillow);

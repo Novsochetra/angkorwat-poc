@@ -9,13 +9,15 @@ import { PAGODA } from '../village/_spots';
  *
  * - **The seats** (`BLESS_SEATS`): where a monk sits for blessings — the
  *   floating village pagoda's hall, on a raised dais against its east wall, to
- *   the Buddha's right, facing across the hall (west) — and where the
+ *   the Buddha's right, facing across the hall (west); Phnom Kulen's reclining
+ *   Buddha, on a dais on the rock's floor by his head (to his right), facing
+ *   south as he does, toward the stair the pilgrims come up — and where the
  *   explorer kneels before him (the monk sits higher than the one before him:
  *   his head always above the explorer's, the tie included).
  * - **The monk** (`BLESS.monks`): the people part writes whether he sits there
- *   now, free to bless (by day; not at his meal before noon; not while the
- *   pagoda keeps a festival: Pchum Ben, Visak Bochea), and where his hands
- *   meet to tie the string.
+ *   now, free to bless (by day; not at his meal before noon; in the village
+ *   not while the pagoda keeps a festival: Pchum Ben, Visak Bochea), and where
+ *   his hands meet to tie the string.
  * - **The blessing** (`BLESS.ask`): roaming leads it (its own clock: `t`
  *   seconds into `state`), the monk follows: `kneel` (he looks at him, nods),
  *   `chant` (the Pali blessing; his right hand by `BLESS_SCRIPT` from `SCRIPT_AT`
@@ -68,6 +70,10 @@ export interface BlessSeat {
   readonly dais: BlessBox;
   /** The wooden step before the dais at his left end (the same measures): his way up and down. */
   readonly step: BlessBox;
+  /** The dais stands against a wall behind him (nobody comes round its back); else free on its floor. */
+  readonly wall: boolean;
+  /** He is away while the pagoda keeps a festival (Pchum Ben, Visak Bochea: the village pagoda's). */
+  readonly fest: boolean;
   /**
    * The explorer kneels this far before him (m from the seat along his facing; feet), and comes in this close on his
    * knees for the string, this far to his own left (m: his right hand before the monk's hands).
@@ -87,13 +93,39 @@ export interface BlessSeat {
 const X = PAGODA.x;
 const F = PAGODA.floor;
 /**
- * The dais's top (m): a monk's raised seat (អាសនៈ), knee high to a man standing, so that seated cross-legged his head
- * is clearly above the head of the one kneeling before him (the explorer is big-headed: on his heels his head's top is
- * ≈ 2.0 m up, ≈ 2.05 up on his knees; the monk's ≈ 1.62‥1.64 m over the dais, 2.27 m up). The step before its left
- * end is half as high.
+ * The dais's top (m over the floor, every seat's): a monk's raised seat (អាសនៈ), knee high to a man standing, so that
+ * seated cross-legged his head is clearly above the head of the one kneeling before him (the explorer is big-headed: on
+ * his heels his head's top is ≈ 2.0 m up, ≈ 2.05 up on his knees; the monk's ≈ 1.62‥1.64 m over the dais, 2.27 m up).
+ * The step before its left end is half as high.
  */
-const DAIS_TOP = F + 0.65;
-const STEP_TOP = F + 0.33;
+const DAIS_H = 0.65;
+const STEP_H = 0.33;
+const DAIS_TOP = F + DAIS_H;
+const STEP_TOP = F + STEP_H;
+
+/**
+ * Phnom Kulen's reclining Buddha, Preah Ang Thom (landmarks/_kulenBuddha.ts `RECLINING`: its frame's origin at 409,
+ * −445, +x east, +z south, the rock's floor 150 m up; not imported: that module builds with three.js). He lies along x
+ * on his bed (x −6‥6, z −5‥−2.5), his head to the west at x ≈ −5, facing south; the altar is before his head and chest
+ * (x −4‥−1, z −2‥−1), the pilgrims kneel in rows round the explorer's own prayer place (−2.5, 0.6) at x −5‥0, the dawn
+ * chant's row is east of the altar (roam/_listenHooks.ts). The monk sits west of all that, by the Buddha's head and its
+ * white parasol, facing south: the one kneeling before him has the floor's open west edge on his left (the cameras:
+ * roam/_blessing.ts, roam/_listen.ts), and kneels out of the prayer place's reach (roam/_pray.ts: 5 m), so E there asks
+ * the monk.
+ */
+const K = { x: 409, z: -445, floor: 150 } as const;
+/** The Kulen monk's place (map m) and the way he faces (south). */
+const KX = K.x - 7.75;
+const KZ = K.z - 1.3;
+const KY = 0;
+
+/** A point `along` m out before one seated at (x, z) facing `yaw`, `across` m to his left (map m). */
+function ahead(x: number, z: number, yaw: number, along: number, across: number): { x: number; z: number } {
+  return { x: x + Math.sin(yaw) * along + Math.cos(yaw) * across, z: z + Math.cos(yaw) * along - Math.sin(yaw) * across };
+}
+const KD = ahead(KX, KZ, KY, -0.065, 0);
+const KS = ahead(KX, KZ, KY, 0.78, 0.66);
+
 export const BLESS_SEATS: readonly BlessSeat[] = [
   {
     id: 'village',
@@ -106,8 +138,29 @@ export const BLESS_SEATS: readonly BlessSeat[] = [
     dais: { x: X + 3.115, z: 103.3, along: 0.685, across: 0.9, top: DAIS_TOP },
     // (before the dais's front at his left end, the south: clear of the one kneeling close for the string)
     step: { x: X + 3.05 - 0.78, z: 103.3 + 0.66, along: 0.16, across: 0.22, top: STEP_TOP },
+    wall: true,
+    fest: true,
     kneel: 2.2,
     // (close for the string: his hand reaches the monk's, their faces a hand and more apart, his head well below)
+    close: 1.24,
+    closeLeft: 0.26,
+    reach: 2.6,
+  },
+  {
+    id: 'kulen',
+    x: KX,
+    y: K.floor + DAIS_H,
+    z: KZ,
+    yaw: KY,
+    floor: K.floor,
+    // (the village's dais, standing free: from 0.75 m behind him to 0.62 m before him; its back 0.45 m from the line of
+    // the Buddha's bed, its east side 2.8 m from the altar, its west side 0.35 m in from the floor's edge)
+    dais: { x: KD.x, z: KD.z, along: 0.685, across: 0.9, top: K.floor + DAIS_H },
+    // (before its front at his left end, the east: toward the floor's middle, his way to the stair)
+    step: { x: KS.x, z: KS.z, along: 0.16, across: 0.22, top: K.floor + STEP_H },
+    wall: false,
+    fest: false,
+    kneel: 2.2,
     close: 1.24,
     closeLeft: 0.26,
     reach: 2.6,

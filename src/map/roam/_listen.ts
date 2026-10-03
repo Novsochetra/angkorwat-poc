@@ -13,20 +13,22 @@ import type { MapFrame, RoamMode } from '../types';
 import { num, onLang, t } from '../ui/lang';
 import { registerAddon, touchJump, type AddonEnv, type AddonKey } from './_addons';
 import { BLESS, BLESS_SEATS, seatBefore, seatFront, type BlessSeat } from './_blessingHooks';
-import { CHANT_FOLK, CHANT_ROW, CHANT_SEAT, HALL_ASK, LISTEN, LISTEN_SPOTS, MONK_CHANT_FOR, rowFresh, type ListenState, type ListenWho } from './_listenHooks';
+import { CHANT_SITES, LISTEN, MONK_CHANT_FOR, rowFresh, siteLocal, siteWorld, type ChantSite, type ListenState, type ListenWho } from './_listenHooks';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
 /**
  * Kneeling to listen to the monks' chanting (ស្ដាប់ព្រះសង្ឃសូត្រមន្ត), in the
- * floating village pagoda's hall (the link `LISTEN`: roam/_listenHooks.ts):
+ * floating village pagoda's hall and before Phnom Kulen's reclining Buddha (the
+ * link `LISTEN`, the rows' sites `CHANT_SITES`: roam/_listenHooks.ts):
  *
  * - **At the dawn chant** (events.ts `dawnChant`; four monks in a row before the
- *   Buddha, villagers kneeling behind them: people/_sceneChant.ts): in the hall
+ *   Buddha, villagers kneeling behind them: people/_sceneChant.ts): behind the row
+ *   (its `ask` floor: the hall, the rock's floor under the roof)
  *   "E  លុតជង្គង់ស្ដាប់ព្រះសង្ឃសូត្រមន្ត / Kneel and listen to the monks chanting"
  *   (J too; while they walk in, "The monks are coming in to chant", no E). He
- *   walks to his place behind the row (the nearer of `LISTEN_SPOTS`: on the mats
- *   behind the gap between two monks), turns to the Buddha and kneels as at dak bat
+ *   walks to his place behind the row (the nearer of its `spots`: behind the gap
+ *   between two monks), turns to the Buddha and kneels as at dak bat
  *   (the prayer's kneel, hat off, back on his heels), palms together at his face,
  *   his head bowed, now and then a glance up. The chant is the pagoda's own
  *   (audio/temple.ts); the map's music steps back. When the monks end (they bow,
@@ -41,12 +43,13 @@ import type { RoamCtx } from './types';
  *   three times and gets up.
  * - **Getting up**: E, Space, J or the stick: the three bows, then up (again during
  *   the bows: up at once). Back to the map, or off his feet: it all stops at once.
- * - **The camera** comes round low behind him (the row's: from the carpet, him on
- *   his knees, the row before him, the Buddha beyond; the monk's: over his left
- *   shoulder, the monk facing it) and drifts a very little; a drag looks round.
+ * - **The camera** comes round low behind him (the row's: from the side toward the
+ *   row's middle, the village's carpet, him on his knees, the row before him, the
+ *   Buddha beyond; the monk's: over his left shoulder, the monk facing it) and
+ *   drifts a very little; a drag looks round.
  *
  * URL (checks): `listen=1` starts as J or E would (`listenwho=row|monk`; else the
- * monk when he stands before the dais, the row in the hall); `listen=<step>[:<s>]`
+ * monk when he stands before the dais, else the nearest row); `listen=<step>[:<s>]`
  * that far into a step at once (`kneel`, `listen`, `bow`, `up`). `report()` gives
  * `listen=`, `listenwho=`. `window.__listen` (checks): the step, its time, the link.
  */
@@ -83,23 +86,21 @@ const END_COUNT = 4;
 const FADE_BEFORE = 2.6;
 const TICK = 0.9;
 /**
- * The camera. The row's: from behind him, over the carpet (`side` round from the way he faces, toward the hall's
- * middle: the villagers on the mats are out of its way), a little above: him kneeling, the monks' row before him over
+ * The camera. The row's: from behind him, toward the row's middle (`side` round from the way he faces; in the village
+ * over the carpet: the villagers on the mats are out of its way), a little above: him kneeling, the monks' row before him over
  * his shoulder, the Buddha beyond; the monk's: from behind his left shoulder (the monk faces it, chanting; the hall's door wall is close on his
  * left, the room is behind him), low. A little wider (`fov`:
  * the hall is narrow). Eased there over `for` s, then it drifts (`drift` rad over `period` s) until the player drags;
  * back to where it was after.
  */
-const FRAME_ROW = { side: 0.55, pitch: 0.22, dist: 4.2, focusUp: 1.4, toward: 0.6 };
-/** The row's on a screen held upright (narrow: less from the side, a little higher, so the row and the Buddha stay in). */
-const FRAME_ROW_TALL = { side: 0.2, pitch: 0.35, dist: 4.2, focusUp: 1.4, toward: 0.6 };
+const FRAME_ROW = { pitch: 0.22, dist: 4.2, focusUp: 1.4, toward: 0.6 };
+/** The row's on a screen held upright (narrow: less from the side, its row's `cam.tall`, a little higher, so the row and the Buddha stay in). */
+const FRAME_ROW_TALL = { pitch: 0.35, dist: 4.2, focusUp: 1.4, toward: 0.6 };
 const FRAME_MONK = { side: -0.85, pitch: 0.2, dist: 3.9, focusUp: 1.35, toward: 0.5 };
 const FRAME = { fov: 60, rate: 1.6, back: 2.2, for: 3.2, drift: 0.09, period: 46 };
 /** Kneeling villagers keep him this far off (m, from their places: their knees and his); the monks' platform this far (m, his body). */
 const ROW_ROOM = 0.62;
 const SEAT_ROOM = 0.42;
-/** The Buddha's face on the altar (m): where he looks, kneeling behind the row (village/_pagoda.ts: the seat's top + 0.77 of 3.3 m). */
-const BUDDHA = { x: CHANT_ROW.axis, y: CHANT_ROW.floor + 1.9 + 3.3 * 0.77, z: 110.95 };
 /** The key help while he kneels. */
 const KEYS: readonly AddonKey[] = [
   ['E', 'listenGetUp', 'west'],
@@ -120,6 +121,8 @@ let st = 0;
 let heard = 0;
 let who: ListenWho = 'none';
 let seat: BlessSeat = BLESS_SEATS[0];
+/** The row he listens to (`who` is `row`). */
+let site: ChantSite = CHANT_SITES[0];
 /** Where he kneels (feet), the way he faces (to the monk, or the Buddha). */
 const kneelAt = new Vector3();
 const from = new Vector3();
@@ -173,21 +176,30 @@ onLang(words);
 /** Scratch (no allocation a step). */
 const _v = new Vector3();
 const _f = { x: 0, z: 0 };
+const _l = { a: 0, d: 0 };
 const posture = () => blessPose(ps);
 
 // ── Where ────────────────────────────────────────────────────────────────────
 
-/** He stands in the hall's floor (past the door, before the offering table). */
-function inHall(p: Vector3): boolean {
-  const H = HALL_ASK;
-  return Math.abs(p.y - H.floor) < 0.8 && Math.abs(p.x - CHANT_ROW.axis) < H.x && p.z > H.z0 && p.z < H.z1;
+/** He stands on the floor behind the row of `s` where E asks (the village's hall past the door, before the offering table). */
+function inAsk(s: ChantSite, p: Vector3): boolean {
+  if (Math.abs(p.y - s.floor) >= 0.8) return false;
+  const l = siteLocal(s, p.x, p.z, _l);
+  return Math.abs(l.a) < s.ask.a && l.d > s.ask.d0 && l.d < s.ask.d1;
 }
 
-/** What he would kneel to listen to here: the row (in the hall, the monks in their places, chanting), or the blessing monk (before his dais, there). */
-function listenable(ctx: RoamCtx): { who: 'row' } | { who: 'monk'; seat: BlessSeat } | null {
+/** The row built and near whose ask floor he stands on, or null. */
+function rowHere(p: Vector3): ChantSite | null {
+  for (const s of CHANT_SITES) if (rowFresh(s.id) && inAsk(s, p)) return s;
+  return null;
+}
+
+/** What he would kneel to listen to here: a row (behind it, the monks in their places, chanting), or the blessing monk (before his dais, there). */
+function listenable(ctx: RoamCtx): { who: 'row'; site: ChantSite } | { who: 'monk'; seat: BlessSeat } | null {
   const p = ctx.body.pos;
-  const r = LISTEN.row;
-  if (rowFresh() && r.there && !r.ending && inHall(p)) return { who: 'row' };
+  const row = rowHere(p);
+  const r = row ? LISTEN.rows[row.id] : null;
+  if (row && r && r.there && !r.ending) return { who: 'row', site: row };
   const s = seatBefore(p);
   if (!s) return null;
   const m = BLESS.monks[s.id];
@@ -195,45 +207,56 @@ function listenable(ctx: RoamCtx): { who: 'row' } | { who: 'monk'; seat: BlessSe
   return m.there && BLESS.now - m.t < 1.5 ? { who: 'monk', seat: s } : null;
 }
 
-/** The listening place behind the row nearest him (world m). */
-function spotNear(p: Vector3, out: Vector3): Vector3 {
+/** The listening place behind the row of `s` nearest him (world m). */
+function spotNear(s: ChantSite, p: Vector3, out: Vector3): Vector3 {
   let best = Infinity;
-  for (const s of LISTEN_SPOTS) {
-    const x = CHANT_ROW.axis + s.x;
-    const d = Math.hypot(x - p.x, s.z - p.z);
+  for (const k of s.spots) {
+    siteWorld(s, k.a, k.d, _f);
+    const d = Math.hypot(_f.x - p.x, _f.z - p.z);
     if (d < best) {
       best = d;
-      out.set(x, CHANT_ROW.floor, s.z);
+      out.set(_f.x, s.floor, _f.z);
     }
   }
   return out;
 }
 
 /**
- * He never stands on the monks' platform (it is not on the walk map: put back off its front or an end; the offering
- * table is behind it), and while the villagers kneel in their places (or come to them) he keeps out of their laps: out
- * of a circle round each place.
+ * He never stands on a row's platform (it is not on the walk map: put back off its front or an end; the Buddha's
+ * table or bed is behind it), and while the villagers kneel in their places (or come to them) he keeps out of their
+ * laps: out of a circle round each place.
  */
 function keepOffRow(ctx: RoamCtx): void {
-  if (!rowFresh()) return;
+  for (const s of CHANT_SITES) if (rowFresh(s.id)) keepOff(ctx, s);
+}
+
+function keepOff(ctx: RoamCtx, s: ChantSite): void {
   const p = ctx.body.pos;
-  if (Math.abs(p.y - CHANT_ROW.floor) > 0.8) return;
+  if (Math.abs(p.y - s.floor) > 0.8) return;
   const r = SEAT_ROOM * (ctx.body.scale / 1.4);
-  const x0 = CHANT_ROW.axis - CHANT_SEAT.half - r;
-  const x1 = CHANT_ROW.axis + CHANT_SEAT.half + r;
-  const z0 = CHANT_SEAT.z0 - r;
-  if (p.x > x0 && p.x < x1 && p.z > z0 && p.z < CHANT_SEAT.z1 + r) {
+  const P = s.seat;
+  const a0 = -P.half - r;
+  const a1 = P.half + r;
+  const d0 = P.d0 - r;
+  const l = siteLocal(s, p.x, p.z, _l);
+  if (l.a > a0 && l.a < a1 && l.d > d0 && l.d < P.d1 + r) {
     // (out the nearest open side: the front, or an end)
-    const front = p.z - z0;
-    const left = p.x - x0;
-    const right = x1 - p.x;
-    if (front <= left && front <= right) p.z = z0;
-    else if (left <= right) p.x = x0;
-    else p.x = x1;
+    const front = l.d - d0;
+    const left = l.a - a0;
+    const right = a1 - l.a;
+    if (front <= left && front <= right) l.d = d0;
+    else if (left <= right) l.a = a0;
+    else l.a = a1;
+    siteWorld(s, l.a, l.d, _f);
+    p.x = _f.x;
+    p.z = _f.z;
   }
-  const w = LISTEN.row;
+  const w = LISTEN.rows[s.id];
   if (!(w.there || w.chanting || w.coming)) return;
-  for (const f of CHANT_FOLK) push(p, CHANT_ROW.axis + f.x, f.z);
+  for (const f of s.folk) {
+    siteWorld(s, f.a, f.d, _f);
+    push(p, _f.x, _f.z);
+  }
 }
 
 function push(p: Vector3, x: number, z: number): void {
@@ -261,6 +284,7 @@ function tell(state: ListenState, tt: number): void {
   a.state = state;
   a.t = tt;
   a.seat = seat.id;
+  a.site = site.id;
   const p = env?.body.pos ?? kneelAt;
   a.x = p.x;
   a.y = kneelAt.y;
@@ -268,7 +292,7 @@ function tell(state: ListenState, tt: number): void {
 }
 
 /** Start: walk to his place (behind the row, or before the monk). */
-function begin(ctx: RoamCtx, w: { who: 'row' } | { who: 'monk'; seat: BlessSeat }): void {
+function begin(ctx: RoamCtx, w: { who: 'row'; site: ChantSite } | { who: 'monk'; seat: BlessSeat }): void {
   who = w.who;
   if (w.who === 'monk') {
     seat = w.seat;
@@ -276,8 +300,9 @@ function begin(ctx: RoamCtx, w: { who: 'row' } | { who: 'monk'; seat: BlessSeat 
     kneelAt.set(_f.x, seat.floor, _f.z);
     facing = seat.yaw + Math.PI;
   } else {
-    spotNear(ctx.body.pos, kneelAt);
-    facing = CHANT_ROW.yaw;
+    site = w.site;
+    spotNear(site, ctx.body.pos, kneelAt);
+    facing = site.yaw;
   }
   ended = counted = false;
   heard = away = 0;
@@ -370,8 +395,8 @@ function monksGone(): boolean {
     const m = BLESS.monks[seat.id];
     return !m.there || BLESS.now - m.t > AWAY_FOR;
   }
-  const r = LISTEN.row;
-  return !rowFresh() || r.ending || r.leaving || !r.chanting;
+  const r = LISTEN.rows[site.id];
+  return !rowFresh(site.id) || r.ending || r.leaving || !r.chanting;
 }
 
 /** The monks stopped before he had knelt to listen: he does not go on (walking, turning: he stops; kneeling: back up). */
@@ -449,7 +474,10 @@ function toBody(ctx: RoamCtx, x: number, y: number, z: number, out: Vector3): Ve
 
 /** What he looks at: the monk's face, or the Buddha beyond the row. */
 function lookPoint(out: Vector3): Vector3 {
-  return who === 'monk' ? out.set(seat.x, seat.y + 1.25, seat.z) : out.set(BUDDHA.x, BUDDHA.y, BUDDHA.z);
+  if (who === 'monk') return out.set(seat.x, seat.y + 1.25, seat.z);
+  const b = site.buddha;
+  siteWorld(site, b.a, b.d, _f);
+  return out.set(_f.x, b.y, _f.z);
 }
 
 /** The posture's numbers reset, kneeling up (the prayer's shape at its kneel). */
@@ -547,10 +575,11 @@ function stepListen(ctx: RoamCtx, dt: number): string | null {
       }
       if (fading && st - dt < MONK_CHANT_FOR - FADE_BEFORE) stopListenChant();
       // The end: the monk's chant is over, or the row ends (or is gone: built no more, far, for more than a moment).
-      const r = LISTEN.row;
-      const there = who === 'monk' ? BLESS.monks[seat.id].there && BLESS.now - BLESS.monks[seat.id].t < 1.5 : rowFresh() && r.chanting;
+      const r = LISTEN.rows[site.id];
+      const fresh = rowFresh(site.id);
+      const there = who === 'monk' ? BLESS.monks[seat.id].there && BLESS.now - BLESS.monks[seat.id].t < 1.5 : fresh && r.chanting;
       away = there || replaying ? 0 : away + dt;
-      const done = (who === 'monk' ? st >= MONK_CHANT_FOR : r.ending && rowFresh() && !replaying) || away > AWAY_FOR;
+      const done = (who === 'monk' ? st >= MONK_CHANT_FOR : r.ending && fresh && !replaying) || away > AWAY_FOR;
       if (done) {
         ended = true;
         // (the end counts if he heard some of it)
@@ -634,10 +663,11 @@ function stepListen(ctx: RoamCtx, dt: number): string | null {
   return prompt;
 }
 
-/** The way the camera looks: the row's from behind him on the carpet's side, the monk's over his left shoulder. */
+/** The way the camera looks: the row's from behind him on the side toward its middle (the village's carpet), the monk's over his left shoulder. */
 function pickSide(): void {
   tall = !!env && env.canvas.clientHeight > env.canvas.clientWidth * 1.15;
-  camYaw = facing + (who === 'row' ? rowFrame().side * (kneelAt.x < CHANT_ROW.axis ? -1 : 1) : FRAME_MONK.side);
+  const side = tall ? site.cam.tall : site.cam.side;
+  camYaw = facing + (who === 'row' ? side * (siteLocal(site, kneelAt.x, kneelAt.z, _l).a < 0 ? -1 : 1) : FRAME_MONK.side);
   framed = urlCam ? Infinity : 0;
 }
 
@@ -651,9 +681,10 @@ function frame(ctx: RoamCtx, dt: number): void {
   const { cam, body } = ctx;
   const s = body.scale / 1.4;
   const F = who === 'row' ? rowFrame() : FRAME_MONK;
-  // (toward the monks from him: the row's line, or the monk on his dais)
-  const tx = who === 'row' ? body.pos.x : seat.x;
-  const tz = who === 'row' ? CHANT_ROW.z : seat.z;
+  // (toward the monks from him: the row's line straight ahead of him, or the monk on his dais)
+  if (who === 'row') siteWorld(site, siteLocal(site, body.pos.x, body.pos.z, _l).a, site.row.d, _f);
+  const tx = who === 'row' ? _f.x : seat.x;
+  const tz = who === 'row' ? _f.z : seat.z;
   cam.focus.set(body.pos.x + (tx - body.pos.x) * F.toward, kneelAt.y + F.focusUp * s, body.pos.z + (tz - body.pos.z) * F.toward);
   const drift = step === 'listen' ? FRAME.drift * Math.sin((Math.PI * 2 * st) / FRAME.period) : 0;
   cam.behindYaw = camYaw + drift;
@@ -683,6 +714,21 @@ function restoreCam(dt: number | null): void {
   if (dt === null || (Math.abs(before.pitch - cam.pitch) < 0.005 && Math.abs(before.distance - cam.distance) < 0.05)) before = null;
 }
 
+/** The row whose middle is nearest `p`. */
+function nearestRow(p: Vector3): ChantSite {
+  let best = CHANT_SITES[0];
+  let bd = Infinity;
+  for (const s of CHANT_SITES) {
+    siteWorld(s, 0, s.row.d, _f);
+    const d = Math.hypot(_f.x - p.x, _f.z - p.z);
+    if (d < bd) {
+      bd = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
 // ── The add-on ───────────────────────────────────────────────────────────────
 
 /** A still settles this long after a start from the URL without `sim=` (roam.ts `SETTLE`, s). */
@@ -696,8 +742,8 @@ registerAddon({
     env = e;
     Object.assign(window, {
       __listen: {
-        now: () => ({ step, st: +st.toFixed(2), heard: +heard.toFixed(1), who, seat: seat.id, ask: { ...LISTEN.ask }, row: { ...LISTEN.row }, fresh: rowFresh(), hat: e.explorer.currentOutfit.hat, hatTaken, count: progress.get('listen.count', 0, isNum) }),
-        probe: () => ({ here: listenable({ body: e.body } as RoamCtx)?.who ?? null, busy: e.busy(), pos: e.body.pos.toArray(), grounded: e.body.grounded, inHall: inHall(e.body.pos) }),
+        now: () => ({ step, st: +st.toFixed(2), heard: +heard.toFixed(1), who, seat: seat.id, site: site.id, ask: { ...LISTEN.ask }, row: { ...LISTEN.rows[site.id] }, fresh: rowFresh(site.id), hat: e.explorer.currentOutfit.hat, hatTaken, count: progress.get('listen.count', 0, isNum) }),
+        probe: () => ({ here: listenable({ body: e.body } as RoamCtx)?.who ?? null, busy: e.busy(), pos: e.body.pos.toArray(), grounded: e.body.grounded, row: CHANT_SITES.find((s) => inAsk(s, e.body.pos))?.id ?? null }),
         /** The camera: its orbit, where it is, and how far out the hard world lets it go (0‥1 of the way to the orbit). */
         cam: () => {
           const c = e.cam;
@@ -765,9 +811,10 @@ registerAddon({
   offer(ctx, mode) {
     // (walking to his place: what he is about, no E — the pagoda door's "E  Pray" reaches into the hall)
     if (mode === 'walk' && step === 'go') return who === 'monk' ? pGoingMonk : pGoing;
-    if (mode !== 'walk' || step !== 'off' || !env || env.busy() || !rowFresh()) return null;
-    if (!inHall(ctx.body.pos)) return null;
-    const r = LISTEN.row;
+    if (mode !== 'walk' || step !== 'off' || !env || env.busy()) return null;
+    const s = rowHere(ctx.body.pos);
+    if (!s) return null;
+    const r = LISTEN.rows[s.id];
     if (r.there && !r.ending) return pAsk;
     // (the monks walking in to their places, or done and going: what is on, no E)
     return r.coming ? pComing : r.ending || r.leaving ? pOver : null;
@@ -828,10 +875,10 @@ registerAddon({
   fromUrl(q, ctx) {
     const v = q.get('listen');
     if (!v || !env) return;
-    // Who: the URL's, else the monk before his dais, else the row.
+    // Who: the URL's, else the monk before his dais, else the nearest row.
     const s = seatBefore(ctx.body.pos);
     const w = q.get('listenwho') ?? (s ? 'monk' : 'row');
-    const target = w === 'monk' ? { who: 'monk' as const, seat: s ?? BLESS_SEATS[0] } : { who: 'row' as const };
+    const target = w === 'monk' ? { who: 'monk' as const, seat: s ?? BLESS_SEATS[0] } : { who: 'row' as const, site: nearestRow(ctx.body.pos) };
     if (v === '1') {
       begin(ctx, target);
       return;

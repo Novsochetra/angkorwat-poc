@@ -1,6 +1,6 @@
 import type { EventState } from '../events';
 import { PLACES } from '../layout';
-import { LISTEN } from '../roam/_listenHooks';
+import { chantSite, LISTEN, siteWorld } from '../roam/_listenHooks';
 import { PAGODA } from '../village/_spots';
 import { chantBlend, chantsReady, ChantStream } from './chants';
 import { biquad, glide, mtof, noise, range, softWave, strike, type Rng } from './dsp';
@@ -13,10 +13,11 @@ import type { Ears } from './water';
  *
  * - dawn (`dawnChant`): the monks' morning chanting in Pali — the homage
  *   (Namo tassa…), the three refuges, the praise of the Buddha (Itipi so…)
- *   — from the village pagoda and from Angkor Wat's monastery (the village
- *   pagoda's while its monks chant in the hall, as one sees them there:
- *   `LISTEN.row`, people/_sceneChant.ts; by the hour when they are not
- *   built or far off). Recorded
+ *   — from the village pagoda, from Angkor Wat's monastery and from Phnom
+ *   Kulen's reclining Buddha (the village pagoda's and Kulen's while their
+ *   rows of monks chant, as one sees them there: `LISTEN.rows`,
+ *   people/_sceneChant.ts; by the hour when they are not built or far off;
+ *   Kulen has no drum or bell). Recorded
  *   monks (chants.ts: close by the temple hall's recording, far off the one
  *   heard across Siem Reap, `RecChant`); until the recordings are loaded,
  *   or if they fail, synthesized (`Chant`): low voices in near-unison, a
@@ -42,7 +43,7 @@ import type { Ears } from './water';
 const aw = PLACES.find((p) => p.id === 'sanctuary')!;
 
 export interface TempleSite {
-  id: 'pagoda' | 'angkorWat';
+  id: 'pagoda' | 'angkorWat' | 'kulen';
   /** Where the sound comes from (m). */
   x: number;
   y: number;
@@ -51,12 +52,21 @@ export interface TempleSite {
   gain: number;
   delay: number;
   tune: number;
+  /** Its skor drum at dusk and bell before noon are heard. */
+  strokes: boolean;
 }
 
-/** The village pagoda's hall (village/_spots.ts) and Angkor Wat's monastery, in its front court. */
+/** Kulen's row of monks before the reclining Buddha: their middle (roam/_listenHooks.ts). */
+const kulen = (() => {
+  const s = chantSite('kulen');
+  return { ...siteWorld(s, 0, s.row.d, { x: 0, z: 0 }), y: s.floor + 1.5 };
+})();
+
+/** The village pagoda's hall (village/_spots.ts), Angkor Wat's monastery, in its front court, and Kulen's reclining Buddha (his monks' row). */
 export const TEMPLE_SITES: readonly TempleSite[] = [
-  { id: 'pagoda', x: PAGODA.x, y: PAGODA.floor + 2, z: PAGODA.z, gain: 1, delay: 0, tune: 0 },
-  { id: 'angkorWat', x: aw.x, y: aw.y + 3, z: aw.z + 30, gain: 0.85, delay: 4.5, tune: -0.35 },
+  { id: 'pagoda', x: PAGODA.x, y: PAGODA.floor + 2, z: PAGODA.z, gain: 1, delay: 0, tune: 0, strokes: true },
+  { id: 'angkorWat', x: aw.x, y: aw.y + 3, z: aw.z + 30, gain: 0.85, delay: 4.5, tune: -0.35, strokes: true },
+  { id: 'kulen', x: kulen.x, y: kulen.y, z: kulen.z, gain: 0.85, delay: 0, tune: 0.25, strokes: false },
 ];
 
 /**
@@ -488,8 +498,9 @@ export class TempleSound {
   private queue: Stroke[] = [];
   private lastPlace = -1;
   private chanting = false;
-  /** The village pagoda's chant (its row of monks while they are built and near: `LISTEN.row`; else as `chanting`). */
+  /** The village pagoda's and Kulen's chant (their rows of monks while they are built and near: `LISTEN.rows`; else as `chanting`). */
   private pagodaChanting = false;
+  private kulenChanting = false;
   /** Event counts already answered (−1: not yet cued). */
   private seen = { duskDrum: -1, noonBell: -1 };
 
@@ -517,10 +528,12 @@ export class TempleSound {
    */
   cue(ev: Readonly<Pick<EventState, 'on' | 'count' | 'began'>>, t: number): void {
     this.chanting = ev.on.dawnChant;
-    // (the row wrote a moment ago: it is built and near; it chants a little before or after the hour, as it walks in and out)
-    const row = LISTEN.row;
+    // (a row wrote a moment ago: it is built and near; it chants a little before or after the hour, as it walks in and out)
+    const row = LISTEN.rows.village;
     // (at Pchum Ben the hall's chant is the festival's own: roam/_pchumBen.ts)
     this.pagodaChanting = t - row.t < 1.5 ? row.chanting && !row.festival : this.chanting;
+    const k = LISTEN.rows.kulen;
+    this.kulenChanting = t - k.t < 1.5 ? k.chanting : this.chanting;
     for (const name of ['duskDrum', 'noonBell'] as const) {
       const n = ev.count[name];
       if (n === this.seen[name]) continue;
@@ -535,13 +548,14 @@ export class TempleSound {
 
   /** Chant on or off (checks; `cue` does it from the events). */
   chant(on: boolean): void {
-    this.chanting = this.pagodaChanting = on;
+    this.chanting = this.pagodaChanting = this.kulenChanting = on;
   }
 
   /** The dusk: two rounds of the skor drum speeding up to a roll, then the bell struck five times; Angkor Wat's a little later. */
   duskDrum(when = this.ctx.currentTime + 0.3): void {
     const r = this.rnd;
     this.sites.forEach((site, i) => {
+      if (!site.def.strokes) return;
       let t = when + site.def.delay + range(r, 0, 1);
       for (let round = 0; round < 2; round++) {
         let dt = range(r, 1.5, 1.8);
@@ -564,6 +578,7 @@ export class TempleSound {
   /** Before noon: the bell three times (the pagoda, then Angkor Wat). */
   noonBell(when = this.ctx.currentTime + 0.3): void {
     this.sites.forEach((site, i) => {
+      if (!site.def.strokes) return;
       for (let k = 0; k < 3; k++) this.queue.push({ t: when + site.def.delay * 0.6 + k * 5, site: i, kind: 'bell', vel: 0.9 });
     });
     this.queue.sort((a, b) => a.t - b.t);
@@ -593,7 +608,8 @@ export class TempleSound {
 
   /** Whether site `i` chants now. */
   private chantsAt(i: number): boolean {
-    return this.sites[i].def.id === 'pagoda' ? this.pagodaChanting : this.chanting;
+    const id = this.sites[i].def.id;
+    return id === 'pagoda' ? this.pagodaChanting : id === 'kulen' ? this.kulenChanting : this.chanting;
   }
 
   /** The ambience is muted (nothing is scheduled): the chant's voices fade and stop, the strokes due now are dropped. */

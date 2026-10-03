@@ -24,8 +24,10 @@ import { biquad, mtof, noise, range, softWave, strike } from './dsp';
  * - `blessKnot` (moves): the knot pulled snug;
  * - `blessCloth` (moves): his clothes as he kneels, steps on his knees, gets up.
  *
- * Gentle levels: the chant (him kneeling two metres from the monk) about as
- * loud as a footstep; the rest under the paddle's splash.
+ * The chant and the murmur clearly heard (him kneeling two metres from the
+ * monk: as loud as the dawn chant behind the monks' row, on a laptop's
+ * speakers too), the map's music stepping back while the monk chants; the
+ * rest under the paddle's splash.
  */
 
 type Vowel = 'a' | 'i' | 'u' | 'e' | 'o';
@@ -69,9 +71,12 @@ const VOICE: readonly [number, number, number][] = [
 ];
 /** The reciting tone's root (D2, MIDI: the music's scale, as the temple chant), the levels. */
 const ROOT = 38;
-const LEVEL = { chant: 1.15, murmur: 0.62 };
-/** The recording's levels (chants.ts), to sit as the synthesized voice did. */
-const REC = { chant: 0.43, murmur: 0.3 };
+const LEVEL = { chant: 2.1, murmur: 1.15 };
+/** The recording's levels (chants.ts), to sit as the synthesized voice does. */
+const REC = { chant: 0.85, murmur: 0.58 };
+/** How long the chant and the murmur last (s); the music comes back this long after (s). */
+const LEN = { chant: 7, murmur: 2.2 };
+const HUSH_AFTER = 1;
 
 /** One voice chanting `text`, from `t0`: its beat (s a light syllable), its level, how breathy (the hiss's share). */
 function chant(o: SfxOut, gain: number, t0: number, text: Syl[][], beat: number, level: number, breath: number): void {
@@ -210,9 +215,24 @@ function chant(o: SfxOut, gain: number, t0: number, text: Syl[][], beat: number,
   };
 }
 
-// (the recorded monks once loaded, chants.ts: a piece as long as the blessing, and a short soft one over the string)
-registerSfx('blessChant', (o, gain, t) => chantShot(o, gain, t, 7, REC.chant, 0.15) || chant(o, gain, t, CHANT, 0.135, LEVEL.chant, 0.08), 'ambience');
-registerSfx('blessMurmur', (o, gain, t) => chantShot(o, gain, t, 2.2, REC.murmur, 0.15) || chant(o, gain, t, MURMUR, 0.15, LEVEL.murmur, 0.3), 'ambience');
+// (the recorded monks once loaded, chants.ts: a piece as long as the blessing, and a short soft one over the string;
+// the music steps back meanwhile, as for the chant one kneels to listen to: audio/_listen.ts)
+registerSfx(
+  'blessChant',
+  (o, gain, t) => {
+    o.engine.yieldMusic(1, t, t + LEN.chant + HUSH_AFTER);
+    return chantShot(o, gain, t, LEN.chant, REC.chant, 0.15) || chant(o, gain, t, CHANT, 0.135, LEVEL.chant, 0.08);
+  },
+  'ambience',
+);
+registerSfx(
+  'blessMurmur',
+  (o, gain, t) => {
+    o.engine.yieldMusic(1, t, t + LEN.murmur + HUSH_AFTER);
+    return chantShot(o, gain, t, LEN.murmur, REC.murmur, 0.15) || chant(o, gain, t, MURMUR, 0.15, LEVEL.murmur, 0.3);
+  },
+  'ambience',
+);
 
 registerSfx('blessDip', (o: SfxOut, gain: number, t: number) => {
   const { ctx, rnd } = o;

@@ -327,6 +327,7 @@ export const EVENT_ART: Record<string, string[]> = {
   boatrace: outlined(WATER),
   'dakbat-village': outlined(ALMS),
   'bless-village': outlined(BLESS),
+  'bless-kulen': outlined(BLESS),
   pchumben: outlined(BAYBEN),
   visak: outlined(CANDLE),
   equinox: outlined(EQUINOX),

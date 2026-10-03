@@ -776,7 +776,7 @@ const WORDS = {
   whenAtLake: { km: 'បឹងធំ និងគូទឹកអង្គរវត្ត', en: "The great lake and Angkor Wat's moat" },
   whenAtFloating: { km: 'ភូមិបណ្ដែតទឹក', en: 'Floating village' },
   whenAtNewYear: { km: 'ភូមិបណ្ដែតទឹក និងអង្គរវត្ត', en: 'The floating village and Angkor Wat' },
-  whenAtPagoda: { km: 'វត្តក្នុងភូមិ និងអង្គរវត្ត', en: 'The village pagoda and Angkor Wat' },
+  whenAtPagoda: { km: 'វត្តក្នុងភូមិ អង្គរវត្ត និងវត្តព្រះអង្គធំ', en: 'The village pagoda, Angkor Wat and Wat Preah Ang Thom' },
   whenAtPagodaOnly: { km: 'វត្តក្នុងភូមិ', en: 'The village pagoda' },
   whenAtAngkor: { km: 'មុខប្រាសាទអង្គរវត្ត', en: 'In front of Angkor Wat' },
   whenAtRiverGate: { km: 'ក្រោមក្លោងទ្វារទន្លេ', en: 'Below the River Gate' },
@@ -787,7 +787,7 @@ const WORDS = {
   whenWaterBegins: { km: 'បុណ្យអុំទូកចាប់ផ្ដើមហើយ', en: 'The Water Festival has begun' },
   whenNewYearBegins: { km: 'សួស្ដីឆ្នាំថ្មី! បុណ្យចូលឆ្នាំចាប់ផ្ដើមហើយ', en: 'Happy New Year! Khmer New Year has begun' },
   whenChant: { km: 'សូត្រមន្តពេលព្រលឹម', en: 'Monks chanting at dawn' },
-  whenChantNote: { km: 'ព្រះសង្ឃសូត្រធម៌ជាភាសាបាលី។ នៅក្នុងវិហារវត្តភូមិបណ្ដែតទឹក អ្នកអាចលុតជង្គង់ស្ដាប់នៅពីក្រោយព្រះសង្ឃ', en: "The monks chant their Pali prayers. In the floating village pagoda's hall, kneel behind them and listen" },
+  whenChantNote: { km: 'ព្រះសង្ឃសូត្រធម៌ជាភាសាបាលី។ នៅក្នុងវិហារវត្តភូមិបណ្ដែតទឹក និងនៅមុខព្រះអង្គធំលើភ្នំគូលែន អ្នកអាចលុតជង្គង់ស្ដាប់នៅពីក្រោយព្រះសង្ឃ', en: "The monks chant their Pali prayers. In the floating village pagoda's hall, and before Preah Ang Thom on Phnom Kulen, kneel behind them and listen" },
   whenChantBegins: { km: 'ព្រះសង្ឃចាប់ផ្ដើមសូត្រមន្តហើយ', en: 'The monks begin their dawn chant' },
   whenDrum: { km: 'ស្គរវត្តពេលល្ងាច', en: "The pagoda's drum at dusk" },
   whenDrumNote: { km: 'ស្គរធំ និងជួងសំរិទ្ធពីវត្ត', en: 'The skor drum and the bronze bell' },
@@ -947,6 +947,9 @@ const WORDS = {
   blessCal: { km: 'ការប្រោះទឹកមន្ត និងចងអំបោះក្រហម', en: 'Blessings with the red string' },
   blessCalNote: { km: 'ព្រះសង្ឃមួយអង្គគង់ក្នុងវិហារ ប្រោះទឹកមន្ត និងចងអំបោះក្រហមឱ្យញាតិញោម (លើកលែងពេលឆាន់ថ្ងៃត្រង់)', en: 'A monk sits in the hall to sprinkle lustral water and tie the red string for visitors (not at his noon meal)' },
   blessCalBegins: { km: 'ព្រះសង្ឃគង់ប្រទានពរនៅក្នុងវិហារហើយ', en: 'A monk is giving blessings in the pagoda hall' },
+  // (the monk by Phnom Kulen's reclining Buddha, Preah Ang Thom: the place is `rbGate`)
+  blessCalNoteKulen: { km: 'ព្រះសង្ឃមួយអង្គគង់ក្បែរព្រះសិរសាព្រះអង្គធំ ប្រោះទឹកមន្ត និងចងអំបោះក្រហមឱ្យអ្នកធម្មយាត្រា (លើកលែងពេលឆាន់ថ្ងៃត្រង់)', en: 'A monk sits by the head of Preah Ang Thom to sprinkle lustral water and tie the red string for pilgrims (not at his noon meal)' },
+  blessCalBeginsKulen: { km: 'ព្រះសង្ឃគង់ប្រទានពរនៅព្រះអង្គធំហើយ', en: 'A monk is giving blessings at Preah Ang Thom' },
   // Kneeling to listen to the monks' chanting (listen…, chant…): roam/_listen.ts
   listenAsk: { km: 'លុតជង្គង់ស្ដាប់ព្រះសង្ឃសូត្រមន្ត', en: 'Kneel and listen to the monks chanting' },
   // (before the blessing monk, beside "E  Ask for a blessing": J)

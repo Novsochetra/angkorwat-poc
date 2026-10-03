@@ -1242,7 +1242,8 @@ alms bowls; families give rice by the road; the explorer gives too.
 
 `roam/_blessing.ts` (id `bless`, words `bless…`), his pose `character/blessing.ts`, the
 string `character/redString.ts`, sounds `audio/_bless.ts`; the monk is the people's
-(`people/_sceneBlessing.ts`, scene `blessing`; his pose `POSE.bless` and the sprig
+(`people/_sceneBlessing.ts`: one scene a seat, `blessing` in the village, `kulenblessing`
+at Kulen, `new BlessingMonk(env, scene, seatId)`; his pose `POSE.bless` and the sprig
 `FEAT.sprig` in `people/_personModel.ts`); the two sides share `roam/_blessingHooks.ts`
 (`BLESS_SEATS`: where he sits and where the explorer kneels; `BLESS`: whether the monk
 is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
@@ -1256,8 +1257,20 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   it, a silver bowl of lustral water (ផ្តិលទឹកមន្ត) on its foot at his right knee (lotus
   petals on the water, a sprig of leaves with a lotus bud in it), a silver plate with a
   ball of red cotton string at his left. Angkor Wat has no monk sitting in a gallery
-  (its monks walk and sweep: `people/_monks.ts`), so this is the one seat; a new one is a
-  line in `BLESS_SEATS` and a scene.
+  (its monks walk and sweep: `people/_monks.ts`). A new seat is a line in `BLESS_SEATS`
+  (`wall`: its dais against a wall; `fest`: away at the village pagoda's festivals), its
+  way out in `WAYS` (people/_sceneBlessing.ts), a scene line in people/index.ts, its
+  calendar words in `CAL` (roam/_blessing.ts) and its icon (`_calendarIcons.ts`).
+- **Kulen's seat** (`kulen`): on Phnom Kulen's rock floor by the reclining Buddha's head
+  (Preah Ang Thom, landmarks/_kulenBuddha.ts), the monk at 401.25, −446.3 (his frame's
+  −7.75, −1.3) facing south, his dais free-standing (no wall: one walking into it is put
+  out its back too), the same heights; the explorer kneels at 401.25, −444.1, clear of
+  the pilgrims' kneeling rows before the altar and of the dawn chant's row (roam/
+  _listenHooks.ts `CHANT_SITES`). No festival rule. His way out: down the floor west of
+  the pilgrims, inside the front post, along the floor's south edge, down the rock's stair
+  and along the pilgrims' paved way to the temple's grand stair. Calendar `bless-kulen`.
+  Near the altar the prayer spot's "E  Pray" comes first; at his kneeling place E asks
+  him, and J works anywhere before him.
 - **When** (`blessHour`, the clock): from after the dawn chant (0.83) to his meal before
   noon (0.945, the noon bell), from 0.985 to the dusk drum (0.19); not at night; not
   while the pagoda keeps Pchum Ben or Visak Bochea (`festivalNow`: the monks are on the
@@ -1275,13 +1288,15 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   `blessDawn`, `blessFest`). Beside "E  Ask for a blessing": "J  Kneel and listen" (roam/_listen.ts). He never stands on the dais or its step (not
   on the walk map: put back off them, to the front or a side).
 - **Bareheaded in the hall**: his hat comes off as he steps into the pagoda's hall past
-  the door (one wears no hat before the Buddha and the monks) and goes back on as he
+  the door, or onto Kulen's rock floor before the reclining Buddha from its stair
+  (`HALLS`; one wears no hat before the Buddha and the monks) and goes back on as he
   steps out (unless he put it back on meanwhile: H), or leaves his feet; the blessing
   leaves it off at its end while he is inside. (His boots stay on.)
 - **The blessing** (≈ 28 s): he walks to his place 2.2 m before the monk (the stick,
   Space or E: never mind), turns to him, kneels the prayer's way (hat off), sits back on
   his heels, palms together at his face. The monk chants the Pali blessing
-  (`blessChant`, ≈ 7 s of the recorded monks, audio/chants.ts; one old voice synthesized until it loads; bubbles in Khmer letters: "♪ សព្វីតិយោ វិវជ្ជន្តុ
+  (`blessChant`, ≈ 7 s of the recorded monks, audio/chants.ts, as loud as the dawn chant behind the monks' row, the
+  map's music stepping back meanwhile, the murmur over the string too; one old voice synthesized until it loads; bubbles in Khmer letters: "♪ សព្វីតិយោ វិវជ្ជន្តុ
   សព្វរោគោ វិនស្សតុ", "♪ មា តេ ភវត្វន្តរាយោ សុខី ទីឃាយុកោ ភវ"; romanised in English), takes
   the sprig from the bowl, dips it (`blessDip`) and flicks the water over him three
   times: seven drops fly to his face each time (worked out from the time since the
@@ -1333,18 +1348,25 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   `…&bless=chant:3.12` (the drops), `…&bless=tie` (the string going round), `…&bless=tie:4.75`
   (he looks at it), `…&bless=words:1.0`, `…&bless=bow:0.9`, `…&bless=again:1.2`,
   `…&clock=0.5` (night: the empty dais, its hint), `…&fest=pchumben` (`parts=…,festival`).
+  Kulen's: `roam=walk&at=401.25,150,-444.1&yaw=180&clock=0.9&people=kulen,kulenblessing`
+  (`parts=terrain,kulen,people,foreground` is quicker; `bless=` and `listen=` take the seat
+  he stands before, else the nearest).
 
 ### Kneeling to listen to the monks' chanting
 
 `roam/_listen.ts` (id `listen`, order 14: before a shrine — the pagoda door's "E  Pray"
 reaches into the hall —, words `listen…`, `chant…`), the link `roam/_listenHooks.ts`
-(`LISTEN`: the row's state, the listener's; `CHANT_ROW`, `CHANT_SEAT`, `CHANT_FOLK`,
-`LISTEN_SPOTS`, `CHANT_VERSES`, `FEST_ROW`), the dawn row `people/_sceneChant.ts` (scene `chant`), the
+(`LISTEN`: each row's state `rows[id]`, the listener's `ask`; `CHANT_SITES`: each row's
+place — its frame (origin, the way the monks face, the floor; `siteWorld` / `siteLocal`:
+`a` across, `d` toward the Buddha), seats, platform, villagers, kneeling spots, the floor
+where E asks, the room, the Buddha he looks at, the camera's side —; `CHANT_VERSES`,
+`FEST_ROW`), the dawn rows `people/_sceneChant.ts` (one scene a row: `chant` in the
+village pagoda, `kulenchant` at Kulen; their ways in and out `WAYS`), the
 blessing monk's chanting in `people/_sceneBlessing.ts` (`chantFor`), the monks' pose
 `POSE.chant` (people/_personModel.ts: seated as `sit`, palms together at the chest, a
-table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; the pagoda's dawn chant follows the row
-(audio/temple.ts `pagodaChanting`). His posture is the blessing's (character/blessing.ts
-`blessPose`): the prayer's kneel, as at dak bat.
+table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; each pagoda's dawn chant follows its row
+(audio/temple.ts `pagodaChanting`, `kulenChanting`). His posture is the blessing's
+(character/blessing.ts `blessPose`): the prayer's kneel, as at dak bat.
 
 - **The dawn chant's row** (events.ts `dawnChant`, ≈ clock 0.71‥0.83): in the floating
   village pagoda's hall four monks sit cross-legged in a row on their low platform before
@@ -1369,12 +1391,28 @@ table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; the pagoda's dawn chant follow
   then the monks are the porch's; Visak Bochea, at dawn once the night's procession is
   over (from 0.74). Its sound is the pagoda's dawn chant, from the hall while the row
   chants (by the hour when the row is far off or not built).
-- **Kneel and listen to the row**: in the hall (past the door, before the table) while
+- **Kulen's row** (`kulen`, the same hour; no festival rule): on Phnom Kulen's rock
+  before the reclining Buddha (landmarks/_kulenBuddha.ts), four monks on the same low
+  platform before his body and feet (its middle 3.3 m east of his frame's origin, east
+  of the altar's donation box), facing him (north), the bed's front 0.95 m before them;
+  a lay nun and an old couple kneel behind the row's east half. They come along the
+  pilgrims' paved way from the temple's grand stair and up the rock's stair (from the
+  nearest point of it the camera does not see), then across the floor inside the roof's
+  front posts straight to their places; they go out the same way and are gone where
+  nobody sees them. The pilgrims' kneeling rows before his head (people/
+  _sceneKulenPilgrims.ts) and the explorer's own prayer spot stay clear: E asks behind
+  the row only (`ask`: under the roof, east of the donation box), "E  Pray" before his
+  head. One kneeling spot (behind the row's west half, the camera from the east of him:
+  the Buddha's head, the altar and the row before him; from the east half it would look
+  past his feet into the sky). Its sound: the `kulen` site of audio/temple.ts (no drum
+  or bell), from the row while it chants, by the hour when it is far off.
+- **Kneel and listen to the row**: in the hall (past the door, before the table; at
+  Kulen behind the row) while
   the monks sit: "E  លុតជង្គង់ស្ដាប់ព្រះសង្ឃសូត្រមន្ត / Kneel and listen to the monks
   chanting" (J too; while they walk in, "The monks are coming in to chant", and as they end
   and go, "The monks have finished chanting", no E). He walks
-  to the nearer of his two places behind the row (`LISTEN_SPOTS`: on the mats, behind the
-  gap between two monks, x ∓ 1.4, z 102.8), turns to the Buddha, kneels the prayer's way
+  to the nearest of his places behind the row (`spots`: in the village on the mats, behind
+  the gap between two monks, x ∓ 1.4, z 102.8), turns to the Buddha, kneels the prayer's way
   (hat off), sits back on his heels, palms together at his face; his head bowed, a glance
   up now and then (every 17 s). The map's music steps back (`listenHush`). When the row
   ends he bows three times to the floor with them and gets up: "សាធុ! … / Sathu! You
@@ -1399,12 +1437,13 @@ table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; the pagoda's dawn chant follow
   feet: all stops at once. Tools, emotes and the camera wait meanwhile (`input` takes
   them); the drag looks round. The key help: "E get up · Q R look".
 - **Camera**: the row's from behind him over the carpet (the side toward the hall's
-  middle: the villagers are out of its way), a little above: him on his knees, the row
+  middle: the villagers are out of its way; at Kulen toward the row's middle too, less
+  round, `cam`: the roof's front posts stand behind him), a little above: him on his knees, the row
   before him over his shoulder, the Buddha beyond (on a screen held upright: from nearer
   behind, a little higher, so the row and the Buddha stay in); the monk's over his left
   shoulder, the monk facing it. Eased there over 3.2 s, then a slow drift (± 0.09 rad over 46 s) until
   the player drags; back to his own view after.
-- **Cost**: 7 people of the crowd (no draw of their own), the row's step ≈ 0.01 ms; the
+- **Cost**: 7 people of the crowd a row (no draw of their own), the row's step ≈ 0.01 ms; the
   people's bone shader: one table and one `if` (`P_CHANT`), like `P_BLESS`.
 - **URL**: `listen=1` starts as E or J would (`listenwho=row|monk`; else the monk when he
   stands before the dais, the row in the hall); `listen=<step>[:<s>]` that far into a step
@@ -1414,8 +1453,12 @@ table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; the pagoda's dawn chant follow
   Stills show the prompt as it was at their start (before the row is written): check
   prompts live. `report()` gives
   `listen=`, `listenwho=` (and `chantrow=1` for the row). Checks: `__listen.now()`,
-  `__listen.probe()`, `__listen.cam()`; `__chant.now()`, `__chant.end()` (the row ends now).
+  `__listen.probe()`, `__listen.cam()`; `__chant.now(site)`, `__chant.end(site)` (that row
+  ends now; `site` `village`, the default, or `kulen`).
   E.g. `roam=walk&at=-307.4,10,102.8&yaw=0&clock=0.76&chantrow=1&listen=listen:15&listenwho=row&chantverse=13`,
+  Kulen's `roam=walk&at=410.9,150,-444.85&yaw=180&clock=0.76&chantrow=1&listen=listen:15&listenwho=row&chantverse=13`
+  (`parts=terrain,kulen,people,foreground&people=kulenchant` is quicker; `chantrow=in:9` the
+  monks crossing the floor from the stair; `listenwho=row` takes the nearest row),
   `roam=walk&at=-305.3,10,103.3&yaw=90&clock=0.9&listen=listen:20&listenwho=monk`
   (`parts=terrain,village,people,foreground&people=blessing,chant` is quicker). A live
   check of the monk needs `fest=0` while the map's calendar keeps Pchum Ben (the monk is

@@ -97,7 +97,11 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   // The monk who blesses in the floating village pagoda's hall: lustral water and the red string (roam/_blessing.ts).
   blessing: async () => ((m) => (e, c) => new m.BlessingMonk(e, c.scene))(await import('./_sceneBlessing')),
   // The dawn chant in the same hall: four monks in a row before the Buddha, villagers kneeling behind (roam/_listen.ts).
-  chant: async () => ((m) => (e, c) => new m.ChantRow(e, c.scene))(await import('./_sceneChant')),
+  chant: async () => ((m) => (e, c) => new m.ChantRow(e, c.scene, 'village'))(await import('./_sceneChant')),
+  // The dawn chant at Phnom Kulen's reclining Buddha: four monks in a row before him, pilgrims kneeling behind.
+  kulenchant: async () => ((m) => (e, c) => new m.ChantRow(e, c.scene, 'kulen'))(await import('./_sceneChant')),
+  // The monk who blesses on Phnom Kulen's rock floor, by the reclining Buddha's head: lustral water and the red string.
+  kulenblessing: async () => ((m) => (e, c) => new m.BlessingMonk(e, c.scene, 'kulen'))(await import('./_sceneBlessing')),
   // The grandmother who keeps the key to the empty stilt house at the sugar-palm village's edge (roam/_home.ts).
   home: async () => ((m) => (e) => new m.HomeGran(e))(await import('./_sceneHome')),
 };

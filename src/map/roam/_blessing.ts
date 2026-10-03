@@ -14,7 +14,7 @@ import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import { PAGODA } from '../village/_spots';
 import type { MapFrame, RoamMode } from '../types';
-import { onLang, t } from '../ui/lang';
+import { onLang, t, type WordKey } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, CHANT_FOR, SCRIPT_AT, seatBefore, seatFront, TIE, type BlessBox, type BlessSeat, type BlessState } from './_blessingHooks';
 import { angleDiff } from './followCam';
@@ -22,15 +22,17 @@ import type { RoamCtx } from './types';
 
 /**
  * A monk's blessing with the red string (ការចងអំបោះក្រហម), as Cambodians
- * receive it at the pagoda. In the floating village pagoda's hall a monk sits
- * by day on his dais (people/_sceneBlessing.ts; the link `BLESS`:
- * roam/_blessingHooks.ts), a silver bowl of lustral water with a sprig in it
- * by his right knee, a ball of red cotton string by his left.
+ * receive it at the pagoda. A monk sits by day on his dais (people/
+ * _sceneBlessing.ts; the link `BLESS`: roam/_blessingHooks.ts, its seats
+ * `BLESS_SEATS`) in the floating village pagoda's hall, and another on Phnom
+ * Kulen's rock floor by the reclining Buddha's head; a silver bowl of lustral
+ * water with a sprig in it by his right knee, a ball of red cotton string by
+ * his left.
  *
  * - **Ask** (on foot before his dais, while he sits there: by day, not at his
- *   meal, not at Pchum Ben or Visak Bochea): "E  សុំពរពីព្រះសង្ឃ / Ask for a
- *   blessing" (a pad's □ / X, the touch Use button); beside it "J  Kneel and
- *   listen" (he kneels and the monk chants for him: roam/_listen.ts). By the
+ *   meal; in the village not at Pchum Ben or Visak Bochea): "E  សុំពរពីព្រះសង្ឃ /
+ *   Ask for a blessing" (a pad's □ / X, the touch Use button); beside it "J  Kneel
+ *   and listen" (he kneels and the monk chants for him: roam/_listen.ts). By the
  *   empty dais it says why (night, his meal, a festival), no E.
  * - **The blessing**: he walks to the place before the dais (the stick or
  *   Space: never mind), turns to the monk, takes his hat off and kneels (the
@@ -46,6 +48,9 @@ import type { RoamCtx } from './types';
  *   first) and gets up, his hat back on: "A monk blessed you. The red string
  *   protects you on your travels." The camera comes round to his right side,
  *   low, the monk's face and the string in view; a drag looks round.
+ * - **Bareheaded** where the monk sits (`HALLS`: the village pagoda's hall, the
+ *   floor on Kulen's rock before the Buddha): his hat off as he steps in, on
+ *   again as he steps out.
  * - **The string** stays on his right wrist from then on, every visit
  *   (`progress` `bless.string`): in every pose and mode, in photos and the
  *   selfie (character/redString.ts: on the forearm, clear of what the hand
@@ -58,7 +63,9 @@ import type { RoamCtx } from './types';
  * URL (checks): `bless=1` (with `at=` before the monk) asks as E would;
  * `bless=<step>[:<s>]` that far into a step at once (`kneel`, `chant`, `tie`,
  * `words`, `bow`, `up`, `again`; `bless=tie` alone: the cord going round his
- * wrist); `redstring=1` (or `0`) the string on him (or off) in any shot;
+ * wrist); either before the seat he stands before, else the nearest (`at=` on
+ * Kulen's floor: Kulen's monk, with `people=kulenblessing`);
+ * `redstring=1` (or `0`) the string on him (or off) in any shot;
  * `blessmonk=1|0` the monk there (or away) whatever the clock; the monk alone:
  * `blesspose=<state>:<s>` (people/_sceneBlessing.ts). `report()` gives
  * `bless=` and `redstring=1`. `window.__bless` (checks): the step, the time.
@@ -98,7 +105,9 @@ const AGAIN_FOR = 3.0;
  * line between them: both in profile, the monk's sprinkling hand on its side, the hall's Buddha behind them. For the
  * tie it comes round behind him to his right side (`tieSide`, nearer: the string goes round his right wrist; the
  * hall's door behind them), and back after; a little wider (`fov`: the camera keeps off the hall's walls). Eased
- * there over `for` s at each change, then it is the player's (a drag looks round); back to where it was after.
+ * there over `for` s at each change, then it is the player's (a drag looks round); back to where it was after. On
+ * Kulen's floor the same frames it: from his left over the rock's open west edge, the reclining Buddha behind them;
+ * for the tie from his right, west of the altar and north of the pilgrims' rows (they kneel behind it, out of view).
  */
 const FRAME = { side: -1.45, tieSide: 1.4, pitch: 0.17, near: 3.0, far: 3.6, fov: 60, rate: 1.8, back: 2.2, for: 3.2 };
 /** Where he looks as he looks at the string on his wrist (BU, his space: before him, a little to his right). */
@@ -132,11 +141,28 @@ const ps = blessState();
 /** The hat came off for it (it goes back on). */
 let hatTaken = false;
 /**
- * The pagoda's hall (village/_pagoda.ts: its walls ± 4 m from the axis, from the door's wall to the back wall at
- * z 112.5), its floor (the altar's steps over it too): he is in it past the door's threshold by `in` (m), out once
- * back over it.
+ * Where a monk sits for blessings, he goes bareheaded: a box on the map (m), its floor; he is in it past its threshold
+ * by `in` (m), out once back over it. The threshold is its `z0` side (`door` −1) or its `z1` side (+1).
  */
-const HALL = { x0: PAGODA.x - 4, x1: PAGODA.x + 4, z0: PAGODA.doorZ, z1: 112.5, floor: PAGODA.floor, in: 0.3 } as const;
+interface Hall {
+  readonly x0: number;
+  readonly x1: number;
+  readonly z0: number;
+  readonly z1: number;
+  readonly floor: number;
+  readonly in: number;
+  readonly door: -1 | 1;
+}
+/**
+ * The village pagoda's hall (village/_pagoda.ts: its walls ± 4 m from the axis, from the door's wall to the back wall at
+ * z 112.5), its floor (the altar's steps over it too); Kulen's rock floor before the reclining Buddha (`BLESS_SEATS`'
+ * `kulen`, his frame: the floor's outline within x ± 9.1, z ± 6.1, 150 m up), from the head of its stair on the south
+ * (its top step at z 6, its cheek walls from z 5).
+ */
+const HALLS: readonly Hall[] = [
+  { x0: PAGODA.x - 4, x1: PAGODA.x + 4, z0: PAGODA.doorZ, z1: 112.5, floor: PAGODA.floor, in: 0.3, door: -1 },
+  { x0: 409 - 9.1, x1: 409 + 9.1, z0: -445 - 6.1, z1: -445 + 5.6, floor: 150, in: 0.3, door: 1 },
+];
 let inHall = false;
 /** His hat taken off as he stepped into the hall, to put back on as he steps out. */
 let hallHatOff = false;
@@ -185,23 +211,31 @@ const _m = new Matrix4();
 const _f = { x: 0, z: 0 };
 const posture = () => blessPose(ps);
 
-// ── The calendar: the monk sits for blessings ────────────────────────────────
-const S0 = BLESS_SEATS[0];
-registerEvent({
-  id: 'bless-village',
-  kind: 'daily',
-  name: 'blessCal',
-  note: 'blessCalNote',
-  place: 'whenAtPagodaOnly',
-  begins: 'blessCalBegins',
-  where: { x: S0.x, z: S0.z },
-  near: 120,
-  // (the monk's own rule, people/_sceneBlessing.ts: the hour, and the pagoda's festival of that moment — its day goes
-  // afternoon to afternoon, so the clock counts)
-  on: (m) => blessHour(m.clock) === 'sit' && !pagodaFestival(festivalAt(m.season, m.day, m.clock)),
-  // (as the map shows it: a festival the URL holds, or none, as the monk's scene plays it)
-  shown: (m) => blessHour(m.clock) === 'sit' && !pagodaFestival(festivalNow(m)),
-});
+// ── The calendar: the monks sit for blessings ────────────────────────────────
+/** Each seat's words in the calendar (ui/lang.ts): what happens, where, the toast as it begins. */
+const CAL: Readonly<Record<string, { note: WordKey; place: WordKey; begins: WordKey }>> = {
+  village: { note: 'blessCalNote', place: 'whenAtPagodaOnly', begins: 'blessCalBegins' },
+  kulen: { note: 'blessCalNoteKulen', place: 'rbGate', begins: 'blessCalBeginsKulen' },
+};
+for (const s of BLESS_SEATS) {
+  const w = CAL[s.id];
+  if (!w) continue;
+  registerEvent({
+    id: `bless-${s.id}`,
+    kind: 'daily',
+    name: 'blessCal',
+    note: w.note,
+    place: w.place,
+    begins: w.begins,
+    where: { x: s.x, z: s.z },
+    near: 120,
+    // (the monk's own rule, people/_sceneBlessing.ts: the hour, and in the village the pagoda's festival of that moment
+    // — its day goes afternoon to afternoon, so the clock counts)
+    on: (m) => blessHour(m.clock) === 'sit' && !(s.fest && pagodaFestival(festivalAt(m.season, m.day, m.clock))),
+    // (as the map shows it: a festival the URL holds, or none, as the monk's scene plays it)
+    shown: (m) => blessHour(m.clock) === 'sit' && !(s.fest && pagodaFestival(festivalNow(m))),
+  });
+}
 function pagodaFestival(f: string | null): boolean {
   return f === 'pchumben' || f === 'visak';
 }
@@ -216,12 +250,13 @@ function seatNear(ctx: RoamCtx): BlessSeat | null {
 /** He never stands on a monk's dais or its step (they are not on the walk map): out to the nearest open side. */
 function keepOffDais(ctx: RoamCtx): void {
   for (const s of BLESS_SEATS) {
-    keepOff(ctx, s, s.dais);
-    keepOff(ctx, s, s.step);
+    keepOff(ctx, s, s.dais, !s.wall);
+    keepOff(ctx, s, s.step, false);
   }
 }
 
-function keepOff(ctx: RoamCtx, s: BlessSeat, d: BlessBox): void {
+/** Out of box `d` of seat `s`: by its front or a side, or its back too (`back`: no wall behind it). */
+function keepOff(ctx: RoamCtx, s: BlessSeat, d: BlessBox, back: boolean): void {
   const p = ctx.body.pos;
   const r = 0.3 * ctx.body.scale;
   if (p.y > d.top + 0.6 || p.y < s.floor - 0.6) return;
@@ -234,10 +269,12 @@ function keepOff(ctx: RoamCtx, s: BlessSeat, d: BlessBox): void {
   const ea = d.along + r - Math.abs(a);
   const ec = d.across + r - Math.abs(c);
   if (ea <= 0 || ec <= 0) return;
-  // (the back of it is the wall, or the dais: out the front, or a side, whichever is nearer)
+  // (the back of it is the wall, or the dais: out the front, or a side, whichever is nearer; a dais standing free, out
+  // its back too if that is nearer)
   let na = a;
   let nc = c;
-  if (ec < d.along + r - a) nc = Math.sign(c || 1) * (d.across + r);
+  if (back && d.along + r + a < Math.min(ec, d.along + r - a)) na = -(d.along + r);
+  else if (ec < d.along + r - a) nc = Math.sign(c || 1) * (d.across + r);
   else na = d.along + r;
   p.x = d.x + na * sn + nc * cs;
   p.z = d.z + na * cs - nc * sn;
@@ -320,17 +357,25 @@ function setHat(on: boolean): void {
   e.photo.refreshBody();
 }
 
+/** He stands in hall `h` (`was`: he was in one a step ago, so he is out only once back over its threshold). */
+function inside(h: Hall, p: Vector3, was: boolean): boolean {
+  if (p.y <= h.floor - 0.6 || p.y >= h.floor + 3 || p.x <= h.x0 || p.x >= h.x1) return false;
+  const past = was ? 0.05 : h.in;
+  return h.door < 0 ? p.z > h.z0 + past && p.z < h.z1 : p.z > h.z0 && p.z < h.z1 - past;
+}
+
 /**
- * In the pagoda's hall he goes bareheaded (one wears no hat before the Buddha and the monks): his hat off as he steps in
- * past the door, on again as he steps out (unless he put it back on meanwhile: H); off his feet, or back to the map, on
- * again at once (`inside` false).
+ * In the pagoda's hall (or on Kulen's floor before the Buddha: `HALLS`) he goes bareheaded (one wears no hat before the
+ * Buddha and the monks): his hat off as he steps in past the door, on again as he steps out (unless he put it back on
+ * meanwhile: H); off his feet, or back to the map, on again at once (`inside` false).
  */
 function hallHat(ctx: RoamCtx | null, mode: RoamMode | null): void {
   const e = env;
   if (!e) return;
   const was = inHall;
   const p = ctx?.body.pos;
-  inHall = !!p && mode === 'walk' && p.y > HALL.floor - 0.6 && p.y < HALL.floor + 3 && p.x > HALL.x0 && p.x < HALL.x1 && p.z > HALL.z0 + (was ? 0.05 : HALL.in) && p.z < HALL.z1;
+  inHall = false;
+  if (p && mode === 'walk') for (const h of HALLS) inHall ||= inside(h, p, was);
   if (inHall && !was) {
     if (e.explorer.currentOutfit.hat && !e.explorer.animator.posture) {
       setHat(false);
@@ -858,9 +903,10 @@ registerAddon({
     }
     const v = q.get('bless');
     if (!v || !env) return;
-    // (the seat nearest him)
-    let s = BLESS_SEATS[0];
-    let best = Infinity;
+    // (the seat he stands before, else the one nearest him)
+    const here = seatNear(ctx);
+    let s = here ?? BLESS_SEATS[0];
+    let best = here ? -1 : Infinity;
     for (const c of BLESS_SEATS) {
       const d = Math.hypot(c.x - ctx.body.pos.x, c.z - ctx.body.pos.z);
       if (d < best) {

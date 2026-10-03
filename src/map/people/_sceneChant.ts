@@ -2,7 +2,8 @@ import { Vector3, type Object3D } from 'three';
 import { eventsNow } from '../events';
 import { pagodaLook } from '../festival/_pagodaFolk';
 import { festivalNow } from '../festival/_schedule';
-import { CHANT_CYCLE, CHANT_FOLK, CHANT_ROW, CHANT_SEAT, CHANT_VERSES, FEST_ROW, HALL_ASK, LISTEN } from '../roam/_listenHooks';
+import { RECLINING } from '../landmarks/_kulenBuddha';
+import { CHANT_CYCLE, CHANT_VERSES, chantSite, FEST_ROW, LISTEN, siteLocal, siteWorld, type ChantSite, type ChantSiteId } from '../roam/_listenHooks';
 import type { MapFrame } from '../types';
 import type { WordKey } from '../ui/lang';
 import { PAGODA } from '../village/_spots';
@@ -16,37 +17,40 @@ import { villageGround } from './_sceneVillage';
 import { Rig, RigDef } from './_things';
 
 /**
- * The dawn chant in the floating village pagoda's hall (សូត្រមន្តពេលព្រលឹម:
- * events.ts `dawnChant`, the sound audio/temple.ts): four monks sit
- * cross-legged in a row on their low platform before the offering table
- * (`CHANT_SEAT`: one kneeling behind them keeps his head below theirs), facing
- * the Buddha, palms together (`POSE.chant`), and chant the morning's Pali — the homage, the three
- * refuges, the praise of the Buddha, loving-kindness (the lead monk's bubbles,
- * while the explorer is in the hall); three villagers (a lay nun in white, a
- * grandmother, a grandfather) kneel behind them on the mats, palms together.
- * The explorer kneels behind them to listen (roam/_listen.ts; the link
- * `LISTEN`: roam/_listenHooks.ts).
+ * The dawn chant (សូត្រមន្តពេលព្រលឹម: events.ts `dawnChant`, the sound
+ * audio/temple.ts) at a row's site (`CHANT_SITES`, roam/_listenHooks.ts): in the
+ * floating village pagoda's hall before the offering table, and on Phnom
+ * Kulen's rock before the reclining Buddha (one scene each: `chant`,
+ * `kulenchant`). Four monks sit cross-legged in a row on their low platform
+ * (`seat`: one kneeling behind them keeps his head below theirs), facing the
+ * Buddha, palms together (`POSE.chant`), and chant the morning's Pali — the
+ * homage, the three refuges, the praise of the Buddha, loving-kindness (the
+ * lead monk's bubbles, while the explorer is with them); three villagers (a lay
+ * nun in white, a grandmother, a grandfather) kneel behind them, palms
+ * together. The explorer kneels behind them to listen (roam/_listen.ts; the
+ * link `LISTEN`: roam/_listenHooks.ts).
  *
- * - **Coming and going**: as the chant's hour begins they come in by the hall's
- *   door — the villagers first from the west end of the porch, then the monks
- *   from the east in single file up the red carpet, the outer seats first,
- *   stepping up onto the platform — and sit; when it ends they bow three times
- *   (their heads), get up and walk out the way they came, the monks first. Out
- *   of sight they are simply there, or gone; never in the middle of the
- *   camera's view. One in their way (the explorer standing on the carpet) is
- *   walked round: a point they come no nearer to for a moment, within a metre or
- *   so, counts as reached.
- * - **On the pagoda's festival days** (`FEST_ROW`): at Pchum Ben they chant in
+ * - **Coming and going** (`WAYS`): as the chant's hour begins they come in — in
+ *   the village by the hall's door, the villagers first from the west end of the
+ *   porch, then the monks from the east in single file up the red carpet, the
+ *   outer seats first; at Kulen along the pilgrims' paved way and up the rock's
+ *   stair, then straight to their places — the monks stepping up onto the
+ *   platform, and sit; when it ends they bow three times (their heads), get up
+ *   and walk out the way they came, the monks first. Out of sight they are
+ *   simply there, or gone; never in the middle of the camera's view. One in
+ *   their way (the explorer standing on the carpet) is walked round: a point they
+ *   come no nearer to for a moment, within a metre or so, counts as reached.
+ * - **On the village pagoda's festival days** (`FEST_ROW`): at Pchum Ben they chant in
  *   the lit hall before dawn while the people walk round it (then they sit on
  *   the porch with the families: festival/_pchumBen.ts), at Visak Bochea at dawn
  *   once the night's procession is over. The blessing monk (_sceneBlessing.ts)
  *   comes to his dais after the chant (`BLESS_HOURS`).
  * - **A little longer while he is with them**: once the hour is over, the row
- *   chants on while the explorer is in the hall or kneels with them, up to
+ *   chants on while the explorer is in its room or kneels with them, up to
  *   `OVERTIME` s (a day of the cycle is 6 minutes: the hour alone is half a
  *   minute), then ends.
  *
- * URL (checks): `chantrow=1` the row chanting whatever the clock (`0`: never);
+ * URL (checks): `chantrow=1` the rows chanting whatever the clock (`0`: never);
  * `chantrow=in:<s>` that far into coming in, `end:<s>` into the bows,
  * `out:<s>` into going out; `chantverse=<s>` the verses' clock (held there in a
  * still). The
@@ -78,18 +82,87 @@ const FOLK_OUT_AFTER = 4.5;
 const END_FOR = 5.2;
 /** After the hour, while he is in the hall or listens: on for this long at most (s). */
 const OVERTIME = 75;
-/** The lead monk's verse bubbles show while the explorer is within this of the row (m) and in the hall. */
+/** The lead monk's verse bubbles show while the explorer is within this of the row (m) and in its room. */
 const TALK_NEAR = 9;
 
-const X = CHANT_ROW.axis;
-const F = CHANT_ROW.floor;
-/** The porch: its walk behind the door's wall (z), the door's middle, the porch's ends beside the door (hidden from the hall). */
+/** A point of a way: in the site's frame (a, d), the floor's height there (m). */
+interface WayPoint {
+  readonly a: number;
+  readonly y: number;
+  readonly d: number;
+}
+
+/**
+ * How they come and go at a site: each one's way in (from where they come into sight to its place: a monk's to the
+ * line behind his seat at `a`, a villager's to her place), the first `starts` points of each being where they may set
+ * off from out of sight (the farthest first); the monks' order in and out (their seats), the lead (his bubbles).
+ */
+interface Ways {
+  monk(s: ChantSite, a: number): WayPoint[];
+  folk(s: ChantSite, f: ChantSite['folk'][number]): WayPoint[];
+  readonly starts: number;
+  readonly monksIn: readonly number[];
+  readonly monksOut: readonly number[];
+  readonly lead: number;
+}
+
+/** The village pagoda's porch: its walk behind the door's wall (d), the door's middle, the porch's ends beside the door (hidden from the hall). */
 const PORCH_Z = 98.4;
 const DOOR_Z = PAGODA.doorZ + 0.8;
 const SIDE = 2.4;
 const END = 4.2;
 /** The carpet's line (the monks' aisle), and where they turn off it to the row. */
 const AISLE = 0.25;
+/** At Kulen: the pilgrims' paved way from the temple's grand stair to the rock's stair and up it (map x, y, z), and the line they cross the floor from (d). */
+const KULEN_WAY = RECLINING.way.slice(0, 6);
+const KULEN_IN = -3.2;
+
+const WAYS: Record<ChantSiteId, Ways> = {
+  // The villagers from the west end of the porch, in by the door, to their places on the mats; the monks from the east
+  // end, up the carpet, along the platform's front to their seats (the outer ones first, so nobody walks in front of
+  // one seated; the inner ones first going out).
+  village: {
+    monk: (s, a) => [
+      { a: END, y: s.floor, d: PORCH_Z },
+      { a: SIDE, y: s.floor, d: PORCH_Z },
+      { a: AISLE, y: s.floor, d: PORCH_Z },
+      { a: AISLE, y: s.floor, d: DOOR_Z },
+      { a: AISLE, y: s.floor, d: s.row.front },
+      { a, y: s.floor, d: s.row.front },
+    ],
+    folk: (s, f) => [
+      { a: -END, y: s.floor, d: PORCH_Z },
+      { a: -SIDE, y: s.floor, d: PORCH_Z },
+      { a: -AISLE, y: s.floor, d: PORCH_Z },
+      { a: -AISLE, y: s.floor, d: DOOR_Z },
+      { a: -AISLE, y: s.floor, d: 100.6 },
+      { a: f.a, y: s.floor, d: f.d },
+    ],
+    starts: 2,
+    monksIn: [0, 3, 1, 2],
+    monksOut: [2, 1, 3, 0],
+    lead: 1,
+  },
+  // Along the pilgrims' way from the temple and up the rock's stair (they may set off anywhere on it out of sight),
+  // then across the floor, inside the roof's front posts, straight to their places from behind: nobody crosses
+  // before one seated.
+  kulen: {
+    monk: (s, a) => [...kulenWay(s), { a, y: s.floor, d: KULEN_IN }, { a, y: s.floor, d: s.row.front }],
+    folk: (s, f) => [...kulenWay(s), { a: f.a, y: s.floor, d: KULEN_IN }, { a: f.a, y: s.floor, d: f.d }],
+    starts: KULEN_WAY.length,
+    monksIn: [0, 3, 1, 2],
+    monksOut: [2, 1, 3, 0],
+    lead: 1,
+  },
+};
+
+function kulenWay(s: ChantSite): WayPoint[] {
+  const o = { a: 0, d: 0 };
+  return KULEN_WAY.map(([x, y, z]) => {
+    siteLocal(s, x, z, o);
+    return { a: o.a, y, d: o.d };
+  });
+}
 
 type Life = 'gone' | 'wait' | 'walk' | 'stepUp' | 'sit' | 'seated' | 'rise' | 'stepDown' | 'walkOut' | 'out';
 type Phase = 'gone' | 'coming' | 'chant' | 'end' | 'leaving';
@@ -97,12 +170,14 @@ type Phase = 'gone' | 'coming' | 'chant' | 'end' | 'leaving';
 interface Sitter {
   readonly a: Actor;
   readonly monk: boolean;
-  /** A monk's seat in the row (`CHANT_ROW.x`), −1 a villager. */
+  /** A monk's seat in the row (`row.a`), −1 a villager. */
   readonly seat: number;
-  /** The way in (floor points, m: from the porch to the place), the place and the facing. */
+  /** The way in (map points, m: from where it comes into sight to the place), the place; a monk's step up and down (before his seat). */
   readonly way: Point[];
   readonly sx: number;
   readonly sz: number;
+  readonly frontX: number;
+  readonly frontZ: number;
   /** When it sets off coming in and going out (s after the row does). */
   readonly inAt: number;
   outAt: number;
@@ -120,8 +195,11 @@ interface Sitter {
   fyaw: number;
 }
 
+/** The rows built, by site (the checks' `__chant`). */
+const ROWS: Partial<Record<ChantSiteId, ChantRow>> = {};
+
 export class ChantRow implements PeopleScene {
-  readonly name = 'chant';
+  readonly name: string;
   readonly actors: Actor[] = [];
   private readonly pace = new Pace(PACE_NEAR, PACE_HIDE);
   private readonly people: Sitter[] = [];
@@ -152,46 +230,43 @@ export class ChantRow implements PeopleScene {
   private festival = false;
   /** The monks' platform (always there, as the blessing monk's dais). */
   private readonly platform: Rig;
+  private readonly site: ChantSite;
+  private readonly ways: Ways;
+  /** Where the camera looks for them (the room's middle) and the row's middle (map m). */
+  private readonly mid: Point;
+  private readonly at = { x: 0, z: 0 };
+  private readonly loc = { a: 0, d: 0 };
 
   constructor(
     private readonly env: PeopleEnv,
     scene: Object3D,
+    id: ChantSiteId,
   ) {
-    const ground = villageGround(env, scene);
-    this.platform = new Rig(env.things, platformDef());
-    // The villagers: from the west end of the porch, in by the door, to their places on the mats.
-    CHANT_FOLK.forEach((p, k) => {
-      const a = new Actor(env.crowd, pagodaLook(p.role, 9300 + k), ground).avoid(env.traffic, this.name);
-      const way: Point[] = [
-        { x: X - SIDE, y: F, z: PORCH_Z },
-        { x: X - AISLE, y: F, z: PORCH_Z },
-        { x: X - AISLE, y: F, z: DOOR_Z },
-        { x: X - AISLE, y: F, z: 100.6 },
-        { x: X + p.x, y: F, z: p.z },
-      ];
-      this.add(a, -1, way, X + p.x, p.z, k * FOLK_GAP);
+    const s = (this.site = chantSite(id));
+    const w = (this.ways = WAYS[id]);
+    this.name = s.scene;
+    ROWS[id] = this;
+    // (the village's hall is the village part's walk map; Kulen's rock is the map's own)
+    const ground = id === 'village' ? villageGround(env, scene) : env.ground;
+    this.platform = new Rig(env.things, platformDef(s));
+    siteWorld(s, 0, s.row.d - 1, this.at);
+    this.mid = { x: this.at.x, y: s.floor, z: this.at.z };
+    const seed = id === 'village' ? 0 : 40;
+    // The villagers first, each a little after the one before.
+    s.folk.forEach((p, k) => {
+      const a = new Actor(env.crowd, pagodaLook(p.role, 9300 + seed + k), ground).avoid(env.traffic, this.name);
+      this.add(a, -1, w.folk(s, p), p.a, p.d, k * FOLK_GAP);
     });
-    // The monks: from the east end, up the carpet, along the platform's front to their seats, up onto it (the outer ones
-    // first, so nobody walks in front of one seated).
-    const order = [0, 3, 1, 2];
-    order.forEach((s, k) => {
-      const x = CHANT_ROW.x[s];
-      const a = new Actor(env.crowd, dress('monk', 9320 + s), ground).avoid(env.traffic, this.name);
-      const way: Point[] = [
-        { x: X + SIDE, y: F, z: PORCH_Z },
-        { x: X + AISLE, y: F, z: PORCH_Z },
-        { x: X + AISLE, y: F, z: DOOR_Z },
-        { x: X + AISLE, y: F, z: CHANT_ROW.front },
-        { x: X + x, y: F, z: CHANT_ROW.front },
-      ];
-      this.add(a, s, way, X + x, CHANT_ROW.z, MONKS_AFTER + k * MONK_GAP);
+    // The monks after them, in their order.
+    w.monksIn.forEach((seat, k) => {
+      const a = new Actor(env.crowd, dress('monk', 9320 + seed + seat), ground).avoid(env.traffic, this.name);
+      this.add(a, seat, w.monk(s, s.row.a[seat]), s.row.a[seat], s.row.d, MONKS_AFTER + k * MONK_GAP);
     });
-    // (going out: the inner monks first, then the outer; the villagers after them)
-    const outOrder = [2, 1, 3, 0];
-    for (const p of this.people) if (p.monk) p.outAt = outOrder.indexOf(p.seat) * MONK_GAP;
+    // (going out: the monks in their order, the villagers after them)
+    for (const p of this.people) if (p.monk) p.outAt = w.monksOut.indexOf(p.seat) * MONK_GAP;
     this.people.filter((p) => !p.monk).forEach((p, k) => (p.outAt = FOLK_OUT_AFTER + k * FOLK_GAP));
-    // (the lead: the monk at the axis's west, before the left listening place)
-    this.lead = this.people.find((p) => p.seat === 1)!.a;
+    // (the lead: in the village the monk at the axis's west, before the left listening place)
+    this.lead = this.people.find((p) => p.seat === w.lead)!.a;
     const q = env.params;
     const r = q.get('chantrow');
     const [ph, at] = (r ?? '').split(':');
@@ -202,30 +277,46 @@ export class ChantRow implements PeopleScene {
     this.still = env.shot && q.get('video') !== '1';
     Object.assign(window, {
       __chant: {
-        /** The row now: its phase, how far in, the verses' clock, the time after the hour; each of them. */
-        now: () => ({
-          phase: this.phase,
-          pt: +this.pt.toFixed(2),
-          chantT: +this.chantT.toFixed(1),
-          over: +this.over.toFixed(1),
-          people: this.people.map((p) => ({ who: p.monk ? `monk${p.seat}` : 'folk', life: p.life, shown: p.a.shown, x: +p.a.x.toFixed(2), z: +p.a.z.toFixed(2), pose: env.crowd.poseOf(p.a.i) })),
-        }),
-        /** End the chanting now (the bows, then out), whatever the hour or the URL. */
-        end: () => {
-          this.forceEnd = true;
+        /** A row now (the village's unless named): its phase, how far in, the verses' clock, the time after the hour; each of them. */
+        now: (site: ChantSiteId = 'village') => ROWS[site]?.now() ?? null,
+        /** End a row's chanting now (the bows, then out), whatever the hour or the URL. */
+        end: (site: ChantSiteId = 'village') => {
+          const r = ROWS[site];
+          if (r) r.forceEnd = true;
         },
       },
     });
   }
 
-  private add(a: Actor, seat: number, way: Point[], sx: number, sz: number, inAt: number): void {
+  private now(): object {
+    return {
+      phase: this.phase,
+      pt: +this.pt.toFixed(2),
+      chantT: +this.chantT.toFixed(1),
+      over: +this.over.toFixed(1),
+      people: this.people.map((p) => ({ who: p.monk ? `monk${p.seat}` : 'folk', life: p.life, shown: p.a.shown, x: +p.a.x.toFixed(2), y: +p.a.y.toFixed(2), z: +p.a.z.toFixed(2), pose: this.env.crowd.poseOf(p.a.i) })),
+    };
+  }
+
+  /** One of them: its way in (the site's frame, made map points), its place at (a, d) and, a monk, his step up before it. */
+  private add(a: Actor, seat: number, local: WayPoint[], pa: number, pd: number, inAt: number): void {
+    const s = this.site;
+    const o = this.at;
+    const way = local.map((w) => {
+      siteWorld(s, w.a, w.d, o);
+      return { x: o.x, y: w.y, z: o.z };
+    });
+    siteWorld(s, pa, s.row.front, o);
+    const frontX = o.x;
+    const frontZ = o.z;
+    siteWorld(s, pa, pd, o);
     this.actors.push(a);
-    this.people.push({ a, monk: seat >= 0, seat, way, sx, sz, inAt, outAt: 0, life: 'gone', lt: 0, leg: 0, wait: 0, best: Infinity, since: 0, fx: 0, fz: 0, fyaw: 0 });
+    this.people.push({ a, monk: seat >= 0, seat, way, sx: o.x, sz: o.z, frontX, frontZ, inAt, outAt: 0, life: 'gone', lt: 0, leg: 0, wait: 0, best: Infinity, since: 0, fx: 0, fz: 0, fyaw: 0 });
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
-    const row = LISTEN.row;
-    const step = this.pace.step(dt, viewDist(f, X, PAGODA.z));
+    const row = LISTEN.rows[this.site.id];
+    const step = this.pace.step(dt, viewDist(f, this.mid.x, this.mid.z));
     if (step < 0) {
       this.hideAll(f);
       // (far off: nobody to listen; not written, so the pagoda's chant goes by the hour, audio/temple.ts)
@@ -239,7 +330,9 @@ export class ChantRow implements PeopleScene {
     dt = step;
     const first = !this.shown;
     this.shown = true;
-    this.platform.place(X, F, (CHANT_SEAT.z0 + CHANT_SEAT.z1) / 2, 0).write();
+    const s = this.site;
+    siteWorld(s, 0, (s.seat.d0 + s.seat.d1) / 2, this.at);
+    this.platform.place(this.at.x, s.floor, this.at.z, s.yaw).write();
     const want = this.want(dt, f, ex);
     if (first && this.urlPhase && !this.urlDone) this.fromUrl(now, f);
     else this.live(dt, now, f, want, first);
@@ -264,7 +357,8 @@ export class ChantRow implements PeopleScene {
       return false;
     }
     if (this.urlRow !== null) return this.urlRow;
-    const fest = festivalNow(f);
+    // (the festivals are the village pagoda's)
+    const fest = this.site.fest ? festivalNow(f) : null;
     this.festival = fest === 'pchumben';
     const c = f.clock - Math.floor(f.clock);
     const hour = fest === 'pchumben' ? c >= FEST_ROW.pchumben[0] && c < FEST_ROW.pchumben[1] : eventsNow(f).on.dawnChant && (fest !== 'visak' || (c >= FEST_ROW.visakFrom && c < 0.95));
@@ -272,9 +366,8 @@ export class ChantRow implements PeopleScene {
       this.over = 0;
       return true;
     }
-    // (the hour is over: on a little longer while he is in the hall or kneels with them)
-    const ask = LISTEN.ask;
-    const his = (ask.who === 'row' && ask.state !== 'none') || this.inHall(ex);
+    // (the hour is over: on a little longer while he is in the room or kneels with them)
+    const his = this.his() || this.inRoom(ex);
     if ((this.phase === 'chant' || this.phase === 'coming') && his && this.over < OVERTIME) {
       this.over += dt;
       return true;
@@ -282,8 +375,17 @@ export class ChantRow implements PeopleScene {
     return false;
   }
 
-  private inHall(ex: Obstacle | null): boolean {
-    return !!ex && Math.abs(ex.y - F) < 1.5 && Math.abs(ex.x - X) < HALL_ASK.x + 0.2 && ex.z > PAGODA.doorZ && ex.z < 112.5;
+  /** He kneels with this row (or is on his way to). */
+  private his(): boolean {
+    const ask = LISTEN.ask;
+    return ask.who === 'row' && ask.site === this.site.id && ask.state !== 'none';
+  }
+
+  private inRoom(ex: Obstacle | null): boolean {
+    const s = this.site;
+    if (!ex || Math.abs(ex.y - s.floor) >= 1.5) return false;
+    const l = siteLocal(s, ex.x, ex.z, this.loc);
+    return Math.abs(l.a) < s.room.a && l.d > s.room.d0 && l.d < s.room.d1;
   }
 
   // ── The row's day: coming in, chanting, the bows, going out ──
@@ -324,28 +426,32 @@ export class ChantRow implements PeopleScene {
     this.pt = 0;
   }
 
-  /** Coming in: each from its end of the porch (one hidden from the camera), after its wait. */
+  /** Coming in: each from the nearest point of its way's start the camera does not see (in the village the porch beside the door, else its far end), after its wait. */
   private comeIn(now: number, f: MapFrame): void {
-    // (the porch beside the door, else its far end, whichever the camera does not see, each side: or they wait)
-    const from: Point[] = [];
-    for (const s of [-1, 1]) {
-      const near = { x: X + s * SIDE, y: F, z: PORCH_Z };
-      const far = { x: X + s * END, y: F, z: PORCH_Z };
-      const p = !this.seenAt(f, near) ? near : !this.seenAt(f, far) ? far : null;
-      if (!p) return;
-      from.push(p);
-    }
+    // (none of them unseen: they wait)
+    const n = this.ways.starts;
+    const from: number[] = [];
     for (const p of this.people) {
-      const s = from[p.way[0].x < X ? 0 : 1];
-      p.wait = p.inAt;
-      p.leg = s.x === p.way[0].x ? 1 : 0;
-      p.a.warp(s.x, F, s.z, s.x > X ? -Math.PI / 2 : Math.PI / 2);
-      p.a.hide();
-      p.life = 'wait';
-      p.lt = 0;
-      p.a.pose(POSE.stand, now);
+      let k = n - 1;
+      while (k >= 0 && this.seenAt(f, p.way[k])) k--;
+      if (k < 0) return;
+      from.push(k);
     }
+    this.people.forEach((p, i) => this.setOff(p, from[i], now));
     this.go('coming');
+  }
+
+  /** Waiting at point `k` of its way (hidden), to walk on from there after its wait. */
+  private setOff(p: Sitter, k: number, now: number): void {
+    const s = p.way[k];
+    const t = p.way[k + 1];
+    p.wait = p.inAt;
+    p.leg = k + 1;
+    p.a.warp(s.x, s.y, s.z, Math.atan2(t.x - s.x, t.z - s.z));
+    p.a.hide();
+    p.life = 'wait';
+    p.lt = 0;
+    p.a.pose(POSE.stand, now);
   }
 
   /** Going out: each gets up after its wait (`back`: coming in still, turned back at once) and walks out the way it came. */
@@ -368,7 +474,7 @@ export class ChantRow implements PeopleScene {
   /** Everyone in their places at once (out of sight, a still), chanting. */
   private allSeated(now: number): void {
     for (const p of this.people) {
-      p.a.ride(p.sx, seatY(p), p.sz, CHANT_ROW.yaw);
+      p.a.ride(p.sx, this.seatY(p), p.sz, this.site.yaw);
       p.a.show();
       const pose = p.monk ? POSE.chant : POSE.kneel;
       p.a.pose(pose, now);
@@ -398,16 +504,8 @@ export class ChantRow implements PeopleScene {
     const u = this.urlPhase!;
     if (u.phase === 'in') {
       this.phase = 'gone';
-      // (from the porch beside the door, whatever the camera sees)
-      for (const p of this.people) {
-        p.wait = p.inAt;
-        p.leg = 1;
-        p.a.warp(p.way[0].x, F, p.way[0].z, Math.PI / 2);
-        p.a.hide();
-        p.life = 'wait';
-        p.lt = 0;
-        p.a.pose(POSE.stand, now);
-      }
+      // (from the nearest start of the way, in the village the porch beside the door, whatever the camera sees)
+      for (const p of this.people) this.setOff(p, this.ways.starts - 1, now);
       this.go('coming');
     } else {
       this.allSeated(now);
@@ -425,6 +523,8 @@ export class ChantRow implements PeopleScene {
 
   private stepOne(p: Sitter, dt: number, now: number, f: MapFrame): void {
     const a = p.a;
+    const s = this.site;
+    const yaw = s.yaw;
     p.lt += dt;
     switch (p.life) {
       case 'gone':
@@ -464,12 +564,12 @@ export class ChantRow implements PeopleScene {
         // Up onto the platform (a little hop), turning to the Buddha, to his seat; then he sits down.
         const u = smooth(Math.min(1, p.lt / STEP_T));
         const hop = Math.sin(Math.PI * u) * 0.12;
-        a.ride(p.fx + (p.sx - p.fx) * u, F + (CHANT_SEAT.top - F) * u + hop, p.fz + (p.sz - p.fz) * u, p.fyaw + wrap(CHANT_ROW.yaw - p.fyaw) * u);
+        a.ride(p.fx + (p.sx - p.fx) * u, s.floor + (s.seat.top - s.floor) * u + hop, p.fz + (p.sz - p.fz) * u, p.fyaw + wrap(yaw - p.fyaw) * u);
         if (p.lt >= STEP_T) {
           a.pose(POSE.sit, now);
           p.fx = p.sx;
           p.fz = p.sz;
-          p.fyaw = CHANT_ROW.yaw;
+          p.fyaw = yaw;
           p.life = 'sit';
           p.lt = 0;
         }
@@ -477,7 +577,7 @@ export class ChantRow implements PeopleScene {
       }
       case 'sit': {
         const u = smooth(Math.min(1, p.lt / RISE_T));
-        a.ride(p.fx + (p.sx - p.fx) * u, seatY(p), p.fz + (p.sz - p.fz) * u, p.fyaw + wrap(CHANT_ROW.yaw - p.fyaw) * u);
+        a.ride(p.fx + (p.sx - p.fx) * u, this.seatY(p), p.fz + (p.sz - p.fz) * u, p.fyaw + wrap(yaw - p.fyaw) * u);
         if (p.lt >= RISE_T) {
           p.life = 'seated';
           p.lt = 0;
@@ -485,7 +585,7 @@ export class ChantRow implements PeopleScene {
         break;
       }
       case 'seated': {
-        a.ride(p.sx, seatY(p), p.sz, CHANT_ROW.yaw);
+        a.ride(p.sx, this.seatY(p), p.sz, yaw);
         // (a monk's palms together once the row chants: each a moment after he sits)
         const chanting = this.phase === 'chant' || this.phase === 'end' || this.phase === 'coming';
         if (p.monk) a.pose(chanting && p.lt >= PALMS_AFTER ? POSE.chant : POSE.sit, now);
@@ -494,17 +594,17 @@ export class ChantRow implements PeopleScene {
       case 'rise':
         if (p.lt < p.wait) {
           // (waiting for the one before to go: the chanting over, a monk's hands back on his knees)
-          a.ride(p.sx, seatY(p), p.sz, CHANT_ROW.yaw);
+          a.ride(p.sx, this.seatY(p), p.sz, yaw);
           a.pose(p.monk ? POSE.sit : POSE.kneel, now);
           return this.stepActor(p, dt, now);
         }
         a.pose(POSE.stand, now);
-        a.ride(p.sx, seatY(p), p.sz, CHANT_ROW.yaw);
+        a.ride(p.sx, this.seatY(p), p.sz, yaw);
         if (p.lt >= p.wait + RISE_T) {
           p.lt = p.wait = 0;
           if (p.monk) p.life = 'stepDown';
           else {
-            a.warp(p.sx, F, p.sz, CHANT_ROW.yaw);
+            a.warp(p.sx, s.floor, p.sz, yaw);
             a.performing = false;
             p.leg = p.way.length - 2;
             p.life = 'walkOut';
@@ -518,9 +618,9 @@ export class ChantRow implements PeopleScene {
         const turn = smooth(Math.min(1, k / 0.4));
         const u = smooth(Math.max(0, (k - 0.4) / 0.6));
         const hop = Math.sin(Math.PI * u) * 0.12;
-        a.ride(p.sx, CHANT_SEAT.top + (F - CHANT_SEAT.top) * u + hop, p.sz + (CHANT_ROW.front - p.sz) * u, CHANT_ROW.yaw + Math.PI * turn);
+        a.ride(p.sx + (p.frontX - p.sx) * u, s.seat.top + (s.floor - s.seat.top) * u + hop, p.sz + (p.frontZ - p.sz) * u, yaw + Math.PI * turn);
         if (p.lt >= T) {
-          a.warp(p.sx, F, CHANT_ROW.front, CHANT_ROW.yaw + Math.PI);
+          a.warp(p.frontX, s.floor, p.frontZ, yaw + Math.PI);
           a.performing = false;
           p.leg = p.way.length - 2;
           p.life = 'walkOut';
@@ -534,6 +634,12 @@ export class ChantRow implements PeopleScene {
         a.goTo(w.x, w.z, PACE);
         a.face(null);
         if (this.reached(p, w.x, w.z, dt)) {
+          // (back where they may have come from, out of sight: gone; else on, the porch's far end, the way's)
+          if (p.leg < this.ways.starts && !this.seenAt(f, a)) {
+            a.hide();
+            p.life = 'gone';
+            return;
+          }
           if (p.leg > 0) p.leg--;
           else {
             p.life = 'out';
@@ -543,15 +649,15 @@ export class ChantRow implements PeopleScene {
         break;
       }
       case 'out': {
-        // (at the porch's end: gone once nobody sees it; on along the porch to its far end first if seen there)
-        const s = p.way[0];
-        a.stop(s.x > X ? Math.PI / 2 : -Math.PI / 2);
+        // (at the way's far end: gone once nobody sees it, facing on)
+        const w = p.way[0];
+        const v = p.way[1];
+        a.stop(Math.atan2(w.x - v.x, w.z - v.z));
         if (!this.seenAt(f, a)) {
           a.hide();
           p.life = 'gone';
           return;
         }
-        a.goTo(X + Math.sign(s.x - X) * END, PORCH_Z, PACE);
         break;
       }
     }
@@ -589,8 +695,7 @@ export class ChantRow implements PeopleScene {
     // (a still holds the verses' clock where the URL puts it: the people's time runs on before the picture)
     if (this.still && Number.isFinite(this.urlVerse)) this.chantT = this.urlVerse;
     else if (this.phase === 'chant') this.chantT += dt;
-    const ask = LISTEN.ask;
-    const near = (ask.who === 'row' && ask.state !== 'none') || (this.inHall(ex) && !!ex && Math.hypot(ex.x - this.lead.x, ex.z - this.lead.z) < TALK_NEAR);
+    const near = this.his() || (this.inRoom(ex) && !!ex && Math.hypot(ex.x - this.lead.x, ex.z - this.lead.z) < TALK_NEAR);
     if (this.phase !== 'chant' || !near || f.roam === 'overview') {
       this.quiet(f);
       return;
@@ -636,9 +741,9 @@ export class ChantRow implements PeopleScene {
 
   // ── Seen by the camera ──
 
-  /** The camera sees the hall's middle or one of them walking: they walk rather than appear or vanish. */
+  /** The camera sees the room's middle or one of them walking: they walk rather than appear or vanish. */
   private seen(f: MapFrame): boolean {
-    if (this.seenAt(f, { x: X, y: F, z: 103.5 })) return true;
+    if (this.seenAt(f, this.mid)) return true;
     for (const p of this.people) if (p.life !== 'gone' && p.life !== 'wait' && this.seenAt(f, p.a)) return true;
     return false;
   }
@@ -672,27 +777,30 @@ export class ChantRow implements PeopleScene {
     this.pt = 0;
   }
 
+  /** A seated one's height: a monk on the platform, a villager on the floor (m). */
+  private seatY(p: Sitter): number {
+    return p.monk ? this.site.seat.top : this.site.floor;
+  }
+
   report(traffic: Traffic): void {
     for (const p of this.people) if (p.a.shown) traffic.add(this.name, p.a.x, p.a.y, p.a.z);
   }
 }
 
 const smooth = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
-/** A seated one's height: a monk on the platform, a villager on the floor (m). */
-const seatY = (p: Sitter): number => (p.monk ? CHANT_SEAT.top : F);
 
 /**
- * The monks' platform (`CHANT_SEAT`), in its frame (placed at the floor under its middle, facing the Buddha): dark
- * lacquered wood, a darker plinth, a gold line along its front and ends, a kantel mat with a red border and a seat
- * cushion under each monk.
+ * The monks' platform (`seat`), in its frame (placed at the floor under its middle, facing the Buddha): dark lacquered
+ * wood, a darker plinth, a gold line along its front and ends, a kantel mat with a red border and a seat cushion under
+ * each monk.
  */
-function platformDef(): RigDef {
+function platformDef(s: ChantSite): RigDef {
   const d = new RigDef();
-  const P = CHANT_SEAT;
-  const h = P.top - F;
+  const P = s.seat;
+  const h = P.top - s.floor;
   const w = P.half * 2;
-  const len = P.z1 - P.z0;
-  const zc = (P.z0 + P.z1) / 2;
+  const len = P.d1 - P.d0;
+  const zc = (P.d0 + P.d1) / 2;
   d.box([0, h / 2, 0], [w, h - 0.02, len], 0x5a2e1e);
   d.box([0, 0.03, 0], [w + 0.04, 0.06, len + 0.04], 0x43221a);
   d.box([0, h - 0.025, -len / 2 - 0.005], [w + 0.01, 0.03, 0.02], 0xc9a24a);
@@ -701,7 +809,7 @@ function platformDef(): RigDef {
   d.box([0, h + 0.013, -len / 2 + 0.07], [w - 0.12, 0.004, 0.04], 0xa8322a);
   d.box([0, h + 0.013, len / 2 - 0.07], [w - 0.12, 0.004, 0.04], 0xa8322a);
   for (const sx of [-1, 1]) d.box([sx * (P.half - 0.07), h + 0.013, 0], [0.04, 0.004, len - 0.14], 0xa8322a);
-  for (const x of CHANT_ROW.x) d.box([x, h + 0.035, CHANT_ROW.z - zc], [0.7, 0.05, 0.6], 0x7a2420);
+  for (const a of s.row.a) d.box([a, h + 0.035, s.row.d - zc], [0.7, 0.05, 0.6], 0x7a2420);
   return d;
 }
 /** Three bows of the head over the end's first 4.2 s (0 up ‥ 1 down). */
