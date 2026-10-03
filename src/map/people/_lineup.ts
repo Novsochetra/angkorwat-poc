@@ -111,6 +111,7 @@ const NEW: Entry[] = [
   { name: 'ride', kind: 'villager', seed: 68, opts: { sex: 'm', hat: 'krama' }, pose: POSE.ride, hz: 0.8, fit: 'bike' },
   { name: 'hammock', kind: 'villager', seed: 69, opts: { sex: 'm', hat: 'none' }, pose: POSE.hammock, fit: 'hammock' },
   { name: 'nod', kind: 'monk', seed: 70, opts: { carry: CARRY.bowl }, pose: POSE.nod },
+  { name: 'chant', kind: 'monk', seed: 79, pose: POSE.chant },
   { name: 'head held', kind: 'vendor', seed: 71, opts: { sex: 'f', carry: CARRY.head, goods: 'fruit' }, pose: POSE.stand, walk: 0.8 },
   { name: 'head free', kind: 'vendor', seed: 72, opts: { sex: 'f', carry: CARRY.head, goods: 'greens' }, pose: POSE.stand, walk: 0.8, carry: 0 },
   { name: 'tray', kind: 'vendor', seed: 73, opts: { sex: 'f', carry: CARRY.tray, goods: 'fruit' }, pose: POSE.stand },

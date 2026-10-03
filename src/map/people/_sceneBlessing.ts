@@ -1,6 +1,7 @@
 import { Vector3, type Object3D } from 'three';
 import { festivalNow } from '../festival/_schedule';
 import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, blessMonk, SCRIPT_AT, seatFront, TIE, type BlessAsk, type BlessAway, type BlessSeat, type BlessState } from '../roam/_blessingHooks';
+import { CHANT_VERSES, LISTEN, type ListenAsk } from '../roam/_listenHooks';
 import type { MapFrame } from '../types';
 import type { WordKey } from '../ui/lang';
 import { Actor, wrap } from './_actor';
@@ -36,6 +37,11 @@ import { Rig, RigDef } from './_things';
  *   drops fly to him); leans forward and ties the red string round his wrist
  *   with both hands, murmuring "āyu vaṇṇo sukhaṃ balaṃ"; says the blessing in
  *   Khmer; watches him bow. A second time in a visit: a smile and a nod.
+ * - **Chanting for one who kneels to listen** (`LISTEN.ask`, roam/_listen.ts: J
+ *   before him): he looks at him and nods as he kneels, then puts his palms
+ *   together and chants with his eyes down (`POSE.chant`; the bubbles: the
+ *   homage, the three refuges, the praise of the Buddha, loving-kindness:
+ *   `CHANT_VERSES`), and nods as he bows.
  *
  * Everything he has is boxes of the people's things (one draw with the rest);
  * the drops are worked out from the time since each flick (no state: a shot
@@ -108,11 +114,16 @@ export class BlessingMonk implements PeopleScene {
   /** Seconds into a step of his life, the leg of his walk. */
   private lt = 0;
   private leg = 0;
+  /** On his walk: the nearest he has come to the point he walks to (m), and for how long no nearer (s). */
+  private best = Infinity;
+  private since = 0;
   /** His way out of the hall (floor points, m): from before the dais to the porch beyond the door. */
   private readonly way: Point[];
   private shown = false;
   /** The blessing he follows (`BLESS.ask.n`), his script's start (people's clock) and what is said of it so far. */
   private askN = -1;
+  /** The listening he chants for (`LISTEN.ask.n`). */
+  private listenN = -1;
   private scriptAt = NaN;
   private saying: WordKey | null = null;
   private sprigInHand = false;
@@ -176,10 +187,13 @@ export class BlessingMonk implements PeopleScene {
     // Where he should be: by the hours, the festivals; a blessing keeps him.
     const ask = this.ask();
     const mine = ask.id === s.id && ask.state !== 'none';
+    // (one kneeling before him to listen to him chant: roam/_listen.ts)
+    const la = LISTEN.ask;
+    const listen = la.who === 'monk' && la.seat === s.id && la.state !== 'none';
     const hour = blessHour(f.clock);
     const fest = festivalNow(f);
     const away: BlessAway = this.urlSits === true ? null : this.urlSits === false ? 'gone' : fest === 'pchumben' || fest === 'visak' ? 'fest' : hour === 'sit' ? null : hour;
-    const want = mine || away === null;
+    const want = mine || listen || away === null;
     // The link (his hands' place is fixed); far off he is not drawn, but he would be there as one comes.
     m.hx = this.hands.x;
     m.hy = this.hands.y;
@@ -193,8 +207,10 @@ export class BlessingMonk implements PeopleScene {
       m.away = away;
       return;
     }
+    // (his verses only while the listener listens: not as he kneels or bows)
+    const chanting = listen && !mine && la.state === 'listen';
     if (step === 0 && this.shown) {
-      if (!mine) this.quiet(f);
+      if (!mine && !chanting) this.quiet(f);
       this.talk(dt, now, f);
       return;
     }
@@ -207,10 +223,11 @@ export class BlessingMonk implements PeopleScene {
     m.there = this.life === 'sit' && want;
     m.away = m.there ? null : (away ?? 'gone');
 
-    if (this.life === 'sit') this.bless(now, ex, mine);
+    if (this.life === 'sit' && listen && !mine) this.chantFor(now, la);
+    else if (this.life === 'sit') this.bless(now, ex, mine);
     else this.offScript(now);
-    // (the blessing cut off, or he is off his seat: his words go with it)
-    if (!mine || this.life !== 'sit') this.quiet(f);
+    // (the blessing or the chanting cut off, or he is off his seat: his words go with it)
+    if ((!mine && !chanting) || this.life !== 'sit') this.quiet(f);
     this.monk.step(dt, now);
     // The sprig: in his hand or resting in the bowl.
     if (this.sprigInHand) this.sprig.hide();
@@ -292,7 +309,7 @@ export class BlessingMonk implements PeopleScene {
         const p = this.way[this.leg];
         a.goTo(p.x, p.z, PACE);
         a.face(null);
-        if (a.dist(p.x, p.z) < 0.25) {
+        if (this.reached(p, dt)) {
           if (this.leg < this.way.length - 1) this.leg++;
           else this.go('wait');
         }
@@ -310,7 +327,7 @@ export class BlessingMonk implements PeopleScene {
         const p = this.way[this.leg];
         a.goTo(p.x, p.z, PACE);
         a.face(null);
-        if (a.dist(p.x, p.z) < 0.25) {
+        if (this.reached(p, dt)) {
           if (this.leg > 0) this.leg--;
           else {
             a.ride(a.x, a.y, a.z, a.yaw);
@@ -346,6 +363,26 @@ export class BlessingMonk implements PeopleScene {
   private go(l: Life): void {
     this.life = l;
     this.lt = 0;
+    this.best = Infinity;
+    this.since = 0;
+  }
+
+  /**
+   * Walking to `p`: reached it (within 0.25 m), or as near as he can come — someone in his way (the explorer standing in
+   * the hall: his goal is moved aside from him) — no nearer for a moment within a metre or so, or for long.
+   */
+  private reached(p: Point, dt: number): boolean {
+    const d = this.monk.dist(p.x, p.z);
+    if (d < this.best - 0.03) {
+      this.best = d;
+      this.since = 0;
+    } else this.since += dt;
+    const ok = d < 0.25 || (this.since > 1.5 && d < 1.2) || this.since > 6;
+    if (ok) {
+      this.best = Infinity;
+      this.since = 0;
+    }
+    return ok;
   }
 
   /** Facing from his place down to the step (radians). */
@@ -510,6 +547,52 @@ export class BlessingMonk implements PeopleScene {
         }
         a.tilt(0.42 * bump(t, 0.35, 1.7));
         this.say('blessAgainSay', t, 0.3, 2.8, now);
+        break;
+    }
+  }
+
+  // ── Chanting for one who listens ──
+
+  /** He chants for the one kneeling before him (`LISTEN.ask`: roaming leads, `t` s into its step). */
+  private chantFor(now: number, la: ListenAsk): void {
+    const a = this.monk;
+    a.ride(this.seat.x, this.seat.y, this.seat.z, this.seat.yaw);
+    this.holdSprig(false);
+    if (this.struck) {
+      this.env.crowd.unstrike(a.i, now);
+      this.struck = false;
+    }
+    a.performing = true;
+    a.carry(0, now);
+    if (la.n !== this.listenN) {
+      this.listenN = la.n;
+      this.saying = null;
+    }
+    const t = la.t;
+    this.look.x = la.x;
+    this.look.y = la.y + 1.7 + SEATED_EYE;
+    this.look.z = la.z;
+    switch (la.state) {
+      case 'kneel':
+        // He looks at him, a slow nod as he kneels.
+        a.pose(POSE.sit, now);
+        a.lookAt(this.look, now + 1);
+        a.tilt(0.3 * bump(t, 1.2, 2.6));
+        break;
+      case 'listen': {
+        // Palms together, his eyes down, chanting (a look at him first, as he begins).
+        a.pose(t < 0.6 ? POSE.sit : POSE.chant, now);
+        if (t < 1.2) a.lookAt(this.look, now + 1);
+        else a.lookAt(null);
+        a.tilt(t < 1.2 ? 0 : 0.2);
+        for (const v of CHANT_VERSES) this.say(v.key, t, v.at, v.for, now);
+        break;
+      }
+      case 'bow':
+        // The chanting over: his hands on his knees, he looks at him and nods as he bows.
+        a.pose(POSE.sit, now);
+        a.lookAt(this.look, now + 1);
+        a.tilt(0.25 * bump(t, 0.6, 1.8));
         break;
     }
   }

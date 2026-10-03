@@ -122,6 +122,19 @@ export function seatFront(seat: BlessSeat, d: number, out: { x: number; z: numbe
   return out;
 }
 
+/** The seat whose monk one standing at `p` is before (in front of his dais, on its floor), or null. */
+export function seatBefore(p: { x: number; y: number; z: number }): BlessSeat | null {
+  for (const s of BLESS_SEATS) {
+    if (Math.abs(p.y - s.floor) > 0.8) continue;
+    const dx = p.x - s.x;
+    const dz = p.z - s.z;
+    const along = dx * Math.sin(s.yaw) + dz * Math.cos(s.yaw);
+    const across = dx * Math.cos(s.yaw) - dz * Math.sin(s.yaw);
+    if (along > 0.95 && along < s.kneel + s.reach && Math.abs(across) < 2.2) return s;
+  }
+  return null;
+}
+
 /**
  * When a monk sits for blessings (the clock: 0 golden afternoon, 0.25 dusk, 0.5 night, 0.75 dawn): after the dawn
  * chant (events.ts `dawnChant`, ≤ 0.82) until his meal before noon (as the noon bell rings, ≈ 0.976), and from after

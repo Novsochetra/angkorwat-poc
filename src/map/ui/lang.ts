@@ -740,7 +740,7 @@ const WORDS = {
   whenWaterBegins: { km: 'បុណ្យអុំទូកចាប់ផ្ដើមហើយ', en: 'The Water Festival has begun' },
   whenNewYearBegins: { km: 'សួស្ដីឆ្នាំថ្មី! បុណ្យចូលឆ្នាំចាប់ផ្ដើមហើយ', en: 'Happy New Year! Khmer New Year has begun' },
   whenChant: { km: 'សូត្រមន្តពេលព្រលឹម', en: 'Monks chanting at dawn' },
-  whenChantNote: { km: 'ព្រះសង្ឃសូត្រធម៌ជាភាសាបាលី', en: 'The monks chant their Pali prayers' },
+  whenChantNote: { km: 'ព្រះសង្ឃសូត្រធម៌ជាភាសាបាលី។ នៅក្នុងវិហារវត្តភូមិបណ្ដែតទឹក អ្នកអាចលុតជង្គង់ស្ដាប់នៅពីក្រោយព្រះសង្ឃ', en: "The monks chant their Pali prayers. In the floating village pagoda's hall, kneel behind them and listen" },
   whenChantBegins: { km: 'ព្រះសង្ឃចាប់ផ្ដើមសូត្រមន្តហើយ', en: 'The monks begin their dawn chant' },
   whenDrum: { km: 'ស្គរវត្តពេលល្ងាច', en: "The pagoda's drum at dusk" },
   whenDrumNote: { km: 'ស្គរធំ និងជួងសំរិទ្ធពីវត្ត', en: 'The skor drum and the bronze bell' },
@@ -893,11 +893,31 @@ const WORDS = {
   // (by the empty dais: why there is nobody to bless him now; no E)
   blessMeal: { km: 'ព្រះសង្ឃកំពុងឆាន់ចង្ហាន់ថ្ងៃត្រង់ សូមមកវិញបន្តិចទៀត', en: 'The monk is at his noon meal: come back in a little while' },
   blessNight: { km: 'ពេលយប់ព្រះសង្ឃគង់សម្រាក សូមមកសុំពរនៅពេលថ្ងៃ', en: 'The monks rest at night: come for a blessing by day' },
+  // (before dawn and at the dawn chant: the monk comes to bless after it)
+  blessDawn: { km: 'ព្រះសង្ឃនឹងគង់ប្រទានពរ ក្រោយសូត្រមន្តពេលព្រឹករួច', en: 'The monk gives blessings after the morning chant' },
   blessFest: { km: 'ថ្ងៃបុណ្យ ព្រះសង្ឃគង់ទទួលញាតិញោមនៅមុខវិហារ', en: 'On festival days the monks receive the faithful on the porch' },
   // (the calendar of events)
   blessCal: { km: 'ការប្រោះទឹកមន្ត និងចងអំបោះក្រហម', en: 'Blessings with the red string' },
   blessCalNote: { km: 'ព្រះសង្ឃមួយអង្គគង់ក្នុងវិហារ ប្រោះទឹកមន្ត និងចងអំបោះក្រហមឱ្យញាតិញោម (លើកលែងពេលឆាន់ថ្ងៃត្រង់)', en: 'A monk sits in the hall to sprinkle lustral water and tie the red string for visitors (not at his noon meal)' },
   blessCalBegins: { km: 'ព្រះសង្ឃគង់ប្រទានពរនៅក្នុងវិហារហើយ', en: 'A monk is giving blessings in the pagoda hall' },
+  // Kneeling to listen to the monks' chanting (listen…, chant…): roam/_listen.ts
+  listenAsk: { km: 'លុតជង្គង់ស្ដាប់ព្រះសង្ឃសូត្រមន្ត', en: 'Kneel and listen to the monks chanting' },
+  // (before the blessing monk, beside "E  Ask for a blessing": J)
+  listenMonk: { km: 'លុតជង្គង់ស្ដាប់សូត្រមន្ត', en: 'Kneel and listen' },
+  listenUp: { km: 'ក្រោកឡើង', en: 'Get up' },
+  // (the key help, bottom left, while he kneels)
+  listenGetUp: { km: 'ក្រោកឡើង', en: 'get up' },
+  listenDone: { km: 'សាធុ! បានស្ដាប់ព្រះសង្ឃសូត្រមន្ត (លើកទី {n})', en: 'Sathu! You listened to the monks chanting ({n})' },
+  // (in the hall at the dawn chant while the monks walk in to their places, or out after it: no E)
+  listenComing: { km: 'ព្រះសង្ឃកំពុងនិមន្តចូលមកសូត្រមន្ត', en: 'The monks are coming in to chant' },
+  listenOver: { km: 'ព្រះសង្ឃសូត្រមន្តចប់ហើយ', en: 'The monks have finished chanting' },
+  // (the monks' bubbles: the Pali as Cambodians read it, in Khmer letters — the homage, the three refuges, the praise of the Buddha, loving-kindness)
+  chantNamo: { km: '♪ នមោ តស្ស ភគវតោ អរហតោ សម្មាសម្ពុទ្ធស្ស', en: '♪ Namo tassa bhagavato arahato sammāsambuddhassa' },
+  chantBuddham: { km: '♪ ពុទ្ធំ សរណំ គច្ឆាមិ', en: '♪ Buddhaṃ saraṇaṃ gacchāmi' },
+  chantDhammam: { km: '♪ ធម្មំ សរណំ គច្ឆាមិ', en: '♪ Dhammaṃ saraṇaṃ gacchāmi' },
+  chantSangham: { km: '♪ សង្ឃំ សរណំ គច្ឆាមិ', en: '♪ Saṅghaṃ saraṇaṃ gacchāmi' },
+  chantItipiso: { km: '♪ ឥតិបិ សោ ភគវា អរហំ សម្មាសម្ពុទ្ធោ', en: '♪ Itipi so bhagavā arahaṃ sammāsambuddho' },
+  chantMetta: { km: '♪ សព្វេ សត្តា សុខិតា ហោន្តុ', en: '♪ Sabbe sattā sukhitā hontu' },
   // Lotus from the boat, offered at a shrine (lotus…): roam/_lotus.ts
   lotusPick: { km: 'បេះផ្កាឈូក', en: 'Pick a lotus' },
   lotusPicked: { km: 'បានបេះផ្កាឈូកមួយទង ({n}/{max}) — យកទៅថ្វាយព្រះនៅទីសក្ការៈណាមួយ', en: 'You picked a lotus ({n}/{max}): offer it at a shrine' },

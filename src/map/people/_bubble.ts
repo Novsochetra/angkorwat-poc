@@ -10,7 +10,9 @@ import type { Point } from './_routes';
  * first time someone speaks. One bubble at a time: a new one replaces it.
  * Bubbles shown at once (a scene's and the greetings' answers,
  * people/_greetBack.ts) never cover each other: one that would lands on top
- * of the other on the screen (the later one updated goes up).
+ * of the other on the screen (the later one updated goes up). It stays on
+ * the screen (`EDGE` px in from its sides; its tail still points at the
+ * speaker), and a long line (a chanted verse on a phone held upright) wraps.
  */
 export class Bubble {
   private el: HTMLElement | null = null;
@@ -77,8 +79,12 @@ export class Bubble {
       this.el.style.visibility = 'hidden';
       return;
     }
-    const x = ((this.v.x + 1) / 2) * innerWidth;
+    const sx = ((this.v.x + 1) / 2) * innerWidth;
     const y = ((1 - this.v.y) / 2) * innerHeight;
+    // (kept on the screen, its tail moved along under it to point at the speaker still)
+    const half0 = this.w / 2;
+    const x = Math.min(Math.max(sx, half0 + EDGE), Math.max(half0 + EDGE, innerWidth - half0 - EDGE));
+    const tail = Math.max(-half0 + TAIL_IN, Math.min(half0 - TAIL_IN, sx - x));
     // (another bubble showing where this one would: this one goes up over it, its tail clear of the other; it comes
     // back down gently once the other has gone)
     const now = performance.now();
@@ -103,6 +109,7 @@ export class Bubble {
     this.el.style.visibility = 'visible';
     this.el.style.opacity = this.opacity.toFixed(3);
     this.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, calc(-100% - ${lift.toFixed(1)}px))`;
+    this.el.style.setProperty('--pp-tail', `${tail.toFixed(1)}px`);
   }
 }
 
@@ -113,6 +120,9 @@ const STALE = 400;
 /** The tail under a bubble, and the room between two stacked (px). */
 const TAIL = 8;
 const GAP = 4;
+/** A bubble keeps this far in from the screen's sides, its tail this far in from its own (px). */
+const EDGE = 8;
+const TAIL_IN = 16;
 
 let styled = false;
 function injectStyle(): void {
@@ -122,8 +132,9 @@ function injectStyle(): void {
   s.textContent = `
     .pp-bubble { position: absolute; left: 0; top: 0; padding: calc(7 * var(--px)) calc(14 * var(--px)) calc(8 * var(--px));
       font-weight: 600; font-size: calc(16 * var(--px)); white-space: nowrap; opacity: 0; visibility: hidden; pointer-events: none;
-      will-change: transform, opacity; }
-    .pp-bubble::after { content: ''; position: absolute; left: 50%; bottom: calc(-7 * var(--px)); width: calc(14 * var(--px)); height: calc(8 * var(--px));
+      will-change: transform, opacity; max-width: calc(100vw - ${2 * EDGE}px); box-sizing: border-box; }
+    @supports (text-wrap: balance) { .pp-bubble { white-space: normal; text-wrap: balance; width: max-content; } }
+    .pp-bubble::after { content: ''; position: absolute; left: calc(50% + var(--pp-tail, 0px)); bottom: calc(-7 * var(--px)); width: calc(14 * var(--px)); height: calc(8 * var(--px));
       transform: translateX(-50%); background: var(--mu-panel); clip-path: polygon(0 0, 100% 0, 50% 100%); }
   `;
   document.head.append(s);

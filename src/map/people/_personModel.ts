@@ -194,6 +194,12 @@ export const POSE = {
    * the carry channel's weight (`carry(i, 0‥1)`) leans him forward, both hands out to tie the red string round a wrist.
    */
   bless: 26,
+  /**
+   * A monk chanting (សូត្រមន្ត: the dawn chant in the pagoda's hall, people/_sceneChant.ts; the blessing monk chanting
+   * for one who kneels to listen, _sceneBlessing.ts): seated cross-legged as `sit`, palms together at the chest, the
+   * head bowed a little, breathing, swaying a very little with the chant.
+   */
+  chant: 27,
 } as const;
 /** Rowing strokes a second (the `row` pose; a whole number in 600 s, so the clock's wrap does not jump). */
 export const ROW_HZ = 0.9;
@@ -962,6 +968,17 @@ const SIT_LEGS: Partial<Record<BoneName, V3>> = { legL: [-1.5, 0.6, 0], shinL: [
 const [TIE_R, TIE_L] = [BLESS_ARM.tie, BLESS_ARM.tieL];
 /** At the tie he sits up, leaning in only a little (his big head kept back from the face of the one kneeling close). */
 const BLESS_TIE_LEAN = 0.06;
+/**
+ * A monk chanting (`POSE.chant`) in a table too: seated as `sit`, the arms as the sampeah's (`pPalms`: palms together
+ * at the chest), the head bowed; how much the breath (x) and the chant's slow sway (y: a whole number of turns in
+ * `CLOCK_WRAP`, so the clock going back does not jump it) move each bone.
+ */
+const CHANT_SWAY = (Math.PI * 2 * 86) / 600;
+const GLSL_CHANT = /* glsl */ `
+const vec3 P_CHANT_ROT[${BONES.length}] = vec3[${BONES.length}](${blessBones({ ...SIT_LEGS, chest: [0.09, 0, 0], head: [0.22, 0, 0], armL: [-0.5, 0, -0.05], foreL: [-1.95, 0, -0.62], armR: [-0.5, 0, 0.05], foreR: [-1.95, 0, 0.62] })});
+const vec2 P_CHANT_MOVE[${BONES.length}] = vec2[${BONES.length}](${BONES.map((b) => (b === 'chest' ? 'vec2(0.012, 0.018)' : b === 'head' ? 'vec2(0.0, 0.035)' : 'vec2(0.0)')).join(', ')});
+const float P_CHANT_SWAY = ${CHANT_SWAY.toFixed(7)};
+`;
 const GLSL_BLESS = /* glsl */ `
 // The monk's blessing (P_BLESS): his bones at rest and at the tie (a turn a bone), how much the breath (x) and the
 // knot's work (y) move them; the right arm's script: its keys (armR x, y, z; foreR x) and their (time, sprig's tilt).
@@ -1037,6 +1054,7 @@ struct PP {
   float blessTilt;
 };
 ${GLSL_BLESS}
+${GLSL_CHANT}
 
 float pEase(vec4 c, float d) {
   float k = clamp((uPTime - c.z) / max(d, 1e-3), 0.0, 1.0);
@@ -1437,6 +1455,12 @@ vec3 pRot(int p, int b, PP P) {
     if (b == B_FORER) return vec3(mix(P.bless.w, r.x, P.carry), 0.0, 0.0);
     return r;
   }
+  if (p == P_CHANT) {
+    // Seated as P_SIT, palms together at the chest, by the table; the breath and the chant's slow sway.
+    vec3 r = P_CHANT_ROT[b];
+    r.x += dot(P_CHANT_MOVE[b], vec2(br, sin(t * P_CHANT_SWAY + s)));
+    return r;
+  }
   return base;
 }
 
@@ -1451,7 +1475,7 @@ vec3 pFree(int p) {
 
 // How far the hips go down (m, for a 1.7 m person; less than 0: up, onto a saddle).
 float pDrop(int p, PP P) {
-  if (p == P_SIT || p == P_BLESS) return 0.4;
+  if (p == P_SIT || p == P_BLESS || p == P_CHANT) return 0.4;
   if (p == P_KNEEL) return 0.33;
   if (p == P_PLANT) return 0.08;
   if (p == P_REAP) return 0.09;
@@ -1584,7 +1608,7 @@ float pHold(PP P, int c, bool left) {
 bool pShowRule(int show, PP P) {
   if (show == SHOW_ALWAYS) return true;
   if (show == SHOW_NOTPHOTO || show == SHOW_PHOTO) return (pWeight(P_PHOTO, P) >= 0.5) == (show == SHOW_PHOTO);
-  if (show == SHOW_PALMS || show == SHOW_NOTPALMS) return (pWeight(P_SAMPEAH, P) + pWeight(P_BOW, P) + pWeight(P_KNEEL, P) >= 0.5) == (show == SHOW_PALMS);
+  if (show == SHOW_PALMS || show == SHOW_NOTPALMS) return (pWeight(P_SAMPEAH, P) + pWeight(P_BOW, P) + pWeight(P_KNEEL, P) + pWeight(P_CHANT, P) >= 0.5) == (show == SHOW_PALMS);
   if (show == SHOW_DANCE) return pWeight(P_DANCE, P) >= 0.5;
   if (show == SHOW_HOLDHEAD || show == SHOW_NOTHOLDHEAD) return (pHold(P, C_HEAD, false) >= 0.5) == (show == SHOW_HOLDHEAD);
   if (show == SHOW_HOLDTRAY) return pHold(P, C_TRAY, false) >= 0.5 || (P.ctype == C_TRAY && pWeight(P_GIVE, P) >= 0.5);

@@ -286,6 +286,8 @@ guide, with every add-on's keys and URL values for shots, is
   palm ladder (`palm=top`).
 - Village life: hammocks (`hammock=1`), dak bat at dawn (`dakbat=1`), a monk's
   blessing and the red string in the village pagoda (`bless=1`, `redstring=1`),
+  kneeling to listen to the monks' chanting there (the dawn chant's row of monks,
+  `people/_sceneChant.ts`, or the blessing monk with J: `listen=1`, `chantrow=1`),
   a lotus picked from the boat and offered at a shrine (`lotus=pick|offer`),
   monkeys stealing his snack (`monkey=steal`).
 - Fun: his own kite (`kite=fly`), helping the farmers (`farm=plant|reap`), the

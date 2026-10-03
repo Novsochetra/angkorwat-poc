@@ -327,3 +327,6 @@ registerSfx('blessCloth', (o: SfxOut, gain: number, t: number) => {
     for (const n of [src, bp, g]) n.disconnect();
   };
 }, 'moves');
+
+/** One synthesized voice chanting Pali lines (the kneeling listener's chant before the recordings load: _listen.ts). */
+export { chant as chantVoice, lines as chantLines };

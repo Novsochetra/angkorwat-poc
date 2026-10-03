@@ -18,10 +18,11 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_buffaloRide'),
   () => import('./_zip'),
   () => import('./_palmClimb'),
-  // ── Village life: the hammock, the alms round (dak bat), the monk's blessing, lotus, monkeys ──
+  // ── Village life: the hammock, the alms round (dak bat), the monk's blessing, kneeling to listen to the chanting, lotus, monkeys ──
   () => import('./_hammock'),
   () => import('./_dakBat'),
   () => import('./_blessing'),
+  () => import('./_listen'),
   () => import('./_lotus'),
   () => import('./_monkeyThief'),
   // ── Join the fun: the kite, the farmers' work, the boat race, kick the sey ──

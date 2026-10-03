@@ -16,7 +16,7 @@ import { PAGODA } from '../village/_spots';
 import type { MapFrame, RoamMode } from '../types';
 import { onLang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
-import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, CHANT_FOR, SCRIPT_AT, seatFront, TIE, type BlessBox, type BlessSeat, type BlessState } from './_blessingHooks';
+import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, CHANT_FOR, SCRIPT_AT, seatBefore, seatFront, TIE, type BlessBox, type BlessSeat, type BlessState } from './_blessingHooks';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
@@ -29,8 +29,9 @@ import type { RoamCtx } from './types';
  *
  * - **Ask** (on foot before his dais, while he sits there: by day, not at his
  *   meal, not at Pchum Ben or Visak Bochea): "E  សុំពរពីព្រះសង្ឃ / Ask for a
- *   blessing" (a pad's □ / X, the touch Use button). By the empty dais it
- *   says why (night, his meal, a festival), no E.
+ *   blessing" (a pad's □ / X, the touch Use button); beside it "J  Kneel and
+ *   listen" (he kneels and the monk chants for him: roam/_listen.ts). By the
+ *   empty dais it says why (night, his meal, a festival), no E.
  * - **The blessing**: he walks to the place before the dais (the stick or
  *   Space: never mind), turns to the monk, takes his hat off and kneels (the
  *   prayer's kneel), sits back on his heels, palms together at his face. The
@@ -142,6 +143,9 @@ let hallHatOff = false;
 /** The string was knotted in this blessing (the toast at its end), and he wears it (kept, or a check's). */
 let tied = false;
 let worn = false;
+/** The clock now (`MapFrame.clock`), and from when in the night the empty dais's hint says he comes after the morning chant. */
+let clockNow = 0;
+const DAWN_FROM = 0.62;
 /** Seats whose monk has blessed him this visit. */
 const blessed = new Set<string>();
 /** The camera: the way it looks from, the player's view before, how long framed (s), held by a check's URL. */
@@ -161,12 +165,15 @@ let greeted = false;
 let pAsk = '';
 let pUp = '';
 let pNight = '';
+let pDawn = '';
 let pMeal = '';
 let pFest = '';
 const words = () => {
-  pAsk = `E  ${t('blessAsk')}`;
+  // (J beside it: kneel and listen to him chant, roam/_listen.ts)
+  pAsk = `E  ${t('blessAsk')}  ·  J  ${t('listenMonk')}`;
   pUp = `E  ${t('blessUp')}`;
   pNight = t('blessNight');
+  pDawn = t('blessDawn');
   pMeal = t('blessMeal');
   pFest = t('blessFest');
 };
@@ -203,16 +210,7 @@ function pagodaFestival(f: string | null): boolean {
 
 /** The seat whose monk he stands before (in front of the dais, on its floor), or null. */
 function seatNear(ctx: RoamCtx): BlessSeat | null {
-  const p = ctx.body.pos;
-  for (const s of BLESS_SEATS) {
-    if (Math.abs(p.y - s.floor) > 0.8) continue;
-    const dx = p.x - s.x;
-    const dz = p.z - s.z;
-    const along = dx * Math.sin(s.yaw) + dz * Math.cos(s.yaw);
-    const across = dx * Math.cos(s.yaw) - dz * Math.sin(s.yaw);
-    if (along > 0.95 && along < s.kneel + s.reach && Math.abs(across) < 2.2) return s;
-  }
-  return null;
+  return seatBefore(ctx.body.pos);
 }
 
 /** He never stands on a monk's dais or its step (they are not on the walk map): out to the nearest open side. */
@@ -795,7 +793,9 @@ registerAddon({
     // (the people part last wrote him a moment ago: else it is not built, or far)
     if (BLESS.now - m.t > 1.5) return null;
     if (m.there) return pAsk;
-    return m.away === 'night' ? pNight : m.away === 'meal' ? pMeal : m.away === 'fest' ? pFest : null;
+    // (before his hours in the morning, from before dawn: he comes after the morning chant)
+    const night = clockNow - Math.floor(clockNow) >= DAWN_FROM ? pDawn : pNight;
+    return m.away === 'night' ? night : m.away === 'meal' ? pMeal : m.away === 'fest' ? pFest : null;
   },
 
   use(ctx) {
@@ -846,6 +846,7 @@ registerAddon({
 
   frame(f: MapFrame, mode: RoamMode) {
     BLESS.now = f.t;
+    clockNow = f.clock;
     if (step === 'off' && before && mode === 'walk') restoreCam(f.dt);
   },
 
