@@ -1,11 +1,12 @@
 import { Group } from 'three';
 import { traceSource } from '../feedback/sourceTrace';
 import { hash3 } from '../voxel/random';
-import { VoxelBuilder } from '../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import { GlowBlocks, glowMaterial, haloPoints, LightPools, pointScale, type Halo } from './road/glow';
 import { buildBeacons, buildLamps } from './road/lamps';
 import { buildRoadNetwork, KIND, LIFT, STEP, type Station } from './road/line';
+import { cutIntoPieces, ROAD_PIECES } from './road/pieces';
 import { buildRoadStone } from './road/stone';
 import type { MapContext, MapFrame, MapPart, PlaceId } from './types';
 
@@ -21,7 +22,9 @@ import type { MapContext, MapFrame, MapPart, PlaceId } from './types';
  * further on), and at night the lamps light the way with pools of light.
  *
  * Helpers in road/: line.ts (centre line and heights), stone.ts (paving,
- * stairs, walls, bridges), lamps.ts (lanterns, beacons), glow.ts (light).
+ * stairs, walls, bridges), lamps.ts (lanterns, beacons), glow.ts (light),
+ * pieces.ts (the blocks and the inlay cut into pieces, each its own mesh, so
+ * the pieces out of view are left out).
  */
 
 /** Width of the inlay of light (m). */
@@ -45,19 +48,40 @@ export function buildPath(ctx: MapContext): MapPart {
   const beacon = new GlowBlocks();
   const halos: Halo[] = [];
   const lightPools = new LightPools();
-  net.roads.forEach((road, r) => inlayBlocks(b, inlay, road.stations, r));
+  // (the carved stone under the light: a builder of its own, below)
+  const carved = new VoxelBuilder();
+  net.roads.forEach((road, r) => inlayBlocks(carved, inlay, road.stations, r));
   buildLamps(b, net, ctx.field, glass, halos, lightPools);
   const beaconSpans = buildBeacons(b, net, ctx.field, beacon, halos);
 
-  object.add(buildVoxelMesh(b, { quality: ctx.quality === 'low' ? 'low' : 'medium', name: 'path' }));
+  // In pieces, each its own meshes (road/pieces.ts): those out of view are left out.
+  const quality = ctx.quality === 'low' ? 'low' : 'medium';
+  // The carved stone under the light keeps its cut edges however far it is (graphics.ts `plainFar` leaves a group
+  // marked `chunkLod` as it is): its top lies a centimetre under the light's, and as plain boxes far off its full top
+  // would win more of the light's pixels from it (where depth runs out of precision), the far golden line thinner and
+  // broken on the stairs. (Built for low, every block is a plain box, near or far: it goes with the rest.)
+  const keep = quality !== 'low';
+  const stone = keep ? b.boxes : [...b.boxes, ...carved.boxes];
+  for (const piece of blockPieces(stone, (mat) => (mat === 'mapGrass' ? ROAD_PIECES.grass : ROAD_PIECES.stone))) object.add(buildVoxelMesh(piece, { quality, name: 'path' }));
+  if (keep)
+    for (const piece of blockPieces(carved.boxes, () => ROAD_PIECES.glow)) {
+      const group = buildVoxelMesh(piece, { quality, name: 'path' });
+      group.userData.chunkLod = true;
+      object.add(group);
+    }
   const road = glowMaterial('road');
   const lamp = glowMaterial('lamp');
   const bright = glowMaterial('lamp');
   const beaconMesh = beacon.mesh(bright.material, 'path:beacons');
-  const inlayMesh = inlay.mesh(road.material, 'path:inlay');
-  // (drawn over its stone, after the other opaque things)
-  inlayMesh.renderOrder = 1;
-  object.add(inlayMesh, glass.mesh(lamp.material, 'path:lamps'), beaconMesh);
+  for (const list of cutIntoPieces(inlay.list, ROAD_PIECES.glow, (g) => g.x, (g) => g.z)) {
+    const piece = new GlowBlocks();
+    for (const g of list) piece.list.push(g);
+    const inlayMesh = piece.mesh(road.material, 'path:inlay');
+    // (drawn over its stone, after the other opaque things)
+    inlayMesh.renderOrder = 1;
+    object.add(inlayMesh);
+  }
+  object.add(glass.mesh(lamp.material, 'path:lamps'), beaconMesh);
   const pools = lightPools.mesh('path:pools');
   object.add(pools.mesh);
   const halo = haloPoints(halos);
@@ -95,7 +119,7 @@ export function buildPath(ctx: MapContext): MapPart {
   return {
     name: 'path',
     object,
-    blocks: b.boxes.length + inlay.list.length + glass.list.length + beacon.list.length,
+    blocks: b.boxes.length + carved.boxes.length + inlay.list.length + glass.list.length + beacon.list.length,
     highlight(id) {
       lit = id;
     },
@@ -136,6 +160,29 @@ export function buildPath(ctx: MapContext): MapPart {
       halo.uniforms.uBeacon.value = 0.4 + n * 0.8;
     },
   };
+}
+
+/**
+ * Blocks in pieces (road/pieces.ts), each family cut on its own into `k(family)`:
+ * the stone (paving, steps, walls, bridges, lamps, beacons) in
+ * `ROAD_PIECES.stone`, the grass on the paving's edges in fewer (a few
+ * hundred blocks: a piece more is a draw more).
+ */
+function blockPieces(boxes: readonly VoxelBox[], k: (family: string) => number): VoxelBuilder[] {
+  const families = new Map<string, VoxelBox[]>();
+  for (const box of boxes) {
+    let list = families.get(box.mat);
+    if (!list) families.set(box.mat, (list = []));
+    list.push(box);
+  }
+  const out: VoxelBuilder[] = [];
+  for (const [mat, list] of families)
+    for (const cut of cutIntoPieces(list, k(mat), (p) => p.x, (p) => p.z)) {
+      const piece = new VoxelBuilder();
+      for (const box of cut) piece.boxes.push(box);
+      out.push(piece);
+    }
+  return out;
 }
 
 /**
