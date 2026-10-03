@@ -1,14 +1,16 @@
-import { BoxGeometry, Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshDepthMaterial, MeshStandardMaterial, Sphere, Vector3, type WebGLProgramParametersWithUniforms } from 'three';
+import { Box3, BoxGeometry, Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshDepthMaterial, MeshStandardMaterial, Sphere, Vector3, type WebGLProgramParametersWithUniforms } from 'three';
+import { ShadowGate } from '../cull';
 import { hash3 } from '../../voxel/random';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { Palms, type PalmSet } from '../veg/palms';
 import { SWAY, SWAY_GLSL } from '../veg/sway';
 import { sweepOrder } from './ground';
+import type { MapFrame } from '../types';
 import { plotAt, SWEEP, type PlotPlan } from './stages';
 
 /**
- * What stands in and round the paddies (one draw call, plain boxes posed in
- * the vertex shader): bamboo fences on the outer dikes, two ting mong
+ * What stands in and round the paddies (plain boxes posed in the vertex
+ * shader): bamboo fences on the outer dikes, two ting mong
  * (the Khmer scarecrow figure: an old shirt, a krama, a Khmer palm-leaf hat) while
  * the rice grows, sheaves stood in stooks behind the reapers, round straw
  * stacks on a pole after the threshing; and sugar palms (thnot, Cambodia's
@@ -19,6 +21,15 @@ import { plotAt, SWEEP, type PlotPlan } from './stages';
  * season in JS): it grows out of its foot as the window opens and sinks
  * back into it as it closes, so nothing pops. Cloth sways with the land's
  * wind (veg/sway.ts). The same pose casts the shadows.
+ *
+ * Four meshes (draws), not one spanning the map (r 360 m, drawn from
+ * anywhere): the west's (by the great lake) and the east's (by the
+ * sugar-palm village) each culled on their own, and the stooks apart from
+ * the rest (2,450 of the 2,780 boxes, standing a few weeks a year): a mesh
+ * whose boxes are all out of season (shrunk into their feet) is not drawn
+ * at all (`seasonal`, every frame with the palms' step). 33 k triangles in
+ * every view → 4 k out of the harvest (the west's fences, ting mong and
+ * stacks), the stooks of the side in view at harvest.
  */
 
 /** Colours (sRGB). */
@@ -52,10 +63,13 @@ class Boxes {
   readonly p2: number[] = [];
   readonly show: number[] = [];
   readonly col: number[] = [];
-  /** The prop being built: its foot, sway, window. */
+  /** Each box's mesh (`groupOf`). */
+  readonly group: number[] = [];
+  /** The prop being built: its foot, sway, window, mesh. */
   foot = new Vector3();
   sway = 0;
   win: Window = ALWAYS;
+  in = 0;
 
   get count(): number {
     return this.p0.length / 4;
@@ -74,6 +88,7 @@ class Boxes {
     }
     _c.setHex(hex).multiplyScalar(shade);
     this.col.push(_c.r, _c.g, _c.b);
+    this.group.push(this.in);
   }
 
   /** A box standing on (x, y, z) along its tipped axis (a stick, a sheaf), `len` long. */
@@ -341,19 +356,35 @@ function propMaterials(season: { value: number }): { material: MeshStandardMater
   return { material, depth };
 }
 
+/**
+ * The props' meshes: west (by the great lake) or east (by the sugar-palm
+ * village) of the map, and the stooks apart from the rest (fences, ting mong,
+ * straw stacks): `PLACE_EAST` + `STOOKS`. The stooks are most of the boxes
+ * (2,450 of 2,780) and stand for a few weeks of the year.
+ */
+const STOOKS = 1;
+const PLACE_EAST = 2;
+const groupOf = (pl: PlotPlan | null, stooks: boolean): number => (pl && pl.paddy.x > 0 ? PLACE_EAST : 0) + (stooks ? STOOKS : 0);
+
+/** A season window of boxes: from `at` (absolute season) for `len` (`aShow.x`, `aShow.w`: a box shows while fract(season − at) is in (0, len)). */
+type Span = [at: number, len: number];
+
 export function buildProps(field: HeightField, plots: PlotPlan[], season: { value: number }): { mesh: Mesh; count: number; palms: PalmSet } {
   const b = new Boxes();
+  b.in = groupOf(null, false);
   fences(b, field);
   for (const [pi, ox, oz, shirt] of SCARECROWS) {
     const pl = plots[pi];
     const x = pl.paddy.x + ox;
     const z = pl.paddy.z + oz;
+    b.in = groupOf(pl, false);
     // (up after the planting, taken in before the harvest)
     scarecrow(b, x, field.heightAt(x, z), z, hash3(pi, 2, 0, 9351) * 6.28, SHIRT[shirt], { at: pl.lag + pl.plant + SWEEP + 0.01, len: 0.015, outAt: pl.lag + pl.cut - 0.015, outLen: 0.012 });
   }
   // Stooks: behind the reapers, until the threshing.
   for (const pl of plots) {
     const p = pl.paddy;
+    b.in = groupOf(pl, true);
     for (let u = -p.w / 2 + 3.5; u <= p.w / 2 - 3; u += 5.5)
       for (let v = -p.d / 2 + 3.5; v <= p.d / 2 - 3; v += 5.5) {
         const seed = pl.index * 131 + Math.round(u * 7 + v * 53);
@@ -370,6 +401,7 @@ export function buildProps(field: HeightField, plots: PlotPlan[], season: { valu
     const pl = plots[pi];
     const x = pl.paddy.x + ox;
     const z = pl.paddy.z + oz;
+    b.in = groupOf(pl, false);
     strawStack(b, x, field.heightAt(x, z) + 0.03, z, pi, { at: pl.lag + pl.cut + SWEEP + 0.035, len: 0.05, outAt: pl.lag + 1.03, outLen: 0.03 });
   }
   const palms = new Palms();
@@ -379,40 +411,114 @@ export function buildProps(field: HeightField, plots: PlotPlan[], season: { valu
   });
 
   const n = b.count;
-  const geo = new InstancedBufferGeometry();
   const box = new BoxGeometry(1, 1, 1);
-  geo.index = box.index;
-  geo.setAttribute('position', box.getAttribute('position'));
-  geo.setAttribute('normal', box.getAttribute('normal'));
-  geo.setAttribute('aP0', new InstancedBufferAttribute(new Float32Array(b.p0), 4));
-  geo.setAttribute('aP1', new InstancedBufferAttribute(new Float32Array(b.p1), 4));
-  geo.setAttribute('aP2', new InstancedBufferAttribute(new Float32Array(b.p2), 4));
-  geo.setAttribute('aShow', new InstancedBufferAttribute(new Float32Array(b.show), 4));
-  geo.setAttribute('aCol', new InstancedBufferAttribute(new Float32Array(b.col), 3));
-  geo.instanceCount = n;
-  let x0 = Infinity;
-  let x1 = -Infinity;
-  let z0 = Infinity;
-  let z1 = -Infinity;
-  let y0 = Infinity;
-  let y1 = -Infinity;
-  for (let i = 0; i < n; i++) {
-    x0 = Math.min(x0, b.p0[i * 4]);
-    x1 = Math.max(x1, b.p0[i * 4]);
-    y0 = Math.min(y0, b.p0[i * 4 + 1]);
-    y1 = Math.max(y1, b.p0[i * 4 + 1]);
-    z0 = Math.min(z0, b.p0[i * 4 + 2]);
-    z1 = Math.max(z1, b.p0[i * 4 + 2]);
-  }
-  geo.boundingSphere = new Sphere(new Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 4);
   const { material, depth } = propMaterials(season);
-  const mesh = new Mesh(geo, material);
+  /** One mesh's boxes (`which`: their numbers in `b`), and when they stand (null: some always). */
+  const meshOf = (which: number[]): { mesh: Mesh; spans: Span[] | null } => {
+    const geo = new InstancedBufferGeometry();
+    geo.index = box.index;
+    geo.setAttribute('position', box.getAttribute('position'));
+    geo.setAttribute('normal', box.getAttribute('normal'));
+    const pick = (from: number[], size: number) => {
+      const out = new Float32Array(which.length * size);
+      which.forEach((i, k) => {
+        for (let q = 0; q < size; q++) out[k * size + q] = from[i * size + q];
+      });
+      return new InstancedBufferAttribute(out, size);
+    };
+    geo.setAttribute('aP0', pick(b.p0, 4));
+    geo.setAttribute('aP1', pick(b.p1, 4));
+    geo.setAttribute('aP2', pick(b.p2, 4));
+    geo.setAttribute('aShow', pick(b.show, 4));
+    geo.setAttribute('aCol', pick(b.col, 3));
+    geo.instanceCount = which.length;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    const spans: Span[] = [];
+    let always = false;
+    for (const i of which) {
+      x0 = Math.min(x0, b.p0[i * 4]);
+      x1 = Math.max(x1, b.p0[i * 4]);
+      y0 = Math.min(y0, b.p0[i * 4 + 1]);
+      y1 = Math.max(y1, b.p0[i * 4 + 1]);
+      z0 = Math.min(z0, b.p0[i * 4 + 2]);
+      z1 = Math.max(z1, b.p0[i * 4 + 2]);
+      if (b.show[i * 4 + 1] < 0) always = true;
+      else spans.push([(((b.show[i * 4] % 1) + 1) % 1), b.show[i * 4 + 3]]);
+    }
+    geo.boundingSphere = new Sphere(new Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 4);
+    const mesh = new Mesh(geo, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.customDepthMaterial = depth;
+    return { mesh, spans: always ? null : joinSpans(spans) };
+  };
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const g = b.group[i];
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(i);
+  }
+  // The first (the west's fences, ting mong and straw stacks) is the props' mesh: the others are its children, as the palms.
+  const made = [...groups.entries()].sort((p, q) => p[0] - q[0]).map(([g, which]) => ({ g, ...meshOf(which) }));
+  const mesh = made[0].mesh;
   mesh.name = 'paddies:props';
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  mesh.customDepthMaterial = depth;
+  for (const m of made.slice(1)) {
+    m.mesh.name = `paddies:props:${m.g & PLACE_EAST ? 'east' : 'west'}${m.g & STOOKS ? ':stooks' : ''}`;
+    mesh.add(m.mesh);
+  }
+  // (they cast shadows while those can be seen, as paddies.ts gates the first: cull.ts)
+  const gate = new ShadowGate();
+  for (const m of made.slice(1)) gate.add(m.mesh, boxOf(m.mesh));
+  /** The meshes whose boxes all come and go with the season: drawn only while one of them stands (or grows, or sinks). */
+  const seasonal = made.filter((m) => m.spans && m !== made[0]);
+  const props = {
+    update(f: MapFrame): void {
+      // (the meshes left out are boxes shrunk into their feet by the shader: nothing would show)
+      for (const m of seasonal) m.mesh.visible = m.spans!.some(([at, len]) => {
+        const t = (((f.season - at) % 1) + 1) % 1;
+        return t > 0 && t < len;
+      });
+      gate.update(f);
+    },
+  };
   // The palms: drawn with the props (children of their mesh); `palms.subjects` for the nature book.
   const palmSet = palms.build({ name: 'paddies:palms' });
   mesh.add(palmSet.object);
+  // (paddies.ts steps the palms every frame: the props' own step goes with it)
+  const palmStep = palmSet.update.bind(palmSet);
+  palmSet.update = (f: MapFrame) => {
+    palmStep(f);
+    props.update(f);
+  };
   return { mesh, count: n + palmSet.pieces, palms: palmSet };
+}
+
+/** Season windows joined where they overlap (from 0‥1, wrapping past 1). */
+function joinSpans(spans: Span[]): Span[] {
+  spans.sort((p, q) => p[0] - q[0]);
+  const out: Span[] = [];
+  for (const [at, len] of spans) {
+    const last = out[out.length - 1];
+    if (last && at <= last[0] + last[1]) last[1] = Math.max(last[1], at + len - last[0]);
+    else out.push([at, len]);
+  }
+  return out;
+}
+
+/** The box round a mesh's boxes (world, m): each box's middle and half its diagonal (`aP0`, `aP1`). */
+function boxOf(mesh: Mesh): Box3 {
+  const p = mesh.geometry.getAttribute('aP0');
+  const s = mesh.geometry.getAttribute('aP1');
+  const box = new Box3();
+  const v = new Vector3();
+  for (let i = 0; i < p.count; i++) {
+    const r = Math.hypot(s.getX(i), s.getY(i), s.getZ(i)) / 2;
+    box.expandByPoint(v.set(p.getX(i) - r, p.getY(i) - r, p.getZ(i) - r)).expandByPoint(v.set(p.getX(i) + r, p.getY(i) + r, p.getZ(i) + r));
+  }
+  return box;
 }
