@@ -22,10 +22,6 @@ export const CREDITS: CreditGroup[] = [
     lines: [{ name: 'Sochetra Nov', note: { km: 'គំនិត ការរចនា និងពិភពលោកទាំងមូល', en: 'Idea, design and the whole world' } }],
   },
   {
-    head: { km: 'ជំនួយការសរសេរកូដ', en: 'Code helper' },
-    lines: [{ name: 'Claude (Anthropic)' }],
-  },
-  {
     head: { km: 'សំឡេង', en: 'Sounds' },
     lines: [
       { name: 'GFX Sounds', note: { km: 'ជំហានលើថ្ម និងឈើ ម៉ាស៊ីនអង្គុលីលេខ', en: 'Steps on stone and wood, the typewriter' } },
