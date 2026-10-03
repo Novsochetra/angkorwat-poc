@@ -585,6 +585,14 @@ addEventListener('resize', () => {
 const CYCLE = 360;
 /** `clock=` (checks): hold the day's cycle there (0 afternoon, 0.25 dusk, 0.5 night, 0.75 dawn). */
 let clockParam = params.has('clock') ? (((Number(params.get('clock')) || 0) % 1) + 1) % 1 : null;
+/**
+ * `equinox=1` on the live page (not a shot): `clock=` holds the clock only until Start is pressed, then it runs on from
+ * there, so the equinox morning plays (from 0.7 the sun reaches the tower in about 20 s); null once let go.
+ */
+let clockRunsFrom = !shot && params.get('equinox') === '1' ? clockParam : null;
+/** It was let go: the clock runs (as the Time setting's "Cycle") until the Time setting changes. */
+let urlRuns = false;
+const timeAtStart = settings.time;
 /** `moon=` (checks): hold the moon's age there (0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter), else it follows the date (`day=`). */
 let moonParam = params.has('moon') ? (((Number(params.get('moon')) || 0) % 1) + 1) % 1 : null;
 /** `moonpath=high|low`: hold the moon's path (the free camera's panel holds it too), else the Moon setting's. */
@@ -606,7 +614,7 @@ let wasCycling = false;
 function nightTarget(): number {
   if (clockParam !== null) return nightOf(clockParam);
   if (params.has('night')) return Number(params.get('night'));
-  if (settings.time === 'cycle') return nightOf(cycleDays % 1);
+  if (isCycling()) return nightOf(cycleDays % 1);
   return settings.time === 'night' ? 1 : 0;
 }
 
@@ -669,7 +677,7 @@ function placeCamera(cam: number[]): void {
 }
 
 /** The clock runs: the Time setting is "Cycle" and nothing in the URL holds it. */
-const isCycling = () => clockParam === null && !params.has('night') && settings.time === 'cycle';
+const isCycling = () => clockParam === null && !params.has('night') && (settings.time === 'cycle' || (urlRuns && settings.time === timeAtStart));
 // (for the calendar of events and the stilt house's bed: time.ts)
 Object.assign(TIME, {
   days: () => cycleDays,
@@ -693,6 +701,12 @@ Object.assign(TIME, {
 } satisfies Partial<typeof TIME>);
 
 function step(t: number, dt: number): void {
+  // (`equinox=1` on the live page: Start lets the clock go, on from where `clock=` held it)
+  if (clockRunsFrom !== null && entered && clockParam === clockRunsFrom) {
+    cycleDays = Math.floor(cycleDays) + clockRunsFrom;
+    clockParam = clockRunsFrom = null;
+    urlRuns = true;
+  }
   const cycling = isCycling();
   // (entering the cycle: start it at the current clock and day, so the sun, the moon and the festivals carry on)
   if (cycling && !wasCycling) cycleOff = t - cycleDays * CYCLE;

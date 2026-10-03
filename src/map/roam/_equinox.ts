@@ -34,9 +34,12 @@ import type { RoamCtx } from './types';
  *   halo is up gives the "Equinox sunrise" stamp (roam/_bookData.ts, the rare
  *   moments' section: `Journal.award`).
  *
- * Keys: none of its own (the camera: 4, the selfie: 5). URL: `equinox=1` with
- * `clock=0.7` (the crowd waiting), `clock=0.76` (the halo, the moment); in a
- * roaming shot `roam=walk&at=0,-161&yaw=180` stands him on the causeway.
+ * Keys: none of its own (the camera: 4, the selfie: 5; raised in the watching
+ * area that morning, the camera comes up on the tower top: `aimOnRaise`).
+ * URL: `equinox=1` with `clock=0.7` (the crowd waiting), `clock=0.76` (the
+ * halo, the moment); on the live page the clock runs on from `clock=` after
+ * Start (main.ts), so the morning plays; in a roaming shot
+ * `roam=walk&at=0,-161&yaw=180` stands him on the causeway.
  */
 
 /** The halo's colour (sRGB): the low sun's gold. */
@@ -52,6 +55,10 @@ const CROWD = { x: -6, y: 58, z: -160 };
 const HEARD = 240;
 /** The moment's toast comes this near (m, him or the camera to the causeway). */
 const NEAR = 260;
+/** Where his camera aims on the tower (m under its tip: the spire in the frame, the halo round it). */
+const AIM_BELOW = 6;
+/** A check's URL aims the camera itself (`pview=`). */
+const URL_VIEW = typeof location !== 'undefined' && new URLSearchParams(location.search).has('pview');
 
 const _d = new Vector3();
 const _v = new Vector3();
@@ -117,6 +124,8 @@ let lastClock = NaN;
 let eveDay = NaN;
 let nowDay = NaN;
 let oohDay = NaN;
+/** What he held up at the last step. */
+let lastKind: string | null = null;
 
 /** The day of the cycle (the morning's), for the once-a-morning things. */
 const cycleDay = () => Math.floor(TIME.days());
@@ -131,7 +140,7 @@ function photographed(ctx: RoamCtx, mode: RoamMode): void {
     // (his camera at his eye; the view's yaw and pitch: photo.ts `shot`)
     const s = ph.shot;
     _v.set(Math.sin(s.yaw) * Math.cos(s.pitch), Math.sin(s.pitch), Math.cos(s.yaw) * Math.cos(s.pitch));
-    _d.set(TOWER_TOP.x - p.x, TOWER_TOP.y - 6 - (p.y + 1.2 * ctx.body.scale), TOWER_TOP.z - p.z).normalize();
+    _d.set(TOWER_TOP.x - p.x, TOWER_TOP.y - AIM_BELOW - (p.y + 1.2 * ctx.body.scale), TOWER_TOP.z - p.z).normalize();
     // (in the frame: within half the view's height, and a little more across)
     if (Math.acos(Math.min(1, _v.dot(_d))) > ((s.fov / 2) * 1.25 * Math.PI) / 180) return;
   } else if (ph.kind === 'selfie') {
@@ -139,6 +148,24 @@ function photographed(ctx: RoamCtx, mode: RoamMode): void {
     if (Math.abs(angleDiff(ctx.body.yaw, Math.atan2(p.x - TOWER_TOP.x, p.z - TOWER_TOP.z))) > 1.1) return;
   } else return;
   ph.journal.award('equinox');
+}
+
+/**
+ * He raises his camera in the watching area on the equinox morning: it comes up aimed at the tower top (it would come
+ * up level, on the gallery's wall: the sun is far over the frame there, and the follow camera never sees that high).
+ */
+function aimOnRaise(ctx: RoamCtx, mode: RoamMode): void {
+  const kind = env?.photo.kind ?? null;
+  const raised = kind === 'camera' && lastKind !== 'camera';
+  lastKind = kind;
+  if (!env || !raised || URL_VIEW || mode !== 'walk' || clock < GATHER || clock >= HALO_END || !equinoxMorning(season, clock)) return;
+  const p = ctx.body.pos;
+  if (!inWatchArea(p.x, p.y, p.z)) return;
+  const dx = TOWER_TOP.x - p.x;
+  const dz = TOWER_TOP.z - p.z;
+  const s = env.photo.shot;
+  s.yaw = Math.atan2(dx, dz);
+  s.pitch = Math.atan2(TOWER_TOP.y - AIM_BELOW - (p.y + 1.2 * ctx.body.scale), Math.hypot(dx, dz));
 }
 
 registerAddon({
@@ -152,7 +179,8 @@ registerAddon({
     if (ph?.kind && ph.view > 0.95 && (ctx.input.click || ctx.input.jump)) photographed(ctx, mode);
     return false;
   },
-  after(ctx) {
+  after(ctx, mode) {
+    aimOnRaise(ctx, mode);
     if (!env || !equinoxMorning(season, clock)) return;
     const day = cycleDay();
     // The eve: the afternoon, the dusk and the night before (the dawn of the same day of the cycle), until they start

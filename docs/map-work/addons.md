@@ -2111,7 +2111,10 @@ gather before dawn to watch.
   the halo goes by 0.815, they go back down the stair from 0.84 (all gone by 0.99).
 - **While roaming**: a toast on the eve (the afternoon, dusk or night before:
   "Tomorrow at dawn…", after midnight "This dawn…"), and at the moment if he
-  is within 260 m ("…raise your camera" on the causeway). A photo of it from
+  is within 260 m ("…raise your camera (4)" on the causeway). The follow
+  camera cannot see that high from the pad, so his camera raised there from
+  `GATHER` until the halo goes comes up aimed at the tower top
+  (`aimOnRaise`; not when a check's `pview=` aims it). A photo of it from
   the causeway or the pools' edge (his camera on the tower top, or a selfie
   with his back to it) while the halo is up gives the passport's **Equinox
   sunrise** stamp, in its new section "Rare moments" (`_bookData.ts`
@@ -2123,7 +2126,10 @@ gather before dawn to watch.
 - **Keys**: none of its own (the camera 4, the selfie 5).
 - **URL**: `equinox=1` holds an equinox dawn (the sun on the axis, the crowd
   and the halo by `clock=`: 0.7 waiting, 0.76 the moment, 0.8 the sun off the
-  tower), `equinox=0` none; `season=0.44` / `0.93` are the equinox mornings,
+  tower), `equinox=0` none. On the live page (no `shot=1`) `clock=` holds
+  only until Start, then the clock runs on from there (main.ts
+  `clockRunsFrom`), so `equinox=1&clock=0.7` plays the morning: the sun
+  reaches the tower about 20 s after Start. `season=0.44` / `0.93` are the equinox mornings,
   `season=0.18` (June) and `0.69` (December) put the sun left and right of the
   tower. In a bug report `equinox=1` comes back while it is on. Checks:
   `@index.html?shot=1&ui=0&equinox=1&clock=0.76` (the overview),

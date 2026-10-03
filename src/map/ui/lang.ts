@@ -1234,7 +1234,7 @@ const WORDS = {
   equiEve: { km: 'ព្រឹកស្អែក ព្រះអាទិត្យនឹងរះចំកំពូលកណ្ដាលអង្គរវត្ត — មើលពីផ្លូវដើរមុខប្រាសាទ រវាងស្រះទាំងពីរ', en: "Tomorrow at dawn the sun rises over Angkor Wat's central tower — watch from the causeway between the reflecting pools" },
   equiSoon: { km: 'ព្រឹកនេះ ព្រះអាទិត្យនឹងរះចំកំពូលកណ្ដាលអង្គរវត្ត — មើលពីផ្លូវដើរមុខប្រាសាទ រវាងស្រះទាំងពីរ', en: "This dawn the sun rises over Angkor Wat's central tower — watch from the causeway between the reflecting pools" },
   equiNow: { km: 'ព្រះអាទិត្យកំពុងរះចំកំពូលកណ្ដាលអង្គរវត្ត!', en: "The sun is rising right over Angkor Wat's central tower!" },
-  equiNowHere: { km: 'ព្រះអាទិត្យកំពុងរះចំកំពូលកណ្ដាល! លើកកាមេរ៉ាថតទុកជាអនុស្សាវរីយ៍', en: 'The sun is rising right over the central tower! Raise your camera for a keepsake' },
+  equiNowHere: { km: 'ព្រះអាទិត្យកំពុងរះចំកំពូលកណ្ដាល! លើកកាមេរ៉ា (4) ថតទុកជាអនុស្សាវរីយ៍', en: 'The sun is rising right over the central tower! Raise your camera (4) for a keepsake' },
   // (the passport's section for rare moments, roam/_bookUi.ts; its stamp's own name is in roam/_bookData.ts)
   equiMoments: { km: 'ពេលវេលាដ៏កម្រ', en: 'Rare moments' },
 } satisfies Record<string, Record<Lang, string>>;
