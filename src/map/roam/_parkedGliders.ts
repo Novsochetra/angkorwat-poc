@@ -1,4 +1,6 @@
-import { BufferAttribute, BufferGeometry, Group, LineSegments, Matrix3, Matrix4, Mesh, Quaternion, Vector3, type Box3 } from 'three';
+import { Box3, BufferAttribute, BufferGeometry, Group, InstancedBufferAttribute, InstancedMesh, LineSegments, Matrix3, Matrix4, Mesh, Quaternion, Sphere, Vector3, type Camera } from 'three';
+import type { SourceTrace } from '../../feedback/sourceTrace';
+import { farJudges, pixelSize, PLAIN_HOLD } from '../graphics';
 import { Glider } from './_gliderModel';
 import { SpotBatch } from './_rampBatch';
 
@@ -13,11 +15,34 @@ import { SpotBatch } from './_rampBatch';
  *
  * They cast shadows on the high level and up, not the still shadows of low
  * and medium (one is lifted off its ramp now and then: a still shadow would stay).
+ *
+ * Far off, a glider's sail is drawn coarse (`coarseSail`: its 512 cells, a
+ * fan of 16 columns by 16 rows each side, joined two columns by four rows,
+ * the blue hem row apart: 80 blocks, 97 in all for the sail, not 529): a
+ * second batch (`far`) holds the gliders whose sail cells span under
+ * `COARSE_PX` of a pixel where they come nearest the camera (graphics.ts
+ * `pixelSize`, every frame from `plainFar`: `farJudges`), the first the
+ * others. What it loses is under a pixel: the cells' own shade (±4 %) and
+ * the bend of the sail within a block. The overview's five gliders 32 k
+ * triangles → 6 k (low and medium); a glider near keeps every cell.
  */
+
+/** The sail's grid (_gliderModel.ts: side, column, row; the row by the nose first, the last the blue hem), and the cells joined far off. */
+const SAIL = { cols: 16, rows: 16, joinCols: 2, joinRows: 4 };
+/** A glider far off once its sail's cells span under this many pixels. */
+const COARSE_PX = 1;
 export class ParkedGliders {
   readonly object = new Group();
   readonly blocks: number;
   private readonly batch: SpotBatch;
+  /** The gliders far off, their sails coarse (null: the sail was not as `SAIL` says). */
+  private readonly far: SpotBatch | null = null;
+  /** The largest cell of the sail (m, world), and round each glider (world). */
+  private readonly cell: number = 0;
+  private readonly spheres: Sphere[] = [];
+  /** The gliders in view (launchSpots.ts), and those drawn coarse (bits). */
+  private shown = ~0;
+  private coarse = 0;
   private readonly wires: LineSegments;
   private readonly flags: Mesh;
   private hidden = 0;
@@ -38,6 +63,17 @@ export class ParkedGliders {
     for (let i = 0; i < n; i++) this.batch.add(i, shape.families, rigs[i]);
     this.batch.finish();
     this.blocks = model.blocks * n;
+    // The same gliders with a coarse sail, for far off (none at first).
+    const sail = coarseSail(shape.families[0]);
+    if (sail) {
+      this.far = new SpotBatch('glider:far', n, { split: true, ownMaterials: true });
+      for (let i = 0; i < n; i++) this.far.add(i, [sail.mesh, ...shape.families.slice(1)], rigs[i]);
+      this.far.finish();
+      this.far.setShown(0);
+      this.cell = sail.cell * rigs[0].getMaxScaleOnAxis();
+      for (let i = 0; i < n; i++) this.spheres.push(this.batch.bounds(i, new Box3()).getBoundingSphere(new Sphere()));
+      farJudges.push((camera) => this.judge(camera));
+    }
 
     // Wires: pairs of points, each glider's placed.
     const w = shape.wires;
@@ -82,6 +118,7 @@ export class ParkedGliders {
     this.flags.receiveShadow = true;
     this.lines();
     this.object.add(this.batch.object, this.wires, this.flags);
+    if (this.far) this.object.add(this.far.object);
   }
 
   /** Glider `i` off its ramp (he took off with it), or back on it. */
@@ -90,17 +127,35 @@ export class ParkedGliders {
     if (mask === this.hidden) return;
     this.hidden = mask;
     this.batch.setHidden(mask);
+    this.far?.setHidden(mask);
     this.lines();
   }
 
   /** The gliders whose blocks keep their edges on the low level (bits: near the camera). */
   setNear(mask: number): void {
     this.batch.setNear(mask);
+    this.far?.setNear(mask);
   }
 
   /** The gliders that can be seen, their shadows too (bits: the others are left out). */
   setShown(mask: number): void {
-    this.batch.setShown(mask);
+    this.shown = mask;
+    this.batch.setShown(mask & ~this.coarse);
+    this.far?.setShown(mask & this.coarse);
+  }
+
+  /** Every frame (graphics.ts `plainFar`): which gliders are far enough for their coarse sail. */
+  private judge(camera: Camera): void {
+    _eye.setFromMatrixPosition(camera.matrixWorld);
+    const from = this.cell / (COARSE_PX * pixelSize(camera));
+    let mask = 0;
+    for (let i = 0; i < this.spheres.length; i++) {
+      const s = this.spheres[i];
+      if (s.center.distanceTo(_eye) - s.radius > from * (this.coarse & (1 << i) ? 1 : 1 + PLAIN_HOLD)) mask |= 1 << i;
+    }
+    if (mask === this.coarse) return;
+    this.coarse = mask;
+    this.setShown(this.shown);
   }
 
   /** A box round glider `i`'s blocks (world) added to `out`. */
@@ -111,6 +166,7 @@ export class ParkedGliders {
   /** Every frame: the graphics level's block shapes. */
   flush(): void {
     this.batch.flush();
+    this.far?.flush();
   }
 
   /** The wires and flags of the gliders on their ramps (the others' left out of the index). */
@@ -135,3 +191,121 @@ export class ParkedGliders {
     fi.needsUpdate = true;
   }
 }
+
+const _eye = new Vector3();
+
+/**
+ * The glider's sail far off: its cells (`SAIL`: the first cols × rows × 2 of its `krama` blocks, each side's columns
+ * from the nose round to the tip, each column's rows from the nose out to the hem) joined `joinCols` × `joinRows`,
+ * the hem row on its own: each joined block flat across its cells, turned as they are on average, their colour the
+ * average. The other blocks (the leading edge's pockets, the tip caps, the gold plate) as they are. Null if the
+ * blocks are not laid out so (each column's cells turned alike): the sail stays whole. Also the largest cell (m).
+ */
+function coarseSail(krama: InstancedMesh): { mesh: InstancedMesh; cell: number } | null {
+  const { cols, rows, joinCols, joinRows } = SAIL;
+  const cells = 2 * cols * rows;
+  if (krama.count < cells) return null;
+  const e = krama.instanceMatrix.array as Float32Array;
+  const axis = (i: number, c: number, out: Vector3) => out.set(e[i * 16 + c * 4], e[i * 16 + c * 4 + 1], e[i * 16 + c * 4 + 2]);
+  // (each column's cells point the same way across: the layout is the one expected)
+  let cell = 0;
+  for (let c = 0; c < 2 * cols; c++)
+    for (let r = 0; r < rows; r++) {
+      const i = c * rows + r;
+      cell = Math.max(cell, axis(i, 0, _a).length(), axis(i, 2, _b).length());
+      // (the sail's camber tips them a little: 0.95 at least as built; a column's neighbours are 8° round)
+      if (axis(c * rows, 0, _a).normalize().dot(axis(i, 0, _b).normalize()) < 0.9) return null;
+    }
+  const color = krama.instanceColor!.array as Float32Array;
+  const attrs = Object.entries(krama.geometry.attributes).filter(([, a]) => (a as InstancedBufferAttribute).isInstancedBufferAttribute) as [string, InstancedBufferAttribute][];
+  const src = krama.userData.voxelSources as (SourceTrace | undefined)[] | undefined;
+  /** Each block of the far sail: its matrix, colour, and the block whose other values it takes. */
+  const blocks: { m: Matrix4; c: [number, number, number]; like: number }[] = [];
+  // Joined cells: rows in runs of `joinRows`, the last row (the hem) apart.
+  const runs: [number, number][] = [];
+  for (let r = 0; r < rows - 1; r += joinRows) runs.push([r, Math.min(r + joinRows, rows - 1)]);
+  runs.push([rows - 1, rows]);
+  for (let side = 0; side < 2; side++)
+    for (let c0 = 0; c0 < cols; c0 += joinCols)
+      for (const [r0, r1] of runs) {
+        const members: number[] = [];
+        for (let c = c0; c < Math.min(c0 + joinCols, cols); c++) for (let r = r0; r < r1; r++) members.push((side * cols + c) * rows + r);
+        // Its axes: the cells' on average; its middle and size: round their corners across it and along it.
+        _x.set(0, 0, 0);
+        _z.set(0, 0, 0);
+        _mid.set(0, 0, 0);
+        let thick = 0;
+        const c: [number, number, number] = [0, 0, 0];
+        for (const i of members) {
+          _x.add(axis(i, 0, _a).normalize());
+          _z.add(axis(i, 2, _a).normalize());
+          _mid.add(_a.set(e[i * 16 + 12], e[i * 16 + 13], e[i * 16 + 14]));
+          thick += axis(i, 1, _a).length();
+          for (let q = 0; q < 3; q++) c[q] += color[i * 3 + q] / members.length;
+        }
+        _mid.divideScalar(members.length);
+        _x.normalize();
+        _y.crossVectors(_z, _x).normalize();
+        _z.crossVectors(_x, _y);
+        let x0 = Infinity;
+        let x1 = -Infinity;
+        let z0 = Infinity;
+        let z1 = -Infinity;
+        // (its top no higher than the lowest of their tops: the sail bends, a flat block would poke through the flags on it)
+        let top = Infinity;
+        for (const i of members) top = Math.min(top, _a.set(e[i * 16 + 12], e[i * 16 + 13], e[i * 16 + 14]).sub(_mid).dot(_y) + axis(i, 1, _b).length() / 2);
+        thick /= members.length;
+        for (const i of members)
+          for (const [u, w] of [
+            [-0.5, -0.5],
+            [0.5, -0.5],
+            [0.5, 0.5],
+            [-0.5, 0.5],
+          ]) {
+            _a.set(e[i * 16 + 12], e[i * 16 + 13], e[i * 16 + 14]).sub(_mid).addScaledVector(axis(i, 0, _b), u).addScaledVector(axis(i, 2, _b), w);
+            const px = _a.dot(_x);
+            const pz = _a.dot(_z);
+            x0 = Math.min(x0, px);
+            x1 = Math.max(x1, px);
+            z0 = Math.min(z0, pz);
+            z1 = Math.max(z1, pz);
+          }
+        const at = _a.copy(_mid).addScaledVector(_x, (x0 + x1) / 2).addScaledVector(_z, (z0 + z1) / 2).addScaledVector(_y, top - thick / 2);
+        const m = new Matrix4().makeBasis(_b.copy(_x).multiplyScalar(x1 - x0), _y.clone().multiplyScalar(thick), _z.clone().multiplyScalar(z1 - z0)).setPosition(at);
+        blocks.push({ m, c, like: members[Math.floor(members.length / 2)] });
+      }
+  // The rest as they are.
+  for (let i = cells; i < krama.count; i++) blocks.push({ m: new Matrix4().fromArray(e, i * 16), c: [color[i * 3], color[i * 3 + 1], color[i * 3 + 2]], like: i });
+
+  const n = blocks.length;
+  const geo = new BufferGeometry();
+  geo.setIndex(krama.geometry.index);
+  geo.setAttribute('position', krama.geometry.getAttribute('position'));
+  geo.setAttribute('normal', krama.geometry.getAttribute('normal'));
+  for (const [name, a] of attrs) {
+    const out = new Float32Array(n * a.itemSize);
+    blocks.forEach((b, k) => {
+      for (let q = 0; q < a.itemSize; q++) out[k * a.itemSize + q] = a.array[b.like * a.itemSize + q];
+    });
+    geo.setAttribute(name, new InstancedBufferAttribute(out, a.itemSize));
+  }
+  const mesh = new InstancedMesh(geo, krama.material, n);
+  mesh.name = `${krama.name}:coarse`;
+  blocks.forEach((b, k) => {
+    mesh.setMatrixAt(k, b.m);
+    mesh.instanceColor ??= new InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    mesh.instanceColor.array.set(b.c, k * 3);
+  });
+  mesh.castShadow = krama.castShadow;
+  mesh.receiveShadow = krama.receiveShadow;
+  mesh.customDepthMaterial = krama.customDepthMaterial;
+  mesh.userData = { ...krama.userData, voxelSources: src ? blocks.map((b) => src[b.like]) : undefined };
+  return { mesh, cell };
+}
+
+const _a = new Vector3();
+const _b = new Vector3();
+const _x = new Vector3();
+const _y = new Vector3();
+const _z = new Vector3();
+const _mid = new Vector3();
