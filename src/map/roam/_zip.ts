@@ -5,6 +5,7 @@ import { registerAddon, type AddonEnv, type AddonKey } from './_addons';
 import type { RoamCtx } from './types';
 import { HANG, SAG, ZIP_LINES, zipPlan, type ZipPlan } from './_zipPlan';
 import { createZipRide, type ZipRide } from './_zipRide';
+import { ZipLod } from './_zipLod';
 import { createZipWalk, type ZipWalk } from './_zipWalk';
 
 /**
@@ -52,6 +53,8 @@ let plan: ZipPlan | null = null;
 let walk: ZipWalk | null = null;
 let ride: ZipRide | null = null;
 let meshes: ZipLineMeshes | null = null;
+/** Its standing blocks plain far off (_zipLod.ts). */
+let lod: ZipLod | null = null;
 /** The line E would start (from the last `offer`). */
 let offered = -1;
 let since = -1;
@@ -66,6 +69,12 @@ function build(): void {
   try {
     meshes = buildZipLine(w.field, plan, soft);
     env.scene.add(meshes.object);
+    // (the decks, stairs, cables and trees: not the trolleys and brakes, which move and show only near)
+    const object = meshes.object;
+    lod = new ZipLod(
+      object.children.filter((o) => o.name === 'zipLine' || o.name === 'zipLine:trees'),
+      plan.stations,
+    );
   } catch (e) {
     console.error('[map] zip line failed:', e);
     plan = null;
@@ -171,6 +180,7 @@ registerAddon({
   frame(f) {
     if (meshes && env) {
       meshes.frame(f, env.body.pos);
+      lod?.update(f.camera);
       return;
     }
     // A moment after Start, in idle time.
