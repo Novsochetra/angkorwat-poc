@@ -339,9 +339,8 @@ interface Cell {
 const REC = 16;
 
 const _c = new Color();
-const _m = new Matrix4();
 
-/** A box's matrix (whole, as it grew: no sway, no fade) from its numbers at `d[o]` (`REC` floats), into `out` at `at`. */
+/** A box's matrix (whole, as it grew: no sway, no fade) from its numbers at `d[o]` (`REC` floats), into `out` at `at` (column by column). */
 function boxMatrix(d: Float32Array, o: number, out: Float32Array, at: number): void {
   const cf = Math.cos(d[o + 3]);
   const sf = Math.sin(d[o + 3]);
@@ -350,8 +349,22 @@ function boxMatrix(d: Float32Array, o: number, out: Float32Array, at: number): v
   const sx = d[o + 4];
   const sy = d[o + 5];
   const sz = d[o + 6];
-  _m.set(cf * ct * sx, -cf * st * sy, sf * sz, d[o], st * sx, ct * sy, 0, d[o + 1], -sf * ct * sx, sf * st * sy, cf * sz, d[o + 2], 0, 0, 0, 1);
-  _m.toArray(out, at);
+  out[at] = cf * ct * sx;
+  out[at + 1] = st * sx;
+  out[at + 2] = -sf * ct * sx;
+  out[at + 3] = 0;
+  out[at + 4] = -cf * st * sy;
+  out[at + 5] = ct * sy;
+  out[at + 6] = sf * st * sy;
+  out[at + 7] = 0;
+  out[at + 8] = sf * sz;
+  out[at + 9] = 0;
+  out[at + 10] = cf * sz;
+  out[at + 11] = 0;
+  out[at + 12] = d[o];
+  out[at + 13] = d[o + 1];
+  out[at + 14] = d[o + 2];
+  out[at + 15] = 1;
 }
 
 /**
@@ -417,7 +430,7 @@ class Pool implements PlantSink {
   private readonly rec = new Float32Array(CAP * REC);
   private readonly weight = new Float32Array(CAP);
   private readonly rank = new Uint8Array(CAP);
-  private readonly order: number[] = [];
+  private readonly order = new Int32Array(CAP);
   /** Where the pool was planned (NaN: never), and how far round (m). */
   planX = NaN;
   planZ = NaN;
@@ -563,8 +576,9 @@ class Pool implements PlantSink {
     r[o + 13] = lin[1] * b;
     r[o + 14] = lin[2] * b;
     // (its broad side's area: the smaller go first far off)
-    const [a1, a2, a3] = [sx, sy, sz].sort((p, q) => q - p);
-    this.weight[i] = a1 * a2 + 1e-4 * a3;
+    const big = Math.max(sx, sy, sz);
+    const small = Math.min(sx, sy, sz);
+    this.weight[i] = big * (sx + sy + sz - big - small) + 1e-4 * small;
   }
 
   /** Start a plant (if `need` boxes still fit): its foot, turn, size, flex, tint and how it thins out. */
@@ -592,10 +606,17 @@ class Pool implements PlantSink {
     if (b <= a) return;
     const t = this.thin;
     const n = b - a;
+    // (smallest first: a few boxes, an insertion sort)
     const order = this.order;
-    order.length = 0;
-    for (let i = a; i < b; i++) order.push(i);
-    order.sort((p, q) => this.weight[p] - this.weight[q]);
+    const w = this.weight;
+    for (let i = a; i < b; i++) {
+      let j = i - a;
+      while (j > 0 && w[order[j - 1]] > w[i]) {
+        order[j] = order[j - 1];
+        j--;
+      }
+      order[j] = i;
+    }
     const n2 = Math.round(t.f2 * n);
     const n1 = Math.max(n2, Math.round(t.f1 * n));
     for (let j = 0; j < n; j++) {
@@ -712,49 +733,69 @@ class Pool implements PlantSink {
     const n = this.at;
     const d = this.data;
     const r = this.rec;
-    let j = slot * CAP;
-    const counts = [0, 0, 0];
-    let [x0, x1, y0, y1, z0, z1] = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
-    let [fx0, fx1, fz0, fz1] = [Infinity, -Infinity, Infinity, -Infinity];
-    for (let rank = 0; rank < 3; rank++)
-      for (let i = 0; i < n; i++) {
-        if (this.rank[i] !== rank) continue;
-        counts[rank]++;
-        const o = i * REC;
-        const t = j++ * TEXELS * 4;
-        d.set(r.subarray(o, o + REC), t);
-        // (round the box, broadened as far off: its half diagonal)
-        const wide = 1 + (r[o + 15] - rank * 4);
-        const h = 0.5 * Math.hypot(r[o + 4] * wide, r[o + 5], r[o + 6] * wide);
-        x0 = Math.min(x0, r[o] - h);
-        x1 = Math.max(x1, r[o] + h);
-        y0 = Math.min(y0, r[o + 1] - h);
-        y1 = Math.max(y1, r[o + 1] + h);
-        z0 = Math.min(z0, r[o + 2] - h);
-        z1 = Math.max(z1, r[o + 2] + h);
-        fx0 = Math.min(fx0, r[o + 8]);
-        fx1 = Math.max(fx1, r[o + 8]);
-        fz0 = Math.min(fz0, r[o + 10]);
-        fz1 = Math.max(fz1, r[o + 10]);
-      }
+    const rank = this.rank;
+    // (where each rank starts in the row)
+    let n0 = 0;
+    let n1 = 0;
+    for (let i = 0; i < n; i++) {
+      if (rank[i] === 0) n0++;
+      else if (rank[i] === 1) n1++;
+    }
+    let a0 = slot * CAP;
+    let a1 = a0 + n0;
+    let a2 = a1 + n1;
+    // (the stand-in for the snow's map from above: the row's boxes whole, the rest of the row nothing)
+    const tm = this.top.instanceMatrix;
+    const ta = tm.array as Float32Array;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    let fx0 = Infinity;
+    let fx1 = -Infinity;
+    let fz0 = Infinity;
+    let fz1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const rk = rank[i];
+      const b = rk === 0 ? a0++ : rk === 1 ? a1++ : a2++;
+      const o = i * REC;
+      const t = b * TEXELS * 4;
+      for (let k = 0; k < REC; k++) d[t + k] = r[o + k];
+      boxMatrix(r, o, ta, b * 16);
+      // (round the box, broadened as far off: its half diagonal)
+      const wide = 1 + (r[o + 15] - rk * 4);
+      const sx = r[o + 4] * wide;
+      const sz = r[o + 6] * wide;
+      const h = 0.5 * Math.sqrt(sx * sx + r[o + 5] * r[o + 5] + sz * sz);
+      const x = r[o];
+      const y = r[o + 1];
+      const z = r[o + 2];
+      if (x - h < x0) x0 = x - h;
+      if (x + h > x1) x1 = x + h;
+      if (y - h < y0) y0 = y - h;
+      if (y + h > y1) y1 = y + h;
+      if (z - h < z0) z0 = z - h;
+      if (z + h > z1) z1 = z + h;
+      const fx = r[o + 8];
+      const fz = r[o + 10];
+      if (fx < fx0) fx0 = fx;
+      if (fx > fx1) fx1 = fx;
+      if (fz < fz0) fz0 = fz;
+      if (fz > fz1) fz1 = fz;
+    }
     if (n) {
       this.tex.addUpdateRange(slot * CAP * TEXELS * 4, n * TEXELS * 4);
       this.tex.needsUpdate = true;
     }
-    // (the stand-in for the snow's map from above: the row's boxes whole, the rest of the row nothing)
-    const tm = this.top.instanceMatrix;
-    const ta = tm.array as Float32Array;
-    for (let i = 0; i < CAP; i++) {
-      const at = (slot * CAP + i) * 16;
-      if (i < n) boxMatrix(d, (slot * CAP + i) * TEXELS * 4, ta, at);
-      else ta.fill(0, at, at + 16);
-    }
+    ta.fill(0, (slot * CAP + n) * 16, (slot + 1) * CAP * 16);
     tm.addUpdateRange(slot * CAP * 16, CAP * 16);
     tm.needsUpdate = true;
     this.top.count = Math.max(this.top.count, (slot + 1) * CAP);
     this.stats.boxes += n;
     this.stats.cells++;
-    const cell: Cell = { slot, n0: counts[0], n1: counts[0] + counts[1], n2: n, cx: 0, cy: 0, cz: 0, r: -1, fx: 0, fz: 0, fr: 0 };
+    const cell: Cell = { slot, n0, n1: n0 + n1, n2: n, cx: 0, cy: 0, cz: 0, r: -1, fx: 0, fz: 0, fr: 0 };
     if (n) {
       cell.cx = (x0 + x1) / 2;
       cell.cy = (y0 + y1) / 2;
