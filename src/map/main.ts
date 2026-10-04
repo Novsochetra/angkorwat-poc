@@ -1123,8 +1123,10 @@ if (shot) {
    * One frame of a video (scripts/video.mjs): the scene at `t`, `dt` after
    * the last one, from a camera `[x, y, z, tx, ty, tz]` (null: the rig's or
    * the explorer's) at a time of day `clock` (null: as it was), then drawn.
+   * (Left out, `cam` and `clock` are null: a check's `__videoFrame(t, dt)`
+   * once made the clock undefined, the night NaN and the ducks' loop with it.)
    */
-  const videoFrame = (t: number, dt: number, cam: number[] | null, clock: number | null) => {
+  const videoFrame = (t: number, dt: number, cam: number[] | null = null, clock: number | null = null) => {
     videoCam = cam;
     if (clock !== null) {
       clockParam = clock;
