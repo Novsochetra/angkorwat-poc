@@ -16,6 +16,9 @@
  * the live loop meanwhile (with that wait in them): only the steps that do
  * not draw (the buttons, the glass blur, the recorder) need them.
  *
+ * `speedtest=quick` measures only the map as it plays, in turns (frames a
+ * second, then the time of a picture), for comparing two builds on a phone.
+ *
  * Use it with `fps=60` (no drop to 30) and a graphics level held
  * (`graphics=low`), else auto changes the level meanwhile. Nothing of it
  * loads without the URL value (main.ts imports it then only).
@@ -47,6 +50,9 @@ const SLICE_MS = 1100;
 const SETTLE_MS = 250;
 const PAIRS = 3;
 const START_AFTER_MS = 4000;
+/** The quick test: this many rounds, each frames a second for this long (ms), then a slice of pictures' times. */
+const QUICK_ROUNDS = 8;
+const QUICK_MS = 3000;
 
 const w = window as unknown as {
   scene: Object3D;
@@ -198,7 +204,7 @@ async function framesAgain(): Promise<void> {
   while (drawn() < d + 3) await wait(50);
 }
 
-export function startSpeedTest(): void {
+export function startSpeedTest(quick = false): void {
   timePictures();
   const panel = document.createElement('div');
   panel.style.cssText =
@@ -256,8 +262,30 @@ export function startSpeedTest(): void {
     show('Done. Take a screenshot. Tap here to run again.');
     running = false;
   };
+  /** The quick test: the map as it plays, frames a second (no wait for the GPU) and the time of a picture in turns. */
+  const runQuick = async () => {
+    running = true;
+    const fps: number[] = [];
+    const ms: number[] = [];
+    const show = (now: string) => {
+      const f = fps.length ? `${median(fps).toFixed(1)} fps` : '…';
+      const m = ms.length ? `${median(ms).toFixed(1)} ms` : '…';
+      panel.textContent = `QUICK SPEED TEST  ${device()}\nAs you play: ${f}\nTime of a picture: ${m}${now ? `\n${now}` : ''}`;
+    };
+    for (let k = 0; k < QUICK_ROUNDS; k++) {
+      show(`… ${k + 1}/${QUICK_ROUNDS} (hold still, do not touch)`);
+      const d0 = drawn();
+      const t0 = performance.now();
+      await wait(QUICK_MS);
+      fps.push((drawn() - d0) / ((performance.now() - t0) / 1000));
+      ms.push((await slice()).ms);
+    }
+    console.info(`[speedtest] quick: ${median(fps).toFixed(1)} fps, ${median(ms).toFixed(1)} ms a picture`, { fps, ms });
+    show('Done. Take a screenshot. Tap here to run again.');
+    running = false;
+  };
   panel.onclick = () => {
-    if (!running) void run();
+    if (!running) void (quick ? runQuick() : run());
   };
 
   panel.textContent = 'SPEED TEST: press the button to start, then hold still.';
@@ -269,9 +297,9 @@ export function startSpeedTest(): void {
       if (drawn() > d + 3) break;
       d = drawn();
     }
-    panel.textContent = `SPEED TEST  ${device()}\nStarting in ${START_AFTER_MS / 1000} s: hold still, do not touch.`;
+    panel.textContent = `${quick ? 'QUICK ' : ''}SPEED TEST  ${device()}\nStarting in ${START_AFTER_MS / 1000} s: hold still, do not touch.`;
     await wait(START_AFTER_MS);
-    if (!running) await run();
+    if (!running) await (quick ? runQuick() : run());
   };
   void begin();
 }
