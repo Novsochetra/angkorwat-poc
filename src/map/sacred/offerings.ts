@@ -6,7 +6,6 @@ import {
   Group,
   InstancedMesh,
   LatheGeometry,
-  LOD,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -19,6 +18,7 @@ import {
   Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { SacredLod } from "./_detail";
 import {
   dress,
   statueMaterial,
@@ -57,7 +57,8 @@ import {
  *   for (const f of c.flames) SACRED_LAMPS.push(candleLamp(c.object.localToWorld(f.clone())));
  *
  * Every maker gives an `OfferingPiece`: an Object3D in real metres on
- * y = 0 at its origin (a near and a far mesh, hidden far off), and its
+ * y = 0 at its origin (a near and a far mesh, hidden far off or once it is
+ * under 2 px on screen; the parasol also a coarse one: _detail.ts), and its
  * candle flames and incense embers in its own space. Each kind is made
  * once and shared: place as many copies as you like.
  *
@@ -258,8 +259,8 @@ const PALETTE: Palette = { "*": F.brass, ...F };
 
 // ── Made once, shared ─────────────────────────────────────────────────────
 
-/** Near (up close) or far (a coarser mesh, past `near` m). */
-type Detail = "near" | "far";
+/** Near (up close) or far (a coarser mesh, past `near` m); the parasol's coarse one once it is small on screen. */
+type Detail = "near" | "far" | "coarse";
 /** The far mesh's grid, in near cells. */
 const FAR = 2.0;
 
@@ -284,7 +285,7 @@ function sculpted(key: string, detail: Detail, build: () => Build): SculptMesh {
       b.s,
       detail === "near"
         ? { cell: b.cell, fineCell: b.fineCell }
-        : { cell: b.cell * FAR },
+        : { cell: b.cell * (detail === "far" ? FAR : 2 * FAR) },
     );
     meshes.set(k, m);
     // (both meshes made: the sculpt is no longer needed)
@@ -335,8 +336,10 @@ function statueMesh(g: BufferGeometry): Mesh {
 }
 
 /**
- * The piece: a near and a far level (each made by `level`), hidden past
- * `hide`, scaled; flames and embers scaled into the piece's space.
+ * The piece: a near and a far level (each made by `level`, both now), with
+ * `coarse` (its cell, m at 1:1: _detail.ts) a coarse one too, which also
+ * casts its still shadows; hidden past `hide` or under 2 px; scaled;
+ * flames and embers scaled into the piece's space.
  */
 function piece(
   name: string,
@@ -345,14 +348,23 @@ function piece(
   level: (d: Detail) => Object3D,
   flames: Vector3[] = [],
   embers: Vector3[] = [],
+  coarse = 0,
 ): OfferingPiece {
   const k = o.scale ?? 1;
   const reach = Math.max(1, Math.max(size[0], size[1]) * k * 2.5);
-  const lod = new LOD();
-  lod.name = name;
-  lod.addLevel(level("near"), 0);
-  lod.addLevel(level("far"), o.near ?? 6 * reach);
-  lod.addLevel(new Object3D(), o.hide ?? 45 * reach);
+  const details: Detail[] = coarse ? ["near", "far", "coarse"] : ["near", "far"];
+  const lod = new SacredLod(
+    name,
+    details.map((d) => ({ name: d, cell: d === "coarse" ? coarse : 0, load: () => level(d) })),
+    {
+      near: o.near ?? 6 * reach,
+      hide: o.hide ?? 45 * reach,
+      size: Math.max(size[0], size[1]),
+      // (the small pieces cast from the level shown, as before)
+      caster: coarse ? 2 : undefined,
+      eager: true,
+    },
+  );
   lod.scale.setScalar(k);
   const object = new Group();
   object.name = name;
@@ -1652,13 +1664,15 @@ function flamePoint(f: number): number {
 
 /**
  * One tier of cloth (plain: cloth is thin): a shallow canopy, and a valance
- * whose gold-trimmed hem is cut in kbach flame points (finer at `near`).
+ * whose gold-trimmed hem is cut in kbach flame points (finer `near`; the
+ * coarse tier an octagon, its hem straight: the points span under 1.2 px
+ * where it shows).
  */
 function parasolTier(
   y: number,
   r: number,
   look: "white" | "gold",
-  near: boolean,
+  detail: Detail,
 ): BufferGeometry {
   const cloth = look === "white" ? F.cloth : F.clothGold;
   const trim = F.gold;
@@ -1685,14 +1699,19 @@ function parasolTier(
     { r: r - 0.002, y: y - val, f: trim, occ: 0.5, hem: 1 },
     { r: r - 0.002, y: y - 0.01, f: cloth, occ: 0.45 },
   ];
+  if (detail === "coarse")
+    return mergeGeometries([revolve(canopy, 8), revolve(valance, 8)]);
   return mergeGeometries([
     revolve(canopy, points * 2),
-    revolve(valance, points * (near ? 6 : 2), (hem, a) => {
+    revolve(valance, points * (detail === "near" ? 6 : 2), (hem, a) => {
       const f = ((((a * points) / (Math.PI * 2)) % 1) + 1) % 1;
       return -hem * depth * flamePoint(f);
     }),
   ]);
 }
+
+/** The parasol's coarse level: shown once its hem's flame points (≈ 8.5 cm apart at 1:1) span under 1.2 px. */
+const PARASOL_COARSE = 0.085;
 
 /**
  * A Khmer ceremonial parasol (chhatr, ឆ័ត្រ, 2.2 m): 7 (or 5) tiers of white
@@ -1710,11 +1729,12 @@ export function parasol(o: ParasolOptions = {}): OfferingPiece {
     statueMesh(
       merged(`parasol:${tiers}:${look}`, d, () => {
         const T = parasolTiers(tiers);
-        const parts = T.map((t) => parasolTier(t.y, t.r, look, d === "near"));
+        const parts = T.map((t) => parasolTier(t.y, t.r, look, d));
+        const coarse = d === "coarse";
         // The gilt pole, and the finial: rings, a lotus bud, a spike.
         parts.push(
           finishGeometry(
-            new CylinderGeometry(0.011, 0.013, 2.0, 10, 1).translate(
+            new CylinderGeometry(0.011, 0.013, 2.0, coarse ? 5 : 10, 1).translate(
               0,
               1.14,
               0,
@@ -1740,12 +1760,16 @@ export function parasol(o: ParasolOptions = {}): OfferingPiece {
         parts.push(
           revolve(
             fin.map(([r, y]) => ({ r, y, f: F.gold })),
-            16,
+            coarse ? 6 : 16,
           ),
         );
-        return [dressed("parasolStand", d, buildParasolStand), ...parts];
+        // (the coarse parasol stands on the far stand: it is small already)
+        return [dressed("parasolStand", coarse ? "far" : d, buildParasolStand), ...parts];
       }),
     ),
+    [],
+    [],
+    PARASOL_COARSE,
   );
 }
 

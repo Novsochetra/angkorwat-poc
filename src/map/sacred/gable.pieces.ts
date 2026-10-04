@@ -3,7 +3,7 @@ import { SKY } from '../sky/palette';
 import { statueMaterial } from './finish';
 import { gable, type GableSpec } from './gable';
 import { FIGURES, figureTextures, gableTextures, type GableFigure } from './kbach';
-import { chovea, mergeNaga, nagaBody, nagaFan, nagaStats, rakeBoard, roofNaga, type NagaLook } from './naga';
+import { chovea, mergeNaga, nagaBody, nagaFan, nagaStats, rakeBoard, roofNaga, type FanKind, type NagaLook } from './naga';
 import type { PieceMaker } from './pieces';
 import { doorPediment, PEDIMENT } from '../village/_pagodaArt';
 
@@ -19,7 +19,9 @@ import { doorPediment, PEDIMENT } from '../village/_pagodaArt';
  *   `gable-figures` the figures' own painting (Brahma, the tep prânâm);
  * - `pediment`: the village pagoda's door pediment (Reahu and the moon);
  * - `naga-stair`, `naga-roof`: the naga of sacred/naga.ts (the stair's fan
- *   and body, `&look=stone|gilt`; a roof end's boards, fans and chovea).
+ *   and body, `&look=stone|gilt`; a roof end's boards, fans and chovea);
+ *   `naga-stair-far`, `naga-stair-coarse`, `naga-roof-far`: as the map
+ *   shows them further off (_detail.ts).
  *
  * `&night=1` lights the lamps (the preview has no sky of its own).
  */
@@ -89,33 +91,42 @@ function nagaMesh(g: BufferGeometry, name: string): Mesh {
   return m;
 }
 
+/** The stair's naga (its fan of `kind`, its body with `radial` sides and a `step` as stairNaga makes its far levels; the near one as sacred/naga.ts makes a body). */
+function stairPiece(kind: FanKind, detail?: { radial: number; step: number }) {
+  const t0 = performance.now();
+  const look = (q.get('look') ?? 'stone') as NagaLook;
+  const g = new Group();
+  g.add(nagaMesh(nagaFan(kind, look), 'naga fan'));
+  const body = nagaBody([new Vector3(0, 0.2, -0.6), new Vector3(0, 0.25, -1.6), new Vector3(0, 0.75, -2.6), new Vector3(0, 1.25, -3.6)], 0.19, 0, look, detail);
+  g.add(nagaMesh(body, 'naga body'));
+  const ms = performance.now() - t0;
+  const tri = nagaStats().map((s) => `${s.key} ${s.triangles} tris ${s.ms.toFixed(0)} ms`).join(', ');
+  return { object: g, size: [2.2, 2.6] as [number, number], note: `built ${ms.toFixed(0)} ms · ${tri}` };
+}
+
+/** A roof end's naga (its fans of `kind`; `coarse` boards and chovea, as roofNaga's far level). */
+function roofPiece(kind: FanKind, coarse: boolean) {
+  const t0 = performance.now();
+  const g = new Group();
+  const s = 0.42;
+  const fan = nagaFan(kind).clone().applyMatrix4(new Matrix4().makeRotationY(Math.PI / 2 - 0.5).scale(new Vector3(s, s, s)).setPosition(2.05, 0, 0.1));
+  const fan2 = nagaFan(kind).clone().applyMatrix4(new Matrix4().makeRotationY(-Math.PI / 2 + 0.5).scale(new Vector3(s, s, s)).setPosition(-2.05, 0, 0.1));
+  const out = new Vector3(0, 0, 1);
+  const boards = [rakeBoard(new Vector3(1.95, 0.35, 0), new Vector3(0, 2.1, 0), out, 0.42, 0.12, 0.08, coarse), rakeBoard(new Vector3(-1.95, 0.35, 0), new Vector3(0, 2.1, 0), out, 0.42, 0.12, 0.08, coarse)];
+  const ch = chovea(coarse).applyMatrix4(new Matrix4().makeRotationY(0).setPosition(0, 2.1, 0.06));
+  g.add(nagaMesh(mergeNaga([fan, fan2, ...boards, ch]), 'roof naga'));
+  const ms = performance.now() - t0;
+  return { object: g, size: [4.6, 3.8] as [number, number], note: `built ${ms.toFixed(0)} ms · ${nagaStats().map((x) => `${x.key} ${x.triangles} tris ${x.ms.toFixed(0)} ms`).join(', ')}` };
+}
+
 export const PIECES: Record<string, PieceMaker> = {
   // The naga of the pagoda's stair (sacred/naga.ts): seven heads in a halo of flame leaves, and a length of its body (`&look=gilt|stone`).
-  'naga-stair': () => {
-    const t0 = performance.now();
-    const look = (q.get('look') ?? 'stone') as NagaLook;
-    const g = new Group();
-    g.add(nagaMesh(nagaFan('stair', look), 'naga fan'));
-    const body = nagaBody([new Vector3(0, 0.2, -0.6), new Vector3(0, 0.25, -1.6), new Vector3(0, 0.75, -2.6), new Vector3(0, 1.25, -3.6)], 0.19, 0, look);
-    g.add(nagaMesh(body, 'naga body'));
-    const ms = performance.now() - t0;
-    const tri = nagaStats().map((s) => `${s.key} ${s.triangles} tris ${s.ms.toFixed(0)} ms`).join(', ');
-    return { object: g, size: [2.2, 2.6], note: `built ${ms.toFixed(0)} ms · ${tri}` };
-  },
+  'naga-stair': () => stairPiece('stair'),
+  'naga-stair-far': () => stairPiece('stairFar', { radial: 8, step: 0.25 }),
+  'naga-stair-coarse': () => stairPiece('stairCoarse', { radial: 6, step: 0.6 }),
   // A roof's naga: the five-headed fan at a barge board's lower end, the board, the chovea on the ridge's end.
-  'naga-roof': () => {
-    const t0 = performance.now();
-    const g = new Group();
-    const s = 0.42;
-    const fan = nagaFan('roof').clone().applyMatrix4(new Matrix4().makeRotationY(Math.PI / 2 - 0.5).scale(new Vector3(s, s, s)).setPosition(2.05, 0, 0.1));
-    const fan2 = nagaFan('roof').clone().applyMatrix4(new Matrix4().makeRotationY(-Math.PI / 2 + 0.5).scale(new Vector3(s, s, s)).setPosition(-2.05, 0, 0.1));
-    const out = new Vector3(0, 0, 1);
-    const boards = [rakeBoard(new Vector3(1.95, 0.35, 0), new Vector3(0, 2.1, 0), out, 0.42, 0.12, 0.08), rakeBoard(new Vector3(-1.95, 0.35, 0), new Vector3(0, 2.1, 0), out, 0.42, 0.12, 0.08)];
-    const ch = chovea().applyMatrix4(new Matrix4().makeRotationY(0).setPosition(0, 2.1, 0.06));
-    g.add(nagaMesh(mergeNaga([fan, fan2, ...boards, ch]), 'roof naga'));
-    const ms = performance.now() - t0;
-    return { object: g, size: [4.6, 3.8], note: `built ${ms.toFixed(0)} ms · ${nagaStats().map((x) => `${x.key} ${x.triangles} tris ${x.ms.toFixed(0)} ms`).join(', ')}` };
-  },
+  'naga-roof': () => roofPiece('roof', false),
+  'naga-roof-far': () => roofPiece('roofFar', true),
   gable: () => {
     const g = new Group();
     const t0 = performance.now();

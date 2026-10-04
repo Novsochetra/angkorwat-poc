@@ -16,13 +16,15 @@ import {
 } from "./offerings";
 import type { Piece, PieceMaker } from "./pieces";
 import { buddhaStatue } from "./buddha";
+import { forceDetail, SacredLod } from "./_detail";
 import { stupa, stupaNiche, stupaStats, type StupaForm, type StupaLook } from "./stupa";
 
 /**
  * Offerings and stupas for the preview (sacred.html):
  *
  * - `offering-<kind>` (candle, incense, lotusVase, baySei, fruitPlate,
- *   marigold, parasol, alms), `offering-<kind>-far` (the far mesh);
+ *   marigold, parasol, alms), `offering-<kind>-far` (the far mesh),
+ *   `offering-parasol-coarse` (its coarse one, _detail.ts);
  *   `offering-candle-white`, `offering-parasol-white` (the parasol is white
  *   by default), `offering-parasol-gold`, `offering-parasol-5`,
  *   `offering-baySei-3|7`.
@@ -33,66 +35,55 @@ import { stupa, stupaNiche, stupaStats, type StupaForm, type StupaLook } from ".
  *   `stupa-stone-faces` (four Bayon faces); `stupa-niche` (4.5 m, white),
  *   `stupa-niche-gold`, `stupa-niche-stone`, `stupa-niche-faces` (5.2 m,
  *   white, the village pagoda's); add `-far` for the far mesh
- *   (`stupa-white-far`, `stupa-niche-faces-far`…); `stupa-niche-buddha`,
+ *   (`stupa-white-far`, `stupa-niche-faces-far`…), `-coarse` for the
+ *   coarse one (_detail.ts); `stupa-niche-buddha`,
  *   `stupa-niche-faces-buddha`: a small Buddha seated in the niche (where
  *   `stupaNiche` says); `stupas-all`: the three looks in both forms.
  */
 
-const tris = (o: Object3D, far = false): number => {
+/** Triangles drawn: of each piece's levels only `level` (0 near, 1 far, 2 coarse; its coarsest if it has fewer). */
+const tris = (o: Object3D, level = 0): number => {
   let t = 0;
-  o.traverse((m) => {
-    const g = (m as Mesh).geometry;
-    if (!g || !(m as Mesh).isMesh) return;
-    // (only one level of each LOD)
-    let p = m.parent;
-    while (p && !(p as { isLOD?: boolean }).isLOD) p = p.parent;
-    if (p) {
-      const levels = (p as unknown as { levels: { object: Object3D }[] })
-        .levels;
-      const want = levels[far ? 1 : 0].object;
-      let q: Object3D | null = m;
-      while (q && q.parent !== p) q = q.parent;
-      if (q !== want) return;
+  const visit = (m: Object3D): void => {
+    if (m instanceof SacredLod) {
+      const shown = m.levelObject(Math.min(level, m.levelCount - 1));
+      if (shown) visit(shown);
+      return;
     }
-    const n = g.getIndex()
-      ? g.getIndex()!.count / 3
-      : g.getAttribute("position").count / 3;
-    t += n * ((m as { count?: number }).count ?? 1);
-  });
+    const g = (m as Mesh).geometry;
+    if (g && (m as Mesh).isMesh) {
+      const n = g.getIndex()
+        ? g.getIndex()!.count / 3
+        : g.getAttribute("position").count / 3;
+      t += n * ((m as { count?: number }).count ?? 1);
+    }
+    for (const c of m.children) visit(c);
+  };
+  visit(o);
   return Math.round(t);
 };
-
-/** Show only the far level of each LOD (to look at it up close). */
-function onlyFar(o: Object3D): void {
-  o.traverse((m) => {
-    const lod = m as unknown as {
-      isLOD?: boolean;
-      levels: { distance: number }[];
-    };
-    if (lod.isLOD)
-      for (const l of lod.levels) l.distance = l === lod.levels[1] ? 0 : 1e9;
-  });
-}
 
 const stats = (): string =>
   offeringStats()
     .map((s) => `${s.key} ${s.triangles}▲ ${s.ms.toFixed(0)}ms`)
     .join(", ");
 
-const show = (p: OfferingPiece, far = false): Piece => {
-  if (far) onlyFar(p.object);
+/** A piece shown at a level (0 near, 1 far, 2 coarse: the levels' look up close). */
+const show = (p: OfferingPiece, level = 0): Piece => {
+  if (level) forceDetail(p.object, level);
   return {
     object: p.object,
     size: p.size,
-    note: `${tris(p.object, far)} triangles · ${stats()}`,
+    note: `${tris(p.object, level)} triangles · ${stats()}`,
   };
 };
 
 export const PIECES: Record<string, PieceMaker> = {};
 for (const kind of OFFERING_KINDS) {
   PIECES[`offering-${kind}`] = () => show(offering(kind));
-  PIECES[`offering-${kind}-far`] = () => show(offering(kind), true);
+  PIECES[`offering-${kind}-far`] = () => show(offering(kind), 1);
 }
+PIECES["offering-parasol-coarse"] = () => show(offering("parasol"), 2);
 PIECES["offering-candle-white"] = () =>
   show(offering("candle", { wax: "white" }));
 PIECES["offering-parasol-white"] = () =>
@@ -195,29 +186,33 @@ const stupaPiece = (
   height: number,
   niche: boolean,
   form: StupaForm = "tower",
-  far = false,
+  level = 0,
 ): Piece => {
   const object = stupa({ height, look, niche, form, sync: true });
-  if (far) onlyFar(object);
+  if (level) forceDetail(object, level);
   return {
     object,
     size: [height * 0.5, height],
-    note: `${tris(object, far)} triangles · ${stupaStatsNote()}`,
+    note: `${tris(object, level)} triangles · ${stupaStatsNote()}`,
   };
 };
 for (const look of ["white", "gold", "stone"] as const) {
   for (const form of ["tower", "faces"] as const) {
     const name = `stupa-${look}${form === "faces" ? "-faces" : ""}`;
     PIECES[name] = () => stupaPiece(look, 4, false, form);
-    PIECES[`${name}-far`] = () => stupaPiece(look, 4, false, form, true);
+    PIECES[`${name}-far`] = () => stupaPiece(look, 4, false, form, 1);
+    PIECES[`${name}-coarse`] = () => stupaPiece(look, 4, false, form, 2);
   }
   const niche = `stupa-niche${look === "white" ? "" : "-" + look}`;
   PIECES[niche] = () => stupaPiece(look, 4.5, true);
-  PIECES[`${niche}-far`] = () => stupaPiece(look, 4.5, true, "tower", true);
+  PIECES[`${niche}-far`] = () => stupaPiece(look, 4.5, true, "tower", 1);
+  PIECES[`${niche}-coarse`] = () => stupaPiece(look, 4.5, true, "tower", 2);
 }
 PIECES["stupa-niche-faces"] = () => stupaPiece("white", 5.2, true, "faces");
 PIECES["stupa-niche-faces-far"] = () =>
-  stupaPiece("white", 5.2, true, "faces", true);
+  stupaPiece("white", 5.2, true, "faces", 1);
+PIECES["stupa-niche-faces-coarse"] = () =>
+  stupaPiece("white", 5.2, true, "faces", 2);
 
 /** A stupa with a small gilt Buddha seated in its niche. */
 const withBuddha = (height: number, form: StupaForm): Piece => {

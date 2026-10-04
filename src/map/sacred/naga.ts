@@ -1,8 +1,9 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, CatmullRomCurve3, Color, LOD, Matrix4, Mesh, Object3D, SRGBColorSpace, Vector3 } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, CatmullRomCurve3, Color, Matrix4, Mesh, SRGBColorSpace, Vector3 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SacredLod } from './_detail';
 import { dress, statueMaterial, type Finish, type Palette } from './finish';
 import { trackSacred } from './pending';
-import { meshSculpt, Sculpt, type SculptMesh } from './sculpt';
+import { meshSculpt, Sculpt, type MeshOptions, type SculptMesh } from './sculpt';
 import { cone, mirrorX, rot, smin, subtract, union, type Rot, type Shape } from './sdf';
 
 /**
@@ -32,9 +33,10 @@ import { cone, mirrorX, rot, smin, subtract, union, type Rot, type Shape } from 
  * Each returns a geometry for `statueMaterial()` (colour and finish on its
  * vertices: `position`, `normal`, `color`, `finish`, `occlusion`, indexed),
  * so a roof's worth merges into one mesh (`mergeNaga`, or whole: `roofNaga`,
- * `stairNaga`, one draw each, hidden far off). The fans are sculpted once
- * per kind and shared: on first use (the roof's ≈ 30 ms, the stair's
- * ≈ 0.2 s), or before it in a worker (`nagaFanReady`: _nagaWorker.ts).
+ * `stairNaga`, one draw each, coarser as they get small on screen and
+ * hidden far off: _detail.ts). The fans are sculpted once per kind and
+ * shared: on first use (the roof's ≈ 30 ms, the stair's ≈ 0.2 s), or
+ * before it in a worker (`nagaFanReady`: _nagaWorker.ts).
  * Preview: `sacred.html?piece=naga-stair|naga-roof` (gable.pieces.ts).
  */
 
@@ -139,15 +141,12 @@ interface FanSpec {
   tail: number;
 }
 
-/** `stairFar` is the stair's fan meshed coarser (its far look). */
-export type FanKind = 'stair' | 'stairFar' | 'roof';
+/** `stairFar`, `stairCoarse` and `roofFar` are the fans meshed coarser (their looks further off). */
+export type FanKind = 'stair' | 'stairFar' | 'stairCoarse' | 'roof' | 'roofFar';
 
 const STAIR: FanSpec = { heads: 7, hc: 1.34, rh: 0.56, spread: 80 * DEG, rp: 0.5, halo: 0.8, tail: 0.75 };
-const FANS: Record<FanKind, FanSpec> = {
-  stair: STAIR,
-  stairFar: STAIR,
-  roof: { heads: 5, hc: 1.3, rh: 0.46, spread: 64 * DEG, rp: 0.42, halo: 0, tail: 0.5 },
-};
+const ROOF: FanSpec = { heads: 5, hc: 1.3, rh: 0.46, spread: 64 * DEG, rp: 0.42, halo: 0, tail: 0.5 };
+const FANS: Record<FanKind, FanSpec> = { stair: STAIR, stairFar: STAIR, stairCoarse: STAIR, roof: ROOF, roofFar: ROOF };
 
 /** The heads of a fan: round the hood's rim, the middle one highest and largest, turned out a little, looking a little down. */
 function headsOf(f: FanSpec): HeadAt[] {
@@ -376,18 +375,21 @@ export function fanSculpt(kind: FanKind): Sculpt {
   return s;
 }
 
-/** Grid cells (m, at 1:1) for each kind: the stair's is seen close, the roof's small and far. */
-export const FAN_CELL: Record<FanKind, { cell: number; fineCell?: number }> = {
+/** Grid cells (m, at 1:1) for each kind: the stair's is seen close, the roof's small and far; the coarser ones once their cells span under 1.2 px (_detail.ts). */
+export const FAN_CELL: Record<FanKind, MeshOptions> = {
   stair: { cell: 0.03 },
   stairFar: { cell: 0.06 },
+  // (shaded as the finer ones are: sculpt.ts `occlusionAs`)
+  stairCoarse: { cell: 0.09, occlusionAs: { cell: 0.06 } },
   roof: { cell: 0.062 },
+  roofFar: { cell: 0.13, occlusionAs: { cell: 0.062 } },
 };
 
 const fanMeshes = new Map<FanKind, SculptMesh>();
 const fanGeometries = new Map<string, BufferGeometry>();
 
 /** A fan's height at 1:1 (m, from its foot to the top of its halo or its highest head). */
-export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.45, stairFar: 2.45, roof: 2.0 };
+export const FAN_HEIGHT: Record<FanKind, number> = { stair: 2.45, stairFar: 2.45, stairCoarse: 2.45, roof: 2.0, roofFar: 2.0 };
 
 /** The naga fan of a kind and look (see the file's note): on y = 0, facing +z, at 1:1 (`FAN_HEIGHT`); made once and shared (do not dispose). */
 export function nagaFan(kind: FanKind, look: NagaLook = 'gilt'): BufferGeometry {
@@ -624,9 +626,10 @@ export function nagaBody(path: readonly Vector3[], r: number, tail = 0, look: Na
 /**
  * The chovea (see the file's note): on y = 0 (the ridge's end), rising and
  * bending out along +z, `CHOVEA_HEIGHT` m tall at 1:1 (scale it), thin
- * across (x), a blade seen from the side.
+ * across (x), a blade seen from the side. `coarse`: fewer sides and steps
+ * (the roof seen from afar).
  */
-export function chovea(): BufferGeometry {
+export function chovea(coarse = false): BufferGeometry {
   const pts = [
     new Vector3(0, -0.12, -0.05),
     new Vector3(0, 0.3, 0.0),
@@ -648,8 +651,8 @@ export function chovea(): BufferGeometry {
     },
     new Vector3(1, 0, 0),
     () => NAGA_PALETTES.gilt.halo,
-    10,
-    0.04,
+    coarse ? 6 : 10,
+    coarse ? 0.12 : 0.04,
   );
   return g;
 }
@@ -667,9 +670,9 @@ const _m = new Matrix4();
  * (the lower end, at the eave) to `to` (the upper end), `width` m deep
  * under the line, `thick` m thick standing out along `out` (the gable's
  * outward normal) from the line's plane; the naga's body (`body` m thick)
- * along its top.
+ * along its top (`coarse`: fewer sides, from afar).
  */
-export function rakeBoard(from: Vector3, to: Vector3, out: Vector3, width: number, thick: number, body: number): BufferGeometry {
+export function rakeBoard(from: Vector3, to: Vector3, out: Vector3, width: number, thick: number, body: number, coarse = false): BufferGeometry {
   _u.subVectors(to, from);
   const len = _u.length();
   _u.normalize();
@@ -691,7 +694,7 @@ export function rakeBoard(from: Vector3, to: Vector3, out: Vector3, width: numbe
   const lift = (p: Vector3) => p.clone().addScaledVector(_v, body * 0.35).addScaledVector(_w, thick * 0.5);
   const a = lift(from);
   const b = lift(to);
-  const bodyGeo = nagaBody([a, a.clone().lerp(b, 0.5), b], body, 0, 'gilt', { radial: 8, step: 0.5 });
+  const bodyGeo = nagaBody([a, a.clone().lerp(b, 0.5), b], body, 0, 'gilt', { radial: coarse ? 5 : 8, step: coarse ? 2 : 0.5 });
   return mergeGeometries([board, bodyGeo])!;
 }
 
@@ -733,42 +736,72 @@ function levelMatrix(at: Vector3, look: Vector3, size: number): Matrix4 {
   return new Matrix4().makeRotationY(Math.atan2(look.x, look.z)).scale(_s).setPosition(at);
 }
 
+/** A level of a whole piece: its name, its cell (world m: _detail.ts; 0 for none) and its parts (world m), now or once their fans are sculpted. */
+interface NagaLevel {
+  name: string;
+  cell: number;
+  parts: () => BufferGeometry[] | Promise<BufferGeometry[]>;
+}
+
 /**
  * Pieces merged into one mesh per level in the statues' material, round the
- * first level's middle: an LOD showing each level from its distance (m) on,
- * nothing past `hide`.
+ * first level's middle (made now: its fans are ready): levels by size on
+ * screen (_detail.ts; level 1 past `near` m), nothing past `hide`; with
+ * `shadows`, the coarsest also casts the still shadows.
  */
-function lodMesh(levels: [BufferGeometry[], number][], name: string, hide: number, shadows: boolean): LOD {
-  const lod = new LOD();
-  lod.name = name;
-  let c: Vector3 | null = null;
-  for (const [parts, at] of levels) {
-    const g = mergeNaga(parts);
-    c ??= g.boundingSphere!.center.clone();
+function lodMesh(name: string, levels: NagaLevel[], o: { near: number; hide: number; shadows: boolean }): SacredLod {
+  const first = mergeNaga(levels[0].parts() as BufferGeometry[]);
+  const c = first.boundingSphere!.center.clone();
+  const radius = first.boundingSphere!.radius;
+  const mesh = (g: BufferGeometry) => {
     g.translate(-c.x, -c.y, -c.z);
     g.computeBoundingSphere();
-    const mesh = new Mesh(g, statueMaterial());
-    mesh.name = name;
-    mesh.castShadow = shadows;
-    mesh.receiveShadow = true;
-    lod.addLevel(mesh, at);
-  }
-  lod.position.copy(c!);
-  lod.addLevel(new Object3D(), hide);
+    const m = new Mesh(g, statueMaterial());
+    m.name = name;
+    m.castShadow = o.shadows;
+    m.receiveShadow = true;
+    return m;
+  };
+  const lod = new SacredLod(
+    name,
+    levels.map((l, i) => ({
+      name: l.name,
+      cell: l.cell,
+      load: () => {
+        if (i === 0) return mesh(first);
+        const parts = l.parts();
+        return parts instanceof Promise ? parts.then((p) => mesh(mergeNaga(p))) : mesh(mergeNaga(parts));
+      },
+    })),
+    { near: o.near, hide: o.hide, size: 2 * radius, radius, caster: o.shadows ? levels.length - 1 : undefined, eager: true },
+  );
+  lod.position.copy(c);
   lod.updateMatrixWorld(true);
   return lod;
 }
 
-/** A Khmer roof's gilt naga (see `RoofNagaSpec`) as one mesh. */
-export function roofNaga(o: RoofNagaSpec): LOD {
+/** A Khmer roof's gilt naga (see `RoofNagaSpec`) as one mesh: from afar (_detail.ts: once the coarse fans' cells span under 1.2 px) coarser fans, boards and chovea. */
+export function roofNaga(o: RoofNagaSpec): SacredLod {
   const [bw, bt] = o.board ?? [0.42, 0.12];
-  const parts: BufferGeometry[] = [];
-  for (const r of o.rakes) parts.push(rakeBoard(r.from, r.to, r.out, bw, bt, o.body ?? 0.08));
-  const fan = nagaFan('roof');
-  for (const f of o.fans) parts.push(placed(fan, levelMatrix(f.at, f.look, f.height / FAN_HEIGHT.roof)));
-  const ch = chovea();
-  for (const c of o.choveas) parts.push(placed(ch, levelMatrix(c.at, c.out, c.height / CHOVEA_HEIGHT)));
-  return lodMesh([[parts, 0]], 'roof naga', o.hide ?? 200, false);
+  const level = (kind: FanKind, coarse: boolean) => {
+    const parts: BufferGeometry[] = [];
+    for (const r of o.rakes) parts.push(rakeBoard(r.from, r.to, r.out, bw, bt, o.body ?? 0.08, coarse));
+    const fan = nagaFan(kind);
+    for (const f of o.fans) parts.push(placed(fan, levelMatrix(f.at, f.look, f.height / FAN_HEIGHT[kind])));
+    const ch = chovea(coarse);
+    for (const c of o.choveas) parts.push(placed(ch, levelMatrix(c.at, c.out, c.height / CHOVEA_HEIGHT)));
+    return parts;
+  };
+  // (the coarse fans' cell where they are biggest)
+  const big = Math.max(0, ...o.fans.map((f) => f.height / FAN_HEIGHT.roofFar));
+  return lodMesh(
+    'roof naga',
+    [
+      { name: 'near', cell: 0, parts: () => level('roof', false) },
+      { name: 'far', cell: FAN_CELL.roofFar.cell * big, parts: () => nagaFanReady('roofFar').then(() => level('roofFar', true)) },
+    ],
+    { near: 0, hide: o.hide ?? 200, shadows: false },
+  );
 }
 
 /** A stair's naga balustrades (world m): the rearing fans at its foot (feet, level look), each body's path, its thickness, the look. */
@@ -777,16 +810,18 @@ export interface StairNagaSpec {
   bodies: { path: Vector3[]; tail: number }[];
   radius: number;
   look: NagaLook;
-  /** Coarser from this distance on (m, default 55), hidden past `hide` (m, default 220). */
+  /** Coarser from this distance on (m, default 55), coarser still once small on screen (_detail.ts), hidden past `hide` (m, default 220). */
   far?: number;
   hide?: number;
 }
 
 /**
  * A stair's two naga as one mesh (see `StairNagaSpec`), a coarser one from
- * `far` on (the `stairFar` fans: have both ready, `nagaFanReady`).
+ * `far` on (the `stairFar` fans: have both ready, `nagaFanReady`), and a
+ * coarser one still once small on screen (the `stairCoarse` fans, sculpted
+ * here in a worker), which also casts the still shadows.
  */
-export function stairNaga(o: StairNagaSpec): LOD {
+export function stairNaga(o: StairNagaSpec): SacredLod {
   const level = (kind: FanKind, radial: number, step: number) => {
     const parts: BufferGeometry[] = [];
     const fan = nagaFan(kind, o.look);
@@ -794,13 +829,14 @@ export function stairNaga(o: StairNagaSpec): LOD {
     for (const b of o.bodies) parts.push(nagaBody(b.path, o.radius, b.tail, o.look, { radial, step }));
     return parts;
   };
+  const big = Math.max(0, ...o.fans.map((f) => f.height / FAN_HEIGHT.stairCoarse));
   return lodMesh(
-    [
-      [level('stair', 14, 0.09), 0],
-      [level('stairFar', 8, 0.25), o.far ?? 55],
-    ],
     'stair naga',
-    o.hide ?? 220,
-    true,
+    [
+      { name: 'near', cell: 0, parts: () => level('stair', 14, 0.09) },
+      { name: 'far', cell: 0, parts: () => level('stairFar', 8, 0.25) },
+      { name: 'coarse', cell: FAN_CELL.stairCoarse.cell * big, parts: () => nagaFanReady('stairCoarse').then(() => level('stairCoarse', 6, 0.6)) },
+    ],
+    { near: o.far ?? 55, hide: o.hide ?? 220, shadows: true },
   );
 }

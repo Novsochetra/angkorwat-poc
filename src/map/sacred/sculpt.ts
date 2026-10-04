@@ -150,6 +150,19 @@ export interface MeshOptions {
   bounds?: Box;
   /** Strength of the baked occlusion, 0‥1 (default 0.8). */
   occlusion?: number;
+  /**
+   * Shade as a mesh of these cells would: how far out the occlusion looks
+   * (it reaches a few cells; default this mesh's own). A coarse level of a
+   * statue keeps its finer level's shading, else its folds would reach over
+   * the whole statue and darken it.
+   */
+  occlusionAs?: { cell: number; fineCell?: number };
+}
+
+/** How far out (m) the occlusion looks, nearest first, on a mesh of these cells of `s` (passes that meet share them, so their shading matches at the seam). */
+function occlusionSteps(s: Sculpt, cell: number, fineCell?: number): number[] {
+  const zones = fineCell && fineCell < cell ? s.fineZones : [];
+  return zones.length ? [1.5 * fineCell!, 3 * fineCell!, 1.5 * cell, 3 * cell, 6 * cell, 12 * cell] : [1.5, 3, 6, 12].map((m) => m * cell);
 }
 
 interface Pass {
@@ -159,8 +172,8 @@ interface Pass {
   keep?: (x: number, y: number, z: number) => boolean;
   /** How far (m) to sink a vertex into the statue. */
   sink?: (x: number, y: number, z: number) => number;
-  /** How far out (m) the occlusion looks (default from the cell); passes that meet share them, so their shading matches at the seam. */
-  ao?: number[];
+  /** How far out (m) the occlusion looks (`occlusionSteps`). */
+  ao: number[];
 }
 
 /** What `meshSculpt` makes: the mesh and its regions by name. */
@@ -181,12 +194,13 @@ export function meshSculpt(s: Sculpt, o: MeshOptions): SculptMesh {
   const t0 = performance.now();
   const all = o.bounds ?? s.bounds();
   const zones = o.fineCell && o.fineCell < o.cell ? s.fineZones : [];
+  const like = o.occlusionAs ?? o;
+  const ao = occlusionSteps(s, like.cell, like.fineCell);
   const parts: Raw[] = [];
-  if (!zones.length) parts.push(meshPass(s, { cell: o.cell, bounds: all }, o.occlusion ?? 0.8));
+  if (!zones.length) parts.push(meshPass(s, { cell: o.cell, bounds: all, ao }, o.occlusion ?? 0.8));
   else {
     const hc = o.cell;
     const hf = o.fineCell!;
-    const ao = [1.5 * hf, 3 * hf, 1.5 * hc, 3 * hc, 6 * hc, 12 * hc];
     // (deep inside a zone: left to the fine mesh)
     const depth = (z: Box, x: number, y: number, zz: number) => Math.min(x - z[0], z[3] - x, y - z[1], z[4] - y, zz - z[2], z[5] - zz);
     parts.push(
@@ -398,7 +412,7 @@ function meshPass(s: Sculpt, pass: Pass, occ: number): Raw {
   const paintW = new Float32Array(nv);
   const occlusion = new Float32Array(nv);
   const e = h * 0.5;
-  const steps = pass.ao ?? [1.5, 3, 6, 12].map((m) => m * h);
+  const steps = pass.ao;
   for (let v = 0; v < nv; v++) {
     let x = pos[v * 3];
     let y = pos[v * 3 + 1];

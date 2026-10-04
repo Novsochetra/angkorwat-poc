@@ -1,5 +1,6 @@
 import { Mesh } from 'three';
-import { buddhaMesh, buddhaStatue, BUDDHA_KINDS, KULEN_STONE, type BuddhaKindName } from './buddha';
+import { buddhaMesh, buddhaStatue, BUDDHA_KINDS, KULEN_STONE, type BuddhaKindName, type Detail } from './buddha';
+import { forceDetail } from './_detail';
 import { addBody } from './_buddhaBody';
 import { F, FIG } from './_buddhaFrame';
 import { addHead } from './_buddhaHead';
@@ -13,9 +14,10 @@ import { meshSculpt, Sculpt } from './sculpt';
  * Buddhas for the preview (sacred.html):
  *
  * - `buddha-<kind>` (gilt), `buddha-<kind>-<look>` (gilt, sandstone, bronze),
- *   `buddha-<kind>-far` (the far mesh); the face: add `&ty=0.8&dist=0.8`.
+ *   `buddha-<kind>-far`, `-mid`, `-coarse` (the meshes it shows further off,
+ *   _detail.ts); the face: add `&ty=0.8&dist=0.8`.
  * - The reclining Buddha of Phnom Kulen: `buddha-reclining` (as on the map:
- *   sandstone, gold leaf on the soles, the saffron sash), `-far`,
+ *   sandstone, gold leaf on the soles, the saffron sash), `-far`, `-mid`, `-coarse`,
  *   `-gilt` / `-sandstone` / `-bronze`; 1.6 m long. Up close:
  *   `buddha-reclining-head`, `buddha-reclining-middle` and
  *   `buddha-reclining-feet` (the same statue moved so the head, his waist
@@ -33,19 +35,24 @@ const cell = Number(q.get('cell') ?? 0.008);
 const fineCell = Number(q.get('fine') ?? 0.0035);
 const look = (q.get('look') ?? 'gilt') as keyof typeof PALETTES;
 
-const statue = (kind: BuddhaKindName, finish: keyof typeof PALETTES, farOnly = false): Piece => {
+/** The levels a statue shows from near to far (buddha.ts `BUDDHA_CELLS`). */
+const LEVELS: Detail[] = ['near', 'far', 'mid', 'coarse'];
+
+const statue = (kind: BuddhaKindName, finish: keyof typeof PALETTES, level: Detail = 'near'): Piece => {
   const height = 1.2;
-  const object = buddhaStatue({ kind, look: finish, height, farOnly, hide: 1e9, near: 1e9, sync: true });
-  const m = buddhaMesh(BUDDHA_KINDS[kind], farOnly ? 'far' : 'near');
+  const object = buddhaStatue({ kind, look: finish, height, hide: 1e9, near: 1e9, sync: true });
+  forceDetail(object, LEVELS.indexOf(level));
+  const m = buddhaMesh(BUDDHA_KINDS[kind], level);
   const tris = (m.mesh.geometry.getIndex()!.count / 3) | 0;
   return { object, size: [height * 0.8, height], note: `${tris} triangles · sculpt ${m.mesh.ms.toFixed(0)} ms` };
 };
 
 /** The reclining Buddha, 1.6 m long (the map's is 10 m). */
-const reclining = (finish: Palette, farOnly = false): Piece => {
+const reclining = (finish: Palette, level: Detail = 'near'): Piece => {
   const length = 1.6;
-  const object = buddhaStatue({ kind: 'reclining', look: finish, length, farOnly, hide: 1e9, near: 1e9, sync: true });
-  const m = buddhaMesh(BUDDHA_KINDS.reclining, farOnly ? 'far' : 'near');
+  const object = buddhaStatue({ kind: 'reclining', look: finish, length, hide: 1e9, near: 1e9, sync: true });
+  forceDetail(object, LEVELS.indexOf(level));
+  const m = buddhaMesh(BUDDHA_KINDS.reclining, level);
   const tris = (m.mesh.geometry.getIndex()!.count / 3) | 0;
   const bb = m.mesh.geometry.boundingBox!;
   const k = length / m.length;
@@ -67,11 +74,11 @@ export const PIECES: Record<string, PieceMaker> = {};
 for (const kind of Object.keys(BUDDHA_KINDS) as BuddhaKindName[]) {
   if (kind === 'reclining') continue;
   PIECES[`buddha-${kind}`] = () => statue(kind, 'gilt');
-  PIECES[`buddha-${kind}-far`] = () => statue(kind, 'gilt', true);
+  for (const level of LEVELS.slice(1)) PIECES[`buddha-${kind}-${level}`] = () => statue(kind, 'gilt', level);
   for (const finish of ['gilt', 'sandstone', 'bronze'] as const) PIECES[`buddha-${kind}-${finish}`] = () => statue(kind, finish);
 }
 PIECES['buddha-reclining'] = () => reclining(KULEN_STONE);
-PIECES['buddha-reclining-far'] = () => reclining(KULEN_STONE, true);
+for (const level of LEVELS.slice(1)) PIECES[`buddha-reclining-${level}`] = () => reclining(KULEN_STONE, level);
 for (const [end, at] of [
   ['head', RECLINE.head],
   ['middle', RECLINE.hips - 0.1],

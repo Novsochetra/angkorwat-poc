@@ -1,10 +1,11 @@
-import { BufferAttribute, BufferGeometry, Group, LOD, Mesh, Object3D, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Group, Mesh, Vector3, type Object3D } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SacredLod } from './_detail';
 import { dress, PALETTES, statueMaterial, type Finish, type Palette } from './finish';
 import { plainAttributes } from './offerings';
 import { trackSacred } from './pending';
 import type { SculptMesh } from './sculpt';
-import { meshStupa, NICHE, stupaOrnaments, stupaSculpt, stupaTop, type StupaDetail, type StupaForm, type StupaLook } from './_stupaShape';
+import { meshStupa, NICHE, STUPA_CELLS, stupaOrnaments, stupaSculpt, stupaTop, type StupaDetail, type StupaForm, type StupaLook } from './_stupaShape';
 import type { StupaJob, StupaResult } from './_stupaWorker';
 
 export type { StupaForm, StupaLook } from './_stupaShape';
@@ -40,9 +41,11 @@ export type { StupaForm, StupaLook } from './_stupaShape';
  *   const s = stupa({ height: 4, look: 'white', form: 'faces' });   // on y = 0, front +z
  *
  * Its shape is sculpted once per form, niche and stucco or stone, at a 4 m
- * reference, and shared, in a worker (the map keeps drawing): the far mesh
- * at once, the near one when the camera first comes near (shots: at once;
- * `sync`: both now). Shots wait for them (pending.ts).
+ * reference, and shared, in a worker (the map keeps drawing): the coarse
+ * mesh at once (shown once the stupa is small on screen, and the still
+ * shadows' caster), the far and near ones when the camera first comes near
+ * enough to want them (_detail.ts; shots: all at once; `sync`: all now).
+ * Shots wait for them (pending.ts).
  *
  * Based on: Stupas in Cambodia (https://en.wikipedia.org/wiki/Stupas_in_Cambodia:
  * "many Cambodian stupas are constructed in the style of temple shrine");
@@ -64,11 +67,11 @@ export interface StupaOptions {
   form?: StupaForm;
   /** A niche in the cella's front (for a small Buddha). */
   niche?: boolean;
-  /** Up to this distance (m) the near mesh shows, the far one beyond (default 7 × height). */
+  /** Up to this distance (m) the near mesh shows, the far one beyond (default 7 × height), then by its size on screen (_detail.ts). */
   near?: number;
   /** Hidden past this distance (m; default 120 × height). */
   hide?: number;
-  /** Sculpt both meshes now, on this thread (the preview). */
+  /** Sculpt every mesh now, on this thread (the preview). */
   sync?: boolean;
 }
 
@@ -287,62 +290,43 @@ export function stupaStats(): { key: string; triangles: number; ms: number }[] {
   return [...meshes].map(([key, m]) => ({ key, triangles: (m.geometry.getIndex()!.count / 3) | 0, ms: m.ms }));
 }
 
-/** Shots sculpt every near mesh at once (the picture is taken as soon as they are ready). */
-const EAGER = typeof location !== 'undefined' && new URLSearchParams(location.search).has('shot');
+/** The details a stupa shows, near to far. */
+const DETAILS: StupaDetail[] = ['near', 'far', 'coarse'];
 
 /**
  * A Khmer stupa (see the file's note): an Object3D on y = 0, front +z,
  * `height` m to its tip; with `niche`, `object.userData.niche` is its
- * `StupaNiche`. Its meshes appear when sculpted (at once with `sync`).
+ * `StupaNiche`. Its meshes appear when sculpted (all at once with `sync`).
  */
 export function stupa(o: StupaOptions): Object3D {
   const niche = !!o.niche;
   const kind: Kind = { form: o.form ?? 'tower', niche, stone: o.look === 'stone' };
-  const lod = new LOD();
-  lod.name = 'stupa';
-  const nearGroup = new Group();
-  const farGroup = new Group();
-  const nearAt = o.near ?? 7 * o.height;
-  lod.addLevel(nearGroup, 0);
-  lod.addLevel(farGroup, nearAt);
-  lod.addLevel(new Object3D(), o.hide ?? 120 * o.height);
-  lod.scale.setScalar(o.height / stupaTop(niche, o.look));
+  const top = stupaTop(niche, o.look);
   const make = (detail: StupaDetail, m: SculptMesh) => {
     const mesh = new Mesh(stupaGeometry(kind, o.look, detail, m), statueMaterial());
     mesh.name = 'stupa';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    // (it may come after the part was marked still, graphics.ts `markStill`: the stupa's layers)
-    mesh.layers.mask = lod.layers.mask;
     return mesh;
   };
-  if (o.sync) {
-    farGroup.add(make('far', meshNow(kind, 'far')));
-    nearGroup.add(make('near', meshNow(kind, 'near')));
-  } else {
-    let wanted = false;
-    const wantNear = () => {
-      if (wanted) return;
-      wanted = true;
-      void meshLater(kind, 'near').then((m) => {
-        nearGroup.clear();
-        nearGroup.add(make('near', m));
-      });
-    };
-    const at = new Vector3();
-    void meshLater(kind, 'far').then((m) => {
-      const far = make('far', m);
-      farGroup.add(far);
-      // (up close, the far mesh stands in until the near one is sculpted)
-      const stand = make('far', m);
-      if (!nearGroup.children.length) nearGroup.add(stand);
-      if (EAGER) return wantNear();
-      const reach = nearAt * 3;
-      far.onBeforeRender = stand.onBeforeRender = (_r, _s, camera) => {
-        if (!wanted && camera.position.distanceTo(lod.getWorldPosition(at)) < reach) wantNear();
-      };
-    });
-  }
+  const lod = new SacredLod(
+    'stupa',
+    DETAILS.map((detail) => ({
+      name: detail,
+      // (the far mesh past `near` m, as it always did; the coarse one by its tiers' and mouldings' cells)
+      cell: detail === 'far' ? 0 : STUPA_CELLS[detail].cell,
+      load: () => (o.sync ? make(detail, meshNow(kind, detail)) : meshLater(kind, detail).then((m) => make(detail, m))),
+    })),
+    {
+      near: o.near ?? 7 * o.height,
+      hide: o.hide ?? 120 * o.height,
+      // (in its reference units: the LOD is scaled to its height)
+      size: top,
+      caster: o.sync ? undefined : DETAILS.length - 1,
+      eager: o.sync,
+    },
+  );
+  lod.scale.setScalar(o.height / top);
   const object = new Group();
   object.name = `stupa:${o.look}`;
   object.add(lod);

@@ -1,12 +1,13 @@
-import { BufferAttribute, BufferGeometry, Group, LOD, Mesh, Object3D, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Mesh, type Object3D } from 'three';
 import { addBody } from './_buddhaBody';
 import type { HeadStyle, Mudra, Throne } from './_buddhaFrame';
 import { addHead } from './_buddhaHead';
 import { addReclining } from './_buddhaReclining';
 import { addThrone } from './_buddhaThrone';
+import { SacredLod } from './_detail';
 import { dress, PALETTES, statueMaterial, type Palette } from './finish';
 import { trackSacred } from './pending';
-import { meshSculpt, Sculpt, type SculptMesh } from './sculpt';
+import { meshSculpt, Sculpt, type MeshOptions, type SculptMesh } from './sculpt';
 import type { SculptJob, SculptResult } from './sculptWorker';
 
 /**
@@ -84,12 +85,23 @@ export const KULEN_STONE: Palette = {
 };
 
 /**
- * Grid cells (m, at the reference size) for each detail: `near` for up
- * close (inside a pagoda) — the face and hands (the sculpt's fine zones) on
- * the fine grid —, `far` past ~15 m (its face on a finer grid too: on the
- * coarse one the nose turns to a spike and the lips to a blob).
+ * Grid cells (m, at the reference size, about 1 m tall) for each detail:
+ * `near` for up close (inside a pagoda) — the face and hands (the sculpt's
+ * fine zones) on the fine grid —, `far` past ~15 m (its face on a finer
+ * grid too: on the coarse one the nose turns to a spike and the lips to a
+ * blob), then by its size on screen past 30 m (_detail.ts): `mid` (≈ 11 k
+ * triangles, not 50 k) once its cells span under 1.2 px (under ≈ 40 px
+ * tall), `coarse` (≈ 2–3 k, no fine zones; it also casts the still
+ * shadows) once its cells do (under ≈ 25 px).
  */
-export const BUDDHA_CELLS = { near: { cell: 0.008, fineCell: 0.0035 }, far: { cell: 0.016, fineCell: 0.0055 } };
+const FAR = { cell: 0.016, fineCell: 0.0055 };
+export const BUDDHA_CELLS: Record<'near' | 'far' | 'mid' | 'coarse', MeshOptions> = {
+  near: { cell: 0.008, fineCell: 0.0035 },
+  far: FAR,
+  // (shaded as the far one is: sculpt.ts `occlusionAs`)
+  mid: { cell: 0.03, fineCell: 0.011, occlusionAs: FAR },
+  coarse: { cell: 0.05, occlusionAs: FAR },
+};
 export type Detail = keyof typeof BUDDHA_CELLS;
 
 interface Sculpted {
@@ -213,69 +225,51 @@ export interface StatueOptions {
   height?: number;
   /** Length along x (m) instead of the height: a reclining Buddha's, head to soles. */
   length?: number;
-  /** Up to this distance (m) the near mesh shows, the far one beyond it; none past `hide`. */
+  /** Up to this distance (m) the near mesh shows, the far one beyond it (then by its size on screen: _detail.ts); none past `hide`. */
   near?: number;
   hide?: number;
-  /** Only the far mesh (small statues seen from afar, or far corners). */
+  /** Never the near mesh (small statues seen from afar, or far corners). */
   farOnly?: boolean;
 }
-
-/** Shots sculpt every near mesh at once (the picture is taken as soon as they are ready). */
-const EAGER = typeof location !== 'undefined' && new URLSearchParams(location.search).has('shot');
 
 /**
  * A Buddha statue: an Object3D on y = 0, facing +z, `height` m tall (see
  * the file's note). Its meshes are sculpted in a worker and appear when
- * ready: the far one at once, the near one only when the camera first comes
- * within a few times its distance (most statues are only seen from afar);
- * `sync` sculpts both now instead.
+ * ready: the coarse one at once (it also casts the still shadows), each
+ * finer one when the camera first comes near enough to want it (most
+ * statues are only seen from afar: _detail.ts); `sync` sculpts each here,
+ * all now (the preview).
  */
 export function buddhaStatue(o: StatueOptions & { sync?: boolean }): Object3D {
   const kind = typeof o.kind === 'string' ? BUDDHA_KINDS[o.kind] : o.kind;
   const palette = typeof o.look === 'string' ? PALETTES[o.look] : o.look;
-  const lod = new LOD();
-  lod.name = 'buddha';
-  const nearGroup = new Group();
-  const farGroup = new Group();
-  const nearDist = o.near ?? Math.max(12, (o.height ?? o.length ?? 1) * 8);
-  if (!o.farOnly) lod.addLevel(nearGroup, 0);
-  lod.addLevel(farGroup, o.farOnly ? 0 : nearDist);
-  lod.addLevel(new Object3D(), o.hide ?? 160);
-  const make = (s: Sculpted) => {
+  /** Sculpt units to metres: the statue's size over its sculpt's (the same for every level, to a cell). */
+  const unitOf = (s: Sculpted) => (o.length !== undefined ? o.length / s.length : (o.height ?? 1) / s.height);
+  const make = (lod: SacredLod, s: Sculpted) => {
     const m = new Mesh(dress(s.mesh, palette), statueMaterial());
     m.name = 'buddha';
-    m.scale.setScalar(o.length !== undefined ? o.length / s.length : (o.height ?? 1) / s.height);
+    m.scale.setScalar(unitOf(s));
     m.castShadow = true;
     m.receiveShadow = true;
+    if (lod.unit === 1) lod.unit = unitOf(s);
     return m;
   };
-  if (o.sync) {
-    farGroup.add(make(buddhaMesh(kind, 'far')));
-    if (!o.farOnly) nearGroup.add(make(buddhaMesh(kind, 'near')));
-    return lod;
-  }
-  let asked = false;
-  const wantNear = () => {
-    if (asked || o.farOnly) return;
-    asked = true;
-    void buddhaMeshAsync(kind, 'near').then((n) => {
-      nearGroup.clear();
-      nearGroup.add(make(n));
-    });
-  };
-  const at = new Vector3();
-  void buddhaMeshAsync(kind, 'far').then((s) => {
-    const far = make(s);
-    farGroup.add(far);
-    if (o.farOnly) return;
-    // (up close, the far mesh stands in until the near one is sculpted)
-    const stand = make(s);
-    if (!nearGroup.children.length) nearGroup.add(stand);
-    if (EAGER) return wantNear();
-    const near3 = nearDist * 3;
-    far.onBeforeRender = stand.onBeforeRender = (_r, _s, camera) => {
-      if (!asked && camera.position.distanceTo(lod.getWorldPosition(at)) < near3) wantNear();
-    };
-  });
-  return lod;
+  const details: Detail[] = o.farOnly ? ['far', 'mid', 'coarse'] : ['near', 'far', 'mid', 'coarse'];
+  return new SacredLod(
+    'buddha',
+    details.map((detail) => ({
+      name: detail,
+      // (the far mesh takes over from the near one past `near` m, as it always did)
+      cell: detail === 'far' || detail === 'near' ? 0 : BUDDHA_CELLS[detail].cell,
+      load: (lod: SacredLod) => (o.sync ? make(lod, buddhaMesh(kind, detail)) : buddhaMeshAsync(kind, detail).then((s) => make(lod, s))),
+    })),
+    {
+      near: o.farOnly ? 0 : (o.near ?? Math.max(12, (o.height ?? o.length ?? 1) * 8)),
+      hide: o.hide ?? 160,
+      size: o.length ?? o.height ?? 1,
+      // (the preview draws its shadows live: no stand-in)
+      caster: o.sync ? undefined : details.length - 1,
+      eager: o.sync,
+    },
+  );
 }

@@ -1,7 +1,7 @@
 import { BufferGeometry, Color, Matrix4 } from 'three';
 import type { Finish, Palette } from './finish';
 import { hash, lathe, profileRadius, redented, revolve, sheet, smooth01, vnoise, type Plan } from './offerings';
-import { meshSculpt, Sculpt, type SculptMesh } from './sculpt';
+import { meshSculpt, Sculpt, type MeshOptions, type SculptMesh } from './sculpt';
 import { roundBox, union, type Box, type Shape } from './sdf';
 import { addBayonFaces } from './_stupaFace';
 
@@ -36,7 +36,7 @@ import { addBayonFaces } from './_stupaFace';
 
 export type StupaForm = 'tower' | 'faces';
 export type StupaLook = 'white' | 'gold' | 'stone';
-export type StupaDetail = 'near' | 'far';
+export type StupaDetail = 'near' | 'far' | 'coarse';
 
 // ── Measures (the reference: 4 m to the tip; plain, no niche) ────────────────
 
@@ -131,10 +131,18 @@ const outline = (t: Tier, f: number) => t.r0 + (t.r1 - t.r0) * f;
 /** Where a tier's cornice is (share of its height) and how far out (m); the stage of the faces has its diadem's band there. */
 const corniceOf = (t: Tier, stage: boolean) => (stage ? { f: 0.965, r: t.r0 + 0.045 } : { f: 0.62, r: outline(t, 0.55) });
 
-/** Grid cells (m, reference size) by detail; `fineCell` for the faces (the sculpt's fine zones). */
-export const STUPA_CELLS: Record<StupaDetail, { cell: number; fineCell: number }> = {
+/**
+ * Grid cells (m, reference size) by detail; `fineCell` for the faces (the
+ * sculpt's fine zones). `coarse`: once its cells span under 1.2 px
+ * (_detail.ts), its plaques fewer and plainer; it also casts the still
+ * shadows.
+ */
+const FAR = { cell: 0.095, fineCell: 0.04 };
+export const STUPA_CELLS: Record<StupaDetail, MeshOptions> = {
   near: { cell: 0.048, fineCell: 0.016 },
-  far: { cell: 0.095, fineCell: 0.04 },
+  far: FAR,
+  // (shaded as the far one is: sculpt.ts `occlusionAs`)
+  coarse: { cell: 0.15, fineCell: 0.075, occlusionAs: FAR },
 };
 
 // ── Profiles ([r, y] m, foot to top) ──────────────────────────────────────────
@@ -492,10 +500,10 @@ export function weatherStone(g: BufferGeometry, amp: number, freq: number): void
  * rising along +y, its face to +z): swelling from its foot like the flame
  * leaf of kbach, drawn out to a point that bends out, a ridge up its middle.
  */
-function antefix(w: number, h: number, f: Finish, tip: Finish = f): BufferGeometry {
+function antefix(w: number, h: number, f: Finish, tip: Finish = f, plain = false): BufferGeometry {
   return sheet(
-    2,
-    3,
+    plain ? 1 : 2,
+    plain ? 2 : 3,
     (u, v) => {
       const s = v < 0.3 ? 0.6 + 0.4 * Math.sin((v / 0.3) * (Math.PI / 2)) : Math.cos(((v - 0.3) / 0.7) * (Math.PI / 2)) ** 0.9;
       const hw = (w / 2) * Math.max(0.04, s);
@@ -541,10 +549,10 @@ function pediment(w: number, h: number, f: Finish): BufferGeometry {
  * +y, its back to +z): round shoulders and a point, cupped toward the axis,
  * its tip curling out.
  */
-function petal(w: number, h: number, f: Finish): BufferGeometry {
+function petal(w: number, h: number, f: Finish, plain = false): BufferGeometry {
   return sheet(
-    2,
-    4,
+    plain ? 1 : 2,
+    plain ? 2 : 4,
     (u, v) => {
       const hw = (w / 2) * Math.max(0.05, Math.sin(Math.PI * Math.pow(v, 0.62)) ** 0.55);
       const e = (2 * u - 1) ** 2;
@@ -583,13 +591,16 @@ const SIDES: [number, number][] = [
  * and in the middle of each tier's side, the flame on the niche's point,
  * the crown's two rows of petals and the petals clasping the bud, the gold
  * tip (not on stone). The far detail keeps the corners' antefixes and the
- * crown. On stone some antefixes have fallen.
+ * crown; the coarse one the same, plainer, and one row of the crown's
+ * petals. On stone some antefixes have fallen.
  */
 export function stupaOrnaments(form: StupaForm, niche: boolean, look: StupaLook, detail: StupaDetail, pal: Palette): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   const L = lift(niche);
   const T = CELLA.foot + cellaH(niche);
   const near = detail === 'near';
+  /** The coarse detail: plaques of fewer facets, one row of petals round the crown. */
+  const plain = detail === 'coarse';
   const fallback = pal['*'];
   const fA = pal.antefix ?? fallback;
   const fT = pal.antefixTip ?? fA;
@@ -602,7 +613,7 @@ export function stupaOrnaments(form: StupaForm, niche: boolean, look: StupaLook,
   const cornerSet = (y: number, r: number, a: number, h: number, w: number, lean: number) => {
     const c = r * (1 - a / 2) - 0.012;
     for (const [sx, sz] of CORNERS) {
-      if (kept()) out.push(stand(antefix(w, h, fA, fT), sx * c, y, sz * c, sx, sz, lean));
+      if (kept()) out.push(stand(antefix(w, h, fA, fT, plain), sx * c, y, sz * c, sx, sz, lean));
       if (!near) continue;
       if (kept()) out.push(stand(antefix(w * 0.8, h * 0.82, fA, fT), sx * (r - 0.012), y, sz * r * (1 - a), sx, 0, lean));
       if (kept()) out.push(stand(antefix(w * 0.8, h * 0.82, fA, fT), sx * r * (1 - a), y, sz * (r - 0.012), 0, sz, lean));
@@ -616,7 +627,7 @@ export function stupaOrnaments(form: StupaForm, niche: boolean, look: StupaLook,
       if (niche && nz > 0) continue;
       out.push(stand(pediment(0.3, 0.25, fP), nx * 0.675, T - 0.07, nz * 0.675, nx, nz, -0.04));
     }
-  if (niche) out.push(stand(antefix(0.11, 0.2, pal.nicheFrame ?? fA), 0, NICHE.point + FRAME - 0.035, NICHE.face + 0.03, 0, 1, -0.05));
+  if (niche) out.push(stand(antefix(0.11, 0.2, pal.nicheFrame ?? fA, pal.nicheFrame ?? fA, plain), 0, NICHE.point + FRAME - 0.035, NICHE.face + 0.03, 0, 1, -0.05));
 
   // Each tier's cornice (the stage of the faces: its diadem's band): the corners, antefixes along the sides, a pediment in the middle of each.
   tiersOf(form).forEach((t, i) => {
@@ -647,20 +658,20 @@ export function stupaOrnaments(form: StupaForm, niche: boolean, look: StupaLook,
       const a = ((k + phase) / count) * Math.PI * 2;
       const nx = Math.cos(a);
       const nz = Math.sin(a);
-      out.push(stand(petal(w, h, fC), nx * r, y, nz * r, nx, nz, lean));
+      out.push(stand(petal(w, h, fC, plain), nx * r, y, nz * r, nx, nz, lean));
     }
   };
-  ring(near ? 16 : 10, 0.262, 3.3 + L, near ? 0.13 : 0.18, 0.16, -0.3, 0);
-  ring(near ? 14 : 9, 0.222, 3.37 + L, near ? 0.12 : 0.165, 0.14, -0.5, 0.5);
+  ring(near ? 16 : plain ? 8 : 10, 0.262, 3.3 + L, near ? 0.13 : plain ? 0.22 : 0.18, 0.16, -0.3, 0);
+  if (!plain) ring(near ? 14 : 9, 0.222, 3.37 + L, near ? 0.12 : 0.165, 0.14, -0.5, 0.5);
   const fB = pal.bud ?? fC;
   const budR = profileRadius(BUD, 0.006);
-  const count = near ? 8 : 6;
+  const count = near ? 8 : plain ? 4 : 6;
   for (let k = 0; k < count; k++) {
     const a0 = (k / count) * Math.PI * 2 + 0.2;
     out.push(
       sheet(
         2,
-        near ? 5 : 3,
+        near ? 5 : plain ? 2 : 3,
         (u, v) => {
           const y = 3.44 + v * 0.22;
           const half = (Math.PI / count) * 1.05 * Math.max(0.05, Math.sin(Math.PI * Math.pow(v, 0.55)) ** 0.5);
@@ -692,7 +703,7 @@ export function stupaOrnaments(form: StupaForm, niche: boolean, look: StupaLook,
     out.push(
       revolve(
         p.map(([r, y]) => ({ r, y: y + L, f })),
-        near ? 14 : 8,
+        near ? 14 : plain ? 6 : 8,
       ),
     );
   }
