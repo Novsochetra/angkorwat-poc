@@ -1,8 +1,8 @@
-import { BufferGeometry, DynamicDrawUsage, Group, InstancedBufferAttribute, InstancedMesh, Vector3, type Box3, type BufferAttribute, type Color, type Material, type Matrix4 } from 'three';
+import { Box3, BufferGeometry, DynamicDrawUsage, Group, InstancedBufferAttribute, InstancedMesh, Sphere, Vector3, type BufferAttribute, type Camera, type Color, type Material, type Matrix4 } from 'three';
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import { VOXEL_MATERIALS, type VoxelMaterialKey } from '../../voxel/materials';
 import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
-import { graphicsNow } from '../graphics';
+import { farJudges, graphicsNow, paintRim, pixelSize, PLAIN_HOLD, PLAIN_PX } from '../graphics';
 
 /**
  * The blocks of the hang glider take-off spots, drawn together
@@ -22,7 +22,18 @@ import { graphicsNow } from '../graphics';
  *    of it: they carry no `voxelShape`, so a merged mesh as big as the map is
  *    not judged near by its bounds). Not split: plain on low while every spot
  *    is far. The map's families (bark, stone) are plain on low anywhere, as
- *    `setGraphics` makes them.
+ *    `setGraphics` makes them;
+ *  - on the other levels every family has the two meshes: a spot's blocks
+ *    keep their edges while its cut edges span the level's `PLAIN_PX` where
+ *    the spot comes nearest the camera (graphics.ts `pixelSize`; `judge`,
+ *    every frame from `plainFar`, `farJudges`), else they are plain boxes:
+ *    the map's families with their cut rim painted (`paintRim`: their rim
+ *    shaders are the map's, compiled at load), the others unpainted (their
+ *    own copies of the materials: a rim shader would compile the first time,
+ *    a hitch), from `UNPAINTED` of that limit, where the rim is a tenth of a
+ *    pixel. Before, they kept their edges at any distance: the overview on
+ *    medium drew the five parked gliders' sails in 116 k triangles (2,645
+ *    blocks of 44) and the ramps in 84 k, 400 m off; now 32 k and 23 k.
  * Instance data (colours with their shade, side bits, pattern amounts) is
  * copied as `buildVoxelMesh` made it, so the blocks look the same. The code
  * that made each block stays with it (`voxelSources`: the bug report's picks).
@@ -46,7 +57,12 @@ interface Family {
   per: (SpotData | undefined)[];
   sizes: Map<string, number>;
   far: InstancedMesh;
-  near: InstancedMesh | null;
+  near: InstancedMesh;
+  /** The largest cut edge of its blocks (m, as graphics.ts `chamferOf`), and the spots that keep their edges on the levels but low (bits: `judge`). */
+  edge: number;
+  pxNear: number;
+  /** Its blocks in all spots. */
+  blocks: number;
   /** Where each spot's blocks are now: 0 the far mesh, 1 the near one, −1 left out; and the first instance. */
   where: Int8Array;
   start: Int32Array;
@@ -75,10 +91,17 @@ export interface SpotBatchOptions {
   dynamic?: boolean;
 }
 
+/** On the levels but low, the families with their own materials go plain from this share of the level's `PLAIN_PX`: their rim, unpainted, is under a tenth of a pixel. */
+const UNPAINTED = 0.1;
+/** …and a family of fewer blocks than this (all spots) keeps its edges: a second draw would cost more (the lamps, the tubes). */
+const SMALL = 64;
+
 export class SpotBatch {
   readonly object = new Group();
   blocks = 0;
   private readonly fams = new Map<VoxelMaterialKey, Family>();
+  /** Round each spot's blocks (world; null: none), for how near the camera is. */
+  private spheres: (Sphere | null)[] = [];
   private near = 0;
   private hidden = 0;
   private shown = ~0;
@@ -131,8 +154,48 @@ export class SpotBatch {
         for (const [name, size] of fam.sizes) which.geometry.setAttribute(name, new InstancedBufferAttribute(new Float32Array(total * size), size));
       }
     }
+    for (const fam of this.fams.values()) {
+      fam.edge = edgeOf(fam);
+      fam.blocks = fam.per.reduce((n, p) => n + (p?.n ?? 0), 0);
+    }
+    this.spheres = Array.from({ length: this.spots }, (_, s) => {
+      const box = this.bounds(s, new Box3());
+      if (box.isEmpty()) return null;
+      const sphere = box.getBoundingSphere(new Sphere());
+      sphere.radius += this.opts.margin ?? 0;
+      return sphere;
+    });
     this.compose();
+    farJudges.push((camera) => this.judge(camera));
     return this;
+  }
+
+  /**
+   * Every frame, on the levels but low (graphics.ts `plainFar`): which spots keep their edges, family by family (the
+   * nearest of a spot's blocks within where its cut edges span the level's limit, a little further to go plain again).
+   */
+  private judge(camera: Camera): void {
+    if (!this.built || graphicsNow.plainBlocks || this.plain === null) return;
+    _eye.setFromMatrixPosition(camera.matrixWorld);
+    const pixel = pixelSize(camera);
+    const limit = PLAIN_PX[graphicsNow.level];
+    let changed = false;
+    for (const fam of this.fams.values()) {
+      const px = limit * (fam.map ? 1 : UNPAINTED);
+      const from = px > 0 && fam.edge > 0 && fam.blocks >= SMALL ? (fam.edge * Math.SQRT2) / (px * pixel) : Infinity;
+      let mask = 0;
+      for (let s = 0; s < this.spots; s++) {
+        const sphere = this.spheres[s];
+        if (!sphere) continue;
+        const d = sphere.center.distanceTo(_eye) - sphere.radius;
+        if (d < from * (fam.pxNear & (1 << s) ? 1 + PLAIN_HOLD : 1)) mask |= 1 << s;
+      }
+      if (mask !== fam.pxNear) {
+        fam.pxNear = mask;
+        changed = true;
+      }
+    }
+    if (changed) this.compose();
   }
 
   /** The spots near the camera (bits): on the plain level their blocks keep their edges. */
@@ -212,7 +275,7 @@ export class SpotBatch {
   /** Every mesh (for a family's settings: shadows). */
   meshes(key?: VoxelMaterialKey): InstancedMesh[] {
     const out: InstancedMesh[] = [];
-    for (const fam of this.fams.values()) if (!key || fam.key === key) out.push(fam.far, ...(fam.near ? [fam.near] : []));
+    for (const fam of this.fams.values()) if (!key || fam.key === key) out.push(fam.far, fam.near);
     return out;
   }
 
@@ -250,7 +313,10 @@ export class SpotBatch {
       per: new Array(this.spots),
       sizes: new Map(),
       far: mesh(''),
-      near: split ? mesh(':near') : null,
+      near: mesh(':near'),
+      edge: 0,
+      pxNear: ~0,
+      blocks: 0,
       where: new Int8Array(this.spots).fill(-1),
       start: new Int32Array(this.spots),
       own,
@@ -275,8 +341,9 @@ export class SpotBatch {
           fam.where[s] = -1;
           continue;
         }
-        const w = fam.near && plain && this.near & (1 << s) ? 1 : 0;
-        const mesh = meshes[w]!;
+        // (low: the near spots of a split family; the other levels: the spots whose cut edges still show)
+        const w = (plain ? fam.split && this.near & (1 << s) : fam.pxNear & (1 << s)) ? 1 : 0;
+        const mesh = meshes[w];
         const at = counts[w];
         (mesh.instanceMatrix.array as Float32Array).set(p.matrix, at * 16);
         (mesh.instanceColor!.array as Float32Array).set(p.color, at * 3);
@@ -288,7 +355,6 @@ export class SpotBatch {
       }
       for (const w of [0, 1]) {
         const mesh = meshes[w];
-        if (!mesh) continue;
         mesh.count = counts[w];
         mesh.visible = counts[w] > 0;
         // (all of it, not the blocks last moved)
@@ -297,9 +363,11 @@ export class SpotBatch {
           a.needsUpdate = true;
         }
         mesh.userData.voxelSources = src[w];
-        // (on the plain level: the map's families plain everywhere; the others plain far off, with their edges near)
-        const far = w === 0 && (fam.split || !this.anyNear);
-        setShape(mesh.geometry, plain && (fam.map || far) ? fam.plain : fam.own);
+        // (on the plain level: the map's families plain everywhere; the others plain far off, with their edges near;
+        // on the others the far mesh plain, the map's families' rims painted)
+        const far = plain ? fam.map || (w === 0 && (fam.split || !this.anyNear)) : w === 0;
+        setShape(mesh.geometry, far ? fam.plain : fam.own);
+        paintRim(mesh, !plain && w === 0 && fam.map && counts[w] > 0);
         if (mesh.count) {
           mesh.computeBoundingSphere();
           mesh.boundingSphere!.radius += this.opts.margin ?? 0;
@@ -311,6 +379,24 @@ export class SpotBatch {
 }
 
 const _lo = new Vector3();
+const _eye = new Vector3();
+
+/** The largest cut edge of a family's blocks (m, world), as the shader cuts them (graphics.ts `chamferOf`: a block's own radius, at most 0.45 of its smallest side, else that side × the family's bevel). */
+function edgeOf(fam: Family): number {
+  const bevel = VOXEL_MATERIALS[fam.key].bevel;
+  let edge = 0;
+  for (const p of fam.per) {
+    if (!p) continue;
+    const own = p.attrs.get('voxRadius');
+    const m = p.matrix;
+    for (let i = 0; i < p.n; i++) {
+      const k = i * 16;
+      const side = Math.min(Math.hypot(m[k], m[k + 1], m[k + 2]), Math.hypot(m[k + 4], m[k + 5], m[k + 6]), Math.hypot(m[k + 8], m[k + 9], m[k + 10]));
+      edge = Math.max(edge, own && own[i] > 0 ? Math.min(own[i], side * 0.45) : side * bevel);
+    }
+  }
+  return edge;
+}
 
 /** Mark part of an attribute written (sent to the GPU at `flush`); past a few dozen parts (a mesh left out for long), all of it. */
 function touch(fam: Family, a: InstancedBufferAttribute, start: number, count: number): void {

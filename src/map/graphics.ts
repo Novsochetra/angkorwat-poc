@@ -365,6 +365,8 @@ interface Far {
   meshes: { mesh: InstancedMesh; edge: number; version: number; moves: number }[];
 }
 const far: Far[] = [];
+/** Meshes that judge their own far shapes, given the camera every frame by {@link plainFar} (roam/_rampBatch.ts: the ramps' and gliders' batches). */
+export const farJudges: ((camera: Camera) => void)[] = [];
 /** A mesh whose blocks have moved more often than this keeps its own shape (its bounds may lag behind its blocks: judged near as it may be). */
 const MOVES = 8;
 const _eye = new Vector3();
@@ -389,6 +391,7 @@ const shown = (o: Object3D): boolean => {
  * blocks keep moving keeps its edges.
  */
 export function plainFar(camera: Camera): void {
+  for (const judge of farJudges) judge(camera);
   if (!far.length) return;
   _eye.setFromMatrixPosition(camera.matrixWorld);
   const pixel = pixelSize(camera);
