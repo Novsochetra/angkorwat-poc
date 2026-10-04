@@ -11,7 +11,6 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   type Object3D,
-  PointLight,
   Quaternion,
   Vector3,
 } from 'three';
@@ -25,6 +24,7 @@ import { ROAM_SCALE } from '../roam/types';
 import { SACRED_LAMPS } from '../sacred/finish';
 import { candleLamp, offering, type OfferingKind, type OfferingOptionsByKind, type OfferingPiece } from '../sacred/offerings';
 import { SacredSet } from '../sacred/set';
+import { addLamp, type Lamp } from '../sky/lampSlots';
 import type { MapFrame } from '../types';
 import { GRASS, pick } from './_prasat';
 
@@ -99,7 +99,7 @@ const smooth = (a: number, b: number, v: number) => {
  * Lamp flames of one landmark: small glowing boxes in one instanced mesh.
  * Unlit; by day a dim ember, at night the colour goes well above 1.0 in
  * linear light so the bloom picks it up. `update` also drives the part's one
- * PointLight, if it has one.
+ * lamp light, if it has one (a lamp of the map's few lights: sky/lampSlots.ts).
  */
 export class Lamps {
   private readonly items: { p: [number, number, number]; s: [number, number, number]; ry: number; k: number }[] = [];
@@ -108,7 +108,7 @@ export class Lamps {
   readonly base = new Color(0xffa24a);
   /** Colour at night, if it changes (else `base`). */
   nightBase: Color | null = null;
-  light: PointLight | null = null;
+  light: Lamp | null = null;
   private lightPower = 0;
 
   constructor(
@@ -133,14 +133,17 @@ export class Lamps {
     return this.items.length;
   }
 
-  /** One warm PointLight for the whole landmark (only at night). */
-  addLight(p: [number, number, number], power: number, distance: number): PointLight {
-    const l = new PointLight(0xffa860, 0, distance, 2);
-    l.position.set(...p);
-    l.name = 'landmark lamp light';
-    this.light = l;
+  /**
+   * One warm light for the whole landmark (only at night): a lamp of the map's few lights, where the returned
+   * object is (add it to the landmark: it goes out while the landmark is hidden).
+   */
+  addLight(p: [number, number, number], power: number, distance: number): Object3D {
+    const at = new Group();
+    at.position.set(...p);
+    at.name = 'landmark lamp light';
+    this.light = addLamp({ kind: 'point', name: 'landmark lamp light', color: 0xffa860, distance, anchor: at });
     this.lightPower = power;
-    return l;
+    return at;
   }
 
   build(name: string): InstancedMesh | null {

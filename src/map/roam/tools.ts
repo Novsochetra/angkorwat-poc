@@ -1,4 +1,4 @@
-import { Group, PerspectiveCamera, PointLight, Quaternion, Raycaster, SpotLight, Vector2, Vector3 } from 'three';
+import { Group, PerspectiveCamera, Quaternion, Raycaster, Vector2, Vector3 } from 'three';
 import { OUTFITS, type AngkorExplorer, type OutfitName, type SelfieGesture } from '../../character/AngkorExplorer';
 import type { HoldKind } from '../../character/Animator';
 import { ACTIONS, type ActionName } from '../../character/clips';
@@ -8,6 +8,7 @@ import { isFoodKind, type FoodKind } from '../../character/parts/food';
 import { REST_TIME } from '../../character/rest';
 import { padGlyph, padName, type PadGlyph } from '../pad/glyphs';
 import { pad } from '../pad/pad';
+import { addLamp, type Lamp } from '../sky/lampSlots';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
@@ -76,7 +77,7 @@ const _ndc = new Vector2();
 const _ray = new Raycaster();
 
 export interface RoamTools {
-  /** The two lights (in the scene from the start, so the light count never changes). */
+  /** His props' things in the scene (none now: his two lights are lamps of the slots, sky/lampSlots.ts). */
   readonly object: Group;
   /** The camera and the selfie phone. */
   readonly photo: RoamPhoto;
@@ -139,22 +140,19 @@ export interface ToolDeps {
  *
  * Lights: three.js recompiles every material when the number of lights in
  * the scene changes (a freeze on this big map), so the explorer's props
- * have no lights of their own; this module keeps one warm point light for
- * the lantern and the torch and one spot light for the flashlight (no
- * shadow: that would draw the whole map again), always in the scene, dark
- * while unused, moved onto the prop every frame. The ledge explorer's
- * lantern in the overview uses the same point light.
+ * have no lights of their own; this module keeps one warm point lamp for
+ * the lantern and the torch and one spot lamp for the flashlight (no
+ * shadow: that would draw the whole map again), dark while unused, moved
+ * onto the prop every frame: the explorer's own lamps, which the map's few
+ * lights take first (sky/lampSlots.ts). The ledge explorer's lantern in the
+ * overview uses the same point lamp.
  */
 export function createRoamTools(d: ToolDeps): RoamTools {
   const { explorer, body, cam, hud } = d;
   const object = new Group();
   object.name = 'roam:tools';
-  const glow = new PointLight(0xffb347, 0, GLOW_RANGE, 2);
-  glow.name = 'explorer lantern';
-  const flash = new SpotLight(0xfff1dc, 0, FLASH_RANGE, FLASH_ANGLE, 0.5, 2);
-  flash.name = 'explorer flashlight';
-  glow.castShadow = flash.castShadow = false;
-  object.add(glow, flash, flash.target);
+  const glow = addLamp({ kind: 'point', name: 'explorer lantern', color: 0xffb347, distance: GLOW_RANGE, own: true });
+  const flash = addLamp({ kind: 'spot', name: 'explorer flashlight', color: 0xfff1dc, distance: FLASH_RANGE, angle: FLASH_ANGLE, penumbra: 0.5, own: true });
 
   let mode: RoamMode = 'overview';
   /** What the player picked for his left hand (null: not yet — a lantern after dark). */
@@ -438,8 +436,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     } else glow.intensity = 0;
     if (held === 'flashlight' && explorer.flashlightRay(_o, _d)) {
       flash.position.copy(_o);
-      flash.target.position.copy(_o).addScaledVector(_d, 10);
-      flash.target.updateMatrixWorld();
+      flash.target.copy(_o).addScaledVector(_d, 10);
       // (as made: the Look page's fill may have had it)
       flash.angle = FLASH_ANGLE;
       flash.penumbra = 0.5;
@@ -452,10 +449,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
 
   /**
    * The Look page after dark: a soft, near-white light on him from the camera's side, a little above, aimed at his
-   * chest, reaching little past him — so the clothes he picks read true. It is the light his hand does not use now
-   * (the spot unless he holds the flashlight, then the point light): the scene's lights stay as many as ever.
+   * chest, reaching little past him — so the clothes he picks read true. It is the lamp his hand does not use now
+   * (the spot unless he holds the flashlight, then the point lamp).
    */
-  function lookFill(l: PointLight | SpotLight, s: number): void {
+  function lookFill(l: Lamp, s: number): void {
     const chest = explorer.rig.joints.chest.getWorldPosition(_fillTo);
     const d = LOOK_FILL_AT * s;
     _fillAt.copy(cam.camera.position).sub(chest).normalize().multiplyScalar(d).add(chest);
@@ -464,9 +461,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     l.color.setHex(0xfff2e2);
     l.distance = d * 3;
     l.intensity = LOOK_FILL * Math.min(1, night * 1.5) * d * d;
-    if (l instanceof SpotLight) {
-      l.target.position.copy(chest);
-      l.target.updateMatrixWorld();
+    if (l.kind === 'spot') {
+      l.target.copy(chest);
       l.angle = 0.6;
       l.penumbra = 1;
     }

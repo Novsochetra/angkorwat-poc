@@ -1,9 +1,10 @@
-import { Color, Euler, Group, PerspectiveCamera, PointLight, Vector3 } from 'three';
+import { Color, Euler, Group, Object3D, PerspectiveCamera, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import { len2 } from '../fauna/_len';
 import type { HeightField, RiverSample } from '../heightfield';
 import { OVERVIEW, PLACES } from '../layout';
 import { pad } from '../pad/pad';
+import { addLamp } from '../sky/lampSlots';
 import type { MapFrame } from '../types';
 import { placeText, t } from '../ui/lang';
 import { JETTY } from '../village/_spots';
@@ -146,9 +147,11 @@ export function createBoat(field?: HeightField): BoatMode {
   pier.name = 'boat:jetty';
   pier.visible = false;
   object.add(ride, dock, pier);
-  // One warm light, on the lantern of the boat in use (else the landing's): lights the water round it at night.
-  const light = new PointLight(0xffb266, 0, 14, 2);
+  // One warm light, on the lantern of the boat in use (else the landing's): lights the water round it at night. A lamp
+  // of the map's few lights (sky/lampSlots.ts); `light` is where it hangs (it goes from boat to boat, and out with a hidden one).
+  const light = new Object3D();
   light.name = 'boat lantern';
+  const lamp = addLamp({ kind: 'point', name: 'boat lantern', color: 0xffb266, distance: 14, anchor: light });
   // (out in front of the cage, so the lantern and the bow do not burn white)
   light.position.copy(LANTERN).add(new Vector3(0, 0.1, 0.45));
   dock.add(light);
@@ -785,7 +788,7 @@ export function createBoat(field?: HeightField): BoatMode {
     const flick = 1 + night * (0.05 * Math.sin(t * 2.3) + 0.04 * Math.sin(t * 3.7 + 1.1));
     glow.color.setRGB(1, 0.62, 0.3).multiplyScalar((0.55 + 2.2 * night) * flick);
     halo.opacity = 0.9 * night * night * flick;
-    light.intensity = night * 3.2 * flick;
+    lamp.intensity = night * 3.2 * flick;
     wake.color.copy(FOAM_DAY).lerp(FOAM_NIGHT, night);
   }
 

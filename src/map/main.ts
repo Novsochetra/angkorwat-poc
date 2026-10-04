@@ -19,6 +19,7 @@ import type { MapRoam } from './roam/roam';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
+import { lampSlots } from './sky/lampSlots';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -386,7 +387,8 @@ for (const [i, [name, load]] of BUILDERS.entries()) {
 work.done();
 console.info(work.line());
 if (Object.keys(late.states).length) console.info(`[map] built only when wanted: ${Object.keys(late.states).join(', ')}`);
-scene.add(atmosphere.object);
+// (and the lamps' few lights, always there: sky/lampSlots.ts)
+scene.add(atmosphere.object, lampSlots().object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
 for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 // …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
@@ -763,6 +765,8 @@ function step(t: number, dt: number): void {
   free?.placed();
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
+  // (the lamps that matter most for this view into the few lights the shaders have: sky/lampSlots.ts)
+  lampSlots().update(frame);
   castGate.update(frame);
   // (the low level: props, boats and houses far off drawn as plain boxes, graphics.ts)
   plainFar(camera);

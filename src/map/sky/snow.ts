@@ -13,7 +13,6 @@ import {
   NearestFilter,
   OrthographicCamera,
   PlaneGeometry,
-  PointLight,
   RedFormat,
   ShaderMaterial,
   UnsignedByteType,
@@ -39,6 +38,7 @@ import { EAST_VILLAGE } from '../layout';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { VILLAGE_SPOTS } from '../village/_spots';
 import { hazeUniforms } from './haze';
+import { lamps as lampList } from './lampSlots';
 import { mistNoiseTexture } from './noise';
 import { SKY } from './palette';
 import { PX_SCALE, view } from '../resolution';
@@ -766,14 +766,13 @@ export function buildSnow(ctx: MapContext): MapPart {
   const snowmen = prepared?.snowmen ?? (params.get('snowmen') === '0' ? [] : buildSnowmen(ctx));
   for (const s of snowmen) object.add(s);
 
-  // Lamps the flakes catch: the lamps of the road and the villages (their halos), and the lights that move (the explorer's lantern, the boat's).
+  // Lamps the flakes catch: the lamps of the road and the villages (their halos), and the lamp lights (the explorer's lantern, the
+  // boat's, the temples': lampSlots.ts, read as they are, whether a slot of the map's few lights has them or not).
   let lamps: Vector3[] | null = null;
-  const lights: PointLight[] = [];
   const findLamps = () => {
     lamps = [];
     const p = new Vector3();
     ctx.scene.traverse((o) => {
-      if ((o as PointLight).isPointLight) lights.push(o as PointLight);
       const pts = o as Points;
       if (!pts.isPoints || !pts.name.endsWith(':halos')) return;
       const pos = pts.geometry.getAttribute('position');
@@ -792,9 +791,9 @@ export function buildSnow(ctx: MapContext): MapPart {
     const slots = u.uLamps.value;
     const cam = f.camera.position;
     let k = 0;
-    for (const l of lights) {
-      if (k >= MOVING || !l.visible || l.intensity <= 0) continue;
-      l.getWorldPosition(_l);
+    for (const l of lampList()) {
+      if (k >= MOVING || l.kind !== 'point' || !l.lit) continue;
+      _l.copy(l.locate());
       if (_l.distanceTo(cam) > LAMP_REACH) continue;
       slots[k++].set(_l.x, _l.y, _l.z, Math.min(1, l.intensity / (l.intensity + 2)) * 1.3);
     }

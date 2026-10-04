@@ -1,11 +1,13 @@
-import { BoxGeometry, Color, Group, InstancedMesh, MeshBasicMaterial, Object3D, PointLight } from 'three';
+import { BoxGeometry, Color, Group, InstancedMesh, MeshBasicMaterial, Object3D } from 'three';
+import { addLamp } from '../sky/lampSlots';
 import type { MapFrame } from '../types';
 import type { GlowBox } from './_sanctuaryMason';
 
 /**
  * The sanctuary's lights: lit doorways, lamps in the galleries and torch
  * flames, as unlit boxes whose colour goes above 1.0 (linear) at night so the
- * bloom picks them up; soft by day. One warm point light at the main door.
+ * bloom picks them up; soft by day. One warm light at the main door (a lamp of the
+ * map's few lights: sky/lampSlots.ts).
  */
 
 /** Brightness (linear multiplier) by day and at night, per kind. */
@@ -48,10 +50,11 @@ export function buildLights(boxes: GlowBox[], door: [number, number, number]): S
   }
 
   // Warm light spilling from the main door onto the forecourt and the stairs.
-  const lamp = new PointLight(0xffa55a, 0, 70, 2);
-  lamp.name = 'sanctuary door light';
-  lamp.position.set(door[0], door[1], door[2]);
-  object.add(lamp);
+  const at = new Object3D();
+  at.name = 'sanctuary door light';
+  at.position.set(door[0], door[1], door[2]);
+  object.add(at);
+  const lamp = addLamp({ kind: 'point', name: 'sanctuary door light', color: 0xffa55a, distance: 70, anchor: at });
 
   return {
     object,
