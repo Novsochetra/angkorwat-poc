@@ -18,13 +18,14 @@ import { SpotBatch } from './_rampBatch';
  *
  * Far off, a glider's sail is drawn coarse (`coarseSail`: its 512 cells, a
  * fan of 16 columns by 16 rows each side, joined two columns by four rows,
- * the blue hem row apart: 80 blocks, 97 in all for the sail, not 529): a
- * second batch (`far`) holds the gliders whose sail cells span under
- * `COARSE_PX` of a pixel where they come nearest the camera (graphics.ts
- * `pixelSize`, every frame from `plainFar`: `farJudges`), the first the
- * others. What it loses is under a pixel: the cells' own shade (±4 %) and
- * the bend of the sail within a block. The overview's five gliders 32 k
- * triangles → 6 k (low and medium); a glider near keeps every cell.
+ * the blue hem row apart: 80 blocks, 97 in all for the sail, not 529): the
+ * batch has every glider twice, as built (spot i) and coarse (spot n + i),
+ * and shows one of them (no draw more): the coarse one once its sail cells
+ * span under `COARSE_PX` of a pixel where it comes nearest the camera
+ * (graphics.ts `pixelSize`, every frame from `plainFar`: `farJudges`). What
+ * it loses is under a pixel: the cells' own shade (±4 %) and the bend of
+ * the sail within a block. The overview's five gliders 32 k triangles → 6 k
+ * (low and medium); a glider near keeps every cell.
  */
 
 /** The sail's grid (_gliderModel.ts: side, column, row; the row by the nose first, the last the blue hem), and the cells joined far off. */
@@ -35,13 +36,15 @@ export class ParkedGliders {
   readonly object = new Group();
   readonly blocks: number;
   private readonly batch: SpotBatch;
-  /** The gliders far off, their sails coarse (null: the sail was not as `SAIL` says). */
-  private readonly far: SpotBatch | null = null;
+  /** The gliders (n), each twice in the batch when its sail can be coarse (`coarseSail`). */
+  private readonly n: number;
+  private readonly twice: boolean;
   /** The largest cell of the sail (m, world), and round each glider (world). */
   private readonly cell: number = 0;
   private readonly spheres: Sphere[] = [];
-  /** The gliders in view (launchSpots.ts), and those drawn coarse (bits). */
+  /** The gliders in view (launchSpots.ts), those near (on low), and those drawn coarse (bits, one a glider). */
   private shown = ~0;
+  private near = 0;
   private coarse = 0;
   private readonly wires: LineSegments;
   private readonly flags: Mesh;
@@ -59,19 +62,19 @@ export class ParkedGliders {
     const model = new Glider();
     model.pose({ position: new Vector3(), quaternion: new Quaternion(), size: 1, open: 1, flutter: 0.05, t: 0, night: 0 });
     const shape = model.shape();
-    this.batch = new SpotBatch('glider', n, { split: true, ownMaterials: true });
+    // (and the same gliders again with a coarse sail, for far off: none shown at first)
+    const sail = coarseSail(shape.families[0]);
+    this.n = n;
+    this.twice = !!sail && 2 * n < 31;
+    this.batch = new SpotBatch('glider', this.twice ? 2 * n : n, { split: true, ownMaterials: true });
     for (let i = 0; i < n; i++) this.batch.add(i, shape.families, rigs[i]);
+    if (this.twice) for (let i = 0; i < n; i++) this.batch.add(n + i, [sail!.mesh, ...shape.families.slice(1)], rigs[i]);
     this.batch.finish();
     this.blocks = model.blocks * n;
-    // The same gliders with a coarse sail, for far off (none at first).
-    const sail = coarseSail(shape.families[0]);
-    if (sail) {
-      this.far = new SpotBatch('glider:far', n, { split: true, ownMaterials: true });
-      for (let i = 0; i < n; i++) this.far.add(i, [sail.mesh, ...shape.families.slice(1)], rigs[i]);
-      this.far.finish();
-      this.far.setShown(0);
-      this.cell = sail.cell * rigs[0].getMaxScaleOnAxis();
+    if (this.twice) {
+      this.cell = sail!.cell * rigs[0].getMaxScaleOnAxis();
       for (let i = 0; i < n; i++) this.spheres.push(this.batch.bounds(i, new Box3()).getBoundingSphere(new Sphere()));
+      this.apply();
       farJudges.push((camera) => this.judge(camera));
     }
 
@@ -118,7 +121,6 @@ export class ParkedGliders {
     this.flags.receiveShadow = true;
     this.lines();
     this.object.add(this.batch.object, this.wires, this.flags);
-    if (this.far) this.object.add(this.far.object);
   }
 
   /** Glider `i` off its ramp (he took off with it), or back on it. */
@@ -126,22 +128,33 @@ export class ParkedGliders {
     const mask = off ? this.hidden | (1 << i) : this.hidden & ~(1 << i);
     if (mask === this.hidden) return;
     this.hidden = mask;
-    this.batch.setHidden(mask);
-    this.far?.setHidden(mask);
+    this.batch.setHidden(this.twice ? mask | (mask << this.n) : mask);
     this.lines();
   }
 
   /** The gliders whose blocks keep their edges on the low level (bits: near the camera). */
   setNear(mask: number): void {
-    this.batch.setNear(mask);
-    this.far?.setNear(mask);
+    this.near = mask;
+    this.apply();
   }
 
   /** The gliders that can be seen, their shadows too (bits: the others are left out). */
   setShown(mask: number): void {
     this.shown = mask;
-    this.batch.setShown(mask & ~this.coarse);
-    this.far?.setShown(mask & this.coarse);
+    this.apply();
+  }
+
+  /** The batch's spots: each glider as built, or (coarse) its twin. */
+  private apply(): void {
+    const all = (1 << this.n) - 1;
+    const shown = this.shown & all;
+    if (!this.twice) {
+      this.batch.setShown(shown);
+      this.batch.setNear(this.near);
+      return;
+    }
+    this.batch.setShown((shown & ~this.coarse) | ((shown & this.coarse) << this.n));
+    this.batch.setNear((this.near & all) | ((this.near & all) << this.n));
   }
 
   /** Every frame (graphics.ts `plainFar`): which gliders are far enough for their coarse sail. */
@@ -155,7 +168,7 @@ export class ParkedGliders {
     }
     if (mask === this.coarse) return;
     this.coarse = mask;
-    this.setShown(this.shown);
+    this.apply();
   }
 
   /** A box round glider `i`'s blocks (world) added to `out`. */
@@ -166,7 +179,6 @@ export class ParkedGliders {
   /** Every frame: the graphics level's block shapes. */
   flush(): void {
     this.batch.flush();
-    this.far?.flush();
   }
 
   /** The wires and flags of the gliders on their ramps (the others' left out of the index). */

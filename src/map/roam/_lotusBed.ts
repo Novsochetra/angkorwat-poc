@@ -34,7 +34,7 @@ import { ROAM_SCALE, type RoamWorld } from './types';
  * the bed is drawn from fewer plain boxes (its far meshes, built with it):
  * the leaves, stalks and seed pods, an open lotus one pale pink block, a bud
  * its stem and one pink block; no petals, turned-up rims or stubs. 1,210
- * blocks of 44 triangles (53 k), far 560 of 12 (7 k); from about 65 m in a
+ * blocks of 44 triangles (53 k), far 536 of 12 (6 k); from about 65 m in a
  * walk on a phone, 160 m at 1672 × 941. The far buds go with the near ones
  * (picked, under a hull).
  */

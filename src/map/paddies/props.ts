@@ -22,14 +22,15 @@ import { plotAt, SWEEP, type PlotPlan } from './stages';
  * back into it as it closes, so nothing pops. Cloth sways with the land's
  * wind (veg/sway.ts). The same pose casts the shadows.
  *
- * Four meshes (draws), not one spanning the map (r 360 m, drawn from
- * anywhere): the west's (by the great lake) and the east's (by the
- * sugar-palm village) each culled on their own, and the stooks apart from
- * the rest (2,450 of the 2,780 boxes, standing a few weeks a year): a mesh
- * whose boxes are all out of season (shrunk into their feet) is not drawn
- * at all (`seasonal`, every frame with the palms' step). 33 k triangles in
- * every view → 4 k out of the harvest (the west's fences, ting mong and
- * stacks), the stooks of the side in view at harvest.
+ * Three meshes (draws; four were the east to have more than stooks), not
+ * one spanning the map (r 360 m, drawn from anywhere): the west's (by the
+ * great lake) and the east's (by the sugar-palm village) each culled on
+ * their own, and the stooks apart from the rest (2,450 of the 2,780 boxes,
+ * standing a few weeks a year): a mesh whose boxes are all out of season
+ * (shrunk into their feet) is not drawn at all (`seasonal`, every frame
+ * with the palms' step). 33 k triangles in every view → 6 k (the west's
+ * fences, ting mong and straw stacks; none from the east), and at harvest
+ * the stooks of the side in view (20 k the west's).
  */
 
 /** Colours (sRGB). */
