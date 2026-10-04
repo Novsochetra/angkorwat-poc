@@ -1,7 +1,7 @@
 import { Box3, Sphere, Vector3, type BufferAttribute, type BufferGeometry, type Camera, type InstancedMesh, type Object3D } from 'three';
 import { VOXEL_MATERIALS, type VoxelMaterialKey } from '../../voxel/materials';
 import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
-import { chamferOf, FAR_PLAIN, graphicsNow, paintRim, pixelSize, PLAIN_HOLD, PLAIN_PX } from '../graphics';
+import { chamferOf, FAR_PLAIN, graphicsNow, paintRim, pixelSize, PLAIN_HOLD, plainFrom } from '../graphics';
 
 /**
  * The zip line's blocks as plain boxes far off (_zip.ts): its decks, stairs,
@@ -99,8 +99,8 @@ export class ZipLod {
     for (const p of this.pieces) {
       let d = Infinity;
       for (const s of p.near) d = Math.min(d, s.center.distanceTo(_eye) - s.radius);
-      const px = PLAIN_PX[graphicsNow.level] * (p.map ? 1 : UNPAINTED);
-      const from = plainLevel ? (p.map ? -Infinity : FAR_PLAIN) : px > 0 ? (p.edge * Math.SQRT2) / (px * pixel) : Infinity;
+      // (graphics.ts `plainFrom`: the level's limit, or the URL's `plainpx=`; unpainted, half of it)
+      const from = plainLevel ? (p.map ? -Infinity : FAR_PLAIN) : plainFrom(p.map ? p.edge : p.edge / UNPAINTED, pixel);
       const out = d > from * (p.out ? 1 : 1 + PLAIN_HOLD);
       if (out === p.out && !again && p.mesh.geometry.index === (out ? p.plain : p.own).index) continue;
       p.out = out;

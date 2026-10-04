@@ -2,7 +2,7 @@ import { Box3, BufferGeometry, DynamicDrawUsage, Group, InstancedBufferAttribute
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import { VOXEL_MATERIALS, type VoxelMaterialKey } from '../../voxel/materials';
 import { openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
-import { farJudges, graphicsNow, paintRim, pixelSize, PLAIN_HOLD, PLAIN_PX } from '../graphics';
+import { farJudges, graphicsNow, paintRim, pixelSize, PLAIN_HOLD, plainFrom } from '../graphics';
 
 /**
  * The blocks of the hang glider take-off spots, drawn together
@@ -178,11 +178,10 @@ export class SpotBatch {
     if (!this.built || graphicsNow.plainBlocks || this.plain === null) return;
     _eye.setFromMatrixPosition(camera.matrixWorld);
     const pixel = pixelSize(camera);
-    const limit = PLAIN_PX[graphicsNow.level];
     let changed = false;
     for (const fam of this.fams.values()) {
-      const px = limit * (fam.map ? 1 : UNPAINTED);
-      const from = px > 0 && fam.edge > 0 && fam.blocks >= SMALL ? (fam.edge * Math.SQRT2) / (px * pixel) : Infinity;
+      // (graphics.ts `plainFrom`: the level's limit, or the URL's `plainpx=`; unpainted, a tenth of it)
+      const from = fam.edge > 0 && fam.blocks >= SMALL ? plainFrom(fam.map ? fam.edge : fam.edge / UNPAINTED, pixel) : Infinity;
       let mask = 0;
       for (let s = 0; s < this.spots; s++) {
         const sphere = this.spheres[s];
