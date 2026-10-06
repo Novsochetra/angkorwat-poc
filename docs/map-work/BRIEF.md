@@ -445,9 +445,10 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   taken (`photo.ts placeName`: a place, else the passport's village, holy
   place or jungle site he is at — "At the morning market" —, a road, a
   river, a hill). The
-  explorer is made with `propLights: false`: the tools own one PointLight and
-  one SpotLight (no shadow) that are always in the scene (intensity 0 when
-  unused), so the light count never changes (no shader recompiles).
+  explorer is made with `propLights: false`: the tools own one point lamp and
+  one spot lamp (sky/lampSlots.ts: no lights of their own; the map's few
+  light slots carry them, the explorer's own first), so the light count never
+  changes (no shader recompiles).
 - Mini-map (`src/map/ui/minimap.ts`): top right while roaming, turns with
   the view; **M** or a click opens the big map, where a click on a place
   or a hang glider ramp sets it as the target (a gold arrow on the
@@ -2261,8 +2262,18 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
   them a material whose colour goes **above 1.0 in linear light** at night
   (e.g. `MeshBasicMaterial` with its colour scaled by an intensity you set in
   `update(f)` from `f.night`), and stay soft by day.
-- At most one `PointLight` per part (they cost on every surface). Most light
-  at night should come from glow + bloom.
+- No part makes a `PointLight` or `SpotLight`: a lamp registers with
+  `addLamp({ kind, name, color, distance, own, anchor })` (sky/lampSlots.ts)
+  and sets its intensity, colour and position as a light's (an `anchor`
+  places it and turns it off while hidden). The map keeps 4 point lights and
+  1 spot (`SLOTS`) always in the scene, so the light count never changes and
+  nothing compiles after Start; each frame (main.ts `step`, after the parts)
+  they take the explorer's own lamps first, then the lamps whose light covers
+  most of the view, easing in and out over 0.45 s (the spot carries a point
+  lamp when no flashlight or fill needs it). Every light each lit shader
+  carries costs about 1.5 % of a GPU-bound frame even while dark: add lamps,
+  not slots (`lampslots=<points>,<spots>` for checks; dev:
+  `__lampSlots.debug()`). Most light at night should come from glow + bloom.
 - Custom `ShaderMaterial`s: set `fog: true` and include three's fog chunks
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
@@ -2718,13 +2729,82 @@ moment, before → after, M1 Max):
   shadow pass saves as much again). The same picture (a few edge pixels);
   +1 draw and ≈ 0.05‥0.09 ms of CPU (the pass's render target).
 
-Budgets for a phone (low): the overview ≈ 7 ms here (≈ 30 fps on an
-iPhone 13–15, whose GPU is about a fifth of this one; 5.2 ms, 3.1 M
-triangles, 463 draws on 2026-10-03, the walks 2.5–3.6 ms, 1.1–1.9 M, the
-hang glider 4.6): keep it there, ≤ 600 draws, ≤ 3.6 M triangles; a walk
-≤ 2 M triangles and ≤ 350 draws (a phone holds 60 frames a second where
-the frame is ≈ 3.3 ms here or less: most walks on a new iPhone, not the
-overview);
+### The iPhone pass (the speed test)
+
+The owner's iPhone 14 Pro drew 11–30 frames a second roaming on low (the
+game charging, warm). `speedtest=1` (speedtest.ts; main.ts imports it only
+then) measures the live frame on the device itself with parts of the map
+turned off one by one: each step off and on in turn, three times, only the
+difference within each pair counting (a phone slows itself as it warms, for
+tens of seconds at a time), and the time of a picture taken directly (a
+one-pixel read waits for the GPU each frame; frames a second stop at 60 and
+jump to 30 with the refresh). `speedtest=quick`: only the map as it plays,
+frames a second and the time of a picture in turns, for two builds side by
+side. Use it with `graphics=low&fps=60`; a phone reaches a build on this
+Mac's Wi-Fi with `npx vite build && npx vite preview --host 0.0.0.0` (analytics
+records such visits too). What it found on the phone (night walk by the
+paddies, a picture ≈ 14–18 ms): grass, rice and trees 25 % of a picture,
+temples and houses 20 %, the lamp lights 12 %, the land 11 %, the glass blur
+and the buttons ≈ 5 % each, **half the pixels only 3 %**; shadows, people,
+mist, water, analytics ≈ 0. So a phone's picture is bound by the triangles
+sent (vertex work, even for those off screen, behind the camera or
+collapsed in the shader) and draws, not by pixels; and a phone that keeps
+60 when cool falls to 30 as soon as it warms, so the frame wants headroom.
+What the pass changed (every level; the same picture up close):
+
+- **The road in pieces** (path.ts, road/pieces.ts `cutIntoPieces`,
+  `ROAD_PIECES` = 16 stone, 4 grass, 4 inlay): compact k-means pieces of its
+  blocks, so the ones out of view are not drawn (a walk drew all 14,424
+  stones). The carved stone under the light is its own 4 groups marked
+  `chunkLod`, so it keeps its edges (its top is 1 cm under the light's). Walks
+  191 k → 1–65 k triangles on low, 669 k → 1–89 k on medium.
+- **Temples drawn as their shell** (landmarks/_shell.ts `buildShell`): only
+  the block sides that can be seen (`commitGrid` / `Mason.commit` with the
+  grid's ghosts, `'none'` if it has none), one mesh per side direction for
+  families of ≥ 2,500 blocks (`SPLIT_FROM`), each drawing only the blocks whose
+  side faces the camera (`count` per draw, a binary search on the eye). The
+  blocks as built cast the shadows and are never drawn in a picture; the
+  walk map reads them (the shell is `noWalk`). The overview's temples
+  0.74 → 0.24 M on every level, +≈ 20 draws; `shell=0` draws them as before.
+- **Sacred pieces in levels** (sacred/_detail.ts `SacredLod`): coarser sculpts
+  past 30 m (`FLOOR`) once their cells span ≤ 1.2 px (`SHARP_PX`), hidden past
+  30 m under 2 px (`HIDE_PX`), coarser switches 8 % further; the coarsest
+  casts the still shadows through a `<piece>:shadow` stand-in on the still
+  layer. Sculpting at load 7.8 → 1.3 s. Viewer: `-mid`, `-coarse`, `-far`.
+- **The undergrowth only in view** (veg/undergrowth.ts): each 4 m cell a row
+  of one float texture (`uUgBoxes`), its one draw listing the cells in view;
+  three sides a box; a plant's smallest boxes shrink away farther off (`LOD`
+  by level, times the zoom). Kulen 144 k → 10 k triangles on low. **The rice**
+  (paddies/rice.ts): two-segment blades past `full`, two-blade fans past
+  `far`, each cell in one list. Paddies rice 91 k → 70 k.
+- **The explorer and his ledge** (foreground.ts, character/rounding.ts): his
+  meshes skip their back sides (`voxel/backFacets.ts`), the hat's turned knot
+  apart (Rig `turnedApart`), one rounding step where his 9 mm rounding is
+  under 2 px (`heropx=`); the ledge draws, per camera, only up to the last
+  block it sees. Walks 152 → 91 k on low, 317 → 91 k on medium; the ledge
+  88 → 21 k.
+- **Small far things**: the water in rectangles (water/surface.ts,
+  30.5 → 2 k), the falls piece by piece in view and lighter far off
+  (water/sheets.ts, falls.ts `FAR_TOL`), the golden figures only those in view
+  within 180 m, the paddies' props in season meshes, the lotus bed and the
+  parked gliders' sails coarse far off, the zip line, ramps and gliders plain
+  far off on every level (`farJudges` in graphics.ts).
+- **The lamps in slots** (above, "Glowing things"), and **no blur** under the
+  buttons, pins and mini-map that stay over the playing map (map.css,
+  minimap.ts: their fill lets 14 % through; menus that open keep it).
+
+Picture triangles (852 × 390, before → after): low overview 3.12 → 2.37 M,
+paddies 1.45 → 0.81, village 1.50 → 1.05, east 1.93 → 1.45, Kulen 1.07 →
+0.61; medium 4.77 → 3.26, 3.13 → 1.67, 3.31 → 2.11, 3.78 → 2.53, 2.61 →
+1.42. On this Mac medium is 9–15 % quicker a frame (the overview 11.7 →
+9.9 ms); low here is CPU-bound and the same, its CPU 0.2–0.8 ms more a
+frame (the new per-frame choices of what to draw).
+
+Budgets for a phone (low): the overview ≤ 2.6 M triangles and ≤ 520 draws
+(2.37 M, 505 on 2026-10-06), a walk ≤ 1.5 M triangles and ≤ 350 draws
+(0.6–1.45 M now): an iPhone pays for every triangle sent, so keep what is
+small on screen, off screen or behind the camera out of the draw (pieces,
+levels, `count`), not only plain;
 a new part ≤ 30 draws, ≤ 0.15 M triangles and ≤ 0.2 ms CPU in a view where
 it stands, and nothing (0 draws, ~0 CPU) where it does not; people: the crowd
 ≤ 0.1 M triangles in view and ≤ 0.15 ms of GPU here with its bone pass
