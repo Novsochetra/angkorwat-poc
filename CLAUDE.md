@@ -107,6 +107,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `lang.ts`). Shots: `uistate=settings,tab:<id>` (`general`, `sound`,
   `graphics`, `play`, `about`); `scroll:<group>` shows that group's tab;
   `fog:<0‥150>` puts the fog slider there (the map's own fog: `fogamount=0‥1.5`).
+- The page never zooms, only the game's camera does (a pinch on the canvas):
+  iOS Safari ignores `user-scalable=no`, so map.css gives every element
+  `touch-action: pan-x pan-y` (a pinch on an overlay zoomed the page and the
+  phone's tab reloaded). No scroll container sets its own `auto` or `manipulation`.
 - Where things are (places, mesas, rivers, roads, cameras): `src/map/layout.ts`.
 - Words: Khmer first, English on the language choice at the top of the
   settings (the story has its own ខ្មែរ / EN). The word list is

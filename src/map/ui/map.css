@@ -104,6 +104,22 @@
   }
 }
 
+/*
+ * The page never zooms: a pinch zooms only the game's camera, on the canvas
+ * (`touch-action: none`, ui.css). iOS Safari ignores the viewport's
+ * `user-scalable=no`, so a pinch on anything over the canvas (the settings,
+ * the loading screen, the story, the big map, a card) zoomed the whole page,
+ * and the phone's tab reloaded. `pan-x pan-y`: no pinch or double-tap zoom,
+ * lists still scroll. On every element, not only the body: in WebKit a scroll
+ * container (the settings' page) starts again from `auto`. `*` weighs
+ * nothing, so an element's own touch-action (`none` on the canvas, the
+ * stick, a drag grip) still wins, and `manipulation` on a button keeps its
+ * parent's no-zoom.
+ */
+* {
+  touch-action: pan-x pan-y;
+}
+
 .map-ui {
   position: fixed;
   inset: 0;

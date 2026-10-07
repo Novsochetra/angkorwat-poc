@@ -2844,9 +2844,13 @@ as the picture's; a part that moves must not be marked still.
   it, cards at the right edge stand as tall as the view). Check 667×320,
   667×375, 740×360, 844×390 and 932×430 with `touch=1&phone=1`, and 390×844.
   Taps: 40 px or more on touch; panels taller than the room scroll inside
-  (`overscroll-behavior: contain`). No `:has()` (and no `:is()` in new
-  rules) for what matters on a phone: some phones lack it. A class set from
-  JS instead: `body.mm-toast-on` (the mini-map's banner), `body.rh-toast-on`
+  (`overscroll-behavior: contain`). The page never zooms (iOS Safari ignores
+  `user-scalable=no`, and a pinch on an overlay zoomed the page until the
+  phone's tab reloaded): map.css gives every element `touch-action: pan-x
+  pan-y`, the canvas and drags `none`. A scroll container never sets its own
+  `auto` or `manipulation` (in WebKit it starts again from its own). No
+  `:has()` (and no `:is()` in new rules) for what matters on a phone: some
+  phones lack it. A class set from JS instead: `body.mm-toast-on` (the mini-map's banner), `body.rh-toast-on`
   (the HUD's message), `body.rh-choosing` (the Jump in card), `.rh.keys-on`
   (the key list), `.by-purse.is-top` (no gold counter), `body.rxm-open`,
   `body.tg-list-on`. Colours made with `color-mix()` have flat day values
