@@ -456,7 +456,13 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   "Nearest glider ramp" on the big map) heads for the nearest ramp. The
   ramps (read live from `roam.launchSpots`) show as a glider on a round
   badge on both maps. The land picture is drawn once, in small slices
-  over several frames. Its words are in `ui/lang.ts` (`mm…`). The rice
+  over several frames, and its moonlit twin the same way once dusk
+  falls, from the day's texels kept for it (`ui/_minimapLand.ts`). Neither
+  is ever made at once, nor read back from its canvas (`getImageData`
+  waits for the GPU to finish the frames in hand): the big map opened
+  right after Start, at dusk, once held the page for seconds and a phone's
+  tab reloaded. The big map shows what is made so far and draws again as
+  the rest comes. Its words are in `ui/lang.ts` (`mm…`). The rice
   paddies are drawn over it in the colour of their stage of the year
   (`ui/_minimapPaddies.ts`, from `f.season` and `paddies/stages.ts`: dry
   earth, mud, flooded sky-blue, green, gold, stubble; the east paddies

@@ -17,7 +17,7 @@ import type { MapPart } from '../types';
  * roaming area the land fades into the mist.
  *
  * Two versions: by day, and moonlit (blue and dim, the road glowing), made
- * from the day one when it is first wanted.
+ * from the day one's texels when it is first wanted.
  *
  * Both are made a slice at a time (`LandBuilder.step(ms)`, `moonlight(ms)`),
  * so the work spreads over a few frames instead of stalling one.
@@ -315,11 +315,23 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
   day.width = W;
   day.height = H;
   paint(day, dayPx, field, ROAD);
+  return picture(field, day, dayPx, wetPx, Math.round(lap()), blocks);
+}
+
+/**
+ * The made picture, and its moonlit one when it is first wanted. Made outside
+ * `landSteps`, so the work's arrays (≈ 19 MB) go once the day picture is made:
+ * only the day's texels and the water stay, for the moonlit picture, and they
+ * go too once it is made.
+ */
+function picture(field: HeightField, day: HTMLCanvasElement, dayPx: Uint32Array, wetPx: Uint8Array, ms: number, blocks: number): LandPicture {
+  const { width: W, height: H } = day;
+  let texels: { px: Uint32Array; wet: Uint8Array } | null = { px: dayPx, wet: wetPx };
   let night: HTMLCanvasElement | null = null;
   let nightJob: Generator<void, Uint32Array, void> | null = null;
   return {
-    x0,
-    z0,
+    x0: field.x0,
+    z0: field.z0,
     res: 1,
     w: W,
     h: H,
@@ -329,7 +341,7 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
     },
     moonlight(ms) {
       if (night) return true;
-      nightJob ??= moonlit(day, wetPx);
+      nightJob ??= moonlit(texels!.px, texels!.wet, W);
       const end = performance.now() + ms;
       for (;;) {
         const r = nightJob.next();
@@ -340,35 +352,37 @@ function* landSteps(field: HeightField, parts: readonly MapPart[]): Generator<nu
           paint(cv, r.value, field, ROAD_NIGHT);
           night = cv;
           nightJob = null;
+          texels = null;
           return true;
         }
         if (performance.now() >= end) return false;
       }
     },
-    ms: Math.round(lap()),
+    ms,
     blocks,
   };
 }
 
 /**
- * The moonlit picture, from the day one: blue and dim, water a clear night
- * blue (lighter than the land). (The roads are painted again over it.)
+ * The moonlit picture, from the day one's texels: blue and dim, water a clear
+ * night blue (lighter than the land). (The roads are painted again over it.)
+ * From the texels kept, never read back from the day canvas: `getImageData`
+ * waits for the GPU to finish all the frames in hand, and the big map opened at
+ * dusk once held the page there for seconds (a phone's tab reloaded).
  */
-function* moonlit(day: HTMLCanvasElement, wet: Uint8Array): Generator<void, Uint32Array, void> {
-  const img = day.getContext('2d')!.getImageData(0, 0, day.width, day.height);
-  const px = new Uint32Array(img.data.buffer);
-  yield;
-  const rows = (day.width * 64) | 0;
+function* moonlit(day: Uint32Array, wet: Uint8Array, width: number): Generator<void, Uint32Array, void> {
+  const px = new Uint32Array(day.length);
+  const rows = (width * 64) | 0;
   for (let t0 = 0; t0 < px.length; t0 += rows) {
-    moonRow(px, wet, t0, Math.min(px.length, t0 + rows));
+    moonRow(day, px, wet, t0, Math.min(px.length, t0 + rows));
     yield;
   }
   return px;
 }
 
-function moonRow(px: Uint32Array, wet: Uint8Array, from: number, to: number): void {
+function moonRow(day: Uint32Array, px: Uint32Array, wet: Uint8Array, from: number, to: number): void {
   for (let t = from; t < to; t++) {
-    const p = px[t];
+    const p = day[t];
     const r = p & 255;
     const g = (p >> 8) & 255;
     const b = (p >> 16) & 255;

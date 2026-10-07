@@ -308,6 +308,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let north = 'N';
   let land: LandPicture | null = null;
   let landFailed = false;
+  let moonFailed = false;
   let builder: LandBuilder | null = null;
   let shown = false;
   /** The mini-map setting in use (roamPrefs.miniMap): its land shown, only its caption, or nothing. */
@@ -355,6 +356,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
   let bgNight = -1;
   // Big map: drawn at this night value; "you are here" where last put.
   let bigNight = -1;
+  /** The land the big map was drawn with: 0 none yet (the mist), 1 the day picture, 2 the moonlit one too (`landNow`). */
+  let bigLand = -1;
   /** The rice year now (`MapFrame.season`; NaN: no paddies part), and the paddies' look the big map was drawn with. */
   let season = NaN;
   let bigPaddies = '';
@@ -395,10 +398,27 @@ export function createMinimap(d: MinimapDeps): Minimap {
     }
     return land;
   }
+  /**
+   * Make the moonlit picture once night falls, working about `ms` now. Both pictures are made a slice a frame,
+   * never at once when a map wants them: the big map opened at dusk made them in one go, which held the page for
+   * seconds (and a phone's tab reloaded).
+   */
+  function makeMoon(ms: number): void {
+    if (!land || land.night || night <= 0.01 || moonFailed) return;
+    try {
+      land.moonlight(ms);
+    } catch (e) {
+      // (the day picture, dimmed, stays: drawLand)
+      moonFailed = true;
+      console.error('[map] minimap moonlit land failed:', e);
+    }
+  }
+  /** What the land picture is now, as `bigLand` counts it. */
+  const landNow = () => (land ? (land.night ? 2 : 1) : 0);
 
   /** Part of the land picture (texels from sx, sz, sw × sh) at dx, dz (dw × dh), in the light of the time of day. */
-  function drawLand(c2: CanvasRenderingContext2D, L: LandPicture, sx: number, sz: number, sw: number, sh: number, dx: number, dz: number, dw: number, dh: number, ms: number): void {
-    const moon = night > 0.01 ? (L.night ?? (L.moonlight(ms) ? L.night : null)) : null;
+  function drawLand(c2: CanvasRenderingContext2D, L: LandPicture, sx: number, sz: number, sw: number, sh: number, dx: number, dz: number, dw: number, dh: number): void {
+    const moon = night > 0.01 ? L.night : null;
     if (night < 0.99 || !moon) c2.drawImage(L.day, sx, sz, sw, sh, dx, dz, dw, dh);
     if (moon) {
       c2.globalAlpha = night < 0.99 ? night : 1;
@@ -814,7 +834,11 @@ export function createMinimap(d: MinimapDeps): Minimap {
     bigWrap.classList.toggle('is-open', on);
     d.sound?.(on ? 'open' : 'close');
     if (on) {
-      makeLand(Infinity);
+      // (the land as made so far: what is still being made is drawn as it comes, `update`)
+      if (shot) {
+        makeLand(Infinity);
+        makeMoon(Infinity);
+      }
       sizeBig();
       bigNight = -1;
       youX = youY = youR = NaN;
@@ -868,6 +892,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
     const h = landCanvas.height;
     if (!w || !h) return;
     bigNight = night;
+    bigLand = landNow();
     g2.setTransform(1, 0, 0, 1, 0, 0);
     g2.globalAlpha = 1;
     g2.fillStyle = mix(MIST.day, MIST.night, night);
@@ -885,7 +910,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
       const dz = (L.z0 + sz0 * L.res - BIG.z0) * sc;
       const dw = (sx1 - sx0) * L.res * sc;
       const dh = (sz1 - sz0) * L.res * sc;
-      drawLand(g2, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh, Infinity);
+      drawLand(g2, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh);
     }
     if (!Number.isNaN(season)) {
       bigPaddies = paddyKey(season);
@@ -997,7 +1022,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
         const dz = L.z0 + sz0 * L.res - p.z;
         const dw = (sx1 - sx0) * L.res;
         const dh = (sz1 - sz0) * L.res;
-        drawLand(g, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh, shot ? Infinity : 4);
+        drawLand(g, L, sx0, sz0, sx1 - sx0, sz1 - sz0, dx, dz, dw, dh);
         if (!Number.isNaN(season)) drawPaddies(g, season, night, p.x, p.z);
         g.setTransform(1, 0, 0, 1, 0, 0);
       }
@@ -1473,9 +1498,12 @@ export function createMinimap(d: MinimapDeps): Minimap {
       if (!on) {
         // (made in small slices while the overview is on, so roaming starts with it)
         if (!land && !shot && f.t > 3) makeLand(3);
+        else if (!shot) makeMoon(3);
         return;
       }
-      if (!land) makeLand(shot ? Infinity : 8);
+      // (quicker while the big map waits for it)
+      if (!land) makeLand(shot ? Infinity : bigOpen ? 16 : 8);
+      makeMoon(shot ? Infinity : bigOpen ? 16 : 4);
       if (roam.mode !== modeShown) {
         // (the "N  Glider ramp" hint under the mini-map shows while he walks)
         modeShown = roam.mode;
@@ -1506,7 +1534,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
       checkArrival();
       updateDistance();
       if (bigOpen) {
-        if (Math.abs(night - bigNight) > 0.03 || (!Number.isNaN(season) && paddyKey(season) !== bigPaddies)) drawBig();
+        if (landNow() !== bigLand || Math.abs(night - bigNight) > 0.03 || (!Number.isNaN(season) && paddyKey(season) !== bigPaddies)) drawBig();
         placeYou();
         // (he moved on under the open map, the glider or the boat: the names keep clear of "You are here" — placed again
         // only when its tag has come onto one, or onto an icon)
