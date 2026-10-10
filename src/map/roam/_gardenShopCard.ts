@@ -4,6 +4,7 @@ import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { num, onLang, t, type WordKey } from '../ui/lang';
 import { HARVEST_ICON, kindIcon, SEEDLING_ICON } from './_gardenShopArt';
+import { harvestWords } from './_gardenWork';
 import { CLOSE_X, esc, injectSellStyle, PAD_X } from './_fishSellStyle';
 import { RIEL_ICON } from './_shopIcons';
 import { riel } from './_shopPurse';
@@ -104,6 +105,10 @@ function injectStyle(): void {
     .gs-item.is-short .gs-have, .gs-item.is-short .gs-form { display: none; }
     .gs-item.is-short .sl-price { color: #d89080; }
     .gs-item.is-short .by-icon { opacity: 0.6; filter: grayscale(0.5); }
+    /* (more than his purse holds: greyed, the price in red, before he tries) */
+    .gs-item.is-dear { color: var(--mu-ink2); }
+    .gs-item.is-dear .by-icon { opacity: 0.55; filter: grayscale(0.6); }
+    .gs-item.is-dear .sl-price { color: #e8806a; }
     .gs-price { display: grid; justify-items: end; gap: calc(1 * var(--px)); }
     .gs-price small { font-family: inherit; font-weight: 600; font-size: calc(11 * var(--px)); line-height: 1; color: var(--mu-ink2); letter-spacing: 0; }
     .gs-empty { margin: calc(4 * var(--px)) 0; padding: calc(10 * var(--px)) calc(12 * var(--px)); border-radius: calc(4 * var(--px)); background: rgba(255, 208, 112, 0.08);
@@ -165,11 +170,14 @@ export function createGardenShopCard(d: GardenShopDeps): GardenShopCard {
   const ringLen = () => rows.length + (tab === 'sell' && rows.length ? 1 : 0);
   const ringEl = (i: number): HTMLElement | null => (i < rows.length ? rows[i] : tab === 'sell' && rows.length ? all : null);
 
-  /** The rows of the tab in the language in use. */
-  function fillList(): void {
+  /** More than the purse holds (a Buy row greyed, its price in red). */
+  const dear = (k: PlantKindId): boolean => (KINDS[k].price ?? 0) > shownRiel;
+
+  /** The rows of the tab in the language in use (made again only when they change: true then). */
+  function fillList(): boolean {
     kinds = tab === 'buy' ? GARDEN_KINDS.filter((k) => KINDS[k].price !== null) : GARDEN.basketKinds();
-    const key = `${tab}|${kinds.map((k) => `${k}:${tab === 'buy' ? GARDEN.seeds(k) : GARDEN.basket(k)}`).join(',')}|${num(1)}|${shortK ?? ''}`;
-    if (key === made) return;
+    const key = `${tab}|${kinds.map((k) => `${k}:${tab === 'buy' ? `${GARDEN.seeds(k)}${dear(k) ? '$' : ''}` : GARDEN.basket(k)}`).join(',')}|${num(1)}|${shortK ?? ''}`;
+    if (key === made) return false;
     made = key;
     list.innerHTML = kinds
       .map((k, i) => {
@@ -177,10 +185,10 @@ export function createGardenShopCard(d: GardenShopDeps): GardenShopCard {
         const digit = i < 9 ? `<kbd>${i + 1}</kbd>` : '<kbd hidden></kbd>';
         if (tab === 'buy') {
           const have = GARDEN.seeds(k);
-          return `<button type="button" class="sl-item gs-item${shortK === k ? ' is-short' : ''}" data-i="${i}" role="listitem"><span class="sl-bg"></span>${digit}${PAD_X}${kindIcon(k)}<span class="sl-name">${esc(t(K.name))}<small><span class="gs-form">${esc(t(FORM[K.form]))}</span><span class="gs-have${have ? '' : ' is-none'}">${esc(t('gardenShopHave', { n: num(have) }))}</span><span class="gs-short">${esc(t('gardenShopShort'))}</span></small></span><span class="sl-price">${riel(K.price ?? 0)}</span></button>`;
+          return `<button type="button" class="sl-item gs-item${shortK === k ? ' is-short' : ''}${dear(k) ? ' is-dear' : ''}" data-i="${i}" role="listitem"><span class="sl-bg"></span>${digit}${PAD_X}${kindIcon(k)}<span class="sl-name">${esc(t(K.name))}<small><span class="gs-form">${esc(t(FORM[K.form]))}</span><span class="gs-have${have ? '' : ' is-none'}">${esc(t('gardenShopHave', { n: num(have) }))}</span><span class="gs-short">${esc(t('gardenShopShort'))}</span></small></span><span class="sl-price">${riel(K.price ?? 0)}</span></button>`;
         }
         const n = GARDEN.basket(k);
-        return `<button type="button" class="sl-item gs-item" data-i="${i}" role="listitem"><span class="sl-bg"></span>${digit}${PAD_X}${kindIcon(k)}<span class="sl-name">${esc(cap(t(K.fruit.item)))}<small><span class="gs-have">${esc(t('gardenShopInBasket', { n: num(n) }))}</span></small></span><span class="sl-price gs-price">${riel(K.fruit.sell)}<small>${esc(t('gardenShopEach'))}</small></span></button>`;
+        return `<button type="button" class="sl-item gs-item" data-i="${i}" role="listitem"><span class="sl-bg"></span>${digit}${PAD_X}${kindIcon(k)}<span class="sl-name">${esc(cap(t(K.fruit.item)))}<small><span class="gs-have">${esc(t('gardenShopInBasket', { what: harvestWords(k, n) }))}</span></small></span><span class="sl-price gs-price">${riel(K.fruit.sell)}<small>${esc(t('gardenShopEach'))}</small></span></button>`;
       })
       .join('');
     rows = [...list.querySelectorAll<HTMLButtonElement>('.gs-item')];
@@ -189,10 +197,11 @@ export function createGardenShopCard(d: GardenShopDeps): GardenShopCard {
       const K = KINDS[k];
       b.setAttribute(
         'aria-label',
-        tab === 'buy' ? `${t(K.name)}, ${t(FORM[K.form])}, ${riel(K.price ?? 0)}, ${t('gardenShopHave', { n: num(GARDEN.seeds(k)) })}` : `${t(K.fruit.item)}, ${t('gardenShopInBasket', { n: num(GARDEN.basket(k)) })}, ${riel(K.fruit.sell)} ${t('gardenShopEach')}`,
+        tab === 'buy' ? `${t(K.name)}, ${t(FORM[K.form])}, ${riel(K.price ?? 0)}${dear(k) ? ` (${t('gardenShopShort')})` : ''}, ${t('gardenShopHave', { n: num(GARDEN.seeds(k)) })}` : `${t(K.fruit.item)}, ${t('gardenShopInBasket', { what: harvestWords(k, GARDEN.basket(k)) })}, ${riel(K.fruit.sell)} ${t('gardenShopEach')}`,
       );
     });
     if (ring >= ringLen()) ring = Math.max(0, ringLen() - 1);
+    return true;
   }
 
   /** The words, the tabs, "Sell all", the foot. */
@@ -399,6 +408,8 @@ export function createGardenShopCard(d: GardenShopDeps): GardenShopCard {
       shownRiel = n;
       rielEl.textContent = riel(n);
       rielEl.classList.toggle('is-up', up);
+      // (what he can afford now: the Buy rows grey or light again)
+      if (open && tab === 'buy' && fillList()) fill();
     },
     short(k) {
       shortK = k;

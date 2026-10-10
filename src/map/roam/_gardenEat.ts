@@ -1,7 +1,7 @@
 import { KINDS, type PlantKindId } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
 import type { Lang } from '../types';
-import { t } from '../ui/lang';
+import { lang, t } from '../ui/lang';
 import { gardenSay } from './_gardenToasts';
 import { registerAddon, type AddonEnv } from './_addons';
 import { EAT_ID } from './_gardenShopArt';
@@ -31,7 +31,7 @@ import { CARRY_MAX, type Kept } from './_shopPurse';
 
 /** What he keeps of each kind, by name in both languages (his bag shows it in the language in use). */
 const EAT_NAME: Partial<Record<PlantKindId, Record<Lang, string>>> = {
-  sugarcane: { km: 'អំពៅចិត', en: 'Sugarcane pieces' },
+  sugarcane: { km: 'អំពៅមួយកំណាត់', en: 'Sugarcane to chew' },
   banana: { km: 'ចេកទុំ', en: 'Ripe banana' },
   papaya: { km: 'ល្ហុងទុំ', en: 'Ripe papaya' },
   guava: { km: 'ត្របែក', en: 'Guava' },
@@ -70,8 +70,9 @@ GARDEN.on((ev) => {
   if (ev.type !== 'picked' || ev.n < 2) return;
   const k = ev.plant.kind;
   if (!keepOne(k)) return;
-  // (in the garden's own line of toasts: after the picking's, never over it)
-  gardenSay(t('gardenEatKept', { item: t(KINDS[k].fruit.item) }));
+  // (in the garden's own line of toasts: after the picking's, never over it; named as his bag names it: what he eats of it)
+  const name = EAT_NAME[k]![lang()];
+  gardenSay(t('gardenEatKept', { item: lang() === 'en' ? name.charAt(0).toLowerCase() + name.slice(1) : name }));
 });
 
 registerAddon({

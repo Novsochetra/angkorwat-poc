@@ -9,7 +9,7 @@ import { fallenAt as durianFallen } from '../garden/models/durian';
 import { fallenAt as sugarPalmFallen } from '../garden/models/sugarPalm';
 import { GARDEN, lookOf, type Plant } from '../garden/state';
 import { pad } from '../pad/pad';
-import { num, t } from '../ui/lang';
+import { num, t, type WordKey } from '../ui/lang';
 import { touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { GardenHands } from './_gardenProps';
 import type { FillSpot } from './_gardenSpots';
@@ -140,6 +140,34 @@ let side = 1;
 let framed = 0;
 let lastStep = 0;
 let touchShown: string | null = null;
+/** This visit: the watering reminder said (once), the kinds whose planting was said. */
+let reminded = false;
+const plantedSaid = new Set<PlantKindId>();
+
+/** How many of a harvest, in words ("3 ears of corn", "a bunch of bananas"; "ផ្លែស្វាយ ៥ ផ្លែ"): `one|many` in English. */
+const HARVEST_WORDS: Record<PlantKindId, WordKey> = {
+  eggplant: 'gardenNEggplant',
+  corn: 'gardenNCorn',
+  pumpkin: 'gardenNPumpkin',
+  sugarcane: 'gardenNSugarcane',
+  banana: 'gardenNBanana',
+  papaya: 'gardenNPapaya',
+  guava: 'gardenNGuava',
+  mango: 'gardenNMango',
+  jackfruit: 'gardenNJackfruit',
+  durian: 'gardenNDurian',
+  coconut: 'gardenNCoconut',
+  sugarPalm: 'gardenNSugarPalm',
+  bodhi: 'gardenNMango',
+};
+export const harvestWords = (k: PlantKindId, n: number): string => countWords(HARVEST_WORDS[k], n);
+
+/** A count's words: the key's `{n}` filled, and in a language with a `one|many` form (English) the one that fits `n`. */
+export function countWords(key: WordKey, n: number): string {
+  const s = t(key, { n: num(n) });
+  const bar = s.indexOf('|');
+  return bar < 0 ? s : n === 1 ? s.slice(0, bar) : s.slice(bar + 1);
+}
 
 const _v = new Vector3();
 
@@ -340,7 +368,17 @@ function beatDone(s: Session, name: string, quiet: boolean): void {
   const p = r.plant;
   if (name === 'set' && r.spot) {
     const np = GARDEN.plant(r.kind, r.spot.x, r.spot.z, s.yaw, s.seed);
-    if (np && !quiet) gardenSay(t('gardenPlanted', { plant: plantWord(r.kind) }));
+    // (the reminder to water it the first time a visit; then a short word the first time for each kind; then nothing)
+    if (np && !quiet) {
+      if (!reminded) {
+        reminded = true;
+        plantedSaid.add(r.kind);
+        gardenSay(t('gardenPlanted', { plant: plantWord(r.kind) }));
+      } else if (!plantedSaid.has(r.kind)) {
+        plantedSaid.add(r.kind);
+        gardenSay(t('gardenPlantedShort', { plant: plantWord(r.kind) }));
+      }
+    }
   } else if (name === 'pour' && p) GARDEN.water(p);
   else if (name === 'full') {
     GARDEN.fillCan();
@@ -350,7 +388,7 @@ function beatDone(s: Session, name: string, quiet: boolean): void {
     const mark = gardenMark();
     const n = GARDEN.pick(p);
     if (n > 0 && !quiet) {
-      gardenSay(t('gardenPicked', { n: num(n), item: t(KINDS[p.kind].fruit.item) }), null, mark);
+      gardenSay(t('gardenPicked', { what: harvestWords(p.kind, n) }), null, mark);
       pad.rumble('tick', 0.3);
     }
   } else if (name === 'out' && p) GARDEN.remove(p);
@@ -418,14 +456,28 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   const working = s.phase === 'work';
   const a = s.req.action;
   const low = a !== 'pickReach' && a !== 'pickPole' && a !== 'pickCut' && a !== 'water';
-  if (input.lookYaw || input.lookPitch || input.zoom) framed = FRAME.for;
+  const dragged = !!(input.lookYaw || input.lookPitch || input.zoom);
+  if (dragged) framed = FRAME.for;
   const h = 1.7 * b.scale;
-  const fy = b.pos.y + (!working ? h * 0.86 : a === 'pickPole' ? h * 1.05 : low ? h * 0.5 : h * 0.72);
+  let fy = b.pos.y + (!working ? h * 0.86 : a === 'pickPole' ? h * 1.05 : low ? h * 0.5 : h * 0.72);
+  // The bamboo pole: as it goes up into the crown the camera looks up with it (its top and the fruit in view), down again after.
+  const up = working && a === 'pickPole' ? poleUp(s.t) : 0;
+  if (up > 0) fy += (s.target.y - fy) * POLE_LOOK.focus * up;
   cam.focus.x = b.pos.x;
   cam.focus.z = b.pos.z;
   cam.focus.y += (fy - cam.focus.y) * damp(6, dt);
   cam.behindYaw = b.yaw;
   cam.follow = working ? 0 : 0.6;
+  if (up > 0 && !poleDragged) {
+    if (dragged) poleDragged = true;
+    else {
+      cam.pitchMin = Math.min(cam.pitchMin, POLE_LOOK.pitch);
+      const k = damp(POLE_LOOK.rate, dt);
+      cam.pitch += (POLE_LOOK.pitch + (FRAME_POLE.pitch - POLE_LOOK.pitch) * (1 - up) - cam.pitch) * k;
+      cam.yaw += angleDiff(b.yaw + FRAME_POLE.side * side, cam.yaw) * k;
+      cam.distance += (Math.min(Math.max(FRAME_POLE.distance, cam.minDistance), cam.maxDistance) - cam.distance) * k;
+    }
+  }
   if (!working || framed >= FRAME.for) return;
   framed += dt;
   const kind = KINDS[s.req.kind];
@@ -436,11 +488,35 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   cam.distance += (Math.min(Math.max(want.distance, cam.minDistance), cam.maxDistance) - cam.distance) * k;
 }
 
+/** The camera with the bamboo pole: the focus this share of the way up to the fruit at the top, its tilt then (rad: a little from below), its ease (1/s). */
+const POLE_LOOK = { focus: 0.6, pitch: -0.08, rate: 3 };
+/** The player turned the camera during this pole's rise: it is theirs. */
+let poleDragged = false;
+/** The follow camera's lowest tilt before the work (the pole lowers it to look up; put back after). */
+let pitchMin0 = -0.2;
+/** How far up the pole is (0 down ‥ 1 in the crown) at `t` s of `pickPole`: up from its raise to its hook, down after it comes down. */
+function poleUp(t: number): number {
+  const B = ACTIONS.pickPole.beats;
+  const at = (name: string) => B.find((x) => x.name === name)?.at ?? 0;
+  const r0 = at('raise');
+  const r1 = at('hook');
+  const d0 = at('down');
+  const d1 = at('basket');
+  const sm = (u: number) => {
+    const c = Math.max(0, Math.min(1, u));
+    return c * c * (3 - 2 * c);
+  };
+  if (t < d0) return sm((t - r0 + 0.3) / (r1 - r0));
+  return 1 - sm((t - d0) / Math.max(0.1, d1 - d0));
+}
+
 /** Stop now: his hands empty, the posture off, the sounds quiet. */
 function finish(ctx: RoamCtx | null): void {
   const s = S;
   if (!s) return;
   S = null;
+  poleDragged = false;
+  if (ctx && ctx.cam.pitchMin < pitchMin0) ctx.cam.pitchMin = pitchMin0;
   setPose(false);
   hands?.clear();
   loopLevel(s, s.req.action, 0, false);
@@ -541,6 +617,8 @@ export const GardenWork = {
     }
     // (the camera comes round on the side it is on already)
     side = angleDiff(ctx.cam.yaw, b.yaw) >= 0 ? 1 : -1;
+    pitchMin0 = ctx.cam.pitchMin;
+    poleDragged = false;
     framed = 0;
     b.vel.set(0, 0, 0);
     touch('hide');
@@ -672,7 +750,12 @@ export const GardenWork = {
   /** Stop at once (back to the map, another mode). */
   stop(ctx: RoamCtx | null, overview = false): void {
     finish(ctx);
-    if (overview) before = null;
+    if (overview) {
+      before = null;
+      // (a new visit: the watering reminder may come again)
+      reminded = false;
+      plantedSaid.clear();
+    }
   },
 };
 

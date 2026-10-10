@@ -234,6 +234,13 @@ const NURSERY_ART = [
 
 /** The nursery's badge: on its back half (its middle is 23 m from the house's badge: this keeps them apart). */
 const NURSERY_AT = nurseryToWorld(-1.7, -2.4);
+/**
+ * On the big map (about a pixel a metre) its badge stands back from the trail, north-west of the stall behind the
+ * village's north houses, where it touches neither the village's badge, his home's nor the market's; its name shows
+ * there only while it is pointed at, picked or the target (roam/_gardenShop.ts adds that rule): the names round the
+ * village would cover each other.
+ */
+const NURSERY_BIG = nurseryToWorld(16.3, -22);
 
 /**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
@@ -273,7 +280,7 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   // (his stilt house at the sugar-palm village's north-east edge: roam/_home.ts)
   spot('home', HOME_AT.x, HOME_AT.z, 9, 'homeMap', 'homeTheMap', outlined(HOME_ART)),
   // (the seedling nursery by the Kulen foot trail, on the way up to his house: roam/_gardenShop.ts)
-  spot('nursery', NURSERY_AT[0], NURSERY_AT[1], 8, 'gardenShopMap', 'gardenShopTheMap', outlined(NURSERY_ART)),
+  { ...spot('nursery', NURSERY_AT[0], NURSERY_AT[1], 8, 'gardenShopMap', 'gardenShopTheMap', outlined(NURSERY_ART)), bx: NURSERY_BIG[0], bz: NURSERY_BIG[1] },
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

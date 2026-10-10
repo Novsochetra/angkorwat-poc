@@ -3,7 +3,7 @@ import { SFX } from '../audio/addonSfx';
 import { KINDS, type PlantKindId } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
 import { nearby, type Nearby } from '../greet';
-import { NURSERY_BUY, NURSERY_SHOP, NURSERY_STOOL, nurseryOpen, nurseryToWorld, nurseryYaw } from '../hamlet/_nurseryPlan';
+import { atNurseryFront, NURSERY_BUY, NURSERY_SELLER, NURSERY_SHOP, NURSERY_STOOL, nurseryOpen, nurseryToWorld, nurseryYaw } from '../hamlet/_nurseryPlan';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import { browse, sold, type Shop, type ShopItem } from '../shop';
@@ -13,6 +13,7 @@ import { num, onLang, t, type WordKey } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { createGardenShopCard, type GardenShopCard, type ShopTab } from './_gardenShopCard';
 import { heldHarvest, heldNursery } from './_gardenShopModel';
+import { harvestWords } from './_gardenWork';
 import { bagNotify } from './_shopBag';
 import { riel } from './_shopPurse';
 import { angleDiff } from './followCam';
@@ -43,8 +44,11 @@ import './_gardenEat';
  *   he holds it out to her, she takes it and pays (the coins: `sellCoin`),
  *   the purse earns it (and counts up at the card's foot).
  *
- * Away (her hours over), the prompt says the nursery is closed till the
- * morning, and E says it again. Saved (progress.ts): how many he has bought
+ * Before the stall (its front, ≈ 4 m out: `atNurseryFront`), out of her
+ * hours, the prompt says the nursery is closed till the morning; in them,
+ * while she is not at her table yet (walking in at sunrise, or watering), it
+ * says she is coming, and she hurries back (`NURSERY_SELLER.wanted`): the
+ * card opens only with her at her table, and she stays there while it is open. Saved (progress.ts): how many he has bought
  * (`nursery.bought`), sold (`nursery.sold`) and earned (`nursery.earned`).
  *
  * Keys: E at her table; the card's own (1–9, ↑ ↓, ← → or Tab for the tabs,
@@ -135,7 +139,7 @@ let shiftY = 0;
 let shifted = false;
 let count: { from: number; to: number; t: number } | null = null;
 /** The prompt last made (asked every step at her table). */
-const said = { open: false, text: '' };
+const said = { what: '' as string, text: '' };
 onLang(() => (said.text = ''));
 const seen: Nearby = { x: 0, y: 0, z: 0, d: 0, kind: '', elder: false };
 
@@ -288,7 +292,7 @@ function pay(v: Visit): void {
   bagNotify.update('purse');
   count = e.shot ? null : { from: was, to: e.purse.riel, t: 0 };
   if (e.shot) card?.purse(e.purse.riel, false);
-  e.hud.toast(h.which === 'all' ? t('gardenShopEarnedAll', { riel: riel(h.total) }) : t('gardenShopEarned', { n: num(h.n), item: t(KINDS[h.kind].fruit.item), riel: riel(h.total) }));
+  e.hud.toast(h.which === 'all' ? t('gardenShopEarnedAll', { riel: riel(h.total) }) : t('gardenShopEarned', { what: harvestWords(h.kind, h.n), riel: riel(h.total) }));
   card?.say('gardenShopSoldSay');
   progress.set('nursery.sold', progress.get('nursery.sold', 0) + h.n);
   progress.set('nursery.earned', progress.get('nursery.earned', 0) + h.total);
@@ -487,12 +491,44 @@ function lens(f: MapFrame): void {
 }
 
 /** The prompt at her table: "E  Buy seeds and seedlings", or that the nursery is closed. */
-function promptAt(here: boolean): string {
-  if (said.open !== here || !said.text) {
-    said.open = here;
-    said.text = here ? `E  ${t('gardenShopPrompt')}` : t('gardenShopClosed');
+type Said = 'buy' | 'coming' | 'closed';
+function promptAt(what: Said): string {
+  if (said.what !== what || !said.text) {
+    said.what = what;
+    said.text = what === 'buy' ? `E  ${t('gardenShopPrompt')}` : t(what === 'coming' ? 'gardenShopComing' : 'gardenShopClosed');
   }
   return said.text;
+}
+
+/** She is at her table to serve him (or the people part is left out: the stall sells without her). */
+const sellerThere = (): boolean => !NURSERY_SELLER.ready || NURSERY_SELLER.atTable;
+
+/**
+ * What the stall says to him where he stands: at her table, open and she there, "E  Buy…"; anywhere before the
+ * stall, open but she not at her table yet (walking in, or watering: she hurries back), that she is coming; out of
+ * hours, that it is closed; else nothing.
+ */
+function stallSays(x: number, y: number, z: number, floor: number): Said | null {
+  if (Math.abs(y - floor) > 2.5) return null;
+  const front = atNurseryFront(x, z);
+  const table = atTable(x, y, z, floor);
+  if (!front && !table) return null;
+  if (!nurseryOpen(clockNow())) return 'closed';
+  if (!sellerThere()) return 'coming';
+  return table ? 'buy' : null;
+}
+
+/**
+ * The nursery's name on the big map (ui/_minimapSpots.ts `nursery`) only while its badge is pointed at, picked or
+ * the target: among the village's, the market's and his home's names it would cover theirs (about a pixel a metre
+ * there). Its picture always shows.
+ */
+function quietBigMapName(): void {
+  if (typeof document === 'undefined' || document.getElementById('gs-bigmap-style')) return;
+  const st = document.createElement('style');
+  st.id = 'gs-bigmap-style';
+  st.textContent = `.mm-spot[data-id='nursery']:not(:hover, :focus-visible, .is-target) .mm-place-label { display: none; }`;
+  document.head.append(st);
 }
 
 const clockNow = (): number => lastFrame?.clock ?? TIME.moment(TIME.days()).clock;
@@ -502,6 +538,7 @@ registerAddon({
   order: 30,
   init(e) {
     env = e;
+    quietBigMapName();
     // (checks: what the nursery's flow did, read by a test in the page)
     if (e.shot || import.meta.env.DEV)
       Object.assign(window, {
@@ -548,16 +585,18 @@ registerAddon({
   offer(ctx, mode) {
     if (mode !== 'walk' || !env || env.busy() || visit) return null;
     const p = ctx.body.pos;
-    if (!atTable(p.x, p.y, p.z, ctx.world.field.heightAt(BUY_X, BUY_Z))) return null;
-    return promptAt(nurseryOpen(clockNow()));
+    const w = stallSays(p.x, p.y, p.z, ctx.world.field.heightAt(BUY_X, BUY_Z));
+    return w ? promptAt(w) : null;
   },
   use(ctx, mode) {
     if (mode !== 'walk') return;
-    if (!nurseryOpen(clockNow())) {
-      ctx.hud.toast(t('gardenShopClosed'));
+    const p = ctx.body.pos;
+    const w = stallSays(p.x, p.y, p.z, ctx.world.field.heightAt(BUY_X, BUY_Z));
+    if (w === 'closed' || w === 'coming') {
+      ctx.hud.toast(t(w === 'closed' ? 'gardenShopClosed' : 'gardenShopComing'));
       return;
     }
-    open(ctx, 'buy', true);
+    if (w === 'buy') open(ctx, 'buy', true);
   },
   hold(ctx, dt) {
     const { body, cam } = ctx;
@@ -573,6 +612,9 @@ registerAddon({
   },
   after(ctx, mode, dt) {
     lastCtx = ctx;
+    // (someone at her stall in her hours: she comes back to her table and stays there while the card is open)
+    const p = ctx.body.pos;
+    NURSERY_SELLER.wanted = mode === 'walk' && (visit !== null || (atNurseryFront(p.x, p.z) && nurseryOpen(clockNow())));
     if (!visit && before && mode === 'walk') frameCam(ctx, dt);
   },
   frame(f) {
@@ -587,7 +629,10 @@ registerAddon({
     } else count = null;
   },
   setMode(next) {
-    if (next !== 'walk') closeVisit(true);
+    if (next !== 'walk') {
+      closeVisit(true);
+      NURSERY_SELLER.wanted = false;
+    }
     if (next === 'overview') before = null;
   },
   fromUrl(q, ctx) {
@@ -602,7 +647,7 @@ registerAddon({
     const qc = Number(q.get('clock'));
     const clock = q.has('clock') && Number.isFinite(qc) ? ((qc % 1) + 1) % 1 : clockNow();
     if (!nurseryOpen(clock)) {
-      ctx.hud.prompt(promptAt(false));
+      ctx.hud.prompt(promptAt('closed'));
       console.info(`[map] gardenShop: the nursery is closed at clock ${clock.toFixed(2)}`);
       return;
     }

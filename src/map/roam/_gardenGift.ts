@@ -67,6 +67,13 @@ const GONE = 0.85;
 const END = 1.9;
 /** His chest over his feet (m, at his roaming size): the camera's look point while he takes it. */
 const CHEST = 1.7 * 0.95 * 0.86;
+/**
+ * The camera while he takes it: low, out over the head of the stair (the gap in the railing) and a little to the side,
+ * under the eaves' height so the roof's overhang never hides him, looking in at him and the basket by the door; eased
+ * there, and back to the player's pitch and distance after. `yaw` is the follow camera's (it stands opposite it): the
+ * house faces −z, so local (0.5, 1) out from him is the map's (−0.5, −1).
+ */
+const TAKE_CAM = { yaw: Math.atan2(0.5, 1), pitch: 0.05, distance: 3.9, rate: 5, back: 2.4 };
 
 let env: AddonEnv | null = null;
 let basket: Group | null = null;
@@ -75,6 +82,8 @@ let floorY = 0;
 let curMode: RoamMode = 'overview';
 /** Taking it: since when (s), the way he turns, gone yet. */
 let take: { t: number; from: number; by: number; gone: boolean } | null = null;
+/** The player's camera before the take (to go back to). */
+let camBefore: { pitch: number; distance: number } | null = null;
 /** The frame's clock (s). */
 let clock = 0;
 let hinted = false;
@@ -253,13 +262,21 @@ registerAddon({
   },
   hold(ctx, dt) {
     const { body } = ctx;
-    // (the camera keeps looking at him, as the walker's would: his chest)
-    ctx.cam.focus.set(body.pos.x, body.pos.y + CHEST * body.scale, body.pos.z);
+    // (the camera looks at him crouched over it: lower than his chest, so the basket at his feet is in the picture)
+    ctx.cam.focus.set(body.pos.x, body.pos.y + CHEST * 0.62 * body.scale, body.pos.z);
     body.vel.set(0, 0, 0);
     body.grounded = true;
     body.explorer.setMotion(0, true, 0);
     const k = take!;
     k.t += dt;
+    // (the camera comes round low to the side: see TAKE_CAM)
+    const cam = ctx.cam;
+    camBefore ??= { pitch: cam.pitch, distance: cam.distance };
+    const e = env?.shot ? 1 : 1 - Math.exp(-TAKE_CAM.rate * dt);
+    cam.yaw += angleDiff(TAKE_CAM.yaw, cam.yaw) * e;
+    cam.behindYaw = TAKE_CAM.yaw;
+    cam.pitch += (TAKE_CAM.pitch - cam.pitch) * e;
+    cam.distance += (TAKE_CAM.distance - cam.distance) * e;
     const u = Math.min(1, k.t / 0.45);
     body.yaw = k.from + k.by * u * u * (3 - 2 * u);
     if (!k.gone && k.t >= GONE) {
@@ -278,7 +295,15 @@ registerAddon({
     clock = f.t;
     show();
   },
-  after(ctx, mode) {
+  after(ctx, mode, dt) {
+    // (the camera back to the player's after the take)
+    if (!take && camBefore && mode === 'walk') {
+      const cam = ctx.cam;
+      const e = 1 - Math.exp(-TAKE_CAM.back * dt);
+      cam.pitch += (camBefore.pitch - cam.pitch) * e;
+      cam.distance += (camBefore.distance - cam.distance) * e;
+      if (Math.abs(camBefore.pitch - cam.pitch) < 0.005 && Math.abs(camBefore.distance - cam.distance) < 0.05) camBefore = null;
+    }
     // The hint: the first time this visit he comes home with the gift still there.
     if (hinted || mode !== 'walk' || !granGone() || GARDEN.gift || !env || env.shot) return;
     const p = ctx.body.pos;
@@ -293,6 +318,7 @@ registerAddon({
   },
   setMode(next) {
     curMode = next;
+    if (next !== 'walk') camBefore = null;
     if (next !== 'walk' && take) {
       env?.explorer.rig.clearSlot('gardenGift');
       take = null;

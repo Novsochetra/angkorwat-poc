@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { NURSERY_AISLES, NURSERY_AWAY, NURSERY_BEDS, NURSERY_CAN, NURSERY_SHOP, NURSERY_STOOL, nurseryOpen, nurseryToWorld, nurseryYaw } from '../hamlet/_nurseryPlan';
+import { NURSERY_AISLES, NURSERY_AWAY, NURSERY_BEDS, NURSERY_CAN, NURSERY_SELLER, NURSERY_SHOP, NURSERY_STOOL, nurseryOpen, nurseryToWorld, nurseryYaw } from '../hamlet/_nurseryPlan';
 import { BROWSE, SALE } from '../shop';
 import type { MapFrame } from '../types';
 import { Actor, wrap } from './_actor';
@@ -43,6 +43,8 @@ const NEAR = 60;
 const HIDE = 260;
 /** Her pace: walking (m/s), along an aisle while she waters, how long she bends to the can. */
 const WALK = 0.8;
+/** Hurrying back to her table when someone waits at it (m/s). */
+const HURRY = 1.25;
 const POUR_PACE = 0.28;
 const PICK = 0.7;
 /** Seconds between rounds of watering (from, plus up to). */
@@ -94,6 +96,10 @@ export class NurserySeller implements PeopleScene {
   private way: { x: number; z: number; pour: boolean }[] = [];
   private leg = 0;
   private holding = false;
+  /** This step's length (s). */
+  private dt = 0;
+  /** Called back to her table in the middle of a round (someone waits there). */
+  private back = false;
   private bend = 0;
   private round = 0;
   private nextRound = 0;
@@ -126,6 +132,7 @@ export class NurserySeller implements PeopleScene {
     env.things.paint(this.stream + 2, 0xe8f2f4);
     this.stool = nurseryToWorld(NURSERY_STOOL.x, NURSERY_STOOL.z);
     this.canAt = nurseryToWorld(NURSERY_CAN.x, NURSERY_CAN.z);
+    NURSERY_SELLER.ready = true;
     const w = env.params.get('nursery');
     this.shotWater = w?.startsWith('water') ? Math.max(0, Math.min(1, Number(w.split(':')[1] ?? 0.3) || 0)) : -1;
   }
@@ -147,7 +154,7 @@ export class NurserySeller implements PeopleScene {
 
   /** He is at her table (the buy card open), or she has just served him. */
   private serving(now: number): boolean {
-    return BROWSE.shop === NURSERY_SHOP || (SALE.shop === NURSERY_SHOP && now - this.saleSeen < 3);
+    return NURSERY_SELLER.wanted || BROWSE.shop === NURSERY_SHOP || (SALE.shop === NURSERY_SHOP && now - this.saleSeen < 3);
   }
   private saleN = 0;
   private saleSeen = -1e9;
@@ -177,9 +184,11 @@ export class NurserySeller implements PeopleScene {
       { x: this.stool[0], z: this.stool[1], pour: false },
     ];
     this.leg = 0;
+    this.back = false;
   }
 
   private hideAll(): void {
+    NURSERY_SELLER.here = NURSERY_SELLER.atTable = false;
     if (this.a.shown) this.a.hide();
     this.env.things.hide(this.stream, 3);
   }
@@ -199,6 +208,7 @@ export class NurserySeller implements PeopleScene {
     }
     if (step === 0 && a.shown) return;
     dt = step;
+    this.dt = dt;
     const open = nurseryOpen(f.clock);
     // ── First out: on her stool (or watering, a check's), or away ──
     if (!this.started) {
@@ -241,7 +251,7 @@ export class NurserySeller implements PeopleScene {
         a.avoid(this.env.traffic, this.name);
         const tx = this.job === 'arrive' && this.leg < 0 ? this.stool[0] : NURSERY_AWAY[this.leg][0];
         const tz = this.job === 'arrive' && this.leg < 0 ? this.stool[1] : NURSERY_AWAY[this.leg][1];
-        a.goTo(tx, tz, WALK);
+        a.goTo(tx, tz, this.job === 'arrive' && NURSERY_SELLER.wanted ? HURRY : WALK);
         a.face(null);
         if (a.dist(tx, tz) < 0.4) {
           if (this.job === 'arrive') {
@@ -264,6 +274,8 @@ export class NurserySeller implements PeopleScene {
     }
     if (this.job !== 'away' && a.shown) a.step(dt, now);
     this.drawCan(now);
+    NURSERY_SELLER.here = a.shown && open;
+    NURSERY_SELLER.atTable = a.shown && open && this.job === 'sit' && a.dist(this.stool[0], this.stool[1]) < 0.05;
   }
 
   /** On her stool behind the table: looking out at the trail, at him when he is near; now and then a call; then the next round of watering. */
@@ -271,10 +283,18 @@ export class NurserySeller implements PeopleScene {
     const a = this.a;
     const [sx, sz] = this.stool;
     a.avoid(null);
-    if (a.dist(sx, sz) > 0.3) {
+    const d = a.dist(sx, sz);
+    if (d > 0.7) {
       a.pose(POSE.stand, now);
       a.goTo(sx, sz, WALK);
       a.face(nurseryYaw(NURSERY_STOOL.face));
+      return;
+    }
+    // (the last steps onto her stool: a shuffle, turning to the trail — a walk's own slowing stalls short of it)
+    if (d > 0.04) {
+      a.pose(POSE.stand, now);
+      a.shuffle(sx, sz, Math.max(0.02, this.dt * 0.9));
+      a.stop(nurseryYaw(NURSERY_STOOL.face));
       return;
     }
     a.stop(nurseryYaw(NURSERY_STOOL.face));
@@ -317,15 +337,19 @@ export class NurserySeller implements PeopleScene {
     a.avoid(null);
     a.carry(0, now);
     a.lookAt(null);
-    // (he came to her table: she sets the can down at her feet and turns to him; then goes on)
-    if (this.serving(now) && !this.env.shot) {
-      a.stop();
-      a.pose(POSE.stand, now);
-      return;
+    // (someone waits at her table: she leaves off — the can back by the stool if she has it — and hurries back to it)
+    if (this.serving(now) && !this.env.shot && !this.back) {
+      this.back = true;
+      const stool = { x: this.stool[0], z: this.stool[1], pour: false };
+      if (this.holding) this.way = [{ x: this.canAt[0], z: this.canAt[1], pour: false }, stool];
+      else this.way = [stool];
+      this.leg = 0;
+      this.bend = 0;
     }
     const p = this.way[this.leg];
     if (!p) {
       this.job = 'sit';
+      this.back = false;
       this.round++;
       this.nextRound = now + ROUND_EVERY[0] + ((now * 3.71) % 1) * ROUND_EVERY[1];
       return;
@@ -336,16 +360,16 @@ export class NurserySeller implements PeopleScene {
       return;
     }
     const pour = p.pour && this.holding;
-    a.goTo(p.x, p.z, pour ? POUR_PACE : WALK);
+    a.goTo(p.x, p.z, pour ? POUR_PACE : this.back ? HURRY : WALK);
     a.face(null);
     if (a.dist(p.x, p.z) > 0.2) return;
-    // At the can (going, or coming back): she bends for it a moment, and picks it up or puts it down.
-    if (this.leg === 0 || this.leg === this.way.length - 2) {
+    // At the can's place (going, or coming back): she bends a moment, and picks it up or puts it down.
+    if (p.x === this.canAt[0] && p.z === this.canAt[1]) {
       a.stop();
       this.bend += dt;
-      if (this.bend < PICK) return;
+      if (this.bend < (this.back ? PICK * 0.6 : PICK)) return;
       this.bend = 0;
-      this.holding = this.leg === 0;
+      this.holding = !this.holding;
     }
     this.leg++;
   }

@@ -1,7 +1,10 @@
+import { Vector3 } from 'three';
 import { t } from '../ui/lang';
 import type { AddonEnv, AddonHold } from './_addons';
 import { BODHI, BODHI_PLAN, bodhiCue, bodhiToWorld } from './_bodhiHooks';
 import { GardenHands } from './_gardenProps';
+import { clearView, groundLantern } from './_bodhiSight';
+import { gardenSay } from './_gardenToasts';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
@@ -89,7 +92,22 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, given: () => void, at = 0
   const cz = ctx.cam.camera.position.z - mz;
   const here = at > 0 ? 1 : nx * cx + nz * cz >= 0 ? 1 : -1;
   const side = clear(-here) > clear(here) + 0.15 ? -here : here;
-  const camYaw = Math.atan2(-nx * side, -nz * side);
+  // (the first of a few places round them with nothing in the way, no plant before the lens (_bodhiSight.ts): the
+  // square side first, then a little toward either of them, then the other side)
+  const focusP = new Vector3(mx, my, mz);
+  const camP = new Vector3();
+  const base = Math.atan2(-nx * side, -nz * side);
+  let camYaw = base;
+  const r0 = CAM.dist * (body.scale / 1.4);
+  for (const turn of [0, 0.45, -0.45, Math.PI, Math.PI + 0.45, Math.PI - 0.45]) {
+    const yaw = base + turn;
+    camP.set(mx - Math.sin(yaw) * r0 * Math.cos(CAM.pitch), my + r0 * Math.sin(CAM.pitch), mz - Math.cos(yaw) * r0 * Math.cos(CAM.pitch));
+    const hard = w.hardClearance ?? w.clearance;
+    if (hard && hard(mx, my, mz, camP.x, camP.y, camP.z) < 0.9) continue;
+    if (!clearView(env, focusP, camP)) continue;
+    camYaw = yaw;
+    break;
+  }
   const before = { pitch: ctx.cam.pitch, distance: ctx.cam.distance };
   let time = at;
   let done = false;
@@ -120,6 +138,15 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, given: () => void, at = 0
   }
   body.vel.set(0, 0, 0);
 
+  // After dark his lantern goes down beside him (his hands are for the sampeah and the sapling), lit.
+  const lantern = groundLantern(env);
+  {
+    // (on the ground between them, a little beyond the line from the camera: it lights their faces turned to each
+    // other, and its glass is half hidden behind them)
+    const lx = mx + Math.sin(camYaw) * 0.35;
+    const lz = mz + Math.cos(camYaw) * 0.35;
+    lantern.set(lx, ctx.world.field.heightAt(lx, lz), lz, ctx.night, body.scale);
+  }
   const finish = () => {
     if (holding) hands.clear();
     holding = false;
@@ -177,7 +204,7 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, given: () => void, at = 0
         given();
         holding = true;
         hands.update('plantTree', HELD_AT, 'bodhi');
-        c.hud.toast(t('gardenBodhiGot'));
+        gardenSay(t('gardenBodhiGot'), 'gardenSprout');
       }
       // (the sapling into his bag; then his thanks)
       if (fire('bag')) finish();
@@ -187,6 +214,7 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, given: () => void, at = 0
       }
       if (fire('show')) bodhiCue('show', body.pos);
       if (fire('end')) {
+        lantern.hide();
         bodhiCue('idle');
         done = true;
         cam.pitch = before.pitch;
@@ -207,6 +235,7 @@ export function startTalk(env: AddonEnv, ctx: RoamCtx, given: () => void, at = 0
     },
     stop() {
       finish();
+      lantern.hide();
       if (done) return;
       done = true;
       // (not his yet: the monk goes back to his broom, and offers it again next time)

@@ -114,3 +114,26 @@ export function nurseryOpen(clock: number): boolean {
 
 /** The id the seller and the sale go by (shop.ts `BROWSE`, `SALE`: people/_saleBack.ts). */
 export const NURSERY_SHOP = 'garden-nursery';
+
+/** The stall's front (local): where the explorer counts as at the nursery for its words ("closed", "she's coming"). */
+export const NURSERY_FRONT = { x0: -3.4, x1: 4.6, z0: 2.3, z1: 6.4 } as const;
+
+/** Is the map point (x, z) before the stall (its front strip, out to the trail's far side)? No allocation. */
+export function atNurseryFront(x: number, z: number): boolean {
+  const s = Math.sin(NURSERY.yaw);
+  const c = Math.cos(NURSERY.yaw);
+  const dx = x - NURSERY.x;
+  const dz = z - NURSERY.z;
+  const lx = dx * c - dz * s;
+  const lz = dx * s + dz * c;
+  const F = NURSERY_FRONT;
+  return lx > F.x0 && lx < F.x1 && lz > F.z0 && lz < F.z1;
+}
+
+/**
+ * What the seller (people/_sceneNursery.ts) and the shop (roam/_gardenShop.ts) share: she writes whether she is
+ * there at all (`here`: shown, in her hours) and sitting at her table (`atTable`: he can buy); the shop writes
+ * `wanted` (he stands at the stall's front, in her hours: she leaves off watering, or hurries in, and comes back to
+ * her table). `ready`: the people part built her (without it — `people=0` — the shop sells without her).
+ */
+export const NURSERY_SELLER = { ready: false, here: false, atTable: false, wanted: false };

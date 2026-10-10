@@ -13,7 +13,7 @@ import { GardenRing } from './_gardenRing';
 import { AREA, atHomeHouse, canPlant, fillSpot, highBankAhead, inGardenArea, jarAt, PLANT_AHEAD, plantAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
-import { GardenWork, pickAction, plantAction } from './_gardenWork';
+import { countWords, GardenWork, pickAction, plantAction } from './_gardenWork';
 import type { RoamCtx } from './types';
 
 /**
@@ -289,7 +289,7 @@ function openCard(ctx: RoamCtx, x: number, z: number): void {
         return {
           kind: k,
           name: t(kind.name),
-          count: t(COUNT_WORDS[kind.form], { n: num(GARDEN.seeds(k)) }),
+          count: countWords(COUNT_WORDS[kind.form], GARDEN.seeds(k)),
           note: t(kind.note),
           size: t(isTree(kind) ? 'gardenTree' : 'gardenCrop'),
           off: r ? reasonWords(r, k) : null,

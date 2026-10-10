@@ -5,12 +5,14 @@ import { buildVoxelMesh, disposeVoxelMesh } from '../../voxel/VoxelMesh';
 import { hash3 } from '../../voxel/random';
 import { GROWN, KINDS, stageOf, type Stage } from '../garden/kinds';
 import { GARDEN, type Plant } from '../garden/state';
+import { ON_NOW, registerEvent } from '../calendar';
 import { progress } from '../progress';
 import { t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { BODHI, BODHI_PLAN, BODHI_SEED, BODHI_TREE, bodhiCue, bodhiToWorld } from './_bodhiHooks';
 import { startPlant, type PlantSession } from './_bodhiPlant';
 import { startTalk, TALK, type TalkSession } from './_bodhiTalk';
+import { gardenSay } from './_gardenToasts';
 import type { RoamCtx } from './types';
 
 /**
@@ -90,7 +92,28 @@ function markReady(): void {
   if (BODHI.ready) return;
   BODHI.ready = true;
   progress.set('bodhi.ready', true);
+  // (the news: the monk would like to see him; the calendar's mark on the maps shows where, `bodhi-monk`)
+  if (!GARDEN.bodhiGiven) gardenSay(t('gardenBodhiReady'), 'gardenRipe');
 }
+
+// ── The calendar: where to go (its gold mark on the mini-map and the big map, "Show on map"), until it is planted ──
+/** Where the mark stands: the monk's grass while he waits with the sapling, then the ring of stones (`syncRing`). */
+const MONK_AT = bodhiToWorld(BODHI_PLAN.sweep.x, BODHI_PLAN.sweep.z);
+const MARK = { x: MONK_AT.x, z: MONK_AT.z };
+registerEvent({
+  id: 'bodhi',
+  kind: 'daily',
+  name: 'gardenBodhiCal',
+  note: 'gardenBodhiCalNote',
+  place: 'whenAtPagodaOnly',
+  begins: 'gardenBodhiCal',
+  where: MARK,
+  // (not by the clock: by what he has done; looked at a little way only)
+  on: () => BODHI.ready && !tree(),
+  step: 0.25,
+  horizon: 0.5,
+  near: 40,
+});
 
 /** Is it so already (a garden from before this add-on, or a check's)? */
 function readyFromGarden(): boolean {
@@ -137,6 +160,14 @@ function syncRing(): void {
   const p = tree();
   const want = p ? (stageNow(p) >= GROWN ? 'grown' : 'small') : GARDEN.bodhiGiven ? 'small' : null;
   ring.visible = want !== null;
+  // (the calendar's mark: at the ring once the sapling is his)
+  const at = GARDEN.bodhiGiven ? BODHI_TREE : MONK_AT;
+  if (MARK.x !== at.x || MARK.z !== at.z) {
+    MARK.x = at.x;
+    MARK.z = at.z;
+    // (the maps place their event badges again)
+    ON_NOW.n++;
+  }
   if (want && want !== ringSize) buildRing(want);
 }
 
@@ -193,7 +224,7 @@ function news(ctx: RoamCtx): void {
   const seen = progress.get('bodhi.seen', 0, isNum);
   if (s <= seen) return;
   progress.set('bodhi.seen', s);
-  ctx.hud.toast(t(s === GROWN ? 'gardenBodhiGrown' : 'gardenBodhiGrew'));
+  gardenSay(t(s === GROWN ? 'gardenBodhiGrown' : 'gardenBodhiGrew'), 'gardenSprout');
 }
 
 registerAddon({

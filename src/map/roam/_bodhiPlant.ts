@@ -15,6 +15,8 @@ import { t } from '../ui/lang';
 import type { AddonEnv, AddonHold } from './_addons';
 import { BODHI, BODHI_FLICKS, BODHI_PLAN, BODHI_TREE, bodhiCue, bodhiToWorld, bodhiYaw } from './_bodhiHooks';
 import { GardenHands } from './_gardenProps';
+import { clearView, groundLantern } from './_bodhiSight';
+import { gardenSay } from './_gardenToasts';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
@@ -69,11 +71,11 @@ const BOW_HEAD = 0.55;
 /** The stick past this, Space or E: leave off. */
 const STICK = 0.35;
 /**
- * The camera: on his right (local x, z from the tree: he kneels at `BODHI_PLAN.kneel` facing it, the monk across
+ * The camera: on his right (`places`, the first with a clear view; local x, z from the tree: he kneels at `BODHI_PLAN.kneel` facing it, the monk across
  * the sapling from him), looking across him at a point between the sapling and him, low; eased there over `for` s, then the player's
  * (a drag); back to where it was after.
  */
-const FRAME = { at: { x: 5.6, z: 0.75 }, look: { x: -0.6, z: 0.85 }, y: 1.2, pitch: 0.15, rate: 1.8, back: 2.2, for: 3.5 };
+const FRAME = { places: [[5.6, 0.75], [5.2, 2.6], [5.3, -1.4], [3.9, 4.4], [4.2, -3.2]] as const, look: { x: -0.6, z: 0.85 }, y: 1.2, pitch: 0.15, rate: 1.8, back: 2.2, for: 3.5 };
 
 export interface PlantSession {
   readonly kind: 'plant';
@@ -144,10 +146,25 @@ export function startPlant(env: AddonEnv, ctx: RoamCtx, plant: () => boolean, at
   /** A check's start: the camera put there at once. */
   let snap = false;
   const before = { pitch: ctx.cam.pitch, distance: ctx.cam.distance, restored: false };
-  const camAt = bodhiToWorld(FRAME.at.x, FRAME.at.z, { x: 0, z: 0 });
   const lookAt = bodhiToWorld(FRAME.look.x, FRAME.look.z, { x: 0, z: 0 });
+  // (the first of its places with nothing in the way: no plant, tree or wall before the lens; _bodhiSight.ts)
+  const camAt = { x: 0, z: 0 };
+  const sightFrom = new Vector3(lookAt.x, ground + FRAME.y * (body.scale / 1.4), lookAt.z);
+  const sightTo = new Vector3();
+  for (const [ax, az] of FRAME.places) {
+    bodhiToWorld(ax, az, camAt);
+    const d = Math.hypot(lookAt.x - camAt.x, lookAt.z - camAt.z);
+    sightTo.set(camAt.x, sightFrom.y + Math.tan(FRAME.pitch) * d, camAt.z);
+    if (clearView(env, sightFrom, sightTo)) break;
+  }
   const camYaw = Math.atan2(lookAt.x - camAt.x, lookAt.z - camAt.z);
   const camDist = Math.hypot(lookAt.x - camAt.x, lookAt.z - camAt.z);
+  /**
+   * His lantern set down after dark (his hands are for the sampeah): before him at his left, toward the sapling (the
+   * camera is on his right): it lights his face, the sapling and the monk across it, its glass half hidden by him.
+   */
+  const lantern = groundLantern(env);
+  const lanternAt = bodhiToWorld(BODHI_PLAN.kneel.x - 0.5, BODHI_PLAN.kneel.z - 0.6, { x: 0, z: 0 });
 
   const go = (s: Step) => {
     step = s;
@@ -394,7 +411,7 @@ export function startPlant(env: AddonEnv, ctx: RoamCtx, plant: () => boolean, at
     if (step !== 'go' && step !== 'back') ex.setMotion(0, true, 0);
   };
 
-  const finish = (c: RoamCtx | null) => {
+  const finish = () => {
     if (done) return;
     done = true;
     hands.clear();
@@ -404,11 +421,13 @@ export function startPlant(env: AddonEnv, ctx: RoamCtx, plant: () => boolean, at
     if (hatTaken) setHat(true);
     hatTaken = false;
     if (blessing && monk.cue !== 'done' && monk.cue !== 'idle') bodhiCue('done', body.pos);
-    if (planted && c) c.hud.toast(t('gardenBodhiDone'));
+    lantern.hide();
+    if (planted) gardenSay(t('gardenBodhiDone'), 'gardenSprout');
   };
 
   // The monk comes over as he begins.
   if (blessing) bodhiCue('come', { x: stand.x, y: ground, z: stand.z });
+  lantern.set(lanternAt.x, ctx.world.field.heightAt(lanternAt.x, lanternAt.z), lanternAt.z, ctx.night, body.scale);
   body.vel.set(0, 0, 0);
   if (at > 0) {
     // (a check: his place reached, then on to `at` s in silence)
@@ -457,7 +476,7 @@ export function startPlant(env: AddonEnv, ctx: RoamCtx, plant: () => boolean, at
     },
     hold(c, dt) {
       advance(c, dt);
-      if (step === 'end') finish(c);
+      if (step === 'end') finish();
       const { cam } = c;
       body.vel.set(0, 0, 0);
       body.grounded = true;
@@ -485,7 +504,7 @@ export function startPlant(env: AddonEnv, ctx: RoamCtx, plant: () => boolean, at
       if (done) return;
       // (the sapling in the ground if the hole was dug: it stays planted)
       if (!planted && step === 'plant' && gb.t >= 3.5) planted = plant();
-      finish(null);
+      finish();
     },
   };
 }
