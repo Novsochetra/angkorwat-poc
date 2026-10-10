@@ -217,7 +217,7 @@ function stepPlant(p: Plant, d: number, season: number, rain: number, mayDie: bo
     // (a second warning as it wilts badly, before it is too late)
     if (stage0 < GROWN && was < k.dieAfter * 0.5 && p.dry >= k.dieAfter * 0.5) emit({ type: 'wilting', plant: p });
     // (while nothing may die: kept well short of it, so he has a few minutes of play to come and water it)
-    if (!mayDie) p.dry = Math.min(p.dry, Math.max(0, k.dieAfter - SPARE));
+    if (!mayDie) p.dry = Math.min(p.dry, Math.max(was, k.dieAfter - SPARE));
     if (stage0 < GROWN && p.dry > k.dieAfter) {
       p.dead = true;
       emit({ type: 'died', plant: p });
@@ -491,26 +491,33 @@ export const GARDEN = {
     if (g === null) return;
     state.plants = [];
     if (g === '0') return;
-    const want: { kind: PlantKindId; stage: Stage; mods: string[] }[] = [];
+    const want: { kind: PlantKindId; stage: Stage; mods: string[]; at?: readonly [number, number]; yaw?: number; seed?: number }[] = [];
     if (g === 'lineup') {
       for (const kind of GARDEN_KINDS) for (let s = 0; s <= 4; s++) want.push({ kind, stage: s as Stage, mods: s === 4 ? ['ripe'] : [] });
     } else if (g === 'demo') {
       for (const [kind, s, m] of DEMO) want.push({ kind, stage: s, mods: m ? [m] : [] });
     } else
       for (const part of g.split(',')) {
-        const [kind, s, ...mods] = part.split(':');
+        const [spec, where] = part.split('@');
+        const [kind, s, ...mods] = spec.split(':');
         if (!isKind(kind)) continue;
-        want.push({ kind: kind as PlantKindId, stage: Math.max(0, Math.min(4, Math.round(+(s ?? 4)) || 0)) as Stage, mods });
+        const v = where?.split('/').map(Number) ?? [];
+        const at = v.length >= 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]) ? ([v[0], v[1]] as const) : undefined;
+        const yaw = Number.isFinite(v[2]) ? v[2] : undefined;
+        const seed = Number.isFinite(v[3]) ? Math.min(1, Math.max(0, v[3])) : undefined;
+        want.push({ kind, stage: Math.max(0, Math.min(4, Math.round(+(s ?? 4)) || 0)) as Stage, mods, at, yaw, seed });
       }
-    const crops = want.filter((w) => !isTree(KINDS[w.kind]));
-    const trees = want.filter((w) => isTree(KINDS[w.kind]));
+    // (those with a place of their own stand there; the rest in the lineup's rows)
+    const placed = want.filter((w) => w.at);
+    const crops = want.filter((w) => !w.at && !isTree(KINDS[w.kind]));
+    const trees = want.filter((w) => !w.at && isTree(KINDS[w.kind]));
     const cs = spots(crops.length, false);
     const ts = spots(trees.length, true);
     const put = (w: (typeof want)[number], at: readonly [number, number] | undefined, i: number) => {
       if (!at) return;
       const k = KINDS[w.kind];
       const age = w.stage === 4 ? k.growDays : w.stage === 0 ? 0 : k.growDays * (k.stageAt[w.stage - 1] + (w.stage < 4 ? ((w.stage === 3 ? 1 : k.stageAt[w.stage]) - k.stageAt[w.stage - 1]) * 0.5 : 0));
-      const p: Plant = { id: state.nextId++, kind: w.kind, x: at[0], z: at[1], yaw: (i * 2.39996) % (Math.PI * 2), seed: ((i * 0.618034) % 1 + 1) % 1, at: 'home', age, wet: 0.8, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: 0 };
+      const p: Plant = { id: state.nextId++, kind: w.kind, x: at[0], z: at[1], yaw: w.yaw ?? (i * 2.39996) % (Math.PI * 2), seed: w.seed ?? ((i * 0.618034) % 1 + 1) % 1, at: 'home', age, wet: 0.8, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: 0 };
       for (const m of w.mods) {
         if (m === 'ripe') {
           if (k.fruit.pick === 'ground') p.fallen = k.fruit.count[1];
@@ -527,6 +534,7 @@ export const GARDEN = {
     };
     crops.forEach((w, i) => put(w, cs[i], i));
     trees.forEach((w, i) => put(w, ts[i], i + crops.length));
+    placed.forEach((w, i) => put(w, w.at, i + crops.length + trees.length));
   },
 
   /** For bug reports: the garden in a URL value (`garden=<kind>:<stage>[:mod],…`, near plants only). */
@@ -536,8 +544,11 @@ export const GARDEN = {
     return ps
       .map((p) => {
         const l = lookOf(p);
-        const mod = l.dead ? ':dead' : l.droop === 2 ? ':wilt' : l.droop === 1 ? ':dry' : l.fruit === 2 || l.fallen ? ':ripe' : l.fruit === 1 ? ':green' : '';
-        return `${p.kind}:${l.stage}${mod}`;
+        let mod = l.dead ? ':dead' : l.droop === 2 ? ':wilt' : l.droop === 1 ? ':dry' : '';
+        if (!l.dead) mod += l.fruit === 2 || l.fallen ? ':ripe' : l.fruit === 1 ? ':green' : '';
+        if (l.cut) mod += ':cut';
+        // (where it stands, its turn and its variety: `@x/z/yaw/seed`, so the shot draws the same plant there)
+        return `${p.kind}:${l.stage}${mod}@${p.x.toFixed(1)}/${p.z.toFixed(1)}/${p.yaw.toFixed(2)}/${p.seed.toFixed(3)}`;
       })
       .join(',');
   },

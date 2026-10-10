@@ -581,6 +581,9 @@ registerAddon({
     const seeds = GARDEN.seedKinds();
     if (seeds.length) out.seeds = seeds.map((k) => `${k}:${GARDEN.seeds(k)}`).join(',');
     if (GARDEN.can) out.can = String(GARDEN.can);
+    out.gardenclock = GARDEN.clock.toFixed(2);
+    const basket = GARDEN.basketKinds();
+    if (basket.length) out.basket = basket.map((k) => `${k}:${GARDEN.basket(k)}`).join(',');
     const w = GardenWork.now;
     if (w) {
       out.gardenact = `${w.action}:${w.t}`;
