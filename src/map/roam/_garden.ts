@@ -739,7 +739,7 @@ registerAddon({
     if (!(env?.shot ?? true) && d > 0) GARDEN.advance(Math.min(d * speed, 2), f.season, f.weather.rain, m !== 'overview');
     GARDEN.tick(f.dt);
     view.sync(GARDEN.plants);
-    view.frame(f.camera, f.t, f.drift);
+    view.frame(f.camera, f.t, f.drift, f.night);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
     // (what the garden says waits while something else holds him: asleep in his house)
     GardenToasts.frame(f.dt > 0 ? f.dt : 0, m !== 'overview' && addonBusy() && !GardenWork.active);

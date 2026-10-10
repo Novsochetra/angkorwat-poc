@@ -57,7 +57,7 @@ export interface GardenView {
   /** The plants now (each frame; cheap when nothing changed). */
   sync(plants: readonly Plant[]): void;
   /** Every frame: what is far is hidden, the leaves sway (the camera, seconds; the frame's `drift`: still under "reduce motion"). */
-  frame(camera: Camera, t: number, drift?: number): void;
+  frame(camera: Camera, t: number, drift?: number, night?: number): void;
   dispose(): void;
 }
 
@@ -701,7 +701,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         }
       }
     },
-    frame(camera, t, drift) {
+    frame(camera, t, drift, night = 0) {
       const t0 = performance.now();
       const real = Number.isNaN(lastT) ? 0 : t - lastT;
       const dt = shot ? 0 : Math.min(0.1, Math.max(0, real)) * slow;
@@ -778,7 +778,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
           }
         }
       }
-      const nb = thirst.frame(dt, camera, bursts);
+      const nb = thirst.frame(dt, camera, bursts, night);
       for (let k = 0; k < nb; k++) fx.pop(bursts[k * 3], bursts[k * 3 + 1], bursts[k * 3 + 2]);
       fx.frame(dt, calm);
       flushAll();
