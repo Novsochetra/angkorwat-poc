@@ -32,6 +32,8 @@ export interface TimeHooks {
    * clock does not run (`cycling()` false) or in a headless shot.
    */
   skipTo(d: number): boolean;
+  /** Days the clock has been moved on by `skipTo` since the page opened (it only grows): what a jump is meant to bring (his garden grows by it). */
+  skipped(): number;
   /** Parts built only when wanted (lazy.ts: the festival, the rain…) are still being built. */
   building(): boolean;
 }
@@ -42,5 +44,6 @@ export const TIME: TimeHooks = {
   dayLength: 360,
   moment: (d) => ({ clock: ((d % 1) + 1) % 1, day: Math.floor(d), season: 0 }),
   skipTo: () => false,
+  skipped: () => 0,
   building: () => false,
 };

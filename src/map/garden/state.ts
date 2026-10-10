@@ -60,6 +60,8 @@ export interface Plant {
   fallen: number;
   /** Harvests taken. */
   picked: number;
+  /** Game days its fruit has hung (or lain) ripe out of its months: after `STALE` it drops and rots. */
+  out?: number;
   /** When it was planted (the garden's clock, game days). */
   readonly planted: number;
 }
@@ -85,7 +87,7 @@ export interface PlantLook {
 export type SoilLook = 0 | 1 | 2;
 
 export type GardenEvent =
-  | { type: 'planted' | 'watered' | 'stage' | 'ripe' | 'fell' | 'thirsty' | 'died' | 'cleared' | 'grown'; plant: Plant }
+  | { type: 'planted' | 'watered' | 'stage' | 'ripe' | 'fell' | 'thirsty' | 'wilting' | 'died' | 'cleared' | 'grown'; plant: Plant }
   | { type: 'picked'; plant: Plant; n: number }
   | { type: 'seeds' | 'basket' | 'can' };
 
@@ -111,13 +113,51 @@ function fresh(): Saved {
   return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, gift: false, bodhiGiven: false };
 }
 
+/** A kind of the garden's (not `constructor`, `toString`…: an own key of `KINDS`). */
+export const isKind = (k: unknown): k is PlantKindId => typeof k === 'string' && Object.hasOwn(KINDS, k);
+
+const num = (v: unknown, fallback: number, lo = -Infinity, hi = Infinity): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback);
+
+/** Counts by kind, cleaned: own kinds only, whole numbers ≥ 0. */
+function counts(v: unknown): Partial<Record<PlantKindId, number>> {
+  const out: Partial<Record<PlantKindId, number>> = {};
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return out;
+  for (const [k, n] of Object.entries(v)) {
+    const c = Math.floor(num(n, 0, 0, 9999));
+    if (isKind(k) && c > 0) out[k] = c;
+  }
+  return out;
+}
+
 function load(): Saved {
   const s = progress.get(KEY, null, (v): v is null => isSaved(v)) as Saved | null;
   if (!s) return fresh();
-  // (what an older or broken record lacks)
-  const f = fresh();
-  const plants = s.plants.filter((p) => p && typeof p.x === 'number' && typeof p.z === 'number' && KINDS[p.kind]);
-  return { ...f, ...s, plants };
+  // (an older or broken record: every value checked, what is wrong dropped or put right)
+  const plants: Plant[] = [];
+  const ids = new Set<number>();
+  for (const p of s.plants as unknown[]) {
+    if (typeof p !== 'object' || p === null) continue;
+    const q = p as Plant;
+    if (!isKind(q.kind) || !Number.isFinite(q.x) || !Number.isFinite(q.z) || !Number.isInteger(q.id) || ids.has(q.id)) continue;
+    ids.add(q.id);
+    plants.push({
+      id: q.id, kind: q.kind, x: q.x, z: q.z, yaw: num(q.yaw, 0), seed: num(q.seed, 0.5, 0, 1), at: q.at === 'pagoda' ? 'pagoda' : 'home',
+      age: num(q.age, 0, 0), wet: num(q.wet, 0, 0, 1), dry: num(q.dry, 0, 0), dead: q.dead === true, ripe: num(q.ripe, 0, 0, 1),
+      fallen: Math.floor(num(q.fallen, 0, 0, 9)), picked: Math.floor(num(q.picked, 0, 0)), planted: num(q.planted, 0), out: num(q.out, 0, 0),
+    });
+  }
+  const top = plants.reduce((m, p) => Math.max(m, p.id), 0);
+  return {
+    v: 1,
+    clock: num(s.clock, 0, 0),
+    nextId: Math.max(Math.floor(num(s.nextId, 1, 1)), top + 1),
+    plants,
+    seeds: counts(s.seeds),
+    basket: counts(s.basket),
+    can: Math.round(num(s.can, 0, 0, CAN_MAX)),
+    gift: s.gift === true,
+    bodhiGiven: s.bodhiGiven === true,
+  };
 }
 
 const state: Saved = load();
@@ -144,6 +184,12 @@ function flush(): void {
 
 /** Small steps for a long jump of the clock (sleep): growth, drying and ripening go in order. */
 const STEP = 0.05;
+/** A jump of the clock this long (game days: sleep, "Wait for it") lets nothing die: a plant left dry wilts and waits for him. */
+const JUMP = 0.25;
+/** After a jump or the map seen from above, a dry young plant has at least this long left (game days: 3 min of play). */
+const SPARE = 0.5;
+/** Game days ripe fruit hangs (or lies) out of its months before it drops and rots. */
+const STALE = 2;
 
 /** A whole number from the plant's variety (the same every time). */
 function countOf(k: PlantKind, p: Plant): number {
@@ -153,7 +199,7 @@ function countOf(k: PlantKind, p: Plant): number {
 }
 
 /** One plant over `d` game days (≤ STEP). */
-function stepPlant(p: Plant, d: number, season: number, rain: number): void {
+function stepPlant(p: Plant, d: number, season: number, rain: number, mayDie: boolean): void {
   if (p.dead) return;
   const k = KINDS[p.kind];
   const stage0 = stageOf(k, p.age);
@@ -166,7 +212,12 @@ function stepPlant(p: Plant, d: number, season: number, rain: number): void {
   else p.wet = Math.max(p.wet, 0.5);
   if (p.wet <= 0) {
     if (wasWet) emit({ type: 'thirsty', plant: p });
+    const was = p.dry;
     p.dry += d;
+    // (a second warning as it wilts badly, before it is too late)
+    if (stage0 < GROWN && was < k.dieAfter * 0.5 && p.dry >= k.dieAfter * 0.5) emit({ type: 'wilting', plant: p });
+    // (while nothing may die: kept well short of it, so he has a few minutes of play to come and water it)
+    if (!mayDie) p.dry = Math.min(p.dry, Math.max(0, k.dieAfter - SPARE));
     if (stage0 < GROWN && p.dry > k.dieAfter) {
       p.dead = true;
       emit({ type: 'died', plant: p });
@@ -182,8 +233,23 @@ function stepPlant(p: Plant, d: number, season: number, rain: number): void {
     if (stage1 === GROWN && k.fruit.harvest === 'once') p.ripe = 1;
   }
   if (stage1 !== GROWN || k.fruit.count[1] <= 0) return;
+  // Out of its months: what was ripening stops (it starts again next season); ripe fruit left on (or under) the
+  // tree drops and rots after a while.
+  if (!inFruitMonths(k, season)) {
+    if (p.ripe < 1) p.ripe = 0;
+    if (p.ripe >= 1 || p.fallen > 0) {
+      p.out = (p.out ?? 0) + d;
+      if (p.out > STALE) {
+        p.ripe = 0;
+        p.fallen = 0;
+        p.out = 0;
+      }
+    }
+    return;
+  }
+  p.out = 0;
   // Ripening (in its months; a ripe one waits to be picked).
-  if (p.ripe < 1 && inFruitMonths(k, season)) {
+  if (p.ripe < 1) {
     const was = p.ripe;
     p.ripe = Math.min(1, p.ripe + d / Math.max(0.01, k.fruit.ripenDays));
     if (p.ripe >= 1 && was < 1) {
@@ -205,7 +271,8 @@ export function lookOf(p: Plant): PlantLook {
   const ground = k.fruit.pick === 'ground';
   let fruit: 0 | 1 | 2 = 0;
   if (stage === GROWN && !p.dead && k.fruit.count[1] > 0) fruit = p.ripe >= 1 && !ground ? 2 : p.ripe >= 0.33 ? 1 : 0;
-  const droop: 0 | 1 | 2 = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 ? 1 : 2;
+  // (a grown plant cannot die: it only droops)
+  const droop: 0 | 1 | 2 = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 || stage === GROWN ? 1 : 2;
   return { kind: p.kind, stage, fruit, fallen: Math.min(3, p.fallen), droop, dead: p.dead, cut: p.picked > 0, seed: p.seed };
 }
 
@@ -219,7 +286,7 @@ export function lookSig(p: Plant): number {
   const ground = k.fruit.pick === 'ground';
   let fruit = 0;
   if (stage === GROWN && !p.dead && k.fruit.count[1] > 0) fruit = p.ripe >= 1 && !ground ? 2 : p.ripe >= 0.33 ? 1 : 0;
-  const droop = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 ? 1 : 2;
+  const droop = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 || stage === GROWN ? 1 : 2;
   return stage + 5 * fruit + 15 * Math.min(3, p.fallen) + 60 * droop + 180 * (p.dead ? 1 : 0) + 360 * (p.picked > 0 ? 1 : 0);
 }
 
@@ -295,14 +362,19 @@ export const GARDEN = {
     listeners.push(fn);
   },
 
-  /** Move the garden on by `d` game days (roam/_garden.ts, every frame; `rain` the weather's 0‥1). */
-  advance(d: number, season: number, rain: number): void {
+  /**
+   * Move the garden on by `d` game days (roam/_garden.ts, every frame; `rain` the weather's 0‥1). `mayDie` false (the
+   * map seen from above, not roaming) and any jump of the clock (sleep) let nothing die: a plant left dry wilts and
+   * waits for him to come and water it.
+   */
+  advance(d: number, season: number, rain: number, mayDie = true): void {
     if (!(d > 0)) return;
     d = Math.min(d, 3);
+    if (d > JUMP) mayDie = false;
     state.clock += d;
     while (d > 1e-9) {
       const s = Math.min(STEP, d);
-      for (const p of state.plants) stepPlant(p, s, season, rain);
+      for (const p of state.plants) stepPlant(p, s, season, rain, mayDie);
       d -= s;
     }
     dirty = true;
@@ -346,10 +418,18 @@ export const GARDEN = {
   pick(p: Plant): number {
     if (!ripeNow(p)) return 0;
     const k = KINDS[p.kind];
-    const n = k.fruit.pick === 'ground' ? p.fallen : countOf(k, p);
+    const ground = k.fruit.pick === 'ground';
+    const n = ground ? p.fallen : countOf(k, p);
+    // (a tree that drops its fruit: a batch that ripened while the last lay there falls now)
+    const waiting = ground && p.ripe >= 1;
     p.fallen = 0;
     p.ripe = 0;
+    p.out = 0;
     p.picked++;
+    if (waiting) {
+      p.fallen = countOf(k, p);
+      emit({ type: 'fell', plant: p });
+    }
     state.basket[p.kind] = (state.basket[p.kind] ?? 0) + n;
     emit({ type: 'picked', plant: p, n });
     emit({ type: 'basket' });
@@ -398,7 +478,7 @@ export const GARDEN = {
    */
   fromUrl(q: URLSearchParams, spots: (n: number, trees: boolean) => readonly (readonly [number, number])[]): void {
     const clock = q.get('gardenclock');
-    if (clock !== null && Number.isFinite(+clock)) state.clock = +clock;
+    if (clock !== null && Number.isFinite(+clock)) state.clock = Math.max(0, +clock);
     const can = q.get('can');
     if (can !== null && Number.isFinite(+can)) state.can = Math.max(0, Math.min(CAN_MAX, Math.round(+can)));
     const seeds = q.get('seeds');
@@ -419,7 +499,7 @@ export const GARDEN = {
     } else
       for (const part of g.split(',')) {
         const [kind, s, ...mods] = part.split(':');
-        if (!(kind in KINDS)) continue;
+        if (!isKind(kind)) continue;
         want.push({ kind: kind as PlantKindId, stage: Math.max(0, Math.min(4, Math.round(+(s ?? 4)) || 0)) as Stage, mods });
       }
     const crops = want.filter((w) => !isTree(KINDS[w.kind]));
@@ -474,7 +554,7 @@ function pairs(s: string): [PlantKindId, number][] {
   const out: [PlantKindId, number][] = [];
   for (const part of s.split(',')) {
     const [k, n] = part.split(':');
-    if (k in KINDS) out.push([k as PlantKindId, Math.max(0, Math.round(+(n ?? 1)) || 0)]);
+    if (isKind(k)) out.push([k, Math.max(0, Math.round(+(n ?? 1)) || 0)]);
   }
   return out;
 }

@@ -60,6 +60,8 @@ let ring: GardenRing | null = null;
 let card: SeedCard | null = null;
 /** The map's days of the cycle last frame (NaN: not yet). */
 let lastDays = Number.NaN;
+/** The map's days moved on on purpose (sleep, "Wait for it": `TIME.skipped()`) as of last frame (NaN: not yet). */
+let lastSkipped = Number.NaN;
 /** The garden's days go this many times faster (`gardenspeed=`, the dev server and checks). */
 let speed = 1;
 /** The kind he means to plant (the last he planted; null: the first he has seeds of). */
@@ -407,8 +409,9 @@ registerAddon({
     ring = new GardenRing(e.scene, e.world.field);
     GardenWork.init(e);
     GardenToasts.init(e);
-    // (a shot's or a check's garden, before the first frame: the overview's shots too)
-    GARDEN.fromUrl(e.params, lineupSpots);
+    // (a shot's or a check's garden, before the first frame: the overview's shots too; never on the live site,
+    // where a link's values would replace the player's own saved garden)
+    if (e.shot || import.meta.env.DEV) GARDEN.fromUrl(e.params, lineupSpots);
     const sp = Number(e.params.get('gardenspeed'));
     if ((import.meta.env.DEV || e.shot) && Number.isFinite(sp) && sp > 0) speed = sp;
     if (e.shot || import.meta.env.DEV) {
@@ -519,12 +522,19 @@ registerAddon({
   frame(f: MapFrame, m: RoamMode) {
     if (!view) return;
     // The garden's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play.
+    // Only the time the frames account for counts (a hidden tab, a phone in another app, the loading screen, a stalled
+    // page bring no growth: the plants grow while the game is played), plus the jumps that are meant (sleep).
     const days = TIME.days();
+    const played = (f.dt > 0 ? f.dt : 0) / TIME.dayLength;
+    const sk = TIME.skipped();
+    const jumped = Number.isNaN(lastSkipped) ? 0 : Math.max(0, sk - lastSkipped);
     let d = 0;
-    if (TIME.cycling()) d = Number.isNaN(lastDays) ? 0 : days - lastDays;
-    else d = f.dt / TIME.dayLength;
+    if (TIME.cycling()) d = Number.isNaN(lastDays) ? 0 : Math.min(days - lastDays, played * 1.5 + jumped);
+    else d = played;
+    lastSkipped = sk;
     lastDays = days;
-    if (!(env?.shot ?? true) && d > 0) GARDEN.advance(Math.min(d * speed, 2), f.season, f.weather.rain);
+    // (nothing dies on the map seen from above: only while he roams, where he can see it and come to water it)
+    if (!(env?.shot ?? true) && d > 0) GARDEN.advance(Math.min(d * speed, 2), f.season, f.weather.rain, m !== 'overview');
     GARDEN.tick(f.dt);
     view.sync(GARDEN.plants);
     view.frame(f.camera, f.t);

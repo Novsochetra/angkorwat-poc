@@ -679,6 +679,8 @@ function placeCamera(cam: number[]): void {
 }
 
 /** The clock runs: the Time setting is "Cycle" and nothing in the URL holds it. */
+/** Days moved on by `TIME.skipTo` since the page opened. */
+let skippedDays = 0;
 const isCycling = () => clockParam === null && !params.has('night') && (settings.time === 'cycle' || (urlRuns && settings.time === timeAtStart));
 // (for the calendar of events and the stilt house's bed: time.ts)
 Object.assign(TIME, {
@@ -693,6 +695,7 @@ Object.assign(TIME, {
   skipTo: (d: number) => {
     if (shot || !isCycling() || !Number.isFinite(d)) return false;
     const to = Math.max(d, cycleDays);
+    skippedDays += to - cycleDays;
     cycleOff -= (to - cycleDays) * CYCLE;
     cycleDays = to;
     // (the light there at once: no slow dusk)
@@ -700,6 +703,7 @@ Object.assign(TIME, {
     return true;
   },
   building: () => Object.values(late.states).includes('building'),
+  skipped: () => skippedDays,
 } satisfies Partial<typeof TIME>);
 
 function step(t: number, dt: number): void {
