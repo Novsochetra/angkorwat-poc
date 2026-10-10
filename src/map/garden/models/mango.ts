@@ -1,9 +1,8 @@
 import { traceSource } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
-import { valueNoise3 } from '../../../voxel/random';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
-import { Crown, type CellInfo } from './_treeCrown';
+import { Crown, vnoise, type CellInfo } from './_treeCrown';
 import { blade, deadTree, limb, mix, planting, rng, rosette, thirstyLeaf, tone, turned, type Rand } from './_treeKit';
 
 /**
@@ -119,14 +118,14 @@ function sapling(b: VoxelBuilder, r: Rand, look: PlantLook): void {
 function crownPaint(look: PlantLook, seed: number, share = 0.3) {
   return (c: CellInfo): number | null => {
     if (c.tuft && !c.under && c.t > 0.3) {
-      const n = valueNoise3(c.x * 0.45, c.y * 0.45, c.z * 0.45, seed + 5);
+      const n = vnoise(c.x * 0.45, c.y * 0.45, c.z * 0.45, seed + 5);
       if (n > 1 - share) {
         if (look.droop === 2) return mix(FLUSH[3], 0x7a5a3a, 0.6);
-        const f = FLUSH[Math.floor(valueNoise3(c.x * 3.1, c.y * 3.1, c.z * 3.1, seed + 9) * FLUSH.length) % FLUSH.length];
+        const f = FLUSH[Math.floor(vnoise(c.x * 3.1, c.y * 3.1, c.z * 3.1, seed + 9) * FLUSH.length) % FLUSH.length];
         return look.droop === 1 ? mix(f, 0x9a8a5a, 0.35) : f;
       }
     }
-    if (look.droop) return thirstyLeaf(c.color, look.droop, valueNoise3(c.x * 3, c.y * 3, c.z * 3, seed + 3));
+    if (look.droop) return thirstyLeaf(c.color, look.droop, vnoise(c.x * 3, c.y * 3, c.z * 3, seed + 3));
     return null;
   };
 }

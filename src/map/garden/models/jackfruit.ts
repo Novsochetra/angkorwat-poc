@@ -1,9 +1,8 @@
 import { traceSource, type SourceTrace } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
-import { valueNoise3 } from '../../../voxel/random';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
-import { Crown, type CellInfo } from './_treeCrown';
+import { Crown, vnoise, type CellInfo } from './_treeCrown';
 import { deadTree, leavesAlong, limb, mix, planting, rng, thirstyLeaf, tone, turned, type Rand } from './_treeKit';
 
 /**
@@ -93,7 +92,7 @@ function sapling(b: VoxelBuilder, r: Rand, look: PlantLook): void {
 /** The crown's colours: the ramp, glossy tops a touch lighter and cooler; paler and yellow-brown when thirsty. */
 function crownPaint(look: PlantLook, seed: number) {
   return (c: CellInfo): number | null => {
-    if (look.droop) return thirstyLeaf(c.color, look.droop, valueNoise3(c.x * 3, c.y * 3, c.z * 3, seed + 3));
+    if (look.droop) return thirstyLeaf(c.color, look.droop, vnoise(c.x * 3, c.y * 3, c.z * 3, seed + 3));
     if (c.top && c.tuft) return mix(c.color, 0x7a9a5a, 0.18);
     return null;
   };
