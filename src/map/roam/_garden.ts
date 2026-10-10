@@ -10,7 +10,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { createSeedCard, type SeedCard, type SeedRow } from './_gardenCard';
 import { GardenRing } from './_gardenRing';
-import { AREA, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
+import { AREA, atHomeHouse, canPlant, fillSpot, highBankAhead, inGardenArea, jarAt, PLANT_AHEAD, plantAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
 import { GardenWork, pickAction, plantAction } from './_gardenWork';
@@ -73,7 +73,7 @@ let hinted = false;
 /** The frame's time when the E row last asked (the ring shows only while it does). */
 let offerT = -1;
 
-type ChoiceKind = 'pick' | 'water' | 'clear' | 'fill' | 'plant' | 'dry' | 'reason' | 'hint';
+type ChoiceKind = 'pick' | 'water' | 'clear' | 'fill' | 'plant' | 'dry' | 'bank' | 'reason' | 'hint';
 interface Choice {
   kind: ChoiceKind | null;
   plant: Plant | null;
@@ -150,6 +150,20 @@ function plantNear(ctx: RoamCtx): Plant | null {
   return best;
 }
 
+/** Roaming steps counted (the garden's `input`, once a step), and the step `choice` was worked out in. */
+let stepN = 0;
+let choiceStep = -1;
+
+/** The E row's two halves: the jobs on a plant or the can come early (`garden`), planting and the lines with no key late (`gardenPlant`). */
+const JOBS: ReadonlySet<ChoiceKind | null> = new Set<ChoiceKind | null>(['pick', 'water', 'clear', 'fill']);
+
+/** Work out what E does here now (`choice`), once a step. */
+function chooseOnce(ctx: RoamCtx): void {
+  if (choiceStep === stepN) return;
+  choiceStep = stepN;
+  choose(ctx);
+}
+
 /** Work out what E does here now (`choice`). */
 function choose(ctx: RoamCtx): void {
   const c = choice;
@@ -159,8 +173,8 @@ function choose(ctx: RoamCtx): void {
   const b = ctx.body;
   const p = b.pos;
   if (!inGardenArea(p.x, p.z)) return;
-  // (on the veranda, the stair: nothing of the garden)
-  if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9) return;
+  // (on the veranda, the stair: nothing of the garden; but on the washing steps' landing over the stream he fills the can)
+  if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9 && ctx.world.waterAt(p.x, p.z) === null) return;
   const pl = plantNear(ctx);
   if (pl && (ripeNow(pl) || pl.dead || GARDEN.can > 0)) {
     c.plant = pl;
@@ -185,6 +199,12 @@ function choose(ctx: RoamCtx): void {
     c.prompt = words(`fill|${c.fill.at}`, () => `E  ${t(c.fill.at === 'jar' ? 'gardenFillJar' : 'gardenFill')}`);
     return;
   }
+  if (GARDEN.can < CAN_MAX && (hasPlants || seeds.length) && highBankAhead(ctx.world, p.x, p.y, p.z, b.yaw)) {
+    // (at the stream where the bank is a wall: where he can fill it)
+    c.kind = 'bank';
+    c.prompt = words('bank', () => t('gardenBankHigh'));
+    return;
+  }
   if (pl) {
     // (a thirsty plant before him, the can empty)
     c.plant = pl;
@@ -206,10 +226,13 @@ function choose(ctx: RoamCtx): void {
     }
     return;
   }
-  // Planting: the spot before his feet; the ring's kind (the chosen one if it can go there, else the first that can).
-  c.x = p.x + Math.sin(b.yaw) * PLANT_AHEAD;
-  c.z = p.z + Math.cos(b.yaw) * PLANT_AHEAD;
+  // Planting: only within the garden (no ring nor "too far" outside it), the spot well before his feet (the follow
+  // camera behind him sees it); the ring's kind: the chosen one if it can go there, else the first that can.
+  if (Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > AREA || atHomeHouse(p.x, p.z)) return;
   const want = chosen && home.includes(chosen) ? chosen : home[0];
+  const ahead = plantAhead(want);
+  c.x = p.x + Math.sin(b.yaw) * ahead;
+  c.z = p.z + Math.cos(b.yaw) * ahead;
   let ringKind = want;
   let reason = canPlant(ctx.world, want, c.x, c.z);
   if (reason)
@@ -222,6 +245,8 @@ function choose(ctx: RoamCtx): void {
   c.ringKind = ringKind;
   c.ok = !reason;
   c.reason = reason;
+  // (the spot past the garden's edge: nothing said, no ring)
+  if (reason === 'far') return;
   if (reason) {
     c.kind = 'reason';
     c.prompt = reasonWords(reason, ringKind);
@@ -468,18 +493,16 @@ registerAddon({
   },
   input(ctx, _mode, tap) {
     lastCtx = ctx;
+    stepN++;
     if (card?.open) return true;
     return GardenWork.active && tap(...BREAKERS);
   },
   offer(ctx, m) {
     lastCtx = ctx;
-    offerT = ctx.t;
-    if (m !== 'walk' || !env || GardenWork.active || card?.open || env.busy()) {
-      choice.kind = null;
-      return null;
-    }
-    choose(ctx);
-    return choice.prompt;
+    if (m !== 'walk' || !env || GardenWork.active || card?.open || env.busy()) return null;
+    chooseOnce(ctx);
+    // (only a job on a plant or the can here, early: planting and the lines with no key are `gardenPlant`'s, late)
+    return JOBS.has(choice.kind) ? choice.prompt : null;
   },
   use(ctx) {
     const c = choice;
@@ -496,9 +519,6 @@ registerAddon({
         break;
       case 'fill':
         GardenWork.start(ctx, { action: 'fill', kind: chosen ?? 'eggplant', plant: null, fill: { ...c.fill } });
-        break;
-      case 'plant':
-        openCard(ctx, c.x, c.z);
         break;
       default:
         break;
@@ -593,4 +613,27 @@ registerAddon({
   },
 });
 
-
+/**
+ * The garden's late half of the E row (after every other add-on's: a hammock, the sey, the dog, a ride…): "E  Plant
+ * here" (the seed card) and the lines with no key — why not here (the red ring), the can is empty, no seeds yet.
+ * Only when nothing else here has a real E: they never hide another's prompt (nor the touch Use button).
+ */
+registerAddon({
+  id: 'gardenPlant',
+  order: 95,
+  offer(ctx, m) {
+    lastCtx = ctx;
+    offerT = ctx.t;
+    if (m !== 'walk' || !env || GardenWork.active || card?.open || env.busy()) {
+      choice.kind = null;
+      return null;
+    }
+    chooseOnce(ctx);
+    return JOBS.has(choice.kind) ? null : choice.prompt;
+  },
+  use(ctx) {
+    const c = choice;
+    if (!env || GardenWork.active || c.kind !== 'plant') return;
+    openCard(ctx, c.x, c.z);
+  },
+});

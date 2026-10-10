@@ -1,4 +1,4 @@
-import { BoxGeometry, Color, DynamicDrawUsage, InstancedMesh, Matrix4, MeshBasicMaterial, Object3D, Quaternion, Vector3 } from 'three';
+import { BoxGeometry, CircleGeometry, Color, DynamicDrawUsage, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, Object3D, Quaternion, Vector3 } from 'three';
 import type { HeightField } from '../heightfield';
 import { KINDS } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
@@ -23,8 +23,10 @@ const DASH_EVERY = 0.34;
 const DASH_MIN = 14;
 const DASH_MAX = 76;
 /** A dash's size (m: along the circle, up, across), the cross's arms. */
-const DASH = { len: 0.2, h: 0.035, w: 0.075 };
-const CROSS = 0.26;
+const DASH = { len: 0.28, h: 0.05, w: 0.12 };
+const CROSS = 0.34;
+/** The soft disc inside the ring: how strong (of the ring's opacity), how much of the radius. */
+const DISC = { alpha: 0.16, r: 0.97 };
 /** Over the land (m). */
 const UP = 0.06;
 const GREEN = new Color(0x9cf06e);
@@ -61,6 +63,9 @@ function earthUp(x: number, z: number): number {
 export class GardenRing {
   readonly mesh: InstancedMesh;
   private readonly mat: MeshBasicMaterial;
+  /** A soft disc filling the ring (the room it needs reads at a glance, on a phone too). */
+  private readonly disc: Mesh;
+  private readonly discMat: MeshBasicMaterial;
   /** Wanted now: where (m), how big (room, m), ok or not. */
   private want = false;
   private x = 0;
@@ -74,17 +79,27 @@ export class GardenRing {
 
   constructor(parent: Object3D, private readonly field: HeightField) {
     const geo = new BoxGeometry(1, 1, 1);
-    this.mat = new MeshBasicMaterial({ color: GREEN, transparent: true, opacity: 0, depthWrite: false, toneMapped: true });
+    // (drawn over everything: the follow camera looks at his chest, so the ground just before him is under his hat;
+    // the ring shows through him, as a marker)
+    this.mat = new MeshBasicMaterial({ color: GREEN, transparent: true, opacity: 0, depthWrite: false, depthTest: false, toneMapped: true });
     this.mesh = new InstancedMesh(geo, this.mat, DASH_MAX + 2);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.name = 'garden:ring';
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = 3;
+    this.mesh.renderOrder = 12;
     this.mesh.castShadow = false;
     this.mesh.receiveShadow = false;
     // (in the scene from the start, with nothing to draw: its shader is compiled with the map's)
     this.mesh.count = 0;
     parent.add(this.mesh);
+    const dg = new CircleGeometry(1, 40);
+    dg.rotateX(-Math.PI / 2);
+    this.discMat = new MeshBasicMaterial({ color: GREEN, transparent: true, opacity: 0, depthWrite: false, depthTest: false, toneMapped: true });
+    this.disc = new Mesh(dg, this.discMat);
+    this.disc.name = 'garden:ringDisc';
+    this.disc.renderOrder = 11;
+    this.disc.frustumCulled = false;
+    parent.add(this.disc);
   }
 
   /** Show it at (x, z) the size `room` (m), green when `ok`; or hide it (null). Each step. */
@@ -112,15 +127,22 @@ export class GardenRing {
     if (this.on < 0.02 && !this.want) {
       this.on = 0;
       this.mesh.count = 0;
+      this.discMat.opacity = 0;
+      this.disc.visible = false;
       return;
     }
     this.red += ((this.ok ? 0 : 1) - this.red) * (dt > 0 ? Math.min(1, dt * 14) : 1);
     const breath = 0.5 + 0.5 * Math.sin(this.clock * PULSE);
     _c.copy(GREEN).lerp(RED, this.red).multiplyScalar(1 + (NIGHT_GAIN - 1) * night);
     this.mat.color.copy(_c);
-    this.mat.opacity = this.on * (0.72 + 0.22 * breath);
+    this.mat.opacity = this.on * (0.78 + 0.2 * breath);
     const f = this.field;
     const cy = f.heightAt(this.x, this.z);
+    this.discMat.color.copy(_c);
+    this.discMat.opacity = this.on * DISC.alpha * (0.85 + 0.15 * breath);
+    this.disc.visible = true;
+    this.disc.position.set(this.x, cy + UP * 0.5 + earthUp(this.x, this.z), this.z);
+    this.disc.scale.setScalar(this.r * DISC.r);
     const n = Math.max(DASH_MIN, Math.min(DASH_MAX, Math.round((Math.PI * 2 * this.r) / DASH_EVERY)));
     let i = 0;
     for (let d = 0; d < n; d++) {
@@ -148,5 +170,8 @@ export class GardenRing {
     this.mesh.removeFromParent();
     this.mesh.geometry.dispose();
     this.mat.dispose();
+    this.disc.removeFromParent();
+    this.disc.geometry.dispose();
+    this.discMat.dispose();
   }
 }

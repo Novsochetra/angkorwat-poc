@@ -19,7 +19,11 @@ import type { AddonEnv } from './_addons';
  * - thirsty: near home, "Your eggplant needs water" (not more often than
  *   `THIRST_EVERY` s); away, "Your garden at home needs water" once, until he has
  *   been home again,
+ * - wilting badly (half way to dying, garden/state.ts `wilting`): "Your corn is wilting badly — water it soon!",
+ *   near or away,
  * - died, gently ("Your corn dried out for want of water. Pull it out and plant again").
+ *
+ * On the map screen nothing is said: the thirsty, wilting and died news is kept and said once as he roams again.
  *
  * Events that come together (a sleep moves the garden on a whole night) are
  * gathered for `GATHER` s and said once ("3 new sprouts in your garden"); the
@@ -75,6 +79,7 @@ const sprouts: Plant[] = [];
 const grown: PlantKindId[] = [];
 const ripe = new Set<PlantKindId>();
 const thirsty: Plant[] = [];
+const wilting: Plant[] = [];
 const died: PlantKindId[] = [];
 const ripeSaid = new Map<PlantKindId, number>();
 let thirstSaid = -1e9;
@@ -110,26 +115,32 @@ function onEvent(e: GardenEvent): void {
   switch (e.type) {
     case 'stage':
       if (stageOf(k, p.age) === 1 && near) sprouts.push(p);
+      else if (mode === 'overview') return;
       break;
     case 'grown':
+      if (mode === 'overview') return;
       grown.push(p.kind);
       break;
     case 'ripe':
+      if (mode === 'overview') return;
       ripe.add(p.kind);
       break;
     case 'fell': {
+      if (mode === 'overview') return;
       ripe.add(p.kind);
-      if (mode === 'overview') break;
       const b = env.body.pos;
       const d = Math.hypot(b.x - p.x, b.z - p.z);
       if (d < THUD_FAR) SFX.play('gardenThud', 0.9 * (1 - d / THUD_FAR) ** 1.4);
       break;
     }
     case 'thirsty':
-      thirsty.push(p);
+      if (thirsty.length < 120) thirsty.push(p);
+      break;
+    case 'wilting':
+      if (wilting.length < 120) wilting.push(p);
       break;
     case 'died':
-      died.push(p.kind);
+      if (died.length < 120) died.push(p.kind);
       break;
     default:
       return;
@@ -157,9 +168,21 @@ function sayGathered(): void {
   const up: PlantKindId[] = [];
   for (const p of sprouts) if (!p.dead && GARDEN.plants.includes(p)) up.push(p.kind);
   if (up.length) gardenSay(oneOrMany(up, 'gardenSprout1', 'gardenSproutN'), 'gardenSprout');
-  // (not those that died meanwhile: they are said dead)
+  // (not those that died meanwhile: they are said dead; each plant once)
+  const still = (p: Plant) => !p.dead && GARDEN.plants.includes(p) && p.wet <= 0;
+  const wilt: PlantKindId[] = [];
+  const seen = new Set<Plant>();
+  for (const p of wilting) if (still(p) && !seen.has(p)) {
+    seen.add(p);
+    wilt.push(p.kind);
+  }
+  // Wilting badly (half way to dying): said near or away, it is urgent.
+  if (wilt.length) gardenSay(oneOrMany(wilt, 'gardenWilting1', 'gardenWiltingN'), 'gardenThirst');
   const dry: PlantKindId[] = [];
-  for (const p of thirsty) if (!p.dead && GARDEN.plants.includes(p) && p.wet <= 0) dry.push(p.kind);
+  for (const p of thirsty) if (still(p) && !seen.has(p)) {
+    seen.add(p);
+    dry.push(p.kind);
+  }
   if (dry.length) {
     if (near) {
       awaySaid = false;
@@ -172,7 +195,7 @@ function sayGathered(): void {
       gardenSay(t('gardenThirstyAway'), 'gardenThirst');
     }
   }
-  sprouts.length = grown.length = thirsty.length = died.length = 0;
+  sprouts.length = grown.length = thirsty.length = wilting.length = died.length = 0;
   ripe.clear();
 }
 
@@ -182,12 +205,19 @@ export const GardenToasts = {
     GARDEN.on(onEvent);
   },
   setMode(m: RoamMode): void {
+    const was = mode;
     mode = m;
     if (m === 'overview') {
+      // (what is waiting goes; the bad news — thirsty, wilting, died — is kept, and what comes while he is on the map
+      // too, to be said once as he roams again)
       queue.length = 0;
       gathering = -1;
-      sprouts.length = grown.length = thirsty.length = died.length = 0;
+      sprouts.length = grown.length = 0;
       ripe.clear();
+    } else if (was === 'overview') {
+      sprouts.length = grown.length = 0;
+      ripe.clear();
+      if (thirsty.length || wilting.length || died.length) gathering = clock;
     }
   },
   /** Each frame. `hold`: something else has him (asleep in his house): what is said waits until he is up. */
@@ -196,7 +226,8 @@ export const GardenToasts = {
     if (!env) return;
     // (back home: the news from away may come again next time he is away)
     if (fromHome() < NEAR) awaySaid = false;
-    if (gathering >= 0 && clock - gathering >= GATHER && !hold) {
+    // (on the map: nothing is said; it is kept for when he roams again)
+    if (gathering >= 0 && clock - gathering >= GATHER && !hold && mode !== 'overview') {
       gathering = -1;
       sayGathered();
     }

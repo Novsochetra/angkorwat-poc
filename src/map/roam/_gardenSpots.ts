@@ -22,8 +22,9 @@ import type { RoamWorld } from './types';
  *   beside it (the Kulen foot trail runs 12 m west of the house);
  * - `house`: the house and the ground under it (the hammock, the jars, the
  *   woodpile), its stair and the stair's foot, the jar where he washes his feet
- *   (and fills his can), the dog's bed, the spirit house, the bougainvillea, the
+ *   (and fills his can), the spirit house, the bougainvillea, the
  *   grandmother's places (her sweeping round, her mat and lamp);
+ * - `dog`: the dog's bed at the stair's foot;
  * - `yard`: someone else's house or yard (the sugar-palm village's houses,
  *   `EV_HOMES`, and whatever the village built on: the land's `occupied` cells
  *   outside his own yard);
@@ -42,10 +43,15 @@ export const AREA_SEEN = AREA + 6;
 const WATER_MARGIN = 1.2;
 /** Things standing taller than this over the land are in the way (m). */
 const THING = 0.3;
-/** The plant goes this far in front of his feet (m, at his size on the map): where the hoe bites. */
-export const PLANT_AHEAD = 1.0;
+/**
+ * The plant goes this far in front of his feet (m): well ahead of him, so the follow camera behind him sees the ring
+ * (he steps up to the hoe's reach as he starts); a little further for a plant that needs more room.
+ */
+export const plantAhead = (k: PlantKindId): number => Math.min(2.2, 1.6 + KINDS[k].room * 0.3);
+/** (the smallest: checks and the URL's seed card) */
+export const PLANT_AHEAD = 1.5;
 
-export type SpotReason = 'far' | 'full' | 'water' | 'path' | 'house' | 'yard' | 'level' | 'room' | 'thing' | 'pagoda';
+export type SpotReason = 'far' | 'full' | 'water' | 'path' | 'house' | 'dog' | 'yard' | 'level' | 'room' | 'thing' | 'pagoda';
 
 export const REASON_WORDS: Record<SpotReason, WordKey> = {
   far: 'gardenNoFar',
@@ -53,6 +59,7 @@ export const REASON_WORDS: Record<SpotReason, WordKey> = {
   water: 'gardenNoWater',
   path: 'gardenNoPath',
   house: 'gardenNoHouse',
+  dog: 'gardenNoDog',
   yard: 'gardenNoYard',
   level: 'gardenNoLevel',
   room: 'gardenNoRoom',
@@ -78,8 +85,6 @@ const KEEP_RING: readonly (readonly [number, number, number])[] = (() => {
   return [
     // the jar at the stair's foot (he fills his can there: room round it)
     [s1 + 0.75, HOME_STAIR_FOOT - 1.0, 1.5],
-    // the dog's bed
-    [HOME_DOG.x, HOME_DOG.z, 1.0],
     // the spirit house, a pot plant, the bougainvillea (hamlet/_home.ts "The yard")
     [-2.9, HOME_STAIR_FOOT + 1.5, 1.4],
     [HOME_STAIR.x - HOME_STAIR.width / 2 - 1.2, HOME_STAIR_FOOT - 0.3, 0.6],
@@ -92,6 +97,8 @@ const KEEP_RING: readonly (readonly [number, number, number])[] = (() => {
     [(hm.x0 + hm.x1) / 2, hm.z, 1.2],
   ];
 })();
+/** The dog's bed at the stair's foot (local, and room round it): "That's the dog's bed". */
+const DOG_BED = { x: HOME_DOG.x, z: HOME_DOG.z, r: 1.0 };
 /** His own yard (local): the land's `occupied` cells in it are the house's, not a neighbour's (hamlet/_home.ts `field.occupy`). */
 const OWN_YARD = { x0: -HOME_SIZE.w / 2 - 2.2 - 2, x1: HOME_SIZE.w / 2 + 4.6 + 2, z0: HOME_Z.back - 1.6 - 2, z1: HOME_STAIR_FOOT + 4.6 + 2 };
 
@@ -100,6 +107,13 @@ function atHouse(lx: number, lz: number, r: number): boolean {
   for (const [x0, z0, x1, z1] of KEEP_BOX) if (lx > x0 - r && lx < x1 + r && lz > z0 - r && lz < z1 + r) return true;
   for (const [x, z, rr] of KEEP_RING) if (Math.hypot(lx - x, lz - z) < rr + r) return true;
   return false;
+}
+
+/** Under his house or at its stair (feet at x, z): the garden says nothing there (the hammock, the jars, the stair are the house's). */
+export function atHomeHouse(x: number, z: number): boolean {
+  const [lx, lz] = homeLocal(x, z);
+  const [h, st] = KEEP_BOX;
+  return (lx > h[0] && lx < h[2] && lz > h[1] && lz < h[3]) || (lx > st[0] && lx < st[2] && lz > st[1] && lz < st[3]);
 }
 
 /** A neighbour's house and yard (the sugar-palm village's houses: their middle, half their size and a yard round). */
@@ -149,6 +163,7 @@ export function canPlant(world: RoamWorld, kind: PlantKindId, x: number, z: numb
   const hr = Math.min(room, 1.5) * 0.6;
   for (const [dx, dz] of RING8) {
     const [lx, lz] = homeLocal(x + dx * hr, z + dz * hr);
+    if (Math.hypot(lx - DOG_BED.x, lz - DOG_BED.z) < DOG_BED.r) return 'dog';
     if (atHouse(lx, lz, 0)) return 'house';
   }
   if (atNeighbour(x, z, room * 0.5)) return 'yard';
@@ -207,7 +222,17 @@ export interface FillSpot {
   z: number;
 }
 
-/** Where he would fill the can from where he stands (`out` filled), or null: the jar within reach, or the stream's edge ahead of him. */
+/**
+ * The stream: the can reaches water this far under his feet at most (m; the fill pose kneels at the edge and dips
+ * the can under) and this far ahead of his toes. The Kulen stream's banks by the house stand a metre over the water
+ * (a wall: no fill there); the village's washing steps go down to a landing 0.42 m over it (hamlet/_evSpots.ts
+ * `EV_WASH_AT`): he fills there. Wading in shallow water (not deeper than `WADE` over his feet) he fills before him.
+ */
+const FILL_DROP = 0.45;
+const FILL_AHEAD = [0.35, 0.5, 0.65] as const;
+const WADE = 0.6;
+
+/** Where he would fill the can from where he stands (`out` filled), or false: the jar within reach, or the stream's low edge just ahead of him. */
 export function fillSpot(world: RoamWorld, x: number, y: number, z: number, yaw: number, out: { at: 'jar' | 'stream'; x: number; y: number; z: number }): boolean {
   const [jx, jz] = jarAt();
   if (Math.hypot(x - jx, z - jz) < JAR_REACH) {
@@ -218,22 +243,42 @@ export function fillSpot(world: RoamWorld, x: number, y: number, z: number, yaw:
     return true;
   }
   if (!inGardenArea(x, z, AREA + 25)) return false;
-  // (not standing in it: on the bank, the water just ahead and not far below his feet)
-  const here = world.waterAt(x, z);
-  if (here !== null && here > y - 0.05) return false;
   const fx = Math.sin(yaw);
   const fz = Math.cos(yaw);
-  for (const d of [0.7, 1.1, 1.6, 2.1]) {
+  // (wading in shallow water: before him)
+  const here = world.waterAt(x, z);
+  if (here !== null && here > y - 0.05) {
+    if (here - y > WADE) return false;
+    out.at = 'stream';
+    out.x = x + fx * FILL_AHEAD[1];
+    out.y = here;
+    out.z = z + fz * FILL_AHEAD[1];
+    return true;
+  }
+  for (const d of FILL_AHEAD) {
     const px = x + fx * d;
     const pz = z + fz * d;
     const w = world.waterAt(px, pz);
     if (w === null) continue;
-    if (y - w > 2.2 || w > y + 0.2) return false;
+    if (y - w > FILL_DROP || w > y + 0.2) return false;
     out.at = 'stream';
     out.x = px;
     out.y = w;
     out.z = pz;
     return true;
+  }
+  return false;
+}
+
+/** On a high bank with the water just below him (he cannot reach it: a line says where he can). */
+export function highBankAhead(world: RoamWorld, x: number, y: number, z: number, yaw: number): boolean {
+  if (!inGardenArea(x, z, AREA + 25)) return false;
+  const here = world.waterAt(x, z);
+  if (here !== null && here > y - 0.05) return false;
+  // (the water within a couple of steps: the bank's sand strip lies between)
+  for (const d of [0.4, 0.8, 1.2, 1.6, 2.0]) {
+    const w = world.waterAt(x + Math.sin(yaw) * d, z + Math.cos(yaw) * d);
+    if (w !== null) return y - w > FILL_DROP && y - w < 4;
   }
   return false;
 }

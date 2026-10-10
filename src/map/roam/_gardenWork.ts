@@ -161,11 +161,11 @@ function toBody(ctx: RoamCtx, x: number, y: number, z: number, out: Vector3): Ve
   return out.set((dx * c - dz * s) * k, (y - b.pos.y) * k, (dx * s + dz * c) * k);
 }
 
-/** The ground under his feet at (x, z): the land, or what he stands on near it (a low step of the yard). */
+/** The ground under his feet at (x, z): what he stands on there (a low step of the yard, the washing steps' landing over the stream), not a roof or a wall's top above him. */
 function groundAt(ctx: RoamCtx, x: number, z: number): number {
   const land = ctx.world.field.heightAt(x, z);
   const top = ctx.world.groundAt(x, z);
-  return top - land < 0.6 ? top : land;
+  return top - land < 0.6 || Math.abs(top - ctx.body.pos.y) < 0.7 ? top : land;
 }
 
 /**
@@ -488,12 +488,17 @@ export const GardenWork = {
         // (the water's surface just inside the jar's near rim)
         target.set(f.x + Math.sin(from) * JAR_WATER.in, ctx.world.field.heightAt(f.x, f.z) + JAR_WATER.up, f.z + Math.cos(from) * JAR_WATER.in);
         face = placeAt(target, aim.sx, aim.sz, from, stand);
+      } else if (ctx.world.waterAt(b.pos.x, b.pos.z) !== null) {
+        // (wading: where he stands, facing the water before him)
+        target.set(f.x, f.y, f.z);
+        stand.set(b.pos.x, 0, b.pos.z);
+        face = Math.atan2(target.x - stand.x, target.z - stand.z) - Math.atan2(aim.sx, aim.sz);
       } else {
-        // (at the stream's edge: back from the water until he is on the bank)
+        // (at the stream's low edge: back from the water until he stands on the bank or the landing)
         target.set(f.x, f.y, f.z);
         let d = Math.hypot(aim.sx, aim.sz);
         face = placeAt(target, aim.sx, aim.sz, from, stand);
-        for (let i = 0; i < 12 && ctx.world.waterAt(stand.x, stand.z) !== null; i++) {
+        for (let i = 0; i < 12 && ctx.world.waterAt(stand.x, stand.z) !== null && ctx.world.groundAt(stand.x, stand.z) < f.y + 0.05; i++) {
           d += 0.1;
           stand.set(target.x + Math.sin(from) * d, 0, target.z + Math.cos(from) * d);
         }
@@ -527,6 +532,13 @@ export const GardenWork = {
     body.t = 0;
     body.life = 0;
     before ??= { pitch: ctx.cam.pitch, distance: ctx.cam.distance };
+    // (in rain the umbrella has his hat (roam/_umbrella.ts); it goes away while he works, so the hat goes back on his
+    // head, as a farmer works in the rain: the umbrella takes it again when it comes back)
+    const w = ctx.weather;
+    if (w && (w.rain > 0.2 || w.snow > 0.2) && !env.explorer.currentOutfit.hat) {
+      env.explorer.setOutfit({ hat: true });
+      env.photo.refreshBody();
+    }
     // (the camera comes round on the side it is on already)
     side = angleDiff(ctx.cam.yaw, b.yaw) >= 0 ? 1 : -1;
     framed = 0;
