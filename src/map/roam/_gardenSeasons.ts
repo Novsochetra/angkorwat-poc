@@ -2,6 +2,7 @@ import { registerEvent } from '../calendar';
 import { GROWN, inFruitMonths, KINDS, stageOf, type PlantKindId } from '../garden/kinds';
 import { GARDEN, type Plant } from '../garden/state';
 import { HOME_AT } from '../hamlet/_homePlan';
+import { TIME, type MapMoment } from '../time';
 import type { WordKey } from '../ui/lang';
 import { registerAddon } from './_addons';
 
@@ -15,6 +16,13 @@ import { registerAddon } from './_addons';
  * is the garden's own: on while `inFruitMonths` and a grown, living one of
  * that kind stands in his garden (garden/state.ts `GARDEN`).
  *
+ * The fruit follows the garden's own year (`GARDEN.season`: it began at the
+ * real date the first time the garden grew and turns with the garden's clock,
+ * across visits), not the map's (which starts from the real date at every
+ * visit). So at a moment `m` of the calendar the garden's time of year is
+ * the garden's now moved on by as much as the map's year moves from now to
+ * `m` (`gardenSeason`); before the garden has a year, the map's own.
+ *
  * An event is registered the first time he has one grown (so the calendar
  * lists no season of a tree he does not have), and stays: its rule says off
  * if he has none any more. The kinds that bear all year (the crops, the
@@ -22,7 +30,7 @@ import { registerAddon } from './_addons';
  *
  * Words: `garden<Kind>Season`, `…Note`, `…Begins`, `gardenSeasonAt` (ui/lang.ts);
  * pictures: roam/_calendarIcons.ts `EVENT_ART['garden-<kind>']`.
- * Check: `calendar=1&garden=mango:4&season=0.09` (mid-May: on now).
+ * Check: `calendar=1&garden=mango:4&season=0.09` (mid-May, the map's and the garden's year: on now).
  */
 
 /** The kinds with a season of their own, and their words. */
@@ -47,6 +55,21 @@ let seenCount = -1;
 let seenClock = NaN;
 const registered = new Set<string>();
 let since = LOOK;
+
+/** The map's days of the cycle last asked, and its time of year then (worked out once per change of the days). */
+let nowDays = NaN;
+let nowMapSeason = 0;
+const frac = (x: number): number => ((x % 1) + 1) % 1;
+
+/** The garden's time of year at the calendar's moment `m`: its own now, moved on by the map's year from now to `m`. */
+function gardenSeason(m: MapMoment): number {
+  const d = TIME.days();
+  if (d !== nowDays) {
+    nowDays = d;
+    nowMapSeason = TIME.moment(d).season;
+  }
+  return frac(GARDEN.season(nowMapSeason) + (m.season - nowMapSeason));
+}
 
 /** Look again only when the garden changed (another list, a plant more or less, the clock moved on): the calendar asks often. */
 function fresh(): void {
@@ -79,7 +102,7 @@ function sync(): void {
       begins: s.begins,
       place: 'gardenSeasonAt',
       where: WHERE,
-      on: (m) => inFruitMonths(k, m.season) && has(s.kind),
+      on: (m) => has(s.kind) && inFruitMonths(k, gardenSeason(m)),
       step: STEP,
     });
   }
