@@ -26,7 +26,7 @@ import { GARDEN_KINDS, GROWN, inFruitMonths, isTree, KINDS, stageOf, type PlantK
  * it up). `once` plants (corn) leave their bed empty after the harvest.
  *
  * Shots save nothing and start empty; their URL values set what they show
- * (`fromUrl`: `garden=lineup|demo|<kind>:<stage>[:ripe|:green|:dry|:wilt|:dead|:fallen]…`,
+ * (`fromUrl`: `garden=lineup|demo|<kind>:<stage>[:ripe|:green|:cut|:dry|:wilt|:dead|:fallen]…` (mods may stack: `sugarcane:4:cut:green`),
  * `seeds=`, `basket=`, `can=`, `gardenclock=`).
  */
 
@@ -75,6 +75,8 @@ export interface PlantLook {
   /** Drooping for want of water: 0 fresh, 1 drooping, 2 wilting badly (near death). */
   readonly droop: 0 | 1 | 2;
   readonly dead: boolean;
+  /** Harvested at least once (a cut sugarcane's stumps, a banana's cut stalk): false while grown for the first time. */
+  readonly cut: boolean;
   /** Its own variety (0‥1): models vary leaf counts, lean and colours by it, the same every time. */
   readonly seed: number;
 }
@@ -204,12 +206,12 @@ export function lookOf(p: Plant): PlantLook {
   let fruit: 0 | 1 | 2 = 0;
   if (stage === GROWN && !p.dead && k.fruit.count[1] > 0) fruit = p.ripe >= 1 && !ground ? 2 : p.ripe >= 0.33 ? 1 : 0;
   const droop: 0 | 1 | 2 = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 ? 1 : 2;
-  return { kind: p.kind, stage, fruit, fallen: Math.min(3, p.fallen), droop, dead: p.dead, seed: p.seed };
+  return { kind: p.kind, stage, fruit, fallen: Math.min(3, p.fallen), droop, dead: p.dead, cut: p.picked > 0, seed: p.seed };
 }
 
 /** A key that changes exactly when the look does (for the view's cache). */
 export function lookKey(l: PlantLook): string {
-  return `${l.kind}|${l.stage}|${l.fruit}|${l.fallen}|${l.droop}|${l.dead ? 1 : 0}|${Math.round(l.seed * 997)}`;
+  return `${l.kind}|${l.stage}|${l.fruit}|${l.fallen}|${l.droop}|${l.dead ? 1 : 0}|${l.cut ? 1 : 0}|${Math.round(l.seed * 997)}`;
 }
 
 /** Its earth for the view. */
@@ -420,6 +422,7 @@ export const GARDEN = {
           if (k.fruit.pick === 'ground') p.fallen = k.fruit.count[1];
           p.ripe = k.fruit.pick === 'ground' ? 0.5 : 1;
         } else if (m === 'green') p.ripe = 0.5;
+        else if (m === 'cut') p.picked = 1;
         else if (m === 'fallen') p.fallen = Math.max(1, k.fruit.count[1]);
         else if (m === 'wilt' || m === 'dry') {
           p.wet = 0;
