@@ -1,6 +1,6 @@
-import { ACTIONS } from '../garden/actions';
+import { ACTIONS, POLE_ACTIONS } from '../garden/actions';
 import { registerLoop, registerSfx, type SfxOut } from './addonSfx';
-import { biquad, mtof, noise, range, source, strike, type NoiseKind, type SourceName } from './dsp';
+import { biquad, mtof, mulberry32, noise, range, source, strike, type NoiseKind, type SourceName } from './dsp';
 import { footstepsState, loadFootsteps, type StepSet, type StepSets } from './footsteps';
 
 /**
@@ -48,6 +48,30 @@ import { footstepsState, loadFootsteps, type StepSet, type StepSets } from './fo
  * - `gardenRipe` (ui): two bright notes (ripe to pick).
  * - `gardenThirst` (ui): a dry low note (a plant wants water).
  * - `gardenDied` (ui): a soft falling note (a plant has died).
+ * - `gardenCrumbs`: clods thrown by the hoe landing round him (the work's
+ *   effects play it as their earth lands, `gain` by how much): a soft patter.
+ *
+ * The shoulder pole (ដងរែក: two buckets of water on a bamboo pole, roam/_carryPole*.ts):
+ *
+ * - `gardenYokeCreak` (lasting): the bamboo flexing on his shoulder at each
+ *   step, the buckets' hooks ticking; `SFX.level(v)` by his speed (0 still …
+ *   1 running: the creaks come faster and a little higher).
+ * - `gardenSlosh` (lasting): water slopping in the two buckets; `SFX.level(v)`
+ *   the sway times how full they are (set it as it swings: it follows within
+ *   a few hundredths of a second).
+ * - `gardenBucketFill` (lasting): the buckets pushed under at the water's edge,
+ *   one after the other (the `poleFill` action's beats), each a dark rush and
+ *   deep gulps as it fills, water streaming off as it comes up.
+ * - `gardenJarPour`: a bucket tipped into the big clay jar: a deep hollow
+ *   pour into water, glugs, the last drips.
+ * - `gardenScoop`: the coconut-shell dipper knocking the bucket's rim and
+ *   scooping (a bloop), then half a second later the water thrown on the
+ *   plant's earth.
+ * - `gardenSpill`: water slopping over a rim onto the ground.
+ * - `gardenPoleUp`: the pole taken up: a hollow bamboo knock, the buckets'
+ *   wire handles rattling, the water stirring.
+ * - `gardenPoleDown`: the two buckets set down on the earth one after the
+ *   other (dull thuds, a tinny ring), the handles, the water settling.
  *
  * Levels (measured offline, as heard at the default sliders): the hoe, the
  * chop, the dip and the thud about as loud as a walking step on earth; the
@@ -73,6 +97,16 @@ const LEVEL = {
   pull: 0.58,
   toss: 0.42,
   basket: 0.8,
+  crumbs: 0.26,
+  /** The shoulder pole (lasting: at a level of 1). */
+  creak: 0.2,
+  slosh: 0.08,
+  bucket: 0.12,
+  jar: 0.2,
+  scoop: 0.38,
+  spill: 0.27,
+  poleUp: 0.26,
+  poleDown: 0.48,
   /** The interface's notes (on the ui bus, whose slider is full by default: the calendar's bell is 0.11). */
   note: 0.085,
 };
@@ -425,7 +459,7 @@ registerLoop('gardenPour', (o) =>
 );
 
 /** Gulps of air out of the can's mouth while it fills: bubbles rising in pitch as the air inside shrinks, from `t` for `len` s. */
-function gulps(o: SfxOut, t: number, len: number, out: AudioNode, level: number): void {
+function gulps(o: SfxOut, t: number, len: number, out: AudioNode, level: number, lo = 210, span = 460): void {
   const r = o.rnd;
   let s = t + range(r, 0.02, 0.06);
   while (s < t + len) {
@@ -434,7 +468,7 @@ function gulps(o: SfxOut, t: number, len: number, out: AudioNode, level: number)
     const n = 1 + Math.floor(r() * 3);
     for (let k = 0; k < n; k++) {
       const at = s + k * range(r, 0.012, 0.03);
-      const f = (210 + 460 * p) * range(r, 0.8, 1.25);
+      const f = (lo + span * p) * range(r, 0.8, 1.25);
       const osc = o.ctx.createOscillator();
       osc.frequency.setValueAtTime(f, at);
       osc.frequency.exponentialRampToValueAtTime(f * range(r, 1.35, 1.7), at + 0.03);
@@ -670,3 +704,325 @@ registerSfx(
   },
   'ui',
 );
+
+// ── The hoe's earth landing (the work's effects) ────────────────────────────
+
+registerSfx('gardenCrumbs', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.crumbs * (0.4 + 0.6 * g);
+  // Clods and crumbs landing on the dug earth round him: a soft patter, a little grit sliding.
+  crumbs(o, t, 4 + Math.floor(r() * 4 * (0.5 + g)), range(r, 0.12, 0.2), L, 1100, 3600);
+  burst(o, t + 0.01, { kind: 'brown', type: 'lowpass', f0: 600, f1: 300, attack: 0.004, tau: 0.02, level: L * 0.9 });
+  burst(o, t + 0.02, { src: 'crunch', type: 'bandpass', f0: range(r, 1800, 2600), q: 0.8, attack: 0.02, tau: 0.04, level: L * 0.6 });
+});
+
+// ── The shoulder pole and its buckets ───────────────────────────────────────
+
+/** A sound of a few looping layers under one envelope: up in `attack`, held `hold`, then dying with `tau`; `add` a layer. */
+function swell(o: SfxOut, t: number, attack: number, hold: number, tau: number, level: number, wet: number): { out: GainNode; add(buf: AudioBuffer, type: BiquadFilterType, f: number, q: number, g: number): BiquadFilterNode } {
+  const { ctx } = o;
+  const out = ctx.createGain();
+  out.gain.setValueAtTime(0, t);
+  out.gain.linearRampToValueAtTime(level, t + attack);
+  out.gain.setValueAtTime(level, t + attack + hold);
+  out.gain.setTargetAtTime(0, t + attack + hold, tau);
+  const send = ctx.createGain();
+  send.gain.value = wet;
+  out.connect(o.dry);
+  out.connect(send).connect(o.wet);
+  const end = t + attack + hold + tau * 8;
+  const nodes: AudioNode[] = [out, send];
+  let left = 0;
+  return {
+    out,
+    add(buf, type, f, q, g) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const fl = biquad(ctx, type, f, q);
+      const gn = ctx.createGain();
+      gn.gain.value = g;
+      src.connect(fl).connect(gn).connect(out);
+      src.start(t, o.rnd() * buf.duration);
+      src.stop(end);
+      nodes.push(src, fl, gn);
+      left++;
+      src.onended = () => {
+        if (--left === 0) for (const n of nodes) n.disconnect();
+      };
+      return fl;
+    },
+  };
+}
+
+/** A bucket's wire handle knocking its rim: a short tinny tick. */
+function clink(o: SfxOut, t: number, level: number): void {
+  const r = o.rnd;
+  const f = range(r, 1900, 3100);
+  tone(o, t, f, f * 0.995, 0.0008, range(r, 0.008, 0.016), level, 0.08, 0.02, 'triangle');
+  tone(o, t, f * 2.7, f * 2.68, 0.0008, 0.006, level * 0.3, 0.08);
+}
+
+/** Water stirring in a bucket: a short gurgle (the babbling loop, darkened). */
+function stir(o: SfxOut, t: number, level: number, tau = 0.12): void {
+  burst(o, t, { src: 'babble', type: 'lowpass', f0: 1000, f1: 700, attack: 0.05, tau, level, wet: 0.05 });
+}
+
+/**
+ * The pole's creaks, made once (a loop of eight steps, each different, `CREAK_STEP` s each at the walking pace): at each footfall the
+ * bamboo flexes against his shoulder — a stick-slip creak (a train of tiny clicks, its rate gliding up and down,
+ * through the bamboo's two resonances) — and on every other step a bucket's hook ticks on its ring.
+ */
+const CREAK_STEP = 0.55;
+let creakLoop: AudioBuffer | null = null;
+function creaks(): AudioBuffer {
+  if (creakLoop) return creakLoop;
+  const rate = 48000;
+  const n = 8;
+  const len = Math.round(CREAK_STEP * n * rate);
+  const buf = new AudioBuffer({ numberOfChannels: 1, length: len, sampleRate: rate });
+  const d = buf.getChannelData(0);
+  const rnd = mulberry32(5521);
+  const ring = (i0: number, f1: number, f2: number, decay: number, a: number) => {
+    const m = Math.round(decay * 6 * rate);
+    for (let j = 0; j < m; j++) {
+      const e = Math.exp(-j / (decay * rate));
+      d[(i0 + j) % len] += a * e * (Math.sin((2 * Math.PI * f1 * j) / rate) + 0.45 * Math.sin((2 * Math.PI * f2 * j) / rate));
+    }
+  };
+  for (let k = 0; k < n; k++) {
+    const t0 = k * CREAK_STEP + 0.03 + rnd() * 0.04;
+    const dur = 0.11 + rnd() * 0.09;
+    const f0 = 160 + rnd() * 90;
+    const f1 = f0 * (1.2 + rnd() * 0.35);
+    const fr = 850 + rnd() * 450;
+    const loud = 0.6 + 0.4 * rnd();
+    let ph = 0;
+    const N = Math.round(dur * rate);
+    for (let i = 0; i < N; i++) {
+      const x = i / N;
+      ph += (f0 + (f1 - f0) * Math.sin(Math.PI * x)) / rate;
+      if (ph < 1) continue;
+      ph -= 1;
+      // (one slip: a click ringing in the bamboo, the creak swelling and fading)
+      ring(Math.round(t0 * rate) + i, fr, fr * 2.3, 0.0014, loud * Math.sin(Math.PI * x) ** 1.5 * (0.6 + 0.4 * rnd()));
+    }
+    if (k % 2 === 1) ring(Math.round((t0 + dur * 0.7) * rate), 2500 + rnd() * 600, 3900 + rnd() * 500, 0.003, 0.5);
+  }
+  let peak = 0;
+  for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(d[i]));
+  for (let i = 0; i < len; i++) d[i] *= 0.5 / (peak || 1);
+  return (creakLoop = buf);
+}
+
+registerLoop('gardenYokeCreak', (o) =>
+  lasting(() => {
+    const { ctx } = o;
+    const src = ctx.createBufferSource();
+    src.buffer = creaks();
+    src.loop = true;
+    const hp = biquad(ctx, 'highpass', 300, 0.7);
+    const env = ctx.createGain();
+    env.gain.value = 0;
+    const send = ctx.createGain();
+    send.gain.value = 0.05;
+    src.connect(hp).connect(env);
+    env.connect(o.dry);
+    env.connect(send).connect(o.wet);
+    // (a slow drift of its pitch, so the loop never sounds the same twice)
+    const drift = ctx.createOscillator();
+    drift.frequency.value = range(o.rnd, 0.09, 0.15);
+    const depth = ctx.createGain();
+    depth.gain.value = 35;
+    drift.connect(depth).connect(src.detune);
+    src.start(ctx.currentTime, o.rnd() * src.buffer.duration);
+    drift.start(ctx.currentTime);
+    return {
+      stop() {
+        src.stop();
+        drift.stop();
+        for (const n of [src, hp, env, send, drift, depth]) n.disconnect();
+      },
+      set(v, t) {
+        // (v: his speed, 0 still … 1 running: the steps come faster)
+        src.playbackRate.setTargetAtTime(0.85 + 0.4 * v, t, 0.15);
+        env.gain.setTargetAtTime(v > 0 ? LEVEL.creak * v ** 0.6 : 0, t, 0.08);
+      },
+    };
+  }),
+);
+
+registerLoop('gardenSlosh', (o) =>
+  lasting(() => {
+    const { ctx } = o;
+    const nodes: AudioNode[] = [];
+    const srcs: AudioScheduledSourceNode[] = [];
+    const env = ctx.createGain();
+    env.gain.value = 0;
+    const send = ctx.createGain();
+    send.gain.value = 0.05;
+    env.connect(o.dry);
+    env.connect(send).connect(o.wet);
+    nodes.push(env, send);
+    // Water slopping against the buckets' walls: a dark wandering gurgle, the bucket's hollow, a few splashes at the top.
+    bed(o, source('babble'), 'lowpass', 1100, 0.6, 1, env, nodes, srcs);
+    bed(o, source('babble'), 'bandpass', 420, 3, 1.4, env, nodes, srcs);
+    bed(o, source('splash'), 'bandpass', 1300, 0.8, 0.22, env, nodes, srcs);
+    return {
+      stop() {
+        for (const s of srcs) s.stop();
+        for (const n of nodes) n.disconnect();
+      },
+      set(v, t) {
+        // (v: the sway × how full: it follows the swing quickly)
+        env.gain.setTargetAtTime(v > 0 ? LEVEL.slosh * v ** 0.8 : 0, t, 0.03);
+      },
+    };
+  }),
+);
+
+/** The `poleFill` action's two buckets: when each goes under and comes up full (s from the loop's start). */
+const POLE_FILL = (() => {
+  const a = POLE_ACTIONS.poleFill;
+  const at = (name: string, fb: number) => a.beats.find((b) => b.name === name)?.at ?? fb;
+  const from = a.loop?.from ?? 0.65;
+  return [
+    [Math.max(0, at('dip1', 0.6) - from), at('full1', 1.6) - from],
+    [at('dip2', 1.9) - from, at('full2', 2.9) - from],
+  ] as const;
+})();
+
+registerLoop('gardenBucketFill', (o) =>
+  lasting(() => {
+    const { ctx } = o;
+    const nodes: AudioNode[] = [];
+    const srcs: AudioScheduledSourceNode[] = [];
+    const env = ctx.createGain();
+    env.gain.value = 0;
+    const send = ctx.createGain();
+    send.gain.value = 0.07;
+    env.connect(o.dry);
+    env.connect(send).connect(o.wet);
+    // (each bucket's own swell: under, filling, up)
+    const each = ctx.createGain();
+    each.gain.value = 0;
+    each.connect(env);
+    nodes.push(env, send, each);
+    // The water rushing in over the rim (dark), the bucket's hollow rising as it fills, bubbles at the surface.
+    const rush = bed(o, noise('pink'), 'lowpass', 900, 0.6, 0.7, each, nodes, srcs);
+    const hollow = bed(o, noise('pink'), 'bandpass', 240, 5, 2.4, each, nodes, srcs);
+    bed(o, source('splash'), 'bandpass', 1200, 0.8, 0.3, each, nodes, srcs);
+    return {
+      stop() {
+        for (const s of srcs) s.stop();
+        for (const n of nodes) n.disconnect();
+      },
+      set(v, t, from) {
+        if (v > 0 && from <= 0) {
+          const g = each.gain;
+          const f = hollow.filter.frequency;
+          g.cancelScheduledValues(t);
+          f.cancelScheduledValues(t);
+          rush.gain.gain.cancelScheduledValues(t);
+          g.setValueAtTime(0, t);
+          for (const [a, b] of POLE_FILL) {
+            g.setValueAtTime(0, t + a);
+            g.linearRampToValueAtTime(1, t + a + 0.06);
+            g.setValueAtTime(1, t + b - 0.08);
+            g.linearRampToValueAtTime(0, t + b);
+            f.setValueAtTime(240, t + a);
+            f.exponentialRampToValueAtTime(650, t + b);
+            rush.gain.gain.setValueAtTime(0.7, t + a);
+            rush.gain.gain.linearRampToValueAtTime(0.35, t + b);
+            gulps(o, t + a, b - a - 0.05, each, 1.2, 140, 260);
+            // (up full: water streaming off its sides back into the stream, then drips)
+            burst(o, t + b, { src: 'splash', type: 'bandpass', f0: 1500, q: 0.7, attack: 0.04, tau: 0.08, level: LEVEL.bucket * 1.5, wet: 0.08 });
+            const r = o.rnd;
+            for (let i = 0; i < 3; i++) drop(o, t + b + 0.12 + 0.3 * r(), LEVEL.bucket * range(r, 0.4, 0.8), true);
+          }
+        }
+        env.gain.setTargetAtTime(v > 0 ? LEVEL.bucket * v ** 0.6 : 0, t, v > from ? 0.03 : 0.06);
+      },
+    };
+  }),
+);
+
+registerSfx('gardenJarPour', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.jar * (0.5 + 0.5 * g) * range(r, 0.9, 1.08);
+  // The bucket tipping: the water lurching to the rim.
+  stir(o, t, L * 0.8, 0.06);
+  // The pour into the big clay jar: water into water, the jar's deep hollow ringing under it, glugs.
+  const s = swell(o, t + 0.07, 0.08, range(r, 0.5, 0.6), 0.09, L, 0.12);
+  s.add(source('splash'), 'bandpass', range(r, 1000, 1300), 0.6, 1);
+  s.add(noise('pink'), 'lowpass', 700, 0.6, 0.7);
+  const boom = s.add(noise('pink'), 'bandpass', range(r, 180, 210), 5, 3.2);
+  boom.frequency.setValueAtTime(boom.frequency.value, t + 0.07);
+  boom.frequency.linearRampToValueAtTime(boom.frequency.value * 1.15, t + 0.8);
+  gulps(o, t + 0.12, 0.55, s.out, 0.9, 90, 70);
+  // (the bucket righted: the last of it dribbling in, drips)
+  for (let i = 0, n = 3 + Math.floor(r() * 3); i < n; i++) drop(o, t + 0.75 + 0.45 * r() ** 1.3, L * range(r, 0.25, 0.5), true);
+});
+
+registerSfx('gardenScoop', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.scoop * (0.5 + 0.5 * g) * range(r, 0.9, 1.1);
+  // The coconut shell knocking the bucket's rim, then scooping: a hollow bloop, the water closing over it.
+  tok(o, t, range(r, 650, 800), L * 0.25, 0.02, 0.05);
+  tone(o, t + 0.04, range(r, 480, 560), range(r, 240, 280), 0.003, 0.03, L * 0.35, 0.06);
+  burst(o, t + 0.04, { kind: 'pink', type: 'bandpass', f0: 1400, f1: 600, q: 2, attack: 0.004, tau: 0.04, level: L * 0.5, wet: 0.06 });
+  burst(o, t + 0.05, { src: 'splash', type: 'bandpass', f0: 1600, q: 0.8, attack: 0.01, tau: 0.05, level: L * 0.5, wet: 0.06 });
+  // Half a second later, thrown on the plant's earth: a short splash, the earth drinking it, drops off the leaves.
+  const p = t + 0.5;
+  const s = swell(o, p, 0.03, range(r, 0.14, 0.2), 0.07, L, 0.06);
+  s.add(source('splash'), 'bandpass', range(r, 900, 1200), 0.7, 0.9);
+  s.add(source('splash'), 'lowpass', 600, 0.6, 1.1);
+  s.add(noise('pink'), 'bandpass', 2000, 0.7, 0.15);
+  for (let i = 0, n = 3 + Math.floor(r() * 3); i < n; i++) drop(o, p + 0.2 + 0.4 * r() ** 1.3, L * range(r, 0.2, 0.45), false);
+});
+
+registerSfx('gardenSpill', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.spill * (0.5 + 0.5 * g) * range(r, 0.9, 1.1);
+  // A slop of water over the rim: it splashes on the ground beside his feet and soaks in.
+  const s = swell(o, t, 0.02, range(r, 0.06, 0.12), 0.07, L, 0.05);
+  s.add(source('splash'), 'bandpass', range(r, 1200, 1700), 0.7, 0.9);
+  s.add(source('splash'), 'lowpass', 700, 0.6, 1);
+  burst(o, t + 0.01, { kind: 'pink', type: 'lowpass', f0: 700, f1: 350, attack: 0.003, tau: 0.03, level: L * 0.6 });
+  for (let i = 0, n = 2 + Math.floor(r() * 3); i < n; i++) drop(o, t + 0.15 + 0.3 * r(), L * range(r, 0.2, 0.4), false);
+});
+
+registerSfx('gardenPoleUp', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.poleUp * (0.5 + 0.5 * g);
+  // The pole taken onto his shoulder: a hollow bamboo knock, the ropes taking the weight with a short creak.
+  tok(o, t, range(r, 380, 470), L * 0.6, 0.035, 0.06);
+  burst(o, t + 0.05, { kind: 'pink', type: 'bandpass', f0: range(r, 1100, 1400), q: 4, attack: 0.02, tau: 0.035, level: L * 0.4 });
+  // The buckets leaving the ground: their wire handles rattling on the rims, the water stirring.
+  let s = t + range(r, 0.06, 0.1);
+  for (let i = 0, n = 3 + Math.floor(r() * 3); i < n; i++) {
+    clink(o, s, L * range(r, 0.15, 0.3) * (1 - i * 0.12));
+    s += range(r, 0.04, 0.09);
+  }
+  stir(o, t + 0.1, L * 0.7);
+});
+
+registerSfx('gardenPoleDown', (o, g, t) => {
+  const r = o.rnd;
+  const L = LEVEL.poleDown * (0.5 + 0.5 * g);
+  // The two buckets set down on the earth, one and then the other: a dull thud of the water's weight, a short tinny ring.
+  for (const [k, at] of [
+    [1, 0],
+    [0.8, range(r, 0.09, 0.15)],
+  ] as const) {
+    const s = t + at;
+    tone(o, s, range(r, 105, 125), range(r, 70, 85), 0.002, 0.04, L * 0.22 * k, 0.04);
+    burst(o, s, { kind: 'brown', type: 'lowpass', f0: 700, f1: 220, attack: 0.002, tau: 0.035, level: L * 0.8 * k, wet: 0.04 });
+    tone(o, s + 0.002, range(r, 600, 850), range(r, 590, 840), 0.001, 0.025, L * 0.05 * k, 0.05, 0.03, 'triangle');
+    crumbs(o, s + 0.01, 2, 0.06, L * 0.1 * k, 1500, 3200);
+  }
+  // The handles falling against the rims, the water settling, the pole laid down across them.
+  clink(o, t + range(r, 0.2, 0.26), L * 0.2);
+  stir(o, t + 0.04, L * 0.6, 0.1);
+  tok(o, t + range(r, 0.3, 0.38), range(r, 360, 420), L * 0.3, 0.03, 0.05);
+});
