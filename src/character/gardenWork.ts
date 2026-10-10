@@ -507,6 +507,13 @@ const KEYS = (() => {
       [F.lift, S({ ...SQUAT, chest: 0.8, twist: -0.14, splay: 0.45 })],
       [F.len, STAND],
     ],
+    fillDeep: [
+      [0, STAND],
+      [F.dip, S({ ...KNEEL, tilt: 0.82, chest: 1.0, twist: -0.3, roll: 0.22, fwd: KNEEL.fwd + 0.6 })],
+      [F.full, S({ ...KNEEL, tilt: 0.84, chest: 1.02, twist: -0.3, roll: 0.22, fwd: KNEEL.fwd + 0.6 })],
+      [F.lift, S({ ...KNEEL, tilt: 0.66, chest: 0.8, twist: -0.24, roll: 0.14, fwd: KNEEL.fwd + 0.6 })],
+      [F.len, STAND],
+    ],
     pickLowHigh: [
       [0, STAND],
       [L.grip, S({ tilt: 0.72, chest: 0.55, drop: 3.2, fwd: -1.7, splay: 0.2, look: 1 })],
@@ -816,13 +823,17 @@ function onKnee(side: 'L' | 'R', knee: Vector3, w = 1): void {
 /** Where the knees are this frame (his space), for hands resting on them. */
 const KNEE = { L: new Vector3(), R: new Vector3() };
 /** How far (BU) each fist fell short of its target in the last pose (checks: out of reach), and the targets and shoulders (his space). */
-export const GARDEN_REACH = { L: 0, R: 0, target: { L: new Vector3(), R: new Vector3() }, shoulder: { L: new Vector3(), R: new Vector3() } };
+export const GARDEN_REACH = { L: 0, R: 0, target: { L: new Vector3(), R: new Vector3() }, shoulder: { L: new Vector3(), R: new Vector3() }, spot: new Vector3(), action: '' as GardenAction | '' };
+// (checks on the dev server and in shots: `__gardenPose` in the console)
+if (import.meta.env?.DEV) (globalThis as { __gardenPose?: typeof GARDEN_REACH }).__gardenPose = GARDEN_REACH;
 
 /** His pose for the body's action at its time. */
 export function gardenPose(w: GardenBody): Pose {
   const a = w.action;
   const t = clamp(w.t, 0, ACTIONS[a].len);
   const sp = workSpot(w, _spot);
+  GARDEN_REACH.spot.copy(sp);
+  GARDEN_REACH.action = a;
   const sh = bodyShape(a, t, sp, w.kind, _shape);
   // (breathing, a slow sway while working)
   const work = window4(t, 0, 0.4, ACTIONS[a].len - 0.4, ACTIONS[a].len);
@@ -875,8 +886,11 @@ function bodyShape(a: GardenAction, t: number, sp: Vector3, kind: PlantKindId | 
     case 'pickReach':
       return shapeAt(t, bigFruit(kind) ? KEYS.pickReachBig : KEYS.pickReach, out);
     case 'fill': {
-      const k = smooth((7 - sp.y) / 6);
-      return blendShapes(t, KEYS.fillHigh, KEYS.fillLow, k, out);
+      // (a jar's water at his waist: bent over it; at his feet: squatting; below the bank: down on his right knee at its
+      // edge, leaning right over, his right shoulder down and forward)
+      const deep = smooth((-1.5 - sp.y) / 5);
+      if (deep > 0) return blendShapes(t, KEYS.fillLow, KEYS.fillDeep, deep, out);
+      return blendShapes(t, KEYS.fillHigh, KEYS.fillLow, smooth((7 - sp.y) / 6), out);
     }
     case 'pickLow': {
       const k = smooth((4.5 - sp.y) / 2.5);
@@ -1584,12 +1598,14 @@ function filling(t: number, sp: Vector3): void {
   const sink = seg(t, b.dip, b.full);
   const lift = seg(t, b.full + 0.05, b.lift + 0.15);
   const back = seg(t, b.lift + 0.05, b.len - 0.05);
-  const tip = mix(0, 0.62, down) * (1 - sink * 0.75) * (1 - lift);
+  // (water below the bank: he kneels at its edge and lowers the can under his right shoulder, tipped more)
+  const deep = smooth((-1.5 - sp.y) / 5);
+  const tip = mix(0, 0.62 + 0.3 * deep, down) * (1 - sink * 0.75 * (1 - deep)) * (1 - lift);
   const yaw = Math.atan2(sp.x + 1.5, sp.z) * 0.5 - 0.15;
   // (the fist over the water: the can's body this far under the surface (a little more as it fills), lifted out)
-  const depth = mix(1.2, 2.2, sink) - 4.2 * lift;
+  const depth = mix(1.2, 2.2, sink) + 1.0 * deep - 4.2 * lift;
   // (lifted out it comes up and toward him)
-  _fist.set(sp.x - 0.4 - 1.2 * lift, sp.y - depth - CAN.h / 2 + GRIPS.can.at[1], sp.z - 0.4 - 3.5 * lift);
+  _fist.set(sp.x - 0.4 - 3.0 * deep - 1.2 * lift, sp.y - depth - CAN.h / 2 + GRIPS.can.at[1], sp.z - 0.4 - 1.2 * deep - 3.5 * lift);
   const carry = smooth(Math.max(1 - down, back));
   _fist.lerp(_rel.copy(CAN_CARRY).applyMatrix4(_chestM), carry);
   _fist.y += 1.0 * Math.sin(Math.PI * carry);
