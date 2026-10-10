@@ -154,7 +154,8 @@ export class ThirstDrops {
     this.urgentMesh = make(1, 'garden:thirst:urgent', CAP);
     this.mesh.name = 'garden:thirst';
     this.mesh.add(this.plain, this.urgentMesh);
-    // (in the scene from the start: hidden by count, not by `visible`, so the map's compile at load makes its program)
+    // (in the scene from the start, hidden: three compiles hidden objects too, so the map's compile at load makes its program)
+    this.plain.visible = this.urgentMesh.visible = false;
   }
 
   /** A plant this frame: does it want water (and how badly), and where its drop floats (m, the map). */
@@ -184,6 +185,7 @@ export class ThirstDrops {
     const urg = this.urgentMesh;
     if (!this.on || !this.slots.length) {
       plain.count = urg.count = 0;
+      plain.visible = urg.visible = false;
       return 0;
     }
     this.time += dt;
@@ -249,6 +251,9 @@ export class ThirstDrops {
     }
     plain.count = np;
     urg.count = nu;
+    // (nothing to show: not drawn at all)
+    plain.visible = np > 0;
+    urg.visible = nu > 0;
     const r = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 2;
     upload(plain, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, r);
     upload(urg, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, r);

@@ -23,6 +23,8 @@ import {
   gardenItemNow,
   gardenPoleLength,
   gardenPose,
+  gardenRope,
+  ropePlace,
   gardenRelease,
   groundBasket,
   type GardenBody,
@@ -33,6 +35,7 @@ import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { buildVoxelMesh, disposeVoxelMesh } from '../../voxel/VoxelMesh';
+import { ropeBuilder } from './_carryPoleProps';
 import { ACTIONS, type GardenAction, type GardenProp } from '../garden/actions';
 import { KINDS, type PlantKindId } from '../garden/kinds';
 
@@ -447,6 +450,42 @@ export function stickBuilder(tree: boolean): VoxelBuilder {
   return b;
 }
 
+/** A living plant dug up whole (`uproot`): its stem and leaves (a crop's or a young tree's), its roots and the earth on them; its root collar at the origin, up +y. */
+export function livePlantBuilder(kind: PlantKindId | null): VoxelBuilder {
+  const b = new VoxelBuilder();
+  const tree = !!kind && KINDS[kind].size === 'tree';
+  const H = tree ? STICK.tree : STICK.crop;
+  const STEM = tree ? 0x6f5a3c : 0x6a9a3e;
+  const LEAF = [0x4f8a32, 0x5c9a3a, 0x467e2c];
+  b.span(-0.26, -0.2, -0.26, 0.26, H * 0.8, 0.26, STEM, tree ? 'mapBark' : 'mapLeaf');
+  for (let i = 0; i < (tree ? 6 : 5); i++) {
+    const y = H * (0.35 + 0.12 * i);
+    const a = i * 2.4 + 0.3;
+    const len = 2.2 - i * 0.15;
+    const tip = V(Math.cos(a) * len, y + 0.8, Math.sin(a) * len);
+    rod(b, V(0, y, 0), tip, 0.2, 0.2, STEM, tree ? 'mapBark' : 'mapLeaf');
+    b.box(tip.x, tip.y + 0.1, tip.z, 1.8, 0.24, 1.0, pick(LEAF, r3(i, 2, 4191)), 'mapLeaf', { ry: -a, rz: 0.3 });
+  }
+  b.box(0, H * 0.85, 0, 1.4, 0.9, 1.4, LEAF[1], 'mapLeaf');
+  // (its roots and the earth still on them, fresh)
+  lump(b, 0, -1.0, 0, 2.2, 1.6, 2.0, SOIL, 'mapRock', 4193);
+  for (let i = 0; i < 6; i++) {
+    const a = i * 1.05 + 0.2;
+    rod(b, V(0, -0.9, 0), V(Math.cos(a) * 1.9, -2.2 - r3(i, 3, 4193) * 0.9, Math.sin(a) * 1.9), 0.2, 0.2, 0xb8a27a, 'mapBark');
+  }
+  return b;
+}
+
+/** A coil of cord in his fist (`cord`: the props draw the line from it down to the load). */
+export function cordCoilBuilder(): VoxelBuilder {
+  const b = new VoxelBuilder();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    b.box(Math.cos(a) * 1.0, -1.4 + Math.sin(a) * 1.0, 0.4, 0.24, 0.24, 0.9, 0xb89a68, 'krama', { rz: a });
+  }
+  return b;
+}
+
 // ── The harvest ─────────────────────────────────────────────────────────────
 
 /** A stalk on top of a fruit (from y up `len`). */
@@ -661,7 +700,7 @@ const DROP_SIZE = new Vector3(0.3, 0.62, 0.3);
 const _gb = new Vector3();
 
 /** A release frame's number (with the hand: × 2, + 1 the left). */
-const RELEASE_KEY: Record<GardenProp, number> = { hoe: 0, can: 1, knife: 2, pole: 3, seed: 4, cutting: 5, pup: 6, seedling: 7, fruit: 8, stick: 9, basket: 10 };
+const RELEASE_KEY: Record<GardenProp, number> = { hoe: 0, can: 1, knife: 2, pole: 3, seed: 4, cutting: 5, pup: 6, seedling: 7, fruit: 8, stick: 9, basket: 10, cord: 11, plant: 12 };
 
 /** A grip's inverse: the item's frame in the fist's (put the item in the hand by it). */
 function itemInFist(g: Grip, out: Matrix4): Matrix4 {
@@ -698,7 +737,7 @@ export function fruitVariety(kind: PlantKindId | null, seed: number | null): num
   }
 }
 
-type Keys = { fruit: string; bag: string; ball: string; seed: string; inBasket: string };
+type Keys = { fruit: string; bag: string; ball: string; seed: string; inBasket: string; plant: string };
 /** Each kind's (and variety's) keys of its things (made once: no string is made per frame). */
 const KEYS_OF = new Map<string | null, Keys>();
 const KEYS_BY: Partial<Record<PlantKindId | 'null', Keys[]>> = {};
@@ -707,7 +746,7 @@ function keysOf(kind: PlantKindId | null, v = 0): Keys {
   let k = list[v];
   if (!k) {
     const f = kind ?? 'mango';
-    k = { fruit: `fruit:${f}:${v}`, bag: `bag:${kind}`, ball: `ball:${kind}`, seed: `seed:${kind}`, inBasket: `fruit:${f}:${v}:in` };
+    k = { fruit: `fruit:${f}:${v}`, bag: `bag:${kind}`, ball: `ball:${kind}`, seed: `seed:${kind}`, inBasket: `fruit:${f}:${v}:in`, plant: `plant:${kind}` };
     list[v] = k;
   }
   return k;
@@ -724,6 +763,8 @@ function variant(p: GardenProp | 'tornBag' | 'basketGround', kind: PlantKindId |
       return action === 'plantTree' && t >= TEAR ? keysOf(kind).ball : keysOf(kind).bag;
     case 'stick':
       return kind && KINDS[kind].size === 'tree' ? 'stick:tree' : 'stick:crop';
+    case 'plant':
+      return keysOf(kind).plant;
     case 'seed':
       return keysOf(kind).seed;
     default:
@@ -755,6 +796,7 @@ export class GardenHands {
   private drops: InstancedMesh | null = null;
   private dropsGroup: Group | null = null;
   private readonly body: GardenBody = gardenBody('plant');
+  private readonly rope = ropePlace();
   /** Release frames worked out from the pose (by action, kind, spot): where each thing was let go. */
   private readonly released = new Map<number, Matrix4>();
   /** What the release frames were worked out for (the action, the kind, the spot). */
@@ -825,6 +867,15 @@ export class GardenHands {
         break;
       case 'stick':
         b = stickBuilder(k === 'tree' as string);
+        break;
+      case 'plant':
+        b = livePlantBuilder(kk);
+        break;
+      case 'cord':
+        b = cordCoilBuilder();
+        break;
+      case 'cordLine':
+        b = ropeBuilder();
         break;
       case 'fruit':
         b = fruitBuilder(kk ?? 'mango', Number(vv) || 0);
@@ -1058,6 +1109,41 @@ export class GardenHands {
         pole.getObjectByName('head')!.position.set(0, 0, L);
       }
     } else this.setGround('pole', 'pole', null, null);
+    // Digging a plant up: the hoe laid down; the plant laid down on his left.
+    if (action === 'uproot') {
+      if (t >= beat('hoeDown')) {
+        _m2.identity();
+        gardenItemNow(this.body, 'hoe', _m2);
+        this.setGround('hoe', 'hoe', null, _m2);
+      }
+      if (t >= beat('lay')) {
+        // (let go over the ground: it falls over onto its side, its stem along the ground the way it leaned)
+        const from = this.releaseFrame('plant', 'R', beat('lay'));
+        const k = Math.min(1, (t - beat('lay')) / 0.3) ** 2;
+        _p.setFromMatrixPosition(from);
+        _d.set(0, 1, 0).transformDirection(from);
+        _q.setFromRotationMatrix(from);
+        _q2.setFromEuler(_e.set(Math.PI / 2, Math.atan2(_d.x, _d.z), 0, 'YXZ'));
+        _q.slerp(_q2, k);
+        _p.y = _p.y * (1 - k) + 1.0 * k;
+        this.setGround('laid', keysOf(kind).plant, kind, _m.compose(_p, _q, ONE));
+      }
+      else this.setGround('laid', keysOf(kind).plant, kind, null);
+    } else this.setGround('laid', keysOf(kind).plant, kind, null);
+    // The can on its cord from a high bank, the cord from his fist down to its handle.
+    if (action === 'fillRope') {
+      gardenRope(this.body, this.rope);
+      this.setGround('ropeCan', 'can', null, this.rope.on ? this.rope.load : null);
+      if (this.rope.on) {
+        _d.subVectors(this.rope.bottom, this.rope.top);
+        const len = Math.max(0.2, _d.length());
+        _q.setFromUnitVectors(_p.set(0, -1, 0), _d.divideScalar(len));
+        this.setGround('cordLine', 'cordLine', null, _m.compose(this.rope.top, _q, _s.set(1, len, 1)));
+      } else this.setGround('cordLine', 'cordLine', null, null);
+    } else {
+      this.setGround('ropeCan', 'can', null, null);
+      this.setGround('cordLine', 'cordLine', null, null);
+    }
     // The dead plant: thrown on the heap to his right.
     if (action === 'clear' && t >= beat('toss')) {
       const toss = beat('toss');
@@ -1105,12 +1191,12 @@ export class GardenHands {
     const pour = action === 'water' ? ACTIONS.water : null;
     const lift = action === 'fill' ? gardenBeat('fill', 'lift') : 0;
     const flowing = pour ? t >= pour.loop!.from && t <= pour.loop!.to + 0.1 : false;
-    const dripping = action === 'fill' && t >= lift - 0.1 && t <= ACTIONS.fill.len + 0.4;
+    const dripping = (action === 'fill' && t >= lift - 0.1 && t <= ACTIONS.fill.len + 0.4) || (action === 'fillRope' && t >= gardenBeat('fillRope', 'pull') && t < gardenBeat('fillRope', 'untie'));
     if (!flowing && !dripping) {
       if (this.drops) this.drops.count = 0;
       return;
     }
-    const can = this.holder.R.children[0];
+    const can = action === 'fillRope' && t >= gardenBeat('fillRope', 'tie') + 0.3 ? this.onGround.get('ropeCan')?.children[0] : this.holder.R.children[0];
     if (!can) return;
     if (!this.drops) {
       this.dropsGroup = buildVoxelMesh(dropsBuilder(), { quality: this.explorer.rig.quality, name: 'garden:drops', castShadow: false });

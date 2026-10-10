@@ -14,7 +14,8 @@ import { registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey 
 import { CARRY } from './_carryHook';
 import { downModel, leanModel, type DownModel } from './_carryPoleModel';
 import { CarryPoleBody } from './_carryPoleBody';
-import { jarNear, restAt, TAKE_REACH, thirstyNear, waterAhead } from './_carryPoleSpots';
+import { jarNear, restAt, TAKE_REACH, thirstyNear } from './_carryPoleSpots';
+import { edgeBefore, waterAhead, type WaterSpot } from './_waterReach';
 import { createCarryChip, type CarryChip } from './_carryPoleChip';
 import { gardenSay, plantWord } from './_gardenToasts';
 import { angleDiff } from './followCam';
@@ -34,9 +35,11 @@ import type { RoamCtx } from './types';
  *   word the first time a visit. The pole creaks and the water sloshes by his pace and the swing (loops
  *   `gardenYokeCreak`, `gardenSlosh`). The buckets' water shows in a chip over the tool bar ("Buckets 9/12").
  * - **What E does with it** (first in the E row: `order` 12, so no ride, boat, ramp or hammock is offered while he
- *   carries it; the garden offers nothing of its own either: `CARRY.on`): at water he can reach — the stream's or the
- *   lake's surface at most 0.45 m under his feet (the village's washing steps, a low edge) or wading in the shallows —
- *   "E  Fill the buckets" (`poleFill`: two buckets of `BUCKET_POURS`); at his jar with water in the buckets "E  Pour
+ *   carries it; the garden offers nothing of its own either: `CARRY.on`): facing any open water up to 1.6 m before
+ *   him (_carryPoleSpots.ts `waterAhead`) — at most 0.45 m under his feet (a low edge, the washing steps) or wading:
+ *   "E  Fill the buckets" (`poleFill`: two buckets of `BUCKET_POURS`); deeper (the Kulen stream's metre-high banks, a
+ *   bridge, the jetty): "E  Lower the buckets on their ropes" (`poleFillRope`: the pole set down on the edge, each
+ *   bucket let down on its rope and pulled up full, the pole taken up again); at his jar with water in the buckets "E  Pour
  *   into the jar · jar 12/24" (`poleJar`: `GARDEN.fillJar`); at a thirsty plant of his garden "E  Water the mango with
  *   the dipper" (`poleScoop`: one pour, `GARDEN.water(p, 'bucket')`); anywhere else "E  Set down the pole"
  *   (`poleDown`: it lies there, the water in its buckets, till he takes it up again).
@@ -61,7 +64,7 @@ const PUSH = 0.15;
 const STEP_PACE = 1.4;
 const STEP_MAX = 3;
 /** Where he stands for the work (m from it): the pole's foot, the jar's middle, the plant's foot. */
-const STAND = { up: 0.75, jar: 1.05, scoop: 0.95 };
+const STAND = { up: 0.75, jar: 1.05, scoop: 0.95, dip: 0.6, rope: 0.5 };
 /** The camera at the work: round to his side (rad), tilt, distance; eased there, the player's after. */
 const FRAME = { side: 1.15, pitch: 0.28, distance: 5.4, rate: 2.4, for: 1.6, back: 1.6 };
 /**
@@ -143,7 +146,7 @@ const _v = new Vector3();
 const leanFoot = new Vector3();
 const leanTop = new Vector3();
 const leanBody = { foot: new Vector3(), top: new Vector3() };
-const _w = { x: 0, y: 0, z: 0 };
+const _w: WaterSpot = { how: 'dip', x: 0, y: 0, z: 0 };
 const prompts = new Map<string, string>();
 onLang(() => prompts.clear());
 
@@ -182,7 +185,7 @@ function nearPole(ctx: RoamCtx): boolean {
 /** What E would do now while he carries it (the first that fits). */
 function carryOffer(ctx: RoamCtx): { a: PoleAction; plant: Plant | null; home?: boolean } | 'jarFull' | null {
   const b = ctx.body;
-  if (total() < FULL - 0.5 && waterAhead(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, _w)) return { a: 'poleFill', plant: null };
+  if (total() < FULL - 0.5 && waterAhead(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, _w)) return { a: _w.how === 'rope' ? 'poleFillRope' : 'poleFill', plant: null };
   if (total() >= 0.5 && jarNear(ctx.world, b.pos.x, b.pos.z, _w)) return GARDEN.jar < JAR_MAX - 0.5 ? { a: 'poleJar', plant: null } : 'jarFull';
   if (total() >= 1) {
     const p = thirstyNear(b.pos.x, b.pos.z);
@@ -209,8 +212,12 @@ function begin(ctx: RoamCtx, a: PoleAction, plant: Plant | null, back = false): 
       break;
     }
     case 'poleFill':
-      if (!waterAhead(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, _w)) return false;
+    case 'poleFillRope':
+      // (at the edge before the water: squatting at a low one, standing at a high bank's or a bridge's to let them down)
+      if (!waterAhead(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, _w) || (_w.how === 'rope') !== (a === 'poleFillRope')) return false;
       target.set(_w.x, _w.y, _w.z);
+      if (_w.how === 'rope') edgeBefore(ctx.world, b.pos.x, b.pos.y, b.pos.z, target, STAND.rope, stand);
+      else placeBy(b.pos.x, b.pos.z, target, STAND.dip, stand);
       break;
     case 'poleJar':
       if (!jarNear(ctx.world, b.pos.x, b.pos.z, _w)) return false;
@@ -297,9 +304,11 @@ function beatDone(ctx: RoamCtx, s: Act, i: number, quiet: boolean): void {
       break;
     }
     case 'poleFill:full1':
+    case 'poleFillRope:full1':
       buckets[0] = BUCKET_POURS;
       break;
     case 'poleFill:full2':
+    case 'poleFillRope:full2':
       buckets[1] = BUCKET_POURS;
       if (!quiet) gardenSay(t('carryFilled'));
       break;
@@ -367,7 +376,8 @@ function settle(ctx: RoamCtx, dt: number): void {
   const p = ctx.body.pos;
   const land = ctx.world.field.heightAt(p.x, p.z);
   const top = ctx.world.groundAt(p.x, p.z);
-  const y = top - land < 0.6 || Math.abs(top - p.y) < 0.7 ? top : land;
+  // (on what he stands on — a deck, the veranda, the ground — never dropped through a bridge to the river bed)
+  const y = top - land < 0.6 || Math.abs(top - p.y) < 0.7 ? top : Math.abs(land - p.y) < 0.7 ? land : p.y;
   p.y += (y - p.y) * (dt > 0 ? 1 - Math.exp(-14 * dt) : 1);
 }
 
@@ -605,6 +615,8 @@ registerAddon({
     switch (o.a) {
       case 'poleFill':
         return prompt('fill', () => `E  ${t('carryFill')}`);
+      case 'poleFillRope':
+        return prompt('fillRope', () => `E  ${t('carryFillRope')}`);
       case 'poleJar': {
         const n = Math.floor(GARDEN.jar);
         return prompt(`jar${n}`, () => `E  ${t('carryJar', { n: num(n), max: num(JAR_MAX) })}`);
@@ -728,14 +740,14 @@ registerAddon({
       return;
     }
     // (`set:<t>` sets it down where he stands; `back:<t>` leans it back at his house)
-    const acts: Record<string, PoleAction> = { up: 'poleUp', fill: 'poleFill', jar: 'poleJar', scoop: 'poleScoop', set: 'poleDown', back: 'poleDown' };
+    const acts: Record<string, PoleAction> = { up: 'poleUp', fill: 'poleFill', rope: 'poleFillRope', jar: 'poleJar', scoop: 'poleScoop', set: 'poleDown', back: 'poleDown' };
     const back = what === 'back';
     const a = acts[what];
     if (!a || a !== 'poleUp') {
       carrying = true;
       showRest(false);
       fill(what === 'full' || a === 'poleJar' || a === 'poleScoop' ? FULL : Number.isFinite(Number(what)) ? Number(what) : 0);
-      if (a === 'poleFill') fill(0);
+      if (a === 'poleFill' || a === 'poleFillRope') fill(0);
     }
     sync();
     if (!a) return;

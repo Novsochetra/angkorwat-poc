@@ -44,10 +44,13 @@ export type GardenAction =
   | 'pickCut'
   | 'pickPole'
   | 'pickGround'
-  | 'clear';
+  | 'clear'
+  | 'fillRope'
+  | 'uproot'
+  | 'fell';
 
 /** The shoulder pole's actions (ដងរែក, roam/_carryPole*.ts): see `POLE_ACTIONS` below. */
-export type PoleAction = 'poleUp' | 'poleDown' | 'poleFill' | 'poleJar' | 'poleScoop';
+export type PoleAction = 'poleUp' | 'poleDown' | 'poleFill' | 'poleJar' | 'poleScoop' | 'poleFillRope';
 
 /** What he holds at a moment (roam/_gardenProps.ts builds them). */
 export type GardenProp =
@@ -61,7 +64,11 @@ export type GardenProp =
   | 'seedling'
   | 'fruit'
   | 'stick'
-  | 'basket';
+  | 'basket'
+  // (a cord between his fists, paid out down to the can or a bucket hanging on it: fillRope, poleFillRope)
+  | 'cord'
+  // (a living plant dug up whole, its roots and earth: uproot)
+  | 'plant';
 
 /**
  * The shoulder pole's props: the pole with its two buckets hung (one prop; their water level and sway the carry
@@ -193,6 +200,26 @@ export const POLE_ACTIONS: Record<PoleAction, PoleTiming> = {
     right: [[0, 'yoke'], [0.6, 'dipper'], [2.4, 'yoke']],
     left: [[0, null]],
   },
+  // From a high bank (the water up to ≈ 3 m below): the pole set down on the bank, one bucket untied from it and let down
+  // on its own cord hand over hand, filled, pulled up, tied back; the other; the pole taken up again.
+  poleFillRope: {
+    len: 8.4,
+    beats: [
+      { at: 0.6, name: 'down', sound: 'gardenPoleDown' },
+      { at: 1.4, name: 'lower1' },
+      { at: 2.0, name: 'dip1', sound: 'gardenDip' },
+      { at: 2.6, name: 'full1' },
+      { at: 3.0, name: 'pull1' },
+      { at: 3.9, name: 'lower2' },
+      { at: 4.6, name: 'dip2', sound: 'gardenDip' },
+      { at: 5.2, name: 'full2' },
+      { at: 5.6, name: 'pull2' },
+      { at: 7.6, name: 'up', sound: 'gardenPoleUp' },
+    ],
+    right: [[0, 'yoke'], [0.6, 'cord'], [7.2, 'yoke']],
+    left: [[0, null], [0.6, 'cord'], [7.2, null]],
+    loop: { sfx: 'gardenBucketFill', from: 2.05, to: 5.2 },
+  },
 };
 
 export const ACTIONS: Record<GardenAction, ActionTiming> = {
@@ -316,6 +343,55 @@ export const ACTIONS: Record<GardenAction, ActionTiming> = {
     ],
     right: [[0, null], [1.75, 'stick'], [2.25, null]],
     left: [[0, null], [1.75, 'stick'], [2.25, null]],
+  },
+  // The watering can from a high bank (the water up to ≈ 3 m below): the cord tied on its handle, let down hand over
+  // hand, dipped and filled, pulled up dripping, untied.
+  fillRope: {
+    len: 6.4,
+    beats: [
+      { at: 0.6, name: 'tie' },
+      { at: 1.0, name: 'lower' },
+      { at: 2.4, name: 'dip', sound: 'gardenDip' },
+      { at: 3.6, name: 'full' },
+      { at: 3.9, name: 'pull' },
+      { at: 5.3, name: 'up' },
+      { at: 5.8, name: 'untie' },
+    ],
+    right: [[0, 'can'], [0.9, 'cord'], [5.8, 'can']],
+    left: [[0, null], [0.9, 'cord'], [5.8, null]],
+    loop: { sfx: 'gardenFill', from: 2.45, to: 3.6 },
+  },
+  // A living crop or young plant dug up: the hoe loosens the earth round it, it is gripped, tugged out with its roots
+  // and its earth, laid down beside him.
+  uproot: {
+    len: 4.2,
+    beats: [
+      { at: 0.45, name: 'loosen', sound: 'gardenHoe' },
+      { at: 0.95, name: 'loosen', sound: 'gardenHoe' },
+      { at: 1.45, name: 'loosen', sound: 'gardenHoe' },
+      { at: 1.75, name: 'hoeDown' },
+      { at: 2.15, name: 'grip' },
+      { at: 2.5, name: 'tug', sound: 'gardenPull' },
+      { at: 2.85, name: 'out', sound: 'gardenPull' },
+      { at: 3.45, name: 'lay', sound: 'gardenToss' },
+    ],
+    right: [[0, 'hoe'], [1.75, null], [2.85, 'plant'], [3.45, null]],
+    left: [[0, 'hoe'], [1.75, null], [2.85, 'plant'], [3.45, null]],
+  },
+  // A grown tree taken out: five chops of the hoe at its foot, he steps back as it tips, it falls.
+  fell: {
+    len: 5.2,
+    beats: [
+      { at: 0.5, name: 'chop', sound: 'gardenHoe' },
+      { at: 1.0, name: 'chop', sound: 'gardenHoe' },
+      { at: 1.5, name: 'chop', sound: 'gardenHoe' },
+      { at: 2.0, name: 'chop', sound: 'gardenHoe' },
+      { at: 2.5, name: 'chop', sound: 'gardenHoe' },
+      { at: 3.0, name: 'back' },
+      { at: 3.7, name: 'fall' },
+    ],
+    right: [[0, 'hoe']],
+    left: [[0, 'hoe'], [3.0, null]],
   },
 };
 

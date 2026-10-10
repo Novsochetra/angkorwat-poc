@@ -2,16 +2,18 @@ import '../audio/_garden';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
 import { TIME } from '../time';
 import type { GardenAction } from '../garden/actions';
-import { GARDEN_KINDS, isTree, KINDS, type PlantKindId } from '../garden/kinds';
+import { GARDEN_KINDS, GROWN, isTree, KINDS, stageOf, type PlantKindId } from '../garden/kinds';
 import { CAN_MAX, GARDEN, JAR_MAX, MAX_CROPS, MAX_TREES, ripeNow, thirsty, type Plant } from '../garden/state';
 import { createGardenView, type GardenView } from '../garden/view';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
+import { pad } from '../pad/pad';
+import { createAskCard, type AskCard } from '../ui/ask';
 import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { createSeedCard, type SeedCard, type SeedRow } from './_gardenCard';
 import { CARRY } from './_carryHook';
 import { GardenGhost } from './_gardenGhost';
-import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, highBankAhead, inGardenArea, jarAt, PLANT_AHEAD, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
+import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { gardenSay, GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
 import { countWords, GardenWork, pickAction, plantAction } from './_gardenWork';
@@ -141,14 +143,14 @@ function shiftFocus(ctx: RoamCtx): void {
 /** Planting mode's touch buttons (change seed, done). */
 let touchBar: HTMLElement | null = null;
 
-type ChoiceKind = 'pick' | 'water' | 'clear' | 'fill' | 'plant' | 'dry' | 'bank' | 'jarEmpty' | 'hint';
+type ChoiceKind = 'pick' | 'water' | 'clear' | 'fill' | 'plant' | 'dig' | 'dry' | 'jarEmpty' | 'hint';
 interface Choice {
   kind: ChoiceKind | null;
   plant: Plant | null;
   prompt: string | null;
-  readonly fill: { at: 'jar' | 'stream'; x: number; y: number; z: number };
+  readonly fill: FillSpot;
 }
-const choice: Choice = { kind: null, plant: null, prompt: null, fill: { at: 'jar', x: 0, y: 0, z: 0 } };
+const choice: Choice = { kind: null, plant: null, prompt: null, fill: { at: 'jar', x: 0, y: 0, z: 0, sx: 0, sz: 0 } };
 
 // ── Words (made once a language and value: no string is made a frame) ──────────
 
@@ -187,7 +189,7 @@ function homeSeeds(): PlantKindId[] {
 const plantable = (k: PlantKindId) => k !== 'bodhi';
 
 /** The plant nearest in front of him within reach that wants something (ripe, dead, thirsty), or null. */
-function plantNear(ctx: RoamCtx): Plant | null {
+function plantNear(ctx: RoamCtx, any = false): Plant | null {
   const b = ctx.body;
   const fx = Math.sin(b.yaw);
   const fz = Math.cos(b.yaw);
@@ -199,10 +201,11 @@ function plantNear(ctx: RoamCtx): Plant | null {
     const dz = p.z - b.pos.z;
     const d = Math.hypot(dx, dz);
     if (d > reachOf(p)) continue;
-    if (!(ripeNow(p) || p.dead || thirsty(p))) continue;
-    // (in front of him first: behind him only when very near)
+    if (any ? p.dead : !(ripeNow(p) || p.dead || thirsty(p))) continue;
+    // (in front of him first: behind him only when very near; to dig one up, facing it and near)
     const dot = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
     if (dot < -0.35 && d > 0.9) continue;
+    if (any && (dot < 0.5 || d > reachOf(p) * (isTree(KINDS[p.kind]) ? 1 : 0.75))) continue;
     const s = d - dot * 0.9;
     if (s < score) {
       score = s;
@@ -235,7 +238,8 @@ function choose(ctx: RoamCtx): void {
   const b = ctx.body;
   const p = b.pos;
   // (the shoulder pole on him: his hands are on it; its add-on offers what can be done with the buckets)
-  if (CARRY.on || !inGardenArea(p.x, p.z)) return;
+  // (as far as the can is filled: the stream, the washing steps, the village bridge)
+  if (CARRY.on || !inGardenArea(p.x, p.z, AREA + 25)) return;
   // (on the veranda, the stair: nothing of the garden; but on the washing steps' landing over the stream he fills the can)
   if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9 && ctx.world.waterAt(p.x, p.z) === null) return;
   const pl = plantNear(ctx);
@@ -257,7 +261,8 @@ function choose(ctx: RoamCtx): void {
   }
   const hasPlants = GARDEN.plants.some((q) => q.at === 'home');
   const seeds = homeSeeds();
-  if (GARDEN.can < CAN_MAX && (hasPlants || seeds.length) && fillSpot(ctx.world, p.x, p.y, p.z, b.yaw, c.fill)) {
+  const fs = GARDEN.can < CAN_MAX && (hasPlants || seeds.length) ? fillSpot(ctx.world, p.x, p.y, p.z, b.yaw, c.fill) : null;
+  if (fs) {
     if (c.fill.at === 'jar') {
       // (the jar holds what the rain and his buckets put in it: `JAR_MAX` pours)
       const n = Math.floor(GARDEN.jar);
@@ -271,13 +276,7 @@ function choose(ctx: RoamCtx): void {
       return;
     }
     c.kind = 'fill';
-    c.prompt = words('fill|stream', () => `E  ${t('gardenFill')}`);
-    return;
-  }
-  if (GARDEN.can < CAN_MAX && (hasPlants || seeds.length) && highBankAhead(ctx.world, p.x, p.y, p.z, b.yaw)) {
-    // (at the stream where the bank is a wall: where he can fill it)
-    c.kind = 'bank';
-    c.prompt = words('bank', () => t('gardenBankHigh'));
+    c.prompt = c.fill.at === 'rope' ? words('fill|rope', () => `E  ${t('gardenFillRope')}`) : words('fill|stream', () => `E  ${t('gardenFill')}`);
     return;
   }
   if (pl) {
@@ -285,6 +284,15 @@ function choose(ctx: RoamCtx): void {
     c.plant = pl;
     c.kind = 'dry';
     c.prompt = words('dry', () => t('gardenCanEmpty'));
+    return;
+  }
+  // A living plant before him with nothing else to do there: hold E to dig it up (a grown tree: cut it down, asked first).
+  const any = plantNear(ctx, true);
+  if (any) {
+    c.plant = any;
+    c.kind = 'dig';
+    const tree = grownTree(any);
+    c.prompt = words(`dig|${any.kind}|${tree}`, () => `E  ${t(tree ? 'gardenFellHold' : 'gardenDigUpHold', { plant: plantWord(any.kind) })}`);
     return;
   }
   const home: PlantKindId[] = seeds.filter(plantable);
@@ -305,6 +313,97 @@ function choose(ctx: RoamCtx): void {
   if (Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > AREA || atHomeHouse(p.x, p.z)) return;
   c.kind = 'plant';
   c.prompt = words('plantStart', () => `E  ${t('gardenPlantStart')}`);
+}
+
+// ── Digging up, cutting down (hold E) ───────────────────────────────────────
+
+/** A grown tree: cut down (the `fell` work, asked first), not dug up. */
+const grownTree = (p: Plant): boolean => isTree(KINDS[p.kind]) && stageOf(KINDS[p.kind], p.age) === GROWN;
+
+/** E held this long (s) digs it up (a short press does nothing: a plant is not lost by a slip of the finger). */
+const HOLD_FOR = 0.8;
+/** E being held: on the keyboard (E, Enter), the pad's □, the touch Use button. */
+const holdKeys = { key: false, touch: false };
+let holdWired = false;
+function wireHold(): void {
+  if (holdWired || typeof window === 'undefined') return;
+  holdWired = true;
+  addEventListener('keydown', (e) => {
+    if ((e.code === 'KeyE' || e.code === 'Enter') && !e.repeat) holdKeys.key = true;
+  });
+  addEventListener('keyup', (e) => {
+    if (e.code === 'KeyE' || e.code === 'Enter') holdKeys.key = false;
+  });
+  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = false));
+  addEventListener('pointerdown', (e) => {
+    if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) holdKeys.touch = true;
+  }, true);
+  const up = () => (holdKeys.touch = false);
+  addEventListener('pointerup', up, true);
+  addEventListener('pointercancel', up, true);
+}
+const eHeld = (): boolean => holdKeys.key || holdKeys.touch || pad.held('west');
+
+/** The hold under way: the plant, how long so far (s). */
+let holding: { plant: Plant; t: number } | null = null;
+/** The prompt's and the touch Use button's fill bar (`--gd-hold` 0‥1). */
+function holdBar(v: number | null): void {
+  if (typeof document === 'undefined') return;
+  for (const el of document.querySelectorAll<HTMLElement>('.rh-prompt, .rt-use')) {
+    el.classList.toggle('gd-hold', v !== null);
+    if (v !== null) el.style.setProperty('--gd-hold', v.toFixed(3));
+  }
+}
+
+/** Each step while E is held on a plant: the bar fills; full, the work (or the question for a grown tree). Let go or away: nothing. */
+function holdStep(ctx: RoamCtx, dt: number): void {
+  const h = holding;
+  if (!h) return;
+  const p = h.plant;
+  const b = ctx.body.pos;
+  if (!eHeld() || !GARDEN.plants.includes(p) || Math.hypot(p.x - b.x, p.z - b.z) > reachOf(p) + 0.5 || GardenWork.active) {
+    holding = null;
+    holdBar(null);
+    return;
+  }
+  h.t += dt;
+  holdBar(Math.min(1, h.t / HOLD_FOR));
+  if (h.t < HOLD_FOR) return;
+  holding = null;
+  holdBar(null);
+  if (grownTree(p)) askFell(ctx, p);
+  else GardenWork.start(ctx, { action: 'uproot', kind: p.kind, plant: p });
+}
+
+/** "Cut down the mango? It took 8 game days to grow." (Yes: the `fell` work; No: nothing.) */
+let fellCard: AskCard | null = null;
+let fellPlant: Plant | null = null;
+const AXE = `<svg class="mu-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="#8a6038" d="M7 5h2v10H7z"/><path fill="#c8ccd0" d="M3 2h6v1h1v4H9v1H6V7H4V6H3z"/><path fill="#e8eef2" d="M4 3h4v1H4z"/><path fill="#5a8a3a" d="M11 9h3v1h1v3h-1v1h-3v-1h-1v-3h1z"/></svg>`;
+function askFell(ctx: RoamCtx, p: Plant): void {
+  if (!env) return;
+  fellPlant = p;
+  lastCtx = ctx;
+  fellCard ??= createAskCard(document.getElementById('ui') ?? document.body, {
+    cls: 'gd-fell',
+    icon: AXE,
+    words: () => {
+      const q = fellPlant;
+      const k = q ? q.kind : 'mango';
+      return {
+        title: t('gardenFellAsk', { plant: plantWord(k) }),
+        note: t('gardenFellNote', { n: num(Math.round(KINDS[k].growDays)) }),
+        stay: t('gardenFellNo'),
+        go: t('gardenFellYes'),
+      };
+    },
+    onGo: () => {
+      const q = fellPlant;
+      fellPlant = null;
+      if (q && lastCtx && GARDEN.plants.includes(q) && !GardenWork.active) GardenWork.start(lastCtx, { action: 'fell', kind: q.kind, plant: q });
+    },
+    sound: env.uiSound,
+  });
+  fellCard.ask();
 }
 
 // ── Planting mode ──────────────────────────────────────────────────────────
@@ -454,6 +553,8 @@ function openCard(ctx: RoamCtx): void {
 function plantFor(a: GardenAction, x: number, z: number): Plant | null {
   const suits = (p: Plant) => {
     if (a === 'clear') return p.dead;
+    if (a === 'uproot') return !p.dead && !grownTree(p);
+    if (a === 'fell') return !p.dead && grownTree(p);
     if (a === 'water') return !p.dead && !(isTree(KINDS[p.kind]) && p.age >= KINDS[p.kind].growDays);
     if (a.startsWith('pick')) return !p.dead && pickAction(p.kind) === a;
     return true;
@@ -477,7 +578,7 @@ function plantFor(a: GardenAction, x: number, z: number): Plant | null {
 
 /** Hold him at an action (the URL's `gardenact=<action>:<t>`, `__garden.act`). */
 function act(ctx: RoamCtx, a: GardenAction, at: number, kindParam: string | null): boolean {
-  if (!(a in { plant: 1, plantTree: 1, water: 1, fill: 1, pickLow: 1, pickReach: 1, pickCut: 1, pickPole: 1, pickGround: 1, clear: 1 })) {
+  if (!(a in { plant: 1, plantTree: 1, water: 1, fill: 1, fillRope: 1, pickLow: 1, pickReach: 1, pickCut: 1, pickPole: 1, pickGround: 1, clear: 1, uproot: 1, fell: 1 })) {
     console.warn(`[map] garden: no action "${a}"`);
     return false;
   }
@@ -491,16 +592,18 @@ function act(ctx: RoamCtx, a: GardenAction, at: number, kindParam: string | null
     const z = b.pos.z + Math.cos(b.yaw) * PLANT_AHEAD;
     return GardenWork.freeze(ctx, { action: a, kind, plant: null, spot: { x, z } }, at);
   }
-  if (a === 'fill') {
-    const f: FillSpot = { at: 'jar', x: 0, y: 0, z: 0 };
-    if (!fillSpot(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, f)) {
+  if (a === 'fill' || a === 'fillRope') {
+    const f: FillSpot = { at: 'jar', x: 0, y: 0, z: 0, sx: b.pos.x, sz: b.pos.z };
+    const r = fillSpot(ctx.world, b.pos.x, b.pos.y, b.pos.z, b.yaw, f);
+    if (!r) {
+      f.at = 'jar';
       // (not by the stream: the jar)
       const [jx, jz] = jarAt();
       f.x = jx;
       f.z = jz;
       f.y = ctx.world.field.heightAt(jx, jz) + 0.82;
     }
-    return GardenWork.freeze(ctx, { action: 'fill', kind: want ?? 'eggplant', plant: null, fill: f }, at);
+    return GardenWork.freeze(ctx, { action: f.at === 'rope' ? 'fillRope' : 'fill', kind: want ?? 'eggplant', plant: null, fill: f }, at);
   }
   const p = plantFor(a, b.pos.x, b.pos.z);
   if (!p) {
@@ -565,6 +668,14 @@ registerAddon({
     installGardenWalk(e.world);
     e.scene.add(view.object);
     ghost = new GardenGhost(e.scene, e.world);
+    wireHold();
+    if (typeof document !== 'undefined') {
+      // (the hold's fill bar under the prompt's words and on the touch Use button)
+      const st = document.createElement('style');
+      st.textContent = `.rh-prompt.gd-hold::after, .rt-use.gd-hold::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: 4px; height: 4px; border-radius: 2px;
+        background: linear-gradient(90deg, #ffe7a0, #f7bd40); transform: scaleX(var(--gd-hold, 0)); transform-origin: left center; pointer-events: none; box-shadow: 0 0 6px rgba(255, 200, 90, 0.6); }`;
+      document.head.append(st);
+    }
     GardenWork.init(e);
     GardenToasts.init(e);
     // (a shot's or a check's garden, before the first frame: the overview's shots too; never on the live site,
@@ -627,10 +738,11 @@ registerAddon({
       });
     }
   },
-  input(ctx, m, tap) {
+  input(ctx, m, tap, dt) {
     lastCtx = ctx;
     stepN++;
-    if (card?.open) return true;
+    if (card?.open || fellCard?.open) return true;
+    holdStep(ctx, dt);
     if (GardenWork.active) return tap(...BREAKERS);
     if (planting) {
       const p = ctx.body.pos;
@@ -689,7 +801,7 @@ registerAddon({
         if (c.plant) GardenWork.start(ctx, { action: 'clear', kind: c.plant.kind, plant: c.plant });
         break;
       case 'fill':
-        GardenWork.start(ctx, { action: 'fill', kind: chosen ?? 'eggplant', plant: null, fill: { ...c.fill } });
+        GardenWork.start(ctx, { action: c.fill.at === 'rope' ? 'fillRope' : 'fill', kind: chosen ?? 'eggplant', plant: null, fill: { ...c.fill } });
         break;
       default:
         break;
@@ -746,6 +858,9 @@ registerAddon({
   },
   setMode(next, _prev, ctx) {
     card?.close();
+    fellCard?.close();
+    holding = null;
+    holdBar(null);
     GardenWork.stop(ctx, next === 'overview');
     GardenToasts.setMode(next);
     exitPlanting();
@@ -811,7 +926,15 @@ registerAddon({
     return JOBS.has(choice.kind) ? null : choice.prompt;
   },
   use(ctx) {
-    if (!env || GardenWork.active || planting || choice.kind !== 'plant') return;
+    if (!env || GardenWork.active || planting) return;
+    if (choice.kind === 'dig' && choice.plant) {
+      // (held: the bar fills while E stays down; `holdStep`)
+      wireHold();
+      holding = { plant: choice.plant, t: 0 };
+      holdBar(0);
+      return;
+    }
+    if (choice.kind !== 'plant') return;
     openCard(ctx);
   },
 });

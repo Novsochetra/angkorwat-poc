@@ -501,6 +501,17 @@ export const GARDEN = {
     emit({ type: 'cleared', plant: p });
     changed(true);
   },
+  /**
+   * Dig up a living plant (he chose to: hold E): a young one (stage ≤ 1, alive) gives its seed or seedling back to his
+   * bag (to plant elsewhere: true), an older one is just gone (false). The pagoda's bodhi is never dug up (null).
+   */
+  digUp(p: Plant): boolean | null {
+    if (p.at === 'pagoda') return null;
+    const back = !p.dead && stageOf(KINDS[p.kind], p.age) <= 1;
+    GARDEN.remove(p);
+    if (back) GARDEN.addSeeds(p.kind, 1);
+    return back;
+  },
   /** Add seeds (the nursery, Grandma's gift, the monk's bodhi). */
   addSeeds(k: PlantKindId, n: number): void {
     state.seeds[k] = Math.max(0, (state.seeds[k] ?? 0) + n);

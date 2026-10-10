@@ -97,6 +97,13 @@ export const GARDEN_SPOT = {
   pickCut: 7.5,
   pickGround: 5.4,
   clear: 4.8,
+  /** fillRope / poleFillRope: the water ahead of the bank's edge (its surface `y` below his soles: up to ≈ −41 BU, 3 m). */
+  fillRope: 6,
+  poleFillRope: 6,
+  /** uproot: the plant's foot (he loosens it with the hoe from here, then steps in to pull it). */
+  uproot: 12,
+  /** fell: the trunk's middle at its foot (the hoe strikes its near side: give `GARDEN_FELL_BACK` + the trunk's radius). */
+  fell: 13,
   /** pickReach: the fruit this far to his right (BU: his right hand picks it, his arm up beside his big head). */
   reachX: -7.0,
   /** pickPole: how far ahead (BU) the fruit should be for its height `y` (BU): the pole leans in at about 60°. */
@@ -284,7 +291,11 @@ export function gardenGrip(prop: GardenProp, kind: PlantKindId | null, side: 'L'
     case 'seedling':
       return side === 'L' ? GRIPS.bagL : GRIPS.bagR;
     case 'stick':
+    case 'plant':
       return side === 'L' ? GRIPS.stickL : GRIPS.stickR;
+    case 'cord':
+      // (the cord's coil in his right fist: the props draw it down to the load from there)
+      return side === 'R' ? UP : null;
     case 'fruit': {
       const k = kind ?? 'mango';
       if (FRUIT[k].hang) return STALK;
@@ -346,6 +357,10 @@ const DEFAULT_SPOT: Record<GardenAction, Vector3> = {
   poleFill: new Vector3(0, -4, 8),
   poleJar: new Vector3(0, 11, POLE_JAR_Z),
   poleScoop: new Vector3(0, 0, 11),
+  fillRope: new Vector3(0, -13.6, GARDEN_SPOT.fillRope),
+  poleFillRope: new Vector3(0, -13.6, GARDEN_SPOT.poleFillRope),
+  uproot: new Vector3(0, 0, GARDEN_SPOT.uproot),
+  fell: new Vector3(0, 0, GARDEN_SPOT.fell),
 };
 /** A good spot for an action (checks, the viewer): as `GARDEN_SPOT` says. */
 export const defaultGardenSpot = (a: GardenAction): Vector3 => DEFAULT_SPOT[a];
@@ -658,6 +673,57 @@ const KEYS = (() => {
       [2.7, S({ ...POLE_SQUAT, drop: 4.4, tilt: 0.24, chest: 0.12 })],
       [TIMING.poleScoop.len, STAND],
     ],
+    // (from a high bank: down on his right knee at its edge, leaning out over the water, hand over hand)
+    fillRope: [
+      [0, STAND],
+      [0.6, S({ ...KNEEL, tilt: 0.5, chest: 0.5 })],
+      [1.0, S({ ...KNEEL, tilt: 0.42, chest: 0.5, twist: -0.06 })],
+      [2.4, S({ ...KNEEL, tilt: 0.48, chest: 0.58, twist: -0.06 })],
+      [3.9, S({ ...KNEEL, tilt: 0.48, chest: 0.58, twist: -0.06 })],
+      [5.3, S({ ...KNEEL, tilt: 0.36, chest: 0.4, twist: -0.04 })],
+      [5.8, S({ ...KNEEL, tilt: 0.5, chest: 0.5 })],
+      [TIMING.fillRope.len, STAND],
+    ],
+    // (the pole set down across the bank behind him; kneeling at the edge he turns to each bucket in turn, brings it
+    // round, lets it down and pulls it up, sets it back; the pole up again from behind his right)
+    poleFillRope: [
+      [0, STAND],
+      [0.6, S({ ...POLE_SQUAT, drop: 4.6, tilt: 0.24, chest: 0.12, twist: -0.3 })],
+      [1.15, S({ ...KNEEL, tilt: 0.3, chest: 0.3, twist: -0.85, turn: -0.3 })],
+      [1.5, S({ ...KNEEL, tilt: 0.46, chest: 0.5, twist: -0.08 })],
+      [3.25, S({ ...KNEEL, tilt: 0.46, chest: 0.52, twist: -0.08 })],
+      [3.5, S({ ...KNEEL, tilt: 0.3, chest: 0.3, twist: -0.85, turn: -0.3 })],
+      [4.05, S({ ...KNEEL, tilt: 0.3, chest: 0.3, twist: 0.85, turn: 0.3 })],
+      [4.3, S({ ...KNEEL, tilt: 0.46, chest: 0.5, twist: 0.08 })],
+      [6.1, S({ ...KNEEL, tilt: 0.46, chest: 0.52, twist: 0.08 })],
+      [6.35, S({ ...KNEEL, tilt: 0.3, chest: 0.3, twist: 0.85, turn: 0.3 })],
+      [7.2, S({ ...KNEEL, kneel: 0.6, tilt: 0.3, chest: 0.3, twist: -0.8, turn: -0.3 })],
+      [7.75, S({ ...POLE_SQUAT, drop: 4.4, tilt: 0.24, chest: 0.12 })],
+      [TIMING.poleFillRope.len, STAND],
+    ],
+    // (the hoe round its foot as when planting; then squatting, gripping, pulling it out; laying it down to his left)
+    uproot: [
+      [0, STAND],
+      [0.32, HOEING],
+      [1.5, HOEING],
+      [1.75, S({ tilt: 0.66, chest: 0.72, drop: 4.4, fwd: 0.2, splay: 0.3, twist: -0.32, turn: -0.12, look: 1 })],
+      [2.15, S({ tilt: 0.6, chest: 0.8, drop: 5.6, fwd: STEP_IN - 1.8, splay: 0.45, look: 1 })],
+      [2.5, S({ tilt: 0.55, chest: 0.75, drop: 5.4, fwd: STEP_IN - 2.2, splay: 0.45, look: 1 })],
+      [2.85, S({ tilt: 0.42, chest: 0.5, drop: 4.4, fwd: STEP_IN - 2.0, splay: 0.4, look: 1 })],
+      [3.45, S({ tilt: 0.6, chest: 0.85, drop: 5.4, fwd: STEP_IN - 2.0, splay: 0.42, twist: 0.3, turn: 0.1, look: 1 })],
+      [TIMING.uproot.len, STAND],
+    ],
+    // (deep strokes at its foot; upright, stepping back, the hoe at his side; a start as it falls)
+    fell: [
+      [0, STAND],
+      [0.32, HOEING_DEEP],
+      [2.6, HOEING_DEEP],
+      [3.0, S({ tilt: 0.12, chest: 0.06, drop: 0.8, fwd: -3, look: 1 })],
+      [3.6, S({ tilt: -0.04, chest: -0.08, drop: 0.6, fwd: -5, look: 1 })],
+      [3.85, S({ tilt: -0.1, chest: -0.12, drop: 1.0, fwd: -5, look: 1 })],
+      [4.4, S({ tilt: 0.02, chest: 0.0, drop: 0.4, fwd: -5, look: 1 })],
+      [TIMING.fell.len, S({ fwd: -5 })],
+    ],
     clear: [
       [0, STAND],
       [X.grip, S({ tilt: 0.6, chest: 0.8, drop: 5.6, fwd: -1.8, splay: 0.45, look: 1 })],
@@ -714,6 +780,18 @@ const STEPS: Record<GardenAction, readonly Step[]> = (() => {
     poleFill: [['L', 0.04, 0.32, 0.6, 3.6], ['L', 3.25, 3.52, 0, 0]],
     poleJar: [['L', 0.04, 0.3, 0.4, 1.4], ['L', 2.9, 3.15, 0, 0]],
     poleScoop: [['L', 0.02, 0.28, 1.0, 0.5], ['R', 0.1, 0.36, -0.6, -0.3], ['L', 2.75, 3.0, 0, 0], ['R', 2.9, 3.16, 0, 0]],
+    fillRope: [['L', 0.05, 0.4, 0.8, 3.0], ['L', 5.95, 6.3, 0, 0]],
+    poleFillRope: [['L', 0.02, 0.28, 1.0, 0.5], ['R', 0.1, 0.36, -0.6, -0.3], ['L', 0.7, 1.1, 0.8, 3.0], ['L', 7.2, 7.5, 1.0, 0.5], ['L', 7.95, 8.2, 0, 0], ['R', 8.05, 8.35, 0, 0]],
+    uproot: [
+      ['L', 0.02, 0.28, 1.1, 0.6],
+      ['R', 0.12, 0.38, -1.0, -0.4],
+      ['L', 1.63, 1.91, 1.5, STEP_IN + 0.3],
+      ['R', 1.85, 2.11, -1.5, STEP_IN - 0.3],
+      ['L', 3.6, 3.87, 0, 0],
+      ['R', 3.8, 4.15, 0, 0],
+    ],
+    // (stepping back from the tree as it tips: and he stays there, back from where he stood)
+    fell: [['L', 0.02, 0.28, 1.1, 0.6], ['R', 0.12, 0.38, -1.0, -0.6], ['R', 2.95, 3.25, -1.2, -5.8], ['L', 3.2, 3.5, 1.2, -4.6]],
     clear: [['L', 0.05, 0.3, 1.0, 0.8], ['R', 0.12, 0.36, -1.0, -0.6], ['L', X.toss + 0.1, X.toss + 0.36, 0, 0], ['R', X.toss + 0.26, X.len - 0.04, 0, 0]],
   };
 })();
@@ -1014,9 +1092,9 @@ function blendShapes(t: number, a: Keys, b: Keys, k: number, out: Shape): Shape 
 
 /** The body going with the hoe's strokes, the tugs, the pats (added to the shape). */
 function dips(a: GardenAction, t: number, sh: Shape): void {
-  if (a === 'plant' || a === 'plantTree') {
-    const deep = a === 'plantTree' ? 1.3 : 1;
-    for (const at of times(a, 'chop')) {
+  if (a === 'plant' || a === 'plantTree' || a === 'uproot' || a === 'fell') {
+    const deep = a === 'plantTree' || a === 'fell' ? 1.3 : 1;
+    for (const at of times(a, a === 'uproot' ? 'loosen' : 'chop')) {
       // (up with the hoe, then down into the stroke)
       const up = window4(t, at - 0.3, at - 0.18, at - 0.16, at - 0.06);
       const hit = window4(t, at - 0.08, at, at + 0.06, at + 0.24);
@@ -1100,6 +1178,10 @@ const APPROACH_MAX: Record<GardenAction, number> = {
   poleFill: 0,
   poleJar: 4,
   poleScoop: 5,
+  fillRope: 0,
+  poleFillRope: 0,
+  uproot: 6,
+  fell: 4,
 };
 /** The feet's steps to the work and back (s): in from‥to after the start, back from‥to before the end. */
 const APPROACH_STEPS = { L: [0.02, 0.26, 0.5, 0.27], R: [0.1, 0.34, 0.31, 0.06] } as const;
@@ -1380,6 +1462,12 @@ function hands(w: GardenBody, t: number, sp: Vector3): void {
       return gathering(w, t, sp);
     case 'clear':
       return clearing(w, t, sp);
+    case 'fillRope':
+      return roping(w, t, sp);
+    case 'uproot':
+      return uprooting(w, t, sp);
+    case 'fell':
+      return felling(t, sp);
     default:
       return yokeWork(w, t, sp);
   }
@@ -1412,8 +1500,11 @@ const HOE_UP = { mid: new Vector3(-1.2, 15.0, 5.0), pitch: 0.32 };
 const HOE_UP_DEEP = { mid: new Vector3(-1.2, 15.8, 5.2), pitch: 0.5 };
 /** The stroke's angle as the edge bites (handle pitch: − down): a shallow handle, the blade into the earth steeply. */
 const HOE_HIT = -0.55;
+/** Carried at his right side (the right fist's place, chest space: as he goes), its iron down. */
+const HOE_CARRY = new Vector3(-6.2, -0.4, 2.6);
+const _hc = new Vector3();
 /** Laid down on his right, the handle along the ground and the blade on its side. */
-const HOE_LAID = { butt: new Vector3(-7.0, HOE.r, -3.2), yaw: -0.1 };
+const HOE_LAID = { butt: new Vector3(-7.4, HOE.r, 0.2), yaw: -0.1 };
 const _hl = new Vector3();
 
 /** The middle of the two grips (hoe frame). */
@@ -1429,9 +1520,10 @@ const _hoeUp = new Vector3();
  * on his right.
  */
 function hoeFrame(a: GardenAction, t: number, sp: Vector3, out: Matrix4): Matrix4 {
-  const chops = times(a, 'chop');
-  const down = beats(a).hoeDown;
-  const deep = a === 'plantTree';
+  const chops = times(a, a === 'uproot' ? 'loosen' : 'chop');
+  const fell = a === 'fell';
+  const down = fell ? beats(a).back : beats(a).hoeDown;
+  const deep = a === 'plantTree' || fell;
   const up = deep ? HOE_UP_DEEP : HOE_UP;
   // The handle's pitch and the grips' middle at the strike: the edge on the spot.
   const hitFrame = (drag: number, o: Matrix4) => {
@@ -1440,7 +1532,8 @@ function hoeFrame(a: GardenAction, t: number, sp: Vector3, out: Matrix4): Matrix
     frameZY(_v.set(0, 0, 0), _hoeDir, _hoeUp, o);
     // (the edge at the spot, a little into the earth; dragged back toward him)
     _c.copy(HOE_EDGE).applyMatrix4(o);
-    o.setPosition(_d.set(sp.x - 0.4, sp.y - 0.35 - drag * 0.1, sp.z - drag).sub(_c));
+    // (felling: into the trunk's foot, a hand over the earth)
+    o.setPosition(_d.set(sp.x - 0.4, sp.y - 0.35 + (fell ? 1.6 : 0) - drag * 0.1, sp.z - drag).sub(_c));
     return o;
   };
   const held = (mid: Vector3, pitch: number, o: Matrix4, at = HOE_MID) => {
@@ -1459,8 +1552,10 @@ function hoeFrame(a: GardenAction, t: number, sp: Vector3, out: Matrix4): Matrix
     const k = seg(t, last + 0.12, down);
     hitFrame(1, out);
     if (k <= 0) return out;
-    laidFrame(_item2);
-    return lerpFrame(out, _item2, k, out, 3.5, _hoeGrip);
+    // (felling: pulled out of the trunk and carried at his side, its iron down, as he steps back)
+    if (fell) held(_hc.copy(HOE_CARRY).applyMatrix4(_chestM).sub(_ap), -1.25, _item2, HOE.gripR);
+    else laidFrame(_item2);
+    return lerpFrame(out, _item2, k, out, fell ? 1.5 : 3.5, _hoeGrip);
   }
   const hit = chops[i];
   const from = i === 0 ? 0 : chops[i - 1] + 0.12;
@@ -2059,7 +2154,7 @@ export function gardenItemNow(w: GardenBody, prop: GardenProp, out: Matrix4): Ma
 // ── The shoulder pole's actions ─────────────────────────────────────────────
 
 /** Where the pole and its buckets are now (as the last `gardenPose` of a pole action left them). */
-const YOKE_NOW = { frame: new Matrix4(), floor: [0, 0] as [number, number], tip: [0, 0] as [number, number], dipper: false, hook: [HOOK_END, -HOOK_END] as [number, number], stand: [new Vector3(), new Vector3()] as [Vector3, Vector3], standOn: [0, 0] as [number, number] };
+const YOKE_NOW = { frame: new Matrix4(), floor: [0, 0] as [number, number], tip: [0, 0] as [number, number], dipper: false, hook: [HOOK_END, -HOOK_END] as [number, number], stand: [new Vector3(), new Vector3()] as [Vector3, Vector3], standOn: [0, 0] as [number, number], cord: -1, load: new Matrix4(), cordTop: new Vector3() };
 
 /**
  * Where the pole is for the body's pole action at its time (his space): fills `out` (the pole's frame, the buckets'
@@ -2075,6 +2170,9 @@ export function gardenYoke(w: GardenBody, out: YokePlace): YokePlace {
   out.stand[1].copy(YOKE_NOW.stand[1]);
   out.standOn[0] = YOKE_NOW.standOn[0];
   out.standOn[1] = YOKE_NOW.standOn[1];
+  out.cord = YOKE_NOW.cord;
+  out.load.copy(YOKE_NOW.load);
+  out.cordTop.copy(YOKE_NOW.cordTop);
   out.floor[0] = YOKE_NOW.floor[0];
   out.floor[1] = YOKE_NOW.floor[1];
   out.tip[0] = YOKE_NOW.tip[0];
@@ -2095,6 +2193,7 @@ const POLE_FIST_TOP: Grip = grip([0, 0.55, 3.4], [1, 0, 0], [0, 1, 0]);
 const DIPPER_SHELL = 5.0;
 
 const _yq = new Quaternion();
+const _ya2 = new Matrix4();
 const _yc = new Matrix4();
 const _yh = new Matrix4();
 const _lx = new Vector3();
@@ -2151,6 +2250,13 @@ function onShoulder(pitch: number, spin: number, out: Matrix4, bare?: Matrix4): 
   _yq.setFromEuler(_ye.set(pitch, yaw, 0, 'YXZ')).multiply(_q2.setFromAxisAngle(_ay, spin));
   return out.compose(_yv, _yq, ONE);
 }
+/** The pole set down on a high bank: across behind him (its +z to his left), its buckets either side behind him. */
+function bankYoke(out: Matrix4): Matrix4 {
+  return out.compose(_yv.set(0, YOKE_REST.y, BANK_REST_Z).add(_ap), _yq.setFromAxisAngle(_ay, Math.PI / 2), ONE);
+}
+const BANK_REST_Z = -5.5;
+/** His right fist on the pole lying across behind him: on its right part, from above. */
+const BANK_GRIP: Grip = grip([0, 0.55, -4.2], [1, 0, 0], [0, 1, 0]);
 /** The pole lying on its buckets beside him. */
 function restYoke(out: Matrix4): Matrix4 {
   return out.compose(_yv.copy(YOKE_REST).add(_ap), _yq.identity(), ONE);
@@ -2170,6 +2276,7 @@ function yokeWork(w: GardenBody, t: number, sp: Vector3): void {
   Y.hook[0] = HOOK_END;
   Y.hook[1] = -HOOK_END;
   Y.standOn[0] = Y.standOn[1] = 0;
+  Y.cord = -1;
   const hand = _yh;
   const len = TIMING[a].len;
   switch (a) {
@@ -2228,6 +2335,62 @@ function yokeWork(w: GardenBody, t: number, sp: Vector3): void {
       if (fill) onKnee('L', KNEE.L, window4(t, 0.1, 0.5, len - 0.6, len - 0.2));
       break;
     }
+    case 'poleFillRope': {
+      // (set down across the bank behind him; each bucket in turn (his right one, then his left) untied, brought round,
+      // let down on its cord, filled, pulled up, set back and tied; the pole taken up again from behind his right)
+      const b = beats(a);
+      const down = seg(t, 0.15, b.down);
+      const up = seg(t, 7.3, 7.75);
+      bankYoke(_yb);
+      onShoulder(0, 0, Y.frame);
+      if (down > 0) lerpFrame(Y.frame, _yb, down, Y.frame, 0.6);
+      if (up > 0) lerpFrame(Y.frame, onShoulder(0, 0, _yc), up, Y.frame, 1.0);
+      const second = t >= 3.75;
+      // (the pole's +z runs to his left: its front bucket (0) is his left one)
+      const i = second ? 0 : 1;
+      const take = second ? 3.75 : 0.9;
+      const lower = second ? 4.25 : b.lower1;
+      const dip = second ? b.dip2 : b.dip1;
+      const full = second ? b.full2 : b.full1;
+      const pull = second ? b.pull2 : b.pull1;
+      const back = second ? 6.15 : 3.3;
+      const home = second ? 6.45 : 3.65;
+      if (t >= take && t < home) {
+        Y.cord = i;
+        // (its stand under its hook on the bank behind him: where it starts and ends)
+        _yd.set(0, -YOKE.r, i === 0 ? HOOK_OUT : -HOOK_OUT).applyMatrix4(Y.frame);
+        _yd.y = _ap.y + YOKE.height + YOKE.bail;
+        const lift = seg(t, take + 0.15, lower) * (1 - seg(t, back, home - 0.05));
+        const dn = seg(t, lower, dip) * (1 - seg(t, pull, back));
+        const fill = seg(t, dip, full);
+        // (over the edge: hanging, its bail at the cord's end; down so its body is under the surface)
+        _yv.set(sp.x, mix(-0.5, sp.y - 0.8 - 1.6 * fill + YOKE.bail + YOKE.height / 2, dn), sp.z);
+        // (brought round from behind him at his chest's height, out over the edge)
+        _x.set((i === 0 ? 1 : -1) * 7, 8, 1.5);
+        if (lift < 0.5) _yv.lerpVectors(_yd, _x, lift * 2);
+        else _yv.lerpVectors(_x, _yv, lift * 2 - 1);
+        Y.load.makeRotationY(0).setPosition(_yv);
+        const moving = seg(t, lower, lower + 0.12) * (1 - seg(t, dip - 0.12, dip)) + seg(t, pull, pull + 0.12) * (1 - seg(t, back - 0.2, back));
+        handOverHand(t, sp, moving);
+        // (carrying it round and back: both hands at its bail; untying and tying: the near hand)
+        const atBail = 1 - smooth(clamp(Math.min((t - (take + 0.15)) / (lower - take - 0.15), (home - 0.05 - t) / (home - 0.05 - back)) * 1.0, 0, 1));
+        const carry = window4(t, take + 0.15, take + 0.35, lower - 0.15, lower) + window4(t, back, back + 0.05, home - 0.25, home);
+        const near = i === 0 ? 'L' : 'R';
+        for (const sd of ['L', 'R'] as const) {
+          const k = sd === near ? Math.max(atBail, carry) : carry;
+          if (k > 0.01) toward(sd, _ya2.makeRotationY(0).setPosition(_c.copy(_yv).add(_x.set(sd === 'L' ? 0.8 : -0.8, 0.5, 0))), k);
+        }
+        Y.cordTop.setFromMatrixPosition(HANDS.R.m);
+      } else if (t < take || t >= 7.0) {
+        // (the pole in his right hand, set down behind him or taken up from there: held by its right part, eased to the shoulder grip)
+        const k = t < 1 ? 1 - down : 1 - up;
+        _ya.multiplyMatrices(Y.frame, gripMatrix(BANK_GRIP));
+        _yc.multiplyMatrices(Y.frame, gripMatrix(POLE_FIST));
+        lerpFrame(_yc, _ya, smooth(k * 1.4 - 0.2), hand);
+        setHand('R', hand, t < 1 ? 1 : seg(t, 7.0, 7.25), POLE_DOWN.R);
+      }
+      break;
+    }
     case 'poleScoop': {
       // (set it down beside him; the dipper: a scoop from the front bucket, poured at the plant's foot, back; the pole up again)
       const b = beats(a);
@@ -2262,4 +2425,145 @@ function yokeWork(w: GardenBody, t: number, sp: Vector3): void {
       break;
     }
   }
+}
+
+// ── From a high bank on a cord; digging a plant up; felling a tree ─────────
+
+/**
+ * The load on the cord now (the watering can for `fillRope`; a bucket for `poleFillRope`, which `gardenYoke` gives as
+ * `YokePlace.cord / load / cordTop`): its frame (his space: the can's bottom's middle, the bucket's bail), the cord's top
+ * (his right fist) and its bottom (the handle's top), and whether it is on the cord at all.
+ */
+export interface RopePlace {
+  on: boolean;
+  readonly load: Matrix4;
+  readonly top: Vector3;
+  readonly bottom: Vector3;
+}
+export function ropePlace(): RopePlace {
+  return { on: false, load: new Matrix4(), top: new Vector3(), bottom: new Vector3() };
+}
+const ROPE_NOW: RopePlace = ropePlace();
+/** Where the can is on its cord (`fillRope`) for the body (it poses it to know). */
+export function gardenRope(w: GardenBody, out: RopePlace): RopePlace {
+  gardenPose(w);
+  out.on = ROPE_NOW.on;
+  out.load.copy(ROPE_NOW.load);
+  out.top.copy(ROPE_NOW.top);
+  out.bottom.copy(ROPE_NOW.bottom);
+  return out;
+}
+
+/** The bank's edge before him (z, BU from his feet) for a spot on the water below: a little short of it. */
+const edgeZ = (sp: Vector3) => sp.z - 2.2;
+/** Hand over hand: the two fists' heights (his space) over the edge as the cord goes `dir` (+1 down, −1 up) at `t`. */
+function handOverHand(t: number, sp: Vector3, moving: number): void {
+  const ph = t * 5.4;
+  const z = edgeZ(sp) - 0.8;
+  for (const s of ['L', 'R'] as const) {
+    const sg = s === 'L' ? 1 : -1;
+    const k = Math.sin(ph + (s === 'L' ? Math.PI : 0)) * moving;
+    // (out before his chest as he leans over the edge, one fist over the other)
+    _v.copy(ARM[s].shoulder).applyMatrix4(_chestM).add(_w.set(-sg * 2.6, -4.6 + 1.4 * k, 3.4 - 0.4 * Math.abs(k)));
+    void sp;
+    void z;
+    // (a fist round the cord, the cord down through it: its grip axis vertical, the knuckles out)
+    frameZY(_v, _w.set(0, -1, 0), _x.set(0, 0, -1), _ya2);
+    setHand(s, _ya2, 1, POLE_DOWN[s]);
+  }
+}
+const _rl = new Vector3();
+
+/** The load's place on the cord: from the edge (`k` 0) down to the water (`k` 1: its middle `under` BU under the surface). */
+function hangAt(sp: Vector3, k: number, under: number, height: number, out: Vector3): Vector3 {
+  const top = -1.0 - height * 0.5;
+  return out.set(sp.x, mix(top, sp.y - under, k), sp.z);
+}
+
+function roping(w: GardenBody, t: number, sp: Vector3): void {
+  const b = beats('fillRope');
+  const R = ROPE_NOW;
+  // The can: in his right hand to the edge, set down there; on the cord over the edge, down, filling, up, back on the bank.
+  const ground = _rl.set(sp.x - 1.4, 0, edgeZ(sp) - 1.6);
+  R.on = t >= b.tie + 0.3 && t < b.untie;
+  if (!R.on) {
+    // (carried; set down at the edge; taken up again)
+    const set = t < b.tie + 0.3 ? seg(t, 0.15, b.tie) : 1 - seg(t, b.untie, w.action === 'fillRope' ? TIMING.fillRope.len - 0.1 : 6.3);
+    _fist.copy(_rel.copy(CAN_CARRY).applyMatrix4(_chestM));
+    _w.copy(ground).add(_v.set(0, GRIPS.can.at[1], GRIPS.can.at[2]));
+    _fist.lerp(_w, set);
+    canAt(_fist, 0, 0, _item);
+    onItem('R', _item, GRIPS.can);
+    R.load.copy(_item);
+    return;
+  }
+  // (over the edge, down hand over hand, dipped, filling, up, back over onto the bank)
+  const over = seg(t, b.tie + 0.3, b.lower) * (1 - seg(t, b.up - 0.15, b.up));
+  const down = seg(t, b.lower, b.dip) * (1 - seg(t, b.pull, b.up - 0.15));
+  const fill = seg(t, b.dip, b.full);
+  const under = mix(1.6, 2.6, fill);
+  hangAt(sp, down, under, CAN.h, _v);
+  _v.lerp(_w.copy(ground).setY(CAN.h * 0.5), 1 - over);
+  const tip = 0.6 * seg(t, b.dip - 0.2, b.dip) * (1 - fill * 0.85) * down;
+  frameYawPitch(_c.set(0, 0, 0), 0, tip, R.load);
+  _d.set(0, CAN.h / 2, 0).applyMatrix4(R.load);
+  R.load.setPosition(_v.sub(_d));
+  // (the hands: on the cord over the edge, going hand over hand while it moves)
+  const moving = (seg(t, b.lower, b.lower + 0.15) * (1 - seg(t, b.dip - 0.15, b.dip))) + (seg(t, b.pull, b.pull + 0.15) * (1 - seg(t, b.up - 0.3, b.up)));
+  handOverHand(t, sp, moving);
+  // (tying and untying: both hands down at the handle on the bank)
+  const atHandle = 1 - over;
+  if (atHandle > 0.01) {
+    _w.set(...GRIPS.can.at).applyMatrix4(R.load);
+    for (const s of ['L', 'R'] as const) {
+      _ya2.makeRotationY(0).setPosition(_v.copy(_w).add(_x.set(s === 'L' ? 0.9 : -0.9, 0.6, -0.4)));
+      toward(s, _ya2, atHandle);
+    }
+  }
+  R.top.setFromMatrixPosition(HANDS.R.m);
+  R.bottom.set(...GRIPS.can.at).applyMatrix4(R.load);
+}
+
+/** The dug-up plant laid down on his left (his space). */
+const UPROOT_LAY = new Vector3(1.6, 0, 8.0);
+
+function uprooting(w: GardenBody, t: number, sp: Vector3): void {
+  const b = beats('uproot');
+  // The hoe round its foot (as when planting), laid down on his right.
+  if (t < b.hoeDown + 0.02) {
+    hoeFrame('uproot', t, sp, _item);
+    // (let go a hand over the ground: it drops the last of the way)
+    bothOn(_item, GRIPS.hoeR, GRIPS.hoeL, 1 - seg(t, b.hoeDown - 0.22, b.hoeDown), seg(t, 0.06, 0.26) * (1 - seg(t, b.hoeDown - 0.32, b.hoeDown - 0.05)), POLE_DOWN.R, POLE_DOWN.L, 1);
+    return;
+  }
+  // The plant: gripped at its stem, tugged, out with its roots and earth, laid down on his left.
+  const go = seg(t, b.hoeDown + 0.1, b.grip);
+  const tug = window4(t, b.grip + 0.05, b.tug, b.tug + 0.05, b.tug + 0.25);
+  const out = seg(t, b.tug + 0.15, b.out);
+  const lay = seg(t, b.out + 0.1, b.lay);
+  const MID = (STICK.gripR + STICK.gripL) / 2;
+  _a.copy(sp).setY(sp.y + MID + 0.4 * tug + 6.5 * out);
+  _a.z -= 1.0 * out;
+  _d.set(0, 1, 0);
+  // (laid down before his left knee: where his hands are as he leans over)
+  // (let go a little over the ground: it drops onto it: roam/_gardenProps.ts lays it flat)
+  _b.setFromMatrixPosition(_hipsM).add(UPROOT_LAY).setY(3.2);
+  _v.copy(_a).lerp(_b, lay);
+  _v.y += 2.0 * Math.sin(Math.PI * lay);
+  _d.lerp(_w.set(0.4, 0.15, 1).normalize(), lay).normalize();
+  frameYZ(_v, _d, _x.set(0, 0, 1).lerp(_y.set(0, 1, 0), lay), _item);
+  _item.setPosition(_w.copy(_d).multiplyScalar(-MID).add(_v));
+  const off = seg(t, b.lay, b.lay + 0.3);
+  bothOn(_item, GRIPS.stickR, GRIPS.stickL, go * (1 - off), go * (1 - off));
+  if (off > 0) for (const s of ['L', 'R'] as const) HANDS[s].m.setPosition(_w.setFromMatrixPosition(HANDS[s].m).add(_c.set(0, 1.6 * off, -0.6 * off)));
+  void w;
+}
+
+function felling(t: number, sp: Vector3): void {
+  const b = beats('fell');
+  hoeFrame('fell', t, sp, _item);
+  // (both hands on it while he strikes; the left lets go as he steps back, the right carries it)
+  const last = times('fell', 'chop')[4];
+  bothOn(_item, GRIPS.hoeR, GRIPS.hoeL, 1, seg(t, 0.06, 0.26) * (1 - seg(t, last + 0.1, last + 0.3)), POLE_DOWN.R, POLE_DOWN.L, 1);
+  void b;
 }

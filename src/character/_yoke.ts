@@ -42,9 +42,13 @@ export interface YokePlace {
    */
   readonly stand: [Vector3, Vector3];
   standOn: [number, number];
+  /** A bucket let down on its own cord (`poleFillRope`): which (−1 none), its frame (his space, its bail's top), the cord's top (his fist). */
+  cord: number;
+  readonly load: Matrix4;
+  readonly cordTop: Vector3;
 }
 export function yokePlace(): YokePlace {
-  return { frame: new Matrix4(), floor: [0, 0], tip: [0, 0], dipper: false, hook: [HOOK_END, -HOOK_END], stand: [new Vector3(), new Vector3()], standOn: [0, 0] };
+  return { frame: new Matrix4(), floor: [0, 0], tip: [0, 0], dipper: false, hook: [HOOK_END, -HOOK_END], stand: [new Vector3(), new Vector3()], standOn: [0, 0], cord: -1, load: new Matrix4(), cordTop: new Vector3() };
 }
 /** The ropes' notches: this far from the pole's middle (BU). */
 export const HOOK_END = YOKE.length / 2 - 1.0;

@@ -178,3 +178,49 @@ export function marker(b: VoxelBuilder, x: number, z: number, yaw: number, pack:
   b.box(cx, cy + 0.048, cz, 0.104, 0.03, 0.038, f(pack.band), 'petal', tw);
   for (const s of [1, -1]) b.box(cx + Math.sin(yaw) * 0.016 * s, cy - 0.016, cz + Math.cos(yaw) * 0.016 * s, 0.064, 0.062, 0.006, f(pack.art), 'petal', tw);
 }
+
+const _qf = new Quaternion();
+const _qp = new Quaternion();
+const _v = new Vector3();
+
+/**
+ * A blade's own frame (a broad leaf built of several blocks): its base (the notch where the stalk joins) at `p`,
+ * pointing toward `yaw`, `pitch` tipping its far end down (0 level, negative up), `roll` turning it about its
+ * own length. In the frame `u` goes across the blade (+ to its right), `v` along it (out from the base), `n` up
+ * out of its face.
+ */
+export class Blade {
+  private readonly q = new Quaternion();
+  private readonly o = new Vector3();
+  constructor(
+    private readonly b: VoxelBuilder,
+    p: P,
+    yaw: number,
+    pitch: number,
+    roll = 0,
+  ) {
+    this.o.set(p.x, p.y, p.z);
+    this.q.setFromAxisAngle(Y, yaw);
+    _qp.setFromAxisAngle(X, pitch);
+    this.q.multiply(_qp);
+    if (roll) {
+      _qp.setFromAxisAngle(Z, roll);
+      this.q.multiply(_qp);
+    }
+  }
+
+  /**
+   * A block of the blade centred at (`u`, `v`, `n`): `w` across, `l` along, `t` thick, turned `spin` in the
+   * blade's plane, then `lift` about its own length (its +u edge up: a lobe cupping) and `bow` about its width
+   * (its far end up).
+   */
+  put(u: number, v: number, n: number, w: number, l: number, t: number, spin: number, lift: number, bow: number, color: number, mat: VoxelMaterialKey): void {
+    _v.set(u, n, v).applyQuaternion(this.q).add(this.o);
+    _qf.copy(this.q);
+    if (spin) _qf.multiply(_qp.setFromAxisAngle(Y, spin));
+    if (lift) _qf.multiply(_qp.setFromAxisAngle(Z, lift));
+    if (bow) _qf.multiply(_qp.setFromAxisAngle(X, -bow));
+    _e.setFromQuaternion(_qf, 'XYZ');
+    this.b.box(_v.x, _v.y, _v.z, w, t, l, color, mat, { rx: _e.x, ry: _e.y, rz: _e.z });
+  }
+}

@@ -51,6 +51,8 @@ const WATER = [0xdcf0f8, 0xb8dcef, 0x9cc8e4, 0xeef8fc] as const;
 const BAG = [0x1e1e20, 0x2a2a2c, 0x161618] as const;
 const ROOT = [0xb8956a, 0xa27f58, 0x8a6a48] as const;
 const HOLE = [0x3a2a1e, 0x2e2118] as const;
+/** Bark chips and the pale wood under it (an axe at a trunk's foot). */
+const CHIPS = [0x6a4a30, 0x5a3e28, 0xd8c08a, 0xc8ac78] as const;
 const JAR_WATER = [0x3e5a66, 0x5a7a86, 0x8aa8b4] as const;
 /** Each kind's leaf green (sRGB), and a yellowed one now and then. */
 const LEAVES: Record<PlantKindId, readonly number[]> = {
@@ -79,6 +81,8 @@ export interface GardenFx {
   frame(dt: number, calm: boolean): void;
   /** A drop of water burst (watered): splashes from (x, y, z). */
   pop(x: number, y: number, z: number): void;
+  /** A felled tree has hit the ground (foot at x, y, z, fallen along (wx, wz), its height, its crown's base, its reach): dust along it, leaves shaken from its crown. */
+  fell(kind: PlantKindId, x: number, y: number, z: number, wx: number, wz: number, height: number, base: number, reach: number): void;
   /** Dust where something heavy landed (a fruit fallen: the view's drop). */
   puff(x: number, y: number, z: number, big: number): void;
   readonly stats: () => { alive: number; spawned: number };
@@ -119,7 +123,7 @@ function beatAt(action: GardenAction | PoleAction, name: string, n: number): num
   return 0;
 }
 
-export function installGardenFx(group: Group, world: RoamWorld, plantInfo: PlantInfo, shot: boolean): GardenFx {
+export function installGardenFx(group: Group, world: RoamWorld, plantInfo: PlantInfo, shot: boolean, takingOut: (id: number, how: 'uproot' | 'fell', yaw: number, beat: string) => void = () => undefined): GardenFx {
   const P = new Particles();
   group.add(P.mesh);
   let calm = false;
@@ -297,6 +301,41 @@ export function installGardenFx(group: Group, world: RoamWorld, plantInfo: Plant
     const g = world.field.heightAt(b.x, b.z);
     const info = b.plant >= 0 ? plantInfo(b.plant) : null;
     const foot = info ? info.y : g;
+    const an = a as string;
+    if ((an === 'uproot' || an === 'fell') && b.plant >= 0) takingOut(b.plant, an, b.yaw, b.beat);
+    if (an === 'uproot') {
+      // Dug up: earth loosened round it, earth and roots at each tug, a spray as it comes out, a puff where it is laid.
+      if (b.beat === 'loosen') {
+        earth(b.x, foot, b.z, 6, -fx * 0.4, -fz * 0.4, 1.4, 0.9);
+        dust(b.x, foot, b.z, 2, 0.8);
+      } else if (b.beat === 'tug') {
+        earth(b.x, foot, b.z, 7, -fx * 0.6, -fz * 0.6, 1.9);
+        earth(b.x, foot, b.z, 3, -fx * 0.6, -fz * 0.6, 1.8, 1, ROOT);
+        crumbs(0.45, 0.4);
+      } else if (b.beat === 'out') {
+        earth(b.x, foot, b.z, 12, -fx * 0.7, -fz * 0.7, 2.5);
+        earth(b.x, foot, b.z, 7, -fx * 0.7, -fz * 0.7, 2.3, 1.2, ROOT);
+        dust(b.x, foot, b.z, 3);
+        crumbs(0.8, 0.5);
+      }
+      return;
+    }
+    if (an === 'fell') {
+      // Felled: bark chips and pale wood from the axe's cut at the foot, a little earth; the fall itself is the view's.
+      if (b.beat === 'chop') {
+        const h = foot + 0.35;
+        earth(b.x - fx * 0.15, h, b.z - fz * 0.15, 7, -fx * 0.5 + fz * 0.5, -fz * 0.5 - fx * 0.5, 2.0, 0.8, CHIPS, 0.06);
+        earth(b.x, foot, b.z, 2, -fx * 0.4, -fz * 0.4, 1.0, 0.7);
+        crumbs(0.35, 0.35);
+      }
+      return;
+    }
+    if (an === 'fillRope' || an === 'poleFillRope') {
+      // On a rope down to the water below: a splash as the can (the bucket) goes in, drips as it comes up.
+      if (b.beat.startsWith('dip') || b.beat.startsWith('splash') || b.beat === 'in') splash(b.x, b.y, b.z, 14, 1.7, 0.15);
+      else if (b.beat.startsWith('full') || b.beat.startsWith('up') || b.beat.startsWith('pull') || b.beat === 'lift') drops(b.x, b.y, b.z, 9, 1.2, 0.12);
+      return;
+    }
     switch (a) {
       case 'plant':
       case 'plantTree':
@@ -461,6 +500,27 @@ export function installGardenFx(group: Group, world: RoamWorld, plantInfo: Plant
       jarFrame(dt);
       emitters(dt);
       P.step(dt);
+    },
+    fell(kind, x, y, z, wx, wz, height, base, reach) {
+      P.reseed(x * 7.3 + z * 3.1);
+      for (let i = 0; i < 6; i++) {
+        const d = (height * (i + 0.5)) / 6;
+        const px = x + wx * d;
+        const pz = z + wz * d;
+        dust(px, world.field.heightAt(px, pz), pz, i < 3 ? 2 : 3, 1.1);
+      }
+      // (leaves shaken loose where the crown hit, a few thrown up)
+      const mid = (base + height) / 2;
+      const cx = x + wx * mid;
+      const cz = z + wz * mid;
+      const g = world.field.heightAt(cx, cz);
+      leaves(kind, cx, g, cz, 0.3, Math.max(0.6, reach * 0.8), 14, Math.max(0.8, reach * 0.8));
+      earth(x + wx * 0.3, y, z + wz * 0.3, 6, wx * 0.5, wz * 0.5, 1.6, 1, ROOT);
+      if (!shot) {
+        SFX.play('gardenCrumbs', 1);
+        // (the thud as it lands, louder for a bigger tree)
+        SFX.play('gardenThud', Math.min(1, 0.45 + height / 16));
+      }
     },
     pop(x, y, z) {
       P.reseed(x * 3.3 + z * 9.1);

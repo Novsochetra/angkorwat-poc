@@ -51,6 +51,8 @@ import { stepSound } from './walker';
  * the beats before `t` done: for pictures of the poses and the props.
  */
 
+/** When the felled tree starts to tip (s into `fell`): after it, the stick no longer stops it. */
+const FALL_AT = ACTIONS.fell.beats.find((b) => b.name === 'back')?.at ?? 3;
 /** The stick held away this long (s) stops him. */
 const PUSH = 0.15;
 /** His walk to his place: a share of the walker's walking pace; given up after this long (s: he works from where he is). */
@@ -226,8 +228,16 @@ function aimOf(a: GardenAction, kind: PlantKindId, up: number, scale: number, ou
     case 'pickPole':
       out.sz = G.poleZ(up / bu) * bu;
       break;
+    case 'uproot':
+    case 'fell':
+      // (the hoe at the plant's foot, as planting's)
+      out.sz = ((G as unknown as Record<string, number>)[a] ?? G.plant) * bu;
+      break;
+    case 'fillRope':
+      out.sz = ((G as unknown as Record<string, number>)[a] ?? G.fill) * bu;
+      break;
     default:
-      out.sz = G[a] * bu;
+      out.sz = (G as unknown as Record<string, number>)[a] * bu;
   }
   return out;
 }
@@ -246,7 +256,7 @@ function targetOf(a: GardenAction, p: Plant, dx: number, dz: number, out: Vector
     off = trunk + FALLEN.out;
     up = FALLEN.up;
   } else if (a === 'water' && isTree(k)) off = trunk + 0.25;
-  else if (a === 'clear') off = trunk;
+  else if (a === 'clear' || a === 'fell') off = trunk;
   return out.set(p.x + dx * off, ground + up, p.z + dz * off);
 }
 
@@ -401,6 +411,10 @@ function beatDone(s: Session, name: string, quiet: boolean): void {
       gardenSay(t('gardenPicked', { what: harvestWords(p.kind, n) }), null, mark);
       pad.rumble('tick', 0.3);
     }
+  } else if (name === 'out' && p && r.action === 'uproot') {
+    // (dug up whole: a young one's seed or seedling back in his bag, to plant elsewhere)
+    const back = GARDEN.digUp(p);
+    if (back !== null && !quiet) gardenSay(t(back ? 'gardenDugBack' : 'gardenDugUp', { plant: plantWord(p.kind) }));
   } else if (name === 'out' && p) GARDEN.remove(p);
 }
 
@@ -427,7 +441,7 @@ function beats(s: Session, from: number, to: number, quiet: boolean): void {
 /** Has the action's state changed yet (its beat passed)? Before it, stopping changes nothing. */
 function stateDone(s: Session): boolean {
   const list = ACTIONS[s.req.action].beats;
-  for (let i = 0; i < list.length; i++) if (s.done[i] && (list[i].name === 'set' || list[i].name === 'pour' || list[i].name === 'full' || list[i].name === 'take' || list[i].name === 'out')) return true;
+  for (let i = 0; i < list.length; i++) if (s.done[i] && (list[i].name === 'set' || list[i].name === 'pour' || list[i].name === 'full' || list[i].name === 'take' || list[i].name === 'out' || list[i].name === 'fall')) return true;
   return false;
 }
 
@@ -483,10 +497,12 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   if (up > 0) fy += (s.target.y - fy) * POLE_LOOK.focus * up;
   // (digging: the focus toward the hole, low)
   const dig = working && isDig(a);
-  const fx = dig ? b.pos.x + (s.target.x - b.pos.x) * FRAME_DIG.toward : b.pos.x;
-  const fz = dig ? b.pos.z + (s.target.z - b.pos.z) * FRAME_DIG.toward : b.pos.z;
-  if (dig) fy = b.pos.y + h * FRAME_DIG.up;
-  const kf = dig && dt > 0 ? damp(4, dt) : 1;
+  const shift = working ? focusShift(a) : 0;
+  const fx = b.pos.x + (s.target.x - b.pos.x) * shift;
+  const fz = b.pos.z + (s.target.z - b.pos.z) * shift;
+  if (working && shift) fy = focusY(s, b.pos.y, h);
+  const kf = shift && dt > 0 ? damp(4, dt) : 1;
+  void dig;
   cam.focus.x += (fx - cam.focus.x) * kf;
   cam.focus.z += (fz - cam.focus.z) * kf;
   cam.focus.y += (fy - cam.focus.y) * damp(6, dt);
@@ -535,15 +551,42 @@ function poleUp(t: number): number {
 }
 
 /** Digging at his feet' front (the hole must be in view). */
-const isDig = (a: GardenAction) => a === 'plant' || a === 'plantTree' || a === 'clear';
+const isDig = (a: GardenAction) => a === 'plant' || a === 'plantTree' || a === 'clear' || a === 'uproot';
 
 /** The camera the action wants at his work. */
 function frameFor(a: GardenAction, kind: ReturnType<typeof kindOf>): { side: number; pitch: number; distance: number } {
   if (a === 'pickPole') return FRAME_POLE;
+  if (a === 'fillRope') return FRAME_ROPE;
+  if (a === 'fell') return FRAME_FELL;
   if (isDig(a)) return FRAME_DIG;
   return isTree(kind) && a !== 'fill' ? FRAME_TREE : FRAME;
 }
 const kindOf = (k: PlantKindId) => KINDS[k];
+
+/**
+ * The cord let down from a high bank: the camera out over the water in front of him and a little to his side, a
+ * little under the bank's top (the deck's), looking back up at him — the cord, the can going down, the splash. The
+ * focus is over the water just past the edge, as high as the bank's top, so nothing solid lies between it and the
+ * camera, which stays well over the water.
+ */
+const FRAME_ROPE = { side: 2.55, pitch: -0.1, distance: 4.6, toward: 1 };
+/** A tree cut down: well back behind him (away from the crown, out of its leaves), the whole tree and its fall in view. */
+const FRAME_FELL = { side: 0.45, pitch: 0.28, distance: 10, toward: 0.2 };
+
+/** How far the focus moves from him toward the work (0: on him). */
+function focusShift(a: GardenAction): number {
+  if (isDig(a)) return FRAME_DIG.toward;
+  if (a === 'fillRope') return FRAME_ROPE.toward;
+  if (a === 'fell') return FRAME_FELL.toward;
+  return 0;
+}
+/** The focus's height for an action with a shifted focus. */
+function focusY(s: Session, y: number, h: number): number {
+  const a = s.req.action;
+  if (a === 'fillRope') return Math.max((y + s.target.y) / 2 + 0.3, y + 0.15, s.target.y + 0.9);
+  if (a === 'fell') return y + h * 1.15;
+  return y + h * FRAME_DIG.up;
+}
 
 /** Stop now: his hands empty, the posture off, the sounds quiet. */
 function finish(ctx: RoamCtx | null): void {
@@ -598,16 +641,21 @@ export const GardenWork = {
       aimOf(req.action, req.kind, 0, b.scale, aim);
       // (a short step to the hoe's reach: from where he stands, toward the spot)
       face = placeAt(target, aim.sx, aim.sz, Math.atan2(b.pos.x - target.x, b.pos.z - target.z), stand);
-    } else if (req.action === 'fill') {
+    } else if (req.action === 'fill' || req.action === 'fillRope') {
       const f = req.fill;
       if (!f) return false;
-      aimOf('fill', req.kind, 0, b.scale, aim);
+      aimOf(req.action, req.kind, 0, b.scale, aim);
       const from = Math.atan2(b.pos.x - f.x, b.pos.z - f.z);
       if (f.at === 'jar') {
         // (the water's surface just inside the jar's near rim)
         target.set(f.x + Math.sin(from) * JAR_WATER.in, ctx.world.field.heightAt(f.x, f.z) + JAR_WATER.up, f.z + Math.cos(from) * JAR_WATER.in);
         face = placeAt(target, aim.sx, aim.sz, from, stand);
-      } else if (ctx.world.waterAt(b.pos.x, b.pos.z) !== null) {
+      } else if (f.at === 'rope') {
+        // (a high bank, a bridge, the jetty: at the edge, facing the water below; the cord goes down)
+        target.set(f.x, f.y, f.z);
+        stand.set(f.sx, 0, f.sz);
+        face = Math.atan2(target.x - stand.x, target.z - stand.z);
+      } else if (ctx.world.waterAt(b.pos.x, b.pos.z) !== null && ctx.world.waterAt(b.pos.x, b.pos.z)! > b.pos.y - 0.05) {
         // (wading: where he stands, facing the water before him)
         target.set(f.x, f.y, f.z);
         stand.set(b.pos.x, 0, b.pos.z);
@@ -702,11 +750,10 @@ export const GardenWork = {
     cam.distance = rc && rc[2] ? rc[2] : want.distance;
     framed = FRAME.for;
     frameCam(ctx, s, 0);
-    cam.focus.y = b.pos.y + 1.7 * b.scale * (req.action === 'pickPole' ? 1.05 : isDig(req.action) ? FRAME_DIG.up : 0.6);
-    if (isDig(req.action)) {
-      cam.focus.x = b.pos.x + (s.target.x - b.pos.x) * FRAME_DIG.toward;
-      cam.focus.z = b.pos.z + (s.target.z - b.pos.z) * FRAME_DIG.toward;
-    }
+    const sh = focusShift(req.action);
+    cam.focus.y = sh ? focusY(s, b.pos.y, 1.7 * b.scale) : b.pos.y + 1.7 * b.scale * (req.action === 'pickPole' ? 1.05 : 0.6);
+    cam.focus.x = b.pos.x + (s.target.x - b.pos.x) * sh;
+    cam.focus.z = b.pos.z + (s.target.z - b.pos.z) * sh;
     console.info(`[map] garden: ${req.action}:${s.t.toFixed(2)} (${req.kind}${req.plant ? ` #${req.plant.id}` : ''}) at (${b.pos.x.toFixed(1)}, ${b.pos.z.toFixed(1)})`);
     return true;
   },
@@ -725,7 +772,9 @@ export const GardenWork = {
     // The stick held away stops him (on his way: at once).
     const push = Math.hypot(input.move.x, input.move.y) > 0.5;
     s.push = push ? s.push + dt : 0;
-    if (push && (s.frozen || s.phase !== 'work' || s.push > PUSH)) {
+    // (a tree already tipping over: it falls whatever he does)
+    const falling = s.req.action === 'fell' && s.t >= FALL_AT;
+    if (push && !falling && (s.frozen || s.phase !== 'work' || s.push > PUSH)) {
       finish(ctx);
       return { prompt: null };
     }
@@ -767,6 +816,11 @@ export const GardenWork = {
         hands?.update(s.req.action, s.t, s.req.kind, body.spot, s.req.plant ? s.req.plant.seed : null);
         loopLevel(s, s.req.action, s.t, s.frozen ? false : true);
         if (s.t >= ACTIONS[s.req.action].len) {
+          // (the tree has fallen, the view's fall played out: it is gone)
+          if (s.req.action === 'fell' && s.req.plant && GARDEN.plants.includes(s.req.plant) && !s.frozen) {
+            const k = s.req.plant.kind;
+            if (GARDEN.digUp(s.req.plant) !== null) gardenSay(t('gardenFelled', { plant: plantWord(k) }));
+          }
           finish(ctx);
           return { prompt: null };
         }

@@ -132,7 +132,17 @@ interface Item {
   /** Its look's part (`SMALL`, `TREE`). */
   part: number;
   /** Scale animation: what it does, its time, from what size. */
-  mode: 0 | 1 | 2 | 3;
+  mode: 0 | 1 | 2 | 3 | 4 | 5;
+  /** Taken out (`FELL`, `UPROOT`): the way he faced, the tip (rad) about the level axis (`ax`, `az`), the plant's move (m). */
+  outYaw: number;
+  tilt: number;
+  ax: number;
+  az: number;
+  ox: number;
+  oy: number;
+  oz: number;
+  /** Its fall has landed (the dust and leaves thrown). */
+  landed: boolean;
   t: number;
   from: number;
   /** The earth's grow (0‥1 up, then 1‥0 flattening when leaving). */
@@ -151,6 +161,14 @@ const NONE = 0;
 const GROW = 1;
 const EASE = 2;
 const LEAVE = 3;
+/** A grown tree felled: it tips over away from him, lands with a little bounce, lies, then sinks away. */
+const FELL = 4;
+/** A plant dug up: lifted out, laid on the ground beside him, then gone. */
+const UPROOT = 5;
+/** The fall (s): tipping to the ground, the bounce, lying, sinking away; how far it tips (rad: its crown on the ground). */
+const FALL = { tip: 0.8, bounce: 0.4, lie: 0.9, sink: 1.5, angle: 1.42 };
+/** Dug up (s): lifted out, carried and laid down, lying, gone; where it is laid (m: to his right, back toward him). */
+const DUG = { lift: 0.25, lay: 0.35, lie: 0.8, gone: 0.8, right: 0.8, back: 0.35 };
 
 const easeOutCubic = (u: number) => 1 - (1 - u) ** 3;
 /** Up, a little past, and back (a plant pushing up out of the earth). */
@@ -218,11 +236,22 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   const batchList: readonly Batch[] = [batches.home, batches.pagoda];
 
   // The work's effects (garden/_fx.ts: the hook garden/fx.ts `GARDEN_FX`): they ask where a plant's crown is.
+  /**
+   * Plants being taken out by his work (the effects say which as its beats come: dug up or felled), the way he faced,
+   * and whether it goes now (a felled tree stands, cut through, until the work's `fall`; one dug up comes at `out`).
+   */
+  const leaving = new Map<number, { how: 4 | 5; yaw: number; go: boolean }>();
   const fx = installGardenFx(object, world, (id) => {
     const it = items.get(id);
     if (!it?.data) return null;
     return { x: it.x, y: it.y + (it.earth?.foot ?? 0), z: it.z, height: it.data.height, base: it.data.crown?.base ?? 0, reach: it.data.reach };
-  }, shot);
+  }, shot, (id, how, yaw, beat) => {
+    let was = leaving.get(id);
+    if (!was) leaving.set(id, (was = { how: how === 'fell' ? FELL : UPROOT, yaw, go: false }));
+    was.how = how === 'fell' ? FELL : UPROOT;
+    was.yaw = yaw;
+    if (beat === (how === 'fell' ? 'fall' : 'out')) was.go = true;
+  });
   let lastDrift = Number.NaN;
   // A drop of water over each plant that wants it (garden/_viewThirst.ts); burst into splashes when watered.
   const thirst = new ThirstDrops(shot);
@@ -251,15 +280,34 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     A[6] = n * k;
     A[7] = 0;
     A[8] = c * k;
-    A[9] = it.x;
-    A[10] = it.y + (it.earth?.foot ?? 0) * Math.min(1, it.earthUp);
-    A[11] = it.z;
+    // (taken out: tipped about the level axis (ax, az) through its foot, Rodrigues' rotation of each column)
+    if (it.tilt !== 0) {
+      const ct = Math.cos(it.tilt);
+      const st = Math.sin(it.tilt);
+      const ax = it.ax;
+      const az = it.az;
+      const r00 = ct + ax * ax * (1 - ct);
+      const r02 = ax * az * (1 - ct);
+      const r22 = ct + az * az * (1 - ct);
+      for (let col = 0; col < 3; col++) {
+        const x = A[col * 3];
+        const y = A[col * 3 + 1];
+        const z = A[col * 3 + 2];
+        A[col * 3] = r00 * x - az * st * y + r02 * z;
+        A[col * 3 + 1] = az * st * x + ct * y - ax * st * z;
+        A[col * 3 + 2] = r02 * x + ax * st * y + r22 * z;
+      }
+    }
+    A[9] = it.x + it.ox;
+    A[10] = it.y + (it.earth?.foot ?? 0) * Math.min(1, it.earthUp) + it.oy;
+    A[11] = it.z + it.oz;
     return A;
   };
   /** Where its earth's blocks go (square to the map): flattened by `up`, a little narrower as it rises or flattens; `p` the puddle's share. */
   const earthXf = (it: Item, p = 1): Float64Array => {
     const up = Math.max(1e-3, Math.min(1, it.earthUp) * p);
-    const wide = Math.max(1e-3, (0.75 + 0.25 * Math.min(1, it.earthUp)) * p);
+    // (rising: from three quarters wide; taken out: it flattens and narrows away to nothing, no flat patch left)
+    const wide = Math.max(1e-3, (it.plant ? 0.75 + 0.25 * Math.min(1, it.earthUp) : Math.min(1, it.earthUp * 1.5)) * p);
     A.fill(0);
     A[0] = wide;
     A[4] = up;
@@ -274,8 +322,66 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     if (it.mode === GROW) return easeOutBack(Math.min(1, Math.max(0, (it.t - BED_S * 0.6) / GROW_S)));
     if (it.mode === EASE) return it.from + (1 - it.from) * easeOutCubic(Math.min(1, it.t / EASE_S));
     if (it.mode === LEAVE) return 1 - Math.min(1, it.t / LEAVE_S) ** 2;
+    if (it.mode === FELL) return 1 - Math.min(1, Math.max(0, (it.t - FALL.tip - FALL.bounce - FALL.lie) / FALL.sink)) ** 2;
+    if (it.mode === UPROOT) return 1 - Math.min(1, Math.max(0, (it.t - DUG.lift - DUG.lay - DUG.lie) / DUG.gone)) ** 2;
     return 1;
   };
+
+  /** A felled tree at `it.t` s: tipping away from him (falling ever faster), the bounce, lying, sinking away. True once gone. */
+  function felling(it: Item): boolean {
+    const wx = Math.sin(it.outYaw);
+    const wz = Math.cos(it.outYaw);
+    // (the axis it tips about: level, across the way it falls)
+    it.ax = wz;
+    it.az = -wx;
+    const t = it.t;
+    if (t < FALL.tip) it.tilt = FALL.angle * (t / FALL.tip) ** 2;
+    else {
+      const v = Math.min(1, (t - FALL.tip) / FALL.bounce);
+      it.tilt = FALL.angle - 0.12 * Math.sin(Math.PI * v) * (1 - v);
+      if (!it.landed) {
+        it.landed = true;
+        const d = it.data;
+        if (d) fx.fell(it.kind, it.x, it.y, it.z, wx, wz, d.height, d.crown?.base ?? d.height * 0.4, d.reach);
+      }
+    }
+    // (lying: it sinks a little as it goes; its basin flattens from the landing)
+    const gone = Math.max(0, (t - FALL.tip - FALL.bounce - FALL.lie) / FALL.sink);
+    it.oy = -0.25 * gone;
+    it.earthUp = 1 - Math.min(1, Math.max(0, (t - FALL.tip) / 1.0));
+    return t >= FALL.tip + FALL.bounce + FALL.lie + FALL.sink;
+  }
+  /** A plant dug up at `it.t` s: lifted out with its roots, carried to his side and laid down, lying, gone. True once gone. */
+  function digging(it: Item): boolean {
+    const wx = Math.sin(it.outYaw);
+    const wz = Math.cos(it.outYaw);
+    // (where it is laid: to his right and back toward him)
+    const lx = -wz * DUG.right - wx * DUG.back;
+    const lz = wx * DUG.right - wz * DUG.back;
+    const l = Math.hypot(lx, lz) || 1;
+    it.ax = lz / l;
+    it.az = -lx / l;
+    const t = it.t;
+    if (t < DUG.lift) {
+      const u = easeOutCubic(t / DUG.lift);
+      it.oy = 0.35 * u;
+      it.tilt = 0.12 * u;
+      it.ox = it.oz = 0;
+    } else {
+      const u = easeOutCubic(Math.min(1, (t - DUG.lift) / DUG.lay));
+      it.ox = lx * u;
+      it.oz = lz * u;
+      it.oy = 0.35 * (1 - u) + 0.04 * u - (it.earth?.foot ?? 0) * u;
+      it.tilt = 0.12 + (1.35 - 0.12) * u;
+      if (u >= 1 && !it.landed) {
+        it.landed = true;
+        fx.puff(it.x + lx, it.y, it.z + lz, 0.3);
+      }
+    }
+    it.earthUp = 1 - Math.min(1, t / 0.8);
+    if (t > DUG.lift + DUG.lay + DUG.lie) it.oy -= 0.1 * Math.min(1, (t - DUG.lift - DUG.lay - DUG.lie) / DUG.gone);
+    return t >= DUG.lift + DUG.lay + DUG.lie + DUG.gone;
+  }
 
   function writePlant(it: Item, attrs: boolean): void {
     const pools = it.batch.parts[it.part].pools;
@@ -392,6 +498,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     it.pud = b.parts[SMALL].pools[STONE].fit(it.pud, 0);
     CROWNS.delete(it.id);
     GROUND_CLEAR.set(it.id, 0, 0, 0);
+    leaving.delete(it.id);
     if (it.data) cache.release(it.data);
     it.data = null;
     items.delete(it.id);
@@ -422,6 +529,14 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       pud: null,
       part: SMALL,
       mode: NONE,
+      outYaw: 0,
+      tilt: 0,
+      ax: 1,
+      az: 0,
+      ox: 0,
+      oy: 0,
+      oz: 0,
+      landed: false,
       t: 0,
       from: 1,
       earthUp: 1,
@@ -466,7 +581,9 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         if (pi === TREE && it.part !== TREE) continue;
         const mine = it.part === pi;
         const h = mine ? (it.data?.height ?? 1) + (it.earth?.foot ?? 0) : 0.2;
-        const reach = Math.max(mine ? (it.data?.reach ?? 1) : 0, pi === SMALL ? (it.earth?.reach ?? 0) : 0, 0.5) + 0.3;
+        // (a felled tree lies its height out from its foot; one dug up, beside him)
+        const out = it.mode === FELL ? (it.data?.height ?? 0) : it.mode === UPROOT ? 1.5 : 0;
+        const reach = Math.max(mine ? (it.data?.reach ?? 1) : 0, pi === SMALL ? (it.earth?.reach ?? 0) : 0, out, 0.5) + 0.3;
         lo = Math.min(lo, it.y - 0.2);
         hi = Math.max(hi, it.y + h + 0.3);
         r = Math.max(r, Math.hypot(it.x - c.x, it.z - c.z) + reach);
@@ -676,10 +793,15 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         const it = list[i];
         if (it.stamp === stamp || !it.plant) continue;
         it.plant = null;
+        const out = leaving.get(it.id);
         if (settled && !shot && it.data) {
-          it.mode = LEAVE;
+          it.mode = out ? out.how : LEAVE;
+          it.from = 0;
+          it.outYaw = out ? out.yaw : 0;
           it.t = 0;
           it.drop = null;
+          it.landed = false;
+          it.batch.boundsDirty = true;
         } else release(it);
       }
       // Build what changed, a few milliseconds a frame (all of it in a shot).
@@ -726,6 +848,18 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
           } else if (it.mode === LEAVE) {
             it.earthUp = 1 - Math.min(1, Math.max(0, (it.t - LEAVE_S * 0.5) / FLAT_S));
             if (it.t >= LEAVE_S * 0.5 + FLAT_S) {
+              release(it);
+              continue;
+            }
+          } else if (it.mode === FELL) {
+            // (cut through, it stands until the work's `fall`: three seconds at most, the work stopped meanwhile)
+            if (!(leaving.get(it.id)?.go ?? true) && (it.from += dt) < 3) it.t = 0;
+            if (felling(it)) {
+              release(it);
+              continue;
+            }
+          } else if (it.mode === UPROOT) {
+            if (digging(it)) {
               release(it);
               continue;
             }

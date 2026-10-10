@@ -5,6 +5,7 @@ import { isTree, KINDS, trunkAt, stageOf, type PlantKindId } from '../garden/kin
 import { GARDEN, type Plant } from '../garden/state';
 import type { WordKey } from '../ui/lang';
 import type { RoamWorld } from './types';
+import { edgeBefore, waterAhead, type WaterSpot } from './_waterReach';
 
 /**
  * Where he may plant in his home garden (the add-on `garden`: roam/_garden.ts),
@@ -220,72 +221,50 @@ const JAR_REACH = 1.9;
 export const JAR_STAND = 0.75;
 
 export interface FillSpot {
-  readonly at: 'jar' | 'stream';
-  /** The water (m): the jar's middle at its rim, or the stream's surface ahead of him. */
+  /** The jar, the water at his feet's level (he dips the can), or below a high bank, a bridge, a jetty (he lowers it on a cord). */
+  at: 'jar' | 'stream' | 'rope';
+  /** The water (m): the jar's middle at its rim, or the water's surface before him. */
   x: number;
   y: number;
   z: number;
+  /** Where he stands for it (m): at the water's edge (the stream, a rope). */
+  sx: number;
+  sz: number;
 }
 
-/**
- * The stream: the can reaches water this far under his feet at most (m; the fill pose kneels at the edge and dips
- * the can under) and this far ahead of his toes. The Kulen stream's banks by the house stand a metre over the water
- * (a wall: no fill there); the village's washing steps go down to a landing 0.42 m over it (hamlet/_evSpots.ts
- * `EV_WASH_AT`): he fills there. Wading in shallow water (not deeper than `WADE` over his feet) he fills before him.
- */
-const FILL_DROP = 0.45;
-const FILL_AHEAD = [0.35, 0.5, 0.65] as const;
-const WADE = 0.6;
+/** Where he stands for a can on a cord (m before the water), and for dipping it (squatting at the edge). */
+const STAND = { rope: 0.5, dip: 0.6 };
 
-/** Where he would fill the can from where he stands (`out` filled), or false: the jar within reach, or the stream's low edge just ahead of him. */
-export function fillSpot(world: RoamWorld, x: number, y: number, z: number, yaw: number, out: { at: 'jar' | 'stream'; x: number; y: number; z: number }): boolean {
+const _water: WaterSpot = { how: 'dip', x: 0, y: 0, z: 0 };
+const _edge = { x: 0, y: 0, z: 0 };
+
+/**
+ * Where he would fill the can from where he stands (`out` filled): the jar within reach (`'jar'`), water before him
+ * he can dip it in (`'stream'`) or lower it into on a cord (`'rope'`) — _waterReach.ts's rule, the shoulder pole's
+ * too —; or null. Near his garden only (the can is for it; elsewhere a river's E is the boat's).
+ */
+export function fillSpot(world: RoamWorld, x: number, y: number, z: number, yaw: number, out: FillSpot): 'jar' | 'stream' | 'rope' | null {
   const [jx, jz] = jarAt();
   if (Math.hypot(x - jx, z - jz) < JAR_REACH) {
     out.at = 'jar';
     out.x = jx;
     out.z = jz;
     out.y = world.field.heightAt(jx, jz) + JAR_RIM;
-    return true;
+    out.sx = x;
+    out.sz = z;
+    return 'jar';
   }
-  if (!inGardenArea(x, z, AREA + 25)) return false;
-  const fx = Math.sin(yaw);
-  const fz = Math.cos(yaw);
-  // (wading in shallow water: before him)
-  const here = world.waterAt(x, z);
-  if (here !== null && here > y - 0.05) {
-    if (here - y > WADE) return false;
-    out.at = 'stream';
-    out.x = x + fx * FILL_AHEAD[1];
-    out.y = here;
-    out.z = z + fz * FILL_AHEAD[1];
-    return true;
-  }
-  for (const d of FILL_AHEAD) {
-    const px = x + fx * d;
-    const pz = z + fz * d;
-    const w = world.waterAt(px, pz);
-    if (w === null) continue;
-    if (y - w > FILL_DROP || w > y + 0.2) return false;
-    out.at = 'stream';
-    out.x = px;
-    out.y = w;
-    out.z = pz;
-    return true;
-  }
-  return false;
-}
-
-/** On a high bank with the water just below him (he cannot reach it: a line says where he can). */
-export function highBankAhead(world: RoamWorld, x: number, y: number, z: number, yaw: number): boolean {
-  if (!inGardenArea(x, z, AREA + 25)) return false;
-  const here = world.waterAt(x, z);
-  if (here !== null && here > y - 0.05) return false;
-  // (the water within a couple of steps: the bank's sand strip lies between)
-  for (const d of [0.4, 0.8, 1.2, 1.6, 2.0]) {
-    const w = world.waterAt(x + Math.sin(yaw) * d, z + Math.cos(yaw) * d);
-    if (w !== null) return y - w > FILL_DROP && y - w < 4;
-  }
-  return false;
+  if (!inGardenArea(x, z, AREA + 25)) return null;
+  // (the same rule as the shoulder pole's buckets: _waterReach.ts)
+  if (!waterAhead(world, x, y, z, yaw, _water)) return null;
+  out.at = _water.how === 'dip' ? 'stream' : 'rope';
+  out.x = _water.x;
+  out.y = _water.y;
+  out.z = _water.z;
+  edgeBefore(world, x, y, z, _water, _water.how === 'dip' ? STAND.dip : STAND.rope, _edge);
+  out.sx = _edge.x;
+  out.sz = _edge.z;
+  return out.at;
 }
 
 // ── Reaching a plant ────────────────────────────────────────────────────────

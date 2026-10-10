@@ -10,11 +10,9 @@ import type { RoamWorld } from './types';
  * - **its place** at his house: leaning on the front stilt by the stair, on its
  *   west side (the yard's jar a few steps on; the gift basket is up on the veranda,
  *   the grandmother's mat further west): `restAt`;
- * - **water he can reach** with the buckets: the stream's or the lake's surface at
- *   most `REACH_DROP` under his feet and just ahead of him (the village's washing
- *   steps' landing, a low sandy edge), or before him wading in the shallows. Anywhere
- *   on the map, unlike the watering can (which is filled near the house: _gardenSpots.ts
- *   `fillSpot`, whose rules these are);
+ * - **water he can reach** with the buckets: any open water up to 1.6 m before him,
+ *   dipped from a low edge or the shallows, or lowered on the buckets' ropes from a
+ *   high bank, a bridge or the jetty (roam/_waterReach.ts `waterAhead`). Anywhere on the map;
  * - **his jar** (the yard's, at the stair's foot: _gardenSpots.ts `jarAt`);
  * - **a thirsty plant** of his home garden within reach (as the can's: `reachOf`).
  */
@@ -33,38 +31,6 @@ export function restAt(): { x: number; z: number; yaw: number; stilt: [number, n
 
 /** Near enough the pole's place (or where he set it down) to take it up (m from its foot). */
 export const TAKE_REACH = 1.7;
-
-/** The buckets reach water this far under his feet at most (m; he squats and lowers them), this far ahead of his toes. */
-const REACH_DROP = 0.45;
-const AHEAD = [0.4, 0.6, 0.8] as const;
-/** Wading: not deeper than this over his feet (m). */
-const WADE = 0.6;
-
-/** The water he would fill the buckets from where he stands (into `out`), or false. */
-export function waterAhead(world: RoamWorld, x: number, y: number, z: number, yaw: number, out: { x: number; y: number; z: number }): boolean {
-  const fx = Math.sin(yaw);
-  const fz = Math.cos(yaw);
-  const here = world.waterAt(x, z);
-  if (here !== null && here > y - 0.05) {
-    if (here - y > WADE) return false;
-    out.x = x + fx * AHEAD[1];
-    out.y = here;
-    out.z = z + fz * AHEAD[1];
-    return true;
-  }
-  for (const d of AHEAD) {
-    const px = x + fx * d;
-    const pz = z + fz * d;
-    const w = world.waterAt(px, pz);
-    if (w === null) continue;
-    if (y - w > REACH_DROP || w > y + 0.2) return false;
-    out.x = px;
-    out.y = w;
-    out.z = pz;
-    return true;
-  }
-  return false;
-}
 
 /** Near enough his yard's jar to pour the buckets into it (m from its middle). */
 const JAR_REACH = 2.0;

@@ -1,12 +1,15 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
-import { DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, thirsty, tone, turned, type P, type Packet, type Rand } from './_crop';
+import { Blade, DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, thirsty, tone, type P, type Packet, type Rand } from './_crop';
 
 /**
  * The pumpkin ល្ពៅ (garden/kinds.ts `KINDS.pumpkin`; the contract garden/look.ts): a vine that runs over the
  * ground from its hill, up to about 1.6 m out, low (its leaves stand on their stalks half a metre high at most):
- * big lobed leaves, dark green with silvery marks, curling tendrils, yellow trumpet flowers. The Cambodian
+ * big round leaves with five shallow lobes (a notch where the stalk joins), dark green with pale silvery veins,
+ * a little cupped, each held up on its own long pale stalk so they stand at different heights over the vine like
+ * small umbrellas, gaps between them where the earth, the vine and the fruit show; curling tendrils, yellow
+ * trumpet flowers. The Cambodian
  * pumpkin: young fruit dark green speckled pale; ripe (`fruit` 2) big, flat and ribbed, dull green blotched
  * tan or tan-orange (by `look.seed`), lying on the ground on its vine.
  *
@@ -14,11 +17,15 @@ import { DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, thirsty, tone, 
  * and the first true leaf; 2 a short vine; 3 the vine running, flowers; 4 grown, its fruit.
  */
 
-const LEAF = [0x3f6e2a, 0x467830, 0x3a6626, 0x4c7e34] as const;
-/** The silvery marks on the leaves (the cross block of each blade). */
-const LEAF_MARK = 0x6e9468;
+/** The leaves' upper face: dark green (each leaf one tone; its lobes a shade lighter or darker). */
+const LEAF = [0x335f24, 0x3a6a2a, 0x2f5a21, 0x41702e] as const;
+/** Young leaves at the runners' tips: smaller, lighter. */
+const LEAF_YOUNG = 0x5c903a;
+/** The pale silvery veins (the mottling along them near the middle). */
+const VEIN = 0x9cb88a;
 const VINE = 0x5e8a3a;
-const STALK = 0x6a9844;
+/** The leaf stalks: long, pale, hollow. */
+const STALK = 0x7eaa58;
 const TENDRIL = 0x8ab454;
 const FLOWER = 0xf2b524;
 const FLOWER_IN = 0xe89a1a;
@@ -44,32 +51,49 @@ interface Ctx {
   droop: 0 | 1 | 2;
 }
 
-/** A big lobed leaf on its stalk from the vine at `p`, the blade facing up and out toward `yaw`. */
-function leaf(c: Ctx, p: P, yaw: number, size: number, high: number, i: number): void {
+/**
+ * A leaf on its stalk from the vine at `p`: the stalk rising `high` and leaning out toward `yaw`, the blade (`L`
+ * from the notch to its tip, a little wider than long) held at its top facing up and a little out. Grown leaves
+ * have five lobes and their veins; `young` ones (at the runners' tips) are smaller, lighter and plainer.
+ */
+function leaf(c: Ctx, p: P, yaw: number, L: number, high: number, i: number, young = false): void {
   const { b, r, dead, droop } = c;
+  // The stalk: it stands (lies down with thirst; flat and brown when dead).
+  const lean = dead ? 1.3 : 0.25 + r(i, 1) * 0.3 + droop * 0.3;
+  const h = high * (dead ? 0.5 : droop === 2 ? 0.55 : droop === 1 ? 0.8 : 1);
   const q = pt(p.x, p.y, p.z);
-  // the stalk stands up (it lies down with thirst, flat when dead)
-  const stand = dead ? 1.35 : 0.22 + droop * 0.4 + r(i, 1) * 0.25;
-  seg(b, q, high, 0.036, 0.036, yaw, stand, dead ? tone(DEAD_STEM, r(i, 2)) : thirsty(STALK, droop), dead ? 'mapBark' : 'mapLeaf');
-  // the blade: two crossed blocks (the lobes), the cross one paler (the silver marks), turned a little
-  const s = size * (dead ? 0.6 : droop === 2 ? 0.78 : 1);
-  const tilt = dead ? 2.2 : 1.32 + droop * 0.5 + (r(i, 3) - 0.5) * 0.4;
-  const base = dead ? tone(DEAD_LEAF, r(i, 4)) : thirsty(tone(LEAF, r(i, 4)), droop, r(i, 5));
+  const stalkC = dead ? tone(DEAD_STEM, r(i, 2)) : thirsty(young ? mix(STALK, LEAF_YOUNG, 0.4) : STALK, droop);
+  seg(b, q, h / Math.cos(Math.min(1.2, lean)), young ? 0.02 : 0.03, young ? 0.02 : 0.03, yaw, lean, stalkC, dead ? 'mapBark' : 'mapLeaf');
+  // The blade: facing the light at its own angle; thirst tips it down and curls its lobes under.
+  const S = L * (dead ? 0.62 : droop === 2 ? 0.84 : 1);
+  const pitch = dead ? 1.25 : (r(i, 3) - 0.3) * 0.45 + droop * 0.5;
+  const bl = new Blade(b, q, yaw + (r(i, 4) - 0.5) * 0.7, pitch, (r(i, 5) - 0.5) * 0.5);
   const mat = dead ? 'mapBark' : 'mapLeaf';
-  const roll = (r(i, 6) - 0.5) * 0.4;
-  const from = pt(q.x, q.y, q.z);
-  seg(b, q, s, s * 0.95, 0.05, yaw, tilt, base, mat, roll);
-  if (dead) return;
-  // (the cross block: turned 45° in the blade's plane, its points the lobes; paler: the silver marks)
-  const mid = pt((from.x + q.x) / 2, (from.y + q.y) / 2, (from.z + q.z) / 2);
-  turned(b, mid, s * 0.7, s * 0.7, 0.056, yaw, tilt, roll, Math.PI / 4, droop ? thirsty(LEAF_MARK, droop) : mix(base, LEAF_MARK, 0.55), mat);
+  const base = dead ? tone(DEAD_LEAF, r(i, 6)) : thirsty(young ? LEAF_YOUNG : tone(LEAF, r(i, 6)), droop, r(i, 7));
+  const light = dead ? base : mix(base, 0x6e9a50, 0.06);
+  const dark = dead ? mix(base, 0x4a3a28, 0.2) : mix(base, 0x1e3a14, 0.07);
+  // (cupped: the middle low, the lobes' edges up; wilting rolls them under, dead leaves curl hard)
+  const cup = dead ? -0.7 : droop === 2 ? -0.45 : droop === 1 ? 0.03 : 0.12;
+  const t = 0.04;
+  // (broad blocks overlapping into one round, filled blade, a little wider than long: the middle, the tip lobe,
+  // the two upper side lobes stepping out)
+  bl.put(0, S * 0.48, -0.006, S * 0.94, S * 0.66, t, 0, 0, 0, base, mat);
+  bl.put(0, S * 0.8, -0.002, S * 0.62, S * 0.4, t, 0, 0, cup * 0.6, light, mat);
+  for (const sd of [-1, 1]) bl.put(sd * S * 0.37, S * 0.58, 0.004, S * 0.48, S * 0.5, t, -sd * 0.45, sd * cup, 0, sd < 0 ? light : dark, mat);
+  if (young || dead) return;
+  // the two lower lobes, rounding back on either side of the notch where the stalk joins
+  for (const sd of [-1, 1]) bl.put(sd * S * 0.31, S * 0.24, 0.002, S * 0.44, S * 0.36, t, -sd * 0.95, sd * cup * 0.8, 0, sd < 0 ? dark : base, mat);
+  // the veins fanning from the notch: flush with the face, only a little paler (the silvery mottling along them)
+  const vein = droop ? thirsty(mix(base, VEIN, 0.3), droop) : mix(base, VEIN, 0.24);
+  bl.put(0, S * 0.5, 0.012, S * 0.07, S * 0.6, 0.012, 0, 0, 0, vein, 'mapLeaf');
+  for (const sd of [-1, 1]) bl.put(sd * S * 0.2, S * 0.42, 0.012, S * 0.06, S * 0.46, 0.012, -sd * 0.72, 0, 0, vein, 'mapLeaf');
 }
 
 /** A curling tendril from `p`: three short turns of a spiral. */
 function tendril(c: Ctx, p: P, yaw: number): void {
   const q = pt(p.x, p.y, p.z);
   const col = thirsty(TENDRIL, c.droop);
-  for (let k = 0; k < 3; k++) seg(c.b, q, 0.05, 0.012, 0.012, yaw + k * 1.7, 0.7 + k * 0.4, col, 'mapLeaf');
+  for (let k = 0; k < 3; k++) seg(c.b, q, 0.055, 0.013, 0.013, yaw + k * 2.1, 0.45 + k * 0.55, col, 'mapLeaf');
 }
 
 /** A yellow trumpet flower facing up and out at `p`. */
@@ -109,36 +133,42 @@ function runner(c: Ctx, yaw: number, len: number, ri: number, from: P): { nodes:
   const nodes: P[] = [];
   const yaws: number[] = [];
   const q = pt(from.x, from.y, from.z);
-  const k = Math.max(2, Math.round(len / 0.22));
+  const k = Math.max(2, Math.round(len / 0.3));
   const col = dead ? tone(DEAD_STEM, r(ri, 20)) : thirsty(VINE, droop);
   let y = yaw;
   for (let s = 0; s < k; s++) {
     y += (r(ri * 10 + s, 21) - 0.5) * 0.6;
-    seg(b, q, len / k, 0.05, 0.05, y, Math.PI / 2 - 0.02, col, dead ? 'mapBark' : 'mapLeaf');
+    // (off the hill and down to the earth, then creeping along it)
+    seg(b, q, len / k, 0.042, 0.042, y, s === 0 ? Math.PI / 2 - 0.12 : Math.PI / 2, col, dead ? 'mapBark' : 'mapLeaf');
     nodes.push(pt(q.x, q.y, q.z));
     yaws.push(y);
   }
   return { nodes, yaws };
 }
 
-/** A runner's leaves at its nodes (`n`), alternately left and right, the newest (at the tip) smaller; none over `clear`. */
-function leaves(c: Ctx, run: { nodes: P[]; yaws: number[] }, n: number, size: number, ri: number, clear: readonly P[]): void {
+/**
+ * A runner's leaves (`n`), one at each node on alternate sides, the newest (at the tip) young; none over `clear`
+ * (the fruit stays in the open). `L` the grown leaf's size, `tall` how high the stalks hold the oldest.
+ */
+function leaves(c: Ctx, run: { nodes: P[]; yaws: number[] }, n: number, L: number, tall: number, ri: number, clear: readonly P[]): void {
   const { r } = c;
   const { nodes, yaws } = run;
   for (let j = 0; j < n; j++) {
-    const k = Math.min(nodes.length - 1, Math.floor(((j + 0.6) / n) * nodes.length));
-    const at = nodes[k];
+    const k = Math.min(nodes.length - 1, Math.floor(((j + 0.5) / n) * nodes.length));
+    const at = pt(nodes[k].x, 0.03, nodes[k].z);
     const side = j % 2 ? 1 : -1;
     const t = j / Math.max(1, n - 1);
-    let yaw = yaws[k] + side * (0.9 + r(ri * 10 + j, 22) * 0.5);
-    const s = size * (1 - t * 0.3);
-    // (keep the fruit in the open: a leaf over it turns to the runner's other side, or is left out)
-    const near = (y: number): boolean => clear.some((f) => Math.hypot(f.x - at.x - Math.sin(y) * s * 0.7, f.z - at.z - Math.cos(y) * s * 0.7) < 0.55);
+    const young = n > 1 && j === n - 1;
+    const s = L * (young ? 0.5 : 1 - t * 0.12) * (0.88 + r(ri * 10 + j, 23) * 0.24);
+    const high = tall * (young ? 0.5 : 1 - t * 0.2) * (0.72 + r(ri * 10 + j, 24) * 0.55);
+    let yaw = yaws[k] + side * (0.7 + r(ri * 10 + j, 22) * 0.6);
+    // (where the blade's middle comes: a leaf over a fruit turns to the runner's other side, or is left out)
+    const near = (y: number): boolean => clear.some((f) => Math.hypot(f.x - at.x - Math.sin(y) * (high * 0.4 + s * 0.5), f.z - at.z - Math.cos(y) * (high * 0.4 + s * 0.5)) < 0.5);
     if (near(yaw)) {
-      yaw = yaws[k] - side * (0.9 + r(ri * 10 + j, 22) * 0.5);
+      yaw = yaws[k] - side * (0.7 + r(ri * 10 + j, 22) * 0.6);
       if (near(yaw)) continue;
     }
-    leaf(c, at, yaw, s, 0.13 + (1 - t) * 0.17, ri * 10 + j);
+    leaf(c, at, yaw, s, high, ri * 10 + j, young);
   }
 }
 
@@ -160,16 +190,17 @@ registerModel('pumpkin', (b, look) => {
       const q = pt(p.x, p.y - 0.01, p.z);
       seg(b, q, 0.075, 0.06, 0.022, turn + s + Math.PI / 2, 1.4 + (dead ? 0.6 : look.droop * 0.3), dead ? tone(DEAD_LEAF, r(1, s)) : thirsty(0x6a9a44, look.droop), dead ? 'mapBark' : 'mapLeaf');
     }
-    if (!dead) leaf(c, p, turn, 0.11, 0.04, 9);
+    if (!dead) leaf(c, p, turn, 0.12, 0.05, 9, true);
     return;
   }
   // The hill under the plant, then its runners.
   mound(b, 0, 0, 0.3, r(0, 7));
   const from = pt(0, 0.08, 0);
   const crown = pt(0, 0.08, 0);
-  const lens = stage === 2 ? [0.45] : stage === 3 ? [1.15, 0.6] : [1.5, 1.05, 0.55];
-  const counts = stage === 2 ? [4] : stage === 3 ? [7, 4] : [10, 7, 4];
-  const size = stage === 2 ? 0.26 : stage === 3 ? 0.36 : 0.42;
+  const lens = stage === 2 ? [0.5] : stage === 3 ? [1.15, 0.65] : [1.5, 1.1, 0.65];
+  const counts = stage === 2 ? [3] : stage === 3 ? [5, 3] : [6, 5, 3];
+  const L = stage === 2 ? 0.3 : stage === 3 ? 0.42 : 0.5;
+  const tall = stage === 2 ? 0.18 : stage === 3 ? 0.3 : 0.36;
   const runs: { nodes: P[]; yaws: number[] }[] = [];
   for (let i = 0; i < lens.length; i++) {
     const yaw = turn + (i === 0 ? 0 : i === 1 ? 2.3 : -2.2) + (r(i, 8) - 0.5) * 0.4;
@@ -188,15 +219,14 @@ registerModel('pumpkin', (b, look) => {
     }
   }
   const clear = fruits.map((f) => f.at);
-  for (let i = 0; i < runs.length; i++) leaves(c, runs[i], dead ? Math.ceil(counts[i] / 3) : counts[i], size, i, clear);
-  // two or three leaves standing over the hill itself
-  for (let k = 0; k < (dead ? 1 : 3); k++) leaf(c, crown, turn + 1 + k * 2.1, size * 0.95, 0.22, 90 + k);
+  for (let i = 0; i < runs.length; i++) leaves(c, runs[i], dead ? Math.ceil(counts[i] / 2) : counts[i], L, tall, i, clear);
+  // the oldest leaves, standing tallest over the hill itself
+  for (let k = 0; k < (dead ? 1 : stage === 2 ? 1 : stage === 3 ? 2 : 3); k++) leaf(c, crown, turn + 1.1 + k * 2.1, L * 1.02, tall * (1.05 + (k % 2) * 0.2), 90 + k);
   if (dead) return;
-  // Tendrils and flowers along the runners.
+  // Tendrils curling at the runners' tips and flowers along them.
   for (let i = 0; i < runs.length; i++) {
     const n = runs[i].nodes;
-    tendril(c, n[n.length - 1], turn + i);
-    if (n.length > 3) tendril(c, n[Math.floor(n.length / 2)], turn + i + 2);
+    tendril(c, n[n.length - 1], runs[i].yaws[n.length - 1] + 0.6);
   }
   const flowers = stage === 2 ? 0 : stage === 3 ? 2 : look.fruit === 0 ? 3 : 1;
   for (let k = 0; k < flowers; k++) {

@@ -79,6 +79,10 @@ const DEFAULT_KIND: Record<GardenAction, PlantKindId | null> = {
   poleFill: null,
   poleJar: null,
   poleScoop: 'eggplant',
+  poleFillRope: null,
+  fillRope: null,
+  uproot: 'corn',
+  fell: 'mango',
 };
 
 export function gardenFromParams(params: URLSearchParams, shot: boolean): ViewerGarden | null {

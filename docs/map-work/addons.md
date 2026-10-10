@@ -2202,6 +2202,16 @@ chilli, basil, jasmine).
   the bed rises; splashes when watering and filling; earth and roots when a dead
   plant is pulled; leaves shaken down when picking; dust where fruit lands
   (`gardenCrumbs` as earth lands). The work's camera goes to his side for digging.
+- **Water anywhere** (`roam/_waterReach.ts`, one rule for the can and the shoulder
+  pole: open water up to 1.6 m ahead, decks and banks over it skipped): ≤ 0.45 m below
+  him or wading he dips (`fill`, `poleFill`); deeper, up to 6 m (the 1 m stream banks,
+  the village bridge), he lowers it on a cord (`fillRope`, `poleFillRope`), the camera
+  out over the water.
+- **Removing a plant**: on a living home plant with nothing else to do, hold E (□, the
+  Use button) 0.8 s: `uproot` (`GARDEN.digUp`: a plant at stage ≤ 1 gives its seed back
+  to replant elsewhere); a grown tree asks first ("Cut down the mango?") then `fell`
+  (five chops, he steps back, it tips over, lands with a thud and sinks away). The
+  pagoda's bodhi never.
 - **Thirst drops** (`garden/_viewThirst.ts`): a block water drop bobs over every
   thirsty plant within ≈ 45 m (urgent: faster, an orange rim and a second drop); it
   splashes away when watered. `gardenthirst=1` in shots.

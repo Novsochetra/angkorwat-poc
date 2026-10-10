@@ -207,8 +207,12 @@ export class Yoke {
       this.waters[i].visible = false;
       this.root.add(this.ropes[i], this.buckets[i]);
     }
-    this.root.add(this.pole);
+    this.cordLine = mk(ropeBuilder(), 'cord');
+    this.cordLine.visible = false;
+    this.root.add(this.pole, this.cordLine);
   }
+  /** A bucket's own cord (let down from a high bank). */
+  private readonly cordLine: Group;
 
   /** How full each bucket is (0‥1): its water's surface. */
   setWater(front: number, back: number): void {
@@ -260,6 +264,7 @@ export class Yoke {
     const ex = this.explorer;
     if (!ex) return;
     this.holdDipper(!!place?.dipper);
+    this.cordLine.visible = false;
     const J = ex.rig.joints;
     J.root.updateWorldMatrix(true, false);
     // The pole's frame (his root's space): on the shoulder pad of his chest as posed, or the pose's.
@@ -307,6 +312,26 @@ export class Yoke {
       const reach = YOKE.rope + YOKE.bail + YOKE.height;
       _p.copy(_hook[i]).addScaledVector(_d, reach);
       const standOn = place ? place.standOn[i] : 0;
+      if (place && place.cord === i) {
+        // (on its own cord: where the pose has it, its pole rope hidden, the cord from his fist to its bail)
+        this.ropes[i].visible = false;
+        const bucket = this.buckets[i];
+        place.load.decompose(bucket.position, bucket.quaternion, _s);
+        bucket.scale.copy(ONE);
+        _d.subVectors(bucket.position, place.cordTop);
+        const cl = Math.max(0.2, _d.length());
+        this.cordLine.visible = true;
+        this.cordLine.position.copy(place.cordTop);
+        this.cordLine.quaternion.setFromUnitVectors(_up.set(0, -1, 0), _d.divideScalar(cl));
+        this.cordLine.scale.set(1, cl, 1);
+        const wtr = this.waters[i];
+        wtr.visible = this.water[i] > 0.02;
+        wtr.position.set(0, -YOKE.bail - YOKE.height + 0.35 + this.water[i] * (YOKE.height - 0.7), 0);
+        wtr.quaternion.identity();
+        sw.px = sw.pz = sw.vx = sw.vz = 0;
+        continue;
+      }
+      this.ropes[i].visible = true;
       if (standOn > 0.001) {
         // (standing where the pose says (the lean's foot), eased toward under its hook as the pole lifts it)
         _a.copy(place!.stand[i]);
