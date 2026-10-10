@@ -291,6 +291,56 @@ const STAR = [
   '..YY...YY..',
   '.Y.......Y.',
 ];
+/** His mango tree's season: a ripe mango on its stalk, a leaf beside it, the blush on its shoulder. */
+const MANGO = [
+  '.....b.....',
+  '.....bGGg..',
+  '....YbGGgg.',
+  '...YYYYgg..',
+  '..YUYYYYu..',
+  '..YUYYYYu..',
+  '..YYYYYYu..',
+  '..OYYYYYu..',
+  '...OOYYu...',
+  '....OOu....',
+];
+/** His jackfruit tree's season: a big knobbly fruit hanging on its trunk. */
+const JACKFRUIT = [
+  'bbp........',
+  'bb.p.......',
+  'bb..GGGG...',
+  'bb.GYGGYG..',
+  'bbGGGYGGGg.',
+  'bbGYGGGYGg.',
+  'bbGGGYGGGg.',
+  'bbGYGGYGGg.',
+  'bb.GgGgGg..',
+  'bb..gggg...',
+];
+/** His durian tree's season: the spiky round fruit on its woody stalk. */
+const DURIAN = [
+  '.....b.....',
+  '.....b.....',
+  '..g.GGG.g..',
+  '...GGgGG...',
+  '.gGGgGGgGg.',
+  '..GgGGgGg..',
+  '.gGGgGGgGg.',
+  '...GgGGg...',
+  '..g.ggg.g..',
+];
+/** His sugar palm's season: two dark round palm fruits, their green caps on top. */
+const PALMFRUIT = [
+  '.....p.....',
+  '....p.p....',
+  '..GYG.GYG..',
+  '.gGgd.gGgd.',
+  'dKkddkKkddd',
+  'dkdddddkddd',
+  'ddddddddddd',
+  '.dddd.dddd.',
+  '..dd...dd..',
+];
 /** The calendar's own button: a page with its two rings, a red band, a gold day marked. */
 const PAGE = [
   '..d......d..',
@@ -331,6 +381,11 @@ export const EVENT_ART: Record<string, string[]> = {
   pchumben: outlined(BAYBEN),
   visak: outlined(CANDLE),
   equinox: outlined(EQUINOX),
+  // (his garden's fruit trees: roam/_gardenSeasons.ts)
+  'garden-mango': outlined(MANGO),
+  'garden-jackfruit': outlined(JACKFRUIT),
+  'garden-durian': outlined(DURIAN),
+  'garden-sugarpalm': outlined(PALMFRUIT),
 };
 /** By kind, for an event with no picture of its own. */
 export const KIND_ART: Record<EventKind, string[]> = {

@@ -104,6 +104,10 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   kulenblessing: async () => ((m) => (e, c) => new m.BlessingMonk(e, c.scene, 'kulen'))(await import('./_sceneBlessing')),
   // The grandmother who keeps the key to the empty stilt house at the sugar-palm village's edge (roam/_home.ts).
   home: async () => ((m) => (e) => new m.HomeGran(e))(await import('./_sceneHome')),
+  // The woman who keeps the seedling nursery by the Kulen foot trail, watering her seedlings (roam/_gardenShop.ts).
+  nursery: async () => ((m) => (e) => new m.NurserySeller(e))(await import('./_sceneNursery')),
+  // The village pagoda's head monk: he gives the bodhi sapling and blesses the tree once it is planted (roam/_bodhi.ts).
+  bodhi: async () => ((m) => (e) => new m.BodhiMonk(e))(await import('./_sceneBodhiMonk')),
 };
 /**
  * People, their things and the oxen cast shadows only while someone shown is

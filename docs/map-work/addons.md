@@ -2100,6 +2100,86 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   `roam=walk&at=424,13,-106&home=inside&gold=all&homekite=1&night=1&sim=_:1` ·
   `cam=412,19,-127,423,13.5,-108,50&home=1&name=Dara&night=1` (outside, lit).
 
+### His home garden
+
+His own garden round his stilt house, and a bodhi tree at the village pagoda (add-on
+`garden`, words `garden…`). Agreed with the player (October 2026): plants grow by
+**game days** (only while the game is played; sleeping in the house moves them on),
+**young plants can die** (dry too long before they are grown; a grown tree never
+does), he plants **anywhere near his house**. Round 1 is twelve plants (eggplant ត្រប់,
+corn ពោត, pumpkin ល្ពៅ, sugarcane អំពៅ, banana ចេក, papaya ល្ហុង, guava ត្របែក,
+mango ស្វាយ, jackfruit ខ្នុរ, durian ធូរេន, coconut ដូង, sugar palm ត្នោត) and the
+bodhi ដើមពោធិ៍; round 2 (later) the herbs and flowers (morning glory, lemongrass,
+chilli, basil, jasmine).
+
+- **The core** (`src/map/garden/`, no three.js but the view): `kinds.ts` the plants
+  (grow days, stages 0 seed ‥ 4 grown, thirst, dying, fruit months, pick style, size,
+  room, trunk, price, what a harvest sells for, what is eaten); `state.ts` the saved
+  garden (`GARDEN`, progress.ts `garden.v1`: plants, seeds, basket, the can, the
+  clock; `advance`, `plant`, `water`, `fillCan`, `pick`, `remove`, events
+  `GARDEN.on`, `lookOf` / `lookKey` / `lookSig`); `actions.ts` the work's timing (ten
+  actions, their beats, what each hand holds, the sounds: the poses, the props, the
+  work and the sounds all follow it).
+- **Growth**: the garden's own clock runs as the map's days do (`TIME.days()`; while
+  the Time setting holds the clock, a day every 360 s of play all the same). Watered
+  earth (`wet` 1) dries over `thirst` game days; rain fills it. Dry, a plant neither
+  grows nor ripens and droops; dry `dieAfter` days before it is grown, it dies (a dry
+  stick: E pulls it out). Grown, in its months (mango March–May, jackfruit March–
+  August, durian May–August, sugar palm December–May, the rest all year), the fruit
+  ripens over `ripenDays`; the durian, the coconut and the sugar palm drop theirs
+  (picked up from under them). Corn is picked once (its bed is empty again).
+- **The looks** (`garden/look.ts`, the model contract; `garden/models/<kind>.ts`, one
+  `registerModel` each; helpers `_crop.ts`, `_fruitKit.ts`, `_treeKit.ts`,
+  `_treeCrown.ts` (jittered leaf crowns), `_palmKit.ts` (the map's own palms' numbers)):
+  every stage, green and ripe fruit, fallen fruit, `cut` (harvested before: the
+  sugarcane's stumps, the banana's follower, new flowers), droop 1 / 2, dead. Map
+  families only (no new shader); a crop ≤ 160 blocks, a small tree ≤ 450, a big tree
+  ≤ 900; ≈ 0.5–1 ms a build.
+- **On the map** (`garden/view.ts`, `_viewPool.ts` one instanced mesh per family,
+  `_viewLook.ts` looks cached and prebuilt in idle time, warmed before Start,
+  `_viewEarth.ts` the crop beds and tree basins (wet: darker, a puddle), `_viewDrop.ts`
+  falling fruit): on the land's block tops, 5 draws near for a full garden, far shapes
+  under half a pixel, the leaves sway, plants grow in and ease from stage to stage.
+  The walk map (`roam/_gardenWalk.ts`): grown trunks are solid; crowns keep the
+  follow camera out as the map's trees do.
+- **Playing it** (`roam/_garden.ts`; `_gardenSpots.ts` where he may plant: within 40 m
+  of the house, not water, paths, the house's things, a neighbour's yard, across a land
+  step, or too near another plant; `_gardenRing.ts` the ring before his feet, green or
+  red with the reason; `_gardenCard.ts` the seed card; `_gardenWork.ts` holds him
+  through each action; `_gardenToasts.ts` what the garden does, `gardenSay` queues
+  toasts). The E row: pick a ripe plant, pull out a dead one, water a thirsty one
+  (the can holds 8 pours: fill it at the jar by his stair or the stream), then
+  "E  Plant here". His moves `character/gardenWork.ts` (`gardenPose`), his tools and
+  what he holds `roam/_gardenProps.ts` (`GardenHands`: the hoe ចបកាប់, the watering can
+  ធុងស្រោចទឹក, the knife, the bamboo picking pole ដងបេះ, seeds, cuttings, pups, bagged
+  seedlings, each fruit, his basket); the character viewer `viewer.html?garden=<action>&gt=<s>`.
+- **Seeds and harvest**: Grandma's gift on his veranda (`roam/_gardenGift.ts`: eggplant
+  3, corn 3, pumpkin 2, a banana pup, a papaya seedling; her note), the seedling nursery
+  on the Kulen foot trail 17 m before his house (`hamlet/_nursery*.ts`, its seller
+  `people/_sceneNursery.ts`, the card `roam/_gardenShop*.ts`: buy, and sell his
+  harvest; mini-map badge `nursery`), one of a picked fruit kept to eat (key 6:
+  `roam/_gardenEat.ts`). Fruit seasons on the calendar once he has that tree grown
+  (`roam/_gardenSeasons.ts`).
+- **The bodhi** (`roam/_bodhi*.ts`, the monk `people/_sceneBodhiMonk.ts`, the model
+  `garden/models/bodhi.ts`): once he has picked or grown something at home, the head
+  monk at the village pagoda gives him a bodhi sapling (E "ចូលគាល់ព្រះសង្ឃ / Talk to
+  the monk"); he plants it in the ring of stones at (−327, 89.5), kneels, the monk
+  chants and sprinkles water, he bows three times. The monks water it (it never dries);
+  in 24 game days it is the great tree with its cloth bands, and the monk sits under it
+  at dawn.
+- **Sounds** (`audio/_garden.ts`): the 19 `GardenSfx` (the hoe uses the earth
+  footstep under its synthesis; `gardenPour` is 1 over leaves, ≈ 0.6 over bare earth).
+- **URL**: `garden=lineup|demo|0|<kind>:<stage>[:ripe|:green|:cut|:dry|:wilt|:dead|:fallen],…`
+  · `seeds=all|<kind>:<n>,…` · `basket=all|…` · `can=<n>` · `gardenclock=<days>` ·
+  `gardenact=<action>:<t>` (`gardenkind=`) · `gardenring=1|<kind>` · `gardencard=1` ·
+  `gardenhint=1` · `gardenspeed=<x>` (dev) · `gardenlod=near|far` ·
+  `gardenshop=1|buy|sell` (`gardenshopbuy=`, `gardenshopsell=`, `gardenshopfocus=`) ·
+  `nursopen=all|none` · `nursery=water[:0‥1]` · `gardengift=1|take|taken` ·
+  `gardeneat=<kind>,…` · `bodhi=ready|offer|talk[:s]|given|plant[:s]|planted|0‥4` ·
+  `bodhimonk=<cue>`. `window.__garden`, `__gardenView`, `__gardenShop`, `__bodhi`
+  (shots, the dev server). E.g.
+  `roam=walk&at=422,-114&yaw=180&home=1&garden=demo&rcam=200,22,22&sim=_:1`.
+
 ### The boat race
 
 Paddling in a ngo at the Water Festival (Bon Om Touk): `roam/_raceRow.ts` (the

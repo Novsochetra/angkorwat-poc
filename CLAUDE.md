@@ -304,6 +304,14 @@ guide, with every add-on's keys and URL values for shots, is
 - A friend and a home: the dog (`dog=follow`), his stilt house at the
   sugar-palm village's north-east edge (`home=1|sleep`), his name in Khmer
   letters (`name=<latin>`; `src/map/khmerName.ts`).
+- His home garden (`docs/map-work/addons.md` "His home garden"): the core in
+  `src/map/garden/` (plants `kinds.ts`, the saved garden `state.ts`, the work's
+  timing `actions.ts`, models `garden/models/`, the view), the add-on
+  `roam/_garden*.ts`, the nursery on the Kulen foot trail (`hamlet/_nursery*.ts`),
+  Grandma's seed gift, and the bodhi at the village pagoda (`roam/_bodhi*.ts`).
+  Agreed with the player: growth by game days, young plants can die, planting
+  anywhere near his house. Shots: `garden=lineup|demo|<kind>:<stage>[:ripe…]`,
+  `seeds=all`, `gardenact=<action>:<t>`, `bodhi=0‥4`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

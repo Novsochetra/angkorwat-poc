@@ -4,6 +4,7 @@ import { BIKE_SPOTS, type BikeSpotId } from '../roam/_bikeSpots';
 import { ZIP_START } from '../roam/_zipPlan';
 import { LOTUS_BED } from '../roam/_lotusHook';
 import { HOME_AT } from '../hamlet/_homePlan';
+import { nurseryToWorld } from '../hamlet/_nurseryPlan';
 import type { WordKey } from './lang';
 import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
 
@@ -24,7 +25,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery';
 
 export interface MapSpot {
   id: SpotId;
@@ -218,6 +219,22 @@ const HOME_ART = [
   '..p..p...m...',
 ];
 
+/** The seedling nursery (hamlet/_nursery.ts, roam/_gardenShop.ts): its striped shade net on two poles, seedlings in their pots under it. */
+const NURSERY_ART = [
+  'ggggggggggggg',
+  'gGgGgGgGgGgGg',
+  '.p.........p.',
+  '.p..G...G..p.',
+  '.p.GgG.GgG.p.',
+  '.p.gGg.gGg.p.',
+  '.p..b...b..p.',
+  '.p.ddd.ddd.p.',
+  '.p.ddd.ddd.p.',
+];
+
+/** The nursery's badge: on its back half (its middle is 23 m from the house's badge: this keeps them apart). */
+const NURSERY_AT = nurseryToWorld(-1.7, -2.4);
+
 /**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
  * (m) would sit on it: it goes out to this far along the line from the temple (east if on it).
@@ -255,6 +272,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   spot('lotus-bed', LOTUS_BED.x, LOTUS_BED.z, LOTUS_BED.r, 'lotusMap', 'lotusTheMap', outlined(LOTUS_ART)),
   // (his stilt house at the sugar-palm village's north-east edge: roam/_home.ts)
   spot('home', HOME_AT.x, HOME_AT.z, 9, 'homeMap', 'homeTheMap', outlined(HOME_ART)),
+  // (the seedling nursery by the Kulen foot trail, on the way up to his house: roam/_gardenShop.ts)
+  spot('nursery', NURSERY_AT[0], NURSERY_AT[1], 8, 'gardenShopMap', 'gardenShopTheMap', outlined(NURSERY_ART)),
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

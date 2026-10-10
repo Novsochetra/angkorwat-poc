@@ -38,6 +38,8 @@ const PIECES: [string, () => Promise<PieceBuilder>][] = [
   ['backHamlet', async () => (await import('./_backHamlet')).buildBackHamlet],
   // (his stilt house at the sugar-palm village's north-east edge: roam/_home*.ts)
   ['home', async () => (await import('./_home')).buildHome],
+  // (the seedling nursery by the Kulen foot trail, on the way up to his house: roam/_gardenShop*.ts)
+  ['nursery', async () => (await import('./_nursery')).buildNursery],
 ];
 
 export async function buildHamlets(ctx: MapContext): Promise<MapPart> {
