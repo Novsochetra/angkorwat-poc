@@ -125,6 +125,21 @@ function eulerOf(Xx: number, Xy: number, Xz: number, Yx: number, Yy: number, Yz:
 }
 
 /** The blocks of one palm: its seeded numbers, the part being made, and two ways to lay a block. */
+/** A palm's seeded number 0‥1 (`PalmKit.r`) from its seed's integer `s` (round(seed × 100003)), its salt and `q`. */
+export const palmRand = (s: number, salt: number, q: number): number => hash3(s, q, salt, 9473);
+/** `PalmKit.r` without the kit (a model's pure helpers: where its fallen fruit lies). */
+export const palmR = (seed: number, salt: number) => (q: number): number => palmRand(Math.round(seed * 100003), salt, q);
+
+/**
+ * Where fallen fruit `i` of `n` lies (local m: x, z): round the foot `toward` (rad) from the trunk, 0.8‥`reach` m
+ * out (as `fallen` lays it; roam/_gardenWork.ts goes there to pick it up).
+ */
+export function fallenSpot(r: (q: number) => number, n: number, toward: number, reach: number, i: number, q0 = 900): [number, number] {
+  const a = toward + (i - (n - 1) / 2) * 1.05 + (r(q0 + i) - 0.5) * 0.6;
+  const d = 0.8 + (reach - 0.8) * r(q0 + 10 + i);
+  return [Math.sin(a) * d, Math.cos(a) * d];
+}
+
 export class PalmKit {
   private readonly s: number;
   /** The code making the blocks now (dev builds): one trace per part, see {@link mark}. */
@@ -143,7 +158,7 @@ export class PalmKit {
 
   /** A seeded number 0‥1 (the same palm every time). */
   r(q: number): number {
-    return hash3(this.s, q, this.salt, 9473);
+    return palmRand(this.s, this.salt, q);
   }
 
   /** The blocks from here on were made by the caller's line (bug reports name it). */
@@ -442,10 +457,7 @@ export function strap(K: PalmKit, x: number, y: number, z: number, az: number, e
 export function fallen(K: PalmKit, n: number, size: number, colors: readonly number[], toward: number, reach: number, cap: readonly number[] | null, q0 = 900): void {
   K.mark();
   for (let i = 0; i < Math.min(3, n); i++) {
-    const a = toward + (i - (n - 1) / 2) * 1.05 + (K.r(q0 + i) - 0.5) * 0.6;
-    const d = 0.8 + (reach - 0.8) * K.r(q0 + 10 + i);
-    const x = Math.sin(a) * d;
-    const z = Math.cos(a) * d;
+    const [x, z] = fallenSpot((q) => K.r(q), n, toward, reach, i, q0);
     const yaw = K.r(q0 + 20 + i) * Math.PI;
     const y = size * 0.42 - 0.08;
     const c = pick(colors, K.r(q0 + 30 + i));

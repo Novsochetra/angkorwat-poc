@@ -4,7 +4,10 @@ import { BODY_UNIT_M, WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import { ACTIONS, PICK_ACTION, type GardenAction } from '../garden/actions';
 import { isTree, KINDS, stageOf, trunkAt, type PlantKindId } from '../garden/kinds';
-import { GARDEN, type Plant } from '../garden/state';
+import { fallenAt as coconutFallen } from '../garden/models/coconut';
+import { fallenAt as durianFallen } from '../garden/models/durian';
+import { fallenAt as sugarPalmFallen } from '../garden/models/sugarPalm';
+import { GARDEN, lookOf, type Plant } from '../garden/state';
 import { pad } from '../pad/pad';
 import { num, t } from '../ui/lang';
 import { touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
@@ -212,6 +215,37 @@ function targetOf(a: GardenAction, p: Plant, dx: number, dz: number, out: Vector
   return out.set(p.x + dx * off, ground + up, p.z + dz * off);
 }
 
+/** Where each kind's model lays its fallen fruit (local m: x, z; garden/models/*.ts `fallenAt`: the models' own rule). */
+const FALLEN_AT: Partial<Record<PlantKindId, (look: ReturnType<typeof lookOf>, i: number) => readonly number[]>> = {
+  durian: (l, i) => {
+    const [x, , z] = durianFallen(l, i);
+    return [x, z];
+  },
+  coconut: coconutFallen,
+  sugarPalm: sugarPalmFallen,
+};
+
+/** The fallen fruit under a tree nearest (x, z) (m, on the map: the model's own place for it turned by the plant's yaw), or null. */
+function fallenNear(p: Plant, x: number, z: number, out: Vector3): Vector3 | null {
+  const at = FALLEN_AT[p.kind];
+  const look = lookOf(p);
+  if (!at || look.fallen <= 0) return null;
+  const c = Math.cos(p.yaw);
+  const sn = Math.sin(p.yaw);
+  let best = Infinity;
+  for (let i = 0; i < Math.min(3, look.fallen); i++) {
+    const [lx, lz] = at(look, i);
+    const wx = p.x + lx * c + lz * sn;
+    const wz = p.z - lx * sn + lz * c;
+    const d = Math.hypot(wx - x, wz - z);
+    if (d < best) {
+      best = d;
+      out.set(wx, env!.world.field.heightAt(wx, wz) + FALLEN.up, wz);
+    }
+  }
+  return out;
+}
+
 /** Can he stand at (x, z) (not in water, nothing built there, on the work's level)? */
 function standable(ctx: RoamCtx, x: number, z: number, level: number, plant: Plant | null): boolean {
   const w = ctx.world;
@@ -242,6 +276,19 @@ function placeFor(ctx: RoamCtx, a: GardenAction, p: Plant, stand: Vector3, targe
   const base = Math.atan2(b.x - p.x, b.z - p.z);
   const level = ctx.world.field.heightAt(p.x, p.z);
   let face = 0;
+  // Fallen fruit: to the one nearest him where the model lays it, from out past it (away from the trunk).
+  if (a === 'pickGround' && fallenNear(p, b.x, b.z, target)) {
+    aimOf(a, p.kind, target.y - level, ctx.body.scale, aim);
+    const out = Math.atan2(target.x - p.x, target.z - p.z);
+    const k = KINDS[p.kind];
+    const trunk = trunkAt(k, stageOf(k, p.age)) + 0.35;
+    for (let i = 0; i < 12; i++) {
+      const turn = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 6);
+      face = placeAt(target, aim.sx, aim.sz, out + turn, stand);
+      if (Math.hypot(stand.x - p.x, stand.z - p.z) > trunk && standable(ctx, stand.x, stand.z, level, p)) return face;
+    }
+    return placeAt(target, aim.sx, aim.sz, out, stand);
+  }
   for (let i = 0; i < 12; i++) {
     const turn = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (Math.PI / 6);
     const ang = base + turn;
@@ -414,8 +461,8 @@ export const GardenWork = {
     return S !== null;
   },
   /** The action under way and how far into it (s), for the checks and the bug report. */
-  get now(): { action: GardenAction; t: number; phase: string; kind: PlantKindId; plant: number | null } | null {
-    return S ? { action: S.req.action, t: +S.t.toFixed(2), phase: S.phase, kind: S.req.kind, plant: S.req.plant?.id ?? null } : null;
+  get now(): { action: GardenAction; t: number; phase: string; kind: PlantKindId; plant: number | null; target: number[] } | null {
+    return S ? { action: S.req.action, t: +S.t.toFixed(2), phase: S.phase, kind: S.req.kind, plant: S.req.plant?.id ?? null, target: [+S.target.x.toFixed(2), +S.target.y.toFixed(2), +S.target.z.toFixed(2)] } : null;
   },
 
   /** Begin (E, the seed card). */

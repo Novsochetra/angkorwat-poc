@@ -15,8 +15,10 @@ import {
   NUT_RIPE,
   NUT_TURNING,
   PalmKit,
+  palmR,
   SHEATH,
   fallen,
+  fallenSpot,
   frond,
   mixHex,
   pick,
@@ -50,8 +52,21 @@ import {
 /** The map's coconut trunks catch more light than a bark block of their colour (veg/palms.ts): this much lighter. */
 const BARK = 1.15;
 
+/** The coconut's seeded numbers' salt, how far out its fallen nuts roll (m). */
+const SALT = 23;
+const FALL_REACH = 2.0;
+
+/**
+ * Where fallen coconut `i` lies (local m: x, z), as the model lays it: toward the trunk's lean (`la`: `K.r(3)`), up
+ * to `FALL_REACH` out (_palmKit.ts `fallenSpot`). roam/_gardenWork.ts goes there to pick it up.
+ */
+export function fallenAt(look: PlantLook, i: number): [number, number] {
+  const r = palmR(look.seed, SALT);
+  return fallenSpot(r, look.fallen, r(3) * Math.PI * 2, FALL_REACH, i);
+}
+
 registerModel('coconut', (b, look) => {
-  const K = new PalmKit(b, look.seed, 23);
+  const K = new PalmKit(b, look.seed, SALT);
   const W = witherOf(look);
   if (look.stage === 0) sprout(K, W);
   else if (look.stage === 1) seedling(K, W);
@@ -216,7 +231,7 @@ function palm(K: PalmKit, look: PlantLook, W: Wither): void {
     }
   }
   // Ripe coconuts on the ground, fallen from the crown (toward its side).
-  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.27, NUT_RIPE, la, 2.0, null);
+  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.27, NUT_RIPE, la, FALL_REACH, null);
 }
 
 /** Coconut bunches under the crown (green; turning yellow-brown when ripe), or a flower spathe and young buttons. */

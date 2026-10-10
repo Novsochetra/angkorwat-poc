@@ -11,11 +11,13 @@ import {
   HEART,
   PALM_FRUIT,
   PalmKit,
+  palmR,
   SHEATH,
   STALK,
   SUGAR_TRUNK,
   SUGAR_TRUNK_LOW,
   fallen,
+  fallenSpot,
   fan,
   mixHex,
   pick,
@@ -47,8 +49,22 @@ import {
  * (2); dead, a dry brown rosette, nothing green.
  */
 
+/** The sugar palm's seeded numbers' salt; its fallen fruit lie this far round from its `turn` (rad), up to this far out (m). */
+const SALT = 17;
+const FALL_TURN = 3.4;
+const FALL_REACH = 1.9;
+
+/**
+ * Where fallen fruit `i` lies (local m: x, z), as the model lays it (its `turn` is `K.r(1)`; _palmKit.ts
+ * `fallenSpot`). roam/_gardenWork.ts goes there to pick it up.
+ */
+export function fallenAt(look: PlantLook, i: number): [number, number] {
+  const r = palmR(look.seed, SALT);
+  return fallenSpot(r, look.fallen, r(1) * Math.PI * 2 + FALL_TURN, FALL_REACH, i);
+}
+
 registerModel('sugarPalm', (b, look) => {
-  const K = new PalmKit(b, look.seed, 17);
+  const K = new PalmKit(b, look.seed, SALT);
   const W = witherOf(look);
   if (look.stage === 0) seedling(K, W);
   else if (look.stage <= 2) rosette(K, look, W);
@@ -194,7 +210,7 @@ function palm(K: PalmKit, look: PlantLook, W: Wither): void {
     fan(K, Math.sin(az) * 0.3, base + (0.55 + K.r(320 + k) * 0.35) * s, Math.cos(az) * 0.3, az, el, (K.r(330 + k) - 0.5) * 2, (0.7 + K.r(340 + k) * 0.3) * s, (0.55 + K.r(350 + k) * 0.12) * s, 0.05, pick(DEAD, K.r(360 + k)), 0.9 + K.r(370 + k) * 0.2, { segs: 7, spread: 2.6, stalk: pick(DEAD, K.r(380 + k)), tip: 0.6 });
   }
   // Ripe fruit fallen round the foot.
-  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.19, PALM_FRUIT, turn + 3.4, 1.9, FRUIT_CAP);
+  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.19, PALM_FRUIT, turn + FALL_TURN, FALL_REACH, FRUIT_CAP);
 }
 
 /** Bunches of round purple-black fruit hanging among the leaf bases on their stalks. */

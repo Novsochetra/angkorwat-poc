@@ -44,7 +44,7 @@ registerModel('durian', (b, look) => {
   else if (look.stage === 2) sapling(b, r, look);
   else if (look.stage === 3) young(b, r, look);
   else grown(b, r, look);
-  if (look.fallen > 0) fallen(b, r, Math.min(3, look.fallen));
+  if (look.fallen > 0) fallen(b, r, look);
 });
 
 /** Narrow leaves, two-coloured, in two rows along a twig (or turning up the stem). */
@@ -256,15 +256,31 @@ function durian(b: VoxelBuilder, r: Rand, x: number, y: number, z: number, ripe:
   }
 }
 
-/** Ripe durians lying round the foot of the tree where they fell (he picks them up). */
-function fallen(b: VoxelBuilder, r: Rand, n: number): void {
-  const src = traceSource();
+/**
+ * Where fallen durian `i` (0‥2) lies (local m: x, y of its middle, z), of `look.fallen` (≤ 3): in the basin's dish
+ * between the buttresses (every second one), or out past its bank, a little lower (garden/_viewEarth.ts). Its own
+ * seeded numbers (`rng(look, 38)`), so the picking (roam/_gardenWork.ts) finds the fruit where the model lays it.
+ */
+export function fallenAt(look: PlantLook, i: number): [number, number, number] {
+  const n = Math.min(3, look.fallen);
+  const r = rng(look, 38);
   const a0 = r() * 6.28;
-  for (let q = 0; q < n; q++) {
+  let out: [number, number, number] = [0, 0.19, 0];
+  for (let q = 0; q <= i && q < n; q++) {
     const a = a0 + (q / n) * 6.28 + (r() - 0.5) * 1.2;
-    // (in the basin's dish between the buttresses, or out past its bank, a little lower: garden/_viewEarth.ts)
     const inside = q % 2 === 1;
     const d = inside ? 0.68 + r() * 0.14 : 1.5 + r() * 0.8;
-    durian(b, r, Math.cos(a) * d, inside ? 0.21 : 0.19, Math.sin(a) * d, true, src, false);
+    out = [Math.cos(a) * d, inside ? 0.21 : 0.19, Math.sin(a) * d];
+  }
+  return out;
+}
+
+/** Ripe durians lying round the foot of the tree where they fell (he picks them up): where `fallenAt` says. */
+function fallen(b: VoxelBuilder, r: Rand, look: PlantLook): void {
+  const src = traceSource();
+  const n = Math.min(3, look.fallen);
+  for (let q = 0; q < n; q++) {
+    const [x, y, z] = fallenAt(look, q);
+    durian(b, r, x, y, z, true, src, false);
   }
 }
