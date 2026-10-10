@@ -329,12 +329,12 @@ export function ripeNow(p: Plant): boolean {
   return k.fruit.pick === 'ground' ? p.fallen > 0 : p.ripe >= 1;
 }
 
-/** It wants water: alive, not a grown tree, the earth drying (under a third). */
+/** It wants water: alive, not a grown tree, the earth nearly dry (under a fifth: about a game day after a watering for a crop). */
 export function thirsty(p: Plant): boolean {
   if (p.dead) return false;
   const k = KINDS[p.kind];
   if (isTree(k) && stageOf(k, p.age) === GROWN) return false;
-  return p.wet < 0.34;
+  return p.wet < 0.2;
 }
 
 export const GARDEN = {
