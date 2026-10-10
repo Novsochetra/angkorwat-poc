@@ -28,6 +28,7 @@ import { graphicsNow, STILL_LAYER } from '../graphics';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { ROAM_SCALE } from '../roam/types';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
+import { GROUND_CLEAR } from '../groundClear';
 import { canopyOf, type Canopy } from './canopy';
 import { elephantEar, fallenLog, fern, FLOWER_SETS, flowers, grassTuft, hangingVine, litter, reeds, type PlantSink } from './plants';
 import { stepWind, SWAY, SWAY_GLSL, swayLand } from './sway';
@@ -522,6 +523,21 @@ class Pool implements PlantSink {
     this.queue.sort((a, b) => keyDist(b, x, z) - keyDist(a, x, z));
   }
 
+  /** Let go of the cells round a box of the map (m): they grow again (`plan`), round what was dug there since. */
+  regrow(b: { x0: number; x1: number; z0: number; z1: number }): void {
+    // (a cell's plants reach a little past it)
+    const m = 1.5;
+    for (const [key, cell] of this.cells) {
+      const x = keyI(key) * POOL_CELL;
+      const z = keyK(key) * POOL_CELL;
+      if (x + POOL_CELL + m < b.x0 || x - m > b.x1 || z + POOL_CELL + m < b.z0 || z - m > b.z1) continue;
+      this.cells.delete(key);
+      this.free.push(cell.slot);
+      this.version++;
+    }
+    this.planX = NaN;
+  }
+
   /** Fill up to `max` queued cells. */
   drain(max: number): void {
     if (!this.queue.length) return;
@@ -848,8 +864,9 @@ class Pool implements PlantSink {
     return c >= 0 && f.height[c] === y && !f.occupied[c] && !f.trail[c] && f.water[c] < -1000 && f.surface[c] === SURFACE.grass;
   }
 
-  /** No trunk within `r` of (x, z). */
+  /** No trunk within `r` of (x, z), and not on ground dug since (his garden's beds and basins: map/groundClear.ts). */
   private clear(x: number, z: number, r: number): boolean {
+    if (!GROUND_CLEAR.free(x, z, r)) return false;
     if (!this.canopy) return true;
     for (const n of this.trunks) {
       const t = this.canopy.trees[n];
@@ -1061,6 +1078,13 @@ export function buildUndergrowth(ctx: MapContext): MapPart {
       if (keep !== pool.keep) {
         pool.keep = keep;
         pool.planX = NaN;
+      }
+      // (ground dug or let be since, his garden's: its cells grow again)
+      const dug = GROUND_CLEAR.dirty;
+      if (dug.x0 <= dug.x1) {
+        pool.regrow(dug);
+        dug.x0 = dug.z0 = Infinity;
+        dug.x1 = dug.z1 = -Infinity;
       }
       if (!(Math.hypot(L.x - pool.planX, L.z - pool.planZ) <= REPLAN)) pool.plan(L.x, L.z);
       pool.drain(ctx.shot ? Infinity : FILL_PER_FRAME);

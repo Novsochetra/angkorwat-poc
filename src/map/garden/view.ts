@@ -1,5 +1,6 @@
 import { Box3, Group, Sphere, Vector3, type Camera, type Object3D, type Scene, type WebGLRenderer } from 'three';
 import { frameCap, graphicsNow, markStill, paintRim, pixelSize, plainAt } from '../graphics';
+import { GROUND_CLEAR } from '../groundClear';
 import type { RoamWorld } from '../roam/types';
 import { swayLeaves } from '../veg/sway';
 import { GROWN, KINDS, type PlantKindId, type Stage } from './kinds';
@@ -321,6 +322,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       const small = b.parts[SMALL].pools;
       it.rock = small[ROCK].fit(it.rock, it.earth.rock.n);
       it.pud = small[STONE].fit(it.pud, it.earth.puddle?.n ?? 0);
+      // (the map's grass, flowers and ferns keep off the dug earth: map/groundClear.ts, veg/undergrowth.ts)
+      GROUND_CLEAR.set(it.id, it.x, it.z, it.earth.reach);
     }
     const t2 = performance.now();
     stats.earthMs = Math.max(stats.earthMs, t2 - t1);
@@ -374,6 +377,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     it.rock = b.parts[SMALL].pools[ROCK].fit(it.rock, 0);
     it.pud = b.parts[SMALL].pools[STONE].fit(it.pud, 0);
     CROWNS.delete(it.id);
+    GROUND_CLEAR.set(it.id, 0, 0, 0);
     if (it.data) cache.release(it.data);
     it.data = null;
     items.delete(it.id);
@@ -761,7 +765,10 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     dispose() {
       alive = false;
       for (const b of batchList) for (const part of b.parts) for (const p of part.pools) p.dispose();
-      for (const it of list) CROWNS.delete(it.id);
+      for (const it of list) {
+        CROWNS.delete(it.id);
+        GROUND_CLEAR.set(it.id, 0, 0, 0);
+      }
       object.clear();
       cache.clear();
       items.clear();
