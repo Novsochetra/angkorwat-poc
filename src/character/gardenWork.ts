@@ -342,6 +342,8 @@ function approachOf(a: GardenAction, spot: Vector3, out: Vector3, kind: PlantKin
   out.set(spot.x, 0, spot.z).sub(homeSpot(a, kind, spot, _ah).setY(0));
   const amax = APPROACH_MAX[a];
   if (out.length() > amax) out.setLength(amax);
+  // (water below the bank: he is at its edge already: no step, back or on)
+  if (a === 'fill') out.multiplyScalar(1 - smooth((-1.5 - spot.y) / 3));
   return out;
 }
 const _ah = new Vector3();
@@ -509,8 +511,8 @@ const KEYS = (() => {
     ],
     fillDeep: [
       [0, STAND],
-      [F.dip, S({ ...KNEEL, tilt: 0.82, chest: 1.0, twist: -0.3, roll: 0.22, fwd: KNEEL.fwd + 0.6 })],
-      [F.full, S({ ...KNEEL, tilt: 0.84, chest: 1.02, twist: -0.3, roll: 0.22, fwd: KNEEL.fwd + 0.6 })],
+      [F.dip, S({ ...KNEEL, tilt: 0.92, chest: 1.16, twist: -0.3, roll: 0.42, fwd: KNEEL.fwd + 0.6 })],
+      [F.full, S({ ...KNEEL, tilt: 0.94, chest: 1.18, twist: -0.3, roll: 0.42, fwd: KNEEL.fwd + 0.6 })],
       [F.lift, S({ ...KNEEL, tilt: 0.66, chest: 0.8, twist: -0.24, roll: 0.14, fwd: KNEEL.fwd + 0.6 })],
       [F.len, STAND],
     ],
@@ -763,11 +765,13 @@ interface Hand {
   turn: number;
   /** The left hand on what the right one holds: it goes where the thing really is, the right fist as posed times `rel`. */
   follow: boolean;
+  /** How much further (BU) than `SHRUG_MAX` its shoulder may come to it (reaching right down to low water). */
+  shrug: number;
   rel: Matrix4;
 }
 const HANDS: Record<'L' | 'R', Hand> = {
-  L: { m: new Matrix4(), w: 0, pole: new Vector3(), turn: 1, follow: false, rel: new Matrix4() },
-  R: { m: new Matrix4(), w: 0, pole: new Vector3(), turn: 1, follow: false, rel: new Matrix4() },
+  L: { m: new Matrix4(), w: 0, pole: new Vector3(), turn: 1, follow: false, rel: new Matrix4(), shrug: 0 },
+  R: { m: new Matrix4(), w: 0, pole: new Vector3(), turn: 1, follow: false, rel: new Matrix4(), shrug: 0 },
 };
 /** Elbows down and out (his space), a little back. */
 const POLE_DOWN = { L: new Vector3(0.75, -1, -0.3).normalize(), R: new Vector3(-0.75, -1, -0.3).normalize() };
@@ -783,6 +787,7 @@ function setHand(side: 'L' | 'R', m: Matrix4, w = 1, pole = POLE_DOWN[side], tur
   h.pole.copy(pole);
   h.turn = turn;
   h.follow = false;
+  h.shrug = 0;
 }
 /**
  * Both hands on one thing (it is carried in the right fist): the right on its grip, the left on its own, going
@@ -888,7 +893,7 @@ function bodyShape(a: GardenAction, t: number, sp: Vector3, kind: PlantKindId | 
     case 'fill': {
       // (a jar's water at his waist: bent over it; at his feet: squatting; below the bank: down on his right knee at its
       // edge, leaning right over, his right shoulder down and forward)
-      const deep = smooth((-1.5 - sp.y) / 5);
+      const deep = smooth((-1.5 - sp.y) / 4);
       if (deep > 0) return blendShapes(t, KEYS.fillLow, KEYS.fillDeep, deep, out);
       return blendShapes(t, KEYS.fillHigh, KEYS.fillLow, smooth((7 - sp.y) / 6), out);
     }
@@ -1097,8 +1102,8 @@ function arm(side: 'L' | 'R', pose: Pose): void {
   _shrug.copy(_target).sub(ARM[side].shoulder);
   const need = _shrug.length() - (ARM_LEN - 0.2);
   if (need > 0) {
-    _shrug.setLength(Math.min(need, SHRUG_MAX));
-    _shrug.y = clamp(_shrug.y, -0.6, 0.9);
+    _shrug.setLength(Math.min(need, SHRUG_MAX + h.shrug));
+    _shrug.y = clamp(_shrug.y, -0.6 - 1.4 * h.shrug, 0.9);
   } else _shrug.set(0, 0, 0);
   const ik = armTo(side, _target, _fq, _pole, h.turn, _shrug);
   // (a hand only partly on its target is not short of it)
@@ -1548,6 +1553,8 @@ const SEED_FORM: Record<PlantKindId, 'seed' | 'cutting' | 'pup' | 'seedling'> = 
 
 // ── Watering ────────────────────────────────────────────────────────────────
 
+/** Filling from water below the bank: the can goes in at least this far ahead of his feet (BU: past the edge, under his leaning shoulder). */
+const DEEP_DIP_Z = 6.8;
 /** The can carried at his right side (chest space, as he bends: the fist's place, the arm hanging). */
 const CAN_CARRY = new Vector3(-6.0, -1.3, 1.3);
 /** Pouring: the rose this high over the plant's foot (BU), the can tipped this far (rad). */
@@ -1599,18 +1606,22 @@ function filling(t: number, sp: Vector3): void {
   const lift = seg(t, b.full + 0.05, b.lift + 0.15);
   const back = seg(t, b.lift + 0.05, b.len - 0.05);
   // (water below the bank: he kneels at its edge and lowers the can under his right shoulder, tipped more)
-  const deep = smooth((-1.5 - sp.y) / 5);
-  const tip = mix(0, 0.62 + 0.3 * deep, down) * (1 - sink * 0.75 * (1 - deep)) * (1 - lift);
+  const deep = smooth((-1.5 - sp.y) / 4);
+  const tip = mix(0, 0.62 - 0.3 * deep, down) * (1 - sink * 0.75) * (1 - lift);
   const yaw = Math.atan2(sp.x + 1.5, sp.z) * 0.5 - 0.15;
   // (the fist over the water: the can's body this far under the surface (a little more as it fills), lifted out)
-  const depth = mix(1.2, 2.2, sink) + 1.0 * deep - 4.2 * lift;
+  // (low water: tipped far over, its mouth and front go deep while its middle is just under: as far as his arm reaches)
+  const depth = mix(mix(1.2, 2.2, sink), mix(2.2, 2.8, sink), deep) - 4.2 * lift;
   // (lifted out it comes up and toward him)
-  _fist.set(sp.x - 0.4 - 3.0 * deep - 1.2 * lift, sp.y - depth - CAN.h / 2 + GRIPS.can.at[1], sp.z - 0.4 - 1.2 * deep - 3.5 * lift);
+  // (low water: the can under his right shoulder, which leans out over the water past the edge)
+  _fist.set(sp.x - 0.4 - 4.8 * deep - 1.2 * lift, sp.y - depth - CAN.h / 2 + GRIPS.can.at[1], Math.max(sp.z - 0.4 - 3.5 * lift, mix(sp.z, DEEP_DIP_Z, deep) - 3.5 * lift));
   const carry = smooth(Math.max(1 - down, back));
   _fist.lerp(_rel.copy(CAN_CARRY).applyMatrix4(_chestM), carry);
   _fist.y += 1.0 * Math.sin(Math.PI * carry);
   canAt(_fist, yaw * (1 - carry), tip, _item);
   onItem('R', _item, GRIPS.can);
+  // (low water: his right shoulder goes down after the can, as far as it goes)
+  HANDS.R.shrug = 1.2 * deep * (1 - carry);
   // (the left hand on its knee, steadying him)
   const k = window4(t, 0.1, b.dip, b.lift, b.len - 0.15);
   if (k > 0) onKnee('L', KNEE.L, k);
