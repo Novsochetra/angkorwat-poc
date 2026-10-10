@@ -66,7 +66,8 @@ function keepOne(k: PlantKindId): boolean {
 }
 
 GARDEN.on((ev) => {
-  if (ev.type !== 'picked' || ev.n <= 0) return;
+  // (a harvest of one — a banana bunch, a jackfruit, a durian — goes to the basket whole: one to eat only from two up)
+  if (ev.type !== 'picked' || ev.n < 2) return;
   const k = ev.plant.kind;
   if (!keepOne(k)) return;
   // (in the garden's own line of toasts: after the picking's, never over it)

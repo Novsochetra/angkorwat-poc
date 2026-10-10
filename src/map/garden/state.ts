@@ -103,6 +103,13 @@ interface Saved {
   gift: boolean;
   /** The pagoda's monk has given him the bodhi sapling (roam/_bodhi*.ts). */
   bodhiGiven: boolean;
+  /**
+   * The garden's own year: the time of the year (0 = 14 April, as `MapFrame.season`) when its clock was 0, set from the
+   * map's season the first time it grows (the real date). From then on the garden's year turns with its own clock (24
+   * game days a year), kept between visits: a mango planted in October fruits after the garden's year has come round
+   * to March, however many visits that takes (the map's own season starts from the real date at every visit).
+   */
+  year0: number | null;
 }
 
 const KEY = 'garden.v1';
@@ -110,7 +117,7 @@ const KEY = 'garden.v1';
 const isSaved = (v: unknown): v is Saved => typeof v === 'object' && v !== null && (v as Saved).v === 1 && Array.isArray((v as Saved).plants);
 
 function fresh(): Saved {
-  return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, gift: false, bodhiGiven: false };
+  return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, gift: false, bodhiGiven: false, year0: null };
 }
 
 /** A kind of the garden's (not `constructor`, `toString`…: an own key of `KINDS`). */
@@ -157,6 +164,7 @@ function load(): Saved {
     can: Math.round(num(s.can, 0, 0, CAN_MAX)),
     gift: s.gift === true,
     bodhiGiven: s.bodhiGiven === true,
+    year0: typeof s.year0 === 'number' && Number.isFinite(s.year0) ? s.year0 : null,
   };
 }
 
@@ -184,10 +192,14 @@ function flush(): void {
 
 /** Small steps for a long jump of the clock (sleep): growth, drying and ripening go in order. */
 const STEP = 0.05;
+/** The garden's year turns once in this many game days (main.ts `SEASON_PER_DAY`). */
+const YEAR_DAYS = 24;
+const frac = (x: number) => ((x % 1) + 1) % 1;
+
 /** A jump of the clock this long (game days: sleep, "Wait for it") lets nothing die: a plant left dry wilts and waits for him. */
 const JUMP = 0.25;
-/** After a jump or the map seen from above, a dry young plant has at least this long left (game days: 3 min of play). */
-const SPARE = 0.5;
+/** After a jump or the map seen from above, a dry young plant has at least this long left (game days: 6 min of play, time to come home from a landing). */
+const SPARE = 1;
 /** Game days ripe fruit hangs (or lies) out of its months before it drops and rots. */
 const STALE = 2;
 
@@ -371,13 +383,20 @@ export const GARDEN = {
     if (!(d > 0)) return;
     d = Math.min(d, 3);
     if (d > JUMP) mayDie = false;
-    state.clock += d;
+    // (the garden's year starts from the map's, the real date, the first time it grows; then it turns with the garden)
+    if (state.year0 === null) state.year0 = frac(season - state.clock / YEAR_DAYS);
     while (d > 1e-9) {
       const s = Math.min(STEP, d);
-      for (const p of state.plants) stepPlant(p, s, season, rain, mayDie);
+      state.clock += s;
+      const sn = GARDEN.season();
+      for (const p of state.plants) stepPlant(p, s, sn, rain, mayDie);
       d -= s;
     }
     dirty = true;
+  },
+  /** The time of the garden's year now (0 = 14 April; garden/kinds.ts `monthOf`), or `fallback` before it has one. */
+  season(fallback = 0): number {
+    return state.year0 === null ? fallback : frac(state.year0 + state.clock / YEAR_DAYS);
   },
   /** Each frame (real seconds): saves what changed now and then. */
   tick(dt: number): void {
@@ -479,6 +498,8 @@ export const GARDEN = {
   fromUrl(q: URLSearchParams, spots: (n: number, trees: boolean) => readonly (readonly [number, number])[]): void {
     const clock = q.get('gardenclock');
     if (clock !== null && Number.isFinite(+clock)) state.clock = Math.max(0, +clock);
+    const sea = q.get('season');
+    if (sea !== null && Number.isFinite(+sea)) state.year0 = frac(+sea - state.clock / YEAR_DAYS);
     const can = q.get('can');
     if (can !== null && Number.isFinite(+can)) state.can = Math.max(0, Math.min(CAN_MAX, Math.round(+can)));
     const seeds = q.get('seeds');
