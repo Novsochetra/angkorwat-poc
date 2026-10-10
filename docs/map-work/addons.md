@@ -2120,14 +2120,25 @@ chilli, basil, jasmine).
   `GARDEN.on`, `lookOf` / `lookKey` / `lookSig`); `actions.ts` the work's timing (ten
   actions, their beats, what each hand holds, the sounds: the poses, the props, the
   work and the sounds all follow it).
-- **Growth**: the garden's own clock runs as the map's days do (`TIME.days()`; while
-  the Time setting holds the clock, a day every 360 s of play all the same). Watered
-  earth (`wet` 1) dries over `thirst` game days; rain fills it. Dry, a plant neither
-  grows nor ripens and droops; dry `dieAfter` days before it is grown, it dies (a dry
-  stick: E pulls it out). Grown, in its months (mango March–May, jackfruit March–
+- **Growth**: the garden's own clock runs only with play: the time its frames account
+  for, plus the jumps that are meant (sleep, the calendar's Wait: `TIME.skipped()`);
+  a hidden tab, a phone in another app, the loading screen bring nothing. While the
+  Time setting holds the clock, a day every 360 s of play all the same. The garden
+  keeps **its own year** (`GARDEN.season()`, saved): it starts at the real date the
+  first time it grows and turns with its clock (24 game days a year) across visits, so
+  tree fruit comes round with play. Watered earth (`wet` 1) dries over `thirst` game
+  days; rain fills it. Dry, a plant neither grows nor ripens and droops; dry `dieAfter`
+  days before it is grown (crops ≈ 1, young trees 2–3.5), it dies (a dry stick: E
+  pulls it out) — but only while he roams: nothing dies on the map seen from above or
+  in a jump of the clock, and after one a dry plant has at least a game day (6 min)
+  left. Toasts: thirsty, then "wilting badly" at half its `dieAfter`, then died; news
+  from the map is said once he roams again. Grown, in its months (mango March–May, jackfruit March–
   August, durian May–August, sugar palm December–May, the rest all year), the fruit
   ripens over `ripenDays`; the durian, the coconut and the sugar palm drop theirs
-  (picked up from under them). Corn is picked once (its bed is empty again).
+  (picked up from under them, where they really lie: the models' `fallenAt`). Out of
+  its months ripening stops and ripe fruit left on (or under) a tree rots after 2 days.
+  Corn is picked once (its bed is empty again). Prices keep a crop or a small tree at
+  ≈ 800–1,400 ៛ a game day; the jackfruit and the durian (30,000 ៛) are the prizes.
 - **The looks** (`garden/look.ts`, the model contract; `garden/models/<kind>.ts`, one
   `registerModel` each; helpers `_crop.ts`, `_fruitKit.ts`, `_treeKit.ts`,
   `_treeCrown.ts` (jittered leaf crowns), `_palmKit.ts` (the map's own palms' numbers)):
@@ -2140,16 +2151,23 @@ chilli, basil, jasmine).
   `_viewEarth.ts` the crop beds and tree basins (wet: darker, a puddle), `_viewDrop.ts`
   falling fruit): on the land's block tops, 5 draws near for a full garden, far shapes
   under half a pixel, the leaves sway, plants grow in and ease from stage to stage.
-  The walk map (`roam/_gardenWalk.ts`): grown trunks are solid; crowns keep the
-  follow camera out as the map's trees do.
+  Far, the same blocks as the map's own plain boxes (`plainAt`); two parts culled
+  apart (small things, trees). The walk map (`roam/_gardenWalk.ts`): grown trunks are
+  solid (≥ 0.24 m); each look's real crown keeps the follow camera out. Wild ground
+  cover keeps off the beds and basins (`map/groundClear.ts` `GROUND_CLEAR`: cleared
+  discs that veg/undergrowth.ts reads; its cells grow again round a change).
 - **Playing it** (`roam/_garden.ts`; `_gardenSpots.ts` where he may plant: within 40 m
   of the house, not water, paths, the house's things, a neighbour's yard, across a land
   step, or too near another plant; `_gardenRing.ts` the ring before his feet, green or
   red with the reason; `_gardenCard.ts` the seed card; `_gardenWork.ts` holds him
   through each action; `_gardenToasts.ts` what the garden does, `gardenSay` queues
-  toasts). The E row: pick a ripe plant, pull out a dead one, water a thirsty one
-  (the can holds 8 pours: fill it at the jar by his stair or the stream), then
-  "E  Plant here". His moves `character/gardenWork.ts` (`gardenPose`), his tools and
+  toasts). Two registrations: `garden` (order 45) the jobs on a plant or the can —
+  pick a ripe plant, pull out a dead one, water a thirsty one (the can holds 8 pours:
+  fill it at the jar by his stair, or where the water is ≤ 0.45 m below him: the
+  village washing steps; the stream's banks by the house are 1 m high) — and
+  `gardenPlant` (order 95) "E  Plant here" and every line with no key, so the hammock,
+  sey, the dog and every other E win. Nothing of the garden under the house or on its
+  stair. His moves `character/gardenWork.ts` (`gardenPose`), his tools and
   what he holds `roam/_gardenProps.ts` (`GardenHands`: the hoe ចបកាប់, the watering can
   ធុងស្រោចទឹក, the knife, the bamboo picking pole ដងបេះ, seeds, cuttings, pups, bagged
   seedlings, each fruit, his basket); the character viewer `viewer.html?garden=<action>&gt=<s>`.
@@ -2166,10 +2184,14 @@ chilli, basil, jasmine).
   the monk"); he plants it in the ring of stones at (−327, 89.5), kneels, the monk
   chants and sprinkles water, he bows three times. The monks water it (it never dries);
   in 24 game days it is the great tree with its cloth bands, and the monk sits under it
-  at dawn.
+  at dawn. When the monk has the sapling ready a toast says so and a calendar event
+  (`bodhi`) puts a gold mark on both maps till it is planted; after dark his lantern
+  stands lit on the ground through the talk and the blessing.
 - **Sounds** (`audio/_garden.ts`): the 19 `GardenSfx` (the hoe uses the earth
   footstep under its synthesis; `gardenPour` is 1 over leaves, ≈ 0.6 over bare earth).
-- **URL**: `garden=lineup|demo|0|<kind>:<stage>[:ripe|:green|:cut|:dry|:wilt|:dead|:fallen],…`
+- **URL** (shots and the dev server only: a link never changes a player's saved
+  garden): `garden=lineup|demo|0|<kind>:<stage>[:ripe|:green|:cut|:dry|:wilt|:dead|:fallen][@x/z/yaw/seed],…`
+  (a bug report's `garden=` carries each plant's place; with it `gardenclock=`, `basket=`)
   · `seeds=all|<kind>:<n>,…` · `basket=all|…` · `can=<n>` · `gardenclock=<days>` ·
   `gardenact=<action>:<t>` (`gardenkind=`) · `gardenring=1|<kind>` · `gardencard=1` ·
   `gardenhint=1` · `gardenspeed=<x>` (dev) · `gardenlod=near|far` ·
