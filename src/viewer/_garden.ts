@@ -1,7 +1,11 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
 import type { AngkorExplorer } from '../character/AngkorExplorer';
 import { defaultGardenSpot, gardenBody, gardenPose, GARDEN_REACH, type GardenBody } from '../character/gardenWork';
-import { ACTIONS, type GardenAction } from '../map/garden/actions';
+import { ACTIONS, POLE_ACTIONS, type GardenAction as WorkAction, type PoleAction } from '../map/garden/actions';
+import { gardenYoke, isPoleAction } from '../character/gardenWork';
+import { yokePlace, type YokePlace } from '../character/carryPole';
+type GardenAction = WorkAction | PoleAction;
+const TIMING = { ...ACTIONS, ...POLE_ACTIONS };
 import { KINDS, type PlantKindId } from '../map/garden/kinds';
 import {
   GardenHands,
@@ -20,6 +24,8 @@ import {
   tornBagBuilder,
 } from '../map/roam/_gardenProps';
 import { BODY_UNIT_M } from '../world/scale';
+import { applyCarryWalk, carryWalk, type CarryWalk } from '../character/carryPole';
+import { Yoke, bucketBuilder, dipperBuilder, poleHalfBuilder } from '../map/roam/_carryPoleProps';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import type { VoxelBuilder } from '../voxel/VoxelBuilder';
 
@@ -44,13 +50,18 @@ export interface ViewerGarden {
   to: number;
   loop: boolean;
   mark: boolean;
+  lean: boolean;
   /** The plant's seed (`seed=`: its variety), or null. */
   seed: number | null;
   bodies: GardenBody[];
   hands: GardenHands[];
+  /** The pole's actions: his pole on him, where the pose puts it, the buckets' water (`water=<0‥1>`). */
+  yokes: Yoke[];
+  place: YokePlace;
+  water: number;
 }
 
-const isAction = (s: string | null): s is GardenAction => !!s && s in ACTIONS;
+const isAction = (s: string | null): s is GardenAction => !!s && s in TIMING;
 /** What each action shows without `kind=`. */
 const DEFAULT_KIND: Record<GardenAction, PlantKindId | null> = {
   plant: 'corn',
@@ -63,6 +74,11 @@ const DEFAULT_KIND: Record<GardenAction, PlantKindId | null> = {
   pickPole: 'mango',
   pickGround: 'durian',
   clear: 'corn',
+  poleUp: null,
+  poleDown: null,
+  poleFill: null,
+  poleJar: null,
+  poleScoop: 'eggplant',
 };
 
 export function gardenFromParams(params: URLSearchParams, shot: boolean): ViewerGarden | null {
@@ -70,7 +86,7 @@ export function gardenFromParams(params: URLSearchParams, shot: boolean): Viewer
   if (!isAction(a)) return null;
   const k = params.get('kind');
   const spot = params.get('spot')?.split(',').map(Number);
-  const len = ACTIONS[a].len;
+  const len = TIMING[a].len;
   return {
     action: a,
     kind: k && k in KINDS ? (k as PlantKindId) : DEFAULT_KIND[a],
@@ -82,8 +98,12 @@ export function gardenFromParams(params: URLSearchParams, shot: boolean): Viewer
     loop: !shot && params.get('loop') === '1',
     mark: params.get('mark') === '1',
     seed: params.has('seed') ? Number(params.get('seed')) : null,
+    lean: params.get('lean') === '1',
     bodies: [],
     hands: [],
+    yokes: [],
+    place: yokePlace(),
+    water: Number(params.get('water') ?? 1),
   };
 }
 
@@ -97,6 +117,13 @@ export function gardenTime(g: ViewerGarden, i: number, count: number): number {
 export function applyGarden(e: AngkorExplorer, g: ViewerGarden, i: number, count: number): void {
   const w = gardenBody(g.action);
   w.spot.copy(g.spot);
+  // (`lean=1`: the pole's poleUp / poleDown from where it leans: its foot ahead to his right, its top against a stilt)
+  if (g.lean) {
+    w.poleRest.at = 'lean';
+    // (as the carry add-on stands him: 0.75 m from its foot, the pole leaning off to his right, away)
+    w.poleRest.foot.set(-2, 0, 10.2);
+    w.poleRest.top.set(-2 - 4.5, 21.6, 10.2 + 3.5);
+  }
   w.kind = g.kind;
   w.t = gardenTime(g, i, count);
   g.bodies[i] = w;
@@ -105,8 +132,14 @@ export function applyGarden(e: AngkorExplorer, g: ViewerGarden, i: number, count
     w.life = t;
     return gardenPose(w);
   };
-  const h = (g.hands[i] ??= new GardenHands(e));
-  h.setSpot(g.spot);
+  if (isPoleAction(g.action)) {
+    const y = (g.yokes[i] ??= new Yoke(e.rig.quality));
+    y.setWater(g.water, g.water);
+    y.carry(e);
+  } else {
+    const h = (g.hands[i] ??= new GardenHands(e));
+    h.setSpot(g.spot);
+  }
   if (g.mark) {
     const m = new Mesh(new BoxGeometry(0.6, 0.6, 0.6), new MeshBasicMaterial({ color: 0xff2020 }));
     m.position.copy(g.spot);
@@ -116,11 +149,17 @@ export function applyGarden(e: AngkorExplorer, g: ViewerGarden, i: number, count
 
 /** After each explorer's update: the props follow (and the loop plays on). */
 export function gardenAfter(g: ViewerGarden, dt: number): void {
-  const len = ACTIONS[g.action].len;
+  const len = TIMING[g.action].len;
   g.bodies.forEach((w, i) => {
     if (g.loop) w.t = (w.t + dt) % (len + 0.6);
     const t = Math.min(w.t, len);
-    g.hands[i]?.update(g.action, t, g.kind, g.spot, g.seed);
+    if (isPoleAction(g.action)) {
+      const y = g.yokes[i];
+      if (y) {
+        y.object.parent?.updateMatrixWorld(true);
+        y.frame(dt, 0, gardenYoke(w, g.place));
+      }
+    } else g.hands[i]?.update(g.action as WorkAction, t, g.kind, g.spot, g.seed);
   });
 }
 
@@ -133,7 +172,7 @@ export function gardenReachAll(kind: PlantKindId | null = null, only?: GardenAct
     w.spot.copy(spot ? new Vector3(spot[0], spot[1], spot[2]) : defaultGardenSpot(a));
     w.kind = kind;
     let worst = { L: 0, R: 0, tl: 0, tr: 0 };
-    for (let t = 0; t <= ACTIONS[a].len + 1e-6; t += 0.05) {
+    for (let t = 0; t <= TIMING[a].len + 1e-6; t += 0.05) {
       w.t = t;
       gardenPose(w);
       if (GARDEN_REACH.L > worst.L) worst = { ...worst, L: GARDEN_REACH.L, tl: t };
@@ -145,8 +184,13 @@ export function gardenReachAll(kind: PlantKindId | null = null, only?: GardenAct
 }
 
 /** One moment's hands: targets, shoulders, shortfalls (checks). */
-export function gardenAt(a: GardenAction, t: number, kind: PlantKindId | null = null, spot?: number[]): string {
+export function gardenAt(a: GardenAction, t: number, kind: PlantKindId | null = null, spot?: number[], lean?: number[]): string {
   const w = gardenBody(a);
+  if (lean) {
+    w.poleRest.at = 'lean';
+    w.poleRest.foot.set(lean[0], lean[1], lean[2]);
+    w.poleRest.top.set(lean[3], lean[4], lean[5]);
+  }
   w.spot.copy(spot ? new Vector3(spot[0], spot[1], spot[2]) : defaultGardenSpot(a));
   w.kind = kind;
   w.t = t;
@@ -193,6 +237,11 @@ export function gardenPropsLineup(only = -1): Group {
     ],
     (['eggplant', 'corn', 'pumpkin', 'papaya', 'guava', 'mango', 'jackfruit', 'durian', 'coconut', 'sugarPalm'] as const).map((k) => [k, fruitBuilder(k)] as [string, VoxelBuilder]),
     [
+      ['poleHalf', poleHalfBuilder(), -Math.PI / 2],
+      ['bucket', bucketBuilder()],
+      ['dipper', dipperBuilder(), -Math.PI / 2],
+    ],
+    [
       ['sugarcane', fruitBuilder('sugarcane'), -Math.PI / 2],
       ['banana', fruitBuilder('banana'), Math.PI / 2],
     ],
@@ -219,4 +268,61 @@ export function gardenPropsLineup(only = -1): Group {
     });
   });
   return g;
+}
+
+// ── The shoulder pole (character/carryPole.ts, roam/_carryPoleProps.ts) ──
+
+/**
+ * `carry=<0‥1>` (how full the buckets are) puts the shoulder pole on him walking (`anim=walk|run|idle`), the buckets
+ * swinging as the walk moves the pole (`carryrun=1` as if running); `carryspeed=` (m/s, his speed: it carries him
+ * forward through the scene so the buckets swing from his starts: `carrystop=<s>` stops him then).
+ */
+export interface ViewerCarry {
+  load: number;
+  run: number;
+  speed: number;
+  stop: number;
+  time: number;
+  yokes: Yoke[];
+  walk: CarryWalk;
+}
+export function carryFromParams(params: URLSearchParams): ViewerCarry | null {
+  if (!params.has('carry')) return null;
+  return {
+    load: Number(params.get('carry')) || 0,
+    run: params.get('carryrun') === '1' ? 1 : 0,
+    speed: Number(params.get('carryspeed') ?? 0),
+    stop: Number(params.get('carrystop') ?? Infinity),
+    time: 0,
+    yokes: [],
+    walk: carryWalk(),
+  };
+}
+export function applyCarry(e: AngkorExplorer, c: ViewerCarry, i: number): void {
+  const y = (c.yokes[i] ??= new Yoke(e.rig.quality));
+  y.setWater(c.load, c.load);
+  y.carry(e);
+}
+/** After each explorer's update: the pole on his shoulder, the buckets swinging. */
+export function carryAfter(c: ViewerCarry, explorers: AngkorExplorer[], dt: number): void {
+  c.time += dt;
+  const moving = c.time < c.stop;
+  explorers.forEach((e, i) => {
+    const sp = moving ? c.speed : 0;
+    if (c.speed > 0) {
+      e.setMotion(sp, true, 0);
+      e.object.position.z += sp * dt;
+    }
+    const w = c.walk;
+    w.w = 1;
+    w.load = c.load;
+    w.speed = sp || (c.speed ? 0 : 1.9);
+    w.run = c.run;
+    w.phase = e.animator.phase;
+    w.t = c.time;
+    w.bounce = c.yokes[i]?.rig.bounce ?? 0;
+    applyCarryWalk(e.rig, w);
+    e.object.updateMatrixWorld(true);
+    c.yokes[i]?.frame(dt, c.run);
+  });
 }

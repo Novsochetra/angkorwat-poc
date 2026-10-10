@@ -16,6 +16,10 @@ import type { Blocks, LookData } from './_viewLook';
 
 /** One falling fruit: its offset when it hangs (local m from where it lies), when it starts (s), its fall and bounce. */
 interface Fruit {
+  /** Where it comes to lie (local m, from the plant's foot). */
+  lx: number;
+  ly: number;
+  lz: number;
   ox: number;
   oy: number;
   oz: number;
@@ -30,6 +34,8 @@ interface Fruit {
 
 export interface Drop {
   readonly fruit: readonly Fruit[];
+  /** Each fruit has hit the ground (its dust puffed: the view's effects). */
+  readonly landed: Uint8Array;
   /** Per family (as the look's `fams`): each block's fruit (-1: not falling), and its move this frame (world, 3 a block). */
   readonly of: readonly (Int16Array | null)[];
   readonly move: readonly (Float32Array | null)[];
@@ -135,9 +141,9 @@ export function dropBetween(a: LookData, b: LookData): Drop | null {
     const roll = 0.18;
     const delay = k * 0.42;
     end = Math.max(end, delay + fall + bounce + 0.05);
-    return { ox: sx - lx, oy: sy - ly, oz: sz - lz, delay, fall, bounce, up, rx: (-lx / l) * roll, rz: (-lz / l) * roll };
+    return { lx, ly, lz, ox: sx - lx, oy: sy - ly, oz: sz - lz, delay, fall, bounce, up, rx: (-lx / l) * roll, rz: (-lz / l) * roll };
   });
-  return { fruit, of, move: of.map((o, i) => (o ? new Float32Array(b.fams[i]!.n * 3) : null)), t: 0, end };
+  return { fruit, landed: new Uint8Array(fruit.length), of, move: of.map((o, i) => (o ? new Float32Array(b.fams[i]!.n * 3) : null)), t: 0, end };
 }
 
 /** The moves of the falling blocks at `d.t` (world, the plant turned by `yaw`), into `d.move`. */

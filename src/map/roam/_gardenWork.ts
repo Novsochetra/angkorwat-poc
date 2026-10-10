@@ -7,7 +7,8 @@ import { isTree, KINDS, stageOf, trunkAt, type PlantKindId } from '../garden/kin
 import { fallenAt as coconutFallen } from '../garden/models/coconut';
 import { fallenAt as durianFallen } from '../garden/models/durian';
 import { fallenAt as sugarPalmFallen } from '../garden/models/sugarPalm';
-import { GARDEN, lookOf, type Plant } from '../garden/state';
+import { CAN_MAX, GARDEN, lookOf, type Plant } from '../garden/state';
+import { GARDEN_FX } from '../garden/fx';
 import { pad } from '../pad/pad';
 import { num, t, type WordKey } from '../ui/lang';
 import { touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
@@ -59,6 +60,11 @@ const WALK_MAX = 4;
 /** The camera at the work: round to his side (rad from behind him), its tilt (rad) and distance (m); the bamboo pole's, further and lower (the crown in view). */
 const FRAME = { side: 1.2, pitch: 0.34, distance: 5.2, rate: 2.4, for: 1.6 };
 const FRAME_POLE = { side: 1.3, pitch: 0.16, distance: 7.2 };
+/**
+ * Digging (planting, a dead plant pulled out): higher and more from the side, the focus between him and the hole,
+ * so the hole at his feet's front (the view's earth flying, the heap: garden/fx.ts) is not under his hat.
+ */
+const FRAME_DIG = { side: 1.85, pitch: 0.36, distance: 4.8, toward: 0.8, up: 0.2 };
 const FRAME_TREE = { side: 1.15, pitch: 0.24, distance: 6.0 };
 /** The camera eases back to where it was over this (1/s). */
 const BACK = 1.6;
@@ -101,7 +107,7 @@ export interface WorkReq {
   /** The plant worked on (water, pick, clear), or null (planting, filling). */
   plant: Plant | null;
   /** Planting: where the plant goes (m). */
-  spot?: { x: number; z: number };
+  spot?: { x: number; z: number; yaw?: number };
   /** Filling: the jar or the stream. */
   fill?: FillSpot;
 }
@@ -124,9 +130,10 @@ interface Session {
   readonly done: boolean[];
   /** Held at `t` (a check's picture). */
   frozen: boolean;
-  /** Planting: the new plant's turn and variety (from where it is: the same every time). */
+  /** Planting: the new plant's turn and variety (from where it is: the same every time), and its id once set (−1 before). */
   yaw: number;
   seed: number;
+  newId: number;
 }
 
 let env: AddonEnv | null = null;
@@ -368,6 +375,7 @@ function beatDone(s: Session, name: string, quiet: boolean): void {
   const p = r.plant;
   if (name === 'set' && r.spot) {
     const np = GARDEN.plant(r.kind, r.spot.x, r.spot.z, s.yaw, s.seed);
+    s.newId = np?.id ?? -1;
     // (the reminder to water it the first time a visit; then a short word the first time for each kind; then nothing)
     if (np && !quiet) {
       if (!reminded) {
@@ -381,8 +389,10 @@ function beatDone(s: Session, name: string, quiet: boolean): void {
     }
   } else if (name === 'pour' && p) GARDEN.water(p);
   else if (name === 'full') {
-    GARDEN.fillCan();
-    if (!quiet) gardenSay(t('gardenFilled', { n: num(GARDEN.can) }));
+    // (at the jar: what it has, up to full; at the stream: full)
+    const was = GARDEN.can;
+    const ok = GARDEN.fillCan(r.fill?.at === 'jar' ? 'jar' : 'water');
+    if (!quiet && ok && GARDEN.can > was) gardenSay(t(GARDEN.can >= CAN_MAX ? 'gardenFilled' : 'gardenFilledSome', { n: num(GARDEN.can) }));
   } else if (name === 'take' && p) {
     // (the harvest is said first, then what follows from it: one kept to eat, roam/_gardenEat.ts)
     const mark = gardenMark();
@@ -403,6 +413,14 @@ function beats(s: Session, from: number, to: number, quiet: boolean): void {
     s.done[i] = true;
     if (b.sound && !quiet) SFX.play(b.sound, 0.85);
     beatDone(s, b.name, quiet);
+    // (the view's effects: earth from the hoe, the hole, splashes… garden/fx.ts)
+    let n = 0;
+    for (let j = 0; j < i; j++) if (list[j].name === b.name) n++;
+    try {
+      GARDEN_FX.beat({ action: s.req.action, beat: b.name, n, x: s.target.x, y: s.target.y, z: s.target.z, yaw: env?.body.yaw ?? s.face, kind: s.req.kind, plant: s.req.plant?.id ?? s.newId });
+    } catch (e) {
+      console.error('[map] garden: effects failed', e);
+    }
   }
 }
 
@@ -463,8 +481,14 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   // The bamboo pole: as it goes up into the crown the camera looks up with it (its top and the fruit in view), down again after.
   const up = working && a === 'pickPole' ? poleUp(s.t) : 0;
   if (up > 0) fy += (s.target.y - fy) * POLE_LOOK.focus * up;
-  cam.focus.x = b.pos.x;
-  cam.focus.z = b.pos.z;
+  // (digging: the focus toward the hole, low)
+  const dig = working && isDig(a);
+  const fx = dig ? b.pos.x + (s.target.x - b.pos.x) * FRAME_DIG.toward : b.pos.x;
+  const fz = dig ? b.pos.z + (s.target.z - b.pos.z) * FRAME_DIG.toward : b.pos.z;
+  if (dig) fy = b.pos.y + h * FRAME_DIG.up;
+  const kf = dig && dt > 0 ? damp(4, dt) : 1;
+  cam.focus.x += (fx - cam.focus.x) * kf;
+  cam.focus.z += (fz - cam.focus.z) * kf;
   cam.focus.y += (fy - cam.focus.y) * damp(6, dt);
   cam.behindYaw = b.yaw;
   cam.follow = working ? 0 : 0.6;
@@ -481,7 +505,7 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   if (!working || framed >= FRAME.for) return;
   framed += dt;
   const kind = KINDS[s.req.kind];
-  const want = a === 'pickPole' ? FRAME_POLE : isTree(kind) && a !== 'plantTree' && a !== 'fill' ? FRAME_TREE : FRAME;
+  const want = frameFor(a, kind);
   const k = damp(FRAME.rate, dt);
   cam.yaw += angleDiff(b.yaw + want.side * side, cam.yaw) * k;
   cam.pitch += (want.pitch - cam.pitch) * k;
@@ -510,11 +534,30 @@ function poleUp(t: number): number {
   return 1 - sm((t - d0) / Math.max(0.1, d1 - d0));
 }
 
+/** Digging at his feet' front (the hole must be in view). */
+const isDig = (a: GardenAction) => a === 'plant' || a === 'plantTree' || a === 'clear';
+
+/** The camera the action wants at his work. */
+function frameFor(a: GardenAction, kind: ReturnType<typeof kindOf>): { side: number; pitch: number; distance: number } {
+  if (a === 'pickPole') return FRAME_POLE;
+  if (isDig(a)) return FRAME_DIG;
+  return isTree(kind) && a !== 'fill' ? FRAME_TREE : FRAME;
+}
+const kindOf = (k: PlantKindId) => KINDS[k];
+
 /** Stop now: his hands empty, the posture off, the sounds quiet. */
 function finish(ctx: RoamCtx | null): void {
   const s = S;
   if (!s) return;
   S = null;
+  // (stopped before its end: the effects take away what it left half done)
+  if (s.t < ACTIONS[s.req.action].len) {
+    try {
+      GARDEN_FX.cancel(s.req.action);
+    } catch (e) {
+      console.error('[map] garden: effects failed', e);
+    }
+  }
   poleDragged = false;
   if (ctx && ctx.cam.pitchMin < pitchMin0) ctx.cam.pitchMin = pitchMin0;
   setPose(false);
@@ -599,8 +642,9 @@ export const GardenWork = {
       sz: aim.sz,
       done: ACTIONS[req.action].beats.map(() => false),
       frozen: false,
-      yaw: hashAt(sx, sz, 1) * Math.PI * 2,
+      yaw: req.spot?.yaw ?? hashAt(sx, sz, 1) * Math.PI * 2,
       seed: hashAt(sx, sz, 2),
+      newId: -1,
     };
     hands ??= new GardenHands(env.explorer);
     body.action = req.action;
@@ -651,14 +695,18 @@ export const GardenWork = {
     // The camera there at once (or the URL's `rcam=`).
     const rc = ctx.start.get('rcam')?.split(',').map(Number);
     const kind = KINDS[req.kind];
-    const want = req.action === 'pickPole' ? FRAME_POLE : isTree(kind) && req.action !== 'plantTree' && req.action !== 'fill' ? FRAME_TREE : FRAME;
+    const want = frameFor(req.action, kind);
     const cam = ctx.cam;
     cam.yaw = b.yaw + (rc && Number.isFinite(rc[0]) ? (rc[0] * Math.PI) / 180 : want.side);
     cam.pitch = rc && Number.isFinite(rc[1]) ? (rc[1] * Math.PI) / 180 : want.pitch;
     cam.distance = rc && rc[2] ? rc[2] : want.distance;
     framed = FRAME.for;
     frameCam(ctx, s, 0);
-    cam.focus.y = b.pos.y + 1.7 * b.scale * (req.action === 'pickPole' ? 1.05 : 0.6);
+    cam.focus.y = b.pos.y + 1.7 * b.scale * (req.action === 'pickPole' ? 1.05 : isDig(req.action) ? FRAME_DIG.up : 0.6);
+    if (isDig(req.action)) {
+      cam.focus.x = b.pos.x + (s.target.x - b.pos.x) * FRAME_DIG.toward;
+      cam.focus.z = b.pos.z + (s.target.z - b.pos.z) * FRAME_DIG.toward;
+    }
     console.info(`[map] garden: ${req.action}:${s.t.toFixed(2)} (${req.kind}${req.plant ? ` #${req.plant.id}` : ''}) at (${b.pos.x.toFixed(1)}, ${b.pos.z.toFixed(1)})`);
     return true;
   },

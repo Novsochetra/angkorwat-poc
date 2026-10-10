@@ -308,10 +308,14 @@ guide, with every add-on's keys and URL values for shots, is
   `src/map/garden/` (plants `kinds.ts`, the saved garden `state.ts`, the work's
   timing `actions.ts`, models `garden/models/`, the view), the add-on
   `roam/_garden*.ts`, the nursery on the Kulen foot trail (`hamlet/_nursery*.ts`),
-  Grandma's seed gift, and the bodhi at the village pagoda (`roam/_bodhi*.ts`).
+  Grandma's seed gift, the bodhi at the village pagoda (`roam/_bodhi*.ts`), and the
+  shoulder pole ដងរែក carrying water to his jar and plants (`roam/_carryPole*.ts`).
+  Planting is a mode (E Plant… → a ghost at his feet → E Dig here); the work's
+  effects go through `garden/fx.ts` `GARDEN_FX`.
   Agreed with the player: growth by game days, young plants can die, planting
   anywhere near his house. Shots: `garden=lineup|demo|<kind>:<stage>[:ripe…]`,
-  `seeds=all`, `gardenact=<action>:<t>`, `bodhi=0‥4`.
+  `seeds=all`, `gardenact=<action>:<t>`, `gardenring=<kind>`, `gardenthirst=1`,
+  `carry=full|up:<t>|fill:<t>`, `jar=<n>`, `bodhi=0‥4`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

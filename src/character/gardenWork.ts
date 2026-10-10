@@ -1,9 +1,10 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
-import { ACTIONS, propAt, type GardenAction, type GardenProp } from '../map/garden/actions';
+import { ACTIONS, POLE_ACTIONS, propAt, type GardenAction as WorkAction, type GardenProp, type PoleAction } from '../map/garden/actions';
 import type { PlantKindId } from '../map/garden/kinds';
 import { solveArm } from './Animator';
 import type { JointPose, Pose } from './pose';
 import { JOINTS, type JointName } from './skeleton';
+import { HOOK_END, LEAN, SHOULDER_PAD, YOKE, poleRest, type PoleRest, type YokePlace } from './_yoke';
 
 /**
  * Working in his home garden (the map's roam/_gardenWork.ts): a posture for
@@ -37,9 +38,16 @@ import { JOINTS, type JointName } from './skeleton';
  * from his soles), as character/farmWork.ts. On the map 1 BU = 7.35 cm (the
  * explorer is `ROAM_SCALE` 1.4 × 1.7 m: 2.4 m).
  */
+/** A garden action or one of the shoulder pole's (`POLE_ACTIONS`): both are postures of this module. */
+type GardenAction = WorkAction | PoleAction;
+/** Every action's timing, the garden's and the pole's. */
+const TIMING: Record<GardenAction, { readonly len: number; readonly beats: readonly { at: number; name: string }[] }> = { ...ACTIONS, ...POLE_ACTIONS };
+/** One of the shoulder pole's actions. */
+export const isPoleAction = (a: string): a is PoleAction => a in POLE_ACTIONS;
+
 export interface GardenBody {
   action: GardenAction;
-  /** Seconds into the action (0‥`ACTIONS[action].len`). */
+  /** Seconds into the action (0‥`TIMING[action].len`). */
   t: number;
   /**
    * Where the work is (BU, his space; see `GARDEN_SPOT` for where to stand him):
@@ -53,10 +61,15 @@ export interface GardenBody {
   life: number;
   /** The plant's kind (its fruit's size: a big one is held in both hands; the seed, cutting, pup or seedling). */
   kind: PlantKindId | null;
+  /**
+   * The shoulder pole's `poleUp` (and `poleDown` when he sets it back at its home place): where it rests, lying on its
+   * buckets beside him (`at: 'ground'`, the default) or leaning (`at: 'lean'`, its `foot` and `top` in his space, BU).
+   */
+  readonly poleRest: PoleRest;
 }
 
 export function gardenBody(action: GardenAction): GardenBody {
-  return { action, t: 0, spot: new Vector3(0, 0, 9), life: 0, kind: null };
+  return { action, t: 0, spot: new Vector3(0, 0, 9), life: 0, kind: null, poleRest: poleRest() };
 }
 
 /**
@@ -286,6 +299,7 @@ const PROP_POLE_GRIP = { R: grip([0, 0, POLE.gripR]), L: grip([0, 0, POLE.gripL]
 
 /** What each hand holds at `t` (ACTIONS' table, a big fruit in both hands, the basket then on the ground). */
 export function gardenHeld(action: GardenAction, t: number, kind: PlantKindId | null, side: 'L' | 'R'): GardenProp | null {
+  if (isPoleAction(action)) return null;
   const a = ACTIONS[action];
   const big = bigFruit(kind) && (action === 'pickLow' || action === 'pickReach');
   if (big && side === 'L') return propAt(a.right, t);
@@ -313,6 +327,8 @@ export function gardenStickHeap(w: GardenBody, out: Vector3): Vector3 {
 /** Where the seedling, the cutting or the pup waits on the ground until he takes it (from the spot, BU). */
 export const WAITING = { seedling: new Vector3(3.4, 0, -2.6), cutting: new Vector3(-3.6, 0, -3.4), pup: new Vector3(-3.8, 0, -3.2) } as const;
 
+/** Pouring the buckets into the jar: its mouth this far ahead (BU), where the front bucket hangs. */
+const POLE_JAR_Z = 10.6;
 const DEFAULT_SPOT: Record<GardenAction, Vector3> = {
   plant: new Vector3(0, 0, GARDEN_SPOT.plant),
   plantTree: new Vector3(0, 0, GARDEN_SPOT.plantTree),
@@ -324,6 +340,12 @@ const DEFAULT_SPOT: Record<GardenAction, Vector3> = {
   pickPole: new Vector3(0, 66, GARDEN_SPOT.poleZ(66)),
   pickGround: new Vector3(0, 1.7, GARDEN_SPOT.pickGround),
   clear: new Vector3(0, 0, GARDEN_SPOT.clear),
+  // (the pole's: taking it up and setting it down need none; the water's edge, the jar's mouth, the plant's foot)
+  poleUp: new Vector3(0, 0, 8),
+  poleDown: new Vector3(0, 0, 8),
+  poleFill: new Vector3(0, -4, 8),
+  poleJar: new Vector3(0, 11, POLE_JAR_Z),
+  poleScoop: new Vector3(0, 0, 11),
 };
 /** A good spot for an action (checks, the viewer): as `GARDEN_SPOT` says. */
 export const defaultGardenSpot = (a: GardenAction): Vector3 => DEFAULT_SPOT[a];
@@ -368,10 +390,10 @@ function poleGrips(t: number, spot: Vector3): { r: number; l: number; len: numbe
 
 /** Each action's beats by name (the n-th of a name: `name`, `name2`, `name3`…). */
 const BEATS = Object.fromEntries(
-  (Object.keys(ACTIONS) as GardenAction[]).map((a) => {
-    const by: Record<string, number> = { len: ACTIONS[a].len };
+  (Object.keys(TIMING) as GardenAction[]).map((a) => {
+    const by: Record<string, number> = { len: TIMING[a].len };
     const count: Record<string, number> = {};
-    for (const b of ACTIONS[a].beats) {
+    for (const b of TIMING[a].beats) {
       const n = (count[b.name] = (count[b.name] ?? 0) + 1);
       by[n === 1 ? b.name : `${b.name}${n}`] = b.at;
     }
@@ -382,7 +404,7 @@ const beats = (a: GardenAction) => BEATS[a];
 /** When beat `name` of `action` is (s; the n-th of a repeated one: `pat2`), or Infinity (none). */
 export const gardenBeat = (action: GardenAction, name: string): number => BEATS[action][name] ?? Infinity;
 /** The times of a repeated beat (the chops, the pats, the tugs). */
-const times = (a: GardenAction, name: string) => ACTIONS[a].beats.filter((b) => b.name === name).map((b) => b.at);
+const times = (a: GardenAction, name: string) => TIMING[a].beats.filter((b) => b.name === name).map((b) => b.at);
 
 // ── The body's shape ────────────────────────────────────────────────────────
 
@@ -449,6 +471,8 @@ const SQUAT = S({ tilt: 0.55, chest: 0.72, drop: 5.9, fwd: -1.7, splay: 0.45, lo
 /** Kneeling on the right knee, the left foot forward flat, over the spot. */
 /** Squatting to cut at a cane's foot: more upright, the knife arm free to swing. */
 const CUT_SQUAT = S({ tilt: 0.36, chest: 0.3, drop: 5.6, fwd: -1.8, splay: 0.45, look: 1 });
+/** Squatting under the shoulder pole (to take it up, to set it down): upright, the shoulder low under it. */
+const POLE_SQUAT = S({ tilt: 0.3, chest: 0.12, drop: 5.6, fwd: -1.4, splay: 0.42, look: 0.6 });
 const KNEEL = S({ tilt: 0.42, chest: 0.42, drop: 5.6, fwd: 0.4, splay: 0.14, kneel: 1, look: 1 });
 
 /** Each action's shapes (the spot's height picks between two for some: `low` / `high`). */
@@ -578,6 +602,62 @@ const KEYS = (() => {
       [G.basket, S({ ...SQUAT, drop: 5.4, tilt: 0.58, chest: 0.84, twist: 0.12 })],
       [G.len, STAND],
     ],
+    // (the shoulder pole's: under it squatting, kneeling at the water, standing at the jar, squatting at the plant)
+    poleUp: [
+      [0, STAND],
+      [0.5, S({ ...POLE_SQUAT })],
+      [0.9, S({ ...POLE_SQUAT, drop: 4.4, tilt: 0.24, chest: 0.12 })],
+      [1.3, S({ tilt: 0.06, chest: 0.04, drop: 0.6, look: 0.5 })],
+      [TIMING.poleUp.len, STAND],
+    ],
+    // (from where it leans: standing, he reaches for it, tips it over onto his shoulder dipping under it, stands; and back)
+    poleUpLean: [
+      [0, STAND],
+      [0.5, S({ tilt: 0.12, chest: 0.1, drop: 0.6, twist: -0.12, look: 1 })],
+      [0.95, S({ tilt: 0.2, chest: 0.12, drop: 2.6, fwd: -0.6, splay: 0.16, twist: -0.06, look: 0.7 })],
+      [1.3, S({ tilt: 0.06, chest: 0.04, drop: 0.6, look: 0.5 })],
+      [TIMING.poleUp.len, STAND],
+    ],
+    poleDownLean: [
+      [0, STAND],
+      [0.6, S({ tilt: 0.2, chest: 0.12, drop: 2.6, fwd: -0.6, splay: 0.16, twist: -0.06, look: 0.7 })],
+      [1.0, S({ tilt: 0.12, chest: 0.1, drop: 0.6, twist: -0.12, look: 1 })],
+      [TIMING.poleDown.len, STAND],
+    ],
+    poleDown: [
+      [0, STAND],
+      [0.6, S({ ...POLE_SQUAT, drop: 4.6, tilt: 0.24, chest: 0.12 })],
+      [1.0, S({ ...POLE_SQUAT })],
+      [TIMING.poleDown.len, STAND],
+    ],
+    poleFill: [
+      [0, STAND],
+      [0.5, S({ ...KNEEL, tilt: 0.3, chest: 0.28, twist: -0.12 })],
+      [1.6, S({ ...KNEEL, tilt: 0.32, chest: 0.3, twist: -0.12 })],
+      [1.75, S({ ...KNEEL, tilt: 0.18, chest: 0.12, drop: 4.6, twist: 0.1 })],
+      [1.95, S({ ...KNEEL, tilt: 0.3, chest: 0.28, twist: -0.12 })],
+      [2.9, S({ ...KNEEL, tilt: 0.32, chest: 0.3, twist: -0.12 })],
+      [3.2, S({ ...KNEEL, kneel: 0.5, drop: 3.6, tilt: 0.2, chest: 0.14 })],
+      [TIMING.poleFill.len, STAND],
+    ],
+    poleJar: [
+      [0, STAND],
+      [0.6, S({ tilt: 0.08, chest: -0.06, drop: 0.4, twist: -0.1, look: 1 })],
+      [1.6, S({ tilt: 0.08, chest: -0.08, drop: 0.5, twist: -0.1, look: 1 })],
+      [1.75, S({ tilt: 0.04, chest: 0.0, drop: 0.8, twist: 0.08, look: 1 })],
+      [1.95, S({ tilt: 0.08, chest: -0.06, drop: 0.4, twist: -0.1, look: 1 })],
+      [2.8, S({ tilt: 0.08, chest: -0.08, drop: 0.5, twist: -0.1, look: 1 })],
+      [TIMING.poleJar.len, STAND],
+    ],
+    poleScoop: [
+      [0, STAND],
+      [0.6, S({ ...POLE_SQUAT, drop: 4.8, tilt: 0.24, chest: 0.14 })],
+      [1.2, S({ ...SQUAT, chest: 0.6, twist: -0.3 })],
+      [1.7, S({ ...SQUAT, chest: 0.66, twist: 0.12 })],
+      [2.4, S({ ...POLE_SQUAT })],
+      [2.7, S({ ...POLE_SQUAT, drop: 4.4, tilt: 0.24, chest: 0.12 })],
+      [TIMING.poleScoop.len, STAND],
+    ],
     clear: [
       [0, STAND],
       [X.grip, S({ tilt: 0.6, chest: 0.8, drop: 5.6, fwd: -1.8, splay: 0.45, look: 1 })],
@@ -628,6 +708,12 @@ const STEPS: Record<GardenAction, readonly Step[]> = (() => {
     pickCut: [['L', 0.05, 0.3, 0.9, 0.6], ['R', 0.12, 0.36, -0.8, -0.4], ['L', 2.3, 2.55, 0, 0], ['R', 2.45, 2.74, 0, 0]],
     pickPole: [['L', 0.05, 0.35, 0.5, 1.8], ['L', O.len - 0.4, O.len - 0.08, 0, 0]],
     pickGround: [['L', 0.05, 0.3, 1.0, 0.3], ['R', 0.12, 0.36, -0.9, -0.3], ['L', 1.85, 2.1, 0, 0], ['R', 2.05, 2.34, 0, 0]],
+    // (the pole's: feet apart to squat under it; the left foot forward to kneel at the water; a step to the jar)
+    poleUp: [['L', 0.02, 0.28, 1.0, 0.5], ['R', 0.1, 0.36, -0.6, -0.3], ['L', 1.0, 1.25, 0, 0], ['R', 1.15, 1.45, 0, 0]],
+    poleDown: [['L', 0.02, 0.28, 1.0, 0.5], ['R', 0.1, 0.36, -0.6, -0.3], ['L', 0.95, 1.15, 0, 0], ['R', 1.08, 1.32, 0, 0]],
+    poleFill: [['L', 0.04, 0.32, 0.6, 3.6], ['L', 3.25, 3.52, 0, 0]],
+    poleJar: [['L', 0.04, 0.3, 0.4, 1.4], ['L', 2.9, 3.15, 0, 0]],
+    poleScoop: [['L', 0.02, 0.28, 1.0, 0.5], ['R', 0.1, 0.36, -0.6, -0.3], ['L', 2.75, 3.0, 0, 0], ['R', 2.9, 3.16, 0, 0]],
     clear: [['L', 0.05, 0.3, 1.0, 0.8], ['R', 0.12, 0.36, -1.0, -0.6], ['L', X.toss + 0.1, X.toss + 0.36, 0, 0], ['R', X.toss + 0.26, X.len - 0.04, 0, 0]],
   };
 })();
@@ -835,17 +921,22 @@ if (import.meta.env?.DEV) (globalThis as { __gardenPose?: typeof GARDEN_REACH })
 /** His pose for the body's action at its time. */
 export function gardenPose(w: GardenBody): Pose {
   const a = w.action;
-  const t = clamp(w.t, 0, ACTIONS[a].len);
+  const t = clamp(w.t, 0, TIMING[a].len);
   const sp = workSpot(w, _spot);
   GARDEN_REACH.spot.copy(sp);
   GARDEN_REACH.action = a;
-  const sh = bodyShape(a, t, sp, w.kind, _shape);
+  const sh = bodyShape(a, t, sp, w.kind, _shape, w.poleRest.at === 'lean');
   // (breathing, a slow sway while working)
-  const work = window4(t, 0, 0.4, ACTIONS[a].len - 0.4, ACTIONS[a].len);
+  const work = window4(t, 0, 0.4, TIMING[a].len - 0.4, TIMING[a].len);
   sh.chest += Math.sin(w.life * 1.9) * 0.016 * work;
   dips(a, t, sh);
   // (stepped up to the work: the body goes with the feet)
   approachOf(a, sp, _approach, w.kind);
+  if ((a === 'poleUp' || a === 'poleDown') && w.poleRest.at === 'lean') {
+    // (to the leaning pole: a step so the place he takes it at, his chest's height on it, is before his right shoulder)
+    leanPoint(w.poleRest, LEAN_HOLD_Y, _approach).sub(LEAN_REACH).setY(0);
+    if (_approach.length() > LEAN_STEP_MAX) _approach.setLength(LEAN_STEP_MAX);
+  }
   const ak = approachK(a, t);
   _ap.copy(_approach).multiplyScalar(ak);
   sh.fwd += _approach.z * ak;
@@ -886,8 +977,12 @@ function workSpot(w: GardenBody, out: Vector3): Vector3 {
 }
 
 /** The body's shape for the action at `t` (some by the spot's height). */
-function bodyShape(a: GardenAction, t: number, sp: Vector3, kind: PlantKindId | null, out: Shape): Shape {
+function bodyShape(a: GardenAction, t: number, sp: Vector3, kind: PlantKindId | null, out: Shape, lean = false): Shape {
   switch (a) {
+    case 'poleUp':
+      return shapeAt(t, lean ? KEYS.poleUpLean : KEYS.poleUp, out);
+    case 'poleDown':
+      return shapeAt(t, lean ? KEYS.poleDownLean : KEYS.poleDown, out);
     case 'pickReach':
       return shapeAt(t, bigFruit(kind) ? KEYS.pickReachBig : KEYS.pickReach, out);
     case 'fill': {
@@ -953,7 +1048,7 @@ const _lift = { L: 0, R: 0 };
 
 /** Where each foot stands at `t` (ankle place, his space) and how high it is lifted. */
 function feet(a: GardenAction, t: number): void {
-  const len = ACTIONS[a].len;
+  const len = TIMING[a].len;
   for (const side of ['L', 'R'] as const) {
     const f = _foot[side];
     f.copy(ANKLE_REST[side]);
@@ -989,12 +1084,28 @@ const _ap = new Vector3();
 /** A place in his space as it goes with the step up to the work. */
 const rel = (v: Vector3, out: Vector3) => out.copy(v).add(_ap);
 const _rel = new Vector3();
-const APPROACH_MAX: Record<GardenAction, number> = { plant: 6, plantTree: 6, water: 6, fill: 4, pickLow: 7, pickReach: 7, pickCut: 7, pickPole: 0, pickGround: 7, clear: 7 };
+const APPROACH_MAX: Record<GardenAction, number> = {
+  plant: 6,
+  plantTree: 6,
+  water: 6,
+  fill: 4,
+  pickLow: 7,
+  pickReach: 7,
+  pickCut: 7,
+  pickPole: 0,
+  pickGround: 7,
+  clear: 7,
+  poleUp: 0,
+  poleDown: 0,
+  poleFill: 0,
+  poleJar: 4,
+  poleScoop: 5,
+};
 /** The feet's steps to the work and back (s): in from‥to after the start, back from‥to before the end. */
 const APPROACH_STEPS = { L: [0.02, 0.26, 0.5, 0.27], R: [0.1, 0.34, 0.31, 0.06] } as const;
 /** How far through the step in (and back out) the body is at `t` (0‥1). */
 function approachK(a: GardenAction, t: number): number {
-  const len = ACTIONS[a].len;
+  const len = TIMING[a].len;
   return smooth((t - 0.04) / 0.28) * (1 - smooth((t - (len - 0.46)) / 0.38));
 }
 
@@ -1146,6 +1257,19 @@ function fistAt(pose: Pose, side: 'L' | 'R', out: Vector3): Vector3 {
   _v.copy(A.upper).applyMatrix4(_mw.makeRotationFromEuler(_e.set(sj.rx ?? 0, sj.ry ?? 0, sj.rz ?? 0)));
   return out.add(_v).add(A.shoulder).add(_w.set(sj.px ?? 0, sj.py ?? 0, sj.pz ?? 0));
 }
+/**
+ * Arm IK in chest space for others (character/carryPole.ts): the fist's middle at `pos`, turned to `quat` (chest
+ * space), the elbow toward `pole`; the shoulder comes forward toward a far target (as far as `shrug` BU). The returned
+ * pose's objects are new each call (its three joints).
+ */
+export function chestArm(side: 'L' | 'R', pos: Vector3, quat: Quaternion, pole: Vector3, shrug = 0): Pose {
+  _shrug.copy(pos).sub(ARM[side].shoulder);
+  const need = _shrug.length() - (ARM_LEN - 0.2);
+  if (need > 0 && shrug > 0) _shrug.setLength(Math.min(need, shrug));
+  else _shrug.set(0, 0, 0);
+  return armTo(side, pos, quat, pole, 1, _shrug);
+}
+
 /** The fist's frame (his space) for the arm joints `pose` (the chest as posed). */
 function fistFrame(pose: Pose, side: 'L' | 'R', out: Matrix4): Matrix4 {
   const A = ARM[side];
@@ -1256,6 +1380,8 @@ function hands(w: GardenBody, t: number, sp: Vector3): void {
       return gathering(w, t, sp);
     case 'clear':
       return clearing(w, t, sp);
+    default:
+      return yokeWork(w, t, sp);
   }
 }
 
@@ -1266,7 +1392,7 @@ function hands(w: GardenBody, t: number, sp: Vector3): void {
  * the frame of `prop` now (null: not placed by the pose).
  */
 export function gardenItem(w: GardenBody, prop: GardenProp, out: Matrix4): Matrix4 | null {
-  const t = clamp(w.t, 0, ACTIONS[w.action].len);
+  const t = clamp(w.t, 0, TIMING[w.action].len);
   // (the body as posed now: the step up to the work)
   gardenPose(w);
   switch (prop) {
@@ -1928,4 +2054,212 @@ export function gardenRelease(w: GardenBody, prop: GardenProp, side: 'L' | 'R', 
 export function gardenItemNow(w: GardenBody, prop: GardenProp, out: Matrix4): Matrix4 | null {
   if (prop === 'pole') return gardenPoleFrame(clamp(w.t, 0, ACTIONS.pickPole.len), w.spot, out);
   return gardenItem(w, prop, out);
+}
+
+// ── The shoulder pole's actions ─────────────────────────────────────────────
+
+/** Where the pole and its buckets are now (as the last `gardenPose` of a pole action left them). */
+const YOKE_NOW = { frame: new Matrix4(), floor: [0, 0] as [number, number], tip: [0, 0] as [number, number], dipper: false, hook: [HOOK_END, -HOOK_END] as [number, number], stand: [new Vector3(), new Vector3()] as [Vector3, Vector3], standOn: [0, 0] as [number, number] };
+
+/**
+ * Where the pole is for the body's pole action at its time (his space): fills `out` (the pole's frame, the buckets'
+ * floors and tips, the dipper in his hand or not) for roam/_carryPoleProps.ts `Yoke.frame(dt, run, out)`. It poses the
+ * body to know (cheap); call it with the same body the posture uses, after it (or instead).
+ */
+export function gardenYoke(w: GardenBody, out: YokePlace): YokePlace {
+  gardenPose(w);
+  out.frame.copy(YOKE_NOW.frame);
+  out.hook[0] = YOKE_NOW.hook[0];
+  out.hook[1] = YOKE_NOW.hook[1];
+  out.stand[0].copy(YOKE_NOW.stand[0]);
+  out.stand[1].copy(YOKE_NOW.stand[1]);
+  out.standOn[0] = YOKE_NOW.standOn[0];
+  out.standOn[1] = YOKE_NOW.standOn[1];
+  out.floor[0] = YOKE_NOW.floor[0];
+  out.floor[1] = YOKE_NOW.floor[1];
+  out.tip[0] = YOKE_NOW.tip[0];
+  out.tip[1] = YOKE_NOW.tip[1];
+  out.dipper = YOKE_NOW.dipper;
+  return out;
+}
+
+/** The pole set down: lying along his right side across its buckets' bails (his space: its middle, along +z). */
+const YOKE_REST = new Vector3(-6.4, YOKE.height + YOKE.bail + YOKE.r, 0);
+/** The pole's middle to a hook (BU, along it). */
+const HOOK_OUT = HOOK_END;
+/** The right fist under the pole before his shoulder (pole frame): its grip along the pole, the forearm under it. */
+const POLE_FIST: Grip = grip([0, -0.6, 4.4], [1, 0, 0], [0, -0.33, -0.94]);
+/** …on the pole lying on the ground, from above (to take it up, after setting it down). */
+const POLE_FIST_TOP: Grip = grip([0, 0.55, 3.4], [1, 0, 0], [0, 1, 0]);
+/** The dipper (roam/_carryPoleProps.ts `dipperBuilder`): its shell this far along its handle from the fist (BU). */
+const DIPPER_SHELL = 5.0;
+
+const _yq = new Quaternion();
+const _yc = new Matrix4();
+const _yh = new Matrix4();
+const _lx = new Vector3();
+const _ly = new Vector3();
+const _lz = new Vector3();
+/** The pole where it leans (pole frame: its middle, +z up along it to its top; +y away from what it leans on). */
+function leanFrame(r: PoleRest, out: Matrix4): Matrix4 {
+  _ly.subVectors(r.top, r.foot).normalize();
+  _lz.copy(_ly).setY(0);
+  if (_lz.lengthSq() < 1e-6) _lz.set(0, 0, 1);
+  // (its +y: up from the pole, toward where it leans from)
+  _lx.set(0, 1, 0).addScaledVector(_ly, -_ly.y).normalize().negate();
+  return frameZY(_yv.addVectors(r.foot, r.top).multiplyScalar(0.5), _ly, _lx, out);
+}
+/** His fist on the leaning pole: at his chest's height on it (the grip along the pole, the knuckles toward him). */
+function leanGrip(r: PoleRest, frame: Matrix4): Grip {
+  void frame;
+  const len = Math.max(1, r.top.distanceTo(r.foot));
+  const k = clamp((LEAN_HOLD_Y - r.foot.y) / Math.max(0.5, r.top.y - r.foot.y), 0.15, 0.9);
+  (LEAN_GRIP.at as [number, number, number])[2] = (k - 0.5) * len;
+  return LEAN_GRIP;
+}
+const LEAN_GRIP: Grip = grip([0, 0.6, 0], [1, 0, 0], [0, 1, 0]);
+/** He takes the leaning pole at this height (BU), where it is before his right shoulder (his space), stepping at most this far to it. */
+const LEAN_HOLD_Y = 14;
+const LEAN_REACH = new Vector3(-3.6, 0, 4.4);
+const LEAN_STEP_MAX = 12;
+/** The point on the leaning pole at height `y` (his space). */
+function leanPoint(r: PoleRest, y: number, out: Vector3): Vector3 {
+  const k = clamp((y - r.foot.y) / Math.max(0.5, r.top.y - r.foot.y), 0, 1);
+  return out.lerpVectors(r.foot, r.top, k);
+}
+LIVE_GRIPS.add(LEAN_GRIP);
+/** The leaning pole's buckets: standing at its foot either side, a little back (his space). */
+function leanStands(r: PoleRest, out: [Vector3, Vector3]): void {
+  _lz.subVectors(r.top, r.foot).setY(0);
+  if (_lz.lengthSq() < 1e-6) _lz.set(0, 0, 1);
+  _lz.normalize();
+  _lx.set(_lz.z, 0, -_lz.x);
+  for (let i = 0; i < 2; i++) out[i].copy(r.foot).addScaledVector(_lx, (i === 0 ? 1 : -1) * LEAN.side).addScaledVector(_lz, -LEAN.back);
+}
+const _ye = new Euler();
+const _ya = new Matrix4();
+const _yb = new Matrix4();
+const _yv = new Vector3();
+const _yd = new Vector3();
+
+/** The pole on his right shoulder as his chest is posed, its front end `pitch` down (rad), spun `spin` about its middle; `bare`: the same without the spin (the hand's frame). */
+function onShoulder(pitch: number, spin: number, out: Matrix4, bare?: Matrix4): Matrix4 {
+  _yv.copy(SHOULDER_PAD).setY(SHOULDER_PAD.y + YOKE.r).applyMatrix4(_chestM);
+  _yd.set(0, 0, 1).transformDirection(_chestM);
+  const yaw = Math.atan2(_yd.x, _yd.z);
+  if (bare) bare.compose(_yv, _yq.setFromEuler(_ye.set(pitch, yaw, 0, 'YXZ')), ONE);
+  _yq.setFromEuler(_ye.set(pitch, yaw, 0, 'YXZ')).multiply(_q2.setFromAxisAngle(_ay, spin));
+  return out.compose(_yv, _yq, ONE);
+}
+/** The pole lying on its buckets beside him. */
+function restYoke(out: Matrix4): Matrix4 {
+  return out.compose(_yv.copy(YOKE_REST).add(_ap), _yq.identity(), ONE);
+}
+/** The pitch (rad, + its front end down) that puts the front hook at `y` (his space) from the shoulder as posed. */
+function pitchToHook(y: number): number {
+  _yv.copy(SHOULDER_PAD).setY(SHOULDER_PAD.y + YOKE.r).applyMatrix4(_chestM);
+  return Math.asin(clamp((_yv.y - YOKE.r - y) / HOOK_OUT, -0.5, 0.95));
+}
+
+function yokeWork(w: GardenBody, t: number, sp: Vector3): void {
+  const a = w.action;
+  const Y = YOKE_NOW;
+  Y.floor[0] = Y.floor[1] = _ap.y;
+  Y.tip[0] = Y.tip[1] = 0;
+  Y.dipper = false;
+  Y.hook[0] = HOOK_END;
+  Y.hook[1] = -HOOK_END;
+  Y.standOn[0] = Y.standOn[1] = 0;
+  const hand = _yh;
+  const len = TIMING[a].len;
+  switch (a) {
+    case 'poleUp':
+    case 'poleDown': {
+      // (taking it up: from where it rests (lying on its buckets, or leaning on the stilt) up onto his shoulder; setting it
+      // down: the other way; the right fist on it all along, from its resting grip to the shoulder's)
+      const up = a === 'poleUp';
+      const k = up ? seg(t, 0.5, 0.95) : 1 - seg(t, 0.6, 0.95);
+      const lean = w.poleRest.at === 'lean';
+      const restGrip = lean ? leanFrame(w.poleRest, _yb) : restYoke(_yb);
+      Y.frame.copy(restGrip);
+      onShoulder(0, 0, _yc);
+      lerpFrame(Y.frame, _yc, k, Y.frame, lean ? 0.4 : 1.0);
+      // (the fist: on the pole where it rests, eased to its place on the shoulder's pole)
+      _yd.setFromMatrixPosition(Y.frame);
+      const g0 = lean ? leanGrip(w.poleRest, Y.frame) : POLE_FIST_TOP;
+      _ya.multiplyMatrices(Y.frame, gripMatrix(g0));
+      _yb.multiplyMatrices(Y.frame, gripMatrix(POLE_FIST));
+      lerpFrame(_ya, _yb, smooth(k * 1.4 - 0.2), hand);
+      const on = up ? seg(t, 0.05, 0.5) : 1 - (lean ? seg(t, 0.92, 1.1) : seg(t, 1.0, 1.3));
+      setHand('R', hand, on, POLE_DOWN.R);
+      if (!lean) {
+        if (up && t > 0.6 && t < 1.25) onKnee('L', KNEE.L, window4(t, 0.6, 0.9, 1.0, 1.25));
+        if (!up && t > 0.2 && t < 1.2) onKnee('L', KNEE.L, window4(t, 0.2, 0.55, 0.9, 1.2));
+      } else {
+        // (leaning: the ropes tied low on it, the buckets standing at its foot until the pole lifts them)
+        const node = -YOKE.length / 2 + LEAN.node;
+        Y.hook[0] = mix(node, HOOK_END, k);
+        Y.hook[1] = mix(node, -HOOK_END, k);
+        leanStands(w.poleRest, Y.stand);
+        Y.standOn[0] = Y.standOn[1] = 1 - smooth(k * 1.6 - 0.3);
+      }
+      break;
+    }
+    case 'poleFill':
+    case 'poleJar': {
+      // (one bucket, then the pole spun on his shoulder, the other: down into the water, or up over the jar and tipped)
+      const fill = a === 'poleFill';
+      const b = beats(a);
+      const one = fill ? b.dip1 : b.tip1;
+      const done1 = fill ? b.full1 : b.empty1;
+      const two = fill ? b.dip2 : b.tip2;
+      const done2 = fill ? b.full2 : b.empty2;
+      // (the front hook's height: its bucket's body two-thirds into the water, or its bottom just over the jar's rim)
+      const hookY = fill ? sp.y - 0.6 * YOKE.height + YOKE.height + YOKE.bail + YOKE.rope : sp.y + 0.6 + YOKE.height + YOKE.bail + YOKE.rope;
+      const work = seg(t, 0.15, one) * (1 - seg(t, done1, done1 + 0.15)) + seg(t, two - 0.15, two) * (1 - seg(t, done2, done2 + 0.25));
+      const spin = Math.PI * seg(t, done1 + 0.1, two - 0.1);
+      const pitch = work * Math.min(fill ? 0.42 : 0.5, Math.max(-0.4, pitchToHook(hookY)));
+      onShoulder(pitch, spin, Y.frame, hand);
+      // (the bucket over the water goes in; over the jar it is tipped, pouring)
+      const front = spin > Math.PI / 2 ? 1 : 0;
+      if (fill) Y.floor[front] = work > 0.3 ? -Infinity : _ap.y;
+      else Y.tip[front] = 1.9 * (seg(t, one, one + 0.3) * (1 - seg(t, done1 - 0.2, done1 + 0.1)) + seg(t, two, two + 0.3) * (1 - seg(t, done2 - 0.2, done2 + 0.1)));
+      onItem('R', hand, POLE_FIST, 1);
+      if (fill) onKnee('L', KNEE.L, window4(t, 0.1, 0.5, len - 0.6, len - 0.2));
+      break;
+    }
+    case 'poleScoop': {
+      // (set it down beside him; the dipper: a scoop from the front bucket, poured at the plant's foot, back; the pole up again)
+      const b = beats(a);
+      const down = seg(t, 0.3, b.down);
+      const up = seg(t, 2.55, 2.95);
+      onShoulder(0, 0, Y.frame);
+      if (down > 0) lerpFrame(Y.frame, restYoke(_yb), down, Y.frame, 0.6);
+      if (up > 0) lerpFrame(Y.frame, onShoulder(0, 0, _yb), up, Y.frame, 1.0);
+      Y.dipper = t >= b.down && t < 2.4;
+      if (t < b.down + 0.05 || t >= 2.4) {
+        onItem('R', Y.frame, down > 0.5 && up < 0.5 ? POLE_FIST_TOP : POLE_FIST, 1);
+      } else {
+        // The dipper (its frame: the fist's: the handle along +z, the shell DIPPER_SHELL out, open side up).
+        restYoke(_yb);
+        const bucket = _yv.set(0, YOKE.height - 0.8 - (YOKE.height + YOKE.bail + YOKE.r), HOOK_OUT).applyMatrix4(_yb);
+        // (in the bucket; over the plant's foot; tipped, pouring; back over the bucket)
+        const scoop = seg(t, b.down + 0.1, b.scoop);
+        const toPlant = seg(t, b.scoop + 0.1, b.pour);
+        const pour = window4(t, b.pour, b.pour + 0.2, 2.0, 2.2);
+        const back = seg(t, 2.05, 2.35);
+        _yd.copy(bucket).lerp(_c.copy(sp).setY(sp.y + 2.4), toPlant).lerp(bucket, back);
+        _yd.y += 3.0 * (1 - scoop) + 1.2 * Math.sin(Math.PI * toPlant);
+        // (the shell at that point: the fist back along the handle, toward him, a little up)
+        // (the handle from his fist out and down to the shell, the fist to the right of it and back)
+        _w.set(0.35, -0.75, 0.55).normalize();
+        _x.copy(_yd).addScaledVector(_w, -DIPPER_SHELL);
+        frameZY(_x, _w, _y.set(0, 1, 0), hand);
+        if (pour > 0) hand.multiply(_m.makeRotationZ(-2.0 * pour));
+        setHand('R', hand, 1, POLE_DOWN.R);
+      }
+      if (t > 0.3 && t < 2.9) onKnee('L', KNEE.L, window4(t, 0.3, 0.6, 2.5, 2.9));
+      break;
+    }
+  }
 }

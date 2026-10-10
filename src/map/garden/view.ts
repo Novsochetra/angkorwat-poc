@@ -5,8 +5,10 @@ import type { RoamWorld } from '../roam/types';
 import { swayLeaves } from '../veg/sway';
 import { GROWN, KINDS, type PlantKindId, type Stage } from './kinds';
 import './models';
-import { GARDEN, lookOf, lookSig, type Plant, type PlantLook } from './state';
+import { GARDEN, lookOf, lookSig, thirsty, type Plant, type PlantLook } from './state';
 import { dropBetween, dropMoves, type Drop } from './_viewDrop';
+import { installGardenFx } from './_fx';
+import { ThirstDrops } from './_viewThirst';
 import { buildEarth, puddleLook, tintEarth, wetLook, type Earth } from './_viewEarth';
 import { buildLook, CROWNS, FAMILIES, LookCache, type LookData } from './_viewLook';
 import { Pool, type Run } from './_viewPool';
@@ -54,8 +56,8 @@ export interface GardenView {
   readonly object: Group;
   /** The plants now (each frame; cheap when nothing changed). */
   sync(plants: readonly Plant[]): void;
-  /** Every frame: what is far is hidden, the leaves sway (the camera, seconds). */
-  frame(camera: Camera, t: number): void;
+  /** Every frame: what is far is hidden, the leaves sway (the camera, seconds; the frame's `drift`: still under "reduce motion"). */
+  frame(camera: Camera, t: number, drift?: number): void;
   dispose(): void;
 }
 
@@ -214,6 +216,18 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   }
   const batches: Record<Site, Batch> = { home: makeBatch('home'), pagoda: makeBatch('pagoda') };
   const batchList: readonly Batch[] = [batches.home, batches.pagoda];
+
+  // The work's effects (garden/_fx.ts: the hook garden/fx.ts `GARDEN_FX`): they ask where a plant's crown is.
+  const fx = installGardenFx(object, world, (id) => {
+    const it = items.get(id);
+    if (!it?.data) return null;
+    return { x: it.x, y: it.y + (it.earth?.foot ?? 0), z: it.z, height: it.data.height, base: it.data.crown?.base ?? 0, reach: it.data.reach };
+  }, shot);
+  let lastDrift = Number.NaN;
+  // A drop of water over each plant that wants it (garden/_viewThirst.ts); burst into splashes when watered.
+  const thirst = new ThirstDrops(shot);
+  object.add(thirst.mesh);
+  const bursts = new Float32Array(3 * 16);
 
   // Ripe fruit falling: the next look of that plant drops it from the crown.
   let alive = true;
@@ -687,13 +701,16 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         }
       }
     },
-    frame(camera, t) {
+    frame(camera, t, drift) {
       const t0 = performance.now();
       const real = Number.isNaN(lastT) ? 0 : t - lastT;
       const dt = shot ? 0 : Math.min(0.1, Math.max(0, real)) * slow;
       smooth = real > 0 && real <= frameCap.time * 1.3 ? smooth + 1 : 0;
       lastT = t;
       now += dt;
+      // (the "reduce motion" setting: the drift clock stands while frames go by)
+      const calm = drift !== undefined && real > 0 && drift === lastDrift;
+      if (drift !== undefined) lastDrift = drift;
       let tints = 0;
       for (let i = list.length - 1; i >= 0; i--) {
         const it = list[i];
@@ -722,6 +739,16 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         }
         if (it.drop) {
           it.drop.t += dt;
+          // (a fruit hitting the ground: a puff of dust there)
+          const dr = it.drop;
+          for (let k = 0; k < dr.fruit.length; k++) {
+            const f = dr.fruit[k];
+            if (dr.landed[k] || dr.t < f.delay + f.fall) continue;
+            dr.landed[k] = 1;
+            const c = Math.cos(it.yaw);
+            const sn = Math.sin(it.yaw);
+            fx.puff(it.x + c * f.lx + sn * f.lz, it.y + (it.earth?.foot ?? 0), it.z - sn * f.lx + c * f.lz, KINDS[it.kind].height > 9 ? 1 : 0.5);
+          }
           if (it.drop.t >= it.drop.end) {
             dropMoves(it.drop, it.yaw, 1);
             it.drop = null;
@@ -736,6 +763,9 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         }
         // The earth's water: darker in half a second when watered, paler as it dries; the puddle soaking in.
         const p = it.plant;
+        // (its drop of water, wanting it: over its top)
+        if (p && p.at === 'home')
+          thirst.set(it.id, thirsty(p), p.wet <= 0 && p.dry >= KINDS[p.kind].dieAfter * 0.5, it.x, it.y + (it.earth?.foot ?? 0) * Math.min(1, it.earthUp) + it.data.height * scaleOf(it) + 0.25, it.z);
         if (p && it.earth) {
           const w = wetLook(p.wet);
           it.wet = dt > 0 && Math.abs(w - it.wet) > 0.003 ? it.wet + (w - it.wet) * (1 - Math.exp(-dt / WET_TAU)) : w;
@@ -748,6 +778,9 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
           }
         }
       }
+      const nb = thirst.frame(dt, camera, bursts);
+      for (let k = 0; k < nb; k++) fx.pop(bursts[k * 3], bursts[k * 3 + 1], bursts[k * 3 + 2]);
+      fx.frame(dt, calm);
       flushAll();
       // (judged as each picture is drawn; here too, for the frames before the scene is found)
       hookScene();
@@ -764,6 +797,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     },
     dispose() {
       alive = false;
+      fx.dispose();
+      thirst.dispose();
       for (const b of batchList) for (const part of b.parts) for (const p of part.pools) p.dispose();
       for (const it of list) {
         CROWNS.delete(it.id);
@@ -802,6 +837,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             looks: cache.size,
             ahead: stats.ahead,
             warmMs: +stats.warmMs.toFixed(1),
+            fx: fx.stats(),
+            thirst: thirst.shown,
             warm: `${Math.min(warmAt, warmList.length)}/${warmList.length}, longest ${warmLongest.toFixed(1)} ms`,
             build: { n: stats.builds, avgMs: +(stats.buildMs / Math.max(1, stats.builds)).toFixed(3), maxMs: +stats.maxMs.toFixed(3), lastMs: +stats.lastMs.toFixed(3) },
             frame: { ms: +stats.frameMs.toFixed(3), maxMs: +stats.maxFrameMs.toFixed(3) },

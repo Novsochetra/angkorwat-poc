@@ -27,7 +27,7 @@ import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FOOD_KINDS, isFoodKind, type FoodKind } from '../character/parts/food';
 import { isMeal, MEAL_OF } from '../character/meals';
 import { REST_U, restDuration, restPose, type RestState } from '../character/rest';
-import { applyGarden, gardenAfter, gardenAt, gardenFromParams, gardenPropsLineup, gardenReach, gardenReachAll } from './_garden';
+import { applyCarry, applyGarden, carryAfter, carryFromParams, gardenAfter, gardenAt, gardenFromParams, gardenPropsLineup, gardenReach, gardenReachAll } from './_garden';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { installLookPanel } from '../voxel/LookPanel';
 import { CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
@@ -120,6 +120,8 @@ const seated = params.get('sit') === '1';
 const turnaround = params.get('turnaround') === '1';
 /** The garden's work (./_garden.ts): `garden=<action>`, `gt=`, `kind=`, `spot=`, `sheet=<n>`. */
 const garden = gardenFromParams(params, shot);
+/** The shoulder pole (./_garden.ts): `carry=<0‥1>`, `carryrun=1`, `carryspeed=`, `carrystop=`. */
+const carry = carryFromParams(params);
 const TURN_SPACING = garden?.sheet ? 1.5 : 1.05;
 const TURN_LABELS = ['Front (0°)', 'Front-Left (45°)', 'Left (90°)', 'Back-Left (135°)', 'Back (180°)', 'Back-Right (225°)', 'Right (270°)', 'Front-Right (315°)'];
 const explorers: AngkorExplorer[] = [];
@@ -174,6 +176,7 @@ function applyAnim(): void {
     }
     rest(e, RESTS.includes(anim as RestAnim) ? (anim as RestAnim) : seated ? 'sit' : null);
   }
+  if (carry) explorers.forEach((e, i) => applyCarry(e, carry, i));
 }
 
 /**
@@ -239,8 +242,12 @@ function frame(): void {
 // Simulate deterministically up to `t` seconds for screenshots.
 function settle(t: number): void {
   const steps = Math.round(t * 60);
-  for (let i = 0; i < steps; i++) for (const e of explorers) e.update(1 / 60);
+  for (let i = 0; i < steps; i++) {
+    for (const e of explorers) e.update(1 / 60);
+    if (carry) carryAfter(carry, explorers, 1 / 60);
+  }
   for (const e of explorers) e.update(0);
+  if (carry) carryAfter(carry, explorers, 0);
   if (garden) {
     for (const e of explorers) e.object.updateMatrixWorld(true);
     gardenAfter(garden, 0);
@@ -422,6 +429,7 @@ function tick(now: number): void {
   last = now;
   if (!feedback?.active) for (const e of explorers) e.update(dt); // frozen while reporting
   if (garden && !feedback?.active) gardenAfter(garden, dt);
+  if (carry && !feedback?.active) carryAfter(carry, explorers, dt);
   controls.update();
   renderer.render(scene, camera);
   placeLabels();
@@ -437,4 +445,4 @@ if (shot) {
 } else requestAnimationFrame(tick);
 
 // Handy for debugging from the console.
-Object.assign(window, { explorers, scene, camera, renderer, Vector3, feedback, gardenReachAll, gardenAt });
+Object.assign(window, { explorers, scene, camera, renderer, Vector3, feedback, gardenReachAll, gardenAt, carry });

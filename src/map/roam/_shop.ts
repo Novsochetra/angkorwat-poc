@@ -9,6 +9,7 @@ import type { MapFrame, RoamMode, UISound } from '../types';
 import { num, onLang, t, type WordKey } from '../ui/lang';
 import { angleDiff } from './followCam';
 import { PAD_LIGHT } from './input';
+import { CARRY } from './_carryHook';
 import { createShopBag, firstFood, KEEPSAKES, type ShopBag } from './_shopBag';
 import { createShopMenu, isDrink, type ShopMenu } from './_shopMenu';
 import { CARRY_MAX, createPurse, keptOf, nameOf, POCKET, POCKET_EVERY, riel, type Kept, type Purse } from './_shopPurse';
@@ -608,6 +609,12 @@ export function createShopping(d: ShoppingDeps): Shopping {
           return !push;
         }
         return true;
+      }
+      // (the shoulder pole on him, roam/_carryHook.ts: his hands are on it, nothing is eaten)
+      if (CARRY.on && (tap('Digit6', 'Numpad6') || pending >= 0)) {
+        pending = -1;
+        hud.toast(t('carryHandsFull'));
+        return false;
       }
       // The bag: 6 (or its slot) eats or drinks the first thing; the explorer menu's picks any.
       if (tap('Digit6', 'Numpad6')) eatKept(Math.max(0, firstFood(purse.kept)), mode);

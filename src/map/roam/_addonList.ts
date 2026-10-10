@@ -37,6 +37,7 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_gardenSeasons'),
   () => import('./_bodhi'),
   () => import('./_gardenShop'),
+  () => import('./_carryPole'),
   () => import('./_name'),
   // ── Small things: the umbrella, the binoculars, smiles for the camera, selling fish, clothes ──
   () => import('./_umbrella'),

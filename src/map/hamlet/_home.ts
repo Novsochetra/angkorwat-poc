@@ -5,7 +5,7 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate } from '../cull';
 import { Frame } from '../landmarks/_prasatKit';
 import type { MapContext, MapFrame } from '../types';
-import { bargeBoards, BLOOM, bougainvillea, DECK, gableEnd, gableRoof, jar, khmerGable, khmerHat, Local, mat, planks, POST, potPlant, tone, WALLS, type Hole, type Roof, type Tones } from '../village/_kit';
+import { bargeBoards, BLOOM, bougainvillea, DECK, gableEnd, gableRoof, jar, JAR, khmerGable, khmerHat, Local, mat, planks, POST, potPlant, tone, WALLS, type Hole, type Roof, type Tones } from '../village/_kit';
 import { GLOW, VillageLights } from '../village/_lights';
 import { EV_RIDGE, EV_ROOFS, hammock, jars, kramaOver, khmerSpiritHouse, woodpile } from './_evKit';
 import { HOME, HOME_AT, HOME_DOG, HOME_DOOR, HOME_GRAN, HOME_IN, HOME_SIGN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_T, HOME_Z, homeFloor, homeHammock, homeStilts } from './_homePlan';
@@ -225,13 +225,23 @@ export function buildHome(ctx: MapContext): HamletPiece {
 
   // ── The yard ──────────────────────────────────────────────────────────────
   const foot = HOME_STAIR_FOOT;
-  // The jar to wash his feet before he goes up, its dipper (a coconut shell on a stick) on the lid.
+  // The jar to wash his feet before he goes up, and his garden's water (roam/_gardenSpots.ts `jarAt`): open, its mouth
+  // a ring dark inside, the water in it the garden view's (garden/_fx*.ts: its level the jar's pours); its lid stood
+  // against its side, the dipper (a coconut shell on a stick) laid across its rim.
   const jx = gb + 0.75;
   const jz = foot - 1.0;
-  jar(L, jx, ground(jx, jz), jz);
-  L.box(jx, ground(jx, jz) + 0.86, jz, 0.5, 0.04, 0.5, 0x8a8a84, 'mapStone');
-  L.box(jx + 0.08, ground(jx, jz) + 0.92, jz, 0.18, 0.08, 0.18, 0x5a3a22, 'mapBark');
-  L.box(jx - 0.1, ground(jx, jz) + 0.9, jz, 0.34, 0.03, 0.04, 0x8a6a48, 'mapBark');
+  const jy = ground(jx, jz);
+  const jc = tone(JAR, L.r(jx, jz, 11));
+  L.box(jx, jy + 0.12, jz, 0.5, 0.24, 0.5, jc, 'mapStone', 0.9);
+  L.box(jx, jy + 0.45, jz, 0.7, 0.45, 0.7, jc, 'mapStone');
+  for (const s of [-1, 1]) {
+    L.box(jx, jy + 0.75, jz + s * 0.2, 0.46, 0.16, 0.06, jc, 'mapStone', 1.05);
+    L.box(jx + s * 0.2, jy + 0.75, jz, 0.06, 0.16, 0.34, jc, 'mapStone', 1.05);
+  }
+  L.box(jx, jy + 0.68, jz, 0.36, 0.012, 0.36, 0x2a2420, 'mapStone');
+  L.box(jx + 0.38, jy + 0.26, jz + 0.05, 0.04, 0.5, 0.5, 0x8a8a84, 'mapStone');
+  L.box(jx - 0.12, jy + 0.86, jz - 0.12, 0.17, 0.07, 0.17, 0x5a3a22, 'mapBark');
+  L.box(jx + 0.06, jy + 0.845, jz - 0.12, 0.36, 0.03, 0.04, 0x8a6a48, 'mapBark');
   dogBed(L, HOME_DOG.x, ground(HOME_DOG.x, HOME_DOG.z), HOME_DOG.z);
   const [fx, fy, fz] = khmerSpiritHouse(L, -2.9, ground(-2.9, foot + 1.5), foot + 1.5);
   glow(fx, fy + 0.05, fz, 0.06, 0.1, 0.06, 0xffb050, 0.8);

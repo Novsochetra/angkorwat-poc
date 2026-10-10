@@ -2158,8 +2158,7 @@ chilli, basil, jasmine).
   discs that veg/undergrowth.ts reads; its cells grow again round a change).
 - **Playing it** (`roam/_garden.ts`; `_gardenSpots.ts` where he may plant: within 40 m
   of the house, not water, paths, the house's things, a neighbour's yard, across a land
-  step, or too near another plant; `_gardenRing.ts` the ring before his feet, green or
-  red with the reason; `_gardenCard.ts` the seed card; `_gardenWork.ts` holds him
+  step, or too near another plant; `_gardenCard.ts` the seed card; `_gardenWork.ts` holds him
   through each action; `_gardenToasts.ts` what the garden does, `gardenSay` queues
   toasts). Two registrations: `garden` (order 45) the jobs on a plant or the can —
   pick a ripe plant, pull out a dead one, water a thirsty one (the can holds 8 pours:
@@ -2187,6 +2186,39 @@ chilli, basil, jasmine).
   at dawn. When the monk has the sapling ready a toast says so and a calendar event
   (`bodhi`) puts a gold mark on both maps till it is planted; after dark his lantern
   stands lit on the ground through the talk and the blessing.
+- **Planting mode** (the player's choice: nothing shows while he only walks in the
+  garden): "E  Plant…" (the late `gardenPlant`) opens the seed card; a kind picked,
+  a see-through ghost of it (the kind's own model, its bed or basin outline, its room
+  as a dotted circle: `roam/_gardenGhost.ts`) stands on the ground before him and
+  follows him, soft grey with the reason where it can't go; "E  Dig here", F / C
+  another seed, Esc / ○ / "✕ Done" leaves (never the "Back to the map?" card); it
+  stays on while he has seeds of that kind. `gardenring=<kind>` (or `gardenplant=`)
+  in shots.
+- **What the work does to the world** (`garden/fx.ts` `GARDEN_FX`: the work calls
+  `beat` at every beat and `cancel` when it stops early; the view's `garden/_fx.ts`,
+  `_fxParticles.ts`: one instanced mesh of `mapRock` boxes, a fixed pool): each hoe
+  chop throws earth (grass bits on the first) that falls, bounces and settles, the
+  patch, the hole and the heap grow with the chops, the pats put the heap back and
+  the bed rises; splashes when watering and filling; earth and roots when a dead
+  plant is pulled; leaves shaken down when picking; dust where fruit lands
+  (`gardenCrumbs` as earth lands). The work's camera goes to his side for digging.
+- **Thirst drops** (`garden/_viewThirst.ts`): a block water drop bobs over every
+  thirsty plant within ≈ 45 m (urgent: faster, an orange rim and a second drop); it
+  splashes away when watered. `gardenthirst=1` in shots.
+- **The yard's jar** holds 24 pours (`JAR_MAX`; `GARDEN.jar`, saved; rain and his
+  buckets fill it, `fillCan('jar')` takes from it); its water shows in its open mouth.
+- **The shoulder pole** (ដងរែក, add-on `carryPole`, order 12: `roam/_carryPole*.ts`;
+  hook `roam/_carryHook.ts` `CARRY`; his poses `character/carryPole.ts`,
+  `character/_yoke.ts`, the props and the buckets' swing `roam/_carryPoleProps.ts`
+  `Yoke` / `YokeRig`): it leans on his house's stilt with its two tin buckets;
+  "E  Take up the shoulder pole"; he walks with it on his right shoulder, slower when
+  full; running, a hard stop or a jump spills (`spill`); fill both at water ≤ 0.45 m
+  below him or wading (the village washing steps), "E  Pour into the jar", "E  Water
+  the X with the dipper" (one pour, `GARDEN.water(p, 'bucket')`), "E  Set down the
+  pole" anywhere (it lies there with its water) or, empty, lean it back at the house.
+  The tools, eating and rides wait while he carries it ("Set the pole down first");
+  back to the map it goes home empty. A chip over the tool bar: "Buckets 9/12".
+  `carry=1|full|<n>|down[:n]|up[:t]|fill[:t]|jar[:t]|scoop[:t]|back[:t]|set[:t]`, `jar=<n>`.
 - **Sounds** (`audio/_garden.ts`): the 19 `GardenSfx` (the hoe uses the earth
   footstep under its synthesis; `gardenPour` is 1 over leaves, ≈ 0.6 over bare earth).
 - **URL** (shots and the dev server only: a link never changes a player's saved

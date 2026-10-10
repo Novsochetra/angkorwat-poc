@@ -48,6 +48,11 @@ const THING = 0.3;
  * (he steps up to the hoe's reach as he starts); a little further for a plant that needs more room.
  */
 export const plantAhead = (k: PlantKindId): number => Math.min(2.2, 1.6 + KINDS[k].room * 0.3);
+/**
+ * Planting mode's ghost goes this far before his feet (m): past his feet and hat as the follow camera sees him (it
+ * looks down more in planting mode), clearly in front of him; he steps up to dig.
+ */
+export const ghostAhead = (k: PlantKindId): number => Math.min(3.4, 2.95 + KINDS[k].room * 0.15);
 /** (the smallest: checks and the URL's seed card) */
 export const PLANT_AHEAD = 1.5;
 
