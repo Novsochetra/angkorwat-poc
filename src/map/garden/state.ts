@@ -1,0 +1,463 @@
+import { progress } from '../progress';
+import { GARDEN_KINDS, GROWN, inFruitMonths, isTree, KINDS, stageOf, type PlantKind, type PlantKindId, type Stage } from './kinds';
+
+/**
+ * His garden as it is, kept between visits (progress.ts `garden.v1`): every plant
+ * he has planted (near his house, and the bodhi at the pagoda), his seeds and
+ * seedlings, his harvest basket and his watering can. No three.js; the roaming
+ * add-on (roam/_garden.ts) moves it on each frame (`advance`) and draws it
+ * (garden/view.ts) from `lookOf`.
+ *
+ * **Time** is the garden's own clock (`GARDEN.clock`, game days, saved): it runs
+ * as the map's time does (time.ts `TIME.days()`: sleep in his house moves it on),
+ * and while the Time setting holds the clock still, a day passes with every
+ * 360 s of play (`TIME.dayLength`) all the same: plants grow only while the game
+ * is played, never while it is shut.
+ *
+ * **Water**: a watering fills a plant's earth (`wet` 1), which dries over
+ * `thirst` game days; rain fills it too. While it is dry a plant does not grow
+ * (nor ripen) and droops; dry for `dieAfter` days before it is grown, it dies (a
+ * dry stick he pulls out). A grown tree needs no water (its roots are deep): it
+ * never droops nor dies. A grown crop droops and waits for water.
+ *
+ * **Harvest**: grown, in its months, the fruit ripens over `ripenDays` (it shows
+ * green from a third of the way); ripe, E picks it (`pick`). A tree that drops its
+ * fruit (`ground`) lets it fall when ripe (`fallen`: lying under it till he picks
+ * it up). `once` plants (corn) leave their bed empty after the harvest.
+ *
+ * Shots save nothing and start empty; their URL values set what they show
+ * (`fromUrl`: `garden=lineup|demo|<kind>:<stage>[:ripe|:green|:dry|:wilt|:dead|:fallen]…`,
+ * `seeds=`, `basket=`, `can=`, `gardenclock=`).
+ */
+
+/** A watering can's pours when full. */
+export const CAN_MAX = 8;
+/** Plants at most near the house: crops, trees (a garden that stays quick to draw). */
+export const MAX_CROPS = 40;
+export const MAX_TREES = 12;
+
+export interface Plant {
+  /** Unique, kept. */
+  readonly id: number;
+  readonly kind: PlantKindId;
+  /** Where (m, the map's x and z) and its turn (radians), its look's variety (0‥1). */
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly seed: number;
+  /** Home garden, or the pagoda's bodhi. */
+  readonly at: 'home' | 'pagoda';
+  /** Game days of watered growth. */
+  age: number;
+  /** Its earth: 1 just watered ‥ 0 dry. */
+  wet: number;
+  /** Game days dry (0 while the earth is wet). */
+  dry: number;
+  dead: boolean;
+  /** Grown: the next harvest's ripening (0 just picked ‥ 1 ripe). */
+  ripe: number;
+  /** Fruit lying under it (a tree that drops its fruit). */
+  fallen: number;
+  /** Harvests taken. */
+  picked: number;
+  /** When it was planted (the garden's clock, game days). */
+  readonly planted: number;
+}
+
+/** What the models draw of a plant (garden/look.ts): changes only at these steps, so the view rebuilds rarely. */
+export interface PlantLook {
+  readonly kind: PlantKindId;
+  readonly stage: Stage;
+  /** Fruit on it: 0 none, 1 green (growing), 2 ripe. */
+  readonly fruit: 0 | 1 | 2;
+  /** Ripe fruit lying on the ground under it (0‥3 drawn). */
+  readonly fallen: number;
+  /** Drooping for want of water: 0 fresh, 1 drooping, 2 wilting badly (near death). */
+  readonly droop: 0 | 1 | 2;
+  readonly dead: boolean;
+  /** Its own variety (0‥1): models vary leaf counts, lean and colours by it, the same every time. */
+  readonly seed: number;
+}
+
+/** Its earth for the view (the dug bed round a crop, the ring round a young tree): 0 dry, 1 damp, 2 just watered. */
+export type SoilLook = 0 | 1 | 2;
+
+export type GardenEvent =
+  | { type: 'planted' | 'watered' | 'stage' | 'ripe' | 'fell' | 'thirsty' | 'died' | 'cleared' | 'grown'; plant: Plant }
+  | { type: 'picked'; plant: Plant; n: number }
+  | { type: 'seeds' | 'basket' | 'can' };
+
+interface Saved {
+  v: 1;
+  clock: number;
+  nextId: number;
+  plants: Plant[];
+  seeds: Partial<Record<PlantKindId, number>>;
+  basket: Partial<Record<PlantKindId, number>>;
+  can: number;
+  /** He took the seeds Grandma left for him on the veranda. */
+  gift: boolean;
+  /** The pagoda's monk has given him the bodhi sapling (roam/_bodhi*.ts). */
+  bodhiGiven: boolean;
+}
+
+const KEY = 'garden.v1';
+
+const isSaved = (v: unknown): v is Saved => typeof v === 'object' && v !== null && (v as Saved).v === 1 && Array.isArray((v as Saved).plants);
+
+function fresh(): Saved {
+  return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, gift: false, bodhiGiven: false };
+}
+
+function load(): Saved {
+  const s = progress.get(KEY, null, (v): v is null => isSaved(v)) as Saved | null;
+  if (!s) return fresh();
+  // (what an older or broken record lacks)
+  const f = fresh();
+  const plants = s.plants.filter((p) => p && typeof p.x === 'number' && typeof p.z === 'number' && KINDS[p.kind]);
+  return { ...f, ...s, plants };
+}
+
+const state: Saved = load();
+const listeners: ((e: GardenEvent) => void)[] = [];
+let dirty = false;
+let saveIn = 0;
+
+function emit(e: GardenEvent): void {
+  for (const fn of listeners) fn(e);
+}
+
+function changed(now = false): void {
+  dirty = true;
+  if (now) flush();
+}
+
+/** Save now what changed (each few seconds of growth, at once after anything he did). */
+function flush(): void {
+  if (!dirty) return;
+  dirty = false;
+  saveIn = 5;
+  progress.set(KEY, JSON.parse(JSON.stringify(state)) as Parameters<typeof progress.set>[1]);
+}
+
+/** Small steps for a long jump of the clock (sleep): growth, drying and ripening go in order. */
+const STEP = 0.05;
+
+/** A whole number from the plant's variety (the same every time). */
+function countOf(k: PlantKind, p: Plant): number {
+  const [a, b] = k.fruit.count;
+  const r = ((p.seed * 9301 + p.picked * 0.618) % 1 + 1) % 1;
+  return a + Math.floor(r * (b - a + 1));
+}
+
+/** One plant over `d` game days (≤ STEP). */
+function stepPlant(p: Plant, d: number, season: number, rain: number): void {
+  if (p.dead) return;
+  const k = KINDS[p.kind];
+  const stage0 = stageOf(k, p.age);
+  // (a grown tree's roots are deep; the pagoda's monks water the bodhi every day)
+  const deep = (isTree(k) && stage0 === GROWN) || p.at === 'pagoda';
+  // Rain: a shower soaks the earth in a tenth of a day.
+  if (rain > 0.15) p.wet = Math.min(1, p.wet + d * rain * 10);
+  const wasWet = p.wet > 0;
+  if (!deep) p.wet = Math.max(0, p.wet - d / k.thirst);
+  else p.wet = Math.max(p.wet, 0.5);
+  if (p.wet <= 0) {
+    if (wasWet) emit({ type: 'thirsty', plant: p });
+    p.dry += d;
+    if (stage0 < GROWN && p.dry > k.dieAfter) {
+      p.dead = true;
+      emit({ type: 'died', plant: p });
+      changed(true);
+    }
+    return;
+  }
+  p.dry = 0;
+  p.age += d;
+  const stage1 = stageOf(k, p.age);
+  if (stage1 !== stage0) {
+    emit({ type: stage1 === GROWN ? 'grown' : 'stage', plant: p });
+    if (stage1 === GROWN && k.fruit.harvest === 'once') p.ripe = 1;
+  }
+  if (stage1 !== GROWN || k.fruit.count[1] <= 0) return;
+  // Ripening (in its months; a ripe one waits to be picked).
+  if (p.ripe < 1 && inFruitMonths(k, season)) {
+    const was = p.ripe;
+    p.ripe = Math.min(1, p.ripe + d / Math.max(0.01, k.fruit.ripenDays));
+    if (p.ripe >= 1 && was < 1) {
+      if (k.fruit.pick === 'ground') {
+        if (p.fallen === 0) {
+          p.fallen = countOf(k, p);
+          p.ripe = 0;
+          emit({ type: 'fell', plant: p });
+        } else p.ripe = 1;
+      } else emit({ type: 'ripe', plant: p });
+    }
+  }
+}
+
+/** Its look now (garden/look.ts draws it). */
+export function lookOf(p: Plant): PlantLook {
+  const k = KINDS[p.kind];
+  const stage = stageOf(k, p.age);
+  const ground = k.fruit.pick === 'ground';
+  let fruit: 0 | 1 | 2 = 0;
+  if (stage === GROWN && !p.dead && k.fruit.count[1] > 0) fruit = p.ripe >= 1 && !ground ? 2 : p.ripe >= 0.33 ? 1 : 0;
+  const droop: 0 | 1 | 2 = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 ? 1 : 2;
+  return { kind: p.kind, stage, fruit, fallen: Math.min(3, p.fallen), droop, dead: p.dead, seed: p.seed };
+}
+
+/** A key that changes exactly when the look does (for the view's cache). */
+export function lookKey(l: PlantLook): string {
+  return `${l.kind}|${l.stage}|${l.fruit}|${l.fallen}|${l.droop}|${l.dead ? 1 : 0}|${Math.round(l.seed * 997)}`;
+}
+
+/** Its earth for the view. */
+export const soilOf = (p: Plant): SoilLook => (p.wet > 0.66 ? 2 : p.wet > 0.2 ? 1 : 0);
+
+/** Ripe to pick now (on it, or lying under it). */
+export function ripeNow(p: Plant): boolean {
+  if (p.dead) return false;
+  const k = KINDS[p.kind];
+  if (stageOf(k, p.age) !== GROWN || k.fruit.count[1] <= 0) return false;
+  return k.fruit.pick === 'ground' ? p.fallen > 0 : p.ripe >= 1;
+}
+
+/** It wants water: alive, not a grown tree, the earth drying (under a third). */
+export function thirsty(p: Plant): boolean {
+  if (p.dead) return false;
+  const k = KINDS[p.kind];
+  if (isTree(k) && stageOf(k, p.age) === GROWN) return false;
+  return p.wet < 0.34;
+}
+
+export const GARDEN = {
+  get clock(): number {
+    return state.clock;
+  },
+  get plants(): readonly Plant[] {
+    return state.plants;
+  },
+  get can(): number {
+    return state.can;
+  },
+  get gift(): boolean {
+    return state.gift;
+  },
+  get bodhiGiven(): boolean {
+    return state.bodhiGiven;
+  },
+  /** Seeds and seedlings he has of a kind. */
+  seeds(k: PlantKindId): number {
+    return state.seeds[k] ?? 0;
+  },
+  /** Every kind he has seeds of, in the seed card's order. */
+  seedKinds(): PlantKindId[] {
+    return [...GARDEN_KINDS, 'bodhi' as PlantKindId].filter((k) => (state.seeds[k] ?? 0) > 0);
+  },
+  /** His harvest of a kind in his basket (at home). */
+  basket(k: PlantKindId): number {
+    return state.basket[k] ?? 0;
+  },
+  basketKinds(): PlantKindId[] {
+    return GARDEN_KINDS.filter((k) => (state.basket[k] ?? 0) > 0);
+  },
+  /** Crops and trees near the house now (dead ones count till he clears them). */
+  count(size: 'crop' | 'tree', at: 'home' | 'pagoda' = 'home'): number {
+    let n = 0;
+    for (const p of state.plants) if (p.at === at && KINDS[p.kind].size === size) n++;
+    return n;
+  },
+  /** Room for one more of this size near the house. */
+  roomFor(size: 'crop' | 'tree'): boolean {
+    return GARDEN.count(size) < (size === 'crop' ? MAX_CROPS : MAX_TREES);
+  },
+  byId(id: number): Plant | null {
+    return state.plants.find((p) => p.id === id) ?? null;
+  },
+  on(fn: (e: GardenEvent) => void): void {
+    listeners.push(fn);
+  },
+
+  /** Move the garden on by `d` game days (roam/_garden.ts, every frame; `rain` the weather's 0‥1). */
+  advance(d: number, season: number, rain: number): void {
+    if (!(d > 0)) return;
+    d = Math.min(d, 3);
+    state.clock += d;
+    while (d > 1e-9) {
+      const s = Math.min(STEP, d);
+      for (const p of state.plants) stepPlant(p, s, season, rain);
+      d -= s;
+    }
+    dirty = true;
+  },
+  /** Each frame (real seconds): saves what changed now and then. */
+  tick(dt: number): void {
+    saveIn -= dt;
+    if (dirty && saveIn <= 0) flush();
+  },
+
+  /** Plant one of his seeds of `kind` at (x, z) (the rules of where are roam/_gardenSpots.ts'): the new plant, or null (no seed). */
+  plant(kind: PlantKindId, x: number, z: number, yaw: number, seed: number, at: 'home' | 'pagoda' = 'home'): Plant | null {
+    if ((state.seeds[kind] ?? 0) <= 0) return null;
+    state.seeds[kind] = (state.seeds[kind] ?? 0) - 1;
+    if (!state.seeds[kind]) delete state.seeds[kind];
+    const p: Plant = { id: state.nextId++, kind, x, z, yaw, seed, at, age: 0, wet: 1, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: state.clock };
+    state.plants.push(p);
+    emit({ type: 'planted', plant: p });
+    emit({ type: 'seeds' });
+    changed(true);
+    return p;
+  },
+  /** Water it from his can (one pour): false when the can is empty. */
+  water(p: Plant): boolean {
+    if (state.can <= 0 || p.dead) return false;
+    state.can--;
+    p.wet = 1;
+    p.dry = 0;
+    emit({ type: 'watered', plant: p });
+    emit({ type: 'can' });
+    changed(true);
+    return true;
+  },
+  /** Fill his can (at the jar, the stream). */
+  fillCan(): void {
+    state.can = CAN_MAX;
+    emit({ type: 'can' });
+    changed(true);
+  },
+  /** Take its harvest: how many went into his basket (0: nothing ripe). A `once` plant is gone after it. */
+  pick(p: Plant): number {
+    if (!ripeNow(p)) return 0;
+    const k = KINDS[p.kind];
+    const n = k.fruit.pick === 'ground' ? p.fallen : countOf(k, p);
+    p.fallen = 0;
+    p.ripe = 0;
+    p.picked++;
+    state.basket[p.kind] = (state.basket[p.kind] ?? 0) + n;
+    emit({ type: 'picked', plant: p, n });
+    emit({ type: 'basket' });
+    if (k.fruit.harvest === 'once') GARDEN.remove(p);
+    changed(true);
+    return n;
+  },
+  /** Pull a plant out (a dead one, or one he no longer wants): its place is free again. */
+  remove(p: Plant): void {
+    const i = state.plants.indexOf(p);
+    if (i < 0) return;
+    state.plants.splice(i, 1);
+    emit({ type: 'cleared', plant: p });
+    changed(true);
+  },
+  /** Add seeds (the nursery, Grandma's gift, the monk's bodhi). */
+  addSeeds(k: PlantKindId, n: number): void {
+    state.seeds[k] = Math.max(0, (state.seeds[k] ?? 0) + n);
+    if (!state.seeds[k]) delete state.seeds[k];
+    emit({ type: 'seeds' });
+    changed(true);
+  },
+  /** Take `n` of a kind out of his basket (sold, eaten, offered): false when there are not that many. */
+  takeFromBasket(k: PlantKindId, n: number): boolean {
+    if ((state.basket[k] ?? 0) < n) return false;
+    state.basket[k] = (state.basket[k] ?? 0) - n;
+    if (!state.basket[k]) delete state.basket[k];
+    emit({ type: 'basket' });
+    changed(true);
+    return true;
+  },
+  /** Grandma's seeds taken (once). */
+  takeGift(): void {
+    state.gift = true;
+    changed(true);
+  },
+  /** The monk gave him the bodhi sapling (once). */
+  setBodhiGiven(): void {
+    state.bodhiGiven = true;
+    changed(true);
+  },
+
+  /**
+   * A shot's or a check's URL values (nothing is saved in shots): `garden=` the plants, `seeds=`, `basket=`, `can=`,
+   * `gardenclock=`. `spots(n)` gives `n` free places (m) in front of the house for the lineups (roam/_garden.ts).
+   */
+  fromUrl(q: URLSearchParams, spots: (n: number, trees: boolean) => readonly (readonly [number, number])[]): void {
+    const clock = q.get('gardenclock');
+    if (clock !== null && Number.isFinite(+clock)) state.clock = +clock;
+    const can = q.get('can');
+    if (can !== null && Number.isFinite(+can)) state.can = Math.max(0, Math.min(CAN_MAX, Math.round(+can)));
+    const seeds = q.get('seeds');
+    if (seeds === 'all') for (const k of GARDEN_KINDS) state.seeds[k] = 3;
+    else if (seeds) for (const [k, n] of pairs(seeds)) state.seeds[k] = n;
+    const basket = q.get('basket');
+    if (basket === 'all') for (const k of GARDEN_KINDS) state.basket[k] = 2;
+    else if (basket) for (const [k, n] of pairs(basket)) state.basket[k] = n;
+    const g = q.get('garden');
+    if (g === null) return;
+    state.plants = [];
+    if (g === '0') return;
+    const want: { kind: PlantKindId; stage: Stage; mods: string[] }[] = [];
+    if (g === 'lineup') {
+      for (const kind of GARDEN_KINDS) for (let s = 0; s <= 4; s++) want.push({ kind, stage: s as Stage, mods: s === 4 ? ['ripe'] : [] });
+    } else if (g === 'demo') {
+      for (const [kind, s, m] of DEMO) want.push({ kind, stage: s, mods: m ? [m] : [] });
+    } else
+      for (const part of g.split(',')) {
+        const [kind, s, ...mods] = part.split(':');
+        if (!(kind in KINDS)) continue;
+        want.push({ kind: kind as PlantKindId, stage: Math.max(0, Math.min(4, Math.round(+(s ?? 4)) || 0)) as Stage, mods });
+      }
+    const crops = want.filter((w) => !isTree(KINDS[w.kind]));
+    const trees = want.filter((w) => isTree(KINDS[w.kind]));
+    const cs = spots(crops.length, false);
+    const ts = spots(trees.length, true);
+    const put = (w: (typeof want)[number], at: readonly [number, number] | undefined, i: number) => {
+      if (!at) return;
+      const k = KINDS[w.kind];
+      const age = w.stage === 4 ? k.growDays : w.stage === 0 ? 0 : k.growDays * (k.stageAt[w.stage - 1] + (w.stage < 4 ? ((w.stage === 3 ? 1 : k.stageAt[w.stage]) - k.stageAt[w.stage - 1]) * 0.5 : 0));
+      const p: Plant = { id: state.nextId++, kind: w.kind, x: at[0], z: at[1], yaw: (i * 2.39996) % (Math.PI * 2), seed: ((i * 0.618034) % 1 + 1) % 1, at: 'home', age, wet: 0.8, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: 0 };
+      for (const m of w.mods) {
+        if (m === 'ripe') {
+          if (k.fruit.pick === 'ground') p.fallen = k.fruit.count[1];
+          p.ripe = k.fruit.pick === 'ground' ? 0.5 : 1;
+        } else if (m === 'green') p.ripe = 0.5;
+        else if (m === 'fallen') p.fallen = Math.max(1, k.fruit.count[1]);
+        else if (m === 'wilt' || m === 'dry') {
+          p.wet = 0;
+          p.dry = m === 'wilt' ? k.dieAfter * 0.75 : k.dieAfter * 0.2;
+        } else if (m === 'dead') p.dead = true;
+      }
+      state.plants.push(p);
+    };
+    crops.forEach((w, i) => put(w, cs[i], i));
+    trees.forEach((w, i) => put(w, ts[i], i + crops.length));
+  },
+
+  /** For bug reports: the garden in a URL value (`garden=<kind>:<stage>[:mod],…`, near plants only). */
+  report(near: (p: Plant) => boolean): string | null {
+    const ps = state.plants.filter(near);
+    if (!ps.length) return null;
+    return ps
+      .map((p) => {
+        const l = lookOf(p);
+        const mod = l.dead ? ':dead' : l.droop === 2 ? ':wilt' : l.droop === 1 ? ':dry' : l.fruit === 2 || l.fallen ? ':ripe' : l.fruit === 1 ? ':green' : '';
+        return `${p.kind}:${l.stage}${mod}`;
+      })
+      .join(',');
+  },
+};
+
+/** A shot's pretty garden: crops in their beds at every stage, a few trees, one thirsty, one dead. */
+const DEMO: readonly (readonly [PlantKindId, Stage, string?])[] = [
+  ['eggplant', 4, 'ripe'], ['eggplant', 4, 'green'], ['eggplant', 2], ['corn', 4, 'ripe'], ['corn', 3], ['corn', 3],
+  ['corn', 1], ['pumpkin', 4, 'ripe'], ['pumpkin', 2, 'wilt'], ['sugarcane', 4, 'ripe'], ['sugarcane', 2], ['eggplant', 1, 'dead'],
+  ['banana', 4, 'ripe'], ['papaya', 4, 'ripe'], ['guava', 3], ['mango', 4, 'ripe'], ['jackfruit', 2], ['coconut', 3], ['durian', 1], ['sugarPalm', 1],
+];
+
+function pairs(s: string): [PlantKindId, number][] {
+  const out: [PlantKindId, number][] = [];
+  for (const part of s.split(',')) {
+    const [k, n] = part.split(':');
+    if (k in KINDS) out.push([k as PlantKindId, Math.max(0, Math.round(+(n ?? 1)) || 0)]);
+  }
+  return out;
+}

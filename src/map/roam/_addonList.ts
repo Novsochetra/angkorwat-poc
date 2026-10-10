@@ -30,9 +30,10 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_farmWork'),
   () => import('./_raceRow'),
   () => import('./_sey'),
-  // ── A friend and a home: the dog, the stilt house, his name ──
+  // ── A friend and a home: the dog, the stilt house, his garden, his name ──
   () => import('./_dog'),
   () => import('./_home'),
+  () => import('./_garden'),
   () => import('./_name'),
   // ── Small things: the umbrella, the binoculars, smiles for the camera, selling fish, clothes ──
   () => import('./_umbrella'),
