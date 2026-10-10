@@ -209,6 +209,20 @@ export function lookOf(p: Plant): PlantLook {
   return { kind: p.kind, stage, fruit, fallen: Math.min(3, p.fallen), droop, dead: p.dead, cut: p.picked > 0, seed: p.seed };
 }
 
+/**
+ * A number that changes exactly when its look does (the plant's kind and seed never change), worked out with no
+ * allocation: the view compares it each frame (`lookOf` / `lookKey` only when it changed).
+ */
+export function lookSig(p: Plant): number {
+  const k = KINDS[p.kind];
+  const stage = stageOf(k, p.age);
+  const ground = k.fruit.pick === 'ground';
+  let fruit = 0;
+  if (stage === GROWN && !p.dead && k.fruit.count[1] > 0) fruit = p.ripe >= 1 && !ground ? 2 : p.ripe >= 0.33 ? 1 : 0;
+  const droop = p.dead || p.wet > 0 ? 0 : p.dry < k.dieAfter * 0.5 ? 1 : 2;
+  return stage + 5 * fruit + 15 * Math.min(3, p.fallen) + 60 * droop + 180 * (p.dead ? 1 : 0) + 360 * (p.picked > 0 ? 1 : 0);
+}
+
 /** A key that changes exactly when the look does (for the view's cache). */
 export function lookKey(l: PlantLook): string {
   return `${l.kind}|${l.stage}|${l.fruit}|${l.fallen}|${l.droop}|${l.dead ? 1 : 0}|${l.cut ? 1 : 0}|${Math.round(l.seed * 997)}`;
