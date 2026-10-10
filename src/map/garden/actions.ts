@@ -34,10 +34,40 @@ import type { PickStyle, PlantForm } from './kinds';
  * The work calls the beat's sound (`sound`) and its step (`does`: the plant appears
  * at `set`, the earth darkens at `pour`, the fruit leaves the plant at `take`…).
  */
-export type GardenAction = 'plant' | 'plantTree' | 'water' | 'fill' | 'pickLow' | 'pickReach' | 'pickCut' | 'pickPole' | 'pickGround' | 'clear';
+export type GardenAction =
+  | 'plant'
+  | 'plantTree'
+  | 'water'
+  | 'fill'
+  | 'pickLow'
+  | 'pickReach'
+  | 'pickCut'
+  | 'pickPole'
+  | 'pickGround'
+  | 'clear';
+
+/** The shoulder pole's actions (ដងរែក, roam/_carryPole*.ts): see `POLE_ACTIONS` below. */
+export type PoleAction = 'poleUp' | 'poleDown' | 'poleFill' | 'poleJar' | 'poleScoop';
 
 /** What he holds at a moment (roam/_gardenProps.ts builds them). */
-export type GardenProp = 'hoe' | 'can' | 'knife' | 'pole' | 'seed' | 'cutting' | 'pup' | 'seedling' | 'fruit' | 'stick' | 'basket';
+export type GardenProp =
+  | 'hoe'
+  | 'can'
+  | 'knife'
+  | 'pole'
+  | 'seed'
+  | 'cutting'
+  | 'pup'
+  | 'seedling'
+  | 'fruit'
+  | 'stick'
+  | 'basket';
+
+/**
+ * The shoulder pole's props: the pole with its two buckets hung (one prop; their water level and sway the carry
+ * add-on's to animate) and the coconut-shell dipper (ផ្ដិល) he waters with from a bucket.
+ */
+export type PoleProp = 'yoke' | 'dipper';
 
 export interface Beat {
   /** Seconds from the start. */
@@ -78,13 +108,92 @@ export type GardenSfx =
   | 'gardenSprout' // ui: a soft rising chime (a first sprout, a plant grown)
   | 'gardenRipe' // ui: two bright notes (ripe to pick)
   | 'gardenThirst' // ui: a dry low note (a plant wants water)
-  | 'gardenDied'; // ui: a soft falling note (a plant has died)
+  | 'gardenDied' // ui: a soft falling note (a plant has died)
+  // the shoulder pole (roam/_carryPole*.ts)
+  | 'gardenYokeCreak' // loop: the bamboo pole creaking on his shoulder as he walks (level by his speed)
+  | 'gardenSlosh' // loop: water slopping in the buckets as he walks (level by the sway and how full)
+  | 'gardenBucketFill' // loop: two buckets dipped and filling at the water
+  | 'gardenJarPour' // the buckets poured into the big jar (a deep glug and splash)
+  | 'gardenScoop' // the dipper scooping from a bucket, then the splash on the plant's earth
+  | 'gardenSpill' // water spilling over the rims (he ran: some is lost)
+  | 'gardenPoleUp' // the pole taken up onto his shoulder (a bamboo knock, the buckets' handles)
+  | 'gardenPoleDown'; // the buckets set down on the ground
 
 /** The seed in his hand while planting, by what he plants. */
 export const SEED_PROP: Record<PlantForm, GardenProp> = { seed: 'seed', cutting: 'cutting', pup: 'pup', seedling: 'seedling' };
 
 /** The action for picking, by the kind's pick style. */
 export const PICK_ACTION: Record<PickStyle, GardenAction> = { low: 'pickLow', reach: 'pickReach', cut: 'pickCut', pole: 'pickPole', ground: 'pickGround' };
+
+/**
+ * The shoulder pole's actions (the carry add-on runs them; the poses are character/gardenWork.ts's): taking the pole
+ * up onto his right shoulder from where it leans (`poleUp`), setting it down (`poleDown`), dipping both buckets at
+ * the water's edge (`poleFill`: he squats with the pole on his shoulder and lowers one bucket, then the other), pouring
+ * both into his yard's jar (`poleJar`), and watering a plant with the coconut-shell dipper from a bucket set down
+ * beside it (`poleScoop`: the pole stays on the ground by him meanwhile, picked up at the end).
+ */
+/** A pole action's timing: as `ActionTiming`, its hands holding the pole's props. */
+export interface PoleTiming extends Omit<ActionTiming, 'right' | 'left'> {
+  readonly right: readonly (readonly [at: number, prop: GardenProp | PoleProp | null])[];
+  readonly left: readonly (readonly [at: number, prop: GardenProp | PoleProp | null])[];
+}
+
+export const POLE_ACTIONS: Record<PoleAction, PoleTiming> = {
+  poleUp: {
+    len: 1.6,
+    beats: [
+      { at: 0.5, name: 'grip' },
+      { at: 0.9, name: 'lift', sound: 'gardenPoleUp' },
+      { at: 1.3, name: 'shoulder' },
+    ],
+    right: [[0, null], [0.5, 'yoke']],
+    left: [[0, null]],
+  },
+  poleDown: {
+    len: 1.4,
+    beats: [
+      { at: 0.6, name: 'down', sound: 'gardenPoleDown' },
+      { at: 1.0, name: 'free' },
+    ],
+    right: [[0, 'yoke'], [1.0, null]],
+    left: [[0, null]],
+  },
+  poleFill: {
+    len: 3.6,
+    beats: [
+      { at: 0.6, name: 'dip1', sound: 'gardenDip' },
+      { at: 1.6, name: 'full1' },
+      { at: 1.9, name: 'dip2', sound: 'gardenDip' },
+      { at: 2.9, name: 'full2' },
+      { at: 3.2, name: 'up' },
+    ],
+    right: [[0, 'yoke']],
+    left: [[0, null]],
+    loop: { sfx: 'gardenBucketFill', from: 0.65, to: 2.9 },
+  },
+  poleJar: {
+    len: 3.2,
+    beats: [
+      { at: 0.7, name: 'tip1', sound: 'gardenJarPour' },
+      { at: 1.6, name: 'empty1' },
+      { at: 1.9, name: 'tip2', sound: 'gardenJarPour' },
+      { at: 2.8, name: 'empty2' },
+    ],
+    right: [[0, 'yoke']],
+    left: [[0, null]],
+  },
+  poleScoop: {
+    len: 3.2,
+    beats: [
+      { at: 0.6, name: 'down', sound: 'gardenPoleDown' },
+      { at: 1.2, name: 'scoop', sound: 'gardenScoop' },
+      { at: 1.7, name: 'pour' },
+      { at: 2.5, name: 'up', sound: 'gardenPoleUp' },
+    ],
+    right: [[0, 'yoke'], [0.6, 'dipper'], [2.4, 'yoke']],
+    left: [[0, null]],
+  },
+};
 
 export const ACTIONS: Record<GardenAction, ActionTiming> = {
   plant: {

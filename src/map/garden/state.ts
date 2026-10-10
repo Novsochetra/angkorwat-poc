@@ -32,6 +32,14 @@ import { GARDEN_KINDS, GROWN, inFruitMonths, isTree, KINDS, stageOf, type PlantK
 
 /** A watering can's pours when full. */
 export const CAN_MAX = 8;
+/**
+ * His yard's big water jar (ពាង, by the stair) holds this many pours (three cans). It is not a well: he fills it by
+ * carrying water from the stream on his shoulder pole (roam/_carryPole*.ts: two buckets, `BUCKET_POURS` each), and
+ * rain fills it. A new garden starts with it full.
+ */
+export const JAR_MAX = 24;
+/** One bucket of the shoulder pole's two, in pours (into the jar, or on the plants with the dipper). */
+export const BUCKET_POURS = 6;
 /** Plants at most near the house: crops, trees (a garden that stays quick to draw). */
 export const MAX_CROPS = 40;
 export const MAX_TREES = 12;
@@ -89,7 +97,7 @@ export type SoilLook = 0 | 1 | 2;
 export type GardenEvent =
   | { type: 'planted' | 'watered' | 'stage' | 'ripe' | 'fell' | 'thirsty' | 'wilting' | 'died' | 'cleared' | 'grown'; plant: Plant }
   | { type: 'picked'; plant: Plant; n: number }
-  | { type: 'seeds' | 'basket' | 'can' };
+  | { type: 'seeds' | 'basket' | 'can' | 'jar' };
 
 interface Saved {
   v: 1;
@@ -99,6 +107,8 @@ interface Saved {
   seeds: Partial<Record<PlantKindId, number>>;
   basket: Partial<Record<PlantKindId, number>>;
   can: number;
+  /** Pours in his yard's water jar (0‥`JAR_MAX`). */
+  jar: number;
   /** He took the seeds Grandma left for him on the veranda. */
   gift: boolean;
   /** The pagoda's monk has given him the bodhi sapling (roam/_bodhi*.ts). */
@@ -117,7 +127,7 @@ const KEY = 'garden.v1';
 const isSaved = (v: unknown): v is Saved => typeof v === 'object' && v !== null && (v as Saved).v === 1 && Array.isArray((v as Saved).plants);
 
 function fresh(): Saved {
-  return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, gift: false, bodhiGiven: false, year0: null };
+  return { v: 1, clock: 0, nextId: 1, plants: [], seeds: {}, basket: {}, can: 0, jar: JAR_MAX, gift: false, bodhiGiven: false, year0: null };
 }
 
 /** A kind of the garden's (not `constructor`, `toString`…: an own key of `KINDS`). */
@@ -162,6 +172,7 @@ function load(): Saved {
     seeds: counts(s.seeds),
     basket: counts(s.basket),
     can: Math.round(num(s.can, 0, 0, CAN_MAX)),
+    jar: Math.round(num(s.jar, JAR_MAX, 0, JAR_MAX)),
     gift: s.gift === true,
     bodhiGiven: s.bodhiGiven === true,
     year0: typeof s.year0 === 'number' && Number.isFinite(s.year0) ? s.year0 : null,
@@ -385,6 +396,11 @@ export const GARDEN = {
     if (d > JUMP) mayDie = false;
     // (the garden's year starts from the map's, the real date, the first time it grows; then it turns with the garden)
     if (state.year0 === null) state.year0 = frac(season - state.clock / YEAR_DAYS);
+    // (rain fills the jar too: a good shower, a tenth of a day, fills it)
+    if (rain > 0.15 && state.jar < JAR_MAX) {
+      state.jar = Math.min(JAR_MAX, state.jar + d * rain * JAR_MAX * 10);
+      emit({ type: 'jar' });
+    }
     while (d > 1e-9) {
       const s = Math.min(STEP, d);
       state.clock += s;
@@ -416,10 +432,10 @@ export const GARDEN = {
     changed(true);
     return p;
   },
-  /** Water it from his can (one pour): false when the can is empty. */
-  water(p: Plant): boolean {
-    if (state.can <= 0 || p.dead) return false;
-    state.can--;
+  /** Water it: one pour from his can (`from` 'can': false when it is empty), or from a bucket with the dipper ('bucket': the shoulder pole's add-on counts its own water). */
+  water(p: Plant, from: 'can' | 'bucket' = 'can'): boolean {
+    if (p.dead || (from === 'can' && state.can <= 0)) return false;
+    if (from === 'can') state.can--;
     p.wet = 1;
     p.dry = 0;
     emit({ type: 'watered', plant: p });
@@ -427,11 +443,32 @@ export const GARDEN = {
     changed(true);
     return true;
   },
-  /** Fill his can (at the jar, the stream). */
-  fillCan(): void {
-    state.can = CAN_MAX;
+  /** Fill his can: at the stream (`from` 'water': full), or from the jar ('jar': what it has, up to full; false when the jar is empty). */
+  fillCan(from: 'water' | 'jar' = 'water'): boolean {
+    const want = CAN_MAX - state.can;
+    if (from === 'jar') {
+      const n = Math.min(want, Math.floor(state.jar));
+      if (n <= 0) return false;
+      state.jar -= n;
+      state.can += n;
+      emit({ type: 'jar' });
+    } else state.can = CAN_MAX;
     emit({ type: 'can' });
     changed(true);
+    return true;
+  },
+  /** Pours in his yard's jar. */
+  get jar(): number {
+    return state.jar;
+  },
+  /** Pour `n` pours into the jar (his buckets, the rain): what went in (the rest spills over). */
+  fillJar(n: number): number {
+    const k = Math.max(0, Math.min(n, JAR_MAX - state.jar));
+    if (k <= 0) return 0;
+    state.jar += k;
+    emit({ type: 'jar' });
+    changed(true);
+    return k;
   },
   /** Take its harvest: how many went into his basket (0: nothing ripe). A `once` plant is gone after it. */
   pick(p: Plant): number {
@@ -500,6 +537,8 @@ export const GARDEN = {
     if (clock !== null && Number.isFinite(+clock)) state.clock = Math.max(0, +clock);
     const sea = q.get('season');
     if (sea !== null && Number.isFinite(+sea)) state.year0 = frac(+sea - state.clock / YEAR_DAYS);
+    const jar = q.get('jar');
+    if (jar !== null && Number.isFinite(+jar)) state.jar = Math.max(0, Math.min(JAR_MAX, Math.round(+jar)));
     const can = q.get('can');
     if (can !== null && Number.isFinite(+can)) state.can = Math.max(0, Math.min(CAN_MAX, Math.round(+can)));
     const seeds = q.get('seeds');
