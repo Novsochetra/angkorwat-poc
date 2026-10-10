@@ -517,7 +517,7 @@ export const GARDEN = {
       if (!at) return;
       const k = KINDS[w.kind];
       const age = w.stage === 4 ? k.growDays : w.stage === 0 ? 0 : k.growDays * (k.stageAt[w.stage - 1] + (w.stage < 4 ? ((w.stage === 3 ? 1 : k.stageAt[w.stage]) - k.stageAt[w.stage - 1]) * 0.5 : 0));
-      const p: Plant = { id: state.nextId++, kind: w.kind, x: at[0], z: at[1], yaw: w.yaw ?? (i * 2.39996) % (Math.PI * 2), seed: w.seed ?? ((i * 0.618034) % 1 + 1) % 1, at: 'home', age, wet: 0.8, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: 0 };
+      const p: Plant = { id: state.nextId++, kind: w.kind, x: at[0], z: at[1], yaw: w.yaw ?? (i * 2.39996) % (Math.PI * 2), seed: w.seed ?? ((i * 0.618034) % 1 + 1) % 1, at: 'home', age, wet: 0.5, dry: 0, dead: false, ripe: 0, fallen: 0, picked: 0, planted: 0 };
       for (const m of w.mods) {
         if (m === 'ripe') {
           if (k.fruit.pick === 'ground') p.fallen = k.fruit.count[1];

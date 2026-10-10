@@ -1,6 +1,6 @@
 import { Color } from 'three';
 import { hash3 } from '../../voxel/random';
-import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { KINDS, type PlantKindId, type Stage } from './kinds';
 import { packBlocks, type Blocks } from './_viewLook';
 
@@ -35,11 +35,6 @@ export interface Earth {
   readonly top: Uint8Array;
   /** The puddle in a basin (null for a bed): its blocks scale with the water standing. */
   readonly puddle: Blocks | null;
-  /** Far off: one plain box (its colours dry, damp, wet). */
-  readonly far: Blocks;
-  readonly farDry: Float32Array;
-  readonly farDamp: Float32Array;
-  readonly farWet: Float32Array;
   /** Where the plant's foot stands, over the ground (m): on the bed's top, on the basin's floor. */
   readonly foot: number;
   /** Its reach from the plant (m), for the bounds. */
@@ -87,7 +82,6 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
   const puddle = new VoxelBuilder();
   let foot: number;
   let reach: number;
-  let far: { x: number; z: number; sx: number; sy: number; sz: number; y: number };
   if (k.size === 'crop') {
     // A dug bed, square to the map; cut back at a terrace's edge.
     const half = Math.min(0.85, Math.max(0.45, k.room * 0.75));
@@ -106,12 +100,13 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     const d = zp + zn;
     // A mound in three steps (voxel-round): the bed a little into the ground (no seam with the grass), its
     // shoulder, its crown where the plant stands.
-    // Each step two blocks across each other, its corners cut (voxel-round), a hand's breadth off true.
+    // Each step two blocks across each other, its corners cut (voxel-round), a hand's breadth off true; the second
+    // a centimetre lower (no two tops in one plane: they would shimmer far off).
     const step = (role: Role, top: boolean, y0: number, h: number, inset: number, cut: number, j: number) => {
       const dx = (r(j, 60) - 0.5) * 0.04;
       const dz = (r(j, 61) - 0.5) * 0.04;
       add(role, top, cx + dx, y0 + h / 2, cz + dz, w - inset * 2, h, d - inset * 2 - cut * 2);
-      add(role, top, cx - dx, y0 + h / 2 + 0.002, cz - dz, w - inset * 2 - cut * 2, h, d - inset * 2);
+      add(role, top, cx - dx, y0 + h / 2 - 0.012, cz - dz, w - inset * 2 - cut * 2, h, d - inset * 2);
     };
     step('bed', false, -0.04, 0.11, 0, 0.06, 1);
     step('mound', true, 0.06, 0.06, 0.07 + 0.03 * r(2, 62), 0.1, 2);
@@ -148,7 +143,6 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
       add('crumb', true, px, foot + sz * 0.15, pz, sz * 1.2, sz * 0.7, sz, r(j, 44) * Math.PI);
     }
     reach = Math.hypot(Math.max(xp, xn), Math.max(zp, zn)) + 0.1;
-    far = { x: cx, z: cz, sx: w - 0.06, sy: 0.12, sz: d - 0.06, y: 0.04 };
   } else {
     // A watering basin: a low ring bank round the foot, wider as the tree grows, cut back at a terrace's edge.
     const grown = Math.min(1.35, 0.75 + k.trunk * 1.1);
@@ -167,7 +161,7 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     // The dished floor inside (two squares across each other: round enough), damp under the tree.
     const f = 2 * (R - 0.08) * 0.86;
     add('floor', true, 0, 0.005, 0, f, 0.04, f, turn);
-    add('floor', true, 0, 0.006, 0, f, 0.04, f, turn + Math.PI / 4);
+    add('floor', true, 0, -0.007, 0, f, 0.04, f, turn + Math.PI / 4);
     foot = 0.025;
     // A clod or two on the bank.
     for (let j = 0; j < 2; j++) {
@@ -177,11 +171,11 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     }
     // The puddle: water standing in the dish after a watering (it soaks in).
     const p = 2 * (R - 0.14) * 0.72;
-    puddle.box(0, 0.03, 0, p, 0.012, p, PUDDLE[0], 'mapStone', { ry: turn + 0.2 });
-    puddle.box(0, 0.031, 0, p, 0.012, p, PUDDLE[0], 'mapStone', { ry: turn + 0.2 + Math.PI / 4 });
-    puddle.box(p * 0.12, 0.034, -p * 0.1, p * 0.42, 0.012, p * 0.2, PUDDLE[1], 'mapStone', { ry: turn + 0.6 });
+    // (its layers a centimetre apart: no two tops in one plane)
+    puddle.box(0, 0.038, 0, p, 0.012, p, PUDDLE[0], 'mapStone', { ry: turn + 0.2 });
+    puddle.box(0, 0.026, 0, p, 0.012, p, PUDDLE[0], 'mapStone', { ry: turn + 0.2 + Math.PI / 4 });
+    puddle.box(p * 0.12, 0.048, -p * 0.1, p * 0.42, 0.012, p * 0.2, PUDDLE[1], 'mapStone', { ry: turn + 0.6 });
     reach = R + 0.15;
-    far = { x: 0, z: 0, sx: R * 1.7, sy: 0.1, sz: R * 1.7, y: 0.03 };
   }
   const rock = packBlocks('mapRock', b.boxes);
   const set = (soil: 0 | 1 | 2) => {
@@ -196,9 +190,6 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
   const damp = set(1);
   const wet = set(2);
   rock.c.set(dry);
-  const farBox: VoxelBox = { x: far.x, y: far.y, z: far.z, sx: far.sx, sy: far.sy, sz: far.sz, color: TONES.bed[0], shade: 1, mat: 'mapRock' };
-  const farBlocks = packBlocks('mapRock', [farBox]);
-  const farSet = (soil: 0 | 1 | 2) => _c.setHex(TONES.bed[soil]).toArray(new Float32Array(3)) as Float32Array;
   return {
     rock,
     dry,
@@ -206,10 +197,6 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     wet,
     top: Uint8Array.from(tops),
     puddle: puddle.boxes.length ? packBlocks('mapStone', puddle.boxes) : null,
-    far: farBlocks,
-    farDry: farSet(0),
-    farDamp: farSet(1),
-    farWet: farSet(2),
     foot,
     reach,
   };
@@ -225,8 +212,8 @@ export const puddleLook = (wet: number): number => {
 
 const _sheen = new Color();
 const mix = (a: Float32Array, b: Float32Array, t: number, i: number): number => a[i] + (b[i] - a[i]) * t;
-/** The earth's colours at wetness `w` (0‥1) into `out` (3 a block), and the far box's into `farOut`. */
-export function tintEarth(e: Earth, w: number, out: Float32Array, farOut: Float32Array): void {
+/** The earth's colours at wetness `w` (0‥1) into `out` (3 a block). */
+export function tintEarth(e: Earth, w: number, out: Float32Array): void {
   _sheen.setHex(SHEEN);
   const k = w > 0.72 ? ((w - 0.72) / 0.28) * SHEEN_K : 0;
   const n = e.rock.n;
@@ -238,5 +225,4 @@ export function tintEarth(e: Earth, w: number, out: Float32Array, farOut: Float3
       out[i * 3 + 1] += (_sheen.g - out[i * 3 + 1]) * k;
       out[i * 3 + 2] += (_sheen.b - out[i * 3 + 2]) * k;
     }
-  for (let i = 0; i < 3; i++) farOut[i] = w <= 0.5 ? mix(e.farDry, e.farDamp, w * 2, i) : mix(e.farDamp, e.farWet, w * 2 - 1, i);
 }

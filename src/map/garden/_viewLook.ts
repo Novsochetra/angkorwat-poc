@@ -10,8 +10,8 @@ import { lookKey, type PlantLook } from './state';
  * A plant's look as the garden's view draws it (garden/view.ts): its model's
  * blocks (garden/look.ts) packed once per look, family by family, as the
  * instances of the view's meshes take them (local metres, the plant's foot at
- * the origin: the view turns and sets each copy on the land), and its far
- * shapes (a crown or two and a trunk: `far`), cached by `lookKey`.
+ * the origin: the view turns and sets each copy on the land), and where its
+ * crown is, cached by `lookKey`.
  *
  * The packing is VoxelMesh.ts `packVoxelMesh`'s, per block (its matrix, its
  * colour in linear light times its shade, its open sides and joints, its own
@@ -30,18 +30,13 @@ export interface Blocks {
   readonly src: (SourceTrace | undefined)[] | null;
 }
 
-/** The far shapes of a look: plain boxes (local), the crown's in `leaf`, the trunk's in `bark`. */
-export interface FarShape {
-  readonly leaf: Blocks | null;
-  readonly bark: Blocks | null;
-}
-
 export interface LookData {
   readonly key: string;
   readonly look: PlantLook;
   /** Near: every block of the model, a list per family (as `FAMILIES`: null where it has none). */
   readonly fams: readonly (Blocks | null)[];
-  readonly far: FarShape;
+  /** Its crown (its leaves): where it begins over the foot (m: a fifth of its leaves lie lower) and its radius (m: four fifths of its leaves lie inside); null: no leaves. */
+  readonly crown: { readonly base: number; readonly r: number } | null;
   /** Its height (m, the top of its highest block) and reach (m, from its foot's axis), for the bounds and the far view. */
   readonly height: number;
   readonly reach: number;
@@ -85,102 +80,32 @@ export function packBlocks(mat: VoxelMaterialKey, boxes: readonly VoxelBox[]): B
   return { mat, n, m, c, o, r, src };
 }
 
-/** A plain box (local), its colour already linear. */
-interface FarBox {
-  x: number;
-  y: number;
-  z: number;
-  sx: number;
-  sy: number;
-  sz: number;
-  r: number;
-  g: number;
-  b: number;
-}
-
-function packFar(mat: VoxelMaterialKey, list: readonly FarBox[]): Blocks | null {
-  if (!list.length) return null;
-  const n = list.length;
-  const m = new Float32Array(n * 16);
-  const c = new Float32Array(n * 3);
-  const o = new Float32Array(n).fill(63);
-  const r = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const f = list[i];
-    _m.makeScale(f.sx, f.sy, f.sz).setPosition(f.x, f.y, f.z).toArray(m, i * 16);
-    c[i * 3] = f.r;
-    c[i * 3 + 1] = f.g;
-    c[i * 3 + 2] = f.b;
-  }
-  return { mat, n, m, c, o, r, src: null };
+/** Where a crown's leaves begin and how far out most of them reach (by the area they show). */
+function crownOf(boxes: readonly VoxelBox[]): { base: number; r: number } | null {
+  const leaves = boxes.filter((b) => b.mat === 'mapLeaf');
+  if (!leaves.length) return null;
+  const area = (b: VoxelBox) => b.sx * b.sy + b.sy * b.sz + b.sx * b.sz;
+  let total = 0;
+  for (const b of leaves) total += area(b);
+  const at = (list: VoxelBox[], v: (b: VoxelBox) => number, share: number) => {
+    list.sort((p, q) => v(p) - v(q));
+    let sum = 0;
+    for (const b of list) {
+      sum += area(b);
+      if (sum >= share * total) return v(b);
+    }
+    return v(list[list.length - 1]);
+  };
+  const base = at([...leaves], (b) => b.y - b.sy / 2, 0.2);
+  const r = at([...leaves], (b) => Math.hypot(b.x, b.z) + Math.max(b.sx, b.sz) / 2, 0.8);
+  return { base: Math.max(0, base), r };
 }
 
 /**
- * Blocks seen from far as a coarse grid of plain cells (`cell` m): each block's sides spread over the cells it
- * lies in (sampled a cell apart along its own turned axes); a cell where they cover at least `fill` of a cell's
- * face is one box, of their mean colour (`thin`: as wide as the blocks there, for a trunk, not the whole cell).
+ * The crowns of the garden's plants now (by plant id; the view, garden/view.ts, sets them as it builds each look):
+ * their foot on the map and where their leaves are, for the follow camera to keep out of (roam/_gardenWalk.ts).
  */
-function grid(list: readonly VoxelBox[], cell: number, fill: number, thin: boolean, out: FarBox[]): void {
-  if (!list.length) return;
-  const cells = new Map<number, { a: number; r: number; g: number; b: number; w: number; x: number; y: number; z: number }>();
-  const key = (i: number, j: number, k: number) => ((i + 512) * 1024 + (j + 512)) * 1024 + (k + 512);
-  for (const b of list) {
-    const area = b.sx * b.sy + b.sy * b.sz + b.sx * b.sz;
-    const nx = Math.max(1, Math.ceil(b.sx / cell));
-    const ny = Math.max(1, Math.ceil(b.sy / cell));
-    const nz = Math.max(1, Math.ceil(b.sz / cell));
-    const n = nx * ny * nz;
-    if (b.rx || b.ry || b.rz) _q.setFromEuler(_e.set(b.rx ?? 0, b.ry ?? 0, b.rz ?? 0));
-    else _q.identity();
-    _c.setHex(b.color).multiplyScalar(b.shade);
-    for (let u = 0; u < nx; u++)
-      for (let v = 0; v < ny; v++)
-        for (let w = 0; w < nz; w++) {
-          _p.set(((u + 0.5) / nx - 0.5) * b.sx, ((v + 0.5) / ny - 0.5) * b.sy, ((w + 0.5) / nz - 0.5) * b.sz).applyQuaternion(_q);
-          const x = b.x + _p.x;
-          const y = b.y + _p.y;
-          const z = b.z + _p.z;
-          const k = key(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
-          let c = cells.get(k);
-          if (!c) cells.set(k, (c = { a: 0, r: 0, g: 0, b: 0, w: 0, x: 0, y: 0, z: 0 }));
-          const da = area / n;
-          c.a += da;
-          c.r += _c.r * da;
-          c.g += _c.g * da;
-          c.b += _c.b * da;
-          c.w += Math.min(b.sx, b.sz) * da;
-          c.x += x * da;
-          c.y += y * da;
-          c.z += z * da;
-        }
-  }
-  for (const [k, c] of cells) {
-    if (c.a < fill * cell * cell) continue;
-    const i = Math.floor(k / (1024 * 1024)) - 512;
-    const j = (Math.floor(k / 1024) % 1024) - 512;
-    const kk = (k % 1024) - 512;
-    const w = thin ? Math.min(cell, Math.max(0.08, c.w / c.a)) : cell;
-    // (a trunk's cell sits on its blocks' middle line; a crown's on the grid)
-    const x = thin ? c.x / c.a : (i + 0.5) * cell;
-    const z = thin ? c.z / c.a : (kk + 0.5) * cell;
-    // (a crown of plain boxes has no lit rims: a little brighter, as its blocks look together)
-    const lift = thin ? 1 : 1.12;
-    out.push({ x, y: (j + 0.5) * cell, z, sx: w, sy: cell, sz: w, r: (c.r / c.a) * lift, g: (c.g / c.a) * lift, b: (c.b / c.a) * lift });
-  }
-}
-
-/** The far shapes of a model's blocks: its leaves as a coarse grid of plain cells, its bark as a thin column of them. */
-function farOf(boxes: readonly VoxelBox[], height: number): FarShape {
-  const leaves = boxes.filter((b) => b.mat === 'mapLeaf');
-  const bark = boxes.filter((b) => b.mat === 'mapBark');
-  // (a cell a sixth of the plant's height: a big crown in a few dozen cells, a crop in a handful)
-  const cell = Math.min(1.3, Math.max(0.25, height / 6));
-  const crowns: FarBox[] = [];
-  grid(leaves, cell, 0.3, false, crowns);
-  const trunk: FarBox[] = [];
-  grid(bark, Math.max(0.3, cell * 0.8), 0.15, true, trunk);
-  return { leaf: packFar('mapLeaf', crowns), bark: packFar('mapBark', trunk) };
-}
+export const CROWNS = new Map<number, { x: number; z: number; y0: number; y1: number; r: number }>();
 
 /** A look's data, built now (its model and the packing). */
 export function buildLook(look: PlantLook, key = lookKey(look)): LookData {
@@ -204,7 +129,7 @@ export function buildLook(look: PlantLook, key = lookKey(look)): LookData {
   for (const [mat, list] of by) if (!FAMILIES.includes(mat)) warnFamily(look, mat, list.length);
   // (a plant with no model yet still has a size: its kind's)
   if (!boxes.length) height = KINDS[look.kind].height * 0.1;
-  return { key, look, fams, far: farOf(boxes, height), height, reach, blocks: boxes.length, ms: performance.now() - t0 };
+  return { key, look, fams, crown: crownOf(boxes), height, reach, blocks: boxes.length, ms: performance.now() - t0 };
 }
 
 const warned = new Set<string>();

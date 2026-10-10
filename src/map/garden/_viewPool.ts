@@ -51,6 +51,10 @@ export class Pool {
   private aHi = -1;
   /** Where the holes are parked (the garden's middle). */
   park = { x: 0, y: 0, z: 0 };
+  /** The family's cut block and plain box, and which one it draws now. */
+  private readonly cut: BufferGeometry;
+  private readonly box: BufferGeometry;
+  private isPlain: boolean;
   /** Grown or packed (stats). */
   grows = 0;
   packs = 0;
@@ -72,15 +76,18 @@ export class Pool {
     const spec = VOXEL_MATERIALS[mat] as VoxelMaterialSpec;
     const flat = spec.chamfer ?? false;
     // (as packVoxelMesh: chamfered families get one cut from medium up; the far shapes are plain boxes)
-    const segments = plain ? 0 : 1;
-    const unit = unitVoxelGeometry(spec.bevel, segments, flat);
+    this.cut = unitVoxelGeometry(spec.bevel, 1, flat);
+    this.box = unitVoxelGeometry(spec.bevel, 0);
+    const unit = plain ? this.box : this.cut;
+    this.isPlain = plain;
     const geo = new BufferGeometry();
     geo.setIndex(openSidesIndex(unit, 63));
     geo.setAttribute('position', unit.getAttribute('position'));
     geo.setAttribute('normal', unit.getAttribute('normal'));
     const mesh = new InstancedMesh(geo, getVoxelMaterial(mat), 0);
     mesh.name = `${name}:${mat}`;
-    mesh.userData.voxelShape = { segments, flat };
+    // (no `voxelShape`: graphics.ts `setGraphics` and `plainFar` leave these meshes to the garden's view, which swaps
+    // their blocks between cut and plain itself, `plain`: its blocks move too often for plainFar's rule)
     mesh.customDepthMaterial = getVoxelDepthMaterial(mat);
     // (shadows cast and received, as the village's blocks: VoxelMesh.ts `unpackVoxelMesh`)
     mesh.castShadow = true;
@@ -102,6 +109,30 @@ export class Pool {
     geo.setAttribute('voxOpen', new InstancedBufferAttribute(this.o, 1).setUsage(DynamicDrawUsage));
     geo.setAttribute('voxRadius', new InstancedBufferAttribute(this.r, 1).setUsage(DynamicDrawUsage));
     mesh.userData.voxelSources = this.src;
+  }
+
+  /** Draw its blocks as plain boxes (far off, the low level) or with their cut edges. */
+  plain(on: boolean): void {
+    if (on === this.isPlain) return;
+    this.isPlain = on;
+    const unit = on ? this.box : this.cut;
+    const geo = this.mesh.geometry;
+    geo.setIndex(openSidesIndex(unit, 63));
+    geo.setAttribute('position', unit.getAttribute('position'));
+    geo.setAttribute('normal', unit.getAttribute('normal'));
+  }
+
+  /** The largest cut edge of its blocks (m: graphics.ts `chamferOf`; for when it may go plain). */
+  edge(): number {
+    const spec = VOXEL_MATERIALS[this.mat] as VoxelMaterialSpec;
+    const e = this.m;
+    let edge = 0;
+    for (let i = 0; i < this.top; i++) {
+      const k = i * 16;
+      const side = Math.min(Math.hypot(e[k], e[k + 1], e[k + 2]), Math.hypot(e[k + 4], e[k + 5], e[k + 6]), Math.hypot(e[k + 8], e[k + 9], e[k + 10]));
+      edge = Math.max(edge, this.r[i] > 0 ? Math.min(this.r[i], side * 0.45) : side * spec.bevel);
+    }
+    return edge;
   }
 
   get used(): number {

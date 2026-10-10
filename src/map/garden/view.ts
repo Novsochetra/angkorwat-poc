@@ -1,5 +1,5 @@
-import { Box3, Group, Sphere, Vector3, type Camera, type Object3D, type WebGLRenderer } from 'three';
-import { frameCap, graphicsNow, markStill, pixelSize } from '../graphics';
+import { Box3, Group, Sphere, Vector3, type Camera, type Object3D, type Scene, type WebGLRenderer } from 'three';
+import { frameCap, graphicsNow, markStill, paintRim, pixelSize, plainAt } from '../graphics';
 import type { RoamWorld } from '../roam/types';
 import { swayLeaves } from '../veg/sway';
 import { GROWN, KINDS, type PlantKindId, type Stage } from './kinds';
@@ -7,7 +7,7 @@ import './models';
 import { GARDEN, lookOf, lookSig, type Plant, type PlantLook } from './state';
 import { dropBetween, dropMoves, type Drop } from './_viewDrop';
 import { buildEarth, puddleLook, tintEarth, wetLook, type Earth } from './_viewEarth';
-import { buildLook, FAMILIES, LookCache, type LookData } from './_viewLook';
+import { buildLook, CROWNS, FAMILIES, LookCache, type LookData } from './_viewLook';
 import { Pool, type Run } from './_viewPool';
 
 /**
@@ -25,13 +25,16 @@ import { Pool, type Run } from './_viewPool';
  * Builds are spread over frames (≈ 3 ms a frame at most; a shot builds all at
  * once). Nothing is allocated in a frame where nothing changes.
  *
- * **Far.** Each batch is judged against the camera (graphics.ts `pixelSize`):
- * near, every block; once its finest blocks (`DETAIL`) span under half a pixel
- * where the garden comes nearest (a whole pixel on the low level), plain far
- * shapes instead (each plant a crown or two and a trunk, its earth one box,
- * garden/_viewLook.ts `far`; four draws); crops, seedlings and the earth go once
- * a metre spans under `SMALL_PX` pixels, the trees once the biggest crown spans
- * under one. The overview sees only the trees, as plain shapes.
+ * **Far.** A site's plants are two parts: the small (crops, seedlings, young
+ * trees, and every plant's earth) and the trees, each with its own bounds. Each
+ * is judged by the camera that draws the picture (in the scene's
+ * `onBeforeRender`: the free camera, a shot's `cam=`, the minimap's), as the
+ * map judges its own meshes (graphics.ts `plainAt`): once its blocks' cut edges
+ * span under a pixel where the part comes nearest, its blocks are drawn as plain
+ * boxes with their rims painted (`paintRim`: the same picture by eye, the map's
+ * own rule, no swap to see); the low level draws them plain always. The small
+ * part hides once a metre spans under `SMALL_PX` pixels, the trees once their
+ * biggest crown spans under one. The overview sees the trees, as plain boxes.
  *
  * **Alive.** Leaves sway as the village's (veg/sway.ts, the map's wind), the
  * near fade shows him through a crown (roam/_nearFade.ts: the map's leaf and
@@ -55,12 +58,9 @@ export interface GardenView {
   dispose(): void;
 }
 
-/** The finest detail near shapes have (m: a stem, a small fruit) and the share of a pixel it spans when the far shapes take over. */
-const DETAIL = 0.08;
-const DETAIL_PX = 0.5;
 /** Small things (crops, seedlings, the earth: about a metre) hide under this many pixels a metre. */
 const SMALL_PX = 2.5;
-/** A plant is small (far: with the crops) under this height (m). */
+/** A plant is small (with the crops) under this height (m). */
 const SMALL_H = 2.6;
 /** Hysteresis of the switches (a share of the distance). */
 const HOLD = 0.06;
@@ -76,34 +76,34 @@ const FLAT_S = 0.55;
 const WET_TAU = 0.14;
 /** The still shadows asked again at most this often (s). */
 const SHADOW_EVERY = 0.5;
+/** Earths re-tinted at most this many a frame (rain on the whole garden: spread over a few frames). */
+const TINTS = 6;
 
 type Site = 'home' | 'pagoda';
-const FAR_LEAF = 0;
-const FAR_BARK = 1;
-const FAR_SMALL = 2;
-const FAR_EARTH = 3;
+/** A site's parts: the small things and every earth, and the trees. */
+const SMALL = 0;
+const TREE = 1;
+
+interface Part {
+  readonly group: Group;
+  /** Its pools, as `FAMILIES`. */
+  readonly pools: readonly Pool[];
+  readonly sphere: Sphere;
+  readonly box: Box3;
+  /** Its blocks' largest cut edge (m), its biggest crown across (m), as last measured. */
+  edge: number;
+  maxCrown: number;
+  /** Drawn as plain boxes now; shown now. */
+  plain: boolean;
+  shown: boolean;
+}
 
 interface Batch {
   readonly at: Site;
   readonly group: Group;
-  readonly near: Group;
-  readonly far: Group;
-  readonly farTrees: Group;
-  readonly farSmall: Group;
-  /** Near pools, as `FAMILIES`. */
-  readonly pools: readonly Pool[];
-  /** Far pools: tree crowns, trunks, small plants' crowns, the earth. */
-  readonly farPools: readonly Pool[];
-  readonly sphere: Sphere;
-  readonly box: Box3;
+  readonly parts: readonly [Part, Part];
   readonly items: Item[];
   boundsDirty: boolean;
-  /** Its biggest far crown (m across), for when the trees hide. */
-  maxCrown: number;
-  /** Drawn with its far shapes now; its small far things, its far trees shown. */
-  isFar: boolean;
-  smallShown: boolean;
-  treesShown: boolean;
 }
 
 interface Item {
@@ -122,13 +122,12 @@ interface Item {
   data: LookData | null;
   earth: Earth | null;
   earthStage: number;
-  /** Runs: the look's per family (as `FAMILIES`), the earth's and the puddle's, the far ones. */
+  /** Runs: the look's per family (as `FAMILIES`, in its part's pools), the earth's and the puddle's (the small part's). */
   readonly runs: (Run | null)[];
   rock: Run | null;
   pud: Run | null;
-  readonly far: (Run | null)[];
-  /** The far crown is with the small plants (true) or the trees. */
-  small: boolean;
+  /** Its look's part (`SMALL`, `TREE`). */
+  part: number;
   /** Scale animation: what it does, its time, from what size. */
   mode: 0 | 1 | 2 | 3;
   t: number;
@@ -141,7 +140,6 @@ interface Item {
   pud0: number;
   pudW: number;
   earthC: Float32Array | null;
-  readonly farEarthC: Float32Array;
   drop: Drop | null;
   stamp: number;
   queued: boolean;
@@ -190,36 +188,28 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     renderer.shadowMap.needsUpdate = true;
   };
 
+  function makePart(at: Site, name: string): Part {
+    const group = new Group();
+    group.name = `garden:${at}:${name}`;
+    const sphere = new Sphere(new Vector3(), 0);
+    const box = new Box3();
+    const pools = FAMILIES.map((mat) => new Pool(mat, group.name, false, mat === 'mapLeaf' ? 1024 : 256, sphere, box));
+    for (const p of pools) {
+      p.mesh.onBeforeRender = askShadow;
+      group.add(p.mesh);
+    }
+    return { group, pools, sphere, box, edge: 0, maxCrown: 0, plain: false, shown: true };
+  }
   function makeBatch(at: Site): Batch {
     const group = new Group();
     group.name = `garden:${at}`;
-    const near = new Group();
-    near.name = `garden:${at}:near`;
-    const far = new Group();
-    far.name = `garden:${at}:far`;
-    const farTrees = new Group();
-    const farSmall = new Group();
-    far.add(farTrees, farSmall);
-    far.visible = false;
-    group.add(near, far);
-    const sphere = new Sphere(new Vector3(), 0);
-    const box = new Box3();
-    const pools = FAMILIES.map((mat) => new Pool(mat, `garden:${at}`, false, mat === 'mapLeaf' ? 1024 : 256, sphere, box));
-    for (const p of pools) near.add(p.mesh);
-    const farPools = [
-      new Pool('mapLeaf', `garden:${at}:far`, true, 64, sphere, box),
-      new Pool('mapBark', `garden:${at}:far`, true, 64, sphere, box),
-      new Pool('mapLeaf', `garden:${at}:farSmall`, true, 64, sphere, box),
-      new Pool('mapRock', `garden:${at}:farEarth`, true, 64, sphere, box),
-    ];
-    farTrees.add(farPools[FAR_LEAF].mesh, farPools[FAR_BARK].mesh);
-    farSmall.add(farPools[FAR_SMALL].mesh, farPools[FAR_EARTH].mesh);
-    for (const p of [...pools, ...farPools]) p.mesh.onBeforeRender = askShadow;
-    // Leaves sway as the village's (the near ones; the far crowns too, the same material); still shadows.
+    const parts = [makePart(at, 'small'), makePart(at, 'trees')] as const;
+    group.add(parts[SMALL].group, parts[TREE].group);
+    // Leaves sway as the village's; still shadows.
     swayLeaves(group, world.field);
     markStill(group);
     object.add(group);
-    return { at, group, near, far, farTrees, farSmall, pools, farPools, sphere, box, items: [], boundsDirty: true, maxCrown: 0, isFar: false, smallShown: true, treesShown: true };
+    return { at, group, parts, items: [], boundsDirty: true };
   }
   const batches: Record<Site, Batch> = { home: makeBatch('home'), pagoda: makeBatch('pagoda') };
   const batchList: readonly Batch[] = [batches.home, batches.pagoda];
@@ -273,7 +263,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   };
 
   function writePlant(it: Item, attrs: boolean): void {
-    const b = it.batch;
+    const pools = it.batch.parts[it.part].pools;
     const s = scaleOf(it);
     const a = plantXf(it, s);
     const d = it.data;
@@ -282,21 +272,16 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     for (let fi = 0; fi < FAMILIES.length; fi++) {
       const f = d.fams[fi];
       const run = it.runs[fi];
-      if (f && run) b.pools[fi].write(run, f, a, it.drop?.move[fi] ?? null, 0, f.n, attrs);
+      if (f && run) pools[fi].write(run, f, a, it.drop?.move[fi] ?? null, 0, f.n, attrs);
     }
-    const leaf = it.far[it.small ? FAR_SMALL : FAR_LEAF];
-    if (d.far.leaf && leaf) b.farPools[it.small ? FAR_SMALL : FAR_LEAF].write(leaf, d.far.leaf, a, null, 0, d.far.leaf.n, attrs);
-    const bark = it.far[FAR_BARK];
-    if (d.far.bark && bark) b.farPools[FAR_BARK].write(bark, d.far.bark, a, null, 0, d.far.bark.n, attrs);
   }
 
   function writeEarth(it: Item, attrs: boolean): void {
     const e = it.earth;
-    const b = it.batch;
+    const pools = it.batch.parts[SMALL].pools;
     if (!e) return;
-    if (it.rock) b.pools[ROCK].write(it.rock, e.rock, earthXf(it), null, 0, e.rock.n, attrs);
-    if (it.far[FAR_EARTH]) b.farPools[FAR_EARTH].write(it.far[FAR_EARTH]!, e.far, earthXf(it), null, 0, 1, attrs);
-    if (e.puddle && it.pud) b.pools[STONE].write(it.pud, e.puddle, earthXf(it, Math.max(1e-3, it.pud0)), null, 0, e.puddle.n, attrs);
+    if (it.rock) pools[ROCK].write(it.rock, e.rock, earthXf(it), null, 0, e.rock.n, attrs);
+    if (e.puddle && it.pud) pools[STONE].write(it.pud, e.puddle, earthXf(it, Math.max(1e-3, it.pud0)), null, 0, e.puddle.n, attrs);
     it.pudW = it.pud0;
     if (attrs) tint(it);
   }
@@ -307,10 +292,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     if (!e || !it.rock) return;
     it.earthC ??= new Float32Array(e.rock.n * 3);
     if (it.earthC.length !== e.rock.n * 3) it.earthC = new Float32Array(e.rock.n * 3);
-    tintEarth(e, it.wet, it.earthC, it.farEarthC);
-    it.batch.pools[ROCK].colors(it.rock, it.earthC);
-    const fe = it.far[FAR_EARTH];
-    if (fe) it.batch.farPools[FAR_EARTH].colors(fe, it.farEarthC);
+    tintEarth(e, it.wet, it.earthC);
+    it.batch.parts[SMALL].pools[ROCK].colors(it.rock, it.earthC);
     it.wetW = it.wet;
   }
 
@@ -335,22 +318,23 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     if (!it.earth || it.earthStage !== band) {
       it.earth = buildEarth(it.kind, look.stage, it.seed, it.x, it.y, it.z, world.groundAt);
       it.earthStage = band;
-      it.rock = b.pools[ROCK].fit(it.rock, it.earth.rock.n);
-      it.pud = b.pools[STONE].fit(it.pud, it.earth.puddle?.n ?? 0);
-      it.far[FAR_EARTH] = b.farPools[FAR_EARTH].fit(it.far[FAR_EARTH], 1);
+      const small = b.parts[SMALL].pools;
+      it.rock = small[ROCK].fit(it.rock, it.earth.rock.n);
+      it.pud = small[STONE].fit(it.pud, it.earth.puddle?.n ?? 0);
     }
     const t2 = performance.now();
     stats.earthMs = Math.max(stats.earthMs, t2 - t1);
-    // Its look's runs.
-    for (let fi = 0; fi < FAMILIES.length; fi++) it.runs[fi] = b.pools[fi].fit(it.runs[fi], next.fams[fi]?.n ?? 0);
-    const small = k.size === 'crop' || next.height < SMALL_H;
-    if (small !== it.small) {
-      it.far[FAR_LEAF] = b.farPools[FAR_LEAF].fit(it.far[FAR_LEAF], 0);
-      it.far[FAR_SMALL] = b.farPools[FAR_SMALL].fit(it.far[FAR_SMALL], 0);
-      it.small = small;
+    // Its look's runs, in its part (a tree joins the trees once it stands taller than a man and a half).
+    const part = k.size === 'crop' || next.height < SMALL_H ? SMALL : TREE;
+    if (part !== it.part) {
+      for (let fi = 0; fi < FAMILIES.length; fi++) it.runs[fi] = b.parts[it.part].pools[fi].fit(it.runs[fi], 0);
+      it.part = part;
     }
-    it.far[small ? FAR_SMALL : FAR_LEAF] = b.farPools[small ? FAR_SMALL : FAR_LEAF].fit(it.far[small ? FAR_SMALL : FAR_LEAF], next.far.leaf?.n ?? 0);
-    it.far[FAR_BARK] = b.farPools[FAR_BARK].fit(it.far[FAR_BARK], next.far.bark?.n ?? 0);
+    for (let fi = 0; fi < FAMILIES.length; fi++) it.runs[fi] = b.parts[part].pools[fi].fit(it.runs[fi], next.fams[fi]?.n ?? 0);
+    // (its crown, for the follow camera: roam/_gardenWalk.ts)
+    const foot = it.y + it.earth.foot;
+    if (next.crown && part === TREE) CROWNS.set(it.id, { x: it.x, z: it.z, y0: foot + next.crown.base, y1: foot + next.height, r: next.crown.r });
+    else CROWNS.delete(it.id);
     // How it comes: grows in (new), eases from the size it was (a new stage), drops its fruit.
     const live = settled && !shot;
     if (!prev) {
@@ -386,10 +370,10 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
 
   function release(it: Item): void {
     const b = it.batch;
-    for (let fi = 0; fi < FAMILIES.length; fi++) it.runs[fi] = b.pools[fi].fit(it.runs[fi], 0);
-    it.rock = b.pools[ROCK].fit(it.rock, 0);
-    it.pud = b.pools[STONE].fit(it.pud, 0);
-    for (let k = 0; k < it.far.length; k++) it.far[k] = b.farPools[k].fit(it.far[k], 0);
+    for (let fi = 0; fi < FAMILIES.length; fi++) it.runs[fi] = b.parts[it.part].pools[fi].fit(it.runs[fi], 0);
+    it.rock = b.parts[SMALL].pools[ROCK].fit(it.rock, 0);
+    it.pud = b.parts[SMALL].pools[STONE].fit(it.pud, 0);
+    CROWNS.delete(it.id);
     if (it.data) cache.release(it.data);
     it.data = null;
     items.delete(it.id);
@@ -418,8 +402,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       runs: FAMILIES.map(() => null),
       rock: null,
       pud: null,
-      far: [null, null, null, null],
-      small: true,
+      part: SMALL,
       mode: NONE,
       t: 0,
       from: 1,
@@ -429,7 +412,6 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       pud0: puddleLook(p.wet),
       pudW: -1,
       earthC: null,
-      farEarthC: new Float32Array(3),
       drop: null,
       stamp,
       queued: false,
@@ -440,64 +422,107 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     return it;
   }
 
-  /** The batch's bounds (its plants, their heights and reach), and where its holes are parked. */
+  /** A batch's parts' bounds (their plants, heights and reach; every earth in the small part), where their holes are parked, their cut edges. */
   function fitBounds(b: Batch): void {
     b.boundsDirty = false;
-    const c = b.sphere.center.set(0, 0, 0);
-    const n = b.items.length;
-    b.box.makeEmpty();
-    b.maxCrown = 0;
-    if (!n) {
-      b.sphere.radius = 0;
-      return;
+    for (let pi = 0; pi < 2; pi++) {
+      const part = b.parts[pi];
+      const c = part.sphere.center.set(0, 0, 0);
+      part.box.makeEmpty();
+      part.maxCrown = 0;
+      let n = 0;
+      for (const it of b.items) if (pi === SMALL || it.part === TREE) n++;
+      if (!n) {
+        part.sphere.radius = 0;
+        continue;
+      }
+      for (const it of b.items)
+        if (pi === SMALL || it.part === TREE) {
+          c.x += it.x / n;
+          c.z += it.z / n;
+        }
+      let lo = Infinity;
+      let hi = -Infinity;
+      let r = 0;
+      for (const it of b.items) {
+        if (pi === TREE && it.part !== TREE) continue;
+        const mine = it.part === pi;
+        const h = mine ? (it.data?.height ?? 1) + (it.earth?.foot ?? 0) : 0.2;
+        const reach = Math.max(mine ? (it.data?.reach ?? 1) : 0, pi === SMALL ? (it.earth?.reach ?? 0) : 0, 0.5) + 0.3;
+        lo = Math.min(lo, it.y - 0.2);
+        hi = Math.max(hi, it.y + h + 0.3);
+        r = Math.max(r, Math.hypot(it.x - c.x, it.z - c.z) + reach);
+        part.box.expandByPoint(_eye.set(it.x - reach, it.y - 0.2, it.z - reach));
+        part.box.expandByPoint(_eye.set(it.x + reach, it.y + h + 0.3, it.z + reach));
+        if (pi === TREE && it.data) part.maxCrown = Math.max(part.maxCrown, it.data.reach * 2);
+      }
+      c.y = (lo + hi) / 2;
+      part.sphere.radius = Math.hypot(r, (hi - lo) / 2);
+      let edge = 0;
+      for (const p of part.pools) {
+        p.park = { x: c.x, y: lo, z: c.z };
+        edge = Math.max(edge, p.edge());
+      }
+      part.edge = edge;
     }
-    for (const it of b.items) c.x += it.x / n;
-    for (const it of b.items) c.z += it.z / n;
-    let lo = Infinity;
-    let hi = -Infinity;
-    let r = 0;
-    for (const it of b.items) {
-      const h = (it.data?.height ?? 1) + (it.earth?.foot ?? 0);
-      const reach = Math.max(it.data?.reach ?? 1, it.earth?.reach ?? 0, 0.5) + 0.3;
-      lo = Math.min(lo, it.y - 0.2);
-      hi = Math.max(hi, it.y + h + 0.3);
-      r = Math.max(r, Math.hypot(it.x - c.x, it.z - c.z) + reach);
-      b.box.expandByPoint(_eye.set(it.x - reach, it.y - 0.2, it.z - reach));
-      b.box.expandByPoint(_eye.set(it.x + reach, it.y + h + 0.3, it.z + reach));
-      if (it.data?.far.leaf && !it.small) b.maxCrown = Math.max(b.maxCrown, it.data.reach * 2);
-    }
-    c.y = (lo + hi) / 2;
-    b.sphere.radius = Math.hypot(r, (hi - lo) / 2);
-    for (const p of [...b.pools, ...b.farPools]) p.park = { x: c.x, y: lo, z: c.z };
   }
 
-  /** Each frame: how the batch is drawn for this camera (near, far, what of it far). */
+  /**
+   * How a part is drawn for the camera that draws the picture now: hidden once too small to see, its blocks plain
+   * (rims painted) once their cut edges are under a pixel where it comes nearest, as the map's own meshes.
+   */
   function judge(b: Batch, camera: Camera): void {
-    const n = b.items.length;
-    b.group.visible = n > 0;
-    if (!n) return;
     _eye.setFromMatrixPosition(camera.matrixWorld);
-    const d = Math.max(0.01, _eye.distanceTo(b.sphere.center) - b.sphere.radius);
     const px = pixelSize(camera);
-    const want = (graphicsNow.plainBlocks ? 1 : DETAIL_PX) / (1 + (b.isFar ? 0 : HOLD));
-    const far = force ? force === 'far' : DETAIL / (d * px) < want;
-    const small = !far || 1 / (d * px) >= SMALL_PX / (b.smallShown ? 1 + HOLD : 1);
-    const trees = !far || b.maxCrown / (d * px) >= 1 / (b.treesShown ? 1 + HOLD : 1);
-    b.isFar = far;
-    b.smallShown = small;
-    b.treesShown = trees;
-    b.near.visible = !far;
-    b.far.visible = far;
-    b.farSmall.visible = far && small;
-    b.farTrees.visible = far && trees;
+    for (let pi = 0; pi < 2; pi++) {
+      const part = b.parts[pi];
+      if (part.sphere.radius <= 0) {
+        part.group.visible = false;
+        continue;
+      }
+      const d = Math.max(0.01, _eye.distanceTo(part.sphere.center) - part.sphere.radius);
+      const size = pi === SMALL ? 1 : part.maxCrown;
+      const need = pi === SMALL ? SMALL_PX : 1;
+      part.shown = size / (d * px) >= need / (part.shown ? 1 + HOLD : 1);
+      part.group.visible = part.shown;
+      if (!part.shown) continue;
+      // (an edge not measured yet, or blocks still growing in: never plain near)
+      const plain = graphicsNow.plainBlocks || (force ? force === 'far' : part.edge > 0.005 && plainAt(d, part.edge, px, part.plain));
+      const paint = plain && !graphicsNow.plainBlocks;
+      for (const p of part.pools) {
+        p.plain(plain);
+        paintRim(p.mesh, paint);
+      }
+      part.plain = plain;
+    }
+  }
+  const judgeAll = (camera: Camera) => {
+    for (let i = 0; i < batchList.length; i++) {
+      const b = batchList[i];
+      b.group.visible = b.items.length > 0;
+      if (b.group.visible) judge(b, camera);
+    }
+  };
+  /** The scene the garden is drawn in: judged in its `onBeforeRender`, with the camera of each picture drawn. */
+  let hooked: Scene | null = null;
+  function hookScene(): void {
+    let root: Object3D = object;
+    while (root.parent) root = root.parent;
+    if (!(root as Scene).isScene || hooked === root) return;
+    hooked = root as Scene;
+    const before = hooked.onBeforeRender;
+    // (three calls a scene's with the renderer, the scene, the camera and the target, before it culls)
+    hooked.onBeforeRender = function (this: Scene, ...args: Parameters<Scene['onBeforeRender']>) {
+      before.apply(this, args);
+      if (alive) judgeAll(args[2]);
+    };
   }
 
   function flushAll(): void {
     for (let i = 0; i < batchList.length; i++) {
       const b = batchList[i];
       if (b.boundsDirty) fitBounds(b);
-      for (const p of b.pools) p.flush();
-      for (const p of b.farPools) p.flush();
+      for (let pi = 0; pi < 2; pi++) for (const p of b.parts[pi].pools) p.flush();
     }
   }
 
@@ -509,23 +534,34 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   let idleCall = (globalThis as unknown as { requestIdleCallback?: Idle }).requestIdleCallback?.bind(globalThis);
   let idleWaiting = false;
   let idleAt = 0;
-  /** Its looks to come soon (the next stage within a tenth of its way; ripe fruit coming; fruit about to fall). */
+  /**
+   * Its looks to come soon: the next stage within a tenth of its way; the fruit ripening; ripe fruit about to fall;
+   * once ripe, the look after the harvest (picked: cut, no fruit); once drooping, the look after a watering and (not
+   * yet grown) the dead stick it becomes if no one comes.
+   */
   function nextLooks(it: Item, out: PlantLook[]): void {
     const p = it.plant;
     const d = it.data;
     if (!p || !d || p.dead) return;
     const k = KINDS[it.kind];
     const l = d.look;
-    const base = { kind: l.kind, stage: l.stage, fruit: 0 as 0 | 1 | 2, fallen: l.fallen, droop: 0 as const, dead: false, cut: l.cut, seed: l.seed };
+    if (l.droop) {
+      out.push({ ...l, droop: 0 });
+      if (l.stage < GROWN) out.push({ ...l, droop: 0, fruit: 0, dead: true });
+    }
     if (l.stage < GROWN) {
       const at = l.stage < 3 ? k.stageAt[l.stage as 0 | 1 | 2] : 1;
-      if (p.age / k.growDays > at - 0.1) out.push({ ...base, stage: (l.stage + 1) as Stage, fallen: 0 });
+      if (p.age / k.growDays > at - 0.1) out.push({ ...l, stage: (l.stage + 1) as Stage, fruit: 0, fallen: 0, droop: 0 });
       return;
     }
-    if (k.fruit.count[1] <= 0 || p.ripe < 0.25) return;
-    if (k.fruit.pick === 'ground') {
-      if (p.ripe > 0.75 && !l.fallen) for (let n = k.fruit.count[0]; n <= Math.min(3, k.fruit.count[1]); n++) if (n > 0) out.push({ ...base, fallen: n });
-    } else if (l.fruit < 2) out.push({ ...base, fruit: (l.fruit + 1) as 1 | 2 });
+    if (k.fruit.count[1] <= 0) return;
+    const ground = k.fruit.pick === 'ground';
+    // (picked: what a harvest leaves; a `once` plant is pulled with its harvest)
+    if ((ground ? l.fallen > 0 : l.fruit === 2) && k.fruit.harvest === 'again') out.push({ ...l, fruit: 0, fallen: 0, droop: 0, cut: true });
+    if (p.ripe < 0.25) return;
+    if (ground) {
+      if (p.ripe > 0.75 && !l.fallen) for (let n = k.fruit.count[0]; n <= Math.min(3, k.fruit.count[1]); n++) if (n > 0) out.push({ ...l, fruit: 0, fallen: n, droop: 0 });
+    } else if (l.fruit < 2) out.push({ ...l, fruit: (l.fruit + 1) as 1 | 2, droop: 0 });
   }
   const ahead: PlantLook[] = [];
   /** Build the next look to come that is not built yet (round the garden from where the last one stopped): false if none. */
@@ -554,28 +590,44 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     if (alive && list.length && warmNext()) aheadAt = now;
   };
 
-  // ── Every model's code run once now (roaming waits for the add-ons: this is before the first frame of play), so
-  // no model's first build (the JIT's first compile of its code, tens of ms) lands in a frame of play ──
+  // ── Every model's code run once before play (roaming waits for the add-ons; the loading screen stays for
+  // seconds after), so no model's first build (the JIT's first compile of its code, tens of ms) lands in a frame of
+  // play. One look a task, between the loading screen's frames (no long task: about a second in all, the loading
+  // screen stays for many). The garden's own plants build as soon as they are seen (spread over frames, under the
+  // loading screen too) ──
+  const warmList: PlantLook[] = [];
   if (!shot) {
-    const t0 = performance.now();
-    const looks: Omit<PlantLook, 'kind'>[] = [];
-    const L = (stage: Stage, more: Partial<PlantLook> = {}) => looks.push({ stage, fruit: 0, fallen: 0, droop: 0, dead: false, cut: false, seed: 0.5, ...more });
+    const L = (stage: Stage, more: Partial<PlantLook> = {}) => {
+      for (const kind of Object.keys(KINDS) as PlantKindId[]) warmList.push({ kind, stage, fruit: 0, fallen: 0, droop: 0, dead: false, cut: false, seed: 0.5, ...more });
+    };
     for (let st = 0; st <= 4; st++) L(st as Stage);
     L(4, { fruit: 1 });
     L(4, { fruit: 2, cut: true });
     L(4, { fallen: 2 });
     L(2, { droop: 2 });
     L(1, { dead: true });
-    for (const kind of Object.keys(KINDS) as PlantKindId[])
-      for (const l of looks)
-        try {
-          buildLook({ ...l, kind });
-        } catch (e) {
-          console.warn(`[garden] the ${kind} model failed to build (stage ${l.stage}):`, e);
-        }
-    stats.warmMs = performance.now() - t0;
-    console.info(`[garden] every plant's model run once in ${stats.warmMs.toFixed(0)} ms (before play: no first build in a frame of play)`);
   }
+  let warmAt = 0;
+  let warmLongest = 0;
+  const warmOne = (): boolean => {
+    const l = warmList[warmAt++];
+    if (!l) return false;
+    const t0 = performance.now();
+    try {
+      buildLook(l);
+    } catch (e) {
+      console.warn(`[garden] the ${l.kind} model failed to build (stage ${l.stage}):`, e);
+    }
+    const ms = performance.now() - t0;
+    stats.warmMs += ms;
+    warmLongest = Math.max(warmLongest, ms);
+    if (warmAt === warmList.length) console.info(`[garden] every plant's model run once: ${warmList.length} looks in ${stats.warmMs.toFixed(0)} ms, ${warmLongest.toFixed(1)} ms at most a task (before play: no first build in a frame of play)`);
+    return true;
+  };
+  const warmStep = () => {
+    if (alive && warmOne()) setTimeout(warmStep, 0);
+  };
+  if (warmList.length) setTimeout(warmStep, 0);
 
   const view: GardenView = {
     object,
@@ -638,6 +690,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       smooth = real > 0 && real <= frameCap.time * 1.3 ? smooth + 1 : 0;
       lastT = t;
       now += dt;
+      let tints = 0;
       for (let i = list.length - 1; i >= 0; i--) {
         const it = list[i];
         if (!it.data) continue;
@@ -657,7 +710,11 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             }
           } else it.earthUp = 1;
           moved = true;
-          if (!it.mode && it.earthUp >= 1) shadowWant = true;
+          // (done: its blocks at their size, measured again for the plain boxes far off)
+          if (!it.mode && it.earthUp >= 1) {
+            shadowWant = true;
+            it.batch.boundsDirty = true;
+          }
         }
         if (it.drop) {
           it.drop.t += dt;
@@ -665,6 +722,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             dropMoves(it.drop, it.yaw, 1);
             it.drop = null;
             shadowWant = true;
+            it.batch.boundsDirty = true;
           }
           moved = true;
         }
@@ -677,18 +735,19 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         if (p && it.earth) {
           const w = wetLook(p.wet);
           it.wet = dt > 0 && Math.abs(w - it.wet) > 0.003 ? it.wet + (w - it.wet) * (1 - Math.exp(-dt / WET_TAU)) : w;
-          if (it.wet !== it.wetW && (Math.abs(it.wet - it.wetW) > 0.01 || it.wet === w)) tint(it);
+          if (it.wet !== it.wetW && (Math.abs(it.wet - it.wetW) > 0.01 || it.wet === w) && (tints++ < TINTS || dt === 0)) tint(it);
           const pd = it.earth.puddle ? puddleLook(p.wet) : 0;
           it.pud0 = dt > 0 && Math.abs(pd - it.pud0) > 0.003 ? it.pud0 + (pd - it.pud0) * (1 - Math.exp(-dt / WET_TAU)) : pd;
           if (it.pud && it.pud0 !== it.pudW && (Math.abs(it.pud0 - it.pudW) > 0.01 || it.pud0 === pd)) {
-            it.batch.pools[STONE].write(it.pud, it.earth.puddle!, earthXf(it, Math.max(1e-3, it.pud0)), null, 0, it.earth.puddle!.n, false);
+            it.batch.parts[SMALL].pools[STONE].write(it.pud, it.earth.puddle!, earthXf(it, Math.max(1e-3, it.pud0)), null, 0, it.earth.puddle!.n, false);
             it.pudW = it.pud0;
           }
         }
       }
       flushAll();
-      judge(batches.home, camera);
-      judge(batches.pagoda, camera);
+      // (judged as each picture is drawn; here too, for the frames before the scene is found)
+      hookScene();
+      if (!hooked) judgeAll(camera);
       // (only the still shadows of low and medium need asking: the others are drawn every few frames)
       if (shadowWant && (now - shadowAt >= SHADOW_EVERY || dt === 0)) {
         shadowWant = false;
@@ -701,7 +760,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     },
     dispose() {
       alive = false;
-      for (const b of Object.values(batches)) for (const p of [...b.pools, ...b.farPools]) p.dispose();
+      for (const b of batchList) for (const part of b.parts) for (const p of part.pools) p.dispose();
+      for (const it of list) CROWNS.delete(it.id);
       object.clear();
       cache.clear();
       items.clear();
@@ -735,10 +795,11 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             looks: cache.size,
             ahead: stats.ahead,
             warmMs: +stats.warmMs.toFixed(1),
+            warm: `${Math.min(warmAt, warmList.length)}/${warmList.length}, longest ${warmLongest.toFixed(1)} ms`,
             build: { n: stats.builds, avgMs: +(stats.buildMs / Math.max(1, stats.builds)).toFixed(3), maxMs: +stats.maxMs.toFixed(3), lastMs: +stats.lastMs.toFixed(3) },
             frame: { ms: +stats.frameMs.toFixed(3), maxMs: +stats.maxFrameMs.toFixed(3) },
             parts: { lookMs: +stats.lookMs.toFixed(3), earthMs: +stats.earthMs.toFixed(3), writeMs: +stats.writeMs.toFixed(3) },
-            lod: Object.fromEntries(Object.values(batches).map((b) => [b.at, { far: b.isFar, small: b.smallShown, trees: b.treesShown, r: +b.sphere.radius.toFixed(1), maxCrown: +b.maxCrown.toFixed(2) }])),
+            lod: Object.fromEntries(batchList.map((b) => [b.at, b.parts.map((p, i) => ({ part: i ? 'trees' : 'small', shown: p.shown && p.group.visible, plain: p.plain, r: +p.sphere.radius.toFixed(1), edge: +p.edge.toFixed(3), edgeNow: +Math.max(0, ...p.pools.map((q) => q.edge())).toFixed(3), used: p.pools.map((q) => q.used).join(" "), maxCrown: +p.maxCrown.toFixed(2) }))])),
             draws,
             pools: pools(object),
           };
@@ -769,7 +830,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
               queue.push(it);
             }
         },
-        items: () => list.map((it) => ({ id: it.id, kind: it.kind, x: it.x, y: it.y, z: it.z, foot: it.earth?.foot, h: it.data?.height, mode: it.mode, small: it.small, drop: it.drop ? { fruit: it.drop.fruit.length, t: +it.drop.t.toFixed(2), end: +it.drop.end.toFixed(2) } : null, fallen: it.data?.look.fallen })),
+        items: () => list.map((it) => ({ id: it.id, kind: it.kind, x: it.x, y: it.y, z: it.z, foot: it.earth?.foot, h: it.data?.height, mode: it.mode, part: it.part, drop: it.drop ? { fruit: it.drop.fruit.length, t: +it.drop.t.toFixed(2), end: +it.drop.end.toFixed(2) } : null, fallen: it.data?.look.fallen })),
       },
     });
   return view;
