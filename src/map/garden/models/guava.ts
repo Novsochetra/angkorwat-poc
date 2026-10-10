@@ -87,9 +87,10 @@ function guava(b: VoxelBuilder, p: P3, ripe: boolean, wrapped: boolean, s: numbe
 }
 
 /** A twisted limb or twig from a to c: pieces bending off the straight line, thick ones octagonal with a peeling patch. */
-function limb(b: VoxelBuilder, look: PlantLook, a: P3, c: P3, w0: number, w1: number, pieces: number, twist: number, r: R, id: number, arch = 0): void {
+function limb(b: VoxelBuilder, look: PlantLook, a: P3, c: P3, w0: number, w1: number, pieces: number, twist: number, r: R, id: number, arch = 0): P3 {
   const bark = woodTone(pick(BARK, r(id, 1)), look);
   let p = a;
+  let joint = c;
   for (let i = 1; i <= pieces; i++) {
     const t = i / pieces;
     const bend = i < pieces ? twist * Math.sin(t * Math.PI) : 0;
@@ -105,8 +106,10 @@ function limb(b: VoxelBuilder, look: PlantLook, a: P3, c: P3, w0: number, w1: nu
         beam(b, surface(p, q, t0, phi, w * 0.42), surface(p, q, t0 + 0.3, phi, w * 0.42), w * 0.55, 0.02, woodTone(pick(PATCH, r(id, 30 + i)), look), 'mapBark', phi);
       }
     }
+    if (i === 1) joint = q;
     p = q;
   }
+  return joint;
 }
 
 /** A young stem with pairs of opposite leaves up it (stages 0 and 1), `h` tall. */
@@ -156,7 +159,7 @@ registerModel('guava', (b, look) => {
   const P = {
     2: { fork: 0.4, w: 0.06, limbs: 2, cy: 1.18, rx: 0.55, ry: 0.45, clumps: 6, rc: 0.3 },
     3: { fork: 0.45, w: 0.12, limbs: 3, cy: 1.9, rx: 1.2, ry: 0.95, clumps: 12, rc: 0.48 },
-    4: { fork: 0.6, w: 0.2, limbs: 4, cy: 2.7, rx: 1.75, ry: 1.3, clumps: 19, rc: 0.62 },
+    4: { fork: 0.6, w: 0.2, limbs: 4, cy: 2.7, rx: 1.75, ry: 1.3, clumps: 17, rc: 0.62 },
   }[st as 2 | 3 | 4];
   const fork: P3 = [(r(1, 3) - 0.5) * 0.15, P.fork, (r(2, 3) - 0.5) * 0.15];
   limb(b, look, [0, 0, 0], fork, P.w, P.w * 0.92, 1, 0, r, 1);
@@ -171,17 +174,32 @@ registerModel('guava', (b, look) => {
   // The limbs: out and up from the fork to their elbows inside the crown.
   const az0 = r(5, 3) * 6.28;
   const elbows: P3[] = [];
+  const joints: P3[] = [];
+  const limbAz: number[] = [];
   for (let i = 0; i < P.limbs; i++) {
     const az = az0 + (i / P.limbs) * 6.28 + (r(i, 4) - 0.5) * 0.7;
     const out = P.rx * (i === 0 ? 0.15 : 0.45 + 0.15 * r(i, 5));
     const e: P3 = [fork[0] + Math.sin(az) * out, P.cy - P.ry * (i === 0 ? -0.05 : 0.35 + 0.15 * r(i, 6)), fork[2] + Math.cos(az) * out];
-    limb(b, look, fork, e, P.w * 0.75, P.w * 0.45, 2, 0.35 * P.rx, r, 10 + i);
+    joints.push(limb(b, look, fork, e, P.w * 0.75, P.w * 0.45, 2, 0.35 * P.rx, r, 10 + i));
     elbows.push(e);
+    limbAz.push(az);
   }
   // The clumps: points spread over the crown's upper shell (a seeded spiral), each fed by a twig from the nearest elbow.
   const droop = look.droop;
   const tips: P3[] = [];
   const rcs: number[] = [];
+  // Low twigs off the limbs' bends (a grown or nearly grown tree): small clumps at his chest, where he picks.
+  const low = st >= 3 ? P.limbs - 1 : 0;
+  for (let i = 1; i <= low; i++) {
+    const j = joints[i];
+    const az = limbAz[i] + (r(i, 90) - 0.5) * 0.9;
+    const c: P3 = [j[0] + Math.sin(az) * P.rx * 0.32, Math.min(j[1] + 0.08, st === 4 ? 1.75 : 1.5) - (droop ? 0.1 * droop : 0), j[2] + Math.cos(az) * P.rx * 0.32];
+    limb(b, look, j, c, P.w * 0.3, P.w * 0.18, 2, 0.15, r, 400 + i, 0.06);
+    const rc = P.rc * 0.62;
+    if (!look.dead) cluster(b, look, c, rc, r, 450 + i);
+    tips.push(c);
+    rcs.push(rc);
+  }
   for (let k = 0; k < P.clumps; k++) {
     const u = (k + 0.5) / P.clumps;
     const y = 1 - u * 1.55; // down to −0.55 of the shell
@@ -242,13 +260,14 @@ registerModel('guava', (b, look) => {
       const c = tips[i];
       const rc = rcs[i];
       // (fruit hangs under the lower and outer clumps, where the leaves let it down)
-      const n = Math.min(c[1] > P.cy + P.ry * 0.45 || r(i, 8) < 0.2 ? 0 : r(i, 9) < 0.3 ? 2 : 1, 14 - k);
+      // (the low clumps always bear one, bare of a sleeve: the fruit at hand height he picks)
+      const n = i < low ? 1 : Math.min(c[1] > P.cy + P.ry * 0.45 || r(i, 8) < 0.2 ? 0 : r(i, 9) < 0.3 ? 2 : 1, 14 - k);
       for (let j = 0; j < n; j++) {
         // (on the clump's outer side, just under its leaves)
         const a = Math.atan2(c[0], c[2]) + (r(i * 3 + j, 10) - 0.5) * 1.8;
         const d = rc * (0.3 + 0.4 * r(i * 3 + j, 11));
         const p: P3 = [c[0] + Math.sin(a) * d, c[1] - rc * 0.5 - 0.06 * r(i * 3 + j, 12), c[2] + Math.cos(a) * d];
-        guava(b, p, ripe, r(i * 3 + j, 13) < wrapShare, 1.4 + 0.2 * r(i * 3 + j, 14), r(i * 3 + j, 15));
+        guava(b, p, ripe, i >= low && r(i * 3 + j, 13) < wrapShare, 1.4 + 0.2 * r(i * 3 + j, 14), r(i * 3 + j, 15));
         k++;
       }
     }

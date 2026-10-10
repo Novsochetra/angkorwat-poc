@@ -175,16 +175,22 @@ function pup(b: VoxelBuilder, look: PlantLook, x: number, z: number, h: number, 
 
 /** The bunch: its stalk out of the crown and bending down, the hands of fingers turned up, the bare stalk, the flower. */
 function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: number) => number): void {
-  const az = (r(1, 50) - 0.5) * 1.1;
+  // (out to the plant's side, +x: clear of the pups behind and the stump and follower on its −x side; seen apart
+  // from the stem against the sky and the leaves from the front and the side)
+  const az = Math.PI / 2 + (r(1, 50) - 0.5) * 0.6;
   const dx = Math.sin(az);
   const dz = Math.cos(az);
   const P = (o: number, y: number): P3 => [top[0] + dx * o, top[1] + y, top[2] + dz * o];
-  const pts = [P(0, 0), P(0.28, 0.3), P(0.62, 0.24), P(0.82, -0.08), P(0.86, -0.4)];
+  // The stalk arcs out of the crown and hangs down under the bunch's weight, ≈ 0.85 m out from the stem's middle
+  // (≈ 0.6 m clear of it): the top hand at ≈ 1.38 m (its fingers up to ≈ 1.6 m), so the stalk he cuts, just
+  // above it, is at ≈ 1.4–1.6 m, in his reach; the flower below it at his knees, clear of the earth.
+  const O = 0.85;
+  const y0 = 1.38 - top[1];
+  const y1 = y0 - 0.45;
+  const pts = [P(0, 0), P(0.3, 0.26), P(0.62, 0.18), P(0.8, -0.14), P(O, (y0 - 0.14) / 2), P(O, y0 + 0.02)];
   for (let i = 0; i < pts.length - 1; i++) log(b, pts[i], pts[i + 1], 0.075, PEDUNCLE, 'mapBark');
-  const axis = (y: number): P3 => [top[0] + dx * 0.86, top[1] + y, top[2] + dz * 0.86];
-  const hands = 6 + Math.floor(r(2, 50) * 2);
-  const y0 = -0.4;
-  const y1 = -1.04;
+  const axis = (y: number): P3 => [top[0] + dx * O, top[1] + y, top[2] + dz * O];
+  const hands = 5 + Math.floor(r(2, 50) * 2);
   log(b, axis(y0), axis(y1 - 0.06), 0.07, PEDUNCLE, 'mapBark');
   const ripe = look.fruit === 2;
   for (let h = 0; h < hands; h++) {
@@ -203,18 +209,18 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
     }
   }
   // The bare stalk (the old flowers' scars) and the flower hanging at its end.
-  const yb = y1 - 0.3;
+  const yb = y1 - 0.07;
   log(b, axis(y1 - 0.06), axis(yb), 0.05, PEDUNCLE, 'mapBark');
-  b.box(axis(y1 - 0.2)[0], top[1] + y1 - 0.2, axis(0)[2], 0.07, 0.03, 0.07, 0x6a5232, 'mapBark');
+
   const c = axis(yb);
   const lay: [number, number, number][] = [
     // (drop below the stalk's end, width, height)
-    [0.03, 0.08, 0.07],
-    [0.11, 0.17, 0.11],
-    [0.23, 0.22, 0.15],
-    [0.36, 0.17, 0.13],
-    [0.46, 0.1, 0.09],
-    [0.53, 0.05, 0.06],
+    [0.02, 0.08, 0.07],
+    [0.08, 0.15, 0.1],
+    [0.17, 0.19, 0.13],
+    [0.26, 0.15, 0.11],
+    [0.33, 0.09, 0.08],
+    [0.37, 0.05, 0.05],
   ];
   for (let i = 0; i < lay.length; i++) {
     const [d, w, hh] = lay[i];
@@ -222,8 +228,8 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
   }
   // One bract lifting at the top, red inside, the pale male flowers under it.
   const ba = az + (r(4, 50) - 0.5) * 1.2;
-  const hinge: P3 = [c[0] + Math.sin(ba) * 0.08, c[1] - 0.1, c[2] + Math.cos(ba) * 0.08];
-  beam(b, hinge, along(hinge, ba, -0.5, 0.17), 0.15, 0.025, BRACT_IN, 'petal', 0);
+  const hinge: P3 = [c[0] + Math.sin(ba) * 0.07, c[1] - 0.08, c[2] + Math.cos(ba) * 0.07];
+  beam(b, hinge, along(hinge, ba, -0.5, 0.14), 0.13, 0.025, BRACT_IN, 'petal', 0);
   b.box(hinge[0], hinge[1] - 0.03, hinge[2], 0.09, 0.035, 0.04, MALE, 'petal', { ry: ba });
 }
 

@@ -46,9 +46,9 @@ export const GROWN: Stage = 4;
 /**
  * How he takes the harvest (the poses: character/gardenWork.ts; garden/actions.ts):
  * - `low`: picks it bending over a low plant (eggplant), or off the ground where it lies on its vine (pumpkin);
- * - `reach`: standing, from a stalk or a branch at hand height (corn, guava, a papaya's lowest fruit, a jackfruit on the trunk);
+ * - `reach`: standing, from a stalk or a branch at hand height, at most ≈ 1.75 m (corn, guava, a jackfruit on the trunk);
  * - `cut`: with his knife (the sugarcane's canes, the banana's bunch);
- * - `pole`: with a long bamboo picking pole and its basket, up in the crown (mango);
+ * - `pole`: with a long bamboo picking pole and its basket, up in the crown (mango, the papaya's fruit under its crown);
  * - `ground`: ripe fruit falls by itself; he picks it up from under the tree (durian, coconut, sugar palm).
  */
 export type PickStyle = 'low' | 'reach' | 'cut' | 'pole' | 'ground';
@@ -134,7 +134,7 @@ export const KINDS: Record<PlantKindId, PlantKind> = {
   sugarcane: K({
     id: 'sugarcane', name: 'gardenSugarcane', note: 'gardenSugarcaneNote', size: 'crop', form: 'cutting',
     growDays: 4, stageAt: [0.08, 0.3, 0.65], thirst: 1.2, dieAfter: 1.2,
-    fruit: { months: 'all', ripenDays: 2, harvest: 'again', count: [2, 3], pick: 'cut', item: 'gardenSugarcaneItem', eat: { consume: 'skewer', colors: [0x8a5a8a, 0xc8b878, 0x6a9a3a] }, sell: 1000 },
+    fruit: { months: 'all', ripenDays: 2, harvest: 'again', count: [2, 3], pick: 'cut', item: 'gardenSugarcaneItem', eat: { consume: 'skewer', colors: [0xe8dca0, 0x8a5a8a, 0x6a9a3a] }, sell: 1000 },
     price: 1500, room: 0.8, height: 3.4, spread: 0.7, trunk: 0,
   }),
   banana: K({
@@ -146,7 +146,7 @@ export const KINDS: Record<PlantKindId, PlantKind> = {
   papaya: K({
     id: 'papaya', name: 'gardenPapaya', note: 'gardenPapayaNote', size: 'tree', form: 'seedling',
     growDays: 4, stageAt: [0.08, 0.3, 0.65], thirst: 1.2, dieAfter: 1.2,
-    fruit: { months: 'all', ripenDays: 1, harvest: 'again', count: [1, 2], pick: 'reach', item: 'gardenPapayaItem', eat: { consume: 'fruit', colors: [0xf08a2a, 0xe8a030, 0x7aa040] }, sell: 2500 },
+    fruit: { months: 'all', ripenDays: 1, harvest: 'again', count: [1, 2], pick: 'pole', item: 'gardenPapayaItem', eat: { consume: 'fruit', colors: [0xf08a2a, 0xe8a030, 0x7aa040] }, sell: 2500 },
     price: 2000, room: 1.4, height: 4, spread: 1.2, trunk: 0.12,
   }),
   guava: K({
@@ -176,13 +176,13 @@ export const KINDS: Record<PlantKindId, PlantKind> = {
   coconut: K({
     id: 'coconut', name: 'gardenCoconut', note: 'gardenCoconutNote', size: 'tree', form: 'seedling',
     growDays: 12, stageAt: [0.05, 0.2, 0.5], thirst: 1.6, dieAfter: 1.6,
-    fruit: { months: 'all', ripenDays: 2, harvest: 'again', count: [1, 2], pick: 'ground', item: 'gardenCoconutItem', eat: { consume: 'coconut', colors: [0x6a9a3a, 0x7aa848, 0xf4f0e0] }, sell: 2000 },
+    fruit: { months: 'all', ripenDays: 2, harvest: 'again', count: [1, 2], pick: 'ground', item: 'gardenCoconutItem', eat: { consume: 'coconut', colors: [0x6a9a3a, 0xece2c2, 0xf4f0e0] }, sell: 2000 },
     price: 5000, room: 2.6, height: 11, spread: 3.2, trunk: 0.22,
   }),
   sugarPalm: K({
     id: 'sugarPalm', name: 'gardenSugarPalm', note: 'gardenSugarPalmNote', size: 'tree', form: 'seedling',
     growDays: 24, stageAt: [0.04, 0.15, 0.45], thirst: 1.8, dieAfter: 1.8,
-    fruit: { months: [12, 5], ripenDays: 2, harvest: 'again', count: [2, 3], pick: 'ground', item: 'gardenSugarPalmItem', eat: { consume: 'fruit', colors: [0x2a2420, 0xf4f0d8, 0x3a3028] }, sell: 1000 },
+    fruit: { months: [12, 5], ripenDays: 2, harvest: 'again', count: [2, 3], pick: 'ground', item: 'gardenSugarPalmItem', eat: { consume: 'fruit', colors: [0xf4f0d8, 0x2a2420, 0x3a3028] }, sell: 1000 },
     price: 4000, room: 2.8, height: 13, spread: 3.2, trunk: 0.26,
   }),
   bodhi: K({

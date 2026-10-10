@@ -27,6 +27,7 @@ import { EXPRESSIONS, type ExpressionName } from '../character/parts/face';
 import { FOOD_KINDS, isFoodKind, type FoodKind } from '../character/parts/food';
 import { isMeal, MEAL_OF } from '../character/meals';
 import { REST_U, restDuration, restPose, type RestState } from '../character/rest';
+import { applyGarden, gardenAfter, gardenAt, gardenFromParams, gardenPropsLineup, gardenReach, gardenReachAll } from './_garden';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { installLookPanel } from '../voxel/LookPanel';
 import { CHARACTER_HEIGHT_M, RUN_SPEED, WALK_SPEED } from '../world/scale';
@@ -117,7 +118,9 @@ let food: FoodKind | null = isFoodKind(params.get('food')) ? (params.get('food')
 const foodColors = params.get('colors')?.split(',').map((c) => parseInt(c, 16));
 const seated = params.get('sit') === '1';
 const turnaround = params.get('turnaround') === '1';
-const TURN_SPACING = 1.05;
+/** The garden's work (./_garden.ts): `garden=<action>`, `gt=`, `kind=`, `spot=`, `sheet=<n>`. */
+const garden = gardenFromParams(params, shot);
+const TURN_SPACING = garden?.sheet ? 1.5 : 1.05;
 const TURN_LABELS = ['Front (0°)', 'Front-Left (45°)', 'Left (90°)', 'Back-Left (135°)', 'Back (180°)', 'Back-Right (225°)', 'Right (270°)', 'Front-Right (315°)'];
 const explorers: AngkorExplorer[] = [];
 const stage = new Group();
@@ -126,7 +129,7 @@ scene.add(stage);
 function spawn(): void {
   for (const e of explorers) e.dispose();
   explorers.length = 0;
-  const count = turnaround ? 8 : 1;
+  const count = garden?.sheet ? garden.sheet : turnaround ? 8 : 1;
   const spacing = TURN_SPACING;
   for (let i = 0; i < count; i++) {
     const e = new AngkorExplorer({ quality, outfit, expression });
@@ -137,7 +140,7 @@ function spawn(): void {
       const [yaw, pitch, reach = 1] = params.get('saim')!.split(',').map(Number);
       Object.assign(e.selfieAim, { yaw: (yaw * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, reach });
     }
-    e.object.position.x = turnaround ? (i - (count - 1) / 2) * spacing : 0;
+    e.object.position.x = count > 1 ? (i - (count - 1) / 2) * spacing : 0;
     e.object.rotation.y = turnaround ? (i * Math.PI) / 4 : (num('view', 0) * Math.PI) / 180;
     stage.add(e.object);
     explorers.push(e);
@@ -156,6 +159,10 @@ const RESTS = ['sit', 'lie', 'sleep'] as const;
 type RestAnim = (typeof RESTS)[number];
 
 function applyAnim(): void {
+  if (garden) {
+    explorers.forEach((e, i) => applyGarden(e, garden, i, explorers.length));
+    return;
+  }
   for (const e of explorers) {
     e.setMotion(speedFor(anim), anim !== 'jump', anim === 'jump' ? 1.5 : 0);
     // (a meal: the food given, or the action's own; else the food held, if any)
@@ -204,10 +211,10 @@ function rest(e: AngkorExplorer, kind: RestAnim | null): void {
 
 function frame(): void {
   const h = CHARACTER_HEIGHT_M;
-  if (turnaround) {
-    // Fit the row of eight figures to the viewport width (and height).
+  if (turnaround || (garden?.sheet ?? 0) > 1) {
+    // Fit the row of figures to the viewport width (and height).
     camera.fov = 16;
-    const rowHalf = (TURN_SPACING * 7) / 2 + 0.6;
+    const rowHalf = (TURN_SPACING * (explorers.length - 1)) / 2 + 0.6;
     const tanV = Math.tan((camera.fov * Math.PI) / 360);
     const tanH = tanV * camera.aspect;
     const dist = Math.max(rowHalf / tanH, (h * 0.75) / tanV);
@@ -234,11 +241,20 @@ function settle(t: number): void {
   const steps = Math.round(t * 60);
   for (let i = 0; i < steps; i++) for (const e of explorers) e.update(1 / 60);
   for (const e of explorers) e.update(0);
+  if (garden) {
+    for (const e of explorers) e.object.updateMatrixWorld(true);
+    gardenAfter(garden, 0);
+    if (shot) console.warn(`[garden] reach ${gardenReach(garden)}`);
+  }
 }
 
 spawn();
+if (params.has('gardenprops')) {
+  for (const e of explorers) e.object.visible = false;
+  scene.add(gardenPropsLineup(Number(params.get('gardenprops')) - 1));
+}
 frame();
-settle(num('t', shot ? 0.5 : 0));
+settle(num('t', garden ? 1.6 : shot ? 0.5 : 0));
 posthogLogger.info('character viewer initialized', {
   entry_point: 'viewer',
   explorer_count: explorers.length,
@@ -405,6 +421,7 @@ function tick(now: number): void {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // (the first rAF time can predate `last`)
   last = now;
   if (!feedback?.active) for (const e of explorers) e.update(dt); // frozen while reporting
+  if (garden && !feedback?.active) gardenAfter(garden, dt);
   controls.update();
   renderer.render(scene, camera);
   placeLabels();
@@ -420,4 +437,4 @@ if (shot) {
 } else requestAnimationFrame(tick);
 
 // Handy for debugging from the console.
-Object.assign(window, { explorers, scene, camera, renderer, Vector3, feedback });
+Object.assign(window, { explorers, scene, camera, renderer, Vector3, feedback, gardenReachAll, gardenAt });
