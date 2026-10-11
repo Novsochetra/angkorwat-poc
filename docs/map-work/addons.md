@@ -1014,18 +1014,18 @@ the `KITE_HOOK` between the two sides) and `people/_sceneKites.ts`.
   (the menu, eating, the bag) is about eating, a kite is one thing bought once
   and kept, so it has its own small card and only tells the people part.
 - **Flying it**: "E  Fly your kite" is offered only where and when it really
-  flies — fair weather and the kite season's wind aloft (`_kiteSky.ts
-  windAloft`: the people's kites' steady breeze, only in the kite season, the
-  north wind from after the Water Festival to March; `people/_kite.ts
-  seasonBreeze`), on the kite fields (`people/_sceneKites.ts KITE_FIELDS`: the
-  families' east, the children's west) or a dry rice field, away from the
-  villages, the markets, the sey circle, a place's entrance and the stalls, with
-  nothing over him or down the wind (`clearance`, `hardClearance`,
-  `softClearance`; not where a beacon, a moored boat, a ramp or the balloon has
+  flies — fair weather and some wind aloft (`_kiteSky.ts windAloft`: the
+  people's kites' steady breeze in the kite season, the north wind from after
+  the Water Festival to March, `people/_kite.ts seasonBreeze`; in any other
+  month a breezy day lifts it too, lower, and a lull brings it down), anywhere
+  on open land (the kite fields, meadows, dry rice fields, a temple's courts, a
+  hilltop: not a flooded rice field, the market's crowd, the sey circle, 25 m
+  round a place's entrance or 10 m round a stall: `kiteGround`), with nothing
+  over him or down the wind (`clearance`, `hardClearance`, `softClearance`; not where a beacon, a moored boat, a ramp or the balloon has
   the E). It is last in the E row (`order` 90, after every other add-on): the dog,
-  the sey, the farmers' work in reach win. Out of the season (or in a calm), on
-  the families' field, a toast once a visit says kites fly there in the dry
-  season (no E; the calendar lists the families' kite flying: `kitesFlying`).
+  the sey, the farmers' work in reach win. In a calm, where it would fly, a
+  toast once a visit says to wait for a breeze (no E; the calendar lists the
+  families' kite flying, still only in their season: `kitesFlying`).
   Then he turns into the wind, the kite held up past his right shoulder, runs a
   few steps and lets go; it climbs behind him; he turns round and it climbs on
   to 24 m of line. **W** lets out line (to 80 m: higher and further, sinking a

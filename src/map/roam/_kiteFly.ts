@@ -7,10 +7,9 @@ import { SFX } from '../audio/addonSfx';
 import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
 import { SURFACE } from '../heightfield';
-import { BACK_HAMLET, EAST_VILLAGE, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES, VILLAGE } from '../layout';
+import { MARKET, PLACES } from '../layout';
 import { paddyFlooded } from '../paddies/stages';
 import { KITE_HOOK } from '../people/_kite';
-import { KITE_FIELDS } from '../people/_sceneKites';
 import { progress } from '../progress';
 import { SEY_SPOT } from '../sey';
 import { browse, SHOPS } from '../shop';
@@ -43,15 +42,16 @@ import { stepSound } from './walker';
  * it (progress.ts `kite.have`).
  *
  * **Flying it.** "E  Fly your kite" is offered only where and when it really
- * flies: in fair weather with the kite season's wind aloft (the north wind
- * from after the Water Festival to March, _kiteSky.ts `windAloft`), on the
- * kite fields (the families' east, the children's west) or a dry rice field,
- * away from the villages, the markets, the sey circle, a place's entrance and
- * the stalls (`kiteGround`), with nothing over him or down the wind (the walk
+ * flies: in fair weather with some wind aloft (any season: strongest in the
+ * kite season, the north wind from after the Water Festival to March, but a
+ * breezy day lifts it in any month: _kiteSky.ts `windAloft`), anywhere
+ * on open land (not a flooded rice field, not in the market's crowd, the sey
+ * circle, by a place's entrance or a stall: `kiteGround`), with nothing over
+ * him or down the wind (the walk
  * maps' `clearance`, `hardClearance`, `softClearance`: `flyHere`). It comes
  * last in the E row (`ORDER`): anything else in reach (the dog, the sey, the
- * farmers' work) wins. Out of the season, on the families' field, a toast once
- * a visit says when kites fly there (no E). Then he turns into the wind with
+ * farmers' work) wins. In a calm, where it would fly, a toast once a visit
+ * says to wait for a breeze (no E). Then he turns into the wind with
  * the kite held up at arm's length past
  * his right shoulder, runs a few steps and lets it go: it climbs behind him on
  * its line; he turns round to it and it climbs on to `LINE_START` m of line.
@@ -129,21 +129,15 @@ const FLY_KEYS: readonly AddonKey[] = [
 ];
 const SNAG_KEYS: readonly AddonKey[] = [['S E', 'kiteReel', 'lstick west']];
 /**
- * Where it is not offered, however open (m round: the villages, the markets, the hamlets, the picnic place, the
- * children's sey circle): people live and work there; a kite is flown out on the fields. And this near a place's
- * entrance or a stall (m).
+ * Where it is not offered, however open (m round): the market's crowd and the children's sey circle. And this near
+ * a place's entrance (its beacon's E) or a stall (its E) (m).
  */
 const SETTLED = [
-  { x: EAST_VILLAGE.x, z: EAST_VILLAGE.z, r: EAST_VILLAGE.r + 20 },
-  { x: MARKET.x, z: MARKET.z, r: MARKET.r + 40 },
-  { x: PALM_GROVE.x, z: PALM_GROVE.z, r: PALM_GROVE.r + 12 },
-  { x: KULEN_PICNIC.x, z: KULEN_PICNIC.z, r: KULEN_PICNIC.r + 20 },
-  { x: BACK_HAMLET.x, z: BACK_HAMLET.z, r: BACK_HAMLET.r + 20 },
-  { x: VILLAGE.x, z: VILLAGE.z, r: 90 },
-  { x: SEY_SPOT.x, z: SEY_SPOT.z, r: 25 },
+  { x: MARKET.x, z: MARKET.z, r: MARKET.r + 6 },
+  { x: SEY_SPOT.x, z: SEY_SPOT.z, r: 12 },
 ] as const;
-const PLACE_CLEAR = 60;
-const SHOP_CLEAR = 30;
+const PLACE_CLEAR = 25;
+const SHOP_CLEAR = 10;
 /** His left fist's slot for the spool (rig `setSlotObject`). */
 const SPOOL_SLOT = 'kiteSpool';
 
@@ -205,7 +199,7 @@ let camBefore: { pitch: number; pitchMin: number; distance: number } | null = nu
 let takeView: { side: number; pitch: number; distance: number } | null = null;
 /** Toasts said once (a visit): the keys; the hum; all the line (a flight); the trees (s until again). */
 let keysSaid = false;
-let seasonSaid = false;
+let calmSaid = false;
 let humSaid = false;
 let maxSaid = false;
 let treesAt = 0;
@@ -371,20 +365,19 @@ const RAYS = [
 const within = (x: number, z: number, s: { readonly x: number; readonly z: number; readonly r: number }) => (x - s.x) ** 2 + (z - s.z) ** 2 < s.r * s.r;
 
 /**
- * A field to fly it over: the kite fields (the families' east, the children's west: people/_sceneKites.ts
- * `KITE_FIELDS`) or a rice field that is dry (after the harvest: paddies/stages.ts), away from the villages,
- * the markets, a place's entrance and the stalls (`SETTLED`).
+ * Ground to fly it from: any open land (the kite fields, the meadows, the dry rice fields, a temple's courts, a
+ * hilltop…), but not a flooded rice field, nor the market's crowd, the sey circle, a place's entrance or a stall
+ * (`SETTLED`). Trees, roofs and walls are `flyHere`'s.
  */
 function kiteGround(w: RoamWorld, x: number, z: number): boolean {
   for (const s of SETTLED) if (within(x, z, s)) return false;
   for (const p of PLACES) if ((x - p.anchor[0]) ** 2 + (z - p.anchor[2]) ** 2 < PLACE_CLEAR * PLACE_CLEAR) return false;
   for (const s of SHOPS) if ((x - s.x) ** 2 + (z - s.z) ** 2 < SHOP_CLEAR * SHOP_CLEAR) return false;
-  if (within(x, z, KITE_FIELDS.east) || within(x, z, KITE_FIELDS.west)) return true;
-  return w.field.surfaceAt(x, z) === SURFACE.paddy && !paddyFlooded(x, z);
+  return w.field.surfaceAt(x, z) !== SURFACE.paddy || !paddyFlooded(x, z);
 }
 
 /**
- * He may fly it here: on a kite field or a dry rice field (`kiteGround`), on the land (not a terrace or a roof),
+ * He may fly it here: on open land (`kiteGround`), on the land (not a terrace or a roof),
  * dry, and nothing over him or down the wind (trees, roofs, walls, a sign: the walk maps' solid, the camera's hard
  * map and its leaves). Looked at again once he has moved a metre or half a second has gone.
  */
@@ -418,13 +411,11 @@ function flyHere(ctx: RoamCtx): boolean {
   return true;
 }
 
-/** Out of the kite season (or a calm), coming onto the families' field with his kite: once a visit, a word on when kites fly (no E). */
-function seasonHint(ctx: RoamCtx): void {
-  if (seasonSaid) return;
-  const p = ctx.body.pos;
-  if (!within(p.x, p.z, KITE_FIELDS.east)) return;
-  seasonSaid = true;
-  ctx.hud.toast(t('kiteSeasonHint'));
+/** In a calm, where it would fly (`flyHere`), with his kite: once a visit, a word to wait for a breeze (no E). */
+function calmHint(ctx: RoamCtx): void {
+  if (calmSaid || !flyHere(ctx)) return;
+  calmSaid = true;
+  ctx.hud.toast(t('kiteCalmHint'));
 }
 
 // ── Starting and stopping ──
@@ -1167,11 +1158,11 @@ registerAddon({
       if (stall?.near(p.x, p.y, p.z, clockNow())) return sw.buy;
       return null;
     }
-    // Only where and when it really flies: fair weather, the kite season's wind aloft, a field for it.
+    // Only where and when it really flies: fair weather, some wind aloft, open land for it.
     const w = ctx.weather ?? weatherNow();
     if (!kiteWeather(w)) return null;
     if (windNow(w) < LIFT) {
-      seasonHint(ctx);
+      calmHint(ctx);
       return null;
     }
     return flyHere(ctx) ? sw.fly : null;

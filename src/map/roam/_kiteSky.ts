@@ -20,9 +20,9 @@ import type { MapWeather } from '../types';
  *   dim at night.
  * - **The wind aloft** (`windAloft`): as the people's kites have it
  *   (_sceneKites.ts `blow`: the weather's direction followed slowly; a steady
- *   breeze over the weather's own), but only in the kite season — the north
- *   wind from after the Water Festival to March (`seasonBreeze`); in the wet
- *   months the air up there is too still for a kite.
+ *   breeze over the weather's own), strongest in the kite season — the north
+ *   wind from after the Water Festival to March (`seasonBreeze`); out of it a
+ *   kite still flies on a breezy day, lower, and comes down in a lull.
  *
  * Nothing is made before it is needed (`createKiteGear` on first use);
  * nothing allocated per frame.
@@ -135,10 +135,12 @@ export const LIFT = 0.45;
 
 /**
  * The wind aloft his kite flies in (0 still … 1 strong): the people's kites' (a steady breeze over the weather's
- * wind: 0.55 + 0.8 × wind) in the kite season; out of it only the weather's own, not enough to lift a kite.
+ * wind: 0.55 + 0.8 × wind) in the kite season; out of it a lighter one (0.38 + 0.6 × wind), so the everyday
+ * breeze (weather.ts: 0.04‥0.3) lifts it once it blows a little (≥ 0.12), and a lull brings it down.
  */
 export function windAloft(w: Readonly<MapWeather>, season: number): number {
-  return Math.min(1, Math.max(0, 0.1 + 0.45 * seasonBreeze(season) + 0.8 * w.wind));
+  const s = seasonBreeze(season);
+  return Math.min(1, Math.max(0, 0.38 + 0.17 * s + (0.6 + 0.2 * s) * w.wind));
 }
 
 /**

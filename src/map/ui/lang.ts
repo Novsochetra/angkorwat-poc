@@ -1007,8 +1007,8 @@ const WORDS = {
   kiteCardGo: { km: 'ទិញ', en: 'Buy' },
   kiteCardStay: { km: 'ទេ អរគុណ', en: 'No, thanks' },
   kiteCalm: {
-    km: 'ខ្យល់ខ្សោយពេក ខ្លែងហោះមិនឡើងទេ។ ខ្លែងហោះនៅរដូវប្រាំង ចាប់ពីបុណ្យអុំទូក ដល់ខែមីនា',
-    en: 'The wind is too weak to fly a kite. Kites fly in the dry season, from the Water Festival to March',
+    km: 'ខ្យល់ខ្សោយពេក ខ្លែងហោះមិនឡើងទេ។ ចាំខ្យល់បក់សិន',
+    en: 'The wind is too weak to fly a kite. Wait for a breeze',
   },
   kiteWet: { km: 'ភ្លៀង ឬព្រិលបែបនេះ ខ្លែងក្រដាសហោះមិនបានទេ ចាំមេឃស្រឡះសិន', en: "Not in this weather: a paper kite can't fly in rain or snow. Wait for a clear sky" },
   kiteRainIn: { km: 'ភ្លៀងមកហើយ! ទាញខ្លែងចុះសិន', en: 'Rain is coming! Bring the kite in' },
@@ -1029,8 +1029,8 @@ const WORDS = {
   kiteKeyIn: { km: '↓ រមូរខ្សែ', en: '↓ reel in' },
   kiteKeySteer: { km: '← → បត់', en: '← → steer' },
   kiteKeyWalk: { km: 'ដើរទាំងបង្ហោះ', en: 'walk with it' },
-  // (out of the kite season, once a visit, as he comes onto the families' kite field with his kite)
-  kiteSeasonHint: { km: 'ខ្លែងហោះលើវាលនេះ នៅរដូវប្រាំង ពីបុណ្យអុំទូក ដល់ខែមីនា', en: 'Kites fly over this field in the dry season, from the Water Festival to March' },
+  // (in a calm, once a visit, where his kite would fly)
+  kiteCalmHint: { km: 'ខ្យល់ស្ងប់ពេក ចាំខ្យល់បក់សិន ទើបបង្ហោះខ្លែងបាន', en: 'Too calm for a kite: wait for a breeze' },
   // Helping the farmers (farm…): roam/_farmWork.ts
   farmHelpPlant: { km: 'ជួយស្ទូងស្រូវ', en: 'Help plant rice' },
   farmHelpReap: { km: 'ជួយច្រូតស្រូវ', en: 'Help with the harvest' },
