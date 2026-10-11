@@ -248,29 +248,67 @@ each other).
   back slowly (his left foot stepping); A / D steer the front wheel (a real turning
   circle: 1.6 m at a walk, wide at speed — the sideways pull never past 6.5 m/s²)
   and he leans into the turn with it; stopped, A / D shuffle it round with his foot
-  down (out of a corner). Space rings the bell, "kring-kring". The camera or the
-  phone up, the album open: he brakes to a stop (no hands on the bars) and the
-  camera works as in the boat. A card or a menu that pauses roaming ("Back to the
-  map?", the calendar, the explorer menu, the name, clothes or dog cards, the big
-  map, the settings: whatever takes the game pad, `pad.inMenu`, or asks,
-  `body.mu-asking`) stops it firmly where it is: nobody steers meanwhile. The keys
-  show over him ("E  Get off · Space  Ring the bell") for 5 s after getting on and
-  whenever he is slow; on a touch screen the jump button says "កណ្ដឹង / Bell" while
-  he rides (`touchJump`), "Jump" again once he is off. The key help (bottom left)
-  shows his keys while he rides (`keys()`: W S pedal · brake, A D steer, Shift pedal
-  hard, Space the bell, E get off, Q R look; the pad's buttons with a pad).
-- **The ground** (the walk map, `world.standAt`, probed along the bicycle and his
-  shoulders): roads, paths, fields, courtyards; steps up to 0.42 m it bumps over
-  (a thud, the basket rattling, he sinks a little), the bicycle pitching between its
-  wheels; a stair's riser or a land step (0.65 m, or 1.6–2.4 m) up or a drop over
-  0.45 m down: it stops, "ចុះពីកង់សិន ទើបដើរឡើងបាន / Get off the bicycle to climb
-  up" (or "…ចុះបាន / …climb down"); deep water (0.38 m): it stops at the bank,
-  "ទឹកជ្រៅពេក ជិះកង់កាត់មិនបានទេ / Too deep to ride through". A rise slows it, a fall
-  speeds it, each ground rolls as it does (stone and planks best, sand worst). A
-  wall, a post, a table or a kerb met at a slant: it turns along it (losing the
-  speed that went into it); head on it stops. The roaming area's edge slows it as on
-  foot (`rMist`). The people step aside for him as for him on foot (he is in walk
-  mode: people/_routes.ts `Traffic`).
+  down (out of a corner). **Space hops it** (✕ on the pad; on a touch screen the
+  jump button says "លោត / Hop" while he rides, `touchJump`): both wheels leave the
+  ground, 1.35 m, the front a little higher (the nose up), he stands on the pedals,
+  a light scuff (`bikeHop`), then a thud as it lands. Pedalling, it goes forward at
+  least 3.2 m/s as he hops, so stopped right at a low wall, W and Space take him
+  over it. In the air the bars turn it half as well, nothing pedals or brakes; rising
+  into something it waits there in the air (it may yet clear it). **F rings the
+  bell**, "kring-kring" (on foot F greets: on a bicycle the bell is the greeting; the
+  pad's d-pad ↓; on a touch screen the button over Use, the boat's Fish, shows a
+  bell, "កណ្ដឹង / Bell": touch.ts `setTouchBell`). The camera or the phone up, the
+  album open: he brakes to a stop (no hands on the bars) and the camera works as in
+  the boat. A card or a menu that pauses roaming ("Back to the map?", the calendar,
+  the explorer menu, the name, clothes or dog cards, the big map, the settings:
+  whatever takes the game pad, `pad.inMenu`, or asks, `body.mu-asking`) stops it
+  firmly where it is: nobody steers meanwhile. The keys show over him ("E  Get off
+  · Space  Hop · F  Ring the bell") for 5 s after getting on and whenever he is
+  slow; "Jump" comes back on the touch jump button, and the bell goes, once he is
+  off. The key help (bottom left) shows his keys while he rides (`keys()`: W S
+  pedal · brake, A D steer, Shift pedal hard, Space hop, F the bell, E get off, Q R
+  look; the pad's buttons with a pad: ✕ hop, ↓ the bell).
+- **The ground** (the walk map, `world.standAt`; each wheel has its own height,
+  `wheelStep`, and the frame between them is probed at the rack, the pedals and the
+  bars with his shoulders): roads, paths, fields, courtyards, stairs, terraces.
+  - **Up**: steps up to 0.42 m (`BUMP`: a kerb, a root) the tyres ease over (a thud,
+    the basket rattling, he sinks a little). A stair's riser or a terrace's edge up
+    to 1.15 m (`STAIR`: the walker's stairs, 1.1 m, and a little more) the wheels
+    roll up one after the other, and a land step up to 2.45 m (`LIFT`: the walker
+    hops one, 2.2 m) it lifts onto when he pedals or it rolls at it at 1.5 m/s or
+    more: the front wheel pops up onto it, then the back (he stands on the pedals;
+    past 0.8 rad of pitch the back wheel comes up with the front), the bicycle
+    waiting a moment at the step's face while each lifts (a tyre goes on over no
+    more than 0.3 m, `GATE`), going on at 5 m/s at most after a riser, 3 after a land
+    step. It is the same met at a slant (checked at 30° and 50°). Only a step that
+    carries the bicycle (`carries`: 3 of 8 points round where it is met stand as
+    high, on its far side, and it goes on 0.5 and 1.1 m ahead, as a stair's next
+    treads do; with room for him over it) is ridden up: a post, a jar, a rail, a log,
+    a low wall, a counter, or a step beside him that he rides along, is a wall to
+    it (hop it). A carried step taller than 2.45 m and up to 2.8 m (what he climbs on
+    foot with a jump) stops it head on, "ចុះពីកង់សិន ទើបដើរឡើងបាន / Get off the bicycle
+    to climb up"; taller is a wall.
+  - **Down**: down a step up to 0.22 m (`SNAP`) the wheels roll on the ground; off
+    a bigger one they fly (gravity 28 m/s², the front held up no more than 0.3 m under
+    the back) and land: a thud by how hard, a little bounce off a hard landing (over
+    3.2 m/s), the pad's shake and a little speed off one over 8 m/s; never thrown off.
+    A drop deeper than 4.6 m (`FALL`) it stops at the brink, "…ចុះបាន / …climb down";
+    walking it back, the back wheel goes off no more than 1.15 m.
+  - **Stairs** up and down: risers rolled up one by one (the road's 0.5 m stair to
+    Angkor Wat's forecourt, 24 risers, in about 5 s), bumpy down (the wheels hop
+    from tread to tread).
+  - A rise slows it, a fall speeds it (on the ground), each ground rolls as it does
+    (stone and planks best, sand worst). Deep water (0.38 m): it stops at the bank,
+    "ទឹកជ្រៅពេក ជិះកង់កាត់មិនបានទេ / Too deep to ride through".
+  - **Walls** (a wall, a post, a rail, a table, a low wall, a step too tall, a cliff's
+    brink, a bank): it slides along it, the first of the turns ±0.3‥1.45 rad that is
+    free being about its run, the bicycle turning to run along it (3 rad/s) and
+    keeping the part of its speed that goes along it; only met square in a corner it
+    stops (a knock). Stuck with the front up on something (after a hop), S walks it
+    back off it, E gets him off (a wheel held up by the frame counts as on the
+    ground). The roaming area's edge slows it as on foot (`rMist`). The people step
+    aside for him as for him on foot (he is in walk mode: people/_routes.ts
+    `Traffic`).
 - **What hangs at his head's height** (his hat's brim 2.1 m, its crown 2.45 m, and
   its sides: his head is wide) he slows for and stops short of, his foot down,
   "ទាបពេក ជិះកាត់មិនបានទេ / Too low to ride under": a stall's umbrella, an awning,
@@ -278,8 +316,10 @@ each other).
   the built parts that hang 1‥2.6 m over the land, indexed when roaming is built,
   before any part's first update; each read as it is now, so a market's umbrellas
   folded away at closing are not there and stop nothing), or a lintel or a beam lower
-  than his hat (`world.ceilingAt`). A tarp up over his hat he rides under; the trees'
-  low leaves he rides through, as he walks through them. While the children kick the
+  than his hat (`world.ceilingAt`); his head goes up and down the stairs and terraces
+  ahead with the ground (a doorway at a stair's top counts from there). A tarp up
+  over his hat he rides under; the trees' low leaves he rides through, as he walks
+  through them. While the children kick the
   sey in the sugar-palm village (`SEY.out`, sey.ts) he stops 4.4 m from the circle's
   middle (its children stand at 2.9 m), "ក្មេងៗកំពុងលេងទាត់សី / The children are
   playing sey"; riding away from it is free.
@@ -289,8 +329,10 @@ each other).
   working through the stroke: `pedalPitch`), so his legs pedal in time with the
   cranks; stopped, he slides to the saddle's nose and puts his left boot flat on the
   ground, the bicycle leaning 0.23 rad to that side (`STOP_LEAN`), the right pedal
-  coming up and forward to push off from. The bicycle's lean and pitch carry the
-  whole of him; he looks into a turn. His lantern goes away while he rides
+  coming up and forward to push off from. In a hop, lifting onto a step or in the
+  air he stands on the pedals (`rise`: up off the saddle and forward, lower over the
+  bars; the pedals level). The bicycle's lean and pitch carry the whole of him; he
+  looks into a turn. His lantern goes away while he rides
   (`handsBusy`) and comes back as he gets off.
 - **The bicycle**: the wheels turn with the way rolled, the cranks with his
   pedalling (coasting they come level; the pedals stay level under his boots), the
@@ -303,17 +345,34 @@ each other).
   (the chain over the sprocket, a soft clack each push, by the cadence) while he
   pedals, `bikeFree` (the freewheel's ticks, faster as it rolls) while it coasts,
   the tyres on the `steps` bus by the ground (`bikeDirt`, `bikeGrass`,
-  `bikeStone`), `bikeBump`, `bikeBrake`, `bikeStand`, `bikeBell`.
+  `bikeStone`; silent in the air), `bikeBump` (over a step, a tyre's knock on a step
+  it pops up, a landing by how hard), `bikeHop` (the tyres leaving the ground, the
+  chain slapping, the basket), `bikeBrake`, `bikeStand`, `bikeBell`.
 - **URL**: `bike=ride` puts him on the nearest bicycle at `at=` facing `yaw=`
   (it comes to him), `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw°,…`
   a bicycle left away from its place (`wat`, `market`, `village`, `hamlet`). The
-  bug report gives both. E.g. `roam=walk&at=325,-84&yaw=270&bike=ride&sim=w:2,wa:1`
+  bug report gives both. In `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e`
+  gets off. Give `at=` its height (`at=x,y,z`) by a step or a wall: two values may
+  stand him on a roof. E.g. `roam=walk&at=325,-84&yaw=270&bike=ride&sim=w:2,wa:1`
   (the market's lowland, riding west then turning left), `…&sim=_:1` (stopped,
   his foot down), `…&night=1&sim=w:2` (the lamp), `roam=walk&at=10,-151.3&yaw=180`
-  (on foot by the Angkor Wat bicycle: its prompt).
+  (on foot by the Angkor Wat bicycle: its prompt); up the land step north of the
+  market: `roam=walk&at=347.5,8,-76&yaw=0&bike=ride&sim=w:2.35` (the front wheel
+  lifting; `w:3` on top); up the road's stair to Angkor Wat's forecourt:
+  `roam=walk&at=6.2,32.28,-100.6&yaw=180&bike=ride&sim=w:4`; down it:
+  `roam=walk&at=6.2,44,-132&yaw=0&bike=ride&sim=w:5`; a hop on the flat:
+  `roam=walk&at=-5.8,56,-160.6&yaw=270&bike=ride:4&sim=j:0.3`; over a low wall from a
+  standstill right at it: `roam=walk&at=368.5,8,-2.29&yaw=45&bike=ride&sim=_:0.3,wj:0.1,w:0.4`;
+  off the market's 2 m drop: `roam=walk&at=290.71,10,-91.08&yaw=90&bike=ride&sim=w:2.4`.
 - **Checks**: `(await import('/src/map/roam/_bike.ts')).bikeDebug()` in the
-  console (the phase, the speed, the steering, the lean, the lamp, each bicycle); the
-  console line `[map] bicycles: 4 · N things hanging at head height … indexed in N ms`.
+  console (the phase, the speed, the steering, the lean, the lamp, each wheel's
+  height, what holds it up, the ground under it and whether it is on it, the pitch,
+  in the air or not, waiting at a step's face, what the last move met: `ok`,
+  `lift`, `wall`, `up`, `down`, `deep`; each bicycle); the console line
+  `[map] bicycles: 4 · N things hanging at head height … indexed in N ms`. Real play
+  (held keys, 60 frames a second): GPU Chromium with Playwright, a shot page with
+  `video=1` stepped by `__videoFrame(t, 1 / 60)`, `roam.placeFrom(q, __frame)` to
+  start each ride, the keys held with `page.keyboard`, `bikeDebug()` read each frame.
 
 ### Ox cart ride
 

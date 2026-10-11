@@ -287,7 +287,8 @@ guide, with every add-on's keys and URL values for shots, is
 - The calendar (9, the button under the mini-map): now, today, festivals ahead
   with their real-life dates (the Khmer lunar calendar: `roam/_calendarKhmer.ts`),
   "Wait for it", a toast as each begins, gold marks on the maps (`calendar=1`).
-- Ways to move: bicycles (`bike=ride`), the ox cart (`cartride=1`), the water
+- Ways to move: bicycles (`bike=ride`; up kerbs, stairs and land steps as he
+  walks them, Space hops, F rings the bell), the ox cart (`cartride=1`), the water
   buffaloes (`buffalo=ride`), the jungle zip line (`zip=<n>:<0‥1>`), the sugar
   palm ladder (`palm=top`).
 - Village life: hammocks (`hammock=1`), dak bat at dawn (`dakbat=1`), a monk's
