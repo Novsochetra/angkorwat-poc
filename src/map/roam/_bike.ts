@@ -13,6 +13,7 @@ import { buildCanopies, canopyAt } from './_bikeCanopy';
 import { BikeModel, type BikeTurns } from './_bikeModel';
 import { BIKE_SPOTS, type BikeSpot } from './_bikeSpots';
 import { angleDiff } from './followCam';
+import { setTouchBell, takeTouchFish } from './touch';
 import type { RoamCtx, RoamWorld } from './types';
 import { stepSound } from './walker';
 
@@ -28,32 +29,44 @@ import { stepSound } from './walker';
  * pedals (the speed builds up), Shift pedals hard, S brakes, and held once
  * stopped walks it back slowly; A / D steer the front wheel (a real turning
  * circle: tight at a walking pace, wide at speed) and he leans into the turn
- * with the bicycle; Space rings the bell (kring-kring); E gets off (braking
+ * with the bicycle; Space hops it (both wheels off the ground: over a low
+ * wall, a log, a kerb too tall to roll); F rings the bell (kring-kring: on
+ * foot F greets, on a bicycle the bell is the greeting); E gets off (braking
  * first if it rolls): he steps off to the side and the bicycle stays on its
  * stand where he left it. Back to the map, every bicycle goes back to its place.
  *
- * It follows the walk map (`world.standAt`): the roads, paths, fields and
- * temple courtyards; small steps (up to `BUMP`) it bumps over; up a stair or a
- * land step, or down one, it stops (a message: get off to climb), and it
- * stops at the bank of deep water; it slows up a rise and coasts down one,
- * slides along a wall it meets at a slant and stops against one head on, and
+ * It follows the walk map (`world.standAt`) as a game bicycle should, each
+ * wheel with its own height (`wheelStep`): the tyres ease over small steps (up
+ * to `BUMP`: a kerb, a root); a stair's risers and a terrace's edge (up to
+ * `STAIR`, the walker's stairs) the wheels roll up one after the other, and a
+ * land step (up to `LIFT`: the walker hops one) it lifts onto, the front wheel
+ * then the back, waiting a moment at the step's face while each lifts (`test`:
+ * only what carries the bicycle — a stair, a terrace, a land step; not a post,
+ * a rail, a low wall, a log or a counter); it rides off a drop (a short fall
+ * and a bounce; deeper than `FALL` it stops at the brink), up and down stairs
+ * (bumpy), slower up a rise and faster down one; against a wall it slides
+ * along it, keeping the speed that goes along it. A step he could climb only
+ * on foot, a cliff and deep water stop it with a message; it never goes
+ * through a wall, into deep water or under anything lower than his hat, and
  * keeps inside the roaming area as he does walking (the mist's edge slows it).
  * The people step aside for him as for him on foot (people/_routes.ts reads
  * him in walk mode).
  *
  * His posture (character/bike.ts): seated, the fists on the grips, the boots
  * on the pedals (both by IK), pedalling in time with the cranks, a foot down
- * when stopped, leaning with the bicycle. The wheels and the cranks turn by
- * the way rolled; the follow camera rides behind, a little further back at
- * speed. His lantern goes away while he rides (`handsBusy`); at night the
- * bicycle's dynamo lamp lights the road ahead while it rolls. Sounds
+ * when stopped, leaning with the bicycle, standing on the pedals in a hop or
+ * a lift. The wheels and the cranks turn by the way rolled; the follow camera
+ * rides behind, a little further back at speed. His lantern goes away while
+ * he rides (`handsBusy`); at night the bicycle's dynamo lamp lights the road
+ * ahead while it rolls. Sounds
  * (audio/_bike.ts): the chain as he pedals, the freewheel ticking as he
- * coasts, the tyres on earth, grass or stone, a bump, the brake, the stand,
- * the bell.
+ * coasts, the tyres on earth, grass or stone, a bump (a step, a landing), the
+ * hop, the brake, the stand, the bell.
  *
  * URL (checks): `bike=ride` starts him on the nearest bicycle at `at=`
  * (facing `yaw=`), `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw,…`
- * a bicycle left away from its place (bug reports give both).
+ * a bicycle left away from its place (bug reports give both). Its keys in a
+ * shot's `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e` gets off.
  */
 
 /** Speeds (m/s, at his roaming size): pedalling, pedalling hard, walking it back; the most it ever goes. */
@@ -66,6 +79,8 @@ const PUSH = 4.2;
 const PUSH_HARD = 6;
 const BRAKE = 7;
 const BRAKE_OFF = 4.5;
+/** How much of gravity's pull along a slope slows it uphill and speeds it down (a game bicycle's: he climbs what he walks up). */
+const SLOPE = 0.6;
 /** Rolling resistance on each ground (m/s²), the air's (per (m/s)²). */
 const ROLL = { dirt: 0.2, grass: 0.45, stone: 0.12, sand: 0.9, water: 1.6 } as const;
 type Ground = keyof typeof ROLL;
@@ -76,10 +91,57 @@ const STEER_MAX = 0.62;
 /** Stopped, A / D shuffle it round with his foot down (rad/s). */
 const PIVOT = 0.9;
 const LEAN_MAX = 0.6;
-/** Highest step the wheels bump over, deepest they drop down, and the most water they roll through (m). */
+/**
+ * Up a step (m): what the tyres ease straight over (a kerb, a root, a small step), what they roll up one after the other
+ * (a stair's riser, a terrace's edge: the walker's stairs, 1.1, and a little more), and the highest step it gets up onto,
+ * the front wheel lifted onto it, then the back (a land step: the walker hops one, 2.2; a little more). A step up to
+ * `CLIMB` (he jumps that high on foot) it stops at, "get off to climb up"; taller ones are walls.
+ */
 const BUMP = 0.42;
-const DROP = 0.45;
+const STAIR = 1.15;
+const LIFT = 2.45;
+const CLIMB = 2.8;
+/** Down (m): what the wheels roll down on the ground (deeper, they fly off it and land), and the deepest drop it rides off (a short fall and a bounce; deeper, it stops at the brink: "get off to climb down"). */
+const SNAP = 0.22;
+const FALL = 4.6;
+/** The most water the wheels roll through (m). */
 const DEEP = 0.38;
+/** A wheel rolls on over what stands no higher than this over its tyre (m); a higher step stops it at the step's face while it lifts. */
+const GATE = 0.3;
+/** Gravity on the wheels off the ground (m/s²: lively, as the walker's). */
+const GRAVITY = 28;
+/**
+ * The frame's steepest pitch (rad): up a stair or with the front up a step, the back wheel comes up with the front past
+ * it (he pulls it up). Off an edge, in the air, the front dips no more than `DIP` (m) under the back: he holds it up.
+ */
+const PITCH_MAX = 0.8;
+const DIP = 0.3;
+/** A landing harder than this (m/s down) bounces back this share of it; one harder than `SHAKE` shakes the pad. */
+const BOUNCE = 3.2;
+const BOUNCE_BACK = 0.22;
+const SHAKE = 8;
+/**
+ * The hop (Space): how high the wheels leave the ground (m), the front this much higher (the nose up), how soon another
+ * (s); pedalling, it goes forward at least this fast (m/s: from a standstill at a low wall, over it).
+ */
+const HOP = 1.35;
+const HOP_NOSE = 1.15;
+const HOP_AGAIN = 0.3;
+const HOP_KICK = 3.2;
+/** Held at a step's face while a wheel lifts, it goes on no faster than this (m/s): up a riser or a terrace's edge, onto a land step. */
+const HELD_V = [5, 3];
+/** A step up over `STAIR` it lifts onto only when he pedals or it rolls this fast (m/s). */
+const LIFT_V = 1.5;
+/**
+ * What a step must be to be ridden up (round the point where it is met, m): it carries the bicycle if 3 of 8 points
+ * this far round stand that high, on its far side (not a post, a jar or a rail beside him), and it goes on ahead this
+ * far along the way he goes (`CARRY_AHEAD`: a stair, a terrace, a land step; not a low wall, a log or a counter).
+ */
+const RING_R = 0.45;
+const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const);
+const CARRY_AHEAD = [0.5, 1.1];
+/** As high as the step, give or take (m): its treads, a stair going on up. */
+const LEVEL = 0.35;
 /** Room he needs over the ground riding (m, his head at the roaming size). */
 const ROOM = 2.3;
 /** A move's longest step (m). */
@@ -101,34 +163,27 @@ const POOL_AHEAD = 6.5;
 const POOL = { w: 2.6, l: 9.5 };
 
 /**
- * Probes of the bicycle and him (m at the roaming size: along from the saddle
- * point, + ahead; across, + to his left): the tyres' ends, the pedals, the
- * bars and his shoulders, the basket. Each must have ground within `BUMP` of
- * the wheels and `ROOM` over it.
+ * Probes of the frame and him between the wheels (m at the roaming size: along from the saddle point, + ahead; across,
+ * + to his left): the rack, the pedals, the bars and his shoulders (the wheels have their own in `test`: under the
+ * hub and the tyre's leading edge). Each must have `ROOM` over it and ground no higher than `BUMP` under the frame there (the line between the
+ * wheels); a step they meet that the wheels are getting up lifts the trailing wheel (the frame rests on its edge).
  */
 const PROBES: readonly (readonly [number, number])[] = [
-  [-0.74, 0],
   [-0.38, 0.22],
   [-0.38, -0.22],
   [0.12, 0.34],
   [0.12, -0.34],
   [0.62, 0.32],
   [0.62, -0.32],
-  [1.08, 0],
 ];
-const FRONT_PROBE = PROBES.length - 1;
-const REAR_PROBE = 0;
-/** The probes that lead going ahead (the bars, the basket) and going back (the back tyre, the rack). */
-const AHEAD = [5, 6, 7];
-const BEHIND = [0, 1, 2];
-/** A stair's highest riser, and a land step's height (m): what he could walk up from the bicycle (the rest are walls to it). */
-const RISER = 0.65;
-const LAND_STEP = [1.6, 2.4];
-/** Beside the leading probe (m across): a step there too is a stair or a land step, not a post. */
-const ACROSS = [0.3, -0.3];
-/** Turns tried to slide along a wall (rad from the way it goes), and how fast the bicycle turns to run along it (rad/s). */
-const SLIDES = [0.35, -0.35, 0.7, -0.7, 1.05, -1.05];
-const SLIDE_TURN = 1.6;
+/**
+ * Turns tried to slide along a wall (rad from the way it goes: the first that is free is about the wall's run, and it
+ * keeps the part of its speed along it), and how fast the bicycle turns to run along it (rad/s).
+ */
+const SLIDES = [0.3, -0.3, 0.6, -0.6, 0.9, -0.9, 1.2, -1.2, 1.45, -1.45];
+const SLIDE_TURN = 3;
+/** Along a wall it loses the speed that went into it over this far (m): once, as it turns to run along it. */
+const SLIDE_LEN = 0.5;
 const LOOPS = ['bikeChain', 'bikeFree', 'bikeDirt', 'bikeGrass', 'bikeStone'];
 /**
  * His head's height riding (m over the wheels' ground at his roaming size): under the hat's brim, and its crown;
@@ -149,12 +204,16 @@ const BRIM = 0.45;
 const SEY_KEEP = SEY_R + 1.5;
 /** The bicycle's front tyre ahead of the saddle point (m). */
 const NOSE = 1.1;
-/** The key help (bottom left) while he rides: the keys, their words, the pad's buttons. */
+/**
+ * The key help (bottom left) while he rides: the keys, their words, the pad's buttons. Space (✕) hops; F rings the
+ * bell (on foot F greets: on a bicycle the bell is the greeting; the pad's d-pad ↓, F's button on foot too).
+ */
 const KEYS: readonly AddonKey[] = [
   ['W S', 'bikePedal', 'lstick'],
   ['A D', 'bikeSteer', 'lstick'],
   ['Shift', 'bikeFast', 'r2'],
-  ['Space', 'bikeBell', 'south'],
+  ['Space', 'bikeHop', 'south'],
+  ['F', 'bikeBell', 'down'],
   ['E', 'bikeOff', 'west'],
   ['Q R', 'rLook', 'rstick'],
 ];
@@ -174,8 +233,12 @@ interface Bike {
 }
 
 type Phase = 'off' | 'mount' | 'ride' | 'dismount';
-/** What blocks a move: nothing, a wall, a step up (stairs, a land step), a drop, deep water. */
-type Block = 'ok' | 'wall' | 'up' | 'down' | 'deep';
+/**
+ * What a move meets: nothing in the way, a step the wheels are getting up (it waits at its face while they lift), a
+ * wall (a post, a rail, a low wall: it slides along it, or hops over it), a step too tall for the bicycle that he could
+ * climb on foot, a drop too deep to ride off, deep water.
+ */
+type Block = 'ok' | 'lift' | 'wall' | 'up' | 'down' | 'deep';
 
 let env: AddonEnv | null = null;
 /** The roaming mode now (a URL's `bike=ride` only on foot). */
@@ -199,13 +262,26 @@ let lean = 0;
 let pitch = 0;
 let crank = 0;
 let wheel = 0;
-/** The eased heights of the wheels (m), the ground under them now and the step before. */
-let wr = 0;
-let wf = 0;
-let gr = 0;
-let gf = 0;
-let gr0 = 0;
-let gf0 = 0;
+/** The wheels (`rear`, `front`). */
+interface Wheel {
+  /** The tyre's bottom (m), how fast it goes up or down (m/s, + up), on the ground or not; the hardest landing this step (m/s down). */
+  h: number;
+  vy: number;
+  on: boolean;
+  landed: number;
+  /**
+   * What holds it up where the bicycle is (m: the ground under its tyre, the frame resting on a step's edge; at a
+   * step's face it waits at, the step), and the ground alone under its hub (a step's height is measured from there).
+   */
+  hold: number;
+  ground: number;
+  /** Held up by the frame off what is under it (the other wheel up a step past `PITCH_MAX`, or he holds the front up off an edge). */
+  hung: boolean;
+}
+const rear: Wheel = { h: 0, vy: 0, on: true, landed: 0, hold: 0, ground: 0, hung: false };
+const front: Wheel = { h: 0, vy: 0, on: true, landed: 0, hold: 0, ground: 0, hung: false };
+/** A wheel that bears the bicycle: on the ground, or hung from the frame (he can pedal, brake, walk it back, get off). */
+const settled = (wh: Wheel) => wh.on || wh.hung;
 /** 0 riding ‥ 1 a foot down; walking it back (0‥1) and its steps; how long S has been held at a stop (s). */
 let down = 1;
 let back = 0;
@@ -213,6 +289,13 @@ let walk = 0;
 let backWait = 0;
 let effort = 0;
 let bump = 0;
+/** 0 seated ‥ 1 standing on the pedals (a hop, a lift onto a step, in the air). */
+let rise = 0;
+/** Held at a step's face this step while a wheel lifts; when the next hop may come (`clock`). */
+let waiting = false;
+let hopAt = 0;
+/** Checks: what the last move met (`Block`). */
+let lastBlock = '';
 /** E pressed while rolling: braking to get off. */
 let leaving = false;
 let braked = false;
@@ -225,8 +308,9 @@ let bumpAt = 0;
 let edgeToast = 0;
 /** When he got on (`clock`): the keys show over him a few seconds. */
 let onAt = 0;
-/** When the touch jump button's "Bell" is checked again (`clock`: the touch controls may appear later). */
+/** When the touch buttons' "Hop" and "Bell" are set again (`clock`: the touch controls may appear later), and the bell is shown. */
 let jumpAt = 0;
+let bellShown = false;
 /** The ground under the wheels (`stepSound` asked a few times a second) and the tyres' sound on it. */
 let ground: Ground = 'dirt';
 let groundAt = 0;
@@ -262,7 +346,7 @@ function prompts(): void {
   if (words === lang()) return;
   words = lang();
   offerText = `E  ${t('bikeRide')}`;
-  rideText = `E  ${t('bikeOff')}  ·  Space  ${t('bikeBell')}`;
+  rideText = `E  ${t('bikeOff')}  ·  Space  ${t('bikeHop')}  ·  F  ${t('bikeBell')}`;
 }
 
 // ── The bicycles on the map ────────────────────────────────────────────────
@@ -354,81 +438,149 @@ function near(x: number, y: number, z: number, s: number): Bike | null {
 
 // ── Where it can go ────────────────────────────────────────────────────────
 
-/** The ground under the probes and the wheels last tested (m); each probe's step up (m, NaN: a wall), or none. */
+/** Checks: the ground under the frame's probes last tested, over the frame there (m; NaN: a wall). */
 const probeY = new Float64Array(PROBES.length);
-const stepY = new Float64Array(PROBES.length);
-let rearY = 0;
-let frontY = 0;
+/** What a test found (`test`): what would hold each wheel up there and the ground under each (m); the step it waits at, over the ground (m). */
+let tr = 0;
+let tf = 0;
+let ur = 0;
+let uf = 0;
+let stepRise = 0;
+/** He pedals into a step, or rolls at it fast enough (`LIFT_V`), so the bicycle lifts onto one taller than `STAIR` (set for each move). */
+let lifting = false;
+
+/** The ground a tyre touches at (x, z) seen from its bottom at `from` (up to `LIFT` over it, with room for him; NaN: a wall). */
+function tyreGround(w: RoamWorld, x: number, z: number, from: number, k: number, up = LIFT): number {
+  return w.standAt ? w.standAt(x, z, from, up * k, ROOM * k) : w.groundAt(x, z);
+}
 
 /**
- * Can the bicycle stand with its saddle point at (x, z) heading `yaw`, its
- * wheels at height `y`? Fills `rearY` / `frontY` (the ground under the
- * wheels) and says what blocks it, if anything: a step he could walk up
- * (stairs, a land step: across the way it goes, `dir`), a drop, deep water,
- * else a wall (a post, a rail, a stall: it slides along those). `loose`: it is
- * caught in something already; only the wheels count, and any way out is fine
- * but over a cliff.
+ * Can the bicycle be at (x, z) heading `yaw`, going `dir` (+ ahead, − back), its wheels as they are now? Fills `tr` /
+ * `tf` (what would hold each wheel up there) and `ur` / `uf` (the ground under each), and says what is in the way:
+ * - a tyre (under its hub and its leading edge, which meets a step first) on ground higher than `GATE` over it: a step
+ *   it is getting up (`lift`: the move waits at its face while the wheel lifts) if the step carries the bicycle
+ *   (`carries`) and is no higher than `LIFT` over the ground the wheel is on (`STAIR` unless he pedals or it rolls
+ *   fast: `lifting`), going ahead; else a wall, or a step he could climb on foot (`up`);
+ * - the frame's probes: room over each; ground under the frame higher than `BUMP` there is the step being climbed (the
+ *   nearer wheel comes up, so the frame rests on its edge; `lift` while it is still far below it) or a wall (a post, a
+ *   rail, a low wall: it slides along it);
+ * - a wheel over a drop deeper than `FALL` (`down`; walking it back, the back wheel off one deeper than `STAIR`), or
+ *   in deep water (`deep`).
+ * `loose`: it is caught in something already (put there by a URL): only the wheels count, any way out but over a cliff.
  */
-function test(ctx: RoamCtx, x: number, z: number, yaw: number, y: number, dir: number, loose = false): Block {
+function test(ctx: RoamCtx, x: number, z: number, yaw: number, dir: number, loose = false): Block {
   const w = ctx.world;
   const k = sc(ctx);
+  const bu = buM(ctx);
   const fx = Math.sin(yaw);
   const fz = Math.cos(yaw);
   // (his left: +x of his own space)
   const lx = Math.cos(yaw);
   const lz = -Math.sin(yaw);
-  const room = ROOM * k;
-  const bu = BODY_UNIT_M * ctx.body.scale;
-  rearY = wheelGround(w, x + fx * BIKE.rear * bu, z + fz * BIKE.rear * bu, y, k);
-  frontY = wheelGround(w, x + fx * BIKE.front * bu, z + fz * BIKE.front * bu, y, k);
-  if (loose) return Number.isNaN(rearY) || Number.isNaN(frontY) || Math.min(rearY, frontY) < y - 2.5 * k ? 'wall' : 'ok';
-  let blocked = 0;
-  let deep = false;
+  const go = dir < 0 ? -1 : 1;
+  const hx = fx * go;
+  const hz = fz * go;
+  const ar = BIKE.rear * bu;
+  const af = BIKE.front * bu;
+  // (a tyre's leading edge: its radius ahead of its hub, the way it goes; standing still, only what is under the hub
+  // holds it up: a front wheel lifted at a step's face comes back down)
+  const edge = dir ? BIKE.wheel * bu : 0;
+  stepRise = 0;
+  let wait = false;
+  // ── The wheels: the leading one first ──
+  for (let i = 0; i < 2; i++) {
+    const isFront = (i === 0) === go > 0;
+    const wh = isFront ? front : rear;
+    const a = isFront ? af : ar;
+    const cx = x + fx * a;
+    const cz = z + fz * a;
+    const ex = cx + hx * edge;
+    const ez = cz + hz * edge;
+    const hub = tyreGround(w, cx, cz, wh.h, k);
+    const lead = tyreGround(w, ex, ez, wh.h, k);
+    const at = lead > hub ? 1 : 0;
+    const s = Math.max(hub, lead);
+    if (isFront) {
+      tf = s;
+      uf = hub;
+    } else {
+      tr = s;
+      ur = hub;
+    }
+    if (loose) {
+      // (caught in something, a wheel comes up onto the ground under its hub as up a stair, no higher: it may be
+      // inside a counter or a wall)
+      const up = hub > wh.h + STAIR * k ? wh.h : hub;
+      if (isFront) tf = up;
+      else tr = up;
+      continue;
+    }
+    // (NaN: a wall, a step too tall for the bicycle — one he could climb on foot says so — or no room for him)
+    if (Number.isNaN(s)) {
+      const px = Number.isNaN(lead) ? ex : cx;
+      const pz = Number.isNaN(lead) ? ez : cz;
+      const top = tyreGround(w, px, pz, wh.ground, k, CLIMB);
+      return go > 0 && top > wh.ground + LIFT * k && carries(w, px, pz, top, hx, hz, k) ? 'up' : 'wall';
+    }
+    const water = w.waterAt(cx, cz);
+    if (water !== null && water > s + DEEP * k) return 'deep';
+    if (s < wh.ground - (go < 0 && i === 0 ? STAIR : FALL) * k) return 'down';
+    if (s <= wh.h + GATE * k) continue;
+    // A step at the tyre: up it (front first), if it carries the bicycle; else a wall.
+    const rise = s - wh.ground;
+    if (go < 0 || rise > (lifting ? LIFT : STAIR) * k || !carries(w, at ? ex : cx, at ? ez : cz, s, hx, hz, k)) return 'wall';
+    stepRise = Math.max(stepRise, rise);
+    wait = true;
+  }
+  if (loose) return Number.isNaN(tr) || Number.isNaN(tf) || Math.min(tr, tf) < Math.min(rear.h, front.h) - 2.5 * k ? 'wall' : 'ok';
+  // ── The frame and him between the wheels ──
   for (let i = 0; i < PROBES.length; i++) {
     const [a, c] = PROBES[i];
     const px = x + (fx * a + lx * c) * k;
     const pz = z + (fz * a + lz * c) * k;
-    const g = w.standAt ? w.standAt(px, pz, y, BUMP * k, room) : w.groundAt(px, pz);
-    probeY[i] = g;
-    stepY[i] = -Infinity;
-    if (Number.isNaN(g) || g > y + BUMP * k) {
-      // (what is there: a step he could walk up, or a wall)
-      stepY[i] = w.standAt ? w.standAt(px, pz, y, 2.4 * k, room) : NaN;
-      blocked++;
-      continue;
+    // (the frame there: on the line between the tyres' bottoms)
+    const u = clamp((a * k - ar) / (af - ar), 0, 1);
+    const base = rear.h + (front.h - rear.h) * u;
+    const g = tyreGround(w, px, pz, base, k);
+    probeY[i] = g - base;
+    if (Number.isNaN(g)) return 'wall';
+    if (g <= base + BUMP * k) continue;
+    // The step the wheels are getting up, under the frame: the nearer wheel comes up so that the frame rests on its edge.
+    const near = u > 0.5 ? front : rear;
+    if (go < 0 || g - near.ground > (lifting ? LIFT : STAIR) * k || !carries(w, px, pz, g, hx, hz, k)) return 'wall';
+    const need = u > 0.5 ? (g - BUMP * k - rear.h * (1 - u)) / u : (g - BUMP * k - front.h * u) / (1 - u);
+    if (u > 0.5) tf = Math.max(tf, need);
+    else tr = Math.max(tr, need);
+    if (need > near.h + GATE * k) {
+      stepRise = Math.max(stepRise, g - near.ground);
+      wait = true;
     }
-    const water = w.waterAt(px, pz);
-    if (water !== null && water > g + DEEP * k) deep = true;
   }
-  if (blocked) {
-    // A step up: across the way it goes (the leading probes, the middle one among them; or beside the middle
-    // one too, where it meets the step first), not a post or a rail.
-    const lead = dir >= 0 ? AHEAD : BEHIND;
-    const mid = dir >= 0 ? FRONT_PROBE : REAR_PROBE;
-    // (as high as a stair's riser or a land step: not a table, a stall's counter, a kerb or a low wall)
-    const rise = (stepY[mid] - y) / k;
-    if (!(rise > BUMP && (rise <= RISER || (rise >= LAND_STEP[0] && rise <= LAND_STEP[1])))) return 'wall';
-    let ups = 0;
-    for (const i of lead) if (stepY[i] > y + BUMP * k) ups++;
-    if (ups >= 2) return 'up';
-    const a = PROBES[mid][0];
-    for (const c of ACROSS) {
-      const g = w.standAt ? w.standAt(x + (fx * a + lx * c) * k, z + (fz * a + lz * c) * k, y, 2.4 * k, room) : NaN;
-      if (!(g > y + BUMP * 0.8 * k)) return 'wall';
-    }
-    return 'up';
-  }
-  if (Number.isNaN(rearY) || Number.isNaN(frontY)) return 'wall';
-  // (down a bank into deep water: the water stops it, not the drop)
-  if (deep) return 'deep';
-  if (frontY < y - DROP * k || rearY < y - DROP * k || probeY[FRONT_PROBE] < y - DROP * k || probeY[REAR_PROBE] < y - DROP * k) return 'down';
-  if (!w.inBounds(x + fx * 1.1 * k * Math.sign(dir || 1), z + fz * 1.1 * k * Math.sign(dir || 1)) && w.inBounds(ctx.body.pos.x, ctx.body.pos.z)) return 'wall';
-  return 'ok';
+  if (!w.inBounds(x + fx * 1.1 * k * go, z + fz * 1.1 * k * go) && w.inBounds(ctx.body.pos.x, ctx.body.pos.z)) return 'wall';
+  return wait ? 'lift' : 'ok';
 }
 
-/** The ground a wheel touches at (x, z) from height `y` (NaN: a wall). */
-function wheelGround(w: RoamWorld, x: number, z: number, y: number, k: number): number {
-  return w.standAt ? w.standAt(x, z, y, BUMP * k, ROOM * k) : w.groundAt(x, z);
+/**
+ * Does a step with its top at `top` where it is met, (x, z), carry the bicycle going (hx, hz)? 3 of the 8 points round
+ * it stand that high (or as a stair's next tread), most of them on its far side (a step beside him, that he rides
+ * along, is a wall), and it goes on ahead (`CARRY_AHEAD`): a stair, a terrace, a land step; not a post, a jar, a rail,
+ * a low wall, a log or a counter.
+ */
+function carries(w: RoamWorld, x: number, z: number, top: number, hx: number, hz: number, k: number): boolean {
+  if (!w.standAt) return false;
+  const lo = top - LEVEL * k;
+  let n = 0;
+  let ax = 0;
+  let az = 0;
+  for (const [cx, cz] of RING) {
+    if (!(tyreGround(w, x + cx * RING_R * k, z + cz * RING_R * k, top, k, STAIR) >= lo)) continue;
+    n++;
+    ax += cx;
+    az += cz;
+  }
+  if (n < 3 || ax * hx + az * hz < 0.3 * Math.hypot(ax, az)) return false;
+  for (const d of CARRY_AHEAD) if (!(tyreGround(w, x + hx * d * k, z + hz * d * k, top, k, STAIR) >= lo)) return false;
+  return true;
 }
 
 /** A short message (not again for a few seconds). */
@@ -468,12 +620,16 @@ function roomAhead(ctx: RoamCtx, look: number): number {
   const fx = Math.sin(ctx.body.yaw);
   const fz = Math.cos(ctx.body.yaw);
   let room = Infinity;
-  // From his head's middle on; what hangs over him already does not count (he rides on out from under it).
+  // From his head's middle on; what hangs over him already does not count (he rides on out from under it). His head
+  // goes up and down the stairs and terraces ahead with the ground (a doorway at the top of a stair counts from there).
   let clear = false;
+  let y = p.y;
   for (let d = 0; d <= look; d += LOOK_STEP * k) {
     const x = p.x + fx * (HEAD_AHEAD * k + d);
     const z = p.z + fz * (HEAD_AHEAD * k + d);
-    const low = lowAt(w, x, p.y, z, fx, fz, k);
+    const g = tyreGround(w, x, z, y, k, STAIR);
+    if (!Number.isNaN(g)) y = g;
+    const low = lowAt(w, x, y, z, fx, fz, k);
     if (!low) clear = true;
     else if (clear) {
       room = d - BRIM * k;
@@ -507,9 +663,11 @@ function knock(speed: number): void {
 }
 
 /**
- * Move along the heading by `d` m (− backwards), turning `turn` rad on the
- * way, in short steps: bumping over small steps, sliding along a wall met at a
- * slant, stopping at a step, a drop, deep water or a wall met head on.
+ * Move along the heading by `d` m (− backwards), turning `turn` rad on the way, in short steps: up a step the wheels
+ * are getting up it waits at its face while they lift (front then back; `waiting`), it rides off a drop (the wheels fly
+ * off it), and against a wall, a step too tall, a drop too deep or deep water it slides along it, keeping the part of
+ * its speed along it (the bicycle turning to run along it); met head on, it stops. Then what holds the wheels up is
+ * that of where it is (`front.hold`, `rear.hold`).
  */
 function move(ctx: RoamCtx, d: number, turn: number, dt: number): void {
   const body = ctx.body;
@@ -518,9 +676,12 @@ function move(ctx: RoamCtx, d: number, turn: number, dt: number): void {
   const n = Math.max(1, Math.ceil(Math.abs(d) / (SUBSTEP * k)));
   // (the most it turns to run along a wall each step)
   const most = (SLIDE_TURN * dt) / n;
-  const y = wr + (wf - wr) * (-BIKE.rear / WHEELBASE);
-  // (caught in something already, e.g. put there by a URL: only the wheels count, any way out is fine)
-  const loose = test(ctx, pos.x, pos.z, body.yaw, y, Math.sign(d)) === 'wall';
+  waiting = false;
+  // Where it is: what holds the wheels up here (a step that does not move still has them); caught in something
+  // already (e.g. put there by a URL), only the wheels count and any way out is fine.
+  const here = test(ctx, pos.x, pos.z, body.yaw, d);
+  const loose = here === 'wall';
+  keep(true);
   for (let i = 0; i < n; i++) {
     let ds = d / n;
     const yaw = body.yaw + turn / n;
@@ -542,46 +703,109 @@ function move(ctx: RoamCtx, d: number, turn: number, dt: number): void {
     }
     const nx = pos.x + Math.sin(yaw) * ds;
     const nz = pos.z + Math.cos(yaw) * ds;
-    const b = test(ctx, nx, nz, yaw, y, ds, loose);
+    const b = test(ctx, nx, nz, yaw, ds, loose);
+    lastBlock = b;
     if (b === 'ok') {
       pos.x = nx;
       pos.z = nz;
       body.yaw = yaw;
-      gr = rearY;
-      gf = frontY;
+      keep(true);
       continue;
     }
-    if (b === 'wall') {
-      // Met at a slant: slide along it (the bicycle turns to run along it, losing the speed that went into it).
-      let slid = false;
-      for (const a of SLIDES) {
-        const sy = yaw + a;
-        const sx = pos.x + Math.sin(sy) * ds * Math.cos(a);
-        const sz = pos.z + Math.cos(sy) * ds * Math.cos(a);
-        const turnTo = clamp(a * 0.35, -most, most);
-        if (test(ctx, sx, sz, body.yaw + turnTo, y, ds, loose) !== 'ok') continue;
-        pos.x = sx;
-        pos.z = sz;
-        body.yaw += turnTo;
-        gr = rearY;
-        gf = frontY;
-        if (Math.abs(a) > 0.5) knock(Math.abs(v) * Math.sin(Math.abs(a)));
-        v *= 1 - 0.25 * Math.abs(Math.sin(a));
-        slid = true;
-        break;
-      }
-      if (slid) continue;
-      // Head on: it stops.
-      knock(Math.abs(v));
-      v = 0;
+    if (b === 'lift') {
+      // A step the wheels are getting up: it waits at its face while they lift (what would hold them there lifts
+      // them), going on no faster than it can (a riser, a terrace's edge; a land step slower).
+      waiting = true;
+      keep(false);
+      v = Math.min(v, HELD_V[stepRise > STAIR * k ? 1 : 0] * k);
       return;
     }
-    // A step up or down, deep water: it stops there (he must get off to go on; backing, it just stops).
-    if (ds > 0) say(ctx, b === 'up' ? 'bikeUp' : b === 'down' ? 'bikeDown' : 'bikeDeep');
-    knock(Math.abs(v) * 0.6);
+    // (rising in a hop: it waits at what it meets in the air, which it may yet clear: a low wall, a log)
+    if (b === 'wall' && !rear.on && !front.on && Math.max(rear.vy, front.vy) > 0) return;
+    // A wall, a step too tall, a drop too deep, deep water: slide along it (the first turn that is free is about its
+    // run; the bicycle turns to run along it, keeping the part of its speed that goes along it).
+    let slid = false;
+    for (const a of SLIDES) {
+      const sy = yaw + a;
+      const step = ds * Math.cos(a);
+      const sx = pos.x + Math.sin(sy) * step;
+      const sz = pos.z + Math.cos(sy) * step;
+      const turnTo = clamp(a, -most, most);
+      if (test(ctx, sx, sz, body.yaw + turnTo, ds, loose) !== 'ok') continue;
+      pos.x = sx;
+      pos.z = sz;
+      body.yaw += turnTo;
+      keep(true);
+      if (Math.abs(a) > 0.5) knock(Math.abs(v) * Math.sin(Math.abs(a)));
+      // (the speed that went into it is lost as it turns along it: over `SLIDE_LEN`, not again at every step)
+      v *= 1 - (1 - Math.cos(a)) * Math.min(1, Math.abs(ds) / (SLIDE_LEN * k));
+      slid = true;
+      break;
+    }
+    if (slid) continue;
+    // Head on: it stops (a step he could climb on foot, a drop, deep water: he hears why).
+    if (ds > 0 && b !== 'wall') say(ctx, b === 'up' ? 'bikeUp' : b === 'down' ? 'bikeDown' : 'bikeDeep');
+    knock(Math.abs(v));
     v = 0;
     return;
   }
+}
+
+/** What the last test found holds the wheels up from now on (`ground`: the bicycle is there, so is the ground under them). */
+function keep(ground: boolean): void {
+  if (!Number.isNaN(tr)) rear.hold = tr;
+  if (!Number.isNaN(tf)) front.hold = tf;
+  if (!ground) return;
+  if (!Number.isNaN(ur)) rear.ground = ur;
+  if (!Number.isNaN(uf)) front.ground = uf;
+}
+
+/**
+ * A wheel this step: up a small step eased, onto a bigger one with a pop, down a small one eased, off a bigger one into
+ * the air; true as it starts a pop. It lands with `landed` (m/s down), bouncing off a hard landing.
+ */
+function wheelStep(wh: Wheel, dt: number, k: number): boolean {
+  const target = wh.hold;
+  const g = GRAVITY * k;
+  let popped = false;
+  if (wh.h < target) {
+    const up = target - wh.h;
+    // (a kerb, a root: eased up it, on the ground)
+    if (wh.on && up <= BUMP * k) wh.h += up * damp(24, dt);
+    else {
+      // (a step: it pops up onto it, coming down onto it from a little over it)
+      const pop = Math.sqrt(2 * g * (up + 0.06 * k));
+      if (wh.vy < pop) {
+        popped = wh.on;
+        wh.vy = pop;
+      }
+      wh.on = false;
+    }
+  }
+  if (!wh.on) {
+    wh.vy -= g * dt;
+    wh.h += wh.vy * dt;
+    if (wh.vy <= 0 && wh.h <= target) {
+      const impact = -wh.vy;
+      wh.h = target;
+      wh.landed = Math.max(wh.landed, impact);
+      // (a hard landing bounces a little; then it rolls on)
+      if (impact > BOUNCE * k) wh.vy = impact * BOUNCE_BACK;
+      else {
+        wh.vy = 0;
+        wh.on = true;
+      }
+    }
+    return popped;
+  }
+  wh.vy = 0;
+  // On the ground: down a small step eased (it rolls down it), off a bigger one into the air.
+  if (wh.h > target) {
+    const down = wh.h - target;
+    if (down <= SNAP * k) wh.h -= down * damp(20, dt);
+    else wh.on = false;
+  }
+  return false;
 }
 
 // ── Getting on, riding, getting off ────────────────────────────────────────
@@ -608,9 +832,14 @@ function start(ctx: RoamCtx, b: Bike, at = false): void {
   pitch = 0;
   crank = PARK_CRANK;
   down = 1;
-  back = walk = backWait = effort = bump = 0;
-  leaving = braked = false;
-  wr = wf = gr = gf = gr0 = gf0 = b.pos.y;
+  back = walk = backWait = effort = bump = rise = 0;
+  leaving = braked = waiting = false;
+  for (const wh of [rear, front]) {
+    wh.h = wh.hold = wh.ground = b.pos.y;
+    wh.vy = wh.landed = 0;
+    wh.hung = false;
+    wh.on = true;
+  }
   onAt = clock;
   ctx.body.vel.set(0, 0, 0);
   e.explorer.animator.posture = posture;
@@ -622,9 +851,16 @@ function start(ctx: RoamCtx, b: Bike, at = false): void {
   if (followWas > 0) ctx.cam.follow = 0.95;
   writePose(ctx, at);
   if (!at) SFX.play('bikeStand', 0.8);
-  // (on a touch screen the jump button rings the bell while he rides)
-  touchJump('bikeBellBtn');
+  // (on a touch screen the jump button hops while he rides, and F's button — the boat's Fish — rings the bell)
+  touchButtons();
+}
+
+/** The touch controls while he rides: the jump button hops, F's button (the boat's Fish) rings the bell (again now and then: they may appear later, the language may change). */
+function touchButtons(): void {
   jumpAt = clock + 0.5;
+  touchJump('bikeHopBtn');
+  setTouchBell(t('bikeBellBtn'));
+  bellShown = true;
 }
 
 /** Off at once (back to the map, the mode changed): the bicycle stays on its stand where it is. */
@@ -634,13 +870,15 @@ function stop(ctx: RoamCtx | null): void {
   if (phase === 'mount' || phase === 'ride') e.explorer.animator.posture = null;
   e.explorer.animator.postureFeet = true;
   if (ride) {
+    // (stopped in the air, it stands on the ground under it)
+    if (!settled(rear) || !settled(front)) ride.pos.y = Math.min(rear.ground, front.ground);
     park(ride);
     ride.model.place(ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw, ride.lean, ride.pitch, ctx?.body.scale ?? 1.4, ride.turns);
   }
   ride = null;
   phase = 'off';
   quiet();
-  touchJump(null);
+  touchOff();
   if (ctx) {
     ctx.cam.distance = camBase;
     ctx.cam.follow = followWas;
@@ -651,6 +889,13 @@ function stop(ctx: RoamCtx | null): void {
 function quiet(): void {
   for (const s of LOOPS) SFX.level(s, 0);
   lastSound = '';
+}
+
+/** Off the bicycle: the touch jump button jumps again, F's button goes. */
+function touchOff(): void {
+  touchJump(null);
+  if (bellShown) setTouchBell(null);
+  bellShown = false;
 }
 
 /** Where he steps off to: beside the bicycle on his left, else his right, else behind it (where he fits); his feet there. */
@@ -750,19 +995,17 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   const paused = pad.inMenu || document.body.classList.contains('mu-asking');
   const fwd = paused ? 0 : clamp(input.move.y, -1, 1);
   const side = paused ? 0 : clamp(input.move.x, -1, 1);
-  if (clock >= jumpAt) {
-    jumpAt = clock + 0.5;
-    touchJump('bikeBellBtn');
-  }
+  if (clock >= jumpAt) touchButtons();
   if (input.use && !paused) leaving = true;
-  // The bell (Space): kring-kring.
-  if (input.jump && !paused && clock >= bellAt) {
+  // The bell (F; the pad's d-pad ↓, the touch controls' Bell): kring-kring.
+  const ring = !!input.taps?.has('KeyF') || takeTouchFish();
+  if (ring && !paused && clock >= bellAt) {
     bellAt = clock + 0.85;
     SFX.play('bikeBell', 1);
   }
   const vf = Math.abs(v);
-  // Getting off: once it has stopped (braking first).
-  if (leaving && vf < 0.6) {
+  // Getting off: once it has stopped (braking first) on the ground.
+  if (leaving && vf < 0.6 && settled(rear) && settled(front)) {
     phase = 'dismount';
     u = 0;
     from.copy(body.pos);
@@ -778,7 +1021,7 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
     b.pitch = 0;
     v = 0;
     quiet();
-    touchJump(null);
+    touchOff();
     SFX.play('bikeStand', 0.7);
     return { prompt: null };
   }
@@ -789,33 +1032,50 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
     ground = groundKind(ctx.world, body.pos.x, body.pos.y, body.pos.z);
   }
 
-  // ── Speed: pedalling builds it up, the brakes and the ground take it, a rise slows it, a fall speeds it ──
+  // ── The hop (Space; the pad's ✕, the touch controls' Hop): both wheels off the ground, the front a little higher ──
   // (his camera or phone up, the album open: no hands on the bars, so he brakes to a stop and puts a foot down)
   const handsOff = !!e.photo.kind || e.photo.albumOpen || paused;
+  if (input.jump && !handsOff && !leaving && settled(rear) && settled(front) && clock >= hopAt) {
+    hopAt = clock + HOP_AGAIN;
+    const up = Math.sqrt(2 * GRAVITY * HOP) * k;
+    rear.vy = up;
+    front.vy = up * Math.sqrt(HOP_NOSE);
+    rear.on = front.on = rear.hung = front.hung = false;
+    down = Math.min(down, 0.3);
+    // (pedalling, slow or stopped at a low wall: he throws it forward as he hops, over it)
+    if (fwd > 0.08 && !leaving) v = Math.max(v, HOP_KICK * k * fwd);
+    SFX.play('bikeHop', clamp(0.55 + vf / (12 * k), 0.55, 1));
+  }
+  /** A wheel on the ground: he can pedal and brake (in the air, neither; with the back wheel hanging off a step's edge, he still pushes on). */
+  const onGround = settled(rear) || settled(front);
+
+  // ── Speed: pedalling builds it up, the brakes and the ground take it, a rise slows it, a fall speeds it ──
   const pedal = !leaving && !handsOff && fwd > 0.08 ? fwd : 0;
   const hard = pedal > 0 && input.run;
   let a = 0;
-  if (pedal > 0 && v >= -0.05) {
+  if (pedal > 0 && v >= -0.05 && onGround) {
     const top = (hard ? V_HARD : V_EASY) * k * (0.35 + 0.65 * pedal);
     a += (hard ? PUSH_HARD : PUSH) * k * Math.max(0, 1 - Math.max(0, v) / top);
   }
-  const slope = clamp((wf - wr) / (WHEELBASE * bu), -0.35, 0.35);
-  // (stopped, his foot down holds it on a slope)
-  a -= 9.8 * k * slope * 0.85 * (down < 0.5 ? 1 : 0);
+  // (the slope of the ground under the hubs, not of a wheel lifting at a step; a game bicycle's: he climbs what he
+  // walks up, slower, and runs down it faster)
+  const slope = clamp((front.ground - rear.ground) / (WHEELBASE * bu), -0.35, 0.35);
+  // (stopped, his foot down holds it on a slope; in the air, nothing does)
+  a -= 9.8 * k * slope * SLOPE * (down < 0.5 && settled(rear) && settled(front) ? 1 : 0);
   a -= AIR * v * vf / k;
   v += a * dt;
   // Rolling resistance (never past a standstill).
-  const roll = ROLL[ground] * k * dt;
+  const roll = onGround ? ROLL[ground] * k * dt : 0;
   v = v > 0 ? Math.max(0, v - roll) : Math.min(0, v + roll);
   // (paused by a card: a firm stop where he is; getting off, the camera or the phone up: a gentle one)
-  const brake = paused ? 1 : leaving || handsOff ? BRAKE_OFF / BRAKE : fwd < -0.08 && v > 0.05 ? -fwd : 0;
+  const brake = !onGround ? 0 : paused ? 1 : leaving || handsOff ? BRAKE_OFF / BRAKE : fwd < -0.08 && v > 0.05 ? -fwd : 0;
   if (brake > 0 && v > 0) {
     if (!braked && v > 4.5 * k && !leaving && !paused) SFX.play('bikeBrake', clamp((v / k - 4) / 6, 0.2, 1));
     v = Math.max(0, v - BRAKE * k * brake * dt);
   }
   braked = brake > 0.4 && v > 0.3;
   // S held once stopped: walking it back slowly.
-  backWait = !leaving && fwd < -0.25 && v <= 0.3 * k ? backWait + dt : 0;
+  backWait = !leaving && fwd < -0.25 && v <= 0.3 * k && settled(rear) && settled(front) ? backWait + dt : 0;
   if (backWait > 0.35) v += (-V_BACK * k * clamp(-fwd, 0, 1) - v) * damp(4, dt);
   else if (v < 0) v += (0 - v) * damp(6, dt);
   v = clamp(v, -V_BACK * k, V_MAX * k);
@@ -825,9 +1085,10 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   const most = sp < 0.3 ? STEER_MAX : Math.min(STEER_MAX, Math.atan((WHEELBASE * bu * LAT * k) / (sp * sp)));
   steer += (-side * most - steer) * damp(8, dt);
   const L = WHEELBASE * bu;
-  let yawRate = (v * Math.tan(steer)) / L;
+  // (in the air the bars turn it only half as well: no ground to turn on)
+  let yawRate = ((v * Math.tan(steer)) / L) * (settled(front) ? 1 : 0.5);
   // Stopped (or held against something), A / D shuffle it round with his foot down: out of a corner.
-  if (sp < 0.3 * k && Math.abs(side) > 0.3 && !handsOff) yawRate = -side * PIVOT;
+  if (sp < 0.3 * k && Math.abs(side) > 0.3 && !handsOff && onGround) yawRate = -side * PIVOT;
   // Something low at his head's height ahead, or the children's sey circle: he slows to stop short of it.
   /** Held where he is by what is in the way (he puts his foot down, pedalling or not). */
   let held = false;
@@ -845,36 +1106,74 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
       }
     }
   }
+  // (a step taller than a stair's riser it lifts onto only when he pedals or it rolls at it fast)
+  lifting = pedal > 0 || v > LIFT_V * k;
   // (pushed back by a wall meanwhile: the step's turn is undone with it)
   const going = v;
   move(ctx, v * dt, yawRate * dt, dt);
   if (going > 0.05 && v === 0) held = true;
 
-  // ── The wheels on the ground: up and over small steps, the bicycle pitching between them; a bump ──
-  for (let i = 0; i < 2; i++) {
-    const jump = i ? gf - gf0 : gr - gr0;
-    if (Math.abs(jump) > 0.08 * k) {
-      const hit = clamp(Math.abs(jump) / (0.35 * k), 0, 1) * clamp(0.35 + Math.abs(v) / (8 * k), 0, 1);
-      if (hit > 0.15 && clock >= bumpAt) {
-        bumpAt = clock + 0.12;
-        SFX.play('bikeBump', hit);
-        if (hit > 0.6) pad.rumble('tick', hit * 0.6);
-      }
-      bump = Math.max(bump, hit);
+  // ── The wheels: up a step (eased, or a pop: the front, then the back), down one, off an edge, landing ──
+  const popR = wheelStep(rear, dt, k);
+  const popF = wheelStep(front, dt, k);
+  if (popR || popF) {
+    // (a pop up onto a step: the tyre's knock on its edge)
+    if (clock >= bumpAt) {
+      bumpAt = clock + 0.12;
+      SFX.play('bikeBump', 0.35);
+    }
+    bump = Math.max(bump, 0.3);
+  }
+  // (the frame is stiff: up a stair or a step the back wheel comes up with the front past `PITCH_MAX`; off an edge in
+  // the air he holds the front up, `DIP` under the back at most)
+  const steep = L * Math.sin(PITCH_MAX);
+  rear.hung = front.h - rear.h > steep;
+  if (rear.hung) {
+    rear.h = front.h - steep;
+    rear.vy = Math.max(rear.vy, front.vy);
+  }
+  const dip = front.on ? steep : DIP * k;
+  front.hung = rear.h - front.h > dip;
+  if (front.hung) {
+    front.h = rear.h - dip;
+    front.vy = Math.max(front.vy, rear.vy);
+  }
+  // (in the air, his hat against a roof or a branch: the bicycle comes no higher, as he does jumping on foot)
+  if ((!rear.on || !front.on) && ctx.world.ceilingAt) {
+    const y = rear.h + (front.h - rear.h) * (-BIKE.rear / WHEELBASE);
+    const over = y + HAT_TOP * k - ctx.world.ceilingAt(body.pos.x, body.pos.z, Math.min(rear.ground, front.ground) + CHEST_Y * k);
+    if (over > 0) {
+      rear.h = Math.max(rear.hold, rear.h - over);
+      front.h = Math.max(front.hold, front.h - over);
+      rear.vy = Math.min(rear.vy, 0);
+      front.vy = Math.min(front.vy, 0);
     }
   }
-  gr0 = gr;
-  gf0 = gf;
-  wr += (gr - wr) * damp(gr > wr ? 22 : 14, dt);
-  wf += (gf - wf) * damp(gf > wf ? 22 : 14, dt);
-  body.pos.y = wr + (wf - wr) * (-BIKE.rear / WHEELBASE);
-  pitch += (Math.atan2(wr - wf, L) - pitch) * damp(12, dt);
+  // A landing: a thud by how hard (the basket rattling, he sinks a little); a hard one shakes the pad, and costs a little speed.
+  const landed = Math.max(rear.landed, front.landed);
+  rear.landed = front.landed = 0;
+  if (landed > 0.5 * k) {
+    const hit = clamp(landed / (7 * k), 0.15, 1);
+    if (clock >= bumpAt) {
+      bumpAt = clock + 0.12;
+      SFX.play('bikeBump', hit);
+    }
+    if (landed > SHAKE * k) {
+      pad.rumble('land', clamp(landed / (16 * k), 0.3, 0.8));
+      v *= 1 - clamp((landed / k - SHAKE) * 0.02, 0, 0.2);
+    } else if (hit > 0.6) pad.rumble('tick', hit * 0.6);
+    bump = Math.max(bump, hit);
+  }
+  body.pos.y = rear.h + (front.h - rear.h) * (-BIKE.rear / WHEELBASE);
+  pitch += (Math.atan2(rear.h - front.h, L) - pitch) * damp(30, dt);
   bump *= Math.exp(-dt * 7);
+  // (standing on the pedals: in the air, lifting onto a step)
+  rise += ((!settled(rear) || !settled(front) || waiting ? 1 : 0) - rise) * damp(10, dt);
   body.grounded = true;
   body.vel.set(Math.sin(body.yaw) * v, 0, Math.cos(body.yaw) * v);
 
   // ── The foot down when stopped, walking it back, the lean ──
-  const stopped = Math.abs(v) < 0.45 * k && (pedal === 0 || v < 0 || held);
+  const stopped = Math.abs(v) < 0.45 * k && (pedal === 0 || v < 0 || held) && settled(rear) && settled(front) && !waiting;
   down += ((stopped ? 1 : 0) - down) * damp(stopped ? 5 : 8, dt);
   // (walking it back, or shuffling it round: his left foot steps)
   const pivoting = sp < 0.3 * k && Math.abs(yawRate) > 0.1;
@@ -886,25 +1185,25 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
   lean += (turnLean * (1 - foot) + STOP_LEAN * foot - lean) * damp(7, dt);
   effort += ((hard ? 1 : 0) - effort) * damp(4, dt);
 
-  // ── The cranks turn with his pedalling; coasting they rest level; stopped, the right pedal comes up to push off ──
+  // ── The cranks turn with his pedalling; coasting (or standing on the pedals) they rest level; stopped, the right pedal comes up to push off ──
   const gear = BIKE.gear * bu;
-  if (pedal > 0 && v > 0) crank += (v / gear) * Math.PI * 2 * dt;
+  if (pedal > 0 && v > 0 && onGround) crank += (v / gear) * Math.PI * 2 * dt;
   else if (down > 0.5) crank += angleDiff(PARK_CRANK, crank) * damp(3, dt);
   else {
     const level = Math.round((crank - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2;
-    crank += (level - crank) * damp(3, dt);
+    crank += (level - crank) * damp(rise > 0.5 ? 8 : 3, dt);
   }
   wheel += (v * dt) / (BIKE.wheel * bu);
 
   // ── Sounds: the chain while he pedals, the freewheel while it coasts, the tyres on the ground ──
   const speed = Math.abs(v) / k;
-  const cadence = pedal > 0 && v > 0.2 ? speed / (BIKE.gear * BODY_UNIT_M * 1.4) : 0;
+  const cadence = pedal > 0 && v > 0.2 && onGround ? speed / (BIKE.gear * BODY_UNIT_M * 1.4) : 0;
   SFX.level('bikeChain', clamp(cadence / 2.4, 0, 1));
-  SFX.level('bikeFree', pedal === 0 && v > 0.8 * k ? clamp(speed / 14, 0.05, 1) : 0);
+  SFX.level('bikeFree', cadence === 0 && v > 0.8 * k ? clamp(speed / 14, 0.05, 1) : 0);
   const tyres = ground === 'grass' ? 'bikeGrass' : ground === 'stone' ? 'bikeStone' : 'bikeDirt';
   if (lastSound && lastSound !== tyres) SFX.level(lastSound, 0);
   lastSound = tyres;
-  SFX.level(tyres, clamp(speed / 10, 0, 1) * (ground === 'water' ? 0.5 : 1));
+  SFX.level(tyres, onGround ? clamp(speed / 10, 0, 1) * (ground === 'water' ? 0.5 : 1) : 0);
 
   writePose(ctx, true);
   focus(ctx, dt);
@@ -942,6 +1241,7 @@ function writePose(ctx: RoamCtx, carry: boolean): void {
   ps.walk = walk;
   ps.effort = effort;
   ps.bump = bump;
+  ps.rise = rise;
   ps.look = clamp(steer * 1.1, -0.45, 0.45);
   ps.t = clock;
   if (carry) {
@@ -1082,7 +1382,13 @@ export function bikeDebug(): unknown {
     lamp: ride ? +ride.turns.lamp.toFixed(2) : 0,
     pool: pool ? { shown: pool.visible, opacity: +(poolMat?.opacity ?? 0).toFixed(2), at: [pool.position.x, pool.position.y, pool.position.z].map((n) => +n.toFixed(1)) } : null,
     probes: [...probeY].map((g) => +g.toFixed(2)),
-    steps: [...stepY].map((g) => +g.toFixed(2)),
+    // (each wheel: the tyre's bottom, what holds it up, the ground under its hub, on the ground; the frame's pitch)
+    wheels: [rear, front].map((wh) => ({ h: +wh.h.toFixed(3), hold: +wh.hold.toFixed(3), ground: +wh.ground.toFixed(3), on: wh.on })),
+    pitch: +pitch.toFixed(3),
+    air: !rear.on && !front.on,
+    rise: +rise.toFixed(2),
+    waiting,
+    block: lastBlock,
     bikes: bikes.map((b) => ({ id: b.spot.id, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), z: +b.pos.z.toFixed(2), yaw: +((b.yaw * 180) / Math.PI).toFixed(1), shown: b.model.shown })),
   };
 }

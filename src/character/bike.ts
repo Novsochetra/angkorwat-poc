@@ -9,10 +9,11 @@ import { JOINTS, type JointName } from './skeleton';
  * with the steering), his feet on the pedals (leg IK: the balls of his boots
  * on them, the ankles working through the stroke), so his legs pedal in time
  * with the cranks; he leans with the bicycle into a turn, rocks his shoulders
- * when he pedals hard, sinks a little over a bump. Stopped, he slides to the
- * saddle's nose and puts his left foot down on the ground, the bicycle
- * leaning to that side (the ride leans it: `STOP_LEAN`), the right pedal
- * parked up and forward to push off from; walking it back, his left foot
+ * when he pedals hard, sinks a little over a bump, stands on the pedals for a
+ * hop or a lift onto a step (up off the saddle, over the bars). Stopped, he
+ * slides to the saddle's nose and puts his left foot down on the ground, the
+ * bicycle leaning to that side (the ride leans it: `STOP_LEAN`), the right
+ * pedal parked up and forward to push off from; walking it back, his left foot
  * steps it backwards (his legs are too short for both feet at once).
  *
  * The bicycle is sized for him (`BIKE`, body units in his own space): his
@@ -109,6 +110,8 @@ export interface BikeRideState {
   effort: number;
   /** A jolt (0‥1, dying away): he sinks a little and nods. */
   bump: number;
+  /** 0 seated ‥ 1 standing on the pedals (a hop, a lift onto a step, in the air): up off the saddle, over the bars. */
+  rise: number;
   /** Where he looks (rad, + to his left): into a turn. */
   look: number;
   /** Seconds (breathing). */
@@ -116,7 +119,7 @@ export interface BikeRideState {
 }
 
 export function bikeState(): BikeRideState {
-  return { crank: 0, steer: 0, lean: 0, pitch: 0, down: 0, back: 0, walk: 0, effort: 0, bump: 0, look: 0, t: 0 };
+  return { crank: 0, steer: 0, lean: 0, pitch: 0, down: 0, back: 0, walk: 0, effort: 0, bump: 0, rise: 0, look: 0, t: 0 };
 }
 
 // ── His body ────────────────────────────────────────────────────────────────
@@ -148,6 +151,10 @@ export const STOP_LEAN = 0.23;
 /** Walking it back: how far the left boot steps back and forth (BU), and how high it lifts. */
 const STEP = 1.4;
 const STEP_LIFT = 0.8;
+/** Standing on the pedals: his hips this far up off the saddle and forward (BU), his chest this much lower over the bars (rad). */
+const STAND_UP = 1.5;
+const STAND_FWD = 1.1;
+const STAND_LEAN = 0.28;
 
 /** Which way the elbows point (chest space): out, down and back. */
 const POLE = { L: new Vector3(0.75, -0.55, -0.35).normalize(), R: new Vector3(-0.75, -0.55, -0.35).normalize() };
@@ -198,9 +205,10 @@ export function bikePose(s: BikeRideState): Pose {
   // Rocking over the pedals when he pushes hard (one push a pedal: twice a turn of the cranks, side to side).
   const rock = Math.sin(s.crank) * effort * (1 - down) * (1 - back);
 
-  // ── The hips: the sit bones on the saddle (on its nose, a little lower, when stopped) ──
-  const tilt = mix(0.22 + 0.1 * effort, 0.14, down);
-  _seat.set(0, BIKE.saddle + 0.15, SIT_Z + NOSE * down);
+  // ── The hips: the sit bones on the saddle (on its nose, a little lower, when stopped; up off it standing on the pedals) ──
+  const stand = smooth(s.rise) * (1 - down);
+  const tilt = mix(0.22 + 0.1 * effort, 0.14, down) + 0.12 * stand;
+  _seat.set(0, BIKE.saddle + 0.15 + STAND_UP * stand, SIT_Z + NOSE * down + STAND_FWD * stand);
   _v.copy(SEAT).applyAxisAngle(X_AXIS, tilt);
   _h.copy(_seat).sub(_v);
   _h.y -= SINK * down + 0.55 * clamp(s.bump, 0, 1);
@@ -233,7 +241,7 @@ export function bikePose(s: BikeRideState): Pose {
   }
 
   // ── The chest and the head: leaning to the bars, breathing, looking where he goes ──
-  const lean = mix(0.12 + 0.12 * effort, 0.05, down);
+  const lean = mix(0.12 + 0.12 * effort, 0.05, down) + STAND_LEAN * stand;
   const ch = POSE.chest;
   ch.rx = lean + breath + 0.1 * clamp(s.bump, 0, 1);
   ch.ry = 0.04 * rock + 0.15 * s.look;

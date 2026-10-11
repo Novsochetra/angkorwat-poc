@@ -7,7 +7,8 @@ import { steppedRing, steppedShape } from '../ui/shape';
  * thumb (it appears where the thumb lands, in the lower left of the view;
  * pushed past its ring he runs), Jump and Use buttons for the right thumb
  * (and in the boat a Fish button over Use: "Fish", then "Strike!" at a bite,
- * roam/_fishing.ts), a drag anywhere else on the view to look round, and a
+ * roam/_fishing.ts; on the bicycle the same button, F's, rings its bell:
+ * roam/_bike.ts), a drag anywhere else on the view to look round, and a
  * pinch to zoom.
  *
  * Shown while roaming once the page has seen a touch (or on a touch-first
@@ -43,6 +44,8 @@ export class TouchControls {
   /** In the boat: Fish (start fishing), Strike! at a bite (roam/_fishing.ts: `setTouchFish`, `takeTouchFish`). */
   private readonly fishBtn: HTMLButtonElement;
   fishHit = false;
+  /** Its picture now: the fish, or the bicycle's bell. */
+  private fishIcon: 'fish' | 'bell' = 'fish';
   private stickId: number | null = null;
   private readonly origin = { x: 0, y: 0 };
   /** Look fingers: last point per pointer. */
@@ -207,11 +210,21 @@ export class TouchControls {
     if (label) this.useBtn.querySelector('.rt-label')!.textContent = label;
   }
 
-  /** The Fish button (in the boat): shown with this label ("Fish", "Strike!"), or hidden (null); `strike` lights it up. */
-  setFish(label: string | null, strike = false): void {
+  /**
+   * The Fish button (in the boat): shown with this label ("Fish", "Strike!"), or hidden (null); `strike` lights it up.
+   * F's button: on the bicycle it rings the bell (`icon` 'bell', roam/_bike.ts).
+   */
+  setFish(label: string | null, strike = false, icon: 'fish' | 'bell' = 'fish'): void {
     this.fishBtn.classList.toggle('is-on', !!label);
     this.fishBtn.classList.toggle('is-strike', strike);
     if (label) this.fishBtn.querySelector('.rt-label')!.textContent = label;
+    if (label && icon !== this.fishIcon) {
+      this.fishIcon = icon;
+      this.fishBtn.querySelector('.rt-icon')!.outerHTML = icon === 'bell' ? BELL_ICON : FISH_ICON;
+      const aria: WordKey = icon === 'bell' ? 'bikeBellBtn' : 'fiFish';
+      this.fishBtn.dataset.tAria = aria;
+      this.fishBtn.setAttribute('aria-label', t(aria));
+    }
     if (!label) this.fishHit = false;
   }
 
@@ -281,7 +294,12 @@ export function setTouchFish(label: string | null, strike = false): void {
   active?.setFish(label, strike);
 }
 
-/** The Fish button was pressed since the last call (then forgotten). */
+/** The same button on the bicycle (roam/_bike.ts): its bell, F as the boat's Fish ("Bell"), or hidden (null). Its press: `takeTouchFish`. */
+export function setTouchBell(label: string | null): void {
+  active?.setFish(label, false, 'bell');
+}
+
+/** The Fish button (or the bicycle's Bell) was pressed since the last call (then forgotten). */
 export function takeTouchFish(): boolean {
   if (!active?.fishHit) return false;
   active.fishHit = false;
@@ -294,6 +312,8 @@ const stickRadius = () => (Math.min(innerWidth, innerHeight) < 500 ? 52 : 62);
 const CLOSE_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/></svg>`;
 /** A small fish (16 × 16 pixel art): the Fish button. */
 const FISH_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M5 4h5v1h2v1h1v1h1v2h-1v1h-1v1h-2v1H5v-1H4v-1H3V9H1V8h1V7h1V6h1V5h1zM0 5h2v1H0zM0 10h2v1H0z"/><path fill="#0d1927" d="M11 7h1v1h-1z"/></svg>`;
+/** A bicycle's thumb bell (16 × 16 pixel art): the same button on the bicycle. */
+const BELL_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M7 1h2v1H7zM6 2h4v1H6zM5 3h6v1H5zM4 4h8v6H4zM3 10h10v1H3zM2 11h12v1H2zM7 13h2v2H7z"/><path fill="#0d1927" d="M6 5h1v3H6z"/></svg>`;
 const JUMP_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 2h2v1h1v1h1v1h1v1h1v2h-3v6H6V8H3V6h1V5h1V4h1V3h1z"/></svg>`;
 
 let styled = false;

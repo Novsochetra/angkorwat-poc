@@ -13,6 +13,9 @@ import { Voice } from './voice';
  *   the bicycle settling;
  * - `bikeBump`: over a step or a root: a dull thud of the tyres, the basket,
  *   the rack and the mudguards rattling, the bell's striker touching the dome;
+ * - `bikeHop`: the tyres leaving the ground as he hops it (a soft scuff of the
+ *   rubber unloading), the chain slapping the stay, the basket shifting (the
+ *   landing is a `bikeBump`);
  * - `bikeBrake`: an old rim brake squealing a little when he stops hard;
  * - `bikeFree` (lasting): the back hub's freewheel ticking as he coasts,
  *   faster as it rolls faster (the add-on sets the level from the speed);
@@ -32,6 +35,7 @@ const LEVEL = {
   bell: 0.14,
   stand: 0.6,
   bump: 0.75,
+  hop: 0.45,
   brake: 0.055,
   free: 6.2,
   chain: 0.3,
@@ -139,6 +143,18 @@ registerSfx('bikeBump', (o, gain, t) => {
   for (let i = 0; i < n; i++) burst(v, t + 0.012 + i * range(r, 0.022, 0.04), 'white', 'bandpass', range(r, 1800, 3600), 2, (0.25 + 0.2 * r()) * (1 - i / (n + 1)), 0.001, 0.008);
   // Now and then the bell's striker touches the dome.
   if (gain > 0.5 && r() < 0.5) ping(v, t + 0.02, range(r, 2950, 3150), 0.012 * gain, 0.25);
+  v.play();
+});
+
+registerSfx('bikeHop', (o, gain, t) => {
+  const r = o.rnd;
+  const v = voice(o, LEVEL.hop * (0.5 + 0.5 * gain), 0.04);
+  // The tyres leaving the ground: a short soft scuff of the rubber unloading, lower and quicker than a bump.
+  burst(v, t, 'pink', 'bandpass', range(r, 500, 700), 0.9, 0.7, 0.004, 0.035);
+  burst(v, t, 'brown', 'lowpass', range(r, 160, 220), 0.7, 0.5, 0.01, 0.05);
+  // The chain slapping the stay, the basket shifting: two or three light ticks.
+  const n = 2 + Math.floor(r() * 2);
+  for (let i = 0; i < n; i++) burst(v, t + 0.03 + i * range(r, 0.03, 0.05), 'white', 'bandpass', range(r, 1600, 3000), 2, (0.2 + 0.15 * r()) * (1 - i / (n + 1)), 0.001, 0.008);
   v.play();
 });
 

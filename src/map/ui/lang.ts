@@ -830,8 +830,11 @@ const WORDS = {
   bikeRide: { km: 'ជិះកង់', en: 'Ride the bicycle' },
   bikeOff: { km: 'ចុះពីកង់', en: 'Get off' },
   bikeBell: { km: 'ចុចកណ្ដឹង', en: 'Ring the bell' },
-  // (the touch jump button while he rides: short)
+  // (Space while he rides: the bicycle jumps over a low wall, a log, a kerb)
+  bikeHop: { km: 'លោតកង់', en: 'Hop' },
+  // (the touch buttons while he rides, short: F's button rings the bell, the jump button hops)
   bikeBellBtn: { km: 'កណ្ដឹង', en: 'Bell' },
+  bikeHopBtn: { km: 'លោត', en: 'Hop' },
   // (the key help while he rides, bottom left)
   bikePedal: { km: 'ធាក់ · ហ្វ្រាំង', en: 'Pedal · brake' },
   bikeSteer: { km: 'បត់', en: 'Steer' },
