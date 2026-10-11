@@ -302,7 +302,9 @@ guide, with every add-on's keys and URL values for shots, is
 - Fun: his own kite (`kite=fly`), helping the farmers (`farm=plant|reap`), the
   Water Festival boat race (`fest=water&race=join`), kick the sey (`sey=1`).
 - A friend and a home: the dog (`dog=follow`), his stilt house at the
-  sugar-palm village's north-east edge (`home=1|sleep`), his name in Khmer
+  sugar-palm village's north-east edge (`home=1|sleep`; E before its doors,
+  turned to them, opens and closes them: `roam/_homeDoor.ts`, kept as
+  `home.door`, `homedoor=open|closed|<0‥1>`), his name in Khmer
   letters (`name=<latin>`; `src/map/khmerName.ts`).
 - His home garden (`docs/map-work/addons.md` "His home garden"): the core in
   `src/map/garden/` (plants `kinds.ts`, the saved garden `state.ts`, the work's

@@ -1,15 +1,15 @@
 import '../audio/_home';
-import { SFX } from '../audio/addonSfx';
 import { CALENDAR, nextOf } from '../calendar';
-import { granCue, HOME, HOME_AT, HOME_GRAN, HOME_IN, HOME_Z, homeDogBed, homeFloor, homeHammock, homeLocal, homeToWorld, homeYaw, inRooms, onHomeFloor, type GranCue } from '../hamlet/_homePlan';
+import { granCue, HOME, HOME_AT, HOME_GRAN, HOME_IN, homeDogBed, homeDoorParam, homeFloor, homeHammock, homeLocal, homeToWorld, homeYaw, inRooms, onHomeFloor, type GranCue } from '../hamlet/_homePlan';
 import { progress } from '../progress';
 import { TIME } from '../time';
 import { t } from '../ui/lang';
-import { registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { registerAddon, type AddonEnv } from './_addons';
 import { atWords } from './_calendarText';
 import { dogBed, dogHome } from './_dog';
 import { addHammock } from './_hammockSpots';
 import { createHomeCard, type HomeCard, type HomeChoice } from './_homeCard';
+import { doorSide, doorsOpen, doorwayBusy, startDoor, type DoorSession } from './_homeDoor';
 import { startSleep, type SleepPlan, type SleepSession } from './_homeSleep';
 import { startTalk, TALK, type TalkSession } from './_homeTalk';
 import { installHomeWalk } from './_homeWalk';
@@ -27,20 +27,24 @@ import type { RoamCtx } from './types';
  *   her little lamp), stops, waves and calls to him ("ចៅ! មកនេះបន្តិចមក!").
  *   Beside her, E "Talk to Grandma": she gives him the key (_homeTalk.ts);
  *   the house is his (progress.ts `home.owned`), and she walks home.
- * - **The door**: on the veranda before the shut double doors, E "Open the
- *   door": he unlocks and pushes them (the `openDoor` action), they swing in
- *   with a creak and stay open from then on (`home.opened`). Not his yet: the
+ * - **The doors**: on the veranda before the shut double doors, E "Open the
+ *   door": he unlocks them and they swing in (`home.opened`). Not his yet: the
  *   prompt says the grandmother nearby has the key (with no grandmother — the
- *   people part left out — the door opens to him at once).
+ *   people part left out — the door opens to him at once). From then on, before
+ *   them and turned to them (on the veranda or in the room), E "Close the
+ *   door" / "Open the door" (_homeDoor.ts: kept, `home.door`; never shut on him
+ *   or the dog in the doorway).
  * - **Inside**: he walks up the stair, over the veranda and in (the walk map
- *   is the house's own; the doorway is walled while the doors are shut:
- *   _homeWalk.ts); the follow camera stays in the room (its walls and floor
- *   are solid to it: hamlet/_home.ts).
+ *   is the house's own; the doorway is walled while the doors are shut, to
+ *   him, the dog and the camera: _homeWalk.ts); the follow camera stays in
+ *   the room (its walls and floor are solid to it: hamlet/_home.ts).
  * - **Sleep**: at his mat, E "Sleep": the card (_homeCard.ts) asks until when
  *   — dawn, the afternoon, or the next event of the calendar (calendar.ts:
  *   the soonest to begin within a day and a half: "Wake for: the morning
  *   market"); while the time stands still only a short rest, and the card
- *   says why — then he sleeps (_homeSleep.ts).
+ *   says why — then he sleeps (_homeSleep.ts). For a real sleep he shuts
+ *   the doors first if they are open (from inside, as E does), and opens
+ *   them again once he is up.
  * - **The hammock** under the house is the hammock add-on's (`addHammock`,
  *   id `home`); **the dog's bed** at the stair's foot is for the dog
  *   (_homePlan.ts `homeDogBed`, `HOME.inside`: he is at home).
@@ -49,13 +53,16 @@ import type { RoamCtx } from './types';
  * own keys (1‥4, ↑ ↓, Enter, Esc; the pad's d-pad, ✕, ○; a tap).
  *
  * URL (checks): `home=1` his (the doors open), `home=shut` his, the doors
- * shut (E opens them), `home=0` not his (the grandmother waits) · `home=call`
- * she calls to him now · `home=key` the grandmother's moment (she holds out
+ * shut and locked (E unlocks and opens them), `home=0` not his (the
+ * grandmother waits) · `homedoor=open|closed|<0‥1>` his, the doors unlocked
+ * and open, closed, or held part way · `home=call` she calls to him now ·
+ * `home=key` the grandmother's moment (she holds out
  * the key, her words; he stands before her) · `home=inside` (standing in his
  * room) · `home=sleep` (asleep on his mat under the net) · `home=stretch`
  * (stretching, just up) · `homecard=1` the card open (`=cycle`: as when the
  * time runs) · `homekite=1` his kite on the wall · `gold=all` (the treasure's)
- * fills the shelf · `name=<name>` the sign. `report()` gives `home=`.
+ * fills the shelf · `name=<name>` the sign. `report()` gives `home=` (and
+ * `homedoor=closed`).
  * `window.__home` (shots, the dev server): `state()`, `sleep(kind)`, `card()`.
  */
 
@@ -67,9 +74,6 @@ const FAR = 40;
 /** Near enough to talk to her (m across, and up or down). */
 const TALK_R = 3.2;
 const TALK_UP = 1.6;
-/** In front of the doors (local: across, how far out on the veranda, m). */
-const DOOR_ACROSS = 1.3;
-const DOOR_OUT = 1.9;
 /** Near enough the mat to lie down (m round its edge, local). */
 const MAT_R = 0.9;
 /** Days of the cycle ahead to look for an event to wake for, and the least time ahead it must be (≈ 10 s of play). */
@@ -92,15 +96,8 @@ const AFTERNOON = 0.0;
  */
 const INDOOR = { corners: [[2.35, -2.4], [-2.4, -0.95], [-2.35, 0.3], [2.35, 0.3]] as readonly [number, number][], y: 3.65, fov: 60, behind: 3.5, rate: 3.5, out: 2, drag: 3, keep: 1.2, enter: 0.45 };
 
-type Offer = 'talk' | 'door' | 'locked' | 'sleep' | null;
-
-/** A short hold of his own: E at the door (he unlocks and pushes it open). */
-interface DoorSession {
-  readonly kind: 'door';
-  readonly done: boolean;
-  hold(ctx: RoamCtx, dt: number): AddonHold;
-  stop(): void;
-}
+/** What E does here: talk to the grandmother, unlock the doors (`door`, the first time), open or close them, sleep. */
+type Offer = 'talk' | 'door' | 'open' | 'close' | 'locked' | 'sleep' | null;
 type Session = TalkSession | SleepSession | DoorSession;
 
 let env: AddonEnv | null = null;
@@ -108,6 +105,11 @@ let floor = 0;
 let session: Session | null = null;
 let card: HomeCard | null = null;
 let offered: Offer = null;
+/** The side of the doors he was offered them from (_homeDoor.ts `doorSide`). */
+let doorFrom: -1 | 1 = 1;
+/** What comes after the session now (to bed once the doors are shut), and whether he shut them for the night (they open as he gets up). */
+let next: (() => Session) | null = null;
+let shutForBed = false;
 let lastCtx: RoamCtx | null = null;
 /** She has called to him this time round (again once he has been far off). */
 let called = false;
@@ -219,16 +221,11 @@ function dogSleeps(on: boolean): void {
   dogHome(on);
 }
 
-function openDoors(): void {
+/** The doors unlocked (the first time he opens them: the house is his from then on, if it was not yet). */
+function unlockDoors(): void {
+  if (!HOME.owned) ownIt();
   HOME.opened = true;
   progress.set('home.opened', true);
-}
-
-/** On the veranda before the doors (feet at the floor). */
-function atDoor(x: number, y: number, z: number): boolean {
-  if (Math.abs(y - floor) > 0.35) return false;
-  const [lx, lz] = homeLocal(x, z);
-  return Math.abs(lx) < DOOR_ACROSS && lz > HOME_Z.wall - 0.1 && lz < HOME_Z.wall + DOOR_OUT;
 }
 
 /** In the room near his mat. */
@@ -302,60 +299,39 @@ function openCard(ctx: RoamCtx, force = false): void {
     (id) => {
       const c = list.find((x) => x.words().id === id);
       if (!c || session || !lastCtx) return;
-      session = startSleep(e, lastCtx, c.plan);
+      const ctx = lastCtx;
+      // (to bed for the night, or till an event: the doors shut first, from inside, unless someone is in the doorway)
+      if (c.plan.kind !== 'rest' && doorsOpen() && !doorwayBusy(ctx, floor)) {
+        session = startDoor(e, ctx, floor, 'close', -1, unlockDoors);
+        next = () => startSleep(e, ctx, c.plan);
+        shutForBed = true;
+      } else session = startSleep(e, ctx, c.plan);
     },
   );
 }
 
-/** He unlocks the doors and pushes them open (turned to them; the `openDoor` action; they swing in, a creak). */
-function doorSession(ctx: RoamCtx): DoorSession {
-  const e = env!;
-  const body = ctx.body;
-  const [dx, dz] = homeToWorld(0, HOME_Z.wall);
-  const face = Math.atan2(dx - body.pos.x, dz - body.pos.z);
-  let time = 0;
-  let done = false;
-  let opened = false;
-  e.explorer.play('openDoor');
-  return {
-    kind: 'door',
-    get done() {
-      return done;
-    },
-    hold(c, dt) {
-      time += dt;
-      c.cam.turn(c.input.lookYaw, c.input.lookPitch, c.input.zoom);
-      body.vel.set(0, 0, 0);
-      body.yaw += angleDiff(face, body.yaw) * Math.min(1, dt * 8);
-      e.explorer.setMotion(0, true, 0);
-      const h = 1.7 * body.scale * 0.95;
-      c.cam.focus.set(body.pos.x, body.pos.y + h * 0.86, body.pos.z);
-      if (!opened && time > 0.45) {
-        opened = true;
-        if (!HOME.owned) ownIt();
-        openDoors();
-        SFX.play('homeDoor');
-      }
-      if (time > 1.5) done = true;
-      return { prompt: null };
-    },
-    stop() {
-      if (!opened) {
-        if (!HOME.owned) ownIt();
-        openDoors();
-      }
-      done = true;
-    },
-  };
-}
-
-/** End the session at once (a new mode, back to the map). */
+/** End the session at once (a new mode, back to the map): what was to follow it too. */
 function stopSession(): void {
+  next = null;
+  shutForBed = false;
   if (!session) return;
   try {
     session.stop();
   } finally {
     session = null;
+  }
+}
+
+/** The session is over: on to what follows it (to bed after the doors; up after sleeping, the doors he shut for the night opened). */
+function sessionDone(ctx: RoamCtx): void {
+  const was = session?.kind;
+  session = null;
+  const then = next;
+  next = null;
+  if (then) session = then();
+  else if (was === 'sleep' && shutForBed && env) {
+    shutForBed = false;
+    if (HOME.closed && !doorwayBusy(ctx, floor)) session = startDoor(env, ctx, floor, 'open', -1, unlockDoors);
   }
 }
 
@@ -382,7 +358,7 @@ registerAddon({
     if (e.shot || import.meta.env.DEV)
       Object.assign(window, {
         __home: {
-          state: () => ({ owned: HOME.owned, opened: HOME.opened, door: +HOME.door.toFixed(2), net: +HOME.net.toFixed(2), inside: HOME.inside, gran: { ...HOME.gran }, session: session?.kind ?? null, phase: session?.kind === 'sleep' ? session.phase : null, card: !!card?.open, offered, days: TIME.days(), clock: ((TIME.days() % 1) + 1) % 1, cycling: TIME.cycling() }),
+          state: () => ({ owned: HOME.owned, opened: HOME.opened, closed: HOME.closed, door: +HOME.door.toFixed(2), net: +HOME.net.toFixed(2), inside: HOME.inside, gran: { ...HOME.gran }, session: session?.kind ?? null, phase: session?.kind === 'sleep' ? session.phase : null, card: !!card?.open, offered, days: TIME.days(), clock: ((TIME.days() % 1) + 1) % 1, cycling: TIME.cycling() }),
           sleep: (kind: 'dawn' | 'afternoon' | 'event' | 'rest' = 'dawn') => {
             if (!lastCtx || session) return false;
             const list = plans(TIME.cycling());
@@ -422,14 +398,28 @@ registerAddon({
         return `E  ${t('homeTalk')}`;
       }
     }
-    if (!HOME.opened && atDoor(p.x, p.y, p.z)) {
-      // (not his yet: the grandmother nearby has the key; with nobody to give it, the door opens to him)
-      if (!HOME.owned && g.ready) {
-        offered = 'locked';
-        return t('homeLocked');
+    // The doors: before them and turned to them, on the veranda or in the room (_homeDoor.ts).
+    const side = doorSide(ctx, floor);
+    if (side) {
+      doorFrom = side;
+      if (!HOME.opened) {
+        // (not his yet: the grandmother nearby has the key; with nobody to give it, the door opens to him)
+        if (!HOME.owned && g.ready) {
+          offered = 'locked';
+          return t('homeLocked');
+        }
+        offered = 'door';
+        return `E  ${t('homeOpen')}`;
       }
-      offered = 'door';
-      return `E  ${t('homeOpen')}`;
+      if (HOME.closed) {
+        offered = 'open';
+        return `E  ${t('homeOpen')}`;
+      }
+      // (never shut on him or the dog in the doorway: offered once the way is clear)
+      if (!doorwayBusy(ctx, floor)) {
+        offered = 'close';
+        return `E  ${t('homeClose')}`;
+      }
     }
     if (HOME.owned && HOME.opened && atMat(p.x, p.y, p.z)) {
       offered = 'sleep';
@@ -440,13 +430,13 @@ registerAddon({
   use(ctx) {
     if (!env || session) return;
     if (offered === 'talk') session = startTalk(env, ctx, ownIt);
-    else if (offered === 'door') session = doorSession(ctx);
+    else if (offered === 'door' || offered === 'open' || offered === 'close') session = startDoor(env, ctx, floor, offered === 'door' ? 'unlock' : offered, doorFrom, unlockDoors);
     else if (offered === 'sleep') openCard(ctx);
   },
   hold(ctx, dt) {
     if (!session) return { prompt: null };
     const r = session.hold(ctx, dt);
-    if (session.done) session = null;
+    if (session.done) sessionDone(ctx);
     return r;
   },
   after(ctx, mode, dt) {
@@ -503,11 +493,21 @@ registerAddon({
     const v = q.get('home');
     const body = ctx.body;
     // (a saved view's or a check's own: his or not, the doors open or shut; not kept)
-    if (v === '0' || v === 'key' || v === 'call') HOME.owned = HOME.opened = false;
+    if (v === '0' || v === 'key' || v === 'call') HOME.owned = HOME.opened = HOME.closed = false;
     else if (v) {
       HOME.owned = true;
       HOME.opened = v !== 'shut';
+      HOME.closed = false;
       if (HOME.opened) HOME.door = 1;
+      bedForDog();
+    }
+    // (`homedoor=`: his, the doors unlocked, and open, shut or held part way: as _homePlan.ts reads it before the build)
+    const hd = homeDoorParam(q.get('homedoor'));
+    if (hd && v !== '0' && v !== 'key' && v !== 'call') {
+      HOME.owned = HOME.opened = true;
+      HOME.closed = hd.closed;
+      HOME.doorHold = hd.hold;
+      HOME.door = hd.hold >= 0 ? hd.hold : hd.closed ? 0 : 1;
       bedForDog();
     }
     const place = (lx: number, lz: number, yawLocal: number) => {
@@ -559,6 +559,7 @@ registerAddon({
     if (session?.kind === 'talk') return { home: 'key' };
     if (session?.kind === 'sleep') return { home: 'sleep', ...hat };
     if (!HOME.owned) return Object.keys(hat).length ? hat : null;
-    return { home: HOME.inside && lastCtx && inRooms(lastCtx.body.pos.x, lastCtx.body.pos.z) ? 'inside' : HOME.opened ? '1' : 'shut', ...hat };
+    const door: Record<string, string> = HOME.opened && HOME.closed ? { homedoor: 'closed' } : {};
+    return { home: HOME.inside && lastCtx && inRooms(lastCtx.body.pos.x, lastCtx.body.pos.z) ? 'inside' : HOME.opened ? '1' : 'shut', ...door, ...hat };
   },
 });

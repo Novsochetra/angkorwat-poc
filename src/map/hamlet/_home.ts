@@ -8,7 +8,7 @@ import type { MapContext, MapFrame } from '../types';
 import { bargeBoards, BLOOM, bougainvillea, DECK, gableEnd, gableRoof, jar, JAR, khmerGable, khmerHat, Local, mat, planks, POST, potPlant, tone, WALLS, type Hole, type Roof, type Tones } from '../village/_kit';
 import { GLOW, VillageLights } from '../village/_lights';
 import { EV_RIDGE, EV_ROOFS, hammock, jars, kramaOver, khmerSpiritHouse, woodpile } from './_evKit';
-import { HOME, HOME_AT, HOME_DOG, HOME_DOOR, HOME_GRAN, HOME_IN, HOME_SIGN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_T, HOME_Z, homeFloor, homeHammock, homeStilts } from './_homePlan';
+import { HOME, HOME_AT, HOME_DOG, HOME_DOOR, HOME_GRAN, HOME_IN, HOME_LEAF, HOME_SIGN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_T, HOME_Z, homeFloor, homeHammock, homeStilts, leafAngle } from './_homePlan';
 import { homeShelf, homeSign } from './_homeShelf';
 import type { HamletPiece } from './index';
 
@@ -322,10 +322,11 @@ export function buildHome(ctx: MapContext): HamletPiece {
       const g = !HOME.owned && HOME.gran.ready ? 1 : 0;
       if (g !== gran) light.setLit('gran', !!(gran = g));
       if (seen) light.update(f, cam);
-      // The doors and the net ease to where they are wanted.
+      // The doors and the net ease to where they are wanted (the doors: a full swing in `HOME_LEAF.swing` s; a check's
+      // `homedoor=` may hold them part way).
       const dt = Math.min(0.1, Math.max(0, f.dt));
       const k = f.dt > 0 ? dt : 1;
-      HOME.door = ease(HOME.door, HOME.opened ? 1 : 0, k / 1.4);
+      HOME.door = HOME.doorHold >= 0 ? HOME.doorHold : ease(HOME.door, HOME.opened && !HOME.closed ? 1 : 0, k / HOME_LEAF.swing);
       HOME.net = ease(HOME.net, HOME.netDown ? 1 : 0, k / 0.9);
       const near = seen && dist < NEAR;
       live.visible = near;
@@ -494,29 +495,37 @@ function dogBed(L: Local, x: number, y: number, z: number): void {
 
 // ── The doors ──────────────────────────────────────────────────────────────
 
-/** How far a door leaf turns open (radians): back against the front wall inside. */
-const OPEN = 3.0;
-
 /**
- * The double doors (the trim's teal, two raised panels each, a ring handle), hinged at the doorway's jambs:
- * shut in the doorway, or swung in against the room (`set(0‥1)`). Each leaf its own small mesh on a pivot.
+ * The double doors, hinged at the doorway's jambs: outside painted in the trim's teal, two raised panels each, a
+ * ring handle; inside bare planks (the walls' lighter lining) on two battens, a wooden bolt on the west leaf. Shut
+ * in the doorway, or swung in against the room (`set(0‥1)`; how far each turns: _homePlan.ts `leafAngle`, where
+ * roam/_homeDoor.ts finds the rings). Each leaf its own small mesh on a pivot.
  */
 function buildDoors(fr: Frame, F: number): { object: Group; set(v: number): void } {
   const object = new Group();
   object.name = 'home:doors';
   const d = HOME_DOOR;
   // (hinged at the wall's inside face: open, each leaf lies back against the front wall inside, out of the way)
-  const z = HOME_Z.wall - HOME_T - 0.08;
+  const z = HOME_LEAF.z;
   const leaves: Object3D[] = [];
   for (const s of [-1, 1]) {
     const b = new VoxelBuilder();
-    const w = d.half - 0.01;
+    const w = HOME_LEAF.w;
     // (in the leaf's own frame: its hinge at x 0, the leaf along +x·(−s) to the middle)
     const L = new Local(b, undefined, 77 + s, 0);
     const mid = (-s * w) / 2;
     L.span(Math.min(0, -s * w), F, -0.04, Math.max(0, -s * w), F + d.h - 0.02, 0.04, tone(TRIM, 0.4), 'bark');
     for (const yy of [0.66, 1.8]) L.box(mid, F + yy, 0.05, w - 0.22, 0.9, 0.02, tone(TRIM, 0.9), 'bark', 0.86);
-    L.box(-s * (w - 0.1), F + 1.2, 0.07, 0.05, 0.14, 0.03, 0x3a2e22, 'bark');
+    L.box(-s * (w - HOME_LEAF.edge), F + HOME_LEAF.ring, 0.07, 0.05, 0.14, 0.03, 0x3a2e22, 'bark');
+    // The inside (−z): four upright planks, two battens across them (thin: open, the leaf lies back on the wall's
+    // lining), and on the west leaf the bolt that bars the doors at night, in its two staples by the free edge.
+    const pw = w / 4;
+    for (let k = 0; k < 4; k++) L.span(-s * k * pw, F + 0.01, -0.052, -s * (k + 1) * pw, F + d.h - 0.04, -0.04, tone(INNER, (k * 0.37 + (s > 0 ? 0.2 : 0.6)) % 1), 'bark', k % 2 ? 0.93 : 1);
+    for (const yy of [0.42, 2.02]) L.span(-s * 0.05, F + yy, -0.072, -s * (w - 0.05), F + yy + 0.13, -0.052, 0x7a5a3e, 'bark');
+    if (s > 0) {
+      L.box(-(w - 0.2), F + 1.12, -0.085, 0.42, 0.06, 0.035, 0x6a4a30, 'bark');
+      for (const x of [w - 0.32, w - 0.08]) L.box(-x, F + 1.12, -0.078, 0.035, 0.1, 0.03, 0x3a2e22, 'bark');
+    }
     const mesh = buildVoxelMesh(b, { quality: 'medium', name: `home:door${s > 0 ? 'R' : 'L'}` });
     mesh.traverse((o) => void (o.castShadow = false));
     const pivot = new Group();
@@ -534,9 +543,9 @@ function buildDoors(fr: Frame, F: number): { object: Group; set(v: number): void
       if (Math.abs(v - at) < 1e-4) return;
       at = v;
       // (swung in toward the room, −z, until each lies back against the wall beside the doorway; eased at both ends)
-      const e = v * v * (3 - 2 * v);
-      leaves[0].rotation.y = e * OPEN;
-      leaves[1].rotation.y = -e * OPEN;
+      const a = leafAngle(v);
+      leaves[0].rotation.y = a;
+      leaves[1].rotation.y = -a;
     },
   };
 }

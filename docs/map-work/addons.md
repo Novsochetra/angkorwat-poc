@@ -2005,9 +2005,10 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
 ### His stilt house
 
 His own Khmer house on stilts (add-on `home`, words `home…`): `roam/_home.ts` (the
-add-on: the key, the door, the card, the room's camera), `_homeTalk.ts` (the key),
-`_homeSleep.ts` (sleeping), `_homeCard.ts` (the card: until when), `_homePoses.ts`
-(his stretch), `_homeWalk.ts` (the shut doorway in the walk map); the house
+add-on: the key, the doors, the card, the room's camera), `_homeTalk.ts` (the key),
+`_homeDoor.ts` (the doors: open and close), `_homeSleep.ts` (sleeping), `_homeCard.ts`
+(the card: until when), `_homePoses.ts` (his stretch, his hands on the doors),
+`_homeWalk.ts` (the shut doorway in the walk map and to the camera); the house
 `hamlet/_home.ts` (a hamlet piece: one line in `hamlet/index.ts`), what moves in it
 `hamlet/_homeShelf.ts` (the shelf of finds, the sign), where everything is and what
 the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
@@ -2025,8 +2026,10 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   west gable, a kbach leaf in the east one; the floor 3 m up on dark stilts on footing
   stones; plain old plank walls (lined inside with lighter planks), teal shutters and
   doors; the wooden stair with handrails. Wide double doors (2.1 × 2.6 m: room for
-  the roaming explorer) that swing in against the wall; open windows (a wide one by
-  his mat over the stream, two at the front looking at the mountain). **Inside**: the
+  the roaming explorer) that swing in against the wall: teal outside with two raised
+  panels and a ring each, bare planks inside on two battens, a wooden bolt on the west
+  leaf (how the leaves turn: `HOME_LEAF`, `leafAngle` in `_homePlan.ts`); open windows
+  (a wide one by his mat over the stream, two at the front looking at the mountain). **Inside**: the
   reed sleeping mat with pillow and krama under a white mosquito net (its front rolled
   up on its bar by day, let down while he sleeps), the altar shelf high on the west
   wall (a small gilt seated Buddha with the lotus-bud ushnisha, incense, lotus and
@@ -2034,8 +2037,9 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   (every golden figure he has found, `treasure.found()`, in miniature on its lotus
   plinth; his kite, `kite.have`, hung on the wall over it: a khleng ek in his kite's
   red, cream, gold and blue), his palm-leaf hat on a nail, the water jar with its
-  dipper by the door, a sitting mat with a teapot, a lantern hung from the ridge, an
-  oil lamp on the front window's sill (lit at night once he owns it: glows and halos,
+  dipper by the door (under the west front window, clear of the leaf's swing), a
+  sitting mat with a teapot, a lantern hung from the ridge, an oil lamp on the front
+  window's sill (lit at night once he owns it: glows and halos,
   no light). **Round it**: a mat, teapot, pots and a krama on the veranda; under the
   floor the hammock (the hammock add-on's, `addHammock({ id: 'home' … })`), jars,
   firewood, a rice basket, a hoe; in the yard the jar to wash his feet, the dog's bed
@@ -2056,10 +2060,23 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   (`greetHigh`, palms to his face), she bows back, says "ទៅ ចូលមើលផ្ទះទៅចៅ!" and walks
   home along the trail. Back to the map before the key is in his hand: nothing kept,
   she asks again next time.
-- **The door**: on the veranda before the shut doors, **E "បើកទ្វារ / Open the door"**
-  (`openDoor`, the hasp, a slow creak): open for good (`home.opened`). Not his yet:
-  "ទ្វារចាក់សោ — យាយនៅក្បែរនេះកាន់កូនសោ" (with no people part it opens to him). While
-  shut the doorway is a wall in the walk map (`_homeWalk.ts`, over `world.standAt`).
+- **The doors** (`_homeDoor.ts`): the first time, on the veranda before the shut doors,
+  **E "បើកទ្វារ / Open the door"**: he unlocks them (the hasp) and they swing in
+  (`home.opened`). Not his yet: "ទ្វារចាក់សោ — យាយនៅក្បែរនេះកាន់កូនសោ" (with no people
+  part it opens to him). From then on, before the doorway (within 1.25 m of its middle
+  across, 2.1 m out on the veranda or in the room) and turned to it (within 55°),
+  **E "បិទទ្វារ / Close the door"** or **"បើកទ្វារ / Open the door"**: he steps to his
+  spot (outside up at the doorway; inside as near as the leaves' sweep lets him, a step
+  back if he is in it), leans in with both hands out to the leaves (their rings outside,
+  following them as they swing; `_homePoses.ts` `doorPose`), and they swing in half a
+  second (eased) with a creak, shutting with a wooden clap and the latch. Nowhere else and
+  not turned to them, E is the mat's, the veranda's, the dog's. Never shut on anyone: while
+  he or the dog is in the doorway, "Close the door" is not offered. Kept: progress.ts
+  `home.door` (true open, the default; false shut). While shut (`HOME.door` under 0.6) the
+  doorway is a wall over `world.standAt` (him, and the dog's way-finding: `_dogPath.ts`
+  asks the same; called from outside it waits on the veranda or under the house), and over
+  `world.clearance` / `hardClearance` (the follow camera and the photo's lens stop at the
+  doors, both ways: `_homeWalk.ts`).
 - **In the room**: his hat comes off at the door and goes back on outside; the follow
   camera goes up toward a corner of the room under the roof behind him, looking
   across at him (four places, none over the net; a drag is the player's for 3 s;
@@ -2077,28 +2094,39 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   from under it and stretches (arms up in a V, eyes shut, on his toes: `_homePoses.ts`),
   the toast "អរុណសួស្ដី! ព្រះអាទិត្យរះហើយ" (the afternoon's, or "ភ្ញាក់ទាន់ពេល៖ …" and
   the mini-map heads for the event when it is over 60 m off). Lying down, before the
-  dark, E / Space / the stick gets him up again. **While the time stands still**
+  dark, E / Space / the stick gets him up again. For a real sleep (not the short rest)
+  with the doors open he first goes to them and shuts them from inside, then to bed; up
+  again after the stretch, he opens them (not if he went back to the map meanwhile).
+  **While the time stands still**
   (Time: Day or Night) the card says so in one line and offers only **Rest a while**
   (a doze, then up). Back to the map meanwhile: at once, the view back, nothing moved.
   His dog (if he has one) goes to its bed while he sleeps (`dogHome(true)`), and the
   bed is `dogBed(…)` from the day the house is his (`homeDogBed`): it sleeps there
   while he is away.
-- **Sounds** (`audio/_home.ts`): `homeKey`, `homeDoor`, `homeMat`, `homeNet` (moves),
-  `homeSleep`, `homeWake` (ui); the grandmother's call is the people's `hello`.
+- **Sounds** (`audio/_home.ts`): `homeKey`, `homeDoor` (the hasp, then the swing),
+  `homeDoorOpen` (a short creak, the leaves knocking on the wall), `homeDoorShut` (a
+  creak, the clap, the latch), `homeMat`, `homeNet` (moves), `homeSleep`, `homeWake`
+  (ui); the grandmother's call is the people's `hello`.
 - **The sign** over the door: his name in Khmer letters (`playerName()`, again on
   `onName`), with none "ផ្ទះខ្ញុំ": drawn with Koulen at 26 px on a canvas, each
   painted pixel a raised cream block on the dark board (one draw, rebuilt on a change).
-- **URL**: `home=1` his, the doors open · `home=shut` his, the doors shut ·
+- **URL**: `home=1` his, the doors open · `home=shut` his, the doors shut and locked
+  (E unlocks them) · `homedoor=open|closed|<0‥1>` his, the doors unlocked and open, shut,
+  or held part way (0 shut ‥ 1 open; under 0.6 the doorway is a wall) ·
   `home=0` not his (the grandmother waits) · `home=call` she calls to him ·
   `home=key` the grandmother's moment (she holds out the key, her words) ·
   `home=inside` standing in his room (the room's camera) · `home=sleep` asleep on his
   mat under the net · `home=stretch` up, stretching · `homecard=1` the card (as the
   time is; `=cycle` as when it runs) · `homekite=1` his kite on the wall · `gold=all`
-  fills the shelf · `name=<name>` the sign. `report()` gives `home=key|sleep|inside|1|shut`.
-  `window.__home` (shots, dev): `state()`, `sleep(kind)`, `card(force)`. E.g.
+  fills the shelf · `name=<name>` the sign. `report()` gives `home=key|sleep|inside|1|shut`
+  (and `homedoor=closed`). `window.__home` (shots, dev): `state()` (`closed`, `door`,
+  `offered`: `open`, `close`…), `sleep(kind)`, `card(force)`. E.g.
   `roam=walk&at=416,-122&yaw=20&home=key&sim=_:0.3&clock=0.92` ·
   `roam=walk&at=424,13,-106&home=inside&gold=all&homekite=1&night=1&sim=_:1` ·
-  `cam=412,19,-127,423,13.5,-108,50&home=1&name=Dara&night=1` (outside, lit).
+  `cam=412,19,-127,423,13.5,-108,50&home=1&name=Dara&night=1` (outside, lit) ·
+  `roam=walk&at=424,13,-110&yaw=0&homedoor=open&sim=_:0.3,e:0.1,_:1.2` (he shuts them
+  from the veranda) · `cam=424.5,15,-112.5,424,14.2,-108.3,50&homedoor=0.5&ui=0` (half
+  open) · `cam=424.3,15.2,-105.2,424,14.3,-108,55&homedoor=closed&ui=0` (shut, from inside).
 
 ### His home garden
 
