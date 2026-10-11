@@ -1823,10 +1823,11 @@ floor and his sheaves on the bund `_farmMarks.ts`; the farmers' side through
 ### The dog
 
 A village dog that becomes his friend (add-on `dog`, words `dog…`): `roam/_dog.ts` (its
-life, petting, following, waiting, calling, the URL, the API), `roam/_dogPath.ts` (where it
-may go: the step rules, his trail, the path search), `roam/_dogModel.ts` (the dog and its
-pose shader), `roam/_dogCard.ts` (its name: the names and the card), `roam/_dogHook.ts` (the
-explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog.ts`.
+life, petting, following, waiting, calling, his orders, the URL, the API), `roam/_dogPath.ts`
+(where it may go: the step rules, his trail, the path search), `roam/_dogModel.ts` (the dog and
+its pose shader), `roam/_dogCard.ts` (its name: the names and the card), `roam/_dogOrderCard.ts`
+(the order card), `roam/_dogHook.ts` (the explorer menu's buttons, the orders' pictures), his
+pose `character/dogPet.ts`, sounds `audio/_dog.ts`.
 
 - **The dog**: a Khmer village dog (សុនខស្រុក): lean, short tan coat (the villages'
   sleeping dogs' colours, village/_kit.ts `dog`), cream muzzle, chest, belly and socks, a
@@ -1845,8 +1846,19 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   within 9 m on foot it wakes (a yawn), lifts its head, sits up and watches him, its tail
   going; within 3.4 m it stands, wags harder and comes a step to him; it never goes far from
   its spot, and naps again once he has been 17 m off for 8 s.
-- **Petting** (on foot, ≤ 2.5 m, facing it within 49°; not while busy or held): E
-  "អង្អែលសុនខ / Pet the dog" ("អង្អែល{name} / Pet {name}" once it is his). He turns to it, it
+- **Petting** (on foot, ≤ 3 m, facing it within 60°; not while busy or held): E
+  "អង្អែលសុនខ / Pet the dog" ("អង្អែល{name} / Pet {name}" once it is his). It has two places in
+  the E row: **right by it** (≤ 2 m, turned to it within 40°) it comes before everything but a
+  golden figure (add-on `dogPet`, order 11: before the shoulder pole, a shrine, a stall, his
+  house's door and mat, Grandma's seed basket, his garden's work), so he can pet it at home and
+  in his garden; a little further it comes after the others (`dog`, order 60): the house's and
+  the garden's E stay theirs then. He stops a few metres from it (≤ 5 m, on its floor), turned
+  to it (within 34°), or comes up to it slowly (a stick pushed a little), and nothing else there
+  has an E (the E row got to the dog's later place: no door, no garden work, no stall, no boat):
+  it gets up and comes to him, 1.35 m in front of him, wagging (once in 4 s). It trots a step
+  aside only when he walks right into it (within 1 m at a walk) or runs at it (within 1.5 m,
+  over 6 m/s): he can walk up to it and stop. Told to stay, it can be petted where it waits;
+  sent home, on its bed (it gets up for it, then goes back and lies down). He turns to it, it
   comes to sit at his front right facing him, he squats (knees out over his belly, leaning a
   little, his face to it: his hat's brim stays clear of his face) and his right hand pats
   its head three times (arm IK to its crown, read off its pose: `dogPoint`), his left fist
@@ -1903,7 +1915,7 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   its feet for 0.75 s): out onto the nearest free spot within 3 m. Someone walks up to it
   (a person within 1.5 m, 2.4 lying: the people part's traffic, `window.__people.traffic`,
   four times a second: the monks' line, the market's lanes): it gets up and moves 1.9 m off, away from them (not off out of his reach); he walks
-  at it: it trots a step aside. He stops: it turns to him, sits (1.2 s), lies down (14 s),
+  right into it or runs at it: it trots a step aside. He stops: it turns to him, sits (1.2 s), lies down (14 s),
   sleeps flat out (45 s, or 4 s once he sleeps: J / L); now and then it sniffs about a few
   metres off (never at his feet); by day it barks two or three times at a macaque or a
   junglefowl within 15 m (fauna's `subjects`, every 2.5 s, at most once in 35–70 s, two
@@ -1925,8 +1937,11 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   after a way was not found only once he has moved 6 m on, or 6, 12, 24, 40 s later). With
   no way within 420 m (he landed far off, across a river): it waits, and says so once a
   landing: "{name} នៅឆ្ងាយ · ចុច 0 ហៅវាមក".
-- **0 "ហៅសុនខ / Call the dog"** (the key list's row; the explorer menu's "ហៅសុនខ" on its Moves
-  page, for a pad (△) or touch, shown once he has a dog): he whistles first (`dogWhistle`, his own
+- **0 "ហៅ ឬប្រាប់សុនខ / Call or tell the dog"** (the key list's row). **By it** (on foot, on his
+  level, within 5 m, where it can walk to him; not at a hall's door): the order card (below).
+  **Further off: it is called** (the explorer menu's "ហៅសុនខ / Call the dog" on its Moves page,
+  for a pad (△) or touch, shown once he has a dog, goes in as 0): whatever it was told, it
+  follows him again (from where it waits, or off its bed: a way is looked for). He whistles first (`dogWhistle`, his own
   recorded whistle, the same whatever the dog's distance; a second call within 0.7 s adds none; none
   in a hall: the call there only says the dog waits outside; none in a shot), then "{name}
   កំពុងរត់មករកអ្នក!" and it comes along the way it finds (a bark as it sets off); with none, or more than 336 m off, it comes out by
@@ -1936,22 +1951,52 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   edge or the land under his deck, never a hall) from where it can walk to him, and only
   where a dog could come up on foot (below). With no such spot it stays where it is and says
   so: "{name} មិនអាចមកដល់ទីនេះបានទេ · វានៅរង់ចាំអ្នក"; a way that only gets near (him up a
-  deck): to its foot, where it waits looking up. Close by (on his level: distances count
-  height): "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានសុនខទេ — មានសុនខស្រុកមួយក្បាលដេក
+  deck): to its foot, where it waits looking up. Close by while the card cannot open (its name
+  card is up): "{name} នៅក្បែរអ្នកហើយ". No dog yet: "អ្នកមិនទាន់មានសុនខទេ — មានសុនខស្រុកមួយក្បាលដេក
   ក្បែរហាងលក់ទំនិញ នៅភូមិត្នោត".
+- **Orders**: 0 by it opens the card "ប្រាប់{name} / Tell {name}" (`_dogOrderCard.ts`, the look of
+  the map's cards that ask, `.mu-ask`: the dog sitting as its picture, the three orders one under
+  the other, each with its picture and a line on what it does; the one it does now lit gold with
+  "ឥឡូវនេះ / now"; a quiet "ពេលក្រោយ / Not now"). Keys 1 2 3, ↑ ↓ (← →, Tab), Enter or Space
+  (with nothing in focus: the first it does not do now), Esc or 0 shuts; the pad: a layer (its
+  focus on the first it does not do now, ✕ presses, ○ shuts); touch or a click; beside the card
+  shuts. He keeps still while it is up (`mu-asking`). The same three on the explorer menu's Moves
+  page beside "Call the dog" (the one it does now lit; in any mode: from the boat, "Stay here"
+  keeps it on the bank when he lands). Each says what it does in a toast:
+  - **1 "ដើរតាមខ្ញុំ / Follow me"** ("វាដើរតាមអ្នកគ្រប់ទីកន្លែង"): it follows him, as above
+    ("{name} ដើរតាមអ្នកហើយ"); not by him: it is called (as 0 from afar).
+  - **2 "ចាំនៅទីនេះ / Stay here"** ("វាអង្គុយចាំអ្នកនៅទីនេះ រហូតដល់អ្នកហៅវា"): it sits where it
+    is ("{name} នឹងចាំអ្នកនៅទីនេះ"; from the menu while it is not by him: "…នៅទីនោះ", there),
+    turns its head to him, lies down after 25 s, sleeps after 90 s while he is over 20 m off;
+    up and aside when someone comes by or he runs into it, back to its spot after (4 s,
+    the way clear); he comes back to it: it sits up, wagging. It never comes along by itself:
+    not when he walks off, rides, sails, flies or lands, not back from the map, not at a new
+    visit (kept: progress.ts `dog.order` `stay`, `dog.stay` [x, y, z, yaw]), until he calls it
+    (0 from afar) or tells it to follow.
+  - **3 "ទៅផ្ទះវិញ / Go home"** ("វាទៅដេកក្នុងកន្ត្រករបស់វា នៅផ្ទះអ្នក", with no house yet
+    "វាទៅដេកវិញ ក្បែរហាងលក់ទំនិញ នៅភូមិត្នោត"): "{name} ទៅផ្ទះវិញ"; it goes to its bed (his
+    stilt house's basket, `dogBed`; else its spot by the village shop): straight when the way is
+    free, else along a way found (the same search); with no way (or over 336 m off): out of
+    sight and there — it dissolves where it is first when he could see it (within 90 m of the
+    camera), else it is simply there. On its bed it lies down and sleeps flat out; he comes
+    within 6 m: it lifts its head and watches him, its tail going. It stays there (a new visit
+    finds it there: `dog.order` `home`) until he calls it or tells it to follow; while he
+    sleeps in his house it stays on its bed. The house bought later: it moves to the basket.
 - **Back to the map**: it goes home (to its bed when it has one) and is not drawn; the next
   time he is on his feet 1.8 s (landed from the leap, a shot's start) it comes in by where
   he is, as when called with no way — where a dog could come up on foot: on the land, or a
   floor with a way down to it (a search from his floor to the land, `toLand`: a terrace, a
   deck by its stair; a roof has none: it stays home until he is down, and 0 there says it
-  cannot get up).
+  cannot get up). Told to stay, it waits on where it was told; sent home, it is on its bed;
+  neither comes in by him.
 - **For his stilt house** (`_home.ts` uses it): `dogBed({ x, z, y?, yaw? } | null)` where it
   sleeps (its bed: null, the village); `dogHome(true)`: he is home (asleep): it goes to its
   bed (a way, else it is there) and sleeps flat out; `dogHome(false)`: it wakes and comes to
-  him (a way; it waits there while there is none). `dogState()` (one object, filled each
-  call): `adopted`, `name` (km, latin), `life` (`nap` / `awake`: the village dog; `follow`,
-  `come`, `wait`, `door` (at a hall's door): his, roaming; `bed`; `away`), `x, y, z`, `far`
-  (m from him), `asleep`.
+  him (a way; it waits there while there is none); told to stay or sent home, it does that
+  instead. `dogState()` (one object, filled each call): `adopted`, `name` (km, latin), `life`
+  (`nap` / `awake`: the village dog; `follow`, `come`, `wait`, `door` (at a hall's door): his,
+  roaming; `stay` (told to); `bed` (on its bed or on its way there: he sleeps at home, or sent
+  it home); `away`), `order` (`follow` / `stay` / `home`), `x, y, z`, `far` (m from him), `asleep`.
   Also `dogAdopted()`, `dogNameNow()` (its name in the language in use, or null).
 - **Sounds** (`audio/_dog.ts`, measured offline, the loudest 100 ms): `dogBark` (the village
   dogs' own synthesized bark, speech.ts `bark`, one or two "wau"s, its top softened: −29 dBFS
@@ -1976,11 +2021,19 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
   `dogat=x,z`: it comes if it can) · `dog=call` (called from `dogat=` at once) · `dog=bark`
   (barking at the nearest monkey or junglefowl, else ahead of it) · `dog=away` (gone home: it
   comes in by him once he is on his feet: with `roam=glide`, on landing) · `dog=0` (none
-  drawn) · `dogat=x,z` · `dogname=<any name>` (in Latin or Khmer letters; a bug report writes `<Khmer>|<Latin>`; an old village name's id still reads; none: no name) · `dogpets=<n>` · `doggait=1|2|3` (walk,
+  drawn) · `dog=orders` (beside him, the order card open) · `dogorder=follow|stay|home` (told
+  so; alone it is his dog too: `stay` where `dog=` puts it, sitting, or `dog=lie|sleep` so;
+  `home` on its bed asleep (`dog=sit|lie`: so), with `dogat=x,z` there and on its way home) ·
+  `dogat=x,z` · `dogname=<any name>` (in Latin or Khmer letters; a bug report writes `<Khmer>|<Latin>`; an old village name's id still reads; none: no name) · `dogpets=<n>` · `doggait=1|2|3` (walk,
   trot, gallop on the spot) · `dogfade=0‥1` (the dissolve held). The bug report gives the
   state it is really in: `dog=away` (gone home, or on its bed while he is home), `dog=wait&dogat=`
-  (waiting where he left it, or at a hall's door), else `dog=follow|sit|lie|sleep` (and
-  `dogat=` when off), with `dogname=`; the village dog `dog=nap|wake|adopt`. A hall:
+  (waiting where he left it, or at a hall's door), told so `dog=sit|lie|sleep&dogorder=stay|home`
+  (and `dogat=`: where it waits, or where it is on its way home), else `dog=follow|sit|lie|sleep` (and
+  `dogat=` when off), with `dogname=`; the village dog `dog=nap|wake|adopt`. His house:
+  `roam=walk&at=424,-120&yaw=0&home=1&dog=orders` (the card), `roam=walk&at=424,-121&yaw=0&home=1&dogorder=home`
+  (asleep on its bed), `roam=walk&at=424,-142&yaw=0&home=1&dog=sit&dogat=424,-131&dogorder=stay`
+  (waiting where told), `roam=walk&at=424.9,13.05,-109.5&yaw=270&home=shut&dog=pet&sim=_:2.2`
+  (petting it on his veranda by the shut door). A hall:
   `roam=walk&at=-306,10,104&dog=follow` (it sits at the pagoda's door); a roof:
   `roam=walk&at=334,-80&dog=away` (it stays home); the market:
   `roam=walk&at=348,-92&yaw=250&clock=0.78&dog=follow`.
@@ -1998,9 +2051,11 @@ explorer menu's two buttons), his pose `character/dogPet.ts`, sounds `audio/_dog
 - **Checks** (the dev server and its shots only, not in a build): `window.__dog` (`state()`,
   `life`, `act`, `route`, `search`, `way()` (the way found), `D`, `pose`, `look`, `trail`,
   `debug` (with the stall watch and the door), `call()`, `adopt()`, `home(on)`, `bed(spot)`,
-  `jam(s)`: it cannot step for that long, to try the stall watch).
-- Shared edits: `ui/lang.ts` (`dog…`), `_addonList.ts`, tools.ts (the key list's 0 row),
-  `_explorerMenu.ts` (the two buttons, on Moves and Me, from `_dogHook.ts`).
+  `jam(s)`: it cannot step for that long, to try the stall watch; `order`, `stay` (where it
+  waits), `tell('follow'|'stay'|'home')`, `orders()` (the card, as 0 by it), `ordersOpen`).
+- Shared edits: `ui/lang.ts` (`dog…`), `_addonList.ts`, tools.ts (the key list's 0 row: "call
+  or tell the dog"), `_explorerMenu.ts` (its buttons from `_dogHook.ts`: Call the dog and the
+  three orders on Moves, its name on Me).
 
 ### His stilt house
 

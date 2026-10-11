@@ -9,11 +9,12 @@ import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import type { MapFrame, MapPart, RoamMode, Subject } from '../types';
-import { t } from '../ui/lang';
+import { lang, t } from '../ui/lang';
 import { BODY_UNIT_M } from '../../world/scale';
-import { ADDONS, registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { ADDONS, BEFORE_SHRINE, registerAddon, type AddonEnv, type AddonHold } from './_addons';
 import { closeDogCard, customDogName, dogCalled, dogCardOpen, dogNameIn, dogNameParam, dogQuoted, oldDogName, openDogCard, parseDogName, setDogCardDeps, typeDogCard, type DogName } from './_dogCard';
-import { DOG_MENU } from './_dogHook';
+import { DOG_MENU, DOG_ORDERS, type DogOrder } from './_dogHook';
+import { createDogOrderCard, type DogOrderCard, type DogOrderWords } from './_dogOrderCard';
 import { DOG_HEAD, DOG_SCALE, DogMesh, dogHeadLocal, dogPoint, newLook, type DogLook } from './_dogModel';
 import { ground, hallAt, KERB, lineWalk, onLand, PathSearch, STEP_UP, stepKind, stepTo, Trail, type Hall } from './_dogPath';
 import { mooredBoatNear } from './boat';
@@ -31,7 +32,12 @@ import type { RoamCtx } from './types';
  *   him, he squats down and pats its head (character/dogPet.ts); it wags hard,
  *   leans its head into his hand, ears back, eyes shut, a happy whine. **F**
  *   close in front of it: he scratches behind its ear instead of greeting; it
- *   tilts its head into his hand and its hind leg thumps.
+ *   tilts its head into his hand and its hind leg thumps. Two places in the E
+ *   row: right by it and turned to it, before everything but a golden figure
+ *   (`dogPet`: his house's door, his garden's work, a stall keep theirs
+ *   otherwise); a little further, after the others (`dog`). He stops by it,
+ *   turned to it, with nothing else to do there: it comes up to him; it trots
+ *   aside only when he runs at it, or walks right into it.
  * - **It comes along**: after the second pet (or scratch) "The dog wants to come
  *   with you!", and a card asks its name (_dogCard.ts: he writes it, in Latin or
  *   Khmer letters; no names to pick, no default: Esc leaves it without a name,
@@ -55,6 +61,13 @@ import type { RoamCtx } from './types';
  *   touch): it comes along the way it finds; with none, it comes out from
  *   behind a bush near him (a soft dissolve). Back to the map it goes home; the
  *   next time he lands it is waiting by where he lands.
+ * - **Orders** (0 by it: the card, _dogOrderCard.ts; the explorer menu's Moves
+ *   page): **Follow me** (as above), **Stay here** (it sits where it is and
+ *   waits, lies down after a while, never comes by itself: not when he lands,
+ *   not back from the map), **Go home** (to its bed at his stilt house, or its
+ *   spot by the village shop, along a way, or out of sight and there; it lies
+ *   and sleeps there). Calling it (0 from afar) is "Follow me" again. Kept:
+ *   progress.ts `dog.order`, `dog.stay` (where it waits).
  *
  * His stilt house (a later add-on) uses `dogBed` / `dogHome` / `dogState`.
  *
@@ -69,8 +82,10 @@ import type { RoamCtx } from './types';
  * time), `dog=name` (the name card open), `dog=nap|wake` (the village dog at
  * home), `dog=wait` (his dog waiting at `dogat=x,z`), `dog=call` (called from
  * `dogat=` at once), `dog=bark` (barking at the nearest monkey or hen), `dog=away` (his
- * dog at home: it comes in by him when he lands, as at the start of a visit), `dog=0`
- * (no dog drawn) · `dogat=x,z` where it is · `dogname=<id|Khmer|Latin>`.
+ * dog at home: it comes in by him when he lands, as at the start of a visit), `dog=orders`
+ * (the order card open), `dog=0` (no dog drawn) · `dogat=x,z` where it is ·
+ * `dogname=<id|Khmer|Latin>` · `dogorder=follow|stay|home` (told so: staying where `dog=`
+ * put it; at its bed, or on its way there from `dogat=`).
  */
 
 // ── Tuning ─────────────────────────────────────────────────────────────────
@@ -81,9 +96,26 @@ const HOME = { x: 419.0, z: -59.1, yaw: 3.3 };
 const WAKE = 9;
 const SLEEP_AGAIN = 17;
 const SLEEP_AFTER = 8;
-/** Petting: from his feet to the dog (m) and how far round from his facing (rad); where it sits (m from his feet to its crown). */
-const PET_REACH = 2.5;
-const PET_CONE = 0.85;
+/**
+ * Petting: from his feet to the dog (m) and how far round from his facing (rad), after the E row's others (`dog`); right
+ * by it and turned to it, before them (`dogPet`, at `PET_FIRST` in the row: before a shrine, a stall, his house's door,
+ * his garden's work); where it sits (m from his feet to its crown).
+ */
+const PET_REACH = 3;
+const PET_CONE = 1.05;
+const PET_NEAR = 2;
+const PET_NEAR_CONE = 0.7;
+const PET_FIRST = BEFORE_SHRINE - 4;
+/**
+ * He stops by it (or comes up to it slowly), turned to it (rad), within this (m), and nothing else here has an E: it
+ * comes up to him, this near (m), once in this long (s).
+ */
+const COME_CONE = 0.6;
+const COME_FROM = 5;
+const COME_TO = 1.35;
+const COME_EVERY = 4;
+/** He walks into it (m/s, m): it trots a step aside; he runs at it: aside from further off. */
+const INTO = { walk: 1.5, run: 6, near: 1, far: 1.5 };
 /** Its crown while he pats it: this far ahead of his feet and to his right (m, drawn for him at 1.4 × his size). */
 const PET_AT = { ahead: 0.42, right: 0.2 };
 /** Two pets (or scratches) and it comes along. */
@@ -128,7 +160,7 @@ const approach = (v: number, to: number, rate: number, dt: number) => v + (to - 
 
 // ── State ──────────────────────────────────────────────────────────────────
 
-type Life = 'nap' | 'awake' | 'follow' | 'wait' | 'come' | 'door' | 'away' | 'bed' | 'none';
+type Life = 'nap' | 'awake' | 'follow' | 'wait' | 'come' | 'door' | 'stay' | 'away' | 'bed' | 'none';
 type Act = 'none' | 'sniff' | 'bark';
 
 let env: AddonEnv | null = null;
@@ -159,6 +191,17 @@ const LANDED = 1.8;
 /** He is home (his stilt house): it sleeps on its bed. */
 let atHome = false;
 const bed = { x: HOME.x, y: NaN, z: HOME.z, yaw: HOME.yaw, set: false };
+
+/** What he told it last (`follow` once it is his); where it was told to stay (feet, m), and when to go back there after making way (s). */
+let order: DogOrder = 'follow';
+const STAY = { x: 0, y: 0, z: 0, yaw: 0, back: 6, far: false };
+/** An order from the card or the explorer menu, done on the next step (as a key is); the order card (made the first time). */
+let told: DogOrder | null = null;
+let orders: DogOrderCard | null = null;
+/** Checks: the order card to open once the map has started (`dog=orders`). */
+let ordersPending = false;
+/** Going home with no way there: it dissolves where it is, then is on its bed. */
+let vanish = false;
 
 /** The add-on's clock (s): the channels are set and drawn by it. */
 let clock = 0;
@@ -227,6 +270,16 @@ const petPosture = () => dogPetPose(petState);
 /** The follow camera as it was before petting (put back after), and its easing back out (s left, to how far). */
 const CAM = { follow: 0.6, distance: 9, pitch: 0.3, min: 3.5 };
 const CAM_BACK = { left: 0, to: 9 };
+/**
+ * Roaming steps so far, and the last one whose E row came to the dog's later place (`dog`: nothing before it in the row,
+ * no boat, ramp or balloon, wanted the E there): it may come up to him then (`comeClose`).
+ */
+let steps = 0;
+let freeE = -1;
+/** He has stood turned to it this long (s); it comes up to him again no sooner than this (its clock). */
+const NEAR_ME = { t: 0, next: 0 };
+/** "E  Pet …": made again only when the language, its name or whether it is his changes. */
+const PROMPT = { lang: '', name: null as DogName | null, adopted: false, text: '' };
 
 const _v = new Vector3();
 const _w = new Vector3();
@@ -973,7 +1026,7 @@ function unstall(ctx: RoamCtx | null, dt: number, goal: 'come' | 'door' | 'bed')
     return;
   }
   STALL.tries = 0;
-  if (goal === 'bed') putAt(bed.x, bed.z, bed.yaw, bed.y);
+  if (goal === 'bed') toBedUnseen();
   else if (goal === 'door') route = 'none';
   else if (!appearNear(ctx)) waitBelow(ctx);
 }
@@ -998,7 +1051,7 @@ function pathStep(): boolean {
 let wedgedFor = 0;
 function wedged(ctx: RoamCtx): void {
   const w = ctx.world;
-  if (AIR.on || !D.placed || PET.on || !(life === 'follow' || life === 'come' || life === 'wait' || life === 'door')) {
+  if (AIR.on || !D.placed || PET.on || !(life === 'follow' || life === 'come' || life === 'wait' || life === 'door' || life === 'stay')) {
     wedgedFor = 0;
     return;
   }
@@ -1018,8 +1071,12 @@ function wedged(ctx: RoamCtx): void {
       const keep = life;
       putAt(x, z, D.yaw, g);
       life = keep;
+      // (told to stay: it waits here now)
+      if (life === 'stay') stayHere(false);
       return;
     }
+  // (told to stay: it stays, wherever that is)
+  if (life === 'stay') return;
   if (life === 'door') {
     if (DOOR.hall) appearAtDoor(ctx, DOOR.hall);
   } else if (!appearNear(ctx)) waitBelow(ctx);
@@ -1072,6 +1129,7 @@ function followLife(ctx: RoamCtx, dt: number): void {
   makeWay(ctx);
   giveWay(ctx, dt);
   offHisFeet(ctx);
+  comeClose(ctx, dt);
   if (backOff(ctx, dt)) return;
   // Settled by him: stop, turn to him, sit, lie down after a while, sleep when he does.
   drive(dt, D.x, D.z, 0);
@@ -1291,28 +1349,164 @@ function comeLife(ctx: RoamCtx, dt: number): void {
   }
 }
 
-/** Going to its bed and sleeping there (he is home: `dogHome`). */
-function bedLife(dt: number): void {
-  const d = len2(bed.x - D.x, bed.z - D.z);
-  if (d > 0.4 && route === 'path') {
-    restTo(0);
-    if (!standing()) return;
-    if (ri >= search.path.count) {
-      drive(dt, bed.x, bed.z, 2.5);
-      if (stuck > 1) putAt(bed.x, bed.z, bed.yaw, bed.y);
-    } else {
-      wayAlong(bed.x, bed.z);
-      drive(dt, AIM.x, AIM.z, 3.5);
-      unstall(lastCtx, dt, 'bed');
+/**
+ * Going to its bed and sleeping there: he is home asleep (`dogHome`), or he told it to go home. Straight there when the
+ * way is free, else along a way looked for; with none (or a long way off), out of sight and there (`toBedUnseen`). On
+ * its bed it lies down and sleeps; sent home, it lifts its head and watches him while he is by it.
+ */
+function bedLife(ctx: RoamCtx, dt: number): void {
+  if (vanish) {
+    // (dissolving where it stands; gone: on its bed, coming in there)
+    drive(dt, D.x, D.z, 0);
+    D.seen = 0;
+    if (look.fade < 0.02) {
+      putBed();
+      D.seen = 1;
     }
     return;
   }
+  if (backOff(ctx, dt)) return;
+  const d = len2(bed.x - D.x, bed.z - D.z);
+  if (d > 0.4) {
+    const by = Number.isNaN(bed.y) ? D.y : bed.y;
+    if (route === 'none' && search.state !== 'busy' && !AIR.on) {
+      const y = d < 40 ? lineWalk(ctx.world, D.x, D.y, D.z, bed.x, bed.z, true) : NaN;
+      if (!Number.isNaN(y) && Math.abs(y - by) < 0.6) route = 'spot';
+      else if (d > SEARCH_MAX * 0.8) toBedUnseen();
+      else seek('bed', bed.x, by, bed.z, SEARCH_MAX);
+    }
+    if (route === 'path' || route === 'spot') {
+      restTo(0);
+      if (!standing()) return;
+      if (route === 'path' && ri < search.path.count) {
+        wayAlong(bed.x, bed.z);
+        drive(dt, AIM.x, AIM.z, 3.5);
+      } else {
+        drive(dt, bed.x, bed.z, clamp(1.4 + d * 0.5, 1.4, 3.5));
+        // (the last step onto it will not go: onto it all the same, or there unseen from further off)
+        if (stuck > 1) {
+          if (d < 1.5) putBed();
+          else toBedUnseen();
+        }
+      }
+      unstall(ctx, dt, 'bed');
+      return;
+    }
+    // (looking for its way: standing, ready)
+    if (searchFor === 'bed') {
+      restTo(0);
+      drive(dt, D.x, D.z, 0);
+      return;
+    }
+  }
+  if (route !== 'none' && search.state !== 'busy') route = 'none';
   drive(dt, D.x, D.z, 0);
+  settled += dt;
+  // Sent home and he is by it: awake on its bed, its head up, watching him, its tail going.
+  const p = ctx.body.pos;
+  const dh = len2(p.x - D.x, p.z - D.z);
+  const by = !atHome && roamMode !== 'overview' && dh < 6 && Math.abs(p.y - D.y) < LEVEL;
+  if (by && !BED.by) joy = Math.max(joy, 1.5);
+  BED.by = by;
+  if (by) {
+    pose.turn = clamp(angleDiff(Math.atan2(p.x - D.x, p.z - D.z), D.yaw) / 1.04, -1, 1);
+    pose.head = -0.2;
+    restTo(2);
+    return;
+  }
   D.yaw += angleDiff(bed.yaw, D.yaw) * (1 - Math.exp(-2 * dt));
   pose.turn = 0;
   pose.head = 1;
-  settled += dt;
   restTo(settled > 2 ? 3 : 2);
+}
+/** He is by its bed (it is awake). */
+const BED = { by: false };
+
+/** On its bed now, lying (the next steps: asleep). */
+function putBed(): void {
+  vanish = false;
+  putAt(bed.x, bed.z, bed.yaw, bed.y);
+  settled = 0;
+}
+
+/** Onto its bed out of his sight (no way there): dissolving first while he could see it, else at once. */
+function toBedUnseen(): void {
+  const c = lastCtx?.cam.camera.position;
+  const seen = !!c && roamMode !== 'overview' && look.fade > 0.5 && len3(c.x - D.x, c.y - D.y, c.z - D.z) < 90;
+  route = 'none';
+  if (search.state === 'busy') stopSearch();
+  if (seen) vanish = true;
+  else putBed();
+}
+
+/**
+ * Told to stay: it waits where it was told (`STAY`), sitting, watching him, lying down after a while (asleep once he has
+ * long been far off); up and aside when someone comes by (or he runs into it), back to its spot after; never coming
+ * along by itself. He comes back to it: it sits up, wagging.
+ */
+function stayLife(ctx: RoamCtx, dt: number): void {
+  const p = ctx.body.pos;
+  const dh = len2(p.x - D.x, p.z - D.z);
+  const d = len2(STAY.x - D.x, STAY.z - D.z);
+  // (far from him and the camera: it only lies there)
+  if (dh > THINK_FAR && camFar(ctx)) {
+    drive(dt, D.x, D.z, 0);
+    settled += dt;
+    STAY.far = true;
+    restTo(settled > 25 ? 2 : 1);
+    return;
+  }
+  if (route === 'spot' && d > 0.3) {
+    restTo(0);
+    if (!standing()) return;
+    drive(dt, STAY.x, STAY.z, 1.8);
+    // (it cannot get back to it: it waits where it is now)
+    if (stuck > 1) {
+      route = 'none';
+      stayHere();
+    }
+    return;
+  }
+  if (route !== 'none') route = 'none';
+  makeWay(ctx);
+  giveWay(ctx, dt);
+  if (backOff(ctx, dt)) return;
+  drive(dt, D.x, D.z, 0);
+  settled += dt;
+  // (moved off its spot — to let someone by, out of his way, after a pet —: back to it after a while, the way clear)
+  if (d > 0.6 && (STAY.back -= dt) <= 0) {
+    STAY.back = 4;
+    const y = lineWalk(ctx.world, D.x, D.y, D.z, STAY.x, STAY.z);
+    if (!Number.isNaN(y) && Math.abs(y - STAY.y) < 0.6 && PERSON.d > 2.5) route = 'spot';
+  }
+  // He comes back to it: it sits up, wagging (it stays).
+  if (dh > 12) STAY.far = true;
+  else if (dh < 6 && STAY.far) {
+    STAY.far = false;
+    joy = Math.max(joy, 2.5);
+    settled = Math.min(settled, 1.2);
+  }
+  const round = faceHim(ctx, dt);
+  restTo(round ? 0 : settled > 90 && dh > 20 ? 3 : settled > 25 ? 2 : settled > 1 ? 1 : 0);
+  if (dh > 60) pose.head = 0;
+}
+
+/** It waits where it stands now (`STAY`): kept for the next visit (`keep`). */
+function stayHere(keep = true): void {
+  STAY.x = D.x;
+  STAY.y = D.y;
+  STAY.z = D.z;
+  STAY.yaw = D.yaw;
+  STAY.back = 4;
+  if (keep) keepOrder();
+}
+
+/** What he told it, kept between visits (`dog.order`; `dog.stay`: where it waits; following keeps nothing). */
+function keepOrder(): void {
+  if (!env || env.shot) return;
+  const r = (v: number) => Math.round(v * 100) / 100;
+  progress.set('dog.order', order === 'follow' ? null : order);
+  progress.set('dog.stay', order === 'stay' ? [r(STAY.x), r(STAY.y), r(STAY.z), r(STAY.yaw)] : null);
 }
 
 // ── The village dog's life (not his yet) ───────────────────────────────────
@@ -1382,9 +1576,10 @@ function moods(ctx: RoamCtx | null, dt: number): void {
   } else if (life === 'awake') {
     wag = d < 3.5 ? 0.8 : 0.4;
     ears = d < 3.5 ? -0.3 : 0.7;
-  } else if (life === 'wait') {
-    wag = 0.15;
-    ears = 0.6;
+  } else if (life === 'wait' || (life === 'stay' && pose.restGoal <= 1)) {
+    // (waiting for him: a slow wag, ears up; he is by it: a happier one)
+    wag = d < 4 ? 0.45 : 0.15;
+    ears = d < 4 ? 0 : 0.6;
   } else if (act === 'bark') {
     wag = 0.45;
     ears = 1;
@@ -1481,17 +1676,40 @@ function rnd(): number {
 
 // ── Petting ────────────────────────────────────────────────────────────────
 
-/** He is on foot, near it and facing it (E: a pet; F: a scratch). */
-function canPet(ctx: RoamCtx): boolean {
+/**
+ * He is on foot, near it and facing it (E: a pet; F: a scratch); `near`: right by it and turned to it (its E comes
+ * before the others'). Also where it waits for him (told to stay) and on its bed (sent home; not while he sleeps there).
+ */
+function canPet(ctx: RoamCtx, near = false): boolean {
   if (hidden || !mesh || !D.placed || PET.on || AIR.on || look.fade < 0.9) return false;
-  if (life === 'away' || life === 'none' || life === 'bed') return false;
+  if (life === 'away' || life === 'none' || (life === 'bed' && atHome)) return false;
   if (roamMode !== 'walk' || othersHolding() || env?.busy() || !ctx.body.grounded) return false;
   const p = ctx.body.pos;
   const dx = D.x - p.x;
   const dz = D.z - p.z;
   const d = len2(dx, dz);
-  if (d > PET_REACH || d < 0.25 || Math.abs(D.y - p.y) > 1) return false;
-  return Math.abs(angleDiff(Math.atan2(dx, dz), ctx.body.yaw)) < PET_CONE;
+  if (d > (near ? PET_NEAR : PET_REACH) || d < 0.25 || Math.abs(D.y - p.y) > 1) return false;
+  return Math.abs(angleDiff(Math.atan2(dx, dz), ctx.body.yaw)) < (near ? PET_NEAR_CONE : PET_CONE);
+}
+
+/** A boat tied up here, a ramp, the balloon: the E is theirs (the dog sits by him at a jetty, a ramp). */
+function theirs(ctx: RoamCtx): boolean {
+  const p = ctx.body.pos;
+  if (ctx.world.launchNear?.(p.x, p.z, p.y) || ctx.world.balloonNear?.(p.x, p.z, p.y)) return true;
+  const boat = mooredBoatNear(p.x, p.z);
+  return !!boat && Math.abs(boat.level - p.y) < 4;
+}
+
+/** "E  Pet the dog" / "E  Pet {name}" (made again only when the language, its name or whether it is his has changed). */
+function petPrompt(): string {
+  const l = lang();
+  if (PROMPT.lang !== l || PROMPT.name !== name || PROMPT.adopted !== adopted) {
+    PROMPT.lang = l;
+    PROMPT.name = name;
+    PROMPT.adopted = adopted;
+    PROMPT.text = adopted ? `E  ${t('dogPetName', { name: named() })}` : `E  ${t('dogPet')}`;
+  }
+  return PROMPT.text;
 }
 
 function startPet(ctx: RoamCtx, kind: 'pet' | 'scratch'): void {
@@ -1582,6 +1800,7 @@ function endPet(ctx: RoamCtx | null, finished: boolean): void {
     BACK_OFF.x = x;
     BACK_OFF.z = z;
     BACK_OFF.t = 0;
+    BACK_OFF.v = 0;
   }
   if (!finished) return;
   joy = 2;
@@ -1613,8 +1832,8 @@ const started = (): boolean => {
   const l = document.getElementById('loading');
   return !l || l.classList.contains('done');
 };
-/** After a pet: a step or two back off his feet (to here). */
-const BACK_OFF = { on: false, x: 0, z: 0, t: 0 };
+/** After a pet: a step or two back off his feet (to here); `v`: at this speed (m/s; 0: a walk, a trot while he moves). */
+const BACK_OFF = { on: false, x: 0, z: 0, t: 0, v: 0 };
 
 /** Settled closer than a metre to him (he stepped up to it, a sniff ended there): a step or two back. */
 function offHisFeet(ctx: RoamCtx): void {
@@ -1634,17 +1853,24 @@ function offHisFeet(ctx: RoamCtx): void {
   BACK_OFF.x = x;
   BACK_OFF.z = z;
   BACK_OFF.t = 0;
+  BACK_OFF.v = 0;
 }
 
-/** He walks at it: it trots a step aside off his way (the side it is on). */
+/**
+ * He walks right into it, or runs at it: it trots a step aside off his way (the side it is on). He walks up to it
+ * and stops (to pet it): it stays where it is (his speed now, not eased: stopping is not walking into it).
+ */
 function makeWay(ctx: RoamCtx): void {
-  if (BACK_OFF.on || HIM.speed < 1.5) return;
-  const p = ctx.body.pos;
+  const b = ctx.body;
+  const v = len2(b.vel.x, b.vel.z);
+  if (BACK_OFF.on || v < INTO.walk) return;
+  const reach = v > INTO.run ? INTO.far : INTO.near;
+  const p = b.pos;
   const dx = D.x - p.x;
   const dz = D.z - p.z;
-  if (dx * dx + dz * dz > 1.5 * 1.5) return;
-  const hx = Math.sin(ctx.body.yaw);
-  const hz = Math.cos(ctx.body.yaw);
+  if (dx * dx + dz * dz > reach * reach) return;
+  const hx = Math.sin(b.yaw);
+  const hz = Math.cos(b.yaw);
   if (dx * hx + dz * hz <= 0) return;
   const side = dx * hz - dz * hx >= 0 ? 1 : -1;
   const x = D.x + hz * side * 1.6;
@@ -1654,9 +1880,57 @@ function makeWay(ctx: RoamCtx): void {
   BACK_OFF.x = x;
   BACK_OFF.z = z;
   BACK_OFF.t = 0;
+  BACK_OFF.v = 0;
 }
 
-/** Stepping back after a pet, or aside off his way (true while it does). */
+/**
+ * He stopped a few metres from it on its floor, turned to it (or comes up to it slowly: a stick pushed a little), and
+ * nothing else here has an E (`freeE`: the E row came to the dog's later place this step — no house door, no garden
+ * work, no stall): it comes up to him, a little in front of him, wagging, to be petted.
+ */
+function comeClose(ctx: RoamCtx, dt: number): void {
+  const b = ctx.body;
+  const p = b.pos;
+  const dx = D.x - p.x;
+  const dz = D.z - p.z;
+  const d = len2(dx, dz);
+  const v = len2(b.vel.x, b.vel.z);
+  const slow = v < 0.4 || (v < 2.6 && b.vel.x * dx + b.vel.z * dz > 0.8 * v * d);
+  const ok =
+    freeE === steps &&
+    slow &&
+    !BACK_OFF.on &&
+    !PET.on &&
+    b.grounded &&
+    clock >= NEAR_ME.next &&
+    d > PET_NEAR - 0.15 &&
+    d < COME_FROM &&
+    Math.abs(p.y - D.y) < 0.6 &&
+    Math.abs(angleDiff(Math.atan2(dx, dz), b.yaw)) < COME_CONE &&
+    !othersHolding() &&
+    !env?.busy();
+  NEAR_ME.t = ok ? NEAR_ME.t + dt : 0;
+  if (NEAR_ME.t < 0.35) return;
+  NEAR_ME.t = 0;
+  NEAR_ME.next = clock + COME_EVERY;
+  // (a boat tied up here, a ramp, the balloon: the E is theirs, it stays where it is)
+  if (theirs(ctx)) return;
+  // (on the line from him to it, before his eyes and in his reach, on its floor)
+  const x = p.x + (dx / d) * COME_TO;
+  const z = p.z + (dz / d) * COME_TO;
+  const y = lineWalk(ctx.world, D.x, D.y, D.z, x, z);
+  if (Number.isNaN(y) || Math.abs(y - D.y) > KERB) return;
+  BACK_OFF.on = true;
+  BACK_OFF.x = x;
+  BACK_OFF.z = z;
+  // (time to get up off its belly first)
+  BACK_OFF.t = -1.5;
+  BACK_OFF.v = 2.2;
+  settled = 0;
+  joy = Math.max(joy, 2.5);
+}
+
+/** Stepping back after a pet, aside off his way, or up to him (true while it does). */
 function backOff(_ctx: RoamCtx, dt: number): boolean {
   if (!BACK_OFF.on) return false;
   BACK_OFF.t += dt;
@@ -1667,7 +1941,7 @@ function backOff(_ctx: RoamCtx, dt: number): boolean {
     BACK_OFF.on = false;
     return false;
   }
-  drive(dt, BACK_OFF.x, BACK_OFF.z, HIM.speed > 1.5 || BACK_OFF.t < 0 ? 3 : 1.6);
+  drive(dt, BACK_OFF.x, BACK_OFF.z, BACK_OFF.v || (HIM.speed > 1.5 || BACK_OFF.t < 0 ? 3 : 1.6));
   return true;
 }
 
@@ -1726,6 +2000,7 @@ function giveWay(ctx: RoamCtx, dt: number): boolean {
   if (best === -Infinity) return false;
   BACK_OFF.on = true;
   BACK_OFF.t = 0;
+  BACK_OFF.v = 0;
   GIVE_WAY.next = clock + 3;
   settled = 0;
   return true;
@@ -1861,6 +2136,20 @@ function call(ctx: RoamCtx): void {
     toast(t('dogNone'));
     return;
   }
+  // (called, it follows him again, whatever it was told: from where it waits, or from its bed; a way is looked for)
+  if (order !== 'follow') {
+    order = 'follow';
+    keepOrder();
+    vanish = false;
+    D.seen = 1;
+    if (life === 'stay' || life === 'bed') {
+      life = 'wait';
+      settled = 0;
+      route = 'none';
+      retryIn = 0;
+      if (search.state === 'busy') stopSearch();
+    }
+  }
   TILT.t = 1.2;
   TILT.v = 0.7;
   if (roamMode !== 'walk' || othersHolding()) return;
@@ -1895,6 +2184,105 @@ function call(ctx: RoamCtx): void {
   life = 'come';
   route = 'none';
   toast(say('dogComing', { name: named() }));
+}
+
+/** It is by him: on foot, on his level, a few metres off, where it can walk to him (0 there opens the order card). */
+function byHim(ctx: RoamCtx): boolean {
+  if (roamMode !== 'walk' || othersHolding() || !D.placed || vanish || look.fade < 0.5) return false;
+  if (life === 'away' || life === 'door' || life === 'none' || (life === 'bed' && atHome)) return false;
+  const p = ctx.body.pos;
+  if (len2(p.x - D.x, p.z - D.z) > 5) return false;
+  const py = hisLevel(ctx);
+  return Math.abs(D.y - py) <= STEP_UP && !Number.isNaN(onHisLevel(ctx, D.x, D.z, py));
+}
+
+/** 0: by it, the order card (Follow me, Stay here, Go home); else he calls it (and it follows him again). */
+function zero(ctx: RoamCtx): void {
+  if (adopted && !hidden && byHim(ctx) && openOrders()) return;
+  call(ctx);
+}
+
+/** The order card (not over its name card): what it does now lit; the one picked is done on the next step. */
+function openOrders(): boolean {
+  if (typeof document === 'undefined' || dogCardOpen() || CARD.pending) return false;
+  orders ??= createDogOrderCard((s) => env?.uiSound(s));
+  orders.ask(orderWords, order, (o) => {
+    if (o) told = o;
+  });
+  TILT.t = 1.2;
+  TILT.v = 0.7;
+  return true;
+}
+
+/** The order card's words (in the language in use; its name as in a sentence). */
+function orderWords(): DogOrderWords {
+  return {
+    title: say('dogOrderTitle', { name: named() }),
+    now: t('dogOrderNow'),
+    cancel: t('nameLater'),
+    choices: {
+      follow: { label: t('dogOrderFollow'), sub: t('dogOrderFollowSub') },
+      stay: { label: t('dogOrderStay'), sub: t('dogOrderStaySub') },
+      // (its bed at his stilt house once it is his, else its old spot by the village shop)
+      home: { label: t('dogOrderHome'), sub: t(bed.set ? 'dogOrderHomeSub' : 'dogOrderVillageSub') },
+    },
+  };
+}
+
+/**
+ * He tells it (the order card, the explorer menu, checks). **Follow me**: by him it follows on, else it is called (0).
+ * **Stay here**: it waits where it is (sent home or gone home: there), never coming by itself. **Go home**: to its bed
+ * (`bedLife`). A toast says so. Kept between visits (`keepOrder`).
+ */
+function tell(o: DogOrder, ctx: RoamCtx): void {
+  if (!adopted || hidden) {
+    toast(t('dogNone'));
+    return;
+  }
+  endPet(ctx, false);
+  if (o === 'follow') {
+    if (!byHim(ctx)) return call(ctx);
+    order = 'follow';
+    keepOrder();
+    vanish = false;
+    if (life !== 'follow') {
+      life = 'come';
+      route = 'direct';
+      toFoot = false;
+    }
+    settled = 0;
+    joy = 2;
+    toast(say('dogToldFollow', { name: named() }));
+    return;
+  }
+  const p = ctx.body.pos;
+  const near = len3(p.x - D.x, p.y - D.y, p.z - D.z) < 12 && roamMode !== 'overview';
+  if (search.state === 'busy') stopSearch();
+  act = 'none';
+  want.sniff = 0;
+  BACK_OFF.on = false;
+  route = 'none';
+  going = false;
+  settled = 0;
+  // (not by him — home, out of sight —: it starts from its bed)
+  if (!D.placed || life === 'away' || vanish) {
+    putBed();
+    D.seen = 1;
+  }
+  order = o;
+  if (o === 'stay') {
+    life = 'stay';
+    STAY.far = !near;
+    stayHere();
+    TILT.t = 1;
+    TILT.v = 0.5;
+    toast(say(near ? 'dogToldStay' : 'dogToldStayThere', { name: named() }));
+    return;
+  }
+  life = 'bed';
+  BED.by = false;
+  keepOrder();
+  toast(say('dogToldHome', { name: named() }));
 }
 
 // ── Each step ──────────────────────────────────────────────────────────────
@@ -1941,6 +2329,16 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
     return;
   }
   if (PET.on) return petDogStep(ctx, dt);
+  // Told to stay, or sent home: that, whatever he does (no coming in by him when he lands, no waiting at a hall's door).
+  if (order === 'stay') {
+    life = 'stay';
+    if (Math.floor(clock * 4) !== Math.floor((clock - dt) * 4)) wedged(ctx);
+    return stayLife(ctx, dt);
+  }
+  if (order === 'home') {
+    life = 'bed';
+    return bedLife(ctx, dt);
+  }
   if (atHome) {
     if (life !== 'bed') {
       life = 'bed';
@@ -1952,7 +2350,7 @@ function think(ctx: RoamCtx, rm: RoamMode, dt: number): void {
         route = 'none';
       }
     }
-    return bedLife(dt);
+    return bedLife(ctx, dt);
   }
   landedFor = onFoot && b.grounded && !b.explorer.animator.posture ? landedFor + dt : 0;
   if (onFoot && (arrive || life === 'away' || life === 'bed' || !D.placed)) {
@@ -2046,7 +2444,8 @@ function foundWay(ctx: RoamCtx): void {
   if (why === 'bed') {
     route = ok ? 'path' : 'none';
     ri = 0;
-    if (!ok) putAt(bed.x, bed.z, bed.yaw, bed.y);
+    // (no way to its bed: there out of his sight)
+    if (!ok) toBedUnseen();
     return;
   }
   if (why === 'door') {
@@ -2055,7 +2454,8 @@ function foundWay(ctx: RoamCtx): void {
     ri = 0;
     return;
   }
-  if (!adopted || atHome) return;
+  // (told to stay, or sent home, meanwhile: it does that)
+  if (!adopted || atHome || order !== 'follow') return;
   if (ok) {
     FAILED.wait = 0;
     FAILED.x = FAILED.z = Infinity;
@@ -2126,6 +2526,35 @@ function readSaved(): void {
   adopted = progress.get('dog.adopted', false);
   pets = progress.get('dog.pets', 0);
   name = customDogName(progress.get('dog.name.km', ''), progress.get('dog.name.latin', '')) ?? oldDogName(progress.get<string>('dog.name', '')) ?? null;
+  // What he told it last (none kept: it follows him); told to stay: where (without it, it follows him).
+  const o = progress.get<string>('dog.order', '');
+  order = adopted && (o === 'stay' || o === 'home') ? o : 'follow';
+  const at = progress.get<number[]>('dog.stay', [], isSpot);
+  if (order === 'stay' && at.length === 4) {
+    STAY.x = at[0];
+    STAY.y = at[1];
+    STAY.z = at[2];
+    STAY.yaw = at[3];
+  } else if (order === 'stay') order = 'follow';
+}
+const isSpot = (v: unknown): v is number[] => Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+
+/** A new visit: it is where it was told to be (on its bed, or where it waits), lying there; else home until he lands. */
+function placeAsTold(): void {
+  if (!adopted || order === 'follow') return;
+  if (order === 'home') {
+    life = 'bed';
+    putBed();
+    pose.rest = pose.restGoal = 3;
+    want.shut = look.shut = 1;
+  } else {
+    life = 'stay';
+    putAt(STAY.x, STAY.z, STAY.yaw, STAY.y);
+    STAY.far = true;
+    settled = 30;
+    pose.rest = pose.restGoal = 2;
+  }
+  setChannels(true);
 }
 
 function setName(n: DogName): void {
@@ -2159,15 +2588,22 @@ registerAddon({
       },
       sound: (s) => e.uiSound(s),
     });
-    // (the explorer menu's "Call the dog" and "Dog's name": _explorerMenu.ts)
+    // (the explorer menu's "Call the dog", its orders and "Dog's name": _explorerMenu.ts)
     DOG_MENU.adopted = () => adopted && !hidden;
     DOG_MENU.rename = openDogName;
+    DOG_MENU.order = () => order;
+    DOG_MENU.tell = (o) => {
+      told = o;
+    };
     homeSpot();
+    // (its bed: his house's basket once it is his — `dogBed`, maybe set already —, else its spot by the village shop)
+    if (!bed.set) dogBed(null);
     putAt(HOME_AT.x, HOME_AT.z, HOME.yaw, HOME_AT.y);
     life = adopted ? 'away' : 'nap';
     pose.rest = pose.restGoal = adopted ? 0 : 3;
     setChannels(true);
     want.shut = look.shut = adopted ? 0 : 1;
+    placeAsTold();
     // (checks: the dev server and its shots only)
     if (import.meta.env.DEV)
       Object.assign(window, {
@@ -2202,6 +2638,16 @@ registerAddon({
           adopt: () => adopt(false),
           home: dogHome,
           bed: dogBed,
+          /** What he told it last; tell it now (as the order card does); the order card (as 0 by it). */
+          get order() {
+            return order;
+          },
+          stay: STAY,
+          tell: (o: DogOrder) => lastCtx && DOG_ORDERS.includes(o) && tell(o, lastCtx),
+          orders: () => openOrders(),
+          get ordersOpen() {
+            return !!orders?.open;
+          },
         },
       });
   },
@@ -2213,11 +2659,21 @@ registerAddon({
     return PET.on;
   },
   input(ctx, mode, tap) {
-    if (dogCardOpen()) {
-      // (the name card has its keys: he keeps still)
+    if (dogCardOpen() || orders?.open) {
+      // (the name card, the order card have their keys: he keeps still)
       return true;
     }
-    if (tap('Digit0', 'Numpad0')) call(ctx);
+    // (an order from the card or the explorer menu: done now, in the step)
+    if (told) {
+      const o = told;
+      told = null;
+      tell(o, ctx);
+    }
+    // 0: by it, the order card; else it is called.
+    if (tap('Digit0', 'Numpad0')) {
+      zero(ctx);
+      if (orders?.open) return true;
+    }
     // F close in front of it: a scratch behind its ears, not a greeting.
     if (mode === 'walk' && tap('KeyF') && !ctx.body.explorer.busy && canPet(ctx)) {
       startPet(ctx, 'scratch');
@@ -2226,14 +2682,15 @@ registerAddon({
     return false;
   },
   offer(ctx, mode) {
-    // (not under its name card)
-    if (mode !== 'walk' || dogCardOpen() || CARD.pending || !canPet(ctx)) return null;
-    // (a boat tied up here, a ramp, the balloon: theirs is the E)
+    if (mode !== 'walk' || hidden || !D.placed) return null;
+    // (far from it: nothing to pet, nothing to come up to him for)
     const p = ctx.body.pos;
-    if (ctx.world.launchNear?.(p.x, p.z, p.y) || ctx.world.balloonNear?.(p.x, p.z, p.y)) return null;
-    const boat = mooredBoatNear(p.x, p.z);
-    if (boat && Math.abs(boat.level - p.y) < 4) return null;
-    return adopted ? `E  ${t('dogPetName', { name: named() })}` : `E  ${t('dogPet')}`;
+    if (len2(D.x - p.x, D.z - p.z) > COME_FROM + 1) return null;
+    // (nothing before it in the E row wants the E here: it may come up to him, `comeClose`)
+    freeE = steps;
+    // (not under its cards; a boat tied up here, a ramp, the balloon: theirs is the E)
+    if (dogCardOpen() || CARD.pending || orders?.open || !canPet(ctx) || theirs(ctx)) return null;
+    return petPrompt();
   },
   use(ctx) {
     if (canPet(ctx)) startPet(ctx, 'pet');
@@ -2252,12 +2709,17 @@ registerAddon({
     moods(ctx, dt);
     setChannels();
     animate(dt);
+    steps++;
   },
   frame(f, mode) {
     if (CARD.pending && started() && mode !== 'overview') {
       CARD.pending = false;
       openDogCard(true);
       if (CARD.text) typeDogCard(CARD.text);
+    }
+    if (ordersPending && started() && mode === 'walk') {
+      ordersPending = false;
+      openOrders();
     }
     if (!stepped) {
       clock += f.dt;
@@ -2275,15 +2737,31 @@ registerAddon({
   setMode(next, prev, ctx) {
     roamMode = next;
     if (PET.on && next !== 'walk') endPet(ctx, false);
+    if (next !== 'walk') orders?.close();
     if (next === 'overview') {
-      // Back to the map: his dog goes home (and comes in by him the next time he lands); the village dog naps.
+      // Back to the map: his dog goes home (and comes in by him the next time he lands); the village dog naps. Told
+      // to stay: it waits on where it was told; sent home: it is on its bed.
       endPet(null, false);
       closeDogCard();
       if (search.state === 'busy') stopSearch();
       act = 'none';
       route = 'none';
       atHome = false;
-      if (adopted) {
+      BACK_OFF.on = false;
+      if (adopted && order === 'stay') {
+        life = 'stay';
+        putAt(STAY.x, STAY.z, STAY.yaw, STAY.y);
+        pose.rest = pose.restGoal = 2;
+        settled = 30;
+        STAY.far = true;
+        setChannels(true);
+      } else if (adopted && order === 'home') {
+        life = 'bed';
+        putBed();
+        D.seen = look.fade = want.fade = 1;
+        pose.rest = pose.restGoal = 3;
+        setChannels(true);
+      } else if (adopted) {
         life = 'away';
         arrive = true;
         if (bed.set) putAt(bed.x, bed.z, bed.yaw, bed.y);
@@ -2300,7 +2778,8 @@ registerAddon({
       trail.clear();
       gapped = true;
       HIM.set = false;
-      if (adopted) arrive = true;
+      // (told to stay or sent home: it does not come in by him)
+      if (adopted && order === 'follow') arrive = true;
     }
     if (prev === 'walk' && next !== 'walk') gapped = true;
     // (landed far from it: the hint may come again)
@@ -2323,6 +2802,13 @@ registerAddon({
     // (as it really is: gone home (or asleep on its bed while he is home: his house's own values bring that back) comes in
     // by him again; waiting where he left it; else by him, as it stands, sits or lies)
     const kept: Record<string, string> = name ? { dogname: dogNameParam(name) } : {};
+    // (told to stay: where it waits, as it rests; sent home: on its bed, or where it is on its way there)
+    if (order !== 'follow') {
+      const at = order === 'stay' ? STAY : D;
+      const there = order === 'stay' || len2(bed.x - D.x, bed.z - D.z) > 1;
+      const rest = pose.restGoal >= 3 ? 'sleep' : pose.restGoal === 2 ? 'lie' : 'sit';
+      return { dog: rest, dogorder: order, ...kept, ...(there ? { dogat: `${at.x.toFixed(1)},${at.z.toFixed(1)}` } : {}) };
+    }
     if (life === 'away' || life === 'bed' || !D.placed) return { dog: 'away', ...kept };
     const what = PET.on ? PET.kind : life === 'wait' || life === 'door' ? 'wait' : pose.restGoal >= 3 ? 'sleep' : pose.restGoal === 2 ? 'lie' : pose.restGoal === 1 ? 'sit' : 'follow';
     return {
@@ -2330,6 +2816,23 @@ registerAddon({
       ...kept,
       ...(what === 'wait' || d > 6 ? { dogat: `${D.x.toFixed(1)},${D.z.toFixed(1)}` } : {}),
     };
+  },
+});
+
+/**
+ * The dog's early place in the E row: right by it and turned to it (`PET_NEAR`, `PET_NEAR_CONE`), E pets it before
+ * anything else here but a golden figure — his house's door and mat, his garden's work, Grandma's seed basket, the
+ * shoulder pole, a shrine, a stall —, which keep their E otherwise. (The pet itself is the `dog` add-on's: it holds him.)
+ */
+registerAddon({
+  id: 'dogPet',
+  order: PET_FIRST,
+  offer(ctx, mode) {
+    if (mode !== 'walk' || dogCardOpen() || CARD.pending || orders?.open || !canPet(ctx, true) || theirs(ctx)) return null;
+    return petPrompt();
+  },
+  use(ctx) {
+    if (canPet(ctx, true)) startPet(ctx, 'pet');
   },
 });
 
@@ -2342,7 +2845,10 @@ function hintAfterAdopt(): void {
 // ── URL values (checks) ────────────────────────────────────────────────────
 
 function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
-  const v = q.get('dog');
+  // (`dogorder=` alone: his dog, told so)
+  const said = q.get('dogorder');
+  const what: DogOrder | null = said === 'follow' || said === 'stay' || said === 'home' ? said : null;
+  const v = q.get('dog') ?? (what ? 'follow' : null);
   const nm = parseDogName(q.get('dogname'));
   if (nm) name = nm;
   if (q.has('dogpets')) pets = Math.max(0, Number(q.get('dogpets')) || 0);
@@ -2390,6 +2896,24 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
   arrive = false;
   trail.clear();
   gapped = true;
+  order = 'follow';
+  if (what === 'home') {
+    // (sent home: on its bed, asleep (`dog=sit|lie`: so); with `dogat=`, there and on its way home)
+    order = 'home';
+    life = 'bed';
+    if (has) {
+      putAt(bx, bz, face);
+      pose.rest = pose.restGoal = 0;
+    } else {
+      putBed();
+      pose.rest = pose.restGoal = v === 'sit' ? 1 : v === 'lie' ? 2 : 3;
+      want.shut = look.shut = pose.rest >= 3 ? 1 : 0;
+      settled = pose.rest >= 3 ? 10 : 0;
+    }
+    look.fade = want.fade = D.seen = 1;
+    setChannels(true);
+    return;
+  }
   if (v === 'away') {
     // (gone home: it comes in by him once he is on his feet, as on landing at the start of a visit)
     life = 'away';
@@ -2448,10 +2972,24 @@ function fromUrl(q: URLSearchParams, ctx: RoamCtx): void {
     // (opened once the map has started: never over the loading screen and its Start button)
     CARD.pending = true;
     CARD.text = q.get('dognametype') ?? '';
+  } else if (v === 'orders') {
+    // (the order card, as 0 by it opens it: once the map has started)
+    pose.rest = pose.restGoal = 1;
+    ordersPending = true;
   } else pose.rest = pose.restGoal = 0;
   HOLD.stand = v === 'stand';
   HOLD.gait = q.has('doggait') ? clamp(Number(q.get('doggait')) || 0, 0, 3) : -1;
   HOLD.fade = q.has('dogfade') ? clamp(Number(q.get('dogfade')), 0, 1) : -1;
+  if (what === 'stay' && v !== 'call') {
+    // (told to stay where it was put: sitting, or lying, or asleep (`dog=lie|sleep`) as long as it has waited)
+    order = 'stay';
+    life = 'stay';
+    route = 'none';
+    stayHere(false);
+    STAY.far = false;
+    if (pose.rest === 0 && !HOLD.stand) pose.rest = pose.restGoal = 1;
+    settled = pose.rest >= 3 ? 120 : pose.rest === 2 ? 30 : 2;
+  }
   setChannels(true);
 }
 
@@ -2471,8 +3009,14 @@ export interface DogInfo {
   adopted: boolean;
   /** Its name (Khmer letters, Latin spelling); empty until one is picked. */
   name: { km: string; latin: string };
-  /** `nap` / `awake`: the village dog, not his yet; `follow`, `come`, `wait`: his, roaming; `bed`: asleep on its bed (he is home); `away`: home while he is on the map. */
+  /**
+   * `nap` / `awake`: the village dog, not his yet; `follow`, `come`, `wait`, `door`: his, roaming; `stay`: waiting where he
+   * told it to; `bed`: on its bed, or on its way there (he is home asleep, or sent it home); `away`: home while he is on
+   * the map.
+   */
   life: Life;
+  /** What he told it last: `follow`, `stay`, `home`. */
+  order: DogOrder;
   /** Where it is (feet, m) and how far from him (m; Infinity off roaming). */
   x: number;
   y: number;
@@ -2482,7 +3026,7 @@ export interface DogInfo {
   asleep: boolean;
 }
 
-const INFO: DogInfo = { adopted: false, name: { km: '', latin: '' }, life: 'nap', x: 0, y: 0, z: 0, far: Infinity, asleep: false };
+const INFO: DogInfo = { adopted: false, name: { km: '', latin: '' }, life: 'nap', order: 'follow', x: 0, y: 0, z: 0, far: Infinity, asleep: false };
 
 /** The dog now (one object, filled again each call). */
 export function dogState(): Readonly<DogInfo> {
@@ -2490,6 +3034,7 @@ export function dogState(): Readonly<DogInfo> {
   INFO.name.km = name?.km ?? '';
   INFO.name.latin = name?.latin ?? '';
   INFO.life = life;
+  INFO.order = order;
   INFO.x = D.x;
   INFO.y = D.y;
   INFO.z = D.z;
@@ -2502,8 +3047,8 @@ export function dogState(): Readonly<DogInfo> {
 
 /**
  * Where his dog sleeps (its bed: under his stilt house, on its veranda…), or null for none (it then goes home to the
- * village). Used while he is home (`dogHome(true)`) and when he goes back to the map. Not kept: the house sets it
- * when it is built.
+ * village). Used while he is home (`dogHome(true)`), when he goes back to the map, and when he sends it home ("Go
+ * home"). Not kept: the house sets it when it is built.
  */
 export function dogBed(spot: DogSpot | null): void {
   if (!spot) {
@@ -2512,25 +3057,27 @@ export function dogBed(spot: DogSpot | null): void {
     bed.z = HOME_AT.z;
     bed.y = HOME_AT.y;
     bed.yaw = HOME.yaw;
-    return;
+  } else {
+    bed.set = true;
+    bed.x = spot.x;
+    bed.z = spot.z;
+    bed.y = spot.y ?? (env ? env.world.groundAt(spot.x, spot.z) : NaN);
+    bed.yaw = spot.yaw ?? 0;
   }
-  bed.set = true;
-  bed.x = spot.x;
-  bed.z = spot.z;
-  bed.y = spot.y ?? (env ? env.world.groundAt(spot.x, spot.z) : NaN);
-  bed.yaw = spot.yaw ?? 0;
+  // (sent home: to this bed — there at once while nobody roams; roaming, it walks over: `bedLife`)
+  if (adopted && order === 'home' && roamMode === 'overview' && env) putBed();
 }
 
 /**
  * He is home (asleep in his house, say): his dog goes to its bed (along a way, or it is simply there when none is
  * found) and sleeps. `false`: it wakes and comes to him (along a way; it waits there while there is none). Nothing
- * while he has no dog.
+ * while he has no dog; told to stay or sent home, it does that (it is on its bed already, or waits where it was told).
  */
 export function dogHome(on: boolean): void {
   if (on === atHome) return;
   atHome = on;
   settled = 0;
-  if (!on && adopted) {
+  if (!on && adopted && order === 'follow') {
     // (it wakes on its bed and finds the way to him; in from by him only once he is on his feet far from it)
     route = 'none';
     retryIn = 0;

@@ -8,7 +8,7 @@ import { num, onLang, t, type WordKey } from '../ui/lang';
 import { steppedRing, steppedShape } from '../ui/shape';
 import { LOOK_TOOLS, MENU_HOOKS, MENU_PAGES, type MenuPage } from './_addons';
 import { calendarSvg } from './_calendarIcons';
-import { DOG_MENU, DOG_MENU_ICON, DOG_NAME_ICON } from './_dogHook';
+import { DOG_MENU, DOG_MENU_ICON, DOG_NAME_ICON, DOG_ORDER_ICONS, DOG_ORDERS, type DogOrder } from './_dogHook';
 import { FACE_NAME } from './photo';
 
 /**
@@ -22,7 +22,9 @@ import { FACE_NAME } from './photo';
  *   (`press`: the same path as the keyboard, tools.ts; Greet and Wave both as
  *   F, saying which: _greet.ts), and the panel shuts so the move (and the sky,
  *   sitting or lying down) shows. On foot only: off it (boat, hang glider,
- *   balloon) they are greyed.
+ *   balloon) they are greyed. Beside "Call the dog", what he tells it: Follow
+ *   me, Stay here, Go home (`DOG_MENU.tell`; the one it does now lit), in any
+ *   mode.
  * - **Look** (រូបរាង): everything he wears and his face, part by part: the
  *   page is the wardrobe's (`MENU_PAGES.look`, _addons.ts, filled by
  *   _wardrobe.ts); the menu holds its tab and its place, puts its `el` in once,
@@ -106,6 +108,9 @@ const MOVES: readonly [code: string, key: string, word: WordKey, how?: 'sampeah'
   ['KeyL', 'L', 'rLieDown'],
 ];
 
+/** What he tells his dog, beside "Call the dog" (roam/_dog.ts). */
+const ORDER_WORD: Record<DogOrder, WordKey> = { follow: 'dogOrderFollow', stay: 'dogOrderStay', home: 'dogOrderHome' };
+
 /** The words in lists are in lower case (the key list): a capital for a button or a title. */
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -156,7 +161,7 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
     <div class="rxm-head"><button type="button" class="rxm-x" data-act="close"><span class="rxm-bg"></span>${CLOSE_ICON}</button></div>
     <div class="rxm-body">
       ${page('moves', `<span class="rxm-note" data-w="rOnFootOnly"></span>
-        <div class="rxm-grid">${MOVES.map(([code, key, w, how]) => chip(`data-move="${code}"${how ? ` data-how="${how}"` : ''}`, MOVE_ICONS[how ?? code], w, key)).join('')}${chip('data-act="dog" hidden', DOG_MENU_ICON, 'dogCall', '0')}</div>`)}
+        <div class="rxm-grid">${MOVES.map(([code, key, w, how]) => chip(`data-move="${code}"${how ? ` data-how="${how}"` : ''}`, MOVE_ICONS[how ?? code], w, key)).join('')}${chip('data-act="dog" hidden', DOG_MENU_ICON, 'dogCall', '0')}${DOG_ORDERS.map((o) => chip(`data-act="dogorder" data-order="${o}" hidden`, DOG_ORDER_ICONS[o], ORDER_WORD[o], '', true)).join('')}</div>`)}
       ${page('look', '')}
       ${page('bag', `<div class="rxm-grid">${chip('data-act="umbrella"', UMBRELLA_ICON, 'umbName', '8', true)}${chip('data-act="album"', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-act="calendar"', calendarSvg('rxm-icon'), 'whenButton', '9')}</div>`)}
       ${page('me', `<div class="rxm-grid">${chip('data-act="name"', NAME_ICON, 'nameMenu')}${chip('data-act="dogname" hidden', DOG_NAME_ICON, 'dogNameMenu')}${chip('data-act="gold" hidden', GOLD_ICON, 'rxmGold')}${chip('data-act="keys"', KEYS_ICON, 'rAllKeys', '?')}</div>`)}
@@ -175,8 +180,10 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   const moves = [...pages.moves.querySelectorAll<HTMLButtonElement>('.rxm-b[data-move]')];
   /** The umbrella (8: roam/_umbrella.ts), lit while it is his choice. */
   const umbrella = own('umbrella');
-  /** His dog's: "Call the dog" (as 0) and its name (roam/_dog.ts), shown once he has one. */
-  const dogChips = [own('dog'), own('dogname')];
+  /** His dog's: what he tells it (Follow me, Stay here, Go home: the one it does now lit), shown once he has one. */
+  const orderChips = [...pages.moves.querySelectorAll<HTMLButtonElement>('.rxm-b[data-act="dogorder"]')];
+  /** His dog's: "Call the dog" (as 0), the orders and its name (roam/_dog.ts), shown once he has one. */
+  const dogChips = [own('dog'), ...orderChips, own('dogname')];
   /** The golden figures he has found (map/treasure: MENU_HOOKS), shown once they are on the map. */
   const gold = own('gold');
   const goldWord = gold.querySelector<HTMLElement>('.rxm-t')!;
@@ -481,13 +488,14 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
         }
       const foot = d.onFoot();
       const [found, total] = MENU_HOOKS.goldCount();
-      const now = `${foot} ${MENU_HOOKS.umbrellaUp()} ${DOG_MENU.adopted()} ${found}/${total} ${fallback ? `${LOOK_TOOLS.look()} ${LOOK_TOOLS.hat()} ${LOOK_TOOLS.face()}` : '-'}`;
+      const now = `${foot} ${MENU_HOOKS.umbrellaUp()} ${DOG_MENU.adopted()} ${DOG_MENU.order()} ${found}/${total} ${fallback ? `${LOOK_TOOLS.look()} ${LOOK_TOOLS.hat()} ${LOOK_TOOLS.face()}` : '-'}`;
       if (now === shown) return;
       shown = now;
       el.classList.toggle('is-busy', !foot);
       for (const b of moves) b.disabled = !foot;
       light(umbrella, MENU_HOOKS.umbrellaUp());
       for (const b of dogChips) b.hidden = !DOG_MENU.adopted();
+      for (const b of orderChips) light(b, b.dataset.order === DOG_MENU.order());
       gold.hidden = total <= 0;
       fillGold();
       if (fallback) {
@@ -504,7 +512,7 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
     if (!b || b.disabled || lookIn?.el.contains(b)) return;
     // (let go of the focus: Space is the jump and the shutter; the game pad's stays, it goes on from there)
     if (!pad.active) b.blur();
-    const { move, look, face, how, act } = b.dataset;
+    const { move, look, face, how, act, order } = b.dataset;
     if (move) {
       d.press(move, how === 'sampeah' || how === 'wave' ? how : undefined);
       // (the panel goes, so the move shows: and the sky, sitting or lying down)
@@ -516,7 +524,12 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
     // (as 8: the umbrella opens or folds, roam/_umbrella.ts; the panel stays, as for the hat)
     else if (act === 'umbrella') d.press('Digit8');
     else if (act === 'close') return api.toggle(false);
-    else if (act === 'album' || act === 'calendar' || act === 'dog' || act === 'keys') {
+    else if (act === 'dogorder' && order) {
+      // (what he tells his dog: done on the next step, with its toast; this shuts so it shows)
+      DOG_MENU.tell(order as DogOrder);
+      d.sound?.('select');
+      return api.toggle(false);
+    } else if (act === 'album' || act === 'calendar' || act === 'dog' || act === 'keys') {
       // (as V: the album opens · 9: the calendar of events · 0: his dog comes to him · ?: the list of keys, or of the
       // pad's buttons; this shuts so it shows)
       d.press({ album: 'KeyV', calendar: 'Digit9', dog: 'Digit0', keys: 'Slash' }[act]);
