@@ -301,7 +301,9 @@ guide, with every add-on's keys and URL values for shots, is
   monkeys stealing his snack (`monkey=steal`).
 - Fun: his own kite (`kite=fly`), helping the farmers (`farm=plant|reap`), the
   Water Festival boat race (`fest=water&race=join`), kick the sey (`sey=1`).
-- A friend and a home: the dog (`dog=follow`), his stilt house at the
+- A friend and a home: the dog (`dog=follow`; E pets it, also at his house and
+  in his garden; 0 by it: Follow me, Stay here, Go home, `dog=orders`,
+  `dogorder=stay|home`, kept as `dog.order`), his stilt house at the
   sugar-palm village's north-east edge (`home=1|sleep`), his name in Khmer
   letters (`name=<latin>`; `src/map/khmerName.ts`).
 - His home garden (`docs/map-work/addons.md` "His home garden"): the core in
