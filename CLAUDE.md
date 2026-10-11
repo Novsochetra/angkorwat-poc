@@ -304,7 +304,9 @@ guide, with every add-on's keys and URL values for shots, is
 - A friend and a home: the dog (`dog=follow`; E pets it, also at his house and
   in his garden; 0 by it: Follow me, Stay here, Go home, `dog=orders`,
   `dogorder=stay|home`, kept as `dog.order`), his stilt house at the
-  sugar-palm village's north-east edge (`home=1|sleep`), his name in Khmer
+  sugar-palm village's north-east edge (`home=1|sleep`; E before its doors,
+  turned to them, opens and closes them: `roam/_homeDoor.ts`, kept as
+  `home.door`, `homedoor=open|closed|<0‥1>`), his name in Khmer
   letters (`name=<latin>`; `src/map/khmerName.ts`).
 - His home garden (`docs/map-work/addons.md` "His home garden"): the core in
   `src/map/garden/` (plants `kinds.ts`, the saved garden `state.ts`, the work's

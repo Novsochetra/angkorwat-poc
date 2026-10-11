@@ -7,7 +7,11 @@ import { biquad, cleanup, mtof, noise, range, strike } from './dsp';
  * - `homeKey` (moves): the grandmother's key put in his hand — a small brass
  *   key knocking on its ring, two or three light metallic pings.
  * - `homeDoor` (moves): the padlock's hasp lifted with a clack, then the old
- *   double doors swinging in on their wooden pins, a slow low creak.
+ *   double doors swinging in on their wooden pins (as `homeDoorOpen`).
+ * - `homeDoorOpen` (moves): the doors swung open (half a second): a short low
+ *   creak rising, each leaf knocking softly against the wall inside.
+ * - `homeDoorShut` (moves): the doors swung to: a short creak falling, the two
+ *   leaves meeting with a wooden clap, the wooden latch dropping a moment later.
  * - `homeMat` (moves): the reed mat (kantel) as he lies down on it or gets up:
  *   a dry crackling swish.
  * - `homeNet` (moves): the mosquito net let down or rolled up: a soft swish.
@@ -18,7 +22,7 @@ import { biquad, cleanup, mtof, noise, range, strike } from './dsp';
  * calendar's.
  */
 
-const LEVEL = { key: 0.16, clack: 0.3, creak: 0.11, mat: 0.34, net: 0.2, bell: 0.085 };
+const LEVEL = { key: 0.16, clack: 0.3, creak: 0.11, shut: 0.32, mat: 0.34, net: 0.2, bell: 0.085 };
 
 /** Struck filtered noise into the bus (dry, a touch of reverb). */
 function burst(o: SfxOut, t: number, b: { type: BiquadFilterType; f0: number; f1?: number; q?: number; attack: number; tau: number; level: number; kind?: 'white' | 'pink' | 'brown'; wet?: number }): void {
@@ -119,50 +123,77 @@ registerSfx(
   'moves',
 );
 
+/**
+ * The old leaves turning on their wooden pins: a sawtooth through a narrow band, chopped into a stick-slip rasp,
+ * its pitch sliding from `f` × `from` to × `to` (by way of × `mid`) over `len` s from `t`.
+ */
+function creak(o: SfxOut, t: number, len: number, level: number, slide: readonly [from: number, mid: number, to: number]): void {
+  const r = o.rnd;
+  const ctx = o.ctx;
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  const f0 = range(r, 95, 120);
+  osc.frequency.setValueAtTime(f0 * slide[0], t);
+  osc.frequency.linearRampToValueAtTime(f0 * slide[1], t + len * 0.5);
+  osc.frequency.linearRampToValueAtTime(f0 * slide[2], t + len);
+  const chop = ctx.createOscillator();
+  chop.type = 'square';
+  chop.frequency.setValueAtTime(18, t);
+  chop.frequency.linearRampToValueAtTime(11, t + len);
+  const depth = ctx.createGain();
+  depth.gain.value = 0.4;
+  const stick = ctx.createGain();
+  stick.gain.value = 0.6;
+  chop.connect(depth).connect(stick.gain);
+  const band = biquad(ctx, 'bandpass', range(r, 700, 900), 2.2);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0, t);
+  env.gain.linearRampToValueAtTime(level, t + Math.min(0.2, len * 0.3));
+  env.gain.linearRampToValueAtTime(level * 0.6, t + len * 0.8);
+  env.gain.linearRampToValueAtTime(0, t + len);
+  const wet = ctx.createGain();
+  wet.gain.value = 0.15;
+  osc.connect(band).connect(stick).connect(env);
+  env.connect(o.dry);
+  env.connect(wet).connect(o.wet);
+  osc.start(t);
+  chop.start(t);
+  osc.stop(t + len + 0.05);
+  chop.stop(t + len + 0.05);
+  cleanup(osc, [osc, chop, depth, stick, band, env, wet]);
+}
+
+/** The doors swinging in (half a second from `t`: `HOME_LEAF.swing`), each leaf knocking softly against the wall inside. */
+function swingIn(o: SfxOut, g: number, t: number): void {
+  creak(o, t, 0.5, LEVEL.creak * g, [1, 1.45, 1.25]);
+  for (const k of [0.5, 0.6]) burst(o, t + k, { type: 'bandpass', f0: 300, q: 2.5, attack: 0.003, tau: 0.04, level: LEVEL.clack * 0.4 * g, kind: 'pink' });
+}
+
 registerSfx(
   'homeDoor',
   (o, g, t) => {
-    const r = o.rnd;
-    const ctx = o.ctx;
-    // The hasp lifted: a dry wooden-metal clack.
+    // The hasp lifted: a dry wooden-metal clack; then the doors swing in.
     burst(o, t, { type: 'bandpass', f0: 1900, q: 2, attack: 0.002, tau: 0.018, level: LEVEL.clack * g, kind: 'white' });
     burst(o, t + 0.01, { type: 'bandpass', f0: 420, q: 1.5, attack: 0.003, tau: 0.04, level: LEVEL.clack * 0.6 * g, kind: 'pink' });
-    // The doors swing in on their wooden pins: a slow creak, sliding in pitch.
-    const c0 = t + 0.35;
-    const len = 1.1;
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    const f0 = range(r, 95, 120);
-    osc.frequency.setValueAtTime(f0, c0);
-    osc.frequency.linearRampToValueAtTime(f0 * 1.5, c0 + len * 0.5);
-    osc.frequency.linearRampToValueAtTime(f0 * 1.2, c0 + len);
-    const chop = ctx.createOscillator();
-    chop.type = 'square';
-    chop.frequency.setValueAtTime(18, c0);
-    chop.frequency.linearRampToValueAtTime(11, c0 + len);
-    const depth = ctx.createGain();
-    depth.gain.value = 0.4;
-    const stick = ctx.createGain();
-    stick.gain.value = 0.6;
-    chop.connect(depth).connect(stick.gain);
-    const band = biquad(ctx, 'bandpass', range(r, 700, 900), 2.2);
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, c0);
-    env.gain.linearRampToValueAtTime(LEVEL.creak * g, c0 + 0.2);
-    env.gain.linearRampToValueAtTime(LEVEL.creak * 0.6 * g, c0 + len * 0.8);
-    env.gain.linearRampToValueAtTime(0, c0 + len);
-    const wet = ctx.createGain();
-    wet.gain.value = 0.15;
-    osc.connect(band).connect(stick).connect(env);
-    env.connect(o.dry);
-    env.connect(wet).connect(o.wet);
-    osc.start(c0);
-    chop.start(c0);
-    osc.stop(c0 + len + 0.05);
-    chop.stop(c0 + len + 0.05);
-    cleanup(osc, [osc, chop, depth, stick, band, env, wet]);
-    // (each leaf comes to rest against the wall: two soft knocks)
-    for (const k of [0, 0.12]) burst(o, c0 + len + k, { type: 'bandpass', f0: 300, q: 2.5, attack: 0.003, tau: 0.04, level: LEVEL.clack * 0.45 * g, kind: 'pink' });
+    swingIn(o, g, t + 0.35);
+  },
+  'moves',
+);
+
+registerSfx('homeDoorOpen', (o, g, t) => swingIn(o, g, t), 'moves');
+
+registerSfx(
+  'homeDoorShut',
+  (o, g, t) => {
+    // A shorter creak falling as they come round, then the two leaves meet: a hollow wooden clap (the second a hair
+    // after the first), and the latch dropping into its keeper.
+    creak(o, t, 0.4, LEVEL.creak * 0.85 * g, [1.3, 1.15, 0.95]);
+    const m = t + 0.47;
+    burst(o, m, { type: 'bandpass', f0: 240, q: 1.8, attack: 0.002, tau: 0.05, level: LEVEL.shut * g, kind: 'pink', wet: 0.12 });
+    burst(o, m + 0.004, { type: 'bandpass', f0: 1100, q: 1.4, attack: 0.001, tau: 0.012, level: LEVEL.shut * 0.45 * g });
+    burst(o, m + 0.035, { type: 'bandpass', f0: 300, q: 2.2, attack: 0.002, tau: 0.035, level: LEVEL.shut * 0.5 * g, kind: 'pink' });
+    burst(o, m + 0.2, { type: 'bandpass', f0: 1500, q: 2.5, attack: 0.001, tau: 0.01, level: LEVEL.clack * 0.4 * g });
+    burst(o, m + 0.205, { type: 'bandpass', f0: 520, q: 1.8, attack: 0.002, tau: 0.025, level: LEVEL.clack * 0.35 * g, kind: 'pink' });
   },
   'moves',
 );

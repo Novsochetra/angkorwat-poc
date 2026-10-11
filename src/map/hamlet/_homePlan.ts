@@ -34,6 +34,34 @@ export const HOME_Z = { back: -3.5, wall: 1.3, front: 3.5 } as const;
 export const HOME_T = 0.18;
 /** The doorway in the front wall: half its width, its height over the floor (m). Wide and tall for the roaming explorer (1.4 × his size: 2.26 m tall, 0.42 m round). */
 export const HOME_DOOR = { half: 1.05, h: 2.6 } as const;
+/**
+ * The two door leaves (hamlet/_home.ts draws them, roam/_homeDoor.ts works them): hinged at the doorway's jambs on
+ * the wall's inside face (`z`, local), each `w` wide (m) from its hinge to the middle; open, each swings in (into the
+ * room) by `open` radians until it lies back against the front wall inside; a full swing takes `swing` s. The ring
+ * handle on the outside face `ring` m over the floor, `edge` m in from the leaf's free edge.
+ */
+export const HOME_LEAF = { z: HOME_Z.wall - HOME_T - 0.08, w: HOME_DOOR.half - 0.01, open: 3.0, swing: 0.5, ring: 1.2, edge: 0.1 } as const;
+
+/** How far a leaf has turned (radians) at `HOME.door` = v (0 shut ‥ 1 open): eased at both ends. */
+export function leafAngle(v: number): number {
+  const c = Math.min(1, Math.max(0, v));
+  return c * c * (3 - 2 * c) * HOME_LEAF.open;
+}
+
+/**
+ * A point on leaf `s` (−1 the east one, at local −x; +1 the west one) with the doors `v` open: `along` m from its
+ * hinge toward its free edge, `face` m off its middle (+ the outside face when shut), as local (x, z) in `out`.
+ */
+export function leafPoint(s: -1 | 1, v: number, along: number, face: number, out: [number, number]): [number, number] {
+  // (the leaf turns about its hinge, the west one clockwise seen from above, the east one the other way: both into the room)
+  const a = -s * leafAngle(v);
+  const c = Math.cos(a);
+  const n = Math.sin(a);
+  const px = -s * along;
+  out[0] = s * HOME_DOOR.half + px * c + face * n;
+  out[1] = HOME_LEAF.z - px * n + face * c;
+  return out;
+}
 /** The front stair: where it leaves the veranda (local x), its width, its steps' rise and run (m). */
 export const HOME_STAIR = { x: 2, width: 1.8, step: 0.5 } as const;
 /** Where the stair's foot is (local z): the last tread's front and a little room. */
@@ -63,7 +91,8 @@ export const HOME_IN = {
   altar: { x: 3.3, z: -1.0, y: 2.05, w: 1.25, d: 0.46 },
   shelf: { x0: 0.5, x1: 3.12, z: -3.32, d: 0.38, ys: [1.0, 1.52] as readonly number[] },
   kite: { x: 1.8, y: 2.55, z: -3.3 },
-  jar: { x: 1.62, z: 0.62 },
+  /** (by the door under the west front window, clear of the west door leaf's sweep: `HOME_LEAF`) */
+  jar: { x: 2.55, z: 0.55 },
   sit: { x: 1.4, z: -1.35 },
   lamp: { x: -2.45, y: 1.15, z: HOME_Z.wall - 0.16 },
   /** The windows: in the front wall (x), the east side wall by the mat (wide: the view), the west side wall (z). */
@@ -164,9 +193,11 @@ export type GranCue = 'idle' | 'call' | 'talk' | 'give' | 'taken' | 'leave' | 'g
 /**
  * What the house, its grandmother and the roaming add-on share (one object, plain numbers):
  *
- * - `owned`: he has the key (progress.ts `home.owned`, or the URL's `home=`); `opened`: he has opened the doors
- *   once (they stay open from then on: `home.opened`); `door` 0 shut ‥ 1 open, eased by the house toward
- *   `opened`.
+ * - `owned`: he has the key (progress.ts `home.owned`, or the URL's `home=`); `opened`: he has unlocked and opened
+ *   the doors once (`home.opened`: from then on E opens and closes them); `closed`: he has shut them again since
+ *   (`home.door`: false; open by default); `door` 0 shut ‥ 1 open, eased by the house toward open when `opened`
+ *   and not `closed` (a full swing `HOME_LEAF.swing` s), or held at `doorHold` (0‥1, a check's `homedoor=`; −1:
+ *   not held).
  * - `net` 0 rolled up ‥ 1 down round the mat (he sleeps), eased by the house toward `netDown`.
  * - `inside`: he is in the house or on its veranda (the dog keeps him company; away, it sleeps in its bed).
  * - `gran`: the grandmother. The people scene writes where she is (`shown`, `x, y, z`, `yaw`) once it is
@@ -175,7 +206,9 @@ export type GranCue = 'idle' | 'call' | 'talk' | 'give' | 'taken' | 'leave' | 'g
 export const HOME = {
   owned: false,
   opened: false,
+  closed: false,
   door: 0,
+  doorHold: -1,
   net: 0,
   netDown: false,
   inside: false,
@@ -206,19 +239,43 @@ export function granCue(cue: GranCue, ex?: { x: number; y: number; z: number }):
   }
 }
 
+/**
+ * A check's `homedoor=open|closed|<0‥1>` (with or without `home=`; not with a house that is not his yet): the doors
+ * unlocked, and open, shut, or held part way (the walk map shuts the doorway under `_homeWalk.ts`'s `OPEN_AT`).
+ * Null: no such value, or not one of those.
+ */
+export function homeDoorParam(v: string | null): { closed: boolean; hold: number } | null {
+  if (v === 'open') return { closed: false, hold: -1 };
+  if (v === 'closed') return { closed: true, hold: -1 };
+  const n = v === null || v === '' ? NaN : Number(v);
+  if (!Number.isFinite(n)) return null;
+  const hold = Math.min(1, Math.max(0, n));
+  return { closed: hold < 0.5, hold };
+}
+
 // (kept between visits: the house is drawn as he left it from the first frame; shots keep nothing)
 HOME.owned = progress.get('home.owned', false);
 HOME.opened = HOME.owned && progress.get('home.opened', false);
-HOME.door = HOME.opened ? 1 : 0;
-// (a shot's or a page's `home=`: owned before anything is built, so the house is drawn with its door open)
+HOME.closed = HOME.opened && !progress.get('home.door', true);
+HOME.door = HOME.opened && !HOME.closed ? 1 : 0;
+// (a shot's or a page's `home=` and `homedoor=`: owned before anything is built, so the house is drawn with its doors as asked)
 if (typeof location !== 'undefined') {
-  const v = new URLSearchParams(location.search).get('home');
+  const q = new URLSearchParams(location.search);
+  const v = q.get('home');
   if (v === '0' || v === 'key' || v === 'call') {
-    HOME.owned = HOME.opened = false;
+    HOME.owned = HOME.opened = HOME.closed = false;
     HOME.door = 0;
   } else if (v) {
     HOME.owned = true;
     HOME.opened = v !== 'shut';
+    HOME.closed = false;
     HOME.door = HOME.opened ? 1 : 0;
+  }
+  const d = homeDoorParam(q.get('homedoor'));
+  if (d && v !== '0' && v !== 'key' && v !== 'call') {
+    HOME.owned = HOME.opened = true;
+    HOME.closed = d.closed;
+    HOME.doorHold = d.hold;
+    HOME.door = d.hold >= 0 ? d.hold : d.closed ? 0 : 1;
   }
 }

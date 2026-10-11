@@ -5,13 +5,18 @@ import type { Pose } from '../../character/pose';
 import { JOINTS } from '../../character/skeleton';
 
 /**
- * His stretch on waking in his stilt house (roam/_homeSleep.ts): a posture
- * for `Animator.posture` (standing, the feet planted: `postureFeet` stays
- * true). His arms go up and out in a wide V over his shoulders (his arms are
- * short and his head big: up past his ears is as high as they go), fists
- * closed, the chest arching back, the head tipping back with the eyes shut
- * a moment; a small shiver at the top; then down again. `k` 0‥1 is how far
- * into the stretch he is (the caller eases it in and out).
+ * His poses in his stilt house, postures for `Animator.posture` (standing,
+ * the feet planted: `postureFeet` stays true):
+ *
+ * - **The stretch** on waking (roam/_homeSleep.ts): his arms go up and out in
+ *   a wide V over his shoulders (his arms are short and his head big: up past
+ *   his ears is as high as they go), fists closed, the chest arching back, the
+ *   head tipping back with the eyes shut a moment; a small shiver at the top;
+ *   then down again. `k` 0‥1 is how far into the stretch he is (the caller
+ *   eases it in and out).
+ * - **Working the doors** (roam/_homeDoor.ts): a half step in and a lean
+ *   toward them, both hands out to the leaves (their rings, or their edges
+ *   from inside), following them as they swing; `k` 0‥1 how far he reaches.
  *
  * Units: body units (BU) in the explorer's space (+z forward, +x his left),
  * as character/clips.ts.
@@ -57,15 +62,49 @@ export function stretchPose(k: number, t: number): Pose {
   pose.ankleR = { rx: 0.12 * e };
 
   // The fists from his sides up to the V over his shoulders, into chest space through this pose's hips and chest.
-  const hips = pose.hips;
-  _q.setFromEuler(_e.set(hips.rx ?? 0, hips.ry ?? 0, hips.rz ?? 0));
-  _m.compose(_t.set(HIPS.x + (hips.px ?? 0), HIPS.y + (hips.py ?? 0), HIPS.z + (hips.pz ?? 0)), _q, _s);
-  const ch = pose.chest;
-  _m2.compose(CHEST_REST, _q2.setFromEuler(_e.set(ch.rx ?? 0, ch.ry ?? 0, ch.rz ?? 0)), _s);
-  _m.multiply(_m2).invert();
+  toChest(pose);
   for (const side of [1, -1] as const) {
     _f.set(side * (REST.x + (FIST.x - REST.x) * e), REST.y + (FIST.y - REST.y) * e, REST.z + (FIST.z - REST.z) * e).applyMatrix4(_m);
     Object.assign(pose, solveArm(side > 0 ? 'L' : 'R', _f, side > 0 ? POLE.L : POLE.R));
+  }
+  return pose;
+}
+
+/** `_m`: his space (BU) into chest space, through `pose`'s hips and chest. */
+function toChest(pose: Pose): void {
+  const hips = pose.hips ?? {};
+  _q.setFromEuler(_e.set(hips.rx ?? 0, hips.ry ?? 0, hips.rz ?? 0));
+  _m.compose(_t.set(HIPS.x + (hips.px ?? 0), HIPS.y + (hips.py ?? 0), HIPS.z + (hips.pz ?? 0)), _q, _s);
+  const ch = pose.chest ?? {};
+  _m2.compose(CHEST_REST, _q2.setFromEuler(_e.set(ch.rx ?? 0, ch.ry ?? 0, ch.rz ?? 0)), _s);
+  _m.multiply(_m2).invert();
+}
+
+// ── Working the doors ──────────────────────────────────────────────────────
+
+/** The half step in (BU: the hips forward), the chest's lean and the head's lift (radians) at full reach. */
+const DOOR = { step: 1.3, lean: 0.2, head: -0.14 };
+/** Elbows down and a little out as he pushes or pulls (chest space). */
+const DOOR_POLE = { L: new Vector3(0.55, -0.8, -0.2).normalize(), R: new Vector3(-0.55, -0.8, -0.2).normalize() };
+
+/**
+ * Working the doors at `k` (0 at ease ‥ 1 reaching), his hands at `handL` / `handR` (his space, BU; the caller
+ * brings them in from where they hang and keeps them within his reach), `t` seconds (his breathing).
+ */
+export function doorPose(k: number, handL: Vector3, handR: Vector3, t: number): Pose {
+  const pose = idle(t);
+  const e = smooth(k);
+  const hp = pose.hips ?? {};
+  pose.hips = { ...hp, rx: (hp.rx ?? 0) + 0.05 * e, pz: (hp.pz ?? 0) + DOOR.step * e };
+  const c = pose.chest ?? {};
+  pose.chest = { ...c, rx: (c.rx ?? 0) + DOOR.lean * e };
+  const h = pose.head ?? {};
+  pose.head = { ...h, rx: (h.rx ?? 0) + DOOR.head * e };
+  toChest(pose);
+  for (const side of [1, -1] as const) {
+    const hand = side > 0 ? handL : handR;
+    _f.set(side * REST.x + (hand.x - side * REST.x) * e, REST.y + (hand.y - REST.y) * e, REST.z + (hand.z - REST.z) * e).applyMatrix4(_m);
+    Object.assign(pose, solveArm(side > 0 ? 'L' : 'R', _f, side > 0 ? DOOR_POLE.L : DOOR_POLE.R));
   }
   return pose;
 }

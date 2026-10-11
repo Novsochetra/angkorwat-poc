@@ -1163,6 +1163,7 @@ const WORDS = {
   homeGot: { km: 'បានកូនសោហើយ! ផ្ទះឈើក្បែរភ្នំគូលែននេះ ជាផ្ទះរបស់អ្នក', en: 'You have the key! The stilt house below Phnom Kulen is your home' },
   homeLocked: { km: 'ទ្វារចាក់សោ — យាយនៅក្បែរនេះកាន់កូនសោ', en: 'Locked — the grandmother nearby has the key' },
   homeOpen: { km: 'បើកទ្វារ', en: 'Open the door' },
+  homeClose: { km: 'បិទទ្វារ', en: 'Close the door' },
   homeSleep: { km: 'ដេកសម្រាក', en: 'Sleep' },
   // (the card: how long he sleeps, roam/_homeCard.ts)
   homeAsk: { km: 'ដេកដល់ពេលណា?', en: 'Sleep until…' },
