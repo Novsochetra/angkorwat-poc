@@ -20,6 +20,14 @@ const CLOSEST = 1.6;
 const SOFT_IN = 2.5;
 /** A tree in this part of the way from its spot towards him counts as the camera being in it (nearer it than him: it fills the view). */
 const TREE_NEAR = 0.5;
+/** Seconds the way out must stay free before it eases back out after a wall or a tree pulled it in (no in-out-in at an edge). */
+const OUT_WAIT = 0.45;
+/** How fast it eases back out (1/s), and how fast a zoom (the wheel, a pinch) eases to its new distance. */
+const OUT_RATE = 1.6;
+const ZOOM_RATE = 9;
+/** The view at his own tilt counts as blocked under this part of the way out, and free again over this one (the rise to look over a wall starts and ends apart, so it never flips). */
+const LIFT_ON = 0.5;
+const LIFT_OFF = 0.7;
 /** Seconds the auto-follow waits after the player turned the camera, and then takes to come back in full (no sudden swing). */
 const HANDS_OFF = 1.6;
 const HANDS_BACK = 1.2;
@@ -32,8 +40,10 @@ const HANDS_BACK = 1.2;
  *   hops don't shake the view) and looks a little ahead of where he goes.
  * - Nothing solid comes between it and him: when a wall or the land is in
  *   the way it pulls in at once (and rises to look over a wall close behind
- *   him), then eases back out. Out of a tree (leaves, a trunk) it comes in
- *   softly: what is still close in front dissolves (_nearFade.ts).
+ *   him), then eases back out once the way has stayed free a moment (an
+ *   edge going by never pulls it in and out, in and out). Out of a tree
+ *   (leaves, a trunk) it comes in softly: what is still close in front
+ *   dissolves (_nearFade.ts). A zoom glides to its new distance.
  * - It never goes into the ground or the water.
  * - While he moves it swings round behind his heading by itself (`follow`),
  *   easing in a moment after the player last turned it (a drag, Q / R),
@@ -65,9 +75,15 @@ export class OrbitFollowCam implements FollowCam {
   private readonly last = new Vector3();
   private speed = 0;
   private fresh = true;
-  /** Distance after walls pulled it in (eased out), and the extra tilt to see over a wall. */
+  /** Distance after walls pulled it in (eased out), and the extra tilt to see over a wall (eased to `liftGoal`). */
   private reach = 9;
   private lift = 0;
+  private liftGoal = 0;
+  /** The zoom eased (`distance` is where the player put it), and seconds left before it may ease back out. */
+  private zoomed = 9;
+  private outWait = 0;
+  /** A wall or a tree pulled it in (it eases back out after `OUT_WAIT`), and has not let it all the way out yet. */
+  private pulled = false;
   /** Hemmed in: a turn still to make towards more room (radians), and when to look again (s). */
   private roomTurn = 0;
   private roomWait = 0;
@@ -104,7 +120,10 @@ export class OrbitFollowCam implements FollowCam {
       this.last.copy(f);
       this.lead.set(0, 0, 0);
       this.speed = 0;
-      this.reach = this.distance;
+      this.reach = this.zoomed = this.distance;
+      this.liftGoal = this.lift = 0;
+      this.outWait = 0;
+      this.pulled = false;
       this.fresh = false;
     } else if (dt > 0) {
       const vx = (f.x - this.last.x) / dt;
@@ -141,37 +160,44 @@ export class OrbitFollowCam implements FollowCam {
       this.yaw += diff * k;
     }
     this.distance = MathUtils.clamp(this.distance, this.minDistance, this.maxDistance);
+    // (a wheel step or a pinch glides there: a sudden jump of 15 % is a jolt, and a wall test on the jump flips)
+    this.zoomed += (this.distance - this.zoomed) * damp(ZOOM_RATE, dt);
+    if (Math.abs(this.distance - this.zoomed) < 0.005) this.zoomed = this.distance;
+    const dist = this.zoomed;
 
     // ── Where it wants to be, and what is in the way ──────────────────────
     // (it orbits the followed point, and looks a little ahead of it)
     const aim = this._aim.copy(this.look).add(this.lead);
     const clear = world.clearance ? (p: number, d: number, yaw = this.yaw) => this.free(world, yaw, p, d) : () => 1;
-    let pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
-    const span = this.distance + MARGIN;
-    let free = clear(pitch, this.distance);
-    // A wall close behind him: rise to look over it, if that sees him better.
-    let liftGoal = 0;
-    if (free * span < this.distance * 0.5) {
-      for (const up of [0.3, 0.6, 0.9]) {
-        const p = Math.min(PITCH_MAX, this.pitch + up);
-        if (clear(p, this.distance) > 0.8) {
-          liftGoal = p - this.pitch;
-          break;
+    const span = dist + MARGIN;
+    // A wall close behind him: rise to look over it, if that sees him better. Whether he is hidden is
+    // asked at the player's own tilt (asked at the risen one, the way is free, it sinks back, and is
+    // hidden again: up and down for ever), and it starts and ends apart.
+    const base = clear(MathUtils.clamp(this.pitch, this.pitchMin, PITCH_MAX), dist) * span;
+    if (base < dist * LIFT_ON) {
+      if (this.liftGoal === 0 || clear(Math.min(PITCH_MAX, this.pitch + this.liftGoal), dist) <= 0.8) {
+        this.liftGoal = 0;
+        for (const up of [0.3, 0.6, 0.9]) {
+          const p = Math.min(PITCH_MAX, this.pitch + up);
+          if (clear(p, dist) > 0.8) {
+            this.liftGoal = p - this.pitch;
+            break;
+          }
         }
       }
-    }
-    this.lift += (liftGoal - this.lift) * damp(liftGoal > this.lift ? 4 : 1.5, dt);
-    pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
-    free = clear(pitch, this.distance);
+    } else if (base > dist * LIFT_OFF) this.liftGoal = 0;
+    this.lift += (this.liftGoal - this.lift) * damp(this.liftGoal > this.lift ? 4 : 1.5, dt);
+    const pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
+    const free = clear(pitch, dist);
     // Hemmed in all round the back (a gallery, a gate): turn slowly to where
     // there is more room, the nearest way round, unless the player steers.
     if ((this.roomWait -= dt) <= 0) {
       this.roomWait = 0.3;
       this.roomTurn = 0;
-      if (world.clearance && this.idle > HANDS_OFF && free * span < this.distance * 0.6) {
+      if (world.clearance && this.idle > HANDS_OFF && free * span < dist * 0.6) {
         let best = free + 0.2;
         for (const a of [0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2, -2]) {
-          const f = clear(pitch, this.distance, this.yaw + a);
+          const f = clear(pitch, dist, this.yaw + a);
           if (f > best) {
             best = f;
             this.roomTurn = a;
@@ -185,13 +211,28 @@ export class OrbitFollowCam implements FollowCam {
       this.yaw += step;
       this.roomTurn -= step;
     }
-    const room = Math.max(Math.min(CLOSEST, this.distance), free * span - MARGIN);
+    const room = Math.max(Math.min(CLOSEST, dist), free * span - MARGIN);
     // In a tree out there (a crown, a bush, a trunk): come in to this side of
     // it, softly (meanwhile the near fade, _nearFade.ts, sees through it).
-    const trees = world.softClearance ? this.treeRoom(world, pitch, this.distance) : Infinity;
-    const goal = Math.min(room, Math.max(Math.min(CLOSEST, this.distance), trees));
-    // Pull in at once for a wall (never show the inside of it), ease in for a tree, ease back out.
-    this.reach = room < this.reach ? room : this.reach + (goal - this.reach) * damp(goal < this.reach ? SOFT_IN : 2.2, dt);
+    const trees = world.softClearance ? this.treeRoom(world, pitch, dist) : Infinity;
+    const goal = Math.min(room, Math.max(Math.min(CLOSEST, dist), trees));
+    // Pull in at once for a wall (never show the inside of it), ease in for a tree. Back out only once
+    // the way has stayed free a moment, and slowly: the wall test steps in quarter metres, and an edge
+    // passing by (a pillar, a rail) would pull it in and let it out many times a second.
+    if (room < this.reach) this.reach = room;
+    else if (goal < this.reach) this.reach += (goal - this.reach) * damp(SOFT_IN, dt);
+    if (goal < dist - 0.05 && goal < this.reach + 0.05) {
+      this.pulled = true;
+      this.outWait = OUT_WAIT;
+    }
+    if (this.reach < goal) {
+      // (nothing pulled it in: it goes with the zoom's glide)
+      if (!this.pulled) this.reach = goal;
+      else if ((this.outWait -= dt) <= 0) {
+        this.reach += (goal - this.reach) * damp(OUT_RATE, dt);
+        if (this.reach > dist - 0.05) this.pulled = false;
+      }
+    }
     const pos = this.at(this.look, this.yaw, pitch, this.reach, this._pos);
 
     // Keep above the ground and the water under the camera.
