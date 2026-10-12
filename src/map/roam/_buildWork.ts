@@ -51,7 +51,7 @@ const MOVE_EVERY = 5.5;
 const TAKE_SHARE = 0.5;
 const TAKE_MIN = 2;
 /** The work's height (m over the ground) at most and at least: where he can reach with his hammer. */
-const WORK_UP = { lo: 0.16, hi: 1.65 };
+const WORK_UP = { lo: 0.16, hi: 1.2 };
 /** The camera at the work: round to his side (rad from behind him), its tilt (rad), its distance (m: and this much per metre of the piece's reach), how far the focus moves toward the piece; eased over `for` s. */
 const FRAME = { side: 1.05, pitch: 0.36, distance: 5.6, perReach: 0.55, toward: 0.4, rate: 2.2, for: 1.8, back: 1.6 };
 
@@ -360,6 +360,8 @@ export const BuildWork = {
 
   /** A check's picture: at his work `tt` s in, his place reached, the piece as it is. */
   freeze(ctx: RoamCtx, piece: Built, tt: number, take = false): boolean {
+    // (another check's work before it: gone first)
+    finish(ctx);
     if (!this.start(ctx, piece, take)) return false;
     const s = S!;
     const b = ctx.body;

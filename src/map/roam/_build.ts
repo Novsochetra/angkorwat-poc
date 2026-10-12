@@ -220,9 +220,9 @@ function snapFence(): boolean {
   const half = PIECES.fence.w / 2;
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
-    for (const end of [-1, 1]) {
-      for (const flip of [0, Math.PI]) {
-        const yaw = f.yaw + flip;
+    for (let end = -1; end <= 1; end += 2) {
+      for (let k = 0; k < 2; k++) {
+        const yaw = f.yaw + k * Math.PI;
         const dy = Math.atan2(Math.sin(yaw - spot.yaw), Math.cos(yaw - spot.yaw));
         if (Math.abs(dy) > SNAP.turn) continue;
         // (the run going on from this end: the next one's middle half a run further along)
@@ -570,7 +570,9 @@ registerAddon({
     installBuildWalk(e.world);
     BuildUses.init(e.world.field, view.standing);
     view.onStanding(() => BuildUses.sync(true));
-    BUILD.on(() => BuildUses.sync());
+    BUILD.on((ev) => {
+      if (ev.type !== 'progress') BuildUses.sync();
+    });
     ghost = new BuildGhost(e.scene, e.world);
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
@@ -579,6 +581,8 @@ registerAddon({
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
     BuildUses.sync();
+    // (the pieces drawn before the first frame: the hammock add-on reads its cloth from them)
+    view.sync();
     console.info(`[build] ${BUILD.list.length} pieces at home${BUILD.list.length ? `: ${BUILD.list.map((p) => `${p.uid}${p.done < 1 ? ` ${(p.done * 100).toFixed(0)}%` : ''}`).join(', ')}` : ''}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (e.shot || import.meta.env.DEV)
       Object.assign(window, {
@@ -654,22 +658,15 @@ registerAddon({
   },
   offer(ctx, m) {
     lastCtx = ctx;
-    if (m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
-    if (placing) {
-      placingNow(ctx);
-      return spot.prompt;
-    }
+    // (build mode's E is `buildMode`'s, first in the row)
+    if (m !== 'walk' || !env || placing || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     if (pressing) return near.prompt;
     nearNow(ctx);
     if (near.prompt) return near.prompt;
     return canStart(ctx, false) ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
-    if (!env || BuildWork.active) return;
-    if (placing) {
-      buildHere(ctx);
-      return;
-    }
+    if (!env || BuildWork.active || placing) return;
     nearNow(ctx);
     if (near.piece) {
       wireHold();
@@ -738,7 +735,7 @@ registerAddon({
       if (id in PIECES) {
         const piece = pieceBefore(ctx, id as PieceId, Math.min(0.999, Math.max(0, Number(d) || 0)));
         if (piece) {
-          view?.frame(ctx.cam.camera, ctx.t, 0, ctx.night);
+          view?.sync();
           BuildWork.freeze(ctx, piece, Number(s) || 0.4);
         }
       } else console.warn(`[build] buildwork=: no piece "${id}"`);
@@ -779,6 +776,24 @@ registerAddon({
       if (p) out.buildwork = `${p.id}:${w.done.toFixed(3)}:${w.t.toFixed(2)}`;
     }
     return Object.keys(out).length ? out : null;
+  },
+});
+
+/**
+ * Build mode's E, first in the row (before a shrine, a hammock, the dog, the house's doors): "E  Build here", or why
+ * not here (no key).
+ */
+registerAddon({
+  id: 'buildMode',
+  order: 3,
+  offer(ctx, m) {
+    if (!placing || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
+    lastCtx = ctx;
+    placingNow(ctx);
+    return spot.prompt;
+  },
+  use(ctx) {
+    if (placing && env && !BuildWork.active) buildHere(ctx);
   },
 });
 

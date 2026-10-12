@@ -136,19 +136,18 @@ function reach(b: Foot, ux: number, uz: number, m: number): number {
   return (p.w / 2 + m) * Math.abs(ux * c - uz * s) + (p.d / 2 + m) * Math.abs(ux * s + uz * c);
 }
 
-/** Would two footprints overlap, each grown by `m` (m; negative: they may touch that much)? Separating axes. */
+/** Would two footprints overlap, each grown by `m` (m; negative: they may touch that much)? Separating axes (no allocation). */
 export function overlap(a: Foot, b: Foot, m = 0): boolean {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
-  for (const f of [a, b]) {
+  for (let k = 0; k < 4; k++) {
+    const f = k < 2 ? a : b;
     const c = Math.cos(f.yaw);
     const s = Math.sin(f.yaw);
-    for (const [ux, uz] of [
-      [c, -s],
-      [s, c],
-    ] as const) {
-      if (Math.abs(dx * ux + dz * uz) >= reach(a, ux, uz, m) + reach(b, ux, uz, m)) return false;
-    }
+    // (its local x axis on the map, then its local z axis)
+    const ux = k % 2 ? s : c;
+    const uz = k % 2 ? c : -s;
+    if (Math.abs(dx * ux + dz * uz) >= reach(a, ux, uz, m) + reach(b, ux, uz, m)) return false;
   }
   return true;
 }

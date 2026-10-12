@@ -158,6 +158,8 @@ export interface BuildView {
   readonly object: Group;
   /** The batch of the pieces that stand (the hammock add-on reads its `petal` blocks): stable, its meshes change. */
   readonly standing: Group;
+  /** What changed made now (the batches, the lights), without a camera: before the first frame, a check. */
+  sync(): void;
   /** Every frame: the camera that draws it, seconds, how dark it is (0 day ‥ 1 night). */
   frame(camera: Camera, t: number, dt: number, night: number): void;
   /** Called after the standing batch is made again (its blocks moved: the hammocks are read again). */
@@ -414,7 +416,7 @@ export function createBuildView(shot = false): BuildView {
   const api: BuildView = {
     object,
     standing,
-    frame(camera, t, _dt, night) {
+    sync() {
       const q: 'low' | 'medium' = graphicsNow.plainBlocks ? 'low' : 'medium';
       if (q !== quality) {
         quality = q;
@@ -429,6 +431,9 @@ export function createBuildView(shot = false): BuildView {
         syncRising();
       }
       if (lightsDirty) syncLights();
+    },
+    frame(camera, t, _dt, night) {
+      api.sync();
       _eye.setFromMatrixPosition(camera.matrixWorld);
       const pixel = pixelSize(camera);
       if (stand) judge(stand, pixel);

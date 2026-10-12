@@ -46,17 +46,20 @@ const SQUAT = { height: 6.6, back: -1.4, hips: 0.26, chest: 0.16, splay: 0.22, t
 /** Standing, bent a little at the hips over his work (radians). */
 const STAND = { hips: 0.08, chest: 0.1 };
 /** Work this low (BU over his soles) has him squatting; from this high he stands. */
-const LOW = 5;
-const HIGH = 12;
+const LOW = 8;
+const HIGH = 15;
+/** The head's face is this far under the handle's line (BU): the handle's end goes this far over the work, so the face lands on it. */
+const FACE = 1.9;
 /** The raised fist (his space, BU, over his right shoulder: −x), standing and squatting. */
 const RAISED = { stand: new Vector3(-6.2, 23.5, 1.8), squat: new Vector3(-6, 16, 3) };
-/** The handle's way, raised (back over his shoulder) and at the blow (forward, the face down), his space. */
-const AIM_UP = new Vector3(0, 0.55, -1).normalize();
+/** The handle's way at the blow (forward, the face down), his space: the first guess. */
 const AIM_HIT = new Vector3(0.05, -0.2, 1).normalize();
+/** The wrist (rx: − cocks the hammer back up toward his forearm, + snaps it down past his fingers): raised, at the blow. */
+const WRIST = { up: -0.55, hit: 0.6 };
 /** The left hand steadies the work: this far left of the blow, nearer him, a little over it (BU). */
 const STEADY = new Vector3(2.6, 1.2, -1.2);
 /** Elbows: the right out and down (chest space), the left out. */
-const POLE_R = new Vector3(-0.8, -0.45, -0.4).normalize();
+const POLE_R = new Vector3(-0.35, -1, -0.15).normalize();
 const POLE_L = new Vector3(0.85, -0.3, -0.45).normalize();
 
 const REST_HIPS = JOINTS.hips.pivot;
@@ -150,16 +153,25 @@ export function buildPose(s: BuildPoseState): Pose {
 
   // Arms, in the chest's space.
   _inv.copy(_mc).invert();
-  // The right fist: raised over his shoulder, down onto the work (the head lands there: the fist a handle back).
+  // The right fist: raised over his shoulder, down onto the work. The hammer sticks out of his fist the way his thumb
+  // points (the wrist only cocks it back raised and snaps it forward at the blow, as a hand does), so the fist goes
+  // where that puts the hammer's face on the work: worked out twice from the arm's own shape.
   const lift = strokeLift(s.t / STROKE) * (1 - s.still);
-  _d.copy(AIM_UP).lerp(AIM_HIT, 1 - lift).normalize();
-  _t.copy(s.work).addScaledVector(_d, -HAMMER_REACH);
+  const wrist = WRIST.hit + (WRIST.up - WRIST.hit) * smooth(lift);
   _l.copy(RAISED.stand).lerp(RAISED.squat, c);
-  _t.lerp(_l, smooth(lift));
+  _d.copy(AIM_HIT);
+  let armR: Pose = {};
+  for (let i = 0; i < 2; i++) {
+    _t.copy(s.work).addScaledVector(_d, -HAMMER_REACH);
+    _t.y += FACE;
+    _t.lerp(_l, smooth(lift));
+    armR = solveArm('R', _t.applyMatrix4(_inv), POLE_R);
+    thumbOf(armR, wrist, _d);
+    // (the thumb's way in his space)
+    _d.transformDirection(_mc);
+  }
+  armR.wristR = { rx: wrist };
   const restR: Pose = { shoulderR: { rx: 0.02, rz: -0.06 }, elbowR: { rx: -0.12 }, wristR: {} };
-  const armR = solveArm('R', _t.applyMatrix4(_inv), POLE_R);
-  // (the wrist turns the handle the way it should go: about the forearm's own x)
-  armR.wristR = { rx: wristToward('R', armR, _v.copy(_d).transformDirection(_inv)) };
   blendArm(restR, armR, k, 'R', pose);
   // The left hand steadying the work beside the blow.
   _t.copy(s.work).add(STEADY);
@@ -171,14 +183,13 @@ export function buildPose(s: BuildPoseState): Pose {
   return pose;
 }
 
-/** The wrist's turn (rx) that points the fist's grip axis (+z of the prop) along `dir` (chest space) as near as it can. */
-function wristToward(side: 'L' | 'R', arm: Pose, dir: Vector3): number {
-  const sh = arm[`shoulder${side}`]!;
+/** The way the fist's grip axis (+z of the prop: his thumb's way) points, chest space, for an arm posed by `solveArm` and the wrist cocked `wrist` (rx). */
+function thumbOf(arm: Pose, wrist: number, out: Vector3): Vector3 {
+  const sh = arm.shoulderR!;
   _m2.makeRotationFromEuler(_e.set(sh.rx ?? 0, sh.ry ?? 0, sh.rz ?? 0, 'XYZ'));
-  _m2.multiply(_rot.makeRotationX(arm[`elbow${side}`]!.rx ?? 0));
-  // (the way in the forearm's own frame: the wrist turns about its x)
-  _a.copy(dir).applyMatrix4(_m2.transpose());
-  return clamp(Math.atan2(-_a.y, _a.z), -1.5, 1.5);
+  _m2.multiply(_rot.makeRotationX(arm.elbowR!.rx ?? 0));
+  _m2.multiply(_rot.makeRotationX(wrist));
+  return out.set(0, 0, 1).transformDirection(_m2);
 }
 
 /** Arms between hanging free and the IK (`k` of the way), into `pose`. */
