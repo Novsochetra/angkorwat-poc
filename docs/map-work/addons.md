@@ -2581,7 +2581,7 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   (his herd, a hungry calf) · `…&cattle=young:hungry&cattlefeed=0.75&cattlestraw=6` ·
   `roam=walk&at=426,-140&yaw=200&cattle=young:hungry,grown&cattlecut=2.85` ·
   `…&cattle=grown,calf&cow=ride` (riding his grown cow) ·
-  `cam=438,17,-104,432,9,-115,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@433/-121/180`
+  `cam=439,16,-131,433,8.5,-120.5,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@433/-121/180`
   (the four in his pen at night). Parts: `foreground` (roaming) and
   `people` (the trader); `terrain,water,hamlet,vegetation,path` for the place round them.
 

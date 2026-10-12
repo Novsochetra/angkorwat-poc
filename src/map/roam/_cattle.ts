@@ -528,6 +528,8 @@ registerAddon({
     // player's own saved herd)
     if (e.shot || import.meta.env.DEV) {
       CATTLE.fromUrl(e.params);
+      // (a shot from the map's camera — `cam=`, no roaming — has its night too)
+      nightHold = e.params.get('cattlenight') === '1';
       const sp = Number(e.params.get('cattlespeed'));
       if (Number.isFinite(sp) && sp > 0) speed = sp;
     }

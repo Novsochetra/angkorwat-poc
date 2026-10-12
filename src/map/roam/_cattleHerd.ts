@@ -884,8 +884,9 @@ export class CattleHerd {
     this.searchFor = null;
     b.searching = false;
     if (!this.beasts.includes(b)) return;
-    // (to a pen's gate only all the way: its nearest — below it, past a land step — is no way in)
-    const short = st === 'near' && b.goal === 'pen' && !this.reaches(b);
+    // (to a pen's gate only all the way: its nearest — below it, past a land step — is no way in; to its stake, to
+    // within its rope's reach)
+    const short = st === 'near' && (b.goal === 'pen' || b.goal === 'stake') && !this.reaches(b, b.goal === 'pen' ? 1.5 : ROPE + 1);
     if (!short && (st === 'found' || st === 'near')) {
       const p = this.search.path;
       for (let k = 1; k < p.count; k++) {
@@ -903,7 +904,9 @@ export class CattleHerd {
     // (no way: it stays where it is, at its goal's nearest, and tries again later; out of sight it is simply there; no
     // way to its pen, it spends the night at its stake, trying again a good while later)
     this.stats.failed++;
-    if (b.goal === 'pen') b.noPenUntil = this.time + NO_PEN_RETRY;
+    // (the others on their way to that pen, from the same meadow, would find none either)
+    if (b.goal === 'pen')
+      for (const q of this.beasts) if (q === b || (q.cow && q.penUid === b.penUid && q.penSlot < 0 && q.goal === 'pen')) q.noPenUntil = this.time + NO_PEN_RETRY;
     b.doing = 'stand';
     b.until = this.time + 20;
     // (at its stake only if it is by it: else its rope would reach across the land)
@@ -911,12 +914,12 @@ export class CattleHerd {
     b.at = b.goal === 'stake' && !!stake && Math.hypot(b.x - stake[0], b.z - stake[1]) < ROPE + 1;
   }
 
-  /** The search's way ends at its target (the pen's gate's outside), on its level. */
-  private reaches(b: Beast): boolean {
+  /** The search's way ends within `r` m of its target (the pen's gate's outside, its patch by the stake), on its level. */
+  private reaches(b: Beast, r: number): boolean {
     const p = this.search.path;
     if (!p.count) return false;
     const k = p.count - 1;
-    return Math.hypot(p.x[k] - b.tx, p.z[k] - b.tz) < 1.5 && Math.abs(p.y[k] - this.groundY(b.tx, b.tz, p.y[k])) < 0.8;
+    return Math.hypot(p.x[k] - b.tx, p.z[k] - b.tz) < r && Math.abs(p.y[k] - this.groundY(b.tx, b.tz, p.y[k])) < 0.8;
   }
 
   // ── Each step ──────────────────────────────────────────────────────────────
@@ -1199,6 +1202,8 @@ export class CattleHerd {
   private cowAhead(b: Beast): Beast | null {
     for (const q of this.beasts) {
       if (q === b || q.ride?.ridden) continue;
+      // (one at its place in a pen, behind the rails, is in nobody's way outside)
+      if (q.penSlot >= 0 && q.lane === 0 && (b.penSlot < 0 || b.penUid !== q.penUid)) continue;
       const dx = q.x - b.x;
       const dz = q.z - b.z;
       if (dx * dx + dz * dz > 64) continue;
