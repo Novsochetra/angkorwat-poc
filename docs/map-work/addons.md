@@ -2640,8 +2640,9 @@ sounds `audio/_build.ts`.
   ចង្កៀងបង្គោល (8,000 ៛, 8), the rice-straw stack គំនរចំបើង (10,000 ៛, 2).
 - **Starting** (the house his, on foot on the ground): by the house (under it, round
   it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
-  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 96:
-  the garden's "Plant…" and its lines first). The first time he comes home owning it, a
+  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 94.9,
+  just before the garden's late row: its "E  Plant…" first; a line of the garden's with no
+  key, as "no seeds yet", goes on after it: "E  Build…  ·  …"). The first time he comes home owning it, a
   toast says so (`build.hinted`).
 - **The card**: each piece with its picture, its name, how many he has of how many,
   its line, its price; one he cannot build now greyed with why ("You have all 3",
@@ -2650,8 +2651,9 @@ sounds `audio/_build.ts`.
 - **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
   its footprint outlined where it can stand; red, drawn over everything, where not, the
   reason in the prompt: too far, water, the path, a rice field, the house, a
-  neighbour's yard, the ground not level, a plant of his garden, something he built,
-  something else). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
+  neighbour's yard, the ground not level, a plant of his garden, something he built (or
+  the room before one he uses from there), something else, no room before it: the spirit
+  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
   ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
   built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
@@ -2659,8 +2661,10 @@ sounds `audio/_build.ts`.
   mode, never "Back to the map?". The camera looks down more, further back, the ghost
   in the middle. After a fence or a lantern post the mode stays on for the next.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
-  big one, a side every 5.5 s), his hammer in his right hand, and hammers — squatting
-  for low work, standing for high, the blow where the piece is rising (`buildPose`; a
+  big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
+  hammers — squatting flat-footed for low work, standing for high; the blow on the block
+  going up at its point nearest him, its top (or the side of a post he reaches up on
+  for work over his head), the hammer's way set by his wrist (`buildPose`; a
   knock each blow, a piece of wood set every four); the piece rises block by block in
   its model's order over `PIECES[id].secs`. The prompt shows how far ("Building the
   bamboo bed… 45%"). Done: a chime and a toast. The stick held away pauses it (the
@@ -2674,7 +2678,8 @@ sounds `audio/_build.ts`.
   add-on's, the spirit house's "Pray" the shrine's (both come first).
 - **Uses** (`_buildUses.ts`; a piece that stands): J / L by the bed puts him on it
   (along it: he sits, lies back, falls asleep as on the ground), J by the shelter sits
-  him on its bench (L there: no room) — `_rest.ts` `REST_SEATS`; each hammock is the
+  him on its bench as on a bench (his feet on the ground before it, character/rest.ts
+  `RestState.bench`; L there: no room) — `_rest.ts` `REST_SEATS`; each hammock is the
   hammock add-on's (`addHammock({ id: 'build-<uid>', a, b, root })`, its cloth the
   view's `petal` blocks between the ties; registered again whenever the view makes its
   batch again); the spirit house is a prayer spot (`WORSHIP`, `build-<uid>`: the lotus,
@@ -2692,7 +2697,8 @@ sounds `audio/_build.ts`.
   again after a change. Lights: one pool of 12 glowing blocks (the village's lamp
   material) and 12 halos. The walk map (`_buildWalk.ts`): each piece's `solids` (turned
   by its yaw) for his feet, the dog, the follow camera (`hardClearance`), `groundAt`,
-  `woodAt`.
+  `woodAt`; only a seat's top (the bed, the bench) is a step: the jar, a post, a rail,
+  the haystack are in the way, never hopped onto.
 - **Sounds** (`audio/_build.ts`): `buildKnock`, `buildWood`, `buildTake` (moves),
   `buildDone` (ui).
 - **URL** (shots and the dev server: a link never changes a player's saved pieces):
