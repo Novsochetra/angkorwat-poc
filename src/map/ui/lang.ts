@@ -1403,6 +1403,38 @@ const WORDS = {
   gardenGiftGot: { km: 'បានទទួលគ្រាប់ពូជត្រប់ {e} ពោត {c} ល្ពៅ {p} កូនចេកមួយដើម និងកូនល្ហុងមួយដើម', en: 'You got {e} eggplant seeds, {c} corn seeds and {p} pumpkin seeds, a banana sucker and a papaya seedling' },
   gardenEatKept: { km: 'ទុកញ៉ាំពេលក្រោយ៖ {item} (6)', en: 'Kept to eat later: {item} (6)' },
   // Sharing his garden's fruit with the neighbours, the elders, the children (share…): roam/_shareFruit*.ts, people/_shareBack.ts
+  // (the E row: to a grown-up, an elder, the grandmother, the children; {item}: "ផ្លែស្វាយ" / "a mango")
+  shareGive: { km: 'ចែក{item}ឲ្យគាត់', en: 'Share {item}' },
+  shareGiveElder: { km: 'ជូន{item}គាត់', en: 'Give the elder {item}' },
+  shareGiveGran: { km: 'ជូន{item}យាយ', en: 'Give Grandma {item}' },
+  shareGiveKids: { km: 'ឲ្យ{item}ក្មេងៗ', en: 'Give the children {item}' },
+  shareKindNow: { km: 'ផ្លែឈើត្រូវចែក៖ {item} (មាន {n})', en: 'Fruit to share: {item} ({n})' },
+  shareGaveLeft: { km: 'បានចែក{item}មួយ — នៅសល់ {n} ក្នុងកន្ត្រក', en: 'Shared: {item} ({n} left in your basket)' },
+  shareGaveLast: { km: 'បានចែក{item}ចុងក្រោយហើយ', en: 'Shared your last {item}' },
+  shareGotSnack: { km: 'អំណោយ៖ {item} ទុកក្នុងកាបូប ({n}/{max})', en: 'A gift: {item}, kept in your bag ({n}/{max})' },
+  shareGotSeeds: { km: 'អំណោយ៖ គ្រាប់ពូជ{plant} {n} គ្រាប់', en: 'A gift: {n} {plant} seeds' },
+  // (their thanks: a grown-up, a seller, an elder, the grandmother, a child)
+  shareThanks1: { km: 'អរគុណច្រើន!', en: 'Thank you so much!' },
+  shareThanks2: { km: 'អូ! {item}ស្រស់ៗ អរគុណណា!', en: 'Oh, a fresh {item}! Thank you!' },
+  shareThanks3: { km: 'ចិត្តល្អណាស់ អរគុណ!', en: 'How kind of you, thank you!' },
+  shareThanksSeller: { km: 'អរគុណបង! ថ្ងៃក្រោយមកលេងទៀតណា', en: 'Thank you! Come and see me again' },
+  shareThanksElder1: { km: 'អរគុណណាក្មួយ!', en: 'Thank you, my dear!' },
+  shareThanksElder2: { km: 'អរគុណចៅ ចិត្តល្អមែនទែន', en: 'Thank you, child, what a good heart' },
+  shareThanksGran: { km: 'អរគុណចៅ! ដាំខ្លួនឯងមែនទេ? ពូកែណាស់', en: 'Thank you, dear! You grew it yourself? Well done' },
+  shareThanksKid1: { km: 'អរគុណបង!', en: 'Thank you!' },
+  shareThanksKid2: { km: 'យេ! អរគុណបង!', en: 'Yay! Thank you!' },
+  shareThanksKid3: { km: 'អរគុណបង! ខ្ញុំយកទៅចែកប្អូនៗផង', en: "Thank you! I'll share it with the little ones" },
+  // (what comes back: an elder's blessing, a sweet, seeds; never money)
+  shareBless1: { km: 'សូមឲ្យក្មួយមានសុខភាពល្អ រកស៊ីមានបាន', en: 'May you be healthy, and may all you do go well' },
+  shareBless2: { km: 'សូមឲ្យចៅជួបតែសេចក្ដីសុខ', en: 'May only happiness come your way' },
+  shareBackAnsom: { km: 'យកនំអន្សមនេះទៅញ៉ាំផង', en: 'Here, take this num ansom' },
+  shareBackKrolan: { km: 'យកក្រឡាននេះទៅញ៉ាំតាមផ្លូវផង', en: 'Take this krolan for the road' },
+  shareBackSugar: { km: 'យកស្ករត្នោតនេះទៅផង ធ្វើខ្លួនឯងទេ', en: 'Take some palm sugar: we make it ourselves' },
+  shareBackSeeds: { km: 'យកគ្រាប់{plant}នេះទៅដាំផង', en: 'Take these {plant} seeds to plant' },
+  // (given one today already)
+  shareHave: { km: 'ខ្ញុំមានហើយ អរគុណ!', en: 'I have one already, thank you!' },
+  shareHaveElder: { km: 'មានហើយក្មួយ អរគុណណា!', en: 'I have one already, dear. Thank you!' },
+  shareHaveKid: { km: 'ខ្ញុំបានហើយបង អរគុណ!', en: 'I got one already, thanks!' },
   // (the shoulder pole, carrying water: roam/_carryPole*.ts)
   carryTake: { km: 'លើកដងរែក', en: 'Take up the shoulder pole' },
   carryDown: { km: 'ដាក់ដងរែកចុះ', en: 'Set down the pole' },
