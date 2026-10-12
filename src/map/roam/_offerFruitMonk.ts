@@ -81,7 +81,7 @@ const STICK = 0.35;
 /** He kneels this far before the blessing monk to give (m from the seat along his facing). */
 const GIFT_KNEEL = 1.32;
 /** At the alms round the monk comes this near for fruit (m, feet to feet: nearer than for the rice's spoon, his arms are short). */
-const BOWL_STAND = 1.15;
+const BOWL_STAND = 1.35;
 /** Walking to a place (m/s), there within (m). */
 const WALK = 1.15;
 const THERE = 0.08;
@@ -618,23 +618,26 @@ function stepBowl(ctx: RoamCtx, dt: number): string | null {
       break;
     }
     case 'out': {
-      // Over the open bowl, then down into it with both hands; let go, the hands come back.
+      // Out over the open bowl as far as his arms go, tipped in from there with both hands; the hands come back.
       const fh = FRUIT_SIZE[kind].high * b.scale;
       inBowl.set(a.bx, a.by + 0.03 * b.scale - fh * 0.15, a.bz);
-      toBody(ctx, a.bx, a.by + fh * 0.5 + 0.06 * b.scale, a.bz, _h);
-      ps.gift.copy(CHEST_KNEEL).lerp(_h, ramp(st, [0, 0.85]));
-      toBody(ctx, inBowl.x, inBowl.y + fh * 0.5, inBowl.z, _g);
-      ps.gift.lerp(_g, ramp(st, [0.85, IN_AT]));
-      if (given) ps.gift.y += 1.2 * ramp(st, [IN_AT, IN]);
-      ps.lean = 0.28 + 0.3 * ramp(st, [0.2, 0.9]);
+      toBody(ctx, a.bx, a.by + fh * 0.5 + 0.08 * b.scale, a.bz, _h);
+      ps.gift.copy(CHEST_KNEEL).lerp(_h, 0.78 * ramp(st, [0, 0.85]));
+      ps.gift.y -= 1.0 * ramp(st, [0.85, IN_AT]);
+      if (given) ps.gift.y += 1.6 * ramp(st, [IN_AT, IN]);
+      ps.lean = 0.28 + 0.14 * ramp(st, [0.2, 0.9]) * (given ? 1 - ramp(st, [IN_AT, IN]) : 1);
       ps.hold = st < IN_AT ? 1 : 1 - 0.3 * ramp(st, [IN_AT, IN]);
       lookBowl(ctx);
       if (!given && st >= IN_AT) {
         take();
+        toMap(ctx, ps.gift, from);
         SFX.play('dakSpoon', 0.6);
       }
-      if (given) showHandAt(kind, inBowl.x, inBowl.y + fh * 0.5, inBowl.z, facing, false, b.scale);
-      else showHand(kind, ctx, ps.gift, false);
+      if (given) {
+        // (from his hands into the bowl)
+        const k = ramp(st, [IN_AT, IN_AT + 0.25]);
+        showHandAt(kind, from.x + (inBowl.x - from.x) * k, from.y + (inBowl.y + fh * 0.5 - from.y) * k, from.z + (inBowl.z - from.z) * k, facing, false, b.scale);
+      } else showHand(kind, ctx, ps.gift, false);
       if (st >= IN) {
         a.state = 'given';
         go('sit');
@@ -645,7 +648,7 @@ function stepBowl(ctx: RoamCtx, dt: number): string | null {
       // Back on his heels, palms together; the lid goes back on over the fruit.
       const k = smooth(Math.min(1, st / SIT));
       ps.rise = 1 - k;
-      ps.lean = 0.58 * (1 - k);
+      ps.lean = 0.28 * (1 - k);
       ps.hold = 0.7 * (1 - smooth(Math.min(1, st / (SIT * 0.6))));
       ps.palms = smooth(Math.min(1, Math.max(0, (st - SIT * 0.35) / (SIT * 0.65))));
       ps.lookW *= 1 - k;
