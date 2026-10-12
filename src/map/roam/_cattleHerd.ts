@@ -113,8 +113,9 @@ export interface Beast {
   wn: number;
   wi: number;
   searching: boolean;
-  /** Sold: walks off to the trader, then gone. */
+  /** Sold: walks off to the trader, then gone; its place there (`LEAVE_SPOTS`). */
   leaving: boolean;
+  leaveAt: number;
   /** Eating: straw or grass, how much is left of the heap (0‥1). */
   food: 'straw' | 'grass' | null;
   left: number;
@@ -147,6 +148,13 @@ const PEN_SLOTS: readonly (readonly [number, number, number])[] = [
   [-0.78, 0.95, Math.PI + 0.06],
   [0.78, 0.8, Math.PI - 0.05],
   [2.35, 0.95, Math.PI + 0.1],
+];
+/** Where his cows sold wait by the trader's trough (his place's frame), side by side, until nobody sees them. */
+const LEAVE_SPOTS: readonly (readonly [number, number])[] = [
+  [-6.5, -1.5],
+  [-7.1, -4.3],
+  [-9.3, -0.6],
+  [-9.8, -3.6],
 ];
 const GATE_OUT = 1.6;
 const GATE_IN = 1.1;
@@ -219,7 +227,7 @@ export class CattleHerd {
   private newBeast(i: number): Beast {
     return {
       i, cow: null, post: -1, ride: null, x: 0, y: 0, z: 0, yaw: 0, size: 1.4, doing: 'graze', until: 0, tx: 0, tz: 0, head: 1, turn: 0, rest: 0, speed: 0,
-      goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false,
+      goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false, leaveAt: 0,
       food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
     };
   }
@@ -244,26 +252,30 @@ export class CattleHerd {
 
   /** The herd changed (bought, sold, a check's): a beast for every cow of his, none for a cow he no longer has. */
   sync(cows: readonly Cow[], snap: boolean): void {
-    for (const c of cows) {
-      if (this.beasts.some((b) => b.cow === c)) continue;
-      const i = this.take();
-      if (i < 0) continue;
-      const b = this.newBeast(i);
-      b.cow = c;
-      b.size = sizeOf(c);
-      b.ride = rideCow(`own-${c.id}`, 'his');
-      addRideCow(b.ride);
-      b.lowAt = this.time + 20 + 50 * hash3(c.id, 9, 2, 7103);
-      b.bellAt = this.time + 3 + 8 * hash3(c.id, 7, 2, 7104);
-      this.beasts.push(b);
-      if (snap) this.home(b, true);
-    }
+    for (const c of cows) this.addOwn(c, snap);
     // (a cow sold walks off; one gone from the list another way — a check's — goes at once)
     for (let k = this.beasts.length - 1; k >= 0; k--) {
       const b = this.beasts[k];
       if (!b.cow || cows.includes(b.cow) || b.leaving) continue;
       this.drop(b);
     }
+  }
+
+  /** A beast for his cow `c` (none yet): where it belongs at once (`snap`), else where it is put next. */
+  private addOwn(c: Cow, snap: boolean): Beast | null {
+    if (this.beasts.some((b) => b.cow === c)) return null;
+    const i = this.take();
+    if (i < 0) return null;
+    const b = this.newBeast(i);
+    b.cow = c;
+    b.size = sizeOf(c);
+    b.ride = rideCow(`own-${c.id}`, 'his');
+    addRideCow(b.ride);
+    b.lowAt = this.time + 20 + 50 * hash3(c.id, 9, 2, 7103);
+    b.bellAt = this.time + 3 + 8 * hash3(c.id, 7, 2, 7104);
+    this.beasts.push(b);
+    if (snap) this.home(b, true);
+    return b;
   }
 
   /** A beast off the map: its slot free, its ride gone. */
@@ -304,7 +316,9 @@ export class CattleHerd {
       this.setCoat(old);
       return;
     }
-    this.sync([c], false);
+    // (none at that post now — he sold it a moment ago and the next is not tied there yet —: the new one is simply at
+    // its stake, on the meadow behind the camera at the stool; the other cows of his stay as they are)
+    this.addOwn(c, true);
   }
 
   /** The look of the trader's calf or young cow for sale now (the cow he buys is that one). */
@@ -320,11 +334,15 @@ export class CattleHerd {
     if (!b) return;
     if (b.ride) removeRideCow(b.ride.id);
     b.ride = null;
+    // (side by side with any sold before it that still wait there)
+    let j = 0;
+    for (const q of this.beasts) if (q.leaving && q !== b) j++;
+    b.leaveAt = j % LEAVE_SPOTS.length;
     b.leaving = true;
     b.food = null;
     b.goal = 'trader';
     b.at = false;
-    b.pen = -1;
+    // (in the pen — sold at dawn —: out through its gate first)
     this.plan(b);
   }
 
@@ -381,7 +399,8 @@ export class CattleHerd {
     }
     if (b.goal === 'trader') {
       // (off to the trader: to the far side of his place, by the trough, where it is untied and led away)
-      const [x, z] = traderToWorld(-6.5, -1.5);
+      const sp = LEAVE_SPOTS[b.leaveAt] ?? LEAVE_SPOTS[0];
+      const [x, z] = traderToWorld(sp[0], sp[1]);
       out.x = x;
       out.z = z;
       out.face = traderYaw(Math.PI);
@@ -753,7 +772,8 @@ export class CattleHerd {
       return;
     }
     // There: what it does at its place.
-    if (b.goal === 'pen') this.inPen(b, dt, clock);
+    if (b.leaving) this.waitSold(b);
+    else if (b.goal === 'pen') this.inPen(b, dt, clock);
     else if (b.goal === 'post') this.atPost(b, dt, clock);
     else this.atStake(b, dt, clock);
   }
@@ -769,7 +789,8 @@ export class CattleHerd {
         const g = _pa;
         if (this.goalPoint(b, g)) b.yaw = g.face;
       }
-      if (b.leaving) this.drop(b);
+      // (sold: gone once nobody sees it; till then it waits there, grazing)
+      if (b.leaving && !this.seen(b.x, b.z)) this.drop(b);
       void clock;
       return;
     }
@@ -908,6 +929,16 @@ export class CattleHerd {
       }
     }
     this.low(b, b.cow && hungry(b.cow) ? 0.35 : 1);
+  }
+
+  /** Sold, by the trader's trough: grazing there (no rope: untied) until nobody sees it, then it is gone. */
+  private waitSold(b: Beast): void {
+    b.speed = 0;
+    b.rest = 0;
+    b.turn = 0;
+    b.doing = 'graze';
+    b.head = GRAZE;
+    if (!this.seen(b.x, b.z)) this.drop(b);
   }
 
   /** Now and then it lifts its head and lows (`every`: × the usual wait; a hungry one more often). */
