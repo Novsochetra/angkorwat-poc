@@ -2621,7 +2621,92 @@ chilli, basil, jasmine).
 
 ### Building at home
 
-(to be written: roam/_build*.ts, map/build/)
+He builds things of his own round his stilt house (add-on `build`, words `build…`):
+`roam/_build.ts` (the add-on: the E row, build mode, the card's choice, the URL),
+`_buildCard.ts` (the card), `_buildGhost.ts` (the ghost), `_buildSpots.ts` (where a
+piece may stand: no three.js), `_buildWork.ts` (his work with the hammer),
+`_buildWalk.ts` (the walk map), `_buildUses.ts` (seats, hammocks, the spirit house's
+prayer); the core `map/build/pieces.ts` (the contract: the nine pieces, their sizes,
+prices, solids, seat, ties, light, kneel, pen; `BUILT`; the model registry),
+`map/build/state.ts` (the saved list, footprints), `map/build/view.ts` (drawn on the
+map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
+done); his pose `character/buildWork.ts` (`buildPose`, his hammer `hammerBuilder`);
+sounds `audio/_build.ts`.
+
+- **The pieces** (`PIECES`): the cattle pen គ្រោលគោ (60,000 ៛, 2), the thatched shelter
+  ខ្ទម with a bench (40,000 ៛, 3), the bamboo bed គ្រែឫស្សី (15,000 ៛, 3), a run of
+  bamboo fence របងឫស្សី (4,000 ៛, 40), the spirit house ខ្ទមព្រះភូមិ (25,000 ៛, 1), the
+  water jar ពាងទឹក (12,000 ៛, 4), the hammock អង្រឹង (20,000 ៛, 2), the lantern post
+  ចង្កៀងបង្គោល (8,000 ៛, 8), the rice-straw stack គំនរចំបើង (10,000 ៛, 2).
+- **Starting** (the house his, on foot on the ground): by the house (under it, round
+  it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
+  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 96:
+  the garden's "Plant…" and its lines first). The first time he comes home owning it, a
+  toast says so (`build.hinted`).
+- **The card**: each piece with its picture, its name, how many he has of how many,
+  its line, its price; one he cannot build now greyed with why ("You have all 3",
+  "12,000 ៛ more needed"); his riel under the title. 1‥9, ↑ ↓, Enter, Esc; the pad's
+  layer; touch.
+- **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
+  its footprint outlined where it can stand; red, drawn over everything, where not, the
+  reason in the prompt: too far, water, the path, a rice field, the house, a
+  neighbour's yard, the ground not level, a plant of his garden, something he built,
+  something else). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
+  ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
+  built (the run goes on). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
+  the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
+  work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
+  mode, never "Back to the map?". The camera looks down more, further back, the ghost
+  in the middle. After a fence or a lantern post the mode stays on for the next.
+- **The work** (it holds him): he walks to the side of the piece nearest him (round a
+  big one, a side every 5.5 s), his hammer in his right hand, and hammers — squatting
+  for low work, standing for high, the blow where the piece is rising (`buildPose`; a
+  knock each blow, a piece of wood set every four); the piece rises block by block in
+  its model's order over `PIECES[id].secs`. The prompt shows how far ("Building the
+  bamboo bed… 45%"). Done: a chime and a toast. The stick held away pauses it (the
+  first time a toast says how to go on); by it "E  Keep building (45%)" goes on; back
+  to the map: paused, saved.
+- **By a piece he built** (facing it, within 1.25 m): a seat (the bed, the shelter's
+  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; else
+  "E  Hold to take down the …". Held 0.8 s (a bar fills) it asks ("Take down the
+  bamboo bed? You get half its price back"); yes: he takes it apart (half the time,
+  at least 2 s), it is gone, half its price back. A hammock's E is the hammock
+  add-on's, the spirit house's "Pray" the shrine's (both come first).
+- **Uses** (`_buildUses.ts`; a piece that stands): J / L by the bed puts him on it
+  (along it: he sits, lies back, falls asleep as on the ground), J by the shelter sits
+  him on its bench (L there: no room) — `_rest.ts` `REST_SEATS`; each hammock is the
+  hammock add-on's (`addHammock({ id: 'build-<uid>', a, b, root })`, its cloth the
+  view's `petal` blocks between the ties; registered again whenever the view makes its
+  batch again); the spirit house is a prayer spot (`WORSHIP`, `build-<uid>`: the lotus,
+  E Pray); the lamps' flames and the spirit house's candle glow at night with a halo
+  (`light`); the pen and the haystack are his cattle's (`BUILT`).
+- **The garden**: no plant on a piece (`_gardenSpots.ts` asks `BUILT.blocks`), no piece
+  on a plant (`canBuild`).
+- **Saved** (`progress.ts` `build.pieces`: uid, id, x, y, z, yaw, done, seed): on every
+  change, at most once a second while one rises; a half-built piece stays half built.
+- **On the map** (`build/view.ts`): every piece that stands in one batch (a mesh per
+  block family: bark, leaf, petal, stone…, the map's own shaders), made again only when
+  one comes to stand or goes; a piece under way a small batch of its own drawing its
+  first blocks (`count` per family). Plain boxes once its cut edges are under a pixel,
+  hidden once a metre is under 0.9 px; built plain on the low level; still shadows asked
+  again after a change. Lights: one pool of 12 glowing blocks (the village's lamp
+  material) and 12 halos. The walk map (`_buildWalk.ts`): each piece's `solids` (turned
+  by its yaw) for his feet, the dog, the follow camera (`hardClearance`), `groundAt`,
+  `woodAt`.
+- **Sounds** (`audio/_build.ts`): `buildKnock`, `buildWood`, `buildTake` (moves),
+  `buildDone` (ui).
+- **URL** (shots and the dev server: a link never changes a player's saved pieces):
+  `build=<id>@x/z/yaw[:done],…` (yaw in degrees, done 0‥1, 1 if left out) · `build=all`
+  (one of each round the house, where each fits) · `build=0` · `buildcard=1` ·
+  `buildghost=<id>[:<deg>]` (build mode, turned that much more; give riel with
+  `purse=`) · `buildwork=<id>:<0‥1>[:<s>]` (at work on one that far built, `s` into the
+  stroke) · `buildtake=<uid>` (the question; `:<0‥1>` taking it down) ·
+  `buildsit=<uid>[:lie]` · `buildhint=1`. `report()` gives `build=`, `buildghost=`,
+  `buildwork=`. `window.__build` (shots, the dev server): `state()`, `canBuild(id, x, z,
+  deg)`, `add`, `remove`, `card`, `place`, `all`, `rebuild`, `shown(uid)`. Console lines
+  `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
+  `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
+  `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 
 ### Sharing his fruit
 
