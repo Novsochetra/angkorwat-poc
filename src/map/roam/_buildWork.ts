@@ -1,8 +1,9 @@
-import { Vector3 } from 'three';
+import { Euler, Matrix4, Vector3 } from 'three';
 import { buildPose, hammerBuilder, HIT, newBuildPose, STROKE } from '../../character/buildWork';
 import { BODY_UNIT_M, WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_build';
+import type { VoxelBox } from '../../voxel/VoxelBuilder';
 import { PIECES, type Built } from '../build/pieces';
 import { BUILD } from '../build/state';
 import { pieceLook } from '../build/view';
@@ -19,7 +20,7 @@ import { stepSound } from './walker';
  * the garden's work does (_gardenWork.ts).
  *
  * 1. **To his place**: he walks (a calm pace, his footsteps) to the side of the
- *    piece nearest him (a side's middle, `STAND` m out from it, where he can
+ *    piece nearest him (a side's middle, `standOut` m out from it, where he can
  *    stand), turns to it. A big piece (the pen, the shelter, a hammock) he
  *    works round: every `MOVE_EVERY` s of work he walks on to the next side.
  * 2. **The work**: his hammer in his right hand (`hammerBuilder`, a slot on his
@@ -40,8 +41,12 @@ import { stepSound } from './walker';
 
 /** The stick held away this long (s) stops him. */
 const PUSH = 0.15;
-/** He stands this far out from a side of the piece (m), and walks to it at this share of the walker's pace; given up after `WALK_MAX` s. */
-const STAND = 0.72;
+/**
+ * He stands this far out from a side of the piece (m: a small one, a lamp or a jar, nearer: its post or its rim in
+ * reach of his hammer), and walks to it at this share of the walker's pace; given up after `WALK_MAX` s.
+ */
+const STAND = { out: 0.62, small: 0.45, smallUnder: 1.3 };
+const standOut = (b: Pick<Built, 'id'>): number => (Math.max(PIECES[b.id].w, PIECES[b.id].d) < STAND.smallUnder ? STAND.small : STAND.out);
 const PACE = 0.6 * 1.6;
 const WALK_MAX = 5;
 /** Big pieces (this across, m): he works round them, a side every `MOVE_EVERY` s of work. */
@@ -52,6 +57,12 @@ const TAKE_SHARE = 0.5;
 const TAKE_MIN = 2;
 /** The work's height (m over the ground) at most and at least: where he can reach with his hammer. */
 const WORK_UP = { lo: 0.16, hi: 1.2 };
+/**
+ * The blow lands within this far of where he stands (m, flat) and no nearer (his own feet); the blocks before the
+ * one going up that he looks through for one in reach; a blow on a block's side (one too tall to reach its top)
+ * lands this far out from it (the head beside the wood, not in it); he turns toward the blow this much at most (rad).
+ */
+const REACH = { far: 1.0, near: 0.42, back: 120, side: 0.05, turn: 0.6 };
 /** The camera at the work: round to his side (rad from behind him), its tilt (rad), its distance (m: and this much per metre of the piece's reach), how far the focus moves toward the piece; eased over `for` s. */
 const FRAME = { side: 1.05, pitch: 0.36, distance: 5.6, perReach: 0.55, toward: 0.4, rate: 2.2, for: 1.8, back: 1.6 };
 
@@ -69,9 +80,9 @@ interface Session {
   face: number;
   side: number;
   readonly sides: number[];
-  /** The work's point on the map (the side's middle at the work's height), eased. */
+  /** The work's point on the map (where the blow lands), and in the piece's frame (eased: `workSpot`). */
   readonly work: Vector3;
-  workUp: number;
+  readonly workAt: Vector3;
   /** How far it was built when he began (taking down: stopped, it stands again so). */
   readonly from: number;
   /** Held at `t` (a check's picture). */
@@ -130,7 +141,7 @@ function sidesFor(ctx: RoamCtx, b: Built): number[] {
   const p = ctx.body.pos;
   const list: [number, number][] = [];
   for (let i = 0; i < 4; i++) {
-    sideAt(b, i, STAND, _v);
+    sideAt(b, i, standOut(b), _v);
     if (!standable(ctx, b, _v.x, _v.z)) continue;
     list.push([i, Math.hypot(_v.x - p.x, _v.z - p.z)]);
   }
@@ -152,7 +163,7 @@ function nearestSide(b: Built, x: number, z: number): number {
   let best = 0;
   let bd = Infinity;
   for (let i = 0; i < 4; i++) {
-    sideAt(b, i, STAND, _v);
+    sideAt(b, i, standOut(b), _v);
     const d = Math.hypot(_v.x - x, _v.z - z);
     if (d < bd) {
       bd = d;
@@ -164,19 +175,103 @@ function nearestSide(b: Built, x: number, z: number): number {
 
 /** His place and facing for side `side`. */
 function placeFor(s: Session): void {
-  sideAt(s.piece, s.side, STAND, s.stand);
+  sideAt(s.piece, s.side, standOut(s.piece), s.stand);
   sideAt(s.piece, s.side, 0, _w);
   s.face = Math.atan2(_w.x - s.stand.x, _w.z - s.stand.z);
 }
 
-/** The height of the work now (m over the piece's ground): the top of the block being put up (or taken off). */
-function workHeight(b: Built): number {
+/** A side's place to stand in the piece's frame (local m: x, z), `standOut` from its middle. */
+function standLocal(b: Built, side: number, o: Vector3): Vector3 {
+  const p = PIECES[b.id];
+  const hw = p.w / 2 + standOut(b);
+  const hd = p.d / 2 + standOut(b);
+  return o.set(side === 1 ? hw : side === 3 ? -hw : 0, 0, side === 0 ? hd : side === 2 ? -hd : 0);
+}
+
+const _bm = new Matrix4();
+const _be = new Euler();
+const _st = new Vector3();
+const _near = new Vector3();
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * The point of a block (the piece's frame) nearest `st` at the height he works it at (its top, or as high as he
+ * reaches on a taller one), into `out`; how far it is from `st` (m, flat). Turned blocks by their box round them.
+ */
+function nearOn(x: VoxelBox, st: Vector3, out: Vector3): number {
+  let hx = x.sx / 2;
+  let hy = x.sy / 2;
+  let hz = x.sz / 2;
+  if (x.rx || x.ry || x.rz) {
+    const e = _bm.makeRotationFromEuler(_be.set(x.rx ?? 0, x.ry ?? 0, x.rz ?? 0)).elements;
+    hx = Math.abs(e[0]) * x.sx * 0.5 + Math.abs(e[4]) * x.sy * 0.5 + Math.abs(e[8]) * x.sz * 0.5;
+    hy = Math.abs(e[1]) * x.sx * 0.5 + Math.abs(e[5]) * x.sy * 0.5 + Math.abs(e[9]) * x.sz * 0.5;
+    hz = Math.abs(e[2]) * x.sx * 0.5 + Math.abs(e[6]) * x.sy * 0.5 + Math.abs(e[10]) * x.sz * 0.5;
+  }
+  const top = x.y + hy;
+  const y = clamp(top, WORK_UP.lo, WORK_UP.hi);
+  out.set(clamp(st.x, x.x - hx, x.x + hx), y, clamp(st.z, x.z - hz, x.z + hz));
+  let d = Math.hypot(out.x - st.x, out.z - st.z);
+  // (on its side, its top out of reach: the head just off the wood, toward him)
+  if (y < top - 0.02 && d > REACH.side) {
+    const k = REACH.side / d;
+    out.x -= (out.x - st.x) * k;
+    out.z -= (out.z - st.z) * k;
+    d -= REACH.side;
+  }
+  return x.y - hy > WORK_UP.hi + 0.1 ? Infinity : d;
+}
+
+/**
+ * Where the blow lands now, in the piece's frame (m, over its ground), for him at side `side`: on the block going
+ * up (or coming off) at its point nearest him — its top, the face of the hammer on the wood —; out of his reach, on
+ * the last block before it that is in reach (he works on the part nearest him); none: toward it, as far as he
+ * reaches. Never nearer than his own feet.
+ */
+function workSpot(b: Built, side: number, out: Vector3): Vector3 {
   const look = pieceLook(b.id, b.seed);
   const n = look.boxes.length;
-  if (!n) return 0.6;
+  const st = standLocal(b, side, _st);
+  if (!n) return out.set(st.x * 0.4, 0.6, st.z * 0.4);
   const i = Math.min(n - 1, Math.max(0, Math.floor(b.done * n)));
-  const x = look.boxes[i];
-  return Math.min(WORK_UP.hi, Math.max(WORK_UP.lo, x.y + x.sy * 0.3));
+  let d = nearOn(look.boxes[i], st, out);
+  // (out of reach: the last block before it in reach; for work over his head (a lamp hung, a roof) one he reaches up
+  // on (a post, a beam), not a stone at its foot)
+  const high = look.boxes[i].y > WORK_UP.hi;
+  for (let pass = high ? 0 : 1; pass < 2 && d > REACH.far; pass++)
+    for (let j = i - 1; j >= Math.max(0, i - REACH.back); j--)
+      if (nearOn(look.boxes[j], st, _near) <= REACH.far && (pass || _near.y >= WORK_UP.hi - 0.05)) {
+        out.copy(_near);
+        d = Math.hypot(out.x - st.x, out.z - st.z);
+        break;
+      }
+  if (!Number.isFinite(d)) {
+    // (nothing he can reach: before him, toward the block, at the top of his reach)
+    nearOn(look.boxes[i], st, out);
+    out.y = WORK_UP.hi;
+    d = Math.hypot(out.x - st.x, out.z - st.z);
+  }
+  if (d > REACH.far || d < REACH.near) {
+    // (brought within reach; under a roof over him: before him, toward the piece's middle)
+    let ux = out.x - st.x;
+    let uz = out.z - st.z;
+    if (d < 1e-3) {
+      ux = -st.x;
+      uz = -st.z;
+      d = Math.hypot(ux, uz) || 1;
+    }
+    const k = clamp(d, REACH.near, REACH.far) / d;
+    out.x = st.x + ux * k;
+    out.z = st.z + uz * k;
+  }
+  return out;
+}
+
+/** A point of the piece's frame (local m, over its ground) on the map, into `out`. */
+function onMap(b: Built, l: Vector3, out: Vector3): Vector3 {
+  const c = Math.cos(b.yaw);
+  const s = Math.sin(b.yaw);
+  return out.set(b.x + l.x * c + l.z * s, b.y + l.y, b.z - l.x * s + l.z * c);
 }
 
 /** World → his own space (BU): x his left, y up from his soles, z ahead. */
@@ -342,7 +437,7 @@ export const BuildWork = {
       side: sides[0],
       sides,
       work: new Vector3(),
-      workUp: workHeight(piece),
+      workAt: workSpot(piece, sides[0], new Vector3()),
       from: piece.done,
       frozen: false,
       blows: 0,
@@ -375,8 +470,7 @@ export const BuildWork = {
     pose.k = 1;
     pose.t = tt;
     pose.still = 0;
-    sideAt(piece, s.side, 0, s.work);
-    s.work.y = piece.y + workHeight(piece);
+    onMap(piece, workSpot(piece, s.side, s.workAt), s.work);
     toBody(ctx, s.work.x, s.work.y, s.work.z, pose.work);
     setPose(true);
     hammer(true);
@@ -429,6 +523,8 @@ export const BuildWork = {
           b.yaw = s.face;
           s.phase = 'work';
           s.sideT = 0;
+          // (the blow from this side: no sweep across the piece from the last one's)
+          workSpot(s.piece, s.side, s.workAt);
           setPose(true);
           hammer(true);
         }
@@ -447,10 +543,13 @@ export const BuildWork = {
           s.sideT += dt;
         }
         pose.t = s.t;
-        // (the work's point: the side's middle, at the height of the block going up or coming off)
-        sideAt(s.piece, s.side, 0, _w);
-        s.workUp += (workHeight(s.piece) - s.workUp) * damp(3, dt);
-        s.work.set(_w.x, s.piece.y + s.workUp, _w.z);
+        // (the work's point: on the block going up or coming off, nearest him, in reach: `workSpot`; he turns to it a little)
+        s.workAt.lerp(workSpot(s.piece, s.side, _w), damp(3, dt));
+        onMap(s.piece, s.workAt, s.work);
+        if (!s.frozen) {
+          const to = s.face + clamp(angleDiff(Math.atan2(s.work.x - b.pos.x, s.work.z - b.pos.z), s.face), -REACH.turn, REACH.turn);
+          b.yaw += angleDiff(to, b.yaw) * damp(3, dt);
+        }
         toBody(ctx, s.work.x, s.work.y, s.work.z, _v);
         pose.work.lerp(_v, damp(10, dt));
         // A blow each stroke: a knock; a piece of wood set (or coming off) every few.
