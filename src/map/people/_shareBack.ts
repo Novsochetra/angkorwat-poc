@@ -61,8 +61,9 @@ const BACK_HOME = 1.2;
 /** Their words stay this long (s). */
 const SAY = 2.6;
 /** A child's jump: how high (share of its size) and how long (s). */
-const HOP = 0.14;
-const HOP_FOR = 1.0;
+const HOP = 0.16;
+const HOP_AT = 0.3;
+const HOP_FOR = 0.55;
 
 /** Poses that keep them from taking anything: rowing, dancing, a throw, up a ladder, on a bicycle, in a hammock, praying, chanting, blessing. */
 const NO: ReadonlySet<number> = new Set<number>([POSE.row, POSE.dance, POSE.cast, POSE.climb, POSE.ride, POSE.hammock, POSE.bless, POSE.chant, POSE.kneel, POSE.bow, POSE.sampeah, POSE.give]);
@@ -193,7 +194,8 @@ export class ShareBack {
       this.cur = c;
     }
     c.phase = phase;
-    c.since = now;
+    // (a check that starts in the middle: that far in already)
+    c.since = now - SHARE.lag;
     if (this.env.shot) console.info(`[map] share: ${phase} · ${c.kid ? 'a child' : c.elder ? 'an elder' : (c.a.look.kind ?? 'someone')} ${len(c.a.x - this.him.x, c.a.z - this.him.z).toFixed(1)} m`);
     switch (phase) {
       case 'come':
@@ -250,7 +252,8 @@ export class ShareBack {
     r.yaw = a.yaw;
     r.ox = r.x = a.x;
     r.oz = r.z = a.z;
-    r.moved = false;
+    // (they stay where they are while it lasts: their scene would walk them on meanwhile; a child runs where this says)
+    r.moved = true;
     r.wearing = 'none';
     r.before = null;
     r.until = Infinity;
@@ -268,7 +271,7 @@ export class ShareBack {
   /** Done with roaming's part: let go now, or after a last moment (a child runs back, a grown-up looks at it). */
   private finish(r: Taker, now: number): void {
     if (r.phase === 'none') {
-      r.until = now + (r.kid && r.moved ? 4 : 0);
+      r.until = now + (r.kid && len(r.x - r.ox, r.z - r.oz) > 0.1 ? 4 : 0);
     } else if (r.phase === 'again') r.until = now + 1.8;
     else r.until = now + (r.kid ? 6 : LOOK_AT);
     if (!this.after.includes(r)) this.after.push(r);
@@ -287,6 +290,7 @@ export class ShareBack {
     let nod = 0;
     let hop = 0;
     let face = Math.atan2(h.x - a.x, h.z - a.z);
+    let running = false;
     switch (r.phase) {
       case 'come':
         nod = 0.1;
@@ -295,7 +299,10 @@ export class ShareBack {
           if (this.run(r, SHARE.meetX, SHARE.meetZ, RUN, dt, now)) {
             SHARE.arrived = true;
             if (this.env.shot) console.info('[map] share: the child is before him');
-          } else face = r.yaw;
+          } else {
+            face = r.yaw;
+            running = true;
+          }
         }
         break;
       case 'hold':
@@ -308,8 +315,9 @@ export class ShareBack {
         break;
       case 'thanks':
         if (r.kid) {
-          pose = u < 1.3 ? POSE.cheer : POSE.stand;
-          if (u < HOP_FOR) hop = HOP * crowd.scale(a.i) * Math.max(0, Math.sin((u / (HOP_FOR / 2)) * Math.PI));
+          pose = u < 1.5 ? POSE.cheer : POSE.stand;
+          // (a jump once the arms are up)
+          if (u > HOP_AT && u < HOP_AT + HOP_FOR) hop = HOP * crowd.scale(a.i) * Math.sin(((u - HOP_AT) / HOP_FOR) * Math.PI);
           nod = -0.2;
         } else if (r.elder) {
           // (an elder holds it up a moment in both hands, nodding)
@@ -335,11 +343,10 @@ export class ShareBack {
       case 'end':
         if (r.kid) {
           // (back to the others with it, held up now and then)
-          if (!this.run(r, r.ox, r.oz, RUN_BACK, dt, now)) face = r.yaw;
-          else {
-            r.until = Math.min(r.until, now + BACK_HOME);
-            r.moved = false;
-          }
+          if (!this.run(r, r.ox, r.oz, RUN_BACK, dt, now)) {
+            face = r.yaw;
+            running = true;
+          } else r.until = Math.min(r.until, now + BACK_HOME);
           pose = POSE.stand;
         } else {
           // (a look at it, pleased, then it goes in their basket)
@@ -354,7 +361,10 @@ export class ShareBack {
         nod = r.kid ? 0 : 0.3 * bump(u, 0.1, 1.2);
         break;
       case 'none':
-        if (r.kid && r.moved && !this.run(r, r.ox, r.oz, RUN_BACK, dt, now)) face = r.yaw;
+        if (r.kid && !this.run(r, r.ox, r.oz, RUN_BACK, dt, now)) {
+          face = r.yaw;
+          running = true;
+        }
         break;
       default:
         break;
@@ -381,10 +391,12 @@ export class ShareBack {
     if (r.moved) {
       a.x = r.x;
       a.z = r.z;
+      // (standing still: no step, whatever their scene asks for; running: run() set it)
+      if (!running) crowd.gait(a.i, 0, 0.9, now);
     }
     if (turns || r.moved || hop > 0) crowd.place(a.i, a.x, a.y + hop, a.z, a.yaw);
     // (a laugh as the child jumps)
-    if (r.kid && r.phase === 'thanks' && u - dt < 0.15 && u >= 0.15 && f.dt > 0 && !this.env.shot) f.calls.push({ kind: 'laugh', x: a.x, y: a.y + 1, z: a.z, gain: 0.55 });
+    if (r.kid && r.phase === 'thanks' && u - dt < HOP_AT && u >= HOP_AT && f.dt > 0 && !this.env.shot) f.calls.push({ kind: 'laugh', x: a.x, y: a.y + 1, z: a.z, gain: 0.55 });
   }
 
   /** A child runs toward (x, z) at `speed`: true once there. */

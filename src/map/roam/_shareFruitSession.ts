@@ -176,6 +176,8 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   let arrived = at >= 0;
   let ended = false;
   let showing = false;
+  /** How late the step fires (s: a check that starts in the middle), passed on with its cue. */
+  let lag = 0;
   const fruit = fruitMesh(kind);
 
   if (at >= 0) {
@@ -220,7 +222,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   const fire = (s: ShareStep, c: RoamCtx) => {
     switch (s) {
       case 'hold':
-        shareCue('hold');
+        shareCue('hold', lag);
         break;
       case 'take':
         if (!hooks.took()) {
@@ -231,10 +233,10 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
         }
         given = true;
         showFruit(false);
-        shareCue('take');
+        shareCue('take', lag);
         break;
       case 'thanks':
-        shareCue('thanks');
+        shareCue('thanks', lag);
         break;
       case 'answer':
         // (to an elder: the high sampeah, palms up to his face, as they thank and bless him)
@@ -245,7 +247,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
         c.sound('greet', 1);
         break;
       case 'back':
-        shareCue('back');
+        shareCue('back', lag);
         break;
       case 'got':
         ex.animator.posture = null;
@@ -254,7 +256,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
         hooks.got();
         break;
       case 'end':
-        shareCue('end');
+        shareCue('end', lag);
         ended = true;
         break;
     }
@@ -281,7 +283,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
         return { prompt: null };
       }
       if (mv > 0.5 && given && !ended) {
-        shareCue('end');
+        shareCue('end', lag);
         ended = true;
       }
       // Where they are now (a child running up: the people part says).
@@ -317,7 +319,11 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
       // His posture: from when he stands before them until the end of his part.
       if (ready >= 0) {
         ready += dt;
-        while (next < steps.length && ready >= steps[next][0] && !ended) fire(steps[next++][1], c);
+        while (next < steps.length && ready >= steps[next][0] && !ended) {
+          lag = ready - steps[next][0];
+          fire(steps[next++][1], c);
+        }
+        lag = 0;
         const holding = ready >= AT.hold && ready < AT.take + 0.1 && !given;
         const bowing = ready < AT.thanks + 0.5;
         const answering = ex.currentAction === 'greetHigh' || ex.currentAction === 'interact';

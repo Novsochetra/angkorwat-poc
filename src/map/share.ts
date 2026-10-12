@@ -135,6 +135,8 @@ export const SHARE = {
   /** Where a child comes to stand before him (m). */
   meetX: 0,
   meetZ: 0,
+  /** Seconds already into this phase as it is cued (a check that starts in the middle; 0 in play). */
+  lag: 0,
   /** (the people part) where the person is now, a child has come to him, the person is gone (hidden, or another hold took them). */
   px: 0,
   py: 0,
@@ -144,8 +146,9 @@ export const SHARE = {
 };
 
 /** Roaming moves the giving on to `phase` (a new `n`). */
-export function shareCue(phase: SharePhase): void {
+export function shareCue(phase: SharePhase, lag = 0): void {
   SHARE.phase = phase;
+  SHARE.lag = lag;
   SHARE.n++;
 }
 

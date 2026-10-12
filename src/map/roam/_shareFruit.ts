@@ -225,7 +225,7 @@ function startPending(ctx: RoamCtx): void {
   }
   // (the moment drawn: when he holds it out, it is in their hands, their thanks, a child's jump, their gift back)
   const at: [ShareStep, number] | null =
-    m === 'give' ? ['hold', 0.85] : m === 'take' ? ['take', 0.2] : m === 'thanks' ? ['thanks', 0.6] : m === 'child' ? ['thanks', 0.45] : m === 'back' ? ['back', 0.5] : null;
+    m === 'give' ? ['hold', 0.85] : m === 'take' ? ['take', 0.4] : m === 'thanks' ? ['thanks', 1.0] : m === 'child' ? ['thanks', 0.58] : m === 'back' ? ['back', 0.6] : null;
   if (!at) return;
   if (env!.shot) at[1] -= SHOT_FRAMES;
   give(ctx, cand, k, at);
