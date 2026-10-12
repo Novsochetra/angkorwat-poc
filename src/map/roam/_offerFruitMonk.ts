@@ -466,7 +466,7 @@ function stepMet(ctx: RoamCtx, dt: number): void {
     case 'take': {
       toBody(ctx, a.hx, a.hy, a.hz, _h);
       // (both hands meet: the fruit at the monk's hands; his own come back once it is the monk's)
-      ps.gift.copy(CHEST_STAND).lerp(_h, 0.72 + 0.28 * ramp(st, [0, TAKE_AT]));
+      ps.gift.copy(CHEST_STAND).lerp(_h, 0.72 + 0.13 * ramp(st, [0, TAKE_AT]));
       ps.hold = st < TAKE_AT ? 1 : 1 - ramp(st, [TAKE_AT, TAKE_AT + 0.5]);
       ps.lean = 1 - 0.5 * ramp(st, [TAKE_AT, TAKE]);
       lookAt(_h, 1);
@@ -490,7 +490,7 @@ function stepMet(ctx: RoamCtx, dt: number): void {
       ps.hold = 0;
       ps.palms = ramp(st, [0.1, 0.7]);
       ps.lean = 0.5 * (1 - ramp(st, [0, 0.6]));
-      ps.bow = 0.9 * ramp(st, [0.5, 1.2]) * (1 - ramp(st, [BLESS_FOR - 0.8, BLESS_FOR]));
+      ps.bow = 0.65 * ramp(st, [0.5, 1.2]) * (1 - ramp(st, [BLESS_FOR - 0.8, BLESS_FOR]));
       toBody(ctx, a.mx, a.my + 2.4 * (b.scale / 1.4), a.mz, _h);
       lookAt(_h, 1 - ps.bow);
       if (st >= BLESS_FOR) {
@@ -921,6 +921,21 @@ function frame(ctx: RoamCtx, dt: number): void {
   cam.distance += (FRAME.distance * s - cam.distance) * k;
 }
 
+/** A check's start: the camera at its framing at once (unless the URL holds one). */
+function snapCam(ctx: RoamCtx): void {
+  if (ctx.start.has('rcam')) {
+    camFree = true;
+    return;
+  }
+  const cam = ctx.cam;
+  before ??= { pitch: cam.pitch, distance: cam.distance };
+  cam.yaw = cam.behindYaw = camYaw;
+  cam.pitch = FRAME.pitch;
+  cam.distance = FRAME.distance * (ctx.body.scale / 1.4);
+  camFree = false;
+  framed = FRAME.for;
+}
+
 /** Back to the player's own pitch and distance (eased; null: at once). */
 export function monkFrame(dt: number | null): void {
   const e = S.env;
@@ -969,8 +984,7 @@ export function end(now = false): void {
 export function monkFromUrl(ctx: RoamCtx, what: string, arg: string | undefined, sIn: number, k: OfferKind): void {
   if (what === 'monk') {
     beginMet(ctx, k);
-    if (arg === 'again') OFFER.given.set(OFFER.find(ctx.body.pos.x, ctx.body.pos.y, ctx.body.pos.z, ctx.body.yaw), day());
-    urlTo = arg && arg !== 'again' ? (arg as Step) : null;
+    urlTo = arg ? (arg as Step) : null;
     urlAt = sIn;
     return;
   }
@@ -1012,6 +1026,7 @@ export function monkFromUrl(ctx: RoamCtx, what: string, arg: string | undefined,
     }
     go(arg === 'give' ? 'out' : arg === 'bless' ? 'bless' : 'wait');
     st = arg === 'give' ? sIn : 0;
+    snapCam(ctx);
     return;
   }
   if (what === 'bless') {
@@ -1036,6 +1051,7 @@ export function monkFromUrl(ctx: RoamCtx, what: string, arg: string | undefined,
       go(arg === 'bless' ? 'out' : (arg as Step));
       if (arg === 'bless') urlTo = 'bless';
       st = arg === 'out' ? sIn : 0;
+      snapCam(ctx);
       return;
     }
     const f = seatFront(s, GIFT_KNEEL, { x: 0, z: 0 });
@@ -1057,6 +1073,15 @@ export function monkUrlJump(ctx: RoamCtx): void {
       urlTo = null;
       return;
     }
+    if (urlTo === 'again') {
+      // (he had fruit from him today already: the monk's smile)
+      OFFER.given.set(a.i, day());
+      a.again = true;
+      urlTo = null;
+      camYaw = Math.atan2(a.mx - ctx.body.pos.x, a.mz - ctx.body.pos.z) + FRAME.side;
+      snapCam(ctx);
+      return;
+    }
     // (stood before him, the steps up to `urlTo` done at once)
     const b = ctx.body;
     const d = Math.hypot(a.mx - b.pos.x, a.mz - b.pos.z);
@@ -1076,6 +1101,8 @@ export function monkUrlJump(ctx: RoamCtx): void {
     go(urlTo === 'take' || urlTo === 'bless' ? urlTo : 'out');
     st = urlAt;
     urlTo = null;
+    camYaw = facing + FRAME.side;
+    snapCam(ctx);
     return;
   }
   if (who === 'bless' && urlTo === 'bless') {

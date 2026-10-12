@@ -56,6 +56,7 @@ export class OfferBack {
   private struck = false;
   private readonly hold = { at: { x: 0, y: 0, z: 0 } as Point, nod: 0, pose: true };
   private readonly bubble = new Bubble();
+  private readonly still: boolean;
   private talking = -1e9;
   private hush = false;
   private said: WordKey | null = null;
@@ -75,6 +76,9 @@ export class OfferBack {
     private readonly actors: readonly Actor[],
   ) {
     OFFER.find = (x, y, z, yaw) => this.find(x, y, z, yaw)?.i ?? -1;
+    this.still = env.shot && env.params.get('video') !== '1';
+    // (checks: the monk held, his step, his words)
+    if (import.meta.env.DEV) Object.assign(window, { __offerBack: { now: () => ({ m: this.m?.i ?? -1, shown: this.shown, said: this.said, talking: +this.talking.toFixed(2), since: +this.since.toFixed(2), bubble: this.bubble.showing }) } });
   }
 
   /** Once a frame, after the scenes' steps and the greetings (`now`: the people's clock). */
@@ -165,8 +169,10 @@ export class OfferBack {
   private say(key: WordKey, t: number, at: number, len: number, now: number): void {
     if (t < at || t > at + len || this.said === key) return;
     this.said = key;
-    this.bubble.say(key, this.headAt, at + len - t);
-    this.talking = now + at + len - t + 1;
+    // (a still: roaming's time stands while the people's runs on before the picture, so it stays)
+    const left = at + len - t + (this.still ? 5 : 0);
+    this.bubble.say(key, this.headAt, left);
+    this.talking = now + left + 1;
   }
 
   /** Where he stands and where his hands meet (for roaming). */
