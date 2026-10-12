@@ -19,20 +19,23 @@ import { mix, OLD_BAMBOO, OLD_STRAW, POST, rng, STRAW, TIE, tone, turned, type R
  */
 
 const H = PIECES.haystack.h;
-/** Radius (m) of a straw ring at height y (0‥1 of the body), before the seed's bulge: the eaten waist, the belly, the dome. */
+/** Outer radius (m) of a straw ring at height y (0‥1 of the body), before the seed's bulge: the eaten waist, the belly, the dome. */
 const PROFILE: readonly [number, number][] = [
-  [0.0, 0.6],
-  [0.1, 0.67],
-  [0.2, 0.76],
-  [0.3, 0.8],
-  [0.42, 0.81],
-  [0.54, 0.78],
-  [0.65, 0.72],
-  [0.75, 0.63],
-  [0.84, 0.51],
-  [0.92, 0.36],
-  [1.0, 0.2],
+  [0.0, 0.76],
+  [0.1, 0.85],
+  [0.2, 0.97],
+  [0.3, 1.03],
+  [0.42, 1.05],
+  [0.54, 1.01],
+  [0.65, 0.93],
+  [0.75, 0.81],
+  [0.84, 0.65],
+  [0.92, 0.46],
+  [1.0, 0.26],
 ];
+/** A ring is two crosses of two boxes (the second turned 45°): its outline lies between 0.93 and 1 of this over the arms' half length. */
+const CROSS = 1.2;
+const ARM = 0.72;
 /** The straw body from the bed's top to its crown (m). */
 const BODY0 = 0.2;
 const BODY1 = 2.48;
@@ -62,8 +65,8 @@ registerPieceModel('haystack', (b, look) => {
       else b.box(d, 0.135, 0, 0.09, 0.09, 1.75, c, 'mapBark', { src, shade: 0.85 });
     }
 
-  // ── The straw, ring on ring round the pole: two squares a ring, turned, so it reads round ──
-  const rings = 11;
+  // ── The straw, ring on ring round the pole: two crosses a ring, each ring turned its own way, so it reads round ──
+  const rings = 14;
   const dh = (BODY1 - BODY0) / rings;
   const bulge = 0.96 + r() * 0.1;
   // (the side the cows eat most: its rings drawn in there)
@@ -80,28 +83,35 @@ registerPieceModel('haystack', (b, look) => {
     const eat = t < 0.3 ? 0.1 * (1 - t / 0.3) : 0;
     const ox = -ex * eat + (r() - 0.5) * 0.05;
     const oz = -ez * eat + (r() - 0.5) * 0.05;
-    const weathered = t > 0.75 ? 0.35 + (t - 0.75) * 1.2 : t > 0.35 ? 0.15 : 0;
+    // (the crown greys in the weather; the rest stays gold)
+    const weathered = t > 0.8 ? 0.2 + (t - 0.8) * 1.5 : 0;
+    const arm = rad / CROSS;
     for (let q = 0; q < 2; q++) {
-      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), Math.min(1, weathered + r() * 0.25));
-      b.box(ox, y, oz, rad * 2, dh + 0.04, rad * 2, c, 'mapBark', { src, ry: turn + q * (Math.PI / 4), shade: 0.9 + t * 0.12 + (q ? 0.03 : 0) });
+      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), Math.min(1, weathered + r() * 0.2));
+      const ry = turn + q * (Math.PI / 4);
+      const sh = 0.9 + t * 0.12 + (q ? 0.03 : 0);
+      b.box(ox, y, oz, arm * 2, dh + 0.04, arm * 2 * ARM, c, 'mapBark', { src, ry, shade: sh });
+      b.box(ox, y, oz, arm * 2 * ARM, dh + 0.04, arm * 2, c, 'mapBark', { src, ry, shade: sh * 0.98 });
     }
-    turn += 0.37 + r() * 0.2;
+    turn = r() * (Math.PI / 2);
     tufts.push([y, rad, t]);
   }
 
-  // ── Straw ends sticking out all round (the stack's shag), hanging from the eaten waist's overhang ──
+  // ── Straw ends hanging down its sides, longer under the eaten waist's overhang ──
   const tuftSrc = traceSource();
   for (const [y, rad, t] of tufts) {
-    const n = t < 0.9 ? 6 : 3;
+    if (t > 0.92) continue;
+    const n = 4;
     const a0 = r() * Math.PI * 2;
     for (let i = 0; i < n; i++) {
-      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.6;
-      // (out to the ring's edge: between its face and its corner)
-      const d = rad * (1.02 + r() * 0.16);
-      const len = 0.28 + r() * 0.22;
-      const droop = t < 0.3 ? -1.1 - r() * 0.3 : -0.25 - r() * 0.5;
-      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), t > 0.7 ? 0.6 : r() * 0.4);
-      turned(b, Math.cos(a) * d, y + (r() - 0.5) * 0.1 - 0.06, Math.sin(a) * d, 0.09 + r() * 0.05, 0.035, len, Math.atan2(Math.cos(a), Math.sin(a)), droop, (r() - 0.5) * 0.6, c, 'mapLeaf', 0.92 + r() * 0.1, tuftSrc);
+      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.9;
+      // (on the ring's face, out to toward its corners)
+      const d = rad * (0.9 + r() * 0.08);
+      const under = t > 0.12 && t < 0.3;
+      const len = under ? 0.38 + r() * 0.15 : 0.24 + r() * 0.14;
+      const droop = under ? -1.45 : -1.15 - r() * 0.25;
+      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), t > 0.8 ? 0.5 : r() * 0.3);
+      turned(b, Math.cos(a) * d, y - len * 0.35, Math.sin(a) * d, 0.05 + r() * 0.035, 0.022, len, Math.atan2(Math.cos(a), Math.sin(a)), droop, (r() - 0.5) * 0.4, c, 'mapLeaf', 0.95 + r() * 0.1, tuftSrc);
     }
   }
 

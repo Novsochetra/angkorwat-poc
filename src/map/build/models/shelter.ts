@@ -1,7 +1,7 @@
 import { traceSource } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { PIECES, registerPieceModel } from '../pieces';
-import { BAMBOO, EARTH, KRAMA, mix, post, POST, rng, stick, THATCH, THATCH_DARK, tone, turned, type Rand, type Src } from './_yardKit';
+import { BAMBOO, EARTH, KRAMA, mix, post, POST, rng, stick, THATCH, THATCH_DARK, thatchBand, tone, turned, type Rand, type Src } from './_yardKit';
 
 /**
  * A thatched shelter (ខ្ទម, build/pieces.ts `PIECES.shelter`): the shade hut of
@@ -23,7 +23,7 @@ import { BAMBOO, EARTH, KRAMA, mix, post, POST, rng, stick, THATCH, THATCH_DARK,
 const PX = 1.6;
 const PZ = 1.4;
 /** The posts' tops; the tie beams sit on them (m). */
-export const SHELTER_POST_TOP = 2.75;
+export const SHELTER_POST_TOP = 2.85;
 const BEAM = 0.12;
 /** The roof: its overhang past the posts, its pitch (rad), the thatch's thickness (m). */
 const OVER = 0.55;
@@ -41,7 +41,7 @@ const under = (u: number) => Y0 + u * SLOPE;
 /** Half the ridge's length (the hip roof: the long sides' slopes meet along it). */
 const RIDGE = EX - EZ;
 /** The ridge cap's top (m): the piece's height (`PIECES.shelter.h`). */
-export const SHELTER_TOP = under(EZ) + THICK + 0.24;
+export const SHELTER_TOP = under(EZ) + THICK + 0.3;
 
 /** The bench along the back: its seat's top, its middle's depth (the seat: `PIECES.shelter.seat`). */
 const SEAT_Y = PIECES.shelter.seat!.y;
@@ -131,8 +131,8 @@ function thatch(b: VoxelBuilder, r: Rand, src: Src): void {
     const y = under(u) + (THICK / 2) / Math.cos(PITCH) + 0.012 * k;
     const dark = k === 0 ? 0.9 : 1;
     // Front and back (along x), then the two ends (along z).
-    for (const sz of [-1, 1]) course(b, r, 'x', sz, EX - u + 0.1, y, EZ - u, slab, dark, src);
-    for (const sx of [-1, 1]) course(b, r, 'z', sx, EZ - u + 0.1, y, EX - u, slab, dark, src);
+    for (const sz of [-1, 1]) thatchBand(b, r, 'x', -(EX - u + 0.1), EX - u + 0.1, sz * (EZ - u), y, slab, THICK, PITCH, sz, dark, src);
+    for (const sx of [-1, 1]) thatchBand(b, r, 'z', -(EZ - u + 0.1), EZ - u + 0.1, sx * (EX - u), y, slab, THICK, PITCH, sx, dark, src);
   }
   // The ragged ends at the eaves (darker: the cut ends of the leaves).
   for (const sz of [-1, 1])
@@ -140,7 +140,8 @@ function thatch(b: VoxelBuilder, r: Rand, src: Src): void {
   for (const sx of [-1, 1])
     for (let z = -EZ + 0.15; z < EZ - 0.05; z += 0.3) fringe(b, r, sx * (EX - 0.03), z, 'z', src);
   // Bundles along the hips and the ridge.
-  const lift = THICK + 0.08;
+  // (over the courses: each stands a little proud of the roof's plane at its lower edge)
+  const lift = THICK + 0.15;
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const n = 4;
@@ -153,32 +154,13 @@ function thatch(b: VoxelBuilder, r: Rand, src: Src): void {
         stick(b, ax, ay, az, bx, by, bz, 0.34, 0.18, tone(THATCH, r()), 'mapBark', 0.78 + r() * 0.08, src, 0.06, 0);
       }
     }
-  const ry = under(EZ) + THICK + 0.1;
+  const ry = under(EZ) + THICK + 0.17;
   for (let i = 0; i < 3; i++) b.box(-RIDGE - 0.3 + (i + 0.5) * ((2 * RIDGE + 0.6) / 3), ry, 0, (2 * RIDGE + 0.6) / 3 + 0.04, 0.26, 0.5, tone(THATCH, r()), 'mapBark', { src, shade: 0.76 + r() * 0.06 });
   // Split bamboo ties over the bundles.
   for (const sx of [-1, 1])
     for (const sz of [-1, 1])
       for (const t of [0.3, 0.65]) b.box(sx * (EX + (RIDGE - EX) * t), under(EZ * t) + lift + 0.06, sz * EZ * (1 - t), 0.3, 0.06, 0.3, tone(BAMBOO, r()), 'mapBark', { src, ry: sx * sz * (Math.PI / 4), shade: 0.9 });
   for (const x of [-RIDGE - 0.1, RIDGE + 0.1]) b.box(x, ry + 0.02, 0, 0.06, 0.29, 0.54, tone(BAMBOO, r()), 'mapBark', { src, shade: 0.9 });
-}
-
-/**
- * One course on one slope: along `axis` (x for the front and back, z for the ends), on the side `s` (±1), `half`
- * its half length, at `at` (z for x courses, x for z courses), `y` its middle, `slab` its width down the slope.
- */
-function course(b: VoxelBuilder, r: Rand, axis: 'x' | 'z', s: number, half: number, y: number, at: number, slab: number, dark: number, src: Src): void {
-  const len = 2 * half;
-  const n = Math.max(1, Math.round(len / 0.95));
-  const pl = len / n;
-  for (let p = 0; p < n; p++) {
-    const a = -half + (p + 0.5) * pl;
-    const c = tone(THATCH, r());
-    const sh = dark * (0.88 + r() * 0.14);
-    const dy = (r() - 0.5) * 0.04;
-    const th = THICK + r() * 0.04;
-    if (axis === 'x') b.box(a, y + dy, s * at, pl + 0.04, th, slab, c, 'mapBark', { src, rx: s * PITCH, shade: sh });
-    else b.box(s * at, y + dy, a, slab, th, pl + 0.04, c, 'mapBark', { src, rz: -s * PITCH, shade: sh });
-  }
 }
 
 /** A ragged end of thatch hanging at the eaves (dark), at (x, z) along `axis`. */

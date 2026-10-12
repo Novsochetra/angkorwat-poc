@@ -54,8 +54,10 @@ export const NEW_BAMBOO = [0xcdc47e, 0xc1b970, 0xd6cc8c, 0xb8b066, 0xc9bd78] as 
 export const NODE = [0xa49a5a, 0x988e52] as const;
 /** Rattan and bamboo-strip lashings. */
 export const TIE = [0x7a6446, 0x6e5a3e, 0x857050] as const;
-/** Dried palm-leaf thatch, new: warm tan going silver (village `ROOFS.thatch`, Kulen's `THATCH`). */
-export const THATCH = [0x958060, 0x8c7856, 0x9e8a66, 0x857250, 0xa38f6a, 0x8f7c5a] as const;
+/** Dried palm-leaf thatch, new: golden tan going silver (the palm sugar shed's, hamlet/_psKit.ts `THATCH`, `THATCH_NEW`). */
+export const THATCH = [0xa08c66, 0x97835e, 0xaa966e, 0x8f7e5e, 0xa69472, 0x9a8a6a] as const;
+export const THATCH_NEW = [0xb49c6a, 0xbfa874, 0xa89060] as const;
+export const THATCH_OLD = [0x8e8470, 0x857b68, 0x978d78] as const;
 /** The thatch's dark underside and ragged eave ends. */
 export const THATCH_DARK = [0x6e5e44, 0x66573e, 0x75644a] as const;
 /** Rice straw: fresh gold, weathered grey-gold (hamlet/_evKit.ts `STRAW`, _bhYard.ts). */
@@ -117,4 +119,48 @@ export function post(b: VoxelBuilder, x: number, z: number, y0: number, top: num
   const h = top - y0;
   // (turned about its middle, so the middle moves half as far as the top: the foot stays put)
   b.box(x - Math.sin(lz) * h * 0.5, y0 + h / 2, z + Math.sin(lx) * h * 0.5, w, h, w, color, mat, { shade, rx: lx, rz: lz, src });
+}
+
+/**
+ * One course of thatch on a roof's slope (as the palm sugar shed's, hamlet/_psKit.ts `thatchSlope`): a band along
+ * `axis` from `a0` to `a1` at `at` across it, `slab` wide down the slope, its middle `y` on the roof's plane (the
+ * thatch's mid-thickness), the roof falling toward `down` (±1 along the other axis) at `pitch`. Laid a little
+ * flatter than the roof, so its lower edge stands proud on the course below (the line of shade that reads as
+ * thatch); cut in panels of their own tone; now and then a patch of newer or older leaf over it, a finger proud.
+ */
+export function thatchBand(b: VoxelBuilder, r: Rand, axis: 'x' | 'z', a0: number, a1: number, at: number, y: number, slab: number, thick: number, pitch: number, down: number, dark: number, src: Src): void {
+  const lift = thick * 0.8;
+  const flat = pitch - Math.atan2(lift, slab);
+  // (raised half the lift: the upper edge on the plane, the lower edge `lift` over it)
+  const yc = y + lift / 2;
+  const tiltOf = (p: number) => (axis === 'x' ? { rx: down * p } : { rz: -down * p });
+  let a = a0;
+  while (a1 - a > 0.05) {
+    let e = Math.min(a1, a + 0.4 + r() * 0.55);
+    if (a1 - e < 0.3) e = a1;
+    const c = tone(THATCH, r());
+    const sh = dark * (0.88 + r() * 0.14);
+    const th = thick + r() * 0.03;
+    if (axis === 'x') b.box((a + e) / 2, yc + (r() - 0.5) * 0.025, at, e - a + 0.02, th, slab, c, 'mapBark', { src, shade: sh, ...tiltOf(flat) });
+    else b.box(at, yc + (r() - 0.5) * 0.025, (a + e) / 2, slab, th, e - a + 0.02, c, 'mapBark', { src, shade: sh, ...tiltOf(flat) });
+    a = e;
+  }
+  // Patches of newer (golden) or older (grey) leaf.
+  const n = Math.max(1, Math.round((a1 - a0) / 2));
+  for (let k = 0; k < n; k++) {
+    if (r() < 0.35) continue;
+    const pl = 0.45 + r() * 0.8;
+    const m = a0 + ((a1 - a0) * (k + 0.2 + 0.6 * r())) / n;
+    const pa = Math.max(a0, m - pl / 2);
+    const pb = Math.min(a1, m + pl / 2);
+    if (pb - pa < 0.3) continue;
+    const c = r() < 0.6 ? tone(THATCH_NEW, r()) : tone(THATCH_OLD, r());
+    // (a finger over the band, toward its upper half: the next course hides its top)
+    const up = 0.035 / Math.cos(pitch);
+    const back = slab * 0.08;
+    const dz = axis === 'x' ? -down * back : 0;
+    const dx = axis === 'z' ? -down * back : 0;
+    if (axis === 'x') b.box((pa + pb) / 2, yc + up + Math.tan(flat) * back, at + dz, pb - pa, thick * 0.7, slab * 0.8, c, 'mapBark', { src, shade: dark * (0.92 + r() * 0.1), ...tiltOf(flat) });
+    else b.box(at + dx, yc + up + Math.tan(flat) * back, (pa + pb) / 2, slab * 0.8, thick * 0.7, pb - pa, c, 'mapBark', { src, shade: dark * (0.92 + r() * 0.1), ...tiltOf(flat) });
+  }
 }

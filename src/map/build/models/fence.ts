@@ -5,9 +5,9 @@ import { BAMBOO, KRAMA, NEW_BAMBOO, NODE, OLD_BAMBOO, post, rng, TIE, tone, type
 
 /**
  * A run of bamboo fence (របងឫស្សី, build/pieces.ts `PIECES.fence`): three metres
- * of a Khmer garden fence, chest high to the roaming explorer's chickens and
- * goats and waist high to him: three bamboo posts (one at each end, one in the
- * middle), a pair of whole-bamboo rails top and bottom, and between them a
+ * of a Khmer garden fence, chest high to him (2.4 m tall): three bamboo posts
+ * (one at each end, one in the middle), pairs of whole-bamboo rails at the top,
+ * the middle and the foot, and between them a
  * lattice of new split bamboo woven on the slant (the criss-cross ក្រឡា of
  * village gardens), lashed to the posts with rattan.
  *
@@ -47,7 +47,8 @@ registerPieceModel('fence', (b, look) => {
   });
 
   // ── Rails: a pair top and bottom (one each side of the lattice), the length of the run ──
-  const railY = [LAT0 + 0.03, LAT1 - 0.03];
+  // (top and bottom, and one pair across the middle: the lattice is a man's height and more)
+  const railY = [LAT0 + 0.03, (LAT0 + LAT1) / 2, LAT1 - 0.03];
   for (const y of railY)
     for (const s of [-1, 1]) {
       const c = tone(BAMBOO, r());

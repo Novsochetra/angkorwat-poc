@@ -1,7 +1,7 @@
 import { traceSource } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { PIECES, registerPieceModel } from '../pieces';
-import { BAMBOO, CUT, mix, OLD_BAMBOO, post, PATH, POST, RAIL, rng, stick, STRAW, THATCH, THATCH_DARK, TIE, tone, turned, type Rand, type Src } from './_yardKit';
+import { BAMBOO, CUT, mix, OLD_BAMBOO, OLD_STRAW, post, PATH, POST, RAIL, rng, stick, STRAW, THATCH, THATCH_DARK, thatchBand, TIE, tone, turned, type Rand, type Src } from './_yardKit';
 
 /**
  * His cattle pen (គ្រោលគោ, build/pieces.ts `PIECES.pen`), as the sugar-palm
@@ -206,8 +206,6 @@ function shed(b: VoxelBuilder, r: Rand, src: Src): void {
 
   // Thatch: both slopes a course at a time from the eaves up.
   const courses = 4;
-  const n = 6;
-  const pl = (span + 0.1) / n;
   for (let k = 0; k < courses; k++)
     for (const s of [-1, 1]) {
       const z0 = s > 0 ? zF : zB;
@@ -215,10 +213,7 @@ function shed(b: VoxelBuilder, r: Rand, src: Src): void {
       const slab = (cw / Math.cos(PITCH)) * 1.45;
       const z = z0 - s * (k + 0.5) * cw;
       const y = underAt(z) + THICK / 2 / Math.cos(PITCH) + 0.012 * k;
-      for (let p = 0; p < n; p++) {
-        const x = -(span + 0.1) / 2 + (p + 0.5) * pl + (r() - 0.5) * 0.1;
-        b.box(x, y + (r() - 0.5) * 0.04, z, pl + 0.1, THICK + r() * 0.04, slab, tone(THATCH, r()), 'mapBark', { src, rx: s * PITCH, shade: (k === 0 ? 0.86 : 0.9) + r() * 0.12 });
-      }
+      thatchBand(b, r, 'x', -(span + 0.1) / 2, (span + 0.1) / 2, z, y, slab, THICK, PITCH, s, k === 0 ? 0.92 : 1, src);
     }
   // The ragged ends at both eaves.
   for (const [z, s] of [
@@ -272,12 +267,17 @@ function hayRack(b: VoxelBuilder, r: Rand, src: Src): void {
 
 /** Straw bedding under the roof; by the seed a coil of rope on the gate post, a bucket by the trough, cut grass, a smudge fire's ash. */
 function touches(b: VoxelBuilder, r: Rand, src: Src): void {
-  for (let k = 0; k < 8; k++) {
+  // Straw bedding under the shed: handfuls of strands crossing every way, old and trodden with a little fresh.
+  for (let k = 0; k < 9; k++) {
     const x = -X1 + 0.5 + r() * (2 * X1 - 1);
     const z = ZB + 0.9 + r() * (LF - ZB - 0.6);
     // (not in the trough)
-    if (Math.abs(x - TROUGH[0]) < 1.05 && Math.abs(z - TROUGH[2]) < 0.45) continue;
-    turned(b, x, 0.03, z, 0.5 + r() * 0.4, 0.035, 0.3 + r() * 0.3, r() * Math.PI, 0, (r() - 0.5) * 0.1, tone(STRAW, r()), 'mapLeaf', 0.85 + r() * 0.12, src);
+    if (Math.abs(x - TROUGH[0]) < 1.1 && Math.abs(z - TROUGH[2]) < 0.5) continue;
+    const a = r() * Math.PI;
+    for (let q = 0; q < 3; q++) {
+      const c = r() < 0.6 ? tone(OLD_STRAW, r()) : tone(STRAW, r());
+      turned(b, x + (r() - 0.5) * 0.25, 0.028 + q * 0.012, z + (r() - 0.5) * 0.25, 0.07 + r() * 0.05, 0.03, 0.55 + r() * 0.35, a + (q - 1) * 0.7 + (r() - 0.5) * 0.4, 0, (r() - 0.5) * 0.2, c, 'mapLeaf', 0.88 + r() * 0.12, src);
+    }
   }
   if (r() < 0.6) {
     // A coil of rope hung on the right gate post's outside.
