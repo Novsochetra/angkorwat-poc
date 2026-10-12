@@ -847,6 +847,7 @@ const WORDS = {
   bikeDeep: { km: 'ទឹកជ្រៅពេក ជិះកង់កាត់មិនបានទេ', en: 'Too deep to ride through' },
   bikeMap: { km: 'ចំណតកង់', en: 'Bicycles' },
   bikeTheMap: { km: 'ចំណតកង់', en: 'the bicycles' },
+  // Buying his own bicycle, hiring one, a neighbour's (bikeShop…, bikeOwn…): roam/_bikeShop*.ts
   // Riding the ox cart (cart…): roam/_cartRide.ts
   cartRide: { km: 'ជិះរទេះគោ', en: 'Ride the ox cart' },
   cartOff: { km: 'ចុះពីរទេះ', en: 'Hop off' },
@@ -873,6 +874,7 @@ const WORDS = {
   bufKeyWalk: { km: 'ដើរ · ថយក្រោយ', en: 'walk on · back up' },
   bufKeyFast: { km: 'លឿនបន្តិច', en: 'a little faster' },
   bufKeyOff: { km: 'ចុះពីក្របី', en: 'get off' },
+  // Riding the white cattle (cow…): roam/_cowRide*.ts
   // The zip line (zip…): roam/_zip*.ts, jungle/_zipLine.ts
   zipRide: { km: 'ជិះខ្សែរអិល', en: 'Ride the zip line' },
   // (while riding, with Shift: he tucks his legs up and goes faster)
@@ -1182,6 +1184,7 @@ const WORDS = {
   homeAfternoon: { km: 'ទិវាសួស្ដី! ដេកបានស្រួលណាស់', en: 'Good afternoon! What a good sleep' },
   homeWoke: { km: 'ភ្ញាក់ទាន់ពេល៖ {event}', en: 'Up in time: {event}' },
   homeRested: { km: 'បានសម្រាកហើយ ស្រស់ស្រាយណាស់', en: 'Rested: you feel fresh again' },
+  // His own cattle: buying, feeding, selling (cattle…): roam/_cattle*.ts, map/cattle/
   // His home garden (garden…): roam/_garden*.ts, map/garden/ — each part adds its words under its own line below
   // (the plants: garden/kinds.ts; their names, a line for the seed card, one of their harvest)
   gardenEggplant: { km: 'ត្រប់', en: 'Eggplant' },
@@ -1317,6 +1320,7 @@ const WORDS = {
   gardenFellDurian: { km: 'ធូរេនទុំជ្រុះមកដីហើយ! ទៅរើសនៅក្រោមដើម', en: 'A durian has fallen! Pick it up under the tree' },
   gardenFellCoconut: { km: 'ផ្លែដូងជ្រុះមកដីហើយ! ទៅរើសនៅក្រោមដើម', en: 'Coconuts have fallen! Pick them up under the palm' },
   gardenFellSugarPalm: { km: 'ផ្លែត្នោតទុំជ្រុះមកដីហើយ! ទៅរើសនៅក្រោមដើម', en: 'Palm fruit has fallen! Pick it up under the palm' },
+  // (the fallen fruit's marker over a tree, and its look: garden/_viewFallen*.ts)
   // (the fruit trees' seasons on the calendar: roam/_gardenSeasons.ts)
   gardenSeasonAt: { km: 'សួននៅផ្ទះខ្ញុំ', en: 'My home garden' },
   gardenMangoSeason: { km: 'រដូវស្វាយ', en: 'Mango season' },
@@ -1396,6 +1400,7 @@ const WORDS = {
   carryEmpty: { km: 'ធុងអស់ទឹកហើយ — ទៅដងទឹកនៅអូរម្ដងទៀត', en: 'The buckets are empty: fetch more from the stream' },
   carrySpill: { km: 'ទឹកកំពុងកំពប់ — ដើរយឺតៗ កុំរត់', en: "You're spilling water: walk, don't run" },
   carryHandsFull: { km: 'ដាក់ដងរែកចុះសិន', en: 'Set the pole down first' },
+  // Building at home (build…): roam/_build*.ts, map/build/
   // His name in Khmer letters (name…): roam/_name*.ts, khmerName.ts
   nameTitle: { km: 'ឈ្មោះរបស់ខ្ញុំ', en: 'My name' },
   nameSub: { km: 'វាយឈ្មោះរបស់អ្នក ហើយមើលវាជាអក្សរខ្មែរ', en: 'Type your name and see it in Khmer letters' },

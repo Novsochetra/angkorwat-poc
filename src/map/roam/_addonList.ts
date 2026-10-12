@@ -12,10 +12,12 @@
 const MODULES: readonly (() => Promise<unknown>)[] = [
   // ── Knowing what is on (the calendar of events) ──
   () => import('./_calendar'),
-  // ── Ways to move: the bicycle, the ox cart, the water buffalo, the zip line, the sugar palm ladder ──
+  // ── Ways to move: the bicycle (and buying one), the ox cart, the water buffalo, the white cattle, the zip line, the sugar palm ladder ──
   () => import('./_bike'),
+  () => import('./_bikeShop'),
   () => import('./_cartRide'),
   () => import('./_buffaloRide'),
+  () => import('./_cowRide'),
   () => import('./_zip'),
   () => import('./_palmClimb'),
   // ── Village life: the hammock, the alms round (dak bat), the monk's blessing, kneeling to listen to the chanting, lotus, monkeys ──
@@ -30,7 +32,7 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_farmWork'),
   () => import('./_raceRow'),
   () => import('./_sey'),
-  // ── A friend and a home: the dog, the stilt house, his garden, his name ──
+  // ── A friend and a home: the dog, the stilt house, his garden, his cattle, his name, building at home ──
   () => import('./_dog'),
   () => import('./_home'),
   () => import('./_garden'),
@@ -38,7 +40,9 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_bodhi'),
   () => import('./_gardenShop'),
   () => import('./_carryPole'),
+  () => import('./_cattle'),
   () => import('./_name'),
+  () => import('./_build'),
   // ── Small things: the umbrella, the binoculars, smiles for the camera, selling fish, clothes ──
   () => import('./_umbrella'),
   () => import('./_binoculars'),

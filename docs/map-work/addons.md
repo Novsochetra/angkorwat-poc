@@ -374,6 +374,10 @@ each other).
   `video=1` stepped by `__videoFrame(t, 1 / 60)`, `roam.placeFrom(q, __frame)` to
   start each ride, the keys held with `page.keyboard`, `bikeDebug()` read each frame.
 
+### Buying a bicycle
+
+(to be written: roam/_bikeShop*.ts)
+
 ### Ox cart ride
 
 `roam/_cartRide.ts` (id `cart`, words `cart…`), his pose `character/cartRide.ts`,
@@ -503,6 +507,10 @@ land.ts's clock, whether he comes up calmly).
 - **Checks**: `window.__buffaloRide` (`state`, `leaving`, `grazing`, `rising`,
   `speed`, `rope`, `blocked`, `misfit`, `pose`: its place, tilt and channels, `seat`, `herd`); the
   console line `[buf] buffalo=…` says which one a URL brought where.
+
+### Riding the white cattle
+
+(to be written: roam/_cowRide*.ts)
 
 ### Zip line
 
@@ -2242,6 +2250,10 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
   from the veranda) · `cam=424.5,15,-112.5,424,14.2,-108.3,50&homedoor=0.5&ui=0` (half
   open) · `cam=424.3,15.2,-105.2,424,14.3,-108,55&homedoor=closed&ui=0` (shut, from inside).
 
+### His own cattle
+
+(to be written: roam/_cattle*.ts, map/cattle/)
+
 ### His home garden
 
 His own garden round his stilt house, and a bodhi tree at the village pagoda (add-on
@@ -2385,6 +2397,10 @@ chilli, basil, jasmine).
   `bodhimonk=<cue>`. `window.__garden`, `__gardenView`, `__gardenShop`, `__bodhi`
   (shots, the dev server). E.g.
   `roam=walk&at=422,-114&yaw=180&home=1&garden=demo&rcam=200,22,22&sim=_:1`.
+
+### Building at home
+
+(to be written: roam/_build*.ts, map/build/)
 
 ### The boat race
 
