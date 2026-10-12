@@ -2932,7 +2932,11 @@ model's `FEAT.fruit` (48: a round fruit in the right fist, between the palms in 
   mango", to the grandmother "ជូនផ្លែស្វាយយាយ / Give Grandma a mango", to the children
   "ឲ្យផ្លែស្វាយក្មេងៗ / Give the children a mango". The fruit is the one he has most of; `,` / `.`
   (only while this prompt shows) step through his kinds (`stepGift`), a toast "Fruit to share: mango
-  (3)". Order 50 (a stall's Buy and the earlier add-ons first).
+  (3)" (only when this prompt was the one shown on the last step: the offering reads the same keys).
+  Every kind of his harvest (no `GiftFilter`: neighbours get eggplant, corn and pumpkin too). Order 50:
+  a golden figure, the offering (by a shrine, a monk: order 14), a shrine, a stall's Buy and the earlier
+  add-ons come first; by the sey circle its "join" E wins (within 6.5 m of it; from farther off he gives
+  to its children).
 - **A grown-up**: he steps up before them (≈ 1 m), turns to them, the camera comes round to their
   side; he holds it out with both hands, the fruit between them (`fruitBuilder`, the garden's own
   harvest model, on his chest joint), a small bow (deeper to an elder; to someone sitting he goes down
