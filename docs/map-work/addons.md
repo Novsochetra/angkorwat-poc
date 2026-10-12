@@ -234,9 +234,11 @@ and the shop: "Buying a bicycle" below.
   his belly round: a low saddle, short cranks, the grips well forward). The one by
   Angkor Wat is hired out; the other three are the neighbours' (not his to ride);
   his own, bought at the morning market, is a fifth (its kind's look: `BikeLook`,
-  `restyle`), and the shop's three for sale stand in its stall: all of them are one
-  `Things` (the people's instanced boxes: one draw, one for the shadows), only the
-  one moving is written.
+  `restyle`), and the shop's three for sale stand in its stall: they are a `Things` (the
+  people's instanced boxes: one draw, one for the shadows) for each place — Angkor Wat's,
+  the morning market's (with the village's and the shop's three), the little market's behind
+  Angkor Wat, his own — each culled by the view (its bounds follow its bicycles) and past
+  260 m, and not drawn while none of its bicycles stands; only the one moving is written.
 - **Getting on and off**: on foot by one he may ride (his own, or the hire bicycle
   once paid; 1.7 m from its middle, one he may ride before a neighbour's up to
   0.8 m nearer), E "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up,
