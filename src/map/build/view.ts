@@ -61,8 +61,10 @@ const SHADOW_EVERY = 1;
 const MAX_LIGHTS = 12;
 /** A light's glowing block (m: across, high) and its halo (m), by piece. */
 const LIGHT: Partial<Record<PieceId, { w: number; h: number; halo: number; color: number }>> = {
-  lamp: { w: 0.14, h: 0.2, halo: 1.7, color: GLOW.lantern },
-  spirit: { w: 0.06, h: 0.11, halo: 0.75, color: 0xffb050 },
+  // (over the model's own opaque globe and flame: build/models/lamp.ts's globe 0.18 m across its belly, 0.22 m high;
+  // spirit.ts's flame 0.022 × 0.044 m; two blocks a light, square and turned 45°: an octagon round it)
+  lamp: { w: 0.2, h: 0.235, halo: 1.7, color: GLOW.lantern },
+  spirit: { w: 0.034, h: 0.066, halo: 0.75, color: 0xffb050 },
 };
 
 export interface PieceLookData {
@@ -325,14 +327,14 @@ export function createBuildView(shot = false): BuildView {
   const { material: glowMat, uniforms: glowU } = glowMaterial('lamp');
   glowMat.name = 'build:glow';
   const glowGeo = new BoxGeometry(1, 1, 1);
-  const glows = new InstancedMesh(glowGeo, glowMat, MAX_LIGHTS);
+  const glows = new InstancedMesh(glowGeo, glowMat, MAX_LIGHTS * 2);
   glows.name = 'build:glows';
   glows.count = 0;
   glows.castShadow = glows.receiveShadow = false;
   glows.frustumCulled = false;
-  const glowA = new Float32Array(MAX_LIGHTS * 2);
+  const glowA = new Float32Array(MAX_LIGHTS * 4);
   glowGeo.setAttribute('aGlow', new InstancedBufferAttribute(glowA, 2));
-  glows.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_LIGHTS * 3), 3);
+  glows.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_LIGHTS * 6), 3);
   // (one tiny block far under the land on the first frames: its program is compiled with the map's)
   glows.setMatrixAt(0, new Matrix4().makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
   glows.count = 1;
@@ -365,10 +367,14 @@ export function createBuildView(shot = false): BuildView {
       const y = p.y + ly;
       const z = p.z - lx * s + lz * c;
       _qy.setFromAxisAngle(_up, p.yaw);
-      glows.setMatrixAt(n, _m.compose(_p.set(x, y, z), _qy, _s.set(L.w, L.h, L.w)));
-      glows.setColorAt(n, _c.setHex(L.color));
-      glowA[n * 2] = p.seed * 20;
-      glowA[n * 2 + 1] = L.w;
+      for (let k = 0; k < 2; k++) {
+        const i = n * 2 + k;
+        if (k) _qy.setFromAxisAngle(_up, p.yaw + Math.PI / 4);
+        glows.setMatrixAt(i, _m.compose(_p.set(x, y, z), _qy, _s.set(L.w, L.h, L.w)));
+        glows.setColorAt(i, _c.setHex(L.color));
+        glowA[i * 2] = p.seed * 20;
+        glowA[i * 2 + 1] = L.w;
+      }
       haloPos.setXYZ(n, x, y, z);
       haloSize.setX(n, L.halo);
       n++;
@@ -378,7 +384,7 @@ export function createBuildView(shot = false): BuildView {
       haloSize.setX(i, 0);
     }
     stats.lights = n;
-    glows.count = Math.max(1, n);
+    glows.count = Math.max(1, n * 2);
     if (!n) glows.setMatrixAt(0, _m.makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
     glows.instanceMatrix.needsUpdate = true;
     if (glows.instanceColor) glows.instanceColor.needsUpdate = true;

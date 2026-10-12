@@ -45,9 +45,9 @@ export interface PieceSpec {
   /** The hammock's tie points (roam/_hammockSpots.ts `addHammock`: the cloth hangs between them). */
   readonly ties?: readonly [readonly [number, number, number], readonly [number, number, number]];
   /**
-   * Where a light glows at night (the lamp's flame, the spirit house's candle): the view (build/view.ts) puts a
-   * glowing block there (the lamp's 0.14 × 0.2 × 0.14 m, the candle's 0.06 × 0.11 × 0.06 m) and a halo round it, so
-   * the model leaves that room open (a lantern's frame round it, no glass block over it).
+   * Where a light glows at night (the lamp's globe, the spirit house's candle flame): the view (build/view.ts) draws
+   * its glow over the model's own blocks there (an octagon a little bigger than the lamp's globe, 0.2 × 0.235 m; one
+   * over the flame, 0.034 × 0.066 m) and a halo round it.
    */
   readonly light?: readonly [number, number, number];
   /** Where he kneels to pray before it (and the way he faces). */
