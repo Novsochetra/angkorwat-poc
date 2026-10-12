@@ -86,8 +86,12 @@ export function wellFed(g: number): number {
 export const ageOf = (c: Pick<Cow, 'grow'>): CowAge => (c.grow < YOUNG_AT ? 'calf' : c.grow < GROWN_AT ? 'young' : 'grown');
 /** Its condition: 1 well fed ‥ `THIN_MIN` thin. */
 export const condOf = (c: Pick<Cow, 'grow' | 'weight'>): number => Math.max(THIN_MIN, Math.min(1, c.weight / wellFed(c.grow)));
-/** How it is drawn: the ox model's size (× `OX`, at the people's scale 1.4 for a grown one), by its weight. */
-export const sizeOf = (c: Pick<Cow, 'grow' | 'weight'>): number => 1.4 * Math.pow(Math.max(40, wellFed(c.grow) * (0.85 + 0.15 * condOf(c))) / 300, 0.45);
+/**
+ * How it is drawn: the ox model's size (× `OX`), by its weight: grown and well fed at least as big as the village's
+ * cattle (1.4, the people's scale: under him, 2.4 m tall, they must not look small), 1.54 at its fullest, a calf
+ * bought ≈ 0.78, a young cow ≈ 1.15; a thin one a little smaller.
+ */
+export const sizeOf = (c: Pick<Cow, 'grow' | 'weight'>): number => 1.5 * Math.pow(Math.max(40, wellFed(c.grow) * (0.85 + 0.15 * condOf(c))) / 300, 0.45);
 /** What the trader pays for it now (riel, to 500). */
 export function value(c: Pick<Cow, 'grow' | 'weight'>): number {
   const v = c.weight * RATE[ageOf(c)] * (0.7 + 0.3 * condOf(c));

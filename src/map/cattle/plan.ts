@@ -50,9 +50,9 @@ export const TRADER_TROUGH = { x: -4.2, z: 0.5, len: 2.0 } as const;
  * sells the calf and the young cow, the grown one is his own plough ox), its size (× `OX`).
  */
 export const TRADER_POSTS: readonly { readonly x: number; readonly z: number; readonly out: number; readonly kind: 'calf' | 'young' | 'grown'; readonly size: number }[] = [
-  { x: -4.6, z: 2.2, out: -0.55, kind: 'grown', size: 1.38 },
-  { x: -2.6, z: 3.6, out: 0.25, kind: 'calf', size: 0.84 },
-  { x: 3.4, z: 2.6, out: 0.4, kind: 'young', size: 1.12 },
+  { x: -4.6, z: 2.2, out: -0.55, kind: 'grown', size: 1.46 },
+  { x: -2.6, z: 3.6, out: 0.25, kind: 'calf', size: 0.78 },
+  { x: 3.4, z: 2.6, out: 0.4, kind: 'young', size: 1.15 },
 ];
 /** The ox model's nose ahead of its middle (model units: × its size for metres). */
 export const OX_NOSE = 1.67;

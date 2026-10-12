@@ -1,5 +1,4 @@
 import type { Camera, Object3D } from 'three';
-import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import { BUILT, PIECES, pieceToWorld, type Built } from '../build/pieces';
 import { addRideCow, COW_RIDE, removeRideCow, rideCow, type RideCow } from '../cattle/ride';
 import { CATTLE_OBSTACLES, inHours, LIE_HOURS, OX_NOSE, PEN_HOURS, postAnimal, ROPE, STAKES, TRADER_POSTS, traderToWorld, traderYaw } from '../cattle/plan';
@@ -10,6 +9,7 @@ import { isTree, KINDS, stageOf, trunkAt } from '../garden/kinds';
 import { OX } from '../people/_ox';
 import type { AnimalCall } from '../types';
 import { hash3 } from '../../voxel/random';
+import { drawRideCow } from '../people/_oxRide';
 import { lineWalk, PathSearch } from './_dogPath';
 import { CattleBlocks } from './_cattleBlocks';
 import type { RoamWorld } from './types';
@@ -127,17 +127,15 @@ export interface Beast {
   wasRidden: boolean;
   /** How long he has stood in its way (s). */
   blocked: number;
+  /** Its lying (`rest`) as it was, and when it last changed (s): the shader eases it over a second. */
+  restWas: number;
+  restAt: number;
   /** Its coat as set on the flock (look, thin), so it is set again only when it changes. */
   coat: number;
   /** The trader's animal's look (cattle/state.ts `look`: the coat and its brightness): the cow he buys keeps it. */
   look: number;
 }
 
-const _q = new Quaternion();
-const _e = new Euler();
-const _m = new Matrix4();
-const _p = new Vector3();
-const _s = new Vector3();
 const _pa = { x: 0, z: 0, face: 0 };
 const _pw: [number, number] = [0, 0];
 
@@ -220,7 +218,7 @@ export class CattleHerd {
     return {
       i, cow: null, post: -1, ride: null, x: 0, y: 0, z: 0, yaw: 0, size: 1.4, doing: 'graze', until: 0, tx: 0, tz: 0, head: 1, turn: 0, rest: 0, speed: 0,
       goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false,
-      food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, coat: -1, look: 0,
+      food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
     };
   }
 
@@ -698,6 +696,13 @@ export class CattleHerd {
       b.goal = this.goalNow(b, clock);
       b.doing = 'stand';
       b.until = this.time + 1.5;
+      b.rest = 0;
+      // (the map from above, or out of everyone's sight: it is home at once)
+      if (!this.roaming || !this.seen(b.x, b.z)) {
+        b.at = false;
+        this.home(b, false);
+        return;
+      }
       b.at = false;
       b.wn = b.wi = 0;
     }
@@ -1070,7 +1075,8 @@ export class CattleHerd {
         continue;
       }
       const r = b.ride;
-      if (r && r.ridden) this.drawRidden(b, r);
+      // (ridden: as the ride has it, every frame — its tilt, its step phase, trotting, lying, getting up: people/_oxRide.ts)
+      if (r && r.ridden) drawRideCow(fl, b.i, r, t);
       else {
         fl.place(b.i, b.x, b.y, b.z, b.yaw, b.size);
         const walk = b.speed > 0.02 ? (b.speed > 0.5 ? 1 : 0.6) : 0;
@@ -1208,26 +1214,11 @@ export class CattleHerd {
     }
   }
 
-  /** A ridden cow from the ride's fields: its place, tilt, step and head. */
-  private drawRidden(b: Beast, r: RideCow): void {
-    const fl = this.flock;
-    const t = this.time;
-    fl.place(b.i, r.x, r.y, r.z, r.yaw, r.scale);
-    if (r.pitch !== 0 || r.roll !== 0) {
-      // (`place` writes the heading only: the whole turn written over it, as the buffalo ride's are: fauna/_landBuffalo.ts)
-      _q.setFromEuler(_e.set(r.pitch, r.yaw, r.roll, 'YXZ'));
-      _m.compose(_p.set(r.x, r.y, r.z), _q, _s.setScalar(r.scale));
-      _m.toArray(fl.mesh.instanceMatrix.array as Float32Array, b.i * 16);
-      fl.mesh.instanceMatrix.needsUpdate = true;
-    }
-    const v = Math.abs(r.speed);
-    fl.gait(b.i, v > 0.02 ? Math.min(2, v / (1.3 * r.scale)) : 0, v > 0.02 ? hzOf(v, r.scale) : 0.5, t);
-    fl.set(b.i, CH.head, r.head, t);
-    fl.set(b.i, CH.turn, 0, t);
-    fl.set(b.i, CH.rest, r.lying ? 1 : 0, t);
-  }
-
-  /** Its ride's fields from where it is: may he get on (grown, standing, grazing, eating or lying, not on a way). */
+  /**
+   * Its ride's fields from where it is: may he get on — grown, standing still (grazing, looking, lowing, eating) or
+   * lying down and settled (not on its way down or up), not on a way, not in the pen, room over its back for him to sit
+   * up (no low roof: the pen's lean-to, as the ride asks too).
+   */
   private writeRide(b: Beast, r: RideCow): void {
     r.x = b.x;
     r.y = b.y;
@@ -1238,7 +1229,17 @@ export class CattleHerd {
     r.head = b.head;
     r.speed = b.speed;
     r.pitch = r.roll = 0;
-    r.canRide = !!b.cow && ageOf(b.cow) === 'grown' && b.at && !b.leaving && b.goal !== 'pen' && (b.doing === 'graze' || b.doing === 'stand' || b.doing === 'low' || b.doing === 'lie' || b.doing === 'eat');
+    if (b.rest !== b.restWas) {
+      b.restWas = b.rest;
+      b.restAt = this.time;
+    }
+    const settled = this.time - b.restAt > 1.4 && b.speed < 0.01;
+    let ok = !!b.cow && ageOf(b.cow) === 'grown' && b.at && !b.leaving && b.goal !== 'pen' && settled && (b.doing === 'graze' || b.doing === 'stand' || b.doing === 'low' || b.doing === 'lie' || b.doing === 'eat');
+    if (ok && this.world.ceilingAt) {
+      const top = b.y + 1.3 * b.size;
+      ok = this.world.ceilingAt(b.x, b.z, top - 0.2) >= top + 1.75;
+    }
+    r.canRide = ok;
   }
 
   /** Back to the map: nobody rides; every animal where it belongs (its ride's fields too). */

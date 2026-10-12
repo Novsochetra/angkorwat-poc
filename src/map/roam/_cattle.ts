@@ -435,11 +435,12 @@ function cowAt(ctx: RoamCtx, any: boolean): Beast | null {
     herd.nose(b, _nose);
     const dn = Math.hypot(_nose.x - p.x, _nose.z - p.z);
     const db = Math.hypot(b.x - p.x, b.z - p.z);
-    const dx = b.x - p.x;
-    const dz = b.z - p.z;
-    const facing = db > 0.01 ? (dx * fx + dz * fz) / db : 1;
-    // (at its head: near its nose; or by its body, turned to it)
-    const near = dn < 1.9 + 0.3 * b.size || (db < 1.0 + 1.4 * b.size && facing > 0.35);
+    const facing = db > 0.01 ? ((b.x - p.x) * fx + (b.z - p.z) * fz) / db : 1;
+    // (at its head, near its nose, turned to it: by its flank E is the ride's, roam/_cowRide.ts)
+    const tx = _nose.x - p.x;
+    const tz = _nose.z - p.z;
+    const toNose = dn > 0.01 ? (tx * fx + tz * fz) / dn : 1;
+    const near = dn < 1.9 + 0.3 * b.size && (toNose > 0.2 || dn < 0.9);
     if (!near) continue;
     const s = Math.min(dn, db) - facing * 0.5;
     if (s < score) {
