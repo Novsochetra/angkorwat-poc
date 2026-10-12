@@ -44,7 +44,11 @@ export interface PieceSpec {
   readonly seat?: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number; readonly lie?: boolean };
   /** The hammock's tie points (roam/_hammockSpots.ts `addHammock`: the cloth hangs between them). */
   readonly ties?: readonly [readonly [number, number, number], readonly [number, number, number]];
-  /** Where a light glows at night (the lamp's flame, the spirit house's candle). */
+  /**
+   * Where a light glows at night (the lamp's flame, the spirit house's candle): the view (build/view.ts) puts a
+   * glowing block there (the lamp's 0.14 × 0.2 × 0.14 m, the candle's 0.06 × 0.11 × 0.06 m) and a halo round it, so
+   * the model leaves that room open (a lantern's frame round it, no glass block over it).
+   */
   readonly light?: readonly [number, number, number];
   /** Where he kneels to pray before it (and the way he faces). */
   readonly kneel?: { readonly x: number; readonly z: number; readonly yaw: number };
@@ -79,6 +83,8 @@ export const PIECES: Record<PieceId, PieceSpec> = {
       [1.6, -1.4, 0.2, 0.2, 2.6],
       [-1.6, 1.4, 0.2, 0.2, 2.6],
       [1.6, 1.4, 0.2, 0.2, 2.6],
+      // the bench along its back (he sits on it: its top is the seat's height)
+      [0, -1.05, 2.8, 0.6, 0.62],
     ],
     seat: { x: 0, y: 0.62, z: -1.05, yaw: 0 },
   },
@@ -197,10 +203,23 @@ export function registerPieceModel(id: PieceId, m: PieceModel): void {
   MODELS[id] = m;
 }
 
-/** Until its model is done: its footprint as a pale wooden box (a post at each corner and a frame). */
+/**
+ * Until its model is done: its solids as pale wooden boxes and a frame at its top; a hammock's cloth as striped
+ * `petal` blocks sagging between its ties (so the hammock add-on finds it: roam/_hammockSpots.ts).
+ */
 const placeholder: PieceModel = (b, l) => {
   const p = PIECES[l.id];
   for (const [x, z, w, d, top] of p.solids) b.box(x, top / 2, z, w, top, d, 0xb08a5a, 'mapBark');
+  if (p.ties) {
+    const [a, c] = p.ties;
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n;
+      const sag = 0.55 * 4 * u * (1 - u);
+      b.box(a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u - sag, a[2] + (c[2] - a[2]) * u, (Math.hypot(c[0] - a[0], c[2] - a[2]) / n) * 1.02, 0.06, 0.7, i % 3 === 1 ? 0x3a6a9a : 0xc84a3a, 'petal');
+    }
+    return;
+  }
   b.box(0, p.h - 0.05, 0, p.w, 0.1, p.d, 0xd8c08a, 'mapBark');
 };
 
