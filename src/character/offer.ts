@@ -42,6 +42,8 @@ export interface OfferPoseState {
   lean: number;
   /** Over to his left (+) or right (−) as he bows: the chest leans and turns that way (0 ‥ ±1). */
   side: number;
+  /** Kneeling: the body (not the arms) down toward the prayer's bow, the hands' way to the floor before him (0 ‥ 1). */
+  stoop: number;
   /** Both hands on the gift (0: resting ‥ 1). */
   hold: number;
   /** The gift's middle (BU, his space), and half the width between his fists (BU). */
@@ -65,7 +67,7 @@ export const OFFER_RISE = 7.15;
 export const OFFER_HAT = { off: PRAY.hatOff, on: PRAY.hatOn } as const;
 
 export function offerPoseState(): OfferPoseState {
-  return { pray: 0, stand: false, rise: 1, lean: 0, side: 0, hold: 0, gift: new Vector3(0, 9, 5), half: 1.4, palms: 0, bow: 0, look: new Vector3(0, 12, 14), lookW: 0, t: 0 };
+  return { pray: 0, stand: false, rise: 1, lean: 0, side: 0, stoop: 0, hold: 0, gift: new Vector3(0, 9, 5), half: 1.4, palms: 0, bow: 0, look: new Vector3(0, 12, 14), lookW: 0, t: 0 };
 }
 
 // ── The prayer's shapes ────────────────────────────────────────────────────
@@ -202,6 +204,7 @@ export function offerPose(s: OfferPoseState): Pose {
     OUT.head!.rx = STAND_BOW.head * s.bow;
   } else {
     mix(OUT, heels, knees, s.rise, ALL);
+    toward(OUT, bow, s.stoop, BODY);
     OUT.hips!.rx = (OUT.hips!.rx ?? 0) + LEAN_HIPS * s.lean;
     OUT.hipL!.rx = (OUT.hipL!.rx ?? 0) - LEAN_HIPS * s.lean;
     OUT.hipR!.rx = (OUT.hipR!.rx ?? 0) - LEAN_HIPS * s.lean;
