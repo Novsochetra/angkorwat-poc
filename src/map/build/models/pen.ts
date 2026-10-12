@@ -1,7 +1,7 @@
 import { traceSource } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { PIECES, registerPieceModel } from '../pieces';
-import { BAMBOO, CUT, mix, OLD_BAMBOO, OLD_STRAW, post, PATH, POST, RAIL, rng, stick, STRAW, THATCH, THATCH_DARK, thatchBand, TIE, tone, turned, type Rand, type Src } from './_yardKit';
+import { BAMBOO, CUT, mix, OLD_BAMBOO, OLD_STRAW, post, PATH, POST, RAIL, rng, stick, STRAW, thatchCap, thatchCourse, TIE, tone, turned, type Rand, type Src } from './_yardKit';
 
 /**
  * His cattle pen (គ្រោលគោ, build/pieces.ts `PIECES.pen`), as the sugar-palm
@@ -81,7 +81,8 @@ registerPieceModel('pen', (b, look) => {
 
   floor(b, r, traceSource());
   trough(b, r, traceSource());
-  shed(b, r, traceSource());
+  // (the thatch its own stream: its leaves never change the hay rack and the last touches)
+  shed(b, r, rng(look.seed, 84), traceSource());
   hayRack(b, r, traceSource());
   touches(b, r, traceSource());
 });
@@ -183,9 +184,10 @@ function trough(b: VoxelBuilder, r: Rand, src: Src): void {
 /**
  * The shed along the back: plates on its posts (the back fence's and two on the side fences at `LF`), tie beams
  * across the ends, king posts and the ridge pole, bamboo rafters in pairs; thatch in courses from both eaves up,
- * the ragged ends hanging at the eaves, a bundle along the ridge, tied down. The ends are open (the frame shows).
+ * their leaves ragged at their lower edges and hanging at the eaves, a cap folded over the ridge, tied down. The ends
+ * are open (the frame shows).
  */
-function shed(b: VoxelBuilder, r: Rand, src: Src): void {
+function shed(b: VoxelBuilder, r: Rand, rt: Rand, src: Src): void {
   const span = 2 * X1 + 0.36;
   const ridgeY = underAt(ZM) - RAFTER / 2;
   for (const z of [ZB, LF]) b.box(0, PLATE - 0.065, z, span, 0.13, 0.14, tone(POST, r()), 'mapBark', { src });
@@ -204,7 +206,8 @@ function shed(b: VoxelBuilder, r: Rand, src: Src): void {
   }
   for (const z of [ZB + 0.45, LF - 0.45]) b.box(0, underAt(z) - 0.03, z, span, 0.045, 0.05, tone(BAMBOO, r()), 'mapBark', { src, shade: 0.9 });
 
-  // Thatch: both slopes a course at a time from the eaves up.
+  // Thatch: both slopes a course at a time from the eaves up, each course one band, its leaves down the slope over it,
+  // ragged past its lower edge; the eaves' courses thicker, their leaf tips hanging (`thatchCourse`).
   const courses = 4;
   for (let k = 0; k < courses; k++)
     for (const s of [-1, 1]) {
@@ -212,26 +215,15 @@ function shed(b: VoxelBuilder, r: Rand, src: Src): void {
       const cw = Math.abs(ZM - z0) / courses;
       const slab = (cw / Math.cos(PITCH)) * 1.45;
       const z = z0 - s * (k + 0.5) * cw;
-      const y = underAt(z) + THICK / 2 / Math.cos(PITCH) + 0.012 * k;
-      thatchBand(b, r, 'x', -(span + 0.1) / 2, (span + 0.1) / 2, z, y, slab, THICK, PITCH, s, k === 0 ? 0.92 : 1, src);
+      const eave = k === 0;
+      const th = eave ? THICK * 1.3 : THICK;
+      const y = underAt(z) + th / 2 / Math.cos(PITCH) + 0.012 * k;
+      // (short tips: he is 2.4 m tall, the front eave over the pen)
+      const leaves = { every: 0.3, hang: eave ? ([0.04, 0.12] as const) : ([0.02, 0.08] as const), tips: eave ? 0.34 : 0, tipLen: [0.08, 0.2] as const };
+      thatchCourse(b, rt, 'x', -(span + 0.1) / 2, (span + 0.1) / 2, z, y, slab, th, PITCH, s, k % 2 === 1 ? 0.92 : 1, cw / Math.cos(PITCH), leaves, src);
     }
-  // The ragged ends at both eaves.
-  for (const [z, s] of [
-    [zF - 0.03, 1],
-    [zB + 0.03, -1],
-  ] as const)
-    for (let x = -span / 2 + 0.14; x < span / 2 - 0.05; x += 0.3) {
-      // (short: he is 2.4 m tall, the front eave over the pen)
-      const len = 0.1 + r() * 0.12;
-      b.box(x + (r() - 0.5) * 0.06, underAt(z) + 0.08 - len / 2, z + s * 0.01, 0.28, len, 0.06, tone(THATCH_DARK, r()), 'mapBark', { src, shade: 0.85 + r() * 0.1 });
-    }
-  // The ridge's bundle and its ties.
-  const cy = underAt(ZM) + THICK + 0.08;
-  for (let p = 0; p < 5; p++) {
-    const x = -(span + 0.1) / 2 + ((p + 0.5) * (span + 0.1)) / 5;
-    b.box(x, cy + (r() - 0.5) * 0.03, ZM, (span + 0.1) / 5 + 0.05, 0.22, 0.46, tone(THATCH, r()), 'mapBark', { src, shade: 0.76 + r() * 0.08 });
-  }
-  for (let p = 0; p <= 5; p++) b.box(-X1 + 0.1 + (p * (2 * X1 - 0.2)) / 5, cy + 0.01, ZM, 0.06, 0.25, 0.5, tone(BAMBOO, r()), 'mapBark', { src, shade: 0.9 });
+  // The cap over the ridge, last: folded over it, in three lengths, tied with split bamboo.
+  thatchCap(b, rt, -(span + 0.1) / 2, (span + 0.1) / 2, ZM, underAt(ZM) + 0.39, PITCH, 0.44, 0.13, 9, { tips: 0, tie: 1.45 }, src);
 }
 
 /** The hay rack on the back fence, right of the trough: slanted bars between two rails, full of rice straw, wisps poking through. */

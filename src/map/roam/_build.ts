@@ -72,8 +72,11 @@ const PIECE_REACH = 1.25;
 const SNAP = { d: 1.1, turn: 0.6 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
-/** Build mode's camera: tilt, distance at least (and per metre of the piece's reach), its ease and back (1/s), the focus toward the ghost. */
-const MODE_CAM = { pitch: 0.66, distance: 8, perReach: 1.1, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.45 };
+/**
+ * Build mode's camera: tilt, distance at least (and per metre of the piece's reach), its ease and back (1/s), the focus
+ * toward the ghost, over his shoulder (rad); its first move (picked on the card): this quick (1/s), this long (s).
+ */
+const MODE_CAM = { pitch: 0.66, distance: 8, perReach: 1.1, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.45, open: 5, openFor: 0.9 };
 
 let env: AddonEnv | null = null;
 let view: BuildView | null = null;
@@ -98,6 +101,8 @@ let hinted: boolean = progress.get<boolean>('build.hinted', false);
 let modeCamBefore: { pitch: number; distance: number } | null = null;
 let modeCamToward = 0;
 let modeCamLetGo = false;
+/** Seconds left of the camera's first move into build mode. */
+let modeCamOpen = 0;
 let touchBar: HTMLElement | null = null;
 
 // ── Words (made once a language and value: no string is made a frame) ──────────
@@ -303,6 +308,7 @@ function cannot(id: PieceId): string | null {
 function enterPlacing(id: PieceId): void {
   if (!placing) {
     modeCamLetGo = false;
+    modeCamOpen = MODE_CAM.openFor;
     turn = 0;
   }
   placing = id;
@@ -345,6 +351,12 @@ function buildHere(ctx: RoamCtx): void {
   BuildWork.start(ctx, piece);
 }
 
+/**
+ * How far down build mode's camera looks for a ghost `ahead` m before him (rad): a near one (the jar, the lamp, the
+ * spirit house: a step or two before him) a little steeper, so the line from the camera to it goes over his hat.
+ */
+const pitchFor = (ahead: number): number => MODE_CAM.pitch + Math.min(0.24, Math.max(0, (3.2 - ahead) * 0.2));
+
 /** Build mode's camera: it looks down more, further back, the ghost in the middle (the player's drag wins). */
 function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   const cam = ctx.cam;
@@ -353,17 +365,25 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   if (on && placing) {
     modeCamBefore ??= { pitch: cam.pitch, distance: cam.distance };
     if (i.lookPitch || i.zoom || i.lookYaw) modeCamLetGo = true;
-    modeCamToward += (1 - modeCamToward) * k;
+    // (its first move quick: just picked, the ghost before him sits behind his hat until the camera has moved)
+    const open = modeCamOpen > 0;
+    modeCamOpen = Math.max(0, modeCamOpen - dt);
+    const kk = open ? 1 - Math.exp(-MODE_CAM.open * dt) : k;
+    modeCamToward += (1 - modeCamToward) * kk;
     const f = cam.focus;
     f.x += (spot.x - f.x) * MODE_CAM.toward * modeCamToward;
     f.z += (spot.z - f.z) * MODE_CAM.toward * modeCamToward;
     // (over his shoulder, a little: the ghost ahead beside his hat, not under it)
     cam.behindYaw = ctx.body.yaw + MODE_CAM.shoulder * modeCamToward;
     if (modeCamLetGo) return;
+    // On the first move it goes round over his shoulder standing too (the follow camera swings round behind him only
+    // while he walks), when it looks his way already (from in front of him it stays: no spin).
+    const round = Math.atan2(Math.sin(cam.behindYaw - cam.yaw), Math.cos(cam.behindYaw - cam.yaw));
+    if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
     const reach = Math.hypot(PIECES[placing].w, PIECES[placing].d) / 2;
-    cam.pitch += (MODE_CAM.pitch - cam.pitch) * k;
+    cam.pitch += (pitchFor(Math.hypot(spot.x - ctx.body.pos.x, spot.z - ctx.body.pos.z)) - cam.pitch) * kk;
     const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, modeCamBefore.distance));
-    cam.distance += (want - cam.distance) * k;
+    cam.distance += (want - cam.distance) * kk;
     return;
   }
   if (modeCamToward > 0.001) {
@@ -708,6 +728,8 @@ registerAddon({
   after(ctx, m, dt) {
     lastCtx = ctx;
     BuildWork.after(ctx, dt);
+    // (the ghost's spot first: the camera's move starts toward where the ghost is now, not where it was)
+    if (placing && m === 'walk' && !BuildWork.active && !card?.open && env && !env.busy()) placingNow(ctx);
     if (m === 'walk' && !BuildWork.active) modeCamera(ctx, !!placing && !card?.open, dt);
     // The hint, once: the house is his, he is by it.
     if (!hinted && m === 'walk' && HOME.owned && env && (!env.shot || env.params.get('buildhint') === '1')) {
