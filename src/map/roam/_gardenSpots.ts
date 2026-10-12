@@ -37,6 +37,9 @@ import { edgeBefore, waterAhead, type WaterSpot } from './_waterReach';
  * - `pagoda`: the bodhi is planted at the village pagoda, not at home.
  */
 
+/** Planting mode is on (roam/_garden.ts sets it): the kind he is planting, or null. Other add-ons' E lines step aside while it is. */
+export const PLANTING = { kind: null as PlantKindId | null };
+
 /** He gardens within this far of the house's middle (m). */
 export const AREA = 40;
 /** The ring and the E row look this far (m: a margin round `AREA` so the ring says "too far" at its edge). */
