@@ -5,10 +5,13 @@ import type { RoamWorld } from '../roam/types';
 import { swayLeaves } from '../veg/sway';
 import { GROWN, KINDS, type PlantKindId, type Stage } from './kinds';
 import './models';
-import { GARDEN, lookOf, lookSig, thirsty, type Plant, type PlantLook } from './state';
-import { dropBetween, dropMoves, type Drop } from './_viewDrop';
+import { GARDEN, lookOf, lookSig, ripeNow, thirsty, type Plant, type PlantLook } from './state';
+import { SFX } from '../audio/addonSfx';
+import { crownGone, dropBetween, dropMoves, type Drop } from './_viewDrop';
 import { installGardenFx } from './_fx';
 import { ThirstDrops } from './_viewThirst';
+import { FallenMarks } from './_viewFallen';
+import { fallenSpot, GroundFruit } from './_viewFruit';
 import { buildEarth, puddleLook, tintEarth, wetLook, type Earth } from './_viewEarth';
 import { buildLook, CROWNS, FAMILIES, LookCache, type LookData } from './_viewLook';
 import { Pool, type Run } from './_viewPool';
@@ -81,6 +84,8 @@ const WET_TAU = 0.14;
 const SHADOW_EVERY = 0.5;
 /** Earths re-tinted at most this many a frame (rain on the whole garden: spread over a few frames). */
 const TINTS = 6;
+/** A fruit's thud is heard within this far of the camera (m), softer the further. */
+const THUD_FAR = 60;
 
 type Site = 'home' | 'pagoda';
 /** A site's parts: the small things and every earth, and the trees. */
@@ -154,6 +159,9 @@ interface Item {
   pudW: number;
   earthC: Float32Array | null;
   drop: Drop | null;
+  /** Its fallen fruit's middle (m, the map; NaN: none lying), for its marker (garden/_viewFallen.ts). */
+  fallX: number;
+  fallZ: number;
   stamp: number;
   queued: boolean;
 }
@@ -178,6 +186,8 @@ const easeOutBack = (u: number) => {
 };
 
 const _eye = new Vector3();
+/** The camera this frame (the thuds are heard from it). */
+const _ear = new Vector3();
 
 export function createGardenView(world: RoamWorld, shot = false): GardenView {
   const object = new Group();
@@ -200,6 +210,11 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   let slow = 1;
   /** Checks: always near or far (`__gardenView.force`), else by the camera. */
   let force: 'near' | 'far' | null = new URLSearchParams(location.search).get('gardenlod') as 'near' | 'far' | null;
+  /** Shots: a tree's fruit falling, held `t` s into its fall (`gardenfall=<kind>:<t>`; `__gardenView.fall(t)` moves it). */
+  const shotFall = ((): { kind: PlantKindId; t: number } | null => {
+    const v = shot ? new URLSearchParams(location.search).get('gardenfall')?.split(':') : undefined;
+    return v && v[0] in KINDS ? { kind: v[0] as PlantKindId, t: Math.max(0, Number(v[1]) || 0) } : null;
+  })();
   const stats = { ahead: 0, warmMs: 0, builds: 0, buildMs: 0, maxMs: 0, lastMs: 0, frameMs: 0, maxFrameMs: 0, lookMs: 0, earthMs: 0, writeMs: 0 };
 
   // Ask the still shadows again once, from the first garden mesh drawn after a change.
@@ -257,11 +272,25 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   const thirst = new ThirstDrops(shot);
   object.add(thirst.mesh);
   const bursts = new Float32Array(3 * 16);
+  // Ripe fruit lying under his trees and falling from them, drawn smooth (garden/_viewFruit.ts: the coconut).
+  const ground = new GroundFruit(world);
+  object.add(ground.object);
+  const landings = new Float32Array(4 * 12);
+  // A marker over each of his trees with ripe fruit lying under it to pick up (garden/_viewFallen.ts): it pops when picked.
+  const marks = new FallenMarks(shot);
+  object.add(marks.mesh);
+  /** A fruit hit the earth at (x, y, z): its thud (softer further from the camera; the view's falls, not a shot's). */
+  const thud = (x: number, y: number, z: number) => {
+    if (shot) return;
+    const d = Math.hypot(x - _ear.x, y - _ear.y, z - _ear.z);
+    if (d < THUD_FAR) SFX.play('gardenThud', 0.9 * (1 - d / THUD_FAR) ** 1.4);
+  };
 
   // Ripe fruit falling: the next look of that plant drops it from the crown.
   let alive = true;
   GARDEN.on((e) => {
     if (alive && e.type === 'fell') falls.add(e.plant.id);
+    if (alive && e.type === 'picked') marks.picked(e.plant.id);
   });
 
   // ── Writing a plant's blocks ──
@@ -472,9 +501,44 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       it.from = Math.min(1, Math.max(0.25, prev.height / next.height));
     }
     it.drop = null;
+    // (the coconut's fruit on the ground is drawn smooth, not by its model: garden/_viewFruit.ts)
+    const smooth = ground.handles(it.kind);
+    if (smooth) ground.lay(it.id, next.look, it.x, it.y, it.z, it.yaw, it.earth.bank, it.earth.bankTop, it.earth.foot);
+    // (where its fallen fruit lies, for its marker: their middle)
+    it.fallX = it.fallZ = Number.NaN;
+    if (next.look.fallen > 0 && FallenMarks.icon(it.kind) >= 0) {
+      let sx = 0;
+      let sz = 0;
+      let n = 0;
+      for (let i = 0; i < Math.min(3, next.look.fallen); i++) {
+        const at = fallenSpot(next.look, i);
+        if (!at) continue;
+        sx += at[0];
+        sz += at[1];
+        n++;
+      }
+      if (n) {
+        const c = Math.cos(it.yaw);
+        const sn = Math.sin(it.yaw);
+        it.fallX = it.x + (sx / n) * c + (sz / n) * sn;
+        it.fallZ = it.z - (sx / n) * sn + (sz / n) * c;
+      }
+    }
     if (prev && falls.has(it.id)) {
       falls.delete(it.id);
-      if (live) it.drop = dropBetween(prev, next);
+      if (live) {
+        if (smooth) ground.fall(it.id, crownGone(prev, next), next.height, it.yaw);
+        else it.drop = dropBetween(prev, next);
+      }
+    } else if (shotFall && !prev && shotFall.kind === it.kind && next.look.fallen > 0) {
+      // (a shot's fall held `t` s in: `gardenfall=<kind>:<t>`, from the look before it, the fruit still up)
+      const before = cache.take({ ...next.look, fallen: 0, fruit: 1 });
+      if (smooth) ground.fall(it.id, crownGone(before, next), next.height, it.yaw, shotFall.t);
+      else {
+        it.drop = dropBetween(before, next);
+        if (it.drop) it.drop.t = shotFall.t;
+      }
+      cache.release(before);
     }
     if (prev) cache.release(prev);
     it.data = next;
@@ -499,6 +563,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     CROWNS.delete(it.id);
     GROUND_CLEAR.set(it.id, 0, 0, 0);
     leaving.delete(it.id);
+    ground.clear(it.id);
     if (it.data) cache.release(it.data);
     it.data = null;
     items.delete(it.id);
@@ -546,6 +611,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       pudW: -1,
       earthC: null,
       drop: null,
+      fallX: Number.NaN,
+      fallZ: Number.NaN,
       stamp,
       queued: false,
     };
@@ -649,7 +716,11 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     // (three calls a scene's with the renderer, the scene, the camera and the target, before it culls)
     hooked.onBeforeRender = function (this: Scene, ...args: Parameters<Scene['onBeforeRender']>) {
       before.apply(this, args);
-      if (alive) judgeAll(args[2]);
+      if (!alive) return;
+      judgeAll(args[2]);
+      // (the icons turned to the camera that draws this picture: a shot's or the free camera's too)
+      thirst.face(args[2]);
+      marks.face(args[2]);
     };
   }
 
@@ -825,6 +896,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
     },
     frame(camera, t, drift, night = 0) {
       const t0 = performance.now();
+      _ear.setFromMatrixPosition(camera.matrixWorld);
       const real = Number.isNaN(lastT) ? 0 : t - lastT;
       const dt = shot ? 0 : Math.min(0.1, Math.max(0, real)) * slow;
       smooth = real > 0 && real <= frameCap.time * 1.3 ? smooth + 1 : 0;
@@ -881,7 +953,10 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             dr.landed[k] = 1;
             const c = Math.cos(it.yaw);
             const sn = Math.sin(it.yaw);
-            fx.puff(it.x + c * f.lx + sn * f.lz, it.y + (it.earth?.foot ?? 0), it.z - sn * f.lx + c * f.lz, KINDS[it.kind].height > 9 ? 1 : 0.5);
+            const wx = it.x + c * f.lx + sn * f.lz;
+            const wz = it.z - sn * f.lx + c * f.lz;
+            fx.puff(wx, it.y + (it.earth?.foot ?? 0), wz, KINDS[it.kind].height > 9 ? 1 : 0.5);
+            thud(wx, it.y, wz);
           }
           if (it.drop.t >= it.drop.end) {
             dropMoves(it.drop, it.yaw, 1);
@@ -897,6 +972,20 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         }
         // The earth's water: darker in half a second when watered, paler as it dries; the puddle soaking in.
         const p = it.plant;
+        // (its fallen fruit's marker: over where the fruit lies once it lies still, clear of the trunk on the camera's side)
+        if (p && p.at === 'home' && !Number.isNaN(it.fallX)) {
+          let mx = it.fallX;
+          let mz = it.fallZ;
+          const room = KINDS[it.kind].trunk + 0.45;
+          if (Math.hypot(mx - it.x, mz - it.z) < room) {
+            const dx = _ear.x - it.x;
+            const dz = _ear.z - it.z;
+            const l = Math.hypot(dx, dz) || 1;
+            mx = it.x + (dx / l) * room;
+            mz = it.z + (dz / l) * room;
+          }
+          marks.set(it.id, it.kind, ripeNow(p) && !it.mode && !it.drop && !ground.falling(it.id), mx, it.y + (it.earth?.foot ?? 0), mz);
+        }
         // (its drop of water, wanting it: over its top)
         if (p && p.at === 'home')
           thirst.set(it.id, thirsty(p), p.wet <= 0 && p.dry >= KINDS[p.kind].dieAfter * 0.5, it.x, it.y + (it.earth?.foot ?? 0) * Math.min(1, it.earthUp) + it.data.height * scaleOf(it) + 0.25, it.z);
@@ -912,6 +1001,13 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
           }
         }
       }
+      // (the smooth fruit's falls: dust and a thud as each hits the earth)
+      const nl = ground.frame(dt, camera, landings);
+      for (let k = 0; k < nl; k++) {
+        fx.puff(landings[k * 4], landings[k * 4 + 1], landings[k * 4 + 2], landings[k * 4 + 3]);
+        thud(landings[k * 4], landings[k * 4 + 1], landings[k * 4 + 2]);
+      }
+      marks.frame(dt, camera, night);
       const nb = thirst.frame(dt, camera, bursts, night);
       for (let k = 0; k < nb; k++) fx.pop(bursts[k * 3], bursts[k * 3 + 1], bursts[k * 3 + 2]);
       fx.frame(dt, calm);
@@ -933,6 +1029,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
       alive = false;
       fx.dispose();
       thirst.dispose();
+      marks.dispose();
+      ground.dispose();
       for (const b of batchList) for (const part of b.parts) for (const p of part.pools) p.dispose();
       for (const it of list) {
         CROWNS.delete(it.id);
@@ -973,6 +1071,8 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
             warmMs: +stats.warmMs.toFixed(1),
             fx: fx.stats(),
             thirst: thirst.shown,
+            fruit: ground.shown,
+            fallenMarks: marks.shown,
             warm: `${Math.min(warmAt, warmList.length)}/${warmList.length}, longest ${warmLongest.toFixed(1)} ms`,
             build: { n: stats.builds, avgMs: +(stats.buildMs / Math.max(1, stats.builds)).toFixed(3), maxMs: +stats.maxMs.toFixed(3), lastMs: +stats.lastMs.toFixed(3) },
             frame: { ms: +stats.frameMs.toFixed(3), maxMs: +stats.maxFrameMs.toFixed(3) },
@@ -991,6 +1091,16 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
         slow: (k: number) => {
           slow = k;
         },
+        /** Shots: the held fall (`gardenfall=`) moved to `t` s (drawn by the next frame). */
+        fall: (t: number) => {
+          if (!shotFall) return;
+          ground.hold(t);
+          for (const it of list)
+            if (it.drop) {
+              it.drop.t = t;
+              it.drop.landed.fill(0);
+            }
+        },
         resetStats: () => {
           stats.builds = stats.buildMs = stats.maxMs = stats.lastMs = stats.maxFrameMs = stats.lookMs = stats.earthMs = stats.writeMs = 0;
         },
@@ -1008,7 +1118,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
               queue.push(it);
             }
         },
-        items: () => list.map((it) => ({ id: it.id, kind: it.kind, x: it.x, y: it.y, z: it.z, foot: it.earth?.foot, h: it.data?.height, mode: it.mode, part: it.part, drop: it.drop ? { fruit: it.drop.fruit.length, t: +it.drop.t.toFixed(2), end: +it.drop.end.toFixed(2) } : null, fallen: it.data?.look.fallen })),
+        items: () => list.map((it) => ({ id: it.id, kind: it.kind, x: it.x, y: it.y, z: it.z, foot: it.earth?.foot, h: it.data?.height, mode: it.mode, part: it.part, drop: it.drop ? { fruit: it.drop.fruit.length, t: +it.drop.t.toFixed(2), end: +it.drop.end.toFixed(2) } : null, falling: ground.falling(it.id), fallen: it.data?.look.fallen })),
       },
     });
   return view;

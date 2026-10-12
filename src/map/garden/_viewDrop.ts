@@ -96,15 +96,7 @@ export function dropBetween(a: LookData, b: LookData): Drop | null {
     return arr;
   });
   if (!lying.length) return null;
-  const gone: Cluster[] = [];
-  for (const f of a.fams) {
-    if (!f || f.mat !== 'petal') continue;
-    for (let i = 0; i < f.n; i++) {
-      const y = f.m[i * 16 + 13];
-      if (y < HIGH || has.has(keyOf(f, i))) continue;
-      gather(gone, f.m[i * 16 + 12], y, f.m[i * 16 + 14]);
-    }
-  }
+  const gone = goneClusters(a, has);
   const used = new Set<number>();
   let end = 0;
   const fruit = lying.map((c, k): Fruit => {
@@ -144,6 +136,32 @@ export function dropBetween(a: LookData, b: LookData): Drop | null {
     return { lx, ly, lz, ox: sx - lx, oy: sy - ly, oz: sz - lz, delay, fall, bounce, up, rx: (-lx / l) * roll, rz: (-lz / l) * roll };
   });
   return { fruit, landed: new Uint8Array(fruit.length), of, move: of.map((o, i) => (o ? new Float32Array(b.fams[i]!.n * 3) : null)), t: 0, end };
+}
+
+/** Fruit gone from the crown from look `a` to `b` (old petal blocks up high the new look has not; `has`: the new look's blocks' keys). */
+function goneClusters(a: LookData, has: Set<string>): Cluster[] {
+  const gone: Cluster[] = [];
+  for (const f of a.fams) {
+    if (!f || f.mat !== 'petal') continue;
+    for (let i = 0; i < f.n; i++) {
+      const y = f.m[i * 16 + 13];
+      if (y < HIGH || has.has(keyOf(f, i))) continue;
+      gather(gone, f.m[i * 16 + 12], y, f.m[i * 16 + 14]);
+    }
+  }
+  return gone;
+}
+
+/**
+ * Where the fruit hung that is gone from the crown from look `a` to look `b` (local m from the plant's foot, x, y, z
+ * each): the smooth fruit's fall starts there (garden/_viewFruit.ts).
+ */
+export function crownGone(a: LookData, b: LookData): number[] {
+  const has = new Set<string>();
+  for (const f of b.fams) if (f) for (let i = 0; i < f.n; i++) has.add(keyOf(f, i));
+  const out: number[] = [];
+  for (const c of goneClusters(a, has)) out.push(c.x / c.n, c.y / c.n, c.z / c.n);
+  return out;
 }
 
 /** The moves of the falling blocks at `d.t` (world, the plant turned by `yaw`), into `d.move`. */
