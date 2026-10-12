@@ -25,19 +25,26 @@ const GIFTABLE = (Object.keys(KINDS) as PlantKindId[]).filter((k) => k !== 'bodh
 /** The kind he chose with `,` / `.` (null: the one he has most of). */
 let chosen: PlantKindId | null = null;
 
-/** Kinds he has in his basket to give, in the kinds' order. */
-export function giftKinds(out: PlantKindId[] = []): PlantKindId[] {
+/**
+ * Which kinds a giving takes (optional, every function below): the offering takes only fruit eaten as it is (no
+ * eggplant, corn or pumpkin before a shrine or into a monk's bowl). Without it, every giftable kind.
+ */
+export type GiftFilter = (k: PlantKindId) => boolean;
+
+/** Kinds he has in his basket to give (those `ok` takes), in the kinds' order. */
+export function giftKinds(out: PlantKindId[] = [], ok?: GiftFilter): PlantKindId[] {
   out.length = 0;
-  for (const k of GIFTABLE) if (GARDEN.basket(k) > 0) out.push(k);
+  for (const k of GIFTABLE) if (GARDEN.basket(k) > 0 && (!ok || ok(k))) out.push(k);
   return out;
 }
 
-/** The kind he would give now, or null (his basket is empty). */
-export function giftKind(): PlantKindId | null {
-  if (chosen && GARDEN.basket(chosen) > 0) return chosen;
+/** The kind he would give now (of those `ok` takes), or null (none in his basket). */
+export function giftKind(ok?: GiftFilter): PlantKindId | null {
+  if (chosen && GARDEN.basket(chosen) > 0 && (!ok || ok(chosen))) return chosen;
   let best: PlantKindId | null = null;
   let n = 0;
   for (const k of GIFTABLE) {
+    if (ok && !ok(k)) continue;
     const m = GARDEN.basket(k);
     if (m > n) {
       best = k;
@@ -49,11 +56,11 @@ export function giftKind(): PlantKindId | null {
 
 const _kinds: PlantKindId[] = [];
 
-/** `,` (−1) or `.` (+1): the next kind of his basket to give. */
-export function stepGift(dir: -1 | 1): PlantKindId | null {
-  const ks = giftKinds(_kinds);
+/** `,` (−1) or `.` (+1): the next kind of his basket to give (of those `ok` takes). */
+export function stepGift(dir: -1 | 1, ok?: GiftFilter): PlantKindId | null {
+  const ks = giftKinds(_kinds, ok);
   if (!ks.length) return (chosen = null);
-  const now = giftKind();
+  const now = giftKind(ok);
   const i = now ? ks.indexOf(now) : -1;
   chosen = ks[(i + dir + ks.length) % ks.length];
   return chosen;
