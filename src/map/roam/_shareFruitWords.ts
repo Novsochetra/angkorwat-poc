@@ -121,7 +121,8 @@ export function planShare(who: ShareWho, day: number, n: number, bagFull: boolea
     p.wrap = s.wrap;
     p.tie = s.tie;
   }
-  if (back === 'bless') p.word2 = hash3(who.id, day, n, 815) < 0.5 ? 'shareBless1' : 'shareBless2';
+  // (the grandmother calls him ចៅ, grandchild; other elders ក្មួយ or ចៅ)
+  if (back === 'bless') p.word2 = who.gran || hash3(who.id, day, n, 815) >= 0.5 ? 'shareBless2' : 'shareBless1';
   p.back = back;
   return p;
 }

@@ -279,6 +279,8 @@ registerAddon({
             kept: e.purse.kept.map((k) => k.id),
             busy: e.busy(),
             asked,
+            today: today(),
+            days: +TIME.days().toFixed(3),
           }),
         },
       });
