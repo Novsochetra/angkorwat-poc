@@ -20,7 +20,7 @@ import { registerPieceModel } from '../pieces';
  * two incised round it (no dragons: those are the Ratchaburi jars). Seeded
  * (`look.seed`): its size and glaze, its bands, the lid set straight or pushed
  * aside (the water shows), the dipper's kind and colour.
- * About 80 blocks.
+ * 86‥91 blocks.
  */
 
 /** Dark-brown glazes: the body, its gloss where the glaze ran thick (the shoulder), the bands. */

@@ -21,9 +21,9 @@ import { PIECES, registerPieceModel } from '../pieces';
  * plate, a cup, and a marigold and jasmine garland along the tray's front.
  *
  * Seeded (`look.seed`): the paint (white and ochre as the village's, sandstone,
- * or pale yellow and saffron), the tray's red, the fruit (bananas, oranges or a coconut), the water
- * (a plastic bottle or a glass one), the garland's flowers, the incense.
- * About 130 blocks.
+ * or pale yellow and saffron), the tray's red, the fruit (bananas, oranges or a
+ * coconut), the water (a plastic bottle or a glass one), the garland's flowers,
+ * the incense. 119‥128 blocks.
  */
 
 /** The paints: post, walls, the second tone (alternate tiers, plinth), gilt. */

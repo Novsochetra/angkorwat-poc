@@ -28,7 +28,7 @@ import { PIECES, registerPieceModel } from '../pieces';
  * Seeded (`look.seed`): the cloth's stripes (the flag's blue, red and white;
  * green and yellow; teal and orange; purple and pink; red, gold and black), the rope's colour, the
  * posts' wood, the krama and the flip-flops.
- * About 70 blocks.
+ * 66‥75 blocks.
  */
 
 /** The cloth's stripes (repeated along it), in Cambodian colours. */

@@ -20,7 +20,7 @@ import { PIECES, registerPieceModel } from '../pieces';
  *
  * Seeded (`look.seed`): the lamp's tin (red, green, blue or plain), the wood,
  * the stones, the bottle.
- * About 35 blocks.
+ * 43‥47 blocks.
  */
 
 /** Painted tin: red, green, blue, plain. */
