@@ -2334,7 +2334,115 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
 
 ### His own cattle
 
-(to be written: roam/_cattle*.ts, map/cattle/)
+Buying a calf, raising it and selling it (add-on `cattle`, words `cattle…`; the player's
+wish, October 2026: "when we have a lot of money … buy some cow, feed it and sell it").
+The core without three.js is `src/map/cattle/` (`state.ts` the herd, growth, prices, the
+saved record; `plan.ts` where the trader and the stakes are, the shared `TRADER` and
+`CATTLE_OBSTACLES`; `ride.ts` the cow ride's contract); the add-on `roam/_cattle.ts` (the
+E row, the card's purchases, the clock, the toasts, the URL), `_cattleHerd.ts` (every
+animal: where it is, what it does, drawn), `_cattleWork.ts` (cutting grass, carrying,
+feeding), `_cattleCard.ts` + `_cattleArt.ts` (the trader's card), `_cattleIcon.ts` (the
+hungry icon), `_cattlePlace.ts` (his place), `_cattleBlocks.ts` (ropes, stakes, heaps,
+the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his carry pose
+`character/cattleCarry.ts`; sounds `audio/_cattle.ts`; the badge `ui/_minimapSpots.ts`
+(`cattle`, "ឈ្មួញគោ / Cattle trader").
+
+- **The cattle trader** (ឈ្មួញគោ): on the Kulen foot meadow (8 m, a land step below the
+  village) west of the trail, ≈ 50 m north of his house (`TRADER_AT` 397.5, −150): a big
+  old tamarind for shade, his low stool under it facing the trail, a crate with his kettle,
+  glass and krama, a stack of rice-straw bundles, a log trough, three tethering posts — his
+  grey plough ox (not for sale), a calf and a young cow for sale —, and his sign by the trail,
+  "លក់គោ" in red Koulen letters with a little white cow, painted on both faces. He is a
+  village man of fifty, a krama round his head (never a conical hat). By day
+  (`TRADER_HOURS` 0.77‥0.19) he sits there, looks at him when he is near and now and then
+  calls "គោល្អៗ បង! ចង់មើលទេ?"; out of hours he walks home down the trail (his animals lie
+  down at their posts at night). Out of everyone's sight he is simply where his hours have
+  him. Solid for walking: the trunk, the posts, the stool with him, the crate, the stack,
+  the trough, the sign's post; the crown is soft to the follow camera. 535 blocks, a few
+  draws, built in ≈ 2 ms; the land under it is taken (no garden, no wild cover).
+- **The card** (E before his stool: "ទិញ ឬលក់គោ / Buy or sell cattle"): he turns to him,
+  the camera comes round, the card opens in the buy menu's look, his words over three tabs:
+  **Buy** a calf (កូនគោ, 80 000 ៛, ≈ 71 kg, grown in 6 fed days) or a young cow (គោក្មេង,
+  150 000 ៛, ≈ 168 kg, grown in 3); **Sell** his cows (their weight, well fed / hungry /
+  thin, "can be ridden", what he pays now); **Straw** (ចំបើង, 1 000 ៛ a bundle: 1, 5 or 10;
+  40 at most, stacked under his house). At most four cows of his own ("Meadow full").
+  Short of riel the row is greyed with its price in red, and he says so. Bought: he stands
+  and thanks him ("អរគុណបង! ថែវាឲ្យល្អណា", hands held out with the rope), the animal at
+  that post is untied and **walks to its stake** by his house (another stands there a while
+  later, out of sight); the first time, he gives him a sickle. Sold: paid at once, the cow
+  walks off to the trader's. Keys: 1–9 a row, ↑ ↓, ← → / Tab the tabs, Enter / Space / E,
+  Esc; the pad (a layer: ✕, ○, L1 / R1); touch (rows, tabs, a tap outside shuts it).
+  Prices (riel): what he pays is weight × a rate by age (calf 900 / kg, young 850, grown
+  960) × (0.7 + 0.3 × its condition), to 500: a calf raised well sells grown (260 kg) for
+  ≈ 250 000 ៛, more as it fills out (≈ 300 000 at 320 kg); left hungry for days, much
+  less (four days unfed: ≈ 195 000 instead of 280 000). The pocket money is 20 000 ៛ a
+  day, so a cow is a real goal (fish, the garden, the farmers' thanks).
+- **His cows** (`cattle/state.ts`, saved: `cattle.herd` — each one's id, born, fed days
+  `grow`, weight, last fed `fed`, look, stake —, `cattle.straw`, `cattle.clock`): tethered by
+  day to four stakes on the meadow north of his house (`STAKES`), grazing round them as far
+  as the rope lets them (2.7 m), heads down, ambling to fresh patches, never onto his
+  garden's plants; looking up, lowing (a hungry one more often), the bell clonking (the
+  people's `cowBell`), tails swishing; close to him they stop and turn their heads to him.
+  Before dusk (`PEN_HOURS` 0.21‥0.79) they walk into his pen if he has built one
+  (build/pieces.ts `BUILT`, id `pen`, `done` 1: four places in its room facing the trough,
+  in through its gate) and lie down; at dawn they walk out again. With no pen they lie down
+  by their stakes (`LIE_HOURS` 0.3‥0.76). Ways (to the stake, the pen, after a ride, off
+  when sold) on the walk map a cow's size (room over it, its width, no plants, nothing he
+  built: a straight line if it can, else the dog's search, `_dogPath.ts`); they stop for
+  him in their way and go round him; out of everyone's sight a cow is simply there. Sizes by
+  weight: a calf ≈ 0.78 × the ox, young ≈ 1.15, grown ≥ 1.4 (as the village's), 1.54 at its
+  fullest; a thin one is smaller, its coat duller, its head low. Drawn with the ox of the
+  villages (`OX`) through one `Flock` (9 slots: his four, the trader's three, two being led
+  off), one more draw for the ropes, stakes, heaps and the grass he cuts.
+- **Food**: each cow wants food once a game day (fed, it is full for one day). A hungry one
+  shows a pixel-art sheaf of straw over its head (`_cattleIcon.ts`, the garden's thirst
+  drop's technique; orange and pulsing once it is thin) and lows more. At its head, **E
+  "ឲ្យកូនគោស៊ីចំបើង / Feed the calf straw · 4 bundles left"** (one from his stock), or with
+  grass in his arms "… grass"; no straw and no grass, the line says to buy some or cut grass.
+  He steps before its nose, bends and lays the bundle down (`cattleLay`), the cow lowers its
+  head and eats from the heap (22 s, munching). **Cutting grass**: on the meadow near home
+  (on grass, off paths and plants) while a cow is hungry, **"E  Hold to cut grass"**: he
+  bends as the farmers reap, the farmer's sickle in his right hand, four fistfuls from a
+  clump before him (each a swish, `cattleCut`), then twists them into a bundle and carries
+  it in both arms (his lights away); free, but it takes ≈ 5 s. Let go or push the stick:
+  he stands up (what he cut stays for when he cuts on). A ride, a rest, praying, another mode
+  or back to the map: he puts the grass down.
+- **Growth by game days** (the herd's own clock as the garden's: the map's days while they
+  run, sleep moves it on, else a day each 360 s of play; nothing while the game is shut):
+  full, a cow grows (fed days) and fills out; hungry it does not grow and gets thinner (a
+  little each day, never under 68 % of its weight): it never dies. Calf → young at 3 fed
+  days → grown at 6; the well-fed weight 55 → 150 → 260 → 320 kg (at 12).
+- **Riding**: each cow of his is a `RideCow` (`own-<id>`, owner `his`) in `COW_RIDE`;
+  `canRide` when grown, at its stake (not on a way, not in the pen), standing still or
+  lying settled, with room over its back. Ridden, it is drawn from the ride's fields
+  (`people/_oxRide.ts` `drawRideCow`); let go, it walks back to its stake (or pen), home at
+  once on the map. Sold: off the list (`removeRideCow`).
+- **Toasts**: hungry ("Your calf is hungry", near home, at most every 90 s; away once: "Your
+  cattle at home are hungry", until he has been home), getting thin, young, grown ("…You can
+  ride it now"), bought, sold, straw, a bundle cut, the grass put down.
+- **Sounds** (`audio/_cattle.ts`): `cattleMoo`, `cattleMooCalf`, `cattleMunch` (Animals),
+  `cattleCut`, `cattleBundle`, `cattleLay` (moves); the coins are the purse's and the fish
+  sale's `sellCoin`; the bells the people's `cowBell` call.
+- **URL** (shots and the dev server only: a link never changes a player's saved herd):
+  `cattle=calf,young,grown,<fed days>[:hungry|:thin],…` his cows at their stakes (in order) ·
+  `cattlehungry=1` all hungry (their icons) · `cattlestraw=<n>` · `cattleclock=<days>` ·
+  `cattleshop=1|buy|sell|straw` at the trader's stool, the card open (with `cattlebuy=calf|young`,
+  `cattlesellrow=<i>`, `cattlestrawrow=<i>`, `cattlefocus=<i>`; `purse=<riel>`) ·
+  `cattlefeed=<s>` him laying straw before the nearest cow, that far in (`cattlefood=grass`) ·
+  `cattlecut=<s>` cutting grass that far in · `cattlecarry=1` the grass in his arms ·
+  `cattleeat=<0‥1>` his cows eating from heaps that full · `cattlenight=1` the night: in the
+  pen if there is one, else lying by their stakes · `cattlepen=<x>/<z>/<deg>` a pen stands
+  there (a check of the pen part until `build=` makes one) · `cattlespeed=<x>` (the dev
+  server: the herd's days x times faster). `report()` gives `cattle=`, `cattlestraw=`,
+  `cattleclock=`, `cattleshop=`, `cattlecarry=`. `window.__cattle` (shots, the dev server):
+  `state()` (the herd, every animal, the card, the work, the trader, the rides),
+  `near()`, `advance(days)`, `straw(n)`, `carry(on)`, `speed(x)`, `ride(id, on)`.
+  E.g. `roam=walk&at=402,-149&yaw=-90&clock=0.9&cattleshop=1&purse=95000` (the card) ·
+  `roam=walk&at=425.5,-129&yaw=200&rcam=25,22,10&clock=0.9&cattle=calf:hungry,young,grown,8:thin&home=1`
+  (his herd, a hungry calf) · `…&cattle=young:hungry&cattlefeed=0.75&cattlestraw=6` ·
+  `roam=walk&at=426,-140&yaw=200&cattle=young:hungry,grown&cattlecut=2.85` ·
+  `…&cattle=grown,calf&cow=ride` (riding his grown cow). Parts: `foreground` (roaming) and
+  `people` (the trader); `terrain,water,hamlet,vegetation,path` for the place round them.
 
 ### His home garden
 

@@ -783,17 +783,17 @@ export class CattleHerd {
       const hz = this.ez - b.z;
       const along = hx * fx + hz * fz;
       const across = hx * fz - hz * fx;
-      if (along > 0 && along < 0.9 + OX_NOSE * b.size && Math.abs(across) < 0.45 * b.size + 0.55 && Math.abs(this.ey - b.y) < 2) {
+      if (b.blocked >= 0 && along > 0 && along < 0.9 + OX_NOSE * b.size && Math.abs(across) < 0.45 * b.size + 0.55 && Math.abs(this.ey - b.y) < 2) {
         b.speed = 0;
         b.head = -0.3;
         b.blocked += dt;
         if (b.blocked > 3 && b.wn < b.wx.length) {
-          // (a step round him on the side away from him, then on its way)
-          b.blocked = 0;
+          // (a way round him on the side away from him — past him, then on its way —, and a moment not stopping for him)
+          b.blocked = -4;
           const side = across > 0 ? -1 : 1;
-          const r = 0.9 + 0.6 * b.size;
-          const px = this.ex + fz * side * r * 1.2 + fx * r * 0.3;
-          const pz = this.ez - fx * side * r * 1.2 + fz * r * 0.3;
+          const r = 1.1 + 0.8 * b.size;
+          const px = this.ex + fz * side * r + fx * 0.4;
+          const pz = this.ez - fx * side * r + fz * 0.4;
           for (let k = b.wn; k > b.wi; k--) {
             b.wx[k] = b.wx[k - 1];
             b.wy[k] = b.wy[k - 1];
@@ -807,7 +807,8 @@ export class CattleHerd {
         return;
       }
     }
-    b.blocked = 0;
+    // (going round him: a few seconds it does not stop for him)
+    b.blocked = b.blocked < 0 ? Math.min(0, b.blocked + dt) : 0;
     const pace = (b.cow && ageOf(b.cow) === 'calf' ? WALK * 1.1 : WALK) * Math.min(1.15, 0.75 + 0.3 * (b.size / 1.4));
     b.speed = pace;
     b.head = 0.15;

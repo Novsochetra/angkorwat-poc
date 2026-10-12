@@ -117,6 +117,22 @@ export class CattleTrader implements PeopleScene {
         this.job = 'sit';
       }
     }
+    // (out of everyone's sight he is simply where his hours have him: at his stool, or gone home; a jump of the clock — a
+    // sleep — never leaves him half way)
+    const unseen = viewDist(f, a.x, a.z) > 90 && viewDist(f, this.stool[0], this.stool[1]) > 90;
+    if (unseen && open && (this.job === 'away' || this.job === 'arrive' || this.job === 'leave')) {
+      a.warp(this.stool[0], this.floor(this.stool[0], this.stool[1]), this.stool[1], traderYaw(TRADER_STOOL.face));
+      a.show();
+      this.job = 'sit';
+    } else if (unseen && !open && this.job !== 'away') {
+      this.job = 'away';
+      this.hideAll();
+    }
+    // (the hours come round again while he walks home: he turns back)
+    if (open && this.job === 'leave') {
+      this.job = 'arrive';
+      this.leg--;
+    }
     if (open && this.job === 'away') {
       // (morning: up the trail from the village street)
       const [x, z] = TRADER_AWAY[TRADER_AWAY.length - 1];

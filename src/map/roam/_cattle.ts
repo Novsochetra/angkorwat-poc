@@ -79,6 +79,9 @@ const [STOOL_X, STOOL_Z] = traderToWorld(TRADER_STOOL.x, TRADER_STOOL.z);
 const FACING = Math.atan2(STOOL_X - BUY_X, STOOL_Z - BUY_Z);
 
 const clockNow = (): number => lastFrame?.clock ?? TIME.moment(TIME.days()).clock;
+/** A check's night for the herd (`cattlenight=1`: in the pen, or lying by their stakes, whatever the clock). */
+let nightHold = false;
+const herdClock = (): number => (nightHold ? 0.45 : clockNow());
 
 // ── Words (made once a language and value) ───────────────────────────────────
 
@@ -679,7 +682,7 @@ registerAddon({
       const p = ctx.body.pos;
       const f = lastFrame;
       const c = f?.camera.matrixWorld.elements;
-      herd.tick(dt, clockNow(), p.x, p.y, p.z, true, c ? c[12] : p.x, c ? c[14] : p.z);
+      herd.tick(dt, herdClock(), p.x, p.y, p.z, true, c ? c[12] : p.x, c ? c[14] : p.z);
     }
   },
   frame(f, m) {
@@ -701,7 +704,7 @@ registerAddon({
     CATTLE.tick(dt);
     // (the map seen from above: the herd steps on the map's frames; roaming, on roaming's steps: `after`)
     const e = f.camera.matrixWorld.elements;
-    if (m === 'overview') herd.tick(dt, f.clock, e[12], e[13], e[14], false, e[12], e[14]);
+    if (m === 'overview') herd.tick(dt, nightHold ? 0.45 : f.clock, e[12], e[13], e[14], false, e[12], e[14]);
     herd.draw(f.camera, f.dt > 0 ? f.calls : null, f.listener.x, f.listener.z);
     // Their voices: lowing (a calf higher), the mouthfuls.
     const s = herd.sounds;
@@ -731,7 +734,7 @@ registerAddon({
     if (next === 'overview') {
       before = null;
       queue.length = 0;
-      herd?.reset(clockNow());
+      herd?.reset(herdClock());
       TRADER.wanted = false;
     }
   },
@@ -742,7 +745,8 @@ registerAddon({
     work.keepView = keepView;
     const clockQ = Number(q.get('clock'));
     const clk = q.has('clock') && Number.isFinite(clockQ) ? ((clockQ % 1) + 1) % 1 : clockNow();
-    herd.settle(q.get('cattlenight') === '1' ? 0.45 : clk);
+    nightHold = q.get('cattlenight') === '1';
+    herd.settle(nightHold ? 0.45 : clk);
     // His cows eating from heaps (`cattleeat=<left 0‥1>`).
     const eat = q.get('cattleeat');
     if (eat !== null) for (const b of herd.beasts) if (b.cow) herd.feed(b, b.cow.id % 2 ? 'grass' : 'straw', Math.max(0.05, Math.min(1, Number(eat) || 1)));
