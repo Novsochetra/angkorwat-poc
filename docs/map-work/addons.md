@@ -2838,7 +2838,10 @@ sounds `audio/_build.ts`.
   toast says so (`build.hinted`).
 - **The card**: each piece with its picture, its name, how many he has of how many,
   its line, its price; one he cannot build now greyed with why ("You have all 3",
-  "12,000 ៛ more needed"); his riel under the title. 1‥9, ↑ ↓, Enter, Esc; the pad's
+  "12,000 ៛ more needed"); his riel under the title. Every line reads whole: it wraps (a
+  narrow card, a phone upright, puts the price on the name's line and the line under both);
+  in a low window (a phone on its side) the list scrolls with the settings panel's soft
+  edges where there is more, the head drawn smaller. 1‥9, ↑ ↓, Enter, Esc; the pad's
   layer; touch.
 - **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
   its footprint outlined where it can stand; red, drawn over everything, where not, the
@@ -2851,7 +2854,10 @@ sounds `audio/_build.ts`.
   the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
   work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
   mode, never "Back to the map?". The camera looks down more, further back, the ghost
-  in the middle. After a fence or a lantern post the mode stays on for the next.
+  in the middle, a little over his shoulder (a near ghost, the jar, the lamp, the spirit
+  house, a little steeper: the line to it over his hat); its first move after a pick is
+  quick and goes round over his shoulder even while he stands, so the ghost is not behind
+  his hat. After a fence or a lantern post the mode stays on for the next.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block
