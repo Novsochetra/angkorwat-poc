@@ -1,6 +1,8 @@
 import { BACK_HAMLET, EAST_VILLAGE, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES } from '../layout';
 import { WORSHIP } from '../roam/_worship';
 import { BIKE_SPOTS, type BikeSpotId } from '../roam/_bikeSpots';
+import { BIKE_OWN } from '../roam/_bikeOwn';
+import { shopToWorld } from '../roam/_bikeShopPlan';
 import { ZIP_START } from '../roam/_zipPlan';
 import { LOTUS_BED } from '../roam/_lotusHook';
 import { HOME_AT } from '../hamlet/_homePlan';
@@ -25,7 +27,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike';
 
 export interface MapSpot {
   id: SpotId;
@@ -176,6 +178,34 @@ const BIKE_ART = [
   '..KKK......KKK.',
 ];
 
+/** The bicycle shop at the morning market (roam/_bikeShop.ts): a bicycle under the stall's blue tarp on its poles. */
+const BIKE_SHOP_ART = [
+  'BBBBBBBBBBBBBBBBB',
+  'aBaBaBaBaBaBaBaBa',
+  'p...............p',
+  'p..dd....uu.....p',
+  'p...u.....u.mm..p',
+  'p.KKKu...u.KKK..p',
+  'pK...Ku.u.Ku..K.p',
+  'pK.kuuuuu.K.k.K.p',
+  'pK...K....K...K.p',
+  'p.KKK......KKK..p',
+];
+
+/** His own bicycle (roam/_bikeOwn.ts: where he left it): the town bicycle's picture, a pink heart over its saddle. */
+const MY_BIKE_ART = [
+  '.PP.PP.........',
+  '.PPPPP.........',
+  '..PPP.....uu...',
+  '...P......u.mm.',
+  '....u.....u.mm.',
+  '..KKKu...u.KKK.',
+  '.K...Ku.u.Ku..K',
+  '.K.kuuuuu.K.k.K',
+  '.K...K....K...K',
+  '..KKK......KKK.',
+];
+
 /** The zip line (roam/_zipPlan.ts: its first stair's foot): a cable from a tall tree's platform down to the next, a rider under his red trolley. */
 const ZIP_ART = [
   'GGG..........',
@@ -243,6 +273,42 @@ const NURSERY_AT = nurseryToWorld(-1.7, -2.4);
 const NURSERY_BIG = nurseryToWorld(16.3, -22);
 
 /**
+ * The bicycle shop's badge: on its stall; on the big map (about a pixel a metre) 20 m behind it to the south-south-west,
+ * clear of the market's badge (16 m from the stall); its name there only while it is pointed at, picked or the target
+ * (roam/_bikeShop.ts adds that rule, as the nursery's, and the same for "My bicycle").
+ */
+const BIKE_SHOP_AT = shopToWorld(0, 0);
+const BIKE_SHOP_BIG = shopToWorld(0, -20);
+
+/**
+ * His bicycle's badge stands where it does (roam/_bikeOwn.ts `BIKE_OWN`: the mini-map reads its place each frame; the
+ * big map's button is moved and hidden by roam/_bikeShop.ts). While he has none, or rides it, it is far off every map
+ * (not drawn).
+ */
+const FAR = 1e5;
+/** (while he rides it, it is under his own arrow: no badge) */
+const myBikeShown = (): boolean => BIKE_OWN.kind !== null && !BIKE_OWN.riding;
+const MY_BIKE: MapSpot = {
+  id: 'my-bike',
+  get x() {
+    return myBikeShown() ? BIKE_OWN.x : FAR;
+  },
+  get z() {
+    return myBikeShown() ? BIKE_OWN.z : FAR;
+  },
+  get bx() {
+    return myBikeShown() ? BIKE_OWN.x : FAR;
+  },
+  get bz() {
+    return myBikeShown() ? BIKE_OWN.z : FAR;
+  },
+  arrive: 4,
+  name: 'bikeOwnMap',
+  the: 'bikeOwnTheMap',
+  rows: outlined(MY_BIKE_ART),
+};
+
+/**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
  * (m) would sit on it: it goes out to this far along the line from the temple (east if on it).
  */
@@ -281,6 +347,9 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   spot('home', HOME_AT.x, HOME_AT.z, 9, 'homeMap', 'homeTheMap', outlined(HOME_ART)),
   // (the seedling nursery by the Kulen foot trail, on the way up to his house: roam/_gardenShop.ts)
   { ...spot('nursery', NURSERY_AT[0], NURSERY_AT[1], 8, 'gardenShopMap', 'gardenShopTheMap', outlined(NURSERY_ART)), bx: NURSERY_BIG[0], bz: NURSERY_BIG[1] },
+  // (the bicycle shop at the morning market, and his own bicycle where he left it: roam/_bikeShop.ts, _bike.ts)
+  { ...spot('bike-shop', BIKE_SHOP_AT[0], BIKE_SHOP_AT[1], 7, 'bikeShopMap', 'bikeShopTheMap', outlined(BIKE_SHOP_ART)), bx: BIKE_SHOP_BIG[0], bz: BIKE_SHOP_BIG[1] },
+  MY_BIKE,
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

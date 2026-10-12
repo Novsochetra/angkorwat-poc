@@ -3,9 +3,13 @@ import { streetAt } from '../hamlet/_evSpots';
 import { EAST_DIR, EAST_N, MK } from '../hamlet/_mkPlan';
 
 /**
- * Where the bicycles to ride stand (roam/_bike.ts), with no three.js: the
- * mini-map's badges (ui/_minimapSpots.ts) read them too. Each is a black
- * Khmer town bicycle on its side stand, parked where people leave theirs:
+ * Where the bicycles stand (roam/_bike.ts), with no three.js: the mini-map's
+ * badges (ui/_minimapSpots.ts) read them too. Each is a black Khmer town
+ * bicycle on its side stand, parked where people leave theirs. The one by
+ * Angkor Wat's road is for hire (`role: 'hire'`: E hires it, as at the real
+ * temple's west entrance; it has the maps' badge, "Bicycle hire"); the others
+ * are the neighbours' (`'neighbour'`: not his to ride — he buys his own at the
+ * morning market's bicycle shop, roam/_bikeShop.ts):
  *
  * - `wat`: on the forecourt's grass east of the head of the road's stairs, by
  *   the pad's south edge, pointing back to the road (bicycles are hired out by
@@ -30,12 +34,14 @@ export type BikeSpotId = 'bike-wat' | 'bike-market' | 'bike-village' | 'bike-ham
 
 export interface BikeSpot {
   readonly id: BikeSpotId;
+  /** Hired out (E pays and rides it), or a neighbour's (E: the neighbour calls out). */
+  readonly role: 'hire' | 'neighbour';
   readonly x: number;
   readonly z: number;
   readonly yaw: number;
   /** Seed of its small differences (what is in the basket, a krama on the rack). */
   readonly seed: number;
-  /** It has its own badge on the maps (the village's, 19 m from the market's, shares that one: on the big map they would sit on each other). */
+  /** It has its own badge on the maps (the hire bicycle; the neighbours' have none: they are not his to ride). */
   readonly badge: boolean;
 }
 
@@ -51,8 +57,8 @@ const [villageX, villageZ] = [street.x + street.tz * 3.4, street.z - street.tx *
 const villageYaw = Math.atan2(street.tx, street.tz) - 0.3;
 
 export const BIKE_SPOTS: readonly BikeSpot[] = [
-  { id: 'bike-wat', x: 10.2, z: -152.6, yaw: -Math.PI / 2 + 0.15, seed: 1, badge: true },
-  { id: 'bike-market', x: marketX, z: marketZ, yaw: TO_ROAD_S + 0.4, seed: 2, badge: true },
-  { id: 'bike-village', x: villageX, z: villageZ, yaw: villageYaw, seed: 3, badge: false },
-  { id: 'bike-hamlet', x: bmX(11.3, 5.1), z: bmZ(11.3, 5.1), yaw: bmYaw(1.3), seed: 4, badge: true },
+  { id: 'bike-wat', role: 'hire', x: 10.2, z: -152.6, yaw: -Math.PI / 2 + 0.15, seed: 1, badge: true },
+  { id: 'bike-market', role: 'neighbour', x: marketX, z: marketZ, yaw: TO_ROAD_S + 0.4, seed: 2, badge: false },
+  { id: 'bike-village', role: 'neighbour', x: villageX, z: villageZ, yaw: villageYaw, seed: 3, badge: false },
+  { id: 'bike-hamlet', role: 'neighbour', x: bmX(11.3, 5.1), z: bmZ(11.3, 5.1), yaw: bmYaw(1.3), seed: 4, badge: false },
 ];

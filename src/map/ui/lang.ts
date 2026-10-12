@@ -845,9 +845,52 @@ const WORDS = {
   bikeUp: { km: 'ចុះពីកង់សិន ទើបដើរឡើងបាន', en: 'Get off the bicycle to climb up' },
   bikeDown: { km: 'ចុះពីកង់សិន ទើបដើរចុះបាន', en: 'Get off the bicycle to climb down' },
   bikeDeep: { km: 'ទឹកជ្រៅពេក ជិះកង់កាត់មិនបានទេ', en: 'Too deep to ride through' },
-  bikeMap: { km: 'ចំណតកង់', en: 'Bicycles' },
-  bikeTheMap: { km: 'ចំណតកង់', en: 'the bicycles' },
+  // (the badge on the maps where the bicycles are hired out: by the head of Angkor Wat's road)
+  bikeMap: { km: 'ជួលកង់', en: 'Bicycle hire' },
+  bikeTheMap: { km: 'កន្លែងជួលកង់', en: 'the bicycle hire' },
   // Buying his own bicycle, hiring one, a neighbour's (bikeShop…, bikeOwn…): roam/_bikeShop*.ts
+  // (the shop at the morning market: its name, the maps, E before it, its hours, the mechanic's call)
+  bikeShopName: { km: 'ហាងកង់', en: 'Bicycle shop' },
+  bikeShopMap: { km: 'ហាងកង់', en: 'Bicycle shop' },
+  bikeShopTheMap: { km: 'ហាងកង់', en: 'the bicycle shop' },
+  bikeShopPrompt: { km: 'ទិញកង់', en: 'Buy a bicycle' },
+  bikeShopClosed: { km: 'ហាងកង់បិទហើយ — មកវិញពេលព្រឹក', en: 'The bicycle shop is closed: come back in the morning' },
+  bikeShopComing: { km: 'សូមចាំបន្តិច — ជាងកង់កំពុងមកហាងវិញ', en: 'Just a moment: the mechanic is on his way back' },
+  bikeShopCall: { km: 'កង់ថ្មីៗ ជិះស្រួល! មើលសិនទៅ បង', en: 'New bicycles, smooth to ride! Come and look' },
+  // (the card: what the mechanic says)
+  bikeShopHi: { km: 'ចង់បានកង់មួយមែនទេ បង? រើសមើលចុះ', en: 'Looking for a bicycle? Take your pick' },
+  bikeShopHiOwn: { km: 'កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?', en: "How's your bicycle? Fancy a new one?" },
+  bikeShopShortSay: { km: 'លុយមិនទាន់គ្រប់ទេ បង — សន្សំបន្តិចទៀតណា៎', en: 'Not quite enough yet: save up a little more' },
+  bikeShopBoughtSay: { km: 'ជិះឱ្យសប្បាយណា៎ បង! កង់នៅមុខហាងហ្នឹង', en: "Enjoy the ride! It's waiting out front" },
+  bikeShopYoursSay: { km: 'កង់នេះជារបស់បងហើយតើ', en: "That one's yours already" },
+  // (the three bicycles: names and a line each)
+  bikeShopTown: { km: 'កង់បុរាណ ពណ៌ខ្មៅ', en: 'Black town bicycle' },
+  bikeShopTownNote: { km: 'រឹងមាំ មានកន្ត្រកផ្ដៅ និងចង្កៀង', en: 'Sturdy: a cane basket and a lamp' },
+  bikeShopLady: { km: 'កង់ស្រី ពណ៌ខៀវមេឃ', en: "Sky-blue lady's bicycle" },
+  bikeShopLadyNote: { km: 'កន្ត្រកពណ៌ស កែបទន់ ស្រាលជិះ', en: 'A white basket, a soft saddle, light to ride' },
+  bikeShopCarrier: { km: 'កង់ក្រហម មានកៅអីក្រោយ', en: 'Red bicycle with a back seat' },
+  bikeShopCarrierNote: { km: 'កៅអីទន់នៅក្រោយ សម្រាប់ឱ្យមិត្តជិះដុប', en: 'A padded seat at the back to carry a friend' },
+  // (a row: his own, how much more he needs, the trade-in of the one he has; the foot's line)
+  bikeShopYours: { km: 'របស់បង', en: 'Yours' },
+  bikeShopMore: { km: 'ខ្វះ {riel} ទៀត', en: '{riel} more' },
+  bikeShopTrade: { km: 'ដូរកង់ចាស់ បញ្ចុះ {riel}', en: 'Trade in yours: {riel} off' },
+  bikeShopFoot: { km: 'ជិះទៅណាក៏បាន កង់នៅកន្លែងដែលបងទុក', en: 'Ride it anywhere: it stays where you leave it' },
+  // (bought: the toasts)
+  bikeShopGot: { km: 'បានទិញ{name}! វាចតនៅមុខហាងកង់', en: 'Bought: {name}! It stands in front of the shop' },
+  bikeShopTraded: { km: 'បានដូរកង់ចាស់ បញ្ចុះ {riel}', en: 'Traded in your old bicycle: {riel} off' },
+  // (his own bicycle on the maps)
+  bikeOwnMap: { km: 'កង់របស់ខ្ញុំ', en: 'My bicycle' },
+  bikeOwnTheMap: { km: 'កង់របស់ខ្ញុំ', en: 'my bicycle' },
+  // (hiring one at Angkor Wat: E, paid, short of riel, gone back once he left it)
+  bikeHire: { km: 'ជួលកង់ ({riel})', en: 'Hire a bicycle ({riel})' },
+  bikeHired: { km: 'បានជួលកង់ហើយ — ជិះលេងតាមចិត្ត ពេលបងទុកវាចោល គេនឹងយកទៅវិញ', en: 'Hired! Ride as long as you like: it goes back once you leave it' },
+  bikeHireShort: { km: 'លុយមិនគ្រប់ទេ — ជួលកង់ត្រូវការ {riel}', en: 'Not enough riel: hiring costs {riel}' },
+  bikeHireBack: { km: 'កង់ជួលត្រូវបានគេយកទៅទុកវិញហើយ', en: 'The hired bicycle has gone back to its stand' },
+  // (a neighbour's bicycle: the line by it, no key; E there anyway: what the neighbour calls out, in turn)
+  bikeNeighbour: { km: 'កង់អ្នកជិតខាង · ទិញកង់បាននៅផ្សារព្រឹក', en: "A neighbour's bicycle · buy your own at the market" },
+  bikeNeighbourSay0: { km: '«ហេ៎ បង! កង់ខ្ញុំទេតើ!»', en: "“Hey! That one's mine!”" },
+  bikeNeighbourSay1: { km: '«ចង់បានកង់ ទៅទិញនៅផ្សារព្រឹកទៅ បង!»', en: '“Want a bicycle? They sell them at the market!”' },
+  bikeNeighbourSay2: { km: '«កុំយកកង់ខ្ញុំណា៎! ខ្ញុំត្រូវជិះទៅផ្សារ»', en: '“Not my bicycle! I need it for the market”' },
   // Riding the ox cart (cart…): roam/_cartRide.ts
   cartRide: { km: 'ជិះរទេះគោ', en: 'Ride the ox cart' },
   cartOff: { km: 'ចុះពីរទេះ', en: 'Hop off' },

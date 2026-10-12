@@ -10,8 +10,12 @@ import type { MapFrame, RoamMode } from '../types';
 import { lang, t } from '../ui/lang';
 import { registerAddon, touchJump, type AddonEnv, type AddonKey } from './_addons';
 import { buildCanopies, canopyAt } from './_bikeCanopy';
-import { BikeModel, type BikeTurns } from './_bikeModel';
+import { BikeModel, type BikeLook, type BikeTurns } from './_bikeModel';
+import { BIKE_KINDS, BIKE_OWN, bikeOwnFromUrl, HIRE_PRICE, kindOf, leaveBike, onBikeOwn, ridingBike } from './_bikeOwn';
+import { SHOP_DISPLAY, SHOP_DISPLAY_TURN, shopToWorld, shopYaw } from './_bikeShopPlan';
 import { BIKE_SPOTS, type BikeSpot } from './_bikeSpots';
+import { bagNotify } from './_shopBag';
+import { riel } from './_shopPurse';
 import { angleDiff } from './followCam';
 import { setTouchBell, takeTouchFish } from './touch';
 import type { RoamCtx, RoamWorld } from './types';
@@ -21,9 +25,20 @@ import { stepSound } from './walker';
  * Bicycles to ride (ជិះកង់): black Khmer town bicycles stand on their side
  * stands at four places in the roaming area (_bikeSpots.ts: by the head of
  * Angkor Wat's road, at the morning market, at the sugar-palm village's west
- * end, at the little market behind Angkor Wat; badges on the maps).
- * On foot beside one, E ("E  Ride the bicycle"): he steps over, flips the
- * stand up and sits on, his left foot down.
+ * end, at the little market behind Angkor Wat).
+ *
+ * Whose they are: the one by Angkor Wat's road is hired out (E "Hire a
+ * bicycle (2,000 ៛)": paid once, he rides it as long as he likes; once he has
+ * left it and walked 30 m off, or gone back to the map, it goes back to its
+ * place); the other three are the neighbours' (by one, a line with no key,
+ * "A neighbour's bicycle · buy your own at the market"; E anyway: the
+ * neighbour calls out). His own (bought at the morning market's bicycle shop:
+ * roam/_bikeShop.ts, kept in roam/_bikeOwn.ts `BIKE_OWN`) is a fifth, in its
+ * kind's look and colour, standing where he last left it (saved, kept across
+ * Esc back to the map); the shop's three for sale stand in its stall (not to
+ * ride). All of them are one `Things`.
+ * On foot beside one he may ride, E ("E  Ride the bicycle"): he steps over,
+ * flips the stand up and sits on, his left foot down.
  *
  * Riding (a walk-mode add-on that holds him, as the rope swing does): W
  * pedals (the speed builds up), Shift pedals hard, S brakes, and held once
@@ -33,7 +48,8 @@ import { stepSound } from './walker';
  * wall, a log, a kerb too tall to roll); F rings the bell (kring-kring: on
  * foot F greets, on a bicycle the bell is the greeting); E gets off (braking
  * first if it rolls): he steps off to the side and the bicycle stays on its
- * stand where he left it. Back to the map, every bicycle goes back to its place.
+ * stand where he left it. Back to the map, the hire and the neighbours'
+ * bicycles go back to their places; his own stays where it is.
  *
  * It follows the walk map (`world.standAt`) as a game bicycle should, each
  * wheel with its own height (`wheelStep`): the tyres ease over small steps (up
@@ -63,10 +79,13 @@ import { stepSound } from './walker';
  * coasts, the tyres on earth, grass or stone, a bump (a step, a landing), the
  * hop, the brake, the stand, the bell.
  *
- * URL (checks): `bike=ride` starts him on the nearest bicycle at `at=`
- * (facing `yaw=`), `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw,…`
- * a bicycle left away from its place (bug reports give both). Its keys in a
- * shot's `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e` gets off.
+ * URL (checks): `bike=ride` starts him on a bicycle at `at=` (facing
+ * `yaw=`; his own if he has one, else the nearest), `bike=ride:<m/s>` already
+ * rolling; `bikeleft=<spot>:x:z:yaw,…` a bicycle left away from its place;
+ * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°` his own and where it stands
+ * (roam/_bikeOwn.ts); `bikehire=1` the hire bicycle is his for now (bug
+ * reports give them all). Its keys in a shot's `sim=`: `w` pedals, `j` hops,
+ * `f` rings the bell, `e` gets off.
  */
 
 /** Speeds (m/s, at his roaming size): pedalling, pedalling hard, walking it back; the most it ever goes. */
@@ -153,6 +172,10 @@ const MOUNT = 0.6;
 const DISMOUNT = 0.55;
 const REACH = 1.7;
 const RISE = 1.2;
+/** A hired bicycle he has left goes back to its place once he is this far from it (m). */
+const HIRE_BACK = 30;
+/** A bicycle he may ride wins over a neighbour's this much nearer (m: the market's, by the shop's delivery spot). */
+const PREFER = 0.8;
 /** A parked bicycle leans on its stand this far (rad, to its left), its bars turned a little that way. */
 const PARK_LEAN = 0.1;
 const PARK_STEER = 0.28;
@@ -218,9 +241,21 @@ const KEYS: readonly AddonKey[] = [
   ['Q R', 'rLook', 'rstick'],
 ];
 
+/** Whose a bicycle is: hired out at Angkor Wat, a neighbour's, his own. */
+type Role = 'hire' | 'neighbour' | 'own';
+
+/** What a neighbour calls out when he presses E at their bicycle (in turn). */
+const NEIGHBOUR_SAYS = ['bikeNeighbourSay0', 'bikeNeighbourSay1', 'bikeNeighbourSay2'] as const;
+
 interface Bike {
-  readonly spot: BikeSpot;
+  /** `wat`, `market`, `village`, `hamlet` (its place's), `own`. */
+  readonly id: string;
+  readonly role: Role;
+  /** Its place (null: his own, which stands where he left it). */
+  readonly spot: BikeSpot | null;
   readonly model: BikeModel;
+  /** On the map (his own: while he has one). */
+  shown: boolean;
   /** The point on the ground under its saddle (m) and its heading. */
   readonly pos: Vector3;
   yaw: number;
@@ -245,6 +280,14 @@ let env: AddonEnv | null = null;
 let roamMode: RoamMode = 'overview';
 let things: Things | null = null;
 const bikes: Bike[] = [];
+/** His own (null until built), the one hired out (by Angkor Wat's road), the shop's three for sale (not to ride). */
+let own: Bike | null = null;
+let hireBike: Bike | null = null;
+const forSale: BikeModel[] = [];
+/** The hire bicycle is his for now (paid); he has left it (got off: it goes back once he is `HIRE_BACK` m off). */
+let hired = false;
+/** The neighbours' words when he presses E at theirs (in turn). */
+let neighbourSay = 0;
 let ride: Bike | null = null;
 let phase: Phase = 'off';
 /** Getting on or off: 0‥1. */
@@ -326,6 +369,8 @@ let poolMat: MeshBasicMaterial | null = null;
 let words = '';
 let offerText = '';
 let rideText = '';
+let hireText = '';
+let neighbourText = '';
 
 const ps = bikeState();
 const posture = () => bikePose(ps);
@@ -347,6 +392,9 @@ function prompts(): void {
   words = lang();
   offerText = `E  ${t('bikeRide')}`;
   rideText = `E  ${t('bikeOff')}  ·  Space  ${t('bikeHop')}  ·  F  ${t('bikeBell')}`;
+  hireText = `E  ${t('bikeHire', { riel: riel(HIRE_PRICE) })}`;
+  // (no key: it is not his to ride)
+  neighbourText = t('bikeNeighbour');
 }
 
 // ── The bicycles on the map ────────────────────────────────────────────────
@@ -357,15 +405,35 @@ function build(e: AddonEnv): void {
   const t0 = performance.now();
   const hanging = buildCanopies(e.parts, e.world.field);
   console.info(`[map] bicycles: ${BIKE_SPOTS.length} · ${hanging} things hanging at head height (umbrellas, awnings, vines) indexed in ${(performance.now() - t0).toFixed(1)} ms`);
-  things = new Things(BIKE_SPOTS.reduce((n, s) => n + BikeModel.boxes(s.seed), 0));
+  // (the four at their places, his own — room for the biggest look the shop sells —, the shop's three for sale)
+  const looks = BIKE_KINDS.map((k) => lookOf(k.id));
+  const ownSlots = BikeModel.most(OWN_SEED, looks);
+  things = new Things(BIKE_SPOTS.reduce((n, s) => n + BikeModel.boxes(s.seed), 0) + ownSlots + looks.reduce((n, l) => n + BikeModel.boxes(SALE_SEED, l), 0));
   things.mesh.name = 'roam:bikes';
   e.scene.add(things.mesh);
+  const turns = (): BikeTurns => ({ steer: 0, front: 0, rear: 0, crank: PARK_CRANK, stand: 1, lamp: 0 });
   for (const spot of BIKE_SPOTS) {
     const model = new BikeModel(things, spot.seed);
-    const b: Bike = { spot, model, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: { steer: 0, front: 0, rear: 0, crank: PARK_CRANK, stand: 1, lamp: 0 }, moved: false };
+    const b: Bike = { id: spot.id.slice(5), role: spot.role, spot, model, shown: true, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
     bikes.push(b);
+    if (spot.role === 'hire') hireBike = b;
     home(b, e.world);
   }
+  own = { id: 'own', role: 'own', spot: null, model: new BikeModel(things, OWN_SEED, lookOf(BIKE_OWN.kind ?? 'town'), ownSlots), shown: false, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
+  bikes.push(own);
+  ownChanged(e);
+  onBikeOwn(() => env && ownChanged(env));
+  // The shop's three for sale: side by side in its stall, on their stands, pointing out to the street (written once).
+  BIKE_KINDS.forEach((k, i) => {
+    const m = new BikeModel(things!, SALE_SEED, lookOf(k.id));
+    const [lx, lz] = SHOP_DISPLAY[i];
+    const [x, z] = shopToWorld(lx, lz);
+    const t = turns();
+    t.crank = PARK_CRANK;
+    m.place(x, e.world.field.heightAt(x, z), z, shopYaw(SHOP_DISPLAY_TURN), PARK_LEAN, 0, 1.4, t);
+    m.write();
+    forSale.push(m);
+  });
   // The dynamo lamp's pool of light on the ground ahead: a soft warm oval (long along the road, nothing at
   // the canvas's edges), added to the ground's light.
   const c = document.createElement('canvas');
@@ -393,14 +461,41 @@ function build(e: AddonEnv): void {
   e.scene.add(pool);
 }
 
-/** Back to its place, on its stand. */
+/** His own bicycle's and the shop's: their small differences' seed (they carry nothing: a new bicycle). */
+const OWN_SEED = 5;
+const SALE_SEED = 6;
+
+/** How a bicycle of `kind` looks, new from the shop (its colour, nothing carried). */
+const lookOf = (kind: (typeof BIKE_KINDS)[number]['id']): BikeLook => ({ kind, colour: kind === BIKE_OWN.kind ? BIKE_OWN.colour : kindOf(kind).colour, cargo: false });
+
+/** Back to its place, on its stand (his own: where he left it). */
 function home(b: Bike, world: RoamWorld): void {
   const s = b.spot;
-  b.pos.set(s.x, groundUnder(world, s.x, s.z), s.z);
-  b.yaw = s.yaw;
+  const x = s ? s.x : BIKE_OWN.x;
+  const z = s ? s.z : BIKE_OWN.z;
+  b.pos.set(x, groundUnder(world, x, z), z);
+  b.yaw = s ? s.yaw : BIKE_OWN.yaw;
   park(b);
   b.turns.crank = PARK_CRANK;
   b.moved = false;
+}
+
+/** His bicycle changed (bought, traded in, a URL's): its look, where it stands, shown or not. Not while he rides it. */
+function ownChanged(e: AddonEnv): void {
+  const b = own;
+  if (!b || (ride === b && phase !== 'off')) return;
+  b.shown = BIKE_OWN.kind !== null;
+  if (!BIKE_OWN.kind) {
+    b.model.hide();
+    return;
+  }
+  b.model.restyle({ kind: BIKE_OWN.kind, colour: BIKE_OWN.colour, cargo: false });
+  home(b, e.world);
+}
+
+/** His own bicycle stands where it is now (he got off it, or the ride stopped): kept between visits. */
+function ownLeft(b: Bike): void {
+  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw);
 }
 
 /** On its stand where it is: leaning on it, the bars turned a little, the lamp off (the pedals as he left them). */
@@ -419,22 +514,28 @@ function groundUnder(world: RoamWorld, x: number, z: number): number {
   return g !== undefined && !Number.isNaN(g) ? g : land;
 }
 
-/** The bicycle he could get on from (x, y, z), or null. */
+/** The bicycle he is by at (x, y, z) (one he may ride before a neighbour's a little nearer), or null. */
 function near(x: number, y: number, z: number, s: number): Bike | null {
   let best: Bike | null = null;
-  let bd = REACH * s;
+  let bd = Infinity;
   for (const b of bikes) {
+    if (!b.shown) continue;
     // (from its middle, between the wheels)
     const mx = b.pos.x + Math.sin(b.yaw) * 0.17 * s;
     const mz = b.pos.z + Math.cos(b.yaw) * 0.17 * s;
     const d = Math.hypot(x - mx, z - mz);
-    if (d < bd && Math.abs(y - b.pos.y) < RISE) {
-      bd = d;
+    if (d >= REACH * s || Math.abs(y - b.pos.y) >= RISE) continue;
+    const score = d + (b.role === 'neighbour' ? PREFER : 0);
+    if (score < bd) {
+      bd = score;
       best = b;
     }
   }
   return best;
 }
+
+/** He may ride it now: his own, or the hire bicycle he has paid for. */
+const his = (b: Bike): boolean => b.role === 'own' || (b.role === 'hire' && hired);
 
 // ── Where it can go ────────────────────────────────────────────────────────
 
@@ -813,6 +914,8 @@ function wheelStep(wh: Wheel, dt: number, k: number): boolean {
 function start(ctx: RoamCtx, b: Bike, at = false): void {
   const e = env!;
   ride = b;
+  // (his own: its badge on the maps goes while he rides it)
+  if (b.role === 'own') ridingBike(true);
   phase = at ? 'ride' : 'mount';
   u = 0;
   from.copy(ctx.body.pos);
@@ -874,6 +977,7 @@ function stop(ctx: RoamCtx | null): void {
     if (!settled(rear) || !settled(front)) ride.pos.y = Math.min(rear.ground, front.ground);
     park(ride);
     ride.model.place(ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw, ride.lean, ride.pitch, ctx?.body.scale ?? 1.4, ride.turns);
+    ownLeft(ride);
   }
   ride = null;
   phase = 'off';
@@ -979,6 +1083,7 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
     cam.behindYaw = body.yaw;
     if (u >= 1) {
       park(b);
+      ownLeft(b);
       ride = null;
       phase = 'off';
       cam.distance = camBase;
@@ -1276,6 +1381,7 @@ function frame(f: MapFrame, mode: RoamMode): void {
   // (all of them, wherever the camera is — the free camera too: four bicycles are one draw, only the one moving is written)
   const scale = mode === 'overview' ? 1.4 : env.body.scale;
   for (const b of bikes) {
+    if (!b.shown) continue;
     const ridden = b === ride;
     // (the dynamo: as bright as it turns, seen at dusk and night)
     if (ridden) b.turns.lamp = phase === 'ride' ? clamp(Math.abs(v) / 2.5, 0, 1) * clamp(f.night * 1.6 - 0.25, 0, 1) : 0;
@@ -1311,47 +1417,88 @@ registerAddon({
   },
   init(e) {
     env = e;
+    // (his own bicycle from the page's URL, a check's: in the overview too)
+    bikeOwnFromUrl(e.params);
     build(e);
   },
   offer(ctx, mode) {
     if (mode !== 'walk' || phase !== 'off' || !env || env.busy()) return null;
     const p = ctx.body.pos;
-    if (!near(p.x, p.y, p.z, sc(ctx))) return null;
+    const b = near(p.x, p.y, p.z, sc(ctx));
+    if (!b) return null;
     prompts();
-    return offerText;
+    return his(b) ? offerText : b.role === 'hire' ? hireText : neighbourText;
   },
   use(ctx) {
+    const e = env;
     const p = ctx.body.pos;
     const b = near(p.x, p.y, p.z, sc(ctx));
-    if (b) start(ctx, b);
+    if (!b || !e) return;
+    if (b.role === 'neighbour') {
+      // (not his: the neighbour calls out, a different line each time)
+      ctx.hud.toast(t(NEIGHBOUR_SAYS[neighbourSay]));
+      neighbourSay = (neighbourSay + 1) % NEIGHBOUR_SAYS.length;
+      return;
+    }
+    if (b.role === 'hire' && !hired) {
+      if (!e.purse.pay(HIRE_PRICE)) {
+        ctx.hud.toast(t('bikeHireShort', { riel: riel(HIRE_PRICE) }));
+        return;
+      }
+      hired = true;
+      ctx.sound('coin', 1);
+      pad.rumble('tick');
+      bagNotify.update('purse');
+      ctx.hud.toast(t('bikeHired'));
+    }
+    start(ctx, b);
   },
   hold,
   keys: () => KEYS,
   frame,
+  after(ctx) {
+    // A hired bicycle he has left (and walked off from) goes back to its place: the hire is over.
+    const b = hireBike;
+    if (!hired || !b || !env || ride === b) return;
+    const p = ctx.body.pos;
+    if ((p.x - b.pos.x) ** 2 + (p.z - b.pos.z) ** 2 < HIRE_BACK * HIRE_BACK) return;
+    hired = false;
+    if (b.moved) ctx.hud.toast(t('bikeHireBack'));
+    home(b, env.world);
+  },
   setMode(next, _prev, ctx) {
     roamMode = next;
     if (next !== 'walk') stop(ctx);
-    // Back to the map: every bicycle goes back to its place.
-    if (next === 'overview' && env) for (const b of bikes) home(b, env.world);
+    // Back to the map: the hire and the neighbours' bicycles go back to their places (his own stays where it is), the hire is over.
+    if (next === 'overview' && env) {
+      for (const b of bikes) if (b.role !== 'own') home(b, env.world);
+      hired = false;
+    }
   },
   fromUrl(q, ctx) {
     if (!env) return;
+    // His own bicycle and where it stands (`bikeown=`, `bikeownat=`: _bikeOwn.ts; the change comes back through `ownChanged`).
+    bikeOwnFromUrl(q);
+    if (q.get('bikehire') === '1') hired = true;
     // A bicycle left away from its place: `bikeleft=<spot>:x:z:yaw(deg),…`.
     for (const part of (q.get('bikeleft') ?? '').split(',').filter(Boolean)) {
       const [id, x, z, yaw] = part.split(':');
-      const b = bikes.find((o) => o.spot.id === `bike-${id}`);
+      const b = bikes.find((o) => o.spot && o.id === id);
       if (!b || ![x, z, yaw].every((s) => Number.isFinite(Number(s)))) continue;
       b.pos.set(Number(x), groundUnder(env.world, Number(x), Number(z)), Number(z));
       b.yaw = (Number(yaw) * Math.PI) / 180;
       park(b);
       b.moved = true;
     }
-    // On a bicycle at `at=` (the nearest comes to him), rolling at `bike=ride:<m/s>`.
+    // On a bicycle at `at=` (his own comes to him if he has one, else the nearest), rolling at `bike=ride:<m/s>`.
     const m = /^ride(?::(-?[\d.]+))?$/.exec(q.get('bike') ?? '');
     if (m && phase === 'off' && roamMode === 'walk') {
       const p = ctx.body.pos;
       let best = bikes[0];
-      for (const b of bikes) if (b.pos.distanceToSquared(p) < best.pos.distanceToSquared(p)) best = b;
+      for (const b of bikes) if (b.shown && b.pos.distanceToSquared(p) < best.pos.distanceToSquared(p)) best = b;
+      if (own?.shown) best = own;
+      // (a check's ride on the hire bicycle: it is hired)
+      if (best.role === 'hire') hired = true;
       start(ctx, best, true);
       v = Number(m[1] ?? 0) * sc(ctx);
       if (Math.abs(v) > 0.45) down = 0;
@@ -1361,11 +1508,18 @@ registerAddon({
   report() {
     const out: Record<string, string> = {};
     if (phase === 'ride' || phase === 'mount') out.bike = Math.abs(v) > 0.05 ? `ride:${v.toFixed(1)}` : 'ride';
+    const deg = (y: number) => (((y * 180) / Math.PI) % 360).toFixed(0);
     const left = bikes
-      // (the one he is getting off is on its stand already)
-      .filter((b) => b.moved && (b !== ride || phase === 'dismount'))
-      .map((b) => `${b.spot.id.slice(5)}:${b.pos.x.toFixed(1)}:${b.pos.z.toFixed(1)}:${(((b.yaw * 180) / Math.PI) % 360).toFixed(0)}`);
+      // (the one he is getting off is on its stand already; his own goes by `bikeownat`)
+      .filter((b) => b.spot && b.moved && (b !== ride || phase === 'dismount'))
+      .map((b) => `${b.id}:${b.pos.x.toFixed(1)}:${b.pos.z.toFixed(1)}:${deg(b.yaw)}`);
     if (left.length) out.bikeleft = left.join(',');
+    if (BIKE_OWN.kind && own) {
+      out.bikeown = BIKE_OWN.colour === kindOf(BIKE_OWN.kind).colour ? BIKE_OWN.kind : `${BIKE_OWN.kind}:${BIKE_OWN.colour}`;
+      // (ridden now: where it is, and `bike=ride` puts him back on it)
+      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}`;
+    }
+    if (hired) out.bikehire = '1';
     return Object.keys(out).length ? out : null;
   },
 });
@@ -1389,6 +1543,10 @@ export function bikeDebug(): unknown {
     rise: +rise.toFixed(2),
     waiting,
     block: lastBlock,
-    bikes: bikes.map((b) => ({ id: b.spot.id, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), z: +b.pos.z.toFixed(2), yaw: +((b.yaw * 180) / Math.PI).toFixed(1), shown: b.model.shown })),
+    riding: ride?.id ?? null,
+    hired,
+    own: BIKE_OWN.kind ? { kind: BIKE_OWN.kind, colour: BIKE_OWN.colour, at: [+BIKE_OWN.x.toFixed(2), +BIKE_OWN.z.toFixed(2), +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1)] } : null,
+    bikes: bikes.map((b) => ({ id: b.id, role: b.role, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), z: +b.pos.z.toFixed(2), yaw: +((b.yaw * 180) / Math.PI).toFixed(1), shown: b.model.shown, look: `${b.model.look.kind}:${b.model.look.colour}` })),
+    forSale: forSale.map((m) => `${m.look.kind}:${m.look.colour}`),
   };
 }
