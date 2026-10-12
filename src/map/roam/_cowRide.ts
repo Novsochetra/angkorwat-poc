@@ -61,9 +61,11 @@ const TURN = 0.75;
 /** How quickly it gets going and stops (1/s). */
 const SPEED_UP = 1.7;
 const SLOW_DOWN = 3.0;
-/** A land step it goes up or down (m: the walker's hop), the room it needs over the ground with him on it (m). */
+/** A land step it goes up or down (m: the walker's hop), the room it needs over the ground with him on it (m: its back, and him sitting up). */
 const UP = 2.2;
-const ROOM = 3.2;
+const ROOM = 3.6;
+/** The room he needs over its back to sit up on it (m: his hips to his hat), else he cannot get on there (a shelter's roof). */
+const SIT_ROOM = 1.75;
 /** The deepest water it wades (m, size 1: up to its belly), what stands more than this over the land is built (stairs, terraces, bridges, planks, jars), the road's paving is not (m). */
 const DEEP = 0.6;
 const BUILT = 0.35;
@@ -393,6 +395,9 @@ function nearest(ctx: RoamCtx): RideCow | null {
     if (d > bestD) continue;
     const back = c.y + (OX_SEAT[1] - OX_LIE.drop * (c.lying ? 1 : 0)) * s - p.y;
     if (back < SEAT_LOW || back > SEAT_HIGH) continue;
+    // (room for him over its back, standing: not under a low roof, as the pen's shelter)
+    const top = c.y + OX_SEAT[1] * s;
+    if (ctx.world.ceilingAt && ctx.world.ceilingAt(c.x, c.z, top - 0.2) < top + SIT_ROOM) continue;
     best = c;
     bestD = d;
   }
@@ -1180,6 +1185,10 @@ registerAddon({
         },
         get parked() {
           return parked;
+        },
+        /** The cow E would get him on from where he stands now (its id), or null (a check's look). */
+        get offered() {
+          return env ? (nearest({ body: env.body, world: env.world } as RoamCtx)?.id ?? null) : null;
         },
         get bob() {
           return seatState.lagLift - seatState.lift;

@@ -773,7 +773,7 @@ interface Cow {
  * the foot bridge, in the morning and at dusk (where the clock has them: a
  * still shows them there); grazing by day, heads down, wandering a little,
  * the boy sitting by the meadow; dozing in the pen at night, two of them
- * lying down. They stop for the explorer in their way; their bells clonk as
+ * lying down (one under the shelter, one out in the pen). They stop for the explorer in their way; their bells clonk as
  * they go.
  *
  * He may ride them (roam/_cowRide.ts; cattle/ride.ts `COW_RIDE`: `ev-0‥2`)
@@ -1008,7 +1008,7 @@ class Herd {
           cow.yaw = Math.atan2(dx, dz);
         }
         // In the pen at night, settled a while, two of them lie down; up before the morning's walk.
-        const lie = !grazing && i !== 1 && !moving && now - cow.still > LIE_AFTER && c >= HERD.home[1] && c < LIE_UNTIL ? 1 : 0;
+        const lie = !grazing && i !== 2 && !moving && now - cow.still > LIE_AFTER && c >= HERD.home[1] && c < LIE_UNTIL ? 1 : 0;
         if (lie !== cow.lie) {
           cow.lie = lie;
           cow.lieAt = first ? -1e9 : now;
