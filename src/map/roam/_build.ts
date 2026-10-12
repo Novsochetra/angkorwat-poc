@@ -1,5 +1,5 @@
 import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
-import { BUILD, distTo, toLocal } from '../build/state';
+import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, type BuildView } from '../build/view';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
@@ -211,9 +211,14 @@ function askTake(ctx: RoamCtx, b: Built): void {
 
 // ── Build mode ─────────────────────────────────────────────────────────────
 
+const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
+/** Footprints may touch this much (m), as _buildSpots.ts lets fence runs touch. */
+const SNAP_TOUCH = 0.03;
+
 /**
  * A fence's spot snapped onto the end of one he built, if near: into `spot`. In line (the run going on) or turned
  * a quarter (a corner: its end against the other's end, on either side of it, the two touching, not overlapping).
+ * Only onto an end that is free (a corner at the joint of two in a run would stand on the next one).
  */
 function snapFence(): boolean {
   let best = SNAP.d;
@@ -225,6 +230,10 @@ function snapFence(): boolean {
   const take = (x: number, z: number, yaw: number) => {
     const d = Math.hypot(x - spot.x, z - spot.z);
     if (d >= best) return;
+    _snap.x = x;
+    _snap.z = z;
+    _snap.yaw = yaw;
+    for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH)) return;
     best = d;
     bx = x;
     bz = z;
