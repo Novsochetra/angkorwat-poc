@@ -10,6 +10,8 @@ How each part works is in `docs/map-work/addons.md` (one section each).
 - "buy some bike also instead of steal from neighbor haha"
 - "what if we can also build some place by our self … it might be a bit more work"
 - "improve the coconut fruit that fall from tree ui … like drop of water ui"
+- "we have our garden fruit it good if we can provide it to ទីសក្ការៈ, share
+  with neighbor, monk, kid"
 
 ## Round 1 (decided)
 
@@ -54,6 +56,21 @@ How each part works is in `docs/map-work/addons.md` (one section each).
 
 - A pixel icon over a tree with fallen fruit to pick up, like the water drop.
 - The falling coconut drawn as one round shape, not a pile of blocks.
+
+### Giving his garden's fruit (`roam/_offerFruit*.ts`, `roam/_shareFruit*.ts`)
+
+Asked the same day: "we have our garden fruit it good if we can provide it to
+ទីសក្ការៈ, share with neighbor, monk, kid."
+
+- At a shrine he offers fruit (ថ្វាយ): he kneels, lays it on the altar, then
+  prays. The fruit stays there a while.
+- To the monks (ប្រគេន): at the dawn alms round, to the blessing monk, or to a
+  monk he meets. The monk blesses him.
+- To a neighbour, an elder or his grandmother (ចែក): they take it, thank him,
+  and sometimes give a little back (a snack, a few seeds). Never money.
+- To the children: a child runs up, takes it, jumps for joy and eats it.
+- Once a person a day. `,` and `.` change which fruit he gives. The two parts
+  share `roam/_giveFruit.ts`.
 
 ## Ideas for later
 
