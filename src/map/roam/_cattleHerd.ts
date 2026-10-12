@@ -178,6 +178,11 @@ export class CattleHerd {
   readonly sounds: { moo: number; calf: number; munch: number } = { moo: 0, calf: 0, munch: 0 };
   /** Set the shots' stills: everything settled where the clock has it (no walking). */
   still = false;
+  /**
+   * The grass he cuts (roam/_cattleWork.ts): a clump of tall blades before him, `cut` of its four fistfuls cut down to
+   * stubble; it stays a while after (`since`: when it was last cut, the herd's time).
+   */
+  readonly clump = { on: false, x: 0, y: 0, z: 0, yaw: 0, cut: 0, since: 0 };
   /** Checks (`__cattle`): the last way found for each slot (points), and what the searches did. */
   readonly stats = { searches: 0, straight: 0, failed: 0, snapped: 0 };
 
@@ -1094,6 +1099,7 @@ export class CattleHerd {
       }
     }
     O.n = n;
+    if (this.clump.on) this.drawClump(cx, cz);
     // (his stakes with no cow at them now: still in the ground)
     for (let k = 0; k < STAKES.length; k++) {
       let used = false;
@@ -1105,6 +1111,29 @@ export class CattleHerd {
     }
     bl.end();
     fl.flush(t);
+  }
+
+  /** The clump of grass he cuts: blades standing (the fistfuls not cut yet) and the stubble of those cut. */
+  private drawClump(cx: number, cz: number): void {
+    const c = this.clump;
+    if (this.time - c.since > 90 && !this.still) {
+      c.on = false;
+      return;
+    }
+    if (Math.hypot(c.x - cx, c.z - cz) > 120) return;
+    const n = 16;
+    for (let j = 0; j < n; j++) {
+      const r = (k: number) => hash3(j, k, 61, 7120);
+      const a = j * 2.39996;
+      const d = 0.08 + 0.26 * Math.sqrt((j + 0.5) / n);
+      const x = c.x + Math.sin(a) * d;
+      const z = c.z + Math.cos(a) * d;
+      // (fistful by fistful from the near side: each a quarter of the blades)
+      const cut = Math.floor((j * 4) / n) < c.cut;
+      const h = cut ? 0.05 + 0.03 * r(1) : 0.42 + 0.22 * r(2);
+      const lean = cut ? 0 : (r(3) - 0.5) * 0.5;
+      this.blocks.box(x, c.y + h / 2, z, 0.035, h, 0.035, a + c.yaw, lean, GRASS_COL[j % GRASS_COL.length]);
+    }
   }
 
   private anyCow(): boolean {

@@ -555,6 +555,8 @@ registerAddon({
             trader: { ...TRADER },
             rides: COW_RIDE.cows.map((r) => ({ id: r.id, owner: r.owner, canRide: r.canRide, ridden: r.ridden, x: +r.x.toFixed(2), z: +r.z.toFixed(2), scale: +r.scale.toFixed(2), lying: r.lying })),
             stats: herd?.stats,
+            clump: herd ? { ...herd.clump } : null,
+            blocks: herd?.blocks.used ?? 0,
           }),
           advance: (days: number) => CATTLE.advance(days),
           /** Where he is, and each cow of his: its nose, how far, hungry, what E would do. */
@@ -736,6 +738,7 @@ registerAddon({
     lastCtx = ctx;
     if (!herd || !work || !env) return;
     keepView = q.has('rcam');
+    work.keepView = keepView;
     const clockQ = Number(q.get('clock'));
     const clk = q.has('clock') && Number.isFinite(clockQ) ? ((clockQ % 1) + 1) % 1 : clockNow();
     herd.settle(q.get('cattlenight') === '1' ? 0.45 : clk);
@@ -757,7 +760,11 @@ registerAddon({
         best.cow.fed = Math.min(best.cow.fed, CATTLE.clock - 1.2);
         const what = q.get('cattlefood') === 'grass' ? 'grass' : 'straw';
         if (what === 'grass') work.carrying = true;
+        // (the shot's camera, as `rcam=` had it, turned with him as he turns to the cow)
+        const was = ctx.body.yaw;
         work.freezeFeed(ctx, best, what, Math.max(0, Number(feed) || 0));
+        ctx.cam.yaw += angleDiff(ctx.body.yaw, was);
+        ctx.cam.behindYaw = ctx.cam.yaw;
         const y = ctx.world.field.heightAt(ctx.body.pos.x, ctx.body.pos.z);
         ctx.body.pos.y = y;
       }

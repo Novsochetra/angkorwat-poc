@@ -53,10 +53,13 @@ const UP_S = 0.55;
 const LAY_S = 1.5;
 const LAY_DROP = 0.5;
 /** He stands this far before the heap (m), facing the cow; walks there at most this long (s). */
-const BEFORE = 0.72;
+const BEFORE = 1.0;
 const GO_MAX = 3;
 /** The stick held over this far stops him. */
 const PUSH = 0.5;
+/** The camera at the work: round to his right side and a little before him, above, nearer; eased for this long (s). */
+const FRAME = { side: 1.25, pitch: 0.36, distance: 6.4, rate: 2.4 };
+const FRAME_FOR = 2.6;
 
 const GRASS = [0x5e9a36, 0x4c8a2c, 0x6eaa40, 0x58923a, 0x7ab84a];
 const STRAW = [0xd6b866, 0xc9a854, 0xe2c878, 0xbf9d4a, 0xe8d090];
@@ -155,6 +158,9 @@ export class CattleWork {
   private handHas: string | null = null;
   /** The hug's weight (eased). */
   private hugW = 0;
+  /** The camera: how long it has eased to the work's side; a check's still keeps its own view (`rcam=`). */
+  private framed = 0;
+  keepView = false;
   /** E held (the keyboard's E or Enter, the pad's □, the touch Use button). */
   private readonly keys = { key: false, touch: false };
   private wired = false;
@@ -232,6 +238,7 @@ export class CattleWork {
     this.cutAt.x = b.pos.x;
     this.cutAt.z = b.pos.z;
     this.wire();
+    this.framed = 0;
     this.w = { kind: 'cut', phase: 'bend', t: 0, ct: 0, beast: null, cow: null, what: 'grass', sx: 0, sz: 0, hx: 0, hy: 0, hz: 0, dropped: false, frozen: false };
     const ex = this.env.explorer;
     this.body.kind = 'reap';
@@ -241,6 +248,18 @@ export class CattleWork {
     this.body.offer = 0;
     this.body.step = -1;
     this.body.spot.set(0.6, 0, 7);
+    // (the clump of grass before him: a fresh one where he starts, or the one he was cutting)
+    const c = this.herd.clump;
+    if (this.cutN === 0 || !c.on) {
+      const f = b.yaw;
+      c.x = b.pos.x + Math.sin(f) * 0.55;
+      c.z = b.pos.z + Math.cos(f) * 0.55;
+      c.y = this.env.world.field.heightAt(c.x, c.z);
+      c.yaw = f;
+      c.cut = this.cutN;
+      c.on = true;
+    }
+    c.since = this.herd.time;
     ex.animator.posture = this.posture;
     ex.animator.postureFeet = false;
     b.vel.set(0, 0, 0);
@@ -261,6 +280,7 @@ export class CattleWork {
       sx = ctx.body.pos.x;
       sz = ctx.body.pos.z;
     }
+    this.framed = 0;
     this.w = { kind: 'feed', phase: 'go', t: 0, ct: 0, beast, cow, what, sx, sz, hx: _nose.x, hy: _nose.y, hz: _nose.z, dropped: false, frozen: false };
     this.body.kind = 'reap';
     this.body.bend = 0;
@@ -288,7 +308,7 @@ export class CattleWork {
     cam.focus.x = body.pos.x;
     cam.focus.z = body.pos.z;
     cam.focus.y += (body.pos.y + (low ? 1.0 : h * 0.86) - cam.focus.y) * damp(6, dt);
-    cam.behindYaw = body.yaw;
+    this.frameCam(ctx, w, dt);
     const push = Math.hypot(input.move.x, input.move.y) > PUSH;
     if (w.kind === 'cut') this.cutStep(w, dt, push);
     else this.feedStep(ctx, w, dt, push);
@@ -324,6 +344,8 @@ export class CattleWork {
         // The sickle through the stalks: a fistful more in his left hand.
         if (was < CUT_S * 0.45 && w.ct >= CUT_S * 0.45) {
           this.cutN = Math.min(CUTS, this.cutN + 1);
+          this.herd.clump.cut = this.cutN;
+          this.herd.clump.since = this.herd.time;
           SFX.play('cattleCut', 0.8);
           pad.rumble('tick', 0.5);
           this.holdFist(this.cutN);
@@ -422,6 +444,32 @@ export class CattleWork {
       }
       if (w.t >= LAY_S) this.finish();
     }
+  }
+
+  /**
+   * The camera at the work: round to his side (his right, a little in front), a little above, nearer (eased in over
+   * `FRAME_FOR` s, then the player's; a drag or the wheel at once). A check's still with `rcam=` keeps its own view.
+   */
+  private frameCam(ctx: RoamCtx, w: Work, dt: number): void {
+    const { cam, body, input } = ctx;
+    if (this.keepView) {
+      cam.behindYaw = cam.yaw;
+      return;
+    }
+    const at = w.kind === 'cut' || w.phase === 'lay';
+    if (!at) {
+      cam.behindYaw = body.yaw;
+      return;
+    }
+    if (input.lookYaw || input.lookPitch || input.zoom) this.framed = FRAME_FOR;
+    const want = body.yaw + FRAME.side;
+    cam.behindYaw = want;
+    if (this.framed >= FRAME_FOR) return;
+    this.framed += dt;
+    const k = this.env.shot && !this.env.params.has('video') ? 1 : damp(FRAME.rate, dt);
+    cam.yaw += angleDiff(want, cam.yaw) * k;
+    cam.pitch += (FRAME.pitch - cam.pitch) * k;
+    cam.distance += (Math.min(Math.max(FRAME.distance, cam.minDistance), cam.maxDistance) - cam.distance) * k;
   }
 
   /** The work over: his posture back, his hands empty (a bundle he carries stays in his arms). */
@@ -536,6 +584,7 @@ export class CattleWork {
     this.body.spot.x = n % 2 === 0 ? 0.9 : -0.3;
     this.holdSickle(t > 0.1);
     this.holdFist(n + (w.ct >= CUT_S * 0.45 ? 1 : 0));
+    this.herd.clump.cut = n + (w.ct >= CUT_S * 0.45 ? 1 : 0);
     w.frozen = true;
   }
 
