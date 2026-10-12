@@ -160,8 +160,11 @@ const BENCH: Shape = {
 const BENCH_DOWN: Shape = {
   ...CROUCH, hips: 0.3, chest: 0.24, head: -0.08, back: -2.4, stepL: 0, stepR: 0, splay: 0.1, reach: 0.4,
 };
-/** On a bench his sit bones are this far behind where his feet stood (BU, z). */
-export const BENCH_BACK = 3.6;
+/**
+ * On a bench his sit bones are this far behind where his feet stood (BU, z): his feet then stand clear of the
+ * bench's front edge (the walk map takes feet inside a bench's box for a perch and moves him out of it).
+ */
+export const BENCH_BACK = 5.2;
 
 /** Half way back: the hands off the ground, going up behind his head. */
 const BACK: Shape = { ...RECLINE, hips: -0.9, chest: -0.12, neck: -0.05, head: -0.3, nape: 0.5 };
