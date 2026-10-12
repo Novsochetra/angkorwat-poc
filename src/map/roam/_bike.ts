@@ -82,7 +82,7 @@ import { stepSound } from './walker';
  * URL (checks): `bike=ride` starts him on a bicycle at `at=` (facing
  * `yaw=`; his own if he has one, else the nearest), `bike=ride:<m/s>` already
  * rolling; `bikeleft=<spot>:x:z:yaw,…` a bicycle left away from its place;
- * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°` his own and where it stands
+ * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°[:y]` his own and where it stands
  * (roam/_bikeOwn.ts); `bikehire=1` the hire bicycle is his for now (bug
  * reports give them all). Its keys in a shot's `sim=`: `w` pedals, `j` hops,
  * `f` rings the bell, `e` gets off.
@@ -470,12 +470,12 @@ const SALE_SEED = 6;
 /** How a bicycle of `kind` looks, new from the shop (its colour, nothing carried). */
 const lookOf = (kind: (typeof BIKE_KINDS)[number]['id']): BikeLook => ({ kind, colour: kind === BIKE_OWN.kind ? BIKE_OWN.colour : kindOf(kind).colour, cargo: false });
 
-/** Back to its place, on its stand (his own: where he left it). */
+/** Back to its place, on its stand (his own: where he left it, on the floor he left it on). */
 function home(b: Bike, world: RoamWorld): void {
   const s = b.spot;
   const x = s ? s.x : BIKE_OWN.x;
   const z = s ? s.z : BIKE_OWN.z;
-  b.pos.set(x, groundUnder(world, x, z), z);
+  b.pos.set(x, s ? groundUnder(world, x, z) : floorAt(world, x, BIKE_OWN.y, z), z);
   b.yaw = s ? s.yaw : BIKE_OWN.yaw;
   park(b);
   b.turns.crank = PARK_CRANK;
@@ -497,7 +497,7 @@ function ownChanged(e: AddonEnv): void {
 
 /** His own bicycle stands where it is now (he got off it, or the ride stopped): kept between visits. */
 function ownLeft(b: Bike): void {
-  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw);
+  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw, b.pos.y);
 }
 
 /** On its stand where it is: leaning on it, the bars turned a little, the lamp off (the pedals as he left them). */
@@ -514,6 +514,19 @@ function groundUnder(world: RoamWorld, x: number, z: number): number {
   const land = world.field.heightAt(x, z);
   const g = world.standAt?.(x, z, land + 0.1, 0.4, ROOM);
   return g !== undefined && !Number.isNaN(g) ? g : land;
+}
+
+/**
+ * The floor at (x, z) about `y` (m: where he left his bicycle, a terrace's, a deck's or a bridge's over the land), or
+ * the ground there when `y` is not known or nothing stands there now (`groundUnder`: from the land up, so a bicycle
+ * left on a terrace no longer stands inside its stone after a reload).
+ */
+function floorAt(world: RoamWorld, x: number, y: number, z: number): number {
+  if (Number.isFinite(y) && world.standAt) {
+    const g = world.standAt(x, z, y + 0.3, 0.6, ROOM);
+    if (!Number.isNaN(g) && Math.abs(g - y) < 1) return g;
+  }
+  return groundUnder(world, x, z);
 }
 
 /** The bicycle he is by at (x, y, z) (one he may ride before a neighbour's a little nearer), or null. */
@@ -1519,7 +1532,7 @@ registerAddon({
     if (BIKE_OWN.kind && own) {
       out.bikeown = BIKE_OWN.colour === kindOf(BIKE_OWN.kind).colour ? BIKE_OWN.kind : `${BIKE_OWN.kind}:${BIKE_OWN.colour}`;
       // (ridden now: where it is, and `bike=ride` puts him back on it)
-      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}`;
+      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}:${own.pos.y.toFixed(2)}`;
     }
     if (hired) out.bikehire = '1';
     return Object.keys(out).length ? out : null;

@@ -453,7 +453,9 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 - **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
   model in its look), it stays where he gets off it, across Esc back to the map and
   between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
-  `bike.ownAt` (`{ x, z, yaw° }`), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
+  `bike.ownAt` (`{ x, z, yaw°, y }`: `y` the floor it was left on, so one left on a
+  terrace, a deck or a bridge stands there again after a reload, not on the land under
+  it inside the stone; a save without `y` stands it on the land), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
   / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
   mini-map and the big map (it goes while he rides it, and while he has none); the
   shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
@@ -484,7 +486,8 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
   `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
   he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
-  `red`) · `bikeownat=x:z:yaw°` it stands there (else before the shop; nothing saved
+  `red`) · `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (a terrace, a
+  deck; left out, on the ground there; no `bikeownat`, before the shop; nothing saved
   from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
   `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
   `bikeownat`, `bikehire`. Checks: `window.__bikeShop.state()` (dev, shots: the card
