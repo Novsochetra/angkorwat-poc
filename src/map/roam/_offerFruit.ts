@@ -65,12 +65,12 @@ const SET_MAX = 3;
 const L = { take: [0, 0.45], lift: [0.45, 1.25], down: [2.0, 2.55], lean: [2.55, 3.45], release: 3.55, back: [3.65, 4.4], end: 4.5 } as const;
 /** The gift's middle (the tray's rim, BU in his space kneeling upright): before his chest, raised before his face. */
 const CHEST = new Vector3(0, 10.2, 5.4);
-const BROW = new Vector3(0, 13.6, 6.6);
+const BROW = new Vector3(0, 13.2, 7.4);
 /** The fists just outside the tray's rim (BU). */
 const TRAY_HALF = TRAY_R / BU + 0.3;
 /** How far he bows forward to set it down (toward the prayer's bow), over to his left. */
-const SET_STOOP = 0.6;
-const SET_LEAN = 0.25;
+const SET_STOOP = 0.36;
+const SET_LEAN = 0.3;
 const SET_SIDE = 0.5;
 /** The camera while he offers: from his side with room, behind and a little above, near; back behind him for the bows. */
 const LAY_FRAME = { side: 0.95, pitch: 0.3, distance: 5.2, rate: 2.4, back: { pitch: 0.04, distance: 4.5 } };
@@ -100,8 +100,9 @@ const layAt = new Vector3();
 let layYaw = 0;
 let released = false;
 let layCam: { yaw: number; free: boolean } | null = null;
-/** URL: a check's start of the offering `s` s in. */
+/** URL: a check's start of the offering `s` s in; a check's camera (`rcam=`: held, whatever the prayer's framing does). */
 let urlLay: number | null = null;
+let urlOrbit: { yaw: number; pitch: number; distance: number } | null = null;
 
 // ── At a shrine ────────────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ function stepLay(ctx: RoamCtx, dt: number): void {
   if (released) ps.gift.y += 1.4 * ramp(lt, [L.release, L.release + 0.35]);
   // (his eyes on it; raised, his head bowed to it)
   ps.look.copy(ps.gift);
-  if (up * (1 - down) > 0.5) ps.look.set(0, 0, 14);
+  if (up * (1 - down) > 0.5) ps.look.set(0, 5, 16);
   ps.lookW = lt < L.back[0] ? ramp(lt, [0.1, 0.5]) : 1 - ramp(lt, L.back);
   if (!released) showHand(layKind, ctx, ps.gift, true, smooth((lt - 0.05) / 0.3));
   if (!released && lt >= L.release) release();
@@ -240,6 +241,11 @@ function stepLay(ctx: RoamCtx, dt: number): void {
       cam.pitch += ((behind ? LAY_FRAME.back.pitch : LAY_FRAME.pitch) - cam.pitch) * k;
       cam.distance += ((behind ? LAY_FRAME.back.distance : LAY_FRAME.distance) * (s / 1.4) - cam.distance) * k;
     }
+  }
+  if (urlOrbit) {
+    cam.yaw = cam.behindYaw = b.yaw + urlOrbit.yaw;
+    cam.pitch = urlOrbit.pitch;
+    cam.distance = urlOrbit.distance;
   }
   // (its aim lowered toward where it goes while he sets it down)
   const fw = lt < L.back[0] ? out : 1 - ramp(lt, L.back);
@@ -270,6 +276,10 @@ registerAddon({
         now: () => ({ lay, lt: +lt.toFixed(2), released, pending: pending?.spot.id ?? null, kind: offerKind(), basket: Object.fromEntries(OFFER_KINDS.map((k) => [k, GARDEN.basket(k)])), count: progress.get('offer.count', 0, isNum), monks: progress.get('offer.monks', 0, isNum), giving: GIVING.by, monk: monkNow() }),
         laid: () => laid?.list.filter((l) => l.on),
         pose: ps,
+        /** The fruit in his hands: shown, where (m), its scale; his feet. */
+        hand: () => ({ visible: S.hand?.visible ?? false, at: S.hand?.position.toArray().map((v) => +v.toFixed(2)), scale: S.hand?.scale.x, feet: e.body.pos.toArray().map((v) => +v.toFixed(2)), yaw: +e.body.yaw.toFixed(2), inScene: !!S.hand?.parent }),
+        /** The walk map's floor at (x, z) (m), for working out new worship spots. */
+        ground: (x: number, z: number) => e.world.groundAt(x, z),
       },
     });
   },
@@ -391,6 +401,8 @@ registerAddon({
     if (clock) clock.t = OFFER_KNEEL;
     pending = { spot, kind, t: 0 };
     urlLay = at;
+    const rc = ctx.shot ? q.get('rcam')?.split(',').map(Number) : null;
+    if (rc && rc.length >= 3) urlOrbit = { yaw: (rc[0] * Math.PI) / 180, pitch: (rc[1] * Math.PI) / 180, distance: rc[2] };
   },
 
   report() {
