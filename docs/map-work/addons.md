@@ -580,6 +580,8 @@ an animal's step phase exactly.
   held there, not ridden (the prompt). `cowfake=1` (or `cowfake=x,z`) adds a cow of
   his that nobody draws, to check the ride's logic alone. The herd: `cowaway=<s>`
   (how long one he got off grazes before it walks back; 30 in a still otherwise).
+  In a still the village herd is placed only once the shot's camera has come
+  near (after its `sim=` steps), so a prompt by one of its cows needs `cow=near`.
   E.g. `roam=walk&at=462,-90&yaw=150&clock=0.03&cow=near` (the prompt on the
   meadow), `at=464,-93&yaw=200&clock=0.03&cow=ride&rcam=80,8,6.5`. The bug report
   gives `cow=ride|graze|lie&at=<its feet>&yaw=<its heading>`.
