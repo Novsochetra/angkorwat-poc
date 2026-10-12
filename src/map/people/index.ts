@@ -86,6 +86,8 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   villagemarket: async () => ((m) => (e, c) => new m.VillageMarket(e, c.scene))(await import('./_sceneVillageMarket')),
   // The east side and the new life round the map (each its own scene file).
   market: async () => ((m) => (e) => new m.MarketLife(e))(await import('./_sceneMarket')),
+  // The mechanic at the morning market's bicycle shop, on his stool by the bicycle he mends (roam/_bikeShop.ts).
+  bikeshop: async () => ((m) => (e) => new m.BikeMechanic(e))(await import('./_sceneBikeShop')),
   palmsugar: async () => ((m) => (e) => new m.PalmSugarFamily(e))(await import('./_scenePalmSugar')),
   eastvillage: async () => ((m) => (e, c) => new m.EastVillageLife(e, c.scene))(await import('./_sceneEastVillage')),
   kulen: async () => ((m) => (e) => new m.KulenLife(e))(await import('./_sceneKulen')),
