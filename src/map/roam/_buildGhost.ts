@@ -85,6 +85,8 @@ export class BuildGhost {
     // (one tiny block far under the land on the first frames: its shader is compiled with the map's)
     this.mesh.setMatrixAt(0, _m.makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
     this.mesh.count = 1;
+    // (hidden until it shows: no draw anywhere else on the map; three compiles a hidden mesh's program with the map's)
+    this.mesh.visible = false;
     parent.add(this.mesh);
   }
 
@@ -168,6 +170,7 @@ export class BuildGhost {
     this.on += ((this.want ? 1 : 0) - this.on) * k;
     if (this.on < 0.02 && !this.want) {
       this.on = 0;
+      this.mesh.visible = false;
       if (this.mesh.count !== 1 || this.mat.opacity !== 0) {
         this.mesh.count = 1;
         this.mesh.setMatrixAt(0, _m.makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
@@ -176,6 +179,7 @@ export class BuildGhost {
       }
       return;
     }
+    this.mesh.visible = true;
     const breath = 1 + SWELL * Math.sin(this.clock * PULSE);
     this.mat.opacity = this.on * (this.ok ? ALPHA.ok : ALPHA.no) * breath;
     // (where it cannot stand it is drawn over what stands there: never invisible)
