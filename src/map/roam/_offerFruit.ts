@@ -8,7 +8,7 @@ import type { MapFrame, RoamMode } from '../types';
 import { num, t } from '../ui/lang';
 import { BEFORE_SHRINE, registerAddon, type AddonKey } from './_addons';
 import { GIVING, stepGift, takeGift } from './_giveFruit';
-import { createLaidPool, isOfferKind, OFFER_KINDS, TRAY_R, type LaidPool, type OfferKind } from './_offerFruitModels';
+import { createLaidPool, isOfferKind, offerGeometry, OFFER_KINDS, TRAY_R, type LaidPool, type OfferKind } from './_offerFruitModels';
 import { monkFrame, monkFromUrl, monkHold, monkHolding, monkInit, monkInput, monkNow, monkOffer, monkReport, monkStop, monkUrlJump, monkUse } from './_offerFruitMonk';
 import { asking, BU, countMerit, fruitWord, hideHand, isNum, LATER, offerKind, OFFER_ID, okKind, prompt, ramp, RIM, S, showHand, smooth, STEP, toBody } from './_offerFruitShared';
 import { shrine } from './_pray';
@@ -281,6 +281,19 @@ registerAddon({
     laid = createLaidPool();
     e.scene.add(laid.object);
     monkInit(laid);
+    // (the fruit's shapes made in idle time, a kind at a time, his basket's first: no hitch the first time he offers)
+    if (!e.shot && typeof requestIdleCallback === 'function') {
+      const order = [...OFFER_KINDS].sort((a, b) => GARDEN.basket(b) - GARDEN.basket(a));
+      let i = 0;
+      const next = () => {
+        if (i >= order.length * 2) return;
+        const k = order[i >> 1];
+        offerGeometry(k, (i & 1) === 0);
+        i++;
+        requestIdleCallback(next, { timeout: 4000 });
+      };
+      requestIdleCallback(next, { timeout: 4000 });
+    }
     Object.assign(window, {
       __offer: {
         now: () => ({ lay, lt: +lt.toFixed(2), released, pending: pending?.spot.id ?? null, kind: offerKind(), basket: Object.fromEntries(OFFER_KINDS.map((k) => [k, GARDEN.basket(k)])), count: progress.get('offer.count', 0, isNum), monks: progress.get('offer.monks', 0, isNum), giving: GIVING.by, monk: monkNow() }),
