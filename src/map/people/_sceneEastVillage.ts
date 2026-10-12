@@ -907,10 +907,18 @@ class Herd {
         cow.wx = r.x;
         cow.wz = r.z;
       }
-      // (back on the map: home at once, wherever he left it)
+      // (back on the map: home at once, wherever he left it: its place in the meadow by day, the pen otherwise)
       if (cow.away && f.roam === 'overview') {
+        const c = f.clock;
+        this.home(i, (c >= HERD.out[1] || c < HERD.home[0]) && this.hold === null, now, true);
         cow.away = false;
         cow.set = false;
+        cow.lie = 0;
+        cow.x = r.x = cow.wx = cow.tx;
+        cow.z = r.z = cow.wz = cow.tz;
+        cow.y = 0;
+        r.y = deckOrGround(this.field, cow.x, cow.z);
+        r.canRide = false;
       }
     }
   }
@@ -1059,12 +1067,14 @@ class Herd {
       } else if (now - cow.lieAt > SETTLE) {
         // A step toward its place, round what is in its way (the village's walk map: walls, steps, the water).
         const step = Math.min(d, pace * dt);
+        const wa = this.field.waterAt(cow.x, cow.z);
+        const wet = wa === null ? 0 : wa - cow.y;
         const head = Math.atan2(dx, dz);
         for (const off of DETOURS) {
           const a = head + off;
           const sx = Math.sin(a);
           const sz = Math.cos(a);
-          if (!this.walkable(cow.x + sx * (step + LOOK), cow.z + sz * (step + LOOK), cow.y)) continue;
+          if (!this.walkable(cow.x + sx * (step + LOOK), cow.z + sz * (step + LOOK), cow.y, wet)) continue;
           cow.x += sx * step;
           cow.z += sz * step;
           const turn = Math.atan2(Math.sin(a - cow.yaw), Math.cos(a - cow.yaw));
@@ -1079,13 +1089,13 @@ class Herd {
     return false;
   }
 
-  /** May a cow walk at (x, z), its feet about `y`: no wall nor low roof (it is tall), no step over a metre, the water no deeper than its knees (out of the shallows it was left in). */
-  private walkable(x: number, z: number, y: number): boolean {
+  /** May a cow walk at (x, z), its feet about `y`: no wall nor low roof (it is tall), no step over a metre, the water no deeper than its knees, or than where it stands (`wet` m: out of the shallows it was left in). */
+  private walkable(x: number, z: number, y: number, wet: number): boolean {
     const walk = this.ground.walk;
     const g = walk ? walk.standAt(x, z, y, 1.0, 2.2) : this.field.heightAt(x, z);
     if (!Number.isFinite(g) || Math.abs(g - y) > 1.0) return false;
     const w = this.field.waterAt(x, z);
-    return w === null || w - g < 0.45;
+    return w === null || w - g < Math.max(0.45, wet - 0.02);
   }
 
   /** Cow `i`'s next spot: somewhere in the meadow (grazing), or its place in the pen. */

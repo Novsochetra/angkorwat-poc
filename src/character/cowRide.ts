@@ -66,7 +66,7 @@ const CHEST_REST = new Vector3(...JOINTS.chest.pivot).sub(REST_HIPS);
 const LEG_X = JOINTS.hipL.pivot[0];
 const THIGH = JOINTS.hipL.pivot[1] - JOINTS.kneeL.pivot[1];
 const KNEE_OUT = 0.6;
-const THIGH_MAX = 1.32;
+const THIGH_MAX = 1.12;
 /** Hands on its back while climbing on (BU, his space from the seat: low, apart, ahead of him, either side of the hump). */
 const BACK_HANDS = new Vector3(3.4, 0.8, 4.0);
 /** Elbows out and a little back (chest space). */
@@ -139,7 +139,8 @@ export function cowSeatPose(s: CowSeatState): Pose {
   // Legs: the thighs down over its narrow back, the shins hanging lower down its flanks from the knees (out just
   // enough to clear the barrel's edge), the toes down.
   const thigh = Math.min(THIGH_MAX, Math.asin(Math.min(1, Math.max(0.2, (s.half + KNEE_OUT - LEG_X) / THIGH))));
-  const shin = Math.min(0.85, Math.max(0.15, 0.2 + (s.half - LEG_X) * 0.13));
+  // (narrow: the shins hang nearly straight down its flanks, the knees gripping it just under its back's edge)
+  const shin = Math.min(0.85, Math.max(0.15, 0.1 + (s.half - LEG_X) * 0.11));
   const leg = (side: 1 | -1): [JointPose, JointPose, JointPose] => {
     const over = side === far ? hop : 0.35 * hop;
     return [
