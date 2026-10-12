@@ -15,6 +15,10 @@ import { setSteppedVars } from '../ui/shape';
  * many, its line ("Knee high: to sit on and to lie under the sky"), its price;
  * one he cannot build now is greyed with why ("You have all 3", "12,000 ៛ more
  * needed"). The first he can build is in gold. A quiet "Not now" at the foot.
+ * Every line reads whole (it wraps; on a narrow card, a phone upright, the
+ * price sits on the name's line and the line runs under both); the list
+ * scrolls in a low window with soft edges where there is more (as the
+ * settings panel's body).
  *
  * Keys (its own while it is up: a capture listener; the roaming keys never see
  * them): 1‥9 pick that row, ↑ ↓ move between the rows, Enter or Space presses
@@ -127,10 +131,28 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
         .join('') +
       `<button type="button" class="bd-opt bd-cancel mu-frame mu-sm" data-id=""><span class="mu-bg"></span><span class="mu-focus"></span><span class="bd-t"><b>${esc(w.cancel)}</b></span><kbd data-pad="east">Esc</kbd></button>`;
     if (focused) opts.querySelector<HTMLButtonElement>(`button[data-id="${focused}"]`)?.focus({ preventScroll: true });
+    edges();
   }
   onLang(() => {
     if (isOpen) render();
   });
+
+  /** Soft edges on the list where there is more to scroll to (a low window, a phone on its side). */
+  function edges(): void {
+    opts.classList.toggle('is-more-up', opts.scrollTop > 1);
+    opts.classList.toggle('is-more-down', opts.scrollTop + opts.clientHeight < opts.scrollHeight - 1);
+  }
+  opts.addEventListener('scroll', edges, { passive: true });
+  // (the window turned or resized, the words wrapped again: asked in the next frame, not while the observer reports)
+  let fitting = 0;
+  if (typeof ResizeObserver !== 'undefined')
+    new ResizeObserver(() => {
+      if (isOpen && !fitting)
+        fitting = requestAnimationFrame(() => {
+          fitting = 0;
+          edges();
+        });
+    }).observe(opts);
 
   function show(on: boolean): void {
     isOpen = on;
@@ -208,7 +230,9 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       pick = onPick;
       render();
       if (isOpen) return;
+      opts.scrollTop = 0;
       show(true);
+      edges();
       sound?.('open');
       card.focus({ preventScroll: true });
     },
@@ -239,7 +263,14 @@ function injectStyle(): void {
       background: rgba(10, 18, 30, 0.75); box-shadow: inset 0 0 0 calc(1.5 * var(--px)) rgba(255, 216, 120, 0.55), 0 0 calc(12 * var(--px)) rgba(255, 190, 110, 0.22); }
     .bd-icon { width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
     .bd-ask #bd-note[hidden] { display: none; }
-    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y; }
+    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
+      overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }
+    /* Soft edges where there is more to scroll to, as the settings panel's body (map.css \`.mu-set-body\`, ui.ts \`scrollEdges\`). */
+    .bd-opts:is(.is-more-up, .is-more-down) {
+      -webkit-mask-image: linear-gradient(transparent, #000 var(--mu-more-up), #000 calc(100% - var(--mu-more-down)), transparent);
+      mask-image: linear-gradient(transparent, #000 var(--mu-more-up), #000 calc(100% - var(--mu-more-down)), transparent); }
+    .bd-opts.is-more-up { --mu-more-up: calc(26 * var(--px)); }
+    .bd-opts.is-more-down { --mu-more-down: calc(26 * var(--px)); }
     .bd-opt { position: relative; display: flex; align-items: center; gap: calc(10 * var(--px)); min-height: calc(44 * var(--px)); padding: calc(4 * var(--px)) calc(10 * var(--px)) calc(4 * var(--px)) calc(8 * var(--px));
       border: 0; background: none; cursor: pointer; outline: none; text-align: left; color: var(--mu-ink); touch-action: manipulation;
       --mu-edge: var(--mu-btn-edge); --mu-shadow: none; transition: transform 0.3s var(--mu-ease), opacity 0.2s; }
@@ -260,7 +291,8 @@ function injectStyle(): void {
     .bd-t b { font: 700 calc(15.5 * var(--px)) / 1.2 var(--mu-display); letter-spacing: 0.01em; display: flex; align-items: baseline; gap: calc(8 * var(--px)); }
     .bd-n { font-weight: 600; font-size: calc(12.5 * var(--px)); color: var(--mu-ink2); white-space: nowrap; }
     .bd-opt.is-gold .bd-n { color: #5a3a0c; }
-    .bd-t em { font-style: normal; font-size: calc(12 * var(--px)); font-weight: 600; color: var(--mu-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* (the line reads whole: it wraps onto a second line rather than ending in "…") */
+    .bd-t em { font-style: normal; font-size: calc(12 * var(--px)); font-weight: 600; color: var(--mu-ink2); text-wrap: pretty; overflow-wrap: break-word; }
     .bd-opt.is-gold .bd-t em { color: #5a3a0c; }
     .bd-price { flex: none; font: 700 calc(12 * var(--px)) / 1 var(--mu-display); padding: calc(4 * var(--px)) calc(7 * var(--px)); border-radius: calc(10 * var(--px)); white-space: nowrap;
       background: rgba(255, 210, 120, 0.14); color: #ffe2a0; border: 1px solid rgba(255, 210, 120, 0.32); }
@@ -283,6 +315,29 @@ function injectStyle(): void {
     :lang(km) .bd-n { font-size: calc(13 * var(--px)); }
     :lang(km) .bd-price { font-size: calc(13 * var(--px)); line-height: 1.2; }
     :lang(km) .bd-cancel .bd-t b { font-size: calc(15.5 * var(--px)); }
+    /* A narrow card (a phone held upright): the price on the name's line, the line under both across the whole row (it
+       needs no more than two lines then). */
+    @media (max-width: 560px) {
+      .bd-opt:not(.bd-cancel) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'pic name price kbd' 'pic note note kbd';
+        gap: calc(1 * var(--px)) 0; align-items: center; padding-block: calc(5 * var(--px)); }
+      .bd-opt:not(.bd-cancel) .bd-t { display: contents; }
+      /* (the spaces as margins: a hidden key cap leaves none) */
+      .bd-pic { grid-area: pic; margin-right: calc(10 * var(--px)); }
+      .bd-t b { grid-area: name; min-width: 0; }
+      .bd-t em { grid-area: note; }
+      .bd-price { grid-area: price; justify-self: end; margin-left: calc(8 * var(--px)); }
+      .bd-opt:not(.bd-cancel) kbd { grid-area: kbd; margin-left: calc(10 * var(--px)); }
+    }
+    /* A low window (a phone on its side): the head smaller, so more rows show. */
+    @media (max-height: 500px) {
+      .bd-ask .mu-ask-card { padding-block: calc(12 * var(--px)) calc(14 * var(--px)); }
+      .bd-icon-wrap { width: calc(36 * var(--px)); height: calc(36 * var(--px)); }
+      .bd-icon { width: calc(24 * var(--px)); height: calc(24 * var(--px)); }
+      .bd-ask .mu-ask-card h2 { font-size: calc(20 * var(--px)); }
+      .bd-ask .mu-ask-orn { margin-block: calc(7 * var(--px)) calc(6 * var(--px)); }
+      .bd-ask #bd-note { font-size: calc(13.5 * var(--px)); line-height: 1.35; }
+      .bd-opts { margin-top: calc(8 * var(--px)); }
+    }
     @media (pointer: coarse) { .bd-opt kbd { display: none; } .bd-opt { min-height: 50px; } }
     body.roam-touch:not(.pad-on) .bd-opt kbd { display: none; }
     .mu-calm ~ .bd-ask .bd-opt { transform: none !important; }`;
