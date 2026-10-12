@@ -1805,7 +1805,7 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
 - **URL**: `basket=banana:3,mango:2` (the garden's) his fruit; `offerkind=<kind>` the one he gives;
   `offer=shrine[:<spot id>][:<s>]` kneeling at that spot (else the nearest), `s` s into it (0.3 out, 1.3 raised, 3.2
   bowing, 3.6 set down); `offered=<spot id>,…|all` trays lying before those spots; `offer=monk` asks the monk in front
-  of him (`at=` before one), `monk:take[:<s>]`, `monk:bless[:<s>]`, `monk:again`; `offer=dakbat` (with `clock=0.78` and
+  of him (`at=` before one), `monk:there[:<s>]` holding it out, `monk:take[:<s>]`, `monk:bless[:<s>]`, `monk:again`; `offer=dakbat` (with `clock=0.78` and
   `at=` by a line's way, as `dakbat=`) kneeling with the fruit for the line, `dakbat:give[:<s>]` the monk before him,
   laying it in, `dakbat:bless`; `offer=bless` (before the dais, `clock=0.9&people=blessing`) walking to him,
   `bless:lift`, `bless:out[:<s>]` (1.3 the monk has it, 2.6 setting it down), `bless:bless`. `report()` gives them
