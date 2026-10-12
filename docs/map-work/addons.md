@@ -693,8 +693,11 @@ sounds `audio/_hammock.ts`, the list of hammocks and the people's hook
   first time he comes near (its part's `petal` blocks between the ties: cloth,
   ropes; not the posts or the knots), and its look is read off them: where the
   cloth starts and ends, its curve, its stripes' colours and widths, the rope's
-  colour, ropes along then down (the Khmer houses). Not found (yet): not offered,
-  looked for again 3 s later.
+  colour, ropes along then down (the Khmer houses). The curve hangs (lowest
+  between its ends, never an arch): the one most of the wide blocks lie on, so
+  something else wide between the ties (the pillows on the Kulen hut's deck under
+  it) is left out, neither read as cloth nor hidden (`hangingFit`). Not found
+  (yet): not offered, looked for again 3 s later.
 - **Whose**: free ones only — nobody in it (or right at it: the people part's
   `greet.ts nearby`, asked from 2 m under it so the people on the floor over it do
   not count). The grandparents' (east village n2 and s4 by day, the palm sugar

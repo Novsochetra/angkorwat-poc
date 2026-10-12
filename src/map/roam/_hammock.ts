@@ -328,19 +328,17 @@ function readSpot(e: AddonEnv, p: Prep): void {
       }
     });
   }
-  // The cloth (wide), its ropes (thin, along its middle line) and its curled edges (thin, off the middle).
-  let cloth = found.filter((r) => r.across >= 0.22);
-  if (cloth.length < 3) {
+  // The cloth (wide) and its middle line: the curve it hangs in (what lies off it is something else between the
+  // ties, e.g. the pillows on a picnic hut's deck under it); its ropes (thin, along its middle line, not under the
+  // cloth) and its curled edges (thin, off the middle, along the cloth).
+  const hung = hangingFit(found.filter((r) => r.across >= 0.22));
+  if (!hung) {
     if (e.shot || import.meta.env.DEV) console.warn(`[map] hammock "${spot.id}": its cloth was not found (${found.length} blocks near), not offered (looked for again in 3 s)`);
     return;
   }
-  // Its middle line: a parabola through the cloth's blocks (twice: what lies far off it is something else).
-  let fit = parabola(cloth);
-  cloth = cloth.filter((r) => Math.abs(r.y - (fit[0] + fit[1] * r.s + fit[2] * r.s * r.s)) < 0.2);
-  if (cloth.length < 3) return;
-  fit = parabola(cloth);
-  const ropes = found.filter((r) => r.across < 0.15 && Math.abs(r.w) < 0.1);
-  const edges = found.filter((r) => r.across < 0.15 && Math.abs(r.w) >= 0.1 && Math.abs(r.w) < 0.5);
+  const { fit, cloth } = hung;
+  const ropes = found.filter((r) => r.across < 0.15 && Math.abs(r.w) < 0.1 && r.y > curveAt(fit, r.s) - KEEP);
+  const edges = found.filter((r) => r.across < 0.15 && Math.abs(r.w) >= 0.1 && Math.abs(r.w) < 0.5 && Math.abs(r.y - curveAt(fit, r.s)) < KEEP);
   cloth.sort((q, r) => q.s - r.s);
   const stripes = cloth.map((r) => ({ s0: r.s - r.along / 2 / p.len, s1: r.s + r.along / 2 / p.len, color: r.color, width: r.across }));
   const thick = Math.min(0.09, Math.max(0.045, cloth.map((r) => r.up).sort((q, r) => q - r)[cloth.length >> 1] * 0.9));
@@ -366,7 +364,75 @@ function readSpot(e: AddonEnv, p: Prep): void {
     thick,
   };
   p.blocks = [...cloth, ...ropes, ...edges].filter((r) => r.mesh).map((r) => ({ mesh: r.mesh!, i: r.i }));
-  if (e.shot) console.info(`[map] hammock "${spot.id}": ${cloth.length} cloth, ${ropes.length} rope, ${edges.length} edge blocks; ${p.len.toFixed(2)} m between its ties, cloth ${p.look.c0.toFixed(2)}‥${p.look.c1.toFixed(2)}${p.look.knee ? ', ropes along then down' : ''}`);
+  if (e.shot) {
+    // (how low its middle line hangs under the ties' line: its lowest along the cloth)
+    const { c0, c1 } = p.look;
+    const low = curveAt(fit, Math.min(c1, Math.max(c0, fit[2] > 1e-9 ? -fit[1] / (2 * fit[2]) : (c0 + c1) / 2)));
+    console.info(`[map] hammock "${spot.id}": ${cloth.length} cloth, ${ropes.length} rope, ${edges.length} edge blocks; ${p.len.toFixed(2)} m between its ties, cloth ${c0.toFixed(2)}‥${c1.toFixed(2)}, hangs ${(-low).toFixed(2)} m under them${p.look.knee ? ', ropes along then down' : ''}`);
+  }
+}
+
+/** A block lies on a curve through others within `ON` (m); the cloth is what lies within `KEEP` of the curve through those. */
+const ON = 0.12;
+const KEEP = 0.2;
+
+/** The curve y = f0 + f1 s + f2 s² at `s`. */
+const curveAt = (f: readonly [number, number, number], s: number): number => f[0] + f[1] * s + f[2] * s * s;
+
+/**
+ * The cloth's middle line (y = f0 + f1 s + f2 s² under the ties' line, m) and its blocks, from the wide blocks
+ * between the ties. A hammock hangs, lowest between its ends (f2 ≥ 0, never an arch): of the curves through any
+ * three of them that hang so, the one the most of them lie on (`ON`; the nearest on a tie), then least squares
+ * through those, and again through all within `KEEP` of that. Something else wide between the ties (the pillows
+ * on the deck under a picnic hut's) lies off it and is left out: in a plain least squares through all it bent the
+ * curve into an arch, its ends down on the deck. Null with fewer than three on a hanging curve.
+ */
+function hangingFit(wide: readonly Read[]): { fit: [number, number, number]; cloth: Read[] } | null {
+  const rs = [...wide].sort((q, r) => q.s - r.s);
+  const n = rs.length;
+  let best: [number, number, number] | null = null;
+  let most = 2;
+  let least = Infinity;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      for (let k = j + 1; k < n; k++) {
+        const p = rs[i];
+        const q = rs[j];
+        const r = rs[k];
+        if (q.s - p.s < 0.02 || r.s - q.s < 0.02) continue;
+        // (through the three: its curvature from the slopes between them; an arch is not a hammock)
+        const d1 = (q.y - p.y) / (q.s - p.s);
+        const d2 = (r.y - q.y) / (r.s - q.s);
+        const f2 = (d2 - d1) / (r.s - p.s);
+        if (f2 < 0) continue;
+        const f1 = d1 - f2 * (p.s + q.s);
+        const f0 = p.y - f1 * p.s - f2 * p.s * p.s;
+        let on = 0;
+        let off = 0;
+        for (const b of rs) {
+          const d = Math.abs(b.y - (f0 + f1 * b.s + f2 * b.s * b.s));
+          if (d < ON) {
+            on++;
+            off += d * d;
+          }
+        }
+        if (on > most || (on === most && off < least)) {
+          most = on;
+          least = off;
+          best = [f0, f1, f2];
+        }
+      }
+  if (!best) return null;
+  const near = (f: readonly [number, number, number], within: number) => rs.filter((r) => Math.abs(r.y - curveAt(f, r.s)) < within);
+  let fit = parabola(near(best, ON));
+  let cloth = near(fit, KEEP);
+  fit = parabola(cloth);
+  // (least squares through a cloth hung near level can come out a hair arched: the curve through three, then)
+  if (fit[2] < 0) {
+    fit = best;
+    cloth = near(best, KEEP);
+  }
+  return cloth.length >= 3 ? { fit, cloth } : null;
 }
 
 /** Least squares y = f0 + f1 s + f2 s² through the blocks' middles. */
