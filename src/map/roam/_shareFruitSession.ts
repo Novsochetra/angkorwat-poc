@@ -74,10 +74,10 @@ function fruitMesh(k: PlantKindId): Group {
 const _mid = new Vector3();
 
 /**
- * Start giving `kind` to `who` (`plan`: what they say and give back; `at`: seconds already in after `ready`, a check's
- * `share=`).
+ * Start giving `kind` to `who` (`plan`: what they say and give back; `from`: a check's `share=`: that far after one of
+ * the steps already).
  */
-export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>, kind: PlantKindId, plan: Readonly<SharePlan>, hooks: ShareHooks, at = -1): ShareSession {
+export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>, kind: PlantKindId, plan: Readonly<SharePlan>, hooks: ShareHooks, from: readonly [ShareStep, number] | null = null): ShareSession {
   const body = ctx.body;
   const ex = env.explorer;
   const w = ctx.world;
@@ -161,6 +161,8 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
     after += AT.back + AT.got + AT.end;
   }
   steps.push([after, 'end']);
+  // (a check's moment: that far after one of the steps)
+  const at = from ? (steps.find((s) => s[1] === from[0])?.[0] ?? 0) + from[1] : -1;
 
   let time = 0;
   /** Seconds since he stood before them (−1: not yet). */

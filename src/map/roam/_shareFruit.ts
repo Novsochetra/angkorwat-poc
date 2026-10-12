@@ -6,10 +6,11 @@ import { TIME } from '../time';
 import { lang, num, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { GIVING, giftKind, isMonk, stepGift, takeGift } from './_giveFruit';
-import { startShare, type ShareSession } from './_shareFruitSession';
+import { startShare, type ShareSession, type ShareStep } from './_shareFruitSession';
 import { againWord, anItem, itemName, planShare, promptWord, snackKept } from './_shareFruitWords';
 import { bagNotify } from './_shopBag';
 import { CARRY_MAX } from './_shopPurse';
+import type { MapFrame } from '../types';
 import type { RoamCtx } from './types';
 
 /**
@@ -74,6 +75,8 @@ let onlyWho: string | null = null;
 let forceBack: ShareBack | null = null;
 /** The prompt made last (kept while the same: no new string a step). */
 let promptKey = '';
+/** (checks) how often the E row asked. */
+let asked = 0;
 let promptText = '';
 
 /** The map's day (from dawn: the clock passes 0.75 at dawn). */
@@ -124,7 +127,7 @@ function promptFor(who: ShareWho, kind: PlantKindId): string {
 }
 
 /** He gives to `who` now (`at`: a check's seconds already in). */
-function give(ctx: RoamCtx, who: ShareWho, kind: PlantKindId, at = -1): void {
+function give(ctx: RoamCtx, who: ShareWho, kind: PlantKindId, at: readonly [ShareStep, number] | null = null): void {
   const e = env!;
   const day = today();
   const total = progress.get('share.given', 0, isNum);
@@ -180,9 +183,16 @@ function useNow(ctx: RoamCtx): void {
   give(ctx, cand, kind);
 }
 
-/** A check's moment (`share=`), waiting for the people to be out (a few steps). */
+/**
+ * A check's moment (`share=`). A headless shot steps roaming before the people are out (roam.ts `simulate`): the
+ * moment starts in the frames after (`frame`), when they are, and the giving is played there (`shotStep`).
+ */
 let pending: string | null = null;
 let pendingTries = 0;
+/** Roaming's context (the same object every step), for the shot's frames. */
+let lastCtx: RoamCtx | null = null;
+/** The shot's frames after roaming's steps (s): a moment starts this much before it is drawn. */
+const SHOT_FRAMES = 0.5;
 
 function startPending(ctx: RoamCtx): void {
   const m = pending!;
@@ -194,7 +204,7 @@ function startPending(ctx: RoamCtx): void {
   }
   const who = lookFor(ctx);
   if (!who) {
-    if (++pendingTries > 90) {
+    if (++pendingTries > 40) {
       pending = null;
       console.warn(`[map] share: nobody to give to by (${ctx.body.pos.x.toFixed(1)}, ${ctx.body.pos.z.toFixed(1)})`);
     }
@@ -203,14 +213,39 @@ function startPending(ctx: RoamCtx): void {
   pending = null;
   Object.assign(cand, who);
   console.info(`[map] share: ${m} → ${who.kid ? 'a child' : who.gran ? 'the grandmother' : who.elder ? 'an elder' : who.kind} ${who.d.toFixed(1)} m (${villageAt(who.x, who.z)}), ${itemName(k)} (${GARDEN.basket(k)} in the basket)`);
+  if (m === 'near') {
+    ctx.hud.prompt(promptFor(who, k));
+    return;
+  }
   if (m === 'again') {
     given.set(who.id, today());
     candToday = true;
     useNow(ctx);
     return;
   }
-  const at = m === 'give' ? 0.75 : m === 'take' ? 1.15 : m === 'thanks' || m === 'child' ? 1.75 : m === 'back' ? 4.4 : -1;
+  // (the moment drawn: when he holds it out, it is in their hands, their thanks, a child's jump, their gift back)
+  const at: [ShareStep, number] | null =
+    m === 'give' ? ['hold', 0.85] : m === 'take' ? ['take', 0.2] : m === 'thanks' ? ['thanks', 0.6] : m === 'child' ? ['thanks', 0.3] : m === 'back' ? ['back', 0.5] : null;
+  if (!at) return;
+  if (env!.shot) at[1] -= SHOT_FRAMES;
   give(ctx, cand, k, at);
+}
+
+/** A shot's frames: the giving goes on as the steps would (the body on the explorer, his pose). */
+function shotStep(f: MapFrame): void {
+  const ctx = lastCtx;
+  if (!ctx || !env) return;
+  if (pending) startPending(ctx);
+  if (!session || f.dt <= 0) return;
+  session.hold(ctx, f.dt);
+  const ex = env.explorer;
+  ex.object.position.copy(ctx.body.pos);
+  ex.object.rotation.set(0, ctx.body.yaw, 0);
+  ex.update(f.dt);
+  if (session.done) {
+    session = null;
+    GIVING.by = null;
+  }
 }
 
 registerAddon({
@@ -224,6 +259,26 @@ registerAddon({
   },
   init(e) {
     env = e;
+    // (checks: the giving's state; shots and the dev server only)
+    if (import.meta.env.DEV || e.shot)
+      Object.assign(window, {
+        __share: {
+          state: () => ({
+            session: !!session,
+            phase: SHARE.phase,
+            id: SHARE.id,
+            kid: SHARE.kid,
+            arrived: SHARE.arrived,
+            offered: cand.id >= 0 ? { id: cand.id, kind: cand.kind, kid: cand.kid, elder: cand.elder, gran: cand.gran, today: candToday } : null,
+            fruit: giftKind(),
+            given: [...given.entries()],
+            total: progress.get('share.given', 0, isNum),
+            kept: e.purse.kept.map((k) => k.id),
+            busy: e.busy(),
+            asked,
+          }),
+        },
+      });
   },
   input(ctx, mode, tap) {
     // `,` / `.`: another fruit (only while our prompt shows: the offering add-on reads the same keys at its own)
@@ -235,6 +290,7 @@ registerAddon({
     return false;
   },
   offer(ctx, mode) {
+    asked++;
     if (mode !== 'walk' || session || !env || env.busy() || (GIVING.by && GIVING.by !== 'shareFruit')) return null;
     const kind = giftKind();
     if (!kind) return null;
@@ -258,7 +314,12 @@ registerAddon({
     return r;
   },
   after(ctx, mode) {
-    if (pending && mode === 'walk' && !session) startPending(ctx);
+    lastCtx = ctx;
+    // (live: as soon as the people are about; a headless shot: in its frames, `frame`)
+    if (pending && mode === 'walk' && !session && !env?.shot) startPending(ctx);
+  },
+  frame(f, mode) {
+    if (env?.shot && mode === 'walk' && !env.params.has('video')) shotStep(f);
   },
   setMode(next) {
     if (next === 'walk' || !session) return;
