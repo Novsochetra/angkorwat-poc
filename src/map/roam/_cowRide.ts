@@ -61,9 +61,15 @@ const TURN = 0.75;
 /** How quickly it gets going and stops (1/s). */
 const SPEED_UP = 1.7;
 const SLOW_DOWN = 3.0;
-/** A land step it goes up or down (m: the walker's hop), the room it needs over the ground with him on it (m: its back, and him sitting up). */
+/**
+ * A land step it goes up or down (m: the walker's hop), the room it needs over the ground with him on it (m: its back,
+ * and him sitting up), and where he does not sit — its head, its shoulders' and its rump's corners — only its own
+ * (model units: over its horns), so it walks on under a house's eaves that clear it but not him (the village's lanes
+ * between the stilt houses: with `ROOM` at every probe its rump's corner caught on them and it went nowhere).
+ */
 const UP = 2.2;
 const ROOM = 3.6;
+const BODY_ROOM = 1.6;
 /** The room he needs over its back to sit up on it (m: his hips to his hat), else he cannot get on there (a shelter's roof). */
 const SIT_ROOM = 1.75;
 /** The deepest water it wades (m, size 1: up to its belly), what stands more than this over the land is built (stairs, terraces, bridges, planks, jars), the road's paving is not (m). */
@@ -118,6 +124,8 @@ const PROBES: readonly (readonly [number, number])[] = [
 const FRONT = 3;
 const MIDDLE = 4;
 const HIND = 5;
+/** Its probes under him (its front hooves, its middle, its hind hooves): there it needs `ROOM`, elsewhere `BODY_ROOM`. */
+const UNDER_HIM: readonly boolean[] = PROBES.map((_, k) => k === FRONT || k === MIDDLE || k === HIND);
 /** Its four hooves: where each comes down in the step cycle walking (the shader's leg offsets: front left, hind left, front right, hind right), front or not; trotting, the fronts come down a quarter earlier (diagonal pairs). */
 const FEET: readonly { at: number; front: boolean }[] = [
   { at: 0, front: true },
@@ -262,7 +270,7 @@ function misfits(w: RoamWorld, x: number, z: number, yaw: number, ref: number): 
     tryX[k] = wx;
     tryZ[k] = wz;
     // (as the walker's walk map has it: the land, temples, the road, trunks; a wall or a low roof: NaN)
-    const g = w.standAt ? w.standAt(wx, wz, ref, UP, ROOM) : w.groundAt(wx, wz);
+    const g = w.standAt ? w.standAt(wx, wz, ref, UP, UNDER_HIM[k] ? ROOM : BODY_ROOM * s) : w.groundAt(wx, wz);
     const wa = Number.isNaN(g) ? null : w.waterAt(wx, wz);
     const why: Blocked =
       (w.edgeDistance?.(wx, wz) ?? EDGE + 1) < EDGE
