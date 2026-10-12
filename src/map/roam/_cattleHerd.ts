@@ -657,7 +657,8 @@ export class CattleHerd {
     // (another animal at an emptied post, while he is not looking: far off, or the post out of his sight behind him)
     for (let k = 0; k < 3; k++) {
       if (this.restockAt[k] < 0 || this.time < this.restockAt[k]) continue;
-      const [px, pz] = traderToWorld(TRADER_POSTS[k].x, TRADER_POSTS[k].z);
+      const px = POSTS_AT[k][0];
+      const pz = POSTS_AT[k][1];
       if (!this.still && (Math.hypot(px - camX, pz - camZ) < 70 || (roaming && Math.hypot(px - ex, pz - ez) < 70))) continue;
       this.restockAt[k] = -1;
       if (!this.beasts.some((b) => b.post === k)) this.addTraders(k);
@@ -994,7 +995,8 @@ export class CattleHerd {
       b.z += (dz / d) * st;
       b.speed = d > 0.05 ? 0.25 : 0;
     }
-    const [px, pz] = traderToWorld(TRADER_POSTS[b.post].x, TRADER_POSTS[b.post].z);
+    const px = POSTS_AT[b.post][0];
+    const pz = POSTS_AT[b.post][1];
     const want = Math.atan2(px - b.x, pz - b.z);
     let da = want - b.yaw;
     da = Math.atan2(Math.sin(da), Math.cos(da));
@@ -1134,15 +1136,14 @@ export class CattleHerd {
     if (Math.hypot(c.x - cx, c.z - cz) > 120) return;
     const n = 16;
     for (let j = 0; j < n; j++) {
-      const r = (k: number) => hash3(j, k, 61, 7120);
       const a = j * 2.39996;
       const d = 0.08 + 0.26 * Math.sqrt((j + 0.5) / n);
       const x = c.x + Math.sin(a) * d;
       const z = c.z + Math.cos(a) * d;
       // (fistful by fistful from the near side: each a quarter of the blades)
       const cut = Math.floor((j * 4) / n) < c.cut;
-      const h = cut ? 0.05 + 0.03 * r(1) : 0.42 + 0.22 * r(2);
-      const lean = cut ? 0 : (r(3) - 0.5) * 0.5;
+      const h = cut ? 0.05 + 0.03 * hash3(j, 1, 61, 7120) : 0.42 + 0.22 * hash3(j, 2, 61, 7120);
+      const lean = cut ? 0 : (hash3(j, 3, 61, 7120) - 0.5) * 0.5;
       this.blocks.box(x, c.y + h / 2, z, 0.035, h, 0.035, a + c.yaw, lean, GRASS_COL[j % GRASS_COL.length]);
     }
   }
@@ -1166,8 +1167,8 @@ export class CattleHerd {
     let ay: number;
     let az: number;
     if (b.post >= 0) {
-      const p = TRADER_POSTS[b.post];
-      [ax, az] = traderToWorld(p.x, p.z);
+      ax = POSTS_AT[b.post][0];
+      az = POSTS_AT[b.post][1];
       ay = this.world.field.heightAt(ax, az) + 0.85;
     } else if (b.cow && b.goal === 'stake' && b.at && !b.ride?.ridden && !b.leaving) {
       const st = STAKES[b.cow.stake] ?? STAKES[0];
@@ -1285,5 +1286,7 @@ export class CattleHerd {
 }
 
 const _nose = { x: 0, y: 0, z: 0 };
+/** The trader's posts on the map (m): they never move. */
+const POSTS_AT = TRADER_POSTS.map((p) => traderToWorld(p.x, p.z));
 /** The trader's animals' first looks (the plough ox, the calf, the young cow). */
 const TRADER_LOOKS = [3, 4, 0];

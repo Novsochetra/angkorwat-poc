@@ -2556,8 +2556,8 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   `cattlefeed=<s>` him laying straw before the nearest cow, that far in (`cattlefood=grass`) ·
   `cattlecut=<s>` cutting grass that far in · `cattlecarry=1` the grass in his arms ·
   `cattleeat=<0‥1>` his cows eating from heaps that full · `cattlenight=1` the night: in the
-  pen if there is one, else lying by their stakes · `cattlepen=<x>/<z>/<deg>` a pen stands
-  there (a check of the pen part until `build=` makes one) · `cattlespeed=<x>` (the dev
+  pen if there is one (the build add-on's `build=pen@x/z/yaw`), else lying by their stakes
+  · `cattlespeed=<x>` (the dev
   server: the herd's days x times faster). `report()` gives `cattle=`, `cattlestraw=`,
   `cattleclock=`, `cattleshop=`, `cattlecarry=`. `window.__cattle` (shots, the dev server):
   `state()` (the herd, every animal, the card, the work, the trader, the rides),
@@ -2566,7 +2566,9 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   `roam=walk&at=425.5,-129&yaw=200&rcam=25,22,10&clock=0.9&cattle=calf:hungry,young,grown,8:thin&home=1`
   (his herd, a hungry calf) · `…&cattle=young:hungry&cattlefeed=0.75&cattlestraw=6` ·
   `roam=walk&at=426,-140&yaw=200&cattle=young:hungry,grown&cattlecut=2.85` ·
-  `…&cattle=grown,calf&cow=ride` (riding his grown cow). Parts: `foreground` (roaming) and
+  `…&cattle=grown,calf&cow=ride` (riding his grown cow) ·
+  `cam=438,17,-104,432,9,-115,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@432/-115/180`
+  (the four in his pen at night). Parts: `foreground` (roaming) and
   `people` (the trader); `terrain,water,hamlet,vegetation,path` for the place round them.
 
 ### His home garden

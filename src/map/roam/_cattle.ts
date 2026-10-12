@@ -1,7 +1,6 @@
 import '../audio/_cattle';
 import '../audio/_sell';
 import { SFX } from '../audio/addonSfx';
-import { BUILT } from '../build/pieces';
 import { COW_RIDE } from '../cattle/ride';
 import { STAKES, TRADER, TRADER_AT, TRADER_BUY, TRADER_FRONT, TRADER_STOOL, traderCue, traderOpen, traderToWorld } from '../cattle/plan';
 import { ageOf, CATTLE, condOf, HERD_MAX, hungry, PRICE, STRAW_MAX, THIN, type CattleEvent, type Cow } from '../cattle/state';
@@ -55,8 +54,7 @@ import type { RoamCtx } from './types';
  * `cattlehungry=1`, `cattlestraw=<n>`, `cattleclock=<d>`, `cattleshop=1|buy|sell|straw`
  * (`cattlebuy=calf|young`, `cattlesellrow=<i>`, `cattlestrawrow=<i>`, `cattlefocus=<i>`),
  * `cattlefeed=<t>` (`cattlefood=straw|grass`), `cattlecut=<t>`, `cattlecarry=1`,
- * `cattleeat=<0‥1>`, `cattlenight=1`, `cattlepen=<x>/<z>/<yaw>` (a pen stands there:
- * until `build=` makes one), `cattlespeed=<x>` (the dev server: days x times faster).
+ * `cattleeat=<0‥1>`, `cattlenight=1` (a pen: the build add-on's `build=pen@x/z/yaw`), `cattlespeed=<x>` (the dev server: days x times faster).
  * `window.__cattle` (shots, the dev server).
  */
 
@@ -459,7 +457,7 @@ function mayCut(ctx: RoamCtx): boolean {
   if (!herd || !work || work.carrying || work.active) return false;
   if (!CATTLE.hungryCount() && !env?.params.has('cattlecut')) return false;
   const p = ctx.body.pos;
-  return CattleWork.canCut(ctx.world, p.x, p.y, p.z, (x, z, r) => plantNearHome(x, z, r));
+  return CattleWork.canCut(ctx.world, p.x, p.y, p.z, plantNearHome);
 }
 const plantNearHome = (x: number, z: number, r: number): boolean => herd?.plantNear(x, z, r) ?? false;
 
@@ -530,14 +528,6 @@ registerAddon({
     // player's own saved herd)
     if (e.shot || import.meta.env.DEV) {
       CATTLE.fromUrl(e.params);
-      const pen = e.params.get('cattlepen');
-      if (pen && !BUILT.list.some((b) => b.id === 'pen')) {
-        const [x, z, yaw] = pen.split('/').map(Number);
-        if (Number.isFinite(x) && Number.isFinite(z)) {
-          BUILT.list.push({ uid: 'pen-check', id: 'pen', x, y: e.world.field.heightAt(x, z), z, yaw: Number.isFinite(yaw) ? (yaw * Math.PI) / 180 : 0, done: 1, seed: 1 });
-          BUILT.version++;
-        }
-      }
       const sp = Number(e.params.get('cattlespeed'));
       if (Number.isFinite(sp) && sp > 0) speed = sp;
     }
@@ -808,8 +798,6 @@ registerAddon({
     if (CATTLE.herd.length) out.cattleclock = CATTLE.clock.toFixed(2);
     if (card?.open) out.cattleshop = card.tab;
     if (work?.carrying) out.cattlecarry = '1';
-    const pen = BUILT.list.find((b) => b.id === 'pen' && b.uid === 'pen-check');
-    if (pen) out.cattlepen = `${pen.x.toFixed(1)}/${pen.z.toFixed(1)}/${((pen.yaw * 180) / Math.PI).toFixed(0)}`;
     return Object.keys(out).length ? out : null;
   },
 });
