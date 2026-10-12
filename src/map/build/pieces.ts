@@ -60,7 +60,7 @@ export const BUILD_NEAR = 46;
 export const PIECES: Record<PieceId, PieceSpec> = {
   // The cattle pen (គ្រោលគោ): rails on posts, the gate in the front rail, a thatched lean-to at the back, a log trough, a hay rack.
   pen: {
-    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3, max: 2,
+    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3.6, max: 2,
     solids: [
       [0, -2.8, 7, 0.2, 1.4], // back rail
       [-3.5, 0, 0.2, 5.6, 1.4], // left rail
