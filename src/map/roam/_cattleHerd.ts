@@ -65,6 +65,8 @@ const COW_HALF = 0.42;
 const SEEN = 75;
 /** Hidden past this far from the camera (m): a speck. */
 const FAR = 420;
+/** Its head right down to the grass or the heap (the ox's head channel past 1 lowers it further: people/_ox.ts). */
+const GRAZE = 2.4;
 /** Eating a bundle takes this long (s). */
 export const EAT_S = 22;
 /** A rope's look: hemp, its thickness (m). */
@@ -877,7 +879,7 @@ export class CattleHerd {
         b.yaw += da * Math.min(1, dt * 2);
         b.y += (this.groundY(b.x, b.z, b.y) - b.y) * Math.min(1, dt * 5);
         b.speed = AMBLE;
-        b.head = 0.6;
+        b.head = 1;
       }
       return;
     }
@@ -890,7 +892,7 @@ export class CattleHerd {
       return;
     }
     // Grazing (head down) or standing a moment (head level: chewing, looking round).
-    b.head = b.doing === 'stand' ? (thin ? 0.45 : 0) : 1;
+    b.head = b.doing === 'stand' ? (thin ? 0.45 : 0) : GRAZE;
     if (this.time >= b.until) {
       const r = hash3(b.i, 37, Math.floor(this.time * 3), 7114);
       if (r < 0.45) {
@@ -924,7 +926,7 @@ export class CattleHerd {
   /** Eating the heap he laid down: head down to it, chewing; the heap goes down; done, it grazes again. */
   private eat(b: Beast, dt: number): void {
     b.speed = 0;
-    b.head = 1;
+    b.head = GRAZE;
     b.doing = 'eat';
     b.left -= dt / EAT_S;
     // (a mouthful pulled from the heap and chewed: its crunch now and then, heard near it)
@@ -997,7 +999,7 @@ export class CattleHerd {
     let da = want - b.yaw;
     da = Math.atan2(Math.sin(da), Math.cos(da));
     b.yaw += da * Math.min(1, dt * 1.5);
-    b.head = near ? 0 : b.doing === 'graze' ? 1 : 0.2;
+    b.head = near ? 0 : b.doing === 'graze' ? GRAZE : 0.2;
     this.low(b, 1.6);
   }
 
@@ -1175,7 +1177,7 @@ export class CattleHerd {
     } else return;
     // (the collar: under its neck, as the model has it, lower when it grazes or lies)
     const s = b.size;
-    const down = Math.max(0, b.head);
+    const down = Math.min(1.6, Math.max(0, b.head)) / 1.6;
     const fx = Math.sin(b.yaw);
     const fz = Math.cos(b.yaw);
     const bx = b.x + fx * (1.0 + 0.12 * down) * s;
