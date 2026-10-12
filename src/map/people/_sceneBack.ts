@@ -7,7 +7,7 @@ import type { Actor } from './_actor';
 import { Ground, type Obstacle, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
 import { animalMeshes, Herd, Wallow } from './_sceneBackAnimals';
-import { HomeFolk, Riders, Seller } from './_sceneBackFolk';
+import { ForestMonk, HomeFolk, Riders, Seller } from './_sceneBackFolk';
 import { PondKids } from './_sceneBackKids';
 import { MarketFolk } from './_sceneBackMarket';
 import { SchoolRide } from './_sceneBackSchool';
@@ -24,9 +24,11 @@ import { SchoolRide } from './_sceneBackSchool';
  *   cattle grazing in the meadow by the trail with their old herder, who
  *   walks them home to the pen in the late afternoon, bells clonking, and
  *   out again at dawn (`_sceneBackAnimals.ts`);
- * - the forest monk riding his bicycle to the hamlet at dawn for alms (the
- *   women kneel and give rice; he blesses them), a villager riding out and
- *   back with her basket, stopping at the juice cart; the coconut seller at
+ * - the forest monk walking from his hut to the hamlet for alms, barefoot
+ *   with his bowl, setting out before dawn (on foot the whole way: monks
+ *   never ride to their alms round; the women kneel and give rice; he
+ *   blesses them) and walking home after, a villager riding her bicycle out
+ *   and back with her basket, stopping at the juice cart; the coconut seller at
  *   the sala cutting a coconut for whoever comes; the grandfather in his
  *   hammock, a woman sweeping the yard and cooking at dusk, the weaver at
  *   her loom (`_sceneBackFolk.ts`);
@@ -44,7 +46,8 @@ import { SchoolRide } from './_sceneBackSchool';
  * steps on the lane: a walk map of the built hamlet over the land). Far off
  * they step less often; past `HIDE` m they are hidden (nothing runs). The
  * explorer is greeted back by the greeting layer (`_greetBack.ts`). Their
- * things: two bicycles, the hammock, the splashes, the shuttle (the
+ * things: the villager's and the two schoolchildren's bicycles, the
+ * hammock, the splashes, the shuttle (the
  * people's things); the buffalo and the cattle are two instanced meshes of
  * the animals' kit (+ their shadows, only near).
  *
@@ -69,6 +72,7 @@ export class BackLife implements PeopleScene {
   private readonly kids: PondKids;
   private readonly wallow: Wallow;
   private readonly herd: Herd;
+  private readonly monk: ForestMonk;
   private readonly riders: Riders;
   private readonly seller: Seller;
   private readonly home: HomeFolk;
@@ -92,6 +96,7 @@ export class BackLife implements PeopleScene {
     this.kids = new PondKids(env, this.spots, this.ground, add);
     this.wallow = new Wallow(this.spots, this.ground);
     this.herd = new Herd(env, this.spots, this.ground, add);
+    this.monk = new ForestMonk(env, this.spots, this.ground, add);
     this.riders = new Riders(env, this.spots, this.ground, add);
     this.seller = new Seller(env, this.ground, add);
     this.home = new HomeFolk(env, this.spots, this.ground, add);
@@ -113,10 +118,11 @@ export class BackLife implements PeopleScene {
     this.kids.update(dt, now, f, ex, first);
     this.wallow.update(dt, now, f, ex, first);
     this.herd.update(dt, now, f, ex, first);
+    this.monk.update(dt, now, f, first);
     this.riders.update(dt, now, f, ex, first);
     this.seller.update(dt, now, f, ex, first, this.riders);
-    this.home.update(dt, now, f, ex, this.riders);
-    this.market.update(dt, now, f, ex, first, this.riders.market);
+    this.home.update(dt, now, f, ex, this.monk);
+    this.market.update(dt, now, f, ex, first, this.monk.market);
     this.school.update(dt, now, f, ex, first);
   }
 
@@ -125,6 +131,7 @@ export class BackLife implements PeopleScene {
     this.kids.hide();
     this.wallow.hide();
     this.herd.hide();
+    this.monk.hide();
     this.riders.hide();
     this.seller.hide();
     this.home.hide();
