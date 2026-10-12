@@ -13,7 +13,7 @@ import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { createSeedCard, type SeedCard, type SeedRow } from './_gardenCard';
 import { CARRY } from './_carryHook';
 import { GardenGhost } from './_gardenGhost';
-import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
+import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, PLANTING, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { gardenSay, GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
 import { countWords, GardenWork, pickAction, plantAction } from './_gardenWork';
@@ -435,6 +435,7 @@ function plantingNow(ctx: RoamCtx): void {
 function enterPlanting(kind: PlantKindId): void {
   if (!planting) camLetGo = false;
   planting = kind;
+  PLANTING.kind = kind;
   chosen = kind;
   spot.step = -1;
   ghost?.setKind(kind);
@@ -445,6 +446,7 @@ function enterPlanting(kind: PlantKindId): void {
 function exitPlanting(): void {
   if (!planting) return;
   planting = null;
+  PLANTING.kind = null;
   ghost?.show(null);
   showTouchBar(false);
 }

@@ -12,6 +12,7 @@ import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { createCattleCard, type CattleCard, type CattleRow, type CattleTab } from './_cattleCard';
+import { PLANTING } from './_gardenSpots';
 import { CattleHerd, type Beast } from './_cattleHerd';
 import { HungerIcons } from './_cattleIcon';
 import { buildTraderPlace, installTraderWalk } from './_cattlePlace';
@@ -608,6 +609,8 @@ registerAddon({
   offer(ctx, m) {
     lastCtx = ctx;
     if (m !== 'walk' || !env || env.busy() || visit || work?.active) return null;
+    // (planting mode: its "Dig here" is the E line, even at a hungry cow's nose)
+    if (PLANTING.kind) return null;
     choose(ctx);
     // (the lines with no key — the trader away, no straw — are `cattleSay`'s, late: every E here wins over them)
     return SAYS.has(choice.kind) ? null : choice.prompt;
