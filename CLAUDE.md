@@ -321,6 +321,36 @@ guide, with every add-on's keys and URL values for shots, is
   anywhere near his house. Shots: `garden=lineup|demo|<kind>:<stage>[:ripe…]`,
   `seeds=all`, `gardenact=<action>:<t>`, `gardenring=<kind>`, `gardenthirst=1`,
   `carry=full|up:<t>|fill:<t>`, `jar=<n>`, `bodhi=0‥4`.
+  Fallen fruit (durian, coconut, sugar palm) falls and lies as smooth shapes
+  (`garden/_viewFruit.ts`) with a pixel-art marker over it like the thirst drop
+  (`garden/_viewFallen.ts`; `gardenfallen=1`, `gardenfall=<kind>:<t>`).
+- Farm life (October 2026, the plan `docs/discussion/farm-life.md`; each has its
+  section in addons.md):
+  - A bicycle of his own: the bicycle seller ជាងកង់ at the morning market
+    (`roam/_bikeShop*.ts`, `people/_sceneBikeShop.ts`; `bikeshop=1`,
+    `bikeown=<kind>`, `bikeownat=x:z:yaw`), kept where he leaves it
+    (`bike.own`, `bike.ownAt`); the neighbours' bicycles are theirs (no riding);
+    Angkor Wat's are hired (`bikehire=1`).
+  - Riding the white cattle: the village herd's and his own grown cows
+    (`roam/_cowRide.ts`, the shared list `src/map/cattle/ride.ts` `COW_RIDE`,
+    drawn with `people/_oxRide.ts`; `cow=ride|lie|near|trot`).
+  - His own cattle: the cattle trader ឈ្មួញគោ on the meadow north of the village
+    (buy, sell, straw), cows tethered by his house, fed once a map day (straw or
+    grass he cuts), growing by map days, never dying, sleeping in his pen
+    (`src/map/cattle/`, `roam/_cattle*.ts`, `people/_sceneCattle.ts`;
+    `cattle=calf,young,grown…`, `cattleshop=`, `cattlenight=1`).
+  - Building at home: E Build… near his house → the card of nine pieces → a ghost
+    (red with its reason) → E Build here → he hammers it up; take down for half
+    the price. Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
+    `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
+    `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
+    change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
+    monks (ប្រគេន: the alms round, the blessing monk, a monk met;
+    `roam/_offerFruit*.ts`, `offer=shrine|monk|dakbat|bless`), sharing with
+    neighbours, elders and children (ចែក: `roam/_shareFruit*.ts`,
+    `people/_shareBack.ts`; `share=near|give|thanks|child|again`). Once a
+    person a day.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).
