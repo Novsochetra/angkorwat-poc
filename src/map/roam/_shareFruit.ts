@@ -340,7 +340,8 @@ registerAddon({
     forceBack = fb === 'snack' || fb === 'seeds' || fb === 'bless' || fb === 'none' ? fb : null;
     const m = q.get('share');
     if (m === 'child') onlyWho ??= 'kid';
-    if (m && m !== 'near') {
+    // (`near`: only the prompt, for a shot: in play the E row shows it anyway)
+    if (m && (m !== 'near' || env?.shot)) {
       pending = m;
       pendingTries = 0;
     }
