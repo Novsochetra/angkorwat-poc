@@ -1,6 +1,7 @@
 import { hash3 } from '../../voxel/random';
 import { GREET, setNearbyFinder, type Nearby } from '../greet';
 import { nameIn, playerName } from '../khmerName';
+import { SHARE_FRIENDS } from '../share';
 import type { MapFrame, PeopleCallKind } from '../types';
 import { lang, type WordKey } from '../ui/lang';
 import { wrap, type Actor } from './_actor';
@@ -282,7 +283,7 @@ export class GreetBack {
     const speaks = order < SPEAK && (kind !== 'monk' || (sampeah && r1 < 0.6));
     r.word = !speaks ? null : wordFor(kind, elder, sampeah, r1, r2);
     // (the nearest, now and then, by his name: "សួស្ដី ដារ៉ា!", khmerName.ts)
-    if (r.word && order === 0) r.word = byName(r.word, kind, elder, r1);
+    if (r.word && order === 0) r.word = byName(r.word, kind, elder, r1, a.x, a.z);
     r.call = !r.word ? null : kid ? 'kidHello' : kind === 'monk' ? null : 'hello';
     this.live.push(r);
   }
@@ -433,11 +434,13 @@ let namedFor = '';
  * His name in the answer, now and then (khmerName.ts): the first greeting once
  * he has a name, then about one in three. Children call him "បង" + his name,
  * an elder "ចៅ" + his name, a seller asks him in by it; visitors from abroad
- * and monks do not know it.
+ * and monks do not know it. Where he has shared his fruit often, more often
+ * (share.ts `SHARE_FRIENDS`: up to four in five).
  */
-function byName(word: WordKey, kind: string, elder: boolean, r: number): WordKey {
+function byName(word: WordKey, kind: string, elder: boolean, r: number, x: number, z: number): WordKey {
   const n = playerName();
-  if (!n || kind === 'visitor' || kind === 'monk' || (namedFor === n.km && r > 0.35)) return word;
+  // (more often where he has shared his fruit: share.ts `SHARE_FRIENDS`)
+  if (!n || kind === 'visitor' || kind === 'monk' || (namedFor === n.km && r > SHARE_FRIENDS.nameChance(x, z))) return word;
   namedFor = n.km;
   if (kind === 'kid') return 'nameKid';
   if (kind === 'vendor') return 'nameSeller';

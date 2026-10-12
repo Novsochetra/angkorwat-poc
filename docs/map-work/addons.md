@@ -2908,7 +2908,86 @@ sounds `audio/_build.ts`.
 
 ### Sharing his fruit
 
-(to be written: roam/_shareFruit*.ts, people/_shareBack.ts; shared with offering: roam/_giveFruit.ts)
+The player's ask (October 2026): "we have our garden fruit … share with neighbor, monk, kid". Sharing
+his garden's harvest with the neighbours, the elders and the children (add-on `shareFruit`, words
+`share…`); the monks and the holy places are the offering's ("Offering fruit"; the rules both keep:
+`roam/_giveFruit.ts`). Files: `roam/_shareFruit.ts` (the add-on: who, the E row, `,` / `.`, once a day,
+friends, the URL), `_shareFruitSession.ts` (one giving: he steps up, holds it out, the timeline),
+`_shareFruitWords.ts` (what they say and give back, the fruit's colours); his posture
+`character/share.ts`; the people's side `people/_shareBack.ts` (index.ts: once a frame after the
+smiles); the bus `map/share.ts` (`SHARE`, `findShare`, `SHARE_FRIENDS`, `villageAt`); the people
+model's `FEAT.fruit` (48: a round fruit in the right fist, between the palms in the sampeah).
+
+- **Who**: with fruit in his basket (`GARDEN.basket`, what he picked at home), on foot, nothing else
+  busy: a Khmer grown-up or elder within 2.5 m in front of him (≈ 50° either side; villagers, sellers,
+  the palm tapper, fishermen on foot, pilgrims, the farmers, the grandmother who keeps his house's key
+  before it is his), standing or sitting; or the children about (within 10 m in front, or 3.2 m any
+  way: the play yard, the sey, the kite field's watchers, the street). Never a monk (the offering's:
+  `isMonk`), a visitor, the guide, the dancers and musicians, nor anyone rowing, casting, up a ladder,
+  on a bicycle, in a boat or a cart, praying, with full hands (a kite's string, a torch, the shoulder
+  pole, a basket on the head, a tray, incense), nor someone another moment holds (a greeting, a sale,
+  a smile for his camera). The grandmother only while she sweeps or sits (not while she calls him or
+  gives him the key).
+- **E** "ចែកផ្លែស្វាយឲ្យគាត់ / Share a mango"; to an elder "ជូនផ្លែស្វាយគាត់ / Give the elder a
+  mango", to the grandmother "ជូនផ្លែស្វាយយាយ / Give Grandma a mango", to the children
+  "ឲ្យផ្លែស្វាយក្មេងៗ / Give the children a mango". The fruit is the one he has most of; `,` / `.`
+  (only while this prompt shows) step through his kinds (`stepGift`), a toast "Fruit to share: mango
+  (3)" (only when this prompt was the one shown on the last step: the offering reads the same keys).
+  Every kind of his harvest (no `GiftFilter`: neighbours get eggplant, corn and pumpkin too). Order 50:
+  a golden figure, the offering (by a shrine, a monk: order 14), a shrine, a stall's Buy and the earlier
+  add-ons come first; by the sey circle its "join" E wins (within 6.5 m of it; from farther off he gives
+  to its children).
+- **A grown-up**: he steps up before them (≈ 1 m), turns to them, the camera comes round to their
+  side; he holds it out with both hands, the fruit between them (`fruitBuilder`, the garden's own
+  harvest model, on his chest joint), a small bow (deeper to an elder; to someone sitting he goes down
+  on his haunches). Standing, they stand up from their work (a farmer straightens up from the rice),
+  turn to him and reach out with both hands (`POSE.give`); the fruit goes into their hands
+  (`FEAT.fruit` in its colours, worn with `Crowd.strike`: their carry put aside meanwhile) and out of
+  his basket (toast "Shared: mango (3 left in your basket)"). Their thanks in a bubble, with a voice:
+  a grown-up sampeahs with it between the palms ("អរគុណច្រើន!", "អូ! ផ្លែស្វាយស្រស់ៗ អរគុណណា!",
+  "ចិត្តល្អណាស់ អរគុណ!"; a seller "អរគុណបង! ថ្ងៃក្រោយមកលេងទៀតណា"; sitting on the floor they come up on
+  their knees for it), he nods; an elder nods ("អរគុណណាក្មួយ!", "អរគុណចៅ ចិត្តល្អមែនទែន"; the
+  grandmother "អរគុណចៅ! ដាំខ្លួនឯងមែនទេ? ពូកែណាស់") and he answers with the high sampeah, palms up to his
+  face (`greetHigh`); an elder holds it up a moment in both hands as they nod. Then they look at it a
+  moment, pleased, and go back to what they did (it goes in their basket). They stay where they stand
+  while it lasts (their scene would walk them on).
+- **What comes back** (`planShare`, a hash of who, the day and how many he has given: the same in a
+  shot), never money: a sweet for his bag (`purse.keep`: a num ansom, a krolan of sticky rice in
+  bamboo, or in the sugar-palm village a cake of its own palm sugar; held out to him in both hands, he
+  takes it with `interact`; toast "A gift: Num ansom, kept in your bag (2/3)"), a few seeds of a crop
+  he has none of (`GARDEN.addSeeds`: eggplant, corn or pumpkin; "A gift: 2 corn seeds"), an elder's
+  blessing, a hand raised (`POSE.nod`), once their thanks has been read, as he bows to them palms up to
+  his face ("សូមឲ្យក្មួយមានសុខភាពល្អ រកស៊ីមានបាន", "សូមឲ្យចៅជួបតែសេចក្ដីសុខ": the grandmother's), or a smile.
+  Elders: blessing 40 %, a sweet 30 %, seeds 15 %; others: a sweet 35 %, seeds 20 %; a full bag or no
+  crop lacking: a blessing (elders) or nothing.
+- **Children**: the nearest child who has none yet runs up to him (≈ 2.4 m/s) and stands before him;
+  he goes down on his haunches and holds it out low; the child takes it with both hands, jumps with it
+  held up (`POSE.cheer`) — "អរគុណបង!", "យេ! អរគុណបង!", "អរគុណបង! ខ្ញុំយកទៅចែកប្អូនៗផង", a laugh — and
+  runs back to where it was with it. A group: each E one more child while his basket has fruit.
+  Children give nothing back.
+- **Once a person a day** (the map's day, from dawn): E again on someone he gave to today: "ខ្ញុំមានហើយ
+  អរគុណ!" (an elder "មានហើយក្មួយ អរគុណណា!", a child "ខ្ញុំបានហើយបង អរគុណ!", waving), and nothing
+  given. Kept for the visit (the crowd's index of the person).
+- **Friends**: progress.ts `share.given` (all), `share.east|floating|back|kulen|other` (by where they
+  stood: `villageAt`); the people of a place greet him back by his name more often the more he has
+  given there (`SHARE_FRIENDS.nameChance`: 35 % → 80 % at 12 gifts; people/_greetBack.ts `byName`).
+- **Leaving**: a push of the stick before it is theirs: he keeps it; after, it ends there. Back to the
+  map: at once.
+- **Cost**: one pass over the people a step while he is on foot with fruit in his basket (the
+  finder, no allocation); the giving a few writes a frame; the fruit's mesh made once a kind.
+- **URL**: `basket=<kind>:<n>` (the garden's) gives him fruit · `sharekind=<kind>` the fruit ·
+  `sharewho=kid|elder|gran|<look kind>` whom · `share=near` (only the prompt) `|give` (he holds it out)
+  `|take` (in their hands) `|thanks` (their thanks) `|back` (what they give back; `shareback=snack|seeds|bless|none`)
+  `|child` (a child's jump) `|again` (one today already). `report()` gives `share=thanks&sharekind=`.
+  `window.__share.state()` (shots, the dev server). A headless shot steps roaming before the people
+  are out (roam.ts `simulate`), so a `share=` moment starts in the shot's frames after (`frame`), the
+  people's part as far in (`SHARE.lag`); `rcam=` keeps the check's camera. Real frames (the whole flow
+  with E, `,` / `.`, the basket counting down, once a day, a sweet into his bag, walking off) were
+  checked in GPU Chromium with Playwright. E.g.
+  `roam=walk&at=415,-71.5&yaw=0&people=eastvillage&clock=0.98&basket=mango:4&share=child&sim=_:1`
+  (a child of the sugar-palm village) · `roam=walk&at=162.2,8,-336.8&yaw=-90&people=back&clock=0.9&basket=mango:4&sim=_:1&rcam=90,8,4.6&share=give|take|thanks`
+  (a villager behind Angkor Wat, from the side) · `roam=walk&at=418.2,-113.4&yaw=180&people=home&home=0&clock=0.9&basket=mango:4&sim=_:1&rcam=90,8,4.6&sharewho=gran&share=thanks`
+  (`&share=back&shareback=bless`: her blessing), all with `parts=terrain,water,hamlet,people,foreground`.
 
 ### The boat race
 

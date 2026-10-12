@@ -7,6 +7,7 @@ import { GreetBack } from './_greetBack';
 import { SaleBack } from './_saleBack';
 import { SmileBack } from './_smileBack';
 import { OfferBack } from './_offerBack';
+import { ShareBack } from './_shareBack';
 import { buildPeopleLineup } from './_lineup';
 import { Crowd, PEOPLE_SCALE } from './_personModel';
 import { Ground, RoadGraph, Traffic } from './_routes';
@@ -172,6 +173,8 @@ export async function buildPeople(ctx: MapContext): Promise<MapPart> {
   const smileBack = new SmileBack(env, actors);
   // (the explorer offers a monk his garden's fruit: the monk stops, takes it and blesses him, _offerBack.ts)
   const offerBack = new OfferBack(env, actors);
+  // (he shares his garden's fruit: they take it, thank him, a child runs up and back, _shareBack.ts)
+  const shareBack = new ShareBack(env, actors);
   Object.assign(window, { __people: { scenes, crowd, traffic, graph } });
   const buildMs = performance.now() - t0;
   // (the crowd near and far, the things: each a draw and its shadow; the far list is drawn only while someone is in it)
@@ -208,6 +211,7 @@ export async function buildPeople(ctx: MapContext): Promise<MapPart> {
     saleBack.update(dt, now, f);
     smileBack.update(dt, now, f);
     offerBack.update(dt, now, f);
+    shareBack.update(dt, now, f);
     if (measure) lap(scenes.length + 1);
     keepApart(actors, traffic.list);
     if (measure) lap(scenes.length + 2);
