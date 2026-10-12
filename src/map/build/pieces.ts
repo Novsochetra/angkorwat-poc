@@ -83,8 +83,6 @@ export const PIECES: Record<PieceId, PieceSpec> = {
       [1.6, -1.4, 0.2, 0.2, 2.6],
       [-1.6, 1.4, 0.2, 0.2, 2.6],
       [1.6, 1.4, 0.2, 0.2, 2.6],
-      // the bench along its back (he sits on it: its top is the seat's height)
-      [0, -1.05, 2.8, 0.6, 0.62],
     ],
     seat: { x: 0, y: 0.62, z: -1.05, yaw: 0 },
   },

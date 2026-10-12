@@ -59,6 +59,8 @@ const STEP = 0.7;
 const LEVEL = 0.12;
 /** Things standing taller than this over the land are in the way (m). */
 const THING = 0.3;
+/** Water (the stream, its bank) is kept this far clear (m). */
+const WATER_MARGIN = 0.6;
 /** Paths and trails are kept this far clear (m). */
 const PATH_MARGIN = 0.5;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
@@ -180,7 +182,7 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   f.yaw = yaw;
   const p = PIECES[id];
   // (the land, the water, the paths and fields round it, the house, the neighbours)
-  let r = eachPoint(f, 0.1, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0.1, onHouse);
+  let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0.1, onHouse);
   if (r) return r;
   for (const h of EV_HOMES) if (Math.hypot(x - h.x, z - h.z) < Math.max(h.w, h.d) / 2 + 5 + Math.max(p.w, p.d) / 2) return 'yard';
   _h0 = world.field.heightAt(x, z);
