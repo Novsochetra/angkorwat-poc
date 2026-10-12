@@ -1,3 +1,4 @@
+import { BUILT } from '../build/pieces';
 import { SURFACE } from '../heightfield';
 import { EV_HOMES } from '../hamlet/_evSpots';
 import { HOME, HOME_AT, HOME_DOG, HOME_GRAN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_Z, homeHammock, homeLocal, homeToWorld } from '../hamlet/_homePlan';
@@ -193,6 +194,8 @@ export function canPlant(world: RoamWorld, kind: PlantKindId, x: number, z: numb
     const dz = p.z - z;
     if (dx * dx + dz * dz < r * r) return 'room';
   }
+  // Something he built at home stands there or is going up (build/pieces.ts `BUILT`: its footprint and the plant's room).
+  if (BUILT.blocks(x, z, Math.min(room, 1.2) * 0.8)) return 'thing';
   // Something built stands there (the walk map's top over the land).
   const tr = Math.min(room * 0.6, 0.6);
   for (const [dx, dz] of RING8) {

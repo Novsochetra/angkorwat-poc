@@ -44,7 +44,11 @@ export interface PieceSpec {
   readonly seat?: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number; readonly lie?: boolean };
   /** The hammock's tie points (roam/_hammockSpots.ts `addHammock`: the cloth hangs between them). */
   readonly ties?: readonly [readonly [number, number, number], readonly [number, number, number]];
-  /** Where a light glows at night (the lamp's flame, the spirit house's candle). */
+  /**
+   * Where a light glows at night (the lamp's globe, the spirit house's candle flame): the view (build/view.ts) draws
+   * its glow over the model's own blocks there (an octagon a little bigger than the lamp's globe, 0.2 × 0.235 m; one
+   * over the flame, 0.034 × 0.066 m) and a halo round it.
+   */
   readonly light?: readonly [number, number, number];
   /** Where he kneels to pray before it (and the way he faces). */
   readonly kneel?: { readonly x: number; readonly z: number; readonly yaw: number };
@@ -60,7 +64,7 @@ export const BUILD_NEAR = 46;
 export const PIECES: Record<PieceId, PieceSpec> = {
   // The cattle pen (គ្រោលគោ): rails on posts, the gate in the front rail, a thatched lean-to at the back, a log trough, a hay rack.
   pen: {
-    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3, max: 2,
+    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3.6, max: 2,
     solids: [
       [0, -2.8, 7, 0.2, 1.4], // back rail
       [-3.5, 0, 0.2, 5.6, 1.4], // left rail
@@ -73,12 +77,14 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A thatched shelter on four posts (ខ្ទម), open on every side: shade, a bench along its back.
   shelter: {
-    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 3.6, d: 3.2, h: 3.6, max: 3, walkThrough: true,
+    // (w, d: the roof's eaves, 0.55 m past the posts; h: its ridge; the posts to the tie beams, the bench under the seat)
+    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 4.4, d: 4, h: 4.35, max: 3, walkThrough: true,
     solids: [
-      [-1.6, -1.4, 0.2, 0.2, 2.6],
-      [1.6, -1.4, 0.2, 0.2, 2.6],
-      [-1.6, 1.4, 0.2, 0.2, 2.6],
-      [1.6, 1.4, 0.2, 0.2, 2.6],
+      [-1.6, -1.4, 0.2, 0.2, 2.85],
+      [1.6, -1.4, 0.2, 0.2, 2.85],
+      [-1.6, 1.4, 0.2, 0.2, 2.85],
+      [1.6, 1.4, 0.2, 0.2, 2.85],
+      [0, -1.05, 2.84, 0.5, 0.62],
     ],
     seat: { x: 0, y: 0.62, z: -1.05, yaw: 0 },
   },
@@ -90,12 +96,13 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A run of bamboo fence (របងឫស្សី), three metres: posts and woven split bamboo, chest high to him.
   fence: {
-    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, secs: 4, w: 3, d: 0.25, h: 1.3, max: 40,
-    solids: [[0, 0, 3, 0.25, 1.3]],
+    // (h: chest high to him, 2.4 m tall)
+    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, secs: 4, w: 3, d: 0.25, h: 1.6, max: 40,
+    solids: [[0, 0, 3, 0.25, 1.6]],
   },
   // The spirit house (ខ្ទមព្រះភូមិ): a little Angkor tower on its post, a tray for offerings, incense. He kneels before it to pray.
   spirit: {
-    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, secs: 8, w: 1, d: 1, h: 2.4, max: 1,
+    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, secs: 8, w: 1, d: 1, h: 2.75, max: 1,
     solids: [[0, 0, 0.3, 0.3, 1.6]],
     light: [0, 1.75, 0.18],
     kneel: { x: 0, z: 1.25, yaw: Math.PI },
@@ -107,7 +114,7 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A hammock (អង្រឹង) between two posts, striped cloth.
   hammock: {
-    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, secs: 8, w: 3.8, d: 0.5, h: 1.8, max: 2, walkThrough: true,
+    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, secs: 8, w: 4, d: 0.9, h: 1.8, max: 2, walkThrough: true,
     solids: [
       [-1.8, 0, 0.2, 0.2, 1.8],
       [1.8, 0, 0.2, 0.2, 1.8],
@@ -119,13 +126,14 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A lantern on a post (ចង្កៀង): it lights by itself at dusk.
   lamp: {
-    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, secs: 4, w: 0.5, d: 0.5, h: 2.4, max: 8,
+    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, secs: 4, w: 0.5, d: 0.76, h: 2.45, max: 8,
     solids: [[0, 0, 0.18, 0.18, 2.2]],
-    light: [0, 2.05, 0.2],
+    light: [0, 2.05, 0.24],
   },
   // A rice-straw stack round a pole (គំនរចំបើង): his cattle's hay, pulled from it a bundle at a time.
   haystack: {
-    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, secs: 8, w: 2.4, d: 2.4, h: 3, max: 2,
+    // (h: its pole's top, standing out of the cap)
+    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, secs: 8, w: 2.4, d: 2.4, h: 3.2, max: 2,
     solids: [[0, 0, 2.2, 2.2, 2.6]],
   },
 };
@@ -197,10 +205,23 @@ export function registerPieceModel(id: PieceId, m: PieceModel): void {
   MODELS[id] = m;
 }
 
-/** Until its model is done: its footprint as a pale wooden box (a post at each corner and a frame). */
+/**
+ * Until its model is done: its solids as pale wooden boxes and a frame at its top; a hammock's cloth as striped
+ * `petal` blocks sagging between its ties (so the hammock add-on finds it: roam/_hammockSpots.ts).
+ */
 const placeholder: PieceModel = (b, l) => {
   const p = PIECES[l.id];
   for (const [x, z, w, d, top] of p.solids) b.box(x, top / 2, z, w, top, d, 0xb08a5a, 'mapBark');
+  if (p.ties) {
+    const [a, c] = p.ties;
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n;
+      const sag = 0.55 * 4 * u * (1 - u);
+      b.box(a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u - sag, a[2] + (c[2] - a[2]) * u, (Math.hypot(c[0] - a[0], c[2] - a[2]) / n) * 1.02, 0.06, 0.7, i % 3 === 1 ? 0x3a6a9a : 0xc84a3a, 'petal');
+    }
+    return;
+  }
   b.box(0, p.h - 0.05, 0, p.w, 0.1, p.d, 0xd8c08a, 'mapBark');
 };
 

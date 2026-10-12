@@ -2,6 +2,7 @@ import { Euler, Matrix4, Quaternion, Vector3 } from 'three';
 import { BIKE, pedalPitch } from '../../character/bike';
 import { BODY_UNIT_M } from '../../world/scale';
 import type { Things } from '../people/_things';
+import type { BikeColourId, BikeKindId } from './_bikeOwn';
 
 /**
  * A black Khmer town bicycle to ride (roam/_bike.ts), made of boxes like the
@@ -19,12 +20,22 @@ import type { Things } from '../people/_things';
  * for every bicycle, one more for the shadows), written only when it moves.
  * Built in metres at his roaming size (`m`), kept in his body units, placed
  * at his scale. ≈ 150 boxes.
+ *
+ * Its look (`BikeLook`): the kind (roam/_bikeOwn.ts `BIKE_KINDS`) gives the
+ * fittings — the town bicycle's cane basket and brown saddle; the lady's
+ * bicycle's white basket, cream saddle and grips, white mudguards and a skirt
+ * guard over the back wheel; the red one's chrome mudguards, a lamp on the
+ * fork, streamers from the grips and a padded seat on the rack (no basket) —
+ * and the colour its frame. `cargo`: what a neighbour's carries (by `seed`);
+ * a new one carries nothing. One model can take another look (`restyle`: his
+ * own bicycle, bought again) within the slots it was given (`BikeModel.most`).
  */
 
 /** Metres at the roaming size → body units (as character/bike.ts). */
 const m = (v: number) => v / (BODY_UNIT_M * 1.4);
 
-const FRAME = 0x1c1c1e;
+/** The frame's colour by `BikeColourId`. */
+const FRAMES: Record<BikeColourId, number> = { black: 0x1c1c1e, sky: 0x7ab8dc, red: 0xbe2b26 };
 const STEEL = 0x9a9a9e;
 const CHROME = 0xc4c4c8;
 const TYRE = 0x1a1818;
@@ -35,6 +46,25 @@ const CANE = 0xb89a5a;
 const CANE_DARK = 0x8a6a3a;
 const CANE_RIM = 0x7a5a30;
 const LENS = 0xfff0c8;
+/** The lady's bicycle: its cream saddle and grips, its white plastic basket, its mudguards and skirt guard. */
+const CREAM = 0xe8dcbe;
+const WHITE = 0xf2f0ea;
+const WHITE_DARK = 0xc8c3b4;
+const GUARD_WHITE = 0xece8de;
+/** The red one's padded seat on the rack, its piping; the grips' streamers. */
+const CUSHION = 0x26221f;
+const PIPING = 0xd8c8a0;
+const STREAMERS = [0xd83a30, 0xf2c43a, 0x3a9a5a];
+
+/** How a bicycle looks: its kind (its fittings), its frame's colour, and whether it carries something (by its seed). */
+export interface BikeLook {
+  readonly kind: BikeKindId;
+  readonly colour: BikeColourId;
+  readonly cargo: boolean;
+}
+
+/** The neighbours' and the hire bicycles: black town bicycles, each carrying something. */
+export const TOWN_LOOK: BikeLook = { kind: 'town', colour: 'black', cargo: true };
 
 /** The parts that turn: the frame (0), the back wheel, the steering (bars, fork, basket, lamp), the front wheel (in the steering), the cranks, each pedal (on the cranks), the stand. */
 const ROOT = 0;
@@ -81,8 +111,13 @@ const _b = new Vector3();
 const Z = new Vector3(0, 0, 1);
 const STEER_AXIS = new Vector3(0, Math.cos(BIKE.rake), -Math.sin(BIKE.rake));
 
-/** The boxes of a bicycle (`seed`: what it carries) and its parts' pivots (BU, at rest). */
-function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
+/** The boxes of a bicycle of `look` (`seed`: what it carries) and its parts' pivots (BU, at rest). */
+function design(seed: number, look: BikeLook): { boxes: Box[]; pivots: Vector3[] } {
+  const FRAME = FRAMES[look.colour];
+  const lady = look.kind === 'lady';
+  const carrier = look.kind === 'carrier';
+  /** The mudguards' colour: the frame's, the lady's white, the red one's chrome. */
+  const GUARD = lady ? GUARD_WHITE : carrier ? CHROME : FRAME;
   const R = BIKE.wheel;
   const hubY = R;
   const pivots = [
@@ -149,13 +184,20 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
     const rg = r + 0.035;
     for (let k = 0; k < n; k++) {
       const a = from + ((k + 0.5) / n) * (to - from);
-      box(part, [0, r + Math.cos(a) * rg, z - Math.sin(a) * rg], [0.075, 0.014, (rg * (to - from)) / n + 0.01], FRAME, [-a, 0, 0]);
+      box(part, [0, r + Math.cos(a) * rg, z - Math.sin(a) * rg], [0.075, 0.014, (rg * (to - from)) / n + 0.01], GUARD, [-a, 0, 0]);
     }
   };
   // (angles from the top, + toward the back)
   guard(ROOT, rear, -0.4, 1.95, 5);
   guard(STEER, front, -1.35, 0.6, 4);
   for (const x of [0.045, -0.045]) tube(ROOT, [x, r + Math.cos(1.85) * (r + 0.03), rear - Math.sin(1.85) * (r + 0.03)], [x, r, rear], 0.01, STEEL);
+  // The lady's bicycle: a skirt guard over the back wheel's upper back quarter on the left (white, a band in the frame's colour).
+  if (lady)
+    for (let k = 0; k < 3; k++) {
+      const a = 0.35 + k * 0.45;
+      const rs = r * 0.62;
+      box(ROOT, [0.06, r + Math.cos(a) * rs, rear - Math.sin(a) * rs], [0.012, r * 0.62, 0.14], k === 1 ? FRAME : WHITE_DARK, [-a, 0, 0]);
+    }
 
   // ── The frame: two curved tubes down from the head to the cranks (the step-through), the seat tube, the stays ──
   const headTop: [number, number] = [toM(BIKE.headY), toM(BIKE.headZ)];
@@ -178,8 +220,9 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
   // The seat post, the sprung saddle (wide at the back, two coil springs under it).
   tube(ROOT, [0, ...seatTop], [0, toM(BIKE.saddle) - 0.04, -0.06], 0.026, CHROME);
   const sy = toM(BIKE.saddle);
-  box(ROOT, [0, sy - 0.022, -0.06], [0.2, 0.045, 0.13], SADDLE);
-  box(ROOT, [0, sy - 0.026, 0.05], [0.1, 0.038, 0.13], SADDLE);
+  const seat = lady ? CREAM : carrier ? CUSHION : SADDLE;
+  box(ROOT, [0, sy - 0.022, -0.06], [0.2, 0.045, 0.13], seat);
+  box(ROOT, [0, sy - 0.026, 0.05], [0.1, 0.038, 0.13], seat);
   for (const x of [0.06, -0.06]) box(ROOT, [x, sy - 0.07, -0.09], [0.03, 0.05, 0.03], STEEL);
 
   // ── The rack over the back wheel, its struts, a red reflector at its end ──
@@ -191,6 +234,13 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
   }
   for (const z of [rear - 0.26, rear - 0.04, rear + 0.18]) box(ROOT, [0, rackY, z], [0.19, 0.016, 0.02], STEEL);
   box(ROOT, [0, rackY - 0.035, rear - 0.315], [0.07, 0.035, 0.012], 0xc0302a);
+  // The red one: a padded seat on the rack (a friend rides behind him), its piping, a footrest each side.
+  if (carrier) {
+    box(ROOT, [0, rackY + 0.045, rear - 0.04], [0.22, 0.075, 0.42], CUSHION);
+    box(ROOT, [0, rackY + 0.085, rear - 0.04], [0.2, 0.012, 0.4], 0x3a332e);
+    for (const x of [0.11, -0.11]) box(ROOT, [x, rackY + 0.045, rear - 0.04], [0.012, 0.08, 0.43], PIPING);
+    for (const sg of [1, -1]) tube(ROOT, [sg * 0.05, r - 0.02, rear + 0.02], [sg * 0.17, r - 0.05, rear + 0.04], 0.022, CHROME);
+  }
 
   // ── The steering: the fork, the stem, the bars with their grips and the bell, the basket and its lamp ──
   const crown = along(0.25);
@@ -206,30 +256,42 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
   tube(STEER, [gx - 0.08, ...clamp], [-gx + 0.08, ...clamp], 0.024, CHROME);
   for (const sg of [1, -1]) {
     tube(STEER, [sg * (gx - 0.08), ...clamp], [sg * gx, gy, gz + 0.04], 0.024, CHROME);
-    tube(STEER, [sg * gx, gy, gz + 0.06], [sg * (gx + 0.01), gy + 0.005, gz - 0.06], 0.042, GRIP);
+    tube(STEER, [sg * gx, gy, gz + 0.06], [sg * (gx + 0.01), gy + 0.005, gz - 0.06], 0.042, lady ? CREAM : GRIP);
+    // (the red one: plastic streamers hanging from the grips' ends)
+    if (carrier) STREAMERS.forEach((c, k) => tube(STEER, [sg * (gx + 0.035), gy - 0.005, gz - 0.065 + k * 0.012], [sg * (gx + 0.06 + k * 0.012), gy - 0.2 - k * 0.025, gz - 0.09 + k * 0.02], 0.012, c));
   }
   // (the thumb bell by the left grip)
   box(STEER, [gx - 0.11, gy + 0.005, gz + 0.06], [0.05, 0.03, 0.05], BRASS);
   box(STEER, [gx - 0.11, gy + 0.024, gz + 0.06], [0.03, 0.012, 0.03], 0xe0cc80);
-  // The basket: a woven box on the front, open at the top, a darker rim and weave, a strut down to the fork.
+  // The basket: a woven box on the front, open at the top, a darker rim and weave, a strut down to the fork (the lady's
+  // white plastic; the red one has none, its lamp on the fork).
+  const WEAVE = lady ? WHITE : CANE;
+  const WEAVE_DARK = lady ? WHITE_DARK : CANE_DARK;
+  const WEAVE_RIM = lady ? FRAME : CANE_RIM;
   const bz0 = gz + 0.13;
   const bz1 = bz0 + 0.27;
   const by0 = gy - 0.24;
   const by1 = gy + 0.0;
   const bw = 0.34;
   const bmid = (bz0 + bz1) / 2;
-  box(STEER, [0, by0 + 0.01, bmid], [bw, 0.02, bz1 - bz0], CANE_DARK);
-  box(STEER, [0, (by0 + by1) / 2, bz1], [bw, by1 - by0, 0.02], CANE);
-  box(STEER, [0, (by0 + by1) / 2, bz0], [bw, by1 - by0, 0.02], CANE);
-  for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2, (by0 + by1) / 2, bmid], [0.02, by1 - by0, bz1 - bz0], CANE);
-  for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2, by1, bmid], [0.03, 0.025, bz1 - bz0 + 0.03], CANE_RIM);
-  for (const z of [bz0, bz1]) box(STEER, [0, by1, z], [bw + 0.03, 0.025, 0.03], CANE_RIM);
-  for (const x of [-0.1, 0, 0.1]) box(STEER, [x, (by0 + by1) / 2 - 0.01, bz1 + 0.006], [0.025, by1 - by0 - 0.03, 0.012], CANE_DARK);
-  for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2 + sg * 0.006, (by0 + by1) / 2 - 0.01, bmid], [0.012, by1 - by0 - 0.03, 0.025], CANE_DARK);
-  tube(STEER, [0, by0, bz0 + 0.05], [0, crown[0] + 0.02, crown[1] + 0.03], 0.02, STEEL);
-  // The lamp under the basket's front (its lens glows while he rides at night).
-  box(STEER, [0, by0 - 0.05, bz1 - 0.04], [0.085, 0.08, 0.075], CHROME);
-  box(STEER, [0, by0 - 0.05, bz1 - 0.0], [0.06, 0.06, 0.012], LENS);
+  if (!carrier) {
+    box(STEER, [0, by0 + 0.01, bmid], [bw, 0.02, bz1 - bz0], WEAVE_DARK);
+    box(STEER, [0, (by0 + by1) / 2, bz1], [bw, by1 - by0, 0.02], WEAVE);
+    box(STEER, [0, (by0 + by1) / 2, bz0], [bw, by1 - by0, 0.02], WEAVE);
+    for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2, (by0 + by1) / 2, bmid], [0.02, by1 - by0, bz1 - bz0], WEAVE);
+    for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2, by1, bmid], [0.03, 0.025, bz1 - bz0 + 0.03], WEAVE_RIM);
+    for (const z of [bz0, bz1]) box(STEER, [0, by1, z], [bw + 0.03, 0.025, 0.03], WEAVE_RIM);
+    for (const x of [-0.1, 0, 0.1]) box(STEER, [x, (by0 + by1) / 2 - 0.01, bz1 + 0.006], [0.025, by1 - by0 - 0.03, 0.012], WEAVE_DARK);
+    for (const sg of [1, -1]) box(STEER, [(sg * bw) / 2 + sg * 0.006, (by0 + by1) / 2 - 0.01, bmid], [0.012, by1 - by0 - 0.03, 0.025], WEAVE_DARK);
+    tube(STEER, [0, by0, bz0 + 0.05], [0, crown[0] + 0.02, crown[1] + 0.03], 0.02, STEEL);
+    // The lamp under the basket's front (its lens glows while he rides at night).
+    box(STEER, [0, by0 - 0.05, bz1 - 0.04], [0.085, 0.08, 0.075], CHROME);
+    box(STEER, [0, by0 - 0.05, bz1 - 0.0], [0.06, 0.06, 0.012], LENS);
+  } else {
+    // The lamp on the fork's crown, looking ahead.
+    box(STEER, [0, crown[0] + 0.03, crown[1] + 0.085], [0.09, 0.085, 0.09], CHROME);
+    box(STEER, [0, crown[0] + 0.03, crown[1] + 0.132], [0.065, 0.065, 0.012], LENS);
+  }
 
   // ── The cranks, the pedals (each stays level under its boot), the stand ──
   box(CRANK, [0, bbY, bbZ], [0.17, 0.04, 0.04], STEEL);
@@ -244,14 +306,16 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
   box(STAND, [toM(STAND_AT.x), toM(STAND_AT.y - STAND_LEN / 2), toM(STAND_AT.z)], [0.02, toM(STAND_LEN), 0.025], STEEL);
   box(STAND, [toM(STAND_AT.x), toM(STAND_AT.y - STAND_LEN) + 0.008, toM(STAND_AT.z)], [0.035, 0.016, 0.06], STEEL);
 
-  // ── What it carries (one of four) ──
+  // ── What it carries (one of four; a new one nothing) ──
   const rackTop = rackY + 0.008;
-  if (seed % 4 === 1) {
+  if (!look.cargo) {
+    // (nothing)
+  } else if (seed % 4 === 1) {
     // A krama folded on the rack: red and white check.
     box(ROOT, [0, rackTop + 0.025, rear - 0.04], [0.2, 0.05, 0.26], 0xc23a32);
     for (const z of [-0.1, -0.02, 0.06]) box(ROOT, [0, rackTop + 0.026, rear - 0.04 + z], [0.205, 0.052, 0.025], 0xf2ece0);
     for (const x of [-0.06, 0.03]) box(ROOT, [x, rackTop + 0.026, rear - 0.04], [0.022, 0.053, 0.265], 0xf2ece0);
-  } else if (seed % 4 === 2) {
+  } else if (seed % 4 === 2 && !carrier) {
     // Morning glory from the market, standing up out of the basket.
     for (const [x, z, h] of [[-0.07, 0.04, 0.16], [0.03, -0.03, 0.2], [0.09, 0.05, 0.14]] as const) box(STEER, [x, by0 + h / 2 + 0.02, bmid + z], [0.07, h, 0.06], 0x4f9a3a);
     box(STEER, [0.02, by0 + 0.21, bmid], [0.12, 0.03, 0.08], 0x7cc25a);
@@ -259,7 +323,7 @@ function design(seed: number): { boxes: Box[]; pivots: Vector3[] } {
     // A sack of rice on the rack.
     box(ROOT, [0, rackTop + 0.075, rear - 0.04], [0.26, 0.15, 0.3], 0xe8e0c8);
     box(ROOT, [0, rackTop + 0.155, rear - 0.04], [0.2, 0.02, 0.24], 0xd8cfb4);
-  } else {
+  } else if (!carrier) {
     // A green coconut and a krama in the basket.
     box(STEER, [0.06, by0 + 0.09, bmid], [0.13, 0.14, 0.13], 0x6a9a34);
     box(STEER, [-0.07, by0 + 0.05, bmid], [0.15, 0.06, 0.2], 0x3a62a8);
@@ -279,36 +343,68 @@ const ONE = new Vector3(1, 1, 1);
 /** One bicycle on the map. */
 export class BikeModel {
   readonly base: number;
-  readonly n: number;
+  /** Its slots (the most any look it may take needs), and the boxes of the look it has now. */
+  readonly slots: number;
+  n: number;
   shown = false;
-  private readonly boxes: Box[];
+  look: BikeLook;
+  private boxes: Box[];
   private readonly pivots: Vector3[];
   private readonly parts: Matrix4[];
   private readonly turns: Quaternion[];
-  private readonly lens: number;
+  private lens: number;
   private lampNow = -1;
   /** Placed or turned since the last write. */
   private moved = true;
   private readonly root = new Matrix4();
 
+  /** `slots`: room for this many boxes (another look later: `BikeModel.most`), else its own look's. */
   constructor(
     private readonly things: Things,
-    seed: number,
+    private readonly seed: number,
+    look: BikeLook = TOWN_LOOK,
+    slots = 0,
   ) {
-    const d = design(seed);
+    const d = design(seed, look);
+    this.look = look;
     this.boxes = d.boxes;
     this.pivots = d.pivots;
     this.n = d.boxes.length;
-    this.base = things.alloc(this.n);
-    d.boxes.forEach((b, k) => things.paint(this.base + k, b.color));
-    this.lens = d.boxes.findIndex((b) => b.color === LENS);
+    this.slots = Math.max(slots, this.n);
+    this.base = things.alloc(this.slots);
+    this.lens = this.paintAll();
     this.parts = d.pivots.map(() => new Matrix4());
     this.turns = d.pivots.map(() => new Quaternion());
   }
 
-  /** Boxes the bicycle of `seed` has (its `Things` must hold them). */
-  static boxes(seed: number): number {
-    return design(seed).boxes.length;
+  /** Boxes the bicycle of `seed` and `look` has (its `Things` must hold them). */
+  static boxes(seed: number, look: BikeLook = TOWN_LOOK): number {
+    return design(seed, look).boxes.length;
+  }
+
+  /** The most boxes any of these looks needs (a bicycle that may take each of them). */
+  static most(seed: number, looks: readonly BikeLook[]): number {
+    return Math.max(...looks.map((l) => BikeModel.boxes(seed, l)));
+  }
+
+  /** Every box's colour; the lamp's lens box (−1: none). */
+  private paintAll(): number {
+    this.boxes.forEach((b, k) => this.things.paint(this.base + k, b.color));
+    this.lampNow = -1;
+    return this.boxes.findIndex((b) => b.color === LENS);
+  }
+
+  /** Take another look (his own bicycle, bought again): its boxes in this one's slots, the rest folded away. */
+  restyle(look: BikeLook): void {
+    if (look.kind === this.look.kind && look.colour === this.look.colour && look.cargo === this.look.cargo) return;
+    const d = design(this.seed, look);
+    if (d.boxes.length > this.slots) throw new Error('bike: a look with more boxes than its slots');
+    this.look = look;
+    this.boxes = d.boxes;
+    this.n = d.boxes.length;
+    this.lens = this.paintAll();
+    if (this.n < this.slots) this.things.hide(this.base + this.n, this.slots - this.n);
+    this.moved = true;
   }
 
   /**
@@ -369,6 +465,7 @@ export class BikeModel {
   hide(): void {
     if (!this.shown) return;
     this.shown = false;
-    this.things.hide(this.base, this.n);
+    this.moved = true;
+    this.things.hide(this.base, this.slots);
   }
 }
