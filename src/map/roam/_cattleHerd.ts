@@ -1082,9 +1082,11 @@ export class CattleHerd {
         fl.place(b.i, b.x, b.y, b.z, b.yaw, b.size);
         const walk = b.speed > 0.02 ? (b.speed > 0.5 ? 1 : 0.6) : 0;
         fl.gait(b.i, walk, walk > 0 ? hzOf(b.speed, b.size) : 0.5, t);
-        fl.set(b.i, CH.head, b.head, t);
-        fl.set(b.i, CH.turn, b.turn, t);
-        fl.set(b.i, CH.rest, b.rest, t);
+        // (a still: as it is now, not easing toward it)
+        const snap = this.still;
+        fl.set(b.i, CH.head, b.head, t, snap);
+        fl.set(b.i, CH.turn, b.turn, t, snap);
+        fl.set(b.i, CH.rest, b.rest, t, snap);
         if (r) this.writeRide(b, r);
       }
       // The rope: from his stake (or the trader's post) to its collar, sagging; his stake.
