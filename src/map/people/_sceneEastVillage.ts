@@ -1089,6 +1089,20 @@ class Herd {
     return false;
   }
 
+  /**
+   * The floor under a cow he got off (on its way back), about its feet: the walk map's, so one left on the bank under
+   * the foot bridge stays there (the bridge's deck is over it: `deckOrGround` would lift it onto the deck), else as the
+   * herd's.
+   */
+  private awayFloor(cow: Cow): number {
+    const walk = this.ground.walk;
+    if (walk && cow.y !== 0) {
+      const g = walk.standAt(cow.x, cow.z, cow.y + 0.5, 1.0, 1.2);
+      if (Number.isFinite(g) && Math.abs(g - cow.y) < 1.5) return g;
+    }
+    return deckOrGround(this.field, cow.x, cow.z);
+  }
+
   /** May a cow walk at (x, z), its feet about `y`: no wall nor low roof (it is tall), no step over a metre, the water no deeper than its knees, or than where it stands (`wet` m: out of the shallows it was left in). */
   private walkable(x: number, z: number, y: number, wet: number): boolean {
     const walk = this.ground.walk;
@@ -1119,8 +1133,8 @@ class Herd {
   private show(i: number, walk: number, speed: number, head: number, now: number, dt = 0): void {
     const cow = this.cows[i];
     const sc = PEOPLE_SCALE;
-    // (eased over the land's steps and onto the bridge: no jump)
-    const y = deckOrGround(this.field, cow.x, cow.z);
+    // (eased over the land's steps and onto the bridge: no jump; one he got off, on the floor it stands on)
+    const y = cow.away ? this.awayFloor(cow) : deckOrGround(this.field, cow.x, cow.z);
     cow.y = dt > 0 && cow.y !== 0 ? cow.y + (y - cow.y) * Math.min(1, dt * 6) : y;
     if (walk > 0) cow.still = now;
     cow.moving = walk > 0;
