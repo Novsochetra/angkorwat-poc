@@ -234,9 +234,11 @@ and the shop: "Buying a bicycle" below.
   his belly round: a low saddle, short cranks, the grips well forward). The one by
   Angkor Wat is hired out; the other three are the neighbours' (not his to ride);
   his own, bought at the morning market, is a fifth (its kind's look: `BikeLook`,
-  `restyle`), and the shop's three for sale stand in its stall: all of them are one
-  `Things` (the people's instanced boxes: one draw, one for the shadows), only the
-  one moving is written.
+  `restyle`), and the shop's three for sale stand in its stall: they are a `Things` (the
+  people's instanced boxes: one draw, one for the shadows) for each place — Angkor Wat's,
+  the morning market's (with the village's and the shop's three), the little market's behind
+  Angkor Wat, his own — each culled by the view (its bounds follow its bicycles) and past
+  260 m, and not drawn while none of its bicycles stands; only the one moving is written.
 - **Getting on and off**: on foot by one he may ride (his own, or the hire bicycle
   once paid; 1.7 m from its middle, one he may ride before a neighbour's up to
   0.8 m nearer), E "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up,
@@ -425,8 +427,10 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   walking in: "…the mechanic is on his way back".
 - **E "ទិញកង់ / Buy a bicycle"** at the buyer's place before the upturned bicycle
   (1.75 m round it; nearer his own bicycle by the shop than to it, E rides that):
-  he turns to the mechanic, the camera comes round behind his shoulder (the nursery's
-  `clearView`), the picture slides left of the card, and the card opens in the buy
+  he turns to the mechanic, the camera comes round behind his right shoulder, looking down
+  on him and the mechanic (the nursery's `clearView`, with the tarp hiding the mechanic from
+  over it and the parked motos kept out of the lens; never out over the land to the west:
+  a phone's draws and triangles stay as at the market's cards), the picture slides left of the card, and the card opens in the buy
   menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
   has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
@@ -453,7 +457,9 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 - **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
   model in its look), it stays where he gets off it, across Esc back to the map and
   between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
-  `bike.ownAt` (`{ x, z, yaw° }`), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
+  `bike.ownAt` (`{ x, z, yaw°, y }`: `y` the floor it was left on, so one left on a
+  terrace, a deck or a bridge stands there again after a reload, not on the land under
+  it inside the stone; a save without `y` stands it on the land), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
   / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
   mini-map and the big map (it goes while he rides it, and while he has none); the
   shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
@@ -484,7 +490,8 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
   `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
   he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
-  `red`) · `bikeownat=x:z:yaw°` it stands there (else before the shop; nothing saved
+  `red`) · `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (a terrace, a
+  deck; left out, on the ground there; no `bikeownat`, before the shop; nothing saved
   from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
   `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
   `bikeownat`, `bikehire`. Checks: `window.__bikeShop.state()` (dev, shots: the card

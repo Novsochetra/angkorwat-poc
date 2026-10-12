@@ -711,6 +711,18 @@ const AMBLE = 0.45;
 /** In the pen at night two of them lie down once they have stood still this long (s), and get up before the morning's walk (clock). */
 const LIE_AFTER = 8;
 const LIE_UNTIL = 0.745;
+/**
+ * Their places in the pen (m from its middle, `EV_PEN`; the way each stands there, rad), and how fast one turns round on
+ * the spot to stand so (rad/s): two at the front of the shelter (under its eaves: not ridden), one in the open by the
+ * gate, facing out of it (clear of the log trough in the middle: it stood in it, and one he got on there could go
+ * nowhere), so he can ride it out of the pen.
+ */
+const PEN_AT: readonly (readonly [number, number, number])[] = [
+  [-2, -0.6, 0.3],
+  [-2.5, 1.5, 0],
+  [1.8, -0.6, 2.1],
+];
+const PEN_TURN = 0.6;
 /** A cow lying down or getting up is not ridden for this long (s: the shader's ease, `OX.ease`, and a breath). */
 const SETTLE = 1.6;
 /**
@@ -1001,19 +1013,27 @@ class Herd {
         const dz = cow.tz - cow.z;
         const d = len(dx, dz);
         const moving = d > 0.3 && cow.lie === 0 && !calm;
+        let turning = false;
         if (moving) {
           const st = Math.min(d, AMBLE * dt);
           cow.x += (dx / d) * st;
           cow.z += (dz / d) * st;
           cow.yaw = Math.atan2(dx, dz);
+        } else if (!grazing && cow.lie === 0 && !calm) {
+          // (at its place in the pen it turns round on the spot to stand as it rests there: the one by the gate faces out)
+          const turn = Math.atan2(Math.sin(PEN_AT[i][2] - cow.yaw), Math.cos(PEN_AT[i][2] - cow.yaw));
+          if (Math.abs(turn) > 0.05) {
+            cow.yaw += Math.sign(turn) * Math.min(Math.abs(turn), PEN_TURN * dt);
+            turning = dt > 0;
+          }
         }
         // In the pen at night, settled a while, two of them lie down; up before the morning's walk.
-        const lie = !grazing && i !== 2 && !moving && now - cow.still > LIE_AFTER && c >= HERD.home[1] && c < LIE_UNTIL ? 1 : 0;
+        const lie = !grazing && i !== 2 && !moving && !turning && now - cow.still > LIE_AFTER && c >= HERD.home[1] && c < LIE_UNTIL ? 1 : 0;
         if (lie !== cow.lie) {
           cow.lie = lie;
           cow.lieAt = first ? -1e9 : now;
         }
-        this.show(i, moving ? 0.5 : 0, moving ? AMBLE : 0, grazing ? (Math.sin(now * 0.07 + i * 2) > 0.8 ? 0 : 1) : 1, now, first ? 0 : dt);
+        this.show(i, moving ? 0.5 : turning ? 0.3 : 0, moving ? AMBLE : turning ? 0.25 : 0, grazing ? (Math.sin(now * 0.07 + i * 2) > 0.8 ? 0 : 1) : 1, now, first ? 0 : dt);
       });
       if (grazing) this.bells(now, f, false, 6);
       // The boy sits by the meadow while they graze; at night he is home.
@@ -1089,6 +1109,20 @@ class Herd {
     return false;
   }
 
+  /**
+   * The floor under a cow he got off (on its way back), about its feet: the walk map's, so one left on the bank under
+   * the foot bridge stays there (the bridge's deck is over it: `deckOrGround` would lift it onto the deck), else as the
+   * herd's.
+   */
+  private awayFloor(cow: Cow): number {
+    const walk = this.ground.walk;
+    if (walk && cow.y !== 0) {
+      const g = walk.standAt(cow.x, cow.z, cow.y + 0.5, 1.0, 1.2);
+      if (Number.isFinite(g) && Math.abs(g - cow.y) < 1.5) return g;
+    }
+    return deckOrGround(this.field, cow.x, cow.z);
+  }
+
   /** May a cow walk at (x, z), its feet about `y`: no wall nor low roof (it is tall), no step over a metre, the water no deeper than its knees, or than where it stands (`wet` m: out of the shallows it was left in). */
   private walkable(x: number, z: number, y: number, wet: number): boolean {
     const walk = this.ground.walk;
@@ -1108,10 +1142,10 @@ class Herd {
       cow.tz = EV_MEADOW.z + Math.sin(a) * r;
       cow.next = now + 12 + 10 * hash3(Math.floor(now), i, 53);
     } else {
-      cow.tx = EV_PEN.x - 2 + i * 1.9;
-      cow.tz = EV_PEN.z - 0.6 + (i % 2) * 1.2;
+      cow.tx = EV_PEN.x + PEN_AT[i][0];
+      cow.tz = EV_PEN.z + PEN_AT[i][1];
       cow.next = now + 1e6;
-      if (snap) cow.yaw = 0.3 + i * 0.9;
+      if (snap) cow.yaw = PEN_AT[i][2];
     }
   }
 
@@ -1119,8 +1153,8 @@ class Herd {
   private show(i: number, walk: number, speed: number, head: number, now: number, dt = 0): void {
     const cow = this.cows[i];
     const sc = PEOPLE_SCALE;
-    // (eased over the land's steps and onto the bridge: no jump)
-    const y = deckOrGround(this.field, cow.x, cow.z);
+    // (eased over the land's steps and onto the bridge: no jump; one he got off, on the floor it stands on)
+    const y = cow.away ? this.awayFloor(cow) : deckOrGround(this.field, cow.x, cow.z);
     cow.y = dt > 0 && cow.y !== 0 ? cow.y + (y - cow.y) * Math.min(1, dt * 6) : y;
     if (walk > 0) cow.still = now;
     cow.moving = walk > 0;

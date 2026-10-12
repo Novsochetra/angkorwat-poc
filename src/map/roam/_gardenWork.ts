@@ -291,6 +291,14 @@ function fallenNear(p: Plant, x: number, z: number, out: Vector3): Vector3 | nul
   return out;
 }
 
+const _fd = new Vector3();
+/** How far (x, z) is from the nearest fruit lying under the tree `p` (m; Infinity: none lying): the E row offers to pick it up from there too. */
+export function fallenDistance(p: Plant, x: number, z: number): number {
+  if (!env) return Infinity;
+  const at = fallenNear(p, x, z, _fd);
+  return at ? Math.hypot(at.x - x, at.z - z) : Infinity;
+}
+
 /** Can he stand at (x, z) (not in water, nothing built there, on the work's level)? */
 function standable(ctx: RoamCtx, x: number, z: number, level: number, plant: Plant | null): boolean {
   const w = ctx.world;

@@ -9,8 +9,11 @@ import { SHOP_DELIVER, shopToWorld, shopYaw } from './_bikeShopPlan';
  * shop sells it, the maps (ui/_minimapSpots.ts) put "My bicycle" where it is.
  *
  * Saved (map/progress.ts): `bike.own` (`{ kind, colour }`), `bike.ownAt`
- * (`{ x, z, yaw }`: where he got off it last, yaw in degrees), so it stands
- * there between visits and across Esc back to the map; and how many he has
+ * (`{ x, z, yaw, y }`: where he got off it last, yaw in degrees, `y` the floor it
+ * stands on: a terrace, a deck or a bridge over the land keeps it, where only `x, z`
+ * stood it on the land under them, inside a terrace's stone; saves from before `y`
+ * stand it on the land as before), so it stands there between visits and across Esc
+ * back to the map; and how many he has
  * bought (`bike.bought`). Shots save nothing; a URL's `bikeown=` / `bikeownat=`
  * (`fromUrl`) sets them for that page alone.
  *
@@ -61,7 +64,8 @@ export function costFor(kind: BikeKindId): number {
 export const HIRE_PRICE = 2_000;
 
 /**
- * His bicycle now: its kind and colour (`kind` null: none), where it stands (m; `yaw` its heading, radians), whether
+ * His bicycle now: its kind and colour (`kind` null: none), where it stands (m; `yaw` its heading, radians; `y` the
+ * floor it was left on, NaN: not known, the bicycle add-on stands it on the ground there), whether
  * he is riding it (the maps' badge goes while he does: he is on it), and a count that goes up with every change (`n`:
  * the bicycle add-on and the maps redo theirs).
  */
@@ -69,6 +73,7 @@ export const BIKE_OWN = {
   kind: null as BikeKindId | null,
   colour: 'black' as BikeColourId,
   x: 0,
+  y: NaN,
   z: 0,
   yaw: 0,
   riding: false,
@@ -102,10 +107,13 @@ function changed(): void {
 let fromUrl = false;
 
 type Own = { kind: string; colour: string };
-type At = { x: number; z: number; yaw: number };
+type At = { x: number; z: number; yaw: number; y?: number };
 const isOwn = (v: unknown): v is Own => typeof v === 'object' && v !== null && isKind((v as Own).kind) && isColour((v as Own).colour);
 const isAt = (v: unknown): v is At =>
-  typeof v === 'object' && v !== null && [(v as At).x, (v as At).z, (v as At).yaw].every((n) => typeof n === 'number' && Number.isFinite(n));
+  typeof v === 'object' &&
+  v !== null &&
+  [(v as At).x, (v as At).z, (v as At).yaw].every((n) => typeof n === 'number' && Number.isFinite(n)) &&
+  ((v as At).y === undefined || (typeof (v as At).y === 'number' && Number.isFinite((v as At).y)));
 
 /** The saved bicycle (once, at the start): what he has and where it stands. */
 function load(): void {
@@ -117,6 +125,7 @@ function load(): void {
   const d = deliverySpot();
   BIKE_OWN.x = at ? at.x : d.x;
   BIKE_OWN.z = at ? at.z : d.z;
+  BIKE_OWN.y = at?.y ?? NaN;
   BIKE_OWN.yaw = at ? (at.yaw * Math.PI) / 180 : d.yaw;
   BIKE_OWN.n++;
 }
@@ -125,7 +134,9 @@ load();
 function save(): void {
   if (fromUrl) return;
   progress.set('bike.own', BIKE_OWN.kind ? { kind: BIKE_OWN.kind, colour: BIKE_OWN.colour } : null);
-  progress.set('bike.ownAt', BIKE_OWN.kind ? { x: +BIKE_OWN.x.toFixed(2), z: +BIKE_OWN.z.toFixed(2), yaw: +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1) } : null);
+  const at: { [k: string]: number } = { x: +BIKE_OWN.x.toFixed(2), z: +BIKE_OWN.z.toFixed(2), yaw: +((BIKE_OWN.yaw * 180) / Math.PI).toFixed(1) };
+  if (Number.isFinite(BIKE_OWN.y)) at.y = +BIKE_OWN.y.toFixed(2);
+  progress.set('bike.ownAt', BIKE_OWN.kind ? at : null);
 }
 
 /** He bought one of `kind`: it is his (the one he had traded in), on its stand before the shop. */
@@ -134,6 +145,7 @@ export function buyBike(kind: BikeKindId): void {
   BIKE_OWN.colour = kindOf(kind).colour;
   const d = deliverySpot();
   BIKE_OWN.x = d.x;
+  BIKE_OWN.y = NaN;
   BIKE_OWN.z = d.z;
   BIKE_OWN.yaw = d.yaw;
   progress.set('bike.bought', progress.get('bike.bought', 0) + 1);
@@ -141,11 +153,12 @@ export function buyBike(kind: BikeKindId): void {
   changed();
 }
 
-/** He got off it (or went back to the map on it): it stands there now (saved; the add-on has it there already). */
-export function leaveBike(x: number, z: number, yaw: number): void {
+/** He got off it (or went back to the map on it): it stands there now, on the floor at `y` (saved; the add-on has it there already). */
+export function leaveBike(x: number, z: number, yaw: number, y = NaN): void {
   BIKE_OWN.riding = false;
   if (!BIKE_OWN.kind) return;
   BIKE_OWN.x = x;
+  BIKE_OWN.y = y;
   BIKE_OWN.z = z;
   BIKE_OWN.yaw = yaw;
   BIKE_OWN.n++;
@@ -154,7 +167,8 @@ export function leaveBike(x: number, z: number, yaw: number): void {
 
 /**
  * The URL's values (a check, a bug report's shot): `bikeown=<kind>[:<colour>]` (`0`: none) he has that bicycle,
- * `bikeownat=x:z:yaw°` it stands there (else before the shop). Nothing is saved from them. True if they changed it.
+ * `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (else on the ground there; no place: before the shop).
+ * Nothing is saved from them. True if they changed it.
  */
 export function bikeOwnFromUrl(q: URLSearchParams): boolean {
   if (!q.has('bikeown') && !q.has('bikeownat')) return false;
@@ -173,8 +187,10 @@ export function bikeOwnFromUrl(q: URLSearchParams): boolean {
     BIKE_OWN.x = at[0];
     BIKE_OWN.z = at[1];
     BIKE_OWN.yaw = Number.isFinite(at[2]) ? (at[2] * Math.PI) / 180 : d.yaw;
+    BIKE_OWN.y = Number.isFinite(at[3]) ? at[3] : NaN;
   } else if (spec !== null) {
     BIKE_OWN.x = d.x;
+    BIKE_OWN.y = NaN;
     BIKE_OWN.z = d.z;
     BIKE_OWN.yaw = d.yaw;
   }

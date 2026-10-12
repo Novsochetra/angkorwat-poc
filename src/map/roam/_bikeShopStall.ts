@@ -267,8 +267,8 @@ export function shopSolidTop(x: number, z: number): number {
 
 /**
  * The stall's solid parts over the world's walk map (roam/walkmap.ts is made from the built parts; this is roaming's
- * own scene): over `standAt`, feet that cannot step up onto one are stopped by it (a wall: NaN), feet that can stand
- * on its top; over `clearance` and `hardClearance` (the follow camera, the photo's lens) each is a box. Anywhere else
+ * own scene): over `standAt` each is a wall (NaN) to feet under its top (nobody climbs onto the workbench, the row
+ * for sale or the tyres; a bicycle rode up onto the mending corner when it could stand on them); over `clearance` and `hardClearance` (the follow camera, the photo's lens) each is a box. Anywhere else
  * every answer is the world's own. (Asked many times a step: nothing allocated.)
  */
 export function installShopWalk(world: RoamWorld, ground: number): void {
@@ -279,8 +279,9 @@ export function installShopWalk(world: RoamWorld, ground: number): void {
       const g = standAt(x, z, y, up, h);
       const top = shopSolidTop(x, z);
       if (top === -Infinity || Number.isNaN(g) || g >= top) return g;
-      // (under its top: a wall unless he can step or hop up onto it)
-      return y + up >= top ? top : NaN;
+      // (under its top: a wall — nobody stands on the workbench, the row for sale or the stack of tyres, and his
+      // bicycle, which may step up 2.45 m onto what carries it, rode up onto the mending corner)
+      return NaN;
     };
   if (clearance) world.clearance = (ax, ay, az, bx, by, bz) => Math.min(clearance(ax, ay, az, bx, by, bz), boxes(ax, ay, az, bx, by, bz));
   if (hardClearance) world.hardClearance = (ax, ay, az, bx, by, bz) => Math.min(hardClearance(ax, ay, az, bx, by, bz), boxes(ax, ay, az, bx, by, bz));

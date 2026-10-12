@@ -1,4 +1,4 @@
-import { AdditiveBlending, CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from 'three';
+import { AdditiveBlending, CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, Sphere, SRGBColorSpace, Vector3 } from 'three';
 import { BIKE, bikePose, bikeState, STOP_LEAN, WHEELBASE } from '../../character/bike';
 import { BODY_UNIT_M } from '../../world/scale';
 import '../audio/_bike';
@@ -82,7 +82,7 @@ import { stepSound } from './walker';
  * URL (checks): `bike=ride` starts him on a bicycle at `at=` (facing
  * `yaw=`; his own if he has one, else the nearest), `bike=ride:<m/s>` already
  * rolling; `bikeleft=<spot>:x:z:yaw,…` a bicycle left away from its place;
- * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°` his own and where it stands
+ * `bikeown=<kind>[:<colour>]`, `bikeownat=x:z:yaw°[:y]` his own and where it stands
  * (roam/_bikeOwn.ts); `bikehire=1` the hire bicycle is his for now (bug
  * reports give them all). Its keys in a shot's `sim=`: `w` pedals, `j` hops,
  * `f` rings the bell, `e` gets off.
@@ -279,6 +279,34 @@ let env: AddonEnv | null = null;
 /** The roaming mode now (a URL's `bike=ride` only on foot). */
 let roamMode: RoamMode = 'overview';
 let things: Things | null = null;
+/**
+ * The bicycles' boxes, a `Things` (one draw) for each place they stand: Angkor Wat's hire bicycle, the morning market's
+ * (the neighbour's at its row, the village's west end's, the shop's three for sale), the little market's behind Angkor
+ * Wat, and his own (wherever it is). Each is culled by the view (its bounds follow its bicycles) and past `DRAW_FAR`
+ * from the camera, and not drawn while none of its bicycles stands: one shared mesh, never culled, drew all ≈ 540 boxes
+ * on every view of the map.
+ */
+interface BikeGroup {
+  readonly things: Things;
+  readonly bikes: Bike[];
+  /** The shop's three for sale (standing still: where each stands, m). */
+  readonly sale: { m: BikeModel; x: number; y: number; z: number }[];
+}
+const groups: BikeGroup[] = [];
+/** Its bicycles are drawn while the camera is within this of them (m): a few pixels from there. */
+const DRAW_FAR = 260;
+const _gc = new Vector3();
+/** A group's bounds being gathered this frame (no allocation). */
+const box = { n: 0, x0: 0, x1: 0, y0: 0, y1: 0, z0: 0, z1: 0 };
+function take(x: number, y: number, z: number): void {
+  box.n++;
+  box.x0 = Math.min(box.x0, x);
+  box.x1 = Math.max(box.x1, x);
+  box.y0 = Math.min(box.y0, y);
+  box.y1 = Math.max(box.y1, y);
+  box.z0 = Math.min(box.z0, z);
+  box.z1 = Math.max(box.z1, z);
+}
 const bikes: Bike[] = [];
 /** His own (null until built), the one hired out (by Angkor Wat's road), the shop's three for sale (not to ride). */
 let own: Bike | null = null;
@@ -410,24 +438,42 @@ function build(e: AddonEnv): void {
   // (the four at their places, his own — room for the biggest look the shop sells —, the shop's three for sale)
   const looks = BIKE_KINDS.map((k) => lookOf(k.id));
   const ownSlots = BikeModel.most(OWN_SEED, looks);
-  things = new Things(BIKE_SPOTS.reduce((n, s) => n + BikeModel.boxes(s.seed), 0) + ownSlots + looks.reduce((n, l) => n + BikeModel.boxes(SALE_SEED, l), 0));
-  things.mesh.name = 'roam:bikes';
-  e.scene.add(things.mesh);
+  // (a group for each place: its boxes' room, its mesh in roaming's scene; `things` is the market's, the shop's three in it)
+  const groupOf = (id: string): string => (id === 'wat' || id === 'hamlet' || id === 'own' ? id : 'east');
+  const room = new Map<string, number>([['own', ownSlots], ['east', looks.reduce((n, l) => n + BikeModel.boxes(SALE_SEED, l), 0)]]);
+  for (const s of BIKE_SPOTS) room.set(groupOf(s.id.slice(5)), (room.get(groupOf(s.id.slice(5))) ?? 0) + BikeModel.boxes(s.seed));
+  const byName = new Map<string, BikeGroup>();
+  for (const [name, n] of room) {
+    const t = new Things(n);
+    t.mesh.name = `roam:bikes:${name}`;
+    // (culled: its bounds are set each frame from where its bicycles stand)
+    t.mesh.frustumCulled = true;
+    t.mesh.boundingSphere = new Sphere(new Vector3(), 1);
+    e.scene.add(t.mesh);
+    const g: BikeGroup = { things: t, bikes: [], sale: [] };
+    byName.set(name, g);
+    groups.push(g);
+  }
+  const group = (id: string) => byName.get(groupOf(id))!;
+  things = group('market').things;
   const turns = (): BikeTurns => ({ steer: 0, front: 0, rear: 0, crank: PARK_CRANK, stand: 1, lamp: 0 });
   for (const spot of BIKE_SPOTS) {
-    const model = new BikeModel(things, spot.seed);
+    const g = group(spot.id.slice(5));
+    const model = new BikeModel(g.things, spot.seed);
     const b: Bike = { id: spot.id.slice(5), role: spot.role, spot, model, shown: true, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
     bikes.push(b);
+    g.bikes.push(b);
     if (spot.role === 'hire') hireBike = b;
     home(b, e.world);
   }
-  own = { id: 'own', role: 'own', spot: null, model: new BikeModel(things, OWN_SEED, lookOf(BIKE_OWN.kind ?? 'town'), ownSlots), shown: false, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
+  own = { id: 'own', role: 'own', spot: null, model: new BikeModel(group('own').things, OWN_SEED, lookOf(BIKE_OWN.kind ?? 'town'), ownSlots), shown: false, pos: new Vector3(), yaw: 0, lean: 0, pitch: 0, turns: turns(), moved: false };
   bikes.push(own);
+  group('own').bikes.push(own);
   ownChanged(e);
   onBikeOwn(() => env && ownChanged(env));
   // The shop's three for sale: side by side in its stall, on their stands, pointing out to the street (written once).
   BIKE_KINDS.forEach((k, i) => {
-    const m = new BikeModel(things!, SALE_SEED, lookOf(k.id));
+    const m = new BikeModel(group('east').things, SALE_SEED, lookOf(k.id));
     const [lx, lz] = SHOP_DISPLAY[i];
     const [x, z] = shopToWorld(lx, lz);
     const t = turns();
@@ -435,6 +481,7 @@ function build(e: AddonEnv): void {
     m.place(x, e.world.field.heightAt(x, z), z, shopYaw(SHOP_DISPLAY_TURN), PARK_LEAN, 0, 1.4, t);
     m.write();
     forSale.push(m);
+    group('east').sale.push({ m, x, y: e.world.field.heightAt(x, z), z });
   });
   // The dynamo lamp's pool of light on the ground ahead: a soft warm oval (long along the road, nothing at
   // the canvas's edges), added to the ground's light.
@@ -470,12 +517,12 @@ const SALE_SEED = 6;
 /** How a bicycle of `kind` looks, new from the shop (its colour, nothing carried). */
 const lookOf = (kind: (typeof BIKE_KINDS)[number]['id']): BikeLook => ({ kind, colour: kind === BIKE_OWN.kind ? BIKE_OWN.colour : kindOf(kind).colour, cargo: false });
 
-/** Back to its place, on its stand (his own: where he left it). */
+/** Back to its place, on its stand (his own: where he left it, on the floor he left it on). */
 function home(b: Bike, world: RoamWorld): void {
   const s = b.spot;
   const x = s ? s.x : BIKE_OWN.x;
   const z = s ? s.z : BIKE_OWN.z;
-  b.pos.set(x, groundUnder(world, x, z), z);
+  b.pos.set(x, s ? groundUnder(world, x, z) : floorAt(world, x, BIKE_OWN.y, z), z);
   b.yaw = s ? s.yaw : BIKE_OWN.yaw;
   park(b);
   b.turns.crank = PARK_CRANK;
@@ -497,7 +544,7 @@ function ownChanged(e: AddonEnv): void {
 
 /** His own bicycle stands where it is now (he got off it, or the ride stopped): kept between visits. */
 function ownLeft(b: Bike): void {
-  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw);
+  if (b.role === 'own') leaveBike(b.pos.x, b.pos.z, b.yaw, b.pos.y);
 }
 
 /** On its stand where it is: leaning on it, the bars turned a little, the lamp off (the pedals as he left them). */
@@ -514,6 +561,19 @@ function groundUnder(world: RoamWorld, x: number, z: number): number {
   const land = world.field.heightAt(x, z);
   const g = world.standAt?.(x, z, land + 0.1, 0.4, ROOM);
   return g !== undefined && !Number.isNaN(g) ? g : land;
+}
+
+/**
+ * The floor at (x, z) about `y` (m: where he left his bicycle, a terrace's, a deck's or a bridge's over the land), or
+ * the ground there when `y` is not known or nothing stands there now (`groundUnder`: from the land up, so a bicycle
+ * left on a terrace no longer stands inside its stone after a reload).
+ */
+function floorAt(world: RoamWorld, x: number, y: number, z: number): number {
+  if (Number.isFinite(y) && world.standAt) {
+    const g = world.standAt(x, z, y + 0.3, 0.6, ROOM);
+    if (!Number.isNaN(g) && Math.abs(g - y) < 1) return g;
+  }
+  return groundUnder(world, x, z);
 }
 
 /** The bicycle he is by at (x, y, z) (one he may ride before a neighbour's a little nearer), or null. */
@@ -1390,7 +1450,24 @@ function frame(f: MapFrame, mode: RoamMode): void {
     b.model.place(b.pos.x, b.pos.y, b.pos.z, b.yaw, b.lean, b.pitch, ridden ? scale : 1.4, b.turns);
     b.model.write();
   }
-  things.flush(f.night);
+  // Each place's bicycles: drawn while one of them stands there, near enough; its bounds round them (no allocation).
+  const cam = f.camera.position;
+  for (const g of groups) {
+    box.n = 0;
+    box.x0 = box.y0 = box.z0 = Infinity;
+    box.x1 = box.y1 = box.z1 = -Infinity;
+    for (const b of g.bikes) if (b.shown) take(b.pos.x, b.pos.y, b.pos.z);
+    for (const s of g.sale) if (s.m.shown) take(s.x, s.y, s.z);
+    const mesh = g.things.mesh;
+    const sphere = mesh.boundingSphere!;
+    if (box.n) {
+      sphere.center.set((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2 + 0.8, (box.z0 + box.z1) / 2);
+      // (half its bounds' diagonal, and a bicycle's length and height round each one)
+      sphere.radius = Math.sqrt((box.x1 - box.x0) ** 2 + (box.y1 - box.y0) ** 2 + (box.z1 - box.z0) ** 2) / 2 + 2.2;
+    }
+    mesh.visible = box.n > 0 && _gc.copy(sphere.center).distanceTo(cam) - sphere.radius < DRAW_FAR;
+    g.things.flush(f.night);
+  }
   // The lamp's pool of light on the road ahead.
   if (pool && poolMat) {
     const b = ride;
@@ -1519,7 +1596,7 @@ registerAddon({
     if (BIKE_OWN.kind && own) {
       out.bikeown = BIKE_OWN.colour === kindOf(BIKE_OWN.kind).colour ? BIKE_OWN.kind : `${BIKE_OWN.kind}:${BIKE_OWN.colour}`;
       // (ridden now: where it is, and `bike=ride` puts him back on it)
-      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}`;
+      out.bikeownat = `${own.pos.x.toFixed(1)}:${own.pos.z.toFixed(1)}:${deg(own.yaw)}:${own.pos.y.toFixed(2)}`;
     }
     if (hired) out.bikehire = '1';
     return Object.keys(out).length ? out : null;

@@ -12,9 +12,10 @@ import { onLang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { BIKE_KINDS, BIKE_OWN, buyBike, costFor, isKind, kindOf, tradeIn, type BikeKindId } from './_bikeOwn';
 import { createBikeShopCard, type BikeShopCard } from './_bikeShopCard';
-import { BIKE_SHOP, BIKE_SHOP_ID, SHOP_BUY, SHOP_MECHANIC, SHOP_STOOL, atShopFront, shopOpen, shopToWorld, shopYaw } from './_bikeShopPlan';
+import { BIKE_SHOP, BIKE_SHOP_ID, SHOP_BUY, SHOP_MECHANIC, SHOP_STOOL, SHOP_TARP, atShopFront, shopLocal, shopOpen, shopToWorld, shopYaw } from './_bikeShopPlan';
 import { buildShopStall, installShopWalk } from './_bikeShopStall';
 import { MAP_SPOTS } from '../ui/_minimapSpots';
+import { PARKED } from '../hamlet/_mkPlan';
 import { bagNotify } from './_shopBag';
 import { riel } from './_shopPurse';
 import { angleDiff } from './followCam';
@@ -76,8 +77,13 @@ const COUNT = 0.8;
 const STICK = 0.3;
 /** His chest over his feet (m, at his roaming size). */
 const CHEST = 1.7 * 0.95 * 0.86;
-/** The camera at the stall (the nursery's ways): behind his left shoulder, a little above, the mechanic and his bicycles past him. */
-const FRAME = { side: -1.1, pitch: 0.24, distance: 8.2, rate: 2.2, back: 2.4, for: 2.6 };
+/**
+ * The camera at the stall: behind his right shoulder (east of him, the village's side), above, looking down on him and
+ * the mechanic under the tarp (the horizon over the frame's top). Not out over the land: behind his left shoulder at the
+ * market cards' pitch (0.24) it looked west over the whole map (on a phone 435 draws and 3.8 M triangles with the card
+ * open, 142 and 1.1 M at the stall without it; now ≈ 165 and 1.7 M, the market's own cards 190‥260 and 1.8‥2.1 M).
+ */
+const FRAME = { side: 1.1, pitch: 0.5, distance: 6.2, rate: 2.2, back: 2.4, for: 2.6 };
 const VIEW_TRIES: readonly (readonly [number, number])[] = [
   [1, 1],
   [1, 0.8],
@@ -87,13 +93,16 @@ const VIEW_TRIES: readonly (readonly [number, number])[] = [
   [0.3, 0.7],
   [0, 0.55],
 ];
-const SIDES = [-1.1, 1.1, -0.8, 0.8, -1.4, 1.4, -0.5, 0.5, -0.25, 0.25];
+const SIDES = [1.1, -1.1, -0.8, 0.8, -1.4, 1.4, -0.5, 0.5, -0.25, 0.25];
 const OUT = 1.2;
 const SIDE = 0.6;
 const PEOPLE_CONE = 0.3;
 const LENS_CLEAR = 3.5;
 const LENS_FAN = [-0.45, -0.22, 0, 0.22, 0.45];
 const NEAR_PEOPLE = 2.4;
+/** The motos and bicycles parked before the stall (hamlet/_mkPlan.ts `PARKED`: not in the walk map): as tall as this (m) and this wide round (m), the camera's spot and the first metres of its view keep off them. */
+const PARKED_H = 1.4;
+const PARKED_R = 1.0;
 /** The mechanic's chest over the ground (seated on his low stool, m). */
 const HIS_UP = 1.1;
 const SHIFT_MAX = 0.3;
@@ -133,6 +142,7 @@ let shiftX = 0;
 let shiftY = 0;
 let shifted = false;
 let count: { from: number; to: number; t: number } | null = null;
+const _l: [number, number] = [0, 0];
 /** The prompt last made (asked every step before the stall). */
 const said = { what: '' as string, text: '' };
 onLang(() => (said.text = ''));
@@ -310,10 +320,22 @@ function clearView(ctx: RoamCtx): { side: number; pitch: number; distance: numbe
     p.y = c.y + Math.sin(pitch) * d;
     p.z = c.z - Math.cos(a) * cp * d;
   };
+  // (the tarp over the stall is not solid to the walk map, but it hides the mechanic from a camera up over it)
+  const tarped = (ax: number, ay: number, az: number, bx: number, by: number, bz: number) => {
+    for (let i = 1; i < 16; i++) {
+      const k = i / 16;
+      const y = ay + (by - ay) * k - floor;
+      if (y < SHOP_TARP.back - 0.2 || y > SHOP_TARP.front + 0.15) continue;
+      const [lx, lz] = shopLocal(ax + (bx - ax) * k, az + (bz - az) * k, _l);
+      if (Math.abs(lx) < SHOP_TARP.w / 2 + 0.2 && lz > -SHOP_TARP.d / 2 - 0.15 && lz < SHOP_TARP.d / 2 + 0.4) return true;
+    }
+    return false;
+  };
   const sees = (a: number, q: { x: number; y: number; z: number }) => {
     for (const k of [0, 1, -1]) {
       const px = p.x + Math.cos(a) * SIDE * k;
       const pz = p.z - Math.sin(a) * SIDE * k;
+      if (tarped(q.x, q.y, q.z, px, p.y, pz)) return false;
       if ((hard?.(q.x, q.y, q.z, px, p.y, pz) ?? 1) < 0.98) return false;
       if (soft && (soft(q.x, q.y, q.z, px, p.y, pz, true) < 0.95 || soft(px, p.y, pz, q.x, q.y, q.z) < 0.95)) return false;
     }
@@ -331,6 +353,25 @@ function clearView(ctx: RoamCtx): { side: number; pitch: number; distance: numbe
         if ((hard?.(p.x, p.y, p.z, qx, qy, qz) ?? 1) < 0.999) return false;
         if (soft && soft(p.x, p.y, p.z, qx, qy, qz) < 0.97) return false;
       }
+    return true;
+  };
+  const clearOfParked = (a: number, pitch: number) => {
+    for (const v of PARKED) {
+      const top = w.field.heightAt(v.x, v.z) + PARKED_H;
+      if ((p.x - v.x) ** 2 + (p.z - v.z) ** 2 < (PARKED_R + 0.5) ** 2 && p.y < top + 1) return false;
+      for (const da of LENS_FAN)
+        for (const dp of [0, 0.35]) {
+          const cp = Math.cos(pitch + dp);
+          const sp = Math.sin(pitch + dp);
+          for (let t = 0.5; t <= LENS_CLEAR * 1.5; t += 0.5) {
+            const qy = p.y - sp * t;
+            if (qy > top) continue;
+            const qx = p.x + Math.sin(a + da) * cp * t;
+            const qz = p.z + Math.cos(a + da) * cp * t;
+            if ((qx - v.x) ** 2 + (qz - v.z) ** 2 < PARKED_R * PARKED_R) return false;
+          }
+        }
+    }
     return true;
   };
   const clearOfPeople = (a: number, dist: number) => {
@@ -351,7 +392,7 @@ function clearView(ctx: RoamCtx): { side: number; pitch: number; distance: numbe
         place(a, pitch, distance);
         if (!sees(a, c)) continue;
         if (pass < 2 && (!sees(a, his) || !lensClear(a, pitch))) continue;
-        if ((pass === 0 || pass === 2) && !clearOfPeople(a, distance)) continue;
+        if ((pass === 0 || pass === 2) && (!clearOfPeople(a, distance) || !clearOfParked(a, pitch))) continue;
         out = { side: sd, pitch, distance };
         if (env?.shot) console.info(`[map] bikeShop: the camera's side ${sd.toFixed(2)}, pitch ${pitch.toFixed(2)}, ${distance.toFixed(1)} m (pass ${pass})`);
         break;
