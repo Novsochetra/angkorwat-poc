@@ -510,7 +510,86 @@ land.ts's clock, whether he comes up calmly).
 
 ### Riding the white cattle
 
-(to be written: roam/_cowRide*.ts)
+`roam/_cowRide.ts` (id `cow`, words `cow…`), his pose `character/cowRide.ts`,
+sounds `audio/_cowRide.ts`. The cattle are their keepers': the sugar-palm
+village's herd (`people/_sceneEastVillage.ts` `Herd`: `ev-0‥2`) and his own grown
+cows (`map/cattle/`, owner `his`). They meet the ride in the shared contract
+`cattle/ride.ts` (`COW_RIDE`, `RideCow`: where each is, `canRide`, `lying`, and while
+`ridden` the ride's fields). A ridden ox is drawn by its keeper with
+`people/_oxRide.ts` `drawRideCow(flock, i, cow, now)` every frame (its place and
+tilt, its legs on the ride's step phase, its head, lying), which also holds what
+the contract has no field for (`OX_RIDDEN`: the gait share, how far down it lies
+while it gets up, its head's turn) and the CPU mirror of the ox's shader
+(`oxPoint`: the seat, the rope's points). The ox's shader (`people/_ox.ts`) now
+has a trot (gait past 1: a longer stride, the legs in diagonal pairs, a bounce)
+and lying down (rest: legs folded under, the body on the ground); nobody else
+sets either, so the other oxen look as before. `Flock.pace` (fauna/_kit.ts) sets
+an animal's step phase exactly.
+
+- **Which**: the village's three white cattle while they graze on the meadow over
+  the stream (clock ≈ 0.98‥0.1, round (466, −95)) or stand or lie in the pen at
+  night (two of them lie down once settled, one under the shelter and one out in
+  the pen; up again before the morning's walk), not while they walk the way out or
+  home; his own when their keeper says `canRide`. Never under a low roof: E needs
+  room for him to sit up over its back (1.75 m, `ceilingAt`), so the cows under
+  the pen's shelter are not offered. Walking up calmly, the one by him stands still for him
+  (`COW_RIDE.calm`, within 4.5 m); the herd boy calls "ជិះយឺតៗណា បង!" as he gets on.
+- **What**: within a step of its flank, E "ជិះគោ / Ride the cow": he hops up and
+  sits astride behind the hump, his thighs down its narrow back and his shins
+  hanging lower than on the buffalo, both fists on the nose rope (it uncoils from
+  the ring, then runs along its left cheek and over its shoulder by the hump into
+  his hands). A lying one waits a moment, grunts and gets up hind end first with
+  him on it. W walks it on (1.3 m/s × its size: 1.8 m/s for the village's),
+  Shift a trot (2.3 × size: a bouncy jog; he bobs on it a moment late, his head
+  nodding), S backs it a step, A / D turn it (0.75 rad/s, stepping round on the
+  spot); the stick and the pad the same (R2 trots). It trots on land only (in the
+  water it walks). Every 25–50 s of walking on grass or earth it stops 2–3 s to
+  graze (the first time a toast says so; Shift urges it on); left standing it
+  nibbles; now and then it lows, soft, and blows through its nose. It follows the
+  land as the walker does (the walk map, `standAt`): up and down the land's steps
+  (a grunt), round walls and trunks, never onto stairs, terraces, bridges' planks,
+  jetties or anything built ("គោមិនព្រមឡើងទីនោះទេ"), nor past the mist; it wades
+  the shallows up to its belly (0.6 m × size) and stops at deeper water or open
+  water ("ទឹកជ្រៅពេក គោមិនព្រមចុះទេ"). E "ចុះពីគោ / Get off": it stops, then he
+  slides off on his side (else the other, its rump, its shoulders); none:
+  "ចុះនៅទីនេះមិនបានទេ…". His lights go away while he rides; the camera (4) and the
+  phone (5) work from its back.
+- **After**: the village's cow grazes where he left it 6–14 s, then walks back to
+  the herd (a spot in the meadow by day, its place in the pen at night, its place
+  in the line while they walk the way) round walls and steps, out of the shallows,
+  never into deeper water; if neither it nor its place is in view, it is there at
+  once (stuck, it waits for that). Back to the map (Esc) it is home at once.
+- **Keys shown**: the ride's key help (`keys()`: W S walk on · back up, A D turn,
+  Shift trot, E get off, Q R look; the pad's left stick, R2, □, right stick); the
+  first ride's toast (`cowKeys`, `cowTouch`, `cowPad`); the touch Jump button
+  hidden while he rides (`touchJump('hide')`).
+- **Camera**: as the buffalo's (eased back to 9.5 m and up to 18° if closer or
+  lower as he gets on; a zoom stops that), its rocking and bounce eased out.
+- **Sounds** (own): hooves on grass, earth, mud and stone (`cowHoofGrass|Earth|Mud|Hard`,
+  Steps bus, lighter and sharper than the buffalo's; at a trot one for each
+  diagonal pair), wading (`cowWade`), the splash stepping in (`cowSplash`), the
+  low (`cowMoo`), the grunt getting up (`cowGrunt`), a blow through the nose
+  (`cowSnort`) on the Animals bus. Its bell is the village cattle's wooden
+  `cowBell` (audio/life.ts), pushed into the frame's calls on many front steps
+  (most of them trotting) and now and then standing.
+- **URL**: `cow=ride` takes the cow nearest `at=`, brings it there (its feet on the
+  land at `at=`, heading `yaw=`) and seats him on it; `cow=lie` the same with it
+  lying (it gets up a second later); `cow=graze` riding, it grazes; `cow=trot`
+  riding, W trots without Shift (`sim=w:2`); `cow=off` he has just got off beside
+  it; `cow=near` (or `near:lie`) it stands grazing (or lies) a step in front of him,
+  held there, not ridden (the prompt). `cowfake=1` (or `cowfake=x,z`) adds a cow of
+  his that nobody draws, to check the ride's logic alone. The herd: `cowaway=<s>`
+  (how long one he got off grazes before it walks back; 30 in a still otherwise).
+  In a still the village herd is placed only once the shot's camera has come
+  near (after its `sim=` steps), so a prompt by one of its cows needs `cow=near`.
+  E.g. `roam=walk&at=462,-90&yaw=150&clock=0.03&cow=near` (the prompt on the
+  meadow), `at=464,-93&yaw=200&clock=0.03&cow=ride&rcam=80,8,6.5`. The bug report
+  gives `cow=ride|graze|lie&at=<its feet>&yaw=<its heading>`.
+- **Checks**: `window.__cowRide` (`state`, `leaving`, `grazing`, `rising`, `speed`,
+  `trot`, `turnRate`, `rope`, `blocked`: what stopped it last, `misfit`, `cow`,
+  `parked`, `offered`: the cow E would get him on now, `bob`, `pose`, `seat`,
+  `cows`, `probe(dyaw, ahead)`); the console line
+  `[cow] cow=…` says which one a URL brought where.
 
 ### Zip line
 
@@ -693,8 +772,11 @@ sounds `audio/_hammock.ts`, the list of hammocks and the people's hook
   first time he comes near (its part's `petal` blocks between the ties: cloth,
   ropes; not the posts or the knots), and its look is read off them: where the
   cloth starts and ends, its curve, its stripes' colours and widths, the rope's
-  colour, ropes along then down (the Khmer houses). Not found (yet): not offered,
-  looked for again 3 s later.
+  colour, ropes along then down (the Khmer houses). The curve hangs (lowest
+  between its ends, never an arch): the one most of the wide blocks lie on, so
+  something else wide between the ties (the pillows on the Kulen hut's deck under
+  it) is left out, neither read as cloth nor hidden (`hangingFit`). Not found
+  (yet): not offered, looked for again 3 s later.
 - **Whose**: free ones only — nobody in it (or right at it: the people part's
   `greet.ts nearby`, asked from 2 m under it so the people on the floor over it do
   not count). The grandparents' (east village n2 and s4 by day, the palm sugar
@@ -2303,7 +2385,7 @@ chilli, basil, jasmine).
 - **On the map** (`garden/view.ts`, `_viewPool.ts` one instanced mesh per family,
   `_viewLook.ts` looks cached and prebuilt in idle time, warmed before Start,
   `_viewEarth.ts` the crop beds and tree basins (wet: darker, a puddle), `_viewDrop.ts`
-  falling fruit): on the land's block tops, 5 draws near for a full garden, far shapes
+  falling fruit of blocks, `_viewFruit.ts` the fruit on the ground drawn smooth): on the land's block tops, 5 draws near for a full garden, far shapes
   under half a pixel, the leaves sway, plants grow in and ease from stage to stage.
   Far, the same blocks as the map's own plain boxes (`plainAt`); two parts culled
   apart (small things, trees). The walk map (`roam/_gardenWalk.ts`): grown trunks are
@@ -2366,9 +2448,23 @@ chilli, basil, jasmine).
   to replant elsewhere); a grown tree asks first ("Cut down the mango?") then `fell`
   (five chops, he steps back, it tips over, lands with a thud and sinks away). The
   pagoda's bodhi never.
-- **Thirst drops** (`garden/_viewThirst.ts`): a block water drop bobs over every
-  thirsty plant within ≈ 45 m (urgent: faster, an orange rim and a second drop); it
-  splashes away when watered. `gardenthirst=1` in shots.
+- **Thirst drops** (`garden/_viewThirst.ts`): a pixel-art 💧 on a quad facing the camera
+  bobs over every thirsty plant within ≈ 45 m (urgent: an orange pulsing rim and a second
+  drop); it splashes away when watered. `gardenthirst=1` in shots.
+- **Fallen fruit** (the player's ask, October 2026: make the falling coconut look like the
+  drop): the coconut, the sugar palm fruit and the durian on the ground are smooth low-poly
+  shapes (`garden/_viewFruit.ts`; the models lay no fallen blocks now): an oval husk with
+  three faint ridges and its sepals, a glossy purple-black ball with its olive cap, a ball of
+  pyramid thorns; a little bigger than life, where `fallenAt` puts them, on the earth there.
+  When ripe (`fell`) each lets go where one hung in the crown (`_viewDrop.ts` `crownGone`),
+  falls tumbling, lands with dust and the thud (now as it lands), bounces twice and rolls
+  out from the trunk to rest. Lit like the scene with the buffalo rope's program (in the
+  scene from the start: no compile in play), two draws a kind while near. Over each of his
+  trees with fruit lying to pick up, a **marker** bobs chest high (`garden/_viewFallen.ts`,
+  the drop's technique: a pixel-art 🥥, a durian, a sugar palm fruit); picked up, it pops
+  into gold sparkles. The icons (drops, markers) face the camera each picture is drawn with,
+  so `cam=` shots and the free camera see them. `gardenfallen=1` shows the markers in
+  shots; `gardenfall=<kind>:<t>` holds a fall `t` s in (`__gardenView.fall(t)`).
 - **The yard's jar** holds 24 pours (`JAR_MAX`; `GARDEN.jar`, saved; rain and his
   buckets fill it, `fillCan('jar')` takes from it); its water shows in its open mouth.
 - **The shoulder pole** (ដងរែក, add-on `carryPole`, order 12: `roam/_carryPole*.ts`;
@@ -2390,6 +2486,7 @@ chilli, basil, jasmine).
   (a bug report's `garden=` carries each plant's place; with it `gardenclock=`, `basket=`)
   · `seeds=all|<kind>:<n>,…` · `basket=all|…` · `can=<n>` · `gardenclock=<days>` ·
   `gardenact=<action>:<t>` (`gardenkind=`) · `gardenring=1|<kind>` · `gardencard=1` ·
+  `gardenthirst=1` · `gardenfallen=1` · `gardenfall=<kind>:<t>` ·
   `gardenhint=1` · `gardenspeed=<x>` (dev) · `gardenlod=near|far` ·
   `gardenshop=1|buy|sell` (`gardenshopbuy=`, `gardenshopsell=`, `gardenshopfocus=`) ·
   `nursopen=all|none` · `nursery=water[:0‥1]` · `gardengift=1|take|taken` ·

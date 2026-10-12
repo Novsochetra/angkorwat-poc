@@ -16,7 +16,6 @@ import {
   STALK,
   SUGAR_TRUNK,
   SUGAR_TRUNK_LOW,
-  fallen,
   fallenSpot,
   fan,
   mixHex,
@@ -42,8 +41,8 @@ import {
  * - 4: grown (≈ 13 m): the straight dark trunk swollen at the foot, the split leaf
  *   bases under the crown, the round crown of stiff fans (young ones up, old ones
  *   out and yellowing), a skirt of dead brown fans under it; in its months bunches
- *   of round purple-black fruit (ripe ones fall: `fallen` round the foot), out of
- *   them the flower stalks.
+ *   of round purple-black fruit (ripe ones fall: `fallen` round the foot, drawn
+ *   smooth by the view, garden/_viewFruit.ts), out of them the flower stalks.
  *
  * Thirsty (`droop`), the fans hang, fold and pale (1) or go limp and yellow-brown
  * (2); dead, a dry brown rosette, nothing green.
@@ -209,8 +208,7 @@ function palm(K: PalmKit, look: PlantLook, W: Wither): void {
     const s = grown ? 1 : 0.75;
     fan(K, Math.sin(az) * 0.3, base + (0.55 + K.r(320 + k) * 0.35) * s, Math.cos(az) * 0.3, az, el, (K.r(330 + k) - 0.5) * 2, (0.7 + K.r(340 + k) * 0.3) * s, (0.55 + K.r(350 + k) * 0.12) * s, 0.05, pick(DEAD, K.r(360 + k)), 0.9 + K.r(370 + k) * 0.2, { segs: 7, spread: 2.6, stalk: pick(DEAD, K.r(380 + k)), tip: 0.6 });
   }
-  // Ripe fruit fallen round the foot.
-  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.19, PALM_FRUIT, turn + FALL_TURN, FALL_REACH, FRUIT_CAP);
+  // (ripe fruit fallen round the foot: drawn smooth by the view where `fallenAt` says, garden/_viewFruit.ts)
 }
 
 /** Bunches of round purple-black fruit hanging among the leaf bases on their stalks. */

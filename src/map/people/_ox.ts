@@ -11,9 +11,12 @@ import { Model, type Species } from '../fauna/_kit';
  *
  * Model space: standing, facing +z, feet on y = 0, +x its left; about
  * 1.35 m at the hump, 2.2 m from nose to rump (drawn at the people's
- * scale). Channels (`CH`): gait (walk), head (0 level, 1 down: pulling,
+ * scale). Channels (`CH`): gait (walk; past 1 a trot, as one he rides
+ * goes when urged on: roam/_cowRide.ts), rest (lying down: the legs
+ * folded under, the body on the ground), head (0 level, 1 down: pulling,
  * a little lower; −1 up), turn (look aside), act (a shake of the head,
- * the bell swinging).
+ * the bell swinging). One he rides is posed on the CPU too, with the same
+ * numbers (`_oxRide.ts` `oxPoint`).
  */
 
 const S = { skin: 0, shade: 1, belly: 2, muzzle: 3, dark: 4, horn: 5, tip: 6, eye: 7, hoof: 8, bell: 9, collar: 10 };
@@ -68,14 +71,26 @@ model
   .boxLR('hshin*', [0.2, 0.22, -0.64], [0.1, 0.4, 0.1], S.shade)
   .boxLR('hshin*', [0.2, 0.03, -0.62], [0.12, 0.06, 0.13], S.hoof);
 
+/**
+ * The walk's and the trot's rocking (radians, model units), and lying down: `_oxRide.ts` `oxPoint` mirrors the
+ * shader with the same numbers. The trot (gait past 1: `P.run`) is the ride's only (roam/_cowRide.ts): a longer,
+ * quicker stride, the legs in diagonal pairs, a bounce.
+ */
+export const OX_ROCK = { roll: 0.03, nod: 0.06, lift: 0.02, trotRoll: 0.015, trotNod: 0.07, trotLift: 0.05, trotPitch: 0.025 };
+/** Lying: how far the body comes down (model units), and the legs folded (radians: upper leg, shin; front, hind). */
+export const OX_LIE = { drop: 0.6, front: [-1.25, 2.6], hind: [-1.3, 2.55] } as const;
+const n = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : String(+v.toFixed(5)));
+
 const GLSL = /* glsl */ `
 vec3 faunaBoneRot(int b, FaunaPose P) {
   float down = max(P.head, 0.0);
   float up = max(-P.head, 0.0);
-  // (walking: the head nods with the steps, the hump and barrel sway)
-  float nod = 0.06 * sin(P.phase * 2.0) * P.walk;
+  float lie = P.rest;
+  float stand = 1.0 - lie;
+  // (walking: the head nods with the steps, the hump and barrel sway; a trot nods and pitches more)
+  float nod = (${n(OX_ROCK.nod)} * P.walk + ${n(OX_ROCK.trotNod)} * P.run) * sin(P.phase * 2.0);
   float shake = P.act * sin(P.t * 9.0) * 0.25;
-  if (b == B_BODY) return vec3(0.0, 0.0, 0.03 * sin(P.phase) * P.walk);
+  if (b == B_BODY) return vec3(${n(OX_ROCK.trotPitch)} * P.run * sin(P.phase * 2.0 + 1.0), 0.0, (${n(OX_ROCK.roll)} * P.walk + ${n(OX_ROCK.trotRoll)} * P.run) * sin(P.phase));
   if (b == B_NECK) return vec3(0.25 * down - 0.15 * up + nod, 0.2 * P.turn, 0.0);
   if (b == B_HEAD) {
     float chew = 0.025 * sin(P.t * 3.5 + P.seed * 11.0) * (1.0 - P.walk);
@@ -86,24 +101,27 @@ vec3 faunaBoneRot(int b, FaunaPose P) {
     return vec3(0.0, s * 0.35 * faunaTwitch(P.t, 0.5, 0.3, P.seed + s * 0.31), s * -0.35);
   }
   // (the bell swings with the steps and the head)
-  if (b == B_BELL) return vec3(0.35 * sin(P.phase * 2.0 + 0.8) * P.walk + 0.5 * shake, 0.0, 0.15 * sin(P.phase) * P.walk);
+  float mv = P.walk + P.run;
+  if (b == B_BELL) return vec3(0.35 * sin(P.phase * 2.0 + 0.8) * mv + 0.5 * shake, 0.0, 0.15 * sin(P.phase) * mv);
   if (b == B_TAIL) {
     float bout = smoothstep(0.1, 0.6, sin(P.t * 0.27 + P.seed * 8.0));
-    return vec3(0.08, 0.4 * sin(P.t * 2.3 + P.seed * 5.0) * (0.2 + 0.8 * bout), 0.0);
+    return vec3(0.08 + 0.25 * P.run, 0.4 * sin(P.t * 2.3 + P.seed * 5.0) * (0.2 + 0.8 * bout), 0.0);
   }
   bool left = b == B_FLEGL || b == B_FSHINL || b == B_HLEGL || b == B_HSHINL;
   bool hind = b == B_HLEGL || b == B_HLEGR || b == B_HSHINL || b == B_HSHINR;
   bool upper = b == B_FLEGL || b == B_FLEGR || b == B_HLEGL || b == B_HLEGR;
-  float off = hind ? (left ? 0.0 : 0.5) : (left ? 0.25 : 0.75);
+  // (a walk steps one leg after another; trotting, the front legs come round a quarter: diagonal pairs together)
+  float off = hind ? (left ? 0.0 : 0.5) : (left ? 0.25 : 0.75) + 0.25 * P.run;
   float th = P.phase + 6.2832 * off;
-  float swing = -sin(th) * 0.32 * P.walk;
-  float bend = max(0.0, cos(th)) * 0.6 * P.walk;
-  if (upper) return vec3(swing, 0.0, 0.0);
-  return vec3(bend, 0.0, 0.0);
+  float swing = -sin(th) * (0.32 * P.walk + 0.42 * P.run) * stand;
+  float bend = max(0.0, cos(th)) * (0.6 * P.walk + 0.85 * P.run) * stand;
+  // Lying: the upper legs forward, the shins folded back under it.
+  if (upper) return vec3(swing + (hind ? ${n(OX_LIE.hind[0])} : ${n(OX_LIE.front[0])}) * lie, 0.0, 0.0);
+  return vec3(bend + (hind ? ${n(OX_LIE.hind[1])} : ${n(OX_LIE.front[1])}) * lie, 0.0, 0.0);
 }
 
 vec3 faunaRootMove(FaunaPose P) {
-  return vec3(0.0, 0.02 * sin(P.phase * 2.0) * P.walk, 0.0);
+  return vec3(0.0, -${n(OX_LIE.drop)} * P.rest + (${n(OX_ROCK.lift)} * P.walk + ${n(OX_ROCK.trotLift)} * P.run) * sin(P.phase * 2.0) * (1.0 - P.rest), 0.0);
 }
 `;
 

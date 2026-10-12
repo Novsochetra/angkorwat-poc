@@ -44,7 +44,7 @@ registerModel('durian', (b, look) => {
   else if (look.stage === 2) sapling(b, r, look);
   else if (look.stage === 3) young(b, r, look);
   else grown(b, r, look);
-  if (look.fallen > 0) fallen(b, r, look);
+  // (ripe durians lying round the foot: drawn smooth by the view where `fallenAt` says, garden/_viewFruit.ts)
 });
 
 /** Narrow leaves, two-coloured, in two rows along a twig (or turning up the stem). */
@@ -273,14 +273,4 @@ export function fallenAt(look: PlantLook, i: number): [number, number, number] {
     out = [Math.cos(a) * d, inside ? 0.21 : 0.19, Math.sin(a) * d];
   }
   return out;
-}
-
-/** Ripe durians lying round the foot of the tree where they fell (he picks them up): where `fallenAt` says. */
-function fallen(b: VoxelBuilder, r: Rand, look: PlantLook): void {
-  const src = traceSource();
-  const n = Math.min(3, look.fallen);
-  for (let q = 0; q < n; q++) {
-    const [x, y, z] = fallenAt(look, q);
-    durian(b, r, x, y, z, true, src, false);
-  }
 }

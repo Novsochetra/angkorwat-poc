@@ -516,6 +516,26 @@ export class Flock {
     this.dirtyCh |= (1 << CH.gait) | (1 << CH.rest);
   }
 
+  /**
+   * An animal someone else moves (a ride, roam/_cowRide.ts): its gait at once (`v`, no easing) and its step phase
+   * exactly `phase` (rad) at time `t`, going on at `hz` cycles a second until the next call. Written only when it
+   * changes.
+   */
+  pace(i: number, v: number, phase: number, hz: number, t: number): void {
+    this.set(i, CH.gait, v, t, true);
+    const o = i * 4 + 3;
+    const TAU = Math.PI * 2;
+    // (the offset kept small, so the float32 buffer holds it exactly enough)
+    const off = Math.fround((((phase - (t - this.base) * hz * TAU) % TAU) + TAU) % TAU);
+    const rate = Math.fround(hz);
+    const g = this.ch[CH.gait];
+    const r = this.ch[CH.rest];
+    if (g[o] === off && r[o] === rate) return;
+    g[o] = off;
+    r[o] = rate;
+    this.dirtyCh |= (1 << CH.gait) | (1 << CH.rest);
+  }
+
   /** Once a frame: the shader clock, and the buffers that changed. */
   flush(t: number): void {
     // Rebase the clock every ~10 min (the channel starts and step phases move with it).
