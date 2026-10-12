@@ -5,7 +5,7 @@ import { BM, BUSY as BH_BUSY, inWin } from '../hamlet/_bhMarketPlan';
 import { ALMS as BH_ALMS } from '../hamlet/_bhSpots';
 import { BUSY as MK_BUSY, inWindow } from '../hamlet/_mkPlan';
 import { MARKET, PADDIES, PATHS, RACE_COURSE, VILLAGE } from '../layout';
-import { MONK_AT } from '../people/_sceneBackFolk';
+import { MONK_AT, MONK_END } from '../people/_sceneBackFolk';
 import { within } from '../people/_sceneBackKit';
 import { END as APSARA_END, SHOW as APSARA_SHOW, STAGE } from '../people/_sceneApsara';
 import { FARM_DARK, farmModeOf } from '../people/_sceneFarm';
@@ -141,7 +141,7 @@ registerEvent({
   place: 'jnHamlet',
   begins: 'whenAlmsBackBegins',
   where: { x: BH_ALMS.monk[0], z: BH_ALMS.monk[1] },
-  on: (m) => within(m.clock, MONK_AT, 1),
+  on: (m) => within(m.clock, MONK_AT, MONK_END),
 });
 // (Angkor Wat's monks walking up the valley road with their bowls in the morning: they take dak bat there, roam/_dakBat.ts)
 const ROAD = PATHS.find((p) => p.name === 'valley road')?.points;

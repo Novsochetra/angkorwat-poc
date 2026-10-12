@@ -337,7 +337,7 @@ export const BM_PARKED: readonly { s: number; t: number; face: number; kind: 'mo
  * Where the forest monk stops on his dawn round, on the trail before the
  * breakfast stall (market s, t; he faces it: a market heading): the
  * breakfast cook and the fruit seller kneel before him and give
- * (people/_sceneBackFolk.ts `Riders`, _sceneBackMarket.ts).
+ * (people/_sceneBackFolk.ts `ForestMonk`, _sceneBackMarket.ts).
  */
 export const MONK_STOP = { s: -5.4, t: 0.3, face: 0 };
 

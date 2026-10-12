@@ -1570,11 +1570,14 @@ night, lifting their heads at the explorer (`buffalo`); four white cows
 (people/_ox.ts) grazing in the meadow south of the trail with their old
 herder under the big tree, walked home in a line along the trail, through
 the market's crossroads and up the lane into the pen from `clock` 0.05
-(`cowBell`), out again from 0.78; the forest monk riding his bicycle
-(people/_bicycle.ts) from his hut at dawn (0.76‥), stopping at the market
-(the breakfast cook and the fruit seller kneel and give, he blesses them:
-`nod`), then up the lane to the yard, where two women kneel and give rice
-wrapped in banana leaf (`give`), and home; a villager in a palm-leaf hat
+(`cowBell`), out again from 0.78; the forest monk walking his alms round
+(បិណ្ឌបាត) from his hut, barefoot with his bowl, on foot the whole way (monks
+never ride to their alms round: no bicycle, moto or cart; `ForestMonk` in
+people/_sceneBackFolk.ts), setting out in the dark before dawn (0.645‥0.25:
+`MONK_AT`‥`MONK_END`), stopping at the market about sunrise (≈ 0.79: the
+breakfast cook and the fruit seller kneel and give, he blesses them: `nod`),
+then up the lane to the yard (≈ 0.94), where two women kneel and give rice
+wrapped in banana leaf (`give`), and walking home; a villager in a palm-leaf hat
 riding out east in the morning and back in the afternoon, stopping at the
 cart (`bikeBell` for the explorer in the way); two schoolchildren in white
 shirts and navy on their bicycles down the lane and east along the trail at
@@ -1607,7 +1610,7 @@ Cost: ≈ 6.1 k blocks (the market ≈ 1.1 k of them) in four voxel draws
 mist), built in ≈ 30 ms (the market ≈ 2 ms); hidden past 430 m (the overview:
 nothing drawn), blocks cast only while their shadows can be seen; the
 toggles write only the instances that change, a few times a day; its people
-26 in the crowd (12 of them the market's, 2 the schoolchildren), 220 thing
+26 in the crowd (12 of them the market's, 2 the schoolchildren), ≈ 180 thing
 boxes, the animals two instanced draws (+ shadows, near), ≈ 0.05–0.08 ms a
 frame near, ≈ 0.01 ms far, nothing past 360 m. Checks:
 `cam=136,12.4,-328,104,19,-270&clock=0.8` (the market at the foot of the
@@ -1619,9 +1622,12 @@ west, past the sala), `roam=walk&at=127,-304&yaw=150&sim=w:1,_:0.5&rcam=0,12,9&c
 (at the crossroads, up the lane), `cam=133,9.2,-289,125,7.2,-312` with
 `clock=0.7|0.8|0.95|0.26` (the blue hour, the busy morning, noon packed up,
 num krok at dusk), `cam=118,8.8,-305,126,7.8,-313&clock=0.7` (breakfast at
-dawn), `cam=127.8,8.4,-305.6,123.2,7.2,-309.6&clock=0.78&bhmonk=19` (the
-monk blessing at the market; `bhmonk=15` the gifts; the yard's alms
-`cam=150,11,-353,145,9,-345&clock=0.85&bhmonk=47`),
+dawn), `cam=97.1,13,-314.1,100,9,-321.5&clock=0.7` (the forest monk walking
+the trail before sunrise), `cam=127.8,8.4,-305.6,123.2,7.2,-309.6&clock=0.773`
+(the gifts at the market; `bhmonk=52` his blessing),
+`cam=146.4,13,-323.6,139.9,9,-328.2&clock=0.87` (on foot up the lane), the
+yard's alms `cam=151.5,12.8,-350.5,145.3,8.6,-345.4&clock=0.927` (`bhmonk=110`
+the blessing),
 `cam=127,8.6,-301,133,8.4,-316&clock=0.87&bhschool=3` (the schoolchildren
 down the lane), `roam=walk&shop=back-breakfast&clock=0.87` (at a stall's buy
 menu; `back-coconut`, `back-fruit`, `back-krok`, `back-produce`),

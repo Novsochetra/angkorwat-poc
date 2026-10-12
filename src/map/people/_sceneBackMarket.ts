@@ -37,10 +37,10 @@ import { raining, UMBRELLAS, withUmbrella } from './_sceneBackKit';
  *   table eating (`eat`), from dawn to mid-morning.
  *
  * The monk's alms at the market (at dawn, on his way to the hamlet's): the
- * `alms` the riders publish (`_sceneBackFolk.ts` `Riders.market`): the
+ * `alms` the forest monk publishes (`_sceneBackFolk.ts` `ForestMonk.market`): the
  * breakfast cook and the fruit seller come out and kneel before him, give
  * (`give`), he blesses them (`nod`), they bow; buyers walking near stop and
- * wait, facing him, until he rides on (no new ones come meanwhile).
+ * wait, facing him, until he walks on (no new ones come meanwhile).
  *
  * Sounds (only while the ears are near): the murmur (`market`, soft: a
  * village market), the sellers' calls, the griddle's `sizzle`. Nature book:
@@ -74,7 +74,7 @@ const LOADS: [number, number][] = [
 ];
 
 type P = { x: number; z: number };
-/** The monk's stop at the market (`_sceneBackFolk.ts` `Riders.market`): on, the seconds into it (negative: coming), where he stands, the way he faces. */
+/** The monk's stop at the market (`_sceneBackFolk.ts` `ForestMonk.market`): on, the seconds into it (negative: coming), where he stands, the way he faces. */
 type Alms = { readonly on: boolean; readonly t: number; readonly x: number; readonly z: number; readonly yaw: number };
 
 interface Seller {
@@ -238,7 +238,7 @@ export class MarketFolk {
     return this.force === 'all' ? true : this.force === 'none' ? false : stallOpen(s, clock);
   }
 
-  /** The market's alms (the monk stops on his way home): on, his spot and heading, how far into it (s). */
+  /** The market's alms (the monk stops on his way in to the hamlet): on, his spot and heading, how far into it (s). */
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null, first: boolean, alms: Alms): void {
     const cam = f.camera.position;
     const seen = len2(cam.x - BM.x, cam.z - BM.z) < SEEN;
@@ -450,7 +450,7 @@ export class MarketFolk {
 
   private buyer(b: Buyer, dt: number, now: number, f: MapFrame, ex: Obstacle | null, alms: Alms): void {
     const a = b.a;
-    // The monk at the market: those walking near stop and wait, facing him, until he rides on.
+    // The monk at the market: those walking near stop and wait, facing him, until he walks on.
     if ((b.mode === 'walk' || b.mode === 'leave') && alms.on && alms.t > -2 && len2(a.x - alms.x, a.z - alms.z) < 5) {
       a.stop(Math.atan2(alms.x - a.x, alms.z - a.z));
       a.pose(POSE.stand, now);

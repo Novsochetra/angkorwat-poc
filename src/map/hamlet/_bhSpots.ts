@@ -151,11 +151,14 @@ export const MEADOW = {
   herder: [141.4, -284.8] as P2,
 };
 
-/** Where the monk's bicycle leans at his hut (the camps' `monk-hut`), and the ladder's foot. */
+/**
+ * The forest monk's hut (the camps' `monk-hut`, jungle/_campHut.ts) and where he sets out on foot for his alms
+ * round: a step past his ladder's foot and the sandals he leaves there (its stepping stones lead on to the trail).
+ */
 export const MONK_HUT = (() => {
   const s = JUNGLE_SITES.find((j) => j.id === 'monk-hut')!;
   const at = (lx: number, lz: number) => homeToWorld(s, lx, lz);
-  return { site: s, foot: at(0, 2.8), bike: at(2.1, 2.3), bikeYaw: s.facing + Math.PI / 2 };
+  return { site: s, foot: at(0, 4.2) };
 })();
 
 /** The lotus pond (layout.ts `LAKES`). */
@@ -193,7 +196,7 @@ export interface BackSpots {
   routes: {
     /** The meadow to the pen (the cattle's way home; reversed in the morning). */
     herd: P2[];
-    /** The monk's hut to the alms spot in the yard (he rides to the point before it and walks the last steps). */
+    /** The monk's hut (his ladder's foot) to the alms spot in the yard: he walks it, there and back (monks never ride to their alms round). */
     monk: P2[];
     /** The weaver's house (the villager with the basket) to the far end of the trail in the east. */
     bike: P2[];
@@ -271,14 +274,15 @@ function makeSpots(field: HeightField): BackSpots {
     [146, -336],
   ];
   const junction = lane[0];
-  // (the trail's points east of the hut and of the junction: [72,−332], [108,−318], [148,−294], [188,−268], [226,−244])
+  // (the trail's points from the hut's stepping stones and east of the junction: [72,−332], [108,−318], [148,−294], [188,−268], [226,−244])
   const trailFrom = (x0: number, x1: number) => trail.filter(([x]) => x > x0 && x < x1) as P2[];
   const laneUp: P2[] = [lane[0], [lane[0][0] + (lane[1][0] - lane[0][0]) * 0.5, lane[0][1] + (lane[1][1] - lane[0][1]) * 0.5], lane[1], [140.6, -329.2]];
   const penOut: P2 = [PEN.x1 + 2.2, (PEN.gate[0] + PEN.gate[1]) / 2];
   const penIn: P2 = [PEN.x1 - 2.4, (PEN.gate[0] + PEN.gate[1]) / 2];
   const herd: P2[] = [[149.5, -285.5], [147.2, -292.4], ...trailFrom(110, 147.5).reverse(), junction, ...laneUp.slice(1), [136.4, -332.4], penOut, penIn];
   const alms: P2 = [145.4, -344.6];
-  const monk: P2[] = [MONK_HUT.bike, [74.6, -332.6], ...trailFrom(72.5, 127), junction, ...laneUp.slice(1), [144.0, -335.0], [144.9, -339.8], alms];
+  // (out along the hut's stepping stones to the trail, along it over its earth steps up to the hut's ground: walked both ways)
+  const monk: P2[] = [MONK_HUT.foot, ...trailFrom(71.5, 127), junction, ...laneUp.slice(1), [144.0, -335.0], [144.9, -339.8], alms];
   const east3 = HOMES[2];
   const f3 = homeFront(east3);
   const foot3 = homeToWorld(east3, east3.stair, f3.footZ + 0.9);

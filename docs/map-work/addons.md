@@ -139,7 +139,7 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
   New Year (`festival/_schedule.ts festivalAt`; `fest=` holds one: `shown`),
   the monks' dawn chant and the pagoda's dusk drum (`events.ts SLOTS`,
   `slotOpensAt`), the alms rounds (`people/_sceneVillage.ts ALMS_ROUND`, the
-  forest monk's `_sceneBackFolk.ts MONK_AT`, Angkor Wat's procession walking
+  forest monk's walk to the hamlet and home `_sceneBackFolk.ts MONK_AT`‥`MONK_END`, Angkor Wat's procession walking
   up the valley road with its bowls `people/_monks.ts almsWalkAt`, where it
   takes dak bat; the sugar-palm village's is `_dakBat.ts`'s), the three morning markets
   (`hamlet/_mkPlan.ts BUSY`, `_bhMarketPlan.ts BUSY`, the floating village's
