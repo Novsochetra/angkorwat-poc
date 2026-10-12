@@ -14,6 +14,13 @@ import type { RoamWorld } from './types';
  * own. A piece is solid once it is a little built (`SOLID_AT`); he is never
  * shut in one he stands in (it is not a wall to feet already inside it).
  *
+ * Only a floor carries his feet (`floor`: the bed, the shelter's bench: what he
+ * sits on, `PIECES[id].seat`): he steps onto it. Anything else (a jar, the
+ * haystack, a post, a rail, the fence) is in his way to the feet and the dog
+ * however low it is, never a step he hops onto (the walker hops up 2.2 m: he
+ * went over the jar and onto a post's top), unless his feet are on it already.
+ * The camera's (`hardStandAt`) is left as it was: the tops are its floor.
+ *
  * Cheap: a box round every piece first, then a circle per piece, then its few
  * boxes. The list is made again when `BUILT.version` changes. Nothing allocated
  * per question.
@@ -34,6 +41,8 @@ interface Solid {
   hd: number;
   y0: number;
   y1: number;
+  /** Feet may step onto its top (a seat: the bed, the bench). */
+  floor: boolean;
   /** Round the box (m, on the map) for a quick test. */
   wx: number;
   wz: number;
@@ -82,7 +91,8 @@ export function installBuildWalk(world: RoamWorld): void {
         const wx = b.x + x * c + z * s;
         const wz = b.z - x * s + z * c;
         const r = Math.hypot(w, d) / 2;
-        solids.push({ px: b.x, pz: b.z, c, s, x, z, hw: w / 2, hd: d / 2, y0: b.y, y1: b.y + top, wx, wz, r });
+        const floor = !!seat && Math.abs(top - seat.y) < 0.1;
+        solids.push({ px: b.x, pz: b.z, c, s, x, z, hw: w / 2, hd: d / 2, y0: b.y, y1: b.y + top, floor, wx, wz, r });
         x0 = Math.min(x0, wx - r);
         x1 = Math.max(x1, wx + r);
         z0 = Math.min(z0, wz - r);
@@ -100,15 +110,19 @@ export function installBuildWalk(world: RoamWorld): void {
     return Math.abs(lx) < o.hw + m && Math.abs(lz) < o.hd + m;
   };
 
-  /** Feet at `y` at (x, z) with `up` of step and `h` of room: the pieces' answer over `g` (the world's). */
-  function stand(g: number, x: number, z: number, y: number, up: number, h: number): number {
+  /**
+   * Feet at `y` at (x, z) with `up` of step and `h` of room: the pieces' answer over `g` (the world's). `steps`: what
+   * is not a floor is a wall, not a step (the feet, the dog); else every top is ground (the camera's floor).
+   */
+  function stand(g: number, x: number, z: number, y: number, up: number, h: number, steps: boolean): number {
     if (Number.isNaN(g)) return g;
     refresh();
     if (!solids.length || x < x0 || x > x1 || z < z0 || z > z1) return g;
     let best = g;
     for (const o of solids) {
       if ((x - o.wx) ** 2 + (z - o.wz) ** 2 > o.r * o.r || !inside(o, x, z)) continue;
-      if (o.y1 <= y + up) best = Math.max(best, o.y1);
+      // (a top under the feet: a floor, or one they are on already)
+      if (o.y1 <= y + up && (!steps || o.floor || y >= o.y1 - 0.06)) best = Math.max(best, o.y1);
       // (a wall to a body that reaches into it; not to feet already over it or under its bottom)
       else if (y + h > o.y0 && y < o.y1) return NaN;
     }
@@ -140,8 +154,8 @@ export function installBuildWalk(world: RoamWorld): void {
   }
 
   const { standAt, hardStandAt, clearance, hardClearance, groundAt, woodAt } = world;
-  if (standAt) world.standAt = (x, z, y, up, h) => stand(standAt(x, z, y, up, h), x, z, y, up, h);
-  if (hardStandAt) world.hardStandAt = (x, z, y, up, h) => stand(hardStandAt(x, z, y, up, h), x, z, y, up, h);
+  if (standAt) world.standAt = (x, z, y, up, h) => stand(standAt(x, z, y, up, h), x, z, y, up, h, true);
+  if (hardStandAt) world.hardStandAt = (x, z, y, up, h) => stand(hardStandAt(x, z, y, up, h), x, z, y, up, h, false);
   if (clearance) world.clearance = (ax, ay, az, bx, by, bz) => Math.min(clearance(ax, ay, az, bx, by, bz), cut(ax, ay, az, bx, by, bz));
   if (hardClearance) world.hardClearance = (ax, ay, az, bx, by, bz) => Math.min(hardClearance(ax, ay, az, bx, by, bz), cut(ax, ay, az, bx, by, bz));
   world.groundAt = (x, z) => {
