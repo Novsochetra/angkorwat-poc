@@ -877,7 +877,7 @@ const WORDS = {
   bikeShopFoot: { km: 'ជិះទៅណាក៏បាន កង់នៅកន្លែងដែលបងទុក', en: 'Ride it anywhere: it stays where you leave it' },
   // (bought: the toasts)
   bikeShopGot: { km: 'បានទិញ{name}! វាចតនៅមុខហាងកង់', en: 'Bought: {name}! It stands in front of the shop' },
-  bikeShopTraded: { km: 'បានដូរកង់ចាស់ បញ្ចុះ {riel}', en: 'Traded in your old bicycle: {riel} off' },
+  bikeShopGotTraded: { km: 'បានទិញ{name}! កង់ចាស់ដូរបាន {riel}', en: 'Bought: {name}! Your old one traded in for {riel}' },
   // (his own bicycle on the maps)
   bikeOwnMap: { km: 'កង់របស់ខ្ញុំ', en: 'My bicycle' },
   bikeOwnTheMap: { km: 'កង់របស់ខ្ញុំ', en: 'my bicycle' },

@@ -216,10 +216,9 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
 `roam/_bike.ts` (id `bike`, words `bike…`), the places `roam/_bikeSpots.ts`, the
 model `roam/_bikeModel.ts`, his posture `character/bike.ts` (`BIKE`: the
 bicycle's size in his body units, shared with the model), sounds `audio/_bike.ts`,
-a badge on the maps (`ui/_minimapSpots.ts`: `bike-wat`, `bike-market`,
-`bike-hamlet`, named "ចំណតកង់ / Bicycles", targets like the villages; the village's
-bicycle, 19 m from the market's, shares that badge: on the big map they would sit on
-each other).
+a badge on the maps where they are hired out (`ui/_minimapSpots.ts`: `bike-wat`,
+named "ជួលកង់ / Bicycle hire", a target like the villages). Whose each is, his own
+and the shop: "Buying a bicycle" below.
 
 - **Where**: four black Khmer town bicycles (step-through frame with two curved
   tubes, sprung saddle, upright bars with a brass thumb bell, a woven basket on
@@ -232,15 +231,20 @@ each other).
   and bicycles, at the sugar-palm village's west end in front of its first house
   (which keeps its own bicycles under it), and with the bicycles at the foot of the
   lane by the little market behind Angkor Wat. Sized for him (his legs are short,
-  his belly round: a low saddle, short cranks, the grips well forward); all four
-  are one `Things` (the people's instanced boxes: one draw, one for the shadows),
-  only the one moving is written.
-- **Getting on and off**: on foot by one (1.7 m from its middle), E
-  "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up, he sits with his
-  left foot down (0.6 s). E "ចុះពីកង់ / Get off": it brakes to a stop first, then
-  he steps off to his left (else his right, or behind it: wherever he fits) and the
-  bicycle stays on its stand where he left it (leaning on it, the bars turned a
-  little). Back to the map (Esc), every bicycle goes back to its place.
+  his belly round: a low saddle, short cranks, the grips well forward). The one by
+  Angkor Wat is hired out; the other three are the neighbours' (not his to ride);
+  his own, bought at the morning market, is a fifth (its kind's look: `BikeLook`,
+  `restyle`), and the shop's three for sale stand in its stall: all of them are one
+  `Things` (the people's instanced boxes: one draw, one for the shadows), only the
+  one moving is written.
+- **Getting on and off**: on foot by one he may ride (his own, or the hire bicycle
+  once paid; 1.7 m from its middle, one he may ride before a neighbour's up to
+  0.8 m nearer), E "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up,
+  he sits with his left foot down (0.6 s). E "ចុះពីកង់ / Get off": it brakes to a
+  stop first, then he steps off to his left (else his right, or behind it: wherever
+  he fits) and the bicycle stays on its stand where he left it (leaning on it, the
+  bars turned a little). Back to the map (Esc), the hire and the neighbours'
+  bicycles go back to their places; his own stays where it is.
 - **Riding** (a walk-mode add-on that holds him): W pedals (the speed builds up:
   ≈ 5 m/s in 2 s, ≈ 8 at most; a half push of the stick goes slower), Shift (R2,
   the stick past its ring) pedals hard (≈ 11; he rocks over the pedals), S brakes
@@ -312,8 +316,9 @@ each other).
 - **What hangs at his head's height** (his hat's brim 2.1 m, its crown 2.45 m, and
   its sides: his head is wide) he slows for and stops short of, his foot down,
   "ទាបពេក ជិះកាត់មិនបានទេ / Too low to ride under": a stall's umbrella, an awning,
-  cloth on a line, vines hanging from a wall (`roam/_bikeCanopy.ts`: the soft boxes of
-  the built parts that hang 1‥2.6 m over the land, indexed when roaming is built,
+  cloth on a line, vines hanging from a wall, the bicycle shop's inner tubes and
+  tyres on its front pole (`roam/_bikeCanopy.ts`: the soft boxes of the built parts,
+  and any of the shop's stall, that hang 1‥2.6 m over the land, indexed when roaming is built,
   before any part's first update; each read as it is now, so a market's umbrellas
   folded away at closing are not there and stop nothing), or a lintel or a beam lower
   than his hat (`world.ceilingAt`); his head goes up and down the stairs and terraces
@@ -348,10 +353,11 @@ each other).
   `bikeStone`; silent in the air), `bikeBump` (over a step, a tyre's knock on a step
   it pops up, a landing by how hard), `bikeHop` (the tyres leaving the ground, the
   chain slapping, the basket), `bikeBrake`, `bikeStand`, `bikeBell`.
-- **URL**: `bike=ride` puts him on the nearest bicycle at `at=` facing `yaw=`
-  (it comes to him), `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw°,…`
-  a bicycle left away from its place (`wat`, `market`, `village`, `hamlet`). The
-  bug report gives both. In `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e`
+- **URL**: `bike=ride` puts him on a bicycle at `at=` facing `yaw=` (his own if
+  he has one, `bikeown=`, else the nearest; it comes to him; the hire one is hired),
+  `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw°,…` a bicycle left away
+  from its place (`wat`, `market`, `village`, `hamlet`); his own and the hire:
+  "Buying a bicycle". The bug report gives them all. In `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e`
   gets off. Give `at=` its height (`at=x,y,z`) by a step or a wall: two values may
   stand him on a roof. E.g. `roam=walk&at=325,-84&yaw=270&bike=ride&sim=w:2,wa:1`
   (the market's lowland, riding west then turning left), `…&sim=_:1` (stopped,
@@ -368,7 +374,8 @@ each other).
   console (the phase, the speed, the steering, the lean, the lamp, each wheel's
   height, what holds it up, the ground under it and whether it is on it, the pitch,
   in the air or not, waiting at a step's face, what the last move met: `ok`,
-  `lift`, `wall`, `up`, `down`, `deep`; each bicycle); the console line
+  `lift`, `wall`, `up`, `down`, `deep`; which he rides, the hire, his own; each
+  bicycle with its role and look; the three for sale); the console line
   `[map] bicycles: 4 · N things hanging at head height … indexed in N ms`. Real play
   (held keys, 60 frames a second): GPU Chromium with Playwright, a shot page with
   `video=1` stepped by `__videoFrame(t, 1 / 60)`, `roam.placeFrom(q, __frame)` to
@@ -376,7 +383,120 @@ each other).
 
 ### Buying a bicycle
 
-(to be written: roam/_bikeShop*.ts)
+"Buy some bike also instead of steal from neighbor": a bicycle shop (ហាងកង់) at the
+sugar-palm village's morning market where he buys his own (add-on `bikeShop`, words
+`bikeShop…`, `bikeOwn…`, `bikeHire…`, `bikeNeighbour…`): `roam/_bikeShop.ts` (the
+add-on: E, the visit, buying, the camera, the maps' badge, the URL),
+`_bikeShopCard.ts` (the card), `_bikeShopArt.ts` (the bicycles in pixels),
+`_bikeShopPlan.ts` (where everything is, no three.js: the stall's frame, its hours,
+the buyer's place, the delivery spot, `SHOP_MECHANIC`), `_bikeShopStall.ts` (the
+stall's blocks and its walk map), `_bikeShopSign.ts` (the painted words),
+`_bikeOwn.ts` (the kinds, prices and trade-in, his bicycle and where it stands,
+saved; no three.js), the mechanic `people/_sceneBikeShop.ts` (scene `bikeshop`); the
+bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
+
+- **Where**: south of the village street's east leg, behind the row of parked motos
+  and bicycles (hamlet/_mkPlan.ts `PARKED`), on the market's low ground before the
+  land steps up to the fields, its front to the street (`BIKE_SHOP`: 340.6, −68.4).
+  Clear of the hall's east way out, the drinks cart and the parking's path. Under a
+  faded blue tarp on four bamboo poles: the workbench (a vice, spanners, a hammer, a
+  tin of grease, a rag, a tray of nuts, a red toolbox under it), the mechanic's low
+  stool, an old green bicycle upside down on its saddle and bars with its front wheel
+  off and leaning on the bench, a basin of water with an inner tube in it; inner tubes
+  and tyres hanging from the front pole, rims on the back one, a stack of new tyres;
+  a foot pump and a tall hand pump outside the west post; the painted sign
+  "ជួសជុលកង់" (bicycles mended) standing on the front pole, a small "លក់កង់"
+  (bicycles for sale) board before the three for sale (the black town bicycle, the
+  sky-blue lady's, the red one), slanted out to the street in its east half. Oil-dark
+  earth under it. In roaming's scene (≈ 500 blocks in the market's families: no new
+  shader; not drawn past 340 m); its solid parts (the workbench and the mending
+  corner, the row for sale, the sign, the basin, the pumps, the stack, the poles) are
+  laid over the walk map (`installShopWalk`: `standAt`, `clearance`,
+  `hardClearance`), so he, his bicycle, the dog and the camera keep out of them.
+- **The mechanic** (ជាងកង់: a krama round his head, an old blue work shirt, dark
+  trousers): on his stool by day, looking out at the street and at him when he comes
+  near, calling out now and then "កង់ថ្មីៗ ជិះស្រួល! មើលសិនទៅ បង". At the card he
+  looks up and asks, and hands it over with a bow and "អរគុណបង!" (people/_saleBack.ts
+  through `BROWSE` and `SALE`). Out of hours he walks home east along the village
+  street, and back in the morning.
+- **Hours**: after sunrise to the late afternoon (`SHOP_HOURS` 0.765‥0.2 of the clock).
+  Closed: "ហាងកង់បិទហើយ — មកវិញពេលព្រឹក / The bicycle shop is closed: come back in
+  the morning" before it (no key; E says it again). Open but the mechanic still
+  walking in: "…the mechanic is on his way back".
+- **E "ទិញកង់ / Buy a bicycle"** at the buyer's place before the upturned bicycle
+  (1.75 m round it; nearer his own bicycle by the shop than to it, E rides that):
+  he turns to the mechanic, the camera comes round behind his shoulder (the nursery's
+  `clearView`), the picture slides left of the card, and the card opens in the buy
+  menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
+  has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
+  picture on a light tile, its name and a line, what it costs him now), "Ride it
+  anywhere: it stays where you leave it" while he has none, the purse.
+- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, so a bicycle is
+  saved up for from fish and the garden): the black town bicycle (កង់បុរាណ ពណ៌ខ្មៅ:
+  a cane basket and a lamp) **60,000 ៛**, the sky-blue lady's bicycle (កង់ស្រី
+  ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
+  guard) **85,000 ៛**, the red bicycle with a back seat (កង់ក្រហម មានកៅអីក្រោយ:
+  chrome mudguards, a padded seat on the rack to carry a friend, a lamp on the fork,
+  streamers from the grips) **120,000 ៛**. **One bicycle**: buying another trades his
+  in for half its price (`TRADE_IN`, to 1,000 ៛: 30,000, 43,000, 60,000), shown on the
+  row ("Trade in yours: 43,000 ៛ off", the old price struck through); his own says
+  "✓ Yours" (taken: "That one's yours already"). More than the purse holds: the row
+  greyed, its price in red, "15,000 ៛ more"; tried anyway, it shakes and the mechanic
+  says to save up a little more.
+- **Bought**: the purse pays (the notes, the purse glows and counts down), the
+  mechanic hands it over (`SALE`), he reaches and takes its key on a red tag (the
+  `interact` action, the key in his fist: the rig's `bikeShop` slot), the bell rings,
+  a toast ("Bought: …! It stands in front of the shop"; traded: "Your old one traded
+  in for 43,000 ៛"), and the bicycle stands on its stand before the stall's east
+  end, pointing east along the street (`SHOP_DELIVER`); the old one, wherever it
+  was, is gone. The card shuts by itself 2.6 s later.
+- **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
+  model in its look), it stays where he gets off it, across Esc back to the map and
+  between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
+  `bike.ownAt` (`{ x, z, yaw° }`), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
+  / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
+  mini-map and the big map (it goes while he rides it, and while he has none); the
+  shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
+  big map 20 m behind the stall, clear of the market's): both named on the big map
+  only while pointed at, picked or the target.
+- **The neighbours' bicycles** (the morning market's, the village's west end, the
+  little market behind Angkor Wat): by one, a line with no key, "កង់អ្នកជិតខាង ·
+  ទិញកង់បាននៅផ្សារព្រឹក / A neighbour's bicycle · buy your own at the market"; E
+  anyway: the neighbour calls out, a line in turn ("«ហេ៎ បង! កង់ខ្ញុំទេតើ!»", "«ចង់បានកង់
+  ទៅទិញនៅផ្សារព្រឹកទៅ បង!»", "«កុំយកកង់ខ្ញុំណា៎! ខ្ញុំត្រូវជិះទៅផ្សារ»").
+- **Hiring at Angkor Wat** (as at the real temple's west entrance): E "ជួលកង់
+  (២,០០០ ៛) / Hire a bicycle (2,000 ៛)": paid once (`HIRE_PRICE`; short:
+  "hiring costs 2,000 ៛"), he rides it; off it and on again is free while the hire
+  lasts; once he has left it and is 30 m from it (`HIRE_BACK`), or back to the map, it
+  goes back to its place ("The hired bicycle has gone back to its stand").
+- **Keys**: E before the stall; the card's own while open (1–3 a row, ↑ ↓ or Tab the
+  ring, Enter, Space or E take, Esc or the × shut); W A S D or the stick walk away
+  (not during the hand-over). Pad: a layer (the stick and the d-pad move, ✕ takes, ○
+  shuts). Touch: tap a row; on a phone held upright a sheet along the bottom, a tap
+  beside it shuts it; touch's Use takes the one in the ring.
+- **Cost**: the stall is one voxel group (four families: four draws and their
+  shadows, culled by view and by 340 m); before the stall two box tests a step; the
+  walk map's overlay a box test round the stall per question (no allocation); the
+  mechanic one person (stepped within 260 m); the badge's place on the big map only
+  when his bicycle moves.
+- **URL**: `bikeshop=1` he stands at the buyer's place facing the mechanic, the card
+  open · `bikeshopbuy=town|lady|carrier` buys it as it opens (`sim=_:1.1` the hand-over,
+  `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
+  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
+  he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
+  `red`) · `bikeownat=x:z:yaw°` it stands there (else before the shop; nothing saved
+  from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
+  `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
+  `bikeownat`, `bikehire`. Checks: `window.__bikeShop.state()` (dev, shots: the card
+  open, its ring, a sale under way, the riel, his bicycle, what each costs him now,
+  the mechanic's flags, his action); `bikeDebug()` (above).
+  E.g. the stall `cam=346.3,14,-78.9,340.6,9.2,-68.4,50&ui=0&clock=0.85`; the card
+  `roam=walk&at=340.93,-71.11&clock=0.85&bikeshop=1&purse=70000` (`lang=en`; with
+  `bikeown=town` the trade-in; `touch=1&phone=1` a phone); buying
+  `…&purse=95000&bikeshopbuy=lady&sim=_:1.1`; riding his own
+  `roam=walk&at=352,-75&yaw=241&bike=ride:4&bikeown=carrier&sim=w:1&rcam=115,14,6.5`;
+  a neighbour's `roam=walk&at=349.4,-71.2&yaw=90&sim=e:0.1,_:0.6`; the hire
+  `roam=walk&at=10,-151.3&yaw=180`.
 
 ### Ox cart ride
 

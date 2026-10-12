@@ -225,8 +225,8 @@ function buy(k: BikeKindId): void {
   card?.purse(e.shot ? e.purse.riel : was, false);
   sold(lastCtx?.t ?? 0, SHOP, ITEM);
   buyBike(k);
-  e.hud.toast(t('bikeShopGot', { name: t(kindOf(k).name) }));
-  if (traded) e.hud.toast(t('bikeShopTraded', { riel: riel(traded) }));
+  // (one line: the hud shows one message at a time)
+  e.hud.toast(traded ? t('bikeShopGotTraded', { name: t(kindOf(k).name), riel: riel(traded) }) : t('bikeShopGot', { name: t(kindOf(k).name) }));
   card?.say('bikeShopBoughtSay');
   card?.refill(k);
   card?.busy(true);

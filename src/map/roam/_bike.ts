@@ -403,7 +403,9 @@ function build(e: AddonEnv): void {
   if (things) return;
   // (what hangs at his head's height: made now, before the parts' first update fold any stall's umbrella away)
   const t0 = performance.now();
-  const hanging = buildCanopies(e.parts, e.world.field);
+  // (and the bicycle shop's stall in roaming's own scene: its add-on comes first, `order` 30)
+  const shop = e.scene.getObjectByName('bikeShop');
+  const hanging = buildCanopies(e.parts, e.world.field, shop ? [shop] : []);
   console.info(`[map] bicycles: ${BIKE_SPOTS.length} · ${hanging} things hanging at head height (umbrellas, awnings, vines) indexed in ${(performance.now() - t0).toFixed(1)} ms`);
   // (the four at their places, his own — room for the biggest look the shop sells —, the shop's three for sale)
   const looks = BIKE_KINDS.map((k) => lookOf(k.id));
