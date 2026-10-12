@@ -79,6 +79,9 @@ const STAKE_COL = 0x6a4c30;
 const STRAW_COL = [0xd6b866, 0xc9a854, 0xe2c878, 0xbf9d4a];
 const GRASS_COL = [0x5e9a36, 0x4c8a2c, 0x6eaa40, 0x58923a];
 
+/** A pen's place (a standing piece, or where one stood). */
+type PenAt = { uid: string; x: number; z: number; yaw: number };
+
 export type Doing = 'graze' | 'amble' | 'stand' | 'low' | 'eat' | 'lie' | 'way' | 'wait' | 'gate';
 type Goal = 'stake' | 'pen' | 'trader' | 'post';
 
@@ -131,6 +134,8 @@ export interface Beast {
   penUid: string;
   penSlot: number;
   lane: number;
+  /** Where its pen stood when it took its place there: taken down meanwhile, it still leaves by the lane (none through the others). */
+  readonly penAt: PenAt;
   /** How long another animal has stood in its way (s; below 0: it has just gone round one), and whether that one waits its turn at a gate (or behind one that does): a queue, not gone round. */
   waitCow: number;
   queued: boolean;
@@ -291,7 +296,7 @@ export class CattleHerd {
     return {
       i, cow: null, post: -1, ride: null, x: 0, y: 0, z: 0, yaw: 0, size: 1.4, doing: 'graze', until: 0, tx: 0, tz: 0, head: 1, turn: 0, rest: 0, speed: 0,
       goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wf: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false, leaveAt: 0,
-      food: null, left: 0, penUid: '', penSlot: -1, lane: 0, waitCow: 0, queued: false, noPenUntil: -1, checkAt: 0, tyaw: 0, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
+      food: null, left: 0, penUid: '', penSlot: -1, lane: 0, penAt: { uid: '', x: 0, z: 0, yaw: 0 }, waitCow: 0, queued: false, noPenUntil: -1, checkAt: 0, tyaw: 0, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
     };
   }
 
@@ -456,9 +461,13 @@ export class CattleHerd {
   }
 
   /** Its place in pen `p`: the one it has, else the first free (`PEN_SLOTS`' order). */
-  private claimSlot(b: Beast, p: Built): void {
+  private claimSlot(b: Beast, p: PenAt): void {
     if (b.penUid === p.uid && b.penSlot >= 0) return;
     b.penUid = p.uid;
+    b.penAt.uid = p.uid;
+    b.penAt.x = p.x;
+    b.penAt.z = p.z;
+    b.penAt.yaw = p.yaw;
     for (let k = 0; k < PEN_SLOTS.length; k++) {
       let taken = false;
       for (const q of this.beasts) if (q !== b && q.penUid === p.uid && q.penSlot === k) taken = true;
@@ -478,8 +487,10 @@ export class CattleHerd {
   }
 
   /** The pen it is in now (its place there or the lane to it), or null. */
-  private penIn(b: Beast): Built | null {
-    return b.penSlot >= 0 ? this.penOf(b.penUid) : null;
+  private penIn(b: Beast): PenAt | null {
+    if (b.penSlot < 0) return null;
+    // (taken down while it was in: where it stood, so it leaves by the lane all the same)
+    return this.penOf(b.penUid) ?? (b.penAt.uid === b.penUid ? b.penAt : null);
   }
 
   /** Not in a pen (a pen taken down, a ride, back to the map): its pen fields cleared. */
@@ -715,7 +726,7 @@ export class CattleHerd {
     b.wn = b.wi = 0;
     b.at = false;
     const inPen = this.penIn(b);
-    if (inPen && (b.goal !== 'pen' || this.penFor(b) !== inPen)) {
+    if (inPen && (b.goal !== 'pen' || this.penFor(b)?.uid !== inPen.uid)) {
       b.doing = 'gate';
       b.lane = 0;
       return;
@@ -774,7 +785,7 @@ export class CattleHerd {
   }
 
   /** A point of the pen's lane (its frame), facing `face` (local) there. */
-  private pushLocal(b: Beast, pen: Built, lx: number, lz: number, face: number): void {
+  private pushLocal(b: Beast, pen: PenAt, lx: number, lz: number, face: number): void {
     pieceToWorld(pen, lx, lz, _pw);
     this.push(b, _pw[0], _pw[1], pen.yaw + face);
   }
@@ -873,7 +884,9 @@ export class CattleHerd {
     this.searchFor = null;
     b.searching = false;
     if (!this.beasts.includes(b)) return;
-    if (st === 'found' || st === 'near') {
+    // (to a pen's gate only all the way: its nearest — below it, past a land step — is no way in)
+    const short = st === 'near' && b.goal === 'pen' && !this.reaches(b);
+    if (!short && (st === 'found' || st === 'near')) {
       const p = this.search.path;
       for (let k = 1; k < p.count; k++) {
         if (b.wn >= b.wx.length) break;
@@ -893,7 +906,17 @@ export class CattleHerd {
     if (b.goal === 'pen') b.noPenUntil = this.time + NO_PEN_RETRY;
     b.doing = 'stand';
     b.until = this.time + 20;
-    b.at = b.goal === 'stake';
+    // (at its stake only if it is by it: else its rope would reach across the land)
+    const stake = b.cow ? STAKES[b.cow.stake] : null;
+    b.at = b.goal === 'stake' && !!stake && Math.hypot(b.x - stake[0], b.z - stake[1]) < ROPE + 1;
+  }
+
+  /** The search's way ends at its target (the pen's gate's outside), on its level. */
+  private reaches(b: Beast): boolean {
+    const p = this.search.path;
+    if (!p.count) return false;
+    const k = p.count - 1;
+    return Math.hypot(p.x[k] - b.tx, p.z[k] - b.tz) < 1.5 && Math.abs(p.y[k] - this.groundY(b.tx, b.tz, p.y[k])) < 0.8;
   }
 
   // ── Each step ──────────────────────────────────────────────────────────────
@@ -1627,6 +1650,8 @@ export class CattleHerd {
       const st = STAKES[b.cow.stake] ?? STAKES[0];
       ax = st[0];
       az = st[1];
+      // (never a rope longer than a rope: one somewhere else is not tied)
+      if (Math.hypot(b.x - ax, b.z - az) > ROPE + 2.5) return;
       ay = this.stake(ax, az);
     } else return;
     // (the collar: under its neck, as the model has it, lower when it grazes or lies)
@@ -1731,6 +1756,10 @@ export class CattleHerd {
       leaving: b.leaving,
       pen: b.penUid ? `${b.penUid}:${b.penSlot}` : null,
       lane: b.lane,
+      waitCow: +b.waitCow.toFixed(1),
+      queued: b.queued,
+      blocked: +b.blocked.toFixed(1),
+      speed: +b.speed.toFixed(2),
     }));
   }
 

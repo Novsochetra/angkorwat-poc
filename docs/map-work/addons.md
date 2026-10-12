@@ -2519,8 +2519,10 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   trough and steps sideways to its place (four, `PEN_SLOTS`: the far sides first, then the
   two by the lane; its depth by its size); in the morning the two by the lane step back to
   it and back out first, then the far ones; the others wait their turn before the gate.
-  With no pen they lie down by their stakes (`LIE_HOURS` 0.3‥0.76); a pen taken down, they
-  walk out to their stakes. Ways (to the stake, the pen's gate, after a ride, off when sold)
+  With no pen they lie down by their stakes (`LIE_HOURS` 0.3‥0.76); a pen taken down while
+  they are in it, they still leave by its lane; a pen they find no way to (up a land step,
+  behind a wall: the search must reach its gate's outside on its level) they spend the night
+  at their stakes, and try again most of a game day later. Ways (to the stake, the pen's gate, after a ride, off when sold)
   on the walk map a cow's size (room over it, its width, no plants, a wide berth round what
   he built and his bicycle: a straight line if it can, else the dog's search, `_dogPath.ts`);
   they stop for him in their way and go round him, and wait behind another animal in their
