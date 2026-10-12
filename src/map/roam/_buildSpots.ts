@@ -1,4 +1,4 @@
-import { BUILD_NEAR, BUILT, PIECES, type Built, type PieceId } from '../build/pieces';
+import { BUILD_NEAR, BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { corners, distTo, overlap, type Foot } from '../build/state';
 import { KINDS, isTree, stageOf, trunkAt } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
@@ -33,12 +33,15 @@ import type { RoamWorld } from './types';
  * - `steep`: the land under it is not level (it is built of big blocks: a step
  *   through it would leave it hanging);
  * - `plant`: a plant of his garden stands there (its bed or its trunk);
- * - `piece`: something he built stands there (footprints overlap; fence runs may touch);
- * - `thing`: something else stands there (the walk map's top over the land).
+ * - `piece`: something he built stands there (footprints overlap; fence runs may touch), or before one he
+ *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
+ * - `thing`: something else stands there (the walk map's top over the land);
+ * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
+ *   standing, a piece of his).
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'house' | 'yard' | 'steep' | 'plant' | 'piece' | 'thing';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'house' | 'yard' | 'steep' | 'plant' | 'piece' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -51,6 +54,7 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   plant: 'buildNoPlant',
   piece: 'buildNoPiece',
   thing: 'buildNoThing',
+  front: 'buildNoFront',
 };
 
 /** Points across a footprint this far apart at most (m). */
@@ -196,10 +200,51 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
     const room = isTree(k) ? Math.max(0.6, trunkAt(k, stageOf(k, q.age)) + 0.4) : Math.min(k.room, 1.2) * 0.8;
     if (distTo(f, q.x, q.z) < room) return 'plant';
   }
-  // What he built already (fence runs may touch end to end).
-  for (const b of BUILT.list) if (b !== ignore && overlap(f, b, -TOUCH)) return 'piece';
+  // What he built already (fence runs may touch end to end), and the room before one he uses from there.
+  for (const b of BUILT.list) if (b !== ignore && (overlap(f, b, -TOUCH) || coversFront(f, b))) return 'piece';
   // Anything else standing there.
-  return eachPoint(f, -0.05, onThing);
+  return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
+}
+
+/**
+ * The room a piece is used from, kept clear (its frame, m: x, z, radius): the spirit house's kneeling place (E Pray:
+ * he kneels there, facing it), the way in at the pen's gate (and his cattle's).
+ */
+const FRONT: Partial<Record<PieceId, readonly (readonly [number, number, number])[]>> = (() => {
+  const s = PIECES.spirit.kneel!;
+  const g = PIECES.pen.pen!.gate;
+  return { spirit: [[s.x, s.z, 0.45]], pen: [[g[0], g[1] + 0.95, 0.75]] };
+})();
+/** The room before it may be this much higher or lower than the piece's ground (m): he stands on it. */
+const FRONT_LEVEL = 0.35;
+const _fp: [number, number] = [0, 0];
+
+/** Would footprint `f` cover the room before `b` (its kneeling place, its gate)? */
+function coversFront(f: Foot, b: Foot): boolean {
+  const room = FRONT[b.id];
+  if (!room) return false;
+  for (const [x, z, r] of room) {
+    pieceToWorld(b, x, z, _fp);
+    if (distTo(f, _fp[0], _fp[1]) < r) return true;
+  }
+  return false;
+}
+
+/** The room before `f` (its kneeling place, its gate) is not clear (water, the house, a step, something standing, a piece of his): 'front'. */
+function frontBlocked(world: RoamWorld, f: Foot, h0: number, ignore: Built | null): BuildReason | null {
+  const room = FRONT[f.id];
+  if (!room) return null;
+  for (const [lx, lz, r] of room)
+    for (let k = 0; k < 5; k++) {
+      // (its middle and four points round it)
+      const a = (k * Math.PI) / 2;
+      pieceToWorld(f, lx + (k ? Math.cos(a) * r * 0.8 : 0), lz + (k ? Math.sin(a) * r * 0.8 : 0), _fp);
+      const [x, z] = _fp;
+      if (onWater(x, z) || onHouse(x, z)) return 'front';
+      if (Math.abs(world.field.heightAt(x, z) - h0) > FRONT_LEVEL || onThing(x, z)) return 'front';
+      for (const b of BUILT.list) if (b !== ignore && distTo(b, x, z) < 0.05) return 'front';
+    }
+  return null;
 }
 
 const _corners: [number, number][] = [];
