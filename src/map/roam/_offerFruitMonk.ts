@@ -197,7 +197,7 @@ export function monkOffer(ctx: RoamCtx): string | null {
   // (with sticky rice in his bag the rice is what he gives at the alms round: roam/_dakBat.ts)
   const c = !hasRice() && coming(ctx);
   if (c && !(c.m.line === gaveLine && DAK.now < gaveUntil)) return prompt('offerBowl', k);
-  if (blessSeat(ctx)) return prompt('offerMonk', k, `  ·  J  ${t('listenMonk')}`);
+  if (blessSeat(ctx)) return prompt('offerMonkListen', k);
   const b = ctx.body;
   if (seatBefore(b.pos)) return null;
   if (OFFER.find(b.pos.x, b.pos.y, b.pos.z, b.yaw) >= 0) return prompt('offerMonk', k);
@@ -341,12 +341,15 @@ function leaveOff(): void {
 }
 
 /** One step (the walker's step is ours meanwhile). */
+/** What `monkHold` returns (one object, filled each step). */
+const HELD: AddonHold = { prompt: null };
 export function monkHold(ctx: RoamCtx, dt: number): AddonHold {
   const e = S.env!;
   const { body } = ctx;
+  HELD.prompt = null;
   if (asking()) {
     body.vel.set(0, 0, 0);
-    return { prompt: null };
+    return HELD;
   }
   st += dt;
   ps.t += dt;
@@ -362,7 +365,8 @@ export function monkHold(ctx: RoamCtx, dt: number): AddonHold {
     if (step !== 'go' && step !== 'step') e.explorer.setMotion(0, true, 0);
     frame(ctx, dt);
   }
-  return { prompt: p };
+  HELD.prompt = p;
+  return HELD;
 }
 
 /** Turning toward `yaw` over `TURN` s from `turnFrom` (true: there). */
@@ -605,7 +609,7 @@ function stepBowl(ctx: RoamCtx, dt: number): string | null {
         SFX.play('dakLid', 0.7);
         go('rise');
       }
-      return `E  ${t('dakUp')}`;
+      return upPrompt();
     }
     case 'rise': {
       const k = smooth(Math.min(1, st / RISE));
@@ -710,6 +714,18 @@ function stepBowl(ctx: RoamCtx, dt: number): string | null {
       break;
   }
   return null;
+}
+
+/** "E  Get up" while he waits for the monks (made again when the language changes). */
+let upText = '';
+let upLang = '';
+function upPrompt(): string {
+  const w = t('dakUp');
+  if (w !== upLang) {
+    upLang = w;
+    upText = `E  ${w}`;
+  }
+  return upText;
 }
 
 /** Looking at the monk coming (his head). */

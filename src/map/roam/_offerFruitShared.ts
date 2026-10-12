@@ -2,11 +2,11 @@ import { Vector3, type Mesh } from 'three';
 import { BODY_UNIT_M } from '../../world/scale';
 import type { PlantKindId } from '../garden/kinds';
 import { progress } from '../progress';
-import { num, t, type WordKey } from '../ui/lang';
+import { num, onLang, t, type WordKey } from '../ui/lang';
 import type { AddonEnv } from './_addons';
 import { activeJournal } from './_book';
 import { giftKind, giftKinds } from './_giveFruit';
-import { FRUIT_SIZE, isOfferKind, offerMesh, setOfferKind, type OfferKind } from './_offerFruitModels';
+import { FRUIT_SIZE, isOfferKind, offerMesh, OFFER_KINDS, setOfferKind, type OfferKind } from './_offerFruitModels';
 import type { RoamCtx } from './types';
 
 /**
@@ -51,11 +51,28 @@ export function offerKind(): OfferKind | null {
 /** The prompt's hint of `,` / `.` goes once he has used them (this visit). */
 export const STEP = { stepped: false, shownStep: -1, stepN: 0 };
 const _kinds: PlantKindId[] = [];
-/** "E  ថ្វាយចេក ហើយថ្វាយបង្គំ" (and, while he has two kinds or more and has not stepped yet, ",  .  another fruit"); `extra` after it. */
-export function prompt(key: 'offerShrine' | 'offerMonk' | 'offerBowl', k: OfferKind, extra = ''): string {
+export type PromptKey = 'offerShrine' | 'offerMonk' | 'offerBowl' | 'offerMonkListen';
+/** The prompts made so far (by key, kind, with the hint or not): made once, again when the language changes. */
+const PROMPTS = new Map<string, string[]>();
+onLang(() => PROMPTS.clear());
+/**
+ * "E  ថ្វាយចេក ហើយថ្វាយបង្គំ" (and, while he has two kinds or more and has not stepped yet, ",  .  another fruit");
+ * `offerMonkListen` is the monk's with "J  Kneel and listen" after it (the blessing monk's dais). No allocation once made.
+ */
+export function prompt(key: PromptKey, k: OfferKind): string {
   STEP.shownStep = STEP.stepN;
-  const p = `E  ${t(key, { fruit: fruitWord(k) })}${extra}`;
-  return !STEP.stepped && giftKinds(_kinds, okKind).length > 1 ? `${p}  ·  , .  ${t('offerStep')}` : p;
+  const hint = !STEP.stepped && giftKinds(_kinds, okKind).length > 1 ? 1 : 0;
+  let byKind = PROMPTS.get(key);
+  if (!byKind) PROMPTS.set(key, (byKind = []));
+  const i = OFFER_KINDS.indexOf(k) * 2 + hint;
+  let p = byKind[i];
+  if (p === undefined) {
+    const words = t(key === 'offerMonkListen' ? 'offerMonk' : key, { fruit: fruitWord(k) });
+    p = `E  ${words}${key === 'offerMonkListen' ? `  ·  J  ${t('listenMonk')}` : ''}`;
+    if (hint) p += `  ·  , .  ${t('offerStep')}`;
+    byKind[i] = p;
+  }
+  return p;
 }
 
 /** Merit toasts at these counts (after the count's own). */
