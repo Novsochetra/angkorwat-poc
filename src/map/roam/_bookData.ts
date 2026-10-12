@@ -463,7 +463,9 @@ export type Motif =
   | 'reclining'
   | 'hamlet'
   // (a rare moment: the sun rising over Angkor Wat's central tower at an equinox)
-  | 'equinox';
+  | 'equinox'
+  // (a moment: his garden's fruit offered at a shrine or to a monk, the first time: roam/_offerFruit.ts)
+  | 'offering';
 
 /** The stamp's outline. */
 export type Frame = 'round' | 'octagon' | 'cut' | 'rounded' | 'arch' | 'oval' | 'lotus';
@@ -589,6 +591,8 @@ export const STAMPS: readonly StampDef[] = [
   // The equinox sunrise over Angkor Wat's central tower, photographed from the causeway in front of it (roam/_equinox.ts
   // gives it: `Journal.award`). Never for walking near (its reach −∞), and no photo or page is named after it.
   { id: 'equinox', group: 'moments', name: { km: 'ព្រះអាទិត្យរះចំកំពូល', en: 'Equinox sunrise' }, motif: 'equinox', frame: 'lotus', ink: INK.ochre, x: 0, z: -163, reach: -Infinity },
+  // His garden's fruit offered for the first time, at a shrine or to a monk (roam/_offerFruitShared.ts gives it: `Journal.award`).
+  { id: 'offering', group: 'moments', name: { km: 'ថ្វាយផ្លែឈើពីសួន', en: 'Fruit from his garden' }, motif: 'offering', frame: 'rounded', ink: INK.green, x: 0, z: 0, reach: -Infinity },
 ];
 
 export const STAMP_BY_ID = new Map(STAMPS.map((s) => [s.id, s]));

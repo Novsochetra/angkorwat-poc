@@ -324,6 +324,12 @@ const MOTIF: Record<Motif, () => string> = {
       waves(83, 2, 14, 86, 7, 2.2)
     );
   },
+  // His garden's fruit offered (a moment): a footed tray with a hand of bananas over a mango, a guava and a coconut.
+  offering: () =>
+    fill('M18 66H82L76 74H24Z' + 'M44 74H56L58 82H42Z' + 'M33 82H67V88H33Z') +
+    fill(circle(36, 57, 8.5) + circle(54, 55, 10) + circle(70, 59, 6.5)) +
+    line('M22 48C32 36 52 31 72 36M25 54C37 44 56 40 76 45', 4.6) +
+    line('M72 36L78 33M76 45L82 43M20 47L18 51', 2.2),
 };
 
 /** Each outline (and a thin line inside it), in the 120 × 120 box. */

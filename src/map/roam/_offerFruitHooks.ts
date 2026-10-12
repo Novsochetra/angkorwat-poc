@@ -51,7 +51,7 @@ export interface OfferAsk {
 export const OFFER_NEAR = 3.2;
 export const OFFER_CONE = 0.75;
 /** He stands this far before the monk to give (m, feet to feet). */
-export const OFFER_STAND = 1.3;
+export const OFFER_STAND = 1.15;
 
 export const OFFER = {
   ask: { state: 'none', n: 0, t: 0, x: 0, y: 0, z: 0, yaw: 0, kind: '', answered: 0, i: -1, again: false, mx: 0, my: 0, mz: 0, myaw: 0, hx: 0, hy: 0, hz: 0 } as OfferAsk,

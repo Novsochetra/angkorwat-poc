@@ -4,6 +4,7 @@ import type { PlantKindId } from '../garden/kinds';
 import { progress } from '../progress';
 import { num, t, type WordKey } from '../ui/lang';
 import type { AddonEnv } from './_addons';
+import { activeJournal } from './_book';
 import { giftKind, giftKinds } from './_giveFruit';
 import { FRUIT_SIZE, isOfferKind, offerMesh, setOfferKind, type OfferKind } from './_offerFruitModels';
 import type { RoamCtx } from './types';
@@ -67,6 +68,8 @@ export function countMerit(monk: boolean): number {
   const n = progress.get('offer.count', 0, isNum) + 1;
   progress.set('offer.count', n);
   if (monk) progress.set('offer.monks', progress.get('offer.monks', 0, isNum) + 1);
+  // (the first offering: its stamp in the passport's moments)
+  activeJournal()?.award('offering');
   if (MILESTONES.includes(n)) {
     LATER.text = t('offerMilestone', { n: num(n) });
     LATER.in = 3.2;

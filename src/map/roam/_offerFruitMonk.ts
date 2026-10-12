@@ -7,11 +7,11 @@ import { TIME } from '../time';
 import { num, t } from '../ui/lang';
 import type { AddonHold } from './_addons';
 import { BLESS, BLESS_SEATS, GIFT, seatBefore, seatFront, type BlessSeat } from './_blessingHooks';
-import { DAK, DAK_NEAR, DAK_SIDE, DAK_STAND, type AlmsMonk } from './_dakBatHooks';
+import { DAK, DAK_NEAR, DAK_SIDE, type AlmsMonk } from './_dakBatHooks';
 import { GIVING, takeGift } from './_giveFruit';
 import { OFFER, OFFER_STAND } from './_offerFruitHooks';
 import { FRUIT_SIZE, TRAY_R, type LaidPool, type OfferKind } from './_offerFruitModels';
-import { asking, BU, countMerit, fruitWord, hatOff, hatOn, hideHand, offerKind, OFFER_ID, prompt, ramp, RIM, S, showHand, showHandAt, smooth, toBody } from './_offerFruitShared';
+import { asking, BU, countMerit, fruitWord, hatOff, hatOn, hideHand, offerKind, OFFER_ID, prompt, ramp, RIM, S, showHand, showHandAt, smooth, toBody, toMap } from './_offerFruitShared';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 
@@ -79,7 +79,9 @@ const LEAVE = 0.55;
 /** The stick past this (or Space, E) leaves off. */
 const STICK = 0.35;
 /** He kneels this far before the blessing monk to give (m from the seat along his facing). */
-const GIFT_KNEEL = 1.5;
+const GIFT_KNEEL = 1.32;
+/** At the alms round the monk comes this near for fruit (m, feet to feet: nearer than for the rice's spoon, his arms are short). */
+const BOWL_STAND = 1.15;
 /** Walking to a place (m/s), there within (m). */
 const WALK = 1.15;
 const THERE = 0.08;
@@ -112,6 +114,8 @@ let released = false;
 /** Where he walks to (go, step), from where. */
 const goTo = new Vector3();
 const goFrom = new Vector3();
+/** Where the fruit was in his hands as the monk took it (the map), for the handover. */
+const from = new Vector3();
 let goLen = 0;
 /** Dak bat: the monks' way, the line's last answer time. */
 let way = 0;
@@ -270,8 +274,8 @@ function beginBowl(ctx: RoamCtx, m: AlmsMonk, k: OfferKind): void {
   a.y = p.y;
   a.z = p.z;
   a.yaw = facing;
-  a.mx = p.x + Math.sin(facing) * DAK_STAND;
-  a.mz = p.z + Math.cos(facing) * DAK_STAND;
+  a.mx = p.x + Math.sin(facing) * BOWL_STAND;
+  a.mz = p.z + Math.cos(facing) * BOWL_STAND;
   a.myaw = facing + Math.PI;
   a.rice = 0;
   a.snap = false;
@@ -467,8 +471,13 @@ function stepMet(ctx: RoamCtx, dt: number): void {
       ps.lean = 1 - 0.5 * ramp(st, [TAKE_AT, TAKE]);
       lookAt(_h, 1);
       if (!given && st >= TAKE_AT) take();
-      if (given) showHandAt(kind, a.hx, a.hy, a.hz, a.myaw + Math.PI, false, b.scale);
-      else showHand(kind, ctx, ps.gift, false);
+      if (given) {
+        const k = ramp(st, [TAKE_AT, TAKE_AT + 0.3]);
+        showHandAt(kind, from.x + (a.hx - from.x) * k, from.y + (a.hy - from.y) * k, from.z + (a.hz - from.z) * k, a.myaw + Math.PI, false, b.scale);
+      } else {
+        showHand(kind, ctx, ps.gift, false);
+        toMap(ctx, ps.gift, from);
+      }
       if (st >= TAKE) {
         a.state = 'bless';
         go('bless');
@@ -774,13 +783,19 @@ function stepBless(ctx: RoamCtx, dt: number): void {
         take();
         released = true;
       }
-      if (!released) showHand(kind, ctx, ps.gift, true);
-      else {
-        // (in the monk's hands, then down onto his dais beside him)
+      if (!released) {
+        showHand(kind, ctx, ps.gift, true);
+        toMap(ctx, ps.gift, from);
+      } else {
+        // (into the monk's hands, then down onto his dais beside him)
         daisSpot(onDais);
+        const h = ramp(st, [GIFT.take, GIFT.take + 0.3]);
+        const hx = from.x + (m.hx - from.x) * h;
+        const hy = from.y + (m.hy - from.y) * h;
+        const hz = from.z + (m.hz - from.z) * h;
         const k = ramp(st, [GIFT.set, GIFT.down]);
         const lift = Math.sin(k * Math.PI) * 0.12;
-        showHandAt(kind, m.hx + (onDais.x - m.hx) * k, m.hy + (onDais.y + RIM * b.scale - m.hy) * k + lift, m.hz + (onDais.z - m.hz) * k, seat.yaw + Math.PI, true, b.scale);
+        showHandAt(kind, hx + (onDais.x - hx) * k, hy + (onDais.y + RIM * b.scale - hy) * k + lift, hz + (onDais.z - hz) * k, seat.yaw + Math.PI, true, b.scale);
         if (st >= GIFT.down) {
           laySetDown();
           go('bless');
@@ -976,8 +991,8 @@ export function monkFromUrl(ctx: RoamCtx, what: string, arg: string | undefined,
     a.y = p.y;
     a.z = p.z;
     a.yaw = facing;
-    a.mx = p.x + Math.sin(facing) * DAK_STAND;
-    a.mz = p.z + Math.cos(facing) * DAK_STAND;
+    a.mx = p.x + Math.sin(facing) * BOWL_STAND;
+    a.mz = p.z + Math.cos(facing) * BOWL_STAND;
     a.myaw = facing + Math.PI;
     a.rice = 0;
     a.snap = arg === 'give' || arg === 'bless';
