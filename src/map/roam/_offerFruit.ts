@@ -6,7 +6,7 @@ import { progress } from '../progress';
 import { TIME } from '../time';
 import type { MapFrame, RoamMode } from '../types';
 import { num, t } from '../ui/lang';
-import { BEFORE_SHRINE, registerAddon } from './_addons';
+import { BEFORE_SHRINE, registerAddon, type AddonKey } from './_addons';
 import { GIVING, stepGift, takeGift } from './_giveFruit';
 import { createLaidPool, isOfferKind, OFFER_KINDS, TRAY_R, type LaidPool, type OfferKind } from './_offerFruitModels';
 import { monkFrame, monkFromUrl, monkHold, monkHolding, monkInit, monkInput, monkNow, monkOffer, monkReport, monkStop, monkUrlJump, monkUse } from './_offerFruitMonk';
@@ -76,6 +76,12 @@ const SET_SIDE = 0.5;
 const LAY_FRAME = { side: 0.95, pitch: 0.3, distance: 5.2, rate: 2.4, back: { pitch: 0.04, distance: 4.5 } };
 /** E said "offer": waiting for him to kneel, this long at most (s). */
 const PENDING_FOR = 12;
+
+/** The key help while he gives to a monk (E, Space or the stick gets him up; the drag looks). */
+const KEYS: readonly AddonKey[] = [
+  ['E', 'dakUp', 'west'],
+  ['Q R', 'rLook', 'rstick'],
+];
 
 /**
  * The prayer's clock: the Animator's playing action (Animator.ts keeps it to itself; read only here, its shape checked,
@@ -264,6 +270,10 @@ registerAddon({
   },
   get handsBusy() {
     return lay !== 'off' || monkHolding();
+  },
+
+  keys() {
+    return monkHolding() ? KEYS : null;
   },
 
   init(e) {
