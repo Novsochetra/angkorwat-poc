@@ -1612,6 +1612,10 @@ table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; each pagoda's dawn chant follo
   (`parts=terrain,village,people,foreground&people=blessing,chant` is quicker). A live
   check of the monk needs `fest=0` while the map's calendar keeps Pchum Ben (the monk is
   on the porch then).
+### Offering fruit
+
+(to be written: roam/_offerFruit*.ts; shared with sharing: roam/_giveFruit.ts)
+
 ### Lotus from the boat
 
 `roam/_lotus.ts` (id `lotus`, words `lotus…`), the bed `roam/_lotusBed.ts`, the lotus
@@ -2498,6 +2502,10 @@ chilli, basil, jasmine).
 ### Building at home
 
 (to be written: roam/_build*.ts, map/build/)
+
+### Sharing his fruit
+
+(to be written: roam/_shareFruit*.ts, people/_shareBack.ts; shared with offering: roam/_giveFruit.ts)
 
 ### The boat race
 

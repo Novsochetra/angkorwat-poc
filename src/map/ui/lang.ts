@@ -990,6 +990,7 @@ const WORDS = {
   chantSangham: { km: '♪ សង្ឃំ សរណំ គច្ឆាមិ', en: '♪ Saṅghaṃ saraṇaṃ gacchāmi' },
   chantItipiso: { km: '♪ ឥតិបិ សោ ភគវា អរហំ សម្មាសម្ពុទ្ធោ', en: '♪ Itipi so bhagavā arahaṃ sammāsambuddho' },
   chantMetta: { km: '♪ សព្វេ សត្តា សុខិតា ហោន្តុ', en: '♪ Sabbe sattā sukhitā hontu' },
+  // Offering his garden's fruit at a shrine and to the monks (offer…): roam/_offerFruit*.ts
   // Lotus from the boat, offered at a shrine (lotus…): roam/_lotus.ts
   lotusPick: { km: 'បេះផ្កាឈូក', en: 'Pick a lotus' },
   lotusPicked: { km: 'បានបេះផ្កាឈូកមួយទង ({n}/{max}) — យកទៅថ្វាយព្រះនៅទីសក្ការៈណាមួយ', en: 'You picked a lotus ({n}/{max}): offer it at a shrine' },
@@ -1401,6 +1402,7 @@ const WORDS = {
   gardenGiftNote2: { km: '«ស្រោចទឹកវារៀងរាល់ថ្ងៃផង ទើបវាឱ្យផលច្រើន — យាយ»', en: '"Water them every day and they will give you plenty. — Grandma"' },
   gardenGiftGot: { km: 'បានទទួលគ្រាប់ពូជត្រប់ {e} ពោត {c} ល្ពៅ {p} កូនចេកមួយដើម និងកូនល្ហុងមួយដើម', en: 'You got {e} eggplant seeds, {c} corn seeds and {p} pumpkin seeds, a banana sucker and a papaya seedling' },
   gardenEatKept: { km: 'ទុកញ៉ាំពេលក្រោយ៖ {item} (6)', en: 'Kept to eat later: {item} (6)' },
+  // Sharing his garden's fruit with the neighbours, the elders, the children (share…): roam/_shareFruit*.ts, people/_shareBack.ts
   // (the shoulder pole, carrying water: roam/_carryPole*.ts)
   carryTake: { km: 'លើកដងរែក', en: 'Take up the shoulder pole' },
   carryDown: { km: 'ដាក់ដងរែកចុះ', en: 'Set down the pole' },
