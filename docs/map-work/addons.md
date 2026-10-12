@@ -528,9 +528,11 @@ an animal's step phase exactly.
 
 - **Which**: the village's three white cattle while they graze on the meadow over
   the stream (clock ≈ 0.98‥0.1, round (466, −95)) or stand or lie in the pen at
-  night (two of them lie down once settled; up again before the morning's walk),
-  not while they walk the way out or home; his own when their keeper says
-  `canRide`. Walking up calmly, the one by him stands still for him
+  night (two of them lie down once settled, one under the shelter and one out in
+  the pen; up again before the morning's walk), not while they walk the way out or
+  home; his own when their keeper says `canRide`. Never under a low roof: E needs
+  room for him to sit up over its back (1.75 m, `ceilingAt`), so the cows under
+  the pen's shelter are not offered. Walking up calmly, the one by him stands still for him
   (`COW_RIDE.calm`, within 4.5 m); the herd boy calls "ជិះយឺតៗណា បង!" as he gets on.
 - **What**: within a step of its flank, E "ជិះគោ / Ride the cow": he hops up and
   sits astride behind the hump, his thighs down its narrow back and his shins
@@ -583,7 +585,8 @@ an animal's step phase exactly.
   gives `cow=ride|graze|lie&at=<its feet>&yaw=<its heading>`.
 - **Checks**: `window.__cowRide` (`state`, `leaving`, `grazing`, `rising`, `speed`,
   `trot`, `turnRate`, `rope`, `blocked`: what stopped it last, `misfit`, `cow`,
-  `parked`, `bob`, `pose`, `seat`, `cows`, `probe(dyaw, ahead)`); the console line
+  `parked`, `offered`: the cow E would get him on now, `bob`, `pose`, `seat`,
+  `cows`, `probe(dyaw, ahead)`); the console line
   `[cow] cow=…` says which one a URL brought where.
 
 ### Zip line

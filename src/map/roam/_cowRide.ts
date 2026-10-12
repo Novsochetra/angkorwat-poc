@@ -1035,8 +1035,8 @@ function fake(q: URLSearchParams, ctx: RoamCtx): void {
   if (!v) return;
   const { body, world } = ctx;
   const at = v.split(',').map(Number);
-  const x = at.length === 2 && at.every(Number.isFinite) ? at[0] : body.pos.x + Math.sin(body.yaw) * 2.2;
-  const z = at.length === 2 && at.every(Number.isFinite) ? at[1] : body.pos.z + Math.cos(body.yaw) * 2.2;
+  const x = at.length === 2 && at.every(Number.isFinite) ? at[0] : body.pos.x + Math.sin(body.yaw) * 1.7;
+  const z = at.length === 2 && at.every(Number.isFinite) ? at[1] : body.pos.z + Math.cos(body.yaw) * 1.7;
   const c = rideCow('own-test', 'his');
   c.x = x;
   c.z = z;
