@@ -425,8 +425,10 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   walking in: "…the mechanic is on his way back".
 - **E "ទិញកង់ / Buy a bicycle"** at the buyer's place before the upturned bicycle
   (1.75 m round it; nearer his own bicycle by the shop than to it, E rides that):
-  he turns to the mechanic, the camera comes round behind his shoulder (the nursery's
-  `clearView`), the picture slides left of the card, and the card opens in the buy
+  he turns to the mechanic, the camera comes round behind his right shoulder, looking down
+  on him and the mechanic (the nursery's `clearView`, with the tarp hiding the mechanic from
+  over it and the parked motos kept out of the lens; never out over the land to the west:
+  a phone's draws and triangles stay as at the market's cards), the picture slides left of the card, and the card opens in the buy
   menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
   has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
