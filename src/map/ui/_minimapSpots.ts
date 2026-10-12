@@ -7,6 +7,7 @@ import { ZIP_START } from '../roam/_zipPlan';
 import { LOTUS_BED } from '../roam/_lotusHook';
 import { HOME_AT } from '../hamlet/_homePlan';
 import { nurseryToWorld } from '../hamlet/_nurseryPlan';
+import { traderToWorld } from '../cattle/plan';
 import type { WordKey } from './lang';
 import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
 
@@ -27,7 +28,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'cattle';
 
 export interface MapSpot {
   id: SpotId;
@@ -262,6 +263,19 @@ const NURSERY_ART = [
   '.p.ddd.ddd.p.',
 ];
 
+/** The cattle trader (roam/_cattle.ts): a white cow of the villages, its hump and short horns. */
+const CATTLE_ART = [
+  '...........k.',
+  '.....SS...kCk',
+  '..WWWWWWWWWCC',
+  '.sWWWWWWWWWWC',
+  '.sWWWWWWWWWs.',
+  '..sSSSSSSSs..',
+  '...k.k..k.k..',
+  '...k.k..k.k..',
+];
+const CATTLE_AT = traderToWorld(0, 2.5);
+
 /** The nursery's badge: on its back half (its middle is 23 m from the house's badge: this keeps them apart). */
 const NURSERY_AT = nurseryToWorld(-1.7, -2.4);
 /**
@@ -350,6 +364,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   // (the bicycle shop at the morning market, and his own bicycle where he left it: roam/_bikeShop.ts, _bike.ts)
   { ...spot('bike-shop', BIKE_SHOP_AT[0], BIKE_SHOP_AT[1], 7, 'bikeShopMap', 'bikeShopTheMap', outlined(BIKE_SHOP_ART)), bx: BIKE_SHOP_BIG[0], bz: BIKE_SHOP_BIG[1] },
   MY_BIKE,
+  // (the cattle trader on the Kulen foot meadow, 50 m north of his house: roam/_cattle.ts)
+  spot('cattle', CATTLE_AT[0], CATTLE_AT[1], 9, 'cattleMap', 'cattleTheMap', outlined(CATTLE_ART)),
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */
