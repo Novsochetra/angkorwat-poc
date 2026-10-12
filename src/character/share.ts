@@ -43,7 +43,7 @@ export const newShareState = (): ShareState => ({ reach: 0, bow: 0, crouch: 0, g
 /** The bow (radians): at the chest, at the hips (a share of it), the neck after it. */
 const BOW = { chest: 0.32, hips: 0.12, neck: 0.1 };
 /** Where the hands are held (chest space, BU): this high over the chest's pivot (lower chest), this far out in front. */
-const HANDS = { y: 3.0, z: 5.1 };
+const HANDS = { y: 3.0, z: 6.0 };
 /** Down on his haunches: the hips this low and this far back (BU), the pelvis tipped forward, the knees out a little. */
 const SQUAT = { height: 6.6, back: -1.3, hips: 0.2, chest: 0.08, splay: 0.2, turn: 0.16 };
 /** The elbows: down, out and a little back. */

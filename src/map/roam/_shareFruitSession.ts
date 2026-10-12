@@ -91,7 +91,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   dx /= d0;
   dz /= d0;
   const theirs = who.scale / SIZE;
-  const gap = ((who.seated ? 0.95 : 0.5) + 0.5 * theirs) * k + 0.08;
+  const gap = ((who.seated ? 1.05 : 0.75) + 0.5 * theirs) * k;
   let sx = kid ? body.pos.x : who.x + dx * gap;
   let sz = kid ? body.pos.z : who.z + dz * gap;
   const h = 1.7 * body.scale * 0.95;
@@ -142,7 +142,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   // (to a child: down on his haunches, the hands low; to someone sitting: right down)
   const crouchTo = who.seated ? 1 : kid ? 0.5 : 0;
   const lowTo = kid ? 1.4 : who.seated ? 0.4 : 0;
-  const bowTo = kid ? 0.1 : who.seated ? 0.2 : elder ? 0.85 : 0.45;
+  const bowTo = kid ? 0.1 : who.seated ? 0.2 : elder ? 0.55 : 0.35;
   // The steps after `ready` (s), and what is still to come.
   const steps: [number, ShareStep][] = [
     [AT.hold, 'hold'],
