@@ -23,8 +23,8 @@ import type { RoamCtx } from './types';
  * their gift out, `got` he takes it (the `interact` action); `end`.
  */
 
-/** Seconds after `ready`. */
-const AT = { hold: 0, take: 1.0, thanks: 1.3, answer: 1.85, back: 0.6, got: 0.9, end: 1.0 } as const;
+/** Seconds after `ready` (`hold`, `take`, `thanks`), and after their thanks or the last step (`answer`, `bless`, `back`, then `got`, `end`). */
+const AT = { hold: 0, take: 1.0, thanks: 1.3, answer: 0.6, bless: 1.6, back: 0.4, got: 0.9, end: 1.0 } as const;
 /** He steps up to them this fast (m/s at his roaming size), turns this fast (1/s); gives up on a child that does not come after this long (s). */
 const STEP = 1.3;
 const TURN = 7;
@@ -149,16 +149,17 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
     [AT.take, 'take'],
     [AT.thanks, 'thanks'],
   ];
-  let after = AT.thanks + (kid ? 1.1 : 1.6);
-  if (elder) {
-    steps.push([AT.answer, 'answer']);
-    after = AT.answer + 2.5;
-  }
+  let after = AT.thanks;
   if (plan.back === 'bless') {
-    // (the blessing comes as he bows to her: their words while his palms are at his face)
-    const i = steps.findIndex((s) => s[1] === 'answer');
-    steps.splice(i >= 0 ? i : steps.length, 0, [AT.answer - 0.15, 'back']);
-  } else if (plan.back !== 'none') {
+    // (an elder's blessing, once their thanks has been read: he bows to them, palms up to his face, as they say it)
+    steps.push([after + AT.bless, 'back'], [after + AT.bless + 0.15, 'answer']);
+    after += AT.bless + 0.15 + 2.6;
+  } else if (elder) {
+    // (to an elder's thanks: the high sampeah)
+    steps.push([after + AT.answer, 'answer']);
+    after += AT.answer + 2.5;
+  } else after += kid ? 1.1 : 1.6;
+  if (plan.back === 'snack' || plan.back === 'seeds') {
     steps.push([after + AT.back, 'back'], [after + AT.back + AT.got, 'got']);
     after += AT.back + AT.got + AT.end;
   }

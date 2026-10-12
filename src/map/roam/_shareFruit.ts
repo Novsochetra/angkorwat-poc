@@ -237,6 +237,7 @@ function shotStep(f: MapFrame): void {
   if (!ctx || !env) return;
   if (pending) startPending(ctx);
   if (!session || f.dt <= 0) return;
+  ctx.hud.prompt(null);
   session.hold(ctx, f.dt);
   const ex = env.explorer;
   ex.object.position.copy(ctx.body.pos);

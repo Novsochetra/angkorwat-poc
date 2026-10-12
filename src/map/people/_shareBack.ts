@@ -312,7 +312,8 @@ export class ShareBack {
           if (u < HOP_FOR) hop = HOP * crowd.scale(a.i) * Math.max(0, Math.sin((u / (HOP_FOR / 2)) * Math.PI));
           nod = -0.2;
         } else if (r.elder) {
-          pose = POSE.stand;
+          // (an elder holds it up a moment in both hands, nodding)
+          pose = u < 1.3 && !r.seated ? POSE.give : POSE.stand;
           nod = 0.35 * bump(u, 0.1, 1.3);
         } else {
           pose = u > 0.25 && u < 1.9 ? (r.seated ? POSE.kneel : POSE.sampeah) : POSE.stand;
