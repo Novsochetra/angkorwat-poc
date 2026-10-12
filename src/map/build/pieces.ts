@@ -95,7 +95,7 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // The spirit house (ខ្ទមព្រះភូមិ): a little Angkor tower on its post, a tray for offerings, incense. He kneels before it to pray.
   spirit: {
-    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, secs: 8, w: 1, d: 1, h: 2.4, max: 1,
+    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, secs: 8, w: 1, d: 1, h: 2.75, max: 1,
     solids: [[0, 0, 0.3, 0.3, 1.6]],
     light: [0, 1.75, 0.18],
     kneel: { x: 0, z: 1.25, yaw: Math.PI },
@@ -107,7 +107,7 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A hammock (អង្រឹង) between two posts, striped cloth.
   hammock: {
-    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, secs: 8, w: 3.8, d: 0.5, h: 1.8, max: 2, walkThrough: true,
+    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, secs: 8, w: 4, d: 0.9, h: 1.8, max: 2, walkThrough: true,
     solids: [
       [-1.8, 0, 0.2, 0.2, 1.8],
       [1.8, 0, 0.2, 0.2, 1.8],
@@ -119,9 +119,9 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A lantern on a post (ចង្កៀង): it lights by itself at dusk.
   lamp: {
-    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, secs: 4, w: 0.5, d: 0.5, h: 2.4, max: 8,
+    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, secs: 4, w: 0.5, d: 0.76, h: 2.45, max: 8,
     solids: [[0, 0, 0.18, 0.18, 2.2]],
-    light: [0, 2.05, 0.2],
+    light: [0, 2.05, 0.24],
   },
   // A rice-straw stack round a pole (គំនរចំបើង): his cattle's hay, pulled from it a bundle at a time.
   haystack: {
