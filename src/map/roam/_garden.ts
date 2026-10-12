@@ -16,7 +16,7 @@ import { GardenGhost } from './_gardenGhost';
 import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { gardenSay, GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
-import { countWords, GardenWork, pickAction, plantAction } from './_gardenWork';
+import { countWords, fallenDistance, GardenWork, pickAction, plantAction } from './_gardenWork';
 import type { RoamCtx } from './types';
 
 /**
@@ -188,6 +188,9 @@ function homeSeeds(): PlantKindId[] {
 }
 const plantable = (k: PlantKindId) => k !== 'bodhi';
 
+/** Standing this near a fruit lying under its tree (m), E picks it up (however far the trunk is). */
+const FALLEN_REACH = 1.5;
+
 /** The plant nearest in front of him within reach that wants something (ripe, dead, thirsty), or null. */
 function plantNear(ctx: RoamCtx, any = false): Plant | null {
   const b = ctx.body;
@@ -200,7 +203,8 @@ function plantNear(ctx: RoamCtx, any = false): Plant | null {
     const dx = p.x - b.pos.x;
     const dz = p.z - b.pos.z;
     const d = Math.hypot(dx, dz);
-    if (d > reachOf(p)) continue;
+    // (fruit lying under it — a durian's under its wide crown — is picked up from by the fruit too, where its marker is)
+    if (d > reachOf(p) && !(!any && KINDS[p.kind].fruit.pick === 'ground' && d < reachOf(p) + 3 && ripeNow(p) && fallenDistance(p, b.pos.x, b.pos.z) <= FALLEN_REACH)) continue;
     if (any ? p.dead : !(ripeNow(p) || p.dead || thirsty(p))) continue;
     // (in front of him first: behind him only when very near; to dig one up, facing it and near)
     const dot = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
