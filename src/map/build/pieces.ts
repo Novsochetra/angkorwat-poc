@@ -60,7 +60,7 @@ export const BUILD_NEAR = 46;
 export const PIECES: Record<PieceId, PieceSpec> = {
   // The cattle pen (គ្រោលគោ): rails on posts, the gate in the front rail, a thatched lean-to at the back, a log trough, a hay rack.
   pen: {
-    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3, max: 2,
+    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3.6, max: 2,
     solids: [
       [0, -2.8, 7, 0.2, 1.4], // back rail
       [-3.5, 0, 0.2, 5.6, 1.4], // left rail
@@ -73,12 +73,14 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A thatched shelter on four posts (ខ្ទម), open on every side: shade, a bench along its back.
   shelter: {
-    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 3.6, d: 3.2, h: 3.6, max: 3, walkThrough: true,
+    // (w, d: the roof's eaves, 0.55 m past the posts; h: its ridge; the posts to the tie beams, the bench under the seat)
+    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 4.4, d: 4, h: 4.35, max: 3, walkThrough: true,
     solids: [
-      [-1.6, -1.4, 0.2, 0.2, 2.6],
-      [1.6, -1.4, 0.2, 0.2, 2.6],
-      [-1.6, 1.4, 0.2, 0.2, 2.6],
-      [1.6, 1.4, 0.2, 0.2, 2.6],
+      [-1.6, -1.4, 0.2, 0.2, 2.85],
+      [1.6, -1.4, 0.2, 0.2, 2.85],
+      [-1.6, 1.4, 0.2, 0.2, 2.85],
+      [1.6, 1.4, 0.2, 0.2, 2.85],
+      [0, -1.05, 2.84, 0.5, 0.62],
     ],
     seat: { x: 0, y: 0.62, z: -1.05, yaw: 0 },
   },
@@ -90,8 +92,9 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A run of bamboo fence (របងឫស្សី), three metres: posts and woven split bamboo, chest high to him.
   fence: {
-    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, secs: 4, w: 3, d: 0.25, h: 1.3, max: 40,
-    solids: [[0, 0, 3, 0.25, 1.3]],
+    // (h: chest high to him, 2.4 m tall)
+    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, secs: 4, w: 3, d: 0.25, h: 1.6, max: 40,
+    solids: [[0, 0, 3, 0.25, 1.6]],
   },
   // The spirit house (ខ្ទមព្រះភូមិ): a little Angkor tower on its post, a tray for offerings, incense. He kneels before it to pray.
   spirit: {
@@ -125,7 +128,8 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A rice-straw stack round a pole (គំនរចំបើង): his cattle's hay, pulled from it a bundle at a time.
   haystack: {
-    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, secs: 8, w: 2.4, d: 2.4, h: 3, max: 2,
+    // (h: its pole's top, standing out of the cap)
+    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, secs: 8, w: 2.4, d: 2.4, h: 3.2, max: 2,
     solids: [[0, 0, 2.2, 2.2, 2.6]],
   },
 };
