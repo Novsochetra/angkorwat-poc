@@ -75,6 +75,20 @@ export const WORSHIP: WorshipSpot[] = [
   // village/_spots.ts): knelt on the porch before the open north door (floor
   // 10, door at z 99), facing the golden Buddha on the altar inside (z 110.9).
   { id: 'village-pagoda-door', place: null, x: -306, y: 10, z: 96.8, fx: -306, fz: 110.9 },
+  // The villages' spirit houses and neak ta shrines (where one leaves fruit, incense and a prayer: roam/_offerFruit.ts),
+  // knelt on the ground before each (worked out from their builds' frames; the floor from the walk map).
+  // The sugar-palm village's spirit house on its post by the corner of the street and the Kulen trail
+  // (hamlet/_evYard.ts `shrine`: `EV_SPIRIT` (407.2, −66.9), its door to its frame's +z, turned 0.1), knelt 1.25 m before it (10).
+  { id: 'ev-spirit-house', place: null, x: 407.32, y: 10, z: -65.66, fx: 407.2, fz: -66.9 },
+  // Its neak ta's shrine at the old tamarind's foot (_evYard.ts `neakTa`: (414.9, −75.5), open to its frame's +z, turned
+  // 0.35), knelt on the red mat before its bay sei (10).
+  { id: 'ev-neak-ta', place: null, x: 415.41, y: 10, z: -74.09, fx: 414.9, fz: -75.5 },
+  // The spirit house before the old house in the hamlet behind Angkor Wat (hamlet/_bhYard.ts `spiritHouse`: the old
+  // house's (3.7, 6.5) → (148.7, −353.5), its door to +z), knelt 1.3 m before it in the yard (8).
+  { id: 'bh-spirit-house', place: null, x: 148.7, y: 8, z: -352.2, fx: 148.7, fz: -353.5 },
+  // The morning market's neak ta at the big shade tree's foot (hamlet/_mkPlan.ts `SHRINE`: the square's (8.75, −5.55) →
+  // (344.75, −89.55), open toward −1.2), knelt 1.3 m before it on the square, under the tree (8).
+  { id: 'market-neak-ta', place: null, x: 343.54, y: 8, z: -89.08, fx: 344.75, fz: -89.55 },
   // The jungle's shrines (jungle/_ruinShrines.ts `KNEEL`, site space → map
   // metres by each site's frame): on the flat ground of the clearing
   // between its trail and its offerings, facing the statue.

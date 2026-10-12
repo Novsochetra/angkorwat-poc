@@ -1,7 +1,10 @@
 import type { Object3D } from 'three';
+import { BENCH_BACK } from '../../character/rest';
+import { BODY_UNIT_M } from '../../world/scale';
 import { BUILT, PIECES, pieceToWorld, type Built } from '../build/pieces';
 import { BUILD, distTo } from '../build/state';
 import type { HeightField } from '../heightfield';
+import { ROAM_SCALE } from './types';
 import { addHammock, HAMMOCK_IN_USE, removeHammock } from './_hammockSpots';
 import { REST_SEATS, type RestKind, type RestSeat } from './_rest';
 import { WORSHIP } from './_worship';
@@ -27,8 +30,13 @@ const SEAT_REACH = 1.1;
 const SEAT_UP = 0.8;
 /** On the bed: where his feet go (local: toward its +x end) to sit or lie along it, his head to −x. */
 const BED_FEET = 0.85;
-/** On the bench: his feet this far before the seat's middle (on the bench, the hips a little behind them). */
-const BENCH_FEET = 0.22;
+/**
+ * On the bench: his sit bones this far before the seat's middle (m; − behind it: the seat is 0.5 m deep, his hips
+ * joint near its front edge, his thighs on past it and his shins down), his feet on the ground before it
+ * (character/rest.ts `BENCH_BACK` ahead of his seat).
+ */
+const BENCH_SEAT = -0.06;
+const BENCH_FEET = BENCH_SEAT + BENCH_BACK * BODY_UNIT_M * ROAM_SCALE;
 
 let field: HeightField | null = null;
 let root: Object3D | null = null;
@@ -61,13 +69,17 @@ function seatSpot(b: Built, kind: RestKind, out: RestSeat): boolean {
     // (a bed: along it, his feet toward its +x end, facing it; lying back his head goes to the −x end)
     pieceToWorld(b, BED_FEET, seat.z, _p);
     out.yaw = b.yaw + Math.PI / 2;
+    out.y = b.y + seat.y;
+    out.bench = 0;
   } else {
+    // (a bench: his feet on the ground before it, facing out; he sits down onto it behind him)
     pieceToWorld(b, seat.x, seat.z + BENCH_FEET, _p);
     out.yaw = b.yaw + seat.yaw;
+    out.y = b.y;
+    out.bench = seat.y;
   }
   out.x = _p[0];
   out.z = _p[1];
-  out.y = b.y + seat.y;
   return true;
 }
 

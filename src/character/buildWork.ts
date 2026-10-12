@@ -41,21 +41,24 @@ export const HIT = 0.74;
 /** The hammer: its handle's length to the middle of its head (BU, his size), from the fist's middle. */
 export const HAMMER_REACH = 5.2;
 
-/** The squat for low work (as dogPet.ts: BU, radians). */
-const SQUAT = { height: 6.6, back: -1.4, hips: 0.26, chest: 0.16, splay: 0.22, turn: 0.18 };
+/**
+ * The squat for low work, the Cambodian way (as gardenWork.ts `SQUAT`): flat-footed, the hips right down and back
+ * by his heels, the knees wide, leaning over the work (BU, radians).
+ */
+const SQUAT = { height: 4.9, back: -1.75, hips: 0.4, chest: 0.3, splay: 0.42, turn: 0.22 };
 /** Standing, bent a little at the hips over his work (radians). */
 const STAND = { hips: 0.08, chest: 0.1 };
 /** Work this low (BU over his soles) has him squatting; from this high he stands. */
 const LOW = 8;
 const HIGH = 15;
-/** The head's face is this far under the handle's line (BU): the handle's end goes this far over the work, so the face lands on it. */
-const FACE = 1.9;
-/** The raised fist (his space, BU, over his right shoulder: −x), standing and squatting. */
-const RAISED = { stand: new Vector3(-6.2, 23.5, 1.8), squat: new Vector3(-6, 16, 3) };
-/** The handle's way at the blow (forward, the face down), his space: the first guess. */
-const AIM_HIT = new Vector3(0.05, -0.2, 1).normalize();
-/** The wrist (rx: − cocks the hammer back up toward his forearm, + snaps it down past his fingers): raised, at the blow. */
-const WRIST = { up: -0.55, hit: 0.6 };
+/** The head's face is this far under the handle's line (BU, `hammerBuilder`): the fist goes this far over the line to the work, so the face lands on it. */
+const FACE = 2.15;
+/** The raised fist: this far from his right shoulder (his space, BU: out to his right, up, a little ahead). */
+const RAISED = new Vector3(-1.5, 5.0, 1.0);
+/** At the blow the handle points at the work from his shoulder, this much under level (rad), its face down. */
+const HIT_TILT = 0.22;
+/** Raised, the hammer is turned back this far about his shoulders' line (rad): the handle up behind his shoulder, the face forward. */
+const BACKSWING = 1.95;
 /** The left hand steadies the work: this far left of the blow, nearer him, a little over it (BU). */
 const STEADY = new Vector3(2.6, 1.2, -1.2);
 /** Elbows: the right out and down (chest space), the left out. */
@@ -85,6 +88,10 @@ const _a = new Vector3();
 const _t = new Vector3();
 const _l = new Vector3();
 const _d = new Vector3();
+const _h = new Vector3();
+const _x = new Vector3();
+const _y = new Vector3();
+const UP = new Vector3(0, 1, 0);
 const _mh = new Matrix4();
 const _mc = new Matrix4();
 const _m = new Matrix4();
@@ -153,24 +160,36 @@ export function buildPose(s: BuildPoseState): Pose {
 
   // Arms, in the chest's space.
   _inv.copy(_mc).invert();
-  // The right fist: raised over his shoulder, down onto the work. The hammer sticks out of his fist the way his thumb
-  // points (the wrist only cocks it back raised and snaps it forward at the blow, as a hand does), so the fist goes
-  // where that puts the hammer's face on the work: worked out twice from the arm's own shape.
-  const lift = strokeLift(s.t / STROKE) * (1 - s.still);
-  const wrist = WRIST.hit + (WRIST.up - WRIST.hit) * smooth(lift);
-  _l.copy(RAISED.stand).lerp(RAISED.squat, c);
-  _d.copy(AIM_HIT);
-  let armR: Pose = {};
-  for (let i = 0; i < 2; i++) {
-    _t.copy(s.work).addScaledVector(_d, -HAMMER_REACH);
-    _t.y += FACE;
-    _t.lerp(_l, smooth(lift));
-    armR = solveArm('R', _t.applyMatrix4(_inv), POLE_R);
-    thumbOf(armR, wrist, _d);
-    // (the thumb's way in his space)
-    _d.transformDirection(_mc);
-  }
-  armR.wristR = { rx: wrist };
+  // The right fist: raised over his shoulder, down onto the work. The hammer's way is set, not left to the arm: at the
+  // blow its handle points at the work from his shoulder, a little down, its face down on the work (the fist where
+  // that puts the face there); raised, the same turned back about his shoulders' line (the handle up behind his
+  // shoulder). The wrist turns the hand to it from wherever the arm's IK left the forearm.
+  const lift = smooth(strokeLift(s.t / STROKE) * (1 - s.still));
+  const sh = _a.copy(REST_LOCAL.shoulderR).applyMatrix4(_mc);
+  _h.set(s.work.x - sh.x, 0, s.work.z - sh.z);
+  if (_h.lengthSq() < 1e-4) _h.set(0, 0, 1);
+  _h.normalize();
+  // (at the blow: the handle's way and the head's up, opposite its face)
+  _d.copy(_h).multiplyScalar(Math.cos(HIT_TILT)).addScaledVector(UP, -Math.sin(HIT_TILT));
+  _y.copy(_h).multiplyScalar(Math.sin(HIT_TILT)).addScaledVector(UP, Math.cos(HIT_TILT));
+  _t.copy(s.work).addScaledVector(_d, -HAMMER_REACH).addScaledVector(_y, FACE);
+  // (raised: over his shoulder; the hammer turned back about the line across his shoulders)
+  _l.copy(sh).add(RAISED);
+  _t.lerp(_l, lift);
+  _x.crossVectors(_d, UP).normalize();
+  _q.setFromAxisAngle(_x, BACKSWING * lift);
+  _d.applyQuaternion(_q);
+  _y.applyQuaternion(_q);
+  const armR: Pose = solveArm('R', _t.applyMatrix4(_inv), POLE_R);
+  // (the hand's frame in the chest's space: x = y × z, its thumb, the handle, along z; the wrist's turn from the forearm)
+  _d.transformDirection(_inv);
+  _y.transformDirection(_inv);
+  _x.crossVectors(_y, _d).normalize();
+  _y.crossVectors(_d, _x);
+  _rot.makeBasis(_x, _y, _d);
+  forearmOf(armR, _m2).transpose().multiply(_rot);
+  _e.setFromRotationMatrix(_m2, 'XYZ');
+  armR.wristR = { rx: _e.x, ry: _e.y, rz: _e.z };
   const restR: Pose = { shoulderR: { rx: 0.02, rz: -0.06 }, elbowR: { rx: -0.12 }, wristR: {} };
   blendArm(restR, armR, k, 'R', pose);
   // The left hand steadying the work beside the blow.
@@ -183,13 +202,11 @@ export function buildPose(s: BuildPoseState): Pose {
   return pose;
 }
 
-/** The way the fist's grip axis (+z of the prop: his thumb's way) points, chest space, for an arm posed by `solveArm` and the wrist cocked `wrist` (rx). */
-function thumbOf(arm: Pose, wrist: number, out: Vector3): Vector3 {
+/** The right forearm's turn in the chest's space for an arm posed by `solveArm` (the shoulder's, then the elbow's), into `out`. */
+function forearmOf(arm: Pose, out: Matrix4): Matrix4 {
   const sh = arm.shoulderR!;
-  _m2.makeRotationFromEuler(_e.set(sh.rx ?? 0, sh.ry ?? 0, sh.rz ?? 0, 'XYZ'));
-  _m2.multiply(_rot.makeRotationX(arm.elbowR!.rx ?? 0));
-  _m2.multiply(_rot.makeRotationX(wrist));
-  return out.set(0, 0, 1).transformDirection(_m2);
+  out.makeRotationFromEuler(_e.set(sh.rx ?? 0, sh.ry ?? 0, sh.rz ?? 0, 'XYZ'));
+  return out.multiply(_m.makeRotationX(arm.elbowR!.rx ?? 0));
 }
 
 /** Arms between hanging free and the IK (`k` of the way), into `pose`. */
@@ -216,9 +233,12 @@ const smooth = (v: number) => {
 };
 
 /**
- * His hammer (ញញួរ), in his hand's frame (BU at his size: the fist's middle at the origin, the handle along +z out
- * of it, as the torch's, parts/props.ts): a worn wooden handle, an iron head across its end, its face down (−y)
- * and its claw up, as a carpenter's.
+ * His hammer (ញញួរ) for the right prop slot (`rig.setSlot(…, 'propR', …)`): a worn wooden handle, an iron head
+ * across its end, its face down (−y) and its claw up, as a carpenter's. Made in his hand's frame (BU at his size:
+ * the fist's middle at the origin, the handle along +z out of it, as the torch's, parts/props.ts), then moved to the
+ * fist's grip in his own space (`JOINTS.propR.pivot`), the frame a slot's builder is in (Rig.setSlot meshes it with
+ * the joint's pivot taken off): left at the origin it hung a joint's length off his fist, beside his head or in the
+ * piece.
  */
 export function hammerBuilder(): VoxelBuilder {
   const b = new VoxelBuilder();
@@ -235,5 +255,6 @@ export function hammerBuilder(): VoxelBuilder {
   b.span(-0.56, -2.2, L - 0.6, 0.56, -1.6, L + 0.6, 0x50545a, 'metal');
   b.span(-0.4, 0.75, L - 0.4, 0.4, 1.7, L + 0.15, 0x7e8288, 'metal', { rx: 0.35 });
   b.span(-0.52, -1.0, L - 0.62, 0.52, -0.6, L + 0.62, 0x8a8e94, 'metal');
-  return b;
+  const [gx, gy, gz] = JOINTS.propR.pivot;
+  return b.translate(gx, gy, gz);
 }

@@ -386,6 +386,9 @@ export function createBuildView(shot = false): BuildView {
     stats.lights = n;
     glows.count = Math.max(1, n * 2);
     if (!n) glows.setMatrixAt(0, _m.makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
+    // (no light built: neither is drawn, two draws a frame saved wherever he is on the map; hidden, their programs are
+    // still compiled with the map's before Start: three's compile walks hidden objects too, lazy.ts `compileFor`)
+    glows.visible = halo.points.visible = n > 0;
     glows.instanceMatrix.needsUpdate = true;
     if (glows.instanceColor) glows.instanceColor.needsUpdate = true;
     (glowGeo.getAttribute('aGlow') as BufferAttribute).needsUpdate = true;

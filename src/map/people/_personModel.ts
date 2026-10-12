@@ -417,6 +417,12 @@ export const FEAT = {
   thumb: 44,
   /** A sprig for the blessing's water (`POSE.bless`): a stem (`wood`), a bunch of leaves (`prop2`), a lotus bud (`prop`), along the right fist's grip. */
   sprig: 45,
+  /**
+   * A fruit he gave them (roam/_shareFruit.ts, people/_shareBack.ts; worn only then: `prop` its body, `prop2` its stalk):
+   * in the right hand, between both hands as they take it (`give`), held up in the `cheer`; between the palms in the
+   * sampeah, bow and kneel.
+   */
+  fruit: 48,
 } as const;
 export type Feature = (typeof FEAT)[keyof typeof FEAT];
 
@@ -847,6 +853,12 @@ function buildModel(): Builder {
     .box('gripR', [fx, fy, fz + 0.25], [0.12, 0.014, 0.15], S.prop2, F.sprig)
     .box('gripR', [fx, fy, fz + 0.24], [0.014, 0.11, 0.14], S.prop2, F.sprig)
     .box('gripR', [fx, fy, fz + 0.32], [0.05, 0.05, 0.07], S.prop, F.sprig);
+  // A fruit he gave them (`FEAT.fruit`): round, in the right fist, a little toward the left hand (between both in the give
+  // pose); with the palms together, cradled under them at the chest.
+  m.round('gripR', [fx + 0.04, fy + 0.03, fz + 0.06], 0.15, 0.14, 0.72, S.prop, F.fruit, SHOW.notPalms)
+    .box('gripR', [fx + 0.04, fy + 0.11, fz + 0.06], [0.03, 0.04, 0.03], S.prop2, F.fruit, SHOW.notPalms)
+    .round('chest', [0, 0.7, 0.25], 0.15, 0.14, 0.72, S.prop, F.fruit, SHOW.palms)
+    .box('chest', [0, 0.78, 0.25], [0.03, 0.04, 0.03], S.prop2, F.fruit, SHOW.palms);
   return m;
 }
 

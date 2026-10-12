@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { REST_U, restDuration, restPose, type RestState } from '../../character/rest';
+import { BODY_UNIT_M } from '../../world/scale';
 import { pad } from '../pad/pad';
 import { t } from '../ui/lang';
 import { angleDiff } from './followCam';
@@ -98,6 +99,11 @@ export interface RestSeat {
   y: number;
   z: number;
   yaw: number;
+  /**
+   * A bench: its seat this high over his feet (m; his feet stay on the ground before it and he sits down onto it
+   * behind him: character/rest.ts `RestState.bench`, no lying on it). 0 or left out: he rests on the spot itself (a bed).
+   */
+  bench?: number;
 }
 
 /**
@@ -201,6 +207,7 @@ export function createRest(d: RestDeps): Rest {
     turnTo = null;
     // (standing, while the Animator eases out of the posture: no lying on the ledge after Esc)
     state.u = state.sleep = 0;
+    state.bench = 0;
     explorer.animator.posture = null;
     explorer.animator.postureFeet = true;
     explorer.asleep = false;
@@ -300,7 +307,7 @@ export function createRest(d: RestDeps): Rest {
       }
       if (to > 0) {
         // (on a bench he built: no lying back off it: REST_SEATS)
-        if (kind === 'lie' && REST_SEATS.noLie(body.pos.x, body.pos.y, body.pos.z)) {
+        if (kind === 'lie' && (state.bench || REST_SEATS.noLie(body.pos.x, body.pos.y, body.pos.z))) {
           hud.toast(t('rRestRoom'));
           return;
         }
@@ -316,9 +323,12 @@ export function createRest(d: RestDeps): Rest {
       }
       if (!body.grounded) return;
       // (a seat he built at home at hand: onto its spot, its way: REST_SEATS)
+      seatAt.bench = 0;
       if (REST_SEATS.find(kind, body.pos.x, body.pos.y, body.pos.z, seatAt)) {
         body.pos.set(seatAt.x, seatAt.y, seatAt.z);
         body.yaw = seatAt.yaw;
+        // (a bench: its seat's height in his body units)
+        state.bench = seatAt.bench ? seatAt.bench / (BODY_UNIT_M * body.scale) : 0;
         body.vel.set(0, 0, 0);
         turnTo = null;
         go(want);
@@ -427,7 +437,9 @@ export function createRest(d: RestDeps): Rest {
           : pad.active
             ? `Space  ${t('rGetUp')}`
             : to === REST_U.sit
-              ? `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}`
+              ? state.bench
+                ? `J  ${t('rGetUp')}`
+                : `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}`
               : `L  ${t('rGetUp')}  ·  J  ${t('rSitUp')}`,
       );
     },
