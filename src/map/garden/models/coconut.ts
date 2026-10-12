@@ -12,12 +12,10 @@ import {
   HUSK,
   HUSK_DARK,
   NUT_GREEN,
-  NUT_RIPE,
   NUT_TURNING,
   PalmKit,
   palmR,
   SHEATH,
-  fallen,
   fallenSpot,
   frond,
   mixHex,
@@ -43,7 +41,8 @@ import {
  *   up, the olive crown shaft, a crown of long arching feather fronds (the oldest
  *   yellowing, a dead one hanging), bunches of green coconuts under it (the ripe
  *   ones turning yellow-brown and falling: `fallen` lie round the foot, under the
- *   crown's side); just picked, a flower spathe and a bunch of young buttons.
+ *   crown's side, drawn smooth by the view: garden/_viewFruit.ts); just picked, a
+ *   flower spathe and a bunch of young buttons.
  *
  * Thirsty (`droop`), the fronds hang and pale (1) or go limp and yellow-brown (2);
  * dead, a dry brown sprawl, nothing green.
@@ -230,8 +229,8 @@ function palm(K: PalmKit, look: PlantLook, W: Wither): void {
       frond(K, cx, cy + 0.1, cz, az, -1.3 - K.r(180 + k) * 0.15, (K.r(190 + k) - 0.5) * 0.4, 3.0 + K.r(200 + k) * 0.5, 0.75, 0.04, c, 0.95, { segs: 4, pairs: 7, rib: c, tip: 0.7, hang: 0.3 });
     }
   }
-  // Ripe coconuts on the ground, fallen from the crown (toward its side).
-  if (grown && look.fallen > 0) fallen(K, look.fallen, 0.27, NUT_RIPE, la, FALL_REACH, null);
+  // (ripe coconuts lying on the ground, fallen toward its side: drawn smooth by the view where `fallenAt` says,
+  // garden/_viewFruit.ts — one oval husk each, not a block)
 }
 
 /** Coconut bunches under the crown (green; turning yellow-brown when ripe), or a flower spathe and young buttons. */

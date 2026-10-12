@@ -39,6 +39,9 @@ export interface Earth {
   readonly foot: number;
   /** Its reach from the plant (m), for the bounds. */
   readonly reach: number;
+  /** A basin's bank: its middle this far from the plant (m; 0 for a bed), its top this high over the ground (fruit lying on it). */
+  readonly bank: number;
+  readonly bankTop: number;
 }
 
 /** The earth's tones (sRGB): dry, damp, wet. */
@@ -82,6 +85,7 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
   const puddle = new VoxelBuilder();
   let foot: number;
   let reach: number;
+  let bank = 0;
   if (k.size === 'crop') {
     // A dug bed, square to the map; cut back at a terrace's edge.
     const half = Math.min(0.85, Math.max(0.45, k.room * 0.75));
@@ -176,6 +180,7 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     puddle.box(0, 0.026, 0, p, 0.012, p, PUDDLE[0], 'mapStone', { ry: turn + 0.2 + Math.PI / 4 });
     puddle.box(p * 0.12, 0.048, -p * 0.1, p * 0.42, 0.012, p * 0.2, PUDDLE[1], 'mapStone', { ry: turn + 0.6 });
     reach = R + 0.15;
+    bank = R;
   }
   const rock = packBlocks('mapRock', b.boxes);
   const set = (soil: 0 | 1 | 2) => {
@@ -199,6 +204,8 @@ export function buildEarth(kind: PlantKindId, stage: Stage, seed: number, x: num
     puddle: puddle.boxes.length ? packBlocks('mapStone', puddle.boxes) : null,
     foot,
     reach,
+    bank,
+    bankTop: 0.12,
   };
 }
 

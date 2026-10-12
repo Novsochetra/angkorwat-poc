@@ -1,4 +1,4 @@
-import { CanvasTexture, Group, InstancedMesh, MeshBasicMaterial, NearestFilter, PlaneGeometry, Sphere, SRGBColorSpace, Vector3, type Camera } from 'three';
+import { CanvasTexture, Group, InstancedMesh, MeshBasicMaterial, NearestFilter, PlaneGeometry, Sphere, SRGBColorSpace, Vector3, type Camera, type PerspectiveCamera } from 'three';
 import { pixelSize } from '../graphics';
 
 /**
@@ -177,8 +177,8 @@ export class ThirstDrops {
   }
 
   /**
-   * Each frame, after the plants' `set`: the drops eased and turned to the camera (`night` 0‥1 dims them a little).
-   * Returns the drops that burst this frame (watered) into `burst` (x, y, z each), their count.
+   * Each frame, after the plants' `set`: the drops eased (near the camera: `NEAR`) and turned to it (`night` 0‥1 dims
+   * them a little). Returns the drops that burst this frame (watered) into `burst` (x, y, z each), their count.
    */
   frame(dt: number, camera: Camera, burst: Float32Array, night = 0): number {
     const plain = this.plain;
@@ -192,21 +192,7 @@ export class ThirstDrops {
     this.material.color.setScalar(1 - 0.3 * night);
     const e = camera.matrixWorld.elements;
     _eye.set(e[12], e[13], e[14]);
-    // (the camera's right and up: the quads face it)
-    _r.set(e[0], e[1], e[2]).normalize();
-    _u.set(e[4], e[5], e[6]).normalize();
-    const px = pixelSize(camera);
-    let np = 0;
-    let nu = 0;
     let bursts = 0;
-    let x0 = Infinity;
-    let x1 = -Infinity;
-    let y0 = Infinity;
-    let y1 = -Infinity;
-    let z0 = Infinity;
-    let z1 = -Infinity;
-    const pm = plain.instanceMatrix.array as Float32Array;
-    const um = urg.instanceMatrix.array as Float32Array;
     for (let si = this.slots.length - 1; si >= 0; si--) {
       const s = this.slots[si];
       if (!s.seen) s.want = 0;
@@ -227,9 +213,40 @@ export class ThirstDrops {
       if (s.k < 0.01 && want === 0) {
         this.slots[si] = this.slots[this.slots.length - 1];
         this.slots.pop();
-        continue;
       }
+    }
+    this.face(camera);
+    return bursts;
+  }
+
+  /**
+   * The quads turned to `camera` and sized for it: each picture as it is drawn (the scene's onBeforeRender,
+   * garden/view.ts), so a shot's or the free camera's `cam=` sees them face on too.
+   */
+  face(camera: Camera): void {
+    const plain = this.plain;
+    const urg = this.urgentMesh;
+    if (!this.on || !(camera as PerspectiveCamera).isPerspectiveCamera) return;
+    const e = camera.matrixWorld.elements;
+    _eye.set(e[12], e[13], e[14]);
+    // (the camera's right and up: the quads face it)
+    _r.set(e[0], e[1], e[2]).normalize();
+    _u.set(e[4], e[5], e[6]).normalize();
+    const px = pixelSize(camera);
+    let np = 0;
+    let nu = 0;
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    let z0 = Infinity;
+    let z1 = -Infinity;
+    const pm = plain.instanceMatrix.array as Float32Array;
+    const um = urg.instanceMatrix.array as Float32Array;
+    for (let si = 0; si < this.slots.length; si++) {
+      const s = this.slots[si];
       if (s.k < 0.01) continue;
+      const d = Math.hypot(s.x - _eye.x, s.y - _eye.y, s.z - _eye.z);
       const t = this.time + s.phase;
       // (half a metre, at least MIN_PX pixels tall; urgent: it pulses)
       const h = Math.max(HEIGHT, MIN_PX * px * d) * s.k * (1 + 0.1 * s.urgent * Math.sin(t * 7));
@@ -257,7 +274,6 @@ export class ThirstDrops {
     const r = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 2;
     upload(plain, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, r);
     upload(urg, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, r);
-    return bursts;
   }
 
   /** Drops shown now (stats). */
