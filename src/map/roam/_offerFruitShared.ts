@@ -69,7 +69,7 @@ export function prompt(key: PromptKey, k: OfferKind): string {
   if (p === undefined) {
     const words = t(key === 'offerMonkListen' ? 'offerMonk' : key, { fruit: fruitWord(k) });
     p = `E  ${words}${key === 'offerMonkListen' ? `  ·  J  ${t('listenMonk')}` : ''}`;
-    if (hint) p += `  ·  , .  ${t('offerStep')}`;
+    if (hint) p += `  ·  ,/.  ${t('offerStep')}`;
     byKind[i] = p;
   }
   return p;

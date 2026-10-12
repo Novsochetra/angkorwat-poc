@@ -1751,7 +1751,7 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
 - **What he gives**: one of a kind from his garden's basket (garden/state.ts `GARDEN.basket`), of the fruit
   (`OFFER_KINDS`: bananas, a coconut, a mango, a papaya, a guava, a jackfruit, a durian, palm fruit, sugarcane; not
   the eggplant, corn or pumpkin): the kind he has most of, or the one picked with `,` / `.` (a toast "ស្វាយ
-  (ក្នុងកន្ត្រក ២) / a mango (2 in your basket)"); while he has two kinds or more the prompt ends "· , .  ប្ដូរផ្លែឈើ /
+  (ក្នុងកន្ត្រក ២) / a mango (2 in your basket)"); while he has two kinds or more the prompt ends "· ,/.  ប្ដូរផ្លែឈើ /
   another fruit" until he has used them once. Each kind is drawn smooth in the statues' material (as the altar
   offerings, sacred/offerings.ts) on a small footed brass tray (ថាស): a hand of five bananas, a young green coconut,
   three mangoes with their blush, a papaya, four guavas, a knobbly jackfruit, a spiky durian, three dark palm fruits
