@@ -6,7 +6,8 @@ import { CARRY, FEAT, SLOT, SLOTS, type Carry, type Feature, type Look, type Slo
  *
  * - **monk**: shaven head (and eyebrows), a saffron robe over the left
  *   shoulder with the right shoulder bare, the lower robe to the shins,
- *   barefoot or in sandals; an alms bowl, a saffron umbrella or a broom.
+ *   barefoot or in sandals (always barefoot with the alms bowl: the alms round is walked
+ *   barefoot); an alms bowl, a saffron umbrella or a broom.
  *   `young`: a novice (a boy monk).
  * - **visitor**: people from everywhere, men and women, young and old: a
  *   T-shirt or a shirt (shoulders covered: it is a temple), trousers, knee
@@ -156,7 +157,9 @@ export function dress(kind: PersonKind, seed: number, opts: DressOptions = {}): 
     set(['hair'], shade(skin, 0.86));
     set(['top', 'sleeveL', 'foreL', 'hips', 'thigh', 'shin'], robe);
     set(['accent'], shade(robe, 0.8));
-    set(['sole'], rnd() < 0.5 ? skin : 0x4a3426);
+    // (barefoot or in sandals; with his alms bowl always barefoot: monks walk the alms round បិណ្ឌបាត barefoot)
+    const sandals = rnd() >= 0.5 && opts.carry !== CARRY.bowl;
+    set(['sole'], sandals ? 0x4a3426 : skin);
     set(['gear'], 0x1e1a18);
     set(['prop'], pick([0xe07a24, 0xd8701a, 0x8a2e22]));
     colors[SLOT.prop2] = shade(colors[SLOT.prop], 0.82);
