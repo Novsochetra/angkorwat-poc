@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import type { AngkorExplorer } from '../../character/AngkorExplorer';
 import { REST_U, restDuration, restPose, type RestState } from '../../character/rest';
+import { BODY_UNIT_M } from '../../world/scale';
 import { pad } from '../pad/pad';
 import { t } from '../ui/lang';
 import { angleDiff } from './followCam';
@@ -92,6 +93,31 @@ export interface Rest {
   hatChosen(): void;
 }
 
+/** Where his feet go to rest on a seat (m, world) and the way he faces. */
+export interface RestSeat {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /**
+   * A bench: its seat this high over his feet (m; his feet stay on the ground before it and he sits down onto it
+   * behind him: character/rest.ts `RestState.bench`, no lying on it). 0 or left out: he rests on the spot itself (a bed).
+   */
+  bench?: number;
+}
+
+/**
+ * Seats he built at home (roam/_build.ts fills these): J / L by one put him on it, on its spot and its way, instead
+ * of on the ground where he stands; on a seat that is not for lying (a bench) L says there is no room.
+ */
+export const REST_SEATS = {
+  /** A seat at hand for `kind` for feet at (x, y, z): its spot into `out` (true), or false (the ground where he stands). */
+  find: (_kind: RestKind, _x: number, _y: number, _z: number, _out: RestSeat): boolean => false,
+  /** Feet at (x, y, z) sit on a seat he may not lie on. */
+  noLie: (_x: number, _y: number, _z: number): boolean => false,
+};
+const seatAt: RestSeat = { x: 0, y: 0, z: 0, yaw: 0 };
+
 export interface RestDeps {
   explorer: AngkorExplorer;
   body: RoamBody;
@@ -181,6 +207,7 @@ export function createRest(d: RestDeps): Rest {
     turnTo = null;
     // (standing, while the Animator eases out of the posture: no lying on the ledge after Esc)
     state.u = state.sleep = 0;
+    state.bench = 0;
     explorer.animator.posture = null;
     explorer.animator.postureFeet = true;
     explorer.asleep = false;
@@ -279,6 +306,11 @@ export function createRest(d: RestDeps): Rest {
         return;
       }
       if (to > 0) {
+        // (on a bench he built: no lying back off it: REST_SEATS)
+        if (kind === 'lie' && (state.bench || REST_SEATS.noLie(body.pos.x, body.pos.y, body.pos.z))) {
+          hud.toast(t('rRestRoom'));
+          return;
+        }
         // (sitting: lie back; lying: sit up)
         go(want);
         hud.toast(t(kind === 'sit' ? 'rSitting' : 'rLying'));
@@ -290,6 +322,19 @@ export function createRest(d: RestDeps): Rest {
         return;
       }
       if (!body.grounded) return;
+      // (a seat he built at home at hand: onto its spot, its way: REST_SEATS)
+      seatAt.bench = 0;
+      if (REST_SEATS.find(kind, body.pos.x, body.pos.y, body.pos.z, seatAt)) {
+        body.pos.set(seatAt.x, seatAt.y, seatAt.z);
+        body.yaw = seatAt.yaw;
+        // (a bench: its seat's height in his body units)
+        state.bench = seatAt.bench ? seatAt.bench / (BODY_UNIT_M * body.scale) : 0;
+        body.vel.set(0, 0, 0);
+        turnTo = null;
+        go(want);
+        hud.toast(t(kind === 'sit' ? 'rSitting' : 'rLying'));
+        return;
+      }
       const no = refusal(kind, ctx, body.yaw);
       const turn = no ? TURNS.find((a) => !refusal(kind, ctx, body.yaw + a)) : 0;
       if (turn === undefined) {
@@ -392,7 +437,9 @@ export function createRest(d: RestDeps): Rest {
           : pad.active
             ? `Space  ${t('rGetUp')}`
             : to === REST_U.sit
-              ? `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}`
+              ? state.bench
+                ? `J  ${t('rGetUp')}`
+                : `J  ${t('rGetUp')}  ·  L  ${t('rLieBack')}`
               : `L  ${t('rGetUp')}  ·  J  ${t('rSitUp')}`,
       );
     },

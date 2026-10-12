@@ -67,6 +67,7 @@ const cand: ShareWho = { id: -1, x: 0, y: 0, z: 0, yaw: 0, d: 0, kind: '', elder
 const found: ShareWho = { ...cand };
 let candToday = false;
 let offeredAt = -1e9;
+let shownLast = false;
 let againAt = -1e9;
 /** Whom he gave to, and on which day of the map (the crowd index → the day). */
 const given = new Map<number, number>();
@@ -287,7 +288,7 @@ registerAddon({
   },
   input(ctx, mode, tap) {
     // `,` / `.`: another fruit (only while our prompt shows: the offering add-on reads the same keys at its own)
-    if (mode !== 'walk' || session || ctx.t - offeredAt > 0.3) return false;
+    if (mode !== 'walk' || session || !shownLast) return false;
     const dir = tap('Comma') ? -1 : tap('Period') ? 1 : 0;
     if (!dir) return false;
     const k = stepGift(dir);
@@ -320,6 +321,8 @@ registerAddon({
   },
   after(ctx, mode) {
     lastCtx = ctx;
+    // (our prompt was the one shown on this step: the next step's `,` / `.` are ours, not the offering's)
+    shownLast = mode === 'walk' && offeredAt === ctx.t;
     // (live: as soon as the people are about; a headless shot: in its frames, `frame`)
     if (pending && mode === 'walk' && !session && !env?.shot) startPending(ctx);
   },

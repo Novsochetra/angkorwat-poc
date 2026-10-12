@@ -46,6 +46,13 @@ export const CHANT_FOR = 8.2;
  * back in his sampeah by `for`.
  */
 export const TIE = { reach: 1.0, wind: 1.75, round: 2.65, knot: 3.6, back: 3.95, look: 5.0, for: 6.6 } as const;
+/**
+ * Fruit offered to him before a blessing (roam/_offerFruitMonk.ts, state `gift`; s into it): the one kneeling holds it
+ * out on its tray; the monk leans forward with both hands out to it (`reach`, his hands where they tie the string),
+ * has it (`take`), sets it on his dais beside him (`set` ‥ `down`), sits up and chants his thanks for it (from
+ * `chant`: "យថា វារិវហា…", then the four blessings) until `end`.
+ */
+export const GIFT = { reach: 0.55, take: 1.3, set: 2.3, down: 2.9, chant: 3.2, end: 9.2 } as const;
 
 /** A box on the floor (m): its middle, its half length along the monk's facing and across it, its top. */
 export interface BlessBox {
@@ -204,7 +211,7 @@ export function blessHour(clock: number): 'sit' | 'meal' | 'night' {
   return 'night';
 }
 
-export type BlessState = 'none' | 'kneel' | 'chant' | 'tie' | 'words' | 'bow' | 'again';
+export type BlessState = 'none' | 'kneel' | 'chant' | 'tie' | 'words' | 'bow' | 'again' | 'gift';
 /** Why the monk is not there to bless: the night, his meal, a festival at the pagoda, or not built (no people part). */
 export type BlessAway = 'night' | 'meal' | 'fest' | 'gone' | null;
 

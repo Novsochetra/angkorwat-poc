@@ -1,4 +1,4 @@
-import { Matrix4, type InstancedMesh } from 'three';
+import { Matrix4, type InstancedMesh, type Object3D } from 'three';
 import type { HeightField } from '../heightfield';
 import type { MapPart } from '../types';
 
@@ -17,7 +17,9 @@ import type { MapPart } from '../types';
  * one is not there).
  *
  * The trees (`vegetation`) are left out: their low leaves he rides through as
- * he walks through them. Cheap: ≈ 3 000 boxes in 4 m cells, made in ≈ 2 ms;
+ * he walks through them. Roaming's own things that hang (`extra`: the bicycle
+ * shop's inner tubes and tyres on its front pole, roam/_bikeShopStall.ts) count
+ * whatever their family. Cheap: ≈ 3 000 boxes in 4 m cells, made in ≈ 2 ms;
  * a question looks at the few in one cell, no allocation.
  */
 
@@ -40,19 +42,19 @@ let built = false;
 
 const key = (i: number, k: number) => (i + 4096) * 8192 + (k + 4096);
 
-/** Index the hanging soft boxes of `parts` (once: before their first update). */
-export function buildCanopies(parts: readonly MapPart[], field: HeightField): number {
+/** Index the hanging soft boxes of `parts` (once: before their first update), and every hanging box of `extra`. */
+export function buildCanopies(parts: readonly MapPart[], field: HeightField, extra: readonly Object3D[] = []): number {
   if (built) return countBoxes();
   built = true;
   const id = new Matrix4();
   let n = 0;
-  for (const part of parts) {
-    if (SKIP.has(part.name)) continue;
-    part.object.updateMatrixWorld(true);
-    part.object.traverse((o) => {
+  const roots = [...parts.filter((p) => !SKIP.has(p.name)).map((p) => ({ root: p.object, any: false })), ...extra.map((root) => ({ root, any: true }))];
+  for (const { root, any } of roots) {
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
       const mesh = o as InstancedMesh;
       if (!mesh.isInstancedMesh || !mesh.userData.voxelShape || !mesh.count) return;
-      if (!SOFT.has(mesh.name.slice(mesh.name.lastIndexOf(':') + 1))) return;
+      if (!any && !SOFT.has(mesh.name.slice(mesh.name.lastIndexOf(':') + 1))) return;
       const world = mesh.matrixWorld.equals(id) ? null : mesh.matrixWorld;
       const w = world?.elements;
       const a = mesh.instanceMatrix.array as Float32Array;

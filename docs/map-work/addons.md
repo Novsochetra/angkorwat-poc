@@ -216,10 +216,9 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
 `roam/_bike.ts` (id `bike`, words `bike…`), the places `roam/_bikeSpots.ts`, the
 model `roam/_bikeModel.ts`, his posture `character/bike.ts` (`BIKE`: the
 bicycle's size in his body units, shared with the model), sounds `audio/_bike.ts`,
-a badge on the maps (`ui/_minimapSpots.ts`: `bike-wat`, `bike-market`,
-`bike-hamlet`, named "ចំណតកង់ / Bicycles", targets like the villages; the village's
-bicycle, 19 m from the market's, shares that badge: on the big map they would sit on
-each other).
+a badge on the maps where they are hired out (`ui/_minimapSpots.ts`: `bike-wat`,
+named "ជួលកង់ / Bicycle hire", a target like the villages). Whose each is, his own
+and the shop: "Buying a bicycle" below.
 
 - **Where**: four black Khmer town bicycles (step-through frame with two curved
   tubes, sprung saddle, upright bars with a brass thumb bell, a woven basket on
@@ -232,15 +231,20 @@ each other).
   and bicycles, at the sugar-palm village's west end in front of its first house
   (which keeps its own bicycles under it), and with the bicycles at the foot of the
   lane by the little market behind Angkor Wat. Sized for him (his legs are short,
-  his belly round: a low saddle, short cranks, the grips well forward); all four
-  are one `Things` (the people's instanced boxes: one draw, one for the shadows),
-  only the one moving is written.
-- **Getting on and off**: on foot by one (1.7 m from its middle), E
-  "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up, he sits with his
-  left foot down (0.6 s). E "ចុះពីកង់ / Get off": it brakes to a stop first, then
-  he steps off to his left (else his right, or behind it: wherever he fits) and the
-  bicycle stays on its stand where he left it (leaning on it, the bars turned a
-  little). Back to the map (Esc), every bicycle goes back to its place.
+  his belly round: a low saddle, short cranks, the grips well forward). The one by
+  Angkor Wat is hired out; the other three are the neighbours' (not his to ride);
+  his own, bought at the morning market, is a fifth (its kind's look: `BikeLook`,
+  `restyle`), and the shop's three for sale stand in its stall: all of them are one
+  `Things` (the people's instanced boxes: one draw, one for the shadows), only the
+  one moving is written.
+- **Getting on and off**: on foot by one he may ride (his own, or the hire bicycle
+  once paid; 1.7 m from its middle, one he may ride before a neighbour's up to
+  0.8 m nearer), E "ជិះកង់ / Ride the bicycle": he steps over, the stand flips up,
+  he sits with his left foot down (0.6 s). E "ចុះពីកង់ / Get off": it brakes to a
+  stop first, then he steps off to his left (else his right, or behind it: wherever
+  he fits) and the bicycle stays on its stand where he left it (leaning on it, the
+  bars turned a little). Back to the map (Esc), the hire and the neighbours'
+  bicycles go back to their places; his own stays where it is.
 - **Riding** (a walk-mode add-on that holds him): W pedals (the speed builds up:
   ≈ 5 m/s in 2 s, ≈ 8 at most; a half push of the stick goes slower), Shift (R2,
   the stick past its ring) pedals hard (≈ 11; he rocks over the pedals), S brakes
@@ -312,8 +316,9 @@ each other).
 - **What hangs at his head's height** (his hat's brim 2.1 m, its crown 2.45 m, and
   its sides: his head is wide) he slows for and stops short of, his foot down,
   "ទាបពេក ជិះកាត់មិនបានទេ / Too low to ride under": a stall's umbrella, an awning,
-  cloth on a line, vines hanging from a wall (`roam/_bikeCanopy.ts`: the soft boxes of
-  the built parts that hang 1‥2.6 m over the land, indexed when roaming is built,
+  cloth on a line, vines hanging from a wall, the bicycle shop's inner tubes and
+  tyres on its front pole (`roam/_bikeCanopy.ts`: the soft boxes of the built parts,
+  and any of the shop's stall, that hang 1‥2.6 m over the land, indexed when roaming is built,
   before any part's first update; each read as it is now, so a market's umbrellas
   folded away at closing are not there and stop nothing), or a lintel or a beam lower
   than his hat (`world.ceilingAt`); his head goes up and down the stairs and terraces
@@ -348,10 +353,11 @@ each other).
   `bikeStone`; silent in the air), `bikeBump` (over a step, a tyre's knock on a step
   it pops up, a landing by how hard), `bikeHop` (the tyres leaving the ground, the
   chain slapping, the basket), `bikeBrake`, `bikeStand`, `bikeBell`.
-- **URL**: `bike=ride` puts him on the nearest bicycle at `at=` facing `yaw=`
-  (it comes to him), `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw°,…`
-  a bicycle left away from its place (`wat`, `market`, `village`, `hamlet`). The
-  bug report gives both. In `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e`
+- **URL**: `bike=ride` puts him on a bicycle at `at=` facing `yaw=` (his own if
+  he has one, `bikeown=`, else the nearest; it comes to him; the hire one is hired),
+  `bike=ride:<m/s>` already rolling; `bikeleft=<spot>:x:z:yaw°,…` a bicycle left away
+  from its place (`wat`, `market`, `village`, `hamlet`); his own and the hire:
+  "Buying a bicycle". The bug report gives them all. In `sim=`: `w` pedals, `j` hops, `f` rings the bell, `e`
   gets off. Give `at=` its height (`at=x,y,z`) by a step or a wall: two values may
   stand him on a roof. E.g. `roam=walk&at=325,-84&yaw=270&bike=ride&sim=w:2,wa:1`
   (the market's lowland, riding west then turning left), `…&sim=_:1` (stopped,
@@ -368,7 +374,8 @@ each other).
   console (the phase, the speed, the steering, the lean, the lamp, each wheel's
   height, what holds it up, the ground under it and whether it is on it, the pitch,
   in the air or not, waiting at a step's face, what the last move met: `ok`,
-  `lift`, `wall`, `up`, `down`, `deep`; each bicycle); the console line
+  `lift`, `wall`, `up`, `down`, `deep`; which he rides, the hire, his own; each
+  bicycle with its role and look; the three for sale); the console line
   `[map] bicycles: 4 · N things hanging at head height … indexed in N ms`. Real play
   (held keys, 60 frames a second): GPU Chromium with Playwright, a shot page with
   `video=1` stepped by `__videoFrame(t, 1 / 60)`, `roam.placeFrom(q, __frame)` to
@@ -376,7 +383,120 @@ each other).
 
 ### Buying a bicycle
 
-(to be written: roam/_bikeShop*.ts)
+"Buy some bike also instead of steal from neighbor": a bicycle shop (ហាងកង់) at the
+sugar-palm village's morning market where he buys his own (add-on `bikeShop`, words
+`bikeShop…`, `bikeOwn…`, `bikeHire…`, `bikeNeighbour…`): `roam/_bikeShop.ts` (the
+add-on: E, the visit, buying, the camera, the maps' badge, the URL),
+`_bikeShopCard.ts` (the card), `_bikeShopArt.ts` (the bicycles in pixels),
+`_bikeShopPlan.ts` (where everything is, no three.js: the stall's frame, its hours,
+the buyer's place, the delivery spot, `SHOP_MECHANIC`), `_bikeShopStall.ts` (the
+stall's blocks and its walk map), `_bikeShopSign.ts` (the painted words),
+`_bikeOwn.ts` (the kinds, prices and trade-in, his bicycle and where it stands,
+saved; no three.js), the mechanic `people/_sceneBikeShop.ts` (scene `bikeshop`); the
+bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
+
+- **Where**: south of the village street's east leg, behind the row of parked motos
+  and bicycles (hamlet/_mkPlan.ts `PARKED`), on the market's low ground before the
+  land steps up to the fields, its front to the street (`BIKE_SHOP`: 340.6, −68.4).
+  Clear of the hall's east way out, the drinks cart and the parking's path. Under a
+  faded blue tarp on four bamboo poles: the workbench (a vice, spanners, a hammer, a
+  tin of grease, a rag, a tray of nuts, a red toolbox under it), the mechanic's low
+  stool, an old green bicycle upside down on its saddle and bars with its front wheel
+  off and leaning on the bench, a basin of water with an inner tube in it; inner tubes
+  and tyres hanging from the front pole, rims on the back one, a stack of new tyres;
+  a foot pump and a tall hand pump outside the west post; the painted sign
+  "ជួសជុលកង់" (bicycles mended) standing on the front pole, a small "លក់កង់"
+  (bicycles for sale) board before the three for sale (the black town bicycle, the
+  sky-blue lady's, the red one), slanted out to the street in its east half. Oil-dark
+  earth under it. In roaming's scene (≈ 500 blocks in the market's families: no new
+  shader; not drawn past 340 m); its solid parts (the workbench and the mending
+  corner, the row for sale, the sign, the basin, the pumps, the stack, the poles) are
+  laid over the walk map (`installShopWalk`: `standAt`, `clearance`,
+  `hardClearance`), so he, his bicycle, the dog and the camera keep out of them.
+- **The mechanic** (ជាងកង់: a krama round his head, an old blue work shirt, dark
+  trousers): on his stool by day, looking out at the street and at him when he comes
+  near, calling out now and then "កង់ថ្មីៗ ជិះស្រួល! មើលសិនទៅ បង". At the card he
+  looks up and asks, and hands it over with a bow and "អរគុណបង!" (people/_saleBack.ts
+  through `BROWSE` and `SALE`). Out of hours he walks home east along the village
+  street, and back in the morning.
+- **Hours**: after sunrise to the late afternoon (`SHOP_HOURS` 0.765‥0.2 of the clock).
+  Closed: "ហាងកង់បិទហើយ — មកវិញពេលព្រឹក / The bicycle shop is closed: come back in
+  the morning" before it (no key; E says it again). Open but the mechanic still
+  walking in: "…the mechanic is on his way back".
+- **E "ទិញកង់ / Buy a bicycle"** at the buyer's place before the upturned bicycle
+  (1.75 m round it; nearer his own bicycle by the shop than to it, E rides that):
+  he turns to the mechanic, the camera comes round behind his shoulder (the nursery's
+  `clearView`), the picture slides left of the card, and the card opens in the buy
+  menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
+  has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
+  picture on a light tile, its name and a line, what it costs him now), "Ride it
+  anywhere: it stays where you leave it" while he has none, the purse.
+- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, so a bicycle is
+  saved up for from fish and the garden): the black town bicycle (កង់បុរាណ ពណ៌ខ្មៅ:
+  a cane basket and a lamp) **60,000 ៛**, the sky-blue lady's bicycle (កង់ស្រី
+  ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
+  guard) **85,000 ៛**, the red bicycle with a back seat (កង់ក្រហម មានកៅអីក្រោយ:
+  chrome mudguards, a padded seat on the rack to carry a friend, a lamp on the fork,
+  streamers from the grips) **120,000 ៛**. **One bicycle**: buying another trades his
+  in for half its price (`TRADE_IN`, to 1,000 ៛: 30,000, 43,000, 60,000), shown on the
+  row ("Trade in yours: 43,000 ៛ off", the old price struck through); his own says
+  "✓ Yours" (taken: "That one's yours already"). More than the purse holds: the row
+  greyed, its price in red, "15,000 ៛ more"; tried anyway, it shakes and the mechanic
+  says to save up a little more.
+- **Bought**: the purse pays (the notes, the purse glows and counts down), the
+  mechanic hands it over (`SALE`), he reaches and takes its key on a red tag (the
+  `interact` action, the key in his fist: the rig's `bikeShop` slot), the bell rings,
+  a toast ("Bought: …! It stands in front of the shop"; traded: "Your old one traded
+  in for 43,000 ៛"), and the bicycle stands on its stand before the stall's east
+  end, pointing east along the street (`SHOP_DELIVER`); the old one, wherever it
+  was, is gone. The card shuts by itself 2.6 s later.
+- **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
+  model in its look), it stays where he gets off it, across Esc back to the map and
+  between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
+  `bike.ownAt` (`{ x, z, yaw° }`), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
+  / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
+  mini-map and the big map (it goes while he rides it, and while he has none); the
+  shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
+  big map 20 m behind the stall, clear of the market's): both named on the big map
+  only while pointed at, picked or the target.
+- **The neighbours' bicycles** (the morning market's, the village's west end, the
+  little market behind Angkor Wat): by one, a line with no key, "កង់អ្នកជិតខាង ·
+  ទិញកង់បាននៅផ្សារព្រឹក / A neighbour's bicycle · buy your own at the market"; E
+  anyway: the neighbour calls out, a line in turn ("«ហេ៎ បង! កង់ខ្ញុំទេតើ!»", "«ចង់បានកង់
+  ទៅទិញនៅផ្សារព្រឹកទៅ បង!»", "«កុំយកកង់ខ្ញុំណា៎! ខ្ញុំត្រូវជិះទៅផ្សារ»").
+- **Hiring at Angkor Wat** (as at the real temple's west entrance): E "ជួលកង់
+  (២,០០០ ៛) / Hire a bicycle (2,000 ៛)": paid once (`HIRE_PRICE`; short:
+  "hiring costs 2,000 ៛"), he rides it; off it and on again is free while the hire
+  lasts; once he has left it and is 30 m from it (`HIRE_BACK`), or back to the map, it
+  goes back to its place ("The hired bicycle has gone back to its stand").
+- **Keys**: E before the stall; the card's own while open (1–3 a row, ↑ ↓ or Tab the
+  ring, Enter, Space or E take, Esc or the × shut); W A S D or the stick walk away
+  (not during the hand-over). Pad: a layer (the stick and the d-pad move, ✕ takes, ○
+  shuts). Touch: tap a row; on a phone held upright a sheet along the bottom, a tap
+  beside it shuts it; touch's Use takes the one in the ring.
+- **Cost**: the stall is one voxel group (four families: four draws and their
+  shadows, culled by view and by 340 m); before the stall two box tests a step; the
+  walk map's overlay a box test round the stall per question (no allocation); the
+  mechanic one person (stepped within 260 m); the badge's place on the big map only
+  when his bicycle moves.
+- **URL**: `bikeshop=1` he stands at the buyer's place facing the mechanic, the card
+  open · `bikeshopbuy=town|lady|carrier` buys it as it opens (`sim=_:1.1` the hand-over,
+  `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
+  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
+  he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
+  `red`) · `bikeownat=x:z:yaw°` it stands there (else before the shop; nothing saved
+  from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
+  `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
+  `bikeownat`, `bikehire`. Checks: `window.__bikeShop.state()` (dev, shots: the card
+  open, its ring, a sale under way, the riel, his bicycle, what each costs him now,
+  the mechanic's flags, his action); `bikeDebug()` (above).
+  E.g. the stall `cam=346.3,14,-78.9,340.6,9.2,-68.4,50&ui=0&clock=0.85`; the card
+  `roam=walk&at=340.93,-71.11&clock=0.85&bikeshop=1&purse=70000` (`lang=en`; with
+  `bikeown=town` the trade-in; `touch=1&phone=1` a phone); buying
+  `…&purse=95000&bikeshopbuy=lady&sim=_:1.1`; riding his own
+  `roam=walk&at=352,-75&yaw=241&bike=ride:4&bikeown=carrier&sim=w:1&rcam=115,14,6.5`;
+  a neighbour's `roam=walk&at=349.4,-71.2&yaw=90&sim=e:0.1,_:0.6`; the hire
+  `roam=walk&at=10,-151.3&yaw=180`.
 
 ### Ox cart ride
 
@@ -1387,6 +1507,9 @@ alms bowls; families give rice by the road; the explorer gives too.
   spoon over the bowl) and `dakbat=bless` the monk before him at once; the shop:
   `shop=market-flowers`, `shopbuy=dakRice`, `kept=dakRice`. Bug reports give
   `dakbat=wait|give|bless`. `__dak.now()` in the console: his state and the ask.
+- **Fruit from his garden** (roam/_offerFruitMonk.ts, "Offering fruit" below): with no rice but fruit in his
+  basket, "E  ដាក់ចេកក្នុងបាត្រព្រះសង្ឃ" asks the line the same way (`DAK.ask`; the monk 1.35 m before him); the
+  fruit goes into the bowl with both hands, `rice` stays 0.
 ### A monk's blessing (the red string)
 
 `roam/_blessing.ts` (id `bless`, words `bless…`), his pose `character/blessing.ts`, the
@@ -1500,6 +1623,9 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   Kulen's: `roam=walk&at=401.25,150,-444.1&yaw=180&clock=0.9&people=kulen,kulenblessing`
   (`parts=terrain,kulen,people,foreground` is quicker; `bless=` and `listen=` take the seat
   he stands before, else the nearest).
+- **Fruit offered first** (roam/_offerFruitMonk.ts, "Offering fruit" below): with fruit in his basket the first E
+  before the dais offers it ("E  ប្រគេនចេកព្រះសង្ឃ"; state `gift`, times `GIFT`): the monk leans forward, takes the
+  tray in both hands, sets it on his dais at his left and chants his thanks; then "Ask for a blessing" as ever.
 
 ### Kneeling to listen to the monks' chanting
 
@@ -1614,7 +1740,82 @@ table, `P_CHANT_ROT`), sounds `audio/_listen.ts`; each pagoda's dawn chant follo
   on the porch then).
 ### Offering fruit
 
-(to be written: roam/_offerFruit*.ts; shared with sharing: roam/_giveFruit.ts)
+His garden's fruit given at the holy places (ថ្វាយ) and to the monks (ប្រគេន): `roam/_offerFruit.ts` (id
+`offerFruit`, order 14: before a shrine's "Pray"; the shrines, the registration, the URL), the monks
+`roam/_offerFruitMonk.ts`, what both share `roam/_offerFruitShared.ts`, the fruit on its tray and the trays left
+before the shrines `roam/_offerFruitModels.ts`, the link to the people `roam/_offerFruitHooks.ts` (`OFFER`), the
+monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose `character/offer.ts`; words
+`offer…`. The giving is shared with the sharing add-on (`roam/_giveFruit.ts`: what he gives, `,` / `.`, `isMonk`,
+`GIVING`; it now takes an optional kind filter, `GiftFilter`: the offering takes only fruit eaten as it is).
+
+- **What he gives**: one of a kind from his garden's basket (garden/state.ts `GARDEN.basket`), of the fruit
+  (`OFFER_KINDS`: bananas, a coconut, a mango, a papaya, a guava, a jackfruit, a durian, palm fruit, sugarcane; not
+  the eggplant, corn or pumpkin): the kind he has most of, or the one picked with `,` / `.` (a toast "ស្វាយ
+  (ក្នុងកន្ត្រក ២) / a mango (2 in your basket)"); while he has two kinds or more the prompt ends "· ,/.  ប្ដូរផ្លែឈើ /
+  another fruit" until he has used them once. Each kind is drawn smooth in the statues' material (as the altar
+  offerings, sacred/offerings.ts) on a small footed brass tray (ថាស): a hand of five bananas, a young green coconut,
+  three mangoes with their blush, a papaya, four guavas, a knobbly jackfruit, a spiky durian, three dark palm fruits
+  with their green caps, three pieces of sugarcane; alone (no tray) as it goes into a monk's hands or bowl.
+- **At a shrine** (every `WORSHIP` spot: the temples' Buddhas, the village pagoda, Kulen, the jungle's shrines, the
+  spirit houses; new spots in `_worship.ts` for the sugar-palm village's spirit house and its neak ta at the
+  tamarind, the spirit house before the old house in the hamlet behind Angkor Wat, and the morning market's neak ta
+  under its tree: "E  Pray" works there too): "E  ថ្វាយចេក ហើយថ្វាយបង្គំ / Offer bananas and pray" (a lotus in his bag
+  comes first: the lotus add-on's prompt). E: the prayer walks him onto its golden lotus and kneels him
+  (roam/_pray.ts); with both knees down it waits (its clock held at `OFFER_KNEEL`, as the lotus does) while he takes
+  the tray out in both hands before his chest, raises it before his face with his head bowed to it (លើកថ្វាយ),
+  lowers it, bows forward and sets it on the floor before the shrine a little to his left (0.38 m ahead, 0.3 m left:
+  clear of the bows; a lotus goes to his right), lets go and sits up (4.5 s); the prayer goes on (the sampeah, three
+  bows). The camera comes round to the side with room, then back behind him for the bows. The tray stays a few map
+  hours (`LAID_DAYS` 0.25 of a game day), then is taken away while nobody looks (the camera far off or turned from
+  it); the next ones beside it (three a spot), 14 at most on the map (a fixed pool). "សាធុ! បានថ្វាយស្វាយ · ធ្វើបុណ្យ
+  (លើកទី n) / Sathu! You offered a mango: merit made (n)". E or the stick before it is down: he gets up as from any
+  prayer, the fruit stays in his basket.
+- **A monk met on the way** (standing or walking, the people part finds him: `OFFER.find`, not one seated in a row, on
+  his dais, at a meal, riding, or on his alms round with his bowl): "E  ប្រគេនចេកព្រះសង្ឃ / Offer bananas to the
+  monk". The monk stops where he is and turns to him (held: `Actor.held`, his scene's walk waits); he steps to 1.4 m
+  before him (`OFFER_STAND`), takes his hat off, bows a little and holds the fruit out in both hands; the monk takes it in both of his
+  (`POSE.give`), raises his right hand in blessing (`POSE.nod`) and chants (bubbles, the Pali in Khmer letters) the
+  thanks for a gift "♪ យថា វារិវហា បូរា បរិបូរេន្តិ សាគរំ" and the four blessings "♪ អាយុ វណ្ណោ សុខំ ពលំ" while he
+  sampeahs, bowed (≈ 9 s in all); the fruit goes into the monk's bag; hat back on. One gift a monk a day
+  (`OFFER.given`): again, the monk smiles and nods, "ញោមបានប្រគេនអាត្មារួចហើយថ្ងៃនេះ សាធុ! / You gave me some today
+  already. Sathu!", nothing taken; he sampeahs. "សាធុ! បានប្រគេនស្វាយព្រះសង្ឃ · ធ្វើបុណ្យ (លើកទី n)".
+- **The dawn alms round** (dak bat, `DAK` as roam/_dakBat.ts): with fruit and no sticky rice in his bag (the rice comes
+  first: the dak bat add-on's), as a line of monks comes his way, "E  ដាក់ចេកក្នុងបាត្រព្រះសង្ឃ / Put bananas in the
+  monk's bowl". He turns to the way, kneels the prayer's way (hat off) and sits back with the fruit on his lap in both
+  hands; the first monk not past him steps over (1.35 m before him: nearer than for the rice's spoon) and lifts his
+  bowl's lid; he rises on his knees, holds it out over the bowl as far as his arms go and tips it in with both hands; the lid goes on over it, he sits back, palms together, while the monks chant the blessing (`dakChant`),
+  bows once to the ground and gets up. No line answers: "The monks have walked on". Counted as a monk's.
+- **The blessing monk** (`BLESS`: the village pagoda's hall, Kulen's reclining Buddha), by day while he sits there:
+  "E  ប្រគេនចេកព្រះសង្ឃ  ·  J  Kneel and listen" before the blessing's own prompt. He walks to 1.32 m before the monk,
+  kneels, raises the tray before his face, holds it out; the monk leans forward and takes it in both hands
+  (`BLESS.ask` state `gift`, its times `GIFT` in roam/_blessingHooks.ts; people/_sceneBlessing.ts `case 'gift'`), sets
+  it on his dais at his left by the plate (it stays there a few map hours) and chants his thanks (the same two bubbles)
+  while he sits back, palms together; one bow to the floor and he gets up. Then "E  Ask for a blessing" as ever. Once a
+  day each seat.
+- **Leaving off**: E, Space or the stick (the fruit stays his until the monk has it); back to the map stops at once (a
+  gift the monk has is counted). Tools, emotes and the camera wait meanwhile (`input` takes them; the drag looks).
+- **Saved** (progress.ts): `offer.count` (every offering: the merit), `offer.monks` (to monks); a toast at 10, 25, 50,
+  100, 200, 500 offerings: "អ្នកបានធ្វើបុណ្យ n ដងហើយ សូមឱ្យបុណ្យកុសលចម្រើន! / You have made merit n times. May your merit
+  grow!". The monks given to today are kept for the visit. The first offering stamps the passport's rare moments
+  ("ថ្វាយផ្លែឈើពីសួន / Fruit from his garden": `_bookData.ts` `offering`, its picture in `_stamps.ts`: a footed tray of
+  fruit with a hand of bananas; `Journal.award`).
+- **Cost**: nothing allocated a step; one mesh in his hands and 14 laid (geometries per kind made the first time, ≈
+  1–6 ms each; the statues' material, already compiled); the people part reads one number a frame when idle, the monk
+  finder a loop over the people while he has fruit on foot.
+- **URL**: `basket=banana:3,mango:2` (the garden's) his fruit; `offerkind=<kind>` the one he gives;
+  `offer=shrine[:<spot id>][:<s>]` kneeling at that spot (else the nearest), `s` s into it (0.3 out, 1.3 raised, 3.2
+  bowing, 3.6 set down); `offered=<spot id>,…|all` trays lying before those spots; `offer=monk` asks the monk in front
+  of him (`at=` before one), `monk:there[:<s>]` holding it out, `monk:take[:<s>]`, `monk:bless[:<s>]`, `monk:again`; `offer=dakbat` (with `clock=0.78` and
+  `at=` by a line's way, as `dakbat=`) kneeling with the fruit for the line, `dakbat:give[:<s>]` the monk before him,
+  laying it in, `dakbat:bless`; `offer=bless` (before the dais, `clock=0.9&people=blessing`) walking to him,
+  `bless:lift`, `bless:out[:<s>]` (1.3 the monk has it, 2.6 setting it down), `bless:bless`. `report()` gives them
+  back. Checks: `__offer.now()` (the shrine's step, the monks', the basket, the counts), `__offer.laid()`,
+  `__offer.hand()`, `__offer.ground(x, z)`; `__offerBack.now()` (the monk held, his step, his words). A still's
+  bubbles show only under the game's own camera (`cam=` makes the parts' frame the overview's: no bubbles); `cam=` is
+  best for his pose, the game's camera (or `rcam=`) for the monks' words. His own spirit house (building at home,
+  `build=all`) is a spot too (`build-spirit-1`: `roam=walk&at=408.5,10,-119&build=all&basket=coconut:2`). E.g. `roam=walk&at=201.1,35,-119.5&yaw=90&offer=shrine:terrace-garden-stupa:1.6&offerkind=mango`
+  (Ta Prohm's garden stupa), `roam=walk&at=-306,10,96.8&yaw=0&basket=banana:2` (the village pagoda's door: the
+  prompt), `roam=walk&at=-305.3,10,103.3&yaw=90&clock=0.9&people=blessing&offer=bless:out:1.3`.
 
 ### Lotus from the boat
 
@@ -2338,7 +2539,118 @@ the pieces share `hamlet/_homePlan.ts` (`HOME`, no three.js); the grandmother
 
 ### His own cattle
 
-(to be written: roam/_cattle*.ts, map/cattle/)
+Buying a calf, raising it and selling it (add-on `cattle`, words `cattle…`; the player's
+wish, October 2026: "when we have a lot of money … buy some cow, feed it and sell it").
+The core without three.js is `src/map/cattle/` (`state.ts` the herd, growth, prices, the
+saved record; `plan.ts` where the trader and the stakes are, the shared `TRADER` and
+`CATTLE_OBSTACLES`; `ride.ts` the cow ride's contract); the add-on `roam/_cattle.ts` (the
+E row, the card's purchases, the clock, the toasts, the URL), `_cattleHerd.ts` (every
+animal: where it is, what it does, drawn), `_cattleWork.ts` (cutting grass, carrying,
+feeding), `_cattleCard.ts` + `_cattleArt.ts` (the trader's card), `_cattleIcon.ts` (the
+hungry icon), `_cattlePlace.ts` (his place), `_cattleBlocks.ts` (ropes, stakes, heaps,
+the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his carry pose
+`character/cattleCarry.ts`; sounds `audio/_cattle.ts`; the badge `ui/_minimapSpots.ts`
+(`cattle`, "ឈ្មួញគោ / Cattle trader").
+
+- **The cattle trader** (ឈ្មួញគោ): on the Kulen foot meadow (8 m, a land step below the
+  village) west of the trail, ≈ 50 m north of his house (`TRADER_AT` 397.5, −150): a big
+  old tamarind for shade, his low stool under it facing the trail, a crate with his kettle,
+  glass and krama, a stack of rice-straw bundles, a log trough, three tethering posts — his
+  grey plough ox (not for sale), a calf and a young cow for sale —, and his sign by the trail,
+  "លក់គោ" in red Koulen letters with a little white cow, painted on both faces. He is a
+  village man of fifty, a krama round his head (never a conical hat). By day
+  (`TRADER_HOURS` 0.77‥0.19) he sits there, looks at him when he is near and now and then
+  calls "គោល្អៗ បង! ចង់មើលទេ?"; out of hours he walks home down the trail (his animals lie
+  down at their posts at night). Out of everyone's sight he is simply where his hours have
+  him. Solid for walking: the trunk, the posts, the stool with him, the crate, the stack,
+  the trough, the sign's post; the crown is soft to the follow camera. 535 blocks, a few
+  draws, built in ≈ 2 ms; the land under it is taken (no garden, no wild cover).
+- **The card** (E before his stool: "ទិញ ឬលក់គោ / Buy or sell cattle"): he turns to him,
+  the camera comes round, the card opens in the buy menu's look, his words over three tabs:
+  **Buy** a calf (កូនគោ, 80 000 ៛, ≈ 71 kg, grown in 6 fed days) or a young cow (គោក្មេង,
+  150 000 ៛, ≈ 168 kg, grown in 3); **Sell** his cows (their weight, well fed / hungry /
+  thin, "can be ridden", what he pays now); **Straw** (ចំបើង, 1 000 ៛ a bundle: 1, 5 or 10;
+  40 at most, stacked under his house). At most four cows of his own ("Meadow full").
+  Short of riel the row is greyed with its price in red, and he says so. Bought: he stands
+  and thanks him ("អរគុណបង! ថែវាឲ្យល្អណា", hands held out with the rope), the animal at
+  that post is untied and **walks to its stake** by his house (another stands there a while
+  later, out of sight); the first time, he gives him a sickle. Sold: paid at once, the cow
+  walks off to the trader's. Keys: 1–9 a row, ↑ ↓, ← → / Tab the tabs, Enter / Space / E,
+  Esc; the pad (a layer: ✕, ○, L1 / R1); touch (rows, tabs, a tap outside shuts it).
+  Prices (riel): what he pays is weight × a rate by age (calf 900 / kg, young 850, grown
+  960) × (0.7 + 0.3 × its condition), to 500: a calf raised well sells grown (260 kg) for
+  ≈ 250 000 ៛, more as it fills out (≈ 300 000 at 320 kg); left hungry for days, much
+  less (four days unfed: ≈ 195 000 instead of 280 000). The pocket money is 20 000 ៛ a
+  day, so a cow is a real goal (fish, the garden, the farmers' thanks).
+- **His cows** (`cattle/state.ts`, saved: `cattle.herd` — each one's id, born, fed days
+  `grow`, weight, last fed `fed`, look, stake —, `cattle.straw`, `cattle.clock`): tethered by
+  day to four stakes on the meadow north of his house (`STAKES`), grazing round them as far
+  as the rope lets them (2.7 m), heads down, ambling to fresh patches, never onto his
+  garden's plants; looking up, lowing (a hungry one more often), the bell clonking (the
+  people's `cowBell`), tails swishing; close to him they stop and turn their heads to him.
+  Before dusk (`PEN_HOURS` 0.21‥0.79) they walk into his pen if he has built one
+  (build/pieces.ts `BUILT`, id `pen`, `done` 1: four places in its room facing the trough,
+  in through its gate) and lie down; at dawn they walk out again. With no pen they lie down
+  by their stakes (`LIE_HOURS` 0.3‥0.76). Ways (to the stake, the pen, after a ride, off
+  when sold) on the walk map a cow's size (room over it, its width, no plants, nothing he
+  built: a straight line if it can, else the dog's search, `_dogPath.ts`); they stop for
+  him in their way and go round him; out of everyone's sight a cow is simply there. Sizes by
+  weight: a calf ≈ 0.78 × the ox, young ≈ 1.15, grown ≥ 1.4 (as the village's), 1.54 at its
+  fullest; a thin one is smaller, its coat duller, its head low. Drawn with the ox of the
+  villages (`OX`) through one `Flock` (9 slots: his four, the trader's three, two being led
+  off), one more draw for the ropes, stakes, heaps and the grass he cuts.
+- **Food**: each cow wants food once a game day (fed, it is full for one day). A hungry one
+  shows a pixel-art sheaf of straw over its head (`_cattleIcon.ts`, the garden's thirst
+  drop's technique; orange and pulsing once it is thin) and lows more. At its head, **E
+  "ឲ្យកូនគោស៊ីចំបើង / Feed the calf straw · 4 bundles left"** (one from his stock), or with
+  grass in his arms "… grass"; no straw and no grass, the line says to buy some or cut grass.
+  He steps before its nose, bends and lays the bundle down (`cattleLay`), the cow lowers its
+  head and eats from the heap (22 s, munching). **Cutting grass**: on the meadow within 14 m of his
+  stakes (on grass, off paths and plants) while a cow is hungry, **"E  Hold to cut grass"**
+  (E-row order 93: before the garden's "Plant…" and "Build…" there): he
+  bends as the farmers reap, the farmer's sickle in his right hand, four fistfuls from a
+  clump before him (each a swish, `cattleCut`), then twists them into a bundle and carries
+  it in both arms (his lights away); free, but it takes ≈ 5 s. Let go or push the stick:
+  he stands up (what he cut stays for when he cuts on). A ride, a rest, praying, another mode
+  or back to the map: he puts the grass down.
+- **Growth by game days** (the herd's own clock as the garden's: the map's days while they
+  run, sleep moves it on, else a day each 360 s of play; nothing while the game is shut):
+  full, a cow grows (fed days) and fills out; hungry it does not grow and gets thinner (a
+  little each day, never under 68 % of its weight): it never dies. Calf → young at 3 fed
+  days → grown at 6; the well-fed weight 55 → 150 → 260 → 320 kg (at 12).
+- **Riding**: each cow of his is a `RideCow` (`own-<id>`, owner `his`) in `COW_RIDE`;
+  `canRide` when grown, at its stake (not on a way, not in the pen), standing still or
+  lying settled, with room over its back. Ridden, it is drawn from the ride's fields
+  (`people/_oxRide.ts` `drawRideCow`); let go, it walks back to its stake (or pen), home at
+  once on the map. Sold: off the list (`removeRideCow`).
+- **Toasts**: hungry ("Your calf is hungry", near home, at most every 90 s; away once: "Your
+  cattle at home are hungry", until he has been home), getting thin, young, grown ("…You can
+  ride it now"), bought, sold, straw, a bundle cut, the grass put down.
+- **Sounds** (`audio/_cattle.ts`): `cattleMoo`, `cattleMooCalf`, `cattleMunch` (Animals),
+  `cattleCut`, `cattleBundle`, `cattleLay` (moves); the coins are the purse's and the fish
+  sale's `sellCoin`; the bells the people's `cowBell` call.
+- **URL** (shots and the dev server only: a link never changes a player's saved herd):
+  `cattle=calf,young,grown,<fed days>[:hungry|:thin],…` his cows at their stakes (in order) ·
+  `cattlehungry=1` all hungry (their icons) · `cattlestraw=<n>` · `cattleclock=<days>` ·
+  `cattleshop=1|buy|sell|straw` at the trader's stool, the card open (with `cattlebuy=calf|young`,
+  `cattlesellrow=<i>`, `cattlestrawrow=<i>`, `cattlefocus=<i>`; `purse=<riel>`) ·
+  `cattlefeed=<s>` him laying straw before the nearest cow, that far in (`cattlefood=grass`) ·
+  `cattlecut=<s>` cutting grass that far in · `cattlecarry=1` the grass in his arms ·
+  `cattleeat=<0‥1>` his cows eating from heaps that full · `cattlenight=1` the night: in the
+  pen if there is one (the build add-on's `build=pen@x/z/yaw`), else lying by their stakes
+  · `cattlespeed=<x>` (the dev
+  server: the herd's days x times faster). `report()` gives `cattle=`, `cattlestraw=`,
+  `cattleclock=`, `cattleshop=`, `cattlecarry=`. `window.__cattle` (shots, the dev server):
+  `state()` (the herd, every animal, the card, the work, the trader, the rides),
+  `near()`, `advance(days)`, `straw(n)`, `carry(on)`, `speed(x)`, `ride(id, on)`.
+  E.g. `roam=walk&at=402,-149&yaw=-90&clock=0.9&cattleshop=1&purse=95000` (the card) ·
+  `roam=walk&at=425.5,-129&yaw=200&rcam=25,22,10&clock=0.9&cattle=calf:hungry,young,grown,8:thin&home=1`
+  (his herd, a hungry calf) · `…&cattle=young:hungry&cattlefeed=0.75&cattlestraw=6` ·
+  `roam=walk&at=426,-140&yaw=200&cattle=young:hungry,grown&cattlecut=2.85` ·
+  `…&cattle=grown,calf&cow=ride` (riding his grown cow) ·
+  `cam=438,17,-104,432,9,-115,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@432/-115/180`
+  (the four in his pen at night). Parts: `foreground` (roaming) and
+  `people` (the trader); `terrain,water,hamlet,vegetation,path` for the place round them.
 
 ### His home garden
 
@@ -2501,7 +2813,98 @@ chilli, basil, jasmine).
 
 ### Building at home
 
-(to be written: roam/_build*.ts, map/build/)
+He builds things of his own round his stilt house (add-on `build`, words `build…`):
+`roam/_build.ts` (the add-on: the E row, build mode, the card's choice, the URL),
+`_buildCard.ts` (the card), `_buildGhost.ts` (the ghost), `_buildSpots.ts` (where a
+piece may stand: no three.js), `_buildWork.ts` (his work with the hammer),
+`_buildWalk.ts` (the walk map), `_buildUses.ts` (seats, hammocks, the spirit house's
+prayer); the core `map/build/pieces.ts` (the contract: the nine pieces, their sizes,
+prices, solids, seat, ties, light, kneel, pen; `BUILT`; the model registry),
+`map/build/state.ts` (the saved list, footprints), `map/build/view.ts` (drawn on the
+map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
+done); his pose `character/buildWork.ts` (`buildPose`, his hammer `hammerBuilder`);
+sounds `audio/_build.ts`.
+
+- **The pieces** (`PIECES`): the cattle pen គ្រោលគោ (60,000 ៛, 2), the thatched shelter
+  ខ្ទម with a bench (40,000 ៛, 3), the bamboo bed គ្រែឫស្សី (15,000 ៛, 3), a run of
+  bamboo fence របងឫស្សី (4,000 ៛, 40), the spirit house ខ្ទមព្រះភូមិ (25,000 ៛, 1), the
+  water jar ពាងទឹក (12,000 ៛, 4), the hammock អង្រឹង (20,000 ៛, 2), the lantern post
+  ចង្កៀងបង្គោល (8,000 ៛, 8), the rice-straw stack គំនរចំបើង (10,000 ៛, 2).
+- **Starting** (the house his, on foot on the ground): by the house (under it, round
+  it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
+  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 94.9,
+  just before the garden's late row: its "E  Plant…" first; a line of the garden's with no
+  key, as "no seeds yet", goes on after it: "E  Build…  ·  …"). The first time he comes home owning it, a
+  toast says so (`build.hinted`).
+- **The card**: each piece with its picture, its name, how many he has of how many,
+  its line, its price; one he cannot build now greyed with why ("You have all 3",
+  "12,000 ៛ more needed"); his riel under the title. 1‥9, ↑ ↓, Enter, Esc; the pad's
+  layer; touch.
+- **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
+  its footprint outlined where it can stand; red, drawn over everything, where not, the
+  reason in the prompt: too far, water, the path, a rice field, the house, a
+  neighbour's yard, the ground not level, a plant of his garden, something he built (or
+  the room before one he uses from there), something else, no room before it: the spirit
+  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
+  ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
+  built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
+  the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
+  work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
+  mode, never "Back to the map?". The camera looks down more, further back, the ghost
+  in the middle. After a fence or a lantern post the mode stays on for the next.
+- **The work** (it holds him): he walks to the side of the piece nearest him (round a
+  big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
+  hammers — squatting flat-footed for low work, standing for high; the blow on the block
+  going up at its point nearest him, its top (or the side of a post he reaches up on
+  for work over his head), the hammer's way set by his wrist (`buildPose`; a
+  knock each blow, a piece of wood set every four); the piece rises block by block in
+  its model's order over `PIECES[id].secs`. The prompt shows how far ("Building the
+  bamboo bed… 45%"). Done: a chime and a toast. The stick held away pauses it (the
+  first time a toast says how to go on); by it "E  Keep building (45%)" goes on; back
+  to the map: paused, saved.
+- **By a piece he built** (facing it, within 1.25 m): a seat (the bed, the shelter's
+  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; else
+  "E  Hold to take down the …". Held 0.8 s (a bar fills) it asks ("Take down the
+  bamboo bed? You get half its price back"); yes: he takes it apart (half the time,
+  at least 2 s), it is gone, half its price back. A hammock's E is the hammock
+  add-on's, the spirit house's "Pray" the shrine's (both come first).
+- **Uses** (`_buildUses.ts`; a piece that stands): J / L by the bed puts him on it
+  (along it: he sits, lies back, falls asleep as on the ground), J by the shelter sits
+  him on its bench as on a bench (his feet on the ground before it, character/rest.ts
+  `RestState.bench`; L there: no room) — `_rest.ts` `REST_SEATS`; each hammock is the
+  hammock add-on's (`addHammock({ id: 'build-<uid>', a, b, root })`, its cloth the
+  view's `petal` blocks between the ties; registered again whenever the view makes its
+  batch again); the spirit house is a prayer spot (`WORSHIP`, `build-<uid>`: the lotus,
+  E Pray); the lamps' flames and the spirit house's candle glow at night with a halo
+  (`light`); the pen and the haystack are his cattle's (`BUILT`).
+- **The garden**: no plant on a piece (`_gardenSpots.ts` asks `BUILT.blocks`), no piece
+  on a plant (`canBuild`).
+- **Saved** (`progress.ts` `build.pieces`: uid, id, x, y, z, yaw, done, seed): on every
+  change, at most once a second while one rises; a half-built piece stays half built.
+- **On the map** (`build/view.ts`): every piece that stands in one batch (a mesh per
+  block family: bark, leaf, petal, stone…, the map's own shaders), made again only when
+  one comes to stand or goes; a piece under way a small batch of its own drawing its
+  first blocks (`count` per family). Plain boxes once its cut edges are under a pixel,
+  hidden once a metre is under 0.9 px; built plain on the low level; still shadows asked
+  again after a change. Lights: one pool of 12 glowing blocks (the village's lamp
+  material) and 12 halos. The walk map (`_buildWalk.ts`): each piece's `solids` (turned
+  by its yaw) for his feet, the dog, the follow camera (`hardClearance`), `groundAt`,
+  `woodAt`; only a seat's top (the bed, the bench) is a step: the jar, a post, a rail,
+  the haystack are in the way, never hopped onto.
+- **Sounds** (`audio/_build.ts`): `buildKnock`, `buildWood`, `buildTake` (moves),
+  `buildDone` (ui).
+- **URL** (shots and the dev server: a link never changes a player's saved pieces):
+  `build=<id>@x/z/yaw[:done],…` (yaw in degrees, done 0‥1, 1 if left out) · `build=all`
+  (one of each round the house, where each fits) · `build=0` · `buildcard=1` ·
+  `buildghost=<id>[:<deg>]` (build mode, turned that much more; give riel with
+  `purse=`) · `buildwork=<id>:<0‥1>[:<s>]` (at work on one that far built, `s` into the
+  stroke) · `buildtake=<uid>` (the question; `:<0‥1>` taking it down) ·
+  `buildsit=<uid>[:lie]` · `buildhint=1`. `report()` gives `build=`, `buildghost=`,
+  `buildwork=`. `window.__build` (shots, the dev server): `state()`, `canBuild(id, x, z,
+  deg)`, `add`, `remove`, `card`, `place`, `all`, `rebuild`, `shown(uid)`. Console lines
+  `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
+  `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
+  `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 
 ### Sharing his fruit
 
