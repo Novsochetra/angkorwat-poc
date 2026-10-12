@@ -68,7 +68,8 @@ registerPieceModel('shelter', (b, look) => {
 
   bench(b, r, traceSource());
   frame(b, r, traceSource());
-  thatch(b, r, traceSource());
+  // (the thatch its own stream: its leaves never change the last touches)
+  thatch(b, rng(look.seed, 72), traceSource());
   touches(b, r, traceSource());
 });
 

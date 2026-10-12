@@ -81,7 +81,8 @@ registerPieceModel('pen', (b, look) => {
 
   floor(b, r, traceSource());
   trough(b, r, traceSource());
-  shed(b, r, traceSource());
+  // (the thatch its own stream: its leaves never change the hay rack and the last touches)
+  shed(b, r, rng(look.seed, 84), traceSource());
   hayRack(b, r, traceSource());
   touches(b, r, traceSource());
 });
@@ -186,7 +187,7 @@ function trough(b: VoxelBuilder, r: Rand, src: Src): void {
  * their leaves ragged at their lower edges and hanging at the eaves, a cap folded over the ridge, tied down. The ends
  * are open (the frame shows).
  */
-function shed(b: VoxelBuilder, r: Rand, src: Src): void {
+function shed(b: VoxelBuilder, r: Rand, rt: Rand, src: Src): void {
   const span = 2 * X1 + 0.36;
   const ridgeY = underAt(ZM) - RAFTER / 2;
   for (const z of [ZB, LF]) b.box(0, PLATE - 0.065, z, span, 0.13, 0.14, tone(POST, r()), 'mapBark', { src });
@@ -219,10 +220,10 @@ function shed(b: VoxelBuilder, r: Rand, src: Src): void {
       const y = underAt(z) + th / 2 / Math.cos(PITCH) + 0.012 * k;
       // (short tips: he is 2.4 m tall, the front eave over the pen)
       const leaves = { every: 0.3, hang: eave ? ([0.04, 0.12] as const) : ([0.02, 0.08] as const), tips: eave ? 0.34 : 0, tipLen: [0.08, 0.2] as const };
-      thatchCourse(b, r, 'x', -(span + 0.1) / 2, (span + 0.1) / 2, z, y, slab, th, PITCH, s, k % 2 === 1 ? 0.92 : 1, cw / Math.cos(PITCH), leaves, src);
+      thatchCourse(b, rt, 'x', -(span + 0.1) / 2, (span + 0.1) / 2, z, y, slab, th, PITCH, s, k % 2 === 1 ? 0.92 : 1, cw / Math.cos(PITCH), leaves, src);
     }
   // The cap over the ridge, last: folded over it, in three lengths, tied with split bamboo.
-  thatchCap(b, r, -(span + 0.1) / 2, (span + 0.1) / 2, ZM, underAt(ZM) + 0.39, PITCH, 0.44, 0.13, 9, { tips: 0, tie: 1.45 }, src);
+  thatchCap(b, rt, -(span + 0.1) / 2, (span + 0.1) / 2, ZM, underAt(ZM) + 0.39, PITCH, 0.44, 0.13, 9, { tips: 0, tie: 1.45 }, src);
 }
 
 /** The hay rack on the back fence, right of the trough: slanted bars between two rails, full of rice straw, wisps poking through. */
