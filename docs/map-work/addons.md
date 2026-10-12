@@ -2524,8 +2524,9 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   "ឲ្យកូនគោស៊ីចំបើង / Feed the calf straw · 4 bundles left"** (one from his stock), or with
   grass in his arms "… grass"; no straw and no grass, the line says to buy some or cut grass.
   He steps before its nose, bends and lays the bundle down (`cattleLay`), the cow lowers its
-  head and eats from the heap (22 s, munching). **Cutting grass**: on the meadow near home
-  (on grass, off paths and plants) while a cow is hungry, **"E  Hold to cut grass"**: he
+  head and eats from the heap (22 s, munching). **Cutting grass**: on the meadow within 14 m of his
+  stakes (on grass, off paths and plants) while a cow is hungry, **"E  Hold to cut grass"**
+  (E-row order 93: before the garden's "Plant…" and "Build…" there): he
   bends as the farmers reap, the farmer's sickle in his right hand, four fistfuls from a
   clump before him (each a swish, `cattleCut`), then twists them into a bundle and carries
   it in both arms (his lights away); free, but it takes ≈ 5 s. Let go or push the stick:

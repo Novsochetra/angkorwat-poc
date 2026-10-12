@@ -814,10 +814,13 @@ registerAddon({
   },
 });
 
-/** The late half of the E row: cutting grass on the meadow (hold E), only when nothing else here has a real E. */
+/**
+ * Cutting grass on the meadow by his stakes (hold E) while a cow of his is hungry: late in the E row (after a stall, a
+ * ride, the garden's jobs), but before "Plant…" and "Build…" (95, 94): there by his hungry cows, it is what to do.
+ */
 registerAddon({
   id: 'cattleCut',
-  order: 96,
+  order: 93,
   offer(ctx, m) {
     if (m !== 'walk' || !env || env.busy() || visit || work?.active) return null;
     if (!mayCut(ctx)) return null;

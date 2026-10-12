@@ -207,14 +207,14 @@ export class CattleWork {
 
   // ── Where he may cut ────────────────────────────────────────────────────────
 
-  /** He may cut grass here (feet at x, z): the meadow near home or his stakes, on grass, off paths, water, plants and what is built. */
+  /** He may cut grass here (feet at x, z): the meadow within 14 m of his stakes, on grass, off paths, water, plants and what is built. */
   static canCut(world: RoamWorld, x: number, y: number, z: number, plantNear: (x: number, z: number, r: number) => boolean): boolean {
     const f = world.field;
     const home = Math.hypot(x - HOME_AT.x, z - HOME_AT.z);
     let stake = Infinity;
     for (const s of STAKES) stake = Math.min(stake, Math.hypot(x - s[0], z - s[1]));
-    if (home > 55 && stake > 25) return false;
-    if (home < 9) return false;
+    // (the meadow round his stakes: by his cows, where the grass is theirs; elsewhere E is the garden's or building's)
+    if (stake > 14 || home < 9) return false;
     const c = f.index(x, z);
     if (c < 0 || f.trail[c] || f.surface[c] !== SURFACE.grass) return false;
     if (Math.abs(y - f.heightAt(x, z)) > 0.35) return false;
