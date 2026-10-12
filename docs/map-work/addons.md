@@ -2303,7 +2303,7 @@ chilli, basil, jasmine).
 - **On the map** (`garden/view.ts`, `_viewPool.ts` one instanced mesh per family,
   `_viewLook.ts` looks cached and prebuilt in idle time, warmed before Start,
   `_viewEarth.ts` the crop beds and tree basins (wet: darker, a puddle), `_viewDrop.ts`
-  falling fruit): on the land's block tops, 5 draws near for a full garden, far shapes
+  falling fruit of blocks, `_viewFruit.ts` the fruit on the ground drawn smooth): on the land's block tops, 5 draws near for a full garden, far shapes
   under half a pixel, the leaves sway, plants grow in and ease from stage to stage.
   Far, the same blocks as the map's own plain boxes (`plainAt`); two parts culled
   apart (small things, trees). The walk map (`roam/_gardenWalk.ts`): grown trunks are
@@ -2366,9 +2366,23 @@ chilli, basil, jasmine).
   to replant elsewhere); a grown tree asks first ("Cut down the mango?") then `fell`
   (five chops, he steps back, it tips over, lands with a thud and sinks away). The
   pagoda's bodhi never.
-- **Thirst drops** (`garden/_viewThirst.ts`): a block water drop bobs over every
-  thirsty plant within ≈ 45 m (urgent: faster, an orange rim and a second drop); it
-  splashes away when watered. `gardenthirst=1` in shots.
+- **Thirst drops** (`garden/_viewThirst.ts`): a pixel-art 💧 on a quad facing the camera
+  bobs over every thirsty plant within ≈ 45 m (urgent: an orange pulsing rim and a second
+  drop); it splashes away when watered. `gardenthirst=1` in shots.
+- **Fallen fruit** (the player's ask, October 2026: make the falling coconut look like the
+  drop): the coconut, the sugar palm fruit and the durian on the ground are smooth low-poly
+  shapes (`garden/_viewFruit.ts`; the models lay no fallen blocks now): an oval husk with
+  three faint ridges and its sepals, a glossy purple-black ball with its olive cap, a ball of
+  pyramid thorns; a little bigger than life, where `fallenAt` puts them, on the earth there.
+  When ripe (`fell`) each lets go where one hung in the crown (`_viewDrop.ts` `crownGone`),
+  falls tumbling, lands with dust and the thud (now as it lands), bounces twice and rolls
+  out from the trunk to rest. Lit like the scene with the buffalo rope's program (in the
+  scene from the start: no compile in play), two draws a kind while near. Over each of his
+  trees with fruit lying to pick up, a **marker** bobs chest high (`garden/_viewFallen.ts`,
+  the drop's technique: a pixel-art 🥥, a durian, a sugar palm fruit); picked up, it pops
+  into gold sparkles. The icons (drops, markers) face the camera each picture is drawn with,
+  so `cam=` shots and the free camera see them. `gardenfallen=1` shows the markers in
+  shots; `gardenfall=<kind>:<t>` holds a fall `t` s in (`__gardenView.fall(t)`).
 - **The yard's jar** holds 24 pours (`JAR_MAX`; `GARDEN.jar`, saved; rain and his
   buckets fill it, `fillCan('jar')` takes from it); its water shows in its open mouth.
 - **The shoulder pole** (ដងរែក, add-on `carryPole`, order 12: `roam/_carryPole*.ts`;
@@ -2390,6 +2404,7 @@ chilli, basil, jasmine).
   (a bug report's `garden=` carries each plant's place; with it `gardenclock=`, `basket=`)
   · `seeds=all|<kind>:<n>,…` · `basket=all|…` · `can=<n>` · `gardenclock=<days>` ·
   `gardenact=<action>:<t>` (`gardenkind=`) · `gardenring=1|<kind>` · `gardencard=1` ·
+  `gardenthirst=1` · `gardenfallen=1` · `gardenfall=<kind>:<t>` ·
   `gardenhint=1` · `gardenspeed=<x>` (dev) · `gardenlod=near|far` ·
   `gardenshop=1|buy|sell` (`gardenshopbuy=`, `gardenshopsell=`, `gardenshopfocus=`) ·
   `nursopen=all|none` · `nursery=water[:0‥1]` · `gardengift=1|take|taken` ·

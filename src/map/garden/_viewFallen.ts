@@ -6,11 +6,11 @@ import type { PlantKindId } from './kinds';
  * A marker over each of his trees that has ripe fruit lying under it to pick
  * up (garden/state.ts `fallen`: the coconut, the durian, the sugar palm), drawn
  * as the thirst drop is (garden/_viewThirst.ts): a crisp pixel-art icon on a
- * quad facing the camera, bobbing gently over where the fruit lies, a little
- * over his head: a coconut (🥥: half a brown shell, its white flesh), a durian
+ * quad facing the camera, bobbing gently over where the fruit lies, about his
+ * chest high (clear of the trunk on the camera's side): a coconut (🥥: half a brown shell, its white flesh), a durian
  * (green-gold, spiky, its stalk) or a sugar palm fruit (round, purple-black and
- * glossy, its cap of pale sepals), each with a thin dark outline so it reads on
- * grass. About half a metre, never under `MIN_PX` pixels on the screen, unlit
+ * glossy, its cap of olive sepals), each with a thin dark outline so it reads on
+ * grass. About 0.6 m, never under `MIN_PX` pixels on the screen, unlit
  * (a little dimmer at night), shown within `NEAR` m of the camera (roaming
  * there), eased in once the fruit lies still (not while it falls). Picked up,
  * it pops: it swells and bursts into little gold sparkles; rotted away, it only
@@ -26,11 +26,11 @@ import type { PlantKindId } from './kinds';
  * camera's `cam=` sees them face on too.
  */
 
-/** Its height in the world (m), and at least this many pixels on the screen. */
-const HEIGHT = 0.5;
-const MIN_PX = 18;
-/** Its foot over the earth where the fruit lies (m: over his head), how far it bobs. */
-const LIFT = 1.75;
+/** Its height in the world (m), and at least this many pixels on the screen (its picture has room round the fruit: the fruit itself about as big as the thirst drop). */
+const HEIGHT = 0.6;
+const MIN_PX = 22;
+/** Its foot over the earth where the fruit lies (m: about his chest), how far it bobs. */
+const LIFT = 1.3;
 const BOB = 0.06;
 /** Shown within this far of the camera (m), eased in over this far again. */
 const NEAR = 45;
@@ -230,7 +230,9 @@ export class FallenMarks {
   private readonly sparks: InstancedMesh;
   private readonly material: MeshBasicMaterial;
   private readonly slots: Slot[] = [];
-  private readonly flying: Spark[] = [];
+  /** The sparkles: a fixed pool, the first `nFly` flying. */
+  private readonly flying: Spark[] = Array.from({ length: SPARKS }, () => ({ x: 0, y: 0, z: 0, a: 0, t: 0, h: 0 }));
+  private nFly = 0;
   private readonly on: boolean;
   private time = 0;
   /** Quads written per icon (`face`). */
@@ -326,14 +328,13 @@ export class FallenMarks {
         this.slots.pop();
       }
     }
-    for (let i = this.flying.length - 1; i >= 0; i--) {
+    for (let i = this.nFly - 1; i >= 0; i--) {
       const f = this.flying[i];
       f.t += dt;
-      if (f.t >= POP.fly || dt === 0) {
-        // (a shot shows a pop's sparkles where they burst; a frame later they are gone)
-        if (dt === 0 && f.t === 0) continue;
-        this.flying[i] = this.flying[this.flying.length - 1];
-        this.flying.pop();
+      // (gone: the last flying one takes its place)
+      if (f.t >= POP.fly) {
+        this.flying[i] = this.flying[this.nFly - 1];
+        this.flying[--this.nFly] = f;
       }
     }
     this.face(camera);
@@ -341,8 +342,15 @@ export class FallenMarks {
 
   /** A marker bursts into its sparkles. */
   private burst(s: Slot): void {
-    for (let i = 0; i < POP.n && this.flying.length < SPARKS; i++)
-      this.flying.push({ x: s.x, y: s.y + HEIGHT * 0.55, z: s.z, a: s.phase + (i / POP.n) * Math.PI * 2, t: 0, h: HEIGHT });
+    for (let i = 0; i < POP.n && this.nFly < SPARKS; i++) {
+      const f = this.flying[this.nFly++];
+      f.x = s.x;
+      f.y = s.y + HEIGHT * 0.55;
+      f.z = s.z;
+      f.a = s.phase + (i / POP.n) * Math.PI * 2;
+      f.t = 0;
+      f.h = HEIGHT;
+    }
   }
 
   /** The quads turned to `camera` and sized for it (each picture as it is drawn: the scene's onBeforeRender). */
@@ -382,7 +390,7 @@ export class FallenMarks {
     }
     let ns = 0;
     const sm = this.sparks.instanceMatrix.array as Float32Array;
-    for (let i = 0; i < this.flying.length; i++) {
+    for (let i = 0; i < this.nFly; i++) {
       const f = this.flying[i];
       const u = Math.min(1, f.t / POP.fly);
       const d = Math.hypot(f.x - _eye.x, f.y - _eye.y, f.z - _eye.z);

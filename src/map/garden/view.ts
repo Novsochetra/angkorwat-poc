@@ -46,8 +46,10 @@ import { Pool, type Run } from './_viewPool';
  * near fade shows him through a crown (roam/_nearFade.ts: the map's leaf and
  * bark materials). A new plant grows up out of its earth (the bed dug first), a
  * stage eases from the size it was (no pop), a plant pulled out shrinks away
- * and its earth flattens, ripe fruit drops from the crown and bounces once
- * (garden/_viewDrop.ts), the earth darkens in half a second when watered and a
+ * and its earth flattens, ripe fruit drops from the crown, bounces and rolls to
+ * where it lies, drawn smooth (garden/_viewFruit.ts; any other's blocks:
+ * garden/_viewDrop.ts), a marker over a tree with fruit to pick up
+ * (garden/_viewFallen.ts), the earth darkens in half a second when watered and a
  * puddle stands in a basin, soaking in. Shadows: cast and received; still
  * (graphics.ts `markStill`) like the village's, the still map asked again
  * (`shadowMap.needsUpdate`) when the garden has changed.
