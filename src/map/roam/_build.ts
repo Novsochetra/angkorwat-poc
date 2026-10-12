@@ -1,5 +1,5 @@
 import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
-import { BUILD, distTo, toLocal } from '../build/state';
+import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, type BuildView } from '../build/view';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
@@ -7,7 +7,7 @@ import { progress } from '../progress';
 import type { MapFrame, RoamMode } from '../types';
 import { createAskCard, type AskCard } from '../ui/ask';
 import { lang, num, t, type WordKey } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, type BuildReason } from './_buildSpots';
@@ -36,7 +36,7 @@ import type { RoamCtx } from './types';
  *   stand, red with the reason where not: too far, water, the path, a rice field,
  *   the house, a neighbour's yard, not level, a plant, something he built, something
  *   else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
- *   15° more; a fence run's end snaps onto the end of one he built. "E  Build here"
+ *   15° more; a fence run's end snaps onto the end of one he built (in line, or turned a quarter: a corner). "E  Build here"
  *   pays (`purse.pay`) and he builds it (the work); F / C (the pad's ↓) the card
  *   again; Esc (the pad's ○, the touch ✕) leaves the mode, never asking "Back to the
  *   map?". A fence or a lantern post: the mode stays on for the next.
@@ -211,31 +211,54 @@ function askTake(ctx: RoamCtx, b: Built): void {
 
 // ── Build mode ─────────────────────────────────────────────────────────────
 
-/** A fence's spot snapped onto the end of one he built (its run going on), if near: into `spot`. */
+const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
+/** Footprints may touch this much (m), as _buildSpots.ts lets fence runs touch. */
+const SNAP_TOUCH = 0.03;
+
+/**
+ * A fence's spot snapped onto the end of one he built, if near: into `spot`. In line (the run going on) or turned
+ * a quarter (a corner: its end against the other's end, on either side of it, the two touching, not overlapping).
+ * Only onto an end that is free (a corner at the joint of two in a run would stand on the next one).
+ */
 function snapFence(): boolean {
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
   let byaw = 0;
   const half = PIECES.fence.w / 2;
+  const th = PIECES.fence.d / 2;
+  const take = (x: number, z: number, yaw: number) => {
+    const d = Math.hypot(x - spot.x, z - spot.z);
+    if (d >= best) return;
+    _snap.x = x;
+    _snap.z = z;
+    _snap.yaw = yaw;
+    for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH)) return;
+    best = d;
+    bx = x;
+    bz = z;
+    byaw = yaw;
+  };
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
+    // (its local x axis on the map (c, −s), its local z axis (s, c))
+    const c = Math.cos(f.yaw);
+    const s = Math.sin(f.yaw);
     for (let end = -1; end <= 1; end += 2) {
-      for (let k = 0; k < 2; k++) {
-        const yaw = f.yaw + k * Math.PI;
+      for (let k = 0; k < 4; k++) {
+        const yaw = f.yaw + (k * Math.PI) / 2;
         const dy = Math.atan2(Math.sin(yaw - spot.yaw), Math.cos(yaw - spot.yaw));
         if (Math.abs(dy) > SNAP.turn) continue;
-        // (the run going on from this end: the next one's middle half a run further along)
-        const c = Math.cos(f.yaw);
-        const s = Math.sin(f.yaw);
-        const ex = f.x + end * 2 * half * c;
-        const ez = f.z - end * 2 * half * s;
-        const d = Math.hypot(ex - spot.x, ez - spot.z);
-        if (d < best) {
-          best = d;
-          bx = ex;
-          bz = ez;
-          byaw = yaw;
+        if (k % 2 === 0) {
+          // (the run going on from this end: the next one's middle a run further along)
+          take(f.x + end * 2 * half * c, f.z - end * 2 * half * s, yaw);
+          continue;
+        }
+        // (a corner: just past this end, along its front or its back)
+        for (let side = -1; side <= 1; side += 2) {
+          const ax = end * (half + th);
+          const az = side * (half - th);
+          take(f.x + ax * c + az * s, f.z - ax * s + az * c, yaw);
         }
       }
     }
@@ -799,14 +822,23 @@ registerAddon({
 
 /**
  * The late half of the E row (after every other add-on's: the garden's "Plant…" first): "E  Build…" anywhere near
- * his house where nothing else here has E.
+ * his house where nothing else here has E. Just before the garden's late half (`GARDEN_LATE`: "E  Plant…" and its
+ * lines with no key) so that a line of the garden's with no key (no seeds yet, the can empty, the jar empty) never
+ * hides it: the garden's line goes on after it ("E  Build…  ·  You have no seeds yet…"), and a real E of the
+ * garden's still comes first.
  */
+const GARDEN_LATE = 95;
 registerAddon({
   id: 'buildLate',
-  order: 96,
+  order: GARDEN_LATE - 0.1,
   offer(ctx, m) {
     if (m !== 'walk' || !env || placing || pressing || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
-    return canStart(ctx, true) ? words('start', () => `E  ${t('buildStart')}`) : null;
+    if (!canStart(ctx, true)) return null;
+    // (the garden's late offer, worked out once a step there: its "E  …" first; a line with no key after ours)
+    const g = addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
+    if (g?.startsWith('E ')) return null;
+    const start = words('start', () => `E  ${t('buildStart')}`);
+    return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
   },
   use(ctx) {
     if (!env || BuildWork.active || placing || !canStart(ctx, true)) return;

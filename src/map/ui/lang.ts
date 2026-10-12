@@ -1571,6 +1571,7 @@ const WORDS = {
   buildNoPlant: { km: 'មានដំណាំរបស់អ្នកនៅទីនេះ', en: 'A plant of your garden is there' },
   buildNoPiece: { km: 'មានរបស់ដែលអ្នកសង់នៅទីនេះហើយ', en: 'Something you built is in the way' },
   buildNoThing: { km: 'មានរបស់អ្វីបាំងនៅទីនេះ', en: 'Something is in the way' },
+  buildNoFront: { km: 'ត្រូវទុកកន្លែងទំនេរនៅខាងមុខវា', en: 'Leave room in front of it' },
   buildNoMoney: { km: 'លុយមិនគ្រប់ទេ — ខ្វះ {riel} ទៀត', en: 'Not enough riel: {riel} more needed' },
   buildNoMore: { km: 'មិនអាចសង់{name}បន្ថែមទៀតបានទេ', en: "You can't build another {name}" },
   buildPaid: { km: 'បានចំណាយ {riel} លើសម្ភារៈ', en: 'Paid {riel} for the materials' },
