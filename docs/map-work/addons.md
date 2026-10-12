@@ -2574,8 +2574,10 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   Short of riel the row is greyed with its price in red, and he says so. Bought: he stands
   and thanks him ("អរគុណបង! ថែវាឲ្យល្អណា", hands held out with the rope), the animal at
   that post is untied and **walks to its stake** by his house (another stands there a while
-  later, out of sight); the first time, he gives him a sickle. Sold: paid at once, the cow
-  walks off to the trader's. Keys: 1–9 a row, ↑ ↓, ← → / Tab the tabs, Enter / Space / E,
+  later, out of sight; one bought before then is simply at its stake, on the meadow behind
+  the camera at the stool); the first time, he gives him a sickle. Sold: paid at once, the cow
+  walks off to the trader's trough (out of a pen through its gate first) and waits there,
+  grazing, side by side with any other sold, until nobody sees it. Keys: 1–9 a row, ↑ ↓, ← → / Tab the tabs, Enter / Space / E,
   Esc; the pad (a layer: ✕, ○, L1 / R1); touch (rows, tabs, a tap outside shuts it).
   Prices (riel): what he pays is weight × a rate by age (calf 900 / kg, young 850, grown
   960) × (0.7 + 0.3 × its condition), to 500: a calf raised well sells grown (260 kg) for
@@ -2586,15 +2588,27 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   `grow`, weight, last fed `fed`, look, stake —, `cattle.straw`, `cattle.clock`): tethered by
   day to four stakes on the meadow north of his house (`STAKES`), grazing round them as far
   as the rope lets them (2.7 m), heads down, ambling to fresh patches, never onto his
-  garden's plants; looking up, lowing (a hungry one more often), the bell clonking (the
+  garden's plants, through what he built or his bicycle left there (`patch`: where its whole
+  body stands clear, and its turn on the spot first; a plant or a piece put where one stands,
+  it gets up and moves off); looking up, lowing (a hungry one more often), the bell clonking (the
   people's `cowBell`), tails swishing; close to him they stop and turn their heads to him.
   Before dusk (`PEN_HOURS` 0.21‥0.79) they walk into his pen if he has built one
-  (build/pieces.ts `BUILT`, id `pen`, `done` 1: four places in its room facing the trough,
-  in through its gate) and lie down; at dawn they walk out again. With no pen they lie down
-  by their stakes (`LIE_HOURS` 0.3‥0.76). Ways (to the stake, the pen, after a ride, off
-  when sold) on the walk map a cow's size (room over it, its width, no plants, nothing he
-  built: a straight line if it can, else the dog's search, `_dogPath.ts`); they stop for
-  him in their way and go round him; out of everyone's sight a cow is simply there. Sizes by
+  (build/pieces.ts `BUILT`, id `pen`, `done` 1; two pens: the cows in turn, two in each) and
+  lie down; at dawn they walk out again. A grown cow (≈ 3.6 m) has no room to turn in the
+  room once another stands there, so the pen has a **lane** (`gateStep`, `laneLeg`), one cow
+  at a time: before the gate (2.7 m out) it turns on the spot to face in, walks in facing the
+  trough and steps sideways to its place (four, `PEN_SLOTS`: the far sides first, then the
+  two by the lane; its depth by its size); in the morning the two by the lane step back to
+  it and back out first, then the far ones; the others wait their turn before the gate.
+  With no pen they lie down by their stakes (`LIE_HOURS` 0.3‥0.76); a pen taken down while
+  they are in it, they still leave by its lane; a pen they find no way to (up a land step,
+  behind a wall: the search must reach its gate's outside on its level) they spend the night
+  at their stakes, and try again most of a game day later. Ways (to the stake, the pen's gate, after a ride, off when sold)
+  on the walk map a cow's size (room over it, its width, no plants, a wide berth round what
+  he built and his bicycle: a straight line if it can, else the dog's search, `_dogPath.ts`);
+  they stop for him in their way and go round him, and wait behind another animal in their
+  way (round it after a while if it stays put; two held up by each other: the lower slot goes
+  round first); out of everyone's sight a cow is simply there. Sizes by
   weight: a calf ≈ 0.78 × the ox, young ≈ 1.15, grown ≥ 1.4 (as the village's), 1.54 at its
   fullest; a thin one is smaller, its coat duller, its head low. Drawn with the ox of the
   villages (`OX`) through one `Flock` (9 slots: his four, the trader's three, two being led
@@ -2648,7 +2662,7 @@ the grass); the trader himself `people/_sceneCattle.ts` (scene `cattle`); his ca
   (his herd, a hungry calf) · `…&cattle=young:hungry&cattlefeed=0.75&cattlestraw=6` ·
   `roam=walk&at=426,-140&yaw=200&cattle=young:hungry,grown&cattlecut=2.85` ·
   `…&cattle=grown,calf&cow=ride` (riding his grown cow) ·
-  `cam=438,17,-104,432,9,-115,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@432/-115/180`
+  `cam=439,16,-131,433,8.5,-120.5,55&clock=0.47&cattle=calf,young,grown,8&home=1&cattlenight=1&build=pen@433/-121/180`
   (the four in his pen at night). Parts: `foreground` (roaming) and
   `people` (the trader); `terrain,water,hamlet,vegetation,path` for the place round them.
 
