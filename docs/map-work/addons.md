@@ -1507,6 +1507,9 @@ alms bowls; families give rice by the road; the explorer gives too.
   spoon over the bowl) and `dakbat=bless` the monk before him at once; the shop:
   `shop=market-flowers`, `shopbuy=dakRice`, `kept=dakRice`. Bug reports give
   `dakbat=wait|give|bless`. `__dak.now()` in the console: his state and the ask.
+- **Fruit from his garden** (roam/_offerFruitMonk.ts, "Offering fruit" below): with no rice but fruit in his
+  basket, "E  ដាក់ចេកក្នុងបាត្រព្រះសង្ឃ" asks the line the same way (`DAK.ask`; the monk 1.35 m before him); the
+  fruit goes into the bowl with both hands, `rice` stays 0.
 ### A monk's blessing (the red string)
 
 `roam/_blessing.ts` (id `bless`, words `bless…`), his pose `character/blessing.ts`, the
@@ -1620,6 +1623,9 @@ is there and where his hands tie, the blessing's state and time; `BLESS_SCRIPT`,
   Kulen's: `roam=walk&at=401.25,150,-444.1&yaw=180&clock=0.9&people=kulen,kulenblessing`
   (`parts=terrain,kulen,people,foreground` is quicker; `bless=` and `listen=` take the seat
   he stands before, else the nearest).
+- **Fruit offered first** (roam/_offerFruitMonk.ts, "Offering fruit" below): with fruit in his basket the first E
+  before the dais offers it ("E  ប្រគេនចេកព្រះសង្ឃ"; state `gift`, times `GIFT`): the monk leans forward, takes the
+  tray in both hands, sets it on his dais at his left and chants his thanks; then "Ask for a blessing" as ever.
 
 ### Kneeling to listen to the monks' chanting
 
@@ -1766,8 +1772,8 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
   prayer, the fruit stays in his basket.
 - **A monk met on the way** (standing or walking, the people part finds him: `OFFER.find`, not one seated in a row, on
   his dais, at a meal, riding, or on his alms round with his bowl): "E  ប្រគេនចេកព្រះសង្ឃ / Offer bananas to the
-  monk". The monk stops where he is and turns to him (held: `Actor.held`, his scene's walk waits); he steps to 1.3 m
-  before him, takes his hat off, bows a little and holds the fruit out in both hands; the monk takes it in both of his
+  monk". The monk stops where he is and turns to him (held: `Actor.held`, his scene's walk waits); he steps to 1.4 m
+  before him (`OFFER_STAND`), takes his hat off, bows a little and holds the fruit out in both hands; the monk takes it in both of his
   (`POSE.give`), raises his right hand in blessing (`POSE.nod`) and chants (bubbles, the Pali in Khmer letters) the
   thanks for a gift "♪ យថា វារិវហា បូរា បរិបូរេន្តិ សាគរំ" and the four blessings "♪ អាយុ វណ្ណោ សុខំ ពលំ" while he
   sampeahs, bowed (≈ 9 s in all); the fruit goes into the monk's bag; hat back on. One gift a monk a day
@@ -1776,11 +1782,11 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
 - **The dawn alms round** (dak bat, `DAK` as roam/_dakBat.ts): with fruit and no sticky rice in his bag (the rice comes
   first: the dak bat add-on's), as a line of monks comes his way, "E  ដាក់ចេកក្នុងបាត្រព្រះសង្ឃ / Put bananas in the
   monk's bowl". He turns to the way, kneels the prayer's way (hat off) and sits back with the fruit on his lap in both
-  hands; the first monk not past him steps over and lifts his bowl's lid; he rises on his knees and lays it in with
-  both hands; the lid goes on over it, he sits back, palms together, while the monks chant the blessing (`dakChant`),
+  hands; the first monk not past him steps over (1.35 m before him: nearer than for the rice's spoon) and lifts his
+  bowl's lid; he rises on his knees, holds it out over the bowl as far as his arms go and tips it in with both hands; the lid goes on over it, he sits back, palms together, while the monks chant the blessing (`dakChant`),
   bows once to the ground and gets up. No line answers: "The monks have walked on". Counted as a monk's.
 - **The blessing monk** (`BLESS`: the village pagoda's hall, Kulen's reclining Buddha), by day while he sits there:
-  "E  ប្រគេនចេកព្រះសង្ឃ  ·  J  Kneel and listen" before the blessing's own prompt. He walks to 1.5 m before the dais,
+  "E  ប្រគេនចេកព្រះសង្ឃ  ·  J  Kneel and listen" before the blessing's own prompt. He walks to 1.32 m before the monk,
   kneels, raises the tray before his face, holds it out; the monk leans forward and takes it in both hands
   (`BLESS.ask` state `gift`, its times `GIFT` in roam/_blessingHooks.ts; people/_sceneBlessing.ts `case 'gift'`), sets
   it on his dais at his left by the plate (it stays there a few map hours) and chants his thanks (the same two bubbles)
@@ -1790,7 +1796,9 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
   gift the monk has is counted). Tools, emotes and the camera wait meanwhile (`input` takes them; the drag looks).
 - **Saved** (progress.ts): `offer.count` (every offering: the merit), `offer.monks` (to monks); a toast at 10, 25, 50,
   100, 200, 500 offerings: "អ្នកបានធ្វើបុណ្យ n ដងហើយ សូមឱ្យបុណ្យកុសលចម្រើន! / You have made merit n times. May your merit
-  grow!". The monks given to today are kept for the visit.
+  grow!". The monks given to today are kept for the visit. The first offering stamps the passport's rare moments
+  ("ថ្វាយផ្លែឈើពីសួន / Fruit from his garden": `_bookData.ts` `offering`, its picture in `_stamps.ts`: a footed tray of
+  fruit with a hand of bananas; `Journal.award`).
 - **Cost**: nothing allocated a step; one mesh in his hands and 14 laid (geometries per kind made the first time, ≈
   1–6 ms each; the statues' material, already compiled); the people part reads one number a frame when idle, the monk
   finder a loop over the people while he has fruit on foot.
@@ -1802,7 +1810,10 @@ monk who takes it `people/_offerBack.ts` (one line in people/index.ts), his pose
   laying it in, `dakbat:bless`; `offer=bless` (before the dais, `clock=0.9&people=blessing`) walking to him,
   `bless:lift`, `bless:out[:<s>]` (1.3 the monk has it, 2.6 setting it down), `bless:bless`. `report()` gives them
   back. Checks: `__offer.now()` (the shrine's step, the monks', the basket, the counts), `__offer.laid()`,
-  `__offer.hand()`. E.g. `roam=walk&at=201.1,35,-119.5&yaw=90&offer=shrine:terrace-garden-stupa:1.6&offerkind=mango`
+  `__offer.hand()`, `__offer.ground(x, z)`; `__offerBack.now()` (the monk held, his step, his words). A still's
+  bubbles show only under the game's own camera (`cam=` makes the parts' frame the overview's: no bubbles); `cam=` is
+  best for his pose, the game's camera (or `rcam=`) for the monks' words. His own spirit house (building at home,
+  `build=all`) is a spot too (`build-spirit-1`: `roam=walk&at=408.5,10,-119&build=all&basket=coconut:2`). E.g. `roam=walk&at=201.1,35,-119.5&yaw=90&offer=shrine:terrace-garden-stupa:1.6&offerkind=mango`
   (Ta Prohm's garden stupa), `roam=walk&at=-306,10,96.8&yaw=0&basket=banana:2` (the village pagoda's door: the
   prompt), `roam=walk&at=-305.3,10,103.3&yaw=90&clock=0.9&people=blessing&offer=bless:out:1.3`.
 
