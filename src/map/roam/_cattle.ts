@@ -607,7 +607,8 @@ registerAddon({
     lastCtx = ctx;
     if (m !== 'walk' || !env || env.busy() || visit || work?.active) return null;
     choose(ctx);
-    return choice.prompt;
+    // (the lines with no key — the trader away, no straw — are `cattleSay`'s, late: every E here wins over them)
+    return SAYS.has(choice.kind) ? null : choice.prompt;
   },
   use(ctx, m) {
     if (m !== 'walk' || !env || !work) return;
@@ -799,6 +800,23 @@ registerAddon({
     if (card?.open) out.cattleshop = card.tab;
     if (work?.carrying) out.cattlecarry = '1';
     return Object.keys(out).length ? out : null;
+  },
+});
+
+/** The cattle's lines with no key (the trader away or coming, a hungry cow and no straw), late in the E row, before the cut. */
+const SAYS: ReadonlySet<Choice> = new Set<Choice>(['closed', 'coming', 'noStraw']);
+registerAddon({
+  id: 'cattleSay',
+  order: 92,
+  offer(ctx, m) {
+    if (m !== 'walk' || !env || env.busy() || visit || work?.active) return null;
+    choose(ctx);
+    return SAYS.has(choice.kind) ? choice.prompt : null;
+  },
+  use(ctx, m) {
+    if (m !== 'walk' || !env) return;
+    choose(ctx);
+    if (choice.kind === 'closed' || choice.kind === 'coming') ctx.hud.toast(t(choice.kind === 'closed' ? 'cattleClosed' : 'cattleComing'));
   },
 });
 

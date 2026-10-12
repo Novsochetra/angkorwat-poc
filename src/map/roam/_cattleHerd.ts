@@ -10,6 +10,7 @@ import { OX } from '../people/_ox';
 import type { AnimalCall } from '../types';
 import { hash3 } from '../../voxel/random';
 import { drawRideCow } from '../people/_oxRide';
+import { BIKE_OWN } from './_bikeOwn';
 import { lineWalk, PathSearch } from './_dogPath';
 import { CattleBlocks } from './_cattleBlocks';
 import type { RoamWorld } from './types';
@@ -55,6 +56,8 @@ import type { RoamWorld } from './types';
 const SLOTS = 9;
 /** Pace (m/s): ambling to a fresh patch, walking a way (× its size over a grown one's, a calf trots after). */
 const AMBLE = 0.32;
+/** Turning to amble (rad/s, stepping round). */
+const AMBLE_TURN = 1.1;
 const WALK = 0.75;
 /** Steps a second for a pace (the village herd's: people/_sceneEastVillage.ts `show`). */
 const hzOf = (speed: number, size: number): number => speed / (0.775 * size);
@@ -76,7 +79,7 @@ const STAKE_COL = 0x6a4c30;
 const STRAW_COL = [0xd6b866, 0xc9a854, 0xe2c878, 0xbf9d4a];
 const GRASS_COL = [0x5e9a36, 0x4c8a2c, 0x6eaa40, 0x58923a];
 
-export type Doing = 'graze' | 'amble' | 'stand' | 'low' | 'eat' | 'lie' | 'way' | 'wait';
+export type Doing = 'graze' | 'amble' | 'stand' | 'low' | 'eat' | 'lie' | 'way' | 'wait' | 'gate';
 type Goal = 'stake' | 'pen' | 'trader' | 'post';
 
 export interface Beast {
@@ -110,6 +113,8 @@ export interface Beast {
   readonly wx: Float32Array;
   readonly wy: Float32Array;
   readonly wz: Float32Array;
+  /** The way it faces along each leg (NaN: the way it walks; the pen's lane holds it: in, sideways to its place, backing out). */
+  readonly wf: Float32Array;
   wn: number;
   wi: number;
   searching: boolean;
@@ -119,9 +124,22 @@ export interface Beast {
   /** Eating: straw or grass, how much is left of the heap (0‥1). */
   food: 'straw' | 'grass' | null;
   left: number;
-  /** Its pen and its place there (−1: none). */
-  pen: number;
+  /**
+   * Its pen (the piece's uid, '' none), its place there (−1: none: it has one from the lane in to the lane out), the
+   * lane it walks now (0 none, 1 in, 2 out).
+   */
+  penUid: string;
   penSlot: number;
+  lane: number;
+  /** How long another animal has stood in its way (s; below 0: it has just gone round one), and whether that one waits its turn at a gate (or behind one that does): a queue, not gone round. */
+  waitCow: number;
+  queued: boolean;
+  /** No way to its pen found (built where a cow cannot walk to): till then (s) it spends the night at its stake. */
+  noPenUntil: number;
+  /** When it looks next whether a plant or something he built is under it now (s). */
+  checkAt: number;
+  /** Where it is put down when it is simply there (`patch` with `placing`): its heading. */
+  tyaw: number;
   /** Next bell, next low, next mouthful (s). */
   bellAt: number;
   lowAt: number;
@@ -142,13 +160,58 @@ export interface Beast {
 const _pa = { x: 0, z: 0, face: 0 };
 const _pw: [number, number] = [0, 0];
 
-/** The pen's four places (piece frame: facing the trough at the back, −z), and the lane in through its gate. */
+/**
+ * The pen's four places (piece frame: x, a nudge to its depth, the way it faces: the trough at the back, −z), filled
+ * in this order: the far sides first, then the two by the lane. A grown cow (≈ 3.6 m) has no room to turn in the room
+ * (6.4 × 4.6 m) once another stands there, nor at a far side's place (1.1 m from the rail), so each walks in through
+ * the gate facing the trough, steps sideways to its place, and in the morning steps back to the lane and backs out
+ * (`lane`): one at a time, the two by the lane out first.
+ */
 const PEN_SLOTS: readonly (readonly [number, number, number])[] = [
-  [-2.35, 0.8, Math.PI - 0.08],
-  [-0.78, 0.95, Math.PI + 0.06],
-  [0.78, 0.8, Math.PI - 0.05],
-  [2.35, 0.95, Math.PI + 0.1],
+  [-2.5, 0.06, Math.PI - 0.05],
+  [2.5, -0.04, Math.PI + 0.06],
+  [-0.85, -0.06, Math.PI + 0.04],
+  [0.85, 0.05, Math.PI - 0.04],
 ];
+/** The place by the lane on the same side as a far one (−1: none): it must be empty before the far one steps out. */
+const PEN_INNER = [2, 3, -1, -1];
+/** Its depth in the room by its size: the nose ≈ 0.9 m short of the back rail, the rump clear of the front one. */
+const slotDepth = (size: number): number => Math.min(2.55 - 0.9 * size, -1.75 + 1.62 * size);
+/** Walking the lane in, stepping sideways, backing out (m/s); turning on the spot before the gate (rad/s). */
+const LANE_PACE = 0.6;
+const SHUFFLE = 0.36;
+const BACK = 0.5;
+const GATE_TURN = 1.6;
+/** No way to its pen: it tries again this long after (s: most of a game day). */
+const NO_PEN_RETRY = 300;
+/** The ox's body along its middle (model units: the rump to the muzzle), its half width; the points before it as it walks. */
+const BODY_BACK = 0.88;
+const BODY_FRONT = 1.67;
+const BODY_HALF = 0.31;
+const BODY_U = [-0.82, -0.3, 0.25, 0.8, 1.35, 1.62];
+const AHEAD_U = [0.95, 1.45, 1.95];
+/** Whether (px, pz) is in the body of an ox at (x, z) facing `yaw`, `size`, grown by `pad` (m). */
+function inBody(x: number, z: number, yaw: number, size: number, px: number, pz: number, pad: number): boolean {
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const dx = px - x;
+  const dz = pz - z;
+  const along = dx * fx + dz * fz;
+  if (along < -BODY_BACK * size - pad || along > BODY_FRONT * size + pad) return false;
+  return Math.abs(dx * fz - dz * fx) < BODY_HALF * size + pad;
+}
+const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
+/** In his bicycle where he left it (roam/_bikeOwn.ts `BIKE_OWN`: from its back tyre to its front one, its bars), grown by `pad` (m). */
+function bikeAt(x: number, z: number, pad: number): boolean {
+  if (!BIKE_OWN.kind || BIKE_OWN.riding) return false;
+  const dx = x - BIKE_OWN.x;
+  const dz = z - BIKE_OWN.z;
+  if (dx * dx + dz * dz > 9) return false;
+  const fx = Math.sin(BIKE_OWN.yaw);
+  const fz = Math.cos(BIKE_OWN.yaw);
+  const along = dx * fx + dz * fz;
+  return along > -0.75 - pad && along < 1.1 + pad && Math.abs(dx * fz - dz * fx) < 0.32 + pad;
+}
 /** Where his cows sold wait by the trader's trough (his place's frame), side by side, until nobody sees them. */
 const LEAVE_SPOTS: readonly (readonly [number, number])[] = [
   [-6.5, -1.5],
@@ -156,8 +219,8 @@ const LEAVE_SPOTS: readonly (readonly [number, number])[] = [
   [-9.3, -0.6],
   [-9.8, -3.6],
 ];
-const GATE_OUT = 1.6;
-const GATE_IN = 1.1;
+/** Its gate's outside on the lane's line (m past the front rail): a grown cow turns there clear of the rails. */
+const GATE_OUT = 2.7;
 
 export class CattleHerd {
   readonly flock = new Flock(OX, SLOTS);
@@ -227,8 +290,8 @@ export class CattleHerd {
   private newBeast(i: number): Beast {
     return {
       i, cow: null, post: -1, ride: null, x: 0, y: 0, z: 0, yaw: 0, size: 1.4, doing: 'graze', until: 0, tx: 0, tz: 0, head: 1, turn: 0, rest: 0, speed: 0,
-      goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false, leaveAt: 0,
-      food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
+      goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wf: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false, leaveAt: 0,
+      food: null, left: 0, penUid: '', penSlot: -1, lane: 0, waitCow: 0, queued: false, noPenUntil: -1, checkAt: 0, tyaw: 0, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, restWas: 0, restAt: -10, coat: -1, look: 0,
     };
   }
 
@@ -368,23 +431,62 @@ export class CattleHerd {
   private goalNow(b: Beast, clock: number): Goal {
     if (b.post >= 0) return 'post';
     if (b.leaving) return 'trader';
-    if (inHours(clock, PEN_HOURS) && this.pens() > 0) return 'pen';
+    if (inHours(clock, PEN_HOURS) && this.pens() > 0 && this.time >= b.noPenUntil) return 'pen';
     return 'stake';
   }
 
-  /** Its place in a pen (the cows of his in the herd's order, four to a pen), or false. */
-  private penPlace(b: Beast): boolean {
-    let n = 0;
+  /** The standing pen with this uid, or null (none, taken down). */
+  private penOf(uid: string): Built | null {
+    if (!uid) return null;
+    for (const p of BUILT.list) if (p.uid === uid && p.id === 'pen' && p.done >= 1) return p;
+    return null;
+  }
+
+  /** Its pen: the cows of his in the herd's order, one to each pen in turn (two pens: two cows each). */
+  private penFor(b: Beast): Built | null {
+    const n = this.pens();
+    if (!n) return null;
+    let k = 0;
     for (const q of this.beasts) {
       if (!q.cow || q.leaving) continue;
       if (q === b) break;
-      n++;
+      k++;
     }
-    const pen = this.penAt(Math.floor(n / 4)) ?? this.penAt(0);
-    if (!pen) return false;
-    b.pen = BUILT.list.indexOf(pen);
-    b.penSlot = n % 4;
-    return true;
+    return this.penAt(k % n);
+  }
+
+  /** Its place in pen `p`: the one it has, else the first free (`PEN_SLOTS`' order). */
+  private claimSlot(b: Beast, p: Built): void {
+    if (b.penUid === p.uid && b.penSlot >= 0) return;
+    b.penUid = p.uid;
+    for (let k = 0; k < PEN_SLOTS.length; k++) {
+      let taken = false;
+      for (const q of this.beasts) if (q !== b && q.penUid === p.uid && q.penSlot === k) taken = true;
+      if (taken) continue;
+      b.penSlot = k;
+      return;
+    }
+    b.penSlot = 0;
+  }
+
+  /** Its place in its pen's frame (x, z) and the way it faces there (local), by its size, into `out`. */
+  private slotLocal(b: Beast, out: { x: number; z: number; face: number }): void {
+    const s = PEN_SLOTS[b.penSlot] ?? PEN_SLOTS[0];
+    out.x = s[0];
+    out.z = slotDepth(b.size) + s[1];
+    out.face = s[2];
+  }
+
+  /** The pen it is in now (its place there or the lane to it), or null. */
+  private penIn(b: Beast): Built | null {
+    return b.penSlot >= 0 ? this.penOf(b.penUid) : null;
+  }
+
+  /** Not in a pen (a pen taken down, a ride, back to the map): its pen fields cleared. */
+  private unpen(b: Beast): void {
+    b.penUid = '';
+    b.penSlot = -1;
+    b.lane = 0;
   }
 
   /** The point of its goal (m) and the way it faces there, into `out`. */
@@ -406,15 +508,6 @@ export class CattleHerd {
       out.face = traderYaw(Math.PI);
       return true;
     }
-    if (b.goal === 'pen' && b.cow && this.penPlace(b)) {
-      const pen = BUILT.list[b.pen];
-      const s = PEN_SLOTS[b.penSlot];
-      pieceToWorld(pen, s[0], s[1], _pw);
-      out.x = _pw[0];
-      out.z = _pw[1];
-      out.face = pen.yaw + s[2];
-      return true;
-    }
     if (!b.cow) return false;
     const st = STAKES[b.cow.stake] ?? STAKES[0];
     out.x = st[0];
@@ -426,14 +519,28 @@ export class CattleHerd {
   /** Put it where it belongs now at once (first seen, a check's still, or out of sight), doing what fits there. */
   private home(b: Beast, first: boolean): void {
     const g = _pa;
-    this.goalPoint(b, g);
-    if (b.goal === 'stake' && b.cow) {
-      // (somewhere round its stake, a seeded spot: not on a plant)
-      this.patch(b, first ? 0 : 1);
+    b.lane = 0;
+    b.waitCow = 0;
+    b.queued = false;
+    const pen = b.goal === 'pen' && b.cow ? this.penFor(b) : null;
+    if (pen) {
+      // (at its place in its pen, facing the trough)
+      this.claimSlot(b, pen);
+      this.slotLocal(b, g);
+      pieceToWorld(pen, g.x, g.z, _pw);
+      b.x = _pw[0];
+      b.z = _pw[1];
+      b.yaw = pen.yaw + g.face;
+    } else if (b.goal === 'stake' && b.cow) {
+      // (somewhere round its stake, a seeded spot: clear of his plants, what he built and the others)
+      this.unpen(b);
+      this.patch(b, first ? 0 : 1, true);
       b.x = b.tx;
       b.z = b.tz;
-      b.yaw = (hash3(b.cow.id, 31, Math.floor(this.time / 30), 7105) - 0.5) * 6.2;
+      b.yaw = b.tyaw;
     } else {
+      this.unpen(b);
+      this.goalPoint(b, g);
       b.x = g.x;
       b.z = g.z;
       b.yaw = g.face;
@@ -448,22 +555,80 @@ export class CattleHerd {
     this.stats.snapped++;
   }
 
-  /** A fresh patch round its stake (as far as the rope lets its middle go), clear of his plants: into `tx, tz`. */
-  private patch(b: Beast, salt: number): void {
+  /**
+   * A fresh patch round its stake (as far as the rope lets its middle go) where its body stands clear of his plants,
+   * what he has built and the other cows: into `tx, tz`. Ambling there (not `placing`) it faces the way it walks and
+   * nothing he built or planted is between; `placing` (it is simply there) it gets a heading that is clear (`tyaw`).
+   */
+  private patch(b: Beast, salt: number, placing = false): void {
     const st = b.cow ? (STAKES[b.cow.stake] ?? STAKES[0]) : STAKES[0];
     const seed = (b.cow?.id ?? b.i) * 13 + salt;
-    for (let k = 0; k < 8; k++) {
+    // (where it stands now is not clear — a plant or a fence put there —: it may walk off it)
+    const stuck = !placing && !this.bodyFree(b, b.x, b.z, b.yaw, false);
+    for (let k = 0; k < 10; k++) {
       const a = hash3(seed, k, Math.floor(this.time / 7), 7107) * Math.PI * 2;
       const r = ROPE * (0.45 + 0.55 * Math.sqrt(hash3(seed, k, Math.floor(this.time / 7), 7108)));
       const x = st[0] + Math.sin(a) * r;
       const z = st[1] + Math.cos(a) * r;
       if (this.plantNear(x, z, b.size * 0.9) || this.otherNear(b, x, z)) continue;
+      if (placing) {
+        const yaw = this.freeYaw(b, x, z, (hash3(seed, k, Math.floor(this.time / 30), 7105) - 0.5) * 6.2);
+        if (Number.isNaN(yaw)) continue;
+        b.tyaw = yaw;
+      } else {
+        if (Math.hypot(x - b.x, z - b.z) < 0.3) continue;
+        const head = Math.atan2(x - b.x, z - b.z);
+        if (!this.bodyFree(b, x, z, head, true)) continue;
+        // (it turns there on the spot first: its long body swings clear; one stuck on something just goes)
+        if (!stuck && !this.sweepFree(b, b.x, b.z, b.yaw, head)) continue;
+        if (!stuck && Number.isNaN(lineWalk(this.cowWorld, b.x, b.y, b.z, x, z, true))) continue;
+      }
       b.tx = x;
       b.tz = z;
       return;
     }
-    b.tx = st[0] + 0.6;
-    b.tz = st[1] + 0.6;
+    if (placing) {
+      b.tx = st[0] + 0.6;
+      b.tz = st[1] + 0.6;
+      b.tyaw = (hash3(seed, 11, 3, 7105) - 0.5) * 6.2;
+    } else {
+      // (nowhere clear just now: it stays)
+      b.tx = b.x;
+      b.tz = b.z;
+    }
+  }
+
+  /**
+   * Its body standing at (x, z) facing `yaw` clear of what he built, his plants and (`cows`) the other animals where
+   * they stand and where those ambling go.
+   */
+  private bodyFree(b: Beast, x: number, z: number, yaw: number, cows: boolean): boolean {
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const s = b.size;
+    const y = this.groundY(x, z, b.y);
+    const pad = 0.15 + BODY_HALF * s;
+    for (let k = 0; k < BODY_U.length; k++) {
+      const px = x + fx * BODY_U[k] * s;
+      const pz = z + fz * BODY_U[k] * s;
+      if (this.builtAt(px, pz, y, pad) || this.plantNear(px, pz, pad - 0.2) || bikeAt(px, pz, pad)) return false;
+      if (!cows) continue;
+      for (const q of this.beasts) {
+        if (q === b || q.ride?.ridden) continue;
+        if (inBody(q.x, q.z, q.yaw, q.size, px, pz, pad + 0.1)) return false;
+        if (q.doing === 'amble' && inBody(q.tx, q.tz, Math.atan2(q.tx - q.x, q.tz - q.z), q.size, px, pz, pad + 0.1)) return false;
+      }
+    }
+    return true;
+  }
+
+  /** A heading near `yaw` its body stands clear at (x, z), or NaN. */
+  private freeYaw(b: Beast, x: number, z: number, yaw: number): number {
+    for (let k = 0; k < 8; k++) {
+      const a = yaw + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.79;
+      if (this.bodyFree(b, x, z, a, true)) return a;
+    }
+    return NaN;
   }
 
   /** One of his garden's plants within its room (and `r`) of (x, z). */
@@ -515,17 +680,18 @@ export class CattleHerd {
         if (Number.isNaN(sa(px, pz, y, up, room))) return NaN;
       }
     if (this.plantNear(x, z, 0.25)) return NaN;
-    if (this.builtAt(x, z, g)) return NaN;
+    // (a wide berth: its long body swings round as it turns at a corner of its way)
+    if (this.builtAt(x, z, g, 0.6) || bikeAt(x, z, 0.5)) return NaN;
     return g;
   }
 
-  /** In a solid part of something he has built (its boxes, a margin round them). */
-  private builtAt(x: number, z: number, y: number): boolean {
+  /** In a solid part of something he has built (its boxes, `margin` m round them). */
+  private builtAt(x: number, z: number, y: number, margin: number): boolean {
     for (const p of BUILT.list) {
       const dx = x - p.x;
       const dz = z - p.z;
       const spec = PIECES[p.id];
-      const reach = Math.max(spec.w, spec.d) * 0.75 + 1;
+      const reach = Math.max(spec.w, spec.d) * 0.75 + 1 + margin;
       if (dx * dx + dz * dz > reach * reach) continue;
       if (y > p.y + spec.h + 0.2) continue;
       // (into the piece's frame)
@@ -533,7 +699,7 @@ export class CattleHerd {
       const s = Math.sin(p.yaw);
       const lx = dx * c - dz * s;
       const lz = dx * s + dz * c;
-      for (const [sx, sz, w, d] of spec.solids) if (Math.abs(lx - sx) < w / 2 + 0.3 && Math.abs(lz - sz) < d / 2 + 0.3) return true;
+      for (const [sx, sz, w, d] of spec.solids) if (Math.abs(lx - sx) < w / 2 + margin && Math.abs(lz - sz) < d / 2 + margin) return true;
     }
     return false;
   }
@@ -541,53 +707,55 @@ export class CattleHerd {
   // ── Ways ───────────────────────────────────────────────────────────────────
 
   /**
-   * Find its way to its goal: the lane out of a pen first, a straight line if it walks (or hops) it, else the search
-   * (one at a time; the others wait their turn); the pen's lane in last.
+   * Find its way to its goal: in a pen and going elsewhere, out through the gate first (`gate`, when the lane is
+   * free); a straight line if it walks (or hops) it, else the search (one at a time; the others wait their turn). Into
+   * a pen the way goes to the gate's outside: the lane in is its turn there (`gateStep`).
    */
   private plan(b: Beast): void {
     b.wn = b.wi = 0;
     b.at = false;
-    const g = _pa;
-    if (!this.goalPoint(b, g)) return;
-    let gx = g.x;
-    let gz = g.z;
-    if (b.goal === 'stake' && b.cow) {
-      this.patch(b, 2);
-      gx = b.tx;
-      gz = b.tz;
+    const inPen = this.penIn(b);
+    if (inPen && (b.goal !== 'pen' || this.penFor(b) !== inPen)) {
+      b.doing = 'gate';
+      b.lane = 0;
+      return;
     }
-    // (out of a pen: back through its gate first)
-    if (b.pen >= 0 && b.goal !== 'pen') {
-      const pen = BUILT.list[b.pen];
-      if (pen && pen.id === 'pen') {
-        const gate = PIECES.pen.pen!.gate;
-        this.push(b, ...pieceToWorld(pen, gate[0], gate[1] - GATE_IN, _pw));
-        this.push(b, ...pieceToWorld(pen, gate[0], gate[1] + GATE_OUT, _pw));
-      }
-      b.pen = -1;
-    }
-    // (into a pen: the way goes to its gate's outside, then the lane in)
-    let tx = gx;
-    let tz = gz;
-    let lane = false;
-    if (b.goal === 'pen' && b.pen >= 0) {
-      const pen = BUILT.list[b.pen];
-      const gate = PIECES.pen.pen!.gate;
-      [tx, tz] = pieceToWorld(pen, gate[0], gate[1] + GATE_OUT, _pw);
-      lane = true;
-    }
-    const sx = b.wn ? b.wx[b.wn - 1] : b.x;
-    const sz = b.wn ? b.wz[b.wn - 1] : b.z;
-    const sy = b.wn ? this.groundY(sx, sz, b.y) : b.y;
-    const y = lineWalk(this.cowWorld, sx, sy, sz, tx, tz, true);
-    if (!Number.isNaN(y)) {
-      this.stats.straight++;
-      this.push(b, tx, tz);
-      if (lane) this.lane(b, gx, gz);
+    if (inPen) {
+      // (back to its place in the pen it is in: it never turns in there)
+      const g = _pa;
+      this.slotLocal(b, g);
+      this.pushLocal(b, inPen, g.x, g.z, g.face);
+      b.lane = 1;
       b.doing = 'way';
       return;
     }
-    // (the search: queued; the lane in is added when it has found the way)
+    this.unpen(b);
+    let tx: number;
+    let tz: number;
+    if (b.goal === 'pen') {
+      const pen = this.penFor(b);
+      if (!pen) return;
+      b.penUid = pen.uid;
+      const gate = PIECES.pen.pen!.gate;
+      [tx, tz] = pieceToWorld(pen, gate[0], gate[1] + GATE_OUT, _pw);
+    } else if (b.goal === 'stake' && b.cow) {
+      this.patch(b, 2, true);
+      tx = b.tx;
+      tz = b.tz;
+    } else {
+      const g = _pa;
+      if (!this.goalPoint(b, g)) return;
+      tx = g.x;
+      tz = g.z;
+    }
+    const y = lineWalk(this.cowWorld, b.x, b.y, b.z, tx, tz, true);
+    if (!Number.isNaN(y)) {
+      this.stats.straight++;
+      this.push(b, tx, tz);
+      b.doing = 'way';
+      return;
+    }
+    // (the search: queued)
     b.searching = true;
     b.doing = 'wait';
     b.tx = tx;
@@ -595,21 +763,96 @@ export class CattleHerd {
     if (!this.queue.includes(b) && this.searchFor !== b) this.queue.push(b);
   }
 
-  private push(b: Beast, x: number, z: number): void {
+  /** A point of its way (m), walked to facing the way it goes (`face` NaN) or facing `face` (the pen's lane). */
+  private push(b: Beast, x: number, z: number, face = NaN): void {
     if (b.wn >= b.wx.length) return;
     b.wx[b.wn] = x;
     b.wz[b.wn] = z;
     b.wy[b.wn] = NaN;
+    b.wf[b.wn] = face;
     b.wn++;
   }
 
-  /** The pen's lane: in through the gate, to its place. */
-  private lane(b: Beast, gx: number, gz: number): void {
-    const pen = BUILT.list[b.pen];
-    if (!pen) return;
+  /** A point of the pen's lane (its frame), facing `face` (local) there. */
+  private pushLocal(b: Beast, pen: Built, lx: number, lz: number, face: number): void {
+    pieceToWorld(pen, lx, lz, _pw);
+    this.push(b, _pw[0], _pw[1], pen.yaw + face);
+  }
+
+  /**
+   * Before its pen's gate: going in, its turn when the lane is free — it turns on the spot to face in, walks in facing
+   * the trough and steps sideways to the first free place —; going out, its turn when the lane is free and (a far
+   * place) the place by the lane on its side is empty: it steps sideways to the lane and backs out past the gate.
+   */
+  private gateStep(b: Beast, dt: number): void {
+    b.speed = 0;
+    b.rest = 0;
+    b.turn = 0;
+    const out = this.penIn(b);
+    const pen = out ?? this.penOf(b.penUid);
+    if (!pen || (!out && b.goal !== 'pen')) {
+      // (taken down meanwhile, or no longer wanted there: on its way again)
+      this.unpen(b);
+      b.doing = 'stand';
+      b.until = this.time + 0.5;
+      return;
+    }
+    if (!this.seen(b.x, b.z)) {
+      this.home(b, false);
+      return;
+    }
+    b.head = 0.2;
+    for (const q of this.beasts) if (q !== b && q.lane && q.penUid === pen.uid) return;
     const gate = PIECES.pen.pen!.gate;
-    this.push(b, ...pieceToWorld(pen, gate[0], gate[1] - GATE_IN, _pw));
-    this.push(b, gx, gz);
+    const g = _pa;
+    if (out) {
+      const inner = PEN_INNER[b.penSlot] ?? -1;
+      if (inner >= 0) for (const q of this.beasts) if (q !== b && q.penUid === pen.uid && q.penSlot === inner) return;
+      // (and nobody standing before the gate, where it backs out to)
+      pieceToWorld(pen, gate[0], gate[1] + GATE_OUT, _pw);
+      for (const q of this.beasts) if (q !== b && !q.ride?.ridden && Math.hypot(q.x - _pw[0], q.z - _pw[1]) < 1 + 1.1 * (q.size + b.size)) return;
+      this.slotLocal(b, g);
+      b.wn = b.wi = 0;
+      this.pushLocal(b, pen, gate[0], g.z, g.face);
+      this.pushLocal(b, pen, gate[0], gate[1] + GATE_OUT, Math.PI);
+      b.lane = 2;
+      b.doing = 'way';
+      return;
+    }
+    // (not quite at the gate's outside — the search's nearest —: up to it first, if it can)
+    pieceToWorld(pen, gate[0], gate[1] + GATE_OUT, _pw);
+    const gx = _pw[0];
+    const gz = _pw[1];
+    if (Math.hypot(gx - b.x, gz - b.z) > 0.4) {
+      b.wn = b.wi = 0;
+      if (Number.isNaN(lineWalk(this.cowWorld, b.x, b.y, b.z, gx, gz, true))) {
+        this.unpen(b);
+        b.noPenUntil = this.time + NO_PEN_RETRY;
+        b.doing = 'stand';
+        b.until = this.time + 2;
+        return;
+      }
+      this.push(b, gx, gz);
+      b.doing = 'way';
+      return;
+    }
+    const want = pen.yaw + Math.PI;
+    const da = wrap(want - b.yaw);
+    if (Math.abs(da) > 0.03) {
+      // (stepping round on the spot)
+      b.yaw += Math.sign(da) * Math.min(Math.abs(da), GATE_TURN * dt);
+      b.speed = 0.12;
+      b.head = 0.1;
+      return;
+    }
+    b.yaw = want;
+    this.claimSlot(b, pen);
+    this.slotLocal(b, g);
+    b.wn = b.wi = 0;
+    this.pushLocal(b, pen, gate[0], g.z, Math.PI);
+    this.pushLocal(b, pen, g.x, g.z, g.face);
+    b.lane = 1;
+    b.doing = 'way';
   }
 
   /** The search, a slice a step: when it has found the way, the beast walks it. */
@@ -637,17 +880,17 @@ export class CattleHerd {
         b.wx[b.wn] = p.x[k];
         b.wy[b.wn] = p.y[k];
         b.wz[b.wn] = p.z[k];
+        b.wf[b.wn] = NaN;
         b.wn++;
       }
-      if (b.goal === 'pen') {
-        const g = _pa;
-        if (this.goalPoint(b, g)) this.lane(b, g.x, g.z);
-      } else if (st === 'found') this.push(b, b.tx, b.tz);
+      if (st === 'found') this.push(b, b.tx, b.tz);
       b.doing = 'way';
       return;
     }
-    // (no way: it stays where it is, at its goal's nearest, and tries again later; out of sight it is simply there)
+    // (no way: it stays where it is, at its goal's nearest, and tries again later; out of sight it is simply there; no
+    // way to its pen, it spends the night at its stake, trying again a good while later)
     this.stats.failed++;
+    if (b.goal === 'pen') b.noPenUntil = this.time + NO_PEN_RETRY;
     b.doing = 'stand';
     b.until = this.time + 20;
     b.at = b.goal === 'stake';
@@ -714,7 +957,7 @@ export class CattleHerd {
         b.z = r.z;
         b.yaw = r.yaw;
       }
-      b.pen = -1;
+      this.unpen(b);
       b.goal = this.goalNow(b, clock);
       b.doing = 'stand';
       b.until = this.time + 1.5;
@@ -768,6 +1011,10 @@ export class CattleHerd {
         if (!this.seen(b.x, b.z) && !b.searching) this.home(b, false);
         return;
       }
+      if (b.doing === 'gate') {
+        this.gateStep(b, dt);
+        return;
+      }
       this.walk(b, dt, clock);
       return;
     }
@@ -781,14 +1028,22 @@ export class CattleHerd {
   /** Along its way: walking, stopping for him in its way, up and down the land's steps (eased). */
   private walk(b: Beast, dt: number, clock: number): void {
     if (b.wi >= b.wn) {
-      b.at = true;
       b.speed = 0;
+      if (b.lane === 2) {
+        // (out of its pen, past the gate: on to where it goes)
+        this.unpen(b);
+        this.plan(b);
+        return;
+      }
+      if (b.goal === 'pen' && !this.penIn(b)) {
+        // (at the gate's outside: its turn to go in)
+        b.doing = 'gate';
+        return;
+      }
+      b.lane = 0;
+      b.at = true;
       b.doing = b.goal === 'pen' ? 'stand' : 'graze';
       b.until = this.time + 2 + 4 * hash3(b.i, 19, Math.floor(this.time), 7111);
-      if (b.goal === 'pen') {
-        const g = _pa;
-        if (this.goalPoint(b, g)) b.yaw = g.face;
-      }
       // (sold: gone once nobody sees it; till then it waits there, grazing)
       if (b.leaving && !this.seen(b.x, b.z)) this.drop(b);
       void clock;
@@ -799,6 +1054,51 @@ export class CattleHerd {
     const dx = tx - b.x;
     const dz = tz - b.z;
     const d = Math.hypot(dx, dz);
+    const hold = b.wf[b.wi];
+    if (!Number.isNaN(hold)) {
+      this.laneLeg(b, dt, tx, tz, d, hold);
+      return;
+    }
+    // (another animal right before it: it waits behind; one that stays where it is or is held up itself, it goes round
+    // after a while — the lower slot first, so two waiting for each other never wait for ever —; a moment after going
+    // round it does not stop for them)
+    const o = b.waitCow < 0 ? null : this.cowAhead(b);
+    if (o) {
+      b.speed = 0;
+      b.head = 0.1;
+      b.waitCow += dt;
+      const queue = o.doing === 'gate' || o.lane !== 0 || o.queued;
+      b.queued = queue;
+      const held = o.doing !== 'way' || o.waitCow > 0.4 || Math.abs(o.speed) < 0.05;
+      const after = o.doing !== 'way' ? 3.5 : b.i < o.i ? 1.5 : 5;
+      if (!queue && held && b.waitCow > after) {
+        if (this.goRound(b, o.x, o.z, 0.9 + BODY_HALF * (o.size + b.size), BODY_FRONT * o.size * 0.5)) b.waitCow = -3;
+        // (no room to go round: the lower slot pushes on, a moment, all the same)
+        else if (b.i < o.i && b.waitCow > after + 6) b.waitCow = -2;
+      }
+      // (out of everyone's sight a long while: it is simply there)
+      if (b.waitCow > 25 && !this.seen(b.x, b.z)) this.home(b, false);
+      return;
+    }
+    b.queued = false;
+    if (b.waitCow > 0) b.waitCow = 0;
+    else if (b.waitCow < 0) b.waitCow = Math.min(0, b.waitCow + dt);
+    // (his bicycle left in its way after it set off: round it; no room round it, it waits)
+    if (b.waitCow >= 0 && BIKE_OWN.kind && !BIKE_OWN.riding) {
+      const fx = Math.sin(b.yaw);
+      const fz = Math.cos(b.yaw);
+      for (let k = 0; k < AHEAD_U.length; k++)
+        if (bikeAt(b.x + fx * AHEAD_U[k] * b.size, b.z + fz * AHEAD_U[k] * b.size, 0.15 + BODY_HALF * b.size)) {
+          if (this.goRound(b, BIKE_OWN.x, BIKE_OWN.z, 1.0 + BODY_HALF * b.size, 0.3)) {
+            b.waitCow = -3;
+            break;
+          }
+          b.speed = 0;
+          b.waitCow += dt;
+          if (b.waitCow > 25 && !this.seen(b.x, b.z)) this.home(b, false);
+          return;
+        }
+    }
     // (him in its way, right before its nose: it stops and waits, its head up; a few seconds and it goes round him)
     if (this.roaming) {
       const fx = Math.sin(b.yaw);
@@ -814,19 +1114,7 @@ export class CattleHerd {
         if (b.blocked > 3 && b.wn < b.wx.length) {
           // (a way round him on the side away from him — past him, then on its way —, and a moment not stopping for him)
           b.blocked = -4;
-          const side = across > 0 ? -1 : 1;
-          const r = 1.1 + 0.8 * b.size;
-          const px = this.ex + fz * side * r + fx * 0.4;
-          const pz = this.ez - fx * side * r + fz * 0.4;
-          for (let k = b.wn; k > b.wi; k--) {
-            b.wx[k] = b.wx[k - 1];
-            b.wy[k] = b.wy[k - 1];
-            b.wz[k] = b.wz[k - 1];
-          }
-          b.wx[b.wi] = px;
-          b.wy[b.wi] = NaN;
-          b.wz[b.wi] = pz;
-          b.wn++;
+          this.goRound(b, this.ex, this.ez, 1.1 + 0.8 * b.size, 0.4);
         }
         return;
       }
@@ -854,6 +1142,101 @@ export class CattleHerd {
     b.y += (gy - b.y) * Math.min(1, dt * 5);
   }
 
+  /**
+   * A point of its way round something at (ox, oz) before it, `side` m to the side away from it and `ahead` m on
+   * (where it can stand), then on its way; false if neither side will do.
+   */
+  private goRound(b: Beast, ox: number, oz: number, side: number, ahead: number): boolean {
+    if (b.wn >= b.wx.length) return false;
+    const fx = Math.sin(b.yaw);
+    const fz = Math.cos(b.yaw);
+    const across = (ox - b.x) * fz - (oz - b.z) * fx;
+    const first = across > 0 ? -1 : 1;
+    for (const sd of [first, -first]) {
+      const px = ox + fz * sd * side + fx * ahead;
+      const pz = oz - fx * sd * side + fz * ahead;
+      if (Number.isNaN(lineWalk(this.cowWorld, b.x, b.y, b.z, px, pz, true))) continue;
+      for (let k = b.wn; k > b.wi; k--) {
+        b.wx[k] = b.wx[k - 1];
+        b.wy[k] = b.wy[k - 1];
+        b.wz[k] = b.wz[k - 1];
+        b.wf[k] = b.wf[k - 1];
+      }
+      b.wx[b.wi] = px;
+      b.wy[b.wi] = NaN;
+      b.wz[b.wi] = pz;
+      b.wf[b.wi] = NaN;
+      b.wn++;
+      return true;
+    }
+    return false;
+  }
+
+  /** Another animal right before it as it walks on (its body over the points before its chest and nose), or null. */
+  private cowAhead(b: Beast): Beast | null {
+    for (const q of this.beasts) {
+      if (q === b || q.ride?.ridden) continue;
+      const dx = q.x - b.x;
+      const dz = q.z - b.z;
+      if (dx * dx + dz * dz > 64) continue;
+      if (!this.hits(b, q)) continue;
+      // (two walking into each other: the one with the lower slot goes on, the other waits)
+      if (q.i > b.i && q.doing === 'way' && Math.abs(q.speed) > 0.05 && this.hits(q, b)) continue;
+      return q;
+    }
+    return null;
+  }
+
+  /** The points before `a` as it walks on fall in `o`'s body. */
+  private hits(a: Beast, o: Beast): boolean {
+    const fx = Math.sin(a.yaw);
+    const fz = Math.cos(a.yaw);
+    const pad = 0.1 + BODY_HALF * a.size * 0.8;
+    for (let k = 0; k < AHEAD_U.length; k++) {
+      const u = AHEAD_U[k] * a.size;
+      if (inBody(o.x, o.z, o.yaw, o.size, a.x + fx * u, a.z + fz * u, pad)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * A leg of the pen's lane, facing held (`hold`): walking in, stepping sideways to its place or back to the lane,
+   * backing out; it waits while he stands where it goes.
+   */
+  private laneLeg(b: Beast, dt: number, tx: number, tz: number, d: number, hold: number): void {
+    if (d < 0.03) {
+      b.x = tx;
+      b.z = tz;
+      b.wi++;
+      return;
+    }
+    b.yaw += wrap(hold - b.yaw) * Math.min(1, dt * 2.5);
+    const fx = Math.sin(b.yaw);
+    const fz = Math.cos(b.yaw);
+    const mx = (tx - b.x) / d;
+    const mz = (tz - b.z) / d;
+    const along = mx * fx + mz * fz;
+    const pace = along > 0.7 ? LANE_PACE : along < -0.7 ? BACK : SHUFFLE;
+    if (this.roaming && Math.abs(this.ey - b.y) < 2) {
+      // (its leading end: the nose walking in, its middle sideways, the rump backing out)
+      const lead = (along > 0.7 ? BODY_FRONT : along < -0.7 ? -BODY_BACK : 0.4) * b.size;
+      const lx = b.x + fx * lead + mx * 0.5;
+      const lz = b.z + fz * lead + mz * 0.5;
+      if (Math.hypot(this.ex - lx, this.ez - lz) < 0.7 + 0.4 * b.size) {
+        b.speed = 0;
+        b.head = -0.3;
+        return;
+      }
+    }
+    const st = Math.min(d, pace * dt);
+    b.x += mx * st;
+    b.z += mz * st;
+    b.speed = along < -0.7 ? -pace : pace;
+    b.head = 0.15;
+    b.rest = 0;
+    b.y += (this.groundY(b.x, b.z, b.y) - b.y) * Math.min(1, dt * 5);
+  }
+
   /** At its stake: grazing round it, ambling to a fresh patch, looking up, lowing; lying through the night with no pen; eating what he brought. */
   private atStake(b: Beast, dt: number, clock: number): void {
     const night = inHours(clock, LIE_HOURS);
@@ -862,6 +1245,21 @@ export class CattleHerd {
       return;
     }
     b.speed = 0;
+    // (a plant of his or something he built put where it stands: it gets up and moves off, day or night)
+    if (this.time >= b.checkAt) {
+      b.checkAt = this.time + 2.5;
+      if (b.doing !== 'amble' && !this.bodyFree(b, b.x, b.z, b.yaw, false)) {
+        this.patch(b, Math.floor(this.time));
+        if (b.tx !== b.x || b.tz !== b.z) {
+          b.doing = 'amble';
+          b.rest = 0;
+        }
+      }
+    }
+    if (b.doing === 'amble' && (night || b.rest > 0)) {
+      this.amble(b, dt);
+      return;
+    }
     if (night) {
       b.rest = 1;
       b.head = (b.i & 1) === 0 ? 0.4 : 0;
@@ -885,24 +1283,7 @@ export class CattleHerd {
       }
     } else b.turn = 0;
     if (b.doing === 'amble') {
-      const dx = b.tx - b.x;
-      const dz = b.tz - b.z;
-      const d = Math.hypot(dx, dz);
-      if (d < 0.15) {
-        b.doing = 'graze';
-        b.until = this.time + 9 + 16 * hash3(b.i, 23, Math.floor(this.time), 7112);
-      } else {
-        const st = Math.min(d, AMBLE * dt);
-        b.x += (dx / d) * st;
-        b.z += (dz / d) * st;
-        const want = Math.atan2(dx, dz);
-        let da = want - b.yaw;
-        da = Math.atan2(Math.sin(da), Math.cos(da));
-        b.yaw += da * Math.min(1, dt * 2);
-        b.y += (this.groundY(b.x, b.z, b.y) - b.y) * Math.min(1, dt * 5);
-        b.speed = AMBLE;
-        b.head = 1;
-      }
+      this.amble(b, dt);
       return;
     }
     if (b.doing === 'low') {
@@ -939,6 +1320,45 @@ export class CattleHerd {
     b.doing = 'graze';
     b.head = GRAZE;
     if (!this.seen(b.x, b.z)) this.drop(b);
+  }
+
+  /** Ambling to its fresh patch (`tx, tz`): turned toward it first (stepping round), then on; another cow come before it, it stops. */
+  private amble(b: Beast, dt: number): void {
+    b.rest = 0;
+    const dx = b.tx - b.x;
+    const dz = b.tz - b.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.15) {
+      b.doing = 'graze';
+      b.until = this.time + 9 + 16 * hash3(b.i, 23, Math.floor(this.time), 7112);
+      return;
+    }
+    const da = wrap(Math.atan2(dx, dz) - b.yaw);
+    b.yaw += Math.sign(da) * Math.min(Math.abs(da), AMBLE_TURN * dt);
+    if (Math.abs(da) > 0.45) {
+      b.speed = 0.12;
+      b.head = 0.6;
+      return;
+    }
+    if (this.cowAhead(b)) {
+      b.doing = 'graze';
+      b.until = this.time + 6;
+      return;
+    }
+    const st = Math.min(d, AMBLE * dt);
+    b.x += (dx / d) * st;
+    b.z += (dz / d) * st;
+    b.y += (this.groundY(b.x, b.z, b.y) - b.y) * Math.min(1, dt * 5);
+    b.speed = AMBLE;
+    b.head = 1;
+  }
+
+  /** Its body turning on the spot at (x, z) from `from` to `to` (the shorter way) stays clear (`bodyFree`). */
+  private sweepFree(b: Beast, x: number, z: number, from: number, to: number): boolean {
+    const da = wrap(to - from);
+    const n = Math.ceil(Math.abs(da) / 0.35);
+    for (let k = 1; k <= n; k++) if (!this.bodyFree(b, x, z, from + (da * k) / n, true)) return false;
+    return true;
   }
 
   /** Now and then it lifts its head and lows (`every`: × the usual wait; a hungry one more often). */
@@ -1066,13 +1486,13 @@ export class CattleHerd {
     for (let k = this.beasts.length - 1; k >= 0; k--) {
       const b = this.beasts[k];
       if (b.ride?.ridden) continue;
-      if (b.leaving) {
-        this.drop(b);
-        continue;
-      }
+      if (b.leaving) this.drop(b);
+      else this.unpen(b);
+    }
+    // (in the herd's order: the first ones get the pen's far places)
+    for (const b of this.beasts) {
+      if (b.ride?.ridden) continue;
       b.goal = this.goalNow(b, clock);
-      b.pen = -1;
-      if (b.goal === 'pen') this.penPlace(b);
       this.home(b, true);
       b.food = null;
       if (b.goal === 'pen' || inHours(clock, LIE_HOURS) || (b.post >= 0 && inHours(clock, [0.33, 0.73]))) {
@@ -1115,7 +1535,9 @@ export class CattleHerd {
       if (r && r.ridden) drawRideCow(fl, b.i, r, t);
       else {
         fl.place(b.i, b.x, b.y, b.z, b.yaw, b.size);
-        const walk = b.speed > 0.02 ? (b.speed > 0.5 ? 1 : 0.6) : 0;
+        // (backing out of the pen: its speed below 0, the steps the other way)
+        const sp = Math.abs(b.speed);
+        const walk = sp > 0.02 ? (sp > 0.5 ? 1 : 0.6) : 0;
         fl.gait(b.i, walk, walk > 0 ? hzOf(b.speed, b.size) : 0.5, t);
         // (a still: as it is now, not easing toward it)
         const snap = this.still;
@@ -1264,13 +1686,13 @@ export class CattleHerd {
     r.scale = b.size;
     r.lying = b.rest > 0.5;
     r.head = b.head;
-    r.speed = b.speed;
+    r.speed = Math.abs(b.speed);
     r.pitch = r.roll = 0;
     if (b.rest !== b.restWas) {
       b.restWas = b.rest;
       b.restAt = this.time;
     }
-    const settled = this.time - b.restAt > 1.4 && b.speed < 0.01;
+    const settled = this.time - b.restAt > 1.4 && Math.abs(b.speed) < 0.01;
     let ok = !!b.cow && ageOf(b.cow) === 'grown' && b.at && !b.leaving && b.goal !== 'pen' && settled && (b.doing === 'graze' || b.doing === 'stand' || b.doing === 'low' || b.doing === 'lie' || b.doing === 'eat');
     if (ok && this.world.ceilingAt) {
       const top = b.y + 1.3 * b.size;
@@ -1307,6 +1729,8 @@ export class CattleHerd {
       rest: b.rest,
       ride: b.ride ? { id: b.ride.id, canRide: b.ride.canRide, ridden: b.ride.ridden } : null,
       leaving: b.leaving,
+      pen: b.penUid ? `${b.penUid}:${b.penSlot}` : null,
+      lane: b.lane,
     }));
   }
 
