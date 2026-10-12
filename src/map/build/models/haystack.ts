@@ -33,9 +33,9 @@ const PROFILE: readonly [number, number][] = [
   [0.92, 0.46],
   [1.0, 0.26],
 ];
-/** A ring is two crosses of two boxes (the second turned 45°): its outline lies between 0.93 and 1 of this over the arms' half length. */
-const CROSS = 1.2;
-const ARM = 0.72;
+/** A layer is a ring of sheaves laid round the pole, butts out: each about this wide at its butt, at most this long (m). */
+const SHEAF_W = 0.5;
+const SHEAF_L = 0.78;
 /** The straw body from the bed's top to its crown (m). */
 const BODY0 = 0.2;
 const BODY1 = 2.48;
@@ -65,53 +65,58 @@ registerPieceModel('haystack', (b, look) => {
       else b.box(d, 0.135, 0, 0.09, 0.09, 1.75, c, 'mapBark', { src, shade: 0.85 });
     }
 
-  // ── The straw, ring on ring round the pole: two crosses a ring, each ring turned its own way, so it reads round ──
-  const rings = 14;
+  // ── The straw, layer on layer: sheaves laid round the pole, their butts out, each layer's over the gaps of the one under it ──
+  const rings = 9;
   const dh = (BODY1 - BODY0) / rings;
   const bulge = 0.96 + r() * 0.1;
-  // (the side the cows eat most: its rings drawn in there)
+  // (the side the cows eat most: its layers drawn in there)
   const eatA = r() * Math.PI * 2;
   const ex = Math.cos(eatA);
   const ez = Math.sin(eatA);
-  let turn = r() * 1.5;
+  const phase = r() * Math.PI * 2;
   const tufts: [number, number, number][] = [];
   for (let k = 0; k < rings; k++) {
     const t = (k + 0.5) / rings;
     const y = BODY0 + (k + 0.5) * dh;
-    const rad = radiusAt(t) * (t > 0.2 && t < 0.7 ? bulge : 1) * (0.97 + r() * 0.06);
-    // (the lower rings pulled at on one side; each ring a hand off true)
-    const eat = t < 0.3 ? 0.1 * (1 - t / 0.3) : 0;
-    const ox = -ex * eat + (r() - 0.5) * 0.05;
-    const oz = -ez * eat + (r() - 0.5) * 0.05;
+    const rad = radiusAt(t) * (t > 0.2 && t < 0.7 ? bulge : 1) * (0.97 + r() * 0.04);
+    // (the lower layers pulled at on one side; each a hand off true)
+    const eat = t < 0.3 ? 0.12 * (1 - t / 0.3) : 0;
+    const ox = -ex * eat + (r() - 0.5) * 0.04;
+    const oz = -ez * eat + (r() - 0.5) * 0.04;
     // (the crown greys in the weather; the rest stays gold)
     const weathered = t > 0.8 ? 0.2 + (t - 0.8) * 1.5 : 0;
-    const arm = rad / CROSS;
-    for (let q = 0; q < 2; q++) {
-      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), Math.min(1, weathered + r() * 0.2));
-      const ry = turn + q * (Math.PI / 4);
-      const sh = 0.9 + t * 0.12 + (q ? 0.03 : 0);
-      b.box(ox, y, oz, arm * 2, dh + 0.04, arm * 2 * ARM, c, 'mapBark', { src, ry, shade: sh });
-      b.box(ox, y, oz, arm * 2 * ARM, dh + 0.04, arm * 2, c, 'mapBark', { src, ry, shade: sh * 0.98 });
+    const n = Math.max(5, Math.round((2 * Math.PI * rad) / SHEAF_W));
+    const len = Math.min(SHEAF_L, rad - 0.04);
+    const w = ((2 * Math.PI * rad) / n) * 1.04;
+    // The heart of the layer (hidden but from above), then its sheaves.
+    const inner = rad - len + 0.1;
+    if (inner > 0.12) b.box(ox, y, oz, inner * 2, dh + 0.03, inner * 2, mix(tone(STRAW, r()), tone(OLD_STRAW, r()), 0.4), 'mapBark', { src, ry: phase, shade: 0.85 });
+    for (let i = 0; i < n; i++) {
+      const a = phase + ((i + (k % 2) * 0.5) / n) * Math.PI * 2 + (r() - 0.5) * 0.12;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const d = rad - len / 2 + (r() - 0.5) * 0.05;
+      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), Math.min(1, weathered + r() * 0.25));
+      // (butts tipped down a little: the rain runs off)
+      turned(b, ox + ca * d, y, oz + sa * d, w, dh + 0.05, len, Math.atan2(ca, sa), -0.06 - r() * 0.06, 0, c, 'mapBark', 0.9 + t * 0.1 + r() * 0.06, src);
     }
-    turn = r() * (Math.PI / 2);
     tufts.push([y, rad, t]);
   }
 
-  // ── Straw ends hanging down its sides, longer under the eaten waist's overhang ──
+  // ── Straw hanging from the eaten waist's overhang; short wisps standing out of the rings above ──
   const tuftSrc = traceSource();
   for (const [y, rad, t] of tufts) {
-    if (t > 0.92) continue;
-    const n = 4;
+    if (t > 0.9) continue;
+    const under = t > 0.12 && t < 0.34;
+    const n = under ? 7 : 2;
     const a0 = r() * Math.PI * 2;
     for (let i = 0; i < n; i++) {
-      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.9;
-      // (on the ring's face, out to toward its corners)
+      const a = a0 + (i / n) * Math.PI * 2 + (r() - 0.5) * 0.7;
       const d = rad * (0.9 + r() * 0.08);
-      const under = t > 0.12 && t < 0.3;
-      const len = under ? 0.38 + r() * 0.15 : 0.24 + r() * 0.14;
-      const droop = under ? -1.45 : -1.15 - r() * 0.25;
-      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), t > 0.8 ? 0.5 : r() * 0.3);
-      turned(b, Math.cos(a) * d, y - len * 0.35, Math.sin(a) * d, 0.05 + r() * 0.035, 0.022, len, Math.atan2(Math.cos(a), Math.sin(a)), droop, (r() - 0.5) * 0.4, c, 'mapLeaf', 0.95 + r() * 0.1, tuftSrc);
+      const len = under ? 0.26 + r() * 0.16 : 0.16 + r() * 0.1;
+      const droop = under ? -1.4 - r() * 0.15 : -0.35 - r() * 0.4;
+      const c = mix(tone(STRAW, r()), tone(OLD_STRAW, r()), r() * 0.35);
+      turned(b, Math.cos(a) * d, y - (under ? len * 0.4 + dh * 0.3 : 0), Math.sin(a) * d, 0.045 + r() * 0.03, 0.02, len, Math.atan2(Math.cos(a), Math.sin(a)), droop, (r() - 0.5) * 0.4, c, 'mapLeaf', 0.95 + r() * 0.1, tuftSrc);
     }
   }
 
