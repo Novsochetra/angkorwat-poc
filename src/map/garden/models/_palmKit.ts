@@ -132,7 +132,7 @@ export const palmR = (seed: number, salt: number) => (q: number): number => palm
 
 /**
  * Where fallen fruit `i` of `n` lies (local m: x, z): round the foot `toward` (rad) from the trunk, 0.8‥`reach` m
- * out (as `fallen` lays it; roam/_gardenWork.ts goes there to pick it up).
+ * out (the view draws it there, garden/_viewFruit.ts; roam/_gardenWork.ts goes there to pick it up).
  */
 export function fallenSpot(r: (q: number) => number, n: number, toward: number, reach: number, i: number, q0 = 900): [number, number] {
   const a = toward + (i - (n - 1) / 2) * 1.05 + (r(q0 + i) - 0.5) * 0.6;
@@ -444,24 +444,5 @@ export function strap(K: PalmKit, x: number, y: number, z: number, az: number, e
       L.dir((a0 + a1) / 2, Math.cos(fold), s * Math.sin(fold), 0, _e);
       K.beam(_p[0], _p[1], _p[2], _q[0], _q[1], _q[2], ww * 0.52, 0.03, _e[0], _e[1], _e[2], color, 'mapLeaf', LIT * shade * (s > 0 ? 1 : 0.9), 0.03);
     }
-  }
-}
-
-/**
- * Ripe fruit lying round a palm's foot (`n` of them, 0‥3): each `size` m, in
- * `colors`, at 0.8‥`reach` m from the foot round the side `toward` (radians;
- * coconuts fall under the leaning crown), half settled into the earth (the
- * model's foot is on the view's bed, 8 cm over the land). `cap`: a sugar palm
- * fruit's sepals on top.
- */
-export function fallen(K: PalmKit, n: number, size: number, colors: readonly number[], toward: number, reach: number, cap: readonly number[] | null, q0 = 900): void {
-  K.mark();
-  for (let i = 0; i < Math.min(3, n); i++) {
-    const [x, z] = fallenSpot((q) => K.r(q), n, toward, reach, i, q0);
-    const yaw = K.r(q0 + 20 + i) * Math.PI;
-    const y = size * 0.42 - 0.08;
-    const c = pick(colors, K.r(q0 + 30 + i));
-    K.turned(x, y, z, size * 1.1, size * 0.92, size, (K.r(q0 + 40 + i) - 0.5) * 0.3, yaw, (K.r(q0 + 50 + i) - 0.5) * 0.3, c, 'petal', 0.95);
-    if (cap) K.block(x, y + size * 0.48, z, size * 0.45, size * 0.14, size * 0.45, yaw + 0.4, pick(cap, K.r(q0 + 60 + i)), 'petal', 1);
   }
 }

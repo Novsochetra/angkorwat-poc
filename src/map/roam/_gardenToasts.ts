@@ -14,8 +14,8 @@ import type { AddonEnv } from './_addons';
  * - a plant's first sprout ("Your corn has sprouted!"; only while he is near home),
  * - a plant grown ("Your mango tree is fully grown!"),
  * - ripe ("The mangoes are ripe!"; a durian, a coconut, palm fruit: "A durian has
- *   fallen! Pick it up under the tree", and its thud from the tree when he is
- *   within `THUD_FAR` m, softer the further),
+ *   fallen! Pick it up under the tree"; its thud is the view's, as each fruit hits
+ *   the earth: garden/view.ts),
  * - thirsty: near home, "Your eggplant needs water" (not more often than
  *   `THIRST_EVERY` s); away, "Your garden at home needs water" once, until he has
  *   been home again,
@@ -34,8 +34,6 @@ import type { AddonEnv } from './_addons';
 
 /** Near home for the toasts that only matter there (m from the house). */
 const NEAR = 60;
-/** The thud of fruit falling is heard this far (m). */
-const THUD_FAR = 60;
 /** Events are gathered this long before they are said (s); toasts follow each other this far apart (s). */
 const GATHER = 1.2;
 const GAP = 3.1;
@@ -125,14 +123,10 @@ function onEvent(e: GardenEvent): void {
       if (mode === 'overview') return;
       ripe.add(p.kind);
       break;
-    case 'fell': {
+    case 'fell':
       if (mode === 'overview') return;
       ripe.add(p.kind);
-      const b = env.body.pos;
-      const d = Math.hypot(b.x - p.x, b.z - p.z);
-      if (d < THUD_FAR) SFX.play('gardenThud', 0.9 * (1 - d / THUD_FAR) ** 1.4);
       break;
-    }
     case 'thirsty':
       if (thirsty.length < 120) thirsty.push(p);
       break;

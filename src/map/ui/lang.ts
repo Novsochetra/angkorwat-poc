@@ -875,6 +875,23 @@ const WORDS = {
   bufKeyFast: { km: 'លឿនបន្តិច', en: 'a little faster' },
   bufKeyOff: { km: 'ចុះពីក្របី', en: 'get off' },
   // Riding the white cattle (cow…): roam/_cowRide*.ts
+  cowRide: { km: 'ជិះគោ', en: 'Ride the cow' },
+  cowOff: { km: 'ចុះពីគោ', en: 'Get off' },
+  // (its keys, the first ride: keyboard, touch, game pad ({fast}: R2 / RT))
+  cowKeys: { km: 'ជិះគោ៖ W ដើរទៅមុខ · A / D បត់ · Shift ឲ្យរត់តិចៗ · S ថយក្រោយ · E ចុះ', en: 'Riding the cow: W walk on · A / D turn · Shift trot · S back up · E get off' },
+  cowTouch: { km: 'ជិះគោ៖ រុញដងបញ្ជាទៅមុខដើម្បីដើរ (ហួសរង្វង់៖ រត់តិចៗ) · ទៅឆ្វេង ឬស្ដាំ ដើម្បីបត់ · ទាញមកក្រោយដើម្បីថយក្រោយ', en: 'Riding the cow: push the stick to walk on (past its ring: a trot) · left / right turns · pull back to back up' },
+  cowPad: { km: 'ជិះគោ៖ ដងបញ្ជា ↑ ដើរ · ← → បត់ · ↓ ថយក្រោយ · {fast} រត់តិចៗ', en: 'Riding the cow: stick ↑ walk on · ← → turn · ↓ back up · {fast} trot' },
+  // (what it will not do; the first stop to graze)
+  cowDeep: { km: 'ទឹកជ្រៅពេក គោមិនព្រមចុះទេ', en: 'Too deep: the cow won’t go in' },
+  cowBuilt: { km: 'គោមិនព្រមឡើងទីនោះទេ', en: 'The cow won’t climb up there' },
+  cowNoOff: { km: 'ចុះនៅទីនេះមិនបានទេ៖ ជិះទៅដីគោកសិន', en: 'Can’t get off here: ride to dry land first' },
+  cowGraze: { km: 'គោឈប់ស៊ីស្មៅបន្តិច…', en: 'The cow stops for a bite of grass…' },
+  // (the key help, bottom left, while he rides; the turn and the look are rTurn, rLook)
+  cowKeyWalk: { km: 'ដើរ · ថយក្រោយ', en: 'walk on · back up' },
+  cowKeyTrot: { km: 'រត់តិចៗ', en: 'trot' },
+  cowKeyOff: { km: 'ចុះពីគោ', en: 'get off' },
+  // (the herd boy, as he gets on one of the village's cattle: people/_sceneEastVillage.ts)
+  cowBoy: { km: 'ជិះយឺតៗណា បង!', en: 'Go gently, brother!' },
   // The zip line (zip…): roam/_zip*.ts, jungle/_zipLine.ts
   zipRide: { km: 'ជិះខ្សែរអិល', en: 'Ride the zip line' },
   // (while riding, with Shift: he tucks his legs up and goes faster)
@@ -973,6 +990,7 @@ const WORDS = {
   chantSangham: { km: '♪ សង្ឃំ សរណំ គច្ឆាមិ', en: '♪ Saṅghaṃ saraṇaṃ gacchāmi' },
   chantItipiso: { km: '♪ ឥតិបិ សោ ភគវា អរហំ សម្មាសម្ពុទ្ធោ', en: '♪ Itipi so bhagavā arahaṃ sammāsambuddho' },
   chantMetta: { km: '♪ សព្វេ សត្តា សុខិតា ហោន្តុ', en: '♪ Sabbe sattā sukhitā hontu' },
+  // Offering his garden's fruit at a shrine and to the monks (offer…): roam/_offerFruit*.ts
   // Lotus from the boat, offered at a shrine (lotus…): roam/_lotus.ts
   lotusPick: { km: 'បេះផ្កាឈូក', en: 'Pick a lotus' },
   lotusPicked: { km: 'បានបេះផ្កាឈូកមួយទង ({n}/{max}) — យកទៅថ្វាយព្រះនៅទីសក្ការៈណាមួយ', en: 'You picked a lotus ({n}/{max}): offer it at a shrine' },
@@ -1384,6 +1402,7 @@ const WORDS = {
   gardenGiftNote2: { km: '«ស្រោចទឹកវារៀងរាល់ថ្ងៃផង ទើបវាឱ្យផលច្រើន — យាយ»', en: '"Water them every day and they will give you plenty. — Grandma"' },
   gardenGiftGot: { km: 'បានទទួលគ្រាប់ពូជត្រប់ {e} ពោត {c} ល្ពៅ {p} កូនចេកមួយដើម និងកូនល្ហុងមួយដើម', en: 'You got {e} eggplant seeds, {c} corn seeds and {p} pumpkin seeds, a banana sucker and a papaya seedling' },
   gardenEatKept: { km: 'ទុកញ៉ាំពេលក្រោយ៖ {item} (6)', en: 'Kept to eat later: {item} (6)' },
+  // Sharing his garden's fruit with the neighbours, the elders, the children (share…): roam/_shareFruit*.ts, people/_shareBack.ts
   // (the shoulder pole, carrying water: roam/_carryPole*.ts)
   carryTake: { km: 'លើកដងរែក', en: 'Take up the shoulder pole' },
   carryDown: { km: 'ដាក់ដងរែកចុះ', en: 'Set down the pole' },
