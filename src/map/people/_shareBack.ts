@@ -498,7 +498,7 @@ export class ShareBack {
       if (kids !== (kid && !SEATED.has(pose))) continue;
       if (NOT.has(kind) || kind.startsWith('monk') || NO.has(pose) || look.carry === CARRY.kite || look.feats.some((ft) => FULL_HANDS.includes(ft)) || skip(a.i)) continue;
       // (the grandmother at her house while she gives him the key or calls him: hers, not ours)
-      if (g.shown && Math.abs(a.x - g.x) < 0.05 && Math.abs(a.z - g.z) < 0.05 && g.cue !== 'idle') continue;
+      if (g.shown && Math.abs(a.x - g.x) < 0.05 && Math.abs(a.z - g.z) < 0.05 && g.cue !== 'idle' && g.cue !== 'call') continue;
       bd = d;
       best = a;
     }

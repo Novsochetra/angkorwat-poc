@@ -31,7 +31,7 @@ const TURN = 7;
 const KID_WAIT = 6;
 const APPROACH = 2.6;
 /** The camera at their side: how far (m at his size), how high (radians), how fast it comes round (1/s). */
-const CAM = { dist: 5.4, pitch: 0.2, rate: 1.6 };
+const CAM = { dist: 5.6, pitch: 0.22, rate: 1.6 };
 /** His roaming size the numbers are for. */
 const SIZE = 1.4;
 /** Easing rates (1/s) of his arms, the bow, the crouch. */
@@ -103,7 +103,7 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   }
   // (a child comes to stand this far before him, the way he faces it)
   const face0 = Math.atan2(who.x - sx, who.z - sz);
-  const meet = (0.55 + 0.42 * theirs) * k;
+  const meet = (0.7 + 0.55 * theirs) * k;
   SHARE.id = who.id;
   SHARE.kid = kid;
   SHARE.fruit = FRUIT_COLORS[kind][0];
@@ -132,15 +132,17 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   const nx = -dz;
   const nz = dx;
   const side = nx * (ctx.cam.camera.position.x - (who.x + sx) / 2) + nz * (ctx.cam.camera.position.z - (who.z + sz) / 2) >= 0 ? 1 : -1;
-  const camYaw = Math.atan2(-nx * side, -nz * side);
+  // (turned a little toward his front: his face shows, not only his hat and his pack)
+  const camYaw = Math.atan2(-nx * side + 0.5 * dx, -nz * side + 0.5 * dz);
   const before = { pitch: ctx.cam.pitch, distance: ctx.cam.distance };
+  const fixedCam = env.shot && env.params.has('rcam');
 
   const st: ShareState = newShareState();
   st.gap = Math.min(3.8, Math.max(1.3, FRUIT[kind].w / 2 + 0.7));
   // (to a child: down on his haunches, the hands low; to someone sitting: right down)
-  const crouchTo = who.seated ? 1 : kid ? 0.62 : 0;
-  const lowTo = kid ? 1.2 : who.seated ? 0.4 : 0;
-  const bowTo = who.seated || kid ? 0.25 : elder ? 0.85 : 0.45;
+  const crouchTo = who.seated ? 1 : kid ? 0.5 : 0;
+  const lowTo = kid ? 1.4 : who.seated ? 0.4 : 0;
+  const bowTo = kid ? 0.1 : who.seated ? 0.2 : elder ? 0.85 : 0.45;
   // The steps after `ready` (s), and what is still to come.
   const steps: [number, ShareStep][] = [
     [AT.hold, 'hold'],
@@ -178,9 +180,11 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
   if (at >= 0) {
     body.pos.set(sx, sy, sz);
     body.yaw = face0;
-    ctx.cam.yaw = camYaw;
-    ctx.cam.pitch = CAM.pitch;
-    ctx.cam.distance = CAM.dist * k;
+    if (!fixedCam) {
+      ctx.cam.yaw = camYaw;
+      ctx.cam.pitch = CAM.pitch;
+      ctx.cam.distance = CAM.dist * k;
+    }
     st.reach = at > AT.hold + 0.3 && at < AT.take ? 1 : 0;
     st.bow = at < AT.thanks + 0.4 ? bowTo : 0;
     st.crouch = crouchTo;
@@ -338,9 +342,9 @@ export function startShare(env: AddonEnv, ctx: RoamCtx, who: Readonly<ShareWho>,
         }
         if (ended && !answering && !still) finish();
       }
-      // The camera: at their side, both in view, looking between them.
+      // The camera: at their side, both in view, looking between them (a check's `rcam=` keeps its own).
       const kk = 1 - Math.exp(-CAM.rate * dt);
-      if (Math.abs(c.input.lookYaw) < 1e-6) {
+      if (Math.abs(c.input.lookYaw) < 1e-6 && !fixedCam) {
         cam.yaw += angleDiff(camYaw, cam.yaw) * kk * (time < 2.5 ? 1 : 0.25);
         cam.pitch += (CAM.pitch - cam.pitch) * kk;
         cam.distance += (CAM.dist * k - cam.distance) * kk;
