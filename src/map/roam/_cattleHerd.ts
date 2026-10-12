@@ -125,8 +125,12 @@ export interface Beast {
   munchAt: number;
   /** It was ridden last step (the ride let go: it walks back). */
   wasRidden: boolean;
+  /** How long he has stood in its way (s). */
+  blocked: number;
   /** Its coat as set on the flock (look, thin), so it is set again only when it changes. */
   coat: number;
+  /** The trader's animal's look (cattle/state.ts `look`: the coat and its brightness): the cow he buys keeps it. */
+  look: number;
 }
 
 const _q = new Quaternion();
@@ -160,8 +164,9 @@ export class CattleHerd {
   private readonly queue: Beast[] = [];
   /** The walk map a cow's size: room over it, its width, his garden's plants and what he built kept out (`cowStand`). */
   private readonly cowWorld: RoamWorld;
-  /** The trader's post emptied by a sale, and when another animal comes (s). */
+  /** The trader's post emptied by a sale, and when another animal comes (s); how many he has sold from each. */
   private readonly restockAt = [-1, -1, -1];
+  private readonly sales = [0, 0, 0];
   /** Where the explorer is (m) and whether he roams; the camera's place. */
   private ex = 0;
   private ez = 0;
@@ -210,7 +215,7 @@ export class CattleHerd {
     return {
       i, cow: null, post: -1, ride: null, x: 0, y: 0, z: 0, yaw: 0, size: 1.4, doing: 'graze', until: 0, tx: 0, tz: 0, head: 1, turn: 0, rest: 0, speed: 0,
       goal: 'stake', at: false, wx: new Float32Array(1024), wy: new Float32Array(1024), wz: new Float32Array(1024), wn: 0, wi: 0, searching: false, leaving: false,
-      food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, coat: -1,
+      food: null, left: 0, pen: -1, penSlot: -1, bellAt: 0, lowAt: 0, munchAt: 0, wasRidden: false, blocked: 0, coat: -1, look: 0,
     };
   }
 
@@ -223,9 +228,10 @@ export class CattleHerd {
     b.post = k;
     b.size = p.size;
     b.goal = 'post';
+    // (the plough ox grey-cream; the calf and the young cow for sale each a new one after a sale: white or grey-cream by turns)
+    b.look = k === 0 ? 3 : (TRADER_LOOKS[k] + 3 * this.sales[k]) % 8;
     this.home(b, true);
-    // (the plough ox grey-cream and a little darker; the calf and the young cow white)
-    this.flock.setup(i, k === 0 ? 1 : 0, 0.13 + k * 0.31, k === 0 ? 0.95 : k === 1 ? 1.03 : 0.99);
+    this.flock.setup(i, coatVariant(b.look), 0.13 + k * 0.31 + this.sales[k] * 0.17, coatTint(b.look));
     b.lowAt = 30 + 40 * hash3(k, 3, 1, 7101);
     b.bellAt = 4 + 6 * hash3(k, 5, 1, 7102);
     this.beasts.push(b);
@@ -289,10 +295,18 @@ export class CattleHerd {
       old.size = sizeOf(c);
       old.lowAt = this.time + 30;
       this.restockAt[k] = this.time + 120;
+      this.sales[k]++;
       this.setCoat(old);
       return;
     }
     this.sync([c], false);
+  }
+
+  /** The look of the trader's calf or young cow for sale now (the cow he buys is that one). */
+  lookFor(kind: 'calf' | 'young'): number {
+    const k = TRADER_POSTS.findIndex((p) => p.kind === kind);
+    const b = this.beasts.find((q) => q.post === k);
+    return b ? b.look : (TRADER_LOOKS[k] + 3 * this.sales[k]) % 8;
   }
 
   /** He sold his cow `c`: it walks off to the trader's place (then it is gone). */
@@ -751,20 +765,39 @@ export class CattleHerd {
     const dx = tx - b.x;
     const dz = tz - b.z;
     const d = Math.hypot(dx, dz);
-    // (him in its way, close in front: it stops and waits, its head up)
+    // (him in its way, right before its nose: it stops and waits, its head up; a few seconds and it goes round him)
     if (this.roaming) {
       const fx = Math.sin(b.yaw);
       const fz = Math.cos(b.yaw);
       const hx = this.ex - b.x;
       const hz = this.ez - b.z;
       const along = hx * fx + hz * fz;
-      const across = Math.abs(hx * fz - hz * fx);
-      if (along > 0 && along < 1.4 + OX_NOSE * b.size && across < 1.1 * b.size + 0.5 && Math.abs(this.ey - b.y) < 2) {
+      const across = hx * fz - hz * fx;
+      if (along > 0 && along < 0.9 + OX_NOSE * b.size && Math.abs(across) < 0.45 * b.size + 0.55 && Math.abs(this.ey - b.y) < 2) {
         b.speed = 0;
         b.head = -0.3;
+        b.blocked += dt;
+        if (b.blocked > 3 && b.wn < b.wx.length) {
+          // (a step round him on the side away from him, then on its way)
+          b.blocked = 0;
+          const side = across > 0 ? -1 : 1;
+          const r = 0.9 + 0.6 * b.size;
+          const px = this.ex + fz * side * r * 1.2 + fx * r * 0.3;
+          const pz = this.ez - fx * side * r * 1.2 + fz * r * 0.3;
+          for (let k = b.wn; k > b.wi; k--) {
+            b.wx[k] = b.wx[k - 1];
+            b.wy[k] = b.wy[k - 1];
+            b.wz[k] = b.wz[k - 1];
+          }
+          b.wx[b.wi] = px;
+          b.wy[b.wi] = NaN;
+          b.wz[b.wi] = pz;
+          b.wn++;
+        }
         return;
       }
     }
+    b.blocked = 0;
     const pace = (b.cow && ageOf(b.cow) === 'calf' ? WALK * 1.1 : WALK) * Math.min(1.15, 0.75 + 0.3 * (b.size / 1.4));
     b.speed = pace;
     b.head = 0.15;
@@ -803,6 +836,19 @@ export class CattleHerd {
     }
     b.rest = 0;
     const thin = b.cow ? condOf(b.cow) < THIN : false;
+    // (him close by: it stops where it is and turns its head to him — a hungry one waits for its food)
+    const dx = this.ex - b.x;
+    const dz = this.ez - b.z;
+    const close = this.roaming && dx * dx + dz * dz < 16 && Math.abs(this.ey - b.y) < 2;
+    if (close) {
+      const a = Math.atan2(dx, dz) - b.yaw;
+      const rel = Math.atan2(Math.sin(a), Math.cos(a));
+      b.turn = Math.abs(rel) < 2.2 ? Math.max(-1, Math.min(1, rel / 0.9)) : 0;
+      if (b.doing === 'amble') {
+        b.doing = 'stand';
+        b.until = this.time + 3;
+      }
+    } else b.turn = 0;
     if (b.doing === 'amble') {
       const dx = b.tx - b.x;
       const dz = b.tz - b.z;
@@ -1204,3 +1250,5 @@ export class CattleHerd {
 }
 
 const _nose = { x: 0, y: 0, z: 0 };
+/** The trader's animals' first looks (the plough ox, the calf, the young cow). */
+const TRADER_LOOKS = [3, 4, 0];

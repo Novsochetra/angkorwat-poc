@@ -266,7 +266,7 @@ function take(row: CattleRow): void {
       traderCue('short');
       return;
     }
-    const cow = CATTLE.buy(row.kind, lookFor(CATTLE.herd.length));
+    const cow = CATTLE.buy(row.kind, h.lookFor(row.kind));
     if (!cow) return;
     h.handOver(cow, row.kind);
     lastCtx?.sound('coin', 1);
@@ -331,13 +331,6 @@ function take(row: CattleRow): void {
   v.busy = 0.4;
   e.hud.toast(t('cattleStrawGot', { n: num(n), have: num(CATTLE.straw) }));
   card?.refill();
-}
-
-/** A new cow's coat: white or grey-cream by turns, each its own brightness (seeded by how many he has had). */
-function lookFor(n: number): number {
-  const had = progress.get('cattle.had', 0) + n;
-  if (!env?.shot) progress.set('cattle.had', had + 1);
-  return ((had * 5) % 8) | 0;
 }
 
 /** The camera's side at his stool: behind his left shoulder if nothing stands in the way of him and the trader, else the other. */
@@ -564,7 +557,27 @@ registerAddon({
             stats: herd?.stats,
           }),
           advance: (days: number) => CATTLE.advance(days),
+          /** Where he is, and each cow of his: its nose, how far, hungry, what E would do. */
+          near: () => {
+            const ctx = lastCtx;
+            if (!ctx || !herd) return null;
+            const p = ctx.body.pos;
+            return {
+              at: [+p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +ctx.body.yaw.toFixed(2)],
+              cows: herd.beasts
+                .filter((b) => b.cow)
+                .map((b) => {
+                  herd!.nose(b, _nose);
+                  return { id: b.cow!.id, nose: [+_nose.x.toFixed(2), +_nose.z.toFixed(2)], dn: +Math.hypot(_nose.x - p.x, _nose.z - p.z).toFixed(2), db: +Math.hypot(b.x - p.x, b.z - p.z).toFixed(2), hungry: hungry(b.cow!), at: b.at, food: b.food, dy: +(b.y - p.y).toFixed(2) };
+                }),
+              choice: { kind: choice.kind, prompt: choice.prompt },
+              busy: env?.busy() ?? null,
+            };
+          },
           straw: (n: number) => CATTLE.addStraw(n),
+          carry: (on: boolean) => {
+            if (work) work.carrying = on;
+          },
           speed: (x: number) => (speed = x),
           ride: (id: string, on: boolean) => {
             const r = COW_RIDE.cows.find((c) => c.id === id);
@@ -653,8 +666,9 @@ registerAddon({
     lastCtx = ctx;
     TRADER.wanted = m === 'walk' && (visit !== null || choice.kind === 'coming');
     if (!visit && before && m === 'walk') frameCam(ctx, dt);
-    // (something else has him now — a ride, a rest, praying — or another mode: the grass is put down)
-    if (work?.carrying && (m !== 'walk' || (addonBusy() && !work.active && !visit) || (env?.busy() ?? false))) {
+    // (something else has him now — a ride, the hammock, sitting or lying down, praying — or another mode: the grass is
+    // put down; not his camera, not his own work)
+    if (work?.carrying && !work.active && !visit && (m !== 'walk' || addonBusy() || ctx.body.explorer.animator.posture !== null)) {
       work.stop(true);
       if (m !== 'overview') say(t('cattleDrop'));
     }
