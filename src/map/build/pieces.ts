@@ -77,16 +77,18 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A thatched shelter on four posts (ខ្ទម), open on every side: shade, a bench along its back.
   shelter: {
-    // (w, d: the roof's eaves, 0.55 m past the posts; h: its ridge; the posts to the tie beams, the bench under the seat)
+    // (w, d: the roof's eaves, 0.55 m past the posts; h: its ridge; the posts to the tie beams, the bench under the seat:
+    // its top 0.5 m, his thighs level on it, his feet flat on the ground (his legs are short: a seat at his true size's
+    // 0.62 m had him half standing))
     id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 4.4, d: 4, h: 4.35, max: 3, walkThrough: true,
     solids: [
       [-1.6, -1.4, 0.2, 0.2, 2.85],
       [1.6, -1.4, 0.2, 0.2, 2.85],
       [-1.6, 1.4, 0.2, 0.2, 2.85],
       [1.6, 1.4, 0.2, 0.2, 2.85],
-      [0, -1.05, 2.84, 0.5, 0.62],
+      [0, -1.05, 2.84, 0.5, 0.5],
     ],
-    seat: { x: 0, y: 0.62, z: -1.05, yaw: 0 },
+    seat: { x: 0, y: 0.5, z: -1.05, yaw: 0 },
   },
   // A bamboo bed on legs (គ្រែឫស្សី), knee high: to sit on and to lie on under the sky.
   kre: {

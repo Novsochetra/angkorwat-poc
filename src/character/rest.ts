@@ -49,6 +49,12 @@ export interface RestState {
   pack: PackStyle | 'none';
   /** The knife's long sheath on his right hip (the shorts' belt): he sits a little higher on it. */
   knife: boolean;
+  /**
+   * On a bench (BU: its seat this high over the ground where he stands; 0 or left out: on the ground): he sits
+   * down onto it behind him, his seat on it `BENCH_BACK` behind where his feet stood, his feet staying on the
+   * ground, his hands on his knees (no lying: `u` stops at sitting).
+   */
+  bench?: number;
 }
 
 /** Seconds to go from `from` to `to` along the way (standing to lying: through sitting). */
@@ -138,6 +144,25 @@ const RECLINE: Shape = {
   splay: 0.1, turn: 0.08,
   armRx: 0.4, armRz: 0.2, elbow: -0.2, reach: 1, nape: 0, knee: 0, pack: 1,
 };
+/**
+ * Sitting on a bench (`RestState.bench`): upright, a little forward, his thighs on the seat and his shins
+ * down to the ground, the feet flat a little ahead of where they stood, his hands resting on his knees. The
+ * hips' height is the seat's (`seated`: the sit bones on it).
+ */
+const BENCH: Shape = {
+  hips: -0.02, chest: 0.1, neck: -0.04, head: -0.05,
+  height: 0, back: 0, seated: 1,
+  plant: 1, stepL: 2.4, stepR: 2.9, flatL: 1, flatR: 1, footL: 0, footR: 0, feet: 0.45,
+  splay: 0.1, turn: 0.12,
+  armRx: 0.35, armRz: 0.2, elbow: -0.3, reach: 1, nape: 0, knee: 1, pack: 0,
+};
+/** On the way down onto a bench: bent forward over his knees, the seat going back to it. */
+const BENCH_DOWN: Shape = {
+  ...CROUCH, hips: 0.3, chest: 0.24, head: -0.08, back: -2.4, stepL: 0, stepR: 0, splay: 0.1, reach: 0.4,
+};
+/** On a bench his sit bones are this far behind where his feet stood (BU, z). */
+export const BENCH_BACK = 3.6;
+
 /** Half way back: the hands off the ground, going up behind his head. */
 const BACK: Shape = { ...RECLINE, hips: -0.9, chest: -0.12, neck: -0.05, head: -0.3, nape: 0.5 };
 /** Lying on his back (the pelvis tilt: `lieHips`), the left knee up, the hands behind his head, looking straight up. */
@@ -152,6 +177,21 @@ function keys(): readonly (readonly [number, Shape])[] {
   const lie = { ...LIE, hips: lieHips() };
   const back = { ...BACK, hips: (SIT.hips + lie.hips) / 2 };
   return (KEYS = [[0, STAND], [0.45, CROUCH], [1, SIT], [1.45, back], [2, lie]]);
+}
+
+/** The keys onto a bench this high (BU): standing, bent over his knees going down, sitting (made once per height). */
+const BENCH_KEYS = new Map<number, readonly (readonly [number, Shape])[]>();
+function benchKeys(h: number): readonly (readonly [number, Shape])[] {
+  const k = Math.round(h * 10) / 10;
+  let ks = BENCH_KEYS.get(k);
+  if (!ks) {
+    // (going down: the hips a little over the seat's height, or as low as the crouch's, whichever is higher; sitting,
+    // `height` and `back` near where the seat puts them, so that on the way they never dip into the bench)
+    const sat = seatedZ(BENCH.hips, -BENCH_BACK);
+    ks = [[0, STAND], [0.5, { ...BENCH_DOWN, height: Math.max(CROUCH.height, k + 1.6), back: Math.min(BENCH_DOWN.back, sat) }], [1, { ...BENCH, height: k - SEAT_POINT.y, back: sat }]];
+    BENCH_KEYS.set(k, ks);
+  }
+  return ks;
 }
 
 /** The shape at `u`: a monotone cubic through the keys per value (it flows through them, never past one; at rest at the ends). */
@@ -212,6 +252,9 @@ const BACK_OUTLINE: Outline = [
   ['head', [[0, 1, -5.4], [0, 2.5, -7.4], [0, 4, -8.4], [0, 6.5, -8.4], [0, 9, -8.4], [0, 10, -7.4], [0, 11.5, -5.4], [5, 6.5, -7], [-5, 6.5, -7]]],
 ];
 const ALL_OUTLINE: Outline = [...SEAT_OUTLINE, ...LEG_OUTLINE, ...BACK_OUTLINE];
+/** What sits on a bench: his seat (the hips' box), not the backs of his thighs. */
+const BENCH_SEAT: Outline = [SEAT_OUTLINE[0]];
+const BENCH_SEAT_KNIFE: Outline = [SEAT_OUTLINE[0], ...KNIFE_OUTLINE];
 
 /** The sit bones (hips space), and where they stay once he is down (z, BU: behind where his feet stood). */
 const SEAT_POINT = new Vector3(0, -1, -2.7);
@@ -316,8 +359,8 @@ function bodyPose(s: Shape, y: number, z: number, out: Pose): Pose {
   return out;
 }
 
-/** The hips joint's z once he is down: the sit bones stay at `SEAT_Z` whatever the tilt. */
-const seatedZ = (tilt: number) => SEAT_Z - (SEAT_POINT.y * Math.sin(tilt) + SEAT_POINT.z * Math.cos(tilt));
+/** The hips joint's z once he is down: the sit bones stay at `seat` (`SEAT_Z` on the ground) whatever the tilt. */
+const seatedZ = (tilt: number, seat = SEAT_Z) => seat - (SEAT_POINT.y * Math.sin(tilt) + SEAT_POINT.z * Math.cos(tilt));
 
 /**
  * How deep the lowest point of a foot is under its ankle (BU), the foot at
@@ -402,7 +445,9 @@ const _aim = new Vector3();
 
 /** The resting body at `s` (see `RestState`). */
 export function restPose(s: RestState): Pose {
-  const sh = shapeAt(s.u, keys(), _s);
+  // (on a bench: its keys, its seat's height and place, sitting at most)
+  const bench = s.bench && s.bench > 0 ? s.bench : 0;
+  const sh = bench ? shapeAt(Math.min(1, s.u), benchKeys(bench), _s) : shapeAt(s.u, keys(), _s);
   const t = s.t;
   // Life: breathing, a slow look round (sitting more, lying less); asleep slow deep breaths and the head rolled aside.
   const life = smooth((s.u - 0.75) / 0.25);
@@ -420,14 +465,15 @@ export function restPose(s: RestState): Pose {
   const rock = Math.sin((t * tau) / 7.7) * 0.07 * life * awake;
 
   // The hips where the shape says; down on the seat, as low as it goes.
-  const z = mix(sh.back, seatedZ(sh.hips), sh.seated);
+  const z = mix(sh.back, seatedZ(sh.hips, bench ? -BENCH_BACK : SEAT_Z), sh.seated);
   let y = sh.height;
   const pose = bodyPose(sh, y, z, {});
   pose.head = { rx: sh.head + life * nod - 0.08 * sleep, ry: life * look + 0.42 * sleep, rz: -0.2 * sleep };
   pose.neck = { rx: sh.neck, ry: life * look * 0.3 + 0.12 * sleep };
   pose.hipL!.rz = (pose.hipL!.rz ?? 0) + rock;
   frameBody(pose);
-  const seat = s.knife ? [...SEAT_OUTLINE, ...KNIFE_OUTLINE] : SEAT_OUTLINE;
+  // (on a bench only his seat sits on it: the thighs go on past its edge and down)
+  const seat = bench ? (s.knife ? BENCH_SEAT_KNIFE : BENCH_SEAT) : s.knife ? [...SEAT_OUTLINE, ...KNIFE_OUTLINE] : SEAT_OUTLINE;
   for (let i = 0; i < 5; i++) {
     if (sh.plant > 0) {
       plantLeg('L', sh, sh.plant, z, pose);
@@ -435,8 +481,8 @@ export function restPose(s: RestState): Pose {
       frameBody(pose);
     }
     if (sh.seated <= 0 || i === 4) break;
-    // (the seat on the ground, then the legs again from there)
-    y = mix(sh.height, y - lowest(seat), sh.seated);
+    // (the seat on the ground (or the bench), then the legs again from there)
+    y = mix(sh.height, y - lowest(seat) + bench, sh.seated);
     pose.hips!.py = y - REST_HIPS[1];
     frameBody(pose);
   }
