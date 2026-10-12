@@ -88,6 +88,8 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   market: async () => ((m) => (e) => new m.MarketLife(e))(await import('./_sceneMarket')),
   palmsugar: async () => ((m) => (e) => new m.PalmSugarFamily(e))(await import('./_scenePalmSugar')),
   eastvillage: async () => ((m) => (e, c) => new m.EastVillageLife(e, c.scene))(await import('./_sceneEastVillage')),
+  // The cattle trader on the Kulen foot meadow, and his and the explorer's cattle in the traffic (roam/_cattle.ts).
+  cattle: async () => ((m) => (e) => new m.CattleTrader(e))(await import('./_sceneCattle')),
   kulen: async () => ((m) => (e) => new m.KulenLife(e))(await import('./_sceneKulen')),
   back: async () => ((m) => (e) => new m.BackLife(e))(await import('./_sceneBack')),
   // The alms round at dawn in the sugar-palm village: three monks, the families giving by the road (dak bat).
