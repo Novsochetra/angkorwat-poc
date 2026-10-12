@@ -2653,7 +2653,7 @@ sounds `audio/_build.ts`.
   neighbour's yard, the ground not level, a plant of his garden, something he built,
   something else). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
   ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
-  built (the run goes on). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
+  built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
   work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
   mode, never "Back to the map?". The camera looks down more, further back, the ghost
