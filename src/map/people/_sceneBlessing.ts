@@ -1,7 +1,7 @@
 import { Vector3, type Object3D } from 'three';
 import { festivalNow } from '../festival/_schedule';
 import { RECLINING } from '../landmarks/_kulenBuddha';
-import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, blessMonk, SCRIPT_AT, seatFront, TIE, type BlessAsk, type BlessAway, type BlessSeat, type BlessState } from '../roam/_blessingHooks';
+import { BLESS, BLESS_SCRIPT, BLESS_SEATS, blessHour, blessMonk, GIFT, SCRIPT_AT, seatFront, TIE, type BlessAsk, type BlessAway, type BlessSeat, type BlessState } from '../roam/_blessingHooks';
 import { CHANT_VERSES, LISTEN, type ListenAsk } from '../roam/_listenHooks';
 import type { MapFrame } from '../types';
 import type { WordKey } from '../ui/lang';
@@ -556,6 +556,21 @@ export class BlessingMonk implements PeopleScene {
         }
         a.tilt(0.42 * bump(t, 0.35, 1.7));
         this.say('blessAgainSay', t, 0.3, 2.8, now);
+        break;
+      case 'gift':
+        // Fruit offered to him (roam/_offerFruitMonk.ts): he leans forward and takes it in both hands, sets it by him,
+        // then chants his thanks for it, palms together.
+        this.holdSprig(false);
+        if (t < GIFT.down + 0.2) {
+          this.keepScript(now);
+          a.carry(t >= GIFT.reach && t < GIFT.set + 0.3 ? 1 : 0, now);
+        } else {
+          a.carry(0, now);
+          a.pose(t < GIFT.chant ? POSE.sit : POSE.chant, now);
+        }
+        a.tilt(t < GIFT.chant ? 0.1 : 0.2);
+        this.say('offerAnumodana', t, GIFT.chant, 3.0, now);
+        this.say('offerFourBless', t, GIFT.chant + 3.2, 2.6, now);
         break;
     }
   }
