@@ -1,5 +1,6 @@
-import type { Object3D } from 'three';
+import { Vector3, type Object3D } from 'three';
 import { hash3 } from '../../voxel/random';
+import { addRideCow, COW_RIDE, rideCow, type RideCow } from '../cattle/ride';
 import { CH, Flock } from '../fauna/_kit';
 import { EV_BUILT, EV_HERD_WAY, EV_KIOSK, EV_MEADOW, EV_PEN, EV_PLAY, EV_SALA, EV_SPOTS, EV_TAMARIND, EV_WASH_AT, evDeck, evToWorld, type EvHomeSpots } from '../hamlet/_evSpots';
 import type { HeightField } from '../heightfield';
@@ -11,6 +12,7 @@ import { Actor } from './_actor';
 import { Bicycle, BIKE_WHEEL } from './_bicycle';
 import { dress } from './_kinds';
 import { OX } from './_ox';
+import { drawRideCow } from './_oxRide';
 import { CARRY, FEAT, FIT, PEOPLE_SCALE, POSE, type Pose } from './_personModel';
 import { Ground, len, type Obstacle, type Point, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
@@ -53,7 +55,9 @@ import { SEY } from '../sey';
  * "ញ៉ាំបាយហើយឬនៅ ចៅ?" (have you eaten yet?), the shopkeeper what he needs,
  * the children call "សួស្ដី!" (bubbles: the `ev…` words; not in stills).
  * Checks: `people=eastvillage` with `clock=` for the hour; `evherd=<m>`
- * holds the herd that far along its way home from the meadow (≈ 0‥115).
+ * holds the herd that far along its way home from the meadow (≈ 0‥115);
+ * `cowaway=<s>`: a cow he got off grazes there that long before it walks
+ * back (roam/_cowRide.ts `cow=off`; 30 in a still otherwise).
  */
 
 /** The village's middle (for the pace); how near the explorer comes before the children call to him (m). */
@@ -245,7 +249,8 @@ export class EastVillageLife implements PeopleScene {
     }
     // ── The herd boy and his cattle ──
     const hold = env.params.get('evherd');
-    this.herd = new Herd(actor(dress('kid', 3161)), env.ground.field, hold !== null ? Number(hold) || 0 : null);
+    const away = env.params.get('cowaway');
+    this.herd = new Herd(actor(dress('kid', 3161)), env.ground.field, this.ground, (key, a) => this.say(key, a), hold !== null ? Number(hold) || 0 : null, away !== null && Number.isFinite(Number(away)) ? Number(away) : null, env.shot);
     this.object = this.herd.flock.mesh;
     // ── The children kicking the sey (from the houses round the yard) ──
     const seyKids = [0, 1, 2, 3].map((k) => actor(dress('kid', 3171 + k * 2, { young: k === 3 })));
@@ -255,6 +260,8 @@ export class EastVillageLife implements PeopleScene {
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null): void {
     if (!this.herd) return;
+    // (the cow he rides, every frame wherever he takes it: roam/_cowRide.ts)
+    this.herd.ridden(now, f);
     const step = this.pace.step(dt, viewDist(f, MID.x, MID.z));
     if (step < 0) {
       this.hideAll();
@@ -701,14 +708,81 @@ const HERD_SPEED = 1.4;
 const HERD_GAP = 3.4;
 const BOY_GAP = 3.2;
 const AMBLE = 0.45;
+/** In the pen at night two of them lie down once they have stood still this long (s), and get up before the morning's walk (clock). */
+const LIE_AFTER = 8;
+const LIE_UNTIL = 0.745;
+/** A cow lying down or getting up is not ridden for this long (s: the shader's ease, `OX.ease`, and a breath). */
+const SETTLE = 1.6;
+/**
+ * Riding (roam/_cowRide.ts): a cow stops ambling while he stands this near calmly (m: he may get on); one he got off
+ * grazes where he left it a while (s; shots 30, or `cowaway=<s>`), then walks back to the herd at `RETURN` (m/s), the
+ * way it can (round walls and steps, never into the water); out of sight it is back at once.
+ */
+const CALM_NEAR = 4.5;
+const AWAY_PAUSE: [number, number] = [6, 14];
+const RETURN = 1.1;
+/** Out of sight: farther from the camera than this (m), or out of its view. */
+const SIGHT = 110;
+/** Ways round what is in its way walking back (rad off the straight line), and how far ahead it looks (m). */
+const DETOURS = [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8];
+const LOOK = 1.1;
+
+const _eye = new Vector3();
+/** (x, y, z) is in the camera's view and not far: someone would see a cow there come or go. */
+function inSight(f: MapFrame, x: number, y: number, z: number): boolean {
+  const c = f.camera;
+  _eye.set(x, y + 0.9, z).applyMatrix4(c.matrixWorldInverse);
+  const d = -_eye.z;
+  if (d < -2 || d > SIGHT) return false;
+  if (d < 2) return true;
+  const ty = Math.tan((c.fov * Math.PI) / 360) * 1.15;
+  return Math.abs(_eye.y) < ty * d + 2 && Math.abs(_eye.x) < ty * c.aspect * d + 2;
+}
+
+interface Cow {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  /** Where it is heading for (a spot in the meadow, its place in the pen), when it picks the next spot. */
+  tx: number;
+  tz: number;
+  next: number;
+  set: boolean;
+  /** Walking now; the head (as drawn: 0 up ‥ 1 down to the grass); standing still since (s). */
+  moving: boolean;
+  head: number;
+  still: number;
+  /** Lying (0 / 1), and since when it lay down or got up (s). */
+  lie: number;
+  lieAt: number;
+  /** The ride has it (roam/_cowRide.ts); it was left where he got off and goes back to the herd: grazing there until `awayUntil`, then walking; what it goes back to; how long it has been stuck (s). */
+  riding: boolean;
+  away: boolean;
+  awayUntil: number;
+  awayTo: '' | 'meadow' | 'pen';
+  stuck: number;
+  /** Where its `RideCow` was last written (so a move by the ride, or a URL, is seen). */
+  wx: number;
+  wz: number;
+}
 
 /**
  * The herd boy and three white cattle (the ox of the cart, people/_ox.ts):
  * along `EV_HERD_WAY` between the pen and the meadow on the far bank, over
  * the foot bridge, in the morning and at dusk (where the clock has them: a
  * still shows them there); grazing by day, heads down, wandering a little,
- * the boy sitting by the meadow; dozing in the pen at night. They stop for
- * the explorer in their way; their bells clonk as they go.
+ * the boy sitting by the meadow; dozing in the pen at night, two of them
+ * lying down. They stop for the explorer in their way; their bells clonk as
+ * they go.
+ *
+ * He may ride them (roam/_cowRide.ts; cattle/ride.ts `COW_RIDE`: `ev-0‥2`)
+ * while they graze or stand or lie in the pen, not while they walk the way:
+ * coming up calmly, the one by him stands for him. The one he rides is the
+ * ride's (drawn from its fields every frame, wherever he takes it: `ridden`);
+ * the boy calls after him as he gets on. Let go, it grazes where he left it a
+ * while, then walks back to the herd (the meadow by day, the pen at night),
+ * or is back at once out of sight; back to the map, at once.
  */
 class Herd {
   readonly flock = new Flock(OX, 3);
@@ -718,16 +792,45 @@ class Herd {
   /** The leading cow along the way home (m), or −1 when not walking. */
   private s = -1;
   private bellAt = 0;
-  /** Each cow: where it is, its heading, where it is heading for (pen, meadow), when it picks the next spot. */
-  private readonly cows = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0, yaw: 0, tx: 0, tz: 0, next: 0, set: false }));
+  private readonly cows: Cow[] = [0, 1, 2].map(() => ({
+    x: 0,
+    y: 0,
+    z: 0,
+    yaw: 0,
+    tx: 0,
+    tz: 0,
+    next: 0,
+    set: false,
+    moving: false,
+    head: 0,
+    still: 0,
+    lie: 0,
+    lieAt: -1e9,
+    riding: false,
+    away: false,
+    awayUntil: 0,
+    awayTo: '',
+    stuck: 0,
+    wx: 0,
+    wz: 0,
+  }));
+  /** The three as cattle he may ride (cattle/ride.ts). */
+  private readonly mounts: RideCow[] = [0, 1, 2].map((i) => rideCow(`ev-${i}`, 'village'));
   private readonly obstacles: Obstacle[] = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0, r: 1.1, vx: 0, vz: 0, who: 'animal' }));
   private readonly pt = { x: 0, z: 0, yaw: 0 };
 
   constructor(
     readonly boy: Actor,
     readonly field: HeightField,
+    /** The village's floors and walls (a cow walking back keeps to where it can go). */
+    readonly ground: Ground,
+    /** The boy's words in a bubble (not in stills). */
+    readonly say: (key: WordKey, a: Actor) => void,
     /** Held that far along the way home (m, the `evherd=` check), walking, whatever the hour. */
     readonly hold: number | null = null,
+    /** How long one he got off grazes where he left it (s), or null: a while (`AWAY_PAUSE`; 30 in a still). */
+    readonly awayFor: number | null = null,
+    readonly shot = false,
   ) {
     let d = 0;
     this.way.forEach(([x, z], i) => {
@@ -736,6 +839,10 @@ class Herd {
     });
     this.total = d;
     for (let i = 0; i < 3; i++) this.flock.setup(i, i === 2 ? 1 : 0, 0.17 + i * 0.29, 0.92 + i * 0.05);
+    for (const r of this.mounts) {
+      r.scale = PEOPLE_SCALE;
+      addRideCow(r);
+    }
   }
 
   /** The point `s` m along the way home (from the meadow to the pen), and the way's heading there (reused). */
@@ -750,6 +857,62 @@ class Herd {
     o.z = w[i - 1][1] + (w[i][1] - w[i - 1][1]) * k;
     o.yaw = Math.atan2(w[i][0] - w[i - 1][0], w[i][1] - w[i - 1][1]);
     return o;
+  }
+
+  /**
+   * Every frame, whatever the pace (he may ride one far from the village): the one he rides drawn from the ride's
+   * fields; one the ride has let go (or a URL left somewhere) taken back from where it is; back to the map, every one
+   * he rode is home at once.
+   */
+  ridden(now: number, f: MapFrame): void {
+    for (let i = 0; i < 3; i++) {
+      const r = this.mounts[i];
+      const cow = this.cows[i];
+      if (r.ridden) {
+        if (!cow.riding) {
+          cow.riding = true;
+          cow.away = false;
+          cow.lie = 0;
+          // (the herd boy calls after him, when he is by)
+          if (this.boy.shown && this.boy.dist(r.x, r.z) < 40 && COW_RIDE.ridden === r) this.say('cowBoy', this.boy);
+        }
+        drawRideCow(this.flock, i, r, now);
+        cow.x = r.x;
+        cow.y = r.y;
+        cow.z = r.z;
+        cow.yaw = r.yaw;
+        cow.set = true;
+        cow.moving = Math.abs(r.speed) > 0.05;
+        const o = this.obstacles[i];
+        o.x = r.x;
+        o.y = r.y;
+        o.z = r.z;
+        continue;
+      }
+      if (cow.riding || r.x !== cow.wx || r.z !== cow.wz) {
+        // Let go (or put there by a URL): it grazes where it was left, then goes back to the herd.
+        cow.riding = false;
+        cow.x = r.x;
+        cow.y = r.y;
+        cow.z = r.z;
+        cow.yaw = r.yaw;
+        cow.set = true;
+        cow.lie = r.lying ? 1 : 0;
+        cow.lieAt = now;
+        cow.away = true;
+        cow.awayTo = '';
+        cow.stuck = 0;
+        const pause = this.awayFor ?? (this.shot ? 30 : AWAY_PAUSE[0] + (AWAY_PAUSE[1] - AWAY_PAUSE[0]) * hash3(Math.floor(now * 10), i, 57));
+        cow.awayUntil = now + pause;
+        cow.wx = r.x;
+        cow.wz = r.z;
+      }
+      // (back on the map: home at once, wherever he left it)
+      if (cow.away && f.roam === 'overview') {
+        cow.away = false;
+        cow.set = false;
+      }
+    }
   }
 
   update(dt: number, now: number, f: MapFrame, ex: Obstacle | null, first: boolean): void {
@@ -770,11 +933,19 @@ class Herd {
       if (!blocked && Math.abs(gap) > 0.01) this.s += Math.sign(gap) * Math.min(Math.abs(gap), HERD_SPEED * (Math.abs(gap) > 4 ? 1.3 : 1) * dt);
       const moving = !blocked && Math.abs(gap) > 0.05;
       for (let i = 0; i < 3; i++) {
-        const p = this.at(this.s - i * HERD_GAP * ahead);
         const cow = this.cows[i];
-        cow.x = p.x;
-        cow.z = p.z;
-        cow.yaw = out ? p.yaw + Math.PI : p.yaw;
+        if (this.mounts[i].ridden) continue;
+        const p = this.at(this.s - i * HERD_GAP * ahead);
+        const px = p.x;
+        const pz = p.z;
+        const pyaw = out ? p.yaw + Math.PI : p.yaw;
+        // (one he got off goes back to its place in the line first)
+        if (cow.away && cow.set && !this.back(i, px, pz, 0.3, HERD_SPEED * 1.5, dt, now, f, ex)) continue;
+        cow.away = false;
+        cow.lie = 0;
+        cow.x = px;
+        cow.z = pz;
+        cow.yaw = pyaw;
         cow.set = true;
         this.show(i, moving ? 1 : 0, moving ? HERD_SPEED : 0, moving ? 0.25 : 0.5, now, first ? 0 : dt);
       }
@@ -792,23 +963,47 @@ class Herd {
       this.bells(now, f, moving, 1.2);
     } else {
       this.s = -1;
-      // Grazing: each amble to a spot in the meadow, heads down; in the pen: to its place, dozing.
+      // Grazing: each amble to a spot in the meadow, heads down; in the pen: to its place, dozing (two lie down).
       this.cows.forEach((cow, i) => {
-        if (!cow.set || first) {
+        if (this.mounts[i].ridden) return;
+        // (first seen: at its spot; one he got off stays where he left it while someone could see it go)
+        if (!cow.set || (first && !(cow.away && inSight(f, cow.x, cow.y, cow.z)))) {
+          cow.away = false;
           this.home(i, grazing, now, true);
           cow.x = cow.tx;
           cow.z = cow.tz;
           cow.set = true;
+          // (settled already: in a still at night, or as the village comes into sight, lying as it would be)
+          cow.still = now - LIE_AFTER - 1;
+          cow.lieAt = -1e9;
+        } else if (cow.away) {
+          // Back to the herd: a spot in the meadow by day, its place in the pen at night.
+          const to = grazing ? 'meadow' : 'pen';
+          if (cow.awayTo !== to) {
+            this.home(i, grazing, now, false);
+            cow.awayTo = to;
+          }
+          if (!this.back(i, cow.tx, cow.tz, 1.0, RETURN, dt, now, f, ex)) return;
+          cow.next = now + 6;
         } else if (now > cow.next) this.home(i, grazing, now, false);
+        // (he stands by it calmly: it waits where it is, so he can get on; it goes on when he has gone)
+        const calm = !!ex && COW_RIDE.calm && len(ex.x - cow.x, ex.z - cow.z) < CALM_NEAR;
+        if (calm && grazing) cow.next = Math.max(cow.next, now + 4);
         const dx = cow.tx - cow.x;
         const dz = cow.tz - cow.z;
         const d = len(dx, dz);
-        const moving = d > 0.3;
+        const moving = d > 0.3 && cow.lie === 0 && !calm;
         if (moving) {
           const st = Math.min(d, AMBLE * dt);
           cow.x += (dx / d) * st;
           cow.z += (dz / d) * st;
           cow.yaw = Math.atan2(dx, dz);
+        }
+        // In the pen at night, settled a while, two of them lie down; up before the morning's walk.
+        const lie = !grazing && i !== 1 && !moving && now - cow.still > LIE_AFTER && c >= HERD.home[1] && c < LIE_UNTIL ? 1 : 0;
+        if (lie !== cow.lie) {
+          cow.lie = lie;
+          cow.lieAt = first ? -1e9 : now;
         }
         this.show(i, moving ? 0.5 : 0, moving ? AMBLE : 0, grazing ? (Math.sin(now * 0.07 + i * 2) > 0.8 ? 0 : 1) : 1, now, first ? 0 : dt);
       });
@@ -827,7 +1022,70 @@ class Herd {
         boy.step(dt, now);
       } else if (boy.shown) boy.hide();
     }
+    this.share(now, out || home);
     this.flock.flush(now);
+  }
+
+  /**
+   * A cow he got off on its way back to the herd (`tx`, `tz`: its place, `near` m round it): grazing where he left it
+   * a while, then walking there round what is in the way. Out of sight (it and its place), or stuck, it is there at
+   * once. True once it is back (the caller places it from then on); else it was shown here.
+   */
+  private back(i: number, tx: number, tz: number, near: number, pace: number, dt: number, now: number, f: MapFrame, ex: Obstacle | null): boolean {
+    const cow = this.cows[i];
+    const dx = tx - cow.x;
+    const dz = tz - cow.z;
+    const d = len(dx, dz);
+    if (d < near) {
+      cow.away = false;
+      return true;
+    }
+    // (never seen to jump: only when neither it nor its place is in view; stuck, it waits for that)
+    if (!inSight(f, cow.x, cow.y, cow.z) && !inSight(f, tx, cow.y, tz)) {
+      cow.away = false;
+      cow.x = tx;
+      cow.z = tz;
+      cow.y = 0;
+      cow.lie = 0;
+      return true;
+    }
+    let moved = false;
+    // (grazing where he left it; a calm explorer by it, it stands for him; lying, it stays down till then)
+    const calm = !!ex && COW_RIDE.calm && len(ex.x - cow.x, ex.z - cow.z) < CALM_NEAR;
+    if (now >= cow.awayUntil && !calm && cow.stuck < 8) {
+      if (cow.lie) {
+        cow.lie = 0;
+        cow.lieAt = now;
+      } else if (now - cow.lieAt > SETTLE) {
+        // A step toward its place, round what is in its way (the village's walk map: walls, steps, the water).
+        const step = Math.min(d, pace * dt);
+        const head = Math.atan2(dx, dz);
+        for (const off of DETOURS) {
+          const a = head + off;
+          const sx = Math.sin(a);
+          const sz = Math.cos(a);
+          if (!this.walkable(cow.x + sx * (step + LOOK), cow.z + sz * (step + LOOK), cow.y)) continue;
+          cow.x += sx * step;
+          cow.z += sz * step;
+          const turn = Math.atan2(Math.sin(a - cow.yaw), Math.cos(a - cow.yaw));
+          cow.yaw += turn * Math.min(1, dt * 5);
+          moved = true;
+          break;
+        }
+        cow.stuck = moved ? 0 : cow.stuck + dt;
+      }
+    }
+    this.show(i, moved ? 1 : 0, moved ? pace : 0, moved ? 0.2 : 1, now, dt);
+    return false;
+  }
+
+  /** May a cow walk at (x, z), its feet about `y`: no wall nor low roof (it is tall), no step over a metre, the water no deeper than its knees (out of the shallows it was left in). */
+  private walkable(x: number, z: number, y: number): boolean {
+    const walk = this.ground.walk;
+    const g = walk ? walk.standAt(x, z, y, 1.0, 2.2) : this.field.heightAt(x, z);
+    if (!Number.isFinite(g) || Math.abs(g - y) > 1.0) return false;
+    const w = this.field.waterAt(x, z);
+    return w === null || w - g < 0.45;
   }
 
   /** Cow `i`'s next spot: somewhere in the meadow (grazing), or its place in the pen. */
@@ -847,45 +1105,76 @@ class Herd {
     }
   }
 
-  /** Put cow `i` where it is: walking (share, pace m/s), its head (0 up … 1 down to the grass). */
+  /** Put cow `i` where it is: walking (share, pace m/s), its head (0 up … 1 down to the grass), lying or not. */
   private show(i: number, walk: number, speed: number, head: number, now: number, dt = 0): void {
     const cow = this.cows[i];
     const sc = PEOPLE_SCALE;
     // (eased over the land's steps and onto the bridge: no jump)
     const y = deckOrGround(this.field, cow.x, cow.z);
     cow.y = dt > 0 && cow.y !== 0 ? cow.y + (y - cow.y) * Math.min(1, dt * 6) : y;
+    if (walk > 0) cow.still = now;
+    cow.moving = walk > 0;
+    cow.head = head;
     this.flock.place(i, cow.x, cow.y, cow.z, cow.yaw, sc);
     this.flock.gait(i, walk, walk > 0 ? speed / (1.55 * sc * 0.5) : 0.5, now);
     this.flock.set(i, CH.head, head, now);
     this.flock.set(i, CH.turn, 0, now);
+    this.flock.set(i, CH.rest, cow.lie, now, dt === 0);
     const o = this.obstacles[i];
     o.x = cow.x;
     o.y = cow.y;
     o.z = cow.z;
   }
 
-  /** Their bells: with the steps while walking, now and then while grazing (when the ears are near). */
+  /** Their fields for the ride (cattle/ride.ts), the ones it does not have: where each is, and whether he may get on it now. */
+  private share(now: number, walkingWay: boolean): void {
+    for (let i = 0; i < 3; i++) {
+      const r = this.mounts[i];
+      if (r.ridden) continue;
+      const cow = this.cows[i];
+      r.x = cow.x;
+      r.y = cow.y;
+      r.z = cow.z;
+      r.yaw = cow.yaw;
+      r.scale = PEOPLE_SCALE;
+      r.lying = cow.lie === 1;
+      r.head = cow.head;
+      r.pitch = r.roll = r.speed = 0;
+      // (standing still, grazing or in the pen, or lying settled; not walking the way, nor lying down or getting up)
+      r.canRide = this.flock.isShown(i) && cow.set && !cow.moving && (!walkingWay || cow.away) && now - cow.lieAt > SETTLE;
+      cow.wx = r.x;
+      cow.wz = r.z;
+    }
+  }
+
+  /** Their bells: with the steps while walking, now and then while grazing (when the ears are near; the ridden one's is the ride's). */
   private bells(now: number, f: MapFrame, walking: boolean, every: number): void {
     if (f.dt <= 0 || now < this.bellAt) return;
     this.bellAt = now + every * (0.6 + 0.8 * hash3(Math.floor(now * 3), 1, 55));
-    const o = this.obstacles[Math.floor(hash3(Math.floor(now * 5), 2, 56) * 3)];
+    const k = Math.floor(hash3(Math.floor(now * 5), 2, 56) * 3);
+    if (this.mounts[k].ridden || !this.flock.isShown(k)) return;
+    const o = this.obstacles[k];
     if (len(o.x - f.listener.x, o.z - f.listener.z) > 70) return;
     f.calls.push({ kind: 'cowBell', x: o.x, y: o.y + 1, z: o.z, gain: walking ? 0.7 : 0.45 });
   }
 
+  /** Out of sight (the village far): all but the one he rides (`ridden` draws it). */
   hide(): void {
     for (let i = 0; i < 3; i++) {
+      if (this.mounts[i].ridden) continue;
       this.flock.hide(i);
-      this.cows[i].set = false;
-      this.cows[i].y = 0;
+      const cow = this.cows[i];
+      cow.set = false;
+      cow.y = 0;
+      cow.away = false;
+      this.mounts[i].canRide = false;
     }
     if (this.boy.shown) this.boy.hide();
     this.s = -1;
   }
 
   report(traffic: Traffic): void {
-    if (!this.flock.isShown(0)) return;
-    for (const o of this.obstacles) traffic.list.push(o);
+    for (let i = 0; i < 3; i++) if (this.flock.isShown(i)) traffic.list.push(this.obstacles[i]);
   }
 
   subjects(out: Subject[]): void {
