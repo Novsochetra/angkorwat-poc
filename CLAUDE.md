@@ -47,8 +47,11 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
 
 The user reports bugs and ideas from inside the game or viewer (**B** / 🐞 button).
 Each report is a folder `feedback/<date>-<slug>/` with `report.md` and
-`screenshot.jpg`. When asked to "check the feedback", or when a report is pasted
-into the chat:
+`screenshot.jpg`. One inbox: a world map report (index.html) is also a ticket in
+the tracker's AWP project, its key in the folder's `ticket.json`
+(`src/feedback/tracker.ts`; `TRACKER_TOKEN` in `.env`; the dev server's terminal
+says the key, or why no ticket was made). When asked to "check the feedback", or
+when a report is pasted into the chat:
 
 1. Read `report.md` and view `screenshot.jpg`; numbered pins mark the picks.
    Notes can be in any language.
@@ -63,7 +66,7 @@ into the chat:
    (`npm run shots -- repro="@game.html?shot=1&at=…&cam=…"`), fix, and re-run it
    to compare. Then run the checks.
 4. Delete the report's folder in the commit that fixes it, and name the report
-   in the commit message.
+   and its ticket (`ticket.json`, e.g. "(AWP-31)") in the commit message.
 
 ## World map screen (`index.html`)
 
