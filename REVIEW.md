@@ -80,4 +80,7 @@ One line each time a ticket is sent back, so the next worker avoids it.
 
 - Fruit must taper (no plain box fruit).
 - No flat square leaves.
-- URL test values that fill game state (`pblocks=`, `build=`, `bag=` …) are read only in shots and on the dev server (`ctx.shot || import.meta.env.DEV`), never on the live site (AWP-16).
+- URL test values that fill game state (`pblocks=`, `build=`, `bag=` …) are read only in shots and on the dev server (`ctx.shot || import.meta.env.DEV`), never on the live site (AWP-16). That includes an add-on's `fromUrl`: open the
+  built site with `npm run preview` and the shot URL, and check nothing changes or
+  saves (AWP-9).
+- Prices shown on a card add up to what he pays; nothing hidden (AWP-9).
