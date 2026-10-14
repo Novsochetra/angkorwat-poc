@@ -35,10 +35,10 @@ const SPACING = 28;
 const MOST = 64;
 const INSIDE = 6;
 /**
- * Kept off (m): a road, a paddy, a temple's pad, a jungle trail within this; the boats' landings and the jetty; a
+ * Kept off (m): a road, a paddy, a temple's pad, bare rock (a cliff), a jungle trail within this; the boats' landings and the jetty; a
  * waterfall (the cliff, the spray: its foot and its lip); the temples' grounds round their pads; the jungle sites.
  */
-const CLEAR = { path: 5, paddy: 4, pad: 8, trail: 4, landing: 14, fall: 16, temple: 34, site: 14 };
+const CLEAR = { path: 5, paddy: 4, pad: 8, rock: 4, trail: 4, landing: 14, fall: 16, temple: 34, site: 14 };
 const LANDINGS: readonly (readonly [number, number])[] = [
   [-38, 46],
   [-316, 47],
@@ -113,7 +113,7 @@ function bankAt(f: HeightField, x: number, z: number): { wx: number; wz: number;
       }
     return false;
   };
-  if (near(SURFACE.path, CLEAR.path) || near(SURFACE.paddy, CLEAR.paddy) || near(SURFACE.pad, CLEAR.pad) || near(SURFACE.rock, 2)) return null;
+  if (near(SURFACE.path, CLEAR.path) || near(SURFACE.paddy, CLEAR.paddy) || near(SURFACE.pad, CLEAR.pad) || near(SURFACE.rock, CLEAR.rock)) return null;
   // (a jungle trail beside it: he would dig in the walkers' way)
   const t = Math.ceil(CLEAR.trail / CELL);
   for (let dk = -t; dk <= t; dk++)
