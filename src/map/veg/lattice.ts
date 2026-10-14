@@ -51,8 +51,10 @@ export class Lattice {
   private readonly mat: number[] = [];
   private readonly shell: number[] = [];
   private readonly proto: (Proto | undefined)[] = [];
+  /** Per cell, the stamp that owns it (the `owner` given to `stamp`; −1 none): the bamboo clumps he can cut (veg/bambooCut.ts). */
+  private readonly owner: number[] = [];
   /** Free boxes (trunks), already placed. */
-  private readonly free: { x: number; y: number; z: number; sx: number; sy: number; sz: number; color: number; shade: number; leaf: boolean; p: Proto }[] = [];
+  private readonly free: { x: number; y: number; z: number; sx: number; sy: number; sz: number; color: number; shade: number; leaf: boolean; p: Proto; owner: number }[] = [];
 
   constructor(
     /** Cell size (m). */
@@ -63,9 +65,11 @@ export class Lattice {
   /**
    * Stamp a prototype with its trunk cell at map point (x, z) (snapped to the
    * lattice), standing on ground height `y`, turned by `q` quarter turns.
+   * `owner` (≥ 0) names the stamp: `emit` tells which blocks it drew (a drawn
+   * cell it shares with another tree is the one's whose colour it shows).
    * Returns the number of cells added.
    */
-  stamp(p: Proto, x: number, y: number, z: number, q: number, m: boolean, shade = 1): number {
+  stamp(p: Proto, x: number, y: number, z: number, q: number, m: boolean, shade = 1, owner = -1): number {
     const s = this.s;
     const bi = Math.floor(x / s);
     const bk = Math.floor(z / s);
@@ -91,6 +95,7 @@ export class Lattice {
           this.shade[had] = p.shade[c] * shade;
           this.mat[had] = p.mat[c];
           this.proto[had] = p;
+          this.owner[had] = owner;
         }
         continue;
       }
@@ -103,12 +108,13 @@ export class Lattice {
       this.mat.push(p.mat[c]);
       this.shell.push(p.shell[c]);
       this.proto.push(p);
+      this.owner.push(owner);
       added++;
     }
     for (const b of p.boxes) {
       const [bx, bz] = turn(b.x, b.z, q, m);
       const odd = (q & 1) === 1;
-      this.free.push({ x: px + bx, y: y + b.y, z: pz + bz, sx: odd ? b.sz : b.sx, sy: b.sy, sz: odd ? b.sx : b.sz, color: b.color, shade: b.shade * shade, leaf: !!b.leaf, p });
+      this.free.push({ x: px + bx, y: y + b.y, z: pz + bz, sx: odd ? b.sz : b.sx, sy: b.sy, sz: odd ? b.sx : b.sz, color: b.color, shade: b.shade * shade, leaf: !!b.leaf, p, owner });
     }
     return added;
   }
@@ -122,8 +128,11 @@ export class Lattice {
     return this.ci.length;
   }
 
-  /** Emit the visible cells and the free boxes into the builder of their tile (by place and family). Returns the number of boxes. */
-  emit(sink: (x: number, z: number, mat: VoxelMaterialKey) => VoxelBuilder): number {
+  /**
+   * Emit the visible cells and the free boxes into the builder of their tile (by place and family). Returns the number
+   * of boxes. `owned(owner, builder, index)`: each block of a stamp with an owner, where it went in its builder.
+   */
+  emit(sink: (x: number, z: number, mat: VoxelMaterialKey) => VoxelBuilder, owned?: (owner: number, builder: VoxelBuilder, index: number) => void): number {
     const s = this.s;
     let n = 0;
     const has = (i: number, j: number, k: number) => this.map.has(key(i, j, k));
@@ -140,12 +149,16 @@ export class Lattice {
       const x = (i + 0.5) * s;
       const z = (k + 0.5) * s;
       const mat = this.mat[c] ? 'mapBark' : 'mapLeaf';
-      sink(x, z, mat).box(x, (j + 0.5) * s, z, s, s, s, this.color[c], mat, { shade, open, src: this.proto[c]?.src });
+      const to = sink(x, z, mat);
+      to.box(x, (j + 0.5) * s, z, s, s, s, this.color[c], mat, { shade, open, src: this.proto[c]?.src });
+      if (owned && this.owner[c] >= 0) owned(this.owner[c], to, to.boxes.length - 1);
       n++;
     }
     for (const f of this.free) {
       const mat = f.leaf ? 'mapLeaf' : 'mapBark';
-      sink(f.x, f.z, mat).box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, mat, { shade: f.shade, src: f.p.src });
+      const to = sink(f.x, f.z, mat);
+      to.box(f.x, f.y, f.z, f.sx, f.sy, f.sz, f.color, mat, { shade: f.shade, src: f.p.src });
+      if (owned && f.owner >= 0) owned(f.owner, to, to.boxes.length - 1);
     }
     return n + this.free.length;
   }

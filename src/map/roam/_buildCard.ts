@@ -21,7 +21,7 @@ import { setSteppedVars } from '../ui/shape';
  * bought for it on a line of its own ("Bought: cloth 8,000 ៛"), so the riel
  * on the row is the two added up; one he cannot build
  * now is greyed with why ("You have all 3", "Missing 1 log: 2,000 ៛ more
- * needed"). The note under the title: his riel, and the materials he has. The first he can build is in gold. A quiet "Not now" at the foot.
+ * needed"), its "Bought:" line kept (the full price reads whole). The note under the title: his riel, and the materials he has. The first he can build is in gold. A quiet "Not now" at the foot.
  * Every line reads whole (it wraps; on a narrow card, a phone upright, the
  * price sits on the name's line and the line runs under both); the list
  * scrolls in a low window with soft edges where there is more (as the
@@ -138,7 +138,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
         .map(
           (r, i) => `<button type="button" role="listitem" class="bd-opt mu-frame mu-sm${i === gold ? ' is-gold' : ''}${r.off ? ' is-off' : ''}" data-id="${r.id}"${r.off ? ' disabled aria-disabled="true"' : ''}><span class="mu-bg"></span>${i === gold ? '<span class="mu-glow"></span>' : ''}<span class="mu-focus"></span>
         <span class="bd-pic"><svg class="bd-ri" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${PIC[r.id]}</svg></span>
-        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em>${r.buy && !r.off ? `<em class="bd-buy">${esc(r.buy)}</em>` : ''}</span>
+        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em>${r.buy ? `<em class="bd-buy">${esc(r.buy)}</em>` : ''}</span>
         <span class="bd-price">${r.cost.map((c) => `<span class="bd-m${c.have < c.n ? ' is-short' : ''}">${materialIcon(c.m, 'bd-mi')}${num(c.n)}</span>`).join('')}${r.price ? `<b class="bd-riel">${esc(r.price)}</b>` : ''}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
         )
         .join('') +

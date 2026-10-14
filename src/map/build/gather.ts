@@ -21,7 +21,12 @@ import { MATERIALS, type GatherAction, type MaterialId } from './materials';
  *   the log (the add-on plays the sound, throws the chips, shakes the pad);
  * - `onTake(spot, left)`: a piece came off (hide a cane, a frond); `left` pieces stay;
  * - `onLeft(spot, left)`: what a spot has left changed some other way (it grew
- *   back, a check, a load): draw it so.
+ *   back, a check, a load): draw it so;
+ * - `onWork(spot, x, z)`: he sets to work at it from (x, z) (or a check puts him
+ *   there): the side he works it from (the bamboo's canes before him go first).
+ *
+ * `gatherTakenAt(spot)` gives the clock times its pieces still growing back were
+ * taken (oldest first): how far each has grown back.
  *
  * **What a spot has left** is kept here (`gatherLeft`), not by the source: each
  * piece taken comes back `regrowDays` game days later, on the gathering's own
@@ -76,6 +81,8 @@ export interface GatherSource {
   onTake?(spot: GatherSpot, left: number): void;
   /** What `spot` has left changed (it grew back; a check set it): `left` now. */
   onLeft?(spot: GatherSpot, left: number): void;
+  /** He sets to work at `spot`, standing at (x, z) (m), or a check puts him there. */
+  onWork?(spot: GatherSpot, x: number, z: number): void;
 }
 
 const SOURCES: GatherSource[] = [];
@@ -154,6 +161,13 @@ export function gatherLeft(spot: GatherSpot): number {
   let n = 0;
   for (const at of ts) if (clock - at < spot.regrowDays) n++;
   return Math.max(0, spot.pieces - n);
+}
+
+/** The clock times the pieces of `spot` still growing back were taken, oldest first (a copy; empty: it has them all). */
+export function gatherTakenAt(spot: GatherSpot): number[] {
+  const ts = taken[spot.id];
+  if (!ts || spot.regrowDays <= 0) return [];
+  return ts.filter((at) => clock - at < spot.regrowDays).sort((a, b) => a - b);
 }
 
 /** Game days until `spot`'s next piece grows back (0: it has all its pieces). */

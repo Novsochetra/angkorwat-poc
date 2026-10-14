@@ -8,6 +8,7 @@ import { graphicsNow, pixelSize } from './graphics';
 import type { HeightField } from './heightfield';
 import { ChunkGrid, ChunkSwitch, PLAIN_FROM } from './terrain/lod';
 import type { MapContext, MapFrame, MapPart, Subject } from './types';
+import { BAMBOO_CUT, type BambooClumpData } from './veg/bambooCut';
 import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
 import { FarTreeList, TREE_PICTURES, TreePictures, type FarLeaves, type FarTrees } from './veg/impostors';
@@ -161,6 +162,8 @@ interface Planted {
   sugarPalms: Subject[];
   /** The far trees (2 m and 3 m cells) as stamped, for their pictures on a phone (veg/impostors.ts). */
   far: FarTrees;
+  /** The bamboo clumps he can cut where he roams and their blocks in the tiles' meshes (veg/bambooCut.ts). */
+  bamboo: BambooClumpData[];
 }
 
 /** Scatter the trees, stamp them on the lattices and emit the visible blocks (no meshes yet). */
@@ -172,13 +175,21 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   const nearTrees: CanopyTree[] = [];
   const sugarPalms: Subject[] = [];
   const farTrees = new FarTreeList();
+  /** The bamboo clumps he can cut (where he roams), the stamp's owner number = the index here; their blocks as emitted. */
+  const clumps: { d: Omit<BambooClumpData, 'at'>; refs: [VoxelBuilder, number][] }[] = [];
   for (const t of spots) {
     const p = protoFor(kits.get(t.lod * 4 + t.cell)!, t);
     if (!p) continue;
     // Trunk on the lowest corner of its footprint (no floating roots on a step).
     const y = Math.min(t.y, f.heightAt(t.x - 1, t.z - 1), f.heightAt(t.x + 1, t.z + 1), f.heightAt(t.x - 1, t.z + 1), f.heightAt(t.x + 1, t.z - 1));
     const shade = 0.94 + hash3(t.x, t.z, 1, 41) * 0.12;
-    lattices[t.cell].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
+    let owner = -1;
+    if (t.kind === 'bamboo' && underReach(t.x, t.z)) {
+      const s = LOD_CELL[t.cell];
+      owner = clumps.length;
+      clumps.push({ d: { x: (Math.floor(t.x / s) + 0.5) * s, y, z: (Math.floor(t.z / s) + 0.5) * s, r: p.r, h: p.h }, refs: [] });
+    }
+    lattices[t.cell].stamp(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade, owner);
     if (t.cell >= 2) farTrees.add(p, t.x, y, t.z, t.seed & 3, (t.seed & 4) !== 0, shade);
     counts[t.kind] = (counts[t.kind] ?? 0) + 1;
     perLod[t.cell]++;
@@ -199,13 +210,59 @@ function plant(f: HeightField, kits: Kits, opts: ScatterOptions): Planted {
   /** The builder of a block: leaves by tile, the rest by chunk; near or far. */
   const sink = (far: 0 | 1) => (x: number, z: number, mat: VoxelMaterialKey) => (mat === 'mapLeaf' ? leaves[LEAF_GRID.at(x, z)] : rest[REST_GRID.at(x, z)])[far];
   const near = sink(0);
-  const lodBlocks = [lattices[0].emit(near), lattices[1].emit(near), lattices[2].emit(sink(1)), lattices[3].emit(sink(1))];
+  const owned = (o: number, b: VoxelBuilder, i: number) => void clumps[o].refs.push([b, i]);
+  const lodBlocks = [lattices[0].emit(near, owned), lattices[1].emit(near, owned), lattices[2].emit(sink(1), owned), lattices[3].emit(sink(1), owned)];
   const treeBlocks = lodBlocks.reduce((a, b) => a + b, 0);
   // (the cliff greens' vines are leaves, their moss goes with the rest)
   buildCliffGreens(f, (x, z) => ({ box: (...a: Parameters<VoxelBuilder['box']>) => near(x, z, a[7]).box(...a) }) as VoxelBuilder, opts.density);
   let blocks = 0;
   for (const [n, fa] of [...leaves, ...rest]) blocks += n.boxes.length + fa.boxes.length;
-  return { leaves, rest, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks, near: nearTrees, sugarPalms, far: farTrees.done() };
+  return { leaves, rest, blocks, trees: spots.length, counts, perLod, lodBlocks, cliffBlocks: blocks - treeBlocks, near: nearTrees, sugarPalms, far: farTrees.done(), bamboo: clumpBlocks(clumps, leaves, rest) };
+}
+
+/**
+ * The cut-able bamboo clumps with their blocks as instances of the tiles' meshes (VoxelMesh.ts makes a mesh a family,
+ * its blocks in the builder's order: a block's instance is its place among its family's blocks there). A block's mesh
+ * code: grid (0 the leaf tiles, 1 the rest's chunks) | far (2: the far builder) | tile << 2.
+ */
+function clumpBlocks(clumps: { d: Omit<BambooClumpData, 'at'>; refs: [VoxelBuilder, number][] }[], leaves: Pair[], rest: Pair[]): BambooClumpData[] {
+  const code = new Map<VoxelBuilder, number>();
+  leaves.forEach(([n, f], i) => {
+    code.set(n, i << 2);
+    code.set(f, (i << 2) | 2);
+  });
+  rest.forEach(([n, f], i) => {
+    code.set(n, (i << 2) | 1);
+    code.set(f, (i << 2) | 3);
+  });
+  /** Per builder, each block's place among its family's. */
+  const order = new Map<VoxelBuilder, Int32Array>();
+  const orderOf = (b: VoxelBuilder) => {
+    let o = order.get(b);
+    if (!o) {
+      o = new Int32Array(b.boxes.length);
+      const seen = new Map<string, number>();
+      b.boxes.forEach((box, i) => {
+        const k = seen.get(box.mat) ?? 0;
+        o![i] = k;
+        seen.set(box.mat, k + 1);
+      });
+      order.set(b, o);
+    }
+    return o;
+  };
+  return clumps.map(({ d, refs }) => {
+    const at = new Int32Array(refs.length * 2);
+    let n = 0;
+    for (const [b, i] of refs) {
+      const c = code.get(b);
+      if (c === undefined) continue;
+      at[n * 2] = c;
+      at[n * 2 + 1] = orderOf(b)[i];
+      n++;
+    }
+    return { ...d, at: at.slice(0, n * 2) };
+  });
 }
 
 /** Every prototype set the jungle is planted from (the same every run: a build worker makes them early, map/work/). */
@@ -330,6 +387,14 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   const t2 = performance.now();
   const lowOnly = ctx.quality === 'low';
   const tiles = new Tiles(object);
+  /**
+   * Each tile's meshes by grid (0 leaves, 1 the rest), near and far (on the low level one plain mesh, the far blocks
+   * after the near ones: `farFrom` of the grid's family): the bamboo he cuts.
+   */
+  const meshOf: { near: (Group | null)[]; far: (Group | null)[]; farFrom: number[] }[] = [
+    { near: [], far: [], farFrom: [] },
+    { near: [], far: [], farFrom: [] },
+  ];
   // (a phone: the leaf tiles' far leaves, the last instances of a mesh, for their pictures: veg/impostors.ts)
   const farLeaves: FarLeaves[] = [];
   const leafOf = (g: Group | null) => g?.children.find((o) => o.name.endsWith(':mapLeaf')) as InstancedMesh | undefined;
@@ -340,14 +405,23 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
       if (lowOnly) {
         // (all plain boxes: one mesh a tile)
         const first = pictures ? near.boxes.reduce((k, b) => k + (b.mat === 'mapLeaf' ? 1 : 0), 0) : 0;
+        const at = meshOf[kind === 'leaf' ? 0 : 1];
+        const fam = kind === 'leaf' ? 'mapLeaf' : 'mapBark';
+        at.farFrom[n] = near.boxes.reduce((k, b) => k + (b.mat === fam ? 1 : 0), 0);
         for (const b of far.boxes) near.boxes.push(b);
         const g = near.boxes.length ? buildVoxelMesh(near, { quality: 'low', name }) : null;
+        at.near[n] = at.far[n] = g;
         tiles.add(grid.box(n), null, g);
         const leaf = pictures ? leafOf(g) : undefined;
         if (leaf && leaf.count > first) farLeaves.push({ tile: n, mesh: leaf, first });
       } else {
         const g = far.boxes.length ? buildVoxelMesh(far, { quality: 'low', name: `${name}:far` }) : null;
-        tiles.add(grid.box(n), near.boxes.length ? buildVoxelMesh(near, { quality: 'medium', name }) : null, g);
+        const fine = near.boxes.length ? buildVoxelMesh(near, { quality: 'medium', name }) : null;
+        const at = meshOf[kind === 'leaf' ? 0 : 1];
+        at.near[n] = fine;
+        at.far[n] = g;
+        at.farFrom[n] = 0;
+        tiles.add(grid.box(n), fine, g);
         const leaf = pictures ? leafOf(g) : undefined;
         if (leaf) farLeaves.push({ tile: n, mesh: leaf, first: 0 });
       }
@@ -359,6 +433,19 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   swayLeaves(object, f, true);
   const pictures = TREE_PICTURES ? new TreePictures(ctx.renderer, r.far, farLeaves, (x, z) => LEAF_GRID.at(x, z), LEAF_GRID.count) : null;
   if (pictures) object.add(pictures.object);
+  // (the bamboo clumps he can cut: their blocks in the near meshes; the cut layer drawn only while one is cut)
+  BAMBOO_CUT.attach(
+    r.bamboo ?? [],
+    (c) => {
+      const at = meshOf[c & 1];
+      const far = (c & 2) !== 0;
+      const g = (far ? at.far : at.near)[c >> 2];
+      const mesh = g?.children.find((o) => o.name.endsWith(c & 1 ? ':mapBark' : ':mapLeaf')) as InstancedMesh | undefined;
+      return mesh ? { mesh, from: far ? (at.farFrom[c >> 2] ?? 0) : 0 } : null;
+    },
+    ctx.renderer,
+  );
+  object.add(BAMBOO_CUT.object);
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (new URLSearchParams(location.search).has('vegstats'))
@@ -374,6 +461,7 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
     update(fr) {
       stepWind(fr, 'vegetation');
       tiles.update(fr);
+      BAMBOO_CUT.update(fr.dt);
       pictures?.update(fr);
     },
     restored() {

@@ -193,6 +193,9 @@ function holdStep(ctx: RoamCtx, dt: number): void {
 
 /** "Take down the bamboo bed? You get half its materials back: 3 bamboo poles." */
 const SAW = `<svg class="mu-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="#8a6038" d="M2 9h12v3H2z"/><path fill="#b08a5a" d="M2 9h12v1H2z"/><path fill="#c8ccd0" d="M6 2h2v6H6z"/><path fill="#e8eef2" d="M6 2h1v6H6z"/><path fill="#7a5a3a" d="M5 1h4v2H5z"/><path fill="#ffd27a" d="M10 5h1v1h-1zM11 6h1v1h-1zM12 4h1v1h-1z"/></svg>`;
+/** Taking `id` down gives back some of its materials (not only riel). */
+const materialsBackOf = (id: PieceId): boolean => Object.keys(pieceBack(id).cost).length > 0;
+
 function askTake(ctx: RoamCtx, b: Built): void {
   if (!env) return;
   asking = b;
@@ -205,7 +208,8 @@ function askTake(ctx: RoamCtx, b: Built): void {
       const id = q?.id ?? 'kre';
       return {
         title: t('buildTakeAsk', { name: pieceWord({ id }) }),
-        note: t('buildTakeNote', { what: backWords(pieceBack(id)) }),
+        // (a piece that gives back only riel, half its bought part: worded so, not "half its materials")
+        note: t(materialsBackOf(id) ? 'buildTakeNote' : 'buildTakeNoteRiel', { what: backWords(pieceBack(id)) }),
         stay: t('buildTakeNo'),
         go: t('buildTakeYes'),
       };

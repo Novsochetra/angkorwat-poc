@@ -9,6 +9,7 @@ import { HOME } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import { TIME } from '../time';
+import { BAMBOO_CUT } from '../veg/bambooCut';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
@@ -62,7 +63,8 @@ import { stepSound } from './walker';
  * (at the nearest spot of it to `at=`: him at work, `hits` blows of the piece
  * already landed, held `s` seconds into a swing: the chips of a blow at `s` past
  * the blow) · `gatheract=chop|dig` (that swing there instead of its own: a pose's
- * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherunload=1`
+ * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherdays=<d>` (then
+ * the gathering's clock `d` game days on: grown back that far) · `gatherwork=0` (the spot only, him not at work) · `gatherunload=1`
  * (a shot unloads at home too). `report()` gives `bag=`, `store=`, `gather=`.
  * `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`, `advance(days)`. Console lines `[gather] …`.
  */
@@ -381,6 +383,15 @@ function finish(ctx: RoamCtx | null): void {
   if (ctx) ctx.body.explorer.setMotion(0, true, 0);
 }
 
+/** Tell the spot's source he works it from (x, z) (the side that goes first). */
+function worksFrom(spot: GatherSpot, x: number, z: number): void {
+  try {
+    sourceOf(spot)?.onWork?.(spot, x, z);
+  } catch (e) {
+    console.error('[gather] onWork failed:', e);
+  }
+}
+
 /** Begin at `spot` (E). */
 function start(ctx: RoamCtx, spot: GatherSpot, frozen = false): Session {
   finish(ctx);
@@ -402,6 +413,7 @@ function start(ctx: RoamCtx, spot: GatherSpot, frozen = false): Session {
   };
   placeFor(ctx, s, ctx.body.pos.x, ctx.body.pos.z);
   if (Math.hypot(s.stand.x - ctx.body.pos.x, s.stand.z - ctx.body.pos.z) < 0.08) s.phase = 'turn';
+  worksFrom(spot, ctx.body.pos.x, ctx.body.pos.z);
   S = s;
   pose.action = s.action;
   pose.s = -1;
@@ -630,7 +642,7 @@ registerAddon({
   },
   init(e) {
     env = e;
-    const n = registerBambooClumps(e.parts);
+    const n = registerBambooClumps();
     hud = createGatherHud(e.layer);
     fx = new Particles();
     fx.mesh.name = 'gather:chips';
@@ -657,6 +669,7 @@ registerAddon({
             work: S ? { spot: S.spot.id, phase: S.phase, n: S.n, hits: S.spot.hits, swing: +S.swing.toFixed(3), queued: S.queued, got: S.got } : null,
             saving: progress.saving,
             sources: gatherSources().map((src) => ({ id: src.id, spots: src.spots().length })),
+            bambooCut: { ...BAMBOO_CUT.stats },
           }),
           near: (x: number, z: number, r = 30) =>
             gatherSources()
@@ -748,7 +761,15 @@ registerAddon({
       return;
     }
     const left = q.get('gatherleft');
-    if (left !== null) GATHER.setLeft(spot, Number(left));
+    if (left !== null) {
+      worksFrom(spot, ctx.body.pos.x, ctx.body.pos.z);
+      GATHER.setLeft(spot, Number(left));
+    }
+    // (`gatherdays=<d>`: the gathering's clock that many game days on: what was taken grows back that far)
+    const days = Number(q.get('gatherdays'));
+    if (days > 0 && Number.isFinite(days)) GATHER.advance(Math.min(days, 100));
+    // (`gatherwork=0`: the spot only, him not put to work at it)
+    if (q.get('gatherwork') === '0') return;
     freeze(ctx, spot, Number(n) || 0, sw !== undefined && sw !== '' ? Number(sw) || 0 : null);
   },
   report() {

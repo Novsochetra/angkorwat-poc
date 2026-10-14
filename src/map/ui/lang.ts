@@ -1643,6 +1643,7 @@ const WORDS = {
   buildTakeHold: { km: 'សង្កត់ជាប់ ដើម្បីរុះ{name}ចេញ', en: 'Hold to take down the {name}' },
   buildTakeAsk: { km: 'រុះ{name}ចេញឬ?', en: 'Take down the {name}?' },
   buildTakeNote: { km: 'អ្នកនឹងបានសម្ភារៈវិញពាក់កណ្ដាល៖ {what}', en: 'You get half its materials back: {what}' },
+  buildTakeNoteRiel: { km: 'អ្នកនឹងបានប្រាក់វិញពាក់កណ្ដាលនៃតម្លៃរបស់ដែលបានទិញ៖ {what}', en: 'You get back half of what was bought for it: {what}' },
   buildTakeNo: { km: 'ទុកវាសិន', en: 'Keep it' },
   buildTakeYes: { km: 'រុះចេញ', en: 'Take it down' },
   buildHint: { km: 'ផ្ទះរបស់អ្នក! ឈរក្បែរផ្ទះ ហើយចុច E ដើម្បីសាងសង់ គ្រែឫស្សី របង គ្រោលគោ…', en: 'Your home! Stand by the house and press E to build: a bamboo bed, a fence, a cattle pen…' },
