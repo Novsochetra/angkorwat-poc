@@ -275,7 +275,11 @@ function mother(b: VoxelBuilder, look: PlantLook, r: (i: number, j?: number) => 
   beam(b, [x + Math.sin(a) * 0.15, h * 0.9, z + Math.cos(a) * 0.15], [x + Math.sin(a) * 0.3, 0.05, z + Math.cos(a) * 0.3], 0.12, 0.025, pick(DRY, r(4, 70)), 'mapLeaf', 0.3);
 }
 
-registerModel('banana', (b, look) => {
+/**
+ * The banana as it looks (`look`), foot at the origin: the garden's model, and every banana plant on the map
+ * (veg/banana.ts `bananaPlant` sets this one in the hamlets, the villages and the jungle camps).
+ */
+export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
   const st = look.stage;
   const r = rng(look, 0xb4);
   const dead = look.dead;
@@ -366,4 +370,6 @@ registerModel('banana', (b, look) => {
     mother(b, look, r);
     if (look.fruit === 0) follower(b, look, r);
   }
-});
+}
+
+registerModel('banana', bananaModel);

@@ -1051,6 +1051,19 @@ mango, a box pumpkin); the console lists each shape's blocks and the cameras:
 `cam=150.6,8.4,-290.2,150.6,7.2,-293.9,50` (the fruit at eye height),
 `cam=153,8.4,-291.4,153,7.5,-293.9,38` (the vine).
 
+**Banana plants** (AWP-8): one for the whole map, `veg/banana.ts`
+`bananaPlant(b, x, y, z, { seed, yaw?, stage?: 3│4, bunch? })`: the home
+garden's own model (garden/models/banana.ts `bananaModel`: torn paddle
+leaves, the rolled young leaf, sheath streaks, a dry leaf, pups, a bunch of
+green ណាំវ៉ា and the purple flower), set on the land and turned `yaw`. It
+replaced the three bananas the places drew themselves (the floating
+village's and the hamlets' box crowns, `village/_kit.ts`; the jungle camps'
+and the Kulen picnic's beams, `jungle/_campKit.ts`; the palm-sugar yard's
+slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
+Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
+145–155; about 36 plants on the map (+6 200 blocks in all). The home
+garden's plants are untouched (its models hash the same).
+
 ## The floating village
 
 The `village` part (`src/map/village/`, built right after the water so its

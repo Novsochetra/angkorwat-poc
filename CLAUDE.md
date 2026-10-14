@@ -221,6 +221,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Leaves, fruit and vines of any plant: the plant kit `src/map/veg/plantKit.ts`
   (leaf, teardrop, round, long, vine; never flat square leaves or box fruit;
   API and blocks in BRIEF.md "The plant kit"; `plantkit=lineup` shows them all).
+  Banana plants: one, `src/map/veg/banana.ts` `bananaPlant` (the home garden's
+  model, garden/models/banana.ts), in every hamlet, village and camp.
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth

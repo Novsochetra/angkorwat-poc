@@ -4,6 +4,7 @@ import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
+import { bananaPlant } from '../veg/banana';
 
 /**
  * Shared pieces for the jungle's lived-in places (camps.ts): a site frame
@@ -218,42 +219,12 @@ export function fern(site: Site, lx: number, lz: number, s: number, i: number): 
 }
 
 /**
- * A banana plant: a few pseudo-stems from one clump, big ragged leaves
- * arching out from the top of each, and on the tallest a purple flower
- * bud hanging on its stalk. `h` the tallest stem (m).
+ * A banana plant at the site's local point: the map's one banana (veg/banana.ts, the home garden's model), grown
+ * if `h` (its old tallest stem, m) is 2.9 or more, else young; some with a bunch, each turned its own way.
  */
 export function banana(site: Site, lx: number, lz: number, h: number, i: number): void {
   const r = (k: number) => hash3(i, k, lx * 3 + lz * 7, site.seed + 21);
-  const y0 = site.ground(lx, lz);
-  const STEM = [0x6f7d3e, 0x7a8642, 0x66733a];
-  const LEAF = [0x6a9a36, 0x78a83c, 0x5e8c30, 0x86b446];
-  const stems = 2 + Math.floor(r(1) * 2);
-  for (let k = 0; k < stems; k++) {
-    const sh = h * (k === 0 ? 1 : 0.55 + 0.3 * r(2 + k));
-    const ox = k === 0 ? 0 : (r(5 + k) - 0.5) * 0.9;
-    const oz = k === 0 ? 0 : (r(8 + k) - 0.5) * 0.9;
-    const x = lx + ox;
-    const z = lz + oz;
-    const top: P3 = [x + 0.05, y0 + sh, z];
-    site.beam([x, y0 - 0.1, z], top, 0.26 - 0.06 * k, 0.26 - 0.06 * k, pickTone(STEM, i, k, 1, site.seed), 'mapBark', 0, 0.95);
-    const leaves = k === 0 ? 7 : 4;
-    for (let l = 0; l < leaves; l++) {
-      const a = (l / leaves) * Math.PI * 2 + r(12 + l + k * 9) * 0.8;
-      const len = sh * (0.55 + 0.25 * r(20 + l + k * 9));
-      const ca = Math.sin(a);
-      const cz = Math.cos(a);
-      // Stalk up and out, then the blade arching over and down (in two pieces, split at the rib).
-      const m: P3 = [top[0] + ca * len * 0.45, top[1] + len * 0.28, top[2] + cz * len * 0.45];
-      const tip: P3 = [top[0] + ca * len, top[1] - len * 0.05 - 0.25 * r(30 + l), top[2] + cz * len];
-      const c = pickTone(LEAF, i, l, k + 2, site.seed);
-      site.beam(top, m, 0.5, 0.04, c, 'mapLeaf', 0.15, 0.95);
-      site.beam(m, tip, 0.56, 0.04, c, 'mapLeaf', -0.1, 1.05);
-    }
-    if (k === 0) {
-      // The bud on its drooping stalk.
-      const bx = top[0] + 0.35;
-      site.beam(top, [bx, top[1] - 0.45, top[2] + 0.1], 0.05, 0.05, pickTone(STEM, i, 9, 9, site.seed), 'mapBark');
-      site.box(bx, top[1] - 0.62, top[2] + 0.1, 0.16, 0.3, 0.16, 0x6b2f45, 'petal');
-    }
-  }
+  const w = site.world(lx, site.ground(lx, lz), lz);
+  const stage = h >= 2.9 ? 4 : 3;
+  bananaPlant(site.b, w.x, w.y, w.z, { seed: r(1), yaw: site.yaw + r(2) * Math.PI * 2, stage, bunch: stage === 4 && r(3) < 0.5 });
 }
