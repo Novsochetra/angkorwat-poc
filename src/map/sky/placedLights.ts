@@ -33,6 +33,8 @@ import { addLamp, inSlot, type Lamp } from './lampSlots';
 
 /** Placed lights at most (each two glowing blocks and a halo). */
 const MAX = 64;
+/** The real lights come on as it gets dark: from this much night (the glow's 0‥1, eased), fully this much later. */
+const DUSK = { from: 0.05, over: 0.15 };
 /** The real light's flicker (a kerosene flame: gentle). */
 const FLICKER = { slow: 11.3, fast: 23.9, a: 0.05, b: 0.03 };
 
@@ -224,8 +226,10 @@ export function placedLights(): PlacedLights {
       u.uTime.value = t;
       u.uScale.value = 1 / pixelSize(camera);
       u.uLamp.value = k * k * 1.1;
-      // The real lights: each placed light's lamp (the slots pick the nearest few).
-      const on = list.length > 0 && k > 0 && shown();
+      // The real lights: each placed light's lamp (the slots pick the nearest few), from dusk on (by day a lamp that
+      // gave next to no light would still hold a slot and shade every pixel in its reach).
+      const dusk = Math.min(1, Math.max(0, (k - DUSK.from) / DUSK.over));
+      const on = list.length > 0 && dusk > 0 && shown();
       for (const { spec: L, lamp: l, phase: ph } of list) {
         if (!l) continue;
         if (!on) {
@@ -237,7 +241,7 @@ export function placedLights(): PlacedLights {
         l.position.set(L.x, L.y, L.z);
         l.color.setHex(L.color);
         l.distance = L.reach ?? 0;
-        l.intensity = cd * k * flick;
+        l.intensity = cd * k * dusk * flick;
       }
     },
     stats: () => ({ lights: list.length, lit: lamps.filter((l) => inSlot(l) > 0).length, max: MAX }),
