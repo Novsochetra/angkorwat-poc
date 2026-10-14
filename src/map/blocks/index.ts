@@ -1,6 +1,6 @@
 import type { MapContext } from '../types';
 import { fillDemo } from './demo';
-import { BLOCKS } from './store';
+import { BLOCKS, blockOf, rawOf } from './store';
 import { buildBlocksView, type BlocksPart } from './view';
 
 /**
@@ -18,6 +18,6 @@ export function buildBlocks(ctx: MapContext): BlocksPart {
     console.info(`[blocks] pblocks=${spec}: ${n} blocks in ${BLOCKS.chunkList().length} chunks (${(performance.now() - t0).toFixed(1)} ms)`);
   }
   const part = buildBlocksView(ctx);
-  if (ctx.shot || import.meta.env.DEV) (window as unknown as { __blocks: unknown }).__blocks = { store: BLOCKS, stats: part.stats, bench: part.bench, flush: part.flush };
+  if (ctx.shot || import.meta.env.DEV) (window as unknown as { __blocks: unknown }).__blocks = { store: BLOCKS, stats: part.stats, bench: part.bench, flush: part.flush, rawOf, blockOf };
   return part;
 }
