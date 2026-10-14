@@ -2994,7 +2994,7 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
 - **The sources** (each registers itself from the add-on's `init`; what each looks like
   as it is cut and grows back is its own):
   - **Bamboo** (AWP-10, `roam/_gatherBamboo.ts`, id `bamboo` as AWP-9's proof source: the
-    saved spots carry on): the jungle's 103 clumps where he roams (vegetation.ts tells
+    saved spots carry on): the jungle's clumps where he roams (103 on medium and up, 90 on low, which plants fewer) (vegetation.ts tells
     which instances of the tile meshes are each clump's: veg/lattice.ts `stamp`'s owner,
     `emit`'s `owned`; `veg/bambooCut.ts` `BAMBOO_CUT`). 4 knife blows a pole, 3 poles a
     clump, each back in 2 game days. A pole is a side's canes (a third round the clump):
@@ -3018,7 +3018,7 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     cut at its stalk with the knife, 3 blows a bundle of thatch, 3 fans a palm (of
     eight), the one before him first; its stub stays, a new leaf (a folded spear) grows
     from the heart and opens again in 2 game days.
-  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 36 patches of bared clay on the banks of
+  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 35 patches of bared clay on the banks of
     the great lake, the rivers and the ponds where he roams, found once from the land
     (dry sand or dirt beside the water, a metre or so over it, level round; never on rock,
     a road, a trail, a paddy, by a temple, in a village or hamlet, by a jungle site, a
