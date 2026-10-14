@@ -14,6 +14,9 @@ import { join } from 'node:path';
  *
  * Settings (.env, never VITE_-prefixed): TRACKER_TOKEN (an API token made in
  * the tracker), TRACKER_URL (default below), TRACKER_PROJECT (default AWP).
+ * The shell's own values win over .env, so a script that sends a test report
+ * from the map runs with `TRACKER_TOKEN=` (empty: no ticket) or a local tracker
+ * in TRACKER_URL, never the real one.
  */
 
 export const DEFAULT_TRACKER_URL = 'https://project-tracker-production-aa4f.up.railway.app';
