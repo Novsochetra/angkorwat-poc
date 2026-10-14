@@ -20,7 +20,11 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  * direction (sin az, cos az)), an elevation `el` is up from level (radians).
  * Not into the local builder of a turned `Frame` (landmarks/_prasatKit.ts:
  * `place` adds its turn to `ry`, which only holds for level blocks): there,
- * give world points (`fr.world(…)`) and add the frame's `theta` to `az`.
+ * give world points (`fr.world(…)`) and add the frame's `theta` to `az`. A
+ * `Local` with a `theta` is such a frame's (the same rule). Into a `PsFrame`'s
+ * `b`: add its origin (`F.ox`, `F.oy`, `F.oz`); the shapes' blocks are not in
+ * its near-only `small` set (`F.fine` marks only its own boxes), so they are
+ * drawn at every distance.
  * Every shape takes `src` (a bug report names the line that made it; default:
  * the caller of the shape), `mat` and `shade`.
  *
@@ -29,9 +33,10 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  * | shape | what | blocks |
  * |---|---|---|
  * | `leaf` | one blade from its base: a curved slab narrow at the stalk, widest past the middle, a pointed tip (a square turned 45° in the blade), a paler mid-rib on top; `shape` `lance` (mango), `broad` (gourd, pumpkin), `oblong` (banana); `fold` folds its two halves down from the rib (a banana leaf) or up (a cupped leaf) | `segs` + 1 tip + `segs` rib (+`segs` with `fold`, +1 `stalk`): 1 seg no rib 2, 2 segs 5 (default), 3 segs 7, 3 segs folded 10 |
- * | `teardrop` | a fruit hanging from its stalk, the narrow end up: mango (0.12 × 0.09 m, `depth` 0.85, `blush`), papaya (0.25 × 0.14 m, `taper` 0.65); lying with `dir` | 4 (2 with `low`), +1 `stalk`, +1 `blush` |
- * | `round` | a fruit round about its upright axis, squat or tall: pumpkin (0.45 × 0.3 m), round gourd, melon (`hang` from a trellis) | 4 (2 with `low`), +1 `stalk` |
+ * | `teardrop` | a fruit hanging from its stalk, the narrow end up: mango (0.12 × 0.09 m, `depth` 0.85, `curve` 0.3, a `blush` blended from the stalk), papaya (0.25 × 0.14 m, `taper` 0.65); lying with `dir` | 5 (2 with `low`), +1 `stalk` |
+ * | `round` | a fruit round about its upright axis, squat or tall, in four steps up its side (a narrow foot, the ribbed band, the shoulder, the top): pumpkin (0.45 × 0.3 m), round gourd, melon, jackfruit (`hang` from a trellis or a trunk) | 6 (3 with `low`), +1 `stalk` |
  * | `long` | a finger along a gentle curve, thick in the middle: banana (0.16 × 0.035 m, `neck` 0.55, a dark `tip`), long eggplant (0.25 × 0.055 m, a green `cap`) | `segs` × 2 (× 1 with `sides: 4`), +1 `tip`, +1 `cap`: banana finger 3, eggplant 5 |
+ * | `fan` | a hand-shaped leaf on a long stalk: `lobes` leaves fanned across its end (papaya: stalk 0.6–0.8 m, 7 lobes 0.55 × 0.22 m, `spread` 3.2) | 1 + each lobe's: 5 lobes of 1 piece, no rib, 11 (7: 15) |
  * | `vine` | a stem along given points (`sag` drapes them between two posts, `spiral` winds them up one) with leaves on alternate sides and curling tendrils | 1 a span, + each leaf's, + 3 a tendril |
  *
  * Helpers: `beam` (a block from point a to point c, turned along that line),
@@ -292,6 +297,46 @@ export function leaf(b: VoxelBuilder, at: P3, o: LeafOpts): P3 {
   return along(p, o.az, el, D / 2);
 }
 
+export interface FanOpts extends Omit<LeafOpts, 'az' | 'el' | 'roll' | 'fold' | 'stalk'> {
+  /** Heading and elevation of its stalk at `at` (radians). */
+  az: number;
+  el: number;
+  /** The stalk's length (m; one block, bending down a little), and its colour (default the blade's, paler). */
+  stalk: number;
+  stalkColor?: number;
+  /** Lobes fanned across the stalk's end (default 5), and how wide the fan opens (radians, default 2.4). */
+  lobes?: number;
+  spread?: number;
+  /** The blade's elevation at the stalk's end (default the stalk's, less 0.3: the hand opens level). */
+  blade?: number;
+}
+
+/**
+ * A hand-shaped leaf on a long stalk (papaya, cassava, castor): the stalk from
+ * `at`, then `lobes` lobes (each a `leaf`, `len` × `wid`, the middle ones
+ * longest) fanned across its end. Blocks: 1 + each lobe's (5 lobes of 1 piece
+ * with no rib: 11).
+ */
+export function fan(b: VoxelBuilder, at: P3, o: FanOpts): P3 {
+  const src = o.src ?? traceSource();
+  const mat = o.mat ?? 'mapLeaf';
+  const shade = o.shade ?? 1;
+  const n = o.lobes ?? 5;
+  const spread = o.spread ?? 2.4;
+  const end = along(at, o.az, o.el, o.stalk);
+  const sw = Math.max(0.012, o.wid * 0.12);
+  beam(b, at, end, sw, sw, o.stalkColor ?? mix(o.color, RIB, 0.45), mat, 0, shade, src);
+  const blade = o.blade ?? o.el - 0.3;
+  // (each lobe a leaf: the fan's own options but its stalk's)
+  const { stalk: _s, stalkColor: _c, lobes: _n, spread: _p, blade: _b, ...lf } = o;
+  for (let j = 0; j < n; j++) {
+    const f = n > 1 ? j / (n - 1) - 0.5 : 0;
+    const phi = f * spread;
+    leaf(b, end, { ...lf, az: o.az + phi, el: blade - 0.25 * Math.abs(phi), len: o.len * (1 - 0.55 * Math.abs(f)), roll: -phi * 0.25, mat, shade, src });
+  }
+  return end;
+}
+
 // ── Fruit ──────────────────────────────────────────────────────────────────
 
 export interface TeardropOpts extends Common {
@@ -309,20 +354,25 @@ export interface TeardropOpts extends Common {
   taper?: number;
   /** The narrow end's colour (default the body's, a little greener). */
   neck?: number;
-  /** A blush on its +x side (a ripe mango's red cheek). */
+  /** A blush blended along it, deepest at the stalk end (a ripe mango's red shoulders). */
   blush?: number;
+  /** Its axis bending toward its +x side (share of its width at the round end; a mango 0.3). Default 0. */
+  curve?: number;
   /** A stalk above it (m) and its colour. */
   stalk?: number;
   stalkColor?: number;
-  /** Two blocks (far): the body and the neck, no point. */
+  /** Two blocks (far): the body and the shoulder, no point. */
   low?: boolean;
 }
 
 /**
  * A fruit with a round end and a narrow one, like a drop of water (the garden's
  * thirst drop, garden/_viewThirst.ts): `top` is where its stalk meets it, the
- * round end `len` away along `dir`. Round end (two blocks turned 45° about the
- * axis), the shoulder narrowing to the stalk, the narrow end turned 45°.
+ * round end `len` away along `dir`, its axis bending `curve` toward its +x side
+ * (a mango's kidney shape). Round end (two blocks crossed, its corners cut, a
+ * narrower block rounding it off), the shoulder narrowing to the stalk, the
+ * narrow end at the stalk (turned 45° where it fits inside the shoulder). A `blush` is blended along it: deepest at the
+ * stalk end, fading over the shoulder into the round end (no patch).
  * Returns the round end's tip.
  */
 export function teardrop(b: VoxelBuilder, top: P3, o: TeardropOpts): P3 {
@@ -337,24 +387,32 @@ export function teardrop(b: VoxelBuilder, top: P3, o: TeardropOpts): P3 {
   const { len, wid } = o;
   const tp = o.taper ?? 0.5;
   const neckC = o.neck ?? mix(o.color, 0x6a8a2a, 0.22);
-  const at = (u: number): P3 => plus(top, d, u);
+  // (its +x side: the way it bends and, with a blush, the sun side)
+  const [sx] = sides(Math.atan2(d[0], d[2]), Math.asin(Math.max(-1, Math.min(1, d[1]))), roll);
+  const bendTo = (o.curve ?? 0) * wid * 0.5;
+  const at = (u: number): P3 => plus(plus(top, d, u), sx, bendTo * (u / len) * (u / len));
+  // Colours from the stalk end to the round end: a blush deepest at the stalk, fading out over the shoulder.
+  const bl0 = o.blush;
+  const tipC = bl0 === undefined ? neckC : mix(bl0, neckC, 0.25);
+  const shoulderC = bl0 === undefined ? mix(o.color, neckC, 0.35) : mix(o.color, bl0, 0.55);
+  const bodyC = bl0 === undefined ? o.color : mix(o.color, bl0, 0.2);
   if (o.stalk) beam(b, plus(top, d, -o.stalk), at(len * 0.06), Math.max(0.01, wid * 0.12), Math.max(0.01, wid * 0.12), o.stalkColor ?? 0x5a6a2a, 'mapLeaf', roll, shade, src);
-  // The round end: at least as long as it is wide (half the fruit, a long one), its corners cut (`cross`).
+  // The round end: at least as long as it is wide (half the fruit, a long one), its corners cut (two blocks crossed).
   const bl = Math.min(len, Math.max(wid * 0.96, len * 0.5));
   const uc = len - bl / 2;
   if (o.low) beam(b, at(len - bl), at(len), wid, wid * dep, o.color, mat, roll, shade, src);
-  else cross(b, at(len - bl), at(len), wid, wid * dep, o.color, mat, roll, shade, src);
-  // The shoulder, narrower, from near the stalk into the round end's middle; the narrow end at the stalk, turned 45°: the drop's point.
-  const sw = (1 + tp) / 2;
-  beam(b, at(len * 0.12), at(uc), wid * sw, wid * dep * sw, mix(o.color, neckC, 0.35), mat, roll, shade, src);
-  // (turned 45° only while its corners stay inside the shoulder: else they would stand out of it as ridges)
-  if (!o.low) beam(b, at(0), at(len * 0.3), wid * tp, wid * tp * dep, neckC, mat, roll + (tp * Math.SQRT1_2 <= sw / 2 ? Math.PI / 4 : 0), shade, src);
-  if (o.blush !== undefined) {
-    // (a patch standing out of the round end's +x side, toward the shoulder)
-    const [x] = sides(Math.atan2(d[0], d[2]), Math.asin(Math.max(-1, Math.min(1, d[1]))), roll);
-    const c = plus(at(len - bl * 0.6), x, wid * 0.3);
-    beam(b, plus(c, d, -bl * 0.34), plus(c, d, bl * 0.34), wid * 0.44, wid * dep * 0.62, o.blush, mat, roll, shade, src);
+  else {
+    // (its widest part stops short of the end: a narrower block rounds the end off, no flat square bottom)
+    const tl = len * 0.16;
+    beam(b, at(len - bl), at(len - tl * 0.6), wid, wid * dep * 0.78, bodyC, mat, roll, shade, src);
+    beam(b, at(len - bl), at(len - tl * 0.6), wid * 0.78, wid * dep, o.color, mat, roll, shade * 0.97, src);
+    beam(b, at(len - tl * 1.6), at(len), wid * 0.68, wid * dep * 0.68, o.color, mat, roll, shade * 0.98, src);
   }
+  // The shoulder, a little narrower, from near the stalk into the round end's middle; the narrow end at the stalk.
+  const sw = tp + (1 - tp) * 0.68;
+  beam(b, at(len * 0.05), at(uc), wid * sw, wid * dep * sw, shoulderC, mat, roll, shade, src);
+  // (turned 45° only while its corners stay inside the shoulder: else they would stand out of it as ridges)
+  if (!o.low) beam(b, at(0), at(len * 0.22), wid * tp, wid * tp * dep, tipC, mat, roll + (tp * Math.SQRT1_2 <= (sw * dep) / 2 ? Math.PI / 4 : 0), shade, src);
   return at(len);
 }
 
@@ -365,7 +423,7 @@ export interface RoundOpts extends Common {
   color: number;
   /** The second tone of its ribs (default the body's, darker). */
   rib?: number;
-  /** Its top's colour (default the body's). */
+  /** Its top's colour (default between the body's and the ribs'). */
   cap?: number;
   /** Turned about its upright axis. */
   ry?: number;
@@ -373,17 +431,18 @@ export interface RoundOpts extends Common {
   stalk?: number;
   /** Hanging from `at` on its stalk (this long, m) instead of lying with its foot at `at`. */
   hang?: number;
-  /** Ribs standing out of its sides (default: lying yes, hanging no: a round foot instead). */
+  /** Its widest band in two tones, the ribs (default yes; false: one colour, a smooth melon). */
   ribs?: boolean;
-  /** Two blocks (far): the body, the top. */
+  /** Three blocks (far): the foot, the band, the shoulder, square. */
   low?: boolean;
 }
 
 /**
  * A fruit round about its upright axis, from its foot at `at` (or hanging from
- * `at` with `hang`): two blocks crossed (eight lobes in two tones), a third
- * turned 45° for ribs (or a narrower one rounding its foot), a narrower one
- * rounding its top, the stalk.
+ * `at` with `hang`), in four steps up its side so it reads round from any
+ * height (no box with a lid): a narrower foot, the widest band (two blocks
+ * crossed: eight lobes in two tones, the ribs), the shoulder narrowing again
+ * (crossed too: eight-sided from above), the small top round the stalk.
  */
 export function round(b: VoxelBuilder, at: P3, o: RoundOpts): void {
   const src = o.src ?? traceSource();
@@ -391,22 +450,26 @@ export function round(b: VoxelBuilder, at: P3, o: RoundOpts): void {
   const shade = o.shade ?? 1;
   const { wid: w, hgt: h } = o;
   const ry = o.ry ?? 0;
-  const rib = o.rib ?? mix(o.color, 0x2a2a12, 0.18);
+  const rib = o.ribs === false ? o.color : (o.rib ?? mix(o.color, 0x2a2a12, 0.18));
+  const cap = o.cap ?? mix(o.color, rib, 0.4);
   const stalkH = Math.max(0.025, h * 0.14);
   const x = at[0];
   const z = at[2];
   const y0 = o.hang !== undefined ? at[1] - o.hang - h : at[1];
   if (o.low) {
-    b.box(x, y0 + h * 0.44, z, w, h * 0.8, w * 0.9, o.color, mat, { shade, src, ry });
-    b.box(x, y0 + h * 0.86, z, w * 0.62, h * 0.24, w * 0.62, o.cap ?? o.color, mat, { shade, src, ry });
+    // (the foot, the band, the shoulder: three steps, square, one turn)
+    b.box(x, y0 + h * 0.13, z, w * 0.74, h * 0.26, w * 0.74, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
+    b.box(x, y0 + h * 0.46, z, w * 0.92, h * 0.5, w * 0.92, o.color, mat, { shade, src, ry });
+    b.box(x, y0 + h * 0.8, z, w * 0.72, h * 0.3, w * 0.72, cap, mat, { shade, src, ry });
   } else {
-    // (two blocks crossed: its sides, the second tone in the notches between them; lying, a third turned 45° stands a
-    // hair out of the middle of each side: the ribs; hanging, a narrower block under it rounds its foot)
-    b.box(x, y0 + h * 0.5, z, w, h * 0.76, w * 0.8, o.color, mat, { shade, src, ry });
-    b.box(x, y0 + h * 0.5, z, w * 0.8, h * 0.76, w, rib, mat, { shade: shade * 0.98, src, ry });
-    if (o.ribs ?? o.hang === undefined) b.box(x, y0 + h * 0.49, z, w * 0.74, h * 0.7, w * 0.74, rib, mat, { shade: shade * 0.96, src, ry: ry + Math.PI / 4 });
-    else b.box(x, y0 + h * 0.12, z, w * 0.62, h * 0.22, w * 0.62, mix(o.color, rib, 0.5), mat, { shade: shade * 0.95, src, ry });
-    b.box(x, y0 + h * 0.9, z, w * 0.64, h * 0.16, w * 0.64, o.cap ?? o.color, mat, { shade, src, ry });
+    // (each square step sits inside the cut corners of the band: no corner stands out; the band and the shoulder are
+    // two blocks crossed, eight-sided from above)
+    b.box(x, y0 + h * 0.13, z, w * 0.76, h * 0.26, w * 0.76, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
+    b.box(x, y0 + h * 0.47, z, w, h * 0.56, w * 0.8, o.color, mat, { shade, src, ry });
+    b.box(x, y0 + h * 0.47, z, w * 0.8, h * 0.56, w, rib, mat, { shade: shade * 0.98, src, ry });
+    b.box(x, y0 + h * 0.79, z, w * 0.8, h * 0.22, w * 0.62, mix(o.color, cap, 0.5), mat, { shade, src, ry });
+    b.box(x, y0 + h * 0.79, z, w * 0.62, h * 0.22, w * 0.8, mix(rib, cap, 0.5), mat, { shade: shade * 0.98, src, ry });
+    b.box(x, y0 + h * 0.92, z, w * 0.42, h * 0.12, w * 0.42, cap, mat, { shade: shade * 0.97, src, ry });
   }
   if (o.stalk !== undefined) {
     const sw = Math.max(0.018, w * 0.09);
