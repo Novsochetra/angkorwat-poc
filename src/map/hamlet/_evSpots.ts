@@ -324,6 +324,52 @@ export const EV_WASH_AT = {
   sand: { x: 443, y: 6, z: -88.5 },
 };
 
+// ── The yards' trees (hamlet/_evYard.ts draws them; build/plot.ts keeps his pieces off those on his land) ──
+
+/** Sugar palms (the village's name): x, z, height (m). */
+export const EV_SUGAR_PALMS: readonly (readonly [x: number, z: number, h: number])[] = [
+  [360.5, -77, 13],
+  [362.5, -64, 15],
+  [357.5, -66.5, 11.5],
+  [386.5, -100, 14],
+  [404.5, -87, 16],
+  [439.2, -93, 12.5],
+  [402, -33, 13.5],
+  [365, -29.5, 15.5],
+  [433, -29, 12],
+  [458.5, -38, 14],
+  [471, -56, 12.5],
+  [472.5, -88, 15],
+  [414.5, -92, 12],
+  // (over the stream: round the two houses and the meadow)
+  [466, -56.5, 13],
+  [476.5, -74.5, 14.5],
+  [471.5, -44, 12],
+];
+
+/** Coconut palms by the houses, leaning out over the yards: x, z, height, the lean of the trunk's top (x, z, m). */
+export const EV_COCONUTS: readonly (readonly [x: number, z: number, h: number, leanX: number, leanZ: number])[] = [
+  [430.5, -91, 9, 1.2, -1.6],
+  [412, -44, 8.5, -1.3, 1.1],
+  [457.5, -71.5, 9.5, -1.8, 0.4],
+  [372.5, -43.5, 8, 1.4, 0.8],
+  [361, -91, 9, -1.4, -1.1],
+];
+
+/** Mango trees round the yards and at the village's edges: x, z, the crown's radius (m), a seed. */
+export const EV_MANGOS: readonly (readonly [x: number, z: number, r: number, seed: number])[] = [
+  [431, -84.5, 3, 1],
+  [366.5, -35.5, 3.2, 2],
+  [418.5, -33.5, 2.8, 3],
+  [403.5, -98, 3, 4],
+  [358.5, -86, 2.8, 5],
+  [405, -28, 2.9, 6],
+  [425, -96, 3.2, 7],
+  [366.5, -101, 2.7, 8],
+  [474.5, -67.5, 3, 9],
+  [475.5, -51.5, 2.8, 10],
+];
+
 /** Rice straw stacks (round mounds on a pole). */
 export const EV_STRAW: [number, number, number][] = [
   [399.5, -93, 1],

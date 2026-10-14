@@ -1622,6 +1622,8 @@ const WORDS = {
   buildNoField: { km: 'មិនអាចសង់ក្នុងស្រែបានទេ', en: 'Not in the rice field' },
   buildNoHouse: { km: 'ជិតផ្ទះពេក', en: 'Too close to the house' },
   buildNoYard: { km: 'នេះជាទីធ្លាអ្នកជិតខាង', en: "That's a neighbour's yard" },
+  buildNoPlot: { km: 'ហួសដីរបស់អ្នកហើយ', en: "That's past your land" },
+  buildNoTree: { km: 'មានដើមឈើនៅទីនេះ', en: 'A tree is in the way' },
   buildNoSteep: { km: 'ដីនៅទីនេះមិនរាបស្មើ', en: "The ground isn't level here" },
   buildNoPlant: { km: 'មានដំណាំរបស់អ្នកនៅទីនេះ', en: 'A plant of your garden is there' },
   buildNoPiece: { km: 'មានរបស់ដែលអ្នកសង់នៅទីនេះហើយ', en: 'Something you built is in the way' },

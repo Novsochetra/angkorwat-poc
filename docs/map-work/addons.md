@@ -2841,8 +2841,8 @@ piece may stand: no three.js), `_buildWork.ts` (his work with the hammer),
 `_buildWalk.ts` (the walk map), `_buildUses.ts` (seats, hammocks, the spirit house's
 prayer); the core `map/build/pieces.ts` (the contract: the nine pieces, their sizes,
 prices, solids, seat, ties, light, kneel, pen; `BUILT`; the model registry),
-`map/build/state.ts` (the saved list, footprints), `map/build/view.ts` (drawn on the
-map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
+`map/build/state.ts` (the saved list, footprints), `map/build/plot.ts` (his land: its
+corners, `inPlot`, the trees on it), `map/build/view.ts` (drawn on the map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
 done); his pose `character/buildWork.ts` (`buildPose`, his hammer `hammerBuilder`);
 sounds `audio/_build.ts`.
 
@@ -2853,10 +2853,19 @@ sounds `audio/_build.ts`.
   ចង្កៀងបង្គោល (8,000 ៛, 8), the rice-straw stack គំនរចំបើង (10,000 ៛, 2).
 - **Starting** (the house his, on foot on the ground): by the house (under it, round
   it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
-  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 94.9,
+  on his land (or 2 m past its edge) where nothing else takes E (`buildLate`, order 94.9,
   just before the garden's late row: its "E  Plant…" first; a line of the garden's with no
   key, as "no seeds yet", goes on after it: "E  Build…  ·  …"). The first time he comes home owning it, a
   toast says so (`build.hinted`).
+- **His land** (ដីរបស់គាត់, `build/plot.ts`; AWP-31): one shape, `PLOT_CORNERS`, about
+  21 × 80 m (1 706 m²) between the Kulen foot trail (west) and the Kulen stream's bank
+  (east), from the back of the village's north houses (z −88) up the meadow to the land's
+  next step (z −168). Every point of a piece is on it (`inPlot`); the village's coarse
+  "built on" cells there (2 m: round the house, its trees) no longer stop him (until
+  AWP-31 they stopped him 3.5 m behind the house). The yard trees on it (`PLOT_TREES`,
+  from `hamlet/_evSpots.ts` `EV_MANGOS`, `EV_COCONUTS`, `EV_SUGAR_PALMS`) keep their trunks,
+  and a tall piece (the shelter, the pen, the haystack) keeps out from under a crown.
+  Build mode ends 8 m past it. Pieces built before AWP-31 past it stay where they are.
 - **The card**: each piece with its picture, its name, how many he has of how many,
   its line, its price; one he cannot build now greyed with why ("You have all 3",
   "12,000 ៛ more needed"); his riel under the title. Every line reads whole: it wraps (a
@@ -2866,8 +2875,10 @@ sounds `audio/_build.ts`.
   layer; touch.
 - **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
   its footprint outlined where it can stand; red, drawn over everything, where not, the
-  reason in the prompt: too far, water, the path, a rice field, the house, a
-  neighbour's yard, the ground not level, a plant of his garden, something he built (or
+  reason in the prompt: too far, water, the path, a rice field, past his land
+  ("ហួសដីរបស់អ្នកហើយ / That's past your land"; a neighbour's yard there), the house,
+  the ground not level, a tree on his land ("មានដើមឈើនៅទីនេះ / A tree is in the way":
+  its trunk, its crown for a piece taller than its lowest leaves), a plant of his garden, something he built (or
   the room before one he uses from there), something else, no room before it: the spirit
   house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
   ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he

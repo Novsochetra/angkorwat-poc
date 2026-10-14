@@ -1,4 +1,5 @@
-import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { inPlot, pastPlot } from '../build/plot';
 import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, type BuildView } from '../build/view';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -29,13 +30,13 @@ import type { RoamCtx } from './types';
  *
  * Once the house is his (`HOME.owned`), on foot:
  * - **By the house** (on the ground under it, round it, at its stair's foot), and
- *   anywhere within `BUILD_NEAR` m of it where nothing else takes E (the garden's
+ *   anywhere on his land (build/plot.ts `PLOT_CORNERS`) where nothing else takes E (the garden's
  *   "Plant…" first): "E  Build…" opens the build card: every piece with its price,
  *   how many he has of how many; not enough riel: greyed with how much more.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
- *   the house, a neighbour's yard, not level, a plant, something he built, something
- *   else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
+ *   past his land, a neighbour's yard, the house, not level, a tree, a plant, something
+ *   he built, something else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
  *   15° more; a fence run's end snaps onto the end of one he built (in line, or turned a quarter: a corner). "E  Build here"
  *   pays (`purse.pay`) and he builds it (the work); F / C (the pad's ↓) the card
  *   again; Esc (the pad's ○, the touch ✕) leaves the mode, never asking "Back to the
@@ -62,8 +63,10 @@ import type { RoamCtx } from './types';
 const TURN_STEP = Math.PI / 12;
 /** "E  Build…" by the house: within this of its footprint and stair (m). */
 const BY_HOUSE = 2.6;
-/** Build mode ends past this far from the house's middle (m). */
-const MODE_FAR = BUILD_NEAR + 8;
+/** Build mode ends past this far past his land (m). */
+const MODE_FAR = 8;
+/** "E  Build…" this far past his land too (m: standing on the trail by it, on the bank). */
+const START_PAST = 2;
 /** E held this long (s) on a piece takes it down (asked first). */
 const HOLD_FOR = 0.8;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
@@ -542,7 +545,7 @@ function nearNow(ctx: RoamCtx): void {
 /** "E  Build…" here (on foot, his house, not on its floor)? */
 function canStart(ctx: RoamCtx, anywhere: boolean): boolean {
   const p = ctx.body.pos;
-  if (!HOME.owned || Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > BUILD_NEAR) return false;
+  if (!HOME.owned || !inPlot(p.x, p.z, -START_PAST)) return false;
   // (on the ground: not on the veranda or the stair)
   if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9) return false;
   return anywhere || byHouse(p.x, p.z, BY_HOUSE);
@@ -669,7 +672,7 @@ registerAddon({
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
-      if (m !== 'walk' || Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > MODE_FAR || cannot(placing)) {
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || cannot(placing)) {
         exitPlacing();
         return false;
       }
