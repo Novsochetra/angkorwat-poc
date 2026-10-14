@@ -2918,7 +2918,7 @@ sounds `audio/_build.ts`.
   flame in the village's lamp material, one draw for all, and a halo sized by the scene's
   height, one draw for all; a pool of 64, nothing made when one comes or goes, no new
   shader), and it is a lamp of the map's few light slots (`sky/lampSlots.ts`, `placed`):
-  at most 3 placed lamps are lit by real lights at once, those whose light covers most of
+  at most 3 placed lamps are put into slots (one easing out keeps its slot until it has faded), those whose light covers most of
   the view (the nearest in sight first), easing in and out over 0.45 s as he walks among
   them; the world's lamps (the temples', the boat's, his own lantern first) keep the other
   slots. The lamp post 9 cd at night (as his lantern in hand), reaching 14 m at most; the
