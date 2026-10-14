@@ -88,3 +88,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
   check the follow camera stays under the roof and he stays in view (AWP-17).
 - Built rooms: also turn the camera (Q / R) and walk back towards it inside a 3 m
   wide built room; the camera must never end inside a player's wall (AWP-17).
+- A placing aid makes the straight continuation the default (take the existing
+  piece's own angle when close) and shows its angle on the phone too: touch
+  hides the prompt line (AWP-30).
+- "Bigger" means bigger in total, not only in one place: measure the whole
+  area before and after (AWP-31).
