@@ -16,7 +16,7 @@ import { progress } from '../progress';
 import type { MapFrame } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
-import { CAP, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
+import { CAP, HOLD, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 import { PACE as WALK_PACE, stepSound } from './walker';
@@ -86,8 +86,14 @@ const ROPE_MAX = 6.5;
 const STEP = 0.5;
 /** Across the way, where the cart needs room (m from its middle: the wheels' hubs and the oxen side by side). */
 const ACROSS = [-1.15, -0.6, 0, 0.6, 1.15];
-/** The land may rise or fall this much from one point of the way to the next (m), or across it. */
-const RISE = 0.55;
+/**
+ * The land may rise or fall this much from one point of the way to the next (m), or across it: one of its steps. The
+ * map's land is built of 2 m blocks, its slopes are steps of them; the walker hops one, a ridden cow climbs one
+ * (_cowRide.ts `UP`), the village's cart rolls over them on its smoothed trail: so does this one (`landAt`, `wayY`).
+ */
+const RISE = 2.2;
+/** Its roll at most (rad): with one wheel up a step beside it, it leans a little, no more. */
+const ROLL_MAX = 0.12;
 /** What stands more than this over the land is in the way (m: a step, a wall, a trunk, a stair, a jar). */
 const BUILT_UP = 0.35;
 /** Water deeper than this: no (m). */
@@ -100,6 +106,8 @@ const TAIL_REACH = 1.5;
 /** Where he stands to take the rope (m before the yoke), and how near it. */
 const HEAD_AHEAD = 2.5;
 const HEAD_REACH = 1.8;
+/** His feet this near the cart's ground (m: a land step either way): he is by it, not on a ledge over it. */
+const LEVEL = 2.4;
 /** The cart this near his house's middle (m): he can unload it at home. */
 const HOME_NEAR = 18;
 /** Farther than this from the camera it is not drawn (m: as the village's cart). */
@@ -115,6 +123,11 @@ const CART_BOX = { back: -1.75, front: 2.7, half: 1.25 };
 const OXEN_BOX = { back: -2.45, front: 1.45, half: 1.05 };
 /** His body's radius on foot (m). */
 const BODY_R = 0.42;
+/**
+ * While he leads, the camera looks down at least this much (rad): the oxen and the cart are right behind him, so from
+ * behind him it looks over them (from lower down it would be in them).
+ */
+const LEAD_PITCH = 0.42;
 /** The camera at the work: round to his right, tilt, distance (m), eased over `for` s. */
 const FRAME = { side: 0.75, pitch: 0.38, distance: 7.5, rate: 2.2, for: 1.6 };
 /** Loading packs these first; unloading takes the top first. */
@@ -132,7 +145,7 @@ let shown = false;
 let dirty = true;
 let loadVer = -1;
 /** Where it is (map, m): the axle's middle on the ground, the yoke; the cart's and the oxen's headings, its pitch and roll; the wheels' turn. */
-const P = { ax: 0, ay: 0, az: 0, yx: 0, yy: 0, yz: 0, yaw: 0, oxYaw: 0, pitch: 0, roll: 0, wheel: 0 };
+const P = { ax: 0, ay: 0, az: 0, yx: 0, yy: 0, yz: 0, oy: 0, yaw: 0, oxYaw: 0, pitch: 0, roll: 0, wheel: 0 };
 /** The tailboard: 0 up ‥ 1 let down (for the work). */
 let gate = 0;
 
@@ -144,6 +157,9 @@ let speed = 0;
 /** The way could not go on (a place the cart cannot go). */
 let blocked = false;
 let saveWait = 0;
+/** The camera's lowest tilt before he took the rope (put back when he lets go), and the one set while he leads. */
+let pitchBefore: number | null = null;
+let pitchLead = 0;
 let creakAt = 0;
 let bellAt = 0;
 let knockRolled = 0;
@@ -310,45 +326,57 @@ function wayOn(ctx: RoamCtx): void {
 
 // ── Where it is ────────────────────────────────────────────────────────────
 
-/** Its roll (+ its left side up) and pitch (front down) on the land under its wheels and the yoke. */
-function tilt(ctx: Pick<RoamCtx, 'world'>): void {
+/** The land under (x, z), smoothed over a metre round it: the wheels roll over a land step as up a short ramp. */
+function landAt(ctx: Pick<RoamCtx, 'world'>, x: number, z: number): number {
   const f = ctx.world.field;
+  return (2 * f.heightAt(x, z) + f.heightAt(x + 1, z) + f.heightAt(x - 1, z) + f.heightAt(x, z + 1) + f.heightAt(x, z - 1)) / 6;
+}
+
+/** The way's land at `s`, smoothed along it over ±1.5 m (as the village cart's loop is). */
+function wayY(s: number): number {
+  let sum = 0;
+  for (let k = -3; k <= 3; k++) sum += wayAt(s + k * 0.5, _t).y;
+  return sum / 7;
+}
+const _t = new Vector3();
+
+/** Its roll (+ its left side up, held to `ROLL_MAX`) and pitch (front down) on the land under its wheels and the yoke. */
+function tilt(ctx: Pick<RoamCtx, 'world'>): void {
   const lx = Math.cos(P.yaw) * 0.74 * K;
   const lz = -Math.sin(P.yaw) * 0.74 * K;
-  const hl = f.heightAt(P.ax + lx, P.az + lz);
-  const hr = f.heightAt(P.ax - lx, P.az - lz);
-  P.roll = Number.isFinite(hl - hr) ? Math.atan2(hl - hr, 2 * 0.74 * K) * 0.8 : 0;
+  const d = landAt(ctx, P.ax + lx, P.az + lz) - landAt(ctx, P.ax - lx, P.az - lz);
+  P.roll = Number.isFinite(d) ? Math.max(-ROLL_MAX, Math.min(ROLL_MAX, Math.atan2(d, 2 * 0.74 * K) * 0.8)) : 0;
   P.pitch = Math.atan2(P.ay - P.yy, REACH_M) * 0.8;
 }
 
 /** Stand it at `CART_AT` (not led): the yoke straight ahead of the axle, the oxen the same way. */
 function placeAt(ctx: Pick<RoamCtx, 'world'>): void {
-  const f = ctx.world.field;
   P.ax = CART_AT.x;
   P.az = CART_AT.z;
   P.yaw = CART_AT.yaw;
   P.oxYaw = CART_AT.yaw;
-  P.ay = f.heightAt(P.ax, P.az);
+  P.ay = landAt(ctx, P.ax, P.az);
   P.yx = P.ax + Math.sin(P.yaw) * REACH_M;
   P.yz = P.az + Math.cos(P.yaw) * REACH_M;
-  P.yy = f.heightAt(P.yx, P.yz);
+  P.yy = landAt(ctx, P.yx, P.yz);
+  P.oy = landAt(ctx, P.yx - Math.sin(P.yaw) * OX_BACK * K, P.yz - Math.cos(P.yaw) * OX_BACK * K);
   tilt(ctx);
   dirty = true;
 }
 
 /** Place it on the way (he leads it): the yoke at `yokeS`, the axle a pole's reach back along it (a chord), the oxen along the way. */
 function placeOnWay(ctx: RoamCtx): void {
-  const f = ctx.world.field;
   wayAt(yokeS, _a);
   wayAt(yokeS - REACH_M, _b);
   P.yaw = Math.atan2(_a.x - _b.x, _a.z - _b.z);
   P.yx = _a.x;
   P.yz = _a.z;
-  P.yy = f.heightAt(_a.x, _a.z);
+  P.yy = wayY(yokeS);
   // (the pole's end rides at the yoke: the axle comes forward on a tight turn)
   P.ax = _a.x - Math.sin(P.yaw) * REACH_M;
   P.az = _a.z - Math.cos(P.yaw) * REACH_M;
-  P.ay = f.heightAt(P.ax, P.az);
+  P.ay = wayY(yokeS - REACH_M);
+  P.oy = wayY(yokeS - OX_BACK * K);
   wayAt(Math.min(wayEnd(), yokeS + 0.8), _b);
   wayAt(yokeS - 0.8, _c);
   P.oxYaw = Math.hypot(_b.x - _c.x, _b.z - _c.z) > 0.2 ? Math.atan2(_b.x - _c.x, _b.z - _c.z) : P.yaw;
@@ -376,14 +404,14 @@ function headSpot(out: Vector3): Vector3 {
 function nearTail(ctx: RoamCtx): boolean {
   const p = ctx.body.pos;
   tailSpot(_c);
-  return Math.hypot(p.x - _c.x, p.z - _c.z) < TAIL_REACH && Math.abs(p.y - ctx.world.field.heightAt(_c.x, _c.z)) < 1.2;
+  return Math.hypot(p.x - _c.x, p.z - _c.z) < TAIL_REACH && Math.abs(p.y - P.ay) < LEVEL;
 }
 
 /** Before the oxen, on foot. */
 function nearHead(ctx: RoamCtx): boolean {
   const p = ctx.body.pos;
   headSpot(_c);
-  return Math.hypot(p.x - _c.x, p.z - _c.z) < HEAD_REACH && Math.abs(p.y - P.yy) < 1.2;
+  return Math.hypot(p.x - _c.x, p.z - _c.z) < HEAD_REACH && Math.abs(p.y - P.yy) < LEVEL;
 }
 
 /** The cart by his house: he can unload it into his store. */
@@ -449,7 +477,7 @@ function nose(out: Vector3): Vector3 {
   const s = -OX_SIDE;
   _ox.x = P.yx + Math.cos(P.oxYaw) * s * K - Math.sin(P.oxYaw) * OX_BACK * K;
   _ox.z = P.yz - Math.sin(P.oxYaw) * s * K - Math.cos(P.oxYaw) * OX_BACK * K;
-  _ox.y = env ? env.world.field.heightAt(_ox.x, _ox.z) : P.yy;
+  _ox.y = P.oy;
   _ox.yaw = P.oxYaw;
   _ox.gait = speed > 0.05 ? 1 : 0;
   _ox.head = speed > 0.05 ? 0.35 : 0;
@@ -483,6 +511,10 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   leading = true;
   saveWait = SAVE_EVERY;
   wayOn(ctx);
+  // (the camera over the oxen behind him)
+  pitchBefore ??= ctx.cam.pitchMin;
+  pitchLead = Math.max(pitchBefore, LEAD_PITCH);
+  ctx.cam.pitchMin = pitchLead;
   if (!quiet) {
     SFX.play('haulRope', 0.9);
     pad.rumble('tick', 0.35);
@@ -503,6 +535,9 @@ function letGo(why: WordKey | null): void {
   }
   saveCartAt();
   view?.rope(null);
+  // (the camera's floor as it was, unless something else has set its own meanwhile)
+  if (env && pitchBefore !== null && env.cam.pitchMin === pitchLead) env.cam.pitchMin = pitchBefore;
+  pitchBefore = null;
   if (why) {
     env?.hud.toast(t(why));
     SFX.play('haulRope', 0.6);
@@ -523,7 +558,7 @@ function lead(ctx: RoamCtx, dt: number): void {
   wayOn(ctx);
   const want = wayEnd() - GAP;
   const ahead = want - yokeS;
-  const target = ahead > 0.02 ? Math.min(CATCH, OX_PACE * Math.min(1.35, 0.3 + ahead * 0.6)) : 0;
+  const target = ahead > 0.02 ? Math.min(CATCH, OX_PACE * Math.min(1.35, 0.5 + ahead * 1.2)) : 0;
   speed += Math.max(-DECEL * dt, Math.min(ACCEL * dt, target - speed));
   if (speed < 0) speed = 0;
   const ds = Math.min(speed * dt, Math.max(0, ahead));
@@ -643,16 +678,18 @@ function shapeWork(w: Work): void {
   }
 }
 
-/** The piece in his hands (map): across his chest, between his fists, into `out`. */
-function handFrame(out: Matrix4): Matrix4 {
+/** The piece of `m` in his hands (map): long ones by their near end, pushed ahead of him; the others across his chest, between his fists. */
+function handFrame(m: MaterialId, out: Matrix4): Matrix4 {
   hand(_a, 'L');
   hand(_b, 'R');
   const b = env!.body;
+  const h = HOLD[m];
+  const ahead = 0.12 * b.scale + h.reach * K;
   _c.addVectors(_a, _b).multiplyScalar(0.5);
-  _c.x += Math.sin(b.yaw) * 0.12 * b.scale;
-  _c.z += Math.cos(b.yaw) * 0.12 * b.scale;
+  _c.x += Math.sin(b.yaw) * ahead;
+  _c.z += Math.cos(b.yaw) * ahead;
   _c.y -= 0.12 * b.scale;
-  return out.compose(_c, _q1.setFromAxisAngle(_s1.set(0, 1, 0), b.yaw + Math.PI / 2), _s2.set(K, K, K));
+  return out.compose(_c, _q1.setFromAxisAngle(_s1.set(0, 1, 0), b.yaw + (h.along ? 0 : Math.PI / 2)), _s2.set(K, K, K));
 }
 
 /** Between two frames (`k` 0 → `a`, 1 → `b`), into `out`. */
@@ -680,7 +717,7 @@ function drawPiece(w: Work | null): void {
   }
   const m = w.piece;
   const u = w.u;
-  handFrame(_m1);
+  handFrame(m, _m1);
   if (w.kind === 'load') {
     if (u < 0.62) view.handItem(m, _m1);
     else {
@@ -1008,7 +1045,7 @@ registerAddon({
     p.y = Math.max(p.y, g);
   },
 
-  frame(f: MapFrame) {
+  frame(f: MapFrame, mode) {
     const v = view;
     if (!v || !env) return;
     const cam = f.camera.position;
@@ -1024,8 +1061,8 @@ registerAddon({
       return;
     }
     shown = true;
-    // The tailboard: down while he works at the tail.
-    const gw = W && W.phase !== 'step' ? 1 : 0;
+    // The tailboard: down while he works at the tail, and under logs or poles (they lie out over it).
+    const gw = (W && W.phase !== 'step') || CART_LOAD.count('log') > 0 || CART_LOAD.count('bamboo') > 0 ? 1 : 0;
     if (gate !== gw) {
       gate = W?.frozen ? gw : gate + Math.max(-f.dt / 0.5, Math.min(f.dt / 0.5, gw - gate));
       if (f.dt === 0) gate = gw;
@@ -1052,13 +1089,13 @@ registerAddon({
       const s = i === 0 ? OX_SIDE : -OX_SIDE;
       const x = P.yx + Math.cos(P.oxYaw) * s * K - Math.sin(P.oxYaw) * OX_BACK * K;
       const z = P.yz - Math.sin(P.oxYaw) * s * K - Math.cos(P.oxYaw) * OX_BACK * K;
-      v.oxen.place(i, x, env.world.field.heightAt(x, z), z, P.oxYaw, K);
+      v.oxen.place(i, x, P.oy, z, P.oxYaw, K);
       v.oxen.gait(i, g, hz, f.t);
       v.oxen.set(i, CH.head, walking ? 0.35 : f.night > 0.6 ? 1 : Math.round(10 * 0.12 * Math.sin(f.t * 0.2 + i * 2)) / 10, f.t);
       v.oxen.set(i, CH.turn, walking ? 0 : Math.round(10 * 0.4 * Math.sin(f.t * 0.13 + i * 2.1)) / 10, f.t);
     }
     // The rope from his hand to the right ox's nose while he leads; the piece in his hands while he works.
-    if (leading && f.roam === 'walk') v.rope(hand(_h), nose(_n), 0.25);
+    if (leading && mode === 'walk') v.rope(hand(_h), nose(_n), 0.25);
     else v.rope(null);
     drawPiece(W);
     v.things.flush(f.night);
