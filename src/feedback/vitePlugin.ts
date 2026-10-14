@@ -41,7 +41,7 @@ export function feedbackPlugin(dir = 'feedback'): Plugin {
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ dir: folder }));
       // After the answer, so saving is as quick as before; the terminal says how it went.
-      void makeTicket(tracker, logger, { name: base, folder, path: join(root, dir, name), inbox: join(root, dir), markdown: body.markdown, image });
+      void makeTicket(tracker, logger, req.socket.remoteAddress, { name: base, folder, path: join(root, dir, name), inbox: join(root, dir), markdown: body.markdown, image });
     } catch (err) {
       res.statusCode = 400;
       res.end(String(err));
@@ -66,15 +66,25 @@ export function feedbackPlugin(dir = 'feedback'): Plugin {
 /** The world map's reports (index.html) become tickets; the other pages are postponed and only save their folder. */
 const TICKET_PAGES = new Set(['index.html']);
 
+/**
+ * A request made on this computer. The dev server listens on the network
+ * (`server.host`), so a phone or anyone on the same Wi-Fi can save a report,
+ * but only this computer's reports become tickets made with the owner's token.
+ */
+function isLoopback(address: string | undefined): boolean {
+  return !!address && (address === '::1' || /^(::ffff:)?127\./.test(address));
+}
+
 /** Makes a world map report's tracker ticket, or says in the terminal why there is none. Never throws. */
-async function makeTicket(tracker: TrackerConfig | string, logger: Logger, report: ReportToFile): Promise<void> {
+async function makeTicket(tracker: TrackerConfig | string, logger: Logger, from: string | undefined, report: ReportToFile): Promise<void> {
   const page = /^- \*\*Page:\*\* `([^`]+)`/m.exec(report.markdown)?.[1] ?? '';
   const none = (why: string) => logger.warn(`feedback: no tracker ticket for ${report.folder}/ (${why}); the folder is saved`, { timestamp: true });
   if (!TICKET_PAGES.has(page)) return;
+  if (!isLoopback(from)) return none(`request not from this computer: ${from ?? 'unknown address'}`);
   if (typeof tracker === 'string') return none(tracker);
   try {
     const t = await fileTicket(tracker, report);
-    logger.info(`feedback: ${t.repeat ? 'already the tracker ticket' : 'tracker ticket'} ${t.key} → ${t.url}`, { timestamp: true });
+    logger.info(`feedback: ${t.repeat ? 'already the tracker ticket' : 'new tracker ticket'} ${t.key} → ${t.url}`, { timestamp: true });
   } catch (err) {
     none(err instanceof Error ? err.message : String(err));
   }

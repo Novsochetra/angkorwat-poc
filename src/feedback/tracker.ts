@@ -76,7 +76,8 @@ interface TicketRecord {
 export async function fileTicket(cfg: TrackerConfig, report: ReportToFile): Promise<FiledTicket> {
   const startedAt = Date.now();
   const clientId = clientIdOf(report.name);
-  const earlier = await findRecord(report.inbox, clientId);
+  const records = await findRecords(report.inbox, clientId);
+  const earlier = records[0]?.record;
   let attachmentIds = earlier?.attachmentIds ?? (report.image ? [await upload(cfg, report)] : []);
   const body = (ids: string[]) => ({
     title: ticketTitle(report.markdown),
@@ -92,7 +93,8 @@ export async function fileTicket(cfg: TrackerConfig, report: ReportToFile): Prom
       body: JSON.stringify(body(attachmentIds)),
     });
   } catch (err) {
-    // The earlier screenshot is gone (its ticket was deleted in the tracker): upload it again.
+    // The earlier screenshot is gone with its ticket (deleted in the tracker): upload it again,
+    // and the tracker makes a new ticket.
     if (!earlier || !report.image || !(err instanceof TrackerAnswer) || err.status !== 400) throw err;
     attachmentIds = [await upload(cfg, report)];
     ticket = await call(cfg, `/api/projects/${encodeURIComponent(cfg.project)}/tickets`, {
@@ -104,10 +106,15 @@ export async function fileTicket(cfg: TrackerConfig, report: ReportToFile): Prom
   const num = ticket.key.slice(ticket.key.lastIndexOf('-') + 1);
   const url = `${cfg.url}/p/${encodeURIComponent(cfg.project)}/${num}`;
   const record: TicketRecord = { key: ticket.key, url, clientId, attachmentIds };
-  await writeFile(join(report.path, RECORD), `${JSON.stringify(record, null, 2)}\n`);
-  // Without a record the tracker still knows a repeat: it gives back the first ticket, changed
-  // since (the screenshot just uploaded was added to it) or made before this call.
-  const repeat = Boolean(earlier) || ticket.updatedAt !== ticket.createdAt || ticket.createdAt < startedAt - 60_000;
+  // This folder's record, and the same report's earlier folders' when the ticket changed (it was
+  // deleted in the tracker and this is the new one), so a later repeat finds this ticket.
+  const text = `${JSON.stringify(record, null, 2)}\n`;
+  await writeFile(join(report.path, RECORD), text);
+  for (const r of records) if (r.path !== report.path && r.record.key !== record.key) await writeFile(join(r.path, RECORD), text);
+  // A repeat gets the first ticket back: the one in the record (ticket numbers are never reused,
+  // so a deleted one comes back as a new key), or without a record one changed since it was made
+  // (the screenshot just uploaded was added to it) or made before this call.
+  const repeat = earlier ? ticket.key === earlier.key : ticket.updatedAt !== ticket.createdAt || ticket.createdAt < startedAt - 60_000;
   return { key: ticket.key, url, repeat };
 }
 
@@ -142,19 +149,20 @@ export function cutDescription(markdown: string, folder: string): string {
   return cut + tail;
 }
 
-/** The record a report sent earlier with the same name left beside it, if any. */
-async function findRecord(inbox: string, clientId: string): Promise<TicketRecord | null> {
+/** The records the same report sent earlier left beside it (one per folder), all alike once kept up to date. */
+async function findRecords(inbox: string, clientId: string): Promise<{ path: string; record: TicketRecord }[]> {
   const folders = await readdir(inbox, { withFileTypes: true }).catch(() => []);
+  const found: { path: string; record: TicketRecord }[] = [];
   for (const f of folders) {
     if (!f.isDirectory()) continue;
     try {
       const r = JSON.parse(await readFile(join(inbox, f.name, RECORD), 'utf8')) as Partial<TicketRecord>;
-      if (r.clientId === clientId && typeof r.key === 'string' && Array.isArray(r.attachmentIds)) return r as TicketRecord;
+      if (r.clientId === clientId && typeof r.key === 'string' && Array.isArray(r.attachmentIds)) found.push({ path: join(inbox, f.name), record: r as TicketRecord });
     } catch {
       // no record here
     }
   }
-  return null;
+  return found;
 }
 
 async function upload(cfg: TrackerConfig, report: ReportToFile): Promise<string> {

@@ -17,7 +17,9 @@ tracker's **AWP** project: "Bug: <the note's first line>" (or "Idea: …"), with
 `report.md` as its text and the screenshot attached. The folder is saved first,
 always, whatever the tracker answers. The dev server's terminal says the ticket
 (`feedback: tracker ticket AWP-31 → …`) or why there is none (no token, the
-tracker is down, an error). Sending the same report again makes no second ticket.
+tracker is down, an error, or a report sent from another device such as a phone
+on the Wi-Fi: only this computer's reports become tickets). Sending the same
+report again makes no second ticket.
 
 Set it up once, in `.env` (never `VITE_`-prefixed, so the game never sees it):
 
