@@ -1,24 +1,9 @@
-import {
-  BoxGeometry,
-  Color,
-  Euler,
-  Group,
-  InstancedBufferAttribute,
-  InstancedMesh,
-  Matrix4,
-  Quaternion,
-  Sphere,
-  Vector3,
-  type BufferAttribute,
-  type BufferGeometry,
-  type Camera,
-  type WebGLRenderer,
-} from 'three';
+import { Euler, Group, InstancedMesh, Quaternion, Sphere, Vector3, type BufferGeometry, type Camera, type WebGLRenderer } from 'three';
 import { VOXEL_MATERIALS, type VoxelMaterialKey, type VoxelMaterialSpec } from '../../voxel/materials';
 import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh, disposeVoxelMesh, openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
 import { chamferOf, graphicsNow, markStill, paintRim, pixelSize, plainAt } from '../graphics';
-import { glowMaterial, haloPoints, type Halo, type HaloUniforms } from '../road/glow';
+import { placedLights, type PlacedLight } from '../sky/placedLights';
 import { GLOW } from '../village/_lights';
 import './models';
 import { buildPiece, PIECES, type Built, type PieceId } from './pieces';
@@ -43,9 +28,10 @@ import { BUILD } from './state';
  *   metre there spans under `HIDE_PX` pixels it is hidden. The plain level
  *   builds plain boxes.
  * - **Light.** The lamps' flames and the spirit house's candle (`PIECES[id].light`)
- *   glow at night (the village's lamp glow, road/glow.ts `glowMaterial('lamp')`:
- *   its program is the village's) with a soft halo (`haloPoints`), dim by day.
- *   A fixed pool of `MAX_LIGHTS`: nothing is made when one comes or goes.
+ *   are placed lights (sky/placedLights.ts): every one glows at night (the
+ *   village's lamp glow, its program the village's) with a soft halo, dim by
+ *   day; the nearest few give real light too (a slot of the map's few lights,
+ *   sky/lampSlots.ts). A fixed pool: nothing is made when one comes or goes.
  * - **Shadows**: cast and received, still (graphics.ts `markStill`): the still
  *   map is asked again after a change (at most once a second while a piece rises).
  *
@@ -57,14 +43,17 @@ import { BUILD } from './state';
 const HIDE_PX = 0.9;
 /** The still shadows asked again at most this often while a piece rises (s). */
 const SHADOW_EVERY = 1;
-/** Lamps and candles at most (8 lamps, the spirit house's candle, spare). */
-const MAX_LIGHTS = 12;
-/** A light's glowing block (m: across, high) and its halo (m), by piece. */
-const LIGHT: Partial<Record<PieceId, { w: number; h: number; halo: number; color: number }>> = {
+/**
+ * A light's glowing block (m: across, high), its halo (m), its colour, and its real light at full night (cd) and how
+ * far that reaches (m), by piece.
+ */
+const LIGHT: Partial<Record<PieceId, { w: number; h: number; halo: number; color: number; cd: number; reach: number }>> = {
   // (over the model's own opaque globe and flame: build/models/lamp.ts's globe 0.18 m across its belly, 0.22 m high;
-  // spirit.ts's flame 0.022 × 0.044 m; two blocks a light, square and turned 45°: an octagon round it)
-  lamp: { w: 0.2, h: 0.235, halo: 1.7, color: GLOW.lantern },
-  spirit: { w: 0.034, h: 0.066, halo: 0.75, color: 0xffb050 },
+  // spirit.ts's flame 0.022 × 0.044 m; two blocks a light, square and turned 45°: an octagon round it. The hurricane
+  // lamp as bright as his lantern in hand at night (roam/tools.ts: 0.8 cd × 1.4² × 6 ≈ 9.4): a pool of light round
+  // its post about 4 m across; the candle a small warm light on the spirit house and its tray)
+  lamp: { w: 0.2, h: 0.235, halo: 1.7, color: GLOW.lantern, cd: 9, reach: 14 },
+  spirit: { w: 0.034, h: 0.066, halo: 0.75, color: 0xffb050, cd: 1.2, reach: 5 },
 };
 
 export interface PieceLookData {
@@ -324,76 +313,45 @@ export function createBuildView(shot = false): BuildView {
   let risingDirty = true;
 
   // ── Lights ─────────────────────────────────────────────────────────────────
-  const { material: glowMat, uniforms: glowU } = glowMaterial('lamp');
-  glowMat.name = 'build:glow';
-  const glowGeo = new BoxGeometry(1, 1, 1);
-  const glows = new InstancedMesh(glowGeo, glowMat, MAX_LIGHTS * 2);
-  glows.name = 'build:glows';
-  glows.count = 0;
-  glows.castShadow = glows.receiveShadow = false;
-  glows.frustumCulled = false;
-  const glowA = new Float32Array(MAX_LIGHTS * 4);
-  glowGeo.setAttribute('aGlow', new InstancedBufferAttribute(glowA, 2));
-  glows.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_LIGHTS * 6), 3);
-  // (one tiny block far under the land on the first frames: its program is compiled with the map's)
-  glows.setMatrixAt(0, new Matrix4().makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
-  glows.count = 1;
-  object.add(glows);
-  const haloList: Halo[] = Array.from({ length: MAX_LIGHTS }, (_, i) => ({ x: 0, y: -500, z: 0, size: 0, kind: 0 as const, phase: i * 1.3 }));
-  const halo = haloPoints(haloList);
-  halo.points.name = 'build:halos';
-  (halo.uniforms as HaloUniforms).uColor.value.setRGB(1, 0.66, 0.32);
-  halo.points.frustumCulled = false;
-  object.add(halo.points);
-  const haloPos = halo.points.geometry.getAttribute('position') as BufferAttribute;
-  const haloSize = halo.points.geometry.getAttribute('aSize') as BufferAttribute;
+  // (the map's placed lights: sky/placedLights.ts; this view hosts them, in roaming's group, and drives them)
+  const lights = placedLights();
+  object.add(lights.object);
+  /** Each standing piece's light, by its uid. */
+  const lit = new Map<string, PlacedLight>();
   let lightsDirty = true;
-  const _m = new Matrix4();
-  const _p = new Vector3();
-  const _s = new Vector3();
-  const _c = new Color();
 
   function syncLights(): void {
     lightsDirty = false;
-    let n = 0;
+    const now = new Set<string>();
     for (const p of BUILD.list) {
       const spec = PIECES[p.id];
       const L = LIGHT[p.id];
-      if (!spec.light || !L || p.done < 1 || n >= MAX_LIGHTS) continue;
+      if (!spec.light || !L || p.done < 1) continue;
+      now.add(p.uid);
+      if (lit.has(p.uid)) continue;
       const [lx, ly, lz] = spec.light;
       const c = Math.cos(p.yaw);
       const s = Math.sin(p.yaw);
-      const x = p.x + lx * c + lz * s;
-      const y = p.y + ly;
-      const z = p.z - lx * s + lz * c;
-      _qy.setFromAxisAngle(_up, p.yaw);
-      for (let k = 0; k < 2; k++) {
-        const i = n * 2 + k;
-        if (k) _qy.setFromAxisAngle(_up, p.yaw + Math.PI / 4);
-        glows.setMatrixAt(i, _m.compose(_p.set(x, y, z), _qy, _s.set(L.w, L.h, L.w)));
-        glows.setColorAt(i, _c.setHex(L.color));
-        glowA[i * 2] = p.seed * 20;
-        glowA[i * 2 + 1] = L.w;
+      const h = lights.add({
+        x: p.x + lx * c + lz * s,
+        y: p.y + ly,
+        z: p.z - lx * s + lz * c,
+        yaw: p.yaw,
+        color: L.color,
+        glow: { w: L.w, h: L.h },
+        halo: L.halo,
+        candela: L.cd,
+        reach: L.reach,
+        seed: p.seed,
+      });
+      if (h) lit.set(p.uid, h);
+    }
+    for (const [uid, h] of lit)
+      if (!now.has(uid)) {
+        h.remove();
+        lit.delete(uid);
       }
-      haloPos.setXYZ(n, x, y, z);
-      haloSize.setX(n, L.halo);
-      n++;
-    }
-    for (let i = n; i < MAX_LIGHTS; i++) {
-      haloPos.setXYZ(i, 0, -500, 0);
-      haloSize.setX(i, 0);
-    }
-    stats.lights = n;
-    glows.count = Math.max(1, n * 2);
-    if (!n) glows.setMatrixAt(0, _m.makeScale(0.001, 0.001, 0.001).setPosition(0, -500, 0));
-    // (no light built: neither is drawn, two draws a frame saved wherever he is on the map; hidden, their programs are
-    // still compiled with the map's before Start: three's compile walks hidden objects too, lazy.ts `compileFor`)
-    glows.visible = halo.points.visible = n > 0;
-    glows.instanceMatrix.needsUpdate = true;
-    if (glows.instanceColor) glows.instanceColor.needsUpdate = true;
-    (glowGeo.getAttribute('aGlow') as BufferAttribute).needsUpdate = true;
-    haloPos.needsUpdate = true;
-    haloSize.needsUpdate = true;
+    stats.lights = lit.size;
   }
 
   // ── Far ────────────────────────────────────────────────────────────────────
@@ -453,17 +411,8 @@ export function createBuildView(shot = false): BuildView {
         shadowAt = t;
         shadowAsk = true;
       }
-      // The lights: dim by day (the dark lamp), bright at night, as the village's.
-      const n = Math.min(1, Math.max(0, night));
-      const k = n * n * (3 - 2 * n);
-      glowU.uTime.value = t;
-      glowU.uLevel.value = 0.07 + k * 3.1;
-      glowU.uPulse.value = 0.03 + k * 0.05;
-      glowU.uNearLevel.value = 1 - k * 0.5;
-      const u = halo.uniforms;
-      u.uTime.value = t;
-      u.uScale.value = 1 / pixel;
-      u.uLamp.value = k * k * 1.1;
+      // The lights: dim by day, bright at night; the nearest few give real light (sky/placedLights.ts).
+      lights.frame(camera, t, night);
     },
     onStanding(fn) {
       standListeners.push(fn);

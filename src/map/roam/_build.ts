@@ -573,6 +573,22 @@ function placeAll(world = env?.world): number {
   return n;
 }
 
+/**
+ * `lamps=<n>` (a check of the placed lights, sky/placedLights.ts): n lantern posts standing before the house, past the
+ * 8 a player may have, in rows 3.5 m apart (from 8 m before it, its west side across), each where it fits.
+ */
+function placeLamps(world: AddonEnv['world'], n: number): number {
+  let k = 0;
+  for (let lz = 8; lz < 46 && k < n; lz += 3.5)
+    for (let lx = -8.75; lx <= 8.75 && k < n; lx += 3.5) {
+      const [x, z] = homeToWorld(lx, lz);
+      if (canBuild(world, 'lamp', x, z, HOME_AT.facing)) continue;
+      if (BUILD.add('lamp', x, world.field.heightAt(x, z), z, HOME_AT.facing, 1, undefined, true)) k++;
+    }
+  if (k < n) console.warn(`[build] lamps=${n}: room for ${k}`);
+  return k;
+}
+
 /** A piece of `id` before him (a check's), as far built as `done`: the one under way, else a new one where it fits. */
 function pieceBefore(ctx: RoamCtx, id: PieceId, done: number): Built | null {
   const was = BUILD.list.find((q) => q.id === id && q.done < 1);
@@ -623,6 +639,8 @@ registerAddon({
     wireHold();
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
+    const nLamps = Number(e.params.get('lamps'));
+    if (nLamps > 0 && (e.shot || import.meta.env.DEV)) placeLamps(e.world, Math.min(64, Math.floor(nLamps)));
     BuildUses.sync();
     // (the pieces drawn before the first frame: the hammock add-on reads its cloth from them)
     view.sync();
