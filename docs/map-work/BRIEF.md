@@ -1015,6 +1015,42 @@ draws), `cam=-176,15,88,-189,21,75` (a dike palm),
 (the village's coconuts), `cam=10,24,78,-12,12,57` (jungle palms by the
 summit river), with `night=1` or `weather=storm&t=30`.
 
+## The plant kit
+
+`src/map/veg/plantKit.ts` (AWP-5): leaves, fruit and vines in a few turned
+blocks, for every part that grows plants (the hamlets' gardens and orchards,
+the market's produce, the home garden: its `beam`, `log`, `along`, `across`
+and `mix` live here, `garden/models/_fruitKit.ts` passes them on). No flat
+square leaves and no plain box fruit: call the kit. Draw into a builder on
+the map's axes (the part's world builder, a `Local` or `PsFrame` that only
+moves its origin), never into a turned `Frame`'s local builder (give world
+points and add its `theta` to `az`). Headings: `az` 0 is +z, π/2 is +x; `el`
+up from level. Every shape takes `color`, `mat` (leaves and vines `mapLeaf`,
+fruit `petal`), `shade`, `src`.
+
+| Call | Use it for | Blocks |
+|---|---|---|
+| `leaf(b, at, { len, wid, az, el, color, bend?, roll?, segs?: 1‥3, shape?: 'lance'│'broad'│'oblong', fold?, rib?, stalk? })` → tip | a mango leaf (0.25 × 0.06 m), a gourd or pumpkin leaf (`broad`, 0.25 m), a banana leaf (`oblong`, `segs: 3`, `fold: 0.35`, 1.5–2.5 × 0.4–0.6 m) | 1 seg no rib 2, 2 segs 5, 3 segs 7, 3 folded 10, +1 `stalk` |
+| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `blush`), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 4 (`low` 2), +1 `stalk`, +1 `blush` |
+| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low? })` | pumpkin (0.45 × 0.3, ribbed), a round gourd or melon hanging (`hang`: its stalk's length) | 4 (`low` 2), +1 `stalk` |
+| `long(b, base, { len, thick, az, el, color, curve?, segs?, neck?, taper?, sides?, tip?, cap? })` → tip | banana finger (0.16 × 0.035, `neck` 0.55, dark `tip`, `sides: 4`), long eggplant (0.25 × 0.055, green `cap`) | `segs` × 2 (× 1 `sides: 4`), +1 `tip`, +1 `cap`: banana 3, eggplant 5 |
+| `vine(b, pts, { thick, color, leaf?: { len, wid, every?, spread?, el?, … }, tendril?, seed? })` with `sag(a, c, n, drop)` or `spiral(foot, h, r, turns, n)` | a gourd or bean vine up a post and along a trellis | 1 a span + each leaf + 3 a tendril |
+
+The world merges blocks per material family, so a shape costs its blocks: a
+trellis of 30 leaves (2 segs) and 10 gourds is 30 × 5 + 10 × 5 = 200 blocks
+(the old one: 6 flat squares). Use `segs: 1`, `rib: false`, `low`,
+`sides: 4` where it is seen from far or heaped.
+
+Check: `index.html?shot=1&plantkit=lineup&parts=terrain,hamlet&ui=0&clock=0.92`
+lays every shape at its real size on a stone table in the meadow behind
+Angkor Wat (`veg/_plantKitLineup.ts`, a hamlet piece only when asked: shots
+and the dev server), the old way at its left end (a flat square leaf, a box
+mango, a box pumpkin); the console lists each shape's blocks and the cameras:
+`cam=149.15,10,-282.5,149.15,7.25,-293.9,34` (all),
+`cam=146.2,8.5,-290.6,146.2,7,-293.9,44` (the old way and the leaves),
+`cam=150.6,8.4,-290.2,150.6,7.2,-293.9,50` (the fruit at eye height),
+`cam=153,8.4,-291.4,153,7.5,-293.9,38` (the vine).
+
 ## The floating village
 
 The `village` part (`src/map/village/`, built right after the water so its

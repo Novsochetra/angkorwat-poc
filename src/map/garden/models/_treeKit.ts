@@ -2,6 +2,7 @@ import { Euler, Quaternion, Vector3 } from 'three';
 import { traceSource, type SourceTrace } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { hash3 } from '../../../voxel/random';
+import { along } from '../../veg/plantKit';
 import type { PlantLook } from '../state';
 
 /**
@@ -73,10 +74,9 @@ export function turned(b: VoxelBuilder, x: number, y: number, z: number, sx: num
   b.box(x, y, z, sx, sy, sz, color, mat, { shade, rx: _e.x, ry: _e.y, rz: _e.z, src: src ?? traceSource() });
 }
 
-/** Where a blade of `len` from (x, y, z) at (yaw, pitch) ends. */
+/** Where a blade of `len` from (x, y, z) at (yaw, pitch) ends (the plant kit's `along`). */
 export function tipOf(x: number, y: number, z: number, yaw: number, pitch: number, len: number): [number, number, number] {
-  const c = Math.cos(pitch) * len;
-  return [x + Math.sin(yaw) * c, y + Math.sin(pitch) * len, z + Math.cos(yaw) * c];
+  return along([x, y, z], yaw, pitch, len);
 }
 
 /**

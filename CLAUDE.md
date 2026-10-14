@@ -218,6 +218,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   clumps of thin blades near, fans farther (`paddies/rice.ts`, two draws).
 - Palms: real sugar palms (thnot) and coconut palms from one module,
   `src/map/veg/palms.ts` (`palms=near|far`, `palmstats`).
+- Leaves, fruit and vines of any plant: the plant kit `src/map/veg/plantKit.ts`
+  (leaf, teardrop, round, long, vine; never flat square leaves or box fruit;
+  API and blocks in BRIEF.md "The plant kit"; `plantkit=lineup` shows them all).
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
