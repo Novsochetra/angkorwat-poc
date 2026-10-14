@@ -1015,6 +1015,42 @@ draws), `cam=-176,15,88,-189,21,75` (a dike palm),
 (the village's coconuts), `cam=10,24,78,-12,12,57` (jungle palms by the
 summit river), with `night=1` or `weather=storm&t=30`.
 
+## The plant kit
+
+`src/map/veg/plantKit.ts` (AWP-5): leaves, fruit and vines in a few turned
+blocks, for every part that grows plants (the hamlets' gardens and orchards,
+the market's produce, the home garden: its `beam`, `log`, `along`, `across`
+and `mix` live here, `garden/models/_fruitKit.ts` passes them on). No flat
+square leaves and no plain box fruit: call the kit. Draw into a builder on
+the map's axes (the part's world builder, a `Local` or `PsFrame` that only
+moves its origin), never into a turned `Frame`'s local builder (give world
+points and add its `theta` to `az`). Headings: `az` 0 is +z, π/2 is +x; `el`
+up from level. Every shape takes `color`, `mat` (leaves and vines `mapLeaf`,
+fruit `petal`), `shade`, `src`.
+
+| Call | Use it for | Blocks |
+|---|---|---|
+| `leaf(b, at, { len, wid, az, el, color, bend?, roll?, segs?: 1‥3, shape?: 'lance'│'broad'│'oblong', fold?, rib?, stalk? })` → tip | a mango leaf (0.25 × 0.06 m), a gourd or pumpkin leaf (`broad`, 0.25 m), a banana leaf (`oblong`, `segs: 3`, `fold: 0.35`, 1.5–2.5 × 0.4–0.6 m) | 1 seg no rib 2, 2 segs 5, 3 segs 7, 3 folded 10, +1 `stalk` |
+| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `blush`), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 4 (`low` 2), +1 `stalk`, +1 `blush` |
+| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low? })` | pumpkin (0.45 × 0.3, ribbed), a round gourd or melon hanging (`hang`: its stalk's length) | 4 (`low` 2), +1 `stalk` |
+| `long(b, base, { len, thick, az, el, color, curve?, segs?, neck?, taper?, sides?, tip?, cap? })` → tip | banana finger (0.16 × 0.035, `neck` 0.55, dark `tip`, `sides: 4`), long eggplant (0.25 × 0.055, green `cap`) | `segs` × 2 (× 1 `sides: 4`), +1 `tip`, +1 `cap`: banana 3, eggplant 5 |
+| `vine(b, pts, { thick, color, leaf?: { len, wid, every?, spread?, el?, … }, tendril?, seed? })` with `sag(a, c, n, drop)` or `spiral(foot, h, r, turns, n)` | a gourd or bean vine up a post and along a trellis | 1 a span + each leaf + 3 a tendril |
+
+The world merges blocks per material family, so a shape costs its blocks: a
+trellis of 30 leaves (2 segs) and 10 gourds is 30 × 5 + 10 × 5 = 200 blocks
+(the old one: 6 flat squares). Use `segs: 1`, `rib: false`, `low`,
+`sides: 4` where it is seen from far or heaped.
+
+Check: `index.html?shot=1&plantkit=lineup&parts=terrain,hamlet&ui=0&clock=0.92`
+lays every shape at its real size on a stone table in the meadow behind
+Angkor Wat (`veg/_plantKitLineup.ts`, a hamlet piece only when asked: shots
+and the dev server), the old way at its left end (a flat square leaf, a box
+mango, a box pumpkin); the console lists each shape's blocks and the cameras:
+`cam=149.15,10,-282.5,149.15,7.25,-293.9,34` (all),
+`cam=146.2,8.5,-290.6,146.2,7,-293.9,44` (the old way and the leaves),
+`cam=150.6,8.4,-290.2,150.6,7.2,-293.9,50` (the fruit at eye height),
+`cam=153,8.4,-291.4,153,7.5,-293.9,38` (the vine).
+
 ## The floating village
 
 The `village` part (`src/map/village/`, built right after the water so its
@@ -2284,11 +2320,108 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
   most of the view, easing in and out over 0.45 s (the spot carries a point
   lamp when no flashlight or fill needs it). Every light each lit shader
   carries costs about 1.5 % of a GPU-bound frame even while dark: add lamps,
-  not slots (`lampslots=<points>,<spots>` for checks; dev:
+  not slots (`lampslots=<points>,<spots>[,<placed>]` for checks; dev:
   `__lampSlots.debug()`). Most light at night should come from glow + bloom.
+  Lights the player puts up (lamp posts, candles, lanterns: as many as he
+  likes) go through `placedLights().add(…)` (sky/placedLights.ts): each glows
+  (one draw for all the glows, one for the halos) and is a `placed` lamp; at
+  most 3 placed lamps hold a slot at once (a 4th for up to 0.45 s while one
+  hands over), the nearest in sight, so the world's lamps keep the rest (addons.md "Building at home").
 - Custom `ShaderMaterial`s: set `fog: true` and include three's fog chunks
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
+
+## The player's blocks (`src/map/blocks/`)
+
+What the player builds with, apart from the baked world (whose meshes are made
+once in the build workers and never change): the part `blocks` (main.ts, built
+after the treasure), the base of building at home (build plan step 3: AWP-16;
+the walk map AWP-17, saving AWP-18, the plot and its budget AWP-19, footprint
+building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
+
+- **The store** (`blocks/store.ts`, no three.js; `BLOCKS`, one for the map): a
+  block is a cell of 0.5 m, the walk map's column (`WALK_GRID`, roam/walkmap.ts:
+  one block, one column) and the temple kit's block; a full block is too high a
+  step to walk up (0.42 m), a slab (0.25 m) a stair's rise. Cell (i, j, k) is
+  (i, j, k) · 0.5 m to (i + 1, j + 1, k + 1) · 0.5 m (`cellOf`, `cellMin`,
+  `cellMid`). Chunks of 32 cells a side, 16 m: the walk map's chunks exactly
+  (the same corner: a chunk's cx, cz is the walk map's), cy 16 m slices from
+  y = 0; a chunk keeps its cells densely (160 kB), made at its first block,
+  dropped at its last. A home plot (≈ 20 m) spans a few chunks: a few draws a
+  block family.
+- **A block** (`Block`: `mat`, `color`, `shape`, `turn`): its material
+  (`blocks/kinds.ts` `BLOCK_MATS`: timber, bamboo, thatch, laterite, sandstone,
+  brick, each drawn with a map family: `mapBark`, `mapLeaf`, `mapStone`,
+  `mapRock`), its colour (sRGB hex, any: paint), its shape (`BLOCK_SHAPES`:
+  cube, slab; each a list of boxes in its cell and the sides of the cell it
+  fills whole) and a quarter turn (saved, for the stairs to come). As one
+  number (`rawOf`, `blockOf`): colour + material · 2²⁴ + (shape · 4 + turn) ·
+  2³², 0 no block; ids are saved, so they are only ever added.
+- **Writing**: `set(i, j, k, block | null)`, `setRaw`, `fill(box, block | null)`,
+  `batch(fn)` (many changes as one: a footprint, a loaded save), `clear()`.
+  **Reading**: `get`, `raw`, `solid` (the walk map), `count`, `countIn(box)` (a
+  plot's budget), `forEach` (every block in a fixed order: chunk by chunk,
+  rows along x, then z, then y: a run-length save), `chunkList`, `chunkAt`.
+- **Changes** (`onChange`): told once a change is done (one set, one fill, one
+  batch): `changed` (the chunks whose cells changed: the walk map's chunks to
+  build again), `touched` (those and the neighbours across an edge a changed
+  cell lies on: drawn again), `box` (the changed cells), `cells`, `version`.
+- **Drawn** (`blocks/view.ts`, `blocks/mesh.ts` `packChunk`): a group per chunk,
+  a mesh per block family in it, made again the frame after a change, each
+  touched chunk once; the meshes' arrays are written in place (only the boxes
+  in use sent), a mesh made new only when a family outgrows its room. **Only
+  what can be seen**: a block whose six sides lie against filled sides (its
+  neighbours', in its chunk or the next) is not drawn; each box keeps its open
+  sides (the rim only between two open sides, a seam between flush blocks, as
+  the map's grids) and its seen sides (`voxShown`: on low, the plain boxes
+  draw no covered side, block by block, as the map's still parts: cull.ts
+  `cutCovered`); a mesh's index holds only the sides its boxes show; and only
+  the sides that can face the camera are drawn (voxel/backFacets.ts). Shade as
+  the map's grids bake it (soft occlusion from the 26 cells round it, ±5 %
+  seeded jitter), colour per block. The map's look and programs: its families,
+  the materials its still parts wear (cull.ts `coverMaterialOf`), its block
+  shapes (one cut on medium and up, plain boxes on low), its depth material:
+  no shader program of its own. Far: plain boxes with their rims painted once
+  the cut edges are under a pixel, hidden once a metre is under 0.9 px (the
+  build view's rule, build/view.ts). Shadows cast and received, still; the
+  still map asked again after a rebuild (at most once a second while blocks
+  keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
+  read the store (AWP-17).
+- **Edge joints**: two blocks that meet only along an edge (a roof stepping in
+  a block a row) keep that edge square (`mesh.ts` `diagonalJoints`, the joint
+  bits of `voxOpen`): cut on both it was a slit the sky showed through. Where
+  such a row meets the next block along it a pinhole of about the bevel's size
+  is left (the shader squares a corner only with all three sides joints, which
+  would also square the seams between the row's blocks); a roof two blocks
+  deep, or stairs and slabs (AWP-24), have none. A slab's partial sides do not
+  count yet (AWP-24 grows `covers`).
+- **Shadows of a far chunk**: hidden by distance it drops out of the still
+  shadow map; coming back, its shadow returns at the next still redraw (as the
+  build view's pieces). Watch it with continuous building (AWP-20).
+- **Cost**: an empty store is an empty group (no draw, no work a frame).
+  Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 28). Making a
+  chunk again after one change (`__blocks.bench`, M1 Max with other jobs
+  running): a plot's chunk of 3,664 blocks 0.5 ms (the CPU 4 × slower 2.3, 6 ×
+  3.5: well under a phone's frame); the worst chunks, every other cell (16,384
+  blocks, each showing six sides) 1.5 ms (6 × 9.5), filled whole (32,768) 1.1
+  ms (6 × 7.0). `npm run perf` (1280 × 720 and the phone's 844 × 390): with the
+  store empty the same draws, triangles and programs as before in every view;
+  `pblocks=full` (9,925 blocks, 8,291 drawn, 1,634 under others) in the `home`
+  view low +28 draws, +0.08 M triangles, medium +28, +0.33 M, phone +28,
+  +0.08 M, frame times within the noise; the still shadow map +28 draws (0.05 M
+  on low, 0.26 M on medium) when it is drawn; elsewhere (overview, village,
+  east) nothing drawn; ≤ 0.01 ms of CPU a frame; no new program when blocks
+  appear (the program count the same on low, medium and high).
+- **URL** (shots and the dev server only, never on the live site, as
+  `build=`: a link must never put blocks into a player's map or save):
+  `pblocks=demo` (a sala on the meadow before his stilt house, 832 blocks: all
+  six materials, the slab, painted blocks) · `pblocks=full` (a full plot: nine
+  of them 3 × 3, 8 m apart, 9,925 blocks over 24 × 24 m, their plinths sunk
+  to the sloping ground: 8 chunks) · `@x,z` puts it elsewhere. Nothing is
+  saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
+  make a chunk again after one change, `flush()`, `rawOf`, `blockOf`). `npm run perf -- only=home
+  url=pblocks=full` (the `home` view: by the stilt house, over the meadow).
+  E.g. `roam=walk&at=436,-139&yaw=200&home=1&rcam=150,12,9&pblocks=demo`.
 
 ## Sacred pieces (sculpted, not blocks)
 
@@ -2907,6 +3040,7 @@ as the picture's; a part that moves must not be marked still.
 | buying, eating and drinking | `src/map/shop.ts` (lead), `src/map/roam/_shop*.ts`, `src/map/people/_saleBack.ts`; `src/character/meals.ts`, `parts/food.ts` |
 | leaving roaming asks first | `src/map/roam/_leave.ts` (lead) |
 | kites (khleng ek) | `src/map/people/_sceneKites.ts`, `_kite.ts`; the hum `src/map/audio/kite.ts` |
+| the player's blocks (store, chunk meshes) | `src/map/blocks/*` |
 | speed checks | `scripts/perf.mjs` (`npm run perf`) |
 
 `main.ts`, `camera.ts`, `cull.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the

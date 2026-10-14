@@ -47,8 +47,11 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
 
 The user reports bugs and ideas from inside the game or viewer (**B** / 🐞 button).
 Each report is a folder `feedback/<date>-<slug>/` with `report.md` and
-`screenshot.jpg`. When asked to "check the feedback", or when a report is pasted
-into the chat:
+`screenshot.jpg`. One inbox: a world map report (index.html) is also a ticket in
+the tracker's AWP project, its key in the folder's `ticket.json`
+(`src/feedback/tracker.ts`; `TRACKER_TOKEN` in `.env`; the dev server's terminal
+says the key, or why no ticket was made). When asked to "check the feedback", or
+when a report is pasted into the chat:
 
 1. Read `report.md` and view `screenshot.jpg`; numbered pins mark the picks.
    Notes can be in any language.
@@ -63,7 +66,7 @@ into the chat:
    (`npm run shots -- repro="@game.html?shot=1&at=…&cam=…"`), fix, and re-run it
    to compare. Then run the checks.
 4. Delete the report's folder in the commit that fixes it, and name the report
-   in the commit message.
+   and its ticket (`ticket.json`, e.g. "(AWP-31)") in the commit message.
 
 ## World map screen (`index.html`)
 
@@ -215,6 +218,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   clumps of thin blades near, fans farther (`paddies/rice.ts`, two draws).
 - Palms: real sugar palms (thnot) and coconut palms from one module,
   `src/map/veg/palms.ts` (`palms=near|far`, `palmstats`).
+- Leaves, fruit and vines of any plant: the plant kit `src/map/veg/plantKit.ts`
+  (leaf, teardrop, round, long, vine; never flat square leaves or box fruit;
+  API and blocks in BRIEF.md "The plant kit"; `plantkit=lineup` shows them all).
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
@@ -269,6 +275,11 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
   `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
   `act=eat|bite|drink&food=<kind>`.
+- The player's blocks (what he builds with, apart from the baked world): the part
+  `blocks`, `src/map/blocks/` (the store `store.ts` `BLOCKS`: 0.5 m cells, 16 m
+  chunks on the walk map's grid, change events, `forEach` / `rawOf` for saving;
+  materials and shapes `kinds.ts`; a mesh per chunk and family drawing only what
+  can be seen, `view.ts`); BRIEF.md "The player's blocks". Shots: `pblocks=demo|full`.
 
 ## Things to do while roaming (add-ons)
 
@@ -343,7 +354,9 @@ guide, with every add-on's keys and URL values for shots, is
     `cattle=calf,young,grown…`, `cattleshop=`, `cattlenight=1`).
   - Building at home: E Build… near his house → the card of nine pieces → a ghost
     (red with its reason) → E Build here → he hammers it up; take down for half
-    the price. Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
+    its materials. A piece costs materials (`pieces.ts` `cost`): gathered ones are
+    free, missing ones bought with riel, what can never be gathered (cloth, straw)
+    always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
@@ -353,6 +366,11 @@ guide, with every add-on's keys and URL values for shots, is
     neighbours, elders and children (ចែក: `roam/_shareFruit*.ts`,
     `people/_shareBack.ts`; `share=near|give|thanks|child|again`). Once a
     person a day.
+- Gathering materials (AWP-9, addons.md "Gathering materials"): bamboo, logs,
+  thatch, clay (`build/materials.ts`: the bag with its carry limit, the home store),
+  the sources' registry `build/gather.ts` (`registerGatherSource`: spots, hits,
+  regrowing), the add-on `roam/_gather*.ts` (one press, one swing; the load under
+  the purse; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

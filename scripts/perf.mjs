@@ -75,6 +75,8 @@ const VIEWS = {
   eastpaddies: 'roam=walk&at=396,10&yaw=0&sim=_:0.2',
   // (walking into the market's stalls: `east` stands by it facing away)
   market: 'roam=walk&at=330,-100&yaw=160&sim=_:0.2&rcam=180,14,9',
+  // (by his stilt house, looking over the meadow before it: the player's blocks, `pblocks=full` in `url=`)
+  home: 'roam=walk&at=431,-152&yaw=180&home=1&sim=_:0.2&rcam=200,22,16',
   // (the day turning at dusk, the shadow map drawn when the live page draws it: `TURNING`)
   dusk: 'shadows=live',
   duskwalk: 'shadows=live&roam=walk&at=-304,63&yaw=225&sim=w:1&rcam=0,16,9',
@@ -97,7 +99,7 @@ const SETUPS = {
   phone: { query: 'graphics=low&phone=1', w: 844, h: 390 },
   'phone-medium': { query: 'graphics=medium&phone=1', w: 844, h: 390 },
 };
-const views = argv.only ? argv.only.split(',') : Object.keys(VIEWS).filter((v) => !v.startsWith('snow') && !v.startsWith('dusk') && v !== 'eastpaddies' && v !== 'market');
+const views = argv.only ? argv.only.split(',') : Object.keys(VIEWS).filter((v) => !v.startsWith('snow') && !v.startsWith('dusk') && v !== 'eastpaddies' && v !== 'market' && v !== 'home');
 const setups = (argv.levels ?? 'low,medium,phone').split(',');
 for (const v of views) if (!(v in VIEWS)) throw new Error(`perf: no view "${v}" (${Object.keys(VIEWS).join(', ')})`);
 for (const s of setups) if (!(s in SETUPS)) throw new Error(`perf: no setup "${s}" (${Object.keys(SETUPS).join(', ')})`);

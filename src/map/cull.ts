@@ -234,6 +234,17 @@ if (voxShown > 63.5 && min(min(abs(position.x), abs(position.y)), abs(position.z
 const NO_COVER = new Set(['glow', 'water', 'wax']);
 const cutCopies = new Map<Material, Material>();
 
+/**
+ * The material the map's still parts wear for a family: its cut copy where `cutCovered` made one (the map's
+ * plain boxes then leave out the sides no one sees, block by block, from `voxShown`), else its own. A mesh made
+ * after the build (the player's blocks: map/blocks/view.ts) wears it, so it draws with a program the map has
+ * compiled already.
+ */
+export function coverMaterialOf(key: VoxelMaterialKey): Material {
+  const base = getVoxelMaterial(key);
+  return cutCopies.get(base) ?? base;
+}
+
 /** A voxel material that leaves covered sides out (made once per material). */
 function cutCopy(base: Material): Material {
   let m = cutCopies.get(base);

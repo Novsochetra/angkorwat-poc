@@ -1,6 +1,8 @@
-import { BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
+import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
+import { BLOCKS, cellOf, type CellBounds } from '../blocks/store';
 import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
@@ -16,7 +18,7 @@ import { BuildGhost } from './_buildGhost';
 import { BUILD_REASON_WORDS, byHouse, canBuild, FENCE_JOINT, ghostAhead, type BuildReason } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { installBuildWalk } from './_buildWalk';
-import { BuildWork, pieceWord } from './_buildWork';
+import { backWords, BuildWork, pieceWord } from './_buildWork';
 import { riel } from './_shopPurse';
 import type { RoamCtx } from './types';
 
@@ -33,20 +35,25 @@ import type { RoamCtx } from './types';
  * Once the house is his (`HOME.owned`), on foot:
  * - **By the house** (on the ground under it, round it, at its stair's foot), and
  *   anywhere on his land (build/plot.ts `PLOT_CORNERS`) where nothing else takes E (the garden's
- *   "Plant…" first): "E  Build…" opens the build card: every piece with its price,
- *   how many he has of how many; not enough riel: greyed with how much more.
+ *   "Plant…" first): "E  Build…" opens the build card: every piece with what it
+ *   costs (AWP-9: its materials, build/materials.ts; those he gathered, in his bag
+ *   or his home store, are free; what he lacks he buys: "Missing: 1 bamboo pole =
+ *   2,000 ៛"; what can never be gathered, cloth or straw, always bought, on a line
+ *   of its own: "Bought: cloth 8,000 ៛"; the prices are the old ones), how many he has
+ *   of how many; not enough riel for what he lacks: greyed with how much more.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
  *   past his land, a neighbour's yard, the house, not level, a tree, a plant, something
  *   he built, something else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
  *   15° more; a fence run's end snaps onto the end of one he built (in line, or turned a quarter: a corner). "E  Build here"
- *   pays (`purse.pay`) and he builds it (the work); F / C (the pad's ↓) the card
+ *   pays for what he lacks (`purse.pay`), takes the rest from his bag, then his
+ *   home store (`useMaterials`), and he builds it (the work); F / C (the pad's ↓) the card
  *   again; Esc (the pad's ○, the touch ✕) leaves the mode, never asking "Back to the
  *   map?". A fence or a lantern post: the mode stays on for the next.
  * - **By a piece** (facing it, within reach): half built, "E  Keep building";
  *   a seat (the bed, the shelter's bench), "E  Sit" (J / L there too: _rest.ts
  *   `REST_SEATS`); hold E (the bar fills, 0.8 s) to take it down — asked first,
- *   half its price back. A hammock's E is the hammock add-on's, the spirit house's
+ *   half its materials back (into his home store) and half its bought part's riel. A hammock's E is the hammock add-on's, the spirit house's
  *   "Pray" the shrine's (both before this).
  *
  * URL (shots and the dev server: a link never changes a player's saved pieces):
@@ -56,7 +63,8 @@ import type { RoamCtx } from './types';
  * at work on one, that far built, `s` into a stroke; the one of that kind under way,
  * else a new one before him) · `buildtake=<uid>` (the take-down question; `:<0‥1>`
  * him taking it down that far) · `buildsit=<uid>[:lie]` (sitting / lying on it) ·
- * `buildhint=1`. `report()` gives `build=` (and `buildghost=`, `buildwork=`).
+ * `buildhint=1` · `lamps=<n>` (n lamp posts before the house, past the 8 a player may have: the placed lights'
+ * check, sky/placedLights.ts). `report()` gives `build=` (and `buildghost=`, `buildwork=`).
  * `window.__build` (shots, the dev server): `state()`, `canBuild`, `add`, `card`,
  * `place`, `rebuild`. Console lines start `[build]`.
  */
@@ -143,6 +151,9 @@ function piecesBlocks(): number {
   return piecesN;
 }
 addPlotBlocks('pieces', piecesBlocks);
+/** His own blocks (the block layer, blocks/store.ts: AWP-16) in his land's box, every height (cells). */
+const PLOT_CELLS: CellBounds = { i0: cellOf(PLOT_BOX.x0), i1: cellOf(PLOT_BOX.x1), j0: -4096, j1: 4096, k0: cellOf(PLOT_BOX.z0), k1: cellOf(PLOT_BOX.z1) };
+addPlotBlocks('blocks', () => BLOCKS.countIn(PLOT_CELLS));
 /** Room on his land for one more `id` (the budget)? A little over the line rounds the way the meter shows. */
 const roomFor = (id: PieceId): boolean => plotBlocks() + blocksOf(id) <= PLOT_BUDGET;
 
@@ -228,7 +239,7 @@ function holdStep(ctx: RoamCtx, dt: number): void {
   askTake(ctx, h.piece);
 }
 
-/** "Take down the bamboo bed? You get half its price back: 7,500 ៛." */
+/** "Take down the bamboo bed? You get half its materials back: 3 bamboo poles." */
 const SAW = `<svg class="mu-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="#8a6038" d="M2 9h12v3H2z"/><path fill="#b08a5a" d="M2 9h12v1H2z"/><path fill="#c8ccd0" d="M6 2h2v6H6z"/><path fill="#e8eef2" d="M6 2h1v6H6z"/><path fill="#7a5a3a" d="M5 1h4v2H5z"/><path fill="#ffd27a" d="M10 5h1v1h-1zM11 6h1v1h-1zM12 4h1v1h-1z"/></svg>`;
 function askTake(ctx: RoamCtx, b: Built): void {
   if (!env) return;
@@ -242,7 +253,7 @@ function askTake(ctx: RoamCtx, b: Built): void {
       const id = q?.id ?? 'kre';
       return {
         title: t('buildTakeAsk', { name: pieceWord({ id }) }),
-        note: t('buildTakeNote', { riel: riel(Math.floor(PIECES[id].price / 2)) }),
+        note: t('buildTakeNote', { what: backWords(pieceBack(id)) }),
         stay: t('buildTakeNo'),
         go: t('buildTakeYes'),
       };
@@ -355,12 +366,26 @@ function placingNow(ctx: RoamCtx): void {
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
 }
 
-/** Why he cannot build `id` now (all of it built, not enough riel), or null. */
+/**
+ * What building `id` takes now (AWP-9: its materials from his bag and home store are free; what he lacks he buys):
+ * the materials missing, and the riel to pay (theirs and the piece's always-bought part, `boughtRiel`).
+ */
+function toPay(id: PieceId): { missing: Materials; riel: number } {
+  const p = PIECES[id];
+  const missing = missingOf(p.cost);
+  return { missing, riel: rielOf(missing) + boughtRiel(id) };
+}
+
+/** Why he cannot build `id` now (all of it built, not enough riel for what he lacks), or null. */
 function cannot(id: PieceId): string | null {
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) return words(`all|${id}`, () => t('buildAllBuilt', { n: num(p.max) }));
   const riels = env?.purse.riel ?? 0;
-  if (riels < p.price) return t('buildNeed', { riel: riel(p.price - riels) });
+  const pay = toPay(id);
+  if (riels < pay.riel) {
+    const short = riel(pay.riel - riels);
+    return noMaterials(pay.missing) ? t('buildNeed', { riel: short }) : t('buildNeedMat', { what: materialsText(pay.missing), riel: short });
+  }
   if (!roomFor(id)) return words('room', () => t('buildNoRoom'));
   return null;
 }
@@ -402,16 +427,25 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
-  if (!env.purse.pay(p.price)) {
-    ctx.hud.toast(t('buildNoMoney', { riel: riel(p.price - env.purse.riel) }));
+  // (what he lacks paid for first; then what he has taken, from his bag, then his home store)
+  const pay = toPay(id);
+  if (pay.riel > 0 && !env.purse.pay(pay.riel)) {
+    ctx.hud.toast(t('buildNoMoney', { riel: riel(pay.riel - env.purse.riel) }));
     exitPlacing();
     return;
   }
   const piece = BUILD.add(id, spot.x, ctx.world.field.heightAt(spot.x, spot.z), spot.z, spot.yaw);
-  if (!piece) return;
+  if (!piece) {
+    if (pay.riel > 0) env.purse.earn(pay.riel);
+    return;
+  }
+  const used = useMaterials(p.cost);
+  const both: Materials = {};
+  for (const m of MATERIAL_IDS) if ((used.bag[m] ?? 0) + (used.store[m] ?? 0) > 0) both[m] = (used.bag[m] ?? 0) + (used.store[m] ?? 0);
+  const what = materialsText(both);
   env.uiSound('select');
-  ctx.hud.toast(t('buildPaid', { riel: riel(p.price) }));
-  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: paid ${p.price} riel`);
+  ctx.hud.toast(what ? (pay.riel > 0 ? t('buildUsedPaid', { what, riel: riel(pay.riel) }) : t('buildUsed', { what })) : t('buildPaid', { riel: riel(pay.riel) }));
+  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
   BuildWork.start(ctx, piece);
@@ -532,19 +566,35 @@ function openCard(ctx: RoamCtx): void {
     () => {
       const rows: BuildRow[] = PIECE_IDS.map((id) => {
         const p = PIECES[id];
+        const pay = toPay(id);
+        const lacks = !noMaterials(pay.missing);
         return {
           id,
           name: nameOf(id),
           count: `${num(BUILD.count(id))}/${num(p.max)}`,
-          note: t(p.line as WordKey),
-          price: riel(p.price),
+          // (what he lacks and its price, else the piece's own line)
+          note: lacks ? t('buildMissing', { what: materialsText(pay.missing), riel: riel(rielOf(pay.missing)) }) : t(p.line as WordKey),
+          short: lacks,
+          // (what is always bought, on its own line: the price chip is the missing materials and this)
+          buy: p.bought ? t('buildBought', { what: t(p.bought), riel: riel(boughtRiel(id)) }) : null,
+          cost: MATERIAL_IDS.filter((m) => (p.cost[m] ?? 0) > 0).map((m) => ({ m, n: p.cost[m]!, have: Math.min(p.cost[m]!, haveOf(m)) })),
+          price: pay.riel > 0 ? riel(pay.riel) : '',
           off: cannot(id),
         };
       });
       const used = Math.min(1, plotBlocks() / PLOT_BUDGET);
       const pct = Math.round(used * 100);
       const meter = { label: t('buildMeter'), value: t('buildMeterPct', { pct: num(pct) }), used };
-      return { title: t('buildCardTitle'), note: t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) }), cancel: t('buildCardCancel'), rows, meter };
+      const have: Materials = {};
+      for (const m of MATERIAL_IDS) if (haveOf(m) > 0) have[m] = haveOf(m);
+      const mats = materialsText(have);
+      return {
+        title: t('buildCardTitle'),
+        note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
+        cancel: t('buildCardCancel'),
+        rows,
+        meter,
+      };
     },
     (id) => {
       if (!id || BuildWork.active || cannot(id)) return;
@@ -673,6 +723,23 @@ function placeFull(world = env?.world): number {
   return n;
 }
 
+/**
+ * `lamps=<n>` (a check of the placed lights, sky/placedLights.ts): n lantern posts standing before the house, past the
+ * 8 a player may have, in rows 3.5 m apart (from 8 m before it, 8.75 m either side of its middle), each where it fits
+ * (for 20 today: x 419‥433, z −115‥−129).
+ */
+function placeLamps(world: AddonEnv['world'], n: number): number {
+  let k = 0;
+  for (let lz = 8; lz < 46 && k < n; lz += 3.5)
+    for (let lx = -8.75; lx <= 8.75 && k < n; lx += 3.5) {
+      const [x, z] = homeToWorld(lx, lz);
+      if (canBuild(world, 'lamp', x, z, HOME_AT.facing)) continue;
+      if (BUILD.add('lamp', x, world.field.heightAt(x, z), z, HOME_AT.facing, 1, undefined, true)) k++;
+    }
+  if (k < n) console.warn(`[build] lamps=${n}: room for ${k}`);
+  return k;
+}
+
 /** A piece of `id` before him (a check's), as far built as `done`: the one under way, else a new one where it fits. */
 function pieceBefore(ctx: RoamCtx, id: PieceId, done: number): Built | null {
   const was = BUILD.list.find((q) => q.id === id && q.done < 1);
@@ -722,6 +789,9 @@ registerAddon({
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
+    // (and as his materials change: AWP-9)
+    BAG.onChange(() => card?.refresh());
+    STORE.onChange(() => card?.refresh());
     wireHold();
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
@@ -729,6 +799,8 @@ registerAddon({
     // (a check's blocks on his land from elsewhere, as a block layer's would be: the budget's meter and its "no room")
     const extra = Number(e.params.get('plotblocks'));
     if ((e.shot || import.meta.env.DEV) && extra > 0) addPlotBlocks('check', () => extra);
+    const nLamps = Number(e.params.get('lamps'));
+    if (nLamps > 0 && (e.shot || import.meta.env.DEV)) placeLamps(e.world, Math.min(64, Math.floor(nLamps)));
     BuildUses.sync();
     // (the pieces drawn before the first frame: the hammock add-on reads its cloth from them)
     view.sync();
@@ -747,6 +819,7 @@ registerAddon({
             pressing: pressing ? { uid: pressing.piece.uid, t: +pressing.t.toFixed(2) } : null,
             riel: env?.purse.riel ?? 0,
             plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0 },
+            materials: { bag: BAG.all(), store: STORE.all() },
             owned: HOME.owned,
             view: view?.stats() ?? null,
             uses: BuildUses.state(),
@@ -875,6 +948,9 @@ registerAddon({
   },
   fromUrl(q, ctx) {
     lastCtx = ctx;
+    // (every value here is a check's: shots and the dev server only, never the live site, where a link would build
+    // pieces into a player's save or open build mode: REVIEW.md "Lessons")
+    if (!(env?.shot || import.meta.env.DEV)) return;
     if (q.get('build') === 'all' && !BUILD.list.length) placeAll(ctx.world);
     const g = q.get('buildghost');
     if (g) {

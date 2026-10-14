@@ -142,8 +142,8 @@ export const PLOT_BUDGET = 10_000;
 /**
  * What uses the budget, summed: each source counts its blocks on his land. The
  * build add-on adds its pieces (`pieces`: each piece's model's real block count,
- * standing or under way); a block layer adds its own with one line,
- * `addPlotBlocks('blocks', () => BLOCKS.countIn(PLOT_BOX…))`.
+ * standing or under way) and the block layer's (`blocks`: blocks/store.ts
+ * `BLOCKS.countIn` over his land's box, every height: AWP-16).
  */
 const SOURCES = new Map<string, () => number>();
 

@@ -195,9 +195,12 @@ export const BUILD = {
     listeners.push(fn);
   },
 
-  /** A new piece (paid for): nothing standing yet (`done` 0), or as given (a check's). Null: he has all of its kind. */
-  add(id: PieceId, x: number, y: number, z: number, yaw: number, done = 0, seed?: number): Built | null {
-    if (count(id) >= PIECES[id].max) return null;
+  /**
+   * A new piece (paid for): nothing standing yet (`done` 0), or as given (a check's). Null: he has all of its kind
+   * (`overMax`: a check's own, past the kind's max: `lamps=<n>`; a save keeps only the max).
+   */
+  add(id: PieceId, x: number, y: number, z: number, yaw: number, done = 0, seed?: number, overMax = false): Built | null {
+    if (!overMax && count(id) >= PIECES[id].max) return null;
     let n = 1;
     for (const p of list) if (p.id === id) n = Math.max(n, Number(p.uid.slice(id.length + 1)) + 1 || n);
     const p: Mut = { uid: `${id}-${n}`, id, x, y, z, yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)), done: Math.min(1, Math.max(0, done)), seed: seed ?? seedAt(x, z) };

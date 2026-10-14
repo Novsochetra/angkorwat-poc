@@ -9,6 +9,9 @@ and say plainly what looks wrong. The owner moves a ticket to Done, never an age
 - **A fresh session.** The reviewer is never the agent that did the work. Read
   the ticket in full (`get_ticket`): the description, the acceptance list, the
   work report, every comment, and any reference image.
+- **The world map only** (owner rule, 2026-10-14): work and shots are for
+  `index.html` and `src/map/`; `game.html`, `studio.html`, `viewer.html` and the
+  kit level are on hold. Shoot with `index.html?shot=1&…`, never a studio page.
 - **Where it runs.** Visual tickets (anything drawn: models, places, effects,
   menus) run on the Mac, on the GPU. Logic, saving and tracker work can also
   run in a cloud session.
@@ -23,7 +26,9 @@ and say plainly what looks wrong. The owner moves a ticket to Done, never an age
 1. `npm run typecheck`
 2. `npm run build`
 3. `npm run playtest`
-4. `npm run kitcheck`
+4. `npm run kitcheck`: no new problems against the base (run it in the before
+   worktree too; the base already has 3: §17.2 lily pads ×2 over budget and one
+   WebGLProgram VALIDATE_STATUS; `src/kit` is on hold, so only new ones count).
 5. `npm run perf -- levels=low,medium,phone` (add `only=<views>` for the views
    that see the change), before and after (`out=` and `base=`). Compare with the
    budgets in `docs/map-work/BRIEF.md` "Budgets": a phone's overview ≤ 2.6 M
@@ -39,6 +44,8 @@ and say plainly what looks wrong. The owner moves a ticket to Done, never an age
    - graphics `low`, `medium`, and `phone=1` (`touch=1` when it has buttons),
    - Khmer and English words (`lang=en`) when it shows text.
    Look at every picture. Read the console of a shot for errors.
+   Under heavy load `npm run shots` can hit its 180 s ready limit: add `parts=`
+   (only the parts in view) for close-ups, and retry when the machine is quieter.
 8. **Khmer, not Thai** (`CLAUDE.md`): stupas, Buddhas, naga, flags, spirit
    houses, roofs (no Thai gable horns), hats (palm-leaf hat or krama, never a
    conical hat), signs in Khmer script, Khmer words first.
@@ -73,3 +80,7 @@ One line each time a ticket is sent back, so the next worker avoids it.
 
 - Fruit must taper (no plain box fruit).
 - No flat square leaves.
+- URL test values that fill game state (`pblocks=`, `build=`, `bag=` …) are read only in shots and on the dev server (`ctx.shot || import.meta.env.DEV`), never on the live site (AWP-16). That includes an add-on's `fromUrl`: open the
+  built site with `npm run preview` and the shot URL, and check nothing changes or
+  saves (AWP-9).
+- Prices shown on a card add up to what he pays; nothing hidden (AWP-9).

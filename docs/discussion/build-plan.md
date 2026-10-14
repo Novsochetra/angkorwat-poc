@@ -123,8 +123,9 @@ Open ideas, each a ticket now:
   and the report name as `clientId` (a repeat makes no duplicate). The token
   lives in `.env` on the dev machine, not `VITE_`-prefixed (the bug button is
   dev only). If the tracker is unreachable, still save the folder as today.
-  Then update `CLAUDE.md` and `feedback/README.md`: one inbox, and the commit
-  message names the ticket instead of deleting a folder.
+  Then update `CLAUDE.md` and `feedback/README.md`: one inbox (the folder is
+  still saved, its `ticket.json` names the ticket), and the fix's commit names
+  the ticket as it deletes the folder.
 - **Reviewer agent (AWP-29).** Weak at taste, strong at checks. Give it: typecheck,
   build, playtest, kitcheck and perf against the budgets; the Khmer rules from
   `CLAUDE.md`; its own screenshots at several distances, times of day and
