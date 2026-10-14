@@ -120,3 +120,48 @@ export const PLOT_TREES: readonly PlotTree[] = (() => {
   for (const [x, z] of EV_SUGAR_PALMS) if (near(x, z, 1)) out.push({ x, z, trunk: 0.8, cx: x, cz: z, cr: 0, low: 99 });
   return out;
 })();
+
+// ── The block budget (AWP-19) ───────────────────────────────────────────────
+
+/**
+ * Blocks his land may hold, everything he builds on it together, chosen so a
+ * full plot keeps a phone at its frame rate (graphics.ts `PhoneFrameRate`).
+ * Measured (`npm run perf -- only=overview levels=phone,medium url=…&build=full`,
+ * a walk at the plot's north end looking over it, 2026-10-14): every piece at
+ * its most (65 pieces, 6 876 blocks) adds 8 draws and 0.08 M triangles on a
+ * phone (≈ 11.6 a block; 44 on medium), the phone's GPU time the same (4.46 →
+ * 4.41 ms on the M1 Max); the edge 3 draws, ≈ 0.01 M (with it: +11 draws,
+ * +0.09 M on a phone, +0.32 M on medium). Triangles grow with the
+ * blocks (one batch: the draws do not), so 10 000 blocks are ≈ 0.12 M on a
+ * phone, under a new part's 0.15 M (docs/map-work/BRIEF.md "Budgets"), the walk
+ * there ≈ 0.94 M of its 1.5 M. Every piece of today fits (69 %), with ≈ 3 000
+ * blocks to spare for the player's own blocks (AWP-16: ≈ 8 triangles a block).
+ */
+export const PLOT_BUDGET = 10_000;
+
+/**
+ * What uses the budget, summed: each source counts its blocks on his land. The
+ * build add-on adds its pieces (`pieces`: each piece's model's real block count,
+ * standing or under way); a block layer adds its own with one line,
+ * `addPlotBlocks('blocks', () => BLOCKS.countIn(PLOT_BOX…))`.
+ */
+const SOURCES = new Map<string, () => number>();
+
+/** Add (or replace) a source of blocks on his land. */
+export function addPlotBlocks(name: string, count: () => number): void {
+  SOURCES.set(name, count);
+}
+
+/** Blocks on his land now (every source). */
+export function plotBlocks(): number {
+  let n = 0;
+  for (const f of SOURCES.values()) n += f();
+  return n;
+}
+
+/** Each source's blocks (checks, `window.__build.state()`). */
+export function plotBlocksBy(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, f] of SOURCES) out[k] = f();
+  return out;
+}

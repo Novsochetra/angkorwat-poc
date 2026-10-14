@@ -2866,6 +2866,24 @@ sounds `audio/_build.ts`.
   from `hamlet/_evSpots.ts` `EV_MANGOS`, `EV_COCONUTS`, `EV_SUGAR_PALMS`) keep their trunks,
   and a tall piece (the shelter, the pen, the haystack) keeps out from under a crown.
   Build mode ends 8 m past it. Pieces built before AWP-31 past it stay where they are.
+  **Its edge** (`build/plotEdge.ts`, AWP-19) shows on the ground while he builds (build
+  mode, the card): split-bamboo pegs every ≈ 2 m, a coconut-fibre cord along them, the
+  earth under it scraped bare (a narrow brown line), a hardwood boundary post (បង្គោលព្រំ)
+  with a red krama strip at each corner; ≈ 500 blocks of the map's `mapBark`, `mapRock` and
+  `petal` families (3 draws while shown, none hidden); it rises
+  out of the ground and sinks back. **On the maps** (`ui/minimap.ts` `plotLine`), once the
+  house is his: a soft wash, a dark cord and gold dashes round it, on the mini-map and the
+  big map.
+- **The block budget** (`build/plot.ts` `PLOT_BUDGET` 10 000, AWP-19): everything on his
+  land together. "Used" is a sum of sources (`addPlotBlocks(name, count)`, `plotBlocks()`):
+  the add-on's `pieces` (each piece's model's real block count, with its own seed:
+  `pieceLook(id, seed).boxes.length`); a block layer adds one line (`BLOCKS.countIn(…)`).
+  A piece that would pass it is greyed on the card ("ដីរបស់អ្នកនៅសល់កន្លែងមិនគ្រប់ទេ /
+  Not enough room left on your land"). Every piece at its most is 6 876 blocks (69 %).
+  Measured on a full plot (`build=full`, a walk at its north end over it): +8 draws,
+  +0.08 M triangles on a phone (+11, +0.09 M with the edge), its GPU time the same; 10 000 blocks ≈ 0.12 M (a new part's
+  0.15 M). The card's **meter** under his riel: "ដីរបស់អ្នក ▬▬▬ បានប្រើ ៦៩% / Your land
+  ▬▬▬ 69% used" (gold, red-brown from 90 %).
 - **The card**: each piece with its picture, its name, how many he has of how many,
   its line, its price; one he cannot build now greyed with why ("You have all 3",
   "12,000 ៛ more needed"); his riel under the title. Every line reads whole: it wraps (a
@@ -2939,9 +2957,13 @@ sounds `audio/_build.ts`.
   stroke) · `buildtake=<uid>` (the question; `:<0‥1>` taking it down) ·
   `buildsit=<uid>[:lie]` · `buildhint=1`. `report()` gives `build=`, `buildghost=`,
   `buildwork=`. `window.__build` (shots, the dev server): `state()`, `canBuild(id, x, z,
-  deg)`, `add`, `remove`, `card`, `place`, `all`, `rebuild`, `shown(uid)`. Console lines
+  deg)`, `add`, `remove`, `card`, `place`, `all`, `full`, `rebuild`, `shown(uid)`. Console lines
   `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
   `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
+  `build=full` (his land full: every kind to its most where it fits, while the budget lasts) ·
+  `plotblocks=<n>` (n blocks more on his land, as a block layer's: the meter, "no room") ·
+  `plotedge=1` (his land's edge shown without building; `__build.state().plot`: area, budget,
+  used, by source, edge) · e.g. `roam=walk&at=426,-120&yaw=180&home=1&build=all&plotedge=1&cam=427,70,-52,426,0,-128,50` ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 
 ### Sharing his fruit

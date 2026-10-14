@@ -1,7 +1,9 @@
 import { BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
-import { inPlot, pastPlot } from '../build/plot';
+import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
+import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
 import { BUILD, distTo, overlap, toLocal } from '../build/state';
-import { createBuildView, type BuildView } from '../build/view';
+import { createBuildView, pieceLook, type BuildView } from '../build/view';
+import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
@@ -107,6 +109,34 @@ let modeCamLetGo = false;
 /** Seconds left of the camera's first move into build mode. */
 let modeCamOpen = 0;
 let touchBar: HTMLElement | null = null;
+/** His land's edge on the ground (while he builds). */
+let edge: PlotEdge | null = null;
+/** A check's `plotedge=1`: shown without building. */
+let edgeHeld = false;
+
+// ── The budget (build/plot.ts `PLOT_BUDGET`) ────────────────────────────────
+
+/** A kind's blocks as the ghost shows it (its seed: _buildGhost.ts), made once a kind. */
+const kindBlocks = new Map<PieceId, number>();
+function blocksOf(id: PieceId): number {
+  let n = kindBlocks.get(id);
+  if (n === undefined) kindBlocks.set(id, (n = pieceLook(id, 0.37).boxes.length));
+  return n;
+}
+/** The pieces' blocks (each its own model's, with its own seed), counted again when the list changes. */
+let piecesAt = -1;
+let piecesN = 0;
+function piecesBlocks(): number {
+  if (piecesAt !== BUILT.version) {
+    piecesAt = BUILT.version;
+    piecesN = 0;
+    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed).boxes.length;
+  }
+  return piecesN;
+}
+addPlotBlocks('pieces', piecesBlocks);
+/** Room on his land for one more `id` (the budget)? A little over the line rounds the way the meter shows. */
+const roomFor = (id: PieceId): boolean => plotBlocks() + blocksOf(id) <= PLOT_BUDGET;
 
 // ── Words (made once a language and value: no string is made a frame) ──────────
 
@@ -305,6 +335,7 @@ function cannot(id: PieceId): string | null {
   if (BUILD.count(id) >= p.max) return words(`all|${id}`, () => t('buildAllBuilt', { n: num(p.max) }));
   const riels = env?.purse.riel ?? 0;
   if (riels < p.price) return t('buildNeed', { riel: riel(p.price - riels) });
+  if (!roomFor(id)) return words('room', () => t('buildNoRoom'));
   return null;
 }
 
@@ -336,6 +367,11 @@ function buildHere(ctx: RoamCtx): void {
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) {
     ctx.hud.toast(t('buildNoMore', { name: pieceWord({ id }) }));
+    exitPlacing();
+    return;
+  }
+  if (!roomFor(id)) {
+    ctx.hud.toast(t('buildNoRoom'));
     exitPlacing();
     return;
   }
@@ -478,7 +514,10 @@ function openCard(ctx: RoamCtx): void {
           off: cannot(id),
         };
       });
-      return { title: t('buildCardTitle'), note: t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) }), cancel: t('buildCardCancel'), rows };
+      const used = Math.min(1, plotBlocks() / PLOT_BUDGET);
+      const pct = Math.round(used * 100);
+      const meter = { label: t('buildMeter'), value: t('buildMeterPct', { pct: num(pct) }), used };
+      return { title: t('buildCardTitle'), note: t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) }), cancel: t('buildCardCancel'), rows, meter };
     },
     (id) => {
       if (!id || BuildWork.active || cannot(id)) return;
@@ -576,6 +615,37 @@ function placeAll(world = env?.world): number {
   return n;
 }
 
+/**
+ * His land full (`build=full`, perf and the budget's checks): every kind up to its most, where each fits, scanning his
+ * land row by row from the north (each kind going on from where it stopped), while the budget lasts.
+ */
+function placeFull(world = env?.world): number {
+  if (!world) return 0;
+  let n = 0;
+  const order: PieceId[] = ['pen', 'shelter', 'haystack', 'hammock', 'kre', 'spirit', 'jar', 'lamp', 'fence'];
+  const yaw = HOME_AT.facing;
+  for (const id of order) {
+    const p = PIECES[id];
+    // (a fence's run along a row: one after the other, touching)
+    const sx = id === 'fence' ? p.w : 1.5;
+    let x = PLOT_BOX.x0 + 0.6;
+    let z = PLOT_BOX.z0 + 0.6;
+    while (BUILD.count(id) < p.max && roomFor(id) && z < PLOT_BOX.z1) {
+      if (!canBuild(world, id, x, z, yaw)) {
+        BUILD.add(id, x, world.field.heightAt(x, z), z, yaw, 1);
+        n++;
+      }
+      x += sx;
+      if (x > PLOT_BOX.x1) {
+        x = PLOT_BOX.x0 + 0.6;
+        z += 1.5;
+      }
+    }
+  }
+  console.info(`[build] build=full: ${n} pieces, ${plotBlocks()} of ${PLOT_BUDGET} blocks on his land`);
+  return n;
+}
+
 /** A piece of `id` before him (a check's), as far built as `done`: the one under way, else a new one where it fits. */
 function pieceBefore(ctx: RoamCtx, id: PieceId, done: number): Built | null {
   const was = BUILD.list.find((q) => q.id === id && q.done < 1);
@@ -609,7 +679,7 @@ registerAddon({
     const q = e.params.get('build');
     if ((e.shot || import.meta.env.DEV) && q !== null) {
       BUILD.clear();
-      if (q !== '0' && q !== 'all') BUILD.fromUrl(q, (x, z) => e.world.field.heightAt(x, z));
+      if (q !== '0' && q !== 'all' && q !== 'full') BUILD.fromUrl(q, (x, z) => e.world.field.heightAt(x, z));
     }
     view = createBuildView(e.shot);
     e.scene.add(view.object);
@@ -620,12 +690,18 @@ registerAddon({
       if (ev.type !== 'progress') BuildUses.sync();
     });
     ghost = new BuildGhost(e.scene, e.world);
+    edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
+    e.scene.add(edge.object);
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
     wireHold();
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
+    if (q === 'full' && (e.shot || import.meta.env.DEV)) placeFull(e.world);
+    // (a check's blocks on his land from elsewhere, as a block layer's would be: the budget's meter and its "no room")
+    const extra = Number(e.params.get('plotblocks'));
+    if ((e.shot || import.meta.env.DEV) && extra > 0) addPlotBlocks('check', () => extra);
     BuildUses.sync();
     // (the pieces drawn before the first frame: the hammock add-on reads its cloth from them)
     view.sync();
@@ -643,6 +719,7 @@ registerAddon({
             ask: !!ask?.open,
             pressing: pressing ? { uid: pressing.piece.uid, t: +pressing.t.toFixed(2) } : null,
             riel: env?.purse.riel ?? 0,
+            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0 },
             owned: HOME.owned,
             view: view?.stats() ?? null,
             uses: BuildUses.state(),
@@ -657,6 +734,7 @@ registerAddon({
           card: () => lastCtx && openCard(lastCtx),
           place: (id: PieceId | null) => (id ? enterPlacing(id) : exitPlacing()),
           all: () => placeAll(),
+          full: () => placeFull(),
           rebuild: () => view?.rebuild(),
           shown: (uid: string) => view?.shownOf(uid) ?? -1,
         },
@@ -754,6 +832,9 @@ registerAddon({
   frame(f: MapFrame, _m: RoamMode) {
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
+    // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
+    edge?.show(!!placing || !!card?.open || edgeHeld);
+    edge?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
     BUILD.tick(f.dt > 0 ? f.dt : 0);
   },
@@ -812,6 +893,7 @@ registerAddon({
       } else console.warn(`[build] buildsit=: no piece "${uid}"`);
     }
     if (q.get('buildcard')) openCard(ctx);
+    if (q.get('plotedge') === '1') edgeHeld = true;
   },
   report() {
     const out: Record<string, string> = {};
