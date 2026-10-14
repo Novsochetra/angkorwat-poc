@@ -188,7 +188,8 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   into the columns whose middles it covers, and a long, thin one (a plank
   wall, a rail) also into every column along its middle line, so walls
   turned off the grid have no holes (`thinwalk=0` leaves that out, to
-  compare). He is 0.42 m round (the probes of `walker.ts`): a stair he
+  compare). The player's blocks it reads from their store, a chunk built
+  again where they change ("The player's blocks"). He is 0.42 m round (the probes of `walker.ts`): a stair he
   climbs needs about 1.8 m between its handrails (the village, hamlet and
   east village stairs are that wide), a lantern or a beam over a stair's
   head closer than 2.26 m over the floor stops him — so does a handrail's
@@ -2380,8 +2381,43 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   the cut edges are under a pixel, hidden once a metre is under 0.9 px (the
   build view's rule, build/view.ts). Shadows cast and received, still; the
   still map asked again after a rebuild (at most once a second while blocks
-  keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
-  read the store (AWP-17).
+  keep changing). The walk map reads the store, not the meshes (the part is
+  in `SKIP_PARTS`): below.
+- **In the walk map** (`blocks/walk.ts`; roam/walkmap.ts `WalkBlocks`,
+  AWP-17): the feet's and the camera's walk maps (`walk`, `hard`; not `soft`:
+  blocks are not seen through) read the store when they build a 16 m chunk: a
+  run of solid cells up a column is one span (a slab's top a quarter metre
+  over its cell's bottom). A change (`watchBlocks`: `BlockChange.changed`)
+  drops those chunks (`WalkMap.changed(cx, cz)`), and each is built again the
+  next time something asks about it (his feet, the camera, the dog, his
+  cattle); a chunk with blocks keeps its meshes' columns (`columnsOf`), so only
+  the blocks are laid in again. On the feet's map a block's top more than
+  0.35 m (`BLOCK_STEP_M`) over the feet is a wall to them unless they stand on
+  it already: a slab (0.25 m) is a stair's rise, a full block (0.5 m) he jumps
+  onto (Space), and a floor 2 m up on posts he walks under instead of hopping
+  onto it. The walker's own rules hold over them (stairs, thin walls,
+  `PERCH`, `AHEAD`). A block built where he stands puts him out beside it at
+  his own level within a quarter second (walker.ts `freeSpot`: a cube in his
+  cell 1 m, a 3 × 3 pillar 1.5 m, a low roof 2 m, a 9 × 9 × 9 box 3 m); a
+  slab under him lifts him 0.25 m. The follow camera stops at built walls
+  or rises over them (its `hard` map). Timber and bamboo tops sound of wood
+  (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
+  fauna/_landPlaces.ts) are made once and do not read the blocks. With no
+  blocks every answer is as before (601,205 points × 5 questions and 12,000
+  clearances over the roaming area: the same). Cost (M1 Max, heavily loaded;
+  a change rebuilds the chunk in both maps, walk and hard, each ≈ the same):
+  a chunk of the full plot (3,665 blocks) 0.3 ms a map (the CPU 4 × slower
+  1.1–1.3, 6 × 1.6–2.0); the map's busiest chunk (3,684 map blocks) 1.2 ms
+  the first time it gets blocks (its columns are kept then), 0.3 ms after
+  (4 × 0.6, 6 × 1.0); a chunk filled 32 × 8 × 32 (8,192 blocks) 0.3 ms
+  (4 × 1.5, 6 × 2.4). Nothing a frame while nothing changes.
+  `pblocks=walk` is a test course on the flat meadow west of his stilt house
+  (x 418‥426, z −172‥−163: a slab stair up to a 2 m floor, a 2.5 m brick wall,
+  a one-block low wall), e.g. `roam=walk&at=415.5,-168&yaw=90&sim=w:1.5` (up
+  the stair), `at=420.25,-160&yaw=180&sim=w:2` (stopped by the wall),
+  `at=420.25,-175&yaw=0&sim=w:1.2` (stopped by the low wall; `sim=w:0.4,wj:1`
+  over it). Checks: `__blocks.walk` (the two maps: `stats.rebuilds`,
+  `rebuildMs`, `rebuildMax`, `built(cx, cz)`).
 - **Edge joints**: two blocks that meet only along an edge (a roof stepping in
   a block a row) keep that edge square (`mesh.ts` `diagonalJoints`, the joint
   bits of `voxOpen`): cut on both it was a slit the sky showed through. Where

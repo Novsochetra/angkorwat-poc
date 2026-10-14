@@ -280,7 +280,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   chunks on the walk map's grid, change events, `forEach` / `rawOf` for saving;
   materials and shapes `kinds.ts`; a mesh per chunk and family drawing only what
   can be seen, `view.ts`; saved as a run-length list in progress.ts `blocks.plot`,
-  `save.ts`); BRIEF.md "The player's blocks". Shots: `pblocks=demo|full`.
+  `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
+  stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
+  blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
 
 ## Things to do while roaming (add-ons)
 

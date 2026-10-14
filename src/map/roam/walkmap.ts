@@ -30,6 +30,17 @@ import type { MapPart } from '../types';
  * Cheap to make: the blocks are only sorted into 16 m chunks up front; a
  * chunk's columns are built the first time something asks about it.
  *
+ * The player's blocks (map/blocks/: they change while he plays) are not
+ * read from their meshes but from their store (`WalkBlocks`, blocks/walk.ts),
+ * on the same grid (`WALK_GRID`: a block is a column, a store chunk a chunk):
+ * a change has the chunks it touched built again (`changed`) at the next
+ * question about them (only the blocks are laid in again: the meshes'
+ * columns of a chunk with blocks are kept). On the feet's map
+ * (`WalkOwn.step`) a block's top more than a step over the feet (a full
+ * block, 0.5 m; a slab, 0.25 m, is a stair's rise) is a wall to them unless
+ * they are on it already: he jumps up onto it (Space), as onto a build
+ * piece (_buildWalk.ts).
+ *
  * Made `later` (roam/world.ts), the map only notes its meshes as they are
  * now (their block counts and places: a part may draw fewer of its blocks
  * later, terrain/seen.ts), and sorts their blocks in slices (`step`, in
@@ -67,6 +78,23 @@ const SEE_THROUGH = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', '
 
 /** What a walk map holds: see `WalkMap`. */
 export type WalkMapKind = 'walk' | 'hard' | 'soft';
+
+/**
+ * Solid spans that change while he plays, read when a chunk is built (the
+ * player's blocks: blocks/walk.ts `walkBlocks`): for chunk (a, b), each
+ * column's spans (column `i + k · 32` in the chunk, bottom and top in m),
+ * bottom to top in each column. After a change, `WalkMap.changed(a, b)`.
+ */
+export interface WalkBlocks {
+  spans(a: number, b: number, put: (column: number, y0: number, y1: number) => void): void;
+}
+
+/** A walk map's own solids (the player's blocks) and how they are walked. */
+export interface WalkOwn {
+  blocks: WalkBlocks;
+  /** The feet's map: a top of these more than this over the feet (m) is a wall to them, unless they are on it already. */
+  step?: number;
+}
 /** Parts with nothing to stand on (or that move); the player's blocks change while he plays: read from their store, not their meshes (map/blocks/store.ts `BLOCKS`). */
 const SKIP_PARTS = new Set(['atmosphere', 'water', 'undergrowth', 'clouds', 'rain', 'rainbow', 'life', 'people', 'jungleFauna', 'paddies', 'festival', 'treasure', 'roam', 'blocks']);
 
@@ -83,6 +111,8 @@ interface Chunk {
    * none (and most chunks: null).
    */
   spans: (Float32Array | undefined)[] | null;
+  /** The player's blocks in the chunk, by column: column c's spans' tops are `top[start[c] … start[c + 1]]` (null: none). */
+  own: { start: Int32Array; top: Float32Array } | null;
 }
 
 interface Source {
@@ -128,8 +158,11 @@ interface Foot {
 const _m = new Matrix4();
 
 export class WalkMap {
-  /** Time spent making the chunk index (ms), the blocks it holds, the chunks built so far and the meshes read. */
-  readonly stats = { ms: 0, blocks: 0, chunks: 0, sources: 0 };
+  /**
+   * Time spent making the chunk index (ms), the blocks it holds, the chunks built so far and the meshes read; chunks
+   * built again after a change of the player's blocks (`changed`), the last one's time and the longest (ms).
+   */
+  readonly stats = { ms: 0, blocks: 0, chunks: 0, sources: 0, rebuilds: 0, rebuildMs: 0, rebuildMax: 0 };
   private readonly x0 = BOUNDS.x0;
   private readonly z0 = BOUNDS.z0;
   private readonly ci: number;
@@ -143,6 +176,11 @@ export class WalkMap {
   /** The blocks still to sort into chunks (null: ready). */
   private job: Job | null;
   private work = 0;
+  /** Chunks dropped by `changed`: built again when next asked (timed as rebuilds). */
+  private readonly stale = new Set<number>();
+  /** Chunks with the player's blocks: their meshes' columns, kept (`columnsOf`: a rebuild only lays them in again). */
+  private readonly meshAdds = new Map<number, Float64Array>();
+  private readonly step_: number;
 
   /**
    * `later`: only note the meshes now; their blocks are sorted by `step`
@@ -153,8 +191,10 @@ export class WalkMap {
     parts: readonly MapPart[],
     kind: WalkMapKind = 'walk',
     later = false,
+    private readonly own: WalkOwn | null = null,
   ) {
     const t0 = performance.now();
+    this.step_ = own?.step ?? Infinity;
     const size = CN * RES;
     this.ci = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / size);
     this.ck = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / size);
@@ -257,6 +297,20 @@ export class WalkMap {
     this.step(Infinity);
   }
 
+  /** The player's blocks changed in chunk (a, b) (store chunk cx, cz): it is built again when next asked about. */
+  changed(a: number, b: number): void {
+    if (a < 0 || b < 0 || a >= this.ci || b >= this.ck) return;
+    const id = a + b * this.ci;
+    if (!this.chunks[id]) return;
+    this.chunks[id] = undefined;
+    this.stale.add(id);
+  }
+
+  /** Is chunk (a, b) built now (checks)? */
+  built(a: number, b: number): boolean {
+    return a >= 0 && b >= 0 && a < this.ci && b < this.ck && !!this.chunks[a + b * this.ci];
+  }
+
   // ── Queries ────────────────────────────────────────────────────────────────
 
   /** Highest solid top at (x, z) (m). */
@@ -280,7 +334,7 @@ export class WalkMap {
     const s = this.at!.spans?.[c];
     if (!s) {
       const g = this.at!.top[c];
-      return g > reach ? NaN : g;
+      return g > reach || this.steep(c, g, y) ? NaN : g;
     }
     let k = 0;
     for (let j = s.length - 2; j >= 1; j -= 2)
@@ -289,9 +343,18 @@ export class WalkMap {
         break;
       }
     const top = s[k];
-    if (top > reach) return NaN;
+    if (top > reach || this.steep(c, top, y)) return NaN;
     const next = k + 1 < s.length ? s[k + 1] : Infinity;
     return next - top < height ? NaN : top;
+  }
+
+  /** Is `top` at column `c` (of `at`) a player's block's top, more than a step over feet at `y` that are not on it? */
+  private steep(c: number, top: number, y: number): boolean {
+    if (top <= y + this.step_ || y >= top - 0.06) return false;
+    const o = this.at!.own;
+    if (!o) return false;
+    for (let j = o.start[c]; j < o.start[c + 1]; j++) if (Math.abs(o.top[j] - top) < 1e-3) return true;
+    return false;
   }
 
   /** Bottom of the first solid above height `y` at (x, z), or Infinity. */
@@ -348,7 +411,7 @@ export class WalkMap {
     const b = Math.floor(k / CN);
     if (a < 0 || b < 0 || a >= this.ci || b >= this.ck) return -1;
     const id = a + b * this.ci;
-    this.at = this.chunks[id] ?? (this.chunks[id] = this.build(a, b));
+    this.at = this.chunks[id] ?? (this.chunks[id] = this.stale.has(id) ? this.rebuild(id, a, b) : this.build(a, b));
     return i - a * CN + (k - b * CN) * CN;
   }
 
@@ -364,14 +427,32 @@ export class WalkMap {
     for (let k = 0; k < CN; k++) for (let i = 0; i < CN; i++) hi[i + k * CN] = this.field.heightAt(cx0 + (i + 0.5) * RES, cz0 + (k + 0.5) * RES);
 
     const id = a + b * this.ci;
-    const from = this.start[id];
-    const count = this.start[id + 1] - from;
-    const feet: Foot[] = [];
-    for (let j = 0; j < count; j++) {
-      const item = this.items[from + j];
-      feet.push({ ...this.footOf(item >>> INST_BITS, item & INST_MASK) });
+    // The player's blocks in it: their spans, grouped by column, each column's bottom to top (the order `spans`
+    // gives them in a column): column c's are `y0s / y1s[start[c] … start[c + 1]]`.
+    let own: Chunk['own'] = null;
+    const got: number[] = [];
+    this.own?.blocks.spans(a, b, (col, y0, y1) => {
+      if (col >= 0 && col < n && y1 > y0) got.push(col, y0, y1);
+    });
+    const m = got.length / 3;
+    const start = new Int32Array(n + 1);
+    const y0s = new Float64Array(m);
+    const y1s = new Float64Array(m);
+    if (m) {
+      for (let j = 0; j < got.length; j += 3) start[got[j] + 1]++;
+      for (let c = 0; c < n; c++) start[c + 1] += start[c];
+      const fill = start.slice(0, n);
+      for (let j = 0; j < got.length; j += 3) {
+        const at = fill[got[j]]++;
+        y0s[at] = got[j + 1];
+        y1s[at] = got[j + 2];
+      }
+      own = { start, top: Float32Array.from(y1s) };
     }
-    feet.sort((p, q) => p.y0 - q.y0);
+    // The meshes' blocks: what each puts in which column, lowest first (they never change: kept for a chunk with
+    // the player's blocks, which is made again at each change of them).
+    const meshes = this.meshAdds.get(id) ?? this.columnsOf(id, cx0, cz0);
+    if (m) this.meshAdds.set(id, meshes);
 
     const add = (c: number, y0: number, y1: number) => {
       if (y0 <= hi[c] + SEAM) {
@@ -382,6 +463,45 @@ export class WalkMap {
         hi[c] = y1;
       }
     };
+    // (in each column, the player's spans and the meshes' blocks lowest first: a player's span before a mesh block
+    // as low; then the player's spans left over)
+    const next = m ? start.slice(0, n) : start;
+    for (let q = 0; q < meshes.length; q += 3) {
+      const y0 = meshes[q];
+      const c = meshes[q + 2];
+      if (m) for (const e = start[c + 1]; next[c] < e && y0s[next[c]] <= y0; next[c]++) add(c, y0s[next[c]], y1s[next[c]]);
+      add(c, y0, meshes[q + 1]);
+    }
+    if (m) for (let c = 0; c < n; c++) for (const e = start[c + 1]; next[c] < e; next[c]++) add(c, y0s[next[c]], y1s[next[c]]);
+
+    let spans: (Float32Array | undefined)[] | null = null;
+    for (let c = 0; c < n; c++) {
+      const d = below[c];
+      if (!d) continue;
+      spans ??= new Array(n);
+      // [ground top, (bottom, top)…]: the first finished span is the ground one (its bottom is −∞).
+      const s = new Float32Array(d.length + 1);
+      for (let j = 1; j < d.length; j++) s[j - 1] = d[j];
+      s[d.length - 1] = lo[c];
+      s[d.length] = hi[c];
+      spans[c] = s;
+    }
+    this.stats.chunks++;
+    return { top: hi, spans, own };
+  }
+
+  /** The meshes' blocks of chunk `id` (its corner cx0, cz0) as the columns each takes: [bottom, top, column]…, lowest first. */
+  private columnsOf(id: number, cx0: number, cz0: number): Float64Array {
+    const from = this.start[id];
+    const count = this.start[id + 1] - from;
+    const feet: Foot[] = [];
+    for (let j = 0; j < count; j++) {
+      const item = this.items[from + j];
+      feet.push({ ...this.footOf(item >>> INST_BITS, item & INST_MASK) });
+    }
+    feet.sort((p, q) => p.y0 - q.y0);
+    const out: number[] = [];
+    const add = (c: number, y0: number, y1: number) => out.push(y0, y1, c);
     for (const f of feet) {
       // Columns whose centre is on the block (a block smaller than a column: the one under its centre).
       const i0 = Math.max(0, Math.floor((f.x - f.hx - cx0) / RES));
@@ -422,21 +542,19 @@ export class WalkMap {
         if (i >= 0 && k >= 0 && i < CN && k < CN) add(i + k * CN, f.y0, f.y1);
       }
     }
+    return Float64Array.from(out);
+  }
 
-    let spans: (Float32Array | undefined)[] | null = null;
-    for (let c = 0; c < n; c++) {
-      const d = below[c];
-      if (!d) continue;
-      spans ??= new Array(n);
-      // [ground top, (bottom, top)…]: the first finished span is the ground one (its bottom is −∞).
-      const s = new Float32Array(d.length + 1);
-      for (let j = 1; j < d.length; j++) s[j - 1] = d[j];
-      s[d.length - 1] = lo[c];
-      s[d.length] = hi[c];
-      spans[c] = s;
-    }
-    this.stats.chunks++;
-    return { top: hi, spans };
+  /** Chunk `id` (a, b) again after a change (timed). */
+  private rebuild(id: number, a: number, b: number): Chunk {
+    const t0 = performance.now();
+    const chunk = this.build(a, b);
+    this.stale.delete(id);
+    const ms = performance.now() - t0;
+    this.stats.rebuilds++;
+    this.stats.rebuildMs = ms;
+    this.stats.rebuildMax = Math.max(this.stats.rebuildMax, ms);
+    return chunk;
   }
 
   /** Footprint, bottom and top of block `i` of source `s` (a shared object: copy to keep). */

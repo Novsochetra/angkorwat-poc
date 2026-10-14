@@ -1,6 +1,7 @@
 import type { MapContext } from '../types';
 import { fillDemo } from './demo';
 import { decodeBlocks, encodeBlocks, startBlockSave } from './save';
+import { WATCHED } from './walk';
 import { BLOCKS, blockOf, rawOf } from './store';
 import { buildBlocksView, type BlocksPart } from './view';
 
@@ -12,7 +13,8 @@ import { buildBlocksView, type BlocksPart } from './view';
  * `pblocks=demo|full[@x,z]` fills it with a test build (demo.ts; then the
  * saved build is neither read nor written), and `window.__blocks` (`store`,
  * `stats()`, `bench(runs)`, `flush()`, `rawOf`, `blockOf`, `save`: its
- * `status`, `flush()`, `encode()`, `decode(value)`) is there for checks.
+ * `status`, `flush()`, `encode()`, `decode(value)`; `walk`: the walk maps
+ * that read the blocks, walk.ts) is there for checks.
  *
  * The build is kept between visits (save.ts: read here, before the view is
  * made, then written after each change; shots and `progress=0` keep nothing).
@@ -37,6 +39,8 @@ export function buildBlocks(ctx: MapContext): BlocksPart {
       rawOf,
       blockOf,
       save: { status: save.status, flush: save.flush, encode: encodeBlocks, decode: decodeBlocks },
+      // (the walk maps that read the blocks, once roaming is built: [walk, hard], roam/world.ts)
+      walk: WATCHED,
     };
   return part;
 }
