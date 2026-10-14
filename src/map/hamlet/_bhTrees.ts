@@ -2,6 +2,7 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
 import { Palms, type PalmSet } from '../veg/palms';
+import { fan, log, mix, round, teardrop, type P3 } from '../veg/plantKit';
 import type { Proto } from '../veg/proto';
 import { bamboo, broadleaf } from '../veg/species';
 import { banana, bougainvillea, Local } from '../village/_kit';
@@ -134,7 +135,7 @@ function stamp(env: BuildEnv, f: HeightField, p: Proto, x: number, y: number, z:
   }
 }
 
-/** Mangoes hanging on short stalks under the crown's rim: green, turning yellow and orange. */
+/** Mangoes hanging on their stalks under the crown's rim: green, turning yellow, the ripe ones orange with a red blush (the plant kit's teardrop). */
 function mangoes(L: Local, p: Proto, x: number, y: number, z: number, seed: number): void {
   const colors = [0x9ab43a, 0xc8b440, 0xe0a030, 0xb8c048];
   for (let k = 0; k < 12; k++) {
@@ -143,33 +144,55 @@ function mangoes(L: Local, p: Proto, x: number, y: number, z: number, seed: numb
     const fy = y + p.low - 0.25 - hash3(k, seed, 3, 94) * 0.5;
     const fx = x + Math.cos(a) * d;
     const fz = z + Math.sin(a) * d;
-    L.box(fx, fy + 0.2, fz, 0.03, 0.3, 0.03, 0x4e6a2a, 'mapLeaf');
-    L.box(fx, fy, fz, 0.16, 0.22, 0.14, colors[k % colors.length], 'petal');
+    const c = colors[k % colors.length];
+    // (a Khmer mango, ≈ 16 cm: its stalk from the crown, the fruit hanging under it, turned its own way)
+    teardrop(L.b, [fx, fy + 0.09, fz], { len: 0.17, wid: 0.11, depth: 0.85, curve: 0.3, taper: 0.5, roll: hash3(k, seed, 4, 94) * Math.PI * 2, color: c, blush: c === 0xe0a030 ? 0xd8603a : undefined, stalk: 0.24, stalkColor: 0x4e6a2a, src: L.src });
   }
 }
 
-/** Jackfruit: big knobbly green fruit hanging from the trunk and the low branches. */
+/** Jackfruit: big knobbly green fruit hanging on short thick stalks from the trunk and the low branches (the plant kit's round, tall). */
 function jackfruit(L: Local, x: number, y: number, z: number, seed: number): void {
   for (let k = 0; k < 7; k++) {
     const a = (k / 7) * Math.PI * 2 + hash3(k, seed, 4, 95);
     const h = 1.6 + hash3(k, seed, 5, 95) * 2.6;
     const r = 0.55 + (h > 3 ? 0.4 : 0);
     const c = [0x98a848, 0xa8b050, 0x8a9a40][k % 3];
-    L.box(x + Math.cos(a) * r, y + h, z + Math.sin(a) * r, 0.34, 0.52, 0.34, c, 'mapLeaf', 0.95 + 0.1 * hash3(k, seed, 6, 95));
+    const shade = 0.95 + 0.1 * hash3(k, seed, 6, 95);
+    // (hung from just over its old middle: the fruit as long as it was, 0.5 m, on a stalk of 8 cm)
+    round(L.b, [x + Math.cos(a) * r, y + h + 0.26 + 0.08, z + Math.sin(a) * r], { wid: 0.36, hgt: 0.52, hang: 0.08, color: c, rib: mix(c, 0x6a7a2e, 0.3), cap: mix(c, 0x6a7a2e, 0.15), stalk: 0x6a6a3a, ry: a, shade, src: L.src });
   }
 }
 
-/** A papaya: a thin grey trunk, a crown of big leaves on long stalks, green fruit clustered under it. */
+/** Papaya leaves (the garden's: garden/models/papaya.ts), their pale hollow stalks; the trunk grey, greener near the crown; fruit green, the lowest ripening. */
+const PAPAYA_LEAF = [0x4e8a30, 0x5a9a38, 0x62a03e];
+const PAPAYA_STALK = 0x9cb85a;
+
+/**
+ * A papaya: a slim grey trunk, a crown of hand-shaped leaves on long stalks (the young ones up, the old ones out and
+ * down), the fruit clustered on the trunk under it (the plant kit's fan and teardrop).
+ */
 function papaya(L: Local, x: number, y: number, z: number, i: number): void {
   const h = 4.2 + i * 0.6;
-  L.box(x, y + h / 2, z, 0.22, h, 0.22, 0x8a8478, 'mapBark');
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2 + i;
-    L.box(x + Math.cos(a) * 0.7, y + h + 0.15 + (k % 2) * 0.15, z + Math.sin(a) * 0.7, 0.9, 0.12, 0.9, [0x4e8a30, 0x5a9a38, 0x6aa840][k % 3], 'mapLeaf');
+  const b = L.b;
+  const src = L.src;
+  log(b, [x, y - 0.1, z], [x, y + h * 0.55, z], 0.24, 0x8a8478, 'mapBark', 1, src);
+  log(b, [x, y + h * 0.5, z], [x, y + h, z], 0.19, 0x8e9070, 'mapBark', 1, src);
+  const n = 9;
+  for (let k = 0; k < n; k++) {
+    const u = k / (n - 1);
+    const az = k * 2.4 + i + (L.r(k, i, 71) - 0.5) * 0.4;
+    const top: P3 = [x, y + h - 0.04 * k, z];
+    fan(b, top, { az, el: 0.95 - 1.15 * u, stalk: 0.6 + 0.2 * L.r(k, 72), lobes: 7, spread: 3.2, len: 0.55, wid: 0.22, segs: 1, rib: false, bend: 0.3, color: PAPAYA_LEAF[k % PAPAYA_LEAF.length], stalkColor: PAPAYA_STALK, src });
   }
-  L.box(x, y + h + 0.3, z, 0.36, 0.3, 0.36, 0x5a9a38, 'mapLeaf');
-  for (let k = 0; k < 5; k++) {
-    const a = (k / 5) * Math.PI * 2;
-    L.box(x + Math.cos(a) * 0.2, y + h - 0.35 - (k % 2) * 0.2, z + Math.sin(a) * 0.2, 0.16, 0.26, 0.16, k === 2 ? 0xe0a030 : 0x7aa040, 'petal');
+  // The rolled young leaves at the very top.
+  b.box(x, y + h + 0.12, z, 0.16, 0.24, 0.16, 0x7aa848, 'mapLeaf', { src, ry: i });
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + i * 0.7;
+    const ripe = k === 2;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // (on the trunk under the crown, hanging down and a little out: the lowest the biggest)
+    const low = k % 2;
+    teardrop(b, [x + ca * 0.12, y + h - 0.3 - low * 0.26, z + sa * 0.12], { len: 0.26 - low * 0.03, wid: 0.15 - low * 0.02, taper: 0.65, dir: [ca * 0.3, -1, sa * 0.3], color: ripe ? 0xe0a030 : 0x7aa040, neck: ripe ? 0x9aa83a : 0x6a9a38, src });
   }
 }
