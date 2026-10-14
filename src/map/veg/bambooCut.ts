@@ -324,6 +324,8 @@ class BambooCuts {
       // (as the jungle's own: plain blocks on the low level; it casts the still shadows of low and medium)
       this.layer = buildVoxelMesh(v, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: 'vegetation:bamboo-cut' });
       markStill(this.layer);
+      // (built for the level it is made on, made again often: graphics.ts `setGraphics` leaves it be, no far rim variant)
+      for (const o of this.layer.children) delete o.userData.voxelShape;
       this.object.add(this.layer);
     }
     this.object.visible = v.boxes.length > 0;

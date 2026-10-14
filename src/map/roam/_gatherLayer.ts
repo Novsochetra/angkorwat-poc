@@ -56,6 +56,8 @@ export class GatherLayer {
     this.mesh = buildVoxelMesh(b, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: this.object.name, castShadow: this.shadows });
     this.sphere.makeEmpty();
     for (const o of this.mesh.children) {
+      // (built for the level it is made on, made again often: graphics.ts `setGraphics` leaves it be, no far rim variant)
+      delete o.userData.voxelShape;
       const s = (o as InstancedMesh).boundingSphere;
       if (s) this.sphere.union(s);
     }
