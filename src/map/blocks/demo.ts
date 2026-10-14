@@ -12,8 +12,9 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   as a step, twelve timber posts, a beam ring painted lacquer red, a palm
  *   thatch roof in stepped rings, a gold finial: every material family, the
  *   slab, painted blocks.
- * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (≈ 5,000 blocks over
- *   about 24 × 24 m: 4 chunks), for the frame's cost (`npm run perf`).
+ * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (8,629 blocks over
+ *   about 24 × 24 m, the plinths sunk to the sloping ground: 8 chunks), for
+ *   the frame's cost (`npm run perf`).
  *
  * `pblocks=demo@x,z` / `full@x,z` puts it elsewhere (its middle, m).
  */

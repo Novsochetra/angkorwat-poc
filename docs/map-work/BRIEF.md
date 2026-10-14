@@ -2347,10 +2347,23 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
   read the store (AWP-17).
 - **Cost**: an empty store is an empty group (no draw, no work a frame).
-  REBUILD_NUMBERS
+  Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 22). Making a
+  chunk again after one change (`__blocks.bench`, M1 Max with other jobs
+  running): a plot's chunk of 3,088 blocks 0.4 ms (the CPU 4 × slower 1.6, 6 ×
+  2.4: well under a phone's frame); the worst chunks, every other cell (16,384
+  blocks, each showing six sides) 1.5 ms (6 × 9.5), filled whole (32,768) 1.1
+  ms (6 × 7.0). `npm run perf` (1280 × 720 and the phone's 844 × 390): with the
+  store empty the same draws, triangles and programs as before in every view;
+  `pblocks=full` (8,629 blocks, 6,995 drawn, 1,634 under others) in the `home`
+  view low +22 draws, +0.07 M triangles, medium +22, +0.21 M, phone +22,
+  +0.07 M, frame times within the noise; the still shadow map +22 draws (0.04 M
+  on low, 0.22 M on medium) when it is drawn; elsewhere (overview, village,
+  east) nothing drawn; ≤ 0.01 ms of CPU a frame; no new program when blocks
+  appear (the program count the same on low, medium and high).
 - **URL**: `pblocks=demo` (a sala on the meadow before his stilt house, ≈ 690
   blocks: every material, the slab, painted blocks) · `pblocks=full` (a full
-  plot: nine of them 3 × 3, 8 m apart, ≈ 6,200 blocks over 24 × 24 m) ·
+  plot: nine of them 3 × 3, 8 m apart, 8,629 blocks over 24 × 24 m, their
+  plinths sunk to the sloping ground: 8 chunks) ·
   `@x,z` puts it elsewhere. Nothing is saved. Shots and the dev server:
   `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to make a
   chunk again after one change, `flush()`). `npm run perf -- only=home
