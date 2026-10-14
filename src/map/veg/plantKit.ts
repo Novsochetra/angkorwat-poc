@@ -28,14 +28,15 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  *
  * | shape | what | blocks |
  * |---|---|---|
- * | `leaf` | one blade from its base: a curved slab narrow at the stalk, widest past the middle, a pointed tip (a square turned 45° in the blade), a paler mid-rib on top; `fold` folds its two halves down from the rib (a banana leaf) or up (a cupped leaf) | `segs` + 1 tip + `segs` rib (+`segs` with `fold`, +1 `stalk`): 1 seg no rib 2, 2 segs 5 (default), 3 segs 7, 3 segs folded 10 |
- * | `teardrop` | a fruit hanging from its stalk, the narrow end up: mango (0.12 × 0.09 m, `depth` 0.85), papaya (0.25 × 0.14 m) | 4 (2 with `low`), +1 `stalk`, +1 `blush` |
+ * | `leaf` | one blade from its base: a curved slab narrow at the stalk, widest past the middle, a pointed tip (a square turned 45° in the blade), a paler mid-rib on top; `shape` `lance` (mango), `broad` (gourd, pumpkin), `oblong` (banana); `fold` folds its two halves down from the rib (a banana leaf) or up (a cupped leaf) | `segs` + 1 tip + `segs` rib (+`segs` with `fold`, +1 `stalk`): 1 seg no rib 2, 2 segs 5 (default), 3 segs 7, 3 segs folded 10 |
+ * | `teardrop` | a fruit hanging from its stalk, the narrow end up: mango (0.12 × 0.09 m, `depth` 0.85, `blush`), papaya (0.25 × 0.14 m, `taper` 0.65); lying with `dir` | 4 (2 with `low`), +1 `stalk`, +1 `blush` |
  * | `round` | a fruit round about its upright axis, squat or tall: pumpkin (0.45 × 0.3 m), round gourd, melon (`hang` from a trellis) | 4 (2 with `low`), +1 `stalk` |
  * | `long` | a finger along a gentle curve, thick in the middle: banana (0.16 × 0.035 m, `neck` 0.55, a dark `tip`), long eggplant (0.25 × 0.055 m, a green `cap`) | `segs` × 2 (× 1 with `sides: 4`), +1 `tip`, +1 `cap`: banana finger 3, eggplant 5 |
  * | `vine` | a stem along given points (`sag` drapes them between two posts, `spiral` winds them up one) with leaves on alternate sides and curling tendrils | 1 a span, + each leaf's, + 3 a tendril |
  *
  * Helpers: `beam` (a block from point a to point c, turned along that line),
- * `log` (a round-ish stick: two beams turned 45°), `along` (a point along a
+ * `log` (a stick: two beams turned 45°), `cross` (a round-ish body: two
+ * beams crossed, as the fruit use), `along` (a point along a
  * heading), `across`, `mix` (two colours mixed).
  *
  * Check them: `index.html?shot=1&plantkit=lineup` lays every shape in a row on
