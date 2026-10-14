@@ -69,6 +69,28 @@ export function walkBlocks(store: BlockStore = BLOCKS): WalkBlocks {
   };
 }
 
+/**
+ * Part of the segment a → b (0‥1) free of the player's solid blocks, from a
+ * (1: none in the way), sampled every quarter metre as the walk map's
+ * `clearance` (a slab fills the lower half of its cell). For the follow
+ * camera (world.ownClearance): a built wall nearer than it otherwise comes.
+ */
+export function blockClearance(ax: number, ay: number, az: number, bx: number, by: number, bz: number, store: BlockStore = BLOCKS): number {
+  if (!store.count) return 1;
+  const len = Math.hypot(bx - ax, by - ay, bz - az);
+  const n = Math.max(1, Math.ceil(len / (BLOCK_M * 0.5)));
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    const y = ay + (by - ay) * t;
+    const j = cellOf(y);
+    const raw = store.raw(cellOf(ax + (bx - ax) * t), j, cellOf(az + (bz - az) * t));
+    if (!raw || !SOLID[rawMat(raw)]) continue;
+    const span = SHAPE_SPAN[rawShape(raw)];
+    if (span && y >= (j + span[0]) * BLOCK_M && y < (j + span[1]) * BLOCK_M) return (i - 1) / n;
+  }
+  return 1;
+}
+
 /** The walk maps told of the changes (checks: `__blocks.walk`, index.ts). */
 export const WATCHED: unknown[] = [];
 

@@ -2408,7 +2408,15 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   whose underside is over the camera is not its floor there (`WalkOwn.roofs`
   on the camera's map: followCam.ts `floorUnder` lifted it onto a built
   gallery's roof, roof top + 0.9 m), so it stays under a built roof with him.
-  The world's own roofs keep the old rule (the camera's path the same). Timber and bamboo tops sound of wood
+  In a narrow built room (a gallery, a house) a built wall nearer than the
+  camera's usual closest (1.6 m) brings it in to 0.55 m this side of the wall
+  but no nearer than 1.4 m to his neck (`world.ownClearance`, followCam.ts
+  `NEAREST`, `OWN_MARGIN`); with no room for that it tilts up over him or a
+  little lower under a low roof, and with none at any tilt it does not turn
+  into the wall (turning that way stops at the last spot with room). It is
+  never inside a built block and he stays in view, close up (his hat fills
+  much of the view in a 3 m room). The world's own roofs and walls keep the
+  old rules (the camera's path the same, frame by frame). Timber and bamboo tops sound of wood
   (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
   fauna/_landPlaces.ts) are made once and do not read the blocks. With no
   blocks every answer is as before (601,205 points × 5 questions and 12,000

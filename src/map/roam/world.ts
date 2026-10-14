@@ -6,7 +6,7 @@ import type { MapPart } from '../types';
 import { buildFlow, riverField } from './flow';
 import type { RoamWorld } from './types';
 import { WalkMap } from './walkmap';
-import { BLOCK_STEP_M, walkBlocks, watchBlocks, woodBlockAt } from '../blocks/walk';
+import { BLOCK_STEP_M, blockClearance, walkBlocks, watchBlocks, woodBlockAt } from '../blocks/walk';
 import { buildWoodFloor } from './_woodFloor';
 
 /** How close to a place's beacon the explorer must be to enter it (m, across and up or down). */
@@ -85,6 +85,7 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[], la
     ceilingAt: (x, z, y) => walk.ceilingAt(x, z, y),
     clearance: (ax, ay, az, bx, by, bz) => walk.clearance(ax, ay, az, bx, by, bz),
     hardClearance: (ax, ay, az, bx, by, bz) => hard.clearance(ax, ay, az, bx, by, bz),
+    ownClearance: (ax, ay, az, bx, by, bz) => blockClearance(ax, ay, az, bx, by, bz),
     hardStandAt: (x, z, y, up, height) => hard.standAt(x, z, y, up, height),
     softClearance: (ax, ay, az, bx, by, bz, leave) => soft.clearance(ax, ay, az, bx, by, bz, leave),
     placeNear(x, z, y): PlaceDef | null {
