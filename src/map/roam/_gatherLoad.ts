@@ -32,9 +32,9 @@ const BARK = [0x5f4a38, 0x6b533e, 0x564231, 0x735a43];
 const SAWN = [0xd8b27a, 0xcfa56b, 0xe0bd88];
 const ROPE = [0x7a6446, 0x6e5a3e, 0x857050];
 /** The village roofs' dried palm thatch (village/_kit.ts `ROOFS.thatch`), and a newer, greener panel. */
-const THATCH = [0x8f7d62, 0x857358, 0x9a876a, 0x7a6a52, 0x928066];
+const THATCH = [0x9a876a, 0x8f7d62, 0xa8946f, 0x857358, 0x9e8a66];
 const THATCH_NEW = [0x9c9a62, 0xa8a36c, 0x8e8c58];
-const STICK = 0x9a7a44;
+const STICK = 0xc9a66b;
 const BASKET = [0xb8955a, 0xa07f48, 0xc4a266];
 const CLAY = [0x9a6a48, 0x8a5c40, 0xa87656, 0x7a5038];
 
@@ -114,32 +114,34 @@ export function gatherLoadBuilder(bag: Materials, pack: boolean): VoxelBuilder |
     y = top + 0.3;
   }
 
-  // The thatch: panels as on the roofs, stacked flat on his back and tied.
+  // The thatch: panels as on the roofs, stacked flat on his back and tied (from his shoulder blades down: never over his
+  // seat). Each a split-bamboo stick along its top, the leaves folded over it hanging in strips, a ragged fringe at the foot.
   if (n.thatch) {
-    const W = 10;
+    const W = 10.5;
     const H = 7.4;
     const t = 0.5;
     const zt = z0 - 0.4;
+    const y0 = Math.max(y, 11.6);
+    const strips = 7;
     for (let i = 0; i < n.thatch; i++) {
       const z = zt - (i + 0.5) * t;
-      const fresh = i >= n.thatch - Math.ceil(n.thatch / 3);
+      const fresh = i >= n.thatch - Math.ceil(n.thatch / 4);
       const tones = fresh ? THATCH_NEW : THATCH;
       const dx = (hash3(i, 15, 15, 5506) - 0.5) * 0.8;
-      // (the stick along its top, the leaves folded over it and hanging in strips: a fringe at the foot)
-      b.box(dx, y + H - 0.3, z, W + 0.6, 0.55, t * 0.9, STICK, 'wood');
-      for (let s = 0; s < 6; s++) {
-        const sx = dx - W / 2 + (s + 0.5) * (W / 6);
-        const long = H - 0.6 - (hash3(i, s, 16, 5507) < 0.4 ? 0.5 : 0);
-        b.box(sx, y + H - 0.6 - long / 2, z, W / 6 + 0.05, long, t, tone(tones, i, s, 17), 'wood', { shade: 0.92 + 0.12 * hash3(i, s, 18, 5508) });
+      b.box(dx, y0 + H - 0.3, z, W + 0.8, 0.6, t + 0.05, STICK, 'wood');
+      for (let s = 0; s < strips; s++) {
+        const sx = dx - W / 2 + (s + 0.5) * (W / strips);
+        const long = H - 0.6 - hash3(i, s, 16, 5507) * 1.1;
+        b.box(sx, y0 + H - 0.6 - long / 2, z, W / strips - 0.14, long, t, tone(tones, i, s, 17), 'wood', { shade: s % 2 ? 0.86 : 1.08 });
       }
     }
     const back = zt - n.thatch * t;
-    for (const x of [-3, 3]) {
-      b.box(x, y + H / 2, back - 0.15, 0.45, H * 0.9, 0.3, tone(ROPE, x, 19, 19), 'wood');
-      b.box(x, y + H * 0.95, (zt + back) / 2, 0.45, 0.3, zt - back + 0.4, tone(ROPE, x, 20, 20), 'wood');
+    for (const x of [-3.2, 3.2]) {
+      b.box(x, y0 + H / 2, back - 0.15, 0.5, H * 0.9, 0.3, tone(ROPE, x, 19, 19), 'wood');
+      b.box(x, y0 + H * 0.95, (zt + back) / 2, 0.5, 0.3, zt - back + 0.4, tone(ROPE, x, 20, 20), 'wood');
     }
     deep = Math.max(deep, n.thatch * t + 0.8);
-    y += H + 0.3;
+    y = y0 + H + 0.3;
   }
 
   // The bamboo poles: a bundle slanting up over his right shoulder, outermost.
