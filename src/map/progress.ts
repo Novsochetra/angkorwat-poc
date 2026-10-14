@@ -2,8 +2,9 @@
  * What the player has done and has, kept between visits: his name in Khmer
  * letters, the dog that follows him, his stilt house, the clothes he bought,
  * the red string on his wrist, how many fish he sold… (the roaming add-ons:
- * roam/_addons.ts). One record in the browser's storage; each add-on keeps
- * its own keys, named with its prefix (`dog.name`, `home.owned`, `name.km`).
+ * roam/_addons.ts), the blocks he built (`blocks.plot`: blocks/save.ts).
+ * One record in the browser's storage; each add-on keeps its own keys,
+ * named with its prefix (`dog.name`, `home.owned`, `name.km`).
  *
  * A value read back is checked by the reader (`progress.get(key, fallback, isOk)`):
  * an old or broken one gives the fallback. Headless shots and `progress=0`
@@ -31,13 +32,20 @@ function load(): Saved {
   if (!saving) return empty;
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as unknown;
-    if (typeof raw !== 'object' || raw === null || (raw as Saved).v !== 1) return empty;
+    if (raw === null) return empty;
+    if (typeof raw !== 'object' || (raw as Saved).v !== 1) return broken('not version 1', empty);
     const values = (raw as Saved).values;
-    if (typeof values !== 'object' || values === null || Array.isArray(values)) return empty;
+    if (typeof values !== 'object' || values === null || Array.isArray(values)) return broken('no values', empty);
     return { v: 1, values: values as Record<string, Json> };
-  } catch {
-    return empty;
+  } catch (e) {
+    return broken(String(e).slice(0, 120), empty);
   }
+}
+
+/** A saved record that cannot be read: said in the console (it is written over at the next change). */
+function broken(why: string, empty: Saved): Saved {
+  console.warn(`[progress] the saved progress could not be read (${why}): starting fresh`);
+  return empty;
 }
 
 const state = load();

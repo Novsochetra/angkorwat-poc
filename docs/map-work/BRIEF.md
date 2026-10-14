@@ -2390,6 +2390,27 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   would also square the seams between the row's blocks); a roof two blocks
   deep, or stairs and slabs (AWP-24), have none. A slab's partial sides do not
   count yet (AWP-24 grows `covers`).
+- **Saved** (`blocks/save.ts`, AWP-18): in progress.ts (`angkor-map-progress-v1`)
+  under `blocks.plot`: `{ v: 1, n, pal, chunks }`. `v` the format (a later one
+  reads the old by it), `n` the blocks, `pal` the different blocks as numbers
+  (`rawOf`: ids only ever added, so an old save always reads), `chunks`
+  `[cx, cy, cz, runs]` in the store's order, `runs` the chunk's cells in
+  `forEach`'s order as runs of one block: the empty cells skipped, the length
+  − 1, the block's place in `pal`, each number in 5-bit groups, one letter
+  each (`A‥Z a‥z 0‥9 - _`, 32 and up: more to come). A full plot
+  (`pblocks=full`'s 9,925 blocks and 5 more, written through the store) is
+  10.6 kB of JSON (13 kinds of block, 10 chunks); localStorage holds 5 M
+  characters a site. Written once the blocks have been still for 1 s (a
+  footprint: one write; building on without a pause, every 10 s) and at once
+  when the page is hidden or closed (9,930 blocks: ≈ 5 ms); read as the part
+  is built, before the view (9,930 blocks in ≈ 4 ms). Checked whole first: a
+  broken, cut or edited save, one from a newer format, or one over the limits
+  (`SAVE_LIMITS`: 200,000 blocks, 128 chunks, 4,096 kinds) leaves the plot
+  empty and the console says why (`[blocks] the saved build was not loaded
+  (…)`); the save stays as it was until he builds again. A block of a kind
+  this build does not know is left out (the console says how many). Shots,
+  `progress=0` and `pblocks=` read and write nothing. Checks:
+  `__blocks.save` (`status`, `flush()`, `encode()`, `decode(value)`).
 - **Shadows of a far chunk**: hidden by distance it drops out of the still
   shadow map; coming back, its shadow returns at the next still redraw (as the
   build view's pieces). Watch it with continuous building (AWP-20).
