@@ -16,6 +16,7 @@ import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type A
 import { registerBambooClumps } from './_gatherBamboo';
 import { registerLogs } from './_gatherLogs';
 import { registerThatch, thatchTick } from './_gatherThatch';
+import { clayTick, registerClay } from './_gatherClay';
 import { createGatherHud, type GatherHud } from './_gatherHud';
 import { gatherLoadBuilder } from './_gatherLoad';
 import { gatherPose, gatherToolBuilder, newGatherPose, SWING } from './_gatherPose';
@@ -56,9 +57,12 @@ import { stepSound } from './walker';
  *   here with the map's time while he plays (as the garden's: a day of the cycle,
  *   or `dayLength` s of play while the time stands still; sleep moves it on).
  *
- * The proof source (the only one in AWP-9): the map's bamboo clumps,
- * _gatherBamboo.ts. The other materials' sources come with their tickets
- * (AWP-10…15) and register themselves (`registerGatherSource`).
+ * The sources, registered from `init` (each draws what it has left its own way):
+ * the jungle's bamboo clumps (_gatherBamboo.ts, AWP-10), the woodcutters' felled
+ * trunks (_gatherLogs.ts, AWP-11), the sugar-palm village's young palms
+ * (_gatherThatch.ts, AWP-12), the clay banks (_gatherClay.ts, AWP-13); later ones
+ * (the ox cart AWP-14, a bamboo forest AWP-15) register themselves the same way
+ * (`registerGatherSource`). The load on his back: _gatherLoad.ts.
  *
  * URL (shots and the dev server only, `env.shot || import.meta.env.DEV`: on the live site a link
  * never freezes him, never fills his bag or store, never spends a spot in his save):
@@ -242,8 +246,11 @@ function placeFor(ctx: RoamCtx, s: Session, x: number, z: number): void {
   }
   dx /= d;
   dz /= d;
-  // (a trunk lying: he stands across it, on the side he comes from)
-  if (sp.along !== undefined) {
+  // (a bank: he stands on its land side; a trunk lying: across it, on the side he comes from)
+  if (sp.stand !== undefined) {
+    dx = Math.sin(sp.stand);
+    dz = Math.cos(sp.stand);
+  } else if (sp.along !== undefined) {
     const px = Math.cos(sp.along);
     const pz = -Math.sin(sp.along);
     const k = dx * px + dz * pz >= 0 ? 1 : -1;
@@ -687,6 +694,12 @@ registerAddon({
     } catch (err) {
       console.error('[gather] the young sugar palms failed:', err);
     }
+    let banks = 0;
+    try {
+      banks = registerClay(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the clay banks failed:', err);
+    }
     hud = createGatherHud(e.layer);
     fx = new Particles();
     fx.mesh.name = 'gather:chips';
@@ -699,7 +712,7 @@ registerAddon({
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
     unloadInShot = dev && e.params.get('gatherunload') === '1';
-    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp, ${young} young sugar palms · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
+    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp, ${young} young sugar palms, ${banks} clay banks · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
         __gather: {
@@ -771,6 +784,7 @@ registerAddon({
     fx?.step(dt);
     backLoad();
     thatchTick(dt);
+    clayTick(dt);
     // The gathering's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play
     // (as the garden's, roam/_garden.ts). Not in a shot (still) nor on the overview.
     const days = TIME.days();

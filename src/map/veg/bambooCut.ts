@@ -218,8 +218,9 @@ class BambooCuts {
       if (!m) continue;
       const mesh = m.mesh;
       const idx = m.from + c.at[i * 2 + 1];
-      if (idx < 0 || idx >= mesh.count) continue;
       const a = mesh.instanceMatrix.array as Float32Array;
+      // (by the buffer, not `count`: the overview draws only its seen blocks, terrain/seen.ts, a phone's far tiles fewer)
+      if (idx < 0 || idx >= a.length / 16) continue;
       const o = idx * 16;
       const x = a[o + 12];
       const z = a[o + 14];

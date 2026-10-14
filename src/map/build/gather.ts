@@ -63,6 +63,8 @@ export interface GatherSpot {
    * across it, on the side he comes from, not at its end.
    */
   readonly along?: number;
+  /** He always stands on this side of it (the way from its middle to him, rad, as `atan2(dx, dz)`): the land side of a bank. */
+  readonly stand?: number;
 }
 
 /** Where he is when a source is asked `can` (feet, m) and whether it is night. */

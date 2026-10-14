@@ -2954,8 +2954,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
 
 - `map/build/materials.ts` (no three.js): the materials (`MATERIALS`: bamboo ឫស្សី,
   logs ឈើ, palm-leaf thatch ស្លឹកត្នោត, clay ដីឥដ្ឋ; each its words, its weight against
-  the carry limit, its riel price when bought, how it is gathered: `chop` or `dig`, its
-  chips' colours), the bag `BAG` (on foot, up to `CARRY_LIMIT` 12 in weight: a bamboo
+  the carry limit, its riel price when bought, how it is gathered: the knife's `chop`, the
+  hoe's `dig` or the axe's `axe`, its chips' colours), the bag `BAG` (on foot, up to `CARRY_LIMIT` 12 in weight: a bamboo
   pole 2, a log 4, a bundle of thatch 1, a lump of clay 2; `load()`, `room(m)`,
   `add` returns what fit), the home store `STORE` (no limit), and for the build:
   `missingOf(cost)`, `rielOf`, `useMaterials(cost)` (the bag first, then the store),
@@ -2971,10 +2971,15 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `material`; `x, z` its middle, `r` its foot's radius: he stands just outside it facing
   the middle; `hits` blows per piece; `pieces` before it is spent; `regrowDays` game days
   for a piece to grow back, 0 never spent; `hitY` where the blow lands, m over the
-  ground; `action` to override the material's). `can(spot, at)` returns null or a word
+  ground; `action` to override the material's; `along`: a long thing lying, a felled
+  trunk, the way it runs: he stands across it, not at its end; `stand`: he always stands
+  on that side, a bank's land side). `can(spot, at)` returns null or a word
   key ("not at night"); `onHit(spot, n, of)` each blow (shake the clump);
   `onTake(spot, left)` a piece came off (hide a cane); `onLeft(spot, left)` it grew back
-  or a check set it (draw it so). What a spot has left is kept by the core:
+  or a check set it (draw it so); `onWork(spot, x, z)` he sets to work from there (the
+  side that goes first); `spent` its own words for none left (the woodcutters fell
+  another tree; the water brings more clay). `gatherTakenAt(spot)`: the clock times its
+  pieces still growing back were taken (how far each has grown). What a spot has left is kept by the core:
   `gatherLeft(spot)`, `gatherRegrowIn(spot)`, `GATHER.take`, `GATHER.setLeft` (checks),
   on the gathering's own clock `GATHER.clock` (game days: the map's days while he plays,
   or a day each `dayLength` s of play while the time stands still, as the garden's).
@@ -2986,10 +2991,44 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `roam/_gatherHud.ts`, the icons `build/materialIcons.ts`, sounds `audio/_gather.ts`;
   the chips are the garden's particles (`garden/_fxParticles.ts`: one instanced mesh,
   `mapRock`, nothing drawn when idle).
-- **The proof source** (AWP-9's only one): the map's bamboo clumps where he roams
-  (`roam/_gatherBamboo.ts`, from vegetation.ts `subjects`): 4 blows a pole, 3 poles a
-  clump, each back in 2 game days. Nothing of the clump changes yet: AWP-10 takes the
-  source over (same id `bamboo`, so the saved spots carry on) and shows the cut canes.
+- **The sources** (each registers itself from the add-on's `init`; what each looks like
+  as it is cut and grows back is its own):
+  - **Bamboo** (AWP-10, `roam/_gatherBamboo.ts`, id `bamboo` as AWP-9's proof source: the
+    saved spots carry on): the jungle's 103 clumps where he roams (vegetation.ts tells
+    which instances of the tile meshes are each clump's: veg/lattice.ts `stamp`'s owner,
+    `emit`'s `owned`; `veg/bambooCut.ts` `BAMBOO_CUT`). 4 knife blows a pole, 3 poles a
+    clump, each back in 2 game days. A pole is a side's canes (a third round the clump):
+    the side he works from first, then the nearest. A cut side's canes end in stubs
+    0.55 m high (their lowest block shortened, the rest of the side and its leaves put
+    away under the ground, a hair's size: no rebuild, the plain twin shares the
+    buffer), each stub's pale cut end and the side's young shoots (ទំពាំង: a sheathed
+    shoot, then a green cane with its first leaves) in the cut layer (one small mesh
+    of the bark family, only while a clump is cut), growing as the days pass; the side
+    comes back whole when its pole has. On a phone the far clumps' pictures
+    (veg/impostors.ts) stay whole.
+  - **Logs** (AWP-11, `roam/_gatherLogs.ts`): two felled trunks by the woodcutters'
+    camp (`JUNGLE_SITES` woodcutters, jungle/_campWood.ts), their own blocks. A log is
+    cut off a trunk with the axe (ពូថៅ: `axe`, two hands from over his head), 6 blows,
+    outermost first (one spot a log: only the outermost still there is offered; he
+    stands across the trunk), the trunk shorter after, a pale fresh cut at its end; each
+    log back in 3 game days ("the woodcutters fell another tree"). 3 logs a trunk.
+  - **Thatch** (AWP-12, `roam/_gatherThatch.ts`): five young sugar palms (ត្នោតខ្ចី, fan
+    leaves on stalks straight from the ground) in two stands at the sugar-palm village's
+    edge (by its tall sugar palms at 433,−29 and 365,−29.5), their own blocks. A fan is
+    cut at its stalk with the knife, 3 blows a bundle of thatch, 3 fans a palm (of
+    eight), the one before him first; its stub stays, a new leaf (a folded spear) grows
+    from the heart and opens again in 2 game days.
+  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 36 patches of bared clay on the banks of
+    the great lake, the rivers and the ponds where he roams, found once from the land
+    (dry sand or dirt beside the water, a metre or so over it, level round; never on rock,
+    a road, a trail, a paddy, by a temple, in a village or hamlet, by a jungle site, a
+    landing or a waterfall; 28 m apart). Dug with the hoe, 3 blows a lump, 3 lumps a
+    patch, he stands on its land side (`stand`); each pit (dark, wet, its lumps heaped
+    by it) fills again in 2 game days. Their own blocks, a mesh a 160 m square, flat
+    (no shadow).
+  - Shared: which parts are gone (`roam/_gatherSides.ts` `GatherParts`: the bamboo's
+    sides, the palms' fans, saved), a source's own blocks (`roam/_gatherLayer.ts`: plain
+    on low, casting the still shadows, asked again after a change).
 - **At a spot** (on foot, before it, within 1.3 m of its foot; order 60): "E  កាប់ឫស្សី /
   Cut bamboo" (the material's verb). None left: "None left: it grows back in 2 days"; too
   heavy: "Your load is full (12/12): take it home first" (no key); a source's `can`: its words.
@@ -2998,7 +3037,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   pad's □ or ✕; the touch Use button, or the big one, which says "Chop" / "Dig" while
   he works) is one swing, one more waiting while one is under way: the knife raised out
   beside his head and brought down at a slant on the cane (his left hand on it); the hoe
-  over his head in both hands and down into the earth. Each blow: the material's sound,
+  over his head in both hands and down into the earth; the axe the same way, down onto
+  the trunk. Each blow: the material's sound,
   its chips flying, a tick on the pad, the source's `onHit`; the prompt counts
   ("E  Chop (2/4)"). The last blow of a piece: it goes in his bag, a soft knock, a toast
   ("+1 bamboo pole · load 6/12"), the load chip glows. He goes on while the spot has more
@@ -3010,12 +3050,18 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   fibre and dark skin, not the yellow of the canes.
 - **The load**: a chip under the purse (each material's picture and count, a bar and
   "បន្ទុក ៦/១២ / Load 6/12", red when full) while he carries something or works; "In my
-  bag" (the explorer menu's Bag page, `BAG_MORE`) lists it, and what is at home.
+  bag" (the explorer menu's Bag page, `BAG_MORE`) lists it, and what is at home. And on
+  his back (`roam/_gatherLoad.ts`, his `backpack` joint, one draw): the poles slanting
+  over his right shoulder, the logs across his back, the thatch panels as the roofs'
+  (leaves folded over a split-bamboo stick, dried silver-brown, the newest greener),
+  the clay heaped in a woven basket (កញ្ច្រែង) low on his back.
 - **Home**: his house his (`HOME.owned`), on foot by it (`byHouse`, 3 m) carrying
   something: the load goes into his home store (a toast says what; a few knocks). The
   build card uses the bag and the store ("Building at home" above).
 - **Saved** (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4 }`), `gather.spots`
-  (per spot, the clock times its pieces were taken), `gather.clock`. On load a material
+  (per spot, the clock times its pieces were taken), `gather.clock`, `gather.bambooSides`
+  and `gather.thatchFans` (per spot, the parts cut, oldest first: whole numbers under
+  the parts' count, each once, else dropped; made to agree with `gather.spots`). On load a material
   whose count is not a whole number 0‥999 is dropped (a broken value never loads as a
   heap), the bag is cut down to the carry limit (the heaviest first), a spot's time later
   than the clock is dropped and a clock over 10⁶ days reads as 0. Shots and `progress=0`
@@ -3027,9 +3073,11 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `bag=<material>:<n>,…` · `store=<material>:<n>,…` (`0` empties) ·
   `gather=<material>[:<blows>[:<s>]]` (him at work at the spot of it nearest `at=`, that
   many blows of the piece landed, held `s` s into a swing: the blow lands at 0.44 s for a
-  chop, 0.56 s for a dig, its chips shown that far on) · `gatheract=chop|dig` (that
-  swing there: a pose's check before its material has a source) · `gatherleft=<n>` ·
-  `gatherunload=1` (a shot unloads at home too). `report()` gives `bag=`, `store=`,
+  chop, 0.56 s for a dig, 0.58 s for the axe, its chips shown that far on) ·
+  `gatheract=chop|dig|axe` (that swing there) · `gatherleft=<n>` (that spot has `n`
+  left) · `gatherdays=<d>` (then the gathering's clock `d` game days on: grown back
+  that far) · `gatherwork=0` (the spot only, him not put to work: a clump before, cut,
+  growing back) · `gatherunload=1` (a shot unloads at home too). `report()` gives `bag=`, `store=`,
   `gather=`. `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`,
   `advance(days)`. Console lines `[gather] …`. E.g.
   `roam=walk&at=433,-161&yaw=180&bag=bamboo:3,clay:1&gather=bamboo:2:0.32&cam=438.5,11.6,-160.5,433,9.6,-163.2,40`

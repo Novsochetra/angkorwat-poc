@@ -16,7 +16,12 @@ export class GatherLayer {
   /** Blocks drawn now (checks). */
   blocks = 0;
 
-  constructor(parent: Object3D, name: string) {
+  /** `shadows`: it casts (flat things on the ground do not). */
+  constructor(
+    parent: Object3D,
+    name: string,
+    private readonly shadows = true,
+  ) {
     this.object.name = name;
     parent.add(this.object);
   }
@@ -29,7 +34,11 @@ export class GatherLayer {
     }
     this.blocks = b?.boxes.length ?? 0;
     if (!b || !b.boxes.length) return;
-    this.mesh = buildVoxelMesh(b, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: this.object.name });
+    this.mesh = buildVoxelMesh(b, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: this.object.name, castShadow: this.shadows });
+    if (!this.shadows) {
+      this.object.add(this.mesh);
+      return;
+    }
     markStill(this.mesh);
     this.ask = true;
     const askShadow = (renderer: WebGLRenderer) => {
