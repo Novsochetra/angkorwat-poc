@@ -51,8 +51,8 @@ interface ItemBox {
 
 const BARK = 0x6e4a2c;
 const BARK_DARK = 0x56391f;
-const CUT = 0xcfa66e;
-const CUT_RING = 0xa8804c;
+const CUT = 0xc9a06a;
+const CUT_RING = 0x9a7244;
 const BAMBOO = 0xa9a456;
 const BAMBOO_GREEN = 0x7a9244;
 const BAMBOO_NODE = 0x5e6a2c;
@@ -70,7 +70,7 @@ const CLAY = 0x7e4c34;
 const CLAY_DARK = 0x683c28;
 const ROPE = 0x8a7450;
 
-/** A log: 2.5 m long (its ends out over the let-down tailboard), two square boxes (one turned 45° about its length: round at walking distance), its cut ends with a darker ring. */
+/** A log: 2.5 m long (its ends out over the let-down tailboard), two square boxes (one turned 45° about its length: round at walking distance), its pale cut ends with a darker heart. */
 const LOG_L = 2.5;
 const LOG_D = 0.2;
 /** A bamboo pole: 3 m, 7.5 cm round, two node bands. */
@@ -86,10 +86,10 @@ const TEMPLATES: Record<MaterialId, readonly ItemBox[]> = {
   log: [
     { c: [0, LOG_D * 0.6, 0], s: [LOG_D, LOG_D, LOG_L], color: BARK, alt: 0x76502f },
     { c: [0, LOG_D * 0.6, 0], s: [LOG_D, LOG_D, LOG_L - 0.01], color: BARK_DARK, rz: Math.PI / 4 },
-    { c: [0, LOG_D * 0.6, LOG_L / 2 + 0.003], s: [LOG_D * 0.84, LOG_D * 0.84, 0.016], color: CUT_RING },
-    { c: [0, LOG_D * 0.6, LOG_L / 2 + 0.006], s: [LOG_D * 0.74, LOG_D * 0.74, 0.016], color: CUT, rz: Math.PI / 4 },
-    { c: [0, LOG_D * 0.6, -LOG_L / 2 - 0.003], s: [LOG_D * 0.84, LOG_D * 0.84, 0.016], color: CUT_RING },
-    { c: [0, LOG_D * 0.6, -LOG_L / 2 - 0.006], s: [LOG_D * 0.74, LOG_D * 0.74, 0.016], color: CUT, rz: Math.PI / 4 },
+    { c: [0, LOG_D * 0.6, LOG_L / 2 + 0.003], s: [LOG_D * 0.86, LOG_D * 0.86, 0.016], color: CUT, rz: Math.PI / 4 },
+    { c: [0, LOG_D * 0.6, LOG_L / 2 + 0.006], s: [LOG_D * 0.5, LOG_D * 0.5, 0.016], color: CUT_RING },
+    { c: [0, LOG_D * 0.6, -LOG_L / 2 - 0.003], s: [LOG_D * 0.86, LOG_D * 0.86, 0.016], color: CUT, rz: Math.PI / 4 },
+    { c: [0, LOG_D * 0.6, -LOG_L / 2 - 0.006], s: [LOG_D * 0.5, LOG_D * 0.5, 0.016], color: CUT_RING },
   ],
   bamboo: [
     { c: [0, POLE_D / 2, 0], s: [POLE_D, POLE_D, POLE_L], color: BAMBOO, alt: BAMBOO_GREEN, rz: Math.PI / 4 },

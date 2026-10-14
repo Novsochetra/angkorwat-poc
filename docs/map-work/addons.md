@@ -3102,7 +3102,7 @@ without its straw), the oxen `people/_ox.ts`.
   biggest piece he builds, the cattle pen, takes 44 (5 logs, 10 bamboo poles, 4 bundles of
   thatch), so one cart load brings it home with room to spare.
 - **The load drawn** (`_haulModel.ts` `loadLayout`): logs (2.5 m, two boxes, one turned 45°, pale
-  cut ends with a darker ring) along the bed in rows of three, up to three high, their ends out
+  cut ends with a darker heart) along the bed in rows of three, up to three high, their ends out
   over the tailboard (let down whenever it carries logs or poles); bamboo poles (3 m, two node
   bands, yellow and greener ones) over them six across, a second row nested in the first; bundles
   of sugar-palm thatch (three leaf panels askew, the bamboo spine on one side, the ragged leaf tips
