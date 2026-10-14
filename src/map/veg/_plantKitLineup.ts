@@ -109,8 +109,8 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
     `[map] plant kit lineup cameras: all cam=${cam((XA + X0 + LEN) / 2, T + 3.2, Z0 + 10.5, (XA + X0 + LEN) / 2, T + 0.45, zc, 34)}` +
       ` · old and leaves cam=${cam(X0 + 0.2, T + 1.7, Z0 + 2.4, X0 + 0.2, T + 0.2, zc, 44)}` +
       ` · leaves cam=${cam(X0 + 1.3, T + 2.0, Z0 + 1.6, X0 + 1.3, T + 0.2, zc, 38)}` +
-      ` · fruit cam=${cam(X0 + 4.5, T + 1.0, Z0 + 2.4, X0 + 4.5, T + 0.5, zc, 38)}` +
-      ` · vine cam=${cam(X0 + 7.0, T + 1.0, Z0 + 1.8, X0 + 7.0, T + 0.7, zc, 38)}`,
+      ` · fruit cam=${cam(X0 + 4.6, T + 1.6, Z0 + 2.8, X0 + 4.6, T + 0.4, zc, 50)}` +
+      ` · vine cam=${cam(X0 + 7.0, T + 1.6, Z0 + 1.6, X0 + 7.0, T + 0.7, zc, 38)}`,
   );
   return { object, blocks: b.boxes.length };
 }
