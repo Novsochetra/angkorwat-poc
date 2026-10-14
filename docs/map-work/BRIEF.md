@@ -2394,13 +2394,21 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   the blocks are laid in again. On the feet's map a block's top more than
   0.35 m (`BLOCK_STEP_M`) over the feet is a wall to them unless they stand on
   it already: a slab (0.25 m) is a stair's rise, a full block (0.5 m) he jumps
-  onto (Space), and a floor 2 m up on posts he walks under instead of hopping
-  onto it. The walker's own rules hold over them (stairs, thin walls,
+  onto (Space), and he walks under a floor on posts instead of hopping onto
+  it when there is room: he is 2.26 m tall to the walk map (1.615 m and the
+  explorer's 1.4 scale), so an underside 2.0 m up stops him like a wall and
+  one 2.5 m up lets him under: doorways and stilt floors need at least
+  5 blocks (2.5 m) of room (AWP-20; a 4-block door cannot be entered). The
+  walker's own rules hold over them (stairs, thin walls,
   `PERCH`, `AHEAD`). A block built where he stands puts him out beside it at
   his own level within a quarter second (walker.ts `freeSpot`: a cube in his
   cell 1 m, a 3 × 3 pillar 1.5 m, a low roof 2 m, a 9 × 9 × 9 box 3 m); a
   slab under him lifts him 0.25 m. The follow camera stops at built walls
-  or rises over them (its `hard` map). Timber and bamboo tops sound of wood
+  or rises over them (its `hard` map); a span of blocks with room under it
+  whose underside is over the camera is not its floor there (`WalkOwn.roofs`
+  on the camera's map: followCam.ts `floorUnder` lifted it onto a built
+  gallery's roof, roof top + 0.9 m), so it stays under a built roof with him.
+  The world's own roofs keep the old rule (the camera's path the same). Timber and bamboo tops sound of wood
   (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
   fauna/_landPlaces.ts) are made once and do not read the blocks. With no
   blocks every answer is as before (601,205 points × 5 questions and 12,000
@@ -2445,7 +2453,11 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   empty and the console says why (`[blocks] the saved build was not loaded
   (…)`); the save stays as it was until he builds again. A block of a kind
   this build does not know is left out (the console says how many). Shots,
-  `progress=0` and `pblocks=` read and write nothing. Checks:
+  `progress=0` and `pblocks=` read and write nothing. Kinds (the different
+  blocks: material × colour × shape × turn): a build with more than 4,096
+  is not saved at all; only the console says so (`[blocks] too many kinds of
+  block to save`) and the last save is kept, so paint (AWP-22) keeps to a
+  palette (a full plot has 9). Checks:
   `__blocks.save` (`status`, `flush()`, `encode()`, `decode(value)`).
 - **Shadows of a far chunk**: hidden by distance it drops out of the still
   shadow map; coming back, its shadow returns at the next still redraw (as the

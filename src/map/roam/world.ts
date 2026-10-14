@@ -50,7 +50,7 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[], la
   const blocks = walkBlocks();
   const walk = new WalkMap(field, parts, 'walk', false, { blocks, step: BLOCK_STEP_M });
   const t1 = performance.now();
-  const hard = new WalkMap(field, parts, 'hard', later, { blocks });
+  const hard = new WalkMap(field, parts, 'hard', later, { blocks, roofs: true });
   const soft = new WalkMap(field, parts, 'soft', later);
   watchBlocks([walk, hard]);
   const wood = buildWoodFloor(parts, later);

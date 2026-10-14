@@ -53,7 +53,11 @@ export const SAVE_AT_MOST_MS = 10_000;
 /**
  * More than this is a broken save (and is never written: the store's own
  * build would not load back). A full plot (`pblocks=full`) is 9,925 blocks in
- * 8 chunks and 11 kinds of block.
+ * 8 chunks and 9 kinds of block. **Kinds** are the different blocks
+ * (material × colour × shape × turn): a build with more than 4,096 is not
+ * saved; the console says so (`[blocks] too many kinds of block to save`)
+ * and the last save is kept, with nothing shown to the player. Paint
+ * (AWP-22) is where it could be reached: keep colours to a palette.
  */
 export const SAVE_LIMITS = {
   blocks: 200_000,

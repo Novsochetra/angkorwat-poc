@@ -94,6 +94,11 @@ export interface WalkOwn {
   blocks: WalkBlocks;
   /** The feet's map: a top of these more than this over the feet (m) is a wall to them, unless they are on it already. */
   step?: number;
+  /**
+   * The camera's map: a span of these with room under it whose underside is over the asker (a built roof over the
+   * camera pulled in under it) is not a floor to stand on (followCam.ts `floorUnder` would lift the camera onto it).
+   */
+  roofs?: boolean;
 }
 /** Parts with nothing to stand on (or that move); the player's blocks change while he plays: read from their store, not their meshes (map/blocks/store.ts `BLOCKS`). */
 const SKIP_PARTS = new Set(['atmosphere', 'water', 'undergrowth', 'clouds', 'rain', 'rainbow', 'life', 'people', 'jungleFauna', 'paddies', 'festival', 'treasure', 'roam', 'blocks']);
@@ -181,6 +186,7 @@ export class WalkMap {
   /** Chunks with the player's blocks: their meshes' columns, kept (`columnsOf`: a rebuild only lays them in again). */
   private readonly meshAdds = new Map<number, Float64Array>();
   private readonly step_: number;
+  private readonly roofs: boolean;
 
   /**
    * `later`: only note the meshes now; their blocks are sorted by `step`
@@ -195,6 +201,7 @@ export class WalkMap {
   ) {
     const t0 = performance.now();
     this.step_ = own?.step ?? Infinity;
+    this.roofs = own?.roofs === true;
     const size = CN * RES;
     this.ci = Math.ceil((BOUNDS.x1 - BOUNDS.x0) / size);
     this.ck = Math.ceil((BOUNDS.z1 - BOUNDS.z0) / size);
@@ -342,6 +349,8 @@ export class WalkMap {
         k = j + 1;
         break;
       }
+    // (the camera's map: under a built roof, the roof is not its floor; the floor under it is)
+    if (this.roofs) while (k >= 2 && s[k - 1] > y && this.ownTop(c, s[k])) k -= 2;
     const top = s[k];
     if (top > reach || this.steep(c, top, y)) return NaN;
     const next = k + 1 < s.length ? s[k + 1] : Infinity;
@@ -350,7 +359,11 @@ export class WalkMap {
 
   /** Is `top` at column `c` (of `at`) a player's block's top, more than a step over feet at `y` that are not on it? */
   private steep(c: number, top: number, y: number): boolean {
-    if (top <= y + this.step_ || y >= top - 0.06) return false;
+    return top > y + this.step_ && y < top - 0.06 && this.ownTop(c, top);
+  }
+
+  /** Is `top` at column `c` (of `at`) a top of the player's blocks? */
+  private ownTop(c: number, top: number): boolean {
     const o = this.at!.own;
     if (!o) return false;
     for (let j = o.start[c]; j < o.start[c + 1]; j++) if (Math.abs(o.top[j] - top) < 1e-3) return true;
