@@ -73,3 +73,4 @@ One line each time a ticket is sent back, so the next worker avoids it.
 
 - Fruit must taper (no plain box fruit).
 - No flat square leaves.
+- URL test values that fill game state (`pblocks=`, `build=`, `bag=` …) are read only in shots and on the dev server (`ctx.shot || import.meta.env.DEV`), never on the live site (AWP-16).
