@@ -33,7 +33,7 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_farmWork'),
   () => import('./_raceRow'),
   () => import('./_sey'),
-  // ── A friend and a home: the dog, the stilt house, his garden, his cattle, his name, building at home ──
+  // ── A friend and a home: the dog, the stilt house, his garden, his cattle, his name, building at home, gathering its materials ──
   () => import('./_dog'),
   () => import('./_home'),
   () => import('./_garden'),
@@ -45,6 +45,7 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_cattle'),
   () => import('./_name'),
   () => import('./_build'),
+  () => import('./_gather'),
   // ── Small things: the umbrella, the binoculars, smiles for the camera, selling fish, clothes ──
   () => import('./_umbrella'),
   () => import('./_binoculars'),
