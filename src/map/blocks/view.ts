@@ -1,9 +1,9 @@
-import { Box3, BufferGeometry, Group, InstancedBufferAttribute, InstancedMesh, Sphere, Vector3, type Camera } from 'three';
+import { Box3, BufferGeometry, Group, InstancedBufferAttribute, InstancedMesh, Sphere, Vector3 } from 'three';
 import { VOXEL_MATERIALS, type VoxelMaterialKey, type VoxelMaterialSpec } from '../../voxel/materials';
 import { getVoxelDepthMaterial } from '../../voxel/shadow';
 import { skipBackFacets } from '../../voxel/backFacets';
 import { disposeVoxelMesh, openSidesIndex, unitVoxelGeometry } from '../../voxel/VoxelMesh';
-import { coverMaterialOf } from '../cull';
+import { CastView, coverMaterialOf } from '../cull';
 import { graphicsNow, markStill, paintRim, pixelSize, plainAt } from '../graphics';
 import type { MapContext, MapFrame, MapPart } from '../types';
 import { edgeOf, FAMILIES, packChunk } from './mesh';
@@ -34,7 +34,9 @@ import { BLOCKS, chunkPlace, type BlockChange } from './store';
  *   `paintRim`); hidden once a metre there spans under `HIDE_PX` pixels.
  * - **Shadows**: cast and received, still (graphics.ts `markStill`); the
  *   still map is asked again after a rebuild (at most once a second while
- *   blocks keep changing).
+ *   blocks keep changing). On high and max (the shadow map drawn every few
+ *   frames) a chunk casts only while its shadow can be in view (cull.ts
+ *   `CastView`, as `ShadowGate` gates the map's parts).
  * - Drawn only from the sides that can face the camera (voxel/backFacets.ts),
  *   as the map's temples.
  */
@@ -66,10 +68,13 @@ interface ChunkView {
   /** By family slot (mesh.ts `FAMILIES`). */
   readonly meshes: (FamMesh | null)[];
   readonly sphere: Sphere;
-  /** Its largest cut edge (m). */
+  /** Its height (m), its largest cut edge (m). */
+  height: number;
   edge: number;
   hidden: boolean;
   plain: boolean;
+  /** Its meshes cast shadows now. */
+  cast: boolean;
 }
 
 export interface BlocksStats {
@@ -187,7 +192,7 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
       group.name = `blocks:${cx},${cy},${cz}`;
       // (builder space = world: the bug report's picks)
       group.userData.voxelOffset = new Vector3();
-      v = { key, group, meshes: FAMILIES.map(() => null), sphere: new Sphere(), edge: 0, hidden: false, plain: low };
+      v = { key, group, meshes: FAMILIES.map(() => null), sphere: new Sphere(), height: 0, edge: 0, hidden: false, plain: low, cast: true };
       views.set(key, v);
       object.add(group);
     }
@@ -207,6 +212,7 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
         v.meshes[slot] = f;
         v.group.add(f.mesh);
         markStill(f.mesh);
+        f.mesh.castShadow = v.cast;
         if (v.plain && !low) paintRim(f.mesh, true);
       }
       const n = p.count;
@@ -228,6 +234,7 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
       v.edge = Math.max(v.edge, edgeOf(p.family));
     });
     all.getBoundingSphere(v.sphere);
+    v.height = all.max.y - all.min.y;
     shadowWant = true;
   }
 
@@ -258,6 +265,7 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
   }
 
   const _eye = new Vector3();
+  const castView = new CastView();
   /** Hidden when small, plain boxes when its cut edges are under a pixel (the map's rule; on low, plain always). */
   function judge(v: ChunkView, pixel: number): void {
     const d = Math.max(0, v.sphere.center.distanceTo(_eye) - v.sphere.radius);
@@ -277,7 +285,15 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
       }
   }
 
-  function frame(camera: Camera, t: number): void {
+  /** Cast shadows or not (its meshes). */
+  function cast(v: ChunkView, on: boolean): void {
+    if (on === v.cast) return;
+    v.cast = on;
+    for (const f of v.meshes) if (f) f.mesh.castShadow = on;
+  }
+
+  function frame(f: MapFrame): void {
+    const { camera, t } = f;
     // (the graphics level changed: every chunk's block shape)
     if (graphicsNow.plainBlocks !== low) {
       low = graphicsNow.plainBlocks;
@@ -295,6 +311,13 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
       _eye.setFromMatrixPosition(camera.matrixWorld);
       const pixel = pixelSize(camera);
       for (const v of views.values()) judge(v, pixel);
+      // Shadows: the still ones (low, medium) are drawn for wherever the camera goes next: every chunk casts; else only
+      // a chunk whose shadow can be in view (cull.ts `ShadowGate`'s rule: the map's shadow map covers the whole map).
+      if (graphicsNow.stillShadows) for (const v of views.values()) cast(v, true);
+      else {
+        castView.set(f);
+        for (const v of views.values()) cast(v, castView.seesShadow(v.sphere.center, v.sphere.radius, v.height));
+      }
     }
     if (shadowWant && (ctx.shot || t - shadowAt >= SHADOW_EVERY)) {
       shadowWant = false;
@@ -310,7 +333,7 @@ export function buildBlocksView(ctx: MapContext): BlocksPart {
       return BLOCKS.count;
     },
     update(f: MapFrame) {
-      frame(f.camera, f.t);
+      frame(f);
     },
     flush,
     stats() {
