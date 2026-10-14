@@ -1,6 +1,6 @@
 import { BAG, CARRY_LIMIT, MATERIAL_IDS, STORE, materialCount, materialsText } from '../build/materials';
 import { num, onLang, t } from '../ui/lang';
-import { materialIcon } from './_gatherIcons';
+import { materialIcon } from '../build/materialIcons';
 import { BAG_MORE, bagNotify } from './_shopBag';
 
 /**

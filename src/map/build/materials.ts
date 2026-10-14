@@ -14,7 +14,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
  *   gathered (`action`: the knife's chop or the hoe's dig) and its colour (the
  *   chips that fly as he hits). A new material: one line in `MaterialId`, one in
  *   `MATERIALS`, its words in ui/lang.ts (`mat…`), its icon in
- *   roam/_gatherIcons.ts, its sounds in audio/_gather.ts.
+ *   build/materialIcons.ts, its sounds in audio/_gather.ts.
  * - **The bag** (`BAG`): what he carries on foot, up to `CARRY_LIMIT` in weight
  *   (`BAG.load()`, `BAG.room(m)`: how many more of `m` fit).
  * - **The home store** (`STORE`): what he has put down at home (under his
@@ -23,8 +23,10 @@ import { lang, num, t, type WordKey } from '../ui/lang';
  * - **Building** takes from the bag first, then the store (`useMaterials`);
  *   what is missing is bought (`missingOf`, `rielOf`).
  *
- * Saved (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4, … }`); an old
- * or broken value reads as empty. Shots and `progress=0` save nothing.
+ * Saved (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4, … }`). On load a
+ * material whose count is not a whole number 0‥999 is dropped (a broken value
+ * never loads as a heap), an unknown one too; a bag over the carry limit is cut
+ * down to it (the heaviest first). Shots and `progress=0` save nothing.
  */
 
 export type MaterialId = 'bamboo' | 'log' | 'thatch' | 'clay';
@@ -55,7 +57,7 @@ export const CARRY_LIMIT = 12;
 
 export const MATERIALS: Record<MaterialId, MaterialSpec> = {
   // A pole of bamboo cut from a clump (a long stalk, 2: six on his shoulder).
-  bamboo: { id: 'bamboo', name: 'matBamboo', one: 'matBambooOne', many: 'matBambooMany', verb: 'gatherCutBamboo', weight: 2, riel: 2_000, action: 'chop', chips: [0xc8c070, 0x9aa850, 0xe0d8a0, 0x7a9040] },
+  bamboo: { id: 'bamboo', name: 'matBamboo', one: 'matBambooOne', many: 'matBambooMany', verb: 'gatherCutBamboo', weight: 2, riel: 2_000, action: 'chop', chips: [0xfff4d8, 0x3e6a1e, 0xf0e2b0, 0x2e5216] },
   // A log (heavy, 4).
   log: { id: 'log', name: 'matLog', one: 'matLogOne', many: 'matLogMany', verb: 'gatherCutLog', weight: 4, riel: 6_000, action: 'chop', chips: [0xd8b080, 0xb08050, 0xe8c898, 0x8a6038] },
   // A bundle of sugar-palm leaf thatch (light, 1).
@@ -102,11 +104,25 @@ export interface Bag extends Stock {
 
 const isCounts = (v: unknown): v is Record<string, number> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function makeStock(key: string, limit: number | null): Bag {
+/**
+ * A stock of materials of its own (AWP-14's ox cart: its load, past his carry limit): saved under `key` (progress.ts;
+ * null: not saved), up to `limit` in weight (null: no limit; `room` is then only the 999 a material may hold). `BAG`
+ * and `STORE` are made with it. One stock per key: make it once, at the module's top.
+ */
+export function createStock(key: string | null, limit: number | null): Bag {
   const counts: Record<MaterialId, number> = { bamboo: 0, log: 0, thatch: 0, clay: 0 };
-  // (an old or broken save: what reads as a whole number of a known material, the rest dropped)
-  const saved = progress.get<Record<string, number>>(key, {}, isCounts);
-  for (const [m, n] of Object.entries(saved)) if (isMaterial(m) && Number.isFinite(n)) counts[m] = Math.max(0, Math.min(MAX_EACH, Math.floor(n)));
+  // (an old or broken save: a known material with a whole number 0‥MAX_EACH is kept, anything else dropped (never
+  // capped up to a heap: 1e9 clay is no clay); a bag over its limit is cut down to it, the heaviest dropped first)
+  const saved = key ? progress.get<Record<string, number>>(key, {}, isCounts) : {};
+  for (const [m, n] of Object.entries(saved)) if (isMaterial(m) && Number.isInteger(n) && n >= 0 && n <= MAX_EACH) counts[m] = n;
+  if (limit !== null) {
+    const heavy = [...MATERIAL_IDS].sort((a, b) => MATERIALS[b].weight - MATERIALS[a].weight);
+    for (const m of heavy) {
+      const over = MATERIAL_IDS.reduce((w, k) => w + counts[k] * MATERIALS[k].weight, 0) - limit;
+      if (over <= 0) break;
+      counts[m] = Math.max(0, counts[m] - Math.ceil(over / MATERIALS[m].weight));
+    }
+  }
   const fns: (() => void)[] = [];
   let version = 0;
   const load = () => MATERIAL_IDS.reduce((w, m) => w + counts[m] * MATERIALS[m].weight, 0);
@@ -114,7 +130,7 @@ function makeStock(key: string, limit: number | null): Bag {
     version++;
     const out: Record<string, number> = {};
     for (const m of MATERIAL_IDS) if (counts[m] > 0) out[m] = counts[m];
-    progress.set(key, Object.keys(out).length ? out : null);
+    if (key) progress.set(key, Object.keys(out).length ? out : null);
     for (const fn of fns) fn();
   };
   const room = (m: MaterialId) => (limit === null ? MAX_EACH - counts[m] : Math.max(0, Math.min(MAX_EACH - counts[m], Math.floor((limit - load()) / MATERIALS[m].weight))));
@@ -159,9 +175,9 @@ function makeStock(key: string, limit: number | null): Bag {
 }
 
 /** What he carries on foot (saved: `gather.bag`). */
-export const BAG: Bag = makeStock('gather.bag', CARRY_LIMIT);
+export const BAG: Bag = createStock('gather.bag', CARRY_LIMIT);
 /** What he has put down at home (saved: `gather.store`). */
-export const STORE: Stock = makeStock('gather.store', null);
+export const STORE: Stock = createStock('gather.store', null);
 
 /** How many of `m` he has to build with (the bag and the store). */
 export const haveOf = (m: MaterialId): number => BAG.count(m) + STORE.count(m);

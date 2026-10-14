@@ -344,7 +344,8 @@ guide, with every add-on's keys and URL values for shots, is
   - Building at home: E Build… near his house → the card of nine pieces → a ghost
     (red with its reason) → E Build here → he hammers it up; take down for half
     its materials. A piece costs materials (`pieces.ts` `cost`): gathered ones are
-    free, missing ones bought with riel (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
+    free, missing ones bought with riel, what can never be gathered (cloth, straw)
+    always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`

@@ -87,8 +87,26 @@ export function registerGatherSource(s: GatherSource): void {
   const i = SOURCES.findIndex((o) => o.id === s.id);
   if (i >= 0) SOURCES[i] = s;
   else SOURCES.push(s);
+  // (its spots with pieces growing back, from the save: into the regrowing list)
+  for (const sp of s.spots()) if (taken[sp.id]) growing.set(sp.id, sp);
+  nextGrow = -Infinity;
   version++;
   for (const fn of listeners) fn();
+}
+
+/**
+ * The spots with pieces growing back (by id; only these are looked at as the clock runs, never every spot of every
+ * source: a bamboo forest has hundreds), and the clock time the next piece is back (−∞: work it out again).
+ */
+const growing = new Map<string, GatherSpot>();
+let nextGrow = -Infinity;
+function nextGrowAt(): number {
+  let t = Infinity;
+  for (const [id, sp] of growing) {
+    const ts = taken[id];
+    if (ts) for (const at of ts) t = Math.min(t, at + sp.regrowDays);
+  }
+  return t;
 }
 
 /** Every source registered. */
@@ -111,12 +129,16 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 
 /** Per spot id: the clock's times its pieces were taken (those still growing back). */
 const taken: Record<string, number[]> = {};
+/** The clock at most (game days: far over any play; a broken value reads as 0). */
+const CLOCK_MAX = 1e6;
+let clock = progress.get('gather.clock', 0, isNum);
+if (clock > CLOCK_MAX) clock = 0;
+// (a broken save: only times on the clock so far are kept (one in the future would hold a spot spent), at most a few a spot)
 for (const [id, ts] of Object.entries(progress.get('gather.spots', {}, isTaken)))
-  if (Array.isArray(ts)) {
-    const ok = ts.filter(isNum).slice(0, 64);
+  if (Array.isArray(ts) && id.length < 200) {
+    const ok = ts.filter((at) => isNum(at) && at <= clock).slice(0, 64);
     if (ok.length) taken[id] = ok;
   }
-let clock = progress.get('gather.clock', 0, isNum);
 let savedClock = clock;
 
 function save(): void {
@@ -166,6 +188,8 @@ export const GATHER = {
       // (only those still growing back are kept)
       for (let i = ts.length - 1; i >= 0; i--) if (clock - ts[i] >= spot.regrowDays) ts.splice(i, 1);
       ts.push(+clock.toFixed(4));
+      growing.set(spot.id, spot);
+      nextGrow = -Infinity;
       save();
     }
     version++;
@@ -180,22 +204,30 @@ export const GATHER = {
    */
   advance(days: number): void {
     if (!(days > 0) || !Number.isFinite(days)) return;
-    const was = clock;
     clock += days;
     let grew = false;
-    for (const src of SOURCES)
-      for (const s of src.spots()) {
-        const ts = taken[s.id];
-        if (!ts || s.regrowDays <= 0) continue;
-        let back = 0;
-        for (const at of ts) if (was - at < s.regrowDays && clock - at >= s.regrowDays) back++;
-        if (!back) continue;
-        grew = true;
+    // (nothing is due back yet: no spot is looked at)
+    if (nextGrow === -Infinity) nextGrow = nextGrowAt();
+    if (clock >= nextGrow) {
+      for (const [id, s] of growing) {
+        const ts = taken[id];
+        if (!ts || s.regrowDays <= 0) {
+          growing.delete(id);
+          continue;
+        }
+        const n = ts.length;
         // (what has grown back is forgotten; a spot all grown back is dropped)
         for (let i = ts.length - 1; i >= 0; i--) if (clock - ts[i] >= s.regrowDays) ts.splice(i, 1);
-        if (!ts.length) delete taken[s.id];
-        src.onLeft?.(s, gatherLeft(s));
+        if (ts.length === n) continue;
+        grew = true;
+        if (!ts.length) {
+          delete taken[id];
+          growing.delete(id);
+        }
+        sourceOf(s)?.onLeft?.(s, gatherLeft(s));
       }
+      nextGrow = nextGrowAt();
+    }
     if (grew) {
       version++;
       for (const fn of listeners) fn();
@@ -206,8 +238,14 @@ export const GATHER = {
   /** Checks (the URL, shots): `spot` has `left` pieces now (as if the rest were just taken). */
   setLeft(spot: GatherSpot, left: number): void {
     const n = Math.max(0, Math.min(spot.pieces, Math.floor(left)));
-    if (n >= spot.pieces) delete taken[spot.id];
-    else taken[spot.id] = Array.from({ length: spot.pieces - n }, () => clock);
+    if (n >= spot.pieces) {
+      delete taken[spot.id];
+      growing.delete(spot.id);
+    } else {
+      taken[spot.id] = Array.from({ length: spot.pieces - n }, () => clock);
+      growing.set(spot.id, spot);
+    }
+    nextGrow = -Infinity;
     save();
     version++;
     sourceOf(spot)?.onLeft?.(spot, n);

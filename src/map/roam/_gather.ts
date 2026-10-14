@@ -56,15 +56,15 @@ import { stepSound } from './walker';
  * _gatherBamboo.ts. The other materials' sources come with their tickets
  * (AWP-10…15) and register themselves (`registerGatherSource`).
  *
- * URL (shots and the dev server: a link never changes a player's saved bag):
+ * URL (shots and the dev server only, `env.shot || import.meta.env.DEV`: on the live site a link
+ * never freezes him, never fills his bag or store, never spends a spot in his save):
  * `bag=<material>:<n>,…` · `store=<material>:<n>,…` · `gather=<material>[:<hits>[:<s>]]`
  * (at the nearest spot of it to `at=`: him at work, `hits` blows of the piece
  * already landed, held `s` seconds into a swing: the chips of a blow at `s` past
  * the blow) · `gatheract=chop|dig` (that swing there instead of its own: a pose's
  * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherunload=1`
  * (a shot unloads at home too). `report()` gives `bag=`, `store=`, `gather=`.
- * `window.__gather` (shots, the dev server): `state()`, `hit()`, `near()`,
- * `advance(days)`. Console lines `[gather] …`.
+ * `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`, `advance(days)`. Console lines `[gather] …`.
  */
 
 /** He reaches a spot's foot from this far (m, his feet to its foot circle), facing it. */
@@ -79,8 +79,10 @@ const STAND = { at: 0.95, near: 0.6, far: 1.15 };
 const PUSH = 0.15;
 /** After the last piece he could take, he lowers the tool and stops this long after (s). */
 const LINGER = 0.45;
-/** The camera at the work: round to his side (rad from behind), tilt, distance (m), how far the focus goes toward the spot; eased over `for` s. */
-const FRAME = { side: 0.7, pitch: 0.44, distance: 6.6, toward: 0.35, rate: 2.4, for: 1.6 };
+/** The camera at the work: round to his right, a little before him (rad from behind: the knife and the blow in view, not behind his body), tilt, distance (m), how far the focus goes toward the spot; eased over `for` s. */
+const FRAME = { side: 1.75, pitch: 0.4, distance: 6.2, toward: 0.35, rate: 2.4, for: 1.6 };
+/** He stands turned this much to his left of the spot (rad): the blow lands before his right hip, not behind his body. */
+const TURN_LEFT = 0.45;
 /** Chips a blow throws (chop, dig), their size (m) and life (s). */
 const CHIPS = { chop: 10, dig: 11, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
 
@@ -240,7 +242,8 @@ function placeFor(ctx: RoamCtx, s: Session, x: number, z: number): void {
   const now = d - sp.r;
   const at = now >= STAND.near && now <= STAND.far ? now : STAND.at;
   s.stand.set(wx + dx * at, 0, wz + dz * at);
-  s.face = Math.atan2(-dx, -dz);
+  // (turned a little to his left: the blow lands before his right hip, where the knife comes down, in the camera's view)
+  s.face = Math.atan2(-dx, -dz) + TURN_LEFT;
   s.work.set(wx, ctx.world.field.heightAt(wx, wz) + hitYOf(sp), wz);
 }
 
@@ -639,7 +642,7 @@ registerAddon({
     if (dev && qb !== null) fillFrom(qb, BAG, 'bag');
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
-    unloadInShot = e.params.get('gatherunload') === '1';
+    unloadInShot = dev && e.params.get('gatherunload') === '1';
     console.info(`[gather] ${n} bamboo clumps to cut · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
@@ -727,6 +730,8 @@ registerAddon({
     if (next === 'overview') before = null;
   },
   fromUrl(q, ctx) {
+    // (checks only: in a shot or on the dev server; on the live site a link never freezes him nor changes his save)
+    if (!env || !(env.shot || import.meta.env.DEV)) return;
     const g = q.get('gather');
     if (!g) return;
     const [m, n, sw] = g.split(':');

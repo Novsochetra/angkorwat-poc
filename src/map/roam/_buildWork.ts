@@ -32,7 +32,7 @@ import { stepSound } from './walker';
  *    first blocks) over `PIECES[id].secs` of work. Taking one down is the same
  *    backwards, in half the time (at least 2 s), wood knocking as it comes apart.
  * 3. **Done**: it stands (a chime, a toast, a tick on the pad); taken down: it is
- *    gone and half its materials are back in his home store, half its extra riel
+ *    gone and half its materials are back in his home store, half its bought part's riel
  *    in his purse (a toast says what).
  *
  * The stick held away stops him at once: a piece being built stays as far as it
@@ -612,7 +612,7 @@ export const BuildWork = {
     console.info(`[build] built ${s.piece.uid} at (${s.piece.x.toFixed(1)}, ${s.piece.z.toFixed(1)})`);
   },
 
-  /** Taken down: gone, half its materials back (into his home store: he is at home) and half its extra riel. */
+  /** Taken down: gone, half its materials back (into his home store: he is at home) and half its bought part's riel. */
   takenDown(ctx: RoamCtx, s: Session): void {
     finish(ctx);
     const back = pieceBack(s.piece.id);

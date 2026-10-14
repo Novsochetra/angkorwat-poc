@@ -1654,6 +1654,13 @@ const WORDS = {
   buildUsed: { km: 'បានប្រើ {what}', en: 'Used {what}' },
   buildUsedPaid: { km: 'បានប្រើ {what} ហើយចំណាយ {riel}', en: 'Used {what} and paid {riel}' },
   buildAnd: { km: '{a} និង {b}', en: '{a} and {b}' },
+  buildBought: { km: 'ទិញ៖ {what} {riel}', en: 'Bought: {what} {riel}' },
+  buildBuyRattan: { km: 'ខ្សែផ្ដៅ', en: 'rattan ties' },
+  buildBuyGilding: { km: 'ថ្នាំលាប មាស និងគ្រឿងសក្ការៈ', en: 'paint, gilding and offerings' },
+  buildBuyGlaze: { km: 'ថ្នាំកែវ និងការដុត', en: 'glaze and firing' },
+  buildBuyCloth: { km: 'ក្រណាត់', en: 'cloth' },
+  buildBuyGlass: { km: 'ចង្កៀងកញ្ចក់', en: 'glass lantern' },
+  buildBuyStraw: { km: 'ចំបើង', en: 'rice straw' },
   // Gathering building materials (gather…, mat…, AWP-9): roam/_gather*.ts, build/materials.ts, build/gather.ts
   matBamboo: { km: 'ឫស្សី', en: 'Bamboo' },
   matBambooOne: { km: 'ឫស្សី {n} ដើម', en: '{n} bamboo pole' },

@@ -1,5 +1,5 @@
 import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
-import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { boughtRiel, BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, type BuildView } from '../build/view';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -34,7 +34,8 @@ import type { RoamCtx } from './types';
  *   "Plant…" first): "E  Build…" opens the build card: every piece with what it
  *   costs (AWP-9: its materials, build/materials.ts; those he gathered, in his bag
  *   or his home store, are free; what he lacks he buys: "Missing: 1 bamboo pole =
- *   2,000 ៛"; some pieces have an extra riel part, cloth or straw), how many he has
+ *   2,000 ៛"; what can never be gathered, cloth or straw, always bought, on a line
+ *   of its own: "Bought: cloth 8,000 ៛"; the prices are the old ones), how many he has
  *   of how many; not enough riel for what he lacks: greyed with how much more.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
@@ -48,7 +49,7 @@ import type { RoamCtx } from './types';
  * - **By a piece** (facing it, within reach): half built, "E  Keep building";
  *   a seat (the bed, the shelter's bench), "E  Sit" (J / L there too: _rest.ts
  *   `REST_SEATS`); hold E (the bar fills, 0.8 s) to take it down — asked first,
- *   half its materials back (into his home store) and half its extra riel. A hammock's E is the hammock add-on's, the spirit house's
+ *   half its materials back (into his home store) and half its bought part's riel. A hammock's E is the hammock add-on's, the spirit house's
  *   "Pray" the shrine's (both before this).
  *
  * URL (shots and the dev server: a link never changes a player's saved pieces):
@@ -303,12 +304,12 @@ function placingNow(ctx: RoamCtx): void {
 
 /**
  * What building `id` takes now (AWP-9: its materials from his bag and home store are free; what he lacks he buys):
- * the materials missing, and the riel to pay (theirs and the piece's extra).
+ * the materials missing, and the riel to pay (theirs and the piece's always-bought part, `boughtRiel`).
  */
 function toPay(id: PieceId): { missing: Materials; riel: number } {
   const p = PIECES[id];
   const missing = missingOf(p.cost);
-  return { missing, riel: rielOf(missing) + p.extra };
+  return { missing, riel: rielOf(missing) + boughtRiel(id) };
 }
 
 /** Why he cannot build `id` now (all of it built, not enough riel for what he lacks), or null. */
@@ -503,6 +504,8 @@ function openCard(ctx: RoamCtx): void {
           // (what he lacks and its price, else the piece's own line)
           note: lacks ? t('buildMissing', { what: materialsText(pay.missing), riel: riel(rielOf(pay.missing)) }) : t(p.line as WordKey),
           short: lacks,
+          // (what is always bought, on its own line: the price chip is the missing materials and this)
+          buy: p.bought ? t('buildBought', { what: t(p.bought), riel: riel(boughtRiel(id)) }) : null,
           cost: MATERIAL_IDS.filter((m) => (p.cost[m] ?? 0) > 0).map((m) => ({ m, n: p.cost[m]!, have: Math.min(p.cost[m]!, haveOf(m)) })),
           price: pay.riel > 0 ? riel(pay.riel) : '',
           off: cannot(id),

@@ -5,7 +5,7 @@ import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON as UI_ICON } from '../ui/icons';
 import { num, onLang } from '../ui/lang';
-import { materialIcon } from './_gatherIcons';
+import { materialIcon } from '../build/materialIcons';
 import { setSteppedVars } from '../ui/shape';
 
 /**
@@ -17,7 +17,9 @@ import { setSteppedVars } from '../ui/shape';
  * many, its line ("Knee high: to sit on and to lie under the sky"), what it
  * costs (AWP-9: each material's picture and how many, those he lacks in red,
  * and the riel to pay now, if any); a piece he lacks materials for says so
- * instead of its line ("Missing: 1 bamboo pole = 2,000 ៛"); one he cannot build
+ * instead of its line ("Missing: 1 bamboo pole = 2,000 ៛"); what is always
+ * bought for it on a line of its own ("Bought: cloth 8,000 ៛"), so the riel
+ * on the row is the two added up; one he cannot build
  * now is greyed with why ("You have all 3", "Missing 1 log: 2,000 ៛ more
  * needed"). The note under the title: his riel, and the materials he has. The first he can build is in gold. A quiet "Not now" at the foot.
  * Every line reads whole (it wraps; on a narrow card, a phone upright, the
@@ -42,6 +44,8 @@ export interface BuildRow {
   price: string;
   /** The note says what he lacks. */
   short: boolean;
+  /** What is always bought for it and its riel ("Bought: cloth 8,000 ៛"), or null: shown on its own line. */
+  buy: string | null;
   /** Its materials: each, how many it takes, how many of those he has. */
   cost: { m: MaterialId; n: number; have: number }[];
   /** Why it cannot be built now (greyed), or null. */
@@ -134,7 +138,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
         .map(
           (r, i) => `<button type="button" role="listitem" class="bd-opt mu-frame mu-sm${i === gold ? ' is-gold' : ''}${r.off ? ' is-off' : ''}" data-id="${r.id}"${r.off ? ' disabled aria-disabled="true"' : ''}><span class="mu-bg"></span>${i === gold ? '<span class="mu-glow"></span>' : ''}<span class="mu-focus"></span>
         <span class="bd-pic"><svg class="bd-ri" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${PIC[r.id]}</svg></span>
-        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em></span>
+        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em>${r.buy && !r.off ? `<em class="bd-buy">${esc(r.buy)}</em>` : ''}</span>
         <span class="bd-price">${r.cost.map((c) => `<span class="bd-m${c.have < c.n ? ' is-short' : ''}">${materialIcon(c.m, 'bd-mi')}${num(c.n)}</span>`).join('')}${r.price ? `<b class="bd-riel">${esc(r.price)}</b>` : ''}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
         )
         .join('') +
@@ -315,6 +319,8 @@ function injectStyle(): void {
     .bd-riel { font-weight: 700; padding-left: calc(6 * var(--px)); border-left: 1px solid rgba(255, 210, 120, 0.32); }
     .bd-opt.is-gold .bd-riel { border-left-color: rgba(90, 50, 0, 0.3); }
     .bd-t em.is-short { color: #ffd890; }
+    .bd-t em.bd-buy { color: var(--mu-ink2); opacity: 0.9; }
+    .bd-opt.is-gold .bd-t em.bd-buy { color: #5a3a0c; }
     .bd-opt.is-gold .bd-t em.is-short { color: #7a3a0c; }
     .bd-cancel { min-height: calc(40 * var(--px)); padding-left: calc(16 * var(--px)); }
     .bd-cancel .bd-t b { font-size: calc(14.5 * var(--px)); font-weight: 600; color: var(--mu-ink2); }
@@ -337,7 +343,7 @@ function injectStyle(): void {
     /* A narrow card (a phone held upright): the price on the name's line, the line under both across the whole row (it
        needs no more than two lines then). */
     @media (max-width: 560px) {
-      .bd-opt:not(.bd-cancel) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'pic name price kbd' 'pic note note kbd';
+      .bd-opt:not(.bd-cancel) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'pic name price kbd' 'pic note note kbd' 'pic buy buy kbd';
         gap: calc(1 * var(--px)) 0; align-items: center; padding-block: calc(5 * var(--px)); }
       .bd-opt:not(.bd-cancel) .bd-t { display: contents; }
       /* (the spaces as margins: a hidden key cap leaves none) */
@@ -345,6 +351,7 @@ function injectStyle(): void {
       /* (a wide cost, three materials and riel, squeezes the name: its count goes under it, not under the cost) */
       .bd-t b { grid-area: name; min-width: 0; flex-wrap: wrap; row-gap: 0; }
       .bd-t em { grid-area: note; }
+      .bd-t em.bd-buy { grid-area: buy; }
       .bd-price { grid-area: price; justify-self: end; margin-left: calc(8 * var(--px)); }
       .bd-opt:not(.bd-cancel) kbd { grid-area: kbd; margin-left: calc(10 * var(--px)); }
     }

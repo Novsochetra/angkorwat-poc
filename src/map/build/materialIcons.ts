@@ -1,11 +1,13 @@
-import type { MaterialId } from '../build/materials';
+import type { MaterialId } from './materials';
 
 /**
  * The building materials' little pictures (build/materials.ts), 12 × 12 pixel
  * art in the map's look (as the build card's, roam/_buildCard.ts): a bamboo
  * pole with its nodes and a leaf, a log with its ring end, a folded panel of
  * sugar-palm leaf thatch, a lump of clay in a basket. Used by the gathering's
- * load chip and bag (roam/_gatherHud.ts) and the build card's costs.
+ * load chip and bag (roam/_gatherHud.ts) and the build card's costs
+ * (roam/_buildCard.ts): here, not in the gathering add-on, which nothing else
+ * may import.
  */
 const ART: Record<MaterialId, string> = {
   bamboo:
