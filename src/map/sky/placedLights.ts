@@ -70,13 +70,17 @@ export interface PlacedLights {
   add(spec: PlacedLightSpec): PlacedLight | null;
   /** Every frame (before the lamp slots pick: an add-on's frame): the camera, seconds, how dark it is (0 day ‥ 1 night). */
   frame(camera: Camera, t: number, night: number): void;
-  /** Checks: how many there are, how many of them hold one of the map's few lights now (sky/lampSlots.ts). */
+  /** Checks: how many there are, how many of them hold one of the map's few lights now (sky/lampSlots.ts; dev: `window.__placedLights`). */
   stats(): { lights: number; lit: number; max: number };
 }
 
 interface Entry {
   spec: PlacedLightSpec;
   handle: PlacedLight;
+  /** Its real light (kept with it while it stands, so a slot's light never jumps to another when one goes). */
+  lamp: Lamp | null;
+  /** Its flicker's phase. */
+  readonly phase: number;
 }
 
 let api: PlacedLights | null = null;
@@ -87,8 +91,9 @@ export function placedLights(): PlacedLights {
   const object = new Group();
   object.name = 'placed lights';
   const list: Entry[] = [];
-  /** The pool's real lights, made the first time a place is used (kept: the slots keep every lamp). */
+  /** The real lights made so far (at most `MAX`: the slots keep every lamp), and those no light holds now. */
   const lamps: Lamp[] = [];
+  const spare: Lamp[] = [];
   let dirty = true;
 
   const { material: glowMat, uniforms: glowU } = glowMaterial('lamp');
@@ -153,8 +158,6 @@ export function placedLights(): PlacedLights {
     (glowGeo.getAttribute('aGlow') as BufferAttribute).needsUpdate = true;
     haloPos.needsUpdate = true;
     haloSize.needsUpdate = true;
-    // (a pool place no longer used: dark)
-    for (let i = n; i < lamps.length; i++) lamps[i].intensity = 0;
   }
 
   /** Shown: its group and every parent visible, in a scene. */
@@ -173,8 +176,16 @@ export function placedLights(): PlacedLights {
         console.warn(`[lights] no more than ${MAX} placed lights: this one only stands`);
         return null;
       }
+      let lamp: Lamp | null = null;
+      if ((spec.candela ?? 0) > 0) {
+        // (the one put out longest ago first)
+        lamp = spare.shift() ?? addLamp({ kind: 'point', name: `placed light ${lamps.length + 1}`, placed: true });
+        if (!lamps.includes(lamp)) lamps.push(lamp);
+      }
       const e: Entry = {
         spec: { ...spec, glow: { ...spec.glow } },
+        lamp,
+        phase: (spec.seed ?? 0) * 40 + lamps.length * 1.7,
         handle: {
           move(x, y, z) {
             e.spec.x = x;
@@ -186,6 +197,12 @@ export function placedLights(): PlacedLights {
             const i = list.indexOf(e);
             if (i < 0) return;
             list.splice(i, 1);
+            if (e.lamp) {
+              // (dark at once: the slot holding it lets it go, its light gone)
+              e.lamp.intensity = 0;
+              spare.push(e.lamp);
+              e.lamp = null;
+            }
             dirty = true;
           },
         },
@@ -209,23 +226,22 @@ export function placedLights(): PlacedLights {
       u.uLamp.value = k * k * 1.1;
       // The real lights: each placed light's lamp (the slots pick the nearest few).
       const on = list.length > 0 && k > 0 && shown();
-      list.forEach(({ spec: L }, i) => {
-        const cd = L.candela ?? 0;
-        if (!(cd > 0) && i >= lamps.length) return;
-        const l = (lamps[i] ??= addLamp({ kind: 'point', name: `placed light ${i + 1}`, placed: true }));
-        if (!on || !(cd > 0)) {
+      for (const { spec: L, lamp: l, phase: ph } of list) {
+        if (!l) continue;
+        if (!on) {
           l.intensity = 0;
-          return;
+          continue;
         }
-        const ph = (L.seed ?? 0) * 40 + i * 1.7;
+        const cd = L.candela ?? 0;
         const flick = 1 - FLICKER.a - FLICKER.b + FLICKER.a * Math.sin(t * FLICKER.slow + ph) + FLICKER.b * Math.sin(t * FLICKER.fast + ph * 2.3);
         l.position.set(L.x, L.y, L.z);
         l.color.setHex(L.color);
         l.distance = L.reach ?? 0;
         l.intensity = cd * k * flick;
-      });
+      }
     },
     stats: () => ({ lights: list.length, lit: lamps.filter((l) => inSlot(l) > 0).length, max: MAX }),
   };
+  if (import.meta.env.DEV) Object.assign(window, { __placedLights: api });
   return api;
 }
