@@ -10,7 +10,7 @@ import { beam, leaf, long, round, sag, spiral, teardrop, vine, type P3 } from '.
  * Checking the plant kit (veg/plantKit.ts): `index.html?shot=1&plantkit=lineup`
  * lays every shape at its real size on a stone table in the meadow behind Angkor
  * Wat, a pale board behind it, the hanging fruit on a bamboo rail. Left to
- * right: leaves (1 piece no rib, 2 pieces, 3 pieces, a broad gourd leaf, a
+ * right: the old way (a flat square leaf, a box mango, a box pumpkin), leaves (1 piece no rib, 2 pieces, 3 pieces, a broad gourd leaf, a
  * folded banana leaf), teardrops (mango, mango `low`, papaya), rounds (pumpkin,
  * pumpkin `low`, a gourd hanging), longs (banana finger, long eggplant), a vine
  * winding up a post and draped to the next. The console lists each shape's
@@ -20,6 +20,8 @@ import { beam, leaf, long, round, sag, spiral, teardrop, vine, type P3 } from '.
 
 /** The table's front left corner on the map (x, z), its length and depth (m), its top over the highest ground under it. */
 const X0 = 146;
+/** The table's left end: a part for the old way (flat box leaves, box fruit) left of the kit's shapes, to compare. */
+const XA = X0 - 1.3;
 const Z0 = -293;
 const LEN = 7.6;
 const DEPTH = 1.8;
@@ -37,14 +39,14 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
   const f = ctx.field;
   const b = new VoxelBuilder();
   let ground = -Infinity;
-  for (let x = X0; x <= X0 + LEN; x += 0.5) for (let z = Z0 - DEPTH; z <= Z0; z += 0.5) ground = Math.max(ground, f.heightAt(x, z));
-  f.occupy(X0 - 1, Z0 - DEPTH - 1, X0 + LEN + 1, Z0 + 1);
+  for (let x = XA; x <= X0 + LEN; x += 0.5) for (let z = Z0 - DEPTH; z <= Z0; z += 0.5) ground = Math.max(ground, f.heightAt(x, z));
+  f.occupy(XA - 1, Z0 - DEPTH - 1, X0 + LEN + 1, Z0 + 1);
   const T = ground + TOP;
   const zc = Z0 - DEPTH / 2;
   // The table: a slab on four legs, the board behind it, the rail over its front.
-  b.span(X0, T - 0.08, Z0 - DEPTH, X0 + LEN, T, Z0, STONE, 'mapStone', { src });
-  for (const x of [X0 + 0.15, X0 + LEN - 0.15]) for (const z of [Z0 - 0.15, Z0 - DEPTH + 0.15]) b.box(x, (ground - 0.3 + T - 0.08) / 2, z, 0.2, T - 0.08 - ground + 0.3, 0.2, STONE, 'mapStone', { src, shade: 0.9 });
-  b.span(X0, ground - 0.3, Z0 - DEPTH - 0.06, X0 + LEN, T + 2.2, Z0 - DEPTH, BOARD, 'mapStone', { src });
+  b.span(XA, T - 0.08, Z0 - DEPTH, X0 + LEN, T, Z0, STONE, 'mapStone', { src });
+  for (const x of [XA + 0.15, X0 + LEN - 0.15]) for (const z of [Z0 - 0.15, Z0 - DEPTH + 0.15]) b.box(x, (ground - 0.3 + T - 0.08) / 2, z, 0.2, T - 0.08 - ground + 0.3, 0.2, STONE, 'mapStone', { src, shade: 0.9 });
+  b.span(XA, ground - 0.3, Z0 - DEPTH - 0.06, X0 + LEN, T + 2.2, Z0 - DEPTH, BOARD, 'mapStone', { src });
   const railY = T + 0.95;
   const rz = Z0 - 0.55;
   const rail0 = X0 + 3.1;
@@ -62,6 +64,11 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
     b.box(x, T + h / 2, z, 0.025, h, 0.025, 0x5a6a2a, 'mapLeaf', { src, shade: 0.9 });
     return [x, T + h, z];
   };
+  // ── The old way, as the places drew them before the kit: a flat square leaf (the gourd trellis, the papaya), a box mango, a box pumpkin ──
+  stand(XA + 0.4, Z0 - 0.6, 0.23);
+  count('old: flat box leaf', () => b.box(XA + 0.4, T + 0.3, Z0 - 0.6, 0.7, 0.14, 0.7, LEAF, 'mapLeaf', { src }));
+  count('old: box mango', () => b.box(XA + 0.95, T + 0.11, Z0 - 0.4, 0.16, 0.22, 0.14, 0xe0a030, 'petal', { src }));
+  count('old: box pumpkin', () => b.box(XA + 0.85, T + 0.14, Z0 - 1.2, 0.32, 0.28, 0.32, 0xd88a2a, 'petal', { src }));
   // ── Leaves: pointing away from the front, rising, bending down ──
   const lz = Z0 - 0.45;
   count('leaf 1 piece, no rib', () => leaf(b, stand(X0 + 0.35, lz, 0.12), { len: 0.3, wid: 0.1, az: Math.PI, el: 0.5, segs: 1, rib: false, color: LEAF }));
@@ -99,7 +106,8 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
   const cam = (x: number, y: number, z: number, tx: number, ty: number, tz: number, fov: number) => [x, y, z, tx, ty, tz, fov].map((v) => +v.toFixed(2)).join(',');
   console.info(`[map] plant kit lineup (blocks): ${counts.join(' · ')}`);
   console.info(
-    `[map] plant kit lineup cameras: all cam=${cam(X0 + LEN / 2, T + 2.2, Z0 + 6.4, X0 + LEN / 2, T + 0.45, zc, 34)}` +
+    `[map] plant kit lineup cameras: all cam=${cam((XA + X0 + LEN) / 2, T + 3.2, Z0 + 10.5, (XA + X0 + LEN) / 2, T + 0.45, zc, 34)}` +
+      ` · old and leaves cam=${cam(X0 + 0.2, T + 1.7, Z0 + 2.4, X0 + 0.2, T + 0.2, zc, 44)}` +
       ` · leaves cam=${cam(X0 + 1.3, T + 2.0, Z0 + 1.6, X0 + 1.3, T + 0.2, zc, 38)}` +
       ` · fruit cam=${cam(X0 + 4.5, T + 1.0, Z0 + 2.4, X0 + 4.5, T + 0.5, zc, 38)}` +
       ` · vine cam=${cam(X0 + 7.0, T + 1.0, Z0 + 1.8, X0 + 7.0, T + 0.7, zc, 38)}`,
