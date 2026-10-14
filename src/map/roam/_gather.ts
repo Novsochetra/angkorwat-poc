@@ -19,6 +19,7 @@ import { registerThatch, thatchTick } from './_gatherThatch';
 import { clayTick, registerClay } from './_gatherClay';
 import { createGatherHud, type GatherHud } from './_gatherHud';
 import { gatherLoadBuilder } from './_gatherLoad';
+import { GatherLayer } from './_gatherLayer';
 import { gatherPose, gatherToolBuilder, newGatherPose, SWING } from './_gatherPose';
 import { byHouse } from './_buildSpots';
 import { angleDiff } from './followCam';
@@ -785,6 +786,7 @@ registerAddon({
     backLoad();
     thatchTick(dt);
     clayTick(dt);
+    GatherLayer.frame(f.camera.position);
     // The gathering's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play
     // (as the garden's, roam/_garden.ts). Not in a shot (still) nor on the overview.
     const days = TIME.days();
