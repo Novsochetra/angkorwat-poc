@@ -53,7 +53,8 @@ import type { RoamCtx } from './types';
  * at work on one, that far built, `s` into a stroke; the one of that kind under way,
  * else a new one before him) · `buildtake=<uid>` (the take-down question; `:<0‥1>`
  * him taking it down that far) · `buildsit=<uid>[:lie]` (sitting / lying on it) ·
- * `buildhint=1`. `report()` gives `build=` (and `buildghost=`, `buildwork=`).
+ * `buildhint=1` · `lamps=<n>` (n lamp posts before the house, past the 8 a player may have: the placed lights'
+ * check, sky/placedLights.ts). `report()` gives `build=` (and `buildghost=`, `buildwork=`).
  * `window.__build` (shots, the dev server): `state()`, `canBuild`, `add`, `card`,
  * `place`, `rebuild`. Console lines start `[build]`.
  */
@@ -575,7 +576,8 @@ function placeAll(world = env?.world): number {
 
 /**
  * `lamps=<n>` (a check of the placed lights, sky/placedLights.ts): n lantern posts standing before the house, past the
- * 8 a player may have, in rows 3.5 m apart (from 8 m before it, its west side across), each where it fits.
+ * 8 a player may have, in rows 3.5 m apart (from 8 m before it, 8.75 m either side of its middle), each where it fits
+ * (for 20 today: x 419‥433, z −115‥−129).
  */
 function placeLamps(world: AddonEnv['world'], n: number): number {
   let k = 0;
