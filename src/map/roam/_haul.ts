@@ -488,9 +488,8 @@ function nose(out: Vector3): Vector3 {
 
 /** His right hand (map, m: a little under the wrist), into `out`. */
 function hand(out: Vector3, side: 'L' | 'R' = 'R'): Vector3 {
-  const ex = env!.explorer;
-  ex.object.updateMatrixWorld(true);
-  return ex.rig.joints[side === 'R' ? 'wristR' : 'wristL'].getWorldPosition(out);
+  // (getWorldPosition brings the wrist's chain of parents up to date: as the explorer was last posed)
+  return env!.explorer.rig.joints[side === 'R' ? 'wristR' : 'wristL'].getWorldPosition(out);
 }
 
 // ── Leading ────────────────────────────────────────────────────────────────
@@ -703,11 +702,23 @@ function blend(a: Matrix4, b: Matrix4, k: number, out: Matrix4): Matrix4 {
   return out.compose(_a, _q1, _s1.lerp(_s2, k));
 }
 
-/** Counts with one more of `m` (where the piece being loaded will lie). */
+/** What is on the cart now (one object, made again only when the load changes: read every frame of the work). */
+const counts: Record<MaterialId, number> = { log: 0, bamboo: 0, thatch: 0, clay: 0 };
+let countsVer = -1;
+function loadNow(): Materials {
+  if (countsVer !== CART_LOAD.version) {
+    countsVer = CART_LOAD.version;
+    for (const m of MATERIAL_IDS) counts[m] = CART_LOAD.count(m);
+  }
+  return counts;
+}
+
+/** Counts with one more of `m` (where the piece being loaded will lie): one object, refilled. */
+const plus: Record<MaterialId, number> = { log: 0, bamboo: 0, thatch: 0, clay: 0 };
 function plusOne(m: MaterialId): Materials {
-  const c = CART_LOAD.all();
-  c[m] = (c[m] ?? 0) + 1;
-  return c;
+  Object.assign(plus, loadNow());
+  plus[m]++;
+  return plus;
 }
 
 /** The piece under way drawn where it is now (in his hands, on its way in or out), after the cart and his body. */
@@ -723,15 +734,15 @@ function drawPiece(w: Work | null): void {
   if (w.kind === 'load') {
     if (u < 0.62) view.handItem(m, _m1);
     else {
-      const counts = plusOne(m);
-      const i = Math.min(CAP[m], counts[m]!) - 1;
-      if (!view.spotOf(counts, m, i, _m2)) _m2.copy(_m1);
+      const next = plusOne(m);
+      const i = Math.min(CAP[m], next[m]!) - 1;
+      if (!view.spotOf(next, m, i, _m2)) _m2.copy(_m1);
       view.handItem(m, blend(_m1, _m2, smooth((u - 0.62) / 0.23), _m1));
     }
   } else {
-    const counts = CART_LOAD.all();
-    const i = Math.min(CAP[m], counts[m] ?? 0) - 1;
-    if (!view.spotOf(counts, m, Math.max(0, i), _m2)) _m2.copy(_m1);
+    const now = loadNow();
+    const i = Math.min(CAP[m], now[m] ?? 0) - 1;
+    if (!view.spotOf(now, m, Math.max(0, i), _m2)) _m2.copy(_m1);
     view.handItem(m, u < 0.45 ? blend(_m2, _m1, smooth((u - 0.1) / 0.3), _m1) : _m1);
   }
 }
@@ -970,6 +981,7 @@ registerAddon({
             atHome: atHome(),
             work: W ? { kind: W.kind, phase: W.phase, u: +W.u.toFixed(2), piece: W.piece, moved: W.moved } : null,
             saving: progress.saving,
+            boxes: view?.things.capacity ?? 0,
           }),
           /** Could the cart stand at (x, z) going `yaw` degrees (from ground `y`, default the land there)? Its ground, or NaN. */
           passable: (x: number, z: number, yaw = 0, y?: number) => {
@@ -1084,7 +1096,7 @@ registerAddon({
       v.cart.turn(v.wheels[0], P.wheel).turn(v.wheels[1], P.wheel);
       v.cart.turn(v.gate, GATE_DOWN * smooth(gate));
       v.cart.write();
-      v.writeLoad(CART_LOAD.all(), unloading);
+      v.writeLoad(loadNow(), unloading);
       dirty = false;
     }
     // The oxen: side by side under the yoke, walking with the cart, else looking about (dozing at night).

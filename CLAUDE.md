@@ -371,6 +371,12 @@ guide, with every add-on's keys and URL values for shots, is
   the sources' registry `build/gather.ts` (`registerGatherSource`: spots, hits,
   regrowing), the add-on `roam/_gather*.ts` (one press, one swing; the load under
   the purse; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
+- His ox cart (AWP-14, addons.md "His ox cart"): the family's cart and two oxen by
+  his house hauls past the carry limit (60 in weight, `build/haul.ts`: the load and
+  its place, saved): E before the oxen leads it (it follows his way, only where a
+  cart can go), E at its tail loads his bag, at home unloads into his store; the load
+  drawn on it (`roam/_haul*.ts`). Shots: `cartload=`, `cartat=x,z,yaw°`,
+  `cartlead=1`, `cartwork=load|unload:<u>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).
