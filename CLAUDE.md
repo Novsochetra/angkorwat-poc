@@ -13,6 +13,8 @@
 - `npm run wallpaper` draws the saved views and flights of the free camera
   (dev server only: see "Free camera and wallpapers" below) into `wallpapers/out/`.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
+- Reviewing a tracker ticket (project AWP): follow `REVIEW.md` (the checks, shots and
+  what to write; its Lessons list grows with each ticket sent back).
 
 ## World kit (component plan sections 18–20)
 
