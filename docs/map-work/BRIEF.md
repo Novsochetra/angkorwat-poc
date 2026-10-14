@@ -2346,25 +2346,36 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   still map asked again after a rebuild (at most once a second while blocks
   keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
   read the store (AWP-17).
+- **Edge joints**: two blocks that meet only along an edge (a roof stepping in
+  a block a row) keep that edge square (`mesh.ts` `diagonalJoints`, the joint
+  bits of `voxOpen`): cut on both it was a slit the sky showed through. Where
+  such a row meets the next block along it a pinhole of about the bevel's size
+  is left (the shader squares a corner only with all three sides joints, which
+  would also square the seams between the row's blocks); a roof two blocks
+  deep, or stairs and slabs (AWP-24), have none. A slab's partial sides do not
+  count yet (AWP-24 grows `covers`).
+- **Shadows of a far chunk**: hidden by distance it drops out of the still
+  shadow map; coming back, its shadow returns at the next still redraw (as the
+  build view's pieces). Watch it with continuous building (AWP-20).
 - **Cost**: an empty store is an empty group (no draw, no work a frame).
-  Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 22). Making a
+  Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 28). Making a
   chunk again after one change (`__blocks.bench`, M1 Max with other jobs
-  running): a plot's chunk of 3,088 blocks 0.4 ms (the CPU 4 × slower 1.6, 6 ×
-  2.4: well under a phone's frame); the worst chunks, every other cell (16,384
+  running): a plot's chunk of 3,664 blocks 0.5 ms (the CPU 4 × slower 2.3, 6 ×
+  3.5: well under a phone's frame); the worst chunks, every other cell (16,384
   blocks, each showing six sides) 1.5 ms (6 × 9.5), filled whole (32,768) 1.1
   ms (6 × 7.0). `npm run perf` (1280 × 720 and the phone's 844 × 390): with the
   store empty the same draws, triangles and programs as before in every view;
-  `pblocks=full` (8,629 blocks, 6,995 drawn, 1,634 under others) in the `home`
-  view low +22 draws, +0.07 M triangles, medium +22, +0.21 M, phone +22,
-  +0.07 M, frame times within the noise; the still shadow map +22 draws (0.04 M
-  on low, 0.22 M on medium) when it is drawn; elsewhere (overview, village,
+  `pblocks=full` (9,925 blocks, 8,291 drawn, 1,634 under others) in the `home`
+  view low +28 draws, +0.08 M triangles, medium +28, +0.33 M, phone +28,
+  +0.08 M, frame times within the noise; the still shadow map +28 draws (0.05 M
+  on low, 0.26 M on medium) when it is drawn; elsewhere (overview, village,
   east) nothing drawn; ≤ 0.01 ms of CPU a frame; no new program when blocks
   appear (the program count the same on low, medium and high).
 - **URL** (shots and the dev server only, never on the live site, as
   `build=`: a link must never put blocks into a player's map or save):
-  `pblocks=demo` (a sala on the meadow before his stilt house, 688 blocks: all
+  `pblocks=demo` (a sala on the meadow before his stilt house, 832 blocks: all
   six materials, the slab, painted blocks) · `pblocks=full` (a full plot: nine
-  of them 3 × 3, 8 m apart, 8,629 blocks over 24 × 24 m, their plinths sunk
+  of them 3 × 3, 8 m apart, 9,925 blocks over 24 × 24 m, their plinths sunk
   to the sloping ground: 8 chunks) · `@x,z` puts it elsewhere. Nothing is
   saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
   make a chunk again after one change, `flush()`, `rawOf`, `blockOf`). `npm run perf -- only=home

@@ -36,7 +36,9 @@ import { BLOCKS, chunkPlace, type BlockChange } from './store';
  *   still map is asked again after a rebuild (at most once a second while
  *   blocks keep changing). On high and max (the shadow map drawn every few
  *   frames) a chunk casts only while its shadow can be in view (cull.ts
- *   `CastView`, as `ShadowGate` gates the map's parts).
+ *   `CastView`, as `ShadowGate` gates the map's parts). A chunk hidden by
+ *   distance drops out of the still map; back in view, its shadow returns at
+ *   the next still redraw (as build/view.ts; to watch in AWP-20).
  * - Drawn only from the sides that can face the camera (voxel/backFacets.ts),
  *   as the map's temples.
  */

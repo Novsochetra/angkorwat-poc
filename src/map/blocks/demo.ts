@@ -13,7 +13,7 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   corners, bamboo between), a beam ring painted lacquer red, a palm thatch
  *   roof in stepped rings two cells deep, a gold finial: all six materials,
  *   the slab, painted blocks.
- * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (8,629 blocks over
+ * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (9,925 blocks over
  *   about 24 × 24 m, the plinths sunk to the sloping ground: 8 chunks), for
  *   the frame's cost (`npm run perf`).
  *
