@@ -116,28 +116,28 @@ function draw(field: HeightField): void {
     // Its foot: sawn off the stump, pale and ringed.
     const f = at(0);
     const ry = Math.atan2(lx, lz);
-    s.box(f[0] - lx * 0.01, f[1], f[2] - lz * 0.01, d * 0.72, d * 0.72, 0.03, pickTone(CUT, 1, p.id.length, 9, s.seed), 'wood', { ry });
-    s.box(f[0] - lx * 0.03, f[1], f[2] - lz * 0.03, d * 0.34, d * 0.34, 0.02, 0xb88e58, 'wood', { ry });
+    s.box(f[0] - lx * 0.01, f[1], f[2] - lz * 0.01, d * 0.72, d * 0.72, 0.03, pickTone(CUT, 1, p.id.length, 9, s.seed), 'mapBark', { ry });
+    s.box(f[0] - lx * 0.03, f[1], f[2] - lz * 0.03, d * 0.34, d * 0.34, 0.02, 0xb88e58, 'mapBark', { ry });
     const e = at(len);
     if (n === LOGS) {
       // Whole: its top end rough where the crown was cut away, two branch stubs.
-      s.box(e[0], e[1], e[2], d * 0.6, d * 0.6, 0.05, 0x8a6a48, 'wood', { ry });
+      s.box(e[0], e[1], e[2], d * 0.6, d * 0.6, 0.05, 0x8a6a48, 'mapBark', { ry });
       for (const k of [0.45, 0.75]) {
         const m = at(len * k);
         const side = k < 0.6 ? 1 : -1;
         s.beam([m[0], m[1] + d * 0.2, m[2]], [m[0] + lz * side * 0.5, m[1] + d * 0.55, m[2] - lx * side * 0.5], 0.13, 0.13, pickTone(LOG_BARK, k * 10, 2, 10, s.seed), 'mapBark');
-        s.box(m[0] + lz * side * 0.52, m[1] + d * 0.57, m[2] - lx * side * 0.52, 0.11, 0.03, 0.11, pickTone(CUT, k * 10, 3, 11, s.seed), 'wood');
+        s.box(m[0] + lz * side * 0.52, m[1] + d * 0.57, m[2] - lx * side * 0.52, 0.11, 0.03, 0.11, pickTone(CUT, k * 10, 3, 11, s.seed), 'mapBark');
       }
     } else {
       // Cut: the fresh end, pale, its rings, chips in the grass by it.
-      s.box(e[0] + lx * 0.01, e[1], e[2] + lz * 0.01, d * 0.74, d * 0.74, 0.03, 0xe6c896, 'wood', { ry });
-      s.box(e[0] + lx * 0.03, e[1], e[2] + lz * 0.03, d * 0.36, d * 0.36, 0.02, 0xd4ae78, 'wood', { ry });
+      s.box(e[0] + lx * 0.01, e[1], e[2] + lz * 0.01, d * 0.74, d * 0.74, 0.03, 0xe6c896, 'mapBark', { ry });
+      s.box(e[0] + lx * 0.03, e[1], e[2] + lz * 0.03, d * 0.36, d * 0.36, 0.02, 0xd4ae78, 'mapBark', { ry });
       for (let i = 0; i < 9; i++) {
         const a = hash3(i, n, p.id.charCodeAt(0), 8102) * Math.PI * 2;
         const r = 0.35 + hash3(i, n, 2, 8103) * 0.9;
         const x = e[0] + Math.cos(a) * r;
         const z = e[2] + Math.sin(a) * r;
-        s.box(x, s.ground(x, z) + 0.02, z, 0.12 + 0.06 * hash3(i, 4, n, 8104), 0.03, 0.06, pickTone(CUT, i, n, 12, s.seed), 'wood', { ry: a * 2 });
+        s.box(x, s.ground(x, z) + 0.02, z, 0.12 + 0.06 * hash3(i, 4, n, 8104), 0.03, 0.06, pickTone(CUT, i, n, 12, s.seed), 'mapBark', { ry: a * 2 });
       }
     }
   }

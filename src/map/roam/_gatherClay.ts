@@ -242,7 +242,7 @@ function drawChunk(key: string): void {
   }
   drawnKey.set(key, keys.join('|'));
   let layer = layers.get(key);
-  if (!layer) layers.set(key, (layer = new GatherLayer(parent, `gather:clay:${key}`, false)));
+  if (!layer) layers.set(key, (layer = new GatherLayer(parent, `gather:clay:${key}`, false, 120)));
   layer.set(v);
 }
 

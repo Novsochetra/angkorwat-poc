@@ -8,7 +8,7 @@ import { graphicsNow, markStill } from '../graphics';
  * _gatherClay.ts the clay banks): one small voxel mesh in the roaming group, made again when what the spots have left
  * changes (`set`). As the map's own blocks: plain on the low level, casting the still shadows of low and medium (asked
  * again from the first drawing after a change). In the families the map draws already: no new shader. Small things:
- * not drawn at all past `FAR` m from the camera (`GatherLayer.frame`: the overview draws none of them).
+ * not drawn at all past `FAR` m from the camera (`GatherLayer.frame`; flat ones nearer: the overview draws none of them).
  */
 const FAR = 220;
 const LAYERS: GatherLayer[] = [];
@@ -21,22 +21,23 @@ export class GatherLayer {
   /** Blocks drawn now (checks). */
   blocks = 0;
 
-  /** `shadows`: it casts (flat things on the ground do not). */
+  /** `shadows`: it casts (flat things on the ground do not); `far`: drawn within this of the camera (m). */
   constructor(
     parent: Object3D,
     name: string,
     private readonly shadows = true,
+    private readonly far = FAR,
   ) {
     this.object.name = name;
     parent.add(this.object);
     LAYERS.push(this);
   }
 
-  /** Each frame (the gathering add-on's): each layer drawn only within `FAR` m of the camera. */
+  /** Each frame (the gathering add-on's): each layer drawn only within its reach of the camera. */
   static frame(eye: Vector3): void {
     for (const l of LAYERS) {
       if (!l.mesh) continue;
-      const near = l.sphere.distanceToPoint(eye) < FAR;
+      const near = l.sphere.distanceToPoint(eye) < l.far;
       if (near === l.object.visible) continue;
       l.object.visible = near;
       // (back in view: its still shadow drawn again, it cast none while away)
