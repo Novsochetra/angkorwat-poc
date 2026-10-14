@@ -29,8 +29,8 @@ import type { MapFrame } from '../types';
  * go out).
  *
  * **Placed lamps** (`placed`: the lights he puts up at home, sky/placedLights.ts): there can be many (twenty lamp
- * posts round his house), so at most `PLACED_SLOTS` of them hold a slot at once — those whose light covers most of
- * the view, the nearest first — and the other slots stay the world's (the temples', the boat's, his own lantern
+ * posts round his house), so at most `PLACED_SLOTS` of them are put into slots — those whose light covers most of
+ * the view, the nearest in sight first (one easing out keeps its slot until it has faded) — and the other slots stay the world's (the temples', the boat's, his own lantern
  * first as ever). The rest of the placed lamps glow (their blocks and halos) with no light of their own.
  *
  * URL (checks): `lampslots=<points>,<spots>[,<placed>]` this many slots (the shaders are made for them), and at most

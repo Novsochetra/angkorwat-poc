@@ -316,19 +316,19 @@ export function createBuildView(shot = false): BuildView {
   // (the map's placed lights: sky/placedLights.ts; this view hosts them, in roaming's group, and drives them)
   const lights = placedLights();
   object.add(lights.object);
-  /** Each standing piece's light, by its uid. */
-  const lit = new Map<string, PlacedLight>();
+  /** Each standing piece's light (by the piece itself: a uid comes again after one is taken down, a check's `build=`). */
+  const lit = new Map<Built, PlacedLight>();
   let lightsDirty = true;
 
   function syncLights(): void {
     lightsDirty = false;
-    const now = new Set<string>();
+    const now = new Set<Built>();
     for (const p of BUILD.list) {
       const spec = PIECES[p.id];
       const L = LIGHT[p.id];
       if (!spec.light || !L || p.done < 1) continue;
-      now.add(p.uid);
-      if (lit.has(p.uid)) continue;
+      now.add(p);
+      if (lit.has(p)) continue;
       const [lx, ly, lz] = spec.light;
       const c = Math.cos(p.yaw);
       const s = Math.sin(p.yaw);
@@ -344,12 +344,12 @@ export function createBuildView(shot = false): BuildView {
         reach: L.reach,
         seed: p.seed,
       });
-      if (h) lit.set(p.uid, h);
+      if (h) lit.set(p, h);
     }
-    for (const [uid, h] of lit)
-      if (!now.has(uid)) {
+    for (const [p, h] of lit)
+      if (!now.has(p)) {
         h.remove();
-        lit.delete(uid);
+        lit.delete(p);
       }
     stats.lights = lit.size;
   }

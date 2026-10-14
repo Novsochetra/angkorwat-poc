@@ -13,8 +13,8 @@ import { addLamp, inSlot, type Lamp } from './lampSlots';
  *   so it blooms; and a soft halo (road/glow.ts `haloPoints`: points sized by the scene's height, as every lamp's
  *   halo on the map). One draw for all the glows, one for all the halos.
  * - **The nearest few give real light**: each is a lamp of the map's few light slots (sky/lampSlots.ts `addLamp`,
- *   `placed`): at most `PLACED_SLOTS` (3) of them hold a slot at once — those whose light covers most of the view,
- *   the nearest — easing in and out as he walks among them; the world's lamps keep the other slots.
+ *   `placed`): at most `PLACED_SLOTS` (3) of them are put into slots — those whose light covers most of the view,
+ *   the nearest in sight — easing in and out (0.45 s) as he walks among them; the world's lamps keep the other slots.
  * - **A fixed pool** (`MAX`): nothing is made when one comes or goes, no shader is compiled after Start (the lamp
  *   lights are made the first time a pool place is used; they cost nothing while dark).
  *
