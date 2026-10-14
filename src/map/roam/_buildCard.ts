@@ -273,7 +273,7 @@ function injectStyle(): void {
     .bd-icon { width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
     .bd-ask #bd-note[hidden] { display: none; }
     .bd-ask #bd-note { white-space: pre-line; }
-    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
+    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
       overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }
     /* Soft edges where there is more to scroll to, as the settings panel's body (map.css \`.mu-set-body\`, ui.ts \`scrollEdges\`). */
     .bd-opts:is(.is-more-up, .is-more-down) {
@@ -342,7 +342,8 @@ function injectStyle(): void {
       .bd-opt:not(.bd-cancel) .bd-t { display: contents; }
       /* (the spaces as margins: a hidden key cap leaves none) */
       .bd-pic { grid-area: pic; margin-right: calc(10 * var(--px)); }
-      .bd-t b { grid-area: name; min-width: 0; }
+      /* (a wide cost, three materials and riel, squeezes the name: its count goes under it, not under the cost) */
+      .bd-t b { grid-area: name; min-width: 0; flex-wrap: wrap; row-gap: 0; }
       .bd-t em { grid-area: note; }
       .bd-price { grid-area: price; justify-self: end; margin-left: calc(8 * var(--px)); }
       .bd-opt:not(.bd-cancel) kbd { grid-area: kbd; margin-left: calc(10 * var(--px)); }

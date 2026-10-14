@@ -60,7 +60,8 @@ import { stepSound } from './walker';
  * `bag=<material>:<n>,…` · `store=<material>:<n>,…` · `gather=<material>[:<hits>[:<s>]]`
  * (at the nearest spot of it to `at=`: him at work, `hits` blows of the piece
  * already landed, held `s` seconds into a swing: the chips of a blow at `s` past
- * the blow) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherunload=1`
+ * the blow) · `gatheract=chop|dig` (that swing there instead of its own: a pose's
+ * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherunload=1`
  * (a shot unloads at home too). `report()` gives `bag=`, `store=`, `gather=`.
  * `window.__gather` (shots, the dev server): `state()`, `hit()`, `near()`,
  * `advance(days)`. Console lines `[gather] …`.
@@ -73,15 +74,15 @@ const FACING = 0.3;
 /** Feet this much over or under a spot's ground: not that spot. */
 const LEVEL = 1.6;
 /** The blow lands this far before his feet (m, flat): he steps up to be so (no nearer than `NEAR`). */
-const STAND = { at: 0.78, near: 0.5, far: 1.05 };
+const STAND = { at: 0.95, near: 0.6, far: 1.15 };
 /** The stick held away this long (s) walks him out of it. */
 const PUSH = 0.15;
 /** After the last piece he could take, he lowers the tool and stops this long after (s). */
 const LINGER = 0.45;
 /** The camera at the work: round to his side (rad from behind), tilt, distance (m), how far the focus goes toward the spot; eased over `for` s. */
-const FRAME = { side: 0.95, pitch: 0.3, distance: 5.2, toward: 0.35, rate: 2.4, for: 1.6 };
+const FRAME = { side: 1.0, pitch: 0.3, distance: 6.2, toward: 0.35, rate: 2.4, for: 1.6 };
 /** Chips a blow throws (chop, dig), their size (m) and life (s). */
-const CHIPS = { chop: 7, dig: 9, size: [0.07, 0.15], life: [1.1, 1.7] } as const;
+const CHIPS = { chop: 10, dig: 11, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
 
 interface Session {
   readonly spot: GatherSpot;
@@ -115,10 +116,9 @@ const posture = () => gatherPose(pose);
 let stepN = 0;
 /** The spot within reach now (once a step) and the prompt. */
 const near = { step: -1, spot: null as GatherSpot | null, prompt: null as string | null };
-/** The camera before (eased back after), how long framed, which side. */
+/** The camera before (eased back after), how long framed. */
 let before: { pitch: number; distance: number } | null = null;
 let framed = 0;
-let camSide = 1;
 let lastStep = 0;
 let touchShown: WordKey | 'hide' | null = null;
 /** The gathering's clock: the map's days last frame, `TIME.skipped()` last frame (as the garden's). */
@@ -403,7 +403,6 @@ function start(ctx: RoamCtx, spot: GatherSpot, frozen = false): Session {
   pose.action = s.action;
   pose.s = -1;
   before ??= { pitch: ctx.cam.pitch, distance: ctx.cam.distance };
-  camSide = angleDiff(ctx.cam.yaw, ctx.body.yaw) >= 0 ? 1 : -1;
   framed = 0;
   ctx.body.vel.set(0, 0, 0);
   touch(verbOf(s.action));
@@ -425,7 +424,8 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   if (framed >= FRAME.for) return;
   framed += dt;
   const e = dt > 0 ? damp(FRAME.rate, dt) : 1;
-  cam.yaw += angleDiff(b.yaw + FRAME.side * camSide, cam.yaw) * e;
+  // (round to his right: the side of the tool)
+  cam.yaw += angleDiff(b.yaw + FRAME.side, cam.yaw) * e;
   cam.pitch += (FRAME.pitch - cam.pitch) * e;
   cam.distance += (Math.min(Math.max(FRAME.distance, cam.minDistance), cam.maxDistance) - cam.distance) * e;
 }
@@ -734,7 +734,10 @@ registerAddon({
       console.warn(`[gather] gather=: no material "${m}" (${MATERIAL_IDS.join(', ')})`);
       return;
     }
-    const spot = nearestOf(m as MaterialId, ctx.body.pos.x, ctx.body.pos.z);
+    const found = nearestOf(m as MaterialId, ctx.body.pos.x, ctx.body.pos.z);
+    // (`gatheract=chop|dig`: that swing at it, to check a pose before its material's source exists)
+    const act = q.get('gatheract');
+    const spot = found && (act === 'chop' || act === 'dig') ? { ...found, action: act as GatherAction } : found;
     if (!spot) {
       console.warn(`[gather] gather=: no spot of ${m} (sources: ${gatherSources().map((s) => s.id).join(', ') || 'none'})`);
       return;

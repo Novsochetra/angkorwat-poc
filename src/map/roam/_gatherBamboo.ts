@@ -14,7 +14,7 @@ import type { MapPart, Subject } from '../types';
 const HITS = 4;
 const PIECES = 3;
 const REGROW_DAYS = 2;
-const FOOT = 1.7;
+const FOOT = 1.35;
 /** The knife lands at knee height on the cane (m). */
 const HIT_Y = 0.5;
 

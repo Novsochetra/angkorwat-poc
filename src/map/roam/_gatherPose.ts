@@ -56,7 +56,7 @@ export const SWING: Record<GatherAction, { readonly len: number; readonly up: nu
  * raised fist from the shoulder; the backswing; how low he crouches at most; how far he bends; the left hand.
  */
 const TOOL = {
-  chop: { reach: 10.4, face: 3.7, slant: 0.55, raised: new Vector3(-1.2, 5.6, 0.4), back: 2.0, crouch: 0.55, hips: 0.22, chest: 0.16, blowBend: 0.1 },
+  chop: { reach: 10.4, face: 3.7, slant: 0.55, raised: new Vector3(-3.4, 4.6, 0.9), back: 1.9, crouch: 0.55, hips: 0.22, chest: 0.16, blowBend: 0.1 },
   dig: { reach: 13.6, face: 4.1, slant: 0.9, raised: new Vector3(-0.2, 7.4, 0.6), back: 2.25, crouch: 0, hips: 0.12, chest: 0.12, blowBend: 0.32 },
 } as const;
 /** The left fist on the hoe's handle: this far along it from the right (BU). */
