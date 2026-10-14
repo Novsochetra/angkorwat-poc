@@ -4,14 +4,15 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
 
 /**
  * Test builds for the player's block layer (`pblocks=` in the URL: shots and
- * checks; nothing is saved):
+ * the dev server only, never on the live site: index.ts; nothing is saved):
  *
  * - `demo`: one sala (សាលា, an open pavilion) on the meadow before his stilt
- *   house, in a few hundred blocks: a laterite plinth under a sandstone coping
- *   (sunk to the ground over the slope), a ring of sandstone slabs round it
- *   as a step, twelve timber posts, a beam ring painted lacquer red, a palm
- *   thatch roof in stepped rings, a gold finial: every material family, the
- *   slab, painted blocks.
+ *   house, in a few hundred blocks: a laterite plinth (sunk to the ground
+ *   over the slope) with a course of brick under its sandstone coping, a ring
+ *   of sandstone slabs round it as a step, twelve posts (timber at the
+ *   corners, bamboo between), a beam ring painted lacquer red, a palm thatch
+ *   roof in stepped rings, a gold finial: all six materials, the slab,
+ *   painted blocks.
  * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (8,629 blocks over
  *   about 24 × 24 m, the plinths sunk to the sloping ground: 8 chunks), for
  *   the frame's cost (`npm run perf`).
@@ -40,7 +41,9 @@ export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'
   const coping: Block = { mat: 'sandstone' };
   const gold: Block = { mat: 'sandstone', color: KHMER_PAINT.gold };
   const step: Block = { mat: 'sandstone', shape: 'slab' };
+  const brick: Block = { mat: 'brick' };
   const timber: Block = { mat: 'timber' };
+  const bamboo: Block = { mat: 'bamboo' };
   const beam: Block = { mat: 'timber', color: KHMER_PAINT.lacquer };
   const thatch: Block = { mat: 'thatch' };
   const before = store.count;
@@ -60,14 +63,18 @@ export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'
           // (the coping: sandstone, its corner stones gilded)
           const corner = (a === 0 || a === w - 1) && (b === 0 || b === w - 1);
           store.set(i, top, k, edge ? (corner ? gold : coping) : laterite);
+          // (a course of brick under it, round the edge: its upper half shows over the step)
+          if (edge) store.set(i, top - 1, k, brick);
         }
       }
-    // Posts round the edge, a cell in, four a side (evenly: 1, 4, 7, 10 of 12), 5 cells (2.5 m) high.
+    // Posts round the edge, a cell in, four a side (evenly: 1, 4, 7, 10 of 12), 5 cells (2.5 m) high: timber at the
+    // corners, bamboo between.
     const posts = [1, Math.round((w - 3) / 3) + 1, w - 2 - Math.round((w - 3) / 3), w - 2];
     for (const a of posts)
       for (const b of posts) {
         if (a !== 1 && a !== w - 2 && b !== 1 && b !== w - 2) continue;
-        for (let j = top + 1; j <= top + 5; j++) store.set(i0 + a, j, k0 + b, timber);
+        const corner = (a === 1 || a === w - 2) && (b === 1 || b === w - 2);
+        for (let j = top + 1; j <= top + 5; j++) store.set(i0 + a, j, k0 + b, corner ? timber : bamboo);
       }
     // The beam ring over them, lacquer red.
     for (let a = 1; a <= w - 2; a++)

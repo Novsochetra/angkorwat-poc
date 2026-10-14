@@ -2360,13 +2360,14 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   on low, 0.22 M on medium) when it is drawn; elsewhere (overview, village,
   east) nothing drawn; ≤ 0.01 ms of CPU a frame; no new program when blocks
   appear (the program count the same on low, medium and high).
-- **URL**: `pblocks=demo` (a sala on the meadow before his stilt house, ≈ 690
-  blocks: every material, the slab, painted blocks) · `pblocks=full` (a full
-  plot: nine of them 3 × 3, 8 m apart, 8,629 blocks over 24 × 24 m, their
-  plinths sunk to the sloping ground: 8 chunks) ·
-  `@x,z` puts it elsewhere. Nothing is saved. Shots and the dev server:
-  `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to make a
-  chunk again after one change, `flush()`). `npm run perf -- only=home
+- **URL** (shots and the dev server only, never on the live site, as
+  `build=`: a link must never put blocks into a player's map or save):
+  `pblocks=demo` (a sala on the meadow before his stilt house, 688 blocks: all
+  six materials, the slab, painted blocks) · `pblocks=full` (a full plot: nine
+  of them 3 × 3, 8 m apart, 8,629 blocks over 24 × 24 m, their plinths sunk
+  to the sloping ground: 8 chunks) · `@x,z` puts it elsewhere. Nothing is
+  saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
+  make a chunk again after one change, `flush()`, `rawOf`, `blockOf`). `npm run perf -- only=home
   url=pblocks=full` (the `home` view: by the stilt house, over the meadow).
   E.g. `roam=walk&at=436,-139&yaw=200&home=1&rcam=150,12,9&pblocks=demo`.
 
