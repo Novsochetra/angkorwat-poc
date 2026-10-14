@@ -940,6 +940,9 @@ registerAddon({
     env = e;
     view = new HaulView();
     e.scene.add(view.things.mesh, view.oxen.mesh);
+    // (nothing drawn until it is near the camera: `frame`; their shaders are the people's things' and the oxen's, compiled with those)
+    view.things.mesh.visible = false;
+    view.oxen.mesh.visible = false;
     const dev = e.shot || import.meta.env.DEV;
     const ql = e.params.get('cartload');
     if (dev && ql !== null) fillFrom(ql);
@@ -1073,12 +1076,15 @@ registerAddon({
         v.hide();
         shown = false;
         dirty = true;
+        v.things.flush(f.night);
+        v.oxen.flush(f.t);
+        // (no draw at all far off: the things' mesh is never culled by itself)
+        v.things.mesh.visible = false;
       }
-      v.things.flush(f.night);
-      v.oxen.flush(f.t);
       return;
     }
     shown = true;
+    v.things.mesh.visible = true;
     // The tailboard: down while he works at the tail, and under logs or poles (they lie out over it).
     const gw = (W && W.phase !== 'step') || CART_LOAD.count('log') > 0 || CART_LOAD.count('bamboo') > 0 ? 1 : 0;
     if (gate !== gw) {
