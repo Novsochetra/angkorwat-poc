@@ -1689,6 +1689,11 @@ const WORDS = {
   gatherHeavy: { km: 'ធ្ងន់ពេកហើយ ({n}/{max}) — យកទៅទុកនៅផ្ទះសិន', en: 'Too heavy to carry more ({n}/{max}): take it home first' },
   gatherSpent: { km: 'អស់ហើយ — នឹងដុះវិញក្នុងរយៈ {n} ថ្ងៃទៀត', en: 'None left: it grows back in {n} days' },
   gatherSpentSoon: { km: 'អស់ហើយ — នឹងដុះវិញនៅថ្ងៃស្អែក', en: 'None left: it grows back by tomorrow' },
+  // (the woodcutters' logs, AWP-11; the clay banks, AWP-13: they come back another way than growing)
+  gatherLogsSpent: { km: 'អស់ឈើហើយ — អ្នកកាប់ឈើនឹងរំលំដើមឈើមួយទៀត ក្នុងរយៈ {n} ថ្ងៃ', en: 'No logs left: the woodcutters fell another tree in {n} days' },
+  gatherLogsSoon: { km: 'អស់ឈើហើយ — អ្នកកាប់ឈើនឹងរំលំដើមឈើមួយទៀតនៅថ្ងៃស្អែក', en: 'No logs left: the woodcutters fell another tree tomorrow' },
+  gatherClaySpent: { km: 'អស់ដីឥដ្ឋនៅទីនេះហើយ — ទឹកនឹងនាំដីឥដ្ឋមកវិញ ក្នុងរយៈ {n} ថ្ងៃ', en: 'No clay left here: the water brings more in {n} days' },
+  gatherClaySoon: { km: 'អស់ដីឥដ្ឋនៅទីនេះហើយ — ទឹកនឹងនាំដីឥដ្ឋមកវិញនៅថ្ងៃស្អែក', en: 'No clay left here: the water brings more by tomorrow' },
   gatherUnloaded: { km: 'បានដាក់ទុកនៅផ្ទះ៖ {what}', en: 'Put down at home: {what}' },
   gatherBagTitle: { km: 'សម្ភារៈសាងសង់', en: 'Building materials' },
   gatherBagEmpty: { km: 'មិនទាន់កាន់អ្វីទេ', en: 'Carrying nothing' },

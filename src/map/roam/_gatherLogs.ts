@@ -169,6 +169,7 @@ export function registerLogs(field: HeightField, parent: Object3D): number {
   registerGatherSource({
     id: 'logs',
     spots: () => spots,
+    spent: { days: 'gatherLogsSpent', soon: 'gatherLogsSoon' },
     onTake: () => {
       offer();
       draw(field);

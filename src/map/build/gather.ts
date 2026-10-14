@@ -88,6 +88,11 @@ export interface GatherSource {
   onLeft?(spot: GatherSpot, left: number): void;
   /** He sets to work at `spot`, standing at (x, z) (m), or a check puts him there. */
   onWork?(spot: GatherSpot, x: number, z: number): void;
+  /**
+   * Its own words for a spot with none left ({n} game days to go; by tomorrow), for what comes back another way than
+   * growing (the woodcutters fell another tree; the water brings more clay). Default "None left: it grows back in…".
+   */
+  readonly spent?: { readonly days: WordKey; readonly soon: WordKey };
 }
 
 const SOURCES: GatherSource[] = [];

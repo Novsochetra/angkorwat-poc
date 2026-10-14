@@ -15,6 +15,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { registerBambooClumps } from './_gatherBamboo';
 import { registerLogs } from './_gatherLogs';
+import { registerThatch, thatchTick } from './_gatherThatch';
 import { createGatherHud, type GatherHud } from './_gatherHud';
 import { gatherLoadBuilder } from './_gatherLoad';
 import { gatherPose, gatherToolBuilder, newGatherPose, SWING } from './_gatherPose';
@@ -190,7 +191,8 @@ function whyNot(ctx: RoamCtx, s: GatherSpot): string | null {
   const m = s.material;
   if (gatherLeft(s) <= 0) {
     const days = Math.ceil(gatherRegrowIn(s));
-    return days <= 1 ? words('soon', () => t('gatherSpentSoon')) : words(`spent|${days}`, () => t('gatherSpent', { n: num(days) }));
+    const w = sourceOf(s)?.spent ?? { days: 'gatherSpent', soon: 'gatherSpentSoon' };
+    return days <= 1 ? words(`soon|${w.soon}`, () => t(w.soon)) : words(`spent|${w.days}|${days}`, () => t(w.days, { n: num(days) }));
   }
   const r = sourceOf(s)?.can?.(s, { x: ctx.body.pos.x, y: ctx.body.pos.y, z: ctx.body.pos.z, night: ctx.night });
   if (r) return words(`can|${r}`, () => t(r));
@@ -679,6 +681,12 @@ registerAddon({
     } catch (err) {
       console.error('[gather] the woodcutters\' logs failed:', err);
     }
+    let young = 0;
+    try {
+      young = registerThatch(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the young sugar palms failed:', err);
+    }
     hud = createGatherHud(e.layer);
     fx = new Particles();
     fx.mesh.name = 'gather:chips';
@@ -691,7 +699,7 @@ registerAddon({
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
     unloadInShot = dev && e.params.get('gatherunload') === '1';
-    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
+    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp, ${young} young sugar palms · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
         __gather: {
@@ -762,6 +770,7 @@ registerAddon({
     const dt = f.dt > 0 ? f.dt : 0;
     fx?.step(dt);
     backLoad();
+    thatchTick(dt);
     // The gathering's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play
     // (as the garden's, roam/_garden.ts). Not in a shot (still) nor on the overview.
     const days = TIME.days();
