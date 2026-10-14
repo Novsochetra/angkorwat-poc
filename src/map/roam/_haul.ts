@@ -1006,7 +1006,7 @@ registerAddon({
   },
 
   offer(ctx, mode) {
-    if (mode !== 'walk' || !env || W || !shown || !HOME.owned) return null;
+    if (mode !== 'walk' || !env || W || !HOME.owned) return null;
     if (leading) return words('letgo', () => `E  ${t('haulLetGo')}`);
     if (env.busy() || !ctx.body.grounded) return null;
     if (nearTail(ctx)) {
@@ -1046,7 +1046,7 @@ registerAddon({
       if (leading && !ctx.input.zoom && ctx.cam.distance < LEAD_DIST) ctx.cam.distance += (LEAD_DIST - ctx.cam.distance) * damp(1.5, dt);
     }
     // On foot, he keeps out of the cart and the oxen (they are not on the walk map): eased out to the nearest side.
-    if (W || !shown || !ctx.body.grounded || ctx.body.explorer.animator.posture) return;
+    if (W || !ctx.body.grounded || ctx.body.explorer.animator.posture) return;
     const p = ctx.body.pos;
     if (Math.abs(p.y - P.ay) > 2.5 || outside(p.x, p.z, BODY_R) > 0) return;
     const w = ctx.world;
