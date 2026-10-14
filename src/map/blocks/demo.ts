@@ -11,8 +11,8 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   over the slope) with a course of brick under its sandstone coping, a ring
  *   of sandstone slabs round it as a step, twelve posts (timber at the
  *   corners, bamboo between), a beam ring painted lacquer red, a palm thatch
- *   roof in stepped rings, a gold finial: all six materials, the slab,
- *   painted blocks.
+ *   roof in stepped rings two cells deep, a gold finial: all six materials,
+ *   the slab, painted blocks.
  * - `full`: a full plot: nine salas, 3 × 3, 8 m apart (8,629 blocks over
  *   about 24 × 24 m, the plinths sunk to the sloping ground: 8 chunks), for
  *   the frame's cost (`npm run perf`).
@@ -79,11 +79,12 @@ export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'
     // The beam ring over them, lacquer red.
     for (let a = 1; a <= w - 2; a++)
       for (let b = 1; b <= w - 2; b++) if (a === 1 || b === 1 || a === w - 2 || b === w - 2) store.set(i0 + a, top + 6, k0 + b, beam);
-    // The thatch: rings stepping in, from the eaves a cell past the plinth.
+    // The thatch: rings stepping in, from the eaves a cell past the plinth, each two cells deep, so every step sits
+    // on the ring under it (one cell deep, a ring would meet the next only along an edge: mesh.ts `diagonalJoints`).
     let y = top + 7;
     for (let r = -1; r < w >> 1; r++, y++)
       for (let a = r; a <= w - 1 - r; a++)
-        for (let b = r; b <= w - 1 - r; b++) if (a === r || b === r || a === w - 1 - r || b === w - 1 - r) store.set(i0 + a, y, k0 + b, thatch);
+        for (let b = r; b <= w - 1 - r; b++) if (Math.min(a - r, b - r, w - 1 - r - a, w - 1 - r - b) <= 1) store.set(i0 + a, y, k0 + b, thatch);
     // The finial: a gold cap on the top ring.
     for (let a = (w >> 1) - 1; a <= w >> 1; a++) for (let b = (w >> 1) - 1; b <= w >> 1; b++) store.set(i0 + a, y, k0 + b, gold);
   });

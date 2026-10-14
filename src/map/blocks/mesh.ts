@@ -18,6 +18,14 @@ import { BLOCK_M, CHUNK_N, chunkKey, type BlockChunk, type BlockStore } from './
  *   (`voxShown` = open + 64: the map's plain boxes leave the others out, block
  *   by block, cull.ts `cutCovered`), and each family's mesh draws only the
  *   sides any of its boxes shows (`sides`, VoxelMesh.ts `openSidesIndex`).
+ * - **No sky through edge joints.** Two blocks that meet only along an edge
+ *   (a roof stepping in a block a row, a diagonal wall) keep that edge square
+ *   (`diagonalJoints`): cut on both, it left a channel the sky showed through.
+ *   Where such a row meets the next block along it, the three edges at the
+ *   corner still round (the shader squares a corner only when all three of its
+ *   sides are joints, which would also square the seams between the blocks of
+ *   the row): a pinhole of about the bevel's size is left there. Stairs and
+ *   slabs (AWP-24) fill such steps; a roof two blocks deep has none.
  * - **Shade** baked as the map's grids bake it: soft occlusion from the 26
  *   cells round it (convex edges lighter, crevices and the cells under an
  *   overhang darker) and ±5 % seeded jitter by the cell (the same block, the
@@ -75,6 +83,10 @@ for (let dy = -1; dy <= 1; dy++)
 /** Per side (+x −x +y −y +z −z: bits 1 2 4 8 16 32): the neighbour's offset, and the side of it that faces back. */
 const SIDE_OFF = [1, -1, PP, -PP, P, -P];
 const SIDE_BACK = [2, 1, 8, 4, 32, 16];
+
+/** The 12 edges of a box: pairs of sides on two axes. */
+const EDGES: [number, number][] = [];
+for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) if (a >> 1 !== b >> 1) EDGES.push([a, b]);
 
 /** sRGB byte → linear (as three's `Color.setHex`). */
 const LIN = new Float32Array(256);
@@ -231,7 +243,7 @@ export function packChunk(store: BlockStore, c: BlockChunk): PackedChunk {
       fam.color[n * 3] = r;
       fam.color[n * 3 + 1] = g;
       fam.color[n * 3 + 2] = bl;
-      fam.open[n] = sides;
+      fam.open[n] = sides + diagonalJoints(box, p, sides) * 64;
       fam.shown[n] = sides | 64;
       fam.sides |= sides;
       const bd = fam.bounds;
@@ -257,6 +269,30 @@ function openOf(box: readonly number[], p: number): number {
     if (!onFace || !(cov[p + SIDE_OFF[s]] & SIDE_BACK[s])) m |= 1 << s;
   }
   return m;
+}
+
+/**
+ * Sides to draw as joints (`voxOpen` bits 6‥11: the voxel shader keeps the
+ * edge between two joint sides square, materials.ts `injectVoxelVertex`):
+ * both sides of an edge where the block meets another only along that edge
+ * (the cell across the edge filled at both its facing sides, the two cells
+ * beside it open). Cut on both blocks, such an edge left a channel through
+ * which the sky showed (a roof stepping in a block a row, a diagonal wall);
+ * square, the two blocks close it. The sides stay open (their rims as they
+ * were): only the cut of that edge goes. (Where such a row of blocks meets
+ * the next block along it the corners still round: a pinhole, not a slit.)
+ */
+function diagonalJoints(box: readonly number[], p: number, open: number): number {
+  let j = 0;
+  for (let e = 0; e < EDGES.length; e++) {
+    const [s1, s2] = EDGES[e];
+    if (!(open & (1 << s1)) || !(open & (1 << s2))) continue;
+    // (the box reaches both of the cell's faces there)
+    if (!(s1 & 1 ? box[s1 >> 1] === 0 : box[(s1 >> 1) + 3] === 1) || !(s2 & 1 ? box[s2 >> 1] === 0 : box[(s2 >> 1) + 3] === 1)) continue;
+    const c = cov[p + SIDE_OFF[s1] + SIDE_OFF[s2]];
+    if (c & SIDE_BACK[s1] && c & SIDE_BACK[s2]) j |= (1 << s1) | (1 << s2);
+  }
+  return j;
 }
 
 /** The largest cut edge (m) of a family's full blocks (graphics.ts `chamferOf`: the smallest side × the family's bevel). */
