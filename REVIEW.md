@@ -84,3 +84,5 @@ One line each time a ticket is sent back, so the next worker avoids it.
   built site with `npm run preview` and the shot URL, and check nothing changes or
   saves (AWP-9).
 - Prices shown on a card add up to what he pays; nothing hidden (AWP-9).
+- Built roofs, not only walls: walk him into a roofed gallery (roof 2.5–4 m) and
+  check the follow camera stays under the roof and he stays in view (AWP-17).
