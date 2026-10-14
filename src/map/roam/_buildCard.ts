@@ -1,9 +1,11 @@
+import type { MaterialId } from '../build/materials';
 import type { PieceId } from '../build/pieces';
 import { clearMark, markFocus } from '../pad/nav';
 import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON as UI_ICON } from '../ui/icons';
-import { onLang } from '../ui/lang';
+import { num, onLang } from '../ui/lang';
+import { materialIcon } from './_gatherIcons';
 import { setSteppedVars } from '../ui/shape';
 
 /**
@@ -12,9 +14,12 @@ import { setSteppedVars } from '../ui/shape';
  * ask (map.css `.mu-ask`, as the garden's seed card, _gardenCard.ts): a hammer
  * and a post as its picture, the question, a line under it (his riel), then
  * one row per piece: its little picture, its name and how many he has of how
- * many, its line ("Knee high: to sit on and to lie under the sky"), its price;
- * one he cannot build now is greyed with why ("You have all 3", "12,000 ៛ more
- * needed"). The first he can build is in gold. A quiet "Not now" at the foot.
+ * many, its line ("Knee high: to sit on and to lie under the sky"), what it
+ * costs (AWP-9: each material's picture and how many, those he lacks in red,
+ * and the riel to pay now, if any); a piece he lacks materials for says so
+ * instead of its line ("Missing: 1 bamboo pole = 2,000 ៛"); one he cannot build
+ * now is greyed with why ("You have all 3", "Missing 1 log: 2,000 ៛ more
+ * needed"). The note under the title: his riel, and the materials he has. The first he can build is in gold. A quiet "Not now" at the foot.
  * Every line reads whole (it wraps; on a narrow card, a phone upright, the
  * price sits on the name's line and the line runs under both); the list
  * scrolls in a low window with soft edges where there is more (as the
@@ -30,11 +35,15 @@ import { setSteppedVars } from '../ui/shape';
 
 export interface BuildRow {
   id: PieceId;
-  /** Its name, how many he has ("1 / 3"), its line, its price. */
+  /** Its name, how many he has ("1 / 3"), its line (or what he lacks), the riel to pay now ('' none). */
   name: string;
   count: string;
   note: string;
   price: string;
+  /** The note says what he lacks. */
+  short: boolean;
+  /** Its materials: each, how many it takes, how many of those he has. */
+  cost: { m: MaterialId; n: number; have: number }[];
   /** Why it cannot be built now (greyed), or null. */
   off: string | null;
 }
@@ -125,8 +134,8 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
         .map(
           (r, i) => `<button type="button" role="listitem" class="bd-opt mu-frame mu-sm${i === gold ? ' is-gold' : ''}${r.off ? ' is-off' : ''}" data-id="${r.id}"${r.off ? ' disabled aria-disabled="true"' : ''}><span class="mu-bg"></span>${i === gold ? '<span class="mu-glow"></span>' : ''}<span class="mu-focus"></span>
         <span class="bd-pic"><svg class="bd-ri" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${PIC[r.id]}</svg></span>
-        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em>${esc(r.off ?? r.note)}</em></span>
-        <span class="bd-price">${esc(r.price)}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
+        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em></span>
+        <span class="bd-price">${r.cost.map((c) => `<span class="bd-m${c.have < c.n ? ' is-short' : ''}">${materialIcon(c.m, 'bd-mi')}${num(c.n)}</span>`).join('')}${r.price ? `<b class="bd-riel">${esc(r.price)}</b>` : ''}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
         )
         .join('') +
       `<button type="button" class="bd-opt bd-cancel mu-frame mu-sm" data-id=""><span class="mu-bg"></span><span class="mu-focus"></span><span class="bd-t"><b>${esc(w.cancel)}</b></span><kbd data-pad="east">Esc</kbd></button>`;
@@ -263,6 +272,7 @@ function injectStyle(): void {
       background: rgba(10, 18, 30, 0.75); box-shadow: inset 0 0 0 calc(1.5 * var(--px)) rgba(255, 216, 120, 0.55), 0 0 calc(12 * var(--px)) rgba(255, 190, 110, 0.22); }
     .bd-icon { width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
     .bd-ask #bd-note[hidden] { display: none; }
+    .bd-ask #bd-note { white-space: pre-line; }
     .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
       overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }
     /* Soft edges where there is more to scroll to, as the settings panel's body (map.css \`.mu-set-body\`, ui.ts \`scrollEdges\`). */
@@ -294,9 +304,18 @@ function injectStyle(): void {
     /* (the line reads whole: it wraps onto a second line rather than ending in "…") */
     .bd-t em { font-style: normal; font-size: calc(12 * var(--px)); font-weight: 600; color: var(--mu-ink2); text-wrap: pretty; overflow-wrap: break-word; }
     .bd-opt.is-gold .bd-t em { color: #5a3a0c; }
-    .bd-price { flex: none; font: 700 calc(12 * var(--px)) / 1 var(--mu-display); padding: calc(4 * var(--px)) calc(7 * var(--px)); border-radius: calc(10 * var(--px)); white-space: nowrap;
+    .bd-price { flex: none; display: inline-flex; align-items: center; gap: calc(6 * var(--px)); font: 700 calc(12 * var(--px)) / 1 var(--mu-display); padding: calc(3 * var(--px)) calc(7 * var(--px)); border-radius: calc(10 * var(--px)); white-space: nowrap;
       background: rgba(255, 210, 120, 0.14); color: #ffe2a0; border: 1px solid rgba(255, 210, 120, 0.32); }
     .bd-opt.is-gold .bd-price { background: rgba(90, 50, 0, 0.12); color: #4a2e08; border-color: rgba(90, 50, 0, 0.3); }
+    /* (each material: its picture and how many; one he lacks in red; then the riel to pay now) */
+    .bd-m { display: inline-flex; align-items: center; gap: calc(1 * var(--px)); }
+    .bd-mi { width: calc(16 * var(--px)); height: calc(16 * var(--px)); filter: drop-shadow(0 calc(1 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
+    .bd-m.is-short { color: #ffb4a0; }
+    .bd-opt.is-gold .bd-m.is-short { color: #a8321c; }
+    .bd-riel { font-weight: 700; padding-left: calc(6 * var(--px)); border-left: 1px solid rgba(255, 210, 120, 0.32); }
+    .bd-opt.is-gold .bd-riel { border-left-color: rgba(90, 50, 0, 0.3); }
+    .bd-t em.is-short { color: #ffd890; }
+    .bd-opt.is-gold .bd-t em.is-short { color: #7a3a0c; }
     .bd-cancel { min-height: calc(40 * var(--px)); padding-left: calc(16 * var(--px)); }
     .bd-cancel .bd-t b { font-size: calc(14.5 * var(--px)); font-weight: 600; color: var(--mu-ink2); }
     .bd-opt kbd { display: inline-grid; place-items: center; min-width: calc(20 * var(--px)); height: calc(20 * var(--px)); padding: 0 calc(5 * var(--px)); box-sizing: border-box;

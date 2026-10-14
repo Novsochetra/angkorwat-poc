@@ -4,7 +4,8 @@ import { BODY_UNIT_M, WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_build';
 import type { VoxelBox } from '../../voxel/VoxelBuilder';
-import { PIECES, type Built } from '../build/pieces';
+import { MATERIAL_IDS, STORE, materialsText } from '../build/materials';
+import { PIECES, pieceBack, type Built } from '../build/pieces';
 import { BUILD } from '../build/state';
 import { pieceLook } from '../build/view';
 import { pad } from '../pad/pad';
@@ -31,7 +32,8 @@ import { stepSound } from './walker';
  *    first blocks) over `PIECES[id].secs` of work. Taking one down is the same
  *    backwards, in half the time (at least 2 s), wood knocking as it comes apart.
  * 3. **Done**: it stands (a chime, a toast, a tick on the pad); taken down: it is
- *    gone and half its price is back in his purse (a toast says how much).
+ *    gone and half its materials are back in his home store, half its extra riel
+ *    in his purse (a toast says what).
  *
  * The stick held away stops him at once: a piece being built stays as far as it
  * got (E "Keep building" by it goes on; a toast says so the first time), one
@@ -107,6 +109,13 @@ let pausedSaid = false;
 const damp = (rate: number, dt: number) => 1 - Math.exp(-rate * dt);
 const _v = new Vector3();
 const _w = new Vector3();
+
+/** What taking a piece down gives back, in words ("1 bamboo pole and 4,000 ៛"). */
+export function backWords(back: ReturnType<typeof pieceBack>): string {
+  const what = materialsText(back.cost);
+  if (!back.riel) return what || riel(0);
+  return what ? t('buildAnd', { a: what, b: riel(back.riel) }) : riel(back.riel);
+}
 
 /** A piece's name inside a sentence (English: lower case, "the bamboo bed"). */
 export const pieceWord = (p: Pick<Built, 'id'>): string => {
@@ -603,15 +612,16 @@ export const BuildWork = {
     console.info(`[build] built ${s.piece.uid} at (${s.piece.x.toFixed(1)}, ${s.piece.z.toFixed(1)})`);
   },
 
-  /** Taken down: gone, half its price back. */
+  /** Taken down: gone, half its materials back (into his home store: he is at home) and half its extra riel. */
   takenDown(ctx: RoamCtx, s: Session): void {
     finish(ctx);
-    const back = Math.floor(PIECES[s.piece.id].price / 2);
+    const back = pieceBack(s.piece.id);
     BUILD.remove(s.piece);
-    env?.purse.earn(back);
+    for (const m of MATERIAL_IDS) if (back.cost[m]) STORE.add(m, back.cost[m]!);
+    if (back.riel) env?.purse.earn(back.riel);
     SFX.play('buildTake', 1);
-    ctx.hud.toast(t('buildTaken', { name: pieceWord(s.piece), riel: riel(back) }));
-    console.info(`[build] took down ${s.piece.uid}: ${back} riel back`);
+    ctx.hud.toast(t('buildTaken', { name: pieceWord(s.piece), what: backWords(back) }));
+    console.info(`[build] took down ${s.piece.uid}: ${JSON.stringify(back.cost)} and ${back.riel} riel back`);
   },
 
   keys(): readonly AddonKey[] | null {

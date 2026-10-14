@@ -1,4 +1,5 @@
-import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
+import { BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { BUILD, distTo, overlap, toLocal } from '../build/state';
 import { createBuildView, type BuildView } from '../build/view';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -13,7 +14,7 @@ import { BuildGhost } from './_buildGhost';
 import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, type BuildReason } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { installBuildWalk } from './_buildWalk';
-import { BuildWork, pieceWord } from './_buildWork';
+import { backWords, BuildWork, pieceWord } from './_buildWork';
 import { riel } from './_shopPurse';
 import type { RoamCtx } from './types';
 
@@ -30,20 +31,24 @@ import type { RoamCtx } from './types';
  * Once the house is his (`HOME.owned`), on foot:
  * - **By the house** (on the ground under it, round it, at its stair's foot), and
  *   anywhere within `BUILD_NEAR` m of it where nothing else takes E (the garden's
- *   "Plant…" first): "E  Build…" opens the build card: every piece with its price,
- *   how many he has of how many; not enough riel: greyed with how much more.
+ *   "Plant…" first): "E  Build…" opens the build card: every piece with what it
+ *   costs (AWP-9: its materials, build/materials.ts; those he gathered, in his bag
+ *   or his home store, are free; what he lacks he buys: "Missing: 1 bamboo pole =
+ *   2,000 ៛"; some pieces have an extra riel part, cloth or straw), how many he has
+ *   of how many; not enough riel for what he lacks: greyed with how much more.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
  *   the house, a neighbour's yard, not level, a plant, something he built, something
  *   else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
  *   15° more; a fence run's end snaps onto the end of one he built (in line, or turned a quarter: a corner). "E  Build here"
- *   pays (`purse.pay`) and he builds it (the work); F / C (the pad's ↓) the card
+ *   pays for what he lacks (`purse.pay`), takes the rest from his bag, then his
+ *   home store (`useMaterials`), and he builds it (the work); F / C (the pad's ↓) the card
  *   again; Esc (the pad's ○, the touch ✕) leaves the mode, never asking "Back to the
  *   map?". A fence or a lantern post: the mode stays on for the next.
  * - **By a piece** (facing it, within reach): half built, "E  Keep building";
  *   a seat (the bed, the shelter's bench), "E  Sit" (J / L there too: _rest.ts
  *   `REST_SEATS`); hold E (the bar fills, 0.8 s) to take it down — asked first,
- *   half its price back. A hammock's E is the hammock add-on's, the spirit house's
+ *   half its materials back (into his home store) and half its extra riel. A hammock's E is the hammock add-on's, the spirit house's
  *   "Pray" the shrine's (both before this).
  *
  * URL (shots and the dev server: a link never changes a player's saved pieces):
@@ -185,7 +190,7 @@ function holdStep(ctx: RoamCtx, dt: number): void {
   askTake(ctx, h.piece);
 }
 
-/** "Take down the bamboo bed? You get half its price back: 7,500 ៛." */
+/** "Take down the bamboo bed? You get half its materials back: 3 bamboo poles." */
 const SAW = `<svg class="mu-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="#8a6038" d="M2 9h12v3H2z"/><path fill="#b08a5a" d="M2 9h12v1H2z"/><path fill="#c8ccd0" d="M6 2h2v6H6z"/><path fill="#e8eef2" d="M6 2h1v6H6z"/><path fill="#7a5a3a" d="M5 1h4v2H5z"/><path fill="#ffd27a" d="M10 5h1v1h-1zM11 6h1v1h-1zM12 4h1v1h-1z"/></svg>`;
 function askTake(ctx: RoamCtx, b: Built): void {
   if (!env) return;
@@ -199,7 +204,7 @@ function askTake(ctx: RoamCtx, b: Built): void {
       const id = q?.id ?? 'kre';
       return {
         title: t('buildTakeAsk', { name: pieceWord({ id }) }),
-        note: t('buildTakeNote', { riel: riel(Math.floor(PIECES[id].price / 2)) }),
+        note: t('buildTakeNote', { what: backWords(pieceBack(id)) }),
         stay: t('buildTakeNo'),
         go: t('buildTakeYes'),
       };
@@ -296,12 +301,26 @@ function placingNow(ctx: RoamCtx): void {
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
 }
 
-/** Why he cannot build `id` now (all of it built, not enough riel), or null. */
+/**
+ * What building `id` takes now (AWP-9: its materials from his bag and home store are free; what he lacks he buys):
+ * the materials missing, and the riel to pay (theirs and the piece's extra).
+ */
+function toPay(id: PieceId): { missing: Materials; riel: number } {
+  const p = PIECES[id];
+  const missing = missingOf(p.cost);
+  return { missing, riel: rielOf(missing) + p.extra };
+}
+
+/** Why he cannot build `id` now (all of it built, not enough riel for what he lacks), or null. */
 function cannot(id: PieceId): string | null {
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) return words(`all|${id}`, () => t('buildAllBuilt', { n: num(p.max) }));
   const riels = env?.purse.riel ?? 0;
-  if (riels < p.price) return t('buildNeed', { riel: riel(p.price - riels) });
+  const pay = toPay(id);
+  if (riels < pay.riel) {
+    const short = riel(pay.riel - riels);
+    return noMaterials(pay.missing) ? t('buildNeed', { riel: short }) : t('buildNeedMat', { what: materialsText(pay.missing), riel: short });
+  }
   return null;
 }
 
@@ -336,16 +355,25 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
-  if (!env.purse.pay(p.price)) {
-    ctx.hud.toast(t('buildNoMoney', { riel: riel(p.price - env.purse.riel) }));
+  // (what he lacks paid for first; then what he has taken, from his bag, then his home store)
+  const pay = toPay(id);
+  if (pay.riel > 0 && !env.purse.pay(pay.riel)) {
+    ctx.hud.toast(t('buildNoMoney', { riel: riel(pay.riel - env.purse.riel) }));
     exitPlacing();
     return;
   }
   const piece = BUILD.add(id, spot.x, ctx.world.field.heightAt(spot.x, spot.z), spot.z, spot.yaw);
-  if (!piece) return;
+  if (!piece) {
+    if (pay.riel > 0) env.purse.earn(pay.riel);
+    return;
+  }
+  const used = useMaterials(p.cost);
+  const both: Materials = {};
+  for (const m of MATERIAL_IDS) if ((used.bag[m] ?? 0) + (used.store[m] ?? 0) > 0) both[m] = (used.bag[m] ?? 0) + (used.store[m] ?? 0);
+  const what = materialsText(both);
   env.uiSound('select');
-  ctx.hud.toast(t('buildPaid', { riel: riel(p.price) }));
-  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: paid ${p.price} riel`);
+  ctx.hud.toast(what ? (pay.riel > 0 ? t('buildUsedPaid', { what, riel: riel(pay.riel) }) : t('buildUsed', { what })) : t('buildPaid', { riel: riel(pay.riel) }));
+  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
   BuildWork.start(ctx, piece);
@@ -466,16 +494,29 @@ function openCard(ctx: RoamCtx): void {
     () => {
       const rows: BuildRow[] = PIECE_IDS.map((id) => {
         const p = PIECES[id];
+        const pay = toPay(id);
+        const lacks = !noMaterials(pay.missing);
         return {
           id,
           name: nameOf(id),
           count: `${num(BUILD.count(id))}/${num(p.max)}`,
-          note: t(p.line as WordKey),
-          price: riel(p.price),
+          // (what he lacks and its price, else the piece's own line)
+          note: lacks ? t('buildMissing', { what: materialsText(pay.missing), riel: riel(rielOf(pay.missing)) }) : t(p.line as WordKey),
+          short: lacks,
+          cost: MATERIAL_IDS.filter((m) => (p.cost[m] ?? 0) > 0).map((m) => ({ m, n: p.cost[m]!, have: Math.min(p.cost[m]!, haveOf(m)) })),
+          price: pay.riel > 0 ? riel(pay.riel) : '',
           off: cannot(id),
         };
       });
-      return { title: t('buildCardTitle'), note: t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) }), cancel: t('buildCardCancel'), rows };
+      const have: Materials = {};
+      for (const m of MATERIAL_IDS) if (haveOf(m) > 0) have[m] = haveOf(m);
+      const mats = materialsText(have);
+      return {
+        title: t('buildCardTitle'),
+        note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
+        cancel: t('buildCardCancel'),
+        rows,
+      };
     },
     (id) => {
       if (!id || BuildWork.active || cannot(id)) return;
@@ -620,6 +661,9 @@ registerAddon({
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
+    // (and as his materials change: AWP-9)
+    BAG.onChange(() => card?.refresh());
+    STORE.onChange(() => card?.refresh());
     wireHold();
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
@@ -640,6 +684,7 @@ registerAddon({
             ask: !!ask?.open,
             pressing: pressing ? { uid: pressing.piece.uid, t: +pressing.t.toFixed(2) } : null,
             riel: env?.purse.riel ?? 0,
+            materials: { bag: BAG.all(), store: STORE.all() },
             owned: HOME.owned,
             view: view?.stats() ?? null,
             uses: BuildUses.state(),
