@@ -172,3 +172,8 @@
 
 - [ ] VR headset mode
 - [ ] More of Cambodia: a new map (for example Phnom Penh and the Mekong)
+
+## A plan for coming back
+
+The few ideas above that change how often people play, in build order, with
+what the game already keeps and what is missing: `docs/discussion/come-back.md`.

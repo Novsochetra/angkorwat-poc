@@ -1,6 +1,6 @@
 # Roaming add-ons: the new things to do
 
-The ideas picked from `docs/ideas.md` (October 2026): new ways to move, things
+The ideas picked from `docs/discussion/ideas.md` (October 2026): new ways to move, things
 to join, a friend and a home, village life, more festivals, small things that
 feel good, and a calendar that says when each Khmer event happens. Each is a
 **roaming add-on**: a module of its own that plugs into roaming without

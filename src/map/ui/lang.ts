@@ -699,7 +699,7 @@ const WORDS = {
   fogAmount: { km: 'កម្រាស់', en: 'Thickness' },
   // (under the slider: at 0 the mist still hides the map's cut edges)
   fogNote: { km: 'ទៅឆ្វេង អ័ព្ទស្ដើង ទៅស្ដាំ អ័ព្ទក្រាស់ ១០០ ជាអ័ព្ទធម្មតារបស់ហ្គេម។ គែមផែនទីនៅតែមានអ័ព្ទជានិច្ច', en: "Left thins the fog, right thickens it; 100 is the game's own. The mist always stays at the map's edges" },
-  // ── The new things to do (docs/ideas.md): each adds its words right under its own line, keys with its prefix ──
+  // ── The new things to do (docs/discussion/ideas.md): each adds its words right under its own line, keys with its prefix ──
   // The calendar of events (when…): roam/_calendar*.ts, calendar.ts
   whenTitle: { km: 'ប្រតិទិនព្រឹត្តិការណ៍', en: 'Calendar of events' },
   whenButton: { km: 'ប្រតិទិន', en: 'Calendar' },
