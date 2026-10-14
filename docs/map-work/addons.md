@@ -2915,7 +2915,7 @@ sounds `audio/_build.ts`.
   view's `petal` blocks between the ties; registered again whenever the view makes its
   batch again); the spirit house is a prayer spot (`WORSHIP`, `build-<uid>`: the lotus,
   E Pray); the lamps' flames and the spirit house's candle glow at night with a halo
-  (`light`); the pen and the haystack are his cattle's (`BUILT`).
+  (`light`), and the nearest few give real light (below, "Lights"); the pen and the haystack are his cattle's (`BUILT`).
 - **The garden**: no plant on a piece (`_gardenSpots.ts` asks `BUILT.blocks`), no piece
   on a plant (`canBuild`).
 - **Saved** (`progress.ts` `build.pieces`: uid, id, x, y, z, yaw, done, seed): on every
@@ -2925,8 +2925,24 @@ sounds `audio/_build.ts`.
   one comes to stand or goes; a piece under way a small batch of its own drawing its
   first blocks (`count` per family). Plain boxes once its cut edges are under a pixel,
   hidden once a metre is under 0.9 px; built plain on the low level; still shadows asked
-  again after a change. Lights: one pool of 12 glowing blocks (the village's lamp
-  material) and 12 halos. The walk map (`_buildWalk.ts`): each piece's `solids` (turned
+  again after a change. **Lights** (`sky/placedLights.ts`, AWP-21): every lamp post and
+  the spirit house's candle is a *placed light*: it glows (two glowing blocks round its
+  flame in the village's lamp material, one draw for all, and a halo sized by the scene's
+  height, one draw for all; a pool of 64, nothing made when one comes or goes, no new
+  shader), and it is a lamp of the map's few light slots (`sky/lampSlots.ts`, `placed`):
+  at most 3 placed lamps are put into slots (one easing out keeps its slot until it has faded), those whose light covers most of
+  the view (the nearest in sight first), easing in and out over 0.45 s as he walks among
+  them; the world's lamps (the temples', the boat's, his own lantern first) keep the other
+  slots. The lamp post 9 cd at night (as his lantern in hand), reaching 14 m at most; the
+  candle 1.2 cd, 5 m. By day they are dark (dim glows, no light). **The API for any piece
+  with a flame or a bulb** (AWP-23's lanterns, furniture): `placedLights().add({ x, y, z,
+  color, glow: { w, h }, halo, candela, reach, yaw, seed })` → `{ move(x, y, z), remove() }`
+  (null when the pool is full); build/view.ts adds its `object` to roaming's group and calls
+  its `frame` (a light of a build piece: give the piece `light` in pieces.ts and a row in
+  view.ts `LIGHT`). Checks: `lamps=<n>` (n lamp posts standing before his house, past the 8
+  a player may have: rows 3.5 m apart from 8 m before it, for 20 x 419‥433, z −115‥−129 (the spots the path, the house and its garden leave);
+  with the land as it is now 20 fit), `lampslots=4,1,<n>` (at most n placed lamps in slots;
+  0: they only glow), dev `__placedLights.stats()`, `__lampSlots.debug()`. The walk map (`_buildWalk.ts`): each piece's `solids` (turned
   by its yaw) for his feet, the dog, the follow camera (`hardClearance`), `groundAt`,
   `woodAt`; only a seat's top (the bed, the bench) is a step: the jar, a post, a rail,
   the haystack are in the way, never hopped onto.
@@ -2943,6 +2959,7 @@ sounds `audio/_build.ts`.
   deg)`, `add`, `remove`, `card`, `place`, `all`, `rebuild`, `shown(uid)`. Console lines
   `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
   `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
+  `roam=walk&at=424,-116&yaw=0&home=1&night=1&lamps=20&rcam=0,35,22` (twenty lamps at night) ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 
 ### Gathering materials

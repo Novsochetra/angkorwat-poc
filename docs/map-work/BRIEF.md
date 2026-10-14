@@ -2320,8 +2320,13 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
   most of the view, easing in and out over 0.45 s (the spot carries a point
   lamp when no flashlight or fill needs it). Every light each lit shader
   carries costs about 1.5 % of a GPU-bound frame even while dark: add lamps,
-  not slots (`lampslots=<points>,<spots>` for checks; dev:
+  not slots (`lampslots=<points>,<spots>[,<placed>]` for checks; dev:
   `__lampSlots.debug()`). Most light at night should come from glow + bloom.
+  Lights the player puts up (lamp posts, candles, lanterns: as many as he
+  likes) go through `placedLights().add(…)` (sky/placedLights.ts): each glows
+  (one draw for all the glows, one for the halos) and is a `placed` lamp; at
+  most 3 placed lamps hold a slot at once, the nearest in sight, so the
+  world's lamps keep the rest (addons.md "Building at home").
 - Custom `ShaderMaterial`s: set `fog: true` and include three's fog chunks
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
