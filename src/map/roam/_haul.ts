@@ -109,7 +109,7 @@ const HEAD_REACH = 1.8;
 /** His feet this near the cart's ground (m: a land step either way): he is by it, not on a ledge over it. */
 const LEVEL = 2.4;
 /** The cart this near his house's middle (m): he can unload it at home. */
-const HOME_NEAR = 18;
+const HOME_NEAR = 14;
 /** Farther than this from the camera it is not drawn (m: as the village's cart). */
 const HIDE = 420;
 /** Seconds a piece takes to lift in or out. */
@@ -127,7 +127,9 @@ const BODY_R = 0.42;
  * While he leads, the camera looks down at least this much (rad): the oxen and the cart are right behind him, so from
  * behind him it looks over them (from lower down it would be in them).
  */
-const LEAD_PITCH = 0.42;
+const LEAD_PITCH = 0.5;
+/** …and it is out at least this far (m): him, the oxen and the cart in one view. (Not swung to one side: W walks the way the camera looks.) */
+const LEAD_DIST = 9.5;
 /** The camera at the work: round to his right, tilt, distance (m), eased over `for` s. */
 const FRAME = { side: 0.75, pitch: 0.38, distance: 7.5, rate: 2.2, for: 1.6 };
 /** Loading packs these first; unloading takes the top first. */
@@ -668,13 +670,13 @@ function shapeWork(w: Work): void {
     pose.crouch = 0.45 * (1 - smooth(u / 0.35));
     pose.reach = u < 0.62 ? 0.35 + 0.65 * smooth(u / 0.62) : 1 - 0.55 * smooth((u - 0.62) / 0.38);
     pose.bow = 0.15 + 0.25 * smooth((u - 0.3) / 0.4) * (1 - smooth((u - 0.8) / 0.2));
-    pose.low = -1.2 * smooth((u - 0.2) / 0.4);
+    pose.low = 1.6 * (1 - smooth(u / 0.35)) - 0.4 * smooth((u - 0.35) / 0.3);
   } else {
     // (reached in over the tail, taken, lowered beside him and put down)
     pose.reach = u < 0.45 ? 0.4 + 0.6 * smooth(u / 0.25) : 1 - 0.4 * smooth((u - 0.45) / 0.35);
     pose.crouch = 0.6 * smooth((u - 0.45) / 0.3) * (1 - smooth((u - 0.85) / 0.15));
     pose.bow = 0.2 + 0.2 * smooth((u - 0.1) / 0.3);
-    pose.low = -1.2 * (1 - smooth((u - 0.4) / 0.3));
+    pose.low = -0.4 * (1 - smooth((u - 0.45) / 0.15)) + 2.2 * smooth((u - 0.45) / 0.3);
   }
 }
 
@@ -1023,7 +1025,11 @@ registerAddon({
 
   after(ctx, mode, dt) {
     if (mode !== 'walk' || !env) return;
-    if (leading) lead(ctx, dt);
+    if (leading) {
+      lead(ctx, dt);
+      // (the camera far enough out behind him to see the oxen and the cart)
+      if (leading && !ctx.input.zoom && ctx.cam.distance < LEAD_DIST) ctx.cam.distance += (LEAD_DIST - ctx.cam.distance) * damp(1.5, dt);
+    }
     // On foot, he keeps out of the cart and the oxen (they are not on the walk map): eased out to the nearest side.
     if (W || !shown || !ctx.body.grounded || ctx.body.explorer.animator.posture) return;
     const p = ctx.body.pos;
