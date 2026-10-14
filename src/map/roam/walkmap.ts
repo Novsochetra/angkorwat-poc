@@ -57,6 +57,8 @@ const LINE_END = 0.15;
 const THIN_LINES = typeof location === 'undefined' || new URLSearchParams(location.search).get('thinwalk') !== '0';
 /** The map's edges and a margin round them (the explorer's ledge by the overview camera is past the south edge). */
 const BOUNDS = { x0: MAP_BOUNDS.x0 - 64, x1: MAP_BOUNDS.x1 + 64, z0: MAP_BOUNDS.z0 - 64, z1: MAP_BOUNDS.z1 + 96 };
+/** The walk map's grid: its corner (m), column and chunk sizes (m). The player's block layer (map/blocks/store.ts) keeps its cells and chunks on it. */
+export const WALK_GRID = { x0: BOUNDS.x0, z0: BOUNDS.z0, res: RES, chunk: CN * RES } as const;
 
 /** Block families that are not solid to walk on or into. */
 const SOFT = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', 'petal', 'glow', 'water', 'wax']);
@@ -65,8 +67,8 @@ const SEE_THROUGH = new Set<VoxelMaterialKey>(['mapLeaf', 'leaves', 'foliage', '
 
 /** What a walk map holds: see `WalkMap`. */
 export type WalkMapKind = 'walk' | 'hard' | 'soft';
-/** Parts with nothing to stand on (or that move). */
-const SKIP_PARTS = new Set(['atmosphere', 'water', 'undergrowth', 'clouds', 'rain', 'rainbow', 'life', 'people', 'jungleFauna', 'paddies', 'festival', 'treasure', 'roam']);
+/** Parts with nothing to stand on (or that move); the player's blocks change while he plays: read from their store, not their meshes (map/blocks/store.ts `BLOCKS`). */
+const SKIP_PARTS = new Set(['atmosphere', 'water', 'undergrowth', 'clouds', 'rain', 'rainbow', 'life', 'people', 'jungleFauna', 'paddies', 'festival', 'treasure', 'roam', 'blocks']);
 
 const MESH_BITS = 10;
 const INST_BITS = 22;

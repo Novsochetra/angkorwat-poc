@@ -279,6 +279,8 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['people', async () => (await import('./people')).buildPeople],
   ['festival', async () => (await import('./festival')).buildFestival],
   ['treasure', async () => (await import('./treasure')).buildTreasure],
+  // (the player's own blocks, apart from the baked world: blocks/store.ts, drawn chunk by chunk)
+  ['blocks', async () => (await import('./blocks')).buildBlocks],
   ['foreground', async () => (await import('./foreground')).buildForeground],
 ];
 /**
