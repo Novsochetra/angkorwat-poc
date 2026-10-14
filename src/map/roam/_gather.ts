@@ -80,7 +80,7 @@ const PUSH = 0.15;
 /** After the last piece he could take, he lowers the tool and stops this long after (s). */
 const LINGER = 0.45;
 /** The camera at the work: round to his side (rad from behind), tilt, distance (m), how far the focus goes toward the spot; eased over `for` s. */
-const FRAME = { side: 1.0, pitch: 0.3, distance: 6.2, toward: 0.35, rate: 2.4, for: 1.6 };
+const FRAME = { side: 0.7, pitch: 0.44, distance: 6.6, toward: 0.35, rate: 2.4, for: 1.6 };
 /** Chips a blow throws (chop, dig), their size (m) and life (s). */
 const CHIPS = { chop: 10, dig: 11, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
 
