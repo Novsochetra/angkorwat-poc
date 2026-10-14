@@ -1326,7 +1326,12 @@ fish, dried fish and prahok, palm sugar and rice facing the square, meat and
 vegetables on the far side of its aisle, ground sellers under small umbrellas
 in front of it; the sugarcane cart and the motos and bicycles parked south of
 the street; trodden earth where people walk. Goods are colourful clusters that
-read from a few metres (`_mkGoods.ts`); `_mkStalls.ts` builds each stall in its
+read from a few metres (`_mkGoods.ts`); its fruit and vegetables are the plant
+kit's shapes (AWP-7: mangoes teardrops, pomelos, rambutans, limes, tomatoes,
+coconuts rounds, eggplants, cucumbers and corn longs, Khmer pumpkins ribbed
+rounds, banana hands and hanging bunches from `veg/produce.ts`; `mk.kit` keeps
+their toggles: the same in the back hamlet's and the floating village's
+markets, which use these goods); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
 tables, platforms, stools and wheels. Sizes are the people's (1.4 × true).
 The day: each stall is open over its own window of `clock` (`STALLS` `open`):

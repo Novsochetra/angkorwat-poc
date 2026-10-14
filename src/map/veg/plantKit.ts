@@ -24,7 +24,9 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  * `Local` with a `theta` is such a frame's (the same rule). Into a `PsFrame`'s
  * `b`: add its origin (`F.ox`, `F.oy`, `F.oz`); the shapes' blocks are not in
  * its near-only `small` set (`F.fine` marks only its own boxes), so they are
- * drawn at every distance.
+ * drawn at every distance. Into a market `MkBuild` (hamlet/_mkKit.ts): through
+ * `mk.kit(…)`, which tags the new blocks with the stall's toggle, at its
+ * `mk.point(…)`s, adding `mk.heading` to `az`.
  * Every shape takes `src` (a bug report names the line that made it; default:
  * the caller of the shape), `mat` and `shade`.
  *

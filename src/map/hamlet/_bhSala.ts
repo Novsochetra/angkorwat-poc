@@ -1,6 +1,7 @@
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { Frame } from '../landmarks/_prasatKit';
+import { round } from '../veg/plantKit';
 import { bougainvillea, DECK, gableEnd, gableRoof, jar, Local, POST, RIDGE, ROOFS, shadeTree, tone, type Roof } from '../village/_kit';
 import { gableFan, type BuildEnv } from './_bhHouses';
 import { signWord } from './_bhSign';
@@ -93,13 +94,15 @@ function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
     L.box(cx - 0.4, G + 0.31, z + Math.sign(z - cz) * 0.03, 0.12, 0.12, 0.06, 0x9a9a96, 'mapStone');
   }
   for (const z of [cz - 0.3, cz + 0.3]) L.span(cx + 0.66, G, z - 0.03, cx + 0.72, G + 0.4, z + 0.03, 0x3a3a3a, 'mapStone');
-  // Green coconuts heaped at one end of the counter; one cut open, a straw in it.
+  // Green coconuts heaped at one end of the counter (the plant kit's rounds: round from any side; in the sala's turned
+  // frame, which they may be: level blocks turned about y); one cut open, a straw in it.
   const nuts = [0x7aa040, 0x88aa48, 0x6a9438, 0x94b050];
+  const nut = (x: number, y: number, z: number, w: number, c: number, k: number, cap = 0x8a7a4a) => round(L.b, [x, y, z], { wid: w, hgt: w * 0.95, color: c, ribs: false, cap, ry: k * 0.7, low: true, shade: 0.95 + 0.1 * L.r(k, 7), src: L.src });
   let k = 0;
   for (let row = 0; row < 3; row++)
     for (let i = 0; i < 3 - row; i++)
-      for (let j = 0; j < 2 - (row > 1 ? 1 : 0); j++, k++) L.box(cx - 0.65 + i * 0.26 + row * 0.13, G + 1.17 + row * 0.22, cz - 0.14 + j * 0.28 + (row % 2) * 0.07, 0.25, 0.23, 0.25, nuts[k % nuts.length], 'mapLeaf', 0.95 + 0.1 * L.r(k, 7));
-  L.box(cx + 0.05, G + 1.15, cz + 0.2, 0.24, 0.2, 0.24, nuts[1], 'mapLeaf');
+      for (let j = 0; j < 2 - (row > 1 ? 1 : 0); j++, k++) nut(cx - 0.65 + i * 0.26 + row * 0.13, G + 1.055 + row * 0.22, cz - 0.14 + j * 0.28 + (row % 2) * 0.07, 0.25, nuts[k % nuts.length], k);
+  nut(cx + 0.05, G + 1.04, cz + 0.2, 0.24, nuts[1], 20, 0xf0ecd8);
   L.box(cx + 0.05, G + 1.26, cz + 0.2, 0.16, 0.04, 0.16, 0xf0ecd8, 'mapStone');
   L.box(cx + 0.08, G + 1.36, cz + 0.2, 0.02, 0.2, 0.02, 0xe84a8a, 'petal');
   // The cane press: a steel box, its flywheel on the side, a jug under the spout.
@@ -124,7 +127,7 @@ function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
   L.box(cx - 0.25, G + 0.62, cz - 0.85, 0.04, 0.26, 0.28, 0xb8bcc0, 'mapStone');
   L.box(cx - 0.25, G + 0.62, cz - 1.1, 0.05, 0.06, 0.24, 0x1e1a18, 'mapStone');
   L.box(cx + 0.3, G + 0.03, cz - 0.95, 0.9, 0.06, 0.7, 0xc8b88a, 'petal');
-  for (let i = 0; i < 5; i++) L.box(cx + 0.05 + (i % 3) * 0.26, G + 0.17 + Math.floor(i / 3) * 0.2, cz - 1.05 + (i % 2) * 0.24, 0.25, 0.23, 0.25, nuts[i % nuts.length], 'mapLeaf');
+  for (let i = 0; i < 5; i++) nut(cx + 0.05 + (i % 3) * 0.26, G + 0.06 + Math.floor(i / 3) * 0.2, cz - 1.05 + (i % 2) * 0.24, 0.25, nuts[i % nuts.length], 30 + i);
   // The umbrella: a pole at the cart's back corner, blue and white panels; the painted sign hung under its front: "ទឹកដូង".
   L.span(cx - 0.9, G, cz - 0.52, cx - 0.84, G + 2.55, cz - 0.46, 0xd8d0c0, 'mapStone');
   for (let i = 0; i < 4; i++) L.box(cx - 0.4, G + 2.5 - i * 0.05, cz - 0.1, 2.3 - i * 0.5, 0.05, 2.3 - i * 0.5, i % 2 ? 0xf2f0e8 : 0x2a6ab8, 'petal');
