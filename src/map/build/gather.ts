@@ -58,6 +58,11 @@ export interface GatherSpot {
   readonly hitY?: number;
   /** How it is gathered (default: the material's). */
   readonly action?: GatherAction;
+  /**
+   * A long thing lying on the ground (a felled trunk): the way its length runs (rad, as `atan2(dx, dz)`). He stands
+   * across it, on the side he comes from, not at its end.
+   */
+  readonly along?: number;
 }
 
 /** Where he is when a source is asked `can` (feet, m) and whether it is night. */

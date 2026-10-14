@@ -14,7 +14,9 @@ import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { registerBambooClumps } from './_gatherBamboo';
+import { registerLogs } from './_gatherLogs';
 import { createGatherHud, type GatherHud } from './_gatherHud';
+import { gatherLoadBuilder } from './_gatherLoad';
 import { gatherPose, gatherToolBuilder, newGatherPose, SWING } from './_gatherPose';
 import { byHouse } from './_buildSpots';
 import { angleDiff } from './followCam';
@@ -86,7 +88,7 @@ const FRAME = { side: 1.75, pitch: 0.4, distance: 6.2, toward: 0.35, rate: 2.4, 
 /** He stands turned this much to his left of the spot (rad): the blow lands before his right hip, not behind his body. */
 const TURN_LEFT = 0.45;
 /** Chips a blow throws (chop, dig), their size (m) and life (s). */
-const CHIPS = { chop: 10, dig: 11, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
+const CHIPS = { chop: 10, dig: 11, axe: 12, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
 
 interface Session {
   readonly spot: GatherSpot;
@@ -238,6 +240,14 @@ function placeFor(ctx: RoamCtx, s: Session, x: number, z: number): void {
   }
   dx /= d;
   dz /= d;
+  // (a trunk lying: he stands across it, on the side he comes from)
+  if (sp.along !== undefined) {
+    const px = Math.cos(sp.along);
+    const pz = -Math.sin(sp.along);
+    const k = dx * px + dz * pz >= 0 ? 1 : -1;
+    dx = px * k;
+    dz = pz * k;
+  }
   // (the blow on the foot circle toward him; he stands `STAND.at` back from it, unless already in [near, far] of it)
   const wx = sp.x + dx * sp.r;
   const wz = sp.z + dz * sp.r;
@@ -303,6 +313,21 @@ function tool(a: GatherAction | null): void {
   else ex.rig.clearSlot('gatherTool');
 }
 
+/** The load on his back as last drawn: the bag's version, his pack on or not. */
+let loadShown = '';
+/** His back load (roam/_gatherLoad.ts) drawn again when the bag (or his pack) changed. */
+function backLoad(): void {
+  const ex = env?.explorer;
+  if (!ex) return;
+  const pack = !!ex.rig.getSlot('pack');
+  const key = `${BAG.version}|${pack}`;
+  if (key === loadShown) return;
+  loadShown = key;
+  const b = gatherLoadBuilder(BAG.all(), pack);
+  if (b) ex.rig.setSlot('gatherLoad', 'backpack', b);
+  else ex.rig.clearSlot('gatherLoad');
+}
+
 function touch(want: WordKey | 'hide' | null): void {
   if (want === touchShown) return;
   touchShown = want;
@@ -328,7 +353,7 @@ function chips(s: Session, age = 0): void {
     const vx = (bx * c - bz * sn) * sp;
     const vz = (bx * sn + bz * c) * sp;
     const size = CHIPS.size[0] + fx.rnd() * (CHIPS.size[1] - CHIPS.size[0]);
-    const long = s.action === 'chop' ? 1.8 : 1;
+    const long = s.action === 'dig' ? 1 : 1.8;
     fx.spawn(FLY, w.x, w.y + 0.05, w.z, vx, 1.8 + fx.rnd() * 2, vz, size * long, size * 0.6, size, m.chips[i % m.chips.length], CHIPS.life[0] + fx.rnd() * (CHIPS.life[1] - CHIPS.life[0]), floor);
   }
   if (s.action === 'dig')
@@ -453,6 +478,11 @@ const KEYS: Record<GatherAction, readonly AddonKey[]> = {
   ],
   dig: [
     ['E', 'gatherHitDig', 'west'],
+    ['W A S D', 'gatherKeyStop', 'lstick'],
+    ['Q R', 'rLook', 'rstick'],
+  ],
+  axe: [
+    ['E', 'gatherHitChop', 'west'],
     ['W A S D', 'gatherKeyStop', 'lstick'],
     ['Q R', 'rLook', 'rstick'],
   ],
@@ -643,6 +673,12 @@ registerAddon({
   init(e) {
     env = e;
     const n = registerBambooClumps();
+    let logs = 0;
+    try {
+      logs = registerLogs(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the woodcutters\' logs failed:', err);
+    }
     hud = createGatherHud(e.layer);
     fx = new Particles();
     fx.mesh.name = 'gather:chips';
@@ -655,7 +691,7 @@ registerAddon({
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
     unloadInShot = dev && e.params.get('gatherunload') === '1';
-    console.info(`[gather] ${n} bamboo clumps to cut · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
+    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
         __gather: {
@@ -725,6 +761,7 @@ registerAddon({
   frame(f: MapFrame, m: RoamMode) {
     const dt = f.dt > 0 ? f.dt : 0;
     fx?.step(dt);
+    backLoad();
     // The gathering's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play
     // (as the garden's, roam/_garden.ts). Not in a shot (still) nor on the overview.
     const days = TIME.days();
@@ -755,7 +792,7 @@ registerAddon({
     const found = nearestOf(m as MaterialId, ctx.body.pos.x, ctx.body.pos.z);
     // (`gatheract=chop|dig`: that swing at it, to check a pose before its material's source exists)
     const act = q.get('gatheract');
-    const spot = found && (act === 'chop' || act === 'dig') ? { ...found, action: act as GatherAction } : found;
+    const spot = found && (act === 'chop' || act === 'dig' || act === 'axe') ? { ...found, action: act as GatherAction } : found;
     if (!spot) {
       console.warn(`[gather] gather=: no spot of ${m} (sources: ${gatherSources().map((s) => s.id).join(', ') || 'none'})`);
       return;

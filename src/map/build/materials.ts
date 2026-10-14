@@ -11,7 +11,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
  *   ស្លឹកត្នោត, clay ដីឥដ្ឋ. Each has a weight (what it counts against his
  *   carry limit: a log is heavy), its riel price (what one costs when he lacks
  *   it at build time: gathering is the free way, money the shortcut), how it is
- *   gathered (`action`: the knife's chop or the hoe's dig) and its colour (the
+ *   gathered (`action`: the knife's chop, the hoe's dig or the axe) and its colour (the
  *   chips that fly as he hits). A new material: one line in `MaterialId`, one in
  *   `MATERIALS`, its words in ui/lang.ts (`mat…`), its icon in
  *   build/materialIcons.ts, its sounds in audio/_gather.ts.
@@ -31,8 +31,8 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 
 export type MaterialId = 'bamboo' | 'log' | 'thatch' | 'clay';
 
-/** How a material is gathered: the knife's chop (bamboo, a palm leaf, a branch), the hoe's dig (clay). */
-export type GatherAction = 'chop' | 'dig';
+/** How a material is gathered: the knife's chop (bamboo, a palm leaf), the hoe's dig (clay), the axe's two-handed chop (a log). */
+export type GatherAction = 'chop' | 'dig' | 'axe';
 
 export interface MaterialSpec {
   readonly id: MaterialId;
@@ -58,8 +58,8 @@ export const CARRY_LIMIT = 12;
 export const MATERIALS: Record<MaterialId, MaterialSpec> = {
   // A pole of bamboo cut from a clump (a long stalk, 2: six on his shoulder).
   bamboo: { id: 'bamboo', name: 'matBamboo', one: 'matBambooOne', many: 'matBambooMany', verb: 'gatherCutBamboo', weight: 2, riel: 2_000, action: 'chop', chips: [0xfff4d8, 0x3e6a1e, 0xf0e2b0, 0x2e5216] },
-  // A log (heavy, 4).
-  log: { id: 'log', name: 'matLog', one: 'matLogOne', many: 'matLogMany', verb: 'gatherCutLog', weight: 4, riel: 6_000, action: 'chop', chips: [0xd8b080, 0xb08050, 0xe8c898, 0x8a6038] },
+  // A log (heavy, 4), cut off a felled trunk with the axe.
+  log: { id: 'log', name: 'matLog', one: 'matLogOne', many: 'matLogMany', verb: 'gatherCutLog', weight: 4, riel: 6_000, action: 'axe', chips: [0xd8b080, 0xb08050, 0xe8c898, 0x8a6038] },
   // A bundle of sugar-palm leaf thatch (light, 1).
   thatch: { id: 'thatch', name: 'matThatch', one: 'matThatchOne', many: 'matThatchMany', verb: 'gatherCutThatch', weight: 1, riel: 2_500, action: 'chop', chips: [0xb8b060, 0x8a9a48, 0xd0c080, 0x6a7a38] },
   // A lump of clay dug from a bank (2).

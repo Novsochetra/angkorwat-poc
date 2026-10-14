@@ -2,7 +2,7 @@ import { Group, type InstancedMesh, type WebGLRenderer } from 'three';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
-import { graphicsNow } from '../graphics';
+import { graphicsNow, markStill } from '../graphics';
 
 /**
  * **Cut bamboo clumps** (ticket AWP-10): the jungle's bamboo clumps where he
@@ -320,7 +320,9 @@ class BambooCuts {
       this.layer = null;
     }
     if (v.boxes.length) {
-      this.layer = buildVoxelMesh(v, { quality: 'medium', name: 'vegetation:bamboo-cut' });
+      // (as the jungle's own: plain blocks on the low level; it casts the still shadows of low and medium)
+      this.layer = buildVoxelMesh(v, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: 'vegetation:bamboo-cut' });
+      markStill(this.layer);
       this.object.add(this.layer);
     }
     this.object.visible = v.boxes.length > 0;
