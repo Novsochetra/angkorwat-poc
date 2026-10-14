@@ -13,7 +13,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, type BuildReason } from './_buildSpots';
+import { BUILD_REASON_WORDS, byHouse, canBuild, FENCE_JOINT, ghostAhead, type BuildReason } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { installBuildWalk } from './_buildWalk';
 import { BuildWork, pieceWord } from './_buildWork';
@@ -61,8 +61,12 @@ import type { RoamCtx } from './types';
  * `place`, `rebuild`. Console lines start `[build]`.
  */
 
-/** Turning the ghost: a step (rad). */
+/** Turning the ghost: a step (rad: 15°), a fine step (Shift + , / .: 5°), held on a step this far past its middle (rad). */
 const TURN_STEP = Math.PI / 12;
+const TURN_FINE = Math.PI / 36;
+const TURN_HOLD = (4 * Math.PI) / 180;
+/** The ghost's middle steps on his land's grid this fine (m). */
+const GRID = 0.5;
 /** "E  Build…" by the house: within this of its footprint and stair (m). */
 const BY_HOUSE = 2.6;
 /** Build mode ends past this far past his land (m). */
@@ -73,8 +77,8 @@ const START_PAST = 2;
 const HOLD_FOR = 0.8;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
 const PIECE_REACH = 1.25;
-/** A fence's end snaps onto another's end within this (m) and this turn (rad). */
-const SNAP = { d: 1.1, turn: 0.6 };
+/** A fence's end snaps onto another's end within this (m: the ghost's middle from where it would go). */
+const SNAP = { d: 1.5 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
 /**
@@ -92,6 +96,10 @@ let lastCtx: RoamCtx | null = null;
 /** Build mode: the piece he is placing (picked on the card), its extra turn (rad). */
 let placing: PieceId | null = null;
 let turn = 0;
+/** The 15° step of his land's lines the ghost holds (`landYaw`), or null (picked again). */
+let heldStep: number | null = null;
+/** Shift held (the fine turn). */
+let shiftDown = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
 const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as BuildReason | null, step: -1, prompt: null as string | null, snapped: false };
 let stepN = 0;
@@ -167,12 +175,14 @@ function wireHold(): void {
   if (holdWired || typeof window === 'undefined') return;
   holdWired = true;
   addEventListener('keydown', (e) => {
+    shiftDown = e.shiftKey;
     if ((e.code === 'KeyE' || e.code === 'Enter') && !e.repeat) holdKeys.key = true;
   });
   addEventListener('keyup', (e) => {
+    shiftDown = e.shiftKey;
     if (e.code === 'KeyE' || e.code === 'Enter') holdKeys.key = false;
   });
-  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = false));
+  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = shiftDown = false));
   addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) holdKeys.touch = true;
   }, true);
@@ -254,58 +264,73 @@ const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
 const SNAP_TOUCH = 0.03;
 
 /**
- * A fence's spot snapped onto the end of one he built, if near: into `spot`. In line (the run going on) or turned
- * a quarter (a corner: its end against the other's end, on either side of it, the two touching, not overlapping).
- * Only onto an end that is free (a corner at the joint of two in a run would stand on the next one).
+ * The ghost's turn on his land's lines (AWP-30): `raw` (rad, as `body.yaw`) clicked to `TURN_STEP` (15°) counted from
+ * the house's frame (`HOME_AT.facing`: his land's sides run along it), held on its step until `raw` is `TURN_HOLD`
+ * past the middle to the next (no flicker as he sways).
+ */
+function landYaw(raw: number): number {
+  const base = HOME_AT.facing;
+  const steps = Math.round((2 * Math.PI) / TURN_STEP);
+  const r = raw - base;
+  if (heldStep !== null) {
+    const d = Math.atan2(Math.sin(r - heldStep * TURN_STEP), Math.cos(r - heldStep * TURN_STEP));
+    if (Math.abs(d) < TURN_STEP / 2 + TURN_HOLD) return base + heldStep * TURN_STEP;
+  }
+  heldStep = ((Math.round(r / TURN_STEP) % steps) + steps) % steps;
+  return base + heldStep * TURN_STEP;
+}
+/** A spot (x or z, m) on his land's grid (`GRID`, from its box's corner: runs line up with its sides and each other). */
+const onGrid = (v: number, o: number): number => o + Math.round((v - o) / GRID) * GRID;
+
+/**
+ * A fence's spot run on from the end of one he built, if one is near (into `spot`): its own end on that end, at the
+ * ghost's turn — in line, a corner, a bend of 45° or 30° (the two cross at the joint: _buildSpots.ts `FENCE_JOINT`).
+ * The nearest such spot to where the ghost was, within `SNAP.d`; never onto another piece.
  */
 function snapFence(): boolean {
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
-  let byaw = 0;
   const half = PIECES.fence.w / 2;
-  const th = PIECES.fence.d / 2;
-  const take = (x: number, z: number, yaw: number) => {
-    const d = Math.hypot(x - spot.x, z - spot.z);
-    if (d >= best) return;
-    _snap.x = x;
-    _snap.z = z;
-    _snap.yaw = yaw;
-    for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH)) return;
-    best = d;
-    bx = x;
-    bz = z;
-    byaw = yaw;
-  };
+  const c = Math.cos(spot.yaw);
+  const s = Math.sin(spot.yaw);
+  _snap.yaw = spot.yaw;
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
-    // (its local x axis on the map (c, −s), its local z axis (s, c))
-    const c = Math.cos(f.yaw);
-    const s = Math.sin(f.yaw);
+    // (its local x axis on the map is (cos, −sin): its ends half a run along it)
+    const fc = Math.cos(f.yaw);
+    const fs = Math.sin(f.yaw);
     for (let end = -1; end <= 1; end += 2) {
-      for (let k = 0; k < 4; k++) {
-        const yaw = f.yaw + (k * Math.PI) / 2;
-        const dy = Math.atan2(Math.sin(yaw - spot.yaw), Math.cos(yaw - spot.yaw));
-        if (Math.abs(dy) > SNAP.turn) continue;
-        if (k % 2 === 0) {
-          // (the run going on from this end: the next one's middle a run further along)
-          take(f.x + end * 2 * half * c, f.z - end * 2 * half * s, yaw);
-          continue;
-        }
-        // (a corner: just past this end, along its front or its back)
-        for (let side = -1; side <= 1; side += 2) {
-          const ax = end * (half + th);
-          const az = side * (half - th);
-          take(f.x + ax * c + az * s, f.z - ax * s + az * c, yaw);
-        }
+      const ex = f.x + end * half * fc;
+      const ez = f.z - end * half * fs;
+      for (let sig = -1; sig <= 1; sig += 2) {
+        // (the new run's end `sig` on that end: its middle half a run back along its own way)
+        const x = ex - sig * half * c;
+        const z = ez + sig * half * s;
+        const d = Math.hypot(x - spot.x, z - spot.z);
+        if (d >= best) continue;
+        _snap.x = x;
+        _snap.z = z;
+        let free = true;
+        for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH, b.id === 'fence' ? FENCE_JOINT : 0)) free = false;
+        if (!free) continue;
+        best = d;
+        bx = x;
+        bz = z;
       }
     }
   }
   if (best >= SNAP.d) return false;
   spot.x = bx;
   spot.z = bz;
-  spot.yaw = byaw;
   return true;
+}
+
+/** The turn shown in the prompt (degrees from the house's line: a fence's run 0‥179, a piece's front 0‥359). */
+function shownDeg(id: PieceId, yaw: number): number {
+  const m = id === 'fence' ? 180 : 360;
+  const d = Math.round(((yaw - HOME_AT.facing - Math.PI) * 180) / Math.PI);
+  return ((d % m) + m) % m;
 }
 
 /** Build mode's spot and prompt now (once a step). */
@@ -313,18 +338,19 @@ function placingNow(ctx: RoamCtx): void {
   if (spot.step === stepN || !placing || !env) return;
   spot.step = stepN;
   const b = ctx.body;
-  // (its front to him, turned more with , and .)
-  spot.yaw = b.yaw + Math.PI + turn;
+  // (its front to him, on his land's lines, turned more with , and .)
+  spot.yaw = landYaw(b.yaw + Math.PI) + turn;
   const ahead = ghostAhead(placing, spot.yaw, b.yaw);
-  spot.x = b.pos.x + Math.sin(b.yaw) * ahead;
-  spot.z = b.pos.z + Math.cos(b.yaw) * ahead;
+  spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0);
+  spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0);
   spot.snapped = placing === 'fence' && snapFence();
   const r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
   spot.ok = !r;
   spot.reason = r;
   const id = placing;
+  const deg = shownDeg(id, spot.yaw);
   const keys = words('modeKeys', () => `, .  ${t('buildTurn')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
-  if (!r) spot.prompt = words(`here|${id}`, () => `E  ${t('buildHere')}  ·  ${keys}`);
+  if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')}  ·  ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
 }
@@ -344,6 +370,7 @@ function enterPlacing(id: PieceId): void {
     modeCamLetGo = false;
     modeCamOpen = MODE_CAM.openFor;
     turn = 0;
+    heldStep = null;
   }
   placing = id;
   spot.step = -1;
@@ -471,8 +498,8 @@ function showTouchBar(on: boolean): void {
   touchBar.classList.toggle('is-on', on);
 }
 
-function turnBy(dir: number): void {
-  turn = Math.atan2(Math.sin(turn + dir * TURN_STEP), Math.cos(turn + dir * TURN_STEP));
+function turnBy(dir: number, step = TURN_STEP): void {
+  turn = Math.atan2(Math.sin(turn + dir * step), Math.cos(turn + dir * step));
   spot.step = -1;
   env?.uiSound('tick');
 }
@@ -712,7 +739,7 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +spot.yaw.toFixed(3), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
             near: near.piece ? { uid: near.piece.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -768,7 +795,7 @@ registerAddon({
       const right = tap('Period') || (pad.active && tap('Digit5'));
       if (left || right) {
         for (const c of ['Comma', 'Period', 'Digit4', 'Digit5']) taps?.delete(c);
-        turnBy(left ? 1 : -1);
+        turnBy(left ? 1 : -1, shiftDown && !pad.active ? TURN_FINE : TURN_STEP);
       }
       // F or C (the pad's ↓): the card again (another piece); not a greeting.
       if (tap('KeyF', 'KeyC')) {

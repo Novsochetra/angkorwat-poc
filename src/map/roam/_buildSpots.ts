@@ -37,7 +37,8 @@ import type { RoamWorld } from './types';
  * - `tree`: a tree on his land (build/plot.ts `PLOT_TREES`): its trunk, and its
  *   crown for a piece taller than its lowest leaves;
  * - `plant`: a plant of his garden stands there (its bed or its trunk);
- * - `piece`: something he built stands there (footprints overlap; fence runs may touch), or before one he
+ * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross at their ends:
+ *   `FENCE_JOINT`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
@@ -75,6 +76,13 @@ const WATER_MARGIN = 0.6;
 const PATH_MARGIN = 0.5;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
 const TOUCH = 0.03;
+/** A point this near a piece he built is that piece's (the walk map's top there is his own posts and rails) (m). */
+const OWN = 0.12;
+/**
+ * Two fence runs may cross this far in from their ends (m): a run going on from another's end at an angle (a corner,
+ * a bend: roam/_build.ts `snapFence`) shares its end post's room. Enough for a bend of 30° or more (0.25 m deep runs).
+ */
+export const FENCE_JOINT = 0.5;
 
 /** Round the house (local m): boxes [x0, z0, x1, z1] and circles [x, z, r] kept clear (as roam/_gardenSpots.ts keeps them). */
 const KEEP_BOX: readonly (readonly [number, number, number, number])[] = (() => {
@@ -180,7 +188,8 @@ const onLevel = (x: number, z: number): BuildReason | null => {
 };
 const onThing = (x: number, z: number): BuildReason | null => {
   const w = _world!;
-  return w.groundAt(x, z) - w.field.heightAt(x, z) > THING ? 'thing' : null;
+  // (what he built himself is the pieces' own rule, `piece`: two fence runs meeting at a joint stand in each other's posts)
+  return w.groundAt(x, z) - w.field.heightAt(x, z) > THING && !BUILT.blocks(x, z, OWN) ? 'thing' : null;
 };
 
 /** Where `id` can stand at (x, z) turned `yaw`: null, or why not. `ignore`: a piece of his not to count (the one being moved). */
@@ -209,7 +218,7 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
     if (distTo(f, q.x, q.z) < room) return 'plant';
   }
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
-  for (const b of BUILT.list) if (b !== ignore && (overlap(f, b, -TOUCH) || coversFront(f, b))) return 'piece';
+  for (const b of BUILT.list) if (b !== ignore && (overlap(f, b, -TOUCH, id === 'fence' && b.id === 'fence' ? FENCE_JOINT : 0) || coversFront(f, b))) return 'piece';
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

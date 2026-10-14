@@ -2898,9 +2898,16 @@ sounds `audio/_build.ts`.
   the ground not level, a tree on his land ("មានដើមឈើនៅទីនេះ / A tree is in the way":
   its trunk, its crown for a piece taller than its lowest leaves), a plant of his garden, something he built (or
   the room before one he uses from there), something else, no room before it: the spirit
-  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
-  ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
-  built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
+  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him and it turns with him **on his land's lines**
+  (AWP-30): in 15° steps counted from the house's frame (0° along the house), held on its
+  step until he turns 4° past the middle to the next (no flicker); `,` / `.` (the pad's
+  d-pad ← →, the touch ⟲ ⟳) turn it 15° more, Shift + `,` / `.` 5° (keys). Its middle steps
+  on a 0.5 m grid from his land's corner (runs line up with its sides and each other). A
+  fence's ghost shows a **guide**, pale dashes on the ground on along its run 9 m past both
+  ends. A **fence runs on** from the free end of one he built (its ghost within 1.5 m): its
+  own end on that end, at the ghost's turn — in line, a corner, a bend of 30°, 45°, 60°… (two
+  runs may cross 0.5 m in from their ends: `_buildSpots.ts` `FENCE_JOINT`; his own posts
+  never count as "something in the way"). The prompt shows the turn: "E  Build here  ·  45°". "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
   work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
   mode, never "Back to the map?". The camera looks down more, further back, the ghost
