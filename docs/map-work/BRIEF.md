@@ -2290,6 +2290,73 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
 
+## The player's blocks (`src/map/blocks/`)
+
+What the player builds with, apart from the baked world (whose meshes are made
+once in the build workers and never change): the part `blocks` (main.ts, built
+after the treasure), the base of building at home (build plan step 3: AWP-16;
+the walk map AWP-17, saving AWP-18, the plot and its budget AWP-19, footprint
+building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
+
+- **The store** (`blocks/store.ts`, no three.js; `BLOCKS`, one for the map): a
+  block is a cell of 0.5 m, the walk map's column (`WALK_GRID`, roam/walkmap.ts:
+  one block, one column) and the temple kit's block; a full block is too high a
+  step to walk up (0.42 m), a slab (0.25 m) a stair's rise. Cell (i, j, k) is
+  (i, j, k) · 0.5 m to (i + 1, j + 1, k + 1) · 0.5 m (`cellOf`, `cellMin`,
+  `cellMid`). Chunks of 32 cells a side, 16 m: the walk map's chunks exactly
+  (the same corner: a chunk's cx, cz is the walk map's), cy 16 m slices from
+  y = 0; a chunk keeps its cells densely (160 kB), made at its first block,
+  dropped at its last. A home plot (≈ 20 m) spans a few chunks: a few draws a
+  block family.
+- **A block** (`Block`: `mat`, `color`, `shape`, `turn`): its material
+  (`blocks/kinds.ts` `BLOCK_MATS`: timber, bamboo, thatch, laterite, sandstone,
+  brick, each drawn with a map family: `mapBark`, `mapLeaf`, `mapStone`,
+  `mapRock`), its colour (sRGB hex, any: paint), its shape (`BLOCK_SHAPES`:
+  cube, slab; each a list of boxes in its cell and the sides of the cell it
+  fills whole) and a quarter turn (saved, for the stairs to come). As one
+  number (`rawOf`, `blockOf`): colour + material · 2²⁴ + (shape · 4 + turn) ·
+  2³², 0 no block; ids are saved, so they are only ever added.
+- **Writing**: `set(i, j, k, block | null)`, `setRaw`, `fill(box, block | null)`,
+  `batch(fn)` (many changes as one: a footprint, a loaded save), `clear()`.
+  **Reading**: `get`, `raw`, `solid` (the walk map), `count`, `countIn(box)` (a
+  plot's budget), `forEach` (every block in a fixed order: chunk by chunk,
+  rows along x, then z, then y: a run-length save), `chunkList`, `chunkAt`.
+- **Changes** (`onChange`): told once a change is done (one set, one fill, one
+  batch): `changed` (the chunks whose cells changed: the walk map's chunks to
+  build again), `touched` (those and the neighbours across an edge a changed
+  cell lies on: drawn again), `box` (the changed cells), `cells`, `version`.
+- **Drawn** (`blocks/view.ts`, `blocks/mesh.ts` `packChunk`): a group per chunk,
+  a mesh per block family in it, made again the frame after a change, each
+  touched chunk once; the meshes' arrays are written in place (only the boxes
+  in use sent), a mesh made new only when a family outgrows its room. **Only
+  what can be seen**: a block whose six sides lie against filled sides (its
+  neighbours', in its chunk or the next) is not drawn; each box keeps its open
+  sides (the rim only between two open sides, a seam between flush blocks, as
+  the map's grids) and its seen sides (`voxShown`: on low, the plain boxes
+  draw no covered side, block by block, as the map's still parts: cull.ts
+  `cutCovered`); a mesh's index holds only the sides its boxes show; and only
+  the sides that can face the camera are drawn (voxel/backFacets.ts). Shade as
+  the map's grids bake it (soft occlusion from the 26 cells round it, ±5 %
+  seeded jitter), colour per block. The map's look and programs: its families,
+  the materials its still parts wear (cull.ts `coverMaterialOf`), its block
+  shapes (one cut on medium and up, plain boxes on low), its depth material:
+  no shader program of its own. Far: plain boxes with their rims painted once
+  the cut edges are under a pixel, hidden once a metre is under 0.9 px (the
+  build view's rule, build/view.ts). Shadows cast and received, still; the
+  still map asked again after a rebuild (at most once a second while blocks
+  keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
+  read the store (AWP-17).
+- **Cost**: an empty store is an empty group (no draw, no work a frame).
+  REBUILD_NUMBERS
+- **URL**: `pblocks=demo` (a sala on the meadow before his stilt house, ≈ 690
+  blocks: every material, the slab, painted blocks) · `pblocks=full` (a full
+  plot: nine of them 3 × 3, 8 m apart, ≈ 6,200 blocks over 24 × 24 m) ·
+  `@x,z` puts it elsewhere. Nothing is saved. Shots and the dev server:
+  `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to make a
+  chunk again after one change, `flush()`). `npm run perf -- only=home
+  url=pblocks=full` (the `home` view: by the stilt house, over the meadow).
+  E.g. `roam=walk&at=436,-139&yaw=200&home=1&rcam=150,12,9&pblocks=demo`.
+
 ## Sacred pieces (sculpted, not blocks)
 
 Buddhas, stupas, offerings and the pagoda's gables are smooth sculpted
@@ -2907,6 +2974,7 @@ as the picture's; a part that moves must not be marked still.
 | buying, eating and drinking | `src/map/shop.ts` (lead), `src/map/roam/_shop*.ts`, `src/map/people/_saleBack.ts`; `src/character/meals.ts`, `parts/food.ts` |
 | leaving roaming asks first | `src/map/roam/_leave.ts` (lead) |
 | kites (khleng ek) | `src/map/people/_sceneKites.ts`, `_kite.ts`; the hum `src/map/audio/kite.ts` |
+| the player's blocks (store, chunk meshes) | `src/map/blocks/*` |
 | speed checks | `scripts/perf.mjs` (`npm run perf`) |
 
 `main.ts`, `camera.ts`, `cull.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the

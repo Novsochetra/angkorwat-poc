@@ -269,6 +269,11 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
   `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
   `act=eat|bite|drink&food=<kind>`.
+- The player's blocks (what he builds with, apart from the baked world): the part
+  `blocks`, `src/map/blocks/` (the store `store.ts` `BLOCKS`: 0.5 m cells, 16 m
+  chunks on the walk map's grid, change events, `forEach` / `rawOf` for saving;
+  materials and shapes `kinds.ts`; a mesh per chunk and family drawing only what
+  can be seen, `view.ts`); BRIEF.md "The player's blocks". Shots: `pblocks=demo|full`.
 
 ## Things to do while roaming (add-ons)
 

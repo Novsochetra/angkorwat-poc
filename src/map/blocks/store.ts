@@ -23,7 +23,9 @@ import { BLOCK_MATS, BLOCK_SHAPES, MAT_BY_ID, SHAPE_BY_ID, type BlockMatKey, typ
  * a change rebuilds one walk-map chunk (AWP-17), and a home plot (about
  * 20 m) spans a few chunks: a few draws a family. Smaller chunks would cost
  * a draw each per family; bigger ones a slower rebuild (it is linear in the
- * chunk's cells and blocks: ≈ 0.3 ms for 32³ on an M1 Max, view.ts).
+ * chunk's cells and blocks: on an M1 Max ≈ 0.4 ms for a chunk of 3,000
+ * blocks after one change, 1.1–1.5 ms for a chunk filled whole or every other
+ * cell; view.ts `bench`).
  * Vertically too (cy: 16 m slices from y = 0). A chunk holds its cells
  * densely (32 768: 4 bytes + 1 a cell, 160 kB), made at its first block,
  * dropped at its last.
