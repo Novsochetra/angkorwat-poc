@@ -343,7 +343,8 @@ guide, with every add-on's keys and URL values for shots, is
     `cattle=calf,young,grown…`, `cattleshop=`, `cattlenight=1`).
   - Building at home: E Build… near his house → the card of nine pieces → a ghost
     (red with its reason) → E Build here → he hammers it up; take down for half
-    the price. Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
+    its materials. A piece costs materials (`pieces.ts` `cost`): gathered ones are
+    free, missing ones bought with riel (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
@@ -353,6 +354,11 @@ guide, with every add-on's keys and URL values for shots, is
     neighbours, elders and children (ចែក: `roam/_shareFruit*.ts`,
     `people/_shareBack.ts`; `share=near|give|thanks|child|again`). Once a
     person a day.
+- Gathering materials (AWP-9, addons.md "Gathering materials"): bamboo, logs,
+  thatch, clay (`build/materials.ts`: the bag with its carry limit, the home store),
+  the sources' registry `build/gather.ts` (`registerGatherSource`: spots, hits,
+  regrowing), the add-on `roam/_gather*.ts` (one press, one swing; the load under
+  the purse; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

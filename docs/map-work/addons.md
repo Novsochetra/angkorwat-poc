@@ -2846,11 +2846,15 @@ map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until 
 done); his pose `character/buildWork.ts` (`buildPose`, his hammer `hammerBuilder`);
 sounds `audio/_build.ts`.
 
-- **The pieces** (`PIECES`): the cattle pen គ្រោលគោ (60,000 ៛, 2), the thatched shelter
-  ខ្ទម with a bench (40,000 ៛, 3), the bamboo bed គ្រែឫស្សី (15,000 ៛, 3), a run of
-  bamboo fence របងឫស្សី (4,000 ៛, 40), the spirit house ខ្ទមព្រះភូមិ (25,000 ៛, 1), the
-  water jar ពាងទឹក (12,000 ៛, 4), the hammock អង្រឹង (20,000 ៛, 2), the lantern post
-  ចង្កៀងបង្គោល (8,000 ៛, 8), the rice-straw stack គំនរចំបើង (10,000 ៛, 2).
+- **The pieces** (`PIECES`; what each costs is its materials, AWP-9: see "Gathering
+  materials" below; the riel is what it costs bought outright, `pieceRiel`, and the most of
+  it): the cattle pen គ្រោលគោ (5 logs, 10 bamboo poles, 4 thatch: 60,000 ៛, 2), the
+  thatched shelter ខ្ទម with a bench (3 logs, 4 bamboo, 6 thatch: 41,000 ៛, 3), the bamboo
+  bed គ្រែឫស្សី (7 bamboo: 14,000 ៛, 3), a run of bamboo fence របងឫស្សី (2 bamboo: 4,000 ៛,
+  40), the spirit house ខ្ទមព្រះភូមិ (1 log + 19,000 ៛ of gilding and offerings: 25,000 ៛, 1),
+  the water jar ពាងទឹក (6 clay + 3,000 ៛ glaze: 12,000 ៛, 4), the hammock អង្រឹង (2 logs +
+  8,000 ៛ cloth: 20,000 ៛, 2), the lantern post ចង្កៀងបង្គោល (1 log + 2,000 ៛ glass: 8,000 ៛,
+  8), the rice-straw stack គំនរចំបើង (1 bamboo + 8,000 ៛ straw: 10,000 ៛, 2).
 - **Starting** (the house his, on foot on the ground): by the house (under it, round
   it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
   within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 94.9,
@@ -2858,8 +2862,11 @@ sounds `audio/_build.ts`.
   key, as "no seeds yet", goes on after it: "E  Build…  ·  …"). The first time he comes home owning it, a
   toast says so (`build.hinted`).
 - **The card**: each piece with its picture, its name, how many he has of how many,
-  its line, its price; one he cannot build now greyed with why ("You have all 3",
-  "12,000 ៛ more needed"); his riel under the title. Every line reads whole: it wraps (a
+  its line, its cost (each material's picture and how many, those he lacks in red, then
+  the riel to pay now, if any); a piece he lacks materials for says so in place of its line
+  ("Missing: 1 bamboo pole = 2,000 ៛"); one he cannot build now greyed with why ("You have
+  all 3", "Missing 1 log: 2,000 ៛ more needed"); under the title his riel and the materials
+  he has (bag and home store). Rows grow to their words (`grid-auto-rows: max-content`). Every line reads whole: it wraps (a
   narrow card, a phone upright, puts the price on the name's line and the line under both);
   in a low window (a phone on its side) the list scrolls with the settings panel's soft
   edges where there is more, the head drawn smaller. 1‥9, ↑ ↓, Enter, Esc; the pad's
@@ -2872,8 +2879,9 @@ sounds `audio/_build.ts`.
   house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
   ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
   built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
-  the row, before a hammock, the dog, the house's doors) pays (`purse.pay`) and the
-  work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
+  the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
+  (`purse.pay`), takes the rest from his bag, then his home store (`useMaterials`; a
+  toast: "Used 2 bamboo poles", "Used 1 bamboo pole and paid 2,000 ៛") and the work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
   mode, never "Back to the map?". The camera looks down more, further back, the ghost
   in the middle, a little over his shoulder (a near ghost, the jar, the lamp, the spirit
   house, a little steeper: the line to it over his hat); its first move after a pick is
@@ -2892,8 +2900,9 @@ sounds `audio/_build.ts`.
 - **By a piece he built** (facing it, within 1.25 m): a seat (the bed, the shelter's
   bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; else
   "E  Hold to take down the …". Held 0.8 s (a bar fills) it asks ("Take down the
-  bamboo bed? You get half its price back"); yes: he takes it apart (half the time,
-  at least 2 s), it is gone, half its price back. A hammock's E is the hammock
+  bamboo bed? You get half its materials back: 3 bamboo poles"); yes: he takes it apart
+  (half the time, at least 2 s), it is gone, half its materials (rounded down) go into his
+  home store and half its extra riel into his purse (`pieceBack`). A hammock's E is the hammock
   add-on's, the spirit house's "Pray" the shrine's (both come first).
 - **Uses** (`_buildUses.ts`; a piece that stands): J / L by the bed puts him on it
   (along it: he sits, lies back, falls asleep as on the ground), J by the shelter sits
@@ -2932,6 +2941,87 @@ sounds `audio/_build.ts`.
   `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
   `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
+
+### Gathering materials
+
+He gathers what he builds with (add-on `gather`, ticket AWP-9; words `gather…`,
+`mat…`): one press is one swing, never "press E and wait". The core the gathering
+tickets build on (AWP-10 bamboo clumps, AWP-11 logs, AWP-12 thatch, AWP-13 clay,
+AWP-14 the ox cart, AWP-15 a bamboo forest):
+
+- `map/build/materials.ts` (no three.js): the materials (`MATERIALS`: bamboo ឫស្សី,
+  logs ឈើ, palm-leaf thatch ស្លឹកត្នោត, clay ដីឥដ្ឋ; each its words, its weight against
+  the carry limit, its riel price when bought, how it is gathered: `chop` or `dig`, its
+  chips' colours), the bag `BAG` (on foot, up to `CARRY_LIMIT` 12 in weight: a bamboo
+  pole 2, a log 4, a bundle of thatch 1, a lump of clay 2; `load()`, `room(m)`,
+  `add` returns what fit), the home store `STORE` (no limit), and for the build:
+  `missingOf(cost)`, `rielOf`, `useMaterials(cost)` (the bag first, then the store),
+  `materialsText` ("2 bamboo poles and 1 log"). A new material: one line in
+  `MaterialId` and `MATERIALS`, its words, its icon (`roam/_gatherIcons.ts`), its hit
+  sound (`gatherHit:<id>` in `audio/_gather.ts`).
+- `map/build/gather.ts` (no three.js): **the sources' registry**.
+  `registerGatherSource({ id, spots(), can?, onHit?, onTake?, onLeft? })` — a source is
+  one kind of place (in a map part that knows where its things stand, or a roaming
+  module); `spots()` returns its `GatherSpot`s (`id` stable and saved, `<source>:<place>`;
+  `material`; `x, z` its middle, `r` its foot's radius: he stands just outside it facing
+  the middle; `hits` blows per piece; `pieces` before it is spent; `regrowDays` game days
+  for a piece to grow back, 0 never spent; `hitY` where the blow lands, m over the
+  ground; `action` to override the material's). `can(spot, at)` returns null or a word
+  key ("not at night"); `onHit(spot, n, of)` each blow (shake the clump);
+  `onTake(spot, left)` a piece came off (hide a cane); `onLeft(spot, left)` it grew back
+  or a check set it (draw it so). What a spot has left is kept by the core:
+  `gatherLeft(spot)`, `gatherRegrowIn(spot)`, `GATHER.take`, `GATHER.setLeft` (checks),
+  on the gathering's own clock `GATHER.clock` (game days: the map's days while he plays,
+  or a day each `dayLength` s of play while the time stands still, as the garden's).
+- The add-on `roam/_gather.ts` (the E row, the swing, the URL), its pose and tools
+  `roam/_gatherPose.ts` (the phkak knife កាំបិតផ្គាក់ and the hoe ចប: `gatherPose`,
+  `SWING` timing, `gatherToolBuilder`), the load chip and "In my bag"
+  `roam/_gatherHud.ts`, the icons `roam/_gatherIcons.ts`, sounds `audio/_gather.ts`;
+  the chips are the garden's particles (`garden/_fxParticles.ts`: one instanced mesh,
+  `mapRock`, nothing drawn when idle).
+- **The proof source** (AWP-9's only one): the map's bamboo clumps where he roams
+  (`roam/_gatherBamboo.ts`, from vegetation.ts `subjects`): 4 blows a pole, 3 poles a
+  clump, each back in 2 game days. Nothing of the clump changes yet: AWP-10 takes the
+  source over (same id `bamboo`, so the saved spots carry on) and shows the cut canes.
+- **At a spot** (on foot, before it, within 1.3 m of its foot; order 60): "E  កាប់ឫស្សី /
+  Cut bamboo" (the material's verb). None left: "None left: it grows back in 2 days"; too
+  heavy: "Your load is full (12/12): take it home first" (no key); a source's `can`: its words.
+- **The work** (it holds him): E starts the first swing at once; he steps up if he
+  stood back, turns to it, the tool in his right hand. Each press of E (or Space; the
+  pad's □ or ✕; the touch Use button, or the big one, which says "Chop" / "Dig" while
+  he works) is one swing, one more waiting while one is under way: the knife raised out
+  beside his head and brought down at a slant on the cane (his left hand on it); the hoe
+  over his head in both hands and down into the earth. Each blow: the material's sound,
+  its chips flying, a tick on the pad, the source's `onHit`; the prompt counts
+  ("E  Chop (2/4)"). The last blow of a piece: it goes in his bag, a soft knock, a toast
+  ("+1 bamboo pole · load 6/12"), the load chip glows. He goes on while the spot has more
+  and the bag has room, else lowers the tool and stops. The stick held away, back to the
+  map, another mode: he stops at once (the blows of an unfinished piece are lost).
+  The camera comes round to his right (the tool's side).
+- **The load**: a chip under the purse (each material's picture and count, a bar and
+  "បន្ទុក ៦/១២ / Load 6/12", red when full) while he carries something or works; "In my
+  bag" (the explorer menu's Bag page, `BAG_MORE`) lists it, and what is at home.
+- **Home**: his house his (`HOME.owned`), on foot by it (`byHouse`, 3 m) carrying
+  something: the load goes into his home store (a toast says what; a few knocks). The
+  build card uses the bag and the store ("Building at home" above).
+- **Saved** (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4 }`), `gather.spots`
+  (per spot, the clock times its pieces were taken), `gather.clock`. An old or broken
+  value reads as empty. Shots and `progress=0` save nothing.
+- **Sounds** (`audio/_gather.ts`): `gatherSwish`, `gatherHit:bamboo|log|thatch|clay`,
+  `gatherGot`, `gatherUnload` (moves), `gatherFull` (ui).
+- **URL** (shots and the dev server; a link never changes a player's bag):
+  `bag=<material>:<n>,…` · `store=<material>:<n>,…` (`0` empties) ·
+  `gather=<material>[:<blows>[:<s>]]` (him at work at the spot of it nearest `at=`, that
+  many blows of the piece landed, held `s` s into a swing: the blow lands at 0.44 s for a
+  chop, 0.56 s for a dig, its chips shown that far on) · `gatheract=chop|dig` (that
+  swing there: a pose's check before its material has a source) · `gatherleft=<n>` ·
+  `gatherunload=1` (a shot unloads at home too). `report()` gives `bag=`, `store=`,
+  `gather=`. `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`,
+  `advance(days)`. Console lines `[gather] …`. E.g.
+  `roam=walk&at=433,-161&yaw=180&bag=bamboo:3,clay:1&gather=bamboo:2:0.32&cam=438.5,11.6,-160.5,433,9.6,-163.2,40`
+  (the knife up) · `…&gather=bamboo:2:0.56` (the blow, chips flying) ·
+  `roam=walk&at=428,-134&yaw=180&home=1&bag=bamboo:2&store=log:1,clay:2&purse=30000&buildcard=1`
+  (the card's costs) · `…&menu=1&menutab=bag` (In my bag).
 
 ### Sharing his fruit
 
