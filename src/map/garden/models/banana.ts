@@ -131,8 +131,8 @@ function dryLeaf(b: VoxelBuilder, y: number, az: number, w: number, len: number,
 }
 
 /** The pseudostem from its foot to `ht`: octagonal pieces narrowing upward, the corm, brown sheath streaks, `lean` its top's offset. */
-function stem(b: VoxelBuilder, look: PlantLook, ht: number, wb: number, wt: number, lean: P3, r: (i: number, j?: number) => number, stage: number): void {
-  const n = Math.max(2, Math.round(ht / 0.36));
+function stem(b: VoxelBuilder, look: PlantLook, ht: number, wb: number, wt: number, lean: P3, r: (i: number, j?: number) => number, stage: number, lite = false): void {
+  const n = lite ? 2 : Math.max(2, Math.round(ht / 0.36));
   const at = (u: number): P3 => [lean[0] * u * u, ht * u, lean[2] * u * u];
   for (let i = 0; i < n; i++) {
     const u0 = i / n;
@@ -142,7 +142,7 @@ function stem(b: VoxelBuilder, look: PlantLook, ht: number, wb: number, wt: numb
   }
   b.box(0, 0.05, 0, wb * 1.25, 0.1, wb * 1.25, woodTone(CORM, look), 'mapBark', { ry: r(1, 3) * 1.5 });
   // Old outer sheaths: brown streaks up the lower stem, one peeling away at its top.
-  const streaks = stage >= 2 ? 3 + stage : stage === 1 ? 2 : 0;
+  const streaks = lite ? 0 : stage >= 2 ? 3 + stage : stage === 1 ? 2 : 0;
   for (let i = 0; i < streaks; i++) {
     const th = r(i, 5) * Math.PI * 2;
     const len = ht * (0.25 + 0.35 * r(i, 6));
@@ -174,7 +174,7 @@ function pup(b: VoxelBuilder, look: PlantLook, x: number, z: number, h: number, 
 }
 
 /** The bunch: its stalk out of the crown and bending down, the hands of fingers turned up, the bare stalk, the flower. */
-function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: number) => number): void {
+function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: number) => number, lite = false): void {
   // (out to the plant's side, +x: clear of the pups behind and the stump and follower on its −x side; seen apart
   // from the stem against the sky and the leaves from the front and the side)
   const az = Math.PI / 2 + (r(1, 50) - 0.5) * 0.6;
@@ -188,15 +188,18 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
   const y0 = 1.38 - top[1];
   const y1 = y0 - 0.45;
   const pts = [P(0, 0), P(0.3, 0.26), P(0.62, 0.18), P(0.8, -0.14), P(O, (y0 - 0.14) / 2), P(O, y0 + 0.02)];
-  for (let i = 0; i < pts.length - 1; i++) log(b, pts[i], pts[i + 1], 0.075, PEDUNCLE, 'mapBark');
+  // (lite: the stalk in three straight pieces, one block each)
+  if (lite) for (const [i, j] of [[0, 2], [2, 3], [3, 5]]) beam(b, pts[i], pts[j], 0.065, 0.065, PEDUNCLE, 'mapBark');
+  else for (let i = 0; i < pts.length - 1; i++) log(b, pts[i], pts[i + 1], 0.075, PEDUNCLE, 'mapBark');
   const axis = (y: number): P3 => [top[0] + dx * O, top[1] + y, top[2] + dz * O];
-  const hands = 5 + Math.floor(r(2, 50) * 2);
-  log(b, axis(y0), axis(y1 - 0.06), 0.07, PEDUNCLE, 'mapBark');
+  const hands = lite ? 3 : 5 + Math.floor(r(2, 50) * 2);
+  if (lite) beam(b, axis(y0), axis(y1 - 0.13), 0.06, 0.06, PEDUNCLE, 'mapBark');
+  else log(b, axis(y0), axis(y1 - 0.06), 0.07, PEDUNCLE, 'mapBark');
   const ripe = look.fruit === 2;
   for (let h = 0; h < hands; h++) {
     const u = h / (hands - 1);
     const y = lerp(y0, y1, u);
-    const fingers = u < 0.5 ? 7 : u < 0.85 ? 6 : 4;
+    const fingers = lite ? 4 : u < 0.5 ? 7 : u < 0.85 ? 6 : 4;
     const flen = lerp(0.22, 0.15, u);
     const th0 = h * 2.4 + r(3, 50) * 6.28;
     for (let f = 0; f < fingers; f++) {
@@ -210,7 +213,7 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
   }
   // The bare stalk (the old flowers' scars) and the flower hanging at its end.
   const yb = y1 - 0.07;
-  log(b, axis(y1 - 0.06), axis(yb), 0.05, PEDUNCLE, 'mapBark');
+  if (!lite) log(b, axis(y1 - 0.06), axis(yb), 0.05, PEDUNCLE, 'mapBark');
 
   const c = axis(yb);
   const lay: [number, number, number][] = [
@@ -223,9 +226,12 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
     [0.37, 0.05, 0.05],
   ];
   for (let i = 0; i < lay.length; i++) {
+    // (lite: the flower in three layers, no bract)
+    if (lite && i !== 1 && i !== 2 && i !== 4) continue;
     const [d, w, hh] = lay[i];
     b.box(c[0], c[1] - d, c[2], w, hh, w, pick(BUD, r(i, 53)), 'petal', { ry: (i % 2) * (Math.PI / 4) + az });
   }
+  if (lite) return;
   // One bract lifting at the top, red inside, the pale male flowers under it.
   const ba = az + (r(4, 50) - 0.5) * 1.2;
   const hinge: P3 = [c[0] + Math.sin(ba) * 0.07, c[1] - 0.08, c[2] + Math.cos(ba) * 0.07];
@@ -277,9 +283,12 @@ function mother(b: VoxelBuilder, look: PlantLook, r: (i: number, j?: number) => 
 
 /**
  * The banana as it looks (`look`), foot at the origin: the garden's model, and every banana plant on the map
- * (veg/banana.ts `bananaPlant` sets this one in the hamlets, the villages and the jungle camps).
+ * (veg/banana.ts `bananaPlant` sets this one in the hamlets, the villages and the jungle camps). `lite` (only the
+ * map's own bananas, built on the low graphics level: never the home garden's) draws it cheaper: the stem in two
+ * pieces, no sheath streaks, five leaves of two pieces, none torn, no dry leaves or pups, a bunch of three hands of
+ * four fingers on a plain stalk, the flower in three layers.
  */
-export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
+export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): void {
   const st = look.stage;
   const r = rng(look, 0xb4);
   const dead = look.dead;
@@ -287,7 +296,7 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
   // A dead plant shrinks and leans: its sheaths dry and slump.
   const ht = ST.ht[st] * (dead ? 0.82 : 1);
   const lean: P3 = dead ? [(r(1, 9) - 0.5) * 0.3 * ht, 0, 0.12 * ht] : [(r(1, 8) - 0.5) * 0.06 * ht, 0, (r(2, 8) - 0.5) * 0.06 * ht];
-  stem(b, look, ht, ST.wb[st] * (dead ? 0.8 : 1), ST.wt[st] * (dead ? 0.7 : 1), lean, r, st);
+  stem(b, look, ht, ST.wb[st] * (dead ? 0.8 : 1), ST.wt[st] * (dead ? 0.7 : 1), lean, r, st, lite);
   const top: P3 = [lean[0], ht, lean[2]];
 
   if (dead) {
@@ -303,7 +312,7 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
     beam(b, top, [top[0] + 0.02, top[1] + cl, top[2]], Math.max(0.045, ST.wt[st] * 0.35), Math.max(0.045, ST.wt[st] * 0.35), leafTone(CIGAR, look), 'mapLeaf', 0.4);
   }
 
-  const n = ST.n[st] + (st === 4 ? Math.floor(r(3, 3) * 2) : 0);
+  const n = lite ? Math.min(5, ST.n[st]) : ST.n[st] + (st === 4 ? Math.floor(r(3, 3) * 2) : 0);
   const young = st <= 1;
   for (let i = 0; i < n; i++) {
     const u = n > 1 ? i / (n - 1) : 0;
@@ -342,9 +351,9 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
         bend,
         len,
         wid,
-        segs: ST.segs[st],
+        segs: lite ? Math.min(2, ST.segs[st]) : ST.segs[st],
         fold,
-        torn: st >= 3 && u > 0.35 ? 0.1 + 0.6 * u : 0,
+        torn: !lite && st >= 3 && u > 0.35 ? 0.1 + 0.6 * u : 0,
         color: pick(LEAF, r(i, 7)),
       },
       look,
@@ -354,22 +363,23 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook): void {
   }
 
   // Old leaves hanging dry down the stem.
-  const dry = st === 4 ? 1 + Math.floor(r(5, 3) * 2) : st === 3 ? 1 : 0;
+  const dry = lite ? 0 : st === 4 ? 1 + Math.floor(r(5, 3) * 2) : st === 3 ? 1 : 0;
   for (let i = 0; i < dry; i++) dryLeaf(b, ht * (0.86 - 0.08 * i), r(i, 31) * 6.28 + Math.PI * 0.6, ST.wt[st], ST.len[st] * 0.55, r, 300 + i);
 
   // Pups round the foot (away from the bunch's side).
-  const pups = st === 4 ? 2 + Math.floor(r(6, 3) * 2) : st === 3 ? 1 : 0;
+  const pups = lite ? 0 : st === 4 ? 2 + Math.floor(r(6, 3) * 2) : st === 3 ? 1 : 0;
   for (let i = 0; i < pups; i++) {
     const th = Math.PI + (i - (pups - 1) / 2) * 1.3 + (r(i, 32) - 0.5) * 0.5;
     const d = 0.42 + 0.18 * r(i, 33);
     pup(b, look, Math.sin(th) * d, Math.cos(th) * d, i === 0 ? 0.85 : 0.4 + 0.25 * r(i, 34), r, i);
   }
 
-  if (st === 4 && look.fruit > 0) bunch(b, look, top, r);
+  if (st === 4 && look.fruit > 0) bunch(b, look, top, r, lite);
   if (st === 4 && look.cut) {
     mother(b, look, r);
     if (look.fruit === 0) follower(b, look, r);
   }
 }
 
-registerModel('banana', bananaModel);
+// (the garden's plants: always the full model)
+registerModel('banana', (b, look) => bananaModel(b, look));
