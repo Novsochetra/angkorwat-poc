@@ -39,8 +39,8 @@ import { FURN_PIC } from './_buildFurnArt';
  */
 
 export interface BuildRow {
-  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20). */
-  id: PieceId | `foot:${FootKind}`;
+  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20), or `paint` (paint mode, AWP-22). */
+  id: PieceId | `foot:${FootKind}` | 'paint';
   /** Its name, how many he has ("1 / 3"), its line (or what he lacks), the riel to pay now ('' none). */
   name: string;
   count: string;
@@ -99,6 +99,8 @@ const PIC: Record<BuildRow['id'], string> = {
   // (footprint buildings, AWP-20: a stilt house on its posts with its stair; a shed's open front under its roof; a fence line with its gate)
   'foot:house': '<path fill="#b8a06a" d="M5 0h2v1H5z"/><path fill="#c9a04a" d="M4 1h4v1H4zM3 2h6v1H3zM2 3h8v1H2z"/><path fill="#a07a30" d="M1 4h10v1H1z"/><path fill="#d8c08a" d="M2 5h8v2H2z"/><path fill="#5a3a24" d="M5 5h2v2H5z"/><path fill="#8a6038" d="M2 7h8v1H2zM2 8h1v3H2zM9 8h1v3H9z"/><path fill="#b08a5a" d="M7 8h1v1H7zM8 9h1v1H8zM9 10h1v1H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   'foot:shed': '<path fill="#c9a04a" d="M3 2h6v1H3zM2 3h8v1H2zM1 4h10v1H1z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M1 6h1v5H1zM10 6h1v5h-1z"/><path fill="#d8c08a" d="M2 9h8v2H2z"/><path fill="#b8a06a" d="M2 9h8v1H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  // (paint, AWP-22: a brush over a pot of lacquer red, a lotus-pink stroke)
+  paint: '<path fill="#e58aa8" d="M1 2h6v2H1z"/><path fill="#f0a8c0" d="M1 2h6v1H1z"/><path fill="#8a6038" d="M8 1h1v1H8zM9 2h1v1H9zM10 3h1v1h-1z"/><path fill="#d8c08a" d="M6 3h2v2H6z"/><path fill="#5a3a24" d="M5 4h2v2H5z"/><path fill="#a8281e" d="M2 7h8v4H2z"/><path fill="#c84a3a" d="M2 7h8v1H2z"/><path fill="#6a1a14" d="M1 6h10v1H1z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   'foot:fence': '<path fill="#8e7a4e" d="M0 4h1v7H0zM4 4h1v7H4zM7 4h1v7H7zM11 4h1v7h-1z"/><path fill="#d6cc8c" d="M1 5h3v5H1zM8 5h3v5H8z"/><path fill="#c8b27a" d="M1 6h3v1H1zM8 6h3v1H8zM1 8h3v1H1zM8 8h3v1H8z"/><path fill="#9a8458" d="M1 5h3v1H1zM8 5h3v1H8z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   pen: '<path fill="#8a6038" d="M1 4h1v7H1zM5 4h1v7H5zM10 4h1v7h-1z"/><path fill="#b08a5a" d="M1 5h10v1H1zM1 8h10v1H1z"/><path fill="#c9a04a" d="M2 9h3v2H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   shelter: '<path fill="#c9a04a" d="M1 4h10v1H1zM2 3h8v1H2zM4 2h4v1H4z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M2 6h1v5H2zM9 6h1v5H9z"/><path fill="#b08a5a" d="M3 8h6v1H3z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
@@ -405,6 +407,7 @@ function injectStyle(): void {
     .bd-mi { width: calc(16 * var(--px)); height: calc(16 * var(--px)); filter: drop-shadow(0 calc(1 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
     .bd-m.is-short { color: #ffb4a0; }
     .bd-opt.is-gold .bd-m.is-short { color: #a8321c; }
+    .bd-price:empty { display: none; }
     .bd-riel { font-weight: 700; padding-left: calc(6 * var(--px)); border-left: 1px solid rgba(255, 210, 120, 0.32); }
     .bd-opt.is-gold .bd-riel { border-left-color: rgba(90, 50, 0, 0.3); }
     .bd-t em.is-short { color: #ffd890; }

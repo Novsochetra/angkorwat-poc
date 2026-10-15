@@ -45,6 +45,8 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_cattle'),
   () => import('./_name'),
   () => import('./_build'),
+  // (painting his buildings: AWP-22)
+  () => import('./_paint'),
   () => import('./_gather'),
   () => import('./_haul'),
   // ── Small things: the umbrella, the binoculars, smiles for the camera, selling fish, clothes ──

@@ -176,6 +176,12 @@ export interface BlockChange {
   readonly touched: readonly number[];
   /** Round the changed cells. */
   readonly box: Readonly<CellBounds>;
+  /**
+   * Only colours changed (paint, AWP-22): every changed cell kept its block, material, shape and turn. The walk map
+   * has nothing to build again, and only the changed cells' own chunks are drawn again (`touched`: a colour is not
+   * seen by a neighbour's sides or shade).
+   */
+  readonly colourOnly: boolean;
 }
 
 export class BlockStore {
@@ -186,6 +192,8 @@ export class BlockStore {
   private readonly pendChanged = new Set<number>();
   private readonly pendTouched = new Set<number>();
   private pendCells = 0;
+  /** A change noted so far that was more than a colour (a block put, taken, or of another material or shape). */
+  private pendShape = false;
   private readonly box: CellBounds = { i0: 0, j0: 0, k0: 0, i1: 0, j1: 0, k1: 0 };
   /** Bumped once per change told. */
   version = 0;
@@ -243,13 +251,15 @@ export class BlockStore {
     const form = raw ? Math.floor(raw / P32) & 255 : 0;
     const was = c.cells[at];
     if (was === cell && (c.form[at] === form || !cell)) return false;
+    // (the same block in another colour: paint)
+    const recolour = was !== 0 && cell !== 0 && was >>> 24 === cell >>> 24 && c.form[at] === form;
     c.cells[at] = cell;
     c.form[at] = form;
     const d = (cell ? 1 : 0) - (was ? 1 : 0);
     c.count += d;
     this.total += d;
     c.version++;
-    this.note(i, j, k, c, lx, ly, lz);
+    this.note(i, j, k, c, lx, ly, lz, recolour);
     if (!c.count) this.chunks.delete(key);
     if (!this.depth) this.tell();
     return true;
@@ -340,8 +350,8 @@ export class BlockStore {
       }
   }
 
-  /** Note a changed cell for the next change told. */
-  private note(i: number, j: number, k: number, c: BlockChunk, lx: number, ly: number, lz: number): void {
+  /** Note a changed cell for the next change told (`recolour`: only its colour changed). */
+  private note(i: number, j: number, k: number, c: BlockChunk, lx: number, ly: number, lz: number, recolour: boolean): void {
     const b = this.box;
     if (!this.pendCells) {
       b.i0 = b.i1 = i;
@@ -357,6 +367,11 @@ export class BlockStore {
     }
     this.pendCells++;
     this.pendChanged.add(c.key);
+    if (recolour) {
+      this.pendTouched.add(c.key);
+      return;
+    }
+    this.pendShape = true;
     // (the chunks across each edge it lies on see it: its sides, its shade)
     const x0 = lx === 0 ? -1 : 0;
     const x1 = lx === CHUNK_N - 1 ? 1 : 0;
@@ -371,8 +386,9 @@ export class BlockStore {
   private tell(): void {
     if (!this.pendCells) return;
     this.version++;
-    const change: BlockChange = { version: this.version, cells: this.pendCells, changed: [...this.pendChanged], touched: [...this.pendTouched], box: { ...this.box } };
+    const change: BlockChange = { version: this.version, cells: this.pendCells, changed: [...this.pendChanged], touched: [...this.pendTouched], box: { ...this.box }, colourOnly: !this.pendShape };
     this.pendCells = 0;
+    this.pendShape = false;
     this.pendChanged.clear();
     this.pendTouched.clear();
     for (const fn of [...this.listeners]) fn(change);

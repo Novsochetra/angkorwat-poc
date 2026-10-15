@@ -105,11 +105,13 @@ export const WATCHED: unknown[] = [];
 /**
  * Tell walk maps of every change of the store: each builds again the chunks
  * whose cells changed (`BlockChange.changed`), when it is next asked about
- * them. Returns a function that stops it.
+ * them; a change of colours only (paint, AWP-22: `colourOnly`) builds none. Returns a function that stops it.
  */
 export function watchBlocks(maps: readonly { changed(a: number, b: number): void }[], store: BlockStore = BLOCKS): () => void {
   WATCHED.push(...maps);
   return store.onChange((c) => {
+    // (paint: the same blocks in other colours, nothing to walk on changed)
+    if (c.colourOnly) return;
     for (const key of c.changed) {
       const { cx, cz } = chunkPlace(key);
       for (const m of maps) m.changed(cx, cz);
