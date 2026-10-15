@@ -3053,9 +3053,11 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   1.5 m high (whole-bamboo rails along its foot and top), old bamboo posts every 2 m at
   most capped half a block higher, each column on its own ground (it follows a slope), a
   gate 1.5–2 m wide in the middle of the door side (none on a side shorter than 3.5 m).
-- **The step's shape in one place** (AWP-24): `roofStep` (every roof cell: today a full
-  block; the outer cell of each row a stair turned down the slope later) and `stairStep`
-  (each tread: a slab or a block; AWP-24's stair block halves the run).
+- **The step's shape in one place** (AWP-24): `roofStep` (the block over each roof cell
+  with nothing over it, put into the plan: none today, the roof in stepped full blocks;
+  with AWP-24 one line, `return stepBlock(roof, i, j, k, under)` from `blocks/roof.ts`: a
+  stair in each step, a slab on the ridge, built, counted and taken down with the roof)
+  and `stairStep` (each tread: a slab or a block; AWP-24's stair block halves the run).
 - **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle, 4 laterite
   a lump of clay), rounded up per building, so it grows with the footprint: the smallest
