@@ -2528,6 +2528,12 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
 - **Shadows of a far chunk**: hidden by distance it drops out of the still
   shadow map; coming back, its shadow returns at the next still redraw (as the
   build view's pieces). Watch it with continuous building (AWP-20).
+- **Footprint buildings** (AWP-20, addons.md "Footprint buildings"): the first
+  writer of many blocks at once. `build/footState.ts` writes a building's plan
+  (`build/footPlan.ts`) through `BLOCKS.batch` a step of `n / 60` blocks at a
+  time as he hammers it up (the chunk, its walk map and the save made again
+  about once a second of work, not every frame) and clears every cell of its
+  plan when it is taken down; it never writes a cell twice (paint stays).
 - **Cost**: an empty store is an empty group (no draw, no work a frame).
   Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 28). Making a
   chunk again after one change (`__blocks.bench`, M1 Max with other jobs

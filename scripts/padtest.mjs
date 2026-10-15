@@ -27,6 +27,8 @@
 //   camera    d-pad ← raises the camera, ○ puts it away; → the selfie, ○ away     (input.ts, tools.ts)
 //   build     building at home: ← turns the ghost 15°, L2 held with ← 5° (the binoculars stay
 //             down, he does not turn)                                              (_build.ts)
+//   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
+//             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
 //   keys      a real key press turns the pad's glyphs off (body without pad-on)   (core)
@@ -531,6 +533,42 @@ const steps = [
       if (Math.abs(c.yaw - b.yaw) > 0.01) throw new Error(`L2 turned him ${(((c.yaw - b.yaw) * 180) / Math.PI).toFixed(1)}°`);
       if (c.turn - b.turn !== 5) throw new Error(`L2 + ← turned ${c.turn - b.turn}°, not 5°`);
       return `← 15° (${a.turn}° → ${b.turn}°), L2 + ← 5° (→ ${c.turn}°), binoculars down, he stays turned`;
+    },
+  },
+  {
+    id: 'foot',
+    who: 'roam/_buildFoot.ts (AWP-20)',
+    async run() {
+      await ensureWalk();
+      await placeAt('walk', '426,-128.17&home=1&purse=400000');
+      await ev(() => {
+        window.roam.body.yaw = Math.PI;
+        window.__build.foot.draw('house');
+      });
+      await sleep(600);
+      const now = () => ev(() => window.__build.state().foot);
+      const a = await now();
+      if (a.kind !== 'house' || a.anchor) throw new Error('no footprint mode');
+      await tap(page, 'west');
+      await until(() => !!window.__build.state().foot.anchor, null, 3000, '□ marks the first corner');
+      const b = await now();
+      await tap(page, 'right');
+      await sleep(300);
+      const c = await now();
+      if (c.door !== (b.door + 1) % 4) throw new Error(`→ turned the door ${b.door} → ${c.door}`);
+      await tap(page, 'left');
+      await sleep(300);
+      if ((await now()).door !== b.door) throw new Error('← did not turn the door back');
+      await tap(page, 'east');
+      await sleep(400);
+      const d = await now();
+      if (d.kind !== 'house' || d.anchor) throw new Error('○ did not take the corner back');
+      await tap(page, 'east');
+      await sleep(400);
+      const e = await now();
+      if (e.kind) throw new Error('○ again did not leave the mode');
+      if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
+      return `□ corner ${JSON.stringify(b.anchor)}, → door ${b.door} → ${c.door}, ← back, ○ corner again, ○ out`;
     },
   },
   {

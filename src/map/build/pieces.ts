@@ -1,6 +1,7 @@
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { WordKey } from '../ui/lang';
 import { rielOf, type Materials } from './materials';
+import type { Foot } from './state';
 
 /**
  * What he can build at home (ផ្ទះរបស់គាត់: his stilt house, hamlet/_homePlan.ts
@@ -189,8 +190,12 @@ export interface Built {
 export const BUILT = {
   list: [] as Built[],
   version: 0,
-  /** A spot (world x, z) with this much room round it (m) is taken by a built piece or one being built. */
+  /** A spot (world x, z) with this much room round it (m) is taken by a built piece or one being built (or a footprint building's land: `feet`). */
   blocks: (_x: number, _z: number, _r: number): boolean => false,
+  /** A spot (world x, z) with this much room round it (m) is a footprint building's land (AWP-20: build/footState.ts fills it). */
+  feet: (_x: number, _z: number, _r: number): boolean => false,
+  /** Would footprint `f` (grown by `m`, m) stand in a footprint building's land (AWP-20: build/footState.ts fills it)? */
+  feetOver: (_f: Foot, _m: number): boolean => false,
 };
 
 /** A point of a piece's frame in the world (into `out`: x, z). */
