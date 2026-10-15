@@ -3036,7 +3036,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   is 4.5 m of stepped thatch over 9 × 9 m (≈ 1 560 blocks, 16 % of his land's budget);
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
-  floor, walls, roof, stair): the house's timber posts on laterite footings (a post at
+  floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
   each corner and every 2 m at most; under the floor on the same grid), its timber floor
   with its underside at least 2.5 m over the highest ground under it (he walks under it:
   2.26 m tall to the walk map), woven bamboo walls (a weave of new and older strips) in
@@ -3060,13 +3060,14 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   stair in each step, a slab on the ridge, built, counted and taken down with the roof)
   and `stairStep` (each tread: a slab or a block; AWP-24's stair block halves the run).
 - **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
-  material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle, 4 laterite
-  a lump of clay), rounded up per building, so it grows with the footprint: the smallest
-  house 18 logs, 9 bamboo, 12 thatch, 4 clay (162,000 ៛ bought outright; 756 blocks); a
-  6 × 6 m house 21 logs, 13 bamboo, 17 thatch, 4 clay (200,500 ៛; 968 blocks); an 8 × 8 m
-  one 315,000 ៛ (1 556 blocks); the smallest shed
-  45,500 ៛ (the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre (a ring of 24 × 24 m 108,000 ៛) (the fence
-  piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
+  material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle; 4 laterite
+  a lump of clay, for a kind to come: none uses laterite yet, its footings are hardwood, so
+  their chunks draw two block families, not three), rounded up per building, so it grows
+  with the footprint: the smallest house 18 logs, 9 bamboo, 12 thatch (156,000 ៛ bought
+  outright; 756 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 17 thatch (194,500 ៛; 968
+  blocks); an 8 × 8 m one 310,500 ៛ (1 556 blocks); the smallest shed 4 logs, 3 bamboo,
+  5 thatch (42,500 ៛; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
+  (a ring of 24 × 24 m 108,000 ៛; the fence piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
 - **The card**: three rows first, each with its name, how many of how many, its line and
   "from 5 × 5 m", its cost at its smallest size (chips, the riel for what he lacks; greyed

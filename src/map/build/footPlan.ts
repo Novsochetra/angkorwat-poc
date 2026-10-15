@@ -18,7 +18,7 @@ import type { MaterialId, Materials } from './materials';
  * fence's gate.
  *
  * **The kinds** (`FOOT_KINDS`; sizes in cells, why below):
- * - **Stilt house** (ផ្ទះឈើ): timber posts on laterite footings, the floor
+ * - **Stilt house** (ផ្ទះឈើ): timber posts on dark hardwood footings, the floor
  *   (timber planks) high enough that he walks under it (its underside at least
  *   `CLEAR` 2.5 m over the highest ground under it: to the walk map he is
  *   2.26 m tall, AWP-17), woven bamboo walls in a timber frame (a post at each
@@ -123,8 +123,10 @@ const FENCE_H = 3;
 
 /**
  * Blocks of a material for one of the gathered materials (rounded up per building): timber posts, planks and
- * boards from logs; woven bamboo from poles; palm-leaf thatch from bundles; laterite footings from clay (both are
- * dug: laterite is the iron-red clay of the land, hardened in the air).
+ * boards from logs; woven bamboo from poles; palm-leaf thatch from bundles; laterite from clay (both are dug: laterite
+ * is the iron-red clay of the land, hardened in the air; no footprint building uses it yet: the posts' footings are
+ * hardwood, so a chunk of them is drawn with two block families, wood and leaf, not three: a full plot's draws on a
+ * phone, AWP-20).
  */
 export const MAT_RATE: Partial<Record<BlockMatKey, { m: MaterialId; per: number }>> = {
   timber: { m: 'log', per: 24 },
@@ -146,7 +148,7 @@ const COL = {
   rail: [0x9a8458, 0xa48c5e],
   pole: [0x8e7a4e, 0x937c50, 0x86724a],
   thatch: [0xae9a6e, 0xa6936a, 0xb4a276, 0x9e8f6c],
-  footing: [0xa8583a, 0x9a5034],
+  footing: [0x3e2e22, 0x46342a],
   tread: [0x7a5a3a, 0x8a6a48],
 } as const;
 
@@ -413,7 +415,7 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
       const [i, k] = p.split(',').map(Number);
       const g = jg(i, k);
       const color = pick(COL.post, i, 0, k, 1);
-      put(i, g, k, { mat: 'laterite', color: pick(COL.footing, i, g, k, 5) });
+      put(i, g, k, { mat: 'timber', color: pick(COL.footing, i, g, k, 5) });
       const top = under.has(p) ? jF - 1 : jP - 1;
       for (let j = g + 1; j <= top; j++) put(i, j, k, { mat: 'timber', color });
     }
