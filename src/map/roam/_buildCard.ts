@@ -446,6 +446,8 @@ function injectStyle(): void {
       .bd-ask .mu-ask-orn { margin-block: calc(7 * var(--px)) calc(6 * var(--px)); }
       .bd-ask #bd-note { font-size: calc(13.5 * var(--px)); line-height: 1.35; }
       .bd-opts { margin-top: calc(8 * var(--px)); }
+      .bd-tabs { margin-top: calc(6 * var(--px)); }
+      .bd-tab { min-height: calc(28 * var(--px)); padding-block: calc(2 * var(--px)); }
     }
     @media (pointer: coarse) { .bd-opt kbd { display: none; } .bd-opt { min-height: 50px; } }
     body.roam-touch:not(.pad-on) .bd-opt kbd { display: none; }
