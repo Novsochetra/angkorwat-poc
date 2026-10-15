@@ -44,7 +44,10 @@ export function bananaHand(b: VoxelBuilder, crown: P3, az: number, o: HandOpts):
   const n = o.fingers ?? 5;
   const len = o.len ?? 0.2;
   const thick = o.thick ?? 0.045;
-  beam(b, along(crown, az, 0, -thick * 0.8), along(crown, az, 0, thick * 0.6), thick * 1.6, thick * 0.9, CROWN, 'petal', 0, 1, o.src);
+  // (flat: each block laid with a plain turn about the upright, `level`; `beam` gives some level headings as a half turn
+  // about x and z with the turn about y between, which a turned frame's `place` cannot add its turn to)
+  const lay = o.flat ? level : beam;
+  lay(b, along(crown, az, 0, -thick * 0.8), along(crown, az, 0, thick * 0.6), thick * 1.6, thick * 0.9, CROWN, 'petal', 0, 1, o.src);
   for (let f = 0; f < n; f++) {
     const off = (f - (n - 1) / 2) * 0.24;
     const at = along(crown, az + Math.PI / 2, 0, (f - (n - 1) / 2) * thick * 0.5);
@@ -53,11 +56,23 @@ export function bananaHand(b: VoxelBuilder, crown: P3, az: number, o: HandOpts):
       // (two level pieces bending a little in plan, the dark tip level too)
       const m = along(at, az + off, 0, len * 0.5);
       const e = along(m, az + off * 1.6, 0, len * 0.5);
-      beam(b, at, along(m, az + off, 0, thick * 0.3), thick * 0.75, thick * 0.8, color, 'petal', 0, 1, o.src);
-      beam(b, m, e, thick * 0.85, thick * 0.85, color, 'petal', 0, 1, o.src);
-      beam(b, e, along(e, az + off * 1.6, 0, thick * 0.4), thick * 0.5, thick * 0.5, TIP, 'petal', 0, 1, o.src);
+      level(b, at, along(m, az + off, 0, thick * 0.3), thick * 0.75, thick * 0.8, color, 'petal', 0, 1, o.src);
+      level(b, m, e, thick * 0.85, thick * 0.85, color, 'petal', 0, 1, o.src);
+      level(b, e, along(e, az + off * 1.6, 0, thick * 0.4), thick * 0.5, thick * 0.5, TIP, 'petal', 0, 1, o.src);
     } else long(b, at, { len, thick, az: az + off, el: o.el ?? 0.15, curve: 0.55, neck: 0.55, taper: 0.7, sides: 4, color, tip: TIP, src: o.src });
   }
+}
+
+/**
+ * A level block from `a` to `c` (the same height), as `beam` lays it, turned only about the upright: `ry` alone (exact
+ * in a turned frame: `Frame.place` adds its turn to `ry`). `beam`'s own arguments (its roll is ignored: none here).
+ */
+function level(b: VoxelBuilder, a: P3, c: P3, w: number, h: number, color: number, mat: 'petal', _roll: number, shade: number, src?: SourceTrace): void {
+  const dx = c[0] - a[0];
+  const dz = c[2] - a[2];
+  const len = Math.hypot(dx, c[1] - a[1], dz);
+  if (len < 1e-4) return;
+  b.box((a[0] + c[0]) / 2, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2, w, h, len, color, mat, { shade, src, ry: Math.atan2(dx, dz) || undefined });
 }
 
 export interface BunchOpts {
