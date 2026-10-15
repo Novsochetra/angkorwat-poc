@@ -3187,8 +3187,26 @@ without its straw), the oxen `people/_ox.ts`.
   (leading it on the Kulen foot meadow) ·
   `roam=walk&at=432,-100&yaw=180&home=1&cartload=log:3,bamboo:4,thatch:3,clay:2&cartwork=unload:0.4&rcam=90,12,6`
   (unloading at home).
-- **Not yet**: the people walk through it (it is not in the people's traffic); the build ghost
-  does not see it (a piece may be put where it stands: lead it away first).
+- **Nothing stands on it** (`build/haul.ts` `cartBlocks(x, z, r)`: the cart's box and its oxen's,
+  `CART_BOX`, `OXEN_BOX`, where it stands now, read live while he leads it, and at its place by the
+  house, kept for it while it is away): the build ghost refuses a piece over them, its footprint grown
+  0.2 m (`roam/_buildSpots.ts` `cart`, "រទេះគោនៅទីនេះ / The ox cart is here"), and so does planting
+  (`roam/_gardenSpots.ts` `cart`, the plant's room): no shelter over it, no fence or pen round it. A
+  footprint check of its own can ask `cartBlocks` too.
+- **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
+  could stand on in play (`standsAt`: `passable` at its tail, axle, oxen and yoke, each from its own
+  ground: not in a house, the market's stalls, nor on a piece built over it since); else it goes to its
+  place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
+  is wrapped to ±π (a broken 1e300 reads as 0).
+- **On the maps**: once he leaves it away from its place by the house, "រទេះគោរបស់ខ្ញុំ / My ox cart"
+  (`ui/_minimapSpots.ts` `my-cart`, as his bicycle's `my-bike`): on the mini-map where it stands, and on
+  the big map (its button moved there by `roam/_haul.ts`, its name only while pointed at or the target);
+  not while he leads it.
+- **The lead's hint** names the control in use: E, the pad's □ (`padName`), or on a touch screen the
+  button that says "លែងខ្សែ / Let go of the rope".
+- **Not yet**: the people walk through it (it is not in the people's traffic); "In my bag" (the explorer
+  menu's Bag page) does not list the cart's load; the build card does not count a loaded cart standing
+  at home (he would buy what is in it: unload it first).
 
 ### Sharing his fruit
 

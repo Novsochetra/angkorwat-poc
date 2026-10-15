@@ -1700,8 +1700,12 @@ const WORDS = {
   gatherAtHome: { km: 'ទុកនៅផ្ទះ៖ {what}', en: 'At home: {what}' },
   // His ox cart (haul…, AWP-14): roam/_haul*.ts, build/haul.ts
   haulLead: { km: 'ដឹករទេះគោ', en: 'Lead the ox cart' },
-  haulLeadHint: { km: 'ដើរនាំមុខ គោនឹងដើរតាម · E លែងខ្សែ', en: 'Walk on and the oxen follow · E lets go' },
+  haulLeadHint: { km: 'ដើរនាំមុខ គោនឹងដើរតាម · {key} លែងខ្សែ', en: 'Walk on and the oxen follow · {key} lets go' },
   haulLetGo: { km: 'លែងខ្សែ', en: 'Let go of the rope' },
+  haulHere: { km: 'រទេះគោនៅទីនេះ', en: 'The ox cart is here' },
+  haulMap: { km: 'រទេះគោរបស់ខ្ញុំ', en: 'My ox cart' },
+  haulTheMap: { km: 'រទេះគោរបស់ខ្ញុំ', en: 'my ox cart' },
+  haulLeadHintTouch: { km: 'ដើរនាំមុខ គោនឹងដើរតាម · ប៊ូតុង «លែងខ្សែ» ដើម្បីលែង', en: 'Walk on and the oxen follow · the "Let go of the rope" button lets go' },
   haulLetGoToast: { km: 'រទេះនៅចាំត្រង់នេះ', en: 'The cart waits here' },
   haulStuck: { km: 'គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ — រទេះនៅចាំត្រង់នេះ', en: "The oxen can't take the cart that way: it waits here" },
   haulLoad: { km: 'ដាក់ឡើងរទេះ ({n}/{max})', en: 'Load the cart ({n}/{max})' },

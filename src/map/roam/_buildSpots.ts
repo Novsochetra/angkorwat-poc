@@ -1,3 +1,4 @@
+import { cartBlocks } from '../build/haul';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { inPlot, PLOT_TREES } from '../build/plot';
 import { corners, distTo, overlap, type Foot } from '../build/state';
@@ -41,13 +42,14 @@ import type { RoamWorld } from './types';
  * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross where an end
  *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
+ * - `cart`: his ox cart and its oxen, where they stand or at their place by the house (build/haul.ts `cartBlocks`);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
  *   standing, a piece of his).
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -61,6 +63,7 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   tree: 'buildNoTree',
   plant: 'buildNoPlant',
   piece: 'buildNoPiece',
+  cart: 'haulHere',
   thing: 'buildNoThing',
   front: 'buildNoFront',
 };
@@ -231,6 +234,7 @@ const onLevel = (x: number, z: number): BuildReason | null => {
   _hi = Math.max(_hi, h);
   return _hi - _lo > LEVEL || Math.abs(h - _h0) > LEVEL ? 'steep' : null;
 };
+const onCart = (x: number, z: number): BuildReason | null => (cartBlocks(x, z) ? 'cart' : null);
 const onThing = (x: number, z: number): BuildReason | null => {
   const w = _world!;
   // (what he built himself is the pieces' own rule, `piece`: two fence runs meeting at a joint stand in each other's posts)
@@ -274,6 +278,8 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   }
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
   for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
+  // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
+  if (eachPoint(f, 0.2, onCart)) return 'cart';
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

@@ -4,10 +4,11 @@ import { WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_cart';
 import '../audio/_haul';
-import { CART_AT, CART_HOME, CART_LIMIT, CART_LOAD, cartHome, saveCartAt } from '../build/haul';
+import { cartAway, CART_AT, CART_BOX, CART_HOME, CART_LIMIT, CART_LOAD, CART_STATE, CART_YOKE, OXEN_BOX, saveCartAt, wrapYaw } from '../build/haul';
 import { BAG, MATERIALS, MATERIAL_IDS, STORE, materialsText, type MaterialId, type Materials } from '../build/materials';
 import { CH } from '../fauna/_kit';
 import { HOME, HOME_AT } from '../hamlet/_homePlan';
+import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
 import { OX_NOSE, oxGait, oxHz, oxPoint, type OxPose } from '../people/_oxRide';
 import { PEOPLE_SCALE } from '../people/_personModel';
@@ -15,6 +16,7 @@ import { GATE_DOWN, REACH, WHEEL_R } from '../people/_sceneCart';
 import { progress } from '../progress';
 import type { MapFrame } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
+import { MAP_SPOTS } from '../ui/_minimapSpots';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { CAP, HOLD, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
 import { angleDiff } from './followCam';
@@ -72,6 +74,7 @@ import { PACE as WALK_PACE, stepSound } from './walker';
 const K = PEOPLE_SCALE;
 /** From the axle to the yoke on the map (m). */
 const REACH_M = REACH * K;
+if (Math.abs(REACH_M - CART_YOKE) > 1e-6) console.warn('[haul] build/haul.ts CART_YOKE is not the cart\'s reach');
 /** The oxen's walk while he leads them, and his (m/s); the most they go catching up with him. */
 const OX_PACE = 2.0;
 const CATCH = 2.7;
@@ -118,9 +121,7 @@ const PIECE = 0.8;
 const SAVE_EVERY = 4;
 /** The stick held away this long (s) stops the work. */
 const PUSH = 0.15;
-/** The cart and the oxen as boxes he keeps out of on foot (m: along from the axle / the yoke, half across). */
-const CART_BOX = { back: -1.75, front: 2.7, half: 1.25 };
-const OXEN_BOX = { back: -2.45, front: 1.45, half: 1.05 };
+/** (the cart's and the oxen's boxes he keeps out of on foot: build/haul.ts `CART_BOX`, `OXEN_BOX`, shared with the build ghost and planting) */
 /** His body's radius on foot (m). */
 const BODY_R = 0.42;
 /**
@@ -492,6 +493,59 @@ function hand(out: Vector3, side: 'L' | 'R' = 'R'): Vector3 {
   return env!.explorer.rig.joints[side === 'R' ? 'wristR' : 'wristL'].getWorldPosition(out);
 }
 
+// ── Its place checked ──────────────────────────────────────────────────────
+
+/** Could the cart stand at `at`: its tail, its axle, its oxen and its yoke where a cart can go (`passable`, each from its own ground)? */
+function standsAt(ctx: Pick<RoamCtx, 'world'>, at: { x: number; z: number; yaw: number }): boolean {
+  const f = ctx.world.field;
+  const dx = Math.sin(at.yaw);
+  const dz = Math.cos(at.yaw);
+  for (const d of [CART_BOX.back, 0, CART_YOKE - OX_BACK * K, CART_YOKE]) {
+    const x = at.x + dx * d;
+    const z = at.z + dz * d;
+    if (Number.isNaN(passable(ctx, x, z, dx, dz, f.heightAt(x, z)))) return false;
+  }
+  return true;
+}
+
+/**
+ * A place near his house the cart can stand on: its own place by the house, else the nearest round it (rings out to
+ * 16 m, its heading turned each quarter) — a piece he built there, an old save; null: none.
+ */
+function parkNearHome(ctx: Pick<RoamCtx, 'world'>): { x: number; z: number; yaw: number } | null {
+  if (standsAt(ctx, CART_HOME)) return { ...CART_HOME };
+  for (let r = 2; r <= 16; r += 2)
+    for (let a = 0; a < 12; a++)
+      for (let q = 0; q < 4; q++) {
+        const at = { x: CART_HOME.x + Math.cos((a * Math.PI) / 6) * r, z: CART_HOME.z + Math.sin((a * Math.PI) / 6) * r, yaw: wrapYaw(CART_HOME.yaw + (q * Math.PI) / 2) };
+        if (standsAt(ctx, at)) return at;
+      }
+  return null;
+}
+
+let placeChecked = false;
+/**
+ * Once he first walks (the walk map whole: houses, stalls, what he built): the saved place must be one the cart could
+ * stand on, as in play (`standsAt`); else it goes by the house (`parkNearHome`). A saved place inside a house or the
+ * market's stalls, or one a piece of his has been built over since, is not kept.
+ */
+function checkPlace(ctx: RoamCtx): void {
+  placeChecked = true;
+  if (leading || W || standsAt(ctx, CART_AT)) return;
+  const was = `(${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)})`;
+  const at = parkNearHome(ctx);
+  if (!at) {
+    console.warn(`[haul] the cart's place ${was} is no good, and none by the house is free: it stays`);
+    return;
+  }
+  CART_AT.x = at.x;
+  CART_AT.z = at.z;
+  CART_AT.yaw = at.yaw;
+  saveCartAt();
+  placeAt(ctx);
+  console.warn(`[haul] the cart's place ${was} is no good: by the house at (${at.x.toFixed(1)}, ${at.z.toFixed(1)})`);
+}
+
 // ── Leading ────────────────────────────────────────────────────────────────
 
 /** He takes the rope: the way starts behind the cart, through it, to his feet. */
@@ -510,6 +564,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   speed = 0;
   blocked = false;
   leading = true;
+  CART_STATE.leading = true;
   saveWait = SAVE_EVERY;
   wayOn(ctx);
   // (the camera over the oxen behind him)
@@ -519,7 +574,9 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   if (!quiet) {
     SFX.play('haulRope', 0.9);
     pad.rumble('tick', 0.35);
-    ctx.hud.toast(t('haulLeadHint'));
+    // (the key that lets go: E, the pad's □, or on a touch screen the button that says so)
+    const touch = typeof document !== 'undefined' && document.body.classList.contains('roam-touch');
+    ctx.hud.toast(pad.active ? t('haulLeadHint', { key: padName('west', pad.kind) }) : touch ? t('haulLeadHintTouch') : t('haulLeadHint', { key: 'E' }));
   }
   console.info(`[haul] he leads the cart from (${P.ax.toFixed(1)}, ${P.az.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}`);
 }
@@ -528,6 +585,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
 function letGo(why: WordKey | null): void {
   if (!leading) return;
   leading = false;
+  CART_STATE.leading = false;
   speed = 0;
   wayClear();
   if (rolling) {
@@ -901,6 +959,45 @@ function hold(ctx: RoamCtx, dt: number): AddonHold {
   return { prompt: null };
 }
 
+// ── Its badge on the big map ("My ox cart") ────────────────────────────────
+
+/** The two badges the big map's scale is read from (as his bicycle's: roam/_bikeShop.ts `placeBigBadge`). */
+const REF_A = MAP_SPOTS.find((m) => m.id === 'back-hamlet');
+const REF_B = MAP_SPOTS.find((m) => m.id === 'east-village');
+/** Where the badge was last put (x, z, shown), NaN: not yet. */
+const badge = { x: Number.NaN, z: Number.NaN, on: false };
+
+/**
+ * The big map's "My ox cart" badge (ui/_minimapSpots.ts `my-cart`: the mini-map reads its place each frame; the big map
+ * placed its button once): moved to where the cart stands, hidden by the house, while he leads it, before the house
+ * is his. Its name only while it is pointed at or the target (the market's and the village's names are near). False:
+ * the big map is not made yet.
+ */
+function placeBigBadge(): boolean {
+  if (typeof document === 'undefined') return true;
+  const btn = document.querySelector<HTMLElement>(".mm-spot[data-id='my-cart']");
+  if (!btn) return false;
+  if (!document.getElementById('haul-bigmap-style')) {
+    const st = document.createElement('style');
+    st.id = 'haul-bigmap-style';
+    st.textContent = `.mm-spot[data-id='my-cart']:not(:hover, :focus-visible, .is-target) .mm-place-label { display: none; }`;
+    document.head.append(st);
+  }
+  btn.hidden = !(HOME.owned && cartAway());
+  if (btn.hidden) return true;
+  const a = document.querySelector<HTMLElement>(".mm-spot[data-id='back-hamlet']");
+  const b = document.querySelector<HTMLElement>(".mm-spot[data-id='east-village']");
+  if (!a || !b || !REF_A || !REF_B) return false;
+  const ax = parseFloat(a.style.left);
+  const az = parseFloat(a.style.top);
+  const bx = parseFloat(b.style.left);
+  const bz = parseFloat(b.style.top);
+  if (![ax, az, bx, bz].every(Number.isFinite) || REF_A.bx === REF_B.bx || REF_A.bz === REF_B.bz) return false;
+  btn.style.left = `${(ax + ((CART_AT.x - REF_A.bx) * (bx - ax)) / (REF_B.bx - REF_A.bx)).toFixed(3)}%`;
+  btn.style.top = `${(az + ((CART_AT.z - REF_A.bz) * (bz - az)) / (REF_B.bz - REF_A.bz)).toFixed(3)}%`;
+  return true;
+}
+
 // ── URL (checks) ───────────────────────────────────────────────────────────
 
 /** `cartload=log:4,bamboo:6` into the cart (emptied first). */
@@ -946,18 +1043,8 @@ registerAddon({
     const dev = e.shot || import.meta.env.DEV;
     const ql = e.params.get('cartload');
     if (dev && ql !== null) fillFrom(ql);
-    // (a saved place the cart cannot stand on any more: back by the house)
+    // (its saved place is checked once he walks, when the walk map is whole: `checkPlace`)
     placeAt(e);
-    const f = e.world.field;
-    const bad = (x: number, z: number) => {
-      const w = e.world.waterAt(x, z);
-      return !e.world.inBounds(x, z) || (w !== null && w - f.heightAt(x, z) > WET);
-    };
-    if (bad(P.ax, P.az) || bad(P.yx, P.yz)) {
-      console.warn(`[haul] the cart's saved place (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}) is no good: back by the house`);
-      cartHome();
-      placeAt(e);
-    }
     loadVer = -1;
     console.info(`[haul] his ox cart at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)})${Math.hypot(CART_AT.x - CART_HOME.x, CART_AT.z - CART_HOME.z) < 0.05 ? ' (by his house)' : ''}, load ${JSON.stringify(CART_LOAD.all())} ${CART_LOAD.load()}/${CART_LIMIT}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
@@ -1040,6 +1127,7 @@ registerAddon({
 
   after(ctx, mode, dt) {
     if (mode !== 'walk' || !env) return;
+    if (!placeChecked) checkPlace(ctx);
     if (leading) {
       lead(ctx, dt);
       // (the camera far enough out behind him to see the oxen and the cart)
@@ -1069,6 +1157,13 @@ registerAddon({
   frame(f: MapFrame, mode) {
     const v = view;
     if (!v || !env) return;
+    // (the big map's badge where the cart was left: only when that changed)
+    const on = HOME.owned && cartAway();
+    if ((on !== badge.on || (on && (CART_AT.x !== badge.x || CART_AT.z !== badge.z))) && placeBigBadge()) {
+      badge.on = on;
+      badge.x = CART_AT.x;
+      badge.z = CART_AT.z;
+    }
     const cam = f.camera.position;
     const far = Math.hypot(P.ax - cam.x, P.az - cam.z) > HIDE;
     if (far) {
