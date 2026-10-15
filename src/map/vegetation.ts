@@ -465,7 +465,7 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   object.userData.trees = r.counts;
   if (forest) {
     const s = forest.stats;
-    console.info(`[map] bamboo forest: ${s.clumps} clumps · blocks ${s.near} near (${s.culms} of the culms) in ${s.chunks} chunks (+ ${s.props} the rack), ${s.far} far · ${s.ms} ms`);
+    console.info(`[map] bamboo forest: ${s.clumps} clumps · blocks ${s.near} near (${s.culms} of the culms) in ${s.chunks} chunks (+ ${s.props} the rack) · ${s.ms} ms`);
   }
   if (new URLSearchParams(location.search).has('vegstats'))
     console.info(

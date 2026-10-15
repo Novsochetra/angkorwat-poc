@@ -229,7 +229,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - The bamboo forest (ព្រៃឫស្សី) west of the Kulen foot trail, its trail and
   the woodcutter's rack: `veg/bambooForest.ts` (where: `veg/bambooForestPlan.ts`),
   drawn by the vegetation part, its clumps cut as the jungle's (gathering source
-  `bambooForest`); `bambooforest=near|far|0` in shots.
+  `bambooForest`); `bambooforest=0` in shots.
 - Festivals (`src/map/festival/`, when `festival/_schedule.ts` says, or
   `fest=water|newyear|pchumben|visak`): the Water Festival with Khmer ngo racing
   boats (never dragon boats), Khmer New Year, and Pchum Ben and Visak Bochea at the
