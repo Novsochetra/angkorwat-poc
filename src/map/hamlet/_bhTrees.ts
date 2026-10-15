@@ -2,7 +2,8 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
 import { Palms, type PalmSet } from '../veg/palms';
-import { fan, log, mix, round, teardrop, type P3 } from '../veg/plantKit';
+import { papayaTree } from '../veg/papaya';
+import { mix, round, teardrop } from '../veg/plantKit';
 import type { Proto } from '../veg/proto';
 import { bamboo, broadleaf } from '../veg/species';
 import { banana, bougainvillea, Local } from '../village/_kit';
@@ -13,7 +14,7 @@ import { MEADOW, type P2 } from './_bhSpots';
  * The trees of the hamlet behind Angkor Wat, which it sits among: mango
  * trees heavy with fruit, a jackfruit with its big fruit hanging from the
  * trunk, coconut palms leaning out over the pond and the trail, sugar
- * palms on the edges, banana clumps and papayas by the houses, a stand of
+ * palms on the edges, banana clumps and papayas (veg/papaya.ts) by the houses, a stand of
  * bamboo, bougainvillea by the garden's fence and the granary, a few jungle
  * trees round it, and the big shade tree in the meadow the herder sits under. The
  * broadleaf trees and the bamboo are the jungle's own prototypes
@@ -101,7 +102,7 @@ export function buildTrees(env: BuildEnv): PalmSet {
   stamp(env, f, broadleaf({ s: 1, h: 12, r: 5, seed: 7090 }), mx, g(mx, mz), mz, 90);
   for (const [x, z, h] of BAMBOO) stamp(env, f, bamboo({ s: 1, h, r: 4, seed: 7300 }), x, g(x, z), z, 300);
   for (const [x, z] of BANANA) banana(L, x, g(x, z), z);
-  for (const [i, [x, z]] of PAPAYA.entries()) papaya(L, x, g(x, z), z, i);
+  for (const [i, [x, z]] of PAPAYA.entries()) papayaTree(L.b, x, g(x, z), z, { h: 4.2 + i * 0.6, turn: i, r: (a, b = 0, c = 0) => L.r(a, b, c), src: L.src });
   for (const [i, [x, z]] of BOUGAINVILLEA.entries()) bougainvillea(L, x, g(x, z), z, 930 + i);
   const palms = new Palms();
   for (const [i, [x, z, h, lx, lz]] of COCONUT.entries()) palms.add({ kind: 'coconut', x, y: g(x, z), z, h, seed: 7100 + i, lean: [lx, lz] });
@@ -160,39 +161,5 @@ function jackfruit(L: Local, x: number, y: number, z: number, seed: number): voi
     const shade = 0.95 + 0.1 * hash3(k, seed, 6, 95);
     // (hung from just over its old middle: the fruit as long as it was, 0.5 m, on a stalk of 8 cm)
     round(L.b, [x + Math.cos(a) * r, y + h + 0.26 + 0.08, z + Math.sin(a) * r], { wid: 0.36, hgt: 0.52, hang: 0.08, color: c, rib: mix(c, 0x6a7a2e, 0.3), cap: mix(c, 0x6a7a2e, 0.15), stalk: 0x6a6a3a, ry: a, shade, src: L.src });
-  }
-}
-
-/** Papaya leaves (the garden's: garden/models/papaya.ts), their pale hollow stalks; the trunk grey, greener near the crown; fruit green, the lowest ripening. */
-const PAPAYA_LEAF = [0x4e8a30, 0x5a9a38, 0x62a03e];
-const PAPAYA_STALK = 0x9cb85a;
-
-/**
- * A papaya: a slim grey trunk, a crown of hand-shaped leaves on long stalks (the young ones up, the old ones out and
- * down), the fruit clustered on the trunk under it (the plant kit's fan and teardrop).
- */
-function papaya(L: Local, x: number, y: number, z: number, i: number): void {
-  const h = 4.2 + i * 0.6;
-  const b = L.b;
-  const src = L.src;
-  log(b, [x, y - 0.1, z], [x, y + h * 0.55, z], 0.24, 0x8a8478, 'mapBark', 1, src);
-  log(b, [x, y + h * 0.5, z], [x, y + h, z], 0.19, 0x8e9070, 'mapBark', 1, src);
-  const n = 9;
-  for (let k = 0; k < n; k++) {
-    const u = k / (n - 1);
-    const az = k * 2.4 + i + (L.r(k, i, 71) - 0.5) * 0.4;
-    const top: P3 = [x, y + h - 0.04 * k, z];
-    fan(b, top, { az, el: 0.95 - 1.15 * u, stalk: 0.6 + 0.2 * L.r(k, 72), lobes: 7, spread: 3.2, len: 0.55, wid: 0.22, segs: 1, rib: false, bend: 0.3, color: PAPAYA_LEAF[k % PAPAYA_LEAF.length], stalkColor: PAPAYA_STALK, src });
-  }
-  // The rolled young leaves at the very top.
-  b.box(x, y + h + 0.12, z, 0.16, 0.24, 0.16, 0x7aa848, 'mapLeaf', { src, ry: i });
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2 + i * 0.7;
-    const ripe = k === 2;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    // (on the trunk under the crown, hanging down and a little out: the lowest the biggest)
-    const low = k % 2;
-    teardrop(b, [x + ca * 0.12, y + h - 0.3 - low * 0.26, z + sa * 0.12], { len: 0.26 - low * 0.03, wid: 0.15 - low * 0.02, taper: 0.65, dir: [ca * 0.3, -1, sa * 0.3], color: ripe ? 0xe0a030 : 0x7aa040, neck: ripe ? 0x9aa83a : 0x6a9a38, src });
   }
 }

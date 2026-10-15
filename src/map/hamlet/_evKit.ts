@@ -5,6 +5,7 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
 import type { Frame } from '../landmarks/_prasatKit';
 import type { Palms } from '../veg/palms';
+import { papayaTree } from '../veg/papaya';
 import { BAMBOO, CLOTH, JAR, LEAF, Local, POST, ROOFS, spiritHouse, TRIM, tone, WALLS, type GlowFn, type Roof, type Tones } from '../village/_kit';
 import type { VillageLights } from '../village/_lights';
 import type { SmokeSource } from '../village/_smoke';
@@ -408,18 +409,9 @@ export function gatePillars(L: Local, x: number, y: number, z: number, w: number
 
 // ── Plants ───────────────────────────────────────────────────────────────────
 
-/** A papaya: a thin pale trunk, a star of big leaves at its top, fruit clustered under them. */
+/** A papaya: the map's papaya tree (veg/papaya.ts: hand-shaped leaves on long stalks, fruit clustered under them). */
 export function papaya(L: Local, x: number, y: number, z: number, h = 3.4): void {
-  L.box(x, y + h / 2, z, 0.2, h, 0.2, 0x9a9a7a, 'mapBark');
-  for (let k = 0; k < 7; k++) {
-    const a = (k / 7) * Math.PI * 2 + L.r(k, x, 19) * 0.4;
-    const out = 0.7 + (k % 2) * 0.25;
-    L.box(x + Math.cos(a) * out, y + h + 0.1 - (k % 2) * 0.25, z + Math.sin(a) * out, 0.85, 0.12, 0.85, tone([0x5a9a34, 0x4a8a2e, 0x68a83c], L.r(k, z, 20)), 'mapLeaf');
-  }
-  for (let k = 0; k < 4; k++) {
-    const a = (k / 4) * Math.PI * 2;
-    L.box(x + Math.cos(a) * 0.17, y + h - 0.35 - (k % 2) * 0.2, z + Math.sin(a) * 0.17, 0.18, 0.26, 0.18, k === 0 ? 0xe89a34 : 0x6a9a3a, 'petal');
-  }
+  papayaTree(L.b, x, y, z, { h, turn: L.r(x, z, 19) * 6.28, r: (a, b = 0, c = 0) => L.r(a + x, b + z, c), src: L.src });
 }
 
 /** A mango tree: a short trunk, a dense round crown of dark leaves (1 m cells), `r` its radius. */
