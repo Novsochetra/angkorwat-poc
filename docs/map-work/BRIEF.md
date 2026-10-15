@@ -1064,8 +1064,23 @@ village's and the hamlets' box crowns, `village/_kit.ts`; the jungle camps'
 and the Kulen picnic's beams, `jungle/_campKit.ts`; the palm-sugar yard's
 slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
 Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
-145–155; about 36 plants on the map (+6 200 blocks in all). The home
-garden's plants are untouched (its models hash the same).
+145–155; about 36 plants on the map (+6 200 blocks in all). On the low
+graphics level (phones) the map's bananas are the model's `lite` form (the
+stem in two pieces, five untorn leaves of two pieces, no streaks, dry leaves
+or pups, a bunch of three hands of four fingers: 41 blocks, 60 with a bunch):
+the parts that plant them say the build's level first (`veg/detail.ts`
+`plantDetail(ctx.quality)` in hamlet/index.ts, village/index.ts,
+jungle/camps.ts). The home garden's plants are untouched (never lite; its
+models hash the same).
+
+**Papaya trees**: one for the map's places, `veg/papaya.ts` `papayaTree`
+(the back hamlet's, the east village's and the floating village's: hamlet/_bhTrees.ts,
+hamlet/_evKit.ts `papaya`): a slim grey trunk, nine hand-shaped leaves
+(`fan`, seven lobes) on long pale stalks, the rolled young leaves, six
+teardrop fruit under the crown (≈ 170 blocks); on the low level six leaves of
+five lobes and four `low` fruit (≈ 80). The nursery's papaya seedlings
+(hamlet/_nursery.ts) have three-lobed `fan` leaves (two on low). The home
+garden's papaya is its own model.
 
 ## The floating village
 
@@ -1329,9 +1344,12 @@ the street; trodden earth where people walk. Goods are colourful clusters that
 read from a few metres (`_mkGoods.ts`); its fruit and vegetables are the plant
 kit's shapes (AWP-7: mangoes teardrops, pomelos, rambutans, limes, tomatoes,
 coconuts rounds, eggplants, cucumbers and corn longs, Khmer pumpkins ribbed
-rounds, banana hands and hanging bunches from `veg/produce.ts`; `mk.kit` keeps
-their toggles: the same in the back hamlet's and the floating village's
-markets, which use these goods); `_mkStalls.ts` builds each stall in its
+rounds, banana hands and hanging bunches and mangoes lying on their flat side
+(greener at the stalk, its nub) from `veg/produce.ts`; the grill's corn a long
+in its husk; `mk.kit` keeps their toggles: the same in the back hamlet's and
+the floating village's markets, which use these goods; the Kulen food stall's
+counter fruit and the picnic families' fruit are the same shapes as boxes of
+the people's things, `people/_kitRig.ts` `kitInRig`); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
 tables, platforms, stools and wheels. Sizes are the people's (1.4 × true).
 The day: each stall is open over its own window of `clock` (`STALLS` `open`):
@@ -1563,7 +1581,7 @@ pixels), the neak ta shrine at the tamarind's foot, cloth round its trunk;
 fruit trees (`_bhTrees.ts`: mango, jackfruit, bamboo, jungle trees round the
 edges, stamped from the jungle's prototypes, their mangoes and jackfruit the
 plant kit's teardrops and rounds; coconut and sugar palms from veg/palms.ts;
-papayas of the kit's hand-shaped leaves (`fan`) and teardrops; bananas
+papayas (veg/papaya.ts: the kit's hand-shaped leaves and teardrops); bananas
 (veg/banana.ts), bougainvillea); the pond's mist
 (`_bhMist.ts`: thick at dawn, a veil at night, nothing by day). Lamps in the
 windows, the stoves' embers and the candles are glows and halos

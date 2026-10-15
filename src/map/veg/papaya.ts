@@ -15,7 +15,7 @@ import { fan, log, teardrop, type P3 } from './plantKit';
  * Into a builder on the map's axes, the foot at (x, y, z), `h` to the crown.
  * `r` is the caller's seeded 0‥1 (the same calls give the same tree). Blocks:
  * ≈ 170 (nine leaves of seven lobes, six fruit); on the low graphics level
- * (veg/detail.ts) ≈ 75 (six leaves of five lobes, four fruit, the kit's `low`
+ * (veg/detail.ts) ≈ 80 (six leaves of five lobes, four fruit, the kit's `low`
  * ones).
  */
 
