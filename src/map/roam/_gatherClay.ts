@@ -84,10 +84,7 @@ function bankAt(f: HeightField, x: number, z: number): { wx: number; wz: number;
   if (s !== SURFACE.sand && s !== SURFACE.dirt) return null;
   const h = f.height[c];
   // (water beside it, the bank a metre or so over it; the land beside it level)
-  let wx = 0;
-  let wz = 0;
   let wet = 0;
-  let level = -Infinity;
   for (let dk = -1; dk <= 1; dk++)
     for (let di = -1; di <= 1; di++) {
       if (!di && !dk) continue;
@@ -96,13 +93,26 @@ function bankAt(f: HeightField, x: number, z: number): { wx: number; wz: number;
       const lvl = f.water[n];
       if (lvl > -1000) {
         if (h - lvl < 0.4 || h - lvl > 2.1) return null;
-        level = Math.max(level, lvl);
-        wx += di;
-        wz += dk;
         wet++;
       } else if (Math.abs(f.height[n] - h) > 1.01) return null;
     }
   if (!wet || wet > 4) return null;
+  // (the water on a straight side of the cell, one side only: its face is the cell's edge there. Water only at a
+  // corner, or on two sides, is no straight bank to dig into)
+  let side: [number, number] | null = null;
+  for (const [di, dk] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    if (f.water[f.index(x + di * CELL, z + dk * CELL)] <= -1000) continue;
+    if (side) return null;
+    side = [di, dk];
+  }
+  if (!side) return null;
+  const [wx, wz] = side;
+  const level = f.water[f.index(x + wx * CELL, z + wz * CELL)];
   // (nothing kept off near it: a road, a paddy, a temple's pad)
   const near = (kind: number, r: number) => {
     const k = Math.ceil(r / CELL);
@@ -121,10 +131,7 @@ function bankAt(f: HeightField, x: number, z: number): { wx: number; wz: number;
       const n = f.index(x + di * CELL, z + dk * CELL);
       if (n >= 0 && f.trail[n]) return null;
     }
-  const l = Math.hypot(wx, wz);
-  // (water on two sides that cancel: a spit, no edge to dig)
-  if (l < 0.5) return null;
-  return { wx: wx / l, wz: wz / l, level };
+  return { wx, wz, level };
 }
 
 /** Kept off: the temples' grounds, the villages and hamlets, the jungle sites, the landings, the waterfalls. */

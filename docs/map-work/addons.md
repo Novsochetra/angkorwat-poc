@@ -3018,9 +3018,9 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     cut at its stalk with the knife, 3 blows a bundle of thatch, 3 fans a palm (of
     eight), the one before him first; its stub stays, a new leaf (a folded spear) grows
     from the heart and opens again in 2 game days.
-  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 35 patches of bared clay on the banks of
+  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 33 patches of bared clay on the banks of
     the great lake, the rivers and the ponds where he roams, found once from the land
-    (dry sand or dirt beside the water, a metre or so over it, level round; never on rock,
+    (dry sand or dirt with the water along one straight side, a metre or so under it, level round, the face drawn on that edge; never on rock,
     a road, a trail, a paddy, by a temple, in a village or hamlet, by a jungle site, a
     landing or a waterfall; 28 m apart). Dug with the hoe, 3 blows a lump, 3 lumps a
     patch, he stands on its land side (`stand`); each pit (dark, wet, its lumps heaped

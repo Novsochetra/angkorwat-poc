@@ -119,7 +119,10 @@ export function gatherLoadBuilder(bag: Materials, pack: boolean): VoxelBuilder |
   if (n.thatch) {
     const W = 10.5;
     const H = 7.4;
-    const t = 0.5;
+    // (each panel thin, a gap of shade between them, each a little off the one under it: a stack of panels from the
+    // side, never a block)
+    const t = 0.52;
+    const pt = 0.34;
     const zt = z0 - 0.4;
     const y0 = Math.max(y, 11.6);
     const strips = 7;
@@ -127,12 +130,14 @@ export function gatherLoadBuilder(bag: Materials, pack: boolean): VoxelBuilder |
       const z = zt - (i + 0.5) * t;
       const fresh = i >= n.thatch - Math.ceil(n.thatch / 4);
       const tones = fresh ? THATCH_NEW : THATCH;
-      const dx = (hash3(i, 15, 15, 5506) - 0.5) * 0.8;
-      b.box(dx, y0 + H - 0.3, z, W + 0.8, 0.6, t + 0.05, STICK, 'wood');
+      const dx = (hash3(i, 15, 15, 5506) - 0.5) * 1.4;
+      const dy = (hash3(i, 18, 15, 5509) - 0.5) * 0.9;
+      const top = y0 + H + dy;
+      b.box(dx, top - 0.3, z, W + 0.8, 0.5, pt + 0.12, STICK, 'wood', { shade: 0.9 + 0.15 * hash3(i, 21, 1, 5510) });
       for (let s = 0; s < strips; s++) {
         const sx = dx - W / 2 + (s + 0.5) * (W / strips);
-        const long = H - 0.6 - hash3(i, s, 16, 5507) * 1.1;
-        b.box(sx, y0 + H - 0.6 - long / 2, z, W / strips - 0.14, long, t, tone(tones, i, s, 17), 'wood', { shade: s % 2 ? 0.86 : 1.08 });
+        const long = H - 0.6 - hash3(i, s, 16, 5507) * 1.6;
+        b.box(sx, top - 0.55 - long / 2, z, W / strips - 0.14, long, pt, tone(tones, i, s, 17), 'wood', { shade: (s % 2 ? 0.86 : 1.08) * (0.92 + 0.12 * hash3(i, 22, 2, 5511)) });
       }
     }
     const back = zt - n.thatch * t;
