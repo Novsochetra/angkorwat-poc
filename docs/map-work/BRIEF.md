@@ -2380,13 +2380,15 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   the step over it, a `stair` climbing towards the roof cell beside that step one
   row up (a `stairInner` where two meet at a right angle, a `stairOuter` where one
   lies only across a corner, a `slab` on the ridge), in its own material and
-  colour; cells already filled are left. The roof is then two blocks deep at
+  colour; cells already filled are left; it returns the cells it filled (to take
+  down with the roof). The roof is then two blocks deep at
   every step, so no sky shows through (a stepped roof one block deep meets the
   next row only along an edge: pinholes at every seam). `stepBlock(roof, i, j, k,
   under)` is the rule for one step. `gableRoof({ i0, k0, i1, k1, j, ridge: 'x' |
   'z', block, stepped?, ends? })` writes a whole steep Khmer gable (45°: rows of
   full blocks from the two eaves to the ridge, its gable ends filled under it,
-  then smoothed unless `stepped`) and returns its roof cells. Each is one store
+  then smoothed unless `stepped`) and returns its roof cells and the steps it
+  filled. Each is one store
   change. Smoothing puts a block in every step: a roof one block deep twice
   its blocks (`pblocks=gable`: its roof 140 + 140, the pavilion 476 against
   336); `fullmix` adds 1,728 to `full`'s 9,925 (192 a sala, on roofs two deep).

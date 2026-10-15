@@ -73,9 +73,9 @@ export function stepBlock(roof: (i: number, j: number, k: number) => boolean, i:
  * as built) with an empty cell over it gets the block that fills that step
  * ({@link stepBlock}, in its own material and colour). Cells already filled
  * (the next row of a roof two deep, a wall, a finial) are left as they are.
- * Returns the blocks put.
+ * Returns the cells it put a block in (to take them down with the roof).
  */
-export function smoothRoof(cells: Iterable<Cell>, store: BlockStore = BLOCKS): number {
+export function smoothRoof(cells: Iterable<Cell>, store: BlockStore = BLOCKS): Cell[] {
   const set = new Set<string>();
   const list: Cell[] = [];
   for (const c of cells) {
@@ -83,17 +83,17 @@ export function smoothRoof(cells: Iterable<Cell>, store: BlockStore = BLOCKS): n
     list.push(c);
   }
   const roof = (i: number, j: number, k: number) => set.has(key(i, j, k));
-  let n = 0;
+  const put: Cell[] = [];
   store.batch(() => {
     for (const [i, j, k] of list) {
       if (store.raw(i, j + 1, k) || roof(i, j + 1, k)) continue;
       const under = store.get(i, j, k);
       if (!under) continue;
       const b = stepBlock(roof, i, j, k, under);
-      if (b && store.set(i, j + 1, k, b)) n++;
+      if (b && store.set(i, j + 1, k, b)) put.push([i, j + 1, k]);
     }
   });
-  return n;
+  return put;
 }
 
 /** A gable roof over a rectangle of cells (see {@link gableRoof}). */
@@ -120,9 +120,10 @@ export interface GableSpec {
  * up and a cell in a row, to the ridge (two cells wide over an even width,
  * one over an odd), then the gable ends under it, then the steps smoothed
  * ({@link smoothRoof}) unless `stepped`. One change. Returns the roof's cells
- * (the stepped rows) and the blocks put in all.
+ * (the stepped rows), the cells smoothing filled (`steps`) and the blocks put
+ * in all (with the gable ends).
  */
-export function gableRoof(spec: GableSpec, store: BlockStore = BLOCKS): { roof: Cell[]; blocks: number } {
+export function gableRoof(spec: GableSpec, store: BlockStore = BLOCKS): { roof: Cell[]; steps: Cell[]; blocks: number } {
   const { j, block } = spec;
   const along = spec.ridge === 'x';
   // (a: along the ridge; b: across it, from eave to eave)
@@ -132,6 +133,7 @@ export function gableRoof(spec: GableSpec, store: BlockStore = BLOCKS): { roof: 
   const b1 = along ? spec.k1 : spec.i1;
   const cell = (a: number, y: number, b: number): Cell => (along ? [a, y, b] : [b, y, a]);
   const roof: Cell[] = [];
+  let steps: Cell[] = [];
   const before = store.count;
   store.batch(() => {
     for (let r = 0; b0 + r <= b1 - r; r++) {
@@ -144,7 +146,7 @@ export function gableRoof(spec: GableSpec, store: BlockStore = BLOCKS): { roof: 
         for (const a of [a0 + e.inset, a1 - e.inset]) for (let b = b0 + r + 1; b <= b1 - r - 1; b++) store.set(...cell(a, j + r, b), e.block);
     }
     for (const c of roof) store.set(c[0], c[1], c[2], block);
-    if (!spec.stepped) smoothRoof(roof, store);
+    if (!spec.stepped) steps = smoothRoof(roof, store);
   });
-  return { roof, blocks: store.count - before };
+  return { roof, steps, blocks: store.count - before };
 }
