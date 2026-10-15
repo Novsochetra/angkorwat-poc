@@ -93,6 +93,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - A stall's produce includes what its people's rig puts on the counter
   (`people/_scene*Kit.ts`): grep every stall's goods, not one file (AWP-7).
 - Kill only your own processes: never `pkill -f` a shared script name.
+- A new pad combo uses a button no other roaming action takes (L2 is the
+  binoculars): check `pad.ts`'s button map and every add-on that reads the pad (AWP-30).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
