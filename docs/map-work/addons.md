@@ -3197,7 +3197,8 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
 - **URL** (shots and the dev server, as `build=`): `furn=<id>@x/z/yaw[/y][:done],…` (on the floor
   under feet at height `y`, the land when left out; a spot that would be refused is put there all the
   same, with a warning) · `window.__furn`: `spot(id, x, z, deg, y)`, `floor(x, y, z)`, `cords()`. E.g. a
-  furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
+  furnished footprint stilt house: `roam=walk&at=423.6,11.05,-140.6&yaw=300&home=1&foot=house@419/-142/425/-136/2&furn=bedmat@422/-140.3/0/11.05,teamat@420.3/-138.6/0/11.05,baskets@424/-138.4/90/11.05,oillamp@421.2/-139/0/11.05,pot@424/-140.5/0/11.05,hanglamp@422/-139/0/11.05&night=1&cam=419.7,13.7,-141.1,422.7,11.2,-138.0,75` ·
+  a furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
   in his house: `…&furn=baskets@426.3/-106.4/90/13.1,pot@425.75/-107.55/0/13.1,bench@421.55/-105.5/90/13.1,hanglamp@424.9/-106.4/0/13.1,oillamp@425.6/-105.9/0/13.1&cam=421.4,15.4,-104.4,425.8,13.3,-106.8,70`.
 
 ### Gathering materials
