@@ -1,5 +1,5 @@
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
-import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import { Frame } from '../landmarks/_prasatKit';
 import { round } from '../veg/plantKit';
 import { bougainvillea, DECK, gableEnd, gableRoof, jar, Local, POST, RIDGE, ROOFS, shadeTree, tone, type Roof } from '../village/_kit';
@@ -37,7 +37,9 @@ export function buildSala(env: BuildEnv): void {
   const G = env.field.heightAt(SALA.x, SALA.z);
   const glow = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: number, halo?: number) => env.glow(fr.wx(x, z), y, fr.wz(x, z), sx, sy, sz, fr.theta, color, halo);
   pavilion(L, G, env.world, fr, src);
-  cart(L, env, fr, G);
+  // (the cart's coconuts: drawn only near, veg/nearDetail.ts)
+  const nearOnly = new Set<VoxelBox>();
+  cart(L, env, fr, G, nearOnly);
   // The tamarind, cloth tied round its trunk; the neak ta shrine at its foot.
   const [tx, tz] = TAMARIND;
   const ty = env.field.heightAt(fr.wx(tx, tz), fr.wz(tx, tz));
@@ -45,7 +47,11 @@ export function buildSala(env: BuildEnv): void {
   for (const [k, c] of [0xc8302a, 0xf0c030, 0xe86aa0].entries()) L.box(tx, ty + 1.05 + k * 0.22, tz, 0.98, 0.12, 0.98, c, 'petal');
   neakTa(L, G, glow);
   bougainvillea(L, -3.1, G, 1.2, 815);
+  const n0 = env.world.boxes.length;
   fr.place(lb, env.world);
+  lb.boxes.forEach((x, i) => {
+    if (nearOnly.has(x)) env.fine?.add(env.world.boxes[n0 + i]);
+  });
 }
 
 /** The pavilion: a plank platform on posts, a plain tiled gable roof with a fan of boards in its gables, jars of drinking water. */
@@ -79,7 +85,7 @@ function pavilion(L: Local, G: number, world: VoxelBuilder, fr: Frame, src: Sour
 }
 
 /** The juice seller's cart and everything round it (see the file's comment). */
-function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
+function cart(L: Local, env: BuildEnv, fr: Frame, G0: number, nearOnly: Set<VoxelBox>): void {
   const cx = CART.lx;
   const cz = CART.lz;
   const G = env.field.heightAt(fr.wx(cx, cz), fr.wz(cx, cz)) || G0;
@@ -99,7 +105,11 @@ function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
   const nuts = [0x7aa040, 0x88aa48, 0x6a9438, 0x94b050];
   // (the bottom row, mostly hidden under the others, the kit's cheap `low` form; the upper rows, seen from a step
   // away, the full round)
-  const nut = (x: number, y: number, z: number, w: number, c: number, k: number, low: boolean, cap = 0x8a7a4a) => round(L.b, [x, y, z], { wid: w, hgt: w * 0.95, color: c, ribs: false, cap, ry: k * 0.7, low, shade: 0.95 + 0.1 * L.r(k, 7), src: L.src });
+  const nut = (x: number, y: number, z: number, w: number, c: number, k: number, low: boolean, cap = 0x8a7a4a) => {
+    const n = L.b.boxes.length;
+    round(L.b, [x, y, z], { wid: w, hgt: w * 0.95, color: c, ribs: false, cap, ry: k * 0.7, low, shade: 0.95 + 0.1 * L.r(k, 7), src: L.src });
+    for (let i = n; i < L.b.boxes.length; i++) nearOnly.add(L.b.boxes[i]);
+  };
   let k = 0;
   for (let row = 0; row < 3; row++)
     for (let i = 0; i < 3 - row; i++)

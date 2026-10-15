@@ -437,6 +437,8 @@ export interface RoundOpts extends Common {
   ribs?: boolean;
   /** Three blocks (far): the foot, the band, the shoulder, square. */
   low?: boolean;
+  /** Its narrower foot (default yes); none where it sits hidden in a heap (one block fewer). */
+  foot?: boolean;
 }
 
 /**
@@ -460,13 +462,13 @@ export function round(b: VoxelBuilder, at: P3, o: RoundOpts): void {
   const y0 = o.hang !== undefined ? at[1] - o.hang - h : at[1];
   if (o.low) {
     // (the foot, the band, the shoulder: three steps, square, one turn)
-    b.box(x, y0 + h * 0.13, z, w * 0.74, h * 0.26, w * 0.74, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
+    if (o.foot !== false) b.box(x, y0 + h * 0.13, z, w * 0.74, h * 0.26, w * 0.74, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
     b.box(x, y0 + h * 0.46, z, w * 0.92, h * 0.5, w * 0.92, o.color, mat, { shade, src, ry });
     b.box(x, y0 + h * 0.8, z, w * 0.72, h * 0.3, w * 0.72, cap, mat, { shade, src, ry });
   } else {
     // (each square step sits inside the cut corners of the band: no corner stands out; the band and the shoulder are
     // two blocks crossed, eight-sided from above)
-    b.box(x, y0 + h * 0.13, z, w * 0.76, h * 0.26, w * 0.76, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
+    if (o.foot !== false) b.box(x, y0 + h * 0.13, z, w * 0.76, h * 0.26, w * 0.76, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
     b.box(x, y0 + h * 0.47, z, w, h * 0.56, w * 0.8, o.color, mat, { shade, src, ry });
     b.box(x, y0 + h * 0.47, z, w * 0.8, h * 0.56, w, rib, mat, { shade: shade * 0.98, src, ry });
     b.box(x, y0 + h * 0.79, z, w * 0.8, h * 0.22, w * 0.62, mix(o.color, cap, 0.5), mat, { shade, src, ry });

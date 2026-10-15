@@ -17,10 +17,10 @@ import { plantsLite } from './detail';
  * `PsFrame` that only moves its origin): its foot at (x, y, z), turned `yaw`
  * about its upright axis. Blocks: grown (stage 4) ≈ 180–205, with a bunch
  * ≈ 240–265; young (stage 3) ≈ 145–155. On the low graphics level (phones)
- * the map's bananas are the model's `lite` form (≈ 45 grown, ≈ 65 with a
- * bunch, ≈ 40 young): the parts that plant them say the build's level first
- * (veg/detail.ts `plantDetail(ctx.quality)`: hamlet/index.ts,
- * village/index.ts, jungle/camps.ts). The home garden's bananas are never lite. Each block keeps
+ * the map's bananas are the model's `lite` form (20 blocks, 34 with a bunch):
+ * the parts that plant them say the build's level first (veg/detail.ts
+ * `plantDetail(ctx.quality)`: hamlet/index.ts, village/index.ts,
+ * jungle/camps.ts). The home garden's bananas are never lite. Each block keeps
  * its own trace (dev builds: the model's line, then the caller that planted
  * it).
  */

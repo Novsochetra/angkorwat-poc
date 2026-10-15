@@ -1,6 +1,6 @@
 import { Group } from 'three';
 import { hash3 } from '../../voxel/random';
-import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate } from '../cull';
 import { len2 } from '../fauna/_len';
@@ -8,6 +8,7 @@ import type { HeightField } from '../heightfield';
 import { BACK_HAMLET } from '../layout';
 import { pointScale } from '../road/glow';
 import type { MapContext, MapFrame, Subject } from '../types';
+import { fineLast, NearDetail } from '../veg/nearDetail';
 import { swayLeaves } from '../veg/sway';
 import { VillageLights } from '../village/_lights';
 import { buildSmoke, type SmokeSource } from '../village/_smoke';
@@ -71,6 +72,8 @@ import type { HamletPiece } from './index';
 
 /** Hidden past this distance (m, camera to the hamlet's middle): out of the overview's sight behind the summit. */
 const FAR = 430;
+/** The garden's plants, the trees' fruit and the market's produce are drawn this near (m, camera to the hamlet's middle): under a pixel further off. */
+const NEAR_PLANTS = 140;
 /** The roosters and hens are heard this near (m, the ears). */
 const HEAR = 150;
 
@@ -81,10 +84,12 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
   const world = new VoxelBuilder();
   const lights = new VillageLights();
   const smoke: SmokeSource[] = [];
+  const fine = new Set<VoxelBox>();
   const env: BuildEnv = {
     field,
     world,
     smoke,
+    fine,
     glow(x, y, z, sx, sy, sz, ry, color, halo) {
       lights.still.add(x, y, z, sx, sy, sz, ry, color, hash3(Math.round(x * 3), Math.round(z * 3), 5, 97) * 6.28);
       if (halo) lights.halo(x, y, z, halo, x * 0.37);
@@ -104,8 +109,14 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
   const base = world.boxes.length;
   world.append(market.mk.b);
   for (let i = base; i < world.boxes.length; i++) if (world.boxes[i].mat === 'metal') world.boxes[i].mat = 'mapStone';
-  const tags = new Array<number>(base).fill(0);
-  for (const t of market.mk.tags) tags.push(t);
+  const tags0 = new Array<number>(base).fill(0);
+  for (const t of market.mk.tags) tags0.push(t);
+  // (append copies the market's blocks: its produce by its place in the list)
+  market.mk.b.boxes.forEach((x, i) => {
+    if (market.mk.fine.has(x)) fine.add(world.boxes[base + i]);
+  });
+  // (the garden's plants, the trees' fruit and the market's produce last in each family: drawn only near)
+  const tags = fineLast(world, fine, tags0);
   const lamps = market.lamps.map((l) => {
     const glowAt = lights.still.list.length;
     lights.still.add(l.x, l.y, l.z, l.sx, l.sy, l.sz, 0, l.color, hash3(Math.round(l.x * 10), Math.round(l.z * 10), 3, 91) * 6.28);
@@ -125,6 +136,7 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
   const glow = lights.build(ctx.renderer);
   object.add(glow.object);
   const toggles = new BackToggles(voxels, world.boxes, tags);
+  const plants = new NearDetail(voxels, world.boxes, fine);
   const switches = new LampSwitch(glow.object, lamps);
   const steam = buildSteam(market.steam);
   steam.object.name = 'hamlet:back-steam';
@@ -140,7 +152,7 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
   BACK_BUILT.object = object;
   const blocks = world.boxes.length;
   console.info(
-    `[map] hamlet behind Angkor Wat: ${blocks} blocks (the market ${world.boxes.length - base}, ${toggles.tags.length} toggles, ${BM_STALLS.length} stalls, ${lamps.length} lamps, ${market.steam.length} pots; ${marketMs.toFixed(1)} ms), ${palms.palms} palms, ${lights.still.list.length} glows, ${smoke.length} fires · built in ${Math.round(performance.now() - t0)} ms`,
+    `[map] hamlet behind Angkor Wat: ${blocks} blocks (the market ${world.boxes.length - base}, ${toggles.tags.length} toggles; ${plants.fine} plant blocks drawn within ${NEAR_PLANTS} m; ${BM_STALLS.length} stalls, ${lamps.length} lamps, ${market.steam.length} pots; ${marketMs.toFixed(1)} ms), ${palms.palms} palms, ${lights.still.list.length} glows, ${smoke.length} fires · built in ${Math.round(performance.now() - t0)} ms`,
   );
 
   // The market's day: which stalls are open (their goods and spread tarps, or rolled tarps), the busy morning's bicycles, the lamps (only when the clock has moved on).
@@ -178,6 +190,7 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
       object.visible = near || frames < 4;
       frames++;
       if (!object.visible) return;
+      plants.set(len2(c.x - BACK_HAMLET.x, c.z - BACK_HAMLET.z) < NEAR_PLANTS || frames < 4);
       shadows.update(f);
       palms.update(f);
       glow.update(f, f.camera);

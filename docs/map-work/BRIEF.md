@@ -1066,19 +1066,19 @@ slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
 Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
 145–155; about 36 plants on the map (+6 200 blocks in all). On the low
 graphics level (phones) the map's bananas are the model's `lite` form (the
-stem in two pieces, five untorn leaves of two pieces, no streaks, dry leaves
-or pups, a bunch of three hands of four fingers: 41 blocks, 60 with a bunch):
-the parts that plant them say the build's level first (`veg/detail.ts`
-`plantDetail(ctx.quality)` in hamlet/index.ts, village/index.ts,
-jungle/camps.ts). The home garden's plants are untouched (never lite; its
+stem in one piece, four untorn leaves of one piece, no streaks, dry leaves or
+pups, a bunch of two hands of four fingers in the leaves' family, so a place
+gets no extra mesh: 20 blocks, 34 with a bunch): the parts that plant them say
+the build's level first (`veg/detail.ts` `plantDetail(ctx.quality)` in
+hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's plants are untouched (never lite; its
 models hash the same).
 
 **Papaya trees**: one for the map's places, `veg/papaya.ts` `papayaTree`
 (the back hamlet's, the east village's and the floating village's: hamlet/_bhTrees.ts,
 hamlet/_evKit.ts `papaya`): a slim grey trunk, nine hand-shaped leaves
 (`fan`, seven lobes) on long pale stalks, the rolled young leaves, six
-teardrop fruit under the crown (≈ 170 blocks); on the low level six leaves of
-five lobes and four `low` fruit (≈ 80). The nursery's papaya seedlings
+teardrop fruit under the crown (≈ 170 blocks); on the low level five leaves of
+four lobes and four `low` fruit (≈ 60). The nursery's papaya seedlings
 (hamlet/_nursery.ts) have three-lobed `fan` leaves (two on low). The home
 garden's papaya is its own model.
 
@@ -1347,7 +1347,9 @@ coconuts rounds, eggplants, cucumbers and corn longs, Khmer pumpkins ribbed
 rounds, banana hands and hanging bunches and mangoes lying on their flat side
 (greener at the stalk, its nub) from `veg/produce.ts`; the grill's corn a long
 in its husk; `mk.kit` keeps their toggles: the same in the back hamlet's and
-the floating village's markets, which use these goods; the Kulen food stall's
+the floating village's markets, which use these goods; on the low level the
+kit's cheap forms, the heaps' upper layers whole and the fruit hidden under
+their middles left out; the Kulen food stall's
 counter fruit and the picnic families' fruit are the same shapes as boxes of
 the people's things, `people/_kitRig.ts` `kitInRig`); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
@@ -1586,7 +1588,11 @@ papayas (veg/papaya.ts: the kit's hand-shaped leaves and teardrops); bananas
 (`_bhMist.ts`: thick at dawn, a veil at night, nothing by day). Lamps in the
 windows, the stoves' embers and the candles are glows and halos
 (village/_lights.ts), no light; smoke at dawn and supper time
-(village/_smoke.ts); roosters at dawn, hens by day.
+(village/_smoke.ts); roosters at dawn, hens by day. The garden's plants, the
+trees' fruit, the juice cart's coconuts and the market's produce are drawn
+only within 140 m of the hamlet's middle (`NEAR_PLANTS`, veg/nearDetail.ts:
+last in each family's mesh, which draws only the blocks before them further
+off; the console line counts them).
 
 The morning market (ផ្សារភូមិ: `_bhMarket.ts`, where it stands:
 `_bhMarketPlan.ts`, its people `people/_sceneBackMarket.ts`) is the hamlet's

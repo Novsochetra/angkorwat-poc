@@ -2,7 +2,7 @@ import { Euler, Quaternion, Vector3 } from 'three';
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
-import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import type { P3 } from '../veg/plantKit';
 
 /**
@@ -57,6 +57,8 @@ export class MkBuild {
   readonly b = new VoxelBuilder();
   /** Per box (the builder's order): the toggle it belongs to (0: always there). */
   readonly tags: number[] = [];
+  /** The plant kit's blocks (`kit`): the produce, which a place may draw only near (veg/nearDetail.ts; `append` copies blocks, so a place that appends `b` maps them by their place in the list). */
+  readonly fine = new Set<VoxelBox>();
   /** Toggle for the boxes written now. */
   tag = 0;
   /** The code that asked (one trace per builder function: `traceSource()`). */
@@ -108,7 +110,10 @@ export class MkBuild {
   kit(draw: (b: VoxelBuilder) => void): void {
     const n = this.b.boxes.length;
     draw(this.b);
-    for (let i = n; i < this.b.boxes.length; i++) this.tags.push(this.tag);
+    for (let i = n; i < this.b.boxes.length; i++) {
+      this.tags.push(this.tag);
+      this.fine.add(this.b.boxes[i]);
+    }
   }
 
   /**

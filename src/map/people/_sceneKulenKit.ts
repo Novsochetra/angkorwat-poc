@@ -1,4 +1,5 @@
 import { hash3 } from '../../voxel/random';
+import { plantsLite } from '../veg/detail';
 import { round } from '../veg/plantKit';
 import { bananaHand, mangoLying, smallRounds } from '../veg/produce';
 import { dress, shade, type DressOptions } from './_kinds';
@@ -73,10 +74,11 @@ export function foodRig(seed: number): RigDef {
   d.box([0.5, 0.1, -0.35], [0.16, 0.2, 0.16], 0xc8a060).box([0.5, 0.21, -0.35], [0.12, 0.04, 0.12], 0xe8dcc0);
   // (the plant kit's shapes, the cheap ones: veg/produce.ts, _kitRig.ts)
   kitInRig(d, (b) => {
-    mangoLying(b, [-0.1, 0.04, 0.62], 1.3, { len: 0.16, wid: 0.1, color: 0xf0b030, blush: 0xd8603a });
-    mangoLying(b, [0.08, 0.04, 0.64], 1.9, { len: 0.15, wid: 0.1, color: 0xe8a828 });
-    smallRounds(b, [-0.24, 0.01, 0.64], 4, 0.06, 0.06, [0xc8303a, 0xb82a30], 0.4);
-    smallRounds(b, [0.38, 0.01, 0.62], 3, 0.08, 0.08, [0xd8402a], 2.1, 0x6a9a3a);
+    const lite = plantsLite();
+    mangoLying(b, [-0.1, 0.04, 0.62], 1.3, { len: 0.16, wid: 0.1, color: 0xf0b030, blush: 0xd8603a, low: lite });
+    mangoLying(b, [0.08, 0.04, 0.64], 1.9, { len: 0.15, wid: 0.1, color: 0xe8a828, low: lite });
+    smallRounds(b, [-0.24, 0.01, 0.64], 3, 0.05, 0.06, [0xc8303a, 0xb82a30], 0.4);
+    smallRounds(b, [0.38, 0.01, 0.62], 2, 0.06, 0.08, [0xd8402a], 2.1, 0x6a9a3a);
   });
   // Drinks: cans and a bottle of water.
   d.box([0.55, 0.08, 0.35], [0.07, 0.14, 0.07], r(1) < 0.5 ? 0xd83a2e : 0x2a6ac8).box([0.64, 0.08, 0.42], [0.07, 0.14, 0.07], 0xe8c02a);
@@ -116,10 +118,12 @@ export function stallGoodsRig(counter: { z: number; top: number }, grill: { x: n
   d.box([-1.18, y + 0.02, z], [0.5, 0.04, 0.34], 0xb89050);
   d.box([-0.62, y + 0.02, z], [0.48, 0.04, 0.34], 0xb89050);
   kitInRig(d, (b) => {
-    smallRounds(b, [-1.14, y + 0.04, z], 7, 0.15, 0.09, [0xc02a34, 0xb02430, 0xc8343a], 1.3);
-    smallRounds(b, [-0.6, y + 0.04, z], 6, 0.14, 0.1, [0xd8402a, 0xc83424], 0.7, 0x6a9a3a);
+    smallRounds(b, [-1.14, y + 0.04, z], 6, 0.15, 0.09, [0xc02a34, 0xb02430, 0xc8343a], 1.3);
+    smallRounds(b, [-0.6, y + 0.04, z], 5, 0.14, 0.1, [0xd8402a, 0xc83424], 0.7, 0x6a9a3a);
+    // (the mangoes in front, seen close: their full form; the banana hand smaller on the low graphics level, veg/detail.ts)
+    const lite = plantsLite();
     for (let k = 0; k < 4; k++) mangoLying(b, [0.02 + k * 0.12, y + 0.04, z + (k % 2) * 0.05 - 0.02], 0.25 + k * 0.6, { len: 0.17, wid: 0.11, color: k === 1 ? 0xe8c040 : 0xf0b030, blush: k % 2 ? undefined : 0xd8603a, roll: (k - 1.5) * 0.12 });
-    bananaHand(b, [0.48, y + 0.03, z - 0.05], 0.3 + Math.PI / 2, { fingers: 5, len: 0.2, thick: 0.045, color: 0xe8d040 });
+    bananaHand(b, [0.48, y + 0.03, z - 0.05], 0.3 + Math.PI / 2, { fingers: lite ? 3 : 5, len: 0.2, thick: 0.045, color: 0xe8d040 });
     for (const [px, pz, c] of [
       [0.98, z + 0.05, 0x9ac050],
       [1.2, z - 0.06, 0xa8c858],

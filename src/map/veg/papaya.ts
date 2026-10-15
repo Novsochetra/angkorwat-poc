@@ -15,7 +15,7 @@ import { fan, log, teardrop, type P3 } from './plantKit';
  * Into a builder on the map's axes, the foot at (x, y, z), `h` to the crown.
  * `r` is the caller's seeded 0‥1 (the same calls give the same tree). Blocks:
  * ≈ 170 (nine leaves of seven lobes, six fruit); on the low graphics level
- * (veg/detail.ts) ≈ 80 (six leaves of five lobes, four fruit, the kit's `low`
+ * (veg/detail.ts) ≈ 60 (five leaves of four lobes, four fruit, the kit's `low`
  * ones).
  */
 
@@ -37,12 +37,12 @@ export function papayaTree(b: VoxelBuilder, x: number, y: number, z: number, o: 
   const i = o.turn;
   log(b, [x, y - 0.1, z], [x, y + h * 0.55, z], 0.24, 0x8a8478, 'mapBark', 1, src);
   log(b, [x, y + h * 0.5, z], [x, y + h, z], 0.19, 0x8e9070, 'mapBark', 1, src);
-  const n = lite ? 6 : 9;
+  const n = lite ? 5 : 9;
   for (let k = 0; k < n; k++) {
     const u = k / (n - 1);
     const az = k * 2.4 + i + (o.r(k, i, 71) - 0.5) * 0.4;
     const top: P3 = [x, y + h - 0.04 * k, z];
-    fan(b, top, { az, el: 0.95 - 1.15 * u, stalk: 0.6 + 0.2 * o.r(k, 72), lobes: lite ? 5 : 7, spread: lite ? 2.8 : 3.2, len: 0.55, wid: lite ? 0.26 : 0.22, segs: 1, rib: false, bend: 0.3, color: LEAF[k % LEAF.length], stalkColor: STALK, src });
+    fan(b, top, { az, el: 0.95 - 1.15 * u, stalk: 0.6 + 0.2 * o.r(k, 72), lobes: lite ? 4 : 7, spread: lite ? 2.6 : 3.2, len: 0.55, wid: lite ? 0.26 : 0.22, segs: 1, rib: false, bend: 0.3, color: LEAF[k % LEAF.length], stalkColor: STALK, src });
   }
   // The rolled young leaves at the very top.
   b.box(x, y + h + 0.12, z, 0.16, 0.24, 0.16, 0x7aa848, 'mapLeaf', { src, ry: i });

@@ -1,12 +1,15 @@
 import type { MapQuality } from '../types';
 
 /**
- * How much the map's own plants draw (veg/banana.ts, veg/papaya.ts): their
+ * How much the map's own plants and produce draw: their
  * cheap `lite` form on the low graphics level (phones), where a walk's
  * triangles are counted closest (docs/map-work/BRIEF.md "Budgets"). Each part
  * that plants them says the build's level before it builds
  * (`plantDetail(ctx.quality)`: hamlet/index.ts, village/index.ts,
- * jungle/camps.ts); every part of a build has the same level. Never the home
+ * jungle/camps.ts, people/index.ts); every part of a build has the same
+ * level. Read by veg/banana.ts, veg/papaya.ts, the markets' goods
+ * (hamlet/_mkGoods.ts), the Kulen stall (hamlet/_knStall.ts, its seller's
+ * goods people/_sceneKulenKit.ts) and the nursery (hamlet/_nursery.ts). Never the home
  * garden's plants (garden/models: always their full model).
  */
 let lite = false;

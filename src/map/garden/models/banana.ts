@@ -132,7 +132,7 @@ function dryLeaf(b: VoxelBuilder, y: number, az: number, w: number, len: number,
 
 /** The pseudostem from its foot to `ht`: octagonal pieces narrowing upward, the corm, brown sheath streaks, `lean` its top's offset. */
 function stem(b: VoxelBuilder, look: PlantLook, ht: number, wb: number, wt: number, lean: P3, r: (i: number, j?: number) => number, stage: number, lite = false): void {
-  const n = lite ? 2 : Math.max(2, Math.round(ht / 0.36));
+  const n = lite ? 1 : Math.max(2, Math.round(ht / 0.36));
   const at = (u: number): P3 => [lean[0] * u * u, ht * u, lean[2] * u * u];
   for (let i = 0; i < n; i++) {
     const u0 = i / n;
@@ -192,10 +192,13 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
   if (lite) for (const [i, j] of [[0, 2], [2, 3], [3, 5]]) beam(b, pts[i], pts[j], 0.065, 0.065, PEDUNCLE, 'mapBark');
   else for (let i = 0; i < pts.length - 1; i++) log(b, pts[i], pts[i + 1], 0.075, PEDUNCLE, 'mapBark');
   const axis = (y: number): P3 => [top[0] + dx * O, top[1] + y, top[2] + dz * O];
-  const hands = lite ? 3 : 5 + Math.floor(r(2, 50) * 2);
+  const hands = lite ? 2 : 5 + Math.floor(r(2, 50) * 2);
   if (lite) beam(b, axis(y0), axis(y1 - 0.13), 0.06, 0.06, PEDUNCLE, 'mapBark');
   else log(b, axis(y0), axis(y1 - 0.06), 0.07, PEDUNCLE, 'mapBark');
   const ripe = look.fruit === 2;
+  // (lite: the fruit and the flower in the leaves' family, which every place that plants a banana draws already: a
+  // family of their own there would be one more mesh, and as big as the place)
+  const fruitMat = lite ? 'mapLeaf' : 'petal';
   for (let h = 0; h < hands; h++) {
     const u = h / (hands - 1);
     const y = lerp(y0, y1, u);
@@ -208,7 +211,7 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
       const base: P3 = [c[0] + Math.sin(th) * 0.07, c[1] + (f % 2) * 0.03, c[2] + Math.cos(th) * 0.07];
       const tip = along(base, th, 0.7 + 0.25 * r(h, f), flen);
       const col = ripe ? pick(RIPE_FRUIT, r(h * 7 + f, 51)) : pick(GREEN_FRUIT, r(h * 7 + f, 52));
-      beam(b, base, tip, 0.075, 0.07, ripe && r(h, f + 60) < 0.25 ? mix(col, 0x9aa83a, 0.4) : col, 'petal');
+      beam(b, base, tip, 0.075, 0.07, ripe && r(h, f + 60) < 0.25 ? mix(col, 0x9aa83a, 0.4) : col, fruitMat);
     }
   }
   // The bare stalk (the old flowers' scars) and the flower hanging at its end.
@@ -226,10 +229,10 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
     [0.37, 0.05, 0.05],
   ];
   for (let i = 0; i < lay.length; i++) {
-    // (lite: the flower in three layers, no bract)
-    if (lite && i !== 1 && i !== 2 && i !== 4) continue;
+    // (lite: the flower in two layers, no bract)
+    if (lite && i !== 2 && i !== 4) continue;
     const [d, w, hh] = lay[i];
-    b.box(c[0], c[1] - d, c[2], w, hh, w, pick(BUD, r(i, 53)), 'petal', { ry: (i % 2) * (Math.PI / 4) + az });
+    b.box(c[0], c[1] - d, c[2], w, hh, w, pick(BUD, r(i, 53)), fruitMat, { ry: (i % 2) * (Math.PI / 4) + az });
   }
   if (lite) return;
   // One bract lifting at the top, red inside, the pale male flowers under it.
@@ -284,9 +287,9 @@ function mother(b: VoxelBuilder, look: PlantLook, r: (i: number, j?: number) => 
 /**
  * The banana as it looks (`look`), foot at the origin: the garden's model, and every banana plant on the map
  * (veg/banana.ts `bananaPlant` sets this one in the hamlets, the villages and the jungle camps). `lite` (only the
- * map's own bananas, built on the low graphics level: never the home garden's) draws it cheaper: the stem in two
- * pieces, no sheath streaks, five leaves of two pieces, none torn, no dry leaves or pups, a bunch of three hands of
- * four fingers on a plain stalk, the flower in three layers.
+ * map's own bananas, built on the low graphics level: never the home garden's) draws it cheaper: the stem in one
+ * piece, no sheath streaks, four leaves of one piece (the rib and its two halves), none torn, no dry leaves or pups,
+ * a bunch of two hands of four fingers on a plain stalk, the flower in two layers (the fruit in the leaves' family).
  */
 export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): void {
   const st = look.stage;
@@ -312,7 +315,7 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): voi
     beam(b, top, [top[0] + 0.02, top[1] + cl, top[2]], Math.max(0.045, ST.wt[st] * 0.35), Math.max(0.045, ST.wt[st] * 0.35), leafTone(CIGAR, look), 'mapLeaf', 0.4);
   }
 
-  const n = lite ? Math.min(5, ST.n[st]) : ST.n[st] + (st === 4 ? Math.floor(r(3, 3) * 2) : 0);
+  const n = lite ? Math.min(4, ST.n[st]) : ST.n[st] + (st === 4 ? Math.floor(r(3, 3) * 2) : 0);
   const young = st <= 1;
   for (let i = 0; i < n; i++) {
     const u = n > 1 ? i / (n - 1) : 0;
@@ -351,7 +354,7 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): voi
         bend,
         len,
         wid,
-        segs: lite ? Math.min(2, ST.segs[st]) : ST.segs[st],
+        segs: lite ? 1 : ST.segs[st],
         fold,
         torn: !lite && st >= 3 && u > 0.35 ? 0.1 + 0.6 * u : 0,
         color: pick(LEAF, r(i, 7)),

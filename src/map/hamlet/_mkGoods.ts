@@ -1,4 +1,5 @@
 import { HAT_BANDS, KRAMAS, SHIRTS, TROUSERS, type KramaLook } from '../../character/clothes';
+import { plantsLite } from '../veg/detail';
 import { long, round } from '../veg/plantKit';
 import { bananaBunch, bananaHand, mangoLying } from '../veg/produce';
 import { tone, type MkBuild, type Tones } from './_mkKit';
@@ -193,6 +194,9 @@ function scale(mk: MkBuild, x: number, y: number, z: number): void {
  * kit's `low` ones), a seeded 0‥1 and its tone.
  */
 function heapOf(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, put: (px: number, py: number, pz: number, sz: number, top: boolean, r: number, c: number) => void): void {
+  // (on the low graphics level, veg/detail.ts: the layers over the bottom one whole, no gaps, so the fruit under
+  // their middles, hidden from every side, is left out)
+  const lite = plantsLite();
   for (let l = 0; l < layers; l++) {
     const ex = rx - l * s * 0.55;
     const ez = rz - l * s * 0.55;
@@ -203,9 +207,10 @@ function heapOf(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: nu
     for (let i = 0; i < nx; i++)
       for (let k = 0; k < nz; k++) {
         const r = mk.r(i + seed * 3, k + l * 7, x * 3 + z);
-        if (l > 0 && r < 0.2) continue;
+        if (l > 0 && r < 0.2 && !lite) continue;
         const px = x - ex + ((i + 0.5) * ex * 2) / nx + (mk.r(i, k, seed + 1) - 0.5) * s * 0.25;
         const pz = z - ez + ((k + 0.5) * ez * 2) / nz + (mk.r(k, i, seed + 2) - 0.5) * s * 0.25;
+        if (lite && next && Math.abs(px - x) < ex - s * 1.05 && Math.abs(pz - z) < ez - s * 1.05) continue;
         const sz = s * (0.85 + r * 0.25);
         put(px, y + l * s * 0.8, pz, sz, !next, r, tone(tones, mk.r(i, k, l + seed)));
       }
@@ -216,7 +221,7 @@ function heapOf(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: nu
 function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, o: { hgt?: number; cap?: number; ribs?: boolean } = {}): void {
   mk.kit((b) =>
     heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
-      round(b, mk.point(px, py, pz), { wid: sz, hgt: sz * (o.hgt ?? 0.9), color: c, ribs: o.ribs ?? false, cap: o.cap, ry: mk.heading + r * 1.6, low: !top || sz < 0.12, shade: 0.92 + r * 0.14, src: mk.src }),
+      round(b, mk.point(px, py, pz), { wid: sz, hgt: sz * (o.hgt ?? 0.9), color: c, ribs: o.ribs ?? false, cap: o.cap, ry: mk.heading + r * 1.6, low: !top || sz < 0.12 || plantsLite(), foot: top || !plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
     ),
   );
 }
@@ -225,7 +230,7 @@ function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz:
 function mangoHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, ripe = true): void {
   mk.kit((b) =>
     heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
-      mangoLying(b, mk.point(px, py + sz * 0.3, pz), mk.heading + r * Math.PI * 2, { len: sz * 1.3, wid: sz * 0.9, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top, shade: 0.92 + r * 0.14, src: mk.src }),
+      mangoLying(b, mk.point(px, py + sz * 0.3, pz), mk.heading + r * Math.PI * 2, { len: sz * 1.3, wid: sz * 0.9, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top || plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
     ),
   );
 }
@@ -261,7 +266,7 @@ function longPile(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: 
 function chiliHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number): void {
   heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) => {
     const a = r * Math.PI * 2;
-    if (top) mk.kit((b) => long(b, mk.point(px - Math.sin(a) * sz * 0.75, py + sz * 0.22, pz - Math.cos(a) * sz * 0.75), { len: sz * 1.5, thick: sz * 0.36, az: mk.heading + a, el: 0.05, curve: 0.4, neck: 0.75, taper: 0.4, sides: 4, color: c, src: mk.src }));
+    if (top && !plantsLite()) mk.kit((b) => long(b, mk.point(px - Math.sin(a) * sz * 0.75, py + sz * 0.22, pz - Math.cos(a) * sz * 0.75), { len: sz * 1.5, thick: sz * 0.36, az: mk.heading + a, el: 0.05, curve: 0.4, neck: 0.75, taper: 0.4, sides: 4, color: c, src: mk.src }));
     else mk.box(px, py + sz * 0.18, pz, sz * 0.34, sz * 0.32, sz * 1.4, c, 'petal', 0.9 + r * 0.15, 0, a);
   });
 }
@@ -546,7 +551,7 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
         for (let p = 0; p < 3; p++) {
           const [px, pz] = at(0.78 + (p % 2) * 0.1, 0.3 + p * 0.22);
           const c = tone([C.pumpkin[0], C.pumpkin[1]], mk.r(p, 182));
-          round(b, mk.point(px, y, pz), { wid: 0.4, hgt: 0.28, color: c, rib: 0xb06a1e, cap: 0xc87a24, stalk: 0x8a6a3a, ry: mk.heading + p, src: mk.src });
+          round(b, mk.point(px, y, pz), { wid: 0.4, hgt: 0.28, color: c, rib: 0xb06a1e, cap: 0xc87a24, stalk: 0x8a6a3a, ry: mk.heading + p, low: plantsLite(), src: mk.src });
         }
       });
       for (let i = 0; i < 4; i++) bundle(mk, ...xz3(at(0.3, 0.12 + i * 0.07), y), 0.55, 0.09, tone(C.leafy, mk.r(i, 183)), 0xd83a2a, true);
@@ -576,7 +581,7 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
       mk.kit((b) => {
         for (let k = 0; k < 3; k++) {
           const [hx, hz] = at(0.66 + (k % 2) * 0.12, 0.3 + k * 0.22);
-          bananaHand(b, mk.point(hx - 0.1, y + 0.03, hz), mk.heading + Math.PI / 2 + (mk.r(k, 75) - 0.5) * 0.5, { len: 0.22, thick: 0.05, color: tone(C.banana, mk.r(k, 76)), src: mk.src });
+          bananaHand(b, mk.point(hx - 0.1, y + 0.03, hz), mk.heading + Math.PI / 2 + (mk.r(k, 75) - 0.5) * 0.5, { fingers: plantsLite() ? 3 : 5, len: 0.22, thick: 0.05, color: tone(C.banana, mk.r(k, 76)), src: mk.src });
         }
       });
       basket(mk, ...xz3(at(0.88, 0.7), y), 0.4, 0.4, 0.24);
@@ -623,7 +628,7 @@ export function hang(mk: MkBuild, kind: Goods, x0: number, x1: number, z: number
       for (let i = 0; i < 4; i++) {
         const x = x0 + W * (0.15 + i * 0.23);
         mk.box(x, top - 0.1, z, 0.02, 0.2, 0.02, 0xd8d0c0, 'petal');
-        mk.kit((b) => bananaBunch(b, mk.point(x, top - 0.2, z), mk.heading, { color: tone(C.banana, mk.r(i, 211)), seed: i * 1.3, src: mk.src }));
+        mk.kit((b) => bananaBunch(b, mk.point(x, top - 0.2, z), mk.heading, { hands: plantsLite() ? 1 : 2, color: tone(C.banana, mk.r(i, 211)), seed: i * 1.3, src: mk.src }));
       }
       break;
     case 'greens':

@@ -1,5 +1,6 @@
 import { hash3 } from '../../voxel/random';
 import { BAMBOO, pickTone, PLANK, POST, Site, THATCH } from '../jungle/_campKit';
+import { plantsLite } from '../veg/detail';
 import { bananaBunch } from '../veg/produce';
 
 /**
@@ -128,7 +129,9 @@ export function buildFoodStall(s: Site): void {
     s.box(x, hFront - 0.35, pz + 0.05, 0.03, 0.5, 0.03, 0x8a7448, 'mapBark');
     // (as big as the boxes they replace: the goods read from the picnic terrace)
     const w = s.world(x, hFront - 0.6, pz + 0.05);
-    bananaBunch(s.b, [w.x, w.y, w.z], s.yaw + Math.PI / 2, { hands: hands + 1, fingers: 6, len: 0.26, thick: 0.065, color: hands > 1 ? 0xe8c83a : 0xd8c040, seed: x * 0.3, src: s.src });
+    // (on the low graphics level a hand fewer and four fingers: veg/detail.ts)
+    const lite = plantsLite();
+    bananaBunch(s.b, [w.x, w.y, w.z], s.yaw + Math.PI / 2, { hands: lite ? hands : hands + 1, fingers: lite ? 4 : 6, len: 0.26, thick: 0.065, color: hands > 1 ? 0xe8c83a : 0xd8c040, seed: x * 0.3, src: s.src });
   }
   for (let k = 0; k < 5; k++) s.box(-0.3 + k * 0.2, hFront - 0.42, pz + 0.07, 0.15, 0.22, 0.04, [0xe83a3a, 0xf0c030, 0x2a8ad0, 0xe86aa0, 0x5ab04a][k], 'petal');
 

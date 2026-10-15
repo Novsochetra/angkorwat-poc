@@ -94,8 +94,11 @@ export function buildTrees(env: BuildEnv): PalmSet {
   for (const [x, z, h, r, seed, fruit] of BROAD) {
     const p = broadleaf({ s: 1, h, r, seed: 7000 + seed });
     stamp(env, f, p, x, g(x, z), z, seed);
+    // (the fruit: drawn only near, veg/nearDetail.ts)
+    const n0 = L.b.boxes.length;
     if (fruit === 'mango') mangoes(L, p, x, g(x, z), z, seed);
     else if (fruit === 'jack') jackfruit(L, x, g(x, z), z, seed);
+    for (let i = n0; i < L.b.boxes.length; i++) env.fine?.add(L.b.boxes[i]);
   }
   // The herder's big shade tree in the meadow.
   const [mx, mz] = MEADOW.tree;

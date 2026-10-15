@@ -1,5 +1,6 @@
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
+import type { VoxelBox } from '../../voxel/VoxelBuilder';
 import { SURFACE } from '../heightfield';
 import { leaf, long, round, sag, spiral, vine } from '../veg/plantKit';
 import { BAMBOO, dog, jar, laundry, LEAF, Local, POST, tone } from '../village/_kit';
@@ -45,7 +46,7 @@ export function buildYard(env: BuildEnv, spots: BackSpots): void {
   haystack(env, src, 117.24, -327.26, 3.3, 1.95, 3);
   spiritHouse(env, L, g);
   well(L, g);
-  garden(L, g);
+  garden(L, g, env.fine);
   // Washing on a line between two bamboo poles east of the children's house.
   const [ax, az] = [131.8, -338.9];
   const [bx, bz] = [135.9, -339.9];
@@ -312,7 +313,11 @@ function well(L: Local, g: (x: number, z: number) => number): void {
 }
 
 /** The vegetable garden: raised beds of greens, chillies and lemongrass, a gourd trellis, a low bamboo fence round it. */
-function garden(L: Local, g: (x: number, z: number) => number): void {
+function garden(L: Local, g: (x: number, z: number) => number, fine?: Set<VoxelBox>): void {
+  // (the plants: drawn only near, veg/nearDetail.ts; the fence, the beds' earth and the trellis's bamboo always)
+  const near = (n0: number) => {
+    if (fine) for (let i = n0; i < L.b.boxes.length; i++) fine.add(L.b.boxes[i]);
+  };
   const { x0, z0, x1, z1 } = GARDEN;
   const y = g((x0 + x1) / 2, (z0 + z1) / 2);
   // Fence: posts and a woven band of split bamboo (a gap on the yard side for the gardener).
@@ -337,6 +342,7 @@ function garden(L: Local, g: (x: number, z: number) => number): void {
   ];
   beds.forEach(([za, zb], b) => {
     L.span(x0 + 0.5, y, za, x1 - 0.4, top, zb, soil, 'mapStone', 0.9);
+    const n0 = L.b.boxes.length;
     // Rows: morning glory (low, bright), chillies (dark with red), lemongrass (tall, pale): the plant kit's leaves.
     for (let x = x0 + 0.8, i = 0; x < x1 - 0.6; x += 0.55, i++) {
       const kind = (i + b) % 3;
@@ -361,6 +367,7 @@ function garden(L: Local, g: (x: number, z: number) => number): void {
         for (let k = 0; k < 6; k++) leaf(L.b, [x, top + 0.08, zc], { len: 0.62 + 0.16 * r(k), wid: 0.045, az: k * 1.05 + r(k + 6), el: 1.25, bend: 0.5, segs: 1, rib: false, color: c, src: L.src });
       }
     }
+    near(n0);
   });
   // A gourd trellis over the east end: bamboo posts and a lattice top; luffa and bottle gourd vines up the posts and
   // along the bars, broad leaves lying over it and spilling down its edges, gourds hanging under it, yellow flowers.
@@ -379,6 +386,7 @@ function garden(L: Local, g: (x: number, z: number) => number): void {
     L.span(tx0, ty - 0.02, z - 0.03, tx1, ty + 0.03, z + 0.03, tone(BAMBOO, 0.5), 'mapBark');
     bars.push(z);
   }
+  const nv = L.b.boxes.length;
   const VINE = 0x4e7a2e;
   const GOURD_LEAF = [0x4f8a34, 0x5a9a3a, 0x467e2e];
   const broad = { wid: 0.26, bend: 0.3, shape: 'broad' as const, color: GOURD_LEAF[0], src: L.src };
@@ -417,6 +425,7 @@ function garden(L: Local, g: (x: number, z: number) => number): void {
     const z = z0 + 0.8 + L.r(k, 66) * (z1 - z0 - 1.4);
     L.b.box(x, ty + 0.14, z, 0.09, 0.03, 0.09, 0xf0d040, 'petal', { src: L.src, ry: Math.PI / 4 + k });
   }
+  near(nv);
 }
 
 /**

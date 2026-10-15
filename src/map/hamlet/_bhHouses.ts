@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
-import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
 import { beamWorld } from '../jungle/_campKit';
 import { Frame } from '../landmarks/_prasatKit';
@@ -32,6 +32,8 @@ export interface BuildEnv {
   /** A glowing box at a map point: centre, size (across, up, along), turn about y, colour; `halo` (m) round a lamp. */
   glow(x: number, y: number, z: number, sx: number, sy: number, sz: number, ry: number, color: number, halo?: number): void;
   smoke: SmokeSource[];
+  /** Small plant things drawn only near (veg/nearDetail.ts): the garden's plants, the trees' fruit, the market's produce. */
+  fine?: Set<VoxelBox>;
 }
 
 /** Footing stones and concrete pads under the posts. */
