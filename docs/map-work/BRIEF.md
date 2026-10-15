@@ -1066,9 +1066,10 @@ slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
 Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
 145–155; about 36 plants on the map (+6 200 blocks in all). On the low
 graphics level (phones) the map's bananas are the model's `lite` form (the
-stem in one piece, four untorn leaves of one piece, no streaks, dry leaves or
-pups, a bunch of two hands of four fingers in the leaves' family, so a place
-gets no extra mesh: 20 blocks, 34 with a bunch): the parts that plant them say
+stem in one piece, four untorn leaves of two pieces each, held out lower and
+arching over and down, their halves with no midrib blocks, no streaks, dry
+leaves or pups, a bunch of two hands of four fingers in the leaves' family,
+so a place gets no extra mesh: 24 blocks, 38 with a bunch): the parts that plant them say
 the build's level first (`veg/detail.ts` `plantDetail(ctx.quality)` in
 hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's plants are untouched (never lite; its
 models hash the same).
@@ -1350,8 +1351,12 @@ in its husk; `mk.kit` keeps their toggles: the same in the back hamlet's and
 the floating village's markets, which use these goods; on the low level the
 kit's cheap forms, the heaps' upper layers whole and the fruit hidden under
 their middles left out; the Kulen food stall's
-counter fruit and the picnic families' fruit are the same shapes as boxes of
-the people's things, `people/_kitRig.ts` `kitInRig`); `_mkStalls.ts` builds each stall in its
+counter fruit, the picnic families' fruit and the floating market's fruit
+boat are the same shapes as boxes of the people's things, `people/_kitRig.ts`
+`kitInRig` on `veg/kitBoxes.ts`, which also gives the Water Festival's moon
+trays their bananas and coconut; the offering bananas at the Kulen shrine,
+the back hamlet's neak ta and spirit house and his home's altar are
+`bananaHand` with `flat`, level blocks that a turned frame places right); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
 tables, platforms, stools and wheels. Sizes are the people's (1.4 × true).
 The day: each stall is open over its own window of `clock` (`STALLS` `open`):
