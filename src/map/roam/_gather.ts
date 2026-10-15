@@ -9,11 +9,17 @@ import { HOME } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import { TIME } from '../time';
+import { BAMBOO_CUT } from '../veg/bambooCut';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { registerBambooClumps } from './_gatherBamboo';
+import { registerLogs } from './_gatherLogs';
+import { registerThatch, thatchTick } from './_gatherThatch';
+import { clayTick, registerClay } from './_gatherClay';
 import { createGatherHud, type GatherHud } from './_gatherHud';
+import { gatherLoadBuilder } from './_gatherLoad';
+import { GatherLayer } from './_gatherLayer';
 import { gatherPose, gatherToolBuilder, newGatherPose, SWING } from './_gatherPose';
 import { byHouse } from './_buildSpots';
 import { angleDiff } from './followCam';
@@ -52,9 +58,12 @@ import { stepSound } from './walker';
  *   here with the map's time while he plays (as the garden's: a day of the cycle,
  *   or `dayLength` s of play while the time stands still; sleep moves it on).
  *
- * The proof source (the only one in AWP-9): the map's bamboo clumps,
- * _gatherBamboo.ts. The other materials' sources come with their tickets
- * (AWP-10…15) and register themselves (`registerGatherSource`).
+ * The sources, registered from `init` (each draws what it has left its own way):
+ * the jungle's bamboo clumps (_gatherBamboo.ts, AWP-10), the woodcutters' felled
+ * trunks (_gatherLogs.ts, AWP-11), the sugar-palm village's young palms
+ * (_gatherThatch.ts, AWP-12), the clay banks (_gatherClay.ts, AWP-13); later ones
+ * (the ox cart AWP-14, a bamboo forest AWP-15) register themselves the same way
+ * (`registerGatherSource`). The load on his back: _gatherLoad.ts.
  *
  * URL (shots and the dev server only, `env.shot || import.meta.env.DEV`: on the live site a link
  * never freezes him, never fills his bag or store, never spends a spot in his save):
@@ -62,7 +71,8 @@ import { stepSound } from './walker';
  * (at the nearest spot of it to `at=`: him at work, `hits` blows of the piece
  * already landed, held `s` seconds into a swing: the chips of a blow at `s` past
  * the blow) · `gatheract=chop|dig` (that swing there instead of its own: a pose's
- * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherunload=1`
+ * check before its material has a source) · `gatherleft=<n>` (that spot has `n` pieces left) · `gatherdays=<d>` (then
+ * the gathering's clock `d` game days on: grown back that far) · `gatherwork=0` (the spot only, him not at work) · `gatherunload=1`
  * (a shot unloads at home too). `report()` gives `bag=`, `store=`, `gather=`.
  * `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`, `advance(days)`. Console lines `[gather] …`.
  */
@@ -84,7 +94,7 @@ const FRAME = { side: 1.75, pitch: 0.4, distance: 6.2, toward: 0.35, rate: 2.4, 
 /** He stands turned this much to his left of the spot (rad): the blow lands before his right hip, not behind his body. */
 const TURN_LEFT = 0.45;
 /** Chips a blow throws (chop, dig), their size (m) and life (s). */
-const CHIPS = { chop: 10, dig: 11, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
+const CHIPS = { chop: 10, dig: 11, axe: 12, size: [0.1, 0.19], life: [1.2, 1.8] } as const;
 
 interface Session {
   readonly spot: GatherSpot;
@@ -186,7 +196,8 @@ function whyNot(ctx: RoamCtx, s: GatherSpot): string | null {
   const m = s.material;
   if (gatherLeft(s) <= 0) {
     const days = Math.ceil(gatherRegrowIn(s));
-    return days <= 1 ? words('soon', () => t('gatherSpentSoon')) : words(`spent|${days}`, () => t('gatherSpent', { n: num(days) }));
+    const w = sourceOf(s)?.spent ?? { days: 'gatherSpent', soon: 'gatherSpentSoon' };
+    return days <= 1 ? words(`soon|${w.soon}`, () => t(w.soon)) : words(`spent|${w.days}|${days}`, () => t(w.days, { n: num(days) }));
   }
   const r = sourceOf(s)?.can?.(s, { x: ctx.body.pos.x, y: ctx.body.pos.y, z: ctx.body.pos.z, night: ctx.night });
   if (r) return words(`can|${r}`, () => t(r));
@@ -236,6 +247,17 @@ function placeFor(ctx: RoamCtx, s: Session, x: number, z: number): void {
   }
   dx /= d;
   dz /= d;
+  // (a bank: he stands on its land side; a trunk lying: across it, on the side he comes from)
+  if (sp.stand !== undefined) {
+    dx = Math.sin(sp.stand);
+    dz = Math.cos(sp.stand);
+  } else if (sp.along !== undefined) {
+    const px = Math.cos(sp.along);
+    const pz = -Math.sin(sp.along);
+    const k = dx * px + dz * pz >= 0 ? 1 : -1;
+    dx = px * k;
+    dz = pz * k;
+  }
   // (the blow on the foot circle toward him; he stands `STAND.at` back from it, unless already in [near, far] of it)
   const wx = sp.x + dx * sp.r;
   const wz = sp.z + dz * sp.r;
@@ -301,6 +323,21 @@ function tool(a: GatherAction | null): void {
   else ex.rig.clearSlot('gatherTool');
 }
 
+/** The load on his back as last drawn: the bag's version, his pack on or not. */
+let loadShown = '';
+/** His back load (roam/_gatherLoad.ts) drawn again when the bag (or his pack) changed. */
+function backLoad(): void {
+  const ex = env?.explorer;
+  if (!ex) return;
+  const pack = !!ex.rig.getSlot('pack');
+  const key = `${BAG.version}|${pack}`;
+  if (key === loadShown) return;
+  loadShown = key;
+  const b = gatherLoadBuilder(BAG.all(), pack);
+  if (b) ex.rig.setSlot('gatherLoad', 'backpack', b);
+  else ex.rig.clearSlot('gatherLoad');
+}
+
 function touch(want: WordKey | 'hide' | null): void {
   if (want === touchShown) return;
   touchShown = want;
@@ -326,7 +363,7 @@ function chips(s: Session, age = 0): void {
     const vx = (bx * c - bz * sn) * sp;
     const vz = (bx * sn + bz * c) * sp;
     const size = CHIPS.size[0] + fx.rnd() * (CHIPS.size[1] - CHIPS.size[0]);
-    const long = s.action === 'chop' ? 1.8 : 1;
+    const long = s.action === 'dig' ? 1 : 1.8;
     fx.spawn(FLY, w.x, w.y + 0.05, w.z, vx, 1.8 + fx.rnd() * 2, vz, size * long, size * 0.6, size, m.chips[i % m.chips.length], CHIPS.life[0] + fx.rnd() * (CHIPS.life[1] - CHIPS.life[0]), floor);
   }
   if (s.action === 'dig')
@@ -381,6 +418,15 @@ function finish(ctx: RoamCtx | null): void {
   if (ctx) ctx.body.explorer.setMotion(0, true, 0);
 }
 
+/** Tell the spot's source he works it from (x, z) (the side that goes first). */
+function worksFrom(spot: GatherSpot, x: number, z: number): void {
+  try {
+    sourceOf(spot)?.onWork?.(spot, x, z);
+  } catch (e) {
+    console.error('[gather] onWork failed:', e);
+  }
+}
+
 /** Begin at `spot` (E). */
 function start(ctx: RoamCtx, spot: GatherSpot, frozen = false): Session {
   finish(ctx);
@@ -402,6 +448,7 @@ function start(ctx: RoamCtx, spot: GatherSpot, frozen = false): Session {
   };
   placeFor(ctx, s, ctx.body.pos.x, ctx.body.pos.z);
   if (Math.hypot(s.stand.x - ctx.body.pos.x, s.stand.z - ctx.body.pos.z) < 0.08) s.phase = 'turn';
+  worksFrom(spot, ctx.body.pos.x, ctx.body.pos.z);
   S = s;
   pose.action = s.action;
   pose.s = -1;
@@ -441,6 +488,11 @@ const KEYS: Record<GatherAction, readonly AddonKey[]> = {
   ],
   dig: [
     ['E', 'gatherHitDig', 'west'],
+    ['W A S D', 'gatherKeyStop', 'lstick'],
+    ['Q R', 'rLook', 'rstick'],
+  ],
+  axe: [
+    ['E', 'gatherHitChop', 'west'],
     ['W A S D', 'gatherKeyStop', 'lstick'],
     ['Q R', 'rLook', 'rstick'],
   ],
@@ -630,7 +682,25 @@ registerAddon({
   },
   init(e) {
     env = e;
-    const n = registerBambooClumps(e.parts);
+    const n = registerBambooClumps();
+    let logs = 0;
+    try {
+      logs = registerLogs(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the woodcutters\' logs failed:', err);
+    }
+    let young = 0;
+    try {
+      young = registerThatch(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the young sugar palms failed:', err);
+    }
+    let banks = 0;
+    try {
+      banks = registerClay(e.world.field, e.scene);
+    } catch (err) {
+      console.error('[gather] the clay banks failed:', err);
+    }
     hud = createGatherHud(e.layer);
     fx = new Particles();
     fx.mesh.name = 'gather:chips';
@@ -643,7 +713,7 @@ registerAddon({
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
     unloadInShot = dev && e.params.get('gatherunload') === '1';
-    console.info(`[gather] ${n} bamboo clumps to cut · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
+    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp, ${young} young sugar palms, ${banks} clay banks · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
         __gather: {
@@ -657,6 +727,7 @@ registerAddon({
             work: S ? { spot: S.spot.id, phase: S.phase, n: S.n, hits: S.spot.hits, swing: +S.swing.toFixed(3), queued: S.queued, got: S.got } : null,
             saving: progress.saving,
             sources: gatherSources().map((src) => ({ id: src.id, spots: src.spots().length })),
+            bambooCut: { ...BAMBOO_CUT.stats },
           }),
           near: (x: number, z: number, r = 30) =>
             gatherSources()
@@ -712,6 +783,10 @@ registerAddon({
   frame(f: MapFrame, m: RoamMode) {
     const dt = f.dt > 0 ? f.dt : 0;
     fx?.step(dt);
+    backLoad();
+    thatchTick(dt);
+    clayTick(dt);
+    GatherLayer.frame(f.camera.position);
     // The gathering's clock: the map's days as they run (sleep moves them on), else a day each `dayLength` s of play
     // (as the garden's, roam/_garden.ts). Not in a shot (still) nor on the overview.
     const days = TIME.days();
@@ -742,13 +817,21 @@ registerAddon({
     const found = nearestOf(m as MaterialId, ctx.body.pos.x, ctx.body.pos.z);
     // (`gatheract=chop|dig`: that swing at it, to check a pose before its material's source exists)
     const act = q.get('gatheract');
-    const spot = found && (act === 'chop' || act === 'dig') ? { ...found, action: act as GatherAction } : found;
+    const spot = found && (act === 'chop' || act === 'dig' || act === 'axe') ? { ...found, action: act as GatherAction } : found;
     if (!spot) {
       console.warn(`[gather] gather=: no spot of ${m} (sources: ${gatherSources().map((s) => s.id).join(', ') || 'none'})`);
       return;
     }
     const left = q.get('gatherleft');
-    if (left !== null) GATHER.setLeft(spot, Number(left));
+    if (left !== null) {
+      worksFrom(spot, ctx.body.pos.x, ctx.body.pos.z);
+      GATHER.setLeft(spot, Number(left));
+    }
+    // (`gatherdays=<d>`: the gathering's clock that many game days on: what was taken grows back that far)
+    const days = Number(q.get('gatherdays'));
+    if (days > 0 && Number.isFinite(days)) GATHER.advance(Math.min(days, 100));
+    // (`gatherwork=0`: the spot only, him not put to work at it)
+    if (q.get('gatherwork') === '0') return;
     freeze(ctx, spot, Number(n) || 0, sw !== undefined && sw !== '' ? Number(sw) || 0 : null);
   },
   report() {

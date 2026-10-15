@@ -18,6 +18,9 @@ import type { GatherAction } from '../build/materials';
  *   left further along; raised high over his head and swung down so its blade
  *   bites into the earth before his feet; he stands, feet apart, and bends into
  *   the blow.
+ * - **axe** (`axe`): the woodcutter's axe (ពូថៅ) in both hands as the hoe, swung
+ *   from over his head down onto the felled trunk lying before him, its blade
+ *   biting across the grain (a narrow iron head, its edge along the swing).
  *
  * A posture for `Animator.posture` with `postureFeet` left on (as character/
  * buildWork.ts, which this follows): the Animator plants his soles; the legs bend
@@ -48,6 +51,7 @@ export const newGatherPose = (): GatherPoseState => ({ action: 'chop', k: 0, s: 
 export const SWING: Record<GatherAction, { readonly len: number; readonly up: number; readonly hit: number }> = {
   chop: { len: 0.7, up: 0.3, hit: 0.44 },
   dig: { len: 0.86, up: 0.38, hit: 0.56 },
+  axe: { len: 0.9, up: 0.4, hit: 0.58 },
 };
 
 /**
@@ -58,7 +62,10 @@ export const SWING: Record<GatherAction, { readonly len: number; readonly up: nu
 const TOOL = {
   chop: { reach: 10.4, face: 3.7, slant: 0.55, raised: new Vector3(-3.4, 4.6, 0.9), back: 1.9, crouch: 0.55, hips: 0.22, chest: 0.16, blowBend: 0.1 },
   dig: { reach: 13.6, face: 4.1, slant: 0.9, raised: new Vector3(-0.2, 7.4, 0.6), back: 2.25, crouch: 0, hips: 0.12, chest: 0.12, blowBend: 0.32 },
+  axe: { reach: 12.2, face: 3.3, slant: 0.85, raised: new Vector3(-0.4, 7.8, 0.4), back: 2.35, crouch: 0, hips: 0.12, chest: 0.12, blowBend: 0.3 },
 } as const;
+/** The tool is held in both hands (the hoe, the axe), the left further along the handle. */
+const twoHands = (a: GatherAction): boolean => a !== 'chop';
 /** The left fist on the hoe's handle: this far along it from the right (BU). */
 const HOE_LEFT = 5.2;
 /** Between swings the tool is held low before him: this much of the way up. */
@@ -204,13 +211,13 @@ export function gatherPose(p: GatherPoseState): Pose {
   armR.wristR = { rx: _e.x, ry: _e.y, rz: _e.z };
   blendArm({ shoulderR: { rx: 0.02, rz: -0.06 }, elbowR: { rx: -0.12 }, wristR: {} }, armR, k, 'R', pose);
   // The left hand: on the hoe's handle, or holding the cane above the cut.
-  if (p.action === 'dig') _t.copy(hoeL);
+  if (twoHands(p.action)) _t.copy(hoeL);
   else {
     _t.copy(p.work).add(STEADY);
     _t.y = Math.max(_t.y, 3);
   }
   const armL = solveArm('L', _t.applyMatrix4(_inv), POLE_L);
-  armL.wristL = p.action === 'dig' ? { rx: 0.1, rz: -0.3 } : { rx: 0.3, rz: -0.5 };
+  armL.wristL = twoHands(p.action) ? { rx: 0.1, rz: -0.3 } : { rx: 0.3, rz: -0.5 };
   blendArm({ shoulderL: { rx: 0.02, rz: 0.06 }, elbowL: { rx: -0.12 }, wristL: {} }, armL, k, 'L', pose);
   return pose;
 }
@@ -249,6 +256,7 @@ const smooth = (v: number) => {
  * moved to the fist's grip (`JOINTS.propR.pivot`).
  * - chop: the phkak, a worn wooden handle and an iron blade bent forward off its end, its edge bright.
  * - dig: the hoe, a long handle and a broad iron blade across its end, curling back toward him.
+ * - axe: a straight handle, a narrow iron head down off its end, its long edge bright along the swing.
  */
 export function gatherToolBuilder(a: GatherAction): VoxelBuilder {
   const b = new VoxelBuilder();
@@ -267,6 +275,19 @@ export function gatherToolBuilder(a: GatherAction): VoxelBuilder {
     b.span(-0.2, -3.3, L - 1.3, 0.2, -0.1, L + 1.0, 0x7a7e84, 'metal');
     b.span(-0.2, -3.3, L + 1.0, 0.2, -1.6, L + 2.1, 0x7a7e84, 'metal');
     b.span(-0.16, -3.8, L - 1.3, 0.16, -3.2, L + 2.1, 0xd8dde2, 'metal');
+  } else if (a === 'axe') {
+    const L = TOOL.axe.reach;
+    const r = 0.44;
+    for (let i = 0; i < 7; i++) {
+      const z0 = -2 + ((L + 1.4) * i) / 7;
+      const z1 = -2 + ((L + 1.4) * (i + 1)) / 7;
+      b.span(-r, -r, z0, r, r, z1 + 0.02, wood[i % 3], 'wood');
+    }
+    // (the head: the eye round the handle, the cheek down, wider toward the edge; the edge bright; the poll over it)
+    b.span(-0.62, -0.7, L - 0.9, 0.62, 0.9, L + 0.5, 0x4a4e54, 'metal');
+    b.span(-0.36, -3.2, L - 0.7, 0.36, -0.7, L + 0.3, 0x6e7276, 'metal');
+    b.span(-0.26, -4.1, L - 1.1, 0.26, -3.2, L + 0.7, 0x7a7e84, 'metal');
+    b.span(-0.18, -4.5, L - 1.2, 0.18, -4.0, L + 0.8, 0xd8dde2, 'metal');
   } else {
     const L = TOOL.dig.reach;
     const r = 0.46;
