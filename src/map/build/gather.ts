@@ -148,6 +148,8 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 
 /** Per spot id: the clock's times its pieces were taken (those still growing back). */
 const taken: Record<string, number[]> = {};
+/** A saved time this far past the saved clock still loads (game days: older saves rounded times to 4 places). */
+const LOAD_SLACK = 1e-4;
 /** The clock at most (game days: far over any play; a broken value reads as 0). */
 const CLOCK_MAX = 1e6;
 let clock = progress.get('gather.clock', 0, isNum);
@@ -155,7 +157,8 @@ if (clock > CLOCK_MAX) clock = 0;
 // (a broken save: only times on the clock so far are kept (one in the future would hold a spot spent), at most a few a spot)
 for (const [id, ts] of Object.entries(progress.get('gather.spots', {}, isTaken)))
   if (Array.isArray(ts) && id.length < 200) {
-    const ok = ts.filter((at) => isNum(at) && at <= clock).slice(0, 64);
+    // (a hair over the clock is no future time: saves before AWP-10's fix rounded a time to 4 places, up as often as down)
+    const ok = ts.filter((at) => isNum(at) && at <= clock + LOAD_SLACK).map((at) => Math.min(at, clock)).slice(0, 64);
     if (ok.length) taken[id] = ok;
   }
 let savedClock = clock;
@@ -213,7 +216,9 @@ export const GATHER = {
       const ts = (taken[spot.id] ??= []);
       // (only those still growing back are kept)
       for (let i = ts.length - 1; i >= 0; i--) if (clock - ts[i] >= spot.regrowDays) ts.splice(i, 1);
-      ts.push(+clock.toFixed(4));
+      // (the clock exact, as `gather.clock` is saved: a time rounded up past the saved clock would be dropped on load as
+      // "in the future", and the piece come back after a reload)
+      ts.push(clock);
       growing.set(spot.id, spot);
       nextGrow = -Infinity;
       save();
