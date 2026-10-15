@@ -5,7 +5,8 @@ import { BIKE_OWN } from '../roam/_bikeOwn';
 import { shopToWorld } from '../roam/_bikeShopPlan';
 import { ZIP_START } from '../roam/_zipPlan';
 import { LOTUS_BED } from '../roam/_lotusHook';
-import { HOME_AT } from '../hamlet/_homePlan';
+import { HOME, HOME_AT } from '../hamlet/_homePlan';
+import { CART_AT, cartAway } from '../build/haul';
 import { nurseryToWorld } from '../hamlet/_nurseryPlan';
 import { traderToWorld } from '../cattle/plan';
 import type { WordKey } from './lang';
@@ -28,7 +29,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'cattle';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle';
 
 export interface MapSpot {
   id: SpotId;
@@ -207,6 +208,19 @@ const MY_BIKE_ART = [
   '..KKK......KKK.',
 ];
 
+/** His ox cart (roam/_haul.ts: where he left it): its load of logs and poles over its big wheel, an ox before it. */
+const MY_CART_ART = [
+  '.uYuYu........k',
+  '.mmmmmm.....WWC',
+  '.m....mpppWWWWC',
+  '.mmmmmm...WWWW.',
+  '..ddd.....s..s.',
+  '.d.b.d....s..s.',
+  '.dbbbd.........',
+  '.d.b.d.........',
+  '..ddd..........',
+];
+
 /** The zip line (roam/_zipPlan.ts: its first stair's foot): a cable from a tall tree's platform down to the next, a rider under his red trolley. */
 const ZIP_ART = [
   'GGG..........',
@@ -323,6 +337,31 @@ const MY_BIKE: MapSpot = {
 };
 
 /**
+ * His ox cart's badge (build/haul.ts `CART_AT`), as his bicycle's: only once he has left it away from its place by the
+ * house (not while he leads it, not before the house is his); the big map's button is moved by roam/_haul.ts.
+ */
+const myCartShown = (): boolean => HOME.owned && cartAway();
+const MY_CART: MapSpot = {
+  id: 'my-cart',
+  get x() {
+    return myCartShown() ? CART_AT.x : FAR;
+  },
+  get z() {
+    return myCartShown() ? CART_AT.z : FAR;
+  },
+  get bx() {
+    return myCartShown() ? CART_AT.x : FAR;
+  },
+  get bz() {
+    return myCartShown() ? CART_AT.z : FAR;
+  },
+  arrive: 5,
+  name: 'haulMap',
+  the: 'haulTheMap',
+  rows: outlined(MY_CART_ART),
+};
+
+/**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
  * (m) would sit on it: it goes out to this far along the line from the temple (east if on it).
  */
@@ -364,6 +403,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   // (the bicycle shop at the morning market, and his own bicycle where he left it: roam/_bikeShop.ts, _bike.ts)
   { ...spot('bike-shop', BIKE_SHOP_AT[0], BIKE_SHOP_AT[1], 7, 'bikeShopMap', 'bikeShopTheMap', outlined(BIKE_SHOP_ART)), bx: BIKE_SHOP_BIG[0], bz: BIKE_SHOP_BIG[1] },
   MY_BIKE,
+  // (his ox cart where he left it away from the house: roam/_haul.ts)
+  MY_CART,
   // (the cattle trader on the Kulen foot meadow, 50 m north of his house: roam/_cattle.ts)
   spot('cattle', CATTLE_AT[0], CATTLE_AT[1], 9, 'cattleMap', 'cattleTheMap', outlined(CATTLE_ART)),
 ];

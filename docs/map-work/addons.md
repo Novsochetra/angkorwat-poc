@@ -3160,6 +3160,112 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `roam=walk&at=428,-134&yaw=180&home=1&bag=bamboo:2&store=log:1,clay:2&purse=30000&buildcard=1`
   (the card's costs) · `…&menu=1&menutab=bag` (In my bag).
 
+### His ox cart
+
+He hauls what he gathers past his carry limit in his own ox cart (រទេះគោ: add-on `haul`, ticket
+AWP-14; words `haul…`). Not the village's cart he rides ("The ox cart" above): that one goes round
+its loop between the floating village and the valley road, 700 m from his house and every gathering
+place, and stays a ride. Files: `map/build/haul.ts` (no three.js: `CART_LIMIT`, the load `CART_LOAD`,
+where it stands `CART_AT`, its place by the house `CART_HOME`), `roam/_haul.ts` (the add-on: leading,
+loading and unloading, the URL), `roam/_haulModel.ts` (the cart, its oxen, the load drawn), sounds
+`audio/_haul.ts`; the cart's boxes are the village cart's (`people/_sceneCart.ts` `cartDef(false)`:
+without its straw), the oxen `people/_ox.ts`.
+
+- **The cart**: the family's, with its pair of white oxen, standing by his house on its east side
+  (the side away from the stair and the grandmother's yard), its oxen toward the mountain; his to
+  use once the house is his (`HOME.owned`), as his home store is. Drawn within 420 m of the camera
+  (as the village cart): its boxes and its load in one `Things` of its own (the people's things
+  shader: a draw and its shadow), the oxen a `Flock` of two (the animals' shader); written only
+  when it moves or its load changes. No new shader program.
+- **Leading it** (ដឹករទេះគោ, order 58): before the oxen, on foot, "E  ដឹករទេះគោ / Lead the ox
+  cart": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
+  oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
+  the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
+  0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
+  The land, every 0.5 m of the way, across its width (±1.15 m): in the roaming area, no water deeper
+  than 0.25 m, room overhead (3.4 m), rising or falling one of its 2 m steps at most (the map's slopes
+  are steps of its blocks: the walker hops them, the ridden cow climbs them, the cart rolls over them
+  on its heights smoothed along its way). And its body (`roam/_haulFit.ts`): the cart's box and its
+  oxen's (`CART_BOX`, `OXEN_BOX`, turned to its heading, the oxen straight before the cart, 5 cm
+  kept round them) must be clear, tested at every point the way adds and at every place it moves
+  to (each 0.2 m), so nothing thin is stepped over (a fence run is 0.25 m, a post 0.2 m):
+  each piece he built, its whole footprint (`w` × `d`), box against box, exactly (never in a pen,
+  under a shelter, over a bed); his blocks (`BLOCKS`), every cell the box meets from the land to
+  3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
+  walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
+  growing and the cart rolls up to the last place it fits and stands; once he is 6.5 m from the
+  ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
+  Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
+  map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
+  stands. Its hands are busy while he leads (no lantern, no gathering: E lets go first).
+- **Loading** (at its tail, his bag not empty): "E  ដាក់ឡើងរទេះ (១២/៦០) / Load the cart (12/60)".
+  He walks to its tail, faces it, the tailboard comes down, and he lifts the pieces in one by one
+  (0.8 s each; a knock and a tick on the pad as each goes in): logs first, then bamboo, thatch,
+  clay, as a farmer packs a cart, all of his bag that fits in one press. Long pieces he holds by
+  their near end and pushes in over the tail; thatch and baskets across before him. The stick held
+  away stops him (what is in stays in). A toast: "Loaded on the cart: 2 bamboo poles and 1 log ·
+  cart 16/60" (and "no room for the rest" when the cart is full). The cart full: "រទេះពេញហើយ (៦០/៦០) /
+  The cart is full (60/60)" (no key).
+- **Unloading at home** (the cart within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
+  Unload at home (16/60)": he lifts the pieces off, the top first (clay, thatch, bamboo, logs), and
+  puts each down beside him into his home store (`STORE`: the build card uses it). Away from home a
+  loaded cart's tail says "ដឹកទៅផ្ទះ ដើម្បីដាក់ចុះ / Lead it home to unload (16/60)" (no key).
+- **The limit**: 60 in weight (`CART_LIMIT`), five of his bag loads (`CARRY_LIMIT` 12): the
+  biggest piece he builds, the cattle pen, takes 44 (5 logs, 10 bamboo poles, 4 bundles of
+  thatch), so one cart load brings it home with room to spare.
+- **The load drawn** (`_haulModel.ts` `loadLayout`): logs (2.5 m, two boxes, one turned 45°, pale
+  cut ends with a darker heart) along the bed in rows of three, up to three high, their ends out
+  over the tailboard (let down whenever it carries logs or poles); bamboo poles (3 m, two node
+  bands, yellow and greener ones) over them six across, a second row nested in the first; bundles
+  of sugar-palm thatch (three leaf panels askew, the bamboo spine on one side, the ragged leaf tips
+  over the other, a rattan tie) stacked over the back half; clay in round woven baskets (three
+  boxes turned 60°, a dark rim, the clay heaped) over the front half. Each drawn up to `CAP`
+  (logs 9, bamboo 12, thatch 8, clay 6); more lies in the same heap (the prompt and the toasts
+  give the true count). 3–7 boxes a piece: 260 boxes at most with the cart (63), the piece in his
+  hands and the rope, one draw.
+- **Saved** (progress.ts): `haul.load` (`{ log: 5, bamboo: 10 }`: a material whose count is not a
+  whole number 0‥999 is dropped, a load over 60 cut down to it, the heaviest first, as the bag's),
+  `haul.at` (`[x, z, yaw]`, when he lets go and every 4 s while he leads; not three numbers on the
+  map: forgotten; on load a place in water or out of the roaming area puts it back by the house).
+  Shots and `progress=0` save nothing.
+- **Sounds**: `haulPut:log|bamboo|thatch|clay` (a piece laid in or put down), `haulRope` (the rope
+  taken, let go) (`audio/_haul.ts`, moves); the wheels rolling and a hub's knock as he leads it are
+  the ride's (`cartRoll`, `cartKnock`); the oxen's bells and the axle's creak the people's
+  (`oxBell`, `cartCreak`, through the map's calls).
+- **URL** (shots and the dev server only, `env.shot || import.meta.env.DEV`, `fromUrl` too: on the
+  live site a link never fills or moves his cart): `cartload=<material>:<n>,…` (`0` empty) ·
+  `cartat=<x>,<z>,<yaw°>` (the ground under its axle, its heading) · `cartlead=1` (he leads it: it
+  stands behind him the way he faces at `at=`, `yaw=`) · `cartwork=load|unload[:<u>]` (him at its
+  tail, held `u` (0‥1, 0.5 by default) into a piece). `report()` gives them back.
+  `window.__haul` (shots, the dev server): `state()`, `passable(x, z, yaw°[, y])`. Console lines
+  `[haul] …`. E.g. `roam=walk&at=428,-140&yaw=180&home=1&cartload=log:4,bamboo:6,thatch:3,clay:2&cartlead=1&rcam=-120,18,11`
+  (leading it on the Kulen foot meadow) ·
+  `roam=walk&at=432,-100&yaw=180&home=1&cartload=log:3,bamboo:4,thatch:3,clay:2&cartwork=unload:0.4&rcam=90,12,6`
+  (unloading at home).
+- **Nothing stands on it** (`build/haul.ts` `cartBlocks(x, z, r)`: the cart's box and its oxen's,
+  `CART_BOX`, `OXEN_BOX`, where it stands now, read live while he leads it, and at its place by the
+  house, kept for it while it is away): the build ghost refuses a piece over them, its footprint grown
+  0.2 m (`roam/_buildSpots.ts` `cart`, "រទេះគោនៅទីនេះ / The ox cart is here"; its place by the house
+  while it is away: `cartPlace`, "កន្លែងរទេះគោ / The ox cart's place"), and so does planting
+  (`roam/_gardenSpots.ts`, the same two, the plant's room): no shelter over it, no fence or pen round it.
+  A footprint check of its own can ask `cartBlocks` (or `cartBlockWhy`) too.
+- **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
+  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke, and its whole boxes
+  clear as above: not in a house, the market's stalls, nor under or in a piece built over it since —
+  a shelter, a pen, a bed, a fence through it); else it goes to its
+  place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
+  is wrapped to ±π (a broken 1e300 reads as 0).
+- **On the maps**: once he leaves it away from its place by the house, "រទេះគោរបស់ខ្ញុំ / My ox cart"
+  (`ui/_minimapSpots.ts` `my-cart`, as his bicycle's `my-bike`): on the mini-map where it stands, and on
+  the big map (its button moved there by `roam/_haul.ts`, its name only while pointed at or the target);
+  not while he leads it.
+- **The lead's hint** names the control in use: E, the pad's □ (`padName`), or on a touch screen the
+  button that says "លែងខ្សែ / Let go of the rope".
+- **Not yet**: the people walk through it (it is not in the people's traffic); "In my bag" (the explorer
+  menu's Bag page) does not list the cart's load; the build card does not count a loaded cart standing
+  at home (he would buy what is in it: unload it first).
+
 ### Sharing his fruit
 
 The player's ask (October 2026): "we have our garden fruit … share with neighbor, monk, kid". Sharing
