@@ -591,6 +591,8 @@ function injectStyle(): void {
     :lang(km) .bf-head b { font-size: 16.5px; }
     /* A touch screen: above the build bar (_build.ts .bd-bar), the top keeps its buttons and the mini-map. */
     body.roam-touch:not(.pad-on) .bf-panel { top: auto; bottom: calc(262px + 4vh); }
+    /* (a phone upright: clear of the tool column down the right side) */
+    @media (max-width: 560px) { body.roam-touch:not(.pad-on) .bf-panel { left: 10px; transform: none; width: calc(100% - 78px); } }
     @media (max-height: 500px) {
       .bf-panel { top: 8px; padding: 6px 12px 7px; gap: 3px; width: min(340px, calc(100% - 300px)); }
       body.roam-touch:not(.pad-on) .bf-panel { top: 8px; bottom: auto; }
