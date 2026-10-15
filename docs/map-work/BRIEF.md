@@ -1025,15 +1025,18 @@ and `mix` live here, `garden/models/_fruitKit.ts` passes them on). No flat
 square leaves and no plain box fruit: call the kit. Draw into a builder on
 the map's axes (the part's world builder, a `Local` or `PsFrame` that only
 moves its origin), never into a turned `Frame`'s local builder (give world
-points and add its `theta` to `az`). Headings: `az` 0 is +z, π/2 is +x; `el`
+points and add its `theta` to `az`; a `Local` with a `theta` is the same).
+Into a `PsFrame`'s `b`, add its origin: the shapes' blocks are not in its
+near-only `small` set, so they are drawn at every distance. Headings: `az` 0 is +z, π/2 is +x; `el`
 up from level. Every shape takes `color`, `mat` (leaves and vines `mapLeaf`,
 fruit `petal`), `shade`, `src`.
 
 | Call | Use it for | Blocks |
 |---|---|---|
 | `leaf(b, at, { len, wid, az, el, color, bend?, roll?, segs?: 1‥3, shape?: 'lance'│'broad'│'oblong', fold?, rib?, stalk? })` → tip | a mango leaf (0.25 × 0.06 m), a gourd or pumpkin leaf (`broad`, 0.25 m), a banana leaf (`oblong`, `segs: 3`, `fold: 0.35`, 1.5–2.5 × 0.4–0.6 m) | 1 seg no rib 2, 2 segs 5, 3 segs 7, 3 folded 10, +1 `stalk` |
-| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `blush`), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 4 (`low` 2), +1 `stalk`, +1 `blush` |
-| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low? })` | pumpkin (0.45 × 0.3, ribbed), a round gourd or melon hanging (`hang`: its stalk's length) | 4 (`low` 2), +1 `stalk` |
+| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, curve?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `curve` 0.3: its kidney bend; `blush` blended from the stalk end, no patch), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 5 (`low` 2), +1 `stalk` |
+| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low?, foot? })` | in four steps up its side (a narrower foot, the widest band in two tones: the ribs, the shoulder, the top): pumpkin (0.45 × 0.3), a round gourd, melon or jackfruit hanging (`hang`: its stalk's length) | 6 (`low` 3: foot, band, shoulder), +1 `stalk` |
+| `fan(b, at, { az, el, stalk, lobes?, spread?, len, wid, color, … })` → the stalk's end | a hand-shaped leaf on a long stalk (papaya: stalk 0.6–0.8, seven lobes 0.55 × 0.22, `spread` 3.2) | 1 + each lobe's (5 lobes of 1 piece, no rib: 11; the papaya's 7: 15) |
 | `long(b, base, { len, thick, az, el, color, curve?, segs?, neck?, taper?, sides?, tip?, cap? })` → tip | banana finger (0.16 × 0.035, `neck` 0.55, dark `tip`, `sides: 4`), long eggplant (0.25 × 0.055, green `cap`) | `segs` × 2 (× 1 `sides: 4`), +1 `tip`, +1 `cap`: banana 3, eggplant 5 |
 | `vine(b, pts, { thick, color, leaf?: { len, wid, every?, spread?, el?, … }, tendril?, seed? })` with `sag(a, c, n, drop)` or `spiral(foot, h, r, turns, n)` | a gourd or bean vine up a post and along a trellis | 1 a span + each leaf + 3 a tendril |
 
@@ -1051,6 +1054,35 @@ mango, a box pumpkin); the console lists each shape's blocks and the cameras:
 `cam=146.2,8.5,-290.6,146.2,7,-293.9,44` (the old way and the leaves),
 `cam=150.6,8.4,-290.2,150.6,7.2,-293.9,50` (the fruit at eye height),
 `cam=153,8.4,-291.4,153,7.5,-293.9,38` (the vine).
+
+**Banana plants** (AWP-8): one for the whole map, `veg/banana.ts`
+`bananaPlant(b, x, y, z, { seed, yaw?, stage?: 3│4, bunch? })`: the home
+garden's own model (garden/models/banana.ts `bananaModel`: torn paddle
+leaves, the rolled young leaf, sheath streaks, a dry leaf, pups, a bunch of
+green ណាំវ៉ា and the purple flower), set on the land and turned `yaw`. It
+replaced the three bananas the places drew themselves (the floating
+village's and the hamlets' box crowns, `village/_kit.ts`; the jungle camps'
+and the Kulen picnic's beams, `jungle/_campKit.ts`; the palm-sugar yard's
+slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
+Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
+145–155; about 36 plants on the map (+6 200 blocks in all). On the low
+graphics level (phones) the map's bananas are the model's `lite` form (the
+stem in one piece, four untorn leaves of two pieces each, held out lower and
+arching over and down, their halves with no midrib blocks, no streaks, dry
+leaves or pups, a bunch of two hands of four fingers in the leaves' family,
+so a place gets no extra mesh: 24 blocks, 38 with a bunch): the parts that plant them say
+the build's level first (`veg/detail.ts` `plantDetail(ctx.quality)` in
+hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's plants are untouched (never lite; its
+models hash the same).
+
+**Papaya trees**: one for the map's places, `veg/papaya.ts` `papayaTree`
+(the back hamlet's, the east village's and the floating village's: hamlet/_bhTrees.ts,
+hamlet/_evKit.ts `papaya`): a slim grey trunk, nine hand-shaped leaves
+(`fan`, seven lobes) on long pale stalks, the rolled young leaves, six
+teardrop fruit under the crown (≈ 170 blocks); on the low level five leaves of
+four lobes and four `low` fruit (≈ 60). The nursery's papaya seedlings
+(hamlet/_nursery.ts) have three-lobed `fan` leaves (two on low). The home
+garden's papaya is its own model.
 
 ## The floating village
 
@@ -1311,7 +1343,21 @@ fish, dried fish and prahok, palm sugar and rice facing the square, meat and
 vegetables on the far side of its aisle, ground sellers under small umbrellas
 in front of it; the sugarcane cart and the motos and bicycles parked south of
 the street; trodden earth where people walk. Goods are colourful clusters that
-read from a few metres (`_mkGoods.ts`); `_mkStalls.ts` builds each stall in its
+read from a few metres (`_mkGoods.ts`); its fruit and vegetables are the plant
+kit's shapes (AWP-7: mangoes teardrops, pomelos, rambutans, limes, tomatoes,
+coconuts rounds, eggplants, cucumbers and corn longs, Khmer pumpkins ribbed
+rounds, banana hands and hanging bunches and mangoes lying on their flat side
+(greener at the stalk, its nub) from `veg/produce.ts`; the grill's corn a long
+in its husk; `mk.kit` keeps their toggles: the same in the back hamlet's and
+the floating village's markets, which use these goods; on the low level the
+kit's cheap forms, the heaps' upper layers whole and the fruit hidden under
+their middles left out; the Kulen food stall's
+counter fruit, the picnic families' fruit and the floating market's fruit
+boat are the same shapes as boxes of the people's things, `people/_kitRig.ts`
+`kitInRig` on `veg/kitBoxes.ts`, which also gives the Water Festival's moon
+trays their bananas and coconut; the offering bananas at the Kulen shrine,
+the back hamlet's neak ta and spirit house and his home's altar are
+`bananaHand` with `flat`, level blocks that a turned frame places right); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
 tables, platforms, stools and wheels. Sizes are the people's (1.4 × true).
 The day: each stall is open over its own window of `clock` (`STALLS` `open`):
@@ -1524,7 +1570,9 @@ and a log trough, rice straw stacked round poles beside it — low loaves with
 rounded tops, never a stepped cone with a finial that would read as a stupa
 under Angkor Wat's towers —, the spirit house — a tiny Angkor tower on a
 white post, bay sei, incense and a candle that glow at night —, the well and
-wash slab, the vegetable garden in its bamboo fence, washing, paddy drying on
+wash slab, the vegetable garden in its bamboo fence (morning glory, chilli
+bushes and lemongrass of the plant kit's leaves; a gourd trellis of vines,
+broad leaves, hanging luffa and bottle gourds), washing, paddy drying on
 a tarp by the granary, a dog asleep; earth steps where the lane and the back
 trail step up a whole land block, so the cattle, the bicycles and the people
 walk up them; footpaths trodden bare through the grass — the children's from
@@ -1539,12 +1587,19 @@ tamarind (green coconuts, the cane press, the ice box, a machete in the
 stump, plastic stools, the painted sign "ទឹកដូង": `_bhSign.ts`, Koulen in
 pixels), the neak ta shrine at the tamarind's foot, cloth round its trunk;
 fruit trees (`_bhTrees.ts`: mango, jackfruit, bamboo, jungle trees round the
-edges, stamped from the jungle's prototypes; coconut and sugar palms from
-veg/palms.ts; bananas, papayas, bougainvillea); the pond's mist
+edges, stamped from the jungle's prototypes, their mangoes and jackfruit the
+plant kit's teardrops and rounds; coconut and sugar palms from veg/palms.ts;
+papayas (veg/papaya.ts: the kit's hand-shaped leaves and teardrops); bananas
+(veg/banana.ts), bougainvillea); the pond's mist
 (`_bhMist.ts`: thick at dawn, a veil at night, nothing by day). Lamps in the
 windows, the stoves' embers and the candles are glows and halos
 (village/_lights.ts), no light; smoke at dawn and supper time
-(village/_smoke.ts); roosters at dawn, hens by day.
+(village/_smoke.ts); roosters at dawn, hens by day. The garden's plants, the
+trees' fruit, the juice cart's coconuts and the market's produce are drawn
+only within 140 m of the hamlet's middle (`NEAR_PLANTS`, veg/nearDetail.ts:
+last in each family's mesh, which draws only the blocks before them further
+off; the console line counts them), times the camera's zoom against the
+map's 40° (`zoomOf`: through the binoculars, 4‥8°, the whole map).
 
 The morning market (ផ្សារភូមិ: `_bhMarket.ts`, where it stands:
 `_bhMarketPlan.ts`, its people `people/_sceneBackMarket.ts`) is the hamlet's

@@ -43,6 +43,17 @@ const RIDGE = EX - EZ;
 /** The ridge cap's top (m): the piece's height (`PIECES.shelter.h`). */
 export const SHELTER_TOP = under(EZ) + THICK + 0.3;
 
+/**
+ * What is over a point of the shelter's frame (local m; AWP-23: a hanging lantern's cord goes up to it): the bottom of
+ * its plates and tie beams under them, else of the rafters under the thatch (m over its ground); Infinity past its eaves.
+ */
+export function shelterUnder(lx: number, lz: number): number {
+  const u = Math.min(EX - Math.abs(lx), EZ - Math.abs(lz));
+  if (u < 0) return Infinity;
+  const plate = (Math.abs(Math.abs(lz) - PZ) < 0.09 && Math.abs(lx) < PX + 0.2) || (Math.abs(Math.abs(lx) - PX) < 0.09 && Math.abs(lz) < PZ + 0.2);
+  return plate ? SHELTER_POST_TOP - 0.12 : under(Math.min(u, EZ)) - 0.1;
+}
+
 /** The bench along the back: its seat's top, its middle's depth (the seat: `PIECES.shelter.seat`). */
 const SEAT_Y = PIECES.shelter.seat!.y;
 const SEAT_Z = PIECES.shelter.seat!.z;

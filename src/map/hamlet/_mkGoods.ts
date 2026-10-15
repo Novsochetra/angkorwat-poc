@@ -1,4 +1,7 @@
 import { HAT_BANDS, KRAMAS, SHIRTS, TROUSERS, type KramaLook } from '../../character/clothes';
+import { plantsLite } from '../veg/detail';
+import { long, round } from '../veg/plantKit';
+import { bananaBunch, bananaHand, mangoLying } from '../veg/produce';
 import { tone, type MkBuild, type Tones } from './_mkKit';
 import type { Goods } from './_mkPlan';
 
@@ -183,6 +186,93 @@ function scale(mk: MkBuild, x: number, y: number, z: number): void {
   mk.box(x, y + 0.22, z, 0.34, 0.03, 0.3, 0xc8ccce, 'petal', 1.1);
 }
 
+// ── Produce: the plant kit's shapes (veg/plantKit.ts, veg/produce.ts) ─────────
+
+/**
+ * Where a heap's items lie (the same rows and layers as `heap`), each handed to `put`: its middle on the surface
+ * (stall space, `py` its foot), its size, whether it is in the top layer (seen whole: the full shape; the rest the
+ * kit's `low` ones), a seeded 0‥1 and its tone.
+ */
+function heapOf(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, put: (px: number, py: number, pz: number, sz: number, top: boolean, r: number, c: number) => void): void {
+  // (on the low graphics level, veg/detail.ts: the layers over the bottom one whole, no gaps, so the fruit under
+  // their middles, hidden from every side, is left out)
+  const lite = plantsLite();
+  for (let l = 0; l < layers; l++) {
+    const ex = rx - l * s * 0.55;
+    const ez = rz - l * s * 0.55;
+    if (ex < s * 0.3 || ez < s * 0.3) break;
+    const next = l + 1 < layers && rx - (l + 1) * s * 0.55 >= s * 0.3 && rz - (l + 1) * s * 0.55 >= s * 0.3;
+    const nx = Math.max(1, Math.round((ex * 2) / (s * 1.02)));
+    const nz = Math.max(1, Math.round((ez * 2) / (s * 1.02)));
+    for (let i = 0; i < nx; i++)
+      for (let k = 0; k < nz; k++) {
+        const r = mk.r(i + seed * 3, k + l * 7, x * 3 + z);
+        if (l > 0 && r < 0.2 && !lite) continue;
+        const px = x - ex + ((i + 0.5) * ex * 2) / nx + (mk.r(i, k, seed + 1) - 0.5) * s * 0.25;
+        const pz = z - ez + ((k + 0.5) * ez * 2) / nz + (mk.r(k, i, seed + 2) - 0.5) * s * 0.25;
+        if (lite && next && Math.abs(px - x) < ex - s * 1.05 && Math.abs(pz - z) < ez - s * 1.05) continue;
+        const sz = s * (0.85 + r * 0.25);
+        put(px, y + l * s * 0.8, pz, sz, !next, r, tone(tones, mk.r(i, k, l + seed)));
+      }
+  }
+}
+
+/** A heap of round fruit (the kit's `round`: lower layers `low`): limes, rambutans, pomelos, coconuts, tomatoes… */
+function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, o: { hgt?: number; cap?: number; ribs?: boolean } = {}): void {
+  mk.kit((b) =>
+    heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
+      round(b, mk.point(px, py, pz), { wid: sz, hgt: sz * (o.hgt ?? 0.9), color: c, ribs: o.ribs ?? false, cap: o.cap, ry: mk.heading + r * 1.6, low: !top || sz < 0.12 || plantsLite(), foot: !plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
+    ),
+  );
+}
+
+/** A heap of mangoes lying every which way on their flat sides (veg/produce.ts `mangoLying`: long, kidney-curved, the ripe ones' shoulders blushing). */
+function mangoHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, ripe = true): void {
+  mk.kit((b) =>
+    heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
+      // (laid in rows the seller's way, stalk ends alternating, a little gap between them: they read one by one from a
+      // step or two, not as a heap of blocks)
+      mangoLying(b, mk.point(px, py + sz * 0.28, pz), mk.heading + Math.PI / 2 + (r < 0.5 ? 0 : Math.PI) + (r - 0.5) * 0.5, { len: sz * 1.12, wid: sz * 0.78, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top || plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
+    ),
+  );
+}
+
+/**
+ * Long vegetables in a pile, side by side across the frame's x (rows `thick` apart) and end to end along its z
+ * (`len` apart), in `layers` (the kit's `long`, square: eggplants, cucumbers, corn).
+ */
+function longPile(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, len: number, thick: number, tones: Tones, layers: number, seed: number, o: { cap?: number; capWid?: number; curve?: number; neck?: number; taper?: number }): void {
+  mk.kit((b) => {
+    for (let l = 0; l < layers; l++) {
+      const ex = rx - l * thick * 0.6;
+      if (ex < thick * 0.6) break;
+      const nx = Math.max(1, Math.round((ex * 2) / (thick * 1.2)));
+      const nz = Math.max(1, Math.round((rz * 2) / (len * 1.05)));
+      for (let i = 0; i < nx; i++)
+        for (let k = 0; k < nz; k++) {
+          const r = mk.r(i + seed * 3, k + l * 7, x * 3 + z);
+          if (l > 0 && r < 0.2) continue;
+          const px = x - ex + ((i + 0.5) * ex * 2) / nx;
+          const pz = z - rz + ((k + 0.5) * rz * 2) / nz;
+          // (alternate ends: stalk to the front, then to the back)
+          const a = (i + k + l) % 2 ? 0 : Math.PI;
+          const az = mk.heading + a + (r - 0.5) * 0.3;
+          const base = mk.point(px - Math.sin(a) * len * 0.5, y + l * thick * 0.8 + thick * 0.45, pz - Math.cos(a) * len * 0.5);
+          long(b, base, { len: len * (0.9 + 0.2 * r), thick, az, el: 0.03, curve: o.curve ?? 0.15, neck: o.neck ?? 0.8, taper: o.taper ?? 0.75, sides: 4, color: tone(tones, mk.r(i, k, l + seed)), cap: o.cap, capWid: o.capWid, shade: 0.92 + r * 0.14, src: mk.src });
+        }
+    }
+  });
+}
+
+/** A heap of chillies: slim fruit every which way, the top layer the kit's tapering `long`. */
+function chiliHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number): void {
+  heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) => {
+    const a = r * Math.PI * 2;
+    if (top && !plantsLite()) mk.kit((b) => long(b, mk.point(px - Math.sin(a) * sz * 0.75, py + sz * 0.22, pz - Math.cos(a) * sz * 0.75), { len: sz * 1.5, thick: sz * 0.36, az: mk.heading + a, el: 0.05, curve: 0.4, neck: 0.75, taper: 0.4, sides: 4, color: c, src: mk.src }));
+    else mk.box(px, py + sz * 0.18, pz, sz * 0.34, sz * 0.32, sz * 1.4, c, 'petal', 0.9 + r * 0.15, 0, a);
+  });
+}
+
 // ── Stall by stall ───────────────────────────────────────────────────────────
 
 /** Fill a stall's selling surface with its goods. */
@@ -221,16 +311,17 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
       break;
     }
     case 'fruit': {
-      heap(mk, ...xz3(at(0.16, 0.45), y), 0.3, 0.4, 0.14, C.mango, 3, 1);
-      heap(mk, ...xz3(at(0.42, 0.62), y), 0.22, 0.26, 0.17, C.dragon, 2, 2);
-      heap(mk, ...xz3(at(0.42, 0.2), y), 0.22, 0.16, 0.1, C.rambutan, 2, 3);
-      heap(mk, ...xz3(at(0.66, 0.5), y), 0.24, 0.34, 0.25, C.pomelo, 2, 4);
+      // (mangoes, dragon fruit, rambutans, pomelos, longan, green mangoes and coconuts: the plant kit's teardrops and rounds)
+      mangoHeap(mk, ...xz3(at(0.16, 0.45), y), 0.3, 0.4, 0.14, C.mango, 3, 1);
+      roundHeap(mk, ...xz3(at(0.42, 0.62), y), 0.22, 0.26, 0.17, C.dragon, 2, 2, { hgt: 1.15, cap: 0x7aa840 });
+      roundHeap(mk, ...xz3(at(0.42, 0.2), y), 0.22, 0.16, 0.1, C.rambutan, 2, 3);
+      roundHeap(mk, ...xz3(at(0.66, 0.5), y), 0.24, 0.34, 0.25, C.pomelo, 2, 4, { hgt: 0.85 });
       basket(mk, ...xz3(at(0.88, 0.3), y), 0.4, 0.4, 0.2);
-      heap(mk, ...xz3(at(0.88, 0.3), y + 0.2), 0.16, 0.16, 0.08, C.longan, 1, 5);
-      heap(mk, ...xz3(at(0.86, 0.78), y), 0.18, 0.14, 0.14, C.mangoGreen, 2, 6);
+      roundHeap(mk, ...xz3(at(0.88, 0.3), y + 0.2), 0.16, 0.16, 0.08, C.longan, 1, 5);
+      mangoHeap(mk, ...xz3(at(0.86, 0.78), y), 0.18, 0.14, 0.14, C.mangoGreen, 2, 6, false);
       scale(mk, ...xz3(at(0.62, 0.12), y));
       // Coconuts on the ground in front of the table.
-      heap(mk, cx - W * 0.3, 0, z1 + 0.25, 0.4, 0.18, 0.26, C.coconut, 2, 7);
+      roundHeap(mk, cx - W * 0.3, 0, z1 + 0.25, 0.4, 0.18, 0.26, C.coconut, 2, 7, { hgt: 0.95, cap: 0x8a7a4a });
       break;
     }
     case 'cloth': {
@@ -294,11 +385,11 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
         mk.box(lx, y + 0.01, lz, 0.46, 0.02, 0.4, tone(C.leafy, mk.r(u * 10, 94)), 'petal', 0.85);
         return [lx, lz] as [number, number];
       };
-      heap(mk, ...xz3(leaf(0.6, 0.72), y + 0.02), 0.16, 0.14, 0.06, C.chiliRed, 2, 11);
-      heap(mk, ...xz3(leaf(0.74, 0.72), y + 0.02), 0.16, 0.14, 0.06, C.chiliGreen, 2, 12);
-      heap(mk, ...xz3(leaf(0.88, 0.72), y + 0.02), 0.16, 0.14, 0.08, C.lime, 2, 13);
+      chiliHeap(mk, ...xz3(leaf(0.6, 0.72), y + 0.02), 0.16, 0.14, 0.06, C.chiliRed, 2, 11);
+      chiliHeap(mk, ...xz3(leaf(0.74, 0.72), y + 0.02), 0.16, 0.14, 0.06, C.chiliGreen, 2, 12);
+      roundHeap(mk, ...xz3(leaf(0.88, 0.72), y + 0.02), 0.16, 0.14, 0.08, C.lime, 2, 13);
       heap(mk, ...xz3(leaf(0.66, 0.3), y + 0.02), 0.18, 0.14, 0.08, C.ginger, 1, 14);
-      heap(mk, ...xz3(leaf(0.84, 0.3), y + 0.02), 0.18, 0.14, 0.07, C.shallot, 2, 15);
+      roundHeap(mk, ...xz3(leaf(0.84, 0.3), y + 0.02), 0.18, 0.14, 0.07, C.shallot, 2, 15, { hgt: 1.1, cap: 0xc8a070 });
       heap(mk, cx + W * 0.18, y, z0 + 0.1, 0.18, 0.12, 0.13, C.herb, 2, 16);
       scale(mk, ...xz3(at(0.52, 0.72), y));
       break;
@@ -360,16 +451,18 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
         mk.box(sx, y + 0.05, sz, 0.03, 0.03, D * 1.1, 0xc8b27a, 'petal');
         if (kind === 0) for (let k = 0; k < 3; k++) mk.box(sx, y + 0.07, sz - 0.12 + k * 0.12, 0.09, 0.08, 0.09, tone(C.meat, mk.r(i, k, 121)), 'petal');
         else if (kind === 1) mk.box(sx, y + 0.08, sz, 0.12, 0.1, 0.34, 0x6a7a3a, 'petal');
-        else mk.box(sx, y + 0.08, sz, 0.11, 0.11, 0.3, tone(C.corn, mk.r(i, 122)), 'petal');
+        // (an ear of corn, its husk pulled back to the stick: the plant kit's long)
+        else mk.kit((b) => long(b, mk.point(sx, y + 0.075, sz - 0.17), { len: 0.34, thick: 0.1, az: mk.heading, el: 0, curve: 0.05, neck: 0.85, taper: 0.7, sides: 4, color: tone(C.corn, mk.r(i, 122)), cap: tone(C.husk, mk.r(i, 123)), capWid: 1.5, src: mk.src }));
       }
       break;
     }
     case 'drinks': {
       // Green coconuts, some cut open with straws; cups stacked; bags of juice.
-      heap(mk, ...xz3(at(0.25, 0.5), y), 0.3, 0.3, 0.24, C.coconut, 2, 40);
+      roundHeap(mk, ...xz3(at(0.25, 0.5), y), 0.3, 0.3, 0.24, C.coconut, 2, 40, { hgt: 0.95, cap: 0x8a7a4a });
       for (let k = 0; k < 3; k++) {
         const [kx, kz] = at(0.6 + k * 0.13, 0.62);
-        mk.box(kx, y + 0.12, kz, 0.24, 0.24, 0.24, tone(C.coconut, mk.r(k, 131)), 'petal');
+        // (cut open: the white flesh showing round the hole at its top)
+        mk.kit((b) => round(b, mk.point(kx, y, kz), { wid: 0.24, hgt: 0.24, color: tone(C.coconut, mk.r(k, 131)), ribs: false, cap: 0xf0ece0, ry: mk.heading + k, low: true, src: mk.src }));
         mk.box(kx, y + 0.25, kz, 0.14, 0.03, 0.14, 0xf0ece0, 'petal');
         mk.box(kx + 0.03, y + 0.36, kz, 0.03, 0.22, 0.03, [0xe87aa0, 0x5a9ad8, 0xe8d040][k], 'petal');
       }
@@ -450,18 +543,27 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
       break;
     }
     case 'veg': {
-      heap(mk, ...xz3(at(0.12, 0.55), y), 0.18, 0.3, 0.13, C.eggplant, 2, 60);
-      heap(mk, ...xz3(at(0.28, 0.6), y), 0.14, 0.22, 0.12, C.eggplantGreen, 2, 61);
-      for (let i = 0; i < 6; i++) mk.box(...xz3(at(0.42 + (i % 3) * 0.06, 0.3 + Math.floor(i / 3) * 0.3), y + 0.06), 0.1, 0.1, 0.3, tone(C.cucumber, mk.r(i, 181)), 'petal');
-      heap(mk, ...xz3(at(0.62, 0.5), y), 0.12, 0.26, 0.1, C.tomato, 2, 62);
-      for (let p = 0; p < 3; p++) mk.box(...xz3(at(0.78 + (p % 2) * 0.1, 0.3 + p * 0.22), y + 0.15), 0.32, 0.28, 0.32, tone(C.pumpkin, mk.r(p, 182)), 'petal');
+      // Long purple eggplants and round green ones, cucumbers, tomatoes, Khmer pumpkins (ល្ពៅ), long beans, a cabbage, corn
+      // in its husk: the plant kit's longs and rounds.
+      longPile(mk, ...xz3(at(0.12, 0.55), y), 0.18, 0.3, 0.26, 0.065, C.eggplant, 2, 60, { cap: 0x4e7a2e, capWid: 1.4, curve: 0.3, neck: 0.75, taper: 0.85 });
+      roundHeap(mk, ...xz3(at(0.28, 0.6), y), 0.14, 0.22, 0.12, C.eggplantGreen, 2, 61, { hgt: 0.85, cap: 0x4e7a2e });
+      longPile(mk, ...xz3(at(0.48, 0.45), y), 0.15, 0.3, 0.3, 0.09, C.cucumber, 1, 181, { curve: 0.1, neck: 0.8, taper: 0.8 });
+      roundHeap(mk, ...xz3(at(0.62, 0.5), y), 0.12, 0.26, 0.1, C.tomato, 2, 62, { hgt: 0.8, cap: 0x4e7a2e });
+      mk.kit((b) => {
+        for (let p = 0; p < 3; p++) {
+          const [px, pz] = at(0.78 + (p % 2) * 0.1, 0.3 + p * 0.22);
+          const c = tone([C.pumpkin[0], C.pumpkin[1]], mk.r(p, 182));
+          round(b, mk.point(px, y, pz), { wid: 0.4, hgt: 0.28, color: c, rib: 0xb06a1e, cap: 0xc87a24, stalk: 0x8a6a3a, ry: mk.heading + p, low: plantsLite(), src: mk.src });
+        }
+      });
       for (let i = 0; i < 4; i++) bundle(mk, ...xz3(at(0.3, 0.12 + i * 0.07), y), 0.55, 0.09, tone(C.leafy, mk.r(i, 183)), 0xd83a2a, true);
-      heap(mk, ...xz3(at(0.94, 0.8), y), 0.12, 0.12, 0.2, C.cabbage, 1, 63);
-      for (let i = 0; i < 3; i++) {
-        const [kx, kz] = at(0.52 + i * 0.05, 0.86);
-        mk.box(kx, y + 0.07, kz, 0.1, 0.12, 0.32, tone(C.corn, mk.r(i, 184)), 'petal');
-        mk.box(kx, y + 0.07, kz - 0.18, 0.12, 0.1, 0.14, tone(C.husk, mk.r(i, 185)), 'petal');
-      }
+      roundHeap(mk, ...xz3(at(0.94, 0.8), y), 0.12, 0.12, 0.2, C.cabbage, 1, 63, { hgt: 0.85 });
+      mk.kit((b) => {
+        for (let i = 0; i < 3; i++) {
+          const [kx, kz] = at(0.52 + i * 0.05, 0.86);
+          long(b, mk.point(kx, y + 0.055, kz - 0.25), { len: 0.4, thick: 0.1, az: mk.heading, el: 0.02, curve: 0.05, neck: 0.85, taper: 0.7, sides: 4, color: tone(C.corn, mk.r(i, 184)), cap: tone(C.husk, mk.r(i, 185)), capWid: 1.6, src: mk.src });
+        }
+      });
       break;
     }
     case 'fishG': {
@@ -477,10 +579,15 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
     }
     case 'fruitG': {
       // A heap of mangoes on the sheet, bunches of bananas lying by it, a basket of rambutan.
-      heap(mk, ...xz3(at(0.3, 0.55), y), 0.42, 0.36, 0.16, C.mango, 3, 70);
-      for (let k = 0; k < 3; k++) heap(mk, ...xz3(at(0.66 + (k % 2) * 0.12, 0.3 + k * 0.22), y), 0.18, 0.1, 0.11, C.banana, 2, 71 + k);
+      mangoHeap(mk, ...xz3(at(0.3, 0.55), y), 0.42, 0.36, 0.16, C.mango, 3, 70);
+      mk.kit((b) => {
+        for (let k = 0; k < 3; k++) {
+          const [hx, hz] = at(0.66 + (k % 2) * 0.12, 0.3 + k * 0.22);
+          bananaHand(b, mk.point(hx - 0.1, y + 0.03, hz), mk.heading + Math.PI / 2 + (mk.r(k, 75) - 0.5) * 0.5, { fingers: plantsLite() ? 3 : 5, len: 0.22, thick: 0.05, color: tone(C.banana, mk.r(k, 76)), src: mk.src });
+        }
+      });
       basket(mk, ...xz3(at(0.88, 0.7), y), 0.4, 0.4, 0.24);
-      heap(mk, ...xz3(at(0.88, 0.7), y + 0.24), 0.16, 0.16, 0.09, C.rambutan, 2, 74);
+      roundHeap(mk, ...xz3(at(0.88, 0.7), y + 0.24), 0.16, 0.16, 0.09, C.rambutan, 2, 74);
       break;
     }
     case 'cakes': {
@@ -519,10 +626,11 @@ export function hang(mk: MkBuild, kind: Goods, x0: number, x1: number, z: number
       for (let i = 0; i < 6; i++) strand(mk, x0 + W * ((i + 0.5) / 6), top, z, 5, 0.08, i % 3 === 2 ? C.jasmine : C.marigold, 200 + i);
       break;
     case 'fruit':
+      // Bunches of bananas on strings from the pole (veg/produce.ts: the plant kit's fingers).
       for (let i = 0; i < 4; i++) {
         const x = x0 + W * (0.15 + i * 0.23);
         mk.box(x, top - 0.1, z, 0.02, 0.2, 0.02, 0xd8d0c0, 'petal');
-        heap(mk, x, top - 0.62, z, 0.14, 0.1, 0.1, C.banana, 3, 210 + i);
+        mk.kit((b) => bananaBunch(b, mk.point(x, top - 0.2, z), mk.heading, { hands: plantsLite() ? 1 : 2, color: tone(C.banana, mk.r(i, 211)), seed: i * 1.3, src: mk.src }));
       }
       break;
     case 'greens':

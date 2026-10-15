@@ -1,5 +1,6 @@
 import { Group, type Object3D } from 'three';
 import type { MapContext, MapFrame, MapPart, Subject } from '../types';
+import { plantDetail } from '../veg/detail';
 
 /**
  * The settled places added round the map (part `hamlet`, built after the
@@ -50,6 +51,8 @@ function plantKitLineup(): boolean {
 }
 
 export async function buildHamlets(ctx: MapContext): Promise<MapPart> {
+  // (the map's own plants, bananas and papayas: their cheap form on the low graphics level, veg/detail.ts)
+  plantDetail(ctx.quality);
   const object = new Group();
   object.name = 'hamlet';
   const pieces: HamletPiece[] = [];

@@ -5,6 +5,7 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate, splitByPlace } from '../cull';
 import { JUNGLE_SITES, type JungleSite } from '../layout';
 import type { MapContext, MapFrame, MapPart, Subject } from '../types';
+import { plantDetail } from '../veg/detail';
 import { bridgeSpan, buildBridge, type BridgeSpan } from './_bridges';
 import { CampFx } from './_campFx';
 import { buildMonkHut } from './_campHut';
@@ -30,6 +31,8 @@ import { buildSwing, swingSpot, type SwingBuild } from './_swing';
  * halos and the fire's smoke (not voxels). No lights: glow + bloom.
  */
 export function buildCamps(ctx: MapContext): MapPart {
+  // (the map's own plants, bananas and papayas: their cheap form on the low graphics level, veg/detail.ts)
+  plantDetail(ctx.quality);
   const { field } = ctx;
   const b = new VoxelBuilder();
   const src = traceSource();

@@ -1,7 +1,11 @@
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
+import type { VoxelBox } from '../../voxel/VoxelBuilder';
 import { SURFACE } from '../heightfield';
+import { leaf, long, round, sag, spiral, vine } from '../veg/plantKit';
 import { BAMBOO, dog, jar, laundry, LEAF, Local, POST, tone } from '../village/_kit';
+import { plantsLite } from '../veg/detail';
+import { bananaHand } from '../veg/produce';
 import type { BuildEnv } from './_bhHouses';
 import { GARDEN, HOMES, homeToWorld, PEN, SPIRIT, WELL, type BackSpots } from './_bhSpots';
 
@@ -44,7 +48,7 @@ export function buildYard(env: BuildEnv, spots: BackSpots): void {
   haystack(env, src, 117.24, -327.26, 3.3, 1.95, 3);
   spiritHouse(env, L, g);
   well(L, g);
-  garden(L, g);
+  garden(L, g, env.fine);
   // Washing on a line between two bamboo poles east of the children's house.
   const [ax, az] = [131.8, -338.9];
   const [bx, bz] = [135.9, -339.9];
@@ -263,7 +267,7 @@ function spiritHouse(env: BuildEnv, L: Local, g: (x: number, z: number) => numbe
   baySei(L, x + 0.31, y + 1.505, z + 0.25, 0.85);
   L.box(x - 0.06, y + 1.545, z + 0.34, 0.07, 0.08, 0.07, 0xe8eef2, 'mapStone');
   L.box(x + 0.02, y + 1.52, z + 0.4, 0.3, 0.03, 0.05, 0xf0a020, 'petal');
-  L.box(x - 0.02, y + 1.535, z + 0.2, 0.16, 0.05, 0.08, 0xe8c840, 'petal');
+  bananaHand(L.b, [x - 0.08, y + 1.522, z + 0.2], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
   // Incense sticks in a little pot, the candle.
   L.box(x + 0.12, y + 1.55, z + 0.3, 0.09, 0.09, 0.09, 0x8a5a3a, 'mapStone');
   for (const dx of [-0.02, 0.02]) L.box(x + 0.12 + dx, y + 1.71, z + 0.3, 0.012, 0.24, 0.012, 0x6a3a2a, 'petal');
@@ -311,7 +315,11 @@ function well(L: Local, g: (x: number, z: number) => number): void {
 }
 
 /** The vegetable garden: raised beds of greens, chillies and lemongrass, a gourd trellis, a low bamboo fence round it. */
-function garden(L: Local, g: (x: number, z: number) => number): void {
+function garden(L: Local, g: (x: number, z: number) => number, fine?: Set<VoxelBox>): void {
+  // (the plants: drawn only near, veg/nearDetail.ts; the fence, the beds' earth and the trellis's bamboo always)
+  const near = (n0: number) => {
+    if (fine) for (let i = n0; i < L.b.boxes.length; i++) fine.add(L.b.boxes[i]);
+  };
   const { x0, z0, x1, z1 } = GARDEN;
   const y = g((x0 + x1) / 2, (z0 + z1) / 2);
   // Fence: posts and a woven band of split bamboo (a gap on the yard side for the gardener).
@@ -329,40 +337,97 @@ function garden(L: Local, g: (x: number, z: number) => number): void {
   }
   // Two raised beds of dark earth, running east–west.
   const soil = 0x4e3a2a;
+  const top = y + 0.22;
   const beds: [number, number][] = [
     [z0 + 0.7, z0 + 2.4],
     [z0 + 3.4, z1 - 0.6],
   ];
   beds.forEach(([za, zb], b) => {
-    L.span(x0 + 0.5, y, za, x1 - 0.4, y + 0.22, zb, soil, 'mapStone', 0.9);
-    // Rows: morning glory (low, bright), chillies (dark with red), lemongrass (tall, pale).
+    L.span(x0 + 0.5, y, za, x1 - 0.4, top, zb, soil, 'mapStone', 0.9);
+    const n0 = L.b.boxes.length;
+    // Rows: morning glory (low, bright), chillies (dark with red), lemongrass (tall, pale): the plant kit's leaves.
     for (let x = x0 + 0.8, i = 0; x < x1 - 0.6; x += 0.55, i++) {
       const kind = (i + b) % 3;
       const zc = (za + zb) / 2 + (L.r(i, b, 52) - 0.5) * 0.3;
-      if (kind === 0) L.box(x, y + 0.34, zc, 0.5, 0.24, (zb - za) * 0.7, tone([0x5aa03a, 0x68ac40, 0x4e9434], L.r(i, b, 53)), 'mapLeaf');
-      else if (kind === 1) {
-        L.box(x, y + 0.42, zc, 0.36, 0.4, 0.36, tone(LEAF, L.r(i, b, 54)), 'mapLeaf');
-        L.box(x + 0.08, y + 0.5, zc + 0.1, 0.08, 0.08, 0.08, 0xd8281c, 'petal');
-      } else L.box(x, y + 0.6, zc, 0.24, 0.76, 0.24, tone([0x9ab45a, 0xa8c064, 0x8aa84e], L.r(i, b, 55)), 'mapLeaf');
+      const r = (k: number) => L.r(i * 7 + k, b, 60);
+      if (kind === 0) {
+        // Morning glory (ត្រកួន) in clumps along the row: arrow leaves on short stems, rising and bending over.
+        for (const dz of [-0.42, -0.14, 0.14, 0.42]) {
+          const c = tone([0x5aa03a, 0x68ac40, 0x4e9434], L.r(i, b + dz, 53));
+          for (let k = 0; k < 4; k++) leaf(L.b, [x + (r(k) - 0.5) * 0.14, top + 0.03 + (k % 2) * 0.05, zc + dz], { len: 0.28, wid: 0.12, az: k * 1.57 + r(k + 3) * 1.5, el: 0.5, bend: 0.45, segs: 1, rib: false, color: c, src: L.src });
+        }
+      } else if (kind === 1) {
+        // A chilli bush: a little stem, dark leaves all round, red chillies hanging under them.
+        const c = tone(LEAF, L.r(i, b, 54));
+        L.box(x, top + 0.16, zc, 0.035, 0.32, 0.035, 0x4a6a2a, 'mapLeaf');
+        for (let k = 0; k < 7; k++) leaf(L.b, [x, top + 0.18 + (k % 3) * 0.08, zc], { len: 0.2, wid: 0.075, az: k * 0.9 + r(k) * 0.5, el: 0.4, bend: 0.5, segs: 1, rib: false, color: c, src: L.src });
+        for (let k = 0; k < 3; k++) long(L.b, [x + Math.sin(k * 2.1) * 0.08, top + 0.24, zc + Math.cos(k * 2.1) * 0.08], { len: 0.08, thick: 0.018, az: k * 2.1 + r(5), el: -1.2, curve: 0.3, neck: 0.8, taper: 0.5, sides: 4, color: 0xd8281c, src: L.src });
+      } else {
+        // Lemongrass: a clump of long pale blades from one foot, arching out.
+        const c = tone([0x9ab45a, 0xa8c064, 0x8aa84e], L.r(i, b, 55));
+        L.box(x, top + 0.06, zc, 0.1, 0.12, 0.1, 0xb8c088, 'mapLeaf');
+        for (let k = 0; k < 6; k++) leaf(L.b, [x, top + 0.08, zc], { len: 0.62 + 0.16 * r(k), wid: 0.045, az: k * 1.05 + r(k + 6), el: 1.25, bend: 0.5, segs: 1, rib: false, color: c, src: L.src });
+      }
     }
+    near(n0);
   });
-  // A gourd trellis over the east end: bamboo posts and a lattice top, leaves, hanging gourds, yellow flowers.
+  // A gourd trellis over the east end: bamboo posts and a lattice top; luffa and bottle gourd vines up the posts and
+  // along the bars, broad leaves lying over it and spilling down its edges, gourds hanging under it, yellow flowers.
   const tx0 = x1 - 1.6;
-  for (const [x, z] of [
+  const tx1 = x1 - 0.2;
+  const posts: [number, number][] = [
     [tx0, z0 + 0.4],
-    [x1 - 0.2, z0 + 0.4],
+    [tx1, z0 + 0.4],
     [tx0, z1 - 0.3],
-    [x1 - 0.2, z1 - 0.3],
-  ])
-    L.box(x, y + 0.95, z, 0.07, 1.9, 0.07, tone(BAMBOO, L.r(x, z, 56)), 'mapBark');
-  for (let z = z0 + 0.6; z < z1 - 0.3; z += 0.9) L.span(tx0, y + 1.88, z - 0.03, x1 - 0.2, y + 1.93, z + 0.03, tone(BAMBOO, 0.5), 'mapBark');
-  for (let k = 0; k < 6; k++) {
-    const x = tx0 + 0.3 + L.r(k, 57) * 1.1;
-    const z = z0 + 0.8 + L.r(k, 58) * (z1 - z0 - 1.4);
-    L.box(x, y + 1.98, z, 0.7, 0.14, 0.7, tone(LEAF, L.r(k, 59)), 'mapLeaf');
-    if (k % 2 === 0) L.box(x + 0.1, y + 1.62, z, 0.14, 0.38, 0.14, 0x8ab04a, 'mapLeaf');
-    else L.box(x - 0.1, y + 2.07, z + 0.1, 0.1, 0.06, 0.1, 0xf0d040, 'petal');
+    [tx1, z1 - 0.3],
+  ];
+  const ty = y + 1.9;
+  for (const [x, z] of posts) L.box(x, y + 0.95, z, 0.07, 1.9, 0.07, tone(BAMBOO, L.r(x, z, 56)), 'mapBark');
+  const bars: number[] = [];
+  for (let z = z0 + 0.6; z < z1 - 0.3; z += 0.9) {
+    L.span(tx0, ty - 0.02, z - 0.03, tx1, ty + 0.03, z + 0.03, tone(BAMBOO, 0.5), 'mapBark');
+    bars.push(z);
   }
+  const nv = L.b.boxes.length;
+  const VINE = 0x4e7a2e;
+  const GOURD_LEAF = [0x4f8a34, 0x5a9a3a, 0x467e2e];
+  const broad = { wid: 0.26, bend: 0.3, shape: 'broad' as const, color: GOURD_LEAF[0], src: L.src };
+  // (up each post, round it, to the top)
+  posts.forEach(([x, z], k) => {
+    vine(L.b, spiral([x, y + 0.02, z], 1.9, 0.05, 1.25, 4, k), { thick: 0.016, color: VINE, seed: 40 + k, leaf: { ...broad, len: 0.22, every: 2, el: 0.3, color: GOURD_LEAF[k % 3] }, src: L.src });
+  });
+  // (along every bar, just over it, sagging a little between the posts)
+  bars.forEach((z, k) => {
+    vine(L.b, sag([tx0, ty + 0.05, z + 0.03], [tx1, ty + 0.05, z - 0.03], 6, 0.04), { thick: 0.016, color: VINE, tendril: 0x8ab04a, seed: 50 + k, leaf: { ...broad, len: 0.3, wid: 0.3, every: 1, el: 0.15, spread: 1.4, segs: 1, rib: false, color: GOURD_LEAF[(k + 1) % 3] }, src: L.src });
+  });
+  // Leaves lying over the lattice in a loose grid (most of it green from above and below), and more hanging down its edges.
+  const nx = 4;
+  const nz = Math.round((z1 - z0 - 0.7) / 0.5);
+  for (let i = 0; i < nx; i++)
+    for (let j = 0; j < nz; j++) {
+      const k = i * nz + j;
+      const x = tx0 + ((i + 0.5) * (tx1 - tx0)) / nx + (L.r(k, 57) - 0.5) * 0.2;
+      const z = z0 + 0.45 + ((j + 0.5) * (z1 - z0 - 0.7)) / nz + (L.r(k, 58) - 0.5) * 0.25;
+      leaf(L.b, [x, ty + 0.07 + L.r(k, 61) * 0.04, z], { ...broad, len: 0.32, wid: 0.32, az: L.r(k, 59) * Math.PI * 2, el: 0.1 + 0.25 * L.r(k, 62), segs: 1, rib: false, color: tone(GOURD_LEAF, L.r(k, 60)) });
+    }
+  for (let k = 0; k < 12; k++) {
+    const side = k % 2 ? 1 : -1;
+    const z = z0 + 0.6 + ((Math.floor(k / 2) + 0.5) * (z1 - z0 - 1.0)) / 6;
+    leaf(L.b, [side > 0 ? tx1 + 0.04 : tx0 - 0.04, ty + 0.05, z], { ...broad, len: 0.3, wid: 0.3, az: (side * Math.PI) / 2 + (L.r(k, 63) - 0.5) * 0.6, el: -0.3, bend: 0.7, color: tone(GOURD_LEAF, L.r(k, 64)) });
+  }
+  // Gourds hanging under it: long luffa (ននោង), pale green, and two round-bellied bottle gourds (ឃ្លោក); yellow flowers on top.
+  for (let k = 0; k < 6; k++) {
+    const x = tx0 + 0.25 + L.r(k, 61) * (tx1 - tx0 - 0.5);
+    const z = bars[k % bars.length] + (L.r(k, 62) - 0.5) * 0.3;
+    if (k < 4) long(L.b, [x, ty - 0.02, z], { len: 0.36 + 0.08 * L.r(k, 63), thick: 0.065, az: L.r(k, 64) * Math.PI * 2, el: -1.45, curve: 0.25, neck: 0.55, taper: 0.8, color: 0x7aa448, cap: 0x5a7a2e, capWid: 0.9, src: L.src });
+    else round(L.b, [x, ty - 0.02, z], { wid: 0.17, hgt: 0.24, hang: 0.1, color: 0x9ab860, rib: 0x8aa850, stalk: 0x5a7a2e, ry: k, src: L.src });
+  }
+  for (let k = 0; k < 5; k++) {
+    const x = tx0 + 0.2 + L.r(k, 65) * (tx1 - tx0 - 0.4);
+    const z = z0 + 0.8 + L.r(k, 66) * (z1 - z0 - 1.4);
+    L.b.box(x, ty + 0.14, z, 0.09, 0.03, 0.09, 0xf0d040, 'petal', { src: L.src, ry: Math.PI / 4 + k });
+  }
+  near(nv);
 }
 
 /**
