@@ -3139,9 +3139,11 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 ### Furniture and lanterns
 
 He furnishes what he built (ticket AWP-23, build plan step 4; part of the add-on `build`, words
-`build…`): nine more build pieces on the build card's **Furniture** tab (the yard's pieces on its
-**Yard** tab: ← → or the pad's d-pad ← → and L1 / R1, or a tap, change the tab; it opens on Furniture
-when he stands on a floor). Each is a model the map already draws (no new work in `src/kit`):
+`build…`): nine more build pieces on the build card's **Furniture** tab (the card has three tabs,
+nine rows at most each so the keys 1‥9 reach every row: **Buildings** សំណង់, AWP-20's footprint
+buildings; **Yard** ទីធ្លា, the yard's pieces; **Furniture** គ្រឿងសង្ហារិម; ← → or the pad's d-pad ← →
+and L1 / R1, or a tap, change the tab; it opens on the one shown last, on Furniture when he stands on
+a floor). Each is a model the map already draws (no new work in `src/kit`):
 `map/build/furniture.ts` (no three.js: the list, `FURNITURE` merged into `PIECES`, `FURN` (each one's
 height band over its floor, `hang`), `HANG`, `FURN_GRID`), `map/build/models/furniture.ts` (the
 models: the village kit's own functions, its `metal` drawn `mapStone`), `roam/_buildFurnSpots.ts`
@@ -3164,7 +3166,10 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   stand on under it (the walk map's `standAt` from his feet), the same under every point of it (each
   0.25 m): his land (the yard pieces' rules, `canBuild`, but only what fills the same height is in its
   way: a mat goes under a hanging lantern, the shelter's roof and the hammock's cloth are not in the
-  way, their posts and bench are), a floor of his blocks on his land, or his stilt house's rooms and
+  way, their posts and bench are; inside a footprint shed too: AWP-20's "no piece on a footprint
+  building's land" is not furniture's rule), a floor of his blocks on his land (a footprint stilt
+  house's floor: its walls and posts are in the way, and its doorway, the door's cells and the metre of
+  floor inside them, is kept clear: "Keep this spot clear"), or his own stilt house's rooms and
   veranda round its own things ("ទុកកន្លែងនេះឱ្យទំនេរ / Keep this spot clear": the sleeping mat and
   net, where he gets up, the sitting mat, the jar, the doors' swing, the way to the stair, the
   veranda's mat). Past the floor's edge: "Keep all of it on the floor". On a 0.25 m grid, turned as
@@ -3174,9 +3179,14 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   on a cord from its hook (2.78 m) up to the roof over it (`hangCeil`: the walk map's `ceilingAt`,
   his blocks and his house's roof; a shelter he built: its rafters and plates, models/shelter.ts
   `shelterUnder`), at least 2.85 m and at most 6.5 m over the floor ("The roof is too low / high
-  here"; none: "No roof over it to hang it from"). The ghost shows the cord. The cords: one small
+  here"; none: "No roof over it to hang it from"; a footprint house or shed's thatch, its smoothed
+  steps too). It hangs over what stands on the floor (a mat, the baskets). The ghost shows the cord. The cords: one small
   batch of the bark family for all (one draw, no shadow), made again when a lantern comes, rises or
   goes or his blocks change.
+- **A footprint building that holds furniture** (on its floor, or a lantern hung from its roof) is
+  not taken down: held E says "សូមរុះគ្រឿងសង្ហារិមខាងក្នុងចេញសិន (២) / Take down the furniture inside
+  first (2)" (`_buildFurniture.ts` `furnitureIn`): nothing is left floating, nothing he paid for is
+  lost. Furniture on the land inside a shed does not count (it stays standing).
 - **Light**: the oil lamp (3 cd, 7 m) and the hanging lantern (7 cd, 12 m) are placed lights as the
   lamp post (build/view.ts `LIGHT`): they glow at night, the nearest few give real light.
 - **The work**: he walks to the piece on its floor and hammers there (_buildWork.ts: his place and
