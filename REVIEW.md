@@ -95,6 +95,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - Kill only your own processes: never `pkill -f` a shared script name.
 - A new pad combo uses a button no other roaming action takes (L2 is the
   binoculars): check `pad.ts`'s button map and every add-on that reads the pad (AWP-30).
+- A saved time is never rounded past the saved clock: act, reload at once, and
+  check nothing comes back (AWP-10).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
