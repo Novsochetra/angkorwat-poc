@@ -32,9 +32,12 @@ const TINT = { ok: 0.5, no: 0.7 };
 const EDGE_OK = new Color(0xd8ffc8);
 const EDGE_NO = new Color(0xffb0a4);
 const GOLD = new Color(0xffd27a);
+/** The cursor where no corner can go (past his land). */
+const CUR_NO = new Color(0xff6a50);
 const STAKE = new Color(0x6a4a2a);
 const KRAMA = new Color(0xc8402e);
-const ALPHA = { ok: 0.36, no: 0.5 };
+/** Opacity where it can stand and where not; the cursor alone (before the first corner: it must read on the grass). */
+const ALPHA = { ok: 0.36, no: 0.5, cursor: 0.9 };
 const PULSE = 1.6;
 const SWELL = 0.1;
 /** The outline: its width, height over the ground (m), a length of it at most (it follows the ground). */
@@ -64,6 +67,8 @@ export class FootGhost {
   private ok = true;
   private shownOk: boolean | null = null;
   private dirty = false;
+  /** Only the cursor (no footprint yet). */
+  private bare = true;
   private on = 0;
   private clock = 0;
 
@@ -89,6 +94,7 @@ export class FootGhost {
   set(plan: FootPlan | null, rect: FootRect | null, anchor: readonly [number, number] | null, cursor: readonly [number, number]): void {
     const out = this.boxes;
     out.length = 0;
+    this.bare = !rect;
     const f = this.world.field;
     if (plan)
       for (let b = 0; b < plan.n && out.length < MAX - 400; b++) {
@@ -140,13 +146,24 @@ export class FootGhost {
     const cy = f.heightAt(cx, cz);
     const h = BLOCK_M / 2;
     for (const [dx, dz, sx, sz] of [
-      [0, -h, BLOCK_M + 0.08, 0.08],
-      [0, h, BLOCK_M + 0.08, 0.08],
-      [-h, 0, 0.08, BLOCK_M + 0.08],
-      [h, 0, 0.08, BLOCK_M + 0.08],
+      [0, -h, BLOCK_M + 0.1, 0.1],
+      [0, h, BLOCK_M + 0.1, 0.1],
+      [-h, 0, 0.1, BLOCK_M + 0.1],
+      [h, 0, 0.1, BLOCK_M + 0.1],
     ] as const)
-      out.push({ x: cx + dx, y: cy + 0.06, z: cz + dz, sx, sy: 0.06, sz, ok: GOLD, no: GOLD });
-    out.push({ x: cx, y: cy + 0.45, z: cz, sx: 0.07, sy: 0.9, sz: 0.07, ok: GOLD, no: GOLD });
+      out.push({ x: cx + dx, y: cy + 0.06, z: cz + dz, sx, sy: 0.08, sz, ok: GOLD, no: CUR_NO });
+    // (corner ticks a cell out, so the cell reads from build mode's camera; a stake with a gold pennant)
+    for (const [dx, dz] of [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ] as const) {
+      out.push({ x: cx + dx * (h + 0.3), y: cy + 0.06, z: cz + dz * (h + 0.12), sx: 0.36, sy: 0.06, sz: 0.08, ok: GOLD, no: CUR_NO });
+      out.push({ x: cx + dx * (h + 0.12), y: cy + 0.06, z: cz + dz * (h + 0.3), sx: 0.08, sy: 0.06, sz: 0.36, ok: GOLD, no: CUR_NO });
+    }
+    out.push({ x: cx, y: cy + 0.7, z: cz, sx: 0.08, sy: 1.4, sz: 0.08, ok: GOLD, no: CUR_NO });
+    out.push({ x: cx + 0.16, y: cy + 1.25, z: cz, sx: 0.28, sy: 0.22, sz: 0.04, ok: GOLD, no: CUR_NO });
     if (anchor) {
       const ax = cellMid(anchor[0]);
       const az = cellMid(anchor[1]);
@@ -187,7 +204,7 @@ export class FootGhost {
     }
     this.mesh.visible = true;
     const breath = 1 + SWELL * Math.sin(this.clock * PULSE);
-    this.mat.opacity = this.on * (this.ok ? ALPHA.ok : ALPHA.no) * breath;
+    this.mat.opacity = this.on * (this.bare ? ALPHA.cursor : this.ok ? ALPHA.ok : ALPHA.no) * breath;
     if (this.mat.depthTest !== this.ok) this.mat.depthTest = this.ok;
     const boxes = this.boxes;
     if (this.dirty) {
