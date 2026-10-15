@@ -3175,7 +3175,7 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   (the knife up) · `…&gather=bamboo:2:0.56` (the blow, chips flying) ·
   `roam=walk&at=428,-134&yaw=180&home=1&bag=bamboo:2&store=log:1,clay:2&purse=30000&buildcard=1`
   (the card's costs) · `…&menu=1&menutab=bag` (In my bag). The bamboo forest: `gather=bamboo` with `at=` by one of
-  its clumps (`roam=walk&at=371,-197&yaw=180&gather=bamboo:2:0.56`), and `bambooforest=near|far` holds that form of it
+  its clumps (`roam=walk&at=373.5,-199.2&yaw=180&gather=bamboo:2:0.56`: the clump `bambooForest:374,-201`), and `bambooforest=near|far` holds that form of it
   wherever the camera is, `bambooforest=0` hides it (still in the walk map): checks of its look and cost.
 
 ### Sharing his fruit
