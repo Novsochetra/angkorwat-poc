@@ -15,7 +15,8 @@ import { BLOCKS, type Block, type BlockStore } from './store';
  *   angle (an L-shaped roof's valley side), a `stairOuter` where one lies
  *   only across a corner (a hip roof's corner), a `slab` on the ridge (no roof
  *   cell higher round it) or between two higher ones. So the roof is two
- *   blocks deep at every step: no sky through it (mesh.ts `diagonalJoints`:
+ *   blocks deep at every step: no sky through it but the pinhole any layer of
+ *   blocks shows where four corners meet, seen straight up (mesh.ts `diagonalJoints`:
  *   a roof one cell deep meets the next row only along an edge).
  * - {@link gableRoof}: a whole gable over a rectangle (the steep Khmer
  *   gable, 45°: rows of full blocks from the eaves on the two long sides up

@@ -2382,7 +2382,8 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   lies only across a corner, a `slab` on the ridge), in its own material and
   colour; cells already filled are left; it returns the cells it filled (to take
   down with the roof). The roof is then two blocks deep at
-  every step, so no sky shows through (a stepped roof one block deep meets the
+  every step, so no sky shows through but the pinhole any layer of blocks shows
+  where four corners meet, seen straight up (a stepped roof one block deep meets the
   next row only along an edge: pinholes at every seam). `stepBlock(roof, i, j, k,
   under)` is the rule for one step. `gableRoof({ i0, k0, i1, k1, j, ridge: 'x' |
   'z', block, stepped?, ends? })` writes a whole steep Khmer gable (45°: rows of
