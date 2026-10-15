@@ -24,7 +24,7 @@ import type { RoamCtx, RoamWorld } from './types';
  * here, and its camera looks over it as build mode's does.
  *
  * - **Drawing** (on the 0.5 m block grid, along the map's axes): a gold cursor
- *   on the ground, a step before his feet (or where the mouse points on the
+ *   on the ground, two steps before his feet (or where the mouse points on the
  *   ground; or, on a touch screen, where he tapped: held there until the
  *   stick moves). **E** (the pad's □, the touch Use button; a mouse click at
  *   the cursor) marks the first corner (a stake with a red strip); he walks,
@@ -51,8 +51,8 @@ import type { RoamCtx, RoamWorld } from './types';
 
 export type FootReason = BuildReason | 'small' | 'most' | 'room' | 'money';
 
-/** The cursor this far before his feet (m). */
-const AHEAD = 1.0;
+/** The cursor this far before his feet (m: past his hat's brim, seen from build mode's camera). */
+const AHEAD = 1.8;
 /** A mouse's pointer, or a tap, reaches this far (m). */
 const AIM_RANGE = 90;
 /** A tap: shorter than this (ms), moving less than this (px); never in the stick's corner (touch.ts: lower left). */
@@ -479,15 +479,16 @@ export const FootMode = {
     return kind ? now.prompt : null;
   },
 
-  /** Where build mode's camera looks (its focus moves toward it) and how far the footprint reaches (m). */
-  target(): { x: number; z: number; reach: number } {
+  /** Where build mode's camera looks (its focus moves toward it), how far the footprint reaches and its building's top over the ground (m). */
+  target(): { x: number; z: number; reach: number; high: number } {
     const r = now.rect;
-    if (!r) return { x: cellMid(cursor[0]), z: cellMid(cursor[1]), reach: 1 };
+    if (!r) return { x: cellMid(cursor[0]), z: cellMid(cursor[1]), reach: 1, high: 0 };
     const x0 = cellMin(r.i0);
     const x1 = cellMin(r.i1 + 1);
     const z0 = cellMin(r.k0);
     const z1 = cellMin(r.k1 + 1);
-    return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, reach: Math.hypot(x1 - x0, z1 - z0) / 2 };
+    const y = env ? env.world.field.heightAt((x0 + x1) / 2, (z0 + z1) / 2) : 0;
+    return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, reach: Math.hypot(x1 - x0, z1 - z0) / 2, high: now.plan ? now.plan.top - y : 0 };
   },
 
   /** The touch bar's middle: the size ("5 × 4 m"), or the kind's name before the first corner. */

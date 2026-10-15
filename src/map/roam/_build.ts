@@ -101,10 +101,10 @@ const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
 /**
- * Build mode's camera: tilt, distance at least (and per metre of the piece's reach), its ease and back (1/s), the focus
+ * Build mode's camera: tilt, distance at least (and per metre of the piece's reach; and per metre of a footprint building's height), its ease and back (1/s), the focus
  * toward the ghost, over his shoulder (rad); its first move (picked on the card): this quick (1/s), this long (s).
  */
-const MODE_CAM = { pitch: 0.66, distance: 8, perReach: 1.1, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.45, open: 5, openFor: 0.9 };
+const MODE_CAM = { pitch: 0.66, distance: 8, perReach: 1.1, perHigh: 1.8, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.45, open: 5, openFor: 0.9 };
 
 let env: AddonEnv | null = null;
 let view: BuildView | null = null;
@@ -512,8 +512,8 @@ function useFoot(ctx: RoamCtx): void {
 }
 
 /** What build mode's camera frames: the piece's ghost, or the footprint (its middle, its reach, m). */
-function modeTarget(): { x: number; z: number; reach: number } | null {
-  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(PIECES[placing].w, PIECES[placing].d) / 2 };
+function modeTarget(): { x: number; z: number; reach: number; high: number } | null {
+  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
   return FootMode.on ? FootMode.target() : null;
 }
 
@@ -596,7 +596,8 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
     const reach = aim.reach;
     cam.pitch += (pitchFor(Math.hypot(aim.x - ctx.body.pos.x, aim.z - ctx.body.pos.z)) - cam.pitch) * kk;
-    const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, modeCamBefore.distance));
+    // (a footprint building: far enough back that the camera looks over its roof, not from inside its ghost)
+    const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, aim.high * MODE_CAM.perHigh, modeCamBefore.distance));
     cam.distance += (want - cam.distance) * kk;
     return;
   }

@@ -34,7 +34,7 @@ const EDGE_NO = new Color(0xffb0a4);
 const GOLD = new Color(0xffd27a);
 const STAKE = new Color(0x6a4a2a);
 const KRAMA = new Color(0xc8402e);
-const ALPHA = { ok: 0.45, no: 0.55, mark: 0.9 };
+const ALPHA = { ok: 0.36, no: 0.5 };
 const PULSE = 1.6;
 const SWELL = 0.1;
 /** The outline: its width, height over the ground (m), a length of it at most (it follows the ground). */

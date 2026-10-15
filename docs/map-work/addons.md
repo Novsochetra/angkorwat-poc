@@ -3049,8 +3049,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   less over the ground: about 5.5 m long for a 3 m floor) with timber rails along both
   sides (a block beside each tread and one over it: he does not step off it). The shed: posts and plate (its
   underside 2.5 m over the ground), woven bamboo half walls 1 m high on three sides, the
-  door side open, the same roof, bamboo gables. The fence: a woven split-bamboo panel
-  1.5 m high (whole-bamboo rails along its foot and top), old bamboo posts every 2 m at
+  door side open, the same roof, bamboo gables. The fence: a panel 1.5 m high, whole-bamboo
+  rails along its foot and top and upright split-bamboo slats between them with a gap after
+  each (a wall to his feet all the same), old bamboo posts every 2 m at
   most capped half a block higher, each column on its own ground (it follows a slope), a
   gate 1.5–2 m wide in the middle of the door side (none on a side shorter than 3.5 m).
 - **The step's shape in one place** (AWP-24): `roofStep` (the block over each roof cell
@@ -3064,13 +3065,13 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   house 18 logs, 9 bamboo, 12 thatch, 4 clay (162,000 ៛ bought outright; 756 blocks); a
   6 × 6 m house 21 logs, 13 bamboo, 17 thatch, 4 clay (200,500 ៛; 968 blocks); an 8 × 8 m
   one 315,000 ៛ (1 556 blocks); the smallest shed
-  45,500 ៛ (the thatched shelter piece is 40,000 ៛); a fence ≈ 1,250 ៛ a metre (the fence
+  45,500 ៛ (the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre (a ring of 24 × 24 m 108,000 ៛) (the fence
   piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
 - **The card**: three rows first, each with its name, how many of how many, its line and
   "from 5 × 5 m", its cost at its smallest size (chips, the riel for what he lacks; greyed
   when all are built, he cannot pay even its smallest, or his land has no room for it).
-- **Footprint mode**: a gold cursor on the ground a metre before his feet (where the mouse
+- **Footprint mode**: a gold cursor on the ground 1.8 m before his feet, past his hat's brim (where the mouse
   points on the ground while it moves; on a touch screen, where he tapped, outside the
   stick's corner: held until the stick moves). **E** (the pad's □, the touch Use button; a
   mouse click) marks the first corner (a stake with a red strip); he walks, the footprint

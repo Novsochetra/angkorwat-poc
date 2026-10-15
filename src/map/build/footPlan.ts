@@ -37,9 +37,9 @@ import type { MaterialId, Materials } from './materials';
  *   under).
  * - **Fence** (របង): the footprint's edge as a fence line (or one straight
  *   run: a footprint one cell wide), chest high to him as the fence piece
- *   (build/models/fence.ts: 1.6 m): a panel of woven split bamboo 1.5 m high
- *   (its cells in a weave of new and old bamboo tones, the whole-bamboo rails
- *   along its foot and top), posts of old whole bamboo every 2 m at most,
+ *   (build/models/fence.ts: 1.6 m): a panel 1.5 m high, whole-bamboo rails
+ *   along its foot and top and upright split-bamboo slats between them with a
+ *   gap after each (a wall to his feet all the same), posts of old whole bamboo every 2 m at most,
  *   half a block over the panel (1.75 m), a gate 1.5–2 m wide in the middle
  *   of the door side (a side shorter than 3.5 m has none).
  *
@@ -374,9 +374,11 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
         if (isPost(posts, c[0], c[1]) || inGate(s, c)) continue;
         const g = jg(c[0], c[1]);
         for (let j = g; j < g + FENCE_H; j++) {
-          // (the whole-bamboo rails along its foot and top; between them the weave: new and older strips in a checker)
+          // (whole-bamboo rails along its foot and top; between them upright split-bamboo slats with gaps, every other
+          // cell: it reads as a fence, not a wall; still a wall to his feet, the gaps half a metre high)
           const rail = j === g || j === g + FENCE_H - 1;
-          const color = rail ? pick(COL.rail, c[0], j, c[1], 2) : (c[0] + c[1] + j) % 2 ? pick(COL.weave, c[0], j, c[1], 3) : pick(COL.wall, c[0], j, c[1], 4);
+          if (!rail && (c[0] + c[1]) % 2) continue;
+          const color = rail ? pick(COL.rail, c[0], j, c[1], 2) : pick(COL.weave, c[0], j, c[1], 3);
           put(c[0], j, c[1], { mat: 'bamboo', color });
         }
       }
