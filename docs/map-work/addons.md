@@ -3104,7 +3104,8 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   building's land: `BUILT.feetOver`), his ox cart and oxen (AWP-14), one of his own cows'
   stakes and its rope's reach ("គោរបស់អ្នកចងនៅទីនេះ / Your cow is tethered here": cattle/plan.ts
   `STAKES`, `ROPE` 2.7 m and 0.6 m more), his own bicycle where he left it ("កង់របស់អ្នកចតនៅ
-  ទីនេះ / Your bicycle is parked here", 1.1 m round it; these two refuse pieces too),
+  ទីនេះ / Your bicycle is parked here", 1.1 m round it; these two in one helper,
+  `build/owned.ts` `ownedBlocks(x, z, r)`, one line in `canBuild`: they refuse pieces too),
   anything else standing), no room left in his land's
   budget, not enough riel for what he lacks. A footprint over him is not refused: he
   works from beside it, and a block built where he stands puts him out beside it. A fence
