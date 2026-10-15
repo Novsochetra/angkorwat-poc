@@ -20,7 +20,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { MAP_SPOTS } from '../ui/_minimapSpots';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { CAP, HOLD, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
-import { boxClear, cowInBox, type CartBox } from './_haulFit';
+import { blocksInBox, boxClear, builtInBox, cowInBox, stakeInBox, worldInBox, type CartBox } from './_haulFit';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 import { PACE as WALK_PACE, stepSound } from './walker';
@@ -173,6 +173,7 @@ const BACK_PACE = 0.6;
 const BACK_MAX = 3;
 let backed = 0;
 let turning = 0;
+let turnSign = 0;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
 let stuckTries = 0;
 const tryFrom = { x: Number.NaN, z: Number.NaN };
@@ -699,7 +700,8 @@ function letGo(why: WordKey | null): void {
   if (env && pitchBefore !== null && env.cam.pitchMin === pitchLead) env.cam.pitchMin = pitchBefore;
   pitchBefore = null;
   if (why) {
-    env?.hud.toast(t(why));
+    // (stuck here twice in a row: say that the oxen can take it home)
+    env?.hud.toast(t(why === 'haulStuck' && stuckTries >= 2 ? 'haulStuckHome' : why));
     SFX.play('haulRope', 0.6);
   }
   dirty = true;
@@ -729,11 +731,17 @@ function turnTowardHim(ctx: RoamCtx, dt: number): boolean {
   const want = Math.atan2(p.x - P.ax, p.z - P.az);
   const diff = angleDiff(want, P.yaw);
   if (Math.abs(diff) < 0.12) return false;
-  const step = Math.sign(diff) * Math.min(Math.abs(diff), PIVOT_RATE * dt);
-  if (placeFits(ctx, P.ax, P.az, P.yaw + step, true)) {
-    standAt(ctx, P.ax, P.az, P.yaw + step);
-    P.wheel += Math.abs(step) * 2;
-    return true;
+  // (the short way round; where that is blocked, the long way: kept while it turns, so it does not swing back and forth)
+  if (turnSign === 0 || turning <= 0) turnSign = Math.sign(diff);
+  for (const sgn of [turnSign, -turnSign]) {
+    const left = sgn === Math.sign(diff) ? Math.abs(diff) : Math.PI * 2 - Math.abs(diff);
+    const step = sgn * Math.min(left, PIVOT_RATE * dt);
+    if (placeFits(ctx, P.ax, P.az, P.yaw + step, true)) {
+      turnSign = sgn;
+      standAt(ctx, P.ax, P.az, P.yaw + step);
+      P.wheel += Math.abs(step) * 2;
+      return true;
+    }
   }
   if (backed < BACK_MAX) {
     const b = Math.min(BACK_PACE * dt, BACK_MAX - backed);
@@ -1313,6 +1321,26 @@ registerAddon({
           }),
           /** Could the cart stand where it is now, or at (x, z) heading `yaw` degrees (its whole boxes, as a saved place is checked)? */
           fits: (x?: number, z?: number, yaw?: number) => standsAt(e, x === undefined || z === undefined ? CART_AT : { x, z, yaw: ((yaw ?? 0) * Math.PI) / 180 }),
+          /** Why the cart could not stand at (x, z) heading `yaw` degrees: the first part of the rule that fails, or null. */
+          whyNot: (x: number, z: number, yaw = 0) => {
+            const r = (yaw * Math.PI) / 180;
+            const dx = Math.sin(r);
+            const dz = Math.cos(r);
+            for (const [nm, d] of [['tail', CART_BOX.back], ['axle', 0], ['oxen', CART_YOKE - OX_BACK * K], ['yoke', CART_YOKE]] as const) {
+              const px = x + dx * d;
+              const pz = z + dz * d;
+              if (Number.isNaN(passable(e, px, pz, dx, dz, e.world.field.heightAt(px, pz)))) return `land at the ${nm} (${px.toFixed(1)}, ${pz.toFixed(1)})`;
+            }
+            const cb: CartBox = { x, z, yaw: r, back: CART_BOX.back, front: CART_BOX.front, half: CART_BOX.half };
+            const ob: CartBox = { x: x + dx * CART_YOKE, z: z + dz * CART_YOKE, yaw: r, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
+            for (const [nm, b] of [['cart', cb], ['oxen', ob]] as const) {
+              if (builtInBox(b)) return `${nm}: a piece he built`;
+              if (stakeInBox(b)) return `${nm}: a stake in use`;
+              if (blocksInBox(e.world, b)) return `${nm}: his blocks`;
+              if (worldInBox(e.world, b)) return `${nm}: the map (walk map) in the box`;
+            }
+            return null;
+          },
           /** Could the cart stand at (x, z) going `yaw` degrees (from ground `y`, default the land there)? Its ground, or NaN. */
           passable: (x: number, z: number, yaw = 0, y?: number) => {
             const r = (yaw * Math.PI) / 180;
