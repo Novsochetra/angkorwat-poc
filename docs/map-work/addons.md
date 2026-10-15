@@ -3223,9 +3223,9 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     `BambooCuts` of veg/bambooCut.ts, ids `bambooForest:<x>,<z>`). The undergrowth keeps off its clumps and grows
     in their shade (veg/canopy.ts); its clumps are in the nature book. Drawn: the leaves always as plain boxes
     (their rim painted on medium and up), the culms with their edges near (`PLAIN_NEARER`), in 44 m chunks (a
-    chunk's leaves and its culms: two draws); no far form (the same blocks from afar, plain: no swap to see); not
-    drawn while it and its shadow are out of the camera's view (then the still shadow map is asked again as it
-    comes back). Its canes are solid in the walk map, and each clump has a hidden core there (two 1.4 m squares 45°
+    chunk's leaves and its culms: two draws); no far form (the same blocks from afar, plain: no swap to see); a
+    chunk is not drawn while it and its shadow are out of the camera's view (then the still shadow map is asked
+    again as it comes back; the overview's frame takes in a sliver of it, at its right edge). Its canes are solid in the walk map, and each clump has a hidden core there (two 1.4 m squares 45°
     apart, 2.4 m high, never drawn): he walks between the clumps, never into one.
   - **Logs** (AWP-11, `roam/_gatherLogs.ts`): two felled trunks by the woodcutters'
     camp (`JUNGLE_SITES` woodcutters, jungle/_campWood.ts), their own blocks. A log is

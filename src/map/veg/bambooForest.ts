@@ -35,8 +35,8 @@ import { bamboo } from './species';
  *   `PLAIN_NEARER` times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`; all plain on the low level).
  * - **No far form**: from afar the same blocks, plain (as the jungle's tiles: no swap that could show). The culms
  *   are a third of the blocks; far off a chunk is two draws of plain boxes.
- * - **Out of view** (its blocks' box, swept away from the key light as far as their shadow reaches, off the camera's
- *   frustum; the overview's frame just misses it): not drawn. Back in view the still shadow map (low, medium: drawn
+ * - **Out of view** (a chunk's box, swept away from the key light as far as its shadow reaches, off the camera's
+ *   frustum): that chunk is not drawn (the overview's frame takes in a sliver of its east edge: one chunk). Back in view the still shadow map (low, medium: drawn
  *   again only when the light turns) is asked again, so its shadow is never missing.
  * - **Walking**: each clump has a hidden core in the walk map (`CORE`: never drawn), inside its ring of canes, so he
  *   stops at its canes from every side (a gap between two canes no longer lets him in).
@@ -56,8 +56,8 @@ const CLEAR_KEEP = 2.8;
 const CHUNK = 44;
 /** Each clump's hidden core in the walk map (m): two squares a turn of 45° apart (an octagon), inside its ring of canes, `h` over the highest ground round it. */
 const CORE = { w: 1.4, h: 2.4 };
-/** A shadow can fall this far below the foot of what casts it (m: as cull.ts). */
-const SHADOW_FALL = 12;
+/** A shadow can fall this far below the foot of what casts it (m: the forest stands on flat land, its hollow 2 m down). */
+const SHADOW_FALL = 2;
 /** A clump of the stand (veg/species.ts `bamboo`'s `stand`): its neighbours hide most of it. */
 const STAND = { culms: 8, seg: 3.5, nodesBelow: 3.6, leafFrom: 0.6, spray: 0.25 };
 /** Near chunks turn to plain boxes this many times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`: by the pixel). */
@@ -183,8 +183,11 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   const nearGroup = new Group();
   nearGroup.name = 'vegetation:bambooForest:near';
   object.add(nearGroup);
-  /** Per chunk and family: its mesh, and how it turns plain (the leaves at once, the culms past `PLAIN_NEARER`). */
-  const chunks: { lod: ChunkSwitch | null; leaf: boolean }[] = [];
+  /**
+   * Per chunk and family: its holder (the mesh and its plain twin, shown while it or its shadow can be in view), the
+   * box round its blocks, and how it turns plain (the leaves at once, the culms past `PLAIN_NEARER`).
+   */
+  const chunks: { holder: Group; box: Box3; lod: ChunkSwitch | null; leaf: boolean; shown: boolean }[] = [];
   const meshes: (InstancedMesh | null)[] = [];
   builders.forEach((pair, n) => {
     const ix = n % nx;
@@ -196,12 +199,17 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
         return;
       }
       const g = buildVoxelMesh(b, { quality: lowOnly ? 'low' : 'medium', name: `vegetation:bambooForest${n}${fam ? 'c' : 'l'}` });
-      nearGroup.add(g);
+      const holder = new Group();
+      holder.name = `vegetation:bambooForest${n}${fam ? 'c' : 'l'}:holder`;
+      holder.add(g);
+      nearGroup.add(holder);
       const mesh = g.children.find((o) => (o as InstancedMesh).isInstancedMesh) as InstancedMesh | undefined;
       meshes.push(mesh ?? null);
       // (the leaves sway a little past their blocks)
       if (!fam && mesh?.boundingSphere) mesh.boundingSphere.radius += 1;
-      chunks.push({ lod: lowOnly ? null : new ChunkSwitch(plan, g, nearGroup), leaf: !fam });
+      if (mesh && !mesh.boundingBox) mesh.computeBoundingBox();
+      const box = mesh?.boundingBox?.clone().expandByScalar(fam ? 0 : 1) ?? new Box3();
+      chunks.push({ holder, box, lod: lowOnly ? null : new ChunkSwitch(plan, g, holder), leaf: !fam, shown: true });
     });
   });
   BAMBOO_FOREST_CUT.attach(data, (code) => {
@@ -213,22 +221,15 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   // ── Each clump's core: hidden blocks in the walk map (never drawn): he stops at its canes from every side ──
   object.add(clumpCores(f, data, 'vegetation:bambooForest-solid'));
 
-  // ── Out of view: the box round its blocks, swept away from the key light as far as its shadow can fall ──
-  const blocksBox = new Box3();
-  nearGroup.traverse((o) => {
-    const m = o as InstancedMesh;
-    if (!m.isInstancedMesh) return;
-    if (!m.boundingBox) m.computeBoundingBox();
-    blocksBox.union(m.boundingBox!);
-  });
-  const shadows = new ShadowGate().addLive(nearGroup);
+  // ── Out of view: each chunk's box, swept away from the key light as far as its shadow can fall ──
+  const shadows = new ShadowGate();
+  for (const c of chunks) shadows.addLive(c.holder);
   const flat = new Vector3();
   const frustum = new Frustum();
   const vp = new Matrix4();
   const swept = new Box3();
   const away = new Box3();
   let frames = 0;
-  let shown = true;
   // (checks: `bambooforest=0` hides the forest, still in the walk map: shots and the dev server only)
   const hold = ctx.shot || import.meta.env.DEV ? new URLSearchParams(location.search).get('bambooforest') : null;
   if (hold === '0') object.visible = false;
@@ -240,29 +241,32 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
     stats,
     update(fr) {
       const cam = fr.camera.position;
-      // Drawn while it or its shadow can be in view (the first frames always: its shaders compile at load). Back in
-      // view, the still shadow map (low, medium: drawn again only when the light turns) is asked again, so it is never
-      // without the shadow it lost while hidden.
+      // A chunk is drawn while it or its shadow can be in view (the first frames all: their shaders compile at load).
+      // One back in view asks the still shadow map (low, medium: drawn again only when the light turns) again, so it
+      // is never without the shadow it lost while hidden.
       vp.multiplyMatrices(fr.camera.projectionMatrix, fr.camera.matrixWorldInverse);
       frustum.setFromProjectionMatrix(vp);
+      const warm = frames++ < 3;
       const l = fr.lightDir;
-      const reach = (blocksBox.max.y - blocksBox.min.y + SHADOW_FALL) / Math.max(0.2, l.y);
-      away.copy(blocksBox).translate(_v.set(-l.x * reach, -l.y * reach, -l.z * reach));
-      swept.copy(blocksBox).union(away);
-      const see = frames++ < 3 || frustum.intersectsBox(swept);
-      if (see !== shown) {
-        shown = see;
-        nearGroup.visible = see;
-        if (see && graphicsNow.stillShadows) ctx.renderer.shadowMap.needsUpdate = true;
-      }
-      if (see) {
-        flat.set(cam.x, 0, cam.z);
-        const from = fr.roam !== 'overview' ? PLAIN_FROM.roam : PLAIN_FROM.overview;
-        const pixel = pixelSize(fr.camera);
+      flat.set(cam.x, 0, cam.z);
+      const from = fr.roam !== 'overview' ? PLAIN_FROM.roam : PLAIN_FROM.overview;
+      const pixel = pixelSize(fr.camera);
+      let back = false;
+      for (const c of chunks) {
+        const reach = (c.box.max.y - c.box.min.y + SHADOW_FALL) / Math.max(0.2, l.y);
+        away.copy(c.box).translate(_v.set(-l.x * reach, -l.y * reach, -l.z * reach));
+        swept.copy(c.box).union(away);
+        const see = warm || frustum.intersectsBox(swept);
+        if (see !== c.shown) {
+          c.shown = see;
+          c.holder.visible = see;
+          back ||= see;
+        }
         // (the leaves always plain, their rim painted: from under them their cut edges hardly show, and a negative pixel
         // makes `plainAt` true even with the camera inside their box; the culms by the pixel, `PLAIN_NEARER` times nearer)
-        for (const c of chunks) c.lod?.update(cam, flat, from, c.leaf ? -1 : pixel * PLAIN_NEARER);
+        if (see) c.lod?.update(cam, flat, from, c.leaf ? -1 : pixel * PLAIN_NEARER);
       }
+      if (back && graphicsNow.stillShadows) ctx.renderer.shadowMap.needsUpdate = true;
       shadows.update(fr);
       BAMBOO_FOREST_CUT.update(fr.dt);
     },
