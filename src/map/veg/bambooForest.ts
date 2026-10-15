@@ -38,7 +38,7 @@ import { bamboo } from './species';
  */
 
 /** Grid step of the clumps (m) and how far each strays from its grid point. */
-const STEP = 4.8;
+const STEP = 5.4;
 const JITTER = 0.9;
 /** The edge thins over this share of the radius. */
 const FRINGE = 0.2;
@@ -47,12 +47,12 @@ const CLEAR_KEEP = 2.8;
 /** Chunk size (m). */
 const CHUNK = 24;
 /** The far form from this far from the forest's box (m), back to near this much nearer. */
-const FAR = 150;
+const FAR = 75;
 const FAR_HOLD = 10;
 /** A clump of the stand (veg/species.ts `bamboo`'s `stand`): its neighbours hide most of it. */
-const STAND = { culms: 9, seg: 3, nodesBelow: 5, leafFrom: 0.55, spray: 0.3 };
+const STAND = { culms: 8, seg: 3.5, nodesBelow: 3.6, leafFrom: 0.6, spray: 0.25 };
 /** Near chunks turn to plain boxes this many times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`: by the pixel). */
-const PLAIN_NEARER = 3;
+const PLAIN_NEARER = 5;
 /** Prototype kinds (near, far). */
 const KINDS = { near: 6, far: 3 };
 
@@ -122,7 +122,7 @@ const keepLeaf = (x: number, _y: number, z: number): boolean => trailDistance(x,
 export interface BambooForest {
   readonly object: Group;
   readonly blocks: number;
-  readonly stats: { clumps: number; near: number; far: number; props: number; chunks: number; ms: number };
+  readonly stats: { clumps: number; near: number; culms: number; far: number; props: number; chunks: number; ms: number };
   update(f: MapFrame): void;
   subjects(out: Subject[]): void;
 }
@@ -225,8 +225,12 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   const shadows = new ShadowGate().addLive(nearGroup).addAll(farGroup, true);
   const flat = new Vector3();
   let isFar = false;
+  // (checks: `bambooforest=near|far` holds that form wherever the camera is, `=0` hides the forest: shots and the dev server only)
+  const hold = ctx.shot || import.meta.env.DEV ? new URLSearchParams(location.search).get('bambooforest') : null;
+  if (hold === '0') object.visible = false;
   const subjects: Subject[] = planted.trees.map((t) => ({ kind: 'bamboo', x: t.x, y: t.y + t.h * 0.4, z: t.z, r: Math.min(t.r, t.h * 0.3) }));
-  const stats = { clumps: planted.clumps.length, near: nearBlocks, far: farBlocks, props, chunks: chunks.length, ms: Math.round(planted.ms + performance.now() - t0) };
+  const culms = builders.reduce((n, b) => n + b.boxes.filter((x) => x.mat === 'mapBark').length, 0) - props;
+  const stats = { clumps: planted.clumps.length, near: nearBlocks, culms, far: farBlocks, props, chunks: chunks.length, ms: Math.round(planted.ms + performance.now() - t0) };
   return {
     object,
     blocks: nearBlocks + props,
@@ -234,7 +238,7 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
     update(fr) {
       const cam = fr.camera.position;
       const d = box.distanceToPoint(cam);
-      const want = isFar ? d > FAR - FAR_HOLD : d > FAR;
+      const want = hold === 'far' || (hold !== 'near' && (isFar ? d > FAR - FAR_HOLD : d > FAR));
       if (want !== isFar) {
         isFar = want;
         nearGroup.visible = !isFar;
