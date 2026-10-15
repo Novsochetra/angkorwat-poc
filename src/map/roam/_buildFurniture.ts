@@ -72,8 +72,9 @@ export function installFurniture(e: AddonEnv, view: BuildView): void {
   BUILD.on((ev) => {
     if (ev.piece.id === 'hanglamp' && (ev.type !== 'progress' || ev.piece.done > 0)) makeCords();
   });
-  BLOCKS.onChange(() => {
-    if (BUILT.list.some((p) => p.id === 'hanglamp')) makeCords();
+  BLOCKS.onChange((c) => {
+    // (paint, AWP-22: the same blocks in other colours move no roof a cord hangs from)
+    if (!c.colourOnly && BUILT.list.some((p) => p.id === 'hanglamp')) makeCords();
   });
   makeCords();
   if (e.shot || import.meta.env.DEV)

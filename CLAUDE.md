@@ -382,6 +382,9 @@ guide, with every add-on's keys and URL values for shots, is
     Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
     on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
     lantern's cord up to the roof (`roam/_buildFurniture.ts`); `furn=<id>@x/z/yaw[/y]`.
+  - Paint (AWP-22, addons.md "Paint"): six Khmer colours and "its own colour" on his blocks,
+    free (`build/paint.ts`, `roam/_paint*.ts`); the build card's Buildings tab; E one block, E held
+    the whole part; `paint=<uid[.stage[.material]]|all>:<colour>`, `paintmode=<colour>`, `painthold=`.
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;

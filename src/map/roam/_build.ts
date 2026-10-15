@@ -7,6 +7,7 @@ import { BUILD, distTo, toLocal } from '../build/state';
 import { FOOT_KIND_IDS, FOOT_KINDS, type FootKind, type FootSide } from '../build/footPlan';
 import { FOOTS, partFoot, type FootRec } from '../build/footState';
 import { BED_SLEEP, bedPlace, type BedPlace } from '../build/beds';
+import { PAINT_LINK } from '../build/paint';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -841,6 +842,8 @@ function openCard(ctx: RoamCtx): void {
           group: 'foot',
         };
       });
+      // (paint, AWP-22: the Buildings tab's last row; paint mode is roam/_paint.ts)
+      const paint: BuildRow = { id: 'paint', name: t('paintRow'), count: '', note: t('paintRowLine'), short: false, buy: null, cost: [], price: '', off: BLOCKS.count ? null : t('paintNone'), group: 'foot' };
       const rows: BuildRow[] = PIECE_IDS.map((id) => {
         const p = PIECES[id];
         const pay = toPay(id);
@@ -870,7 +873,7 @@ function openCard(ctx: RoamCtx): void {
         title: t('buildCardTitle'),
         note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
         cancel: t('buildCardCancel'),
-        rows: [...feet, ...rows],
+        rows: [...feet, paint, ...rows],
         meter,
         // (on tabs, AWP-23: the footprint buildings, the yard's pieces, the furniture (each 9 rows at most: the keys 1‥9);
         // on a floor it opens on the furniture)
@@ -884,6 +887,13 @@ function openCard(ctx: RoamCtx): void {
     },
     (id) => {
       if (!id || BuildWork.active) return;
+      if (id === 'paint') {
+        if (!BLOCKS.count) return;
+        exitPlacing();
+        exitFoot();
+        PAINT_LINK.enter();
+        return;
+      }
       if (id.startsWith('foot:')) {
         const k = id.slice(5) as FootKind;
         if (k in FOOT_KINDS && !cannotFoot(k, env?.purse.riel ?? 0)) enterFoot(k);
@@ -1126,6 +1136,9 @@ registerAddon({
       BUILD.clear();
       if (q !== '0' && q !== 'all' && q !== 'full') BUILD.fromUrl(q, (x, z) => e.world.field.heightAt(x, z));
     }
+    // (paint mode, AWP-22: its F opens the card again; it ends when build mode starts)
+    PAINT_LINK.card = () => void (lastCtx && openCard(lastCtx));
+    PAINT_LINK.building = () => !!placing || FootMode.on;
     view = createBuildView(e.shot);
     e.scene.add(view.object);
     // (footprint buildings, AWP-20: their plans need the land; a check's own, as `build=`)

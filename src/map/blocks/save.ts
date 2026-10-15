@@ -57,7 +57,8 @@ export const SAVE_AT_MOST_MS = 10_000;
  * (material × colour × shape × turn): a build with more than 4,096 is not
  * saved; the console says so (`[blocks] too many kinds of block to save`)
  * and the last save is kept, with nothing shown to the player. Paint
- * (AWP-22) is where it could be reached: keep colours to a palette.
+ * (AWP-22) keeps colours to a palette: footprint buildings make 56 kinds,
+ * paint at most 265 more (build/paint.ts `kindsBound`, `__paint.kinds()`).
  */
 export const SAVE_LIMITS = {
   blocks: 200_000,
