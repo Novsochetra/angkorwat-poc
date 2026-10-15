@@ -109,6 +109,11 @@ One line each time a ticket is sent back, so the next worker avoids it.
   (`.rh > .mu-frame` sets display): check its computed display after every way
   out of the mode (AWP-20).
 - Things he owns and leaves (his cow, his bicycle, his cart) block building (AWP-20).
+- Anything that moves and stays in the world (the cart) is in every other
+  mover's collision (bicycle, ridden cow, cattle, dog), never stops where its own
+  saved-place check refuses it, and always has a way back when stuck (integration test).
+- A new cost in riel meets every way riel comes in (the purse's top-up): check
+  nothing becomes free money (integration test).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
