@@ -3403,8 +3403,10 @@ without its straw), the oxen `people/_ox.ts`.
   under a shelter, over a bed); his blocks (`BLOCKS`), every cell the box meets from the land to
   3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
   walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
-  growing and the cart rolls up to the last place it fits and stands; once he is 6.5 m from the
-  ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  growing and the cart rolls up to the last place it fits and stands (never testing a place past the
+  way's last point); the rope holds him 4.2 m from the oxen's noses while they find their way round
+  (below); where they find none for where he stands and he pulls (or 6 s of pulling get nowhere, or
+  a fall puts him 6.5 m off) the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
   រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
   Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
   map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
@@ -3417,7 +3419,7 @@ without its straw), the oxen `people/_ox.ts`.
   away stops him (what is in stays in). A toast: "Loaded on the cart: 2 bamboo poles and 1 log ·
   cart 16/60" (and "no room for the rest" when the cart is full). The cart full: "រទេះពេញហើយ (៦០/៦០) /
   The cart is full (60/60)" (no key).
-- **Unloading at home** (the cart within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
+- **Unloading at home** (the cart on his land, `build/plot.ts` `inPlot`, or within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
   Unload at home (16/60)": he lifts the pieces off, the top first (clay, thatch, bamboo, logs), and
   puts each down beside him into his home store (`STORE`: the build card uses it). Away from home a
   loaded cart's tail says "ដឹកទៅផ្ទះ ដើម្បីដាក់ចុះ / Lead it home to unload (16/60)" (no key).
@@ -3479,11 +3481,15 @@ without its straw), the oxen `people/_ox.ts`.
   never stops where a reload would refuse it; where he lets go it stands at the last place tested. A
   saved place that no longer fits (something built since) goes to the nearest place that does, out to
   8 m, its load with it; only then by the house.
-- **Turning on the spot, backing up**: blocked before something with him off to a side or behind, the
-  oxen turn the cart toward him round its axle (0.7 rad/s, the short way, else the long way), backing it
-  up a little (0.6 m/s, 3 m at most) where there is no room to turn; every placement tested.
-- **Stuck for good** (no way out in eight headings — backed up 0 or 1.2 m, turned, rolled 2 m — or two
-  tries in a row from the same place that moved it under 0.5 m): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
+- **Finding the way round** (`getRound`, AWP-14 integration 2): blocked — the way stops at something,
+  or the cart cannot roll on along a way that turns too tight — the oxen look for a few moves (turns on
+  the spot of 0.15 rad either way, rolls back or on of 0.4 m: a turn, backing up, a small three-point
+  turn; a search of up to 1 600 places, 3 ms a frame, while he waits) to a place from which the way goes
+  on toward him as play would build it (`wayWorksFrom`: 3 m of it, each point where a cart can go, the
+  cart fitting at each), and walk them (each sub-step tested: 0.03 rad, 0.2 m); then the way goes on.
+  Twice blocked again where a way round ended: none, for where he stands.
+- **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m: the oxen found
+  no way round): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
   Send the cart home" (the second failed try's toast says so): a fade, and the cart waits by his house
   with its load ("The oxen know the way home: the cart waits by your house").
 - **What moves keeps out of it** (`build/haul.ts` `cartBodyBlocks(x, z, r)`: the cart and its oxen where
