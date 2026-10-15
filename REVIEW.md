@@ -120,6 +120,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
   switch distance, from the ground and from the glider (AWP-15).
 - Test the round trip a player makes (out, work, back) in the place the feature
   is for, with its clutter; a rescue button must not be the only way home (AWP-14).
+- A change to how a saved thing is drawn also loads the old saves: build and save
+  on the base, load on the branch, take it down, and nothing is left (AWP-25).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
