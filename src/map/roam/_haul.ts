@@ -4,7 +4,6 @@ import { WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_cart';
 import '../audio/_haul';
-import { BUILT } from '../build/pieces';
 import { inPlot } from '../build/plot';
 import { cartAway, CART_AT, CART_BOX, CART_HOME, CART_LIMIT, CART_LOAD, CART_STATE, CART_YOKE, OXEN_BOX, saveCartAt, wrapYaw } from '../build/haul';
 import { BAG, MATERIALS, MATERIAL_IDS, STORE, materialsText, type MaterialId, type Materials } from '../build/materials';
@@ -982,45 +981,10 @@ function planClear(): void {
 // ── Stuck for good: the oxen take it home ──────────────────────────────────
 
 /**
- * Can the cart get out from where it stands, heading `to`: backed up `back` m (0 or 1.2) along its line, turned on the
- * spot to `to`, then rolled 2 m on (each placement tested, every `FIT_STEP` m or 0.1 rad)?
+ * Is the cart stuck for good where it stands: two tries in a row from here that moved it under 0.5 m (each the oxen
+ * looked for a way round toward him and found none: `getRound`)? Only then "Send the cart home".
  */
-function wayOut(ctx: Pick<RoamCtx, 'world'>, to: number): boolean {
-  for (const back of [0, 1.2]) {
-    let ok = true;
-    let ax = CART_AT.x;
-    let az = CART_AT.z;
-    const y0 = CART_AT.yaw;
-    for (let b = FIT_STEP; b <= back + 1e-6 && ok; b += FIT_STEP) ok = placeFits(ctx, CART_AT.x - Math.sin(y0) * b, CART_AT.z - Math.cos(y0) * b, y0, false);
-    if (!ok) continue;
-    ax -= Math.sin(y0) * back;
-    az -= Math.cos(y0) * back;
-    const diff = angleDiff(to, y0);
-    const n = Math.ceil(Math.abs(diff) / 0.1);
-    for (let i = 1; i <= n && ok; i++) ok = placeFits(ctx, ax, az, y0 + (diff * i) / n, false);
-    for (let d = FIT_STEP; d <= 2 + 1e-6 && ok; d += FIT_STEP) ok = placeFits(ctx, ax + Math.sin(to) * d, az + Math.cos(to) * d, to, false);
-    if (ok) return true;
-  }
-  return false;
-}
-
-/** Looking for a way out (one heading of eight a step, while he stands by the oxen): for which place, how far, any found. */
-const probe = { key: '', i: 0, out: false };
-/** Is the cart stuck for good where it stands (no way out in eight headings), or did two tries in a row from here fail? */
-function stuckHere(ctx: Pick<RoamCtx, 'world'>): boolean {
-  if (!cartAway()) return false;
-  const key = `${CART_AT.x.toFixed(2)},${CART_AT.z.toFixed(2)},${CART_AT.yaw.toFixed(3)},${BUILT.version}`;
-  if (key !== probe.key) {
-    probe.key = key;
-    probe.i = 0;
-    probe.out = false;
-  }
-  if (!probe.out && probe.i < 8) {
-    if (wayOut(ctx, CART_AT.yaw + (probe.i * Math.PI) / 4)) probe.out = true;
-    probe.i++;
-  }
-  return stuckTries >= 2 || (probe.i >= 8 && !probe.out);
-}
+const stuckHere = (): boolean => cartAway() && stuckTries >= 2;
 
 /** E at the oxen when it is stuck: they walk it home (a fade: they go the long way round), and it waits by his house. */
 async function sendHome(ctx: RoamCtx): Promise<void> {
@@ -1039,7 +1003,6 @@ async function sendHome(ctx: RoamCtx): Promise<void> {
       placeAt(ctx);
     }
     stuckTries = 0;
-    probe.key = '';
     console.info(`[haul] the oxen took the cart home: at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}`);
     if (!env.shot) await env.hud.fade(0, 0.8);
     env.hud.toast(t('haulSentHome'));
@@ -1629,7 +1592,7 @@ registerAddon({
       if (!CART_LOAD.empty) return counted('haulGoHome', false);
       return null;
     }
-    if (nearHead(ctx)) return stuckHere(ctx) ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
+    if (nearHead(ctx)) return stuckHere() ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
     return null;
   },
 
@@ -1646,7 +1609,7 @@ registerAddon({
       return;
     }
     if (!nearHead(ctx) || sending) return;
-    if (stuckHere(ctx)) void sendHome(ctx);
+    if (stuckHere()) void sendHome(ctx);
     else takeRope(ctx);
   },
 
