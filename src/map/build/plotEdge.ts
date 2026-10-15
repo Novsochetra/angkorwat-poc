@@ -1,7 +1,7 @@
 import { Group } from 'three';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh, disposeVoxelMesh } from '../../voxel/VoxelMesh';
-import type { HeightField } from '../heightfield';
+import { SURFACE, type HeightField } from '../heightfield';
 import { PLOT_CORNERS } from './plot';
 
 /**
@@ -13,7 +13,7 @@ import { PLOT_CORNERS } from './plot';
  * corner a squared hardwood boundary post (បង្គោលព្រំ) with a strip of red krama
  * tied round its head. No bright line: wood, cord and cloth, lit as the land.
  *
- * Built once (≈ 500 blocks: the map's own `mapBark`, `mapRock` and `petal`
+ * Built once (≈ 900 blocks: the map's own `mapBark`, `mapRock` and `petal`
  * families, so no new shader; 3 draws while it shows, none hidden), the cord in short
  * lengths that follow the ground's steps. It rises out of the ground when it
  * shows and sinks back when it goes (`frame`).
@@ -53,9 +53,17 @@ export interface PlotEdge {
 export function createPlotEdge(field: HeightField, quality: () => 'low' | 'medium'): PlotEdge {
   const b = new VoxelBuilder();
   const ground = (x: number, z: number) => field.heightAt(x, z);
+  // (nothing on the trail or in the stream that run through his land: the edge stops at their sides)
+  const open = (x: number, z: number): boolean => {
+    const c = field.index(x, z);
+    if (c < 0 || field.trail[c] || field.water[c] > -1000) return false;
+    const s = field.surface[c];
+    return s !== SURFACE.path && s !== SURFACE.pad && s !== SURFACE.sand && s !== SURFACE.bed;
+  };
   const n = PLOT_CORNERS.length;
   // The corner posts with their cloth.
   for (const [x, z] of PLOT_CORNERS) {
+    if (!open(x, z)) continue;
     const g = ground(x, z);
     b.box(x, g + POST.h / 2 - 0.1, z, POST.w, POST.h + 0.2, POST.w, POST_C, 'mapBark');
     b.box(x, g + POST.h - POST.cloth, z, POST.w + 0.04, POST.clothH, POST.w + 0.04, KRAMA, 'petal');
@@ -73,6 +81,7 @@ export function createPlotEdge(field: HeightField, quality: () => 'low' | 'mediu
       const u = k / pegs;
       const x = ax + (bx - ax) * u;
       const z = az + (bz - az) * u;
+      if (!open(x, z)) continue;
       b.box(x, ground(x, z) + PEG.h / 2 - 0.1, z, PEG.w, PEG.h + 0.2, PEG.w, BAMBOO[k % 2], 'mapBark', { ry });
     }
     const cords = Math.max(1, Math.ceil(len / CORD.step));
@@ -82,6 +91,7 @@ export function createPlotEdge(field: HeightField, quality: () => 'low' | 'mediu
       const x = ax + (bx - ax) * u;
       const z = az + (bz - az) * u;
       // (along the side: its length along the block's local z, turned to the side's way)
+      if (!open(x, z)) continue;
       const g = ground(x, z);
       b.box(x, g + CORD.y, z, CORD.t, CORD.t, seg + 0.02, CORD_C, 'mapBark', { ry });
       b.box(x, g, z, TROD.w, TROD.up * 2, seg + 0.02, TROD_C[k % 2], 'mapRock', { ry });

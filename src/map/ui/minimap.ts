@@ -939,7 +939,8 @@ export function createMinimap(d: MinimapDeps): Minimap {
       g2.beginPath();
       for (const [x, z] of PLOT_CORNERS) g2.lineTo((x - BIG.x0) * sc, (z - BIG.z0) * sc);
       g2.closePath();
-      plotLine(g2, Math.max(0.8, w / 1400));
+      // (bolder than the mini-map's: it reads round the pins of "You are here" and "My home" on it)
+      plotLine(g2, Math.max(1.3, w / 800));
     }
   }
 
@@ -1581,7 +1582,6 @@ export function createMinimap(d: MinimapDeps): Minimap {
 
 const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
 
-/** A square (x0, x0) of `size` with its corners cut in `steps` pixel steps over `cut` (like shape.ts `steppedShape`), as a canvas path. */
 /** His land's edge on a map (the path made): a soft wash, a dark cord under gold dashes (`k`: the map's pixel scale). */
 function plotLine(g: CanvasRenderingContext2D, k: number): void {
   g.fillStyle = 'rgba(255, 214, 140, 0.1)';
@@ -1598,6 +1598,7 @@ function plotLine(g: CanvasRenderingContext2D, k: number): void {
   g.setLineDash([]);
 }
 
+/** A square (x0, x0) of `size` with its corners cut in `steps` pixel steps over `cut` (like shape.ts `steppedShape`), as a canvas path. */
 function steppedPath(x0: number, size: number, cut: number, steps: number): Path2D {
   const p = new Path2D();
   const s = cut / steps;

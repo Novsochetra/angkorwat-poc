@@ -6,6 +6,7 @@ import { GARDEN } from '../garden/state';
 import { EV_HOMES } from '../hamlet/_evSpots';
 import { HOME_DOG, HOME_GRAN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_Z, homeHammock, homeLocal } from '../hamlet/_homePlan';
 import { SURFACE } from '../heightfield';
+import { canopyOf, type Canopy } from '../veg/canopy';
 import type { WordKey } from '../ui/lang';
 import type { RoamWorld } from './types';
 
@@ -34,11 +35,11 @@ import type { RoamWorld } from './types';
  *   keeps them: roam/_gardenSpots.ts);
  * - `steep`: the land under it is not level (it is built of big blocks: a step
  *   through it would leave it hanging);
- * - `tree`: a tree on his land (build/plot.ts `PLOT_TREES`): its trunk, and its
- *   crown for a piece taller than its lowest leaves;
+ * - `tree`: a tree on his land (build/plot.ts `PLOT_TREES`, and the jungle's own:
+ *   veg/canopy.ts): its trunk, and its crown for a piece taller than its lowest leaves;
  * - `plant`: a plant of his garden stands there (its bed or its trunk);
- * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross at their ends:
- *   `FENCE_JOINT`), or before one he
+ * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross where an end
+ *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
@@ -83,6 +84,35 @@ const OWN = 0.12;
  * a bend: roam/_build.ts `snapFence`) shares its end post's room. Enough for a bend of 30° or more (0.25 m deep runs).
  */
 export const FENCE_JOINT = 0.5;
+/**
+ * Would footprint `f` stand in piece `b`: footprints may touch (`TOUCH`); two fence runs cross only at a joint (an end
+ * on an end: `fenceJoint`), and side by side they may touch but never stand in each other (no touching tolerance).
+ */
+export function overlapsBuilt(f: Foot, b: Foot): boolean {
+  if (f.id !== 'fence' || b.id !== 'fence') return overlap(f, b, -TOUCH);
+  const j = fenceJoint(f, b);
+  return overlap(f, b, j ? -TOUCH : 0, j);
+}
+/** Two fence runs' ends meet when this near (m: roam/_build.ts `snapFence` puts them on each other). */
+const MEET = 0.06;
+
+/**
+ * How far in from their ends two pieces may cross: `FENCE_JOINT` for two fence runs with an end on an end (a joint),
+ * else 0 (in line past each other, side by side, a T through the middle: refused as any overlap).
+ */
+export function fenceJoint(a: Foot, b: Foot): number {
+  if (a.id !== 'fence' || b.id !== 'fence') return 0;
+  const h = PIECES.fence.w / 2;
+  for (let i = -1; i <= 1; i += 2)
+    for (let k = -1; k <= 1; k += 2) {
+      const ax = a.x + i * h * Math.cos(a.yaw);
+      const az = a.z - i * h * Math.sin(a.yaw);
+      const bx = b.x + k * h * Math.cos(b.yaw);
+      const bz = b.z - k * h * Math.sin(b.yaw);
+      if (Math.hypot(ax - bx, az - bz) < MEET) return FENCE_JOINT;
+    }
+  return 0;
+}
 
 /** Round the house (local m): boxes [x0, z0, x1, z1] and circles [x, z, r] kept clear (as roam/_gardenSpots.ts keeps them). */
 const KEEP_BOX: readonly (readonly [number, number, number, number])[] = (() => {
@@ -145,6 +175,21 @@ function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason
 }
 
 const _foot = { id: 'kre' as PieceId, x: 0, z: 0, yaw: 0 };
+/** The jungle's trees are looked for this far round a footprint (m: the widest crown). */
+const CANOPY_REACH = 7;
+/** A wild crown keeps a tall piece this share of its reach away (its rim thins out). */
+const CROWN = 0.85;
+let _can: Canopy | null = null;
+let _tall = 0;
+let _hit = false;
+/** One of the jungle's trees near `_foot`: its trunk (and the room round it), its crown over a piece taller than its lowest leaves. */
+const wildTree = (n: number): void => {
+  if (_hit || !_can) return;
+  const t = _can.trees[n];
+  if (t.kind === 'bush') return;
+  const d = distTo(_foot, t.x, t.z);
+  if (d < _can.trunk[n] + 0.2 || (_tall > t.low && d < t.r * CROWN)) _hit = true;
+};
 let _world: RoamWorld | null = null;
 let _h0 = 0;
 let _lo = 0;
@@ -210,6 +255,16 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   if (r) return r;
   // The trees on his land: a trunk (and the room round it), a crown over a piece taller than its lowest leaves.
   for (const t of PLOT_TREES) if (distTo(f, t.x, t.z) < t.trunk || (p.h > t.low && distTo(f, t.cx, t.cz) < t.cr)) return 'tree';
+  // The jungle's own trees on it (veg/canopy.ts: trunk, crown reach and height; not the bushes).
+  const can = canopyOf(world.field);
+  if (can) {
+    _can = can;
+    _tall = p.h;
+    _hit = false;
+    const reach = Math.hypot(p.w, p.d) / 2;
+    can.near(x - reach, z - reach, x + reach, z + reach, CANOPY_REACH, wildTree);
+    if (_hit) return 'tree';
+  }
   // His garden's plants: a crop's bed, a tree's trunk and the ring round it.
   for (const q of GARDEN.plants) {
     if (q.at !== 'home') continue;
@@ -218,7 +273,7 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
     if (distTo(f, q.x, q.z) < room) return 'plant';
   }
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
-  for (const b of BUILT.list) if (b !== ignore && (overlap(f, b, -TOUCH, id === 'fence' && b.id === 'fence' ? FENCE_JOINT : 0) || coversFront(f, b))) return 'piece';
+  for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

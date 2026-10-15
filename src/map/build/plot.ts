@@ -6,33 +6,49 @@ import { EV_COCONUTS, EV_MANGOS, EV_SUGAR_PALMS } from '../hamlet/_evSpots';
  * so the build add-on (where a piece may stand: roam/_buildSpots.ts), its
  * outline on the ground and the maps (ui/minimap.ts) read the same shape.
  *
- * **The shape** (`PLOT_CORNERS`, on the map's axes: the house faces north, −z,
- * so its frame is the map's turned half round): between the Kulen foot trail on
- * the west (its tread's east edge: x 416, x 414 north of the bend at z −154)
- * and the Kulen stream on the east (its sandy bank: from x 438, x 436 north of
- * the bend); from the back of the village's north houses (south, z −88: the
- * mango in the yard of the house n4 stands just past it, its kitchen 7 m on)
- * up the Kulen foot meadow to the land's next step (north, z −168: 58 m before
- * the veranda). About 21 × 80 m, 1 706 m², all of it round the house.
+ * **The shape** (`PLOT_CORNERS`, one simple polygon on the map's axes: the
+ * house faces north, −z, so its frame is the map's turned half round; 4 829
+ * m²), three parts in one:
+ * - **the yard round the house** (AWP-31): between the Kulen foot trail (west,
+ *   its tread's east edge x 416; x 414 north of its bend at z −154) and the
+ *   Kulen stream (east, its sandy bank from x 438), from the back of the
+ *   village's north houses (south, z −88: the mango in the yard of the house n4
+ *   stands just past it, its kitchen 7 m on) up the Kulen foot meadow to the
+ *   land's next step (north, z −168);
+ * - **the terrace west of the trail** (x 386‥408, z −140.5‥−103.5): from the
+ *   back of the house ny1 (its yard to x 385) to the cattle trader's meadow
+ *   (north, from z −142) and the nursery and its mango (south, from z −102);
+ * - **the meadow over the stream** (x 452‥472, z −160‥−102), up to the village
+ *   herd's meadow (south, from z −98); he reaches it on foot by the village's
+ *   foot bridge or wading into the stream (its boat).
+ * The trail and the stream run through his land and stay unbuildable (the
+ * placing rules: `path`, `water`, half a metre round the trail, 0.6 m round the
+ * water); the edge on the ground leaves them clear (build/plotEdge.ts).
  *
  * Until AWP-31 he could build within 46 m of the house's middle, but the
  * village's coarse "built on" cells (2 m) stopped him 3.5 m behind the house
- * and by the trees there, and most of the rest lay across the trail and the
- * stream. Inside his land those cells no longer stop him; the trail, the
- * stream, the house, the land's steps, his garden and the trees still do
- * (`PLOT_TREES`: a tree's trunk, and its crown for a tall piece).
+ * and by the trees there. Inside his land those cells no longer stop him; the
+ * trail, the stream, the house, the land's steps, his garden and the trees
+ * still do (`PLOT_TREES`: a tree's trunk, and its crown for a tall piece; the
+ * jungle's own trees the same: veg/canopy.ts).
  */
 
 /** His land's corners (world x, z), round its edge (a simple polygon). */
 export const PLOT_CORNERS: readonly (readonly [x: number, z: number])[] = [
-  [414.4, -168],
-  [435.4, -168],
-  [435.4, -154],
-  [437.8, -154],
-  [437.8, -88],
-  [416.4, -88],
+  [386, -140.5],
+  [416.4, -140.5],
   [416.4, -154],
   [414.4, -154],
+  [414.4, -168],
+  [435.4, -168],
+  [435.4, -160],
+  [472, -160],
+  [472, -102],
+  [437.8, -102],
+  [437.8, -88],
+  [416.4, -88],
+  [416.4, -103.5],
+  [386, -103.5],
 ];
 
 /** The box round it (world m). */
