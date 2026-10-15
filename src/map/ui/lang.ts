@@ -1272,6 +1272,9 @@ const WORDS = {
   // (the trader on the maps, before his place, what he says)
   cattleMap: { km: 'ឈ្មួញគោ', en: 'Cattle trader' },
   cattleTheMap: { km: 'ឈ្មួញគោ', en: 'the cattle trader' },
+  // The bamboo forest (AWP-15: veg/bambooForest.ts) on the maps, before its clearing
+  bambooForestMap: { km: 'ព្រៃឫស្សី', en: 'Bamboo forest' },
+  bambooForestTheMap: { km: 'ព្រៃឫស្សី', en: 'the bamboo forest' },
   cattlePrompt: { km: 'ទិញ ឬលក់គោ', en: 'Buy or sell cattle' },
   cattleClosed: { km: 'ឈ្មួញគោទៅផ្ទះហើយ — មកវិញពេលព្រឹក', en: 'The cattle trader has gone home: come back in the morning' },
   cattleComing: { km: 'សូមចាំបន្តិច — ឈ្មួញគោកំពុងត្រឡប់មកវិញ', en: "Just a moment: the cattle trader is coming back" },
