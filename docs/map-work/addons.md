@@ -3094,8 +3094,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     in their shade (veg/canopy.ts); its clumps are in the nature book. Drawn: the leaves always as plain boxes
     (their rim painted on medium and up), the culms with their edges near (`PLAIN_NEARER`), in 44 m chunks (a
     chunk's leaves and its culms: two draws); from 55 m off its box a far form (2 m cells, a quarter of the blocks,
-    one plain mesh, out of the walk map: a cut clump shows whole there); nothing at all while its box is off the
-    screen. Its canes are solid in the walk map (he walks between the clumps, never through one).
+    one plain mesh, out of the walk map: a cut clump shows whole there); off screen three leaves its meshes out.
+    Its canes are solid in the walk map (he walks between the clumps, never through one).
   - **Logs** (AWP-11, `roam/_gatherLogs.ts`): two felled trunks by the woodcutters'
     camp (`JUNGLE_SITES` woodcutters, jungle/_campWood.ts), their own blocks. A log is
     cut off a trunk with the axe (ពូថៅ: `axe`, two hands from over his head), 6 blows,

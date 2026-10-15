@@ -1,4 +1,4 @@
-import { Box3, Frustum, Group, Matrix4, Vector3, type InstancedMesh } from 'three';
+import { Box3, Group, Vector3, type InstancedMesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -29,11 +29,14 @@ import { bamboo } from './species';
  *   (`TRAIL_KEEP`), in the clearing, or off free ground; the canopy is open over the trail's tread and the clearing
  *   (`Lattice.stamp`'s `keep`), so the trail shows from above (the maps) and the sky over the clearing. The clumps
  *   merge in their own lattice as the jungle's do (a leaf cell is drawn only where it is open).
- * - **Near**: its blocks in `CHUNK` m chunks (each its leaves and its culms: two draws; three leaves out the chunks
- *   off screen), with their edges near and plain boxes farther (terrain/lod.ts `ChunkSwitch`, as the jungle's tiles;
- *   all plain on the low level).
+ * - **Near**: its blocks in `CHUNK` m chunks, each chunk's leaves and its culms apart (two draws; three leaves out
+ *   the chunks off screen). The leaves are always plain boxes, their rim painted on medium and up (seen from under
+ *   them their cut edges hardly show: about a quarter of the triangles); the culms have their edges near and are plain past
+ *   `PLAIN_NEARER` times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`; all plain on the low level).
  * - **Far** (`FAR` m from its box and on): the same clumps of 2 m cells, every other culm (the jungle's far bamboo):
- *   one plain mesh, about a fifth of the blocks. Out of the walk map (`noWalk`); a cut clump shows whole there.
+ *   one plain mesh, about a quarter of the blocks. Out of the walk map (`noWalk`); a cut clump shows whole there.
+ * - **Off screen**: three leaves out its meshes (their bounding spheres); never hidden by hand, or the still shadow
+ *   map (low, medium: drawn again only when the light turns) would miss its shadow while it was out of view.
  * - Shadows: cast while they can be seen (cull.ts `ShadowGate`; every mesh casts the still shadows of low and medium).
  */
 
@@ -53,8 +56,6 @@ const FAR_HOLD = 10;
 const STAND = { culms: 8, seg: 3.5, nodesBelow: 3.6, leafFrom: 0.6, spray: 0.25 };
 /** Near chunks turn to plain boxes this many times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`: by the pixel). */
 const PLAIN_NEARER = 5;
-/** Frames at load when it is drawn wherever the camera looks (its shaders compile then). */
-const WARM = 3;
 /** Prototype kinds (near, far). */
 const KINDS = { near: 6, far: 3 };
 
@@ -214,10 +215,7 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   box.max.y = box.min.y + 24;
   const shadows = new ShadowGate().addLive(nearGroup).addAll(farGroup, true);
   const flat = new Vector3();
-  const frustum = new Frustum();
-  const vp = new Matrix4();
   let isFar = false;
-  let frames = 0;
   // (checks: `bambooforest=near|far` holds that form wherever the camera is, `=0` hides the forest: shots and the dev server only)
   const hold = ctx.shot || import.meta.env.DEV ? new URLSearchParams(location.search).get('bambooforest') : null;
   if (hold === '0') object.visible = false;
@@ -229,16 +227,11 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
     stats,
     update(fr) {
       const cam = fr.camera.position;
-      // Out of view (its box off the screen; the warm frames draw it, so its shaders compile at load): nothing drawn.
-      vp.multiplyMatrices(fr.camera.projectionMatrix, fr.camera.matrixWorldInverse);
-      frustum.setFromProjectionMatrix(vp);
-      const seen = frames++ < WARM || frustum.intersectsBox(box);
       const d = box.distanceToPoint(cam);
-      const want = hold === 'far' || (hold !== 'near' && (isFar ? d > FAR - FAR_HOLD : d > FAR));
-      isFar = want;
-      nearGroup.visible = seen && !isFar;
-      farGroup.visible = seen && isFar;
-      if (seen && !isFar) {
+      isFar = hold === 'far' || (hold !== 'near' && (isFar ? d > FAR - FAR_HOLD : d > FAR));
+      nearGroup.visible = !isFar;
+      farGroup.visible = isFar;
+      if (!isFar) {
         flat.set(cam.x, 0, cam.z);
         const from = fr.roam !== 'overview' ? PLAIN_FROM.roam : PLAIN_FROM.overview;
         const pixel = pixelSize(fr.camera);

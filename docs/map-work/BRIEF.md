@@ -902,7 +902,8 @@ west of the Kulen foot trail (middle 352, −189), the "bamboo forest trail"
 (`TRAILS`) into a clearing with the woodcutter's rack. Its clumps are cut
 like the jungle's (addons.md "Gathering materials"). Its cost: leaves always
 plain boxes (rim painted), culms with their edges near, in 44 m chunks; a far
-form (2 m cells) from 55 m off its box; nothing while its box is off screen.
+form (2 m cells) from 55 m off its box; off screen three leaves its meshes
+out (never hidden by hand: the still shadow map would lose its shadow).
 Console: `[map] bamboo forest: …` (clumps, blocks, ms). Perf views
 `bamboo`, `bambooin`, `bambooedge` (`npm run perf -- only=…`); checks
 `bambooforest=near|far|0`.
