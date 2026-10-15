@@ -2,7 +2,7 @@ import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials
 import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
-import { BLOCKS, cellOf, type CellBounds } from '../blocks/store';
+import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
 import { BUILD, distTo, toLocal } from '../build/state';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
@@ -111,6 +111,8 @@ let turn = 0;
 let heldStep: number | null = null;
 /** Shift held (the fine turn). */
 let shiftDown = false;
+/** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
+let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
 const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as BuildReason | null, step: -1, prompt: null as string | null, snapped: false };
 let stepN = 0;
@@ -165,12 +167,28 @@ function piecesBlocks(): number {
   return piecesN;
 }
 addPlotBlocks('pieces', piecesBlocks);
-/** His own blocks (the block layer, blocks/store.ts: AWP-16) in his land's box, every height (cells). */
-const PLOT_CELLS: CellBounds = { i0: cellOf(PLOT_BOX.x0), i1: cellOf(PLOT_BOX.x1), j0: -4096, j1: 4096, k0: cellOf(PLOT_BOX.z0), k1: cellOf(PLOT_BOX.z1) };
-/** (counted again only when the layer changes: `onChange`, not every frame) */
+/** His land's box in the block layer's cells (blocks/store.ts: AWP-16). */
+const PLOT_CELLS = { i0: cellOf(PLOT_BOX.x0), i1: cellOf(PLOT_BOX.x1), k0: cellOf(PLOT_BOX.z0), k1: cellOf(PLOT_BOX.z1) };
+/**
+ * His own blocks on his land: those of the chunks over its box whose cell's middle is inside its shape (`inPlot`: not
+ * the neighbours' yards, the cattle trader's meadow or the herd's that the box takes in). Counted again only when the
+ * layer changes (`onChange`), never every frame.
+ */
+function layerOnLand(): number {
+  let n = 0;
+  const b = PLOT_CELLS;
+  for (const c of BLOCKS.chunkList()) {
+    if (!c.count || c.i0 > b.i1 || c.i0 + CHUNK_N <= b.i0 || c.k0 > b.k1 || c.k0 + CHUNK_N <= b.k0) continue;
+    for (let at = 0; at < CHUNK_CELLS; at++) {
+      if (!c.cells[at]) continue;
+      if (inPlot(cellMid(c.i0 + (at % CHUNK_N)), cellMid(c.k0 + (Math.floor(at / CHUNK_N) % CHUNK_N)))) n++;
+    }
+  }
+  return n;
+}
 let layerN = -1;
 BLOCKS.onChange(() => (layerN = -1));
-addPlotBlocks('blocks', () => (layerN < 0 ? (layerN = BLOCKS.countIn(PLOT_CELLS)) : layerN));
+addPlotBlocks('blocks', () => (layerN < 0 ? (layerN = layerOnLand()) : layerN));
 /** Room on his land for one more `id` (the budget)? A little over the line rounds the way the meter shows. */
 const roomFor = (id: PieceId): boolean => plotBlocks() + blocksOf(id) <= PLOT_BUDGET;
 
@@ -204,6 +222,7 @@ function wireHold(): void {
   holdWired = true;
   addEventListener('keydown', (e) => {
     shiftDown = e.shiftKey;
+    if (e.code === 'Comma' || e.code === 'Period') fineKey = e.shiftKey;
     if ((e.code === 'KeyE' || e.code === 'Enter') && !e.repeat) holdKeys.key = true;
   });
   addEventListener('keyup', (e) => {
@@ -394,7 +413,8 @@ function placingNow(ctx: RoamCtx): void {
   spot.reason = r;
   const id = placing;
   const deg = shownDeg(id, spot.yaw);
-  const keys = words('modeKeys', () => `, .  ${t('buildTurn')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
+  // (",." the d-pad's ← → on a pad, "⇧,." L2: hud.ts `promptPad`)
+  const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
   // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°")
   if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
@@ -942,7 +962,7 @@ registerAddon({
       if (left || right) {
         for (const c of ['Comma', 'Period', 'Digit4', 'Digit5']) taps?.delete(c);
         // (Shift on the keys, L2 held on the pad: 5°)
-        const fine = pad.active ? pad.held('l2') : shiftDown;
+        const fine = pad.active ? pad.held('l2') : fineKey || shiftDown;
         turnBy(left ? 1 : -1, fine ? TURN_FINE : TURN_STEP);
       }
       // F or C (the pad's ↓): the card again (another piece); not a greeting.
@@ -1094,6 +1114,12 @@ registerAddon({
 registerAddon({
   id: 'buildMode',
   order: 3,
+  // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
+  // order 5, takes the L2 press after this one: taken here, it never raises them).
+  input(_ctx, m) {
+    if (placing && m === 'walk' && !BuildWork.active) pad.take('l2');
+    return false;
+  },
   offer(ctx, m) {
     if (!placing || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     lastCtx = ctx;

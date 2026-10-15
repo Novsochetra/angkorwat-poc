@@ -1614,6 +1614,7 @@ const WORDS = {
   buildNeed: { km: 'ខ្វះ {riel} ទៀត', en: '{riel} more needed' },
   buildHere: { km: 'សង់នៅទីនេះ', en: 'Build here' },
   buildTurn: { km: 'បង្វិល', en: 'Turn' },
+  buildTurnFine: { km: 'បង្វិល ៥°', en: 'Turn 5°' },
   buildOther: { km: 'ប្ដូររបស់', en: 'Another' },
   buildExit: { km: 'រួចហើយ', en: 'Done' },
   buildNoFar: { km: 'ឆ្ងាយពីផ្ទះពេក', en: 'Too far from your house' },

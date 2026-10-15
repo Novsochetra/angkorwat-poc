@@ -2891,8 +2891,9 @@ sounds `audio/_build.ts`.
   land together. "Used" is a sum of sources (`addPlotBlocks(name, count)`, `plotBlocks()`):
   the add-on's `pieces` (each piece's model's real block count, with its own seed:
   `pieceLook(id, seed).boxes.length`, every piece, one past his land from before AWP-31 too)
-  and the block layer's `blocks` (`BLOCKS.countIn` over his land's box `PLOT_BOX`, every
-  height; counted again only when the layer changes: `BLOCKS.onChange`).
+  and the block layer's `blocks` (the cells inside his land's shape, every height: not the
+  neighbours' yards or the meadows its box takes in; counted again only when the layer
+  changes: `BLOCKS.onChange`).
   A piece that would pass it is greyed on the card ("ដីរបស់អ្នកនៅសល់កន្លែងមិនគ្រប់ទេ /
   Not enough room left on your land"). Every piece at its most is 6 876 blocks (69 %).
   Measured on a full plot (`build=full`, a walk at its north end over it): +8 draws,
@@ -2920,8 +2921,9 @@ sounds `audio/_build.ts`.
   house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him and it turns with him **on his land's lines**
   (AWP-30): in 15° steps counted from the house's frame (0° along the house), held on its
   step until he turns 4° past the middle to the next (no flicker); `,` / `.` (the pad's
-  d-pad ← →, the touch ⟲ ⟳) turn it 15° more; 5°: Shift + `,` / `.` (keys), L2 held with
-  ← → (the pad), ⟲ ⟳ held (touch: 5° after 0.45 s, again every 0.35 s). The turn resets after
+  d-pad ← →, the touch ⟲ ⟳) turn it 15° more; 5°: Shift + `,` / `.` (keys: Shift read as
+  the key goes down), L2 held with ← → (the pad: in build mode L2 is the fine turn's, `buildMode`
+  takes its press before the binoculars, order 5; the prompt shows the pad's L2), ⟲ ⟳ held (touch: 5° after 0.45 s, again every 0.35 s). The turn resets after
   each piece built. Its middle steps on a 0.5 m grid from his land's corner. A fence's ghost
   shows a **guide**, pale dashes on the ground on along its run 9 m past both ends. A
   **fence runs on** from the free end of one he built (its ghost within 1.5 m): its own end
