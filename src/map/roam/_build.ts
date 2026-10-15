@@ -566,6 +566,8 @@ function buildHere(ctx: RoamCtx): void {
  * spirit house: a step or two before him) a little steeper, so the line from the camera to it goes over his hat.
  */
 const pitchFor = (ahead: number): number => MODE_CAM.pitch + Math.min(0.24, Math.max(0, (3.2 - ahead) * 0.2));
+/** The follow camera's swing behind him before build mode held it (put back after). */
+let followBefore: number | null = null;
 /** Where build mode's camera last looked (eased back from it after). */
 const lastAim = { x: 0, z: 0 };
 
@@ -588,12 +590,19 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     f.z += (aim.z - f.z) * MODE_CAM.toward * modeCamToward;
     lastAim.x = aim.x;
     lastAim.z = aim.z;
-    // (over his shoulder, a little: the ghost ahead beside his hat, not under it)
-    cam.behindYaw = ctx.body.yaw + MODE_CAM.shoulder * modeCamToward;
+    // (the follow camera holds its heading while he walks here: W walks along it, so he walks straight. Swinging round
+    // behind him, over his shoulder, it turned the way W walks a little each step: he walked a curve, and a fence line
+    // he stretched bent into an enclosure. The player's own turn, Q / R, a drag or the right stick, still turns it.)
+    if (followBefore === null) followBefore = cam.follow;
+    cam.follow = 0;
+    cam.behindYaw = ctx.body.yaw;
     if (modeCamLetGo) return;
-    // On the first move it goes round over his shoulder standing too (the follow camera swings round behind him only
-    // while he walks), when it looks his way already (from in front of him it stays: no spin).
-    const round = Math.atan2(Math.sin(cam.behindYaw - cam.yaw), Math.cos(cam.behindYaw - cam.yaw));
+    // On the first move it goes round over his shoulder (a piece's ghost ahead beside his hat, not under it), standing
+    // too, when it looks his way already (from in front of him it stays: no spin).
+    // (a footprint's cursor is two steps ahead, clear of his hat: the camera straight behind him, so W walks the way he
+    // faces and a fence line he stretches runs along it)
+    const shoulder = ctx.body.yaw + (placing ? MODE_CAM.shoulder * modeCamToward : 0);
+    const round = Math.atan2(Math.sin(shoulder - cam.yaw), Math.cos(shoulder - cam.yaw));
     if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
     const reach = aim.reach;
     cam.pitch += (pitchFor(Math.hypot(aim.x - ctx.body.pos.x, aim.z - ctx.body.pos.z)) - cam.pitch) * kk;
@@ -601,6 +610,10 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, aim.high * MODE_CAM.perHigh, modeCamBefore.distance));
     cam.distance += (want - cam.distance) * kk;
     return;
+  }
+  if (followBefore !== null) {
+    cam.follow = followBefore;
+    followBefore = null;
   }
   if (modeCamToward > 0.001) {
     modeCamToward *= Math.exp(-MODE_CAM.back * dt);

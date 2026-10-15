@@ -2942,7 +2942,12 @@ sounds `audio/_build.ts`.
   in the middle, a little over his shoulder (a near ghost, the jar, the lamp, the spirit
   house, a little steeper: the line to it over his hat); its first move after a pick is
   quick and goes round over his shoulder even while he stands, so the ghost is not behind
-  his hat. After a fence or a lantern post the mode stays on for the next.
+  his hat (footprint mode: straight behind him, its cursor is two steps ahead). While he
+  walks in build mode or footprint mode the camera holds its heading (no swing round
+  behind him: `cam.follow` 0, put back after), so W, the stick or the touch stick walk
+  straight (it swung over his shoulder and steered him: a 7 m walk drifted 6 m; now
+  0.0 m with keys, pad and touch); Q / R, a drag or the right stick still turn it. After
+  a fence or a lantern post the mode stays on for the next.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block
