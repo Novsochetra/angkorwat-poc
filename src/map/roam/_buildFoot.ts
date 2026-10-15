@@ -505,7 +505,9 @@ export const FootMode = {
   /** After a step: the ghost shown (free) or not. */
   show(free: boolean): void {
     ghost?.show(free && !!kind, !now.reason);
-    showPanel(free && !!kind);
+    // (the panel not over the explorer menu or a card that asks: it is the drawing's, and only while he draws)
+    const over = typeof document !== 'undefined' && (document.body.classList.contains('rxm-open') || document.body.classList.contains('mu-asking'));
+    showPanel(free && !!kind && !over);
   },
 
   /** A new step of roaming (the work of `step` is done once a step). */
