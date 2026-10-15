@@ -3064,8 +3064,9 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   the parts' count, each once, else dropped; made to agree with `gather.spots`). On load a material
   whose count is not a whole number 0‥999 is dropped (a broken value never loads as a
   heap), the bag is cut down to the carry limit (the heaviest first), a spot's time later
-  than the clock is dropped and a clock over 10⁶ days reads as 0. Shots and `progress=0`
-  save nothing.
+  than the clock (by more than 0.0001 day) is dropped and a clock over 10⁶ days reads as 0.
+  A piece's time is saved exactly as the clock is (never rounded past it: a reload right
+  after a cut keeps the cut). Shots and `progress=0` save nothing.
 - **Sounds** (`audio/_gather.ts`): `gatherSwish`, `gatherHit:bamboo|log|thatch|clay`,
   `gatherGot`, `gatherUnload` (moves), `gatherFull` (ui).
 - **URL** (shots and the dev server only, `env.shot || import.meta.env.DEV`, `fromUrl` too:
