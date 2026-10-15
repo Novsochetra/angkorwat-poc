@@ -6,6 +6,7 @@ import type { MapContext, MapFrame, MapPart, RoamLevels, RoamMode, RoamSound, UI
 import { eachAddon, initAddons } from './_addons';
 import { loadAddons } from './_addonList';
 import { followNearFade, installNearFade } from './_nearFade';
+import { fadeHead } from './_headFade';
 import { createBalloon, type BalloonInfo } from './balloon';
 import { createBoat } from './boat';
 import { OrbitFollowCam } from './followCam';
@@ -535,6 +536,8 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
       } else f.listener.copy(f.camera.position);
       // (the near fade: what stands in front of the follow camera dissolves; not in a photo)
       followNearFade(mode !== 'overview' && mode !== 'leap' ? cam.focus : null, ctx.shot && !ctx.video ? 1 : f.dt, 1 - tools.photo.view);
+      // (his head and hat dissolve while a built wall holds the camera close behind them: _headFade.ts)
+      fadeHead(explorer.rig.joints.head, mode !== 'overview' && cam.ownNear && !tools.photo.view, f.camera, cam.focus, ctx.shot && !ctx.video ? 1 : f.dt);
       // The hang glider over him (after his step: they move together), a glider put away, the ramps' lanterns, the seed fluff.
       hang.frame(f, mode, body.pos);
       // The balloon where it stands or flies (back home once he leaves roaming).

@@ -62,8 +62,9 @@ const HANDS_BACK = 1.2;
  *   dissolves (_nearFade.ts). A zoom glides to its new distance.
  * - It never goes into the ground or the water, nor into the player's built
  *   blocks: in a narrow built room it comes nearer than it otherwise does,
- *   tilts over him or under a low roof, or does not turn into the wall
- *   (`NEAREST`, `world.ownClearance`); the world's own places as before.
+ *   tilts over him or under a low roof, or holds the last heading with room
+ *   instead of turning into the wall (`NEAREST`, `world.ownClearance`); the
+ *   world's own places as before.
  * - While he moves it swings round behind his heading by itself (`follow`),
  *   easing in a moment after the player last turned it (a drag, Q / R),
  *   and not while he walks towards it.
@@ -100,6 +101,10 @@ export class OrbitFollowCam implements FollowCam {
   private liftGoal = 0;
   /** The extra tilt over him in a narrow built room (eased; 0 elsewhere). */
   private ownLift = 0;
+  /** The last heading with room for the camera this side of the player's built walls (null: none yet). */
+  private goodYaw: number | null = null;
+  /** A built wall brought the camera in nearer than `CLOSEST` this frame (roam.ts fades his head and hat then: _headFade.ts). */
+  ownNear = false;
   /** The zoom eased (`distance` is where the player put it), and seconds left before it may ease back out. */
   private zoomed = 9;
   private outWait = 0;
@@ -143,6 +148,7 @@ export class OrbitFollowCam implements FollowCam {
       this.speed = 0;
       this.reach = this.zoomed = this.distance;
       this.liftGoal = this.lift = this.ownLift = 0;
+      this.goodYaw = null;
       this.outWait = 0;
       this.pulled = false;
       this.fresh = false;
@@ -216,9 +222,9 @@ export class OrbitFollowCam implements FollowCam {
     let ownGoal = 0;
     if (world.ownClearance) {
       let best = ownWall(tilt) - OWN_MARGIN;
+      let got = false;
       if (best < NEAREST) {
         // Up over him, or lower under a built roof: the least change that gives room, else the one with the most.
-        let got = false;
         for (const d of OWN_TILTS) {
           const p = MathUtils.clamp(tilt + d, Math.max(this.pitchMin, OWN_LOWEST), PITCH_MAX);
           const r = ownWall(p) - OWN_MARGIN;
@@ -231,17 +237,34 @@ export class OrbitFollowCam implements FollowCam {
             break;
           }
         }
-        // None (a built wall at his shoulder under a low roof): it does not turn into the wall; the nearest way
-        // round with room, at his tilt or level (turned on past the wall, it comes out on its other side).
-        if (!got)
-          turns: for (const a of OWN_TURNS)
-            for (const p of [tilt, Math.max(this.pitchMin, OWN_LOWEST, Math.min(tilt, 0))])
-              if (ownWall(p, this.yaw + a) - OWN_MARGIN >= NEAREST) {
+        // None at any tilt (a built wall at his shoulder under a low roof): it does not turn into the wall. Turned
+        // there this frame (the player's keys, stick or drag, the auto-follow): back to the last heading that had
+        // room, so the turn into the wall is dropped and the other way works at once; only if that has no room
+        // either (he moved), the nearest way round with room. One or the other, never both in a frame.
+        if (!got) {
+          // (the tilt that gives room at a heading: his own first, then as above)
+          const fit = (yaw: number) => {
+            for (const d of [0, ...OWN_TILTS]) {
+              const p = MathUtils.clamp(tilt + d, Math.min(tilt, Math.max(this.pitchMin, OWN_LOWEST)), PITCH_MAX);
+              if (ownWall(p, yaw) - OWN_MARGIN >= NEAREST) return p;
+            }
+            return null;
+          };
+          let p = this.goodYaw !== null && this.goodYaw !== this.yaw ? fit(this.goodYaw) : null;
+          if (p !== null) this.yaw = this.goodYaw!;
+          else
+            for (const a of OWN_TURNS)
+              if ((p = fit(this.yaw + a)) !== null) {
                 this.yaw += a;
-                ownGoal = p - tilt;
-                break turns;
+                break;
               }
-      }
+          if (p !== null) {
+            ownGoal = p - tilt;
+            got = true;
+          }
+        }
+        if (got) this.goodYaw = this.yaw;
+      } else this.goodYaw = this.yaw;
     }
     // (to a tilt that gives room at once; back to his own tilt slowly)
     if (ownGoal) this.ownLift = ownGoal;
@@ -274,11 +297,13 @@ export class OrbitFollowCam implements FollowCam {
       this.roomTurn -= step;
     }
     let closest = Math.min(CLOSEST, dist);
+    this.ownNear = false;
     if (world.ownClearance) {
       // (to this side of a built wall nearer than CLOSEST; nearer than NEAREST only when even over him there is no
       // room, and never into the wall)
       const wall = ownWall(pitch);
       if (wall - MARGIN < closest) {
+        this.ownNear = wall - OWN_MARGIN < closest;
         closest = Math.min(closest, wall - OWN_MARGIN);
         if (closest < INNERMOST) closest = Math.max(0, Math.min(INNERMOST, wall - 0.1));
       }

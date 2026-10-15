@@ -2413,9 +2413,14 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   but no nearer than 1.4 m to his neck (`world.ownClearance`, followCam.ts
   `NEAREST`, `OWN_MARGIN`); with no room for that it tilts up over him or a
   little lower under a low roof, and with none at any tilt it does not turn
-  into the wall (turning that way stops at the last spot with room). It is
-  never inside a built block and he stays in view, close up (his hat fills
-  much of the view in a 3 m room). The world's own roofs and walls keep the
+  into the wall: it holds the last heading that had room, the turn into the
+  wall (keys, stick, drag, the auto-follow) is dropped and the other way
+  works at once (no shaking: 0 reversals of the heading). It is never inside a
+  built block and he stays in view. So close (from 1.7 m, whole at 1.45 m)
+  his head and hat dissolve block by block (`roam/_headFade.ts`: the head
+  joint's blocks shrink away in a scattered order, no material or shader
+  change, no new program; his shadow loses them meanwhile), so the way ahead
+  shows; only while a built wall holds the camera in (`ownNear`). The world's own roofs and walls keep the
   old rules (the camera's path the same, frame by frame). Timber and bamboo tops sound of wood
   (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
   fauna/_landPlaces.ts) are made once and do not read the blocks. With no
