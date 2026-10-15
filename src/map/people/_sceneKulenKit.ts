@@ -1,5 +1,8 @@
 import { hash3 } from '../../voxel/random';
+import { round } from '../veg/plantKit';
+import { bananaHand, mangoLying, smallRounds } from '../veg/produce';
 import { dress, shade, type DressOptions } from './_kinds';
+import { kitInRig } from './_kitRig';
 import { FEAT, type Look } from './_personModel';
 import { RigDef } from './_things';
 
@@ -68,9 +71,13 @@ export function foodRig(seed: number): RigDef {
   d.box([0, 0.06, 0.4], [0.18, 0.06, 0.18], 0xd89a4a).box([0.03, 0.09, 0.38], [0.1, 0.03, 0.1], 0x7aa040);
   // Sticky rice in its little woven basket, a pile of fruit: mangoes, lychee, rambutan.
   d.box([0.5, 0.1, -0.35], [0.16, 0.2, 0.16], 0xc8a060).box([0.5, 0.21, -0.35], [0.12, 0.04, 0.12], 0xe8dcc0);
-  d.box([-0.1, 0.06, 0.62], [0.16, 0.1, 0.12], 0xf0b030).box([0.08, 0.06, 0.64], [0.15, 0.1, 0.12], 0xe8a828);
-  for (let k = 0; k < 5; k++) d.box([-0.3 + (k % 3) * 0.07, 0.04 + Math.floor(k / 3) * 0.05, 0.62 + (k % 2) * 0.06], [0.06, 0.06, 0.06], k % 2 ? 0xc8303a : 0xb82a30);
-  for (let k = 0; k < 3; k++) d.box([0.3 + k * 0.08, 0.05, 0.62], [0.08, 0.08, 0.08], 0xd8402a);
+  // (the plant kit's shapes, the cheap ones: veg/produce.ts, _kitRig.ts)
+  kitInRig(d, (b) => {
+    mangoLying(b, [-0.1, 0.04, 0.62], 1.3, { len: 0.16, wid: 0.1, color: 0xf0b030, blush: 0xd8603a });
+    mangoLying(b, [0.08, 0.04, 0.64], 1.9, { len: 0.15, wid: 0.1, color: 0xe8a828 });
+    smallRounds(b, [-0.24, 0.01, 0.64], 4, 0.06, 0.06, [0xc8303a, 0xb82a30], 0.4);
+    smallRounds(b, [0.38, 0.01, 0.62], 3, 0.08, 0.08, [0xd8402a], 2.1, 0x6a9a3a);
+  });
   // Drinks: cans and a bottle of water.
   d.box([0.55, 0.08, 0.35], [0.07, 0.14, 0.07], r(1) < 0.5 ? 0xd83a2e : 0x2a6ac8).box([0.64, 0.08, 0.42], [0.07, 0.14, 0.07], 0xe8c02a);
   d.box([-0.62, 0.13, 0.45], [0.09, 0.26, 0.09], 0xcfe6f0);
@@ -104,14 +111,20 @@ export function stallGoodsRig(counter: { z: number; top: number }, grill: { x: n
   const d = new RigDef();
   const y = counter.top;
   const z = counter.z;
-  // Lychee in bunches (red), rambutan (red with green hair), mangoes, a hand of bananas, pomelos.
-  for (let k = 0; k < 6; k++) d.box([-1.25 + (k % 3) * 0.14, y + 0.05 + Math.floor(k / 3) * 0.07, z - 0.05 + (k % 2) * 0.08], [0.12, 0.08, 0.12], k % 2 ? 0xc02a34 : 0xb02430);
+  // Lychee (red) and rambutan (red with green hair) on their trays, mangoes, a hand of bananas, pomelos: the plant
+  // kit's shapes (veg/produce.ts), as rig boxes (_kitRig.ts).
   d.box([-1.18, y + 0.02, z], [0.5, 0.04, 0.34], 0xb89050);
-  for (let k = 0; k < 5; k++) d.box([-0.6 + (k % 3) * 0.13, y + 0.06 + Math.floor(k / 3) * 0.07, z + (k % 2) * 0.09 - 0.04], [0.11, 0.1, 0.11], 0xd8402a).box([-0.6 + (k % 3) * 0.13, y + 0.12 + Math.floor(k / 3) * 0.07, z + (k % 2) * 0.09 - 0.04], [0.07, 0.03, 0.07], 0x6a9a3a);
   d.box([-0.62, y + 0.02, z], [0.48, 0.04, 0.34], 0xb89050);
-  for (let k = 0; k < 4; k++) d.box([0.0 + k * 0.12, y + 0.07, z + 0.02], [0.11, 0.12, 0.16], 0xf0b030);
-  d.box([0.62, y + 0.08, z - 0.05], [0.36, 0.1, 0.16], 0xe8d040, { rot: [0, 0.3, 0] });
-  d.box([0.98, y + 0.1, z + 0.05], [0.2, 0.19, 0.2], 0x9ac050).box([1.2, y + 0.1, z - 0.06], [0.2, 0.19, 0.2], 0xa8c858);
+  kitInRig(d, (b) => {
+    smallRounds(b, [-1.14, y + 0.04, z], 7, 0.15, 0.09, [0xc02a34, 0xb02430, 0xc8343a], 1.3);
+    smallRounds(b, [-0.6, y + 0.04, z], 6, 0.14, 0.1, [0xd8402a, 0xc83424], 0.7, 0x6a9a3a);
+    for (let k = 0; k < 4; k++) mangoLying(b, [0.02 + k * 0.12, y + 0.04, z + (k % 2) * 0.05 - 0.02], 0.25 + k * 0.6, { len: 0.17, wid: 0.11, color: k === 1 ? 0xe8c040 : 0xf0b030, blush: k % 2 ? undefined : 0xd8603a, roll: (k - 1.5) * 0.12 });
+    bananaHand(b, [0.48, y + 0.03, z - 0.05], 0.3 + Math.PI / 2, { fingers: 5, len: 0.2, thick: 0.045, color: 0xe8d040 });
+    for (const [px, pz, c] of [
+      [0.98, z + 0.05, 0x9ac050],
+      [1.2, z - 0.06, 0xa8c858],
+    ]) round(b, [px, y, pz], { wid: 0.21, hgt: 0.19, color: c, ribs: false, cap: 0x8aa848, ry: px });
+  });
   // Bottles of water and cans of drink at the counter's end, a jar of sweets.
   for (let k = 0; k < 4; k++) d.box([1.32, y + 0.14, z - 0.2 + k * 0.12], [0.09, 0.28, 0.09], k % 2 ? 0xcfe6f0 : 0xe86a2a);
   d.box([-1.4, y + 0.13, z + 0.12], [0.18, 0.26, 0.18], 0xdde8e8).box([-1.4, y + 0.12, z + 0.12], [0.14, 0.18, 0.14], 0xe89ab0);

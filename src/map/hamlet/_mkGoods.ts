@@ -1,6 +1,6 @@
 import { HAT_BANDS, KRAMAS, SHIRTS, TROUSERS, type KramaLook } from '../../character/clothes';
-import { long, round, teardrop, type P3 } from '../veg/plantKit';
-import { bananaBunch, bananaHand } from '../veg/produce';
+import { long, round } from '../veg/plantKit';
+import { bananaBunch, bananaHand, mangoLying } from '../veg/produce';
 import { tone, type MkBuild, type Tones } from './_mkKit';
 import type { Goods } from './_mkPlan';
 
@@ -221,18 +221,12 @@ function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz:
   );
 }
 
-/** A heap of mangoes lying every which way (the kit's `teardrop` with its kidney curve; the ripe ones' shoulders blushing). */
+/** A heap of mangoes lying every which way on their flat sides (veg/produce.ts `mangoLying`: long, kidney-curved, the ripe ones' shoulders blushing). */
 function mangoHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, ripe = true): void {
   mk.kit((b) =>
-    heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) => {
-      const az = mk.heading + r * Math.PI * 2;
-      const len = sz * 1.2;
-      const wid = sz * 0.82;
-      const dir: P3 = [Math.sin(az), -0.15, Math.cos(az)];
-      const mid = mk.point(px, py + wid * 0.42, pz);
-      const tip: P3 = [mid[0] - dir[0] * len * 0.5, mid[1] - dir[1] * len * 0.5, mid[2] - dir[2] * len * 0.5];
-      teardrop(b, tip, { len, wid, depth: 0.85, curve: 0.3, dir, roll: r * 5, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, low: !top, shade: 0.92 + r * 0.14, src: mk.src });
-    }),
+    heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
+      mangoLying(b, mk.point(px, py + sz * 0.3, pz), mk.heading + r * Math.PI * 2, { len: sz * 1.3, wid: sz * 0.9, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top, shade: 0.92 + r * 0.14, src: mk.src }),
+    ),
   );
 }
 
@@ -450,7 +444,8 @@ export function goods(mk: MkBuild, kind: Goods, a: Area): void {
         mk.box(sx, y + 0.05, sz, 0.03, 0.03, D * 1.1, 0xc8b27a, 'petal');
         if (kind === 0) for (let k = 0; k < 3; k++) mk.box(sx, y + 0.07, sz - 0.12 + k * 0.12, 0.09, 0.08, 0.09, tone(C.meat, mk.r(i, k, 121)), 'petal');
         else if (kind === 1) mk.box(sx, y + 0.08, sz, 0.12, 0.1, 0.34, 0x6a7a3a, 'petal');
-        else mk.box(sx, y + 0.08, sz, 0.11, 0.11, 0.3, tone(C.corn, mk.r(i, 122)), 'petal');
+        // (an ear of corn, its husk pulled back to the stick: the plant kit's long)
+        else mk.kit((b) => long(b, mk.point(sx, y + 0.075, sz - 0.17), { len: 0.34, thick: 0.1, az: mk.heading, el: 0, curve: 0.05, neck: 0.85, taper: 0.7, sides: 4, color: tone(C.corn, mk.r(i, 122)), cap: tone(C.husk, mk.r(i, 123)), capWid: 1.5, src: mk.src }));
       }
       break;
     }

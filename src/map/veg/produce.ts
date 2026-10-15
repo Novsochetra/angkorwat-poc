@@ -1,14 +1,16 @@
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { along, beam, long, mix, type P3 } from './plantKit';
+import { along, beam, long, mix, round, teardrop, type P3 } from './plantKit';
 
 /**
  * Produce made of the plant kit's shapes (veg/plantKit.ts) for the stalls that
  * sell it (the markets' goods, hamlet/_mkGoods.ts; the Kulen stall,
- * hamlet/_knStall.ts): a hand of bananas lying on a table, a bunch hanging
- * from a pole. On the map's axes, as the kit's shapes (a stall's frame:
- * `MkBuild.point` and `heading`). Sizes are the stalls' own (the markets'
- * goods are 1.4 × true size: `_mkGoods.ts`).
+ * hamlet/_knStall.ts, and its seller's counter, people/_sceneKulenKit.ts): a
+ * hand of bananas lying on a table, a bunch hanging from a pole, a mango
+ * lying on its side, small round fruit. On the builder's axes, as the kit's
+ * shapes (a stall's frame: `MkBuild.point` and `heading`; a people rig:
+ * people/_kitRig.ts). Sizes are the stalls' own (the markets' goods are 1.4 ×
+ * true size: `_mkGoods.ts`).
  */
 
 /** The dark end of a banana. */
@@ -79,5 +81,43 @@ export function bananaBunch(b: VoxelBuilder, top: P3, az0: number, o: BunchOpts)
       const base: P3 = [top[0] + Math.sin(az) * thick * 1.1, y, top[2] + Math.cos(az) * thick * 1.1];
       long(b, base, { len, thick, az, el: 1.15, curve: -0.35, neck: 0.55, taper: 0.7, sides: 4, color: (f + k) % 2 ? o.color : mix(o.color, 0xa8b040, 0.12), src: o.src });
     }
+  }
+}
+
+export interface MangoOpts {
+  /** Its length (stalk end to round end) and width (m); a Khmer mango about 0.15 × 0.1, the markets' 1.4 × that. */
+  len: number;
+  wid: number;
+  color: number;
+  /** The ripe ones' red shoulders. */
+  blush?: number;
+  /** A little roll off lying flat (radians). */
+  roll?: number;
+  /** Two blocks (hidden in a heap, or far); no stalk. */
+  low?: boolean;
+  shade?: number;
+  src?: SourceTrace;
+}
+
+/**
+ * A mango lying on its flat side, its middle at `mid` (its foot on the
+ * surface: `mid` is `wid` × 0.36 over it), heading `az` from its stalk end to
+ * its round end: the kit's teardrop, its kidney curve, its narrow stalk end
+ * greener with a dark nub of stalk. Blocks: 6 (`low` 2).
+ */
+export function mangoLying(b: VoxelBuilder, mid: P3, az: number, o: MangoOpts): void {
+  const dir: P3 = [Math.sin(az), -0.08, Math.cos(az)];
+  const tip: P3 = [mid[0] - (dir[0] * o.len) / 2, mid[1] - (dir[1] * o.len) / 2, mid[2] - (dir[2] * o.len) / 2];
+  // (its stalk end greener, a dark nub of stalk on it: what tells a mango from a block at a step or two)
+  teardrop(b, tip, { len: o.len, wid: o.wid, depth: 0.8, curve: 0.4, taper: 0.42, dir, roll: o.roll ?? 0, color: o.color, neck: mix(o.color, 0x6a8a22, 0.45), blush: o.blush, stalk: o.low ? undefined : o.wid * 0.18, stalkColor: 0x4a3a1e, low: o.low, shade: o.shade, src: o.src });
+}
+
+/** Small round fruit (lychee, rambutan, longan) on a surface, `n` of them about (x, y, z) within `r` (m), each `s` across: the kit's `round`, `low` (3 blocks each; `cap` a rambutan's green hair). */
+export function smallRounds(b: VoxelBuilder, at: P3, n: number, r: number, s: number, colors: readonly number[], seed: number, cap?: number, src?: SourceTrace): void {
+  for (let k = 0; k < n; k++) {
+    const a = k * 2.4 + seed;
+    const d = r * Math.sqrt((k + 0.5) / n);
+    const layer = k >= n - Math.floor(n / 3) ? 1 : 0;
+    round(b, [at[0] + Math.sin(a) * d * (1 - layer * 0.6), at[1] + layer * s * 0.7, at[2] + Math.cos(a) * d * (1 - layer * 0.6)], { wid: s, hgt: s * 0.9, color: colors[k % colors.length], ribs: false, cap, ry: a, low: true, src });
   }
 }
