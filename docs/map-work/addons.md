@@ -3033,7 +3033,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   **shed** រោង (3 × 3 m to 8 × 8 m; 4), the **fence line** របងព័ទ្ធ (round a footprint,
   2 m to 24 m a side, or one straight run one cell wide; 12). Why: a house's room inside
   its walls is 4 m or more (the follow camera reads such a room, AWP-17); at 8 m its roof
-  is 4.5 m of stepped thatch over 9 × 9 m (≈ 1 500 blocks, 15 % of his land's budget);
+  is 4.5 m of stepped thatch over 9 × 9 m (≈ 1 560 blocks, 16 % of his land's budget);
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on laterite footings (a post at
@@ -3044,8 +3044,10 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   with its jamb posts, windows (1 m wide, 1‥2 m over the floor) in every other bay but the
   door's, a steep gable roof of palm-leaf thatch along the longer side (rows two cells
   deep stepping in and up, 45°, eaves a cell past the walls, a dark timber ridge, timber
-  gable boards: Khmer, no horns), and a stair from the door straight out to the ground
-  (treads of 0.25 m: about 5 m long for a 3 m floor). The shed: posts and plate (its
+  gable boards in light and dark rays as the village houses' gables: Khmer, no horns), and
+  a stair from the door straight out to the ground (treads of 0.25 m, the lowest a rise or
+  less over the ground: about 5.5 m long for a 3 m floor) with timber rails along both
+  sides (a block beside each tread and one over it: he does not step off it). The shed: posts and plate (its
   underside 2.5 m over the ground), woven bamboo half walls 1 m high on three sides, the
   door side open, the same roof, bamboo gables. The fence: a woven split-bamboo panel
   1.5 m high (whole-bamboo rails along its foot and top), old bamboo posts every 2 m at
@@ -3057,8 +3059,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 - **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle, 4 laterite
   a lump of clay), rounded up per building, so it grows with the footprint: the smallest
-  house 16 logs, 9 bamboo, 12 thatch, 4 clay (150,000 ៛ bought outright); a 6 × 6 m house
-  19 logs, 13 bamboo, 17 thatch, 4 clay; an 8 × 8 m one ≈ 303,000 ៛; the smallest shed
+  house 18 logs, 9 bamboo, 12 thatch, 4 clay (162,000 ៛ bought outright; 756 blocks); a
+  6 × 6 m house 21 logs, 13 bamboo, 17 thatch, 4 clay (200,500 ៛; 968 blocks); an 8 × 8 m
+  one 315,000 ៛ (1 556 blocks); the smallest shed
   45,500 ៛ (the thatched shelter piece is 40,000 ៛); a fence ≈ 1,250 ៛ a metre (the fence
   piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
@@ -3115,7 +3118,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 - **URL** (shots and the dev server only: a link never changes a player's save):
   `foot=<kind>@x0/z0/x1/z1[/door][:done],…` (two corners in metres on the block grid, the
   door side 0 north, 1 east, 2 south, 3 west, 2 if left out; done 0‥1, 1 if left out) ·
-  `foot=0` · `foot=full` (his land filled with them while the budget lasts: perf) ·
+  `foot=0` · `foot=full` (his land filled with the largest of each, 8 × 8 m, where they fit, while the budget lasts: perf) ·
   `footdraw=<kind>[@x0/z0[/x1/z1]][:door]` (the mode, its corners held) ·
   `footwork=<kind>:<0‥1>[:<s>]` (at work on the last one of that kind) ·
   `foottake=<uid>[:<0‥1>]` (the question; taking it down). `report()` gives `foot=`,

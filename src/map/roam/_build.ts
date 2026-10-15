@@ -44,6 +44,11 @@ import type { RoamCtx } from './types';
  *   2,000 ៛"; what can never be gathered, cloth or straw, always bought, on a line
  *   of its own: "Bought: cloth 8,000 ៛"; the prices are the old ones), how many he has
  *   of how many; not enough riel for what he lacks: greyed with how much more.
+ * - **Footprint buildings** (AWP-20): the card's first rows (a stilt house, a
+ *   shed, a fence line) open footprint mode (_buildFoot.ts: he draws a
+ *   rectangle, the building fits itself to it, written into the player's block
+ *   layer as he hammers it up); this file routes its keys, its E, the camera and
+ *   the touch bar to it, and its buildings take E by them as a piece does.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
  *   past his land, a neighbour's yard, the house, not level, a tree, a plant, something

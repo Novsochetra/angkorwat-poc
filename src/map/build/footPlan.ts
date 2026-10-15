@@ -55,9 +55,9 @@ import type { MaterialId, Materials } from './materials';
  * rows of thatch stepping in one cell and up one cell (45°), each row two
  * cells deep so it sits on the one under it (a row one cell deep meets the
  * next only along an edge: blocks/mesh.ts `diagonalJoints`), eaves one cell
- * past the walls on every side. **Full blocks for now; the one place to swap
- * the step's shape is `roofStep`** (AWP-24's slabs and stairs: the outer cell
- * of each row a stair turned down the slope reads as a smooth roof).
+ * past the walls on every side. **Full blocks for now; the one place to smooth
+ * the steps is `roofStep`** (AWP-24's blocks/roof.ts `stepBlock`: a stair in
+ * each step, a slab on the ridge; put into the plan, so counted and built).
  * The stair's treads are the same: **`stairStep`** gives each tread's block
  * (a slab's 0.25 m rise today, the walk map's stair rise; AWP-24's stair
  * block, two rises a cell, would halve its run).
@@ -249,13 +249,15 @@ function postsAlong(a: number, b: number, must: readonly number[] = []): number[
 }
 
 /**
- * The block of one cell of the roof (THE place for the step's shape, AWP-24): `out` the row's cell nearer the eave
- * (−1 or +1 across the ridge, 0 the ridge), `axis` the cross axis ('x' or 'z'). Today every cell is a full block
- * (the 45° steps read as a stepped thatch roof). With AWP-24's stairs: the outer cell (`outer`) a stair turned so
- * its low side faces `out` along `axis`, the inner one a full block; the ridge a slab on top.
+ * The block over a roof cell that smooths its step (THE place for the roof's step shape, AWP-24), or null (none:
+ * the roof stays in stepped full blocks, as today). `roof(i, j, k)`: is that cell one of the roof's (its rows of full
+ * blocks, the ridge); `under` the roof cell's block. Called for every roof cell with nothing over it in the plan; what
+ * it returns goes into the plan over it (so it is built, counted in the cost and the budget, and taken down with
+ * the roof). With AWP-24 merged this is one line: `return stepBlock(roof, i, j, k, under);` (blocks/roof.ts: a
+ * stair climbing to the next row up, a slab on the ridge).
  */
-export function roofStep(mat: BlockMatKey, color: number, _out: -1 | 0 | 1, _axis: 'x' | 'z', _outer: boolean): Block {
-  return { mat, color };
+export function roofStep(_roof: (i: number, j: number, k: number) => boolean, _i: number, _j: number, _k: number, _under: Block): Block | null {
+  return null;
 }
 
 /**
@@ -528,8 +530,13 @@ function roofRows(r: FootRect, j0: number, gable: BlockMatKey, put: (i: number, 
   const a1 = (alongX ? r.i1 : r.k1) + 1;
   const g0 = a0 + 1;
   const g1 = a1 - 1;
-  const axis = alongX ? 'z' : 'x';
   const cell = (a: number, c: number, j: number, b: Block) => (alongX ? put(a, j, c, b) : put(c, j, a, b));
+  // (the roof's own cells, its rows and ridge: the steps over them are smoothed after, `roofStep`)
+  const roof = new Map<string, Block>();
+  const roofCell = (a: number, c: number, j: number, b: Block) => {
+    roof.set(alongX ? `${a},${j},${c}` : `${c},${j},${a}`, b);
+    cell(a, c, j, b);
+  };
   for (let row = 0; ; row++) {
     const j = j0 + row;
     const L = lo + row;
@@ -546,17 +553,19 @@ function roofRows(r: FootRect, j0: number, gable: BlockMatKey, put: (i: number, 
     for (let a = a0; a <= a1; a++) {
       if (top) {
         // The ridge: timber over the last row's inner cells.
-        for (let c = L; c <= H; c++) cell(a, c, j, roofStep('timber', COL.ridge[0], 0, axis, false));
+        for (let c = L; c <= H; c++) roofCell(a, c, j, { mat: 'timber', color: COL.ridge[0] });
         continue;
       }
-      for (const [c, out, outer] of [
-        [L, -1, true],
-        [L + 1, -1, false],
-        [H - 1, 1, false],
-        [H, 1, true],
-      ] as const)
-        cell(a, c, j, roofStep('thatch', pick(COL.thatch, a, j, c, 10), out, axis, outer));
+      for (const c of [L, L + 1, H - 1, H]) roofCell(a, c, j, { mat: 'thatch', color: pick(COL.thatch, a, j, c, 10) });
     }
     if (top) break;
+  }
+  // The steps smoothed (AWP-24), over every roof cell with nothing over it (`put` keeps a cell's first block).
+  const isRoof = (i: number, j: number, k: number) => roof.has(`${i},${j},${k}`);
+  for (const [at, under] of roof) {
+    const [i, j, k] = at.split(',').map(Number);
+    if (isRoof(i, j + 1, k)) continue;
+    const b = roofStep(isRoof, i, j, k, under);
+    if (b) put(i, j + 1, k, b);
   }
 }

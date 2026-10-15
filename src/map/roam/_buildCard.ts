@@ -14,7 +14,8 @@ import { setSteppedVars } from '../ui/shape';
  * he will build. In the middle of the screen, the look of the map's cards that
  * ask (map.css `.mu-ask`, as the garden's seed card, _gardenCard.ts): a hammer
  * and a post as its picture, the question, a line under it (his riel), then
- * one row per piece: its little picture, its name and how many he has of how
+ * one row per piece (first the footprint buildings, AWP-20: `foot:<kind>`,
+ * their cost at their smallest size): its little picture, its name and how many he has of how
  * many, its line ("Knee high: to sit on and to lie under the sky"), what it
  * costs (AWP-9: each material's picture and how many, those he lacks in red,
  * and the riel to pay now, if any); a piece he lacks materials for says so

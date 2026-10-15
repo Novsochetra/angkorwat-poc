@@ -649,13 +649,13 @@ function updatePanel(): void {
 // ── Checks: a full plot ─────────────────────────────────────────────────────
 
 /**
- * His land full of footprint buildings (`foot=full`, perf and the budget's checks): houses of 6 × 6 m, sheds of
- * 4 × 4 m, then fence lines of 6 × 6 m, each where the placing rules let it stand, scanning his land in rows from the
- * north (2 m steps), while each kind has room and the budget lasts. Returns how many.
+ * His land full of footprint buildings (`foot=full`, perf and the budget's checks): the largest of each (houses and
+ * sheds of 8 × 8 m, fences round 8 × 8 m), each where the placing rules let it stand, scanning his land in rows from
+ * the north (2 m steps), while each kind has room and the budget lasts. Returns how many.
  */
 export function fillFoot(world: RoamWorld): number {
   let n = 0;
-  const sizes: Record<FootKind, number> = { house: 12, shed: 8, fence: 12 };
+  const sizes: Record<FootKind, number> = { house: 16, shed: 16, fence: 16 };
   for (const k of FOOT_KIND_IDS) {
     const s = sizes[k];
     for (let z = cellOf(PLOT_BOX.z0) + 2; z + s < cellOf(PLOT_BOX.z1) && FOOTS.count(k) < FOOT_KINDS[k].most; z += 4)
