@@ -27,12 +27,14 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *
  *   A stair of stair blocks (AWP-24: 0.25 m treads, 1 m wide) climbs to the
  *   floor's east side from the east (x 426‥428, z −169‥−168).
- * - `gable`: a Khmer house with a steep gable roof (AWP-24: 6 × 4 m of timber
- *   walls on a laterite plinth, a door to the south, a palm thatch roof at 45°
- *   over them, a cell over at every side, its gable ends timber): the roof's
- *   steps smoothed with stairs and its ridge capped with slabs (roof.ts
- *   `gableRoof`). `gable-stepped`: the same with the roof left as steps of
- *   full blocks (as before AWP-24), to compare.
+ * - `gable`: an open Khmer pavilion with a steep gable roof (AWP-24: 6 × 4 m
+ *   on a laterite plinth, eight timber posts 2.5 m high under a beam ring
+ *   painted lacquer red, a palm thatch roof at 45° a cell over the beams at
+ *   every side, its gable ends timber; open between the posts, so the roof's
+ *   underside shows): the roof's steps smoothed with stairs and its ridge
+ *   capped with slabs (roof.ts `gableRoof`). `gable-stepped`: the same with
+ *   the roof left as steps of full blocks one deep (as before AWP-24), to
+ *   compare.
  * - `hip` / `hip-stepped`: the sala's hipped roof (one cell deep this time),
  *   smoothed (stairs, outer corner stairs at its four corners, a slab cap) or
  *   left as steps.
@@ -160,9 +162,10 @@ export function buildWalkCourse(store: BlockStore, field: Pick<HeightField, 'hei
 }
 
 /**
- * A Khmer house with a gable roof (see above), its middle at x, z (m): walls 12 × 8 cells, 5 high (2.5 m) on a
- * plinth a cell high, a door 2 cells wide in the south wall; the roof (palm thatch, a cell over the walls at every
- * side) along x. `stepped`: the roof left as steps of full blocks. Returns the blocks set.
+ * An open pavilion with a gable roof (see above), its middle at x, z (m): 12 × 8 cells on a plinth, posts 5 cells
+ * (2.5 m) high at the corners and two more along each long side, a beam ring over them; the roof (palm thatch, a
+ * cell over the beams at every side) along x. `stepped`: the roof left as steps of full blocks. Returns the blocks
+ * set.
  */
 export function buildGableHouse(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number, stepped: boolean): number {
   const W = 12;
@@ -182,17 +185,13 @@ export function buildGableHouse(store: BlockStore, field: Pick<HeightField, 'hei
         const g = cellOf(field.heightAt(cellMid(i0 + a), cellMid(k0 + b)));
         for (let j = Math.min(g, high); j <= high; j++) store.set(i0 + a, j, k0 + b, laterite);
       }
-    // The walls, 5 cells high, dark posts at the corners; a door (2 cells) in the south wall (−z) at its middle.
+    // Posts, 5 cells high (2.5 m: room for him under the beams), at the corners and a third of the way along each
+    // long side; the beam ring over them.
+    for (const a of [0, 4, W - 5, W - 1]) for (const b of [0, D - 1]) for (let j = high + 1; j <= high + 5; j++) store.set(i0 + a, j, k0 + b, post);
     for (let a = 0; a < W; a++)
-      for (let b = 0; b < D; b++) {
-        if (a > 0 && a < W - 1 && b > 0 && b < D - 1) continue;
-        const corner = (a === 0 || a === W - 1) && (b === 0 || b === D - 1);
-        const door = b === 0 && (a === (W >> 1) - 1 || a === W >> 1);
-        if (door) continue;
-        for (let j = high + 1; j <= high + 5; j++) store.set(i0 + a, j, k0 + b, corner ? post : timber);
-      }
-    // The roof: eave rows level with the walls' top course, a cell outside them; the gable ends (timber) on the end walls.
-    gableRoof({ i0: i0 - 1, k0: k0 - 1, i1: i0 + W, k1: k0 + D, j: high + 5, ridge: 'x', block: { mat: 'thatch' }, stepped, ends: { block: timber, inset: 1 } }, store);
+      for (let b = 0; b < D; b++) if (a === 0 || b === 0 || a === W - 1 || b === D - 1) store.set(i0 + a, high + 6, k0 + b, { mat: 'timber', color: KHMER_PAINT.lacquer });
+    // The roof: eave rows level with the beams, a cell outside them; the gable ends (timber) over the end beams.
+    gableRoof({ i0: i0 - 1, k0: k0 - 1, i1: i0 + W, k1: k0 + D, j: high + 6, ridge: 'x', block: { mat: 'thatch' }, stepped, ends: { block: timber, inset: 1 } }, store);
   });
   return store.count - before;
 }

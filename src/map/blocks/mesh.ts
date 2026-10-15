@@ -10,9 +10,16 @@ import { BLOCK_M, CHUNK_N, chunkKey, type BlockChunk, type BlockStore } from './
  * (VoxelBuilder.ts `VoxelGrid.commit`, VoxelMesh.ts `packVoxelMesh`), so the
  * blocks look like the map's:
  *
- * - **Only what can be seen.** A side against a neighbour's filled side
- *   (kinds.ts `covers`, in this chunk or the next) is covered: a block with
- *   every side covered is not drawn at all; each drawn box keeps its open
+ * - **Only what can be seen.** A box's side against a neighbour's filled
+ *   quarters (kinds.ts `FormSpec.covers`: every quarter of it filled, in this
+ *   chunk or the next; a slab beside a slab, a stair beside a stair of the
+ *   same turn, a stair in a roof's step) or against another box of the same
+ *   block is covered; a turned shape's boxes are turned (kinds.ts `FORMS`).
+ *   A block with every side covered is not drawn at all when the 26 cells
+ *   round it are whole blocks (inside a solid mass); with an edge or a corner
+ *   cell round it open it is drawn all the same (left out, its hole joined the
+ *   bevels' grooves round it inside and outside: the sky showed through a
+ *   ridge cube under its slab cap at a gable end). Each drawn box keeps its open
  *   sides (`voxOpen`: the rim is drawn only on edges between two open sides,
  *   a seam between flush neighbours, as the map's grids) and its seen sides
  *   (`voxShown` = open + 64: the map's plain boxes leave the others out, block
@@ -24,8 +31,9 @@ import { BLOCK_M, CHUNK_N, chunkKey, type BlockChunk, type BlockStore } from './
  *   Where such a row meets the next block along it, the three edges at the
  *   corner still round (the shader squares a corner only when all three of its
  *   sides are joints, which would also square the seams between the blocks of
- *   the row): a pinhole of about the bevel's size is left there. Stairs and
- *   slabs (AWP-24) fill such steps; a roof two blocks deep has none.
+ *   the row): a pinhole of about the bevel's size is left there. A roof two
+ *   blocks deep has none, nor one whose steps are filled with stairs (roof.ts
+ *   `smoothRoof`, AWP-24).
  * - **Shade** baked as the map's grids bake it: soft occlusion from the 26
  *   cells round it (convex edges lighter, crevices and the cells under an
  *   overhang darker) and ±5 % seeded jitter by the cell (the same block, the
@@ -213,7 +221,11 @@ export function packChunk(store: BlockStore, c: BlockChunk): PackedChunk {
     // side facing back; one inside the cell, unless another box of the block lies against all of it.
     let any = 0;
     for (let b = 0; b < boxes.length; b++) any |= openOf(faces[b], inner[b], p);
-    if (!any) {
+    // (every side covered and all 26 cells round it whole blocks: inside a solid mass, not drawn; with an edge or a
+    // corner cell round it open, it is drawn all the same: left out, its hole would join the grooves of the bevels
+    // round it, inside and outside, and the sky would show through)
+    const sealed = !any && surrounded(p);
+    if (sealed) {
       out.buried++;
       continue;
     }
@@ -233,7 +245,7 @@ export function packChunk(store: BlockStore, c: BlockChunk): PackedChunk {
     for (let b = 0; b < boxes.length; b++) {
       const box = boxes[b];
       const sides = openOf(faces[b], inner[b], p);
-      if (!sides) continue;
+      if (!sides && any) continue;
       room(fam, fam.count + 1);
       const n = fam.count++;
       const sx = (box[3] - box[0]) * BLOCK_M;
@@ -273,6 +285,13 @@ export function packChunk(store: BlockStore, c: BlockChunk): PackedChunk {
   }
   return out;
 }
+
+/** Every cell round padded cell `p` (its 26: sides, edges, corners) is a whole block (a cube's form: all 24 quarters). */
+function surrounded(p: number): boolean {
+  for (let n = 0; n < 26; n++) if (cov[p + NEAR_OFF[n]] !== WHOLE) return false;
+  return true;
+}
+const WHOLE = 0xffffff;
 
 /** The open sides of a box of the block at padded cell `p` (its sides' quarters on the cell's sides, its sides inside the block). */
 function openOf(faces: number, inner: number, p: number): number {
