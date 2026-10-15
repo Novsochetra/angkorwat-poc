@@ -1,11 +1,11 @@
-import { BUILT, PIECES, pieceToWorld, type Built } from './pieces';
+import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from './pieces';
 import { distTo } from './state';
 import { underRoof } from './shelterRules';
 
 /**
  * Beds he built under a roof of his (AWP-25): any standing piece one lies on
- * (`PIECES[id].seat.lie`: the bamboo bed; AWP-23's sleeping mat the same, with
- * no line more) whose middle is under a roof he built (build/shelterRules.ts
+ * (`isBedPiece`: the bamboo bed; AWP-23's sleeping mat with `isBed` there, one
+ * line) whose middle is under a roof he built (build/shelterRules.ts
  * `underRoof`) is a bed to sleep in, as his mat at home: roam/_home.ts offers
  * "E  Sleep" by it and sleeps him there (roam/_homeSleep.ts, the same card,
  * the same night). In the open it stays a bed to lie on (J / L: _rest.ts).
@@ -38,11 +38,17 @@ const OUT = 0.75;
 
 const _p: [number, number] = [0, 0];
 
+/**
+ * A piece he lies on (THE one place: with AWP-23 merged, `isBed(id)` from build/furniture.ts — the bamboo bed and the
+ * sleeping mat — in this one line).
+ */
+export const isBedPiece = (id: PieceId): boolean => !!PIECES[id].seat?.lie;
+
 /** A bed's place to sleep (null: not one, or not under a roof of his). */
 export function bedPlace(b: Built): BedPlace | null {
   const p = PIECES[b.id];
   const seat = p.seat;
-  if (!seat?.lie || b.done < 1) return null;
+  if (!seat || !isBedPiece(b.id) || b.done < 1) return null;
   if (!underRoof(b.x, b.z, b.y + seat.y + 0.3)) return null;
   pieceToWorld(b, FEET, seat.z, _p);
   const x = _p[0];
@@ -56,7 +62,7 @@ export function bedNear(x: number, y: number, z: number): BedPlace | null {
   let best: Built | null = null;
   let bd = REACH;
   for (const b of BUILT.list) {
-    if (!PIECES[b.id].seat?.lie || b.done < 1 || Math.abs(y - b.y) > UP) continue;
+    if (!isBedPiece(b.id) || b.done < 1 || Math.abs(y - b.y) > UP) continue;
     const d = distTo(b, x, z);
     if (d < bd) {
       bd = d;

@@ -3174,8 +3174,8 @@ roofed area he built as into the pen piece (AWP-25, build plan step 4). **One sh
   `underRoof` (a shed or house built inside the ring, a shelter piece, blocks). Made again only
   when what he built changes (`BUILT.version`, `BLOCKS.version`).
 
-- **Beds** (`map/build/beds.ts`): any standing piece one lies on (`PIECES[id].seat.lie`: the
-  bamboo bed; AWP-23's sleeping mat the same with no line more) under a roof of his
+- **Beds** (`map/build/beds.ts`): any standing piece one lies on (`isBedPiece`: the
+  bamboo bed; with AWP-23 one line, its `isBed(id)`: the sleeping mat too) under a roof of his
   (`bedPlace`, `bedNear`) is a bed to sleep in. By it "E  ដេកសម្រាក / Sleep  ·  hold to take
   it down" (the build add-on: a short press sleeps, held takes it down as any piece); the
   home add-on's card (until dawn, the afternoon, the next event; a short rest while the time
