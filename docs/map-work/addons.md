@@ -3575,7 +3575,7 @@ without its straw), the oxen `people/_ox.ts`.
   (`roam/_gardenSpots.ts`, the same two, the plant's room): no shelter over it, no fence or pen round it.
   A footprint check of its own can ask `cartBlocks` (or `cartBlockWhy`) too.
 - **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
-  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke, and its whole boxes
+  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke and under the oxen's fronts, and its whole boxes
   clear as above: not in a house, the market's stalls, nor under or in a piece built over it since —
   a shelter, a pen, a bed, a fence through it); else it goes to its
   place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
@@ -3587,7 +3587,8 @@ without its straw), the oxen `people/_ox.ts`.
 - **The lead's hint** names the control in use: "ប៊ូតុង E", the pad's □ on a DualSense (X on others), or
   on a touch screen the button that says "លែងខ្សែ / Let go of the rope".
 - **One rule for where it may stand** (`placeFits`, AWP-14 integration): the land at its tail, axle, oxen
-  and yoke, and its and its oxen's whole boxes clear (his pieces, the stakes his cows are tied to with
+  and yoke, and under the oxen's fronts (on from the yoke's ground, a step of 2.2 m at most: never their
+  heads out over a drop), and its and its oxen's whole boxes clear (his pieces, the stakes his cows are tied to with
   their room, `cattle/plan.ts` `STAKE_ROOM`, his blocks, the walk map). The same as it moves (each
   0.2 m, and moving it also stops for cattle, `CATTLE_OBSTACLES`) and as a saved place is checked, so it
   never stops where a reload would refuse it; where he lets go it stands at the last place tested. A

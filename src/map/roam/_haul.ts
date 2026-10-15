@@ -95,6 +95,8 @@ const STUCK_AFTER = 6;
 const STEP = 0.5;
 /** Across the way, where the cart needs room (m from its middle: the wheels' hubs and the oxen side by side). */
 const ACROSS = [-1.15, -0.6, 0, 0.6, 1.15];
+/** The land before the yoke under the oxen's fronts (m on from it; their box reaches `OXEN_BOX.front`). */
+const OX_FRONT = [0.65, OXEN_BOX.front - 0.2];
 /**
  * The land may rise or fall this much from one point of the way to the next (m), or across it: one of its steps. The
  * map's land is built of 2 m blocks, its slopes are steps of them; the walker hops one, a ridden cow climbs one
@@ -397,7 +399,7 @@ function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: nu
 /**
  * **The one rule** for where the cart may stand (axle at (ax, az), heading `yaw`, its oxen straight before it): the
  * land at its tail, axle, oxen and yoke (`passable`, each from its own ground: water, a step across it, a roof, the
- * roaming area), and its and its oxen's whole boxes clear (`_haulFit.ts` `boxClear`). As it moves (`moving`), and
+ * roaming area) and under the oxen's fronts (on from the yoke's ground: never their heads out over a drop), and its and its oxen's whole boxes clear (`_haulFit.ts` `boxClear`). As it moves (`moving`), and
  * as a saved place is checked (`standsAt`): it never stops where it would be refused. Moving, it stops for his
  * cattle too.
  */
@@ -409,6 +411,12 @@ function placeFits(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: num
     const x = ax + dx * d;
     const z = az + dz * d;
     if (Number.isNaN(passable(ctx, x, z, dx, dz, f.heightAt(x, z)))) return false;
+  }
+  // (the oxen's fronts too, on from the yoke's ground — never their heads out over a drop)
+  let y = f.heightAt(ax + dx * CART_YOKE, az + dz * CART_YOKE);
+  for (const d of OX_FRONT) {
+    y = passable(ctx, ax + dx * (CART_YOKE + d), az + dz * (CART_YOKE + d), dx, dz, y);
+    if (Number.isNaN(y)) return false;
   }
   return boxesClear(ctx, ax, az, yaw, ax + dx * CART_YOKE, az + dz * CART_YOKE, yaw, moving, clearOfHim);
 }
@@ -1632,6 +1640,11 @@ registerAddon({
               const px = x + dx * d;
               const pz = z + dz * d;
               if (Number.isNaN(passable(e, px, pz, dx, dz, e.world.field.heightAt(px, pz)))) return `land at the ${nm} (${px.toFixed(1)}, ${pz.toFixed(1)})`;
+            }
+            let y = e.world.field.heightAt(x + dx * CART_YOKE, z + dz * CART_YOKE);
+            for (const d of OX_FRONT) {
+              y = passable(e, x + dx * (CART_YOKE + d), z + dz * (CART_YOKE + d), dx, dz, y);
+              if (Number.isNaN(y)) return `land under the oxen's fronts (${(x + dx * (CART_YOKE + d)).toFixed(1)}, ${(z + dz * (CART_YOKE + d)).toFixed(1)})`;
             }
             const cb: CartBox = { x, z, yaw: r, back: CART_BOX.back, front: CART_BOX.front, half: CART_BOX.half };
             const ob: CartBox = { x: x + dx * CART_YOKE, z: z + dz * CART_YOKE, yaw: r, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
