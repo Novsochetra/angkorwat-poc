@@ -84,9 +84,12 @@ export type WalkMapKind = 'walk' | 'hard' | 'soft';
  * player's blocks: blocks/walk.ts `walkBlocks`): for chunk (a, b), each
  * column's spans (column `i + k · 32` in the chunk, bottom and top in m),
  * bottom to top in each column. After a change, `WalkMap.changed(a, b)`.
+ * `low` (optional): the quarters of the column (bit (x half) + 2 · (z half))
+ * where the span's top is half a column (0.25 m) lower: a stair's tread
+ * (blocks/kinds.ts `FormSpec.low`); `standAt` stands feet there.
  */
 export interface WalkBlocks {
-  spans(a: number, b: number, put: (column: number, y0: number, y1: number) => void): void;
+  spans(a: number, b: number, put: (column: number, y0: number, y1: number, low?: number) => void): void;
 }
 
 /** A walk map's own solids (the player's blocks) and how they are walked. */
@@ -116,8 +119,11 @@ interface Chunk {
    * none (and most chunks: null).
    */
   spans: (Float32Array | undefined)[] | null;
-  /** The player's blocks in the chunk, by column: column c's spans' tops are `top[start[c] … start[c + 1]]` (null: none). */
-  own: { start: Int32Array; top: Float32Array } | null;
+  /**
+   * The player's blocks in the chunk, by column: column c's spans' tops are `top[start[c] … start[c + 1]]`, and
+   * the quarters of the column where each top is half a column lower (`low`: a stair's tread) (null: none).
+   */
+  own: { start: Int32Array; top: Float32Array; low: Uint8Array } | null;
 }
 
 interface Source {
@@ -340,8 +346,10 @@ export class WalkMap {
     }
     const s = this.at!.spans?.[c];
     if (!s) {
-      const g = this.at!.top[c];
-      return g > reach || this.steep(c, g, y) ? NaN : g;
+      const t = this.at!.top[c];
+      const own = this.ownAt(c, t);
+      const g = this.tread(own, t, x, z);
+      return g > reach || this.steep(own, g, y) ? NaN : g;
     }
     let k = 0;
     for (let j = s.length - 2; j >= 1; j -= 2)
@@ -351,23 +359,39 @@ export class WalkMap {
       }
     // (the camera's map: under a built roof, the roof is not its floor; the floor under it is)
     if (this.roofs) while (k >= 2 && s[k - 1] > y && this.ownTop(c, s[k])) k -= 2;
-    const top = s[k];
-    if (top > reach || this.steep(c, top, y)) return NaN;
+    const own = this.ownAt(c, s[k]);
+    const top = this.tread(own, s[k], x, z);
+    if (top > reach || this.steep(own, top, y)) return NaN;
     const next = k + 1 < s.length ? s[k + 1] : Infinity;
     return next - top < height ? NaN : top;
   }
 
-  /** Is `top` at column `c` (of `at`) a player's block's top, more than a step over feet at `y` that are not on it? */
-  private steep(c: number, top: number, y: number): boolean {
-    return top > y + this.step_ && y < top - 0.06 && this.ownTop(c, top);
+  /** Is `top`, of the player's span `own` (−1: not one), more than a step over feet at `y` that are not on it? */
+  private steep(own: number, top: number, y: number): boolean {
+    return own >= 0 && top > y + this.step_ && y < top - 0.06;
   }
 
   /** Is `top` at column `c` (of `at`) a top of the player's blocks? */
   private ownTop(c: number, top: number): boolean {
+    return this.ownAt(c, top) >= 0;
+  }
+
+  /** The player's span of column `c` (of `at`) whose top is `top` (its index in `own`), or −1. */
+  private ownAt(c: number, top: number): number {
     const o = this.at!.own;
-    if (!o) return false;
-    for (let j = o.start[c]; j < o.start[c + 1]; j++) if (Math.abs(o.top[j] - top) < 1e-3) return true;
-    return false;
+    if (!o) return -1;
+    for (let j = o.start[c]; j < o.start[c + 1]; j++) if (Math.abs(o.top[j] - top) < 1e-3) return j;
+    return -1;
+  }
+
+  /** The top `top` of the player's span `own` (of `at`; −1: not one) where (x, z) stands: half a column lower on a stair's tread (`WalkBlocks` `low`). */
+  private tread(own: number, top: number, x: number, z: number): number {
+    const low = own >= 0 ? this.at!.own!.low[own] : 0;
+    if (!low) return top;
+    const u = (x - this.x0) / RES;
+    const v = (z - this.z0) / RES;
+    const q = (u - Math.floor(u) >= 0.5 ? 1 : 0) + (v - Math.floor(v) >= 0.5 ? 2 : 0);
+    return low & (1 << q) ? top - RES / 2 : top;
   }
 
   /** Bottom of the first solid above height `y` at (x, z), or Infinity. */
@@ -444,23 +468,25 @@ export class WalkMap {
     // gives them in a column): column c's are `y0s / y1s[start[c] … start[c + 1]]`.
     let own: Chunk['own'] = null;
     const got: number[] = [];
-    this.own?.blocks.spans(a, b, (col, y0, y1) => {
-      if (col >= 0 && col < n && y1 > y0) got.push(col, y0, y1);
+    this.own?.blocks.spans(a, b, (col, y0, y1, low = 0) => {
+      if (col >= 0 && col < n && y1 > y0) got.push(col, y0, y1, low);
     });
-    const m = got.length / 3;
+    const m = got.length / 4;
     const start = new Int32Array(n + 1);
     const y0s = new Float64Array(m);
     const y1s = new Float64Array(m);
     if (m) {
-      for (let j = 0; j < got.length; j += 3) start[got[j] + 1]++;
+      const lows = new Uint8Array(m);
+      for (let j = 0; j < got.length; j += 4) start[got[j] + 1]++;
       for (let c = 0; c < n; c++) start[c + 1] += start[c];
       const fill = start.slice(0, n);
-      for (let j = 0; j < got.length; j += 3) {
+      for (let j = 0; j < got.length; j += 4) {
         const at = fill[got[j]]++;
         y0s[at] = got[j + 1];
         y1s[at] = got[j + 2];
+        lows[at] = got[j + 3];
       }
-      own = { start, top: Float32Array.from(y1s) };
+      own = { start, top: Float32Array.from(y1s), low: lows };
     }
     // The meshes' blocks: what each puts in which column, lowest first (they never change: kept for a chunk with
     // the player's blocks, which is made again at each change of them).
