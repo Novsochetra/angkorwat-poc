@@ -3,6 +3,8 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate } from '../cull';
 import type { MapContext, MapFrame } from '../types';
+import { plantsLite } from '../veg/detail';
+import { fan } from '../veg/plantKit';
 import type { HamletPiece } from './index';
 import { BAMBOO, BAMBOO_OLD, MkBuild, POST, tone, WOOD, type Tones } from './_mkKit';
 import { signLetters, wordSize } from './_mkSign';
@@ -203,14 +205,17 @@ function fruitSeedling(mk: MkBuild, x: number, y: number, z: number, r: number):
   }
 }
 
-/** A papaya seedling: a pale stem, three hand-shaped leaves held out on their stalks. */
+/** A papaya seedling: a pale stem, three hand-shaped leaves held out on their stalks (the plant kit's `fan`, three lobes; two leaves on the low graphics level, veg/detail.ts). */
 function papayaSeedling(mk: MkBuild, x: number, y: number, z: number, r: number): void {
   const h = 0.22 + r * 0.16;
   mk.box(x, y + h / 2, z, 0.035, h, 0.035, 0x9aa070, 'mapLeaf');
-  for (let k = 0; k < 3; k++) {
-    const a = k * 2.1 + r * 5;
-    mk.box(x + Math.sin(a) * 0.08, y + h + 0.01, z + Math.cos(a) * 0.08, 0.15, 0.02, 0.15, tone(PAPAYA_LEAF, mk.r(k, r * 7, 18)), 'mapLeaf', 1.05, 0.2, a);
-  }
+  const n = plantsLite() ? 2 : 3;
+  mk.kit((b) => {
+    for (let k = 0; k < n; k++) {
+      const a = k * 2.1 + r * 5;
+      fan(b, mk.point(x, y + h - 0.01, z), { az: mk.heading + a, el: 0.35, stalk: 0.05, lobes: 3, spread: 1.7, len: 0.1, wid: 0.06, segs: 1, rib: false, bend: 0.3, color: tone(PAPAYA_LEAF, mk.r(k, r * 7, 18)), stalkColor: 0xb8c070, src: mk.src });
+    }
+  });
 }
 
 /** A vegetable seedling (eggplant, chilli): a low tuft of round leaves. */

@@ -2900,7 +2900,7 @@ sounds `audio/_build.ts`.
   +0.08 M triangles on a phone (+11, +0.09 M with the edge), its GPU time the same; 10 000 blocks ≈ 0.12 M (a new part's
   0.15 M). The card's **meter** under his riel: "ដីរបស់អ្នក ▬▬▬ បានប្រើ ៦៩% / Your land
   ▬▬▬ 69% used" (gold, red-brown from 90 %).
-- **The card**: each piece with its picture, its name, how many he has of how many,
+- **The card** (two tabs, AWP-23: Yard and Furniture, see "Furniture and lanterns"): each piece with its picture, its name, how many he has of how many,
   its line, its cost (each material's picture and how many, those he lacks in red, then
   the riel to pay now, if any); a piece he lacks materials for says so in place of its line
   ("Missing: 1 bamboo pole = 2,000 ៛"), and what is always bought on a line of its own
@@ -3175,7 +3175,7 @@ roofed area he built as into the pen piece (AWP-25, build plan step 4). **One sh
   when what he built changes (`BUILT.version`, `BLOCKS.version`).
 
 - **Beds** (`map/build/beds.ts`): any standing piece one lies on (`isBedPiece`: the
-  bamboo bed; with AWP-23 one line, its `isBed(id)`: the sleeping mat too) under a roof of his
+  bamboo bed and the sleeping mat, AWP-23's `isBed(id)`) under a roof of his
   (`bedPlace`, `bedNear`) is a bed to sleep in. By it "E  ដេកសម្រាក / Sleep  ·  hold to take
   it down" (the build add-on: a short press sleeps, held takes it down as any piece); the
   home add-on's card (until dawn, the afternoon, the next event; a short rest while the time
@@ -3197,6 +3197,85 @@ roofed area he built as into the pen piece (AWP-25, build plan step 4). **One sh
   `roam=walk&home=1&at=422,-138&foot=house@419/-142/425/-136/2&build=kre@422/-140.5/0&bedsleep=kre-1`
   (asleep under his stilt house) · `roam=walk&home=1&at=429,-150&clock=0.47&cattle=grown,grown&cattlenight=1&foot=fence@424/-167/434/-157/2,shed@425.5/-164/432.5/-158.5/2&cam=429,12,-148,429,8,-162,50`
   (his two cows lying in his fenced shed at night).
+### Furniture and lanterns
+
+He furnishes what he built (ticket AWP-23, build plan step 4; part of the add-on `build`, words
+`build…`): nine more build pieces on the build card's **Furniture** tab (the card has three tabs,
+nine rows at most each so the keys 1‥9 reach every row: **Buildings** សំណង់, AWP-20's footprint
+buildings; **Yard** ទីធ្លា, the yard's pieces; **Furniture** គ្រឿងសង្ហារិម; ← → or the pad's d-pad ← →
+and L1 / R1, or a tap, change the tab; it opens on the one shown last, on Furniture when he stands on
+a floor). Each is a model the map already draws (no new work in `src/kit`):
+`map/build/furniture.ts` (no three.js: the list, `FURNITURE` merged into `PIECES`, `FURN` (each one's
+height band over its floor, `hang`), `HANG`, `FURN_GRID`), `map/build/models/furniture.ts` (the
+models: the village kit's own functions, its `metal` drawn `mapStone`), `roam/_buildFurnSpots.ts`
+(where one may stand: `furnSpot`, `hangCeil`, `onFurnFloor`), `roam/_buildFurniture.ts` (the hanging
+lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's pictures).
+
+- **The pieces** (price = materials + what is always bought; most of a kind): the sitting mat and
+  teapot កន្ទេល និងកំសៀវតែ (village/_kit.ts `mat`: 9,000 ៛: 2 thatch + teapot and cups 4,000 ៛; 4),
+  the sleeping mat កន្ទេលដេក (his room's: 12,000 ៛: 3 thatch + pillow and krama 4,500 ៛; 3; J / L
+  sits or lies him down on it, as the bamboo bed), the bamboo bench កៅអីវែងឫស្សី (the palm sugar
+  shed's, its seat raised to 0.5 m: 11,500 ៛: 2 bamboo, 1 log, 1 clay; 4; J sits him on it), the
+  loom កីត្បាញ (hamlet/_evKit.ts `loom`: 30,000 ៛: 2 logs, 2 bamboo + silk thread 14,000 ៛; 1), rice
+  baskets កញ្ជើអង្ករ (hamlet/_psKit.ts `basket`, `cakeTray`; no storage chest is drawn anywhere on the
+  map: 10,000 ៛: 3 bamboo + rice and palm sugar 4,000 ៛; 4), a potted plant ផើងផ្កា (village/_kit.ts
+  `potPlant`: 5,000 ៛: 2 clay + a young plant 2,000 ៛; 8), the rice mortar ត្បាល់បុកស្រូវ
+  (hamlet/_evKit.ts `mortar`: 6,000 ៛: 1 log; 2), the oil lamp ចង្កៀងប្រេងកាត (his window sill's:
+  2,500 ៛ lamp and kerosene; 8) and the hanging lantern ចង្កៀងព្យួរ (the palm sugar shed's: 2,000 ៛
+  glass lantern; 8). They count in his land's block budget as every piece (2‥18 blocks each).
+- **Where** (`furnSpot`, the ghost green or red with the reason): its floor is what feet at his level
+  stand on under it (the walk map's `standAt` from his feet), the same under every point of it (each
+  0.25 m): his land (the yard pieces' rules, `canBuild`, but only what fills the same height is in its
+  way: a mat goes under a hanging lantern, the shelter's roof and the hammock's cloth are not in the
+  way, their posts and bench are; inside a footprint shed too: AWP-20's "no piece on a footprint
+  building's land" is not furniture's rule), a floor of his blocks on his land (a footprint stilt
+  house's floor: its walls and posts are in the way, and its doorway, the door's cells and the metre of
+  floor inside them, is kept clear: "Keep this spot clear"), or his own stilt house's rooms and
+  veranda round its own things ("ទុកកន្លែងនេះឱ្យទំនេរ / Keep this spot clear": the sleeping mat and
+  net, where he gets up, the sitting mat, the jar, the doors' swing, the way to the stair, the
+  veranda's mat). Past the floor's edge: "Keep all of it on the floor". On a 0.25 m grid, turned as
+  every piece (15°, 5°). "E  Build…" works on such a floor too (the yard's pieces greyed there: "Only
+  on the ground"). After an oil lamp, a hanging lantern or a pot the mode stays on for the next.
+- **The hanging lantern** hangs its glass at 2.5 m over the floor (over his head: he walks under it)
+  on a cord from its hook (2.78 m) up to the roof over it (`hangCeil`: the walk map's `ceilingAt`,
+  his blocks and his house's roof; a shelter he built: its rafters and plates, models/shelter.ts
+  `shelterUnder`), at least 2.85 m and at most 6.5 m over the floor ("The roof is too low / high
+  here"; none: "No roof over it to hang it from"; a footprint house or shed's thatch, its smoothed
+  steps too). It hangs over what stands on the floor (a mat, the baskets). The ghost shows the cord. The cords: one small
+  batch of the bark family for all (one draw, no shadow), made again when a lantern comes, rises or
+  goes or his blocks change.
+- **Nothing he built comes down while it holds furniture**: a footprint building with furniture on its
+  floor or a lantern hung from its roof, a shelter with a lantern hung from its roof
+  (`_buildFurniture.ts` `furnitureHeldBy`; no other piece can hold one: furniture stands only on a
+  floor, the land, his blocks or his house, and a lantern hangs only from a roof, his blocks', his
+  house's or a shelter's; his own stilt house is never taken down). It is not taken down: held E says "សូមរុះគ្រឿងសង្ហារិមខាងក្នុងចេញសិន (២) / Take down the furniture inside
+  first (2)" (`_buildFurniture.ts` `furnitureIn`): nothing is left floating, nothing he paid for is
+  lost. Furniture on the land inside a shed does not count (it stays standing).
+- **Light**: the oil lamp (3 cd, 7 m) and the hanging lantern (7 cd, 12 m) are placed lights as the
+  lamp post (build/view.ts `LIGHT`): they glow at night, the nearest few give real light.
+- **The work**: he walks to the piece on its floor and hammers there (_buildWork.ts: his place and
+  his feet on the floor of his blocks or his house, not the land under it).
+- **Walk map and saving**: as every piece (`_buildWalk.ts`, the solids from the piece's own floor;
+  `build.pieces` keeps its floor's height `y`). The pot, the baskets, the mortar, the loom, the oil
+  lamp stop him; the bench is a seat as the bamboo bed (its top 0.5 m: too high a step, Space hops onto
+  it); the mats and the hanging lantern he walks through.
+- **Seats** (the bench, the sleeping mat, as the bamboo bed and the shelter's bench): "E  Sit" is
+  offered from any side of it and from beside it, whichever way he faces within 0.7 m of it (it comes
+  before a piece near it), and J (L on the
+  sleeping mat) within 1.3 m of it puts him on its seat (y its seat's height over its floor).
+- **Resting under a roof** (J / L anywhere under a roof at most 7 m over his feet: his house, a room he
+  built; `_rest.ts` `ROOFED`): the camera looks down at him from beside him, close, in place of the
+  low sky-watching camera of the open air.
+- **Build mode in a room** (a roof at most 7 m over his feet; `_build.ts` `ROOM_CAM`): the camera
+  low (0.55 rad; a hanging lantern 0.15), as far back as the room lets it (2.2‥6 m, 0.7 m this side
+  of a wall), looking at the ghost's middle (a hanging lantern's glass), so the ghost sits mid-screen
+  and the follow camera never rises over him for room.
+- **URL** (shots and the dev server, as `build=`): `furn=<id>@x/z/yaw[/y][:done],…` (on the floor
+  under feet at height `y`, the land when left out; a spot that would be refused is put there all the
+  same, with a warning) · `window.__furn`: `spot(id, x, z, deg, y)`, `floor(x, y, z)`, `cords()`. E.g. a
+  furnished footprint stilt house: `roam=walk&at=423.6,11.05,-140.6&yaw=300&home=1&foot=house@419/-142/425/-136/2&furn=bedmat@422/-140.3/0/11.05,teamat@420.3/-138.6/0/11.05,baskets@424/-138.4/90/11.05,oillamp@421.2/-139/0/11.05,pot@424/-140.5/0/11.05,hanglamp@422/-139/0/11.05&night=1&cam=419.7,13.7,-141.1,422.7,11.2,-138.0,75` ·
+  a furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
+  in his house: `…&furn=baskets@426.3/-106.4/90/13.1,pot@425.75/-107.55/0/13.1,bench@421.55/-105.5/90/13.1,hanglamp@424.9/-106.4/0/13.1,oillamp@425.6/-105.9/0/13.1&cam=421.4,15.4,-104.4,425.8,13.3,-106.8,70`.
 
 ### Gathering materials
 

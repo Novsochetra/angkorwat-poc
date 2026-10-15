@@ -1,6 +1,7 @@
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { WordKey } from '../ui/lang';
 import { rielOf, type Materials } from './materials';
+import { FURNITURE, type FurnitureId } from './furniture';
 import type { Foot } from './state';
 
 /**
@@ -22,7 +23,7 @@ import type { Foot } from './state';
  * glows, where cows sleep).
  */
 
-export type PieceId = 'pen' | 'shelter' | 'kre' | 'fence' | 'spirit' | 'jar' | 'hammock' | 'lamp' | 'haystack';
+export type PieceId = 'pen' | 'shelter' | 'kre' | 'fence' | 'spirit' | 'jar' | 'hammock' | 'lamp' | 'haystack' | FurnitureId;
 
 export interface PieceSpec {
   readonly id: PieceId;
@@ -149,6 +150,8 @@ export const PIECES: Record<PieceId, PieceSpec> = {
     id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, cost: { bamboo: 1 }, bought: 'buildBuyStraw', secs: 8, w: 2.4, d: 2.4, h: 3.2, max: 2,
     solids: [[0, 0, 2.2, 2.2, 2.6]],
   },
+  // Furniture and lanterns (AWP-23: build/furniture.ts, the card's "Furniture" tab).
+  ...FURNITURE,
 };
 
 export const PIECE_IDS = Object.keys(PIECES) as PieceId[];

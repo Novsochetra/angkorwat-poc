@@ -8,3 +8,4 @@ import './jar';
 import './hammock';
 import './lamp';
 import './haystack';
+import './furniture';

@@ -1,6 +1,7 @@
 import { Group, type Object3D } from 'three';
 import type { MapContext, MapFrame, MapPart, Subject, SubjectKind } from '../types';
 import { eventsNow } from '../events';
+import { plantDetail } from '../veg/detail';
 import { keepApart, RAIN_PACE, type Actor } from './_actor';
 import { Bubble } from './_bubble';
 import { GreetBack } from './_greetBack';
@@ -126,6 +127,8 @@ const PREROLL = 8;
 const REACT = 1.6;
 
 export async function buildPeople(ctx: MapContext): Promise<MapPart> {
+  // (the produce among their things: its cheap form on the low graphics level, veg/detail.ts)
+  plantDetail(ctx.quality);
   const object = new Group();
   object.name = 'people';
   const params = new URLSearchParams(location.search);

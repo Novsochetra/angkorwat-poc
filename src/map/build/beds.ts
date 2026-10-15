@@ -1,11 +1,12 @@
+import { isBed } from './furniture';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from './pieces';
 import { distTo } from './state';
 import { underRoof } from './shelterRules';
 
 /**
  * Beds he built under a roof of his (AWP-25): any standing piece one lies on
- * (`isBedPiece`: the bamboo bed; AWP-23's sleeping mat with `isBed` there, one
- * line) whose middle is under a roof he built (build/shelterRules.ts
+ * (`isBedPiece`, build/furniture.ts `isBed`: the bamboo bed and AWP-23's
+ * sleeping mat) whose middle is under a roof he built (build/shelterRules.ts
  * `underRoof`) is a bed to sleep in, as his mat at home: roam/_home.ts offers
  * "E  Sleep" by it and sleeps him there (roam/_homeSleep.ts, the same card,
  * the same night). In the open it stays a bed to lie on (J / L: _rest.ts).
@@ -38,11 +39,8 @@ const OUT = 0.75;
 
 const _p: [number, number] = [0, 0];
 
-/**
- * A piece he lies on (THE one place: with AWP-23 merged, `isBed(id)` from build/furniture.ts — the bamboo bed and the
- * sleeping mat — in this one line).
- */
-export const isBedPiece = (id: PieceId): boolean => !!PIECES[id].seat?.lie;
+/** A piece he lies on (THE one place: build/furniture.ts `isBed`, AWP-23: the bamboo bed and the sleeping mat). */
+export const isBedPiece = (id: PieceId): boolean => isBed(id);
 
 /** A bed's place to sleep (null: not one, or not under a roof of his). */
 export function bedPlace(b: Built): BedPlace | null {

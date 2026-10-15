@@ -4,7 +4,7 @@ import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import type { HamletPiece } from '../hamlet';
 import type { MapContext } from '../types';
-import { beam, leaf, long, round, sag, spiral, teardrop, vine, type P3 } from './plantKit';
+import { beam, fan, leaf, long, round, sag, spiral, teardrop, vine, type P3 } from './plantKit';
 
 /**
  * Checking the plant kit (veg/plantKit.ts): `index.html?shot=1&plantkit=lineup`
@@ -12,7 +12,8 @@ import { beam, leaf, long, round, sag, spiral, teardrop, vine, type P3 } from '.
  * Wat, a pale board behind it, the hanging fruit on a bamboo rail. Left to
  * right: the old way (a flat square leaf, a box mango, a box pumpkin), leaves (1 piece no rib, 2 pieces, 3 pieces, a broad gourd leaf, a
  * folded banana leaf), teardrops (mango, mango `low`, papaya), rounds (pumpkin,
- * pumpkin `low`, a gourd hanging), longs (banana finger, long eggplant), a vine
+ * pumpkin `low`, a gourd hanging), longs (banana finger, long eggplant), a
+ * hand-shaped papaya leaf (`fan`), a vine
  * winding up a post and draped to the next. The console lists each shape's
  * blocks and the cameras (`cam=`) that frame the table. Shots and the dev
  * server only (a hamlet piece: hamlet/index.ts).
@@ -78,7 +79,7 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
   count('leaf folded (banana)', () => leaf(b, stand(X0 + 2.45, Z0 - 0.3, 0.5), { len: 1.3, wid: 0.42, az: Math.PI, el: 0.45, bend: 0.9, segs: 3, fold: 0.35, stalk: 0.25, shape: 'oblong', color: LEAF_BANANA }));
   // ── Fruit hanging from the rail, and lying on the table ──
   const hang = (x: number, len: number): P3 => [x, railY - 0.02 - len, rz];
-  count('teardrop mango', () => teardrop(b, hang(X0 + 3.35, 0.06), { len: 0.12, wid: 0.09, depth: 0.85, color: 0xf0b030, blush: 0xe8823a, stalk: 0.06, roll: 0.6 }));
+  count('teardrop mango', () => teardrop(b, hang(X0 + 3.35, 0.06), { len: 0.12, wid: 0.09, depth: 0.85, curve: 0.3, color: 0xf0b030, blush: 0xe8823a, stalk: 0.06, roll: 0.6 }));
   count('teardrop mango low', () => teardrop(b, hang(X0 + 3.65, 0.06), { len: 0.12, wid: 0.09, depth: 0.85, color: 0x9ab848, stalk: 0.06, low: true }));
   count('teardrop papaya', () => teardrop(b, hang(X0 + 4.0, 0.05), { len: 0.25, wid: 0.14, taper: 0.65, color: 0xe8a030, neck: 0x9aa83a, stalk: 0.05 }));
   count('round gourd hanging', () => round(b, [X0 + 4.45, railY - 0.02, rz], { wid: 0.2, hgt: 0.22, hang: 0.14, color: 0x7aa850, rib: 0x5e8a3c, stalk: 0x5a7a2e }));
@@ -90,6 +91,7 @@ export function buildPlantKitLineup(ctx: MapContext): HamletPiece {
   count('round pumpkin low', () => round(b, [X0 + 4.3, T, Z0 - 1.2], { wid: 0.45, hgt: 0.3, color: 0xd88a2a, stalk: 0x8a6a3a, ry: 0.3, low: true }));
   count('teardrop papaya lying', () => teardrop(b, [X0 + 4.85, T + 0.07, Z0 - 1.25], { len: 0.25, wid: 0.14, dir: [0.96, -0.05, 0.27], taper: 0.65, color: 0x8aa83e, neck: 0x6a8a2a }));
   count('long eggplant lying', () => long(b, [X0 + 5.3, T + 0.03, Z0 - 1.1], { len: 0.25, thick: 0.055, az: 1.9, el: 0, curve: 0.2, neck: 0.75, taper: 0.85, color: 0x5a2e5e, cap: 0x4e7a2e, capWid: 1.4 }));
+  count('fan (papaya leaf)', () => fan(b, stand(X0 + 5.95, Z0 - 1.35, 0.3), { az: Math.PI, el: 0.75, stalk: 0.7, lobes: 7, spread: 3.2, len: 0.55, wid: 0.22, segs: 1, rib: false, bend: 0.3, color: 0x5a9a38, stalkColor: 0x9cb85a }));
   // ── A vine: up a post, then draped to the next ──
   const p0: P3 = [X0 + 6.7, T, Z0 - 0.5];
   const p1: P3 = [X0 + 7.4, T, Z0 - 0.5];

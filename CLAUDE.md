@@ -221,6 +221,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Leaves, fruit and vines of any plant: the plant kit `src/map/veg/plantKit.ts`
   (leaf, teardrop, round, long, vine; never flat square leaves or box fruit;
   API and blocks in BRIEF.md "The plant kit"; `plantkit=lineup` shows them all).
+  Banana plants: one, `src/map/veg/banana.ts` `bananaPlant` (the home garden's
+  model, garden/models/banana.ts), in every hamlet, village and camp; papayas
+  `veg/papaya.ts`; both cheaper on low (`veg/detail.ts`), never the garden's.
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
@@ -375,6 +378,10 @@ guide, with every add-on's keys and URL values for shots, is
     (`underRoof(x, z, y)`, `fenced(x, z)`, `roofedPens`): a bed under any roof of his sleeps
     him as his mat (`build/beds.ts`, `bedsleep=<uid>`), his cows go into a fenced and roofed
     area at night as into the pen piece (addons.md "Things that work where he builds them").
+  - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
+    Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
+    on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
+    lantern's cord up to the roof (`roam/_buildFurniture.ts`); `furn=<id>@x/z/yaw[/y]`.
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;

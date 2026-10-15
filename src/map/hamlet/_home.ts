@@ -5,6 +5,7 @@ import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate } from '../cull';
 import { Frame } from '../landmarks/_prasatKit';
 import type { MapContext, MapFrame } from '../types';
+import { bananaHand } from '../veg/produce';
 import { bargeBoards, BLOOM, bougainvillea, DECK, gableEnd, gableRoof, jar, JAR, khmerGable, khmerHat, Local, mat, planks, POST, potPlant, tone, WALLS, type Hole, type Roof, type Tones } from '../village/_kit';
 import { GLOW, VillageLights } from '../village/_lights';
 import { EV_RIDGE, EV_ROOFS, hammock, jars, kramaOver, khmerSpiritHouse, woodpile } from './_evKit';
@@ -424,7 +425,8 @@ function inside(L: Local, F: number, glow: (x: number, y: number, z: number, sx:
     L.box(ax, ay + 0.35, vz, 0.07, 0.09, 0.07, s > 0 ? tone(BLOOM, 0.2) : 0xf4f2ea, 'petal');
   }
   L.box(fxA, ay + 0.02, A.z + 0.22, 0.16, 0.03, 0.16, 0xd0c8b8, 'mapStone');
-  L.box(fxA, ay + 0.06, A.z + 0.22, 0.12, 0.05, 0.08, 0xe8c840, 'petal');
+  // (a hand of bananas on the plate: the plant kit's fingers, flat: this builder is the house's turned frame)
+  bananaHand(L.b, [fxA - 0.05, ay + 0.052, A.z + 0.22], Math.PI / 2, { fingers: 3, len: 0.11, thick: 0.03, color: 0xe8c840, flat: true, src: L.src });
   L.box(fxA, ay + 0.05, A.z - 0.22, 0.04, 0.1, 0.04, 0xf2eee0, 'petal');
   glow(fxA, ay + 0.13, A.z - 0.22, 0.025, 0.05, 0.025, 0xffb050, 0.5, 'home');
 

@@ -4,6 +4,9 @@ import type { HeightField } from '../heightfield';
 import { CARRY, FEAT, POSE, ROW_HZ, SLOT, type Crowd, type Look, type Pose } from '../people/_personModel';
 import { moonPath } from '../sky/palette';
 import type { MapFrame } from '../types';
+import { kitBoxes } from '../veg/kitBoxes';
+import { round } from '../veg/plantKit';
+import { bananaHand } from '../veg/produce';
 import { LAKE_LEVEL } from '../village/_spots';
 import { CALLER, CREWS, DRUMMER, FLOOR, halfBeam, litFloat, raceBoat, ROW_X, ROW_Z, STEERER, type FloatKind } from './_boats';
 import { bunting, flag, flagPole, garland } from './_decor';
@@ -548,9 +551,13 @@ function tray(kit: Kit, glow: Glow, x: number, y: number, z: number): void {
     [-0.38, 0.24],
   ])
     kit.box(x + dx, y + 0.09, z + dz, 0.06, 0.18, 0.06, 0x5a3a22, o);
-  kit.box(x - 0.2, y + 0.3, z - 0.1, 0.28, 0.12, 0.18, 0xf2d24a, o);
+  // A hand of bananas and a green coconut (the plant kit's shapes, veg/kitBoxes.ts), the ambok in its leaf cone.
+  for (const k of kitBoxes((b) => {
+    bananaHand(b, [x - 0.3, y + 0.24, z - 0.1], Math.PI / 2, { fingers: 4, len: 0.2, thick: 0.045, color: 0xf2d24a });
+    round(b, [x + 0.2, y + 0.23, z + 0.14], { wid: 0.19, hgt: 0.19, color: 0x6a8a3a, ribs: false, cap: 0x8a7a4a, low: true });
+  }))
+    kit.box(k.c[0], k.c[1], k.c[2], k.s[0], k.s[1], k.s[2], k.color, { ...o, yaw: k.rot?.[1], pitch: k.rot?.[0], roll: k.rot?.[2] });
   kit.box(x + 0.15, y + 0.29, z - 0.12, 0.26, 0.1, 0.2, 0xb8c878, o);
-  kit.box(x + 0.2, y + 0.33, z + 0.14, 0.18, 0.18, 0.18, 0x6a8a3a, o);
   for (const dx of [-0.3, 0.3]) {
     kit.box(x + dx, y + 0.3, z + 0.18, 0.05, 0.14, 0.05, 0xf4ecd8, o);
     kit.box(x + dx, y + 0.41, z + 0.18, 0.06, 0.08, 0.06, 0xffc070, { ...o, glow: 2.2 });

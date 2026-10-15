@@ -25,8 +25,8 @@ import { WORSHIP } from './_worship';
  *   (`build-<uid>`): E "Pray" before it (_pray.ts), the golden lotus where he kneels.
  */
 
-/** He sits from this near a seat piece (m from its footprint), feet within this of the ground or its top. */
-const SEAT_REACH = 1.1;
+/** He sits from this near a seat piece (m from its footprint: by it from any side, beside it too, AWP-23), feet within this of the ground or its top. */
+const SEAT_REACH = 1.3;
 const SEAT_UP = 0.8;
 /** On the bed: where his feet go (local: toward its +x end) to sit or lie along it, his head to −x. */
 const BED_FEET = 0.85;

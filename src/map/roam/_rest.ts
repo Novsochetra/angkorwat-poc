@@ -55,6 +55,11 @@ const AREA: Record<RestKind, { x: readonly number[]; z: readonly number[] }> = {
  */
 const SKY = { pitch: -0.21, distance: 7.6, lift: 2.6, side: -1.0, left: 2.6, back: { sit: 0.45, lie: 0.8 }, rate: 1.6, out: 2.2 };
 const FRAME_FOR = 3;
+/**
+ * Under a roof (a roof this far over his feet at most, m: his house, a room he built; AWP-23's sleeping mat): no sky to
+ * watch, so the camera looks down at him from his side instead, close (the follow camera keeps it out of the walls).
+ */
+const ROOFED = { roof: 7, pitch: 0.75, distance: 3.6, lift: 0.5, side: -0.7, left: 0 };
 const LOOK_UP = -1.1;
 
 export interface Rest {
@@ -160,6 +165,8 @@ export function createRest(d: RestDeps): Rest {
   let before: { pitch: number; distance: number; pitchMin: number } | null = null;
   let framed = 0;
   let prompt: string | null = null;
+  /** He rests under a roof (`ROOFED`: looked at from over his side, not from low under the sky). */
+  let roofed = false;
   /** The way he turns to as he sits down (room there), or null. */
   let turnTo: number | null = null;
   const state: RestState = { u: 0, sleep: 0, t: 0, pack: 'none', knife: true };
@@ -252,15 +259,16 @@ export function createRest(d: RestDeps): Rest {
   /** The camera low behind him looking up at the sky (see `SKY`), and back after. */
   function frame(dt: number): void {
     const down = to > 0;
+    const V = roofed ? ROOFED : SKY;
     if (down) {
       before ??= { pitch: cam.pitch, distance: cam.distance, pitchMin: cam.pitchMin };
-      cam.pitchMin = LOOK_UP;
+      if (!roofed) cam.pitchMin = LOOK_UP;
       framed += dt;
       if (framed <= FRAME_FOR) {
         const e = 1 - Math.exp(-SKY.rate * dt);
-        cam.yaw += angleDiff(body.yaw + SKY.side, cam.yaw) * e;
-        cam.pitch += (SKY.pitch - cam.pitch) * e;
-        cam.distance += (SKY.distance * (body.scale / 1.4) - cam.distance) * e;
+        cam.yaw += angleDiff(body.yaw + V.side, cam.yaw) * e;
+        cam.pitch += (V.pitch - cam.pitch) * e;
+        cam.distance += (V.distance * (body.scale / 1.4) - cam.distance) * e;
       }
     } else if (before) {
       // (getting up: back to the player's own view)
@@ -279,12 +287,12 @@ export function createRest(d: RestDeps): Rest {
     const back = (SKY.back.sit + (SKY.back.lie - SKY.back.sit) * Math.max(0, Math.min(1, u - 1))) * s;
     const f = cam.focus;
     // (the camera's left: −its right, which is (−cos yaw, 0, sin yaw))
-    const lx = Math.cos(cam.yaw) * SKY.left * s;
-    const lz = -Math.sin(cam.yaw) * SKY.left * s;
+    const lx = Math.cos(cam.yaw) * V.left * s;
+    const lz = -Math.sin(cam.yaw) * V.left * s;
     f.x += (body.pos.x - Math.sin(body.yaw) * back + lx - f.x) * w;
     f.z += (body.pos.z - Math.cos(body.yaw) * back + lz - f.z) * w;
-    f.y += (body.pos.y + SKY.lift * s - f.y) * w;
-    cam.behindYaw = body.yaw + SKY.side;
+    f.y += (body.pos.y + V.lift * s - f.y) * w;
+    cam.behindYaw = body.yaw + V.side;
   }
 
   const api: Rest = {
@@ -322,6 +330,9 @@ export function createRest(d: RestDeps): Rest {
         return;
       }
       if (!body.grounded) return;
+      // (under a roof: the room's camera, not the sky's)
+      const roof = ctx.world.ceilingAt?.(body.pos.x, body.pos.z, body.pos.y + 0.5) ?? Infinity;
+      roofed = roof - body.pos.y < ROOFED.roof;
       // (a seat he built at home at hand: onto its spot, its way: REST_SEATS)
       seatAt.bench = 0;
       if (REST_SEATS.find(kind, body.pos.x, body.pos.y, body.pos.z, seatAt)) {
