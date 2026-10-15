@@ -120,3 +120,10 @@ export function furnFromUrl(q: URLSearchParams, ctx: RoamCtx): number {
   console.info(`[build] furn=: ${n} pieces of furniture (${Object.keys(FURN).length} kinds)`);
   return n;
 }
+
+/** The furniture as a check's `furn=` (bug reports: each on its floor, `y` its floor's height), or null. */
+export function furnReport(): string | null {
+  const l = BUILD.list.filter((p) => isFurniture(p.id));
+  if (!l.length) return null;
+  return l.map((p) => `${p.id}@${p.x.toFixed(2)}/${p.z.toFixed(2)}/${((p.yaw * 180) / Math.PI).toFixed(1)}/${(p.y + 0.05).toFixed(2)}${p.done < 1 ? `:${p.done.toFixed(3)}` : ''}`).join(',');
+}

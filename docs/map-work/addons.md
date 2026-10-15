@@ -2900,7 +2900,7 @@ sounds `audio/_build.ts`.
   +0.08 M triangles on a phone (+11, +0.09 M with the edge), its GPU time the same; 10 000 blocks ≈ 0.12 M (a new part's
   0.15 M). The card's **meter** under his riel: "ដីរបស់អ្នក ▬▬▬ បានប្រើ ៦៩% / Your land
   ▬▬▬ 69% used" (gold, red-brown from 90 %).
-- **The card**: each piece with its picture, its name, how many he has of how many,
+- **The card** (two tabs, AWP-23: Yard and Furniture, see "Furniture and lanterns"): each piece with its picture, its name, how many he has of how many,
   its line, its cost (each material's picture and how many, those he lacks in red, then
   the riel to pay now, if any); a piece he lacks materials for says so in place of its line
   ("Missing: 1 bamboo pole = 2,000 ៛"), and what is always bought on a line of its own
@@ -3018,6 +3018,60 @@ sounds `audio/_build.ts`.
   used, by source, edge) · e.g. `roam=walk&at=426,-120&yaw=180&home=1&build=all&plotedge=1&cam=427,70,-52,426,0,-128,50` ·
   `roam=walk&at=424,-116&yaw=0&home=1&night=1&lamps=20&rcam=0,35,22` (twenty lamps at night) ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
+
+### Furniture and lanterns
+
+He furnishes what he built (ticket AWP-23, build plan step 4; part of the add-on `build`, words
+`build…`): nine more build pieces on the build card's **Furniture** tab (the yard's pieces on its
+**Yard** tab: ← → or the pad's d-pad ← → and L1 / R1, or a tap, change the tab; it opens on Furniture
+when he stands on a floor). Each is a model the map already draws (no new work in `src/kit`):
+`map/build/furniture.ts` (no three.js: the list, `FURNITURE` merged into `PIECES`, `FURN` (each one's
+height band over its floor, `hang`), `HANG`, `FURN_GRID`), `map/build/models/furniture.ts` (the
+models: the village kit's own functions, its `metal` drawn `mapStone`), `roam/_buildFurnSpots.ts`
+(where one may stand: `furnSpot`, `hangCeil`, `onFurnFloor`), `roam/_buildFurniture.ts` (the hanging
+lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's pictures).
+
+- **The pieces** (price = materials + what is always bought; most of a kind): the sitting mat and
+  teapot កន្ទេល និងកំសៀវតែ (village/_kit.ts `mat`: 9,000 ៛: 2 thatch + teapot and cups 4,000 ៛; 4),
+  the sleeping mat កន្ទេលដេក (his room's: 12,000 ៛: 3 thatch + pillow and krama 4,500 ៛; 3; J / L
+  sits or lies him down on it, as the bamboo bed), the bamboo bench កៅអីវែងឫស្សី (the palm sugar
+  shed's, its seat raised to 0.5 m: 11,500 ៛: 2 bamboo, 1 log, 1 clay; 4; J sits him on it), the
+  loom កីត្បាញ (hamlet/_evKit.ts `loom`: 30,000 ៛: 2 logs, 2 bamboo + silk thread 14,000 ៛; 1), rice
+  baskets កញ្ជើអង្ករ (hamlet/_psKit.ts `basket`, `cakeTray`; no storage chest is drawn anywhere on the
+  map: 10,000 ៛: 3 bamboo + rice and palm sugar 4,000 ៛; 4), a potted plant ផើងផ្កា (village/_kit.ts
+  `potPlant`: 5,000 ៛: 2 clay + a young plant 2,000 ៛; 8), the rice mortar ត្បាល់បុកស្រូវ
+  (hamlet/_evKit.ts `mortar`: 6,000 ៛: 1 log; 2), the oil lamp ចង្កៀងប្រេងកាត (his window sill's:
+  2,500 ៛ lamp and kerosene; 8) and the hanging lantern ចង្កៀងព្យួរ (the palm sugar shed's: 2,000 ៛
+  glass lantern; 8). They count in his land's block budget as every piece (2‥18 blocks each).
+- **Where** (`furnSpot`, the ghost green or red with the reason): its floor is what feet at his level
+  stand on under it (the walk map's `standAt` from his feet), the same under every point of it (each
+  0.25 m): his land (the yard pieces' rules, `canBuild`, but only what fills the same height is in its
+  way: a mat goes under a hanging lantern, the shelter's roof and the hammock's cloth are not in the
+  way, their posts and bench are), a floor of his blocks on his land, or his stilt house's rooms and
+  veranda round its own things ("ទុកកន្លែងនេះឱ្យទំនេរ / Keep this spot clear": the sleeping mat and
+  net, where he gets up, the sitting mat, the jar, the doors' swing, the way to the stair, the
+  veranda's mat). Past the floor's edge: "Keep all of it on the floor". On a 0.25 m grid, turned as
+  every piece (15°, 5°). "E  Build…" works on such a floor too (the yard's pieces greyed there: "Only
+  on the ground"). After an oil lamp, a hanging lantern or a pot the mode stays on for the next.
+- **The hanging lantern** hangs its glass at 2.5 m over the floor (over his head: he walks under it)
+  on a cord from its hook (2.78 m) up to the roof over it (`hangCeil`: the walk map's `ceilingAt`,
+  his blocks and his house's roof; a shelter he built: its rafters and plates, models/shelter.ts
+  `shelterUnder`), at least 2.85 m and at most 6.5 m over the floor ("The roof is too low / high
+  here"; none: "No roof over it to hang it from"). The ghost shows the cord. The cords: one small
+  batch of the bark family for all (one draw, no shadow), made again when a lantern comes, rises or
+  goes or his blocks change.
+- **Light**: the oil lamp (3 cd, 7 m) and the hanging lantern (7 cd, 12 m) are placed lights as the
+  lamp post (build/view.ts `LIGHT`): they glow at night, the nearest few give real light.
+- **The work**: he walks to the piece on its floor and hammers there (_buildWork.ts: his place and
+  his feet on the floor of his blocks or his house, not the land under it).
+- **Walk map and saving**: as every piece (`_buildWalk.ts`, the solids from the piece's own floor;
+  `build.pieces` keeps its floor's height `y`). The pot, the baskets, the mortar, the loom, the oil
+  lamp stop him; the bench is a seat he steps onto; the mats and the hanging lantern he walks through.
+- **URL** (shots and the dev server, as `build=`): `furn=<id>@x/z/yaw[/y][:done],…` (on the floor
+  under feet at height `y`, the land when left out; a spot that would be refused is put there all the
+  same, with a warning) · `window.__furn`: `spot(id, x, z, deg, y)`, `floor(x, y, z)`, `cords()`. E.g. a
+  furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
+  in his house: `…&furn=baskets@426.3/-106.4/90/13.1,pot@425.75/-107.55/0/13.1,bench@421.55/-105.5/90/13.1,hanglamp@424.9/-106.4/0/13.1,oillamp@425.6/-105.9/0/13.1&cam=421.4,15.4,-104.4,425.8,13.3,-106.8,70`.
 
 ### Gathering materials
 

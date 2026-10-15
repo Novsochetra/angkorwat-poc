@@ -17,7 +17,7 @@ import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
-import { furnFromUrl, installFurniture } from './_buildFurniture';
+import { furnFromUrl, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
 import { FURN_GRID, isFurniture } from '../build/furniture';
 import { installBuildWalk } from './_buildWalk';
@@ -1127,8 +1127,14 @@ registerAddon({
   },
   report() {
     const out: Record<string, string> = {};
-    const b = BUILD.report();
+    // (furniture as `furn=`, on its floor: AWP-23; the rest as `build=`)
+    const b = BUILD.report()
+      ?.split(',')
+      .filter((e) => !isFurniture(e.slice(0, e.indexOf('@'))))
+      .join(',');
     if (b) out.build = b;
+    const fr = furnReport();
+    if (fr) out.furn = fr;
     if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
     const w = BuildWork.now;
     if (w && !w.take) {

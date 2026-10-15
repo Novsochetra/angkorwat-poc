@@ -226,7 +226,7 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
   // Its floor at its middle: at his level.
   const y0 = floorAt(x, z);
   out.y = Number.isFinite(y0) ? y0 : feetY;
-  if (!Number.isFinite(y0)) return fail(out, 'thing');
+  if (!Number.isFinite(y0)) return fail(out, builtInWay(id, x, feetY, z, yaw, ignore) ?? 'thing');
   if (y0 < feetY - AT_LEVEL) return fail(out, 'edge');
   const land = world.field.heightAt(x, z);
   const onLand = Math.abs(y0 - land) < ON_LAND;
@@ -241,6 +241,8 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
     else if (Math.abs(s - y0) > level) why = onLand ? 'steep' : 'thing';
     return why !== null;
   });
+  // (in the way there: something he built, said so)
+  if (why === 'thing' || why === 'steep') why = builtInWay(id, x, y0, z, yaw, ignore) ?? why;
   if (why) return fail(out, why);
 
   if (onLand) {

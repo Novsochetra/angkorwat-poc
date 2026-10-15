@@ -362,6 +362,10 @@ guide, with every add-on's keys and URL values for shots, is
     always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
+    Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
+    on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
+    lantern's cord up to the roof (`roam/_buildFurniture.ts`); `furn=<id>@x/z/yaw[/y]`.
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;
