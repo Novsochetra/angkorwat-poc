@@ -6,6 +6,7 @@ import type { MapPart } from '../types';
 import { buildFlow, riverField } from './flow';
 import type { RoamWorld } from './types';
 import { WalkMap } from './walkmap';
+import { BLOCK_STEP_M, blockClearance, walkBlocks, watchBlocks, woodBlockAt } from '../blocks/walk';
 import { buildWoodFloor } from './_woodFloor';
 
 /** How close to a place's beacon the explorer must be to enter it (m, across and up or down). */
@@ -45,10 +46,13 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[], la
   const river = riverField(field);
   const flow = buildFlow(field);
   const level = performance.now() - t0;
-  const walk = new WalkMap(field, parts);
+  // (the player's blocks, from their store: solid to his feet, the dog and the camera, not seen through: blocks/walk.ts)
+  const blocks = walkBlocks();
+  const walk = new WalkMap(field, parts, 'walk', false, { blocks, step: BLOCK_STEP_M });
   const t1 = performance.now();
-  const hard = new WalkMap(field, parts, 'hard', later);
+  const hard = new WalkMap(field, parts, 'hard', later, { blocks, roofs: true });
   const soft = new WalkMap(field, parts, 'soft', later);
+  watchBlocks([walk, hard]);
   const wood = buildWoodFloor(parts, later);
   // (made with the map, as before: headless shots, a page that starts roaming)
   if (!later) river.step(Infinity);
@@ -77,10 +81,11 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[], la
     inBounds: inRoam,
     edgeDistance: (x, z) => roamInside(x, z),
     standAt: (x, z, y, up, height) => walk.standAt(x, z, y, up, height),
-    woodAt: (x, z, y) => wood.at(x, z, y),
+    woodAt: (x, z, y) => wood.at(x, z, y) || woodBlockAt(x, z, y),
     ceilingAt: (x, z, y) => walk.ceilingAt(x, z, y),
     clearance: (ax, ay, az, bx, by, bz) => walk.clearance(ax, ay, az, bx, by, bz),
     hardClearance: (ax, ay, az, bx, by, bz) => hard.clearance(ax, ay, az, bx, by, bz),
+    ownClearance: (ax, ay, az, bx, by, bz) => blockClearance(ax, ay, az, bx, by, bz),
     hardStandAt: (x, z, y, up, height) => hard.standAt(x, z, y, up, height),
     softClearance: (ax, ay, az, bx, by, bz, leave) => soft.clearance(ax, ay, az, bx, by, bz, leave),
     placeNear(x, z, y): PlaceDef | null {
