@@ -4,10 +4,10 @@ import { BODY_UNIT_M, WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_build';
 import type { VoxelBox } from '../../voxel/VoxelBuilder';
-import { MATERIAL_IDS, STORE, materialsText } from '../build/materials';
+import { MATERIAL_IDS, STORE, materialsText, type Materials } from '../build/materials';
 import { PIECES, pieceBack, type Built } from '../build/pieces';
 import { BUILD } from '../build/state';
-import { pieceLook } from '../build/view';
+import { pieceLook, type PieceLookData } from '../build/view';
 import { pad } from '../pad/pad';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
@@ -39,7 +39,45 @@ import { stepSound } from './walker';
  * got (E "Keep building" by it goes on; a toast says so the first time), one
  * being taken down stands again whole. Back to the map, another mode: the same,
  * at once. The camera comes round to his side, a little back, the piece in view.
+ *
+ * **Any job** (`WorkJob`): a piece (`pieceJob`), or a footprint building
+ * (AWP-20: roam/_buildFoot.ts `footJob`): its frame and footprint, its blocks
+ * in the order put up, how far it is built, its time, what taking it down
+ * gives back, a side he does not work from (a house's stair).
  */
+
+/** What he works on: a piece, a footprint building (AWP-20). */
+export interface WorkJob {
+  readonly uid: string;
+  /** Its frame on the map (its middle on the ground, m; its turn, rad as a piece's) and its footprint (m: across, deep). */
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly w: number;
+  readonly d: number;
+  /** 0‥1 built now. */
+  readonly done: number;
+  /** Seconds of work from nothing to whole. */
+  readonly secs: number;
+  /** A side he does not work from (0 its front, +z of its frame; 1 its +x; 2 its back; 3 its −x), if any. */
+  readonly avoid?: number;
+  /** Its blocks in its frame (over its ground), in the order put up, and its reach (build/view.ts). */
+  look(): PieceLookData;
+  setDone(v: number): void;
+  /** Still there (not taken away meanwhile: a check, a bug). */
+  alive(): boolean;
+  /** Its name inside a sentence ("bamboo bed"). */
+  word(): string;
+  /** The stage under way, in words ("the roof"), if it has stages. */
+  stage?(): string | null;
+  /** What taking it down gives back. */
+  back(): { cost: Materials; riel: number };
+  /** Gone (taken down). */
+  remove(): void;
+  /** Saved (once a second; `now`: at once). */
+  tick(dt: number, now?: boolean): void;
+}
 
 /** The stick held away this long (s) stops him. */
 const PUSH = 0.15;
@@ -48,7 +86,7 @@ const PUSH = 0.15;
  * reach of his hammer), and walks to it at this share of the walker's pace; given up after `WALK_MAX` s.
  */
 const STAND = { out: 0.62, small: 0.45, smallUnder: 1.3 };
-const standOut = (b: Pick<Built, 'id'>): number => (Math.max(PIECES[b.id].w, PIECES[b.id].d) < STAND.smallUnder ? STAND.small : STAND.out);
+const standOut = (b: WorkJob): number => (Math.max(b.w, b.d) < STAND.smallUnder ? STAND.small : STAND.out);
 const PACE = 0.6 * 1.6;
 const WALK_MAX = 5;
 /** Big pieces (this across, m): he works round them, a side every `MOVE_EVERY` s of work. */
@@ -69,7 +107,7 @@ const REACH = { far: 1.0, near: 0.42, back: 120, side: 0.05, turn: 0.6 };
 const FRAME = { side: 1.05, pitch: 0.36, distance: 5.6, perReach: 0.55, toward: 0.4, rate: 2.2, for: 1.8, back: 1.6 };
 
 interface Session {
-  readonly piece: Built;
+  readonly piece: WorkJob;
   readonly take: boolean;
   phase: 'walk' | 'turn' | 'work';
   /** Seconds of work (the strokes); of the walk; the stick held away; at this side. */
@@ -111,7 +149,7 @@ const _v = new Vector3();
 const _w = new Vector3();
 
 /** What taking a piece down gives back, in words ("1 bamboo pole and 4,000 ៛"). */
-export function backWords(back: ReturnType<typeof pieceBack>): string {
+export function backWords(back: { cost: Materials; riel: number }): string {
   const what = materialsText(back.cost);
   if (!back.riel) return what || riel(0);
   return what ? t('buildAnd', { a: what, b: riel(back.riel) }) : riel(back.riel);
@@ -123,11 +161,35 @@ export const pieceWord = (p: Pick<Built, 'id'>): string => {
   return lang() === 'en' ? s.toLowerCase() : s;
 };
 
-/** A side's middle (local m) and its way out (unit, local), grown by `out`. */
-function sideAt(b: Built, side: number, out: number, o: Vector3): Vector3 {
+/** A piece as a job (read live: its `done`). */
+export function pieceJob(b: Built): WorkJob {
   const p = PIECES[b.id];
-  const hw = p.w / 2 + out;
-  const hd = p.d / 2 + out;
+  return {
+    uid: b.uid,
+    x: b.x,
+    y: b.y,
+    z: b.z,
+    yaw: b.yaw,
+    w: p.w,
+    d: p.d,
+    get done() {
+      return b.done;
+    },
+    secs: p.secs,
+    look: () => pieceLook(b.id, b.seed),
+    setDone: (v) => BUILD.setDone(b, v),
+    alive: () => BUILD.list.includes(b),
+    word: () => pieceWord(b),
+    back: () => pieceBack(b.id),
+    remove: () => BUILD.remove(b),
+    tick: (dt, now) => BUILD.tick(dt, now),
+  };
+}
+
+/** A side's middle (local m) and its way out (unit, local), grown by `out`. */
+function sideAt(b: WorkJob, side: number, out: number, o: Vector3): Vector3 {
+  const hw = b.w / 2 + out;
+  const hd = b.d / 2 + out;
   const lx = side === 1 ? hw : side === 3 ? -hw : 0;
   const lz = side === 0 ? hd : side === 2 ? -hd : 0;
   const c = Math.cos(b.yaw);
@@ -136,7 +198,7 @@ function sideAt(b: Built, side: number, out: number, o: Vector3): Vector3 {
 }
 
 /** Can he stand at (x, z) for the work (dry, on the level of the piece's ground, room)? */
-function standable(ctx: RoamCtx, b: Built, x: number, z: number): boolean {
+function standable(ctx: RoamCtx, b: WorkJob, x: number, z: number): boolean {
   const w = ctx.world;
   if (w.waterAt(x, z) !== null) return false;
   const land = w.field.heightAt(x, z);
@@ -146,10 +208,11 @@ function standable(ctx: RoamCtx, b: Built, x: number, z: number): boolean {
 }
 
 /** The sides he may work from, nearest him first. */
-function sidesFor(ctx: RoamCtx, b: Built): number[] {
+function sidesFor(ctx: RoamCtx, b: WorkJob): number[] {
   const p = ctx.body.pos;
   const list: [number, number][] = [];
   for (let i = 0; i < 4; i++) {
+    if (i === b.avoid) continue;
     sideAt(b, i, standOut(b), _v);
     if (!standable(ctx, b, _v.x, _v.z)) continue;
     list.push([i, Math.hypot(_v.x - p.x, _v.z - p.z)]);
@@ -168,10 +231,11 @@ function sidesFor(ctx: RoamCtx, b: Built): number[] {
 }
 
 /** The side of a piece facing (x, z). */
-function nearestSide(b: Built, x: number, z: number): number {
+function nearestSide(b: WorkJob, x: number, z: number): number {
   let best = 0;
   let bd = Infinity;
   for (let i = 0; i < 4; i++) {
+    if (i === b.avoid) continue;
     sideAt(b, i, standOut(b), _v);
     const d = Math.hypot(_v.x - x, _v.z - z);
     if (d < bd) {
@@ -190,10 +254,9 @@ function placeFor(s: Session): void {
 }
 
 /** A side's place to stand in the piece's frame (local m: x, z), `standOut` from its middle. */
-function standLocal(b: Built, side: number, o: Vector3): Vector3 {
-  const p = PIECES[b.id];
-  const hw = p.w / 2 + standOut(b);
-  const hd = p.d / 2 + standOut(b);
+function standLocal(b: WorkJob, side: number, o: Vector3): Vector3 {
+  const hw = b.w / 2 + standOut(b);
+  const hd = b.d / 2 + standOut(b);
   return o.set(side === 1 ? hw : side === 3 ? -hw : 0, 0, side === 0 ? hd : side === 2 ? -hd : 0);
 }
 
@@ -237,8 +300,8 @@ function nearOn(x: VoxelBox, st: Vector3, out: Vector3): number {
  * the last block before it that is in reach (he works on the part nearest him); none: toward it, as far as he
  * reaches. Never nearer than his own feet.
  */
-function workSpot(b: Built, side: number, out: Vector3): Vector3 {
-  const look = pieceLook(b.id, b.seed);
+function workSpot(b: WorkJob, side: number, out: Vector3): Vector3 {
+  const look = b.look();
   const n = look.boxes.length;
   const st = standLocal(b, side, _st);
   if (!n) return out.set(st.x * 0.4, 0.6, st.z * 0.4);
@@ -277,7 +340,7 @@ function workSpot(b: Built, side: number, out: Vector3): Vector3 {
 }
 
 /** A point of the piece's frame (local m, over its ground) on the map, into `out`. */
-function onMap(b: Built, l: Vector3, out: Vector3): Vector3 {
+function onMap(b: WorkJob, l: Vector3, out: Vector3): Vector3 {
   const c = Math.cos(b.yaw);
   const s = Math.sin(b.yaw);
   return out.set(b.x + l.x * c + l.z * s, b.y + l.y, b.z - l.x * s + l.z * c);
@@ -370,7 +433,7 @@ function frameCam(ctx: RoamCtx, s: Session, dt: number): void {
   if (!working || framed >= FRAME.for) return;
   framed += dt;
   const e = dt > 0 ? damp(FRAME.rate, dt) : 1;
-  const reach = pieceLook(s.piece.id, s.piece.seed).reach;
+  const reach = s.piece.look().reach;
   cam.yaw += angleDiff(b.yaw + FRAME.side * camSide, cam.yaw) * e;
   cam.pitch += (FRAME.pitch - cam.pitch) * e;
   cam.distance += (Math.min(Math.max(FRAME.distance + reach * FRAME.perReach, cam.minDistance), cam.maxDistance) - cam.distance) * e;
@@ -386,7 +449,7 @@ function finish(ctx: RoamCtx | null): void {
   hammer(false);
   touch(null);
   if (ctx) ctx.body.explorer.setMotion(0, true, 0);
-  BUILD.tick(0, true);
+  s.piece.tick(0, true);
 }
 
 const KEYS: readonly AddonKey[] = [
@@ -403,10 +466,12 @@ function workWords(s: Session): string {
     said.clear();
   }
   const pct = Math.round(s.piece.done * 100);
-  const key = `${s.take ? 't' : 'b'}|${s.piece.id}|${pct}`;
+  const stage = s.take ? null : (s.piece.stage?.() ?? null);
+  const key = `${s.take ? 't' : 'b'}|${s.piece.uid}|${pct}|${stage}`;
   let w = said.get(key);
   if (w === undefined) {
-    w = t(s.take ? 'buildTaking' : 'buildWorking', { name: pieceWord(s.piece), pct: num(pct) });
+    const name = s.piece.word();
+    w = stage ? t('footWorking', { name, stage, pct: num(pct) }) : t(s.take ? 'buildTaking' : 'buildWorking', { name, pct: num(pct) });
     if (said.size > 400) said.clear();
     said.set(key, w);
   }
@@ -424,14 +489,15 @@ export const BuildWork = {
   get now(): { uid: string; take: boolean; t: number; phase: string; done: number; side: number } | null {
     return S ? { uid: S.piece.uid, take: S.take, t: +S.t.toFixed(2), phase: S.phase, done: +S.piece.done.toFixed(3), side: S.side } : null;
   },
-  /** The piece being worked on (or null). */
-  get piece(): Built | null {
+  /** The job being worked on (or null). */
+  get piece(): WorkJob | null {
     return S?.piece ?? null;
   },
 
-  /** Begin building (or going on with) a piece, or taking it down (`take`). */
-  start(ctx: RoamCtx, piece: Built, take = false): boolean {
+  /** Begin building (or going on with) a piece or a job, or taking it down (`take`). */
+  start(ctx: RoamCtx, what: Built | WorkJob, take = false): boolean {
     if (!env || S) return false;
+    const piece = 'look' in what ? what : pieceJob(what);
     const sides = sidesFor(ctx, piece);
     const s: Session = {
       piece,
@@ -463,11 +529,12 @@ export const BuildWork = {
   },
 
   /** A check's picture: at his work `tt` s in, his place reached, the piece as it is. */
-  freeze(ctx: RoamCtx, piece: Built, tt: number, take = false): boolean {
+  freeze(ctx: RoamCtx, what: Built | WorkJob, tt: number, take = false): boolean {
     // (another check's work before it: gone first)
     finish(ctx);
-    if (!this.start(ctx, piece, take)) return false;
+    if (!this.start(ctx, what, take)) return false;
     const s = S!;
+    const piece = s.piece;
     const b = ctx.body;
     b.pos.x = s.stand.x;
     b.pos.z = s.stand.z;
@@ -491,7 +558,7 @@ export const BuildWork = {
     const cam = ctx.cam;
     cam.yaw = b.yaw + (rc && Number.isFinite(rc[0]) ? (rc[0] * Math.PI) / 180 : FRAME.side);
     cam.pitch = rc && Number.isFinite(rc[1]) ? (rc[1] * Math.PI) / 180 : FRAME.pitch;
-    cam.distance = rc && rc[2] ? rc[2] : FRAME.distance + pieceLook(piece.id, piece.seed).reach * FRAME.perReach;
+    cam.distance = rc && rc[2] ? rc[2] : FRAME.distance + piece.look().reach * FRAME.perReach;
     framed = FRAME.for;
     cam.focus.set(b.pos.x + (piece.x - b.pos.x) * FRAME.toward, b.pos.y + 1.7 * b.scale * 0.55, b.pos.z + (piece.z - b.pos.z) * FRAME.toward);
     console.info(`[build] work: ${take ? 'taking down' : 'building'} ${piece.uid} at ${(piece.done * 100).toFixed(0)}%, ${tt.toFixed(2)} s in, from side ${s.side} at (${b.pos.x.toFixed(1)}, ${b.pos.z.toFixed(1)})`);
@@ -505,7 +572,7 @@ export const BuildWork = {
     const ex = b.explorer;
     ctx.cam.turn(input.lookYaw, input.lookPitch, input.zoom);
     // (taken away meanwhile: a check, a bug)
-    if (!BUILD.list.includes(s.piece) || ex.foodHeld) {
+    if (!s.piece.alive() || ex.foodHeld) {
       finish(ctx);
       return { prompt: null };
     }
@@ -571,7 +638,7 @@ export const BuildWork = {
         }
         if (s.frozen) break;
         // The piece rises (or comes down) as he works.
-        const p = PIECES[s.piece.id];
+        const p = s.piece;
         if (s.take) {
           const len = Math.max(TAKE_MIN, p.secs * TAKE_SHARE);
           const next = Math.max(0, s.piece.done - dt / len);
@@ -579,16 +646,16 @@ export const BuildWork = {
             this.takenDown(ctx, s);
             return { prompt: null };
           }
-          BUILD.setDone(s.piece, next);
+          p.setDone(next);
         } else {
           const next = Math.min(1, s.piece.done + dt / p.secs);
-          BUILD.setDone(s.piece, next);
+          p.setDone(next);
           if (next >= 1) {
             this.built(ctx, s);
             return { prompt: null };
           }
         }
-        BUILD.tick(dt);
+        p.tick(dt);
         // (a big piece: on round it to the next side every so often)
         if (s.sides.length > 1 && Math.max(p.w, p.d) >= BIG && s.sideT >= MOVE_EVERY) {
           s.side = s.sides[(s.sides.indexOf(s.side) + 1) % s.sides.length];
@@ -608,19 +675,19 @@ export const BuildWork = {
     finish(ctx);
     SFX.play('buildDone', 1);
     pad.rumble('bump', 0.4);
-    ctx.hud.toast(t('buildBuilt', { name: pieceWord(s.piece) }));
+    ctx.hud.toast(t('buildBuilt', { name: s.piece.word() }));
     console.info(`[build] built ${s.piece.uid} at (${s.piece.x.toFixed(1)}, ${s.piece.z.toFixed(1)})`);
   },
 
   /** Taken down: gone, half its materials back (into his home store: he is at home) and half its bought part's riel. */
   takenDown(ctx: RoamCtx, s: Session): void {
     finish(ctx);
-    const back = pieceBack(s.piece.id);
-    BUILD.remove(s.piece);
+    const back = s.piece.back();
+    s.piece.remove();
     for (const m of MATERIAL_IDS) if (back.cost[m]) STORE.add(m, back.cost[m]!);
     if (back.riel) env?.purse.earn(back.riel);
     SFX.play('buildTake', 1);
-    ctx.hud.toast(t('buildTaken', { name: pieceWord(s.piece), what: backWords(back) }));
+    ctx.hud.toast(t('buildTaken', { name: s.piece.word(), what: backWords(back) }));
     console.info(`[build] took down ${s.piece.uid}: ${JSON.stringify(back.cost)} and ${back.riel} riel back`);
   },
 
@@ -647,10 +714,10 @@ export const BuildWork = {
     const s = S;
     if (!s) return;
     finish(ctx);
-    if (s.take) BUILD.setDone(s.piece, s.from);
+    if (s.take) s.piece.setDone(s.from);
     else if (!overview && ctx && s.piece.done > 0 && s.piece.done < 1 && !pausedSaid) {
       pausedSaid = true;
-      ctx.hud.toast(t('buildPaused', { name: pieceWord(s.piece) }));
+      ctx.hud.toast(t('buildPaused', { name: s.piece.word() }));
     }
     if (overview) {
       before = null;

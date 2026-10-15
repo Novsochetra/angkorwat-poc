@@ -225,6 +225,17 @@ export interface BlockSaveStatus {
  * Read the saved build into the store (empty at the start), then keep it
  * saved as it changes. `off`: why nothing is read or written (a test build).
  */
+/** The map's block save's `flush` (none before it starts, or with saving off). */
+let flushNow: (() => void) | null = null;
+
+/**
+ * Write the block save now if a change waits (AWP-20: a footprint building taken down or finished is saved at once,
+ * with its list, so a closed tab can never keep blocks of a building the list no longer has).
+ */
+export function saveBlocksNow(): void {
+  flushNow?.();
+}
+
 export function startBlockSave(store: BlockStore = BLOCKS, off: string | null = null): { status: BlockSaveStatus; flush(): void } {
   const status: BlockSaveStatus = {
     saving: progress.saving && !off,
@@ -282,6 +293,7 @@ export function startBlockSave(store: BlockStore = BLOCKS, off: string | null = 
     // (building on and on: saved at least every SAVE_AT_MOST_MS all the same)
     timer = setTimeout(flush, now - since >= SAVE_AT_MOST_MS ? 0 : SAVE_AFTER_MS);
   });
+  flushNow = flush;
   addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flush();

@@ -365,6 +365,12 @@ guide, with every add-on's keys and URL values for shots, is
     always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
+    line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
+    puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into
+    the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
+    saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
+    `footwork=`, `foottake=`; addons.md "Footprint buildings").
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;
