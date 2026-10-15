@@ -3211,13 +3211,14 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   lamp stop him; the bench is a seat as the bamboo bed (its top 0.5 m: too high a step, Space hops onto
   it); the mats and the hanging lantern he walks through.
 - **Seats** (the bench, the sleeping mat, as the bamboo bed and the shelter's bench): "E  Sit" is
-  offered from any side of it and from beside it (it comes before a piece near it), and J (L on the
+  offered from any side of it and from beside it, whichever way he faces within 0.7 m of it (it comes
+  before a piece near it), and J (L on the
   sleeping mat) within 1.3 m of it puts him on its seat (y its seat's height over its floor).
 - **Resting under a roof** (J / L anywhere under a roof at most 7 m over his feet: his house, a room he
   built; `_rest.ts` `ROOFED`): the camera looks down at him from beside him, close, in place of the
   low sky-watching camera of the open air.
 - **Build mode in a room** (a roof at most 7 m over his feet; `_build.ts` `ROOM_CAM`): the camera
-  low (0.36 rad; a hanging lantern 0.15), as far back as the room lets it (2.2‥5.2 m, 0.7 m this side
+  low (0.55 rad; a hanging lantern 0.15), as far back as the room lets it (2.2‥6 m, 0.7 m this side
   of a wall), looking at the ghost's middle (a hanging lantern's glass), so the ghost sits mid-screen
   and the follow camera never rises over him for room.
 - **URL** (shots and the dev server, as `build=`): `furn=<id>@x/z/yaw[/y][:done],…` (on the floor

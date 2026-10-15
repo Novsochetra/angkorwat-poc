@@ -1,6 +1,7 @@
 import { BLOCKS, cellMin, cellOf } from '../blocks/store';
 import { FOOTS } from '../build/footState';
 import { cartBlockWhy } from '../build/haul';
+import { ownedBlocks } from '../build/owned';
 import { FURN, HANG, isFurniture, type FurnitureId } from '../build/furniture';
 import { shelterUnder } from '../build/models/shelter';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
@@ -291,6 +292,8 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
       r = builtInWay(id, x, land, z, yaw, ignore);
       // (none at its height: the yard pieces' rule after theirs)
       if (!r && eachIn(id, x, z, yaw, 0, (px, pz) => cartBlockWhy(px, pz) !== null)) r = 'cart';
+      // (his cows on their tethers, his parked bicycle: build/owned.ts, AWP-20)
+      if (!r) eachIn(id, x, z, yaw, 0, (px, pz) => (r = ownedBlocks(px, pz)) !== null);
     }
     if (r) return fail(out, r);
   } else if (onHouse(x, z) && Math.abs(y0 - homeFloor(world.field).floor) < 0.4) {

@@ -1,4 +1,4 @@
-import type { PieceSpec } from './pieces';
+import { PIECES, type PieceId, type PieceSpec } from './pieces';
 
 /**
  * Furniture and lanterns he places in and round what he built (AWP-23, build
@@ -71,6 +71,12 @@ export const FURN: Record<FurnitureId, FurnSpec> = {
 };
 
 export const isFurniture = (id: string): id is FurnitureId => id in FURN;
+
+/**
+ * A bed: a piece he lies down on (`seat.lie`: the bamboo bed, the sleeping mat). For AWP-25 ("a bed under his roof
+ * lets him sleep"): one rule for every bed, a new one joins by its `seat.lie`.
+ */
+export const isBed = (id: PieceId): boolean => !!PIECES[id].seat?.lie;
 
 /**
  * The pieces (build/pieces.ts's contract: the frame, solids, seat, light). Prices: what its materials cost (bamboo

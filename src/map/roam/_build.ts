@@ -97,6 +97,8 @@ const HOLD_FOR = 0.8;
 /** A seat (the bed, a bench) is offered from beside it too (his facing's dot with the way to it at least this), and before what is near it (m off its score). */
 const SEAT_FACING = -0.3;
 const SEAT_FIRST = 0.4;
+/** Right by a seat (m from it) it is offered whichever way he faces. */
+const SEAT_BY = 0.7;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
 const PIECE_REACH = 1.25;
 /**
@@ -603,7 +605,7 @@ const lastAim = { x: 0, z: 0 };
  * Build mode's camera under a roof (AWP-23: placing furniture in a room): a roof this far over his feet at most (m)
  * makes it a room; its tilt (rad), its distance (m) at least and at most, kept this far this side of a wall.
  */
-const ROOM_CAM = { roof: 7, pitch: 0.36, least: 2.2, most: 5.2, margin: 0.7, look: 0.8, hangLook: 2.45, hangPitch: 0.15 };
+const ROOM_CAM = { roof: 7, pitch: 0.55, least: 2.2, most: 6, margin: 0.7, look: 0.8, hangLook: 2.45, hangPitch: 0.15 };
 const _rc = { x: 0, y: 0, z: 0 };
 /** Under a roof: the room's tilt and as far back as there is room (true); else false (build mode's own). */
 function roomCamera(ctx: RoamCtx, kk: number): boolean {
@@ -903,7 +905,7 @@ function nearNow(ctx: RoamCtx): void {
     const dot = l > 0.05 ? (wx * fx + wz * fz) / l : 1;
     // (a seat — the bed, a bench — from any side he stands by, beside it too, and before what is near it: AWP-23)
     const seat = !!P.seat && q.done >= 1;
-    if (dot < (seat ? SEAT_FACING : 0.35)) continue;
+    if (dot < (seat ? (d < SEAT_BY ? -1.01 : SEAT_FACING) : 0.35)) continue;
     const sc = d - dot * 0.5 - (seat ? SEAT_FIRST : 0);
     if (sc < score) {
       score = sc;
