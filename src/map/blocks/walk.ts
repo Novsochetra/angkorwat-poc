@@ -1,6 +1,6 @@
 import type { WalkBlocks } from '../roam/walkmap';
-import { MAT_BY_ID, SHAPE_BY_ID } from './kinds';
-import { BLOCKS, BLOCK_M, CHUNK_N, cellOf, chunkPlace, rawMat, rawShape, type BlockStore } from './store';
+import { FORMS, MAT_BY_ID } from './kinds';
+import { BLOCKS, BLOCK_M, CHUNK_N, cellOf, chunkPlace, rawMat, type BlockStore } from './store';
 
 /**
  * The player's blocks in the walk map (AWP-17): a source the walk map reads
@@ -12,9 +12,13 @@ import { BLOCKS, BLOCK_M, CHUNK_N, cellOf, chunkPlace, rawMat, rawShape, type Bl
  * walk map's column (store.ts: the same grid), so a chunk's columns are read
  * straight from its cells: each run of solid cells up a column (kinds.ts
  * `solid`) is one span, from its lowest cell's bottom to its highest cell's
- * top (a shape's boxes: a slab's top is half a cell, 0.25 m, up). Stairs and
- * turned shapes (AWP-24) are taken as their boxes' lowest bottom and highest
- * top in the cell for now.
+ * top (a shape's boxes, turned: a slab's top is half a cell, 0.25 m, up). A
+ * stair (AWP-24: kinds.ts `stair`, `stairOuter`, `stairInner`) is solid to its
+ * top in the column, and its tread is told with the span (`low`: the quarters
+ * of the column half a cell lower): the walk map stands feet there 0.25 m
+ * lower (roam/walkmap.ts `standAt`), so he walks up a stair of them a rise of
+ * 0.25 m at a time, as up slab steps, and is stopped by a stair's back
+ * (0.5 m, a jump).
  */
 
 /**
@@ -27,10 +31,11 @@ import { BLOCKS, BLOCK_M, CHUNK_N, cellOf, chunkPlace, rawMat, rawShape, type Bl
  */
 export const BLOCK_STEP_M = 0.35;
 
-/** Per shape id: its boxes' lowest bottom and highest top in the cell (0‥1). */
-const SHAPE_SPAN: readonly (readonly [number, number] | undefined)[] = SHAPE_BY_ID.map((s) =>
-  s ? ([Math.min(...s.boxes.map((b) => b[1])), Math.max(...s.boxes.map((b) => b[4]))] as const) : undefined,
-);
+/** Per form (shape id · 4 + turn): its boxes' lowest bottom and highest top in the cell (0‥1), and its tread's quarters (kinds.ts `FormSpec.low`). */
+const FORM_SPAN: readonly (readonly [number, number, number] | undefined)[] = FORMS.map((f) => (f ? ([f.bottom, f.top, f.low] as const) : undefined));
+
+/** A raw block's form (shape id · 4 + turn). */
+const rawForm = (raw: number): number => Math.floor(raw / 2 ** 32) & 255;
 
 /** Per material id: solid (1) or not (0). */
 const SOLID = Uint8Array.from({ length: 256 }, (_, id) => (MAT_BY_ID[id]?.solid ? 1 : 0));
@@ -40,6 +45,8 @@ export function walkBlocks(store: BlockStore = BLOCKS): WalkBlocks {
   // (each column's run so far: its bottom (NaN: none) and top, m)
   const from = new Float64Array(CHUNK_N * CHUNK_N);
   const to = new Float64Array(CHUNK_N * CHUNK_N);
+  // (the run's top cell's tread quarters)
+  const low = new Uint8Array(CHUNK_N * CHUNK_N);
   const layer = CHUNK_N * CHUNK_N;
   return {
     spans(a, b, put) {
@@ -53,17 +60,18 @@ export function walkBlocks(store: BlockStore = BLOCKS): WalkBlocks {
           const j = c.j0 + ly;
           for (let col = 0; col < layer; col++, at++) {
             const v = cells[at];
-            const span = v && SOLID[v >>> 24] ? SHAPE_SPAN[form[at] >> 2] : undefined;
+            const span = v && SOLID[v >>> 24] ? FORM_SPAN[form[at]] : undefined;
             if (span) {
               if (Number.isNaN(from[col])) from[col] = (j + span[0]) * BLOCK_M;
               to[col] = (j + span[1]) * BLOCK_M;
+              low[col] = span[2];
             } else if (!Number.isNaN(from[col])) {
-              put(col, from[col], to[col]);
+              put(col, from[col], to[col], low[col]);
               from[col] = NaN;
             }
           }
         }
-        for (let col = 0; col < layer; col++) if (!Number.isNaN(from[col])) put(col, from[col], to[col]);
+        for (let col = 0; col < layer; col++) if (!Number.isNaN(from[col])) put(col, from[col], to[col], low[col]);
       }
     },
   };
@@ -85,7 +93,7 @@ export function blockClearance(ax: number, ay: number, az: number, bx: number, b
     const j = cellOf(y);
     const raw = store.raw(cellOf(ax + (bx - ax) * t), j, cellOf(az + (bz - az) * t));
     if (!raw || !SOLID[rawMat(raw)]) continue;
-    const span = SHAPE_SPAN[rawShape(raw)];
+    const span = FORM_SPAN[rawForm(raw)];
     if (span && y >= (j + span[0]) * BLOCK_M && y < (j + span[1]) * BLOCK_M) return (i - 1) / n;
   }
   return 1;
@@ -115,6 +123,7 @@ export function woodBlockAt(x: number, z: number, y: number, store: BlockStore =
   const j = cellOf(y - 0.05);
   const raw = store.raw(cellOf(x), j, cellOf(z));
   if (!raw || MAT_BY_ID[rawMat(raw)]?.family !== 'mapBark') return false;
-  const span = SHAPE_SPAN[rawShape(raw)];
-  return !!span && Math.abs(y - (j + span[1]) * BLOCK_M) < 0.12;
+  const span = FORM_SPAN[rawForm(raw)];
+  // (on its top, or on a stair's tread half a cell under it)
+  return !!span && (Math.abs(y - (j + span[1]) * BLOCK_M) < 0.12 || (span[2] !== 0 && Math.abs(y - (j + span[1] - 0.5) * BLOCK_M) < 0.12));
 }

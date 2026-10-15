@@ -29,6 +29,8 @@
 //             down, he does not turn)                                              (_build.ts)
 //   buildtabs the build card's tabs: R1 / L1 and the d-pad's → change them, ✕ picks a row of the
 //             Furniture tab                                                        (_buildCard.ts)
+//   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
+//             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
 //   keys      a real key press turns the pad's glyphs off (body without pad-on)   (core)
@@ -555,13 +557,52 @@ const steps = [
       await tap(page, 'right');
       await sleep(300);
       const d = await tab();
-      if (a !== 'yard' || b !== 'furn' || c !== 'yard' || d !== 'furn') throw new Error(`tabs ${a} → R1 ${b} → L1 ${c} → ${d}, not yard → furn → yard → furn`);
+      await tap(page, 'r1');
+      await sleep(300);
+      const e = await tab();
+      if (a !== 'foot' || b !== 'yard' || c !== 'foot' || d !== 'yard' || e !== 'furn') throw new Error(`tabs ${a} → R1 ${b} → L1 ${c} → ${d} → R1 ${e}, not foot → yard → foot → yard → furn`);
       await tap(page, 'south');
       await sleep(400);
       const placing = await ev(() => window.__build.state().placing?.id ?? null);
       await ev(() => window.__build.place(null));
       if (placing !== 'teamat') throw new Error(`✕ picked ${placing}, not the Furniture tab's first row (teamat)`);
-      return `tabs ${a} → R1 ${b} → L1 ${c} → d-pad → ${d}, ✕ picks ${placing}`;
+      return `tabs ${a} → R1 ${b} → L1 ${c} → d-pad → ${d} → R1 ${e}, ✕ picks ${placing}`;
+    },
+  },
+  {
+    id: 'foot',
+    who: 'roam/_buildFoot.ts (AWP-20)',
+    async run() {
+      await ensureWalk();
+      await placeAt('walk', '426,-128.17&home=1&purse=400000');
+      await ev(() => {
+        window.roam.body.yaw = Math.PI;
+        window.__build.foot.draw('house');
+      });
+      await sleep(600);
+      const now = () => ev(() => window.__build.state().foot);
+      const a = await now();
+      if (a.kind !== 'house' || a.anchor) throw new Error('no footprint mode');
+      await tap(page, 'west');
+      await until(() => !!window.__build.state().foot.anchor, null, 3000, '□ marks the first corner');
+      const b = await now();
+      await tap(page, 'right');
+      await sleep(300);
+      const c = await now();
+      if (c.door !== (b.door + 1) % 4) throw new Error(`→ turned the door ${b.door} → ${c.door}`);
+      await tap(page, 'left');
+      await sleep(300);
+      if ((await now()).door !== b.door) throw new Error('← did not turn the door back');
+      await tap(page, 'east');
+      await sleep(400);
+      const d = await now();
+      if (d.kind !== 'house' || d.anchor) throw new Error('○ did not take the corner back');
+      await tap(page, 'east');
+      await sleep(400);
+      const e = await now();
+      if (e.kind) throw new Error('○ again did not leave the mode');
+      if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
+      return `□ corner ${JSON.stringify(b.anchor)}, → door ${b.door} → ${c.door}, ← back, ○ corner again, ○ out`;
     },
   },
   {

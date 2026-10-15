@@ -1,5 +1,6 @@
 import type { MaterialId } from '../build/materials';
 import type { PieceId } from '../build/pieces';
+import type { FootKind } from '../build/footPlan';
 import { clearMark, markFocus } from '../pad/nav';
 import { pad } from '../pad/pad';
 import type { UISound } from '../types';
@@ -14,7 +15,8 @@ import { FURN_PIC } from './_buildFurnArt';
  * he will build. In the middle of the screen, the look of the map's cards that
  * ask (map.css `.mu-ask`, as the garden's seed card, _gardenCard.ts): a hammer
  * and a post as its picture, the question, a line under it (his riel), then
- * one row per piece: its little picture, its name and how many he has of how
+ * one row per piece (first the footprint buildings, AWP-20: `foot:<kind>`,
+ * their cost at their smallest size): its little picture, its name and how many he has of how
  * many, its line ("Knee high: to sit on and to lie under the sky"), what it
  * costs (AWP-9: each material's picture and how many, those he lacks in red,
  * and the riel to pay now, if any); a piece he lacks materials for says so
@@ -37,7 +39,8 @@ import { FURN_PIC } from './_buildFurnArt';
  */
 
 export interface BuildRow {
-  id: PieceId;
+  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20). */
+  id: PieceId | `foot:${FootKind}`;
   /** Its name, how many he has ("1 / 3"), its line (or what he lacks), the riel to pay now ('' none). */
   name: string;
   count: string;
@@ -72,8 +75,8 @@ export interface BuildWords {
 
 export interface BuildCard {
   readonly open: boolean;
-  /** Ask (`onPick` gets the piece, or null for "Not now"). `words` is called again when the language changes. */
-  ask(words: () => BuildWords, onPick: (id: PieceId | null) => void): void;
+  /** Ask (`onPick` gets the row's id, or null for "Not now"). `words` is called again when the language changes. */
+  ask(words: () => BuildWords, onPick: (id: BuildRow['id'] | null) => void): void;
   /** The words again (his riel changed). */
   refresh(): void;
   /** Shut it (as "Not now", quietly). */
@@ -91,8 +94,12 @@ const ICON = `<svg class="bd-icon" viewBox="0 0 16 16" aria-hidden="true" shape-
 </svg>`;
 
 /** A row's little picture (12 × 12 pixel art). */
-const PIC: Record<PieceId, string> = {
+const PIC: Record<BuildRow['id'], string> = {
   ...FURN_PIC,
+  // (footprint buildings, AWP-20: a stilt house on its posts with its stair; a shed's open front under its roof; a fence line with its gate)
+  'foot:house': '<path fill="#b8a06a" d="M5 0h2v1H5z"/><path fill="#c9a04a" d="M4 1h4v1H4zM3 2h6v1H3zM2 3h8v1H2z"/><path fill="#a07a30" d="M1 4h10v1H1z"/><path fill="#d8c08a" d="M2 5h8v2H2z"/><path fill="#5a3a24" d="M5 5h2v2H5z"/><path fill="#8a6038" d="M2 7h8v1H2zM2 8h1v3H2zM9 8h1v3H9z"/><path fill="#b08a5a" d="M7 8h1v1H7zM8 9h1v1H8zM9 10h1v1H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  'foot:shed': '<path fill="#c9a04a" d="M3 2h6v1H3zM2 3h8v1H2zM1 4h10v1H1z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M1 6h1v5H1zM10 6h1v5h-1z"/><path fill="#d8c08a" d="M2 9h8v2H2z"/><path fill="#b8a06a" d="M2 9h8v1H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  'foot:fence': '<path fill="#8e7a4e" d="M0 4h1v7H0zM4 4h1v7H4zM7 4h1v7H7zM11 4h1v7h-1z"/><path fill="#d6cc8c" d="M1 5h3v5H1zM8 5h3v5H8z"/><path fill="#c8b27a" d="M1 6h3v1H1zM8 6h3v1H8zM1 8h3v1H1zM8 8h3v1H8z"/><path fill="#9a8458" d="M1 5h3v1H1zM8 5h3v1H8z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   pen: '<path fill="#8a6038" d="M1 4h1v7H1zM5 4h1v7H5zM10 4h1v7h-1z"/><path fill="#b08a5a" d="M1 5h10v1H1zM1 8h10v1H1z"/><path fill="#c9a04a" d="M2 9h3v2H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   shelter: '<path fill="#c9a04a" d="M1 4h10v1H1zM2 3h8v1H2zM4 2h4v1H4z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M2 6h1v5H2zM9 6h1v5H9z"/><path fill="#b08a5a" d="M3 8h6v1H3z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   kre: '<path fill="#d8c08a" d="M1 6h10v2H1z"/><path fill="#b8a06a" d="M1 7h10v1H1z"/><path fill="#8a6038" d="M2 8h1v3H2zM9 8h1v3H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
@@ -138,7 +145,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
   let groups: readonly { id: string; label: string }[] = [];
   let isOpen = false;
   let words: (() => BuildWords) | null = null;
-  let pick: ((id: PieceId | null) => void) | null = null;
+  let pick: ((id: BuildRow['id'] | null) => void) | null = null;
   let closePad: (() => void) | null = null;
 
   const buttons = () => [...opts.querySelectorAll<HTMLButtonElement>('button')];
@@ -222,7 +229,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     sound?.(id ? 'select' : 'close');
     const f = pick;
     pick = null;
-    f?.((id || null) as PieceId | null);
+    f?.((id || null) as BuildRow['id'] | null);
   }
 
   function nope(b: HTMLElement): void {

@@ -1,4 +1,5 @@
-import { BLOCKS, cellOf } from '../blocks/store';
+import { BLOCKS, cellMin, cellOf } from '../blocks/store';
+import { FOOTS } from '../build/footState';
 import { cartBlockWhy } from '../build/haul';
 import { FURN, HANG, isFurniture, type FurnitureId } from '../build/furniture';
 import { shelterUnder } from '../build/models/shelter';
@@ -131,6 +132,32 @@ function houseKeep(x: number, z: number, grow: number): boolean {
   return false;
 }
 
+/**
+ * In a footprint stilt house's doorway (AWP-20: its door's cells in the wall and the metre of floor inside them, kept
+ * clear so he can come in): its door is `doorWidth` cells (4 on an even wall, 3 on an odd one) in the middle of its door
+ * side (build/footPlan.ts `doorSpan`).
+ */
+function inDoorway(x: number, z: number): boolean {
+  for (const r of FOOTS.list) {
+    if (r.kind !== 'house') continue;
+    const { i0, k0, i1, k1 } = r.rect;
+    const s = r.door;
+    const len = s % 2 ? k1 - k0 + 1 : i1 - i0 + 1;
+    const w = len % 2 ? 3 : 4;
+    if (len < w + 4) continue;
+    const a0 = (s % 2 ? k0 : i0) + Math.floor((len - w) / 2);
+    const lo = cellMin(a0) - 0.05;
+    const hi = cellMin(a0 + w) + 0.05;
+    const along = s % 2 ? z : x;
+    if (along < lo || along > hi) continue;
+    // (across the wall: its cell and two cells inside)
+    const across = s % 2 ? x : z;
+    const [c0, c1] = s === 0 ? [cellMin(k0), cellMin(k0 + 3)] : s === 2 ? [cellMin(k1 - 2), cellMin(k1 + 1)] : s === 1 ? [cellMin(i1 - 2), cellMin(i1 + 1)] : [cellMin(i0), cellMin(i0 + 3)];
+    if (across > c0 - 0.05 && across < c1 + 0.05) return true;
+  }
+  return false;
+}
+
 /** The part of the height over its floor a piece fills (m): furniture's band, a yard piece from the ground to its top. */
 function bandOf(id: PieceId): readonly [number, number] {
   return isFurniture(id) ? FURN[id].band : [0, PIECES[id].h];
@@ -224,7 +251,8 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
   const stand = world.standAt;
   const floorAt = (px: number, pz: number): number => (stand ? stand(px, pz, feetY, UP, room) : world.groundAt(px, pz));
   // Its floor at its middle: at his level.
-  const y0 = floorAt(x, z);
+  // (a hanging lantern hangs over what stands on the floor under it: the floor itself, not what is on it)
+  const y0 = f.hang ? floorUnder(world, x, z, feetY) : floorAt(x, z);
   out.y = Number.isFinite(y0) ? y0 : feetY;
   if (!Number.isFinite(y0)) return fail(out, builtInWay(id, x, feetY, z, yaw, ignore) ?? 'thing');
   if (y0 < feetY - AT_LEVEL) return fail(out, 'edge');
@@ -233,7 +261,7 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
   const level = onLand ? LEVEL.land : LEVEL.floor;
   // The same floor under every point (lower: past its edge; higher, or no room: in the way).
   let why: FurnReason | null = null;
-  eachIn(id, x, z, yaw, 0.02, (px, pz) => {
+  if (!f.hang) eachIn(id, x, z, yaw, 0.02, (px, pz) => {
     const s = floorAt(px, pz);
     // (no floor at his level there: the land steps up, or something stands there)
     if (!Number.isFinite(s)) why = onLand && world.field.heightAt(px, pz) > y0 + UP ? 'steep' : 'thing';
@@ -269,6 +297,8 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
     if (eachIn(id, x, z, yaw, 0, (px, pz) => !inPlot(px, pz))) return fail(out, 'plot');
     const j = cellOf(y0 - 0.01);
     if (eachIn(id, x, z, yaw, 0.02, (px, pz) => !BLOCKS.solid(cellOf(px), j, cellOf(pz)))) return fail(out, 'thing');
+    // (a footprint house's doorway kept clear, AWP-20; a lantern hangs over it)
+    if (!f.hang && eachIn(id, x, z, yaw, 0, inDoorway)) return fail(out, 'keep');
     const r = builtInWay(id, x, y0, z, yaw, ignore);
     if (r) return fail(out, r);
   }
@@ -282,6 +312,19 @@ export function furnSpot(world: RoamWorld, id: FurnitureId, x: number, z: number
     if (c - out.y > HANG.max) return fail(out, 'hangHigh');
   }
   return out;
+}
+
+/**
+ * The floor under (x, z) at his level whatever stands on it (a hanging lantern's): the top of his blocks there (within
+ * a step over his feet, or a metre under them), his house's floor, or the land; NaN none.
+ */
+function floorUnder(world: RoamWorld, x: number, z: number, feetY: number): number {
+  const i = cellOf(x);
+  const k = cellOf(z);
+  for (let j = cellOf(feetY + UP); j >= cellOf(feetY - 1); j--) if (BLOCKS.solid(i, j, k) && !BLOCKS.solid(i, j + 1, k)) return cellMin(j + 1);
+  if (onHouse(x, z) && Math.abs(feetY - homeFloor(world.field).floor) < 0.5) return homeFloor(world.field).floor;
+  const land = world.field.heightAt(x, z);
+  return Math.abs(land - feetY) < AT_LEVEL ? land : NaN;
 }
 
 function fail(out: FurnSpot, r: FurnReason): FurnSpot {

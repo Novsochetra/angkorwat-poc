@@ -1,5 +1,6 @@
 import type { HeightField } from '../heightfield';
 import { KHMER_PAINT } from './kinds';
+import { gableRoof, smoothRoof, type Cell } from './roof';
 import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
 
 /**
@@ -24,14 +25,31 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   wall 2.5 m high and 5 m long north of it, and a low wall of one block
  *   (0.5 m: too high a step; he jumps it) south of it.
  *
- * `pblocks=demo@x,z` / `full@x,z` puts it elsewhere (its middle, m).
+ *   A stair of stair blocks (AWP-24: 0.25 m treads, 1 m wide) climbs to the
+ *   floor's east side from the east (x 426‥428, z −169‥−168).
+ * - `gable`: an open Khmer pavilion with a steep gable roof (AWP-24: 6 × 4 m
+ *   on a laterite plinth with a step of sandstone slabs round it, eight
+ *   timber posts 2.5 m high under a beam ring
+ *   painted lacquer red, a palm thatch roof at 45° a cell over the beams at
+ *   every side, its gable ends timber; open between the posts, so the roof's
+ *   underside shows): the roof's steps smoothed with stairs and its ridge
+ *   capped with slabs (roof.ts `gableRoof`). `gable-stepped`: the same with
+ *   the roof left as steps of full blocks one deep (as before AWP-24), to
+ *   compare.
+ * - `hip` / `hip-stepped`: the sala's hipped roof (one cell deep this time),
+ *   smoothed (stairs, outer corner stairs at its four corners, a slab cap) or
+ *   left as steps.
+ * - `fullmix`: `full` with every sala's roof smoothed (roof.ts `smoothRoof`):
+ *   the frame's cost of a plot of mixed shapes against `full`'s cubes.
+ *
+ * `pblocks=demo@x,z` / `full@x,z` / `gable@x,z` puts it elsewhere (its middle, m).
  */
 
 /** Where the demo stands: the meadow north of his stilt house (hamlet/_homePlan.ts `HOME_AT` 424, −107), before its veranda. */
 export const DEMO_AT = { x: 431, z: -131 } as const;
 
 /** One sala, its plinth `w` cells across, its middle at x, z (m). Returns the blocks set. */
-export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number, w = 12): number {
+export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number, w = 12, roofStyle: 'deep' | 'smooth' | 'hip' | 'hip-stepped' = 'deep'): number {
   const i0 = cellOf(x) - (w >> 1);
   const k0 = cellOf(z) - (w >> 1);
   // The plinth's top: a cell over the highest ground under it and its step.
@@ -88,12 +106,20 @@ export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'
       for (let b = 1; b <= w - 2; b++) if (a === 1 || b === 1 || a === w - 2 || b === w - 2) store.set(i0 + a, top + 6, k0 + b, beam);
     // The thatch: rings stepping in, from the eaves a cell past the plinth, each two cells deep, so every step sits
     // on the ring under it (one cell deep, a ring would meet the next only along an edge: mesh.ts `diagonalJoints`).
+    // (`hip`: one cell deep; `smooth`: two deep, smoothed; both: the steps filled with stairs: roof.ts)
+    const deep = roofStyle === 'deep' || roofStyle === 'smooth' ? 1 : 0;
+    const roof: Cell[] = [];
     let y = top + 7;
     for (let r = -1; r < w >> 1; r++, y++)
       for (let a = r; a <= w - 1 - r; a++)
-        for (let b = r; b <= w - 1 - r; b++) if (Math.min(a - r, b - r, w - 1 - r - a, w - 1 - r - b) <= 1) store.set(i0 + a, y, k0 + b, thatch);
+        for (let b = r; b <= w - 1 - r; b++)
+          if (Math.min(a - r, b - r, w - 1 - r - a, w - 1 - r - b) <= deep) {
+            store.set(i0 + a, y, k0 + b, thatch);
+            roof.push([i0 + a, y, k0 + b]);
+          }
     // The finial: a gold cap on the top ring.
     for (let a = (w >> 1) - 1; a <= w >> 1; a++) for (let b = (w >> 1) - 1; b <= w >> 1; b++) store.set(i0 + a, y, k0 + b, gold);
+    if (roofStyle === 'smooth' || roofStyle === 'hip') smoothRoof(roof, store);
   });
   return store.count - before;
 }
@@ -104,7 +130,8 @@ export const WALK_COURSE_AT = { x: 418, z: -169 } as const;
 /**
  * The walk test course (see above), its low corner at x, z (m), every column standing on the ground under it.
  * Cells from the corner (a along x, b along z): the stair a 0‥7, b 0‥3 (step n: n + 1 quarter metres); the floor
- * a 8‥15, b −2‥5 (2 m); the brick wall a 0‥9, b 10 (2.5 m); the low wall a 0‥9, b −6 (0.5 m).
+ * a 8‥15, b −2‥5 (2 m); the brick wall a 0‥9, b 10 (2.5 m); the low wall a 0‥9, b −6 (0.5 m); the stair of stair
+ * blocks a 16‥19, b 0‥1 (climbing −x: step n at a = 19 − n, its stair n cells up on laterite).
  */
 export function buildWalkCourse(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number): number {
   const i0 = cellOf(x);
@@ -124,6 +151,51 @@ export function buildWalkCourse(store: BlockStore, field: Pick<HeightField, 'hei
     for (let a = 8; a < 16; a++) for (let b = -2; b < 6; b++) column(a, b, 8, { mat: 'timber' }, laterite);
     for (let a = 0; a < 10; a++) column(a, 10, 10, { mat: 'brick', color: KHMER_PAINT.lacquer }, { mat: 'brick' });
     for (let a = 0; a < 10; a++) column(a, -6, 2, { mat: 'sandstone', color: KHMER_PAINT.gold }, laterite);
+    // (AWP-24: stair blocks, each a cell higher than the last, climbing −x up to the floor's east side)
+    for (let n = 0; n < 4; n++)
+      for (let b = 0; b < 2; b++) {
+        const g = cellOf(field.heightAt(cellMid(i0 + 19 - n), cellMid(k0 + b)));
+        for (let h = 0; h < n; h++) store.set(i0 + 19 - n, g + h, k0 + b, laterite);
+        store.set(i0 + 19 - n, g + n, k0 + b, { mat: 'sandstone', shape: 'stair', turn: 3 });
+      }
+  });
+  return store.count - before;
+}
+
+/**
+ * An open pavilion with a gable roof (see above), its middle at x, z (m): 12 × 8 cells on a plinth, posts 5 cells
+ * (2.5 m) high at the corners and two more along each long side, a beam ring over them; the roof (palm thatch, a
+ * cell over the beams at every side) along x. `stepped`: the roof left as steps of full blocks. Returns the blocks
+ * set.
+ */
+export function buildGableHouse(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number, stepped: boolean): number {
+  const W = 12;
+  const D = 8;
+  const i0 = cellOf(x) - (W >> 1);
+  const k0 = cellOf(z) - (D >> 1);
+  let high = -Infinity;
+  for (let a = -1; a <= W; a++) for (let b = -1; b <= D; b++) high = Math.max(high, cellOf(field.heightAt(cellMid(i0 + a), cellMid(k0 + b))));
+  const before = store.count;
+  store.batch(() => {
+    const laterite: Block = { mat: 'laterite' };
+    const timber: Block = { mat: 'timber' };
+    const post: Block = { mat: 'timber', color: 0x5a3a26 };
+    // The plinth (down to the ground), its top at `high`, and a ring of sandstone slabs round it as a step.
+    for (let a = -1; a <= W; a++)
+      for (let b = -1; b <= D; b++) {
+        const ring = a < 0 || b < 0 || a >= W || b >= D;
+        const g = cellOf(field.heightAt(cellMid(i0 + a), cellMid(k0 + b)));
+        const top = ring ? high - 1 : high;
+        for (let j = Math.min(g, top); j <= top; j++) store.set(i0 + a, j, k0 + b, laterite);
+        if (ring) store.set(i0 + a, high, k0 + b, { mat: 'sandstone', shape: 'slab' });
+      }
+    // Posts, 5 cells high (2.5 m: room for him under the beams), at the corners and a third of the way along each
+    // long side; the beam ring over them.
+    for (const a of [0, 4, W - 5, W - 1]) for (const b of [0, D - 1]) for (let j = high + 1; j <= high + 5; j++) store.set(i0 + a, j, k0 + b, post);
+    for (let a = 0; a < W; a++)
+      for (let b = 0; b < D; b++) if (a === 0 || b === 0 || a === W - 1 || b === D - 1) store.set(i0 + a, high + 6, k0 + b, { mat: 'timber', color: KHMER_PAINT.lacquer });
+    // The roof: eave rows level with the beams, a cell outside them; the gable ends (timber) over the end beams.
+    gableRoof({ i0: i0 - 1, k0: k0 - 1, i1: i0 + W, k1: k0 + D, j: high + 6, ridge: 'x', block: { mat: 'thatch' }, stepped, ends: { block: timber, inset: 1 } }, store);
   });
   return store.count - before;
 }
@@ -137,8 +209,10 @@ export function fillDemo(spec: string, field: Pick<HeightField, 'heightAt'>, sto
   const before = store.count;
   if (kind === 'walk') buildWalkCourse(store, field, xz ? x : WALK_COURSE_AT.x, xz ? z : WALK_COURSE_AT.z);
   else if (kind === 'demo') buildSala(store, field, x, z);
-  else if (kind === 'full') store.batch(() => {
-    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) buildSala(store, field, x + a * 8, z + b * 8);
+  else if (kind === 'full' || kind === 'fullmix') store.batch(() => {
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) buildSala(store, field, x + a * 8, z + b * 8, 12, kind === 'full' ? 'deep' : 'smooth');
   });
+  else if (kind === 'gable' || kind === 'gable-stepped') buildGableHouse(store, field, x, z, kind === 'gable-stepped');
+  else if (kind === 'hip' || kind === 'hip-stepped') buildSala(store, field, x, z, 12, kind);
   return store.count - before;
 }

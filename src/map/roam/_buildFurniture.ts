@@ -1,9 +1,10 @@
 import type { Group } from 'three';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh, disposeVoxelMesh } from '../../voxel/VoxelMesh';
-import { BLOCKS } from '../blocks/store';
+import { BLOCKS, cellOf } from '../blocks/store';
+import { FOOTS } from '../build/footState';
 import { FURN, FURNITURE_IDS, HANG, isFurniture, type FurnitureId } from '../build/furniture';
-import { BUILT, PIECES } from '../build/pieces';
+import { BUILT, PIECES, type Built } from '../build/pieces';
 import { BUILD } from '../build/state';
 import type { BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
@@ -126,4 +127,28 @@ export function furnReport(): string | null {
   const l = BUILD.list.filter((p) => isFurniture(p.id));
   if (!l.length) return null;
   return l.map((p) => `${p.id}@${p.x.toFixed(2)}/${p.z.toFixed(2)}/${((p.yaw * 180) / Math.PI).toFixed(1)}/${(p.y + 0.05).toFixed(2)}${p.done < 1 ? `:${p.done.toFixed(3)}` : ''}`).join(',');
+}
+
+/**
+ * The furniture a footprint building holds up (AWP-20's, by its uid): standing on its blocks (its floor), or a lantern
+ * hung from its roof. Taking the building down is refused while there is any (roam/_build.ts `askTake`): nothing is
+ * left floating, nothing he paid for is lost. Furniture on the land inside a shed stays where it is and does not count.
+ */
+export function furnitureIn(uid: string): Built[] {
+  const rec = FOOTS.byUid(uid);
+  if (!rec || !world) return [];
+  const plan = FOOTS.plan(rec);
+  const cells = new Set<string>();
+  for (let b = 0; b < plan.n; b++) cells.add(`${plan.cells[b * 3]},${plan.cells[b * 3 + 1]},${plan.cells[b * 3 + 2]}`);
+  const has = (x: number, y: number, z: number) => cells.has(`${cellOf(x)},${cellOf(y)},${cellOf(z)}`);
+  const out: Built[] = [];
+  for (const p of BUILT.list) {
+    if (!isFurniture(p.id)) continue;
+    if (has(p.x, p.y - 0.05, p.z)) out.push(p);
+    else if (FURN[p.id].hang) {
+      const c = hangCeil(world, p.x, p.z, p.y);
+      if (Number.isFinite(c) && has(p.x, c + 0.05, p.z)) out.push(p);
+    }
+  }
+  return out;
 }

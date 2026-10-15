@@ -283,6 +283,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
   stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
   blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
+  Shapes cube, slab, stair, slabTop and corner stairs (`kinds.ts`, turned by `turn`); a
+  stepped roof made smooth with one call, `roof.ts` `smoothRoof` (AWP-24; `pblocks=gable`,
+  `gable-stepped`, `hip`, `hip-stepped`, `fullmix`).
 
 ## Things to do while roaming (add-ons)
 
@@ -362,6 +365,12 @@ guide, with every add-on's keys and URL values for shots, is
     always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
+    line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
+    puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into
+    the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
+    saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
+    `footwork=`, `foottake=`; addons.md "Footprint buildings").
   - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
     Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
     on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
