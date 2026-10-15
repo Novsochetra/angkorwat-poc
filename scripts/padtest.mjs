@@ -27,6 +27,8 @@
 //   camera    d-pad ← raises the camera, ○ puts it away; → the selfie, ○ away     (input.ts, tools.ts)
 //   build     building at home: ← turns the ghost 15°, L2 held with ← 5° (the binoculars stay
 //             down, he does not turn)                                              (_build.ts)
+//   buildtabs the build card's tabs: R1 / L1 and the d-pad's → change them, ✕ picks a row of the
+//             Furniture tab                                                        (_buildCard.ts)
 //   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
 //             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
@@ -533,6 +535,38 @@ const steps = [
       if (Math.abs(c.yaw - b.yaw) > 0.01) throw new Error(`L2 turned him ${(((c.yaw - b.yaw) * 180) / Math.PI).toFixed(1)}°`);
       if (c.turn - b.turn !== 5) throw new Error(`L2 + ← turned ${c.turn - b.turn}°, not 5°`);
       return `← 15° (${a.turn}° → ${b.turn}°), L2 + ← 5° (→ ${c.turn}°), binoculars down, he stays turned`;
+    },
+  },
+  {
+    id: 'buildtabs',
+    who: 'roam/_buildCard.ts (AWP-23)',
+    async run() {
+      await ensureWalk();
+      // (the build card by his house: R1 / L1 and the d-pad's → change its tab, ✕ picks a row of the one shown)
+      await placeAt('walk', '426,-128.17&home=1');
+      await ev(() => window.__build.card());
+      await until(() => window.__build.state().card, null, 3000, 'the build card opens');
+      const tab = () => ev(() => document.querySelector('.bd-tab.is-on')?.getAttribute('data-tab') ?? null);
+      const a = await tab();
+      await tap(page, 'r1');
+      await sleep(300);
+      const b = await tab();
+      await tap(page, 'l1');
+      await sleep(300);
+      const c = await tab();
+      await tap(page, 'right');
+      await sleep(300);
+      const d = await tab();
+      await tap(page, 'r1');
+      await sleep(300);
+      const e = await tab();
+      if (a !== 'foot' || b !== 'yard' || c !== 'foot' || d !== 'yard' || e !== 'furn') throw new Error(`tabs ${a} → R1 ${b} → L1 ${c} → ${d} → R1 ${e}, not foot → yard → foot → yard → furn`);
+      await tap(page, 'south');
+      await sleep(400);
+      const placing = await ev(() => window.__build.state().placing?.id ?? null);
+      await ev(() => window.__build.place(null));
+      if (placing !== 'teamat') throw new Error(`✕ picked ${placing}, not the Furniture tab's first row (teamat)`);
+      return `tabs ${a} → R1 ${b} → L1 ${c} → d-pad → ${d} → R1 ${e}, ✕ picks ${placing}`;
     },
   },
   {

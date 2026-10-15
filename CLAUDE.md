@@ -374,6 +374,10 @@ guide, with every add-on's keys and URL values for shots, is
     the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
     saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
     `footwork=`, `foottake=`; addons.md "Footprint buildings").
+  - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
+    Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
+    on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
+    lantern's cord up to the roof (`roam/_buildFurniture.ts`); `furn=<id>@x/z/yaw[/y]`.
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;

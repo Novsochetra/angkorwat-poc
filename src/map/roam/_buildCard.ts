@@ -8,6 +8,7 @@ import { ICON as UI_ICON } from '../ui/icons';
 import { num, onLang } from '../ui/lang';
 import { materialIcon } from '../build/materialIcons';
 import { setSteppedVars } from '../ui/shape';
+import { FURN_PIC } from './_buildFurnArt';
 
 /**
  * The build card (roam/_build.ts opens it with "E  Build…" by his house): what
@@ -53,6 +54,8 @@ export interface BuildRow {
   cost: { m: MaterialId; n: number; have: number }[];
   /** Why it cannot be built now (greyed), or null. */
   off: string | null;
+  /** Its tab (`BuildWords.groups`; none: the first). */
+  group?: string;
 }
 
 export interface BuildWords {
@@ -62,6 +65,12 @@ export interface BuildWords {
   rows: BuildRow[];
   /** How much of his land's block budget is used (build/plot.ts): its label, the words ("34% used"), 0‥1. */
   meter?: { label: string; value: string; used: number };
+  /**
+   * Tabs over the rows (AWP-23: the yard, the furniture): each row shows under its `group`'s tab; ← → (the pad's d-pad,
+   * L1 / R1) or a tap change the tab. `group`: the tab it opens on (none: the one shown last).
+   */
+  groups?: readonly { id: string; label: string }[];
+  group?: string;
 }
 
 export interface BuildCard {
@@ -86,6 +95,7 @@ const ICON = `<svg class="bd-icon" viewBox="0 0 16 16" aria-hidden="true" shape-
 
 /** A row's little picture (12 × 12 pixel art). */
 const PIC: Record<BuildRow['id'], string> = {
+  ...FURN_PIC,
   // (footprint buildings, AWP-20: a stilt house on its posts with its stair; a shed's open front under its roof; a fence line with its gate)
   'foot:house': '<path fill="#b8a06a" d="M5 0h2v1H5z"/><path fill="#c9a04a" d="M4 1h4v1H4zM3 2h6v1H3zM2 3h8v1H2z"/><path fill="#a07a30" d="M1 4h10v1H1z"/><path fill="#d8c08a" d="M2 5h8v2H2z"/><path fill="#5a3a24" d="M5 5h2v2H5z"/><path fill="#8a6038" d="M2 7h8v1H2zM2 8h1v3H2zM9 8h1v3H9z"/><path fill="#b08a5a" d="M7 8h1v1H7zM8 9h1v1H8zM9 10h1v1H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   'foot:shed': '<path fill="#c9a04a" d="M3 2h6v1H3zM2 3h8v1H2zM1 4h10v1H1z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M1 6h1v5H1zM10 6h1v5h-1z"/><path fill="#d8c08a" d="M2 9h8v2H2z"/><path fill="#b8a06a" d="M2 9h8v1H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
@@ -116,6 +126,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       <div class="mu-orn mu-ask-orn" aria-hidden="true"><i></i>${UI_ICON.diamond}<i></i></div>
       <p id="bd-note"></p>
       <div class="bd-meter" role="meter" aria-valuemin="0" aria-valuemax="100" hidden><span class="bd-meter-l"></span><span class="bd-meter-bar"><i></i></span><span class="bd-meter-v"></span></div>
+      <div class="bd-tabs" role="tablist" hidden></div>
       <div class="bd-opts" role="list"></div>
     </section>`;
   const ui = document.getElementById('ui');
@@ -128,6 +139,10 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
   const note = wrap.querySelector<HTMLElement>('#bd-note')!;
   const opts = wrap.querySelector<HTMLElement>('.bd-opts')!;
   const meter = wrap.querySelector<HTMLElement>('.bd-meter')!;
+  const tabs = wrap.querySelector<HTMLElement>('.bd-tabs')!;
+  /** The tab shown (AWP-23), and the tabs as last given. */
+  let tab = '';
+  let groups: readonly { id: string; label: string }[] = [];
   let isOpen = false;
   let words: (() => BuildWords) | null = null;
   let pick: ((id: BuildRow['id'] | null) => void) | null = null;
@@ -154,9 +169,17 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       meter.setAttribute('aria-label', `${w.meter.label}: ${w.meter.value}`);
     }
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.id;
-    const gold = w.rows.findIndex((r) => !r.off);
+    // (the tabs: the rows of the one shown)
+    groups = w.groups ?? [];
+    tabs.hidden = groups.length < 2;
+    if (groups.length && !groups.some((g) => g.id === tab)) tab = groups[0].id;
+    tabs.innerHTML = groups
+      .map((g) => `<button type="button" role="tab" class="bd-tab${g.id === tab ? ' is-on' : ''}" data-tab="${g.id}" aria-selected="${g.id === tab}" tabindex="-1">${esc(g.label)}</button>`)
+      .join('');
+    const rows = groups.length ? w.rows.filter((r) => (r.group ?? groups[0].id) === tab) : w.rows;
+    const gold = rows.findIndex((r) => !r.off);
     opts.innerHTML =
-      w.rows
+      rows
         .map(
           (r, i) => `<button type="button" role="listitem" class="bd-opt mu-frame mu-sm${i === gold ? ' is-gold' : ''}${r.off ? ' is-off' : ''}" data-id="${r.id}"${r.off ? ' disabled aria-disabled="true"' : ''}><span class="mu-bg"></span>${i === gold ? '<span class="mu-glow"></span>' : ''}<span class="mu-focus"></span>
         <span class="bd-pic"><svg class="bd-ri" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${PIC[r.id]}</svg></span>
@@ -195,7 +218,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     card.setAttribute('aria-hidden', String(!on));
     document.body.classList.toggle('mu-asking', on);
     closePad?.();
-    closePad = on ? pad.openLayer(wrap, { first: () => live()[0] ?? null, back: () => choose(null) }) : null;
+    closePad = on ? pad.openLayer(wrap, { first: () => live()[0] ?? null, back: () => choose(null), tabs: (d) => void stepTab(d) }) : null;
     if (!on && wrap.querySelector('.pad-focus')) clearMark();
   }
 
@@ -220,6 +243,27 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
     if (b && !b.disabled) choose(b.dataset.id || null);
   });
+  tabs.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+    if (b?.dataset.tab && b.dataset.tab !== tab) showTab(b.dataset.tab);
+  });
+
+  /** Another tab (its rows, the focus on its first). */
+  function showTab(id: string): void {
+    tab = id;
+    sound?.('tick');
+    render();
+    opts.scrollTop = 0;
+    const first = live()[0];
+    if (first && pad.active) markFocus(first);
+  }
+  /** The next tab (`d` 1) or the one before (−1), round. */
+  function stepTab(d: number): boolean {
+    if (groups.length < 2) return false;
+    const i = groups.findIndex((g) => g.id === tab);
+    showTab(groups[(i + d + groups.length) % groups.length].id);
+    return true;
+  }
   wrap.addEventListener('pointerdown', (e) => {
     if (isOpen && e.target === wrap) choose(null);
   });
@@ -240,6 +284,9 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       } else if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
         const b = at >= 0 ? list[at] : (list.find((x) => !x.classList.contains('bd-cancel')) ?? list[0]);
         choose(b?.dataset.id || null);
+      } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && groups.length > 1) {
+        // (← →: the tabs, AWP-23)
+        stepTab(e.key === 'ArrowLeft' ? -1 : 1);
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.code === 'Tab') {
         const back = e.key === 'ArrowUp' || e.key === 'ArrowLeft' || (e.code === 'Tab' && e.shiftKey);
         const to = list[at < 0 ? 0 : (at + (back ? -1 : 1) + list.length) % list.length];
@@ -263,6 +310,8 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     ask(w, onPick) {
       words = w;
       pick = onPick;
+      const start = w().group;
+      if (start && !isOpen) tab = start;
       render();
       if (isOpen) return;
       opts.scrollTop = 0;
@@ -309,6 +358,14 @@ function injectStyle(): void {
     .bd-meter-v { flex: none; white-space: nowrap; }
     :lang(km) .bd-meter { font-size: calc(13.5 * var(--px)); line-height: 1.4; }
     .bd-ask #bd-note { white-space: pre-line; }
+    /* The tabs (AWP-23): the yard's pieces, the furniture; the one shown gold-edged. */
+    .bd-tabs { display: flex; gap: calc(6 * var(--px)); margin-top: calc(10 * var(--px)); }
+    .bd-tabs[hidden] { display: none; }
+    .bd-tab { flex: 1; min-height: calc(34 * var(--px)); padding: calc(4 * var(--px)) calc(10 * var(--px)); border-radius: calc(8 * var(--px)); cursor: pointer; touch-action: manipulation;
+      font: 700 calc(14 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-ink2); background: rgba(10, 18, 30, 0.45); border: 1px solid rgba(255, 216, 120, 0.22); }
+    .bd-tab.is-on { color: #2b1904; background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 100%); border-color: rgba(255, 250, 225, 0.85); }
+    :lang(km) .bd-tab { font-size: calc(15 * var(--px)); line-height: 1.4; }
+    @media (hover: hover) { .bd-tab:not(.is-on):hover { color: var(--mu-ink); border-color: rgba(255, 216, 120, 0.5); } }
     .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
       overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }
     /* Soft edges where there is more to scroll to, as the settings panel's body (map.css \`.mu-set-body\`, ui.ts \`scrollEdges\`). */
@@ -396,6 +453,8 @@ function injectStyle(): void {
       .bd-ask .mu-ask-orn { margin-block: calc(7 * var(--px)) calc(6 * var(--px)); }
       .bd-ask #bd-note { font-size: calc(13.5 * var(--px)); line-height: 1.35; }
       .bd-opts { margin-top: calc(8 * var(--px)); }
+      .bd-tabs { margin-top: calc(6 * var(--px)); }
+      .bd-tab { min-height: calc(28 * var(--px)); padding-block: calc(2 * var(--px)); }
     }
     @media (pointer: coarse) { .bd-opt kbd { display: none; } .bd-opt { min-height: 50px; } }
     body.roam-touch:not(.pad-on) .bd-opt kbd { display: none; }

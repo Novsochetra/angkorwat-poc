@@ -201,10 +201,12 @@ function sideAt(b: WorkJob, side: number, out: number, o: Vector3): Vector3 {
 function standable(ctx: RoamCtx, b: WorkJob, x: number, z: number): boolean {
   const w = ctx.world;
   if (w.waterAt(x, z) !== null) return false;
+  // (beside it on its floor: the land, or a floor of his blocks or his house it stands on, AWP-23's furniture)
   const land = w.field.heightAt(x, z);
-  if (Math.abs(land - b.y) > 0.6) return false;
-  const g = w.standAt ? w.standAt(x, z, land, 0.3, 2.2) : w.groundAt(x, z);
-  return !Number.isNaN(g) && g - land < 0.3;
+  const base = b.y - w.field.heightAt(b.x, b.z) > 0.3 ? b.y : land;
+  if (Math.abs(base - b.y) > 0.6) return false;
+  const g = w.standAt ? w.standAt(x, z, base, 0.3, 2.2) : w.groundAt(x, z);
+  return !Number.isNaN(g) && Math.abs(g - base) < 0.3;
 }
 
 /** The sides he may work from, nearest him first. */
@@ -361,7 +363,9 @@ function settle(ctx: RoamCtx, dt: number): void {
   const p = ctx.body.pos;
   const land = ctx.world.field.heightAt(p.x, p.z);
   const top = ctx.world.groundAt(p.x, p.z);
-  const y = top - land < 0.3 ? top : land;
+  // (what his feet stand on from where they are: a floor of his blocks or his house too, under a roof; AWP-23)
+  const s = ctx.world.standAt ? ctx.world.standAt(p.x, p.z, p.y, 0.3, 0.5) : NaN;
+  const y = Number.isFinite(s) ? s : p.y - land > 0.3 ? p.y : top - land < 0.3 ? top : land;
   p.y += (y - p.y) * (dt > 0 ? damp(14, dt) : 1);
 }
 
