@@ -1,11 +1,11 @@
 import { saveBlocksNow } from '../blocks/save';
 import { BLOCKS, cellMin, cellOf } from '../blocks/store';
 import { progress } from '../progress';
-import { FOOT_KIND_IDS, FOOT_KINDS, planFoot, rectOf, sizeFault, type FootKind, type FootPart, type FootPlan, type FootRect, type FootSide } from './footPlan';
+import { FOOT_KIND_IDS, FOOT_KINDS, PLAN_VERSION, planFoot, rectOf, sizeFault, type FootKind, type FootPart, type FootPlan, type FootRect, type FootSide } from './footPlan';
 import { MATERIAL_IDS, type Materials } from './materials';
 import { BUILT } from './pieces';
 import { PLOT_BOX } from './plot';
-import { distTo, overlap, type Foot } from './state';
+import { corners, distTo, overlap, type Foot } from './state';
 
 /**
  * His footprint buildings (AWP-20: the plans, build/footPlan.ts; drawing and
@@ -54,6 +54,8 @@ export interface FootRec {
   written: number;
   /** What it cost (the materials; what he lacked he bought). */
   readonly cost: Materials;
+  /** The plan it was built with (footPlan.ts `PLAN_VERSION`; 1 for a record saved before versions were kept). */
+  readonly pv: number;
 }
 
 export type FootEventType = 'added' | 'progress' | 'done' | 'removed';
@@ -77,20 +79,20 @@ const plans = new Map<string, { key: string; plan: FootPlan }>();
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** A plan's key: what makes it (a record's footprint, door, kind). */
-const planKey = (kind: FootKind, r: FootRect, door: FootSide) => `${kind}|${r.i0},${r.k0},${r.i1},${r.k1}|${door}`;
+/** A plan's key: what makes it (a record's footprint, door, kind, plan version). */
+const planKey = (kind: FootKind, r: FootRect, door: FootSide, pv: number) => `${kind}|${r.i0},${r.k0},${r.i1},${r.k1}|${door}|${pv}`;
 
-/** The plan of a footprint (made once a footprint; `ground` must be set: `FOOTS.init`). */
-export function footPlan(kind: FootKind, rect: FootRect, door: FootSide): FootPlan {
+/** The plan of a footprint (made once a footprint; `ground` must be set: `FOOTS.init`), the newest plan unless `pv`. */
+export function footPlan(kind: FootKind, rect: FootRect, door: FootSide, pv: number = PLAN_VERSION): FootPlan {
   if (!ground) throw new Error('[foot] FOOTS.init(ground) first');
-  return planFoot(kind, rect, door, ground);
+  return planFoot(kind, rect, door, ground, pv);
 }
 
 function planOf(rec: FootRec): FootPlan {
-  const key = planKey(rec.kind, rec.rect, rec.door);
+  const key = planKey(rec.kind, rec.rect, rec.door, rec.pv);
   const c = plans.get(rec.uid);
   if (c && c.key === key) return c.plan;
-  const plan = footPlan(rec.kind, rec.rect, rec.door);
+  const plan = footPlan(rec.kind, rec.rect, rec.door, rec.pv);
   plans.set(rec.uid, { key, plan });
   return plan;
 }
@@ -112,7 +114,10 @@ function readOne(v: unknown): FootRec | null {
       const n = (o.cost as Record<string, unknown>)[m];
       if (isInt(n) && n > 0 && n <= 999) cost[m] = n;
     }
-  return { uid: o.uid, kind, rect, door: o.door as FootSide, done: Math.min(1, Math.max(0, o.done as number)), written: Math.max(0, o.w as number), cost };
+  // (its plan's version: none saved, the first; a newer one than this build knows, left out: its blocks are not ours to draw)
+  const pv = o.pv === undefined ? 1 : o.pv;
+  if (!isInt(pv) || pv < 1 || pv > PLAN_VERSION) return null;
+  return { uid: o.uid, kind, rect, door: o.door as FootSide, done: Math.min(1, Math.max(0, o.done as number)), written: Math.max(0, o.w as number), cost, pv };
 }
 
 const isList = (v: unknown): v is never[] => Array.isArray(v);
@@ -133,7 +138,7 @@ function save(): void {
   if (!progress.saving) return;
   progress.set(
     KEY,
-    list.map((r) => ({ uid: r.uid, kind: r.kind, ...r.rect, door: r.door, done: Math.round(r.done * 1000) / 1000, w: r.written, cost: r.cost })),
+    list.map((r) => ({ uid: r.uid, kind: r.kind, ...r.rect, door: r.door, done: Math.round(r.done * 1000) / 1000, w: r.written, cost: r.cost, pv: r.pv })),
   );
 }
 
@@ -267,7 +272,7 @@ export const FOOTS = {
     if (count(kind) >= FOOT_KINDS[kind].most) return null;
     let n = 1;
     for (const r of list) if (r.kind === kind) n = Math.max(n, Number(r.uid.slice(kind.length + 1)) + 1 || n);
-    const rec: FootRec = { uid: `${kind}-${n}`, kind, rect, door, done: 0, written: 0, cost: { ...cost } };
+    const rec: FootRec = { uid: `${kind}-${n}`, kind, rect, door, done: 0, written: 0, cost: { ...cost }, pv: PLAN_VERSION };
     list.push(rec);
     BUILT.version++;
     emit('added', rec);
@@ -395,3 +400,35 @@ BUILT.feet = (x: number, z: number, r: number): boolean => {
   return false;
 };
 BUILT.feetOver = (f: Foot, m: number): boolean => feetOver(f, m);
+BUILT.feetRoom = (f: Foot, h: number): boolean => roomIn(f, h);
+
+const _rc: [number, number][] = [];
+/**
+ * A piece inside a stilt house or a shed he built whole (AWP-25): its footprint within the building's, clear of the
+ * building's blocks from the ground to its top (`h` m: under a house's floor between its posts, under a shed's roof
+ * inside its half walls) and of every other footprint building's land.
+ */
+function roomIn(f: Foot, h: number): boolean {
+  // (a piece's, not a footprint's: no footprint building inside another)
+  if (!ground || f.id === 'foot') return false;
+  let host: FootRec | null = null;
+  corners(f, 0, _rc);
+  for (const r of list) {
+    if (r.kind === 'fence' || r.done < 1) continue;
+    const x0 = cellMin(r.rect.i0);
+    const x1 = cellMin(r.rect.i1 + 1);
+    const z0 = cellMin(r.rect.k0);
+    const z1 = cellMin(r.rect.k1 + 1);
+    if (_rc.every(([x, z]) => x > x0 && x < x1 && z > z0 && z < z1)) host = r;
+  }
+  if (!host) return false;
+  for (const r of list) if (r !== host && partsOf(r).some((p) => overlap(f, partFoot(p, _pf), -0.03))) return false;
+  const plan = planOf(host);
+  const g = ground(f.x, f.z);
+  for (let b = 0; b < plan.n; b++) {
+    const j = plan.cells[b * 3 + 1];
+    if ((j + 1) * 0.5 <= g || j * 0.5 >= g + h) continue;
+    if (distTo(f, cellMin(plan.cells[b * 3]) + 0.25, cellMin(plan.cells[b * 3 + 2]) + 0.25) < 0.25) return false;
+  }
+  return true;
+}

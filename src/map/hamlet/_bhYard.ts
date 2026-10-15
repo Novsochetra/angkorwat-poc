@@ -265,9 +265,10 @@ function spiritHouse(env: BuildEnv, L: Local, g: (x: number, z: number) => numbe
   // Offerings on the platform before it.
   baySei(L, x - 0.3, y + 1.505, z + 0.27);
   baySei(L, x + 0.31, y + 1.505, z + 0.25, 0.85);
-  L.box(x - 0.06, y + 1.545, z + 0.34, 0.07, 0.08, 0.07, 0xe8eef2, 'mapStone');
+  L.box(x + 0.25, y + 1.545, z + 0.36, 0.07, 0.08, 0.07, 0xe8eef2, 'mapStone');
   L.box(x + 0.02, y + 1.52, z + 0.4, 0.3, 0.03, 0.05, 0xf0a020, 'petal');
-  bananaHand(L.b, [x - 0.08, y + 1.522, z + 0.2], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
+  // (the hand out on the platform's front, before the base, the cup of water moved aside for it: AWP-7 review)
+  bananaHand(L.b, [x - 0.1, y + 1.522, z + 0.32], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
   // Incense sticks in a little pot, the candle.
   L.box(x + 0.12, y + 1.55, z + 0.3, 0.09, 0.09, 0.09, 0x8a5a3a, 'mapStone');
   for (const dx of [-0.02, 0.02]) L.box(x + 0.12 + dx, y + 1.71, z + 0.3, 0.012, 0.24, 0.012, 0x6a3a2a, 'petal');

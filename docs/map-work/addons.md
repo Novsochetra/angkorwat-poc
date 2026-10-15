@@ -2943,7 +2943,14 @@ sounds `audio/_build.ts`.
   in the middle, a little over his shoulder (a near ghost, the jar, the lamp, the spirit
   house, a little steeper: the line to it over his hat); its first move after a pick is
   quick and goes round over his shoulder even while he stands, so the ghost is not behind
-  his hat. After a fence or a lantern post the mode stays on for the next.
+  his hat (footprint mode: straight behind him, its cursor is two steps ahead). While he
+  walks in build mode or footprint mode the camera holds its heading (no swing round
+  behind him: `cam.follow` 0, put back after), so W, the stick or the touch stick walk
+  straight (it swung over his shoulder and steered him: a 7 m walk drifted 6 m; now
+  0.0 m with keys, pad and touch), and where he faced as the mode opened: the camera's
+  first move over his shoulder (24°) is taken back off the move (`modeTurned`); Q / R, a
+  drag or the right stick still turn it. After
+  a fence or a lantern post the mode stays on for the next.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block
@@ -3040,7 +3047,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
-  each corner and every 2 m at most; under the floor on the same grid), its timber floor
+  each corner and every 2 m at most; under the floor one row down its middle, along its
+  longer side: the shade on either side is open for a bamboo bed, AWP-25; a house built
+  before keeps its grid of posts there: `PLAN_VERSION`, below), its timber floor
   with its underside at least 2.5 m over the highest ground under it (he walks under it:
   2.26 m tall to the walk map), woven bamboo walls (a weave of new and older strips) in
   the timber frame, a wall plate, the door 2.5 m high and 1.5 m (an odd wall) or 2 m wide
@@ -3069,9 +3078,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle; 4 laterite
   a lump of clay, for a kind to come: none uses laterite yet, its footings are hardwood, so
   their chunks draw two block families, not three), rounded up per building, so it grows
-  with the footprint: the smallest house 18 logs, 9 bamboo, 18 thatch (171,000 ៛ bought
-  outright; 860 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 26 thatch (217,000 ៛; 1 124
-  blocks); an 8 × 8 m one 354,000 ៛ (1 848 blocks); the smallest shed 5 logs, 3 bamboo,
+  with the footprint: the smallest house 17 logs, 9 bamboo, 18 thatch (165,000 ៛ bought
+  outright; 850 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 26 thatch (217,000 ៛; 1 114
+  blocks); an 8 × 8 m one 342,000 ៛ (1 806 blocks); the smallest shed 5 logs, 3 bamboo,
   8 thatch (56,000 ៛, 274 blocks; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
   (a ring of 24 × 24 m 108,000 ៛; the fence piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
@@ -3119,7 +3128,15 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   first; half the materials back into his home store) as a piece. Pieces cannot stand on
   one, nor plants (`BUILT.feet`).
 - **Saved** (`progress.ts` `build.foot`: uid, kind, i0, k0, i1, k1, door, done, `w` the
-  blocks written, cost); the blocks are the block layer's (`blocks.plot`). A record that
+  blocks written, cost, `pv` the plan's version: footPlan.ts `PLAN_VERSION`, 1 when none is
+  saved). **A building keeps the plan it was built with**: an old record is drawn, finished
+  and taken down with its own version's plan (version 1, AWP-20: the grid of posts under a
+  house's floor; 2, AWP-25: one row down its middle), so a player's house never changes
+  under him and taking it down leaves no block; a version newer than the build knows is
+  left out. Checked: a 6 × 6 m house and one half built, saved on 57fab95 (1 124 blocks
+  each by the old plan, the new makes 1 114), load on the new build as they were (the layer
+  1 686), the half-built one finishes with its old plan (2 248) and both taken down leave
+  the layer at 0. The blocks are the block layer's (`blocks.plot`). A record that
   does not read is left out (an unknown kind, a size not allowed, far from his land, more
   than its kind may have, one over another; a cost not a whole 0‥999). Finished or taken
   down, the block layer is saved at once (`blocks/save.ts` `saveBlocksNow`) and the list right
@@ -3143,12 +3160,55 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   `footwork=<kind>:<0‥1>[:<s>]` (at work on the last one of that kind) ·
   `foottake=<uid>[:<0‥1>]` (the question; taking it down). `report()` gives `foot=`,
   `footdraw=`, `footwork=`. `window.__build.state().foot`, `__build.foot` (`add`,
-  `remove`, `clear`, `full`, `draw`, `plan`). Console lines `[foot] …`. E.g.
+  `remove`, `clear`, `done(uid, 0‥1)`, `full`, `draw`, `plan`). Console lines `[foot] …`. E.g.
   `roam=walk&at=433,-130&yaw=200&home=1&foot=house@419/-142/425/-136/2,shed@428/-150/432/-146/3,fence@418/-162/430/-154/2&rcam=160,22,20`
   · `roam=walk&at=424,-131&yaw=180&home=1&purse=200000&footdraw=house@419/-142/425/-136:2&rcam=0,30,18`
   · `roam=walk&at=422,-129&yaw=180&home=1&foot=house@419/-142/425/-136/2&sim=w:7` (up its
   stair and in).
 
+### Things that work where he builds them
+
+A bed under a roof he built sleeps him as his mat at home, and his cows go into a fenced and
+roofed area he built as into the pen piece (AWP-25, build plan step 4). **One shared check**,
+`map/build/shelterRules.ts` (no three.js):
+
+- `underRoof(x, z, y)`: the point at the height `y` (the feet, a bed's top) has a roof of his
+  over it: a stilt house or a shed he built whole (inside its footprint, under its plan's top:
+  under the house's floor or in its room, under the shed's roof), the thatched shelter piece
+  (inside its roof, under its ridge), or any solid block of his within `BLOCK_ROOF` 8 m over it.
+- `fenced(x, z)`: inside a fence footprint of his that closes round (built whole; not a
+  straight run), or inside the pen piece's rails. The yard's 3 m fence pieces are not counted
+  (they need not close).
+- `roofedPens(heightAt)`: the fenced and roofed areas as pens for the herd: a fence ring at
+  least `PEN_ROOM` 7.5 × 6.1 m (the pen piece and a margin) with its gate on a side, the pen
+  piece's frame placed in it (its gate on the fence's gate, `uid` `foot-<fence uid>`), roofed
+  when the places where the cows lie (the pen's outer places and its middle) are all
+  `underRoof` (a shed or house built inside the ring, a shelter piece, blocks). Made again only
+  when what he built changes (`BUILT.version`, `BLOCKS.version`).
+
+- **Beds** (`map/build/beds.ts`): any standing piece one lies on (`isBedPiece`: the
+  bamboo bed and the sleeping mat, AWP-23's `isBed(id)`) under a roof of his
+  (`bedPlace`, `bedNear`) is a bed to sleep in. By it "E  ដេកសម្រាក / Sleep  ·  hold to take
+  it down" (the build add-on: a short press sleeps, held takes it down as any piece); the
+  home add-on's card (until dawn, the afternoon, the next event; a short rest while the time
+  stands still) and its night (`_homeSleep.ts` `startSleep(…, bed)`: he steps up onto it, lies
+  along it, the "Z z z", the fade, the time moves on, he wakes, steps down before it and
+  stretches; no net) through the hook `BED_SLEEP.start` (set by the home add-on). In the open a
+  bed stays a bed to lie on (J / L).
+- **Pieces inside his buildings** (`BUILT.feetRoom`, build/footState.ts): a piece may stand
+  inside a stilt house or a shed he built whole when it is clear of its blocks from the ground
+  to its top and of every other footprint building's land: a bamboo bed in the shade under his
+  house's floor (its posts there are one row down its middle, AWP-25), a bed or a jar in his
+  shed. A footprint never stands in another. By a piece in or under one, E is the piece's (the
+  building's own take-down from outside it).
+- **His cows** (`roam/_cattleHerd.ts` `penList`: the pen pieces first, then `roofedPens`): before
+  dusk they go in through the fence's gate as through the pen's, lie at the pen piece's places
+  under the roof, and go out after dawn; the old pen works as before.
+- **URL** (shots and the dev server): `bedsleep=<uid>` (asleep on that bed, under a roof of his)
+  with `build=kre@x/z/deg` and `foot=…`; e.g.
+  `roam=walk&home=1&at=422,-138&foot=house@419/-142/425/-136/2&build=kre@422/-140.5/0&bedsleep=kre-1`
+  (asleep under his stilt house) · `roam=walk&home=1&at=429,-150&clock=0.47&cattle=grown,grown&cattlenight=1&foot=fence@424/-167/434/-157/2,shed@425.5/-164/432.5/-158.5/2&cam=429,12,-148,429,8,-162,50`
+  (his two cows lying in his fenced shed at night).
 ### Furniture and lanterns
 
 He furnishes what he built (ticket AWP-23, build plan step 4; part of the add-on `build`, words
@@ -3228,6 +3288,58 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   furnished footprint stilt house: `roam=walk&at=423.6,11.05,-140.6&yaw=300&home=1&foot=house@419/-142/425/-136/2&furn=bedmat@422/-140.3/0/11.05,teamat@420.3/-138.6/0/11.05,baskets@424/-138.4/90/11.05,oillamp@421.2/-139/0/11.05,pot@424/-140.5/0/11.05,hanglamp@422/-139/0/11.05&night=1&cam=419.7,13.7,-141.1,422.7,11.2,-138.0,75` ·
   a furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
   in his house: `…&furn=baskets@426.3/-106.4/90/13.1,pot@425.75/-107.55/0/13.1,bench@421.55/-105.5/90/13.1,hanglamp@424.9/-106.4/0/13.1,oillamp@425.6/-105.9/0/13.1&cam=421.4,15.4,-104.4,425.8,13.3,-106.8,70`.
+
+### Paint
+
+He paints what he built (ticket AWP-22, build plan "Colours?": a limited Khmer palette first, no free
+colour wheel; add-on `paint`, words `paint…`). What painting does: `map/build/paint.ts` (no three.js);
+the mode `roam/_paint.ts`, its swatches `roam/_paintBar.ts`, its marks `roam/_paintCursor.ts`, the ray
+through his blocks `map/blocks/ray.ts`, its sounds `audio/_paint.ts`.
+
+- **Six colours** (`blocks/kinds.ts` `KHMER_PAINT`, keys 1‥6): lotus pink ពណ៌ផ្កាឈូក, saffron ពណ៌ចីវរ (the
+  monks' robes), indigo ពណ៌ខៀវចាស់, temple gold ពណ៌មាស, lacquer red ពណ៌ក្រហមល័ក្ខ, coconut brown
+  ពណ៌សំបកដូង; and **its own colour** ពណ៌ដើម (7): the paint taken off, back to the colour it was built
+  with (a footprint building's block its plan's tone, any other block its material's). The paint takes on
+  the wood under it a little (`toneOf`: the block's own colour's light against its material's, 0.8‥1.15
+  in steps of 0.05): the weave's light and dark rows still read, a post's dark timber is a darker red.
+- **Only his blocks**: the player's block layer (his footprint buildings, any block of his). The world's
+  blocks, his pieces and his house are not blocks of the layer: nothing paints them.
+- **In**: the build card's **Buildings** tab, its last row "លាបពណ៌សំណង់ / Paint your buildings" (key 4;
+  greyed "Build something first" while he has no block). **Out**: Esc (the pad's ○, the touch ✕),
+  8 m past his land, another mode, picking a piece or a building on the card. F / C (the pad's ↓): the
+  card again.
+- **The colour**: the swatches (a strip at the top, above the controls on a touch screen; a click or a
+  tap), 1‥7, `,` / `.` (the pad's d-pad ← →). Kept between visits (`paint.brush`).
+- **Aim**: the block under the mouse; with a game pad, or on a phone before a tap, the block under the
+  gold ring over his head (where the camera looks: turn it, tilt it); a tap aims there. A light frame
+  round the block, the side he aims at covered with the colour it will be. He reaches 9 m from his head
+  ("ឆ្ងាយពេក / Too far: come closer"); no block: "Aim at a block of your buildings".
+- **Paint**: E (the pad's □, the touch Use button; a click on a block, a tap on one) paints that block.
+  **E held** 0.6 s (the prompt's bar filling, the part tinted more and more; a long press on a phone)
+  paints **the whole part** (`partAt`): of a footprint building every block of the same stage and
+  material standing now (the woven walls, the wall plate, the posts and footings, the floor, the thatch,
+  the ridge and gables, the stair and its rails; a fence's posts, its panels); of other blocks those of
+  its material joined side to side (4,096 at most). One gesture for a block or a whole wall, the same on
+  keys, a pad and a phone (a run painted while held would need a steady aim a thumb does not give). He
+  turns to what he paints; a brush's swish.
+- **Free** (decision on the ticket: the owner looks at how it feels first; nothing to give back when the
+  paint comes off, no riel loop to check).
+- **What changes**: only a block's colour (`blocks/store.ts` `Block.color`): the same meshes and programs
+  (a colour per instance), the change says `colourOnly` (the walk map builds nothing again, only the
+  block's own chunk is drawn again, the hanging lanterns' cords stay). Taking a building down takes its
+  paint with it; building on keeps it (no cell is written twice, `footState.ts`).
+- **Saved with the build** (`blocks/save.ts`: the colour is part of the block): written a second after
+  painting, when the mode ends, when the page is hidden or closed. **Kinds of block** (the save keeps at most 4,096: `SAVE_LIMITS.kinds`): footprint
+  buildings make 56 kinds unpainted (every kind and door, its sizes, flat and sloping land), paint 265
+  more at most (each in the six colours in its tone, and the materials' own): 321 in all, 8 % of the limit
+  (`__paint.kinds()`).
+- **URL** (shots and the dev server only, never the live site): `paint=<what>:<colour>,…` (`all`, a
+  building `house-1`, a stage `house-1.walls`, a part `house-1.walls.bamboo`; colours `lotus`,
+  `saffron`, `indigo`, `gold`, `lacquer`, `coconut`, `own`), `paintmode=<colour>` (the mode on),
+  `painthold=<0‥1>` (E held that far on the block aimed at). `report()` gives `paintmode=`.
+  `window.__paint`: `state()`, `enter(colour)`, `exit()`, `brush(colour)`, `paint(what)`,
+  `part(i, j, k)`, `aimAt(i, j, k)`, `kinds()`. E.g. a house in all six:
+  `roam=walk&at=428,-124&yaw=0&home=1&foot=house@419/-142/425/-136/2&paint=house-1.walls.bamboo:lotus,house-1.walls.timber:gold,house-1.posts:lacquer,house-1.floor:coconut,house-1.stair:saffron,house-1.roof.timber:indigo&explorer=0&cam=431,13.8,-126.5,422,12.2,-139,45`.
 
 ### Gathering materials
 

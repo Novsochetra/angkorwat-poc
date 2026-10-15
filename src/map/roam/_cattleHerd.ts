@@ -15,6 +15,10 @@ import { BIKE_OWN } from './_bikeOwn';
 import { lineWalk, PathSearch } from './_dogPath';
 import { CattleBlocks } from './_cattleBlocks';
 import type { RoamWorld } from './types';
+import { roofedPens } from '../build/shelterRules';
+
+/** The pens as last listed (`penList`): the build's version, the roofed areas' list, the pens. */
+let penListAt: [number, readonly Built[], Built[]] = [-1, [], []];
 
 /**
  * His cows and the trader's (add-on `cattle`: roam/_cattle.ts), on the map:
@@ -417,20 +421,24 @@ export class CattleHerd {
 
   // ── Where it belongs ───────────────────────────────────────────────────────
 
-  /** The standing pens he has built (build/pieces.ts `BUILT`). */
+  /**
+   * The standing pens he has built (build/pieces.ts `BUILT`), then his fenced and roofed areas as pens (AWP-25:
+   * build/shelterRules.ts `roofedPens`: where the pen piece would stand in them, its gate on the fence's gate).
+   */
+  private penList(): readonly Built[] {
+    const roofed = roofedPens((x, z) => this.world.field.heightAt(x, z));
+    if (penListAt[0] === BUILT.version && penListAt[1] === roofed) return penListAt[2];
+    const out: Built[] = [];
+    for (const p of BUILT.list) if (p.id === 'pen' && p.done >= 1) out.push(p);
+    out.push(...roofed);
+    penListAt = [BUILT.version, roofed, out];
+    return out;
+  }
   private pens(): number {
-    let n = 0;
-    for (const p of BUILT.list) if (p.id === 'pen' && p.done >= 1) n++;
-    return n;
+    return this.penList().length;
   }
   private penAt(n: number): Built | null {
-    let k = 0;
-    for (const p of BUILT.list)
-      if (p.id === 'pen' && p.done >= 1) {
-        if (k === n) return p;
-        k++;
-      }
-    return null;
+    return this.penList()[n] ?? null;
   }
 
   /** Where it should be now (its goal), by the clock and the pens. */
@@ -444,7 +452,7 @@ export class CattleHerd {
   /** The standing pen with this uid, or null (none, taken down). */
   private penOf(uid: string): Built | null {
     if (!uid) return null;
-    for (const p of BUILT.list) if (p.uid === uid && p.id === 'pen' && p.done >= 1) return p;
+    for (const p of this.penList()) if (p.uid === uid) return p;
     return null;
   }
 
