@@ -114,6 +114,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
   saved-place check refuses it, and always has a way back when stuck (integration test).
 - A new cost in riel meets every way riel comes in (the purse's top-up): check
   nothing becomes free money (integration test).
+- Anything that holds up another piece (a roof a lantern hangs from, a floor)
+  refuses to come down while it holds one: test every piece that can (AWP-23).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
