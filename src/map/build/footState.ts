@@ -1,3 +1,4 @@
+import { saveBlocksNow } from '../blocks/save';
 import { BLOCKS, cellMin, cellOf } from '../blocks/store';
 import { progress } from '../progress';
 import { FOOT_KIND_IDS, FOOT_KINDS, planFoot, rectOf, sizeFault, type FootKind, type FootPart, type FootPlan, type FootRect, type FootSide } from './footPlan';
@@ -20,9 +21,14 @@ import { distTo, overlap, type Foot } from './state';
  *   step of `n / 60` blocks at a time, so the layer and the walk map are made
  *   again about once a second of work, not every frame) and takes them away
  *   as he takes it down; `remove` clears every cell of its plan. Paint
- *   (AWP-22) on its blocks is kept: nothing here writes a cell twice. A record
- *   whose blocks are all missing when the map loads (a block save lost or
- *   broken: blocks/save.ts loads nothing then) has them written again.
+ *   (AWP-22) on its blocks is kept: nothing here writes a cell twice. Finished
+ *   or taken down, the block save is written at once and the list right after,
+ *   in one task (blocks/save.ts `saveBlocksNow`): a tab closed then keeps both or
+ *   neither, so no block of a building taken down can come back without it.
+ *   When the map loads, a record's blocks so far that the saved build lacks (a
+ *   block save behind the list mid-build, or one lost or broken: blocks/save.ts
+ *   loads nothing then) are written again. Blocks with no record are never
+ *   taken out on load: his land may hold blocks of his own besides.
  * - **Saved**: progress.ts `build.foot` (`[{ uid, kind, i0, k0, i1, k1, door,
  *   done, w, cost }]`), on every change, at most once a second while one
  *   rises. On load a record that does not read (an unknown kind, a size its
@@ -239,15 +245,20 @@ export const FOOTS = {
     for (const r of list) {
       const plan = planOf(r);
       r.written = Math.min(r.written, plan.n);
-      if (!r.written) continue;
-      let seen = 0;
-      const look = Math.min(r.written, 24);
-      for (let b = 0; b < look; b++) if (BLOCKS.raw(plan.cells[b * 3], plan.cells[b * 3 + 1], plan.cells[b * 3 + 2])) seen++;
-      if (seen) continue;
-      const w = r.written;
-      r.written = 0;
-      writeTo(r, w);
-      console.warn(`[foot] ${r.uid}: its blocks were missing from the saved build, written again (${w})`);
+      // (its blocks so far that the saved build lacks — a block save behind the list, or one that did not load —
+      // written again: the building stands as far as its record says; nothing of it is ever taken out here)
+      let gone = 0;
+      BLOCKS.batch(() => {
+        for (let b = 0; b < r.written; b++) {
+          const i = plan.cells[b * 3];
+          const j = plan.cells[b * 3 + 1];
+          const k = plan.cells[b * 3 + 2];
+          if (BLOCKS.raw(i, j, k)) continue;
+          BLOCKS.setRaw(i, j, k, plan.raws[b]);
+          gone++;
+        }
+      });
+      if (gone) console.warn(`[foot] ${r.uid}: ${gone} of its ${r.written} blocks were missing from the saved build, written again`);
     }
   },
 
@@ -276,6 +287,8 @@ export const FOOTS = {
     const step = Math.max(1, Math.ceil(plan.n / STEPS));
     if (d >= 1 || d <= 0 || Math.abs(to - rec.written) >= step) writeTo(rec, to);
     if (d >= 1 && was < 1) {
+      // (the blocks saved first, then the list: one task, so a closed tab keeps both or neither)
+      saveBlocksNow();
       save();
       emit('done', rec);
       return;
@@ -295,6 +308,9 @@ export const FOOTS = {
     list.splice(at, 1);
     plans.delete(rec.uid);
     BUILT.version++;
+    // (its blocks' removal saved at once, then the list without it, in one task: no block of it can come back on a
+    // reload with no building to take it down)
+    saveBlocksNow();
     save();
     emit('removed', rec);
   },

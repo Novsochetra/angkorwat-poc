@@ -1,4 +1,5 @@
 import { cartBlockWhy } from '../build/haul';
+import { ownedBlocks } from '../build/owned';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { inPlot, PLOT_TREES } from '../build/plot';
 import { corners, distTo, overlap, sizeOf, type Foot } from '../build/state';
@@ -43,13 +44,15 @@ import type { RoamWorld } from './types';
  *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
  * - `cart`, `cartPlace`: his ox cart and its oxen where they stand, or their place by the house while away (build/haul.ts `cartBlockWhy`);
+ * - `cow`, `bike`: one of his own cows' stakes and the rope's reach round it, his own bicycle where he left it
+ *   (build/owned.ts `ownedBlocks`; AWP-20);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
  *   standing, a piece of his).
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'cow' | 'bike' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -65,6 +68,8 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   piece: 'buildNoPiece',
   cart: 'haulHere',
   cartPlace: 'haulPlace',
+  cow: 'buildNoCow',
+  bike: 'buildNoBike',
   thing: 'buildNoThing',
   front: 'buildNoFront',
 };
@@ -240,6 +245,7 @@ const onCart = (x: number, z: number): BuildReason | null => {
   const w = cartBlockWhy(x, z);
   return w === 'here' ? 'cart' : w === 'place' ? 'cartPlace' : null;
 };
+const ownedAt = (x: number, z: number): BuildReason | null => ownedBlocks(x, z);
 const onThing = (x: number, z: number): BuildReason | null => {
   const w = _world!;
   // (what he built himself is the pieces' own rule, `piece`: two fence runs meeting at a joint stand in each other's posts)
@@ -305,6 +311,8 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
   r = eachPoint(f, 0.2, onCart);
   if (r) return r;
+  // His own cows on their tethers and his parked bicycle (build/owned.ts; AWP-20).
+  if ((r = eachPoint(f, 0, ownedAt))) return r;
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

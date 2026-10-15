@@ -101,6 +101,21 @@ One line each time a ticket is sent back, so the next worker avoids it.
   planting, and a saved place passes the same "can it stand here" check as play (AWP-14).
 - A collision check samples finer than the thinnest thing it must stop at (a
   fence is 0.25 m), or tests boxes exactly: drive into one fence head-on (AWP-14).
+- Grep every rig that carries goods (stalls, people's rigs, boats), not only
+  stall files (AWP-7).
+- A low or lite form keeps the plant's silhouette (a banana's leaves arch out
+  and down) (AWP-7).
+- A panel hidden by a class must really hide under the HUD's own rules
+  (`.rh > .mu-frame` sets display): check its computed display after every way
+  out of the mode (AWP-20).
+- Things he owns and leaves (his cow, his bicycle, his cart) block building (AWP-20).
+- Anything that moves and stays in the world (the cart) is in every other
+  mover's collision (bicycle, ridden cow, cattle, dog), never stops where its own
+  saved-place check refuses it, and always has a way back when stuck (integration test).
+- A new cost in riel meets every way riel comes in (the purse's top-up): check
+  nothing becomes free money (integration test).
+- Anything that holds up another piece (a roof a lantern hangs from, a floor)
+  refuses to come down while it holds one: test every piece that can (AWP-23).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
