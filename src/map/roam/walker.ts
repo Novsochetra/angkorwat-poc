@@ -42,7 +42,7 @@ const AHEAD = 0.5;
 /** Checks: `perch=0` leaves those rules (`PERCH`, `AHEAD`, `carried` going on past his rim) out, as before, to compare. */
 const PERCH_RULE = typeof location === 'undefined' || new URLSearchParams(location.search).get('perch') !== '0';
 /** Walk and run pace over the true-size speeds (the map is big). */
-const PACE = 1.6;
+export const PACE = 1.6;
 /** A jump pressed this long before landing still happens; after walking off an edge it still works this long (s). */
 const JUMP_BUFFER = 0.15;
 const COYOTE = 0.12;

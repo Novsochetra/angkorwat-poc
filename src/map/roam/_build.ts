@@ -298,7 +298,8 @@ function askTake(ctx: RoamCtx, b: WorkJob): void {
       const q = asking;
       return {
         title: t('buildTakeAsk', { name: q ? q.word() : pieceWord({ id: 'kre' }) }),
-        note: t('buildTakeNote', { what: backWords(q ? q.back() : pieceBack('kre')) }),
+        // (one that gives back only riel, half its bought part: worded so, not "half its materials")
+        note: t(q && Object.keys(q.back().cost).length > 0 ? 'buildTakeNote' : 'buildTakeNoteRiel', { what: backWords(q ? q.back() : pieceBack('kre')) }),
         stay: t('buildTakeNo'),
         go: t('buildTakeYes'),
       };

@@ -1,3 +1,4 @@
+import { cartBlockWhy } from '../build/haul';
 import { BUILT } from '../build/pieces';
 import { SURFACE } from '../heightfield';
 import { EV_HOMES } from '../hamlet/_evSpots';
@@ -33,6 +34,7 @@ import { edgeBefore, waterAhead, type WaterSpot } from './_waterReach';
  * - `level`: the plant's room is not all on one level of the land (it is built of
  *   big blocks: a step through the bed would leave it hanging);
  * - `room`: nearer another plant than the larger of their rooms (`KINDS[k].room`);
+ * - `cart`, `cartPlace`: his ox cart and its oxen where they stand, or their place by the house while away (build/haul.ts `cartBlockWhy`);
  * - `thing`: something built stands there (the walk map's top over the land);
  * - `pagoda`: the bodhi is planted at the village pagoda, not at home.
  */
@@ -61,7 +63,7 @@ export const ghostAhead = (k: PlantKindId): number => Math.min(3.4, 2.95 + KINDS
 /** (the smallest: checks and the URL's seed card) */
 export const PLANT_AHEAD = 1.5;
 
-export type SpotReason = 'far' | 'full' | 'water' | 'path' | 'house' | 'dog' | 'yard' | 'level' | 'room' | 'thing' | 'pagoda';
+export type SpotReason = 'far' | 'full' | 'water' | 'path' | 'house' | 'dog' | 'yard' | 'level' | 'room' | 'cart' | 'cartPlace' | 'thing' | 'pagoda';
 
 export const REASON_WORDS: Record<SpotReason, WordKey> = {
   far: 'gardenNoFar',
@@ -73,6 +75,8 @@ export const REASON_WORDS: Record<SpotReason, WordKey> = {
   yard: 'gardenNoYard',
   level: 'gardenNoLevel',
   room: 'gardenNoRoom',
+  cart: 'haulHere',
+  cartPlace: 'haulPlace',
   thing: 'gardenNoThing',
   pagoda: 'gardenNoPagoda',
 };
@@ -197,6 +201,9 @@ export function canPlant(world: RoamWorld, kind: PlantKindId, x: number, z: numb
     const dz = p.z - z;
     if (dx * dx + dz * dz < r * r) return 'room';
   }
+  // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
+  const cw = cartBlockWhy(x, z, Math.min(room, 1.2) * 0.8);
+  if (cw) return cw === 'here' ? 'cart' : 'cartPlace';
   // Something he built at home stands there or is going up (build/pieces.ts `BUILT`: its footprint and the plant's room).
   if (BUILT.blocks(x, z, Math.min(room, 1.2) * 0.8)) return 'thing';
   // Something built stands there (the walk map's top over the land).

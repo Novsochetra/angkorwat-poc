@@ -3033,7 +3033,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   **shed** រោង (3 × 3 m to 8 × 8 m; 4), the **fence line** របងព័ទ្ធ (round a footprint,
   2 m to 24 m a side, or one straight run one cell wide; 12). Why: a house's room inside
   its walls is 4 m or more (the follow camera reads such a room, AWP-17); at 8 m its roof
-  is 4.5 m of stepped thatch over 9 × 9 m (≈ 1 560 blocks, 16 % of his land's budget);
+  is 5 m of thatch over 9 × 9 m (the house ≈ 1 880 blocks, 19 % of his land's budget);
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
@@ -3043,7 +3043,8 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   the timber frame, a wall plate, the door 2.5 m high and 1.5 m (an odd wall) or 2 m wide
   with its jamb posts, windows (1 m wide, 1‥2 m over the floor) in every other bay but the
   door's, a steep gable roof of palm-leaf thatch along the longer side (rows two cells
-  deep stepping in and up, 45°, eaves a cell past the walls, a dark timber ridge, timber
+  deep stepping in and up, 45°, each step smoothed with AWP-24's stair and the ridge
+  capped with a slab, eaves a cell past the walls, a dark timber ridge, timber
   gable boards in light and dark rays as the village houses' gables: Khmer, no horns), and
   a stair from the door straight out to the ground (treads of 0.25 m, the lowest a rise or
   less over the ground: about 5.5 m long for a 3 m floor) with timber rails along both
@@ -3055,18 +3056,18 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   most capped half a block higher, each column on its own ground (it follows a slope), a
   gate 1.5–2 m wide in the middle of the door side (none on a side shorter than 3.5 m).
 - **The step's shape in one place** (AWP-24): `roofStep` (the block over each roof cell
-  with nothing over it, put into the plan: none today, the roof in stepped full blocks;
-  with AWP-24 one line, `return stepBlock(roof, i, j, k, under)` from `blocks/roof.ts`: a
-  stair in each step, a slab on the ridge, built, counted and taken down with the roof)
-  and `stairStep` (each tread: a slab or a block; AWP-24's stair block halves the run).
+  with nothing over it: `blocks/roof.ts` `stepBlock`, as `smoothRoof` puts them, a stair
+  in each step and a slab on the ridge; put into the plan, so built in order with the
+  roof, counted in the cost and the budget and taken down with it) and `stairStep` (each
+  tread: a slab or a block; AWP-24's stair block, two rises a cell, would halve the run).
 - **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle; 4 laterite
   a lump of clay, for a kind to come: none uses laterite yet, its footings are hardwood, so
   their chunks draw two block families, not three), rounded up per building, so it grows
-  with the footprint: the smallest house 18 logs, 9 bamboo, 12 thatch (156,000 ៛ bought
-  outright; 756 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 17 thatch (194,500 ៛; 968
-  blocks); an 8 × 8 m one 310,500 ៛ (1 556 blocks); the smallest shed 4 logs, 3 bamboo,
-  5 thatch (42,500 ៛; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
+  with the footprint: the smallest house 19 logs, 9 bamboo, 18 thatch (177,000 ៛ bought
+  outright; 900 blocks); a 6 × 6 m house 23 logs, 13 bamboo, 26 thatch (229,000 ៛; 1 164
+  blocks); an 8 × 8 m one 360,000 ៛ (1 880 blocks); the smallest shed 5 logs, 3 bamboo,
+  8 thatch (56,000 ៛, 274 blocks; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
   (a ring of 24 × 24 m 108,000 ៛; the fence piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
 - **The card**: three rows first, each with its name, how many of how many, its line and
@@ -3142,8 +3143,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
 
 - `map/build/materials.ts` (no three.js): the materials (`MATERIALS`: bamboo ឫស្សី,
   logs ឈើ, palm-leaf thatch ស្លឹកត្នោត, clay ដីឥដ្ឋ; each its words, its weight against
-  the carry limit, its riel price when bought, how it is gathered: `chop` or `dig`, its
-  chips' colours), the bag `BAG` (on foot, up to `CARRY_LIMIT` 12 in weight: a bamboo
+  the carry limit, its riel price when bought, how it is gathered: the knife's `chop`, the
+  hoe's `dig` or the axe's `axe`, its chips' colours), the bag `BAG` (on foot, up to `CARRY_LIMIT` 12 in weight: a bamboo
   pole 2, a log 4, a bundle of thatch 1, a lump of clay 2; `load()`, `room(m)`,
   `add` returns what fit), the home store `STORE` (no limit), and for the build:
   `missingOf(cost)`, `rielOf`, `useMaterials(cost)` (the bag first, then the store),
@@ -3159,10 +3160,15 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `material`; `x, z` its middle, `r` its foot's radius: he stands just outside it facing
   the middle; `hits` blows per piece; `pieces` before it is spent; `regrowDays` game days
   for a piece to grow back, 0 never spent; `hitY` where the blow lands, m over the
-  ground; `action` to override the material's). `can(spot, at)` returns null or a word
+  ground; `action` to override the material's; `along`: a long thing lying, a felled
+  trunk, the way it runs: he stands across it, not at its end; `stand`: he always stands
+  on that side, a bank's land side). `can(spot, at)` returns null or a word
   key ("not at night"); `onHit(spot, n, of)` each blow (shake the clump);
   `onTake(spot, left)` a piece came off (hide a cane); `onLeft(spot, left)` it grew back
-  or a check set it (draw it so). What a spot has left is kept by the core:
+  or a check set it (draw it so); `onWork(spot, x, z)` he sets to work from there (the
+  side that goes first); `spent` its own words for none left (the woodcutters fell
+  another tree; the water brings more clay). `gatherTakenAt(spot)`: the clock times its
+  pieces still growing back were taken (how far each has grown). What a spot has left is kept by the core:
   `gatherLeft(spot)`, `gatherRegrowIn(spot)`, `GATHER.take`, `GATHER.setLeft` (checks),
   on the gathering's own clock `GATHER.clock` (game days: the map's days while he plays,
   or a day each `dayLength` s of play while the time stands still, as the garden's).
@@ -3174,10 +3180,44 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `roam/_gatherHud.ts`, the icons `build/materialIcons.ts`, sounds `audio/_gather.ts`;
   the chips are the garden's particles (`garden/_fxParticles.ts`: one instanced mesh,
   `mapRock`, nothing drawn when idle).
-- **The proof source** (AWP-9's only one): the map's bamboo clumps where he roams
-  (`roam/_gatherBamboo.ts`, from vegetation.ts `subjects`): 4 blows a pole, 3 poles a
-  clump, each back in 2 game days. Nothing of the clump changes yet: AWP-10 takes the
-  source over (same id `bamboo`, so the saved spots carry on) and shows the cut canes.
+- **The sources** (each registers itself from the add-on's `init`; what each looks like
+  as it is cut and grows back is its own):
+  - **Bamboo** (AWP-10, `roam/_gatherBamboo.ts`, id `bamboo` as AWP-9's proof source: the
+    saved spots carry on): the jungle's clumps where he roams (103 on medium and up, 90 on low, which plants fewer) (vegetation.ts tells
+    which instances of the tile meshes are each clump's: veg/lattice.ts `stamp`'s owner,
+    `emit`'s `owned`; `veg/bambooCut.ts` `BAMBOO_CUT`). 4 knife blows a pole, 3 poles a
+    clump, each back in 2 game days. A pole is a side's canes (a third round the clump):
+    the side he works from first, then the nearest. A cut side's canes end in stubs
+    0.55 m high (their lowest block shortened, the rest of the side and its leaves put
+    away under the ground, a hair's size: no rebuild, the plain twin shares the
+    buffer), each stub's pale cut end and the side's young shoots (ទំពាំង: a sheathed
+    shoot, then a green cane with its first leaves) in the cut layer (one small mesh
+    of the bark family, only while a clump is cut), growing as the days pass; the side
+    comes back whole when its pole has. On a phone the far clumps' pictures
+    (veg/impostors.ts) stay whole.
+  - **Logs** (AWP-11, `roam/_gatherLogs.ts`): two felled trunks by the woodcutters'
+    camp (`JUNGLE_SITES` woodcutters, jungle/_campWood.ts), their own blocks. A log is
+    cut off a trunk with the axe (ពូថៅ: `axe`, two hands from over his head), 6 blows,
+    outermost first (one spot a log: only the outermost still there is offered; he
+    stands across the trunk), the trunk shorter after, a pale fresh cut at its end; each
+    log back in 3 game days ("the woodcutters fell another tree"). 3 logs a trunk.
+  - **Thatch** (AWP-12, `roam/_gatherThatch.ts`): five young sugar palms (ត្នោតខ្ចី, fan
+    leaves on stalks straight from the ground) in two stands at the sugar-palm village's
+    edge (by its tall sugar palms at 433,−29 and 365,−29.5), their own blocks. A fan is
+    cut at its stalk with the knife, 3 blows a bundle of thatch, 3 fans a palm (of
+    six: broad pleated round fans on long stalks), the one before him first; its stub stays, a new leaf (a folded spear) grows
+    from the heart and opens again in 2 game days.
+  - **Clay** (AWP-13, `roam/_gatherClay.ts`): 33 patches of bared clay on the banks of
+    the great lake, the rivers and the ponds where he roams, found once from the land
+    (dry sand or dirt with the water along one straight side, a metre or so under it, level round, the face drawn on that edge; never on rock,
+    a road, a trail, a paddy, by a temple, in a village or hamlet, by a jungle site, a
+    landing or a waterfall; 28 m apart). Dug with the hoe, 3 blows a lump, 3 lumps a
+    patch, he stands on its land side (`stand`); each pit (dark, wet, its lumps heaped
+    by it) fills again in 2 game days. Their own blocks, a mesh a 160 m square, flat
+    (no shadow).
+  - Shared: which parts are gone (`roam/_gatherSides.ts` `GatherParts`: the bamboo's
+    sides, the palms' fans, saved), a source's own blocks (`roam/_gatherLayer.ts`: plain
+    on low, casting the still shadows, asked again after a change).
 - **At a spot** (on foot, before it, within 1.3 m of its foot; order 60): "E  កាប់ឫស្សី /
   Cut bamboo" (the material's verb). None left: "None left: it grows back in 2 days"; too
   heavy: "Your load is full (12/12): take it home first" (no key); a source's `can`: its words.
@@ -3186,7 +3226,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   pad's □ or ✕; the touch Use button, or the big one, which says "Chop" / "Dig" while
   he works) is one swing, one more waiting while one is under way: the knife raised out
   beside his head and brought down at a slant on the cane (his left hand on it); the hoe
-  over his head in both hands and down into the earth. Each blow: the material's sound,
+  over his head in both hands and down into the earth; the axe the same way, down onto
+  the trunk. Each blow: the material's sound,
   its chips flying, a tick on the pad, the source's `onHit`; the prompt counts
   ("E  Chop (2/4)"). The last blow of a piece: it goes in his bag, a soft knock, a toast
   ("+1 bamboo pole · load 6/12"), the load chip glows. He goes on while the spot has more
@@ -3198,16 +3239,23 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   fibre and dark skin, not the yellow of the canes.
 - **The load**: a chip under the purse (each material's picture and count, a bar and
   "បន្ទុក ៦/១២ / Load 6/12", red when full) while he carries something or works; "In my
-  bag" (the explorer menu's Bag page, `BAG_MORE`) lists it, and what is at home.
+  bag" (the explorer menu's Bag page, `BAG_MORE`) lists it, and what is at home. And on
+  his back (`roam/_gatherLoad.ts`, his `backpack` joint, one draw): the poles slanting
+  over his right shoulder, the logs across his back, the thatch panels as the roofs'
+  (leaves folded over a split-bamboo stick, dried silver-brown, the newest greener),
+  the clay heaped in a woven basket (កញ្ច្រែង) low on his back.
 - **Home**: his house his (`HOME.owned`), on foot by it (`byHouse`, 3 m) carrying
   something: the load goes into his home store (a toast says what; a few knocks). The
   build card uses the bag and the store ("Building at home" above).
 - **Saved** (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4 }`), `gather.spots`
-  (per spot, the clock times its pieces were taken), `gather.clock`. On load a material
+  (per spot, the clock times its pieces were taken), `gather.clock`, `gather.bambooSides`
+  and `gather.thatchFans` (per spot, the parts cut, oldest first: whole numbers under
+  the parts' count, each once, else dropped; made to agree with `gather.spots`). On load a material
   whose count is not a whole number 0‥999 is dropped (a broken value never loads as a
   heap), the bag is cut down to the carry limit (the heaviest first), a spot's time later
-  than the clock is dropped and a clock over 10⁶ days reads as 0. Shots and `progress=0`
-  save nothing.
+  than the clock (by more than 0.0001 day) is dropped and a clock over 10⁶ days reads as 0.
+  A piece's time is saved exactly as the clock is (never rounded past it: a reload right
+  after a cut keeps the cut). Shots and `progress=0` save nothing.
 - **Sounds** (`audio/_gather.ts`): `gatherSwish`, `gatherHit:bamboo|log|thatch|clay`,
   `gatherGot`, `gatherUnload` (moves), `gatherFull` (ui).
 - **URL** (shots and the dev server only, `env.shot || import.meta.env.DEV`, `fromUrl` too:
@@ -3215,15 +3263,123 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `bag=<material>:<n>,…` · `store=<material>:<n>,…` (`0` empties) ·
   `gather=<material>[:<blows>[:<s>]]` (him at work at the spot of it nearest `at=`, that
   many blows of the piece landed, held `s` s into a swing: the blow lands at 0.44 s for a
-  chop, 0.56 s for a dig, its chips shown that far on) · `gatheract=chop|dig` (that
-  swing there: a pose's check before its material has a source) · `gatherleft=<n>` ·
-  `gatherunload=1` (a shot unloads at home too). `report()` gives `bag=`, `store=`,
+  chop, 0.56 s for a dig, 0.58 s for the axe, its chips shown that far on) ·
+  `gatheract=chop|dig|axe` (that swing there) · `gatherleft=<n>` (that spot has `n`
+  left) · `gatherdays=<d>` (then the gathering's clock `d` game days on: grown back
+  that far) · `gatherwork=0` (the spot only, him not put to work: a clump before, cut,
+  growing back) · `gatherunload=1` (a shot unloads at home too). `report()` gives `bag=`, `store=`,
   `gather=`. `window.__gather` (shots, the dev server): `state()`, `near(x, z, r)`,
   `advance(days)`. Console lines `[gather] …`. E.g.
   `roam=walk&at=433,-161&yaw=180&bag=bamboo:3,clay:1&gather=bamboo:2:0.32&cam=438.5,11.6,-160.5,433,9.6,-163.2,40`
   (the knife up) · `…&gather=bamboo:2:0.56` (the blow, chips flying) ·
   `roam=walk&at=428,-134&yaw=180&home=1&bag=bamboo:2&store=log:1,clay:2&purse=30000&buildcard=1`
   (the card's costs) · `…&menu=1&menutab=bag` (In my bag).
+
+### His ox cart
+
+He hauls what he gathers past his carry limit in his own ox cart (រទេះគោ: add-on `haul`, ticket
+AWP-14; words `haul…`). Not the village's cart he rides ("The ox cart" above): that one goes round
+its loop between the floating village and the valley road, 700 m from his house and every gathering
+place, and stays a ride. Files: `map/build/haul.ts` (no three.js: `CART_LIMIT`, the load `CART_LOAD`,
+where it stands `CART_AT`, its place by the house `CART_HOME`), `roam/_haul.ts` (the add-on: leading,
+loading and unloading, the URL), `roam/_haulModel.ts` (the cart, its oxen, the load drawn), sounds
+`audio/_haul.ts`; the cart's boxes are the village cart's (`people/_sceneCart.ts` `cartDef(false)`:
+without its straw), the oxen `people/_ox.ts`.
+
+- **The cart**: the family's, with its pair of white oxen, standing by his house on its east side
+  (the side away from the stair and the grandmother's yard), its oxen toward the mountain; his to
+  use once the house is his (`HOME.owned`), as his home store is. Drawn within 420 m of the camera
+  (as the village cart): its boxes and its load in one `Things` of its own (the people's things
+  shader: a draw and its shadow), the oxen a `Flock` of two (the animals' shader); written only
+  when it moves or its load changes. No new shader program.
+- **Leading it** (ដឹករទេះគោ, order 58): before the oxen, on foot, "E  ដឹករទេះគោ / Lead the ox
+  cart": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
+  oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
+  the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
+  0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
+  The land, every 0.5 m of the way, across its width (±1.15 m): in the roaming area, no water deeper
+  than 0.25 m, room overhead (3.4 m), rising or falling one of its 2 m steps at most (the map's slopes
+  are steps of its blocks: the walker hops them, the ridden cow climbs them, the cart rolls over them
+  on its heights smoothed along its way). And its body (`roam/_haulFit.ts`): the cart's box and its
+  oxen's (`CART_BOX`, `OXEN_BOX`, turned to its heading, the oxen straight before the cart, 5 cm
+  kept round them) must be clear, tested at every point the way adds and at every place it moves
+  to (each 0.2 m), so nothing thin is stepped over (a fence run is 0.25 m, a post 0.2 m):
+  each piece he built, its whole footprint (`w` × `d`), box against box, exactly (never in a pen,
+  under a shelter, over a bed); his blocks (`BLOCKS`), every cell the box meets from the land to
+  3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
+  walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
+  growing and the cart rolls up to the last place it fits and stands; once he is 6.5 m from the
+  ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
+  Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
+  map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
+  stands. Its hands are busy while he leads (no lantern, no gathering: E lets go first).
+- **Loading** (at its tail, his bag not empty): "E  ដាក់ឡើងរទេះ (១២/៦០) / Load the cart (12/60)".
+  He walks to its tail, faces it, the tailboard comes down, and he lifts the pieces in one by one
+  (0.8 s each; a knock and a tick on the pad as each goes in): logs first, then bamboo, thatch,
+  clay, as a farmer packs a cart, all of his bag that fits in one press. Long pieces he holds by
+  their near end and pushes in over the tail; thatch and baskets across before him. The stick held
+  away stops him (what is in stays in). A toast: "Loaded on the cart: 2 bamboo poles and 1 log ·
+  cart 16/60" (and "no room for the rest" when the cart is full). The cart full: "រទេះពេញហើយ (៦០/៦០) /
+  The cart is full (60/60)" (no key).
+- **Unloading at home** (the cart within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
+  Unload at home (16/60)": he lifts the pieces off, the top first (clay, thatch, bamboo, logs), and
+  puts each down beside him into his home store (`STORE`: the build card uses it). Away from home a
+  loaded cart's tail says "ដឹកទៅផ្ទះ ដើម្បីដាក់ចុះ / Lead it home to unload (16/60)" (no key).
+- **The limit**: 60 in weight (`CART_LIMIT`), five of his bag loads (`CARRY_LIMIT` 12): the
+  biggest piece he builds, the cattle pen, takes 44 (5 logs, 10 bamboo poles, 4 bundles of
+  thatch), so one cart load brings it home with room to spare.
+- **The load drawn** (`_haulModel.ts` `loadLayout`): logs (2.5 m, two boxes, one turned 45°, pale
+  cut ends with a darker heart) along the bed in rows of three, up to three high, their ends out
+  over the tailboard (let down whenever it carries logs or poles); bamboo poles (3 m, two node
+  bands, yellow and greener ones) over them six across, a second row nested in the first; bundles
+  of sugar-palm thatch (three leaf panels askew, the bamboo spine on one side, the ragged leaf tips
+  over the other, a rattan tie) stacked over the back half; clay in round woven baskets (three
+  boxes turned 60°, a dark rim, the clay heaped) over the front half. Each drawn up to `CAP`
+  (logs 9, bamboo 12, thatch 8, clay 6); more lies in the same heap (the prompt and the toasts
+  give the true count). 3–7 boxes a piece: 260 boxes at most with the cart (63), the piece in his
+  hands and the rope, one draw.
+- **Saved** (progress.ts): `haul.load` (`{ log: 5, bamboo: 10 }`: a material whose count is not a
+  whole number 0‥999 is dropped, a load over 60 cut down to it, the heaviest first, as the bag's),
+  `haul.at` (`[x, z, yaw]`, when he lets go and every 4 s while he leads; not three numbers on the
+  map: forgotten; on load a place in water or out of the roaming area puts it back by the house).
+  Shots and `progress=0` save nothing.
+- **Sounds**: `haulPut:log|bamboo|thatch|clay` (a piece laid in or put down), `haulRope` (the rope
+  taken, let go) (`audio/_haul.ts`, moves); the wheels rolling and a hub's knock as he leads it are
+  the ride's (`cartRoll`, `cartKnock`); the oxen's bells and the axle's creak the people's
+  (`oxBell`, `cartCreak`, through the map's calls).
+- **URL** (shots and the dev server only, `env.shot || import.meta.env.DEV`, `fromUrl` too: on the
+  live site a link never fills or moves his cart): `cartload=<material>:<n>,…` (`0` empty) ·
+  `cartat=<x>,<z>,<yaw°>` (the ground under its axle, its heading) · `cartlead=1` (he leads it: it
+  stands behind him the way he faces at `at=`, `yaw=`) · `cartwork=load|unload[:<u>]` (him at its
+  tail, held `u` (0‥1, 0.5 by default) into a piece). `report()` gives them back.
+  `window.__haul` (shots, the dev server): `state()`, `passable(x, z, yaw°[, y])`. Console lines
+  `[haul] …`. E.g. `roam=walk&at=428,-140&yaw=180&home=1&cartload=log:4,bamboo:6,thatch:3,clay:2&cartlead=1&rcam=-120,18,11`
+  (leading it on the Kulen foot meadow) ·
+  `roam=walk&at=432,-100&yaw=180&home=1&cartload=log:3,bamboo:4,thatch:3,clay:2&cartwork=unload:0.4&rcam=90,12,6`
+  (unloading at home).
+- **Nothing stands on it** (`build/haul.ts` `cartBlocks(x, z, r)`: the cart's box and its oxen's,
+  `CART_BOX`, `OXEN_BOX`, where it stands now, read live while he leads it, and at its place by the
+  house, kept for it while it is away): the build ghost refuses a piece over them, its footprint grown
+  0.2 m (`roam/_buildSpots.ts` `cart`, "រទេះគោនៅទីនេះ / The ox cart is here"; its place by the house
+  while it is away: `cartPlace`, "កន្លែងរទេះគោ / The ox cart's place"), and so does planting
+  (`roam/_gardenSpots.ts`, the same two, the plant's room): no shelter over it, no fence or pen round it.
+  A footprint check of its own can ask `cartBlocks` (or `cartBlockWhy`) too.
+- **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
+  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke, and its whole boxes
+  clear as above: not in a house, the market's stalls, nor under or in a piece built over it since —
+  a shelter, a pen, a bed, a fence through it); else it goes to its
+  place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
+  is wrapped to ±π (a broken 1e300 reads as 0).
+- **On the maps**: once he leaves it away from its place by the house, "រទេះគោរបស់ខ្ញុំ / My ox cart"
+  (`ui/_minimapSpots.ts` `my-cart`, as his bicycle's `my-bike`): on the mini-map where it stands, and on
+  the big map (its button moved there by `roam/_haul.ts`, its name only while pointed at or the target);
+  not while he leads it.
+- **The lead's hint** names the control in use: E, the pad's □ (`padName`), or on a touch screen the
+  button that says "លែងខ្សែ / Let go of the rope".
+- **Not yet**: the people walk through it (it is not in the people's traffic); "In my bag" (the explorer
+  menu's Bag page) does not list the cart's load; the build card does not count a loaded cart standing
+  at home (he would buy what is in it: unload it first).
 
 ### Sharing his fruit
 

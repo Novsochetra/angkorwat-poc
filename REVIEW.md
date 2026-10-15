@@ -97,6 +97,10 @@ One line each time a ticket is sent back, so the next worker avoids it.
   binoculars): check `pad.ts`'s button map and every add-on that reads the pad (AWP-30).
 - A saved time is never rounded past the saved clock: act, reload at once, and
   check nothing comes back (AWP-10).
+- Anything he can move and leave (a cart, a bicycle) blocks the build ghost and
+  planting, and a saved place passes the same "can it stand here" check as play (AWP-14).
+- A collision check samples finer than the thinnest thing it must stop at (a
+  fence is 0.25 m), or tests boxes exactly: drive into one fence head-on (AWP-14).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).

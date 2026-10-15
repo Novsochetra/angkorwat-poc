@@ -14,7 +14,7 @@ import { BLOCK_MATS, BLOCK_SHAPES, MAT_BY_ID, SHAPE_BY_ID, type BlockMatKey, typ
  * and the camera see exactly the blocks), the temple kit's block
  * (scale.ts `TEMPLE_BLOCK_M`), a third of the explorer's height; a full block
  * (0.5 m) is a step too high to walk up (`CHARACTER_STEP_M` 0.42), a slab
- * (0.25 m, kinds.ts) a stair's rise. Cell (i, j, k) is the box from
+ * (0.25 m, kinds.ts) a stair's rise, as a stair block's two treads. Cell (i, j, k) is the box from
  * (i, j, k) · 0.5 m to (i + 1, j + 1, k + 1) · 0.5 m in world metres
  * ({@link cellOf}, {@link cellMin}).
  *
@@ -33,8 +33,8 @@ import { BLOCK_MATS, BLOCK_SHAPES, MAT_BY_ID, SHAPE_BY_ID, type BlockMatKey, typ
  * **A block** ({@link Block}): its material (kinds.ts `BLOCK_MATS`: timber,
  * bamboo, thatch, laterite, sandstone, brick; drawn with the map's own
  * families), its colour (sRGB hex: paint, AWP-22), its shape (`BLOCK_SHAPES`:
- * cube, slab; stairs AWP-24) and a quarter turn (0‥3, for the shapes that
- * turn). As one number ({@link rawOf}, {@link blockOf}): colour + material ·
+ * cube, slab, stair, slabTop, stairOuter, stairInner: AWP-24) and a quarter
+ * turn about y (0‥3: the stairs and corners; kinds.ts `STAIR_UP`). As one number ({@link rawOf}, {@link blockOf}): colour + material ·
  * 2²⁴ + (shape · 4 + turn) · 2³²; 0 is no block. Equal blocks are equal
  * numbers: a save's runs (AWP-18).
  *

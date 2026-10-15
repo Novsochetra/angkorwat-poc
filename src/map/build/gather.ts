@@ -21,7 +21,12 @@ import { MATERIALS, type GatherAction, type MaterialId } from './materials';
  *   the log (the add-on plays the sound, throws the chips, shakes the pad);
  * - `onTake(spot, left)`: a piece came off (hide a cane, a frond); `left` pieces stay;
  * - `onLeft(spot, left)`: what a spot has left changed some other way (it grew
- *   back, a check, a load): draw it so.
+ *   back, a check, a load): draw it so;
+ * - `onWork(spot, x, z)`: he sets to work at it from (x, z) (or a check puts him
+ *   there): the side he works it from (the bamboo's canes before him go first).
+ *
+ * `gatherTakenAt(spot)` gives the clock times its pieces still growing back were
+ * taken (oldest first): how far each has grown back.
  *
  * **What a spot has left** is kept here (`gatherLeft`), not by the source: each
  * piece taken comes back `regrowDays` game days later, on the gathering's own
@@ -53,6 +58,13 @@ export interface GatherSpot {
   readonly hitY?: number;
   /** How it is gathered (default: the material's). */
   readonly action?: GatherAction;
+  /**
+   * A long thing lying on the ground (a felled trunk): the way its length runs (rad, as `atan2(dx, dz)`). He stands
+   * across it, on the side he comes from, not at its end.
+   */
+  readonly along?: number;
+  /** He always stands on this side of it (the way from its middle to him, rad, as `atan2(dx, dz)`): the land side of a bank. */
+  readonly stand?: number;
 }
 
 /** Where he is when a source is asked `can` (feet, m) and whether it is night. */
@@ -76,6 +88,13 @@ export interface GatherSource {
   onTake?(spot: GatherSpot, left: number): void;
   /** What `spot` has left changed (it grew back; a check set it): `left` now. */
   onLeft?(spot: GatherSpot, left: number): void;
+  /** He sets to work at `spot`, standing at (x, z) (m), or a check puts him there. */
+  onWork?(spot: GatherSpot, x: number, z: number): void;
+  /**
+   * Its own words for a spot with none left ({n} game days to go; by tomorrow), for what comes back another way than
+   * growing (the woodcutters fell another tree; the water brings more clay). Default "None left: it grows back in…".
+   */
+  readonly spent?: { readonly days: WordKey; readonly soon: WordKey };
 }
 
 const SOURCES: GatherSource[] = [];
@@ -129,6 +148,8 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 
 /** Per spot id: the clock's times its pieces were taken (those still growing back). */
 const taken: Record<string, number[]> = {};
+/** A saved time this far past the saved clock still loads (game days: older saves rounded times to 4 places). */
+const LOAD_SLACK = 1e-4;
 /** The clock at most (game days: far over any play; a broken value reads as 0). */
 const CLOCK_MAX = 1e6;
 let clock = progress.get('gather.clock', 0, isNum);
@@ -136,7 +157,8 @@ if (clock > CLOCK_MAX) clock = 0;
 // (a broken save: only times on the clock so far are kept (one in the future would hold a spot spent), at most a few a spot)
 for (const [id, ts] of Object.entries(progress.get('gather.spots', {}, isTaken)))
   if (Array.isArray(ts) && id.length < 200) {
-    const ok = ts.filter((at) => isNum(at) && at <= clock).slice(0, 64);
+    // (a hair over the clock is no future time: saves before AWP-10's fix rounded a time to 4 places, up as often as down)
+    const ok = ts.filter((at) => isNum(at) && at <= clock + LOAD_SLACK).map((at) => Math.min(at, clock)).slice(0, 64);
     if (ok.length) taken[id] = ok;
   }
 let savedClock = clock;
@@ -154,6 +176,13 @@ export function gatherLeft(spot: GatherSpot): number {
   let n = 0;
   for (const at of ts) if (clock - at < spot.regrowDays) n++;
   return Math.max(0, spot.pieces - n);
+}
+
+/** The clock times the pieces of `spot` still growing back were taken, oldest first (a copy; empty: it has them all). */
+export function gatherTakenAt(spot: GatherSpot): number[] {
+  const ts = taken[spot.id];
+  if (!ts || spot.regrowDays <= 0) return [];
+  return ts.filter((at) => clock - at < spot.regrowDays).sort((a, b) => a - b);
 }
 
 /** Game days until `spot`'s next piece grows back (0: it has all its pieces). */
@@ -187,7 +216,9 @@ export const GATHER = {
       const ts = (taken[spot.id] ??= []);
       // (only those still growing back are kept)
       for (let i = ts.length - 1; i >= 0; i--) if (clock - ts[i] >= spot.regrowDays) ts.splice(i, 1);
-      ts.push(+clock.toFixed(4));
+      // (the clock exact, as `gather.clock` is saved: a time rounded up past the saved clock would be dropped on load as
+      // "in the future", and the piece come back after a reload)
+      ts.push(clock);
       growing.set(spot.id, spot);
       nextGrow = -Infinity;
       save();

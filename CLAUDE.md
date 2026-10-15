@@ -283,6 +283,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
   stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
   blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
+  Shapes cube, slab, stair, slabTop and corner stairs (`kinds.ts`, turned by `turn`); a
+  stepped roof made smooth with one call, `roof.ts` `smoothRoof` (AWP-24; `pblocks=gable`,
+  `gable-stepped`, `hip`, `hip-stepped`, `fullmix`).
 
 ## Things to do while roaming (add-ons)
 
@@ -379,7 +382,18 @@ guide, with every add-on's keys and URL values for shots, is
   thatch, clay (`build/materials.ts`: the bag with its carry limit, the home store),
   the sources' registry `build/gather.ts` (`registerGatherSource`: spots, hits,
   regrowing), the add-on `roam/_gather*.ts` (one press, one swing; the load under
-  the purse; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
+  the purse and on his back; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
+  The sources (AWP-10…13): the jungle's bamboo clumps, cut by sides, stubs and young
+  shoots growing back (`veg/bambooCut.ts`), logs off two felled trunks at the
+  woodcutters' camp with the axe, fans off young sugar palms at the sugar-palm
+  village, clay dug on the lake and river banks (`roam/_gather{Bamboo,Logs,Thatch,Clay}.ts`);
+  `gatherleft=<n>&gatherdays=<d>&gatherwork=0` shows a spot cut and growing back.
+- His ox cart (AWP-14, addons.md "His ox cart"): the family's cart and two oxen by
+  his house hauls past the carry limit (60 in weight, `build/haul.ts`: the load and
+  its place, saved): E before the oxen leads it (it follows his way, only where a
+  cart can go), E at its tail loads his bag, at home unloads into his store; the load
+  drawn on it (`roam/_haul*.ts`). Shots: `cartload=`, `cartat=x,z,yaw°`,
+  `cartlead=1`, `cartwork=load|unload:<u>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

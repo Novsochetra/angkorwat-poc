@@ -1,4 +1,5 @@
 import type { BlockMatKey } from '../blocks/kinds';
+import { stepBlock } from '../blocks/roof';
 import { BLOCK_M, cellMid, cellOf, rawOf, type Block } from '../blocks/store';
 import type { MaterialId, Materials } from './materials';
 
@@ -45,8 +46,8 @@ import type { MaterialId, Materials } from './materials';
  *
  * **Sizes** (`min`, `max`, cells a side): a house at least 5 × 5 m (its room
  * inside the walls 4 m: the follow camera reads a room of 4 m or more, AWP-17)
- * and at most 8 × 8 m (its roof is then 4.5 m of stepped thatch over 9 × 9 m,
- * ≈ 1 500 blocks: 15 % of his land's budget, `PLOT_BUDGET`); a shed 3 × 3
+ * and at most 8 × 8 m (its roof is then 5 m of thatch over 9 × 9 m, the house
+ * ≈ 1 900 blocks: a fifth of his land's budget, `PLOT_BUDGET`); a shed 3 × 3
  * m to 8 × 8 m (room for him and the camera under its plate; the same roof);
  * a fence 2 m to 24 m a side (his yard is ≈ 22 m across), one cell wide (a
  * straight run) or 2 m or more (an enclosure).
@@ -55,9 +56,10 @@ import type { MaterialId, Materials } from './materials';
  * rows of thatch stepping in one cell and up one cell (45°), each row two
  * cells deep so it sits on the one under it (a row one cell deep meets the
  * next only along an edge: blocks/mesh.ts `diagonalJoints`), eaves one cell
- * past the walls on every side. **Full blocks for now; the one place to smooth
- * the steps is `roofStep`** (AWP-24's blocks/roof.ts `stepBlock`: a stair in
- * each step, a slab on the ridge; put into the plan, so counted and built).
+ * past the walls on every side, **its steps smoothed** (`roofStep`: AWP-24's
+ * blocks/roof.ts `stepBlock`, a stair in each step and a slab on the ridge, in
+ * the thatch's or the ridge's own material; put into the plan, so built,
+ * counted and taken down with it).
  * The stair's treads are the same: **`stairStep`** gives each tread's block
  * (a slab's 0.25 m rise today, the walk map's stair rise; AWP-24's stair
  * block, two rises a cell, would halve its run).
@@ -251,15 +253,15 @@ function postsAlong(a: number, b: number, must: readonly number[] = []): number[
 }
 
 /**
- * The block over a roof cell that smooths its step (THE place for the roof's step shape, AWP-24), or null (none:
- * the roof stays in stepped full blocks, as today). `roof(i, j, k)`: is that cell one of the roof's (its rows of full
- * blocks, the ridge); `under` the roof cell's block. Called for every roof cell with nothing over it in the plan; what
- * it returns goes into the plan over it (so it is built, counted in the cost and the budget, and taken down with
- * the roof). With AWP-24 merged this is one line: `return stepBlock(roof, i, j, k, under);` (blocks/roof.ts: a
- * stair climbing to the next row up, a slab on the ridge).
+ * The block over a roof cell that smooths its step (THE place for the roof's step shape): AWP-24's
+ * (blocks/roof.ts `stepBlock`, as its `smoothRoof` puts them: a stair climbing to the next row up, a slab on the
+ * ridge), or null (none there). `roof(i, j, k)`: is that cell one of the roof's (its rows of full blocks, the ridge);
+ * `under` the roof cell's block. Called for every roof cell with nothing over it in the plan; what it returns goes
+ * into the plan over it, so it is built in order with the roof, counted in the cost and the budget, and taken down
+ * with it (the plan writes every block itself: `smoothRoof` would write straight into the store).
  */
-export function roofStep(_roof: (i: number, j: number, k: number) => boolean, _i: number, _j: number, _k: number, _under: Block): Block | null {
-  return null;
+export function roofStep(roof: (i: number, j: number, k: number) => boolean, i: number, j: number, k: number, under: Block): Block | null {
+  return stepBlock(roof, i, j, k, under);
 }
 
 /**
