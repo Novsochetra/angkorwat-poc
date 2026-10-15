@@ -95,6 +95,8 @@ const aim = {
 let press: { i: number; j: number; k: number; part: PaintPart | null; t: number; how: 'key' | 'touch' } | null = null;
 /** A check's E held still (`painthold=`). */
 let frozen: number | null = null;
+/** A check's `painthold=` waiting for the aim (steps tried). */
+let holdWant: { f: number; steps: number } | null = null;
 /** Blocks painted since the map was opened (checks). */
 let painted = 0;
 let lastCtx: RoamCtx | null = null;
@@ -233,7 +235,12 @@ function aimNow(ctx: RoamCtx): void {
     aim.far = false;
     return;
   }
-  aim.hit = { i: hit.i, j: hit.j, k: hit.k, side: hit.side, box: hit.box };
+  const ah = (aim.hit ??= { i: 0, j: 0, k: 0, side: 0, box: hit.box });
+  ah.i = hit.i;
+  ah.j = hit.j;
+  ah.k = hit.k;
+  ah.side = hit.side;
+  ah.box = hit.box;
   aim.at.x = o.x + d.x * hit.t;
   aim.at.y = o.y + d.y * hit.t;
   aim.at.z = o.z + d.z * hit.t;
@@ -325,6 +332,26 @@ function pressStep(ctx: RoamCtx, dt: number): void {
   touch = null;
   held.canvas = false;
   if (part) paintPart(ctx, part, p.i, p.k);
+}
+
+/** What the marks show (one object, filled each step). */
+const _mark = { i: 0, j: 0, k: 0, side: 2, box: [0, 0, 0, 1, 1, 1] as readonly number[], colour: 0 };
+
+/** A check's E held still (`painthold=`): on the block aimed at, once there is one (a few steps in). */
+function freezeHold(w: { f: number; steps: number }): void {
+  if (++w.steps < 3) return;
+  if (!aim.hit) {
+    if (w.steps > 60) {
+      holdWant = null;
+      console.warn('[paint] painthold=: nothing aimed at (give rcam= so the ring is on a block)');
+    }
+    return;
+  }
+  holdWant = null;
+  const p = (press = { i: aim.hit.i, j: aim.hit.j, k: aim.hit.k, part: partAt(aim.hit.i, aim.hit.j, aim.hit.k), t: SHOW + w.f * (HOLD - SHOW), how: 'key' });
+  frozen = w.f;
+  if (p.part) cursor?.part(p.part.cells, brushColour(brush, p.i, p.j, p.k, BLOCKS.raw(p.i, p.j, p.k)), w.f);
+  holdBar(w.f);
 }
 
 // ── The mode ────────────────────────────────────────────────────────────────
@@ -527,12 +554,31 @@ registerAddon({
     }
     bar?.show(true);
     aimNow(ctx);
+    if (holdWant) freezeHold(holdWant);
     pressStep(ctx, dt);
     aim.prompt = promptNow();
-    const h = press ? { i: press.i, j: press.j, k: press.k, side: aim.hit?.side ?? 2, box: aim.hit?.box ?? [0, 0, 0, 1, 1, 1] } : aim.hit;
-    if (h && (press || !aim.far)) {
-      const raw = BLOCKS.raw(h.i, h.j, h.k);
-      cursor?.aim(raw ? { ...h, colour: brushColour(brush, h.i, h.j, h.k, raw) } : null);
+    // (the block the press began on while E is held, else the one aimed at)
+    const h = aim.hit;
+    const mark = _mark;
+    if (press) {
+      mark.i = press.i;
+      mark.j = press.j;
+      mark.k = press.k;
+      if (h && h.i === press.i && h.j === press.j && h.k === press.k) {
+        mark.side = h.side;
+        mark.box = h.box;
+      }
+    } else if (h) {
+      mark.i = h.i;
+      mark.j = h.j;
+      mark.k = h.k;
+      mark.side = h.side;
+      mark.box = h.box;
+    }
+    const raw = (press || (h && !aim.far)) && BLOCKS.raw(mark.i, mark.j, mark.k);
+    if (raw) {
+      mark.colour = brushColour(brush, mark.i, mark.j, mark.k, raw);
+      cursor?.aim(mark);
     } else cursor?.aim(null);
     showCross(src === 'cross');
     bar?.hint(hintNow());
@@ -556,19 +602,9 @@ registerAddon({
       PAINT_LINK.exit();
       enter();
     }
+    // (E held still on what the ring is on, once the camera has settled: the next steps)
     const h = q.get('painthold');
-    if (h !== null && on) {
-      aim.step = -1;
-      aimNow(ctx);
-      if (aim.hit) {
-        const f = Math.min(1, Math.max(0, Number(h) || 0));
-        press = { i: aim.hit.i, j: aim.hit.j, k: aim.hit.k, part: partAt(aim.hit.i, aim.hit.j, aim.hit.k), t: SHOW + f * (HOLD - SHOW), how: 'key' };
-        frozen = f;
-        const p = press;
-        if (p.part) cursor?.part(p.part.cells, brushColour(brush, p.i, p.j, p.k, BLOCKS.raw(p.i, p.j, p.k)), f);
-        holdBar(f);
-      } else console.warn('[paint] painthold=: nothing aimed at (give rcam= so the ring is on a block)');
-    }
+    if (h !== null && on) holdWant = { f: Math.min(1, Math.max(0, Number(h) || 0)), steps: 0 };
   },
   report() {
     return on ? { paintmode: brush } : null;

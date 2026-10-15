@@ -245,15 +245,19 @@ export const FORMS: readonly (FormSpec | undefined)[] = Array.from({ length: 256
 });
 
 /**
- * Six Khmer colours for paint (build plan "Colours?", AWP-22 picks and names
- * them in the game): lotus pink, saffron, indigo, temple gold, lacquer red,
- * coconut brown.
+ * Six Khmer colours for paint (build plan "Colours?"; AWP-22: build/paint.ts,
+ * roam/_paint.ts; tuned on the map's bamboo and timber by day and night):
+ * lotus pink (a little warm, so moonlight does not turn it violet), saffron
+ * (the monks' robes: orange, apart from the gold), indigo, temple gold (deep
+ * yellow, apart from the bamboo's own straw), lacquer red, coconut brown (the
+ * husk's red-brown, apart from the timber's own). Paint takes on a little of
+ * the wood's tone under it (build/paint.ts `toneOf`).
  */
 export const KHMER_PAINT = {
-  lotus: 0xe58aa8,
-  saffron: 0xe8902a,
+  lotus: 0xe6889c,
+  saffron: 0xe27820,
   indigo: 0x34477e,
-  gold: 0xd9a93a,
+  gold: 0xd8a51e,
   lacquer: 0xa8281e,
-  coconut: 0x6b4428,
+  coconut: 0x7a4a28,
 } as const;

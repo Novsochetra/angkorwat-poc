@@ -30,12 +30,10 @@ import { FOOTS, type FootRec } from './footState';
  *   blocks are baked meshes, his pieces are models): nothing here can paint
  *   them.
  * - **Kinds of block** (the save keeps at most 4,096: blocks/save.ts
- *   `SAVE_LIMITS.kinds`): every block a footprint plan can make is one of
- *   `KINDS_MOST.plans` kinds unpainted; paint makes at most
- *   `KINDS_MOST.painted` more (7 colours: the six and the materials' own, times
- *   the materials and forms the plans use). A plot fully painted in every
- *   colour stays under `KINDS_MOST.all` (`kindsBound`, checked by
- *   `__paint.kinds()`), far under the limit.
+ *   `SAVE_LIMITS.kinds`): the footprint plans make 56 kinds unpainted (every
+ *   kind and door, its sizes, flat and sloping land); paint makes at most 265
+ *   more (each in the six colours, in its tone, and the materials' own): 321
+ *   in all, 8 % of the limit (`kindsBound`, `__paint.kinds()`).
  */
 
 export type PaintId = keyof typeof KHMER_PAINT;
@@ -94,14 +92,44 @@ export function ownColour(i: number, j: number, k: number, raw: number): number 
   return MAT_BY_ID[rawMat(raw)]?.color ?? rawColor(raw);
 }
 
-/** A swatch's colour for a block (sRGB hex). */
-export function brushColour(brush: BrushId, i: number, j: number, k: number, raw: number): number {
-  return brush === 'own' ? ownColour(i, j, k, raw) : KHMER_PAINT[brush];
+/** sRGB byte ↔ linear. */
+const lin = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const srgb = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
+/** A colour's light (linear luminance 0‥1). */
+function light(hex: number): number {
+  return 0.2126 * lin(((hex >> 16) & 255) / 255) + 0.7152 * lin(((hex >> 8) & 255) / 255) + 0.0722 * lin((hex & 255) / 255);
 }
 
-/** The block's colour is one of the six. */
+/**
+ * The paint's tone on a block: paint takes on the wood under it, a little (its own colour's light against its
+ * material's: the planks' and the weave's light and dark rows still read, a post's dark timber is a darker red), in
+ * steps of `TONE.step` between `TONE.lo` and `TONE.hi` (so a plot holds few kinds of block: `kindsBound`).
+ */
+export const TONE = { lo: 0.8, hi: 1.15, step: 0.05, power: 0.5 };
+export function toneOf(own: number, mat: number): number {
+  const ref = light(MAT_BY_ID[mat]?.color ?? own);
+  const f = ref > 0 ? (light(own) / ref) ** TONE.power : 1;
+  return Math.round(Math.min(TONE.hi, Math.max(TONE.lo, f)) / TONE.step) * TONE.step;
+}
+/** A colour (sRGB hex) times a tone (in linear light). */
+function toned(hex: number, f: number): number {
+  let out = 0;
+  for (const sh of [16, 8, 0]) out |= Math.round(Math.min(1, Math.max(0, srgb(lin(((hex >> sh) & 255) / 255) * f))) * 255) << sh;
+  return out >>> 0;
+}
+
+/** A swatch's colour for a block (sRGB hex): its own colour, or the paint in the block's tone. */
+export function brushColour(brush: BrushId, i: number, j: number, k: number, raw: number): number {
+  const own = ownColour(i, j, k, raw);
+  return brush === 'own' ? own : toned(KHMER_PAINT[brush], toneOf(own, rawMat(raw)));
+}
+/** The colour a paint gives a block of material id `mat` built in colour `own` (no store: `kindsBound`). */
+export const paintOn = (paint: PaintId, own: number, mat: number): number => toned(KHMER_PAINT[paint], toneOf(own, mat));
+
+/** The block's colour is one of the six (in any of its tones). */
 export const isPainted = (raw: number): boolean => raw !== 0 && PAINT_COLOURS.has(rawColor(raw));
-const PAINT_COLOURS = new Set<number>(Object.values(KHMER_PAINT));
+const PAINT_COLOURS = new Set<number>();
+for (const p of Object.values(KHMER_PAINT)) for (let f = TONE.lo; f <= TONE.hi + 1e-9; f += TONE.step) PAINT_COLOURS.add(toned(p, Math.round(f / TONE.step) * TONE.step));
 
 /** A part's name ("the walls"): by the building's kind, the stage and the material. */
 function partWord(kind: FootKind, stage: FootStage, mat: BlockMatKey): WordKey {
@@ -247,14 +275,16 @@ export function kindsNow(): number {
  */
 export function kindsBound(planRaws: Iterable<number>): { plans: number; painted: number; all: number } {
   const plans = new Set<number>();
-  const shapes = new Set<number>();
-  for (const raw of planRaws) {
-    plans.add(raw);
-    // (its material and form, the colour taken out)
-    shapes.add(raw - rawColor(raw));
+  for (const raw of planRaws) plans.add(raw);
+  // (each in each of the six, in its tone; and the materials' own colour on blocks of no plan)
+  const painted = new Set<number>();
+  for (const raw of plans) {
+    const bare = raw - rawColor(raw);
+    for (const p of PAINT_IDS) painted.add(bare + paintOn(p, rawColor(raw), rawMat(raw)));
+    painted.add(bare + (MAT_BY_ID[rawMat(raw)]?.color ?? 0));
   }
-  const painted = shapes.size * (PAINT_IDS.length + 1);
-  return { plans: plans.size, painted, all: plans.size + painted };
+  for (const r of plans) painted.delete(r);
+  return { plans: plans.size, painted: painted.size, all: plans.size + painted.size };
 }
 
 /**

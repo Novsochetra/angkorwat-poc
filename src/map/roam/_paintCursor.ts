@@ -58,7 +58,8 @@ export class PaintCursor {
   private readonly aimMat: MeshBasicMaterial;
   private readonly partMesh: InstancedMesh;
   private readonly partMat: MeshBasicMaterial;
-  private aimKey = '';
+  /** What the frame and side show now (placed again only when it changes). */
+  private readonly aimWas = { i: NaN, j: 0, k: 0, side: -1, colour: -1, box: null as readonly number[] | null };
   private partKey = '';
   private aimOn = false;
   private partOn = 0;
@@ -84,9 +85,14 @@ export class PaintCursor {
   aim(at: { i: number; j: number; k: number; box: readonly number[]; side: number; colour: number } | null): void {
     this.aimOn = !!at;
     if (!at) return;
-    const key = `${at.i},${at.j},${at.k},${at.box.join(',')},${at.side},${at.colour}`;
-    if (key === this.aimKey) return;
-    this.aimKey = key;
+    const w = this.aimWas;
+    if (w.i === at.i && w.j === at.j && w.k === at.k && w.side === at.side && w.colour === at.colour && w.box === at.box) return;
+    w.i = at.i;
+    w.j = at.j;
+    w.k = at.k;
+    w.side = at.side;
+    w.colour = at.colour;
+    w.box = at.box;
     const b = at.box;
     const x0 = cellMin(at.i) + b[0] * BLOCK_M - OUT;
     const y0 = cellMin(at.j) + b[1] * BLOCK_M - OUT;
@@ -170,6 +176,6 @@ export class PaintCursor {
     const p = this.partOn;
     this.partMesh.visible = p > 0;
     this.partMat.opacity = p > 0 ? ALPHA.part0 + (ALPHA.part1 - ALPHA.part0) * Math.min(1, p) : 0;
-    if (!on && !p) this.aimKey = '';
+    if (!on && !p) this.aimWas.i = NaN;
   }
 }

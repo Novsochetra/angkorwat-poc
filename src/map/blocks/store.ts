@@ -45,7 +45,9 @@ import { BLOCK_MATS, BLOCK_SHAPES, MAT_BY_ID, SHAPE_BY_ID, type BlockMatKey, typ
  * the chunks whose cells changed (`changed`: the walk map rebuilds those),
  * the chunks that see a changed cell (`touched`: those and their neighbours
  * when a cell on their edge changed; the view draws those again, each once),
- * the box of the changed cells, and the store's `version`.
+ * the box of the changed cells, the store's `version`, and whether only
+ * colours changed (`colourOnly`: paint, AWP-22; nothing to walk on changed,
+ * and only the changed cells' own chunks are drawn again).
  *
  * **Reading**: {@link BlockStore.get}, `raw`, `solid` (the walk map),
  * `count` and `countIn` (a plot's budget, AWP-19), `forEach` (every block in

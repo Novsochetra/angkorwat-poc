@@ -3228,6 +3228,58 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   a furnished sala: `roam=walk&at=436,-125&yaw=180&home=1&pblocks=demo&furn=bedmat@431/-132.3/0/9,teamat@430/-130.2/90/9,bench@432/-129.45/180/9,oillamp@431.5/-130.4/0/9,baskets@432.6/-130.6/90/9,hanglamp@431/-131/0/9&night=1&cam=433.4,11.4,-128.6,430.6,9.1,-131.9,70` ·
   in his house: `…&furn=baskets@426.3/-106.4/90/13.1,pot@425.75/-107.55/0/13.1,bench@421.55/-105.5/90/13.1,hanglamp@424.9/-106.4/0/13.1,oillamp@425.6/-105.9/0/13.1&cam=421.4,15.4,-104.4,425.8,13.3,-106.8,70`.
 
+### Paint
+
+He paints what he built (ticket AWP-22, build plan "Colours?": a limited Khmer palette first, no free
+colour wheel; add-on `paint`, words `paint…`). What painting does: `map/build/paint.ts` (no three.js);
+the mode `roam/_paint.ts`, its swatches `roam/_paintBar.ts`, its marks `roam/_paintCursor.ts`, the ray
+through his blocks `map/blocks/ray.ts`, its sounds `audio/_paint.ts`.
+
+- **Six colours** (`blocks/kinds.ts` `KHMER_PAINT`, keys 1‥6): lotus pink ពណ៌ផ្កាឈូក, saffron ពណ៌ចីវរ (the
+  monks' robes), indigo ពណ៌ខៀវចាស់, temple gold ពណ៌មាស, lacquer red ពណ៌ក្រហមល័ក្ខ, coconut brown
+  ពណ៌សំបកដូង; and **its own colour** ពណ៌ដើម (7): the paint taken off, back to the colour it was built
+  with (a footprint building's block its plan's tone, any other block its material's). The paint takes on
+  the wood under it a little (`toneOf`: the block's own colour's light against its material's, 0.8‥1.15
+  in steps of 0.05): the weave's light and dark rows still read, a post's dark timber is a darker red.
+- **Only his blocks**: the player's block layer (his footprint buildings, any block of his). The world's
+  blocks, his pieces and his house are not blocks of the layer: nothing paints them.
+- **In**: the build card's **Buildings** tab, its last row "លាបពណ៌សំណង់ / Paint your buildings" (key 4;
+  greyed "Build something first" while he has no block). **Out**: Esc (the pad's ○, the touch ✕),
+  8 m past his land, another mode, picking a piece or a building on the card. F / C (the pad's ↓): the
+  card again.
+- **The colour**: the swatches (a strip at the top, above the controls on a touch screen; a click or a
+  tap), 1‥7, `,` / `.` (the pad's d-pad ← →). Kept between visits (`paint.brush`).
+- **Aim**: the block under the mouse; with a game pad, or on a phone before a tap, the block under the
+  gold ring over his head (where the camera looks: turn it, tilt it); a tap aims there. A light frame
+  round the block, the side he aims at covered with the colour it will be. He reaches 9 m from his head
+  ("ឆ្ងាយពេក / Too far: come closer"); no block: "Aim at a block of your buildings".
+- **Paint**: E (the pad's □, the touch Use button; a click on a block, a tap on one) paints that block.
+  **E held** 0.6 s (the prompt's bar filling, the part tinted more and more; a long press on a phone)
+  paints **the whole part** (`partAt`): of a footprint building every block of the same stage and
+  material standing now (the woven walls, the wall plate, the posts and footings, the floor, the thatch,
+  the ridge and gables, the stair and its rails; a fence's posts, its panels); of other blocks those of
+  its material joined side to side (4,096 at most). One gesture for a block or a whole wall, the same on
+  keys, a pad and a phone (a run painted while held would need a steady aim a thumb does not give). He
+  turns to what he paints; a brush's swish.
+- **Free** (decision on the ticket: the owner looks at how it feels first; nothing to give back when the
+  paint comes off, no riel loop to check).
+- **What changes**: only a block's colour (`blocks/store.ts` `Block.color`): the same meshes and programs
+  (a colour per instance), the change says `colourOnly` (the walk map builds nothing again, only the
+  block's own chunk is drawn again, the hanging lanterns' cords stay). Taking a building down takes its
+  paint with it; building on keeps it (no cell is written twice, `footState.ts`).
+- **Saved with the build** (`blocks/save.ts`: the colour is part of the block): written a second after
+  painting, when the mode ends, when the page is hidden or closed. **Kinds of block** (the save keeps at most 4,096: `SAVE_LIMITS.kinds`): footprint
+  buildings make 56 kinds unpainted (every kind and door, its sizes, flat and sloping land), paint 265
+  more at most (each in the six colours in its tone, and the materials' own): 321 in all, 8 % of the limit
+  (`__paint.kinds()`).
+- **URL** (shots and the dev server only, never the live site): `paint=<what>:<colour>,…` (`all`, a
+  building `house-1`, a stage `house-1.walls`, a part `house-1.walls.bamboo`; colours `lotus`,
+  `saffron`, `indigo`, `gold`, `lacquer`, `coconut`, `own`), `paintmode=<colour>` (the mode on),
+  `painthold=<0‥1>` (E held that far on the block aimed at). `report()` gives `paintmode=`.
+  `window.__paint`: `state()`, `enter(colour)`, `exit()`, `brush(colour)`, `paint(what)`,
+  `part(i, j, k)`, `aimAt(i, j, k)`, `kinds()`. E.g. a house in all six:
+  `roam=walk&at=428,-124&yaw=0&home=1&foot=house@419/-142/425/-136/2&paint=house-1.walls.bamboo:lotus,house-1.walls.timber:gold,house-1.posts:lacquer,house-1.floor:coconut,house-1.stair:saffron,house-1.roof.timber:indigo&explorer=0&cam=431,13.8,-126.5,422,12.2,-139,45`.
+
 ### Gathering materials
 
 He gathers what he builds with (add-on `gather`, ticket AWP-9; words `gather…`,

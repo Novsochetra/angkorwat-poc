@@ -123,8 +123,7 @@ function injectStyle(): void {
     .pt-sw kbd, .pt-pad { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box; font: 600 10.5px / 1 var(--mu-display);
       color: var(--mu-ink2); background: rgba(255, 244, 222, 0.1); border: 1px solid var(--mu-line-hi); border-bottom-width: 2px; border-radius: 3px; }
     .pt-sw.is-on kbd { color: #2b1904; background: #f7c95a; border-color: #ffe7a0; }
-    .pt-pad { display: none; }
-    body.pad-on .pt-pad { display: inline-grid; }
+    body.roam-touch:not(.pad-on) .pt-pad { display: none; }
     body.pad-on .pt-sw kbd { visibility: hidden; }
     .pt-done { display: none; align-items: center; gap: 5px; min-height: 36px; padding: 0 10px; margin-left: 4px; border: 1px solid var(--mu-btn-edge); border-radius: 8px; background: var(--mu-btn);
       color: var(--mu-ink); font: 700 14px / 1 var(--mu-display); cursor: pointer; touch-action: manipulation; }
@@ -148,12 +147,17 @@ function injectStyle(): void {
       .pt-in { padding: 6px 8px 7px; }
       .pt-done-t { display: none; }
     }
-    /* (a phone on its side: under the top's buttons, the line left out) */
+    /* (a phone on its side: along the bottom between the stick and the Use button, small, ✕ without its word, the
+       line left out; with keys, at the top) */
     @media (max-height: 500px) {
       .pt-bar { top: 8px; }
-      body.roam-touch:not(.pad-on) .pt-bar { top: auto; bottom: calc(150px + 2vh); }
-      body.roam-touch:not(.pad-on) .pt-chip { width: 32px; height: 32px; }
-      .pt-in { padding: 5px 10px 6px; gap: 3px; }
+      body.roam-touch:not(.pad-on) .pt-bar { top: auto; bottom: 6px; }
+      body.roam-touch:not(.pad-on) .pt-chip { width: 27px; height: 27px; border-radius: 6px; }
+      body.roam-touch:not(.pad-on) .pt-row { gap: 4px; }
+      body.roam-touch:not(.pad-on) .pt-done { min-height: 30px; padding: 0 9px; }
+      .pt-done-t { display: none; }
+      .pt-in { padding: 4px 8px 5px; gap: 2px; }
+      .pt-head { font-size: 12px; }
       .pt-hint { display: none; }
     }
     .rh-prompt.pt-hold::after, .rt-use.pt-hold::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: 4px; height: 4px; border-radius: 2px;
