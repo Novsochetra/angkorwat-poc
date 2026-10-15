@@ -17,7 +17,7 @@ import { TRAILS } from '../layout';
  * - The clearing (`CLEARING`) at the trail's end: the woodcutter's rack where the cut poles dry
  *   (veg/bambooForest.ts), sky over it.
  */
-export const BAMBOO_FOREST = { x: 352, z: -184, rx: 32, rz: 27 } as const;
+export const BAMBOO_FOREST = { x: 352, z: -189, rx: 34, rz: 26 } as const;
 
 /** The clearing at the trail's end (m): no clump within `r` + its clumps' foot of it, no leaves over `r` − 1. */
 export const CLEARING = { x: 343, z: -190, r: 7 } as const;

@@ -77,9 +77,11 @@ const VIEWS = {
   market: 'roam=walk&at=330,-100&yaw=160&sim=_:0.2&rcam=180,14,9',
   // (by his stilt house, looking over the meadow before it: the player's blocks, `pblocks=full` in `url=`)
   home: 'roam=walk&at=431,-152&yaw=180&home=1&sim=_:0.2&rcam=200,22,16',
-  // (the bamboo forest, AWP-15: on its trail inside it, looking in to the clearing; at its edge on the Kulen foot trail, looking at it)
+  // (the bamboo forest, AWP-15: on its trail inside it, looking along it west to the clearing (and over the whole map
+  // past it), and north into the clumps; on the Kulen foot trail at its edge, looking at it)
   bamboo: 'roam=walk&at=374,-196&yaw=270&sim=_:0.2',
-  bambooedge: 'roam=walk&at=406,-186&yaw=250&sim=_:0.2&rcam=180,16,14',
+  bambooin: 'roam=walk&at=378,-196&yaw=315&sim=_:0.2',
+  bambooedge: 'roam=walk&at=408,-178&yaw=262&sim=_:0.2',
   // (the day turning at dusk, the shadow map drawn when the live page draws it: `TURNING`)
   dusk: 'shadows=live',
   duskwalk: 'shadows=live&roam=walk&at=-304,63&yaw=225&sim=w:1&rcam=0,16,9',

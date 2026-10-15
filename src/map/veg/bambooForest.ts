@@ -1,4 +1,4 @@
-import { Box3, Group, Vector3, type InstancedMesh } from 'three';
+import { Box3, Frustum, Group, Matrix4, Vector3, type InstancedMesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -45,14 +45,16 @@ const FRINGE = 0.2;
 /** No clump nearer the clearing's middle than its radius and this (m). */
 const CLEAR_KEEP = 2.8;
 /** Chunk size (m). */
-const CHUNK = 24;
+const CHUNK = 44;
 /** The far form from this far from the forest's box (m), back to near this much nearer. */
-const FAR = 75;
+const FAR = 55;
 const FAR_HOLD = 10;
 /** A clump of the stand (veg/species.ts `bamboo`'s `stand`): its neighbours hide most of it. */
 const STAND = { culms: 8, seg: 3.5, nodesBelow: 3.6, leafFrom: 0.6, spray: 0.25 };
 /** Near chunks turn to plain boxes this many times nearer than the jungle's (terrain/lod.ts `ChunkSwitch`: by the pixel). */
 const PLAIN_NEARER = 5;
+/** Frames at load when it is drawn wherever the camera looks (its shaders compile then). */
+const WARM = 3;
 /** Prototype kinds (near, far). */
 const KINDS = { near: 6, far: 3 };
 
@@ -139,75 +141,63 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   const object = new Group();
   object.name = 'vegetation:bambooForest';
 
-  // ── Near: 1 m cells, in chunks ──────────────────────────────────────────
+  // ── Near: 1 m cells, in chunks, each its leaves and its culms apart ────────
   const nx = Math.ceil((FOREST_BOX.x1 - FOREST_BOX.x0) / CHUNK);
   const nz = Math.ceil((FOREST_BOX.z1 - FOREST_BOX.z0) / CHUNK);
   const chunkAt = (x: number, z: number) => Math.max(0, Math.min(nx - 1, Math.floor((x - FOREST_BOX.x0) / CHUNK))) + Math.max(0, Math.min(nz - 1, Math.floor((z - FOREST_BOX.z0) / CHUNK))) * nx;
-  const builders = Array.from({ length: nx * nz }, () => new VoxelBuilder());
+  /** Per chunk: [leaves, culms]. */
+  const builders = Array.from({ length: nx * nz }, () => [new VoxelBuilder(), new VoxelBuilder()] as const);
   const near = new Lattice(1, f);
   const far = new Lattice(2, f);
   planted.clumps.forEach((c, i) => {
     near.stamp(c.near, c.x, c.y, c.z, c.q, c.m, c.shade, i, keepLeaf);
     far.stamp(c.far, c.x, c.y, c.z, c.q, c.m, c.shade, -1, keepLeaf);
   });
-  /** Each clump's blocks as emitted: [builder, index in it]. */
-  const refs: [number, number][][] = planted.clumps.map(() => []);
+  /** Each clump's blocks as emitted: a mesh code (chunk << 2 | 1 for the culms) and the block's index there. */
+  const refs: number[][] = planted.clumps.map(() => []);
+  const codeOf = new Map<VoxelBuilder, number>();
+  builders.forEach(([l, b], n) => {
+    codeOf.set(l, n << 2);
+    codeOf.set(b, (n << 2) | 1);
+  });
   const nearBlocks = near.emit(
-    (x, z) => builders[chunkAt(x, z)],
-    (o, b, i) => void refs[o].push([builders.indexOf(b), i]),
+    (x, z, mat) => builders[chunkAt(x, z)][mat === 'mapBark' ? 1 : 0],
+    (o, b, i) => void refs[o].push(codeOf.get(b)!, i),
   );
-  // (each block's place among its family's blocks in its builder: its instance in that family's mesh)
-  const order = builders.map((b) => {
-    const o = new Int32Array(b.boxes.length);
-    const seen = new Map<string, number>();
-    b.boxes.forEach((box, i) => {
-      const n = seen.get(box.mat) ?? 0;
-      o[i] = n;
-      seen.set(box.mat, n + 1);
-    });
-    return o;
-  });
-  const data: BambooClumpData[] = planted.clumps.map((c, i) => {
-    const at = new Int32Array(refs[i].length * 2);
-    refs[i].forEach(([ch, idx], n) => {
-      at[n * 2] = (ch << 2) | (builders[ch].boxes[idx].mat === 'mapBark' ? 1 : 0);
-      at[n * 2 + 1] = order[ch][idx];
-    });
-    return { x: Math.floor(c.x) + 0.5, y: c.y, z: Math.floor(c.z) + 0.5, r: c.near.r, h: c.near.h, at };
-  });
-  // The clearing's rack (into its chunk's culms' mesh: no draw of its own; after the clumps, whose places it keeps).
-  const props = rack(new Site(builders[chunkAt(RACK.x, RACK.z)], f, RACK.x, f.heightAt(RACK.x, RACK.z), RACK.z, RACK.yaw, src, 1523));
+  // (one family a builder: a block's index there is its instance in the family's mesh)
+  const data: BambooClumpData[] = planted.clumps.map((c, i) => ({ x: Math.floor(c.x) + 0.5, y: c.y, z: Math.floor(c.z) + 0.5, r: c.near.r, h: c.near.h, at: Int32Array.from(refs[i]) }));
+  const culms = builders.reduce((n, [, b]) => n + b.boxes.length, 0);
+  // The clearing's rack (with its chunk's culms: no draw of its own; after the clumps, whose places it keeps).
+  const props = rack(new Site(builders[chunkAt(RACK.x, RACK.z)][1], f, RACK.x, f.heightAt(RACK.x, RACK.z), RACK.z, RACK.yaw, src, 1523));
 
   const nearGroup = new Group();
   nearGroup.name = 'vegetation:bambooForest:near';
   object.add(nearGroup);
-  const chunks: { lod: ChunkSwitch | null; group: Group | null }[] = [];
-  const meshes: (Group | null)[] = [];
-  builders.forEach((b, n) => {
-    if (!b.boxes.length) {
-      meshes.push(null);
-      return;
-    }
-    const name = `vegetation:bambooForest${n}`;
-    const g = buildVoxelMesh(b, { quality: lowOnly ? 'low' : 'medium', name });
-    nearGroup.add(g);
-    meshes.push(g);
+  /** Per chunk and family: its mesh, and how it turns plain (the leaves at once, the culms past `PLAIN_NEARER`). */
+  const chunks: { lod: ChunkSwitch | null; leaf: boolean }[] = [];
+  const meshes: (InstancedMesh | null)[] = [];
+  builders.forEach((pair, n) => {
     const ix = n % nx;
     const iz = Math.floor(n / nx);
     const plan = new Box3(new Vector3(FOREST_BOX.x0 + ix * CHUNK, 0, FOREST_BOX.z0 + iz * CHUNK), new Vector3(FOREST_BOX.x0 + (ix + 1) * CHUNK, 0, FOREST_BOX.z0 + (iz + 1) * CHUNK));
-    // (the leaves sway a little past their blocks)
-    for (const o of g.children) if ((o as InstancedMesh).isInstancedMesh && (o as InstancedMesh).boundingSphere) (o as InstancedMesh).boundingSphere!.radius += 1;
-    chunks.push({ lod: lowOnly ? null : new ChunkSwitch(plan, g, nearGroup), group: g });
+    pair.forEach((b, fam) => {
+      if (!b.boxes.length) {
+        meshes.push(null);
+        return;
+      }
+      const g = buildVoxelMesh(b, { quality: lowOnly ? 'low' : 'medium', name: `vegetation:bambooForest${n}${fam ? 'c' : 'l'}` });
+      nearGroup.add(g);
+      const mesh = g.children.find((o) => (o as InstancedMesh).isInstancedMesh) as InstancedMesh | undefined;
+      meshes.push(mesh ?? null);
+      // (the leaves sway a little past their blocks)
+      if (!fam && mesh?.boundingSphere) mesh.boundingSphere.radius += 1;
+      chunks.push({ lod: lowOnly ? null : new ChunkSwitch(plan, g, nearGroup), leaf: !fam });
+    });
   });
-  BAMBOO_FOREST_CUT.attach(
-    data,
-    (code) => {
-      const g = meshes[code >> 2];
-      const mesh = g?.children.find((o) => o.name.endsWith(code & 1 ? ':mapBark' : ':mapLeaf')) as InstancedMesh | undefined;
-      return mesh ? { mesh, from: 0 } : null;
-    },
-    ctx.renderer,
-  );
+  BAMBOO_FOREST_CUT.attach(data, (code) => {
+    const mesh = meshes[(code >> 2) * 2 + (code & 1)];
+    return mesh ? { mesh, from: 0 } : null;
+  }, ctx.renderer);
   object.add(BAMBOO_FOREST_CUT.object);
 
   // ── Far: 2 m cells, one plain mesh ──────────────────────────────────────
@@ -224,31 +214,37 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   box.max.y = box.min.y + 24;
   const shadows = new ShadowGate().addLive(nearGroup).addAll(farGroup, true);
   const flat = new Vector3();
+  const frustum = new Frustum();
+  const vp = new Matrix4();
   let isFar = false;
+  let frames = 0;
   // (checks: `bambooforest=near|far` holds that form wherever the camera is, `=0` hides the forest: shots and the dev server only)
   const hold = ctx.shot || import.meta.env.DEV ? new URLSearchParams(location.search).get('bambooforest') : null;
   if (hold === '0') object.visible = false;
   const subjects: Subject[] = planted.trees.map((t) => ({ kind: 'bamboo', x: t.x, y: t.y + t.h * 0.4, z: t.z, r: Math.min(t.r, t.h * 0.3) }));
-  const culms = builders.reduce((n, b) => n + b.boxes.filter((x) => x.mat === 'mapBark').length, 0) - props;
-  const stats = { clumps: planted.clumps.length, near: nearBlocks, culms, far: farBlocks, props, chunks: chunks.length, ms: Math.round(planted.ms + performance.now() - t0) };
+  const stats = { clumps: planted.clumps.length, near: nearBlocks, culms: culms - props, far: farBlocks, props, chunks: chunks.length, ms: Math.round(planted.ms + performance.now() - t0) };
   return {
     object,
     blocks: nearBlocks + props,
     stats,
     update(fr) {
       const cam = fr.camera.position;
+      // Out of view (its box off the screen; the warm frames draw it, so its shaders compile at load): nothing drawn.
+      vp.multiplyMatrices(fr.camera.projectionMatrix, fr.camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(vp);
+      const seen = frames++ < WARM || frustum.intersectsBox(box);
       const d = box.distanceToPoint(cam);
       const want = hold === 'far' || (hold !== 'near' && (isFar ? d > FAR - FAR_HOLD : d > FAR));
-      if (want !== isFar) {
-        isFar = want;
-        nearGroup.visible = !isFar;
-        farGroup.visible = isFar;
-      }
-      if (!isFar) {
+      isFar = want;
+      nearGroup.visible = seen && !isFar;
+      farGroup.visible = seen && isFar;
+      if (seen && !isFar) {
         flat.set(cam.x, 0, cam.z);
         const from = fr.roam !== 'overview' ? PLAIN_FROM.roam : PLAIN_FROM.overview;
-        const pixel = pixelSize(fr.camera) * PLAIN_NEARER;
-        for (const c of chunks) c.lod?.update(cam, flat, from, pixel);
+        const pixel = pixelSize(fr.camera);
+        // (the leaves always plain, their rim painted: from under them their cut edges hardly show, and a negative pixel
+        // makes `plainAt` true even with the camera inside their box; the culms by the pixel, `PLAIN_NEARER` times nearer)
+        for (const c of chunks) c.lod?.update(cam, flat, from, c.leaf ? -1 : pixel * PLAIN_NEARER);
       }
       shadows.update(fr);
       BAMBOO_FOREST_CUT.update(fr.dt);
