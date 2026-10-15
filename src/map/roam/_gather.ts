@@ -13,7 +13,7 @@ import { BAMBOO_CUT } from '../veg/bambooCut';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
-import { registerBambooClumps } from './_gatherBamboo';
+import { registerBambooClumps, registerBambooForest } from './_gatherBamboo';
 import { registerLogs } from './_gatherLogs';
 import { registerThatch, thatchTick } from './_gatherThatch';
 import { clayTick, registerClay } from './_gatherClay';
@@ -61,8 +61,8 @@ import { stepSound } from './walker';
  * The sources, registered from `init` (each draws what it has left its own way):
  * the jungle's bamboo clumps (_gatherBamboo.ts, AWP-10), the woodcutters' felled
  * trunks (_gatherLogs.ts, AWP-11), the sugar-palm village's young palms
- * (_gatherThatch.ts, AWP-12), the clay banks (_gatherClay.ts, AWP-13); later ones
- * (the ox cart AWP-14, a bamboo forest AWP-15) register themselves the same way
+ * (_gatherThatch.ts, AWP-12), the clay banks (_gatherClay.ts, AWP-13), the bamboo
+ * forest's clumps (_gatherBamboo.ts, AWP-15); later ones (the ox cart AWP-14) register themselves the same way
  * (`registerGatherSource`). The load on his back: _gatherLoad.ts.
  *
  * URL (shots and the dev server only, `env.shot || import.meta.env.DEV`: on the live site a link
@@ -683,6 +683,12 @@ registerAddon({
   init(e) {
     env = e;
     const n = registerBambooClumps();
+    let forest = 0;
+    try {
+      forest = registerBambooForest();
+    } catch (err) {
+      console.error('[gather] the bamboo forest failed:', err);
+    }
     let logs = 0;
     try {
       logs = registerLogs(e.world.field, e.scene);
@@ -713,7 +719,7 @@ registerAddon({
     const qs = e.params.get('store');
     if (dev && qs !== null) fillFrom(qs, STORE, 'store');
     unloadInShot = dev && e.params.get('gatherunload') === '1';
-    console.info(`[gather] ${n} bamboo clumps to cut, ${logs} logs at the woodcutters' camp, ${young} young sugar palms, ${banks} clay banks · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
+    console.info(`[gather] ${n} bamboo clumps to cut, ${forest} in the bamboo forest, ${logs} logs at the woodcutters' camp, ${young} young sugar palms, ${banks} clay banks · bag ${JSON.stringify(BAG.all())} (load ${BAG.load()}/${CARRY_LIMIT}) · home store ${JSON.stringify(STORE.all())}${progress.saving ? '' : ' (not saved: a shot or progress=0)'}`);
     if (dev)
       Object.assign(window, {
         __gather: {

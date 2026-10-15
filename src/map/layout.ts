@@ -641,6 +641,20 @@ export const TRAILS: Trail[] = [
       [146, -336],
     ],
   },
+  {
+    // Off the Kulen foot trail (80 m north of his house) west into the bamboo forest, to the woodcutter's
+    // clearing in its heart (veg/bambooForestPlan.ts: AWP-15).
+    name: 'bamboo forest trail',
+    w: 2,
+    points: [
+      [406, -195],
+      [394, -197],
+      [380, -197],
+      [366, -195],
+      [354, -192],
+      [346, -190],
+    ],
+  },
 ];
 
 /** What stands at a jungle site (the jungle part builds it). */

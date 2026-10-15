@@ -9,6 +9,7 @@ import type { HeightField } from './heightfield';
 import { ChunkGrid, ChunkSwitch, PLAIN_FROM } from './terrain/lod';
 import type { MapContext, MapFrame, MapPart, Subject } from './types';
 import { BAMBOO_CUT, type BambooClumpData } from './veg/bambooCut';
+import { buildBambooForest, plantBambooForest, type BambooForest } from './veg/bambooForest';
 import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
 import { FarTreeList, TREE_PICTURES, TreePictures, type FarLeaves, type FarTrees } from './veg/impostors';
@@ -383,7 +384,14 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
 
   const r = planted ?? plantJungle(f, density);
   const { thin } = r;
-  setCanopy(f, r.near);
+  // (the bamboo forest's clumps, AWP-15: planted apart from the jungle, in the undergrowth's canopy with it)
+  let forestPlan: ReturnType<typeof plantBambooForest> | null = null;
+  try {
+    forestPlan = plantBambooForest(f);
+  } catch (e) {
+    console.error('[map] bamboo forest failed:', e);
+  }
+  setCanopy(f, forestPlan ? [...r.near, ...forestPlan.trees] : r.near);
   const t2 = performance.now();
   const lowOnly = ctx.quality === 'low';
   const tiles = new Tiles(object);
@@ -428,6 +436,13 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
     });
   meshes(LEAF_GRID, r.leaves, 'leaf');
   meshes(REST_GRID, r.rest, 'rest');
+  // (the bamboo forest's meshes: before the leaves are made to sway, so its sway too)
+  let forest: BambooForest | null = null;
+  try {
+    if (forestPlan) object.add((forest = buildBambooForest(ctx, forestPlan)).object);
+  } catch (e) {
+    console.error('[map] bamboo forest failed:', e);
+  }
   // (before the plain twins are made: they share the meshes' materials; the lattice's open sides are exact: the
   // covered ones are left out, veg/sway.ts)
   swayLeaves(object, f, true);
@@ -448,6 +463,10 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   object.add(BAMBOO_CUT.object);
   const t3 = performance.now();
   object.userData.trees = r.counts;
+  if (forest) {
+    const s = forest.stats;
+    console.info(`[map] bamboo forest: ${s.clumps} clumps · blocks ${s.near} near in ${s.chunks} chunks (+ ${s.props} the rack), ${s.far} far · ${s.ms} ms`);
+  }
   if (new URLSearchParams(location.search).has('vegstats'))
     console.info(
       `[map] vegetation: trees ${r.trees} ${JSON.stringify(r.counts)} per lod ${r.perLod.join('/')} · blocks per lod ${r.lodBlocks.join('/')}, cliffs ${r.cliffBlocks}${thin ? ` · thinned ${thin.toFixed(3)}` : ''} · ${tiles.count} tiles · ${r.sugarPalms.length} sugar palms in the nature book · ms kits ${Math.round(r.ms[0])}, plant ${Math.round(r.ms[1])}, mesh ${Math.round(t3 - t2)}${pictures ? ` · pictures of ${pictures.stats.trees} far trees, ${pictures.stats.protos} kinds: atlas ${pictures.stats.size.join('×')} (${(pictures.stats.bytes / 2 ** 20).toFixed(1)} MB) in ${Math.round(pictures.stats.ms)} ms (the atlas ${Math.round(pictures.stats.atlasMs)})` : ''}`,
@@ -457,11 +476,12 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   return {
     name: 'vegetation',
     object,
-    blocks: r.blocks,
+    blocks: r.blocks + (forest?.blocks ?? 0),
     update(fr) {
       stepWind(fr, 'vegetation');
       tiles.update(fr);
       BAMBOO_CUT.update(fr.dt);
+      forest?.update(fr);
       pictures?.update(fr);
     },
     restored() {
@@ -469,6 +489,7 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
     },
     subjects(out) {
       for (const b of bamboo) out.push(b);
+      forest?.subjects(out);
       for (const p of r.sugarPalms) out.push(p);
     },
   };

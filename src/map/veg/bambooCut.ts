@@ -45,7 +45,7 @@ export interface BambooClumpData {
 
 /** A clump he can cut. */
 export interface BambooClump {
-  /** `bamboo:<x>,<z>` (whole metres: saved). */
+  /** `<source>:<x>,<z>` (whole metres: saved): `bamboo:…` the jungle's, `bambooForest:…` the bamboo forest's. */
   readonly id: string;
   readonly x: number;
   readonly y: number;
@@ -106,7 +106,8 @@ interface Clump extends BambooClump {
 const sameSides = (a: BambooLook | null, b: BambooLook | null): boolean =>
   a === b || (!!a && !!b && a.sides.length === b.sides.length && a.sides.every((s, i) => s === b.sides[i]));
 
-class BambooCuts {
+/** The cut clumps of one stand: the jungle's (`BAMBOO_CUT`), the bamboo forest's (veg/bambooForest.ts `BAMBOO_FOREST_CUT`). */
+export class BambooCuts {
   private list: Clump[] = [];
   private readonly byId = new Map<string, Clump>();
   /** Looks set before the jungle was built (or for a jungle built again), by id. */
@@ -124,8 +125,12 @@ class BambooCuts {
   /** Checks: blocks moved by the last looks. */
   stats = { clumps: 0, cut: 0, moved: 0, layerBlocks: 0 };
 
-  constructor() {
-    this.object.name = 'vegetation:bamboo-cut';
+  constructor(
+    /** The gathering source the clumps' ids start with (saved). */
+    readonly source = 'bamboo',
+    name = 'vegetation:bamboo-cut',
+  ) {
+    this.object.name = name;
   }
 
   /** The clumps he can cut (empty until the jungle is built). */
@@ -148,7 +153,7 @@ class BambooCuts {
     this.list = [];
     this.byId.clear();
     for (const d of data) {
-      const id = `bamboo:${Math.round(d.x)},${Math.round(d.z)}`;
+      const id = `${this.source}:${Math.round(d.x)},${Math.round(d.z)}`;
       if (this.byId.has(id)) continue;
       const c: Clump = { id, x: d.x, y: d.y, z: d.z, r: d.r, h: d.h, at: d.at, blocks: null, look: null, drawn: [] };
       this.list.push(c);
@@ -322,7 +327,7 @@ class BambooCuts {
     }
     if (v.boxes.length) {
       // (as the jungle's own: plain blocks on the low level; it casts the still shadows of low and medium)
-      this.layer = buildVoxelMesh(v, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: 'vegetation:bamboo-cut' });
+      this.layer = buildVoxelMesh(v, { quality: graphicsNow.plainBlocks ? 'low' : 'medium', name: this.object.name });
       markStill(this.layer);
       // (built for the level it is made on, made again often: graphics.ts `setGraphics` leaves it be, no far rim variant)
       for (const o of this.layer.children) delete o.userData.voxelShape;
@@ -384,3 +389,5 @@ function shoots(v: VoxelBuilder, c: Clump, side: number, g: number, wide: number
 
 /** The cut clumps of the map's jungle (vegetation.ts attaches it; roam/_gatherBamboo.ts sets the looks). */
 export const BAMBOO_CUT = new BambooCuts();
+/** The bamboo forest's (AWP-15: veg/bambooForest.ts attaches it; the source `bambooForest`, roam/_gatherBamboo.ts). */
+export const BAMBOO_FOREST_CUT = new BambooCuts('bambooForest', 'vegetation:bamboo-forest-cut');
