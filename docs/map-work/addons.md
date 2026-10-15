@@ -3019,6 +3019,113 @@ sounds `audio/_build.ts`.
   `roam=walk&at=424,-116&yaw=0&home=1&night=1&lamps=20&rcam=0,35,22` (twenty lamps at night) ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 
+### Footprint buildings
+
+He draws a footprint on his land and the building fits itself to it (AWP-20, build plan
+step 3, Townscaper-style; words `foot…`): `map/build/footPlan.ts` (the kinds, their sizes,
+the plan: no three.js), `map/build/footState.ts` (the saved list, writing the blocks),
+`roam/_buildFoot.ts` (footprint mode: the cursor, the rules, the panel, the job),
+`roam/_buildFootGhost.ts` (the ghost); `roam/_build.ts` routes its keys, E, card rows,
+camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob`).
+
+- **The kinds** (`FOOT_KINDS`; rectangles along the map's axes on the 0.5 m block grid,
+  no L-shapes yet): the **stilt house** ផ្ទះឈើ (5 × 5 m to 8 × 8 m; 3 at most), the
+  **shed** រោង (3 × 3 m to 8 × 8 m; 4), the **fence line** របងព័ទ្ធ (round a footprint,
+  2 m to 24 m a side, or one straight run one cell wide; 12). Why: a house's room inside
+  its walls is 4 m or more (the follow camera reads such a room, AWP-17); at 8 m its roof
+  is 4.5 m of stepped thatch over 9 × 9 m (≈ 1 500 blocks, 15 % of his land's budget);
+  his yard is ≈ 22 m across.
+- **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
+  floor, walls, roof, stair): the house's timber posts on laterite footings (a post at
+  each corner and every 2 m at most; under the floor on the same grid), its timber floor
+  with its underside at least 2.5 m over the highest ground under it (he walks under it:
+  2.26 m tall to the walk map), woven bamboo walls (a weave of new and older strips) in
+  the timber frame, a wall plate, the door 2.5 m high and 1.5 m (an odd wall) or 2 m wide
+  with its jamb posts, windows (1 m wide, 1‥2 m over the floor) in every other bay but the
+  door's, a steep gable roof of palm-leaf thatch along the longer side (rows two cells
+  deep stepping in and up, 45°, eaves a cell past the walls, a dark timber ridge, timber
+  gable boards: Khmer, no horns), and a stair from the door straight out to the ground
+  (treads of 0.25 m: about 5 m long for a 3 m floor). The shed: posts and plate (its
+  underside 2.5 m over the ground), woven bamboo half walls 1 m high on three sides, the
+  door side open, the same roof, bamboo gables. The fence: a woven split-bamboo panel
+  1.5 m high (whole-bamboo rails along its foot and top), old bamboo posts every 2 m at
+  most capped half a block higher, each column on its own ground (it follows a slope), a
+  gate 1.5–2 m wide in the middle of the door side (none on a side shorter than 3.5 m).
+- **The step's shape in one place** (AWP-24): `roofStep` (every roof cell: today a full
+  block; the outer cell of each row a stair turned down the slope later) and `stairStep`
+  (each tread: a slab or a block; AWP-24's stair block halves the run).
+- **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
+  material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle, 4 laterite
+  a lump of clay), rounded up per building, so it grows with the footprint: the smallest
+  house 16 logs, 9 bamboo, 12 thatch, 4 clay (150,000 ៛ bought outright); a 6 × 6 m house
+  19 logs, 13 bamboo, 17 thatch, 4 clay; an 8 × 8 m one ≈ 303,000 ៛; the smallest shed
+  45,500 ៛ (the thatched shelter piece is 40,000 ៛); a fence ≈ 1,250 ៛ a metre (the fence
+  piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
+  its materials back (rounded down; the cost is kept with it).
+- **The card**: three rows first, each with its name, how many of how many, its line and
+  "from 5 × 5 m", its cost at its smallest size (chips, the riel for what he lacks; greyed
+  when all are built, he cannot pay even its smallest, or his land has no room for it).
+- **Footprint mode**: a gold cursor on the ground a metre before his feet (where the mouse
+  points on the ground while it moves; on a touch screen, where he tapped, outside the
+  stick's corner: held until the stick moves). **E** (the pad's □, the touch Use button; a
+  mouse click) marks the first corner (a stake with a red strip); he walks, the footprint
+  stretches from it to the cursor (stopping at the kind's largest size), its ghost shows
+  the finished building (every block, see-through: green, or red drawn over everything
+  with the reason) and its outline on the ground. **E** again: "Build here" (pays for
+  what he lacks, takes the rest from his bag, then his home store, and the work begins).
+  `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn the door side a quarter (until he
+  turns it, it faces the camera); Esc (○, the touch ✕) the first corner again, then out
+  of the mode; F / C the card. The camera looks down over the footprint (build mode's).
+  **The panel** (top middle; on a touch screen above the build bar; a phone on its side
+  at the top, without the meter): the name, the size ("6 × 6 m") and its blocks, each
+  material's picture and count (those he lacks in red) and the riel to pay, "Missing: … =
+  … ៛" (or the reason in red, or its line), his land's meter now and after it.
+- **Where not** (the reason first in the prompt, Khmer first): too small ("តូចពេក —
+  យ៉ាងតិច ៥ × ៥ ម៉ែត្រ / Too small: at least 5 × 5 m"), all of its kind built, the placing
+  rules over each part of it (`_buildSpots.ts` `canBuild` with a size of its own, `id`
+  'foot': the footprint grown by its eaves, the stair, each fence line; the path and
+  0.5 m round it, the water and 0.6 m, past his land, a neighbour's yard, by the house and
+  the grandmother's places (her sweeping spot at 418.2, −115.4 is one), the land stepping
+  more than the kind allows (house 1.5 m, shed 0.6 m, fence any), a tree's trunk or a crown
+  over it, a plant of his garden, something he built (a piece, or another footprint
+  building's land: `BUILT.feetOver`), anything else standing), no room left in his land's
+  budget, not enough riel for what he lacks. A footprint over him is not refused: he
+  works from beside it, and a block built where he stands puts him out beside it. A fence
+  checks only its lines: it may ring his garden, pieces or a house.
+- **The work** (`footJob`): as a piece's (`_buildWork.ts`): he walks round it (never from
+  a house's stair side), hammers, and its blocks go into the block layer in order, a step
+  of `n / 60` at a time (the layer, its walk map and save made again about once a second of
+  work), over 6 s + 1 s per 40 blocks (8‥60 s); the prompt names the stage ("Building the
+  stilt house: the roof… 60%"). Paused, "E  Keep building…", held E to take it down (asked
+  first; half the materials back into his home store) as a piece. Pieces cannot stand on
+  one, nor plants (`BUILT.feet`).
+- **Saved** (`progress.ts` `build.foot`: uid, kind, i0, k0, i1, k1, door, done, `w` the
+  blocks written, cost); the blocks are the block layer's (`blocks.plot`). A record that
+  does not read is left out (an unknown kind, a size not allowed, far from his land, more
+  than its kind may have, one over another; a cost not a whole 0‥999); one whose blocks
+  are all missing from the layer (a block save that did not load) has them written again.
+  The budget counts the blocks written (the layer's) and those still to come of one under
+  way (`footprints`).
+- **For AWP-22 (paint), AWP-24 (roofs), AWP-25 (under a roof, fenced)**: `FOOTS.list`
+  (each record's `kind`, `rect`, `door`, `done`), `FOOTS.plan(rec)` (`cells`, `raws`,
+  `stages`, `parts`, `floor` the house's floor top, `top`, `box`); nothing writes a cell
+  twice, so paint on its blocks stays; `roofStep` / `stairStep` above; "under a roof":
+  inside a house or shed's `rect` under its `top`; "fenced": inside a fence record's
+  `rect` (an enclosure: neither side 1 cell).
+- **URL** (shots and the dev server only: a link never changes a player's save):
+  `foot=<kind>@x0/z0/x1/z1[/door][:done],…` (two corners in metres on the block grid, the
+  door side 0 north, 1 east, 2 south, 3 west, 2 if left out; done 0‥1, 1 if left out) ·
+  `foot=0` · `foot=full` (his land filled with them while the budget lasts: perf) ·
+  `footdraw=<kind>[@x0/z0[/x1/z1]][:door]` (the mode, its corners held) ·
+  `footwork=<kind>:<0‥1>[:<s>]` (at work on the last one of that kind) ·
+  `foottake=<uid>[:<0‥1>]` (the question; taking it down). `report()` gives `foot=`,
+  `footdraw=`, `footwork=`. `window.__build.state().foot`, `__build.foot` (`add`,
+  `remove`, `clear`, `full`, `draw`, `plan`). Console lines `[foot] …`. E.g.
+  `roam=walk&at=433,-130&yaw=200&home=1&foot=house@419/-142/425/-136/2,shed@428/-150/432/-146/3,fence@418/-162/430/-154/2&rcam=160,22,20`
+  · `roam=walk&at=424,-131&yaw=180&home=1&purse=200000&footdraw=house@419/-142/425/-136:2&rcam=0,30,18`
+  · `roam=walk&at=422,-129&yaw=180&home=1&foot=house@419/-142/425/-136/2&sim=w:7` (up its
+  stair and in).
+
 ### Gathering materials
 
 He gathers what he builds with (add-on `gather`, ticket AWP-9; words `gather…`,

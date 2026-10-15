@@ -514,6 +514,7 @@ export const FootMode = {
   state() {
     return {
       kind,
+      step: [now.step, stepN],
       anchor,
       cursor: [...cursor],
       src,
@@ -579,7 +580,7 @@ function injectStyle(): void {
     .bf-note.is-short { color: #ffd890; }
     .bf-note.is-no { color: #ffb4a0; }
     .bf-meter { display: flex; align-items: center; gap: 8px; color: var(--mu-ink2); font-size: 12px; }
-    .bf-bar { position: relative; flex: 1; height: 7px; border-radius: 4px; background: rgba(10, 18, 30, 0.6); box-shadow: inset 0 0 0 1px rgba(255, 216, 120, 0.28); overflow: hidden; }
+    .bf-bar { position: relative; flex: 1; min-width: 60px; height: 8px; border-radius: 4px; background: rgba(255, 244, 222, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 216, 120, 0.4); overflow: hidden; }
     .bf-bar > i, .bf-bar > u { position: absolute; inset: 0; transform-origin: left center; border-radius: inherit; }
     .bf-bar > u { background: rgba(255, 226, 160, 0.45); transform: scaleX(var(--bf-after, 0)); }
     .bf-bar > i { background: #f2bf52; transform: scaleX(var(--bf-used, 0)); }
@@ -642,7 +643,7 @@ function updatePanel(): void {
     <div class="bf-head"><b>${esc(t(FOOT_KINDS[kind].name as WordKey))}</b><span class="bf-size">${esc(size)}${plan ? ` · ${esc(t('footBlocks', { n: num(plan.n) }))}` : ''}</span></div>
     <div class="bf-cost">${cost}${pay > 0 ? `<b class="bf-riel">${esc(riel(pay))}</b>` : ''}</div>
     <div class="bf-note${cls}">${esc(note)}</div>
-    <div class="bf-meter${a >= 0.9 ? ' is-full' : ''}" style="--bf-used:${u.toFixed(3)};--bf-after:${a.toFixed(3)}"><span>${esc(t('buildMeter'))}</span><span class="bf-bar"><u></u><i></i></span><span class="bf-meter-v">${esc(t('buildMeterPct', { pct: num(Math.round(a * 100)) }))}</span></div>`;
+    <div class="bf-meter${a >= 0.9 ? ' is-full' : ''}" style="--bf-used:${u.toFixed(3)};--bf-after:${a.toFixed(3)}"><span>${esc(t('buildMeter'))}</span><span class="bf-bar" style="display:block"><u></u><i></i></span><span class="bf-meter-v">${esc(t('buildMeterPct', { pct: num(Math.round(a * 100)) }))}</span></div>`;
 }
 
 // ── Checks: a full plot ─────────────────────────────────────────────────────

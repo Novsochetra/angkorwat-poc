@@ -26,8 +26,11 @@ import type { MaterialId, Materials } from './materials';
  *   2.5 m high and 1.5–2 m wide (3 or 4 cells: he is 0.84 m across to the
  *   walker), windows in every other bay, a steep gable roof of palm-leaf
  *   thatch with a timber ridge and timber gable boards (Khmer: no horns at
- *   the gable's ends or peak, CLAUDE.md "Khmer, not Thai"), and a stair from
- *   the door down to the ground (`stairStep`).
+ *   the gable's ends or peak, CLAUDE.md "Khmer, not Thai"; the boards in
+ *   light and dark rays as the village houses' gables), and a stair from
+ *   the door down to the ground (`stairStep`; its lowest tread a stair's
+ *   rise or less over the ground) with timber rails along its sides (a
+ *   block beside each tread and one over it: he does not step off it).
  * - **Shed** (រោង): on the ground, timber posts and wall plate, woven bamboo
  *   half walls 1 m high on three sides, the door side open, the same roof;
  *   its eaves at least 2.5 m over the ground (he and the follow camera go
@@ -43,7 +46,7 @@ import type { MaterialId, Materials } from './materials';
  * **Sizes** (`min`, `max`, cells a side): a house at least 5 × 5 m (its room
  * inside the walls 4 m: the follow camera reads a room of 4 m or more, AWP-17)
  * and at most 8 × 8 m (its roof is then 4.5 m of stepped thatch over 9 × 9 m,
- * ≈ 2 300 blocks: a quarter of his land's budget, `PLOT_BUDGET`); a shed 3 × 3
+ * ≈ 1 500 blocks: 15 % of his land's budget, `PLOT_BUDGET`); a shed 3 × 3
  * m to 8 × 8 m (room for him and the camera under its plate; the same roof);
  * a fence 2 m to 24 m a side (his yard is ≈ 22 m across), one cell wide (a
  * straight run) or 2 m or more (an enclosure).
@@ -136,6 +139,7 @@ const COL = {
   beam: [0x7a5a3a, 0x846446],
   plank: [0x8a6a48, 0x9a7a54, 0x846446],
   board: [0x6e4a30, 0x76503a],
+  rays: [0xa8865a],
   ridge: [0x4e3a2a],
   wall: [0xc8b27a, 0xbba36c, 0xd4bf88],
   weave: [0xcdc47e, 0xc1b970, 0xd6cc8c],
@@ -461,20 +465,25 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
         const q = q0 - n;
         let g = -Infinity;
         for (let a = span[0]; a <= span[1]; a++) g = Math.max(g, groundOf(...stairCell(a, n)));
-        // (he steps up onto it from the ground: the last tread no more than a stair's rise over it)
-        if (q * 0.25 <= g + 0.3) break;
-        for (let a = span[0]; a <= span[1]; a++) {
+        // (down to the ground: the lowest tread a stair's rise or less over it, so he steps up onto it from there)
+        if (q * 0.25 <= g + 0.05) break;
+        const color = pick(COL.post, n, q, door, 11);
+        for (let a = span[0] - 1; a <= span[1] + 1; a++) {
           const [i, k] = stairCell(a, n);
           const { j, block } = stairStep(q, pick(COL.tread, a, q, n, 8));
-          put(i, j, k, block);
+          // (its sides: a timber rail beside each tread and one over it, so he does not step off the stair)
+          if (a < span[0] || a > span[1]) {
+            put(i, j, k, { mat: 'timber', color });
+            put(i, j + 1, k, { mat: 'timber', color });
+          } else put(i, j, k, block);
         }
       }
       const run = n - 1;
       if (run > 0) {
-        const lo = door % 2 ? (door === 1 ? i1 + 1 : i0 - run) : span[0];
-        const hi = door % 2 ? (door === 1 ? i1 + run : i0 - 1) : span[1];
-        const klo = door % 2 ? span[0] : door === 0 ? k0 - run : k1 + 1;
-        const khi = door % 2 ? span[1] : door === 0 ? k0 - 1 : k1 + run;
+        const lo = door % 2 ? (door === 1 ? i1 + 1 : i0 - run) : span[0] - 1;
+        const hi = door % 2 ? (door === 1 ? i1 + run : i0 - 1) : span[1] + 1;
+        const klo = door % 2 ? span[0] - 1 : door === 0 ? k0 - run : k1 + 1;
+        const khi = door % 2 ? span[1] + 1 : door === 0 ? k0 - 1 : k1 + run;
         stair = { i0: lo, k0: klo, i1: hi, k1: khi, h: floor - gMax + 0.5, level: 1.5 };
       }
     }
@@ -526,10 +535,12 @@ function roofRows(r: FootRect, j0: number, gable: BlockMatKey, put: (i: number, 
     const L = lo + row;
     const H = hi - row;
     const top = L + 1 >= H - 1;
-    // (the gables under this row: boards between its inner edges, over the end walls)
+    // (the gables under this row: boards between its inner edges, over the end walls; a house's in the rays of the
+    // village houses' gables, light and dark boards fanning out from the middle of its foot)
     for (const a of [g0, g1])
       for (let c = L + 2; c <= H - 2; c++) {
-        const b: Block = { mat: gable, color: gable === 'timber' ? pick(COL.board, a, j, c, 9) : pick(COL.wall, a, j, c, 4) };
+        const ray = Math.floor(Math.atan2(row + 0.5, c - (lo + hi) / 2) / (Math.PI / 9)) % 2;
+        const b: Block = { mat: gable, color: gable === 'timber' ? (ray ? COL.rays[0] : pick(COL.board, a, j, c, 9)) : pick(COL.wall, a, j, c, 4) };
         cell(a, c, j, b);
       }
     for (let a = a0; a <= a1; a++) {

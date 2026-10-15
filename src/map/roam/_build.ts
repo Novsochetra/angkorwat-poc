@@ -1063,6 +1063,7 @@ registerAddon({
             view: view?.stats() ?? null,
             uses: BuildUses.state(),
             saving: progress.saving,
+            busy: env?.busy() ?? null,
           }),
           canBuild: (id: PieceId, x: number, z: number, yawDeg = 0) => (lastCtx ? canBuild(lastCtx.world, id, x, z, (yawDeg * Math.PI) / 180) : 'no ctx'),
           add: (id: PieceId, x: number, z: number, yawDeg = 0, done = 1) => BUILD.add(id, x, env!.world.field.heightAt(x, z), z, (yawDeg * Math.PI) / 180, done)?.uid ?? null,
