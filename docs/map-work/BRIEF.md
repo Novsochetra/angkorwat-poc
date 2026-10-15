@@ -2390,8 +2390,8 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   then smoothed unless `stepped`) and returns its roof cells and the steps it
   filled. Each is one store
   change. Smoothing puts a block in every step: a roof one block deep twice
-  its blocks (`pblocks=gable`: its roof 140 + 140, the pavilion 476 against
-  336); `fullmix` adds 1,728 to `full`'s 9,925 (192 a sala, on roofs two deep).
+  its blocks (`pblocks=gable`: its roof 140 + 140, the pavilion 564 against
+  424); `fullmix` adds 1,728 to `full`'s 9,925 (192 a sala, on roofs two deep).
 - **Changes** (`onChange`): told once a change is done (one set, one fill, one
   batch): `changed` (the chunks whose cells changed: the walk map's chunks to
   build again), `touched` (those and the neighbours across an edge a changed
@@ -2548,10 +2548,10 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   of them 3 × 3, 8 m apart, 9,925 blocks over 24 × 24 m, their plinths sunk
   to the sloping ground: 8 chunks) · `pblocks=fullmix` (the same, every roof
   smoothed: 11,653 blocks of mixed shapes) · `pblocks=gable` (AWP-24: an open
-  pavilion 6 × 4 m, posts 2.5 m high under a lacquer-red beam ring, a palm
-  thatch gable at 45° smoothed with stairs and slab-capped, timber gable ends;
-  476 blocks) and `pblocks=gable-stepped` (the same roof left as steps of full
-  blocks one deep, as before: 336) · `pblocks=hip` / `hip-stepped` (the sala
+  pavilion 6 × 4 m on a plinth with a step of slabs, posts 2.5 m high under a
+  lacquer-red beam ring, a palm thatch gable at 45° smoothed with stairs and
+  slab-capped, timber gable ends; 564 blocks) and `pblocks=gable-stepped` (the
+  same roof left as steps of full blocks one deep, as before: 424) · `pblocks=hip` / `hip-stepped` (the sala
   with its hipped roof one deep, smoothed with stairs and outer corner stairs /
   left as steps) · `@x,z` puts it elsewhere. Nothing is
   saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
