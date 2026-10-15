@@ -98,8 +98,8 @@ export const STAKES: readonly (readonly [number, number])[] = [
 export const ROPE = 2.7;
 /**
  * The room kept round each stake (m): the cow's middle goes `ROPE` round it, and its body a little more. Nothing is
- * built there (roam/_buildSpots.ts `stake`), and his ox cart is not led nor left there while a cow is tied to it
- * (roam/_haulFit.ts).
+ * left nor led there by his ox cart while a cow is tied to it (roam/_haulFit.ts). (Building keeps clear of the
+ * stakes by build/owned.ts, AWP-20.)
  */
 export const STAKE_ROOM = ROPE + 0.5;
 

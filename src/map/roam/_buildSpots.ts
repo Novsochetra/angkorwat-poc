@@ -1,5 +1,4 @@
 import { cartBlockWhy } from '../build/haul';
-import { stakeBlocks } from '../cattle/plan';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { inPlot, PLOT_TREES } from '../build/plot';
 import { corners, distTo, overlap, type Foot } from '../build/state';
@@ -43,7 +42,6 @@ import type { RoamWorld } from './types';
  * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross where an end
  *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
- * - `stake`: the room round one of his cows' stakes (cattle/plan.ts `stakeBlocks`, `STAKE_ROOM`);
  * - `cart`, `cartPlace`: his ox cart and its oxen where they stand, or their place by the house while away (build/haul.ts `cartBlockWhy`);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
@@ -51,7 +49,7 @@ import type { RoamWorld } from './types';
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'stake' | 'cart' | 'cartPlace' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -67,7 +65,6 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   piece: 'buildNoPiece',
   cart: 'haulHere',
   cartPlace: 'haulPlace',
-  stake: 'cattleStakeHere',
   thing: 'buildNoThing',
   front: 'buildNoFront',
 };
@@ -238,7 +235,6 @@ const onLevel = (x: number, z: number): BuildReason | null => {
   _hi = Math.max(_hi, h);
   return _hi - _lo > LEVEL || Math.abs(h - _h0) > LEVEL ? 'steep' : null;
 };
-const onStake = (x: number, z: number): BuildReason | null => (stakeBlocks(x, z) ? 'stake' : null);
 const onCart = (x: number, z: number): BuildReason | null => {
   const w = cartBlockWhy(x, z);
   return w === 'here' ? 'cart' : w === 'place' ? 'cartPlace' : null;
@@ -287,8 +283,7 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
   for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
   // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
-  // His cows' stakes and the room their ropes give them (cattle/plan.ts; kept whether a cow is tied there or not).
-  r = eachPoint(f, 0, onStake) ?? eachPoint(f, 0.2, onCart);
+  r = eachPoint(f, 0.2, onCart);
   if (r) return r;
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);

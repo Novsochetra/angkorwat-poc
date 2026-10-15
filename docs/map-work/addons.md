@@ -435,7 +435,8 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
   anywhere: it stays where you leave it" while he has none, the purse.
-- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, so a bicycle is
+- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, and at a visit's start only once a map
+  day — 6 minutes — has gone by since the last came, `_shopPurse.ts` `pocketAt`; so a bicycle is
   saved up for from fish and the garden): the black town bicycle (កង់បុរាណ ពណ៌ខ្មៅ:
   a cane basket and a lamp) **60,000 ៛**, the sky-blue lady's bicycle (កង់ស្រី
   ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
@@ -3260,8 +3261,25 @@ without its straw), the oxen `people/_ox.ts`.
   (`ui/_minimapSpots.ts` `my-cart`, as his bicycle's `my-bike`): on the mini-map where it stands, and on
   the big map (its button moved there by `roam/_haul.ts`, its name only while pointed at or the target);
   not while he leads it.
-- **The lead's hint** names the control in use: E, the pad's □ (`padName`), or on a touch screen the
-  button that says "លែងខ្សែ / Let go of the rope".
+- **The lead's hint** names the control in use: "ប៊ូតុង E", the pad's □ on a DualSense (X on others), or
+  on a touch screen the button that says "លែងខ្សែ / Let go of the rope".
+- **One rule for where it may stand** (`placeFits`, AWP-14 integration): the land at its tail, axle, oxen
+  and yoke, and its and its oxen's whole boxes clear (his pieces, the stakes his cows are tied to with
+  their room, `cattle/plan.ts` `STAKE_ROOM`, his blocks, the walk map). The same as it moves (each
+  0.2 m, and moving it also stops for cattle, `CATTLE_OBSTACLES`) and as a saved place is checked, so it
+  never stops where a reload would refuse it; where he lets go it stands at the last place tested. A
+  saved place that no longer fits (something built since) goes to the nearest place that does, out to
+  8 m, its load with it; only then by the house.
+- **Turning on the spot, backing up**: blocked before something with him off to a side or behind, the
+  oxen turn the cart toward him round its axle (0.7 rad/s, the short way, else the long way), backing it
+  up a little (0.6 m/s, 3 m at most) where there is no room to turn; every placement tested.
+- **Stuck for good** (no way out in eight headings — backed up 0 or 1.2 m, turned, rolled 2 m — or two
+  tries in a row from the same place that moved it under 0.5 m): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
+  Send the cart home" (the second failed try's toast says so): a fade, and the cart waits by his house
+  with its load ("The oxen know the way home: the cart waits by your house").
+- **What moves keeps out of it** (`build/haul.ts` `cartBodyBlocks(x, z, r)`: the cart and its oxen where
+  they stand): the bicycle (a wall to its wheels and frame), the ridden cow, the dog's steps, his cattle's
+  ways and standing places, as on foot.
 - **Not yet**: the people walk through it (it is not in the people's traffic); "In my bag" (the explorer
   menu's Bag page) does not list the cart's load; the build card does not count a loaded cart standing
   at home (he would buy what is in it: unload it first).
