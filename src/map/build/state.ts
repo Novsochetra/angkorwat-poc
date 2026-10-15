@@ -97,13 +97,21 @@ export function seedAt(x: number, z: number): number {
 
 // ── Footprints ──────────────────────────────────────────────────────────────
 
-/** What a footprint needs: the piece's kind, its middle and its turn. */
+/**
+ * What a footprint needs: the piece's kind, its middle and its turn; a footprint of a size of its own (`w` across, `d`
+ * deep, m: a footprint building's land, AWP-20, `id` 'foot') instead of its kind's.
+ */
 export interface Foot {
-  readonly id: PieceId;
+  readonly id: PieceId | 'foot';
   readonly x: number;
   readonly z: number;
   readonly yaw: number;
+  readonly w?: number;
+  readonly d?: number;
 }
+
+/** A footprint's size (m): its own, else its kind's. */
+export const sizeOf = (f: Foot): { readonly w: number; readonly d: number } => (f.w !== undefined && f.d !== undefined ? (f as { w: number; d: number }) : PIECES[f.id as PieceId]);
 
 /** A world point (x, z) in a piece's frame (into `out`: local x, z). */
 export function toLocal(b: Pick<Foot, 'x' | 'z' | 'yaw'>, x: number, z: number, out: [number, number]): [number, number] {
@@ -121,7 +129,7 @@ const _l: [number, number] = [0, 0];
 /** How far (x, z) is from a piece's footprint (m; 0 inside it). */
 export function distTo(b: Foot, x: number, z: number): number {
   toLocal(b, x, z, _l);
-  const p = PIECES[b.id];
+  const p = sizeOf(b);
   const ex = Math.max(0, Math.abs(_l[0]) - p.w / 2);
   const ez = Math.max(0, Math.abs(_l[1]) - p.d / 2);
   return Math.hypot(ex, ez);
@@ -129,7 +137,7 @@ export function distTo(b: Foot, x: number, z: number): number {
 
 /** Half a footprint's reach along a world direction (ux, uz unit), grown by `m` (its length, local x, shrunk by `sh` at each end). */
 function reach(b: Foot, ux: number, uz: number, m: number, sh = 0): number {
-  const p = PIECES[b.id];
+  const p = sizeOf(b);
   const c = Math.cos(b.yaw);
   const s = Math.sin(b.yaw);
   // (its local x axis on the map is (c, −s), its local z axis (s, c): pieces.ts `pieceToWorld`)
@@ -157,7 +165,7 @@ export function overlap(a: Foot, b: Foot, m = 0, joint = 0): boolean {
 
 /** The footprint's middle and corners on the map (into `out`, 4 × [x, z]), grown by `m`. */
 export function corners(b: Foot, m: number, out: [number, number][]): [number, number][] {
-  const p = PIECES[b.id];
+  const p = sizeOf(b);
   const c = Math.cos(b.yaw);
   const s = Math.sin(b.yaw);
   const hw = p.w / 2 + m;
@@ -287,5 +295,5 @@ load();
 BUILT.list = list;
 BUILT.blocks = (x: number, z: number, r: number): boolean => {
   for (const p of list) if (distTo(p, x, z) < r) return true;
-  return false;
+  return BUILT.feet(x, z, r);
 };
