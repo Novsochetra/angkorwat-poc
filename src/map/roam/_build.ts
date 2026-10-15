@@ -1207,6 +1207,10 @@ registerAddon({
               if (r) FOOTS.remove(r);
             },
             clear: () => FOOTS.clear(),
+            done: (uid: string, v: number) => {
+              const r = FOOTS.byUid(uid);
+              if (r) FOOTS.setDone(r, v);
+            },
             full: () => fillFoot(env!.world),
             draw: (kind: FootKind | null) => (kind ? enterFoot(kind) : exitFoot()),
             plan: (uid: string) => {

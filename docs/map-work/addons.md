@@ -2946,7 +2946,9 @@ sounds `audio/_build.ts`.
   walks in build mode or footprint mode the camera holds its heading (no swing round
   behind him: `cam.follow` 0, put back after), so W, the stick or the touch stick walk
   straight (it swung over his shoulder and steered him: a 7 m walk drifted 6 m; now
-  0.0 m with keys, pad and touch); Q / R, a drag or the right stick still turn it. After
+  0.0 m with keys, pad and touch), and where he faced as the mode opened: the camera's
+  first move over his shoulder (24°) is taken back off the move (`modeTurned`); Q / R, a
+  drag or the right stick still turn it. After
   a fence or a lantern post the mode stays on for the next.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
@@ -3045,7 +3047,8 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
   each corner and every 2 m at most; under the floor one row down its middle, along its
-  longer side: the shade on either side is open for a bamboo bed, AWP-25), its timber floor
+  longer side: the shade on either side is open for a bamboo bed, AWP-25; a house built
+  before keeps its grid of posts there: `PLAN_VERSION`, below), its timber floor
   with its underside at least 2.5 m over the highest ground under it (he walks under it:
   2.26 m tall to the walk map), woven bamboo walls (a weave of new and older strips) in
   the timber frame, a wall plate, the door 2.5 m high and 1.5 m (an odd wall) or 2 m wide
@@ -3124,7 +3127,15 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   first; half the materials back into his home store) as a piece. Pieces cannot stand on
   one, nor plants (`BUILT.feet`).
 - **Saved** (`progress.ts` `build.foot`: uid, kind, i0, k0, i1, k1, door, done, `w` the
-  blocks written, cost); the blocks are the block layer's (`blocks.plot`). A record that
+  blocks written, cost, `pv` the plan's version: footPlan.ts `PLAN_VERSION`, 1 when none is
+  saved). **A building keeps the plan it was built with**: an old record is drawn, finished
+  and taken down with its own version's plan (version 1, AWP-20: the grid of posts under a
+  house's floor; 2, AWP-25: one row down its middle), so a player's house never changes
+  under him and taking it down leaves no block; a version newer than the build knows is
+  left out. Checked: a 6 × 6 m house and one half built, saved on 57fab95 (1 124 blocks
+  each by the old plan, the new makes 1 114), load on the new build as they were (the layer
+  1 686), the half-built one finishes with its old plan (2 248) and both taken down leave
+  the layer at 0. The blocks are the block layer's (`blocks.plot`). A record that
   does not read is left out (an unknown kind, a size not allowed, far from his land, more
   than its kind may have, one over another; a cost not a whole 0‥999). Finished or taken
   down, the block layer is saved at once (`blocks/save.ts` `saveBlocksNow`) and the list right
@@ -3148,7 +3159,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   `footwork=<kind>:<0‥1>[:<s>]` (at work on the last one of that kind) ·
   `foottake=<uid>[:<0‥1>]` (the question; taking it down). `report()` gives `foot=`,
   `footdraw=`, `footwork=`. `window.__build.state().foot`, `__build.foot` (`add`,
-  `remove`, `clear`, `full`, `draw`, `plan`). Console lines `[foot] …`. E.g.
+  `remove`, `clear`, `done(uid, 0‥1)`, `full`, `draw`, `plan`). Console lines `[foot] …`. E.g.
   `roam=walk&at=433,-130&yaw=200&home=1&foot=house@419/-142/425/-136/2,shed@428/-150/432/-146/3,fence@418/-162/430/-154/2&rcam=160,22,20`
   · `roam=walk&at=424,-131&yaw=180&home=1&purse=200000&footdraw=house@419/-142/425/-136:2&rcam=0,30,18`
   · `roam=walk&at=422,-129&yaw=180&home=1&foot=house@419/-142/425/-136/2&sim=w:7` (up its
