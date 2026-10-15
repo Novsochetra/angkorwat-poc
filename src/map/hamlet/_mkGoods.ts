@@ -221,7 +221,7 @@ function heapOf(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: nu
 function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, o: { hgt?: number; cap?: number; ribs?: boolean } = {}): void {
   mk.kit((b) =>
     heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
-      round(b, mk.point(px, py, pz), { wid: sz, hgt: sz * (o.hgt ?? 0.9), color: c, ribs: o.ribs ?? false, cap: o.cap, ry: mk.heading + r * 1.6, low: !top || sz < 0.12 || plantsLite(), foot: top || !plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
+      round(b, mk.point(px, py, pz), { wid: sz, hgt: sz * (o.hgt ?? 0.9), color: c, ribs: o.ribs ?? false, cap: o.cap, ry: mk.heading + r * 1.6, low: !top || sz < 0.12 || plantsLite(), foot: !plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
     ),
   );
 }
@@ -230,7 +230,9 @@ function roundHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz:
 function mangoHeap(mk: MkBuild, x: number, y: number, z: number, rx: number, rz: number, s: number, tones: Tones, layers: number, seed: number, ripe = true): void {
   mk.kit((b) =>
     heapOf(mk, x, y, z, rx, rz, s, tones, layers, seed, (px, py, pz, sz, top, r, c) =>
-      mangoLying(b, mk.point(px, py + sz * 0.3, pz), mk.heading + r * Math.PI * 2, { len: sz * 1.3, wid: sz * 0.9, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top || plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
+      // (laid in rows the seller's way, stalk ends alternating, a little gap between them: they read one by one from a
+      // step or two, not as a heap of blocks)
+      mangoLying(b, mk.point(px, py + sz * 0.28, pz), mk.heading + Math.PI / 2 + (r < 0.5 ? 0 : Math.PI) + (r - 0.5) * 0.5, { len: sz * 1.12, wid: sz * 0.78, color: c, blush: ripe && top && r > 0.55 ? 0xd8603a : undefined, roll: (r - 0.5) * 0.5, low: !top || plantsLite(), shade: 0.92 + r * 0.14, src: mk.src }),
     ),
   );
 }

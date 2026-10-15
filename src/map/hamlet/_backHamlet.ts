@@ -8,7 +8,7 @@ import type { HeightField } from '../heightfield';
 import { BACK_HAMLET } from '../layout';
 import { pointScale } from '../road/glow';
 import type { MapContext, MapFrame, Subject } from '../types';
-import { fineLast, NearDetail } from '../veg/nearDetail';
+import { fineLast, NearDetail, zoomOf } from '../veg/nearDetail';
 import { swayLeaves } from '../veg/sway';
 import { VillageLights } from '../village/_lights';
 import { buildSmoke, type SmokeSource } from '../village/_smoke';
@@ -190,7 +190,8 @@ export function buildBackHamlet(ctx: MapContext): HamletPiece {
       object.visible = near || frames < 4;
       frames++;
       if (!object.visible) return;
-      plants.set(len2(c.x - BACK_HAMLET.x, c.z - BACK_HAMLET.z) < NEAR_PLANTS || frames < 4);
+      // (as far as they look the same: through the binoculars or a zoomed camera, `NEAR_PLANTS` × the zoom)
+      plants.set(len2(c.x - BACK_HAMLET.x, c.z - BACK_HAMLET.z) < NEAR_PLANTS * zoomOf(f.camera.fov) || frames < 4);
       shadows.update(f);
       palms.update(f);
       glow.update(f, f.camera);

@@ -1,4 +1,6 @@
 import { FLAGSTONE, pickTone, type Site } from '../jungle/_campKit';
+import { plantsLite } from '../veg/detail';
+import { bananaHand } from '../veg/produce';
 import type { KnFx } from './_knFx';
 
 /**
@@ -64,7 +66,11 @@ export function neakTa(s: Site, fx: KnFx, trunk: readonly [number, number] = [0,
     fx.candle(w.x, w.y, w.z);
   }
   // A hand of bananas and a can of drink; a marigold garland along the front edge.
-  s.box(0.4, top + 0.04, zo, 0.24, 0.06, 0.14, 0xe8c83a, 'petal', { ry: 0.4 });
+  {
+    // (the plant kit's fingers, veg/produce.ts: the site's point on the map, its turn added to the heading)
+    const w = s.world(0.34, top + 0.012, zo);
+    bananaHand(s.b, [w.x, w.y, w.z], s.yaw + 0.4 + Math.PI / 2, { fingers: plantsLite() ? 3 : 5, len: 0.17, thick: 0.04, color: 0xe8c83a, flat: true, src: s.src });
+  }
   s.box(0.52, top + 0.07, zo - 0.12, 0.06, 0.13, 0.06, 0xd83a2e, 'mapStone');
   for (let k = 0; k < 7; k++) s.box(-0.6 + k * 0.2, top - 0.05 - (k % 2) * 0.03, 0.66, 0.12, 0.1, 0.08, k % 3 === 1 ? 0xf2c14a : 0xe8902a, 'petal');
 

@@ -67,6 +67,8 @@ interface Leaf {
   fold: number;
   torn: number;
   color: number;
+  /** No midrib blocks (the map's lite bananas: the two halves' crease reads as the rib). */
+  bare?: boolean;
 }
 
 /** One paddle leaf: its stalk, then the blade in pieces, each piece a pale midrib and two halves sloping off it (or torn into strips). */
@@ -84,7 +86,7 @@ function leaf(b: VoxelBuilder, L: Leaf, look: PlantLook, r: (i: number, j?: numb
   for (let i = 0; i < L.segs; i++) {
     const el = Math.max(-1.45, L.blade - L.bend * i);
     const q = along(p, L.az, el, sl);
-    beam(b, p, q, ribW, ribW, rib, 'mapLeaf');
+    if (!L.bare) beam(b, p, q, ribW, ribW, rib, 'mapLeaf');
     const hw = (L.wid / 2) * prof[i];
     // Torn pieces: the outer pieces of older leaves split into strips across the half (the veins' way).
     const tear = L.torn > 0 && i >= L.segs / 2 && r(id, 10 + i) < L.torn;
@@ -288,7 +290,8 @@ function mother(b: VoxelBuilder, look: PlantLook, r: (i: number, j?: number) => 
  * The banana as it looks (`look`), foot at the origin: the garden's model, and every banana plant on the map
  * (veg/banana.ts `bananaPlant` sets this one in the hamlets, the villages and the jungle camps). `lite` (only the
  * map's own bananas, built on the low graphics level: never the home garden's) draws it cheaper: the stem in one
- * piece, no sheath streaks, four leaves of one piece (the rib and its two halves), none torn, no dry leaves or pups,
+ * piece, no sheath streaks, four leaves of two pieces each (the two halves, no midrib blocks) held out lower and
+ * arching over and down, none torn, no dry leaves or pups,
  * a bunch of two hands of four fingers on a plain stalk, the flower in two layers (the fruit in the leaves' family).
  */
 export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): void {
@@ -323,6 +326,12 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): voi
     let el = young ? lerp(1.32, 1.05, u) : lerp(1.15, 0.6, u);
     let blade = el - (young ? 0.15 : 0.32);
     let bend = young ? 0.16 : lerp(0.26, 0.42, u);
+    if (lite) {
+      // (lite: four leaves of two pieces each, held out lower and arching over and down: the banana's silhouette)
+      el = lerp(0.95, 0.55, u);
+      blade = el - 0.35;
+      bend = lerp(0.6, 0.8, u);
+    }
     let wid = ST.wid[st] * (0.9 + 0.2 * r(i, 5));
     let fold = young ? 0.2 : 0.12;
     if (droop === 1) {
@@ -339,7 +348,7 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): voi
     }
     const len = ST.len[st] * (i === 0 ? 0.72 : 0.88 + 0.24 * r(i, 6));
     // The youngest open leaf is still half rolled: narrow, its halves folded up.
-    if (i === 0 && droop === 0 && st >= 2) {
+    if (i === 0 && droop === 0 && st >= 2 && !lite) {
       wid *= 0.55;
       fold = -0.35;
     }
@@ -354,10 +363,11 @@ export function bananaModel(b: VoxelBuilder, look: PlantLook, lite = false): voi
         bend,
         len,
         wid,
-        segs: lite ? 1 : ST.segs[st],
+        segs: lite ? 2 : ST.segs[st],
         fold,
         torn: !lite && st >= 3 && u > 0.35 ? 0.1 + 0.6 * u : 0,
         color: pick(LEAF, r(i, 7)),
+        bare: lite,
       },
       look,
       r,

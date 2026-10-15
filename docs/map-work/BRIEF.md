@@ -1592,7 +1592,8 @@ windows, the stoves' embers and the candles are glows and halos
 trees' fruit, the juice cart's coconuts and the market's produce are drawn
 only within 140 m of the hamlet's middle (`NEAR_PLANTS`, veg/nearDetail.ts:
 last in each family's mesh, which draws only the blocks before them further
-off; the console line counts them).
+off; the console line counts them), times the camera's zoom against the
+map's 40° (`zoomOf`: through the binoculars, 4‥8°, the whole map).
 
 The morning market (ផ្សារភូមិ: `_bhMarket.ts`, where it stands:
 `_bhMarketPlan.ts`, its people `people/_sceneBackMarket.ts`) is the hamlet's

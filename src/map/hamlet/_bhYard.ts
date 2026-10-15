@@ -4,6 +4,8 @@ import type { VoxelBox } from '../../voxel/VoxelBuilder';
 import { SURFACE } from '../heightfield';
 import { leaf, long, round, sag, spiral, vine } from '../veg/plantKit';
 import { BAMBOO, dog, jar, laundry, LEAF, Local, POST, tone } from '../village/_kit';
+import { plantsLite } from '../veg/detail';
+import { bananaHand } from '../veg/produce';
 import type { BuildEnv } from './_bhHouses';
 import { GARDEN, HOMES, homeToWorld, PEN, SPIRIT, WELL, type BackSpots } from './_bhSpots';
 
@@ -265,7 +267,7 @@ function spiritHouse(env: BuildEnv, L: Local, g: (x: number, z: number) => numbe
   baySei(L, x + 0.31, y + 1.505, z + 0.25, 0.85);
   L.box(x - 0.06, y + 1.545, z + 0.34, 0.07, 0.08, 0.07, 0xe8eef2, 'mapStone');
   L.box(x + 0.02, y + 1.52, z + 0.4, 0.3, 0.03, 0.05, 0xf0a020, 'petal');
-  L.box(x - 0.02, y + 1.535, z + 0.2, 0.16, 0.05, 0.08, 0xe8c840, 'petal');
+  bananaHand(L.b, [x - 0.08, y + 1.522, z + 0.2], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
   // Incense sticks in a little pot, the candle.
   L.box(x + 0.12, y + 1.55, z + 0.3, 0.09, 0.09, 0.09, 0x8a5a3a, 'mapStone');
   for (const dx of [-0.02, 0.02]) L.box(x + 0.12 + dx, y + 1.71, z + 0.3, 0.012, 0.24, 0.012, 0x6a3a2a, 'petal');

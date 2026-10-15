@@ -26,6 +26,12 @@ export interface HandOpts {
   color: number;
   /** How the fingers rise from the crown (radians, default 0.15: lying). */
   el?: number;
+  /**
+   * Every block level, turned only about the upright (a hand on an offering plate): right in a turned `Frame`'s or
+   * `Local`'s builder too (`Frame.place` adds its turn to `ry`, which holds only for level blocks). The fingers fan
+   * out flat, no curve up.
+   */
+  flat?: boolean;
   src?: SourceTrace;
 }
 
@@ -41,7 +47,16 @@ export function bananaHand(b: VoxelBuilder, crown: P3, az: number, o: HandOpts):
   beam(b, along(crown, az, 0, -thick * 0.8), along(crown, az, 0, thick * 0.6), thick * 1.6, thick * 0.9, CROWN, 'petal', 0, 1, o.src);
   for (let f = 0; f < n; f++) {
     const off = (f - (n - 1) / 2) * 0.24;
-    long(b, along(crown, az + Math.PI / 2, 0, (f - (n - 1) / 2) * thick * 0.5), { len, thick, az: az + off, el: o.el ?? 0.15, curve: 0.55, neck: 0.55, taper: 0.7, sides: 4, color: f % 2 ? o.color : mix(o.color, 0xa8b040, 0.12), tip: TIP, src: o.src });
+    const at = along(crown, az + Math.PI / 2, 0, (f - (n - 1) / 2) * thick * 0.5);
+    const color = f % 2 ? o.color : mix(o.color, 0xa8b040, 0.12);
+    if (o.flat) {
+      // (two level pieces bending a little in plan, the dark tip level too)
+      const m = along(at, az + off, 0, len * 0.5);
+      const e = along(m, az + off * 1.6, 0, len * 0.5);
+      beam(b, at, along(m, az + off, 0, thick * 0.3), thick * 0.75, thick * 0.8, color, 'petal', 0, 1, o.src);
+      beam(b, m, e, thick * 0.85, thick * 0.85, color, 'petal', 0, 1, o.src);
+      beam(b, e, along(e, az + off * 1.6, 0, thick * 0.4), thick * 0.5, thick * 0.5, TIP, 'petal', 0, 1, o.src);
+    } else long(b, at, { len, thick, az: az + off, el: o.el ?? 0.15, curve: 0.55, neck: 0.55, taper: 0.7, sides: 4, color, tip: TIP, src: o.src });
   }
 }
 

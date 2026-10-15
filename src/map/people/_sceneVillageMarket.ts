@@ -4,8 +4,12 @@ import type { MapFrame, Subject } from '../types';
 import type { WordKey } from '../ui/lang';
 import { FV_BOATS, FV_GROCERY, FV_STALLS, boatBuyer, type FvBoat, type FvStall } from '../village/_fvPlan';
 import { GROUND, JETTY, LAKE_LEVEL, SHOP_HOME, VILLAGE_SPOTS, homeToWorld } from '../village/_spots';
+import { plantsLite } from '../veg/detail';
+import { round } from '../veg/plantKit';
+import { bananaHand, mangoLying, smallRounds } from '../veg/produce';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
+import { kitInRig } from './_kitRig';
 import { CARRY, FEAT, PEOPLE_SCALE, POSE, SLOT, type Feature, type Look, type Pose } from './_personModel';
 import { len, type Ground, type Obstacle, type Point, type Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
@@ -622,11 +626,20 @@ function boatDef(b: FvBoat): RigDef {
     top.forEach((c, k) => d.box([x + ((k % 2) - 0.5) * 0.14, 0.17 + Math.floor(k / 2) * 0.06, z + ((k >> 1) % 2 ? 0.07 : -0.07)], [0.16, 0.1, 0.16], c));
   };
   switch (b.goods) {
-    case 'fruit':
-      basket(0, 0.45, [0xf0b030, 0xe8c040, 0xf2a428, 0xd8b83a]);
-      basket(0, 1.05, [0xc8302a, 0xb82828, 0xd84030]);
-      d.box([0, 0.12, 1.5], [0.36, 0.2, 0.28], 0xe8d040).box([0, 0.18, 0.05], [0.3, 0.26, 0.3], 0xb8c870);
+    case 'fruit': {
+      // Mangoes and rambutans heaped in their baskets, a hand of bananas forward, a pomelo amidships: the plant kit's
+      // shapes as boxes of the people's things (_kitRig.ts; the cheap forms on the low graphics level, veg/detail.ts).
+      const lite = plantsLite();
+      d.box([0, 0.04, 0.45], [0.44, 0.2, 0.44], WICKER).box([0, 0.04, 1.05], [0.44, 0.2, 0.44], WICKER);
+      kitInRig(d, (k) => {
+        const mangoes = [0xf0b030, 0xe8c040, 0xf2a428, 0xd8b83a];
+        mangoes.forEach((c, i) => mangoLying(k, [((i % 2) - 0.5) * 0.15, 0.2 + (i >> 1) * 0.06, 0.45 + ((i >> 1) % 2 ? 0.07 : -0.07)], 0.4 + i * 1.3, { len: 0.17, wid: 0.11, color: c, blush: i % 2 ? undefined : 0xd8603a, roll: (i - 1.5) * 0.15, low: lite }));
+        smallRounds(k, [0, 0.14, 1.05], lite ? 4 : 6, 0.13, 0.09, [0xc8302a, 0xb82828, 0xd84030], 0.9, 0x6a9a3a);
+        bananaHand(k, [-0.12, 0.05, 1.5], 0.2 + Math.PI / 2, { fingers: lite ? 3 : 5, len: 0.2, thick: 0.045, color: 0xe8d040 });
+        round(k, [0, 0.05, 0.05], { wid: 0.28, hgt: 0.26, color: 0xb8c870, ribs: false, cap: 0x9ab050, ry: 0.4, low: lite });
+      });
       break;
+    }
     case 'greens':
       for (let k = 0; k < 6; k++) d.box([-0.2 + (k % 3) * 0.2, 0.06 + Math.floor(k / 3) * 0.1, 0.55], [0.14, 0.12, 0.7], [0x4f9a3a, 0x62aa44, 0x3f8a32][k % 3]);
       for (let k = 0; k < 3; k++) d.box([-0.15 + k * 0.15, 0.08, 1.3], [0.08, 0.08, 0.8], [0xb86a9a, 0xa85a8a, 0xc87aa8][k]);

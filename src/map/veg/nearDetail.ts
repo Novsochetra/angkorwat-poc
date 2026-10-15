@@ -59,3 +59,9 @@ export class NearDetail {
     for (const m of this.meshes) m.mesh.count = near ? m.all : m.coarse;
   }
 }
+
+/** How much a camera of vertical field `fov` (degrees) magnifies against the map's own (40°): 1 or more. A near-only distance times this keeps the small things drawn through the binoculars (roam/_binoculars.ts: 4‥8°) or a zoomed photo. */
+export function zoomOf(fov: number): number {
+  return Math.max(1, TAN_20 / Math.tan((Math.max(0.5, fov) * Math.PI) / 360));
+}
+const TAN_20 = Math.tan(Math.PI / 9);

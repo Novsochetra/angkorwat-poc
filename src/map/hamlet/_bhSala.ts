@@ -1,7 +1,9 @@
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
 import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import { Frame } from '../landmarks/_prasatKit';
+import { plantsLite } from '../veg/detail';
 import { round } from '../veg/plantKit';
+import { bananaHand } from '../veg/produce';
 import { bougainvillea, DECK, gableEnd, gableRoof, jar, Local, POST, RIDGE, ROOFS, shadeTree, tone, type Roof } from '../village/_kit';
 import { gableFan, type BuildEnv } from './_bhHouses';
 import { signWord } from './_bhSign';
@@ -204,6 +206,7 @@ function neakTa(L: Local, G: number, glow: (x: number, y: number, z: number, sx:
   glow(x + 0.01, G + 1.0, z + 0.18, 0.03, 0.03, 0.03, 0xff6a2a);
   L.box(x - 0.08, G + 0.79, z + 0.26, 0.04, 0.09, 0.04, 0xf4ecd8, 'mapStone');
   glow(x - 0.08, G + 0.87, z + 0.26, 0.035, 0.06, 0.035, 0xffb050, 0.8);
-  L.box(x + 0.12, G + 0.77, z + 0.27, 0.16, 0.04, 0.08, 0xe8c840, 'petal');
+  // (a hand of bananas: the plant kit's fingers, flat: this builder is the sala's turned frame)
+  bananaHand(L.b, [x + 0.06, G + 0.757, z + 0.27], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
   L.box(x - 0.2, G + 0.78, z - 0.02, 0.06, 0.07, 0.06, 0xe8eef2, 'mapStone');
 }
