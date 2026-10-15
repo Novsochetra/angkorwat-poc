@@ -142,7 +142,9 @@ function injectStyle(): void {
     body.roam-touch:not(.pad-on) .pt-chip { width: 36px; height: 36px; }
     /* (a phone upright: smaller chips, the ✕ without its word) */
     @media (max-width: 480px) {
-      body.roam-touch:not(.pad-on) .pt-chip { width: 31px; height: 31px; }
+      /* (clear of the tool column down the right side, as the footprint panel) */
+      body.roam-touch:not(.pad-on) .pt-bar { left: 8px; transform: none; max-width: calc(100% - 70px); }
+      body.roam-touch:not(.pad-on) .pt-chip { width: 30px; height: 30px; }
       .pt-row { gap: 4px; }
       .pt-in { padding: 6px 8px 7px; }
       .pt-done-t { display: none; }
