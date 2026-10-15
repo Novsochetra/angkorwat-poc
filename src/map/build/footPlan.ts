@@ -277,7 +277,16 @@ export function stairStep(dx: number, dz: number, color: number): Block {
 }
 
 /** Make the plan of a footprint building (see above). `ground(x, z)`: the land's height (m). */
-export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground: (x: number, z: number) => number): FootPlan {
+/**
+ * The plans' version. A building keeps the plan it was built with (build/footState.ts saves it with its record): a
+ * player's house never changes under him, and taking it down takes away exactly the blocks it was built of.
+ * - 1 (AWP-20): under a stilt house's floor, posts on a grid every 2 m at most.
+ * - 2 (AWP-25): under it, one row down its middle along its longer side (the shade open for a bamboo bed).
+ * A change to what a plan puts where is a new version here, and the old one keeps being made for the old records.
+ */
+export const PLAN_VERSION = 2;
+
+export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground: (x: number, z: number) => number, version: number = PLAN_VERSION): FootPlan {
   const cells: number[] = [];
   const raws: number[] = [];
   const at = new Map<number, number>();
@@ -411,7 +420,12 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
     // (under a house's floor, one row of posts down its middle along its longer side, as its ridge: none in the room,
     // and the open space under it on either side, the shade where a Khmer family sits and rests on a bamboo bed: AWP-25)
     const under = new Set<string>();
-    if (house) {
+    if (house && version < 2) {
+      // (version 1: the grid of the sides' posts)
+      const xs = postsAlong(i0, i1);
+      const zs = postsAlong(k0, k1);
+      for (const i of xs) for (const k of zs) if (i > i0 && i < i1 && k > k0 && k < k1) under.add(`${i},${k}`);
+    } else if (house) {
       const alongX = rectW(rect) >= rectD(rect);
       const mid = alongX ? Math.floor((k0 + k1) / 2) : Math.floor((i0 + i1) / 2);
       for (const a of postsAlong(alongX ? i0 : k0, alongX ? i1 : k1)) {

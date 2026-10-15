@@ -496,6 +496,7 @@ function cannot(id: PieceId): string | null {
 
 function enterPlacing(id: PieceId): void {
   if (!placing) {
+    modeTurned = 0;
     modeCamLetGo = false;
     modeCamOpen = FootMode.on ? 0 : MODE_CAM.openFor;
     turn = 0;
@@ -518,6 +519,7 @@ function exitPlacing(): void {
 /** Footprint mode (AWP-20: _buildFoot.ts) for a kind: build mode's camera and touch bar, its own E, keys and ghost. */
 function enterFoot(kind: FootKind): void {
   if (!FootMode.on) {
+    if (!placing) modeTurned = 0;
     modeCamLetGo = false;
     modeCamOpen = placing ? 0 : MODE_CAM.openFor;
   }
@@ -600,6 +602,11 @@ function buildHere(ctx: RoamCtx): void {
  * spirit house: a step or two before him) a little steeper, so the line from the camera to it goes over his hat.
  */
 const pitchFor = (ahead: number): number => MODE_CAM.pitch + Math.min(0.24, Math.max(0, (3.2 - ahead) * 0.2));
+/**
+ * How far build mode's first move turned the camera round over his shoulder (rad): W, the stick and the touch stick
+ * walk that much back from the camera's heading, so he walks where he faced as the mode opened, not along the camera.
+ */
+let modeTurned = 0;
 /** The follow camera's swing behind him before build mode held it (put back after). */
 let followBefore: number | null = null;
 /** Where build mode's camera last looked (eased back from it after). */
@@ -668,7 +675,10 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     // faces and a fence line he stretches runs along it)
     const shoulder = ctx.body.yaw + (placing ? MODE_CAM.shoulder * modeCamToward : 0);
     const round = Math.atan2(Math.sin(shoulder - cam.yaw), Math.cos(shoulder - cam.yaw));
-    if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
+    if (open && Math.abs(round) < 1.3) {
+      cam.yaw += round * kk;
+      modeTurned += round * kk;
+    }
     const reach = aim.reach;
     // (under a roof, AWP-23: a room's camera — low, as far back as the room lets it, so the ghost sits mid-screen and
     // the follow camera never has to rise over him to find room)
@@ -1215,6 +1225,16 @@ registerAddon({
     holdStep(ctx, dt);
     if (BuildWork.active) return tap('KeyJ', 'KeyL', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3', 'KeyO', 'KeyI');
     if (pressing) return false;
+    // (in build mode, the move turned back by the camera's turn over his shoulder: walker.ts reads it along the camera)
+    if ((placing || FootMode.on) && m === 'walk' && modeTurned) {
+      const mv = ctx.input.move;
+      const c = Math.cos(modeTurned);
+      const sn = Math.sin(modeTurned);
+      const x = mv.x;
+      const y = mv.y;
+      mv.x = x * c + y * sn;
+      mv.y = y * c - x * sn;
+    }
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
