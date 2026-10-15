@@ -48,7 +48,7 @@ export const FURN_GRID = 0.25;
  * The hanging lantern: its glass's middle (m over the floor: over his head, 2.26 m tall to the walk map, so he walks
  * under it), its hook (the cord goes up from there), the roof over the floor it may hang from (m: at least, at most).
  */
-export const HANG = { glass: 2.5, hook: 2.78, min: 2.85, max: 6 } as const;
+export const HANG = { glass: 2.5, hook: 2.78, min: 2.85, max: 6.5 } as const;
 
 /** What furniture adds to a piece's spec (build/pieces.ts `PieceSpec`). */
 export interface FurnSpec {
