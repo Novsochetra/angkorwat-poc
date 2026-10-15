@@ -15,8 +15,11 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, overlapsBuilt, type BuildReason } from './_buildSpots';
+import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
+import { furnFromUrl, installFurniture } from './_buildFurniture';
+import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
+import { FURN_GRID, isFurniture } from '../build/furniture';
 import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceWord } from './_buildWork';
 import { riel } from './_shopPurse';
@@ -91,7 +94,7 @@ const PIECE_REACH = 1.25;
  */
 const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
-const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
+const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp', 'oillamp', 'hanglamp', 'pot']);
 /**
  * Build mode's camera: tilt, distance at least (and per metre of the piece's reach), its ease and back (1/s), the focus
  * toward the ghost, over his shoulder (rad); its first move (picked on the card): this quick (1/s), this long (s).
@@ -114,7 +117,7 @@ let shiftDown = false;
 /** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
 let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
-const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as BuildReason | null, step: -1, prompt: null as string | null, snapped: false };
+const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity };
 let stepN = 0;
 /** What E does by a piece now (once a step). */
 const near = { step: -1, piece: null as Built | null, sit: false, prompt: null as string | null };
@@ -311,6 +314,8 @@ function askTake(ctx: RoamCtx, b: Built): void {
 // ── Build mode ─────────────────────────────────────────────────────────────
 
 const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
+/** Furniture's spot (AWP-23). */
+const _fs = { y: 0, ceil: Infinity, reason: null as FurnReason | null };
 
 /**
  * The ghost's turn on his land's lines (AWP-30): `raw` (rad, as `body.yaw`) clicked to `TURN_STEP` (15°) counted from
@@ -329,7 +334,7 @@ function landYaw(raw: number): number {
   return base + heldStep * TURN_STEP;
 }
 /** A spot (x or z, m) on his land's grid (`GRID`, from its box's corner: runs line up with its sides and each other). */
-const onGrid = (v: number, o: number): number => o + Math.round((v - o) / GRID) * GRID;
+const onGrid = (v: number, o: number, g = GRID): number => o + Math.round((v - o) / g) * g;
 
 /**
  * A fence's spot run on from the end of one he built, if one is near (into `spot`): its own end on that end. Its turn:
@@ -409,10 +414,22 @@ function placingNow(ctx: RoamCtx): void {
   const raw = b.yaw + Math.PI;
   spot.yaw = landYaw(raw) + turn;
   const ahead = ghostAhead(placing, spot.yaw, b.yaw);
-  spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0);
-  spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0);
+  // (furniture on a finer grid, on the floor at his level: AWP-23, _buildFurnSpots.ts)
+  const furn = isFurniture(placing);
+  spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
+  spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
   spot.snapped = placing === 'fence' && snapFence(raw);
-  const r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
+  spot.ceil = Infinity;
+  let r: FurnReason | null;
+  if (isFurniture(placing)) {
+    const f = furnSpot(ctx.world, placing, spot.x, spot.z, spot.yaw, b.pos.y, _fs);
+    r = f.reason;
+    spot.y = f.y;
+    spot.ceil = f.ceil;
+  } else {
+    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
+    spot.y = ctx.world.field.heightAt(spot.x, spot.z);
+  }
   spot.ok = !r;
   spot.reason = r;
   const id = placing;
@@ -421,8 +438,8 @@ function placingNow(ctx: RoamCtx): void {
   const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
   // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°")
   if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
-  else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
-  else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
+  else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(reasonWord(r)));
+  else spot.prompt = words(`not|${r}`, () => `${t(reasonWord(r))}  ·  ${keys}`);
   // (and by the touch bar's ⟲ ⟳, red or green)
   if (touchDeg && deg !== shownTouchDeg) {
     shownTouchDeg = deg;
@@ -444,6 +461,8 @@ function toPay(id: PieceId): { missing: Materials; riel: number } {
 function cannot(id: PieceId): string | null {
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) return words(`all|${id}`, () => t('buildAllBuilt', { n: num(p.max) }));
+  // (on a floor, in his house or of his blocks: furniture only, AWP-23)
+  if (!isFurniture(id) && lastCtx && onFurnFloor(lastCtx.world, lastCtx.body.pos.x, lastCtx.body.pos.y, lastCtx.body.pos.z)) return words('ground', () => t('buildOnGround'));
   const riels = env?.purse.riel ?? 0;
   const pay = toPay(id);
   if (riels < pay.riel) {
@@ -498,7 +517,7 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
-  const piece = BUILD.add(id, spot.x, ctx.world.field.heightAt(spot.x, spot.z), spot.z, spot.yaw);
+  const piece = BUILD.add(id, spot.x, spot.y, spot.z, spot.yaw);
   if (!piece) {
     if (pay.riel > 0) env.purse.earn(pay.riel);
     return;
@@ -677,6 +696,7 @@ function openCard(ctx: RoamCtx): void {
           cost: MATERIAL_IDS.filter((m) => (p.cost[m] ?? 0) > 0).map((m) => ({ m, n: p.cost[m]!, have: Math.min(p.cost[m]!, haveOf(m)) })),
           price: pay.riel > 0 ? riel(pay.riel) : '',
           off: cannot(id),
+          group: isFurniture(id) ? 'furn' : 'yard',
         };
       });
       const used = Math.min(1, plotBlocks() / PLOT_BUDGET);
@@ -691,6 +711,12 @@ function openCard(ctx: RoamCtx): void {
         cancel: t('buildCardCancel'),
         rows,
         meter,
+        // (the yard's pieces and the furniture on tabs, AWP-23; on a floor it opens on the furniture)
+        groups: [
+          { id: 'yard', label: t('buildYardTab') },
+          { id: 'furn', label: t('buildFurnTab') },
+        ],
+        group: onFurnFloor(ctx.world, ctx.body.pos.x, ctx.body.pos.y, ctx.body.pos.z) ? 'furn' : undefined,
       };
     },
     (id) => {
@@ -759,8 +785,8 @@ function nearNow(ctx: RoamCtx): void {
 function canStart(ctx: RoamCtx, anywhere: boolean): boolean {
   const p = ctx.body.pos;
   if (!HOME.owned || !inPlot(p.x, p.z, -START_PAST)) return false;
-  // (on the ground: not on the veranda or the stair)
-  if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9) return false;
+  // (on the ground: not on the veranda or the stair; or on a floor furniture goes on, AWP-23: his house's, his blocks')
+  if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9) return onFurnFloor(ctx.world, p.x, p.y, p.z);
   return anywhere || byHouse(p.x, p.z, BY_HOUSE);
 }
 
@@ -875,6 +901,7 @@ registerAddon({
     view = createBuildView(e.shot);
     e.scene.add(view.object);
     installBuildWalk(e.world);
+    installFurniture(e, view);
     BuildUses.init(e.world.field, view.standing);
     view.onStanding(() => BuildUses.sync(true));
     BUILD.on((ev) => {
@@ -908,7 +935,7 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
             near: near.piece ? { uid: near.piece.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1025,7 +1052,7 @@ registerAddon({
     const free = m === 'walk' && !BuildWork.active && !card?.open && !!env && !env.busy();
     if (free) {
       placingNow(ctx);
-      ghost?.show(spot.x, spot.z, spot.yaw, spot.ok);
+      ghost?.show(spot.x, spot.z, spot.yaw, spot.ok, spot.y, spot.ceil);
     } else ghost?.show(null);
   },
   frame(f: MapFrame, _m: RoamMode) {
@@ -1051,6 +1078,7 @@ registerAddon({
     // pieces into a player's save or open build mode: REVIEW.md "Lessons")
     if (!(env?.shot || import.meta.env.DEV)) return;
     if (q.get('build') === 'all' && !BUILD.list.length) placeAll(ctx.world);
+    furnFromUrl(q, ctx);
     const g = q.get('buildghost');
     if (g) {
       const [id, deg] = g.split(':');

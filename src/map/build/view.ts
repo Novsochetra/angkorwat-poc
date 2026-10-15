@@ -54,6 +54,10 @@ const LIGHT: Partial<Record<PieceId, { w: number; h: number; halo: number; color
   // its post about 4 m across; the candle a small warm light on the spirit house and its tray)
   lamp: { w: 0.2, h: 0.235, halo: 1.7, color: GLOW.lantern, cd: 9, reach: 14 },
   spirit: { w: 0.034, h: 0.066, halo: 0.75, color: 0xffb050, cd: 1.2, reach: 5 },
+  // (AWP-23, build/furniture.ts: the oil lamp's glass chimney 0.1 × 0.2 m, a small warm light on the floor round it; the
+  // hanging lantern's glass 0.12 × 0.19 m in its tin frame, a room's light from over his head)
+  oillamp: { w: 0.11, h: 0.21, halo: 0.9, color: GLOW.lantern, cd: 3, reach: 7 },
+  hanglamp: { w: 0.13, h: 0.2, halo: 1.4, color: GLOW.lantern, cd: 7, reach: 12 },
 };
 
 export interface PieceLookData {
