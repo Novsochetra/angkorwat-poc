@@ -3,7 +3,7 @@ import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Bui
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
 import { BLOCKS, cellOf, type CellBounds } from '../blocks/store';
-import { BUILD, distTo, overlap, toLocal } from '../build/state';
+import { BUILD, distTo, toLocal } from '../build/state';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -15,7 +15,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { BUILD_REASON_WORDS, byHouse, canBuild, FENCE_JOINT, ghostAhead, type BuildReason } from './_buildSpots';
+import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, overlapsBuilt, type BuildReason } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceWord } from './_buildWork';
@@ -85,8 +85,11 @@ const START_PAST = 2;
 const HOLD_FOR = 0.8;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
 const PIECE_REACH = 1.25;
-/** A fence's end snaps onto another's end within this (m: the ghost's middle from where it would go). */
-const SNAP = { d: 1.5 };
+/**
+ * A fence's end snaps onto another's end within this (m: the ghost's middle from where it would go); it goes on that
+ * fence's own line, or square to it, when he faces within `align` of it (rad: 20°).
+ */
+const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
 /**
@@ -125,6 +128,13 @@ let modeCamLetGo = false;
 /** Seconds left of the camera's first move into build mode. */
 let modeCamOpen = 0;
 let touchBar: HTMLElement | null = null;
+/** The touch bar's turn ("45°") and the one shown. */
+let touchDeg: HTMLElement | null = null;
+let shownTouchDeg = -1;
+/** A ⟲ ⟳ held (touch): 5° after `LONG.first` s, again every `LONG.every` s; the tap after it does not turn 15°. */
+const LONG = { first: 0.45, every: 0.35 };
+let longTimer: ReturnType<typeof setTimeout> | null = null;
+let longFired = false;
 /** His land's edge on the ground (while he builds). */
 let edge: PlotEdge | null = null;
 /** A check's `plotedge=1`: shown without building. */
@@ -139,7 +149,11 @@ function blocksOf(id: PieceId): number {
   if (n === undefined) kindBlocks.set(id, (n = pieceLook(id, 0.37).boxes.length));
   return n;
 }
-/** The pieces' blocks (each its own model's, with its own seed), counted again when the list changes. */
+/**
+ * The pieces' blocks (each its own model's, with its own seed), counted again when the list changes. Every piece
+ * counts, a piece left past his land from before AWP-31 too: it is drawn and saved like the rest, and the budget is
+ * what a phone draws of everything he built (so taking it down makes room).
+ */
 let piecesAt = -1;
 let piecesN = 0;
 function piecesBlocks(): number {
@@ -153,7 +167,10 @@ function piecesBlocks(): number {
 addPlotBlocks('pieces', piecesBlocks);
 /** His own blocks (the block layer, blocks/store.ts: AWP-16) in his land's box, every height (cells). */
 const PLOT_CELLS: CellBounds = { i0: cellOf(PLOT_BOX.x0), i1: cellOf(PLOT_BOX.x1), j0: -4096, j1: 4096, k0: cellOf(PLOT_BOX.z0), k1: cellOf(PLOT_BOX.z1) };
-addPlotBlocks('blocks', () => BLOCKS.countIn(PLOT_CELLS));
+/** (counted again only when the layer changes: `onChange`, not every frame) */
+let layerN = -1;
+BLOCKS.onChange(() => (layerN = -1));
+addPlotBlocks('blocks', () => (layerN < 0 ? (layerN = BLOCKS.countIn(PLOT_CELLS)) : layerN));
 /** Room on his land for one more `id` (the budget)? A little over the line rounds the way the meter shows. */
 const roomFor = (id: PieceId): boolean => plotBlocks() + blocksOf(id) <= PLOT_BUDGET;
 
@@ -271,8 +288,6 @@ function askTake(ctx: RoamCtx, b: Built): void {
 // ── Build mode ─────────────────────────────────────────────────────────────
 
 const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
-/** Footprints may touch this much (m), as _buildSpots.ts lets fence runs touch. */
-const SNAP_TOUCH = 0.03;
 
 /**
  * The ghost's turn on his land's lines (AWP-30): `raw` (rad, as `body.yaw`) clicked to `TURN_STEP` (15°) counted from
@@ -294,20 +309,36 @@ function landYaw(raw: number): number {
 const onGrid = (v: number, o: number): number => o + Math.round((v - o) / GRID) * GRID;
 
 /**
- * A fence's spot run on from the end of one he built, if one is near (into `spot`): its own end on that end, at the
- * ghost's turn — in line, a corner, a bend of 45° or 30° (the two cross at the joint: _buildSpots.ts `FENCE_JOINT`).
- * The nearest such spot to where the ghost was, within `SNAP.d`; never onto another piece.
+ * A fence's spot run on from the end of one he built, if one is near (into `spot`): its own end on that end. Its turn:
+ * that fence's own line (on in line) or square to it (a corner) whenever the way he faces is within `SNAP.align` of it
+ * (straight is the easy way: no 15° step can bend a run he means to go on with, and a fence built before AWP-30 at any
+ * angle goes on at its own), then `turn` (, . / ⟲ ⟳ / the pad: a bend he asks for); past that, the ghost's own turn (a
+ * bend of 30°, 45°…). Two runs meeting there may cross at the joint (_buildSpots.ts `fenceJoint`). The nearest such
+ * spot to where the ghost was, within `SNAP.d`; never onto another piece. `raw`: the way the ghost's front would face
+ * him, unclicked.
  */
-function snapFence(): boolean {
+function snapFence(raw: number): boolean {
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
+  let by = spot.yaw;
   const half = PIECES.fence.w / 2;
-  const c = Math.cos(spot.yaw);
-  const s = Math.sin(spot.yaw);
-  _snap.yaw = spot.yaw;
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
+    // (its own lines: on in line (0, π) or square (±π/2), the one nearest the way he faces)
+    let yaw = spot.yaw;
+    let near = SNAP.align;
+    for (let q = 0; q < 4; q++) {
+      const y = f.yaw + (q * Math.PI) / 2;
+      const d = Math.abs(Math.atan2(Math.sin(y - raw), Math.cos(y - raw)));
+      if (d < near) {
+        near = d;
+        yaw = y + turn;
+      }
+    }
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    _snap.yaw = yaw;
     // (its local x axis on the map is (cos, −sin): its ends half a run along it)
     const fc = Math.cos(f.yaw);
     const fs = Math.sin(f.yaw);
@@ -323,17 +354,19 @@ function snapFence(): boolean {
         _snap.x = x;
         _snap.z = z;
         let free = true;
-        for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH, b.id === 'fence' ? FENCE_JOINT : 0)) free = false;
+        for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) free = false;
         if (!free) continue;
         best = d;
         bx = x;
         bz = z;
+        by = yaw;
       }
     }
   }
   if (best >= SNAP.d) return false;
   spot.x = bx;
   spot.z = bz;
+  spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
   return true;
 }
 
@@ -350,20 +383,27 @@ function placingNow(ctx: RoamCtx): void {
   spot.step = stepN;
   const b = ctx.body;
   // (its front to him, on his land's lines, turned more with , and .)
-  spot.yaw = landYaw(b.yaw + Math.PI) + turn;
+  const raw = b.yaw + Math.PI;
+  spot.yaw = landYaw(raw) + turn;
   const ahead = ghostAhead(placing, spot.yaw, b.yaw);
   spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0);
   spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0);
-  spot.snapped = placing === 'fence' && snapFence();
+  spot.snapped = placing === 'fence' && snapFence(raw);
   const r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
   spot.ok = !r;
   spot.reason = r;
   const id = placing;
   const deg = shownDeg(id, spot.yaw);
   const keys = words('modeKeys', () => `, .  ${t('buildTurn')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
-  if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')}  ·  ${num(deg)}°  ·  ${keys}`);
+  // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°")
+  if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
+  // (and by the touch bar's ⟲ ⟳, red or green)
+  if (touchDeg && deg !== shownTouchDeg) {
+    shownTouchDeg = deg;
+    touchDeg.textContent = `${num(deg)}°`;
+  }
 }
 
 /**
@@ -448,6 +488,8 @@ function buildHere(ctx: RoamCtx): void {
   console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
+  // (the next one starts straight again: a fence runs on in line from this one's end, a bend asked for again)
+  turn = 0;
   BuildWork.start(ctx, piece);
 }
 
@@ -511,12 +553,36 @@ function showTouchBar(on: boolean): void {
     injectStyle();
     const el = document.createElement('div');
     el.className = 'bd-bar';
-    el.innerHTML = `<button type="button" class="bd-tb mu-frame mu-sm" data-do="left" aria-label="⟲"><span class="mu-bg"></span><span class="bd-tb-t">⟲</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="right" aria-label="⟳"><span class="mu-bg"></span><span class="bd-tb-t">⟳</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="other"><span class="mu-bg"></span><span class="bd-tb-t"></span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span aria-hidden="true">✕</span><span class="bd-tb-t"></span></button>`;
+    el.innerHTML = `<button type="button" class="bd-tb mu-frame mu-sm" data-do="left" aria-label="⟲"><span class="mu-bg"></span><span class="bd-tb-t">⟲</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="right" aria-label="⟳"><span class="mu-bg"></span><span class="bd-tb-t">⟳</span></button><span class="bd-tb-deg mu-frame mu-sm" aria-live="polite"><span class="mu-bg"></span><span class="bd-tb-dv">0°</span></span><button type="button" class="bd-tb mu-frame mu-sm" data-do="other"><span class="mu-bg"></span><span class="bd-tb-t"></span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span aria-hidden="true">✕</span><span class="bd-tb-t"></span></button>`;
+    // ⟲ ⟳ held: 5° (the fine turn on a phone), again while held; the tap that ends it turns no more.
+    const stopLong = () => {
+      if (longTimer) clearTimeout(longTimer);
+      longTimer = null;
+    };
+    el.addEventListener('pointerdown', (e) => {
+      const d = (e.target as HTMLElement).closest<HTMLButtonElement>('button')?.dataset.do;
+      if (d !== 'left' && d !== 'right') return;
+      stopLong();
+      longFired = false;
+      const again = (wait: number) => {
+        longTimer = setTimeout(() => {
+          longFired = true;
+          turnBy(d === 'left' ? 1 : -1, TURN_FINE);
+          again(LONG.every);
+        }, wait * 1000);
+      };
+      again(LONG.first);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) el.addEventListener(ev, stopLong);
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!btn) return;
-      env?.uiSound('select');
       const d = btn.dataset.do;
+      if ((d === 'left' || d === 'right') && longFired) {
+        longFired = false;
+        return;
+      }
+      env?.uiSound('select');
       if (d === 'done') exitPlacing();
       else if (d === 'left') turnBy(1);
       else if (d === 'right') turnBy(-1);
@@ -524,6 +590,8 @@ function showTouchBar(on: boolean): void {
     });
     env.layer.append(el);
     touchBar = el;
+    touchDeg = el.querySelector<HTMLElement>('.bd-tb-dv');
+    shownTouchDeg = -1;
   }
   if (!touchBar) return;
   const ts = touchBar.querySelectorAll<HTMLElement>('.bd-tb-t');
@@ -549,6 +617,11 @@ function injectStyle(): void {
     .bd-tb { position: relative; display: inline-flex; white-space: nowrap; align-items: center; gap: 6px; min-height: 40px; min-width: 44px; justify-content: center; padding: 0 12px; border: 0; background: none; color: var(--mu-ink); cursor: pointer;
       font: 700 14px / 1 var(--mu-display); --mu-edge: var(--mu-btn-edge); touch-action: manipulation; }
     .bd-tb > .mu-bg { background: var(--mu-btn); }
+    /* The ghost's turn by ⟲ ⟳ (AWP-30: the phone shows it): a quiet gold number. */
+    .bd-tb-deg { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 40px; padding: 0 10px; color: #ffe2a0;
+      font: 700 15px / 1 var(--mu-display); --mu-edge: rgba(255, 216, 120, 0.4); pointer-events: none; }
+    .bd-tb-deg > .mu-bg { background: rgba(10, 18, 30, 0.72); }
+    .bd-tb-dv { position: relative; }
     :lang(km) .bd-tb { font-size: 15px; }
     .bd-tb:active { transform: scale(0.96); }
     .rh-prompt.bd-hold::after, .rt-use.bd-hold::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: 4px; height: 4px; border-radius: 2px;
@@ -868,7 +941,9 @@ registerAddon({
       const right = tap('Period') || (pad.active && tap('Digit5'));
       if (left || right) {
         for (const c of ['Comma', 'Period', 'Digit4', 'Digit5']) taps?.delete(c);
-        turnBy(left ? 1 : -1, shiftDown && !pad.active ? TURN_FINE : TURN_STEP);
+        // (Shift on the keys, L2 held on the pad: 5°)
+        const fine = pad.active ? pad.held('l2') : shiftDown;
+        turnBy(left ? 1 : -1, fine ? TURN_FINE : TURN_STEP);
       }
       // F or C (the pad's ↓): the card again (another piece); not a greeting.
       if (tap('KeyF', 'KeyC')) {
