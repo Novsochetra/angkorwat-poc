@@ -6,6 +6,7 @@ import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
 import { BUILD, distTo, toLocal } from '../build/state';
 import { FOOT_KIND_IDS, FOOT_KINDS, type FootKind, type FootSide } from '../build/footPlan';
 import { FOOTS, partFoot, type FootRec } from '../build/footState';
+import { BED_SLEEP, bedPlace, type BedPlace } from '../build/beds';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -125,9 +126,9 @@ let fineKey = false;
 const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as BuildReason | null, step: -1, prompt: null as string | null, snapped: false };
 let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
-const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, prompt: null as string | null };
+const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
-let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | null } | null = null;
+let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | null; bed?: BedPlace | null } | null = null;
 /** What the take-down question is about. */
 let asking: WorkJob | null = null;
 /** The hint said (saved; a shot only with `buildhint=1`). */
@@ -275,6 +276,7 @@ function holdStep(ctx: RoamCtx, dt: number): void {
     holdBar(null);
     if (h.tap === 'keep') BuildWork.start(ctx, h.job);
     else if (h.tap === 'sit') env?.controls.press('KeyJ');
+    else if (h.tap === 'sleep' && h.bed) BED_SLEEP.start?.(h.bed);
     return;
   }
   h.t += dt;
@@ -817,6 +819,7 @@ function nearNow(ctx: RoamCtx): void {
   near.step = stepN;
   near.piece = null;
   near.foot = null;
+  near.bed = null;
   near.prompt = null;
   near.sit = false;
   const b = ctx.body;
@@ -881,6 +884,13 @@ function nearNow(ctx: RoamCtx): void {
   if (best.done < 1) {
     const pct = Math.round(best.done * 100);
     near.prompt = words(`keep|${best.id}|${pct}`, () => `E  ${t('buildKeep', { name, pct: num(pct) })}  ·  ${t('buildHoldTake')}`);
+    return;
+  }
+  // A bed under a roof of his (AWP-25: build/beds.ts): E sleeps there as on his mat at home (the home add-on's card).
+  const bed = BED_SLEEP.start ? bedPlace(best) : null;
+  if (bed) {
+    near.bed = bed;
+    near.prompt = words(`bed|${best.id}`, () => `E  ${t('homeSleep')}  ·  ${t('buildHoldTake')}`);
     return;
   }
   if (PIECES[best.id].seat && BuildUses.seatNear(p.x, p.y, p.z) === best) {
@@ -1209,7 +1219,7 @@ registerAddon({
     if (near.piece) {
       wireHold();
       const piece = near.piece;
-      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.sit ? 'sit' : null };
+      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null, bed: near.bed };
       holdBar(0);
       return;
     }

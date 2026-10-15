@@ -12,6 +12,7 @@ import { stretchPose } from './_homePoses';
 import { angleDiff } from './followCam';
 import { createSnore } from './_rest';
 import type { RoamCtx } from './types';
+import type { BedPlace } from '../build/beds';
 
 /**
  * Sleeping in his stilt house (roam/_home.ts: E "Sleep" at his mat, then the
@@ -88,28 +89,37 @@ const _v = new Vector3();
 
 let snore: { show(on: boolean): void; place(x: number, y: number): void } | null = null;
 
-/** Start (from where he stands in the room; `lying`: already down and asleep, a URL's `home=sleep`; `stretch`: a URL's `home=stretch`). */
-export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: 'stand' | 'lying' | 'stretch' = 'stand'): SleepSession {
+/**
+ * Start (from where he stands in the room; `lying`: already down and asleep, a URL's `home=sleep`; `stretch`: a URL's
+ * `home=stretch`). `bed`: on a bed he built under a roof of his instead of his mat (AWP-25, build/beds.ts): the same
+ * night, with no net; he steps up onto it and down off it, and stretches before it.
+ */
+export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: 'stand' | 'lying' | 'stretch' = 'stand', bed: BedPlace | null = null): SleepSession {
   const body = ctx.body;
   const ex = env.explorer;
   const cam = ctx.cam;
   snore ??= createSnore(env.layer);
-  const floor = body.pos.y;
-  const [lx, lz] = homeToWorld(HOME_IN.lie.x, HOME_IN.lie.z);
-  const spot = new Vector3(lx, floor, lz);
+  /** His mat has its net (`HOME.netDown`); a bed has none. */
+  const net = !bed;
+  const floor = bed ? bed.out.y : body.pos.y;
+  const [lx, lz] = bed ? [bed.x, bed.z] : homeToWorld(HOME_IN.lie.x, HOME_IN.lie.z);
+  const spot = new Vector3(lx, bed ? bed.y : floor, lz);
   // (up again, he steps off the mat and out from under the net to stretch, turned to the room)
-  const [ox, oz] = homeToWorld(HOME_IN.wake.x, HOME_IN.wake.z);
+  const [ox, oz] = bed ? [bed.out.x, bed.out.z] : homeToWorld(HOME_IN.wake.x, HOME_IN.wake.z);
   const outSpot = new Vector3(ox, floor, oz);
-  const outYaw = homeYaw(-Math.PI / 2);
+  const outYaw = bed ? bed.out.yaw : homeYaw(-Math.PI / 2);
   // (first out of the net's open front, then to the stretch's spot)
-  const [vx, vz] = homeToWorld(HOME_IN.out.x, HOME_IN.out.z);
+  const [vx, vz] = bed ? [ox, oz] : homeToWorld(HOME_IN.out.x, HOME_IN.out.z);
   const via = new Vector3(vx, floor, vz);
-  let viaDone = false;
-  // The camera for the stretch: by the east window up near the eaves, looking across the room at him.
-  const [scx, scz] = homeToWorld(HOME_IN.stretchCam.x, HOME_IN.stretchCam.z);
-  const stretchCam = new Vector3(scx, floor + HOME_IN.stretchCam.y, scz);
-  // (facing the house's +x: his head goes back toward the pillow at the mat's east end)
-  const yaw = homeYaw(Math.PI / 2);
+  let viaDone = !!bed;
+  // The camera for the stretch: by the east window up near the eaves, looking across the room at him (by a bed: before
+  // him, up a little, looking back at him).
+  const [scx, scz] = bed ? [ox + Math.sin(outYaw) * 2.6, oz + Math.cos(outYaw) * 2.6] : homeToWorld(HOME_IN.stretchCam.x, HOME_IN.stretchCam.z);
+  const stretchCam = new Vector3(scx, floor + (bed ? 1.9 : HOME_IN.stretchCam.y), scz);
+  // (facing the house's +x: his head goes back toward the pillow at the mat's east end; on a bed, along it)
+  const yaw = bed ? bed.yaw : homeYaw(Math.PI / 2);
+  /** The camera beside him lying down comes from this heading's side (the house's frame at home). */
+  const camBase = yaw - Math.PI / 2;
   const before = { pitch: cam.pitch, distance: cam.distance, pitchMin: cam.pitchMin };
   const state: RestState = { u: 0, sleep: 0, t: 0, pack: ex.currentOutfit.pack, knife: ex.currentOutfit.legs === 'shorts' };
   let phase: Phase = 'walk';
@@ -222,8 +232,10 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
       state.sleep = 1;
       startPosture();
       hat(false);
-      HOME.netDown = true;
-      HOME.net = 1;
+      if (net) {
+        HOME.netDown = true;
+        HOME.net = 1;
+      }
       ex.asleep = true;
       setPhase('doze');
       pt = T.doze;
@@ -233,7 +245,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
       ex.animator.posture = (tt: number) => stretchPose(stretch, tt);
       ex.animator.postureFeet = true;
     }
-    cam.yaw = homeYaw(0) + Math.PI + CAM.yaw;
+    cam.yaw = camBase + Math.PI + CAM.yaw;
     cam.pitch = CAM.pitch;
     cam.distance = CAM.dist * (body.scale / 1.4);
     framed = 9;
@@ -293,6 +305,8 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
           } else {
             body.pos.x = spot.x;
             body.pos.z = spot.z;
+            // (onto a bed's top: a step up)
+            body.pos.y = spot.y;
             const dy = angleDiff(yaw, body.yaw);
             body.yaw += dy * Math.min(1, dt * TURN);
             if (Math.abs(dy) < 0.05) {
@@ -306,7 +320,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
           break;
         }
         case 'down':
-          if (u > 1.7 && !HOME.netDown) {
+          if (net && u > 1.7 && !HOME.netDown) {
             HOME.netDown = true;
             SFX.play('homeNet', 0.7);
           }
@@ -343,7 +357,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
             ex.asleep = false;
           }
           state.sleep = Math.max(0, state.sleep - dt / 0.6);
-          if (pt >= 0.45 && HOME.netDown) {
+          if (net && pt >= 0.45 && HOME.netDown) {
             HOME.netDown = false;
             SFX.play('homeNet', 0.6);
           }
@@ -359,7 +373,8 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
               finish(c);
               break;
             }
-            // Standing: off the mat, out from under the net (the walk), then the stretch.
+            // Standing: off the mat, out from under the net (the walk), then the stretch (off a bed: down to its ground).
+            body.pos.y = outSpot.y;
             ex.animator.posture = null;
             ex.animator.postureFeet = true;
             setPhase('out');
@@ -423,7 +438,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
       cancelled = true;
       if (dark) void env.hud.fade(0, 0.3);
       dark = false;
-      HOME.netDown = false;
+      if (net) HOME.netDown = false;
       endPosture();
       hat(true);
       snore?.show(false);
@@ -434,7 +449,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
 
   /** Up again before he slept: the net up, sit up, stand. */
   function getUp(): void {
-    if (HOME.netDown) {
+    if (net && HOME.netDown) {
       HOME.netDown = false;
       SFX.play('homeNet', 0.5);
     }
@@ -450,7 +465,8 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
     endPosture();
     hat(true);
     snore?.show(false);
-    HOME.netDown = false;
+    if (net) HOME.netDown = false;
+    if (bed) ctx.body.pos.y = Math.min(ctx.body.pos.y, floor + 0.05);
     c.cam.pitchMin = before.pitchMin;
     // (the room's camera, roam/_home.ts, takes him over from here)
     phase = 'done';
@@ -478,7 +494,7 @@ export function startSleep(env: AddonEnv, ctx: RoamCtx, plan: SleepPlan, from: '
     }
     if (framed < 3 && phase !== 'done') {
       const k = 1 - Math.exp(-CAM.rate * dt);
-      cam.yaw += angleDiff(homeYaw(0) + Math.PI + CAM.yaw, cam.yaw) * k;
+      cam.yaw += angleDiff(camBase + Math.PI + CAM.yaw, cam.yaw) * k;
       cam.pitch += (CAM.pitch - cam.pitch) * k;
       cam.distance += (CAM.dist * (body.scale / 1.4) - cam.distance) * k;
     }

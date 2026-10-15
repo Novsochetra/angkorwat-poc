@@ -11,6 +11,8 @@ import { addHammock } from './_hammockSpots';
 import { createHomeCard, type HomeCard, type HomeChoice } from './_homeCard';
 import { doorSide, doorsOpen, doorwayBusy, startDoor, type DoorSession } from './_homeDoor';
 import { startSleep, type SleepPlan, type SleepSession } from './_homeSleep';
+import { BED_SLEEP, bedPlace, type BedPlace } from '../build/beds';
+import { BUILD } from '../build/state';
 import { startTalk, TALK, type TalkSession } from './_homeTalk';
 import { installHomeWalk } from './_homeWalk';
 import { angleDiff } from './followCam';
@@ -280,7 +282,7 @@ function plans(cycling: boolean): { plan: SleepPlan; words: () => HomeChoice }[]
 }
 
 /** The card: until when he sleeps (or, while the time stands still, a short rest). `force`: as when the time runs (a check's picture). */
-function openCard(ctx: RoamCtx, force = false): void {
+function openCard(ctx: RoamCtx, force = false, bed: BedPlace | null = null): void {
   if (!env) return;
   const e = env;
   lastCtx = ctx;
@@ -300,8 +302,10 @@ function openCard(ctx: RoamCtx, force = false): void {
       const c = list.find((x) => x.words().id === id);
       if (!c || session || !lastCtx) return;
       const ctx = lastCtx;
-      // (to bed for the night, or till an event: the doors shut first, from inside, unless someone is in the doorway)
-      if (c.plan.kind !== 'rest' && doorsOpen() && !doorwayBusy(ctx, floor)) {
+      // (on a bed he built: there, as on his mat; to bed for the night, or till an event: the doors shut first, from
+      // inside, unless someone is in the doorway)
+      if (bed) session = startSleep(e, ctx, c.plan, 'stand', bed);
+      else if (c.plan.kind !== 'rest' && doorsOpen() && !doorwayBusy(ctx, floor)) {
         session = startDoor(e, ctx, floor, 'close', -1, unlockDoors);
         next = () => startSleep(e, ctx, c.plan);
         shutForBed = true;
@@ -347,6 +351,10 @@ registerAddon({
   init(e) {
     env = e;
     floor = homeFloor(e.world.field).floor;
+    // (a bed he built under a roof of his: the build add-on's E by it, a short press, sleeps him there: AWP-25)
+    BED_SLEEP.start = (bed) => {
+      if (lastCtx && !session && !card?.open) openCard(lastCtx, false, bed);
+    };
     installHomeWalk(e.world, floor);
     // The hammock under the house (the hammock add-on's: its cloth and ropes are the house's petal blocks).
     const hm = homeHammock();
@@ -529,6 +537,12 @@ registerAddon({
       houseHat(true);
       if (!q.has('rcam')) roomCamera(ctx, true, 10);
     }
+    // (`bedsleep=<uid>`: asleep on that bed he built, under a roof of his: a check's, shots and the dev server only)
+    const bs = q.get('bedsleep');
+    const bp = bs && (env.shot || import.meta.env.DEV) ? BUILD.byUid(bs) : null;
+    const bedAt = bp ? bedPlace(bp) : null;
+    if (bs && (env.shot || import.meta.env.DEV) && !bedAt) console.warn(`[home] bedsleep=${bs}: no bed of that name under a roof of his`);
+    if (bedAt) session = startSleep(env, ctx, { kind: env.shot ? 'still' : 'rest' }, 'lying', bedAt);
     else if (v === 'sleep' || v === 'stretch') {
       // (in his room: his hat off at the door, as when he walks in)
       inRoom = true;

@@ -5,7 +5,7 @@ import { FOOT_KIND_IDS, FOOT_KINDS, planFoot, rectOf, sizeFault, type FootKind, 
 import { MATERIAL_IDS, type Materials } from './materials';
 import { BUILT } from './pieces';
 import { PLOT_BOX } from './plot';
-import { distTo, overlap, type Foot } from './state';
+import { corners, distTo, overlap, type Foot } from './state';
 
 /**
  * His footprint buildings (AWP-20: the plans, build/footPlan.ts; drawing and
@@ -395,3 +395,35 @@ BUILT.feet = (x: number, z: number, r: number): boolean => {
   return false;
 };
 BUILT.feetOver = (f: Foot, m: number): boolean => feetOver(f, m);
+BUILT.feetRoom = (f: Foot, h: number): boolean => roomIn(f, h);
+
+const _rc: [number, number][] = [];
+/**
+ * A piece inside a stilt house or a shed he built whole (AWP-25): its footprint within the building's, clear of the
+ * building's blocks from the ground to its top (`h` m: under a house's floor between its posts, under a shed's roof
+ * inside its half walls) and of every other footprint building's land.
+ */
+function roomIn(f: Foot, h: number): boolean {
+  // (a piece's, not a footprint's: no footprint building inside another)
+  if (!ground || f.id === 'foot') return false;
+  let host: FootRec | null = null;
+  corners(f, 0, _rc);
+  for (const r of list) {
+    if (r.kind === 'fence' || r.done < 1) continue;
+    const x0 = cellMin(r.rect.i0);
+    const x1 = cellMin(r.rect.i1 + 1);
+    const z0 = cellMin(r.rect.k0);
+    const z1 = cellMin(r.rect.k1 + 1);
+    if (_rc.every(([x, z]) => x > x0 && x < x1 && z > z0 && z < z1)) host = r;
+  }
+  if (!host) return false;
+  for (const r of list) if (r !== host && partsOf(r).some((p) => overlap(f, partFoot(p, _pf), -0.03))) return false;
+  const plan = planOf(host);
+  const g = ground(f.x, f.z);
+  for (let b = 0; b < plan.n; b++) {
+    const j = plan.cells[b * 3 + 1];
+    if ((j + 1) * 0.5 <= g || j * 0.5 >= g + h) continue;
+    if (distTo(f, cellMin(plan.cells[b * 3]) + 0.25, cellMin(plan.cells[b * 3 + 2]) + 0.25) < 0.25) return false;
+  }
+  return true;
+}

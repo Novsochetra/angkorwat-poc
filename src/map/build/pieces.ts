@@ -196,6 +196,12 @@ export const BUILT = {
   feet: (_x: number, _z: number, _r: number): boolean => false,
   /** Would footprint `f` (grown by `m`, m) stand in a footprint building's land (AWP-20: build/footState.ts fills it)? */
   feetOver: (_f: Foot, _m: number): boolean => false,
+  /**
+   * Would footprint `f` (a piece `h` m tall) stand inside a stilt house or a shed he built, clear of its blocks (under
+   * the house's floor, under the shed's roof) and of every other footprint building's land (AWP-25: a bed under his
+   * roof)? build/footState.ts fills it.
+   */
+  feetRoom: (_f: Foot, _h: number): boolean => false,
 };
 
 /** A point of a piece's frame in the world (into `out`: x, z). */
