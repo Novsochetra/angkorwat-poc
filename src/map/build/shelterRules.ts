@@ -26,13 +26,22 @@ import { toLocal } from './state';
  *   piece (`PenFrame`: a frame where the pen piece would stand, its gate on the
  *   fence's gate): a fence footprint closing round at least `PEN_ROOM` (the pen
  *   piece's rails and a margin), its gate on a side, with a roof over the
- *   frame's middle (a shed or a house built inside the ring, a shelter piece,
- *   blocks). The herd puts its cows at the pen piece's places in that frame.
+ *   places where the cows lie (a shed or a house built inside the ring, a
+ *   shelter piece, blocks). The herd puts its cows at the pen piece's places in that frame.
  *   Made again only when something he built changes.
  */
 
 /** A roof of his blocks counts this far over the point at most (m). */
 export const BLOCK_ROOF = 8;
+/**
+ * Where his cows lie in a pen (the pen piece's frame, m: its outer places and its middle, roam/_cattleHerd.ts
+ * `PEN_SLOTS` at a grown cow's depth): a fenced area is roofed when all of these are under a roof of his.
+ */
+const PEN_UNDER: readonly (readonly [number, number])[] = [
+  [-2.5, 0.6],
+  [2.5, 0.6],
+  [0, 0.3],
+];
 /** A fence ring is a pen when it holds this much at least (m: the pen piece's 7 × 5.6 m and half a metre round). */
 export const PEN_ROOM = { w: 7.5, d: 6.1 } as const;
 
@@ -111,9 +120,8 @@ export function roofedPens(heightAt: (x: number, z: number) => number): readonly
     const x = cx + ox * back;
     const z = cz + oz * back;
     const frame: PenFrame = { uid: `foot-${r.uid}`, id: 'pen', x, y: heightAt(x, z), z, yaw: Math.atan2(ox, oz), done: 1, seed: 0 };
-    // (roofed: a roof of his over the pen's middle, at a cow's back)
-    pieceToWorld(frame, 0, PIECES.pen.pen!.z, _l);
-    if (!underRoof(_l[0], _l[1], frame.y + 1)) continue;
+    // (roofed: a roof of his over where his cows lie in it, the pen piece's places, at a cow's back)
+    if (!PEN_UNDER.every(([lx, lz]) => (pieceToWorld(frame, lx, lz, _l), underRoof(_l[0], _l[1], frame.y + 1)))) continue;
     pens.push(frame);
   }
   return pens;

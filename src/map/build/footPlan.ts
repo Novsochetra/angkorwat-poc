@@ -19,7 +19,8 @@ import type { MaterialId, Materials } from './materials';
  * fence's gate.
  *
  * **The kinds** (`FOOT_KINDS`; sizes in cells, why below):
- * - **Stilt house** (ផ្ទះឈើ): timber posts on dark hardwood footings, the floor
+ * - **Stilt house** (ផ្ទះឈើ): timber posts on dark hardwood footings (round
+ *   its edge, and one row down its middle under the floor), the floor
  *   (timber planks) high enough that he walks under it (its underside at least
  *   `CLEAR` 2.5 m over the highest ground under it: to the walk map he is
  *   2.26 m tall, AWP-17), woven bamboo walls in a timber frame (a post at each
@@ -407,12 +408,16 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
     const inDoor = (s: FootSide, c: readonly [number, number]) => s === door && !!span && along(s, c) >= span[0] && along(s, c) <= span[1];
 
     stage('posts');
-    // (under a house's floor, posts on the grid of the side across from the door and the sides' own: none in the room)
+    // (under a house's floor, one row of posts down its middle along its longer side, as its ridge: none in the room,
+    // and the open space under it on either side, the shade where a Khmer family sits and rests on a bamboo bed: AWP-25)
     const under = new Set<string>();
     if (house) {
-      const xs = postsAlong(i0, i1);
-      const zs = postsAlong(k0, k1);
-      for (const i of xs) for (const k of zs) if (i > i0 && i < i1 && k > k0 && k < k1) under.add(`${i},${k}`);
+      const alongX = rectW(rect) >= rectD(rect);
+      const mid = alongX ? Math.floor((k0 + k1) / 2) : Math.floor((i0 + i1) / 2);
+      for (const a of postsAlong(alongX ? i0 : k0, alongX ? i1 : k1)) {
+        const [i, k] = alongX ? [a, mid] : [mid, a];
+        if (i > i0 && i < i1 && k > k0 && k < k1) under.add(`${i},${k}`);
+      }
     }
     for (const p of [...posts, ...under]) {
       const [i, k] = p.split(',').map(Number);

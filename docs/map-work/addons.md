@@ -3044,7 +3044,8 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
-  each corner and every 2 m at most; under the floor on the same grid), its timber floor
+  each corner and every 2 m at most; under the floor one row down its middle, along its
+  longer side: the shade on either side is open for a bamboo bed, AWP-25), its timber floor
   with its underside at least 2.5 m over the highest ground under it (he walks under it:
   2.26 m tall to the walk map), woven bamboo walls (a weave of new and older strips) in
   the timber frame, a wall plate, the door 2.5 m high and 1.5 m (an odd wall) or 2 m wide
@@ -3073,9 +3074,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle; 4 laterite
   a lump of clay, for a kind to come: none uses laterite yet, its footings are hardwood, so
   their chunks draw two block families, not three), rounded up per building, so it grows
-  with the footprint: the smallest house 18 logs, 9 bamboo, 18 thatch (171,000 ៛ bought
-  outright; 860 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 26 thatch (217,000 ៛; 1 124
-  blocks); an 8 × 8 m one 354,000 ៛ (1 848 blocks); the smallest shed 5 logs, 3 bamboo,
+  with the footprint: the smallest house 17 logs, 9 bamboo, 18 thatch (165,000 ៛ bought
+  outright; 850 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 26 thatch (217,000 ៛; 1 114
+  blocks); an 8 × 8 m one 342,000 ៛ (1 806 blocks); the smallest shed 5 logs, 3 bamboo,
   8 thatch (56,000 ៛, 274 blocks; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
   (a ring of 24 × 24 m 108,000 ៛; the fence piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).

@@ -856,6 +856,9 @@ function nearNow(ctx: RoamCtx): void {
     for (const r of FOOTS.list) {
       const d = FOOTS.distTo(r, p.x, p.z);
       if (d > PIECE_REACH) continue;
+      // (under it or in it — a bed under his house, a piece in his shed —: the piece he faces first; the building from
+      // outside it, or with no piece by him)
+      if (d < 0.01 && best) continue;
       footNearest(r, p.x, p.z, _l);
       const wx = _l[0] - p.x;
       const wz = _l[1] - p.z;
