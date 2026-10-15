@@ -10,6 +10,7 @@ import { ShadowGate } from '../cull';
 import { LightPools, pointScale } from '../road/glow';
 import { SacredSet } from '../sacred/set';
 import type { MapContext, MapFrame, MapPart } from '../types';
+import { plantDetail } from '../veg/detail';
 import { Bobbing, Floaters, floatingHome, hyacinth } from './_floating';
 import { buildFvMarket, followMarket, fvOpen } from './_fvMarket';
 import { FV_GATE, FV_TREE } from './_fvPlan';
@@ -64,6 +65,8 @@ const HEAR_NEAR = 330;
 const MARKET_NEAR = 330;
 
 export function buildVillage(ctx: MapContext): MapPart {
+  // (the map's own plants, bananas and papayas: their cheap form on the low graphics level, veg/detail.ts)
+  plantDetail(ctx.quality);
   const field = ctx.field;
   const world = new VoxelBuilder();
   const lights = new VillageLights();

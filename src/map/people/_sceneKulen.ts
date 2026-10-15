@@ -296,7 +296,8 @@ class Picnic {
           acc: 0,
         });
       }
-      if (thingsRoom(40)) fam.food = new Rig(things, foodRig(spec.hut + 7));
+      // (its boxes: 46, the fruit the plant kit's)
+      if (thingsRoom(55)) fam.food = new Rig(things, foodRig(spec.hut + 7));
       if (motoAt && thingsRoom(20)) fam.moto = new Rig(things, motoRig(spec.moto));
       if (HAMMOCK_HUTS.includes(spec.hut) && fam.members.some((p) => p.seat === -1) && thingsRoom(30)) {
         const hm = hutHammock(hut);
@@ -314,7 +315,8 @@ class Picnic {
       this.cook = actor(dress('vendor', 4132, { sex: 'f', hat: 'none', goods: 'sweets' }));
       this.eater = actor(picnicLook(4133, { sex: 'm', hat: 'none', props: [FEAT.smallBowl] }));
     }
-    if (thingsRoom(60)) {
+    // (its boxes: 105, the fruit the plant kit's)
+    if (thingsRoom(115)) {
       this.goods = new Rig(things, stallGoodsRig(COUNTER, GRILL));
       this.goods.place(site.stall.x, site.ground, site.stall.z, site.stall.yaw);
     }

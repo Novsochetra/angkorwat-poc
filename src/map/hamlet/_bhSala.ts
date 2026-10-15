@@ -1,6 +1,9 @@
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
-import { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { VoxelBuilder, type VoxelBox } from '../../voxel/VoxelBuilder';
 import { Frame } from '../landmarks/_prasatKit';
+import { plantsLite } from '../veg/detail';
+import { round } from '../veg/plantKit';
+import { bananaHand } from '../veg/produce';
 import { bougainvillea, DECK, gableEnd, gableRoof, jar, Local, POST, RIDGE, ROOFS, shadeTree, tone, type Roof } from '../village/_kit';
 import { gableFan, type BuildEnv } from './_bhHouses';
 import { signWord } from './_bhSign';
@@ -36,7 +39,9 @@ export function buildSala(env: BuildEnv): void {
   const G = env.field.heightAt(SALA.x, SALA.z);
   const glow = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: number, halo?: number) => env.glow(fr.wx(x, z), y, fr.wz(x, z), sx, sy, sz, fr.theta, color, halo);
   pavilion(L, G, env.world, fr, src);
-  cart(L, env, fr, G);
+  // (the cart's coconuts: drawn only near, veg/nearDetail.ts)
+  const nearOnly = new Set<VoxelBox>();
+  cart(L, env, fr, G, nearOnly);
   // The tamarind, cloth tied round its trunk; the neak ta shrine at its foot.
   const [tx, tz] = TAMARIND;
   const ty = env.field.heightAt(fr.wx(tx, tz), fr.wz(tx, tz));
@@ -44,7 +49,11 @@ export function buildSala(env: BuildEnv): void {
   for (const [k, c] of [0xc8302a, 0xf0c030, 0xe86aa0].entries()) L.box(tx, ty + 1.05 + k * 0.22, tz, 0.98, 0.12, 0.98, c, 'petal');
   neakTa(L, G, glow);
   bougainvillea(L, -3.1, G, 1.2, 815);
+  const n0 = env.world.boxes.length;
   fr.place(lb, env.world);
+  lb.boxes.forEach((x, i) => {
+    if (nearOnly.has(x)) env.fine?.add(env.world.boxes[n0 + i]);
+  });
 }
 
 /** The pavilion: a plank platform on posts, a plain tiled gable roof with a fan of boards in its gables, jars of drinking water. */
@@ -78,7 +87,7 @@ function pavilion(L: Local, G: number, world: VoxelBuilder, fr: Frame, src: Sour
 }
 
 /** The juice seller's cart and everything round it (see the file's comment). */
-function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
+function cart(L: Local, env: BuildEnv, fr: Frame, G0: number, nearOnly: Set<VoxelBox>): void {
   const cx = CART.lx;
   const cz = CART.lz;
   const G = env.field.heightAt(fr.wx(cx, cz), fr.wz(cx, cz)) || G0;
@@ -93,13 +102,21 @@ function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
     L.box(cx - 0.4, G + 0.31, z + Math.sign(z - cz) * 0.03, 0.12, 0.12, 0.06, 0x9a9a96, 'mapStone');
   }
   for (const z of [cz - 0.3, cz + 0.3]) L.span(cx + 0.66, G, z - 0.03, cx + 0.72, G + 0.4, z + 0.03, 0x3a3a3a, 'mapStone');
-  // Green coconuts heaped at one end of the counter; one cut open, a straw in it.
+  // Green coconuts heaped at one end of the counter (the plant kit's rounds: round from any side; in the sala's turned
+  // frame, which they may be: level blocks turned about y); one cut open, a straw in it.
   const nuts = [0x7aa040, 0x88aa48, 0x6a9438, 0x94b050];
+  // (the bottom row, mostly hidden under the others, the kit's cheap `low` form; the upper rows, seen from a step
+  // away, the full round)
+  const nut = (x: number, y: number, z: number, w: number, c: number, k: number, low: boolean, cap = 0x8a7a4a) => {
+    const n = L.b.boxes.length;
+    round(L.b, [x, y, z], { wid: w, hgt: w * 0.95, color: c, ribs: false, cap, ry: k * 0.7, low, shade: 0.95 + 0.1 * L.r(k, 7), src: L.src });
+    for (let i = n; i < L.b.boxes.length; i++) nearOnly.add(L.b.boxes[i]);
+  };
   let k = 0;
   for (let row = 0; row < 3; row++)
     for (let i = 0; i < 3 - row; i++)
-      for (let j = 0; j < 2 - (row > 1 ? 1 : 0); j++, k++) L.box(cx - 0.65 + i * 0.26 + row * 0.13, G + 1.17 + row * 0.22, cz - 0.14 + j * 0.28 + (row % 2) * 0.07, 0.25, 0.23, 0.25, nuts[k % nuts.length], 'mapLeaf', 0.95 + 0.1 * L.r(k, 7));
-  L.box(cx + 0.05, G + 1.15, cz + 0.2, 0.24, 0.2, 0.24, nuts[1], 'mapLeaf');
+      for (let j = 0; j < 2 - (row > 1 ? 1 : 0); j++, k++) nut(cx - 0.65 + i * 0.26 + row * 0.13, G + 1.055 + row * 0.22, cz - 0.14 + j * 0.28 + (row % 2) * 0.07, 0.25, nuts[k % nuts.length], k, row === 0);
+  nut(cx + 0.05, G + 1.04, cz + 0.2, 0.24, nuts[1], 20, false, 0xf0ecd8);
   L.box(cx + 0.05, G + 1.26, cz + 0.2, 0.16, 0.04, 0.16, 0xf0ecd8, 'mapStone');
   L.box(cx + 0.08, G + 1.36, cz + 0.2, 0.02, 0.2, 0.02, 0xe84a8a, 'petal');
   // The cane press: a steel box, its flywheel on the side, a jug under the spout.
@@ -124,7 +141,7 @@ function cart(L: Local, env: BuildEnv, fr: Frame, G0: number): void {
   L.box(cx - 0.25, G + 0.62, cz - 0.85, 0.04, 0.26, 0.28, 0xb8bcc0, 'mapStone');
   L.box(cx - 0.25, G + 0.62, cz - 1.1, 0.05, 0.06, 0.24, 0x1e1a18, 'mapStone');
   L.box(cx + 0.3, G + 0.03, cz - 0.95, 0.9, 0.06, 0.7, 0xc8b88a, 'petal');
-  for (let i = 0; i < 5; i++) L.box(cx + 0.05 + (i % 3) * 0.26, G + 0.17 + Math.floor(i / 3) * 0.2, cz - 1.05 + (i % 2) * 0.24, 0.25, 0.23, 0.25, nuts[i % nuts.length], 'mapLeaf');
+  for (let i = 0; i < 5; i++) nut(cx + 0.05 + (i % 3) * 0.26, G + 0.06 + Math.floor(i / 3) * 0.2, cz - 1.05 + (i % 2) * 0.24, 0.25, nuts[i % nuts.length], 30 + i, i < 3);
   // The umbrella: a pole at the cart's back corner, blue and white panels; the painted sign hung under its front: "ទឹកដូង".
   L.span(cx - 0.9, G, cz - 0.52, cx - 0.84, G + 2.55, cz - 0.46, 0xd8d0c0, 'mapStone');
   for (let i = 0; i < 4; i++) L.box(cx - 0.4, G + 2.5 - i * 0.05, cz - 0.1, 2.3 - i * 0.5, 0.05, 2.3 - i * 0.5, i % 2 ? 0xf2f0e8 : 0x2a6ab8, 'petal');
@@ -189,6 +206,7 @@ function neakTa(L: Local, G: number, glow: (x: number, y: number, z: number, sx:
   glow(x + 0.01, G + 1.0, z + 0.18, 0.03, 0.03, 0.03, 0xff6a2a);
   L.box(x - 0.08, G + 0.79, z + 0.26, 0.04, 0.09, 0.04, 0xf4ecd8, 'mapStone');
   glow(x - 0.08, G + 0.87, z + 0.26, 0.035, 0.06, 0.035, 0xffb050, 0.8);
-  L.box(x + 0.12, G + 0.77, z + 0.27, 0.16, 0.04, 0.08, 0xe8c840, 'petal');
+  // (a hand of bananas: the plant kit's fingers, flat: this builder is the sala's turned frame)
+  bananaHand(L.b, [x + 0.06, G + 0.757, z + 0.27], Math.PI / 2, { fingers: plantsLite() ? 3 : 4, len: 0.14, thick: 0.035, color: 0xe8c840, flat: true, src: L.src });
   L.box(x - 0.2, G + 0.78, z - 0.02, 0.06, 0.07, 0.06, 0xe8eef2, 'mapStone');
 }
