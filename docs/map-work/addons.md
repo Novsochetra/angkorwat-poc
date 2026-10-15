@@ -3183,8 +3183,11 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   steps too). It hangs over what stands on the floor (a mat, the baskets). The ghost shows the cord. The cords: one small
   batch of the bark family for all (one draw, no shadow), made again when a lantern comes, rises or
   goes or his blocks change.
-- **A footprint building that holds furniture** (on its floor, or a lantern hung from its roof) is
-  not taken down: held E says "សូមរុះគ្រឿងសង្ហារិមខាងក្នុងចេញសិន (២) / Take down the furniture inside
+- **Nothing he built comes down while it holds furniture**: a footprint building with furniture on its
+  floor or a lantern hung from its roof, a shelter with a lantern hung from its roof
+  (`_buildFurniture.ts` `furnitureHeldBy`; no other piece can hold one: furniture stands only on a
+  floor, the land, his blocks or his house, and a lantern hangs only from a roof, his blocks', his
+  house's or a shelter's; his own stilt house is never taken down). It is not taken down: held E says "សូមរុះគ្រឿងសង្ហារិមខាងក្នុងចេញសិន (២) / Take down the furniture inside
   first (2)" (`_buildFurniture.ts` `furnitureIn`): nothing is left floating, nothing he paid for is
   lost. Furniture on the land inside a shed does not count (it stays standing).
 - **Light**: the oil lamp (3 cd, 7 m) and the hanging lantern (7 cd, 12 m) are placed lights as the
@@ -3193,7 +3196,18 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   his feet on the floor of his blocks or his house, not the land under it).
 - **Walk map and saving**: as every piece (`_buildWalk.ts`, the solids from the piece's own floor;
   `build.pieces` keeps its floor's height `y`). The pot, the baskets, the mortar, the loom, the oil
-  lamp stop him; the bench is a seat he steps onto; the mats and the hanging lantern he walks through.
+  lamp stop him; the bench is a seat as the bamboo bed (its top 0.5 m: too high a step, Space hops onto
+  it); the mats and the hanging lantern he walks through.
+- **Seats** (the bench, the sleeping mat, as the bamboo bed and the shelter's bench): "E  Sit" is
+  offered from any side of it and from beside it (it comes before a piece near it), and J (L on the
+  sleeping mat) within 1.3 m of it puts him on its seat (y its seat's height over its floor).
+- **Resting under a roof** (J / L anywhere under a roof at most 7 m over his feet: his house, a room he
+  built; `_rest.ts` `ROOFED`): the camera looks down at him from beside him, close, in place of the
+  low sky-watching camera of the open air.
+- **Build mode in a room** (a roof at most 7 m over his feet; `_build.ts` `ROOM_CAM`): the camera
+  low (0.36 rad; a hanging lantern 0.15), as far back as the room lets it (2.2‥5.2 m, 0.7 m this side
+  of a wall), looking at the ghost's middle (a hanging lantern's glass), so the ghost sits mid-screen
+  and the follow camera never rises over him for room.
 - **URL** (shots and the dev server, as `build=`): `furn=<id>@x/z/yaw[/y][:done],…` (on the floor
   under feet at height `y`, the land when left out; a spot that would be refused is put there all the
   same, with a warning) · `window.__furn`: `spot(id, x, z, deg, y)`, `floor(x, y, z)`, `cords()`. E.g. a

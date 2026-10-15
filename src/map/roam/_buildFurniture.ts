@@ -9,7 +9,7 @@ import { BUILD } from '../build/state';
 import type { BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
 import type { AddonEnv } from './_addons';
-import { furnSpot, hangCeil, onFurnFloor, type FurnSpot } from './_buildFurnSpots';
+import { furnSpot, hangCeil, hungFrom, onFurnFloor, type FurnSpot } from './_buildFurnSpots';
 import type { RoamCtx, RoamWorld } from './types';
 
 /**
@@ -150,5 +150,21 @@ export function furnitureIn(uid: string): Built[] {
       if (Number.isFinite(c) && has(p.x, c + 0.05, p.z)) out.push(p);
     }
   }
+  return out;
+}
+
+/**
+ * What `uid` holds up (AWP-23 review): a footprint building's furniture (`furnitureIn`), or the lanterns hung from a
+ * shelter's roof. No other piece holds one: furniture stands only on a floor (the land, his blocks, his house) and a
+ * lantern hangs only from a roof (his blocks, his house's, a shelter's). Taking a holder down is refused while it holds
+ * any (roam/_build.ts `askTake`).
+ */
+export function furnitureHeldBy(uid: string): Built[] {
+  const piece = BUILD.byUid(uid);
+  if (!piece) return furnitureIn(uid);
+  if (piece.id !== 'shelter' || !world) return [];
+  const out: Built[] = [];
+  for (const p of BUILT.list)
+    if (p.id === 'hanglamp' && Number.isFinite(hangCeil(world, p.x, p.z, p.y)) && hungFrom === piece) out.push(p);
   return out;
 }

@@ -230,14 +230,21 @@ function builtInWay(id: PieceId, x: number, y: number, z: number, yaw: number, i
  * map's `ceilingAt`), or a shelter he built (its rafters, its plates); Infinity none.
  */
 export function hangCeil(world: RoamWorld, x: number, z: number, y: number): number {
+  hungFrom = null;
   let c = world.ceilingAt?.(x, z, y + 0.3) ?? Infinity;
   for (const b of BUILT.list) {
     if (b.id !== 'shelter' || b.done < 1 || Math.abs(b.y - y) > 0.3) continue;
     toLocal(b, x, z, _l);
-    c = Math.min(c, b.y + shelterUnder(_l[0], _l[1]));
+    const u = b.y + shelterUnder(_l[0], _l[1]);
+    if (u < c) {
+      c = u;
+      hungFrom = b;
+    }
   }
   return c;
 }
+/** The shelter `hangCeil` found the roof of (its last answer), or null (his blocks, his house, none). */
+export let hungFrom: Built | null = null;
 
 /**
  * Where furniture `id` may stand with its middle at (x, z) turned `yaw`, for him with his feet at `feetY` (into

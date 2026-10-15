@@ -19,9 +19,9 @@ import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
-import { furnFromUrl, furnitureIn, furnReport, installFurniture } from './_buildFurniture';
+import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
-import { FURN_GRID, isFurniture } from '../build/furniture';
+import { FURN, FURN_GRID, isFurniture } from '../build/furniture';
 import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceJob, pieceWord, type WorkJob } from './_buildWork';
 import { cannotFoot, fillFoot, footJob, FootMode, footWord, minPlan } from './_buildFoot';
@@ -94,6 +94,9 @@ const MODE_FAR = 8;
 const START_PAST = 2;
 /** E held this long (s) on a piece takes it down (asked first). */
 const HOLD_FOR = 0.8;
+/** A seat (the bed, a bench) is offered from beside it too (his facing's dot with the way to it at least this), and before what is near it (m off its score). */
+const SEAT_FACING = -0.3;
+const SEAT_FIRST = 0.4;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
 const PIECE_REACH = 1.25;
 /**
@@ -292,8 +295,9 @@ function holdStep(ctx: RoamCtx, dt: number): void {
 const SAW = `<svg class="mu-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="#8a6038" d="M2 9h12v3H2z"/><path fill="#b08a5a" d="M2 9h12v1H2z"/><path fill="#c8ccd0" d="M6 2h2v6H6z"/><path fill="#e8eef2" d="M6 2h1v6H6z"/><path fill="#7a5a3a" d="M5 1h4v2H5z"/><path fill="#ffd27a" d="M10 5h1v1h-1zM11 6h1v1h-1zM12 4h1v1h-1z"/></svg>`;
 function askTake(ctx: RoamCtx, b: WorkJob): void {
   if (!env) return;
-  // (a footprint building with furniture on its floor or hung from its roof: that first, AWP-23 — nothing left floating)
-  const inside = BUILD.byUid(b.uid) ? 0 : furnitureIn(b.uid).length;
+  // (a footprint building with furniture on its floor or hung from its roof, a shelter with a lantern hung from it:
+  // that first, AWP-23 — nothing left floating)
+  const inside = furnitureHeldBy(b.uid).length;
   if (inside) {
     ctx.hud.toast(t('buildFurnInside', { n: num(inside) }));
     env.uiSound('tick');
@@ -595,6 +599,37 @@ const pitchFor = (ahead: number): number => MODE_CAM.pitch + Math.min(0.24, Math
 /** Where build mode's camera last looked (eased back from it after). */
 const lastAim = { x: 0, z: 0 };
 
+/**
+ * Build mode's camera under a roof (AWP-23: placing furniture in a room): a roof this far over his feet at most (m)
+ * makes it a room; its tilt (rad), its distance (m) at least and at most, kept this far this side of a wall.
+ */
+const ROOM_CAM = { roof: 7, pitch: 0.36, least: 2.2, most: 5.2, margin: 0.7, look: 0.8, hangLook: 2.45, hangPitch: 0.15 };
+const _rc = { x: 0, y: 0, z: 0 };
+/** Under a roof: the room's tilt and as far back as there is room (true); else false (build mode's own). */
+function roomCamera(ctx: RoamCtx, kk: number): boolean {
+  const w = ctx.world;
+  const b = ctx.body.pos;
+  const roof = w.ceilingAt?.(b.x, b.z, b.y + 0.5) ?? Infinity;
+  if (roof - b.y > ROOM_CAM.roof) return false;
+  const cam = ctx.cam;
+  const f = cam.focus;
+  // (it looks at the ghost's middle, not over his shoulders at his chest's height: the ghost mid-screen)
+  // (a hanging lantern: between its outline on the floor and its glass over his head, the camera lower)
+  const hang = !!placing && isFurniture(placing) && !!FURN[placing].hang;
+  f.y += ((placing ? spot.y : b.y) + (hang ? ROOM_CAM.hangLook : 0.45) - f.y) * ROOM_CAM.look * modeCamToward;
+  // (the room behind the camera's way out at the room's tilt: its walls, its roof)
+  const cp = Math.cos(ROOM_CAM.pitch);
+  _rc.x = f.x - Math.sin(cam.yaw) * cp * ROOM_CAM.most;
+  _rc.y = f.y + Math.sin(ROOM_CAM.pitch) * ROOM_CAM.most;
+  _rc.z = f.z - Math.cos(cam.yaw) * cp * ROOM_CAM.most;
+  const clear = w.hardClearance ?? w.clearance;
+  const t = clear ? clear(f.x, f.y, f.z, _rc.x, _rc.y, _rc.z) : 1;
+  const want = Math.max(ROOM_CAM.least, Math.min(ROOM_CAM.most, t * ROOM_CAM.most - ROOM_CAM.margin));
+  cam.pitch += ((hang ? ROOM_CAM.hangPitch : ROOM_CAM.pitch) - cam.pitch) * kk;
+  cam.distance += (want - cam.distance) * kk;
+  return true;
+}
+
 /** Build mode's camera: it looks down more, further back, the ghost in the middle (the player's drag wins). */
 function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   const cam = ctx.cam;
@@ -622,6 +657,9 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     const round = Math.atan2(Math.sin(cam.behindYaw - cam.yaw), Math.cos(cam.behindYaw - cam.yaw));
     if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
     const reach = aim.reach;
+    // (under a roof, AWP-23: a room's camera — low, as far back as the room lets it, so the ghost sits mid-screen and
+    // the follow camera never has to rise over him to find room)
+    if (roomCamera(ctx, kk)) return;
     cam.pitch += (pitchFor(Math.hypot(aim.x - ctx.body.pos.x, aim.z - ctx.body.pos.z)) - cam.pitch) * kk;
     // (a footprint building: far enough back that the camera looks over its roof, not from inside its ghost)
     const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, aim.high * MODE_CAM.perHigh, modeCamBefore.distance));
@@ -863,8 +901,10 @@ function nearNow(ctx: RoamCtx): void {
     const wz = q.z - cx * s + cz * c - p.z;
     const l = Math.hypot(wx, wz);
     const dot = l > 0.05 ? (wx * fx + wz * fz) / l : 1;
-    if (dot < 0.35) continue;
-    const sc = d - dot * 0.5;
+    // (a seat — the bed, a bench — from any side he stands by, beside it too, and before what is near it: AWP-23)
+    const seat = !!P.seat && q.done >= 1;
+    if (dot < (seat ? SEAT_FACING : 0.35)) continue;
+    const sc = d - dot * 0.5 - (seat ? SEAT_FIRST : 0);
     if (sc < score) {
       score = sc;
       best = q;
