@@ -1,5 +1,5 @@
-import type { BlockMatKey } from '../blocks/kinds';
 import { stepBlock } from '../blocks/roof';
+import { turnToward, type BlockMatKey } from '../blocks/kinds';
 import { BLOCK_M, cellMid, cellOf, rawOf, type Block } from '../blocks/store';
 import type { MaterialId, Materials } from './materials';
 
@@ -29,9 +29,10 @@ import type { MaterialId, Materials } from './materials';
  *   thatch with a timber ridge and timber gable boards (Khmer: no horns at
  *   the gable's ends or peak, CLAUDE.md "Khmer, not Thai"; the boards in
  *   light and dark rays as the village houses' gables), and a stair from
- *   the door down to the ground (`stairStep`; its lowest tread a stair's
- *   rise or less over the ground) with timber rails along its sides (a
- *   block beside each tread and one over it: he does not step off it).
+ *   the door down to the ground (`stairStep`: stair blocks, 45°; its lowest
+ *   tread a stair's rise or less over the ground) with timber rails along
+ *   its sides (a block beside each step and one over it: he does not step
+ *   off it).
  * - **Shed** (រោង): on the ground, timber posts and wall plate, woven bamboo
  *   half walls 1 m high on three sides, the door side open, the same roof;
  *   its eaves at least 2.5 m over the ground (he and the follow camera go
@@ -60,9 +61,9 @@ import type { MaterialId, Materials } from './materials';
  * blocks/roof.ts `stepBlock`, a stair in each step and a slab on the ridge, in
  * the thatch's or the ridge's own material; put into the plan, so built,
  * counted and taken down with it).
- * The stair's treads are the same: **`stairStep`** gives each tread's block
- * (a slab's 0.25 m rise today, the walk map's stair rise; AWP-24's stair
- * block, two rises a cell, would halve its run).
+ * The stair's steps are the same: **`stairStep`** gives each step's block
+ * (AWP-24's stair block, two rises of 0.25 m a cell, turned to climb to the
+ * door: half the run of slab treads).
  *
  * **The plan** (`planFoot`): every block in the order a builder puts them up
  * (`stages`: posts, floor, walls, roof, stair; the view and the work write
@@ -265,13 +266,13 @@ export function roofStep(roof: (i: number, j: number, k: number) => boolean, i: 
 }
 
 /**
- * A stair tread whose top is `q` quarter metres up (THE place for the stair's step shape, AWP-24): a slab in the
- * lower half of its cell for an odd `q` (0.25 m a rise: he walks up it, blocks/walk.ts `BLOCK_STEP_M`), a full block
- * for an even one. Returns its cell's height (j) and the block. With AWP-24's stair block (two rises in a cell) a
- * tread every half cell: the stair's run halves.
+ * A cell of the house's stair (THE place for the stair's step shape): AWP-24's stair block (kinds.ts `stair`: a
+ * tread half a cell up and its back a cell up, two rises of 0.25 m in the cell, the walk map's stair rise:
+ * blocks/walk.ts), climbing towards the house (`dx`, `dz`: the way up). A cell a step: the stair rises 0.5 m a cell,
+ * 45°, half the run of slab treads (0.25 m a cell).
  */
-export function stairStep(q: number, color: number): { j: number; block: Block } {
-  return q % 2 ? { j: (q - 1) / 2, block: { mat: 'timber', color, shape: 'slab' } } : { j: q / 2 - 1, block: { mat: 'timber', color } };
+export function stairStep(dx: number, dz: number, color: number): Block {
+  return { mat: 'timber', color, shape: 'stair', turn: turnToward(dx, dz) };
 }
 
 /** Make the plan of a footprint building (see above). `ground(x, z)`: the land's height (m). */
@@ -463,22 +464,22 @@ export function planFoot(kind: FootKind, rect: FootRect, door: FootSide, ground:
     let stair: FootPart | null = null;
     if (house && span) {
       stage('stair');
-      // From the door's threshold (the floor's top) down and out, a tread a cell, 0.25 m lower each, until the ground.
+      // From the door's threshold down and out, a stair block a cell, 0.5 m lower each (its back flush with the floor's
+      // top by the door, its tread 0.25 m under), until the ground.
       const [ox, oz] = OUT[door];
       // (the cell `n` out from the door's wall, at `a` along it)
       const stairCell = (a: number, n: number): [number, number] => (door % 2 ? [(door === 1 ? i1 : i0) + ox * n, a] : [a, (door === 0 ? k0 : k1) + oz * n]);
-      const q0 = Math.round(floor / 0.25);
       let n = 1;
       for (; n <= 24; n++) {
-        const q = q0 - n;
+        const j = jF - (n - 1);
         let g = -Infinity;
         for (let a = span[0]; a <= span[1]; a++) g = Math.max(g, groundOf(...stairCell(a, n)));
-        // (down to the ground: the lowest tread a stair's rise or less over it, so he steps up onto it from there)
-        if (q * 0.25 <= g + 0.05) break;
-        const color = pick(COL.post, n, q, door, 11);
+        // (down to the ground: the lowest step's top over it, so its tread is a stair's rise or less over the ground)
+        if ((j + 1) * BLOCK_M <= g + 0.05) break;
+        const color = pick(COL.post, n, j, door, 11);
         for (let a = span[0] - 1; a <= span[1] + 1; a++) {
           const [i, k] = stairCell(a, n);
-          const { j, block } = stairStep(q, pick(COL.tread, a, q, n, 8));
+          const block = stairStep(-ox, -oz, pick(COL.tread, a, j, n, 8));
           // (its sides: a timber rail beside each tread and one over it, so he does not step off the stair)
           if (a < span[0] || a > span[1]) {
             put(i, j, k, { mat: 'timber', color });

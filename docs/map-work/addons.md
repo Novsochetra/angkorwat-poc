@@ -3033,7 +3033,7 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   **shed** រោង (3 × 3 m to 8 × 8 m; 4), the **fence line** របងព័ទ្ធ (round a footprint,
   2 m to 24 m a side, or one straight run one cell wide; 12). Why: a house's room inside
   its walls is 4 m or more (the follow camera reads such a room, AWP-17); at 8 m its roof
-  is 5 m of thatch over 9 × 9 m (the house ≈ 1 880 blocks, 19 % of his land's budget);
+  is 5 m of thatch over 9 × 9 m (the house ≈ 1 850 blocks, 18 % of his land's budget);
   his yard is ≈ 22 m across.
 - **What fits itself** (`planFoot`: the blocks in a builder's order, `stages` posts,
   floor, walls, roof, stair): the house's timber posts on dark hardwood footings (a post at
@@ -3046,9 +3046,11 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   deep stepping in and up, 45°, each step smoothed with AWP-24's stair and the ridge
   capped with a slab, eaves a cell past the walls, a dark timber ridge, timber
   gable boards in light and dark rays as the village houses' gables: Khmer, no horns), and
-  a stair from the door straight out to the ground (treads of 0.25 m, the lowest a rise or
-  less over the ground: about 5.5 m long for a 3 m floor) with timber rails along both
-  sides (a block beside each tread and one over it: he does not step off it). The shed: posts and plate (its
+  a stair from the door straight out to the ground (AWP-24's stair blocks, a cell a step:
+  two rises of 0.25 m a cell, 45°, the top step's back flush with the floor, the lowest one's
+  tread a rise or less over the ground: about 3 m long for a 3 m floor; slab treads, a rise a
+  cell, were twice as long; walked up and down in GPU Chromium) with timber rails along both
+  sides (a block beside each step and one over it: he does not step off it). The shed: posts and plate (its
   underside 2.5 m over the ground), woven bamboo half walls 1 m high on three sides, the
   door side open, the same roof, bamboo gables. The fence: a panel 1.5 m high, whole-bamboo
   rails along its foot and top and upright split-bamboo slats between them with a gap after
@@ -3059,14 +3061,14 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   with nothing over it: `blocks/roof.ts` `stepBlock`, as `smoothRoof` puts them, a stair
   in each step and a slab on the ridge; put into the plan, so built in order with the
   roof, counted in the cost and the budget and taken down with it) and `stairStep` (each
-  tread: a slab or a block; AWP-24's stair block, two rises a cell, would halve the run).
+  step of the house's stair: AWP-24's `stair` turned to climb towards the door).
 - **Cost** (the owner's rule: materials, gathered free, missing bought): blocks per
   material (`MAT_RATE`: 24 timber a log, 10 bamboo a pole, 20 thatch a bundle; 4 laterite
   a lump of clay, for a kind to come: none uses laterite yet, its footings are hardwood, so
   their chunks draw two block families, not three), rounded up per building, so it grows
-  with the footprint: the smallest house 19 logs, 9 bamboo, 18 thatch (177,000 ៛ bought
-  outright; 900 blocks); a 6 × 6 m house 23 logs, 13 bamboo, 26 thatch (229,000 ៛; 1 164
-  blocks); an 8 × 8 m one 360,000 ៛ (1 880 blocks); the smallest shed 5 logs, 3 bamboo,
+  with the footprint: the smallest house 18 logs, 9 bamboo, 18 thatch (171,000 ៛ bought
+  outright; 860 blocks); a 6 × 6 m house 21 logs, 13 bamboo, 26 thatch (217,000 ៛; 1 124
+  blocks); an 8 × 8 m one 354,000 ៛ (1 848 blocks); the smallest shed 5 logs, 3 bamboo,
   8 thatch (56,000 ៛, 274 blocks; the thatched shelter piece is 40,000 ៛); a fence ≈ 1,100 ៛ a metre
   (a ring of 24 × 24 m 108,000 ៛; the fence piece's run 4,000 ៛ for 3 m). Nothing is always bought. Taking one down gives half
   its materials back (rounded down; the cost is kept with it).
