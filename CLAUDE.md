@@ -283,6 +283,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
   stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
   blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
+  Shapes cube, slab, stair, slabTop and corner stairs (`kinds.ts`, turned by `turn`); a
+  stepped roof made smooth with one call, `roof.ts` `smoothRoof` (AWP-24; `pblocks=gable`,
+  `gable-stepped`, `hip`, `hip-stepped`, `fullmix`).
 
 ## Things to do while roaming (add-ons)
 

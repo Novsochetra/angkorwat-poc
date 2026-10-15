@@ -2354,8 +2354,9 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   (`blocks/kinds.ts` `BLOCK_MATS`: timber, bamboo, thatch, laterite, sandstone,
   brick, each drawn with a map family: `mapBark`, `mapLeaf`, `mapStone`,
   `mapRock`), its colour (sRGB hex, any: paint), its shape (`BLOCK_SHAPES`:
-  cube, slab; each a list of boxes in its cell and the sides of the cell it
-  fills whole) and a quarter turn (saved, for the stairs to come). As one
+  cube, slab, stair, slabTop, stairOuter, stairInner: below; each a list of
+  boxes in its cell) and a quarter turn about y (0‥3: the stairs and corners
+  turn by it, a cube or a slab is the same turned). As one
   number (`rawOf`, `blockOf`): colour + material · 2²⁴ + (shape · 4 + turn) ·
   2³², 0 no block; ids are saved, so they are only ever added.
 - **Writing**: `set(i, j, k, block | null)`, `setRaw`, `fill(box, block | null)`,
@@ -2363,6 +2364,34 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   **Reading**: `get`, `raw`, `solid` (the walk map), `count`, `countIn(box)` (a
   plot's budget), `forEach` (every block in a fixed order: chunk by chunk,
   rows along x, then z, then y: a run-length save), `chunkList`, `chunkAt`.
+- **Shapes** (`kinds.ts`, AWP-24; ids saved, only ever added): `cube` (0), `slab`
+  (1: the lower half, 0.25 m), `stair` (2: a slab and a quarter on its back half,
+  two 0.25 m rises in the cell; unturned it climbs towards +z, `turn` 1 +x, 2 −z,
+  3 −x: `STAIR_UP`, `turnToward(dx, dz)`), `slabTop` (3: the upper half: a
+  lintel, an eave's soffit), `stairOuter` (4: a slab and one quarter column, a hip
+  roof's outer corner; unturned the +x +z quarter) and `stairInner` (5: a slab and
+  three, a roof's inner corner). `FORMS` holds each shape at each turn: its boxes
+  turned, the quarters of each cell side its boxes fill (`covers`, 4 bits a
+  side), each box's sides' quarters and its sides inside the block, and its
+  tread's quarters (`low`). Boxes lie on the cell's halves.
+- **Roofs** (`roof.ts`, AWP-24): `smoothRoof(cells, store?)` is the one call that
+  turns a roof built as steps of full blocks (a row a cell up and a cell in, 45°)
+  into one that reads as a roof: every roof cell with nothing over it gets, in
+  the step over it, a `stair` climbing towards the roof cell beside that step one
+  row up (a `stairInner` where two meet at a right angle, a `stairOuter` where one
+  lies only across a corner, a `slab` on the ridge), in its own material and
+  colour; cells already filled are left; it returns the cells it filled (to take
+  down with the roof). The roof is then two blocks deep at
+  every step, so no sky shows through (a stepped roof one block deep meets the
+  next row only along an edge: pinholes at every seam). `stepBlock(roof, i, j, k,
+  under)` is the rule for one step. `gableRoof({ i0, k0, i1, k1, j, ridge: 'x' |
+  'z', block, stepped?, ends? })` writes a whole steep Khmer gable (45°: rows of
+  full blocks from the two eaves to the ridge, its gable ends filled under it,
+  then smoothed unless `stepped`) and returns its roof cells and the steps it
+  filled. Each is one store
+  change. Smoothing puts a block in every step: a roof one block deep twice
+  its blocks (`pblocks=gable`: its roof 140 + 140, the pavilion 564 against
+  424); `fullmix` adds 1,728 to `full`'s 9,925 (192 a sala, on roofs two deep).
 - **Changes** (`onChange`): told once a change is done (one set, one fill, one
   batch): `changed` (the chunks whose cells changed: the walk map's chunks to
   build again), `touched` (those and the neighbours across an edge a changed
@@ -2371,8 +2400,14 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   a mesh per block family in it, made again the frame after a change, each
   touched chunk once; the meshes' arrays are written in place (only the boxes
   in use sent), a mesh made new only when a family outgrows its room. **Only
-  what can be seen**: a block whose six sides lie against filled sides (its
-  neighbours', in its chunk or the next) is not drawn; each box keeps its open
+  what can be seen**: a box's side that lies on quarters of the cell's side the
+  neighbour fills (in its chunk or the next: a slab beside a slab, a stair beside
+  a stair of the same turn, a stair in a roof's step, a cube under a slab) or
+  against another box of its own block is covered; a block with all its sides
+  covered is not drawn when the 26 cells round it are whole blocks (with an edge
+  or corner cell round it open it is drawn all the same: left out, its hole joined
+  the bevels' grooves inside and outside, and the sky showed through a smoothed
+  roof's gable end); each box keeps its open
   sides (the rim only between two open sides, a seam between flush blocks, as
   the map's grids) and its seen sides (`voxShown`: on low, the plain boxes
   draw no covered side, block by block, as the map's still parts: cull.ts
@@ -2399,7 +2434,14 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   the blocks are laid in again. On the feet's map a block's top more than
   0.35 m (`BLOCK_STEP_M`) over the feet is a wall to them unless they stand on
   it already: a slab (0.25 m) is a stair's rise, a full block (0.5 m) he jumps
-  onto (Space), and he walks under a floor on posts instead of hopping onto
+  onto (Space). A stair block (AWP-24) is solid to its top in its column and its
+  tread is told with the span (`WalkBlocks` `low`: the quarters half a column
+  lower): `standAt` stands feet there 0.25 m lower, and the step rule takes the
+  stair's high part within 0.2 m of its tread as the tread (`TREAD_LEAD`: his
+  rim reaches 0.17 m past a 0.25 m tread while his feet are still a step under
+  it), so he walks up a stair of stair blocks (45°) at an even pace, 0.25 m a
+  rise, as up slab steps, while a stair's back (0.5 m) stops him like a full
+  block (Space jumps it); sideways he steps onto its tread. And he walks under a floor on posts instead of hopping onto
   it when there is room: he is 2.26 m tall to the walk map (1.615 m and the
   explorer's 1.4 scale), so an underside 2.0 m up stops him like a wall and
   one 2.5 m up lets him under: doorways and stilt floors need at least
@@ -2438,9 +2480,11 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   (4 × 0.6, 6 × 1.0); a chunk filled 32 × 8 × 32 (8,192 blocks) 0.3 ms
   (4 × 1.5, 6 × 2.4). Nothing a frame while nothing changes.
   `pblocks=walk` is a test course on the flat meadow west of his stilt house
-  (x 418‥426, z −172‥−163: a slab stair up to a 2 m floor, a 2.5 m brick wall,
-  a one-block low wall), e.g. `roam=walk&at=415.5,-168&yaw=90&sim=w:1.5` (up
-  the stair), `at=420.25,-160&yaw=180&sim=w:2` (stopped by the wall),
+  (x 418‥428, z −172‥−163: a slab stair up to a 2 m floor, a 2.5 m brick wall,
+  a one-block low wall, and from the east a stair of stair blocks, AWP-24),
+  e.g. `roam=walk&at=415.5,-168&yaw=90&sim=w:1.5` (up the slab stair),
+  `at=430,-168.5&yaw=270&sim=w:1.3` (up the stair of stair blocks),
+  `at=420.25,-160&yaw=180&sim=w:2` (stopped by the wall),
   `at=420.25,-175&yaw=0&sim=w:1.2` (stopped by the low wall; `sim=w:0.4,wj:1`
   over it). Checks: `__blocks.walk` (the two maps: `stats.rebuilds`,
   `rebuildMs`, `rebuildMax`, `built(cx, cz)`).
@@ -2450,8 +2494,11 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   such a row meets the next block along it a pinhole of about the bevel's size
   is left (the shader squares a corner only with all three sides joints, which
   would also square the seams between the row's blocks); a roof two blocks
-  deep, or stairs and slabs (AWP-24), have none. A slab's partial sides do not
-  count yet (AWP-24 grows `covers`).
+  deep, or one whose steps are filled with stairs (`smoothRoof`), has none. The
+  far cell's sides are read by quarters (AWP-24): a slab across a cube's edge
+  squares both edges, and a one-deep slope of stair blocks squares where each
+  stair's top edge meets the next row's slab (its corners still pinholes, as
+  above: `smoothRoof` fills the steps instead).
 - **Saved** (`blocks/save.ts`, AWP-18): in progress.ts (`angkor-map-progress-v1`)
   under `blocks.plot`: `{ v: 1, n, pal, chunks }`. `v` the format (a later one
   reads the old by it), `n` the blocks, `pal` the different blocks as numbers
@@ -2499,7 +2546,14 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   `pblocks=demo` (a sala on the meadow before his stilt house, 832 blocks: all
   six materials, the slab, painted blocks) · `pblocks=full` (a full plot: nine
   of them 3 × 3, 8 m apart, 9,925 blocks over 24 × 24 m, their plinths sunk
-  to the sloping ground: 8 chunks) · `@x,z` puts it elsewhere. Nothing is
+  to the sloping ground: 8 chunks) · `pblocks=fullmix` (the same, every roof
+  smoothed: 11,653 blocks of mixed shapes) · `pblocks=gable` (AWP-24: an open
+  pavilion 6 × 4 m on a plinth with a step of slabs, posts 2.5 m high under a
+  lacquer-red beam ring, a palm thatch gable at 45° smoothed with stairs and
+  slab-capped, timber gable ends; 564 blocks) and `pblocks=gable-stepped` (the
+  same roof left as steps of full blocks one deep, as before: 424) · `pblocks=hip` / `hip-stepped` (the sala
+  with its hipped roof one deep, smoothed with stairs and outer corner stairs /
+  left as steps) · `@x,z` puts it elsewhere. Nothing is
   saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
   make a chunk again after one change, `flush()`, `rawOf`, `blockOf`). `npm run perf -- only=home
   url=pblocks=full` (the `home` view: by the stilt house, over the meadow).
