@@ -105,6 +105,10 @@ One line each time a ticket is sent back, so the next worker avoids it.
   stall files (AWP-7).
 - A low or lite form keeps the plant's silhouette (a banana's leaves arch out
   and down) (AWP-7).
+- A panel hidden by a class must really hide under the HUD's own rules
+  (`.rh > .mu-frame` sets display): check its computed display after every way
+  out of the mode (AWP-20).
+- Things he owns and leaves (his cow, his bicycle, his cart) block building (AWP-20).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
