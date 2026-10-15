@@ -758,18 +758,17 @@ const TURN_SUB = 0.03;
 const ROLL_MOVE = 0.4;
 /** A move costs (a turn on the spot, a roll back, a roll on): the search likes few moves, little backing. */
 const COST = { turn: 1, back: 1.3, on: 1 };
-/** How near his way a heading must be (rad) for a place to be tried, and how far the way must go on from it (m). */
-const AIM = 0.6;
+/** How near his way a heading must be (rad) for a place to be tried, and how far past where the yoke stops behind him the trial way must go on from it (m). */
+const AIM = 0.8;
 const AHEAD = 3;
-const AHEAD_MIN = 2;
 /** The search's reach (places looked at), and its time a frame (ms): it goes on over frames while he waits. */
 const PLAN_NODES = 1600;
-const PLAN_MS = 3;
+const PLAN_MS = 5;
 /** Seconds a sub-step takes as the oxen walk it: a turn's, a roll's. */
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+const search = { t0: 0, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
 const walkPlan = { steps: [] as { pose: Pose; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 } };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
@@ -810,11 +809,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     trial.y.push(y);
   };
   for (let d = REACH_M + 2; d >= -0.001; d -= STEP) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
-  // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go — at least `AHEAD_MIN` m of
-  // it, even if he stands near: it must really lead somewhere — and the cart at every `FIT_STEP` m along it, as `lead`
-  // tests its rolling)
+  // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go, right to his feet — as
+  // play lays it, so a way that works here does there, not blocked again a little on — or `AHEAD` m past where the yoke
+  // stops behind him; and the cart at every `FIT_STEP` m along it, as `lead` tests its rolling)
   const s0 = trial.s[trial.s.length - 1];
-  const toGo = Math.max(AHEAD_MIN, Math.min(AHEAD, Math.hypot(search.him.x - yx, search.him.z - yz) - GAP));
+  const toGo = Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - STEP / 2);
   for (let went = 0; went < toGo - 1e-6; went += STEP) {
     const k = trial.s.length - 1;
     const dx = search.him.x - trial.x[k];
@@ -824,7 +823,7 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     const z = trial.z[k] + (dz / d) * STEP;
     const h = passable(ctx, x, z, dx / d, dz / d, trial.y[k]);
     if (Number.isNaN(h)) return false;
-    push(x, h, z);
+    push(x, z, h);
   }
   const end = trial.s[trial.s.length - 1];
   for (let s = s0 + FIT_STEP; s <= end + 1e-6; s += FIT_STEP) {
@@ -836,8 +835,12 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
   return true;
 }
 
-/** A place from which the way goes on toward him (tried as play would: `wayWorksFrom`). */
-const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean => Math.abs(angleDiff(towardHim(n), n.yaw)) <= AIM && wayWorksFrom(ctx, n);
+/** How far (m) the yoke at place `n` is from where it would follow him (`GAP` behind his feet). */
+const short = (n: Pose): number => Math.max(0, Math.hypot(search.him.x - (n.x + Math.sin(n.yaw) * REACH_M), search.him.z - (n.z + Math.cos(n.yaw) * REACH_M)) - GAP);
+/** The search's guess of the moves left from `n`: the way to his heels in rolls, and the turn toward him. */
+const guess = (n: Pose): number => short(n) / ROLL_MOVE + (0.5 * Math.abs(angleDiff(towardHim(n), n.yaw))) / TURN_MOVE;
+/** A place to make for: at his heels, or one from which the way goes on toward him (tried as play would: `wayWorksFrom`). */
+const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean => short(n) < 0.6 || (!search.strict && Math.abs(angleDiff(towardHim(n), n.yaw)) <= AIM && wayWorksFrom(ctx, n));
 
 /** The places one move from `n` (a turn either way, a roll on or back), each sub-step tested, none seen before. */
 function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, moving: boolean): PlanNode[] {
@@ -875,8 +878,10 @@ function planStart(ctx: RoamCtx): void {
   search.open.length = 0;
   search.seen.clear();
   search.n = 0;
+  search.t0 = performance.now();
   const root: PlanNode = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, g: 0, f: 0, parent: null, subs: [], kind: 'turn' };
-  root.f = Math.abs(angleDiff(towardHim(root), root.yaw)) / TURN_MOVE;
+  root.f = guess(root);
+  search.best = root;
   search.open.push(root);
   search.seen.add(poseKey(root));
 }
@@ -897,15 +902,25 @@ function planStep(ctx: RoamCtx): boolean {
     }
     if (++search.n > PLAN_NODES) break;
     for (const m of children(ctx, n, search.seen, true)) {
-      m.f = m.g + Math.abs(angleDiff(towardHim(m), m.yaw)) / TURN_MOVE;
+      m.f = m.g + guess(m);
+      if (short(m) < short(search.best!)) search.best = m;
       search.open.push(m);
     }
   }
   if (!search.open.length || search.n > PLAN_NODES) {
+    // (no place to make for found: the nearest to his heels it reached, if that is a good way nearer — he may stand where
+    // a cart cannot come: it goes as near as it can)
+    const b = search.best;
+    const root = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
+    if (b && b.parent && short(b) < short(root) - 1.5) {
+      planTake(b);
+      return true;
+    }
     // (none: he walks round, or the oxen take it home: `stuckHere`)
     search.on = false;
     search.failedFor.x = search.him.x;
     search.failedFor.z = search.him.z;
+    console.info(`[haul] no way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): ${search.n} places looked at in ${((performance.now() - search.t0) / 1000).toFixed(1)} s`);
   }
   return false;
 }
@@ -922,7 +937,7 @@ function planTake(goal: PlanNode): void {
   walkPlan.from.x = CART_AT.x;
   walkPlan.from.z = CART_AT.z;
   walkPlan.from.yaw = CART_AT.yaw;
-  console.info(`[haul] a way round: ${chain.length} moves (${chain.filter((c) => c.kind === 'turn').length} turns), ${search.n} places looked at`);
+  console.info(`[haul] a way round: ${chain.length} moves (${chain.filter((c) => c.kind === 'turn').length} turns), ${search.n} places looked at in ${((performance.now() - search.t0) / 1000).toFixed(1)} s`);
 }
 
 /**
@@ -949,13 +964,16 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     walkPlan.steps.length = 0;
     walkPlan.i = 0;
     blocked = false;
-    planEnd.x = CART_AT.x;
+    // (a plan that took the cart a good way on — nearer him round something — is not one that came to nothing)
+    const moved = Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 1;
+    planEnd.x = moved ? Number.NaN : CART_AT.x;
     planEnd.z = CART_AT.z;
     return false;
   }
   return true;
 }
-/** Where the last plan walked ended, and plans in a row that came to nothing (blocked again where they ended). */
+/** Where the last plan walked ended, and plans in a row that came to nothing (blocked again where they ended, the cart
+ * not a metre on). */
 const planEnd = { x: Number.NaN, z: Number.NaN };
 let fruitless = 0;
 
@@ -968,13 +986,17 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
   if (!search.on) {
     // (blocked again where the last way round ended, twice: no way round for where he stands)
     fruitless = Math.hypot(CART_AT.x - planEnd.x, CART_AT.z - planEnd.z) < 0.5 ? fruitless + 1 : 0;
-    if (fruitless >= 2) {
+    // (after one that came to nothing — he moved on as the oxen turned, the way blocked again a little on — the next
+    // plan takes the cart right up to his heels)
+    if (fruitless >= 3) {
+      console.info(`[haul] three ways round in a row came to nothing at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)})`);
       fruitless = 0;
       search.failedFor.x = p.x;
       search.failedFor.z = p.z;
       return false;
     }
     planStart(ctx);
+    search.strict = fruitless > 0;
   } else if (Math.hypot(p.x - search.him.x, p.z - search.him.z) > 3) planStart(ctx);
   planStep(ctx);
   return search.on || walkPlan.steps.length > 0;
@@ -1133,9 +1155,10 @@ function lead(ctx: RoamCtx, dt: number): void {
   nose(_n);
   const far = Math.hypot(ctx.body.pos.x - _n.x, ctx.body.pos.z - _n.z);
   // (blocked and getting nowhere for a while as he pulls at the rope, a way round or not: as no way)
-  stuckFor = blocked && ds <= 1e-4 && !walkPlan.steps.length && far > ROPE_HOLD - 0.3 ? stuckFor + dt : 0;
+  stuckFor = blocked && ds <= 1e-4 && !walkPlan.steps.length && !search.on && far > ROPE_HOLD - 0.3 ? stuckFor + dt : 0;
   const noWay = (blocked && !search.on && !walkPlan.steps.length && Math.hypot(ctx.body.pos.x - search.failedFor.x, ctx.body.pos.z - search.failedFor.z) < 1.5) || stuckFor > STUCK_AFTER;
   if (_h.distanceTo(_n) > ROPE_MAX || (noWay && far > ROPE_HOLD - 0.15)) {
+    console.info(`[haul] rope: ${_h.distanceTo(_n) > ROPE_MAX ? 'too far' : stuckFor > STUCK_AFTER ? `stuck ${stuckFor.toFixed(1)} s` : `no way round for (${search.failedFor.x.toFixed(1)}, ${search.failedFor.z.toFixed(1)})`}, him ${far.toFixed(1)} m off`);
     letGo(blocked ? 'haulStuck' : 'haulLetGoToast');
     return;
   }
