@@ -277,15 +277,16 @@ const _v = new Vector3();
 /**
  * Bamboo clumps' cores (the forest's, and the jungle's: vegetation.ts): hidden blocks in the walk map, never drawn
  * nor picked, so he stops at a clump's canes from every side (between two canes a gap could let him in). Each from
- * its foot to `CORE.h` over the highest ground round it (on a land step's edge he meets it from above too).
+ * its foot to `tall` m over the highest ground round it (on a land step's edge he meets it from above too; the jungle's
+ * coarse clumps, whose thick lowest canes he can climb like steps, get it taller: 6 m).
  */
-export function clumpCores(f: HeightField, clumps: readonly { x: number; y: number; z: number }[], name: string): Group {
+export function clumpCores(f: HeightField, clumps: readonly { x: number; y: number; z: number }[], name: string, tall = CORE.h): Group {
   const src = traceSource();
   const cores = new VoxelBuilder();
   for (const c of clumps) {
     let hi = c.y;
     for (const [dx, dz] of [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]]) hi = Math.max(hi, f.heightAt(c.x + dx, c.z + dz));
-    const h = hi + CORE.h - c.y;
+    const h = hi + tall - c.y;
     cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src });
     cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src, ry: Math.PI / 4 });
   }

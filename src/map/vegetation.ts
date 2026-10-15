@@ -462,7 +462,7 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
   );
   object.add(BAMBOO_CUT.object);
   // (the clumps' hidden cores in the walk map: he stops at their canes from every side, as at the bamboo forest's)
-  if (BAMBOO_CUT.clumps().length) object.add(clumpCores(f, BAMBOO_CUT.clumps(), 'vegetation:bamboo-solid'));
+  if (BAMBOO_CUT.clumps().length) object.add(clumpCores(f, BAMBOO_CUT.clumps(), 'vegetation:bamboo-solid', 6));
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (forest) {
