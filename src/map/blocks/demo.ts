@@ -28,7 +28,8 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   A stair of stair blocks (AWP-24: 0.25 m treads, 1 m wide) climbs to the
  *   floor's east side from the east (x 426‥428, z −169‥−168).
  * - `gable`: an open Khmer pavilion with a steep gable roof (AWP-24: 6 × 4 m
- *   on a laterite plinth, eight timber posts 2.5 m high under a beam ring
+ *   on a laterite plinth with a step of sandstone slabs round it, eight
+ *   timber posts 2.5 m high under a beam ring
  *   painted lacquer red, a palm thatch roof at 45° a cell over the beams at
  *   every side, its gable ends timber; open between the posts, so the roof's
  *   underside shows): the roof's steps smoothed with stairs and its ridge
@@ -179,11 +180,14 @@ export function buildGableHouse(store: BlockStore, field: Pick<HeightField, 'hei
     const laterite: Block = { mat: 'laterite' };
     const timber: Block = { mat: 'timber' };
     const post: Block = { mat: 'timber', color: 0x5a3a26 };
-    // The plinth (down to the ground), its top at `high`.
-    for (let a = 0; a < W; a++)
-      for (let b = 0; b < D; b++) {
+    // The plinth (down to the ground), its top at `high`, and a ring of sandstone slabs round it as a step.
+    for (let a = -1; a <= W; a++)
+      for (let b = -1; b <= D; b++) {
+        const ring = a < 0 || b < 0 || a >= W || b >= D;
         const g = cellOf(field.heightAt(cellMid(i0 + a), cellMid(k0 + b)));
-        for (let j = Math.min(g, high); j <= high; j++) store.set(i0 + a, j, k0 + b, laterite);
+        const top = ring ? high - 1 : high;
+        for (let j = Math.min(g, top); j <= top; j++) store.set(i0 + a, j, k0 + b, laterite);
+        if (ring) store.set(i0 + a, high, k0 + b, { mat: 'sandstone', shape: 'slab' });
       }
     // Posts, 5 cells high (2.5 m: room for him under the beams), at the corners and a third of the way along each
     // long side; the beam ring over them.
