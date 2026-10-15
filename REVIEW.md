@@ -88,6 +88,8 @@ One line each time a ticket is sent back, so the next worker avoids it.
   check the follow camera stays under the roof and he stays in view (AWP-17).
 - Built rooms: also turn the camera (Q / R) and walk back towards it inside a 3 m
   wide built room; the camera must never end inside a player's wall (AWP-17).
+- A camera that refuses to turn into a wall holds still, never swings back and
+  forth: hold Q / R into a built wall and count heading reversals (AWP-17).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
