@@ -130,6 +130,12 @@ function hits(at: Readonly<CartPlace>, x: number, z: number, r: number): boolean
  */
 export const cartBlocks = (x: number, z: number, r = 0): boolean => hits(CART_AT, x, z, r) || hits(CART_HOME, x, z, r);
 
+/**
+ * Is (x, z), or a disc of radius `r` round it, in the ox cart or its oxen where they stand now (not their place by the
+ * house)? For what moves: the bicycle, the ridden cow, his cattle, the dog keep out of it.
+ */
+export const cartBodyBlocks = (x: number, z: number, r = 0): boolean => hits(CART_AT, x, z, r);
+
 /** As `cartBlocks`, and which: the cart itself (`here`), or its place by the house while it is away (`place`); null: neither. */
 export const cartBlockWhy = (x: number, z: number, r = 0): 'here' | 'place' | null => (hits(CART_AT, x, z, r) ? 'here' : hits(CART_HOME, x, z, r) ? 'place' : null);
 

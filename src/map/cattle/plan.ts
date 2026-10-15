@@ -96,6 +96,27 @@ export const STAKES: readonly (readonly [number, number])[] = [
   [431, -148.5],
 ];
 export const ROPE = 2.7;
+/**
+ * The room kept round each stake (m): the cow's middle goes `ROPE` round it, and its body a little more. Nothing is
+ * built there (roam/_buildSpots.ts `stake`), and his ox cart is not led nor left there while a cow is tied to it
+ * (roam/_haulFit.ts).
+ */
+export const STAKE_ROOM = ROPE + 0.5;
+
+/**
+ * Is (x, z), or a disc of radius `r` round it, in a stake's room (`STAKE_ROOM`)? `only`: those stakes (by index; his
+ * cows' own, the cart asks only for the ones in use); else every one.
+ */
+export function stakeBlocks(x: number, z: number, r = 0, only?: ReadonlySet<number>): boolean {
+  for (let k = 0; k < STAKES.length; k++) {
+    if (only && !only.has(k)) continue;
+    const dx = x - STAKES[k][0];
+    const dz = z - STAKES[k][1];
+    const R = STAKE_ROOM + r;
+    if (dx * dx + dz * dz < R * R) return true;
+  }
+  return false;
+}
 
 /** Whether the clock is in a window (wrapping past 1). */
 export function inHours(clock: number, [a, b]: readonly [number, number]): boolean {

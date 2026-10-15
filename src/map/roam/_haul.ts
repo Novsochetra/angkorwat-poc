@@ -4,6 +4,7 @@ import { WALK_SPEED } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_cart';
 import '../audio/_haul';
+import { BUILT } from '../build/pieces';
 import { cartAway, CART_AT, CART_BOX, CART_HOME, CART_LIMIT, CART_LOAD, CART_STATE, CART_YOKE, OXEN_BOX, saveCartAt, wrapYaw } from '../build/haul';
 import { BAG, MATERIALS, MATERIAL_IDS, STORE, materialsText, type MaterialId, type Materials } from '../build/materials';
 import { CH } from '../fauna/_kit';
@@ -19,7 +20,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { MAP_SPOTS } from '../ui/_minimapSpots';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { CAP, HOLD, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
-import { boxClear, type CartBox } from './_haulFit';
+import { boxClear, cowInBox, type CartBox } from './_haulFit';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 import { PACE as WALK_PACE, stepSound } from './walker';
@@ -160,6 +161,23 @@ let yokeS = 0;
 /** The farthest the yoke has been tested to fit along the way (m), and how far apart those tests are. */
 let fitS = 0;
 const FIT_STEP = 0.2;
+/** Where those tests began (m along the way): every place at `fitOrigin` + k × `FIT_STEP` up to `fitS` was tested. */
+let fitOrigin = 0;
+/**
+ * Stuck before something, he not straight ahead of it: the oxen turn the cart on the spot toward him (round its axle,
+ * `PIVOT_RATE` rad/s), backing it up a little (`BACK_PACE` m/s, `BACK_MAX` m at most) where there is no room to turn;
+ * every placement tested first (`placeFits`).
+ */
+const PIVOT_RATE = 0.7;
+const BACK_PACE = 0.6;
+const BACK_MAX = 3;
+let backed = 0;
+let turning = 0;
+/** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
+let stuckTries = 0;
+const tryFrom = { x: Number.NaN, z: Number.NaN };
+/** Sending it home (the fade): nothing else meanwhile. */
+let sending = false;
 let speed = 0;
 /** The way could not go on (a place the cart cannot go). */
 let blocked = false;
@@ -351,7 +369,7 @@ const _oxBox: CartBox = { x: 0, z: 0, yaw: 0, back: OXEN_BOX.back, front: OXEN_B
 const FIT = { n: 0, ms: 0, worst: 0 };
 
 /** The cart's and the oxen's boxes clear, the cart at axle (ax, az) heading `yaw`, the oxen at the yoke (yx, yz) heading `oxYaw`. */
-function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: number, yx: number, yz: number, oxYaw: number): boolean {
+function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: number, yx: number, yz: number, oxYaw: number, moving = false): boolean {
   const t0 = performance.now();
   _cartBox.x = ax;
   _cartBox.z = az;
@@ -359,7 +377,8 @@ function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: nu
   _oxBox.x = yx;
   _oxBox.z = yz;
   _oxBox.yaw = oxYaw;
-  const ok = boxClear(ctx.world, _oxBox) && boxClear(ctx.world, _cartBox);
+  // (moving, it stops for his cattle too: they walk, it waits)
+  const ok = boxClear(ctx.world, _oxBox) && boxClear(ctx.world, _cartBox) && !(moving && (cowInBox(_oxBox) || cowInBox(_cartBox)));
   const ms = performance.now() - t0;
   FIT.n++;
   FIT.ms += ms;
@@ -367,12 +386,31 @@ function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: nu
   return ok;
 }
 
+/**
+ * **The one rule** for where the cart may stand (axle at (ax, az), heading `yaw`, its oxen straight before it): the
+ * land at its tail, axle, oxen and yoke (`passable`, each from its own ground: water, a step across it, a roof, the
+ * roaming area), and its and its oxen's whole boxes clear (`_haulFit.ts` `boxClear`). As it moves (`moving`), and
+ * as a saved place is checked (`standsAt`): it never stops where it would be refused. Moving, it stops for his
+ * cattle too.
+ */
+function placeFits(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: number, moving: boolean): boolean {
+  const f = ctx.world.field;
+  const dx = Math.sin(yaw);
+  const dz = Math.cos(yaw);
+  for (const d of [CART_BOX.back, 0, CART_YOKE - OX_BACK * K, CART_YOKE]) {
+    const x = ax + dx * d;
+    const z = az + dz * d;
+    if (Number.isNaN(passable(ctx, x, z, dx, dz, f.heightAt(x, z)))) return false;
+  }
+  return boxesClear(ctx, ax, az, yaw, ax + dx * CART_YOKE, az + dz * CART_YOKE, yaw, moving);
+}
+
 /** With the yoke at `s` along the way: the cart a pole's reach back along it (a chord), its oxen straight before it (as `placeOnWay`). */
 function fitsAt(ctx: Pick<RoamCtx, 'world'>, s: number): boolean {
   wayAt(s, _a);
   wayAt(s - REACH_M, _b);
   const yaw = Math.atan2(_a.x - _b.x, _a.z - _b.z);
-  return boxesClear(ctx, _a.x - Math.sin(yaw) * REACH_M, _a.z - Math.cos(yaw) * REACH_M, yaw, _a.x, _a.z, yaw);
+  return placeFits(ctx, _a.x - Math.sin(yaw) * REACH_M, _a.z - Math.cos(yaw) * REACH_M, yaw, true);
 }
 
 /** With the yoke at the way's last point (a new one: the way goes on only where the cart will fit). */
@@ -419,7 +457,7 @@ function placeAt(ctx: Pick<RoamCtx, 'world'>): void {
 }
 
 /** Place it on the way (he leads it): the yoke at `yokeS`, the axle a pole's reach back along it (a chord), the oxen along the way. */
-function placeOnWay(ctx: RoamCtx): void {
+function placeOnWay(ctx: Pick<RoamCtx, 'world'>): void {
   wayAt(yokeS, _a);
   wayAt(yokeS - REACH_M, _b);
   P.yaw = Math.atan2(_a.x - _b.x, _a.z - _b.z);
@@ -546,18 +584,7 @@ function hand(out: Vector3, side: 'L' | 'R' = 'R'): Vector3 {
 // ── Its place checked ──────────────────────────────────────────────────────
 
 /** Could the cart stand at `at`: its tail, its axle, its oxen and its yoke where a cart can go (`passable`, each from its own ground)? */
-function standsAt(ctx: Pick<RoamCtx, 'world'>, at: { x: number; z: number; yaw: number }): boolean {
-  const f = ctx.world.field;
-  const dx = Math.sin(at.yaw);
-  const dz = Math.cos(at.yaw);
-  // (the land under it: no water, no step across it; then its whole boxes clear of what is built: `_haulFit.ts`)
-  for (const d of [CART_BOX.back, 0, CART_YOKE - OX_BACK * K, CART_YOKE]) {
-    const x = at.x + dx * d;
-    const z = at.z + dz * d;
-    if (Number.isNaN(passable(ctx, x, z, dx, dz, f.heightAt(x, z)))) return false;
-  }
-  return boxesClear(ctx, at.x, at.z, at.yaw, at.x + dx * CART_YOKE, at.z + dz * CART_YOKE, at.yaw);
-}
+const standsAt = (ctx: Pick<RoamCtx, 'world'>, at: { x: number; z: number; yaw: number }): boolean => placeFits(ctx, at.x, at.z, at.yaw, false);
 
 /**
  * A place near his house the cart can stand on: its own place by the house, else the nearest round it (rings out to
@@ -584,9 +611,17 @@ function checkPlace(ctx: RoamCtx): void {
   placeChecked = true;
   if (leading || W || standsAt(ctx, CART_AT)) return;
   const was = `(${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)})`;
-  const at = parkNearHome(ctx);
+  // (the nearest place it fits round where it was, out to 8 m, its heading kept or turned a quarter; else by the house)
+  let at: { x: number; z: number; yaw: number } | null = null;
+  for (let r = 1; r <= 8 && !at; r++)
+    for (let a = 0; a < 12 && !at; a++)
+      for (let q = 0; q < 4 && !at; q++) {
+        const c = { x: CART_AT.x + Math.cos((a * Math.PI) / 6) * r, z: CART_AT.z + Math.sin((a * Math.PI) / 6) * r, yaw: wrapYaw(CART_AT.yaw + (q * Math.PI) / 2) };
+        if (standsAt(ctx, c)) at = c;
+      }
+  at ??= parkNearHome(ctx);
   if (!at) {
-    console.warn(`[haul] the cart's place ${was} is no good, and none by the house is free: it stays`);
+    console.info(`[haul] the cart's place ${was} is no good, and none near it or by the house is free: it stays`);
     return;
   }
   CART_AT.x = at.x;
@@ -594,7 +629,7 @@ function checkPlace(ctx: RoamCtx): void {
   CART_AT.yaw = at.yaw;
   saveCartAt();
   placeAt(ctx);
-  console.warn(`[haul] the cart's place ${was} is no good: by the house at (${at.x.toFixed(1)}, ${at.z.toFixed(1)})`);
+  console.info(`[haul] the cart's place ${was} is no good: moved to (${at.x.toFixed(1)}, ${at.z.toFixed(1)})`);
 }
 
 // ── Leading ────────────────────────────────────────────────────────────────
@@ -613,6 +648,10 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   }
   yokeS = wayEnd();
   fitS = yokeS;
+  fitOrigin = yokeS;
+  backed = 0;
+  tryFrom.x = P.ax;
+  tryFrom.z = P.az;
   speed = 0;
   blocked = false;
   leading = true;
@@ -628,7 +667,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
     pad.rumble('tick', 0.35);
     // (the key that lets go: E, the pad's □, or on a touch screen the button that says so)
     const touch = typeof document !== 'undefined' && document.body.classList.contains('roam-touch');
-    ctx.hud.toast(pad.active ? t('haulLeadHint', { key: padName('west', pad.kind) }) : touch ? t('haulLeadHintTouch') : t('haulLeadHint', { key: 'E' }));
+    ctx.hud.toast(pad.active ? t('haulLeadHint', { key: pad.kind === 'ps' ? '□' : padName('west', pad.kind) }) : touch ? t('haulLeadHintTouch') : t('haulLeadHint', { key: 'E' }));
   }
   console.info(`[haul] he leads the cart from (${P.ax.toFixed(1)}, ${P.az.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}`);
 }
@@ -636,6 +675,16 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
 /** He lets go: the cart stands where it is (kept). `why`: the toast's words (null: none). */
 function letGo(why: WordKey | null): void {
   if (!leading) return;
+  // (it stands where it was last tested to fit: the places tested are `FIT_STEP` apart, it may be between two)
+  if (env) {
+    const s = snapS();
+    if (s < yokeS - 1e-6) {
+      yokeS = s;
+      placeOnWay(env);
+    }
+  }
+  stuckTries = Math.hypot(P.ax - tryFrom.x, P.az - tryFrom.z) < 0.5 ? stuckTries + 1 : 0;
+  turning = 0;
   leading = false;
   CART_STATE.leading = false;
   speed = 0;
@@ -655,6 +704,118 @@ function letGo(why: WordKey | null): void {
   }
   dirty = true;
   console.info(`[haul] he lets go (${why ?? 'quietly'}): the cart stands at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}) facing ${((CART_AT.yaw * 180) / Math.PI).toFixed(0)}°`);
+}
+
+/** The last place along the way tested to fit, at or behind the yoke (m along the way). */
+const snapS = (): number => Math.min(yokeS, fitOrigin + Math.floor((yokeS - fitOrigin) / FIT_STEP + 1e-6) * FIT_STEP);
+
+/** Stand it at axle (ax, az) heading `yaw` (it turned or backed on the spot), and start the way again from there. */
+function standAt(ctx: RoamCtx, ax: number, az: number, yaw: number): void {
+  CART_AT.x = ax;
+  CART_AT.z = az;
+  CART_AT.yaw = wrapYaw(yaw);
+  placeAt(ctx);
+  wayClear();
+  const f = ctx.world.field;
+  const bx = -Math.sin(P.yaw);
+  const bz = -Math.cos(P.yaw);
+  for (let d = REACH_M + 2; d >= -0.001; d -= STEP) wayPush(P.yx + bx * d, f.heightAt(P.yx + bx * d, P.yz + bz * d), P.yz + bz * d);
+  yokeS = fitS = fitOrigin = wayEnd();
+}
+
+/** Blocked before something: turn toward him on the spot, or back up a little to make room. True: it moved. */
+function turnTowardHim(ctx: RoamCtx, dt: number): boolean {
+  const p = ctx.body.pos;
+  const want = Math.atan2(p.x - P.ax, p.z - P.az);
+  const diff = angleDiff(want, P.yaw);
+  if (Math.abs(diff) < 0.12) return false;
+  const step = Math.sign(diff) * Math.min(Math.abs(diff), PIVOT_RATE * dt);
+  if (placeFits(ctx, P.ax, P.az, P.yaw + step, true)) {
+    standAt(ctx, P.ax, P.az, P.yaw + step);
+    P.wheel += Math.abs(step) * 2;
+    return true;
+  }
+  if (backed < BACK_MAX) {
+    const b = Math.min(BACK_PACE * dt, BACK_MAX - backed);
+    const nx = P.ax - Math.sin(P.yaw) * b;
+    const nz = P.az - Math.cos(P.yaw) * b;
+    if (placeFits(ctx, nx, nz, P.yaw, true)) {
+      backed += b;
+      standAt(ctx, nx, nz, P.yaw);
+      P.wheel -= b / (WHEEL_R * K);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ── Stuck for good: the oxen take it home ──────────────────────────────────
+
+/**
+ * Can the cart get out from where it stands, heading `to`: backed up `back` m (0 or 1.2) along its line, turned on the
+ * spot to `to`, then rolled 2 m on (each placement tested, every `FIT_STEP` m or 0.1 rad)?
+ */
+function wayOut(ctx: Pick<RoamCtx, 'world'>, to: number): boolean {
+  for (const back of [0, 1.2]) {
+    let ok = true;
+    let ax = CART_AT.x;
+    let az = CART_AT.z;
+    const y0 = CART_AT.yaw;
+    for (let b = FIT_STEP; b <= back + 1e-6 && ok; b += FIT_STEP) ok = placeFits(ctx, CART_AT.x - Math.sin(y0) * b, CART_AT.z - Math.cos(y0) * b, y0, false);
+    if (!ok) continue;
+    ax -= Math.sin(y0) * back;
+    az -= Math.cos(y0) * back;
+    const diff = angleDiff(to, y0);
+    const n = Math.ceil(Math.abs(diff) / 0.1);
+    for (let i = 1; i <= n && ok; i++) ok = placeFits(ctx, ax, az, y0 + (diff * i) / n, false);
+    for (let d = FIT_STEP; d <= 2 + 1e-6 && ok; d += FIT_STEP) ok = placeFits(ctx, ax + Math.sin(to) * d, az + Math.cos(to) * d, to, false);
+    if (ok) return true;
+  }
+  return false;
+}
+
+/** Looking for a way out (one heading of eight a step, while he stands by the oxen): for which place, how far, any found. */
+const probe = { key: '', i: 0, out: false };
+/** Is the cart stuck for good where it stands (no way out in eight headings), or did two tries in a row from here fail? */
+function stuckHere(ctx: Pick<RoamCtx, 'world'>): boolean {
+  if (!cartAway()) return false;
+  const key = `${CART_AT.x.toFixed(2)},${CART_AT.z.toFixed(2)},${CART_AT.yaw.toFixed(3)},${BUILT.version}`;
+  if (key !== probe.key) {
+    probe.key = key;
+    probe.i = 0;
+    probe.out = false;
+  }
+  if (!probe.out && probe.i < 8) {
+    if (wayOut(ctx, CART_AT.yaw + (probe.i * Math.PI) / 4)) probe.out = true;
+    probe.i++;
+  }
+  return stuckTries >= 2 || (probe.i >= 8 && !probe.out);
+}
+
+/** E at the oxen when it is stuck: they walk it home (a fade: they go the long way round), and it waits by his house. */
+async function sendHome(ctx: RoamCtx): Promise<void> {
+  if (sending || !env) return;
+  sending = true;
+  SFX.play('haulRope', 0.9);
+  pad.rumble('tick', 0.35);
+  try {
+    if (!env.shot) await env.hud.fade(1, 0.6);
+    const at = parkNearHome(ctx);
+    if (at) {
+      CART_AT.x = at.x;
+      CART_AT.z = at.z;
+      CART_AT.yaw = at.yaw;
+      saveCartAt();
+      placeAt(ctx);
+    }
+    stuckTries = 0;
+    probe.key = '';
+    console.info(`[haul] the oxen took the cart home: at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}`);
+    if (!env.shot) await env.hud.fade(0, 0.8);
+    env.hud.toast(t('haulSentHome'));
+  } finally {
+    sending = false;
+  }
 }
 
 /** Someone else has him now (a ride, the gathering, praying…): not the cart's own work. */
@@ -688,6 +849,10 @@ function lead(ctx: RoamCtx, dt: number): void {
   yokeS += ds;
   P.wheel += ds / (WHEEL_R * K);
   if (ds > 0 || dirty) placeOnWay(ctx);
+  if (ds > 0.02) backed = 0;
+  // (stuck before something with him off to a side or behind: the oxen turn it on the spot, or back it up a little)
+  turning = Math.max(0, turning - dt);
+  if (blocked && ds <= 1e-4 && wayEnd() - yokeS < 0.05 && turnTowardHim(ctx, dt)) turning = 0.3;
   wayTrim(yokeS - REACH_M - 2);
   // Sounds: the wheels and a hub's knock (his), the bells and the creak go with the map's calls (`frame`).
   const go = Math.min(1, speed / OX_PACE);
@@ -708,7 +873,16 @@ function lead(ctx: RoamCtx, dt: number): void {
   }
   if ((saveWait -= dt) <= 0) {
     saveWait = SAVE_EVERY;
-    saveCartAt();
+    // (kept where it was last tested to fit, the drawn place left as it is)
+    const s = snapS();
+    if (s < yokeS - 1e-6) {
+      const was = yokeS;
+      yokeS = s;
+      placeOnWay(ctx);
+      saveCartAt();
+      yokeS = was;
+      placeOnWay(ctx);
+    } else saveCartAt();
   }
 }
 
@@ -1159,7 +1333,7 @@ registerAddon({
   },
 
   offer(ctx, mode) {
-    if (mode !== 'walk' || !env || W || !HOME.owned) return null;
+    if (mode !== 'walk' || !env || W || sending || !HOME.owned) return null;
     if (leading) return words('letgo', () => `E  ${t('haulLetGo')}`);
     if (env.busy() || !ctx.body.grounded) return null;
     if (nearTail(ctx)) {
@@ -1168,7 +1342,7 @@ registerAddon({
       if (!CART_LOAD.empty) return counted('haulGoHome', false);
       return null;
     }
-    if (nearHead(ctx)) return words('lead', () => `E  ${t('haulLead')}`);
+    if (nearHead(ctx)) return stuckHere(ctx) ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
     return null;
   },
 
@@ -1184,7 +1358,9 @@ registerAddon({
       else SFX.play('gatherFull', 0.6);
       return;
     }
-    if (nearHead(ctx)) takeRope(ctx);
+    if (!nearHead(ctx) || sending) return;
+    if (stuckHere(ctx)) void sendHome(ctx);
+    else takeRope(ctx);
   },
 
   hold(ctx, dt) {
@@ -1267,9 +1443,10 @@ registerAddon({
       dirty = false;
     }
     // The oxen: side by side under the yoke, walking with the cart, else looking about (dozing at night).
-    const walking = speed > 0.05;
-    const g = walking ? oxGait(speed, K, 1.3, 2.3) : 0;
-    const hz = walking ? oxHz(g, speed, K) : 0.5;
+    const walking = speed > 0.05 || turning > 0;
+    const gv = Math.max(speed, turning > 0 ? 0.7 : 0);
+    const g = walking ? oxGait(gv, K, 1.3, 2.3) : 0;
+    const hz = walking ? oxHz(g, gv, K) : 0.5;
     for (let i = 0; i < 2; i++) {
       const s = i === 0 ? OX_SIDE : -OX_SIDE;
       const x = P.yx + Math.cos(P.oxYaw) * s * K - Math.sin(P.oxYaw) * OX_BACK * K;
