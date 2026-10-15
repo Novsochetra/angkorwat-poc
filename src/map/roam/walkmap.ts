@@ -52,6 +52,8 @@ import type { MapPart } from '../types';
 const RES = 0.5;
 /** Chunk size in columns (16 m). */
 const CN = 32;
+/** On a player's stair, its high part this near its tread (m) is climbed as the tread (`steep`): past the explorer's rim reach beyond a tread (0.42 − 0.25 m). */
+const TREAD_LEAD = 0.2;
 /** Gaps between two solids thinner than this are filled (m). */
 const SEAM = 0.5;
 /**
@@ -349,7 +351,7 @@ export class WalkMap {
       const t = this.at!.top[c];
       const own = this.ownAt(c, t);
       const g = this.tread(own, t, x, z);
-      return g > reach || this.steep(own, g, y) ? NaN : g;
+      return g > reach || this.steep(own, g, y, x, z) ? NaN : g;
     }
     let k = 0;
     for (let j = s.length - 2; j >= 1; j -= 2)
@@ -361,14 +363,34 @@ export class WalkMap {
     if (this.roofs) while (k >= 2 && s[k - 1] > y && this.ownTop(c, s[k])) k -= 2;
     const own = this.ownAt(c, s[k]);
     const top = this.tread(own, s[k], x, z);
-    if (top > reach || this.steep(own, top, y)) return NaN;
+    if (top > reach || this.steep(own, top, y, x, z)) return NaN;
     const next = k + 1 < s.length ? s[k + 1] : Infinity;
     return next - top < height ? NaN : top;
   }
 
-  /** Is `top`, of the player's span `own` (−1: not one), more than a step over feet at `y` that are not on it? */
-  private steep(own: number, top: number, y: number): boolean {
-    return own >= 0 && top > y + this.step_ && y < top - 0.06;
+  /**
+   * Is `top` (where (x, z) stands), of the player's span `own` (−1: not one), more than a step over feet at `y`
+   * that are not on it? On a stair, the high part within `TREAD_LEAD` of its tread counts as the tread (half a
+   * column lower): his rim reaches past a tread (0.25 m) while his feet are a step under it, so he climbs a stair
+   * from its front; from its back (0.25 m from the tread) it is a full block's step, a wall to him.
+   */
+  private steep(own: number, top: number, y: number, x: number, z: number): boolean {
+    if (own < 0 || top <= y + this.step_ || y >= top - 0.06) return false;
+    const low = this.at!.own!.low[own];
+    if (!low) return true;
+    // (the point in its column, 0‥1, and its distance (m) to the nearest tread quarter)
+    const u = (x - this.x0) / RES - Math.floor((x - this.x0) / RES);
+    const v = (z - this.z0) / RES - Math.floor((z - this.z0) / RES);
+    let near = Infinity;
+    for (let q = 0; q < 4; q++) {
+      if (!(low & (1 << q))) continue;
+      const qu = (q & 1) * 0.5;
+      const qv = (q >> 1) * 0.5;
+      const du = Math.max(qu - u, 0, u - qu - 0.5);
+      const dv = Math.max(qv - v, 0, v - qv - 0.5);
+      near = Math.min(near, Math.hypot(du, dv) * RES);
+    }
+    return near >= TREAD_LEAD || top - RES / 2 > y + this.step_;
   }
 
   /** Is `top` at column `c` (of `at`) a top of the player's blocks? */
