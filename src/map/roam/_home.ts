@@ -107,6 +107,8 @@ let floor = 0;
 let session: Session | null = null;
 let card: HomeCard | null = null;
 let offered: Offer = null;
+/** A check's `bedsleep=`: the bed to fall asleep on once it stands (and steps left to wait for it). */
+let bedWait: { uid: string; steps: number } | null = null;
 /** The side of the doors he was offered them from (_homeDoor.ts `doorSide`). */
 let doorFrom: -1 | 1 = 1;
 /** What comes after the session now (to bed once the doors are shut), and whether he shut them for the night (they open as he gets up). */
@@ -449,6 +451,17 @@ registerAddon({
   },
   after(ctx, mode, dt) {
     lastCtx = ctx;
+    if (bedWait && env && !session) {
+      const bp = BUILD.byUid(bedWait.uid);
+      const bedAt = bp ? bedPlace(bp) : null;
+      if (bedAt) {
+        bedWait = null;
+        session = startSleep(env, ctx, { kind: env.shot ? 'still' : 'rest' }, 'lying', bedAt);
+      } else if (--bedWait.steps <= 0) {
+        console.warn(`[home] bedsleep=${bedWait.uid}: no bed of that name under a roof of his`);
+        bedWait = null;
+      }
+    }
     const p = ctx.body.pos;
     const onFloor = mode === 'walk' && HOME.owned && Math.abs(p.y - floor) < 0.6;
     const was = inRoom;
@@ -537,13 +550,11 @@ registerAddon({
       houseHat(true);
       if (!q.has('rcam')) roomCamera(ctx, true, 10);
     }
-    // (`bedsleep=<uid>`: asleep on that bed he built, under a roof of his: a check's, shots and the dev server only)
+    // (`bedsleep=<uid>`: asleep on that bed he built, under a roof of his: a check's, shots and the dev server only; the
+    // next steps, once the build add-on has put its pieces and furniture: `after`)
     const bs = q.get('bedsleep');
-    const bp = bs && (env.shot || import.meta.env.DEV) ? BUILD.byUid(bs) : null;
-    const bedAt = bp ? bedPlace(bp) : null;
-    if (bs && (env.shot || import.meta.env.DEV) && !bedAt) console.warn(`[home] bedsleep=${bs}: no bed of that name under a roof of his`);
-    if (bedAt) session = startSleep(env, ctx, { kind: env.shot ? 'still' : 'rest' }, 'lying', bedAt);
-    else if (v === 'sleep' || v === 'stretch') {
+    if (bs && (env.shot || import.meta.env.DEV)) bedWait = { uid: bs, steps: 30 };
+    if (v === 'sleep' || v === 'stretch') {
       // (in his room: his hat off at the door, as when he walks in)
       inRoom = true;
       houseHat(true);
