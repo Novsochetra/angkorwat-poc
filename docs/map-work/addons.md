@@ -2841,8 +2841,8 @@ piece may stand: no three.js), `_buildWork.ts` (his work with the hammer),
 `_buildWalk.ts` (the walk map), `_buildUses.ts` (seats, hammocks, the spirit house's
 prayer); the core `map/build/pieces.ts` (the contract: the nine pieces, their sizes,
 prices, solids, seat, ties, light, kneel, pen; `BUILT`; the model registry),
-`map/build/state.ts` (the saved list, footprints), `map/build/view.ts` (drawn on the
-map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
+`map/build/state.ts` (the saved list, footprints), `map/build/plot.ts` (his land: its
+corners, `inPlot`, the trees on it), `map/build/view.ts` (drawn on the map); the models `map/build/models/<id>.ts` (the placeholder in pieces.ts until one is
 done); his pose `character/buildWork.ts` (`buildPose`, his hammer `hammerBuilder`);
 sounds `audio/_build.ts`.
 
@@ -2859,10 +2859,47 @@ sounds `audio/_build.ts`.
   stack គំនរចំបើង (10,000 ៛: 1 bamboo + rice straw 8,000 ៛; 2).
 - **Starting** (the house his, on foot on the ground): by the house (under it, round
   it within 2.6 m, at its stair's foot; order 94) "E  សាងសង់… / Build…"; anywhere
-  within `BUILD_NEAR` (46 m) of it where nothing else takes E (`buildLate`, order 94.9,
+  on his land (or 2 m past its edge) where nothing else takes E (`buildLate`, order 94.9,
   just before the garden's late row: its "E  Plant…" first; a line of the garden's with no
   key, as "no seeds yet", goes on after it: "E  Build…  ·  …"). The first time he comes home owning it, a
   toast says so (`build.hinted`).
+- **His land** (ដីរបស់គាត់, `build/plot.ts`; AWP-31): one shape, `PLOT_CORNERS` (a polygon of
+  14 corners, 4 829 m²) in three parts: the yard round the house between the Kulen foot trail
+  and the stream's bank, from the back of the village's north houses (z −88) up the meadow
+  to the land's next step (z −168); the terrace west of the trail (x 386‥408, z −140.5‥−103.5,
+  between the house ny1's yard, the cattle trader's meadow and the nursery); the meadow over
+  the stream (x 452‥472, z −160‥−102, to the village herd's meadow; reached by the foot bridge
+  or wading in: the boat). The trail and the stream run through it and stay unbuildable
+  (`path`, `water`). Every point of a piece is on it (`inPlot`); the village's coarse "built
+  on" cells there (2 m: round the house, its trees) no longer stop him (until AWP-31 they
+  stopped him 3.5 m behind the house). Where a fence can stand (0.5 m placement checks):
+  2 200 m² before AWP-31, 2 723 m² now (the yard round the house 780 → 1 168 m²); the pen
+  1 143 → 1 283 m². The yard trees on it (`PLOT_TREES`, from `hamlet/_evSpots.ts`
+  `EV_MANGOS`, `EV_COCONUTS`, `EV_SUGAR_PALMS`) and the jungle's own (`veg/canopy.ts`, not the
+  bushes) keep their trunks, and a tall piece (the shelter, the pen, the haystack) keeps out
+  from under a crown. Build mode ends 8 m past it. Pieces built before AWP-31 past it stay
+  where they are (and count in the budget: they are drawn like the rest).
+  **Its edge** (`build/plotEdge.ts`, AWP-19) shows on the ground while he builds (build
+  mode, the card): split-bamboo pegs every ≈ 2 m, a coconut-fibre cord along them, the
+  earth under it scraped bare (a narrow brown line), a hardwood boundary post (បង្គោលព្រំ)
+  with a red krama strip at each corner, none on the trail or in the stream; ≈ 900 blocks of the map's `mapBark`, `mapRock` and
+  `petal` families (3 draws while shown, none hidden); it rises
+  out of the ground and sinks back. **On the maps** (`ui/minimap.ts` `plotLine`), once the
+  house is his: a soft wash, a dark cord and gold dashes round it, on the mini-map and the
+  big map (bolder there: it reads round the "You are here" and "My home" pins).
+- **The block budget** (`build/plot.ts` `PLOT_BUDGET` 10 000, AWP-19): everything on his
+  land together. "Used" is a sum of sources (`addPlotBlocks(name, count)`, `plotBlocks()`):
+  the add-on's `pieces` (each piece's model's real block count, with its own seed:
+  `pieceLook(id, seed).boxes.length`, every piece, one past his land from before AWP-31 too)
+  and the block layer's `blocks` (the cells inside his land's shape, every height: not the
+  neighbours' yards or the meadows its box takes in; counted again only when the layer
+  changes: `BLOCKS.onChange`).
+  A piece that would pass it is greyed on the card ("ដីរបស់អ្នកនៅសល់កន្លែងមិនគ្រប់ទេ /
+  Not enough room left on your land"). Every piece at its most is 6 876 blocks (69 %).
+  Measured on a full plot (`build=full`, a walk at its north end over it): +8 draws,
+  +0.08 M triangles on a phone (+11, +0.09 M with the edge), its GPU time the same; 10 000 blocks ≈ 0.12 M (a new part's
+  0.15 M). The card's **meter** under his riel: "ដីរបស់អ្នក ▬▬▬ បានប្រើ ៦៩% / Your land
+  ▬▬▬ 69% used" (gold, red-brown from 90 %).
 - **The card**: each piece with its picture, its name, how many he has of how many,
   its line, its cost (each material's picture and how many, those he lacks in red, then
   the riel to pay now, if any); a piece he lacks materials for says so in place of its line
@@ -2876,12 +2913,28 @@ sounds `audio/_build.ts`.
   layer; touch.
 - **Build mode**: the piece's ghost before him (its own blocks, see-through: green with
   its footprint outlined where it can stand; red, drawn over everything, where not, the
-  reason in the prompt: too far, water, the path, a rice field, the house, a
-  neighbour's yard, the ground not level, a plant of his garden, something he built (or
+  reason in the prompt: too far, water, the path, a rice field, past his land
+  ("ហួសដីរបស់អ្នកហើយ / That's past your land"; a neighbour's yard there), the house,
+  the ground not level, a tree on his land ("មានដើមឈើនៅទីនេះ / A tree is in the way":
+  its trunk, its crown for a piece taller than its lowest leaves), a plant of his garden, something he built (or
   the room before one he uses from there), something else, no room before it: the spirit
-  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him, it turns with him; `,` / `.` (the pad's d-pad
-  ← →, the touch ⟲ ⟳) turn it 15° more. A fence run's end snaps onto the end of one he
-  built: in line (the run goes on) or, turned a quarter, at a corner (on either side). "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
+  house's kneeling place and the pen's gate want level open ground, `_buildSpots.ts` `FRONT`). Its front faces him and it turns with him **on his land's lines**
+  (AWP-30): in 15° steps counted from the house's frame (0° along the house), held on its
+  step until he turns 4° past the middle to the next (no flicker); `,` / `.` (the pad's
+  d-pad ← →, the touch ⟲ ⟳) turn it 15° more; 5°: Shift + `,` / `.` (keys: Shift read as
+  the key goes down), L2 held with ← → (the pad: in build mode L2 is the fine turn's, `buildMode`
+  takes its press before the binoculars, order 5; the prompt shows the pad's L2), ⟲ ⟳ held (touch: 5° after 0.45 s, again every 0.35 s). The turn resets after
+  each piece built. Its middle steps on a 0.5 m grid from his land's corner. A fence's ghost
+  shows a **guide**, pale dashes on the ground on along its run 9 m past both ends. A
+  **fence runs on** from the free end of one he built (its ghost within 1.5 m): its own end
+  on that end, **straight by default**: on that fence's own line, or square to it, whenever
+  he faces within 20° of it (a fence built before AWP-30 at any angle goes on at its own),
+  then the turn asked for (`,` `.` ⟲ ⟳: a bend of 15°, 30°…); past 20°, the ghost's own
+  15° step. Two runs may cross 0.5 m in from their ends only where an end meets an end
+  (`_buildSpots.ts` `fenceJoint`: in line past each other, side by side or a T through the
+  middle are refused); his own posts never count as "something in the way". The turn
+  shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
+  touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
   (`purse.pay`), takes the rest from his bag, then his home store (`useMaterials`; a
   toast: "Used 2 bamboo poles", "Used 1 bamboo pole and paid 2,000 ៛") and the work begins; F / C (the pad's ↓) the card again; Esc (○, the touch ✕) leaves the
@@ -2956,9 +3009,13 @@ sounds `audio/_build.ts`.
   stroke) · `buildtake=<uid>` (the question; `:<0‥1>` taking it down) ·
   `buildsit=<uid>[:lie]` · `buildhint=1`. `report()` gives `build=`, `buildghost=`,
   `buildwork=`. `window.__build` (shots, the dev server): `state()`, `canBuild(id, x, z,
-  deg)`, `add`, `remove`, `card`, `place`, `all`, `rebuild`, `shown(uid)`. Console lines
+  deg)`, `add`, `remove`, `card`, `place`, `all`, `full`, `rebuild`, `shown(uid)`. Console lines
   `[build] …`. E.g. `roam=walk&at=428,-134&yaw=180&home=1&build=all&rcam=200,30,26` ·
   `roam=walk&at=428,-134&yaw=180&home=1&purse=200000&buildghost=shelter` ·
+  `build=full` (his land full: every kind to its most where it fits, while the budget lasts) ·
+  `plotblocks=<n>` (n blocks more on his land, as a block layer's: the meter, "no room") ·
+  `plotedge=1` (his land's edge shown without building; `__build.state().plot`: area, budget,
+  used, by source, edge) · e.g. `roam=walk&at=426,-120&yaw=180&home=1&build=all&plotedge=1&cam=427,70,-52,426,0,-128,50` ·
   `roam=walk&at=424,-116&yaw=0&home=1&night=1&lamps=20&rcam=0,35,22` (twenty lamps at night) ·
   `roam=walk&at=428,-134&yaw=180&home=1&buildwork=shelter:0.6:0.3&rcam=80,12,6`.
 

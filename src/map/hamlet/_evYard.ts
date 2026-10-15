@@ -5,7 +5,7 @@ import { banana, BAMBOO, bougainvillea, DECK, gableEnd, gableRoof, hen, jar, Loc
 import { GLOW } from '../village/_lights';
 import { bambooClump, CONCRETE, EV_RIDGE, EV_ROOFS, frameGlow, gableTrim, hedge, kbach, khmerSpiritHouse, mango, papaya, STRAW, strawStack, vegBed, type EvEnv } from './_evKit';
 import { signWord } from './_evSign';
-import { EV_GRANARIES, EV_HERD_WAY, EV_KIOSK, EV_PEN, EV_PLAY, EV_PUMP, EV_SALA, EV_SPIRIT, EV_STRAW, EV_TAMARIND } from './_evSpots';
+import { EV_COCONUTS, EV_GRANARIES, EV_HERD_WAY, EV_KIOSK, EV_MANGOS, EV_PEN, EV_PLAY, EV_PUMP, EV_SALA, EV_SPIRIT, EV_STRAW, EV_SUGAR_PALMS, EV_TAMARIND } from './_evSpots';
 
 /**
  * The sugar-palm village round its houses: the two rice granaries on
@@ -42,55 +42,18 @@ export function evYard(env: EvEnv): void {
 
   // ── Trees and gardens ─────────────────────────────────────────────────────
   // Sugar palms (the village's name): at the street's west end, the village's gate; along the lanes, in the fields round it.
-  const sugar: [number, number, number][] = [
-    [360.5, -77, 13],
-    [362.5, -64, 15],
-    [357.5, -66.5, 11.5],
-    [386.5, -100, 14],
-    [404.5, -87, 16],
-    [439.2, -93, 12.5],
-    [402, -33, 13.5],
-    [365, -29.5, 15.5],
-    [433, -29, 12],
-    [458.5, -38, 14],
-    [471, -56, 12.5],
-    [472.5, -88, 15],
-    [414.5, -92, 12],
-    // (over the stream: round the two houses and the meadow)
-    [466, -56.5, 13],
-    [476.5, -74.5, 14.5],
-    [471.5, -44, 12],
-  ];
-  sugar.forEach(([x, z, h], i) => {
+  EV_SUGAR_PALMS.forEach(([x, z, h], i) => {
     env.palms.add({ kind: 'sugar', x, y: g(x, z), z, h, seed: 7100 + i });
     occ(x, z, 1.5);
   });
   // Coconut palms by the houses, leaning out over the yards.
-  const coconut: [number, number, number, number, number][] = [
-    [430.5, -91, 9, 1.2, -1.6],
-    [412, -44, 8.5, -1.3, 1.1],
-    [457.5, -71.5, 9.5, -1.8, 0.4],
-    [372.5, -43.5, 8, 1.4, 0.8],
-    [361, -91, 9, -1.4, -1.1],
-  ];
-  coconut.forEach(([x, z, h, lx, lz], i) => {
+  EV_COCONUTS.forEach(([x, z, h, lx, lz], i) => {
     env.palms.add({ kind: 'coconut', x, y: g(x, z), z, h, seed: 7200 + i, lean: [lx, lz] });
     occ(x, z, 1.5);
   });
   // Mango trees round the yards and at the village's edges: their dark crowns over the roofs from above. (None in the
   // palm lane's view from the street down to the palm sugar yard, west of the lane: _palmSugar.ts keeps it clear.)
-  for (const [x, z, r, seed] of [
-    [431, -84.5, 3, 1],
-    [366.5, -35.5, 3.2, 2],
-    [418.5, -33.5, 2.8, 3],
-    [403.5, -98, 3, 4],
-    [358.5, -86, 2.8, 5],
-    [405, -28, 2.9, 6],
-    [425, -96, 3.2, 7],
-    [366.5, -101, 2.7, 8],
-    [474.5, -67.5, 3, 9],
-    [475.5, -51.5, 2.8, 10],
-  ]) {
+  for (const [x, z, r, seed] of EV_MANGOS) {
     mango(L, x, g(x, z), z, r, seed);
     occ(x, z, r + 0.5);
   }

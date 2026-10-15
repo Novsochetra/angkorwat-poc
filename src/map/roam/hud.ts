@@ -496,7 +496,8 @@ const STICK_WAY = {
 
 /** A prompt's key as a pad button (glyphs.ts `padForKey`: E □, Space ✕…; F, greet or fish, is the d-pad's ↓). Null: it keeps the key. */
 function promptPad(k: string): PadGlyph | null {
-  return padForKey(k) ?? (k === 'F' ? 'down' : null);
+  // (build mode's turn: ",." the d-pad's ← →, "⇧,." its 5° turn, L2 held with them: roam/_build.ts)
+  return padForKey(k) ?? (k === 'F' ? 'down' : k === ',.' ? 'dpadx' : k === '⇧,.' ? 'l2' : null);
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

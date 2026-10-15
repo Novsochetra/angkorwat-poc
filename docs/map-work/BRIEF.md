@@ -188,7 +188,8 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   into the columns whose middles it covers, and a long, thin one (a plank
   wall, a rail) also into every column along its middle line, so walls
   turned off the grid have no holes (`thinwalk=0` leaves that out, to
-  compare). He is 0.42 m round (the probes of `walker.ts`): a stair he
+  compare). The player's blocks it reads from their store, a chunk built
+  again where they change ("The player's blocks"). He is 0.42 m round (the probes of `walker.ts`): a stair he
   climbs needs about 1.8 m between its handrails (the village, hamlet and
   east village stairs are that wide), a lantern or a beam over a stair's
   head closer than 2.26 m over the floor stops him — so does a handrail's
@@ -2385,8 +2386,64 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   the cut edges are under a pixel, hidden once a metre is under 0.9 px (the
   build view's rule, build/view.ts). Shadows cast and received, still; the
   still map asked again after a rebuild (at most once a second while blocks
-  keep changing). The walk map leaves the part out (`SKIP_PARTS`): it is to
-  read the store (AWP-17).
+  keep changing). The walk map reads the store, not the meshes (the part is
+  in `SKIP_PARTS`): below.
+- **In the walk map** (`blocks/walk.ts`; roam/walkmap.ts `WalkBlocks`,
+  AWP-17): the feet's and the camera's walk maps (`walk`, `hard`; not `soft`:
+  blocks are not seen through) read the store when they build a 16 m chunk: a
+  run of solid cells up a column is one span (a slab's top a quarter metre
+  over its cell's bottom). A change (`watchBlocks`: `BlockChange.changed`)
+  drops those chunks (`WalkMap.changed(cx, cz)`), and each is built again the
+  next time something asks about it (his feet, the camera, the dog, his
+  cattle); a chunk with blocks keeps its meshes' columns (`columnsOf`), so only
+  the blocks are laid in again. On the feet's map a block's top more than
+  0.35 m (`BLOCK_STEP_M`) over the feet is a wall to them unless they stand on
+  it already: a slab (0.25 m) is a stair's rise, a full block (0.5 m) he jumps
+  onto (Space), and he walks under a floor on posts instead of hopping onto
+  it when there is room: he is 2.26 m tall to the walk map (1.615 m and the
+  explorer's 1.4 scale), so an underside 2.0 m up stops him like a wall and
+  one 2.5 m up lets him under: doorways and stilt floors need at least
+  5 blocks (2.5 m) of room (AWP-20; a 4-block door cannot be entered). The
+  walker's own rules hold over them (stairs, thin walls,
+  `PERCH`, `AHEAD`). A block built where he stands puts him out beside it at
+  his own level within a quarter second (walker.ts `freeSpot`: a cube in his
+  cell 1 m, a 3 × 3 pillar 1.5 m, a low roof 2 m, a 9 × 9 × 9 box 3 m); a
+  slab under him lifts him 0.25 m. The follow camera stops at built walls
+  or rises over them (its `hard` map); a span of blocks with room under it
+  whose underside is over the camera is not its floor there (`WalkOwn.roofs`
+  on the camera's map: followCam.ts `floorUnder` lifted it onto a built
+  gallery's roof, roof top + 0.9 m), so it stays under a built roof with him.
+  In a narrow built room (a gallery, a house) a built wall nearer than the
+  camera's usual closest (1.6 m) brings it in to 0.55 m this side of the wall
+  but no nearer than 1.4 m to his neck (`world.ownClearance`, followCam.ts
+  `NEAREST`, `OWN_MARGIN`); with no room for that it tilts up over him or a
+  little lower under a low roof, and with none at any tilt it does not turn
+  into the wall: it holds the last heading that had room, the turn into the
+  wall (keys, stick, drag, the auto-follow) is dropped and the other way
+  works at once (no shaking: 0 reversals of the heading). It is never inside a
+  built block and he stays in view. So close (from 1.7 m, whole at 1.45 m)
+  his head and hat dissolve block by block (`roam/_headFade.ts`: the head
+  joint's blocks shrink away in a scattered order, no material or shader
+  change, no new program; his shadow loses them meanwhile), so the way ahead
+  shows; only while a built wall holds the camera in (`ownNear`). The world's own roofs and walls keep the
+  old rules (the camera's path the same, frame by frame). Timber and bamboo tops sound of wood
+  (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
+  fauna/_landPlaces.ts) are made once and do not read the blocks. With no
+  blocks every answer is as before (601,205 points × 5 questions and 12,000
+  clearances over the roaming area: the same). Cost (M1 Max, heavily loaded;
+  a change rebuilds the chunk in both maps, walk and hard, each ≈ the same):
+  a chunk of the full plot (3,665 blocks) 0.3 ms a map (the CPU 4 × slower
+  1.1–1.3, 6 × 1.6–2.0); the map's busiest chunk (3,684 map blocks) 1.2 ms
+  the first time it gets blocks (its columns are kept then), 0.3 ms after
+  (4 × 0.6, 6 × 1.0); a chunk filled 32 × 8 × 32 (8,192 blocks) 0.3 ms
+  (4 × 1.5, 6 × 2.4). Nothing a frame while nothing changes.
+  `pblocks=walk` is a test course on the flat meadow west of his stilt house
+  (x 418‥426, z −172‥−163: a slab stair up to a 2 m floor, a 2.5 m brick wall,
+  a one-block low wall), e.g. `roam=walk&at=415.5,-168&yaw=90&sim=w:1.5` (up
+  the stair), `at=420.25,-160&yaw=180&sim=w:2` (stopped by the wall),
+  `at=420.25,-175&yaw=0&sim=w:1.2` (stopped by the low wall; `sim=w:0.4,wj:1`
+  over it). Checks: `__blocks.walk` (the two maps: `stats.rebuilds`,
+  `rebuildMs`, `rebuildMax`, `built(cx, cz)`).
 - **Edge joints**: two blocks that meet only along an edge (a roof stepping in
   a block a row) keep that edge square (`mesh.ts` `diagonalJoints`, the joint
   bits of `voxOpen`): cut on both it was a slit the sky showed through. Where
@@ -2395,6 +2452,31 @@ building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
   would also square the seams between the row's blocks); a roof two blocks
   deep, or stairs and slabs (AWP-24), have none. A slab's partial sides do not
   count yet (AWP-24 grows `covers`).
+- **Saved** (`blocks/save.ts`, AWP-18): in progress.ts (`angkor-map-progress-v1`)
+  under `blocks.plot`: `{ v: 1, n, pal, chunks }`. `v` the format (a later one
+  reads the old by it), `n` the blocks, `pal` the different blocks as numbers
+  (`rawOf`: ids only ever added, so an old save always reads), `chunks`
+  `[cx, cy, cz, runs]` in the store's order, `runs` the chunk's cells in
+  `forEach`'s order as runs of one block: the empty cells skipped, the length
+  − 1, the block's place in `pal`, each number in 5-bit groups, one letter
+  each (`A‥Z a‥z 0‥9 - _`, 32 and up: more to come). A full plot
+  (`pblocks=full`'s 9,925 blocks and 5 more, written through the store) is
+  10.6 kB of JSON (13 kinds of block, 10 chunks); localStorage holds 5 M
+  characters a site. Written once the blocks have been still for 1 s (a
+  footprint: one write; building on without a pause, every 10 s) and at once
+  when the page is hidden or closed (9,930 blocks: ≈ 5 ms); read as the part
+  is built, before the view (9,930 blocks in ≈ 4 ms). Checked whole first: a
+  broken, cut or edited save, one from a newer format, or one over the limits
+  (`SAVE_LIMITS`: 200,000 blocks, 128 chunks, 4,096 kinds) leaves the plot
+  empty and the console says why (`[blocks] the saved build was not loaded
+  (…)`); the save stays as it was until he builds again. A block of a kind
+  this build does not know is left out (the console says how many). Shots,
+  `progress=0` and `pblocks=` read and write nothing. Kinds (the different
+  blocks: material × colour × shape × turn): a build with more than 4,096
+  is not saved at all; only the console says so (`[blocks] too many kinds of
+  block to save`) and the last save is kept, so paint (AWP-22) keeps to a
+  palette (a full plot has 9). Checks:
+  `__blocks.save` (`status`, `flush()`, `encode()`, `decode(value)`).
 - **Shadows of a far chunk**: hidden by distance it drops out of the still
   shadow map; coming back, its shadow returns at the next still redraw (as the
   build view's pieces). Watch it with continuous building (AWP-20).

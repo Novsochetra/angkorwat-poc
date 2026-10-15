@@ -1,10 +1,12 @@
-import { BUILD_NEAR, BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { inPlot, PLOT_TREES } from '../build/plot';
 import { corners, distTo, overlap, type Foot } from '../build/state';
 import { KINDS, isTree, stageOf, trunkAt } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
 import { EV_HOMES } from '../hamlet/_evSpots';
-import { HOME_AT, HOME_DOG, HOME_GRAN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_Z, homeHammock, homeLocal } from '../hamlet/_homePlan';
+import { HOME_DOG, HOME_GRAN, HOME_SIZE, HOME_STAIR, HOME_STAIR_FOOT, HOME_Z, homeHammock, homeLocal } from '../hamlet/_homePlan';
 import { SURFACE } from '../heightfield';
+import { canopyOf, type Canopy } from '../veg/canopy';
 import type { WordKey } from '../ui/lang';
 import type { RoamWorld } from './types';
 
@@ -19,21 +21,25 @@ import type { RoamWorld } from './types';
  * (its middle at x, z, turned `yaw`), else the reason (`BuildReason`, its words
  * `BUILD_REASON_WORDS`), checked in this order over points across its
  * footprint (every `STEP` m, its edges too):
- * - `far`: its middle more than `BUILD_NEAR` m from the house's, or a point out of the roaming area;
+ * - `far`: a point out of the roaming area;
  * - `water`: the Kulen stream, its sandy bank or bed, any water under it;
  * - `path`: the road's or a path's surface, a jungle trail's tread (the Kulen
- *   foot trail runs 12 m west of the house), half a metre round them;
+ *   foot trail runs along his land's west edge), half a metre round them;
  * - `field`: a rice field's plot;
+ * - `plot`: past his land (build/plot.ts `PLOT_CORNERS`: every point of it on his land);
+ *   `yard` there when it is a neighbour's house and yard (the sugar-palm
+ *   village's houses and what the village built: the land's `occupied` cells);
  * - `house`: the house and the ground under it and its eaves, its stair and
  *   room at its foot, the jar there, the spirit house, the bougainvillea, the
  *   grandmother's places, the hammock's bay, the dog's bed (as the garden
  *   keeps them: roam/_gardenSpots.ts);
- * - `yard`: a neighbour's house and yard (the sugar-palm village's houses and
- *   what the village built: the land's `occupied` cells outside his own yard);
  * - `steep`: the land under it is not level (it is built of big blocks: a step
  *   through it would leave it hanging);
+ * - `tree`: a tree on his land (build/plot.ts `PLOT_TREES`, and the jungle's own:
+ *   veg/canopy.ts): its trunk, and its crown for a piece taller than its lowest leaves;
  * - `plant`: a plant of his garden stands there (its bed or its trunk);
- * - `piece`: something he built stands there (footprints overlap; fence runs may touch), or before one he
+ * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross where an end
+ *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
@@ -41,16 +47,18 @@ import type { RoamWorld } from './types';
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'house' | 'yard' | 'steep' | 'plant' | 'piece' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
   water: 'buildNoWater',
   path: 'buildNoPath',
   field: 'buildNoField',
+  plot: 'buildNoPlot',
   house: 'buildNoHouse',
   yard: 'buildNoYard',
   steep: 'buildNoSteep',
+  tree: 'buildNoTree',
   plant: 'buildNoPlant',
   piece: 'buildNoPiece',
   thing: 'buildNoThing',
@@ -69,6 +77,42 @@ const WATER_MARGIN = 0.6;
 const PATH_MARGIN = 0.5;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
 const TOUCH = 0.03;
+/** A point this near a piece he built is that piece's (the walk map's top there is his own posts and rails) (m). */
+const OWN = 0.12;
+/**
+ * Two fence runs may cross this far in from their ends (m): a run going on from another's end at an angle (a corner,
+ * a bend: roam/_build.ts `snapFence`) shares its end post's room. Enough for a bend of 30° or more (0.25 m deep runs).
+ */
+export const FENCE_JOINT = 0.5;
+/**
+ * Would footprint `f` stand in piece `b`: footprints may touch (`TOUCH`); two fence runs cross only at a joint (an end
+ * on an end: `fenceJoint`), and side by side they may touch but never stand in each other (no touching tolerance).
+ */
+export function overlapsBuilt(f: Foot, b: Foot): boolean {
+  if (f.id !== 'fence' || b.id !== 'fence') return overlap(f, b, -TOUCH);
+  const j = fenceJoint(f, b);
+  return overlap(f, b, j ? -TOUCH : 0, j);
+}
+/** Two fence runs' ends meet when this near (m: roam/_build.ts `snapFence` puts them on each other). */
+const MEET = 0.06;
+
+/**
+ * How far in from their ends two pieces may cross: `FENCE_JOINT` for two fence runs with an end on an end (a joint),
+ * else 0 (in line past each other, side by side, a T through the middle: refused as any overlap).
+ */
+export function fenceJoint(a: Foot, b: Foot): number {
+  if (a.id !== 'fence' || b.id !== 'fence') return 0;
+  const h = PIECES.fence.w / 2;
+  for (let i = -1; i <= 1; i += 2)
+    for (let k = -1; k <= 1; k += 2) {
+      const ax = a.x + i * h * Math.cos(a.yaw);
+      const az = a.z - i * h * Math.sin(a.yaw);
+      const bx = b.x + k * h * Math.cos(b.yaw);
+      const bz = b.z - k * h * Math.sin(b.yaw);
+      if (Math.hypot(ax - bx, az - bz) < MEET) return FENCE_JOINT;
+    }
+  return 0;
+}
 
 /** Round the house (local m): boxes [x0, z0, x1, z1] and circles [x, z, r] kept clear (as roam/_gardenSpots.ts keeps them). */
 const KEEP_BOX: readonly (readonly [number, number, number, number])[] = (() => {
@@ -97,9 +141,6 @@ const KEEP_RING: readonly (readonly [number, number, number])[] = (() => {
     [HOME_DOG.x, HOME_DOG.z, 1.0],
   ];
 })();
-/** His own yard (local): the land's `occupied` cells in it are the house's, not a neighbour's. */
-const OWN_YARD = { x0: -HOME_SIZE.w / 2 - 4.2, x1: HOME_SIZE.w / 2 + 6.6, z0: HOME_Z.back - 3.6, z1: HOME_STAIR_FOOT + 6.6 };
-
 /** By the house (local x, z). */
 function atHouse(lx: number, lz: number): boolean {
   for (const [x0, z0, x1, z1] of KEEP_BOX) if (lx > x0 && lx < x1 && lz > z0 && lz < z1) return true;
@@ -134,6 +175,21 @@ function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason
 }
 
 const _foot = { id: 'kre' as PieceId, x: 0, z: 0, yaw: 0 };
+/** The jungle's trees are looked for this far round a footprint (m: the widest crown). */
+const CANOPY_REACH = 7;
+/** A wild crown keeps a tall piece this share of its reach away (its rim thins out). */
+const CROWN = 0.85;
+let _can: Canopy | null = null;
+let _tall = 0;
+let _hit = false;
+/** One of the jungle's trees near `_foot`: its trunk (and the room round it), its crown over a piece taller than its lowest leaves. */
+const wildTree = (n: number): void => {
+  if (_hit || !_can) return;
+  const t = _can.trees[n];
+  if (t.kind === 'bush') return;
+  const d = distTo(_foot, t.x, t.z);
+  if (d < _can.trunk[n] + 0.2 || (_tall > t.low && d < t.r * CROWN)) _hit = true;
+};
 let _world: RoamWorld | null = null;
 let _h0 = 0;
 let _lo = 0;
@@ -156,13 +212,18 @@ const onPath = (x: number, z: number): BuildReason | null => {
   if (f.surface[c] === SURFACE.paddy) return 'field';
   return null;
 };
-const onHouse = (x: number, z: number): BuildReason | null => {
-  const [lx, lz] = homeLocal(x, z);
-  if (atHouse(lx, lz)) return 'house';
+/** Past his land: a neighbour's yard (the village built there: its `occupied` cells, a house's yard), else just past it. */
+function pastLand(x: number, z: number): BuildReason {
   const f = _world!.field;
   const c = f.index(x, z);
-  if (c >= 0 && f.occupied[c] && !(lx > OWN_YARD.x0 && lx < OWN_YARD.x1 && lz > OWN_YARD.z0 && lz < OWN_YARD.z1)) return 'yard';
-  return null;
+  if (c >= 0 && f.occupied[c]) return 'yard';
+  for (const h of EV_HOMES) if (Math.hypot(x - h.x, z - h.z) < Math.max(h.w, h.d) / 2 + 5) return 'yard';
+  return 'plot';
+}
+const onLand = (x: number, z: number): BuildReason | null => (inPlot(x, z) ? null : pastLand(x, z));
+const onHouse = (x: number, z: number): BuildReason | null => {
+  const [lx, lz] = homeLocal(x, z);
+  return atHouse(lx, lz) ? 'house' : null;
 };
 const onLevel = (x: number, z: number): BuildReason | null => {
   const h = _world!.field.heightAt(x, z);
@@ -172,12 +233,12 @@ const onLevel = (x: number, z: number): BuildReason | null => {
 };
 const onThing = (x: number, z: number): BuildReason | null => {
   const w = _world!;
-  return w.groundAt(x, z) - w.field.heightAt(x, z) > THING ? 'thing' : null;
+  // (what he built himself is the pieces' own rule, `piece`: two fence runs meeting at a joint stand in each other's posts)
+  return w.groundAt(x, z) - w.field.heightAt(x, z) > THING && !BUILT.blocks(x, z, OWN) ? 'thing' : null;
 };
 
 /** Where `id` can stand at (x, z) turned `yaw`: null, or why not. `ignore`: a piece of his not to count (the one being moved). */
 export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, yaw: number, ignore: Built | null = null): BuildReason | null {
-  if (Math.hypot(x - HOME_AT.x, z - HOME_AT.z) > BUILD_NEAR) return 'far';
   _world = world;
   const f = _foot;
   f.id = id;
@@ -185,14 +246,25 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   f.z = z;
   f.yaw = yaw;
   const p = PIECES[id];
-  // (the land, the water, the paths and fields round it, the house, the neighbours)
-  let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0.1, onHouse);
+  // (the land, the water, the paths and fields round it, his land's edge, the house)
+  let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0, onLand) ?? eachPoint(f, 0.1, onHouse);
   if (r) return r;
-  for (const h of EV_HOMES) if (Math.hypot(x - h.x, z - h.z) < Math.max(h.w, h.d) / 2 + 5 + Math.max(p.w, p.d) / 2) return 'yard';
   _h0 = world.field.heightAt(x, z);
   _lo = _hi = _h0;
   r = eachPoint(f, 0, onLevel);
   if (r) return r;
+  // The trees on his land: a trunk (and the room round it), a crown over a piece taller than its lowest leaves.
+  for (const t of PLOT_TREES) if (distTo(f, t.x, t.z) < t.trunk || (p.h > t.low && distTo(f, t.cx, t.cz) < t.cr)) return 'tree';
+  // The jungle's own trees on it (veg/canopy.ts: trunk, crown reach and height; not the bushes).
+  const can = canopyOf(world.field);
+  if (can) {
+    _can = can;
+    _tall = p.h;
+    _hit = false;
+    const reach = Math.hypot(p.w, p.d) / 2;
+    can.near(x - reach, z - reach, x + reach, z + reach, CANOPY_REACH, wildTree);
+    if (_hit) return 'tree';
+  }
   // His garden's plants: a crop's bed, a tree's trunk and the ring round it.
   for (const q of GARDEN.plants) {
     if (q.at !== 'home') continue;
@@ -201,7 +273,7 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
     if (distTo(f, q.x, q.z) < room) return 'plant';
   }
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
-  for (const b of BUILT.list) if (b !== ignore && (overlap(f, b, -TOUCH) || coversFront(f, b))) return 'piece';
+  for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

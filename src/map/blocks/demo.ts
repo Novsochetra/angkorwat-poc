@@ -17,6 +17,13 @@ import { BLOCKS, cellMid, cellOf, type Block, type BlockStore } from './store';
  *   about 24 × 24 m, the plinths sunk to the sloping ground: 8 chunks), for
  *   the frame's cost (`npm run perf`).
  *
+ * - `walk`: the walk map's test course (AWP-17) on the flat meadow west of
+ *   his stilt house (8 m up, x 418‥426, z −172‥−163; `@x,z` its corner): a
+ *   stair of slab steps (0.25 m each, 1 m wide treads of half a metre, 2 m
+ *   across) up to a floor 2 m high (4 × 4 m, timber on laterite), a brick
+ *   wall 2.5 m high and 5 m long north of it, and a low wall of one block
+ *   (0.5 m: too high a step; he jumps it) south of it.
+ *
  * `pblocks=demo@x,z` / `full@x,z` puts it elsewhere (its middle, m).
  */
 
@@ -91,6 +98,36 @@ export function buildSala(store: BlockStore, field: Pick<HeightField, 'heightAt'
   return store.count - before;
 }
 
+/** Where the walk test course starts (its low corner, m): flat land 8 m up, west of his stilt house. */
+export const WALK_COURSE_AT = { x: 418, z: -169 } as const;
+
+/**
+ * The walk test course (see above), its low corner at x, z (m), every column standing on the ground under it.
+ * Cells from the corner (a along x, b along z): the stair a 0‥7, b 0‥3 (step n: n + 1 quarter metres); the floor
+ * a 8‥15, b −2‥5 (2 m); the brick wall a 0‥9, b 10 (2.5 m); the low wall a 0‥9, b −6 (0.5 m).
+ */
+export function buildWalkCourse(store: BlockStore, field: Pick<HeightField, 'heightAt'>, x: number, z: number): number {
+  const i0 = cellOf(x);
+  const k0 = cellOf(z);
+  const before = store.count;
+  // (a column of `quarters` quarter metres on the ground: cubes, a slab on top for an odd count)
+  const column = (a: number, b: number, quarters: number, top: Block, under: Block) => {
+    const g = cellOf(field.heightAt(cellMid(i0 + a), cellMid(k0 + b)));
+    const full = quarters >> 1;
+    for (let n = 0; n < full; n++) store.set(i0 + a, g + n, k0 + b, n === full - 1 && !(quarters & 1) ? top : under);
+    if (quarters & 1) store.set(i0 + a, g + full, k0 + b, { ...top, shape: 'slab' });
+  };
+  store.batch(() => {
+    const sandstone: Block = { mat: 'sandstone' };
+    const laterite: Block = { mat: 'laterite' };
+    for (let a = 0; a < 8; a++) for (let b = 0; b < 4; b++) column(a, b, a + 1, sandstone, laterite);
+    for (let a = 8; a < 16; a++) for (let b = -2; b < 6; b++) column(a, b, 8, { mat: 'timber' }, laterite);
+    for (let a = 0; a < 10; a++) column(a, 10, 10, { mat: 'brick', color: KHMER_PAINT.lacquer }, { mat: 'brick' });
+    for (let a = 0; a < 10; a++) column(a, -6, 2, { mat: 'sandstone', color: KHMER_PAINT.gold }, laterite);
+  });
+  return store.count - before;
+}
+
 /** Fill the store as `pblocks=` asks (see above); returns the blocks set, or 0. */
 export function fillDemo(spec: string, field: Pick<HeightField, 'heightAt'>, store = BLOCKS): number {
   const [kind, at] = spec.split('@');
@@ -98,7 +135,8 @@ export function fillDemo(spec: string, field: Pick<HeightField, 'heightAt'>, sto
   const x = xz && Number.isFinite(xz[0]) ? xz[0] : DEMO_AT.x;
   const z = xz && Number.isFinite(xz[1]) ? xz[1] : DEMO_AT.z;
   const before = store.count;
-  if (kind === 'demo') buildSala(store, field, x, z);
+  if (kind === 'walk') buildWalkCourse(store, field, xz ? x : WALK_COURSE_AT.x, xz ? z : WALK_COURSE_AT.z);
+  else if (kind === 'demo') buildSala(store, field, x, z);
   else if (kind === 'full') store.batch(() => {
     for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) buildSala(store, field, x + a * 8, z + b * 8);
   });
