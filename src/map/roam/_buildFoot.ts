@@ -111,6 +111,8 @@ const onTouch = () => typeof document !== 'undefined' && document.body.classList
 function reasonWords(r: FootReason): string {
   if (r === 'small') {
     const s = FOOT_KINDS[kind ?? 'house'];
+    // (a fence: its run at least 2 m long; narrower than 2 m it is a straight run)
+    if (kind === 'fence') return t('footShortLine', { m: metres(s.minLong) });
     return t('footSmall', { w: metres(s.min), d: metres(s.minLong) });
   }
   if (r === 'most') return t('buildAllBuilt', { n: num(FOOT_KINDS[kind ?? 'house'].most) });
@@ -414,6 +416,10 @@ export const FootMode = {
       cursor[0] = ci;
       cursor[1] = ck;
       rect = rectOf(anchor[0], anchor[1], ci, ck);
+      // (a fence narrower than an enclosure's least, 2 m, is a straight run along its longer side, on the first
+      // corner's row: walking, a tap or the pad seldom keep the cursor on one row of cells)
+      if (kind === 'fence' && Math.min(rectW(rect), rectD(rect)) < FOOT_KINDS.fence.min)
+        rect = rectW(rect) >= rectD(rect) ? { ...rect, k0: anchor[1], k1: anchor[1] } : { ...rect, i0: anchor[0], i1: anchor[0] };
     }
     const key = rect ? `${kind}|${rect.i0},${rect.k0},${rect.i1},${rect.k1}|${door}|${BUILT.version}|${FOOTS.list.length}` : `${kind}|-|${cursor[0]},${cursor[1]}`;
     if (key !== now.key) {
@@ -595,8 +601,12 @@ function injectStyle(): void {
     @media (max-width: 560px) { body.roam-touch:not(.pad-on) .bf-panel { left: 10px; transform: none; width: calc(100% - 78px); } }
     @media (max-height: 500px) {
       .bf-panel { top: 8px; padding: 6px 12px 7px; gap: 3px; width: min(340px, calc(100% - 300px)); }
-      body.roam-touch:not(.pad-on) .bf-panel { top: 8px; bottom: auto; }
       .bf-meter { display: none; }
+      /* (a phone on its side: down the left under his purse, clear of the top's tool bar, the "Now on" card and the
+         build bar; the note in two lines at most) */
+      body.roam-touch:not(.pad-on) .bf-panel { top: 64px; bottom: auto; left: 10px; transform: none; width: 210px; font-size: 12px; padding: 5px 10px 6px; }
+      body.roam-touch:not(.pad-on) .bf-head b { font-size: 13.5px; }
+      body.roam-touch:not(.pad-on) .bf-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     }`;
   document.head.append(st);
 }
@@ -611,6 +621,9 @@ function showPanel(on: boolean): void {
     env.layer.append(panel);
   }
   panel?.classList.toggle('is-on', on);
+  // (hidden for sure: the roaming layer's own rule for its framed cards, `.rh > .mu-frame { display: flex }`, outranks a
+  // class's; an inline style does not lose to it)
+  if (panel) panel.style.display = on ? '' : 'none';
   if (!on) panelKey = '';
 }
 

@@ -1,4 +1,7 @@
 import { cartBlockWhy } from '../build/haul';
+import { ROPE, STAKES } from '../cattle/plan';
+import { CATTLE } from '../cattle/state';
+import { BIKE_OWN } from './_bikeOwn';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { inPlot, PLOT_TREES } from '../build/plot';
 import { corners, distTo, overlap, sizeOf, type Foot } from '../build/state';
@@ -43,13 +46,15 @@ import type { RoamWorld } from './types';
  *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
  * - `cart`, `cartPlace`: his ox cart and its oxen where they stand, or their place by the house while away (build/haul.ts `cartBlockWhy`);
+ * - `cow`: one of his own cows' stakes and the rope's reach round it (cattle/plan.ts `STAKES`, `ROPE`; AWP-20);
+ * - `bike`: his own bicycle where he left it (roam/_bikeOwn.ts `BIKE_OWN`; AWP-20);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
  *   standing, a piece of his).
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'cow' | 'bike' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -65,6 +70,8 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   piece: 'buildNoPiece',
   cart: 'haulHere',
   cartPlace: 'haulPlace',
+  cow: 'buildNoCow',
+  bike: 'buildNoBike',
   thing: 'buildNoThing',
   front: 'buildNoFront',
 };
@@ -79,6 +86,9 @@ const THING = 0.3;
 const WATER_MARGIN = 0.6;
 /** Paths and trails are kept this far clear (m). */
 const PATH_MARGIN = 0.5;
+/** His cow's room past its rope's reach (m: its body round its middle), and his bicycle's round where it stands (m: a frame 1.8 m long). */
+const COW_ROOM = 0.6;
+const BIKE_ROOM = 1.1;
 /** Footprints may touch this much (m: a fence's run against the next one's). */
 const TOUCH = 0.03;
 /** A point this near a piece he built is that piece's (the walk map's top there is his own posts and rails) (m). */
@@ -305,6 +315,12 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
   r = eachPoint(f, 0.2, onCart);
   if (r) return r;
+  // His own cows on their stakes (the rope's reach round each), his own bicycle where he left it (AWP-20).
+  for (const c of CATTLE.herd) {
+    const s = STAKES[c.stake];
+    if (s && distTo(f, s[0], s[1]) < ROPE + COW_ROOM) return 'cow';
+  }
+  if (BIKE_OWN.kind && !BIKE_OWN.riding && distTo(f, BIKE_OWN.x, BIKE_OWN.z) < BIKE_ROOM) return 'bike';
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }

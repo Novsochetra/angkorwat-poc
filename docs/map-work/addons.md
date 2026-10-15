@@ -3031,7 +3031,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 - **The kinds** (`FOOT_KINDS`; rectangles along the map's axes on the 0.5 m block grid,
   no L-shapes yet): the **stilt house** ផ្ទះឈើ (5 × 5 m to 8 × 8 m; 3 at most), the
   **shed** រោង (3 × 3 m to 8 × 8 m; 4), the **fence line** របងព័ទ្ធ (round a footprint,
-  2 m to 24 m a side, or one straight run one cell wide; 12). Why: a house's room inside
+  2 m to 24 m a side, or one straight run 0.5 m wide and 2 m to 24 m long: a footprint
+  drawn narrower than 2 m is that run, along its longer side on the first corner's row;
+  12). Why: a house's room inside
   its walls is 4 m or more (the follow camera reads such a room, AWP-17); at 8 m its roof
   is 5 m of thatch over 9 × 9 m (the house ≈ 1 850 blocks, 18 % of his land's budget);
   his yard is ≈ 22 m across.
@@ -3086,8 +3088,9 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn the door side a quarter (until he
   turns it, it faces the camera); Esc (○, the touch ✕) the first corner again, then out
   of the mode; F / C the card. The camera looks down over the footprint (build mode's).
-  **The panel** (top middle; on a touch screen above the build bar; a phone on its side
-  at the top, without the meter): the name, the size ("6 × 6 m") and its blocks, each
+  **The panel** (only while he draws; top middle; on a touch screen above the build bar;
+  a phone on its side down the left under his purse, without the meter, its note two lines
+  at most): the name, the size ("6 × 6 m") and its blocks, each
   material's picture and count (those he lacks in red) and the riel to pay, "Missing: … =
   … ៛" (or the reason in red, or its line), his land's meter now and after it.
 - **Where not** (the reason first in the prompt, Khmer first): too small ("តូចពេក —
@@ -3098,7 +3101,11 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   the grandmother's places (her sweeping spot at 418.2, −115.4 is one), the land stepping
   more than the kind allows (house 1.5 m, shed 0.6 m, fence any), a tree's trunk or a crown
   over it, a plant of his garden, something he built (a piece, or another footprint
-  building's land: `BUILT.feetOver`), anything else standing), no room left in his land's
+  building's land: `BUILT.feetOver`), his ox cart and oxen (AWP-14), one of his own cows'
+  stakes and its rope's reach ("គោរបស់អ្នកចងនៅទីនេះ / Your cow is tethered here": cattle/plan.ts
+  `STAKES`, `ROPE` 2.7 m and 0.6 m more), his own bicycle where he left it ("កង់របស់អ្នកចតនៅ
+  ទីនេះ / Your bicycle is parked here", 1.1 m round it; these two refuse pieces too),
+  anything else standing), no room left in his land's
   budget, not enough riel for what he lacks. A footprint over him is not refused: he
   works from beside it, and a block built where he stands puts him out beside it. A fence
   checks only its lines: it may ring his garden, pieces or a house.
@@ -3112,8 +3119,12 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
 - **Saved** (`progress.ts` `build.foot`: uid, kind, i0, k0, i1, k1, door, done, `w` the
   blocks written, cost); the blocks are the block layer's (`blocks.plot`). A record that
   does not read is left out (an unknown kind, a size not allowed, far from his land, more
-  than its kind may have, one over another; a cost not a whole 0‥999); one whose blocks
-  are all missing from the layer (a block save that did not load) has them written again.
+  than its kind may have, one over another; a cost not a whole 0‥999). Finished or taken
+  down, the block layer is saved at once (`blocks/save.ts` `saveBlocksNow`) and the list right
+  after, in one task: a tab closed then keeps both or neither (a take-down never leaves
+  blocks with no building). On load, a record's blocks so far that the saved build lacks (a
+  block save behind the list mid-build, or one that did not load) are written again;
+  blocks with no record are left alone (his land may hold other blocks of his).
   The budget counts the blocks written (the layer's) and those still to come of one under
   way (`footprints`).
 - **For AWP-22 (paint), AWP-24 (roofs), AWP-25 (under a roof, fenced)**: `FOOTS.list`
