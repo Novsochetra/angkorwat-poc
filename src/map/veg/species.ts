@@ -245,6 +245,12 @@ export interface BambooOpts {
   /** How far the tips reach out from the clump's middle (m). */
   r: number;
   seed: number;
+  /**
+   * A clump of a dense stand (the bamboo forest, veg/bambooForest.ts): fewer blocks, as its neighbours hide most of
+   * it — `culms` of them, `seg` m segments (near), node rings only under `nodesBelow` m, leaves from `leafFrom` of the
+   * culm's height (0.4), sprays at `spray` a leaf cell (0.4). Left out: the jungle's clump.
+   */
+  stand?: { culms: number; seg: number; nodesBelow: number; leafFrom: number; spray: number };
 }
 
 /** Culms: yellow-green, some older olive ones; the nodes a darker ring. */
@@ -269,7 +275,8 @@ export function bamboo(o: BambooOpts): Proto {
   const ramp = RAMP_ID.bamboo;
   const boxes: FreeBox[] = [];
   const near = s === 1;
-  const n = near ? 8 + Math.floor(rand() * 3) : s < 2 ? 7 : 6;
+  const st = o.stand;
+  const n = st ? st.culms : near ? 8 + Math.floor(rand() * 3) : s < 2 ? 7 : 6;
   const a0 = rand() * Math.PI * 2;
   for (let q = 0; q < n; q++) {
     const a = a0 + (q / n) * Math.PI * 2 + (rand() - 0.5) * 0.7;
@@ -284,7 +291,7 @@ export function bamboo(o: BambooOpts): Proto {
     const out = (j: number) => r0 + (reach - r0) * Math.pow(Math.min(1, Math.max(0, j) / tall), 1.7);
     if (near || q % 2 === 0) {
       // (segments step out; their bevelled joints read as the nodes, every other one a dark ring)
-      const seg = near ? 2 : 2.5 * s;
+      const seg = near ? (st?.seg ?? 2) : 2.5 * s;
       const cw = near ? 0.32 : Math.min(0.45 * s, 0.9);
       const top = tall * s * 0.9;
       let joint = 0;
@@ -292,18 +299,18 @@ export function bamboo(o: BambooOpts): Proto {
         const len = Math.min(seg, top - y);
         const d = out((y + len / 2) / s) * s;
         boxes.push({ x: ca * d, y: y + len / 2, z: sa * d, sx: cw, sy: len, sz: cw, color: pick(tones, rand()), shade: 1.02 - 0.12 * (y / top) });
-        if (near && joint % 2 === 0 && y + seg < top) boxes.push({ x: ca * d, y: y + len, z: sa * d, sx: cw + 0.08, sy: 0.14, sz: cw + 0.08, color: NODE, shade: 1 });
+        if (near && joint % 2 === 0 && y + seg < top && y + seg < (st?.nodesBelow ?? Infinity)) boxes.push({ x: ca * d, y: y + len, z: sa * d, sx: cw + 0.08, sy: 0.14, sz: cw + 0.08, color: NODE, shade: 1 });
       }
     }
     // Leaves: a plume along the upper part of each culm, with sprays that
     // hang out and down (holes between them keep it feathery).
-    for (let j = Math.floor(tall * 0.4); j <= tall; j++) {
+    for (let j = Math.floor(tall * (st?.leafFrom ?? 0.4)); j <= tall; j++) {
       const d = out(j);
       const ci = Math.round(ca * d);
       const ck = Math.round(sa * d);
       if (rand() < 0.9) v.leaf(ci, j, ck, ramp, 0.95 + rand() * 0.1);
       for (let k = 0; k < (near ? 2 : 1); k++) {
-        if (rand() > 0.4) continue;
+        if (rand() > (st?.spray ?? 0.4)) continue;
         const b = a + (rand() < 0.5 ? 1 : -1) * (0.6 + rand() * 1.1);
         const len = 1 + Math.floor(rand() * (near ? 2 : 1.5));
         for (let t = 1; t <= len; t++) v.leaf(Math.round(ci + Math.cos(b) * t), j - t + 1, Math.round(ck + Math.sin(b) * t), ramp, 1 + rand() * 0.08);

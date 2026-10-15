@@ -895,6 +895,19 @@ water monitor, whip snake, skinks); cicadas in the ambience. Checks:
 `fauna=jungle`, `parts=terrain,jungle,camps`, a walk at a site from the
 console line `[map] camps: …`.
 
+**The bamboo forest** (ព្រៃឫស្សី, AWP-15; part `vegetation`, a group of its
+own under it: `veg/bambooForestPlan.ts` where it grows, `veg/bambooForest.ts`
+its clumps and meshes): a dense stand of the jungle's bamboo on the lowland
+west of the Kulen foot trail (middle 352, −189), the "bamboo forest trail"
+(`TRAILS`) into a clearing with the woodcutter's rack. Its clumps are cut
+like the jungle's (addons.md "Gathering materials"). Its cost: leaves always
+plain boxes (rim painted), culms with their edges near, in 44 m chunks; no
+far form (a swap to coarser cells showed); a chunk is not drawn while it and
+its shadow are out of view (the still shadow map asked again as it comes back). Each
+clump has a hidden core in the walk map. Console: `[map] bamboo forest: …`
+(clumps, blocks, ms). Perf views `bamboo`, `bambooin`, `bambooedge`
+(`npm run perf -- only=…`); `bambooforest=0` hides it (checks).
+
 ## Rice paddies and the year
 
 The paddies part (`src/map/paddies.ts`, `src/map/paddies/*`; the plots are

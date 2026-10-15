@@ -3400,7 +3400,25 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     shoot, then a green cane with its first leaves) in the cut layer (one small mesh
     of the bark family, only while a clump is cut), growing as the days pass; the side
     comes back whole when its pole has. On a phone the far clumps' pictures
-    (veg/impostors.ts) stay whole.
+    (veg/impostors.ts) stay whole. Each clump has a hidden core in the walk map (veg/bambooForest.ts `clumpCores`, as the
+    bamboo forest's: AWP-15; 6 m tall here, its thick lowest canes climb like steps), so he stops at its canes from every side on flat ground.
+  - **The bamboo forest** (AWP-15, `veg/bambooForestPlan.ts` where it grows, `veg/bambooForest.ts` its clumps and
+    meshes, drawn by the vegetation part; source `bambooForest`, registered by `roam/_gatherBamboo.ts`
+    `registerBambooForest`): a dense stand of 55 clumps of the jungle's bamboo (1 m cells, `bamboo`'s `stand`
+    option: fewer blocks a clump, as its neighbours hide most of it) on the lowland west of the Kulen foot trail
+    (middle 352, −189, about 68 × 52 m, its edge ragged), the same on every graphics level (the saved spots never
+    change). The "bamboo forest trail" (layout.ts `TRAILS`) leaves the Kulen foot trail at 406, −195, 80 m north of
+    his house, and runs west into a clearing (343, −190) with the woodcutter's rack where the cut poles dry. No clump
+    within 3.8 m of the trail's line, in the clearing or within 2.5 m of a land step (the hollow's edge), no leaves over its tread or the clearing (the canopy open:
+    the maps show the trail), the jungle's scatter keeps out (veg/scatter.ts). Cut exactly as the jungle's clumps
+    (4 knife blows a pole, 3 poles a clump, back in 2 game days, the same cut look: `BAMBOO_FOREST_CUT`, a second
+    `BambooCuts` of veg/bambooCut.ts, ids `bambooForest:<x>,<z>`). The undergrowth keeps off its clumps and grows
+    in their shade (veg/canopy.ts); its clumps are in the nature book. Drawn: the leaves always as plain boxes
+    (their rim painted on medium and up), the culms with their edges near (`PLAIN_NEARER`), in 44 m chunks (a
+    chunk's leaves and its culms: two draws); no far form (the same blocks from afar, plain: no swap to see); a
+    chunk is not drawn while it and its shadow are out of the camera's view (then the still shadow map is asked
+    again as it comes back; the overview's frame takes in a sliver of it, at its right edge). Its canes are solid in the walk map, and each clump has a hidden core there (two 1.4 m squares 45°
+    apart, 2.4 m high, never drawn): he walks between the clumps, never into one.
   - **Logs** (AWP-11, `roam/_gatherLogs.ts`): two felled trunks by the woodcutters'
     camp (`JUNGLE_SITES` woodcutters, jungle/_campWood.ts), their own blocks. A log is
     cut off a trunk with the axe (ពូថៅ: `axe`, two hands from over his head), 6 blows,
@@ -3454,7 +3472,7 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   something: the load goes into his home store (a toast says what; a few knocks). The
   build card uses the bag and the store ("Building at home" above).
 - **Saved** (progress.ts): `gather.bag`, `gather.store` (`{ bamboo: 4 }`), `gather.spots`
-  (per spot, the clock times its pieces were taken), `gather.clock`, `gather.bambooSides`
+  (per spot, the clock times its pieces were taken), `gather.clock`, `gather.bambooSides` (the bamboo forest's: `gather.bambooForestSides`)
   and `gather.thatchFans` (per spot, the parts cut, oldest first: whole numbers under
   the parts' count, each once, else dropped; made to agree with `gather.spots`). On load a material
   whose count is not a whole number 0‥999 is dropped (a broken value never loads as a
@@ -3479,7 +3497,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
   `roam=walk&at=433,-161&yaw=180&bag=bamboo:3,clay:1&gather=bamboo:2:0.32&cam=438.5,11.6,-160.5,433,9.6,-163.2,40`
   (the knife up) · `…&gather=bamboo:2:0.56` (the blow, chips flying) ·
   `roam=walk&at=428,-134&yaw=180&home=1&bag=bamboo:2&store=log:1,clay:2&purse=30000&buildcard=1`
-  (the card's costs) · `…&menu=1&menutab=bag` (In my bag).
+  (the card's costs) · `…&menu=1&menutab=bag` (In my bag). The bamboo forest: `gather=bamboo` with `at=` by one of
+  its clumps (`roam=walk&at=373.5,-199.2&yaw=180&gather=bamboo:2:0.56`: the clump `bambooForest:374,-201`), and `bambooforest=0` hides it (still in the walk map): checks of its cost.
 
 ### His ox cart
 

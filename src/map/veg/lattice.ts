@@ -67,9 +67,11 @@ export class Lattice {
    * lattice), standing on ground height `y`, turned by `q` quarter turns.
    * `owner` (≥ 0) names the stamp: `emit` tells which blocks it drew (a drawn
    * cell it shares with another tree is the one's whose colour it shows).
-   * Returns the number of cells added.
+   * `keep(x, y, z)`: a cell (its middle, map m) is stamped only if it says so
+   * (the bamboo forest's gaps over its trail and clearing; free boxes are
+   * all kept). Returns the number of cells added.
    */
-  stamp(p: Proto, x: number, y: number, z: number, q: number, m: boolean, shade = 1, owner = -1): number {
+  stamp(p: Proto, x: number, y: number, z: number, q: number, m: boolean, shade = 1, owner = -1, keep?: (x: number, y: number, z: number) => boolean): number {
     const s = this.s;
     const bi = Math.floor(x / s);
     const bk = Math.floor(z / s);
@@ -85,6 +87,7 @@ export class Lattice {
       const k = bk + dz;
       // Cells in the ground (a trunk by a bank, a crown against a cliff) are dropped.
       if ((j + 0.5) * s < f.heightAt((i + 0.5) * s, (k + 0.5) * s)) continue;
+      if (keep && !keep((i + 0.5) * s, (j + 0.5) * s, (k + 0.5) * s)) continue;
       const kk = key(i, j, k);
       const had = this.map.get(kk);
       if (had !== undefined) {

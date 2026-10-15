@@ -9,6 +9,7 @@ import { HOME, HOME_AT } from '../hamlet/_homePlan';
 import { CART_AT, cartAway } from '../build/haul';
 import { nurseryToWorld } from '../hamlet/_nurseryPlan';
 import { traderToWorld } from '../cattle/plan';
+import { CLEARING } from '../veg/bambooForestPlan';
 import type { WordKey } from './lang';
 import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
 
@@ -29,7 +30,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle' | 'bamboo-forest';
 
 export interface MapSpot {
   id: SpotId;
@@ -290,6 +291,22 @@ const CATTLE_ART = [
 ];
 const CATTLE_AT = traderToWorld(0, 2.5);
 
+/** The bamboo forest (veg/bambooForest.ts): three culms with their node rings under their feathery leaves. */
+const BAMBOO_ART = [
+  '.G..GG..G..',
+  'GgGGgGGgGG.',
+  '.Gl.gl.Gl.G',
+  '..l..l..lG.',
+  '.Gg..g..g..',
+  'Gg.l.lG.l..',
+  '...l.l..l..',
+  '...g.g..g..',
+  '...l.l..l..',
+  '...l.l..l..',
+  '...g.g..g..',
+  '...l.l..l..',
+];
+
 /** The nursery's badge: on its back half (its middle is 23 m from the house's badge: this keeps them apart). */
 const NURSERY_AT = nurseryToWorld(-1.7, -2.4);
 /**
@@ -407,6 +424,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   MY_CART,
   // (the cattle trader on the Kulen foot meadow, 50 m north of his house: roam/_cattle.ts)
   spot('cattle', CATTLE_AT[0], CATTLE_AT[1], 9, 'cattleMap', 'cattleTheMap', outlined(CATTLE_ART)),
+  // (the bamboo forest's clearing at its trail's end, west of the Kulen foot trail: veg/bambooForest.ts)
+  spot('bamboo-forest', CLEARING.x, CLEARING.z, 8, 'bambooForestMap', 'bambooForestTheMap', outlined(BAMBOO_ART)),
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

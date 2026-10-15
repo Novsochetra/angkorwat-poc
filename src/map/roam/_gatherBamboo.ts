@@ -1,5 +1,5 @@
 import { gatherLeft, registerGatherSource, type GatherSpot } from '../build/gather';
-import { BAMBOO_CUT, BAMBOO_SIDES, bambooSideAngle } from '../veg/bambooCut';
+import { BAMBOO_CUT, BAMBOO_FOREST_CUT, BAMBOO_SIDES, bambooSideAngle, type BambooCuts } from '../veg/bambooCut';
 import { GatherParts } from './_gatherSides';
 
 /**
@@ -18,6 +18,9 @@ import { GatherParts } from './_gatherSides';
  * Saved (progress.ts `gather.bambooSides`: per clump, the sides cut, oldest first;
  * the core keeps how many and when, `gather.spots`). Same source id as AWP-9's
  * proof source (`bamboo`): the saved spots carry on.
+ *
+ * The bamboo forest's clumps (AWP-15) are a stand of their own, cut the same way:
+ * `registerBambooForest` (source `bambooForest`, `gather.bambooForestSides`).
  */
 const HITS = 4;
 const PIECES = BAMBOO_SIDES;
@@ -26,33 +29,42 @@ const FOOT = 1.35;
 /** The knife lands at knee height on the cane (m). */
 const HIT_Y = 0.5;
 
-let spots: GatherSpot[] = [];
-let sides: GatherParts | null = null;
-
-/** The clump drawn as the core has it. */
-function show(spot: GatherSpot): void {
-  if (!sides) return;
-  const list = sides.of(spot);
-  BAMBOO_CUT.set(spot.id, list.length ? { sides: list, grow: sides.grow(spot, list.length) } : null);
-}
-
-/** Register the clumps (roam/_gather.ts `init`, once the map's parts are built: the jungle's). Returns how many. */
-export function registerBambooClumps(): number {
-  const parts = (sides = new GatherParts('gather.bambooSides', BAMBOO_SIDES, (_s, n) => bambooSideAngle(n)));
-  spots = BAMBOO_CUT.clumps().map((c) => ({ id: c.id, material: 'bamboo', x: c.x, z: c.z, r: FOOT, hits: HITS, pieces: PIECES, regrowDays: REGROW_DAYS, hitY: HIT_Y }));
+/** One stand of clumps he can cut: the jungle's, the bamboo forest's. */
+function registerStand(cut: BambooCuts, key: string): number {
+  const parts = new GatherParts(key, BAMBOO_SIDES, (_s, n) => bambooSideAngle(n));
+  /** The clump drawn as the core has it. */
+  const show = (spot: GatherSpot): void => {
+    const list = parts.of(spot);
+    cut.set(spot.id, list.length ? { sides: list, grow: parts.grow(spot, list.length) } : null);
+  };
+  const spots: GatherSpot[] = cut.clumps().map((c) => ({ id: c.id, material: 'bamboo', x: c.x, z: c.z, r: FOOT, hits: HITS, pieces: PIECES, regrowDays: REGROW_DAYS, hitY: HIT_Y }));
   const byId = new Map(spots.map((s) => [s.id, s]));
   registerGatherSource({
-    id: 'bamboo',
+    id: cut.source,
     spots: () => spots,
     onTake: (spot) => show(spot),
     onLeft: (spot) => show(spot),
     onWork: (spot, x, z) => parts.from(spot, x, z),
   });
-  BAMBOO_CUT.growthFrom((id) => {
+  cut.growthFrom((id) => {
     const s = byId.get(id);
     return s ? parts.grow(s, parts.saved(id).length) : null;
   });
   // (the clumps cut in the save, drawn so; a clump grown back while the map was closed drops its saved sides)
   for (const s of spots) if (gatherLeft(s) < s.pieces || parts.saved(s.id).length) show(s);
   return spots.length;
+}
+
+/** Register the jungle's clumps (roam/_gather.ts `init`, once the map's parts are built: the jungle's). Returns how many. */
+export function registerBambooClumps(): number {
+  return registerStand(BAMBOO_CUT, 'gather.bambooSides');
+}
+
+/**
+ * Register the bamboo forest's clumps (AWP-15, veg/bambooForest.ts: source `bambooForest`, spots
+ * `bambooForest:<x>,<z>`, their sides saved under `gather.bambooForestSides`): cut, grown back and saved as the
+ * jungle's. Returns how many.
+ */
+export function registerBambooForest(): number {
+  return registerStand(BAMBOO_FOREST_CUT, 'gather.bambooForestSides');
 }
