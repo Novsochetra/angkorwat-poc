@@ -101,6 +101,10 @@ One line each time a ticket is sent back, so the next worker avoids it.
   planting, and a saved place passes the same "can it stand here" check as play (AWP-14).
 - A collision check samples finer than the thinnest thing it must stop at (a
   fence is 0.25 m), or tests boxes exactly: drive into one fence head-on (AWP-14).
+- Grep every rig that carries goods (stalls, people's rigs, boats), not only
+  stall files (AWP-7).
+- A low or lite form keeps the plant's silhouette (a banana's leaves arch out
+  and down) (AWP-7).
 - A placing aid makes the straight continuation the default (take the existing
   piece's own angle when close) and shows its angle on the phone too: touch
   hides the prompt line (AWP-30).
