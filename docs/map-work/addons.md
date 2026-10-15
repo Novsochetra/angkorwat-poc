@@ -3208,7 +3208,8 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     shoot, then a green cane with its first leaves) in the cut layer (one small mesh
     of the bark family, only while a clump is cut), growing as the days pass; the side
     comes back whole when its pole has. On a phone the far clumps' pictures
-    (veg/impostors.ts) stay whole.
+    (veg/impostors.ts) stay whole. Each clump has a hidden core in the walk map (veg/bambooForest.ts `clumpCores`, as the
+    bamboo forest's: AWP-15), so he stops at its canes from every side.
   - **The bamboo forest** (AWP-15, `veg/bambooForestPlan.ts` where it grows, `veg/bambooForest.ts` its clumps and
     meshes, drawn by the vegetation part; source `bambooForest`, registered by `roam/_gatherBamboo.ts`
     `registerBambooForest`): a dense stand of 55 clumps of the jungle's bamboo (1 m cells, `bamboo`'s `stand`

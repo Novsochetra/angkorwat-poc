@@ -211,19 +211,7 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
   object.add(BAMBOO_FOREST_CUT.object);
 
   // ── Each clump's core: hidden blocks in the walk map (never drawn): he stops at its canes from every side ──
-  const cores = new VoxelBuilder();
-  for (const c of data) {
-    // (from its foot to `CORE.h` over the highest ground round it: on a land step's edge he meets it from above too)
-    let hi = c.y;
-    for (const [dx, dz] of [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]]) hi = Math.max(hi, f.heightAt(c.x + dx, c.z + dz));
-    const h = hi + CORE.h - c.y;
-    cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src });
-    cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src, ry: Math.PI / 4 });
-  }
-  const solid = buildVoxelMesh(cores, { quality: 'low', name: 'vegetation:bambooForest-solid', castShadow: false, receiveShadow: false });
-  solid.visible = false;
-  solid.traverse((o) => (o.raycast = () => {}));
-  object.add(solid);
+  object.add(clumpCores(f, data, 'vegetation:bambooForest-solid'));
 
   // ── Out of view: the box round its blocks, swept away from the key light as far as its shadow can fall ──
   const blocksBox = new Box3();
@@ -285,6 +273,27 @@ export function buildBambooForest(ctx: MapContext, planted: PlantedForest): Bamb
 }
 
 const _v = new Vector3();
+
+/**
+ * Bamboo clumps' cores (the forest's, and the jungle's: vegetation.ts): hidden blocks in the walk map, never drawn
+ * nor picked, so he stops at a clump's canes from every side (between two canes a gap could let him in). Each from
+ * its foot to `CORE.h` over the highest ground round it (on a land step's edge he meets it from above too).
+ */
+export function clumpCores(f: HeightField, clumps: readonly { x: number; y: number; z: number }[], name: string): Group {
+  const src = traceSource();
+  const cores = new VoxelBuilder();
+  for (const c of clumps) {
+    let hi = c.y;
+    for (const [dx, dz] of [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]]) hi = Math.max(hi, f.heightAt(c.x + dx, c.z + dz));
+    const h = hi + CORE.h - c.y;
+    cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src });
+    cores.box(c.x, c.y + h / 2, c.z, CORE.w, h, CORE.w, 0x7f8b48, 'mapBark', { src, ry: Math.PI / 4 });
+  }
+  const solid = buildVoxelMesh(cores, { quality: 'low', name, castShadow: false, receiveShadow: false });
+  solid.visible = false;
+  solid.traverse((o) => (o.raycast = () => {}));
+  return solid;
+}
 
 /** The rack: on the clearing's far (west) side, its front (the bundle, local −z) to the trail coming in from the east. */
 const RACK = { x: CLEARING.x - 3.5, z: CLEARING.z - 0.5, yaw: -Math.PI / 2 } as const;

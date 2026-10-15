@@ -9,7 +9,7 @@ import type { HeightField } from './heightfield';
 import { ChunkGrid, ChunkSwitch, PLAIN_FROM } from './terrain/lod';
 import type { MapContext, MapFrame, MapPart, Subject } from './types';
 import { BAMBOO_CUT, type BambooClumpData } from './veg/bambooCut';
-import { buildBambooForest, plantBambooForest, type BambooForest } from './veg/bambooForest';
+import { buildBambooForest, clumpCores, plantBambooForest, type BambooForest } from './veg/bambooForest';
 import { setCanopy, underReach, type CanopyTree } from './veg/canopy';
 import { buildCliffGreens } from './veg/cliffs';
 import { FarTreeList, TREE_PICTURES, TreePictures, type FarLeaves, type FarTrees } from './veg/impostors';
@@ -461,6 +461,8 @@ export function buildVegetation(ctx: MapContext, planted?: PlantedJungle | null)
     ctx.renderer,
   );
   object.add(BAMBOO_CUT.object);
+  // (the clumps' hidden cores in the walk map: he stops at their canes from every side, as at the bamboo forest's)
+  if (BAMBOO_CUT.clumps().length) object.add(clumpCores(f, BAMBOO_CUT.clumps(), 'vegetation:bamboo-solid'));
   const t3 = performance.now();
   object.userData.trees = r.counts;
   if (forest) {
