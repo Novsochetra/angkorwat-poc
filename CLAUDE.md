@@ -287,6 +287,9 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
   stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
   blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
+  Shapes cube, slab, stair, slabTop and corner stairs (`kinds.ts`, turned by `turn`); a
+  stepped roof made smooth with one call, `roof.ts` `smoothRoof` (AWP-24; `pblocks=gable`,
+  `gable-stepped`, `hip`, `hip-stepped`, `fullmix`).
 
 ## Things to do while roaming (add-ons)
 
@@ -366,6 +369,12 @@ guide, with every add-on's keys and URL values for shots, is
     always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
+    line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
+    puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into
+    the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
+    saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
+    `footwork=`, `foottake=`; addons.md "Footprint buildings").
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;
@@ -383,6 +392,12 @@ guide, with every add-on's keys and URL values for shots, is
   woodcutters' camp with the axe, fans off young sugar palms at the sugar-palm
   village, clay dug on the lake and river banks (`roam/_gather{Bamboo,Logs,Thatch,Clay}.ts`);
   `gatherleft=<n>&gatherdays=<d>&gatherwork=0` shows a spot cut and growing back.
+- His ox cart (AWP-14, addons.md "His ox cart"): the family's cart and two oxen by
+  his house hauls past the carry limit (60 in weight, `build/haul.ts`: the load and
+  its place, saved): E before the oxen leads it (it follows his way, only where a
+  cart can go), E at its tail loads his bag, at home unloads into his store; the load
+  drawn on it (`roam/_haul*.ts`). Shots: `cartload=`, `cartat=x,z,yaw°`,
+  `cartlead=1`, `cartwork=load|unload:<u>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

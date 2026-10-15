@@ -1,6 +1,8 @@
+import { cartBlockWhy } from '../build/haul';
+import { ownedBlocks } from '../build/owned';
 import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { inPlot, PLOT_TREES } from '../build/plot';
-import { corners, distTo, overlap, type Foot } from '../build/state';
+import { corners, distTo, overlap, sizeOf, type Foot } from '../build/state';
 import { KINDS, isTree, stageOf, trunkAt } from '../garden/kinds';
 import { GARDEN } from '../garden/state';
 import { EV_HOMES } from '../hamlet/_evSpots';
@@ -41,13 +43,16 @@ import type { RoamWorld } from './types';
  * - `piece`: something he built stands there (footprints overlap; fence runs may touch, and cross where an end
  *   meets an end: `fenceJoint`), or before one he
  *   uses from there (the spirit house's kneeling place, the pen's gate: `FRONT`);
+ * - `cart`, `cartPlace`: his ox cart and its oxen where they stand, or their place by the house while away (build/haul.ts `cartBlockWhy`);
+ * - `cow`, `bike`: one of his own cows' stakes and the rope's reach round it, his own bicycle where he left it
+ *   (build/owned.ts `ownedBlocks`; AWP-20);
  * - `thing`: something else stands there (the walk map's top over the land);
  * - `front`: the room before it is not clear (its kneeling place, its gate: water, the house, a step, something
  *   standing, a piece of his).
  * No allocation.
  */
 
-export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'thing' | 'front';
+export type BuildReason = 'far' | 'water' | 'path' | 'field' | 'plot' | 'house' | 'yard' | 'steep' | 'tree' | 'plant' | 'piece' | 'cart' | 'cartPlace' | 'cow' | 'bike' | 'thing' | 'front';
 
 export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   far: 'buildNoFar',
@@ -61,6 +66,10 @@ export const BUILD_REASON_WORDS: Record<BuildReason, WordKey> = {
   tree: 'buildNoTree',
   plant: 'buildNoPlant',
   piece: 'buildNoPiece',
+  cart: 'haulHere',
+  cartPlace: 'haulPlace',
+  cow: 'buildNoCow',
+  bike: 'buildNoBike',
   thing: 'buildNoThing',
   front: 'buildNoFront',
 };
@@ -157,7 +166,7 @@ export function byHouse(x: number, z: number, r: number): boolean {
 
 /** Each point across the footprint (grown by `m`), as world x, z: `fn` returns a reason to stop. */
 function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason | null): BuildReason | null {
-  const p = PIECES[f.id];
+  const p = sizeOf(f);
   const c = Math.cos(f.yaw);
   const s = Math.sin(f.yaw);
   const hw = p.w / 2 + m;
@@ -174,7 +183,7 @@ function eachPoint(f: Foot, m: number, fn: (x: number, z: number) => BuildReason
   return null;
 }
 
-const _foot = { id: 'kre' as PieceId, x: 0, z: 0, yaw: 0 };
+const _foot: { id: PieceId | 'foot'; x: number; z: number; yaw: number; w?: number; d?: number } = { id: 'kre', x: 0, z: 0, yaw: 0 };
 /** The jungle's trees are looked for this far round a footprint (m: the widest crown). */
 const CANOPY_REACH = 7;
 /** A wild crown keeps a tall piece this share of its reach away (its rim thins out). */
@@ -194,6 +203,7 @@ let _world: RoamWorld | null = null;
 let _h0 = 0;
 let _lo = 0;
 let _hi = 0;
+let _level = LEVEL;
 
 const onWater = (x: number, z: number): BuildReason | null => {
   const w = _world!;
@@ -229,23 +239,45 @@ const onLevel = (x: number, z: number): BuildReason | null => {
   const h = _world!.field.heightAt(x, z);
   _lo = Math.min(_lo, h);
   _hi = Math.max(_hi, h);
-  return _hi - _lo > LEVEL || Math.abs(h - _h0) > LEVEL ? 'steep' : null;
+  return _hi - _lo > _level || Math.abs(h - _h0) > _level ? 'steep' : null;
 };
+const onCart = (x: number, z: number): BuildReason | null => {
+  const w = cartBlockWhy(x, z);
+  return w === 'here' ? 'cart' : w === 'place' ? 'cartPlace' : null;
+};
+const ownedAt = (x: number, z: number): BuildReason | null => ownedBlocks(x, z);
 const onThing = (x: number, z: number): BuildReason | null => {
   const w = _world!;
   // (what he built himself is the pieces' own rule, `piece`: two fence runs meeting at a joint stand in each other's posts)
   return w.groundAt(x, z) - w.field.heightAt(x, z) > THING && !BUILT.blocks(x, z, OWN) ? 'thing' : null;
 };
 
-/** Where `id` can stand at (x, z) turned `yaw`: null, or why not. `ignore`: a piece of his not to count (the one being moved). */
-export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, yaw: number, ignore: Built | null = null): BuildReason | null {
+/**
+ * A footprint of its own size (AWP-20: a footprint building's land, `id` 'foot'): across (x, m), deep (z, m), its top
+ * over the ground (m: a tree's crown over it), and how much the land under it may step (m; else `LEVEL`).
+ */
+export interface BuildSize {
+  readonly w: number;
+  readonly d: number;
+  readonly h: number;
+  readonly level?: number;
+}
+
+/**
+ * Where `id` can stand at (x, z) turned `yaw`: null, or why not. `ignore`: a piece of his not to count (the one being
+ * moved). `size`: a footprint of its own size (a footprint building's part: `id` 'foot').
+ */
+export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: number, yaw: number, ignore: Built | null = null, size: BuildSize | null = null): BuildReason | null {
   _world = world;
   const f = _foot;
   f.id = id;
   f.x = x;
   f.z = z;
   f.yaw = yaw;
-  const p = PIECES[id];
+  f.w = size?.w;
+  f.d = size?.d;
+  _level = size?.level ?? LEVEL;
+  const p = size ?? PIECES[id as PieceId];
   // (the land, the water, the paths and fields round it, his land's edge, the house)
   let r = eachPoint(f, WATER_MARGIN, onWater) ?? eachPoint(f, PATH_MARGIN, onPath) ?? eachPoint(f, 0, onLand) ?? eachPoint(f, 0.1, onHouse);
   if (r) return r;
@@ -274,6 +306,13 @@ export function canBuild(world: RoamWorld, id: PieceId, x: number, z: number, ya
   }
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
   for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
+  // A footprint building's land (AWP-20: its footprint and eaves, its stair, a fence's line).
+  if (BUILT.feetOver(f, -TOUCH)) return 'piece';
+  // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
+  r = eachPoint(f, 0.2, onCart);
+  if (r) return r;
+  // His own cows on their tethers and his parked bicycle (build/owned.ts; AWP-20).
+  if ((r = eachPoint(f, 0, ownedAt))) return r;
   // Anything else standing there.
   return eachPoint(f, -0.05, onThing) ?? frontBlocked(world, f, _h0, ignore);
 }
@@ -293,7 +332,7 @@ const _fp: [number, number] = [0, 0];
 
 /** Would footprint `f` cover the room before `b` (its kneeling place, its gate)? */
 function coversFront(f: Foot, b: Foot): boolean {
-  const room = FRONT[b.id];
+  const room = FRONT[b.id as PieceId];
   if (!room) return false;
   for (const [x, z, r] of room) {
     pieceToWorld(b, x, z, _fp);
@@ -304,7 +343,7 @@ function coversFront(f: Foot, b: Foot): boolean {
 
 /** The room before `f` (its kneeling place, its gate) is not clear (water, the house, a step, something standing, a piece of his): 'front'. */
 function frontBlocked(world: RoamWorld, f: Foot, h0: number, ignore: Built | null): BuildReason | null {
-  const room = FRONT[f.id];
+  const room = FRONT[f.id as PieceId];
   if (!room) return null;
   for (const [lx, lz, r] of room)
     for (let k = 0; k < 5; k++) {
@@ -323,6 +362,7 @@ const _corners: [number, number][] = [];
 /** How far ahead of his feet a piece's ghost goes (m): its half reach along the way he faces, and two steps more. */
 export function ghostAhead(id: PieceId, yaw: number, faceYaw: number): number {
   _foot.id = id;
+  _foot.w = _foot.d = undefined;
   _foot.x = 0;
   _foot.z = 0;
   _foot.yaw = yaw;
