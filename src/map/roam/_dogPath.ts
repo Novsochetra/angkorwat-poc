@@ -1,3 +1,4 @@
+import { cartBodyBlocks } from '../build/haul';
 import { len2 } from '../fauna/_len';
 import { PAGODA } from '../village/_spots';
 import type { RoamWorld } from './types';
@@ -102,7 +103,8 @@ export let stepKind: StepKind = 'walk';
 
 /** The ground its feet stand on at (x, z) from height `y`, stepping up at most `up`; NaN: a wall, too low a roof, deep water, out of the area. */
 export function ground(w: RoamWorld, x: number, z: number, y: number, up: number): number {
-  if (!w.inBounds(x, z)) return NaN;
+  // (his ox cart and its oxen are not on the walk map: build/haul.ts)
+  if (!w.inBounds(x, z) || cartBodyBlocks(x, z, 0.25)) return NaN;
   const g = w.standAt ? w.standAt(x, z, y, up, DOG_ROOM) : w.groundAt(x, z) <= y + up ? w.groundAt(x, z) : NaN;
   if (Number.isNaN(g)) return NaN;
   const water = w.waterAt(x, z);

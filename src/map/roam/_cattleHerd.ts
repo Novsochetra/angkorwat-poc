@@ -1,6 +1,7 @@
 import type { Camera, Object3D } from 'three';
 import { BUILT, PIECES, pieceToWorld, type Built } from '../build/pieces';
 import { addRideCow, COW_RIDE, removeRideCow, rideCow, type RideCow } from '../cattle/ride';
+import { cartBodyBlocks } from '../build/haul';
 import { CATTLE_OBSTACLES, inHours, LIE_HOURS, OX_NOSE, PEN_HOURS, postAnimal, ROPE, STAKES, TRADER_POSTS, traderToWorld, traderYaw } from '../cattle/plan';
 import { ageOf, coatTint, coatVariant, condOf, hungry, sizeOf, THIN, type Cow } from '../cattle/state';
 import { CH, Flock } from '../fauna/_kit';
@@ -622,7 +623,7 @@ export class CattleHerd {
     for (let k = 0; k < BODY_U.length; k++) {
       const px = x + fx * BODY_U[k] * s;
       const pz = z + fz * BODY_U[k] * s;
-      if (this.builtAt(px, pz, y, pad) || this.plantNear(px, pz, pad - 0.2) || bikeAt(px, pz, pad)) return false;
+      if (this.builtAt(px, pz, y, pad) || this.plantNear(px, pz, pad - 0.2) || bikeAt(px, pz, pad) || cartBodyBlocks(px, pz, pad)) return false;
       if (!cows) continue;
       for (const q of this.beasts) {
         if (q === b || q.ride?.ridden) continue;
@@ -692,7 +693,7 @@ export class CattleHerd {
       }
     if (this.plantNear(x, z, 0.25)) return NaN;
     // (a wide berth: its long body swings round as it turns at a corner of its way)
-    if (this.builtAt(x, z, g, 0.6) || bikeAt(x, z, 0.5)) return NaN;
+    if (this.builtAt(x, z, g, 0.6) || bikeAt(x, z, 0.5) || cartBodyBlocks(x, z, 0.6)) return NaN;
     return g;
   }
 

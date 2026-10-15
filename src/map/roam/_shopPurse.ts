@@ -7,8 +7,12 @@ import { lang, num } from '../ui/lang';
  * _shop.ts). Riel only (៛, 4 000 ≈ 1 US$). A calm game: money should
  * rarely stop anyone from tasting something, so there is pocket money:
  *
- * - every visit starts with at least `POCKET` (20 000 ៛: a meal, a coconut,
- *   a cake and a coffee, and some over);
+ * - the first visit starts with `POCKET` (20 000 ៛: a meal, a coconut, a cake
+ *   and a coffee, and some over); a later one is topped up to it only if a
+ *   map day (`POCKET_EVERY` s, the day cycle's six minutes) has gone by since
+ *   the last top-up (`pocketAt`, saved: the time it came), so a reload is no
+ *   free money now that riel buys building materials (the lead's call, AWP-9:
+ *   the owner may change it);
  * - every dawn of the map's day (`clock` passing 0.75, the day cycle's six
  *   minutes) the purse is topped up to `POCKET` again, and so it is after
  *   `POCKET_EVERY` s of roaming where the time of day stands still (the
@@ -73,6 +77,8 @@ interface Saved {
   riel: number;
   kept: Kept[];
   tasted: Record<string, number>;
+  /** When pocket money last came (ms since 1970; absent: never yet). */
+  pocketAt?: number;
 }
 
 /** A thing from a shop's item, for the bag. */
@@ -99,8 +105,14 @@ export function createPurse(params: URLSearchParams, shot: boolean, find: (id: s
   const url = params.has('purse') ? Number(params.get('purse')) : NaN;
   const saving = !shot && params.get('buy') !== '0' && !Number.isFinite(url);
   const state: Saved = saving ? load() : { v: 1, riel: 0, kept: [], tasted: {} };
-  // (a visit starts with pocket money; a check's own amount instead)
-  state.riel = Number.isFinite(url) ? Math.max(0, Math.round(url)) : Math.max(state.riel, POCKET);
+  // (a visit starts with pocket money if a map day has gone by since the last came, or none ever came; a check's own amount instead)
+  const now = Date.now();
+  const due = state.pocketAt === undefined || !(now - state.pocketAt < POCKET_EVERY * 1000) || state.pocketAt > now;
+  if (Number.isFinite(url)) state.riel = Math.max(0, Math.round(url));
+  else if (due && state.riel < POCKET) {
+    state.riel = POCKET;
+    state.pocketAt = now;
+  }
   const kp = params.get('kept');
   if (kp)
     state.kept = kp
@@ -156,10 +168,9 @@ export function createPurse(params: URLSearchParams, shot: boolean, find: (id: s
     },
     pocket() {
       const add = Math.max(0, POCKET - state.riel);
-      if (add > 0) {
-        state.riel += add;
-        changed();
-      }
+      state.pocketAt = Date.now();
+      if (add > 0) state.riel += add;
+      changed();
       return add;
     },
     onChange(fn) {
@@ -190,7 +201,9 @@ function load(): Saved {
     const tasted: Record<string, number> = {};
     if (isRecord(raw.tasted)) for (const [k, v] of Object.entries(raw.tasted)) if (isNum(v) && v > 0) tasted[k] = Math.round(v);
     // (a saved amount is kept within what a visit could earn: a broken or edited one cannot show a 16-digit purse)
-    return { v: 1, riel: isNum(raw.riel) ? Math.min(RIEL_MAX, Math.max(0, Math.round(raw.riel))) : 0, kept, tasted };
+    // (when pocket money last came: a number, else never — a broken one gives pocket money, never withholds it)
+    const pocketAt = isNum(raw.pocketAt) && raw.pocketAt > 0 ? raw.pocketAt : undefined;
+    return { v: 1, riel: isNum(raw.riel) ? Math.min(RIEL_MAX, Math.max(0, Math.round(raw.riel))) : 0, kept, tasted, ...(pocketAt !== undefined ? { pocketAt } : {}) };
   } catch {
     return empty;
   }

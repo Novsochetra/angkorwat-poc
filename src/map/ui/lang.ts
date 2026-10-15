@@ -1711,6 +1711,7 @@ const WORDS = {
   haulHere: { km: 'រទេះគោនៅទីនេះ', en: 'The ox cart is here' },
   haulPlace: { km: 'កន្លែងរទេះគោ', en: "The ox cart's place" },
   haulStuckHome: { km: 'គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ — ចុច E នៅមុខគោ ដើម្បីឲ្យវានាំរទេះទៅផ្ទះវិញ', en: "The oxen can't take the cart that way: E before the oxen sends it home" },
+  cattleStakeHere: { km: 'កន្លែងចងគោ', en: "The cows' tethering place" },
   haulSendHome: { km: 'ឲ្យគោនាំរទេះទៅផ្ទះវិញ', en: 'Send the cart home' },
   haulSentHome: { km: 'គោស្គាល់ផ្លូវទៅផ្ទះ — រទេះនៅចាំក្បែរផ្ទះអ្នកហើយ', en: 'The oxen know the way home: the cart waits by your house' },
   haulMap: { km: 'រទេះគោរបស់ខ្ញុំ', en: 'My ox cart' },
