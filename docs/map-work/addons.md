@@ -3597,11 +3597,12 @@ without its straw), the oxen `people/_ox.ts`.
   or the cart cannot roll on along a way that turns too tight — the oxen look for a few moves (turns on
   the spot of 0.15 rad either way, rolls back or on of 0.4 m: a turn, backing up, a small three-point
   turn; a search of up to 1 600 places, 3 ms a frame, while he waits) to a place from which the way goes
-  on toward him as play would build it (`wayWorksFrom`: 3 m of it, each point where a cart can go, the
-  cart fitting at each), and walk them (each sub-step tested: 0.03 rad, 0.2 m); then the way goes on.
+  on toward him as play would build it (`wayWorksFrom`: headed within 0.6 rad of him, 2‥3 m of way, each
+  point where a cart can go, the cart fitting every 0.2 m along it as it rolls), and walk them (each sub-step tested: 0.03 rad, 0.2 m); then the way goes on.
   Twice blocked again where a way round ended: none, for where he stands.
-- **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m: the oxen found
-  no way round): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
+- **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
+  moves off — up to 500 looked at — from which it rolls on 2 m: `canGetOut`; a cart that can still go
+  somewhere, only not where he went, is led as usual): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
   Send the cart home" (the second failed try's toast says so): a fade, and the cart waits by his house
   with its load ("The oxen know the way home: the cart waits by your house").
 - **What moves keeps out of it** (`build/haul.ts` `cartBodyBlocks(x, z, r)`: the cart and its oxen where

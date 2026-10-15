@@ -710,7 +710,7 @@ function letGo(why: WordKey | null): void {
   pitchBefore = null;
   if (why) {
     // (stuck here twice in a row: say that the oxen can take it home)
-    env?.hud.toast(t(why === 'haulStuck' && stuckTries >= 2 ? 'haulStuckHome' : why));
+    env?.hud.toast(t(why === 'haulStuck' && stuckTries >= 2 && env && !canGetOut(env) ? 'haulStuckHome' : why));
     SFX.play('haulRope', 0.6);
   }
   dirty = true;
@@ -759,8 +759,9 @@ const ROLL_MOVE = 0.4;
 /** A move costs (a turn on the spot, a roll back, a roll on): the search likes few moves, little backing. */
 const COST = { turn: 1, back: 1.3, on: 1 };
 /** How near his way a heading must be (rad) for a place to be tried, and how far the way must go on from it (m). */
-const AIM = 1.0;
+const AIM = 0.6;
 const AHEAD = 3;
+const AHEAD_MIN = 2;
 /** The search's reach (places looked at), and its time a frame (ms): it goes on over frames while he waits. */
 const PLAN_NODES = 1600;
 const PLAN_MS = 3;
@@ -809,7 +810,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     trial.y.push(y);
   };
   for (let d = REACH_M + 2; d >= -0.001; d -= STEP) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
-  const toGo = Math.min(AHEAD, Math.hypot(search.him.x - yx, search.him.z - yz) - GAP);
+  // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go — at least `AHEAD_MIN` m of
+  // it, even if he stands near: it must really lead somewhere — and the cart at every `FIT_STEP` m along it, as `lead`
+  // tests its rolling)
+  const s0 = trial.s[trial.s.length - 1];
+  const toGo = Math.max(AHEAD_MIN, Math.min(AHEAD, Math.hypot(search.him.x - yx, search.him.z - yz) - GAP));
   for (let went = 0; went < toGo - 1e-6; went += STEP) {
     const k = trial.s.length - 1;
     const dx = search.him.x - trial.x[k];
@@ -820,9 +825,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     const h = passable(ctx, x, z, dx / d, dz / d, trial.y[k]);
     if (Number.isNaN(h)) return false;
     push(x, h, z);
-    const e = trial.s[trial.s.length - 1];
-    trialAt(e, _ta);
-    trialAt(e - REACH_M, _tb);
+  }
+  const end = trial.s[trial.s.length - 1];
+  for (let s = s0 + FIT_STEP; s <= end + 1e-6; s += FIT_STEP) {
+    trialAt(s, _ta);
+    trialAt(s - REACH_M, _tb);
     const yaw = Math.atan2(_ta.x - _tb.x, _ta.z - _tb.z);
     if (!placeFits(ctx, _ta.x - Math.sin(yaw) * REACH_M, _ta.z - Math.cos(yaw) * REACH_M, yaw, true)) return false;
   }
@@ -831,6 +838,34 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
 
 /** A place from which the way goes on toward him (tried as play would: `wayWorksFrom`). */
 const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean => Math.abs(angleDiff(towardHim(n), n.yaw)) <= AIM && wayWorksFrom(ctx, n);
+
+/** The places one move from `n` (a turn either way, a roll on or back), each sub-step tested, none seen before. */
+function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, moving: boolean): PlanNode[] {
+  const out: PlanNode[] = [];
+  const fx = Math.sin(n.yaw);
+  const fz = Math.cos(n.yaw);
+  const moves: [Pose[], number, 'turn' | 'roll'][] = [];
+  for (const sgn of [1, -1]) {
+    const subs: Pose[] = [];
+    for (let k = 1; k * TURN_SUB <= TURN_MOVE + 1e-6; k++) subs.push({ x: n.x, z: n.z, yaw: n.yaw + sgn * k * TURN_SUB });
+    moves.push([subs, COST.turn, 'turn']);
+  }
+  for (const dir of [1, -1]) {
+    const subs: Pose[] = [];
+    for (let d = FIT_STEP; d <= ROLL_MOVE + 1e-6; d += FIT_STEP) subs.push({ x: n.x + fx * d * dir, z: n.z + fz * d * dir, yaw: n.yaw });
+    moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll']);
+  }
+  for (const [subs, cost, kind] of moves) {
+    const end = subs[subs.length - 1];
+    const key = poseKey(end);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let ok = true;
+    for (const sp of subs) if (!(ok = placeFits(ctx, sp.x, sp.z, sp.yaw, moving))) break;
+    if (ok) out.push({ x: end.x, z: end.z, yaw: wrapYaw(end.yaw), g: n.g + cost, f: n.g + cost, parent: n, subs, kind });
+  }
+  return out;
+}
 
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
 function planStart(ctx: RoamCtx): void {
@@ -861,28 +896,7 @@ function planStep(ctx: RoamCtx): boolean {
       return true;
     }
     if (++search.n > PLAN_NODES) break;
-    const fx = Math.sin(n.yaw);
-    const fz = Math.cos(n.yaw);
-    const moves: [Pose[], number, 'turn' | 'roll'][] = [];
-    for (const sgn of [1, -1]) {
-      const subs: Pose[] = [];
-      for (let k = 1; k * TURN_SUB <= TURN_MOVE + 1e-6; k++) subs.push({ x: n.x, z: n.z, yaw: n.yaw + sgn * k * TURN_SUB });
-      moves.push([subs, COST.turn, 'turn']);
-    }
-    for (const dir of [1, -1]) {
-      const subs: Pose[] = [];
-      for (let d = FIT_STEP; d <= ROLL_MOVE + 1e-6; d += FIT_STEP) subs.push({ x: n.x + fx * d * dir, z: n.z + fz * d * dir, yaw: n.yaw });
-      moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll']);
-    }
-    for (const [subs, cost, kind] of moves) {
-      const end = subs[subs.length - 1];
-      const key = poseKey(end);
-      if (search.seen.has(key)) continue;
-      search.seen.add(key);
-      let ok = true;
-      for (const sp of subs) if (!(ok = placeFits(ctx, sp.x, sp.z, sp.yaw, true))) break;
-      if (!ok) continue;
-      const m: PlanNode = { x: end.x, z: end.z, yaw: wrapYaw(end.yaw), g: n.g + cost, f: 0, parent: n, subs, kind };
+    for (const m of children(ctx, n, search.seen, true)) {
       m.f = m.g + Math.abs(angleDiff(towardHim(m), m.yaw)) / TURN_MOVE;
       search.open.push(m);
     }
@@ -984,7 +998,47 @@ function planClear(): void {
  * Is the cart stuck for good where it stands: two tries in a row from here that moved it under 0.5 m (each the oxen
  * looked for a way round toward him and found none: `getRound`)? Only then "Send the cart home".
  */
-const stuckHere = (): boolean => cartAway() && stuckTries >= 2;
+const stuckHere = (ctx: Pick<RoamCtx, 'world'>): boolean => cartAway() && stuckTries >= 2 && !canGetOut(ctx);
+
+/**
+ * Can the cart get anywhere from where it stands: a place, a few moves off (turns, rolls back or on), from which it
+ * rolls on 2 m? Looked for a little each frame while he stands by the oxen (`FREE_NODES` places at most); while not
+ * yet known, it can (he may lead it).
+ */
+const FREE_NODES = 500;
+const free = { key: '', open: [] as PlanNode[], seen: new Set<string>(), n: 0, out: true, done: true };
+function canGetOut(ctx: Pick<RoamCtx, 'world'>): boolean {
+  const key = `${CART_AT.x.toFixed(2)},${CART_AT.z.toFixed(2)},${CART_AT.yaw.toFixed(3)}`;
+  if (key !== free.key) {
+    free.key = key;
+    free.open = [{ x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, g: 0, f: 0, parent: null, subs: [], kind: 'turn' }];
+    free.seen.clear();
+    free.n = 0;
+    free.out = false;
+    free.done = false;
+  }
+  const t0 = performance.now();
+  while (!free.done && performance.now() - t0 < PLAN_MS) {
+    if (!free.open.length || free.n++ > FREE_NODES) {
+      free.done = true;
+      break;
+    }
+    let bi = 0;
+    for (let i = 1; i < free.open.length; i++) if (free.open[i].g < free.open[bi].g) bi = i;
+    const n = free.open[bi];
+    free.open[bi] = free.open[free.open.length - 1];
+    free.open.pop();
+    let rolls = true;
+    for (let d = FIT_STEP; d <= 2 + 1e-6 && rolls; d += FIT_STEP) rolls = placeFits(ctx, n.x + Math.sin(n.yaw) * d, n.z + Math.cos(n.yaw) * d, n.yaw, false);
+    if (rolls) {
+      free.out = true;
+      free.done = true;
+      break;
+    }
+    free.open.push(...children(ctx, n, free.seen, false));
+  }
+  return free.done ? free.out : true;
+}
 
 /** E at the oxen when it is stuck: they walk it home (a fade: they go the long way round), and it waits by his house. */
 async function sendHome(ctx: RoamCtx): Promise<void> {
@@ -1592,7 +1646,7 @@ registerAddon({
       if (!CART_LOAD.empty) return counted('haulGoHome', false);
       return null;
     }
-    if (nearHead(ctx)) return stuckHere() ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
+    if (nearHead(ctx)) return stuckHere(ctx) ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
     return null;
   },
 
@@ -1609,7 +1663,7 @@ registerAddon({
       return;
     }
     if (!nearHead(ctx) || sending) return;
-    if (stuckHere()) void sendHome(ctx);
+    if (stuckHere(ctx)) void sendHome(ctx);
     else takeRope(ctx);
   },
 
