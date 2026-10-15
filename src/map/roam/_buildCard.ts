@@ -57,6 +57,8 @@ export interface BuildWords {
   note: string;
   cancel: string;
   rows: BuildRow[];
+  /** How much of his land's block budget is used (build/plot.ts): its label, the words ("34% used"), 0‥1. */
+  meter?: { label: string; value: string; used: number };
 }
 
 export interface BuildCard {
@@ -106,6 +108,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       <div class="mu-ask-head"><span class="bd-icon-wrap">${ICON}</span><h2 id="bd-title"></h2></div>
       <div class="mu-orn mu-ask-orn" aria-hidden="true"><i></i>${UI_ICON.diamond}<i></i></div>
       <p id="bd-note"></p>
+      <div class="bd-meter" role="meter" aria-valuemin="0" aria-valuemax="100" hidden><span class="bd-meter-l"></span><span class="bd-meter-bar"><i></i></span><span class="bd-meter-v"></span></div>
       <div class="bd-opts" role="list"></div>
     </section>`;
   const ui = document.getElementById('ui');
@@ -117,6 +120,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
   const title = wrap.querySelector<HTMLElement>('h2')!;
   const note = wrap.querySelector<HTMLElement>('#bd-note')!;
   const opts = wrap.querySelector<HTMLElement>('.bd-opts')!;
+  const meter = wrap.querySelector<HTMLElement>('.bd-meter')!;
   let isOpen = false;
   let words: (() => BuildWords) | null = null;
   let pick: ((id: PieceId | null) => void) | null = null;
@@ -131,6 +135,17 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     title.textContent = w.title;
     note.textContent = w.note;
     note.hidden = !w.note;
+    // (his land's budget: a bar under the note)
+    meter.hidden = !w.meter;
+    if (w.meter) {
+      const u = Math.min(1, Math.max(0, w.meter.used));
+      meter.querySelector<HTMLElement>('.bd-meter-l')!.textContent = w.meter.label;
+      meter.querySelector<HTMLElement>('.bd-meter-v')!.textContent = w.meter.value;
+      meter.style.setProperty('--bd-used', u.toFixed(3));
+      meter.classList.toggle('is-full', u >= 0.9);
+      meter.setAttribute('aria-valuenow', String(Math.round(u * 100)));
+      meter.setAttribute('aria-label', `${w.meter.label}: ${w.meter.value}`);
+    }
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.id;
     const gold = w.rows.findIndex((r) => !r.off);
     opts.innerHTML =
@@ -276,6 +291,16 @@ function injectStyle(): void {
       background: rgba(10, 18, 30, 0.75); box-shadow: inset 0 0 0 calc(1.5 * var(--px)) rgba(255, 216, 120, 0.55), 0 0 calc(12 * var(--px)) rgba(255, 190, 110, 0.22); }
     .bd-icon { width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
     .bd-ask #bd-note[hidden] { display: none; }
+    /* His land's budget (AWP-19): a woven-gold bar in a dark groove, the share used. */
+    .bd-meter { display: flex; align-items: center; gap: calc(8 * var(--px)); margin-top: calc(8 * var(--px)); font: 600 calc(12.5 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-ink2); }
+    .bd-meter[hidden] { display: none; }
+    .bd-meter-l { flex: none; color: var(--mu-ink); }
+    .bd-meter-bar { position: relative; flex: 1; height: calc(8 * var(--px)); border-radius: calc(4 * var(--px)); background: rgba(10, 18, 30, 0.6); box-shadow: inset 0 0 0 1px rgba(255, 216, 120, 0.28); overflow: hidden; }
+    .bd-meter-bar > i { position: absolute; inset: 0; transform: scaleX(var(--bd-used, 0)); transform-origin: left center; border-radius: inherit;
+      background: repeating-linear-gradient(90deg, #f7c95a 0 calc(6 * var(--px)), #e6ad3a calc(6 * var(--px)) calc(8 * var(--px))); transition: transform 0.4s var(--mu-ease); }
+    .bd-meter.is-full .bd-meter-bar > i { background: repeating-linear-gradient(90deg, #f08a5a 0 calc(6 * var(--px)), #d8683a calc(6 * var(--px)) calc(8 * var(--px))); }
+    .bd-meter-v { flex: none; white-space: nowrap; }
+    :lang(km) .bd-meter { font-size: calc(13.5 * var(--px)); line-height: 1.4; }
     .bd-ask #bd-note { white-space: pre-line; }
     .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
       overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }

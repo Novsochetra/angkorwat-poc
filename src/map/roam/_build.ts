@@ -1,7 +1,11 @@
 import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
-import { boughtRiel, BUILD_NEAR, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
-import { BUILD, distTo, overlap, toLocal } from '../build/state';
-import { createBuildView, type BuildView } from '../build/view';
+import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
+import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
+import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
+import { BUILD, distTo, toLocal } from '../build/state';
+import { createBuildView, pieceLook, type BuildView } from '../build/view';
+import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
@@ -11,7 +15,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, type BuildReason } from './_buildSpots';
+import { BUILD_REASON_WORDS, byHouse, canBuild, ghostAhead, overlapsBuilt, type BuildReason } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceWord } from './_buildWork';
@@ -30,7 +34,7 @@ import type { RoamCtx } from './types';
  *
  * Once the house is his (`HOME.owned`), on foot:
  * - **By the house** (on the ground under it, round it, at its stair's foot), and
- *   anywhere within `BUILD_NEAR` m of it where nothing else takes E (the garden's
+ *   anywhere on his land (build/plot.ts `PLOT_CORNERS`) where nothing else takes E (the garden's
  *   "Plant…" first): "E  Build…" opens the build card: every piece with what it
  *   costs (AWP-9: its materials, build/materials.ts; those he gathered, in his bag
  *   or his home store, are free; what he lacks he buys: "Missing: 1 bamboo pole =
@@ -39,8 +43,8 @@ import type { RoamCtx } from './types';
  *   of how many; not enough riel for what he lacks: greyed with how much more.
  * - **Build mode** (a piece picked): its ghost before him (green where it can
  *   stand, red with the reason where not: too far, water, the path, a rice field,
- *   the house, a neighbour's yard, not level, a plant, something he built, something
- *   else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
+ *   past his land, a neighbour's yard, the house, not level, a tree, a plant, something
+ *   he built, something else); it turns with him, `,` / `.` (the pad's d-pad ← →, the touch ⟲ ⟳) turn it
  *   15° more; a fence run's end snaps onto the end of one he built (in line, or turned a quarter: a corner). "E  Build here"
  *   pays for what he lacks (`purse.pay`), takes the rest from his bag, then his
  *   home store (`useMaterials`), and he builds it (the work); F / C (the pad's ↓) the card
@@ -65,18 +69,27 @@ import type { RoamCtx } from './types';
  * `place`, `rebuild`. Console lines start `[build]`.
  */
 
-/** Turning the ghost: a step (rad). */
+/** Turning the ghost: a step (rad: 15°), a fine step (Shift + , / .: 5°), held on a step this far past its middle (rad). */
 const TURN_STEP = Math.PI / 12;
+const TURN_FINE = Math.PI / 36;
+const TURN_HOLD = (4 * Math.PI) / 180;
+/** The ghost's middle steps on his land's grid this fine (m). */
+const GRID = 0.5;
 /** "E  Build…" by the house: within this of its footprint and stair (m). */
 const BY_HOUSE = 2.6;
-/** Build mode ends past this far from the house's middle (m). */
-const MODE_FAR = BUILD_NEAR + 8;
+/** Build mode ends past this far past his land (m). */
+const MODE_FAR = 8;
+/** "E  Build…" this far past his land too (m: standing on the trail by it, on the bank). */
+const START_PAST = 2;
 /** E held this long (s) on a piece takes it down (asked first). */
 const HOLD_FOR = 0.8;
 /** He reaches a piece from this far (m, his feet to its footprint), facing it. */
 const PIECE_REACH = 1.25;
-/** A fence's end snaps onto another's end within this (m) and this turn (rad). */
-const SNAP = { d: 1.1, turn: 0.6 };
+/**
+ * A fence's end snaps onto another's end within this (m: the ghost's middle from where it would go); it goes on that
+ * fence's own line, or square to it, when he faces within `align` of it (rad: 20°).
+ */
+const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp']);
 /**
@@ -94,6 +107,12 @@ let lastCtx: RoamCtx | null = null;
 /** Build mode: the piece he is placing (picked on the card), its extra turn (rad). */
 let placing: PieceId | null = null;
 let turn = 0;
+/** The 15° step of his land's lines the ghost holds (`landYaw`), or null (picked again). */
+let heldStep: number | null = null;
+/** Shift held (the fine turn). */
+let shiftDown = false;
+/** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
+let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
 const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as BuildReason | null, step: -1, prompt: null as string | null, snapped: false };
 let stepN = 0;
@@ -111,6 +130,67 @@ let modeCamLetGo = false;
 /** Seconds left of the camera's first move into build mode. */
 let modeCamOpen = 0;
 let touchBar: HTMLElement | null = null;
+/** The touch bar's turn ("45°") and the one shown. */
+let touchDeg: HTMLElement | null = null;
+let shownTouchDeg = -1;
+/** A ⟲ ⟳ held (touch): 5° after `LONG.first` s, again every `LONG.every` s; the tap after it does not turn 15°. */
+const LONG = { first: 0.45, every: 0.35 };
+let longTimer: ReturnType<typeof setTimeout> | null = null;
+let longFired = false;
+/** His land's edge on the ground (while he builds). */
+let edge: PlotEdge | null = null;
+/** A check's `plotedge=1`: shown without building. */
+let edgeHeld = false;
+
+// ── The budget (build/plot.ts `PLOT_BUDGET`) ────────────────────────────────
+
+/** A kind's blocks as the ghost shows it (its seed: _buildGhost.ts), made once a kind. */
+const kindBlocks = new Map<PieceId, number>();
+function blocksOf(id: PieceId): number {
+  let n = kindBlocks.get(id);
+  if (n === undefined) kindBlocks.set(id, (n = pieceLook(id, 0.37).boxes.length));
+  return n;
+}
+/**
+ * The pieces' blocks (each its own model's, with its own seed), counted again when the list changes. Every piece
+ * counts, a piece left past his land from before AWP-31 too: it is drawn and saved like the rest, and the budget is
+ * what a phone draws of everything he built (so taking it down makes room).
+ */
+let piecesAt = -1;
+let piecesN = 0;
+function piecesBlocks(): number {
+  if (piecesAt !== BUILT.version) {
+    piecesAt = BUILT.version;
+    piecesN = 0;
+    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed).boxes.length;
+  }
+  return piecesN;
+}
+addPlotBlocks('pieces', piecesBlocks);
+/** His land's box in the block layer's cells (blocks/store.ts: AWP-16). */
+const PLOT_CELLS = { i0: cellOf(PLOT_BOX.x0), i1: cellOf(PLOT_BOX.x1), k0: cellOf(PLOT_BOX.z0), k1: cellOf(PLOT_BOX.z1) };
+/**
+ * His own blocks on his land: those of the chunks over its box whose cell's middle is inside its shape (`inPlot`: not
+ * the neighbours' yards, the cattle trader's meadow or the herd's that the box takes in). Counted again only when the
+ * layer changes (`onChange`), never every frame.
+ */
+function layerOnLand(): number {
+  let n = 0;
+  const b = PLOT_CELLS;
+  for (const c of BLOCKS.chunkList()) {
+    if (!c.count || c.i0 > b.i1 || c.i0 + CHUNK_N <= b.i0 || c.k0 > b.k1 || c.k0 + CHUNK_N <= b.k0) continue;
+    for (let at = 0; at < CHUNK_CELLS; at++) {
+      if (!c.cells[at]) continue;
+      if (inPlot(cellMid(c.i0 + (at % CHUNK_N)), cellMid(c.k0 + (Math.floor(at / CHUNK_N) % CHUNK_N)))) n++;
+    }
+  }
+  return n;
+}
+let layerN = -1;
+BLOCKS.onChange(() => (layerN = -1));
+addPlotBlocks('blocks', () => (layerN < 0 ? (layerN = layerOnLand()) : layerN));
+/** Room on his land for one more `id` (the budget)? A little over the line rounds the way the meter shows. */
+const roomFor = (id: PieceId): boolean => plotBlocks() + blocksOf(id) <= PLOT_BUDGET;
 
 // ── Words (made once a language and value: no string is made a frame) ──────────
 
@@ -141,12 +221,15 @@ function wireHold(): void {
   if (holdWired || typeof window === 'undefined') return;
   holdWired = true;
   addEventListener('keydown', (e) => {
+    shiftDown = e.shiftKey;
+    if (e.code === 'Comma' || e.code === 'Period') fineKey = e.shiftKey;
     if ((e.code === 'KeyE' || e.code === 'Enter') && !e.repeat) holdKeys.key = true;
   });
   addEventListener('keyup', (e) => {
+    shiftDown = e.shiftKey;
     if (e.code === 'KeyE' || e.code === 'Enter') holdKeys.key = false;
   });
-  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = false));
+  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = shiftDown = false));
   addEventListener('pointerdown', (e) => {
     if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) holdKeys.touch = true;
   }, true);
@@ -224,62 +307,93 @@ function askTake(ctx: RoamCtx, b: Built): void {
 // ── Build mode ─────────────────────────────────────────────────────────────
 
 const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
-/** Footprints may touch this much (m), as _buildSpots.ts lets fence runs touch. */
-const SNAP_TOUCH = 0.03;
 
 /**
- * A fence's spot snapped onto the end of one he built, if near: into `spot`. In line (the run going on) or turned
- * a quarter (a corner: its end against the other's end, on either side of it, the two touching, not overlapping).
- * Only onto an end that is free (a corner at the joint of two in a run would stand on the next one).
+ * The ghost's turn on his land's lines (AWP-30): `raw` (rad, as `body.yaw`) clicked to `TURN_STEP` (15°) counted from
+ * the house's frame (`HOME_AT.facing`: his land's sides run along it), held on its step until `raw` is `TURN_HOLD`
+ * past the middle to the next (no flicker as he sways).
  */
-function snapFence(): boolean {
+function landYaw(raw: number): number {
+  const base = HOME_AT.facing;
+  const steps = Math.round((2 * Math.PI) / TURN_STEP);
+  const r = raw - base;
+  if (heldStep !== null) {
+    const d = Math.atan2(Math.sin(r - heldStep * TURN_STEP), Math.cos(r - heldStep * TURN_STEP));
+    if (Math.abs(d) < TURN_STEP / 2 + TURN_HOLD) return base + heldStep * TURN_STEP;
+  }
+  heldStep = ((Math.round(r / TURN_STEP) % steps) + steps) % steps;
+  return base + heldStep * TURN_STEP;
+}
+/** A spot (x or z, m) on his land's grid (`GRID`, from its box's corner: runs line up with its sides and each other). */
+const onGrid = (v: number, o: number): number => o + Math.round((v - o) / GRID) * GRID;
+
+/**
+ * A fence's spot run on from the end of one he built, if one is near (into `spot`): its own end on that end. Its turn:
+ * that fence's own line (on in line) or square to it (a corner) whenever the way he faces is within `SNAP.align` of it
+ * (straight is the easy way: no 15° step can bend a run he means to go on with, and a fence built before AWP-30 at any
+ * angle goes on at its own), then `turn` (, . / ⟲ ⟳ / the pad: a bend he asks for); past that, the ghost's own turn (a
+ * bend of 30°, 45°…). Two runs meeting there may cross at the joint (_buildSpots.ts `fenceJoint`). The nearest such
+ * spot to where the ghost was, within `SNAP.d`; never onto another piece. `raw`: the way the ghost's front would face
+ * him, unclicked.
+ */
+function snapFence(raw: number): boolean {
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
-  let byaw = 0;
+  let by = spot.yaw;
   const half = PIECES.fence.w / 2;
-  const th = PIECES.fence.d / 2;
-  const take = (x: number, z: number, yaw: number) => {
-    const d = Math.hypot(x - spot.x, z - spot.z);
-    if (d >= best) return;
-    _snap.x = x;
-    _snap.z = z;
-    _snap.yaw = yaw;
-    for (const b of BUILT.list) if (overlap(_snap, b, -SNAP_TOUCH)) return;
-    best = d;
-    bx = x;
-    bz = z;
-    byaw = yaw;
-  };
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
-    // (its local x axis on the map (c, −s), its local z axis (s, c))
-    const c = Math.cos(f.yaw);
-    const s = Math.sin(f.yaw);
+    // (its own lines: on in line (0, π) or square (±π/2), the one nearest the way he faces)
+    let yaw = spot.yaw;
+    let near = SNAP.align;
+    for (let q = 0; q < 4; q++) {
+      const y = f.yaw + (q * Math.PI) / 2;
+      const d = Math.abs(Math.atan2(Math.sin(y - raw), Math.cos(y - raw)));
+      if (d < near) {
+        near = d;
+        yaw = y + turn;
+      }
+    }
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    _snap.yaw = yaw;
+    // (its local x axis on the map is (cos, −sin): its ends half a run along it)
+    const fc = Math.cos(f.yaw);
+    const fs = Math.sin(f.yaw);
     for (let end = -1; end <= 1; end += 2) {
-      for (let k = 0; k < 4; k++) {
-        const yaw = f.yaw + (k * Math.PI) / 2;
-        const dy = Math.atan2(Math.sin(yaw - spot.yaw), Math.cos(yaw - spot.yaw));
-        if (Math.abs(dy) > SNAP.turn) continue;
-        if (k % 2 === 0) {
-          // (the run going on from this end: the next one's middle a run further along)
-          take(f.x + end * 2 * half * c, f.z - end * 2 * half * s, yaw);
-          continue;
-        }
-        // (a corner: just past this end, along its front or its back)
-        for (let side = -1; side <= 1; side += 2) {
-          const ax = end * (half + th);
-          const az = side * (half - th);
-          take(f.x + ax * c + az * s, f.z - ax * s + az * c, yaw);
-        }
+      const ex = f.x + end * half * fc;
+      const ez = f.z - end * half * fs;
+      for (let sig = -1; sig <= 1; sig += 2) {
+        // (the new run's end `sig` on that end: its middle half a run back along its own way)
+        const x = ex - sig * half * c;
+        const z = ez + sig * half * s;
+        const d = Math.hypot(x - spot.x, z - spot.z);
+        if (d >= best) continue;
+        _snap.x = x;
+        _snap.z = z;
+        let free = true;
+        for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) free = false;
+        if (!free) continue;
+        best = d;
+        bx = x;
+        bz = z;
+        by = yaw;
       }
     }
   }
   if (best >= SNAP.d) return false;
   spot.x = bx;
   spot.z = bz;
-  spot.yaw = byaw;
+  spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
   return true;
+}
+
+/** The turn shown in the prompt (degrees from the house's line: a fence's run 0‥179, a piece's front 0‥359). */
+function shownDeg(id: PieceId, yaw: number): number {
+  const m = id === 'fence' ? 180 : 360;
+  const d = Math.round(((yaw - HOME_AT.facing - Math.PI) * 180) / Math.PI);
+  return ((d % m) + m) % m;
 }
 
 /** Build mode's spot and prompt now (once a step). */
@@ -287,20 +401,29 @@ function placingNow(ctx: RoamCtx): void {
   if (spot.step === stepN || !placing || !env) return;
   spot.step = stepN;
   const b = ctx.body;
-  // (its front to him, turned more with , and .)
-  spot.yaw = b.yaw + Math.PI + turn;
+  // (its front to him, on his land's lines, turned more with , and .)
+  const raw = b.yaw + Math.PI;
+  spot.yaw = landYaw(raw) + turn;
   const ahead = ghostAhead(placing, spot.yaw, b.yaw);
-  spot.x = b.pos.x + Math.sin(b.yaw) * ahead;
-  spot.z = b.pos.z + Math.cos(b.yaw) * ahead;
-  spot.snapped = placing === 'fence' && snapFence();
+  spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0);
+  spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0);
+  spot.snapped = placing === 'fence' && snapFence(raw);
   const r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
   spot.ok = !r;
   spot.reason = r;
   const id = placing;
-  const keys = words('modeKeys', () => `, .  ${t('buildTurn')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
-  if (!r) spot.prompt = words(`here|${id}`, () => `E  ${t('buildHere')}  ·  ${keys}`);
+  const deg = shownDeg(id, spot.yaw);
+  // (",." the d-pad's ← → on a pad, "⇧,." L2: hud.ts `promptPad`)
+  const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
+  // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°")
+  if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
+  // (and by the touch bar's ⟲ ⟳, red or green)
+  if (touchDeg && deg !== shownTouchDeg) {
+    shownTouchDeg = deg;
+    touchDeg.textContent = `${num(deg)}°`;
+  }
 }
 
 /**
@@ -323,6 +446,7 @@ function cannot(id: PieceId): string | null {
     const short = riel(pay.riel - riels);
     return noMaterials(pay.missing) ? t('buildNeed', { riel: short }) : t('buildNeedMat', { what: materialsText(pay.missing), riel: short });
   }
+  if (!roomFor(id)) return words('room', () => t('buildNoRoom'));
   return null;
 }
 
@@ -331,6 +455,7 @@ function enterPlacing(id: PieceId): void {
     modeCamLetGo = false;
     modeCamOpen = MODE_CAM.openFor;
     turn = 0;
+    heldStep = null;
   }
   placing = id;
   spot.step = -1;
@@ -357,6 +482,11 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
+  if (!roomFor(id)) {
+    ctx.hud.toast(t('buildNoRoom'));
+    exitPlacing();
+    return;
+  }
   // (what he lacks paid for first; then what he has taken, from his bag, then his home store)
   const pay = toPay(id);
   if (pay.riel > 0 && !env.purse.pay(pay.riel)) {
@@ -378,6 +508,8 @@ function buildHere(ctx: RoamCtx): void {
   console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
+  // (the next one starts straight again: a fence runs on in line from this one's end, a bend asked for again)
+  turn = 0;
   BuildWork.start(ctx, piece);
 }
 
@@ -441,12 +573,36 @@ function showTouchBar(on: boolean): void {
     injectStyle();
     const el = document.createElement('div');
     el.className = 'bd-bar';
-    el.innerHTML = `<button type="button" class="bd-tb mu-frame mu-sm" data-do="left" aria-label="⟲"><span class="mu-bg"></span><span class="bd-tb-t">⟲</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="right" aria-label="⟳"><span class="mu-bg"></span><span class="bd-tb-t">⟳</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="other"><span class="mu-bg"></span><span class="bd-tb-t"></span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span aria-hidden="true">✕</span><span class="bd-tb-t"></span></button>`;
+    el.innerHTML = `<button type="button" class="bd-tb mu-frame mu-sm" data-do="left" aria-label="⟲"><span class="mu-bg"></span><span class="bd-tb-t">⟲</span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="right" aria-label="⟳"><span class="mu-bg"></span><span class="bd-tb-t">⟳</span></button><span class="bd-tb-deg mu-frame mu-sm" aria-live="polite"><span class="mu-bg"></span><span class="bd-tb-dv">0°</span></span><button type="button" class="bd-tb mu-frame mu-sm" data-do="other"><span class="mu-bg"></span><span class="bd-tb-t"></span></button><button type="button" class="bd-tb mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span aria-hidden="true">✕</span><span class="bd-tb-t"></span></button>`;
+    // ⟲ ⟳ held: 5° (the fine turn on a phone), again while held; the tap that ends it turns no more.
+    const stopLong = () => {
+      if (longTimer) clearTimeout(longTimer);
+      longTimer = null;
+    };
+    el.addEventListener('pointerdown', (e) => {
+      const d = (e.target as HTMLElement).closest<HTMLButtonElement>('button')?.dataset.do;
+      if (d !== 'left' && d !== 'right') return;
+      stopLong();
+      longFired = false;
+      const again = (wait: number) => {
+        longTimer = setTimeout(() => {
+          longFired = true;
+          turnBy(d === 'left' ? 1 : -1, TURN_FINE);
+          again(LONG.every);
+        }, wait * 1000);
+      };
+      again(LONG.first);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) el.addEventListener(ev, stopLong);
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!btn) return;
-      env?.uiSound('select');
       const d = btn.dataset.do;
+      if ((d === 'left' || d === 'right') && longFired) {
+        longFired = false;
+        return;
+      }
+      env?.uiSound('select');
       if (d === 'done') exitPlacing();
       else if (d === 'left') turnBy(1);
       else if (d === 'right') turnBy(-1);
@@ -454,6 +610,8 @@ function showTouchBar(on: boolean): void {
     });
     env.layer.append(el);
     touchBar = el;
+    touchDeg = el.querySelector<HTMLElement>('.bd-tb-dv');
+    shownTouchDeg = -1;
   }
   if (!touchBar) return;
   const ts = touchBar.querySelectorAll<HTMLElement>('.bd-tb-t');
@@ -462,8 +620,8 @@ function showTouchBar(on: boolean): void {
   touchBar.classList.toggle('is-on', on);
 }
 
-function turnBy(dir: number): void {
-  turn = Math.atan2(Math.sin(turn + dir * TURN_STEP), Math.cos(turn + dir * TURN_STEP));
+function turnBy(dir: number, step = TURN_STEP): void {
+  turn = Math.atan2(Math.sin(turn + dir * step), Math.cos(turn + dir * step));
   spot.step = -1;
   env?.uiSound('tick');
 }
@@ -479,6 +637,11 @@ function injectStyle(): void {
     .bd-tb { position: relative; display: inline-flex; white-space: nowrap; align-items: center; gap: 6px; min-height: 40px; min-width: 44px; justify-content: center; padding: 0 12px; border: 0; background: none; color: var(--mu-ink); cursor: pointer;
       font: 700 14px / 1 var(--mu-display); --mu-edge: var(--mu-btn-edge); touch-action: manipulation; }
     .bd-tb > .mu-bg { background: var(--mu-btn); }
+    /* The ghost's turn by ⟲ ⟳ (AWP-30: the phone shows it): a quiet gold number. */
+    .bd-tb-deg { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 40px; padding: 0 10px; color: #ffe2a0;
+      font: 700 15px / 1 var(--mu-display); --mu-edge: rgba(255, 216, 120, 0.4); pointer-events: none; }
+    .bd-tb-deg > .mu-bg { background: rgba(10, 18, 30, 0.72); }
+    .bd-tb-dv { position: relative; }
     :lang(km) .bd-tb { font-size: 15px; }
     .bd-tb:active { transform: scale(0.96); }
     .rh-prompt.bd-hold::after, .rt-use.bd-hold::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: 4px; height: 4px; border-radius: 2px;
@@ -512,6 +675,9 @@ function openCard(ctx: RoamCtx): void {
           off: cannot(id),
         };
       });
+      const used = Math.min(1, plotBlocks() / PLOT_BUDGET);
+      const pct = Math.round(used * 100);
+      const meter = { label: t('buildMeter'), value: t('buildMeterPct', { pct: num(pct) }), used };
       const have: Materials = {};
       for (const m of MATERIAL_IDS) if (haveOf(m) > 0) have[m] = haveOf(m);
       const mats = materialsText(have);
@@ -520,6 +686,7 @@ function openCard(ctx: RoamCtx): void {
         note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
         cancel: t('buildCardCancel'),
         rows,
+        meter,
       };
     },
     (id) => {
@@ -587,7 +754,7 @@ function nearNow(ctx: RoamCtx): void {
 /** "E  Build…" here (on foot, his house, not on its floor)? */
 function canStart(ctx: RoamCtx, anywhere: boolean): boolean {
   const p = ctx.body.pos;
-  if (!HOME.owned || Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > BUILD_NEAR) return false;
+  if (!HOME.owned || !inPlot(p.x, p.z, -START_PAST)) return false;
   // (on the ground: not on the veranda or the stair)
   if (p.y - ctx.world.field.heightAt(p.x, p.z) > 0.9) return false;
   return anywhere || byHouse(p.x, p.z, BY_HOUSE);
@@ -615,6 +782,37 @@ function placeAll(world = env?.world): number {
       }
     if (!done) console.warn(`[build] build=all: no room for the ${id}`);
   }
+  return n;
+}
+
+/**
+ * His land full (`build=full`, perf and the budget's checks): every kind up to its most, where each fits, scanning his
+ * land row by row from the north (each kind going on from where it stopped), while the budget lasts.
+ */
+function placeFull(world = env?.world): number {
+  if (!world) return 0;
+  let n = 0;
+  const order: PieceId[] = ['pen', 'shelter', 'haystack', 'hammock', 'kre', 'spirit', 'jar', 'lamp', 'fence'];
+  const yaw = HOME_AT.facing;
+  for (const id of order) {
+    const p = PIECES[id];
+    // (a fence's run along a row: one after the other, touching)
+    const sx = id === 'fence' ? p.w : 1.5;
+    let x = PLOT_BOX.x0 + 0.6;
+    let z = PLOT_BOX.z0 + 0.6;
+    while (BUILD.count(id) < p.max && roomFor(id) && z < PLOT_BOX.z1) {
+      if (!canBuild(world, id, x, z, yaw)) {
+        BUILD.add(id, x, world.field.heightAt(x, z), z, yaw, 1);
+        n++;
+      }
+      x += sx;
+      if (x > PLOT_BOX.x1) {
+        x = PLOT_BOX.x0 + 0.6;
+        z += 1.5;
+      }
+    }
+  }
+  console.info(`[build] build=full: ${n} pieces, ${plotBlocks()} of ${PLOT_BUDGET} blocks on his land`);
   return n;
 }
 
@@ -668,7 +866,7 @@ registerAddon({
     const q = e.params.get('build');
     if ((e.shot || import.meta.env.DEV) && q !== null) {
       BUILD.clear();
-      if (q !== '0' && q !== 'all') BUILD.fromUrl(q, (x, z) => e.world.field.heightAt(x, z));
+      if (q !== '0' && q !== 'all' && q !== 'full') BUILD.fromUrl(q, (x, z) => e.world.field.heightAt(x, z));
     }
     view = createBuildView(e.shot);
     e.scene.add(view.object);
@@ -679,6 +877,8 @@ registerAddon({
       if (ev.type !== 'progress') BuildUses.sync();
     });
     ghost = new BuildGhost(e.scene, e.world);
+    edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
+    e.scene.add(edge.object);
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
@@ -688,6 +888,10 @@ registerAddon({
     wireHold();
     injectStyle();
     if (q === 'all' && (e.shot || import.meta.env.DEV)) placeAll(e.world);
+    if (q === 'full' && (e.shot || import.meta.env.DEV)) placeFull(e.world);
+    // (a check's blocks on his land from elsewhere, as a block layer's would be: the budget's meter and its "no room")
+    const extra = Number(e.params.get('plotblocks'));
+    if ((e.shot || import.meta.env.DEV) && extra > 0) addPlotBlocks('check', () => extra);
     const nLamps = Number(e.params.get('lamps'));
     if (nLamps > 0 && (e.shot || import.meta.env.DEV)) placeLamps(e.world, Math.min(64, Math.floor(nLamps)));
     BuildUses.sync();
@@ -700,13 +904,14 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +spot.yaw.toFixed(3), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
             near: near.piece ? { uid: near.piece.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
             ask: !!ask?.open,
             pressing: pressing ? { uid: pressing.piece.uid, t: +pressing.t.toFixed(2) } : null,
             riel: env?.purse.riel ?? 0,
+            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0 },
             materials: { bag: BAG.all(), store: STORE.all() },
             owned: HOME.owned,
             view: view?.stats() ?? null,
@@ -722,6 +927,7 @@ registerAddon({
           card: () => lastCtx && openCard(lastCtx),
           place: (id: PieceId | null) => (id ? enterPlacing(id) : exitPlacing()),
           all: () => placeAll(),
+          full: () => placeFull(),
           rebuild: () => view?.rebuild(),
           shown: (uid: string) => view?.shownOf(uid) ?? -1,
         },
@@ -737,7 +943,7 @@ registerAddon({
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
-      if (m !== 'walk' || Math.hypot(p.x - HOME_AT.x, p.z - HOME_AT.z) > MODE_FAR || cannot(placing)) {
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || cannot(placing)) {
         exitPlacing();
         return false;
       }
@@ -755,7 +961,9 @@ registerAddon({
       const right = tap('Period') || (pad.active && tap('Digit5'));
       if (left || right) {
         for (const c of ['Comma', 'Period', 'Digit4', 'Digit5']) taps?.delete(c);
-        turnBy(left ? 1 : -1);
+        // (Shift on the keys, L2 held on the pad: 5°)
+        const fine = pad.active ? pad.held('l2') : fineKey || shiftDown;
+        turnBy(left ? 1 : -1, fine ? TURN_FINE : TURN_STEP);
       }
       // F or C (the pad's ↓): the card again (another piece); not a greeting.
       if (tap('KeyF', 'KeyC')) {
@@ -819,6 +1027,9 @@ registerAddon({
   frame(f: MapFrame, _m: RoamMode) {
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
+    // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
+    edge?.show(!!placing || !!card?.open || edgeHeld);
+    edge?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
     BUILD.tick(f.dt > 0 ? f.dt : 0);
   },
@@ -832,6 +1043,9 @@ registerAddon({
   },
   fromUrl(q, ctx) {
     lastCtx = ctx;
+    // (every value here is a check's: shots and the dev server only, never the live site, where a link would build
+    // pieces into a player's save or open build mode: REVIEW.md "Lessons")
+    if (!(env?.shot || import.meta.env.DEV)) return;
     if (q.get('build') === 'all' && !BUILD.list.length) placeAll(ctx.world);
     const g = q.get('buildghost');
     if (g) {
@@ -877,6 +1091,7 @@ registerAddon({
       } else console.warn(`[build] buildsit=: no piece "${uid}"`);
     }
     if (q.get('buildcard')) openCard(ctx);
+    if (q.get('plotedge') === '1') edgeHeld = true;
   },
   report() {
     const out: Record<string, string> = {};
@@ -899,6 +1114,12 @@ registerAddon({
 registerAddon({
   id: 'buildMode',
   order: 3,
+  // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
+  // order 5, takes the L2 press after this one: taken here, it never raises them).
+  input(_ctx, m) {
+    if (placing && m === 'walk' && !BuildWork.active) pad.take('l2');
+    return false;
+  },
   offer(ctx, m) {
     if (!placing || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     lastCtx = ctx;

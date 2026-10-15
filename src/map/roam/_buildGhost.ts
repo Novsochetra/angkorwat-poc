@@ -14,7 +14,8 @@ import type { RoamWorld } from './types';
  *   invisible: a wall, the house); the reason is the prompt's line.
  *
  * It sits before him and follows him as he walks and turns (the piece's front
- * to him, turned more with `,` / `.`); it breathes slowly. One instanced draw of
+ * to him, on his land's lines in 15° steps, turned more with `,` / `.`); a
+ * fence shows its guide on along its run; it breathes slowly. One instanced draw of
  * blocks in a plain colour each (a basic material: no lights; the garden
  * ghost's program), made with roaming so its shader is compiled before Start;
  * no allocation per frame.
@@ -36,6 +37,13 @@ const SWELL = 0.1;
 const EDGE_W = 0.09;
 const EDGE_UP = 0.04;
 const EDGE_STEP = 0.8;
+/**
+ * A fence's guide (AWP-30): pale dashes on the ground on along its run past both ends, where the next runs would go
+ * in line — from `from` m past its end to `to`, a dash `dash` long every `every` m, narrowing (`w0` → `w1`) as they go.
+ */
+const GUIDE = { from: 0.5, to: 9, dash: 0.45, every: 0.9, w0: 0.08, w1: 0.03 };
+const GUIDE_OK = new Color(0xf4f0d8);
+const GUIDE_NO = new Color(0xffc8bc);
 
 interface GhostBox {
   x: number;
@@ -143,6 +151,24 @@ export class BuildGhost {
         });
       }
     }
+    // A fence's guide: on along its run, both ways.
+    if (id === 'fence')
+      for (let side = -1; side <= 1; side += 2)
+        for (let u = GUIDE.from; u + GUIDE.dash <= GUIDE.to; u += GUIDE.every) {
+          const k = u / GUIDE.to;
+          out.push({
+            x: side * (p.w / 2 + u + GUIDE.dash / 2),
+            y: EDGE_UP,
+            z: 0,
+            sx: GUIDE.dash,
+            sy: 0.03,
+            sz: GUIDE.w0 + (GUIDE.w1 - GUIDE.w0) * k,
+            q: new Quaternion(),
+            ok: GUIDE_OK,
+            no: GUIDE_NO,
+            flat: true,
+          });
+        }
     this.boxes = out;
   }
 

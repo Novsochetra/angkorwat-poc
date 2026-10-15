@@ -25,6 +25,8 @@
 //   menu      △ opens the Explorer menu (a pad layer: __pad.pad.inMenu), R1 / L1
 //             switch its tabs, ○ shuts                                             (_explorerMenu.ts)
 //   camera    d-pad ← raises the camera, ○ puts it away; → the selfie, ○ away     (input.ts, tools.ts)
+//   build     building at home: ← turns the ghost 15°, L2 held with ← 5° (the binoculars stay
+//             down, he does not turn)                                              (_build.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
 //   keys      a real key press turns the pad's glyphs off (body without pad-on)   (core)
@@ -36,7 +38,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { connectPad, installFakePad, rumbles, stick, tap } from './_padFake.mjs';
+import { connectPad, hold, installFakePad, release, rumbles, stick, tap } from './_padFake.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.split('=')).map(([k, ...v]) => [k, v.join('=') || '1']));
@@ -496,6 +498,39 @@ const steps = [
       }
       if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?" too');
       return 'd-pad ← camera, ○ away; → selfie, ○ away';
+    },
+  },
+  {
+    id: 'build',
+    who: 'roam/_build.ts (AWP-30)',
+    async run() {
+      await ensureWalk();
+      // (on his land, the house his, a fence's ghost before him)
+      await placeAt('walk', '426,-128.17&home=1');
+      await ev(() => {
+        window.roam.body.yaw = Math.PI;
+        window.__build.place('fence');
+      });
+      await sleep(500);
+      const now = () =>
+        ev(() => ({ turn: Math.round(((window.__build.state().placing?.turn ?? NaN) * 180) / Math.PI), yaw: window.roam.body.yaw, bino: !!window.__bino?.up }));
+      const a = await now();
+      if (Number.isNaN(a.turn)) throw new Error('no build mode');
+      await tap(page, 'left');
+      await sleep(300);
+      const b = await now();
+      if (b.turn - a.turn !== 15) throw new Error(`← turned ${b.turn - a.turn}°, not 15°`);
+      await hold(page, 'l2');
+      await sleep(600);
+      await tap(page, 'left');
+      await sleep(300);
+      const c = await now();
+      await release(page, 'l2');
+      await ev(() => window.__build.place(null));
+      if (c.bino) throw new Error('L2 in build mode raised the binoculars');
+      if (Math.abs(c.yaw - b.yaw) > 0.01) throw new Error(`L2 turned him ${(((c.yaw - b.yaw) * 180) / Math.PI).toFixed(1)}°`);
+      if (c.turn - b.turn !== 5) throw new Error(`L2 + ← turned ${c.turn - b.turn}°, not 5°`);
+      return `← 15° (${a.turn}° → ${b.turn}°), L2 + ← 5° (→ ${c.turn}°), binoculars down, he stays turned`;
     },
   },
   {

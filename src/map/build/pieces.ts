@@ -71,9 +71,6 @@ export interface PieceSpec {
   readonly trough?: readonly [number, number, number];
 }
 
-/** Within this far of the house's middle he may build (m), not on the house, its stair, the garden's plants. */
-export const BUILD_NEAR = 46;
-
 export const PIECES: Record<PieceId, PieceSpec> = {
   // The cattle pen (គ្រោលគោ): rails on posts, the gate in the front rail, a thatched lean-to at the back, a log trough, a hay rack.
   pen: {

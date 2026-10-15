@@ -127,17 +127,20 @@ export function distTo(b: Foot, x: number, z: number): number {
   return Math.hypot(ex, ez);
 }
 
-/** Half a footprint's reach along a world direction (ux, uz unit), grown by `m`. */
-function reach(b: Foot, ux: number, uz: number, m: number): number {
+/** Half a footprint's reach along a world direction (ux, uz unit), grown by `m` (its length, local x, shrunk by `sh` at each end). */
+function reach(b: Foot, ux: number, uz: number, m: number, sh = 0): number {
   const p = PIECES[b.id];
   const c = Math.cos(b.yaw);
   const s = Math.sin(b.yaw);
   // (its local x axis on the map is (c, −s), its local z axis (s, c): pieces.ts `pieceToWorld`)
-  return (p.w / 2 + m) * Math.abs(ux * c - uz * s) + (p.d / 2 + m) * Math.abs(ux * s + uz * c);
+  return (p.w / 2 - sh + m) * Math.abs(ux * c - uz * s) + (p.d / 2 + m) * Math.abs(ux * s + uz * c);
 }
 
-/** Would two footprints overlap, each grown by `m` (m; negative: they may touch that much)? Separating axes (no allocation). */
-export function overlap(a: Foot, b: Foot, m = 0): boolean {
+/**
+ * Would two footprints overlap, each grown by `m` (m; negative: they may touch that much)? `joint`: each one's ends
+ * (local x) left out that far (two fence runs meeting at an angle cross at their ends). Separating axes (no allocation).
+ */
+export function overlap(a: Foot, b: Foot, m = 0, joint = 0): boolean {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
   for (let k = 0; k < 4; k++) {
@@ -147,7 +150,7 @@ export function overlap(a: Foot, b: Foot, m = 0): boolean {
     // (its local x axis on the map, then its local z axis)
     const ux = k % 2 ? s : c;
     const uz = k % 2 ? c : -s;
-    if (Math.abs(dx * ux + dz * uz) >= reach(a, ux, uz, m) + reach(b, ux, uz, m)) return false;
+    if (Math.abs(dx * ux + dz * uz) >= reach(a, ux, uz, m, joint) + reach(b, ux, uz, m, joint)) return false;
   }
   return true;
 }
