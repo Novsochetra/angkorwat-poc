@@ -3132,13 +3132,20 @@ without its straw), the oxen `people/_ox.ts`.
   cart": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
   oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
   the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
-  0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can:
-  every 0.5 m of the way, across its width (±1.15 m) land in the roaming area, no water deeper than
-  0.25 m, nothing standing or built over the land (a trunk, a wall, a stair, a house, a jar), room
-  overhead (3.4 m), the land rising or falling one of its 2 m steps at most (the map's slopes are
-  steps of its blocks: the walker hops them, the ridden cow climbs them, the cart rolls over them on
-  its heights smoothed along its way). Where it cannot, the way stops growing and the cart stops a
-  little short; once he is 6.5 m from the ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
+  The land, every 0.5 m of the way, across its width (±1.15 m): in the roaming area, no water deeper
+  than 0.25 m, room overhead (3.4 m), rising or falling one of its 2 m steps at most (the map's slopes
+  are steps of its blocks: the walker hops them, the ridden cow climbs them, the cart rolls over them
+  on its heights smoothed along its way). And its body (`roam/_haulFit.ts`): the cart's box and its
+  oxen's (`CART_BOX`, `OXEN_BOX`, turned to its heading, the oxen straight before the cart, 5 cm
+  kept round them) must be clear, tested at every point the way adds and at every place it moves
+  to (each 0.2 m), so nothing thin is stepped over (a fence run is 0.25 m, a post 0.2 m):
+  each piece he built, its whole footprint (`w` × `d`), box against box, exactly (never in a pen,
+  under a shelter, over a bed); his blocks (`BLOCKS`), every cell the box meets from the land to
+  3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
+  walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
+  growing and the cart rolls up to the last place it fits and stands; once he is 6.5 m from the
+  ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
   រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
   Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
   map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
@@ -3190,12 +3197,14 @@ without its straw), the oxen `people/_ox.ts`.
 - **Nothing stands on it** (`build/haul.ts` `cartBlocks(x, z, r)`: the cart's box and its oxen's,
   `CART_BOX`, `OXEN_BOX`, where it stands now, read live while he leads it, and at its place by the
   house, kept for it while it is away): the build ghost refuses a piece over them, its footprint grown
-  0.2 m (`roam/_buildSpots.ts` `cart`, "រទេះគោនៅទីនេះ / The ox cart is here"), and so does planting
-  (`roam/_gardenSpots.ts` `cart`, the plant's room): no shelter over it, no fence or pen round it. A
-  footprint check of its own can ask `cartBlocks` too.
+  0.2 m (`roam/_buildSpots.ts` `cart`, "រទេះគោនៅទីនេះ / The ox cart is here"; its place by the house
+  while it is away: `cartPlace`, "កន្លែងរទេះគោ / The ox cart's place"), and so does planting
+  (`roam/_gardenSpots.ts`, the same two, the plant's room): no shelter over it, no fence or pen round it.
+  A footprint check of its own can ask `cartBlocks` (or `cartBlockWhy`) too.
 - **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
-  could stand on in play (`standsAt`: `passable` at its tail, axle, oxen and yoke, each from its own
-  ground: not in a house, the market's stalls, nor on a piece built over it since); else it goes to its
+  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke, and its whole boxes
+  clear as above: not in a house, the market's stalls, nor under or in a piece built over it since —
+  a shelter, a pen, a bed, a fence through it); else it goes to its
   place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
   is wrapped to ±π (a broken 1e300 reads as 0).
 - **On the maps**: once he leaves it away from its place by the house, "រទេះគោរបស់ខ្ញុំ / My ox cart"

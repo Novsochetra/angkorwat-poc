@@ -19,6 +19,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { MAP_SPOTS } from '../ui/_minimapSpots';
 import { ADDONS, registerAddon, touchJump, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { CAP, HOLD, HaulView, OX_BACK, OX_SIDE } from './_haulModel';
+import { boxClear, type CartBox } from './_haulFit';
 import { angleDiff } from './followCam';
 import type { RoamCtx } from './types';
 import { PACE as WALK_PACE, stepSound } from './walker';
@@ -156,6 +157,9 @@ let gate = 0;
 let leading = false;
 const way = { x: [] as number[], y: [] as number[], z: [] as number[], s: [] as number[] };
 let yokeS = 0;
+/** The farthest the yoke has been tested to fit along the way (m), and how far apart those tests are. */
+let fitS = 0;
+const FIT_STEP = 0.2;
 let speed = 0;
 /** The way could not go on (a place the cart cannot go). */
 let blocked = false;
@@ -321,11 +325,58 @@ function wayOn(ctx: RoamCtx): void {
       blocked = true;
       return;
     }
-    blocked = false;
     wayPush(x, h, z);
+    // (the cart and its oxen as they would stand with the yoke here: their whole boxes clear, `_haulFit.ts`)
+    if (!fitsOnWay(ctx)) {
+      wayPop();
+      blocked = true;
+      return;
+    }
+    blocked = false;
     n++;
   }
 }
+
+/** The way's last point taken back (it would not fit). */
+function wayPop(): void {
+  way.x.pop();
+  way.y.pop();
+  way.z.pop();
+  way.s.pop();
+}
+
+const _cartBox: CartBox = { x: 0, z: 0, yaw: 0, back: CART_BOX.back, front: CART_BOX.front, half: CART_BOX.half };
+const _oxBox: CartBox = { x: 0, z: 0, yaw: 0, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
+/** Checks: the boxes' tests made and the time they took (ms). */
+const FIT = { n: 0, ms: 0, worst: 0 };
+
+/** The cart's and the oxen's boxes clear, the cart at axle (ax, az) heading `yaw`, the oxen at the yoke (yx, yz) heading `oxYaw`. */
+function boxesClear(ctx: Pick<RoamCtx, 'world'>, ax: number, az: number, yaw: number, yx: number, yz: number, oxYaw: number): boolean {
+  const t0 = performance.now();
+  _cartBox.x = ax;
+  _cartBox.z = az;
+  _cartBox.yaw = yaw;
+  _oxBox.x = yx;
+  _oxBox.z = yz;
+  _oxBox.yaw = oxYaw;
+  const ok = boxClear(ctx.world, _oxBox) && boxClear(ctx.world, _cartBox);
+  const ms = performance.now() - t0;
+  FIT.n++;
+  FIT.ms += ms;
+  FIT.worst = Math.max(FIT.worst, ms);
+  return ok;
+}
+
+/** With the yoke at `s` along the way: the cart a pole's reach back along it (a chord), its oxen straight before it (as `placeOnWay`). */
+function fitsAt(ctx: Pick<RoamCtx, 'world'>, s: number): boolean {
+  wayAt(s, _a);
+  wayAt(s - REACH_M, _b);
+  const yaw = Math.atan2(_a.x - _b.x, _a.z - _b.z);
+  return boxesClear(ctx, _a.x - Math.sin(yaw) * REACH_M, _a.z - Math.cos(yaw) * REACH_M, yaw, _a.x, _a.z, yaw);
+}
+
+/** With the yoke at the way's last point (a new one: the way goes on only where the cart will fit). */
+const fitsOnWay = (ctx: RoamCtx): boolean => fitsAt(ctx, wayEnd());
 
 // ── Where it is ────────────────────────────────────────────────────────────
 
@@ -380,9 +431,8 @@ function placeOnWay(ctx: RoamCtx): void {
   P.az = _a.z - Math.cos(P.yaw) * REACH_M;
   P.ay = wayY(yokeS - REACH_M);
   P.oy = wayY(yokeS - OX_BACK * K);
-  wayAt(Math.min(wayEnd(), yokeS + 0.8), _b);
-  wayAt(yokeS - 0.8, _c);
-  P.oxYaw = Math.hypot(_b.x - _c.x, _b.z - _c.z) > 0.2 ? Math.atan2(_b.x - _c.x, _b.z - _c.z) : P.yaw;
+  // (the oxen straight before the cart, as its boxes are tested and kept: `_haulFit.ts`)
+  P.oxYaw = P.yaw;
   tilt(ctx);
   CART_AT.x = P.ax;
   CART_AT.z = P.az;
@@ -500,12 +550,13 @@ function standsAt(ctx: Pick<RoamCtx, 'world'>, at: { x: number; z: number; yaw: 
   const f = ctx.world.field;
   const dx = Math.sin(at.yaw);
   const dz = Math.cos(at.yaw);
+  // (the land under it: no water, no step across it; then its whole boxes clear of what is built: `_haulFit.ts`)
   for (const d of [CART_BOX.back, 0, CART_YOKE - OX_BACK * K, CART_YOKE]) {
     const x = at.x + dx * d;
     const z = at.z + dz * d;
     if (Number.isNaN(passable(ctx, x, z, dx, dz, f.heightAt(x, z)))) return false;
   }
-  return true;
+  return boxesClear(ctx, at.x, at.z, at.yaw, at.x + dx * CART_YOKE, at.z + dz * CART_YOKE, at.yaw);
 }
 
 /**
@@ -561,6 +612,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
     wayPush(x, f.heightAt(x, z), z);
   }
   yokeS = wayEnd();
+  fitS = yokeS;
   speed = 0;
   blocked = false;
   leading = true;
@@ -615,13 +667,24 @@ function lead(ctx: RoamCtx, dt: number): void {
     return;
   }
   wayOn(ctx);
-  const want = wayEnd() - GAP;
+  // (the way stopped short of him at something the cart cannot pass: it goes on up to its last point, then stands)
+  const want = blocked ? wayEnd() : wayEnd() - GAP;
   const ahead = want - yokeS;
   const target = ahead > 0.02 ? Math.min(CATCH, OX_PACE * Math.min(1.35, 0.5 + ahead * 1.2)) : 0;
   speed += Math.max(-DECEL * dt, Math.min(ACCEL * dt, target - speed));
   if (speed < 0) speed = 0;
-  const ds = Math.min(speed * dt, Math.max(0, ahead));
+  let ds = Math.min(speed * dt, Math.max(0, ahead));
   if (ahead <= 0) speed = Math.max(0, speed - DECEL * dt);
+  // (every placement it moves to is tested first, `FIT_STEP` m at a time: where it would not fit it stands)
+  while (fitS < yokeS + ds) {
+    if (!fitsAt(ctx, fitS + FIT_STEP)) {
+      ds = Math.max(0, fitS - yokeS);
+      speed = 0;
+      blocked = true;
+      break;
+    }
+    fitS += FIT_STEP;
+  }
   yokeS += ds;
   P.wheel += ds / (WHEEL_R * K);
   if (ds > 0 || dirty) placeOnWay(ctx);
@@ -1072,7 +1135,10 @@ registerAddon({
             work: W ? { kind: W.kind, phase: W.phase, u: +W.u.toFixed(2), piece: W.piece, moved: W.moved } : null,
             saving: progress.saving,
             boxes: view?.things.capacity ?? 0,
+            fit: { n: FIT.n, avgMs: FIT.n ? +(FIT.ms / FIT.n).toFixed(4) : 0, worstMs: +FIT.worst.toFixed(3) },
           }),
+          /** Could the cart stand where it is now, or at (x, z) heading `yaw` degrees (its whole boxes, as a saved place is checked)? */
+          fits: (x?: number, z?: number, yaw?: number) => standsAt(e, x === undefined || z === undefined ? CART_AT : { x, z, yaw: ((yaw ?? 0) * Math.PI) / 180 }),
           /** Could the cart stand at (x, z) going `yaw` degrees (from ground `y`, default the land there)? Its ground, or NaN. */
           passable: (x: number, z: number, yaw = 0, y?: number) => {
             const r = (yaw * Math.PI) / 180;

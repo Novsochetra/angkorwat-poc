@@ -130,5 +130,8 @@ function hits(at: Readonly<CartPlace>, x: number, z: number, r: number): boolean
  */
 export const cartBlocks = (x: number, z: number, r = 0): boolean => hits(CART_AT, x, z, r) || hits(CART_HOME, x, z, r);
 
+/** As `cartBlocks`, and which: the cart itself (`here`), or its place by the house while it is away (`place`); null: neither. */
+export const cartBlockWhy = (x: number, z: number, r = 0): 'here' | 'place' | null => (hits(CART_AT, x, z, r) ? 'here' : hits(CART_HOME, x, z, r) ? 'place' : null);
+
 /** The cart stands away from its place by the house and he is not leading it (its badge on the maps). */
 export const cartAway = (): boolean => !CART_STATE.leading && Math.hypot(CART_AT.x - CART_HOME.x, CART_AT.z - CART_HOME.z) > 4;

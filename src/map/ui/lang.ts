@@ -1703,6 +1703,7 @@ const WORDS = {
   haulLeadHint: { km: 'ដើរនាំមុខ គោនឹងដើរតាម · {key} លែងខ្សែ', en: 'Walk on and the oxen follow · {key} lets go' },
   haulLetGo: { km: 'លែងខ្សែ', en: 'Let go of the rope' },
   haulHere: { km: 'រទេះគោនៅទីនេះ', en: 'The ox cart is here' },
+  haulPlace: { km: 'កន្លែងរទេះគោ', en: "The ox cart's place" },
   haulMap: { km: 'រទេះគោរបស់ខ្ញុំ', en: 'My ox cart' },
   haulTheMap: { km: 'រទេះគោរបស់ខ្ញុំ', en: 'my ox cart' },
   haulLeadHintTouch: { km: 'ដើរនាំមុខ គោនឹងដើរតាម · ប៊ូតុង «លែងខ្សែ» ដើម្បីលែង', en: 'Walk on and the oxen follow · the "Let go of the rope" button lets go' },
