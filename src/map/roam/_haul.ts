@@ -839,8 +839,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
 const short = (n: Pose): number => Math.max(0, Math.hypot(search.him.x - (n.x + Math.sin(n.yaw) * REACH_M), search.him.z - (n.z + Math.cos(n.yaw) * REACH_M)) - GAP);
 /** The search's guess of the moves left from `n`: the way to his heels in rolls, and the turn toward him. */
 const guess = (n: Pose): number => short(n) / ROLL_MOVE + (0.5 * Math.abs(angleDiff(towardHim(n), n.yaw))) / TURN_MOVE;
-/** A place to make for: at his heels, or one from which the way goes on toward him (tried as play would: `wayWorksFrom`). */
-const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean => short(n) < 0.6 || (!search.strict && Math.abs(angleDiff(towardHim(n), n.yaw)) <= AIM && wayWorksFrom(ctx, n));
+/**
+ * A place to make for: one from which the way goes on to his feet (tried as play would: `wayWorksFrom`), headed his
+ * way — or, after a plan that came to nothing, right at his heels (any heading: he may stand beside the oxen).
+ */
+const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean => (search.strict ? short(n) < 0.6 : Math.abs(angleDiff(towardHim(n), n.yaw)) <= AIM) && wayWorksFrom(ctx, n);
 
 /** The places one move from `n` (a turn either way, a roll on or back), each sub-step tested, none seen before. */
 function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, moving: boolean): PlanNode[] {
