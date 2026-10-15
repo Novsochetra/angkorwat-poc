@@ -606,7 +606,7 @@ function injectStyle(): void {
       .bf-meter { display: none; }
       /* (a phone on its side: down the left under his purse, clear of the top's tool bar, the "Now on" card and the
          build bar; the note in two lines at most) */
-      body.roam-touch:not(.pad-on) .bf-panel { top: 96px; bottom: auto; left: 10px; transform: none; width: 210px; font-size: 12px; padding: 5px 10px 6px; }
+      body.roam-touch:not(.pad-on) .bf-panel { top: 116px; bottom: auto; left: 10px; transform: none; width: 210px; font-size: 12px; padding: 5px 10px 6px; }
       body.roam-touch:not(.pad-on) .bf-head b { font-size: 13.5px; }
       body.roam-touch:not(.pad-on) .bf-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     }`;

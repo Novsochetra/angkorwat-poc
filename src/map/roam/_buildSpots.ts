@@ -307,7 +307,7 @@ export function canBuild(world: RoamWorld, id: PieceId | 'foot', x: number, z: n
   // What he built already (fence runs may touch end to end), and the room before one he uses from there.
   for (const b of BUILT.list) if (b !== ignore && (overlapsBuilt(f, b) || coversFront(f, b))) return 'piece';
   // A footprint building's land (AWP-20: its footprint and eaves, its stair, a fence's line).
-  if (BUILT.feetOver(f, -TOUCH)) return 'piece';
+  if (BUILT.feetOver(f, -TOUCH) && !BUILT.feetRoom(f, p.h)) return 'piece';
   // His ox cart and its oxen, where they stand and their place by the house (build/haul.ts; AWP-14).
   r = eachPoint(f, 0.2, onCart);
   if (r) return r;

@@ -374,6 +374,10 @@ guide, with every add-on's keys and URL values for shots, is
     the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
     saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
     `footwork=`, `foottake=`; addons.md "Footprint buildings").
+  - Things work where he builds them (AWP-25): one shared check, `build/shelterRules.ts`
+    (`underRoof(x, z, y)`, `fenced(x, z)`, `roofedPens`): a bed under any roof of his sleeps
+    him as his mat (`build/beds.ts`, `bedsleep=<uid>`), his cows go into a fenced and roofed
+    area at night as into the pen piece (addons.md "Things that work where he builds them").
   - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
     Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
     on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging

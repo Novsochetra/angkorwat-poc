@@ -6,6 +6,7 @@ import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
 import { BUILD, distTo, toLocal } from '../build/state';
 import { FOOT_KIND_IDS, FOOT_KINDS, type FootKind, type FootSide } from '../build/footPlan';
 import { FOOTS, partFoot, type FootRec } from '../build/footState';
+import { BED_SLEEP, bedPlace, type BedPlace } from '../build/beds';
 import { createBuildView, pieceLook, type BuildView } from '../build/view';
 import { graphicsNow } from '../graphics';
 import { HOME, HOME_AT, homeToWorld } from '../hamlet/_homePlan';
@@ -133,9 +134,9 @@ let fineKey = false;
 const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity };
 let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
-const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, prompt: null as string | null };
+const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
-let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | null } | null = null;
+let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | null; bed?: BedPlace | null } | null = null;
 /** What the take-down question is about. */
 let asking: WorkJob | null = null;
 /** The hint said (saved; a shot only with `buildhint=1`). */
@@ -283,6 +284,7 @@ function holdStep(ctx: RoamCtx, dt: number): void {
     holdBar(null);
     if (h.tap === 'keep') BuildWork.start(ctx, h.job);
     else if (h.tap === 'sit') env?.controls.press('KeyJ');
+    else if (h.tap === 'sleep' && h.bed) BED_SLEEP.start?.(h.bed);
     return;
   }
   h.t += dt;
@@ -494,6 +496,7 @@ function cannot(id: PieceId): string | null {
 
 function enterPlacing(id: PieceId): void {
   if (!placing) {
+    modeTurned = 0;
     modeCamLetGo = false;
     modeCamOpen = FootMode.on ? 0 : MODE_CAM.openFor;
     turn = 0;
@@ -516,6 +519,7 @@ function exitPlacing(): void {
 /** Footprint mode (AWP-20: _buildFoot.ts) for a kind: build mode's camera and touch bar, its own E, keys and ghost. */
 function enterFoot(kind: FootKind): void {
   if (!FootMode.on) {
+    if (!placing) modeTurned = 0;
     modeCamLetGo = false;
     modeCamOpen = placing ? 0 : MODE_CAM.openFor;
   }
@@ -598,6 +602,13 @@ function buildHere(ctx: RoamCtx): void {
  * spirit house: a step or two before him) a little steeper, so the line from the camera to it goes over his hat.
  */
 const pitchFor = (ahead: number): number => MODE_CAM.pitch + Math.min(0.24, Math.max(0, (3.2 - ahead) * 0.2));
+/**
+ * How far build mode's first move turned the camera round over his shoulder (rad): W, the stick and the touch stick
+ * walk that much back from the camera's heading, so he walks where he faced as the mode opened, not along the camera.
+ */
+let modeTurned = 0;
+/** The follow camera's swing behind him before build mode held it (put back after). */
+let followBefore: number | null = null;
 /** Where build mode's camera last looked (eased back from it after). */
 const lastAim = { x: 0, z: 0 };
 
@@ -651,13 +662,23 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     f.z += (aim.z - f.z) * MODE_CAM.toward * modeCamToward;
     lastAim.x = aim.x;
     lastAim.z = aim.z;
-    // (over his shoulder, a little: the ghost ahead beside his hat, not under it)
-    cam.behindYaw = ctx.body.yaw + MODE_CAM.shoulder * modeCamToward;
+    // (the follow camera holds its heading while he walks here: W walks along it, so he walks straight. Swinging round
+    // behind him, over his shoulder, it turned the way W walks a little each step: he walked a curve, and a fence line
+    // he stretched bent into an enclosure. The player's own turn, Q / R, a drag or the right stick, still turns it.)
+    if (followBefore === null) followBefore = cam.follow;
+    cam.follow = 0;
+    cam.behindYaw = ctx.body.yaw;
     if (modeCamLetGo) return;
-    // On the first move it goes round over his shoulder standing too (the follow camera swings round behind him only
-    // while he walks), when it looks his way already (from in front of him it stays: no spin).
-    const round = Math.atan2(Math.sin(cam.behindYaw - cam.yaw), Math.cos(cam.behindYaw - cam.yaw));
-    if (open && Math.abs(round) < 1.3) cam.yaw += round * kk;
+    // On the first move it goes round over his shoulder (a piece's ghost ahead beside his hat, not under it), standing
+    // too, when it looks his way already (from in front of him it stays: no spin).
+    // (a footprint's cursor is two steps ahead, clear of his hat: the camera straight behind him, so W walks the way he
+    // faces and a fence line he stretches runs along it)
+    const shoulder = ctx.body.yaw + (placing ? MODE_CAM.shoulder * modeCamToward : 0);
+    const round = Math.atan2(Math.sin(shoulder - cam.yaw), Math.cos(shoulder - cam.yaw));
+    if (open && Math.abs(round) < 1.3) {
+      cam.yaw += round * kk;
+      modeTurned += round * kk;
+    }
     const reach = aim.reach;
     // (under a roof, AWP-23: a room's camera — low, as far back as the room lets it, so the ghost sits mid-screen and
     // the follow camera never has to rise over him to find room)
@@ -667,6 +688,10 @@ function modeCamera(ctx: RoamCtx, on: boolean, dt: number): void {
     const want = Math.min(cam.maxDistance, Math.max(MODE_CAM.distance + reach * MODE_CAM.perReach, aim.high * MODE_CAM.perHigh, modeCamBefore.distance));
     cam.distance += (want - cam.distance) * kk;
     return;
+  }
+  if (followBefore !== null) {
+    cam.follow = followBefore;
+    followBefore = null;
   }
   if (modeCamToward > 0.001) {
     modeCamToward *= Math.exp(-MODE_CAM.back * dt);
@@ -880,6 +905,7 @@ function nearNow(ctx: RoamCtx): void {
   near.step = stepN;
   near.piece = null;
   near.foot = null;
+  near.bed = null;
   near.prompt = null;
   near.sit = false;
   const b = ctx.body;
@@ -918,6 +944,9 @@ function nearNow(ctx: RoamCtx): void {
     for (const r of FOOTS.list) {
       const d = FOOTS.distTo(r, p.x, p.z);
       if (d > PIECE_REACH) continue;
+      // (under it or in it — a bed under his house, a piece in his shed —: the piece he faces first; the building from
+      // outside it, or with no piece by him)
+      if (d < 0.01 && best) continue;
       footNearest(r, p.x, p.z, _l);
       const wx = _l[0] - p.x;
       const wz = _l[1] - p.z;
@@ -946,6 +975,13 @@ function nearNow(ctx: RoamCtx): void {
   if (best.done < 1) {
     const pct = Math.round(best.done * 100);
     near.prompt = words(`keep|${best.id}|${pct}`, () => `E  ${t('buildKeep', { name, pct: num(pct) })}  ·  ${t('buildHoldTake')}`);
+    return;
+  }
+  // A bed under a roof of his (AWP-25: build/beds.ts): E sleeps there as on his mat at home (the home add-on's card).
+  const bed = BED_SLEEP.start ? bedPlace(best) : null;
+  if (bed) {
+    near.bed = bed;
+    near.prompt = words(`bed|${best.id}`, () => `E  ${t('homeSleep')}  ·  ${t('buildHoldTake')}`);
     return;
   }
   if (PIECES[best.id].seat && BuildUses.seatNear(p.x, p.y, p.z) === best) {
@@ -1171,6 +1207,10 @@ registerAddon({
               if (r) FOOTS.remove(r);
             },
             clear: () => FOOTS.clear(),
+            done: (uid: string, v: number) => {
+              const r = FOOTS.byUid(uid);
+              if (r) FOOTS.setDone(r, v);
+            },
             full: () => fillFoot(env!.world),
             draw: (kind: FootKind | null) => (kind ? enterFoot(kind) : exitFoot()),
             plan: (uid: string) => {
@@ -1189,6 +1229,16 @@ registerAddon({
     holdStep(ctx, dt);
     if (BuildWork.active) return tap('KeyJ', 'KeyL', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3', 'KeyO', 'KeyI');
     if (pressing) return false;
+    // (in build mode, the move turned back by the camera's turn over his shoulder: walker.ts reads it along the camera)
+    if ((placing || FootMode.on) && m === 'walk' && modeTurned) {
+      const mv = ctx.input.move;
+      const c = Math.cos(modeTurned);
+      const sn = Math.sin(modeTurned);
+      const x = mv.x;
+      const y = mv.y;
+      mv.x = x * c + y * sn;
+      mv.y = y * c - x * sn;
+    }
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
@@ -1275,7 +1325,7 @@ registerAddon({
     if (near.piece) {
       wireHold();
       const piece = near.piece;
-      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.sit ? 'sit' : null };
+      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null, bed: near.bed };
       holdBar(0);
       return;
     }
