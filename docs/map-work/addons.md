@@ -3154,6 +3154,50 @@ camera, touch bar and URL values; the hammer work is `_buildWork.ts`'s (`WorkJob
   · `roam=walk&at=422,-129&yaw=180&home=1&foot=house@419/-142/425/-136/2&sim=w:7` (up its
   stair and in).
 
+### Things that work where he builds them
+
+A bed under a roof he built sleeps him as his mat at home, and his cows go into a fenced and
+roofed area he built as into the pen piece (AWP-25, build plan step 4). **One shared check**,
+`map/build/shelterRules.ts` (no three.js):
+
+- `underRoof(x, z, y)`: the point at the height `y` (the feet, a bed's top) has a roof of his
+  over it: a stilt house or a shed he built whole (inside its footprint, under its plan's top:
+  under the house's floor or in its room, under the shed's roof), the thatched shelter piece
+  (inside its roof, under its ridge), or any solid block of his within `BLOCK_ROOF` 8 m over it.
+- `fenced(x, z)`: inside a fence footprint of his that closes round (built whole; not a
+  straight run), or inside the pen piece's rails. The yard's 3 m fence pieces are not counted
+  (they need not close).
+- `roofedPens(heightAt)`: the fenced and roofed areas as pens for the herd: a fence ring at
+  least `PEN_ROOM` 7.5 × 6.1 m (the pen piece and a margin) with its gate on a side, the pen
+  piece's frame placed in it (its gate on the fence's gate, `uid` `foot-<fence uid>`), roofed
+  when the places where the cows lie (the pen's outer places and its middle) are all
+  `underRoof` (a shed or house built inside the ring, a shelter piece, blocks). Made again only
+  when what he built changes (`BUILT.version`, `BLOCKS.version`).
+
+- **Beds** (`map/build/beds.ts`): any standing piece one lies on (`PIECES[id].seat.lie`: the
+  bamboo bed; AWP-23's sleeping mat the same with no line more) under a roof of his
+  (`bedPlace`, `bedNear`) is a bed to sleep in. By it "E  ដេកសម្រាក / Sleep  ·  hold to take
+  it down" (the build add-on: a short press sleeps, held takes it down as any piece); the
+  home add-on's card (until dawn, the afternoon, the next event; a short rest while the time
+  stands still) and its night (`_homeSleep.ts` `startSleep(…, bed)`: he steps up onto it, lies
+  along it, the "Z z z", the fade, the time moves on, he wakes, steps down before it and
+  stretches; no net) through the hook `BED_SLEEP.start` (set by the home add-on). In the open a
+  bed stays a bed to lie on (J / L).
+- **Pieces inside his buildings** (`BUILT.feetRoom`, build/footState.ts): a piece may stand
+  inside a stilt house or a shed he built whole when it is clear of its blocks from the ground
+  to its top and of every other footprint building's land: a bamboo bed in the shade under his
+  house's floor (its posts there are one row down its middle, AWP-25), a bed or a jar in his
+  shed. A footprint never stands in another. By a piece in or under one, E is the piece's (the
+  building's own take-down from outside it).
+- **His cows** (`roam/_cattleHerd.ts` `penList`: the pen pieces first, then `roofedPens`): before
+  dusk they go in through the fence's gate as through the pen's, lie at the pen piece's places
+  under the roof, and go out after dawn; the old pen works as before.
+- **URL** (shots and the dev server): `bedsleep=<uid>` (asleep on that bed, under a roof of his)
+  with `build=kre@x/z/deg` and `foot=…`; e.g.
+  `roam=walk&home=1&at=422,-138&foot=house@419/-142/425/-136/2&build=kre@422/-140.5/0&bedsleep=kre-1`
+  (asleep under his stilt house) · `roam=walk&home=1&at=429,-150&clock=0.47&cattle=grown,grown&cattlenight=1&foot=fence@424/-167/434/-157/2,shed@425.5/-164/432.5/-158.5/2&cam=429,12,-148,429,8,-162,50`
+  (his two cows lying in his fenced shed at night).
+
 ### Gathering materials
 
 He gathers what he builds with (add-on `gather`, ticket AWP-9; words `gather…`,
