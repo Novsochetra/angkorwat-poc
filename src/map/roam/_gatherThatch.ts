@@ -29,7 +29,7 @@ const HITS = 3;
 const PIECES = 3;
 const REGROW_DAYS = 2;
 /** Fans a young palm has. */
-const FANS = 8;
+const FANS = 6;
 /** His knife meets the stalk this high (m), this far out from the heart (the spot's foot). */
 const HIT_Y = 0.62;
 const FOOT = 0.75;
@@ -231,8 +231,8 @@ export function registerThatch(f: HeightField, parent: Object3D): number {
     for (let n = 0; n < FANS; n++) {
       a.push(a0 + (n / FANS) * Math.PI * 2 + (hash3(i, n, 2, 6305) - 0.5) * 0.35);
       // (the inner, younger fans stand up; the outer lean out)
-      e.push(n % 2 ? 1.2 + 0.15 * hash3(i, n, 3, 6306) : 0.85 + 0.2 * hash3(i, n, 4, 6307));
-      l.push(1.55 + 0.6 * hash3(i, n, 5, 6308));
+      e.push(n % 2 ? 1.22 + 0.12 * hash3(i, n, 3, 6306) : 0.78 + 0.18 * hash3(i, n, 4, 6307));
+      l.push((n % 2 ? 2.0 : 1.7) + 0.5 * hash3(i, n, 5, 6308));
     }
     return {
       spot: { id: `thatch:${Math.round(x)},${Math.round(z)}`, material: 'thatch', x, z, r: FOOT, hits: HITS, pieces: PIECES, regrowDays: REGROW_DAYS, hitY: HIT_Y },

@@ -3016,7 +3016,7 @@ AWP-14 the ox cart, AWP-15 a bamboo forest):
     leaves on stalks straight from the ground) in two stands at the sugar-palm village's
     edge (by its tall sugar palms at 433,−29 and 365,−29.5), their own blocks. A fan is
     cut at its stalk with the knife, 3 blows a bundle of thatch, 3 fans a palm (of
-    eight), the one before him first; its stub stays, a new leaf (a folded spear) grows
+    six: broad pleated round fans on long stalks), the one before him first; its stub stays, a new leaf (a folded spear) grows
     from the heart and opens again in 2 game days.
   - **Clay** (AWP-13, `roam/_gatherClay.ts`): 33 patches of bared clay on the banks of
     the great lake, the rivers and the ponds where he roams, found once from the land
