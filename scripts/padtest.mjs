@@ -31,6 +31,9 @@
 //             Furniture tab                                                        (_buildCard.ts)
 //   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
 //             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
+//   garden    planting mode in rows: ↑ turns Rows off and on (no light comes out), □ digs on his
+//             land's grid, the stick walks straight on, □ again: the same line, a whole number
+//             of the kind's spacings on                                            (_garden.ts, garden/rows.ts: AWP-32)
 //   paint     paint mode: the d-pad's → ← change the colour, □ paints one block, □ held the whole
 //             part, ○ out of the mode (not "Back to the map?")                     (_paint.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
@@ -605,6 +608,49 @@ const steps = [
       if (e.kind) throw new Error('○ again did not leave the mode');
       if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
       return `□ corner ${JSON.stringify(b.anchor)}, → door ${b.door} → ${c.door}, ← back, ○ corner again, ○ out`;
+    },
+  },
+  {
+    id: 'garden',
+    who: 'roam/_garden.ts, garden/rows.ts (AWP-32)',
+    async run() {
+      await ensureWalk();
+      // (his yard's open meadow south of the house, facing east along it; eggplant: rows 1.5 m apart)
+      await placeAt('walk', '416,-132&yaw=90&home=1&garden=0');
+      await ev(() => {
+        window.__garden.rows(true);
+        window.__garden.seeds('eggplant', 4);
+        window.__garden.plantMode('eggplant');
+      });
+      await sleep(1200);
+      const now = () => ev(() => ({ rows: window.__garden.state().rows, tool: window.roam.report()?.params?.tool ?? null, n: window.__garden.state().plants.length, work: !!window.__garden.state().work, p: window.__garden.state().planting }));
+      const a = await now();
+      if (!a.p) throw new Error('no planting mode');
+      await tap(page, 'up');
+      await sleep(400);
+      const b = await now();
+      await tap(page, 'up');
+      await sleep(400);
+      const c = await now();
+      if (a.rows !== true || b.rows !== false || c.rows !== true) throw new Error(`↑ Rows ${a.rows} → ${b.rows} → ${c.rows}, not on → off → on`);
+      if (b.tool !== a.tool || c.tool !== a.tool) throw new Error(`↑ in planting mode changed the light (${a.tool} → ${b.tool} → ${c.tool})`);
+      const dig = async (n) => {
+        await tap(page, 'west');
+        await until((n) => window.__garden.state().plants.length >= n && !window.__garden.state().work, n, 25_000, `plant ${n} dug`);
+        await sleep(500);
+      };
+      await dig(1);
+      await push(0, -1, 600);
+      await sleep(400);
+      await dig(2);
+      const plants = await ev(() => window.__garden.state().plants.map((p) => [p.x, p.z]));
+      await ev(() => window.__garden.plantMode(null));
+      const [[x1, z1], [x2, z2]] = plants;
+      const onGrid = (v) => Math.abs(v * 2 - Math.round(v * 2)) < 1e-6;
+      if (!onGrid(x1) || !onGrid(z1)) throw new Error(`the first plant (${x1}, ${z1}) is off his land's half-metre grid`);
+      const gap = Math.hypot(x2 - x1, z2 - z1);
+      if (Math.abs(z2 - z1) > 1e-6 || Math.abs(gap / 1.5 - Math.round(gap / 1.5)) > 1e-6) throw new Error(`the second plant (${x2}, ${z2}) is not on the first's line a whole number of 1.5 m on (gap ${gap.toFixed(2)} m)`);
+      return `↑ Rows on → off → on (light ${a.tool ?? 'none'} kept), □ at (${x1}, ${z1}), walked on, □ at (${x2}, ${z2}): ${gap} m on, same line`;
     },
   },
   {

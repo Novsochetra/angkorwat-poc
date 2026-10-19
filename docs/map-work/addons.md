@@ -2767,7 +2767,31 @@ chilli, basil, jasmine).
   follows him, soft grey with the reason where it can't go; "E  Dig here", F / C
   another seed, Esc / ○ / "✕ Done" leaves (never the "Back to the map?" card); it
   stays on while he has seeds of that kind. `gardenring=<kind>` (or `gardenplant=`)
-  in shots.
+  in shots. The ghost's bed and dots lie square to the map, as the real bed will.
+- **Planting in rows** (AWP-32, the owner's ask: rows were hard to line up). Planting
+  mode walks straight, as build mode does (AWP-30): the follow camera holds its
+  heading, and its own moves (over his shoulder as the mode opens, round to his side
+  for the dig and back) are taken out of the walk, so W, the stick and the touch stick
+  keep one way (before, he walked in a circle). **Rows** (on at first; G, the pad's
+  d-pad ↑, the touch bar's "Rows: on / off" button, lit while on; a toast says what it
+  does; kept as `garden.rows`) snaps the ghost (`garden/rows.ts`). Each kind has a
+  spacing: its room, and for a crop its bed with a gap, rounded up to 0.5 m: corn 1,
+  eggplant and sugarcane 1.5, pumpkin 2, papaya 1.5, banana 2, guava 2.5, coconut and
+  sugar palm 3, mango and jackfruit 3.5, durian 4. Two kinds side by side keep the
+  larger. The ghost goes:
+  - on along a row, ahead of a row's end near its line, at the row's own angle (an old
+    crooked row goes on straight), the next free spot first (`row`). This wins over
+    every other spot;
+  - else on the grid of that spacing laid from his nearest plant along the house's
+    lines (`line`: in line with it, or a row beside it);
+  - else on his land's half-metre grid from its corner, build mode's (`grid`).
+  A spot the rules refuse is skipped, and the spot held a moment ago is kept while it
+  suits. With Rows on the plant turns on the house's lines too. A faint guide lies on
+  the ground: pale dashes along the row from its first plant, and square marks on the
+  next three spots that can be planted. Rows off: the ghost goes where his feet and
+  facing put it (a natural look). Shots: `gardenrows=0|1` (shots and the dev server only).
+  `__garden.state().planting` gives `rows`, `how` (`row|line|grid|free`), `step`, `next`,
+  `guide`. Pad check: `npm run padtest -- only=load,garden`.
 - **What the work does to the world** (`garden/fx.ts` `GARDEN_FX`: the work calls
   `beat` at every beat and `cancel` when it stops early; the view's `garden/_fx.ts`,
   `_fxParticles.ts`: one instanced mesh of `mapRock` boxes, a fixed pool): each hoe

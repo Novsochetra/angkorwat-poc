@@ -137,7 +137,8 @@ export function padKbd(key: string, g: PadGlyph, cls = ''): string {
 /**
  * The pad button for a key as the prompts and hints name it ("E  Pray"):
  * E □, Space ✕, Esc ○, Enter ✕, M Create (the big map), N R3 (the nearest
- * ramp), I △ (the explorer menu), Shift R2, Q / R the right stick. Null: no
+ * ramp), I △ (the explorer menu), G the d-pad's ↑ (planting mode's Rows), Shift R2,
+ * Q / R the right stick. Null: no
  * button of its own (the hint keeps the key).
  */
 export function padForKey(key: string): PadGlyph | null {
@@ -157,6 +158,9 @@ export function padForKey(key: string): PadGlyph | null {
       return 'r3';
     case 'I':
       return 'north';
+    // (planting mode's Rows on / off, roam/_garden.ts: the d-pad's ↑ there, the next light elsewhere)
+    case 'G':
+      return 'up';
     case 'Shift':
     case '⇧':
       return 'r2';
