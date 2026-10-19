@@ -132,24 +132,35 @@ let walkYaw: number | null = null;
 let camTurned = 0;
 let digYaw: number | null = null;
 
-/** Planting mode on foot: the walk along `walkYaw`, whatever the camera's own moves did (walker.ts walks along the camera). */
+/**
+ * Planting mode on foot: the walk along `walkYaw`, whatever the camera's own moves did (walker.ts walks along the
+ * camera). With Rows on, the walk also keeps to the house's lines (AWP-32 review): the way the keys or the stick ask
+ * goes to the house's line nearest it, held on the row's way until it is 50° off (`rowAxis`) — he walks along his row
+ * (a camera turned 30° off it walked him a spacing across it in a few steps), and a step aside or a turn back goes
+ * square to it. Rows off: the walk as asked.
+ */
 function steerStraight(ctx: RoamCtx): void {
   const i = ctx.input;
   const cam = ctx.cam;
   walkYaw ??= cam.yaw;
   // (the player's own turn turns the walk too: walker.ts adds it to the camera this step)
   walkYaw += i.lookYaw;
-  walking = Math.hypot(i.move.x, i.move.y) > 0.15;
-  const off = cam.yaw + i.lookYaw - walkYaw;
-  camTurned = Math.atan2(Math.sin(off), Math.cos(off));
-  if (!camTurned) return;
   const mv = i.move;
-  const c = Math.cos(camTurned);
-  const sn = Math.sin(camTurned);
-  const x = mv.x;
-  const y = mv.y;
-  mv.x = x * c + y * sn;
-  mv.y = y * c - x * sn;
+  const a = Math.hypot(mv.x, mv.y);
+  walking = a > 0.15;
+  const view = cam.yaw + i.lookYaw;
+  const off = view - walkYaw;
+  camTurned = Math.atan2(Math.sin(off), Math.cos(off));
+  if (a < 1e-4) return;
+  // (walker.ts: the move (x, y) walks the way `view − atan2(x, y)`; the way asked is the same from `walkYaw`)
+  let way = walkYaw - Math.atan2(mv.x, mv.y);
+  if (rows) {
+    way = rowAxis(way, rowWay);
+    if (walking) rowWay = way;
+  }
+  const phi = view - way;
+  mv.x = a * Math.sin(phi);
+  mv.y = a * Math.cos(phi);
 }
 function plantingCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   const cam = ctx.cam;
@@ -505,8 +516,9 @@ function plantingNow(ctx: RoamCtx): void {
   // (the plant faces him)
   spot.yaw = b.yaw + Math.PI;
   const under = atHomeHouse(b.pos.x, b.pos.z);
-  // (his way: the house's line he walks along, kept through a dig that turns him to the plant)
-  if (rowWay === null || walking) rowWay = rowAxis(b.yaw, rowWay);
+  // (his way: the house's line he walks along — steerStraight keeps it while he walks with Rows on —, kept through a
+  // dig that turns him to the plant)
+  if (rowWay === null || (walking && !rows)) rowWay = rowAxis(b.yaw, rowWay);
   if (rows) {
     // In line with his plants, evenly spaced, or on his land's grid; turned on the house's lines (garden/rows.ts).
     const fits = (x: number, z: number) => canPlant(w, k, x, z) === null;

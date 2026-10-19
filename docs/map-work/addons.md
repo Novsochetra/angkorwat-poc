@@ -2778,9 +2778,12 @@ chilli, basil, jasmine).
   spacing: its room, and for a crop its bed with a gap, rounded up to 0.5 m: corn 1,
   eggplant and sugarcane 1.5, pumpkin 2, papaya 1.5, banana 2, guava 2.5, coconut and
   sugar palm 3, mango and jackfruit 3.5, durian 4. Two kinds side by side keep the
-  larger. His way is the house's line nearest the way he last walked (a dig that turns
-  him to face the plant does not change it), and the ghost is looked for straight ahead
-  of his feet along it, on a line:
+  larger. With Rows on he also walks along the house's lines: the way the keys or the
+  stick ask goes to the house's line nearest it, held on his row's way until it is 50°
+  off, so a camera turned 30° off the row no longer walks him across it, and a step
+  aside or a turn back goes square to it. That line is his way (a dig that turns him to
+  face the plant does not change it), and the ghost is looked for straight ahead of his
+  feet along it, on a line:
   - a row of his: two or more plants a whole number of spacings apart (gaps count) on
     a line within 30° of his way, at its own angle (an old crooked row goes on
     straight); else the line through one of his plants along his way; the nearest
