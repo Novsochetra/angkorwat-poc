@@ -93,6 +93,11 @@ const ROPE_HOLD = 4.2;
 const STUCK_AFTER = 6;
 /** The way is kept as points this far apart (m). */
 const STEP = 0.5;
+/**
+ * Where a new way starts (taking the rope, a step of a way round): its points behind the yoke (m), `STEP` apart, the
+ * last right at the yoke — so the cart stands on it where it stood (tested), never a part of a step behind (untested).
+ */
+const BEHIND = Array.from({ length: Math.ceil((REACH_M + 2) / STEP) + 1 }, (_, i) => (Math.ceil((REACH_M + 2) / STEP) - i) * STEP);
 /** Across the way, where the cart needs room (m from its middle: the wheels' hubs and the oxen side by side). */
 const ACROSS = [-1.15, -0.6, 0, 0.6, 1.15];
 /** The land before the yoke under the oxen's fronts (m on from it; their box reaches `OXEN_BOX.front`). */
@@ -658,7 +663,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
   // (from 2 m behind the axle up to the yoke, every STEP m)
-  for (let d = REACH_M + 2; d >= -0.001; d -= STEP) {
+  for (const d of BEHIND) {
     const x = P.yx + bx * d;
     const z = P.yz + bz * d;
     wayPush(x, f.heightAt(x, z), z);
@@ -738,7 +743,7 @@ function standAt(ctx: RoamCtx, ax: number, az: number, yaw: number): void {
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
-  for (let d = REACH_M + 2; d >= -0.001; d -= STEP) wayPush(P.yx + bx * d, f.heightAt(P.yx + bx * d, P.yz + bz * d), P.yz + bz * d);
+  for (const d of BEHIND) wayPush(P.yx + bx * d, f.heightAt(P.yx + bx * d, P.yz + bz * d), P.yz + bz * d);
   yokeS = fitS = fitOrigin = wayEnd();
 }
 
@@ -816,7 +821,7 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     trial.z.push(z);
     trial.y.push(y);
   };
-  for (let d = REACH_M + 2; d >= -0.001; d -= STEP) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
+  for (const d of BEHIND) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
   // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go, right to his feet — as
   // play lays it, so a way that works here does there, not blocked again a little on — or `AHEAD` m past where the yoke
   // stops behind him; and the cart at every `FIT_STEP` m along it, as `lead` tests its rolling)
