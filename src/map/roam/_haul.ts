@@ -95,7 +95,10 @@ const HEEL = GAP + 0.5;
  * yoke. Beside or behind them (he turned to go back the way he came) the oxen bring it round toward him.
  */
 const FRONT = 0.9;
-/** The rope taut and the cart standing this long (s), blocked or not: the oxen look for a way round (never a silent wait). */
+/**
+ * The cart standing this long (s), blocked or not, with the rope taut or him beside or behind the oxen: they look for a
+ * way round (never a silent wait).
+ */
 const TAUT_AFTER = 1.2;
 /** A way round made near him ends with him well in front (rad): one plan brings the oxen round, not a nudge at a time. */
 const FRONT_GOAL = 0.45;
@@ -939,12 +942,15 @@ const guess = (n: Pose): number => short(n) / ROLL_MOVE + (0.5 * Math.abs(angleD
  * `FRONT` of its heading)? Then it waits, in play (`lead`) as in a search's goal.
  */
 function atHeels(n: Pose, hx: number, hz: number): boolean {
+  return Math.hypot(hx - n.x - Math.sin(n.yaw) * REACH_M, hz - n.z - Math.cos(n.yaw) * REACH_M) <= HEEL && inFront(n, hx, hz);
+}
+/** Is he in front of the oxen of the cart at `n` (within `FRONT` of its heading, seen from the yoke)? */
+function inFront(n: Pose, hx: number, hz: number): boolean {
   const fx = Math.sin(n.yaw);
   const fz = Math.cos(n.yaw);
   const vx = hx - (n.x + fx * REACH_M);
   const vz = hz - (n.z + fz * REACH_M);
-  const d = Math.hypot(vx, vz);
-  return d <= HEEL && vx * fx + vz * fz >= d * Math.cos(FRONT);
+  return vx * fx + vz * fz >= Math.hypot(vx, vz) * Math.cos(FRONT);
 }
 /**
  * A place to make for: one from which the way goes on toward him (tried as play would: `wayWorksFrom`), headed his way
@@ -1283,10 +1289,11 @@ function lead(ctx: RoamCtx, dt: number): void {
   hand(_h);
   nose(_n);
   const far = Math.hypot(ctx.body.pos.x - _n.x, ctx.body.pos.z - _n.z);
-  // (he pulls at the rope and the cart stands: `taut`; getting nowhere for a while so, a way round or not: as no way)
+  // (he pulls at the rope and the cart stands: `taut`; getting nowhere for a while so, a way round or not: as no way;
+  // and the cart standing with him beside or behind the oxen, the rope slack or not, as `taut` too: they turn to him)
   const pulling = ds <= 1e-4 && !walkPlan.steps.length && far > ROPE_HOLD - 0.3;
   ropeFar = far;
-  taut = pulling && !search.on ? taut + dt : 0;
+  taut = (pulling || (ds <= 1e-4 && !walkPlan.steps.length && !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z))) && !search.on ? taut + dt : 0;
   stuckFor = pulling && !search.on ? stuckFor + dt : 0;
   const noWay = ((blocked || pulling) && !search.on && !walkPlan.steps.length && Math.hypot(ctx.body.pos.x - search.failedFor.x, ctx.body.pos.z - search.failedFor.z) < 1.5) || stuckFor > STUCK_AFTER;
   // (no way round for where he stands: the rope pays out as he walks on — round the thing, somewhere the oxen can come
