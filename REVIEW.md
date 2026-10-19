@@ -136,3 +136,5 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - A thing he leads on a curved way can always be led back: at every stop, lead
   it back past itself (a U-turn), and it never rolls where its own moves cannot
   get it out (AWP-14).
+- A "getting nowhere" watchdog measures movement over a time window, not per
+  frame; test it with WASD steering that re-aims, not only a steady stick (AWP-14).
