@@ -802,6 +802,17 @@ function injectStyle(): void {
     body.roam-touch .rh-ch-keys { display: none; }
     body.roam-touch .rh-ch-tap { display: inline; }
     body.roam-touch .rh-ch-line { min-height: 40px; }
+    /* On touch: clear of the stick (lower left), the Use and Jump buttons (lower right) and the tool bar (the right edge
+       upright, the top sideways); its words wrap instead of running under them. Upright: centred left of the bar, over
+       the Use button. Sideways (a phone on its side): low, just right of the stick, so he stays in view in the middle. */
+    body.roam-touch .rh > .rh-prompt.is-list, body.roam-touch .rh > .rh-prompt.is-list.is-on { left: 12px; right: 76px; margin-inline: auto; width: fit-content;
+      transform: none; white-space: normal; }
+    body.roam-touch .rh-ch-line { max-width: none; }
+    body.roam-touch .rh-ch-line .rh-prompt-text { overflow: visible; text-overflow: clip; line-height: 1.2; }
+    @media (orientation: landscape) and (max-height: 500px) {
+      body.roam-touch .rh > .rh-prompt.is-list, body.roam-touch .rh > .rh-prompt.is-list.is-on { left: 146px; right: 310px; bottom: 8px; margin-inline: 0; }
+      body.roam-touch .rh-ch-line { min-height: 36px; }
+    }
     :lang(km) .rh-ch-hint { font-size: calc(13 * var(--px)); line-height: 1.4; }
     body.roam-touch .rh-prompt { bottom: calc(150px + 4vh); }
 
