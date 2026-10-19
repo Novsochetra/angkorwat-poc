@@ -3516,9 +3516,12 @@ without its straw), the oxen `people/_ox.ts`.
   3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
   walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
   growing and the cart rolls up to the last place it fits and stands (never testing a place past the
-  way's last point); the rope holds him 4.2 m from the oxen's noses while they find their way round
-  (below); where they find none for where he stands and he pulls (or 6 s of pulling get nowhere, or
-  a fall puts him 6.5 m off) the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  way's last point; nor into a place from which it could neither roll on 0.4 m nor turn 0.15 rad
+  either way: wedged, only backing out); the rope holds him 4.2 m from the oxen's noses while they
+  find their way round (below); where they find none for where he stands (or 6 s of pulling get
+  nowhere) the rope pays out as he walks on, round the thing, and the oxen look again once he is
+  1.5 m on (a way found, it is taken in as he comes nearer, never pulling him back); at its length
+  (6.5 m, or a fall) it slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
   រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
   Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
   map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
@@ -3606,12 +3609,20 @@ without its straw), the oxen `people/_ox.ts`.
   come: the nearest place to his heels it reached (1.5 m nearer at least). Blocked again where a way
   round ended (the cart not a metre on: he moved on as the oxen turned): the next plan goes right up to
   his heels, from where the way to his feet works, any heading; three in a row: none, for where he stands.
-  Blocked with its yoke within `HEEL` of his feet it looks for no way round: it is at his heels and waits
-  (he stands by a log pile, or before the oxen's noses). A new way (taking the rope, each step of a way
-  round) starts with points every 0.5 m ending right at the yoke (`BEHIND`), so the cart stands where it
-  was tested, never a part of a step behind.
+  Blocked at his heels — its yoke within `HEEL` of his feet and he in front of the oxen (within `FRONT`
+  = 0.9 rad of its heading, seen from the yoke) — it looks for no way round and waits (he stands by a
+  log pile). Beside or behind the oxen (he turned to go back the way he came) it brings them round: a
+  way round made near him (yoke within `HEEL` + 1 m) ends with him within `FRONT_GOAL` = 0.45 rad of the
+  heading, so one plan does the U-turn; farther, within `AIM` (both seen from the yoke). The rope taut
+  (him 3.9 m or more from the noses) with the cart standing 1.2 s, blocked or not, starts a way round
+  too (`TAUT_AFTER`): never a silent wait. A way round may also go back along the places it last stood
+  at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
+  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A new
+  way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the
+  yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
 - **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
-  moves off — up to 500 looked at — from which it rolls on 2 m: `canGetOut`; a cart that can still go
+  moves off — back the way it came among them; up to 500 looked at — from which it rolls on 2 m:
+  `canGetOut`; a cart that can still go
   somewhere, only not where he went, is led as usual): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
   Send the cart home" (the second failed try's toast says so): a fade, and the cart waits by his house
   with its load ("The oxen know the way home: the cart waits by your house").
