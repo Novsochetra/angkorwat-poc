@@ -1044,11 +1044,13 @@ registerAddon({
   },
   fromUrl(q, ctx) {
     lastCtx = ctx;
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!(env?.shot || import.meta.env.DEV)) return;
     const k = q.get('gardenkind');
     if (k && k in KINDS && k !== 'bodhi') chosen = k as PlantKindId;
     // (Rows on or off: shots and the dev server only, never the live site's saved choice)
     const gr = q.get('gardenrows');
-    if (gr !== null && (env?.shot || import.meta.env.DEV)) setRows(gr !== '0', false);
+    if (gr !== null) setRows(gr !== '0', false);
     // (planting mode with its ghost: the kind's seeds given if he has none)
     const r = q.get('gardenring') ?? q.get('gardenplant');
     if (r) {

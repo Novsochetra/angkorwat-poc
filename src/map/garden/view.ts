@@ -211,7 +211,7 @@ export function createGardenView(world: RoamWorld, shot = false): GardenView {
   /** Checks: the animations slowed down (`__gardenView.slow(k)`). */
   let slow = 1;
   /** Checks: always near or far (`__gardenView.force`), else by the camera. */
-  let force: 'near' | 'far' | null = new URLSearchParams(location.search).get('gardenlod') as 'near' | 'far' | null;
+  let force: 'near' | 'far' | null = shot || import.meta.env.DEV ? (new URLSearchParams(location.search).get('gardenlod') as 'near' | 'far' | null) : null;
   /** Shots: a tree's fruit falling, held `t` s into its fall (`gardenfall=<kind>:<t>`; `__gardenView.fall(t)` moves it). */
   const shotFall = ((): { kind: PlantKindId; t: number } | null => {
     const v = shot ? new URLSearchParams(location.search).get('gardenfall')?.split(':') : undefined;

@@ -638,8 +638,10 @@ registerAddon({
   fromUrl(q, ctx) {
     lastCtx = ctx;
     keepView = q.has('rcam');
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!env || !(env.shot || import.meta.env.DEV)) return;
     const spec = q.get('gardenshop');
-    if (!spec || !env) return;
+    if (!spec) return;
     // (at her table, on the floor there, facing her)
     const g = ctx.world.standAt?.(BUY_X, BUY_Z, ctx.world.field.heightAt(BUY_X, BUY_Z) + 0.5, 1.1, 2.3) ?? ctx.world.field.heightAt(BUY_X, BUY_Z);
     ctx.body.pos.set(BUY_X, Number.isNaN(g) ? ctx.world.field.heightAt(BUY_X, BUY_Z) : g, BUY_Z);

@@ -245,7 +245,8 @@ registerAddon({
       if ((ev.type === 'stage' || ev.type === 'grown') && ev.plant.kind === 'bodhi') syncRing();
     });
     // A check's tree (before the first frame: the overview's shots too).
-    const v = e.params.get('bodhi');
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    const v = e.shot || import.meta.env.DEV ? e.params.get('bodhi') : null;
     if (v !== null) {
       const [name] = v.split(':');
       if (name === 'ready' || name === 'offer' || name === 'talk') BODHI.ready = true;
@@ -346,7 +347,8 @@ registerAddon({
     }
   },
   fromUrl(q, ctx) {
-    if (!env) return;
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!env || !(env.shot || import.meta.env.DEV)) return;
     const body = ctx.body;
     const monkCue = q.get('bodhimonk');
     if (monkCue) bodhiCue(monkCue as Parameters<typeof bodhiCue>[0], body.pos);

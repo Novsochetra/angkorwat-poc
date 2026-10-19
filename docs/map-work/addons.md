@@ -2792,6 +2792,12 @@ chilli, basil, jasmine).
   facing put it (a natural look). Shots: `gardenrows=0|1` (shots and the dev server only).
   `__garden.state().planting` gives `rows`, `how` (`row|line|grid|free`), `step`, `next`,
   `guide`. Pad check: `npm run padtest -- only=load,garden`.
+- **URL values are for checks only** (AWP-32): every garden value (`garden=`, `seeds=`,
+  `basket=`, `can=`, `jar=`, `gardenclock=`, `gardenring=` / `gardenplant=`, `gardenkind=`,
+  `gardenrows=`, `gardenact=`, `gardencard=`, `gardeneat=`, `gardengift=`, `gardenshop…=`,
+  `gardenlod=`, `gardenspeed=`, `bodhi=`, `bodhimonk=`, `carry=`, `nursopen=`) is read only in
+  shots and on the dev server (`shot || import.meta.env.DEV`); a link to the live site
+  changes and saves nothing (`gardenthirst=`, `gardenfallen=`, `gardenfall=` act in shots only).
 - **What the work does to the world** (`garden/fx.ts` `GARDEN_FX`: the work calls
   `beat` at every beat and `cancel` when it stops early; the view's `garden/_fx.ts`,
   `_fxParticles.ts`: one instanced mesh of `mapRock` boxes, a fixed pool): each hoe
