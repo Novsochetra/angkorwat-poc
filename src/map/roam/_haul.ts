@@ -210,7 +210,7 @@ let taut = 0;
 /** His feet from the oxen's noses (m), last frame he led (for the state). */
 let ropeFar = 0;
 /** Where he stood when nothing last moved, and for how long (s): `STILL_AFTER`. */
-const stillAt = { x: 0, z: 0 };
+const stillAt = { x: 0, z: 0, cx: 0, cz: 0, cyaw: 0 };
 let stillFor = 0;
 /** The rope let out (m): `ROPE_HOLD`, more while there is no way round for where he stands. */
 let slack = ROPE_HOLD;
@@ -967,8 +967,22 @@ function inFront(n: Pose, hx: number, hz: number): boolean {
  */
 const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean =>
   (!search.strict || short(n) < 0.6) &&
+  clearOfHimAt(n) &&
   Math.abs(angleDiff(towardHim(n), n.yaw)) <= (short(n) > HEEL - GAP + 1 ? AIM : FRONT_GOAL) &&
   wayWorksFrom(ctx, n);
+
+/**
+ * Are his feet well clear (`BODY_R` + 0.5 m) of the cart and its oxen at `n`? A way round never ends hugging him: he
+ * would stand pinned in the corner between the cart's front and the oxen's flank, a log pile behind him.
+ */
+function clearOfHimAt(n: Pose): boolean {
+  const fx = Math.sin(n.yaw);
+  const fz = Math.cos(n.yaw);
+  const r = BODY_R + 0.5;
+  const cb: CartBox = { x: n.x, z: n.z, yaw: n.yaw, back: CART_BOX.back, front: CART_BOX.front, half: CART_BOX.half };
+  const ob: CartBox = { x: n.x + fx * CART_YOKE, z: n.z + fz * CART_YOKE, yaw: n.yaw, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
+  return !boxMeetsCircle(cb, search.him.x, search.him.z, r) && !boxMeetsCircle(ob, search.him.x, search.him.z, r);
+}
 
 /** The places one move from `n` (a turn either way, a roll on or back), each sub-step tested, none seen before. */
 function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, moving: boolean): PlanNode[] {
@@ -1316,9 +1330,12 @@ function lead(ctx: RoamCtx, dt: number): void {
   slack = noWay ? Math.max(slack, far) : Math.max(ROPE_HOLD, Math.min(slack, far));
   // (he pushes on and nothing moves, he nor the cart — held in a corner by the oxen: never a silent wait, the rope slips)
   const pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5;
-  if (Math.hypot(ctx.body.pos.x - stillAt.x, ctx.body.pos.z - stillAt.z) > 0.1 || ds > 1e-4 || walkPlan.steps.length || search.on || !pushing) {
+  if (!pushing || Math.hypot(ctx.body.pos.x - stillAt.x, ctx.body.pos.z - stillAt.z) > 0.1 || Math.hypot(CART_AT.x - stillAt.cx, CART_AT.z - stillAt.cz) > 0.1 || Math.abs(angleDiff(CART_AT.yaw, stillAt.cyaw)) > 0.05) {
     stillAt.x = ctx.body.pos.x;
     stillAt.z = ctx.body.pos.z;
+    stillAt.cx = CART_AT.x;
+    stillAt.cz = CART_AT.z;
+    stillAt.cyaw = CART_AT.yaw;
     stillFor = 0;
   } else stillFor += dt;
   if (stillFor > STILL_AFTER) {
