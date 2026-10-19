@@ -133,3 +133,6 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - A placing aid is tested from the facings a player really has (the camera's,
   115–135° off the house's line), after turning back for a second row, and with
   a refused spot in the row: everything stays on the row's line (AWP-32).
+- A thing he leads on a curved way can always be led back: at every stop, lead
+  it back past itself (a U-turn), and it never rolls where its own moves cannot
+  get it out (AWP-14).
