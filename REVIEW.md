@@ -130,3 +130,6 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - A list or menu that takes pad buttons while it shows must leave every roaming
   action reachable on a pad (lights have no menu chip), and lists are tested at
   their longest on a phone held sideways (AWP-33).
+- A placing aid is tested from the facings a player really has (the camera's,
+  115–135° off the house's line), after turning back for a second row, and with
+  a refused spot in the row: everything stays on the row's line (AWP-32).
