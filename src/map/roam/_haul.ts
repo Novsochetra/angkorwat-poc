@@ -904,9 +904,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
   for (const d of BEHIND) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
   // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go, up to his heels (`HEEL`:
   // where play is content too, so a way that works here does there, not blocked again a little on) or `AHEAD` m past
-  // where the yoke stops behind him; and the cart at every `FIT_STEP` m along it, as `lead` tests its rolling)
+  // where the yoke stops behind him — one point at least, at his heels too: from where a way round ends the cart can
+  // always step on after him, never left wedged as he walks on; and the cart at every `FIT_STEP` m along it, as `lead`
+  // tests its rolling)
   const s0 = trial.s[trial.s.length - 1];
-  const toGo = Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - HEEL);
+  const toGo = Math.max(STEP, Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - HEEL));
   for (let went = 0; went < toGo - 1e-6; went += STEP) {
     const k = trial.s.length - 1;
     const dx = search.him.x - trial.x[k];
