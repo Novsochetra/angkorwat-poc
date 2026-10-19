@@ -85,6 +85,11 @@ const ACCEL = 1.4;
 const DECEL = 3.0;
 /** His feet to the yoke along the way while he leads (m): the oxen's heads a long step behind him. */
 const GAP = 2.7;
+/**
+ * The way's end this near his feet (m), blocked or not, and the cart is at his heels: it waits there (he stands by a
+ * log pile, a fence, the oxen's own noses: the way cannot reach his feet, nor need it).
+ */
+const HEEL = GAP + 0.5;
 /** His hand farther than this from the ox's nose (m): he lets go. */
 const ROPE_MAX = 6.5;
 /** He is held this near the oxen's noses (m, on the ground) while he leads: the rope is this long. */
@@ -822,11 +827,11 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
     trial.y.push(y);
   };
   for (const d of BEHIND) push(yx - fx * d, yz - fz * d, f.heightAt(yx - fx * d, yz - fz * d));
-  // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go, right to his feet — as
-  // play lays it, so a way that works here does there, not blocked again a little on — or `AHEAD` m past where the yoke
-  // stops behind him; and the cart at every `FIT_STEP` m along it, as `lead` tests its rolling)
+  // (the way toward him, as `wayOn` lays it: a point every STEP m, each where a cart can go, up to his heels (`HEEL`:
+  // where play is content too, so a way that works here does there, not blocked again a little on) or `AHEAD` m past
+  // where the yoke stops behind him; and the cart at every `FIT_STEP` m along it, as `lead` tests its rolling)
   const s0 = trial.s[trial.s.length - 1];
-  const toGo = Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - STEP / 2);
+  const toGo = Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - HEEL);
   for (let went = 0; went < toGo - 1e-6; went += STEP) {
     const k = trial.s.length - 1;
     const dx = search.him.x - trial.x[k];
@@ -1147,7 +1152,8 @@ function lead(ctx: RoamCtx, dt: number): void {
   // walked by the oxen, toward the free heading nearest his way, either way round; then the way goes on from there)
   turning = Math.max(0, turning - dt);
   // (blocked: the way stopped at something, or the cart cannot roll on along a way that goes on — a corner too tight)
-  if (walkPlan.steps.length || (blocked && ds <= 1e-4)) {
+  // (blocked with its yoke within `HEEL` of his feet: the cart is at his heels, it waits)
+  if (walkPlan.steps.length || (blocked && ds <= 1e-4 && Math.hypot(ctx.body.pos.x - P.yx, ctx.body.pos.z - P.yz) > HEEL)) {
     if (getRound(ctx, dt)) {
       turning = 0.3;
       speed = 0;
