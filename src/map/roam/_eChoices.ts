@@ -12,9 +12,10 @@ import type { RoamCtx, RoamMode } from './types';
  *   lines with no key after it ("E  Build…  ·  You have no seeds yet…").
  * - **Two or more**: a short list over him (the HUD's prompt, `.is-list`: up
  *   to `ROWS` lines, "▸" the picked one, the lines with no key greyed and never
- *   picked). Tab / Shift+Tab, the pad's d-pad ↓ / ↑ (input.ts: while the list
- *   is open they are the list's, not the light's and the greeting's), a tap or
- *   a click on a line change the pick; E (□, the touch Use button) does it.
+ *   picked). Tab / Shift+Tab, the pad's R3 (input.ts: while the list is open
+ *   it is the list's; the nearest ramp is the big map's R3 then — the d-pad
+ *   stays the lights', the greeting's, fishing's), a tap or a click on a line
+ *   change the pick; E (□, the touch Use button) does it.
  * - The pick stays while the same choices stay (by who offers them: `id`); it
  *   goes back to the top as soon as the set changes (he walked away, something
  *   came or went).
@@ -23,9 +24,11 @@ import type { RoamCtx, RoamMode } from './types';
  *
  * Two lines with the same words (the build add-on's "Build…" near the house and
  * its late half's; the dog's early and late "Pet the dog") are one. A line with
- * no key shows only when no line with E comes before it (as before, when the
- * first offer won): the garden's "You have no seeds yet…" before "Build…" shows
- * ("E  Build…  ·  You have no seeds yet…"), after the sey's "Play sey" it does not.
+ * no key is as before, when the first offer won: first in the row it is the
+ * row, alone (he is busy: walking to his place to listen; the palm's tapper is
+ * up; a stall is closed); after a line with E it is left out (the sey's "Play
+ * sey" hides the garden's "You have no seeds yet…"). An offer may carry one in
+ * its own line ("E  Build…  ·  You have no seeds yet…": _build.ts).
  *
  * URL (shots and the dev server only): `echoice=<n>` starts the pick on choice
  * n (1 the top) the first time a list shows; `echoices=1` shows the row as the
@@ -61,7 +64,7 @@ export const NOTE = '-';
 
 /** What the list's input and the HUD share: it is open (2+ choices: Tab, the d-pad's ↑ ↓ are its), and a line tapped. */
 export const E_LIST = {
-  /** Two or more choices show: Tab and the pad's d-pad ↑ / ↓ pick (input.ts). */
+  /** Two or more choices show: Tab and the pad's R3 pick (input.ts; ui/minimap.ts leaves R3 to it then). */
   open: false,
   /** A line tapped or clicked (its index among the choices), for the next step; −1 none. */
   tapped: -1,
@@ -112,14 +115,16 @@ export class ERow {
 
   add(id: string, text: string | null, run: EChoice['run']): void {
     if (this.ended || !text) return;
-    const keyed = hasE(text);
-    for (const l of this.lines) {
-      // (the same words twice: one line)
-      if (l.text === text) return;
-      // (a line with no key after one with E is left out, as before: the late notes — no seeds yet, the trader away —
-      // say something only where nothing before them has an E)
-      if (!keyed && hasE(l.text)) return;
+    // A line with no key, as before when the first offer won: first in the row, it is the row (he is busy — walking to
+    // his place to listen, the tapper up the palm — or it says why not here); after a line with E, it is left out.
+    if (!hasE(text)) {
+      if (this.lines.length) return;
+      this.lines.push({ id, text, run });
+      this.ended = true;
+      return;
     }
+    // (the same words twice: one line)
+    for (const l of this.lines) if (l.text === text) return;
     this.lines.push({ id, text, run });
   }
 

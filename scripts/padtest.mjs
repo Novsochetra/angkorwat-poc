@@ -33,8 +33,8 @@
 //             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
 //   paint     paint mode: the d-pad's → ← change the colour, □ paints one block, □ held the whole
 //             part, ○ out of the mode (not "Back to the map?")                     (_paint.ts)
-//   echoices  the E list at his house's door (the door, "Build…"): the d-pad's ↓ / ↑ move its pick
-//             (not the greeting, not the light), □ does the picked one (the build card)
+//   echoices  the E list at his house's door (the door, "Build…"): R3 moves its pick (not the nearest
+//             ramp), the d-pad ↑ still changes the light and ↓ greets, □ does the picked one (the build card)
 //                                                                                  (_eChoices.ts, input.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
@@ -667,15 +667,10 @@ const steps = [
   },
   {
     id: 'echoices',
-    who: 'roam/_eChoices.ts, input.ts, hud.ts (AWP-33)',
+    who: 'roam/_eChoices.ts, input.ts, hud.ts, ui/minimap.ts (AWP-33)',
     async run() {
       await ensureWalk();
-      // (a light in his hand first, the d-pad's ↑ where no list is: it must stay as it is under the list)
       const lit = () => ev(() => document.querySelector('.rtb-slot[data-tool].is-on')?.dataset.tool ?? null);
-      for (let i = 0; i < 3 && !(await lit()); i++) {
-        await tap(page, 'up');
-        await sleep(300);
-      }
       // (on his veranda before the doors: "E  Shut the doors" and, his land, "E  Build…": a list of two)
       await placeAt('walk', '424,13,-110&yaw=0&home=1');
       await wake();
@@ -685,28 +680,41 @@ const steps = [
           e: window.__echoices,
           tool: document.querySelector('.rtb-slot[data-tool].is-on')?.dataset.tool ?? null,
           act: window.roam.body.explorer.currentAction ?? null,
-          glyph: !!document.querySelector('.rh-prompt.is-list .rh-ch-hint kbd.is-pad'),
+          glyph: document.querySelector('.rh-prompt.is-list .rh-ch-hint kbd.is-pad')?.dataset.padIs ?? null,
+          ramp: document.body.classList.contains('mm-toast-on'),
         }));
       const a = await now();
       if (!a.e?.open) throw new Error(`no E list here: ${a.e?.lines.map((l) => l.id).join(', ') ?? 'nothing'}`);
-      if (!a.glyph) throw new Error("the list's hint shows no pad button");
-      await tap(page, 'down');
+      if (a.glyph !== 'r3') throw new Error(`the list's hint shows ${a.glyph}, not R3`);
+      await tap(page, 'r3');
       await sleep(300);
       const b = await now();
-      await tap(page, 'up');
+      await tap(page, 'r3');
       await sleep(300);
       const c = await now();
-      if (b.e.pick !== 1 || c.e.pick !== 0) throw new Error(`↓ picked ${b.e.pick}, ↑ ${c.e.pick} (want 1, 0)`);
-      if (b.act || c.act) throw new Error(`he did "${b.act ?? c.act}" (↓ greeted)`);
-      if (!a.tool || a.tool !== b.tool || a.tool !== c.tool) throw new Error(`the light: ${a.tool} → ${b.tool} → ${c.tool} (want one, kept)`);
+      if (b.e.pick !== 1 || c.e.pick !== 0) throw new Error(`R3 picked ${b.e.pick}, then ${c.e.pick} (want 1, 0)`);
+      if (b.ramp || c.ramp) throw new Error('R3 also headed for the nearest ramp');
+      // (the d-pad stays his: ↑ the next light, ↓ the greeting, with the list open)
+      const t0 = await lit();
+      await tap(page, 'up');
+      await sleep(400);
+      const t1 = await lit();
+      if (t1 === t0) throw new Error(`↑ under the list did not change the light (${t0})`);
       await tap(page, 'down');
+      await sleep(250);
+      const g = await ev(() => window.roam.body.explorer.currentAction ?? null);
+      if (!g) throw new Error('↓ under the list did not greet');
+      await sleep(2500);
+      const d = await now();
+      if (d.e.pick !== 0 || !d.e.open) throw new Error(`the d-pad moved the pick (${d.e.pick})`);
+      await tap(page, 'r3');
       await sleep(300);
       const pick = (await now()).e.pickId;
       await tap(page, 'west');
       await until(() => window.__build?.state().card, null, 3000, `□ on ${pick} opens the build card`);
       await tap(page, 'east');
       await sleep(400);
-      return `${a.e.lines.map((l) => l.id).join(' / ')}: ↓ → ${b.e.pick}, ↑ → ${c.e.pick} (no greeting, light ${a.tool}); □ on ${pick}: the build card`;
+      return `${a.e.lines.map((l) => l.id).join(' / ')}: R3 → ${b.e.pick} → ${c.e.pick} (no ramp), ↑ light ${t0} → ${t1}, ↓ ${g}, pick kept; □ on ${pick}: the build card`;
     },
   },
   {

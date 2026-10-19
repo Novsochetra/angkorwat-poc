@@ -30,7 +30,7 @@ export type JumpKind = 'chute' | 'glider';
  * - while roaming, "Back to map" at the top left (Esc), the keys of the mode
  *   at the bottom left (small; hidden while the touch controls show), a
  *   prompt at a place's beacon ("E  Enter Angkor Wat") or the E row's short
- *   list (two or more E choices: "▸" the picked one, Tab / the d-pad's ↑ ↓ /
+ *   list (two or more E choices: "▸" the picked one, Tab / the pad's R3 /
  *   a tap on a line pick, _eChoices.ts), short messages that
  *   fade by themselves, and the fade to black; the explorer's tool bar
  *   (tools.ts) goes in the same layer.
@@ -568,7 +568,7 @@ function listHtml(text: string): { html: string; use: string | null } {
   html += '</ol>';
   if (choices >= 2) {
     const more = rows.length > ROWS ? `<span class="rh-ch-more">${num(picked + 1)} / ${num(choices)}</span>` : '';
-    html += `<div class="rh-ch-hint"><span class="rh-ch-keys">${padKbd('Tab', 'dpady')}<span>${esc(t('eChoose'))}</span></span><span class="rh-ch-tap">${esc(t('eChooseTap'))}</span>${more}</div>`;
+    html += `<div class="rh-ch-hint"><span class="rh-ch-keys">${padKbd('Tab', 'r3')}<span>${esc(t('eChoose'))}</span></span><span class="rh-ch-tap">${esc(t('eChooseTap'))}</span>${more}</div>`;
   }
   const line = rows.find((r) => r.kind === PICK) ?? rows.find((r) => r.kind === CHOICE);
   const use = line ? /(?:^|·\s+)E\s{2,}([^·]+?)\s*(?:·|$)/.exec(line.text) : null;

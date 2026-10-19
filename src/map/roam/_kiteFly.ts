@@ -491,7 +491,8 @@ function makeSlot(e0: AddonEnv): void {
     st.id = 'kite-slot-style';
     // (hidden until he has one; off his feet greyed, as the binoculars in the air)
     st.textContent = `.rtb-slot[data-addon='kite'][hidden] { display: none; }
-      .rh:not([data-mode='walk']) .rtb-slot[data-addon='kite'] { opacity: 0.32; }`;
+      .rh:not([data-mode='walk']) .rtb-slot[data-addon='kite'] { opacity: 0.32; }
+      body.pad-on .rtb-slot[data-addon='kite'] kbd { visibility: hidden; }`;
     document.head.append(st);
   }
 }

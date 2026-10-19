@@ -309,9 +309,10 @@ guide, with every add-on's keys and URL values for shots, is
   the tool bar, the explorer menu's Bag).
 - The E row shows every E choice at his spot (`roam/_eChoices.ts`, AWP-33): one
   alone as the prompt, two or more as a short list over him ("▸" the pick, in the
-  old order so the top line is what E did before; Tab / Shift+Tab, the pad's
-  d-pad ↓ ↑ or a tap pick, E does it; lines with no key never picked). An add-on
-  in a mode of its own ends the row (`endsRow`). Shots: `echoices=1` (the list even
+  old order so the top line is what E did before; Tab / Shift+Tab, the pad's R3
+  (the nearest ramp is the big map's R3 then) or a tap pick, E does it; a line
+  with no key shows alone when it comes first, as before, else not). An add-on in
+  a mode or busy state of its own ends the row (`endsRow`). Shots: `echoices=1` (the list even
   with one choice, and a log), `echoice=<n>` (the pick on choice n).
 - The calendar (9, the button under the mini-map): now, today, festivals ahead
   with their real-life dates (the Khmer lunar calendar: `roam/_calendarKhmer.ts`),

@@ -11,6 +11,7 @@ import { roamPrefs } from '../roam/prefs';
 import type { MapRoam } from '../roam/roam';
 import { RAMP } from '../roam/_launchRamp';
 import { eventSprite, eventSvg } from '../roam/_calendarIcons';
+import { E_LIST } from '../roam/_eChoices';
 import { ROAM_AREA } from '../terrain/views';
 import { treasure } from '../treasure/hooks';
 import { drawSearchMini, searchMarkBig } from '../treasure/_mapMark';
@@ -1449,6 +1450,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
   onLang(fillWords);
 
   // The game pad while roaming (no menu open): Create or the touchpad open the big map, R3 heads for the nearest ramp on foot (as N).
+  // (while the E list shows, R3 moves its pick: roam/input.ts; the nearest ramp is the big map's R3 then, AWP-33)
   const padBig = () => {
     if (!shown) return false;
     openBig(true);
@@ -1458,7 +1460,7 @@ export function createMinimap(d: MinimapDeps): Minimap {
   pad.onPress('touchpad', padBig);
   pad.onPress('r3', () => {
     const cls = document.body.classList;
-    if (!shown || roam.mode !== 'walk' || !ramps.length || cls.contains('photo-mode') || cls.contains('selfie-mode')) return false;
+    if (!shown || roam.mode !== 'walk' || !ramps.length || E_LIST.open || cls.contains('photo-mode') || cls.contains('selfie-mode')) return false;
     findRamp();
     return true;
   });

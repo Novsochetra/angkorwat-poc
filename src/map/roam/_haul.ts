@@ -1575,6 +1575,10 @@ function fillFrom(q: string): void {
 registerAddon({
   id: 'haul',
   order: 58,
+  // (leading the oxen: "Let go" is the E row's last line, nothing after it; _addons.ts, AWP-33)
+  get endsRow() {
+    return leading;
+  },
 
   get holding() {
     return W !== null;

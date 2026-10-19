@@ -50,9 +50,10 @@ export const PAD_LIGHT = 'PadLight';
  *   runs until the stick comes back), the right stick looks, L1 / R1 zoom
  *   out / in, ✕ jumps (Space), □ uses (E), ○ goes back (Esc), △ the explorer
  *   menu (I), the d-pad ↑ the next light (`PAD_LIGHT`), ← the camera (4),
- *   → the selfie phone (5), ↓ greets (F; in the boat F fishes); while the E
- *   list is open (_eChoices.ts: two or more E choices) ↓ / ↑ move its pick
- *   instead of greeting and the light. With the
+ *   → the selfie phone (5), ↓ greets (F; in the boat F fishes); R3 moves
+ *   the E list's pick while it is open (_eChoices.ts: two or more E choices;
+ *   else R3 is the nearest ramp's, ui/minimap.ts, which the big map's R3
+ *   still does then). With the
  *   camera or the phone up: ✕ or R2 takes the photo, △ the album (V), and
  *   the selfie's □ gesture (G), ↓ face (X), L3 stick (T). The pad's own key
  *   events (menus: `isTrusted` false) are not his.
@@ -341,15 +342,12 @@ export class RoamControls {
     s.exit ||= east;
     const west = pad.take('west');
     const north = pad.take('north');
-    const up = pad.take('up');
-    let down = pad.take('down');
+    const down = pad.take('down');
     // (R2 is the shutter too with the camera or the phone up)
     if (pad.take('r2') && photo) s.click = true;
-    // (the E list open, two or more choices: ↓ / ↑ move its pick, not the greeting and the light; _eChoices.ts)
-    if (E_LIST.open && !photo) {
-      s.pick = (s.pick ?? 0) + (down ? 1 : 0) - (up ? 1 : 0);
-      down = false;
-    } else if (up) tap(PAD_LIGHT);
+    // (R3 while the E list is open, two or more choices: its next line; else the mini-map took it, the nearest ramp)
+    if (pad.take('r3') && E_LIST.open && !photo) s.pick = (s.pick ?? 0) + 1;
+    if (pad.take('up')) tap(PAD_LIGHT);
     if (pad.take('left')) tap('Digit4');
     if (pad.take('right')) tap('Digit5');
     if (!photo) {

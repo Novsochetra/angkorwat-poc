@@ -57,17 +57,22 @@ Rules:
   hud draws E as the pad's □ / X while a pad is in use. Hide your prompt while
   `env.busy()` (praying, resting, at a stall, the camera up, the album).
 - **The E list** (AWP-33, `roam/_eChoices.ts`): every E choice at his spot shows,
-  not only the first. One choice: the prompt as before (a line with no key after
-  it: "E  Build…  ·  You have no seeds yet…"). Two or more: a short list over him
-  (up to 4 lines, "▸" the picked one, the lines with no key greyed), in the row's
-  order, so the top line is what E did before; **Tab** / **Shift+Tab**, the pad's
-  **d-pad ↓ / ↑** (while the list is open they are the list's, not the greeting's
-  and the light's) or a tap / click on a line move the pick; E (□ / X, the touch
-  Use button) does the picked one. The pick stays while the same choices stay (by
-  who offers them), and goes back to the top when the set changes. Two lines with
-  the same words are one. A line with no key shows only when no line with E comes
-  before it (as when the first offer won: the garden's "You have no seeds yet…"
-  joins "E  Build…" after it, not the sey's "Play sey" before it). A key of yours that only makes sense while your line
+  not only the first. One choice: the prompt as before. Two or more: a short list
+  over him (up to 4 lines, "▸" the picked one), in the row's order, so the top
+  line is what E did before; **Tab** / **Shift+Tab**, the pad's **R3** (while the
+  list is open it is the list's; the nearest ramp is then the big map's R3 — the
+  d-pad stays the lights', the greeting's and fishing's) or a tap / click on a
+  line move the pick; E (□ / X, the touch Use button) does the picked one. On a
+  phone it stands clear of the stick, the Use button and the tool bar (upright:
+  left of the bar; sideways: low between the stick and Use), its words wrapping.
+  The pick stays while the same choices stay (by who offers them), and goes back
+  to the top when the set changes. Two lines with the same words are one. A line
+  with no key is as before, when the first offer won: first in the row it is the
+  row, alone (busy: walking to his place to listen; the tapper up the palm; a
+  stall closed), after a line with E it is left out; an offer may carry one in
+  its own line ("E  Build…  ·  You have no seeds yet…"). A mode or a busy state
+  of yours that must show alone ends the row (`endsRow`: build mode, paint,
+  planting, walking to listen, leading the cart). A key of yours that only makes sense while your line
   shows (`,` / `.` for the fruit) asks `ePicked('<your id>')`: your line is the one
   E does now. URL (shots, dev server): `echoice=<n>` starts the pick on choice n
   (1 the top) the first time a list shows; `echoices=1` shows the row as the list

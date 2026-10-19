@@ -883,6 +883,8 @@ export function createBoat(field?: HeightField): BoatMode {
       // An add-on holding him in the boat (picking a lotus…: _addons.ts): its step, not the paddling's.
       const held = phase === 'float' && !fishing.active ? addonHolding('boat') : null;
       if (held?.hold) {
+        // (no E list while it holds him: Tab and the pad are not the list's)
+        eRow.clear();
         const r = held.hold(ctx, dt);
         if (r.prompt !== prompt) hud.prompt((prompt = r.prompt));
         placeRide(ctx, dt);
@@ -934,7 +936,10 @@ export function createBoat(field?: HeightField): BoatMode {
       fishing.place(ctx, dt, fishView);
       wake.update(dt);
       lanterns(ctx.night, clock);
-      if (next) return next;
+      if (next) {
+        eRow.clear();
+        return next;
+      }
 
       // What E does here: the add-ons' (a lotus to pick…: _addons.ts), enter a place, step ashore (every one here: one
       // alone as the prompt, more as a short list; _eChoices.ts).
@@ -955,7 +960,7 @@ export function createBoat(field?: HeightField): BoatMode {
       // with no E — not with the pad in use: its ↓ picks in the list then)
       const fish = fishing.prompt(fishView);
       const list = !!use && use.startsWith(LIST);
-      const text = fishing.active ? fish : list ? (fish && !pad.active ? `${use}\n${NOTE}${fish}` : use) : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
+      const text = fishing.active ? fish : list ? (fish ? `${use}\n${NOTE}${fish}` : use) : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
       if (text !== prompt) hud.prompt((prompt = text));
       if (input.use && phase === 'float') {
         if (r.use) {

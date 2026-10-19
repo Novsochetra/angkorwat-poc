@@ -16,7 +16,7 @@ import { progress } from '../progress';
 import type { MapFrame, RoamMode } from '../types';
 import { createAskCard, type AskCard } from '../ui/ask';
 import { lang, num, t, type WordKey } from '../ui/lang';
-import { registerAddon, type AddonEnv } from './_addons';
+import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
@@ -1559,20 +1559,45 @@ registerAddon({
 });
 
 /**
- * The late half of the E row (after every other add-on's): "E  Build…" anywhere on his land. Every E choice shows now
- * (the list, _eChoices.ts), so it comes just after the garden's late half (`GARDEN_LATE`: "E  Plant…" and its lines
- * with no key) and both show: where "Plant…" was E's job before, it stays the top line; by the house the early half's
- * "E  Build…" (94) comes first and this one, the same words, is not shown twice. The garden's line with no key ("You
- * have no seeds yet…") shows after "E  Build…" when it is the only choice, as before.
+ * The late half of the E row (after every other add-on's: the garden's "Plant…" first): "E  Build…" anywhere near
+ * his house where nothing else here has E. Just before the garden's late half (`GARDEN_LATE`: "E  Plant…" and its
+ * lines with no key) so that a line of the garden's with no key (no seeds yet, the can empty, the jar empty) never
+ * hides it: the garden's line goes on after it ("E  Build…  ·  You have no seeds yet…"), and a real E of the
+ * garden's still comes first. By the house the early half's "E  Build…" (94) is there already: not twice.
  */
 const GARDEN_LATE = 95;
+/** The garden's late offer, worked out once a step there (_garden.ts `chooseOnce`), or null. */
+const gardenLate = (ctx: RoamCtx, m: 'walk' | 'boat'): string | null => addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
+/** Build mode, a card or the work has him: no "Build…". */
+const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
 registerAddon({
   id: 'buildLate',
+  order: GARDEN_LATE - 0.1,
+  offer(ctx, m) {
+    if (lateOff(m) || !canStart(ctx, true)) return null;
+    // (by the house with nothing of his in reach: the early half says it)
+    if (canStart(ctx, false) && !near.prompt) return null;
+    const g = gardenLate(ctx, m);
+    if (g?.startsWith('E ')) return null;
+    const start = words('start', () => `E  ${t('buildStart')}`);
+    return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
+  },
+  use(ctx) {
+    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    openCard(ctx);
+  },
+});
+
+/**
+ * "E  Build…" after the garden's "E  Plant…" (AWP-33: every E choice shows, the E list _eChoices.ts): where the garden
+ * has an E of its own on his land, it stays the top line, and "Build…" is the next.
+ */
+registerAddon({
+  id: 'buildLater',
   order: GARDEN_LATE + 0.1,
   offer(ctx, m) {
-    if (m !== 'walk' || !env || placing || FootMode.on || pressing || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
-    if (!canStart(ctx, true)) return null;
-    return words('start', () => `E  ${t('buildStart')}`);
+    if (lateOff(m) || !canStart(ctx, true)) return null;
+    return gardenLate(ctx, m)?.startsWith('E ') ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
     if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;

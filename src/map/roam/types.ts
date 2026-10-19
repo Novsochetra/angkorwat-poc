@@ -52,7 +52,7 @@ export interface RoamInput {
   click?: boolean;
   /** Where the mouse is over the view (CSS px), or null (touch, or off the view). */
   pointer?: { readonly x: number; readonly y: number } | null;
-  /** The E list's pick moved this frame (Tab +1, Shift+Tab −1, the pad's d-pad ↓ / ↑ while the list is open: _eChoices.ts). */
+  /** The E list's pick moved this frame (Tab +1, Shift+Tab −1, the pad's R3 +1 while the list is open: _eChoices.ts). */
   pick?: number;
 }
 
