@@ -1,4 +1,5 @@
 import { pad } from '../pad/pad';
+import { E_LIST } from './_eChoices';
 import { TouchControls } from './touch';
 import type { RoamInput } from './types';
 
@@ -33,7 +34,9 @@ export const PAD_LIGHT = 'PadLight';
  *
  * - keys: WASD / arrows move (relative to the camera), Shift runs, Space
  *   jumps (and opens or closes the parachute), E / Enter uses, Esc goes back
- *   to the overview, Q / R held turn the camera round him (as a drag does);
+ *   to the overview, Q / R held turn the camera round him (as a drag does),
+ *   Tab / Shift+Tab move the E list's pick while it is open (`pick`,
+ *   _eChoices.ts);
  *   the explorer's tools and emotes (`TOOL_KEYS`: 1–5, Z, Y, O, F, C, U, P,
  *   J, L, H, G, X, I, V, ?) come as `taps` for tools.ts, and so do the
  *   explorer menu's buttons (`press`);
@@ -47,7 +50,9 @@ export const PAD_LIGHT = 'PadLight';
  *   runs until the stick comes back), the right stick looks, L1 / R1 zoom
  *   out / in, ✕ jumps (Space), □ uses (E), ○ goes back (Esc), △ the explorer
  *   menu (I), the d-pad ↑ the next light (`PAD_LIGHT`), ← the camera (4),
- *   → the selfie phone (5), ↓ greets (F; in the boat F fishes). With the
+ *   → the selfie phone (5), ↓ greets (F; in the boat F fishes); while the E
+ *   list is open (_eChoices.ts: two or more E choices) ↓ / ↑ move its pick
+ *   instead of greeting and the light. With the
  *   camera or the phone up: ✕ or R2 takes the photo, △ the album (V), and
  *   the selfie's □ gesture (G), ↓ face (X), L3 stick (T). The pad's own key
  *   events (menus: `isTrusted` false) are not his.
@@ -67,6 +72,8 @@ export class RoamControls {
   private drag: { id: number; x: number; y: number; moved: number; t: number } | null = null;
   private clicked = false;
   private readonly look = { yaw: 0, pitch: 0, zoom: 0 };
+  /** Tab (+1) and Shift+Tab (−1) since the last poll, while the E list is open. */
+  private pickSteps = 0;
   /** Q / R turn speed now (radians/s, + = left), eased. */
   private orbit = 0;
   /** The camera or the selfie phone is up (the drag moves that instead). */
@@ -89,6 +96,15 @@ export class RoamControls {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       // ("?" is Shift + / on most keyboards, elsewhere on some)
       const code = e.key === '?' ? 'Slash' : e.code;
+      // (Tab: the E list's next choice, Shift+Tab the one before, while the list is open; else the page's own)
+      if (code === 'Tab') {
+        // (a menu or a card open, or the focus in one: Tab is its own, moving the focus)
+        const cls = document.body.classList;
+        if (!E_LIST.open || cls.contains('rxm-open') || cls.contains('mu-asking') || document.querySelector('#mu-settings.is-open') || t?.closest?.('[role="dialog"], .rxm, .mu-ask, #mu-settings')) return;
+        this.pickSteps += e.shiftKey ? -1 : 1;
+        e.preventDefault();
+        return;
+      }
       if (TOOL_KEYS.has(code)) {
         if (!e.repeat) this.hits.add(code);
         e.preventDefault();
@@ -201,6 +217,8 @@ export class RoamControls {
     for (const c of this.hits) if (TOOL_KEYS.has(c)) this.taps.add(c);
     this.takePressed();
     s.click = this.clicked || t.shutterHit;
+    s.pick = this.pickSteps;
+    this.pickSteps = 0;
     this.pollPad(dt);
     const len = Math.hypot(s.move.x, s.move.y);
     if (len > 1) {
@@ -221,6 +239,7 @@ export class RoamControls {
    */
   clear(): void {
     this.hits.clear();
+    this.pickSteps = 0;
     this.pressed.clear();
     this.taps.clear();
     this.clicked = false;
@@ -322,10 +341,15 @@ export class RoamControls {
     s.exit ||= east;
     const west = pad.take('west');
     const north = pad.take('north');
-    const down = pad.take('down');
+    const up = pad.take('up');
+    let down = pad.take('down');
     // (R2 is the shutter too with the camera or the phone up)
     if (pad.take('r2') && photo) s.click = true;
-    if (pad.take('up')) tap(PAD_LIGHT);
+    // (the E list open, two or more choices: ↓ / ↑ move its pick, not the greeting and the light; _eChoices.ts)
+    if (E_LIST.open && !photo) {
+      s.pick = (s.pick ?? 0) + (down ? 1 : 0) - (up ? 1 : 0);
+      down = false;
+    } else if (up) tap(PAD_LIGHT);
     if (pad.take('left')) tap('Digit4');
     if (pad.take('right')) tap('Digit5');
     if (!photo) {
@@ -391,6 +415,8 @@ export class RoamControls {
     this.taps.clear();
     this.takePressed();
     s.click = fresh && k.includes('c');
+    // (n / p: Tab / Shift+Tab, the E list's next or previous choice)
+    s.pick = fresh ? (k.includes('n') ? 1 : 0) - (k.includes('p') ? 1 : 0) : 0;
     // (f: F tapped at the step's start — the greeting, tools.ts; 6: eat or drink what he keeps, _shop.ts)
     if (fresh && k.includes('f')) this.taps.add('KeyF');
     if (fresh && k.includes('6')) this.taps.add('Digit6');
@@ -411,7 +437,7 @@ function albumOpen(): boolean {
  * 3 flashlight (O: beam ahead ↔ mouse) · 4 / Z camera · 5 / Y selfie (T: stick) ·
  * F greet (a sampeah or a wave) · C cheer · U look up · P peek · H hat · G outfit · X face ·
  * J sit · L lie down · I the explorer menu (_explorerMenu.ts) ·
- * 6 eat or drink what he keeps (_shop.ts) · V album · ? all keys. (Not M, N, B or K: the mini-map and its nearest
+ * 6 eat or drink what he keeps (_shop.ts) · V album · ? all keys · − fly his kite (_kiteFly.ts). (Not M, N, B or K: the mini-map and its nearest
  * glider ramp, the bug report and the block look panel have them; J is
  * "Jump in" only in the overview, where these are off; Q and R turn the camera.)
  */
@@ -421,15 +447,17 @@ export const TOOL_KEYS: ReadonlySet<string> = new Set([
   'KeyJ', 'KeyL', 'KeyI',
   // (6: eat or drink what he keeps in his bag, roam/_shop.ts)
   'Digit6', 'Numpad6',
-  // (the add-ons' keys, roam/_addons.ts: 7 the binoculars, 8 the umbrella, 9 the calendar, 0 calls or tells the dog; , and . spare)
-  'Digit7', 'Numpad7', 'Digit8', 'Numpad8', 'Digit9', 'Numpad9', 'Digit0', 'Numpad0', 'Comma', 'Period',
+  // (the add-ons' keys, roam/_addons.ts: 7 the binoculars, 8 the umbrella, 9 the calendar, 0 calls or tells the dog, − flies
+  // or brings in his kite; , and . turn a piece in build mode and change the fruit he gives)
+  'Digit7', 'Numpad7', 'Digit8', 'Numpad8', 'Digit9', 'Numpad9', 'Digit0', 'Numpad0', 'Comma', 'Period', 'Minus', 'NumpadSubtract',
 ]);
 
 /**
  * One step of a scripted input: keys held for some seconds. Keys: w a s d
  * (move), r (run), j (jump: pressed at the start of the step, held through
  * it), e (use), x (exit), c (a click on the view: in photo mode, a photo),
- * f (F tapped: the greeting), 6 (6 tapped: eat or drink what he keeps);
+ * f (F tapped: the greeting), 6 (6 tapped: eat or drink what he keeps),
+ * n / p (Tab / Shift+Tab: the E list's next / previous choice);
  * `turn` turns the camera (radians/s, + = left),
  * `tilt` tilts it (radians/s, + = look down more),
  * `orbit` holds Q (+1) or R (−1): the camera's eased turn round him.

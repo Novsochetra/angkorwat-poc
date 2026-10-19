@@ -212,6 +212,10 @@ const WORDS = {
   rJump: { km: 'លោត', en: 'jump' },
   rEnterFly: { km: 'ចូល · ហោះ', en: 'enter · fly' },
   rUseFly: { km: 'ប្រើ · ហោះ', en: 'use · fly' },
+  // (the E row's short list: two or more things E can do here, roam/_eChoices.ts; under it how to pick, and in the ? list)
+  eChoose: { km: 'ជ្រើសរើស', en: 'choose' },
+  eChooseTap: { km: 'ប៉ះលើជម្រើសណាមួយ ដើម្បីជ្រើសរើស', en: 'tap a line to choose' },
+  eChooseKeys: { km: 'ជ្រើសអ្វីដែល E ធ្វើ', en: 'choose what E does' },
   rSitLie: { km: 'អង្គុយ · ដេក', en: 'sit · lie down' },
   rRamp: { km: 'ជម្រាលខ្លែងហោះ', en: 'glider ramp' },
   rEmotes: { km: 'កាយវិការ', en: 'emotes' },
@@ -1120,6 +1124,17 @@ const WORDS = {
   kiteKeyWalk: { km: 'ដើរទាំងបង្ហោះ', en: 'walk with it' },
   // (in a calm, once a visit, where his kite would fly)
   kiteCalmHint: { km: 'ខ្យល់ស្ងប់ពេក ចាំខ្យល់បក់សិន ទើបបង្ហោះខ្លែងបាន', en: 'Too calm for a kite: wait for a breeze' },
+  // (its own key, −, AWP-33: the tool bar's slot, the key help; once a visit where it flies, how to fly it; why not)
+  kiteName: { km: 'ខ្លែង', en: 'Kite' },
+  kiteHintKey: { km: 'ខ្យល់ល្អសម្រាប់បង្ហោះខ្លែង! ចុច {key} ដើម្បីបង្ហោះខ្លែងរបស់អ្នក', en: 'Good wind for a kite! Press {key} to fly yours' },
+  kiteHintTouch: { km: 'ខ្យល់ល្អសម្រាប់បង្ហោះខ្លែង! ប៉ះរូបខ្លែងលើរបារឧបករណ៍ ដើម្បីបង្ហោះ', en: 'Good wind for a kite! Tap the kite on the tool bar to fly it' },
+  // ({menu}: the pad's button for the explorer menu, △ / Y)
+  kiteHintPad: { km: 'ខ្យល់ល្អសម្រាប់បង្ហោះខ្លែង! {menu} ម៉ឺនុយ → កាបូប → បង្ហោះខ្លែង', en: 'Good wind for a kite! {menu} menu → Bag → Fly your kite' },
+  kiteNone: {
+    km: 'អ្នកមិនទាន់មានខ្លែងទេ។ សុំលោកតានៅវាលខាងកើត ឬទិញមួយនៅផ្សារពេលព្រឹក',
+    en: 'You have no kite yet: ask the grandfather on the east field, or buy one at the morning market',
+  },
+  kiteNoRoom: { km: 'គ្មានកន្លែងបង្ហោះខ្លែងនៅទីនេះទេ។ រកវាលធំ គ្មានដើមឈើ ឬដំបូលពីលើ', en: 'No room for a kite here: find an open field with nothing overhead' },
   // Helping the farmers (farm…): roam/_farmWork.ts
   farmHelpPlant: { km: 'ជួយស្ទូងស្រូវ', en: 'Help plant rice' },
   farmHelpReap: { km: 'ជួយច្រូតស្រូវ', en: 'Help with the harvest' },

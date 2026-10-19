@@ -33,6 +33,9 @@
 //             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
 //   paint     paint mode: the d-pad's → ← change the colour, □ paints one block, □ held the whole
 //             part, ○ out of the mode (not "Back to the map?")                     (_paint.ts)
+//   echoices  the E list at his house's door (the door, "Build…"): the d-pad's ↓ / ↑ move its pick
+//             (not the greeting, not the light), □ does the picked one (the build card)
+//                                                                                  (_eChoices.ts, input.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
 //   keys      a real key press turns the pad's glyphs off (body without pad-on)   (core)
@@ -660,6 +663,50 @@ const steps = [
       if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
       await ev(() => window.__build.foot.clear());
       return `→ ${b.brush}, ← ${c.brush}, □ 1 block, □ held ${e.painted - d.painted} blocks (the part), ○ out`;
+    },
+  },
+  {
+    id: 'echoices',
+    who: 'roam/_eChoices.ts, input.ts, hud.ts (AWP-33)',
+    async run() {
+      await ensureWalk();
+      // (a light in his hand first, the d-pad's ↑ where no list is: it must stay as it is under the list)
+      const lit = () => ev(() => document.querySelector('.rtb-slot[data-tool].is-on')?.dataset.tool ?? null);
+      for (let i = 0; i < 3 && !(await lit()); i++) {
+        await tap(page, 'up');
+        await sleep(300);
+      }
+      // (on his veranda before the doors: "E  Shut the doors" and, his land, "E  Build…": a list of two)
+      await placeAt('walk', '424,13,-110&yaw=0&home=1');
+      await wake();
+      await sleep(400);
+      const now = () =>
+        ev(() => ({
+          e: window.__echoices,
+          tool: document.querySelector('.rtb-slot[data-tool].is-on')?.dataset.tool ?? null,
+          act: window.roam.body.explorer.currentAction ?? null,
+          glyph: !!document.querySelector('.rh-prompt.is-list .rh-ch-hint kbd.is-pad'),
+        }));
+      const a = await now();
+      if (!a.e?.open) throw new Error(`no E list here: ${a.e?.lines.map((l) => l.id).join(', ') ?? 'nothing'}`);
+      if (!a.glyph) throw new Error("the list's hint shows no pad button");
+      await tap(page, 'down');
+      await sleep(300);
+      const b = await now();
+      await tap(page, 'up');
+      await sleep(300);
+      const c = await now();
+      if (b.e.pick !== 1 || c.e.pick !== 0) throw new Error(`↓ picked ${b.e.pick}, ↑ ${c.e.pick} (want 1, 0)`);
+      if (b.act || c.act) throw new Error(`he did "${b.act ?? c.act}" (↓ greeted)`);
+      if (!a.tool || a.tool !== b.tool || a.tool !== c.tool) throw new Error(`the light: ${a.tool} → ${b.tool} → ${c.tool} (want one, kept)`);
+      await tap(page, 'down');
+      await sleep(300);
+      const pick = (await now()).e.pickId;
+      await tap(page, 'west');
+      await until(() => window.__build?.state().card, null, 3000, `□ on ${pick} opens the build card`);
+      await tap(page, 'east');
+      await sleep(400);
+      return `${a.e.lines.map((l) => l.id).join(' / ')}: ↓ → ${b.e.pick}, ↑ → ${c.e.pick} (no greeting, light ${a.tool}); □ on ${pick}: the build card`;
     },
   },
   {

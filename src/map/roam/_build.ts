@@ -16,7 +16,7 @@ import { progress } from '../progress';
 import type { MapFrame, RoamMode } from '../types';
 import { createAskCard, type AskCard } from '../ui/ask';
 import { lang, num, t, type WordKey } from '../ui/lang';
-import { addonOffer, registerAddon, type AddonEnv } from './_addons';
+import { registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
@@ -1532,6 +1532,10 @@ registerAddon({
 registerAddon({
   id: 'buildMode',
   order: 3,
+  // (while he places a piece or draws a footprint, "Build here" is the E row's last line: nothing after it, _addons.ts)
+  get endsRow() {
+    return !!placing || FootMode.on;
+  },
   // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
   // order 5, takes the L2 press after this one: taken here, it never raises them).
   input(_ctx, m) {
@@ -1555,24 +1559,20 @@ registerAddon({
 });
 
 /**
- * The late half of the E row (after every other add-on's: the garden's "Plant…" first): "E  Build…" anywhere near
- * his house where nothing else here has E. Just before the garden's late half (`GARDEN_LATE`: "E  Plant…" and its
- * lines with no key) so that a line of the garden's with no key (no seeds yet, the can empty, the jar empty) never
- * hides it: the garden's line goes on after it ("E  Build…  ·  You have no seeds yet…"), and a real E of the
- * garden's still comes first.
+ * The late half of the E row (after every other add-on's): "E  Build…" anywhere on his land. Every E choice shows now
+ * (the list, _eChoices.ts), so it comes just after the garden's late half (`GARDEN_LATE`: "E  Plant…" and its lines
+ * with no key) and both show: where "Plant…" was E's job before, it stays the top line; by the house the early half's
+ * "E  Build…" (94) comes first and this one, the same words, is not shown twice. The garden's line with no key ("You
+ * have no seeds yet…") shows after "E  Build…" when it is the only choice, as before.
  */
 const GARDEN_LATE = 95;
 registerAddon({
   id: 'buildLate',
-  order: GARDEN_LATE - 0.1,
+  order: GARDEN_LATE + 0.1,
   offer(ctx, m) {
     if (m !== 'walk' || !env || placing || FootMode.on || pressing || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     if (!canStart(ctx, true)) return null;
-    // (the garden's late offer, worked out once a step there: its "E  …" first; a line with no key after ours)
-    const g = addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
-    if (g?.startsWith('E ')) return null;
-    const start = words('start', () => `E  ${t('buildStart')}`);
-    return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
+    return words('start', () => `E  ${t('buildStart')}`);
   },
   use(ctx) {
     if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;

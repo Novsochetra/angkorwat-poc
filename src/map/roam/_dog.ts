@@ -11,7 +11,7 @@ import { progress } from '../progress';
 import type { MapFrame, MapPart, RoamMode, Subject } from '../types';
 import { lang, t } from '../ui/lang';
 import { BODY_UNIT_M } from '../../world/scale';
-import { ADDONS, BEFORE_SHRINE, registerAddon, type AddonEnv, type AddonHold } from './_addons';
+import { ADDONS, BEFORE_SHRINE, eRowBefore, registerAddon, type AddonEnv, type AddonHold } from './_addons';
 import { closeDogCard, customDogName, dogCalled, dogCardOpen, dogNameIn, dogNameParam, dogQuoted, oldDogName, openDogCard, parseDogName, setDogCardDeps, typeDogCard, type DogName } from './_dogCard';
 import { DOG_MENU, DOG_ORDERS, type DogOrder } from './_dogHook';
 import { createDogOrderCard, type DogOrderCard, type DogOrderWords } from './_dogOrderCard';
@@ -2686,8 +2686,9 @@ registerAddon({
     // (far from it: nothing to pet, nothing to come up to him for)
     const p = ctx.body.pos;
     if (len2(D.x - p.x, D.z - p.z) > COME_FROM + 1) return null;
-    // (nothing before it in the E row wants the E here: it may come up to him, `comeClose`)
-    freeE = steps;
+    // (nothing before it in the E row wants the E here: it may come up to him, `comeClose`; every offer is asked now,
+    // so it asks the row: _addons.ts `eRowBefore`)
+    if (!eRowBefore()) freeE = steps;
     // (not under its cards; a boat tied up here, a ramp, the balloon: theirs is the E)
     if (dogCardOpen() || CARD.pending || orders?.open || !canPet(ctx) || theirs(ctx)) return null;
     return petPrompt();

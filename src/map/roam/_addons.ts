@@ -2,6 +2,7 @@ import type { Object3D } from 'three';
 import type { AngkorExplorer, OutfitName } from '../../character/AngkorExplorer';
 import type { MapFrame, MapPart, RoamMode, UISound } from '../types';
 import { t, type WordKey } from '../ui/lang';
+import type { ERow } from './_eChoices';
 import type { RoamControls } from './input';
 import type { RoamPhoto } from './photo';
 import type { Purse } from './_shopPurse';
@@ -23,6 +24,14 @@ import type { FollowCam, RoamBody, RoamCtx, RoamHud, RoamWorld } from './types';
  *   `order` ≤ `BEFORE_SHRINE` comes right after a golden figure (before a shrine);
  *   the others after a stall, before a moored boat, a ramp, the balloon, the swing
  *   and a place's beacon, lowest `order` first. Afloat, before stepping ashore.
+ *   Every offer at his spot shows (AWP-33, _eChoices.ts): one alone as the prompt,
+ *   two or more as a short list (Tab, the d-pad's ↑ ↓ or a tap pick; E does the
+ *   picked one), in that order, so the top line is the first offer. An offer with no
+ *   "E  …" part ("You have no seeds yet…") shows but is never picked. `endsRow`: while
+ *   it offers, nothing after it in the row is offered (a mode of its own: build
+ *   mode's "Build here"). `eRowBefore()` in `offer`: how many lines came before it
+ *   (0: nothing before it wants the E). `ePicked(id)` (_eChoices.ts): its line is
+ *   the one E does now.
  * - `holding`: it holds him (on the bicycle, in the hammock, on the zip line):
  *   the mode named by `holdIn` ('walk' by default, or 'boat') hands its whole step
  *   to `hold` (the add-on moves the body, sets the camera's focus and the pose).
@@ -94,8 +103,10 @@ export interface RoamAddon {
   input?(ctx: RoamCtx, mode: RoamMode, tap: AddonTap, dt: number): boolean;
   /** In the E row (on foot on the ground, or afloat): the prompt ("E  Lie in the hammock") when E here starts it, else null. */
   offer?(ctx: RoamCtx, mode: 'walk' | 'boat'): string | null;
-  /** E pressed while `offer` said so: start. A mode to switch to, or nothing. */
+  /** E pressed while `offer` said so (its line picked, or its offer the only line): start. A mode to switch to, or nothing. */
   use?(ctx: RoamCtx, mode: 'walk' | 'boat'): RoamMode | null | void;
+  /** While its `offer` stands, nothing after it in the E row is offered (a mode of its own: build mode, planting). Read after `offer`. */
+  readonly endsRow?: boolean;
   /** It holds him now: `holdIn`'s step is `hold`'s. */
   readonly holding?: boolean;
   /** The mode whose step it takes over while holding (default 'walk'). */
@@ -164,6 +175,9 @@ export const MENU_HOOKS = {
   umbrellaUp: (): boolean => false,
   /** Open the name card (_nameCard.ts). */
   openNameCard: (): void => undefined,
+  /** He has a kite (its chip on the Bag page), and it is out now (_kiteFly.ts: its key − flies it or brings it in). */
+  kiteHave: (): boolean => false,
+  kiteOut: (): boolean => false,
   /** The golden figures (map/treasure, not an add-on: it fills these as it is built): how many are found of how many, and open their list of clues. */
   goldCount: (): readonly [found: number, total: number] => [0, 0],
   openGoldList: (): void => undefined,
@@ -239,7 +253,34 @@ export const addonBusy = (): boolean => ADDONS.some((a) => a.holding);
 /** An add-on has his hands. */
 export const addonHands = (): boolean => ADDONS.some((a) => a.handsBusy);
 
-/** The first add-on (in `order`, within `[lo, hi]`) offering E here, with its prompt; or null. */
+/** Lines in the E row before the add-on being asked now (`offer`: 0 when nothing before it wants the E). */
+let rowBefore = 0;
+export const eRowBefore = (): number => rowBefore;
+
+/**
+ * Every add-on (in `order`, within `[lo, hi]`) offering E here, added to the E row (_eChoices.ts) with its `use`;
+ * one that `endsRow` ends it.
+ */
+export function addonLines(ctx: RoamCtx, mode: 'walk' | 'boat', row: ERow, lo = -Infinity, hi = Infinity): void {
+  for (const a of ADDONS) {
+    if (row.ended) return;
+    const o = a.order ?? 50;
+    if (o < lo || o > hi || !a.offer) continue;
+    let p: string | null = null;
+    rowBefore = row.count;
+    try {
+      p = a.offer(ctx, mode);
+    } catch (e) {
+      console.error(`[roam] add-on "${a.id}" offer failed:`, e);
+    }
+    if (!p) continue;
+    row.add(`addon:${a.id}`, p, () => a.use?.(ctx, mode));
+    if (a.endsRow) row.ended = true;
+  }
+  rowBefore = 0;
+}
+
+/** The first add-on (in `order`, within `[lo, hi]`) offering E here, with its prompt; or null. (The E row uses `addonLines`.) */
 export function addonOffer(ctx: RoamCtx, mode: 'walk' | 'boat', lo = -Infinity, hi = Infinity): { addon: RoamAddon; prompt: string } | null {
   for (const a of ADDONS) {
     const o = a.order ?? 50;

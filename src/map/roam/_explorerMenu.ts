@@ -36,7 +36,8 @@ import { FACE_NAME } from './photo';
  * - **Bag** (កាបូប): the purse and what he keeps to eat or drink later
  *   (roam/_shopBag.ts, `bag`: a tap and he has it now), the umbrella (8:
  *   roam/_umbrella.ts), the photo album (V: the photos, the nature book, the
- *   passport) and the calendar of events (9: roam/_calendar.ts).
+ *   passport), the calendar of events (9: roam/_calendar.ts) and, once he has
+ *   one, his kite (−: flies it or brings it in, on foot; roam/_kiteFly.ts).
  * - **Me** (ខ្ញុំ): his name in Khmer letters (the name card:
  *   roam/_nameCard.ts), his dog's name (once he has one: roam/_dogCard.ts),
  *   the golden figures he has found ("n / 15": a tap opens their list of clues,
@@ -163,7 +164,7 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       ${page('moves', `<span class="rxm-note" data-w="rOnFootOnly"></span>
         <div class="rxm-grid">${MOVES.map(([code, key, w, how]) => chip(`data-move="${code}"${how ? ` data-how="${how}"` : ''}`, MOVE_ICONS[how ?? code], w, key)).join('')}${chip('data-act="dog" hidden', DOG_MENU_ICON, 'dogCall', '0')}${DOG_ORDERS.map((o) => chip(`data-act="dogorder" data-order="${o}" hidden`, DOG_ORDER_ICONS[o], ORDER_WORD[o], '', true)).join('')}</div>`)}
       ${page('look', '')}
-      ${page('bag', `<div class="rxm-grid">${chip('data-act="umbrella"', UMBRELLA_ICON, 'umbName', '8', true)}${chip('data-act="album"', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-act="calendar"', calendarSvg('rxm-icon'), 'whenButton', '9')}</div>`)}
+      ${page('bag', `<div class="rxm-grid">${chip('data-act="umbrella"', UMBRELLA_ICON, 'umbName', '8', true)}${chip('data-act="album"', ALBUM_ICON, 'rAlbum', 'V')}${chip('data-act="calendar"', calendarSvg('rxm-icon'), 'whenButton', '9')}${chip('data-act="kite" hidden', KITE_ICON, 'kiteFly', '-', true)}</div>`)}
       ${page('me', `<div class="rxm-grid">${chip('data-act="name"', NAME_ICON, 'nameMenu')}${chip('data-act="dogname" hidden', DOG_NAME_ICON, 'dogNameMenu')}${chip('data-act="gold" hidden', GOLD_ICON, 'rxmGold')}${chip('data-act="keys"', KEYS_ICON, 'rAllKeys', '?')}</div>`)}
     </div>`;
   const body = el.querySelector<HTMLElement>('.rxm-body')!;
@@ -180,6 +181,8 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
   const moves = [...pages.moves.querySelectorAll<HTMLButtonElement>('.rxm-b[data-move]')];
   /** The umbrella (8: roam/_umbrella.ts), lit while it is his choice. */
   const umbrella = own('umbrella');
+  /** His kite (−: roam/_kiteFly.ts), shown once he has one, lit while it is out; on foot only. */
+  const kite = own('kite');
   /** His dog's: what he tells it (Follow me, Stay here, Go home: the one it does now lit), shown once he has one. */
   const orderChips = [...pages.moves.querySelectorAll<HTMLButtonElement>('.rxm-b[data-act="dogorder"]')];
   /** His dog's: "Call the dog" (as 0), the orders and its name (roam/_dog.ts), shown once he has one. */
@@ -488,12 +491,15 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
         }
       const foot = d.onFoot();
       const [found, total] = MENU_HOOKS.goldCount();
-      const now = `${foot} ${MENU_HOOKS.umbrellaUp()} ${DOG_MENU.adopted()} ${DOG_MENU.order()} ${found}/${total} ${fallback ? `${LOOK_TOOLS.look()} ${LOOK_TOOLS.hat()} ${LOOK_TOOLS.face()}` : '-'}`;
+      const now = `${foot} ${MENU_HOOKS.umbrellaUp()} ${MENU_HOOKS.kiteHave()} ${MENU_HOOKS.kiteOut()} ${DOG_MENU.adopted()} ${DOG_MENU.order()} ${found}/${total} ${fallback ? `${LOOK_TOOLS.look()} ${LOOK_TOOLS.hat()} ${LOOK_TOOLS.face()}` : '-'}`;
       if (now === shown) return;
       shown = now;
       el.classList.toggle('is-busy', !foot);
       for (const b of moves) b.disabled = !foot;
       light(umbrella, MENU_HOOKS.umbrellaUp());
+      kite.hidden = !MENU_HOOKS.kiteHave();
+      kite.disabled = !foot;
+      light(kite, MENU_HOOKS.kiteOut());
       for (const b of dogChips) b.hidden = !DOG_MENU.adopted();
       for (const b of orderChips) light(b, b.dataset.order === DOG_MENU.order());
       gold.hidden = total <= 0;
@@ -528,6 +534,10 @@ export function createExplorerMenu(d: ExplorerMenuDeps): ExplorerMenu {
       // (what he tells his dog: done on the next step, with its toast; this shuts so it shows)
       DOG_MENU.tell(order as DogOrder);
       d.sound?.('select');
+      return api.toggle(false);
+    } else if (act === 'kite') {
+      // (as −: he flies it, or brings it in; this shuts so the flight shows)
+      d.press('Minus');
       return api.toggle(false);
     } else if (act === 'album' || act === 'calendar' || act === 'dog' || act === 'keys') {
       // (as V: the album opens · 9: the calendar of events · 0: his dog comes to him · ?: the list of keys, or of the
@@ -626,6 +636,8 @@ export const HAT_ICON = px(`<path fill="#e2b35c" d="M5 4h6v1h1v3H4V5h1z"/><path 
 /** His umbrella (roam/_umbrella.ts): a deep blue canopy on its ribs, the shaft and its curved handle. */
 const UMBRELLA_ICON = px(`<path fill="#3b5c9e" d="M6 2h4v1h2v1h1v1h1v1h1v2H1V6h1V5h1V4h1V3h2z"/><path fill="#5e82c8" d="M6 3h3v1H6zM4 4h2v1H4zM3 5h1v1H3z"/>
     <path fill="#d8dde3" d="M1 8h1v1H1zM5 8h1v1H5zM10 8h1v1h-1zM14 8h1v1h-1zM7 1h1v1H7z"/><path fill="currentColor" d="M7 8h1v5H7zM8 13h1v1H8zM9 14h1v1H9zM10 12h1v2h-1z"/>`);
+/** His kite (the tool bar's: the khleng ek's red diamond under its bow, its tails). */
+const KITE_ICON = px(`<path fill="#c8382a" d="M7 0h2v1H7zM6 1h4v1H6zM5 2h6v1H5zM4 3h8v1H4zM3 4h10v1H3zM2 5h12v1H2zM3 6h10v1H3zM4 7h8v1H4zM5 8h6v1H5zM6 9h4v1H6zM7 10h2v1H7z"/><path fill="#f2ead4" d="M2 5h1v1H2zM13 5h1v1h-1zM7 0h2v1H7z"/><path fill="#e8b43a" d="M7 4h2v1H7zM6 5h4v1H6zM7 6h2v1H7z"/><path fill="#3a5cc0" d="M7 8h2v1H7z"/><path fill="currentColor" d="M7 11h1v1H7zM8 12h1v1H8zM7 13h1v1H7zM8 14h1v1H8zM7 15h1v1H7z"/>`);
 /** The close button's cross. */
 const CLOSE_ICON = px(
   `<path fill="currentColor" d="M3 3h2v1h1v1h1v1h2V5h1V4h1V3h2v2h-1v1h-1v1h-1v2h1v1h1v1h1v2h-2v-1h-1v-1H9v-1H7v1H6v1H5v1H3v-2h1v-1h1V9h1V7H5V6H4V5H3z"/>`,

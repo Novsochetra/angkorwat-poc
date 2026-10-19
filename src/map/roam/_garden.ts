@@ -662,6 +662,10 @@ const BREAKERS = ['KeyJ', 'KeyL', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'Digit1', 'Dig
 registerAddon({
   id: 'garden',
   order: 45,
+  // (planting mode: "Dig here" is the E row's last line, nothing after it: _addons.ts)
+  get endsRow() {
+    return !!planting;
+  },
   get holding() {
     return GardenWork.active;
   },
