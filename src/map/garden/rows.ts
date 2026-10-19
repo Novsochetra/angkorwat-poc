@@ -13,38 +13,44 @@ import { isTree, KINDS, type PlantKindId } from './kinds';
  *   a hand's gap, rounded up to the half metre: corn 1, eggplant 1.5, sugarcane
  *   1.5, pumpkin 2; papaya 1.5, banana 2, guava 2.5, coconut 3, sugar palm 3,
  *   mango 3.5, jackfruit 3.5, durian 4. Two kinds side by side keep the larger.
- * - **On along a row** (`row`): where two plants stand a spacing apart, the
- *   ghost ahead of the row's end on its line (within `LINE` of it) goes on it,
- *   a whole number of spacings on: the row's own line, whatever its angle (an old
- *   crooked row goes on straight). It wins over every other spot (`ROW_FIRST`):
- *   going on straight is the default.
- * - **In line with a plant** (`line`): near his plants the ghost steps on a grid
- *   of the spacing laid from the nearest of them along the house's lines — in
- *   line with it, a spacing or more along, beside it a spacing over (a new row
- *   started beside the last one); its guide runs along the house's line he faces.
- * - **Else his land's grid** (`grid`): the half metre from its corner
- *   (build/plot.ts `PLOT_BOX`), the one build mode's ghost steps on (AWP-30), so
- *   the garden's rows line up with his fences too.
- * A spot the garden's rules refuse is skipped for the next best; the spot it held
- * a moment ago is kept while it still suits (`HELD`: no flicker as he sways).
- * - **The guide**: the row's way, its first plant and its next spots (as far as
- *   they can be planted), for the ghost's faint dashes and marks.
+ * - **His way** (`rowAxis`, roam/_garden.ts): the house's line nearest the way
+ *   he last walked (not the way a dig turned him to face the plant), so a row
+ *   goes along the house's lines however the camera stood. The ghost is looked
+ *   for straight ahead of his feet along it.
+ * - **The line** the ghost goes on, a line along his way:
+ *   - a **row** of his: two or more plants a whole number of spacings apart on
+ *     a line within 30° of his way (its own angle: an old crooked row goes on
+ *     straight; a gap does not break it);
+ *   - else the line through one of his plants along his way;
+ *   - the nearest of them within half a spacing across (a row first), and the
+ *     line it was on a moment ago while he stays less than a whole spacing
+ *     across it (`RowHold`): it changes rows only on purpose;
+ *   - else a line beside the nearest plant's, a whole number of spacings over
+ *     (a new row beside the last, its spots in line with the old row's);
+ *   - else his land's half-metre grid (build/plot.ts `PLOT_BOX`, build mode's,
+ *     AWP-30: rows line up with his fences too).
+ * - **The spot** on that line, at whole spacings from its plant: the first one
+ *   free (the garden's rules, `ok`) from the row's first gap up to the ghost (gaps
+ *   filled first, in order), else the next free ones on along the line (a refused
+ *   spot — a land step, a fence, the cart — is stepped over, never left by).
+ * - **The guide** (`rowNext`): the line's first plant and the next free spots
+ *   on along it — the ones the next digs take.
  */
 
 /** The land's grid (m), as build mode's (roam/_build.ts `GRID`). */
 export const ROW_GRID = 0.5;
-/** A plant's grid reaches this far round it (m: a few spacings, and a margin). */
-const REACH = { per: 4, more: 2 };
-/** On along a row: the ghost within this of the row's line (m: at least, and per metre of spacing), ahead of its end. */
-const LINE = { least: 0.8, per: 0.45 };
-/** The row's continuation wins by this much (m); the spot held a moment ago by this; a plant's grid by its plant's nearness. */
-const ROW_FIRST = 0.8;
-const HELD = 0.3;
-const NEAR_FIRST = 0.08;
-/** On along a row, the next spot is kept until the ghost is this share of a spacing past the middle to the one after. */
-const NEXT_FIRST = 0.3;
-/** Two plants make a row when they stand a spacing apart, give or take this share of it. */
-const ROW_TOL = 0.3;
+/** Two plants make a row when they stand a whole number of spacings apart (1‥`m`), within `tol` m, at most `deg` off his way. */
+const ROW = { m: 8, tol: 0.12, deg: 30 };
+/** A line is taken within this share of a spacing across; one held is kept within this share. */
+const TAKE = 0.5;
+const KEEP = 1.0;
+/** A row is taken before a lone plant's line by this share of a spacing. */
+const ROW_FIRST = 0.25;
+/** Gaps behind the ghost are filled first: this many spacings back at most, and this far (m). */
+const BACK = { steps: 2, m: 3.2 };
+/** A refused spot is stepped over: on along the line this far at most (m), and at least this many spots. */
+const ON = { m: 4, least: 2 };
+const onSpots = (s: number): number => Math.max(ON.least, Math.floor(ON.m / s + 1e-6));
 /** Next spots the guide shows at most. */
 export const GUIDE_NEXT = 3;
 
@@ -67,26 +73,55 @@ export function rowStep(kind: PlantKindId): number {
 /** A spot (x or z, m) on his land's grid. */
 export const onRowGrid = (v: number, o: number): number => o + Math.round((v - o) / ROW_GRID) * ROW_GRID;
 
+/** The house's line nearest a way (rad, as `body.yaw`), held on the one it had (`held`) until the way is `hold` rad past the middle. */
+export function rowAxis(yaw: number, held: number | null, hold = (5 * Math.PI) / 180): number {
+  const q = Math.PI / 2;
+  if (held !== null) {
+    const d = Math.atan2(Math.sin(yaw - held), Math.cos(yaw - held));
+    if (Math.abs(d) < q / 2 + hold) return held;
+  }
+  const a = HOME_AT.facing + Math.round((yaw - HOME_AT.facing) / q) * q;
+  return Math.atan2(Math.sin(a), Math.cos(a));
+}
+
+/** A plant's turn on the house's lines: `yaw` (rad, as `body.yaw`) to the nearest quarter turn from the house's frame. */
+export const rowYaw = (yaw: number): number => rowAxis(yaw, null);
+
+/** The line the ghost was on a moment ago (kept while he stays less than a spacing across it). */
+export interface RowHold {
+  on: boolean;
+  ox: number;
+  oz: number;
+  dx: number;
+  dz: number;
+  step: number;
+}
+export const newRowHold = (): RowHold => ({ on: false, ox: 0, oz: 0, dx: 0, dz: 1, step: 1 });
+
 /** Where `snapRow` put the ghost. */
 export interface RowSpot {
   x: number;
   z: number;
-  /** `row` on along a row, `line` on a plant's grid, `grid` his land's grid. */
+  /** `row` on a row of his, `line` on a plant's line (or beside one), `grid` his land's grid. */
   how: 'row' | 'line' | 'grid';
-  /** The row's way (unit x, z) and spacing (m). */
+  /** The line: a point on it (`ox`, `oz`: a plant of it, or the grid's spot), its way (unit, along his), its spacing (m). */
+  ox: number;
+  oz: number;
   dx: number;
   dz: number;
   step: number;
-  /** The row's first plant (the guide's dashes start there), or none. */
+  /** The spot's number on the line (spacings from `ox`, `oz`). */
+  k: number;
+  /** The line's first plant (the guide's dashes start there), or none. */
   hasFrom: boolean;
   fx: number;
   fz: number;
-  /** The next spots on (x, z pairs) that can be planted, and how many. */
+  /** The next free spots on (x, z pairs), and how many. */
   readonly next: Float64Array;
   nNext: number;
 }
 
-export const newRowSpot = (): RowSpot => ({ x: 0, z: 0, how: 'grid', dx: 0, dz: 1, step: 1, hasFrom: false, fx: 0, fz: 0, next: new Float64Array(GUIDE_NEXT * 2), nNext: 0 });
+export const newRowSpot = (): RowSpot => ({ x: 0, z: 0, how: 'grid', ox: 0, oz: 0, dx: 0, dz: 1, step: 1, k: 0, hasFrom: false, fx: 0, fz: 0, next: new Float64Array(GUIDE_NEXT * 2), nNext: 0 });
 
 /** What a garden plant is to the rows. */
 export interface RowPlant {
@@ -96,210 +131,183 @@ export interface RowPlant {
   readonly at: 'home' | 'pagoda';
 }
 
-/** The house's lines (unit x, z): its front's way (`U`) and its side's (`V`). */
-const U = [Math.sin(HOME_AT.facing), Math.cos(HOME_AT.facing)] as const;
-const V = [Math.cos(HOME_AT.facing), -Math.sin(HOME_AT.facing)] as const;
-/** The four ways on the house's lines. */
-const AXES: readonly (readonly [number, number])[] = [U, [-U[0], -U[1]], V, [-V[0], -V[1]]];
-
-/** The house's line nearest a way (`yaw` as `body.yaw`: x sin, z cos), into `out` (unit x, z). */
-function axisNear(yaw: number, out: { dx: number; dz: number }): void {
-  const x = Math.sin(yaw);
-  const z = Math.cos(yaw);
-  let best = -2;
-  for (const [ax, az] of AXES) {
-    const d = ax * x + az * z;
-    if (d > best) {
-      best = d;
-      out.dx = ax;
-      out.dz = az;
-    }
-  }
-}
-
-/** A plant's turn on the house's lines: `yaw` (rad, as `body.yaw`) to the nearest quarter turn from the house's frame. */
-export function rowYaw(yaw: number): number {
-  const q = Math.PI / 2;
-  const r = HOME_AT.facing + Math.round((yaw - HOME_AT.facing) / q) * q;
-  return Math.atan2(Math.sin(r), Math.cos(r));
-}
-
-/** A candidate spot: where, its score, how, its way, the plant it is laid from (`fx`, `fz`) and whether in line with it. */
-interface Cand {
-  x: number;
-  z: number;
-  score: number;
-  how: 'row' | 'line';
+/** A candidate line. */
+interface Line {
+  ox: number;
+  oz: number;
   dx: number;
   dz: number;
-  step: number;
-  fx: number;
-  fz: number;
-  from: boolean;
+  s: number;
+  row: boolean;
+  /** How far the ghost's aim is across it (m, signed), and its score. */
+  across: number;
+  score: number;
 }
-const POOL: Cand[] = [];
-let nCand = 0;
-function cand(x: number, z: number, score: number, how: 'row' | 'line', step: number, fx: number, fz: number): Cand {
-  if (nCand === POOL.length) POOL.push({ x: 0, z: 0, score: 0, how: 'line', dx: 0, dz: 0, step: 0, fx: 0, fz: 0, from: false });
-  const c = POOL[nCand++];
-  c.x = x;
-  c.z = z;
-  c.score = score;
-  c.how = how;
-  c.step = step;
-  c.fx = fx;
-  c.fz = fz;
-  c.dx = 0;
-  c.dz = 0;
-  c.from = false;
-  return c;
-}
-
-/** The plant (home) that stands nearest (x, z) within `r` m, or null. */
-function plantAt(plants: readonly RowPlant[], x: number, z: number, r: number): RowPlant | null {
-  let best: RowPlant | null = null;
-  let bd = r * r;
-  for (const p of plants) {
-    if (p.at !== 'home') continue;
-    const d = (p.x - x) ** 2 + (p.z - z) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = p;
-    }
+const POOL: Line[] = [];
+let nLines = 0;
+function line(ox: number, oz: number, dx: number, dz: number, s: number, row: boolean, rx: number, rz: number, feet?: readonly [number, number]): Line {
+  if (nLines === POOL.length) POOL.push({ ox: 0, oz: 0, dx: 0, dz: 1, s: 1, row: false, across: 0, score: 0 });
+  const l = POOL[nLines++];
+  l.ox = ox;
+  l.oz = oz;
+  l.dx = dx;
+  l.dz = dz;
+  l.s = s;
+  l.row = row;
+  l.across = (rx - ox) * dz - (rz - oz) * dx;
+  // (a row at its own angle: he is on it when his feet are, though the ghost ahead along the house's line is not)
+  if (feet) {
+    const af = (feet[0] - ox) * dz - (feet[1] - oz) * dx;
+    if (Math.abs(af) < Math.abs(l.across)) l.across = af;
   }
-  return best;
+  l.score = Math.abs(l.across) - (row ? ROW_FIRST * s : 0);
+  return l;
 }
 
-const _ax = { dx: 0, dz: 1 };
+const COS_ROW = Math.cos((ROW.deg * Math.PI) / 180);
+/** The same line (its way within ~2°, its point on it within 5 cm). */
+const sameLine = (a: { ox: number; oz: number; dx: number; dz: number }, b: { ox: number; oz: number; dx: number; dz: number }): boolean =>
+  Math.abs(a.dx * b.dz - a.dz * b.dx) < 0.035 && Math.abs((b.ox - a.ox) * a.dz - (b.oz - a.oz) * a.dx) < 0.05;
 
 /**
- * Where the ghost of `kind` goes with Rows on (into `out`): `(rawX, rawZ)` where his feet and facing put it, `yaw` the
- * way he faces (as `body.yaw`), `plants` the garden, `ok(x, z)` the garden's rules there (roam/_gardenSpots.ts
- * `canPlant` is null), `held` the spot it took last step (or null).
+ * Where the ghost of `kind` goes with Rows on (into `out`): his feet at (`px`, `pz`), the ghost `ahead` m before them
+ * along `axis` (rad, as `body.yaw`: a house's line, `rowAxis`), `plants` the garden, `ok(x, z)` the garden's rules
+ * there (roam/_gardenSpots.ts `canPlant` is null), `hold` the line it was on (updated).
  */
 export function snapRow(
   kind: PlantKindId,
-  rawX: number,
-  rawZ: number,
-  yaw: number,
+  px: number,
+  pz: number,
+  ahead: number,
+  axis: number,
   plants: readonly RowPlant[],
   ok: (x: number, z: number) => boolean,
-  held: { x: number; z: number } | null,
+  hold: RowHold,
   out: RowSpot,
 ): RowSpot {
   const own = rowStep(kind);
-  axisNear(yaw, _ax);
-  nCand = 0;
+  const ax = Math.sin(axis);
+  const az = Math.cos(axis);
+  const rx = px + ax * ahead;
+  const rz = pz + az * ahead;
+  const feet = [px, pz] as const;
+  nLines = 0;
   for (const p of plants) {
     if (p.at !== 'home') continue;
-    const s = Math.max(own, rowStep(p.kind));
-    const dp = Math.hypot(p.x - rawX, p.z - rawZ);
-    if (dp > REACH.per * s + REACH.more) continue;
-    // On along a row: a plant a spacing behind it (their own spacing), the ghost ahead of it near the row's line.
+    const sp = rowStep(p.kind);
+    const s = Math.max(own, sp);
+    if (Math.hypot(p.x - rx, p.z - rz) > 4 * s + ahead + 2) continue;
+    // Its line along his way.
+    line(p.x, p.z, ax, az, s, false, rx, rz);
+    // A row of his through it: another plant a whole number of spacings away, on a line near his way.
     for (const q of plants) {
       if (q === p || q.at !== 'home') continue;
-      const sq = Math.max(rowStep(p.kind), rowStep(q.kind));
+      const sq = Math.max(sp, rowStep(q.kind));
       const ex = p.x - q.x;
       const ez = p.z - q.z;
       const d = Math.hypot(ex, ez);
-      if (Math.abs(d - sq) > sq * ROW_TOL) continue;
-      const ux = ex / d;
-      const uz = ez / d;
-      const along = (rawX - p.x) * ux + (rawZ - p.z) * uz;
-      const across = -(rawX - p.x) * uz + (rawZ - p.z) * ux;
-      if (along < s * 0.4 || Math.abs(across) > LINE.least + LINE.per * s) continue;
-      // (the next free spot first: a spot further on only once the ghost is well past it)
-      const k = Math.max(1, Math.round(along / s - NEXT_FIRST));
-      const c = cand(p.x + ux * s * k, p.z + uz * s * k, 0, 'row', s, q.x, q.z);
-      c.score = Math.hypot(c.x - rawX, c.z - rawZ) - ROW_FIRST;
-      c.dx = ux;
-      c.dz = uz;
-      c.from = true;
-      // (the row's first plant: back along it, plant by plant)
-      for (let i = 0; i < 40; i++) {
-        const b = plantAt(plants, c.fx - ux * sq, c.fz - uz * sq, sq * ROW_TOL);
-        if (!b) break;
-        c.fx = b.x;
-        c.fz = b.z;
+      const m = Math.round(d / sq);
+      if (m < 1 || m > ROW.m || Math.abs(d - m * sq) > ROW.tol) continue;
+      let ux = ex / d;
+      let uz = ez / d;
+      const c = ux * ax + uz * az;
+      if (Math.abs(c) < COS_ROW) continue;
+      if (c < 0) {
+        ux = -ux;
+        uz = -uz;
       }
+      line(p.x, p.z, ux, uz, Math.max(own, sq), true, rx, rz, feet);
     }
-    // Its grid (the spacing, along the house's lines): the four corners round the ghost, a little for the nearer plant.
-    const a = (rawX - p.x) * U[0] + (rawZ - p.z) * U[1];
-    const b = (rawX - p.x) * V[0] + (rawZ - p.z) * V[1];
-    const a0 = Math.floor(a / s);
-    const b0 = Math.floor(b / s);
-    for (let i = 0; i < 2; i++)
-      for (let j = 0; j < 2; j++) {
-        const ka = a0 + i;
-        const kb = b0 + j;
-        if (!ka && !kb) continue;
-        const x = p.x + (U[0] * ka + V[0] * kb) * s;
-        const z = p.z + (U[1] * ka + V[1] * kb) * s;
-        const c = cand(x, z, 0, 'line', s, p.x, p.z);
-        c.score = Math.hypot(x - rawX, z - rawZ) + NEAR_FIRST * dp;
-        // (its way: the house's line he faces along; the guide's dashes from its plant when in line with it that way)
-        c.dx = _ax.dx;
-        c.dz = _ax.dz;
-        const l = Math.hypot(x - p.x, z - p.z);
-        c.from = ((x - p.x) * _ax.dx + (z - p.z) * _ax.dz) / l > 0.999;
-      }
   }
-  // The spot held a moment ago first while it suits; then the best that the garden's rules let go there.
-  if (held)
-    for (let i = 0; i < nCand; i++) {
-      const c = POOL[i];
-      if (Math.abs(c.x - held.x) < 0.01 && Math.abs(c.z - held.z) < 0.01) c.score -= HELD;
+  // The line held a moment ago, while he stays less than a spacing across it (a row through it first).
+  let chosen: Line | null = null;
+  if (hold.on && hold.dx * ax + hold.dz * az > COS_ROW) {
+    const across = Math.min(Math.abs((rx - hold.ox) * hold.dz - (rz - hold.oz) * hold.dx), Math.abs((px - hold.ox) * hold.dz - (pz - hold.oz) * hold.dx));
+    if (across < KEEP * hold.step) {
+      for (let i = 0; i < nLines; i++) if (sameLine(hold, POOL[i]) && (!chosen || (POOL[i].row && !chosen.row))) chosen = POOL[i];
+      chosen ??= line(hold.ox, hold.oz, hold.dx, hold.dz, hold.step, false, rx, rz);
     }
-  let chosen: Cand | null = null;
-  for (let tries = 0; tries < nCand; tries++) {
-    let best: Cand | null = null;
-    for (let i = 0; i < nCand; i++) {
-      const c = POOL[i];
-      if (c.score !== Infinity && (!best || c.score < best.score)) best = c;
+  }
+  // Else the nearest within half a spacing (a row first).
+  if (!chosen)
+    for (let i = 0; i < nLines; i++) {
+      const l = POOL[i];
+      if (l.score < TAKE * l.s && (!chosen || l.score < chosen.score)) chosen = l;
     }
-    if (!best) break;
-    if (ok(best.x, best.z)) {
-      chosen = best;
+  // Else beside the nearest plant's line, a whole number of spacings over (its point moved that many spacings across).
+  if (!chosen) {
+    let near: Line | null = null;
+    for (let i = 0; i < nLines; i++) if (!POOL[i].row && (!near || Math.abs(POOL[i].across) < Math.abs(near.across))) near = POOL[i];
+    if (near) {
+      const n = Math.round(near.across / near.s);
+      chosen = line(near.ox + near.dz * n * near.s, near.oz - near.dx * n * near.s, near.dx, near.dz, near.s, false, rx, rz);
+    }
+  }
+  // Else his land's grid.
+  const grid = !chosen;
+  chosen ??= line(onRowGrid(rx, PLOT_BOX.x0), onRowGrid(rz, PLOT_BOX.z0), ax, az, own, false, rx, rz);
+  const L = chosen;
+  // The plants on it: the first (along its way).
+  let first = Infinity;
+  let fx = 0;
+  let fz = 0;
+  let onIt = 0;
+  for (const p of plants) {
+    if (p.at !== 'home') continue;
+    if (Math.abs((p.x - L.ox) * L.dz - (p.z - L.oz) * L.dx) > 0.05) continue;
+    onIt++;
+    const tp = (p.x - L.ox) * L.dx + (p.z - L.oz) * L.dz;
+    if (tp < first) {
+      first = tp;
+      fx = p.x;
+      fz = p.z;
+    }
+  }
+  // The ghost's place along it (spacings from its point); the first free spot from the row's first gap up to it, else on.
+  const t = ((rx - L.ox) * L.dx + (rz - L.oz) * L.dz) / L.s;
+  const xAt = (k: number) => L.ox + L.dx * L.s * k;
+  const zAt = (k: number) => L.oz + L.dz * L.s * k;
+  const kHi = Math.round(t);
+  let kLo = kHi;
+  if (first !== Infinity) kLo = Math.min(kHi, Math.max(Math.round(first / L.s) + 1, Math.ceil(t - Math.min(BACK.steps, BACK.m / L.s) - 1e-6)));
+  let k = Number.NaN;
+  for (let i = kLo; i <= kHi + onSpots(L.s); i++)
+    if (ok(xAt(i), zAt(i))) {
+      k = i;
       break;
     }
-    // (refused there: every candidate at that spot is out)
-    const bx = best.x;
-    const bz = best.z;
-    for (let i = 0; i < nCand; i++) {
-      const c = POOL[i];
-      if (Math.abs(c.x - bx) < 0.01 && Math.abs(c.z - bz) < 0.01) c.score = Infinity;
-    }
-  }
-  if (chosen) {
-    out.x = chosen.x;
-    out.z = chosen.z;
-    out.how = chosen.how;
-    out.step = chosen.step;
-    out.hasFrom = chosen.from;
-    out.fx = chosen.fx;
-    out.fz = chosen.fz;
-    out.dx = chosen.dx;
-    out.dz = chosen.dz;
-  } else {
-    // His land's grid; the guide along the house's line nearest the way he faces.
-    out.x = onRowGrid(rawX, PLOT_BOX.x0);
-    out.z = onRowGrid(rawZ, PLOT_BOX.z0);
-    out.how = 'grid';
-    out.dx = _ax.dx;
-    out.dz = _ax.dz;
-    out.step = own;
-    out.hasFrom = false;
-  }
+  if (Number.isNaN(k)) k = kHi;
+  out.x = xAt(k);
+  out.z = zAt(k);
+  out.how = grid ? 'grid' : L.row || onIt >= 2 ? 'row' : 'line';
+  out.ox = L.ox;
+  out.oz = L.oz;
+  out.dx = L.dx;
+  out.dz = L.dz;
+  out.step = L.s;
+  out.k = k;
+  out.hasFrom = first !== Infinity;
+  out.fx = fx;
+  out.fz = fz;
+  hold.on = true;
+  hold.ox = L.ox;
+  hold.oz = L.oz;
+  hold.dx = L.dx;
+  hold.dz = L.dz;
+  hold.step = L.s;
   return out;
 }
 
-/** The guide's next spots on from `spot` along its way (into `spot.next`), as far as they can be planted (`ok`). */
+/** The guide's next spots (into `spot.next`): the next free ones on along its line after the ghost's — the next digs'. */
 export function rowNext(spot: RowSpot, ok: (x: number, z: number) => boolean): void {
   spot.nNext = 0;
-  for (let k = 1; k <= GUIDE_NEXT; k++) {
-    const x = spot.x + spot.dx * spot.step * k;
-    const z = spot.z + spot.dz * spot.step * k;
-    if (!ok(x, z)) break;
+  // (a refused spot stepped over as the next dig will: at most `ON` on past the last free one)
+  let last = spot.k;
+  for (let k = spot.k + 1; k <= last + 1 + onSpots(spot.step) && spot.nNext < GUIDE_NEXT; k++) {
+    const x = spot.ox + spot.dx * spot.step * k;
+    const z = spot.oz + spot.dz * spot.step * k;
+    if (!ok(x, z)) continue;
+    last = k;
     spot.next[spot.nNext * 2] = x;
     spot.next[spot.nNext * 2 + 1] = z;
     spot.nNext++;

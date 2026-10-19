@@ -2778,20 +2778,28 @@ chilli, basil, jasmine).
   spacing: its room, and for a crop its bed with a gap, rounded up to 0.5 m: corn 1,
   eggplant and sugarcane 1.5, pumpkin 2, papaya 1.5, banana 2, guava 2.5, coconut and
   sugar palm 3, mango and jackfruit 3.5, durian 4. Two kinds side by side keep the
-  larger. The ghost goes:
-  - on along a row, ahead of a row's end near its line, at the row's own angle (an old
-    crooked row goes on straight), the next free spot first (`row`). This wins over
-    every other spot;
-  - else on the grid of that spacing laid from his nearest plant along the house's
-    lines (`line`: in line with it, or a row beside it);
-  - else on his land's half-metre grid from its corner, build mode's (`grid`).
-  A spot the rules refuse is skipped, and the spot held a moment ago is kept while it
-  suits. With Rows on the plant turns on the house's lines too. A faint guide lies on
-  the ground: pale dashes along the row from its first plant, and square marks on the
-  next three spots that can be planted. Rows off: the ghost goes where his feet and
+  larger. His way is the house's line nearest the way he last walked (a dig that turns
+  him to face the plant does not change it), and the ghost is looked for straight ahead
+  of his feet along it, on a line:
+  - a row of his: two or more plants a whole number of spacings apart (gaps count) on
+    a line within 30° of his way, at its own angle (an old crooked row goes on
+    straight); else the line through one of his plants along his way; the nearest
+    within half a spacing, a row first, and the line it was on is kept while he
+    stays less than a whole spacing across it (`line` / `row`);
+  - else beside the nearest plant's line, a whole number of spacings over, its spots
+    in step with that row (a new row beside the last);
+  - else his land's half-metre grid from its corner, build mode's (`grid`).
+  On that line the spot is the first free one from the row's first gap up to the
+  ghost (gaps filled first, in order), else the next free ones on along it, up to
+  4 m on (a land step, a fence, the cart are stepped over; past that the ghost
+  stays on the line, grey, with the reason). With Rows on the plant turns on the
+  house's lines too. A faint guide lies on the ground: pale dashes along the row from
+  its first plant, and square marks on the next three free spots on along it (the
+  ones the next digs take). Rows off: the ghost goes where his feet and
   facing put it (a natural look). Shots: `gardenrows=0|1` (shots and the dev server only).
   `__garden.state().planting` gives `rows`, `how` (`row|line|grid|free`), `step`, `next`,
-  `guide`. Pad check: `npm run padtest -- only=load,garden`.
+  `guide`. Pad check: `npm run padtest -- only=load,garden` (from 120°: two rows and a
+  refused spot, every plant on its row's line).
 - **URL values are for checks only** (AWP-32): every garden value (`garden=`, `seeds=`,
   `basket=`, `can=`, `jar=`, `gardenclock=`, `gardenring=` / `gardenplant=`, `gardenkind=`,
   `gardenrows=`, `gardenact=`, `gardencard=`, `gardeneat=`, `gardengift=`, `gardenshop…=`,

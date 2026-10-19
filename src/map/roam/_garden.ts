@@ -5,7 +5,7 @@ import type { GardenAction } from '../garden/actions';
 import { GARDEN_KINDS, GROWN, isTree, KINDS, stageOf, type PlantKindId } from '../garden/kinds';
 import { CAN_MAX, GARDEN, JAR_MAX, MAX_CROPS, MAX_TREES, ripeNow, thirsty, type Plant } from '../garden/state';
 import { createGardenView, type GardenView } from '../garden/view';
-import { newRowSpot, rowNext, rowYaw, snapRow } from '../garden/rows';
+import { newRowHold, newRowSpot, rowAxis, rowNext, snapRow } from '../garden/rows';
 import { progress } from '../progress';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
@@ -96,8 +96,15 @@ const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as SpotReason | null,
  */
 let rows: boolean = progress.get<boolean>('garden.rows', true);
 const rowSpot = newRowSpot();
-/** The spot the rows held last step (kept a moment as he sways), or none. */
-const rowHeld = { x: 0, z: 0, on: false };
+/** The line the rows held last step (kept while he stays less than a spacing across it). */
+const rowHeld = newRowHold();
+/**
+ * His way for the rows (rad, as `body.yaw`: a house's line, garden/rows.ts `rowAxis`): from the way he faces as the
+ * mode opens and as he walks, never from a dig's turn to face the plant (he would go off on a diagonal); null: not yet.
+ */
+let rowWay: number | null = null;
+/** He walks this step (the move's push, planting mode on foot). */
+let walking = false;
 /**
  * Planting mode's camera: the follow camera looks down more and stands a little further back (eased in as the mode
  * starts, out as it ends), so the ghost on the ground before him is in view past his hat; the player's drag or wheel
@@ -132,6 +139,7 @@ function steerStraight(ctx: RoamCtx): void {
   walkYaw ??= cam.yaw;
   // (the player's own turn turns the walk too: walker.ts adds it to the camera this step)
   walkYaw += i.lookYaw;
+  walking = Math.hypot(i.move.x, i.move.y) > 0.15;
   const off = cam.yaw + i.lookYaw - walkYaw;
   camTurned = Math.atan2(Math.sin(off), Math.cos(off));
   if (!camTurned) return;
@@ -497,13 +505,15 @@ function plantingNow(ctx: RoamCtx): void {
   // (the plant faces him)
   spot.yaw = b.yaw + Math.PI;
   const under = atHomeHouse(b.pos.x, b.pos.z);
+  // (his way: the house's line he walks along, kept through a dig that turns him to the plant)
+  if (rowWay === null || walking) rowWay = rowAxis(b.yaw, rowWay);
   if (rows) {
     // In line with his plants, evenly spaced, or on his land's grid; turned on the house's lines (garden/rows.ts).
     const fits = (x: number, z: number) => canPlant(w, k, x, z) === null;
-    snapRow(k, rawX, rawZ, b.yaw, GARDEN.plants, fits, rowHeld.on ? rowHeld : null, rowSpot);
+    snapRow(k, b.pos.x, b.pos.z, ahead, rowWay, GARDEN.plants, fits, rowHeld, rowSpot);
     spot.x = rowSpot.x;
     spot.z = rowSpot.z;
-    spot.yaw = rowYaw(spot.yaw);
+    spot.yaw = rowAxis(rowWay + Math.PI, null);
   } else {
     spot.x = rawX;
     spot.z = rawZ;
@@ -511,9 +521,6 @@ function plantingNow(ctx: RoamCtx): void {
   const r = under ? 'house' : canPlant(w, k, spot.x, spot.z);
   spot.ok = !r;
   spot.reason = r;
-  rowHeld.on = rows && !r;
-  rowHeld.x = spot.x;
-  rowHeld.z = spot.z;
   // (the guide's next spots: only from a spot that can be planted)
   if (rows && !r) rowNext(rowSpot, (x, z) => canPlant(w, k, x, z) === null);
   else rowSpot.nNext = 0;
@@ -533,6 +540,7 @@ function enterPlanting(kind: PlantKindId): void {
     camTurned = 0;
     digYaw = null;
     rowHeld.on = false;
+    rowWay = null;
   }
   planting = kind;
   PLANTING.kind = kind;
