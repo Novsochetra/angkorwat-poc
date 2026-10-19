@@ -554,13 +554,13 @@ function exitPlanting(): void {
   giveFollowBack(lastCtx);
 }
 
-/** Rows on or off (G, the pad's ↑, the touch bar's button): kept, said in a toast. */
-function setRows(on: boolean, say = true): void {
+/** Rows on or off (G, the pad's ↑, the touch bar's button): kept (not a URL's or a check's), said in a toast. */
+function setRows(on: boolean, say = true, keep = say): void {
   rows = on;
   rowHeld.on = false;
   spot.step = -1;
-  // (a shot keeps nothing: progress.ts saves nothing in shots)
-  progress.set('garden.rows', on);
+  // (a shot keeps nothing anyway: progress.ts saves nothing in shots)
+  if (keep) progress.set('garden.rows', on);
   showTouchBar(!!planting);
   if (say) {
     env?.uiSound('select');
