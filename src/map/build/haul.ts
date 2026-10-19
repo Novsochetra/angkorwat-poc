@@ -90,7 +90,8 @@ export const CART_AT: CartPlace = saved ? { x: saved[0], z: saved[1], yaw: wrapY
 /** Keep where it stands now (by the house: nothing kept, it is the default). */
 export function saveCartAt(): void {
   const home = Math.hypot(CART_AT.x - CART_HOME.x, CART_AT.z - CART_HOME.z) < 0.05;
-  progress.set('haul.at', home ? null : [+CART_AT.x.toFixed(2), +CART_AT.z.toFixed(2), +wrapYaw(CART_AT.yaw).toFixed(3)]);
+  // (exactly where it stands, not rounded: a place at the edge of fitting, rounded, might not fit, and a reload would move it)
+  progress.set('haul.at', home ? null : [CART_AT.x, CART_AT.z, wrapYaw(CART_AT.yaw)]);
 }
 
 /** Put it back by his house (a saved place that is no good any more). */
