@@ -127,3 +127,6 @@ One line each time a ticket is sent back, so the next worker avoids it.
   hides the prompt line (AWP-30).
 - "Bigger" means bigger in total, not only in one place: measure the whole
   area before and after (AWP-31).
+- A list or menu that takes pad buttons while it shows must leave every roaming
+  action reachable on a pad (lights have no menu chip), and lists are tested at
+  their longest on a phone held sideways (AWP-33).
