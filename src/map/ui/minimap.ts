@@ -1670,6 +1670,8 @@ function injectStyle(): void {
     .mm.has-target .mm-cap-map { display: none; }
     .mm-cap-ramp { display: none; align-items: center; gap: calc(6 * var(--px)); margin-left: calc(14 * var(--px)); font-weight: 600; }
     body:not(.roam-touch) .mm[data-mode='walk']:not(.has-target) .mm-cap-ramp { display: inline-flex; }
+    /* (with the pad, R3 is the E list's pick while it shows, not the ramp: roam/_eChoices.ts \`body.e-list\`) */
+    body.pad-on.e-list:not(.roam-touch) .mm[data-mode='walk']:not(.has-target) .mm-cap-ramp { display: none; }
     body.roam-touch .mm-cap kbd { display: none; }
     .mm-tip { position: absolute; left: 0; top: 0; z-index: 2; transform: translate(-50%, -100%); padding: calc(3 * var(--px)) calc(8 * var(--px));
       font-size: calc(12 * var(--px)); font-weight: 700; color: var(--mu-ink); white-space: nowrap; background: var(--mu-panel-strong);

@@ -72,6 +72,16 @@ export const E_LIST = {
   pickId: null as string | null,
 };
 
+/**
+ * The list open or shut: `body.e-list` while it is (R3 is its pick then, not the nearest ramp: the pad's "R3 glider
+ * ramp" labels — the key help, the mini-map's caption — step aside while the pad is in use; hud.ts, ui/minimap.ts).
+ */
+function setOpen(on: boolean): void {
+  if (E_LIST.open === on) return;
+  E_LIST.open = on;
+  if (typeof document !== 'undefined') document.body.classList.toggle('e-list', on);
+}
+
 /** Is the line E would do now this add-on's (its id)? True also when its line is the only one. */
 export const ePicked = (addonId: string): boolean => E_LIST.pickId === `addon:${addonId}`;
 
@@ -152,7 +162,7 @@ export class ERow {
       if (E_LIST.tapped >= 0 && E_LIST.tapped < n) this.pick = E_LIST.tapped;
     } else this.pick = 0;
     E_LIST.tapped = -1;
-    E_LIST.open = n >= 2;
+    setOpen(n >= 2);
     // What E does: the picked choice; with none that has a key, the first line's offer (a closed stall's word).
     let use: EChoice | null = null;
     let k = 0;
@@ -173,7 +183,7 @@ export class ERow {
     this.lines.length = 0;
     this.set = '';
     this.pick = 0;
-    E_LIST.open = false;
+    setOpen(false);
     E_LIST.tapped = -1;
     E_LIST.pickId = null;
     if (checks) this.log(null);

@@ -470,7 +470,8 @@ function padHelp(mode: RoamMode): string {
         item(g('r2'), 'rRun'),
         item(g('south'), 'rJump'),
         item(g('west'), SCENES_OPEN ? 'rEnterFly' : 'rUseFly'),
-        item(g('r3'), 'rRamp'),
+        // (R3 is the E list's pick while it shows: this line steps aside then, `body.e-list`)
+        item(g('r3'), 'rRamp').replace('class="rh-k"', 'class="rh-k rh-k-ramp"'),
         look,
         item(g('r1') + g('l1'), 'rZoom'),
         // (↑ a light, ← the camera, → the selfie; ↓ greets)
@@ -802,6 +803,8 @@ function injectStyle(): void {
     body.roam-touch .rh-ch-keys { display: none; }
     body.roam-touch .rh-ch-tap { display: inline; }
     body.roam-touch .rh-ch-line { min-height: 40px; }
+    /* (the pad's R3 is the list's pick while it shows: not "glider ramp" then; the mini-map's caption too, ui/minimap.ts) */
+    body.pad-on.e-list .rh-k-ramp { display: none; }
     /* On touch: clear of the stick (lower left), the Use and Jump buttons (lower right) and the tool bar (the right edge
        upright, the top sideways); its words wrap instead of running under them. Upright: centred left of the bar, over
        the Use button. Sideways (a phone on its side): low, just right of the stick, so he stays in view in the middle. */
