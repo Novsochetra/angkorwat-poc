@@ -3620,7 +3620,9 @@ without its straw), the oxen `people/_ox.ts`.
   6 s with nothing moving, he nor the cart (held in a corner by the oxen), the rope slips and says why
   (`STILL_AFTER`). A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the
   cart's and the oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the
-  oxen's flank and a log pile). A way round may also go back along the places it last stood
+  oxen's flank and a log pile). He walks into the oxen from in front (facing them) 0.8 s, getting
+  nowhere: he wants to go that way, past them, and they look for a way round toward where he heads,
+  6 m on the way he faces (`INTO_AFTER`, `INTO_AHEAD`). A way round may also go back along the places it last stood
   at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
   it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A new
   way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the

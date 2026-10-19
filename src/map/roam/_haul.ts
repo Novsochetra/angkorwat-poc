@@ -100,6 +100,9 @@ const FRONT = 0.9;
  * way round (never a silent wait).
  */
 const TAUT_AFTER = 1.2;
+/** He walks into the oxen from in front this long (s), getting nowhere: they turn toward where he heads, this far on (m). */
+const INTO_AFTER = 0.8;
+const INTO_AHEAD = 6;
 /** No way round found: tried again after this long (s) while the rope is taut or he stands beside the oxen. */
 const RETRY_AFTER = 3;
 /** He pushes on but neither he nor the cart has moved for this long (s), held where he is: the rope slips (it says why). */
@@ -209,6 +212,8 @@ let stuckFor = 0;
 let taut = 0;
 /** His feet from the oxen's noses (m), last frame he led (for the state). */
 let ropeFar = 0;
+/** How long (s) he has walked into the oxen from in front, getting nowhere (`INTO_AFTER`). */
+let intoFor = 0;
 /** Where he stood when nothing last moved, and for how long (s): `STILL_AFTER`. */
 const stillAt = { x: 0, z: 0, cx: 0, cz: 0, cyaw: 0 };
 let stillFor = 0;
@@ -872,7 +877,7 @@ const PLAN_MS = 5;
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { t0: 0, failedAt: 0, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 } };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
@@ -1022,10 +1027,12 @@ function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, m
 }
 
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
-function planStart(ctx: RoamCtx): void {
+function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
   search.on = true;
-  search.him.x = ctx.body.pos.x;
-  search.him.z = ctx.body.pos.z;
+  search.him.x = to ? to.x : ctx.body.pos.x;
+  search.him.z = to ? to.z : ctx.body.pos.z;
+  search.from.x = ctx.body.pos.x;
+  search.from.z = ctx.body.pos.z;
   search.open.length = 0;
   search.seen.clear();
   search.n = 0;
@@ -1157,7 +1164,7 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
     }
     planStart(ctx);
     search.strict = fruitless > 0;
-  } else if (Math.hypot(p.x - search.him.x, p.z - search.him.z) > 3) planStart(ctx);
+  } else if (Math.hypot(p.x - search.from.x, p.z - search.from.z) > 3) planStart(ctx);
   planStep(ctx);
   return search.on || walkPlan.steps.length > 0;
 }
@@ -1291,6 +1298,16 @@ function lead(ctx: RoamCtx, dt: number): void {
   // walked by the oxen, toward the free heading nearest his way, either way round; then the way goes on from there)
   turning = Math.max(0, turning - dt);
   // (blocked: the way stopped at something, or the cart cannot roll on along a way that goes on — a corner too tight)
+  // (he walks into the oxen from in front, getting nowhere: he wants to go that way, past them — they look for a way
+  // round toward where he heads, `INTO_AHEAD` m on from him the way he faces)
+  const b = ctx.body;
+  intoFor = !walkPlan.steps.length && !search.on && ds <= 1e-4 && Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5 && Math.hypot(b.vel.x, b.vel.z) < 0.4 && atHeels(CART_AT, b.pos.x, b.pos.z) && Math.cos(b.yaw - P.yaw) < -0.3 ? intoFor + dt : 0;
+  if (intoFor > INTO_AFTER) {
+    intoFor = 0;
+    planStart(ctx, { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD });
+    search.strict = false;
+    console.info(`[haul] he walks into the oxen: they look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})`);
+  }
   // (blocked at his heels — the yoke within `HEEL` of his feet, he in front of the oxen — it waits; beside or behind
   // them (he turned back the way he came) the oxen bring it round; and the rope taut a while with the cart standing,
   // blocked or not, they look for a way round too: never a silent wait)
