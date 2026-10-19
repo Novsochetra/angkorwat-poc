@@ -714,7 +714,15 @@ const steps = [
       await until(() => window.__build?.state().card, null, 3000, `□ on ${pick} opens the build card`);
       await tap(page, 'east');
       await sleep(400);
-      return `${a.e.lines.map((l) => l.id).join(' / ')}: R3 → ${b.e.pick} → ${c.e.pick} (no ramp), ↑ light ${t0} → ${t1}, ↓ ${g}, pick kept; □ on ${pick}: the build card`;
+      // (no list: R3 heads for the nearest ramp again, the mini-map's banner says so)
+      const s0 = await openSpot();
+      await placeAt('walk', `${s0.x},${s0.z}`);
+      await wake();
+      await sleep(400);
+      if (await ev(() => window.__echoices?.open)) throw new Error('a list at the open spot');
+      await tap(page, 'r3');
+      await until(() => document.body.classList.contains('mm-toast-on'), null, 3000, 'R3 with no list heads for the nearest ramp');
+      return `${a.e.lines.map((l) => l.id).join(' / ')}: R3 → ${b.e.pick} → ${c.e.pick} (no ramp), ↑ light ${t0} → ${t1}, ↓ ${g}, pick kept; □ on ${pick}: the build card; no list: R3 the nearest ramp`;
     },
   },
   {
