@@ -100,6 +100,10 @@ const FRONT = 0.9;
  * way round (never a silent wait).
  */
 const TAUT_AFTER = 1.2;
+/** No way round found: tried again after this long (s) while the rope is taut or he stands beside the oxen. */
+const RETRY_AFTER = 3;
+/** He pushes on but neither he nor the cart has moved for this long (s), held where he is: the rope slips (it says why). */
+const STILL_AFTER = 6;
 /** A way round made near him ends with him well in front (rad): one plan brings the oxen round, not a nudge at a time. */
 const FRONT_GOAL = 0.45;
 /** His hand farther than this from the ox's nose (m): he lets go. */
@@ -205,6 +209,9 @@ let stuckFor = 0;
 let taut = 0;
 /** His feet from the oxen's noses (m), last frame he led (for the state). */
 let ropeFar = 0;
+/** Where he stood when nothing last moved, and for how long (s): `STILL_AFTER`. */
+const stillAt = { x: 0, z: 0 };
+let stillFor = 0;
 /** The rope let out (m): `ROPE_HOLD`, more while there is no way round for where he stands. */
 let slack = ROPE_HOLD;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
@@ -714,6 +721,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   slack = ROPE_HOLD;
   taut = 0;
   stuckFor = 0;
+  stillFor = 0;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
@@ -864,7 +872,7 @@ const PLAN_MS = 5;
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { t0: 0, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+const search = { t0: 0, failedAt: 0, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 } };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
@@ -1049,6 +1057,7 @@ function planStep(ctx: RoamCtx): boolean {
     search.on = false;
     search.failedFor.x = search.him.x;
     search.failedFor.z = search.him.z;
+    search.failedAt = performance.now();
     console.info(`[haul] no way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): ${search.n} places looked at in ${((performance.now() - search.t0) / 1000).toFixed(1)} s`);
   }
   return false;
@@ -1113,8 +1122,12 @@ let fruitless = 0;
 function getRound(ctx: RoamCtx, dt: number): boolean {
   if (walkPlan.steps.length) return planWalk(ctx, dt) || true;
   const p = ctx.body.pos;
-  // (no way round for where he stood: not again until he has moved on a little)
-  if (!search.on && Math.hypot(p.x - search.failedFor.x, p.z - search.failedFor.z) < 1.5) return false;
+  // (no way round for where he stood: not again until he has moved on a little — or, the rope taut or he beside the
+  // oxen, `RETRY_AFTER` s on: the oxen try again)
+  if (!search.on && Math.hypot(p.x - search.failedFor.x, p.z - search.failedFor.z) < 1.5) {
+    if (taut <= TAUT_AFTER || performance.now() - search.failedAt < RETRY_AFTER * 1000) return false;
+    search.failedFor.x = Number.NaN;
+  }
   if (!search.on) {
     // (blocked again where the last way round ended, twice: no way round for where he stands)
     fruitless = Math.hypot(CART_AT.x - planEnd.x, CART_AT.z - planEnd.z) < 0.5 ? fruitless + 1 : 0;
@@ -1125,6 +1138,7 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
       fruitless = 0;
       search.failedFor.x = p.x;
       search.failedFor.z = p.z;
+      search.failedAt = performance.now();
       return false;
     }
     planStart(ctx);
@@ -1300,6 +1314,18 @@ function lead(ctx: RoamCtx, dt: number): void {
   // (the search tries again once he is 1.5 m on) — and slips only at its length; a way found, it is taken in again as
   // he comes nearer, never pulling him back)
   slack = noWay ? Math.max(slack, far) : Math.max(ROPE_HOLD, Math.min(slack, far));
+  // (he pushes on and nothing moves, he nor the cart — held in a corner by the oxen: never a silent wait, the rope slips)
+  const pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5;
+  if (Math.hypot(ctx.body.pos.x - stillAt.x, ctx.body.pos.z - stillAt.z) > 0.1 || ds > 1e-4 || walkPlan.steps.length || search.on || !pushing) {
+    stillAt.x = ctx.body.pos.x;
+    stillAt.z = ctx.body.pos.z;
+    stillFor = 0;
+  } else stillFor += dt;
+  if (stillFor > STILL_AFTER) {
+    console.info(`[haul] rope: he pushes on and nothing moves (${stillFor.toFixed(1)} s), him ${far.toFixed(1)} m off`);
+    letGo('haulStuck');
+    return;
+  }
   if (_h.distanceTo(_n) > ROPE_MAX) {
     console.info(`[haul] rope: ${noWay ? (stuckFor > STUCK_AFTER ? `stuck ${stuckFor.toFixed(1)} s` : `no way round for (${search.failedFor.x.toFixed(1)}, ${search.failedFor.z.toFixed(1)})`) : 'too far'}, him ${far.toFixed(1)} m off`);
     letGo(noWay || blocked ? 'haulStuck' : 'haulLetGoToast');

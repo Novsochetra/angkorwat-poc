@@ -3615,7 +3615,10 @@ without its straw), the oxen `people/_ox.ts`.
   way round made near him (yoke within `HEEL` + 1 m) ends with him within `FRONT_GOAL` = 0.45 rad of the
   heading, so one plan does the U-turn; farther, within `AIM` (both seen from the yoke). The cart
   standing 1.2 s, blocked or not, with the rope taut (him 3.9 m or more from the noses) or him beside
-  or behind the oxen, starts a way round too (`TAUT_AFTER`): never a silent wait. A way round may also go back along the places it last stood
+  or behind the oxen, starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
+  tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m; and should he push on
+  6 s with nothing moving, he nor the cart (held in a corner by the oxen), the rope slips and says why
+  (`STILL_AFTER`). A way round may also go back along the places it last stood
   at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
   it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A new
   way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the
