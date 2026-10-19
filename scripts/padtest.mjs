@@ -660,19 +660,26 @@ const steps = [
       await sleep(300);
       await push(0, 1, 300);
       await sleep(400);
-      for (let i = 0; i < 3; i++) await dig();
+      // (as many as there is room for before the Kulen foot trail: two at least)
+      for (let i = 0; i < 3 && (await now()).p?.ok; i++) await dig();
       const row2 = (await plants()).slice(row1.length);
+      if (row2.length < 2) throw new Error(`row 2 has ${row2.length} plant(s): the ghost ${JSON.stringify((await now()).p)}`);
       const z2 = row2[0][1];
       for (const [x, z] of row2) if (Math.abs(z - z2) > 1e-6 || !whole(x - row1[0][0])) throw new Error(`row 2 off its line or out of step with row 1: ${JSON.stringify(row2)}`);
       if (Math.abs(z2 - z1) < 1e-6 || !whole(z2 - z1)) throw new Error(`row 2 at z ${z2} is not a whole number of spacings beside row 1 (z ${z1})`);
       // A refused spot on the way (a step of the land toward the cart): the ghost stays on the row's line.
-      await ev(() => window.__garden.plantMode(null));
-      await placeAt('walk', '432,-124&yaw=15&home=1&garden=0');
+      await ev(() => {
+        window.__garden.plantMode(null);
+        for (const p of window.__garden.state().plants) if (p.at === 'home') window.__garden.remove(p.id);
+        window.__garden.seeds('eggplant', 8);
+      });
+      await placeAt('walk', '432,-124&yaw=15&home=1');
       await ev(() => window.__garden.plantMode('eggplant'));
       await sleep(1000);
-      for (let i = 0; i < 4; i++) await dig();
+      for (let i = 0; i < 6 && (await now()).p?.ok; i++) await dig();
       await sleep(400);
       const row3 = await plants();
+      if (row3.length < 3) throw new Error(`toward the cart only ${row3.length} plant(s)`);
       const g = (await now()).p;
       await ev(() => window.__garden.plantMode(null));
       for (const [x] of row3) if (Math.abs(x - row3[0][0]) > 1e-6) throw new Error(`the row toward the cart left its line: ${JSON.stringify(row3)}`);
