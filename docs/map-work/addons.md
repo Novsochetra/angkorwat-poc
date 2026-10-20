@@ -3503,7 +3503,7 @@ without its straw), the oxen `people/_ox.ts`.
   the garden: at the oxen's spot facing them E takes the rope, and while he leads E lets go, whatever
   else is near; the cart's other prompts are order 58): before the oxen, on foot, "E  ដឹករទេះគោ /
   Lead the ox cart" — or, when the spot before them is water or off a bank, beside them on the dry
-  side, "E  ដឹករទេះគោ (ពីក្បែរគោ) / Lead the ox cart (from beside the oxen)": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
+  side nearer him, "E  ដឹករទេះគោ (ពីក្បែរគោ) / Lead the ox cart (from beside the oxen)": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
   oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
   the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
   0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
@@ -3624,7 +3624,8 @@ without its straw), the oxen `people/_ox.ts`.
   re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch, as pressed,
   before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
   oxen look for a way round — toward where he heads (6 m on the way he faces) when he walks into them
-  from in front, toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`).
+  from in front, toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`) —
+  unless the way round moved the cart (0.5 m or 0.3 rad): then it is a new first time.
   A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the cart's and the
   oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
   and a log pile). A way round may also go back along the places it last stood

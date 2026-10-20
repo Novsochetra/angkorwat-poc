@@ -586,19 +586,25 @@ function headSpot(out: Vector3): Vector3 {
   ropeSide = 0;
   const w = env?.world;
   if (!w || ropeSpotOk(w, out.x, out.z)) return out;
-  // (before them the stream, or off a bank: he takes the rope from beside the oxen, the dry side)
+  // (before them the stream, or off a bank: he takes the rope from beside the oxen, on the dry side nearest him)
+  let best = Infinity;
   for (const sd of [1, -1]) {
     const x = P.yx + fx * ROPE_SIDE_ON + fz * sd * ROPE_SIDE;
     const z = P.yz + fz * ROPE_SIDE_ON - fx * sd * ROPE_SIDE;
-    if (ropeSpotOk(w, x, z)) {
+    const d = Math.hypot(x - seenAt.x, z - seenAt.z);
+    if (d < best && ropeSpotOk(w, x, z)) {
+      best = d;
       ropeSide = sd;
-      return out.set(x, P.yy, z);
+      _side.set(x, P.yy, z);
     }
   }
-  return out;
+  return ropeSide ? out.copy(_side) : out;
 }
 /** Where he takes the rope: before the oxen (0), or beside them (±1: that side), when before them is water or a drop. */
 let ropeSide = 0;
+const _side = new Vector3();
+/** Where he stood last step (on foot): the rope's side spot is the one nearer him. */
+const seenAt = { x: 0, z: 0 };
 /** Beside the oxen: this far out from their middle line (m), this far on from the yoke. */
 const ROPE_SIDE = 1.9;
 const ROPE_SIDE_ON = 0.8;
@@ -1163,6 +1169,8 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     blocked = false;
     // (a plan that took the cart a good way on — nearer him round something — is not one that came to nothing)
     const moved = Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 1;
+    // (the cart got somewhere: getting nowhere again later is a new first time — the oxen look again, no slip yet)
+    if (Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 0.5 || Math.abs(angleDiff(CART_AT.yaw, walkPlan.from.yaw)) >= 0.3) nowhereTries = 0;
     planEnd.x = moved ? Number.NaN : CART_AT.x;
     planEnd.z = CART_AT.z;
     return false;
@@ -1995,6 +2003,8 @@ registerAddon({
 
   after(ctx, mode, dt) {
     if (mode !== 'walk' || !env) return;
+    seenAt.x = ctx.body.pos.x;
+    seenAt.z = ctx.body.pos.z;
     if (!placeChecked) checkPlace(ctx);
     if (leading) {
       lead(ctx, dt);
