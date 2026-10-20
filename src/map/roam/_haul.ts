@@ -100,13 +100,18 @@ const FRONT = 0.9;
  * way round (never a silent wait).
  */
 const TAUT_AFTER = 1.2;
-/** He walks into the oxen from in front this long (s), getting nowhere: they turn toward where he heads, this far on (m). */
-const INTO_AFTER = 0.8;
+/**
+ * Getting nowhere, judged over a window (s), not frame by frame: he has pushed on all of it (keys, stick, touch — a
+ * player re-aims all the time) and moved under `NOWHERE_HIM` m net, the cart under `NOWHERE_CART` m. The first time the
+ * oxen look for a way round (toward where he heads, `INTO_AHEAD` m on the way he faces, when he walks into them from in
+ * front; toward him else); again, the rope slips and says why.
+ */
+const NOWHERE_WINDOW = 2.5;
+const NOWHERE_HIM = 0.5;
+const NOWHERE_CART = 0.3;
 const INTO_AHEAD = 6;
 /** No way round found: tried again after this long (s) while the rope is taut or he stands beside the oxen. */
 const RETRY_AFTER = 3;
-/** He pushes on but neither he nor the cart has moved for this long (s), held where he is: the rope slips (it says why). */
-const STILL_AFTER = 6;
 /** A way round made near him ends with him well in front (rad): one plan brings the oxen round, not a nudge at a time. */
 const FRONT_GOAL = 0.45;
 /** His hand farther than this from the ox's nose (m): he lets go. */
@@ -212,11 +217,13 @@ let stuckFor = 0;
 let taut = 0;
 /** His feet from the oxen's noses (m), last frame he led (for the state). */
 let ropeFar = 0;
-/** How long (s) he has walked into the oxen from in front, getting nowhere (`INTO_AFTER`). */
-let intoFor = 0;
-/** Where he stood when nothing last moved, and for how long (s): `STILL_AFTER`. */
-const stillAt = { x: 0, z: 0, cx: 0, cz: 0, cyaw: 0 };
-let stillFor = 0;
+/** His and the cart's places, a sample every 0.25 s over `NOWHERE_WINDOW` (and was he pushing on); tries so far. */
+const track: { t: number; x: number; z: number; cx: number; cz: number; cyaw: number; push: boolean }[] = [];
+let trackT = 0;
+let trackNext = 0;
+let nowhereTries = 0;
+/** Does he push on (keys, stick, touch) this step, as he pressed it (before the oxen's pace scales it)? */
+let pushing = false;
 /** The rope let out (m): `ROPE_HOLD`, more while there is no way round for where he stands. */
 let slack = ROPE_HOLD;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
@@ -573,7 +580,34 @@ function cartPoint(x: number, z: number, out: Vector3): Vector3 {
 /** Where he stands to load (behind the tail), and to take the rope (before the oxen). */
 const tailSpot = (out: Vector3) => cartPoint(0, TAIL, out);
 function headSpot(out: Vector3): Vector3 {
-  return out.set(P.yx + Math.sin(P.oxYaw) * HEAD_AHEAD, P.yy, P.yz + Math.cos(P.oxYaw) * HEAD_AHEAD);
+  const fx = Math.sin(P.oxYaw);
+  const fz = Math.cos(P.oxYaw);
+  out.set(P.yx + fx * HEAD_AHEAD, P.yy, P.yz + fz * HEAD_AHEAD);
+  ropeSide = 0;
+  const w = env?.world;
+  if (!w || ropeSpotOk(w, out.x, out.z)) return out;
+  // (before them the stream, or off a bank: he takes the rope from beside the oxen, the dry side)
+  for (const sd of [1, -1]) {
+    const x = P.yx + fx * ROPE_SIDE_ON + fz * sd * ROPE_SIDE;
+    const z = P.yz + fz * ROPE_SIDE_ON - fx * sd * ROPE_SIDE;
+    if (ropeSpotOk(w, x, z)) {
+      ropeSide = sd;
+      return out.set(x, P.yy, z);
+    }
+  }
+  return out;
+}
+/** Where he takes the rope: before the oxen (0), or beside them (±1: that side), when before them is water or a drop. */
+let ropeSide = 0;
+/** Beside the oxen: this far out from their middle line (m), this far on from the yoke. */
+const ROPE_SIDE = 1.9;
+const ROPE_SIDE_ON = 0.8;
+/** Can he stand at (x, z) to take the rope: land near the oxen's own ground, not in water? */
+function ropeSpotOk(w: RoamCtx['world'], x: number, z: number): boolean {
+  const g = w.field.heightAt(x, z);
+  if (!Number.isFinite(g) || Math.abs(g - P.yy) > 1.2) return false;
+  const water = w.waterAt(x, z);
+  return water === null || water - g < WET;
 }
 
 /** By its tail, on foot. */
@@ -726,7 +760,8 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   slack = ROPE_HOLD;
   taut = 0;
   stuckFor = 0;
-  stillFor = 0;
+  track.length = 0;
+  nowhereTries = 0;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
@@ -1169,6 +1204,29 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
   return search.on || walkPlan.steps.length > 0;
 }
 
+/**
+ * Is he getting nowhere: over the last `NOWHERE_WINDOW` s he has pushed on all the time (keys, stick or touch, however
+ * he re-aims) and moved under `NOWHERE_HIM` m net, the cart under `NOWHERE_CART` m (and 0.1 rad), with no way round
+ * being looked for or walked? Sampled every 0.25 s; moving on again forgets the tries.
+ */
+function nowhere(ctx: RoamCtx, dt: number): boolean {
+  trackT += dt;
+  if (walkPlan.steps.length || search.on) {
+    track.length = 0;
+    return false;
+  }
+  if (trackT < trackNext) return false;
+  trackNext = trackT + 0.25;
+  const p = ctx.body.pos;
+  track.push({ t: trackT, x: p.x, z: p.z, cx: CART_AT.x, cz: CART_AT.z, cyaw: CART_AT.yaw, push: pushing });
+  while (track.length > 1 && trackT - track[1].t >= NOWHERE_WINDOW) track.shift();
+  const o = track[0];
+  const full = trackT - o.t >= NOWHERE_WINDOW - 1e-6;
+  const moved = Math.hypot(p.x - o.x, p.z - o.z) >= NOWHERE_HIM || Math.hypot(CART_AT.x - o.cx, CART_AT.z - o.cz) >= NOWHERE_CART || Math.abs(angleDiff(CART_AT.yaw, o.cyaw)) >= 0.1;
+  if (full && moved) nowhereTries = 0;
+  return full && !moved && track.every((s) => s.push);
+}
+
 /** Forget any search and plan (he let go, the way goes on by itself). */
 function planClear(): void {
   search.on = false;
@@ -1298,15 +1356,18 @@ function lead(ctx: RoamCtx, dt: number): void {
   // walked by the oxen, toward the free heading nearest his way, either way round; then the way goes on from there)
   turning = Math.max(0, turning - dt);
   // (blocked: the way stopped at something, or the cart cannot roll on along a way that goes on — a corner too tight)
-  // (he walks into the oxen from in front, getting nowhere: he wants to go that way, past them — they look for a way
-  // round toward where he heads, `INTO_AHEAD` m on from him the way he faces)
+  // (getting nowhere over `NOWHERE_WINDOW` s as he pushes on — `nowhere`: the first time the oxen look for a way round,
+  // toward where he heads if he walks into them from in front; again, the rope slips, below)
   const b = ctx.body;
-  intoFor = !walkPlan.steps.length && !search.on && ds <= 1e-4 && Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5 && Math.hypot(b.vel.x, b.vel.z) < 0.4 && atHeels(CART_AT, b.pos.x, b.pos.z) && Math.cos(b.yaw - P.yaw) < -0.3 ? intoFor + dt : 0;
-  if (intoFor > INTO_AFTER) {
-    intoFor = 0;
-    planStart(ctx, { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD });
+  const now = nowhere(ctx, dt);
+  if (now && nowhereTries === 0) {
+    nowhereTries = 1;
+    track.length = 0;
+    search.failedFor.x = Number.NaN;
+    const into = inFront(CART_AT, b.pos.x, b.pos.z) && Math.cos(b.yaw - P.yaw) < -0.3;
+    planStart(ctx, into ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
     search.strict = false;
-    console.info(`[haul] he walks into the oxen: they look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})`);
+    console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${into ? ', where he heads' : ''}`);
   }
   // (blocked at his heels — the yoke within `HEEL` of his feet, he in front of the oxen — it waits; beside or behind
   // them (he turned back the way he came) the oxen bring it round; and the rope taut a while with the cart standing,
@@ -1345,18 +1406,10 @@ function lead(ctx: RoamCtx, dt: number): void {
   // (the search tries again once he is 1.5 m on) — and slips only at its length; a way found, it is taken in again as
   // he comes nearer, never pulling him back)
   slack = noWay ? Math.max(slack, far) : Math.max(ROPE_HOLD, Math.min(slack, far));
-  // (he pushes on and nothing moves, he nor the cart — held in a corner by the oxen: never a silent wait, the rope slips)
-  const pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5;
-  if (!pushing || Math.hypot(ctx.body.pos.x - stillAt.x, ctx.body.pos.z - stillAt.z) > 0.1 || Math.hypot(CART_AT.x - stillAt.cx, CART_AT.z - stillAt.cz) > 0.1 || Math.abs(angleDiff(CART_AT.yaw, stillAt.cyaw)) > 0.05) {
-    stillAt.x = ctx.body.pos.x;
-    stillAt.z = ctx.body.pos.z;
-    stillAt.cx = CART_AT.x;
-    stillAt.cz = CART_AT.z;
-    stillAt.cyaw = CART_AT.yaw;
-    stillFor = 0;
-  } else stillFor += dt;
-  if (stillFor > STILL_AFTER) {
-    console.info(`[haul] rope: he pushes on and nothing moves (${stillFor.toFixed(1)} s), him ${far.toFixed(1)} m off`);
+  // (getting nowhere again after the oxen looked for a way round — held in a corner, no way for them: never a silent
+  // wait, the rope slips and says why)
+  if (now && nowhereTries > 0 && !search.on && !walkPlan.steps.length) {
+    console.info(`[haul] rope: getting nowhere ${NOWHERE_WINDOW} s again after a way round was looked for, him ${far.toFixed(1)} m off`);
     letGo('haulStuck');
     return;
   }
@@ -1764,6 +1817,45 @@ function fillFrom(q: string): void {
 
 // ── The add-on ─────────────────────────────────────────────────────────────
 
+/** At the oxen (`nearHead`): "Lead the ox cart" (from beside them, said so, when before them is water), or "Send it home". */
+function headOffer(ctx: RoamCtx): string | null {
+  if (!nearHead(ctx)) return null;
+  if (stuckHere(ctx)) return words('sendHome', () => `E  ${t('haulSendHome')}`);
+  return ropeSide ? words('leadSide', () => `E  ${t('haulLeadSide')}`) : words('lead', () => `E  ${t('haulLead')}`);
+}
+function headUse(ctx: RoamCtx): void {
+  if (!nearHead(ctx) || sending) return;
+  if (stuckHere(ctx)) void sendHome(ctx);
+  else takeRope(ctx);
+}
+/** Does he face the oxen (within 60°, from where he stands to the yoke)? */
+function facesOxen(ctx: RoamCtx): boolean {
+  const b = ctx.body;
+  const dx = P.yx - b.pos.x;
+  const dz = P.yz - b.pos.z;
+  return Math.sin(b.yaw) * dx + Math.cos(b.yaw) * dz >= Math.hypot(dx, dz) * 0.5;
+}
+
+/**
+ * The rope, first in the E row (`order` 44, before a cow to ride or the garden): at the oxen's own spot, facing them,
+ * E takes it; while he leads, E lets go — whatever else is near. Everything else of the cart is the add-on below.
+ */
+registerAddon({
+  id: 'haulRope',
+  order: 44,
+  offer(ctx, mode) {
+    if (mode !== 'walk' || !env || W || sending || !HOME.owned) return null;
+    if (leading) return words('letgo', () => `E  ${t('haulLetGo')}`);
+    if (env.busy() || !ctx.body.grounded || !facesOxen(ctx)) return null;
+    return headOffer(ctx);
+  },
+  use(ctx) {
+    if (!env || W) return;
+    if (leading) letGo('haulLetGoToast');
+    else headUse(ctx);
+  },
+});
+
 registerAddon({
   id: 'haul',
   order: 58,
@@ -1818,7 +1910,7 @@ registerAddon({
             work: W ? { kind: W.kind, phase: W.phase, u: +W.u.toFixed(2), piece: W.piece, moved: W.moved } : null,
             saving: progress.saving,
             boxes: view?.things.capacity ?? 0,
-            round: { searching: search.on, looked: search.n, open: search.open.length, failedFor: [search.failedFor.x, search.failedFor.z], plan: walkPlan.steps.length, at: walkPlan.i, fruitless, stuckFor: +stuckFor.toFixed(2), taut: +taut.toFixed(2), rope: +ropeFar.toFixed(2) },
+            round: { searching: search.on, looked: search.n, open: search.open.length, failedFor: [search.failedFor.x, search.failedFor.z], plan: walkPlan.steps.length, at: walkPlan.i, fruitless, stuckFor: +stuckFor.toFixed(2), nowhere: { tries: nowhereTries, samples: track.length, push: pushing }, taut: +taut.toFixed(2), rope: +ropeFar.toFixed(2) },
             fit: { n: FIT.n, avgMs: FIT.n ? +(FIT.ms / FIT.n).toFixed(4) : 0, worstMs: +FIT.worst.toFixed(3) },
           }),
           /** Could the cart stand where it is now, or at (x, z) heading `yaw` degrees (its whole boxes, as a saved place is checked)? */
@@ -1860,6 +1952,8 @@ registerAddon({
   input(ctx, mode) {
     // While he leads, he walks at the oxen's pace (no running).
     if (mode !== 'walk' || !leading) return false;
+    // (his own push, before it is brought to the oxen's pace: `nowhere`)
+    pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5;
     const k = OX_PACE / (WALK_SPEED * ctx.body.scale * WALK_PACE);
     ctx.input.move.x *= k;
     ctx.input.move.y *= k;
@@ -1877,8 +1971,7 @@ registerAddon({
       if (!CART_LOAD.empty) return counted('haulGoHome', false);
       return null;
     }
-    if (nearHead(ctx)) return stuckHere(ctx) ? words('sendHome', () => `E  ${t('haulSendHome')}`) : words('lead', () => `E  ${t('haulLead')}`);
-    return null;
+    return headOffer(ctx);
   },
 
   use(ctx) {
@@ -1893,9 +1986,7 @@ registerAddon({
       else SFX.play('gatherFull', 0.6);
       return;
     }
-    if (!nearHead(ctx) || sending) return;
-    if (stuckHere(ctx)) void sendHome(ctx);
-    else takeRope(ctx);
+    headUse(ctx);
   },
 
   hold(ctx, dt) {

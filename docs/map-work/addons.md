@@ -3499,8 +3499,11 @@ without its straw), the oxen `people/_ox.ts`.
   (as the village cart): its boxes and its load in one `Things` of its own (the people's things
   shader: a draw and its shadow), the oxen a `Flock` of two (the animals' shader); written only
   when it moves or its load changes. No new shader program.
-- **Leading it** (ដឹករទេះគោ, order 58): before the oxen, on foot, "E  ដឹករទេះគោ / Lead the ox
-  cart": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
+- **Leading it** (ដឹករទេះគោ; the rope is its own add-on `haulRope`, order 44, before a cow to ride or
+  the garden: at the oxen's spot facing them E takes the rope, and while he leads E lets go, whatever
+  else is near; the cart's other prompts are order 58): before the oxen, on foot, "E  ដឹករទេះគោ /
+  Lead the ox cart" — or, when the spot before them is water or off a bank, beside them on the dry
+  side, "E  ដឹករទេះគោ (ពីក្បែរគោ) / Lead the ox cart (from beside the oxen)": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
   oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
   the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
   0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
@@ -3616,13 +3619,15 @@ without its straw), the oxen `people/_ox.ts`.
   heading, so one plan does the U-turn; farther, within `AIM` (both seen from the yoke). The cart
   standing 1.2 s, blocked or not, with the rope taut (him 3.9 m or more from the noses) or him beside
   or behind the oxen, starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
-  tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m; and should he push on
-  6 s with nothing moving, he nor the cart (held in a corner by the oxen), the rope slips and says why
-  (`STILL_AFTER`). A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the
-  cart's and the oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the
-  oxen's flank and a log pile). He walks into the oxen from in front (facing them) 0.8 s, getting
-  nowhere: he wants to go that way, past them, and they look for a way round toward where he heads,
-  6 m on the way he faces (`INTO_AFTER`, `INTO_AHEAD`). A way round may also go back along the places it last stood
+  tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m. Getting nowhere is
+  judged over a window, never frame by frame (`nowhere`: a sample every 0.25 s; a keyboard player
+  re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch, as pressed,
+  before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
+  oxen look for a way round — toward where he heads (6 m on the way he faces) when he walks into them
+  from in front, toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`).
+  A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the cart's and the
+  oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
+  and a log pile). A way round may also go back along the places it last stood
   at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
   it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A new
   way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the
