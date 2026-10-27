@@ -166,6 +166,13 @@ export class PalmKit {
     this.src = traceSource();
   }
 
+  /** One of the plant kit's shapes (veg/plantKit.ts: the fruit), drawn into this palm's blocks by the part now marked. */
+  shape(draw: (b: VoxelBuilder, src: SourceTrace | undefined) => void): void {
+    const n0 = this.b.boxes.length;
+    draw(this.b, this.src);
+    this.n += this.b.boxes.length - n0;
+  }
+
   /** An upright block centred at (x, y, z), turned `yaw` about y. */
   block(x: number, y: number, z: number, sx: number, sy: number, sz: number, yaw: number, color: number, mat: Mat, shade = 1): void {
     this.n++;

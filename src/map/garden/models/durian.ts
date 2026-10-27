@@ -2,6 +2,7 @@ import { traceSource, type SourceTrace } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { round } from '../../veg/plantKit';
 import { Crown, vnoise, type CellInfo } from './_treeCrown';
 import { deadTree, leavesAlong, limb, mix, planting, rng, thirstyLeaf, tone, turned, type Rand } from './_treeKit';
 
@@ -229,9 +230,9 @@ function durian(b: VoxelBuilder, r: Rand, x: number, y: number, z: number, ripe:
   const yaw = r() * 6.28;
   const cy = hanging ? y - 0.1 - H / 2 : y;
   if (hanging) b.box(x, y - 0.04, z, 0.045, 0.16, 0.045, STALK, 'mapBark', { src });
-  // Body: a core and a cross box (round enough), a darker cap where the stalk joins.
-  turned(b, x, cy, z, W * 0.86, H, W * 0.86, yaw, 0, 0, body, 'petal', 1, src);
-  turned(b, x, cy, z, W, H * 0.72, W, yaw + 0.785, 0, 0, mix(body, pal.spike, 0.1), 'petal', 1, src);
+  // Body: the plant kit's round, smooth (the spikes are its texture), as wide and tall as before; a darker cap where the
+  // stalk joins.
+  round(b, [x, cy - H / 2, z], { wid: W * 1.06, hgt: H, color: body, rib: mix(body, pal.spike, 0.1), ry: yaw, src });
   if (hanging) b.box(x, cy + H / 2 + 0.01, z, 0.08, 0.04, 0.08, STALK, 'petal', { ry: yaw, src });
   else b.box(x, cy + H / 2 + 0.02, z, 0.05, 0.06, 0.05, STALK, 'mapBark', { ry: yaw, src });
   // Spikes: diamonds (turned cubes) standing out of it in three rings, and one at the bottom.

@@ -1,5 +1,6 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
+import { teardrop } from '../../veg/plantKit';
 import { along, beam, lerp, leafTone, log, mix, pick, rng, woodTone, type P3 } from './_fruitKit';
 
 /**
@@ -70,15 +71,24 @@ function leaf(b: VoxelBuilder, at: P3, az: number, el: number, stalk: number, R:
   }
 }
 
-/** One fruit hugging the trunk: an oblong body (two blocks, an octagon) and its round blossom end; ripe: yellow-orange from the bottom. */
+/**
+ * One fruit hugging the trunk, its middle at (x, y, z): the plant kit's teardrop hanging, its narrow end up at the
+ * stalk (0.3·s long, 0.2·s wide), the stalk end greener; ripe: yellow-orange from the round bottom end up.
+ */
 function fruit(b: VoxelBuilder, x: number, y: number, z: number, s: number, th: number, ripe: boolean, k: number): void {
   const w = 0.18 * s;
   const h = 0.27 * s;
   const body = ripe ? pick(RIPE, k) : pick(GREEN, k);
   const top = ripe ? mix(body, 0x9aa83a, 0.55) : mix(body, 0xb4cc62, 0.3);
-  b.box(x, y, z, w, h, w, top, 'petal', { ry: th });
-  b.box(x, y - h * 0.08, z, w * 0.98, h * 0.82, w * 0.98, body, 'petal', { ry: th + Math.PI / 4 });
-  b.box(x, y - h * 0.55, z, w * 0.7, h * 0.18, w * 0.7, ripe ? BLUSH : mix(body, 0x46762a, 0.3), 'petal', { ry: th });
+  // (its old blossom end, the orange of a ripe one or a green one's dark green, blended into the round end)
+  const end = mix(body, ripe ? BLUSH : mix(body, 0x46762a, 0.3), 0.35);
+  // (as long and as stout as the old three boxes: its round end reached 0.64·h under the middle, its octagon 1.1–1.4·w)
+  teardrop(b, [x, y + h / 2, z], { len: h * 1.12, wid: w * 1.1, taper: 0.65, roll: th, color: end, neck: top });
+}
+
+/** The tiny green fruit just set on a picked tree, its middle at (x, y, z): a small teardrop (two blocks). */
+function fruitlet(b: VoxelBuilder, x: number, y: number, z: number, w: number, h: number, color: number, th: number): void {
+  teardrop(b, [x, y + h / 2, z], { len: h, wid: w, taper: 0.65, roll: th, color, low: true });
 }
 
 registerModel('papaya', (b, look) => {
@@ -193,10 +203,10 @@ registerModel('papaya', (b, look) => {
         const fz = z + Math.cos(th) * 0.03;
         b.box(fx, y, fz, 0.1, 0.06, 0.1, 0xfaf4dc, 'petal', { ry: th + 0.4 });
         b.box(fx, y + 0.035, fz, 0.045, 0.03, 0.045, 0xf2d878, 'petal', { ry: th });
-        b.box(fx, y - 0.05, fz, 0.05, 0.05, 0.05, mix(GREEN[0], 0xc8d890, 0.3), 'petal', { ry: th });
+        fruitlet(b, fx, y - 0.05, fz, 0.05, 0.06, mix(GREEN[0], 0xc8d890, 0.3), th);
       } else {
         const s = lerp(0.42, 0.28, u) * (0.9 + 0.2 * r(i, 17));
-        b.box(x + Math.sin(th) * 0.02, y, z + Math.cos(th) * 0.02, 0.18 * s, 0.27 * s, 0.18 * s, GREEN[i % 3], 'petal', { ry: th });
+        fruitlet(b, x + Math.sin(th) * 0.02, y, z + Math.cos(th) * 0.02, 0.18 * s, 0.27 * s, GREEN[i % 3], th);
       }
     }
   }

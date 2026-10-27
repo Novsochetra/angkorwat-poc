@@ -36,7 +36,7 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  * |---|---|---|
  * | `leaf` | one blade from its base: a curved slab narrow at the stalk, widest past the middle, a pointed tip (a square turned 45° in the blade), a paler mid-rib on top; `shape` `lance` (mango), `broad` (gourd, pumpkin), `oblong` (banana); `fold` folds its two halves down from the rib (a banana leaf) or up (a cupped leaf) | `segs` + 1 tip + `segs` rib (+`segs` with `fold`, +1 `stalk`): 1 seg no rib 2, 2 segs 5 (default), 3 segs 7, 3 segs folded 10 |
  * | `teardrop` | a fruit hanging from its stalk, the narrow end up: mango (0.12 × 0.09 m, `depth` 0.85, `curve` 0.3, a `blush` blended from the stalk), papaya (0.25 × 0.14 m, `taper` 0.65); lying with `dir` | 5 (2 with `low`), +1 `stalk` |
- * | `round` | a fruit round about its upright axis, squat or tall, in four steps up its side (a narrow foot, the ribbed band, the shoulder, the top): pumpkin (0.45 × 0.3 m), round gourd, melon, jackfruit (`hang` from a trellis or a trunk) | 6 (3 with `low`), +1 `stalk` |
+ * | `round` | a fruit round about its upright axis, squat or tall, in four steps up its side (a narrow foot, the ribbed band, the shoulder, the top): pumpkin (0.45 × 0.3 m), round gourd, melon, jackfruit (`hang` from a trellis or a trunk); `ridges` stand upright ribs or stripes round its band | 6 (3 with `low`), +1 `stalk`, +1 `ridges` |
  * | `long` | a finger along a gentle curve, thick in the middle: banana (0.16 × 0.035 m, `neck` 0.55, a dark `tip`), long eggplant (0.25 × 0.055 m, a green `cap`) | `segs` × 2 (× 1 with `sides: 4`), +1 `tip`, +1 `cap`: banana finger 3, eggplant 5 |
  * | `fan` | a hand-shaped leaf on a long stalk: `lobes` leaves fanned across its end (papaya: stalk 0.6–0.8 m, 7 lobes 0.55 × 0.22 m, `spread` 3.2) | 1 + each lobe's: 5 lobes of 1 piece, no rib, 11 (7: 15) |
  * | `vine` | a stem along given points (`sag` drapes them between two posts, `spiral` winds them up one) with leaves on alternate sides and curling tendrils | 1 a span, + each leaf's, + 3 a tendril |
@@ -350,6 +350,8 @@ export interface TeardropOpts extends Common {
   dir?: P3;
   /** Turned about its axis (radians): where its flat side and blush face. */
   roll?: number;
+  /** Its +x side (the way it bends, its blush) turned toward this direction instead of `roll` (a mango's cheek facing out of the crown). */
+  face?: P3;
   /** Its depth over its width (a mango is a little flat: 0.85). Default 1. */
   depth?: number;
   /** The narrow end's width (share of `wid`; default 0.5: a mango; a papaya 0.65). */
@@ -384,13 +386,21 @@ export function teardrop(b: VoxelBuilder, top: P3, o: TeardropOpts): P3 {
   const d0 = o.dir ?? ([0, -1, 0] as P3);
   const dl = Math.hypot(d0[0], d0[1], d0[2]) || 1;
   const d: P3 = [d0[0] / dl, d0[1] / dl, d0[2] / dl];
-  const roll = o.roll ?? 0;
+  const az = Math.atan2(d[0], d[2]);
+  const el = Math.asin(Math.max(-1, Math.min(1, d[1])));
+  let roll = o.roll ?? 0;
+  if (o.face) {
+    // (the roll that turns its +x side toward `face`: x = x0 cos r + y0 sin r)
+    const [x0, y0] = sides(az, el, 0);
+    const f = o.face;
+    roll = Math.atan2(f[0] * y0[0] + f[1] * y0[1] + f[2] * y0[2], f[0] * x0[0] + f[1] * x0[1] + f[2] * x0[2]);
+  }
   const dep = o.depth ?? 1;
   const { len, wid } = o;
   const tp = o.taper ?? 0.5;
   const neckC = o.neck ?? mix(o.color, 0x6a8a2a, 0.22);
   // (its +x side: the way it bends and, with a blush, the sun side)
-  const [sx] = sides(Math.atan2(d[0], d[2]), Math.asin(Math.max(-1, Math.min(1, d[1]))), roll);
+  const [sx] = sides(az, el, roll);
   const bendTo = (o.curve ?? 0) * wid * 0.5;
   const at = (u: number): P3 => plus(plus(top, d, u), sx, bendTo * (u / len) * (u / len));
   // Colours from the stalk end to the round end: a blush deepest at the stalk, fading out over the shoulder.
@@ -439,6 +449,12 @@ export interface RoundOpts extends Common {
   low?: boolean;
   /** Its narrower foot (default yes); none where it sits hidden in a heap (one block fewer). */
   foot?: boolean;
+  /**
+   * Upright ridges in the `rib` colour round its band (a pumpkin's ribs, a striped eggplant's stripes): one block more,
+   * turned 45° off the band, its four corners standing out of the band's faces; the band then
+   * in the body's colour. Not with `low`.
+   */
+  ridges?: boolean;
 }
 
 /**
@@ -470,9 +486,13 @@ export function round(b: VoxelBuilder, at: P3, o: RoundOpts): void {
     // two blocks crossed, eight-sided from above)
     if (o.foot !== false) b.box(x, y0 + h * 0.13, z, w * 0.76, h * 0.26, w * 0.76, mix(o.color, rib, 0.5), mat, { shade: shade * 0.94, src, ry });
     b.box(x, y0 + h * 0.47, z, w, h * 0.56, w * 0.8, o.color, mat, { shade, src, ry });
-    b.box(x, y0 + h * 0.47, z, w * 0.8, h * 0.56, w, rib, mat, { shade: shade * 0.98, src, ry });
+    b.box(x, y0 + h * 0.47, z, w * 0.8, h * 0.56, w, o.ridges ? mix(o.color, rib, 0.2) : rib, mat, { shade: shade * 0.98, src, ry });
+    // (the ridges: a square turned 45° off the band, its corners 0.64 × w out on the band's four faces, its own faces
+    // inside the band's cut corners)
+    if (o.ridges) b.box(x, y0 + h * 0.45, z, w * 0.9, h * 0.62, w * 0.9, rib, mat, { shade: shade * 0.97, src, ry: ry + Math.PI / 4 });
     b.box(x, y0 + h * 0.79, z, w * 0.8, h * 0.22, w * 0.62, mix(o.color, cap, 0.5), mat, { shade, src, ry });
-    b.box(x, y0 + h * 0.79, z, w * 0.62, h * 0.22, w * 0.8, mix(rib, cap, 0.5), mat, { shade: shade * 0.98, src, ry });
+    // (ridged: the shoulder in the body's tones, no plank of the rib colour across it)
+    b.box(x, y0 + h * 0.79, z, w * 0.62, h * 0.22, w * 0.8, mix(o.ridges ? mix(o.color, rib, 0.2) : rib, cap, 0.5), mat, { shade: shade * 0.98, src, ry });
     b.box(x, y0 + h * 0.92, z, w * 0.42, h * 0.12, w * 0.42, cap, mat, { shade: shade * 0.97, src, ry });
   }
   if (o.stalk !== undefined) {

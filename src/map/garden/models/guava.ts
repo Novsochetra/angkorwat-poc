@@ -1,6 +1,7 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { round } from '../../veg/plantKit';
 import { along, beam, leafTone, lerp, log, mix, pick, rng, surface, woodTone, type P3 } from './_fruitKit';
 
 /**
@@ -70,19 +71,24 @@ function cluster(b: VoxelBuilder, look: PlantLook, c: P3, rc: number, r: R, id: 
   }
 }
 
-/** A guava hanging under the leaves: a round fruit on its stalk, or the white foam net sleeve tied round it. */
-function guava(b: VoxelBuilder, p: P3, ripe: boolean, wrapped: boolean, s: number, k: number): void {
+/**
+ * A guava hanging under the leaves: a round fruit on its stalk (the plant kit's round; `high`: one up in the crown, its
+ * low form), or the white foam net sleeve tied round it.
+ */
+function guava(b: VoxelBuilder, p: P3, ripe: boolean, wrapped: boolean, s: number, k: number, high: boolean): void {
   beam(b, [p[0], p[1] + 0.13 * s, p[2]], [p[0], p[1] + 0.04 * s, p[2]], 0.018, 0.018, 0x6a6a3a, 'mapBark');
+  // (the plant kit's round, smooth, from its foot: as wide and as tall as the old crossed boxes, its middle where theirs was)
   if (wrapped) {
+    // The sleeve follows the fruit in it: a white round a little bigger, its low form (soft foam: three steps), the
+    // foam's mesh its second tone; tied on top.
     const net = pick(NET, k);
-    b.box(p[0], p[1] - 0.03 * s, p[2], 0.15 * s, 0.15 * s, 0.15 * s, net, 'petal', { ry: k * 3 });
-    b.box(p[0], p[1] - 0.03 * s, p[2], 0.13 * s, 0.17 * s, 0.13 * s, mix(net, 0xd8dccc, 0.4), 'petal', { ry: k * 3 + Math.PI / 4 });
+    round(b, [p[0], p[1] - 0.115 * s, p[2]], { wid: 0.15 * s, hgt: 0.17 * s, color: net, rib: mix(net, 0xd8dccc, 0.4), ry: k * 3, low: true });
     b.box(p[0], p[1] + 0.06 * s, p[2], 0.05 * s, 0.05 * s, 0.05 * s, net, 'petal', { ry: k });
     return;
   }
   const c = ripe ? pick(RIPE, k) : pick(GREEN, k);
-  b.box(p[0], p[1] - 0.03 * s, p[2], 0.11 * s, 0.1 * s, 0.11 * s, c, 'petal', { ry: k * 3 });
-  b.box(p[0], p[1] - 0.03 * s, p[2], 0.08 * s, 0.13 * s, 0.08 * s, mix(c, ripe ? 0xe0e29a : 0x88b050, 0.25), 'petal', { ry: k * 3 + Math.PI / 4 });
+  // (those up in the crown in the round's low form, three steps: the tree's blocks stay in its budget, garden/look.ts)
+  round(b, [p[0], p[1] - 0.095 * s, p[2]], { wid: 0.11 * s, hgt: 0.13 * s, color: c, ribs: false, cap: mix(c, ripe ? 0xe0e29a : 0x88b050, 0.25), ry: k * 3, low: high });
   b.box(p[0], p[1] - 0.1 * s, p[2], 0.035 * s, 0.025 * s, 0.035 * s, CALYX, 'petal');
 }
 
@@ -267,7 +273,7 @@ registerModel('guava', (b, look) => {
         const a = Math.atan2(c[0], c[2]) + (r(i * 3 + j, 10) - 0.5) * 1.8;
         const d = rc * (0.3 + 0.4 * r(i * 3 + j, 11));
         const p: P3 = [c[0] + Math.sin(a) * d, c[1] - rc * 0.5 - 0.06 * r(i * 3 + j, 12), c[2] + Math.cos(a) * d];
-        guava(b, p, ripe, i >= low && r(i * 3 + j, 13) < wrapShare, 1.4 + 0.2 * r(i * 3 + j, 14), r(i * 3 + j, 15));
+        guava(b, p, ripe, i >= low && r(i * 3 + j, 13) < wrapShare, 1.4 + 0.2 * r(i * 3 + j, 14), r(i * 3 + j, 15), i >= low);
         k++;
       }
     }
