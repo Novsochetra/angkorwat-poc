@@ -10,14 +10,15 @@ import { plantsLite } from './detail';
  * the rolled young leaf, a dry leaf hanging, pups at its foot, and on some a
  * bunch of green ណាំវ៉ា with the purple banana flower under it), set on the
  * land wherever the hamlets, the villages and the jungle camps plant one. One
- * code path: the garden's model draws them all (the home garden's plants are
- * the model as it was; nothing here changes them).
+ * code path: the garden's model draws them all (nothing here changes the
+ * home garden's own).
  *
  * Into a builder on the map's axes (the part's world builder, a `Local` or
  * `PsFrame` that only moves its origin): its foot at (x, y, z), turned `yaw`
  * about its upright axis. Blocks: grown (stage 4) ≈ 180–205, with a bunch
- * ≈ 240–265; young (stage 3) ≈ 145–155. On the low graphics level (phones)
- * the map's bananas are the model's `lite` form (24 blocks, 38 with a bunch):
+ * ≈ 310–335 (its fingers the plant kit's `long`); young (stage 3) ≈ 145–155.
+ * On the low graphics level (phones) the map's bananas are the model's `lite`
+ * form (24 blocks, 46 with a bunch):
  * the parts that plant them say the build's level first (veg/detail.ts
  * `plantDetail(ctx.quality)`: hamlet/index.ts, village/index.ts,
  * jungle/camps.ts). The home garden's bananas are never lite. Each block keeps

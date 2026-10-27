@@ -2719,7 +2719,8 @@ chilli, basil, jasmine).
   every stage, green and ripe fruit, fallen fruit, `cut` (harvested before: the
   sugarcane's stumps, the banana's follower, new flowers), droop 1 / 2, dead. Map
   families only (no new shader); a crop ≤ 160 blocks, a small tree ≤ 450, a big tree
-  ≤ 900; ≈ 0.5–1 ms a build.
+  ≤ 900; ≈ 0.5–1 ms a build. The fruit on the plants are the map's plant kit's shapes
+  (`veg/plantKit.ts`: teardrop, round, long; AWP-34, BRIEF.md "The home garden's fruit").
 - **On the map** (`garden/view.ts`, `_viewPool.ts` one instanced mesh per family,
   `_viewLook.ts` looks cached and prebuilt in idle time, warmed before Start,
   `_viewEarth.ts` the crop beds and tree basins (wet: darker, a puddle), `_viewDrop.ts`

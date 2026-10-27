@@ -80,8 +80,8 @@ function fruit(b: VoxelBuilder, x: number, y: number, z: number, s: number, th: 
   const h = 0.27 * s;
   const body = ripe ? pick(RIPE, k) : pick(GREEN, k);
   const top = ripe ? mix(body, 0x9aa83a, 0.55) : mix(body, 0xb4cc62, 0.3);
-  // (its old blossom end, the orange of a ripe one or a green one's dark green, blended into the round end)
-  const end = mix(body, ripe ? BLUSH : mix(body, 0x46762a, 0.3), 0.35);
+  // (its old blossom end, the orange of a ripe one or a green one's dark green, a hint of it in the round end)
+  const end = mix(body, ripe ? BLUSH : mix(body, 0x46762a, 0.3), 0.15);
   // (as long and as stout as the old three boxes: its round end reached 0.64·h under the middle, its octagon 1.1–1.4·w)
   teardrop(b, [x, y + h / 2, z], { len: h * 1.12, wid: w * 1.1, taper: 0.65, roll: th, color: end, neck: top });
 }
