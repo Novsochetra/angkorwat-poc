@@ -1098,14 +1098,17 @@ spikes, the coconuts and the sugar palm's fruit `round` smooth (drawn into
 the palm's blocks by `PalmKit.shape`), the banana's fingers `long`, the corn
 ear's husk `long`. Each model draws the same seeded numbers in the same
 order, so every fruit hangs where it did, in its colours, as many; stems and
-leaves are as they were (every model's other blocks hash the same as before).
+leaves are as they were (every model's other blocks hash the same as before),
+but the eggplant's single-piece leaves (flat rectangles, 0.23 × 0.17 m) are
+the kit's `leaf` in one piece with its pointed tip (`segs: 1`, `rib: false`).
 The fruit on the ground (`_viewFruit.ts`, smooth) and the fruit in his hands
 (`roam/_gardenProps.ts`) are not the models' and did not change. Blocks
-(grown, with fruit; before → after): eggplant 95/118 → 115/146, corn ≈ 97 →
+(grown, with fruit; before → after): eggplant 95/118 → 167/198 (its leaves +52), corn ≈ 97 →
 103, pumpkin ≈ 180 → 186, banana ≈ 256 → 321, papaya ≈ 235 → 256, guava ≈
 406 → 428, mango ≈ 624 → 694, jackfruit ≈ 661 → 676, durian ≈ 756 → 780,
-coconut ≈ 657 → 760, sugar palm ≈ 451 → 571 (look.ts budgets kept, the
-pumpkin's 160 already passed before).
+coconut ≈ 657 → 760, sugar palm ≈ 451 → 571 (look.ts budgets kept; a crop's
+160 was already passed by the pumpkin, 190, and the eggplant and the pumpkin
+now have 200).
 
 ## The floating village
 

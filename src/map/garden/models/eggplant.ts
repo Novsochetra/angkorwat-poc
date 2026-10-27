@@ -1,7 +1,7 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
-import { long, round } from '../../veg/plantKit';
+import { leaf as leafKit, long, round } from '../../veg/plantKit';
 import { DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, step, thirsty, tone, type P, type Packet, type Rand } from './_crop';
 
 /**
@@ -60,7 +60,9 @@ function leaf(c: Ctx, p: P, yaw: number, tilt: number, len: number, wide: number
   const base = dead ? tone(DEAD_LEAF, r(i, 3)) : thirsty(young ? LEAF_YOUNG : tone(LEAF, r(i, 4)), droop, r(i, 5));
   const mat = dead ? 'mapBark' : 'mapLeaf';
   if (!two) {
-    seg(b, q, len * curl, wide * curl, 0.032, yaw, tilt + sag + 0.1, base, mat, (r(i, 6) - 0.5) * 1.1);
+    // (the plant kit's leaf in one piece: a blade narrowing to its pointed tip, no flat rectangle; `tilt` is from
+    // straight up, the kit's elevation from level)
+    leafKit(b, [q.x, q.y, q.z], { len: len * curl, wid: wide * curl, thick: 0.032, az: yaw, el: Math.PI / 2 - (tilt + sag + 0.1), bend: 0.15, segs: 1, rib: false, color: base, mat, roll: (r(i, 6) - 0.5) * 1.1 });
     return;
   }
   seg(b, q, len * 0.58 * curl, wide * curl, 0.04, yaw, tilt + sag, base, mat, (r(i, 6) - 0.5) * 1.1);
