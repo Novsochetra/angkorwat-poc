@@ -228,6 +228,8 @@ let pushing = false;
 let slack = ROPE_HOLD;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
 let stuckTries = 0;
+/** How far (m) the ways round have backed it in a row, less what it has rolled on since (`BACK_MOST`). */
+let backed = 0;
 const tryFrom = { x: Number.NaN, z: Number.NaN };
 /** Sending it home (the fade): nothing else meanwhile. */
 let sending = false;
@@ -768,6 +770,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   stuckFor = 0;
   track.length = 0;
   nowhereTries = 0;
+  backed = 0;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
@@ -878,6 +881,8 @@ interface PlanNode extends Pose {
   kind: 'turn' | 'roll';
   /** Where it is in `hist` (reached by going back the way it came), if it is. */
   hi?: number;
+  /** How far it has backed in a row by here (m: `backed`, then this plan's rolls back less its rolls on). */
+  back: number;
 }
 
 /**
@@ -899,7 +904,7 @@ function histNote(): void {
 function rootNode(): PlanNode {
   const l = hist[hist.length - 1];
   const at = l && Math.hypot(CART_AT.x - l.x, CART_AT.z - l.z) < 0.05 && Math.abs(angleDiff(CART_AT.yaw, l.yaw)) < 0.01;
-  return { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, g: 0, f: 0, parent: null, subs: [], kind: 'turn', hi: at ? hist.length - 1 : hist.length };
+  return { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, g: 0, f: 0, parent: null, subs: [], kind: 'turn', hi: at ? hist.length - 1 : hist.length, back: backed };
 }
 
 /** A move's turn (rad) and roll (m); the sub-steps tested in each (the oxen's far end moves under 0.2 m a sub-step). */
@@ -908,6 +913,12 @@ const TURN_SUB = 0.03;
 const ROLL_MOVE = 0.4;
 /** A move costs (a turn on the spot, a roll back, a roll on): the search likes few moves, little backing. */
 const COST = { turn: 1, back: 1.3, on: 1 };
+/**
+ * A cart backs up only a little (m): the ways round in a row may roll it back, or back the way it came, this far in
+ * all (`backed`, less what it has rolled on since); past it they turn it (a U-turn) — never back it along before him
+ * as he walks back past the oxen (it backed 15 m through the woodcutters' camp, never turning round).
+ */
+const BACK_MOST = 3;
 /** How near his way a heading must be (rad) for a place to be tried, and how far past where the yoke stops behind him the trial way must go on from it (m). */
 const AIM = 0.8;
 const AHEAD = 3;
@@ -918,7 +929,7 @@ const PLAN_MS = 5;
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, strict: false, lift: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 } };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
@@ -1035,16 +1046,17 @@ function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, m
   const out: PlanNode[] = [];
   const fx = Math.sin(n.yaw);
   const fz = Math.cos(n.yaw);
-  const moves: [Step[], number, 'turn' | 'roll'][] = [];
+  // (each with how far it has backed in a row after it: a search that moves the cart keeps to `BACK_MOST`)
+  const moves: [Step[], number, 'turn' | 'roll', number][] = [];
   for (const sgn of [1, -1]) {
     const subs: Pose[] = [];
     for (let k = 1; k * TURN_SUB <= TURN_MOVE + 1e-6; k++) subs.push({ x: n.x, z: n.z, yaw: n.yaw + sgn * k * TURN_SUB });
-    moves.push([subs, COST.turn, 'turn']);
+    moves.push([subs, COST.turn, 'turn', n.back]);
   }
   for (const dir of [1, -1]) {
     const subs: Pose[] = [];
     for (let d = FIT_STEP; d <= ROLL_MOVE + 1e-6; d += FIT_STEP) subs.push({ x: n.x + fx * d * dir, z: n.z + fz * d * dir, yaw: n.yaw });
-    moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll']);
+    moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll', dir > 0 ? Math.max(0, n.back - ROLL_MOVE) : n.back + ROLL_MOVE]);
   }
   // (back the way it came: the places it stood at before, in turn, two a move)
   if (n.hi !== undefined && n.hi > 0) {
@@ -1053,23 +1065,25 @@ function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, m
     if (Math.hypot(hist[i].x - n.x, hist[i].z - n.z) < 0.05 && Math.abs(angleDiff(hist[i].yaw, n.yaw)) < 0.01) i--;
     const subs: Step[] = [];
     for (const end = i - 1; i >= Math.max(0, end); i--) subs.push({ ...hist[i], hi: i });
-    if (subs.length) moves.push([subs, COST.back, 'roll']);
+    if (subs.length) moves.push([subs, COST.back, 'roll', n.back + Math.hypot(subs[subs.length - 1].x - n.x, subs[subs.length - 1].z - n.z)]);
   }
-  for (const [subs, cost, kind] of moves) {
+  for (const [subs, cost, kind, back] of moves) {
+    if (moving && !search.lift && back > BACK_MOST + 1e-6) continue;
     const end = subs[subs.length - 1] as Step;
     const key = poseKey(end);
     if (seen.has(key)) continue;
     seen.add(key);
     let ok = true;
     for (const sp of subs) if (!(ok = placeFits(ctx, sp.x, sp.z, sp.yaw, moving))) break;
-    if (ok) out.push({ x: end.x, z: end.z, yaw: wrapYaw(end.yaw), g: n.g + cost, f: n.g + cost, parent: n, subs, kind, hi: end.hi });
+    if (ok) out.push({ x: end.x, z: end.z, yaw: wrapYaw(end.yaw), g: n.g + cost, f: n.g + cost, parent: n, subs, kind, hi: end.hi, back });
   }
   return out;
 }
 
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
-function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
+function planStart(ctx: RoamCtx, to?: { x: number; z: number }, lift = false): void {
   search.on = true;
+  search.lift = lift;
   search.him.x = to ? to.x : ctx.body.pos.x;
   search.him.z = to ? to.z : ctx.body.pos.z;
   search.from.x = ctx.body.pos.x;
@@ -1115,6 +1129,15 @@ function planStep(ctx: RoamCtx): boolean {
       planTake(b);
       return true;
     }
+    // (none within `BACK_MOST` of backing: looked for again, backing as far as it must — he may stand where only
+    // backing away from him makes room, close beside the oxen by his house)
+    if (!search.lift) {
+      const strict = search.strict;
+      console.info(`[haul] no way round backing ${BACK_MOST} m at most (${search.n} places looked at): looking again, backing farther`);
+      planStart(ctx, search.him, true);
+      search.strict = strict;
+      return false;
+    }
     // (none: he walks round, or the oxen take it home: `stuckHere`)
     search.on = false;
     search.failedFor.x = search.him.x;
@@ -1157,6 +1180,8 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     }
     const was = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
     standAt(ctx, st.pose.x, st.pose.z, st.pose.yaw);
+    // (backed in a row, less what it rolled on: `BACK_MOST`)
+    backed = Math.max(0, backed - (Math.sin(was.yaw) * (st.pose.x - was.x) + Math.cos(was.yaw) * (st.pose.z - was.z)));
     // (back where it stood before: what came after is undone; else a new place)
     if (st.pose.hi !== undefined) hist.length = st.pose.hi + 1;
     else histNote();
@@ -1358,6 +1383,7 @@ function lead(ctx: RoamCtx, dt: number): void {
     fitS = next;
   }
   yokeS += ds;
+  backed = Math.max(0, backed - ds);
   P.wheel += ds / (WHEEL_R * K);
   if (ds > 0 || dirty) placeOnWay(ctx);
   // (stuck before something: a few moves round — a turn on the spot, backing up, a small three-point turn — found and
@@ -1918,7 +1944,7 @@ registerAddon({
             work: W ? { kind: W.kind, phase: W.phase, u: +W.u.toFixed(2), piece: W.piece, moved: W.moved } : null,
             saving: progress.saving,
             boxes: view?.things.capacity ?? 0,
-            round: { searching: search.on, looked: search.n, open: search.open.length, failedFor: [search.failedFor.x, search.failedFor.z], plan: walkPlan.steps.length, at: walkPlan.i, fruitless, stuckFor: +stuckFor.toFixed(2), nowhere: { tries: nowhereTries, samples: track.length, push: pushing }, taut: +taut.toFixed(2), rope: +ropeFar.toFixed(2) },
+            round: { searching: search.on, looked: search.n, open: search.open.length, failedFor: [search.failedFor.x, search.failedFor.z], plan: walkPlan.steps.length, at: walkPlan.i, fruitless, stuckFor: +stuckFor.toFixed(2), nowhere: { tries: nowhereTries, samples: track.length, push: pushing }, backed: +backed.toFixed(2), taut: +taut.toFixed(2), rope: +ropeFar.toFixed(2) },
             fit: { n: FIT.n, avgMs: FIT.n ? +(FIT.ms / FIT.n).toFixed(4) : 0, worstMs: +FIT.worst.toFixed(3) },
           }),
           /** Could the cart stand where it is now, or at (x, z) heading `yaw` degrees (its whole boxes, as a saved place is checked)? */

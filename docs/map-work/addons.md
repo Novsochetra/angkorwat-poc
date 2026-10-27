@@ -3630,7 +3630,13 @@ without its straw), the oxen `people/_ox.ts`.
   oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
   and a log pile). A way round may also go back along the places it last stood
   at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
-  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A new
+  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A cart
+  backs up only a little: the ways round in a row back it 3 m at most in all (`BACK_MOST`; rolls back and
+  back the way it came, less what it has rolled on since, counted from when he takes the rope), so when he
+  walks back past the oxen they turn it round toward him (a U-turn) and never back it along before him (it
+  backed 15 m through the woodcutters' camp so); only when no way round within that is found is it looked
+  for again backing as far as it must (close beside the oxen by his house, backing away from him may be the
+  only room). A new
   way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the
   yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
 - **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
