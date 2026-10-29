@@ -1699,9 +1699,12 @@ function lead(ctx: RoamCtx, dt: number): void {
     }
     else {
       if (into) console.info(`[haul] he walks into the oxen: they cannot walk the cart round where it stands (${w1}, ${w2})`);
-      planStart(ctx, into ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
+      // (toward where he heads when he pushes into them — from in front, or beside them toward where the cart itself
+      // stands: it gets out of his way —; else toward him)
+      const heads = into || !inFront(CART_AT, b.pos.x, b.pos.z);
+      planStart(ctx, heads ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
       search.strict = false;
-      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${into ? ', where he heads' : ''}`);
+      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${heads ? ', where he heads' : ''}`);
     }
   }
   // (blocked at his heels — the yoke within `HEEL` of his feet, he in front of the oxen — it waits; beside or behind

@@ -3625,7 +3625,8 @@ without its straw), the oxen `people/_ox.ts`.
   re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch, as pressed,
   before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
   oxen look for a way round — toward where he heads (6 m on the way he faces) when he walks into them
-  from in front, toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`) —
+  from in front, or beside or behind them (he pushes on toward where the cart itself stands: it gets out of his way),
+  toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`) —
   unless the way round moved the cart (0.5 m or 0.3 rad): then it is a new first time.
   A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the cart's and the
   oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
