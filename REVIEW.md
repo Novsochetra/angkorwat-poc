@@ -138,3 +138,6 @@ One line each time a ticket is sent back, so the next worker avoids it.
   get it out (AWP-14).
 - A "getting nowhere" watchdog measures movement over a time window, not per
   frame; test it with WASD steering that re-aims, not only a steady stick (AWP-14).
+- A search that stops at its place limit has not shown that nothing exists: never
+  take the limit as "none", and never let one lifted limit lift every later
+  search; log how far each plan backs and how far each U-turn turns (AWP-14).
