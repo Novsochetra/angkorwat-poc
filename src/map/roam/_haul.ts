@@ -963,6 +963,12 @@ const PIVOT_DONE = 0.35;
 const PIVOT_CLEAR = 0.3;
 /** He stands still this long (s), the cart at his heels not facing him (more than `PIVOT_DONE` off): the oxen turn to face him. */
 const FACE_AFTER = 0.8;
+/**
+ * …until he is within this (rad) of its heading, seen from its axle; when he stands too near beside the yoke for that,
+ * the oxen first step it back a little (`FACE_BACK` at most, and within `BACK_MOST` of this turning round).
+ */
+const FACE_DONE = 0.2;
+const FACE_BACK = 1.2;
 /** Turning right round (he walked into their noses): the oxen brush past him, nudging him aside (his feet this clear, m). */
 const ROUND_CLEAR = 0.15;
 /** How near his way a heading must be (rad) for a place to be tried, and how far past where the yoke stops behind him the trial way must go on from it (m). */
@@ -1224,6 +1230,54 @@ function pivotRoom(ctx: RoamCtx, sgn: number): number {
   }
   return a;
 }
+/**
+ * He stands still beside the yoke, the cart not facing him: the oxen turn it to face him (within `FACE_DONE`, seen from
+ * its axle), first backing it a little when he stands too near for that (0.4 m at a time, `FACE_BACK` at most, within
+ * `BACK_MOST`). Every sub-step tested now (a few dozen at most, once) and again as it is walked. Taken: true.
+ */
+function facePlan(ctx: RoamCtx): boolean {
+  fitTag = 'face';
+  const fx = Math.sin(CART_AT.yaw);
+  const fz = Math.cos(CART_AT.yaw);
+  for (let back = 0; back <= FACE_BACK + 1e-6 && backed + back <= BACK_MOST + 1e-6; back += ROLL_MOVE) {
+    const steps: { pose: Step; time: number }[] = [];
+    let ok = true;
+    for (let d = FIT_STEP; d <= back + 1e-6 && ok; d += FIT_STEP) {
+      const x = CART_AT.x - fx * d;
+      const z = CART_AT.z - fz * d;
+      ok = placeFits(ctx, x, z, CART_AT.yaw, true);
+      steps.push({ pose: { x, z, yaw: CART_AT.yaw }, time: SUB_TIME.roll });
+    }
+    if (!ok) break;
+    const ax = CART_AT.x - fx * back;
+    const az = CART_AT.z - fz * back;
+    const want = Math.atan2(himAt.x - ax, himAt.z - az);
+    const d0 = angleDiff(want, CART_AT.yaw);
+    const dir = Math.sign(d0);
+    let yaw = CART_AT.yaw;
+    let left = Math.abs(d0);
+    while (ok && left > FACE_DONE) {
+      yaw += dir * TURN_SUB;
+      left -= TURN_SUB;
+      ok = feetClear(ax, az, yaw, himAt.x, himAt.z, PIVOT_CLEAR) && placeFits(ctx, ax, az, yaw, true);
+      steps.push({ pose: { x: ax, z: az, yaw }, time: SUB_TIME.turn });
+    }
+    if (!ok) continue;
+    if (!steps.length) return false;
+    search.on = false;
+    walkPlan.steps.length = 0;
+    walkPlan.steps.push(...steps);
+    walkPlan.clear = 0;
+    walkPlan.i = 0;
+    walkPlan.t = 0;
+    walkPlan.from.x = CART_AT.x;
+    walkPlan.from.z = CART_AT.z;
+    walkPlan.from.yaw = CART_AT.yaw;
+    console.info(`[haul] the oxen turn to face him: ${((Math.abs(d0) * 180) / Math.PI).toFixed(0)}°${back ? `, backing ${back.toFixed(1)} m first` : ''}`);
+    return true;
+  }
+  return false;
+}
 /** Are his feet (hx, hz) `r` clear of the cart's and the oxen's boxes, the cart at axle (ax, az) heading `yaw`? */
 function feetClear(ax: number, az: number, yaw: number, hx: number, hz: number, r: number): boolean {
   if (!Number.isFinite(hx)) return true;
@@ -1382,6 +1436,8 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
     const got = pivotPlan(ctx, fromAxle(p.x, p.z));
     if (got === 'turn') return true;
     if (got === 'done') pivoting = false;
+    // (it cannot turn to him where it stands — he too near beside the yoke —: a little back first, then round to him)
+    else if (facePlan(ctx)) return true;
   } else if (!search.on) pivoting = false;
   // (turned to him and nothing in the way, the rope not pulling: the way goes on, no search)
   if (!search.on && !blocked && taut <= TAUT_AFTER) return false;
@@ -1620,7 +1676,7 @@ function lead(ctx: RoamCtx, dt: number): void {
   faceFor = still ? faceFor + dt : Math.min(faceFor, 0);
   if (faceFor > FACE_AFTER) {
     const p = ctx.body.pos;
-    faceFor = Math.abs(angleDiff(fromAxle(p.x, p.z), CART_AT.yaw)) > PIVOT_DONE && pivotPlan(ctx, fromAxle(p.x, p.z)) === 'turn' ? 0 : -FACE_AFTER * 2;
+    faceFor = Math.abs(angleDiff(fromAxle(p.x, p.z), CART_AT.yaw)) > FACE_DONE && facePlan(ctx) ? 0 : -FACE_AFTER * 2;
   }
   wayTrim(yokeS - REACH_M - 2);
   // Sounds: the wheels and a hub's knock (his), the bells and the creak go with the map's calls (`frame`).
