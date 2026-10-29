@@ -3652,14 +3652,9 @@ without its straw), the oxen `people/_ox.ts`.
     walked), or it cannot turn to him where it stands (he standing too near beside the yoke): the oxen turn it to
     face him within 0.06 rad, about 3° (`FACE_DONE`, `facePlan`), first backing it 0.4 m at a time when he stands
     too near (`FACE_BACK` 1.2 m at most, within `BACK_MOST`); every sub-step tested before and as it is walked.
-    Where nothing lets it come round so far, as far as it does (0.09 rad of turn at least, `FACE_PART`); where it
-    cannot turn at all, not tried again until he or the cart moves.
-  - He stands in their swing close beside the oxen (standing, or held there by the rope) and pushes on the way he
-    faces — back past them — and backing a little does not make room: they walk the cart round where it stands to
-    head the way he goes (`turnToHead`), the way round that has room for all of it (both tried, a test every 0.3
-    rad, the shorter first; his feet's middle 0.15 m clear), as when he walks into their noses; he walks on past them
-    and the way starts once he is in front. Not tried again until he or the cart moves. (By the clay bank a search
-    had backed the cart 2.8 m in 26 000 fit tests instead; now about 300.)
+    Where nothing lets it come round so far, as far as it does where it stands (0.09 rad of turn at least,
+    `FACE_PART`; never backing for a part turn); where it cannot turn at all, not tried again until he or the cart
+    moves.
   - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
   - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
     back and move back the way it came, counted from when he takes the rope or after it has followed him on

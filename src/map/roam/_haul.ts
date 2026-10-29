@@ -975,8 +975,8 @@ const FACE_AFTER = 0.5;
 /**
  * …until he is within this (rad, about 3°) of its heading, seen from its axle: it faces him (a U-turn ends right round,
  * not 10° short); when he stands too near beside the yoke for that, the oxen first step it back a little (`FACE_BACK` at
- * most, and within `BACK_MOST` of this turning round). Where nothing lets it turn so far, as far as it does (`FACE_PART`
- * rad nearer him at least).
+ * most, and within `BACK_MOST` of this turning round). Where nothing lets it turn so far, as far as it does where it
+ * stands (`FACE_PART` rad nearer him at least; never backing for a part turn).
  */
 const FACE_DONE = 0.06;
 const FACE_PART = 0.09;
@@ -1260,7 +1260,6 @@ function facePlan(ctx: RoamCtx): boolean {
   fitTag = 'face';
   const fx = Math.sin(CART_AT.yaw);
   const fz = Math.cos(CART_AT.yaw);
-  const off0 = Math.abs(angleDiff(Math.atan2(himAt.x - CART_AT.x, himAt.z - CART_AT.z), CART_AT.yaw));
   // (the best that falls short of `FACE_DONE`: how far off him it ends, its steps, its turn and backing)
   let part: { left: number; steps: { pose: Step; time: number }[]; d0: number; back: number } | null = null;
   for (let back = 0; back <= FACE_BACK + 1e-6 && backed + back <= BACK_MOST + 1e-6; back += ROLL_MOVE) {
@@ -1291,9 +1290,9 @@ function facePlan(ctx: RoamCtx): boolean {
       steps.push({ pose: { x: ax, z: az, yaw }, time: SUB_TIME.turn });
     }
     if (!ok) {
-      // (it turns only part of the way so — `FACE_PART` at least, backing alone is no turn —: kept if it ends nearer him
-      // than any other so far, the least backing first)
-      if (Math.abs(d0) - left >= FACE_PART - 1e-6 && left < off0 - 1e-6 && (!part || left < part.left - 1e-6)) part = { left, steps, d0, back };
+      // (it turns only part of the way where it stands — `FACE_PART` at least —: kept, walked if no backing brings it
+      // right round; never backing for a part turn)
+      if (back === 0 && Math.abs(d0) - left >= FACE_PART - 1e-6) part = { left, steps, d0, back };
       continue;
     }
     if (!steps.length) return false;
@@ -1304,42 +1303,6 @@ function facePlan(ctx: RoamCtx): boolean {
   if (part) {
     ff.hx = Number.NaN;
     faceTake(part.steps, part.d0, part.back, `, part of the way (${((part.left * 180) / Math.PI).toFixed(0)}° short: something in the way)`);
-    return true;
-  }
-  return false;
-}
-/**
- * He stands in the swing toward him, close beside the oxen, and pushes on the way he faces (back past them, a U-turn),
- * and backing a little does not make room (`facePlan`): the oxen walk the cart round, where it stands, to head the way he
- * goes — the way round that has room for the whole of it (both tried, every `ROOM_STEP`, his feet `ROUND_CLEAR` clear;
- * the shorter first), as when he walks into their noses (`turnRound`); he then walks on past them and the way starts
- * once he is in front. Every sub-step tested again as it is walked. Not tried again until he or the cart moves.
- * Taken: true. (By the clay bank a search had backed it 2.8 m in 26 000 fit tests instead.)
- */
-const headFailed = { hx: Number.NaN, hz: Number.NaN, x: Number.NaN, z: Number.NaN, yaw: Number.NaN };
-function turnToHead(ctx: RoamCtx, want: number): boolean {
-  const lf = headFailed;
-  if (Math.hypot(himAt.x - lf.hx, himAt.z - lf.hz) < 0.1 && Math.hypot(CART_AT.x - lf.x, CART_AT.z - lf.z) < 0.05 && Math.abs(angleDiff(CART_AT.yaw, lf.yaw)) < 0.01) return false;
-  lf.hx = himAt.x;
-  lf.hz = himAt.z;
-  lf.x = CART_AT.x;
-  lf.z = CART_AT.z;
-  lf.yaw = CART_AT.yaw;
-  const d = angleDiff(want, CART_AT.yaw);
-  if (Math.abs(d) < PIVOT_DONE) return false;
-  fitTag = 'room';
-  const ways = [Math.sign(d) || 1, -(Math.sign(d) || 1)];
-  for (const sg of ways) {
-    const need = (sg === Math.sign(d) ? Math.abs(d) : 2 * Math.PI - Math.abs(d)) - PIVOT_DONE;
-    let room = true;
-    for (let a = ROOM_STEP; room && a < need + ROOM_STEP - 1e-6; a += ROOM_STEP) {
-      const yaw = CART_AT.yaw + sg * Math.min(a, need);
-      room = feetClear(CART_AT.x, CART_AT.z, yaw, himAt.x, himAt.z, ROUND_CLEAR) && placeFits(ctx, CART_AT.x, CART_AT.z, yaw, true);
-    }
-    if (!room || pivotPlan(ctx, want, sg, ROUND_CLEAR) !== 'turn') continue;
-    lf.hx = Number.NaN;
-    turnRound = { want: wrapYaw(want), sgn: sg };
-    console.info(`[haul] he stands in their swing, pushing on: the oxen walk the cart round ${((need * 180) / Math.PI).toFixed(0)}° to head the way he goes`);
     return true;
   }
   return false;
@@ -1516,9 +1479,8 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
     if (got === 'turn') return true;
     if (got === 'done') pivoting = false;
     // (it cannot turn to him where it stands — he too near beside the yoke —: a little back first, then round to him;
-    // or, he standing in the swing pushing on, round to head the way he goes (`turnToHead`); once he stands there: walking
-    // round them, he is coming in front; held by the rope he stands, however he slides along its length)
-    else if ((Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL || ropeFar > ROPE_HOLD - 0.3) && (facePlan(ctx) || (got === 'him' && pushing && turnToHead(ctx, ctx.body.yaw)))) return true;
+    // once he stands there: walking round them, he is coming in front)
+    else if (Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL && facePlan(ctx)) return true;
   } else if (!search.on) pivoting = false;
   // (turned to him and nothing in the way, the rope not pulling: the way goes on, no search)
   if (!search.on && !blocked && taut <= TAUT_AFTER) return false;
