@@ -3630,15 +3630,34 @@ without its straw), the oxen `people/_ox.ts`.
   oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
   and a log pile). A way round may also go back along the places it last stood
   at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
-  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do. A cart
-  backs up only a little: the ways round in a row back it 3 m at most in all (`BACK_MOST`; rolls back and
-  back the way it came, less what it has rolled on since, counted from when he takes the rope), so when he
-  walks back past the oxen they turn it round toward him (a U-turn) and never back it along before him (it
-  backed 15 m through the woodcutters' camp so); only when no way round within that is found is it looked
-  for again backing as far as it must (close beside the oxen by his house, backing away from him may be the
-  only room). A new
-  way (taking the rope, each step of a way round) starts with points every 0.5 m ending right at the
-  yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
+  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do.
+- **Turning round** (a U-turn, AWP-14 integration 5): before any search the oxen walk the cart round where it
+  stands, the cart turning on its wheels (`pivotPlan`): sub-steps of 0.03 rad (the oxen's far end moves under
+  0.2 m a sub-step), each tested as the oxen walk it (`planWalk`: it stops at the first that does not fit or
+  comes too near him), at 0.7 rad/s, up to 1.2 rad a plan and plan after plan without waiting.
+  - He walks into their noses from in front, back past them (getting nowhere 2.5 s): they turn it right round
+    (180°), the side with more room (a few tests every 0.3 rad up to π, `pivotRoom`; his side when both go
+    round), brushing past him (his feet's middle 0.15 m clear, `ROUND_CLEAR`: they nudge him aside), and the
+    way waits until it is round (`turnRound`) or cannot turn on.
+  - He beside or behind the oxen: they turn it toward him, as seen from its axle, done within 0.35 rad
+    (`PIVOT_DONE`), his feet's middle 0.3 m clear (`PIVOT_CLEAR`); then the way goes on, with no search unless
+    something blocks it or the rope pulls.
+  - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
+  - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
+    back and move back the way it came, counted from when he takes the rope or after it has followed him on
+    2 m, `BACK_RESET`; never given back by rolling on within a way round, never lifted). A move that would
+    back it farther is not made; turns and rolls on always are.
+  - A search that reaches its place limit (1 600) has not shown there is none: it walks the part it found that
+    comes round most toward him (in its guess, clear of his feet, `PART_GAIN`) and looks on from there; or the
+    nearest to his heels it reached, if 1.5 m nearer; only else none. The search keeps its open places in a
+    heap, weighs the way to go three times the way come (`W_GUESS`: it makes for coming round first) and tests
+    each place's fit once (`fitsMemo`).
+  - A blocked way is not tried again every frame while nothing has moved (he, the way's end: `wayTried`).
+  - Checks: `__haul.state().round.backed` (the reverse travel so far), `.fit.by` (fit tests by what they are
+    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to })` (the search for that cart and him, searched to
+    the end at once: found, places, fit tests, ms, backing, turn; nothing of the live cart changes).
+- **A new way** (taking the rope, each step of a way round or a turn) starts with points every 0.5 m ending
+  right at the yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
 - **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
   moves off — back the way it came among them; up to 500 looked at — from which it rolls on 2 m:
   `canGetOut`; a cart that can still go
