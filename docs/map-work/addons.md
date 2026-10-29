@@ -3617,8 +3617,9 @@ without its straw), the oxen `people/_ox.ts`.
   log pile). Beside or behind the oxen (he turned to go back the way he came) it brings them round: a
   way round made near him (yoke within `HEEL` + 1 m) ends with him within `FRONT_GOAL` = 0.45 rad of the
   heading, so one plan does the U-turn; farther, within `AIM` (both seen from the yoke). The cart
-  standing 1.2 s, blocked or not, with the rope taut (him 3.9 m or more from the noses) or him beside
-  or behind the oxen, starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
+  standing 1.2 s, blocked or not, with the rope taut (him 3.9 m or more from the noses) or him standing
+  beside or behind the oxen (slower than 0.3 m/s, `BESIDE_STILL`: while he walks round them they wait,
+  he is coming in front), starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
   tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m. Getting nowhere is
   judged over a window, never frame by frame (`nowhere`: a sample every 0.25 s; a keyboard player
   re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch, as pressed,
@@ -3642,10 +3643,17 @@ without its straw), the oxen `people/_ox.ts`.
   - He beside or behind the oxen: they turn it toward him, as seen from its axle, done within 0.35 rad
     (`PIVOT_DONE`), his feet's middle 0.3 m clear (`PIVOT_CLEAR`); then the way goes on, with no search unless
     something blocks it or the rope pulls.
-  - He stands still 0.8 s (`FACE_AFTER`) with the cart at his heels not facing him (it followed the curve he
-    walked), or it cannot turn to him where it stands (he too near beside the yoke): the oxen turn it to face
-    him within 0.2 rad (`FACE_DONE`, `facePlan`), first backing it 0.4 m at a time when he stands too near
-    (`FACE_BACK` 1.2 m at most, within `BACK_MOST`); every sub-step tested before and as it is walked.
+  - After a turn (and when he takes the rope) the way starts again at the yoke, and it is laid toward him only
+    once he is in front of the oxen (within `FRONT` of the heading, seen from the yoke) and `GAP` from the yoke
+    (`wayOn`): never bent back round the oxen toward him beside them (the yoke would go back along its own pole —
+    a hook: after a U-turn the cart swung out sideways on it and ended facing past him). Beside or behind them
+    the oxen turn it toward him (above); at its heels it waits; then the way goes straight from the yoke to him.
+  - He stands still 0.5 s (`FACE_AFTER`) with the cart at his heels not facing him (it followed the curve he
+    walked), or it cannot turn to him where it stands (he standing too near beside the yoke): the oxen turn it to
+    face him within 0.06 rad, about 3° (`FACE_DONE`, `facePlan`), first backing it 0.4 m at a time when he stands
+    too near (`FACE_BACK` 1.2 m at most, within `BACK_MOST`); every sub-step tested before and as it is walked.
+    Where nothing lets it come round so far, as far as it does (0.09 rad of turn at least, `FACE_PART`); where it
+    cannot turn at all, not tried again until he or the cart moves.
   - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
   - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
     back and move back the way it came, counted from when he takes the rope or after it has followed him on

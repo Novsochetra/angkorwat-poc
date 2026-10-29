@@ -100,6 +100,8 @@ const FRONT = 0.9;
  * way round (never a silent wait).
  */
 const TAUT_AFTER = 1.2;
+/** He beside or behind the oxen counts toward `TAUT_AFTER` only while he walks slower than this (m/s): stands there. */
+const BESIDE_STILL = 0.3;
 /**
  * Getting nowhere, judged over a window (s), not frame by frame: he has pushed on all of it (keys, stick, touch — a
  * player re-aims all the time) and moved under `NOWHERE_HIM` m net, the cart under `NOWHERE_CART` m. The first time the
@@ -395,6 +397,13 @@ function wayOn(ctx: RoamCtx): void {
   const p = ctx.body.pos;
   let n = way.s.length - 1;
   if (n < 0) return;
+  // (the way's end at the yoke — the oxen just turned it, or he took the rope — and he beside or behind the oxen (not
+  // within `FRONT` of its heading, seen from the yoke), or not yet `GAP` from the yoke: no way is laid toward him. It
+  // would bend back round the oxen and the yoke go back along its own pole — a hook: after a U-turn the cart swung out
+  // sideways on it, came on to his very feet and ended facing past him. Beside them, the oxen turn it toward him first
+  // (`getRound`: `pivotPlan`, `facePlan`); at its heels it waits (as it would); then the way starts from the yoke,
+  // straight toward where he is.)
+  if (way.s[n] - yokeS < STEP && (!inFront(CART_AT, p.x, p.z) || Math.hypot(p.x - way.x[n], p.z - way.z[n]) < GAP)) return;
   // (blocked, and nothing has moved since it was tried — he, the way's end: not tried again every frame)
   if (blocked && Math.hypot(p.x - wayTried.x, p.z - wayTried.z) < 0.08 && way.s.length === wayTried.n && way.x[n] === wayTried.ex && way.z[n] === wayTried.ez) return;
   wayTried.x = p.x;
@@ -961,13 +970,16 @@ const PIVOT_MOST = 1.2;
 const PIVOT_MIN = 3;
 const PIVOT_DONE = 0.35;
 const PIVOT_CLEAR = 0.3;
-/** He stands still this long (s), the cart at his heels not facing him (more than `PIVOT_DONE` off): the oxen turn to face him. */
-const FACE_AFTER = 0.8;
+/** He stands still this long (s), the cart at his heels not facing him (more than `FACE_DONE` off): the oxen turn to face him. */
+const FACE_AFTER = 0.5;
 /**
- * …until he is within this (rad) of its heading, seen from its axle; when he stands too near beside the yoke for that,
- * the oxen first step it back a little (`FACE_BACK` at most, and within `BACK_MOST` of this turning round).
+ * …until he is within this (rad, about 3°) of its heading, seen from its axle: it faces him (a U-turn ends right round,
+ * not 10° short); when he stands too near beside the yoke for that, the oxen first step it back a little (`FACE_BACK` at
+ * most, and within `BACK_MOST` of this turning round). Where nothing lets it turn so far, as far as it does (`FACE_PART`
+ * rad nearer him at least).
  */
-const FACE_DONE = 0.2;
+const FACE_DONE = 0.06;
+const FACE_PART = 0.09;
 const FACE_BACK = 1.2;
 /** Turning right round (he walked into their noses): the oxen brush past him, nudging him aside (his feet this clear, m). */
 const ROUND_CLEAR = 0.15;
@@ -1235,10 +1247,22 @@ function pivotRoom(ctx: RoamCtx, sgn: number): number {
  * its axle), first backing it a little when he stands too near for that (0.4 m at a time, `FACE_BACK` at most, within
  * `BACK_MOST`). Every sub-step tested now (a few dozen at most, once) and again as it is walked. Taken: true.
  */
+/** Where he and the cart were when `facePlan` last found nothing: not tried again until one of them moves. */
+const faceFailed = { hx: Number.NaN, hz: Number.NaN, x: Number.NaN, z: Number.NaN, yaw: Number.NaN };
 function facePlan(ctx: RoamCtx): boolean {
+  const ff = faceFailed;
+  if (Math.hypot(himAt.x - ff.hx, himAt.z - ff.hz) < 0.1 && Math.hypot(CART_AT.x - ff.x, CART_AT.z - ff.z) < 0.05 && Math.abs(angleDiff(CART_AT.yaw, ff.yaw)) < 0.01) return false;
+  ff.hx = himAt.x;
+  ff.hz = himAt.z;
+  ff.x = CART_AT.x;
+  ff.z = CART_AT.z;
+  ff.yaw = CART_AT.yaw;
   fitTag = 'face';
   const fx = Math.sin(CART_AT.yaw);
   const fz = Math.cos(CART_AT.yaw);
+  const off0 = Math.abs(angleDiff(Math.atan2(himAt.x - CART_AT.x, himAt.z - CART_AT.z), CART_AT.yaw));
+  // (the best that falls short of `FACE_DONE`: how far off him it ends, its steps, its turn and backing)
+  let part: { left: number; steps: { pose: Step; time: number }[]; d0: number; back: number } | null = null;
   for (let back = 0; back <= FACE_BACK + 1e-6 && backed + back <= BACK_MOST + 1e-6; back += ROLL_MOVE) {
     const steps: { pose: Step; time: number }[] = [];
     let ok = true;
@@ -1256,27 +1280,46 @@ function facePlan(ctx: RoamCtx): boolean {
     const dir = Math.sign(d0);
     let yaw = CART_AT.yaw;
     let left = Math.abs(d0);
-    while (ok && left > FACE_DONE) {
-      yaw += dir * TURN_SUB;
+    while (left > FACE_DONE) {
+      const next = yaw + dir * TURN_SUB;
+      if (!feetClear(ax, az, next, himAt.x, himAt.z, PIVOT_CLEAR) || !placeFits(ctx, ax, az, next, true)) {
+        ok = false;
+        break;
+      }
+      yaw = next;
       left -= TURN_SUB;
-      ok = feetClear(ax, az, yaw, himAt.x, himAt.z, PIVOT_CLEAR) && placeFits(ctx, ax, az, yaw, true);
       steps.push({ pose: { x: ax, z: az, yaw }, time: SUB_TIME.turn });
     }
-    if (!ok) continue;
+    if (!ok) {
+      // (it turns only part of the way so — `FACE_PART` at least, backing alone is no turn —: kept if it ends nearer him
+      // than any other so far, the least backing first)
+      if (Math.abs(d0) - left >= FACE_PART - 1e-6 && left < off0 - 1e-6 && (!part || left < part.left - 1e-6)) part = { left, steps, d0, back };
+      continue;
+    }
     if (!steps.length) return false;
-    search.on = false;
-    walkPlan.steps.length = 0;
-    walkPlan.steps.push(...steps);
-    walkPlan.clear = 0;
-    walkPlan.i = 0;
-    walkPlan.t = 0;
-    walkPlan.from.x = CART_AT.x;
-    walkPlan.from.z = CART_AT.z;
-    walkPlan.from.yaw = CART_AT.yaw;
-    console.info(`[haul] the oxen turn to face him: ${((Math.abs(d0) * 180) / Math.PI).toFixed(0)}°${back ? `, backing ${back.toFixed(1)} m first` : ''}`);
+    ff.hx = Number.NaN;
+    faceTake(steps, d0, back, '');
+    return true;
+  }
+  if (part) {
+    ff.hx = Number.NaN;
+    faceTake(part.steps, part.d0, part.back, `, part of the way (${((part.left * 180) / Math.PI).toFixed(0)}° short: something in the way)`);
     return true;
   }
   return false;
+}
+/** The oxen walk `facePlan`'s steps. */
+function faceTake(steps: { pose: Step; time: number }[], d0: number, back: number, note: string): void {
+  search.on = false;
+  walkPlan.steps.length = 0;
+  walkPlan.steps.push(...steps);
+  walkPlan.clear = 0;
+  walkPlan.i = 0;
+  walkPlan.t = 0;
+  walkPlan.from.x = CART_AT.x;
+  walkPlan.from.z = CART_AT.z;
+  walkPlan.from.yaw = CART_AT.yaw;
+  console.info(`[haul] the oxen turn to face him: ${((Math.abs(d0) * 180) / Math.PI).toFixed(0)}°${back ? `, backing ${back.toFixed(1)} m first` : ''}${note}`);
 }
 /** Are his feet (hx, hz) `r` clear of the cart's and the oxen's boxes, the cart at axle (ax, az) heading `yaw`? */
 function feetClear(ax: number, az: number, yaw: number, hx: number, hz: number, r: number): boolean {
@@ -1436,8 +1479,9 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
     const got = pivotPlan(ctx, fromAxle(p.x, p.z));
     if (got === 'turn') return true;
     if (got === 'done') pivoting = false;
-    // (it cannot turn to him where it stands — he too near beside the yoke —: a little back first, then round to him)
-    else if (facePlan(ctx)) return true;
+    // (it cannot turn to him where it stands — he too near beside the yoke —: a little back first, then round to him;
+    // once he stands there: walking round them, he is coming in front)
+    else if (Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL && facePlan(ctx)) return true;
   } else if (!search.on) pivoting = false;
   // (turned to him and nothing in the way, the rope not pulling: the way goes on, no search)
   if (!search.on && !blocked && taut <= TAUT_AFTER) return false;
@@ -1696,10 +1740,13 @@ function lead(ctx: RoamCtx, dt: number): void {
   nose(_n);
   const far = Math.hypot(ctx.body.pos.x - _n.x, ctx.body.pos.z - _n.z);
   // (he pulls at the rope and the cart stands: `taut`; getting nowhere for a while so, a way round or not: as no way;
-  // and the cart standing with him beside or behind the oxen, the rope slack or not, as `taut` too: they turn to him)
+  // and the cart standing with him beside or behind the oxen, the rope slack or not, as `taut` too: they turn to him —
+  // once he stands there (`BESIDE_STILL`); while he walks round them they wait, he is coming in front (a U-turn: they
+  // had backed it 2 m and more to put him in front as he walked there anyway))
   const pulling = ds <= 1e-4 && !walkPlan.steps.length && far > ROPE_HOLD - 0.3;
   ropeFar = far;
-  taut = (pulling || (ds <= 1e-4 && !walkPlan.steps.length && !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z))) && !search.on ? taut + dt : 0;
+  const besideStill = !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z) && Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL;
+  taut = (pulling || (ds <= 1e-4 && !walkPlan.steps.length && besideStill)) && !search.on ? taut + dt : 0;
   stuckFor = pulling && !search.on ? stuckFor + dt : 0;
   const noWay = ((blocked || pulling) && !search.on && !walkPlan.steps.length && Math.hypot(ctx.body.pos.x - search.failedFor.x, ctx.body.pos.z - search.failedFor.z) < 1.5) || stuckFor > STUCK_AFTER;
   // (no way round for where he stands: the rope pays out as he walks on — round the thing, somewhere the oxen can come
