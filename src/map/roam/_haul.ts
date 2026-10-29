@@ -228,8 +228,20 @@ let pushing = false;
 let slack = ROPE_HOLD;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
 let stuckTries = 0;
-/** How far (m) the ways round have backed it in a row, less what it has rolled on since (`BACK_MOST`). */
+/**
+ * How far (m) it has backed while it comes round (`BACK_MOST`): every way round's rolls back and moves back the way it
+ * came, counted from when he took the rope or it last followed him on `BACK_RESET` m (`onRun`) — not given back by
+ * rolling on within a way round, nor reset by a new one.
+ */
 let backed = 0;
+let onRun = 0;
+/** The oxen are walking it round toward him (`pivotPlan`): they go on doing so, without waiting, while he is not in front. */
+let pivoting = false;
+/**
+ * He walked into the oxen from in front, back past them: they walk the cart right round (to `want`, the way `sgn`),
+ * plan after plan without waiting, brushing past him (`BODY_R`), until it is round or cannot turn on.
+ */
+let turnRound: { want: number; sgn: number } | null = null;
 const tryFrom = { x: Number.NaN, z: Number.NaN };
 /** Sending it home (the fade): nothing else meanwhile. */
 let sending = false;
@@ -771,6 +783,9 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   track.length = 0;
   nowhereTries = 0;
   backed = 0;
+  onRun = 0;
+  pivoting = false;
+  turnRound = null;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
@@ -919,17 +934,75 @@ const COST = { turn: 1, back: 1.3, on: 1 };
  * as he walks back past the oxen (it backed 15 m through the woodcutters' camp, never turning round).
  */
 const BACK_MOST = 3;
+/** Following him on this far (m) ends a turning round: a new one may back up again. */
+const BACK_RESET = 2;
+/**
+ * The oxen walk the cart round toward him, the cart turning on its wheels (`pivotPlan`): this far a plan at most (rad),
+ * these sub-steps at least, done once he is within this of its heading seen from its axle; the oxen's and the cart's
+ * boxes keep this far (m) clear of his feet's middle (under `BODY_R`: they nudge him aside as they come round).
+ */
+const PIVOT_MOST = 1.2;
+const PIVOT_MIN = 3;
+const PIVOT_DONE = 0.35;
+const PIVOT_CLEAR = 0.3;
+/** Turning right round (he walked into their noses): the oxen brush past him, nudging him aside (his feet this clear, m). */
+const ROUND_CLEAR = 0.15;
 /** How near his way a heading must be (rad) for a place to be tried, and how far past where the yoke stops behind him the trial way must go on from it (m). */
 const AIM = 0.8;
 const AHEAD = 3;
 /** The search's reach (places looked at), and its time a frame (ms): it goes on over frames while he waits. */
 const PLAN_NODES = 1600;
 const PLAN_MS = 5;
+/**
+ * The search weighs the way to go this much over the way come (it makes for coming round first, then for few moves);
+ * a part of a way round, when it finds no whole one within its reach, is walked if it comes round this much more
+ * (in the search's guess: about 0.3 rad, or 0.4 m nearer) — the oxen then look on from there.
+ */
+const W_GUESS = 3;
+const PART_GAIN = 1;
+/** One search's fit tests, each place tested once (the turns' sub-steps meet again from the next place). */
+const memo = new Map<string, boolean>();
+function fitsMemo(ctx: Pick<RoamCtx, 'world'>, x: number, z: number, yaw: number, moving: boolean): boolean {
+  const key = `${Math.round(x * 1000)},${Math.round(z * 1000)},${Math.round(wrapYaw(yaw) * 10000)},${moving ? 1 : 0}`;
+  let ok = memo.get(key);
+  if (ok === undefined) memo.set(key, (ok = placeFits(ctx, x, z, yaw, moving)));
+  return ok;
+}
+/** The open places as a heap, the least `f` on top. */
+function heapPush(h: PlanNode[], n: PlanNode): void {
+  h.push(n);
+  let i = h.length - 1;
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if (h[p].f <= h[i].f) break;
+    [h[p], h[i]] = [h[i], h[p]];
+    i = p;
+  }
+}
+function heapPop(h: PlanNode[]): PlanNode | undefined {
+  const top = h[0];
+  const last = h.pop();
+  if (h.length && last) {
+    h[0] = last;
+    let i = 0;
+    for (;;) {
+      const l = 2 * i + 1;
+      const r = l + 1;
+      let m = i;
+      if (l < h.length && h[l].f < h[m].f) m = l;
+      if (r < h.length && h[r].f < h[m].f) m = r;
+      if (m === i) break;
+      [h[m], h[i]] = [h[i], h[m]];
+      i = m;
+    }
+  }
+  return top;
+}
 /** Seconds a sub-step takes as the oxen walk it: a turn's, a roll's. */
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, strict: false, lift: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 } };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
@@ -1056,7 +1129,7 @@ function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, m
   for (const dir of [1, -1]) {
     const subs: Pose[] = [];
     for (let d = FIT_STEP; d <= ROLL_MOVE + 1e-6; d += FIT_STEP) subs.push({ x: n.x + fx * d * dir, z: n.z + fz * d * dir, yaw: n.yaw });
-    moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll', dir > 0 ? Math.max(0, n.back - ROLL_MOVE) : n.back + ROLL_MOVE]);
+    moves.push([subs, dir > 0 ? COST.on : COST.back, 'roll', dir > 0 ? n.back : n.back + ROLL_MOVE]);
   }
   // (back the way it came: the places it stood at before, in turn, two a move)
   if (n.hi !== undefined && n.hi > 0) {
@@ -1068,22 +1141,81 @@ function children(ctx: Pick<RoamCtx, 'world'>, n: PlanNode, seen: Set<string>, m
     if (subs.length) moves.push([subs, COST.back, 'roll', n.back + Math.hypot(subs[subs.length - 1].x - n.x, subs[subs.length - 1].z - n.z)]);
   }
   for (const [subs, cost, kind, back] of moves) {
-    if (moving && !search.lift && back > BACK_MOST + 1e-6) continue;
+    // (a move that backs it on past `BACK_MOST` is not made; turns and rolls on always are)
+    if (moving && back > BACK_MOST + 1e-6 && back > n.back + 1e-6) continue;
     const end = subs[subs.length - 1] as Step;
     const key = poseKey(end);
     if (seen.has(key)) continue;
     seen.add(key);
     let ok = true;
-    for (const sp of subs) if (!(ok = placeFits(ctx, sp.x, sp.z, sp.yaw, moving))) break;
+    for (const sp of subs) if (!(ok = fitsMemo(ctx, sp.x, sp.z, sp.yaw, moving))) break;
     if (ok) out.push({ x: end.x, z: end.z, yaw: wrapYaw(end.yaw), g: n.g + cost, f: n.g + cost, parent: n, subs, kind, hi: end.hi, back });
   }
   return out;
 }
 
+/**
+ * The oxen walk the cart round toward `want` (a heading), the cart turning on its wheels where it stands: sub-steps of
+ * `TURN_SUB` (the oxen's far end moves under 0.2 m a sub-step), the near way round (or `sgn`), each where the cart fits
+ * (`placeFits`) and its and the oxen's boxes keep `PIVOT_CLEAR` from his feet, up to `PIVOT_MOST`. Taken as a plan the
+ * oxen walk (`planWalk`, every step tested again) when it turns `PIVOT_MIN` sub-steps at least: what it found, else
+ * why not ('done' already headed so, 'him' he stands in its way, 'blocked' something else does).
+ */
+function pivotPlan(ctx: RoamCtx, want: number, sgn = 0, clear = PIVOT_CLEAR): 'turn' | 'done' | 'him' | 'blocked' {
+  const d = angleDiff(want, CART_AT.yaw);
+  if (Math.abs(d) < PIVOT_DONE) return 'done';
+  const dir = sgn || Math.sign(d);
+  const most = Math.min(PIVOT_MOST, dir === Math.sign(d) ? Math.abs(d) : 2 * Math.PI - Math.abs(d));
+  const yaws: number[] = [];
+  let why: 'him' | 'blocked' = 'blocked';
+  for (let a = TURN_SUB; a <= most + 1e-6; a += TURN_SUB) {
+    const yaw = CART_AT.yaw + dir * a;
+    if (!feetClear(CART_AT.x, CART_AT.z, yaw, himAt.x, himAt.z, clear)) {
+      why = 'him';
+      break;
+    }
+    if (!placeFits(ctx, CART_AT.x, CART_AT.z, yaw, true)) break;
+    yaws.push(yaw);
+  }
+  if (yaws.length < PIVOT_MIN) return why;
+  search.on = false;
+  walkPlan.steps.length = 0;
+  for (const yaw of yaws) walkPlan.steps.push({ pose: { x: CART_AT.x, z: CART_AT.z, yaw }, time: SUB_TIME.turn });
+  walkPlan.i = 0;
+  walkPlan.t = 0;
+  walkPlan.from.x = CART_AT.x;
+  walkPlan.from.z = CART_AT.z;
+  walkPlan.from.yaw = CART_AT.yaw;
+  pivoting = true;
+  console.info(`[haul] the oxen walk it round toward him: ${((yaws.length * TURN_SUB * 180) / Math.PI).toFixed(0)}° ${dir > 0 ? 'one way' : 'the other way'}`);
+  return 'turn';
+}
+/** How far (rad, up to π) the cart could turn where it stands the way `sgn`, every sub-step fitting and `ROUND_CLEAR` of his feet. */
+function pivotRoom(ctx: RoamCtx, sgn: number): number {
+  let a = 0;
+  while (a + TURN_SUB <= Math.PI + 1e-6) {
+    const yaw = CART_AT.yaw + sgn * (a + TURN_SUB);
+    if (!feetClear(CART_AT.x, CART_AT.z, yaw, himAt.x, himAt.z, ROUND_CLEAR) || !placeFits(ctx, CART_AT.x, CART_AT.z, yaw, true)) break;
+    a += TURN_SUB;
+  }
+  return a;
+}
+/** Are his feet (hx, hz) `r` clear of the cart's and the oxen's boxes, the cart at axle (ax, az) heading `yaw`? */
+function feetClear(ax: number, az: number, yaw: number, hx: number, hz: number, r: number): boolean {
+  if (!Number.isFinite(hx)) return true;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const cb: CartBox = { x: ax, z: az, yaw, back: CART_BOX.back, front: CART_BOX.front, half: CART_BOX.half };
+  const ob: CartBox = { x: ax + fx * CART_YOKE, z: az + fz * CART_YOKE, yaw, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
+  return !boxMeetsCircle(cb, hx, hz, r) && !boxMeetsCircle(ob, hx, hz, r);
+}
+/** The heading from the cart's axle toward (x, z). */
+const fromAxle = (x: number, z: number): number => Math.atan2(x - CART_AT.x, z - CART_AT.z);
+
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
-function planStart(ctx: RoamCtx, to?: { x: number; z: number }, lift = false): void {
+function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
   search.on = true;
-  search.lift = lift;
+  memo.clear();
   search.him.x = to ? to.x : ctx.body.pos.x;
   search.him.z = to ? to.z : ctx.body.pos.z;
   search.from.x = ctx.body.pos.x;
@@ -1093,9 +1225,10 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, lift = false): v
   search.n = 0;
   search.t0 = performance.now();
   const root = rootNode();
-  root.f = guess(root);
+  root.f = W_GUESS * guess(root);
   search.best = root;
-  search.open.push(root);
+  search.nearest = root;
+  heapPush(search.open, root);
   search.seen.add(poseKey(root));
 }
 
@@ -1103,40 +1236,35 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, lift = false): v
 function planStep(ctx: RoamCtx): boolean {
   const t0 = performance.now();
   while (search.open.length && performance.now() - t0 < PLAN_MS) {
-    // (the open place with the least cost and way to go)
-    let bi = 0;
-    for (let i = 1; i < search.open.length; i++) if (search.open[i].f < search.open[bi].f) bi = i;
-    const n = search.open[bi];
-    search.open[bi] = search.open[search.open.length - 1];
-    search.open.pop();
+    // (the open place with the least cost and way to go, the way to go weighted: it makes for him first)
+    const n = heapPop(search.open)!;
     if (n.parent && planGoal(ctx, n)) {
       planTake(n);
       return true;
     }
     if (++search.n > PLAN_NODES) break;
     for (const m of children(ctx, n, search.seen, true)) {
-      m.f = m.g + guess(m);
-      if (short(m) < short(search.best!)) search.best = m;
-      search.open.push(m);
+      m.f = m.g + W_GUESS * guess(m);
+      if (guess(m) < guess(search.best!) && clearOfHimAt(m)) search.best = m;
+      if (short(m) < short(search.nearest!)) search.nearest = m;
+      heapPush(search.open, m);
     }
   }
   if (!search.open.length || search.n > PLAN_NODES) {
-    // (no place to make for found: the nearest to his heels it reached, if that is a good way nearer — he may stand where
-    // a cart cannot come: it goes as near as it can)
+    const root = rootNode();
+    // (no place to make for found within its reach — not that there is none: the place it reached that comes round
+    // most toward him, if a good deal more, or the nearest to his heels, if a good way nearer (he may stand where a
+    // cart cannot come); the oxen walk it, and look on from there. Never more backing than `BACK_MOST`.)
     const b = search.best;
-    const root = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
-    if (b && b.parent && short(b) < short(root) - 1.5) {
+    if (b && b.parent && guess(b) < guess(root) - PART_GAIN && clearOfHimAt(b)) {
+      console.info(`[haul] a way round in part (${search.n} places looked at): it comes round ${((Math.abs(angleDiff(b.yaw, root.yaw)) * 180) / Math.PI).toFixed(0)}° and looks on from there`);
       planTake(b);
       return true;
     }
-    // (none within `BACK_MOST` of backing: looked for again, backing as far as it must — he may stand where only
-    // backing away from him makes room, close beside the oxen by his house)
-    if (!search.lift) {
-      const strict = search.strict;
-      console.info(`[haul] no way round backing ${BACK_MOST} m at most (${search.n} places looked at): looking again, backing farther`);
-      planStart(ctx, search.him, true);
-      search.strict = strict;
-      return false;
+    const nb = search.nearest;
+    if (nb && nb.parent && short(nb) < short(root) - 1.5) {
+      planTake(nb);
+      return true;
     }
     // (none: he walks round, or the oxen take it home: `stuckHere`)
     search.on = false;
@@ -1180,8 +1308,12 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     }
     const was = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
     standAt(ctx, st.pose.x, st.pose.z, st.pose.yaw);
-    // (backed in a row, less what it rolled on: `BACK_MOST`)
-    backed = Math.max(0, backed - (Math.sin(was.yaw) * (st.pose.x - was.x) + Math.cos(was.yaw) * (st.pose.z - was.z)));
+    // (backed while it comes round: `BACK_MOST`)
+    const on = Math.sin(was.yaw) * (st.pose.x - was.x) + Math.cos(was.yaw) * (st.pose.z - was.z);
+    if (on < -1e-6) {
+      backed -= on;
+      onRun = 0;
+    }
     // (back where it stood before: what came after is undone; else a new place)
     if (st.pose.hi !== undefined) hist.length = st.pose.hi + 1;
     else histNote();
@@ -1193,7 +1325,7 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     walkPlan.i = 0;
     blocked = false;
     // (a plan that took the cart a good way on — nearer him round something — is not one that came to nothing)
-    const moved = Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 1;
+    const moved = Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 1 || Math.abs(angleDiff(CART_AT.yaw, walkPlan.from.yaw)) >= 0.3;
     // (the cart got somewhere: getting nowhere again later is a new first time — the oxen look again, no slip yet)
     if (Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 0.5 || Math.abs(angleDiff(CART_AT.yaw, walkPlan.from.yaw)) >= 0.3) nowhereTries = 0;
     planEnd.x = moved ? Number.NaN : CART_AT.x;
@@ -1211,6 +1343,20 @@ let fruitless = 0;
 function getRound(ctx: RoamCtx, dt: number): boolean {
   if (walkPlan.steps.length) return planWalk(ctx, dt) || true;
   const p = ctx.body.pos;
+  // (turning right round, he walked into them from in front: on, or done, or it cannot turn on — a way round)
+  if (turnRound && !search.on) {
+    const got = pivotPlan(ctx, turnRound.want, turnRound.sgn, ROUND_CLEAR);
+    if (got === 'turn') return true;
+    console.info(`[haul] turning round ${got === 'done' ? 'done' : `stops (${got})`}`);
+    turnRound = null;
+  }
+  // (he beside or behind the oxen — he turned back the way he came — : they walk it round toward him where it stands,
+  // as far as it goes clear of him and of everything; only when it cannot turn so do they look for a way round)
+  if (!search.on && !inFront(CART_AT, p.x, p.z)) {
+    const got = pivotPlan(ctx, fromAxle(p.x, p.z));
+    if (got === 'turn') return true;
+    if (got === 'done') pivoting = false;
+  } else if (!search.on) pivoting = false;
   // (no way round for where he stood: not again until he has moved on a little — or, the rope taut or he beside the
   // oxen, `RETRY_AFTER` s on: the oxen try again)
   if (!search.on && Math.hypot(p.x - search.failedFor.x, p.z - search.failedFor.z) < 1.5) {
@@ -1270,6 +1416,8 @@ function planClear(): void {
   fruitless = 0;
   walkPlan.steps.length = 0;
   walkPlan.i = 0;
+  pivoting = false;
+  turnRound = null;
 }
 
 // ── Stuck for good: the oxen take it home ──────────────────────────────────
@@ -1291,6 +1439,7 @@ function canGetOut(ctx: Pick<RoamCtx, 'world'>): boolean {
   const key = `${CART_AT.x.toFixed(2)},${CART_AT.z.toFixed(2)},${CART_AT.yaw.toFixed(3)}`;
   if (key !== free.key) {
     free.key = key;
+    memo.clear();
     free.open = [rootNode()];
     free.seen.clear();
     free.n = 0;
@@ -1367,7 +1516,8 @@ function lead(ctx: RoamCtx, dt: number): void {
   if (ahead <= 0) speed = Math.max(0, speed - DECEL * dt);
   // (every placement it moves to is tested first, `FIT_STEP` m at a time: where it would not fit it stands; never past
   // the way's last point, where the way is not yet: there it waits for the way to go on)
-  if (walkPlan.steps.length) ds = 0;
+  // (nor while the oxen walk a way round, or turn it right round: the way goes on after)
+  if (walkPlan.steps.length || turnRound) ds = 0;
   while (fitS < yokeS + ds) {
     const next = fitS + FIT_STEP;
     if (next > wayEnd() + 1e-6) {
@@ -1383,7 +1533,8 @@ function lead(ctx: RoamCtx, dt: number): void {
     fitS = next;
   }
   yokeS += ds;
-  backed = Math.max(0, backed - ds);
+  // (it has followed him on a good way: turning round is over, a new one may back again)
+  if ((onRun += ds) >= BACK_RESET) backed = 0;
   P.wheel += ds / (WHEEL_R * K);
   if (ds > 0 || dirty) placeOnWay(ctx);
   // (stuck before something: a few moves round — a turn on the spot, backing up, a small three-point turn — found and
@@ -1399,14 +1550,29 @@ function lead(ctx: RoamCtx, dt: number): void {
     track.length = 0;
     search.failedFor.x = Number.NaN;
     const into = inFront(CART_AT, b.pos.x, b.pos.z) && Math.cos(b.yaw - P.yaw) < -0.3;
-    planStart(ctx, into ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
-    search.strict = false;
-    console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${into ? ', where he heads' : ''}`);
+    // (he walks into them from in front, back past them: they walk the cart round, to his side of their noses first,
+    // else the other; else, as when he is beside them, a way round)
+    // (the way round that turns it farther where it stands — his side first when both go right round)
+    let side = Math.sin(P.yaw) * (b.pos.z - P.yz) - Math.cos(P.yaw) * (b.pos.x - P.yx) >= 0 ? -1 : 1;
+    if (into && pivotRoom(ctx, -side) > pivotRoom(ctx, side) + TURN_SUB) side = -side;
+    const w1 = into ? pivotPlan(ctx, CART_AT.yaw + Math.PI * side, side, ROUND_CLEAR) : 'done';
+    const w2 = into && w1 !== 'turn' ? pivotPlan(ctx, CART_AT.yaw - Math.PI * side, -side, ROUND_CLEAR) : 'done';
+    if (w1 === 'turn' || w2 === 'turn') {
+      const sg = w1 === 'turn' ? side : -side;
+      turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: he walks into the oxen, they walk the cart right round`);
+    }
+    else {
+      if (into) console.info(`[haul] he walks into the oxen: they cannot walk the cart round where it stands (${w1}, ${w2})`);
+      planStart(ctx, into ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
+      search.strict = false;
+      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${into ? ', where he heads' : ''}`);
+    }
   }
   // (blocked at his heels — the yoke within `HEEL` of his feet, he in front of the oxen — it waits; beside or behind
   // them (he turned back the way he came) the oxen bring it round; and the rope taut a while with the cart standing,
   // blocked or not, they look for a way round too: never a silent wait)
-  if (walkPlan.steps.length || search.on || (blocked && ds <= 1e-4 && !atHeels(CART_AT, ctx.body.pos.x, ctx.body.pos.z)) || taut > TAUT_AFTER) {
+  if (walkPlan.steps.length || search.on || (blocked && ds <= 1e-4 && !atHeels(CART_AT, ctx.body.pos.x, ctx.body.pos.z)) || taut > TAUT_AFTER || (ds <= 1e-4 && (turnRound !== null || (pivoting && !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z))))) {
     if (getRound(ctx, dt)) {
       turning = 0.3;
       speed = 0;
@@ -1973,6 +2139,54 @@ registerAddon({
               if (worldInBox(e.world, b)) return `${nm}: the map (walk map) in the box`;
             }
             return null;
+          },
+          /**
+           * Checks: the way round the oxen would find for the cart at (cx, cz) heading `cyaw`° with him at (hx, hz) (aimed
+           * at `to` if given), searched to the end at once: found or not, places looked at, fit tests, time, its moves, how
+           * far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
+           */
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number] } = {}) => {
+            const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
+            const fit0 = FIT.n;
+            CART_AT.x = cx;
+            CART_AT.z = cz;
+            CART_AT.yaw = (cyaw * Math.PI) / 180;
+            hist.length = 0;
+            backed = opt.backed ?? 0;
+            himAt.x = hx;
+            himAt.z = hz;
+            const pctx = { world: e.world, body: { pos: { x: hx, z: hz } } } as unknown as RoamCtx;
+            const t0 = performance.now();
+            planClear();
+            planStart(pctx, opt.to ? { x: opt.to[0], z: opt.to[1] } : undefined);
+            let guard = 0;
+            while (search.on && !walkPlan.steps.length && guard++ < 10000) planStep(pctx);
+            const ms = performance.now() - t0;
+            const steps = walkPlan.steps.map((s) => s.pose);
+            const y0 = CART_AT.yaw;
+            let maxBack = 0;
+            for (const st of steps) maxBack = Math.max(maxBack, -((st.x - cx) * Math.sin(y0) + (st.z - cz) * Math.cos(y0)));
+            const end = steps[steps.length - 1];
+            const out = {
+              found: steps.length > 0,
+              looked: search.n,
+              fits: FIT.n - fit0,
+              ms: +ms.toFixed(1),
+              steps: steps.length,
+              maxBack: +maxBack.toFixed(2),
+              turned: end ? +((Math.abs(angleDiff(end.yaw, y0)) * 180) / Math.PI).toFixed(1) : 0,
+              end: end ? [+end.x.toFixed(2), +end.z.toFixed(2), +((end.yaw * 180) / Math.PI).toFixed(1)] : null,
+            };
+            planClear();
+            CART_AT.x = keep.x;
+            CART_AT.z = keep.z;
+            CART_AT.yaw = keep.yaw;
+            backed = keep.backed;
+            hist.length = 0;
+            hist.push(...keep.hist);
+            himAt.x = keep.him.x;
+            himAt.z = keep.him.z;
+            return out;
           },
           /** Could the cart stand at (x, z) going `yaw` degrees (from ground `y`, default the land there)? Its ground, or NaN. */
           passable: (x: number, z: number, yaw = 0, y?: number) => {
