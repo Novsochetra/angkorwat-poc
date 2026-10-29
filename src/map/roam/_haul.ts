@@ -235,6 +235,8 @@ let stuckTries = 0;
  */
 let backed = 0;
 let onRun = 0;
+/** How long (s) he has stood still with the cart at his heels (`FACE_AFTER`: the oxen turn to face him). */
+let faceFor = 0;
 /** The oxen are walking it round toward him (`pivotPlan`): they go on doing so, without waiting, while he is not in front. */
 let pivoting = false;
 /**
@@ -799,6 +801,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   onRun = 0;
   pivoting = false;
   turnRound = null;
+  faceFor = 0;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
   const bz = -Math.cos(P.yaw);
@@ -958,6 +961,8 @@ const PIVOT_MOST = 1.2;
 const PIVOT_MIN = 3;
 const PIVOT_DONE = 0.35;
 const PIVOT_CLEAR = 0.3;
+/** He stands still this long (s), the cart at his heels not facing him (more than `PIVOT_DONE` off): the oxen turn to face him. */
+const FACE_AFTER = 0.8;
 /** Turning right round (he walked into their noses): the oxen brush past him, nudging him aside (his feet this clear, m). */
 const ROUND_CLEAR = 0.15;
 /** How near his way a heading must be (rad) for a place to be tried, and how far past where the yoke stops behind him the trial way must go on from it (m). */
@@ -1609,6 +1614,14 @@ function lead(ctx: RoamCtx, dt: number): void {
       speed = 0;
     }
   } else if (ds > 0.02) planClear();
+  // (he stands still a moment, the cart at his heels but not facing him — it followed the curve he walked —: the oxen
+  // turn it to face him, where it stands)
+  const still = Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < 0.15 && ds <= 1e-4 && !walkPlan.steps.length && !search.on && !blocked;
+  faceFor = still ? faceFor + dt : Math.min(faceFor, 0);
+  if (faceFor > FACE_AFTER) {
+    const p = ctx.body.pos;
+    faceFor = Math.abs(angleDiff(fromAxle(p.x, p.z), CART_AT.yaw)) > PIVOT_DONE && pivotPlan(ctx, fromAxle(p.x, p.z)) === 'turn' ? 0 : -FACE_AFTER * 2;
+  }
   wayTrim(yokeS - REACH_M - 2);
   // Sounds: the wheels and a hub's knock (his), the bells and the creak go with the map's calls (`frame`).
   const go = Math.min(1, speed / OX_PACE);

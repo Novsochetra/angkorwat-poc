@@ -3642,6 +3642,8 @@ without its straw), the oxen `people/_ox.ts`.
   - He beside or behind the oxen: they turn it toward him, as seen from its axle, done within 0.35 rad
     (`PIVOT_DONE`), his feet's middle 0.3 m clear (`PIVOT_CLEAR`); then the way goes on, with no search unless
     something blocks it or the rope pulls.
+  - He stands still 0.8 s (`FACE_AFTER`) with the cart at his heels not facing him (it followed the curve he
+    walked): the oxen turn it to face him, the same way.
   - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
   - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
     back and move back the way it came, counted from when he takes the rope or after it has followed him on
