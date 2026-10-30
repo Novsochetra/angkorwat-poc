@@ -3604,11 +3604,21 @@ without its straw), the oxen `people/_ox.ts`.
   or the cart cannot roll on along a way that turns too tight — the oxen look for a few moves (turns on
   the spot of 0.15 rad either way, rolls back or on of 0.4 m: a turn, backing up, a small three-point
   turn; a search of up to 1 600 places, 5 ms a frame, while he waits, heading for his heels: the way
-  there and the turn toward him) to a place from which the way goes on toward him
-  as play builds it (`wayWorksFrom`: headed within 0.8 rad of him, the way laid up to his heels — within
-  `HEEL` = GAP + 0.5 m of his feet — or 5.7 m of it, each point where a cart can go, the cart fitting every
-  0.2 m along it as it rolls), and
-  walk them (each sub-step tested: 0.03 rad, 0.2 m); then the way goes on. He stands where a cart cannot
+  there and the turn toward him, both along the land's way to him below) to a place from which the way goes
+  on toward him as play builds it (`wayWorksFrom`: headed within 0.8 rad of the way it sets out on, the way
+  laid up to his heels — within `HEEL` = GAP + 0.5 m of his feet — or 5.7 m of it, each point where a cart
+  can go, the cart fitting every 0.2 m along it as it rolls), and walk them (each sub-step tested: 0.03 rad,
+  0.2 m); then the way goes on — a whole way round lays that tested way as the cart's way first, so it goes
+  on round what stands as it was tested. **The land's way to him** (`fieldStart`, `fieldStep`, `fieldAim`):
+  before the search looks, a grid of 1 m cells round him and the cart (8 m beyond both, 56 a side at most),
+  each tested once at its middle across its width both ways (`passable`), and from him out through them (no
+  land step over 2.2 m between two) how far it is to walk; a cell next to one not clear costs 4 times as
+  much a metre, two cells off twice (the way keeps off things: on its pole the cart cuts the inside
+  of a bend); built a few ms a frame. The search's guess is that walk from the yoke and the turn to the way it
+  sets out on (toward the cell on it 2 m off; straight to him within 3 m of him), and the way round's trial
+  way follows it. A guess only: every place is still tested whole. (Straight toward him across a bamboo clump,
+  the search took 6 000–20 000 places, past its reach, and its part ways wedged the cart against the clump;
+  along the land's way it found a whole way round in about 500.) He stands where a cart cannot
   come: the nearest place to his heels it reached (1.5 m nearer at least). Blocked again where a way
   round ended (the cart not a metre on: he moved on as the oxen turned): the next plan goes right up to
   his heels, from where the way to his feet works, any heading; three in a row: none, for where he stands.
@@ -3644,6 +3654,10 @@ without its straw), the oxen `people/_ox.ts`.
   - He beside or behind the oxen: they turn it toward him, as seen from its axle, done within 0.35 rad
     (`PIVOT_DONE`), his feet's middle 0.3 m clear (`PIVOT_CLEAR`); then the way goes on, with no search unless
     something blocks it or the rope pulls.
+  - He beside them in the swing of that turn (it would brush him) and heading on back past the cart (pushing
+    on, facing more than 0.3 of the way back along its heading: a U-turn along their side): they turn it right
+    round the other way, away from him (`roundAway`, as `turnRound` above), if it has room to come half round
+    that way (`pivotRoom`); else as below.
   - After a turn (and when he takes the rope) the way starts again at the yoke, and it is laid toward him only
     once he is in front of the oxen (within `FRONT` of the heading, seen from the yoke) and `GAP` from the yoke
     (`wayOn`): never bent back round the oxen toward him beside them (the yoke would go back along its own pole —
@@ -3668,8 +3682,10 @@ without its straw), the oxen `people/_ox.ts`.
     each place's fit once (`fitsMemo`).
   - A blocked way is not tried again every frame while nothing has moved (he, the way's end: `wayTried`).
   - Checks: `__haul.state().round.backed` (the reverse travel so far), `.fit.by` (fit tests by what they are
-    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to })` (the search for that cart and him, searched to
-    the end at once: found, places, fit tests, ms, backing, turn; nothing of the live cart changes).
+    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to, nodes })` (the search for that cart and him, searched to
+    the end at once — `nodes` another reach than 1 600 —: found, places, the land's cells tested, fit tests, ms,
+    backing, turn; nothing of the live cart changes), `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
+    that place: fits, the heading the way sets out on, his feet clear, the way on works, and that way).
 - **A new way** (taking the rope, each step of a way round or a turn) starts with points every 0.5 m ending
   right at the yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
 - **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
