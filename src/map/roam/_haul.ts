@@ -993,6 +993,8 @@ const AIM = 0.8;
 const AHEAD = 3;
 /** The search's reach (places looked at), and its time a frame (ms): it goes on over frames while he waits. */
 const PLAN_NODES = 1600;
+/** The reach a search has (`PLAN_NODES`; `__haul.probe` may set another for a check). */
+let planNodes = PLAN_NODES;
 const PLAN_MS = 5;
 /**
  * The search weighs the way to go this much over the way come (it makes for coming round first, then for few moves);
@@ -1044,7 +1046,13 @@ const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
 const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
-const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 }, clear: 0 };
+const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 }, clear: 0, lay: false };
+/**
+ * The way a whole way round ends with (its goal's trial way past the yoke, `wayWorksFrom`): laid as the cart's way once
+ * the oxen have walked the moves, so it goes on round what stands as it was tested (else the way goes straight to him
+ * from there, into the thing again).
+ */
+const planWay = { x: [] as number[], y: [] as number[], z: [] as number[] };
 
 const poseKey = (p: Pose): string => `${Math.round(p.x / 0.2)},${Math.round(p.z / 0.2)},${Math.round(wrapYaw(p.yaw) / TURN_MOVE)}`;
 
@@ -1091,11 +1099,14 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
   // always step on after him, never left wedged as he walks on; and the cart at every `FIT_STEP` m along it, as `lead`
   // tests its rolling)
   const s0 = trial.s[trial.s.length - 1];
-  const toGo = Math.max(STEP, Math.min(AHEAD + GAP, Math.hypot(search.him.x - yx, search.him.z - yz) - HEEL));
+  // (round what stands, along the land's way to him — `fieldAim` —, where the search knows it; else straight)
+  const fd = fieldAt(yx, yz);
+  const toGo = Math.max(STEP, Math.min(AHEAD + GAP, (fd ? fd.d : Math.hypot(search.him.x - yx, search.him.z - yz)) - HEEL));
   for (let went = 0; went < toGo - 1e-6; went += STEP) {
     const k = trial.s.length - 1;
-    const dx = search.him.x - trial.x[k];
-    const dz = search.him.z - trial.z[k];
+    const round = fd !== null && fieldAim(trial.x[k], trial.z[k], _aim);
+    const dx = (round ? _aim.x : search.him.x) - trial.x[k];
+    const dz = (round ? _aim.z : search.him.z) - trial.z[k];
     const d = Math.hypot(dx, dz) || 1;
     const x = trial.x[k] + (dx / d) * STEP;
     const z = trial.z[k] + (dz / d) * STEP;
@@ -1116,7 +1127,231 @@ function wayWorksFrom(ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean {
 /** How far (m) the yoke at place `n` is from where it would follow him (`GAP` behind his feet). */
 const short = (n: Pose): number => Math.max(0, Math.hypot(search.him.x - (n.x + Math.sin(n.yaw) * REACH_M), search.him.z - (n.z + Math.cos(n.yaw) * REACH_M)) - GAP);
 /** The search's guess of the moves left from `n`: the way to his heels in rolls, and the turn toward him. */
-const guess = (n: Pose): number => short(n) / ROLL_MOVE + (0.5 * Math.abs(angleDiff(towardHim(n), n.yaw))) / TURN_MOVE;
+const guess = (n: Pose): number => {
+  const yx = n.x + Math.sin(n.yaw) * REACH_M;
+  const yz = n.z + Math.cos(n.yaw) * REACH_M;
+  const d = fieldAt(yx, yz);
+  if (d === null) return short(n) / ROLL_MOVE + (0.5 * Math.abs(angleDiff(towardHim(n), n.yaw))) / TURN_MOVE;
+  return Math.max(0, d.d - GAP) / ROLL_MOVE + (0.5 * Math.abs(angleDiff(d.dir, n.yaw))) / TURN_MOVE;
+};
+
+/**
+ * The way to him round what stands (the search's guess, `guess`): from him (`search.him`) out through the land a cart
+ * could cross (`FIELD_CELL` cells, each tested once at its middle across its width both ways — `passable` — and no
+ * land step over `RISE` from the cell it is reached from), how far it is to walk to each, `FIELD_PAD` m round him and
+ * the cart. Straight toward him the guess led the search into the pocket before a bamboo clump between them (6 000 –
+ * 20 000 places, past its reach of `PLAN_NODES`); round it, it makes for the side the way goes. Built a few ms a frame
+ * before the search looks (`fieldStep`); a guess only: a cell clear is not a place the cart fits (every place is still
+ * tested whole), nor a thin thing between two cells seen.
+ */
+const FIELD_CELL = 1;
+const FIELD_PAD = 8;
+const FIELD_MOST = 56;
+/** Cells within this of him (m) start at their straight distance (the way's last metres go straight to him). */
+const FIELD_NEAR = 3;
+/**
+ * Cells by what stands near (Chebyshev 1, 2 cells) cost this much more a metre: the way keeps off things where it can —
+ * the cart, on its pole, cuts the inside of a bend.
+ */
+const FIELD_NEAR_COST = [3, 1];
+/** Each cell: its cost from him (`d`, the order it is reached in), its way's metres (`m`), land, tested (0 not yet, 1 clear, 2 not). */
+const field = { x0: 0, z0: 0, nx: 0, nz: 0, d: new Float32Array(0), m: new Float32Array(0), y: new Float32Array(0), st: new Uint8Array(0), heap: [] as number[], done: true, cells: 0 };
+const _fd = { d: 0, dir: 0 };
+function fieldHeapPush(i: number): void {
+  const h = field.heap;
+  h.push(i);
+  let k = h.length - 1;
+  while (k > 0) {
+    const p = (k - 1) >> 1;
+    if (field.d[h[p]] <= field.d[h[k]]) break;
+    [h[p], h[k]] = [h[k], h[p]];
+    k = p;
+  }
+}
+function fieldHeapPop(): number {
+  const h = field.heap;
+  const top = h[0];
+  const last = h.pop()!;
+  if (h.length) {
+    h[0] = last;
+    let k = 0;
+    for (;;) {
+      const l = 2 * k + 1;
+      const r = l + 1;
+      let m = k;
+      if (l < h.length && field.d[h[l]] < field.d[h[m]]) m = l;
+      if (r < h.length && field.d[h[r]] < field.d[h[m]]) m = r;
+      if (m === k) break;
+      [h[m], h[k]] = [h[k], h[m]];
+      k = m;
+    }
+  }
+  return top;
+}
+/** Is cell `i` land a cart could cross (tested once: 1 clear, 2 not)? Its land in `field.y`. */
+function fieldFree(ctx: Pick<RoamCtx, 'world'>, i: number): boolean {
+  if (field.st[i] === 0) {
+    field.cells++;
+    const x = field.x0 + (i % field.nx) * FIELD_CELL;
+    const z = field.z0 + Math.floor(i / field.nx) * FIELD_CELL;
+    const y = ctx.world.field.heightAt(x, z);
+    const ok = Number.isFinite(y) && !Number.isNaN(passable(ctx, x, z, 1, 0, y)) && !Number.isNaN(passable(ctx, x, z, 0, 1, y));
+    field.st[i] = ok ? 1 : 2;
+    field.y[i] = y;
+  }
+  return field.st[i] === 1;
+}
+/** What stands near cell (cx, cz): `FIELD_NEAR_COST` by how near the nearest cell not clear is (0: none within 2). */
+function fieldNear(ctx: Pick<RoamCtx, 'world'>, cx: number, cz: number): number {
+  let ring = 3;
+  for (let dz = -2; dz <= 2; dz++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const x = cx + dx;
+      const z = cz + dz;
+      if ((!dx && !dz) || x < 0 || z < 0 || x >= field.nx || z >= field.nz) continue;
+      const r = Math.max(Math.abs(dx), Math.abs(dz));
+      if (r < ring && !fieldFree(ctx, z * field.nx + x)) ring = r;
+    }
+  }
+  return ring <= 2 ? FIELD_NEAR_COST[ring - 1] : 0;
+}
+/** Start the way to him (`search.him`) for the cart where it stands. */
+function fieldStart(ctx: Pick<RoamCtx, 'world'>): void {
+  const yx = CART_AT.x + Math.sin(CART_AT.yaw) * REACH_M;
+  const yz = CART_AT.z + Math.cos(CART_AT.yaw) * REACH_M;
+  const hx = search.him.x;
+  const hz = search.him.z;
+  const x0 = Math.floor(Math.min(yx, hx) - FIELD_PAD);
+  const z0 = Math.floor(Math.min(yz, hz) - FIELD_PAD);
+  field.nx = Math.min(FIELD_MOST, Math.ceil(Math.max(yx, hx) + FIELD_PAD - x0) + 1);
+  field.nz = Math.min(FIELD_MOST, Math.ceil(Math.max(yz, hz) + FIELD_PAD - z0) + 1);
+  field.x0 = x0;
+  field.z0 = z0;
+  const n = field.nx * field.nz;
+  if (field.d.length < n) {
+    field.d = new Float32Array(n);
+    field.m = new Float32Array(n);
+    field.y = new Float32Array(n);
+    field.st = new Uint8Array(n);
+  }
+  field.d.fill(Infinity, 0, n);
+  field.st.fill(0, 0, n);
+  field.heap.length = 0;
+  field.cells = 0;
+  field.done = false;
+  for (let k = 0; k < n; k++) {
+    const x = x0 + (k % field.nx) * FIELD_CELL;
+    const z = z0 + Math.floor(k / field.nx) * FIELD_CELL;
+    const d = Math.hypot(x - hx, z - hz);
+    if (d <= FIELD_NEAR && fieldFree(ctx, k)) {
+      field.d[k] = d;
+      field.m[k] = d;
+      fieldHeapPush(k);
+    }
+  }
+}
+/** Spread the way out from him a few ms (true: done). */
+function fieldStep(ctx: Pick<RoamCtx, 'world'>, ms: number): boolean {
+  const t0 = performance.now();
+  const { nx, nz } = field;
+  while (field.heap.length && performance.now() - t0 < ms) {
+    const i = fieldHeapPop();
+    const cx = i % nx;
+    const cz = Math.floor(i / nx);
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue;
+        const x = cx + dx;
+        const z = cz + dz;
+        if (x < 0 || z < 0 || x >= nx || z >= nz) continue;
+        const j = z * nx + x;
+        const step = (dx && dz ? Math.SQRT2 : 1) * FIELD_CELL;
+        if (field.d[i] + step >= field.d[j] || !fieldFree(ctx, j) || Math.abs(field.y[j] - field.y[i]) > RISE) continue;
+        const nd = field.d[i] + step * (1 + fieldNear(ctx, x, z));
+        if (nd >= field.d[j]) continue;
+        field.d[j] = nd;
+        field.m[j] = field.m[i] + step;
+        fieldHeapPush(j);
+      }
+    }
+  }
+  if (!field.heap.length) field.done = true;
+  return field.done;
+}
+/** The cell to reckon (x, z) from: its own, or — it not clear (the yoke by a thing) — the best next to it, with its way. */
+function fieldCellNear(x: number, z: number): number {
+  if (!field.done || !field.nx) return -1;
+  const cx = Math.round((x - field.x0) / FIELD_CELL);
+  const cz = Math.round((z - field.z0) / FIELD_CELL);
+  if (cx < 0 || cz < 0 || cx >= field.nx || cz >= field.nz) return -1;
+  let best = -1;
+  let bd = Infinity;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x2 = cx + dx;
+      const z2 = cz + dz;
+      if (x2 < 0 || z2 < 0 || x2 >= field.nx || z2 >= field.nz) continue;
+      const j = z2 * field.nx + x2;
+      const d = field.d[j] + Math.hypot(field.x0 + x2 * FIELD_CELL - x, field.z0 + z2 * FIELD_CELL - z);
+      if (d < bd) {
+        bd = d;
+        best = j;
+      }
+    }
+  }
+  return Number.isFinite(bd) ? best : -1;
+}
+/** The cell next to `i` nearer him (or `i`, none nearer). */
+function fieldDown(i: number): number {
+  const bx = i % field.nx;
+  const bz = Math.floor(i / field.nx);
+  let nj = i;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x2 = bx + dx;
+      const z2 = bz + dz;
+      if (x2 < 0 || z2 < 0 || x2 >= field.nx || z2 >= field.nz) continue;
+      const j = z2 * field.nx + x2;
+      if (field.d[j] < field.d[nj]) nj = j;
+    }
+  }
+  return nj;
+}
+/** How far on the way to him round what stands one looks to steer (m): the way bends round a thing, not cell by cell. */
+const FIELD_LOOK = 2;
+/**
+ * Where the way from (x, z) makes for along the land's way to him: the cell on it `FIELD_LOOK` m off (true, in `out`);
+ * false: straight to him (within `FIELD_NEAR` of him, or no way known).
+ */
+function fieldAim(x: number, z: number, out: { x: number; z: number }): boolean {
+  let i = fieldCellNear(x, z);
+  if (i < 0) return false;
+  for (let k = 0; k < 16; k++) {
+    if (field.d[i] <= FIELD_NEAR) return false;
+    const cx = field.x0 + (i % field.nx) * FIELD_CELL;
+    const cz = field.z0 + Math.floor(i / field.nx) * FIELD_CELL;
+    out.x = cx;
+    out.z = cz;
+    if (Math.hypot(cx - x, cz - z) >= FIELD_LOOK) return true;
+    const j = fieldDown(i);
+    if (j === i) return true;
+    i = j;
+  }
+  return true;
+}
+const _aim = { x: 0, z: 0 };
+/**
+ * The way to walk to him from (x, z) (m), and the heading it sets out on (along the land's way, `fieldAim`; straight to
+ * him within `FIELD_NEAR`); null where it knows none (off its cells, not built yet, or no way through them: then the
+ * straight guess).
+ */
+function fieldAt(x: number, z: number): { d: number; dir: number } | null {
+  const best = fieldCellNear(x, z);
+  if (best < 0) return null;
+  _fd.d = field.m[best] + Math.hypot(field.x0 + (best % field.nx) * FIELD_CELL - x, field.z0 + Math.floor(best / field.nx) * FIELD_CELL - z);
+  _fd.dir = fieldAim(x, z, _aim) ? Math.atan2(_aim.x - x, _aim.z - z) : Math.atan2(search.him.x - x, search.him.z - z);
+  return _fd;
+}
 /**
  * Is he at the heels of the cart at `n` (its yoke within `HEEL` of his feet, and he in front of the oxen, within
  * `FRONT` of its heading)? Then it waits, in play (`lead`) as in a search's goal.
@@ -1140,8 +1375,10 @@ function inFront(n: Pose, hx: number, hz: number): boolean {
 const planGoal = (ctx: Pick<RoamCtx, 'world'>, n: Pose): boolean =>
   (!search.strict || short(n) < 0.6) &&
   clearOfHimAt(n) &&
-  Math.abs(angleDiff(towardHim(n), n.yaw)) <= (short(n) > HEEL - GAP + 1 ? AIM : FRONT_GOAL) &&
+  Math.abs(angleDiff(setsOut(n), n.yaw)) <= (short(n) > HEEL - GAP + 1 ? AIM : FRONT_GOAL) &&
   wayWorksFrom(ctx, n);
+/** The heading the way sets out on from the yoke of the cart at `n`: along the land's way to him (`fieldAt`), or straight. */
+const setsOut = (n: Pose): number => fieldAt(n.x + Math.sin(n.yaw) * REACH_M, n.z + Math.cos(n.yaw) * REACH_M)?.dir ?? towardHim(n);
 
 /**
  * Are his feet well clear (`BODY_R` + 0.5 m) of the cart and its oxen at `n`? A way round never ends hugging him: he
@@ -1223,6 +1460,7 @@ function pivotPlan(ctx: RoamCtx, want: number, sgn = 0, clear = PIVOT_CLEAR): 't
   walkPlan.steps.length = 0;
   for (const yaw of yaws) walkPlan.steps.push({ pose: { x: CART_AT.x, z: CART_AT.z, yaw }, time: SUB_TIME.turn });
   walkPlan.clear = clear;
+  walkPlan.lay = false;
   walkPlan.i = 0;
   walkPlan.t = 0;
   walkPlan.from.x = CART_AT.x;
@@ -1246,6 +1484,20 @@ function pivotRoom(ctx: RoamCtx, sgn: number): number {
     a += ROOM_STEP;
   }
   return a;
+}
+/**
+ * He beside the oxen in the swing of a turn toward him, heading on back past the cart (a U-turn): the oxen walk it right
+ * round the other way, away from him (`turnRound`, as when he walks into their noses), if it has room to come half round
+ * at least that way (`pivotRoom`). Without it a way round was looked for: it backed the cart 2.8 m for 9° and, the
+ * backing all used, it could not turn to face him after (146° round).
+ */
+function roundAway(ctx: RoamCtx): boolean {
+  const sg = -(Math.sign(angleDiff(fromAxle(himAt.x, himAt.z), CART_AT.yaw)) || 1);
+  if (pivotRoom(ctx, sg) < Math.PI / 2) return false;
+  if (pivotPlan(ctx, CART_AT.yaw + Math.PI * sg, sg, ROUND_CLEAR) !== 'turn') return false;
+  turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+  console.info('[haul] he heads back past the oxen in their swing: they walk the cart right round the other way');
+  return true;
 }
 /**
  * He stands still beside the yoke, the cart not facing him: the oxen turn it to face him (within `FACE_DONE`, seen from
@@ -1318,6 +1570,7 @@ function faceTake(steps: { pose: Step; time: number }[], d0: number, back: numbe
   walkPlan.steps.length = 0;
   walkPlan.steps.push(...steps);
   walkPlan.clear = 0;
+  walkPlan.lay = false;
   walkPlan.i = 0;
   walkPlan.t = 0;
   walkPlan.from.x = CART_AT.x;
@@ -1349,8 +1602,9 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
   search.seen.clear();
   search.n = 0;
   search.t0 = performance.now();
+  fieldStart(ctx);
   const root = rootNode();
-  root.f = W_GUESS * guess(root);
+  root.f = 0;
   search.best = root;
   search.nearest = root;
   heapPush(search.open, root);
@@ -1360,14 +1614,20 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
 /** Look on (a few ms): a plan found (true), or still looking / none (false; `search.on` false once none). */
 function planStep(ctx: RoamCtx): boolean {
   const t0 = performance.now();
+  // (the way to him round what stands first, a few ms a frame; then the search, its first place weighed by it)
+  if (!field.done) {
+    if (!fieldStep(ctx, PLAN_MS)) return false;
+    for (const n of search.open) n.f = n.g + W_GUESS * guess(n);
+    if (performance.now() - t0 >= PLAN_MS) return false;
+  }
   while (search.open.length && performance.now() - t0 < PLAN_MS) {
     // (the open place with the least cost and way to go, the way to go weighted: it makes for him first)
     const n = heapPop(search.open)!;
     if (n.parent && planGoal(ctx, n)) {
-      planTake(n);
+      planTake(n, true);
       return true;
     }
-    if (++search.n > PLAN_NODES) break;
+    if (++search.n > planNodes) break;
     for (const m of children(ctx, n, search.seen, true)) {
       m.f = m.g + W_GUESS * guess(m);
       if (guess(m) < guess(search.best!) && clearOfHimAt(m)) search.best = m;
@@ -1375,7 +1635,7 @@ function planStep(ctx: RoamCtx): boolean {
       heapPush(search.open, m);
     }
   }
-  if (!search.open.length || search.n > PLAN_NODES) {
+  if (!search.open.length || search.n > planNodes) {
     const root = rootNode();
     // (no place to make for found within its reach — not that there is none: the place it reached that comes round
     // most toward him, if a good deal more, or the nearest to his heels, if a good way nearer (he may stand where a
@@ -1402,8 +1662,18 @@ function planStep(ctx: RoamCtx): boolean {
 }
 
 /** The plan found: its sub-steps, in order, to walk. */
-function planTake(goal: PlanNode): void {
+function planTake(goal: PlanNode, lay = false): void {
   search.on = false;
+  // (a whole way round: its trial way, just tested from its goal, to lay once walked)
+  walkPlan.lay = lay;
+  planWay.x.length = planWay.y.length = planWay.z.length = 0;
+  if (lay) {
+    for (let i = BEHIND.length; i < trial.s.length; i++) {
+      planWay.x.push(trial.x[i]);
+      planWay.y.push(trial.y[i]);
+      planWay.z.push(trial.z[i]);
+    }
+  }
   const chain: PlanNode[] = [];
   for (let n: PlanNode | null = goal; n && n.parent; n = n.parent) chain.unshift(n);
   walkPlan.steps.length = 0;
@@ -1431,6 +1701,7 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     if (!placeFits(ctx, st.pose.x, st.pose.z, st.pose.yaw, true) || (walkPlan.clear > 0 && !feetClear(st.pose.x, st.pose.z, st.pose.yaw, himAt.x, himAt.z, walkPlan.clear))) {
       walkPlan.steps.length = 0;
       walkPlan.i = 0;
+      walkPlan.lay = false;
       return false;
     }
     const was = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
@@ -1451,6 +1722,9 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     walkPlan.steps.length = 0;
     walkPlan.i = 0;
     blocked = false;
+    // (a whole way round: its way laid on from the yoke, round what stands, as it was tested; the cart follows it)
+    if (walkPlan.lay) for (let i = 0; i < planWay.x.length; i++) wayPush(planWay.x[i], planWay.y[i], planWay.z[i]);
+    walkPlan.lay = false;
     // (a plan that took the cart a good way on — nearer him round something — is not one that came to nothing)
     const moved = Math.hypot(CART_AT.x - walkPlan.from.x, CART_AT.z - walkPlan.from.z) >= 1 || Math.abs(angleDiff(CART_AT.yaw, walkPlan.from.yaw)) >= 0.3;
     // (the cart got somewhere: getting nowhere again later is a new first time — the oxen look again, no slip yet)
@@ -1486,6 +1760,9 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
     // (it cannot turn to him where it stands — he too near beside the yoke —: a little back first, then round to him;
     // once he stands there: walking round them, he is coming in front)
     else if (Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL && facePlan(ctx)) return true;
+    // (he stands in its swing toward him and heads on back past it — a U-turn —: they walk it right round the other way,
+    // away from him, where there is room for it)
+    else if (got === 'him' && pushing && Math.cos(ctx.body.yaw - CART_AT.yaw) < -0.3 && roundAway(ctx)) return true;
   } else if (!search.on) pivoting = false;
   // (turned to him and nothing in the way, the rope not pulling: the way goes on, no search)
   if (!search.on && !blocked && taut <= TAUT_AFTER) return false;
@@ -2295,11 +2572,43 @@ registerAddon({
             return null;
           },
           /**
+           * Checks: would the search take the cart at (cx, cz) heading each of `yaws`° as a way round's end, him at (hx, hz)
+           * (its tests one by one: fits, the heading the way sets out on, his feet clear, the way on works, and that way).
+           */
+          goalAt: (cx: number, cz: number, yaws: number[], hx: number, hz: number) => {
+            const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw };
+            CART_AT.x = cx;
+            CART_AT.z = cz;
+            CART_AT.yaw = (yaws[0] * Math.PI) / 180;
+            search.him.x = hx;
+            search.him.z = hz;
+            fieldStart(e);
+            while (!fieldStep(e, 1000));
+            const out = yaws.map((y) => {
+              const n = { x: cx, z: cz, yaw: (y * Math.PI) / 180 };
+              const works = wayWorksFrom(e, n);
+              return {
+                yaw: y,
+                fits: placeFits(e, cx, cz, n.yaw, true),
+                setsOut: +((setsOut(n) * 180) / Math.PI).toFixed(1),
+                short: +short(n).toFixed(2),
+                clear: clearOfHimAt(n),
+                works,
+                way: trial.x.slice(BEHIND.length - 1).map((x, i) => [+x.toFixed(1), +trial.z[BEHIND.length - 1 + i].toFixed(1)]),
+              };
+            });
+            CART_AT.x = keep.x;
+            CART_AT.z = keep.z;
+            CART_AT.yaw = keep.yaw;
+            return out;
+          },
+          /**
            * Checks: the way round the oxen would find for the cart at (cx, cz) heading `cyaw`° with him at (hx, hz) (aimed
            * at `to` if given), searched to the end at once: found or not, places looked at, fit tests, time, its moves, how
            * far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
            */
-          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number] } = {}) => {
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number } = {}) => {
+            planNodes = opt.nodes ?? PLAN_NODES;
             const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
             const fit0 = FIT.n;
             CART_AT.x = cx;
@@ -2324,6 +2633,7 @@ registerAddon({
             const out = {
               found: steps.length > 0,
               looked: search.n,
+              cells: field.cells,
               fits: FIT.n - fit0,
               ms: +ms.toFixed(1),
               steps: steps.length,
@@ -2332,6 +2642,7 @@ registerAddon({
               end: end ? [+end.x.toFixed(2), +end.z.toFixed(2), +((end.yaw * 180) / Math.PI).toFixed(1)] : null,
             };
             planClear();
+            planNodes = PLAN_NODES;
             CART_AT.x = keep.x;
             CART_AT.z = keep.z;
             CART_AT.yaw = keep.yaw;
