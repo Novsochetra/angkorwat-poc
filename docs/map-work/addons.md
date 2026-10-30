@@ -3677,7 +3677,10 @@ without its straw), the oxen `people/_ox.ts`.
     back it farther is not made; turns and rolls on always are.
   - A search that reaches its place limit (1 600) has not shown there is none: it walks the part it found that
     comes round most toward him (in its guess, clear of his feet, `PART_GAIN`) and looks on from there; or the
-    nearest to his heels it reached, if 1.5 m nearer; only else none. The search keeps its open places in a
+    nearest to his heels it reached, if 1.5 m nearer; only else it logs `[haul] a way round toward (x, z): none
+    found within its reach (… places, … s), tries again` and tries again once he has moved on 1.5 m, or the rope
+    taut, `RETRY_AFTER` (3 s) on (`no way round …: every place it can reach looked at` only when the search ran
+    out of places, never at its limit). The search keeps its open places in a
     heap, weighs the way to go three times the way come (`W_GUESS`: it makes for coming round first) and tests
     each place's fit once (`fitsMemo`).
   - A blocked way is not tried again every frame while nothing has moved (he, the way's end: `wayTried`).

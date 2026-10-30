@@ -1656,7 +1656,11 @@ function planStep(ctx: RoamCtx): boolean {
     search.failedFor.x = search.him.x;
     search.failedFor.z = search.him.z;
     search.failedAt = performance.now();
-    console.info(`[haul] no way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): ${search.n} places looked at in ${((performance.now() - search.t0) / 1000).toFixed(1)} s`);
+    // (the place limit reached is not "no way": none found within its reach, and it tries again — he moved on 1.5 m,
+    // or the rope taut `RETRY_AFTER` s on; only a search that ran out of places has shown there is none)
+    const secs = ((performance.now() - search.t0) / 1000).toFixed(1);
+    if (search.n > planNodes) console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none found within its reach (${search.n} places, ${secs} s), tries again`);
+    else console.info(`[haul] no way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): every place it can reach looked at (${search.n}, ${secs} s)`);
   }
   return false;
 }
