@@ -3658,6 +3658,11 @@ without its straw), the oxen `people/_ox.ts`.
     on, facing more than 0.3 of the way back along its heading: a U-turn along their side): they turn it right
     round the other way, away from him (`roundAway`, as `turnRound` above), if it has room to come half round
     that way (`pivotRoom`); else as below.
+  - One right-round turn (`turnRound` or `roundAway`) where the cart stands: none begins again until it has moved
+    on 1 m (`ROUND_AGAIN`) from where the last one began (or he takes the rope again). Turned right round with him
+    still beside it heading into the cart itself (making for where it stands), it turned right round again and
+    again where it stood, carrying him round with its oxen (the log trip's way home from the camp: 2 minutes); now
+    getting nowhere there looks for a way round toward where he heads, as below.
   - After a turn (and when he takes the rope) the way starts again at the yoke, and it is laid toward him only
     once he is in front of the oxen (within `FRONT` of the heading, seen from the yoke) and `GAP` from the yoke
     (`wayOn`): never bent back round the oxen toward him beside them (the yoke would go back along its own pole —

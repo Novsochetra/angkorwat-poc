@@ -251,6 +251,24 @@ let pivoting = false;
  * plan after plan without waiting, brushing past him (`BODY_R`), until it is round or cannot turn on.
  */
 let turnRound: { want: number; sgn: number } | null = null;
+/**
+ * Where the cart stood when the last right-round turn (`turnRound`) began: none again until it has moved on `ROUND_AGAIN`
+ * m from there. Turned right round, he still beside it heading into the cart itself (making for where it stands), it
+ * turned right round again and again where it stood, carrying him round with its oxen (the camp on the way home, a
+ * 2-minute spin); one turn there, then the way round toward where he heads (`nowhere`) gets it out of his way.
+ */
+const roundAt = { x: Number.NaN, z: Number.NaN };
+const ROUND_AGAIN = 1;
+/** A right-round turn may begin where the cart stands (none began within `ROUND_AGAIN` of it): true. */
+function roundFree(): boolean {
+  return !(Math.hypot(CART_AT.x - roundAt.x, CART_AT.z - roundAt.z) < ROUND_AGAIN);
+}
+/** A right-round turn begins (the way `sg`): kept as `turnRound`, its place as `roundAt`. */
+function roundBegin(sg: number): void {
+  turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+  roundAt.x = CART_AT.x;
+  roundAt.z = CART_AT.z;
+}
 const tryFrom = { x: Number.NaN, z: Number.NaN };
 /** Sending it home (the fade): nothing else meanwhile. */
 let sending = false;
@@ -815,6 +833,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   onRun = 0;
   pivoting = false;
   turnRound = null;
+  roundAt.x = Number.NaN;
   faceFor = 0;
   const f = ctx.world.field;
   const bx = -Math.sin(P.yaw);
@@ -834,6 +853,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   blocked = false;
   leading = true;
   planClear();
+  roundAt.x = Number.NaN;
   CART_STATE.leading = true;
   saveWait = SAVE_EVERY;
   wayOn(ctx);
@@ -1492,10 +1512,11 @@ function pivotRoom(ctx: RoamCtx, sgn: number): number {
  * backing all used, it could not turn to face him after (146° round).
  */
 function roundAway(ctx: RoamCtx): boolean {
+  if (!roundFree()) return false;
   const sg = -(Math.sign(angleDiff(fromAxle(himAt.x, himAt.z), CART_AT.yaw)) || 1);
   if (pivotRoom(ctx, sg) < Math.PI / 2) return false;
   if (pivotPlan(ctx, CART_AT.yaw + Math.PI * sg, sg, ROUND_CLEAR) !== 'turn') return false;
-  turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+  roundBegin(sg);
   console.info('[haul] he heads back past the oxen in their swing: they walk the cart right round the other way');
   return true;
 }
@@ -1972,19 +1993,20 @@ function lead(ctx: RoamCtx, dt: number): void {
     search.failedFor.x = Number.NaN;
     const into = inFront(CART_AT, b.pos.x, b.pos.z) && Math.cos(b.yaw - P.yaw) < -0.3;
     // (he walks into them from in front, back past them: they walk the cart round, to his side of their noses first,
-    // else the other; else, as when he is beside them, a way round)
+    // else the other; else, as when he is beside them, a way round — and so too where a right-round turn began already)
+    const free = roundFree();
     // (the way round that turns it farther where it stands — his side first when both go right round)
     let side = Math.sin(P.yaw) * (b.pos.z - P.yz) - Math.cos(P.yaw) * (b.pos.x - P.yx) >= 0 ? -1 : 1;
     if (into && pivotRoom(ctx, -side) > pivotRoom(ctx, side) + TURN_SUB) side = -side;
-    const w1 = into ? pivotPlan(ctx, CART_AT.yaw + Math.PI * side, side, ROUND_CLEAR) : 'done';
-    const w2 = into && w1 !== 'turn' ? pivotPlan(ctx, CART_AT.yaw - Math.PI * side, -side, ROUND_CLEAR) : 'done';
+    const w1 = into && free ? pivotPlan(ctx, CART_AT.yaw + Math.PI * side, side, ROUND_CLEAR) : 'done';
+    const w2 = into && free && w1 !== 'turn' ? pivotPlan(ctx, CART_AT.yaw - Math.PI * side, -side, ROUND_CLEAR) : 'done';
     if (w1 === 'turn' || w2 === 'turn') {
       const sg = w1 === 'turn' ? side : -side;
-      turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+      roundBegin(sg);
       console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: he walks into the oxen, they walk the cart right round`);
     }
     else {
-      if (into) console.info(`[haul] he walks into the oxen: they cannot walk the cart round where it stands (${w1}, ${w2})`);
+      if (into) console.info(`[haul] he walks into the oxen: ${free ? `they cannot walk the cart round where it stands (${w1}, ${w2})` : 'it turned right round here already'}`);
       // (toward where he heads when he pushes into them — from in front, or beside them toward where the cart itself
       // stands: it gets out of his way —; else toward him)
       const heads = into || !inFront(CART_AT, b.pos.x, b.pos.z);
