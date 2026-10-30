@@ -224,8 +224,13 @@ const track: { t: number; x: number; z: number; cx: number; cz: number; cyaw: nu
 let trackT = 0;
 let trackNext = 0;
 let nowhereTries = 0;
-/** Does he push on (keys, stick, touch) this step, as he pressed it (before the oxen's pace scales it)? */
+/**
+ * Does he push on (keys, stick, touch) this step, as he pressed it (before the oxen's pace scales it)? Past `PUSH_ON`
+ * of the stick: a thumb a third of the way out on the touch stick pushes too (at 0.5 a gentle touch push never counted,
+ * and the cart stood silent before him).
+ */
 let pushing = false;
+const PUSH_ON = 0.2;
 /** The rope let out (m): `ROPE_HOLD`, more while there is no way round for where he stands. */
 let slack = ROPE_HOLD;
 /** Lead tries in a row from (about) this place that moved it under 0.5 m, and where the cart stood as the last began. */
@@ -2350,7 +2355,7 @@ registerAddon({
     // While he leads, he walks at the oxen's pace (no running).
     if (mode !== 'walk' || !leading) return false;
     // (his own push, before it is brought to the oxen's pace: `nowhere`)
-    pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5;
+    pushing = Math.hypot(ctx.input.move.x, ctx.input.move.y) > PUSH_ON;
     const k = OX_PACE / (WALK_SPEED * ctx.body.scale * WALK_PACE);
     ctx.input.move.x *= k;
     ctx.input.move.y *= k;

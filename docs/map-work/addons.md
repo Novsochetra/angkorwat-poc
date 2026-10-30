@@ -3622,8 +3622,8 @@ without its straw), the oxen `people/_ox.ts`.
   he is coming in front), starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
   tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m. Getting nowhere is
   judged over a window, never frame by frame (`nowhere`: a sample every 0.25 s; a keyboard player
-  re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch, as pressed,
-  before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
+  re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch past a fifth of its reach, `PUSH_ON`,
+  as pressed, before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
   oxen look for a way round — toward where he heads (6 m on the way he faces) when he walks into them
   from in front, or beside or behind them (he pushes on toward where the cart itself stands: it gets out of his way),
   toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`) —
