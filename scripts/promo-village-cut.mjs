@@ -173,14 +173,17 @@ const SHOTS = [
     name: 'cattle',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    query: `clock=0.9&${HOME}&cattle=young:hungry,grown,calf&cattlefeed=0.2&cattlestraw=6&roam=walk&at=425.5,-129&yaw=200&rcam=60,16,7`,
+    // (by the first stake's hungry cow, E: he fetches his straw and lays it before her; `cattlefeed=` would hold a pose)
+    query: `clock=0.9&${HOME}&cattle=young:hungry,grown,calf&cattlestraw=6&roam=walk&at=421,-131.4&yaw=180`,
+    input: [[0.4, 'press', 'KeyE']],
+    cam: move([425.8, 10.6, -130.4, 421, 9.1, -133.8, 42], [425.2, 10.3, -131.4, 421, 9.1, -133.8, 40]),
     caption: { km: 'ចិញ្ចឹមគោ', en: 'Raise your own cattle' },
   },
   {
     // Riding the white cow across the meadow in the late sun.
     name: 'ride',
     bars: 3,
-    query: `clock=0.145&${AIR}&roam=walk&at=464,-93&yaw=200&cow=ride&rcam=100,10,7`,
+    query: `clock=0.165&${AIR}&roam=walk&at=464,-93&yaw=200&cow=ride&rcam=100,10,7`,
     input: [[0, 'down', 'KeyW']],
     caption: { km: 'ជិះគោ', en: 'Ride the white cattle' },
   },
