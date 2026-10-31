@@ -192,15 +192,24 @@ const SHOTS = [
     name: 'bikeshop',
     bars: 2,
     into: { type: 'smoothleft', seconds: 0.7 },
-    query: `clock=0.85&${AIR}&people=market,bikeshop&explorer=0`,
-    cam: move([348.5, 13.6, -81.5, 340.6, 9.8, -68.4, 48], [346.3, 12.6, -78.4, 340.6, 9.6, -68.4, 48]),
+    // (he buys a bicycle at the morning market's stall: the mechanic wheels it out to him)
+    query: `clock=0.86&${AIR}&people=market,bikeshop&roam=walk&bikeshop=1&bikeshopbuy=town&bikeshopopen=all&purse=200000`,
+    cam: move([345.6, 11.6, -76.2, 340.8, 10.1, -68.8, 44], [344.4, 11.2, -74.6, 340.8, 10.0, -68.8, 42]),
     caption: { km: 'កង់ផ្ទាល់ខ្លួន', en: 'Your own bicycle' },
   },
   {
     name: 'bike',
     bars: 2,
-    query: `clock=0.87&${AIR}&people=eastvillage&roam=walk&at=330,-84&yaw=270&bike=ride&bikeown=town:red&rcam=110,8,5.5`,
-    input: [[0, 'down', 'KeyW'], [1.8, 'press', 'KeyF']],
+    // (down the village street, the houses passing behind him; F rings the bell)
+    query: `clock=0.87&${AIR}&people=eastvillage&roam=walk&at=398,-66.6&yaw=270&bike=ride&bikeown=town:red`,
+    input: [[0, 'down', 'KeyW'], [1.9, 'press', 'KeyF']],
+    each: (u) => {
+      const c = window.roam.cam;
+      c.follow = 0;
+      c.yaw = window.roam.body.yaw - 2.15 + 0.3 * u;
+      c.pitch = 0.12;
+      c.distance = 5.6;
+    },
   },
   // ── Giving ──
   {
