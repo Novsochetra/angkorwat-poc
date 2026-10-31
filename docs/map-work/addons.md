@@ -3682,6 +3682,18 @@ without its straw), the oxen `people/_ox.ts`.
     back and move back the way it came, counted from when he takes the rope or after it has followed him on
     2 m, `BACK_RESET`; never given back by rolling on within a way round, never lifted). A move that would
     back it farther is not made; turns and rolls on always are.
+  - He beside or behind the oxen, pushing into the cart or its oxen (his step 1 m on the way he faces meets them,
+    `intoCart`): getting nowhere, the way round toward where he heads also notes, of the places it reaches, the one it
+    rates best (least cost and way to go) that is out of his way (`outOfWay`): his next steps, 0.5 to 3 m on from his
+    feet every 0.5 m, 0.57 m clear of the cart and its oxen (`OUT_R`: `BODY_R` + `ROUND_CLEAR`), his feet 0.92 m clear;
+    first one where the rope lets him walk them too (his feet and every step within 5.9 m of the oxen's noses,
+    `OUT_SLACK`: the rope's 6.5 m from his hand less 0.6 m), else one out of his way only. When that search finds no
+    whole way (at its place limit, or out of places) the oxen walk the cart there before any part way, and the rope pays
+    out to `OUT_SLACK` as he walks on past it (`passing`; he pulls only there), until he is 3 m from where he stood, it
+    has followed him on 2 m, a new way round is looked for, or he lets go; then he leads it on as usual. A whole way
+    found is taken as before. (The log trip's way home from the camp, its first waypoint the cart's own spot: the part
+    ways came round but left it where he walked, and it circled there to the 2-minute timeout, 3 of 5 from that state;
+    out of his way but past the rope's hold, the rope held him short of the spot, 1 of 10; now 0 of 20.)
   - A search that reaches its place limit (1 600) has not shown there is none: it walks the part it found that
     comes round most toward him (in its guess, clear of his feet, `PART_GAIN`) and looks on from there; or the
     nearest to his heels it reached, if 1.5 m nearer; only else it logs `[haul] a way round toward (x, z): none
@@ -3692,9 +3704,9 @@ without its straw), the oxen `people/_ox.ts`.
     each place's fit once (`fitsMemo`).
   - A blocked way is not tried again every frame while nothing has moved (he, the way's end: `wayTried`).
   - Checks: `__haul.state().round.backed` (the reverse travel so far), `.fit.by` (fit tests by what they are
-    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to, nodes })` (the search for that cart and him, searched to
+    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to, nodes, out })` (the search for that cart and him, searched to
     the end at once — `nodes` another reach than 1 600 —: found, places, the land's cells tested, fit tests, ms,
-    backing, turn; nothing of the live cart changes), `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
+    backing, turn; `out`: his facing°, pushing into the cart; `took`: whole, out, part, nearest or none; nothing of the live cart changes), `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
     that place: fits, the heading the way sets out on, his feet clear, the way on works, and that way).
 - **A new way** (taking the rope, each step of a way round or a turn) starts with points every 0.5 m ending
   right at the yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
