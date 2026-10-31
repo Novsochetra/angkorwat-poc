@@ -205,7 +205,8 @@ const SHOTS = [
     into: { type: 'smoothleft', seconds: 0.7 },
     // (he buys a bicycle at the morning market's stall: the mechanic wheels it out to him)
     query: `clock=0.86&${AIR}&people=market,bikeshop&roam=walk&bikeshop=1&bikeshopbuy=town&bikeshopopen=all&purse=200000`,
-    cam: move([345.6, 11.6, -76.2, 340.8, 10.1, -68.8, 44], [344.4, 11.2, -74.6, 340.8, 10.0, -68.8, 42]),
+    // (in profile from the stall's east side: him and the mechanic face to face, the bicycle wheeled out between them)
+    cam: move([346.8, 11.4, -67.3, 342.0, 10.3, -70.6, 42], [346.2, 11.3, -67.9, 342.0, 10.3, -70.6, 40]),
     caption: { km: 'កង់ផ្ទាល់ខ្លួន', en: 'Your own bicycle' },
   },
   {
