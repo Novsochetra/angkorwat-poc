@@ -225,11 +225,11 @@ const SHOTS = [
     name: 'share',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    // (to the grandmother sweeping by his house, E: she takes the mango in both hands, thanks him and blesses him;
-    // the village's children ran past the camera and did not start)
-    query: `${AIR}&roam=walk&at=418.2,-113.4&yaw=180&people=home&home=0&clock=0.9&basket=mango:4&sim=_:1&sharewho=gran&share=near`,
+    // (to a villager of the hamlet behind Angkor Wat, E: he holds it out in both hands, they take it, thank him;
+    // Angkor Wat's towers beyond. By his house the grandmother is not out once the house is his)
+    query: `${AIR}&roam=walk&at=162.2,8,-336.8&yaw=-90&people=back&clock=0.9&basket=mango:4&sim=_:1&share=near`,
     input: [[0.4, 'press', 'KeyE']],
-    cam: move([423.2, 11.7, -114.0, 418.2, 10.9, -114.6, 40], [422.6, 11.6, -114.6, 418.2, 10.9, -114.6, 38]),
+    cam: move([164.3, 10.0, -341.2, 161.3, 9.1, -336.2, 42], [163.8, 9.9, -340.8, 161.3, 9.1, -336.2, 40]),
     caption: { km: 'ចែករំលែក', en: 'Share your harvest' },
   },
   {
