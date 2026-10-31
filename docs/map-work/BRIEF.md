@@ -2827,6 +2827,38 @@ to those frames (on a phone at 30 frames a second, about a third of them
 while the light turns fastest; at 60, a sixth), so keep the still parts' triangles as low
 as the picture's; a part that moves must not be marked still.
 
+### Memory on a phone
+
+iOS gives a Safari tab a memory budget well under the phone's own and, past
+it, closes the tab and loads the page again, with no warning to the page (no
+`webglcontextlost`): after a while of play the map reloaded on phones. What
+the page held on `phone=1` (Chromium, the production build, Start and a walk
+at 13 places, 2026-10-31; before → after the changes below): the page's
+process 726 → 654 MB, of which typed arrays 266 → 203 MB, WebGL 169 →
+154 MB, canvases 41 → 21 MB, sounds 60 → 46 MB, the JS heap ≈ 136 MB; the
+growth over the tour +102 → +31 MB. What keeps it down:
+
+- **Sculpted pieces let go of their finer levels** (sacred/_detail.ts
+  `drop`, `KEEP`, `DROP_AFTER`): a Buddha's or a stupa's level finer than its
+  coarsest is freed once the camera has been past 4× its distance (or the
+  piece not drawn) for 45 s, and sculpted again when wanted. Kept, every
+  statue walked past stayed sharp in memory (a near Buddha ≈ 210 k
+  triangles, 8 MB): ≈ 50 MB of arrays after a tour, and as much on the GPU.
+  Buddhas share a sculpt: `letGo` (buddha.ts) frees a statue's own colours
+  and only with the last user the sculpt's attributes (disposing a geometry
+  deletes the GPU buffers of every attribute in it, shared or not).
+- **Painted pictures at half size on a phone** (kbach.ts `PAINT_SCALE`: gilt
+  gables, the gable figures, the pagoda's murals and panels; its canvases,
+  edges and blurs scaled with it): the same picture on a 390 px high screen,
+  a quarter of the canvases and textures (≈ 40 MB less once the village
+  pagoda has been seen).
+- **The far chant decoded at 22 kHz** (chants.ts `RATE`): 15 MB, not 34.
+
+A new part: nothing made on the way and kept for ever. What is made near a
+place (a sharper level, a picture) is let go when far, or made small on a
+phone; a held weather does not plan its whole future at once (weather.ts
+`endlessTrain`: a held storm's lightning to 10⁷ s was 180 MB of objects).
+
 ## Checking your work
 
 - Types: `npx tsc --noEmit 2>&1 | grep src/map/<your files>` (others work at

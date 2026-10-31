@@ -27,6 +27,16 @@ import { trackSacred } from './pending';
  * them at once in shots (a video never shows a stand-in) and with `eager`.
  * Shots wait for them (pending.ts).
  *
+ * A finer level is let go again (its `drop`: the arrays and the GPU's
+ * buffers only it held) once the camera has been past {@link KEEP} times
+ * its distance, or the piece not drawn at all (its place culled), for
+ * {@link DROP_AFTER} s; it is made again when wanted, the coarser level
+ * standing in meanwhile, as at first. Never the coarsest, nor the
+ * shadows' level, nor in shots or with `eager`. Kept, every statue the
+ * explorer had walked past stayed in memory sharp: after a tour of the
+ * map ≈ 50 MB of arrays and as much again on the GPU, and a phone's tab
+ * was closed for memory and reloaded.
+ *
  * Shadows: on low and medium the shadow map is still (graphics.ts
  * `markStill`): drawn once, then again only when the light turns, so a
  * switch made after it would leave the old level's shadow, or none. A piece
@@ -51,6 +61,12 @@ export const REF_PIXEL = (2 * Math.tan((25 * Math.PI) / 180)) / 1800;
 const HOLD = 0.08;
 /** A level is made once the camera is within this many times the distance it shows from. */
 const AHEAD = 2.5;
+/** A made level is kept while the camera is within this many times the distance it shows from (more than {@link AHEAD}: not made and let go on the line). */
+const KEEP = 4;
+/** A finer level not kept (further off, or the piece not drawn) for this long (s) is let go. */
+const DROP_AFTER = 45;
+/** How often the pieces' levels are looked over for one to let go (ms). */
+const SWEEP_EVERY = 5000;
 
 /** Shots make every level at once. */
 const EAGER = typeof location !== 'undefined' && new URLSearchParams(location.search).has('shot');
@@ -76,6 +92,8 @@ export interface DetailLevel {
   cell: number;
   /** Makes the level's object (once, when first wanted), or a promise of it; `lod` is the piece's (to set its `unit`). */
   load(lod: SacredLod): Object3D | Promise<Object3D>;
+  /** Lets go of what `load` made, taken out of the piece (its geometry disposed, what only it held freed); a later `load` makes it again. None: kept once made. */
+  drop?(obj: Object3D): void;
 }
 
 export interface DetailOptions {
@@ -96,6 +114,17 @@ export interface DetailOptions {
 const _eye = new Vector3();
 const _at = new Vector3();
 
+/** The pieces with a level they may let go, looked over every {@link SWEEP_EVERY} ms (once the first is made). */
+const sweeping = new Set<SacredLod>();
+let sweeper = 0;
+function sweepLater(lod: SacredLod): void {
+  sweeping.add(lod);
+  sweeper ||= window.setInterval(() => {
+    const now = performance.now();
+    for (const l of sweeping) l.sweep(now);
+  }, SWEEP_EVERY);
+}
+
 /**
  * A sculpted piece's levels (see the file's note): an LOD three updates as
  * it draws (`update` with the camera, for each picture), its levels in
@@ -107,6 +136,8 @@ export class SacredLod extends LOD {
   private readonly slots: Group[] = [];
   private readonly made: boolean[] = [];
   private readonly asked: boolean[] = [];
+  /** When each level was last kept (ms: `performance.now`): the camera within {@link KEEP} times its distance, or it shown. */
+  private readonly kept: number[] = [];
   /** The level the camera asks for ({@link specs}.length: none). */
   private level: number;
   private forced = -1;
@@ -126,10 +157,37 @@ export class SacredLod extends LOD {
       this.slots.push(g);
       this.made.push(false);
       this.asked.push(false);
+      this.kept.push(0);
       this.add(g);
     }
     if (o.eager || EAGER) for (let i = specs.length - 1; i >= 0; i--) this.want(i);
-    else this.want(specs.length - 1);
+    else {
+      this.want(specs.length - 1);
+      if (specs.some((sp, i) => sp.drop && this.droppable(i))) sweepLater(this);
+    }
+  }
+
+  /** Level `i` may be let go once made (a finer one with a `drop`: not the coarsest, nor the shadows'). */
+  private droppable(i: number): boolean {
+    return !!this.specs[i].drop && i < this.specs.length - 1 && i !== this.o.caster;
+  }
+
+  /** Lets go of the finer levels not kept for {@link DROP_AFTER} s (`now`: ms, `performance.now`); the module's sweep calls it. */
+  sweep(now: number): void {
+    if (this.forced >= 0) return;
+    let dropped = false;
+    for (let i = 0; i < this.specs.length; i++) {
+      if (!this.made[i] || !this.droppable(i) || now - this.kept[i] < DROP_AFTER * 1000) continue;
+      const obj = this.slots[i].children[0];
+      this.made[i] = false;
+      this.asked[i] = false;
+      if (obj) {
+        this.slots[i].remove(obj);
+        this.specs[i].drop!(obj);
+      }
+      dropped = true;
+    }
+    if (dropped) this.show();
   }
 
   /** The level's object once made (the preview's counts), else null. */
@@ -170,7 +228,11 @@ export class SacredLod extends LOD {
     // (made ahead: the finer levels the camera may soon come to)
     const ahead = this.pick(mpp / AHEAD, e / AHEAD, ws);
     for (let i = ahead; i <= Math.min(this.level, n - 1); i++) this.want(i);
-    this.show();
+    // (kept: those it is near enough to, and the one shown)
+    const now = performance.now();
+    for (let i = this.pick(mpp / KEEP, e / KEEP, ws); i < n; i++) this.kept[i] = now;
+    const shown = this.show();
+    if (shown < n) this.kept[shown] = now;
   }
 
   /** The level for a pixel of `mpp` m at the piece, a distance `e` (m, at the reference) and a world scale `ws`: `specs.length` for none. */
@@ -190,8 +252,8 @@ export class SacredLod extends LOD {
     return i;
   }
 
-  /** Shows the level asked for, or the nearest one made (the finer of two as near). */
-  private show(): void {
+  /** Shows the level asked for, or the nearest one made (the finer of two as near); returns it ({@link specs}.length: none). */
+  private show(): number {
     const n = this.specs.length;
     let s = this.forced >= 0 ? this.forced : this.level;
     if (s < n && !this.made[s]) {
@@ -203,6 +265,7 @@ export class SacredLod extends LOD {
       s = found;
     }
     for (let i = 0; i < n; i++) this.slots[i].visible = i === s;
+    return s;
   }
 
   /** Makes a level (once). */
@@ -221,6 +284,7 @@ export class SacredLod extends LOD {
       });
     this.slots[i].add(obj);
     this.made[i] = true;
+    this.kept[i] = performance.now();
     if (i === this.o.caster) this.addCaster(obj);
     this.show();
   }

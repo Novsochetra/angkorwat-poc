@@ -170,14 +170,31 @@ function rng(seed: number): () => number {
 /** Lightning from `from` to `to` (s): a flash every `gap` s (min, max), 1–4 strokes each. */
 function flashTrain(r: () => number, from: number, to: number, gap: [number, number]): Flash[] {
   const out: Flash[] = [];
-  for (let t = from + r() * gap[0]; t < to; t += gap[0] + r() * (gap[1] - gap[0])) {
-    const strokes = [0];
-    for (let k = 0, n = Math.floor(r() * 3.2); k < n; k++) strokes.push(strokes[k] + 0.045 + r() * 0.1);
-    const a = r() * Math.PI * 2;
-    const d = 350 + r() * r() * 1500;
-    out.push({ t, power: 0.45 + 0.55 * r(), x: STORM_CENTRE.x + Math.sin(a) * d, z: STORM_CENTRE.z + Math.cos(a) * d, strokes });
-  }
+  for (let t = from + r() * gap[0]; t < to; t += gap[0] + r() * (gap[1] - gap[0])) out.push(oneFlash(r, t));
   return out;
+}
+
+/** A flash at `t` (s) of a train: its strokes, power and place. */
+function oneFlash(r: () => number, t: number): Flash {
+  const strokes = [0];
+  for (let k = 0, n = Math.floor(r() * 3.2); k < n; k++) strokes.push(strokes[k] + 0.045 + r() * 0.1);
+  const a = r() * Math.PI * 2;
+  const d = 350 + r() * r() * 1500;
+  return { t, power: 0.45 + 0.55 * r(), x: STORM_CENTRE.x + Math.sin(a) * d, z: STORM_CENTRE.z + Math.cos(a) * d, strokes };
+}
+
+/**
+ * A train with no end (a held storm), drawn as time goes by: the last flash begun by `t` (null: none yet), the
+ * same flashes as `flashTrain(r, from, ∞, gap)`. (Drawn whole as the page opened, to 10⁷ s, it held 900 000
+ * flashes: 180 MB.) `t` only grows.
+ */
+function endlessTrain(r: () => number, from: number, gap: [number, number]): (t: number) => Flash | null {
+  let next = from + r() * gap[0];
+  let last: Flash | null = null;
+  return (t) => {
+    for (; next <= t; next += gap[0] + r() * (gap[1] - gap[0])) last = oneFlash(r, next);
+    return last;
+  };
 }
 
 /** The flicker of a flash at `dt` s after it began (0‥1 before its power). */
@@ -607,7 +624,7 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
   let skies: Skies | null = null;
   const wanted: WeatherWants = { rain: false, rainbow: false, snow: false };
   // (a held storm on the live page: lightning every few seconds, on its own train)
-  const heldFlashes = !auto && !shot && (held.storm ?? 0) > 0 && !params.has('flash') ? flashTrain(rng(5), 3, 1e7, [6, 16]) : [];
+  const heldFlashes = !auto && !shot && (held.storm ?? 0) > 0 && !params.has('flash') ? endlessTrain(rng(5), 3, [6, 16]) : null;
   const ensure = (day: number) => (skies ??= new Skies(day));
   /** When a held flash (`flash=`) first struck (page s). */
   let flashFrom: number | undefined;
@@ -624,7 +641,7 @@ export function createWeather(params: URLSearchParams, setting: () => WeatherSet
         Object.assign(w, CALM_WEATHER, held);
         const p = s.phase;
         w.windDir = BASE_DIR + 0.22 * Math.sin((f.t * Math.PI * 2) / 260 + p[5]);
-        const last = lastFlash(heldFlashes, f.t);
+        const last = heldFlashes?.(f.t) ?? null;
         if (last) {
           w.flash = f.t - last.t < 2 ? flicker(last, f.t - last.t) : 0;
           w.flashAt = last.t;
