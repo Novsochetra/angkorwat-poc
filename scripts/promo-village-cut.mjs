@@ -106,10 +106,11 @@ const SHOTS = [
     name: 'plant',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    query: `clock=0.88&${HOME}&garden=banana:3,papaya:2,eggplant:2,pumpkin:3&roam=walk&at=420.5,-117.2&yaw=200&gardenring=corn`,
+    // (the hole is dug 1.5 m before him, at ≈ 420, −118.6: _gardenSpots.ts PLANT_AHEAD; the beds round it kept clear of it)
+    query: `clock=0.88&${HOME}&garden=banana:3@416.4/-121.6,papaya:2@425.6/-122.4,eggplant:3@417.6/-118.4,pumpkin:3@423.2/-119.6&roam=walk&at=420.5,-117.2&yaw=200&gardenring=corn`,
     input: [[0.4, 'press', 'KeyE']],
     // (side on, low: the hoe, the earth thrown, the seed patted in)
-    cam: move([423.9, 11.8, -121.4, 420.4, 10.5, -117.9, 40], [423.2, 11.6, -120.9, 420.4, 10.5, -117.9, 38]),
+    cam: move([423.6, 11.9, -122.6, 420.0, 10.5, -118.4, 42], [423.0, 11.7, -122.1, 420.0, 10.5, -118.4, 40]),
     caption: { km: 'ដាំសួនច្បារ', en: 'Plant your own garden' },
   },
   {
