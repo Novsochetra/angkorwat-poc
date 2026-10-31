@@ -10,6 +10,17 @@
   frame by frame (`__videoFrame`, `video=1`). `npm run video -- preview` makes
   3 stills a shot; `only=<shot>,…` redoes those shots. Promo words say the
   game is playable now (never "coming soon").
+- The village-life promo (about 1.5 min, what came from 7 October 2026: the garden,
+  the shoulder pole, building, cattle, bicycles, sharing and offering fruit):
+  `VIDEO_CUT=scripts/promo-village-cut.mjs npm run video -- jobs=2` →
+  `screenshots/promo-village.mp4`. Its shots play the explorer with real keys
+  (`input`), page code a frame (`each`: a garden time-lapse) and `speed`
+  (a time-lapse); captions, per-shot transitions; its sound is a score
+  (`src/map/video/score.ts`: roneat, khloy, chhing, skor) over the sounds each
+  shot's map made, noted while drawn and played back offline
+  (`src/map/video/soundtrack.ts`). With no GPU (a cloud machine) it draws on the
+  CPU (SwiftShader): ≈ 11 s a frame close up, 25 s over the whole map; look first
+  with `VIDEO_SCALE=0.5 VIDEO_GRAPHICS=low … -- preview`.
 - `npm run wallpaper` draws the saved views and flights of the free camera
   (dev server only: see "Free camera and wallpapers" below) into `wallpapers/out/`.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.

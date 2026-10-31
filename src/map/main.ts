@@ -1136,14 +1136,17 @@ if (shot) {
    * the explorer's) at a time of day `clock` (null: as it was), then drawn.
    * (Left out, `cam` and `clock` are null: a check's `__videoFrame(t, dt)`
    * once made the clock undefined, the night NaN and the ducks' loop with it.)
+   * `draw` false moves the scene on without drawing it (a preview's frames
+   * between its stills: on a CPU-drawn page a frame is seconds).
    */
-  const videoFrame = (t: number, dt: number, cam: number[] | null = null, clock: number | null = null) => {
+  const videoFrame = (t: number, dt: number, cam: number[] | null = null, clock: number | null = null, draw = true) => {
     videoCam = cam;
     if (clock !== null) {
       clockParam = clock;
       night = nightOf(clock);
     }
     step(t, dt);
+    if (!draw) return;
     post.render(frame);
     for (const p of parts) p.afterRender?.();
   };
