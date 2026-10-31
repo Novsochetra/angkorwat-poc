@@ -255,8 +255,9 @@ const SHOTS = [
     name: 'night',
     bars: 2,
     into: { type: 'fadeblack', seconds: 1.2 },
-    query: `clock=0.46&${HOME}&${GARDEN}&${YARD}&cattle=calf,young,grown,8&cattlenight=1&explorer=0`,
-    cam: move([412, 19, -127, 423, 13.5, -108, 50], [414, 17.5, -124, 423.5, 13.5, -108, 50]),
+    // (inside his room: asleep on his mat under the net, the lamp on the sill, the altar's candle)
+    query: `clock=0.46&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,13,-106&home=sleep&sim=_:2`,
+    cam: move([426.9, 15.0, -107.7, 424.2, 13.3, -104.7, 54], [426.3, 14.6, -107.2, 424.2, 13.3, -104.7, 50]),
   },
   {
     name: 'title',
