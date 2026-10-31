@@ -1067,7 +1067,12 @@ function heapPop(h: PlanNode[]): PlanNode | undefined {
 const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 
 /** The search under way (for him at `him`), its open places and those seen; the plan found, being walked. */
-const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN } };
+/**
+ * …`out`: he pushes into the cart or its oxen from beside or behind them (`intoCart`): his next steps, from his feet
+ * (`search.from`) along the way he faces; `outBest`, the place it reached, rated best by the search (least `f`), where
+ * the cart and its oxen are out of his way (`outOfWay`): taken when the search finds no whole way within its reach.
+ */
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN }, out: { on: false, dx: 0, dz: 0 }, outBest: null as PlanNode | null };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 }, clear: 0, lay: false };
 /**
  * The way a whole way round ends with (its goal's trial way past the yoke, `wayWorksFrom`): laid as the cart's way once
@@ -1621,13 +1626,45 @@ function feetClear(ax: number, az: number, yaw: number, hx: number, hz: number, 
   const ob: CartBox = { x: ax + fx * CART_YOKE, z: az + fz * CART_YOKE, yaw, back: OXEN_BOX.back, front: OXEN_BOX.front, half: OXEN_BOX.half };
   return !boxMeetsCircle(cb, hx, hz, r) && !boxMeetsCircle(ob, hx, hz, r);
 }
+/**
+ * Out of his way: his next steps (`OUT_FROM` to `OUT_ON` m on from his feet along the way he faced, every `OUT_EVERY` m)
+ * `OUT_R` clear of the cart and its oxen, and his feet `BODY_R` + 0.5 m clear (as a way round ends: never hugging him).
+ * Only what he walks into from beside or behind them, toward where the cart itself stands (the log trip's way home from
+ * the camp: its first waypoint the cart's own spot; every way round toward where he heads reached its place limit, the
+ * part ways came round but left it on his way, and it circled there 2 minutes).
+ */
+const OUT_FROM = 0.5;
+const OUT_ON = 3;
+const OUT_EVERY = 0.5;
+const OUT_R = BODY_R + ROUND_CLEAR;
+function outOfWay(n: Pose): boolean {
+  const o = search.out;
+  if (!feetClear(n.x, n.z, n.yaw, search.from.x, search.from.z, BODY_R + 0.5)) return false;
+  for (let d = OUT_FROM; d <= OUT_ON + 1e-6; d += OUT_EVERY) if (!feetClear(n.x, n.z, n.yaw, search.from.x + o.dx * d, search.from.z + o.dz * d, OUT_R)) return false;
+  return true;
+}
+/** He beside or behind the oxen, his next step (`INTO_STEP` m on the way he faces) into the cart or its oxen: that way (a unit vector). */
+const INTO_STEP = 1;
+function intoCart(ctx: RoamCtx): { dx: number; dz: number } | null {
+  const b = ctx.body;
+  if (inFront(CART_AT, b.pos.x, b.pos.z)) return null;
+  const dx = Math.sin(b.yaw);
+  const dz = Math.cos(b.yaw);
+  return feetClear(CART_AT.x, CART_AT.z, CART_AT.yaw, b.pos.x + dx * INTO_STEP, b.pos.z + dz * INTO_STEP, BODY_R) ? null : { dx, dz };
+}
 /** The heading from the cart's axle toward (x, z). */
 const fromAxle = (x: number, z: number): number => Math.atan2(x - CART_AT.x, z - CART_AT.z);
 
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
-function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
+function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: number; dz: number } | null): void {
   search.on = true;
   memo.clear();
+  search.out.on = !!out;
+  if (out) {
+    search.out.dx = out.dx;
+    search.out.dz = out.dz;
+  }
+  search.outBest = null;
   search.him.x = to ? to.x : ctx.body.pos.x;
   search.him.z = to ? to.z : ctx.body.pos.z;
   search.from.x = ctx.body.pos.x;
@@ -1645,6 +1682,8 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }): void {
   search.seen.add(poseKey(root));
 }
 
+/** Checks: what the last search ended with (`probe`). */
+let took: 'whole' | 'out' | 'part' | 'nearest' | 'none' | '' = '';
 /** Look on (a few ms): a plan found (true), or still looking / none (false; `search.on` false once none). */
 function planStep(ctx: RoamCtx): boolean {
   const t0 = performance.now();
@@ -1658,6 +1697,7 @@ function planStep(ctx: RoamCtx): boolean {
     // (the open place with the least cost and way to go, the way to go weighted: it makes for him first)
     const n = heapPop(search.open)!;
     if (n.parent && planGoal(ctx, n)) {
+      took = 'whole';
       planTake(n, true);
       return true;
     }
@@ -1666,6 +1706,7 @@ function planStep(ctx: RoamCtx): boolean {
       m.f = m.g + W_GUESS * guess(m);
       if (guess(m) < guess(search.best!) && clearOfHimAt(m)) search.best = m;
       if (short(m) < short(search.nearest!)) search.nearest = m;
+      if (search.out.on && (!search.outBest || m.f < search.outBest.f) && outOfWay(m)) search.outBest = m;
       heapPush(search.open, m);
     }
   }
@@ -1674,18 +1715,30 @@ function planStep(ctx: RoamCtx): boolean {
     // (no place to make for found within its reach — not that there is none: the place it reached that comes round
     // most toward him, if a good deal more, or the nearest to his heels, if a good way nearer (he may stand where a
     // cart cannot come); the oxen walk it, and look on from there. Never more backing than `BACK_MOST`.)
+    // (he walked into the cart from beside or behind the oxen: first, if it reached one, a place out of his way — he
+    // passes, and leads it on from there; a part way may come round and still stand where he walks)
+    const o = search.outBest;
+    if (o) {
+      took = 'out';
+      console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way`);
+      planTake(o);
+      return true;
+    }
     const b = search.best;
     if (b && b.parent && guess(b) < guess(root) - PART_GAIN && clearOfHimAt(b)) {
+      took = 'part';
       console.info(`[haul] a way round in part (${search.n} places looked at): it comes round ${((Math.abs(angleDiff(b.yaw, root.yaw)) * 180) / Math.PI).toFixed(0)}° and looks on from there`);
       planTake(b);
       return true;
     }
     const nb = search.nearest;
     if (nb && nb.parent && short(nb) < short(root) - 1.5) {
+      took = 'nearest';
       planTake(nb);
       return true;
     }
     // (none: he walks round, or the oxen take it home: `stuckHere`)
+    took = 'none';
     search.on = false;
     search.failedFor.x = search.him.x;
     search.failedFor.z = search.him.z;
@@ -2023,9 +2076,11 @@ function lead(ctx: RoamCtx, dt: number): void {
       // (toward where he heads when he pushes into them — from in front, or beside them toward where the cart itself
       // stands: it gets out of his way —; else toward him)
       const heads = into || !inFront(CART_AT, b.pos.x, b.pos.z);
-      planStart(ctx, heads ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined);
+      // (beside or behind them, his next step into the cart or its oxen: a place out of his way, if no whole way is found)
+      const out = intoCart(ctx);
+      planStart(ctx, heads ? { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD } : undefined, out);
       search.strict = false;
-      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${heads ? ', where he heads' : ''}`);
+      console.info(`[haul] getting nowhere ${NOWHERE_WINDOW} s: the oxen look for a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)})${heads ? ', where he heads' : ''}${out ? ', or out of his way' : ''}`);
     }
   }
   // (blocked at his heels — the yoke within `HEEL` of his feet, he in front of the oxen — it waits; beside or behind
@@ -2643,10 +2698,11 @@ registerAddon({
           },
           /**
            * Checks: the way round the oxen would find for the cart at (cx, cz) heading `cyaw`° with him at (hx, hz) (aimed
-           * at `to` if given), searched to the end at once: found or not, places looked at, fit tests, time, its moves, how
-           * far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
+           * at `to` if given; `out`: he faces that way°, pushing into the cart — a place out of his way when no whole way is
+           * found), searched to the end at once: found or not, what it took (`took`), places looked at, fit tests, time, its
+           * moves, how far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
            */
-          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number } = {}) => {
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number } = {}) => {
             planNodes = opt.nodes ?? PLAN_NODES;
             const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
             const fit0 = FIT.n;
@@ -2660,7 +2716,8 @@ registerAddon({
             const pctx = { world: e.world, body: { pos: { x: hx, z: hz } } } as unknown as RoamCtx;
             const t0 = performance.now();
             planClear();
-            planStart(pctx, opt.to ? { x: opt.to[0], z: opt.to[1] } : undefined);
+            took = '';
+            planStart(pctx, opt.to ? { x: opt.to[0], z: opt.to[1] } : undefined, opt.out === undefined ? null : { dx: Math.sin((opt.out * Math.PI) / 180), dz: Math.cos((opt.out * Math.PI) / 180) });
             let guard = 0;
             while (search.on && !walkPlan.steps.length && guard++ < 10000) planStep(pctx);
             const ms = performance.now() - t0;
@@ -2671,6 +2728,7 @@ registerAddon({
             const end = steps[steps.length - 1];
             const out = {
               found: steps.length > 0,
+              took,
               looked: search.n,
               cells: field.cells,
               fits: FIT.n - fit0,
