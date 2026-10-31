@@ -229,10 +229,11 @@ const SHOTS = [
     name: 'share',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    // (by the village's children, E: the nearest runs up, takes the mango in both hands and jumps for joy)
-    query: `${AIR}&roam=walk&at=415,-71.5&yaw=0&people=eastvillage&clock=0.98&basket=mango:4&sharewho=kid&share=near&sim=_:1`,
+    // (to the grandmother sweeping by his house, E: she takes the mango in both hands, thanks him and blesses him;
+    // the village's children ran past the camera and did not start)
+    query: `${AIR}&roam=walk&at=418.2,-113.4&yaw=180&people=home&home=0&clock=0.9&basket=mango:4&sim=_:1&sharewho=gran&share=near`,
     input: [[0.4, 'press', 'KeyE']],
-    cam: move([420.2, 11.7, -68.2, 415, 10.6, -70.2, 42], [419.4, 11.5, -68.9, 415, 10.6, -70.2, 40]),
+    cam: move([423.2, 11.7, -114.0, 418.2, 10.9, -114.6, 40], [422.6, 11.6, -114.6, 418.2, 10.9, -114.6, 38]),
     caption: { km: 'ចែករំលែក', en: 'Share your harvest' },
   },
   {
