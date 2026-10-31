@@ -1,8 +1,8 @@
-// The village-life promo (95 s): what came to the world map from 7 October
+// The village-life promo (90 s): what came to the world map from 7 October
 // 2026 — his stilt house with his name over the door, his home garden (planting,
 // growing, picking), the shoulder pole, building at home, his own cattle and
 // riding the white cattle, his own bicycle, offering his fruit to the monks, the
-// bodhi at the pagoda, his kite, his hammock — recorded with scripts/video.mjs:
+// bodhi at the pagoda, his kite, asleep at home — recorded with scripts/video.mjs:
 //
 //   VIDEO_CUT=scripts/promo-village-cut.mjs npm run video -- jobs=2   → screenshots/promo-village.mp4
 //   VIDEO_CUT=scripts/promo-village-cut.mjs npm run video -- preview  (3 stills a shot)
@@ -12,7 +12,8 @@
 // VIDEO_GRAPHICS=low VIDEO_FPS=12, only=…): a preview's stills skip the drawing
 // between them, and the garden, the people and the work only change as drawn.
 // What did not read and was left out: the bicycle shop's hand-over (he only stood
-// at the stall), sharing with villagers (no one near in the light to give to). Places: src/map/layout.ts, his house and yard
+// at the stall), sharing with villagers (no one near in the light to give to), his
+// hammock (under the house the camera jumped round the stilts; in the yard he was lost). Places: src/map/layout.ts, his house and yard
 // (≈ 424, −112) in the sugar-palm village (m; +X east, −Z north, +Y up).
 
 /** Smooth start and stop (0‥1). */
@@ -235,7 +236,7 @@ const SHOTS = [
     query: `${AIR}&roam=walk&at=-325,88&clock=0.9&bodhi=plant:3.2`,
     caption: { km: 'ដាំដើមពោធិ៍នៅវត្ត', en: 'Plant a bodhi tree at the pagoda' },
   },
-  // ── Evening: his kite, his hammock ──
+  // ── Evening: his kite ──
   {
     name: 'kite',
     bars: 2,
@@ -250,16 +251,11 @@ const SHOTS = [
       c.distance = 5.9 - 0.8 * u;
     },
   },
-  {
-    name: 'hammock',
-    bars: 2,
-    query: `clock=0.2&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,-108&hammock=1&dog=lie&sim=_:1.5`,
-    caption: { km: 'សម្រាកនៅផ្ទះ', en: 'Rest at home' },
-  },
   // ── Night: home, and the title ──
   {
     name: 'night',
     bars: 2,
+    caption: { km: 'សម្រាកនៅផ្ទះ', en: 'Rest at home' },
     into: { type: 'fadeblack', seconds: 1.2 },
     // (inside his room: asleep on his mat under the net, the lamp on the sill, the altar's candle)
     query: `clock=0.46&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,13,-106&home=sleep&sim=_:2`,
