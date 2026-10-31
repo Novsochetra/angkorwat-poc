@@ -255,11 +255,11 @@ const SHOTS = [
   {
     name: 'night',
     bars: 2,
-    caption: { km: 'សម្រាកនៅផ្ទះ', en: 'Rest at home' },
-    into: { type: 'fadeblack', seconds: 1.2 },
-    // (inside his room: asleep on his mat under the net, the lamp on the sill, the altar's candle)
-    query: `clock=0.46&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,13,-106&home=sleep&sim=_:2`,
-    cam: move([426.9, 15.0, -107.7, 424.2, 13.3, -104.7, 54], [426.3, 14.6, -107.2, 424.2, 13.3, -104.7, 50]),
+    caption: { km: 'ពេលល្ងាចនៅផ្ទះ', en: 'Evenings at home' },
+    // (the last of the dusk: he stands in his doorway with his lantern lit, under the sign with his name; a slow push in.
+    // Asleep inside did not hold in a video: he got up)
+    query: `clock=0.235&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,13,-109.6&yaw=180&tool=lantern`,
+    cam: move([422.3, 15.0, -117.1, 424, 14.8, -109.0, 40], [422.7, 15.0, -116.1, 424, 14.8, -109.0, 40]),
   },
   {
     name: 'title',
