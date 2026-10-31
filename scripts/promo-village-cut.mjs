@@ -165,7 +165,7 @@ const SHOTS = [
     bars: 3,
     speed: 2.6,
     into: { type: 'pixelize', seconds: FADE },
-    query: `clock=0.96&${HOME}&${GARDEN}&roam=walk&at=430,-134&yaw=180&purse=200000&buildghost=shelter`,
+    query: `clock=0.96&${HOME}&roam=walk&at=430,-134&yaw=180&purse=200000&buildghost=shelter`,
     input: [[0.35, 'press', 'KeyE']],
     // (three-quarters on, wide enough for the whole shelter as it rises)
     cam: move([437.8, 14.1, -130.2, 430, 9.9, -138.3, 46], [436.2, 13.5, -131.6, 430, 10.1, -138.3, 46]),
