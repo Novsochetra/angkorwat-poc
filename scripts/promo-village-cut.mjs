@@ -141,7 +141,8 @@ const SHOTS = [
     input: [[0, 'down', 'KeyW'], [4.6, 'up', 'KeyW']],
     // (across the yard before his house, panned with from beyond the beds: the beds before him, the house behind;
     // the follow camera snapped about a land step by the stream)
-    cam: move([423.0, 12.3, -122.0, 417.2, 11.0, -114.2, 44], [425.5, 12.1, -121.4, 421.8, 11.0, -114.2, 42]),
+    // (a dolly beside his way: he walks east, to the left of a camera looking south at the house)
+    cam: move([418.6, 12.4, -121.6, 416.4, 11.0, -114.0, 44], [424.2, 12.3, -121.6, 421.6, 11.0, -114.0, 44]),
     caption: { km: 'រែកទឹកស្រោចដំណាំ', en: 'Carry water with the shoulder pole' },
   },
   {
