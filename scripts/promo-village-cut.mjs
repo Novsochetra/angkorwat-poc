@@ -110,7 +110,7 @@ const SHOTS = [
     query: `clock=0.88&${HOME}&garden=banana:3@416.4/-121.6,papaya:2@425.6/-122.4,eggplant:3@417.6/-118.4,pumpkin:3@423.2/-119.6&roam=walk&at=420.5,-117.2&yaw=200&gardenring=corn`,
     input: [[0.4, 'press', 'KeyE']],
     // (side on, low: the hoe, the earth thrown, the seed patted in)
-    cam: move([423.6, 11.9, -122.6, 420.0, 10.5, -118.4, 42], [423.0, 11.7, -122.1, 420.0, 10.5, -118.4, 40]),
+    cam: move([424.0, 12.0, -123.0, 420.2, 10.5, -118.8, 44], [424.2, 12.1, -123.2, 420.4, 10.4, -119.2, 46]),
     caption: { km: 'ដាំសួនច្បារ', en: 'Plant your own garden' },
   },
   {
