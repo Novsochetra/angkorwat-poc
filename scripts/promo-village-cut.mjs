@@ -240,7 +240,15 @@ const SHOTS = [
     name: 'kite',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    query: `clock=0.165&${AIR}&roam=walk&at=430,-152&yaw=20&kite=fly:24&rcam=165,-4,6.5`,
+    query: `clock=0.165&${AIR}&roam=walk&at=430,-152&yaw=20&kite=fly:24`,
+    // (low behind him, up the line to the kite in the evening sky, Angkor Wat's towers on the horizon; a slow push in)
+    each: (u) => {
+      const c = window.roam.cam;
+      c.follow = 0;
+      c.yaw = window.roam.body.yaw - (14 * Math.PI) / 180;
+      c.pitch = (-12 * Math.PI) / 180;
+      c.distance = 5.9 - 0.8 * u;
+    },
   },
   {
     name: 'hammock',
