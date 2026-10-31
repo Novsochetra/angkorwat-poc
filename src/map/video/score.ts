@@ -390,13 +390,13 @@ class Voices {
     const out = this.pan(0, 0.08);
     const lp = this.filter('lowpass', 420, 0.7, out);
     const g = this.gain(lp);
-    const L = 0.16 * vel;
+    const L = 0.14 * vel;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(L, t + 0.012);
     g.gain.setTargetAtTime(L * 0.55, t + 0.02, 0.18);
     g.gain.setTargetAtTime(0, t + dur, 0.06);
+    // (no sub-octave: under the drums it made the mix boom on headphones)
     this.osc('triangle', f, t, dur + 0.4, g);
-    this.osc('sine', f / 2, t, dur + 0.4, g);
   }
 
   chhing(t: number, open: boolean, vel: number): void {
@@ -424,7 +424,7 @@ class Voices {
     const out = this.pan(kind === 'dum' ? -0.1 : -0.3, 0.15);
     const g = this.gain(out);
     const dum = kind === 'dum';
-    const L = (dum ? 0.42 : 0.16) * vel;
+    const L = (dum ? 0.3 : 0.16) * vel;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(L, t + 0.002);
     g.gain.setTargetAtTime(0, t + 0.002, dum ? 0.2 : 0.07);

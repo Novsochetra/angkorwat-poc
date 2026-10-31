@@ -319,6 +319,8 @@ export default {
   volumes: { master: 1, music: 0, ambience: 0.55, water: 0.45, animals: 0.6, steps: 0.7, moves: 0.85, ui: 0 },
   musicLevel: 0.85,
   loudness: -15,
+  // (a low shelf: the drums, the bass and the water's rumble sat 4 dB over the tune and 9 over the steps and birds)
+  audioFilter: 'bass=g=-4:f=120:w=0.6',
   music: {
     bpm: 96,
     sections: [

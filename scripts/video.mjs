@@ -32,7 +32,8 @@
 // The sound: `audio` (the map's own music and ambience, rendered offline, the
 // 15-second promo's), or `music` (a score, src/map/video/score.ts) with the
 // sounds each shot's map made (src/map/video/soundtrack.ts: noted while it is
-// drawn, played back on the map's sound engine after; `volumes` the buses).
+// drawn, played back on the map's sound engine after; `volumes` the buses);
+// `loudness` (LUFS) and `audioFilter` (ffmpeg filters: its tone) on the mix.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -263,7 +264,9 @@ const file = join(out, `${cut.name}.mp4`);
 const audioIn = wav ? ['-i', wav] : [];
 // (a cut's `loudness`: the sound brought to that many LUFS, as online video plays it)
 const loud = cut.loudness ? `,loudnorm=I=${cut.loudness}:TP=-1.5:LRA=11:linear=true` : '';
-const audioMap = wav ? ['-map', `${clips.length}:a`, '-af', `afade=t=out:st=${(total - 1).toFixed(3)}:d=1${loud},aresample=48000`, '-c:a', 'aac', '-b:a', '256k'] : [];
+// (a cut's `audioFilter`: ffmpeg filters on the sound before the fade, e.g. its tone)
+const tone = cut.audioFilter ? `${cut.audioFilter},` : '';
+const audioMap = wav ? ['-map', `${clips.length}:a`, '-af', `${tone}afade=t=out:st=${(total - 1).toFixed(3)}:d=1${loud},aresample=48000`, '-c:a', 'aac', '-b:a', '256k'] : [];
 ffmpeg([...inputs, ...audioIn, '-filter_complex', chain, '-map', '[v]', ...audioMap, '-t', total.toFixed(3), '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file]);
 console.log(`${file} (${total.toFixed(2)} s, ${W}×${H} at ${FPS} fps${wav ? ', with sound' : ''})`);
 
