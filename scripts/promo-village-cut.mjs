@@ -156,6 +156,8 @@ const SHOTS = [
     into: { type: 'pixelize', seconds: FADE },
     query: `clock=0.96&${HOME}&${GARDEN}&roam=walk&at=430,-134&yaw=180&purse=200000&buildghost=shelter`,
     input: [[0.35, 'press', 'KeyE']],
+    // (three-quarters on, wide enough for the whole shelter as it rises)
+    cam: move([437.8, 14.1, -130.2, 430, 9.9, -138.3, 46], [436.2, 13.5, -131.6, 430, 10.1, -138.3, 46]),
     caption: { km: 'សាងសង់ដោយខ្លួនឯង', en: 'Build your homestead' },
   },
   {
@@ -163,7 +165,7 @@ const SHOTS = [
     name: 'yard',
     bars: 2,
     query: `${HOME}&${GARDEN}&${YARD}&cattle=calf,young,grown,8&explorer=0`,
-    clock: (u) => 0.222 + 0.026 * u,
+    clock: (u) => 0.135 + 0.03 * u,
     cam: orbit([428, 10, -132], 21, 9, 160, 200, [0, 1.5, 0], 44),
   },
   // ── His cattle ──
@@ -178,7 +180,7 @@ const SHOTS = [
     // Riding the white cow across the meadow in the late sun.
     name: 'ride',
     bars: 3,
-    query: `clock=0.19&${AIR}&roam=walk&at=464,-93&yaw=200&cow=ride&rcam=100,10,7`,
+    query: `clock=0.145&${AIR}&roam=walk&at=464,-93&yaw=200&cow=ride&rcam=100,10,7`,
     input: [[0, 'down', 'KeyW']],
     caption: { km: 'ជិះគោ', en: 'Ride the white cattle' },
   },
@@ -223,12 +225,12 @@ const SHOTS = [
     name: 'kite',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    query: `clock=0.205&${AIR}&roam=walk&at=430,-152&yaw=20&kite=fly:24&rcam=165,-4,6.5`,
+    query: `clock=0.165&${AIR}&roam=walk&at=430,-152&yaw=20&kite=fly:24&rcam=165,-4,6.5`,
   },
   {
     name: 'hammock',
     bars: 2,
-    query: `clock=0.245&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,-108&hammock=1&dog=lie&sim=_:1.5`,
+    query: `clock=0.2&${HOME}&${GARDEN}&${YARD}&roam=walk&at=424,-108&hammock=1&dog=lie&sim=_:1.5`,
     caption: { km: 'សម្រាកនៅផ្ទះ', en: 'Rest at home' },
   },
   // ── Night: home, and the title ──
