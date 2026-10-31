@@ -61,7 +61,9 @@ const TITLE_CSS = `
 // Video seconds come from these below (`timed`).
 /** Clear air: the valley's morning mist and the haze thinned (the far trees in it read as ghosts close up). */
 const AIR = 'fogamount=0.35';
-const HOME = `home=1&name=Dara&${AIR}`;
+/** His name on the sign over his door (and as people greet him): the player's own, in Khmer letters. */
+const NAME = encodeURIComponent('សុចិត្រា');
+const HOME = `home=1&name=${NAME}&${AIR}`;
 /** His garden as the shots after the planting have it (lineup rows before the house, nearest first). */
 const GARDEN = 'garden=demo';
 /** The yard all built (one of each piece round the house: the build add-on's `build=all`). */
@@ -91,6 +93,14 @@ const SHOTS = [
     cam: move([424.7, 14.75, -104.25, 423.8, 13.9, -114, 56], [424.5, 14.6, -105.4, 423.8, 13.8, -114, 52]),
     caption: { km: 'ផ្ទះរបស់ខ្ញុំ', en: 'A home of your own' },
   },
+  {
+    // Cut on the action: outside, he steps out onto the veranda under the sign with his name.
+    name: 'veranda',
+    bars: 1,
+    query: `clock=0.9&${HOME}&homedoor=open&roam=walk&at=424,13,-108.7&yaw=180&${GARDEN}&${YARD}`,
+    input: [[0, 'down', 'KeyW'], [0.75, 'up', 'KeyW']],
+    cam: move([422.5, 13.8, -115.6, 424, 14.9, -109.0, 38], [422.8, 13.9, -115.0, 424, 14.9, -109.0, 37]),
+  },
   // ── His garden ──
   {
     name: 'plant',
@@ -99,7 +109,7 @@ const SHOTS = [
     query: `clock=0.88&${HOME}&garden=banana:3,papaya:2,eggplant:2,pumpkin:3&roam=walk&at=420.5,-117.2&yaw=200&gardenring=corn`,
     input: [[0.4, 'press', 'KeyE']],
     // (side on, low: the hoe, the earth thrown, the seed patted in)
-    cam: move([424.6, 11.9, -115.6, 420.4, 10.5, -117.8, 40], [424.0, 11.6, -116.4, 420.4, 10.5, -117.8, 38]),
+    cam: move([423.9, 11.8, -121.4, 420.4, 10.5, -117.9, 40], [423.2, 11.6, -120.9, 420.4, 10.5, -117.9, 38]),
     caption: { km: 'ដាំសួនច្បារ', en: 'Plant your own garden' },
   },
   {
