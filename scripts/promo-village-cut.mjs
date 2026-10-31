@@ -136,17 +136,11 @@ const SHOTS = [
     // The shoulder pole, two buckets full, along the path to his jar.
     name: 'carry',
     bars: 2,
-    query: `clock=0.9&${HOME}&${GARDEN}&roam=walk&at=431,-116.4&yaw=270&carry=full`,
+    query: `clock=0.9&${HOME}&${GARDEN}&roam=walk&at=415.5,-114&yaw=90&carry=full`,
     input: [[0, 'down', 'KeyW'], [4.6, 'up', 'KeyW']],
-    // (the follow camera held ahead of him on his right, out over the beds, his house's front behind him: a tracking shot)
-    each: (u) => {
-      const c = window.roam.cam;
-      c.follow = 0;
-      c.yaw = window.roam.body.yaw + 2.25 - 0.35 * u;
-      // (high enough to look over the land step north of the path: it hid him)
-      c.pitch = 0.36;
-      c.distance = 6.2 - 0.6 * u;
-    },
+    // (across the yard before his house, panned with from beyond the beds: the beds before him, the house behind;
+    // the follow camera snapped about a land step by the stream)
+    cam: move([423.0, 12.3, -122.0, 417.2, 11.0, -114.2, 44], [425.5, 12.1, -121.4, 421.8, 11.0, -114.2, 42]),
     caption: { km: 'រែកទឹកស្រោចដំណាំ', en: 'Carry water with the shoulder pole' },
   },
   {
