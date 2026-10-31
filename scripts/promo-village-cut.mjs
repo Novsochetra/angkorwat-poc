@@ -149,7 +149,7 @@ const SHOTS = [
     // Picking his mangoes with the bamboo pole.
     name: 'pick',
     bars: 2,
-    query: `clock=0.93&${HOME}&garden=mango:4:ripe@424/-129.5/0/0.4,banana:4:ripe@418.5/-128,papaya:4:ripe@419.5/-132.5,eggplant:4:ripe@421/-121.5&roam=walk&at=424,-126.6&yaw=180`,
+    query: `clock=0.93&${HOME}&garden=mango:4:ripe@424/-129.5/0/0.4,banana:4:ripe@418.5/-128,papaya:4:ripe@419.5/-132.5,eggplant:4:ripe@421/-121.5&roam=walk&at=424,-127.9&yaw=180`,
     input: [[0.3, 'press', 'KeyE']],
     // (back from the tree, low: him under the crown, the pole up into it against the sky; nothing between)
     cam: move([430.4, 10.4, -121.0, 424.2, 11.4, -128.4, 50], [429.8, 10.3, -121.6, 424.2, 11.6, -128.4, 48]),
