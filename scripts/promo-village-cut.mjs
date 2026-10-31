@@ -213,14 +213,15 @@ const SHOTS = [
     name: 'bike',
     bars: 2,
     // (down the village street, the houses passing behind him; F rings the bell)
-    query: `clock=0.87&${AIR}&people=eastvillage&roam=walk&at=398,-66.6&yaw=270&bike=ride&bikeown=town:red`,
-    input: [[0, 'down', 'KeyW'], [1.9, 'press', 'KeyF']],
+    query: `clock=0.87&${AIR}&people=eastvillage&roam=walk&at=403,-66.6&yaw=270&bike=ride&bikeown=town:red`,
+    // (he coasts to a stop before the end: farther on, the camera met the houses' fences and came in onto his hat)
+    input: [[0, 'down', 'KeyW'], [1.9, 'press', 'KeyF'], [4.2, 'up', 'KeyW']],
     each: (u) => {
       const c = window.roam.cam;
       c.follow = 0;
       c.yaw = window.roam.body.yaw - 2.15 + 0.3 * u;
-      c.pitch = 0.12;
-      c.distance = 5.6;
+      c.pitch = 0.24;
+      c.distance = 5.0;
     },
   },
   // ── Giving ──
