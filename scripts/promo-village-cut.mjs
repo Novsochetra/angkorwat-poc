@@ -225,7 +225,9 @@ const SHOTS = [
   {
     name: 'dakbat',
     bars: 2,
-    query: `${AIR}&roam=walk&at=381,-68.9&yaw=0&clock=0.78&offer=dakbat&basket=mango:3`,
+    // (the monk already before him: he lays the mango in the bowl, the monk blesses him; in profile from the west)
+    query: `${AIR}&roam=walk&at=381,-68.9&yaw=0&clock=0.78&offer=dakbat:give:0.1&basket=mango:3`,
+    cam: move([376.4, 11.3, -67.0, 381.1, 10.5, -68.0, 40], [377.0, 11.1, -67.4, 381.1, 10.5, -68.0, 38]),
     caption: { km: 'ប្រគេនចង្ហាន់ព្រះសង្ឃ', en: 'Offer fruit to the monks' },
   },
   {
