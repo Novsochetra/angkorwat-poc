@@ -182,9 +182,9 @@ const SHOTS = [
     bars: 2,
     into: { type: 'fade', seconds: FADE },
     // (his herd at their stakes north of the house, the trader's tree beyond; he walks in among them)
-    query: `clock=0.92&${HOME}&${YARD}&cattle=calf,young:hungry,grown,grown&cattlestraw=6&roam=walk&at=417.6,-130.2&yaw=135`,
-    input: [[0.3, 'down', 'KeyW'], [1.7, 'up', 'KeyW']],
-    cam: move([412.6, 12.9, -127.6, 425.5, 8.9, -141.2, 44], [414.2, 12.5, -128.6, 425.5, 8.9, -141.2, 42]),
+    query: `clock=0.92&${HOME}&${YARD}&cattle=calf,young:hungry,grown,grown&cattlestraw=6&roam=walk&at=419.8,-132.9&yaw=135`,
+    input: [[0.3, 'down', 'KeyW'], [1.3, 'up', 'KeyW']],
+    cam: move([414.8, 12.0, -129.0, 424.5, 8.9, -139.5, 42], [416.0, 11.7, -129.8, 424.5, 8.9, -139.5, 40]),
     caption: { km: 'ចិញ្ចឹមគោ', en: 'Raise your own cattle' },
   },
   {
