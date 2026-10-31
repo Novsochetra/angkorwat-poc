@@ -197,18 +197,10 @@ const SHOTS = [
   },
   // ── His bicycle ──
   {
-    name: 'bikeshop',
-    bars: 2,
-    into: { type: 'smoothleft', seconds: 0.7 },
-    // (he buys a bicycle at the morning market's stall: the mechanic wheels it out to him)
-    query: `clock=0.86&${AIR}&people=market,bikeshop&roam=walk&bikeshop=1&bikeshopbuy=town&bikeshopopen=all&purse=200000`,
-    // (in profile from the stall's east side: him and the mechanic face to face, the bicycle wheeled out between them)
-    cam: move([346.8, 11.4, -67.3, 342.0, 10.3, -70.6, 42], [346.2, 11.3, -67.9, 342.0, 10.3, -70.6, 40]),
-    caption: { km: 'កង់ផ្ទាល់ខ្លួន', en: 'Your own bicycle' },
-  },
-  {
     name: 'bike',
     bars: 2,
+    into: { type: 'smoothleft', seconds: 0.7 },
+    caption: { km: 'កង់ផ្ទាល់ខ្លួន', en: 'Your own bicycle' },
     // (down the village street, the houses passing behind him; F rings the bell)
     query: `clock=0.87&${AIR}&people=eastvillage&roam=walk&at=403,-66.6&yaw=270&bike=ride&bikeown=town:red`,
     // (he coasts to a stop before the end: farther on, the camera met the houses' fences and came in onto his hat)
@@ -320,8 +312,8 @@ export default {
       { from: 0, to: at('doors'), level: 0, tune: 'call' },
       { from: at('doors'), to: at('build'), level: 1, tune: 'call', swell: true },
       { from: at('build'), to: at('cattle'), level: 2, tune: 'answer', swell: true },
-      { from: at('cattle'), to: at('bikeshop'), level: 2, tune: 'rise' },
-      { from: at('bikeshop'), to: at('share'), level: 3, tune: 'rise', swell: true },
+      { from: at('cattle'), to: at('bike'), level: 2, tune: 'rise' },
+      { from: at('bike'), to: at('share'), level: 3, tune: 'rise', swell: true },
       { from: at('share'), to: at('kite'), level: 2, tune: 'answer' },
       { from: at('kite'), to: at('night'), level: 1, tune: 'home', swell: true },
       { from: at('night'), to: at('title'), level: 1, tune: 'night', night: true },
