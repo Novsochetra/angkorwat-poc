@@ -1,13 +1,18 @@
-// The village-life promo (about 1.5 min): what came to the world map from
-// 7 October 2026 — his home garden, the shoulder pole, building at home, his
-// own cattle and riding the white cattle, his own bicycle, sharing his fruit
-// and offering it to the monks — recorded with scripts/video.mjs:
+// The village-life promo (95 s): what came to the world map from 7 October
+// 2026 — his stilt house with his name over the door, his home garden (planting,
+// growing, picking), the shoulder pole, building at home, his own cattle and
+// riding the white cattle, his own bicycle, offering his fruit to the monks, the
+// bodhi at the pagoda, his kite, his hammock — recorded with scripts/video.mjs:
 //
 //   VIDEO_CUT=scripts/promo-village-cut.mjs npm run video -- jobs=2   → screenshots/promo-village.mp4
 //   VIDEO_CUT=scripts/promo-village-cut.mjs npm run video -- preview  (3 stills a shot)
 //
 // The shots change on the music's bars (96 BPM: a bar is 2.5 s), each cut's
-// middle on a bar line. Places: src/map/layout.ts, his house and yard
+// middle on a bar line. Look at shots with drawn frames (a draft: VIDEO_SCALE=0.25
+// VIDEO_GRAPHICS=low VIDEO_FPS=12, only=…): a preview's stills skip the drawing
+// between them, and the garden, the people and the work only change as drawn.
+// What did not read and was left out: the bicycle shop's hand-over (he only stood
+// at the stall), sharing with villagers (no one near in the light to give to). Places: src/map/layout.ts, his house and yard
 // (≈ 424, −112) in the sugar-palm village (m; +X east, −Z north, +Y up).
 
 /** Smooth start and stop (0‥1). */
