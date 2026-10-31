@@ -159,7 +159,8 @@ const SHOTS = [
   {
     name: 'build',
     bars: 3,
-    speed: 2.6,
+    // (a time-lapse: the shelter's 16 s of work and his walks round it, done before the shot ends)
+    speed: 3.2,
     into: { type: 'pixelize', seconds: FADE },
     query: `clock=0.96&${HOME}&roam=walk&at=430,-134&yaw=180&purse=200000&buildghost=shelter`,
     input: [[0.35, 'press', 'KeyE']],
