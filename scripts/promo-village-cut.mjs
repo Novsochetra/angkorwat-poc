@@ -79,6 +79,7 @@ const SHOTS = [
   // ── Morning: the village under Phnom Kulen, then his house ──
   {
     name: 'open',
+    graphics: 'high',
     bars: 2,
     query: `clock=0.9&fogamount=0.3&${HOME}&${GARDEN}&${YARD}&cattle=calf,young,grown,8&people=eastvillage,home,bikeshop,cattle`,
     // (high over the village, the mountain and its falls ahead; down over his roof to the yard and the garden before it)
@@ -92,6 +93,7 @@ const SHOTS = [
   {
     // From inside his room: he opens the doors onto the veranda, the garden and the mountain in the morning sun.
     name: 'doors',
+    graphics: 'high',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
     query: `clock=0.9&${HOME}&homedoor=closed&roam=walk&at=424,13,-107.6&yaw=180&${GARDEN}&${YARD}`,
@@ -102,6 +104,7 @@ const SHOTS = [
   {
     // Cut on the action: outside, he steps out onto the veranda under the sign with his name.
     name: 'veranda',
+    graphics: 'high',
     bars: 1,
     query: `clock=0.9&${HOME}&homedoor=open&roam=walk&at=424,13,-108.7&yaw=180&${GARDEN}&${YARD}`,
     input: [[0, 'down', 'KeyW'], [0.75, 'up', 'KeyW']],
@@ -254,6 +257,7 @@ const SHOTS = [
   // ── Night: home, and the title ──
   {
     name: 'night',
+    graphics: 'high',
     bars: 2,
     caption: { km: 'ពេលល្ងាចនៅផ្ទះ', en: 'Evenings at home' },
     // (the last of the dusk: he stands in his doorway with his lantern lit, under the sign with his name; a slow push in.
@@ -263,6 +267,7 @@ const SHOTS = [
   },
   {
     name: 'title',
+    graphics: 'high',
     bars: 3,
     into: { type: 'fade', seconds: FADE },
     query: `clock=0.5`,
@@ -293,7 +298,9 @@ const END = starts.at(-1) + SHOTS.at(-1).bars * BAR;
 
 export default {
   name: 'promo-village',
-  graphics: 'high',
+  // (low draws the map's blocks as plain boxes: close up it looks nearly the same as high and, drawn on the CPU,
+  // is about 2.5 times quicker; high where its glow shows — the lantern, the night's lights — and the first shots)
+  graphics: 'low',
   fps: 24,
   fade: CUT,
   fadeIn: 0.8,
