@@ -143,8 +143,9 @@ const SHOTS = [
       const c = window.roam.cam;
       c.follow = 0;
       c.yaw = window.roam.body.yaw + 2.25 - 0.35 * u;
-      c.pitch = 0.16;
-      c.distance = 5.4 - 0.6 * u;
+      // (high enough to look over the land step north of the path: it hid him)
+      c.pitch = 0.36;
+      c.distance = 6.2 - 0.6 * u;
     },
     caption: { km: 'រែកទឹកស្រោចដំណាំ', en: 'Carry water with the shoulder pole' },
   },
@@ -152,10 +153,10 @@ const SHOTS = [
     // Picking his mangoes with the bamboo pole.
     name: 'pick',
     bars: 2,
-    query: `clock=0.93&${HOME}&garden=mango:4:ripe@424/-129.5/0/0.4,banana:4:ripe@419.5/-126,papaya:4:ripe@428.5/-126.5,sugarcane:4@427/-121.5,eggplant:4:ripe@421/-121.5&roam=walk&at=424,-126.6&yaw=180`,
+    query: `clock=0.93&${HOME}&garden=mango:4:ripe@424/-129.5/0/0.4,banana:4:ripe@418.5/-128,papaya:4:ripe@419.5/-132.5,eggplant:4:ripe@421/-121.5&roam=walk&at=424,-126.6&yaw=180`,
     input: [[0.3, 'press', 'KeyE']],
-    // (low, looking up into the crown against the sky)
-    cam: move([428.2, 10.9, -122.6, 424, 13.2, -129.2, 46], [427.4, 10.8, -123.4, 424, 13.4, -129.4, 44]),
+    // (back from the tree, low: him under the crown, the pole up into it against the sky; nothing between)
+    cam: move([430.4, 10.4, -121.0, 424.2, 11.4, -128.4, 50], [429.8, 10.3, -121.6, 424.2, 11.6, -128.4, 48]),
     caption: { km: 'ប្រមូលផល', en: 'Harvest your fruit' },
   },
   // ── Building at home ──
