@@ -246,6 +246,8 @@ let onRun = 0;
 let faceFor = 0;
 /** The oxen are walking it round toward him (`pivotPlan`): they go on doing so, without waiting, while he is not in front. */
 let pivoting = false;
+/** The heading the cart had when the oxen began walking it round toward him (`pivoting`): `roundAway` turns it to face back from there. */
+let pivotFrom = 0;
 /**
  * He walked into the oxen from in front, back past them: they walk the cart right round (to `want`, the way `sgn`),
  * plan after plan without waiting, brushing past him (`BODY_R`), until it is round or cannot turn on.
@@ -263,9 +265,9 @@ const ROUND_AGAIN = 1;
 function roundFree(): boolean {
   return !(Math.hypot(CART_AT.x - roundAt.x, CART_AT.z - roundAt.z) < ROUND_AGAIN);
 }
-/** A right-round turn begins (the way `sg`): kept as `turnRound`, its place as `roundAt`. */
-function roundBegin(sg: number): void {
-  turnRound = { want: wrapYaw(CART_AT.yaw + Math.PI * sg), sgn: sg };
+/** A right-round turn begins (the way `sg`, to `want`): kept as `turnRound`, its place as `roundAt`. */
+function roundBegin(sg: number, want = CART_AT.yaw + Math.PI * sg): void {
+  turnRound = { want: wrapYaw(want), sgn: sg };
   roundAt.x = CART_AT.x;
   roundAt.z = CART_AT.z;
 }
@@ -1486,6 +1488,7 @@ function pivotPlan(ctx: RoamCtx, want: number, sgn = 0, clear = PIVOT_CLEAR): 't
   walkPlan.from.x = CART_AT.x;
   walkPlan.from.z = CART_AT.z;
   walkPlan.from.yaw = CART_AT.yaw;
+  if (!pivoting) pivotFrom = CART_AT.yaw;
   pivoting = true;
   console.info(`[haul] the oxen walk it round toward him: up to ${((yaws.length * TURN_SUB * 180) / Math.PI).toFixed(0)}° ${dir > 0 ? 'one way' : 'the other way'}`);
   return 'turn';
@@ -1515,8 +1518,18 @@ function roundAway(ctx: RoamCtx): boolean {
   if (!roundFree()) return false;
   const sg = -(Math.sign(angleDiff(fromAxle(himAt.x, himAt.z), CART_AT.yaw)) || 1);
   if (pivotRoom(ctx, sg) < Math.PI / 2) return false;
-  if (pivotPlan(ctx, CART_AT.yaw + Math.PI * sg, sg, ROUND_CLEAR) !== 'turn') return false;
-  roundBegin(sg);
+  // (the oxen were walking it round toward him when he came into their swing: right round from the heading they began
+  // at, so it ends facing back the way it came — from where they stopped it came round 40° short, and the clay
+  // U-turn ended 148° round; not when that would turn it more than three quarters round)
+  let want = CART_AT.yaw + Math.PI * sg;
+  if (pivoting) {
+    const back = pivotFrom + Math.PI;
+    const d = angleDiff(back, CART_AT.yaw);
+    const way = Math.sign(d) === sg ? Math.abs(d) : 2 * Math.PI - Math.abs(d);
+    if (way <= 1.5 * Math.PI) want = back;
+  }
+  if (pivotPlan(ctx, want, sg, ROUND_CLEAR) !== 'turn') return false;
+  roundBegin(sg, want);
   console.info('[haul] he heads back past the oxen in their swing: they walk the cart right round the other way');
   return true;
 }

@@ -3657,7 +3657,9 @@ without its straw), the oxen `people/_ox.ts`.
   - He beside them in the swing of that turn (it would brush him) and heading on back past the cart (pushing
     on, facing more than 0.3 of the way back along its heading: a U-turn along their side): they turn it right
     round the other way, away from him (`roundAway`, as `turnRound` above), if it has room to come half round
-    that way (`pivotRoom`); else as below.
+    that way (`pivotRoom`); else as below. When the oxen were already turning it toward him as he came into their
+    swing, it turns to face back from the heading they began at (`pivotFrom`, up to three quarters round in all):
+    from where they stopped it came round some 40° short (the clay U-turn ended 146–148° round, now 167°).
   - One right-round turn (`turnRound` or `roundAway`) where the cart stands: none begins again until it has moved
     on 1 m (`ROUND_AGAIN`) from where the last one began (or he takes the rope again). Turned right round with him
     still beside it heading into the cart itself (making for where it stands), it turned right round again and
