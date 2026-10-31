@@ -184,10 +184,10 @@ const SHOTS = [
     name: 'cattle',
     bars: 2,
     into: { type: 'fade', seconds: FADE },
-    // (by the first stake's hungry cow, E: he fetches his straw and lays it before her; `cattlefeed=` would hold a pose)
-    query: `clock=0.9&${HOME}&cattle=young:hungry,grown,calf&cattlestraw=6&roam=walk&at=421,-131.4&yaw=180`,
-    input: [[0.4, 'press', 'KeyE']],
-    cam: move([425.8, 10.6, -130.4, 421, 9.1, -133.8, 42], [425.2, 10.3, -131.4, 421, 9.1, -133.8, 40]),
+    // (his herd at their stakes north of the house, the trader's tree beyond; he walks in among them)
+    query: `clock=0.92&${HOME}&${YARD}&cattle=calf,young:hungry,grown,grown&cattlestraw=6&roam=walk&at=417.6,-130.2&yaw=135`,
+    input: [[0.3, 'down', 'KeyW'], [1.7, 'up', 'KeyW']],
+    cam: move([412.6, 12.9, -127.6, 425.5, 8.9, -141.2, 44], [414.2, 12.5, -128.6, 425.5, 8.9, -141.2, 42]),
     caption: { km: 'ចិញ្ចឹមគោ', en: 'Raise your own cattle' },
   },
   {
