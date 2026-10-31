@@ -1070,9 +1070,10 @@ const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
 /**
  * …`out`: he pushes into the cart or its oxen from beside or behind them (`intoCart`): his next steps, from his feet
  * (`search.from`) along the way he faces; `outBest`, the place it reached, rated best by the search (least `f`), where
- * the cart and its oxen are out of his way (`outOfWay`): taken when the search finds no whole way within its reach.
+ * the cart and its oxen are out of his way and the rope lets him walk on (`outOfWay` 2); `outHeld`, the same out of his
+ * way only (1): taken, the first if any, when the search finds no whole way within its reach.
  */
-const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN }, out: { on: false, dx: 0, dz: 0 }, outBest: null as PlanNode | null };
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN }, out: { on: false, dx: 0, dz: 0 }, outBest: null as PlanNode | null, outHeld: null as PlanNode | null };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 }, clear: 0, lay: false };
 /**
  * The way a whole way round ends with (its goal's trial way past the yoke, `wayWorksFrom`): laid as the cart's way once
@@ -1627,22 +1628,48 @@ function feetClear(ax: number, az: number, yaw: number, hx: number, hz: number, 
   return !boxMeetsCircle(cb, hx, hz, r) && !boxMeetsCircle(ob, hx, hz, r);
 }
 /**
- * Out of his way: his next steps (`OUT_FROM` to `OUT_ON` m on from his feet along the way he faced, every `OUT_EVERY` m)
- * `OUT_R` clear of the cart and its oxen, and his feet `BODY_R` + 0.5 m clear (as a way round ends: never hugging him).
- * Only what he walks into from beside or behind them, toward where the cart itself stands (the log trip's way home from
- * the camp: its first waypoint the cart's own spot; every way round toward where he heads reached its place limit, the
- * part ways came round but left it on his way, and it circled there 2 minutes).
+ * Out of his way (1): his next steps (`OUT_FROM` to `OUT_ON` m on from his feet along the way he faced, every
+ * `OUT_EVERY` m) `OUT_R` clear of the cart and its oxen, his feet `BODY_R` + 0.5 m clear (as a way round ends: never
+ * hugging him); and the rope lets him walk on (2): he and all of them within `OUT_SLACK` of the oxen's noses, as far as
+ * the rope pays out while he walks them (`passing`), never to its length. 0: not out of his way. Only what he walks into from beside or behind them, toward where the cart itself stands (the log
+ * trip's way home from the camp: its first waypoint the cart's own spot; every way round toward where he heads reached
+ * its place limit, the part ways came round but left it on his way, and it circled there 2 minutes; moved off his way
+ * but past the rope's hold, the rope held him short of the spot, 1 of 10).
  */
 const OUT_FROM = 0.5;
 const OUT_ON = 3;
 const OUT_EVERY = 0.5;
 const OUT_R = BODY_R + ROUND_CLEAR;
-function outOfWay(n: Pose): boolean {
+/** How far (m, his feet from the noses) the rope pays out while he passes (`ROPE_MAX` is from his hand: under it). */
+const OUT_SLACK = ROPE_MAX - 0.6;
+/** The noses (as `nose`, the oxen standing) from the cart's axle: along its heading, and to its right (m). */
+const NOSE_AT = (() => {
+  const v = oxPoint({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, scale: K, gait: 0, rest: 0, head: 0, turn: 0, phase: 0 }, 'head', OX_NOSE, new Vector3());
+  return { on: CART_YOKE - OX_BACK * K + v.z, right: -OX_SIDE * K + v.x };
+})();
+function outOfWay(n: Pose): 0 | 1 | 2 {
   const o = search.out;
-  if (!feetClear(n.x, n.z, n.yaw, search.from.x, search.from.z, BODY_R + 0.5)) return false;
-  for (let d = OUT_FROM; d <= OUT_ON + 1e-6; d += OUT_EVERY) if (!feetClear(n.x, n.z, n.yaw, search.from.x + o.dx * d, search.from.z + o.dz * d, OUT_R)) return false;
-  return true;
+  const h = search.from;
+  if (!feetClear(n.x, n.z, n.yaw, h.x, h.z, BODY_R + 0.5)) return 0;
+  const fx = Math.sin(n.yaw);
+  const fz = Math.cos(n.yaw);
+  const nx = n.x + fx * NOSE_AT.on + fz * NOSE_AT.right;
+  const nz = n.z + fz * NOSE_AT.on - fx * NOSE_AT.right;
+  let held = Math.hypot(h.x - nx, h.z - nz) > OUT_SLACK;
+  for (let d = OUT_FROM; d <= OUT_ON + 1e-6; d += OUT_EVERY) {
+    const x = h.x + o.dx * d;
+    const z = h.z + o.dz * d;
+    if (!feetClear(n.x, n.z, n.yaw, x, z, OUT_R)) return 0;
+    held ||= Math.hypot(x - nx, z - nz) > OUT_SLACK;
+  }
+  return held ? 1 : 2;
 }
+/**
+ * The oxen moved the cart out of his way (`outOfWay`): from where he stood (`x`, `z`), the rope pays out to `OUT_SLACK`
+ * while he walks on past it, until he is `OUT_ON` m from there, the cart has followed him on `BACK_RESET` m, a new way
+ * round is looked for, or he lets go.
+ */
+const passing = { on: false, x: 0, z: 0 };
 /** He beside or behind the oxen, his next step (`INTO_STEP` m on the way he faces) into the cart or its oxen: that way (a unit vector). */
 const INTO_STEP = 1;
 function intoCart(ctx: RoamCtx): { dx: number; dz: number } | null {
@@ -1658,6 +1685,7 @@ const fromAxle = (x: number, z: number): number => Math.atan2(x - CART_AT.x, z -
 /** Start looking for a few moves that bring it round toward him (from where it stands). */
 function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: number; dz: number } | null): void {
   search.on = true;
+  passing.on = false;
   memo.clear();
   search.out.on = !!out;
   if (out) {
@@ -1665,6 +1693,7 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: numb
     search.out.dz = out.dz;
   }
   search.outBest = null;
+  search.outHeld = null;
   search.him.x = to ? to.x : ctx.body.pos.x;
   search.him.z = to ? to.z : ctx.body.pos.z;
   search.from.x = ctx.body.pos.x;
@@ -1706,7 +1735,11 @@ function planStep(ctx: RoamCtx): boolean {
       m.f = m.g + W_GUESS * guess(m);
       if (guess(m) < guess(search.best!) && clearOfHimAt(m)) search.best = m;
       if (short(m) < short(search.nearest!)) search.nearest = m;
-      if (search.out.on && (!search.outBest || m.f < search.outBest.f) && outOfWay(m)) search.outBest = m;
+      if (search.out.on && (!search.outBest || m.f < search.outBest.f)) {
+        const w = outOfWay(m);
+        if (w === 2) search.outBest = m;
+        else if (w === 1 && (!search.outHeld || m.f < search.outHeld.f)) search.outHeld = m;
+      }
       heapPush(search.open, m);
     }
   }
@@ -1717,11 +1750,14 @@ function planStep(ctx: RoamCtx): boolean {
     // cart cannot come); the oxen walk it, and look on from there. Never more backing than `BACK_MOST`.)
     // (he walked into the cart from beside or behind the oxen: first, if it reached one, a place out of his way — he
     // passes, and leads it on from there; a part way may come round and still stand where he walks)
-    const o = search.outBest;
+    const o = search.outBest ?? search.outHeld;
     if (o) {
       took = 'out';
-      console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way`);
+      console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way${o === search.outBest ? '' : ' (past where the rope lets him walk on)'}`);
       planTake(o);
+      passing.on = true;
+      passing.x = search.from.x;
+      passing.z = search.from.z;
       return true;
     }
     const b = search.best;
@@ -1919,6 +1955,7 @@ function planClear(): void {
   walkPlan.i = 0;
   pivoting = false;
   turnRound = null;
+  passing.on = false;
 }
 
 // ── Stuck for good: the oxen take it home ──────────────────────────────────
@@ -2121,7 +2158,10 @@ function lead(ctx: RoamCtx, dt: number): void {
   // and the cart standing with him beside or behind the oxen, the rope slack or not, as `taut` too: they turn to him —
   // once he stands there (`BESIDE_STILL`); while he walks round them they wait, he is coming in front (a U-turn: they
   // had backed it 2 m and more to put him in front as he walked there anyway))
-  const pulling = ds <= 1e-4 && !walkPlan.steps.length && far > ROPE_HOLD - 0.3;
+  // (the oxen moved the cart out of his way: the rope pays out as he walks on past it, to `OUT_SLACK` — he pulls only
+  // there —, until he is `OUT_ON` m on or it follows him: `passing`)
+  if (passing.on && (onRun >= BACK_RESET || Math.hypot(ctx.body.pos.x - passing.x, ctx.body.pos.z - passing.z) >= OUT_ON)) passing.on = false;
+  const pulling = ds <= 1e-4 && !walkPlan.steps.length && far > (passing.on ? OUT_SLACK : ROPE_HOLD) - 0.3;
   ropeFar = far;
   const besideStill = !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z) && Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL;
   taut = (pulling || (ds <= 1e-4 && !walkPlan.steps.length && besideStill)) && !search.on ? taut + dt : 0;
@@ -2130,7 +2170,7 @@ function lead(ctx: RoamCtx, dt: number): void {
   // (no way round for where he stands: the rope pays out as he walks on — round the thing, somewhere the oxen can come
   // (the search tries again once he is 1.5 m on) — and slips only at its length; a way found, it is taken in again as
   // he comes nearer, never pulling him back)
-  slack = noWay ? Math.max(slack, far) : Math.max(ROPE_HOLD, Math.min(slack, far));
+  slack = noWay ? Math.max(slack, far) : passing.on ? Math.max(slack, Math.min(far, OUT_SLACK)) : Math.max(ROPE_HOLD, Math.min(slack, far));
   // (getting nowhere again after the oxen looked for a way round — held in a corner, no way for them: never a silent
   // wait, the rope slips and says why)
   if (now && nowhereTries > 0 && !search.on && !walkPlan.steps.length) {
