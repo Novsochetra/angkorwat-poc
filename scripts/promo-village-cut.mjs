@@ -215,19 +215,9 @@ const SHOTS = [
   },
   // ── Giving ──
   {
-    name: 'share',
-    bars: 2,
-    into: { type: 'fade', seconds: FADE },
-    // (to a villager of the hamlet behind Angkor Wat, E: he holds it out in both hands, they take it, thank him;
-    // Angkor Wat's towers beyond. By his house the grandmother is not out once the house is his)
-    query: `${AIR}&roam=walk&at=162.2,8,-336.8&yaw=-90&people=back&clock=0.9&basket=mango:4&sim=_:1&share=near`,
-    input: [[0.4, 'press', 'KeyE']],
-    cam: move([164.3, 10.0, -341.2, 161.3, 9.1, -336.2, 42], [163.8, 9.9, -340.8, 161.3, 9.1, -336.2, 40]),
-    caption: { km: 'ចែករំលែក', en: 'Share your harvest' },
-  },
-  {
     name: 'dakbat',
     bars: 2,
+    into: { type: 'fade', seconds: FADE },
     // (the monk already before him: he lays the mango in the bowl, the monk blesses him; in profile from the west)
     query: `${AIR}&roam=walk&at=381,-68.9&yaw=0&clock=0.78&offer=dakbat:give:0.1&basket=mango:3`,
     cam: move([374.6, 12.3, -66.2, 381.0, 11.0, -68.0, 42], [375.4, 12.1, -66.6, 381.0, 11.0, -68.0, 40]),
@@ -313,8 +303,8 @@ export default {
       { from: at('doors'), to: at('build'), level: 1, tune: 'call', swell: true },
       { from: at('build'), to: at('cattle'), level: 2, tune: 'answer', swell: true },
       { from: at('cattle'), to: at('bike'), level: 2, tune: 'rise' },
-      { from: at('bike'), to: at('share'), level: 3, tune: 'rise', swell: true },
-      { from: at('share'), to: at('kite'), level: 2, tune: 'answer' },
+      { from: at('bike'), to: at('dakbat'), level: 3, tune: 'rise', swell: true },
+      { from: at('dakbat'), to: at('kite'), level: 2, tune: 'answer' },
       { from: at('kite'), to: at('night'), level: 1, tune: 'home', swell: true },
       { from: at('night'), to: at('title'), level: 1, tune: 'night', night: true },
       { from: at('title'), to: END, level: 0, night: true },
