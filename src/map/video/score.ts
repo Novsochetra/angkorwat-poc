@@ -285,9 +285,9 @@ class Voices {
     return b;
   }
 
-  /** A little human timing (s). */
+  /** A little human timing (s), never before the start. */
   private loose(t: number, by = 0.008): number {
-    return t + (this.rnd() - 0.5) * by;
+    return Math.max(0, t + (this.rnd() - 0.5) * by);
   }
 
   roneat(t: number, m: number, vel: number, pan: number): void {
@@ -462,6 +462,8 @@ class Voices {
 
   /** A breath of noise rising into a section, with a cymbal roll. */
   swell(at: number, len: number): void {
+    len = Math.min(len, at);
+    if (len < 0.2) return;
     const t = at - len;
     const out = this.pan(0, 0.6);
     const bp = this.filter('bandpass', 400, 1.4, out);
