@@ -147,11 +147,12 @@ async function drawShot(page, { shot, clip, sound }) {
   // (a few frames before the first: the camera's follow and the eased parts come to rest)
   for (let k = cut.preroll ?? 10; k > 0; k--) {
     await page.evaluate(
-      ([t, dt, cam, clock, sec]) => {
+      ([t, dt, cam, clock, sec, draw]) => {
         window.__soundCap?.at(sec);
-        window.__videoFrame(t, dt, cam, clock, false);
+        window.__videoFrame(t, dt, cam, clock, draw);
       },
-      [t0 - (k * speed) / FPS, speed / FPS, shot.cam?.(0) ?? null, shot.clock?.(0) ?? null, -k / FPS],
+      // (the last two drawn: what parts update only as they are drawn, the garden's blocks, is up to date for the first)
+      [t0 - (k * speed) / FPS, speed / FPS, shot.cam?.(0) ?? null, shot.clock?.(0) ?? null, -k / FPS, !preview && k <= 2],
     );
   }
   let last = -1;
