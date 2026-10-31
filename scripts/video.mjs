@@ -3,9 +3,10 @@
 //
 //   node scripts/video.mjs                    # the promo (scripts/promo-cut.mjs) → screenshots/promo.mp4
 //   node scripts/video.mjs preview            # 3 stills a shot (first, middle, last) → screenshots/video-preview/
-//   node scripts/video.mjs only=glide,night   # only these shots (their clips are kept for the rest)
+//   node scripts/video.mjs only=glide,night   # only these shots (the others' clips are kept; joined once all are there)
 //   node scripts/video.mjs jobs=2             # shots drawn in two browsers side by side
 //   node scripts/video.mjs join               # no drawing: join the clips there are, the sound made again
+//   (a cut drawn a few shots at a time with `only=` is joined once every shot has its clip)
 //   VIDEO_CUT=scripts/promo-village-cut.mjs node scripts/video.mjs    # another cut
 //
 // Env: VIDEO_W / VIDEO_H (1920×1080), VIDEO_FPS (the cut's `fps`, else 30),
@@ -86,7 +87,7 @@ await server.listen();
 const base = new URL(server.resolvedUrls.local[0]).origin;
 
 const clips = cut.shots.map((shot) => ({ shot, clip: join(work, `${shot.name}.mp4`), sound: join(work, `${shot.name}.sound.json`) }));
-const todo = joinOnly ? [] : clips.filter(({ shot, clip }) => !(only && !only.includes(shot.name) && (preview || existsSync(clip))));
+const todo = joinOnly ? [] : clips.filter(({ shot }) => !only || only.includes(shot.name));
 
 /** Draw one shot into its clip (or its preview stills). */
 async function drawShot(page, { shot, clip, sound }) {
@@ -219,8 +220,11 @@ await Promise.all(
 );
 
 // ── Sound ─────────────────────────────────────────────────────────────────────
+// (a cut drawn a few shots at a time: no sound and no join while a clip is missing)
+const missing = preview ? [] : clips.filter(({ clip }) => !existsSync(clip)).map(({ shot }) => shot.name);
+if (missing.length) console.log(`not joined yet: no clip for ${missing.join(', ')}`);
 let wav = null;
-if (!preview && (cut.audio || cut.music)) {
+if (!preview && !missing.length && (cut.audio || cut.music)) {
   const browser = browsers[0] ?? (await launch());
   if (!browsers.length) browsers.push(browser);
   const page = await browser.newPage();
@@ -237,8 +241,8 @@ if (!preview && (cut.audio || cut.music)) {
 
 for (const b of browsers) await b.close();
 await server.close();
-if (preview) {
-  console.log(`preview stills: ${work}`);
+if (preview || missing.length) {
+  if (preview) console.log(`preview stills: ${work}`);
   process.exit(0);
 }
 
