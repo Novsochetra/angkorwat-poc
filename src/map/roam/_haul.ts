@@ -1686,6 +1686,8 @@ function noseFar(n: Pose): number {
   const fz = Math.cos(n.yaw);
   return Math.hypot(search.from.x - (n.x + fx * NOSE_AT.on + fz * NOSE_AT.right), search.from.z - (n.z + fz * NOSE_AT.on - fx * NOSE_AT.right));
 }
+/** Checks only (`probe`, `chain: false`): the rope's hold all the way there not asked (to compare). */
+let outChain = true;
 /** (`PlanNode.rope`) The farthest the noses come from his feet over `m`'s sub-steps and every move before it. */
 function ropeAlong(m: PlanNode): number {
   let r = m.parent?.rope ?? noseFar(m);
@@ -1702,7 +1704,7 @@ function outOfWay(n: PlanNode): 0 | 1 | 2 {
   const nz = n.z + fz * NOSE_AT.on - fx * NOSE_AT.right;
   // (the rope holds him all the way there — at every sub-step of every move, him standing where he stood —, not only
   // at its end: a turn swings the noses round the axle, out past the rope and back)
-  let held = (n.rope ?? 0) > OUT_SLACK || Math.hypot(h.x - nx, h.z - nz) > OUT_SLACK;
+  let held = (outChain && (n.rope ?? 0) > OUT_SLACK) || Math.hypot(h.x - nx, h.z - nz) > OUT_SLACK;
   for (let d = OUT_FROM; d <= OUT_ON + 1e-6; d += OUT_EVERY) {
     const x = h.x + o.dx * d;
     const z = h.z + o.dz * d;
@@ -2825,8 +2827,9 @@ registerAddon({
            * found), searched to the end at once: found or not, what it took (`took`), places looked at, fit tests, time, its
            * moves, how far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
            */
-          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number } = {}) => {
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number; chain?: boolean } = {}) => {
             planNodes = opt.nodes ?? PLAN_NODES;
+            outChain = opt.chain ?? true;
             const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
             const fit0 = FIT.n;
             CART_AT.x = cx;
@@ -2868,6 +2871,7 @@ registerAddon({
             };
             planClear();
             planNodes = PLAN_NODES;
+            outChain = true;
             CART_AT.x = keep.x;
             CART_AT.z = keep.z;
             CART_AT.yaw = keep.yaw;
