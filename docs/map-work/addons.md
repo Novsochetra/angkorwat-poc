@@ -3687,8 +3687,12 @@ without its straw), the oxen `people/_ox.ts`.
   - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
   - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
     back and move back the way it came, counted from when he takes the rope or after it has followed him on
-    2 m, `BACK_RESET`; never given back by rolling on within a way round, never lifted). Taking the rope again
-    where the cart still stands as he let go goes on with the same turning round: its backing kept (`letAt`),
+    2 m, `BACK_RESET`, its axle 2 m on along its heading, `fwdRun`; never given back by rolling on within a way
+    round, never lifted). Following the way counts too: where the way bends back on itself its axle swings back on its
+    pole, and that is backing in the same 3 m; a step along the way that would swing it back past them is not rolled
+    (it stands, and the oxen bring it round: a way round a bamboo clump had swung it back 1.1 m as it followed, then
+    ended the turning round by the way's length, and it backed 5 m in what was one turning round). Taking the rope
+    again where the cart still stands as he let go goes on with the same turning round: its backing kept (`letAt`),
     never a fresh 3 m. A move that would back it farther is not made; turns and rolls on always are.
   - He beside or behind the oxen, pushing into the cart or its oxen (his step 1 m on the way he faces meets them,
     `intoCart`): getting nowhere, the way round toward where he heads also notes, of the places it reaches, the one it

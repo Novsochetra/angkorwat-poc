@@ -251,7 +251,9 @@ let onRun = 0;
  * stands goes on with the same turning round (`backed` kept, `BACK_MOST` in all), never a fresh 3 m (review 6: after a
  * slip and a new take one turning round reversed 4.0 m and 5.6 m in all).
  */
-const letAt = { x: Number.NaN, z: Number.NaN, yaw: 0, backed: 0, onRun: 0 };
+const letAt = { x: Number.NaN, z: Number.NaN, yaw: 0, backed: 0, onRun: 0, fwdRun: 0 };
+/** How far its axle has come on along its heading as it followed him since it last went back (m): `BACK_RESET` ends a turning round. */
+let fwdRun = 0;
 /** How long (s) he has stood still with the cart at his heels (`FACE_AFTER`: the oxen turn to face him). */
 let faceFor = 0;
 /** The oxen are walking it round toward him (`pivotPlan`): they go on doing so, without waiting, while he is not in front. */
@@ -552,8 +554,14 @@ function fitsAt(ctx: Pick<RoamCtx, 'world'>, s: number): boolean {
   fitCtx = ctx;
   return placeFits(ctx, _fit.x, _fit.z, yaw, true);
 }
-/** The place `fitsAt` tested last (for `canMoveOn`). */
+/** The place `fitsAt` tested last (for `canMoveOn`), and the cart's place at `fitS` (the farthest tested along the way). */
 const _fit = { x: 0, z: 0, yaw: 0 };
+const fitPose = { x: 0, z: 0, yaw: 0 };
+function fitPoseHere(): void {
+  fitPose.x = CART_AT.x;
+  fitPose.z = CART_AT.z;
+  fitPose.yaw = CART_AT.yaw;
+}
 let fitCtx: Pick<RoamCtx, 'world'> | null = null;
 
 /**
@@ -846,6 +854,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   const same = Math.hypot(CART_AT.x - letAt.x, CART_AT.z - letAt.z) < 0.05 && Math.abs(angleDiff(CART_AT.yaw, letAt.yaw)) < 0.01;
   backed = same ? letAt.backed : 0;
   onRun = same ? letAt.onRun : 0;
+  fwdRun = same ? letAt.fwdRun : 0;
   pivoting = false;
   turnRound = null;
   roundAt.x = Number.NaN;
@@ -861,6 +870,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   }
   yokeS = wayEnd();
   fitS = yokeS;
+  fitPoseHere();
   fitOrigin = yokeS;
   tryFrom.x = P.ax;
   tryFrom.z = P.az;
@@ -907,6 +917,7 @@ function letGo(why: WordKey | null): void {
   letAt.yaw = CART_AT.yaw;
   letAt.backed = backed;
   letAt.onRun = onRun;
+  letAt.fwdRun = fwdRun;
   planClear();
   turning = 0;
   leading = false;
@@ -948,6 +959,7 @@ function standAt(ctx: RoamCtx, ax: number, az: number, yaw: number): void {
   const bz = -Math.cos(P.yaw);
   for (const d of BEHIND) wayPush(P.yx + bx * d, f.heightAt(P.yx + bx * d, P.yz + bz * d), P.yz + bz * d);
   yokeS = fitS = fitOrigin = wayEnd();
+  fitPoseHere();
 }
 
 // ── Getting round: a small turn of a few moves (the oxen walk it) ──────────
@@ -1957,6 +1969,7 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
     if (on < -1e-6) {
       backed -= on;
       onRun = 0;
+      fwdRun = 0;
     }
     // (back where it stood before: what came after is undone; else a new place)
     if (st.pose.hi !== undefined) hist.length = st.pose.hi + 1;
@@ -2196,6 +2209,12 @@ function lead(ctx: RoamCtx, dt: number): void {
     }
     fitTag = 'roll';
     let ok = fitsAt(ctx, next);
+    // (nor where following would swing its axle back past the turning round's 3 m: the way bends back on itself — the
+    // oxen bring it round instead, turns and rolls on)
+    if (ok) {
+      const back = -(Math.sin(fitPose.yaw) * (_fit.x - fitPose.x) + Math.cos(fitPose.yaw) * (_fit.z - fitPose.z));
+      if (back > 1e-3 && backed + back > BACK_MOST + 1e-6) ok = false;
+    }
     if (ok) {
       fitTag = 'canMoveOn';
       ok = canMoveOn();
@@ -2207,12 +2226,27 @@ function lead(ctx: RoamCtx, dt: number): void {
       break;
     }
     fitS = next;
+    fitPose.x = _fit.x;
+    fitPose.z = _fit.z;
+    fitPose.yaw = _fit.yaw;
   }
   yokeS += ds;
-  // (it has followed him on a good way: turning round is over, a new one may back again)
-  if ((onRun += ds) >= BACK_RESET) backed = 0;
+  onRun += ds;
   P.wheel += ds / (WHEEL_R * K);
+  const ax0 = CART_AT.x;
+  const az0 = CART_AT.z;
+  const ay0 = CART_AT.yaw;
   if (ds > 0 || dirty) placeOnWay(ctx);
+  // (its axle as it follows: on along its heading counts toward the end of a turning round; back along it — the way
+  // bends back on itself, the axle on its pole swings back — is backing too, in the same 3 m (a way round a bamboo
+  // clump swung it back 1.1 m as it followed, then ended the turning round by the way's length, and it backed 5 m in
+  // what was one turning round). It has followed him on `BACK_RESET` m, its axle on along its heading: a new one.)
+  const mv = Math.sin(ay0) * (CART_AT.x - ax0) + Math.cos(ay0) * (CART_AT.z - az0);
+  if (mv < -1e-4) {
+    backed -= mv;
+    fwdRun = 0;
+  } else fwdRun += mv;
+  if (fwdRun >= BACK_RESET) backed = 0;
   // (stuck before something: a few moves round — a turn on the spot, backing up, a small three-point turn — found and
   // walked by the oxen, toward the free heading nearest his way, either way round; then the way goes on from there)
   turning = Math.max(0, turning - dt);
