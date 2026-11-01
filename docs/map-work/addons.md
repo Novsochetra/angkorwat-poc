@@ -3743,7 +3743,8 @@ without its straw), the oxen `people/_ox.ts`.
   moves off — back the way it came among them; up to 500 looked at — from which it rolls on 2 m:
   `canGetOut`; a cart that can still go
   somewhere, only not where he went, is led as usual): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
-  Send the cart home" (the second failed try's toast says so, naming the control in use: "ចុច E / □ នៅមុខគោ …",
+  Send the cart home" (once a second failed try has let go, and it is known — looked for over the next frames, a
+  few ms each — that the cart cannot get out, a toast says so, naming the control in use: "ចុច E / □ នៅមុខគោ …",
   "E / □ before the oxen sends it home" — the pad's □ on a DualSense, its name on others —, and on a touch screen the
   Use button's words, "នៅមុខគោ ចុចប៊ូតុង «ឲ្យគោនាំរទេះទៅផ្ទះវិញ» / before the oxen, the "Send the cart home" button
   sends it home"): a fade, and the cart waits by his house with its load ("The oxen know the way home: the cart

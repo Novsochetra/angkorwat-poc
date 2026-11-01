@@ -846,6 +846,7 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   wayClear();
   slack = ROPE_HOLD;
   handMost = 0;
+  homeAsk = false;
   taut = 0;
   stuckFor = 0;
   track.length = 0;
@@ -935,13 +936,24 @@ function letGo(why: WordKey | null): void {
   pitchBefore = null;
   if (why) {
     // (stuck here twice in a row: say that the oxen can take it home)
-    // (naming the control in use: E, the pad's button, or on a touch screen the Use button's words)
-    if (why === 'haulStuck' && stuckTries >= 2 && env && !canGetOut(env)) env.hud.toast(pad.active || !touchScreen() ? t('haulStuckHome', { key: useKey() }) : t('haulStuckHomeTouch'));
-    else env?.hud.toast(t(why));
+    // (stuck here twice: whether it can get out at all is looked for over the next frames — a few ms each — and when it
+    // cannot, the toast says the oxen can take it home, naming the control in use: E, the pad's button, or on a touch
+    // screen the Use button's words)
+    homeAsk = why === 'haulStuck' && stuckTries >= 2 && !!env;
+    if (homeAsk && env && !canGetOut(env) && free.done) {
+      homeAsk = false;
+      homeToast(env);
+    } else env?.hud.toast(t(why));
     SFX.play('haulRope', 0.6);
   }
   dirty = true;
   console.info(`[haul] he lets go (${why ?? 'quietly'}): the cart stands at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}) facing ${((CART_AT.yaw * 180) / Math.PI).toFixed(0)}°; the rope ${handMost.toFixed(2)} m from his hand at most`);
+}
+
+/** Stuck here twice as he let go: tell him (`homeToast`) once it is known that the cart cannot get out (`after`). */
+let homeAsk = false;
+function homeToast(e: AddonEnv): void {
+  e.hud.toast(pad.active || !touchScreen() ? t('haulStuckHome', { key: useKey() }) : t('haulStuckHomeTouch'));
 }
 
 /** The last place along the way tested to fit, at or behind the yoke (m along the way). */
@@ -3047,6 +3059,13 @@ registerAddon({
     seenAt.x = ctx.body.pos.x;
     seenAt.z = ctx.body.pos.z;
     if (!placeChecked) checkPlace(ctx);
+    if (homeAsk && !leading) {
+      const out = canGetOut(ctx);
+      if (free.done) {
+        homeAsk = false;
+        if (!out) homeToast(env);
+      }
+    }
     if (leading) {
       lead(ctx, dt);
       // (the camera far enough out behind him to see the oxen and the cart)
