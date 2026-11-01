@@ -244,6 +244,12 @@ let stuckTries = 0;
  */
 let backed = 0;
 let onRun = 0;
+/**
+ * Where the cart stood when he last let go, and its turning round's backing then: taking the rope again where it still
+ * stands goes on with the same turning round (`backed` kept, `BACK_MOST` in all), never a fresh 3 m (review 6: after a
+ * slip and a new take one turning round reversed 4.0 m and 5.6 m in all).
+ */
+const letAt = { x: Number.NaN, z: Number.NaN, yaw: 0, backed: 0, onRun: 0 };
 /** How long (s) he has stood still with the cart at his heels (`FACE_AFTER`: the oxen turn to face him). */
 let faceFor = 0;
 /** The oxen are walking it round toward him (`pivotPlan`): they go on doing so, without waiting, while he is not in front. */
@@ -833,8 +839,10 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
   stuckFor = 0;
   track.length = 0;
   nowhereTries = 0;
-  backed = 0;
-  onRun = 0;
+  // (the same turning round where he let go: its backing kept; anywhere else a new one)
+  const same = Math.hypot(CART_AT.x - letAt.x, CART_AT.z - letAt.z) < 0.05 && Math.abs(angleDiff(CART_AT.yaw, letAt.yaw)) < 0.01;
+  backed = same ? letAt.backed : 0;
+  onRun = same ? letAt.onRun : 0;
   pivoting = false;
   turnRound = null;
   roundAt.x = Number.NaN;
@@ -869,11 +877,15 @@ function takeRope(ctx: RoamCtx, quiet = false): void {
     SFX.play('haulRope', 0.9);
     pad.rumble('tick', 0.35);
     // (the key that lets go: E, the pad's □, or on a touch screen the button that says so)
-    const touch = typeof document !== 'undefined' && document.body.classList.contains('roam-touch');
-    ctx.hud.toast(pad.active ? t('haulLeadHint', { key: pad.kind === 'ps' ? '□' : padName('west', pad.kind) }) : touch ? t('haulLeadHintTouch') : t('haulLeadHint', { key: 'E' }));
+    ctx.hud.toast(pad.active || !touchScreen() ? t('haulLeadHint', { key: useKey() }) : t('haulLeadHintTouch'));
   }
-  console.info(`[haul] he leads the cart from (${P.ax.toFixed(1)}, ${P.az.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}`);
+  console.info(`[haul] he leads the cart from (${P.ax.toFixed(1)}, ${P.az.toFixed(1)}), load ${JSON.stringify(CART_LOAD.all())}${backed > 0 ? `, its turning round backed ${backed.toFixed(1)} m so far` : ''}`);
 }
+
+/** A touch screen (the touch layout: the Use button, no keys). */
+const touchScreen = (): boolean => typeof document !== 'undefined' && document.body.classList.contains('roam-touch');
+/** The Use control's name in words: E, the pad's □ on a DualSense (its name on others). */
+const useKey = (): string => (pad.active ? (pad.kind === 'ps' ? '□' : padName('west', pad.kind)) : 'E');
 
 /** He lets go: the cart stands where it is (kept). `why`: the toast's words (null: none). */
 function letGo(why: WordKey | null): void {
@@ -887,6 +899,11 @@ function letGo(why: WordKey | null): void {
     }
   }
   stuckTries = Math.hypot(P.ax - tryFrom.x, P.az - tryFrom.z) < 0.5 ? stuckTries + 1 : 0;
+  letAt.x = CART_AT.x;
+  letAt.z = CART_AT.z;
+  letAt.yaw = CART_AT.yaw;
+  letAt.backed = backed;
+  letAt.onRun = onRun;
   planClear();
   turning = 0;
   leading = false;
@@ -904,7 +921,9 @@ function letGo(why: WordKey | null): void {
   pitchBefore = null;
   if (why) {
     // (stuck here twice in a row: say that the oxen can take it home)
-    env?.hud.toast(t(why === 'haulStuck' && stuckTries >= 2 && env && !canGetOut(env) ? 'haulStuckHome' : why));
+    // (naming the control in use: E, the pad's button, or on a touch screen the Use button's words)
+    if (why === 'haulStuck' && stuckTries >= 2 && env && !canGetOut(env)) env.hud.toast(pad.active || !touchScreen() ? t('haulStuckHome', { key: useKey() }) : t('haulStuckHomeTouch'));
+    else env?.hud.toast(t(why));
     SFX.play('haulRope', 0.6);
   }
   dirty = true;
