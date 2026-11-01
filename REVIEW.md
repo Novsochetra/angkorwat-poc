@@ -141,3 +141,7 @@ One line each time a ticket is sent back, so the next worker avoids it.
 - A search that stops at its place limit has not shown that nothing exists: never
   take the limit as "none", and never let one lifted limit lift every later
   search; log how far each plan backs and how far each U-turn turns (AWP-14).
+- A rescue move must never lose what it rescues: when the oxen move the cart out of
+  his way, every step keeps the rope within its length; count every rope slip in the
+  game's own log (not the driver's count), and run the repro on a freshly started
+  server too (AWP-14).
