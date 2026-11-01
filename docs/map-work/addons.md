@@ -3694,14 +3694,17 @@ without its straw), the oxen `people/_ox.ts`.
     `intoCart`): getting nowhere, the way round toward where he heads also notes, of the places it reaches, the one it
     rates best (least cost and way to go) that is out of his way (`outOfWay`): his next steps, 0.5 to 3 m on from his
     feet every 0.5 m, 0.57 m clear of the cart and its oxen (`OUT_R`: `BODY_R` + `ROUND_CLEAR`), his feet 0.92 m clear;
-    and where the rope holds him all the way there and lets him walk on: the oxen's noses within 5.9 m of his feet
-    where he stood at every sub-step of every move there (`PlanNode.rope`: a turn on the spot swings the noses round
-    the axle, out past the rope and back), and his feet and every one of those steps within 5.9 m of them at the end
-    (`OUT_SLACK`: the rope's 6.5 m from his hand less 0.6 m). A place out of his way only, past the rope's hold, is
-    never taken (review 6: every rope slip came right after one; the log counts them, "… places out of his way past
-    the rope's hold left"). When that search finds no whole way (at its place limit, or out of places) the oxen walk
-    the cart there before any part way ("the oxen move the cart out of his way (the noses … m from him at most, the
-    rope holds)"), and the rope pays out to `OUT_SLACK` (within `ROPE_SPARE` of its length, above) as he walks on
+    and where the rope holds him all the way there: the search plays the rope as play holds it, a sub-step at a
+    time (`PlanNode.hx`, `hz`, `drag`): wherever the oxen's noses would be more than 5.9 m from his feet (`OUT_SLACK`:
+    the rope's 6.5 m from his hand less 0.6 m) they pull him along to it, so the rope never gives (a turn on the spot
+    swings the noses round the axle, out past the rope and back); a place counts only if that pulls him 5 m at most
+    (`OUT_DRAG`: a part way's turns pull him as far), and then his feet and his next steps, from where the rope brought
+    him, are clear as above and within 5.9 m of the noses. The one pulling him 1.5 m at most (`OUT_SOFT`) is taken
+    first, then any; last, one where the rope holds him again after 1 m on at least (`OUT_WALK_MIN`, the farthest).
+    (Review 6: every rope slip came right after a place out of his way past where the rope let him walk on, the
+    oxen swinging the noses away; the rope was then tested before it held him, below.) When that search finds no whole way (at its place limit, or out of places) the oxen walk
+    the cart there before any part way ("the oxen move the cart out of his way (the rope holds all the way, pulling him
+    along … m at most; he walks on … m before it holds him)"), and the rope pays out to `OUT_SLACK` (within `ROPE_SPARE` of its length, above) as he walks on
     past it (`passing`; he pulls only there), until he is 3 m from where he stood, it has followed him on 2 m, a new
     way round is looked for, or he lets go; then he leads it on as usual. With none such, a part way or the nearest
     to his heels, as below. A whole way found is taken as before. (The log trip's way home from the camp, its first
@@ -3721,9 +3724,12 @@ without its straw), the oxen `people/_ox.ts`.
     for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to, nodes, out })` (the search for that cart and him, searched to
     the end at once — `nodes` another reach than 1 600 —: found, places, the land's cells tested, fit tests, ms,
     backing, turn; `out`: his facing°, pushing into the cart; `took`: whole, out, part, nearest or none; `ropeMost`:
-    the farthest the oxen's noses come from him over the plan, him standing; `outPast`: places out of his way past
-    the rope's hold it left; nothing of the live cart changes); `state().round` also gives `slack` (the rope let
-    out), `passing` and `none` (the last search ran out of places), `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
+    the farthest the oxen's noses come from where he stands over the plan (the rope pulls him along past 4.2 m, or
+    5.9 m out of his way); `outDrag`, `outWalk`: for one out of his way, how far the rope pulls him there and how far
+    he walks on after; `outPast`: places out of his way where the rope holds him before his 3 m on; `drag`: another
+    `OUT_DRAG` to compare; nothing of the live cart changes); `state().round` also gives `slack` (the rope let out),
+    `passing` and `none` (the last search ran out of places); the let-go line gives the farthest his hand was from
+    the nose since he took the rope, `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
     that place: fits, the heading the way sets out on, his feet clear, the way on works, and that way).
 - **A new way** (taking the rope, each step of a way round or a turn) starts with points every 0.5 m ending
   right at the yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
