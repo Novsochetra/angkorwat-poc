@@ -1981,6 +1981,8 @@ function planWalk(ctx: RoamCtx, dt: number): boolean {
   }
   return true;
 }
+/** (`getRound`) The last search tried again after one at its place limit was made toward where he heads: the next toward him. */
+let retryHeads = false;
 /** Where the last plan walked ended, and plans in a row that came to nothing (blocked again where they ended, the cart
  * not a metre on). */
 const planEnd = { x: Number.NaN, z: Number.NaN };
@@ -2014,8 +2016,12 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
   if (!search.on && !blocked && taut <= TAUT_AFTER) return false;
   // (no way round for where he stood: not again until he has moved on a little — or, the rope taut or he beside the
   // oxen, `RETRY_AFTER` s on: the oxen try again)
+  let again = false;
   if (!search.on && Math.hypot(p.x - search.failedFor.x, p.z - search.failedFor.z) < 1.5) {
     if (taut <= TAUT_AFTER || performance.now() - search.failedAt < RETRY_AFTER * 1000) return false;
+    // (tried again where he still stands after one that only reached its place limit: never the same search again —
+    // in turn toward where he heads, out of his way if he pushes into the cart, and toward him)
+    again = !search.none;
     search.failedFor.x = Number.NaN;
   }
   if (!search.on) {
@@ -2032,7 +2038,11 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
       search.none = true;
       return false;
     }
-    planStart(ctx);
+    const b = ctx.body;
+    if (again && pushing && (retryHeads = !retryHeads)) {
+      planStart(ctx, { x: b.pos.x + Math.sin(b.yaw) * INTO_AHEAD, z: b.pos.z + Math.cos(b.yaw) * INTO_AHEAD }, intoCart(ctx));
+      console.info(`[haul] looking again after a search that reached its place limit: toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}), where he heads${search.out.on ? ', or out of his way' : ''}`);
+    } else planStart(ctx);
     search.strict = fruitless > 0;
   } else if (Math.hypot(p.x - search.from.x, p.z - search.from.z) > 3) planStart(ctx);
   planStep(ctx);

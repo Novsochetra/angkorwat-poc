@@ -3714,7 +3714,9 @@ without its straw), the oxen `people/_ox.ts`.
     comes round most toward him (in its guess, clear of his feet, `PART_GAIN`) and looks on from there; or the
     nearest to his heels it reached, if 1.5 m nearer; only else it logs `[haul] a way round toward (x, z): none
     found within its reach (… places, … s), tries again` and tries again once he has moved on 1.5 m, or the rope
-    taut, `RETRY_AFTER` (3 s) on, the rope holding him at 4.2 m meanwhile (`no way round …: every place it can reach
+    taut, `RETRY_AFTER` (3 s) on, the rope holding him at 4.2 m meanwhile; tried again where he still stands, never
+    the same search again: while he pushes on, in turn toward where he heads (6 m on, out of his way if he pushes into
+    the cart: "looking again after a search that reached its place limit: toward (x, z), where he heads") and toward him (`no way round …: every place it can reach
     looked at` only when the search ran out of places, never at its limit: only that one, `search.none`, lets the
     rope pay out as "no way" and slip, "rope: no way round for …"). The search keeps its open places in a
     heap, weighs the way to go three times the way come (`W_GUESS`: it makes for coming round first) and tests
