@@ -13,6 +13,8 @@
 - `npm run wallpaper` draws the saved views and flights of the free camera
   (dev server only: see "Free camera and wallpapers" below) into `wallpapers/out/`.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
+- Talk docs (plans and idea lists we agree on) go in `docs/discussion/`, never
+  beside the code or the build guides: `docs/discussion/README.md` lists them.
 
 ## World kit (component plan sections 18–20)
 
@@ -270,7 +272,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 
 ## Things to do while roaming (add-ons)
 
-The ideas picked from `docs/ideas.md` (October 2026) are roaming add-ons: the
+The ideas picked from `docs/discussion/ideas.md` (October 2026) are roaming add-ons: the
 contract is `src/map/roam/_addons.ts`, one loader line each in
 `roam/_addonList.ts` (chunks of their own, downloaded while the map builds;
 roaming waits for them, so their shaders compile before Start; nothing else may
