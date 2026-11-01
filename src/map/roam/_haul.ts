@@ -122,6 +122,8 @@ const ROPE_MAX = 6.5;
 const ROPE_HOLD = 4.2;
 /** Paid out (`slack`), the rope stays this far inside `ROPE_MAX` from his hand (m): it holds, never slips by a hair. */
 const ROPE_SPARE = 0.25;
+/** Checks: the farthest his hand has been from the ox's nose since he took the rope (m, after the rope held him; the let-go line). */
+let handMost = 0;
 /** Blocked and getting nowhere this long (s) while he pulls at the rope: it slips. */
 const STUCK_AFTER = 6;
 /** The way is kept as points this far apart (m). */
@@ -835,6 +837,7 @@ function checkPlace(ctx: RoamCtx): void {
 function takeRope(ctx: RoamCtx, quiet = false): void {
   wayClear();
   slack = ROPE_HOLD;
+  handMost = 0;
   taut = 0;
   stuckFor = 0;
   track.length = 0;
@@ -927,7 +930,7 @@ function letGo(why: WordKey | null): void {
     SFX.play('haulRope', 0.6);
   }
   dirty = true;
-  console.info(`[haul] he lets go (${why ?? 'quietly'}): the cart stands at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}) facing ${((CART_AT.yaw * 180) / Math.PI).toFixed(0)}°`);
+  console.info(`[haul] he lets go (${why ?? 'quietly'}): the cart stands at (${CART_AT.x.toFixed(1)}, ${CART_AT.z.toFixed(1)}) facing ${((CART_AT.yaw * 180) / Math.PI).toFixed(0)}°; the rope ${handMost.toFixed(2)} m from his hand at most`);
 }
 
 /** The last place along the way tested to fit, at or behind the yoke (m along the way). */
@@ -972,10 +975,14 @@ interface PlanNode extends Pose {
   /** How far it has backed in a row by here (m: `backed`, then this plan's rolls back less its rolls on). */
   back: number;
   /**
-   * (a search for a place out of his way, `search.out`) The farthest the oxen's noses come from his feet where he
-   * stood (`search.from`, m on the ground) at any sub-step from where the cart stands to here: the rope must hold
-   * all the way (`OUT_SLACK`), not only at the end.
+   * (a search for a place out of his way, `search.out`) The rope all the way from where the cart stands to here, a
+   * sub-step at a time, as play holds it: his feet (`hx`, `hz`), from where he stood (`search.from`), pulled along
+   * toward the oxen's noses whenever they would be farther than `OUT_SLACK` — so it never gives —; how far that has
+   * pulled him at most (`drag`, m); and the farthest the noses come from where he stood (`rope`, m: for the log).
    */
+  hx?: number;
+  hz?: number;
+  drag?: number;
   rope?: number;
 }
 
@@ -1105,7 +1112,7 @@ const SUB_TIME = { turn: TURN_SUB / PIVOT_RATE, roll: FIT_STEP / BACK_PACE };
  * the rope taut `RETRY_AFTER` s on); `none`: it ran out of places (there is none for where he stands: the rope pays out
  * and may slip, `noWay`) — never so when it only reached its place limit (`PLAN_NODES`: it tries again, the rope holds).
  */
-const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN }, none: false, out: { on: false, dx: 0, dz: 0 }, outBest: null as PlanNode | null, outPast: 0 };
+const search = { t0: 0, failedAt: 0, from: { x: 0, z: 0 }, best: null as PlanNode | null, nearest: null as PlanNode | null, strict: false, on: false, him: { x: 0, z: 0 }, open: [] as PlanNode[], seen: new Set<string>(), n: 0, failedFor: { x: Number.NaN, z: Number.NaN }, none: false, out: { on: false, dx: 0, dz: 0 }, outBest: null as PlanNode | null, outFar: null as PlanNode | null, outHeld: null as PlanNode | null, outWalk: 0, outPast: 0 };
 const walkPlan = { steps: [] as { pose: Step; time: number }[], i: 0, t: 0, from: { x: 0, z: 0, yaw: 0 }, clear: 0, lay: false };
 /**
  * The way a whole way round ends with (its goal's trial way past the yoke, `wayWorksFrom`): laid as the cart's way once
@@ -1686,33 +1693,69 @@ function noseFar(n: Pose): number {
   const fz = Math.cos(n.yaw);
   return Math.hypot(search.from.x - (n.x + fx * NOSE_AT.on + fz * NOSE_AT.right), search.from.z - (n.z + fz * NOSE_AT.on - fx * NOSE_AT.right));
 }
-/** Checks only (`probe`, `chain: false`): the rope's hold all the way there not asked (to compare). */
-let outChain = true;
-/** (`PlanNode.rope`) The farthest the noses come from his feet over `m`'s sub-steps and every move before it. */
-function ropeAlong(m: PlanNode): number {
-  let r = m.parent?.rope ?? noseFar(m);
-  for (const sp of m.subs) r = Math.max(r, noseFar(sp));
-  return r;
+/**
+ * A place out of his way is one the rope holds him all the way to, pulling him along this far at most (m: after the
+ * oxen as they swing the cart round, as a part way's turns pull him; `probe` may set another, `drag`, to compare);
+ * one that pulls him `OUT_SOFT` at most is taken first.
+ */
+const OUT_DRAG = 5;
+const OUT_SOFT = 1.5;
+let outDrag = OUT_DRAG;
+/**
+ * (`PlanNode.hx`, `hz`, `drag`, `rope`) The rope over `m`'s sub-steps, from its parent's (or where he stood): at each, the
+ * noses farther than `OUT_SLACK` from his feet pull him along to `OUT_SLACK` from them, as `lead` holds him.
+ */
+function ropeAlong(m: PlanNode): void {
+  let hx = m.parent?.hx ?? search.from.x;
+  let hz = m.parent?.hz ?? search.from.z;
+  let r = m.parent?.rope ?? 0;
+  let drag = m.parent?.drag ?? 0;
+  for (const sp of m.parent ? m.subs : [m]) {
+    const fx = Math.sin(sp.yaw);
+    const fz = Math.cos(sp.yaw);
+    const nx = sp.x + fx * NOSE_AT.on + fz * NOSE_AT.right;
+    const nz = sp.z + fz * NOSE_AT.on - fx * NOSE_AT.right;
+    r = Math.max(r, Math.hypot(search.from.x - nx, search.from.z - nz));
+    const d = Math.hypot(hx - nx, hz - nz);
+    if (d > OUT_SLACK) {
+      hx = nx + ((hx - nx) * OUT_SLACK) / d;
+      hz = nz + ((hz - nz) * OUT_SLACK) / d;
+      drag = Math.max(drag, Math.hypot(hx - search.from.x, hz - search.from.z));
+    }
+  }
+  m.hx = hx;
+  m.hz = hz;
+  m.rope = r;
+  m.drag = drag;
 }
 function outOfWay(n: PlanNode): 0 | 1 | 2 {
   const o = search.out;
-  const h = search.from;
+  // (his feet where the rope has brought him: where he stood, or pulled along a little as the oxen swung it round)
+  const h = { x: n.hx ?? search.from.x, z: n.hz ?? search.from.z };
   if (!feetClear(n.x, n.z, n.yaw, h.x, h.z, BODY_R + 0.5)) return 0;
   const fx = Math.sin(n.yaw);
   const fz = Math.cos(n.yaw);
   const nx = n.x + fx * NOSE_AT.on + fz * NOSE_AT.right;
   const nz = n.z + fz * NOSE_AT.on - fx * NOSE_AT.right;
-  // (the rope holds him all the way there — at every sub-step of every move, him standing where he stood —, not only
-  // at its end: a turn swings the noses round the axle, out past the rope and back)
-  let held = (outChain && (n.rope ?? 0) > OUT_SLACK) || Math.hypot(h.x - nx, h.z - nz) > OUT_SLACK;
+  // (the rope holds him all the way there — at every sub-step of every move, pulling him along as play does, never
+  // more than `OUT_DRAG` —, not only at its end: a turn swings the noses round the axle, out past the rope and back)
+  if ((n.drag ?? 0) > outDrag + 1e-6 || Math.hypot(h.x - nx, h.z - nz) > OUT_SLACK + 1e-6) return 0;
+  // (and as he walks on: how far before the rope, paid out to `OUT_SLACK`, holds him — `outWalk`)
+  let held = false;
+  outWalk = 0;
   for (let d = OUT_FROM; d <= OUT_ON + 1e-6; d += OUT_EVERY) {
     const x = h.x + o.dx * d;
     const z = h.z + o.dz * d;
     if (!feetClear(n.x, n.z, n.yaw, x, z, OUT_R)) return 0;
     held ||= Math.hypot(x - nx, z - nz) > OUT_SLACK;
+    if (!held) outWalk = d;
   }
   return held ? 1 : 2;
 }
+/** (`outOfWay`) How far on he walks from where the rope brought him before it holds him (m; `OUT_ON` all of it). */
+let outWalk = 0;
+/** A place out of his way where the rope holds him before he has walked on this far (m) is not taken. */
+const OUT_WALK_MIN = 1;
 /**
  * The oxen moved the cart out of his way (`outOfWay`): from where he stood (`x`, `z`), the rope pays out to `OUT_SLACK`
  * while he walks on past it, until he is `OUT_ON` m from there, the cart has followed him on `BACK_RESET` m, a new way
@@ -1743,6 +1786,9 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: numb
   }
   search.outBest = null;
   search.outPast = 0;
+  search.outHeld = null;
+  search.outFar = null;
+  search.outWalk = 0;
   search.him.x = to ? to.x : ctx.body.pos.x;
   search.him.z = to ? to.z : ctx.body.pos.z;
   search.from.x = ctx.body.pos.x;
@@ -1754,7 +1800,7 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: numb
   fieldStart(ctx);
   const root = rootNode();
   root.f = 0;
-  if (out) root.rope = noseFar(root);
+  if (out) ropeAlong(root);
   search.best = root;
   search.nearest = root;
   heapPush(search.open, root);
@@ -1763,7 +1809,9 @@ function planStart(ctx: RoamCtx, to?: { x: number; z: number }, out?: { dx: numb
 
 /** Checks: what the last search ended with (`probe`), and for one out of his way the farthest the noses come from him. */
 let took: 'whole' | 'out' | 'part' | 'nearest' | 'none' | '' = '';
+/** (one out of his way) How far the rope pulls him along on the way there at most, and he walks on after (m). */
 let outRope = 0;
+let outOn = 0;
 /** Look on (a few ms): a plan found (true), or still looking / none (false; `search.on` false once none). */
 function planStep(ctx: RoamCtx): boolean {
   const t0 = performance.now();
@@ -1786,12 +1834,23 @@ function planStep(ctx: RoamCtx): boolean {
       m.f = m.g + W_GUESS * guess(m);
       if (guess(m) < guess(search.best!) && clearOfHimAt(m)) search.best = m;
       if (short(m) < short(search.nearest!)) search.nearest = m;
-      if (search.out.on) {
-        m.rope = ropeAlong(m);
-        if (!search.outBest || m.f < search.outBest.f) {
-          const w = outOfWay(m);
-          if (w === 2) search.outBest = m;
-          else if (w === 1) search.outPast++;
+      if (search.out.on && (!search.outBest || m.f < search.outBest.f)) {
+        ropeAlong(m);
+        const w = outOfWay(m);
+        // (out of his way, the rope holding him all the way there and as he walks on: the one that pulls him least
+        // first — `OUT_SOFT` at most —, then any (`outFar`))
+        if (w === 2) {
+          if ((m.drag ?? 0) <= OUT_SOFT + 1e-6) search.outBest = m;
+          else if (!search.outFar || m.f < search.outFar.f) search.outFar = m;
+        }
+        // (out of his way, the rope holding him all the way there, but holding him again before his 3 m on: last, the
+        // one he walks on farthest from, at least `OUT_WALK_MIN`)
+        else if (w === 1) {
+          search.outPast++;
+          if (outWalk >= OUT_WALK_MIN && (!search.outHeld || outWalk > search.outWalk + 1e-6 || (outWalk > search.outWalk - 1e-6 && m.f < search.outHeld.f))) {
+            search.outHeld = m;
+            search.outWalk = outWalk;
+          }
         }
       }
       heapPush(search.open, m);
@@ -1806,15 +1865,16 @@ function planStep(ctx: RoamCtx): boolean {
     // passes, and leads it on from there; a part way may come round and still stand where he walks)
     // (only where the rope holds him all the way there and as he walks on: never one past it — the oxen would pull the
     // rope from his hand as they move the cart, the very thing the move is for)
-    const o = search.outBest;
+    const o = search.outBest ?? search.outFar ?? search.outHeld;
     if (o) {
       took = 'out';
-      outRope = o.rope ?? 0;
-      console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way (the noses ${outRope.toFixed(1)} m from him at most, the rope holds)${search.outPast ? `; ${search.outPast} places out of his way past the rope's hold left` : ''}`);
+      outRope = o.drag ?? 0;
+      outOn = o === search.outHeld ? search.outWalk : OUT_ON;
+      console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way (the rope holds all the way, pulling him along ${outRope.toFixed(1)} m at most; he walks on ${outOn.toFixed(1)} m before it holds him)`);
       planTake(o);
       passing.on = true;
-      passing.x = search.from.x;
-      passing.z = search.from.z;
+      passing.x = o.hx ?? search.from.x;
+      passing.z = o.hz ?? search.from.z;
       return true;
     }
     const b = search.best;
@@ -2278,6 +2338,7 @@ function lead(ctx: RoamCtx, dt: number): void {
       v.z -= uz * out;
     }
   }
+  handMost = Math.max(handMost, _h.distanceTo(_n));
   if (_h.distanceTo(_n) > ROPE_MAX) {
     console.info(`[haul] rope: ${noWay ? (stuckFor > STUCK_AFTER ? `stuck ${stuckFor.toFixed(1)} s` : `no way round for (${search.failedFor.x.toFixed(1)}, ${search.failedFor.z.toFixed(1)})`) : 'too far'}, him ${far.toFixed(1)} m off`);
     letGo(noWay || blocked ? 'haulStuck' : 'haulLetGoToast');
@@ -2827,9 +2888,9 @@ registerAddon({
            * found), searched to the end at once: found or not, what it took (`took`), places looked at, fit tests, time, its
            * moves, how far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
            */
-          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number; chain?: boolean } = {}) => {
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number; drag?: number } = {}) => {
             planNodes = opt.nodes ?? PLAN_NODES;
-            outChain = opt.chain ?? true;
+            outDrag = opt.drag ?? OUT_DRAG;
             const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
             const fit0 = FIT.n;
             CART_AT.x = cx;
@@ -2860,6 +2921,8 @@ registerAddon({
               took,
               ropeMost: +ropeMost.toFixed(2),
               outPast: search.outPast,
+              outDrag: (took as string) === 'out' ? +outRope.toFixed(2) : null,
+              outWalk: (took as string) === 'out' ? +outOn.toFixed(2) : null,
               looked: search.n,
               cells: field.cells,
               fits: FIT.n - fit0,
@@ -2871,7 +2934,7 @@ registerAddon({
             };
             planClear();
             planNodes = PLAN_NODES;
-            outChain = true;
+            outDrag = OUT_DRAG;
             CART_AT.x = keep.x;
             CART_AT.z = keep.z;
             CART_AT.yaw = keep.yaw;
