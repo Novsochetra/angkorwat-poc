@@ -571,6 +571,11 @@ if (roam) {
   if (minimap) parts.push(minimap);
 }
 
+// (no text is selected in the game, only in fields you type into: a long press on a phone showed iOS's Copy / Translate bar; map.css too)
+const typedInto = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
+document.addEventListener('selectstart', (e) => {
+  if (!typedInto(e.target instanceof Node && !(e.target instanceof Element) ? e.target.parentElement : e.target)) e.preventDefault();
+});
 addEventListener('pointermove', (e) => rig.setPointer((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1));
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
