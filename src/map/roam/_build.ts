@@ -291,7 +291,8 @@ function placingNow(ctx: RoamCtx): void {
   spot.reason = r;
   const id = placing;
   const keys = words('modeKeys', () => `, .  ${t('buildTurn')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
-  if (!r) spot.prompt = words(`here|${id}`, () => `E  ${t('buildHere')}  ·  ${keys}`);
+  // (on touch the build bar has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
+  if (!r) spot.prompt = onTouch() ? words('heret', () => `E  ${t('buildHere')}`) : words(`here|${id}`, () => `E  ${t('buildHere')}  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(BUILD_REASON_WORDS[r]));
   else spot.prompt = words(`not|${r}`, () => `${t(BUILD_REASON_WORDS[r])}  ·  ${keys}`);
 }

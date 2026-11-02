@@ -279,7 +279,7 @@ let freeE = -1;
 /** He has stood turned to it this long (s); it comes up to him again no sooner than this (its clock). */
 const NEAR_ME = { t: 0, next: 0 };
 /** "E  Pet …": made again only when the language, its name or whether it is his changes. */
-const PROMPT = { lang: '', name: null as DogName | null, adopted: false, text: '' };
+const PROMPT = { lang: '', name: null as DogName | null, adopted: false, touch: false, text: '' };
 
 const _v = new Vector3();
 const _w = new Vector3();
@@ -310,6 +310,8 @@ function sound(name: string, gain: number): void {
 /** The key that calls it, as the player plays (0, or none on a pad and on touch: the explorer menu). */
 const viaMenu = () => pad.active || document.body.classList.contains('roam-touch');
 const greetKey = () => (pad.active ? padName('down', pad.kind) : 'F');
+/** The touch controls in use (not a pad): F's scratch is a button beside the prompt's Use. */
+const touchOnly = () => !pad.active && document.body.classList.contains('roam-touch');
 /** Its name in a prompt or a toast ("សុនខស": a one-letter name reads as a name; no name yet: "សុនខ" / "the dog"), and on its own in quotes («ស»). */
 const named = () => dogCalled(name);
 const quoted = () => (name ? dogQuoted(name) : named());
@@ -1703,11 +1705,15 @@ function theirs(ctx: RoamCtx): boolean {
 /** "E  Pet the dog" / "E  Pet {name}" (made again only when the language, its name or whether it is his has changed). */
 function petPrompt(): string {
   const l = lang();
-  if (PROMPT.lang !== l || PROMPT.name !== name || PROMPT.adopted !== adopted) {
+  const touch = touchOnly();
+  if (PROMPT.lang !== l || PROMPT.name !== name || PROMPT.adopted !== adopted || PROMPT.touch !== touch) {
     PROMPT.lang = l;
     PROMPT.name = name;
     PROMPT.adopted = adopted;
+    PROMPT.touch = touch;
     PROMPT.text = adopted ? `E  ${t('dogPetName', { name: named() })}` : `E  ${t('dogPet')}`;
+    // (on touch F's scratch is a button of its own, touch.ts: the keyboard has F, the pad its ↓)
+    if (touch) PROMPT.text += `  ·  F  ${t('dogScratch')}`;
   }
   return PROMPT.text;
 }
@@ -2839,7 +2845,7 @@ registerAddon({
 /** The hints after it came along: how to call it, and the scratch. */
 function hintAfterAdopt(): void {
   toastLater(viaMenu() ? say('dogFollowsMenu', { name: named() }) : say('dogFollows', { name: named(), key: '0' }), 3);
-  toastLater(t('dogScratchHint', { name: named(), key: greetKey() }), 6.2);
+  toastLater(touchOnly() ? t('dogScratchHintTouch', { name: named() }) : t('dogScratchHint', { name: named(), key: greetKey() }), 6.2);
 }
 
 // ── URL values (checks) ────────────────────────────────────────────────────

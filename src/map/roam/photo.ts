@@ -201,6 +201,11 @@ export interface PhotoDeps {
   onFinder(on: boolean): void;
   /** The map's parts: what is in a photo, for the nature book (their `subjects`). */
   parts?: readonly MapPart[];
+  /**
+   * The selfie frame's own shutter button pressed: a click in the next step's input (input.ts `shutter`), so the
+   * photo is taken where every shutter is and the add-ons see it as one (posing people, the equinox's award).
+   */
+  shutter?(): void;
 }
 
 /**
@@ -260,7 +265,10 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
     album = new PhotoAlbum(ALBUM_TEXT);
     // The selfie frame's shutter button (the view is ready: take it).
     album.onShutter = () => {
-      if (kind && view > 0.95) snap = true;
+      if (kind && view > 0.95) {
+        if (d.shutter) d.shutter();
+        else snap = true;
+      }
     };
     showCameraHint();
     const panels = document.querySelectorAll<HTMLElement>('.photo-album .photo-panel');

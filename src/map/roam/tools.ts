@@ -178,6 +178,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     toast: (text) => hud.toast(text),
     onFinder: (on) => document.body.classList.toggle('roam-finder', on),
     parts: d.parts,
+    shutter: () => d.controls.shutter(),
   });
   // (E at a stall: the buy menu, the purse, eating and drinking, what he keeps in his bag: _shop.ts)
   const shopping = createShopping({
@@ -275,9 +276,10 @@ export function createRoamTools(d: ToolDeps): RoamTools {
   function useTool(tool: ToolName, ctx: RoamCtx | null): void {
     const device = tool === 'camera' || tool === 'selfie';
     if (mode !== 'walk' && !(device && PHOTO_MODES.includes(mode))) {
-      if (mode === 'boat') hud.toast(t('rHandsPaddle'));
-      else if (mode === 'hang') hud.toast(t('rHandsBar'));
-      else if (mode === 'balloon') hud.toast(t('rHandsBurner'));
+      if (mode === 'boat') hud.toast(t(onTouch() ? 'rHandsPaddleTouch' : 'rHandsPaddle'));
+      else if (mode === 'hang') hud.toast(t(onTouch() ? 'rHandsBarTouch' : 'rHandsBar'));
+      else if (mode === 'balloon') hud.toast(t(onTouch() ? 'rHandsBurnerTouch' : 'rHandsBurner'));
+      else if (mode === 'glide') hud.toast(t('binoNoChute'));
       return;
     }
     if (device) {
@@ -564,7 +566,7 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       if (tap('KeyT')) {
         photo.stick = !photo.stick;
         // (with the game pad, L1 slides it out: the wheel's steps out)
-        hud.toast(photo.stick ? (pad.active ? t('rStickOnPad', { keys: padName('l1', pad.kind) }) : t('rStickOn')) : t('rStickOff'));
+        hud.toast(photo.stick ? (pad.active ? t('rStickOnPad', { keys: padName('l1', pad.kind) }) : t(onTouch() ? 'rStickOnTouch' : 'rStickOn')) : t('rStickOff'));
       }
       if (tap('KeyO') && m === 'walk') {
         if (explorer.currentOutfit.held === 'flashlight') beamMouse = !beamMouse;
@@ -665,8 +667,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       shopping.frame(f);
       // Photo mode: the touch shutter and put-away instead of the stick, no roaming interface.
       const up = photo.kind;
-      // (the explorer menu shuts with the camera or the phone up, the album open, or off the bar; else it shows him as he is now)
-      if (menu.open && (up || photo.albumOpen || !PHOTO_MODES.includes(mode))) menu.toggle(false);
+      // (the explorer menu shuts with the camera or the phone up, the album open, or off the bar — under the parachute it
+      // stays, for his looks: on touch the bar shows there; else it shows him as he is now)
+      if (menu.open && (up || photo.albumOpen || (!PHOTO_MODES.includes(mode) && mode !== 'glide'))) menu.toggle(false);
       menu.update();
       if (up !== shutter) {
         d.controls.setShutter(up);
@@ -925,6 +928,9 @@ function createToolBar(
   return bar;
 }
 
+/** The touch controls show (no keys to name: roam/touch.ts). */
+const onTouch = () => document.body.classList.contains('roam-touch');
+
 const k = (s: string) => `<kbd>${s}</kbd>`;
 /** A mouse action, as a key: drag, wheel, click. */
 const mouse = (w: WordKey) => `<i>${t(w)}</i>`;
@@ -1002,6 +1008,10 @@ function injectStyle(): void {
     .rh[data-mode='walk'] .rtb-wrap, .rh[data-mode='boat'] .rtb-wrap, .rh[data-mode='hang'] .rtb-wrap, .rh[data-mode='balloon'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
     /* (in the boat and on the glider the hands are busy: only the camera and the phone) */
     .rh:not([data-mode='walk']) .rtb-slot:is([data-tool='lantern'], [data-tool='torch'], [data-tool='flashlight']) { opacity: 0.32; }
+    /* (under the parachute, on touch only (the keys have H, G, X and V): the bar for the album and the explorer menu's
+       looks; no tool, the hands on the lines) */
+    body.roam-touch .rh[data-mode='glide'] .rtb-wrap { opacity: 1; visibility: visible; transition: opacity 0.6s 0.3s, visibility 0s; }
+    .rh[data-mode='glide'] .rtb > .rtb-slot:not(.rtb-album, .rtb-me, .rtb-more) { opacity: 0.32; }
     .rtb { display: flex; align-items: center; gap: calc(4 * var(--px)); padding: calc(5 * var(--px)); pointer-events: auto; grid-row: 2;
       --mu-edge: rgba(255, 229, 188, 0.16); }
     .rtb > .mu-bg { background: color-mix(in srgb, rgba(13, 25, 39, 0.62), rgba(4, 15, 32, 0.62) var(--mu-night)); }

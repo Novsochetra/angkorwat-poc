@@ -319,8 +319,13 @@ const WORDS = {
   rKeys: { km: 'គ្រាប់ចុច', en: 'Keys' },
   rPutAway: { km: 'ទុក{name}វិញ', en: '{name} put away' },
   rHandsPaddle: { km: 'ដៃកំពុងកាន់ច្រវ៉ា (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ៖ 4, 5)', en: 'Hands on the paddle (the camera and the phone work here: 4, 5)' },
+  // (on a touch screen: the tool bar's camera and phone, no keys)
+  rHandsPaddleTouch: { km: 'ដៃកំពុងកាន់ច្រវ៉ា (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ)', en: 'Hands on the paddle (the camera and the phone work here)' },
   rHandsBar: { km: 'ដៃកំពុងកាន់របារ (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ៖ 4, 5)', en: 'Hands on the bar (the camera and the phone work here: 4, 5)' },
   rHandsBurner: { km: 'ដៃកំពុងកាន់ខ្សែភ្លើង (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ៖ 4, 5)', en: 'Hands on the burner line (the camera and the phone work here: 4, 5)' },
+  // (on a touch screen: the tool bar's camera and phone, no keys)
+  rHandsBarTouch: { km: 'ដៃកំពុងកាន់របារ (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ)', en: 'Hands on the bar (the camera and the phone work here)' },
+  rHandsBurnerTouch: { km: 'ដៃកំពុងកាន់ខ្សែភ្លើង (កាមេរ៉ា និងទូរស័ព្ទប្រើបាននៅទីនេះ)', en: 'Hands on the burner line (the camera and the phone work here)' },
   rBeamOn: { km: 'ពិល · {beam} (O ដើម្បីប្ដូរ)', en: 'Flashlight · {beam} (O to change)' },
   rBeam: { km: 'ពិល៖ {beam}', en: 'Flashlight: {beam}' },
   rBeamAhead: { km: 'ចាំងត្រង់ទៅមុខ', en: 'straight ahead' },
@@ -328,6 +333,8 @@ const WORDS = {
   rStickOn: { km: 'ដងសែលហ្វី៖ បើក (រំកិលដើម្បីពន្លូត)', en: 'Selfie stick: on (wheel slides it out)' },
   rStickOff: { km: 'ដងសែលហ្វី៖ បិទ (កាន់ដោយលាតដៃ)', en: 'Selfie stick: off (at arm’s length)' },
   // (game pad: roaming, roam/tools.ts and _rest.ts; {keys}: the pad's own name for L1, "L1" or "LB")
+  // (on a touch screen: two fingers, no wheel)
+  rStickOnTouch: { km: 'ដងសែលហ្វី៖ បើក (ញែកម្រាមដៃពីរ ដើម្បីពន្លូត)', en: 'Selfie stick: on (pinch to slide it out)' },
   rStickOnPad: { km: 'ដងសែលហ្វី៖ បើក (ចុច {keys} ដើម្បីពន្លូត)', en: 'Selfie stick: on ({keys} slides it out)' },
   rAsleepPad: { km: 'លង់លក់បាត់ហើយ… ចុចប៊ូតុងណាក៏បាន ដើម្បីដាស់', en: 'Fast asleep… any button wakes him' },
   rHatOn: { km: 'ពាក់មួក', en: 'Hat on' },
@@ -338,6 +345,8 @@ const WORDS = {
   rSitting: { km: 'អង្គុយមើលមេឃ', en: 'Sitting, watching the sky' },
   rLying: { km: 'ដេកផ្ងារមើលមេឃ', en: 'Lying back, watching the sky' },
   rAsleep: { km: 'លង់លក់បាត់ហើយ… ចុចអ្វីក៏បាន ដើម្បីដាស់', en: 'Fast asleep… any key wakes him' },
+  // (on a touch screen: no keys)
+  rAsleepTouch: { km: 'លង់លក់បាត់ហើយ… ចុច «លោត» ឬរុញដងបញ្ជា ដើម្បីដាស់', en: 'Fast asleep… “Jump” or the stick wakes him' },
   rAwake: { km: 'ភ្ញាក់ហើយ', en: 'Awake' },
   rGetUp: { km: 'ក្រោកឈរ', en: 'Get up' },
   rLieBack: { km: 'ដេកផ្ងារ', en: 'Lie back' },
@@ -1217,6 +1226,9 @@ const WORDS = {
   dogFollows: { km: '{name} ដើរតាមអ្នកហើយ · ចុច {key} ហៅវាមក', en: '{name} follows you now · {key} calls it' },
   dogFollowsMenu: { km: '{name} ដើរតាមអ្នកហើយ · ហៅវាមកពីម៉ឺនុយ', en: '{name} follows you now · call it from the menu' },
   dogScratchHint: { km: 'នៅក្បែរ{name}៖ ចុច {key} អេះត្រចៀកវា', en: 'Beside {name}: {key} scratches its ears' },
+  // (on a touch screen: its button beside the Use button, roam/touch.ts)
+  dogScratch: { km: 'អេះត្រចៀក', en: 'Scratch its ears' },
+  dogScratchHintTouch: { km: 'នៅក្បែរ{name}៖ ចុច «អេះត្រចៀក» ដើម្បីអេះត្រចៀកវា', en: 'Beside {name}: “Scratch its ears” scratches them' },
   dogCall: { km: 'ហៅសុនខ', en: 'Call the dog' },
   dogComing: { km: '{name} កំពុងរត់មករកអ្នក!', en: '{name} is coming!' },
   dogHere: { km: '{name} នៅក្បែរអ្នកហើយ', en: '{name} is right here' },

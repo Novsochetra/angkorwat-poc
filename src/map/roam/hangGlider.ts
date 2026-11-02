@@ -39,8 +39,8 @@ import { stepSound } from './walker';
  *   sinks about a metre in twelve.
  * - Rising air (_lift.ts) along cliffs and in the warm columns marked by
  *   golden seed fluff lifts him (the real glider needs it to cross the whole
- *   map). The wind turns him back at the roaming area's edge. Space high up
- *   lets go (Space again opens the parachute).
+ *   map). The wind turns him back at the roaming area's edge. Space lets go
+ *   (high up, Space again opens the parachute; low down he drops to his feet).
  * - Walls (cliffs, river banks, temple walls): he looks ahead as he flies.
  *   Easy flying goes over a low one, the real glider zooms over one its
  *   speed can lift it over; from a taller one he banks away to the side
@@ -79,8 +79,8 @@ const CEILING = 200;
 const FLARE_AT = 2.0;
 /** His feet (the explorer's own point) are this far ahead of the strap's end, and a margin (m at his true size). */
 const FEET_AHEAD = -HANG[2] * BODY_UNIT_M + 0.15;
-/** Letting go (Space): only this high over the ground (m). */
-const LET_GO_ABOVE = 20;
+/** Letting go (Space): his feet over this height (m; under it he is landing). */
+const LET_GO_ABOVE = 2.5;
 /** Wing hands-off pitch: nose down this much per m/s over trim (rad). */
 const PITCH_PER_V = 0.014;
 /** Circling in a thermal he edges his circle towards its core at this rate (1/s, at full bank). */
@@ -619,7 +619,7 @@ export function createHangGlider(spots: LaunchSpots, world: RoamWorld): HangGlid
       const low = lowest(ctx);
       const height = low - floor;
 
-      // Space high up: let go (the walker falls; Space again opens the parachute). Only over the roaming
+      // Space: let go (the walker falls; from high up Space again opens the parachute). Only over the roaming
       // area: past its edge he would fall off the land (just after the leap he is still out over the ledge's
       // drop), and the walker keeps him in from there.
       const letGo = input.jump && phase === 'fly' && openK >= 1 && height > LET_GO_ABOVE;

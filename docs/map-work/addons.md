@@ -55,6 +55,15 @@ Rules:
 - **Prompts** are `` `E  ${t('yourKey')}` `` (the key, two spaces, the words). The
   hud draws E as the pad's □ / X while a pad is in use. Hide your prompt while
   `env.busy()` (praying, resting, at a stall, the camera up, the album).
+  **If E does something, the prompt says `E  …`**: on a touch screen the Use
+  button is made from that part alone (hud.ts `prompt`), so an E with no `E  `
+  in the prompt cannot be pressed on a phone (the neighbour's bicycle had
+  none). Every other key part (`J  Kneel and listen`, `,/.  another fruit`,
+  `F  Scratch its ears`, `Esc  stop`) becomes a touch button over Use that
+  presses that key (touch.ts `setKeys`; F's hides while the Fish / Bell button
+  shows), so a key the player needs belongs in the prompt, on touch at least.
+  A mode with its own touch bar (building, planting) leaves those keys out of
+  its prompt on touch, or they show twice.
 - **Keys**: prefer what every device has: the move stick (`ctx.input.move`),
   Space (`input.jump`, `jumpHeld`), E (`input.use`), Shift (`input.run`), the
   look drag and wheel. Those work on a keyboard, a game pad and the touch

@@ -1616,6 +1616,9 @@ function injectStyle(): void {
     /* (the mini-map setting: \`button\`, only the caption, a button for the big map; \`hide\`, nothing) */
     .mm.is-small .mm-face { display: none; }
     .mm.is-hidden .mm-mini { display: none; }
+    /* (a touch screen has no M for the big map: hidden, it keeps its button, as \`button\`) */
+    body.roam-touch:not(.pad-on) .mm.is-hidden .mm-mini { display: flex; }
+    body.roam-touch:not(.pad-on) .mm.is-hidden .mm-face { display: none; }
     .mm-canvas { position: absolute; left: calc(-${BEZEL} * var(--px)); top: calc(-${BEZEL} * var(--px));
       width: calc(${FACE + 2 * BEZEL} * var(--px)); height: calc(${FACE + 2 * BEZEL} * var(--px)); }
     .mm-cap { display: flex; align-items: center; justify-content: center; max-width: calc(${FACE} * var(--px)); height: calc(20 * var(--px));

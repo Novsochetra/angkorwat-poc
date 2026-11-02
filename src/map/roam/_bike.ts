@@ -421,8 +421,8 @@ function prompts(): void {
   offerText = `E  ${t('bikeRide')}`;
   rideText = `E  ${t('bikeOff')}  ·  Space  ${t('bikeHop')}  ·  F  ${t('bikeBell')}`;
   hireText = `E  ${t('bikeHire', { riel: riel(HIRE_PRICE) })}`;
-  // (no key: it is not his to ride)
-  neighbourText = t('bikeNeighbour');
+  // (not his to ride: E tries, and the neighbour calls out; the key shows, so a phone has its Use button too)
+  neighbourText = `E  ${t('bikeRide')}  ·  ${t('bikeNeighbour')}`;
 }
 
 // ── The bicycles on the map ────────────────────────────────────────────────
@@ -1374,8 +1374,10 @@ function hold(ctx: RoamCtx, dt: number): { prompt: string | null } {
 
   writePose(ctx, true);
   focus(ctx, dt);
-  // (the keys: a few seconds after getting on, and whenever it stands)
-  return { prompt: leaving || (clock - onAt > 5 && Math.abs(v) > 1.2 * k) ? null : rideText };
+  // (the keys: a few seconds after getting on, and whenever it stands; on touch always: the prompt is its Use
+  // button there, "Get off", which E has at any speed)
+  const touch = document.body.classList.contains('roam-touch');
+  return { prompt: leaving || (!touch && clock - onAt > 5 && Math.abs(v) > 1.2 * k) ? null : rideText };
 }
 
 /** What the tyres roll on at the saddle point. */

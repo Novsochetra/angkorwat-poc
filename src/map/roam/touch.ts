@@ -8,15 +8,19 @@ import { steppedRing, steppedShape } from '../ui/shape';
  * pushed past its ring he runs), Jump and Use buttons for the right thumb
  * (and in the boat a Fish button over Use: "Fish", then "Strike!" at a bite,
  * roam/_fishing.ts; on the bicycle the same button, F's, rings its bell:
- * roam/_bike.ts), a drag anywhere else on the view to look round, and a
- * pinch to zoom.
+ * roam/_bike.ts), a button over Use for each other key the prompt names
+ * ("J  Kneel and listen", ",/.  another fruit", "Esc  Done": `setKeys`, from
+ * hud.ts), on the hang glider and in the balloon a Fast button held as
+ * Shift (`setRun`: the stick past its ring always steers or dives too), a
+ * drag anywhere else on the view to look round, and a pinch to zoom.
  *
  * Shown while roaming once the page has seen a touch (or on a touch-first
  * device; `touch=1` in the URL forces them). While they show,
  * `body.roam-touch` is set (the key help hides). With the camera or the
  * selfie phone up, a shutter button takes the place of the stick and Jump
- * (the selfie phone's screen has its own), and a button to put it away
- * (`setShutter`). While a game pad is in use (pad.ts: its last input was
+ * (the selfie phone's screen has its own), a button to put it away, and
+ * under it the keys photo mode has: the album (V), and with the phone up the
+ * selfie stick (T), the hand's gesture (G) and his face (X) (`setShutter`). While a game pad is in use (pad.ts: its last input was
  * the pad) they step aside, and `body.roam-touch` goes with them (the key
  * help and the prompts' buttons show the pad's); the next touch brings them
  * back.
@@ -29,10 +33,14 @@ export class TouchControls {
   /** Buttons: pressed since the last read, and held. */
   jumpHit = false;
   jumpHeld = false;
+  /** The Fast button held (`setRun`): Shift. */
+  runHeld = false;
   useHit = false;
   shutterHit = false;
-  /** The put-away button (camera or phone up): read as Esc. */
+  /** The put-away button (camera or phone up), or a prompt's Esc button: read as Esc. */
   closeHit = false;
+  /** The prompt's other keys' buttons (`setKeys`) pressed since the last read: their codes, for the taps. */
+  readonly keyHits: string[] = [];
   private enabled = false;
   private shutter = false;
   /** A touch was seen (or a touch-first device; `touch=1` in the URL shows them for checking). */
@@ -44,8 +52,15 @@ export class TouchControls {
   /** In the boat: Fish (start fishing), Strike! at a bite (roam/_fishing.ts: `setTouchFish`, `takeTouchFish`). */
   private readonly fishBtn: HTMLButtonElement;
   fishHit = false;
+  /** The Fast button (`setRun`). */
+  private readonly runBtn: HTMLButtonElement;
+  /** The prompt's other keys' buttons (`setKeys`), and what they are now (codes and words). */
+  private readonly keysEl: HTMLDivElement;
+  private keysNow = '';
   /** Its picture now: the fish, or the bicycle's bell. */
   private fishIcon: 'fish' | 'bell' = 'fish';
+  /** A button's press and let-go (the constructor's). */
+  private readonly hold: (btn: HTMLButtonElement, down: () => void, up: () => void) => void;
   private stickId: number | null = null;
   private readonly origin = { x: 0, y: 0 };
   /** Look fingers: last point per pointer. */
@@ -63,7 +78,10 @@ export class TouchControls {
       <button type="button" class="rt-btn rt-fish" data-t-aria="fiFish"><span class="rt-bg"></span>${FISH_ICON}<span class="rt-label"></span></button>
       <button type="button" class="rt-btn rt-jump" data-t-aria="rtJump"><span class="rt-bg"></span>${JUMP_ICON}<span class="rt-label" data-t="rtJump"></span></button>
       <button type="button" class="rt-btn rt-shutter" data-t-aria="rtShutter"><span class="rt-bg"></span><span class="rt-dot"></span></button>
-      <button type="button" class="rt-btn rt-close" data-t-aria="rtClose"><span class="rt-bg"></span>${CLOSE_ICON}</button>`;
+      <button type="button" class="rt-btn rt-close" data-t-aria="rtClose"><span class="rt-bg"></span>${CLOSE_ICON}</button>
+      <button type="button" class="rt-btn rt-run"><span class="rt-bg"></span>${FAST_ICON}<span class="rt-label"></span></button>
+      <div class="rt-keys"></div>
+      <div class="rt-pkeys">${PHOTO_KEYS.map(([code, word, selfie]) => `<button type="button" class="rt-btn rt-key rt-pk${selfie ? ' is-selfie' : ''}" data-code="${code}"><span class="rt-bg"></span><span class="rt-label" data-t="${word}"></span></button>`).join('')}</div>`;
     document.body.append(this.wrap);
     // Words in the language in use (ui/lang.ts; the Use button's comes with the prompt: `setUse`).
     const fillWords = () => {
@@ -81,6 +99,7 @@ export class TouchControls {
     this.knob = this.wrap.querySelector('.rt-knob')!;
     this.useBtn = this.wrap.querySelector('.rt-use')!;
     this.fishBtn = this.wrap.querySelector('.rt-fish')!;
+    this.keysEl = this.wrap.querySelector('.rt-keys')!;
     const jump = this.wrap.querySelector<HTMLButtonElement>('.rt-jump')!;
     const hold = (btn: HTMLButtonElement, down: () => void, up: () => void) => {
       btn.addEventListener('pointerdown', (e) => {
@@ -97,6 +116,7 @@ export class TouchControls {
       btn.addEventListener('pointercancel', end);
       btn.addEventListener('contextmenu', (e) => e.preventDefault());
     };
+    this.hold = hold;
     hold(
       jump,
       () => ((this.jumpHit = true), (this.jumpHeld = true)),
@@ -122,6 +142,18 @@ export class TouchControls {
       () => (this.closeHit = true),
       () => {},
     );
+    this.runBtn = this.wrap.querySelector('.rt-run')!;
+    hold(
+      this.runBtn,
+      () => (this.runHeld = true),
+      () => (this.runHeld = false),
+    );
+    for (const b of this.wrap.querySelectorAll<HTMLButtonElement>('.rt-pk'))
+      hold(
+        b,
+        () => this.keyHits.push(b.dataset.code!),
+        () => {},
+      );
 
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
@@ -195,6 +227,7 @@ export class TouchControls {
     this.shutter = on;
     this.wrap.classList.toggle('is-photo', on);
     this.wrap.classList.toggle('is-camera', kind === 'camera');
+    this.wrap.classList.toggle('is-selfie', kind === 'selfie');
     if (on && this.stickId !== null) {
       this.stickId = null;
       this.stick.x = this.stick.y = 0;
@@ -228,13 +261,59 @@ export class TouchControls {
     if (!label) this.fishHit = false;
   }
 
+  /**
+   * The prompt's keys besides E and Space (hud.ts `prompt`): a button each over Use, in the prompt's order from the
+   * bottom up, with what it does ("Kneel and listen"); a press goes in as its key (`keyHits`; Esc as `closeHit`).
+   * F's button hides while the Fish button (the boat's, the bicycle's bell) shows: that one is F already.
+   */
+  setKeys(keys: readonly (readonly [code: string, label: string])[]): void {
+    const now = keys.map(([c, l]) => `${c} ${l}`).join('\n');
+    if (now === this.keysNow) return;
+    this.keysNow = now;
+    this.keysEl.replaceChildren(
+      ...keys.map(([code, label]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rt-btn rt-key';
+        btn.dataset.code = code;
+        btn.innerHTML = '<span class="rt-bg"></span><span class="rt-label"></span>';
+        btn.querySelector('.rt-label')!.textContent = label;
+        this.hold(
+          btn,
+          () => (code === 'Escape' ? (this.closeHit = true) : this.keyHits.push(code)),
+          () => {},
+        );
+        return btn;
+      }),
+    );
+  }
+
+  /**
+   * The Fast button, held as Shift (on the hang glider: fast; in the balloon: fast with easy flying, both burners
+   * without): shown with this word, or hidden (null) and let go.
+   */
+  setRun(word: WordKey | null): void {
+    this.runBtn.classList.toggle('is-on', !!word);
+    if (!word) {
+      this.runHeld = false;
+      this.runBtn.classList.remove('is-down');
+      return;
+    }
+    const label = this.runBtn.querySelector<HTMLElement>('.rt-label')!;
+    label.dataset.t = word;
+    label.textContent = t(word);
+    this.runBtn.dataset.tAria = word;
+    this.runBtn.setAttribute('aria-label', t(word));
+  }
+
   /** Let go of everything (switching modes, leaving). */
   release(): void {
     this.stickId = null;
     this.stick.x = this.stick.y = 0;
     this.stick.run = false;
     this.fingers.clear();
-    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = this.fishHit = false;
+    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = this.fishHit = this.runHeld = false;
+    this.keyHits.length = 0;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     this.base.classList.remove('is-on');
     this.rest();
@@ -289,6 +368,16 @@ export function setTouchUse(label: string | null): void {
   active?.setUse(label);
 }
 
+/** The prompt's other keys as buttons over Use (hud.ts `prompt`): codes and what each does; none: an empty list. */
+export function setTouchKeys(keys: readonly (readonly [code: string, label: string])[]): void {
+  active?.setKeys(keys);
+}
+
+/** The Fast button (hud.ts, by the mode): its word, or null to hide it. */
+export function setTouchRun(word: WordKey | null): void {
+  active?.setRun(word);
+}
+
 /** The Fish button of the touch controls (the boat sets it: roam/_fishing.ts): its label, or null to hide it; `strike` at a bite. */
 export function setTouchFish(label: string | null, strike = false): void {
   active?.setFish(label, strike);
@@ -306,6 +395,14 @@ export function takeTouchFish(): boolean {
   return true;
 }
 
+/** Photo mode's keys as buttons under the put-away one (`code`, its word, only with the selfie phone up): tools.ts reads them. */
+const PHOTO_KEYS: readonly (readonly [code: string, word: WordKey, selfie: boolean])[] = [
+  ['KeyT', 'rStick', true],
+  ['KeyG', 'rGesture', true],
+  ['KeyX', 'rFace', true],
+  ['KeyV', 'rAlbum', false],
+];
+
 /** Radius of the stick's ring (CSS px). */
 const stickRadius = () => (Math.min(innerWidth, innerHeight) < 500 ? 52 : 62);
 
@@ -314,6 +411,8 @@ const CLOSE_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" 
 const FISH_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M5 4h5v1h2v1h1v1h1v2h-1v1h-1v1h-2v1H5v-1H4v-1H3V9H1V8h1V7h1V6h1V5h1zM0 5h2v1H0zM0 10h2v1H0z"/><path fill="#0d1927" d="M11 7h1v1h-1z"/></svg>`;
 /** A bicycle's thumb bell (16 × 16 pixel art): the same button on the bicycle. */
 const BELL_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M7 1h2v1H7zM6 2h4v1H6zM5 3h6v1H5zM4 4h8v6H4zM3 10h10v1H3zM2 11h12v1H2zM7 13h2v2H7z"/><path fill="#0d1927" d="M6 5h1v3H6z"/></svg>`;
+/** Two arrows ahead (16 × 16): the Fast button. */
+const FAST_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path fill="currentColor" d="M1 3h2v1h1v1h1v1h1v1h1v2H6v1H5v1H4v1H3v1H1v-1h1v-1h1v-1h1V9h1V7H4V6H3V5H2V4H1zM8 3h2v1h1v1h1v1h1v1h1v2h-1v1h-1v1h-1v1h-1v1H8v-1h1v-1h1v-1h1V9h1V7h-1V6h-1V5H9V4H8z"/></svg>`;
 const JUMP_ICON = `<svg class="rt-icon" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 2h2v1h1v1h1v1h1v1h1v2h-3v6H6V8H3V6h1V5h1V4h1V3h1z"/></svg>`;
 
 let styled = false;
@@ -350,13 +449,36 @@ function injectStyle(): void {
     .rt-fish .rt-bg::after { background: rgba(255, 208, 112, 0.8); }
     .rt-fish.is-strike .rt-bg { background: rgba(120, 72, 16, 0.85); box-shadow: 0 0 16px rgba(255, 176, 40, 0.6); }
     .rt-fish.is-strike .rt-bg::after { background: #ffe07c; }
+    /* (the prompt's other keys: a column over Use — over the Fish button while it shows — its first at the bottom) */
+    .rt-keys { position: absolute; right: 114px; bottom: 46px; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 14px; }
+    .rt-use.is-on ~ .rt-keys { bottom: 112px; }
+    .rt-fish.is-on ~ .rt-keys { bottom: 178px; }
+    .rt-fish.is-on ~ .rt-keys .rt-key[data-code='KeyF'] { display: none; }
+    .rt-key { position: relative; width: auto; min-width: 84px; height: 52px; padding: 0 16px; color: #ffe07c; white-space: nowrap; font-size: 14px; }
+    .rt-key .rt-bg::after { background: rgba(255, 208, 112, 0.8); }
+    .rt-key .rt-label::first-letter { text-transform: uppercase; }
+    /* (the Fast button: where Use is, over it while Use shows; the prompt's keys over both) */
+    .rt-run { right: 114px; bottom: 46px; width: auto; min-width: 84px; height: 52px; padding: 0 14px; display: none; grid-auto-flow: column; gap: 6px;
+      color: #ffe07c; white-space: nowrap; font-size: 14px; }
+    .rt-run.is-on { display: grid; }
+    .rt-run .rt-icon { width: 18px; height: 18px; }
+    .rt-run .rt-label::first-letter { text-transform: uppercase; }
+    .rt-use.is-on ~ .rt-run { bottom: 112px; }
+    .rt-run.is-on ~ .rt-keys { bottom: 112px; }
+    .rt-use.is-on ~ .rt-run.is-on ~ .rt-keys { bottom: 178px; }
     .rt-shutter { right: 26px; bottom: 50%; transform: translateY(50%); display: none; }
     .rt-dot { width: 40px; height: 40px; border-radius: 50%; background: #f8f0dc; box-shadow: inset 0 0 0 3px rgba(13, 25, 39, 0.55), 0 0 0 3px rgba(248, 240, 220, 0.5); }
     .rt-shutter.is-down .rt-dot { background: #ffe07c; transform: scale(0.9); }
     .rt.is-camera .rt-shutter { display: grid; }
     .rt-close { left: 24px; top: 24px; width: 52px; height: 52px; display: none; }
     .rt.is-photo .rt-close { display: grid; }
-    .rt.is-photo .rt-stick, .rt.is-photo .rt-jump, .rt.is-photo .rt-use, .rt.is-photo .rt-fish { display: none; }
+    /* (photo mode's keys: a column under the put-away button; the selfie's only with the phone up) */
+    .rt-pkeys { position: absolute; left: 24px; top: 90px; display: none; flex-direction: column; align-items: flex-start; gap: 10px; }
+    .rt.is-photo .rt-pkeys { display: flex; }
+    .rt-pk { height: 44px; min-width: 0; padding: 0 14px; font-size: 13px; color: #f8f0dc; }
+    .rt-pk .rt-bg::after { background: rgba(255, 229, 188, 0.4); }
+    .rt:not(.is-selfie) .rt-pk.is-selfie { display: none; }
+    .rt.is-photo .rt-stick, .rt.is-photo .rt-jump, .rt.is-photo .rt-use, .rt.is-photo .rt-fish, .rt.is-photo .rt-keys, .rt.is-photo .rt-run { display: none; }
     @media (max-width: 500px), (max-height: 500px) {
       .rt-stick::before { left: -52px; top: -52px; width: 104px; height: 104px; }
       .rt-knob { left: -22px; top: -22px; width: 44px; height: 44px; }
@@ -364,6 +486,16 @@ function injectStyle(): void {
       .rt-jump { right: 18px; bottom: 22px; }
       .rt-use { right: 92px; bottom: 28px; width: auto; height: 46px; }
       .rt-fish { right: 92px; bottom: 82px; width: auto; height: 46px; }
+      .rt-keys { right: 92px; bottom: 28px; gap: 8px; }
+      .rt-use.is-on ~ .rt-keys { bottom: 82px; }
+      .rt-fish.is-on ~ .rt-keys { bottom: 136px; }
+      .rt-key { width: auto; height: 46px; }
+      .rt-pkeys { left: 18px; top: 82px; gap: 8px; }
+      .rt-run { right: 92px; bottom: 28px; width: auto; height: 46px; }
+      .rt-use.is-on ~ .rt-run { bottom: 82px; }
+      .rt-run.is-on ~ .rt-keys { bottom: 82px; }
+      .rt-use.is-on ~ .rt-run.is-on ~ .rt-keys { bottom: 136px; }
+      .rt-pk { height: 40px; }
       .rt-shutter { right: 18px; }
     }`;
   document.head.append(style);

@@ -1128,7 +1128,7 @@ function step(e: AddonEnv, ctx: RoamCtx, dt: number): AddonHold {
     s.still += dt;
     if (!s.asleep && s.still >= SLEEP_AFTER) {
       s.asleep = true;
-      ctx.hud.toast(t(pad.active ? 'rAsleepPad' : 'rAsleep'));
+      ctx.hud.toast(t(pad.active ? 'rAsleepPad' : touching() ? 'rAsleepTouch' : 'rAsleep'));
     }
   } else if (!free || !lying) {
     s.asleep = false;

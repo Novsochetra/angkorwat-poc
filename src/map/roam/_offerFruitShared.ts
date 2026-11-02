@@ -56,12 +56,15 @@ export type PromptKey = 'offerShrine' | 'offerMonk' | 'offerBowl' | 'offerMonkLi
 const PROMPTS = new Map<string, string[]>();
 onLang(() => PROMPTS.clear());
 /**
- * "E  ថ្វាយចេក ហើយថ្វាយបង្គំ" (and, while he has two kinds or more and has not stepped yet, ",  .  another fruit");
+ * "E  ថ្វាយចេក ហើយថ្វាយបង្គំ" (and, while he has two kinds or more and has not stepped yet — on touch always —
+ * ",/.  another fruit");
  * `offerMonkListen` is the monk's with "J  Kneel and listen" after it (the blessing monk's dais). No allocation once made.
  */
 export function prompt(key: PromptKey, k: OfferKind): string {
   STEP.shownStep = STEP.stepN;
-  const hint = !STEP.stepped && giftKinds(_kinds, okKind).length > 1 ? 1 : 0;
+  // (on touch the hint is its button, touch.ts: it stays)
+  const touch = typeof document !== 'undefined' && document.body.classList.contains('roam-touch');
+  const hint = (!STEP.stepped || touch) && giftKinds(_kinds, okKind).length > 1 ? 1 : 0;
   let byKind = PROMPTS.get(key);
   if (!byKind) PROMPTS.set(key, (byKind = []));
   const i = OFFER_KINDS.indexOf(k) * 2 + hint;

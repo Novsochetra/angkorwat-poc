@@ -39,8 +39,9 @@ export const PAD_LIGHT = 'PadLight';
  *   explorer menu's buttons (`press`);
  * - mouse: drag the view (either button) to turn the camera, wheel to zoom,
  *   a click (no drag) is `click`, and where it points is `pointer`;
- * - touch: a joystick, Jump and Use buttons, drag to look, pinch to zoom
- *   (touch.ts);
+ * - touch: a joystick, Jump and Use buttons, a Fast button in the air
+ *   (Shift), a button for each other key the prompt names (its key in
+ *   `taps`), drag to look, pinch to zoom (touch.ts);
  * - a game pad (the core src/map/pad/pad.ts reads it; nothing while a menu
  *   has it), as its button map says: the left stick moves (as far as it is
  *   pushed: a half push walks slowly), R2 or L3 held runs (a click of L3
@@ -189,7 +190,7 @@ export class RoamControls {
     const t = this.touch;
     s.move.x = (on('KeyD', 'ArrowRight') ? 1 : 0) - (on('KeyA', 'ArrowLeft') ? 1 : 0) + t.stick.x;
     s.move.y = (on('KeyW', 'ArrowUp') ? 1 : 0) - (on('KeyS', 'ArrowDown') ? 1 : 0) + t.stick.y;
-    s.run = on('ShiftLeft', 'ShiftRight') || t.stick.run;
+    s.run = on('ShiftLeft', 'ShiftRight') || t.stick.run || t.runHeld;
     s.jump = hit('Space') || t.jumpHit;
     s.jumpHeld = on('Space') || t.jumpHeld;
     s.use = hit('KeyE', 'Enter') || t.useHit;
@@ -200,6 +201,8 @@ export class RoamControls {
     this.taps.clear();
     for (const c of this.hits) if (TOOL_KEYS.has(c)) this.taps.add(c);
     this.takePressed();
+    for (const c of t.keyHits) this.taps.add(c);
+    t.keyHits.length = 0;
     s.click = this.clicked || t.shutterHit;
     this.pollPad(dt);
     const len = Math.hypot(s.move.x, s.move.y);
@@ -229,6 +232,7 @@ export class RoamControls {
     this.sprint = false;
     const t = this.touch;
     t.jumpHit = t.useHit = t.shutterHit = t.closeHit = false;
+    t.keyHits.length = 0;
     t.look.yaw = t.look.pitch = t.look.zoom = 0;
   }
 
@@ -239,6 +243,11 @@ export class RoamControls {
    */
   press(code: string): void {
     if (this.on && TOOL_KEYS.has(code)) this.pressed.add(code);
+  }
+
+  /** A shutter pressed on the interface (the selfie frame's own button, photo.ts): the next poll's `click`. */
+  shutter(): void {
+    if (this.on) this.clicked = true;
   }
 
   /** The interface's presses into this poll's taps. */

@@ -178,6 +178,16 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   the touch buttons) is in `ui/lang.ts` (`r…`, `rt…`): keys stay keys,
   place names come from `placeText(p)`; prompts are made with `t()` each
   step, so a change of language (settings) shows at once.
+  **A phone plays what a keyboard plays** (`touch.ts`): the stick, Jump
+  (Space), Use (the prompt's `E  …` part), a button over Use for each other
+  key the prompt names (`J  Kneel and listen`, `,/.  another fruit`,
+  `Esc  stop`: `setKeys`), the Fish / Bell button (F), a Fast button held as
+  Shift on the hang glider and in the balloon (`setRun`), and with the camera
+  or the phone up the shutter, put away, and the album, the selfie stick,
+  gesture and face (T, V, G, X). Under the parachute the tool bar shows on
+  touch (the album, the explorer menu's looks; the tools grey). The mini-map
+  set to Hide keeps its Map button on touch (no M key). So: a key the player
+  needs goes in the prompt (addons.md "Prompts").
   A drag, or holding **Q** / **R**, orbits the camera round him in every mode
   (as on `game.html`: 1.8 rad/s); the follow camera eases back behind him
   after a pause. It keeps him in view: walls, stone and land pull it in
@@ -277,7 +287,8 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   a waving flag and a beacon lamp that glows at night (`_rampFlag.ts`); a
   glider badge on both maps) lifts the glider, runs down the ramp and
   flies; E in a long fall unfolds it in the air. A / D bank, Shift fast,
-  Space high up lets go. **Easy flying** (the settings panel, on by
+  Space lets go (any height but the last 2.5 m; high up, Space again opens the
+  parachute; the parachute lets go over 3 m). **Easy flying** (the settings panel, on by
   default; `roam/prefs.ts`, `easyfly=0|1` in the URL): hands-off it holds
   its height as long as you like, S climbs and W dives (faster the higher
   he is), up to 700 m over the land. Off: the real glider, W / S bar in /

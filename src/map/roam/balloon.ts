@@ -788,7 +788,8 @@ export function createBalloon(field: HeightField, world: RoamWorld): BalloonMode
         const fire = hot ? (fast ? 1 : (prog - INFLATE_FAN) % 1.7 < 1.2 ? 0.8 : 0) : 0;
         flame += (fire - flame) * (1 - Math.exp(-dt * (fire > flame ? 12 : 5)));
         burst(fire > 0);
-        setPrompt(ctx, t(pad.active ? 'rInflatingPad' : 'rInflating'));
+        // (on touch too: its "Esc  stop" part is a button there, touch.ts, the only Esc a phone has here)
+        setPrompt(ctx, t(pad.active || document.body.classList.contains('roam-touch') ? 'rInflatingPad' : 'rInflating'));
         body.pos.copy(pos);
         body.yaw = yaw;
         body.vel.set(0, 0, 0);
