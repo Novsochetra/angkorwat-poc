@@ -163,9 +163,25 @@ async function loadOne(k: StepSet, ctx?: BaseAudioContext): Promise<void> {
   }
 }
 
-/** Decode on `ctx`; without one, or if it refuses, on an offline context of our own (the typewriter's recording too). */
-export async function decode(b: ArrayBuffer, ctx?: BaseAudioContext): Promise<AudioBuffer> {
+/** Offline contexts of other rates than 48 kHz (`decode`'s `rate`). */
+const offlineAt = new Map<number, OfflineAudioContext>();
+
+/**
+ * Decode on `ctx`; without one, or if it refuses, on an offline context of our own (the typewriter's recording too).
+ * With `rate` (Hz), on an offline context of that rate: the samples come resampled to it (fewer to keep: a long
+ * recording heard only far off, chants.ts).
+ */
+export async function decode(b: ArrayBuffer, ctx?: BaseAudioContext, rate?: number): Promise<AudioBuffer> {
   // (copies: decoding takes the bytes away)
+  if (rate) {
+    try {
+      let at = offlineAt.get(rate);
+      if (!at) offlineAt.set(rate, (at = new OfflineAudioContext(1, 1, rate)));
+      return await at.decodeAudioData(b.slice(0));
+    } catch {
+      /* at the context's own rate, then */
+    }
+  }
   if (ctx) {
     try {
       return await ctx.decodeAudioData(b.slice(0));
