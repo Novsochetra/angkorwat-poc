@@ -285,6 +285,29 @@ function stupaGeometry(kind: Kind, look: StupaLook, detail: StupaDetail, mesh: S
   return g;
 }
 
+/** Stupas drawing each of those meshes now (`letGo`). */
+const users = new Map<BufferGeometry, number>();
+
+/**
+ * A stupa's level let go (_detail.ts `drop`): with the last stupa drawing its mesh, the mesh (its arrays, its
+ * buffers on the GPU), and once no look of it is left, its sculpt; the next stupa to want them makes them again.
+ */
+function letGo(kind: Kind, look: StupaLook, detail: StupaDetail, obj: Object3D): void {
+  const g = (obj as Mesh).geometry;
+  const n = (users.get(g) ?? 1) - 1;
+  if (n > 0) return void users.set(g, n);
+  users.delete(g);
+  const key = `${kindKey(kind)}/${look}/${detail}`;
+  if (geometries.get(key) === g) geometries.delete(key);
+  g.dispose();
+  const kk = kindKey(kind);
+  const looks = [...geometries.keys()].some((k) => k.startsWith(`${kk}/`) && k.endsWith(`/${detail}`) && k.split('/').length === kk.split('/').length + 2);
+  if (!looks) {
+    meshes.delete(`${kk}/${detail}`);
+    asked.delete(`${kk}/${detail}`);
+  }
+}
+
 /** Sculpt stats for checks: each stupa mesh so far, its triangles and time (ms). */
 export function stupaStats(): { key: string; triangles: number; ms: number }[] {
   return [...meshes].map(([key, m]) => ({ key, triangles: (m.geometry.getIndex()!.count / 3) | 0, ms: m.ms }));
@@ -303,7 +326,9 @@ export function stupa(o: StupaOptions): Object3D {
   const kind: Kind = { form: o.form ?? 'tower', niche, stone: o.look === 'stone' };
   const top = stupaTop(niche, o.look);
   const make = (detail: StupaDetail, m: SculptMesh) => {
-    const mesh = new Mesh(stupaGeometry(kind, o.look, detail, m), statueMaterial());
+    const g = stupaGeometry(kind, o.look, detail, m);
+    users.set(g, (users.get(g) ?? 0) + 1);
+    const mesh = new Mesh(g, statueMaterial());
     mesh.name = 'stupa';
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -316,6 +341,7 @@ export function stupa(o: StupaOptions): Object3D {
       // (the far mesh past `near` m, as it always did; the coarse one by its tiers' and mouldings' cells)
       cell: detail === 'far' ? 0 : STUPA_CELLS[detail].cell,
       load: () => (o.sync ? make(detail, meshNow(kind, detail)) : meshLater(kind, detail).then((m) => make(detail, m))),
+      drop: (obj: Object3D) => letGo(kind, o.look, detail, obj),
     })),
     {
       near: o.near ?? 7 * o.height,

@@ -10,7 +10,8 @@ import { setSteppedVars, steppedRing } from '../ui/shape';
 import { addonKeys, type AddonKey } from './_addons';
 import { CHOICE, E_LIST, LIST, NOTE, PICK, ROWS } from './_eChoices';
 import { roamPrefs } from './prefs';
-import { setTouchUse } from './touch';
+import { TOOL_KEYS } from './input';
+import { setTouchKeys, setTouchRun, setTouchUse } from './touch';
 import type { RoamHud, RoamMode } from './types';
 
 /** How the explorer goes down from his ledge: under a parachute, or on a hang glider. */
@@ -105,6 +106,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   });
 
   let mode: RoamMode = 'overview';
+  /** The touch Fast button's word now (null: hidden). */
+  let shownRun: WordKey | null = null;
   /** The key help shown now: an add-on's lines (or null: the mode's), with the pad and the language it was drawn for. */
   let shownKeys: readonly AddonKey[] | null = null;
   let shownPad = false;
@@ -342,6 +345,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       if (!text) {
         promptEl.classList.remove('is-on');
         setTouchUse(null);
+        setTouchKeys([]);
         return;
       }
       if (text.startsWith(LIST)) {
@@ -351,6 +355,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
         promptEl.classList.remove('is-soon');
         promptEl.classList.add('is-list', 'is-on');
         setTouchUse(l.use);
+        setTouchKeys(l.keys);
         return;
       }
       promptEl.classList.remove('is-list');
@@ -358,6 +363,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       // Hang glider"), each with its own key (the pad's button while the pad is in use: `promptPad`).
       let html = '<span class="mu-bg"></span>';
       let keyed = false;
+      /** (on touch the keys other than E and Space are buttons over Use: "J  Kneel and listen") */
+      const touchKeys: [string, string][] = [];
       text.split(/\s{2,}·\s{2,}/).forEach((part, i) => {
         const m = /^(\S{1,6})\s{2,}(.+)$/.exec(part);
         if (i) html += '<span class="rh-prompt-sep" aria-hidden="true">·</span>';
@@ -365,6 +372,8 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
           keyed = true;
           const g = promptPad(m[1]);
           html += g ? padKbd(esc(m[1]), g) : `<kbd>${esc(m[1])}</kbd>`;
+          const code = touchCode(m[1]);
+          if (code && touchKeys.length < 3) touchKeys.push([code, m[2].trim()]);
         }
         html += `<span class="rh-prompt-text">${esc(m?.[2] ?? part)}</span>`;
       });
@@ -374,6 +383,7 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       // (the Use button takes the E part wherever it is: "Space  Parachute  ·  E  Hang glider" in a long fall)
       const use = /(?:^|·\s+)E\s{2,}([^·]+?)\s*(?:·|$)/.exec(text);
       setTouchUse(use ? use[1] : null);
+      setTouchKeys(touchKeys);
     },
     toast(text) {
       // (none on the map screen: what ends as he leaves — the blessing, an offering — says nothing over the pin cards)
@@ -405,6 +415,9 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
       if (away) openCard(false, true);
       // (the key help setting: off, the keys of the mode go; ? still lists them all)
       wrap.classList.toggle('no-help', !roamPrefs.keyHelp);
+      // (touch: Shift as a button of its own in the air, where the stick past its ring always steers or dives too)
+      const run: WordKey | null = mode === 'hang' ? 'rFast' : mode === 'balloon' ? (roamPrefs.easyFly ? 'rFast' : 'rBothBurners') : null;
+      if (run !== shownRun) setTouchRun((shownRun = run));
       // (an add-on holding him shows its own keys: the bicycle's bell, the hammock's swing; _addons.ts `keys`)
       const ak = mode === 'overview' ? null : addonKeys();
       if (ak !== shownKeys || (ak && (pad.active !== shownPad || lang() !== shownLang))) {
@@ -522,6 +535,17 @@ function promptPad(k: string): PadGlyph | null {
   return padForKey(k) ?? (k === 'F' ? 'down' : k === ',.' ? 'dpadx' : k === '⇧,.' ? 'l2' : null);
 }
 
+/**
+ * A prompt's key as the touch button's key code ("J" KeyJ, "6" Digit6, ",/." the last of them: Period, "Esc" Escape),
+ * or null: E and Space have Use and Jump, and the stick, a drag and the tool bar give W A S D, Shift, Q and R.
+ */
+function touchCode(k: string): string | null {
+  const last = k.split('/').pop() ?? k;
+  if (last === 'Esc') return 'Escape';
+  const code = /^[A-Z]$/.test(last) ? `Key${last}` : /^\d$/.test(last) ? `Digit${last}` : last === ',' ? 'Comma' : last === '.' ? 'Period' : null;
+  return code && TOOL_KEYS.has(code) ? code : null;
+}
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** A prompt line's parts ("E  Build…  ·  F  Change seed"): each key as a key cap (the pad's button with the pad), its words. */
@@ -543,9 +567,10 @@ function partsHtml(text: string): string {
 /**
  * The E row's list (_eChoices.ts `LIST`): at most `ROWS` lines (the picked one among them), "▸" before the picked one,
  * the lines with no key greyed; under it how to pick (Tab or the pad's d-pad ↑ ↓; on touch a tap) and, with more lines
- * than show, which choice of how many. `use`: the picked line's words for the touch Use button.
+ * than show, which choice of how many. `use`: the picked line's words for the touch Use button, `keys` its other keys'
+ * touch buttons.
  */
-function listHtml(text: string): { html: string; use: string | null } {
+function listHtml(text: string): { html: string; use: string | null; keys: [string, string][] } {
   const rows = text
     .slice(LIST.length)
     .split('\n')
@@ -573,7 +598,13 @@ function listHtml(text: string): { html: string; use: string | null } {
   }
   const line = rows.find((r) => r.kind === PICK) ?? rows.find((r) => r.kind === CHOICE);
   const use = line ? /(?:^|·\s+)E\s{2,}([^·]+?)\s*(?:·|$)/.exec(line.text) : null;
-  return { html, use: use ? use[1] : null };
+  const keys: [string, string][] = [];
+  for (const part of line ? line.text.split(/\s{2,}·\s{2,}/) : []) {
+    const m = /^(\S{1,6})\s{2,}(.+)$/.exec(part);
+    const code = m && touchCode(m[1]);
+    if (m && code && keys.length < 3) keys.push([code, m[2].trim()]);
+  }
+  return { html, use: use ? use[1] : null, keys };
 }
 
 /** The keys of a mode (bottom left) in the language in use; the hang glider's and the balloon's with easy flying off (roam/prefs.ts) are the real ones'. */

@@ -458,8 +458,9 @@ function placingNow(ctx: RoamCtx): void {
   const deg = shownDeg(id, spot.yaw);
   // (",." the d-pad's ← → on a pad, "⇧,." L2: hud.ts `promptPad`)
   const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
-  // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°")
-  if (!r) spot.prompt = words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
+  // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°"; on touch the build bar
+  // has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
+  if (!r) spot.prompt = onTouch() ? words(`heret|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°`) : words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(reasonWord(r)));
   else spot.prompt = words(`not|${r}`, () => `${t(reasonWord(r))}  ·  ${keys}`);
   // (and by the touch bar's ⟲ ⟳, red or green)

@@ -428,7 +428,7 @@ export function createRest(d: RestDeps): Rest {
         still += dt;
         if (!asleep && still >= SLEEP_AFTER) {
           asleep = true;
-          hud.toast(t(pad.active ? 'rAsleepPad' : 'rAsleep'));
+          hud.toast(t(pad.active ? 'rAsleepPad' : document.body.classList.contains('roam-touch') ? 'rAsleepTouch' : 'rAsleep'));
         }
       } else if (asleep || !free) wake();
       sleep = Math.max(0, Math.min(1, sleep + (asleep ? dt : -3 * dt) / DOZE));

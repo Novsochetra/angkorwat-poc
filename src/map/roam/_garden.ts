@@ -538,7 +538,8 @@ function plantingNow(ctx: RoamCtx): void {
   else rowSpot.nNext = 0;
   const n = GARDEN.seeds(k);
   const keys = words(`plantKeys|${rows}`, () => `G  ${t(rows ? 'gardenRowsOn' : 'gardenRowsOff')}  ·  F  ${t('gardenChangeSeed')}  ·  Esc  ${t('gardenDone')}`);
-  if (!r) spot.prompt = words(`dig|${k}|${n}|${rows}`, () => `E  ${t('gardenDig', { plant: plantWord(k), n: num(n) })}  ·  ${keys}`);
+  // (on touch the plant bar has G's, F's and Esc's buttons: only E's here, or they would show twice)
+  if (!r) spot.prompt = onTouch() ? words(`digt|${k}|${n}`, () => `E  ${t('gardenDig', { plant: plantWord(k), n: num(n) })}`) : words(`dig|${k}|${n}|${rows}`, () => `E  ${t('gardenDig', { plant: plantWord(k), n: num(n) })}  ·  ${keys}`);
   else if (onTouch()) spot.prompt = reasonWords(r, k);
   else spot.prompt = words(`dignot|${r}|${k}|${rows}`, () => `${reasonWords(r, k)}  ·  ${keys}`);
 }

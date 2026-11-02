@@ -318,7 +318,7 @@ function shelter(ctx: RoamCtx): void {
 
 /** What the 8 key does now: the other of what it would be. */
 function toggle(e: AddonEnv, m: RoamMode): void {
-  if (m === 'boat') return e.hud.toast(t('rHandsPaddle'));
+  if (m === 'boat') return e.hud.toast(t(document.body.classList.contains('roam-touch') ? 'rHandsPaddleTouch' : 'rHandsPaddle'));
   if (m === 'hang') return e.hud.toast(t('rHandsBar'));
   if (m === 'balloon') return e.hud.toast(t('rHandsBurner'));
   if (m !== 'walk') return;

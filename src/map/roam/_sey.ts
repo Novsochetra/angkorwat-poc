@@ -472,8 +472,10 @@ registerAddon({
     const now = SEY.t + dt * 0.5;
     const coming = fl.on && fl.to === ME && fl.n !== pressed && fl.n !== counted;
     const kickable = coming && now >= fl.t1 - READY;
-    if ((i.jump || i.use) && kickable && stance.kind === 'none') kick(ctx, fl, now);
-    else if (away > AWAY_FOR || (i.use && !coming && (stance.kind === 'none' || stance.since > stance.meet + 0.2))) leave(ctx, 'left');
+    // (on touch E is the Use button, "Stop playing": it stops, the sey coming or not; the Jump button kicks)
+    const touch = document.body.classList.contains('roam-touch');
+    if ((i.jump || (i.use && !touch)) && kickable && stance.kind === 'none') kick(ctx, fl, now);
+    else if (away > AWAY_FOR || (i.use && (touch || (!coming && (stance.kind === 'none' || stance.since > stance.meet + 0.2))))) leave(ctx, 'left');
     // (the stick, Space and E are the game's: no tools, emotes or sitting down meanwhile)
     return true;
   },

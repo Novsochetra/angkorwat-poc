@@ -11,7 +11,7 @@ import { CATTLE, type Cow } from '../cattle/state';
 import { SURFACE } from '../heightfield';
 import { HOME_AT } from '../hamlet/_homePlan';
 import { pad } from '../pad/pad';
-import { t } from '../ui/lang';
+import { lang, t } from '../ui/lang';
 import type { AddonEnv, AddonHold, AddonKey } from './_addons';
 import type { Beast, CattleHerd } from './_cattleHerd';
 import { FarmProps } from './_farmProps';
@@ -164,6 +164,8 @@ export class CattleWork {
   /** E held (the keyboard's E or Enter, the pad's □, the touch Use button). */
   private readonly keys = { key: false, touch: false };
   private wired = false;
+  /** The cut's prompt on touch and its language (`cutPrompt`). */
+  private cutWords: [string, string] = ['', ''];
   private readonly keysHelp: readonly AddonKey[] = [
     ['E', 'cattleCutHold', 'west'],
     ['W A S D', 'cattleKeyStop', 'lstick'],
@@ -317,7 +319,14 @@ export class CattleWork {
       return { prompt: null };
     }
     if (w.phase !== 'go') ex.setMotion(0, true, 0);
-    return { prompt: null };
+    // (on touch the cut goes on while the Use button is held: it stays, saying so; the keys say it in the key help)
+    return { prompt: w.kind === 'cut' && document.body.classList.contains('roam-touch') ? this.cutPrompt() : null };
+  }
+
+  /** "E  Hold to cut", made once a language. */
+  private cutPrompt(): string {
+    if (this.cutWords[0] !== lang()) this.cutWords = [lang(), `E  ${t('cattleCutHold')}`];
+    return this.cutWords[1];
   }
 
   private cutStep(w: Work, dt: number, push: boolean): void {

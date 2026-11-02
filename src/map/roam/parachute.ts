@@ -75,8 +75,8 @@ const TURN = 0.8;
 const FLARE_AT = 3.2;
 /** Running out the landing (s). */
 const RUNOUT = 0.55;
-/** Letting the canopy go (Space): only this high over the ground (m), and the fold back into the pack (s). */
-const LET_GO_ABOVE = 16;
+/** Letting the canopy go (Space): over this height (m; under it he is flaring to land), and the fold back into the pack (s). */
+const LET_GO_ABOVE = 3;
 const STOW = 0.45;
 /** Follow camera: distance, tilt, and how high over his feet it looks (m). */
 const CAM_DIST = 18;
@@ -585,8 +585,8 @@ export function createParachute(): { leap: LeapMode; glide: RoamModeHandler } {
       const ahead = Math.max(3, hs * 0.7);
       const height = body.pos.y - Math.max(floorAt(world, body.pos.x, body.pos.z), floorAt(world, body.pos.x + fx * ahead, body.pos.z + fz * ahead));
 
-      // Space high up: let the canopy go and fall (Space in the fall opens a new one). Only over the
-      // roaming area (letGoOut: past its edge he would fall off the land).
+      // Space: let the canopy go and fall (from high up, Space in the fall opens a new one; low down he drops and
+      // lands on his feet). Only over the roaming area (letGoOut: past its edge he would fall off the land).
       const letGo = input.jump && open >= 1 && height > LET_GO_ABOVE;
       // (out there he glides on: letGoOut says why, and the wind's message below does not cover it)
       if (letGo && letGoOut(ctx)) turnedBack = true;

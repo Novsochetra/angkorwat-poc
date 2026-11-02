@@ -178,6 +178,16 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   the touch buttons) is in `ui/lang.ts` (`r…`, `rt…`): keys stay keys,
   place names come from `placeText(p)`; prompts are made with `t()` each
   step, so a change of language (settings) shows at once.
+  **A phone plays what a keyboard plays** (`touch.ts`): the stick, Jump
+  (Space), Use (the prompt's `E  …` part), a button over Use for each other
+  key the prompt names (`J  Kneel and listen`, `,/.  another fruit`,
+  `Esc  stop`: `setKeys`), the Fish / Bell button (F), a Fast button held as
+  Shift on the hang glider and in the balloon (`setRun`), and with the camera
+  or the phone up the shutter, put away, and the album, the selfie stick,
+  gesture and face (T, V, G, X). Under the parachute the tool bar shows on
+  touch (the album, the explorer menu's looks; the tools grey). The mini-map
+  set to Hide keeps its Map button on touch (no M key). So: a key the player
+  needs goes in the prompt (addons.md "Prompts").
   A drag, or holding **Q** / **R**, orbits the camera round him in every mode
   (as on `game.html`: 1.8 rad/s); the follow camera eases back behind him
   after a pause. It keeps him in view: walls, stone and land pull it in
@@ -278,7 +288,8 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   a waving flag and a beacon lamp that glows at night (`_rampFlag.ts`); a
   glider badge on both maps) lifts the glider, runs down the ramp and
   flies; E in a long fall unfolds it in the air. A / D bank, Shift fast,
-  Space high up lets go. **Easy flying** (the settings panel, on by
+  Space lets go (any height but the last 2.5 m; high up, Space again opens the
+  parachute; the parachute lets go over 3 m). **Easy flying** (the settings panel, on by
   default; `roam/prefs.ts`, `easyfly=0|1` in the URL): hands-off it holds
   its height as long as you like, S climbs and W dives (faster the higher
   he is), up to 700 m over the land. Off: the real glider, W / S bar in /
@@ -3196,6 +3207,38 @@ of ≈ 0.3 M triangles a frame over 10–12 frames: what is marked still adds
 to those frames (on a phone at 30 frames a second, about a third of them
 while the light turns fastest; at 60, a sixth), so keep the still parts' triangles as low
 as the picture's; a part that moves must not be marked still.
+
+### Memory on a phone
+
+iOS gives a Safari tab a memory budget well under the phone's own and, past
+it, closes the tab and loads the page again, with no warning to the page (no
+`webglcontextlost`): after a while of play the map reloaded on phones. What
+the page held on `phone=1` (Chromium, the production build, Start and a walk
+at 13 places, 2026-10-31; before → after the changes below): the page's
+process 726 → 654 MB, of which typed arrays 266 → 203 MB, WebGL 169 →
+154 MB, canvases 41 → 21 MB, sounds 60 → 46 MB, the JS heap ≈ 136 MB; the
+growth over the tour +102 → +31 MB. What keeps it down:
+
+- **Sculpted pieces let go of their finer levels** (sacred/_detail.ts
+  `drop`, `KEEP`, `DROP_AFTER`): a Buddha's or a stupa's level finer than its
+  coarsest is freed once the camera has been past 4× its distance (or the
+  piece not drawn) for 45 s, and sculpted again when wanted. Kept, every
+  statue walked past stayed sharp in memory (a near Buddha ≈ 210 k
+  triangles, 8 MB): ≈ 50 MB of arrays after a tour, and as much on the GPU.
+  Buddhas share a sculpt: `letGo` (buddha.ts) frees a statue's own colours
+  and only with the last user the sculpt's attributes (disposing a geometry
+  deletes the GPU buffers of every attribute in it, shared or not).
+- **Painted pictures at half size on a phone** (kbach.ts `PAINT_SCALE`: gilt
+  gables, the gable figures, the pagoda's murals and panels; its canvases,
+  edges and blurs scaled with it): the same picture on a 390 px high screen,
+  a quarter of the canvases and textures (≈ 40 MB less once the village
+  pagoda has been seen).
+- **The far chant decoded at 22 kHz** (chants.ts `RATE`): 15 MB, not 34.
+
+A new part: nothing made on the way and kept for ever. What is made near a
+place (a sharper level, a picture) is let go when far, or made small on a
+phone; a held weather does not plan its whole future at once (weather.ts
+`endlessTrain`: a held storm's lightning to 10⁷ s was 180 MB of objects).
 
 ## Checking your work
 

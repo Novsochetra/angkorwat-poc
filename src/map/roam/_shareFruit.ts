@@ -6,7 +6,7 @@ import { TIME } from '../time';
 import { lang, num, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { ePicked } from './_eChoices';
-import { GIVING, giftKind, isMonk, stepGift, takeGift } from './_giveFruit';
+import { GIVING, giftKind, giftKinds, isMonk, stepGift, takeGift } from './_giveFruit';
 import { startShare, type ShareSession, type ShareStep } from './_shareFruitSession';
 import { againWord, anItem, itemName, planShare, promptWord, snackKept } from './_shareFruitWords';
 import { bagNotify } from './_shopBag';
@@ -120,13 +120,19 @@ function lookFor(ctx: RoamCtx): ShareWho | null {
 /** The prompt for whom, with the fruit he would give. */
 function promptFor(who: ShareWho, kind: PlantKindId): string {
   const word = promptWord(who);
-  const key = `${word}|${kind}|${lang()}`;
+  // (",/.  another fruit" while he has two kinds or more, until he has used them; on touch always: its button, touch.ts)
+  const touch = document.body.classList.contains('roam-touch');
+  const hint = (!stepped || touch) && giftKinds(_kinds).length > 1;
+  const key = `${word}|${kind}|${lang()}|${hint}`;
   if (key !== promptKey) {
     promptKey = key;
-    promptText = `E  ${t(word, { item: anItem(kind) })}`;
+    promptText = `E  ${t(word, { item: anItem(kind) })}${hint ? `  ·  ,/.  ${t('offerStep')}` : ''}`;
   }
   return promptText;
 }
+/** `,` / `.` used once (this visit): the prompt's hint of them goes (not on touch). */
+let stepped = false;
+const _kinds: PlantKindId[] = [];
 
 /** He gives to `who` now (`at`: a check's seconds already in). */
 function give(ctx: RoamCtx, who: ShareWho, kind: PlantKindId, at: readonly [ShareStep, number] | null = null): void {
@@ -293,6 +299,7 @@ registerAddon({
     const dir = tap('Comma') ? -1 : tap('Period') ? 1 : 0;
     if (!dir) return false;
     const k = stepGift(dir);
+    stepped = true;
     if (k) ctx.hud.toast(t('shareKindNow', { item: itemName(k), n: num(GARDEN.basket(k)) }));
     return false;
   },

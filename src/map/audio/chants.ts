@@ -45,6 +45,12 @@ interface Rec {
 
 const FILES: Record<ChantKind, string> = { near: nearUrl, far: farUrl };
 const KINDS: readonly ChantKind[] = ['near', 'far'];
+/**
+ * The far recording is decoded at 22 050 Hz, not the context's 44.1 or 48 kHz: heard only past 15 m and alone
+ * past 60 m, it keeps all it has up to 11 kHz, and its 3 minutes hold 15 MB of samples instead of 34 (a phone's
+ * tab has little memory to spare).
+ */
+const RATE: Partial<Record<ChantKind, number>> = { far: 22050 };
 
 /** A stream's pieces: shortest and longest (s, breath to breath), the cross-fade over the breath (s). */
 const PIECE: Record<ChantKind, { min: number; max: number; fade: number }> = {
@@ -104,7 +110,7 @@ export function loadChants(ctx?: BaseAudioContext): Promise<boolean> {
       bytes.delete(k);
       if (!b) continue;
       try {
-        const buf = await decode(b, ctx);
+        const buf = await decode(b, ctx, RATE[k]);
         recs[k] = { buf, breaths: findBreaths(buf) };
       } catch (e) {
         warn(`could not decode the ${k} recording`, e);
