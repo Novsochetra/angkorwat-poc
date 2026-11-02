@@ -96,6 +96,8 @@ export interface RoamWorld {
   hardStandAt?(x: number, z: number, y: number, up: number, height: number): number;
   /** For the follow camera, what it sees through but keeps out of: tree leaves and bark over the land; with `leave`, from where the segment comes out of what a is in (he walks through leaves). */
   softClearance?(ax: number, ay: number, az: number, bx: number, by: number, bz: number, leave?: boolean): number;
+  /** The same as `hardClearance`, for the player's built blocks alone (map/blocks/walk.ts): the follow camera never ends inside one, even nearer him than it otherwise comes. */
+  ownClearance?(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number;
 }
 
 /**

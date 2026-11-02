@@ -1,4 +1,5 @@
 import { BoxGeometry, Color, DynamicDrawUsage, Euler, InstancedBufferAttribute, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, Vector3, type Object3D } from 'three';
+import { HANG } from '../build/furniture';
 import { PIECES, type PieceId } from '../build/pieces';
 import { pieceLook } from '../build/view';
 import type { RoamWorld } from './types';
@@ -14,7 +15,8 @@ import type { RoamWorld } from './types';
  *   invisible: a wall, the house); the reason is the prompt's line.
  *
  * It sits before him and follows him as he walks and turns (the piece's front
- * to him, turned more with `,` / `.`); it breathes slowly. One instanced draw of
+ * to him, on his land's lines in 15° steps, turned more with `,` / `.`); a
+ * fence shows its guide on along its run; it breathes slowly. One instanced draw of
  * blocks in a plain colour each (a basic material: no lights; the garden
  * ghost's program), made with roaming so its shader is compiled before Start;
  * no allocation per frame.
@@ -36,6 +38,13 @@ const SWELL = 0.1;
 const EDGE_W = 0.09;
 const EDGE_UP = 0.04;
 const EDGE_STEP = 0.8;
+/**
+ * A fence's guide (AWP-30): pale dashes on the ground on along its run past both ends, where the next runs would go
+ * in line — from `from` m past its end to `to`, a dash `dash` long every `every` m, narrowing (`w0` → `w1`) as they go.
+ */
+const GUIDE = { from: 0.5, to: 9, dash: 0.45, every: 0.9, w0: 0.08, w1: 0.03 };
+const GUIDE_OK = new Color(0xf4f0d8);
+const GUIDE_NO = new Color(0xffc8bc);
 
 interface GhostBox {
   x: number;
@@ -69,6 +78,9 @@ export class BuildGhost {
   private z = 0;
   private yaw = 0;
   private ok = true;
+  /** Its floor (m: furniture on a floor, AWP-23), else the land under its middle (null); a hanging lantern's roof (m). */
+  private y: number | null = null;
+  private ceil = Infinity;
   private shownOk: boolean | null = null;
   private on = 0;
   private clock = 0;
@@ -143,11 +155,33 @@ export class BuildGhost {
         });
       }
     }
+    // A fence's guide: on along its run, both ways.
+    if (id === 'fence')
+      for (let side = -1; side <= 1; side += 2)
+        for (let u = GUIDE.from; u + GUIDE.dash <= GUIDE.to; u += GUIDE.every) {
+          const k = u / GUIDE.to;
+          out.push({
+            x: side * (p.w / 2 + u + GUIDE.dash / 2),
+            y: EDGE_UP,
+            z: 0,
+            sx: GUIDE.dash,
+            sy: 0.03,
+            sz: GUIDE.w0 + (GUIDE.w1 - GUIDE.w0) * k,
+            q: new Quaternion(),
+            ok: GUIDE_OK,
+            no: GUIDE_NO,
+            flat: true,
+          });
+        }
     this.boxes = out;
   }
 
-  /** Show it with its middle at (x, z) turned `yaw`, where it can stand (`ok`) or not; or hide it (null). */
-  show(x: number | null, z = 0, yaw = 0, ok = true): void {
+  /**
+   * Show it with its middle at (x, z) turned `yaw`, where it can stand (`ok`) or not; or hide it (null). `y`: its floor
+   * (furniture, AWP-23: the land's height under its middle when left out); `ceil`: the roof a hanging lantern's cord
+   * goes up to (m).
+   */
+  show(x: number | null, z = 0, yaw = 0, ok = true, y?: number, ceil = Infinity): void {
     if (x === null || !this.id) {
       this.want = false;
       return;
@@ -157,6 +191,8 @@ export class BuildGhost {
     this.z = z;
     this.yaw = yaw;
     this.ok = ok;
+    this.y = y ?? null;
+    this.ceil = ceil;
   }
 
   get shown(): boolean {
@@ -187,7 +223,7 @@ export class BuildGhost {
     const recolour = this.shownOk !== this.ok;
     this.shownOk = this.ok;
     const f = this.world.field;
-    const y0 = f.heightAt(this.x, this.z);
+    const y0 = this.y ?? f.heightAt(this.x, this.z);
     _qy.setFromAxisAngle(_up, this.yaw);
     const c = Math.cos(this.yaw);
     const s = Math.sin(this.yaw);
@@ -195,13 +231,23 @@ export class BuildGhost {
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
       _p.set(this.x + b.x * c + b.z * s, 0, this.z - b.x * s + b.z * c);
-      _p.y = (b.flat ? f.heightAt(_p.x, _p.z) : y0) + b.y;
+      _p.y = (b.flat && this.y === null ? f.heightAt(_p.x, _p.z) : y0) + b.y;
       _q.copy(_qy).multiply(b.q);
       this.mesh.setMatrixAt(i, _m.compose(_p, _q, _s.set(b.sx, b.sy, b.sz)));
       if (recolour) this.mesh.setColorAt(i, this.ok ? b.ok : b.no);
     }
+    // (a hanging lantern's cord up to the roof over it, AWP-23)
+    let n = boxes.length;
+    if (this.id === 'hanglamp' && Number.isFinite(this.ceil) && this.ceil > y0 + HANG.hook) {
+      const top = this.ceil;
+      _p.set(this.x, (y0 + HANG.hook + top) / 2, this.z);
+      this.mesh.setMatrixAt(n, _m.compose(_p, _q.identity(), _s.set(0.035, top - y0 - HANG.hook, 0.035)));
+      this.mesh.setColorAt(n, this.ok ? EDGE_OK : EDGE_NO);
+      n++;
+      if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    }
     if (recolour && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.mesh.count = boxes.length;
+    this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 }

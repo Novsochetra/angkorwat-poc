@@ -4,6 +4,7 @@ import type { VoxelMaterialKey } from '../../voxel/materials';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Frame } from '../landmarks/_prasatKit';
+import { bananaPlant } from '../veg/banana';
 import { Palms, type PalmSet } from '../veg/palms';
 import { GLOW } from './_lights';
 import type { RoofKind, WallKind } from './_spots';
@@ -343,17 +344,13 @@ export function villagePalms(): PalmSet {
   return set;
 }
 
-/** A banana plant: a short green stem and big leaves spreading up and out. */
+/**
+ * A banana plant at (x, y, z): the map's one banana (veg/banana.ts, the home garden's model), grown or young, some
+ * with a bunch, each turned its own way. `L` on the map's axes (no `theta`: the floating village, the hamlets).
+ */
 export function banana(L: Local, x: number, y: number, z: number): void {
-  L.box(x, y + 0.8, z, 0.35, 1.6, 0.35, 0x6d8a3a, 'mapLeaf');
-  for (let k = 0; k < 5; k++) {
-    const a = (k / 5) * Math.PI * 2 + L.r(k, z, 26);
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    L.box(x + ca * 0.55, y + 1.7, z + sa * 0.55, 0.9, 0.2, 0.9, tone([0x5a9a34, 0x6aa83c, 0x4f8a2e], L.r(k, x, 27)), 'mapLeaf');
-    L.box(x + ca * 1.15, y + 1.55, z + sa * 1.15, 0.7, 0.18, 0.7, tone([0x5a9a34, 0x78a840, 0x8a8a3a], L.r(x, k, 28)), 'mapLeaf');
-  }
-  L.box(x, y + 2.05, z, 0.4, 0.5, 0.4, 0x5f9a34, 'mapLeaf');
+  const stage = L.r(z, x, 29) < 0.55 ? 4 : 3;
+  bananaPlant(L.b, x, y, z, { seed: L.r(x, z, 26), yaw: L.r(x, z, 27) * Math.PI * 2, stage, bunch: stage === 4 && L.r(x, z, 30) < 0.5 });
 }
 
 /** A broad shade tree (a tamarind): a short trunk forking into limbs, a wide, low, feathery crown of dark leaves. */

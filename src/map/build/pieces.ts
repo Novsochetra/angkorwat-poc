@@ -1,9 +1,13 @@
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import type { WordKey } from '../ui/lang';
+import { rielOf, type Materials } from './materials';
+import { FURNITURE, type FurnitureId } from './furniture';
+import type { Foot } from './state';
 
 /**
  * What he can build at home (ផ្ទះរបស់គាត់: his stilt house, hamlet/_homePlan.ts
- * `HOME_AT`), round 1: the pieces, their sizes, prices and the spots the game
- * uses on them, with no three.js, so the models (build/models/<id>.ts), the
+ * `HOME_AT`), round 1: the pieces, their sizes, what they cost and the spots the
+ * game uses on them, with no three.js, so the models (build/models/<id>.ts), the
  * build add-on (roam/_build*.ts, build/state.ts, build/view.ts) and his cattle
  * (roam/_cattle*.ts) read the same numbers.
  *
@@ -19,15 +23,26 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
  * glows, where cows sleep).
  */
 
-export type PieceId = 'pen' | 'shelter' | 'kre' | 'fence' | 'spirit' | 'jar' | 'hammock' | 'lamp' | 'haystack';
+export type PieceId = 'pen' | 'shelter' | 'kre' | 'fence' | 'spirit' | 'jar' | 'hammock' | 'lamp' | 'haystack' | FurnitureId;
 
 export interface PieceSpec {
   readonly id: PieceId;
   /** Its name and a line for the build card (lang.ts keys: the build add-on adds them). */
   readonly name: string;
   readonly line: string;
-  /** What it costs (riel: the materials and the help; 4 000 ៛ ≈ 1 US$). */
+  /** What it costs bought outright (riel: the materials and the help; 4 000 ៛ ≈ 1 US$): the price list as it was before AWP-9. */
   readonly price: number;
+  /**
+   * The materials it is made of (AWP-9, the owner's rule; build/materials.ts): taken from what he gathered (his bag,
+   * then his home store: free); what he lacks he buys at the materials' price (`rielOf`).
+   */
+  readonly cost: Materials;
+  /**
+   * What can never be gathered and is always bought (the hammock's cloth, a lantern's glass, rice straw, rattan ties,
+   * the spirit house's paint and gilding: its words), costing what is left of `price` after its materials
+   * (`boughtRiel`); none when the materials are the whole price. The build card shows it on its own line.
+   */
+  readonly bought?: WordKey;
   /** Seconds he works on it (hammering, tying, setting it down) before it stands. */
   readonly secs: number;
   /** Its footprint across, deep, its height (m). */
@@ -58,13 +73,10 @@ export interface PieceSpec {
   readonly trough?: readonly [number, number, number];
 }
 
-/** Within this far of the house's middle he may build (m), not on the house, its stair, the garden's plants. */
-export const BUILD_NEAR = 46;
-
 export const PIECES: Record<PieceId, PieceSpec> = {
   // The cattle pen (គ្រោលគោ): rails on posts, the gate in the front rail, a thatched lean-to at the back, a log trough, a hay rack.
   pen: {
-    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, secs: 20, w: 7, d: 5.6, h: 3.6, max: 2,
+    id: 'pen', name: 'buildPen', line: 'buildPenLine', price: 60_000, cost: { log: 5, bamboo: 10, thatch: 4 }, secs: 20, w: 7, d: 5.6, h: 3.6, max: 2,
     solids: [
       [0, -2.8, 7, 0.2, 1.4], // back rail
       [-3.5, 0, 0.2, 5.6, 1.4], // left rail
@@ -80,7 +92,7 @@ export const PIECES: Record<PieceId, PieceSpec> = {
     // (w, d: the roof's eaves, 0.55 m past the posts; h: its ridge; the posts to the tie beams, the bench under the seat:
     // its top 0.5 m, his thighs level on it, his feet flat on the ground (his legs are short: a seat at his true size's
     // 0.62 m had him half standing))
-    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, secs: 16, w: 4.4, d: 4, h: 4.35, max: 3, walkThrough: true,
+    id: 'shelter', name: 'buildShelter', line: 'buildShelterLine', price: 40_000, cost: { log: 3, bamboo: 4, thatch: 5 }, bought: 'buildBuyRattan', secs: 16, w: 4.4, d: 4, h: 4.35, max: 3, walkThrough: true,
     solids: [
       [-1.6, -1.4, 0.2, 0.2, 2.85],
       [1.6, -1.4, 0.2, 0.2, 2.85],
@@ -92,31 +104,31 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A bamboo bed on legs (គ្រែឫស្សី), knee high: to sit on and to lie on under the sky.
   kre: {
-    id: 'kre', name: 'buildKre', line: 'buildKreLine', price: 15_000, secs: 8, w: 2.6, d: 1.6, h: 0.65, max: 3,
+    id: 'kre', name: 'buildKre', line: 'buildKreLine', price: 15_000, cost: { bamboo: 7 }, bought: 'buildBuyRattan', secs: 8, w: 2.6, d: 1.6, h: 0.65, max: 3,
     solids: [[0, 0, 2.6, 1.6, 0.6]],
     seat: { x: 0, y: 0.6, z: 0, yaw: 0, lie: true },
   },
   // A run of bamboo fence (របងឫស្សី), three metres: posts and woven split bamboo, chest high to him.
   fence: {
     // (h: chest high to him, 2.4 m tall)
-    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, secs: 4, w: 3, d: 0.25, h: 1.6, max: 40,
+    id: 'fence', name: 'buildFence', line: 'buildFenceLine', price: 4_000, cost: { bamboo: 2 }, secs: 4, w: 3, d: 0.25, h: 1.6, max: 40,
     solids: [[0, 0, 3, 0.25, 1.6]],
   },
   // The spirit house (ខ្ទមព្រះភូមិ): a little Angkor tower on its post, a tray for offerings, incense. He kneels before it to pray.
   spirit: {
-    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, secs: 8, w: 1, d: 1, h: 2.75, max: 1,
+    id: 'spirit', name: 'buildSpirit', line: 'buildSpiritLine', price: 25_000, cost: { log: 1 }, bought: 'buildBuyGilding', secs: 8, w: 1, d: 1, h: 2.75, max: 1,
     solids: [[0, 0, 0.3, 0.3, 1.6]],
     light: [0, 1.75, 0.18],
     kneel: { x: 0, z: 1.25, yaw: Math.PI },
   },
   // A big glazed water jar (ពាង) with its lid and a dipper, on a low stand.
   jar: {
-    id: 'jar', name: 'buildJar', line: 'buildJarLine', price: 12_000, secs: 4, w: 1.1, d: 1.1, h: 1.3, max: 4,
+    id: 'jar', name: 'buildJar', line: 'buildJarLine', price: 12_000, cost: { clay: 6 }, bought: 'buildBuyGlaze', secs: 4, w: 1.1, d: 1.1, h: 1.3, max: 4,
     solids: [[0, 0, 1, 1, 1.3]],
   },
   // A hammock (អង្រឹង) between two posts, striped cloth.
   hammock: {
-    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, secs: 8, w: 4, d: 0.9, h: 1.8, max: 2, walkThrough: true,
+    id: 'hammock', name: 'buildHammock', line: 'buildHammockLine', price: 20_000, cost: { log: 2 }, bought: 'buildBuyCloth', secs: 8, w: 4, d: 0.9, h: 1.8, max: 2, walkThrough: true,
     solids: [
       [-1.8, 0, 0.2, 0.2, 1.8],
       [1.8, 0, 0.2, 0.2, 1.8],
@@ -128,19 +140,34 @@ export const PIECES: Record<PieceId, PieceSpec> = {
   },
   // A lantern on a post (ចង្កៀង): it lights by itself at dusk.
   lamp: {
-    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, secs: 4, w: 0.5, d: 0.76, h: 2.45, max: 8,
+    id: 'lamp', name: 'buildLamp', line: 'buildLampLine', price: 8_000, cost: { log: 1 }, bought: 'buildBuyGlass', secs: 4, w: 0.5, d: 0.76, h: 2.45, max: 8,
     solids: [[0, 0, 0.18, 0.18, 2.2]],
     light: [0, 2.05, 0.24],
   },
   // A rice-straw stack round a pole (គំនរចំបើង): his cattle's hay, pulled from it a bundle at a time.
   haystack: {
     // (h: its pole's top, standing out of the cap)
-    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, secs: 8, w: 2.4, d: 2.4, h: 3.2, max: 2,
+    id: 'haystack', name: 'buildHaystack', line: 'buildHaystackLine', price: 10_000, cost: { bamboo: 1 }, bought: 'buildBuyStraw', secs: 8, w: 2.4, d: 2.4, h: 3.2, max: 2,
     solids: [[0, 0, 2.2, 2.2, 2.6]],
   },
+  // Furniture and lanterns (AWP-23: build/furniture.ts, the card's "Furniture" tab).
+  ...FURNITURE,
 };
 
 export const PIECE_IDS = Object.keys(PIECES) as PieceId[];
+
+/** What a piece's always-bought part costs (riel): its price less its materials' (0 when it has none). */
+export const boughtRiel = (id: PieceId): number => Math.max(0, PIECES[id].price - rielOf(PIECES[id].cost));
+
+// (its materials never cost more than its price: the price list is the owner's)
+for (const id of PIECE_IDS) if (rielOf(PIECES[id].cost) > PIECES[id].price) console.error(`[build] ${id}: its materials cost more than its price`);
+
+/** What taking a piece down gives back: half its materials (rounded down) and half its always-bought part's riel. */
+export function pieceBack(id: PieceId): { cost: Materials; riel: number } {
+  const cost: Materials = {};
+  for (const [m, n] of Object.entries(PIECES[id].cost) as [keyof Materials, number][]) if (Math.floor(n / 2) > 0) cost[m] = Math.floor(n / 2);
+  return { cost, riel: Math.floor(boughtRiel(id) / 2) };
+}
 
 /** One piece he has put up (or is putting up): where, which way, how far along. */
 export interface Built {
@@ -166,8 +193,18 @@ export interface Built {
 export const BUILT = {
   list: [] as Built[],
   version: 0,
-  /** A spot (world x, z) with this much room round it (m) is taken by a built piece or one being built. */
+  /** A spot (world x, z) with this much room round it (m) is taken by a built piece or one being built (or a footprint building's land: `feet`). */
   blocks: (_x: number, _z: number, _r: number): boolean => false,
+  /** A spot (world x, z) with this much room round it (m) is a footprint building's land (AWP-20: build/footState.ts fills it). */
+  feet: (_x: number, _z: number, _r: number): boolean => false,
+  /** Would footprint `f` (grown by `m`, m) stand in a footprint building's land (AWP-20: build/footState.ts fills it)? */
+  feetOver: (_f: Foot, _m: number): boolean => false,
+  /**
+   * Would footprint `f` (a piece `h` m tall) stand inside a stilt house or a shed he built, clear of its blocks (under
+   * the house's floor, under the shed's roof) and of every other footprint building's land (AWP-25: a bed under his
+   * roof)? build/footState.ts fills it.
+   */
+  feetRoom: (_f: Foot, _h: number): boolean => false,
 };
 
 /** A point of a piece's frame in the world (into `out`: x, z). */

@@ -213,19 +213,23 @@ const STRAW_DARK = 0xb09448;
 const POT = 0xb0603a;
 const POT_DARK = 0x7a3e24;
 /** Wheel radius and track (m, true size), the pole's reach to the yoke ahead of the axle. */
-const WHEEL_R = 0.66;
+export const WHEEL_R = 0.66;
 const TRACK = 0.74;
-const REACH = 3.55;
+export const REACH = 3.55;
 /** Where the farmer sits (cart space). */
 const SEAT: [number, number, number] = [0, 0.96, 1.05];
 
 /** The tailboard's hinge (cart space: the bottom of its back face); let down flat behind for a rider (radians about x). */
 const GATE_HINGE: [number, number, number] = [0, 0.87, -1.055];
-const GATE_DOWN = -Math.PI / 2;
+export const GATE_DOWN = -Math.PI / 2;
 /** Seconds to let it down or put it up. */
 const GATE_TIME = 0.5;
 
-function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, number]; gate: number } {
+/**
+ * The cart's boxes (true size, cart space): wheels, bed, rails, tailboard, pole and yoke, and its straw (`straw`: the
+ * village's load; his own cart, roam/_haul.ts, carries what he loads instead). Its parts: the two wheels, the tailboard.
+ */
+export function cartDef(straw = true): { def: RigDef; wheels: [number, number]; load: [number, number]; gate: number } {
   const d = new RigDef();
   const wheels: [number, number] = [0, 0];
   [1, -1].forEach((sx, w) => {
@@ -259,6 +263,7 @@ function cartDef(): { def: RigDef; wheels: [number, number]; load: [number, numb
     .box([-0.44, 1.21, REACH], [0.04, 0.2, 0.04], WOOD_DARK);
   // The load: straw heaped high and bound (repainted as pots when it carries pots).
   const l0 = d.boxes.length;
+  if (!straw) return { def: d, wheels, load: [l0, 0], gate };
   d.box([0, 1.2, -0.25], [0.88, 0.62, 1.5], STRAW)
     .box([0, 1.55, -0.3], [0.7, 0.2, 1.2], STRAW)
     .box([0, 1.3, -0.25], [0.9, 0.06, 1.52], STRAW_DARK)

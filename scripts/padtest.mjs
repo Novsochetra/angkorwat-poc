@@ -25,6 +25,14 @@
 //   menu      △ opens the Explorer menu (a pad layer: __pad.pad.inMenu), R1 / L1
 //             switch its tabs, ○ shuts                                             (_explorerMenu.ts)
 //   camera    d-pad ← raises the camera, ○ puts it away; → the selfie, ○ away     (input.ts, tools.ts)
+//   build     building at home: ← turns the ghost 15°, L2 held with ← 5° (the binoculars stay
+//             down, he does not turn)                                              (_build.ts)
+//   buildtabs the build card's tabs: R1 / L1 and the d-pad's → change them, ✕ picks a row of the
+//             Furniture tab                                                        (_buildCard.ts)
+//   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
+//             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
+//   paint     paint mode: the d-pad's → ← change the colour, □ paints one block, □ held the whole
+//             part, ○ out of the mode (not "Back to the map?")                     (_paint.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
 //   leave     ○ on foot asks "Back to the map?", ✕ goes back to the map           (_leave.ts, ask.ts)
 //   keys      a real key press turns the pad's glyphs off (body without pad-on)   (core)
@@ -36,7 +44,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
-import { connectPad, installFakePad, rumbles, stick, tap } from './_padFake.mjs';
+import { connectPad, hold, installFakePad, release, rumbles, stick, tap } from './_padFake.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.split('=')).map(([k, ...v]) => [k, v.join('=') || '1']));
@@ -496,6 +504,162 @@ const steps = [
       }
       if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?" too');
       return 'd-pad ← camera, ○ away; → selfie, ○ away';
+    },
+  },
+  {
+    id: 'build',
+    who: 'roam/_build.ts (AWP-30)',
+    async run() {
+      await ensureWalk();
+      // (on his land, the house his, a fence's ghost before him)
+      await placeAt('walk', '426,-128.17&home=1');
+      await ev(() => {
+        window.roam.body.yaw = Math.PI;
+        window.__build.place('fence');
+      });
+      await sleep(500);
+      const now = () =>
+        ev(() => ({ turn: Math.round(((window.__build.state().placing?.turn ?? NaN) * 180) / Math.PI), yaw: window.roam.body.yaw, bino: !!window.__bino?.up }));
+      const a = await now();
+      if (Number.isNaN(a.turn)) throw new Error('no build mode');
+      await tap(page, 'left');
+      await sleep(300);
+      const b = await now();
+      if (b.turn - a.turn !== 15) throw new Error(`← turned ${b.turn - a.turn}°, not 15°`);
+      await hold(page, 'l2');
+      await sleep(600);
+      await tap(page, 'left');
+      await sleep(300);
+      const c = await now();
+      await release(page, 'l2');
+      await ev(() => window.__build.place(null));
+      if (c.bino) throw new Error('L2 in build mode raised the binoculars');
+      if (Math.abs(c.yaw - b.yaw) > 0.01) throw new Error(`L2 turned him ${(((c.yaw - b.yaw) * 180) / Math.PI).toFixed(1)}°`);
+      if (c.turn - b.turn !== 5) throw new Error(`L2 + ← turned ${c.turn - b.turn}°, not 5°`);
+      return `← 15° (${a.turn}° → ${b.turn}°), L2 + ← 5° (→ ${c.turn}°), binoculars down, he stays turned`;
+    },
+  },
+  {
+    id: 'buildtabs',
+    who: 'roam/_buildCard.ts (AWP-23)',
+    async run() {
+      await ensureWalk();
+      // (the build card by his house: R1 / L1 and the d-pad's → change its tab, ✕ picks a row of the one shown)
+      await placeAt('walk', '426,-128.17&home=1');
+      await ev(() => window.__build.card());
+      await until(() => window.__build.state().card, null, 3000, 'the build card opens');
+      const tab = () => ev(() => document.querySelector('.bd-tab.is-on')?.getAttribute('data-tab') ?? null);
+      const a = await tab();
+      await tap(page, 'r1');
+      await sleep(300);
+      const b = await tab();
+      await tap(page, 'l1');
+      await sleep(300);
+      const c = await tab();
+      await tap(page, 'right');
+      await sleep(300);
+      const d = await tab();
+      await tap(page, 'r1');
+      await sleep(300);
+      const e = await tab();
+      if (a !== 'foot' || b !== 'yard' || c !== 'foot' || d !== 'yard' || e !== 'furn') throw new Error(`tabs ${a} → R1 ${b} → L1 ${c} → ${d} → R1 ${e}, not foot → yard → foot → yard → furn`);
+      await tap(page, 'south');
+      await sleep(400);
+      const placing = await ev(() => window.__build.state().placing?.id ?? null);
+      await ev(() => window.__build.place(null));
+      if (placing !== 'teamat') throw new Error(`✕ picked ${placing}, not the Furniture tab's first row (teamat)`);
+      return `tabs ${a} → R1 ${b} → L1 ${c} → d-pad → ${d} → R1 ${e}, ✕ picks ${placing}`;
+    },
+  },
+  {
+    id: 'foot',
+    who: 'roam/_buildFoot.ts (AWP-20)',
+    async run() {
+      await ensureWalk();
+      await placeAt('walk', '426,-128.17&home=1&purse=400000');
+      await ev(() => {
+        window.roam.body.yaw = Math.PI;
+        window.__build.foot.draw('house');
+      });
+      await sleep(600);
+      const now = () => ev(() => window.__build.state().foot);
+      const a = await now();
+      if (a.kind !== 'house' || a.anchor) throw new Error('no footprint mode');
+      await tap(page, 'west');
+      await until(() => !!window.__build.state().foot.anchor, null, 3000, '□ marks the first corner');
+      const b = await now();
+      await tap(page, 'right');
+      await sleep(300);
+      const c = await now();
+      if (c.door !== (b.door + 1) % 4) throw new Error(`→ turned the door ${b.door} → ${c.door}`);
+      await tap(page, 'left');
+      await sleep(300);
+      if ((await now()).door !== b.door) throw new Error('← did not turn the door back');
+      await tap(page, 'east');
+      await sleep(400);
+      const d = await now();
+      if (d.kind !== 'house' || d.anchor) throw new Error('○ did not take the corner back');
+      await tap(page, 'east');
+      await sleep(400);
+      const e = await now();
+      if (e.kind) throw new Error('○ again did not leave the mode');
+      if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
+      return `□ corner ${JSON.stringify(b.anchor)}, → door ${b.door} → ${c.door}, ← back, ○ corner again, ○ out`;
+    },
+  },
+  {
+    id: 'paint',
+    who: 'roam/_paint.ts (AWP-22)',
+    async run() {
+      await ensureWalk();
+      // (a footprint stilt house by his home, he before its stair facing it, the camera's aim on its wall)
+      await placeAt('walk', '422,-131.5&home=1');
+      await ev(() => {
+        window.__build.foot.clear();
+        window.__build.foot.add('house', 419, -142, 425, -136, 2, 1);
+        window.roam.body.yaw = Math.PI;
+        window.__paint.enter('lotus');
+      });
+      await sleep(400);
+      // (the gold ring over his head on a block of the house: the camera turned behind him, looking a little up)
+      let aim = null;
+      for (const pitch of [0.05, -0.1, 0.2, -0.25, 0.35]) {
+        await ev((p) => {
+          const c = window.roam.cam;
+          c.yaw = c.behindYaw = Math.PI;
+          c.pitch = p;
+        }, pitch);
+        await sleep(400);
+        aim = await ev(() => window.__paint.state().aim);
+        if (aim && !aim.far) break;
+      }
+      if (!aim || aim.far) throw new Error(`the ring is on no block of the house (${JSON.stringify(aim)})`);
+      const st = () => ev(() => window.__paint.state());
+      const a = await st();
+      await tap(page, 'right');
+      await sleep(300);
+      const b = await st();
+      await tap(page, 'left');
+      await sleep(300);
+      const c = await st();
+      if (a.brush !== 'lotus' || b.brush !== 'saffron' || c.brush !== 'lotus') throw new Error(`colours ${a.brush} → → ${b.brush} → ← ${c.brush}, not lotus → saffron → lotus`);
+      await tap(page, 'west');
+      await sleep(500);
+      const d = await st();
+      if (d.painted !== a.painted + 1) throw new Error(`□ painted ${d.painted - a.painted} blocks, not 1`);
+      await hold(page, 'west');
+      await sleep(1100);
+      await release(page, 'west');
+      await sleep(400);
+      const e = await st();
+      if (e.painted - d.painted < 20) throw new Error(`□ held painted ${e.painted - d.painted} blocks, not the whole part`);
+      await tap(page, 'east');
+      await sleep(400);
+      const f = await st();
+      if (f.on) throw new Error('○ did not leave paint mode');
+      if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
+      await ev(() => window.__build.foot.clear());
+      return `→ ${b.brush}, ← ${c.brush}, □ 1 block, □ held ${e.painted - d.painted} blocks (the part), ○ out`;
     },
   },
   {

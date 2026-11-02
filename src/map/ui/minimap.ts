@@ -1,5 +1,7 @@
 import { Group } from 'three';
+import { PLOT_CORNERS } from '../build/plot';
 import { eventById, ON_NOW, type CalendarEvent } from '../calendar';
+import { HOME } from '../hamlet/_homePlan';
 import type { HeightField } from '../heightfield';
 import { PLACES, type PlaceDef } from '../layout';
 import { markFocus } from '../pad/nav';
@@ -932,6 +934,14 @@ export function createMinimap(d: MinimapDeps): Minimap {
       g2.lineTo(w, Z);
     }
     g2.stroke();
+    // His land (as on the mini-map).
+    if (HOME.owned) {
+      g2.beginPath();
+      for (const [x, z] of PLOT_CORNERS) g2.lineTo((x - BIG.x0) * sc, (z - BIG.z0) * sc);
+      g2.closePath();
+      // (bolder than the mini-map's: it reads round the pins of "You are here" and "My home" on it)
+      plotLine(g2, Math.max(1.3, w / 800));
+    }
   }
 
   /** The balloon on the big map where it stands (moved only when it changed; hidden while he rides it), and how far it is. */
@@ -1026,6 +1036,18 @@ export function createMinimap(d: MinimapDeps): Minimap {
         if (!Number.isNaN(season)) drawPaddies(g, season, night, p.x, p.z);
         g.setTransform(1, 0, 0, 1, 0, 0);
       }
+    }
+
+    // His land (build/plot.ts), once the house is his: a soft wash, a dark cord and gold dashes round it.
+    if (HOME.owned) {
+      g.beginPath();
+      for (const [x, z] of PLOT_CORNERS) {
+        const dx = x - p.x;
+        const dz = z - p.z;
+        g.lineTo(C + a * dx + c * dz, C + b * dx + e * dz);
+      }
+      g.closePath();
+      plotLine(g, ks);
     }
 
     g.fillStyle = vignette;
@@ -1559,6 +1581,22 @@ export function createMinimap(d: MinimapDeps): Minimap {
 }
 
 const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(3)}%`;
+
+/** His land's edge on a map (the path made): a soft wash, a dark cord under gold dashes (`k`: the map's pixel scale). */
+function plotLine(g: CanvasRenderingContext2D, k: number): void {
+  g.fillStyle = 'rgba(255, 214, 140, 0.1)';
+  g.fill();
+  g.lineJoin = 'round';
+  g.setLineDash([]);
+  g.lineWidth = 3 * k;
+  g.strokeStyle = 'rgba(40, 24, 8, 0.45)';
+  g.stroke();
+  g.setLineDash([4 * k, 3 * k]);
+  g.lineWidth = 1.5 * k;
+  g.strokeStyle = 'rgba(255, 214, 140, 0.95)';
+  g.stroke();
+  g.setLineDash([]);
+}
 
 /** A square (x0, x0) of `size` with its corners cut in `steps` pixel steps over `cut` (like shape.ts `steppedShape`), as a canvas path. */
 function steppedPath(x0: number, size: number, cut: number, steps: number): Path2D {

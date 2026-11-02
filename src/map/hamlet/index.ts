@@ -1,5 +1,6 @@
 import { Group, type Object3D } from 'three';
 import type { MapContext, MapFrame, MapPart, Subject } from '../types';
+import { plantDetail } from '../veg/detail';
 
 /**
  * The settled places added round the map (part `hamlet`, built after the
@@ -40,9 +41,18 @@ const PIECES: [string, () => Promise<PieceBuilder>][] = [
   ['home', async () => (await import('./_home')).buildHome],
   // (the seedling nursery by the Kulen foot trail, on the way up to his house: roam/_gardenShop*.ts)
   ['nursery', async () => (await import('./_nursery')).buildNursery],
+  // (`plantkit=lineup`, shots and the dev server only: every shape of the plant kit on a table in the meadow, veg/_plantKitLineup.ts)
+  ...(plantKitLineup() ? [['plantKit', async () => (await import('../veg/_plantKitLineup')).buildPlantKitLineup] as [string, () => Promise<PieceBuilder>]] : []),
 ];
 
+function plantKitLineup(): boolean {
+  const q = new URLSearchParams(location.search);
+  return (import.meta.env.DEV || q.get('shot') === '1') && q.get('plantkit') === 'lineup';
+}
+
 export async function buildHamlets(ctx: MapContext): Promise<MapPart> {
+  // (the map's own plants, bananas and papayas: their cheap form on the low graphics level, veg/detail.ts)
+  plantDetail(ctx.quality);
   const object = new Group();
   object.name = 'hamlet';
   const pieces: HamletPiece[] = [];

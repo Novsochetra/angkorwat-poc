@@ -2,6 +2,8 @@ import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { HeightField } from '../heightfield';
 import { Palms, type PalmSet } from '../veg/palms';
+import { papayaTree } from '../veg/papaya';
+import { mix, round, teardrop } from '../veg/plantKit';
 import type { Proto } from '../veg/proto';
 import { bamboo, broadleaf } from '../veg/species';
 import { banana, bougainvillea, Local } from '../village/_kit';
@@ -12,7 +14,7 @@ import { MEADOW, type P2 } from './_bhSpots';
  * The trees of the hamlet behind Angkor Wat, which it sits among: mango
  * trees heavy with fruit, a jackfruit with its big fruit hanging from the
  * trunk, coconut palms leaning out over the pond and the trail, sugar
- * palms on the edges, banana clumps and papayas by the houses, a stand of
+ * palms on the edges, banana clumps and papayas (veg/papaya.ts) by the houses, a stand of
  * bamboo, bougainvillea by the garden's fence and the granary, a few jungle
  * trees round it, and the big shade tree in the meadow the herder sits under. The
  * broadleaf trees and the bamboo are the jungle's own prototypes
@@ -92,15 +94,18 @@ export function buildTrees(env: BuildEnv): PalmSet {
   for (const [x, z, h, r, seed, fruit] of BROAD) {
     const p = broadleaf({ s: 1, h, r, seed: 7000 + seed });
     stamp(env, f, p, x, g(x, z), z, seed);
+    // (the fruit: drawn only near, veg/nearDetail.ts)
+    const n0 = L.b.boxes.length;
     if (fruit === 'mango') mangoes(L, p, x, g(x, z), z, seed);
     else if (fruit === 'jack') jackfruit(L, x, g(x, z), z, seed);
+    for (let i = n0; i < L.b.boxes.length; i++) env.fine?.add(L.b.boxes[i]);
   }
   // The herder's big shade tree in the meadow.
   const [mx, mz] = MEADOW.tree;
   stamp(env, f, broadleaf({ s: 1, h: 12, r: 5, seed: 7090 }), mx, g(mx, mz), mz, 90);
   for (const [x, z, h] of BAMBOO) stamp(env, f, bamboo({ s: 1, h, r: 4, seed: 7300 }), x, g(x, z), z, 300);
   for (const [x, z] of BANANA) banana(L, x, g(x, z), z);
-  for (const [i, [x, z]] of PAPAYA.entries()) papaya(L, x, g(x, z), z, i);
+  for (const [i, [x, z]] of PAPAYA.entries()) papayaTree(L.b, x, g(x, z), z, { h: 4.2 + i * 0.6, turn: i, r: (a, b = 0, c = 0) => L.r(a, b, c), src: L.src });
   for (const [i, [x, z]] of BOUGAINVILLEA.entries()) bougainvillea(L, x, g(x, z), z, 930 + i);
   const palms = new Palms();
   for (const [i, [x, z, h, lx, lz]] of COCONUT.entries()) palms.add({ kind: 'coconut', x, y: g(x, z), z, h, seed: 7100 + i, lean: [lx, lz] });
@@ -134,7 +139,7 @@ function stamp(env: BuildEnv, f: HeightField, p: Proto, x: number, y: number, z:
   }
 }
 
-/** Mangoes hanging on short stalks under the crown's rim: green, turning yellow and orange. */
+/** Mangoes hanging on their stalks under the crown's rim: green, turning yellow, the ripe ones orange with a red blush (the plant kit's teardrop). */
 function mangoes(L: Local, p: Proto, x: number, y: number, z: number, seed: number): void {
   const colors = [0x9ab43a, 0xc8b440, 0xe0a030, 0xb8c048];
   for (let k = 0; k < 12; k++) {
@@ -143,33 +148,21 @@ function mangoes(L: Local, p: Proto, x: number, y: number, z: number, seed: numb
     const fy = y + p.low - 0.25 - hash3(k, seed, 3, 94) * 0.5;
     const fx = x + Math.cos(a) * d;
     const fz = z + Math.sin(a) * d;
-    L.box(fx, fy + 0.2, fz, 0.03, 0.3, 0.03, 0x4e6a2a, 'mapLeaf');
-    L.box(fx, fy, fz, 0.16, 0.22, 0.14, colors[k % colors.length], 'petal');
+    const c = colors[k % colors.length];
+    // (a Khmer mango, ≈ 16 cm: its stalk from the crown, the fruit hanging under it, turned its own way)
+    teardrop(L.b, [fx, fy + 0.09, fz], { len: 0.17, wid: 0.11, depth: 0.85, curve: 0.3, taper: 0.5, roll: hash3(k, seed, 4, 94) * Math.PI * 2, color: c, blush: c === 0xe0a030 ? 0xd8603a : undefined, stalk: 0.24, stalkColor: 0x4e6a2a, src: L.src });
   }
 }
 
-/** Jackfruit: big knobbly green fruit hanging from the trunk and the low branches. */
+/** Jackfruit: big knobbly green fruit hanging on short thick stalks from the trunk and the low branches (the plant kit's round, tall). */
 function jackfruit(L: Local, x: number, y: number, z: number, seed: number): void {
   for (let k = 0; k < 7; k++) {
     const a = (k / 7) * Math.PI * 2 + hash3(k, seed, 4, 95);
     const h = 1.6 + hash3(k, seed, 5, 95) * 2.6;
     const r = 0.55 + (h > 3 ? 0.4 : 0);
     const c = [0x98a848, 0xa8b050, 0x8a9a40][k % 3];
-    L.box(x + Math.cos(a) * r, y + h, z + Math.sin(a) * r, 0.34, 0.52, 0.34, c, 'mapLeaf', 0.95 + 0.1 * hash3(k, seed, 6, 95));
-  }
-}
-
-/** A papaya: a thin grey trunk, a crown of big leaves on long stalks, green fruit clustered under it. */
-function papaya(L: Local, x: number, y: number, z: number, i: number): void {
-  const h = 4.2 + i * 0.6;
-  L.box(x, y + h / 2, z, 0.22, h, 0.22, 0x8a8478, 'mapBark');
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2 + i;
-    L.box(x + Math.cos(a) * 0.7, y + h + 0.15 + (k % 2) * 0.15, z + Math.sin(a) * 0.7, 0.9, 0.12, 0.9, [0x4e8a30, 0x5a9a38, 0x6aa840][k % 3], 'mapLeaf');
-  }
-  L.box(x, y + h + 0.3, z, 0.36, 0.3, 0.36, 0x5a9a38, 'mapLeaf');
-  for (let k = 0; k < 5; k++) {
-    const a = (k / 5) * Math.PI * 2;
-    L.box(x + Math.cos(a) * 0.2, y + h - 0.35 - (k % 2) * 0.2, z + Math.sin(a) * 0.2, 0.16, 0.26, 0.16, k === 2 ? 0xe0a030 : 0x7aa040, 'petal');
+    const shade = 0.95 + 0.1 * hash3(k, seed, 6, 95);
+    // (hung from just over its old middle: the fruit as long as it was, 0.5 m, on a stalk of 8 cm)
+    round(L.b, [x + Math.cos(a) * r, y + h + 0.26 + 0.08, z + Math.sin(a) * r], { wid: 0.36, hgt: 0.52, hang: 0.08, color: c, rib: mix(c, 0x6a7a2e, 0.3), cap: mix(c, 0x6a7a2e, 0.15), stalk: 0x6a6a3a, ry: a, shade, src: L.src });
   }
 }

@@ -3,6 +3,7 @@ import { hash3 } from '../../voxel/random';
 import { CELL, fbm, SURFACE, type HeightField } from '../heightfield';
 import { LAKES, OVERVIEW, PLACES } from '../layout';
 import { CAM_REACH, roamDistance } from '../terrain/views';
+import { inBambooForest } from './bambooForestPlan';
 import type { Species } from './species';
 
 /**
@@ -13,6 +14,7 @@ import type { Species } from './species';
  *  - clearings round the landmarks (a ring that thickens away from the pad),
  *    no crown over a pad or the road (`field.occupy` marks them);
  *  - thin on steep ground; palms and bushes by the rivers;
+ *  - none in the bamboo forest (veg/bambooForestPlan.ts: it plants its own);
  *  - everywhere the roaming explorer and his camera go; beyond that (the
  *    sinking edges) only where a map camera can see (overview and the six
  *    place views).
@@ -319,6 +321,8 @@ export function scatterTrees(f: HeightField, opts: ScatterOptions): TreeSpot[] {
     });
   const place = (t: TreeSpot, lip = false): boolean => {
     if (!standable(t.x, t.z, lip) || drowned(t.x, t.y, t.z)) return false;
+    // (the bamboo forest plants its own clumps: veg/bambooForest.ts)
+    if (inBambooForest(t.x, t.z, t.r)) return false;
     if (!seen(t.x, t.y + t.r, t.z)) return false;
     if (!spacing.fits(t.x, t.z, t.r, t.kind, t.lod)) return false;
     if (!crownClear(t.x, t.z, t.kind === 'bush' ? t.r * 0.8 : t.r)) return false;

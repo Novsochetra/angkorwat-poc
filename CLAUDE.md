@@ -24,6 +24,8 @@
 - `npm run wallpaper` draws the saved views and flights of the free camera
   (dev server only: see "Free camera and wallpapers" below) into `wallpapers/out/`.
 - Scale: 1 unit = 1 m; shared sizes live in `src/world/scale.ts`.
+- Reviewing a tracker ticket (project AWP): follow `REVIEW.md` (the checks, shots and
+  what to write; its Lessons list grows with each ticket sent back).
 
 ## World kit (component plan sections 18–20)
 
@@ -56,8 +58,11 @@ and the asset brief (conventions, API, real-world sizes) is `docs/kit-work/BRIEF
 
 The user reports bugs and ideas from inside the game or viewer (**B** / 🐞 button).
 Each report is a folder `feedback/<date>-<slug>/` with `report.md` and
-`screenshot.jpg`. When asked to "check the feedback", or when a report is pasted
-into the chat:
+`screenshot.jpg`. One inbox: a world map report (index.html) is also a ticket in
+the tracker's AWP project, its key in the folder's `ticket.json`
+(`src/feedback/tracker.ts`; `TRACKER_TOKEN` in `.env`; the dev server's terminal
+says the key, or why no ticket was made). When asked to "check the feedback", or
+when a report is pasted into the chat:
 
 1. Read `report.md` and view `screenshot.jpg`; numbered pins mark the picks.
    Notes can be in any language.
@@ -72,7 +77,7 @@ into the chat:
    (`npm run shots -- repro="@game.html?shot=1&at=…&cam=…"`), fix, and re-run it
    to compare. Then run the checks.
 4. Delete the report's folder in the commit that fixes it, and name the report
-   in the commit message.
+   and its ticket (`ticket.json`, e.g. "(AWP-31)") in the commit message.
 
 ## World map screen (`index.html`)
 
@@ -224,11 +229,21 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   clumps of thin blades near, fans farther (`paddies/rice.ts`, two draws).
 - Palms: real sugar palms (thnot) and coconut palms from one module,
   `src/map/veg/palms.ts` (`palms=near|far`, `palmstats`).
+- Leaves, fruit and vines of any plant: the plant kit `src/map/veg/plantKit.ts`
+  (leaf, teardrop, round, long, vine; never flat square leaves or box fruit;
+  API and blocks in BRIEF.md "The plant kit"; `plantkit=lineup` shows them all).
+  Banana plants: one, `src/map/veg/banana.ts` `bananaPlant` (the home garden's
+  model, garden/models/banana.ts), in every hamlet, village and camp; papayas
+  `veg/papaya.ts`; both cheaper on low (`veg/detail.ts`), never the garden's.
 - The jungle: trails to 13 hidden sites (`JUNGLE_SITES` in `layout.ts`):
   ruins and shrines (`src/map/jungle/ruins.ts`), the monk's hut,
   woodcutters, swing, bridges, pool (`jungle/camps.ts`), undergrowth
   (`veg/undergrowth.ts`) and jungle animals (`fauna/jungle.ts`,
   `fauna=jungle` lines them up).
+- The bamboo forest (ព្រៃឫស្សី) west of the Kulen foot trail, its trail and
+  the woodcutter's rack: `veg/bambooForest.ts` (where: `veg/bambooForestPlan.ts`),
+  drawn by the vegetation part, its clumps cut as the jungle's (gathering source
+  `bambooForest`); `bambooforest=0` in shots.
 - Festivals (`src/map/festival/`, when `festival/_schedule.ts` says, or
   `fest=water|newyear|pchumben|visak`): the Water Festival with Khmer ngo racing
   boats (never dragon boats), Khmer New Year, and Pchum Ben and Visak Bochea at the
@@ -278,6 +293,17 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/character/meals.ts`, key 6 for what he keeps). Shots: `shop=<id>`,
   `shopbuy=<item>`, `bought=<item>`, `kept=<items>`, `purse=<riel>`,
   `act=eat|bite|drink&food=<kind>`.
+- The player's blocks (what he builds with, apart from the baked world): the part
+  `blocks`, `src/map/blocks/` (the store `store.ts` `BLOCKS`: 0.5 m cells, 16 m
+  chunks on the walk map's grid, change events, `forEach` / `rawOf` for saving;
+  materials and shapes `kinds.ts`; a mesh per chunk and family drawing only what
+  can be seen, `view.ts`; saved as a run-length list in progress.ts `blocks.plot`,
+  `save.ts`; solid in the walk map, a chunk built again where they change: a slab is a
+  stair's rise, a full block a wall to his feet, `walk.ts`); BRIEF.md "The player's
+  blocks". Shots: `pblocks=demo|full|walk` (`walk`: the walk map's test course).
+  Shapes cube, slab, stair, slabTop and corner stairs (`kinds.ts`, turned by `turn`); a
+  stepped roof made smooth with one call, `roof.ts` `smoothRoof` (AWP-24; `pblocks=gable`,
+  `gable-stepped`, `hip`, `hip-stepped`, `fullmix`).
 
 ## Things to do while roaming (add-ons)
 
@@ -352,9 +378,28 @@ guide, with every add-on's keys and URL values for shots, is
     `cattle=calf,young,grown…`, `cattleshop=`, `cattlenight=1`).
   - Building at home: E Build… near his house → the card of nine pieces → a ghost
     (red with its reason) → E Build here → he hammers it up; take down for half
-    the price. Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
+    its materials. A piece costs materials (`pieces.ts` `cost`): gathered ones are
+    free, missing ones bought with riel, what can never be gathered (cloth, straw)
+    always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+  - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
+    line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
+    puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into
+    the player's block layer (`build/footPlan.ts` the plans, `build/footState.ts` the
+    saved list, `roam/_buildFoot*.ts` the mode and ghost; `foot=`, `footdraw=`,
+    `footwork=`, `foottake=`; addons.md "Footprint buildings").
+  - Things work where he builds them (AWP-25): one shared check, `build/shelterRules.ts`
+    (`underRoof(x, z, y)`, `fenced(x, z)`, `roofedPens`): a bed under any roof of his sleeps
+    him as his mat (`build/beds.ts`, `bedsleep=<uid>`), his cows go into a fenced and roofed
+    area at night as into the pen piece (addons.md "Things that work where he builds them").
+  - Furniture and lanterns (AWP-23, addons.md "Furniture and lanterns"): the build card's
+    Furniture tab, nine pieces from the map's own models (`build/furniture.ts`, `build/models/furniture.ts`),
+    on his land, his blocks' floors and in his stilt house (`roam/_buildFurnSpots.ts`); the hanging
+    lantern's cord up to the roof (`roam/_buildFurniture.ts`); `furn=<id>@x/z/yaw[/y]`.
+  - Paint (AWP-22, addons.md "Paint"): six Khmer colours and "its own colour" on his blocks,
+    free (`build/paint.ts`, `roam/_paint*.ts`); the build card's Buildings tab; E one block, E held
+    the whole part; `paint=<uid[.stage[.material]]|all>:<colour>`, `paintmode=<colour>`, `painthold=`.
   - Giving his garden's fruit (the shared rules `roam/_giveFruit.ts`; `,` / `.`
     change the fruit; `basket=<kind>:<n>`): offering at shrines (ថ្វាយ) and to
     monks (ប្រគេន: the alms round, the blessing monk, a monk met;
@@ -362,6 +407,22 @@ guide, with every add-on's keys and URL values for shots, is
     neighbours, elders and children (ចែក: `roam/_shareFruit*.ts`,
     `people/_shareBack.ts`; `share=near|give|thanks|child|again`). Once a
     person a day.
+- Gathering materials (AWP-9, addons.md "Gathering materials"): bamboo, logs,
+  thatch, clay (`build/materials.ts`: the bag with its carry limit, the home store),
+  the sources' registry `build/gather.ts` (`registerGatherSource`: spots, hits,
+  regrowing), the add-on `roam/_gather*.ts` (one press, one swing; the load under
+  the purse and on his back; unloaded at home). Shots: `bag=`, `store=`, `gather=<m>:<blows>:<s>`.
+  The sources (AWP-10…13): the jungle's bamboo clumps, cut by sides, stubs and young
+  shoots growing back (`veg/bambooCut.ts`), logs off two felled trunks at the
+  woodcutters' camp with the axe, fans off young sugar palms at the sugar-palm
+  village, clay dug on the lake and river banks (`roam/_gather{Bamboo,Logs,Thatch,Clay}.ts`);
+  `gatherleft=<n>&gatherdays=<d>&gatherwork=0` shows a spot cut and growing back.
+- His ox cart (AWP-14, addons.md "His ox cart"): the family's cart and two oxen by
+  his house hauls past the carry limit (60 in weight, `build/haul.ts`: the load and
+  its place, saved): E before the oxen leads it (it follows his way, only where a
+  cart can go), E at its tail loads his bag, at home unloads into his store; the load
+  drawn on it (`roam/_haul*.ts`). Shots: `cartload=`, `cartat=x,z,yaw°`,
+  `cartlead=1`, `cartwork=load|unload:<u>`.
 - Small things: the umbrella (`umbrella=1`), binoculars (`bino=1`), people
   posing for his camera (`smile=1`), selling his fish (`fishbasket=`,
   `sellfish=1`), clothes from the market (`wear=`, `clothes=1`).

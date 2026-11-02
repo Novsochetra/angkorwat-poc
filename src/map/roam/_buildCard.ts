@@ -1,20 +1,30 @@
+import type { MaterialId } from '../build/materials';
 import type { PieceId } from '../build/pieces';
+import type { FootKind } from '../build/footPlan';
 import { clearMark, markFocus } from '../pad/nav';
 import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON as UI_ICON } from '../ui/icons';
-import { onLang } from '../ui/lang';
+import { num, onLang } from '../ui/lang';
+import { materialIcon } from '../build/materialIcons';
 import { setSteppedVars } from '../ui/shape';
+import { FURN_PIC } from './_buildFurnArt';
 
 /**
  * The build card (roam/_build.ts opens it with "E  Build…" by his house): what
  * he will build. In the middle of the screen, the look of the map's cards that
  * ask (map.css `.mu-ask`, as the garden's seed card, _gardenCard.ts): a hammer
  * and a post as its picture, the question, a line under it (his riel), then
- * one row per piece: its little picture, its name and how many he has of how
- * many, its line ("Knee high: to sit on and to lie under the sky"), its price;
- * one he cannot build now is greyed with why ("You have all 3", "12,000 ៛ more
- * needed"). The first he can build is in gold. A quiet "Not now" at the foot.
+ * one row per piece (first the footprint buildings, AWP-20: `foot:<kind>`,
+ * their cost at their smallest size): its little picture, its name and how many he has of how
+ * many, its line ("Knee high: to sit on and to lie under the sky"), what it
+ * costs (AWP-9: each material's picture and how many, those he lacks in red,
+ * and the riel to pay now, if any); a piece he lacks materials for says so
+ * instead of its line ("Missing: 1 bamboo pole = 2,000 ៛"); what is always
+ * bought for it on a line of its own ("Bought: cloth 8,000 ៛"), so the riel
+ * on the row is the two added up; one he cannot build
+ * now is greyed with why ("You have all 3", "Missing 1 log: 2,000 ៛ more
+ * needed"), its "Bought:" line kept (the full price reads whole). The note under the title: his riel, and the materials he has. The first he can build is in gold. A quiet "Not now" at the foot.
  * Every line reads whole (it wraps; on a narrow card, a phone upright, the
  * price sits on the name's line and the line runs under both); the list
  * scrolls in a low window with soft edges where there is more (as the
@@ -29,14 +39,23 @@ import { setSteppedVars } from '../ui/shape';
  */
 
 export interface BuildRow {
-  id: PieceId;
-  /** Its name, how many he has ("1 / 3"), its line, its price. */
+  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20), or `paint` (paint mode, AWP-22). */
+  id: PieceId | `foot:${FootKind}` | 'paint';
+  /** Its name, how many he has ("1 / 3"), its line (or what he lacks), the riel to pay now ('' none). */
   name: string;
   count: string;
   note: string;
   price: string;
+  /** The note says what he lacks. */
+  short: boolean;
+  /** What is always bought for it and its riel ("Bought: cloth 8,000 ៛"), or null: shown on its own line. */
+  buy: string | null;
+  /** Its materials: each, how many it takes, how many of those he has. */
+  cost: { m: MaterialId; n: number; have: number }[];
   /** Why it cannot be built now (greyed), or null. */
   off: string | null;
+  /** Its tab (`BuildWords.groups`; none: the first). */
+  group?: string;
 }
 
 export interface BuildWords {
@@ -44,12 +63,20 @@ export interface BuildWords {
   note: string;
   cancel: string;
   rows: BuildRow[];
+  /** How much of his land's block budget is used (build/plot.ts): its label, the words ("34% used"), 0‥1. */
+  meter?: { label: string; value: string; used: number };
+  /**
+   * Tabs over the rows (AWP-23: the yard, the furniture): each row shows under its `group`'s tab; ← → (the pad's d-pad,
+   * L1 / R1) or a tap change the tab. `group`: the tab it opens on (none: the one shown last).
+   */
+  groups?: readonly { id: string; label: string }[];
+  group?: string;
 }
 
 export interface BuildCard {
   readonly open: boolean;
-  /** Ask (`onPick` gets the piece, or null for "Not now"). `words` is called again when the language changes. */
-  ask(words: () => BuildWords, onPick: (id: PieceId | null) => void): void;
+  /** Ask (`onPick` gets the row's id, or null for "Not now"). `words` is called again when the language changes. */
+  ask(words: () => BuildWords, onPick: (id: BuildRow['id'] | null) => void): void;
   /** The words again (his riel changed). */
   refresh(): void;
   /** Shut it (as "Not now", quietly). */
@@ -67,7 +94,14 @@ const ICON = `<svg class="bd-icon" viewBox="0 0 16 16" aria-hidden="true" shape-
 </svg>`;
 
 /** A row's little picture (12 × 12 pixel art). */
-const PIC: Record<PieceId, string> = {
+const PIC: Record<BuildRow['id'], string> = {
+  ...FURN_PIC,
+  // (footprint buildings, AWP-20: a stilt house on its posts with its stair; a shed's open front under its roof; a fence line with its gate)
+  'foot:house': '<path fill="#b8a06a" d="M5 0h2v1H5z"/><path fill="#c9a04a" d="M4 1h4v1H4zM3 2h6v1H3zM2 3h8v1H2z"/><path fill="#a07a30" d="M1 4h10v1H1z"/><path fill="#d8c08a" d="M2 5h8v2H2z"/><path fill="#5a3a24" d="M5 5h2v2H5z"/><path fill="#8a6038" d="M2 7h8v1H2zM2 8h1v3H2zM9 8h1v3H9z"/><path fill="#b08a5a" d="M7 8h1v1H7zM8 9h1v1H8zM9 10h1v1H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  'foot:shed': '<path fill="#c9a04a" d="M3 2h6v1H3zM2 3h8v1H2zM1 4h10v1H1z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M1 6h1v5H1zM10 6h1v5h-1z"/><path fill="#d8c08a" d="M2 9h8v2H2z"/><path fill="#b8a06a" d="M2 9h8v1H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  // (paint, AWP-22: a brush over a pot of lacquer red, a lotus-pink stroke)
+  paint: '<path fill="#e58aa8" d="M1 2h6v2H1z"/><path fill="#f0a8c0" d="M1 2h6v1H1z"/><path fill="#8a6038" d="M8 1h1v1H8zM9 2h1v1H9zM10 3h1v1h-1z"/><path fill="#d8c08a" d="M6 3h2v2H6z"/><path fill="#5a3a24" d="M5 4h2v2H5z"/><path fill="#a8281e" d="M2 7h8v4H2z"/><path fill="#c84a3a" d="M2 7h8v1H2z"/><path fill="#6a1a14" d="M1 6h10v1H1z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  'foot:fence': '<path fill="#8e7a4e" d="M0 4h1v7H0zM4 4h1v7H4zM7 4h1v7H7zM11 4h1v7h-1z"/><path fill="#d6cc8c" d="M1 5h3v5H1zM8 5h3v5H8z"/><path fill="#c8b27a" d="M1 6h3v1H1zM8 6h3v1H8zM1 8h3v1H1zM8 8h3v1H8z"/><path fill="#9a8458" d="M1 5h3v1H1zM8 5h3v1H8z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   pen: '<path fill="#8a6038" d="M1 4h1v7H1zM5 4h1v7H5zM10 4h1v7h-1z"/><path fill="#b08a5a" d="M1 5h10v1H1zM1 8h10v1H1z"/><path fill="#c9a04a" d="M2 9h3v2H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   shelter: '<path fill="#c9a04a" d="M1 4h10v1H1zM2 3h8v1H2zM4 2h4v1H4z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M2 6h1v5H2zM9 6h1v5H9z"/><path fill="#b08a5a" d="M3 8h6v1H3z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   kre: '<path fill="#d8c08a" d="M1 6h10v2H1z"/><path fill="#b8a06a" d="M1 7h10v1H1z"/><path fill="#8a6038" d="M2 8h1v3H2zM9 8h1v3H9z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
@@ -93,6 +127,8 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       <div class="mu-ask-head"><span class="bd-icon-wrap">${ICON}</span><h2 id="bd-title"></h2></div>
       <div class="mu-orn mu-ask-orn" aria-hidden="true"><i></i>${UI_ICON.diamond}<i></i></div>
       <p id="bd-note"></p>
+      <div class="bd-meter" role="meter" aria-valuemin="0" aria-valuemax="100" hidden><span class="bd-meter-l"></span><span class="bd-meter-bar"><i></i></span><span class="bd-meter-v"></span></div>
+      <div class="bd-tabs" role="tablist" hidden></div>
       <div class="bd-opts" role="list"></div>
     </section>`;
   const ui = document.getElementById('ui');
@@ -104,9 +140,14 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
   const title = wrap.querySelector<HTMLElement>('h2')!;
   const note = wrap.querySelector<HTMLElement>('#bd-note')!;
   const opts = wrap.querySelector<HTMLElement>('.bd-opts')!;
+  const meter = wrap.querySelector<HTMLElement>('.bd-meter')!;
+  const tabs = wrap.querySelector<HTMLElement>('.bd-tabs')!;
+  /** The tab shown (AWP-23), and the tabs as last given. */
+  let tab = '';
+  let groups: readonly { id: string; label: string }[] = [];
   let isOpen = false;
   let words: (() => BuildWords) | null = null;
-  let pick: ((id: PieceId | null) => void) | null = null;
+  let pick: ((id: BuildRow['id'] | null) => void) | null = null;
   let closePad: (() => void) | null = null;
 
   const buttons = () => [...opts.querySelectorAll<HTMLButtonElement>('button')];
@@ -118,15 +159,34 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     title.textContent = w.title;
     note.textContent = w.note;
     note.hidden = !w.note;
+    // (his land's budget: a bar under the note)
+    meter.hidden = !w.meter;
+    if (w.meter) {
+      const u = Math.min(1, Math.max(0, w.meter.used));
+      meter.querySelector<HTMLElement>('.bd-meter-l')!.textContent = w.meter.label;
+      meter.querySelector<HTMLElement>('.bd-meter-v')!.textContent = w.meter.value;
+      meter.style.setProperty('--bd-used', u.toFixed(3));
+      meter.classList.toggle('is-full', u >= 0.9);
+      meter.setAttribute('aria-valuenow', String(Math.round(u * 100)));
+      meter.setAttribute('aria-label', `${w.meter.label}: ${w.meter.value}`);
+    }
     const focused = (document.activeElement as HTMLElement | null)?.dataset?.id;
-    const gold = w.rows.findIndex((r) => !r.off);
+    // (the tabs: the rows of the one shown)
+    groups = w.groups ?? [];
+    tabs.hidden = groups.length < 2;
+    if (groups.length && !groups.some((g) => g.id === tab)) tab = groups[0].id;
+    tabs.innerHTML = groups
+      .map((g) => `<button type="button" role="tab" class="bd-tab${g.id === tab ? ' is-on' : ''}" data-tab="${g.id}" aria-selected="${g.id === tab}" tabindex="-1">${esc(g.label)}</button>`)
+      .join('');
+    const rows = groups.length ? w.rows.filter((r) => (r.group ?? groups[0].id) === tab) : w.rows;
+    const gold = rows.findIndex((r) => !r.off);
     opts.innerHTML =
-      w.rows
+      rows
         .map(
           (r, i) => `<button type="button" role="listitem" class="bd-opt mu-frame mu-sm${i === gold ? ' is-gold' : ''}${r.off ? ' is-off' : ''}" data-id="${r.id}"${r.off ? ' disabled aria-disabled="true"' : ''}><span class="mu-bg"></span>${i === gold ? '<span class="mu-glow"></span>' : ''}<span class="mu-focus"></span>
         <span class="bd-pic"><svg class="bd-ri" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${PIC[r.id]}</svg></span>
-        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em>${esc(r.off ?? r.note)}</em></span>
-        <span class="bd-price">${esc(r.price)}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
+        <span class="bd-t"><b>${esc(r.name)}<span class="bd-n">${esc(r.count)}</span></b><em${!r.off && r.short ? ' class="is-short"' : ''}>${esc(r.off ?? r.note)}</em>${r.buy ? `<em class="bd-buy">${esc(r.buy)}</em>` : ''}</span>
+        <span class="bd-price">${r.cost.map((c) => `<span class="bd-m${c.have < c.n ? ' is-short' : ''}">${materialIcon(c.m, 'bd-mi')}${num(c.n)}</span>`).join('')}${r.price ? `<b class="bd-riel">${esc(r.price)}</b>` : ''}</span>${i < 9 ? `<kbd data-pad="${i === gold ? 'south' : ''}">${i + 1}</kbd>` : ''}</button>`,
         )
         .join('') +
       `<button type="button" class="bd-opt bd-cancel mu-frame mu-sm" data-id=""><span class="mu-bg"></span><span class="mu-focus"></span><span class="bd-t"><b>${esc(w.cancel)}</b></span><kbd data-pad="east">Esc</kbd></button>`;
@@ -160,7 +220,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     card.setAttribute('aria-hidden', String(!on));
     document.body.classList.toggle('mu-asking', on);
     closePad?.();
-    closePad = on ? pad.openLayer(wrap, { first: () => live()[0] ?? null, back: () => choose(null) }) : null;
+    closePad = on ? pad.openLayer(wrap, { first: () => live()[0] ?? null, back: () => choose(null), tabs: (d) => void stepTab(d) }) : null;
     if (!on && wrap.querySelector('.pad-focus')) clearMark();
   }
 
@@ -171,7 +231,7 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     sound?.(id ? 'select' : 'close');
     const f = pick;
     pick = null;
-    f?.((id || null) as PieceId | null);
+    f?.((id || null) as BuildRow['id'] | null);
   }
 
   function nope(b: HTMLElement): void {
@@ -185,6 +245,27 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
     if (b && !b.disabled) choose(b.dataset.id || null);
   });
+  tabs.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+    if (b?.dataset.tab && b.dataset.tab !== tab) showTab(b.dataset.tab);
+  });
+
+  /** Another tab (its rows, the focus on its first). */
+  function showTab(id: string): void {
+    tab = id;
+    sound?.('tick');
+    render();
+    opts.scrollTop = 0;
+    const first = live()[0];
+    if (first && pad.active) markFocus(first);
+  }
+  /** The next tab (`d` 1) or the one before (−1), round. */
+  function stepTab(d: number): boolean {
+    if (groups.length < 2) return false;
+    const i = groups.findIndex((g) => g.id === tab);
+    showTab(groups[(i + d + groups.length) % groups.length].id);
+    return true;
+  }
   wrap.addEventListener('pointerdown', (e) => {
     if (isOpen && e.target === wrap) choose(null);
   });
@@ -205,6 +286,9 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
       } else if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') {
         const b = at >= 0 ? list[at] : (list.find((x) => !x.classList.contains('bd-cancel')) ?? list[0]);
         choose(b?.dataset.id || null);
+      } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && groups.length > 1) {
+        // (← →: the tabs, AWP-23)
+        stepTab(e.key === 'ArrowLeft' ? -1 : 1);
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.code === 'Tab') {
         const back = e.key === 'ArrowUp' || e.key === 'ArrowLeft' || (e.code === 'Tab' && e.shiftKey);
         const to = list[at < 0 ? 0 : (at + (back ? -1 : 1) + list.length) % list.length];
@@ -228,6 +312,8 @@ export function createBuildCard(sound?: (s: UISound) => void): BuildCard {
     ask(w, onPick) {
       words = w;
       pick = onPick;
+      const start = w().group;
+      if (start && !isOpen) tab = start;
       render();
       if (isOpen) return;
       opts.scrollTop = 0;
@@ -263,7 +349,26 @@ function injectStyle(): void {
       background: rgba(10, 18, 30, 0.75); box-shadow: inset 0 0 0 calc(1.5 * var(--px)) rgba(255, 216, 120, 0.55), 0 0 calc(12 * var(--px)) rgba(255, 190, 110, 0.22); }
     .bd-icon { width: calc(32 * var(--px)); height: calc(32 * var(--px)); }
     .bd-ask #bd-note[hidden] { display: none; }
-    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
+    /* His land's budget (AWP-19): a woven-gold bar in a dark groove, the share used. */
+    .bd-meter { display: flex; align-items: center; gap: calc(8 * var(--px)); margin-top: calc(8 * var(--px)); font: 600 calc(12.5 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-ink2); }
+    .bd-meter[hidden] { display: none; }
+    .bd-meter-l { flex: none; color: var(--mu-ink); }
+    .bd-meter-bar { position: relative; flex: 1; height: calc(8 * var(--px)); border-radius: calc(4 * var(--px)); background: rgba(10, 18, 30, 0.6); box-shadow: inset 0 0 0 1px rgba(255, 216, 120, 0.28); overflow: hidden; }
+    .bd-meter-bar > i { position: absolute; inset: 0; transform: scaleX(var(--bd-used, 0)); transform-origin: left center; border-radius: inherit;
+      background: repeating-linear-gradient(90deg, #f7c95a 0 calc(6 * var(--px)), #e6ad3a calc(6 * var(--px)) calc(8 * var(--px))); transition: transform 0.4s var(--mu-ease); }
+    .bd-meter.is-full .bd-meter-bar > i { background: repeating-linear-gradient(90deg, #f08a5a 0 calc(6 * var(--px)), #d8683a calc(6 * var(--px)) calc(8 * var(--px))); }
+    .bd-meter-v { flex: none; white-space: nowrap; }
+    :lang(km) .bd-meter { font-size: calc(13.5 * var(--px)); line-height: 1.4; }
+    .bd-ask #bd-note { white-space: pre-line; }
+    /* The tabs (AWP-23): the yard's pieces, the furniture; the one shown gold-edged. */
+    .bd-tabs { display: flex; gap: calc(6 * var(--px)); margin-top: calc(10 * var(--px)); }
+    .bd-tabs[hidden] { display: none; }
+    .bd-tab { flex: 1; min-height: calc(34 * var(--px)); padding: calc(4 * var(--px)) calc(10 * var(--px)); border-radius: calc(8 * var(--px)); cursor: pointer; touch-action: manipulation;
+      font: 700 calc(14 * var(--px)) / 1.2 var(--mu-display); color: var(--mu-ink2); background: rgba(10, 18, 30, 0.45); border: 1px solid rgba(255, 216, 120, 0.22); }
+    .bd-tab.is-on { color: #2b1904; background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 100%); border-color: rgba(255, 250, 225, 0.85); }
+    :lang(km) .bd-tab { font-size: calc(15 * var(--px)); line-height: 1.4; }
+    @media (hover: hover) { .bd-tab:not(.is-on):hover { color: var(--mu-ink); border-color: rgba(255, 216, 120, 0.5); } }
+    .bd-opts { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-rows: max-content; gap: calc(5 * var(--px)); margin-top: calc(12 * var(--px)); overflow-y: auto; min-height: 0; padding: calc(2 * var(--px)); margin-inline: calc(-2 * var(--px)); touch-action: pan-x pan-y;
       overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 236, 205, 0.22) transparent; scroll-padding-block: calc(26 * var(--px)); --mu-more-up: 0px; --mu-more-down: 0px; }
     /* Soft edges where there is more to scroll to, as the settings panel's body (map.css \`.mu-set-body\`, ui.ts \`scrollEdges\`). */
     .bd-opts:is(.is-more-up, .is-more-down) {
@@ -294,9 +399,21 @@ function injectStyle(): void {
     /* (the line reads whole: it wraps onto a second line rather than ending in "…") */
     .bd-t em { font-style: normal; font-size: calc(12 * var(--px)); font-weight: 600; color: var(--mu-ink2); text-wrap: pretty; overflow-wrap: break-word; }
     .bd-opt.is-gold .bd-t em { color: #5a3a0c; }
-    .bd-price { flex: none; font: 700 calc(12 * var(--px)) / 1 var(--mu-display); padding: calc(4 * var(--px)) calc(7 * var(--px)); border-radius: calc(10 * var(--px)); white-space: nowrap;
+    .bd-price { flex: none; display: inline-flex; align-items: center; gap: calc(6 * var(--px)); font: 700 calc(12 * var(--px)) / 1 var(--mu-display); padding: calc(3 * var(--px)) calc(7 * var(--px)); border-radius: calc(10 * var(--px)); white-space: nowrap;
       background: rgba(255, 210, 120, 0.14); color: #ffe2a0; border: 1px solid rgba(255, 210, 120, 0.32); }
     .bd-opt.is-gold .bd-price { background: rgba(90, 50, 0, 0.12); color: #4a2e08; border-color: rgba(90, 50, 0, 0.3); }
+    /* (each material: its picture and how many; one he lacks in red; then the riel to pay now) */
+    .bd-m { display: inline-flex; align-items: center; gap: calc(1 * var(--px)); }
+    .bd-mi { width: calc(16 * var(--px)); height: calc(16 * var(--px)); filter: drop-shadow(0 calc(1 * var(--px)) 0 rgba(0, 0, 0, 0.35)); }
+    .bd-m.is-short { color: #ffb4a0; }
+    .bd-opt.is-gold .bd-m.is-short { color: #a8321c; }
+    .bd-price:empty { display: none; }
+    .bd-riel { font-weight: 700; padding-left: calc(6 * var(--px)); border-left: 1px solid rgba(255, 210, 120, 0.32); }
+    .bd-opt.is-gold .bd-riel { border-left-color: rgba(90, 50, 0, 0.3); }
+    .bd-t em.is-short { color: #ffd890; }
+    .bd-t em.bd-buy { color: var(--mu-ink2); opacity: 0.9; }
+    .bd-opt.is-gold .bd-t em.bd-buy { color: #5a3a0c; }
+    .bd-opt.is-gold .bd-t em.is-short { color: #7a3a0c; }
     .bd-cancel { min-height: calc(40 * var(--px)); padding-left: calc(16 * var(--px)); }
     .bd-cancel .bd-t b { font-size: calc(14.5 * var(--px)); font-weight: 600; color: var(--mu-ink2); }
     .bd-opt kbd { display: inline-grid; place-items: center; min-width: calc(20 * var(--px)); height: calc(20 * var(--px)); padding: 0 calc(5 * var(--px)); box-sizing: border-box;
@@ -318,13 +435,15 @@ function injectStyle(): void {
     /* A narrow card (a phone held upright): the price on the name's line, the line under both across the whole row (it
        needs no more than two lines then). */
     @media (max-width: 560px) {
-      .bd-opt:not(.bd-cancel) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'pic name price kbd' 'pic note note kbd';
+      .bd-opt:not(.bd-cancel) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: 'pic name price kbd' 'pic note note kbd' 'pic buy buy kbd';
         gap: calc(1 * var(--px)) 0; align-items: center; padding-block: calc(5 * var(--px)); }
       .bd-opt:not(.bd-cancel) .bd-t { display: contents; }
       /* (the spaces as margins: a hidden key cap leaves none) */
       .bd-pic { grid-area: pic; margin-right: calc(10 * var(--px)); }
-      .bd-t b { grid-area: name; min-width: 0; }
+      /* (a wide cost, three materials and riel, squeezes the name: its count goes under it, not under the cost) */
+      .bd-t b { grid-area: name; min-width: 0; flex-wrap: wrap; row-gap: 0; }
       .bd-t em { grid-area: note; }
+      .bd-t em.bd-buy { grid-area: buy; }
       .bd-price { grid-area: price; justify-self: end; margin-left: calc(8 * var(--px)); }
       .bd-opt:not(.bd-cancel) kbd { grid-area: kbd; margin-left: calc(10 * var(--px)); }
     }
@@ -337,6 +456,8 @@ function injectStyle(): void {
       .bd-ask .mu-ask-orn { margin-block: calc(7 * var(--px)) calc(6 * var(--px)); }
       .bd-ask #bd-note { font-size: calc(13.5 * var(--px)); line-height: 1.35; }
       .bd-opts { margin-top: calc(8 * var(--px)); }
+      .bd-tabs { margin-top: calc(6 * var(--px)); }
+      .bd-tab { min-height: calc(28 * var(--px)); padding-block: calc(2 * var(--px)); }
     }
     @media (pointer: coarse) { .bd-opt kbd { display: none; } .bd-opt { min-height: 50px; } }
     body.roam-touch:not(.pad-on) .bd-opt kbd { display: none; }

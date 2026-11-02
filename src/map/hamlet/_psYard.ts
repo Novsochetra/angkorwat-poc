@@ -1,6 +1,7 @@
 import { traceSource } from '../../feedback/sourceTrace';
 import type { VoxelBox, VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { HeightField } from '../heightfield';
+import { bananaPlant } from '../veg/banana';
 import { COWS, RACKS, YARD } from './_psPlan';
 import { BAMBOO, cakeTray, FROND, PsFrame, pick, POST, type Rgb } from './_psKit';
 
@@ -17,9 +18,8 @@ import { BAMBOO, cakeTray, FROND, PsFrame, pick, POST, type Rgb } from './_psKit
  * stands on the ground read from `field` at build time.
  */
 
-/** Rice straw, grey-gold; the banana's leaves and stems; clay pots; flowers. */
+/** Rice straw, grey-gold; clay pots; flowers. */
 const RICE_STRAW: readonly Rgb[] = [0xc8b070, 0xbca464, 0xd4bc7c, 0xae965a];
-const BANANA: readonly Rgb[] = [0x5a8a2e, 0x4e7e28, 0x66963a, 0x7a9a3a];
 const POT: readonly Rgb[] = [0x9a5a3a, 0x8a4e32, 0xa66242];
 /** The yard's swept earth: the land's dirt (terrain/palette.ts `DIRT`), a little darker where it is trodden. */
 const YARD_EARTH: readonly Rgb[] = [0x8c6642, 0x82603e, 0x94704a, 0x7c5a3a];
@@ -174,20 +174,10 @@ function stake(F: PsFrame): void {
   F.box(0, 0.05, 0.12, 0.3, 0.06, 0.3, 0xb8a47a, 'petal');
 }
 
-/** Two banana plants (a clump): stems of old leaf bases, big leaves arching out, a torn one hanging. */
+/** Two banana plants (a clump): the map's one banana (veg/banana.ts, the home garden's model), a grown one with its bunch and a young one beside it. */
 function banana(F: PsFrame): void {
-  F = F.at(traceSource());
-  for (const [dx, dz, h] of [
-    [0, 0, 2.6],
-    [0.9, 0.7, 2.1],
-  ]) {
-    F.box(dx, h / 2, dz, 0.26, h, 0.26, 0x6e7a3a, 'mapLeaf', 0.9);
-    for (let k = 0; k < 5; k++) {
-      const a = k * 1.3 + dx;
-      F.slab(dx + Math.sin(a) * 0.55, h - 0.05, dz + Math.cos(a) * 0.55, 0.45, 1.4, 0.05, a, 1.0 + 0.2 * F.r(k, dx, 1), pick(BANANA, F.r(k, dz, 2)), 'mapLeaf', 0.95);
-    }
-    F.slab(dx + 0.25, h - 0.7, dz - 0.2, 0.35, 1.0, 0.04, 2.6, 0.3, 0x8a7a44, 'mapLeaf', 0.9);
-  }
+  bananaPlant(F.b, F.ox, F.oy, F.oz, { seed: 0.31, yaw: 2.2, stage: 4, bunch: true });
+  bananaPlant(F.b, F.ox + 0.9, F.oy, F.oz + 0.7, { seed: 0.74, yaw: 4.1, stage: 3 });
 }
 
 /** Clay pots of bougainvillea and basil by the stair. */

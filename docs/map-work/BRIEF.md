@@ -188,7 +188,8 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   into the columns whose middles it covers, and a long, thin one (a plank
   wall, a rail) also into every column along its middle line, so walls
   turned off the grid have no holes (`thinwalk=0` leaves that out, to
-  compare). He is 0.42 m round (the probes of `walker.ts`): a stair he
+  compare). The player's blocks it reads from their store, a chunk built
+  again where they change ("The player's blocks"). He is 0.42 m round (the probes of `walker.ts`): a stair he
   climbs needs about 1.8 m between its handrails (the village, hamlet and
   east village stairs are that wide), a lantern or a beam over a stair's
   head closer than 2.26 m over the floor stops him — so does a handrail's
@@ -894,6 +895,19 @@ water monitor, whip snake, skinks); cicadas in the ambience. Checks:
 `fauna=jungle`, `parts=terrain,jungle,camps`, a walk at a site from the
 console line `[map] camps: …`.
 
+**The bamboo forest** (ព្រៃឫស្សី, AWP-15; part `vegetation`, a group of its
+own under it: `veg/bambooForestPlan.ts` where it grows, `veg/bambooForest.ts`
+its clumps and meshes): a dense stand of the jungle's bamboo on the lowland
+west of the Kulen foot trail (middle 352, −189), the "bamboo forest trail"
+(`TRAILS`) into a clearing with the woodcutter's rack. Its clumps are cut
+like the jungle's (addons.md "Gathering materials"). Its cost: leaves always
+plain boxes (rim painted), culms with their edges near, in 44 m chunks; no
+far form (a swap to coarser cells showed); a chunk is not drawn while it and
+its shadow are out of view (the still shadow map asked again as it comes back). Each
+clump has a hidden core in the walk map. Console: `[map] bamboo forest: …`
+(clumps, blocks, ms). Perf views `bamboo`, `bambooin`, `bambooedge`
+(`npm run perf -- only=…`); `bambooforest=0` hides it (checks).
+
 ## Rice paddies and the year
 
 The paddies part (`src/map/paddies.ts`, `src/map/paddies/*`; the plots are
@@ -1014,6 +1028,74 @@ draws), `cam=-176,15,88,-189,21,75` (a dike palm),
 `cam=384,19,-4,371.5,20,-13.5` (the grove's tapped palms), `cam=-285,22,95,-325,8,55`
 (the village's coconuts), `cam=10,24,78,-12,12,57` (jungle palms by the
 summit river), with `night=1` or `weather=storm&t=30`.
+
+## The plant kit
+
+`src/map/veg/plantKit.ts` (AWP-5): leaves, fruit and vines in a few turned
+blocks, for every part that grows plants (the hamlets' gardens and orchards,
+the market's produce, the home garden: its `beam`, `log`, `along`, `across`
+and `mix` live here, `garden/models/_fruitKit.ts` passes them on). No flat
+square leaves and no plain box fruit: call the kit. Draw into a builder on
+the map's axes (the part's world builder, a `Local` or `PsFrame` that only
+moves its origin), never into a turned `Frame`'s local builder (give world
+points and add its `theta` to `az`; a `Local` with a `theta` is the same).
+Into a `PsFrame`'s `b`, add its origin: the shapes' blocks are not in its
+near-only `small` set, so they are drawn at every distance. Headings: `az` 0 is +z, π/2 is +x; `el`
+up from level. Every shape takes `color`, `mat` (leaves and vines `mapLeaf`,
+fruit `petal`), `shade`, `src`.
+
+| Call | Use it for | Blocks |
+|---|---|---|
+| `leaf(b, at, { len, wid, az, el, color, bend?, roll?, segs?: 1‥3, shape?: 'lance'│'broad'│'oblong', fold?, rib?, stalk? })` → tip | a mango leaf (0.25 × 0.06 m), a gourd or pumpkin leaf (`broad`, 0.25 m), a banana leaf (`oblong`, `segs: 3`, `fold: 0.35`, 1.5–2.5 × 0.4–0.6 m) | 1 seg no rib 2, 2 segs 5, 3 segs 7, 3 folded 10, +1 `stalk` |
+| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, curve?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `curve` 0.3: its kidney bend; `blush` blended from the stalk end, no patch), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 5 (`low` 2), +1 `stalk` |
+| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low?, foot? })` | in four steps up its side (a narrower foot, the widest band in two tones: the ribs, the shoulder, the top): pumpkin (0.45 × 0.3), a round gourd, melon or jackfruit hanging (`hang`: its stalk's length) | 6 (`low` 3: foot, band, shoulder), +1 `stalk` |
+| `fan(b, at, { az, el, stalk, lobes?, spread?, len, wid, color, … })` → the stalk's end | a hand-shaped leaf on a long stalk (papaya: stalk 0.6–0.8, seven lobes 0.55 × 0.22, `spread` 3.2) | 1 + each lobe's (5 lobes of 1 piece, no rib: 11; the papaya's 7: 15) |
+| `long(b, base, { len, thick, az, el, color, curve?, segs?, neck?, taper?, sides?, tip?, cap? })` → tip | banana finger (0.16 × 0.035, `neck` 0.55, dark `tip`, `sides: 4`), long eggplant (0.25 × 0.055, green `cap`) | `segs` × 2 (× 1 `sides: 4`), +1 `tip`, +1 `cap`: banana 3, eggplant 5 |
+| `vine(b, pts, { thick, color, leaf?: { len, wid, every?, spread?, el?, … }, tendril?, seed? })` with `sag(a, c, n, drop)` or `spiral(foot, h, r, turns, n)` | a gourd or bean vine up a post and along a trellis | 1 a span + each leaf + 3 a tendril |
+
+The world merges blocks per material family, so a shape costs its blocks: a
+trellis of 30 leaves (2 segs) and 10 gourds is 30 × 5 + 10 × 5 = 200 blocks
+(the old one: 6 flat squares). Use `segs: 1`, `rib: false`, `low`,
+`sides: 4` where it is seen from far or heaped.
+
+Check: `index.html?shot=1&plantkit=lineup&parts=terrain,hamlet&ui=0&clock=0.92`
+lays every shape at its real size on a stone table in the meadow behind
+Angkor Wat (`veg/_plantKitLineup.ts`, a hamlet piece only when asked: shots
+and the dev server), the old way at its left end (a flat square leaf, a box
+mango, a box pumpkin); the console lists each shape's blocks and the cameras:
+`cam=149.15,10,-282.5,149.15,7.25,-293.9,34` (all),
+`cam=146.2,8.5,-290.6,146.2,7,-293.9,44` (the old way and the leaves),
+`cam=150.6,8.4,-290.2,150.6,7.2,-293.9,50` (the fruit at eye height),
+`cam=153,8.4,-291.4,153,7.5,-293.9,38` (the vine).
+
+**Banana plants** (AWP-8): one for the whole map, `veg/banana.ts`
+`bananaPlant(b, x, y, z, { seed, yaw?, stage?: 3│4, bunch? })`: the home
+garden's own model (garden/models/banana.ts `bananaModel`: torn paddle
+leaves, the rolled young leaf, sheath streaks, a dry leaf, pups, a bunch of
+green ណាំវ៉ា and the purple flower), set on the land and turned `yaw`. It
+replaced the three bananas the places drew themselves (the floating
+village's and the hamlets' box crowns, `village/_kit.ts`; the jungle camps'
+and the Kulen picnic's beams, `jungle/_campKit.ts`; the palm-sugar yard's
+slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
+Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
+145–155; about 36 plants on the map (+6 200 blocks in all). On the low
+graphics level (phones) the map's bananas are the model's `lite` form (the
+stem in one piece, four untorn leaves of two pieces each, held out lower and
+arching over and down, their halves with no midrib blocks, no streaks, dry
+leaves or pups, a bunch of two hands of four fingers in the leaves' family,
+so a place gets no extra mesh: 24 blocks, 38 with a bunch): the parts that plant them say
+the build's level first (`veg/detail.ts` `plantDetail(ctx.quality)` in
+hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's plants are untouched (never lite; its
+models hash the same).
+
+**Papaya trees**: one for the map's places, `veg/papaya.ts` `papayaTree`
+(the back hamlet's, the east village's and the floating village's: hamlet/_bhTrees.ts,
+hamlet/_evKit.ts `papaya`): a slim grey trunk, nine hand-shaped leaves
+(`fan`, seven lobes) on long pale stalks, the rolled young leaves, six
+teardrop fruit under the crown (≈ 170 blocks); on the low level five leaves of
+four lobes and four `low` fruit (≈ 60). The nursery's papaya seedlings
+(hamlet/_nursery.ts) have three-lobed `fan` leaves (two on low). The home
+garden's papaya is its own model.
 
 ## The floating village
 
@@ -1274,7 +1356,21 @@ fish, dried fish and prahok, palm sugar and rice facing the square, meat and
 vegetables on the far side of its aisle, ground sellers under small umbrellas
 in front of it; the sugarcane cart and the motos and bicycles parked south of
 the street; trodden earth where people walk. Goods are colourful clusters that
-read from a few metres (`_mkGoods.ts`); `_mkStalls.ts` builds each stall in its
+read from a few metres (`_mkGoods.ts`); its fruit and vegetables are the plant
+kit's shapes (AWP-7: mangoes teardrops, pomelos, rambutans, limes, tomatoes,
+coconuts rounds, eggplants, cucumbers and corn longs, Khmer pumpkins ribbed
+rounds, banana hands and hanging bunches and mangoes lying on their flat side
+(greener at the stalk, its nub) from `veg/produce.ts`; the grill's corn a long
+in its husk; `mk.kit` keeps their toggles: the same in the back hamlet's and
+the floating village's markets, which use these goods; on the low level the
+kit's cheap forms, the heaps' upper layers whole and the fruit hidden under
+their middles left out; the Kulen food stall's
+counter fruit, the picnic families' fruit and the floating market's fruit
+boat are the same shapes as boxes of the people's things, `people/_kitRig.ts`
+`kitInRig` on `veg/kitBoxes.ts`, which also gives the Water Festival's moon
+trays their bananas and coconut; the offering bananas at the Kulen shrine,
+the back hamlet's neak ta and spirit house and his home's altar are
+`bananaHand` with `flat`, level blocks that a turned frame places right); `_mkStalls.ts` builds each stall in its
 own frame, `_mkKit.ts` has the box writer and the poles, tarps, parasols,
 tables, platforms, stools and wheels. Sizes are the people's (1.4 × true).
 The day: each stall is open over its own window of `clock` (`STALLS` `open`):
@@ -1487,7 +1583,9 @@ and a log trough, rice straw stacked round poles beside it — low loaves with
 rounded tops, never a stepped cone with a finial that would read as a stupa
 under Angkor Wat's towers —, the spirit house — a tiny Angkor tower on a
 white post, bay sei, incense and a candle that glow at night —, the well and
-wash slab, the vegetable garden in its bamboo fence, washing, paddy drying on
+wash slab, the vegetable garden in its bamboo fence (morning glory, chilli
+bushes and lemongrass of the plant kit's leaves; a gourd trellis of vines,
+broad leaves, hanging luffa and bottle gourds), washing, paddy drying on
 a tarp by the granary, a dog asleep; earth steps where the lane and the back
 trail step up a whole land block, so the cattle, the bicycles and the people
 walk up them; footpaths trodden bare through the grass — the children's from
@@ -1502,12 +1600,19 @@ tamarind (green coconuts, the cane press, the ice box, a machete in the
 stump, plastic stools, the painted sign "ទឹកដូង": `_bhSign.ts`, Koulen in
 pixels), the neak ta shrine at the tamarind's foot, cloth round its trunk;
 fruit trees (`_bhTrees.ts`: mango, jackfruit, bamboo, jungle trees round the
-edges, stamped from the jungle's prototypes; coconut and sugar palms from
-veg/palms.ts; bananas, papayas, bougainvillea); the pond's mist
+edges, stamped from the jungle's prototypes, their mangoes and jackfruit the
+plant kit's teardrops and rounds; coconut and sugar palms from veg/palms.ts;
+papayas (veg/papaya.ts: the kit's hand-shaped leaves and teardrops); bananas
+(veg/banana.ts), bougainvillea); the pond's mist
 (`_bhMist.ts`: thick at dawn, a veil at night, nothing by day). Lamps in the
 windows, the stoves' embers and the candles are glows and halos
 (village/_lights.ts), no light; smoke at dawn and supper time
-(village/_smoke.ts); roosters at dawn, hens by day.
+(village/_smoke.ts); roosters at dawn, hens by day. The garden's plants, the
+trees' fruit, the juice cart's coconuts and the market's produce are drawn
+only within 140 m of the hamlet's middle (`NEAR_PLANTS`, veg/nearDetail.ts:
+last in each family's mesh, which draws only the blocks before them further
+off; the console line counts them), times the camera's zoom against the
+map's 40° (`zoomOf`: through the binoculars, 4‥8°, the whole map).
 
 The morning market (ផ្សារភូមិ: `_bhMarket.ts`, where it stands:
 `_bhMarketPlan.ts`, its people `people/_sceneBackMarket.ts`) is the hamlet's
@@ -2284,11 +2389,250 @@ terrace by the pool), `roam=walk&at=444,-96&yaw=0&sim=_:0.5&rcam=0,18,14`
   most of the view, easing in and out over 0.45 s (the spot carries a point
   lamp when no flashlight or fill needs it). Every light each lit shader
   carries costs about 1.5 % of a GPU-bound frame even while dark: add lamps,
-  not slots (`lampslots=<points>,<spots>` for checks; dev:
+  not slots (`lampslots=<points>,<spots>[,<placed>]` for checks; dev:
   `__lampSlots.debug()`). Most light at night should come from glow + bloom.
+  Lights the player puts up (lamp posts, candles, lanterns: as many as he
+  likes) go through `placedLights().add(…)` (sky/placedLights.ts): each glows
+  (one draw for all the glows, one for the halos) and is a `placed` lamp; at
+  most 3 placed lamps hold a slot at once (a 4th for up to 0.45 s while one
+  hands over), the nearest in sight, so the world's lamps keep the rest (addons.md "Building at home").
 - Custom `ShaderMaterial`s: set `fog: true` and include three's fog chunks
   (`fog_pars_vertex`, `fog_vertex`, `fog_pars_fragment`, `fog_fragment`), so the
   haze reaches them too.
+
+## The player's blocks (`src/map/blocks/`)
+
+What the player builds with, apart from the baked world (whose meshes are made
+once in the build workers and never change): the part `blocks` (main.ts, built
+after the treasure), the base of building at home (build plan step 3: AWP-16;
+the walk map AWP-17, saving AWP-18, the plot and its budget AWP-19, footprint
+building AWP-20, paint AWP-22, slabs and stairs AWP-24 build on it).
+
+- **The store** (`blocks/store.ts`, no three.js; `BLOCKS`, one for the map): a
+  block is a cell of 0.5 m, the walk map's column (`WALK_GRID`, roam/walkmap.ts:
+  one block, one column) and the temple kit's block; a full block is too high a
+  step to walk up (0.42 m), a slab (0.25 m) a stair's rise. Cell (i, j, k) is
+  (i, j, k) · 0.5 m to (i + 1, j + 1, k + 1) · 0.5 m (`cellOf`, `cellMin`,
+  `cellMid`). Chunks of 32 cells a side, 16 m: the walk map's chunks exactly
+  (the same corner: a chunk's cx, cz is the walk map's), cy 16 m slices from
+  y = 0; a chunk keeps its cells densely (160 kB), made at its first block,
+  dropped at its last. A home plot (≈ 20 m) spans a few chunks: a few draws a
+  block family.
+- **A block** (`Block`: `mat`, `color`, `shape`, `turn`): its material
+  (`blocks/kinds.ts` `BLOCK_MATS`: timber, bamboo, thatch, laterite, sandstone,
+  brick, each drawn with a map family: `mapBark`, `mapLeaf`, `mapStone`,
+  `mapRock`), its colour (sRGB hex, any: paint), its shape (`BLOCK_SHAPES`:
+  cube, slab, stair, slabTop, stairOuter, stairInner: below; each a list of
+  boxes in its cell) and a quarter turn about y (0‥3: the stairs and corners
+  turn by it, a cube or a slab is the same turned). As one
+  number (`rawOf`, `blockOf`): colour + material · 2²⁴ + (shape · 4 + turn) ·
+  2³², 0 no block; ids are saved, so they are only ever added.
+- **Writing**: `set(i, j, k, block | null)`, `setRaw`, `fill(box, block | null)`,
+  `batch(fn)` (many changes as one: a footprint, a loaded save), `clear()`.
+  **Reading**: `get`, `raw`, `solid` (the walk map), `count`, `countIn(box)` (a
+  plot's budget), `forEach` (every block in a fixed order: chunk by chunk,
+  rows along x, then z, then y: a run-length save), `chunkList`, `chunkAt`.
+- **Shapes** (`kinds.ts`, AWP-24; ids saved, only ever added): `cube` (0), `slab`
+  (1: the lower half, 0.25 m), `stair` (2: a slab and a quarter on its back half,
+  two 0.25 m rises in the cell; unturned it climbs towards +z, `turn` 1 +x, 2 −z,
+  3 −x: `STAIR_UP`, `turnToward(dx, dz)`), `slabTop` (3: the upper half: a
+  lintel, an eave's soffit), `stairOuter` (4: a slab and one quarter column, a hip
+  roof's outer corner; unturned the +x +z quarter) and `stairInner` (5: a slab and
+  three, a roof's inner corner). `FORMS` holds each shape at each turn: its boxes
+  turned, the quarters of each cell side its boxes fill (`covers`, 4 bits a
+  side), each box's sides' quarters and its sides inside the block, and its
+  tread's quarters (`low`). Boxes lie on the cell's halves.
+- **Roofs** (`roof.ts`, AWP-24): `smoothRoof(cells, store?)` is the one call that
+  turns a roof built as steps of full blocks (a row a cell up and a cell in, 45°)
+  into one that reads as a roof: every roof cell with nothing over it gets, in
+  the step over it, a `stair` climbing towards the roof cell beside that step one
+  row up (a `stairInner` where two meet at a right angle, a `stairOuter` where one
+  lies only across a corner, a `slab` on the ridge), in its own material and
+  colour; cells already filled are left; it returns the cells it filled (to take
+  down with the roof). The roof is then two blocks deep at
+  every step, so no sky shows through but the pinhole any layer of blocks shows
+  where four corners meet, seen straight up (a stepped roof one block deep meets the
+  next row only along an edge: pinholes at every seam). `stepBlock(roof, i, j, k,
+  under)` is the rule for one step. `gableRoof({ i0, k0, i1, k1, j, ridge: 'x' |
+  'z', block, stepped?, ends? })` writes a whole steep Khmer gable (45°: rows of
+  full blocks from the two eaves to the ridge, its gable ends filled under it,
+  then smoothed unless `stepped`) and returns its roof cells and the steps it
+  filled. Each is one store
+  change. Smoothing puts a block in every step: a roof one block deep twice
+  its blocks (`pblocks=gable`: its roof 140 + 140, the pavilion 564 against
+  424); `fullmix` adds 1,728 to `full`'s 9,925 (192 a sala, on roofs two deep).
+- **Changes** (`onChange`): told once a change is done (one set, one fill, one
+  batch): `changed` (the chunks whose cells changed: the walk map's chunks to
+  build again), `touched` (those and the neighbours across an edge a changed
+  cell lies on: drawn again), `box` (the changed cells), `cells`, `version`.
+- **Drawn** (`blocks/view.ts`, `blocks/mesh.ts` `packChunk`): a group per chunk,
+  a mesh per block family in it, made again the frame after a change, each
+  touched chunk once; the meshes' arrays are written in place (only the boxes
+  in use sent), a mesh made new only when a family outgrows its room. **Only
+  what can be seen**: a box's side that lies on quarters of the cell's side the
+  neighbour fills (in its chunk or the next: a slab beside a slab, a stair beside
+  a stair of the same turn, a stair in a roof's step, a cube under a slab) or
+  against another box of its own block is covered; a block with all its sides
+  covered is not drawn when the 26 cells round it are whole blocks (with an edge
+  or corner cell round it open it is drawn all the same: left out, its hole joined
+  the bevels' grooves inside and outside, and the sky showed through a smoothed
+  roof's gable end); each box keeps its open
+  sides (the rim only between two open sides, a seam between flush blocks, as
+  the map's grids) and its seen sides (`voxShown`: on low, the plain boxes
+  draw no covered side, block by block, as the map's still parts: cull.ts
+  `cutCovered`); a mesh's index holds only the sides its boxes show; and only
+  the sides that can face the camera are drawn (voxel/backFacets.ts). Shade as
+  the map's grids bake it (soft occlusion from the 26 cells round it, ±5 %
+  seeded jitter), colour per block. The map's look and programs: its families,
+  the materials its still parts wear (cull.ts `coverMaterialOf`), its block
+  shapes (one cut on medium and up, plain boxes on low), its depth material:
+  no shader program of its own. Far: plain boxes with their rims painted once
+  the cut edges are under a pixel, hidden once a metre is under 0.9 px (the
+  build view's rule, build/view.ts). Shadows cast and received, still; the
+  still map asked again after a rebuild (at most once a second while blocks
+  keep changing). The walk map reads the store, not the meshes (the part is
+  in `SKIP_PARTS`): below.
+- **In the walk map** (`blocks/walk.ts`; roam/walkmap.ts `WalkBlocks`,
+  AWP-17): the feet's and the camera's walk maps (`walk`, `hard`; not `soft`:
+  blocks are not seen through) read the store when they build a 16 m chunk: a
+  run of solid cells up a column is one span (a slab's top a quarter metre
+  over its cell's bottom). A change (`watchBlocks`: `BlockChange.changed`)
+  drops those chunks (`WalkMap.changed(cx, cz)`), and each is built again the
+  next time something asks about it (his feet, the camera, the dog, his
+  cattle); a chunk with blocks keeps its meshes' columns (`columnsOf`), so only
+  the blocks are laid in again. On the feet's map a block's top more than
+  0.35 m (`BLOCK_STEP_M`) over the feet is a wall to them unless they stand on
+  it already: a slab (0.25 m) is a stair's rise, a full block (0.5 m) he jumps
+  onto (Space). A stair block (AWP-24) is solid to its top in its column and its
+  tread is told with the span (`WalkBlocks` `low`: the quarters half a column
+  lower): `standAt` stands feet there 0.25 m lower, and the step rule takes the
+  stair's high part within 0.2 m of its tread as the tread (`TREAD_LEAD`: his
+  rim reaches 0.17 m past a 0.25 m tread while his feet are still a step under
+  it), so he walks up a stair of stair blocks (45°) at an even pace, 0.25 m a
+  rise, as up slab steps, while a stair's back (0.5 m) stops him like a full
+  block (Space jumps it); sideways he steps onto its tread. And he walks under a floor on posts instead of hopping onto
+  it when there is room: he is 2.26 m tall to the walk map (1.615 m and the
+  explorer's 1.4 scale), so an underside 2.0 m up stops him like a wall and
+  one 2.5 m up lets him under: doorways and stilt floors need at least
+  5 blocks (2.5 m) of room (AWP-20; a 4-block door cannot be entered). The
+  walker's own rules hold over them (stairs, thin walls,
+  `PERCH`, `AHEAD`). A block built where he stands puts him out beside it at
+  his own level within a quarter second (walker.ts `freeSpot`: a cube in his
+  cell 1 m, a 3 × 3 pillar 1.5 m, a low roof 2 m, a 9 × 9 × 9 box 3 m); a
+  slab under him lifts him 0.25 m. The follow camera stops at built walls
+  or rises over them (its `hard` map); a span of blocks with room under it
+  whose underside is over the camera is not its floor there (`WalkOwn.roofs`
+  on the camera's map: followCam.ts `floorUnder` lifted it onto a built
+  gallery's roof, roof top + 0.9 m), so it stays under a built roof with him.
+  In a narrow built room (a gallery, a house) a built wall nearer than the
+  camera's usual closest (1.6 m) brings it in to 0.55 m this side of the wall
+  but no nearer than 1.4 m to his neck (`world.ownClearance`, followCam.ts
+  `NEAREST`, `OWN_MARGIN`); with no room for that it tilts up over him or a
+  little lower under a low roof, and with none at any tilt it does not turn
+  into the wall: it holds the last heading that had room, the turn into the
+  wall (keys, stick, drag, the auto-follow) is dropped and the other way
+  works at once (no shaking: 0 reversals of the heading). It is never inside a
+  built block and he stays in view. So close (from 1.7 m, whole at 1.45 m)
+  his head and hat dissolve block by block (`roam/_headFade.ts`: the head
+  joint's blocks shrink away in a scattered order, no material or shader
+  change, no new program; his shadow loses them meanwhile), so the way ahead
+  shows; only while a built wall holds the camera in (`ownNear`). The world's own roofs and walls keep the
+  old rules (the camera's path the same, frame by frame). Timber and bamboo tops sound of wood
+  (`woodBlockAt`). The people's and the wild animals' own walk maps (people/,
+  fauna/_landPlaces.ts) are made once and do not read the blocks. With no
+  blocks every answer is as before (601,205 points × 5 questions and 12,000
+  clearances over the roaming area: the same). Cost (M1 Max, heavily loaded;
+  a change rebuilds the chunk in both maps, walk and hard, each ≈ the same):
+  a chunk of the full plot (3,665 blocks) 0.3 ms a map (the CPU 4 × slower
+  1.1–1.3, 6 × 1.6–2.0); the map's busiest chunk (3,684 map blocks) 1.2 ms
+  the first time it gets blocks (its columns are kept then), 0.3 ms after
+  (4 × 0.6, 6 × 1.0); a chunk filled 32 × 8 × 32 (8,192 blocks) 0.3 ms
+  (4 × 1.5, 6 × 2.4). Nothing a frame while nothing changes.
+  `pblocks=walk` is a test course on the flat meadow west of his stilt house
+  (x 418‥428, z −172‥−163: a slab stair up to a 2 m floor, a 2.5 m brick wall,
+  a one-block low wall, and from the east a stair of stair blocks, AWP-24),
+  e.g. `roam=walk&at=415.5,-168&yaw=90&sim=w:1.5` (up the slab stair),
+  `at=430,-168.5&yaw=270&sim=w:1.3` (up the stair of stair blocks),
+  `at=420.25,-160&yaw=180&sim=w:2` (stopped by the wall),
+  `at=420.25,-175&yaw=0&sim=w:1.2` (stopped by the low wall; `sim=w:0.4,wj:1`
+  over it). Checks: `__blocks.walk` (the two maps: `stats.rebuilds`,
+  `rebuildMs`, `rebuildMax`, `built(cx, cz)`).
+- **Edge joints**: two blocks that meet only along an edge (a roof stepping in
+  a block a row) keep that edge square (`mesh.ts` `diagonalJoints`, the joint
+  bits of `voxOpen`): cut on both it was a slit the sky showed through. Where
+  such a row meets the next block along it a pinhole of about the bevel's size
+  is left (the shader squares a corner only with all three sides joints, which
+  would also square the seams between the row's blocks); a roof two blocks
+  deep, or one whose steps are filled with stairs (`smoothRoof`), has none. The
+  far cell's sides are read by quarters (AWP-24): a slab across a cube's edge
+  squares both edges, and a one-deep slope of stair blocks squares where each
+  stair's top edge meets the next row's slab (its corners still pinholes, as
+  above: `smoothRoof` fills the steps instead).
+- **Saved** (`blocks/save.ts`, AWP-18): in progress.ts (`angkor-map-progress-v1`)
+  under `blocks.plot`: `{ v: 1, n, pal, chunks }`. `v` the format (a later one
+  reads the old by it), `n` the blocks, `pal` the different blocks as numbers
+  (`rawOf`: ids only ever added, so an old save always reads), `chunks`
+  `[cx, cy, cz, runs]` in the store's order, `runs` the chunk's cells in
+  `forEach`'s order as runs of one block: the empty cells skipped, the length
+  − 1, the block's place in `pal`, each number in 5-bit groups, one letter
+  each (`A‥Z a‥z 0‥9 - _`, 32 and up: more to come). A full plot
+  (`pblocks=full`'s 9,925 blocks and 5 more, written through the store) is
+  10.6 kB of JSON (13 kinds of block, 10 chunks); localStorage holds 5 M
+  characters a site. Written once the blocks have been still for 1 s (a
+  footprint: one write; building on without a pause, every 10 s) and at once
+  when the page is hidden or closed (9,930 blocks: ≈ 5 ms); read as the part
+  is built, before the view (9,930 blocks in ≈ 4 ms). Checked whole first: a
+  broken, cut or edited save, one from a newer format, or one over the limits
+  (`SAVE_LIMITS`: 200,000 blocks, 128 chunks, 4,096 kinds) leaves the plot
+  empty and the console says why (`[blocks] the saved build was not loaded
+  (…)`); the save stays as it was until he builds again. A block of a kind
+  this build does not know is left out (the console says how many). Shots,
+  `progress=0` and `pblocks=` read and write nothing. Kinds (the different
+  blocks: material × colour × shape × turn): a build with more than 4,096
+  is not saved at all; only the console says so (`[blocks] too many kinds of
+  block to save`) and the last save is kept, so paint (AWP-22) keeps to a
+  palette (a full plot has 9). Checks:
+  `__blocks.save` (`status`, `flush()`, `encode()`, `decode(value)`).
+- **Shadows of a far chunk**: hidden by distance it drops out of the still
+  shadow map; coming back, its shadow returns at the next still redraw (as the
+  build view's pieces). Watch it with continuous building (AWP-20).
+- **Footprint buildings** (AWP-20, addons.md "Footprint buildings"): the first
+  writer of many blocks at once. `build/footState.ts` writes a building's plan
+  (`build/footPlan.ts`) through `BLOCKS.batch` a step of `n / 60` blocks at a
+  time as he hammers it up (the chunk, its walk map and the save made again
+  about once a second of work, not every frame) and clears every cell of its
+  plan when it is taken down; it never writes a cell twice (paint stays).
+- **Cost**: an empty store is an empty group (no draw, no work a frame).
+  Draws: a mesh per family per chunk (`pblocks=full`: 8 chunks, 28). Making a
+  chunk again after one change (`__blocks.bench`, M1 Max with other jobs
+  running): a plot's chunk of 3,664 blocks 0.5 ms (the CPU 4 × slower 2.3, 6 ×
+  3.5: well under a phone's frame); the worst chunks, every other cell (16,384
+  blocks, each showing six sides) 1.5 ms (6 × 9.5), filled whole (32,768) 1.1
+  ms (6 × 7.0). `npm run perf` (1280 × 720 and the phone's 844 × 390): with the
+  store empty the same draws, triangles and programs as before in every view;
+  `pblocks=full` (9,925 blocks, 8,291 drawn, 1,634 under others) in the `home`
+  view low +28 draws, +0.08 M triangles, medium +28, +0.33 M, phone +28,
+  +0.08 M, frame times within the noise; the still shadow map +28 draws (0.05 M
+  on low, 0.26 M on medium) when it is drawn; elsewhere (overview, village,
+  east) nothing drawn; ≤ 0.01 ms of CPU a frame; no new program when blocks
+  appear (the program count the same on low, medium and high).
+- **URL** (shots and the dev server only, never on the live site, as
+  `build=`: a link must never put blocks into a player's map or save):
+  `pblocks=demo` (a sala on the meadow before his stilt house, 832 blocks: all
+  six materials, the slab, painted blocks) · `pblocks=full` (a full plot: nine
+  of them 3 × 3, 8 m apart, 9,925 blocks over 24 × 24 m, their plinths sunk
+  to the sloping ground: 8 chunks) · `pblocks=fullmix` (the same, every roof
+  smoothed: 11,653 blocks of mixed shapes) · `pblocks=gable` (AWP-24: an open
+  pavilion 6 × 4 m on a plinth with a step of slabs, posts 2.5 m high under a
+  lacquer-red beam ring, a palm thatch gable at 45° smoothed with stairs and
+  slab-capped, timber gable ends; 564 blocks) and `pblocks=gable-stepped` (the
+  same roof left as steps of full blocks one deep, as before: 424) · `pblocks=hip` / `hip-stepped` (the sala
+  with its hipped roof one deep, smoothed with stairs and outer corner stairs /
+  left as steps) · `@x,z` puts it elsewhere. Nothing is
+  saved. `window.__blocks` (`store`, `stats()`, `bench(runs)`: the time to
+  make a chunk again after one change, `flush()`, `rawOf`, `blockOf`). `npm run perf -- only=home
+  url=pblocks=full` (the `home` view: by the stilt house, over the meadow).
+  E.g. `roam=walk&at=436,-139&yaw=200&home=1&rcam=150,12,9&pblocks=demo`.
 
 ## Sacred pieces (sculpted, not blocks)
 
@@ -2907,6 +3251,7 @@ as the picture's; a part that moves must not be marked still.
 | buying, eating and drinking | `src/map/shop.ts` (lead), `src/map/roam/_shop*.ts`, `src/map/people/_saleBack.ts`; `src/character/meals.ts`, `parts/food.ts` |
 | leaving roaming asks first | `src/map/roam/_leave.ts` (lead) |
 | kites (khleng ek) | `src/map/people/_sceneKites.ts`, `_kite.ts`; the hum `src/map/audio/kite.ts` |
+| the player's blocks (store, chunk meshes) | `src/map/blocks/*` |
 | speed checks | `scripts/perf.mjs` (`npm run perf`) |
 
 `main.ts`, `camera.ts`, `cull.ts`, `foreground.ts`, `layout.ts`, `types.ts` belong to the

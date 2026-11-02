@@ -28,7 +28,13 @@ import type { MapFrame } from '../types';
  * in the scene (as a light of its own was: the boat's lantern goes with the boat it is on, a hidden part's lamps
  * go out).
  *
- * URL (checks): `lampslots=<points>,<spots>` this many slots (the shaders are made for them).
+ * **Placed lamps** (`placed`: the lights he puts up at home, sky/placedLights.ts): there can be many (twenty lamp
+ * posts round his house), so at most `PLACED_SLOTS` of them are put into slots — those whose light covers most of
+ * the view, the nearest in sight first (one easing out keeps its slot until it has faded) — and the other slots stay the world's (the temples', the boat's, his own lantern
+ * first as ever). The rest of the placed lamps glow (their blocks and halos) with no light of their own.
+ *
+ * URL (checks): `lampslots=<points>,<spots>[,<placed>]` this many slots (the shaders are made for them), and at most
+ * this many placed lamps in them (0: placed lamps only glow).
  */
 
 export type LampKind = 'point' | 'spot';
@@ -49,6 +55,8 @@ export interface LampOptions {
   own?: boolean;
   /** Where the lamp is: this object (in the scene graph, so it moves and hides with its parents). */
   anchor?: Object3D | null;
+  /** A light he put up (sky/placedLights.ts): at most `PLACED_SLOTS` of these hold a slot at once, the nearest. */
+  placed?: boolean;
 }
 
 /** A lamp the map wants lit. Set its fields as a light's (every frame if they change); the slots read them after the parts' updates. */
@@ -67,6 +75,7 @@ export class Lamp {
   readonly name: string;
   readonly own: boolean;
   readonly anchor: Object3D | null;
+  readonly placed: boolean;
   /** Where it was this frame (world m: the anchor's), and how much it matters to the picture (the slots'). */
   readonly world = new Vector3();
   score = 0;
@@ -82,6 +91,7 @@ export class Lamp {
     this.penumbra = o.penumbra ?? 0;
     this.own = o.own ?? false;
     this.anchor = o.anchor ?? null;
+    this.placed = o.placed ?? false;
   }
 
   /** Giving light now: bright, not black, and its anchor shown in the scene. */
@@ -122,6 +132,13 @@ export function lamps(): readonly Lamp[] {
  * the landing): five fit, and the boat's, which matters least there, goes (its halo stays; `lampslots=5,1` keeps it).
  */
 const SLOTS = { point: 4, spot: 1 };
+/**
+ * Placed lamps (his own lamp posts, the spirit house's candle) in slots at once, at most: three of the five, so the
+ * world keeps at least one besides the explorer's own light (his lantern a point slot, his flashlight the spot).
+ */
+const PLACED_SLOTS = 3;
+/** A placed lamp out of sight (only its light reaching the view's edge) matters this much less. */
+const OUT_OF_SIGHT = 0.25;
 /** Seconds a lamp takes to ease in or out of a slot; out, for the explorer's own light or a spot waiting for one. */
 const FADE = 0.45;
 const FADE_FAST = 0.12;
@@ -154,6 +171,14 @@ export interface LampSlots {
 }
 
 let api: LampSlots | null = null;
+/** The slots (once made). */
+let SLOTS_NOW: readonly Slot[] = [];
+
+/** How far a lamp has eased into a slot now (0: it holds none; checks: sky/placedLights.ts `stats`). */
+export function inSlot(l: Lamp): number {
+  for (const s of SLOTS_NOW) if (s.lamp === l) return s.fade;
+  return 0;
+}
 
 const _m = new Matrix4();
 const _frustum = new Frustum();
@@ -169,12 +194,16 @@ function scoreOf(l: Lamp, cam: Vector3): number {
   if (!_frustum.intersectsSphere(_sphere.set(p, Math.min(end, reach * 2)))) return 0;
   // (the explorer's own: first, the brightest first)
   if (l.own) return 1e6 + l.intensity;
-  const k = reach / Math.max(p.distanceTo(cam), reach);
-  return k * k;
+  const d = p.distanceTo(cam);
+  const k = reach / Math.max(d, reach);
+  if (!l.placed) return k * k;
+  // (placed lamps are alike and many: the nearest first, those in sight before those whose light only reaches the
+  // view's edge (behind or under the camera), and with the camera in reach of several, the nearest of them)
+  return ((k * k) / (1 + 0.01 * d)) * (_frustum.containsPoint(p) ? 1 : OUT_OF_SIGHT);
 }
 
 /** The lamps that matter most into the slots (a spot lamp needs a spot slot; a point lamp takes a point slot, else a free spot slot), easing in and out. */
-function place(slots: readonly Slot[], cam: Vector3, dt: number): void {
+function place(slots: readonly Slot[], cam: Vector3, dt: number, placedMax: number): void {
   const held = (l: Lamp) => slots.some((s) => s.lamp === l);
   _lamps.length = 0;
   for (const l of LAMPS) {
@@ -190,9 +219,12 @@ function place(slots: readonly Slot[], cam: Vector3, dt: number): void {
   let spots = 0;
   for (const s of slots) s.spot ? spots++ : points++;
   _wanted.length = 0;
+  let placed = placedMax;
   for (const l of _lamps) {
+    if (l.placed && placed <= 0) continue;
     if (l.kind === 'spot' ? spots > 0 : points + spots > 0) _wanted.push(l);
     else continue;
+    if (l.placed) placed--;
     if (l.kind === 'spot' || points === 0) spots--;
     else points--;
   }
@@ -263,6 +295,7 @@ export function lampSlots(): LampSlots {
   if (api) return api;
   const q = new URLSearchParams(location.search).get('lampslots')?.split(',').map(Number);
   const n = (i: number, k: LampKind) => (q && Number.isInteger(q[i]) && q[i] >= 0 && q[i] <= 8 ? q[i] : SLOTS[k]);
+  const placedMax = q && Number.isInteger(q[2]) && q[2] >= 0 ? q[2] : PLACED_SLOTS;
   const object = new Group();
   object.name = 'lamp slots';
   const slots: Slot[] = [];
@@ -277,6 +310,7 @@ export function lampSlots(): LampSlots {
     object.add(light.target);
     slots.push({ light, spot: true, lamp: null, fade: 0 });
   }
+  SLOTS_NOW = slots;
   for (const { light } of slots) {
     light.castShadow = false;
     object.add(light);
@@ -286,7 +320,7 @@ export function lampSlots(): LampSlots {
     update(f) {
       const cam = f.camera;
       _frustum.setFromProjectionMatrix(_m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
-      place(slots, cam.position, f.dt);
+      place(slots, cam.position, f.dt, placedMax);
     },
     debug: () =>
       Object.fromEntries(

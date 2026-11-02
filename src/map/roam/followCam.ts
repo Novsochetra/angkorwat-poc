@@ -16,6 +16,22 @@ const MARGIN = 0.7;
 const SIDE = 0.6;
 /** Closest the camera comes to the focus when a wall pushes it in (m). */
 const CLOSEST = 1.6;
+/**
+ * A wall of the player's blocks nearer than that (a narrow built room, a
+ * gallery: world.ownClearance) brings it in further, to this far this side
+ * of the wall (m: about the near plane, 0.5 m), but no nearer than `NEAREST`
+ * to the focus (his neck: just behind his head): it never ends inside a
+ * built block. The world's own places keep `CLOSEST`.
+ */
+const OWN_MARGIN = 0.55;
+const NEAREST = 1.4;
+/** Nearer than `NEAREST` only when even over him there is no room (a built wall at his shoulder under a low roof): to here, or to just this side of the wall if it is nearer still. */
+const INNERMOST = 0.6;
+/** Tilts tried (radians, from his), the least first, when a built wall or roof leaves no room: up over him, or lower under a roof; never lower than `OWN_LOWEST`. */
+const OWN_TILTS = [0.3, -0.15, 0.6, -0.3, 0.9, -0.45, 1.2];
+const OWN_LOWEST = -0.15;
+/** The turns (radians) tried, nearest first, for a way round with room when a built wall leaves none behind him. */
+const OWN_TURNS = [0.1, -0.1, 0.2, -0.2, 0.35, -0.35, 0.5, -0.5, 0.7, -0.7, 0.95, -0.95, 1.25, -1.25, 1.6, -1.6, 2, -2, 2.5, -2.5, Math.PI];
 /** How fast it comes in out of a tree (1/s): gently, the near fade sees through it. */
 const SOFT_IN = 2.5;
 /** A tree in this part of the way from its spot towards him counts as the camera being in it (nearer it than him: it fills the view). */
@@ -44,7 +60,11 @@ const HANDS_BACK = 1.2;
  *   edge going by never pulls it in and out, in and out). Out of a tree
  *   (leaves, a trunk) it comes in softly: what is still close in front
  *   dissolves (_nearFade.ts). A zoom glides to its new distance.
- * - It never goes into the ground or the water.
+ * - It never goes into the ground or the water, nor into the player's built
+ *   blocks: in a narrow built room it comes nearer than it otherwise does,
+ *   tilts over him or under a low roof, or holds the last heading with room
+ *   instead of turning into the wall (`NEAREST`, `world.ownClearance`); the
+ *   world's own places as before.
  * - While he moves it swings round behind his heading by itself (`follow`),
  *   easing in a moment after the player last turned it (a drag, Q / R),
  *   and not while he walks towards it.
@@ -79,6 +99,12 @@ export class OrbitFollowCam implements FollowCam {
   private reach = 9;
   private lift = 0;
   private liftGoal = 0;
+  /** The extra tilt over him in a narrow built room (eased; 0 elsewhere). */
+  private ownLift = 0;
+  /** The last heading with room for the camera this side of the player's built walls (null: none yet). */
+  private goodYaw: number | null = null;
+  /** A built wall brought the camera in nearer than `CLOSEST` this frame (roam.ts fades his head and hat then: _headFade.ts). */
+  ownNear = false;
   /** The zoom eased (`distance` is where the player put it), and seconds left before it may ease back out. */
   private zoomed = 9;
   private outWait = 0;
@@ -121,7 +147,8 @@ export class OrbitFollowCam implements FollowCam {
       this.lead.set(0, 0, 0);
       this.speed = 0;
       this.reach = this.zoomed = this.distance;
-      this.liftGoal = this.lift = 0;
+      this.liftGoal = this.lift = this.ownLift = 0;
+      this.goodYaw = null;
       this.outWait = 0;
       this.pulled = false;
       this.fresh = false;
@@ -187,7 +214,65 @@ export class OrbitFollowCam implements FollowCam {
       }
     } else if (base > dist * LIFT_OFF) this.liftGoal = 0;
     this.lift += (this.liftGoal - this.lift) * damp(this.liftGoal > this.lift ? 4 : 1.5, dt);
-    const pitch = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
+    const tilt = MathUtils.clamp(this.pitch + this.lift, this.pitchMin, PITCH_MAX);
+    // A wall of the player's blocks too near behind him to fit the camera this side of it (a narrow built room):
+    // another tilt (up over him, or lower under a low roof: the least that gives room, else the one with the most;
+    // at once, and back slowly), else another way round. None in the way: nothing changes.
+    const ownWall = (p: number, yaw = this.yaw) => this.free(world, yaw, p, dist, world.ownClearance) * span;
+    let ownGoal = 0;
+    if (world.ownClearance) {
+      let best = ownWall(tilt) - OWN_MARGIN;
+      let got = false;
+      if (best < NEAREST) {
+        // Up over him, or lower under a built roof: the least change that gives room, else the one with the most.
+        for (const d of OWN_TILTS) {
+          const p = MathUtils.clamp(tilt + d, Math.max(this.pitchMin, OWN_LOWEST), PITCH_MAX);
+          const r = ownWall(p) - OWN_MARGIN;
+          if (r > best + 0.05) {
+            best = r;
+            ownGoal = p - tilt;
+          }
+          if (r >= NEAREST) {
+            got = true;
+            break;
+          }
+        }
+        // None at any tilt (a built wall at his shoulder under a low roof): it does not turn into the wall. Turned
+        // there this frame (the player's keys, stick or drag, the auto-follow): back to the last heading that had
+        // room, so the turn into the wall is dropped and the other way works at once; only if that has no room
+        // either (he moved), the nearest way round with room. One or the other, never both in a frame.
+        if (!got) {
+          // (the tilt that gives room at a heading: his own first, then as above)
+          const fit = (yaw: number) => {
+            for (const d of [0, ...OWN_TILTS]) {
+              const p = MathUtils.clamp(tilt + d, Math.min(tilt, Math.max(this.pitchMin, OWN_LOWEST)), PITCH_MAX);
+              if (ownWall(p, yaw) - OWN_MARGIN >= NEAREST) return p;
+            }
+            return null;
+          };
+          let p = this.goodYaw !== null && this.goodYaw !== this.yaw ? fit(this.goodYaw) : null;
+          if (p !== null) this.yaw = this.goodYaw!;
+          else
+            for (const a of OWN_TURNS)
+              if ((p = fit(this.yaw + a)) !== null) {
+                this.yaw += a;
+                break;
+              }
+          if (p !== null) {
+            ownGoal = p - tilt;
+            got = true;
+          }
+        }
+        if (got) this.goodYaw = this.yaw;
+      } else this.goodYaw = this.yaw;
+    }
+    // (to a tilt that gives room at once; back to his own tilt slowly)
+    if (ownGoal) this.ownLift = ownGoal;
+    else {
+      this.ownLift -= this.ownLift * damp(1.5, dt);
+      if (Math.abs(this.ownLift) < 1e-4) this.ownLift = 0;
+    }
+    const pitch = this.ownLift ? MathUtils.clamp(tilt + this.ownLift, Math.min(tilt, Math.max(this.pitchMin, OWN_LOWEST)), PITCH_MAX) : tilt;
     const free = clear(pitch, dist);
     // Hemmed in all round the back (a gallery, a gate): turn slowly to where
     // there is more room, the nearest way round, unless the player steers.
@@ -211,7 +296,19 @@ export class OrbitFollowCam implements FollowCam {
       this.yaw += step;
       this.roomTurn -= step;
     }
-    const room = Math.max(Math.min(CLOSEST, dist), free * span - MARGIN);
+    let closest = Math.min(CLOSEST, dist);
+    this.ownNear = false;
+    if (world.ownClearance) {
+      // (to this side of a built wall nearer than CLOSEST; nearer than NEAREST only when even over him there is no
+      // room, and never into the wall)
+      const wall = ownWall(pitch);
+      if (wall - MARGIN < closest) {
+        this.ownNear = wall - OWN_MARGIN < closest;
+        closest = Math.min(closest, wall - OWN_MARGIN);
+        if (closest < INNERMOST) closest = Math.max(0, Math.min(INNERMOST, wall - 0.1));
+      }
+    }
+    const room = Math.max(closest, free * span - MARGIN);
     // In a tree out there (a crown, a bush, a trunk): come in to this side of
     // it, softly (meanwhile the near fade, _nearFade.ts, sees through it).
     const trees = world.softClearance ? this.treeRoom(world, pitch, dist) : Infinity;
@@ -272,8 +369,8 @@ export class OrbitFollowCam implements FollowCam {
    * (and a little past it: the near plane), from the followed point, of
    * what the camera cannot see through (trees aside: `treeRoom`).
    */
-  private free(world: RoamWorld, yaw: number, pitch: number, dist: number): number {
-    const clearance = (world.hardClearance ?? world.clearance)!;
+  private free(world: RoamWorld, yaw: number, pitch: number, dist: number, clearance = world.hardClearance ?? world.clearance): number {
+    if (!clearance) return 1;
     const o = this.look;
     const p = this.at(o, yaw, pitch, dist + MARGIN, this._pos);
     let t = clearance(o.x, o.y, o.z, p.x, p.y, p.z);

@@ -11,6 +11,7 @@ import { PALETTES, statueMaterial, type Finish } from '../sacred/finish';
 import { finishGeometry, plainAttributes, revolve } from '../sacred/offerings';
 import type { V3 } from '../sacred/sdf';
 import { stupa, stupaNiche } from '../sacred/stupa';
+import { round } from '../veg/plantKit';
 import type { ShrineLights } from './_incense';
 import { mossOn, plantsAround, steppingStones } from './_ruinBits';
 import type { SiteFrame } from './_ruinFrame';
@@ -483,9 +484,8 @@ export function spiritHouse(fr: SiteFrame, L: ShrineLights, S: Sculpted): void {
   for (const s of [-1, 1]) offer(fr, S, L, 'candle', cx + s * 0.34, floor, pz + 0.04, { scale: 1.1, lamp: 0.5 });
   offer(fr, S, L, 'fruitPlate', cx - 0.57, floor, pz, { scale: 1.1, ry: 0.4 });
   for (const s of [-1, 1]) offer(fr, S, L, 'baySei', cx + s * 0.63, floor, hz + 0.02, { tiers: 3, scale: 0.9 });
-  // A young coconut, its top cut open.
-  fr.b.box(cx + 0.55, floor + 0.1, pz - 0.02, 0.17, 0.19, 0.17, 0x6f9a3a, 'petal', { src });
-  fr.b.box(cx + 0.55, floor + 0.205, pz - 0.02, 0.11, 0.03, 0.11, 0xe8e2c8, 'petal', { src });
+  // A young coconut, its top cut open: the plant kit's round (veg/plantKit.ts), green, its cut top pale.
+  round(fr.b, [cx + 0.55, floor, pz - 0.02], { wid: 0.19, hgt: 0.2, color: 0x6f9a3a, ribs: false, cap: 0xe8e2c8, src });
   // Garlands: along the tray's front, hanging from its corners and the roof's eaves.
   const front = tcz + trd / 2 + 0.04;
   marigolds(fr, S, [cx - trw / 2, ty - 0.02, front], [cx + trw / 2, ty - 0.02, front], 0.16, 720);
