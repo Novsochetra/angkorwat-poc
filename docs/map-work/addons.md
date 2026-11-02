@@ -3704,13 +3704,17 @@ without its straw), the oxen `people/_ox.ts`.
     swings the noses round the axle, out past the rope and back); a place counts only if that pulls him 5 m at most
     (`OUT_DRAG`: a part way's turns pull him as far), and then his feet and his next steps, from where the rope brought
     him, are clear as above and within 5.9 m of the noses. The one pulling him 1.5 m at most (`OUT_SOFT`) is taken
-    first, then any; last, one where the rope holds him again after 1 m on at least (`OUT_WALK_MIN`, the farthest).
+    first, then the one pulling him least (by half metres, then the best rated); last, one where the rope holds him again after 1 m on at least (`OUT_WALK_MIN`, the farthest).
     (Review 6: every rope slip came right after a place out of his way past where the rope let him walk on, the
     oxen swinging the noses away; the rope was then tested before it held him, below.) When that search finds no whole way (at its place limit, or out of places) the oxen walk
     the cart there before any part way ("the oxen move the cart out of his way (the rope holds all the way, pulling him
     along … m at most; he walks on … m before it holds him)"), and the rope pays out to `OUT_SLACK` (within `ROPE_SPARE` of its length, above) as he walks on
-    past it (`passing`; he pulls only there), until he is 3 m from where he stood, it has followed him on 2 m, a new
-    way round is looked for, or he lets go; then he leads it on as usual. With none such, a part way or the nearest
+    past it (`passing`; he pulls only there), until he is 3 m from where he stood as the oxen finished the move (while
+    they walk it the rope pulls him along and he walks too), it has followed him on 2 m since, a new way round is
+    looked for, or he lets go; then he leads it on as usual. While he passes, the oxen do not turn it toward him nor
+    right round (turned back, it swung over where he was going: on touch the camp's way home reached its first
+    point after 70–113 s in 4 of 10 runs, now 25–27 s); pulling at the rope's end there, a way round toward him is
+    looked for. With none such, a part way or the nearest
     to his heels, as below. A whole way found is taken as before. (The log trip's way home from the camp, its first
     waypoint the cart's own spot: the part ways came round but left it where he walked, and it circled there to the
     2-minute timeout, 3 of 5 from that state.)

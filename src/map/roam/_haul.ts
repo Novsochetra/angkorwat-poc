@@ -1724,6 +1724,9 @@ function noseFar(n: Pose): number {
  */
 const OUT_DRAG = 5;
 const OUT_SOFT = 1.5;
+const dragBand = (n: PlanNode): number => (outByDrag ? Math.ceil((n.drag ?? 0) / 0.5) : 0);
+/** Checks only (`probe`, `least: false`): the farther pulled ones by rating alone, not the least pulled first. */
+let outByDrag = true;
 let outDrag = OUT_DRAG;
 /**
  * (`PlanNode.hx`, `hz`, `drag`, `rope`) The rope over `m`'s sub-steps, from its parent's (or where he stood): at each, the
@@ -1865,7 +1868,9 @@ function planStep(ctx: RoamCtx): boolean {
         // first — `OUT_SOFT` at most —, then any (`outFar`))
         if (w === 2) {
           if ((m.drag ?? 0) <= OUT_SOFT + 1e-6) search.outBest = m;
-          else if (!search.outFar || m.f < search.outFar.f) search.outFar = m;
+          // (pulled farther: the one that pulls him least — by half metres —, then the best rated: pulled round to the cart's
+          // far side he must come back round it, and the oxen turn it back into his way)
+          else if (!search.outFar || dragBand(m) < dragBand(search.outFar) || (dragBand(m) === dragBand(search.outFar) && m.f < search.outFar.f)) search.outFar = m;
         }
         // (out of his way, the rope holding him all the way there, but holding him again before his 3 m on: last, the
         // one he walks on farthest from, at least `OUT_WALK_MIN`)
@@ -1897,6 +1902,7 @@ function planStep(ctx: RoamCtx): boolean {
       console.info(`[haul] a way round toward (${search.him.x.toFixed(1)}, ${search.him.z.toFixed(1)}): none whole within its reach (${search.n} places looked at): the oxen move the cart out of his way (the rope holds all the way, pulling him along ${outRope.toFixed(1)} m at most; he walks on ${outOn.toFixed(1)} m before it holds him)`);
       planTake(o);
       passing.on = true;
+      onRun = 0;
       passing.x = o.hx ?? search.from.x;
       passing.z = o.hz ?? search.from.z;
       return true;
@@ -2026,7 +2032,10 @@ function getRound(ctx: RoamCtx, dt: number): boolean {
   }
   // (he beside or behind the oxen — he turned back the way he came — : they walk it round toward him where it stands,
   // as far as it goes clear of him and of everything; only when it cannot turn so do they look for a way round)
-  if (!search.on && !inFront(CART_AT, p.x, p.z)) {
+  // (not while he passes the cart the oxen just moved out of his way: turned back toward him, or right round, it would
+  // swing back over where he is going — he pulled at the rope's end and they swung it right round onto his way, again
+  // and again; pulling there, a way round toward him is looked for below)
+  if (!search.on && !passing.on && !inFront(CART_AT, p.x, p.z)) {
     const got = pivotPlan(ctx, fromAxle(p.x, p.z));
     if (got === 'turn') return true;
     if (got === 'done') pivoting = false;
@@ -2337,7 +2346,13 @@ function lead(ctx: RoamCtx, dt: number): void {
   // had backed it 2 m and more to put him in front as he walked there anyway))
   // (the oxen moved the cart out of his way: the rope pays out as he walks on past it, to `OUT_SLACK` — he pulls only
   // there —, until he is `OUT_ON` m on or it follows him: `passing`)
-  if (passing.on && (onRun >= BACK_RESET || Math.hypot(ctx.body.pos.x - passing.x, ctx.body.pos.z - passing.z) >= OUT_ON)) passing.on = false;
+  // (counted from where he stands as the oxen finish the move — while they walk it the rope pulls him along, and he
+  // walks too: from where the search thought it would bring him, it ended as they were still moving it, 1 of 2 slow
+  // runs on touch)
+  if (passing.on && walkPlan.steps.length) {
+    passing.x = ctx.body.pos.x;
+    passing.z = ctx.body.pos.z;
+  } else if (passing.on && (onRun >= BACK_RESET || Math.hypot(ctx.body.pos.x - passing.x, ctx.body.pos.z - passing.z) >= OUT_ON)) passing.on = false;
   const pulling = ds <= 1e-4 && !walkPlan.steps.length && far > (passing.on ? OUT_SLACK : ROPE_HOLD) - 0.3;
   ropeFar = far;
   const besideStill = !inFront(CART_AT, ctx.body.pos.x, ctx.body.pos.z) && Math.hypot(ctx.body.vel.x, ctx.body.vel.z) < BESIDE_STILL;
@@ -2944,9 +2959,10 @@ registerAddon({
            * found), searched to the end at once: found or not, what it took (`took`), places looked at, fit tests, time, its
            * moves, how far it backs at most (along the first heading) and how far it turns. Nothing of the live cart changes.
            */
-          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number; drag?: number } = {}) => {
+          probe: (cx: number, cz: number, cyaw: number, hx: number, hz: number, opt: { backed?: number; to?: [number, number]; nodes?: number; out?: number; drag?: number; least?: boolean } = {}) => {
             planNodes = opt.nodes ?? PLAN_NODES;
             outDrag = opt.drag ?? OUT_DRAG;
+            outByDrag = opt.least ?? true;
             const keep = { x: CART_AT.x, z: CART_AT.z, yaw: CART_AT.yaw, backed, hist: hist.slice(), him: { ...himAt } };
             const fit0 = FIT.n;
             CART_AT.x = cx;
@@ -2991,6 +3007,7 @@ registerAddon({
             planClear();
             planNodes = PLAN_NODES;
             outDrag = OUT_DRAG;
+            outByDrag = true;
             CART_AT.x = keep.x;
             CART_AT.z = keep.z;
             CART_AT.yaw = keep.yaw;
