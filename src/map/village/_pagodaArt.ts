@@ -1,7 +1,7 @@
 import { BufferAttribute, BufferGeometry, CanvasTexture, Color, Mesh, MeshStandardMaterial, NoColorSpace, RepeatWrapping, SRGBColorSpace, type Texture } from 'three';
 import { hash3 } from '../../voxel/random';
 import { sacredEnv } from '../sacred/finish';
-import { along, archOutline, bezier, boss, dot, flame, flameArch, flameRow, gild, halo, LACQUER, lotusBand, poly, reahu, ribbon, type AnyCanvas, type Ctx2D, type Gilded, type GildLook, type KbachPen, type P } from '../sacred/kbach';
+import { along, archOutline, bezier, boss, dot, flame, flameArch, flameRow, gild, halo, LACQUER, lotusBand, PAINT_SCALE, poly, reahu, ribbon, type AnyCanvas, type Ctx2D, type Gilded, type GildLook, type KbachPen, type P } from '../sacred/kbach';
 import { SKY } from '../sky/palette';
 
 /**
@@ -707,7 +707,7 @@ function paintMural(g: Ctx2D, w: number, h: number, head: number): void {
 /** The back wall's painting (`w` × `h` m), its foot's middle at the origin, facing −z; `head` is the Buddha's head's middle over the wall's foot (m). */
 export function muralMesh(w: number, h: number, head: number): Mesh {
   const m = once(`mural:${w}:${h}:${head.toFixed(2)}`, () => {
-    const px = 1024;
+    const px = Math.round(1024 * PAINT_SCALE);
     const ppm = px / w;
     const H = Math.round(h * ppm);
     const [c, g] = canvas(px, H);

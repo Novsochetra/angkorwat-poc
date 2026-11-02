@@ -113,6 +113,35 @@ interface Sculpted {
 }
 
 const cache = new Map<string, Sculpted>();
+/** Statues' levels drawn from each sculpt now, and the sculpt each level's mesh was dressed from (`letGo`). */
+const users = new Map<Sculpted, number>();
+const dressedFrom = new WeakMap<Object3D, Sculpted>();
+
+/**
+ * A statue's level let go (_detail.ts `drop`): its own colours and finish leave the GPU and memory; with the
+ * sculpt's last user, the sculpt too (its arrays, its buffers on the GPU, and its place in the cache: the next
+ * statue to want it sculpts it again). While others draw it, its attributes stay: disposing them would delete
+ * their buffers under the other statues' meshes.
+ */
+function letGo(key: string, obj: Object3D): void {
+  const s = dressedFrom.get(obj);
+  const g = (obj as Mesh).geometry;
+  if (!s || !g) return;
+  const n = (users.get(s) ?? 1) - 1;
+  if (n > 0) {
+    users.set(s, n);
+    const src = s.mesh.geometry;
+    for (const name of Object.keys(g.attributes)) if (g.getAttribute(name) === src.getAttribute(name)) g.deleteAttribute(name);
+    if (g.index === src.index) g.setIndex(null);
+  } else {
+    users.delete(s);
+    if (cache.get(key) === s) {
+      cache.delete(key);
+      later.delete(key);
+    }
+  }
+  g.dispose();
+}
 
 /** The Buddha of `kind` as a sculpt, its foot at y = 0 (reference size). */
 export function buddhaSculpt(kind: BuddhaKind): { sculpt: Sculpt; foot: number } {
@@ -247,6 +276,8 @@ export function buddhaStatue(o: StatueOptions & { sync?: boolean }): Object3D {
   const unitOf = (s: Sculpted) => (o.length !== undefined ? o.length / s.length : (o.height ?? 1) / s.height);
   const make = (lod: SacredLod, s: Sculpted) => {
     const m = new Mesh(dress(s.mesh, palette), statueMaterial());
+    users.set(s, (users.get(s) ?? 0) + 1);
+    dressedFrom.set(m, s);
     m.name = 'buddha';
     m.scale.setScalar(unitOf(s));
     m.castShadow = true;
@@ -262,6 +293,7 @@ export function buddhaStatue(o: StatueOptions & { sync?: boolean }): Object3D {
       // (the far mesh takes over from the near one past `near` m, as it always did)
       cell: detail === 'far' || detail === 'near' ? 0 : BUDDHA_CELLS[detail].cell,
       load: (lod: SacredLod) => (o.sync ? make(lod, buddhaMesh(kind, detail)) : buddhaMeshAsync(kind, detail).then((s) => make(lod, s))),
+      drop: (obj: Object3D) => letGo(keyOf(kind, detail), obj),
     })),
     {
       near: o.farOnly ? 0 : (o.near ?? Math.max(12, (o.height ?? o.length ?? 1) * 8)),

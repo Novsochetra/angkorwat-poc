@@ -1,4 +1,5 @@
 import { CanvasTexture, NoColorSpace, SRGBColorSpace, type Texture } from 'three';
+import { PHONE } from '../graphics';
 
 /**
  * Khmer ornament (kbach) painted on a canvas: gilt relief on red lacquer, as
@@ -579,23 +580,41 @@ export interface GildLook {
 }
 
 /**
- * Lays a drawing's gold on its ground: `w` × `h` px, `draw` gets a pen whose
- * layers already map metres to pixels (`toPx` sets that: e.g. origin at the
- * bottom middle, y up). Light is taken to come from the upper left.
+ * Painted pictures on a phone are this much as wide and tall (gilt kbach, the
+ * pagoda's murals): a quarter of the pixels, the same drawing. Its picture is
+ * about 390 px high, so a gable or a mural never shows sharper than this, and
+ * each of them kept a canvas and a texture with its mipmaps (≈ 90 MB in all
+ * at full size once the village pagoda is seen): a phone's tab has little
+ * memory to spare.
+ */
+export const PAINT_SCALE = PHONE ? 0.5 : 1;
+
+/**
+ * Lays a drawing's gold on its ground: `w` × `h` px (times `PAINT_SCALE`:
+ * the drawing, its edges and soft shadows scaled with it), `draw` gets a pen
+ * whose layers already map metres to pixels (`toPx` sets that: e.g. origin
+ * at the bottom middle, y up). Light is taken to come from the upper left.
  */
 export function gild(w: number, h: number, toPx: (g: Ctx2D) => void, ppm: number, draw: (pen: KbachPen) => void, look: GildLook = {}): Gilded {
+  const k = PAINT_SCALE;
+  w = Math.max(1, Math.round(w * k));
+  h = Math.max(1, Math.round(h * k));
   const [groundC, ground] = canvas(w, h);
   const [goldC, gold] = canvas(w, h);
   const [cutC, cut] = canvas(w, h);
   const [glassC, glassG] = canvas(w, h);
   for (const g of [ground, gold, cut, glassG]) {
     toPx(g);
+    if (k !== 1) {
+      const m = g.getTransform();
+      g.setTransform(m.a * k, m.b * k, m.c * k, m.d * k, m.e * k, m.f * k);
+    }
     g.fillStyle = '#fff';
     g.strokeStyle = '#fff';
     g.lineCap = 'round';
     g.lineJoin = 'round';
   }
-  draw({ gold, cut, glass: glassG, ground, ppm });
+  draw({ gold, cut, glass: glassG, ground, ppm: ppm * k });
 
   // The grooves only where there is gold.
   const cuts = tint(cutC, '#fff');
@@ -608,20 +627,20 @@ export function gild(w: number, h: number, toPx: (g: Ctx2D) => void, ppm: number
   // Colour: the ground, the gold's soft shadow on it, the gold (lit above, warmer below), its edges, its grooves, the glass.
   const [color, C] = canvas(w, h);
   C.drawImage(groundC, 0, 0);
-  soft(C, goldC, 'rgba(22, 2, 1, 0.9)', 4, 2, 3);
+  soft(C, goldC, 'rgba(22, 2, 1, 0.9)', 4 * k, 2 * k, 3 * k);
   const [g0, g1] = look.gold ?? ['#f6cf66', '#d49a34'];
   const grad = C.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, g0);
   grad.addColorStop(1, g1);
   C.drawImage(tint(goldC, grad), 0, 0);
   C.globalAlpha = 0.55;
-  C.drawImage(rim(goldC, look.light ?? '#fff3c0', 3, 3), 0, 0);
+  C.drawImage(rim(goldC, look.light ?? '#fff3c0', 3 * k, 3 * k), 0, 0);
   C.globalAlpha = 0.9;
-  C.drawImage(rim(goldC, look.light ?? '#fff3c0', 1, 1), 0, 0);
+  C.drawImage(rim(goldC, look.light ?? '#fff3c0', k, k), 0, 0);
   C.globalAlpha = 0.85;
-  C.drawImage(rim(goldC, look.dark ?? '#6a3a0c', -2, -2), 0, 0);
+  C.drawImage(rim(goldC, look.dark ?? '#6a3a0c', -2 * k, -2 * k), 0, 0);
   C.globalAlpha = 0.7;
-  C.drawImage(tint(cuts, look.light ?? '#fff3c0'), 1, 1);
+  C.drawImage(tint(cuts, look.light ?? '#fff3c0'), k, k);
   C.globalAlpha = 1;
   C.drawImage(tint(cuts, look.groove ?? '#4a2106'), 0, 0);
   C.drawImage(glassC, 0, 0);
@@ -630,7 +649,7 @@ export function gild(w: number, h: number, toPx: (g: Ctx2D) => void, ppm: number
   const [relief, R] = canvas(w, h);
   R.fillStyle = '#000';
   R.fillRect(0, 0, w, h);
-  soft(R, goldC, '#fff', 3);
+  soft(R, goldC, '#fff', 3 * k);
   R.globalAlpha = 0.45;
   R.drawImage(tint(goldC, '#fff'), 0, 0);
   R.globalAlpha = 0.7;
