@@ -3,6 +3,7 @@ import { BIKE, bikePose, bikeState, STOP_LEAN, WHEELBASE } from '../../character
 import { BODY_UNIT_M } from '../../world/scale';
 import '../audio/_bike';
 import { SFX } from '../audio/addonSfx';
+import { cartBodyBlocks } from '../build/haul';
 import { Things } from '../people/_things';
 import { pad } from '../pad/pad';
 import { SEY, SEY_R, SEY_SPOT } from '../sey';
@@ -659,6 +660,8 @@ function test(ctx: RoamCtx, x: number, z: number, yaw: number, dir: number, loos
     const cz = z + fz * a;
     const ex = cx + hx * edge;
     const ez = cz + hz * edge;
+    // (his ox cart and its oxen: not on the walk map, a wall to the bicycle as to him on foot: build/haul.ts)
+    if (!loose && (cartBodyBlocks(cx, cz, 0.12) || cartBodyBlocks(ex, ez, 0.12))) return 'wall';
     const hub = tyreGround(w, cx, cz, wh.h, k);
     const lead = tyreGround(w, ex, ez, wh.h, k);
     const at = lead > hub ? 1 : 0;
@@ -706,7 +709,7 @@ function test(ctx: RoamCtx, x: number, z: number, yaw: number, dir: number, loos
     const base = rear.h + (front.h - rear.h) * u;
     const g = tyreGround(w, px, pz, base, k);
     probeY[i] = g - base;
-    if (Number.isNaN(g)) return 'wall';
+    if (Number.isNaN(g) || cartBodyBlocks(px, pz, 0.1)) return 'wall';
     if (g <= base + BUMP * k) continue;
     // The step the wheels are getting up, under the frame: the nearer wheel comes up so that the frame rests on its edge.
     const near = u > 0.5 ? front : rear;

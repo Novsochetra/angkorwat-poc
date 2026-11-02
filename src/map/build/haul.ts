@@ -90,7 +90,8 @@ export const CART_AT: CartPlace = saved ? { x: saved[0], z: saved[1], yaw: wrapY
 /** Keep where it stands now (by the house: nothing kept, it is the default). */
 export function saveCartAt(): void {
   const home = Math.hypot(CART_AT.x - CART_HOME.x, CART_AT.z - CART_HOME.z) < 0.05;
-  progress.set('haul.at', home ? null : [+CART_AT.x.toFixed(2), +CART_AT.z.toFixed(2), +wrapYaw(CART_AT.yaw).toFixed(3)]);
+  // (exactly where it stands, not rounded: a place at the edge of fitting, rounded, might not fit, and a reload would move it)
+  progress.set('haul.at', home ? null : [CART_AT.x, CART_AT.z, wrapYaw(CART_AT.yaw)]);
 }
 
 /** Put it back by his house (a saved place that is no good any more). */
@@ -129,6 +130,12 @@ function hits(at: Readonly<CartPlace>, x: number, z: number, r: number): boolean
  * footprint: nothing may stand on the cart nor box it in.
  */
 export const cartBlocks = (x: number, z: number, r = 0): boolean => hits(CART_AT, x, z, r) || hits(CART_HOME, x, z, r);
+
+/**
+ * Is (x, z), or a disc of radius `r` round it, in the ox cart or its oxen where they stand now (not their place by the
+ * house)? For what moves: the bicycle, the ridden cow, his cattle, the dog keep out of it.
+ */
+export const cartBodyBlocks = (x: number, z: number, r = 0): boolean => hits(CART_AT, x, z, r);
 
 /** As `cartBlocks`, and which: the cart itself (`here`), or its place by the house while it is away (`place`); null: neither. */
 export const cartBlockWhy = (x: number, z: number, r = 0): 'here' | 'place' | null => (hits(CART_AT, x, z, r) ? 'here' : hits(CART_HOME, x, z, r) ? 'place' : null);

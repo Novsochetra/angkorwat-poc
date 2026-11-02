@@ -5,6 +5,7 @@ import { mulberry32 } from '../../voxel/random';
 import { BODY_UNIT_M } from '../../world/scale';
 import { SFX } from '../audio/addonSfx';
 import '../audio/_cowRide';
+import { cartBodyBlocks } from '../build/haul';
 import { addRideCow, COW_RIDE, rideCow, type RideCow } from '../cattle/ride';
 import { padName } from '../pad/glyphs';
 import { pad } from '../pad/pad';
@@ -275,7 +276,7 @@ function misfits(w: RoamWorld, x: number, z: number, yaw: number, ref: number): 
     const why: Blocked =
       (w.edgeDistance?.(wx, wz) ?? EDGE + 1) < EDGE
         ? 'edge'
-        : Number.isNaN(g)
+        : Number.isNaN(g) || cartBodyBlocks(wx, wz, 0.15)
           ? 'wall'
           : g < ref - UP - 0.1
             ? 'drop'

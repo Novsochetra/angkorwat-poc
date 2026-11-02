@@ -435,7 +435,8 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
   anywhere: it stays where you leave it" while he has none, the purse.
-- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, so a bicycle is
+- **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, and at a visit's start only once a map
+  day — 6 minutes — has gone by since the last came, `_shopPurse.ts` `pocketAt`; so a bicycle is
   saved up for from fish and the garden): the black town bicycle (កង់បុរាណ ពណ៌ខ្មៅ:
   a cane basket and a lamp) **60,000 ៛**, the sky-blue lady's bicycle (កង់ស្រី
   ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
@@ -3517,8 +3518,11 @@ without its straw), the oxen `people/_ox.ts`.
   (as the village cart): its boxes and its load in one `Things` of its own (the people's things
   shader: a draw and its shadow), the oxen a `Flock` of two (the animals' shader); written only
   when it moves or its load changes. No new shader program.
-- **Leading it** (ដឹករទេះគោ, order 58): before the oxen, on foot, "E  ដឹករទេះគោ / Lead the ox
-  cart": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
+- **Leading it** (ដឹករទេះគោ; the rope is its own add-on `haulRope`, order 44, before a cow to ride or
+  the garden: at the oxen's spot facing them E takes the rope, and while he leads E lets go, whatever
+  else is near; the cart's other prompts are order 58): before the oxen, on foot, "E  ដឹករទេះគោ /
+  Lead the ox cart" — or, when the spot before them is water or off a bank, beside them on the dry
+  side nearer him, "E  ដឹករទេះគោ (ពីក្បែរគោ) / Lead the ox cart (from beside the oxen)": he takes the right ox's nose rope (a rope from his hand to its nose) and walks on at the
   oxen's pace (2 m/s: the stick's walk is scaled down, no running); the oxen and the cart follow
   the way he walked, the yoke 2.7 m behind his feet when he stands. The camera looks down at least
   0.5 rad and stands at least 9.5 m out (over the oxen behind him). It goes only where a cart can.
@@ -3533,8 +3537,18 @@ without its straw), the oxen `people/_ox.ts`.
   under a shelter, over a bed); his blocks (`BLOCKS`), every cell the box meets from the land to
   3.4 m, exactly; anything else of the map standing over the land (the walk map: houses, stalls,
   walls, a trunk, a stair, a jar) every 0.2 m across the box. Where it cannot, the way stops
-  growing and the cart rolls up to the last place it fits and stands; once he is 6.5 m from the
-  ox's nose the rope slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
+  growing and the cart rolls up to the last place it fits and stands (never testing a place past the
+  way's last point; nor into a place from which it could neither roll on 0.4 m nor turn 0.15 rad
+  either way: wedged, only backing out); the rope holds him 4.2 m from the oxen's noses while they
+  find their way round (below), and as they move the cart it pulls him along: each frame the rope
+  holds him first, and only then is it seen whether it slips (it was tested before he was held, so a
+  frame's swing of the noses could pull it from his hand). Paid out, it stays 0.25 m inside its 6.5 m
+  from his hand, over the land's steps between him and the oxen (`ROPE_SPARE`), never past where it
+  would slip (but never held in under 4.2 m for it: far below them, after a fall, it slips). Where they find none for where he stands — a search that ran out of places
+  (`search.none`), never one that only reached its place limit (that one tries again, the rope
+  holding him) — or 6 s of pulling get nowhere, the rope pays out as he walks on, round the thing,
+  and the oxen look again once he is 1.5 m on (a way found, it is taken in as he comes nearer, never
+  pulling him back); at its length (6.5 m from his hand, or a fall) it slips: "គោទាញរទេះទៅផ្លូវនេះមិនរួចទេ —
   រទេះនៅចាំត្រង់នេះ / The oxen can't take the cart that way: it waits here". E again ("E  លែងខ្សែ /
   Let go of the rope", over him while he leads), another mode (the water, the glider), back to the
   map, or anything else that takes him (a ride, sitting, praying) lets go: the cart waits where it
@@ -3547,7 +3561,7 @@ without its straw), the oxen `people/_ox.ts`.
   away stops him (what is in stays in). A toast: "Loaded on the cart: 2 bamboo poles and 1 log ·
   cart 16/60" (and "no room for the rest" when the cart is full). The cart full: "រទេះពេញហើយ (៦០/៦០) /
   The cart is full (60/60)" (no key).
-- **Unloading at home** (the cart within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
+- **Unloading at home** (the cart on his land, `build/plot.ts` `inPlot`, or within 14 m of the house's middle): "E  ដាក់ចុះទុកនៅផ្ទះ (១៦/៦០) /
   Unload at home (16/60)": he lifts the pieces off, the top first (clay, thatch, bamboo, logs), and
   puts each down beside him into his home store (`STORE`: the build card uses it). Away from home a
   loaded cart's tail says "ដឹកទៅផ្ទះ ដើម្បីដាក់ចុះ / Lead it home to unload (16/60)" (no key).
@@ -3591,7 +3605,7 @@ without its straw), the oxen `people/_ox.ts`.
   (`roam/_gardenSpots.ts`, the same two, the plant's room): no shelter over it, no fence or pen round it.
   A footprint check of its own can ask `cartBlocks` (or `cartBlockWhy`) too.
 - **Its place checked** (once he first walks, the walk map whole): the saved place must be one the cart
-  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke, and its whole boxes
+  could stand on in play (`standsAt`: the land at its tail, axle, oxen and yoke and under the oxen's fronts, and its whole boxes
   clear as above: not in a house, the market's stalls, nor under or in a piece built over it since —
   a shelter, a pen, a bed, a fence through it); else it goes to its
   place by the house, or, that taken, the nearest free one round it (rings out to 16 m). A saved heading
@@ -3600,8 +3614,167 @@ without its straw), the oxen `people/_ox.ts`.
   (`ui/_minimapSpots.ts` `my-cart`, as his bicycle's `my-bike`): on the mini-map where it stands, and on
   the big map (its button moved there by `roam/_haul.ts`, its name only while pointed at or the target);
   not while he leads it.
-- **The lead's hint** names the control in use: E, the pad's □ (`padName`), or on a touch screen the
-  button that says "លែងខ្សែ / Let go of the rope".
+- **The lead's hint** names the control in use: "ប៊ូតុង E", the pad's □ on a DualSense (X on others), or
+  on a touch screen the button that says "លែងខ្សែ / Let go of the rope".
+- **One rule for where it may stand** (`placeFits`, AWP-14 integration): the land at its tail, axle, oxen
+  and yoke, and under the oxen's fronts (on from the yoke's ground, a step of 2.2 m at most: never their
+  heads out over a drop), and its and its oxen's whole boxes clear (his pieces, the stakes his cows are tied to with
+  their room, `cattle/plan.ts` `STAKE_ROOM`, his blocks, the walk map). The same as it moves (each
+  0.2 m, and moving it also stops for cattle, `CATTLE_OBSTACLES`) and as a saved place is checked, so it
+  never stops where a reload would refuse it; where he lets go it stands at the last place tested. A
+  saved place that no longer fits (something built since) goes to the nearest place that does, out to
+  8 m, its load with it; only then by the house.
+- **Finding the way round** (`getRound`, AWP-14 integration 2): blocked — the way stops at something,
+  or the cart cannot roll on along a way that turns too tight — the oxen look for a few moves (turns on
+  the spot of 0.15 rad either way, rolls back or on of 0.4 m: a turn, backing up, a small three-point
+  turn; a search of up to 1 600 places, 5 ms a frame, while he waits, heading for his heels: the way
+  there and the turn toward him, both along the land's way to him below) to a place from which the way goes
+  on toward him as play builds it (`wayWorksFrom`: headed within 0.8 rad of the way it sets out on, the way
+  laid up to his heels — within `HEEL` = GAP + 0.5 m of his feet — or 5.7 m of it, each point where a cart
+  can go, the cart fitting every 0.2 m along it as it rolls), and walk them (each sub-step tested: 0.03 rad,
+  0.2 m); then the way goes on — a whole way round lays that tested way as the cart's way first, so it goes
+  on round what stands as it was tested. **The land's way to him** (`fieldStart`, `fieldStep`, `fieldAim`):
+  before the search looks, a grid of 1 m cells round him and the cart (8 m beyond both, 56 a side at most),
+  each tested once at its middle across its width both ways (`passable`), and from him out through them (no
+  land step over 2.2 m between two) how far it is to walk; a cell next to one not clear costs 4 times as
+  much a metre, two cells off twice (the way keeps off things: on its pole the cart cuts the inside
+  of a bend); built a few ms a frame. The search's guess is that walk from the yoke and the turn to the way it
+  sets out on (toward the cell on it 2 m off; straight to him within 3 m of him), and the way round's trial
+  way follows it. A guess only: every place is still tested whole. (Straight toward him across a bamboo clump,
+  the search took 6 000–20 000 places, past its reach, and its part ways wedged the cart against the clump;
+  along the land's way it found a whole way round in about 500.) He stands where a cart cannot
+  come: the nearest place to his heels it reached (1.5 m nearer at least). Blocked again where a way
+  round ended (the cart not a metre on: he moved on as the oxen turned): the next plan goes right up to
+  his heels, from where the way to his feet works, any heading; three in a row: none, for where he stands.
+  Blocked at his heels — its yoke within `HEEL` of his feet and he in front of the oxen (within `FRONT`
+  = 0.9 rad of its heading, seen from the yoke) — it looks for no way round and waits (he stands by a
+  log pile). Beside or behind the oxen (he turned to go back the way he came) it brings them round: a
+  way round made near him (yoke within `HEEL` + 1 m) ends with him within `FRONT_GOAL` = 0.45 rad of the
+  heading, so one plan does the U-turn; farther, within `AIM` (both seen from the yoke). The cart
+  standing 1.2 s, blocked or not, with the rope taut (him 3.9 m or more from the noses) or him standing
+  beside or behind the oxen (slower than 0.3 m/s, `BESIDE_STILL`: while he walks round them they wait,
+  he is coming in front), starts a way round too (`TAUT_AFTER`): never a silent wait. No way round found:
+  tried again 3 s on while so (`RETRY_AFTER`), not only once he has moved 1.5 m. Getting nowhere is
+  judged over a window, never frame by frame (`nowhere`: a sample every 0.25 s; a keyboard player
+  re-aims all the time, W ↔ W+D): he pushed on all of the last 2.5 s (keys, stick or touch past a fifth of its reach, `PUSH_ON`,
+  as pressed, before the oxen's pace scales it) and moved under 0.5 m net, the cart under 0.3 m. The first time the
+  oxen look for a way round — toward where he heads (6 m on the way he faces) when he walks into them
+  from in front, or beside or behind them (he pushes on toward where the cart itself stands: it gets out of his way),
+  toward him else; again, the rope slips and says why (`NOWHERE_WINDOW`, `INTO_AHEAD`) —
+  unless the way round moved the cart (0.5 m or 0.3 rad): then it is a new first time; and unless the last search
+  only reached its place limit (he still within 1.5 m of where it was made for): then the oxen look again
+  ("getting nowhere … again after a search that reached its place limit: the oxen look again"), the rope holding him.
+  A way round never ends hugging him: its last place leaves his feet 0.5 m clear of the cart's and the
+  oxen's boxes (`clearOfHimAt`; else he could stand pinned between the cart's front, the oxen's flank
+  and a log pile). A way round may also go back along the places it last stood
+  at (`hist`: one each 0.2 m or 0.03 rad it moved, the last 40, kept while it stands; each tested again):
+  it undoes the curve it followed, which straight rolls and turns on the spot cannot always do.
+- **Turning round** (a U-turn, AWP-14 integration 5): before any search the oxen walk the cart round where it
+  stands, the cart turning on its wheels (`pivotPlan`): sub-steps of 0.03 rad (the oxen's far end moves under
+  0.2 m a sub-step), each tested as the oxen walk it (`planWalk`: it stops at the first that does not fit or
+  comes too near him), at 0.7 rad/s, up to 1.2 rad a plan and plan after plan without waiting.
+  - He walks into their noses from in front, back past them (getting nowhere 2.5 s): they turn it right round
+    (180°), the side with more room (a few tests every 0.3 rad up to π, `pivotRoom`; his side when both go
+    round), brushing past him (his feet's middle 0.15 m clear, `ROUND_CLEAR`: they nudge him aside), and the
+    way waits until it is round (`turnRound`) or cannot turn on.
+  - He beside or behind the oxen: they turn it toward him, as seen from its axle, done within 0.35 rad
+    (`PIVOT_DONE`), his feet's middle 0.3 m clear (`PIVOT_CLEAR`); then the way goes on, with no search unless
+    something blocks it or the rope pulls.
+  - He beside them in the swing of that turn (it would brush him) and heading on back past the cart (pushing
+    on, facing more than 0.3 of the way back along its heading: a U-turn along their side): they turn it right
+    round the other way, away from him (`roundAway`, as `turnRound` above), if it has room to come half round
+    that way (`pivotRoom`); else as below. When the oxen were already turning it toward him as he came into their
+    swing, it turns to face back from the heading they began at (`pivotFrom`, up to three quarters round in all):
+    from where they stopped it came round some 40° short (the clay U-turn ended 146–148° round, now 167°).
+  - One right-round turn (`turnRound` or `roundAway`) where the cart stands: none begins again until it has moved
+    on 1 m (`ROUND_AGAIN`) from where the last one began (or he takes the rope again). Turned right round with him
+    still beside it heading into the cart itself (making for where it stands), it turned right round again and
+    again where it stood, carrying him round with its oxen (the log trip's way home from the camp: 2 minutes); now
+    getting nowhere there looks for a way round toward where he heads, as below.
+  - After a turn (and when he takes the rope) the way starts again at the yoke, and it is laid toward him only
+    once he is in front of the oxen (within `FRONT` of the heading, seen from the yoke) and `GAP` from the yoke
+    (`wayOn`): never bent back round the oxen toward him beside them (the yoke would go back along its own pole —
+    a hook: after a U-turn the cart swung out sideways on it and ended facing past him). Beside or behind them
+    the oxen turn it toward him (above); at its heels it waits; then the way goes straight from the yoke to him.
+  - He stands still 0.5 s (`FACE_AFTER`) with the cart at his heels not facing him (it followed the curve he
+    walked), or it cannot turn to him where it stands (he standing too near beside the yoke): the oxen turn it to
+    face him within 0.06 rad, about 3° (`FACE_DONE`, `facePlan`), first backing it 0.4 m at a time when he stands
+    too near (`FACE_BACK` 1.2 m at most, within `BACK_MOST`); every sub-step tested before and as it is walked.
+    Where nothing lets it come round so far, as far as it does where it stands (0.09 rad of turn at least,
+    `FACE_PART`; never backing for a part turn); where it cannot turn at all, not tried again until he or the cart
+    moves.
+  - Only when it cannot turn so (something in the way, or he stands in the swing) is a way round looked for.
+  - A cart backs up only a little: 3 m of reverse travel at most in one turning round (`BACK_MOST`; every roll
+    back and move back the way it came, counted from when he takes the rope or after it has followed him on
+    2 m, `BACK_RESET`, its axle 2 m on along its heading, `fwdRun`; never given back by rolling on within a way
+    round, never lifted). Following the way counts too: where the way bends back on itself its axle swings back on its
+    pole, and that is backing in the same 3 m; a step along the way that would swing it back past them is not rolled
+    (it stands, and the oxen bring it round: a way round a bamboo clump had swung it back 1.1 m as it followed, then
+    ended the turning round by the way's length, and it backed 5 m in what was one turning round). Taking the rope
+    again where the cart still stands as he let go goes on with the same turning round: its backing kept (`letAt`),
+    never a fresh 3 m. A move that would back it farther is not made; turns and rolls on always are.
+  - He beside or behind the oxen, pushing into the cart or its oxen (his step 1 m on the way he faces meets them,
+    `intoCart`): getting nowhere, the way round toward where he heads also notes, of the places it reaches, the one it
+    rates best (least cost and way to go) that is out of his way (`outOfWay`): his next steps, 0.5 to 3 m on from his
+    feet every 0.5 m, 0.57 m clear of the cart and its oxen (`OUT_R`: `BODY_R` + `ROUND_CLEAR`), his feet 0.92 m clear;
+    and where the rope holds him all the way there: the search plays the rope as play holds it, a sub-step at a
+    time (`PlanNode.hx`, `hz`, `drag`): wherever the oxen's noses would be more than 5.9 m from his feet (`OUT_SLACK`:
+    the rope's 6.5 m from his hand less 0.6 m) they pull him along to it, so the rope never gives (a turn on the spot
+    swings the noses round the axle, out past the rope and back); a place counts only if that pulls him 5 m at most
+    (`OUT_DRAG`: a part way's turns pull him as far), and then his feet and his next steps, from where the rope brought
+    him, are clear as above and within 5.9 m of the noses. The one pulling him 1.5 m at most (`OUT_SOFT`) is taken
+    first, then the one pulling him least (by half metres, then the best rated); last, one where the rope holds him again after 1 m on at least (`OUT_WALK_MIN`, the farthest).
+    (Review 6: every rope slip came right after a place out of his way past where the rope let him walk on, the
+    oxen swinging the noses away; the rope was then tested before it held him, below.) When that search finds no whole way (at its place limit, or out of places) the oxen walk
+    the cart there before any part way ("the oxen move the cart out of his way (the rope holds all the way, pulling him
+    along … m at most; he walks on … m before it holds him)"), and the rope pays out to `OUT_SLACK` (within `ROPE_SPARE` of its length, above) as he walks on
+    past it (`passing`; he pulls only there), until he is 3 m from where he stood as the oxen finished the move (while
+    they walk it the rope pulls him along and he walks too), it has followed him on 2 m since, a new way round is
+    looked for, or he lets go; then he leads it on as usual. While he passes, the oxen do not turn it toward him nor
+    right round (turned back, it swung over where he was going: on touch the camp's way home reached its first
+    point after 70–113 s in 4 of 10 runs, now 25–27 s); pulling at the rope's end there, a way round toward him is
+    looked for. With none such, a part way or the nearest
+    to his heels, as below. A whole way found is taken as before. (The log trip's way home from the camp, its first
+    waypoint the cart's own spot: the part ways came round but left it where he walked, and it circled there to the
+    2-minute timeout, 3 of 5 from that state.)
+  - A search that reaches its place limit (1 600) has not shown there is none: it walks the part it found that
+    comes round most toward him (in its guess, clear of his feet, `PART_GAIN`) and looks on from there; or the
+    nearest to his heels it reached, if 1.5 m nearer; only else it logs `[haul] a way round toward (x, z): none
+    found within its reach (… places, … s), tries again` and tries again once he has moved on 1.5 m, or the rope
+    taut, `RETRY_AFTER` (3 s) on, the rope holding him at 4.2 m meanwhile; tried again where he still stands, never
+    the same search again: while he pushes on, in turn toward where he heads (6 m on, out of his way if he pushes into
+    the cart: "looking again after a search that reached its place limit: toward (x, z), where he heads") and toward him (`no way round …: every place it can reach
+    looked at` only when the search ran out of places, never at its limit: only that one, `search.none`, lets the
+    rope pay out as "no way" and slip, "rope: no way round for …"). The search keeps its open places in a
+    heap, weighs the way to go three times the way come (`W_GUESS`: it makes for coming round first) and tests
+    each place's fit once (`fitsMemo`).
+  - A blocked way is not tried again every frame while nothing has moved (he, the way's end: `wayTried`).
+  - Checks: `__haul.state().round.backed` (the reverse travel so far), `.fit.by` (fit tests by what they are
+    for), `__haul.probe(cx, cz, cyaw°, hx, hz, { backed, to, nodes, out })` (the search for that cart and him, searched to
+    the end at once — `nodes` another reach than 1 600 —: found, places, the land's cells tested, fit tests, ms,
+    backing, turn; `out`: his facing°, pushing into the cart; `took`: whole, out, part, nearest or none; `ropeMost`:
+    the farthest the oxen's noses come from where he stands over the plan (the rope pulls him along past 4.2 m, or
+    5.9 m out of his way); `outDrag`, `outWalk`: for one out of his way, how far the rope pulls him there and how far
+    he walks on after; `outPast`: places out of his way where the rope holds him before his 3 m on; `drag`: another
+    `OUT_DRAG` to compare; nothing of the live cart changes); `state().round` also gives `slack` (the rope let out),
+    `passing` and `none` (the last search ran out of places); the let-go line gives the farthest his hand was from
+    the nose since he took the rope, `__haul.goalAt(x, z, [yaw°…], hx, hz)` (each heading at
+    that place: fits, the heading the way sets out on, his feet clear, the way on works, and that way).
+- **A new way** (taking the rope, each step of a way round or a turn) starts with points every 0.5 m ending
+  right at the yoke (`BEHIND`), so the cart stands where it was tested, never a part of a step behind.
+- **Stuck for good** (two tries in a row from the same place that moved it under 0.5 m, and no place a few
+  moves off — back the way it came among them; up to 500 looked at — from which it rolls on 2 m:
+  `canGetOut`; a cart that can still go
+  somewhere, only not where he went, is led as usual): before the oxen "E  ឲ្យគោនាំរទេះទៅផ្ទះវិញ /
+  Send the cart home" (once a second failed try has let go, and it is known — looked for over the next frames, a
+  few ms each — that the cart cannot get out, a toast says so, naming the control in use: "ចុច E / □ នៅមុខគោ …",
+  "E / □ before the oxen sends it home" — the pad's □ on a DualSense, its name on others —, and on a touch screen the
+  Use button's words, "នៅមុខគោ ចុចប៊ូតុង «ឲ្យគោនាំរទេះទៅផ្ទះវិញ» / before the oxen, the "Send the cart home" button
+  sends it home"): a fade, and the cart waits by his house with its load ("The oxen know the way home: the cart
+  waits by your house").
+- **What moves keeps out of it** (`build/haul.ts` `cartBodyBlocks(x, z, r)`: the cart and its oxen where
+  they stand): the bicycle (a wall to its wheels and frame), the ridden cow, the dog's steps, his cattle's
+  ways and standing places, as on foot.
 - **Not yet**: the people walk through it (it is not in the people's traffic); "In my bag" (the explorer
   menu's Bag page) does not list the cart's load; the build card does not count a loaded cart standing
   at home (he would buy what is in it: unload it first).

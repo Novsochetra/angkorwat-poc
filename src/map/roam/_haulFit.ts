@@ -1,5 +1,7 @@
 import { BLOCKS, BLOCK_M, cellOf } from '../blocks/store';
 import { BUILT, PIECES } from '../build/pieces';
+import { CATTLE_OBSTACLES, STAKES, STAKE_ROOM } from '../cattle/plan';
+import { CATTLE } from '../cattle/state';
 import type { RoamWorld } from './types';
 
 /**
@@ -139,5 +141,38 @@ export function worldInBox(world: RoamWorld, b: CartBox): boolean {
   return false;
 }
 
-/** The box is clear of his pieces, his blocks and the map's things (in that order: the cheapest first). */
-export const boxClear = (world: RoamWorld, b: CartBox): boolean => !builtInBox(b) && !blocksInBox(world, b) && !worldInBox(world, b);
+/** Does the box meet the disc (cx, cz, r)? (the nearest point of the box to its middle, in the box's own frame) */
+export function boxMeetsCircle(b: CartBox, cx: number, cz: number, r: number): boolean {
+  const fx = Math.sin(b.yaw);
+  const fz = Math.cos(b.yaw);
+  const dx = cx - b.x;
+  const dz = cz - b.z;
+  const a = dx * fx + dz * fz;
+  const c = dx * fz - dz * fx;
+  const oa = Math.max(b.back - MARGIN - a, a - b.front - MARGIN, 0);
+  const oc = Math.max(Math.abs(c) - b.half - MARGIN, 0);
+  return oa * oa + oc * oc < r * r;
+}
+
+/** A stake one of his cows is tied to (cattle/plan.ts `STAKE_ROOM` round it): the cart keeps out of its room. */
+export function stakeInBox(b: CartBox): boolean {
+  for (const c of CATTLE.herd) {
+    const s = STAKES[c.stake];
+    if (s && boxMeetsCircle(b, s[0], s[1], STAKE_ROOM)) return true;
+  }
+  return false;
+}
+
+/** A cow (his or the trader's, where it stands this frame: cattle/plan.ts `CATTLE_OBSTACLES`) is in the box. */
+export function cowInBox(b: CartBox): boolean {
+  const O = CATTLE_OBSTACLES;
+  for (let i = 0; i < O.n; i++) if (boxMeetsCircle(b, O.x[i], O.z[i], O.r[i])) return true;
+  return false;
+}
+
+/**
+ * The box is clear of his pieces, his cows' stakes in use, his blocks and the map's things (the cheapest first): the
+ * one rule for where the cart may stand, as it moves and as a saved place is checked. (What moves, his cattle, is
+ * `cowInBox`: the moving cart stops for them, a parked one is never refused for them: they walk round it.)
+ */
+export const boxClear = (world: RoamWorld, b: CartBox): boolean => !builtInBox(b) && !stakeInBox(b) && !blocksInBox(world, b) && !worldInBox(world, b);
