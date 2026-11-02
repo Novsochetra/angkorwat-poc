@@ -2,6 +2,7 @@ import { traceSource } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { teardrop } from '../../veg/plantKit';
 import { Crown, vnoise, type CellInfo } from './_treeCrown';
 import { blade, deadTree, limb, mix, planting, rng, rosette, thirstyLeaf, tone, turned, type Rand } from './_treeKit';
 
@@ -227,15 +228,18 @@ function fruit(b: VoxelBuilder, r: Rand, crown: Crown, ripe: boolean, src: Retur
       const fz = z + Math.sin(fa) * off;
       const fy = top - len - 0.085 - f * 0.06;
       if (n > 1) b.box((x + fx) / 2, fy + 0.1, (z + fz) / 2, 0.06, 0.016, 0.016, STALK, 'mapLeaf', { src, ry: -fa });
-      // (a mango hangs a little crooked: its beak to one side; its cheek, +z, looks out)
+      // (a mango hangs a little crooked, its axis leaning `tilt` across its cheek; the cheek and the blush look out)
       const tilt = (r() - 0.5) * 0.5;
       const yaw = Math.PI / 2 - a;
       const body = ripe ? (r() < 0.25 ? mix(tone(RIPE_FRUIT, r()), GREEN_FRUIT[1], 0.3) : tone(RIPE_FRUIT, r())) : tone(GREEN_FRUIT, r());
-      turned(b, fx, fy, fz, 0.13, 0.19, 0.11, yaw, 0, tilt, body, 'petal', 1, src);
-      if (ripe && r() < 0.8) {
-        // The blush on the sun side (outward), over the shoulder.
-        turned(b, fx + Math.cos(a) * 0.025, fy + 0.035, fz + Math.sin(a) * 0.025, 0.1, 0.1, 0.07, yaw, 0, tilt, tone(BLUSH, r()), 'petal', 1, src);
-      }
+      // The blush on the sun side (outward), over the shoulder (most ripe ones).
+      const blush = ripe && r() < 0.8 ? tone(BLUSH, r()) : undefined;
+      // (the plant kit's teardrop, 0.19 × 0.13 as the old box, its narrow end at the stalk: the axis is the box's
+      // upright turned `yaw` then `tilt` about its own z, as `turned` turned it)
+      const ux = -Math.sin(tilt) * Math.cos(yaw);
+      const uy = Math.cos(tilt);
+      const uz = Math.sin(tilt) * Math.sin(yaw);
+      teardrop(b, [fx + ux * 0.095, fy + uy * 0.095, fz + uz * 0.095], { len: 0.19, wid: 0.13, depth: 0.85, curve: 0.3, dir: [-ux, -uy, -uz], face: [Math.cos(a), 0, Math.sin(a)], color: body, blush, src });
     }
   }
 }

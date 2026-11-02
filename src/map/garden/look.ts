@@ -24,7 +24,8 @@ import type { PlantLook } from './state';
  *   foot (durian, coconut, sugar palm); `droop` 1 leaves hanging and paler, 2
  *   limp, yellow-brown, curling; `dead` a dry grey-brown stick or stump with a few
  *   brown leaves (nothing green).
- * - Block budget (grown, ripe): a crop ≤ 160 blocks, a small tree ≤ 450, a big
+ * - Block budget (grown, ripe): a crop ≤ 160 blocks (the eggplant ≤ 200 and the pumpkin ≤ 200 since their
+ *   fruit and the eggplant's leaves are the plant kit's shapes, AWP-34), a small tree ≤ 450, a big
  *   tree or palm ≤ 900 (the whole garden: 40 crops and 12 trees). Fewer for the
  *   early stages. Seeded variety from `look.seed` (never Math.random: shots and
  *   bug reports must draw the same plant).

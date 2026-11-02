@@ -1,3 +1,4 @@
+import { round } from '../../veg/plantKit';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
 import {
@@ -231,7 +232,10 @@ function fruitBunches(K: PalmKit, look: PlantLook, base: number, turn: number): 
       const x = cx + Math.sin(a) * rr;
       const y = cy - (k === 0 ? 0 : 0.08 + (k % 3) * 0.09);
       const z = cz + Math.cos(a) * rr;
-      K.block(x, y, z, 0.19, 0.19, 0.19, a, pick(PALM_FRUIT, K.r(150 + k + c * 7)), 'petal', 0.95 + K.r(160 + k) * 0.1);
+      // (the plant kit's round, smooth, 0.19 across as the old cube, its middle where it was)
+      const color = pick(PALM_FRUIT, K.r(150 + k + c * 7));
+      const shade = 0.95 + K.r(160 + k) * 0.1;
+      K.shape((b, src) => round(b, [x, y - 0.095, z], { wid: 0.19, hgt: 0.19, color, ribs: false, ry: a, shade, src }));
       // (the cap of sepals on the side toward the stalk)
       if (k % 2 === 0) K.block(x - Math.sin(a) * 0.02, y + 0.1, z - Math.cos(a) * 0.02, 0.1, 0.03, 0.1, a, pick(FRUIT_CAP, K.r(170 + k)), 'petal', 1);
     }

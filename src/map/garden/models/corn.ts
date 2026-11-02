@@ -1,4 +1,5 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
+import { long } from '../../veg/plantKit';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
 import { DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, ribbon, rng, seg, thirsty, tone, type P, type Packet, type Rand } from './_crop';
@@ -56,7 +57,11 @@ function ear(c: Ctx, p: P, yaw: number, i: number): void {
   // its shank, then the husked ear
   seg(b, q, 0.05, 0.03, 0.03, yaw, lean + 0.4, mix(HUSK, NODE, 0.4), 'mapLeaf');
   const husk = ripe ? HUSK_RIPE : HUSK;
-  seg(b, q, len * 0.62, w, w, yaw, lean, husk, 'mapLeaf', 0.3);
+  // (the husk's body: the plant kit's long, round, a little narrower at the shank; the narrower tip and the silk on from it)
+  const end = long(b, [q.x, q.y, q.z], { len: len * 0.62, thick: w * 1.1, az: yaw, el: Math.PI / 2 - lean, curve: 0, neck: 0.78, taper: 0.9, color: husk, mat: 'mapLeaf' });
+  q.x = end[0];
+  q.y = end[1];
+  q.z = end[2];
   const purple = kind === 'purple';
   if (!ripe) {
     seg(b, q, len * 0.38, w * 0.7, w * 0.7, yaw, lean - 0.12, purple ? mix(husk, 0x8a4a7a, 0.25) : mix(husk, 0x98bc58, 0.4), 'mapLeaf', 0.3);

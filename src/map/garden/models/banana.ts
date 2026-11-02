@@ -1,4 +1,5 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
+import { long } from '../../veg/plantKit';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
 import { across, along, beam, lerp, leafTone, log, mix, pick, rng, woodTone, type P3 } from './_fruitKit';
@@ -33,6 +34,8 @@ const DRY = [0x8a7448, 0x7a6038, 0x9a8458, 0x84683e] as const;
 /** The bunch: green fingers, ripe ណាំវ៉ា yellow; the flower's maroon bracts, their red inside, its pale male flowers. */
 const GREEN_FRUIT = [0x86aa44, 0x7c9e3c, 0x8eb24c] as const;
 const RIPE_FRUIT = [0xe2c63e, 0xd8bf3a, 0xcabf46, 0xe8cc48] as const;
+/** A finger's dark end (veg/produce.ts's bananas). */
+const FINGER_TIP = 0x3a2a1a;
 const BUD = [0x6a2036, 0x7a283e, 0x84304a, 0x5e1c30] as const;
 const BRACT_IN = 0xb04a58;
 const MALE = 0xe6d2a0;
@@ -211,9 +214,11 @@ function bunch(b: VoxelBuilder, look: PlantLook, top: P3, r: (i: number, j?: num
       const th = th0 + (f - (fingers - 1) / 2) * 0.46;
       const c = axis(y);
       const base: P3 = [c[0] + Math.sin(th) * 0.07, c[1] + (f % 2) * 0.03, c[2] + Math.cos(th) * 0.07];
-      const tip = along(base, th, 0.7 + 0.25 * r(h, f), flen);
+      const el = 0.7 + 0.25 * r(h, f);
       const col = ripe ? pick(RIPE_FRUIT, r(h * 7 + f, 51)) : pick(GREEN_FRUIT, r(h * 7 + f, 52));
-      beam(b, base, tip, 0.075, 0.07, ripe && r(h, f + 60) < 0.25 ? mix(col, 0x9aa83a, 0.4) : col, fruitMat);
+      // (the plant kit's long finger, square: a thin neck at the hand, thickest a third along, curving up, its dark tip;
+      // aimed so it ends where the old straight block did; lite: no tip)
+      long(b, base, { len: flen, thick: 0.075, az: th, el: el - 0.2, curve: 0.4, neck: 0.55, taper: 0.7, sides: 4, color: ripe && r(h, f + 60) < 0.25 ? mix(col, 0x9aa83a, 0.4) : col, tip: lite ? undefined : FINGER_TIP, mat: fruitMat });
     }
   }
   // The bare stalk (the old flowers' scars) and the flower hanging at its end.

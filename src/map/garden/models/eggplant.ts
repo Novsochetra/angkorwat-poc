@@ -1,6 +1,7 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { leaf as leafKit, long, round } from '../../veg/plantKit';
 import { DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, step, thirsty, tone, type P, type Packet, type Rand } from './_crop';
 
 /**
@@ -59,7 +60,9 @@ function leaf(c: Ctx, p: P, yaw: number, tilt: number, len: number, wide: number
   const base = dead ? tone(DEAD_LEAF, r(i, 3)) : thirsty(young ? LEAF_YOUNG : tone(LEAF, r(i, 4)), droop, r(i, 5));
   const mat = dead ? 'mapBark' : 'mapLeaf';
   if (!two) {
-    seg(b, q, len * curl, wide * curl, 0.032, yaw, tilt + sag + 0.1, base, mat, (r(i, 6) - 0.5) * 1.1);
+    // (the plant kit's leaf in one piece: a blade narrowing to its pointed tip, no flat rectangle; `tilt` is from
+    // straight up, the kit's elevation from level)
+    leafKit(b, [q.x, q.y, q.z], { len: len * curl, wid: wide * curl, thick: 0.032, az: yaw, el: Math.PI / 2 - (tilt + sag + 0.1), bend: 0.15, segs: 1, rib: false, color: base, mat, roll: (r(i, 6) - 0.5) * 1.1 });
     return;
   }
   seg(b, q, len * 0.58 * curl, wide * curl, 0.04, yaw, tilt + sag, base, mat, (r(i, 6) - 0.5) * 1.1);
@@ -86,8 +89,9 @@ function fruit(c: Ctx, p: P, yaw: number, ripe: boolean, i: number): void {
     seg(b, q, 0.045, t * 1.3, t * 1.3, yaw, 2.6, CALYX, 'mapLeaf', 0.78);
     const lean = 2.3 + (r(i, 21) - 0.5) * 0.3;
     const top = pt(q.x, q.y, q.z);
-    seg(b, q, len * 0.55, t, t, yaw, lean, ripe ? LONG : LONG_YOUNG, 'petal');
-    seg(b, q, len * 0.45, t * 0.9, t * 0.9, yaw, lean + 0.35, ripe ? mix(LONG, 0x3a1640, 0.4) : LONG_YOUNG, 'petal');
+    // (the plant kit's long fruit: round, thickest a third down, its neck at the calyx and its tip narrower, bending on
+    // down as the old two pieces did; `lean` is from straight up, the kit's elevation from level)
+    long(b, [q.x, q.y, q.z], { len, thick: t, az: yaw, el: Math.PI / 2 - lean, curve: -0.35, neck: 0.75, taper: 0.62, color: ripe ? mix(LONG, 0x3a1640, 0.15) : LONG_YOUNG });
     // its shine (the skin is glossy)
     if (ripe) seg(b, step(top, t * 0.32, yaw + Math.PI / 2, Math.PI / 2), len * 0.32, t * 0.4, t * 0.5, yaw, lean, LONG_SHINE, 'petal');
     return;
@@ -99,13 +103,11 @@ function fruit(c: Ctx, p: P, yaw: number, ripe: boolean, i: number): void {
   const cy = q.y - s * 0.42;
   const ry = r(i, 23) * TAU;
   b.box(cx, q.y + 0.006, cz, s * 0.72, 0.02, s * 0.72, CALYX, 'mapLeaf', { ry: ry + 0.4 });
-  if (!ripe) {
-    b.box(cx, cy, cz, s, s * 0.92, s, ROUND_YOUNG, 'petal', { ry });
-    return;
-  }
-  b.box(cx, cy, cz, s, s * 0.9, s * 0.74, ROUND_PALE, 'petal', { ry });
-  b.box(cx, cy - 0.003, cz, s * 0.74, s * 0.86, s, ROUND_STRIPE, 'petal', { ry });
-  b.box(cx, cy - 0.004, cz, s * 0.9, s * 0.8, s * 0.9, mix(ROUND_PALE, ROUND_STRIPE, 0.35), 'petal', { ry: ry + Math.PI / 4 });
+  // (the plant kit's round under the calyx star, as tall as the old boxes: green while young; ripe white-green, the
+  // dark green stripes its upright ridges)
+  const h = ripe ? s * 0.9 : s * 0.92;
+  if (!ripe) round(b, [cx, cy - h / 2, cz], { wid: s, hgt: h, color: ROUND_YOUNG, ribs: false, ry });
+  else round(b, [cx, cy - h / 2, cz], { wid: s, hgt: h, color: ROUND_PALE, rib: ROUND_STRIPE, cap: mix(ROUND_PALE, ROUND_STRIPE, 0.35), ry, ridges: true });
 }
 
 /** The seed in the earth (stage 0) and the marker that stays till the plant is up. */

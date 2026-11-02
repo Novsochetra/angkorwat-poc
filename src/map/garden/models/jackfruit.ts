@@ -2,6 +2,7 @@ import { traceSource, type SourceTrace } from '../../../feedback/sourceTrace';
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { round } from '../../veg/plantKit';
 import { Crown, vnoise, type CellInfo } from './_treeCrown';
 import { deadTree, leavesAlong, limb, mix, planting, rng, thirstyLeaf, tone, turned, type Rand } from './_treeKit';
 
@@ -214,38 +215,37 @@ function jack(b: VoxelBuilder, r: Rand, x: number, y: number, z: number, sx: num
   const W = 0.32 + r() * 0.05;
   const cy = y - L / 2;
   const yaw = r() * 6.28;
-  const tilt = 0; // (it hangs straight down: heavy)
   const pal = ripe ? RIPE : GREEN;
   const body = tone(pal.body, r());
   // Stalk: short and thick, out of the bark (or down from the branch).
   if (under) b.box(x, y + 0.08, z, 0.05, 0.2, 0.05, STALK, 'mapBark', { src });
   else turned(b, (x + sx) / 2, y + 0.04, (z + sz) / 2, 0.05, 0.05, Math.hypot(x - sx, z - sz) + 0.04, Math.atan2(x - sx, z - sz), 0.5, 0, STALK, 'mapBark', 1, src);
-  // The body: a long core, two cross boxes to round it, a shoulder under the stalk.
-  turned(b, x, cy, z, W * 0.82, L, W * 0.82, yaw, 0, tilt, body, 'petal', 1, src);
-  turned(b, x, cy - L * 0.04, z, W, L * 0.78, W * 0.7, yaw, 0, tilt, mix(body, pal.knob, 0.12), 'petal', 1, src);
-  turned(b, x, cy - L * 0.04, z, W * 0.7, L * 0.78, W, yaw, 0, tilt, mix(body, pal.knob, 0.06), 'petal', 1, src);
-  b.box(x, y - 0.02, z, W * 0.5, 0.06, W * 0.5, mix(body, pal.knob, 0.25), 'petal', { ry: yaw, src });
-  // Knobs: the rough skin, rows of small darker bumps standing out of the four faces, staggered.
+  // The body: the plant kit's round, tall (its foot at y − L, its top at y): a narrow foot, the knobbly band, the
+  // shoulder, the small top under the stalk.
+  round(b, [x, y - L, z], { wid: W, hgt: L, color: body, rib: mix(body, pal.knob, 0.12), cap: mix(body, pal.knob, 0.25), ry: yaw, src });
+  // Knobs: the rough skin, rows of small darker bumps standing out of the four faces, staggered; each row on the skin
+  // at its height (the foot, the band, the band, the shoulder: round's steps).
   const ca = Math.cos(yaw);
   const sa = Math.sin(yaw);
+  const skin = [0.38, 0.5, 0.5, 0.4];
   for (let f = 0; f < 4; f++) {
     // (face normal and its sideways, in the fruit's own turn: yaw about y)
     const nx = f === 0 ? 1 : f === 1 ? -1 : 0;
     const nz = f === 2 ? 1 : f === 3 ? -1 : 0;
-    const half = (f < 2 ? W * 0.82 : W * 0.82) / 2 + 0.012;
     for (let k = 0; k < 4; k++) {
+      const half = W * skin[k] + 0.006;
       const side = ((k % 2) - 0.5) * W * 0.42 + (f & 1 ? 0.03 : -0.03);
       const ky = cy + (k / 3 - 0.5) * L * 0.72;
-      const lx = nx * half + (nz !== 0 ? side : 0);
-      const lz = nz * half + (nx !== 0 ? side : 0);
+      const lx = nx * half + (nz !== 0 ? side * (skin[k] / 0.5) : 0);
+      const lz = nz * half + (nx !== 0 ? side * (skin[k] / 0.5) : 0);
       // (turn the local point by yaw: x' = x cos + z sin, z' = −x sin + z cos)
       const kc = ripe && f === 1 && k === 1 ? BROWN : mix(pal.knob, body, ((k + f) % 3) * 0.15);
       b.box(x + lx * ca + lz * sa, ky, z - lx * sa + lz * ca, 0.055, 0.055, 0.055, kc, 'petal', { ry: yaw, src });
     }
   }
   if (ripe) {
-    // A brown patch where it has ripened most.
+    // A brown patch where it has ripened most (on the band's skin).
     const fa = yaw + 1.1;
-    turned(b, x + Math.cos(fa) * (W * 0.38), cy + L * 0.12, z + Math.sin(fa) * (W * 0.38), W * 0.5, L * 0.35, 0.06, Math.PI / 2 - fa, 0, 0, BROWN, 'petal', 1, src);
+    turned(b, x + Math.cos(fa) * (W * 0.47), cy + L * 0.12, z + Math.sin(fa) * (W * 0.47), W * 0.5, L * 0.35, 0.06, Math.PI / 2 - fa, 0, 0, BROWN, 'petal', 1, src);
   }
 }

@@ -1,6 +1,7 @@
 import type { VoxelBuilder } from '../../../voxel/VoxelBuilder';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
+import { round } from '../../veg/plantKit';
 import { Blade, DEAD_LEAF, DEAD_STEM, marker, mix, mound, pt, rng, seg, thirsty, tone, type P, type Packet, type Rand } from './_crop';
 
 /**
@@ -109,22 +110,20 @@ function pumpkin(c: Ctx, x: number, z: number, ripe: boolean, i: number): void {
   const { b, r } = c;
   const ry = r(i, 40) * TAU;
   if (!ripe) {
+    // (the plant kit's round: dark green, the pale speckle its second tone; its green stalk as before)
     const s = 0.2 + r(i, 41) * 0.03;
-    b.box(x, s * 0.4, z, s, s * 0.8, s * 0.9, YOUNG, 'petal', { ry });
-    b.box(x, s * 0.4, z, s * 0.9, s * 0.74, s, mix(YOUNG, YOUNG_SPECK, 0.45), 'petal', { ry: ry + Math.PI / 4 });
+    round(b, [x, 0, z], { wid: s, hgt: s * 0.8, color: YOUNG, rib: mix(YOUNG, YOUNG_SPECK, 0.45), ry });
     b.box(x, s * 0.84, z, 0.03, 0.04, 0.03, VINE, 'mapLeaf', { ry });
     return;
   }
-  // Ripe: about half a metre across and 30 cm high (a big one, so it reads across the garden), its ribs (three blocks turned 30° apart, of two tones), the corky stalk.
+  // Ripe: about half a metre across and 30 cm high (a big one, so it reads across the garden): the plant kit's round,
+  // its narrow foot, the band with its upright ribs (tan blotches, or the tan-orange's paler ribs), the shoulder, the
+  // top, the corky stalk.
   const s = 0.48 + r(i, 42) * 0.06;
   const h = s * 0.62;
   const [a, a2] = c.tan ? RIPE_TAN : RIPE_GREEN;
   const rib = c.tan ? RIPE_TAN_RIB : RIPE_GREEN_BLOTCH;
-  b.box(x, h * 0.5, z, s, h, s * 0.8, a, 'petal', { ry });
-  b.box(x, h * 0.49, z, s * 0.8, h * 0.97, s, a2, 'petal', { ry });
-  b.box(x, h * 0.48, z, s * 0.93, h * 0.92, s * 0.93, rib, 'petal', { ry: ry + Math.PI / 4 });
-  b.box(x, h * 0.96, z, s * 0.42, h * 0.16, s * 0.42, mix(a, rib, 0.4), 'petal', { ry: ry + 0.3 });
-  b.box(x, h + 0.03, z, 0.045, 0.07, 0.045, CORK, 'mapBark', { ry, rz: 0.3 });
+  round(b, [x, 0, z], { wid: s, hgt: h, color: mix(a, a2, 0.5), rib, cap: mix(a, rib, 0.4), stalk: CORK, ry, ridges: true });
 }
 
 /** The vine running out from the hill toward `yaw`, `len` long: its nodes (where leaves, tendrils and fruit grow). */

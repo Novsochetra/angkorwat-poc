@@ -1047,8 +1047,8 @@ fruit `petal`), `shade`, `src`.
 | Call | Use it for | Blocks |
 |---|---|---|
 | `leaf(b, at, { len, wid, az, el, color, bend?, roll?, segs?: 1‥3, shape?: 'lance'│'broad'│'oblong', fold?, rib?, stalk? })` → tip | a mango leaf (0.25 × 0.06 m), a gourd or pumpkin leaf (`broad`, 0.25 m), a banana leaf (`oblong`, `segs: 3`, `fold: 0.35`, 1.5–2.5 × 0.4–0.6 m) | 1 seg no rib 2, 2 segs 5, 3 segs 7, 3 folded 10, +1 `stalk` |
-| `teardrop(b, top, { len, wid, color, dir?, roll?, depth?, taper?, curve?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `curve` 0.3: its kidney bend; `blush` blended from the stalk end, no patch), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 5 (`low` 2), +1 `stalk` |
-| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low?, foot? })` | in four steps up its side (a narrower foot, the widest band in two tones: the ribs, the shoulder, the top): pumpkin (0.45 × 0.3), a round gourd, melon or jackfruit hanging (`hang`: its stalk's length) | 6 (`low` 3: foot, band, shoulder), +1 `stalk` |
+| `teardrop(b, top, { len, wid, color, dir?, roll?, face?, depth?, taper?, curve?, neck?, blush?, stalk?, low? })` → round end | mango (0.12 × 0.09, `depth` 0.85, `curve` 0.3: its kidney bend; `blush` blended from the stalk end, no patch; `face`: the direction its cheek and blush turn to, in place of `roll`), papaya (0.25 × 0.14, `taper` 0.65), lying in a heap with `dir` | 5 (`low` 2), +1 `stalk` |
+| `round(b, at, { wid, hgt, color, rib?, cap?, ry?, stalk?, hang?, ribs?, low?, foot?, ridges? })` | in four steps up its side (a narrower foot, the widest band in two tones: the ribs, the shoulder, the top): pumpkin (0.45 × 0.3), a round gourd, melon or jackfruit hanging (`hang`: its stalk's length); `ridges`: upright ribs or stripes in the `rib` colour round the band (a block turned 45°, its corners out on the band's faces: a ribbed pumpkin, a striped eggplant) | 6 (`low` 3: foot, band, shoulder), +1 `stalk`, +1 `ridges` |
 | `fan(b, at, { az, el, stalk, lobes?, spread?, len, wid, color, … })` → the stalk's end | a hand-shaped leaf on a long stalk (papaya: stalk 0.6–0.8, seven lobes 0.55 × 0.22, `spread` 3.2) | 1 + each lobe's (5 lobes of 1 piece, no rib: 11; the papaya's 7: 15) |
 | `long(b, base, { len, thick, az, el, color, curve?, segs?, neck?, taper?, sides?, tip?, cap? })` → tip | banana finger (0.16 × 0.035, `neck` 0.55, dark `tip`, `sides: 4`), long eggplant (0.25 × 0.055, green `cap`) | `segs` × 2 (× 1 `sides: 4`), +1 `tip`, +1 `cap`: banana 3, eggplant 5 |
 | `vine(b, pts, { thick, color, leaf?: { len, wid, every?, spread?, el?, … }, tendril?, seed? })` with `sag(a, c, n, drop)` or `spiral(foot, h, r, turns, n)` | a gourd or bean vine up a post and along a trellis | 1 a span + each leaf + 3 a tendril |
@@ -1077,16 +1077,16 @@ replaced the three bananas the places drew themselves (the floating
 village's and the hamlets' box crowns, `village/_kit.ts`; the jungle camps'
 and the Kulen picnic's beams, `jungle/_campKit.ts`; the palm-sugar yard's
 slabs, `hamlet/_psYard.ts`): each now calls it with its own variety.
-Blocks: grown ≈ 180–205, with a bunch ≈ 240–265, young (stage 3) ≈
-145–155; about 36 plants on the map (+6 200 blocks in all). On the low
+Blocks: grown ≈ 180–205, with a bunch ≈ 310–335 (its fingers the kit's
+`long` since AWP-34: three blocks each), young (stage 3) ≈ 145–155; about 36
+plants on the map. On the low
 graphics level (phones) the map's bananas are the model's `lite` form (the
 stem in one piece, four untorn leaves of two pieces each, held out lower and
 arching over and down, their halves with no midrib blocks, no streaks, dry
 leaves or pups, a bunch of two hands of four fingers in the leaves' family,
-so a place gets no extra mesh: 24 blocks, 38 with a bunch): the parts that plant them say
+so a place gets no extra mesh: 24 blocks, 46 with a bunch, its fingers `long`, square, two blocks, no tip): the parts that plant them say
 the build's level first (`veg/detail.ts` `plantDetail(ctx.quality)` in
-hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's plants are untouched (never lite; its
-models hash the same).
+hamlet/index.ts, village/index.ts, jungle/camps.ts, people/index.ts). The home garden's bananas are never lite.
 
 **Papaya trees**: one for the map's places, `veg/papaya.ts` `papayaTree`
 (the back hamlet's, the east village's and the floating village's: hamlet/_bhTrees.ts,
@@ -1096,6 +1096,32 @@ teardrop fruit under the crown (≈ 170 blocks); on the low level five leaves of
 four lobes and four `low` fruit (≈ 60). The nursery's papaya seedlings
 (hamlet/_nursery.ts) have three-lobed `fan` leaves (two on low). The home
 garden's papaya is its own model.
+
+**The home garden's fruit** (AWP-34, the owner's choice): every fruit the
+garden's models hang on a plant is a kit shape (`garden/models/`): mango
+`teardrop` (0.19 × 0.13, its cheek and blush `face` out of the crown),
+papaya `teardrop` (narrow end up at the trunk; a picked tree's tiny ones
+`low`), the pumpkin `round` (ripe: `ridges` in its tan blotches or ribs, the
+corky `stalk`; young: dark green, the pale speckle its second tone), the
+striped eggplant `round` with `ridges` (its dark green stripes) and the long
+purple one `long`, the guava `round` smooth (up in the crown and the white
+net sleeves `low`: the tree stays under 450 blocks), the jackfruit `round`
+tall with its knobs on the new skin, the hanging durian `round` with its
+spikes, the coconuts and the sugar palm's fruit `round` smooth (drawn into
+the palm's blocks by `PalmKit.shape`), the banana's fingers `long`, the corn
+ear's husk `long`. Each model draws the same seeded numbers in the same
+order, so every fruit hangs where it did, in its colours, as many; stems and
+leaves are as they were (every model's other blocks hash the same as before),
+but the eggplant's single-piece leaves (flat rectangles, 0.23 × 0.17 m) are
+the kit's `leaf` in one piece with its pointed tip (`segs: 1`, `rib: false`).
+The fruit on the ground (`_viewFruit.ts`, smooth) and the fruit in his hands
+(`roam/_gardenProps.ts`) are not the models' and did not change. Blocks
+(grown, with fruit; before → after): eggplant 95/118 → 167/198 (its leaves +52), corn ≈ 97 →
+103, pumpkin ≈ 180 → 186, banana ≈ 256 → 321, papaya ≈ 235 → 256, guava ≈
+406 → 428, mango ≈ 624 → 694, jackfruit ≈ 661 → 676, durian ≈ 756 → 780,
+coconut ≈ 657 → 760, sugar palm ≈ 451 → 571 (look.ts budgets kept; a crop's
+160 was already passed by the pumpkin, 190, and the eggplant and the pumpkin
+now have 200).
 
 ## The floating village
 

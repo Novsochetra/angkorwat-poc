@@ -1,3 +1,4 @@
+import { round } from '../../veg/plantKit';
 import { registerModel } from '../look';
 import type { PlantLook } from '../state';
 import {
@@ -246,7 +247,9 @@ function nuts(K: PalmKit, look: PlantLook, cx: number, cy: number, cz: number, t
     K.beam(cx + dx * 0.3, cy, cz + dz * 0.3, cx + dx * 0.7, cy - 0.6, cz + dz * 0.7, 0.07, 0.07, -dz, 0, dx, FLOWER[2], 'petal', 1.05);
     for (let k = 0; k < 3; k++) {
       const a = az + 2.4 + (k - 1) * 0.5;
-      K.block(cx + Math.sin(a) * 0.36, cy - 0.2 - (k % 2) * 0.1, cz + Math.cos(a) * 0.36, 0.12, 0.13, 0.12, a, NUT_GREEN[1], 'petal', 1);
+      // (the plant kit's round, low: three steps)
+      const y = cy - 0.2 - (k % 2) * 0.1;
+      K.shape((b, src) => round(b, [cx + Math.sin(a) * 0.36, y - 0.065, cz + Math.cos(a) * 0.36], { wid: 0.12, hgt: 0.13, color: NUT_GREEN[1], ribs: false, ry: a, low: true, src }));
     }
     return;
   }
@@ -264,7 +267,10 @@ function nuts(K: PalmKit, look: PlantLook, cx: number, cy: number, cz: number, t
       const rr = 0.5 + (k % 2) * 0.14;
       // Ripe: the oldest few of the bunch turning yellow-brown.
       const hex = ripe && k < 1 + c ? pick(NUT_TURNING, K.r(40 + k + c * 9)) : pick(NUT_GREEN, K.r(50 + k + c * 9));
-      K.turned(cx + Math.sin(a) * rr, cy - 0.52 - (k % 3) * 0.16, cz + Math.cos(a) * rr, 0.29, 0.32, 0.29, (K.r(60 + k) - 0.5) * 0.3, a, (K.r(70 + k) - 0.5) * 0.3, hex, 'petal', 1.08 + K.r(80 + k) * 0.12);
+      // (the plant kit's round, smooth, 0.29 × 0.32 as the old block, its middle where it was)
+      const y = cy - 0.52 - (k % 3) * 0.16;
+      const shade = 1.08 + K.r(80 + k) * 0.12;
+      K.shape((b, src) => round(b, [cx + Math.sin(a) * rr, y - 0.16, cz + Math.cos(a) * rr], { wid: 0.29, hgt: 0.32, color: hex, ribs: false, ry: a, shade, src }));
     }
   }
 }
