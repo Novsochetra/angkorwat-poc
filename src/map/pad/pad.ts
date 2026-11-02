@@ -44,7 +44,7 @@ import { clearMark, focusFirst, focusables, markFocus, moveFocusIn, watchFocusRu
  *   camera · L1 / R1 zoom out / in · ✕ jump · □ use (E) · ○ back to the map ·
  *   △ Explorer menu · d-pad ↑ a light (lantern → torch → flashlight → away),
  *   ← camera, → selfie, ↓ greet (in the boat: fish) · R3 nearest glider
- *   ramp (N) · Create or the touchpad: the big map (M) · Options settings ·
+ *   ramp (N; while the E list shows, its next line: roam/_eChoices.ts) · Create or the touchpad: the big map (M) · Options settings ·
  *   the album (V): a button in the Explorer menu.
  * - Photo mode, boat, parachute, hang glider, balloon: as their keys (✕ is
  *   Space, □ is E, R2 is Shift; photo mode: R2 or ✕ takes it, ○ puts it away).

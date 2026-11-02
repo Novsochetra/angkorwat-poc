@@ -7,6 +7,7 @@ import { TIME } from '../time';
 import type { MapFrame, RoamMode } from '../types';
 import { num, t } from '../ui/lang';
 import { BEFORE_SHRINE, registerAddon, type AddonKey } from './_addons';
+import { ePicked } from './_eChoices';
 import { GIVING, stepGift, takeGift } from './_giveFruit';
 import { createLaidPool, isOfferKind, offerGeometry, OFFER_KINDS, TRAY_R, type LaidPool, type OfferKind } from './_offerFruitModels';
 import { monkFrame, monkFromUrl, monkHold, monkHolding, monkInit, monkInput, monkNow, monkOffer, monkReport, monkStop, monkUrlJump, monkUse } from './_offerFruitMonk';
@@ -310,7 +311,8 @@ registerAddon({
   input(ctx, mode, tap) {
     STEP.stepN++;
     if (mode === 'walk' && monkHolding()) return monkInput(ctx);
-    if (mode !== 'walk' || lay !== 'off' || STEP.shownStep < STEP.stepN - 1) return false;
+    // (its line is the one E does: in the E list with another giving's, `,` / `.` are the picked one's; _eChoices.ts)
+    if (mode !== 'walk' || lay !== 'off' || STEP.shownStep < STEP.stepN - 1 || !ePicked(OFFER_ID)) return false;
     // `,` / `.` while his offering's prompt shows: the next fruit of his basket.
     const dir = tap('Comma') ? -1 : tap('Period') ? 1 : 0;
     if (!dir || !S.env) return false;

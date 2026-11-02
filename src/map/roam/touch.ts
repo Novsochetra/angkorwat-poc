@@ -363,6 +363,8 @@ function injectStyle(): void {
       .rt-btn { width: 64px; height: 64px; }
       .rt-jump { right: 18px; bottom: 22px; }
       .rt-use { right: 92px; bottom: 28px; width: auto; height: 46px; }
+      /* (a long pick's words: the button stays clear of the E list beside it, roam/_eChoices.ts) */
+      .rt-use .rt-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
       .rt-fish { right: 92px; bottom: 82px; width: auto; height: 46px; }
       .rt-shutter { right: 18px; }
     }`;

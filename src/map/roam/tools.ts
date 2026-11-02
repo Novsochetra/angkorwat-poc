@@ -929,14 +929,17 @@ const k = (s: string) => `<kbd>${s}</kbd>`;
 /** A mouse action, as a key: drag, wheel, click. */
 const mouse = (w: WordKey) => `<i>${t(w)}</i>`;
 /** Keys and what they do (in English in lower case, as a list). */
-const row = (keys: string, what: WordKey | { text: string }) => `<span class="rtb-k">${keys}</span><span>${(typeof what === 'string' ? t(what) : what.text).toLowerCase()}</span>`;
+const row = (keys: string, what: WordKey | { text: string }, keepCase = false) => {
+  const s = typeof what === 'string' ? t(what) : what.text;
+  return `<span class="rtb-k">${keys}</span><span>${keepCase ? s : s.toLowerCase()}</span>`;
+};
 /** All the keys (?), in the language in use; the game pad's buttons while it is in use. */
 const keyList = () => (pad.active ? padList() : keysList());
 const keysList = () => `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(k('1'), 'rLantern')}${row(k('2'), 'rTorch')}${row(k('3'), 'rFlashlight')}${row(k('O'), 'rBeamKeys')}
-    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('7'), 'binoName')}${row(k('8'), 'umbName')}${row(k('0'), 'dogCallTell')}${row(k('V'), 'rAlbum')}
-    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'byBuy')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}</div>
+    ${row(k('4') + k('Z'), 'rCamera')}${row(k('5') + k('Y'), 'rSelfie')}${row(k('6'), 'byEatKept')}${row(k('7'), 'binoName')}${row(k('8'), 'umbName')}${row(k('0'), 'dogCallTell')}${row(k('-'), 'kiteFly')}${row(k('V'), 'rAlbum')}
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(k('E'), 'tgPickAny')}${row(k('E'), 'rPrayAt')}${row(k('E'), 'byBuy')}${row(k('E'), 'rSwing')}${row(k('E'), 'rBalloon')}${row(k('Tab'), 'eChooseKeys', true)}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(k('I'), 'rMenuKey')}
     ${row(k('F'), 'grGreet')}${row(k('C'), 'rCheer')}${row(k('U'), 'rLookUp')}${row(k('P'), 'rPeek')}${row(k('J'), 'rSit')}${row(k('L'), 'rLieDown')}
@@ -960,7 +963,7 @@ const padList = () => {
   return `
   <div class="rtb-col"><b>${t('rTools')}</b>
     ${row(g('up'), lights)}${row(g('left'), 'rCamera')}${row(g('right'), 'rSelfie')}${row(g('l2'), 'binoName')}
-    <b class="rtb-sub">${t('rCloseBy')}</b>${row(g('west'), 'tgPickAny')}${row(g('west'), 'rPrayAt')}${row(g('west'), 'byBuy')}${row(g('west'), 'rSwing')}${row(g('west'), 'rBalloon')}</div>
+    <b class="rtb-sub">${t('rCloseBy')}</b>${row(g('west'), 'tgPickAny')}${row(g('west'), 'rPrayAt')}${row(g('west'), 'byBuy')}${row(g('west'), 'rSwing')}${row(g('west'), 'rBalloon')}${row(g('r3'), 'eChooseKeys', true)}</div>
   <div class="rtb-col"><b>${t('rExplorer')}</b>
     ${row(g('lstick'), 'rMove')}${row(g('r2', 'l3'), 'rRun')}${row(g('south'), 'rJump')}${row(g('down'), 'grGreet')}${row(g('north'), 'rMenuKey')}
     <b class="rtb-sub">${t('rView')}</b>${row(g('rstick'), 'rLookRound')}${row(g('r1', 'l1'), 'rZoom')}

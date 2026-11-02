@@ -738,6 +738,10 @@ const URL_STEPS = ['kneel', 'listen', 'bow', 'up'] as const;
 registerAddon({
   id: ID,
   order: ORDER,
+  // (walking to his place: what he is about is the E row's only line, nothing after it; _addons.ts, AWP-33)
+  get endsRow() {
+    return step === 'go';
+  },
   init(e) {
     env = e;
     Object.assign(window, {

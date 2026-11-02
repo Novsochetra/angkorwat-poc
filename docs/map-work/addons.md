@@ -32,9 +32,10 @@ What roaming does with a `RoamAddon` (all members optional but `id`):
 | --- | --- | --- |
 | `init(env)` | once, roaming built | keep `env` (`AddonEnv`: explorer, body, follow camera, world, hud, layer, controls, canvas, parts, `scene` (roaming's group: add your meshes here), photo, purse, params, shot, uiSound, `busy()`) |
 | `input(ctx, mode, tap, dt)` | each roaming step, before the mode's | your keys (`tap('Digit7')`); return true to take the step's input (he keeps still) |
-| `offer(ctx, 'walk'│'boat')` | each step on foot on the ground / afloat, nothing else busy | the prompt `E  <words>` when E here starts you, else null (cheap: no allocation) |
-| `use(ctx, mode)` | E pressed while you offered | start; return a mode to switch to, or nothing |
+| `offer(ctx, 'walk'│'boat')` | each step on foot on the ground / afloat, nothing else busy | the prompt `E  <words>` when E here starts you, else null (cheap: no allocation); a line with no `E  …` part (`t('…')` alone) shows but is never picked. Every add-on is asked every step (the E list, below): `eRowBefore()` says how many lines came before yours (0: nothing before you wants the E) |
+| `use(ctx, mode)` | E pressed while your line is the picked one (or your offer the only line) | start; return a mode to switch to, or nothing |
 | `order` | the E row | ≤ 15 (`BEFORE_SHRINE`): right after a golden figure, before a shrine; else after a stall, before a moored boat, a ramp, the balloon, the swing and a place's beacon (default 50) |
+| `endsRow` | read after your `offer` | true: nothing after you in the E row is offered (a mode of its own: build mode's "Build here", paint mode, planting's "Dig here") |
 | `holding` + `hold(ctx, dt)` | while `holding` is true, instead of the walker's step (`holdIn: 'boat'`: the boat's) | you move the body (`ctx.body.pos/vel/yaw`), set the pose (`explorer.animator.posture`, `explorer.setMotion`), the camera (`ctx.cam.focus`, `behindYaw`, `distance`, `fov`), turn the camera with `ctx.cam.turn(input.lookYaw, input.lookPitch, input.zoom)`; return `{ prompt, mode }` |
 | `handsBusy` | read each step | true: the lantern, torch or flashlight is put away |
 | `keys()` | read each frame while it holds him | the key help's lines (bottom left) instead of the mode's: `[['W S', 'bikePedal', 'lstick'], ['Space', 'bikeBell', 'south']]` (keys, words, pad glyphs); return the same array while nothing changes |
@@ -55,12 +56,35 @@ Rules:
 - **Prompts** are `` `E  ${t('yourKey')}` `` (the key, two spaces, the words). The
   hud draws E as the pad's □ / X while a pad is in use. Hide your prompt while
   `env.busy()` (praying, resting, at a stall, the camera up, the album).
+- **The E list** (AWP-33, `roam/_eChoices.ts`): every E choice at his spot shows,
+  not only the first. One choice: the prompt as before. Two or more: a short list
+  over him (up to 4 lines, "▸" the picked one), in the row's order, so the top
+  line is what E did before; **Tab** / **Shift+Tab**, the pad's **R3** (while the
+  list is open it is the list's; the nearest ramp is then the big map's R3 — the
+  d-pad stays the lights', the greeting's and fishing's) or a tap / click on a
+  line move the pick; E (□ / X, the touch Use button) does the picked one. On a
+  phone it stands clear of the stick, the Use button and the tool bar (upright:
+  left of the bar; sideways: low between the stick and Use), its words wrapping.
+  The pick stays while the same choices stay (by who offers them), and goes back
+  to the top when the set changes. Two lines with the same words are one. A line
+  with no key is as before, when the first offer won: first in the row it is the
+  row, alone (busy: walking to his place to listen; the tapper up the palm; a
+  stall closed), after a line with E it is left out; an offer may carry one in
+  its own line ("E  Build…  ·  You have no seeds yet…"). A mode or a busy state
+  of yours that must show alone ends the row (`endsRow`: build mode, paint,
+  planting, walking to listen, leading the cart). A key of yours that only makes sense while your line
+  shows (`,` / `.` for the fruit) asks `ePicked('<your id>')`: your line is the one
+  E does now. URL (shots, dev server): `echoice=<n>` starts the pick on choice n
+  (1 the top) the first time a list shows; `echoices=1` shows the row as the list
+  even with one choice and logs each change (`[map] E choices: …`;
+  `echoices=log` the log only); `window.__echoices` (lines, pick, open).
 - **Keys**: prefer what every device has: the move stick (`ctx.input.move`),
   Space (`input.jump`, `jumpHeld`), E (`input.use`), Shift (`input.run`), the
   look drag and wheel. Those work on a keyboard, a game pad and the touch
   controls. Keys reserved for add-ons (already in `input.ts` `TOOL_KEYS`, read
   with `tap`): **7** binoculars, **8** umbrella, **9** calendar, **0** call the
-  dog, `,` and `.` spare. Every other letter is taken.
+  dog, **−** his kite, `,` and `.` build mode's turn and the fruit he gives. Every
+  other letter and digit is taken; Tab is the E list's.
 - **Words**: Khmer first, then English, in `src/map/ui/lang.ts` under your own
   comment line near the end ("The new things to do"), keys with your prefix
   (`bike…`, `ham…`). Real, natural Khmer (a Cambodian player reads it). Numbers in
@@ -1290,8 +1314,12 @@ the `KITE_HOOK` between the two sides) and `people/_sceneKites.ts`.
   and thanks him (`SALE`: people/_saleBack.ts). shop.ts is left to food: its flow
   (the menu, eating, the bag) is about eating, a kite is one thing bought once
   and kept, so it has its own small card and only tells the people part.
-- **Flying it**: "E  Fly your kite" is offered only where and when it really
-  flies — fair weather and some wind aloft (`_kiteSky.ts windAloft`: the
+- **Flying it**: its own key, **−** (AWP-33; not E, which stays for what is near
+  him: the kite flies in almost any open field and hid "Build…" and "Plant…"):
+  the tool bar's kite slot (shown once he has one, lit while it is out, greyed off
+  his feet), the explorer menu's Bag ("Fly your kite": the pad's way, △ → Bag), on
+  touch the slot. − or the slot again brings it in, as E does. It flies only where
+  and when it really flies — fair weather and some wind aloft (`_kiteSky.ts windAloft`: the
   people's kites' steady breeze in the kite season, the north wind from after
   the Water Festival to March, `people/_kite.ts seasonBreeze`; in any other
   month a breezy day lifts it too, lower, and a lull brings it down), anywhere
@@ -1299,10 +1327,12 @@ the `KITE_HOOK` between the two sides) and `people/_sceneKites.ts`.
   hilltop: not a flooded rice field, the market's crowd, the sey circle, 25 m
   round a place's entrance or 10 m round a stall: `kiteGround`), with nothing
   over him or down the wind (`clearance`, `hardClearance`, `softClearance`; not where a beacon, a moored boat, a ramp or the balloon has
-  the E). It is last in the E row (`order` 90, after every other add-on): the dog,
-  the sey, the farmers' work in reach win. In a calm, where it would fly, a
-  toast once a visit says to wait for a breeze (no E; the calendar lists the
-  families' kite flying, still only in their season: `kitesFlying`).
+  the E); elsewhere − says why not in a toast (the rain, a calm, no room here; no
+  kite yet: where to get one). Asking for one and buying one stay in the E row
+  (`order` 90). Where it would fly, a toast once a visit says how to fly it (the
+  key; on touch the tool bar's kite; with a pad the menu; `kitehint=1` shows it in
+  a shot); in a calm, to wait for a breeze (the calendar lists the families' kite
+  flying, still only in their season: `kitesFlying`).
   Then he turns into the wind, the kite held up past his right shoulder, runs a
   few steps and lets go; it climbs behind him; he turns round and it climbs on
   to 24 m of line. **W** lets out line (to 80 m: higher and further, sinking a

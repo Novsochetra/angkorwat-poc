@@ -12,7 +12,8 @@ import { BOAT_HALF_BEAM, BOAT_LENGTH, buildBoat, buildMooring, buildPaddle, LANT
 import { PaddleStroke, ridePose, type RideState } from './_boatPoses';
 import { createFishing, type FishBoat } from './_fishing';
 import { createWake } from './_wake';
-import { addonHolding, addonOffer } from './_addons';
+import { addonHolding, addonLines } from './_addons';
+import { eRow, LIST, NOTE } from './_eChoices';
 import { angleDiff } from './followCam';
 import { riverField, type RiverField } from './flow';
 import { ROAM_SCALE, type RoamCtx, type RoamMode, type RoamModeHandler, type RoamWorld } from './types';
@@ -882,6 +883,8 @@ export function createBoat(field?: HeightField): BoatMode {
       // An add-on holding him in the boat (picking a lotus…: _addons.ts): its step, not the paddling's.
       const held = phase === 'float' && !fishing.active ? addonHolding('boat') : null;
       if (held?.hold) {
+        // (no E list while it holds him: Tab and the pad are not the list's)
+        eRow.clear();
         const r = held.hold(ctx, dt);
         if (r.prompt !== prompt) hud.prompt((prompt = r.prompt));
         placeRide(ctx, dt);
@@ -933,26 +936,37 @@ export function createBoat(field?: HeightField): BoatMode {
       fishing.place(ctx, dt, fishView);
       wake.update(dt);
       lanterns(ctx.night, clock);
-      if (next) return next;
+      if (next) {
+        eRow.clear();
+        return next;
+      }
 
-      // What E does here: an add-on's (a lotus to pick…: _addons.ts), enter a place, step ashore.
+      // What E does here: the add-ons' (a lotus to pick…: _addons.ts), enter a place, step ashore (every one here: one
+      // alone as the prompt, more as a short list; _eChoices.ts).
       const spot = world.placeNear(body.pos.x, body.pos.z, level);
-      const addon = phase === 'float' && !fishing.active ? addonOffer(ctx, 'boat') : null;
-      const bank = phase === 'float' && !fishing.active && !addon ? ashore(ctx) : null;
       const name = spot ? placeText(spot).name : '';
-      const use = addon ? addon.prompt : spot?.href ? `E  ${t('rEnter', { name })}` : bank ? `E  ${t('rAshore')}` : spot ? t('rSoon', { name }) : null;
-      // (and fishing's part: "F  Fish"; while he fishes, only it: E puts the pole away)
+      const row = eRow.begin();
+      if (phase === 'float' && !fishing.active) {
+        addonLines(ctx, 'boat', row);
+        if (spot?.href) row.add('place', `E  ${t('rEnter', { name })}`, () => ctx.enter(spot));
+        const bank = ashore(ctx);
+        if (bank) row.add('ashore', `E  ${t('rAshore')}`, () => stepOut(ctx, bank));
+        // (a place not open yet only says so when nothing else is here)
+        if (spot && !spot.href && !row.count) row.add('place', t('rSoon', { name }), () => hud.toast(t('rNotOpen', { name })));
+      }
+      const r = phase === 'float' && !fishing.active ? eRow.end(ctx) : (eRow.clear(), { text: spot?.href ? `E  ${t('rEnter', { name })}` : spot ? t('rSoon', { name }) : null, use: null });
+      const use = r.text;
+      // (and fishing's part: "F  Fish"; while he fishes, only it: E puts the pole away; under a list, a line of its own
+      // with no E — not with the pad in use: its ↓ picks in the list then)
       const fish = fishing.prompt(fishView);
-      const text = fishing.active ? fish : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
+      const list = !!use && use.startsWith(LIST);
+      const text = fishing.active ? fish : list ? (fish ? `${use}\n${NOTE}${fish}` : use) : use && fish && use.startsWith('E  ') ? `${use}  ·  ${fish}` : (use ?? fish);
       if (text !== prompt) hud.prompt((prompt = text));
       if (input.use && phase === 'float') {
-        if (addon) {
-          const next = addon.addon.use?.(ctx, 'boat');
+        if (r.use) {
+          const next = r.use.run?.();
           if (next && next !== 'boat') return next;
-        } else if (spot?.href) ctx.enter(spot);
-        else if (bank) return stepOut(ctx, bank);
-        else if (spot) hud.toast(t('rNotOpen', { name }));
-        else hud.toast(t('rToBank'));
+        } else if (!fishing.active) hud.toast(t('rToBank'));
       }
       return null;
     },
@@ -966,6 +980,7 @@ export function createBoat(field?: HeightField): BoatMode {
       body.explorer.animator.postureFeet = true;
       body.explorer.rig.clearSlot('boatPaddle');
       if (prompt) ctx.hud.prompt((prompt = null));
+      eRow.clear();
       ctx.sound('boatOut');
       // Back to the map while afloat: the boat stays where it is.
       if (to === 'overview' && (phase === 'float' || phase === 'rise')) moored.left = { x: body.pos.x, z: body.pos.z, yaw: body.yaw, level };

@@ -8,7 +8,8 @@ import { weatherNow } from '../sky/weather';
 import { treasure } from '../treasure/hooks';
 import { placeText, t } from '../ui/lang';
 import { mooredBoatNear } from './boat';
-import { addonHolding, addonOffer, BEFORE_SHRINE } from './_addons';
+import { addonHolding, addonLines, BEFORE_SHRINE } from './_addons';
+import { eRow } from './_eChoices';
 import { angleDiff } from './followCam';
 import { shrine } from './_pray';
 import { stalls } from './_shop';
@@ -231,12 +232,14 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
       const { body, input, world, cam } = ctx;
       // On the rope swing: it holds him (E or a move key brings him off).
       if (swing.riding) {
+        eRow.clear();
         setPrompt(ctx, swing.update(ctx, dt));
         return null;
       }
       // An add-on holding him (on the bicycle, in the hammock, on the zip line…: _addons.ts): its step, not the walk's.
       const held = addonHolding('walk');
       if (held?.hold) {
+        eRow.clear();
         const r = held.hold(ctx, dt);
         setPrompt(ctx, r.prompt);
         return r.mode ?? null;
@@ -475,86 +478,50 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
         return 'boat';
       }
 
-      // ── A golden figure, a boat tied up by the bank, a place's beacon ─────
+      // ── The E row: a golden figure, the add-ons, a shrine, a stall, a boat tied up by the bank, a ramp, the balloon,
+      // the swing, a place's beacon (every one at his spot: one alone as the prompt, more as a short list; _eChoices.ts)
       // (kneeling in prayer, or on his way to: no "E  Enter …" over him; E gets him up first: tools.ts, _pray.ts)
       // (sitting or lying on the ground, _rest.ts: its posture holds him, it shows its own keys; E gets him up)
       // (at a stall's buy menu, taking what he bought or eating it: _shop.ts)
-      if (body.explorer.currentAction === 'pray' || shrine.busy() || stalls.busy() || body.explorer.animator.posture) setPrompt(ctx, null);
-      else if (body.grounded) {
-        // (a hidden golden figure within arm's reach comes first, before a shrine, a boat, a ramp, the
-        // balloon, the swing or a beacon that is also in reach: E picks it up; treasure/)
+      if (body.explorer.currentAction === 'pray' || shrine.busy() || stalls.busy() || body.explorer.animator.posture) {
+        eRow.clear();
+        setPrompt(ctx, null);
+      } else if (body.grounded) {
+        const row = eRow.begin();
+        // (a hidden golden figure within arm's reach comes first: E picks it up; treasure/)
         const gold = treasure.near(ctx);
-        const boat = mooredBoatNear(pos.x, pos.z);
+        if (gold) row.add('gold', gold.prompt, () => treasure.pick(ctx, gold.id));
+        // (the add-ons that ask to come before a shrine: _addons.ts)
+        addonLines(ctx, 'walk', row, -Infinity, BEFORE_SHRINE);
+        // In front of a shrine (its lotus glows on the floor): E walks him onto it to pray; _pray.ts.
         const kneel = shrine.near();
+        if (kneel) row.add('shrine', `E  ${t('rPrayHere')}`, () => shrine.kneel(kneel));
+        // In front of a stall with its seller there (shop.ts): E opens the buy menu; _shop.ts.
         const stall = stalls.near(pos.x, pos.y, pos.z);
-        // (the add-ons' E: before a shrine those that ask to be, the others after a stall: _addons.ts)
-        const first = gold ? null : addonOffer(ctx, 'walk', -Infinity, BEFORE_SHRINE);
-        const later = gold || first || kneel || stall?.open ? null : addonOffer(ctx, 'walk', BEFORE_SHRINE + 1e-9);
-        const addon = first ?? later;
-        if (gold) {
-          setPrompt(ctx, gold.prompt);
-          if (input.use) {
-            setPrompt(ctx, null);
-            treasure.pick(ctx, gold.id);
-          }
-        } else if (addon) {
-          setPrompt(ctx, addon.prompt);
-          if (input.use) {
-            setPrompt(ctx, null);
-            const next = addon.addon.use?.(ctx, 'walk');
-            if (next && next !== 'walk') return next;
-          }
-        } else if (kneel) {
-          // In front of a shrine (its lotus glows on the floor): E walks him onto it to pray, before a boat
-          // or the balloon left beside it (from its other sides they are still in reach); _pray.ts.
-          setPrompt(ctx, `E  ${t('rPrayHere')}`);
-          if (input.use) {
-            setPrompt(ctx, null);
-            shrine.kneel(kneel);
-          }
-        } else if (stall?.open) {
-          // In front of a stall with its seller there (shop.ts): E opens the buy menu, after a shrine and before
-          // a boat; _shop.ts.
-          setPrompt(ctx, stall.prompt);
-          if (input.use) {
-            setPrompt(ctx, null);
-            stalls.buy(stall.shop);
-          }
-        } else if (boat && Math.abs(boat.level - pos.y) < 4) {
-          setPrompt(ctx, `E  ${t('rBoard')}`);
-          if (input.use) {
-            setPrompt(ctx, null);
-            return 'boat';
-          }
-        } else if (world.launchNear?.(pos.x, pos.z, pos.y)) {
-          // A take-off ramp on a cliff top.
-          setPrompt(ctx, `E  ${t('rFly')}`);
-          if (input.use) {
-            setPrompt(ctx, null);
-            return 'hang';
-          }
-        } else if (world.balloonNear?.(pos.x, pos.z, pos.y)) {
-          // The hot air balloon's basket (balloon.ts).
-          setPrompt(ctx, `E  ${t('rBalloon')}`);
-          if (input.use) {
-            setPrompt(ctx, null);
-            return 'balloon';
-          }
-        } else if (swing.near(pos.x, pos.z, pos.y)) {
-          // The rope swing on the Bayon's rim (jungle/_swing.ts).
-          setPrompt(ctx, `E  ${t('rSwing')}`);
-          if (input.use) {
-            setPrompt(ctx, null);
-            swing.start(ctx);
-          }
-        } else {
-          const place = world.placeNear(pos.x, pos.z, pos.y);
-          // (a closed stall only says so, when nothing else is in reach)
-          setPrompt(ctx, place ? placePrompt(place) : (stall?.prompt ?? null));
-          if (place && input.use) {
-            if (place.href) ctx.enter(place);
-            else ctx.hud.toast(t('rNotOpen', { name: placeText(place).name }));
-          }
+        if (stall?.open) row.add('stall', stall.prompt, () => stalls.buy(stall.shop));
+        // (the other add-ons)
+        addonLines(ctx, 'walk', row, BEFORE_SHRINE + 1e-9);
+        const boat = mooredBoatNear(pos.x, pos.z);
+        if (boat && Math.abs(boat.level - pos.y) < 4) row.add('boat', `E  ${t('rBoard')}`, () => 'boat');
+        // A take-off ramp on a cliff top.
+        if (world.launchNear?.(pos.x, pos.z, pos.y)) row.add('ramp', `E  ${t('rFly')}`, () => 'hang');
+        // The hot air balloon's basket (balloon.ts).
+        if (world.balloonNear?.(pos.x, pos.z, pos.y)) row.add('balloon', `E  ${t('rBalloon')}`, () => 'balloon');
+        // The rope swing on the Bayon's rim (jungle/_swing.ts).
+        if (swing.near(pos.x, pos.z, pos.y)) row.add('swing', `E  ${t('rSwing')}`, () => swing.start(ctx));
+        const place = world.placeNear(pos.x, pos.z, pos.y);
+        if (place?.href) row.add('place', placePrompt(place), () => ctx.enter(place));
+        else if (!row.count && !row.ended) {
+          // (a place not open yet, or a closed stall, only says so when nothing else is in reach)
+          if (place) row.add('place', placePrompt(place), () => ctx.hud.toast(t('rNotOpen', { name: placeText(place).name })));
+          else if (stall) row.add('stall', stall.prompt, null);
+        }
+        const r = eRow.end(ctx);
+        setPrompt(ctx, r.text);
+        if (input.use && r.use) {
+          setPrompt(ctx, null);
+          const next = r.use.run?.();
+          if (next && next !== 'walk') return next;
         }
       }
 
@@ -575,6 +542,7 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
 
     exit(ctx) {
       setPrompt(ctx, null);
+      eRow.clear();
       hopping = false;
       swing.stop(ctx);
     },

@@ -416,6 +416,10 @@ registerAddon({
   id: 'paint',
   // (first in the E row and the keys: its E paints, its 1‥7 pick colours before the tools and the binoculars)
   order: 2,
+  // (paint mode: its E is the E row's only line, _addons.ts)
+  get endsRow() {
+    return on;
+  },
   init(e) {
     env = e;
     cursor = new PaintCursor(e.scene);

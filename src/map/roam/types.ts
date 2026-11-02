@@ -52,6 +52,8 @@ export interface RoamInput {
   click?: boolean;
   /** Where the mouse is over the view (CSS px), or null (touch, or off the view). */
   pointer?: { readonly x: number; readonly y: number } | null;
+  /** The E list's pick moved this frame (Tab +1, Shift+Tab −1, the pad's R3 +1 while the list is open: _eChoices.ts). */
+  pick?: number;
 }
 
 /** What the roaming modes know about the world. */
@@ -186,7 +188,7 @@ export interface RoamModeHandler {
 export interface RoamHud {
   /** Show or hide the roaming interface (and the "Jump in" button of the overview). */
   setMode(mode: RoamMode): void;
-  /** A prompt near the bottom ("E  Enter Angkor Wat"), or null. */
+  /** A prompt near the bottom ("E  Enter Angkor Wat"), or null; the E row's list (_eChoices.ts `LIST`: a line each). */
   prompt(text: string | null): void;
   /** A short message that fades by itself. */
   toast(text: string): void;

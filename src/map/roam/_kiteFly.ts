@@ -17,8 +17,8 @@ import { weatherNow } from '../sky/weather';
 import { TIME } from '../time';
 import type { MapFrame, MapWeather } from '../types';
 import { createAskCard, type AskCard } from '../ui/ask';
-import { lang, t } from '../ui/lang';
-import { addonHands, registerAddon, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
+import { lang, onLang, t } from '../ui/lang';
+import { addonHands, MENU_HOOKS, registerAddon, type AddonEnv, type AddonHold, type AddonKey } from './_addons';
 import { createKiteGear, followWind, HIS_VOICE, kiteWeather, LIFT, windAloft, type KiteGear } from './_kiteSky';
 import { createKiteStall, KITE_PRICE, type KiteStall } from './_kiteStall';
 import { riel } from './_shopPurse';
@@ -41,17 +41,21 @@ import { stepSound } from './walker';
  * asks with a card of its own (ui/ask.ts), the seller hands it over. He keeps
  * it (progress.ts `kite.have`).
  *
- * **Flying it.** "E  Fly your kite" is offered only where and when it really
+ * **Flying it.** Its own key, **−** (`KITE_KEYS`; the tool bar's kite slot, the
+ * explorer menu's Bag, so the pad and a finger fly it too: AWP-33), not E: E
+ * stays for what is near him (the E row, _eChoices.ts), and the kite flies
+ * in almost any open field, where it hid "Build…" and "Plant…". Asking for one
+ * and buying one stay on E. It flies only where and when it really
  * flies: in fair weather with some wind aloft (any season: strongest in the
  * kite season, the north wind from after the Water Festival to March, but a
  * breezy day lifts it in any month: _kiteSky.ts `windAloft`), anywhere
  * on open land (not a flooded rice field, not in the market's crowd, the sey
  * circle, by a place's entrance or a stall: `kiteGround`), with nothing over
  * him or down the wind (the walk
- * maps' `clearance`, `hardClearance`, `softClearance`: `flyHere`). It comes
- * last in the E row (`ORDER`): anything else in reach (the dog, the sey, the
- * farmers' work) wins. In a calm, where it would fly, a toast once a visit
- * says to wait for a breeze (no E). Then he turns into the wind with
+ * maps' `clearance`, `hardClearance`, `softClearance`: `flyHere`); elsewhere
+ * the key says why not (the rain, a calm, no room here; no kite yet: where to
+ * get one). Where it would fly, a toast once a visit says the key (a calm:
+ * to wait for a breeze). Then he turns into the wind with
  * the kite held up at arm's length past
  * his right shoulder, runs a few steps and lets it go: it climbs behind him on
  * its line; he turns round to it and it climbs on to `LINE_START` m of line.
@@ -67,7 +71,7 @@ import { stepSound } from './walker';
  *   would catch.
  * - Sunk into a tree it snags; on the ground it lies: he must reel it in
  *   (S or E): a tug frees it and it comes in.
- * - **E** brings it in: he reels it all in, folds it and puts it away. Rain
+ * - **E** (or − again) brings it in: he reels it all in, folds it and puts it away. Rain
  *   brings it in by itself.
  * The line is one thin sagging strip from his fist (_kiteSky.ts). The camera
  * looks up past him at the kite while he flies it (a drag turns it).
@@ -117,8 +121,12 @@ const HUM_EVERY = 1.6;
 const HUM_HIGH = 14;
 /** Saved: he has a kite. */
 const HAVE_KEY = 'kite.have';
-/** Its place in the E row: after every other add-on (they come at 60 at most), so anything else in reach wins. */
+/** Its place in the E row (asking for one, buying one): after every other add-on (they come at 60 at most), so anything else in reach wins. */
 const ORDER = 90;
+/** Its own key (input.ts `TOOL_KEYS`): flies it, or brings it in. */
+const KITE_KEYS = ['Minus', 'NumpadSubtract'] as const;
+/** The key as the key help, the tool bar and the words show it. */
+const KITE_KEY = '-';
 /** The key help (bottom left) while it flies (`keys`) and while it is caught (S or E reels it in); else the walk's. */
 const FLY_KEYS: readonly AddonKey[] = [
   ['W', 'kiteKeyOut', 'lstick'],
@@ -200,6 +208,11 @@ let takeView: { side: number; pitch: number; distance: number } | null = null;
 /** Toasts said once (a visit): the keys; the hum; all the line (a flight); the trees (s until again). */
 let keysSaid = false;
 let calmSaid = false;
+/** The toast saying the key (once a visit, where it would fly). */
+let keySaid = false;
+/** The tool bar's slot (−: shown once he has a kite; lit while it is out). */
+let slotEl: HTMLButtonElement | null = null;
+let slotShown = '';
 let humSaid = false;
 let maxSaid = false;
 let treesAt = 0;
@@ -216,7 +229,7 @@ let urlCam = false;
 
 // ── Words (made again only when the language or the controls change) ──
 
-const words = { lang: '', pad: false, touch: false, ask: '', buy: '', fly: '', reel: '', flying: '' };
+const words = { lang: '', pad: false, touch: false, ask: '', buy: '', reel: '', flying: '' };
 function say(): typeof words {
   const touch = document.body.classList.contains('roam-touch');
   if (words.lang === lang() && words.pad === pad.active && words.touch === touch) return words;
@@ -225,7 +238,6 @@ function say(): typeof words {
   words.touch = touch;
   words.ask = `E  ${t('kiteAsk')}`;
   words.buy = `E  ${t('kiteBuy', { price: riel(KITE_PRICE) })}`;
-  words.fly = `E  ${t('kiteFly')}`;
   words.reel = `E  ${t('kiteReel')}`;
   // (the other keys are in the key help while it flies: `keys`; on touch the first flight's toast says them)
   words.flying = words.reel;
@@ -411,12 +423,93 @@ function flyHere(ctx: RoamCtx): boolean {
   return true;
 }
 
-/** In a calm, where it would fly (`flyHere`), with his kite: once a visit, a word to wait for a breeze (no E). */
+/** In a calm, where it would fly (`flyHere`), with his kite: once a visit, a word to wait for a breeze (no key). */
 function calmHint(ctx: RoamCtx): void {
   if (calmSaid || !flyHere(ctx)) return;
   calmSaid = true;
   ctx.hud.toast(t('kiteCalmHint'));
 }
+
+/** Where it flies now, with his kite: once a visit, how to fly it (the key; the tool bar's kite on touch; the menu with a pad). */
+function keyHint(ctx: RoamCtx): void {
+  if (keySaid || !env || (env.shot && env.params.get('kitehint') !== '1')) return;
+  keySaid = true;
+  const touch = document.body.classList.contains('roam-touch');
+  ctx.hud.toast(pad.active ? t('kiteHintPad', { menu: padName('north', pad.kind) }) : touch ? t('kiteHintTouch') : t('kiteHintKey', { key: KITE_KEY }));
+}
+
+/** His kite's key on foot (−, the tool bar's slot, the explorer menu): fly it here, or say why not. */
+function tryFly(ctx: RoamCtx): void {
+  if (!have) {
+    ctx.hud.toast(t('kiteNone'));
+    return;
+  }
+  const w = ctx.weather ?? weatherNow();
+  if (!kiteWeather(w)) {
+    ctx.hud.toast(t('kiteWet'));
+    return;
+  }
+  if (windNow(w) < LIFT) {
+    ctx.hud.toast(t('kiteCalm'));
+    return;
+  }
+  if (!flyHere(ctx)) {
+    ctx.hud.toast(t('kiteNoRoom'));
+    return;
+  }
+  keySaid = true;
+  startLaunch(ctx);
+}
+
+/** The tool bar's slot (−), after the other add-ons' (7 the binoculars): once he has a kite. A click is the key. */
+function makeSlot(e0: AddonEnv): void {
+  if (slotEl || typeof document === 'undefined') return;
+  const bar = e0.layer.querySelector('.rtb');
+  if (!bar) return;
+  slotEl = document.createElement('button');
+  slotEl.type = 'button';
+  slotEl.className = 'rtb-slot';
+  slotEl.dataset.addon = 'kite';
+  slotEl.dataset.key = KITE_KEY;
+  slotEl.hidden = true;
+  slotEl.setAttribute('aria-pressed', 'false');
+  slotEl.innerHTML = `<span class="rtb-bg"></span>${SLOT_ICON}<kbd>${KITE_KEY}</kbd>`;
+  slotEl.addEventListener('click', () => {
+    slotEl?.blur();
+    e0.controls.press(KITE_KEYS[0]);
+  });
+  bar.querySelector('.rtb-sep')?.before(slotEl);
+  const words = () => {
+    if (!slotEl) return;
+    slotEl.title = `${t('kiteName')} (${KITE_KEY})`;
+    slotEl.setAttribute('aria-label', slotEl.title);
+  };
+  words();
+  onLang(words);
+  if (!document.getElementById('kite-slot-style')) {
+    const st = document.createElement('style');
+    st.id = 'kite-slot-style';
+    // (hidden until he has one; off his feet greyed, as the binoculars in the air)
+    st.textContent = `.rtb-slot[data-addon='kite'][hidden] { display: none; }
+      .rh:not([data-mode='walk']) .rtb-slot[data-addon='kite'] { opacity: 0.32; }
+      body.pad-on .rtb-slot[data-addon='kite'] kbd { visibility: hidden; }`;
+    document.head.append(st);
+  }
+}
+
+/** The slot as things are: shown once he has a kite, lit while it is out (only when that changes). */
+function showSlot(): void {
+  if (!slotEl) return;
+  const now = `${have} ${stage !== 'none'}`;
+  if (now === slotShown) return;
+  slotShown = now;
+  slotEl.hidden = !have;
+  slotEl.classList.toggle('is-on', stage !== 'none');
+  slotEl.setAttribute('aria-pressed', String(stage !== 'none'));
+}
+
+/** The tool bar's kite (16 × 16 pixel art: the khleng ek's red diamond, its bow over it, its tails). */
+const SLOT_ICON = `<svg class="rtb-icon" viewBox="0 0 16 16" aria-hidden="true" shape-rendering="crispEdges"><path class="rtb-lit" fill="#c8382a" d="M7 0h2v1H7zM6 1h4v1H6zM5 2h6v1H5zM4 3h8v1H4zM3 4h10v1H3zM2 5h12v1H2zM3 6h10v1H3zM4 7h8v1H4zM5 8h6v1H5zM6 9h4v1H6zM7 10h2v1H7z"/><path fill="#f2ead4" d="M2 5h1v1H2zM13 5h1v1h-1zM7 0h2v1H7z"/><path fill="#e8b43a" d="M7 4h2v1H7zM6 5h4v1H6zM7 6h2v1H7z"/><path fill="#3a5cc0" d="M7 8h2v1H7z"/><path fill="currentColor" d="M7 11h1v1H7zM8 12h1v1H8zM7 13h1v1H7zM8 14h1v1H8zM7 15h1v1H7z"/></svg>`;
 
 // ── Starting and stopping ──
 
@@ -1139,6 +1232,10 @@ registerAddon({
   init(e0) {
     env = e0;
     have = progress.get(HAVE_KEY, false, (v): v is boolean => typeof v === 'boolean');
+    makeSlot(e0);
+    // (the explorer menu's Bag: "Fly your kite" once he has one, lit while it is out; _explorerMenu.ts)
+    MENU_HOOKS.kiteHave = () => have;
+    MENU_HOOKS.kiteOut = () => stage !== 'none';
     const held = Number(e0.params.get('kitewind'));
     windHeld = e0.params.has('kitewind') && Number.isFinite(held) ? clamp(held, 0, 1) : null;
   },
@@ -1158,14 +1255,13 @@ registerAddon({
       if (stall?.near(p.x, p.y, p.z, clockNow())) return sw.buy;
       return null;
     }
-    // Only where and when it really flies: fair weather, some wind aloft, open land for it.
+    // (with his kite: its own key flies it, not E — `input`; where it would fly, once a visit, a word of the key or of the calm)
     const w = ctx.weather ?? weatherNow();
-    if (!kiteWeather(w)) return null;
-    if (windNow(w) < LIFT) {
-      calmHint(ctx);
-      return null;
+    if (!keySaid || !calmSaid) {
+      if (kiteWeather(w) && windNow(w) < LIFT) calmHint(ctx);
+      else if (kiteWeather(w) && !keySaid && flyHere(ctx)) keyHint(ctx);
     }
-    return flyHere(ctx) ? sw.fly : null;
+    return null;
   },
 
   use(ctx) {
@@ -1175,18 +1271,21 @@ registerAddon({
       const g = KITE_HOOK.giver;
       if (g.out && (p.x - g.x) ** 2 + (p.z - g.z) ** 2 < GIVER_REACH * GIVER_REACH) startTake(ctx, 'gift');
       else if (stall?.near(p.x, p.y, p.z, clockNow())) askBuy(ctx);
-      return;
     }
-    const w = ctx.weather ?? weatherNow();
-    if (!kiteWeather(w)) {
-      ctx.hud.toast(t('kiteWet'));
-      return;
+  },
+
+  input(ctx, mode, tap) {
+    if (!tap(...KITE_KEYS)) return false;
+    // Flying (or caught): − brings it in, as E does (the flight's step reads it).
+    if (stage !== 'none') {
+      ctx.input.use = true;
+      return false;
     }
-    if (windNow(w) < LIFT) {
-      ctx.hud.toast(t('kiteCalm'));
-      return;
-    }
-    startLaunch(ctx);
+    // On foot, free (not praying, resting, at a stall, the camera up, another add-on's hands, in the air, under the buy card).
+    if (mode !== 'walk' || !env || env.busy() || addonHands() || !ctx.body.grounded || card?.open) return false;
+    lastCtx = ctx;
+    tryFly(ctx);
+    return stage !== 'none';
   },
 
   hold(ctx, dt) {
@@ -1210,6 +1309,7 @@ registerAddon({
   },
 
   frame(f) {
+    showSlot();
     season = f.season;
     clock = f.clock;
     night = f.night;

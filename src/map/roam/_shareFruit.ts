@@ -5,6 +5,7 @@ import { findShare, SHARE, SHARE_FRIENDS, shareCue, villageAt, type ShareBack, t
 import { TIME } from '../time';
 import { lang, num, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
+import { ePicked } from './_eChoices';
 import { GIVING, giftKind, isMonk, stepGift, takeGift } from './_giveFruit';
 import { startShare, type ShareSession, type ShareStep } from './_shareFruitSession';
 import { againWord, anItem, itemName, planShare, promptWord, snackKept } from './_shareFruitWords';
@@ -321,8 +322,9 @@ registerAddon({
   },
   after(ctx, mode) {
     lastCtx = ctx;
-    // (our prompt was the one shown on this step: the next step's `,` / `.` are ours, not the offering's)
-    shownLast = mode === 'walk' && offeredAt === ctx.t;
+    // (our prompt was the one shown on this step — the picked line of the E list: _eChoices.ts —: the next step's `,` / `.`
+    // are ours, not the offering's)
+    shownLast = mode === 'walk' && offeredAt === ctx.t && ePicked('shareFruit');
     // (live: as soon as the people are about; a headless shot: in its frames, `frame`)
     if (pending && mode === 'walk' && !session && !env?.shot) startPending(ctx);
   },

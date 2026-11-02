@@ -5,9 +5,10 @@ import { clearMark, markFocus } from '../pad/nav';
 import { pad } from '../pad/pad';
 import type { UISound } from '../types';
 import { ICON } from '../ui/icons';
-import { lang, onLang, t, type WordKey } from '../ui/lang';
+import { lang, num, onLang, t, type WordKey } from '../ui/lang';
 import { setSteppedVars, steppedRing } from '../ui/shape';
 import { addonKeys, type AddonKey } from './_addons';
+import { CHOICE, E_LIST, LIST, NOTE, PICK, ROWS } from './_eChoices';
 import { roamPrefs } from './prefs';
 import { setTouchUse } from './touch';
 import type { RoamHud, RoamMode } from './types';
@@ -28,7 +29,9 @@ export type JumpKind = 'chute' | 'glider';
  *   pick is kept for the visit;
  * - while roaming, "Back to map" at the top left (Esc), the keys of the mode
  *   at the bottom left (small; hidden while the touch controls show), a
- *   prompt at a place's beacon ("E  Enter Angkor Wat"), short messages that
+ *   prompt at a place's beacon ("E  Enter Angkor Wat") or the E row's short
+ *   list (two or more E choices: "▸" the picked one, Tab / the pad's R3 /
+ *   a tap on a line pick, _eChoices.ts), short messages that
  *   fade by themselves, and the fade to black; the explorer's tool bar
  *   (tools.ts) goes in the same layer.
  *
@@ -87,6 +90,14 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
   const toastEl = q('.rh-toast');
   const toastText = q('.rh-toast-text');
   const fadeEl = q('.rh-fade');
+  // (a tap or a click on a line of the E list picks it: the next step reads it, _eChoices.ts)
+  promptEl.addEventListener('pointerdown', (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLElement>('.rh-ch-line[data-c]');
+    if (!li || !promptEl.classList.contains('is-list')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    E_LIST.tapped = Number(li.dataset.c);
+  });
   const back = q('.rh-back');
   back.addEventListener('click', () => {
     back.blur();
@@ -333,6 +344,16 @@ export function createRoamHud(root: HTMLElement, h: { onJump(kind: JumpKind): vo
         setTouchUse(null);
         return;
       }
+      if (text.startsWith(LIST)) {
+        // The E row's list: a line each, the picked one marked (_eChoices.ts); the touch Use button says the pick.
+        const l = listHtml(text);
+        promptEl.innerHTML = l.html;
+        promptEl.classList.remove('is-soon');
+        promptEl.classList.add('is-list', 'is-on');
+        setTouchUse(l.use);
+        return;
+      }
+      promptEl.classList.remove('is-list');
       // "E  Enter Angkor Wat": a key, two spaces, what it does; parts joined by "  ·  " ("Space  Parachute  ·  E
       // Hang glider"), each with its own key (the pad's button while the pad is in use: `promptPad`).
       let html = '<span class="mu-bg"></span>';
@@ -449,7 +470,8 @@ function padHelp(mode: RoamMode): string {
         item(g('r2'), 'rRun'),
         item(g('south'), 'rJump'),
         item(g('west'), SCENES_OPEN ? 'rEnterFly' : 'rUseFly'),
-        item(g('r3'), 'rRamp'),
+        // (R3 is the E list's pick while it shows: this line steps aside then, `body.e-list`)
+        item(g('r3'), 'rRamp').replace('class="rh-k"', 'class="rh-k rh-k-ramp"'),
         look,
         item(g('r1') + g('l1'), 'rZoom'),
         // (↑ a light, ← the camera, → the selfie; ↓ greets)
@@ -502,6 +524,58 @@ function promptPad(k: string): PadGlyph | null {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/** A prompt line's parts ("E  Build…  ·  F  Change seed"): each key as a key cap (the pad's button with the pad), its words. */
+function partsHtml(text: string): string {
+  let html = '';
+  text.split(/\s{2,}·\s{2,}/).forEach((part, i) => {
+    const m = /^(\S{1,6})\s{2,}(.+)$/.exec(part);
+    if (i) html += '<span class="rh-prompt-sep" aria-hidden="true">·</span>';
+    if (m) {
+      const g = promptPad(m[1]);
+      const cls = m[1] === 'E' ? 'rh-ch-e' : '';
+      html += g ? padKbd(esc(m[1]), g, cls) : `<kbd${cls ? ` class="${cls}"` : ''}>${esc(m[1])}</kbd>`;
+    }
+    html += `<span class="rh-prompt-text">${esc(m?.[2] ?? part)}</span>`;
+  });
+  return html;
+}
+
+/**
+ * The E row's list (_eChoices.ts `LIST`): at most `ROWS` lines (the picked one among them), "▸" before the picked one,
+ * the lines with no key greyed; under it how to pick (Tab or the pad's d-pad ↑ ↓; on touch a tap) and, with more lines
+ * than show, which choice of how many. `use`: the picked line's words for the touch Use button.
+ */
+function listHtml(text: string): { html: string; use: string | null } {
+  const rows = text
+    .slice(LIST.length)
+    .split('\n')
+    .map((l) => ({ kind: l.charAt(0), text: l.slice(1) }));
+  const choices = rows.filter((r) => r.kind === PICK || r.kind === CHOICE).length;
+  const at = rows.findIndex((r) => r.kind === PICK);
+  const from = rows.length > ROWS ? Math.min(Math.max(0, at - 1), rows.length - ROWS) : 0;
+  let c = rows.slice(0, from).filter((r) => r.kind !== NOTE).length;
+  let picked = -1;
+  let html = '<span class="mu-bg"></span><ol class="rh-ch">';
+  for (const r of rows.slice(from, from + ROWS)) {
+    if (r.kind === NOTE) {
+      html += `<li class="rh-ch-line is-note"><span class="rh-ch-mark" aria-hidden="true"></span>${partsHtml(r.text)}</li>`;
+      continue;
+    }
+    const pick = r.kind === PICK;
+    if (pick) picked = c;
+    html += `<li class="rh-ch-line${pick ? ' is-pick' : ''}" data-c="${c}"${pick ? ' aria-current="true"' : ''}><span class="rh-ch-mark" aria-hidden="true">${pick ? '▸' : ''}</span>${partsHtml(r.text)}</li>`;
+    c++;
+  }
+  html += '</ol>';
+  if (choices >= 2) {
+    const more = rows.length > ROWS ? `<span class="rh-ch-more">${num(picked + 1)} / ${num(choices)}</span>` : '';
+    html += `<div class="rh-ch-hint"><span class="rh-ch-keys">${padKbd('Tab', 'r3')}<span>${esc(t('eChoose'))}</span></span><span class="rh-ch-tap">${esc(t('eChooseTap'))}</span>${more}</div>`;
+  }
+  const line = rows.find((r) => r.kind === PICK) ?? rows.find((r) => r.kind === CHOICE);
+  const use = line ? /(?:^|·\s+)E\s{2,}([^·]+?)\s*(?:·|$)/.exec(line.text) : null;
+  return { html, use: use ? use[1] : null };
+}
+
 /** The keys of a mode (bottom left) in the language in use; the hang glider's and the balloon's with easy flying off (roam/prefs.ts) are the real ones'. */
 function keyHelp(mode: RoamMode): string {
   const look = item(`<i>${t('rDrag')}</i> / ${key('Q')}${key('R')}`, 'rLook');
@@ -520,8 +594,9 @@ function keyHelp(mode: RoamMode): string {
         item(key('N'), 'rRamp'),
         look,
         item(key('1') + '–' + key('5'), 'rTools'),
-        // (the calendar of events: roam/_calendar.ts)
+        // (the calendar of events: roam/_calendar.ts; his kite: roam/_kiteFly.ts)
         item(key('9'), 'whenButton'),
+        item(key('-'), 'kiteName'),
         item(key('F'), 'grGreet'),
         item(key('C') + key('U') + key('P'), 'rEmotes'),
         item(key('J') + key('L'), 'rSitLie'),
@@ -704,7 +779,44 @@ function injectStyle(): void {
     .rh-prompt.is-soon .rh-prompt-text { font: 600 calc(16 * var(--px)) / 1.1 var(--mu-font); color: var(--mu-ink2); }
     body.roam-touch .rh-prompt kbd { display: none; }
     /* (on touch the Use button says it) */
-    body.roam-touch .rh-prompt:not(.is-soon) { display: none; }
+    body.roam-touch .rh-prompt:not(.is-soon):not(.is-list) { display: none; }
+
+    /* The E row's list (_eChoices.ts): a line each, "▸" and gold on the picked one, how to pick under it. */
+    .rh > .rh-prompt.is-list { flex-direction: column; align-items: stretch; gap: calc(6 * var(--px)); padding: calc(8 * var(--px)) calc(12 * var(--px)) calc(8 * var(--px)) calc(8 * var(--px)); }
+    .rh-ch { display: grid; gap: calc(2 * var(--px)); margin: 0; padding: 0; list-style: none; }
+    .rh-ch-line { display: flex; align-items: center; gap: calc(8 * var(--px)); min-height: calc(32 * var(--px)); padding: 0 calc(10 * var(--px)) 0 calc(4 * var(--px));
+      border-radius: calc(4 * var(--px)); color: var(--mu-ink2); max-width: calc(100vw - 56px); box-sizing: border-box; }
+    .rh-ch-line[data-c] { pointer-events: auto; cursor: pointer; }
+    .rh-ch-line .rh-prompt-text { font-size: calc(17 * var(--px)); overflow: hidden; text-overflow: ellipsis; }
+    /* (the same size picked or not: the list never changes width as the pick moves) */
+    .rh-ch-line.is-pick { color: var(--mu-gold-hi); background: rgba(255, 208, 112, 0.13); box-shadow: inset 0 0 0 1px rgba(255, 208, 112, 0.35); }
+    .rh-ch-line:not(.is-pick):not(.is-note) kbd.rh-ch-e { visibility: hidden; }
+    .rh-ch-line.is-note .rh-prompt-text { font: 600 calc(14 * var(--px)) / 1.2 var(--mu-font); color: var(--mu-dim); }
+    .rh-ch-mark { flex: none; width: calc(12 * var(--px)); font: 700 calc(18 * var(--px)) / 1 var(--mu-font); color: var(--mu-gold-hi); }
+    .rh-ch-hint { display: flex; align-items: center; gap: calc(10 * var(--px)); padding: calc(5 * var(--px)) calc(4 * var(--px)) 0; border-top: 1px solid var(--mu-line);
+      font: 600 calc(12.5 * var(--px)) / 1.2 var(--mu-font); color: var(--mu-dim); }
+    .rh-ch-keys { display: inline-flex; align-items: center; gap: calc(6 * var(--px)); }
+    .rh-prompt .rh-ch-hint kbd { min-width: calc(20 * var(--px)); height: calc(20 * var(--px)); font-size: calc(11.5 * var(--px)); color: var(--mu-ink); border-color: var(--mu-line-hi); }
+    .rh-ch-hint .pad-g { height: calc(18 * var(--px)); }
+    .rh-ch-more { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .rh-ch-tap { display: none; }
+    body.roam-touch .rh-ch-keys { display: none; }
+    body.roam-touch .rh-ch-tap { display: inline; }
+    body.roam-touch .rh-ch-line { min-height: 40px; }
+    /* (the pad's R3 is the list's pick while it shows: not "glider ramp" then; the mini-map's caption too, ui/minimap.ts) */
+    body.pad-on.e-list .rh-k-ramp { display: none; }
+    /* On touch: clear of the stick (lower left), the Use and Jump buttons (lower right) and the tool bar (the right edge
+       upright, the top sideways); its words wrap instead of running under them. Upright: centred left of the bar, over
+       the Use button. Sideways (a phone on its side): low, just right of the stick, so he stays in view in the middle. */
+    body.roam-touch .rh > .rh-prompt.is-list, body.roam-touch .rh > .rh-prompt.is-list.is-on { left: 12px; right: 76px; margin-inline: auto; width: fit-content;
+      transform: none; white-space: normal; }
+    body.roam-touch .rh-ch-line { max-width: none; }
+    body.roam-touch .rh-ch-line .rh-prompt-text { overflow: visible; text-overflow: clip; line-height: 1.2; }
+    @media (orientation: landscape) and (max-height: 500px) {
+      body.roam-touch .rh > .rh-prompt.is-list, body.roam-touch .rh > .rh-prompt.is-list.is-on { left: 146px; right: 310px; bottom: 8px; margin-inline: 0; }
+      body.roam-touch .rh-ch-line { min-height: 36px; }
+    }
+    :lang(km) .rh-ch-hint { font-size: calc(13 * var(--px)); line-height: 1.4; }
     body.roam-touch .rh-prompt { bottom: calc(150px + 4vh); }
 
     /* Short messages: top centre. */

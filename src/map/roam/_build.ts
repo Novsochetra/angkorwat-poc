@@ -1532,6 +1532,10 @@ registerAddon({
 registerAddon({
   id: 'buildMode',
   order: 3,
+  // (while he places a piece or draws a footprint, "Build here" is the E row's last line: nothing after it, _addons.ts)
+  get endsRow() {
+    return !!placing || FootMode.on;
+  },
   // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
   // order 5, takes the L2 press after this one: taken here, it never raises them).
   input(_ctx, m) {
@@ -1559,20 +1563,41 @@ registerAddon({
  * his house where nothing else here has E. Just before the garden's late half (`GARDEN_LATE`: "E  Plant…" and its
  * lines with no key) so that a line of the garden's with no key (no seeds yet, the can empty, the jar empty) never
  * hides it: the garden's line goes on after it ("E  Build…  ·  You have no seeds yet…"), and a real E of the
- * garden's still comes first.
+ * garden's still comes first. By the house the early half's "E  Build…" (94) is there already: not twice.
  */
 const GARDEN_LATE = 95;
+/** The garden's late offer, worked out once a step there (_garden.ts `chooseOnce`), or null. */
+const gardenLate = (ctx: RoamCtx, m: 'walk' | 'boat'): string | null => addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
+/** Build mode, a card or the work has him: no "Build…". */
+const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
 registerAddon({
   id: 'buildLate',
   order: GARDEN_LATE - 0.1,
   offer(ctx, m) {
-    if (m !== 'walk' || !env || placing || FootMode.on || pressing || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
-    if (!canStart(ctx, true)) return null;
-    // (the garden's late offer, worked out once a step there: its "E  …" first; a line with no key after ours)
-    const g = addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
+    if (lateOff(m) || !canStart(ctx, true)) return null;
+    // (by the house with nothing of his in reach: the early half says it)
+    if (canStart(ctx, false) && !near.prompt) return null;
+    const g = gardenLate(ctx, m);
     if (g?.startsWith('E ')) return null;
     const start = words('start', () => `E  ${t('buildStart')}`);
     return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
+  },
+  use(ctx) {
+    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    openCard(ctx);
+  },
+});
+
+/**
+ * "E  Build…" after the garden's "E  Plant…" (AWP-33: every E choice shows, the E list _eChoices.ts): where the garden
+ * has an E of its own on his land, it stays the top line, and "Build…" is the next.
+ */
+registerAddon({
+  id: 'buildLater',
+  order: GARDEN_LATE + 0.1,
+  offer(ctx, m) {
+    if (lateOff(m) || !canStart(ctx, true)) return null;
+    return gardenLate(ctx, m)?.startsWith('E ') ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
     if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
