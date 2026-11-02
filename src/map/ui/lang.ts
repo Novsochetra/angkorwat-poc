@@ -1438,6 +1438,11 @@ const WORDS = {
   gardenDig: { km: 'ជីកដាំ{plant}នៅទីនេះ (នៅសល់ {n})', en: 'Dig here: {plant} ({n} left)' },
   gardenChangeSeed: { km: 'ប្ដូរពូជ', en: 'Change seed' },
   gardenDone: { km: 'រួចហើយ', en: 'Done' },
+  // (planting mode's Rows, AWP-32: G, the pad's ↑, the touch bar's button)
+  gardenRowsOn: { km: 'ដាំជាជួរ៖ បើក', en: 'Rows: on' },
+  gardenRowsOff: { km: 'ដាំជាជួរ៖ បិទ', en: 'Rows: off' },
+  gardenRowsOnSay: { km: 'ដាំជាជួរ៖ ដំណាំតម្រង់ជួរជាមួយដំណាំផ្សេងទៀត ដោយគម្លាតស្មើៗគ្នា', en: 'Rows: each plant lines up with the others, evenly spaced' },
+  gardenRowsOffSay: { km: 'ដាំសេរី៖ ដាំត្រង់ណាក៏បាន', en: 'Free planting: put it anywhere' },
   gardenPlantedAll: { km: 'បានដាំ{plant}អស់ហើយ', en: 'No more {plant} to plant' },
   gardenPicked: { km: 'បានប្រមូលផល៖ {what}', en: 'Harvested {what}' },
   // (how many of a harvest: English "one|many")

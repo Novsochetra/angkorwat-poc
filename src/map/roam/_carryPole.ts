@@ -721,8 +721,10 @@ registerAddon({
   },
   fromUrl(q, ctx) {
     lastCtx = ctx;
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!env || !(env.shot || import.meta.env.DEV)) return;
     const v = q.get('carry');
-    if (!v || !env) return;
+    if (!v) return;
     home();
     settleFor = SETTLE;
     const [what, at] = v.split(':');

@@ -353,7 +353,9 @@ guide, with every add-on's keys and URL values for shots, is
   Grandma's seed gift, the bodhi at the village pagoda (`roam/_bodhi*.ts`), and the
   shoulder pole ដងរែក carrying water to his jar and plants (`roam/_carryPole*.ts`).
   Planting is a mode (E Plant… → a ghost at his feet → E Dig here); the work's
-  effects go through `garden/fx.ts` `GARDEN_FX`.
+  effects go through `garden/fx.ts` `GARDEN_FX`. It walks straight, and Rows (G, the
+  pad's ↑, the touch button; on at first) snaps the ghost into evenly spaced rows
+  (`garden/rows.ts`, AWP-32; `gardenrows=0` places freely).
   Agreed with the player: growth by game days, young plants can die, planting
   anywhere near his house. Shots: `garden=lineup|demo|<kind>:<stage>[:ripe…]`,
   `seeds=all`, `gardenact=<action>:<t>`, `gardenring=<kind>`, `gardenthirst=1`,

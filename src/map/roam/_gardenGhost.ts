@@ -2,6 +2,7 @@ import { BoxGeometry, Color, DynamicDrawUsage, Euler, InstancedBufferAttribute, 
 import { GROUND_CLEAR } from '../groundClear';
 import { isTree, KINDS, trunkAt, type PlantKindId } from '../garden/kinds';
 import { plantBlocks } from '../garden/look';
+import { bedHalf, type RowSpot } from '../garden/rows';
 import type { PlantLook } from '../garden/state';
 import type { RoamWorld } from './types';
 
@@ -17,14 +18,20 @@ import type { RoamWorld } from './types';
  *   prompt's line). Never invisible: it is drawn over whatever stands there (a basket, a stair), on the top of what
  *   is there when that is low (the dog's bed), else on the land.
  *
+ * The patch and the dots lie square to the map, as the real bed will (garden/_viewEarth.ts); the plant turns. With
+ * "Rows" on (AWP-32: garden/rows.ts) a faint guide lies on the ground too: pale dashes along the row, from its first
+ * plant through the ghost and on, and a small square mark on each of the next spots that can be planted.
+ *
  * It sits before his feet and follows him as he walks and turns; it breathes slowly. Where it goes, the ground cover
  * steps aside (map/groundClear.ts, a disc moved only after a metre and at most twice a second). One instanced draw
  * of small blocks in a plain colour each (a basic material: no lights), made with roaming so its shader is
  * compiled before Start; no allocation per frame.
  */
 
-/** Most blocks a ghost has. */
-const MAX = 760;
+/** Most blocks a ghost has: the plant, its patch and dots; and its guide's (AWP-32). */
+const MAX_GHOST = 760;
+const GUIDE_MAX = 72;
+const MAX = MAX_GHOST + GUIDE_MAX;
 /** The plant: its own colours, this much toward a pale mint (it stands out of the grass); this much bigger. */
 const LIGHT = 0.45;
 const MINT = new Color(0xeaffd6);
@@ -43,6 +50,12 @@ const SWELL = 0.07;
 /** The patch over the ground (m); the highest thing it lies on (m over the land), else on the land. */
 const UP = 0.035;
 const ON_TOP = 0.9;
+/**
+ * The rows' guide (AWP-32): dashes `dash` long every `every` m, `w` wide, back along the row at most `back` m from the
+ * ghost; a mark's bars `w` wide round a square of `mark` × the next bed's side (a tree's: `markTree` m). Its colour.
+ */
+const GUIDE = { dash: 0.34, every: 0.68, w: 0.055, back: 12, mark: 0.72, markTree: 0.9, up: UP + 0.03 };
+const GUIDE_C = new Color(0xe4ecd0);
 /** The ground cover's disc under it: its key, moved after this far (m) and at most this often (s). */
 const CLEAR_KEY = -7301;
 const CLEAR_MOVE = 1;
@@ -65,6 +78,17 @@ interface GhostBox {
   show: Show;
   /** It lies on the ground under it (the patch, the dots), else stands on the patch's middle (the plant). */
   flat: boolean;
+  /** Square to the map (the patch, the dots: as the real bed lies), else turned with the plant. */
+  fixed: boolean;
+}
+
+/** One block of the guide, on the map (m): its middle, size, turn about the up axis. */
+interface GuideBox {
+  x: number;
+  z: number;
+  sx: number;
+  sz: number;
+  ry: number;
 }
 
 const _m = new Matrix4();
@@ -94,6 +118,9 @@ export class GardenGhost {
   private cz = 0;
   private ct = -1e9;
   private cleared = false;
+  /** The guide's blocks now (on the map), how many. */
+  private readonly guides: GuideBox[] = Array.from({ length: GUIDE_MAX }, () => ({ x: 0, z: 0, sx: 0, sz: 0, ry: 0 }));
+  private nGuide = 0;
 
   constructor(parent: Object3D, private readonly world: RoamWorld) {
     this.mat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: true });
@@ -119,7 +146,7 @@ export class GardenGhost {
     const tree = isTree(k);
     const out: GhostBox[] = [];
     const flat = (x: number, z: number, sx: number, sy: number, sz: number, ry: number, c: Color, g: Color | null, show: Show, y = UP) =>
-      out.push({ x, y: y + sy / 2, z, sx, sy, sz, q: new Quaternion().setFromAxisAngle(_up, ry), c, g, show, flat: true });
+      out.push({ x, y: y + sy / 2, z, sx, sy, sz, q: new Quaternion().setFromAxisAngle(_up, ry), c, g, show, flat: true, fixed: true });
     // The patch of dug earth (both states; grey where it cannot go).
     let half: number;
     if (!tree) {
@@ -157,7 +184,7 @@ export class GardenGhost {
     // in the meadow's grass), a tree as its sapling.
     const look: PlantLook = { kind, stage: tree ? 1 : 2, fruit: 0, fallen: 0, droop: 0, dead: false, seed: 0.37, cut: false };
     for (const b of plantBlocks(look).boxes) {
-      if (out.length >= MAX) break;
+      if (out.length >= MAX_GHOST) break;
       out.push({
         x: b.x * GROW,
         y: b.y * GROW + UP + 0.05,
@@ -170,6 +197,7 @@ export class GardenGhost {
         g: null,
         show: 1,
         flat: false,
+        fixed: false,
       });
     }
     this.boxes = out;
@@ -190,6 +218,50 @@ export class GardenGhost {
 
   get shown(): boolean {
     return this.want;
+  }
+
+  /** How many blocks the guide has now (checks). */
+  get guideBlocks(): number {
+    return this.want ? this.nGuide : 0;
+  }
+
+  /**
+   * The rows' guide (AWP-32) for the spot `r` (garden/rows.ts `snapRow` + `rowNext`), or none (null: Rows off). Marks
+   * first (the next spots), then the dashes outward from the ghost, so a long row never crowds out what is near.
+   */
+  guide(r: RowSpot | null): void {
+    this.nGuide = 0;
+    if (!r || !this.kind) return;
+    const ry = Math.atan2(r.dx, r.dz);
+    const side = isTree(KINDS[this.kind]) ? GUIDE.markTree : bedHalf(this.kind) * 2 * GUIDE.mark;
+    const h = side / 2;
+    const add = (x: number, z: number, sx: number, sz: number, a: number) => {
+      if (this.nGuide >= GUIDE_MAX) return;
+      const g = this.guides[this.nGuide++];
+      g.x = x;
+      g.z = z;
+      g.sx = sx;
+      g.sz = sz;
+      g.ry = a;
+    };
+    // The next spots: a square of four bars each, along the row's way.
+    const c = Math.cos(ry);
+    const s = Math.sin(ry);
+    for (let i = 0; i < r.nNext; i++) {
+      const x = r.next[i * 2];
+      const z = r.next[i * 2 + 1];
+      // (local x across the row is (cos, −sin) on the map; local z along it (sin, cos))
+      for (const k of [-1, 1]) {
+        add(x + k * h * s, z + k * h * c, side + GUIDE.w, GUIDE.w, ry);
+        add(x + k * h * c, z - k * h * s, GUIDE.w, side + GUIDE.w, ry);
+      }
+    }
+    // The dashes: from the ghost forward to the last next spot, then back toward the row's first plant.
+    const ahead = r.nNext * r.step;
+    let back = 0;
+    if (r.hasFrom) back = Math.min(GUIDE.back, (r.fx - r.x) * -r.dx + (r.fz - r.z) * -r.dz);
+    for (let u = GUIDE.every / 2; u < ahead; u += GUIDE.every) add(r.x + r.dx * u, r.z + r.dz * u, GUIDE.w, GUIDE.dash, ry);
+    for (let u = GUIDE.every / 2; u < back; u += GUIDE.every) add(r.x - r.dx * u, r.z - r.dz * u, GUIDE.w, GUIDE.dash, ry);
   }
 
   /** The ground height a block lies on at (x, z): the top of something low there (a basket, a step), else the land. */
@@ -228,15 +300,27 @@ export class GardenGhost {
     for (let i = 0; i < boxes.length; i++) {
       const b = boxes[i];
       if ((b.show === 1 && !this.ok) || (b.show === 2 && this.ok)) continue;
-      _p.set(this.x + b.x * c + b.z * s, 0, this.z - b.x * s + b.z * c);
+      // (the patch and the dots square to the map, as the real bed; the plant turned)
+      if (b.fixed) _p.set(this.x + b.x, 0, this.z + b.z);
+      else _p.set(this.x + b.x * c + b.z * s, 0, this.z - b.x * s + b.z * c);
       // (the patch and the dots follow the ground under them; the plant stands on the patch's middle)
       _p.y = (b.flat ? this.groundAt(_p.x, _p.z) : y0) + b.y;
-      _q.copy(_qy).multiply(b.q);
+      if (b.fixed) _q.copy(b.q);
+      else _q.copy(_qy).multiply(b.q);
       this.mesh.setMatrixAt(n, _m.compose(_p, _q, _s.set(b.sx, b.sy, b.sz)));
       if (recolour) this.mesh.setColorAt(n, this.ok ? b.c : (b.g ?? b.c));
       n++;
     }
-    if (recolour && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    // The rows' guide (its blocks after the ghost's: their colours written each frame, as the ghost's count moves them).
+    for (let i = 0; i < this.nGuide && n < MAX; i++) {
+      const g = this.guides[i];
+      _p.set(g.x, this.groundAt(g.x, g.z) + GUIDE.up + 0.0125, g.z);
+      _q.setFromAxisAngle(_up, g.ry);
+      this.mesh.setMatrixAt(n, _m.compose(_p, _q, _s.set(g.sx, 0.025, g.sz)));
+      this.mesh.setColorAt(n, GUIDE_C);
+      n++;
+    }
+    if ((recolour || this.nGuide) && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;
   }

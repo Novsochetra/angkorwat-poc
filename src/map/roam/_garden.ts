@@ -5,6 +5,8 @@ import type { GardenAction } from '../garden/actions';
 import { GARDEN_KINDS, GROWN, isTree, KINDS, stageOf, type PlantKindId } from '../garden/kinds';
 import { CAN_MAX, GARDEN, JAR_MAX, MAX_CROPS, MAX_TREES, ripeNow, thirsty, type Plant } from '../garden/state';
 import { createGardenView, type GardenView } from '../garden/view';
+import { newRowHold, newRowSpot, rowAxis, rowNext, snapRow } from '../garden/rows';
+import { progress } from '../progress';
 import type { MapFrame, RoamMode } from '../types';
 import { lang, num, t, type WordKey } from '../ui/lang';
 import { pad } from '../pad/pad';
@@ -12,6 +14,7 @@ import { createAskCard, type AskCard } from '../ui/ask';
 import { addonBusy, registerAddon, type AddonEnv } from './_addons';
 import { createSeedCard, type SeedCard, type SeedRow } from './_gardenCard';
 import { CARRY } from './_carryHook';
+import { PAD_LIGHT } from './input';
 import { GardenGhost } from './_gardenGhost';
 import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, PLANT_AHEAD, PLANTING, ghostAhead, REASON_WORDS, reachOf, type FillSpot, type SpotReason } from './_gardenSpots';
 import { gardenSay, GardenToasts, plantWord } from './_gardenToasts';
@@ -87,34 +90,110 @@ let planting: PlantKindId | null = null;
 /** Planting mode now (worked out once a step): the spot (m), the plant's turn (to face him), can it go there, why not. */
 const spot = { x: 0, z: 0, yaw: 0, ok: false, reason: null as SpotReason | null, step: -1, prompt: null as string | null };
 /**
+ * "Rows" (AWP-32: garden/rows.ts): the ghost goes in line with his plants, evenly spaced, else on his land's half-metre
+ * grid, the plant turned on the house's lines, a faint guide on the ground; off, it goes where his feet and facing put
+ * it (a natural look). G, the pad's d-pad ↑, the touch bar's button; kept in his progress (`garden.rows`, on at first).
+ */
+let rows: boolean = progress.get<boolean>('garden.rows', true);
+const rowSpot = newRowSpot();
+/** The line the rows held last step (kept while he stays less than a spacing across it). */
+const rowHeld = newRowHold();
+/**
+ * His way for the rows (rad, as `body.yaw`: a house's line, garden/rows.ts `rowAxis`): from the way he faces as the
+ * mode opens and as he walks, never from a dig's turn to face the plant (he would go off on a diagonal); null: not yet.
+ */
+let rowWay: number | null = null;
+/** He walks this step (the move's push, planting mode on foot). */
+let walking = false;
+/**
  * Planting mode's camera: the follow camera looks down more and stands a little further back (eased in as the mode
  * starts, out as it ends), so the ghost on the ground before him is in view past his hat; the player's drag or wheel
  * wins (it stops easing until the next time). Before it came: the camera's tilt and distance.
  */
-const PLANT_CAM = { pitch: 0.66, distance: 7.5, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.55 };
+const PLANT_CAM = { pitch: 0.66, distance: 7.5, rate: 2.5, back: 2, toward: 0.75, shoulder: 0.55, openFor: 1.2 };
 /** The focus's shift toward the ghost now (0‥1, eased): he stands lower in the picture, the ghost in its middle. */
 let camToward = 0;
 let camBefore: { pitch: number; distance: number } | null = null;
 let camLetGo = false;
+/**
+ * Planting mode walks straight (AWP-32, as build mode since AWP-30): the follow camera holds its heading (`follow` 0,
+ * the swing it had put back after), so W, the pad's stick and the touch stick walk one way. It used to swing round
+ * over his shoulder as he walked, and W walks along the camera: he walked in a circle, and no row came out straight.
+ * - `walkYaw`: the way W walks in planting mode (rad, as the camera's heading): the camera's heading as the mode
+ *   opened, turned only by the player's own turn (Q / R, a drag, the right stick). The camera's own moves — its swing
+ *   over his shoulder as the mode opens (`camOpen`: its first moments, s left), round to his side for the dig and back
+ *   — are taken back out of the walk (`steerStraight`), so a row he walks stays on one line.
+ * - `digYaw`: the camera's heading as he started to dig; after it, it comes back there (the picture as it was).
+ */
+let followBefore: number | null = null;
+let camOpen = 0;
+let walkYaw: number | null = null;
+/** How far the camera's heading is off the walk's now (rad; checks). */
+let camTurned = 0;
+let digYaw: number | null = null;
+
+/**
+ * Planting mode on foot: the walk along `walkYaw`, whatever the camera's own moves did (walker.ts walks along the
+ * camera). With Rows on, the walk also keeps to the house's lines (AWP-32 review): the way the keys or the stick ask
+ * goes to the house's line nearest it, held on the row's way until it is 50° off (`rowAxis`) — he walks along his row
+ * (a camera turned 30° off it walked him a spacing across it in a few steps), and a step aside or a turn back goes
+ * square to it. Rows off: the walk as asked.
+ */
+function steerStraight(ctx: RoamCtx): void {
+  const i = ctx.input;
+  const cam = ctx.cam;
+  walkYaw ??= cam.yaw;
+  // (the player's own turn turns the walk too: walker.ts adds it to the camera this step)
+  walkYaw += i.lookYaw;
+  const mv = i.move;
+  const a = Math.hypot(mv.x, mv.y);
+  walking = a > 0.15;
+  const view = cam.yaw + i.lookYaw;
+  const off = view - walkYaw;
+  camTurned = Math.atan2(Math.sin(off), Math.cos(off));
+  if (a < 1e-4) return;
+  // (walker.ts: the move (x, y) walks the way `view − atan2(x, y)`; the way asked is the same from `walkYaw`)
+  let way = walkYaw - Math.atan2(mv.x, mv.y);
+  if (rows) {
+    way = rowAxis(way, rowWay);
+    if (walking) rowWay = way;
+  }
+  const phi = view - way;
+  mv.x = a * Math.sin(phi);
+  mv.y = a * Math.cos(phi);
+}
 function plantingCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   const cam = ctx.cam;
   const i = ctx.input;
   if (on) {
     camBefore ??= { pitch: cam.pitch, distance: cam.distance };
     if (i.lookPitch || i.zoom || i.lookYaw) camLetGo = true;
+    if (i.lookYaw) digYaw = null;
     const k = 1 - Math.exp(-PLANT_CAM.rate * dt);
     camToward += (1 - camToward) * k;
     shiftFocus(ctx);
-    // (over his shoulder: the camera swings in a little to his side, so the ghost ahead is beside his hat, not under it)
-    cam.behindYaw = ctx.body.yaw + PLANT_CAM.shoulder * camToward;
+    if (followBefore === null) followBefore = cam.follow;
+    cam.follow = 0;
+    cam.behindYaw = ctx.body.yaw;
+    // (back from digging: to the heading it had before, the player's own turn excepted)
+    if (digYaw !== null) {
+      const d = Math.atan2(Math.sin(digYaw - cam.yaw), Math.cos(digYaw - cam.yaw));
+      cam.yaw += d * k;
+      if (Math.abs(d) < 0.005) digYaw = null;
+    }
     if (camLetGo) return;
     cam.pitch += (PLANT_CAM.pitch - cam.pitch) * k;
-    // (round to his shoulder, a little: the ghost ahead beside his hat)
-    const want = ctx.body.yaw + PLANT_CAM.shoulder;
-    cam.yaw += Math.atan2(Math.sin(want - cam.yaw), Math.cos(want - cam.yaw)) * k * 0.6;
+    // (round over his shoulder, once, as the mode opens: the ghost ahead beside his hat; from in front of him it stays)
+    if (camOpen > 0) {
+      camOpen -= dt;
+      const want = ctx.body.yaw + PLANT_CAM.shoulder;
+      const round = Math.atan2(Math.sin(want - cam.yaw), Math.cos(want - cam.yaw));
+      if (Math.abs(round) < 1.3) cam.yaw += round * k;
+    }
     cam.distance += (Math.min(cam.maxDistance, Math.max(PLANT_CAM.distance, camBefore.distance)) - cam.distance) * k;
     return;
   }
+  giveFollowBack(ctx);
   if (camToward > 0.001) {
     camToward *= 1 - (1 - Math.exp(-PLANT_CAM.back * dt));
     shiftFocus(ctx);
@@ -129,6 +208,16 @@ function plantingCamera(ctx: RoamCtx, on: boolean, dt: number): void {
   cam.pitch += (camBefore.pitch - cam.pitch) * k;
   cam.distance += (camBefore.distance - cam.distance) * k;
   if (Math.abs(camBefore.pitch - cam.pitch) < 0.005 && Math.abs(camBefore.distance - cam.distance) < 0.05) camBefore = null;
+}
+
+/** The follow camera's own swing back as planting mode ends. */
+function giveFollowBack(ctx: RoamCtx | null): void {
+  if (followBefore === null) return;
+  if (ctx) ctx.cam.follow = followBefore;
+  followBefore = null;
+  walkYaw = null;
+  camTurned = 0;
+  digYaw = null;
 }
 
 /** The follow camera's focus moved part of the way from his chest toward the ghost (the walker set it this step). */
@@ -420,24 +509,51 @@ function plantingNow(ctx: RoamCtx): void {
   spot.step = stepN;
   const b = ctx.body;
   const ahead = ghostAhead(planting);
-  spot.x = b.pos.x + Math.sin(b.yaw) * ahead;
-  spot.z = b.pos.z + Math.cos(b.yaw) * ahead;
+  const k = planting;
+  const w = ctx.world;
+  const rawX = b.pos.x + Math.sin(b.yaw) * ahead;
+  const rawZ = b.pos.z + Math.cos(b.yaw) * ahead;
   // (the plant faces him)
   spot.yaw = b.yaw + Math.PI;
-  const r = atHomeHouse(b.pos.x, b.pos.z) ? 'house' : canPlant(ctx.world, planting, spot.x, spot.z);
+  const under = atHomeHouse(b.pos.x, b.pos.z);
+  // (his way: the house's line he walks along — steerStraight keeps it while he walks with Rows on —, kept through a
+  // dig that turns him to the plant)
+  if (rowWay === null || (walking && !rows)) rowWay = rowAxis(b.yaw, rowWay);
+  if (rows) {
+    // In line with his plants, evenly spaced, or on his land's grid; turned on the house's lines (garden/rows.ts).
+    const fits = (x: number, z: number) => canPlant(w, k, x, z) === null;
+    snapRow(k, b.pos.x, b.pos.z, ahead, rowWay, GARDEN.plants, fits, rowHeld, rowSpot);
+    spot.x = rowSpot.x;
+    spot.z = rowSpot.z;
+    spot.yaw = rowAxis(rowWay + Math.PI, null);
+  } else {
+    spot.x = rawX;
+    spot.z = rawZ;
+  }
+  const r = under ? 'house' : canPlant(w, k, spot.x, spot.z);
   spot.ok = !r;
   spot.reason = r;
-  const k = planting;
+  // (the guide's next spots: only from a spot that can be planted)
+  if (rows && !r) rowNext(rowSpot, (x, z) => canPlant(w, k, x, z) === null);
+  else rowSpot.nNext = 0;
   const n = GARDEN.seeds(k);
-  const keys = words('plantKeys', () => `F  ${t('gardenChangeSeed')}  ·  Esc  ${t('gardenDone')}`);
-  if (!r) spot.prompt = words(`dig|${k}|${n}`, () => `E  ${t('gardenDig', { plant: plantWord(k), n: num(n) })}  ·  ${keys}`);
+  const keys = words(`plantKeys|${rows}`, () => `G  ${t(rows ? 'gardenRowsOn' : 'gardenRowsOff')}  ·  F  ${t('gardenChangeSeed')}  ·  Esc  ${t('gardenDone')}`);
+  if (!r) spot.prompt = words(`dig|${k}|${n}|${rows}`, () => `E  ${t('gardenDig', { plant: plantWord(k), n: num(n) })}  ·  ${keys}`);
   else if (onTouch()) spot.prompt = reasonWords(r, k);
-  else spot.prompt = words(`dignot|${r}|${k}`, () => `${reasonWords(r, k)}  ·  ${keys}`);
+  else spot.prompt = words(`dignot|${r}|${k}|${rows}`, () => `${reasonWords(r, k)}  ·  ${keys}`);
 }
 
 /** Into planting mode with `kind` (the seed card's pick). */
 function enterPlanting(kind: PlantKindId): void {
-  if (!planting) camLetGo = false;
+  if (!planting) {
+    camLetGo = false;
+    camOpen = PLANT_CAM.openFor;
+    walkYaw = null;
+    camTurned = 0;
+    digYaw = null;
+    rowHeld.on = false;
+    rowWay = null;
+  }
   planting = kind;
   PLANTING.kind = kind;
   chosen = kind;
@@ -452,20 +568,41 @@ function exitPlanting(): void {
   planting = null;
   PLANTING.kind = null;
   ghost?.show(null);
+  ghost?.guide(null);
   showTouchBar(false);
+  // (the follow camera's own swing back at once: another mode may never call the planting camera again)
+  giveFollowBack(lastCtx);
 }
 
-/** Planting mode's buttons on a touch screen: change the seed, done (the Use button digs). */
+/** Rows on or off (G, the pad's ↑, the touch bar's button): kept (not a URL's or a check's), said in a toast. */
+function setRows(on: boolean, say = true, keep = say): void {
+  rows = on;
+  rowHeld.on = false;
+  spot.step = -1;
+  // (a shot keeps nothing anyway: progress.ts saves nothing in shots)
+  if (keep) progress.set('garden.rows', on);
+  showTouchBar(!!planting);
+  if (say) {
+    env?.uiSound('select');
+    lastCtx?.hud.toast(t(on ? 'gardenRowsOnSay' : 'gardenRowsOffSay'));
+  }
+}
+
+/** Planting mode's buttons on a touch screen: rows on / off, change the seed, done (the Use button digs). */
 function showTouchBar(on: boolean): void {
   if (!env || typeof document === 'undefined') return;
   if (!touchBar && on) {
     injectTouchStyle();
     const el = document.createElement('div');
     el.className = 'gd-plantbar';
-    el.innerHTML = `<button type="button" class="gd-pb mu-frame mu-sm" data-do="change"><span class="mu-bg"></span><span class="gd-pb-t"></span></button><button type="button" class="gd-pb gd-pb-done mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span class="gd-pb-x" aria-hidden="true">✕</span><span class="gd-pb-t"></span></button>`;
+    el.innerHTML = `<button type="button" class="gd-pb gd-pb-rows mu-frame mu-sm" data-do="rows" aria-pressed="true"><span class="mu-bg"></span><span class="gd-pb-grid" aria-hidden="true">${ROWS_ICON}</span><span class="gd-pb-t"></span></button><button type="button" class="gd-pb mu-frame mu-sm" data-do="change"><span class="mu-bg"></span><span class="gd-pb-t"></span></button><button type="button" class="gd-pb gd-pb-done mu-frame mu-sm" data-do="done"><span class="mu-bg"></span><span class="gd-pb-x" aria-hidden="true">✕</span><span class="gd-pb-t"></span></button>`;
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!btn) return;
+      if (btn.dataset.do === 'rows') {
+        setRows(!rows);
+        return;
+      }
       env?.uiSound('select');
       if (btn.dataset.do === 'done') exitPlanting();
       else if (lastCtx) openCard(lastCtx);
@@ -474,11 +611,21 @@ function showTouchBar(on: boolean): void {
     touchBar = el;
   }
   if (!touchBar) return;
-  const [a, b] = touchBar.querySelectorAll<HTMLElement>('.gd-pb-t');
+  const [r, a, b] = touchBar.querySelectorAll<HTMLElement>('.gd-pb-t');
+  // (Rows: lit while on, its state in its words — the phone has no prompt line to say it)
+  r.textContent = t(rows ? 'gardenRowsOn' : 'gardenRowsOff');
+  const rb = touchBar.querySelector<HTMLElement>('.gd-pb-rows');
+  rb?.classList.toggle('is-lit', rows);
+  rb?.setAttribute('aria-pressed', String(rows));
   a.textContent = t('gardenChangeSeed');
   b.textContent = t('gardenDone');
   touchBar.classList.toggle('is-on', on);
 }
+
+/** The Rows button's picture: three rows of plants (pixels). */
+const ROWS_ICON = `<svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">${[3, 8, 13]
+  .flatMap((y) => [3, 8, 13].map((x) => `<rect x="${x - 1.5}" y="${y - 1.5}" width="3" height="3" fill="currentColor"/>`))
+  .join('')}</svg>`;
 
 let touchStyled = false;
 function injectTouchStyle(): void {
@@ -492,6 +639,11 @@ function injectTouchStyle(): void {
       font: 700 14px / 1 var(--mu-display); --mu-edge: var(--mu-btn-edge); touch-action: manipulation; }
     .gd-pb > .mu-bg { background: var(--mu-btn); }
     .gd-pb-x { font-size: 13px; opacity: 0.85; }
+    .gd-pb-rows.is-lit > .mu-bg { background: linear-gradient(180deg, #f7d68a, #e0a93e); }
+    .gd-pb-rows.is-lit { color: #2a1c0c; }
+    .gd-pb-grid { display: inline-flex; width: 16px; height: 16px; opacity: 0.55; }
+    .gd-pb-rows.is-lit .gd-pb-grid { opacity: 1; }
+    .gd-pb-grid svg { width: 16px; height: 16px; }
     :lang(km) .gd-pb { font-size: 15px; }
     .gd-pb:active { transform: scale(0.96); }`;
   document.head.append(st);
@@ -704,10 +856,29 @@ registerAddon({
             can: GARDEN.can,
             seeds: Object.fromEntries(GARDEN.seedKinds().map((k) => [k, GARDEN.seeds(k)])),
             basket: Object.fromEntries(GARDEN.basketKinds().map((k) => [k, GARDEN.basket(k)])),
-            plants: GARDEN.plants.map((p) => ({ id: p.id, kind: p.kind, x: +p.x.toFixed(2), z: +p.z.toFixed(2), age: +p.age.toFixed(3), wet: +p.wet.toFixed(3), dry: +p.dry.toFixed(3), dead: p.dead, ripe: +p.ripe.toFixed(3), fallen: p.fallen, ripeNow: ripeNow(p), thirsty: thirsty(p), at: p.at })),
+            plants: GARDEN.plants.map((p) => ({ id: p.id, kind: p.kind, x: +p.x.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), seed: +p.seed.toFixed(3), age: +p.age.toFixed(3), wet: +p.wet.toFixed(3), dry: +p.dry.toFixed(3), dead: p.dead, ripe: +p.ripe.toFixed(3), fallen: p.fallen, ripeNow: ripeNow(p), thirsty: thirsty(p), at: p.at })),
             owned: HOME.owned,
             choice: { kind: choice.kind, plant: choice.plant?.id ?? null, prompt: choice.prompt },
-            planting: planting ? { kind: planting, x: +spot.x.toFixed(2), z: +spot.z.toFixed(2), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, ghost: !!ghost?.shown } : null,
+            planting: planting
+              ? {
+                  kind: planting,
+                  x: +spot.x.toFixed(2),
+                  z: +spot.z.toFixed(2),
+                  yaw: +((spot.yaw * 180) / Math.PI).toFixed(1),
+                  ok: spot.ok,
+                  reason: spot.reason,
+                  prompt: spot.prompt,
+                  ghost: !!ghost?.shown,
+                  rows,
+                  how: rows ? rowSpot.how : 'free',
+                  step: rows ? rowSpot.step : null,
+                  next: rows ? Array.from(rowSpot.next.subarray(0, rowSpot.nNext * 2), (v) => +v.toFixed(2)) : [],
+                  guide: ghost?.guideBlocks ?? 0,
+                  camTurned: +camTurned.toFixed(3),
+                  follow: lastCtx?.cam.follow ?? null,
+                }
+              : null,
+            rows,
             jar: +GARDEN.jar.toFixed(2),
             work: GardenWork.now,
             card: !!card?.open,
@@ -738,6 +909,7 @@ registerAddon({
           act: (a: GardenAction, at = 1, kind: string | null = null) => (lastCtx ? act(lastCtx, a, at, kind) : false),
           card: () => lastCtx && openCard(lastCtx),
           plantMode: (k: PlantKindId | null) => (k ? enterPlanting(k) : exitPlanting()),
+          rows: (on: boolean) => setRows(on, false),
           canMax: CAN_MAX,
           kinds: GARDEN_KINDS,
         },
@@ -749,6 +921,8 @@ registerAddon({
     stepN++;
     if (card?.open || fellCard?.open) return true;
     holdStep(ctx, dt);
+    // (planting mode walks straight: the camera's own moves taken out of the walk)
+    if (planting && m === 'walk') steerStraight(ctx);
     if (GardenWork.active) return tap(...BREAKERS);
     if (planting) {
       const p = ctx.body.pos;
@@ -764,6 +938,13 @@ registerAddon({
         env?.uiSound('close');
         exitPlanting();
         return false;
+      }
+      // G (the pad's d-pad ↑): Rows on or off (AWP-32); not his outfit, not the next light.
+      if (tap('KeyG', PAD_LIGHT)) {
+        const taps = i.taps as Set<string> | undefined;
+        taps?.delete('KeyG');
+        taps?.delete(PAD_LIGHT);
+        setRows(!rows);
       }
       // F or C (the pad's ↓): the seed card again (another kind); not a greeting, not a cheer.
       if (tap('KeyF', 'KeyC')) {
@@ -793,7 +974,10 @@ registerAddon({
     if (!env || GardenWork.active) return;
     if (planting) {
       plantingNow(ctx);
-      if (spot.ok) GardenWork.start(ctx, { action: plantAction(planting), kind: planting, plant: null, spot: { x: spot.x, z: spot.z, yaw: spot.yaw } });
+      if (!spot.ok) return;
+      // (the camera comes back to this heading after the dig — or to the one it is still on its way back to)
+      const yaw = digYaw ?? ctx.cam.yaw;
+      if (GardenWork.start(ctx, { action: plantAction(planting), kind: planting, plant: null, spot: { x: spot.x, z: spot.z, yaw: spot.yaw } })) digYaw = yaw;
       return;
     }
     switch (c.kind) {
@@ -837,6 +1021,7 @@ registerAddon({
     if (free) {
       plantingNow(ctx);
       ghost?.show(spot.x, spot.z, spot.yaw, spot.ok);
+      ghost?.guide(rows ? rowSpot : null);
     } else ghost?.show(null);
   },
   frame(f: MapFrame, m: RoamMode) {
@@ -879,8 +1064,13 @@ registerAddon({
   },
   fromUrl(q, ctx) {
     lastCtx = ctx;
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!(env?.shot || import.meta.env.DEV)) return;
     const k = q.get('gardenkind');
     if (k && k in KINDS && k !== 'bodhi') chosen = k as PlantKindId;
+    // (Rows on or off: shots and the dev server only, never the live site's saved choice)
+    const gr = q.get('gardenrows');
+    if (gr !== null) setRows(gr !== '0', false);
     // (planting mode with its ghost: the kind's seeds given if he has none)
     const r = q.get('gardenring') ?? q.get('gardenplant');
     if (r) {

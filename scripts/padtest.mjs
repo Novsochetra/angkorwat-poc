@@ -31,6 +31,10 @@
 //             Furniture tab                                                        (_buildCard.ts)
 //   foot      footprint building: □ marks the first corner, ← → turn the door side, ○ the corner
 //             again, ○ out of the mode (not "Back to the map?")                    (_buildFoot.ts)
+//   garden    planting mode in rows: ↑ turns Rows off and on (no light comes out); from 120° (30° off
+//             the house's line) □ again and again and short pushes on make one row (one z, whole
+//             spacings); a step aside and back, a second row a whole spacing over, in step; toward
+//             the cart a refused spot keeps the ghost on the row's line          (_garden.ts, garden/rows.ts: AWP-32)
 //   paint     paint mode: the d-pad's → ← change the colour, □ paints one block, □ held the whole
 //             part, ○ out of the mode (not "Back to the map?")                     (_paint.ts)
 //   bigmap    Create opens the big map, ○ shuts it (and the touchpad, PS)         (minimap.ts)
@@ -605,6 +609,82 @@ const steps = [
       if (e.kind) throw new Error('○ again did not leave the mode');
       if (await ev(() => !!document.querySelector('.mu-ask.is-open'))) throw new Error('○ asked "Back to the map?"');
       return `□ corner ${JSON.stringify(b.anchor)}, → door ${b.door} → ${c.door}, ← back, ○ corner again, ○ out`;
+    },
+  },
+  {
+    id: 'garden',
+    who: 'roam/_garden.ts, garden/rows.ts (AWP-32)',
+    async run() {
+      await ensureWalk();
+      // (his yard's open meadow south of the house, facing 120°: 30° off the house's line, as a camera leaves him;
+      // eggplant: rows 1.5 m apart)
+      await placeAt('walk', '416,-128&yaw=120&home=1&garden=0');
+      await ev(() => {
+        window.__garden.rows(true);
+        window.__garden.seeds('eggplant', 12);
+        window.__garden.plantMode('eggplant');
+      });
+      await sleep(1200);
+      const now = () => ev(() => ({ rows: window.__garden.state().rows, tool: window.roam.report()?.params?.tool ?? null, n: window.__garden.state().plants.length, work: !!window.__garden.state().work, p: window.__garden.state().planting }));
+      const a = await now();
+      if (!a.p) throw new Error('no planting mode');
+      await tap(page, 'up');
+      await sleep(400);
+      const b = await now();
+      await tap(page, 'up');
+      await sleep(400);
+      const c = await now();
+      if (a.rows !== true || b.rows !== false || c.rows !== true) throw new Error(`↑ Rows ${a.rows} → ${b.rows} → ${c.rows}, not on → off → on`);
+      if (b.tool !== a.tool || c.tool !== a.tool) throw new Error(`↑ in planting mode changed the light (${a.tool} → ${b.tool} → ${c.tool})`);
+      const plants = () => ev(() => window.__garden.state().plants.map((p) => [p.x, p.z]));
+      const dig = async () => {
+        const n = (await now()).n + 1;
+        await tap(page, 'west');
+        await until((n) => window.__garden.state().plants.length >= n && !window.__garden.state().work, n, 25_000, `plant ${n} dug`);
+        await sleep(500);
+      };
+      const whole = (d) => Math.abs(d / 1.5 - Math.round(d / 1.5)) < 1e-6;
+      // Row 1: □ again and again (each dig turns him to the plant), short pushes on between.
+      for (const push_ of [0, 0, 0, 300, 200]) {
+        if (push_) {
+          await push(0, -1, push_);
+          await sleep(400);
+        }
+        await dig();
+      }
+      const row1 = await plants();
+      const z1 = row1[0][1];
+      for (const [x, z] of row1) if (Math.abs(z - z1) > 1e-6 || !whole(x - row1[0][0])) throw new Error(`row 1 off its line: ${JSON.stringify(row1)}`);
+      // Row 2: a step aside, turned back, □ three times.
+      await push(-1, 0, 650);
+      await sleep(300);
+      await push(0, 1, 300);
+      await sleep(400);
+      // (as many as there is room for before the Kulen foot trail: two at least)
+      for (let i = 0; i < 3 && (await now()).p?.ok; i++) await dig();
+      const row2 = (await plants()).slice(row1.length);
+      if (row2.length < 2) throw new Error(`row 2 has ${row2.length} plant(s): the ghost ${JSON.stringify((await now()).p)}`);
+      const z2 = row2[0][1];
+      for (const [x, z] of row2) if (Math.abs(z - z2) > 1e-6 || !whole(x - row1[0][0])) throw new Error(`row 2 off its line or out of step with row 1: ${JSON.stringify(row2)}`);
+      if (Math.abs(z2 - z1) < 1e-6 || !whole(z2 - z1)) throw new Error(`row 2 at z ${z2} is not a whole number of spacings beside row 1 (z ${z1})`);
+      // A refused spot on the way (a step of the land toward the cart): the ghost stays on the row's line.
+      await ev(() => {
+        window.__garden.plantMode(null);
+        for (const p of window.__garden.state().plants) if (p.at === 'home') window.__garden.remove(p.id);
+        window.__garden.seeds('eggplant', 8);
+      });
+      await placeAt('walk', '432,-124&yaw=15&home=1');
+      await ev(() => window.__garden.plantMode('eggplant'));
+      await sleep(1000);
+      for (let i = 0; i < 6 && (await now()).p?.ok; i++) await dig();
+      await sleep(400);
+      const row3 = await plants();
+      if (row3.length < 3) throw new Error(`toward the cart only ${row3.length} plant(s)`);
+      const g = (await now()).p;
+      await ev(() => window.__garden.plantMode(null));
+      for (const [x] of row3) if (Math.abs(x - row3[0][0]) > 1e-6) throw new Error(`the row toward the cart left its line: ${JSON.stringify(row3)}`);
+      if (Math.abs(g.x - row3[0][0]) > 1e-6) throw new Error(`past the last plant the ghost left the row's line: (${g.x}, ${g.z}) ${g.reason ?? ''}`);
+      return `↑ Rows on → off → on (light ${a.tool ?? 'none'} kept); from 120°: row 1 ${row1.length} plants on z ${z1} (x ${row1.map((p) => p[0]).join(', ')}), row 2 ${row2.length} on z ${z2}; toward the cart ${row3.length} on x ${row3[0][0]}, the ghost after them (${g.x}, ${g.z}) ${g.ok ? 'free' : g.reason}`;
     },
   },
   {

@@ -57,7 +57,7 @@ function keepOne(k: PlantKindId): boolean {
   const e = env;
   const kept = keptFruit(k);
   // (not while a check holds him at a piece of work: `gardenact=` in shots picks to show the pose, not to fill his bag)
-  if (!e || !kept || GARDEN.basket(k) <= 0 || e.params.has('gardenact')) return false;
+  if (!e || !kept || GARDEN.basket(k) <= 0 || ((e.shot || import.meta.env.DEV) && e.params.has('gardenact'))) return false;
   if (e.purse.kept.length >= CARRY_MAX || e.purse.kept.some((x) => x.id === kept.id)) return false;
   if (!e.purse.keep(kept)) return false;
   GARDEN.takeFromBasket(k, 1);
@@ -81,8 +81,10 @@ registerAddon({
     env = e;
   },
   fromUrl(q) {
+    // (shots and the dev server only: a link to the live site changes and saves nothing)
+    if (!env || !(env.shot || import.meta.env.DEV)) return;
     const v = q.get('gardeneat');
-    if (!v || !env) return;
+    if (!v) return;
     for (const k of v.split(',')) {
       const kept = k in KINDS ? keptFruit(k as PlantKindId) : null;
       if (kept && env.purse.kept.length < CARRY_MAX) env.purse.keep(kept);

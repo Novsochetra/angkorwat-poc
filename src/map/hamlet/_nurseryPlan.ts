@@ -103,7 +103,12 @@ export function onNurseryLot(x: number, z: number, margin = 0): boolean {
   return lx > L.x0 - margin && lx < L.x1 + margin && lz > L.z0 - margin && lz < L.z1 + margin;
 }
 
-const held = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('nursopen');
+// (shots and the dev server only: a link to the live site keeps the nursery's own hours)
+const held = (() => {
+  if (typeof location === 'undefined') return null;
+  const q = new URLSearchParams(location.search);
+  return q.get('shot') === '1' || import.meta.env.DEV ? q.get('nursopen') : null;
+})();
 
 /** Open at this time of day (`nursopen=all|none` holds it open or shut, as the market's `mkopen=`). */
 export function nurseryOpen(clock: number): boolean {
