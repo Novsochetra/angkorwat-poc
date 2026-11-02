@@ -120,6 +120,27 @@
   touch-action: pan-x pan-y;
 }
 
+/*
+ * Nothing is selected by a long press or a drag: on a phone, holding the
+ * stick or a button selected the words nearby and iOS showed its Copy /
+ * Translate bar over the game. On every element (the roaming overlays live
+ * outside `.map-ui`), and no long-press callout (save image, open link).
+ * Only fields you type into select (main.ts stops `selectstart` too).
+ */
+*,
+*::before,
+*::after {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+:is(input, textarea, [contenteditable]:not([contenteditable='false'])) {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .map-ui {
   position: fixed;
   inset: 0;
@@ -747,8 +768,6 @@
   flex-direction: column;
   padding: calc(16 * var(--px)) calc(24 * var(--px)) calc(24 * var(--px));
   pointer-events: auto;
-  user-select: text;
-  -webkit-user-select: text;
   visibility: hidden;
   transform: translateX(calc(100% + 48px));
   transition: transform 0.6s var(--mu-ease), visibility 0s 0.6s;
