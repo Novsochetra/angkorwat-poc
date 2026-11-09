@@ -28,7 +28,17 @@ import type { RoamMode } from './types';
  * haze eases in and out over a few seconds (landing, taking off, the switch),
  * and the far plane moves in only once the haze is whole, so nothing pops.
  */
-export const SHORT = { far: 260, hazeNear: 70, hazeFar: 68, rate: 1.2 };
+export const SHORT = reach(260);
+/**
+ * Short view reaching `far` m: the haze clear to ≈ 27 % of it and 98.5 % at it
+ * (`1 − exp(−t^1.4)` = 0.985 at t ≈ 2.79), as 70 m and 68 m do for 260 m.
+ * `shortfar=<m>` (120‥400) in the URL tries another reach.
+ */
+function reach(dflt: number): { far: number; hazeNear: number; hazeFar: number; rate: number } {
+  const v = typeof location === 'undefined' ? NaN : Number(new URLSearchParams(location.search).get('shortfar') ?? NaN);
+  const far = Number.isFinite(v) && v >= 120 && v <= 400 ? v : dflt;
+  return { far, hazeNear: Math.round(far * 0.27), hazeFar: Math.round((far * 0.73) / 2.79), rate: 1.2 };
+}
 /** The camera's own far plane (main.ts). */
 const WHOLE = 9000;
 
