@@ -784,6 +784,8 @@ export function createRoamTools(d: ToolDeps): RoamTools {
       }
       if (explorer.currentExpression !== 'neutral') out.face = explorer.currentExpression;
       const deg = (r: number) => ((r * 180) / Math.PI).toFixed(0);
+      // (seen from outside, the free camera's picture: its draw shows him holding it, not the view through it)
+      if (photo.kind && photo.hold === 0) out.sview = '0';
       if (photo.kind === 'camera') out.pview = `${deg(photo.shot.yaw)},${deg(photo.shot.pitch)},${photo.shot.fov.toFixed(0)}`;
       if (photo.kind === 'selfie') {
         const a = explorer.selfieAim;

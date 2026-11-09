@@ -105,11 +105,21 @@ export function buildKulen(ctx: MapContext, place: PlaceDef): MapPart {
   // ── The stepped pyramid ──────────────────────────────────────────────────
   let y = g;
   const towers: [number, number, number][] = [];
+  // The central stair runs through the tiers: their 1 m blocks stop short of it (blocks of two sizes in one place
+  // share their faces and flicker), and 0.5 m strips either side of it fill the gap to the stair's cheek walls.
+  const stairBack = TIERS[TIERS.length - 1];
+  const beside = (x: number, _y: number, z: number) => !(Math.abs(x) < 3 && z > stairBack);
   for (const [k, half] of TIERS.entries()) {
     // Plain square tiers, as at Bakheng.
-    m.fill(-half, y, -half, half, y + 1, half, BK.base, { src });
-    m.fill(-half, y + 1, -half, half, y + TIER_H - 1, half, BK.stone, { src });
-    m.fill(-half, y + TIER_H - 1, -half, half, y + TIER_H, half, BK.light, { src });
+    m.fill(-half, y, -half, half, y + 1, half, BK.base, { src, keep: beside });
+    m.fill(-half, y + 1, -half, half, y + TIER_H - 1, half, BK.stone, { src, keep: beside });
+    m.fill(-half, y + TIER_H - 1, -half, half, y + TIER_H, half, BK.light, { src, keep: beside });
+    if (half > stairBack)
+      for (const x0 of [-3, 2.5]) {
+        d.fill(x0, y, stairBack, x0 + 0.5, y + 1, half, BK.base, { src });
+        d.fill(x0, y + 1, stairBack, x0 + 0.5, y + TIER_H - 1, half, BK.stone, { src });
+        d.fill(x0, y + TIER_H - 1, stairBack, x0 + 0.5, y + TIER_H, half, BK.light, { src });
+      }
     // Dark niches along the walls.
     for (let x = -half + 2; x < half - 2; x += 3) {
       if (Math.abs(x + 0.5) < 3) continue;

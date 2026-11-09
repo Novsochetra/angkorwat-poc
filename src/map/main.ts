@@ -755,7 +755,7 @@ function step(t: number, dt: number): void {
   frame.season = (((SEASON0 + (cycleDays - cycleDays0) * SEASON_PER_DAY) % 1) + 1) % 1;
   weather.update(frame);
   // (the free camera's panel can hold a weather: dev/freecam.ts)
-  free?.weather(frame.weather);
+  free?.weather(frame.weather, dt);
   // (parts built only when wanted: the rain, snow, the festival, lazy.ts; a shot builds what its URL asks with the map)
   if (!shot) late.watch(frame);
   // (the free camera moves first: it sets `freeCam`)
@@ -876,6 +876,7 @@ if (devTools)
       },
       roaming: () => !!roam?.active,
       placeExplorer: (q) => roam?.placeFrom(q, frame) ?? false,
+      holdPhoto: (on) => roam?.holdPhotoView(on),
       // (the sky moves with `drift`, which a shot sets from its `t=`)
       moment: (withExplorer) => {
         const q = momentQuery(new URLSearchParams(), frame.drift);
