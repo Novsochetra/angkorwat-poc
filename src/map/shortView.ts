@@ -1,4 +1,5 @@
 import { Mesh, Sphere, type Camera, type Fog, type InstancedMesh, type Object3D, type PerspectiveCamera, type WebGLRenderer } from 'three';
+import { PHONE } from './graphics';
 import { fogNow } from './sky/fogLevel';
 import type { RoamMode } from './types';
 
@@ -28,8 +29,13 @@ import type { RoamMode } from './types';
  * haze eases in and out over a few seconds (landing, taking off, the switch),
  * and the far plane moves in only once the haze is whole, so nothing pops.
  */
-export const SHORT = reach(260);
+export const SHORT = reach(PHONE ? 200 : 260);
 /**
+ * On a phone it reaches 200 m (the haze clear to 54 m): the third phone test
+ * (an iPhone 14 Pro at the market, low) drew a picture in 32.5 ms at 260 m,
+ * at the edge of 30 a second; 200 m draws ≈ 8 % fewer triangles there
+ * (0.86 → 0.79 M) and the grove 100 m off is a little mistier.
+ *
  * Short view reaching `far` m: the haze clear to ≈ 27 % of it and 98.5 % at it
  * (`1 − exp(−t^1.4)` = 0.985 at t ≈ 2.79), as 70 m and 68 m do for 260 m.
  * `shortfar=<m>` (120‥400) in the URL tries another reach.

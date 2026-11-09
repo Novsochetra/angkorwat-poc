@@ -3338,8 +3338,23 @@ come with extra work every second or so. What changed:
   1.18 → 1.05 M triangles, 147 → 130 draws, the same picture; `shortcut=0`
   keeps three's own test. The full speed test (`speedtest=1`) now has the
   temples apart from the houses, stalls and road, the explorer, and the view to
-  180 m and 120 m (Short view in: what a shorter reach would save on the
+  150 m and 100 m (Short view in: what a shorter reach would save on the
   device).
+- **Short view reaches 200 m on a phone** (shortView.ts `SHORT`, `shortfar=`
+  tries another). The third test (the same market, after the cut above): 32.5 ms
+  a picture, 27–29 frames a second, "a bit smoother", still a hitch when he
+  walks or the view is dragged. 260 → 200 → 180 m: the market walk 0.86 → 0.79
+  → 0.76 M triangles, 134 → 129 → 126 draws (the land and trees go by 150 m
+  chunks and 100 m tiles: a shorter reach takes less than the haze would
+  suggest). 200 m, the haze clear to 54 m: the grove 100 m off a little mistier.
+- **The phone test reports by itself.** Framed by another page (the phone test
+  artifact frames the map in an `<iframe>`), the speed test `postMessage`s the
+  device, each test's results and, every 10 s, the drawn frames' spacing (p50,
+  p90, p99, max, those later than 40 ms and 70 ms) and the draw call's time,
+  apart for frames with a finger on the screen and without (speedtest.ts
+  `report`, `watchFrames`); the test page saves them in its database for Claude
+  to read (`ArtifactData`, collection `reports`). The device's own numbers
+  without screenshots.
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;
