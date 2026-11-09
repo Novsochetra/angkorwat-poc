@@ -3295,7 +3295,17 @@ come with extra work every second or so. What changed:
   lake running into a hazy horizon. With the changes above: the floating
   village walk 253 → 175 draws, 1.04 → 0.83 M triangles; the market walk
   325 → 204, 1.53 → 1.20 M; Kulen (closed in by its trees) about the same.
-  For a phone that cannot keep 30 frames a second on low.
+  The far backdrop's rings of hills (round the camera: never left out by the
+  frustum) are hidden while it is in (−4 draws, the same picture). On the
+  software GPU (SwiftShader, a frame's whole drawing on the CPU: a stand-in for
+  a weak GPU's work, the code before this pass → after it → with Short view)
+  the market walk 3.61 → 3.57 → 2.69 s a frame, the village 2.47 → 2.43 →
+  2.13, Kulen 1.66 → 1.58 → 1.58: without Short view the steady GPU work hardly
+  changes (this pass's other gains are the stutters and the CPU). **Auto turns it on** (shortView.ts `AutoShortView`), once, for
+  a phone on Auto at the low level that still draws under 26 frames a second
+  on the ground for 6 s at its 30 cap: the switch turned on as the player
+  would (saved), a toast saying where it is; kept for the device, so never
+  again even if turned off, until Auto is picked again.
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;

@@ -709,6 +709,8 @@ const WORDS = {
   batteryNote: { km: 'យ៉ាងច្រើន ៣០ រូបភាពក្នុងមួយវិនាទី៖ ឧបករណ៍មិនសូវក្ដៅ ហើយថ្មប្រើបានយូរជាង', en: 'At most 30 frames a second: cooler and longer on battery' },
   // (the Short view switch: shortView.ts)
   shortView: { km: 'មើលឃើញជិត', en: 'Short view' },
+  // (Auto turned it on: a toast while roaming, main.ts)
+  shortViewAuto: { km: 'បានបើក «មើលឃើញជិត»៖ រលូនជាងនៅលើទូរស័ព្ទនេះ (ការកំណត់ › រូបភាព)', en: 'Short view on: smoother on this phone (Settings › Graphics)' },
   shortViewNote: { km: 'ពេលដើរ ឬជិះទូក អ័ព្ទលាក់ទេសភាពឆ្ងាយ៖ រលូនជាងនៅលើទូរស័ព្ទ', en: 'Walking or in the boat, mist hides the far land: smoother on a phone' },
   // The settings' fog: one slider, its thickness 0‥150 (ui/ui.ts; sky/fogLevel.ts `fogNow.amount`); the step follows the graphics level.
   fog: { km: 'អ័ព្ទ', en: 'Fog' },

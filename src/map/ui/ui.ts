@@ -108,6 +108,8 @@ export interface MapUI {
   setDrawSize(w: number, h: number): void;
   /** Back on the page, the browser still holds the sound: a card in the middle asks for a tap (audio.ts `onHeld`). */
   setSoundHeld(held: boolean): void;
+  /** Auto turned Short view on (main.ts, shortView.ts `AutoShortView`): the switch shows it, and it is saved as a choice. */
+  setShortView(on: boolean): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
@@ -1785,6 +1787,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     setRoaming,
     setLang(l) {
       if (l !== settings.lang) change({ lang: l });
+    },
+    setShortView(on) {
+      if (settings.shortView !== on) change({ shortView: on });
     },
     setGraphicsLevel(level) {
       if (level === graphicsLevel) return;

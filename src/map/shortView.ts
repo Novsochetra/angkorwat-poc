@@ -1,4 +1,4 @@
-import type { Fog, PerspectiveCamera } from 'three';
+import type { Fog, Object3D, PerspectiveCamera } from 'three';
 import { fogNow } from './sky/fogLevel';
 import type { RoamMode } from './types';
 
@@ -19,6 +19,10 @@ import type { RoamMode } from './types';
  * the haze hides where the land stops. The fog's thickness is at least the
  * game's own meanwhile (clear air would show the cut).
  *
+ * The far backdrop's rings of hills (sky/backdrop.ts, 950–2750 m out, round
+ * the camera: three's frustum test never leaves them out) are hidden while
+ * the view is short: wholly in the haze there, four draws for nothing.
+ *
  * In the air (the glider, the hang glider, the balloon, the leap) the view is
  * whole: there the far land is the point, and the flights are short. The
  * haze eases in and out over a few seconds (landing, taking off, the switch),
@@ -32,6 +36,14 @@ const GROUND: ReadonlySet<RoamMode> = new Set<RoamMode>(['walk', 'boat']);
 export class ShortView {
   /** How far in it is now: 0 the whole view … 1 short. */
   k = 0;
+  /** What is hidden while the view is short (the far backdrop), and whether this hid it. */
+  private readonly hide: Object3D[] = [];
+  private hid = false;
+
+  /** Hide these while the view is short (main.ts: the far backdrop). */
+  hideWhenShort(...o: Object3D[]): void {
+    this.hide.push(...o);
+  }
 
   /**
    * Each frame, after the parts' updates (the atmosphere has set the haze):
@@ -49,10 +61,80 @@ export class ShortView {
       fog.far += (Math.min(fog.far, SHORT.hazeFar) - fog.far) * k;
     }
     fogNow.amount = k > 0 ? Math.max(amount, k) : amount;
-    const far = k >= 1 ? SHORT.far : WHOLE;
+    const short = k >= 1;
+    if (short !== this.hid) {
+      this.hid = short;
+      for (const o of this.hide) o.visible = !short;
+    }
+    const far = short ? SHORT.far : WHOLE;
     if (camera.far !== far) {
       camera.far = far;
       camera.updateProjectionMatrix();
+    }
+  }
+}
+
+const AUTO_KEY = 'angkor-map-auto-shortview';
+
+/**
+ * Auto turns Short view on, once, for a phone that cannot keep its 30 frames
+ * a second at the lowest graphics level (main.ts: the Graphics setting on
+ * Auto, the level low, on the ground while roaming, Short view off): frames
+ * slower than {@link AUTO_SLOW} a second for {@link AUTO_WINDOWS} windows of
+ * 2 s in a row. The setting is turned on as the player would (the switch
+ * shows it, it is saved) and a toast says where it is; it is kept for this
+ * device, so Auto never does it again, even if the player turns it off (picking
+ * Auto again starts over: {@link reset}).
+ */
+export const AUTO_SLOW = 26;
+export const AUTO_WINDOWS = 3;
+export class AutoShortView {
+  /** Auto has turned it on before on this device. */
+  done: boolean;
+  private time = 0;
+  private frames = 0;
+  private slow = 0;
+
+  constructor() {
+    let kept: string | null = null;
+    try {
+      kept = localStorage.getItem(AUTO_KEY);
+    } catch {
+      /* no storage */
+    }
+    this.done = kept === '1';
+  }
+
+  /** A frame at full pace took `dt` s; `may`: Auto may turn it on now. True: turn it on. */
+  watch(dt: number, may: boolean): boolean {
+    if (!may || this.done || dt > 0.25) {
+      this.time = this.frames = this.slow = 0;
+      return false;
+    }
+    this.time += dt;
+    this.frames++;
+    if (this.time < 2) return false;
+    const avg = this.time / this.frames;
+    this.time = this.frames = 0;
+    this.slow = avg > 1 / AUTO_SLOW ? this.slow + 1 : 0;
+    if (this.slow < AUTO_WINDOWS) return false;
+    this.done = true;
+    try {
+      localStorage.setItem(AUTO_KEY, '1');
+    } catch {
+      /* this visit only */
+    }
+    return true;
+  }
+
+  /** Auto picked again in the settings: it may turn Short view on again. */
+  reset(): void {
+    this.done = false;
+    this.time = this.frames = this.slow = 0;
+    try {
+      localStorage.removeItem(AUTO_KEY);
+    } catch {
+      /* no storage */
     }
   }
 }

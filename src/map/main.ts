@@ -21,7 +21,7 @@ import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { lampSlots } from './sky/lampSlots';
 import { freezeMatrices, installMatrixUpdate } from './matrices';
-import { ShortView } from './shortView';
+import { AutoShortView, ShortView } from './shortView';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -439,6 +439,12 @@ if (ledge) castGate.addAll(ledge);
 // Parts whose objects never move after their build: each frame's matrix pass leaves them out (matrices.ts; what is added
 // under them later — plain twins, sharper sculpts — still gets its matrices). Not the hamlets (his house's door), the
 // jungle (the zip line's trolley), the camps (the swing), nor the temples with incense smoke (sanctuary, overlook, shrine).
+/** The Short view setting's haze and far plane (shortView.ts); it hides the far backdrop's rings while it is in. */
+const shortView = new ShortView();
+/** Auto (the Graphics setting) turns Short view on, once, for a phone that cannot keep 30 a second on low (shortView.ts). */
+const autoShort = new AutoShortView();
+const farBackdrop = scene.getObjectByName('far backdrop');
+if (farBackdrop) shortView.hideWhenShort(farBackdrop);
 const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
 for (const p of parts) if (FROZEN.includes(p.name)) freezeMatrices(p.object);
 // (the low graphics level's plain blocks, now that they are built)
@@ -506,7 +512,10 @@ const handlers = {
     settings = s;
     if (s.graphics !== was.graphics) {
       // (auto picked again starts over from its guess)
-      if (s.graphics === 'auto') resetAutoLevel();
+      if (s.graphics === 'auto') {
+        resetAutoLevel();
+        autoShort.reset();
+      }
       useLevel(levelOf(s.graphics));
     }
     // (a new resolution: drawn at once; auto's watches start over)
@@ -537,7 +546,7 @@ const handlers = {
   onWake: () => audio.wake(),
   onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {}, setShortView() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
 audio.onHeld((held) => ui.setSoundHeld(held));
 // (the game pad's moves in the menus and on the map sound like the mouse over a card)
@@ -729,9 +738,6 @@ Object.assign(TIME, {
   building: () => Object.values(late.states).includes('building'),
   skipped: () => skippedDays,
 } satisfies Partial<typeof TIME>);
-
-/** The Short view setting's haze and far plane (shortView.ts). */
-const shortView = new ShortView();
 
 function step(t: number, dt: number): void {
   // (`equinox=1` on the live page: Start lets the clock go, on from where `clock=` held it)
@@ -1289,6 +1295,13 @@ if (shot) {
       else if (phoneRate.watch(raw, settled)) {
         autoWatch.reset();
         res.time = res.frames = res.slow = 0;
+      }
+      // (a phone at its lowest, on Auto, at 30 a second and still slower on the ground: Short view, once)
+      const mayShort = PHONE && settings.graphics === 'auto' && graphicsNow.level === 'low' && !settings.shortView && frameCap.fps === 30 && roaming && (roam?.mode === 'walk' || roam?.mode === 'boat');
+      if (autoShort.watch(raw, mayShort)) {
+        console.info('[map] Auto: this phone keeps under 26 frames a second on low: Short view on');
+        ui.setShortView(true);
+        roam?.toast(t('shortViewAuto'));
       }
     }
     wasFull = full;

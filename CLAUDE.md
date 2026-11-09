@@ -115,7 +115,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   time of day, weather, moon), **Sound**, **Graphics** (graphics level, resolution,
   fog: one slider, its thickness, battery saver, Short view: on the ground while
   roaming the haze closes in and nothing past ≈ 260 m is drawn, `src/map/shortView.ts`,
-  `shortview=1` in shots), **Play** (mini-map, key help, easy flying, reduce
+  `shortview=1` in shots; Auto turns it on once for a phone that cannot keep 30 on low),
+  **Play** (mini-map, key help, easy flying, reduce
   motion), **About** (support the game, our story, the credits). The bar is
   `ui/_tabs.ts` (a `tablist`: ← → Home End, one gold thumb that slides); the
   pages are `#mu-set-page-<id>` in `ui.ts` (`TABS`), and the body's height
