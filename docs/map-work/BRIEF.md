@@ -3355,6 +3355,21 @@ come with extra work every second or so. What changed:
   `report`, `watchFrames`); the test page saves them in its database for Claude
   to read (`ArtifactData`, collection `reports`). The device's own numbers
   without screenshots.
+- **A finger moving drew past the cap** (main.ts `touched`). The first reports
+  from the iPhone 14 Pro (in the claude.ai app's artifact view, canvas 734 × 276,
+  low, Short view, held at 30): standing still at the market 30 frames a second,
+  26.3 ms a picture, 1–6 % of frames late; but with a finger on the screen the
+  frames came every 14–19 ms (p50), about 60 a second. Every `pointermove` (the
+  stick, a drag: 60 to 120 a second) pulled the next frame's time to now — meant
+  to wake the slow idle pace of the overview at once, it also drew past the cap
+  at full pace: twice the GPU work whenever he walked or the view was dragged,
+  and the stutter the owner felt. Now only a slow pace (idle, a window without
+  focus) is woken so; at full pace the cap holds (a stream of pointer moves at
+  250 a second, a 30 cap: 50 → 30 frames a second). The full test on the phone
+  (the GPU's clock falls when a frame has time to spare, so a picture read 14 or
+  25 ms from step to step): grass, rice and trees ≈ 3.9 ms, houses, stalls and
+  road ≈ 4.1, the explorer ≈ 2.3, the view to 150 m ≈ 1.5; shadows, lamps,
+  half the pixels, the buttons and the glass blur ≈ 0.
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;

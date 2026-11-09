@@ -1212,8 +1212,10 @@ if (shot) {
   let sleep = 0;
   const touched = () => {
     lastInput = performance.now();
-    // (a frame at once, not when the slow pace would have drawn one)
-    due = Math.min(due, lastInput);
+    // (from a slow pace, a frame at once, not when the slow pace would have drawn one. At full pace never: every
+    // pointermove (the stick, a drag: 60 to 120 a second) drew a frame then, past the cap — an iPhone held at 30 drew
+    // a frame every 14–19 ms while a finger moved, and stuttered whenever he walked or the view was dragged)
+    if (loop.mode !== 'full') due = Math.min(due, lastInput);
     if (sleep) {
       clearTimeout(sleep);
       sleep = 0;
