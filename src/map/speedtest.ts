@@ -24,7 +24,6 @@
  * loads without the URL value (main.ts imports it then only).
  */
 import type { Light, Object3D, WebGLRenderer } from 'three';
-import posthog, { isPostHogConfigured } from '../posthog';
 import { SHORT } from './shortView';
 import type { MapFrame, MapPart } from './types';
 
@@ -163,7 +162,6 @@ function steps(panel: HTMLElement): Step[] {
     },
     { label: 'No grass, rice, trees', apply: () => hideParts((n) => n === 'vegetation' || n === 'undergrowth' || n === 'paddies' || n === 'jungle') },
     { label: 'No people, animals', apply: () => hideParts((n) => ['people', 'fauna', 'wildlife', 'jungleFauna', 'life'].includes(n)) },
-    { label: 'No mist, clouds', apply: () => hideParts((n) => n === 'clouds') },
     { label: 'No water', apply: () => hideParts((n) => n === 'water') },
     { label: 'No temples', apply: () => hideParts((n) => n.startsWith('landmark')) },
     { label: 'No houses, stalls, road', apply: () => hideParts((n) => ['village', 'hamlet', 'camps', 'treasure', 'path', 'blocks'].includes(n)) },
@@ -194,16 +192,6 @@ function steps(panel: HTMLElement): Step[] {
         css.textContent = '*, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }';
         document.head.append(css);
         return () => css.remove();
-      },
-    },
-    {
-      label: 'No PostHog recording',
-      apply() {
-        const was = isPostHogConfigured && posthog.sessionRecordingStarted();
-        if (was) posthog.stopSessionRecording();
-        return () => {
-          if (was) posthog.startSessionRecording();
-        };
       },
     },
     { label: 'Only the sky', apply: () => hideParts((n) => n !== 'atmosphere') },

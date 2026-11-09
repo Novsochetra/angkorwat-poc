@@ -3325,6 +3325,21 @@ come with extra work every second or so. What changed:
   a redraw waits for 1° of turn (≈ 4.6 s): a few centimetres at a house's
   shadow; the long mesa shadows that move most lie in the haze. A dusk walk
   on `phone=1`: frames with shadow work 30 of 30 → 20 of 60, each lighter.
+- **Cut by distance with Short view in** (shortView.ts `installShortCut`). The
+  second phone test (the same iPhone, walking at the sugar-palm village's
+  market, low, Short view, held at 30): 20–26 frames a second, 34.5 ms a
+  picture; without Short view 22, laggy. The far plane is flat: in the corners
+  of a phone's wide picture (≈ 91° across) the frustum reaches ≈ 1.4 times as
+  far as straight ahead, ≈ 370 m, and the haze grows with the distance (not the
+  depth), so the land and tree tiles out there were drawn wholly in the haze.
+  While the view camera's picture is drawn with the view short, three's frustum
+  test (`Mesh.intersectsFrustum`) also leaves out what lies wholly past
+  `SHORT.far` m from the camera (never in a shadow map's pass). The market walk
+  1.18 → 1.05 M triangles, 147 → 130 draws, the same picture; `shortcut=0`
+  keeps three's own test. The full speed test (`speedtest=1`) now has the
+  temples apart from the houses, stalls and road, the explorer, and the view to
+  180 m and 120 m (Short view in: what a shorter reach would save on the
+  device).
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;

@@ -1,4 +1,4 @@
-import type { Fog, Object3D, PerspectiveCamera } from 'three';
+import { Mesh, Sphere, type Camera, type Fog, type InstancedMesh, type Object3D, type PerspectiveCamera, type WebGLRenderer } from 'three';
 import { fogNow } from './sky/fogLevel';
 import type { RoamMode } from './types';
 
@@ -39,6 +39,66 @@ const WHOLE = 9000;
  */
 export const SHORT_NOW = { on: false, x: 0, z: 0 };
 const GROUND: ReadonlySet<RoamMode> = new Set<RoamMode>(['walk', 'boat']);
+
+/** While the view camera's picture is drawn with the view short: the camera's place and the reach (m). */
+const CUT = { on: false, x: 0, y: 0, z: 0, far: 0 };
+const _cutSphere = new Sphere();
+
+/**
+ * With the view short, three's frustum test also leaves out what lies wholly
+ * past {@link SHORT.far} m from the camera, by distance as the haze is
+ * (sky/haze.ts: the haze grows with the distance, not the depth). The far
+ * plane is flat: in the corners of a phone's wide picture (≈ 91° across at
+ * 40° high) the frustum reaches ≈ 1.4 times as far as straight ahead, ≈ 370 m,
+ * where everything is in the haze already. The market walk drew ≈ 0.15 M
+ * triangles out there (of ≈ 1.2 M), land chunks and tree tiles at the sides.
+ * Only the view camera's picture (main.ts `camera`), never a shadow map's.
+ * `shortcut=0` in the URL keeps three's own test (to compare).
+ */
+export function installShortCut(renderer: WebGLRenderer, camera: Camera): void {
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('shortcut') === '0') return;
+  const test = Mesh.prototype.intersectsFrustum;
+  Mesh.prototype.intersectsFrustum = function (this: Mesh, frustum) {
+    if (!test.call(this, frustum)) return false;
+    if (!CUT.on) return true;
+    // (three's test has made the sphere if it was missing)
+    const b = (this as unknown as InstancedMesh).isInstancedMesh ? (this as unknown as InstancedMesh).boundingSphere : this.geometry.boundingSphere;
+    if (!b) return true;
+    const c = _cutSphere.copy(b).applyMatrix4(this.matrixWorld).center;
+    const dx = c.x - CUT.x;
+    const dy = c.y - CUT.y;
+    const dz = c.z - CUT.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) - _cutSphere.radius <= CUT.far;
+  };
+  const render = renderer.render.bind(renderer);
+  renderer.render = (scene, cam) => {
+    if (cam === camera && SHORT_NOW.on) {
+      const e = camera.matrixWorld.elements;
+      CUT.x = e[12];
+      CUT.y = e[13];
+      CUT.z = e[14];
+      CUT.far = SHORT.far;
+      CUT.on = true;
+    }
+    try {
+      render(scene, cam);
+    } finally {
+      CUT.on = false;
+    }
+  };
+  // (the shadow maps are drawn inside the view's render: their casters by their own frustum only)
+  const shadows = renderer.shadowMap;
+  const drawShadows = shadows.render.bind(shadows);
+  shadows.render = (...a: Parameters<typeof drawShadows>) => {
+    const was = CUT.on;
+    CUT.on = false;
+    try {
+      drawShadows(...a);
+    } finally {
+      CUT.on = was;
+    }
+  };
+}
 
 export class ShortView {
   /** How far in it is now: 0 the whole view … 1 short. */

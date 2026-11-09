@@ -21,7 +21,7 @@ import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { lampSlots } from './sky/lampSlots';
 import { freezeMatrices, installMatrixUpdate } from './matrices';
-import { AutoShortView, ShortView } from './shortView';
+import { AutoShortView, installShortCut, ShortView } from './shortView';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -445,6 +445,7 @@ const shortView = new ShortView();
 const autoShort = new AutoShortView();
 const farBackdrop = scene.getObjectByName('far backdrop');
 if (farBackdrop) shortView.hideWhenShort(farBackdrop);
+installShortCut(renderer, camera);
 const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
 for (const p of parts) if (FROZEN.includes(p.name)) freezeMatrices(p.object);
 // (the low graphics level's plain blocks, now that they are built)
