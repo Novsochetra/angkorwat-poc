@@ -32,7 +32,8 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   `shadow.radius`: uniforms, no redraw).
  * - The still shadows of the low and medium levels (graphics.ts) are drawn
  *   again only once the light has turned {@link STILL_TURN} (with the day's
- *   cycle about every second at dusk and dawn), and then over 10–12 frames:
+ *   cycle about every second at dusk and dawn), and then over 10–12 frames
+ *   (on a phone up to 28: parts of ≈ 0.1 M triangles):
  *   the next map is drawn a part of the casters a frame (graphics.ts
  *   `dealStillParts`, ≈ 0.3 M triangles each on low, 0.8–0.9 M on medium)
  *   while the one shown stays, and the two swap — the light turning with

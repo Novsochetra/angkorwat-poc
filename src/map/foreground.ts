@@ -41,8 +41,17 @@ const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 
  * A walk on a 2× screen, the selfie, the camera, the explorer menu keep two
  * steps; the overview, a walk at 1× and a phone's (medium: 1.4 px) take one.
  * `heropx=<px>` in the URL sets `px` (0: two steps always, to compare).
+ *
+ * On low (the map's blocks plain boxes) one step, and plain boxes (12
+ * triangles a block, the hidden sides left out: about a quarter of one
+ * step's) where his rounding spans under `plainPx` pixels: a walk on a phone
+ * (≈ 0.9 px with the camera 7.4 m from his chest on 390 px), the overview's
+ * ledge; the camera closer than ≈ 4.5 m (the selfie, the camera close up, the
+ * explorer menu, the follow camera pushed in by a wall) keeps the step. A phone walk on low drew
+ * him in ≈ 0.09 M triangles, a tenth of its picture. `heroplain=0` in the
+ * URL keeps the step (to compare).
  */
-const ROUND = { px: 2, hold: 0.1, reach: 1.2 };
+const ROUND = { px: 2, hold: 0.1, reach: 1.2, plainPx: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('heroplain') === '0' ? 0 : 1.5 };
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
@@ -154,20 +163,28 @@ export function buildForeground(ctx: MapContext): Foreground {
   };
   let roundR = explorer.setRounding(null, facing);
   let oneStep = false;
+  let plainHero = false;
   const eye = new Vector3();
   const chest = new Vector3();
-  /** One rounding step or two for his blocks this frame (medium and up), by how many pixels his largest rounding spans. */
-  function roundHero(camera: PerspectiveCamera): void {
-    // (low: one step, as graphics.ts swaps his blocks there; it makes them plain boxes far off)
-    if (graphicsNow.plainBlocks) {
-      roundR = explorer.setRounding(1, facing);
-      return;
-    }
+  /** How many pixels his largest rounding spans now, from the nearest of him. */
+  function roundingPx(camera: PerspectiveCamera): number {
     const s = explorer.object.getWorldScale(chest).x;
     eye.setFromMatrixPosition(camera.matrixWorld);
     explorer.rig.joints.chest.getWorldPosition(chest);
     const d = Math.max(0.05, chest.distanceTo(eye) - ROUND.reach * s);
-    const px = (roundR * s) / (d * pixelSize(camera));
+    return (roundR * s) / (d * pixelSize(camera));
+  }
+  /** One rounding step or two for his blocks this frame (medium and up), by how many pixels his largest rounding spans; on low one step or plain boxes. */
+  function roundHero(camera: PerspectiveCamera): void {
+    // (low: one step, as graphics.ts swaps his blocks there (it makes them plain boxes far off); plain boxes where his
+    // rounding spans under `ROUND.plainPx`, the map's own blocks there being plain boxes too: ROUND)
+    if (graphicsNow.plainBlocks) {
+      plainHero = ROUND.plainPx > 0 && roundingPx(camera) < ROUND.plainPx * (plainHero ? 1 : 1 - ROUND.hold);
+      roundR = explorer.setRounding(plainHero ? 0 : 1, facing);
+      return;
+    }
+    plainHero = false;
+    const px = roundingPx(camera);
     oneStep = roundPx > 0 && px < roundPx * (oneStep ? 1 : 1 - ROUND.hold);
     roundR = explorer.setRounding(oneStep ? 1 : null, facing);
   }

@@ -64,6 +64,9 @@ const SUBSTEP = 0.2;
 
 /** Probe points round the body (unit circle). */
 const RING = Array.from({ length: 8 }, (_, i) => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)] as const);
+/** {@link RING} as two flat lists (the probes run many times a frame: a destructured pair of each made garbage). */
+const RING_X = RING.map(([x]) => x);
+const RING_Z = RING.map(([, z]) => z);
 
 /**
  * On foot: walk and run relative to the camera, turn smoothly, climb stairs,
@@ -130,7 +133,9 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
     if (Number.isNaN(best)) return NaN;
     if (PERCH_RULE && best > y + PERCH && !carried(w, x, z, y, best, s)) return NaN;
     const dl = Math.hypot(dx, dz);
-    for (const [cx, cz] of RING) {
+    for (let i = 0; i < RING_X.length; i++) {
+      const cx = RING_X[i];
+      const cz = RING_Z[i];
       const g = standAt(w, x + cx * r, z + cz * r, y, up, h);
       if (Number.isNaN(g)) {
         if (!loose) return NaN;
@@ -159,7 +164,9 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
     let n = 0;
     let ax = 0;
     let az = 0;
-    for (const [cx, cz] of RING) {
+    for (let i = 0; i < RING_X.length; i++) {
+      const cx = RING_X[i];
+      const cz = RING_Z[i];
       const g = standAt(w, x + cx * r, z + cz * r, y, HOP_UP, h);
       if (Number.isNaN(g) || g <= top - 0.3) continue;
       n++;
@@ -179,10 +186,10 @@ export function createWalker(): RoamModeHandler & { readonly swing: SwingRide } 
     const h = height(s);
     let ox = 0;
     let oz = 0;
-    for (const [cx, cz] of RING)
-      if (Number.isNaN(standAt(w, x + cx * r, z + cz * r, y, up, h))) {
-        ox += cx;
-        oz += cz;
+    for (let i = 0; i < RING_X.length; i++)
+      if (Number.isNaN(standAt(w, x + RING_X[i] * r, z + RING_Z[i] * r, y, up, h))) {
+        ox += RING_X[i];
+        oz += RING_Z[i];
       }
     const l = Math.hypot(ox, oz);
     return l > 1e-6 ? [ox / l, oz / l] : [0, 0];

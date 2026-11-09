@@ -443,6 +443,12 @@ guide, with every add-on's keys and URL values for shots, is
   (`sky/_equinox.ts`).
 - Shaders of people and animals stay quick to compile on slow drivers: tables
   and one call site, never chains of `if` (commit b250279).
+- Matrices: each frame only what moved gets new matrices (`src/map/matrices.ts`),
+  and the parts in main.ts `FROZEN` (the land, trees, floating village, road,
+  Kulen, the terrace, the river gate) are left out of the pass unless their root
+  moves or something is added under them. Code that moves an object inside one of
+  those parts calls `thawMatrices(obj)` (or the part leaves `FROZEN`);
+  `matrixcheck=1` names any object whose matrix is behind three's.
 
 ## Free camera and wallpapers (dev server only)
 

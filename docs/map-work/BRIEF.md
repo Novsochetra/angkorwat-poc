@@ -804,7 +804,7 @@ The key
 light swings and drops a little with them, and turns only on the frames the
 shadow map is drawn anyway (every third), so it costs no extra shadow pass
 (on low and medium, whose shadows are still, it turns in 0.3° steps, each
-drawn over 10–12 frames: "Phones" below).
+drawn over 10–12 frames, up to 28 on a phone: "Phones" below).
 The moon shows its phase from `f.day` (29.53-day month, day 0 = new moon):
 lit side and soft ragged terminator, the dark side hidden (only the sky);
 its glow spreads from the lit part, all round it (`moonLitDist`), so a half
@@ -3203,10 +3203,79 @@ it stands, and nothing (0 draws, ~0 CPU) where it does not; people: the crowd
 ≤ 0.1 M triangles in view and ≤ 0.15 ms of GPU here with its bone pass
 (the crowd drawn alone; ≈ 0.05‥0.09 now). On low the still shadow map is drawn again each
 time the key light turns 0.3° (with the day's cycle, every 1–3 s), a part
-of ≈ 0.3 M triangles a frame over 10–12 frames: what is marked still adds
-to those frames (on a phone at 30 frames a second, about a third of them
-while the light turns fastest; at 60, a sixth), so keep the still parts' triangles as low
+of ≈ 0.3 M triangles a frame over 10–12 frames (on a phone ≈ 0.1 M over up
+to 28: "The smooth-phone pass" below): what is marked still adds
+to those frames (on a phone at 30 frames a second, most of them
+while the light turns fastest), so keep the still parts' triangles as low
 as the picture's; a part that moves must not be marked still.
+
+### The smooth-phone pass (November 2026)
+
+The owner's report: on an ordinary phone, every setting at its lowest, the map
+still was not smooth, and roaming stuttered now and then. Measured on a cloud
+machine with no GPU (Chromium on SwiftShader: draws, triangles and the page's
+JavaScript are exact, a frame's GPU time is not), on `phone=1`, low,
+844 × 390. Most of a phone's frame is the 3D drawing (the triangles sent and
+the draws, as the iPhone pass found); "now and then" pointed at frames that
+come with extra work every second or so. What changed:
+
+- **Still shadows in smaller parts on a phone** (graphics.ts
+  `PHONE_PART_WEIGHT`, `PHONE_MAX_PARTS`): a redraw of the still map (every
+  1–3 s while the day turns) was 10–12 frames each with a part of ≈ 0.3 M
+  triangles over a picture of 1–1.5 M (a walk): a third more vertex work in
+  those frames, so a phone at the edge of its 30 frames a second missed
+  refreshes there. On a phone the parts are ≈ 0.1 M, up to 28 (layers 2‥29):
+  the same work over ≈ 1 s. The map drawn is the same (only when it is ready
+  does it show).
+- **A failed try at 60 frames a second ends sooner** (graphics.ts
+  `PhoneFrameRate`, `FRESH_TRY`, `CLEARLY_SLOW`): a phone that cannot keep 60
+  showed 4 s of uneven frames at every try (after 20 s at 30, then 40 … and
+  each time roaming started or ended); a fresh try is judged in windows of
+  1 s: two in a row under 52 a second drop it (2 s), one under 40 at once
+  (1 s).
+- **Only what moved gets new matrices** (matrices.ts, main.ts `FROZEN`):
+  three's `updateMatrixWorld` composed and multiplied every one of the map's
+  ≈ 3,350 objects every frame (the top JS function of a drawn frame); 35 of
+  them move in a walk. An object keeps its matrices while its numbers are
+  those its matrix was last composed from (three's `updateMatrix` notes them,
+  whoever calls it), its parent is the same and its parent's world matrix was
+  not made again since (a count on each world matrix: three's
+  `updateWorldMatrix` makes one without its children's, as the krama's swing
+  does to its joints). Seven parts that never move after their build (the
+  land, trees, floating village, road, Kulen, the terrace, the river gate:
+  ≈ 1,800 objects) are left out of the walk unless their root moves or
+  something is added under them (a full walk every 30 passes as a safety
+  net). The pass, warm: 0.86–0.89 → 0.30–0.47 ms on the cloud CPU. Two
+  holes in the first versions were found by checks, not by eye: a stale
+  matrix on the ledge explorer (a screenshot pixel diff: a few pixels of his
+  hat) and the krama's pieces lagging their joints (`matrixcheck=1`, which
+  compares every object with three's own pass once a second to a float's
+  last bits). Checked so in the overview, walking, riding the bicycle, the
+  buffalo, the ox cart, the boat, the hang glider, the balloon, the zip line,
+  with the dog, on low and medium, at the Water Festival; a terrain mesh
+  moved on purpose is named; the overview and a walk on low are the same
+  picture as before, pixel for pixel (`heroplain=0`). `matrices=0` keeps
+  three's own.
+- **The explorer in plain boxes on low** (foreground.ts `ROUND.plainPx`):
+  one rounding step (44 triangles a block) where his rounding spans under
+  1.5 px (≈ 0.9 px in a phone walk, the camera 7.4 m from his chest) was
+  ≈ 0.09 M triangles, a tenth of a phone walk's picture; plain boxes there
+  (≈ 0.03 M), like the low map's own blocks; one step again close up (the
+  camera within ≈ 4.5 m: the selfie, the camera, the explorer menu, the
+  follow camera pushed in by a wall). `heroplain=0` keeps the step.
+- **No multisampling on the canvas** (main.ts, every level): the scene is
+  drawn into the post effects' targets (multisampled as the level says), and
+  the canvas gets only their last full-screen pass, with no edges to smooth;
+  `antialias: true` kept a 4× colour and depth buffer of the canvas besides
+  (≈ 10 MB on a phone at 844 × 390, ≈ 166 MB at 2880 × 1800) and resolved it
+  every frame (on iOS a full-screen copy). The same picture.
+- **Less garbage a frame** (≈ 400 → 275 KB in a walk: fewer collector pauses
+  on a phone): the ramps' deck height (`deckAt`, asked many times a frame by
+  everything standing on the land: an array per ramp per call, and now only
+  ramps within reach), the walker's probes, the wading birds' and ducks'
+  turns, the statues' candle lights (worked out once a frame, not once per
+  part with statues), the shadow gate (on low it set every mesh casting every
+  frame).
 
 ### Memory on a phone
 

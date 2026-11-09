@@ -174,6 +174,8 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
   /** Each spot's glider is off with him; when its flag last waved (s). */
   const taken = list.map(() => false);
   const flagT = list.map(() => -Infinity);
+  /** How far from its spot (squared, m²) a ramp's deck and steps reach: `deckAt` looks no further. */
+  const reach2 = list.map((s) => Math.hypot(Math.max(RAMP.length, s.lift > 0 ? rampStairs(s.lift).length + RAMP.stair.run : 0), Math.max(RAMP.width, RAMP.stair.width) / 2) ** 2 + 1);
   let near = 0;
   let shown = ~0;
 
@@ -184,7 +186,9 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
     blocks,
     near(x, z, y) {
       for (const s of list) {
-        const [u, v] = local(s, x, z);
+        toLocal(s, x, z);
+        const u = LOC.u;
+        const v = LOC.v;
         if (u < -3 || u > RAMP.length * 0.7 || Math.abs(v) > RAMP.width / 2 + 1.5) continue;
         // (a built-up deck: from on it or its top steps, not from the ground under it)
         if (Math.abs(y - (s.y + rampDeckY(Math.max(0, u)))) < 2.5 && (s.lift === 0 || y > s.y - 0.8)) return s;
@@ -193,8 +197,15 @@ export function createLaunchSpots(field: HeightField, world: RoamWorld): LaunchS
     },
     deckAt(x, z) {
       let top = -Infinity;
-      for (const s of list) {
-        const [u, v] = local(s, x, z);
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
+        // (asked many times a frame, by everything that stands on the land: nothing of a ramp this far from it)
+        const dx = x - s.x;
+        const dz = z - s.z;
+        if (dx * dx + dz * dz > reach2[i]) continue;
+        toLocal(s, x, z);
+        const u = LOC.u;
+        const v = LOC.v;
         if (u >= 0 && u <= RAMP.length && Math.abs(v) <= RAMP.width / 2) top = Math.max(top, s.y + rampDeckY(u));
         // (the steps up to a built-up deck)
         else if (s.lift > 0 && u < 0 && Math.abs(v) <= RAMP.stair.width / 2) top = Math.max(top, s.y + rampStepY(u, s.lift));
@@ -315,6 +326,17 @@ function local(s: LaunchSpot, x: number, z: number): [number, number] {
   const dx = x - s.x;
   const dz = z - s.z;
   return [dx * fx + dz * fz, dx * fz - dz * fx];
+}
+
+/** {@link local} into {@link LOC} (no array made: `deckAt` and `near` are asked many times a frame). */
+const LOC = { u: 0, v: 0 };
+function toLocal(s: LaunchSpot, x: number, z: number): void {
+  const fx = Math.sin(s.yaw);
+  const fz = Math.cos(s.yaw);
+  const dx = x - s.x;
+  const dz = z - s.z;
+  LOC.u = dx * fx + dz * fz;
+  LOC.v = dx * fz - dz * fx;
 }
 
 /** Spots found before the trees were planted (`reserveLaunchSpots`), per land. */

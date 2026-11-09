@@ -20,6 +20,7 @@ import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { lampSlots } from './sky/lampSlots';
+import { freezeMatrices, installMatrixUpdate } from './matrices';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -56,12 +57,15 @@ import { pad, padPrefs } from './pad/pad';
  * 60-or-30 watch off: graphics.ts `PhoneFrameRate`) ·
  * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
  * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `idle=0` no idle
- * slow-down (the frame loop, below).
+ * slow-down (the frame loop, below) · `matrices=0` three's own matrix pass, `matrixcheck=1` the
+ * new one checked against it (matrices.ts).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
  */
 const params = new URLSearchParams(location.search);
+// (only what moved gets new matrices each frame: matrices.ts; `matrices=0` three's own)
+installMatrixUpdate();
 // (the build workers start at once: the land is built in one while the page sets up, work/build.ts)
 const work = new BuildWork(params);
 const shot = params.get('shot') === '1';
@@ -69,7 +73,11 @@ const placeIds = PLACES.map((p) => p.id);
 const asPlace = (v: string | null) => (placeIds.includes(v as PlaceId) ? (v as PlaceId) : null);
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
-const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
+// (no multisampling on the canvas itself: the scene draws into the post effects' targets, multisampled as the graphics
+// level says (post.ts), and the canvas only gets their last full-screen pass, which has no edges to smooth. With it the
+// browser kept a 4× buffer of the canvas, colour and depth — ≈ 166 MB at 2880 × 1800, 10 MB on a phone at 844 × 390 —
+// and resolved it every frame: on iOS a full-screen copy a frame.)
+const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
 renderer.setPixelRatio(Math.min(devicePixelRatio, shot ? 1 : 2));
 renderer.setSize(innerWidth, innerHeight);
 // (what is drawn: the scene at the canvas's ratio, until the resolution below sets it)
@@ -424,6 +432,11 @@ const land = parts.find((p) => p.name === 'terrain');
 if (land) castGate.addLive(land.object);
 const ledge = scene.getObjectByName('foreground:ledge');
 if (ledge) castGate.addAll(ledge);
+// Parts whose objects never move after their build: each frame's matrix pass leaves them out (matrices.ts; what is added
+// under them later — plain twins, sharper sculpts — still gets its matrices). Not the hamlets (his house's door), the
+// jungle (the zip line's trolley), the camps (the swing), nor the temples with incense smoke (sanctuary, overlook, shrine).
+const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
+for (const p of parts) if (FROZEN.includes(p.name)) freezeMatrices(p.object);
 // (the low graphics level's plain blocks, now that they are built)
 setGraphics(graphicsNow.level, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
