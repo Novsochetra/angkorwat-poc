@@ -36,6 +36,14 @@ export class TouchControls {
   /** The Fast button held (`setRun`): Shift. */
   runHeld = false;
   useHit = false;
+  /**
+   * The Use button held (E held: taking a piece down, digging up a plant, painting a whole part, cutting grass:
+   * `touchUseHeld`). Only the finger that pressed it lets it go: another finger lifting (the thumb off the stick, a look
+   * drag ending) does not.
+   */
+  useHeld = false;
+  /** The prompt went while Use was held: hidden once it is let go (not under the finger). */
+  private useHide = false;
   shutterHit = false;
   /** The put-away button (camera or phone up), or a prompt's Esc button: read as Esc. */
   closeHit = false;
@@ -124,8 +132,11 @@ export class TouchControls {
     );
     hold(
       this.useBtn,
-      () => (this.useHit = true),
-      () => {},
+      () => ((this.useHit = true), (this.useHeld = true)),
+      () => {
+        this.useHeld = false;
+        if (this.useHide) this.setUse(null);
+      },
     );
     hold(
       this.fishBtn,
@@ -237,8 +248,13 @@ export class TouchControls {
     }
   }
 
-  /** The Use button: shown with this label ("Enter", "Board"), or hidden (null). */
+  /**
+   * The Use button: shown with this label ("Enter", "Board"), or hidden (null). Held, it is hidden only once let go:
+   * the press itself clears the prompt for a step (walker.ts), and a button hidden under the finger could lose it.
+   */
   setUse(label: string | null): void {
+    this.useHide = !label && this.useHeld;
+    if (this.useHide) return;
     this.useBtn.classList.toggle('is-on', !!label);
     if (label) this.useBtn.querySelector('.rt-label')!.textContent = label;
   }
@@ -312,7 +328,8 @@ export class TouchControls {
     this.stick.x = this.stick.y = 0;
     this.stick.run = false;
     this.fingers.clear();
-    this.jumpHit = this.jumpHeld = this.useHit = this.shutterHit = this.closeHit = this.fishHit = this.runHeld = false;
+    this.jumpHit = this.jumpHeld = this.useHit = this.useHeld = this.shutterHit = this.closeHit = this.fishHit = this.runHeld = false;
+    if (this.useHide) this.setUse(null);
     this.keyHits.length = 0;
     this.look.yaw = this.look.pitch = this.look.zoom = 0;
     this.base.classList.remove('is-on');
@@ -367,6 +384,12 @@ let active: TouchControls | null = null;
 export function setTouchUse(label: string | null): void {
   active?.setUse(label);
 }
+
+/**
+ * The Use button is held now (E held on a phone: the add-ons that act on a long press — _build.ts, _garden.ts,
+ * _paint.ts, _cattleWork.ts). Let go only by the finger that pressed it (`TouchControls.useHeld`).
+ */
+export const touchUseHeld = (): boolean => !!active?.useHeld;
 
 /** The prompt's other keys as buttons over Use (hud.ts `prompt`): codes and what each does; none: an empty list. */
 export function setTouchKeys(keys: readonly (readonly [code: string, label: string])[]): void {

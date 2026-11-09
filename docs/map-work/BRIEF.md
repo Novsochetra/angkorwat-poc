@@ -188,6 +188,11 @@ cliff-top ramp and enter a temple at its beacon (**E**). **Esc** or "Back to map
   touch (the album, the explorer menu's looks; the tools grey). The mini-map
   set to Hide keeps its Map button on touch (no M key). So: a key the player
   needs goes in the prompt (addons.md "Prompts").
+  E **held** on touch is the Use button held: `touchUseHeld()` (touch.ts),
+  let go only by the finger that pressed it, so the thumb leaving the stick
+  as he stops does not end it (taking a piece down, digging up a plant,
+  painting a whole part, cutting grass; never a window `pointerup` of any
+  finger). A held Use button stays shown until it is let go.
   A drag, or holding **Q** / **R**, orbits the camera round him in every mode
   (as on `game.html`: 1.8 rad/s); the follow camera eases back behind him
   after a pause. It keeps him in view: walls, stone and land pull it in

@@ -16,6 +16,7 @@ import type { AddonEnv, AddonHold, AddonKey } from './_addons';
 import type { Beast, CattleHerd } from './_cattleHerd';
 import { FarmProps } from './_farmProps';
 import { angleDiff } from './followCam';
+import { touchUseHeld } from './touch';
 import type { RoamCtx, RoamWorld } from './types';
 
 /**
@@ -162,7 +163,7 @@ export class CattleWork {
   private framed = 0;
   keepView = false;
   /** E held (the keyboard's E or Enter, the pad's □, the touch Use button). */
-  private readonly keys = { key: false, touch: false };
+  private readonly keys = { key: false };
   private wired = false;
   /** The cut's prompt on touch and its language (`cutPrompt`). */
   private cutWords: [string, string] = ['', ''];
@@ -182,7 +183,8 @@ export class CattleWork {
 
   /** E held now. */
   held(): boolean {
-    return this.keys.key || this.keys.touch || pad.held('west');
+    // (the touch Use button, let go only by its own finger: touch.ts `touchUseHeld`)
+    return this.keys.key || touchUseHeld() || pad.held('west');
   }
 
   wire(): void {
@@ -194,17 +196,7 @@ export class CattleWork {
     addEventListener('keyup', (e) => {
       if (e.code === 'KeyE' || e.code === 'Enter') this.keys.key = false;
     });
-    addEventListener('blur', () => (this.keys.key = this.keys.touch = false));
-    addEventListener(
-      'pointerdown',
-      (e) => {
-        if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) this.keys.touch = true;
-      },
-      true,
-    );
-    const up = () => (this.keys.touch = false);
-    addEventListener('pointerup', up, true);
-    addEventListener('pointercancel', up, true);
+    addEventListener('blur', () => (this.keys.key = false));
   }
 
   // ── Where he may cut ────────────────────────────────────────────────────────

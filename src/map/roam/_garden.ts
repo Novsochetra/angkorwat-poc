@@ -20,6 +20,7 @@ import { AREA, AREA_SEEN, atHomeHouse, canPlant, fillSpot, inGardenArea, jarAt, 
 import { gardenSay, GardenToasts, plantWord } from './_gardenToasts';
 import { installGardenWalk } from './_gardenWalk';
 import { countWords, fallenDistance, GardenWork, pickAction, plantAction } from './_gardenWork';
+import { touchUseHeld } from './touch';
 import type { RoamCtx } from './types';
 
 /**
@@ -416,7 +417,7 @@ const grownTree = (p: Plant): boolean => isTree(KINDS[p.kind]) && stageOf(KINDS[
 /** E held this long (s) digs it up (a short press does nothing: a plant is not lost by a slip of the finger). */
 const HOLD_FOR = 0.8;
 /** E being held: on the keyboard (E, Enter), the pad's □, the touch Use button. */
-const holdKeys = { key: false, touch: false };
+const holdKeys = { key: false };
 let holdWired = false;
 function wireHold(): void {
   if (holdWired || typeof window === 'undefined') return;
@@ -427,15 +428,10 @@ function wireHold(): void {
   addEventListener('keyup', (e) => {
     if (e.code === 'KeyE' || e.code === 'Enter') holdKeys.key = false;
   });
-  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = false));
-  addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) holdKeys.touch = true;
-  }, true);
-  const up = () => (holdKeys.touch = false);
-  addEventListener('pointerup', up, true);
-  addEventListener('pointercancel', up, true);
+  addEventListener('blur', () => (holdKeys.key = false));
 }
-const eHeld = (): boolean => holdKeys.key || holdKeys.touch || pad.held('west');
+// (the touch Use button, let go only by its own finger: touch.ts `touchUseHeld`)
+const eHeld = (): boolean => holdKeys.key || touchUseHeld() || pad.held('west');
 
 /** The hold under way: the plant, how long so far (s). */
 let holding: { plant: Plant; t: number } | null = null;

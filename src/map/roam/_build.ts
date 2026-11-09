@@ -28,6 +28,7 @@ import { installBuildWalk } from './_buildWalk';
 import { backWords, BuildWork, pieceJob, pieceWord, type WorkJob } from './_buildWork';
 import { cannotFoot, fillFoot, footJob, FootMode, footWord, minPlan } from './_buildFoot';
 import { riel } from './_shopPurse';
+import { touchUseHeld } from './touch';
 import type { RoamCtx } from './types';
 
 /**
@@ -235,7 +236,7 @@ const onTouch = () => typeof document !== 'undefined' && document.body.classList
 
 // ── E held (to take a piece down) ───────────────────────────────────────────
 
-const holdKeys = { key: false, touch: false };
+const holdKeys = { key: false };
 let holdWired = false;
 function wireHold(): void {
   if (holdWired || typeof window === 'undefined') return;
@@ -249,15 +250,11 @@ function wireHold(): void {
     shiftDown = e.shiftKey;
     if (e.code === 'KeyE' || e.code === 'Enter') holdKeys.key = false;
   });
-  addEventListener('blur', () => (holdKeys.key = holdKeys.touch = shiftDown = false));
-  addEventListener('pointerdown', (e) => {
-    if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) holdKeys.touch = true;
-  }, true);
-  const up = () => (holdKeys.touch = false);
-  addEventListener('pointerup', up, true);
-  addEventListener('pointercancel', up, true);
+  addEventListener('blur', () => (holdKeys.key = shiftDown = false));
 }
-const eHeld = (): boolean => holdKeys.key || holdKeys.touch || pad.held('west');
+// (on touch the Use button held, let go only by its own finger: the thumb leaving the stick as he stops by a piece
+// ended the hold, and a fence, which has nothing for a short press, was never taken down)
+const eHeld = (): boolean => holdKeys.key || touchUseHeld() || pad.held('west');
 
 /** The prompt's and the touch Use button's fill bar (`--bd-hold` 0‥1). */
 function holdBar(v: number | null): void {

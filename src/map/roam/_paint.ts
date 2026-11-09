@@ -16,6 +16,7 @@ import { lang, t } from '../ui/lang';
 import { registerAddon, type AddonEnv } from './_addons';
 import { createPaintBar, type PaintBar } from './_paintBar';
 import { PaintCursor } from './_paintCursor';
+import { touchUseHeld } from './touch';
 import type { RoamCtx } from './types';
 
 /**
@@ -127,7 +128,7 @@ const onTouch = () => typeof document !== 'undefined' && document.body.classList
 
 // ── E held ──────────────────────────────────────────────────────────────────
 
-const held = { key: false, touch: false, canvas: false };
+const held = { key: false, canvas: false };
 let wired = false;
 /** A touch on the view (not the stick's corner): where, when; null when it moved (a drag) or ended. */
 let touch: { id: number; x: number; y: number; t: number } | null = null;
@@ -140,17 +141,7 @@ function wire(): void {
   addEventListener('keyup', (e) => {
     if (e.code === 'KeyE' || e.code === 'Enter') held.key = false;
   });
-  addEventListener('blur', () => (held.key = held.touch = held.canvas = false));
-  addEventListener(
-    'pointerdown',
-    (e) => {
-      if ((e.target as HTMLElement | null)?.closest?.('.rt-use')) held.touch = true;
-    },
-    true,
-  );
-  const up = () => (held.touch = false);
-  addEventListener('pointerup', up, true);
-  addEventListener('pointercancel', up, true);
+  addEventListener('blur', () => (held.key = held.canvas = false));
   // A tap on a block paints it; a long press there, the whole part.
   const canvas = env.canvas;
   canvas.addEventListener('pointerdown', (e) => {
@@ -185,7 +176,8 @@ function wire(): void {
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
 }
-const eHeld = (): boolean => held.key || held.touch || pad.held('west');
+// (the touch Use button, let go only by its own finger: touch.ts `touchUseHeld`)
+const eHeld = (): boolean => held.key || touchUseHeld() || pad.held('west');
 
 /** The prompt's and the touch Use button's fill bar (`--pt-hold` 0‥1). */
 function holdBar(v: number | null): void {
