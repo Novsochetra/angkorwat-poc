@@ -31,6 +31,13 @@ import type { RoamMode } from './types';
 export const SHORT = { far: 260, hazeNear: 70, hazeFar: 68, rate: 1.2 };
 /** The camera's own far plane (main.ts). */
 const WHOLE = 9000;
+
+/**
+ * The view is short now (wholly: the far plane in), and where the camera is (m):
+ * the atmosphere draws the still shadows over a box round it then
+ * (atmosphere.ts `NEAR_BOX`), not over the whole roaming area.
+ */
+export const SHORT_NOW = { on: false, x: 0, z: 0 };
 const GROUND: ReadonlySet<RoamMode> = new Set<RoamMode>(['walk', 'boat']);
 
 export class ShortView {
@@ -62,6 +69,9 @@ export class ShortView {
     }
     fogNow.amount = k > 0 ? Math.max(amount, k) : amount;
     const short = k >= 1;
+    SHORT_NOW.on = short;
+    SHORT_NOW.x = camera.position.x;
+    SHORT_NOW.z = camera.position.z;
     if (short !== this.hid) {
       this.hid = short;
       for (const o of this.hide) o.visible = !short;

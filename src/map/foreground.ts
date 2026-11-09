@@ -7,7 +7,7 @@ import { hash3 } from '../voxel/random';
 import { type VoxelBox, VoxelBuilder } from '../voxel/VoxelBuilder';
 import { skipBackFacets } from '../voxel/backFacets';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
-import { graphicsNow, pixelSize, STILL_LAYER } from './graphics';
+import { graphicsNow, PHONE, pixelSize, STILL_LAYER } from './graphics';
 import { HeroBatch } from './heroBatch';
 import { len2 } from './fauna/_len';
 import { EXPLORER_SPOT, OVERVIEW } from './layout';
@@ -49,10 +49,12 @@ const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 
  * (≈ 0.9 px with the camera 7.4 m from his chest on 390 px), the overview's
  * ledge; the camera closer than ≈ 4.5 m (the selfie, the camera close up, the
  * explorer menu, the follow camera pushed in by a wall) keeps the step. A phone walk on low drew
- * him in ≈ 0.09 M triangles, a tenth of its picture. `heroplain=0` in the
- * URL keeps the step (to compare).
+ * him in ≈ 0.09 M triangles, a tenth of its picture. On a phone the limit is
+ * 3.5 px (one step only with the camera within ≈ 2 m: the selfie, the explorer
+ * menu): the follow camera pushed in by a stall drew him in ≈ 0.15 M triangles,
+ * a tenth of the frame. `heroplain=0` in the URL keeps the step (to compare).
  */
-const ROUND = { px: 2, hold: 0.1, reach: 1.2, plainPx: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('heroplain') === '0' ? 0 : 1.5 };
+const ROUND = { px: 2, hold: 0.1, reach: 1.2, plainPx: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('heroplain') === '0' ? 0 : PHONE ? 3.5 : 1.5 };
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,

@@ -3264,7 +3264,10 @@ come with extra work every second or so. What changed:
   ≈ 0.09 M triangles, a tenth of a phone walk's picture; plain boxes there
   (≈ 0.03 M), like the low map's own blocks; one step again close up (the
   camera within ≈ 4.5 m: the selfie, the camera, the explorer menu, the
-  follow camera pushed in by a wall). `heroplain=0` keeps the step.
+  follow camera pushed in by a wall). On a phone the limit is 3.5 px (one
+  step only within ≈ 2 m: the selfie, the explorer menu): the follow camera
+  pushed in by a stall drew him in ≈ 0.15 M triangles there, a tenth of the
+  frame (→ 0.04 M). `heroplain=0` keeps the step.
 - **The explorer in a few draws on low** (heroBatch.ts; `herobatch=0` draws
   him mesh by mesh): he is ≈ 90 voxel meshes, one per joint and family, and a
   phone walk drew 48–50 of them every frame (a fifth of its draws, most under
@@ -3306,6 +3309,22 @@ come with extra work every second or so. What changed:
   on the ground for 6 s at its 30 cap: the switch turned on as the player
   would (saved), a toast saying where it is; kept for the device, so never
   again even if turned off, until Auto is picked again.
+- **Still shadows round him with Short view in** (atmosphere.ts `NEAR_BOX`,
+  `PHONE_SHORT_TURN`; graphics.ts `dealStillParts(…, within)`). The first
+  phone test (an iPhone 14 Pro, low, the speed test): ≈ 28 frames a second
+  with Short view, "mostly smooth", laggy without; so a few frames in each
+  second still missed. Those were the still shadows' redraws: with the
+  day's cycle the sun turns 0.3° (`STILL_TURN`) every ≈ 1.4 s, so a redraw
+  (a part a frame, ≈ 0.14 M triangles on a picture of ≈ 0.8 M) ran in about
+  two frames of five. With the view short (wholly in) the still map covers a
+  box 640 m across round the camera, not the roaming area (≈ 1,300 ×
+  900 m): only casters whose bounds reach into it are dealt (what lies past
+  the haze casts nothing seen), and the map's texels cover a quarter of the
+  ground (sharper eaves near him). The box moves, the map drawn again, once
+  the camera is 80 m from its middle. On a phone, with the box round him,
+  a redraw waits for 1° of turn (≈ 4.6 s): a few centimetres at a house's
+  shadow; the long mesa shadows that move most lie in the haze. A dusk walk
+  on `phone=1`: frames with shadow work 30 of 30 → 20 of 60, each lighter.
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;
@@ -3329,7 +3348,9 @@ frames after 60 of warm-up, low, 844 × 390): a walk's JS 7.0 → 6.6 ms
 question: an iPhone 14 Pro drew a walk's picture in ≈ 14–18 ms (the iPhone
 pass), and a budget Android's GPU is several times slower; there Short view
 is the lever (a third fewer draws, a fifth fewer triangles in open views).
-Measure on the device: `speedtest=quick` ("The iPhone pass").
+Measure on the device: `speedtest=quick` ("The iPhone pass"). On the device
+(an iPhone 14 Pro, low, Short view): ≈ 28 a second before the near shadow
+box above.
 
 ### Memory on a phone
 

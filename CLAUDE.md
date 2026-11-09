@@ -114,7 +114,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   as the page you are on and the map stays in view. **General** (language,
   time of day, weather, moon), **Sound**, **Graphics** (graphics level, resolution,
   fog: one slider, its thickness, battery saver, Short view: on the ground while
-  roaming the haze closes in and nothing past ≈ 260 m is drawn, `src/map/shortView.ts`,
+  roaming the haze closes in and nothing past ≈ 260 m is drawn, the still shadows only round him, `src/map/shortView.ts`,
   `shortview=1` in shots; Auto turns it on once for a phone that cannot keep 30 on low),
   **Play** (mini-map, key help, easy flying, reduce
   motion), **About** (support the game, our story, the credits). The bar is

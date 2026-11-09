@@ -499,6 +499,18 @@ function leanShadowMaps(renderer: WebGLRenderer, lights: Light[]): void {
   }
 }
 
+const _dealC = new Vector3();
+/** Does the mesh's bounding sphere reach into the box (map x, z)? No sphere: it may. */
+function reaches(mesh: Mesh, b: { x0: number; x1: number; z0: number; z1: number }): boolean {
+  const s = (mesh as InstancedMesh).isInstancedMesh ? (mesh as InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
+  if (!s) return true;
+  _dealC.copy(s.center).applyMatrix4(mesh.matrixWorld);
+  const r = s.radius * mesh.matrixWorld.getMaxScaleOnAxis();
+  const dx = Math.max(b.x0 - _dealC.x, 0, _dealC.x - b.x1);
+  const dz = Math.max(b.z0 - _dealC.z, 0, _dealC.z - b.z1);
+  return dx * dx + dz * dz <= r * r;
+}
+
 /** The layers the view camera sees while the still shadow map is drawn: the still layer, or one part of it (atmosphere.ts). */
 export const stillView = { mask: 1 << STILL_LAYER };
 /** The first of the layers the still casters are dealt into, a part each ({@link dealStillParts}: layers 2‥13, 2‥29 on a phone). */
@@ -538,18 +550,20 @@ const load: number[] = [];
  * far), so a still shadow map can be drawn a part a frame: the view camera
  * sees one part's layer ({@link stillView}) while the pass runs. Every
  * object loses the part it had (the explorer leaving his ledge is no longer
- * still). `parts`: how many (0: as many as their size needs, at most 12, 28 on a phone).
+ * still). `parts`: how many (0: as many as their size needs, at most 12, 28 on a phone);
+ * `within`: only casters whose bounds reach into this box (map x, z: the box
+ * round the camera with Short view in, atmosphere.ts `NEAR_BOX`), the rest in no part.
  * Returns the number of parts. A walk over the scene (≈ 2,700 objects),
  * ≈ 0.2 ms on an M1 Max, once a redraw.
  */
-export function dealStillParts(scene: Object3D, parts = 0): number {
+export function dealStillParts(scene: Object3D, parts = 0, within?: { x0: number; x1: number; z0: number; z1: number }): number {
   dealt.length = weights.length = order.length = 0;
   let total = 0;
   const visit = (o: Object3D, shown: boolean): void => {
     o.layers.mask &= ~PART_BITS;
     const on = shown && o.visible;
     const mesh = o as Mesh;
-    if (on && mesh.isMesh && mesh.castShadow && o.layers.isEnabled(STILL_LAYER)) {
+    if (on && mesh.isMesh && mesh.castShadow && o.layers.isEnabled(STILL_LAYER) && (!within || reaches(mesh, within))) {
       const g = mesh.geometry;
       const count = (mesh as InstancedMesh).isInstancedMesh ? (mesh as InstancedMesh).count : 1;
       const w = ((g.index ? g.index.count : (g.getAttribute('position')?.count ?? 0)) / 3) * count + DRAW_WEIGHT;
