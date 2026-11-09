@@ -146,6 +146,8 @@ function frameStats(gaps: number[], cpus: number[]) {
     veryLate: gaps.filter((g) => g > 70).length,
     drawP50: r1(pick(cpus, 0.5)),
     drawP90: r1(pick(cpus, 0.9)),
+    // (the draw call's slowest: a shader compiled or a buffer sent then shows here)
+    drawMax: r1(pick(cpus, 1)),
   };
 }
 
