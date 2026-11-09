@@ -87,6 +87,8 @@ export interface MapRoam extends MapPart {
    * the overview, the leap, a mode it does not know, or roaming is ending.
    */
   placeFrom(q: URLSearchParams, f: MapFrame): boolean;
+  /** The free camera (dev/freecam.ts) is open: with the camera or the phone up, the view stays out of the lens (no frame; he is seen whole, holding it). */
+  holdPhotoView(on: boolean): void;
   /** For bug reports: where the explorer is, and URL params that start a shot there (null in the overview). */
   report(): { text: string; params: Record<string, string> } | null;
 }
@@ -417,6 +419,9 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
       deps.onOverview();
       leaving = false;
       await hud.fade(0, 0.6);
+    },
+    holdPhotoView(on) {
+      tools.photo.hold = on ? 0 : null;
     },
     report() {
       if (mode === 'overview') return null;

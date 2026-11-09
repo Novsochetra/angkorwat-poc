@@ -449,7 +449,8 @@ guide, with every add-on's keys and URL values for shots, is
 `` ` `` (or the 📷 button beside 🐞 Report) opens a camera that depends on
 nothing (`src/map/dev/freecam.ts`): the interface goes, the explorer's keys stop,
 and it flies anywhere over the map, from the overview or while roaming (the
-explorer stays where he is). Drag looks, W A S D fly along the view, Q / E (or
+explorer stays where he is, posing if his camera or selfie phone is up: its
+button stays then, the phone's frame goes, Esc brings it back). Drag looks, W A S D fly along the view, Q / E (or
 Space) go down / up, Shift is fast, the wheel sets the speed, a trackpad pinch
 zooms, F freezes the scene's time, H hides the panel, ? shows the keys (they show for
 the first 15 s), Esc leaves.
@@ -461,7 +462,7 @@ offset, `placed()` after roaming, which clears one). From the top: **📸 Take
 picture (V)**, **● Record video (R)**, **🔁 Loop video**, the name (empty: made
 from the place in the frame and the time, "angkor-wat-night"; a typed name that is
 saved already is replaced: the button says so), the status with a progress bar;
-Frame (size, zoom, speed); Moment (time chips Game / Afternoon / Sunset / Moonrise /
+Frame (size, zoom, speed); Moment (a weather chip changes the weather bit by bit, snow settling over about 100 s, at once with time frozen; time chips Game / Afternoon / Sunset / Moonrise /
 Night / Moonset / Dawn and a slider, the moon's phase, the moon's path chips Game /
 Low / High, fog chips Game / None / Light / Normal / Thick
 and a slider, weather chips, freeze, explorer: shown while roaming unless unticked); Video settings (folded); the gallery: every picture and

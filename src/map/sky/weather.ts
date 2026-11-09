@@ -148,7 +148,7 @@ const HELD_FLASH_EVERY = 12;
  * (hardly: the flurries keep it), and once the setting is left, of `away` s
  * (mostly gone in two or three minutes).
  */
-const SNOW = { cloud: 0.62, flurries: 0.13, ease: 20, build: 90, melt: 900, away: 50 };
+export const SNOW = { cloud: 0.62, flurries: 0.13, ease: 20, build: 90, melt: 900, away: 50 };
 
 const smooth = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 /** 0 before a, 1 after b, eased between. */

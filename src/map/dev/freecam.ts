@@ -4,7 +4,7 @@ import { HAMLETS, JUNGLE_SITES, MAP_BOUNDS, PLACES, VILLAGE } from '../layout';
 import { view as drawn } from '../resolution';
 import { FOG_AMOUNT_MAX } from '../sky/fogLevel';
 import { SKY, SYNODIC_MONTH } from '../sky/palette';
-import { HELD_WEATHER } from '../sky/weather';
+import { HELD_WEATHER, SNOW } from '../sky/weather';
 import { CAM_REACH, roamInside } from '../terrain/views';
 import { CALM_WEATHER, DEFAULT_SETTINGS, MOON_PATHS, type MapWeather, type MoonPath } from '../types';
 import { safeName, WALLPAPER_ENDPOINT, type VideoCodec, type WallpaperFlight, type WallpaperJob, type WallpaperList, type WallpaperView } from './wallpaperTypes';
@@ -83,6 +83,8 @@ export interface FreeCamOptions {
   moment(withExplorer: boolean): URLSearchParams;
   /** Put the explorer back as a saved view's query has him, posed (roam.ts `placeFrom`); false: no spot of his in it. */
   placeExplorer(q: URLSearchParams): boolean;
+  /** While the camera is free, the explorer's camera or phone (if up) keeps the view out of its lens (roam.ts `holdPhotoView`). */
+  holdPhoto(on: boolean): void;
 }
 
 /** What the map's frame loop asks of the free camera. */
@@ -96,7 +98,7 @@ export interface FreeCam {
   /** Once a step, after the camera is placed (and after roaming, which may clear a view offset): the frame's view offset. */
   placed(): void;
   /** Once a step, after the weather: puts the panel's weather over it. */
-  weather(w: MapWeather): void;
+  weather(w: MapWeather, dt: number): void;
 }
 
 /** Picture shapes: width × height in pixels (a `Custom` takes its own). The names are kept in the saved views. */
@@ -127,6 +129,21 @@ const WEATHERS: [string, string | null][] = [
 ];
 const VIEW_WEATHER = 'view';
 const WEATHER_KEYS = ['wind', 'cloud', 'rain', 'storm', 'rainbow', 'wet', 'snow', 'snowCover'] as const;
+type WeatherKey = (typeof WEATHER_KEYS)[number];
+/**
+ * How a picked weather comes and goes (s: [wait, how long], `on` as a value rises, `off` as it falls). Snow as the
+ * game's own: the clouds first, the flakes easing in, then the land whitening slowly under them.
+ */
+const WEATHER_EASE: Record<WeatherKey, { on: [number, number]; off: [number, number] }> = {
+  cloud: { on: [0, 15], off: [0, 15] },
+  wind: { on: [0, 10], off: [0, 10] },
+  rain: { on: [5, 12], off: [0, 10] },
+  storm: { on: [8, 12], off: [0, 8] },
+  rainbow: { on: [4, 12], off: [0, 8] },
+  wet: { on: [8, 25], off: [2, 35] },
+  snow: { on: [4, SNOW.ease], off: [0, 12] },
+  snowCover: { on: [10, SNOW.build], off: [6, SNOW.away] },
+};
 
 /**
  * Times of day (the `clock` of the map: 0 afternoon, 0.22 sunset, 0.5 night, 0.82 dawn: the promo's; moonrise and
@@ -239,6 +256,8 @@ const CSS = `
 body.freecam #ui, body.freecam .map-ui, body.freecam .rt, body.freecam .fb-button, body.freecam .fc-open { display: none !important; }
 body.freecam canvas#scene { cursor: grab; }
 .fc-open { left: 124px !important; }
+/* (with the camera or the phone up the interface goes, but this button stays, over the viewfinder) */
+body:not(.freecam):is(.photo-mode, .selfie-mode) .fc-open { display: block !important; z-index: 41; }
 .fc-guide { position: fixed; z-index: 20; pointer-events: none; display: none; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.55); }
 .fc-guide.thirds {
   background:
@@ -439,6 +458,10 @@ class FreeCamTool implements FreeCam {
   private explorerPicked = false;
   /** The weather the panel holds (null: the game's), and the one a saved picture has. */
   private held: Partial<MapWeather> | null = null;
+  /** The weather on its way to the one picked: what it began from, and the scene's seconds since (null: there). */
+  private fade: { t: number; from: Record<WeatherKey, number> } | null = null;
+  /** The weather on the screen, each frame. */
+  private readonly shownWeather = Object.fromEntries(WEATHER_KEYS.map((k) => [k, 0])) as Record<WeatherKey, number>;
   private viewWeather: Partial<MapWeather> | null = null;
   private prevHold: number | null = null;
   private prevMoon: number | null = null;
@@ -698,6 +721,8 @@ class FreeCamTool implements FreeCam {
     this.s.lens = MathUtils.clamp(round(deg(2 * Math.atan(Math.tan(rad(fov) / 2) * (this.box.h / innerHeight))), 1), 12, 100);
     document.body.classList.add('freecam');
     (document.activeElement as HTMLElement | null)?.blur?.();
+    // (with the camera or the phone up: the view leaves the lens, so its frame goes and he is seen whole, posing)
+    this.o.holdPhoto(true);
     this.applyExplorer();
     this.hud.style.display = 'block';
     this.panel.classList.add('open');
@@ -723,7 +748,10 @@ class FreeCamTool implements FreeCam {
     this.o.setMoonPath(this.prevMoonPath);
     this.o.setFogAmount(this.prevFog);
     this.held = null;
+    this.fade = null;
     this.s.weather = null;
+    // (back through the lens, if the camera or the phone is up)
+    this.o.holdPhoto(false);
     const ex = this.o.explorer();
     if (ex && ex.visible !== this.explorerWas) {
       ex.visible = this.explorerWas;
@@ -859,19 +887,56 @@ class FreeCamTool implements FreeCam {
 
   // ── Time and weather ─────────────────────────────────────────────────────
 
-  weather(w: MapWeather): void {
-    if (!this.open || !this.held) return;
-    // (the wind's direction stays the game's: a held weather only sets how much)
-    const dir = w.windDir;
-    Object.assign(w, CALM_WEATHER, this.held);
-    w.windDir = dir;
+  weather(w: MapWeather, dt: number): void {
+    if (!this.open) return;
+    if (this.held) {
+      // (the wind's direction stays the game's: a held weather only sets how much)
+      const dir = w.windDir;
+      Object.assign(w, CALM_WEATHER, this.held);
+      w.windDir = dir;
+    }
+    // On its way from what was on the screen to the weather picked (`w` holds it now; the game's own moves under it).
+    // (`dt` is the scene's: with time frozen it waits too)
+    const fade = this.fade;
+    if (fade) {
+      fade.t += dt;
+      let left = false;
+      for (const k of WEATHER_KEYS) {
+        const [wait, long] = WEATHER_EASE[k][w[k] >= fade.from[k] ? 'on' : 'off'];
+        const u = MathUtils.clamp((fade.t - wait) / long, 0, 1);
+        if (u < 1) left = true;
+        w[k] = fade.from[k] + (w[k] - fade.from[k]) * MathUtils.smoothstep(u, 0, 1);
+      }
+      if (!left) this.fade = null;
+    }
+    for (const k of WEATHER_KEYS) this.shownWeather[k] = w[k];
   }
 
+  /**
+   * The panel's weather. It comes bit by bit from what is on the screen, the snow settling as in the game; at once
+   * when time is frozen (a still picture being set up) or a saved picture's weather comes back.
+   */
   private pickWeather(key: string | null): void {
+    if (key === this.s.weather && key !== VIEW_WEATHER) return;
     this.s.weather = key;
     if (key === null) this.held = null;
     else if (key === VIEW_WEATHER) this.held = this.viewWeather ?? {};
     else this.held = HELD_WEATHER[key] ?? {};
+    const slow = !this.s.freeze && key !== VIEW_WEATHER;
+    this.fade = slow ? { t: 0, from: { ...this.shownWeather } } : null;
+    if (slow && this.held) {
+      const held = this.held;
+      const secs = Math.max(
+        ...WEATHER_KEYS.map((k) => {
+          const to = held[k] ?? 0;
+          const from = this.shownWeather[k];
+          if (Math.abs(to - from) < 0.01) return 0;
+          const [wait, long] = WEATHER_EASE[k][to >= from ? 'on' : 'off'];
+          return wait + long;
+        }),
+      );
+      if (secs > 0) this.say(`The weather changes bit by bit: about ${secs} s. With time frozen (F) it changes at once.`);
+    }
     this.sync();
   }
 
