@@ -707,6 +707,9 @@ const WORDS = {
   resSharpSize: { km: '{size} មុតច្បាស់', en: '{size}, sharp' },
   battery: { km: 'សន្សំថ្ម', en: 'Battery saver' },
   batteryNote: { km: 'យ៉ាងច្រើន ៣០ រូបភាពក្នុងមួយវិនាទី៖ ឧបករណ៍មិនសូវក្ដៅ ហើយថ្មប្រើបានយូរជាង', en: 'At most 30 frames a second: cooler and longer on battery' },
+  // (the Short view switch: shortView.ts)
+  shortView: { km: 'មើលឃើញជិត', en: 'Short view' },
+  shortViewNote: { km: 'ពេលដើរ ឬជិះទូក អ័ព្ទលាក់ទេសភាពឆ្ងាយ៖ រលូនជាងនៅលើទូរស័ព្ទ', en: 'Walking or in the boat, mist hides the far land: smoother on a phone' },
   // The settings' fog: one slider, its thickness 0‥150 (ui/ui.ts; sky/fogLevel.ts `fogNow.amount`); the step follows the graphics level.
   fog: { km: 'អ័ព្ទ', en: 'Fog' },
   fogAmount: { km: 'កម្រាស់', en: 'Thickness' },

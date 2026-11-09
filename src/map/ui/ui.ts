@@ -130,7 +130,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'padRumble';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'shortView' | 'padRumble';
 /**
  * The settings' tabs, in the bar's order (each page is `mu-set-page-<id>`).
  * Sound is the sound page's own word (lang.ts `sound`).
@@ -416,6 +416,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         <div class="mu-set-row">
           <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
           <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
+        </div>
+        <div class="mu-set-row">
+          <span id="mu-shortview-l"><span data-t="shortView"></span><small data-t="shortViewNote"></small></span>
+          <button type="button" class="mu-switch" role="switch" data-set="shortView" aria-labelledby="mu-shortview-l"><span class="mu-knob"></span></button>
         </div>`)}
       ${page('play', `
         <div class="mu-set-group" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
@@ -1523,6 +1527,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       }
       if (k === 'battery') {
         settings = { ...settings, battery: true };
+        syncSettings();
+      }
+      // (`shortview`: the Short view switch on)
+      if (k === 'shortview') {
+        settings = { ...settings, shortView: true };
         syncSettings();
       }
       // (`fog:<0‥150>`: the panel shows the fog that thick, e.g. `uistate=settings,scroll:fog,fog:40`)

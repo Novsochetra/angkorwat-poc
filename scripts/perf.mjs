@@ -12,6 +12,8 @@
 //   npm run perf -- ablate=hamlet,people       # each named part's ms a frame (the frames again with it hidden)
 //   npm run perf -- ablate=paddies:rice        # (a name with ':') the meshes whose name starts so, hidden together
 //   npm run perf -- url="parts=terrain,water"  # added to every page's URL
+//   npm run perf -- cpu=4                      # the page's CPU slowed 4 times while measuring (DevTools' "mid-tier
+//                                              # mobile"): `cpu` is then a phone's JS frame, roughly (the GPU is not slowed)
 //
 // It opens `index.html?shot=1&video=1` (the video's frame-by-frame page,
 // main.ts `__videoFrame`) in Playwright's full Chromium on the GPU (Metal),
@@ -112,6 +114,8 @@ const FRAMES = Number(argv.frames ?? 120);
 const WARM = Number(argv.warm ?? 40);
 const BATCHES = Number(argv.batches ?? 6);
 const ABLATE = argv.ablate ? argv.ablate.split(',') : [];
+/** `cpu=<n>`: the page's main thread slowed n times while measuring (CDP Emulation.setCPUThrottlingRate; loading runs at full speed). */
+const CPU_SLOW = Number(argv.cpu ?? 1) || 1;
 const MESHES = argv.meshes ? Number(argv.meshes) || 1 : 0;
 const PARTS = argv.parts === '1' || ABLATE.length > 0;
 const file = (p) => (isAbsolute(p) ? p : resolve(root, p));
@@ -407,7 +411,10 @@ for (const setupName of setups) {
     }
     const loaded = Date.now() - started;
     const live = /(^|&)shadows=live(&|$)/.test(`${VIEWS[view]}&${argv.url ?? ''}`);
+    const cdp = CPU_SLOW > 1 ? await page.context().newCDPSession(page) : null;
+    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_SLOW });
     const res = await page.evaluate(measure, { warm: WARM, frames: FRAMES, batches: BATCHES, parts: PARTS, meshes: MESHES, ablate: ABLATE, t0: 12, turn: TURNING[view] ?? null, live });
+    if (cdp) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }).then(() => cdp.detach());
     const sum = summary(res.frames, res.pipe);
     const ablated = Object.fromEntries(Object.entries(res.ablated).map(([k, pipe]) => [k, q(pipe, 0.5)]));
     const c = { view, setup: setupName, url: url.slice(origin.length), loadMs: loaded, ...sum, programs: res.programs, memory: res.memory, build: res.build, timings: res.timings, blocks: res.blocks, failed: res.failed, level: res.level, ratio: res.ratio, size: res.size, timer: res.timer, partsCpu: res.partsCpu, draws: res.draws, meshes: res.meshes, ablated };

@@ -1,4 +1,4 @@
-import { DirectionalLight, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
+import { DirectionalLight, type Fog, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
 import { posthogLogger } from '../posthog';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { skipBackFacets } from '../voxel/backFacets';
@@ -21,6 +21,7 @@ import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { lampSlots } from './sky/lampSlots';
 import { freezeMatrices, installMatrixUpdate } from './matrices';
+import { ShortView } from './shortView';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -56,7 +57,8 @@ import { pad, padPrefs } from './pad/pad';
  * `battery=1` the battery saver (30 frames a second) · `fps=30|60` that cap, held (a phone's
  * 60-or-30 watch off: graphics.ts `PhoneFrameRate`) ·
  * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
- * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `idle=0` no idle
+ * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `shortview=1` the Short view setting
+ * (shortView.ts) · `idle=0` no idle
  * slow-down (the frame loop, below) · `matrices=0` three's own matrix pass, `matrixcheck=1` the
  * new one checked against it (matrices.ts).
  *
@@ -121,6 +123,7 @@ function loadSettings(): MapSettings {
     if (typeof saved.padRumble !== 'boolean') delete saved.padRumble;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
+    if (typeof saved.shortView !== 'boolean') delete saved.shortView;
     if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
     // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
     delete saved.fog;
@@ -155,6 +158,7 @@ if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
 setBatterySaver(settings.battery);
+if (params.has('shortview')) settings.shortView = params.get('shortview') !== '0';
 /** `fog=` (checks): hold the fog's step (sky/fogLevel.ts); else auto, the graphics level's. */
 const fogChoice: FogChoice = FOG_CHOICES.includes(params.get('fog') as FogChoice) ? (params.get('fog') as FogChoice) : 'auto';
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
@@ -726,6 +730,9 @@ Object.assign(TIME, {
   skipped: () => skippedDays,
 } satisfies Partial<typeof TIME>);
 
+/** The Short view setting's haze and far plane (shortView.ts). */
+const shortView = new ShortView();
+
 function step(t: number, dt: number): void {
   // (`equinox=1` on the live page: Start lets the clock go, on from where `clock=` held it)
   if (clockRunsFrom !== null && entered && clockParam === clockRunsFrom) {
@@ -789,6 +796,8 @@ function step(t: number, dt: number): void {
   free?.placed();
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
+  // (the Short view setting: on the ground while roaming, the haze closes in and nothing past it is drawn: shortView.ts)
+  shortView.apply(settings.shortView, frame.roam, dt, scene.fog as Fog, camera, fogAmountParam ?? settings.fogAmount);
   // (the lamps that matter most for this view into the few lights the shaders have: sky/lampSlots.ts)
   lampSlots().update(frame);
   castGate.update(frame);
@@ -1149,6 +1158,7 @@ if (shot) {
   step(t, 0);
   // (the interface's web fonts first, so shots don't show the fallback font)
   await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 4000))]);
+  for (const p of parts) p.beforeRender?.();
   post.render(frame);
   /**
    * One frame of a video (scripts/video.mjs): the scene at `t`, `dt` after
@@ -1167,6 +1177,7 @@ if (shot) {
     }
     step(t, dt);
     if (!draw) return;
+    for (const p of parts) p.beforeRender?.();
     post.render(frame);
     for (const p of parts) p.afterRender?.();
   };
@@ -1281,7 +1292,10 @@ if (shot) {
       }
     }
     wasFull = full;
-    if (drawn) post.render(frame);
+    if (drawn) {
+      for (const p of parts) p.beforeRender?.();
+      post.render(frame);
+    }
     for (const p of parts) p.afterRender?.();
     feedback?.update();
     if (first) {

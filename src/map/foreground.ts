@@ -8,6 +8,7 @@ import { type VoxelBox, VoxelBuilder } from '../voxel/VoxelBuilder';
 import { skipBackFacets } from '../voxel/backFacets';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
 import { graphicsNow, pixelSize, STILL_LAYER } from './graphics';
+import { HeroBatch } from './heroBatch';
 import { len2 } from './fauna/_len';
 import { EXPLORER_SPOT, OVERVIEW } from './layout';
 import type { RoamWorld } from './roam/types';
@@ -65,6 +66,8 @@ export interface Foreground extends MapPart {
   feet: Vector3;
   /** Facing on the ledge (radians, like `rotation.y`). */
   yaw: number;
+  /** His blocks in a few draws while he roams on low (heroBatch.ts). */
+  heroBatch: HeroBatch;
   /** The explorer leaves the ledge to roam (true), or is back (false): the ledge stops / starts driving him. */
   release(roaming: boolean): void;
   /** The roaming world (floors, steps, bridges, water): what the disc under his feet lies on, where shadows are still (main.ts). */
@@ -190,6 +193,9 @@ export function buildForeground(ctx: MapContext): Foreground {
   }
   const foot = footShadow();
   object.add(foot);
+  // Roaming on low, his blocks are drawn from a few batches, a draw per family (heroBatch.ts): ≈ 49 draws → ≈ 15.
+  const batch = new HeroBatch(explorer.object);
+  object.add(batch.object);
   let world: RoamWorld | null = null;
   const footOn = new URLSearchParams(location.search).get('foot') !== '0';
   /** The disc under his feet (still shadows: low and medium; roaming): on the floor under him, fading as he goes up; none in the boat or the balloon, nor over water. */
@@ -233,6 +239,7 @@ export function buildForeground(ctx: MapContext): Foreground {
     feet,
     yaw,
     blocks: b.boxes.length,
+    heroBatch: batch,
     release(on) {
       roaming = on;
     },
@@ -253,6 +260,13 @@ export function buildForeground(ctx: MapContext): Foreground {
       }
       // (after what changed his blocks this frame: roaming moved him first, main.ts)
       roundHero(f.camera);
+    },
+    beforeRender() {
+      // (low, roaming: his shadows are none there — still shadows, the disc under his feet —, so the batch casts nothing)
+      batch.beforeRender(roaming && graphicsNow.plainBlocks && graphicsNow.stillShadows);
+    },
+    afterRender() {
+      batch.afterRender();
     },
   };
 }
