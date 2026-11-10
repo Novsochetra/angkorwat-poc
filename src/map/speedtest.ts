@@ -99,6 +99,9 @@ function report(kind: string, data: Record<string, unknown>): void {
 
 /** Each drawn frame while the log runs: when it began (ms), the draw call's time (ms), a finger on the screen. */
 const log = { at: [] as number[], cpu: [] as number[], touch: [] as boolean[] };
+/** The phone's frame rate (graphics.ts `PhoneFrameRate`) each time it changed: [s since the page opened, fps]. */
+const rates: [number, number][] = [];
+let rateNow = 0;
 let fingers = 0;
 let testing = false;
 /** The page is framed by another (the phone test page): the frames are logged and reported. */
@@ -115,6 +118,8 @@ function timePictures(): void {
     const s = performance.now();
     render(f);
     if (FRAMED) {
+      const r = (window as unknown as { __phoneRate?: { fps: number } }).__phoneRate?.fps ?? 0;
+      if (r !== rateNow) rates.push([Math.round(s / 100) / 10, (rateNow = r)]);
       log.at.push(s);
       log.cpu.push(performance.now() - s);
       log.touch.push(fingers > 0);
@@ -185,6 +190,8 @@ function watchFrames(): void {
       far: cam?.far ?? null,
       touching: frameStats(gaps.on, cpus.on),
       still: frameStats(gaps.off, cpus.off),
+      // (the phone's rate changes in this window, and the cap held by `fps=`, if any)
+      rates: rates.splice(0),
     });
     // (the last frame starts the next window's first gap)
     for (const a of [log.at, log.cpu, log.touch] as unknown[][]) a.splice(0, n - 1);
