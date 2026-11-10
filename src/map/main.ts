@@ -404,7 +404,8 @@ if (Object.keys(late.states).length) console.info(`[map] built only when wanted:
 // (and the lamps' few lights, always there: sky/lampSlots.ts)
 scene.add(atmosphere.object, lampSlots().object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
-for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+// (the hamlets too: their places' blocks never move — the market's toggles and the back hamlet's near plants change instances, read again then; the sugar-palm village in pieces, hamlet/_pieces.ts)
+for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 // …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
 timings.covered = Math.round(cutCovered(coverRoots(), undefined, work.knownCover).ms);
 // What never moves casts the low and medium levels' still shadows (graphics.ts): the land, trees, temples, road, jungle
