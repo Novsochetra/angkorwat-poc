@@ -298,6 +298,21 @@ async function framesAgain(): Promise<void> {
   while (drawn() < d + 3) await wait(50);
 }
 
+/**
+ * `speedtest=watch`: no test, no wait for the GPU (a test's one-pixel reads
+ * leave the GPU idle between pictures, and iOS then lowers its clock): only
+ * the frames' spacing is reported (framed by the phone test page) while the
+ * map plays as it would, at its own frame rate.
+ */
+export function watchSpeed(): void {
+  timePictures();
+  const gl = w.renderer.getContext();
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+  report('hello', { device: `${gpu.slice(0, 60)} · dpr ${devicePixelRatio} · canvas ${w.renderer.domElement.width}×${w.renderer.domElement.height} · level ${w.graphicsNow.level}`, quick: false, watch: true, ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], url: location.search });
+  watchFrames();
+}
+
 export function startSpeedTest(quick = false): void {
   timePictures();
   const panel = document.createElement('div');

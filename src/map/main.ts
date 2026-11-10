@@ -987,6 +987,8 @@ Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, rende
 // (`speedtest=1`: this device's frame measured with parts of the map turned off one by one; `speedtest=quick`: only as it plays: speedtest.ts)
 const speedTest = params.get('speedtest');
 if (!shot && (speedTest === '1' || speedTest === 'quick')) void import('./speedtest').then((m) => m.startSpeedTest(speedTest === 'quick'));
+// (`speedtest=watch`: only the frames' spacing reported to the page framing the map, no test: speedtest.ts `watchSpeed`)
+if (!shot && speedTest === 'watch') void import('./speedtest').then((m) => m.watchSpeed());
 
 /** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
 let wakeLoop: () => void = () => undefined;
