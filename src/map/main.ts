@@ -1231,6 +1231,9 @@ if (shot) {
     focused = true;
     touched();
   });
+  // (a tap or a key is the page in use, focus event or not: framed by another page — the phone test's — a phone held
+  // the map at its blurred pace for a minute and a half after the player came back, a finger on the screen)
+  for (const type of ['pointerdown', 'touchstart', 'keydown']) addEventListener(type, () => (focused = true), { capture: true, passive: true });
   addEventListener('blur', () => (focused = false));
   const idleOff = params.get('idle') === '0';
   /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 with the battery saver and on a phone that cannot keep up), fewer while idle or unfocused. */

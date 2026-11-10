@@ -2802,11 +2802,13 @@ a second, and 30 with the **Battery saver** setting, evenly (`frameCap`,
 `setBatterySaver` in graphics.ts; `phone=1` acts as a phone, `battery=1`
 turns the saver on, `fps=30|60` holds a cap). A phone (the saver shows there
 too) draws 60 while it keeps up and an even 30 when it does not
-(`PhoneFrameRate`, `window.__phoneRate`): two 2 s windows in a row under 52
-frames a second drop it to 30 (after the level's own resolution, as auto's
-watch); at 30 it tries 60 again after 20 s of frames (a try that drops at
-once doubles the wait, up to 5 min), and at once when roaming starts or ends
-(a walk draws about half the overview's triangles). The rate is kept for the
+(`PhoneFrameRate`, `window.__phoneRate`): a try at 60 is left alone for its
+first 8 s (iOS raises the GPU's clock only after a few seconds of full load),
+then two 3 s windows in a row under 42 frames a second drop it to 30 (after
+the level's own resolution, as auto's watch); at 30 it tries 60 again after
+30 s of frames (a try dropped as soon as it could be doubles the wait, up to
+5 min), and at once when roaming starts or ends (a walk draws about half the
+overview's triangles). The rate is kept for the
 phone (`angkor-map-phone-fps`). Checked in GPU Chromium as a phone (844 ×
 390): 60 walking; with the CPU 10 × slower, 30 after 3 s, a try at 60 20 s
 later, 30 again with the wait 40 s; the saver 30, idle 20, a computer 60. The frame loop (main.ts `tick`) rests while
@@ -3229,12 +3231,15 @@ come with extra work every second or so. What changed:
   refreshes there. On a phone the parts are ≈ 0.1 M, up to 28 (layers 2‥29):
   the same work over ≈ 1 s. The map drawn is the same (only when it is ready
   does it show).
-- **A failed try at 60 frames a second ends sooner** (graphics.ts
-  `PhoneFrameRate`, `FRESH_TRY`, `CLEARLY_SLOW`): a phone that cannot keep 60
-  showed 4 s of uneven frames at every try (after 20 s at 30, then 40 … and
-  each time roaming started or ended); a fresh try is judged in windows of
-  1 s: two in a row under 52 a second drop it (2 s), one under 40 at once
-  (1 s).
+- **A try at 60 frames a second** (graphics.ts `PhoneFrameRate`, `SETTLE`,
+  `WINDOW`, `KEEP`): first made to end sooner (one window of 1 s under 40, or
+  two under 52, dropped it), which on an iPhone kept it at 30 for good: at 30
+  iOS lowers the GPU's clock, a try at 60 starts slow (≈ 39 frames a second)
+  and was dropped before the clock came up. The phone test (below) showed the
+  same iPhone 14 Pro held at 60 walking at 55–66, frames 15–17 ms apart, its
+  owner finding it smoother than the even 30. Now a try is left alone for its
+  first 8 s, then judged in windows of 3 s, and two in a row under 42 drop it;
+  a try dropped as soon as it could be doubles the wait (30 s, 60 … 5 min).
 - **Only what moved gets new matrices** (matrices.ts, main.ts `FROZEN`):
   three's `updateMatrixWorld` composed and multiplied every one of the map's
   ≈ 3,350 objects every frame (the top JS function of a drawn frame); 35 of
@@ -3370,6 +3375,23 @@ come with extra work every second or so. What changed:
   25 ms from step to step): grass, rice and trees ≈ 3.9 ms, houses, stalls and
   road ≈ 4.1, the explorer ≈ 2.3, the view to 150 m ≈ 1.5; shadows, lamps,
   half the pixels, the buttons and the glass blur ≈ 0.
+- **The sugar-palm village in pieces** (hamlet/_pieces.ts `buildVoxelPieces`;
+  main.ts gives the hamlet part the back-side skipping): it was one mesh a
+  family, ≈ 160 m across, all of it drawn from inside it. The market walk
+  0.79 → 0.71 M triangles, the same 129 draws, the picture the same pixel for
+  pixel. The market's and the floating village's meshes stay whole (toggles
+  and bobbing rafts hold their blocks by instance index).
+- **What the phone said about 60** (the phone test's reports, `speedtest=watch`:
+  the frames' spacing only, no one-pixel reads). A test that waits for the GPU
+  each frame leaves it idle between pictures and iOS lowers its clock: the
+  quick test's own measuring dropped the phone from 60 to 30 ten seconds in,
+  and every "time of a picture" after the first was taken at the lower clock
+  (≈ 25 ms where the first read 12–14). Watching only, held at 60: 55–66
+  frames a second walking and in the boat; at its own pace the game tried 60
+  twice and dropped it after 5 s and 1 s (the try rule above, since changed).
+  The map in a frame of another page also lost its focus for a minute and a
+  half (10 frames a second) with a finger on the screen: a tap or a key now
+  counts as the page in use (main.ts).
 - **No multisampling on the canvas** (main.ts, every level): the scene is
   drawn into the post effects' targets (multisampled as the level says), and
   the canvas gets only their last full-screen pass, with no edges to smooth;

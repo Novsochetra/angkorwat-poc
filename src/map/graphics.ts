@@ -620,24 +620,37 @@ export function setBatterySaver(on: boolean): void {
 }
 
 const RATE_KEY = 'angkor-map-phone-fps';
-/** A try at 60 this young (s at the rate) is judged in windows of 1 s, not 2 ({@link PhoneFrameRate}). */
-const FRESH_TRY = 6;
-/** A fresh try's window under this many frames a second drops to 30 at once: it cannot keep 60 (two windows of 1 s under 52 drop it too). */
-const CLEARLY_SLOW = 40;
+/**
+ * A try at 60 is not judged in its first this many seconds ({@link PhoneFrameRate}): iOS raises the GPU's clock only
+ * after a few seconds of full load (an iPhone 14 Pro held at 60 went 39 → 55 → 66 frames a second, 10 s each).
+ */
+const SETTLE = 8;
+/** After that, judged in windows of this many seconds. */
+const WINDOW = 3;
+/** Two windows in a row under this many frames a second drop to 30. */
+const KEEP = 42;
 /**
  * A phone's frame rate: 60 while the phone keeps up, else an even 30, and 60
  * tried again later. Phones differ a lot (a new iPhone draws a walk in about
  * 15 ms, a mid Android in 50), and one phone differs with the view (the
- * overview draws twice a walk's triangles) and with its heat. It watches
- * full-pace frames in windows of 2 s: two windows in a row under 52 frames
- * a second at 60 (one frame in about eight missing its refresh), and it
- * drops to 30. A try in its first {@link FRESH_TRY} s is judged in windows
- * of 1 s (two in a row under 52 drop it), and one under {@link CLEARLY_SLOW}
- * frames a second drops at once (a phone that cannot keep 60 showed 4 s of
- * uneven frames at every try, now 1–2). At 30 a frame's own cost cannot be seen (every frame waits
- * for its turn), so after {@link wait} s of frames it tries 60 again; a try
- * that drops at once doubles the wait (20 s, then 40 … up to 5 min), one
- * that held a while starts it over. Roaming starting or ending tries at once
+ * overview draws twice a walk's triangles) and with its heat.
+ *
+ * At 60 it watches full-pace frames: a try is left alone for its first
+ * {@link SETTLE} s, then judged in windows of {@link WINDOW} s, and two in a
+ * row under {@link KEEP} frames a second drop it to 30. It was quicker (one
+ * window of 1 s under 40, or two under 52), and on an iPhone that was the
+ * trouble: at 30 iOS lowers the GPU's clock (a frame has twice the time), a
+ * try at 60 then starts slow (≈ 39 frames a second) and was dropped before
+ * the clock came up again, so the phone stayed at 30 for good with a frame
+ * late every second or so, while held at 60 the same phone walked at 55–66,
+ * frames 15–17 ms apart, and its owner found it smoother (the phone test,
+ * November 2026). Between 42 and 60 a 60 Hz screen shows some frames twice;
+ * still smoother than 30.
+ *
+ * At 30 a frame's own cost cannot be seen (every frame waits for its turn),
+ * so after {@link wait} s of frames it tries 60 again; a try that drops as
+ * soon as it can doubles the wait (30 s, then 60 … up to 5 min), one that
+ * held a while starts it over. Roaming starting or ending tries at once
  * ({@link retry}: a walk is lighter than the overview). The last rate is kept
  * for this phone: the next visit starts with it. It waits while the level can
  * still lower its own resolution (medium: main.ts), as auto's watch does.
@@ -645,7 +658,7 @@ const CLEARLY_SLOW = 40;
 export class PhoneFrameRate {
   fps: 30 | 60;
   /** Seconds at 30 before 60 is tried again. */
-  wait = 20;
+  wait = 30;
   private time = 0;
   private frames = 0;
   private slow = 0;
@@ -685,18 +698,17 @@ export class PhoneFrameRate {
       this.use(60);
       return true;
     }
+    // (a fresh try is left alone while the GPU's clock comes up)
+    if (this.age < SETTLE) return false;
     this.time += dt;
     this.frames++;
-    // (a fresh try is judged in windows of 1 s, and one clearly too slow drops at once: a phone that cannot keep 60
-    // showed uneven frames for 4 s at every try, every 20 s at first and each time roaming started or ended)
-    const fresh = this.age < FRESH_TRY;
-    if (this.time < (fresh ? 1 : 2)) return false;
+    if (this.time < WINDOW) return false;
     const avg = this.time / this.frames;
     this.time = this.frames = 0;
-    this.slow = settled && avg > 1 / 52 ? this.slow + 1 : 0;
-    if (this.slow < 2 && !(fresh && settled && avg > 1 / CLEARLY_SLOW)) return false;
-    // (a try that dropped within its first windows: wait longer; one that held a while: soon again)
-    this.wait = this.age < 8 ? Math.min(300, this.wait * 2) : 20;
+    this.slow = settled && avg > 1 / KEEP ? this.slow + 1 : 0;
+    if (this.slow < 2) return false;
+    // (a try that dropped as soon as it could: wait longer; one that held a while: soon again)
+    this.wait = this.age < SETTLE + 3 * WINDOW ? Math.min(300, this.wait * 2) : 30;
     this.use(30);
     return true;
   }
