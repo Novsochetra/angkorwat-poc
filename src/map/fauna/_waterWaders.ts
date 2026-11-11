@@ -258,14 +258,13 @@ export function buildWaders(field: HeightField, extra: LakeBirds | null = null):
           const water = Math.atan2(p.dz * b.spot.side, -p.dx * b.spot.side);
           const back = along + Math.PI;
           yaw = water;
-          if (still < 0.5)
-            for (const [at, ya, yb] of [
-              [0, water, along],
-              [0.22, along, water],
-              [0.5, water, back],
-              [0.72, back, water],
-            ])
-              if (k >= at) yaw = ya + angleTo(ya, yb) * smooth(at, at + 0.04, k);
+          // (the turns, each from where the last ended; written out: a list of them was four arrays a bird a frame)
+          if (still < 0.5) {
+            yaw = water + angleTo(water, along) * smooth(0, 0.04, k);
+            if (k >= 0.22) yaw = along + angleTo(along, water) * smooth(0.22, 0.26, k);
+            if (k >= 0.5) yaw = water + angleTo(water, back) * smooth(0.5, 0.54, k);
+            if (k >= 0.72) yaw = back + angleTo(back, water) * smooth(0.72, 0.76, k);
+          }
           leg = 0.32 * Math.sin(s * Math.PI * 2 * 0.9) * walking;
           // Watching the water, a stab at a fish, a preen.
           const watch = window01(0.26, 0.5, 0.03, k) + window01(0.76, 1, 0.03, k) * 0.7;

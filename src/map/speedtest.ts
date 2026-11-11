@@ -19,12 +19,18 @@
  * `speedtest=quick` measures only the map as it plays, in turns (frames a
  * second, then the time of a picture), for comparing two builds on a phone.
  *
+ * Framed by another page (the phone test page), it reports to it with
+ * `postMessage` ({@link report}): the device, each test's results, and while
+ * he plays, every 10 s, the drawn frames' spacing and the draw call's time,
+ * apart for frames with a finger on the screen (the stick, a drag) and
+ * without; the page saves them for Claude to read.
+ *
  * Use it with `fps=60` (no drop to 30) and a graphics level held
  * (`graphics=low`), else auto changes the level meanwhile. Nothing of it
  * loads without the URL value (main.ts imports it then only).
  */
 import type { Light, Object3D, WebGLRenderer } from 'three';
-import posthog, { isPostHogConfigured } from '../posthog';
+import { SHORT } from './shortView';
 import type { MapFrame, MapPart } from './types';
 
 interface Step {
@@ -80,6 +86,27 @@ const middleMean = (xs: number[]) => {
   return mid.reduce((a, b) => a + b, 0) / mid.length;
 };
 
+/** Tell the page that frames this one (the phone test page saves it); nothing when not framed. */
+function report(kind: string, data: Record<string, unknown>): void {
+  if (!FRAMED) return;
+  try {
+    // (plain numbers only: NaN and Infinity become null)
+    window.parent.postMessage({ angkorSpeedtest: 1, kind, data: JSON.parse(JSON.stringify(data)) }, '*');
+  } catch {
+    /* not reachable */
+  }
+}
+
+/** Each drawn frame while the log runs: when it began (ms), the draw call's time (ms), a finger on the screen. */
+const log = { at: [] as number[], cpu: [] as number[], touch: [] as boolean[] };
+/** The phone's frame rate (graphics.ts `PhoneFrameRate`) each time it changed: [s since the page opened, fps]. */
+const rates: [number, number][] = [];
+let rateNow = 0;
+let fingers = 0;
+let testing = false;
+/** The page is framed by another (the phone test page): the frames are logged and reported. */
+const FRAMED = window.parent !== window;
+
 /** Times of the pictures drawn while `taking` (ms each: the map drawn, then a one-pixel read that waits for the GPU). */
 let taking: number[] | null = null;
 function timePictures(): void {
@@ -88,13 +115,87 @@ function timePictures(): void {
   const px = new Uint8Array(4);
   const render = w.post.render.bind(w.post);
   w.post.render = (f) => {
-    if (!taking) return render(f);
     const s = performance.now();
     render(f);
+    if (FRAMED) {
+      const r = (window as unknown as { __phoneRate?: { fps: number } }).__phoneRate?.fps ?? 0;
+      if (r !== rateNow) rates.push([Math.round(s / 100) / 10, (rateNow = r)]);
+      log.at.push(s);
+      log.cpu.push(performance.now() - s);
+      log.touch.push(fingers > 0);
+    }
+    if (!taking) return;
     r.setRenderTarget(null);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
     taking.push(performance.now() - s);
   };
+}
+
+const pick = (xs: number[], q: number): number => {
+  if (!xs.length) return NaN;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor(s.length * q))];
+};
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+/** The frames of the last 10 s, with a finger on the screen and without: their spacing (ms) and the draw call's time. */
+function frameStats(gaps: number[], cpus: number[]) {
+  return {
+    frames: gaps.length,
+    gapP50: r1(pick(gaps, 0.5)),
+    gapP90: r1(pick(gaps, 0.9)),
+    gapP99: r1(pick(gaps, 0.99)),
+    gapMax: r1(pick(gaps, 1)),
+    // (at 30 a second a frame is due every 33.3 ms: past 40 one refresh was missed, past 70 two or more)
+    late: gaps.filter((g) => g > 40).length,
+    veryLate: gaps.filter((g) => g > 70).length,
+    drawP50: r1(pick(cpus, 0.5)),
+    drawP90: r1(pick(cpus, 0.9)),
+    // (the draw call's slowest: a shader compiled or a buffer sent then shows here)
+    drawMax: r1(pick(cpus, 1)),
+  };
+}
+
+/** Every 10 s while the page is framed: the drawn frames' spacing, a finger on the screen apart. */
+function watchFrames(): void {
+  if (!FRAMED) return;
+  const touchy = (e: PointerEvent) => e.pointerType === 'touch';
+  addEventListener('pointerdown', (e) => touchy(e) && fingers++, true);
+  const up = (e: PointerEvent) => touchy(e) && (fingers = Math.max(0, fingers - 1));
+  addEventListener('pointerup', up, true);
+  addEventListener('pointercancel', up, true);
+  const cam = (w as unknown as { camera?: { position: { x: number; y: number; z: number }; far: number } }).camera;
+  let p0 = cam ? { x: cam.position.x, z: cam.position.z } : null;
+  setInterval(() => {
+    const n = log.at.length;
+    if (n < 3) return;
+    const gaps = { on: [] as number[], off: [] as number[] };
+    const cpus = { on: [] as number[], off: [] as number[] };
+    for (let i = 1; i < n; i++) {
+      const k = log.touch[i] ? 'on' : 'off';
+      gaps[k].push(log.at[i] - log.at[i - 1]);
+      cpus[k].push(log.cpu[i]);
+    }
+    const span = (log.at[n - 1] - log.at[0]) / 1000;
+    const roam = (w as unknown as { roam?: { active: boolean; mode: string } }).roam;
+    const moved = cam && p0 ? Math.hypot(cam.position.x - p0.x, cam.position.z - p0.z) : 0;
+    if (cam) p0 = { x: cam.position.x, z: cam.position.z };
+    report('frames', {
+      fps: r1((n - 1) / Math.max(span, 1e-3)),
+      cap: w.__loop?.fps ?? null,
+      loop: w.__loop?.mode ?? null,
+      testing,
+      mode: roam?.active ? roam.mode : 'overview',
+      moved: Math.round(moved),
+      far: cam?.far ?? null,
+      touching: frameStats(gaps.on, cpus.on),
+      still: frameStats(gaps.off, cpus.off),
+      // (the phone's rate changes in this window, and the cap held by `fps=`, if any)
+      rates: rates.splice(0),
+    });
+    // (the last frame starts the next window's first gap)
+    for (const a of [log.at, log.cpu, log.touch] as unknown[][]) a.splice(0, n - 1);
+  }, 10_000);
 }
 
 /** One slice: settle, then the pictures' time and the loop's frames a second. */
@@ -162,9 +263,19 @@ function steps(panel: HTMLElement): Step[] {
     },
     { label: 'No grass, rice, trees', apply: () => hideParts((n) => n === 'vegetation' || n === 'undergrowth' || n === 'paddies' || n === 'jungle') },
     { label: 'No people, animals', apply: () => hideParts((n) => ['people', 'fauna', 'wildlife', 'jungleFauna', 'life'].includes(n)) },
-    { label: 'No mist, clouds', apply: () => hideParts((n) => n === 'clouds') },
     { label: 'No water', apply: () => hideParts((n) => n === 'water') },
-    { label: 'No temples, houses', apply: () => hideParts((n) => n.startsWith('landmark') || ['village', 'hamlet', 'camps', 'treasure', 'path'].includes(n)) },
+    { label: 'No temples', apply: () => hideParts((n) => n.startsWith('landmark')) },
+    { label: 'No houses, stalls, road', apply: () => hideParts((n) => ['village', 'hamlet', 'camps', 'treasure', 'path', 'blocks'].includes(n)) },
+    { label: 'No explorer', apply: () => hideParts((n) => n === 'foreground') },
+    // (with Short view in: nothing past this many metres drawn, the haze as it is)
+    ...[150, 100].map((m) => ({
+      label: `View to ${m} m`,
+      apply() {
+        const was = SHORT.far;
+        SHORT.far = m;
+        return () => (SHORT.far = was);
+      },
+    })),
     { label: 'No ground', apply: () => hideParts((n) => n === 'terrain') },
     {
       label: 'No buttons on screen',
@@ -184,16 +295,6 @@ function steps(panel: HTMLElement): Step[] {
         return () => css.remove();
       },
     },
-    {
-      label: 'No PostHog recording',
-      apply() {
-        const was = isPostHogConfigured && posthog.sessionRecordingStarted();
-        if (was) posthog.stopSessionRecording();
-        return () => {
-          if (was) posthog.startSessionRecording();
-        };
-      },
-    },
     { label: 'Only the sky', apply: () => hideParts((n) => n !== 'atmosphere') },
   ];
 }
@@ -202,6 +303,21 @@ function steps(panel: HTMLElement): Step[] {
 async function framesAgain(): Promise<void> {
   const d = drawn();
   while (drawn() < d + 3) await wait(50);
+}
+
+/**
+ * `speedtest=watch`: no test, no wait for the GPU (a test's one-pixel reads
+ * leave the GPU idle between pictures, and iOS then lowers its clock): only
+ * the frames' spacing is reported (framed by the phone test page) while the
+ * map plays as it would, at its own frame rate.
+ */
+export function watchSpeed(): void {
+  timePictures();
+  const gl = w.renderer.getContext();
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+  report('hello', { device: `${gpu.slice(0, 60)} · dpr ${devicePixelRatio} · canvas ${w.renderer.domElement.width}×${w.renderer.domElement.height} · level ${w.graphicsNow.level}`, quick: false, watch: true, ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], url: location.search });
+  watchFrames();
 }
 
 export function startSpeedTest(quick = false): void {
@@ -220,7 +336,7 @@ export function startSpeedTest(quick = false): void {
 
   let running = false;
   const run = async () => {
-    running = true;
+    running = testing = true;
     const list = steps(panel);
     const results: Result[] = [];
     const firsts: Slice[] = [];
@@ -258,13 +374,14 @@ export function startSpeedTest(quick = false): void {
       show('');
     }
     w.__speedtest = { device: device(), base: firsts[0], results };
+    report('full', { device: device(), base: firsts[0], results });
     console.table(results.map((r) => ({ step: r.label, baseMs: r.base.ms, withMs: r.with.ms, baseFps: r.base.fps, withFps: r.with.fps })));
     show('Done. Take a screenshot. Tap here to run again.');
-    running = false;
+    running = testing = false;
   };
   /** The quick test: the map as it plays, frames a second (no wait for the GPU) and the time of a picture in turns. */
   const runQuick = async () => {
-    running = true;
+    running = testing = true;
     const fps: number[] = [];
     const ms: number[] = [];
     const show = (now: string) => {
@@ -281,8 +398,9 @@ export function startSpeedTest(quick = false): void {
       ms.push((await slice()).ms);
     }
     console.info(`[speedtest] quick: ${median(fps).toFixed(1)} fps, ${median(ms).toFixed(1)} ms a picture`, { fps, ms });
+    report('quick', { device: device(), fps: r1(median(fps)), ms: r1(median(ms)), fpsAll: fps.map(r1), msAll: ms.map(r1) });
     show('Done. Take a screenshot. Tap here to run again.');
-    running = false;
+    running = testing = false;
   };
   panel.onclick = () => {
     if (!running) void (quick ? runQuick() : run());
@@ -301,5 +419,13 @@ export function startSpeedTest(quick = false): void {
     await wait(START_AFTER_MS);
     if (!running) await (quick ? runQuick() : run());
   };
+  report('hello', {
+    device: device(),
+    quick,
+    ua: navigator.userAgent,
+    screen: [screen.width, screen.height, devicePixelRatio],
+    url: location.search,
+  });
+  watchFrames();
   void begin();
 }

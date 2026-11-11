@@ -150,6 +150,11 @@ export const SACRED_LAMPS: SacredLamp[] = [];
 
 const tmp = new Vector3();
 const near: { lamp: SacredLamp; d: number }[] = [];
+/** The lamps' slots for {@link near} (kept: no object a lamp a call). */
+const pool: { lamp: SacredLamp; d: number }[] = [];
+/** What the last call put the lights in for: the camera's world matrix, the night, how many lamps, the material. */
+const lastView = new Float64Array(18).fill(NaN);
+let lastMaterial: MeshStandardMaterial | null = null;
 
 /**
  * Puts the lamps nearest the camera into the statues' shader (view space),
@@ -158,11 +163,27 @@ const near: { lamp: SacredLamp; d: number }[] = [];
  */
 export function updateSacredLights(camera: Camera, night: number): void {
   camera.updateMatrixWorld();
+  // (every part with statues asks, once a frame each: the same camera and night give the same lights)
+  const e = camera.matrixWorld.elements;
+  let same = lastView[16] === night && lastView[17] === SACRED_LAMPS.length && lastMaterial === material;
+  for (let i = 0; same && i < 16; i++) same = lastView[i] === e[i];
+  if (same) return;
+  for (let i = 0; i < 16; i++) lastView[i] = e[i];
+  lastView[16] = night;
+  lastView[17] = SACRED_LAMPS.length;
+  lastMaterial = material;
   const cam = camera.position;
   near.length = 0;
   for (const lamp of SACRED_LAMPS) {
-    const d = Math.hypot(lamp.x - cam.x, lamp.y - cam.y, lamp.z - cam.z);
-    if (d < 80) near.push({ lamp, d });
+    const dx = lamp.x - cam.x;
+    const dy = lamp.y - cam.y;
+    const dz = lamp.z - cam.z;
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (d >= 80) continue;
+    const it = pool[near.length] ?? (pool[near.length] = { lamp, d });
+    it.lamp = lamp;
+    it.d = d;
+    near.push(it);
   }
   near.sort((a, b) => a.d - b.d);
   for (let i = 0; i < MAX_LAMPS; i++) {
@@ -179,7 +200,7 @@ export function updateSacredLights(camera: Camera, night: number): void {
     const fade = Math.min(1, Math.max(0, (80 - it.d) / 20));
     lampCol[i].set(l.color[0] * k * fade, l.color[1] * k * fade, l.color[2] * k * fade);
   }
-  material?.setValues({ envMapIntensity: 1 - 0.7 * night });
+  if (material) material.envMapIntensity = 1 - 0.7 * night;
 }
 
 // ── The material ──────────────────────────────────────────────────────────

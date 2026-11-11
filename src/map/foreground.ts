@@ -7,7 +7,8 @@ import { hash3 } from '../voxel/random';
 import { type VoxelBox, VoxelBuilder } from '../voxel/VoxelBuilder';
 import { skipBackFacets } from '../voxel/backFacets';
 import { buildVoxelMesh } from '../voxel/VoxelMesh';
-import { graphicsNow, pixelSize, STILL_LAYER } from './graphics';
+import { graphicsNow, PHONE, pixelSize, STILL_LAYER } from './graphics';
+import { HeroBatch } from './heroBatch';
 import { len2 } from './fauna/_len';
 import { EXPLORER_SPOT, OVERVIEW } from './layout';
 import type { RoamWorld } from './roam/types';
@@ -41,8 +42,19 @@ const FOOT = { radius: 0.45, dark: 0.72, lean: 1.8, fadeFrom: 0.15, fadeTo: 2.5 
  * A walk on a 2× screen, the selfie, the camera, the explorer menu keep two
  * steps; the overview, a walk at 1× and a phone's (medium: 1.4 px) take one.
  * `heropx=<px>` in the URL sets `px` (0: two steps always, to compare).
+ *
+ * On low (the map's blocks plain boxes) one step, and plain boxes (12
+ * triangles a block, the hidden sides left out: about a quarter of one
+ * step's) where his rounding spans under `plainPx` pixels: a walk on a phone
+ * (≈ 0.9 px with the camera 7.4 m from his chest on 390 px), the overview's
+ * ledge; the camera closer than ≈ 4.5 m (the selfie, the camera close up, the
+ * explorer menu, the follow camera pushed in by a wall) keeps the step. A phone walk on low drew
+ * him in ≈ 0.09 M triangles, a tenth of its picture. On a phone the limit is
+ * 3.5 px (one step only with the camera within ≈ 2 m: the selfie, the explorer
+ * menu): the follow camera pushed in by a stall drew him in ≈ 0.15 M triangles,
+ * a tenth of the frame. `heroplain=0` in the URL keeps the step (to compare).
  */
-const ROUND = { px: 2, hold: 0.1, reach: 1.2 };
+const ROUND = { px: 2, hold: 0.1, reach: 1.2, plainPx: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('heroplain') === '0' ? 0 : PHONE ? 3.5 : 1.5 };
 
 /**
  * The foreground: a mossy sandstone ledge close to the camera, bottom left,
@@ -56,6 +68,8 @@ export interface Foreground extends MapPart {
   feet: Vector3;
   /** Facing on the ledge (radians, like `rotation.y`). */
   yaw: number;
+  /** His blocks in a few draws while he roams on low (heroBatch.ts). */
+  heroBatch: HeroBatch;
   /** The explorer leaves the ledge to roam (true), or is back (false): the ledge stops / starts driving him. */
   release(roaming: boolean): void;
   /** The roaming world (floors, steps, bridges, water): what the disc under his feet lies on, where shadows are still (main.ts). */
@@ -154,25 +168,36 @@ export function buildForeground(ctx: MapContext): Foreground {
   };
   let roundR = explorer.setRounding(null, facing);
   let oneStep = false;
+  let plainHero = false;
   const eye = new Vector3();
   const chest = new Vector3();
-  /** One rounding step or two for his blocks this frame (medium and up), by how many pixels his largest rounding spans. */
-  function roundHero(camera: PerspectiveCamera): void {
-    // (low: one step, as graphics.ts swaps his blocks there; it makes them plain boxes far off)
-    if (graphicsNow.plainBlocks) {
-      roundR = explorer.setRounding(1, facing);
-      return;
-    }
+  /** How many pixels his largest rounding spans now, from the nearest of him. */
+  function roundingPx(camera: PerspectiveCamera): number {
     const s = explorer.object.getWorldScale(chest).x;
     eye.setFromMatrixPosition(camera.matrixWorld);
     explorer.rig.joints.chest.getWorldPosition(chest);
     const d = Math.max(0.05, chest.distanceTo(eye) - ROUND.reach * s);
-    const px = (roundR * s) / (d * pixelSize(camera));
+    return (roundR * s) / (d * pixelSize(camera));
+  }
+  /** One rounding step or two for his blocks this frame (medium and up), by how many pixels his largest rounding spans; on low one step or plain boxes. */
+  function roundHero(camera: PerspectiveCamera): void {
+    // (low: one step, as graphics.ts swaps his blocks there (it makes them plain boxes far off); plain boxes where his
+    // rounding spans under `ROUND.plainPx`, the map's own blocks there being plain boxes too: ROUND)
+    if (graphicsNow.plainBlocks) {
+      plainHero = ROUND.plainPx > 0 && roundingPx(camera) < ROUND.plainPx * (plainHero ? 1 : 1 - ROUND.hold);
+      roundR = explorer.setRounding(plainHero ? 0 : 1, facing);
+      return;
+    }
+    plainHero = false;
+    const px = roundingPx(camera);
     oneStep = roundPx > 0 && px < roundPx * (oneStep ? 1 : 1 - ROUND.hold);
     roundR = explorer.setRounding(oneStep ? 1 : null, facing);
   }
   const foot = footShadow();
   object.add(foot);
+  // Roaming on low, his blocks are drawn from a few batches, a draw per family (heroBatch.ts): ≈ 49 draws → ≈ 15.
+  const batch = new HeroBatch(explorer.object);
+  object.add(batch.object);
   let world: RoamWorld | null = null;
   const footOn = new URLSearchParams(location.search).get('foot') !== '0';
   /** The disc under his feet (still shadows: low and medium; roaming): on the floor under him, fading as he goes up; none in the boat or the balloon, nor over water. */
@@ -216,6 +241,7 @@ export function buildForeground(ctx: MapContext): Foreground {
     feet,
     yaw,
     blocks: b.boxes.length,
+    heroBatch: batch,
     release(on) {
       roaming = on;
     },
@@ -236,6 +262,13 @@ export function buildForeground(ctx: MapContext): Foreground {
       }
       // (after what changed his blocks this frame: roaming moved him first, main.ts)
       roundHero(f.camera);
+    },
+    beforeRender() {
+      // (low, roaming: his shadows are none there — still shadows, the disc under his feet —, so the batch casts nothing)
+      batch.beforeRender(roaming && graphicsNow.plainBlocks && graphicsNow.stillShadows);
+    },
+    afterRender() {
+      batch.afterRender();
     },
   };
 }

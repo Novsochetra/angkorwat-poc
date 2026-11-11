@@ -1,7 +1,8 @@
 import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3, type Camera, type Light, type Scene } from 'three';
-import { dealStillParts, graphicsNow, STILL_LAYER, STILL_PART_LAYER, STILL_TURN, stillView } from './graphics';
+import { dealStillParts, graphicsNow, PHONE, STILL_LAYER, STILL_PART_LAYER, STILL_TURN, stillView } from './graphics';
 import { MAP_BOUNDS } from './layout';
 import { CAM_REACH, ROAM_AREA } from './terrain/views';
+import { SHORT_NOW } from './shortView';
 import { skipDarkLights } from './sky/darkLights';
 import { HAZE, installHaze } from './sky/haze';
 import { buildLandMap } from './sky/mist';
@@ -32,7 +33,8 @@ import type { MapContext, MapFrame, MapPart } from './types';
  *   `shadow.radius`: uniforms, no redraw).
  * - The still shadows of the low and medium levels (graphics.ts) are drawn
  *   again only once the light has turned {@link STILL_TURN} (with the day's
- *   cycle about every second at dusk and dawn), and then over 10–12 frames:
+ *   cycle about every second at dusk and dawn), and then over 10–12 frames
+ *   (on a phone up to 28: parts of ≈ 0.1 M triangles):
  *   the next map is drawn a part of the casters a frame (graphics.ts
  *   `dealStillParts`, ≈ 0.3 M triangles each on low, 0.8–0.9 M on medium)
  *   while the one shown stays, and the two swap — the light turning with
@@ -71,6 +73,27 @@ const SHADOW_BOX = {
   roam: { x0: MAP_BOUNDS.x0, x1: ROAM_AREA.x1 + CAM_REACH * 0.75, y0: -4, y1: 175, z0: ROAM_AREA.z0 - CAM_REACH / 2, z1: MAP_BOUNDS.z1 },
 };
 type ShadowBox = (typeof SHADOW_BOX)['overview'];
+/**
+ * With Short view in (shortView.ts: on the ground, nothing drawn past 260 m),
+ * the still shadows are drawn over a box this many metres each way round the
+ * camera, not the whole roaming area (≈ 1,300 × 900 m), and the box is moved
+ * (the map drawn again, a part a frame) once the camera is `move` m from its
+ * middle. A redraw then draws the casters of a fifth of the area or less
+ * (what lies past the haze casts nothing anyone sees), and the map's texels
+ * cover less ground (sharper shadows near him). Casters just outside the box
+ * leave their long dusk shadows out where the haze has the land already.
+ */
+const NEAR_BOX = { half: 320, move: 80 };
+/**
+ * On a phone with Short view in, the still shadows are drawn again once the
+ * light has turned this far (radians, 1°), not {@link STILL_TURN}: with the
+ * day's cycle the sun turns 0.3° about every 1.4 s, so a redraw (a part a
+ * frame, ≈ 0.14 M triangles on a picture of ≈ 0.8 M) was under way in about
+ * two frames of five, and an iPhone 14 Pro at ≈ 28 frames a second missed its
+ * 30 there. A degree is a step of a few centimetres at a house's shadow; the
+ * long mesa shadows that move most lie in the haze.
+ */
+const PHONE_SHORT_TURN = 1 * (Math.PI / 180);
 
 export function buildAtmosphere(ctx: MapContext): Atmosphere {
   const params = new URLSearchParams(location.search);
@@ -114,8 +137,10 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   const corner = new Vector3();
   const centre = new Vector3();
   const fitted = new Vector3(0, 0, 0);
-  let box = SHADOW_BOX.overview;
+  let box: ShadowBox = SHADOW_BOX.overview;
   let fittedBox: ShadowBox | null = null;
+  /** The box round the camera while Short view is in (NEAR_BOX), null else. */
+  let nearBox: ShadowBox | null = null;
   /** Point `light` along `dir` at the middle of `on`, its shadow camera fitted round the box as the light sees it. */
   function aim(light: DirectionalLight, dir: Vector3, on: ShadowBox): void {
     centre.set((on.x0 + on.x1) / 2, (on.y0 + on.y1) / 2, (on.z0 + on.z1) / 2);
@@ -198,7 +223,7 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
     nextBox = box;
     next.shadow.mapSize.copy(key.shadow.mapSize);
     aim(next, dir, box);
-    parts = dealStillParts(ctx.scene, steps);
+    parts = dealStillParts(ctx.scene, steps, box === nearBox ? box : undefined);
     part = 0;
   }
   /** No next map (a level without still shadows, a new size): its target freed. */
@@ -298,24 +323,33 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
         shadowDirty = true;
       }
       frames++;
-      // (the box for what the camera sees now: roaming or not, drawn again when it changes)
-      const want = f.roam === 'overview' ? SHADOW_BOX.overview : SHADOW_BOX.roam;
+      // (the box for what the camera sees now: roaming or not, round him with Short view in; drawn again when it changes)
+      let want: ShadowBox = f.roam === 'overview' ? SHADOW_BOX.overview : SHADOW_BOX.roam;
+      if (f.roam !== 'overview' && SHORT_NOW.on) {
+        const { x, z } = SHORT_NOW;
+        if (!nearBox || Math.hypot(x - (nearBox.x0 + nearBox.x1) / 2, z - (nearBox.z0 + nearBox.z1) / 2) > NEAR_BOX.move) {
+          const h = NEAR_BOX.half;
+          nearBox = { x0: x - h, x1: x + h, y0: SHADOW_BOX.roam.y0, y1: SHADOW_BOX.roam.y1, z0: z - h, z1: z + h };
+        }
+        want = nearBox;
+      } else nearBox = null;
       if (want !== box) {
         box = want;
         shadowDirty = true;
       }
       // Still shadows, live, over a map already shown: the next one is drawn over the next frames (the render hook above).
       spread = live && graphicsNow.stillShadows && key.shadow.map !== null;
+      const turn = PHONE && box === nearBox ? PHONE_SHORT_TURN : STILL_TURN;
       if (spread) {
         if (parts > 0 && part >= parts) swapNext();
-        if (shadowDirty || (parts === 0 && frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN)) {
+        if (shadowDirty || (parts === 0 && frames >= 3 && fitted.angleTo(s.keyDir) > turn)) {
           startNext(s.keyDir);
           frames = 0;
         }
         shadowDirty = false;
       } else {
         if (parts > 0 || next.shadow.map) dropNext();
-        const redraw = !live || (graphicsNow.stillShadows ? frames >= 3 && fitted.angleTo(s.keyDir) > STILL_TURN : frames >= graphicsNow.shadowEvery);
+        const redraw = !live || (graphicsNow.stillShadows ? frames >= 3 && fitted.angleTo(s.keyDir) > turn : frames >= graphicsNow.shadowEvery);
         if (redraw || shadowDirty) {
           fitShadow(s.keyDir);
           frames = 0;

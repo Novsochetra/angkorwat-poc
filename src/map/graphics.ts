@@ -32,7 +32,8 @@ import { GRAPHICS_LEVELS, type GraphicsLevel, type MapQuality } from './types';
  * was 2.5–5 ms of every third frame (a 9.5 M-triangle pass in the overview).
  * They are drawn again only when the
  * key light turns ({@link STILL_TURN}: with the day's cycle about every
- * second at dusk and dawn), and then a part a frame over 10–12 frames
+ * second at dusk and dawn), and then a part a frame over 10–12 frames (on a
+ * phone up to 28, smaller parts)
  * ({@link dealStillParts}, atmosphere.ts): the whole map in one frame
  * (2.8–3.5 M triangles, ≈ 4–6 ms more on an M1 Max, 20–45 ms on a phone)
  * was a hitch each time; a part is ≈ 0.3 M (0.8–0.9 M on medium). What
@@ -498,21 +499,44 @@ function leanShadowMaps(renderer: WebGLRenderer, lights: Light[]): void {
   }
 }
 
+const _dealC = new Vector3();
+/** Does the mesh's bounding sphere reach into the box (map x, z)? No sphere: it may. */
+function reaches(mesh: Mesh, b: { x0: number; x1: number; z0: number; z1: number }): boolean {
+  const s = (mesh as InstancedMesh).isInstancedMesh ? (mesh as InstancedMesh).boundingSphere : mesh.geometry.boundingSphere;
+  if (!s) return true;
+  _dealC.copy(s.center).applyMatrix4(mesh.matrixWorld);
+  const r = s.radius * mesh.matrixWorld.getMaxScaleOnAxis();
+  const dx = Math.max(b.x0 - _dealC.x, 0, _dealC.x - b.x1);
+  const dz = Math.max(b.z0 - _dealC.z, 0, _dealC.z - b.z1);
+  return dx * dx + dz * dz <= r * r;
+}
+
 /** The layers the view camera sees while the still shadow map is drawn: the still layer, or one part of it (atmosphere.ts). */
 export const stillView = { mask: 1 << STILL_LAYER };
-/** The first of the layers the still casters are dealt into, a part each ({@link dealStillParts}: layers 2‥13). */
+/** The first of the layers the still casters are dealt into, a part each ({@link dealStillParts}: layers 2‥13, 2‥29 on a phone). */
 export const STILL_PART_LAYER = 2;
-/** At most this many parts (a still redraw takes at most this many frames). */
+/** At most this many parts (a still redraw takes at most this many frames); on a phone {@link PHONE_MAX_PARTS}. */
 const MAX_PARTS = 12;
-const PART_BITS = ((1 << MAX_PARTS) - 1) << STILL_PART_LAYER;
+/**
+ * A phone's still redraw in up to this many parts (layers 2‥29), each about
+ * {@link PHONE_PART_WEIGHT}: a part of ≈ 0.3 M triangles on a picture of
+ * 1–1.5 M (a walk on low) was a third more vertex work in each of 10–12
+ * frames, every 1–3 s while the day turns, and a phone at the edge of its
+ * 30 frames a second missed refreshes there: a stutter. Smaller parts spread
+ * the same work over ≈ 1 s (28 frames at 30 a second), ≈ 0.1 M a frame.
+ */
+const PHONE_MAX_PARTS = 28;
+const PART_BITS = ((1 << PHONE_MAX_PARTS) - 1) << STILL_PART_LAYER;
 /**
  * About this much in a part: triangles as built (the pass draws about half
  * of them, leaving out the block sides that face the light:
  * voxel/backFacets.ts), a draw counted as {@link DRAW_WEIGHT} more. The
  * overview's still map is ≈ 5.5 M as built (2.8 M drawn, ≈ 450 draws): 10
  * parts of ≈ 0.28 M; a walk's (the roaming box) 6–6.5 M (3–3.5 M): 11–12.
+ * On a phone {@link PHONE_PART_WEIGHT}: 28 parts of ≈ 0.1 M drawn.
  */
 const PART_WEIGHT = 550_000;
+const PHONE_PART_WEIGHT = 200_000;
 const DRAW_WEIGHT = 2_000;
 const dealt: Object3D[] = [];
 const weights: number[] = [];
@@ -526,18 +550,20 @@ const load: number[] = [];
  * far), so a still shadow map can be drawn a part a frame: the view camera
  * sees one part's layer ({@link stillView}) while the pass runs. Every
  * object loses the part it had (the explorer leaving his ledge is no longer
- * still). `parts`: how many (0: as many as their size needs, at most 12).
+ * still). `parts`: how many (0: as many as their size needs, at most 12, 28 on a phone);
+ * `within`: only casters whose bounds reach into this box (map x, z: the box
+ * round the camera with Short view in, atmosphere.ts `NEAR_BOX`), the rest in no part.
  * Returns the number of parts. A walk over the scene (≈ 2,700 objects),
  * ≈ 0.2 ms on an M1 Max, once a redraw.
  */
-export function dealStillParts(scene: Object3D, parts = 0): number {
+export function dealStillParts(scene: Object3D, parts = 0, within?: { x0: number; x1: number; z0: number; z1: number }): number {
   dealt.length = weights.length = order.length = 0;
   let total = 0;
   const visit = (o: Object3D, shown: boolean): void => {
     o.layers.mask &= ~PART_BITS;
     const on = shown && o.visible;
     const mesh = o as Mesh;
-    if (on && mesh.isMesh && mesh.castShadow && o.layers.isEnabled(STILL_LAYER)) {
+    if (on && mesh.isMesh && mesh.castShadow && o.layers.isEnabled(STILL_LAYER) && (!within || reaches(mesh, within))) {
       const g = mesh.geometry;
       const count = (mesh as InstancedMesh).isInstancedMesh ? (mesh as InstancedMesh).count : 1;
       const w = ((g.index ? g.index.count : (g.getAttribute('position')?.count ?? 0)) / 3) * count + DRAW_WEIGHT;
@@ -550,7 +576,8 @@ export function dealStillParts(scene: Object3D, parts = 0): number {
     for (let i = 0; i < kids.length; i++) visit(kids[i], on);
   };
   visit(scene, true);
-  const n = Math.max(1, Math.min(MAX_PARTS, parts || Math.ceil(total / PART_WEIGHT)));
+  const most = PHONE ? PHONE_MAX_PARTS : MAX_PARTS;
+  const n = Math.max(1, Math.min(most, parts || Math.ceil(total / (PHONE ? PHONE_PART_WEIGHT : PART_WEIGHT))));
   order.sort((a, b) => weights[b] - weights[a]);
   load.length = 0;
   for (let k = 0; k < n; k++) load.push(0);
@@ -594,16 +621,36 @@ export function setBatterySaver(on: boolean): void {
 
 const RATE_KEY = 'angkor-map-phone-fps';
 /**
+ * A try at 60 is not judged in its first this many seconds ({@link PhoneFrameRate}): iOS raises the GPU's clock only
+ * after a few seconds of full load (an iPhone 14 Pro held at 60 went 39 → 55 → 66 frames a second, 10 s each).
+ */
+const SETTLE = 8;
+/** After that, judged in windows of this many seconds. */
+const WINDOW = 3;
+/** Two windows in a row under this many frames a second drop to 30. */
+const KEEP = 42;
+/**
  * A phone's frame rate: 60 while the phone keeps up, else an even 30, and 60
  * tried again later. Phones differ a lot (a new iPhone draws a walk in about
  * 15 ms, a mid Android in 50), and one phone differs with the view (the
- * overview draws twice a walk's triangles) and with its heat. It watches
- * full-pace frames in windows of 2 s: two windows in a row under 52 frames
- * a second at 60 (one frame in about eight missing its refresh), and it
- * drops to 30. At 30 a frame's own cost cannot be seen (every frame waits
- * for its turn), so after {@link wait} s of frames it tries 60 again; a try
- * that drops at once doubles the wait (20 s, then 40 … up to 5 min), one
- * that held a while starts it over. Roaming starting or ending tries at once
+ * overview draws twice a walk's triangles) and with its heat.
+ *
+ * At 60 it watches full-pace frames: a try is left alone for its first
+ * {@link SETTLE} s, then judged in windows of {@link WINDOW} s, and two in a
+ * row under {@link KEEP} frames a second drop it to 30. It was quicker (one
+ * window of 1 s under 40, or two under 52), and on an iPhone that was the
+ * trouble: at 30 iOS lowers the GPU's clock (a frame has twice the time), a
+ * try at 60 then starts slow (≈ 39 frames a second) and was dropped before
+ * the clock came up again, so the phone stayed at 30 for good with a frame
+ * late every second or so, while held at 60 the same phone walked at 55–66,
+ * frames 15–17 ms apart, and its owner found it smoother (the phone test,
+ * November 2026). Between 42 and 60 a 60 Hz screen shows some frames twice;
+ * still smoother than 30.
+ *
+ * At 30 a frame's own cost cannot be seen (every frame waits for its turn),
+ * so after {@link wait} s of frames it tries 60 again; a try that drops as
+ * soon as it can doubles the wait (30 s, then 60 … up to 5 min), one that
+ * held a while starts it over. Roaming starting or ending tries at once
  * ({@link retry}: a walk is lighter than the overview). The last rate is kept
  * for this phone: the next visit starts with it. It waits while the level can
  * still lower its own resolution (medium: main.ts), as auto's watch does.
@@ -611,7 +658,7 @@ const RATE_KEY = 'angkor-map-phone-fps';
 export class PhoneFrameRate {
   fps: 30 | 60;
   /** Seconds at 30 before 60 is tried again. */
-  wait = 20;
+  wait = 30;
   private time = 0;
   private frames = 0;
   private slow = 0;
@@ -651,15 +698,17 @@ export class PhoneFrameRate {
       this.use(60);
       return true;
     }
+    // (a fresh try is left alone while the GPU's clock comes up)
+    if (this.age < SETTLE) return false;
     this.time += dt;
     this.frames++;
-    if (this.time < 2) return false;
+    if (this.time < WINDOW) return false;
     const avg = this.time / this.frames;
     this.time = this.frames = 0;
-    this.slow = settled && avg > 1 / 52 ? this.slow + 1 : 0;
+    this.slow = settled && avg > 1 / KEEP ? this.slow + 1 : 0;
     if (this.slow < 2) return false;
-    // (a try that dropped within its first windows: wait longer; one that held a while: soon again)
-    this.wait = this.age < 8 ? Math.min(300, this.wait * 2) : 20;
+    // (a try that dropped as soon as it could: wait longer; one that held a while: soon again)
+    this.wait = this.age < SETTLE + 3 * WINDOW ? Math.min(300, this.wait * 2) : 30;
     this.use(30);
     return true;
   }

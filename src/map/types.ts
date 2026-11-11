@@ -329,6 +329,8 @@ export interface MapSettings {
   resolution: ResolutionChoice;
   /** Battery saver: at most 30 frames a second (graphics.ts `frameCap`; a phone without it: 60 while it keeps up). */
   battery: boolean;
+  /** Short view (shortView.ts): on the ground while roaming the haze closes in and nothing past it is drawn (a phone's frame). */
+  shortView: boolean;
   /** The fog's thickness (sky/fogLevel.ts `fogNow.amount`): 0 clear air … 1 the game's own … 1.5 thick; the edges keep their mist. */
   fogAmount: number;
 }
@@ -362,7 +364,7 @@ export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 export const MOON_PATHS = ['low', 'high'] as const;
 export type MoonPath = (typeof MOON_PATHS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, fogAmount: 1 };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, shortView: false, fogAmount: 1 };
 
 /** The volume settings (sliders), in panel order. */
 export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
@@ -382,6 +384,12 @@ export interface MapPart {
    * picture (e.g. to take a photo of it). Not called in headless shots.
    */
   afterRender?(): void;
+  /**
+   * Called right before each frame's picture is drawn (after every part's
+   * `update`), with `afterRender` right after it: what a part shows only in
+   * the frame's picture (heroBatch.ts). Also in headless shots and videos.
+   */
+  beforeRender?(): void;
   /**
    * The GPU lost the picture (WebGL context lost) and it is back: three has
    * uploaded nothing yet and will upload what it holds (buffers, textures) as

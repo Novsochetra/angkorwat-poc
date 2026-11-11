@@ -91,6 +91,8 @@ export interface MapRoam extends MapPart {
   holdPhotoView(on: boolean): void;
   /** For bug reports: where the explorer is, and URL params that start a shot there (null in the overview). */
   report(): { text: string; params: Record<string, string> } | null;
+  /** A short message over the play while roaming (hud.ts; none in the overview). */
+  toast(text: string): void;
 }
 
 export interface RoamDeps {
@@ -422,6 +424,9 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
     },
     holdPhotoView(on) {
       tools.photo.hold = on ? 0 : null;
+    },
+    toast(text) {
+      hud.toast(text);
     },
     report() {
       if (mode === 'overview') return null;

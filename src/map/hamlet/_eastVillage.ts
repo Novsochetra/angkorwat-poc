@@ -1,7 +1,7 @@
 import { Frustum, Group, Matrix4, Sphere, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
-import { buildVoxelMesh } from '../../voxel/VoxelMesh';
+import { buildVoxelPieces } from './_pieces';
 import { ShadowGate } from '../cull';
 import { EAST_VILLAGE } from '../layout';
 import { pointScale } from '../road/glow';
@@ -60,6 +60,13 @@ const REACH = 82;
 /** Roosters and hens are heard within this of the ears (m). */
 const HEAR = 170;
 
+/** Meshes under a group (a draw each). */
+const draws = (g: Group): number => {
+  let n = 0;
+  g.traverse((o) => void ((o as { isMesh?: boolean }).isMesh && n++));
+  return n;
+};
+
 export function buildEastVillage(ctx: MapContext): HamletPiece {
   const t0 = performance.now();
   const field = ctx.field;
@@ -79,7 +86,8 @@ export function buildEastVillage(ctx: MapContext): HamletPiece {
   const object = new Group();
   object.name = 'eastVillage';
   const quality = ctx.quality === 'low' ? 'low' : 'medium';
-  const blocks = buildVoxelMesh(world, { quality, name: 'eastVillage' });
+  // (in pieces: the half behind the camera and the sides facing away are left out, _pieces.ts)
+  const blocks = buildVoxelPieces(world, { quality, name: 'eastVillage' });
   object.add(blocks);
   const palmSet = palms.build({ name: 'eastVillage:palms' });
   object.add(palmSet.object);
@@ -98,7 +106,7 @@ export function buildEastVillage(ctx: MapContext): HamletPiece {
   registerVillageShop(field);
   const ms = performance.now() - t0;
   console.info(
-    `[map] eastVillage: ${EV_BUILT.size} of ${EV_HOMES.length} houses${EV_BUILT.size < EV_HOMES.length ? ` (left out, their ground unfit: ${EV_HOMES.filter((h) => !EV_BUILT.has(h.id)).map((h) => h.id).join(', ')})` : ''} · ${world.boxes.length} blocks in ${blocks.children.length} draws · ${palms.list.length} palms (${palmSet.pieces} pieces) · ${lights.still.list.length} glows, ${lights.halos.length} halos, ${smoke.length} kitchen fires · ${bridge ? `bridge ${Math.round(Math.hypot(bridge.bx - bridge.ax, bridge.bz - bridge.az))} m` : 'no bridge'} · built in ${ms.toFixed(0)} ms`,
+    `[map] eastVillage: ${EV_BUILT.size} of ${EV_HOMES.length} houses${EV_BUILT.size < EV_HOMES.length ? ` (left out, their ground unfit: ${EV_HOMES.filter((h) => !EV_BUILT.has(h.id)).map((h) => h.id).join(', ')})` : ''} · ${world.boxes.length} blocks in ${draws(blocks)} draws · ${palms.list.length} palms (${palmSet.pieces} pieces) · ${lights.still.list.length} glows, ${lights.halos.length} halos, ${smoke.length} kitchen fires · ${bridge ? `bridge ${Math.round(Math.hypot(bridge.bx - bridge.ax, bridge.bz - bridge.az))} m` : 'no bridge'} · built in ${ms.toFixed(0)} ms`,
   );
 
   const view = new Frustum();

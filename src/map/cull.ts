@@ -88,6 +88,8 @@ export class ShadowGate {
   /** Roots whose new meshes join the gate (their children counted when last looked at). */
   private readonly live: { root: Object3D; n: number }[] = [];
   private frames = 0;
+  /** Every item casts now (still shadows: set once, not every frame; a new item clears it). */
+  private allCast = false;
 
   /**
    * @param cull also drawn wherever the camera looks in the warm frames
@@ -127,6 +129,7 @@ export class ShadowGate {
     const s = box.getBoundingSphere(new Sphere());
     this.items.push({ obj, c: s.center, r: s.radius, h: box.max.y - box.min.y });
     this.gated.add(obj);
+    this.allCast = false;
     return this;
   }
 
@@ -160,11 +163,18 @@ export class ShadowGate {
       if (warm) return;
     }
     if (graphicsNow.stillShadows) {
+      if (this.allCast) return;
       for (const it of this.items) it.obj.castShadow = true;
+      this.allCast = true;
       return;
     }
+    this.allCast = false;
     this.view.set(f);
-    for (const it of this.items) it.obj.castShadow = this.view.seesShadow(it.c, it.r, it.h);
+    const items = this.items;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      it.obj.castShadow = this.view.seesShadow(it.c, it.r, it.h);
+    }
   }
 }
 

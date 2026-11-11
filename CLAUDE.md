@@ -113,7 +113,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Settings panel (the gear): five tabs, one page each, so it is only as tall
   as the page you are on and the map stays in view. **General** (language,
   time of day, weather, moon), **Sound**, **Graphics** (graphics level, resolution,
-  fog: one slider, its thickness, battery saver), **Play** (mini-map, key help, easy flying, reduce
+  fog: one slider, its thickness, battery saver, Short view: on the ground while
+  roaming the haze closes in and nothing past ≈ 260 m (200 m on a phone) is drawn, the still shadows only round him, `src/map/shortView.ts`,
+  `shortview=1` in shots; Auto turns it on once for a phone that cannot keep 30 on low),
+  **Play** (mini-map, key help, easy flying, reduce
   motion), **About** (support the game, our story, the credits). The bar is
   `ui/_tabs.ts` (a `tablist`: ← → Home End, one gold thumb that slides); the
   pages are `#mu-set-page-<id>` in `ui.ts` (`TABS`), and the body's height
@@ -443,6 +446,16 @@ guide, with every add-on's keys and URL values for shots, is
   (`sky/_equinox.ts`).
 - Shaders of people and animals stay quick to compile on slow drivers: tables
   and one call site, never chains of `if` (commit b250279).
+- The roaming explorer on low is drawn from a few batches, a draw per block family
+  (`src/map/heroBatch.ts`; `herobatch=0` mesh by mesh): his meshes are kept out of
+  the frame's picture by the part hook `beforeRender` / `afterRender`; a new mesh of
+  his that is transparent, unlit or drawn its own way stays out of the batch.
+- Matrices: each frame only what moved gets new matrices (`src/map/matrices.ts`),
+  and the parts in main.ts `FROZEN` (the land, trees, floating village, road,
+  Kulen, the terrace, the river gate) are left out of the pass unless their root
+  moves or something is added under them. Code that moves an object inside one of
+  those parts calls `thawMatrices(obj)` (or the part leaves `FROZEN`);
+  `matrixcheck=1` names any object whose matrix is behind three's.
 
 ## Free camera and wallpapers (dev server only)
 

@@ -196,12 +196,20 @@ export function buildDucks(field: HeightField, extra: LakeBirds | null = null): 
     let k = (((s - d.back) % loop) + loop) % loop;
     let u: number;
     let v: number;
-    if (k < L) [u, v] = [k - fa.span, 0.5];
-    else if ((k -= L) < TURN) [u, v] = [fa.span + 0.8 * Math.sin((k / TURN) * Math.PI), 0.5 * Math.cos((k / TURN) * Math.PI)];
-    else if ((k -= TURN) < L) [u, v] = [fa.span - k, -0.5];
-    else {
+    // (each pair set apart: as `[u, v] = [a, b]` it made an array a duck a frame)
+    if (k < L) {
+      u = k - fa.span;
+      v = 0.5;
+    } else if ((k -= L) < TURN) {
+      u = fa.span + 0.8 * Math.sin((k / TURN) * Math.PI);
+      v = 0.5 * Math.cos((k / TURN) * Math.PI);
+    } else if ((k -= TURN) < L) {
+      u = fa.span - k;
+      v = -0.5;
+    } else {
       k -= L;
-      [u, v] = [-fa.span - 0.8 * Math.sin((k / TURN) * Math.PI), -0.5 * Math.cos((k / TURN) * Math.PI)];
+      u = -fa.span - 0.8 * Math.sin((k / TURN) * Math.PI);
+      v = -0.5 * Math.cos((k / TURN) * Math.PI);
     }
     const r = fa.reach;
     u += fa.mid + shift;

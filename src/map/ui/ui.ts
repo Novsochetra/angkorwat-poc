@@ -108,6 +108,8 @@ export interface MapUI {
   setDrawSize(w: number, h: number): void;
   /** Back on the page, the browser still holds the sound: a card in the middle asks for a tap (audio.ts `onHeld`). */
   setSoundHeld(held: boolean): void;
+  /** Auto turned Short view on (main.ts, shortView.ts `AutoShortView`): the switch shows it, and it is saved as a choice. */
+  setShortView(on: boolean): void;
 }
 
 /** Card offsets in `PlaceDef.card` are CSS px for a view this wide. */
@@ -130,7 +132,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ui: 'soundYours',
 };
 /** The on / off settings (a switch each in the panel). */
-type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'padRumble';
+type SwitchKey = 'calm' | 'easyFly' | 'keyHelp' | 'battery' | 'shortView' | 'padRumble';
 /**
  * The settings' tabs, in the bar's order (each page is `mu-set-page-<id>`).
  * Sound is the sound page's own word (lang.ts `sound`).
@@ -416,6 +418,10 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         <div class="mu-set-row">
           <span id="mu-battery-l"><span data-t="battery"></span><small data-t="batteryNote"></small></span>
           <button type="button" class="mu-switch" role="switch" data-set="battery" aria-labelledby="mu-battery-l"><span class="mu-knob"></span></button>
+        </div>
+        <div class="mu-set-row">
+          <span id="mu-shortview-l"><span data-t="shortView"></span><small data-t="shortViewNote"></small></span>
+          <button type="button" class="mu-switch" role="switch" data-set="shortView" aria-labelledby="mu-shortview-l"><span class="mu-knob"></span></button>
         </div>`)}
       ${page('play', `
         <div class="mu-set-group" role="group" aria-labelledby="mu-mini-h" aria-describedby="mu-mini-note">
@@ -1525,6 +1531,11 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         settings = { ...settings, battery: true };
         syncSettings();
       }
+      // (`shortview`: the Short view switch on)
+      if (k === 'shortview') {
+        settings = { ...settings, shortView: true };
+        syncSettings();
+      }
       // (`fog:<0‥150>`: the panel shows the fog that thick, e.g. `uistate=settings,scroll:fog,fog:40`)
       if (k === 'fog' && v !== undefined && Number.isFinite(Number(v))) {
         settings = { ...settings, fogAmount: Math.min(FOG_AMOUNT_MAX, Math.max(0, Number(v) / 100)) };
@@ -1776,6 +1787,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     setRoaming,
     setLang(l) {
       if (l !== settings.lang) change({ lang: l });
+    },
+    setShortView(on) {
+      if (settings.shortView !== on) change({ shortView: on });
     },
     setGraphicsLevel(level) {
       if (level === graphicsLevel) return;

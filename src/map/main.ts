@@ -1,4 +1,4 @@
-import { DirectionalLight, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
+import { DirectionalLight, type Fog, Group, HemisphereLight, NeutralToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer } from 'three';
 import { posthogLogger } from '../posthog';
 import { FeedbackTool } from '../feedback/FeedbackTool';
 import { skipBackFacets } from '../voxel/backFacets';
@@ -20,6 +20,8 @@ import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
 import { lampSlots } from './sky/lampSlots';
+import { freezeMatrices, installMatrixUpdate } from './matrices';
+import { AutoShortView, installShortCut, ShortView } from './shortView';
 import { createWeather, weatherAtLoad } from './sky/weather';
 import { CALM_WEATHER, DEFAULT_SETTINGS, FOG_CHOICES, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, type MoonPath, type FogChoice, type GraphicsChoice, type GraphicsLevel, type Lang, type MapContext, type MapFrame, type MapPart, type MapQuality, type MapSettings, type MiniMapChoice, type PlaceId } from './types';
 import { loadingHero } from './ui/_loadHero';
@@ -55,13 +57,17 @@ import { pad, padPrefs } from './pad/pad';
  * `battery=1` the battery saver (30 frames a second) · `fps=30|60` that cap, held (a phone's
  * 60-or-30 watch off: graphics.ts `PhoneFrameRate`) ·
  * `fog=auto|full|light|simple` the fog's step (sky/fogLevel.ts; auto, the graphics level's, else) ·
- * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `idle=0` no idle
- * slow-down (the frame loop, below).
+ * `fogamount=0‥1.5` the fog's thickness (1 the game's own, 0 clear air) · `shortview=1` the Short view setting
+ * (shortView.ts) · `idle=0` no idle
+ * slow-down (the frame loop, below) · `matrices=0` three's own matrix pass, `matrixcheck=1` the
+ * new one checked against it (matrices.ts).
  *
  * Every part is its own module, loaded on its own: a part that fails to
  * load or build is logged and left out, and the rest of the map still runs.
  */
 const params = new URLSearchParams(location.search);
+// (only what moved gets new matrices each frame: matrices.ts; `matrices=0` three's own)
+installMatrixUpdate();
 // (the build workers start at once: the land is built in one while the page sets up, work/build.ts)
 const work = new BuildWork(params);
 const shot = params.get('shot') === '1';
@@ -69,7 +75,11 @@ const placeIds = PLACES.map((p) => p.id);
 const asPlace = (v: string | null) => (placeIds.includes(v as PlaceId) ? (v as PlaceId) : null);
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
-const renderer = new WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
+// (no multisampling on the canvas itself: the scene draws into the post effects' targets, multisampled as the graphics
+// level says (post.ts), and the canvas only gets their last full-screen pass, which has no edges to smooth. With it the
+// browser kept a 4× buffer of the canvas, colour and depth — ≈ 166 MB at 2880 × 1800, 10 MB on a phone at 844 × 390 —
+// and resolved it every frame: on iOS a full-screen copy a frame.)
+const renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: shot });
 renderer.setPixelRatio(Math.min(devicePixelRatio, shot ? 1 : 2));
 renderer.setSize(innerWidth, innerHeight);
 // (what is drawn: the scene at the canvas's ratio, until the resolution below sets it)
@@ -113,6 +123,7 @@ function loadSettings(): MapSettings {
     if (typeof saved.padRumble !== 'boolean') delete saved.padRumble;
     if (saved.resolution !== 'auto' && !isResolutionShare(saved.resolution)) delete saved.resolution;
     if (typeof saved.battery !== 'boolean') delete saved.battery;
+    if (typeof saved.shortView !== 'boolean') delete saved.shortView;
     if (!MOON_PATHS.includes(saved.moonPath as MoonPath)) delete saved.moonPath;
     // (the fog's step was a setting: it follows the graphics level now, and the fog is one slider, its thickness)
     delete saved.fog;
@@ -147,6 +158,7 @@ if (params.get('resolution') === 'auto') settings.resolution = 'auto';
 else if (isResolutionShare(Number(params.get('resolution')))) settings.resolution = Number(params.get('resolution'));
 if (params.has('battery')) settings.battery = params.get('battery') !== '0';
 setBatterySaver(settings.battery);
+if (params.has('shortview')) settings.shortView = params.get('shortview') !== '0';
 /** `fog=` (checks): hold the fog's step (sky/fogLevel.ts); else auto, the graphics level's. */
 const fogChoice: FogChoice = FOG_CHOICES.includes(params.get('fog') as FogChoice) ? (params.get('fog') as FogChoice) : 'auto';
 /** The level for a choice: itself, or auto's (graphics.ts; medium in shots, so they look the same on every machine). */
@@ -392,7 +404,8 @@ if (Object.keys(late.states).length) console.info(`[map] built only when wanted:
 // (and the lamps' few lights, always there: sky/lampSlots.ts)
 scene.add(atmosphere.object, lampSlots().object);
 // The land, trees, temples and road never move: they draw only the block sides that can face the camera.
-for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
+// (the hamlets too: their places' blocks never move — the market's toggles and the back hamlet's near plants change instances, read again then; the sugar-palm village in pieces, hamlet/_pieces.ts)
+for (const p of parts) if (['terrain', 'vegetation', 'path', 'jungle', 'hamlet'].includes(p.name) || p.name.startsWith('landmark:')) skipBackFacets(p.object);
 // …and, as plain boxes, not the sides that lie against the next block (cull.ts; the trees' own: veg/sway.ts).
 timings.covered = Math.round(cutCovered(coverRoots(), undefined, work.knownCover).ms);
 // What never moves casts the low and medium levels' still shadows (graphics.ts): the land, trees, temples, road, jungle
@@ -424,6 +437,18 @@ const land = parts.find((p) => p.name === 'terrain');
 if (land) castGate.addLive(land.object);
 const ledge = scene.getObjectByName('foreground:ledge');
 if (ledge) castGate.addAll(ledge);
+// Parts whose objects never move after their build: each frame's matrix pass leaves them out (matrices.ts; what is added
+// under them later — plain twins, sharper sculpts — still gets its matrices). Not the hamlets (his house's door), the
+// jungle (the zip line's trolley), the camps (the swing), nor the temples with incense smoke (sanctuary, overlook, shrine).
+/** The Short view setting's haze and far plane (shortView.ts); it hides the far backdrop's rings while it is in. */
+const shortView = new ShortView();
+/** Auto (the Graphics setting) turns Short view on, once, for a phone that cannot keep 30 a second on low (shortView.ts). */
+const autoShort = new AutoShortView();
+const farBackdrop = scene.getObjectByName('far backdrop');
+if (farBackdrop) shortView.hideWhenShort(farBackdrop);
+installShortCut(renderer, camera);
+const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
+for (const p of parts) if (FROZEN.includes(p.name)) freezeMatrices(p.object);
 // (the low graphics level's plain blocks, now that they are built)
 setGraphics(graphicsNow.level, scene);
 const post: MapPost = await safe('post', async () => (await import('./post')).createPost(ctx), () => ({ render: () => renderer.render(scene, camera), setSize() {} }));
@@ -489,7 +514,10 @@ const handlers = {
     settings = s;
     if (s.graphics !== was.graphics) {
       // (auto picked again starts over from its guess)
-      if (s.graphics === 'auto') resetAutoLevel();
+      if (s.graphics === 'auto') {
+        resetAutoLevel();
+        autoShort.reset();
+      }
       useLevel(levelOf(s.graphics));
     }
     // (a new resolution: drawn at once; auto's watches start over)
@@ -520,7 +548,7 @@ const handlers = {
   onWake: () => audio.wake(),
   onStory: () => void openStory(0),
 };
-const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {} }));
+const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {}, setShortView() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
 audio.onHeld((held) => ui.setSoundHeld(held));
 // (the game pad's moves in the menus and on the map sound like the mouse over a card)
@@ -776,6 +804,8 @@ function step(t: number, dt: number): void {
   free?.placed();
   camera.updateMatrixWorld();
   for (const p of parts) if (p !== roam) runUpdate(p, frame);
+  // (the Short view setting: on the ground while roaming, the haze closes in and nothing past it is drawn: shortView.ts)
+  shortView.apply(settings.shortView, frame.roam, dt, scene.fog as Fog, camera, fogAmountParam ?? settings.fogAmount);
   // (the lamps that matter most for this view into the few lights the shaders have: sky/lampSlots.ts)
   lampSlots().update(frame);
   castGate.update(frame);
@@ -958,6 +988,8 @@ Object.assign(window, { scene, camera, field, parts, rig, roam, audio, ui, rende
 // (`speedtest=1`: this device's frame measured with parts of the map turned off one by one; `speedtest=quick`: only as it plays: speedtest.ts)
 const speedTest = params.get('speedtest');
 if (!shot && (speedTest === '1' || speedTest === 'quick')) void import('./speedtest').then((m) => m.startSpeedTest(speedTest === 'quick'));
+// (`speedtest=watch`: only the frames' spacing reported to the page framing the map, no test: speedtest.ts `watchSpeed`)
+if (!shot && speedTest === 'watch') void import('./speedtest').then((m) => m.watchSpeed());
 
 /** Starts the frame loop again once the loading screen's button is pressed (set with the loop, below). */
 let wakeLoop: () => void = () => undefined;
@@ -1137,6 +1169,7 @@ if (shot) {
   step(t, 0);
   // (the interface's web fonts first, so shots don't show the fallback font)
   await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 4000))]);
+  for (const p of parts) p.beforeRender?.();
   post.render(frame);
   /**
    * One frame of a video (scripts/video.mjs): the scene at `t`, `dt` after
@@ -1155,6 +1188,7 @@ if (shot) {
     }
     step(t, dt);
     if (!draw) return;
+    for (const p of parts) p.beforeRender?.();
     post.render(frame);
     for (const p of parts) p.afterRender?.();
   };
@@ -1182,8 +1216,10 @@ if (shot) {
   let sleep = 0;
   const touched = () => {
     lastInput = performance.now();
-    // (a frame at once, not when the slow pace would have drawn one)
-    due = Math.min(due, lastInput);
+    // (from a slow pace, a frame at once, not when the slow pace would have drawn one. At full pace never: every
+    // pointermove (the stick, a drag: 60 to 120 a second) drew a frame then, past the cap — an iPhone held at 30 drew
+    // a frame every 14–19 ms while a finger moved, and stuttered whenever he walked or the view was dragged)
+    if (loop.mode !== 'full') due = Math.min(due, lastInput);
     if (sleep) {
       clearTimeout(sleep);
       sleep = 0;
@@ -1196,6 +1232,9 @@ if (shot) {
     focused = true;
     touched();
   });
+  // (a tap or a key is the page in use, focus event or not: framed by another page — the phone test's — a phone held
+  // the map at its blurred pace for a minute and a half after the player came back, a finger on the screen)
+  for (const type of ['pointerdown', 'touchstart', 'keydown']) addEventListener(type, () => (focused = true), { capture: true, passive: true });
   addEventListener('blur', () => (focused = false));
   const idleOff = params.get('idle') === '0';
   /** Frames a second now: the cap (graphics.ts `frameCap`: 60, or 30 with the battery saver and on a phone that cannot keep up), fewer while idle or unfocused. */
@@ -1267,9 +1306,19 @@ if (shot) {
         autoWatch.reset();
         res.time = res.frames = res.slow = 0;
       }
+      // (a phone at its lowest, on Auto, at 30 a second and still slower on the ground: Short view, once)
+      const mayShort = PHONE && settings.graphics === 'auto' && graphicsNow.level === 'low' && !settings.shortView && frameCap.fps === 30 && roaming && (roam?.mode === 'walk' || roam?.mode === 'boat');
+      if (autoShort.watch(raw, mayShort)) {
+        console.info('[map] Auto: this phone keeps under 26 frames a second on low: Short view on');
+        ui.setShortView(true);
+        roam?.toast(t('shortViewAuto'));
+      }
     }
     wasFull = full;
-    if (drawn) post.render(frame);
+    if (drawn) {
+      for (const p of parts) p.beforeRender?.();
+      post.render(frame);
+    }
     for (const p of parts) p.afterRender?.();
     feedback?.update();
     if (first) {

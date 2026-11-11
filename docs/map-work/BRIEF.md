@@ -809,7 +809,7 @@ The key
 light swings and drops a little with them, and turns only on the frames the
 shadow map is drawn anyway (every third), so it costs no extra shadow pass
 (on low and medium, whose shadows are still, it turns in 0.3° steps, each
-drawn over 10–12 frames: "Phones" below).
+drawn over 10–12 frames, up to 28 on a phone: "Phones" below).
 The moon shows its phase from `f.day` (29.53-day month, day 0 = new moon):
 lit side and soft ragged terminator, the dark side hidden (only the sky);
 its glow spreads from the lit part, all round it (`moonLitDist`), so a half
@@ -2807,11 +2807,13 @@ a second, and 30 with the **Battery saver** setting, evenly (`frameCap`,
 `setBatterySaver` in graphics.ts; `phone=1` acts as a phone, `battery=1`
 turns the saver on, `fps=30|60` holds a cap). A phone (the saver shows there
 too) draws 60 while it keeps up and an even 30 when it does not
-(`PhoneFrameRate`, `window.__phoneRate`): two 2 s windows in a row under 52
-frames a second drop it to 30 (after the level's own resolution, as auto's
-watch); at 30 it tries 60 again after 20 s of frames (a try that drops at
-once doubles the wait, up to 5 min), and at once when roaming starts or ends
-(a walk draws about half the overview's triangles). The rate is kept for the
+(`PhoneFrameRate`, `window.__phoneRate`): a try at 60 is left alone for its
+first 8 s (iOS raises the GPU's clock only after a few seconds of full load),
+then two 3 s windows in a row under 42 frames a second drop it to 30 (after
+the level's own resolution, as auto's watch); at 30 it tries 60 again after
+30 s of frames (a try dropped as soon as it could be doubles the wait, up to
+5 min), and at once when roaming starts or ends (a walk draws about half the
+overview's triangles). The rate is kept for the
 phone (`angkor-map-phone-fps`). Checked in GPU Chromium as a phone (844 ×
 390): 60 walking; with the CPU 10 × slower, 30 after 3 s, a try at 60 20 s
 later, 30 again with the wait 40 s; the saver 30, idle 20, a computer 60. The frame loop (main.ts `tick`) rests while
@@ -2903,7 +2905,9 @@ the shadow map drawn when the live page draws it, `shadows=live`), `levels=` (lo
 medium, high, max, phone = `graphics=low&phone=1` at 844 × 390, a phone on
 its side), `parts=1` each part's draws, triangles and CPU, `meshes=40` the
 costliest meshes, `ablate=a,b` each part's ms (the frames again with it
-hidden), `out=` JSON, `base=` the change against an earlier JSON. The shadow
+hidden), `cpu=4` the page's main thread slowed four times while measuring
+(DevTools' "mid-tier mobile": `cpu` is then roughly a phone's JS frame; the
+GPU is not slowed), `out=` JSON, `base=` the change against an earlier JSON. The shadow
 map is drawn as the live page draws it (still on low). `max` is the worst
 frame; in the dusk views `shadow +` is the extra of the frames that draw
 (some of) the shadow map, out of how many, and the worst of them against
@@ -3208,10 +3212,217 @@ it stands, and nothing (0 draws, ~0 CPU) where it does not; people: the crowd
 ≤ 0.1 M triangles in view and ≤ 0.15 ms of GPU here with its bone pass
 (the crowd drawn alone; ≈ 0.05‥0.09 now). On low the still shadow map is drawn again each
 time the key light turns 0.3° (with the day's cycle, every 1–3 s), a part
-of ≈ 0.3 M triangles a frame over 10–12 frames: what is marked still adds
-to those frames (on a phone at 30 frames a second, about a third of them
-while the light turns fastest; at 60, a sixth), so keep the still parts' triangles as low
+of ≈ 0.3 M triangles a frame over 10–12 frames (on a phone ≈ 0.1 M over up
+to 28: "The smooth-phone pass" below): what is marked still adds
+to those frames (on a phone at 30 frames a second, most of them
+while the light turns fastest), so keep the still parts' triangles as low
 as the picture's; a part that moves must not be marked still.
+
+### The smooth-phone pass (November 2026)
+
+The owner's report: on an ordinary phone, every setting at its lowest, the map
+still was not smooth, and roaming stuttered now and then. Measured on a cloud
+machine with no GPU (Chromium on SwiftShader: draws, triangles and the page's
+JavaScript are exact, a frame's GPU time is not), on `phone=1`, low,
+844 × 390. Most of a phone's frame is the 3D drawing (the triangles sent and
+the draws, as the iPhone pass found); "now and then" pointed at frames that
+come with extra work every second or so. What changed:
+
+- **Still shadows in smaller parts on a phone** (graphics.ts
+  `PHONE_PART_WEIGHT`, `PHONE_MAX_PARTS`): a redraw of the still map (every
+  1–3 s while the day turns) was 10–12 frames each with a part of ≈ 0.3 M
+  triangles over a picture of 1–1.5 M (a walk): a third more vertex work in
+  those frames, so a phone at the edge of its 30 frames a second missed
+  refreshes there. On a phone the parts are ≈ 0.1 M, up to 28 (layers 2‥29):
+  the same work over ≈ 1 s. The map drawn is the same (only when it is ready
+  does it show).
+- **A try at 60 frames a second** (graphics.ts `PhoneFrameRate`, `SETTLE`,
+  `WINDOW`, `KEEP`): first made to end sooner (one window of 1 s under 40, or
+  two under 52, dropped it), which on an iPhone kept it at 30 for good: at 30
+  iOS lowers the GPU's clock, a try at 60 starts slow (≈ 39 frames a second)
+  and was dropped before the clock came up. The phone test (below) showed the
+  same iPhone 14 Pro held at 60 walking at 55–66, frames 15–17 ms apart, its
+  owner finding it smoother than the even 30. Now a try is left alone for its
+  first 8 s, then judged in windows of 3 s, and two in a row under 42 drop it;
+  a try dropped as soon as it could be doubles the wait (30 s, 60 … 5 min).
+- **Only what moved gets new matrices** (matrices.ts, main.ts `FROZEN`):
+  three's `updateMatrixWorld` composed and multiplied every one of the map's
+  ≈ 3,350 objects every frame (the top JS function of a drawn frame); 35 of
+  them move in a walk. An object keeps its matrices while its numbers are
+  those its matrix was last composed from (three's `updateMatrix` notes them,
+  whoever calls it), its parent is the same and its parent's world matrix was
+  not made again since (a count on each world matrix: three's
+  `updateWorldMatrix` makes one without its children's, as the krama's swing
+  does to its joints). Seven parts that never move after their build (the
+  land, trees, floating village, road, Kulen, the terrace, the river gate:
+  ≈ 1,800 objects) are left out of the walk unless their root moves or
+  something is added under them (a full walk every 30 passes as a safety
+  net). The pass, warm: 0.86–0.89 → 0.30–0.47 ms on the cloud CPU. Two
+  holes in the first versions were found by checks, not by eye: a stale
+  matrix on the ledge explorer (a screenshot pixel diff: a few pixels of his
+  hat) and the krama's pieces lagging their joints (`matrixcheck=1`, which
+  compares every object with three's own pass once a second to a float's
+  last bits). Checked so in the overview, walking, riding the bicycle, the
+  buffalo, the ox cart, the boat, the hang glider, the balloon, the zip line,
+  with the dog, on low and medium, at the Water Festival; a terrain mesh
+  moved on purpose is named; the overview and a walk on low are the same
+  picture as before, pixel for pixel (`heroplain=0`). `matrices=0` keeps
+  three's own.
+- **The explorer in plain boxes on low** (foreground.ts `ROUND.plainPx`):
+  one rounding step (44 triangles a block) where his rounding spans under
+  1.5 px (≈ 0.9 px in a phone walk, the camera 7.4 m from his chest) was
+  ≈ 0.09 M triangles, a tenth of a phone walk's picture; plain boxes there
+  (≈ 0.03 M), like the low map's own blocks; one step again close up (the
+  camera within ≈ 4.5 m: the selfie, the camera, the explorer menu, the
+  follow camera pushed in by a wall). On a phone the limit is 3.5 px (one
+  step only within ≈ 2 m: the selfie, the explorer menu): the follow camera
+  pushed in by a stall drew him in ≈ 0.15 M triangles there, a tenth of the
+  frame (→ 0.04 M). `heroplain=0` keeps the step.
+- **The explorer in a few draws on low** (heroBatch.ts; `herobatch=0` draws
+  him mesh by mesh): he is ≈ 90 voxel meshes, one per joint and family, and a
+  phone walk drew 48–50 of them every frame (a fifth of its draws, most under
+  2,000 triangles); merging per joint would have saved 4. While he roams on
+  low his opaque blocks are drawn from one instanced mesh per family and
+  block shape (≈ 16 draws), each block as in its own mesh plus the row of
+  its mesh's world matrix in a small float texture written each frame; a
+  variant of the family's material (`VOX_JOINT`, compiled at load) puts the
+  block through that matrix where three put it through the mesh's, so the
+  shading (seeded by the block's own place) is unchanged. His own meshes
+  stay for everything else (picks, the walk map, other levels, the ledge's
+  still shadows) and are only kept out of the frame's picture (`beforeRender`
+  / `afterRender`, a new part hook). Made again when one of his meshes
+  changes (a blink, an outfit, a tool, the head fade): once in 90 walking
+  frames, none on the bicycle. Village walk 253 → 219 draws, the market walk
+  325 → 293; his triangles 29 → 41 k (the per-mesh back-side skipping cannot
+  apply to one draw), 101 → 151 k when the camera is pushed in close and he
+  keeps his rounding. Batched against mesh by mesh: 0.15 % of a walk's pixels
+  differ at all, 8 by more than 8 levels (float rounding at block edges).
+- **Short view** (the Graphics page's switch, off by default; shortView.ts,
+  `shortview=1`): on the ground while roaming (walking, riding, the boat) the
+  haze is clear to 70 m and 98.5 % by 260 m, and the camera's far plane is put
+  there, so three leaves out what lies wholly past it; the fog's thickness is
+  at least the game's own meanwhile. In the air the view is whole (the far
+  land is the point there). It eases in and out over a few seconds, the far
+  plane moving in only once the haze is whole. It reads as a misty day: the
+  near land as before, the far cliffs and temples fading into the haze, the
+  lake running into a hazy horizon. With the changes above: the floating
+  village walk 253 → 175 draws, 1.04 → 0.83 M triangles; the market walk
+  325 → 204, 1.53 → 1.20 M; Kulen (closed in by its trees) about the same.
+  The far backdrop's rings of hills (round the camera: never left out by the
+  frustum) are hidden while it is in (−4 draws, the same picture). On the
+  software GPU (SwiftShader, a frame's whole drawing on the CPU: a stand-in for
+  a weak GPU's work, the code before this pass → after it → with Short view)
+  the market walk 3.61 → 3.57 → 2.69 s a frame, the village 2.47 → 2.43 →
+  2.13, Kulen 1.66 → 1.58 → 1.58: without Short view the steady GPU work hardly
+  changes (this pass's other gains are the stutters and the CPU). **Auto turns it on** (shortView.ts `AutoShortView`), once, for
+  a phone on Auto at the low level that still draws under 26 frames a second
+  on the ground for 6 s at its 30 cap: the switch turned on as the player
+  would (saved), a toast saying where it is; kept for the device, so never
+  again even if turned off, until Auto is picked again.
+- **Still shadows round him with Short view in** (atmosphere.ts `NEAR_BOX`,
+  `PHONE_SHORT_TURN`; graphics.ts `dealStillParts(…, within)`). The first
+  phone test (an iPhone 14 Pro, low, the speed test): ≈ 28 frames a second
+  with Short view, "mostly smooth", laggy without; so a few frames in each
+  second still missed. Those were the still shadows' redraws: with the
+  day's cycle the sun turns 0.3° (`STILL_TURN`) every ≈ 1.4 s, so a redraw
+  (a part a frame, ≈ 0.14 M triangles on a picture of ≈ 0.8 M) ran in about
+  two frames of five. With the view short (wholly in) the still map covers a
+  box 640 m across round the camera, not the roaming area (≈ 1,300 ×
+  900 m): only casters whose bounds reach into it are dealt (what lies past
+  the haze casts nothing seen), and the map's texels cover a quarter of the
+  ground (sharper eaves near him). The box moves, the map drawn again, once
+  the camera is 80 m from its middle. On a phone, with the box round him,
+  a redraw waits for 1° of turn (≈ 4.6 s): a few centimetres at a house's
+  shadow; the long mesa shadows that move most lie in the haze. A dusk walk
+  on `phone=1`: frames with shadow work 30 of 30 → 20 of 60, each lighter.
+- **Cut by distance with Short view in** (shortView.ts `installShortCut`). The
+  second phone test (the same iPhone, walking at the sugar-palm village's
+  market, low, Short view, held at 30): 20–26 frames a second, 34.5 ms a
+  picture; without Short view 22, laggy. The far plane is flat: in the corners
+  of a phone's wide picture (≈ 91° across) the frustum reaches ≈ 1.4 times as
+  far as straight ahead, ≈ 370 m, and the haze grows with the distance (not the
+  depth), so the land and tree tiles out there were drawn wholly in the haze.
+  While the view camera's picture is drawn with the view short, three's frustum
+  test (`Mesh.intersectsFrustum`) also leaves out what lies wholly past
+  `SHORT.far` m from the camera (never in a shadow map's pass). The market walk
+  1.18 → 1.05 M triangles, 147 → 130 draws, the same picture; `shortcut=0`
+  keeps three's own test. The full speed test (`speedtest=1`) now has the
+  temples apart from the houses, stalls and road, the explorer, and the view to
+  150 m and 100 m (Short view in: what a shorter reach would save on the
+  device).
+- **Short view reaches 200 m on a phone** (shortView.ts `SHORT`, `shortfar=`
+  tries another). The third test (the same market, after the cut above): 32.5 ms
+  a picture, 27–29 frames a second, "a bit smoother", still a hitch when he
+  walks or the view is dragged. 260 → 200 → 180 m: the market walk 0.86 → 0.79
+  → 0.76 M triangles, 134 → 129 → 126 draws (the land and trees go by 150 m
+  chunks and 100 m tiles: a shorter reach takes less than the haze would
+  suggest). 200 m, the haze clear to 54 m: the grove 100 m off a little mistier.
+- **The phone test reports by itself.** Framed by another page (the phone test
+  artifact frames the map in an `<iframe>`), the speed test `postMessage`s the
+  device, each test's results and, every 10 s, the drawn frames' spacing (p50,
+  p90, p99, max, those later than 40 ms and 70 ms) and the draw call's time,
+  apart for frames with a finger on the screen and without (speedtest.ts
+  `report`, `watchFrames`); the test page saves them in its database for Claude
+  to read (`ArtifactData`, collection `reports`). The device's own numbers
+  without screenshots.
+- **A finger moving drew past the cap** (main.ts `touched`). The first reports
+  from the iPhone 14 Pro (in the claude.ai app's artifact view, canvas 734 × 276,
+  low, Short view, held at 30): standing still at the market 30 frames a second,
+  26.3 ms a picture, 1–6 % of frames late; but with a finger on the screen the
+  frames came every 14–19 ms (p50), about 60 a second. Every `pointermove` (the
+  stick, a drag: 60 to 120 a second) pulled the next frame's time to now — meant
+  to wake the slow idle pace of the overview at once, it also drew past the cap
+  at full pace: twice the GPU work whenever he walked or the view was dragged,
+  and the stutter the owner felt. Now only a slow pace (idle, a window without
+  focus) is woken so; at full pace the cap holds (a stream of pointer moves at
+  250 a second, a 30 cap: 50 → 30 frames a second). The full test on the phone
+  (the GPU's clock falls when a frame has time to spare, so a picture read 14 or
+  25 ms from step to step): grass, rice and trees ≈ 3.9 ms, houses, stalls and
+  road ≈ 4.1, the explorer ≈ 2.3, the view to 150 m ≈ 1.5; shadows, lamps,
+  half the pixels, the buttons and the glass blur ≈ 0.
+- **The sugar-palm village in pieces** (hamlet/_pieces.ts `buildVoxelPieces`;
+  main.ts gives the hamlet part the back-side skipping): it was one mesh a
+  family, ≈ 160 m across, all of it drawn from inside it. The market walk
+  0.79 → 0.71 M triangles, the same 129 draws, the picture the same pixel for
+  pixel. The market's and the floating village's meshes stay whole (toggles
+  and bobbing rafts hold their blocks by instance index).
+- **What the phone said about 60** (the phone test's reports, `speedtest=watch`:
+  the frames' spacing only, no one-pixel reads). A test that waits for the GPU
+  each frame leaves it idle between pictures and iOS lowers its clock: the
+  quick test's own measuring dropped the phone from 60 to 30 ten seconds in,
+  and every "time of a picture" after the first was taken at the lower clock
+  (≈ 25 ms where the first read 12–14). Watching only, held at 60: 55–66
+  frames a second walking and in the boat; at its own pace the game tried 60
+  twice and dropped it after 5 s and 1 s (the try rule above, since changed).
+  The map in a frame of another page also lost its focus for a minute and a
+  half (10 frames a second) with a finger on the screen: a tap or a key now
+  counts as the page in use (main.ts).
+- **No multisampling on the canvas** (main.ts, every level): the scene is
+  drawn into the post effects' targets (multisampled as the level says), and
+  the canvas gets only their last full-screen pass, with no edges to smooth;
+  `antialias: true` kept a 4× colour and depth buffer of the canvas besides
+  (≈ 10 MB on a phone at 844 × 390, ≈ 166 MB at 2880 × 1800) and resolved it
+  every frame (on iOS a full-screen copy). The same picture.
+- **Less garbage a frame** (≈ 400 → 275 KB in a walk: fewer collector pauses
+  on a phone): the ramps' deck height (`deckAt`, asked many times a frame by
+  everything standing on the land: an array per ramp per call, and now only
+  ramps within reach), the walker's probes, the wading birds' and ducks'
+  turns, the statues' candle lights (worked out once a frame, not once per
+  part with statues), the shadow gate (on low it set every mesh casting every
+  frame).
+
+Where a phone's frame stands after the pass (the same cloud machine, the
+GPU's drawing calls stubbed out so only the page's JavaScript is timed, 200
+frames after 60 of warm-up, low, 844 × 390): a walk's JS 7.0 → 6.6 ms
+(village), 6.7 → 6.3 (market), 7.8 → 7.2 at dusk, its worst frames (p99)
+13.4 → 11.8 in the village; a phone's CPU 2–3 times slower makes that
+≈ 14–20 ms, inside a 33 ms frame at 30 a second. The GPU is the open
+question: an iPhone 14 Pro drew a walk's picture in ≈ 14–18 ms (the iPhone
+pass), and a budget Android's GPU is several times slower; there Short view
+is the lever (a third fewer draws, a fifth fewer triangles in open views).
+Measure on the device: `speedtest=quick` ("The iPhone pass"). On the device
+(an iPhone 14 Pro, low, Short view): ≈ 28 a second before the near shadow
+box above.
 
 ### Memory on a phone
 
