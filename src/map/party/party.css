@@ -22,10 +22,15 @@
   height: calc(36 * var(--px));
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: var(--mu-btn);
+  background: none;
+  --mu-edge: var(--mu-btn-edge);
   color: var(--mu-ink2);
   cursor: pointer;
+}
+
+.mu-pty-x > .mu-bg,
+.mu-pty-ico > .mu-bg {
+  background: var(--mu-btn);
 }
 
 .mu-pty-x .mu-icon {
@@ -144,7 +149,7 @@
   flex: none;
   width: calc(10 * var(--px));
   height: calc(10 * var(--px));
-  border-radius: 50%;
+  border-radius: calc(2 * var(--px));
   background: rgba(255, 255, 255, 0.18);
   transition: background 0.15s, box-shadow 0.15s;
 }
@@ -185,8 +190,8 @@
   height: calc(36 * var(--px));
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: var(--mu-btn);
+  background: none;
+  --mu-edge: var(--mu-btn-edge);
   color: var(--mu-ink2);
   cursor: pointer;
 }
@@ -244,49 +249,71 @@
 .mu-mic-btn {
   display: grid;
   place-items: center;
-  width: calc(68 * var(--px));
-  height: calc(68 * var(--px));
+  width: calc(64 * var(--px));
+  height: calc(64 * var(--px));
   padding: 0;
-  border: calc(2 * var(--px)) solid rgba(255, 236, 205, 0.35);
-  border-radius: 50%;
-  background: var(--mu-panel-strong);
+  border: 0;
+  background: none;
   color: var(--mu-ink);
-  box-shadow: var(--mu-shadow);
   cursor: pointer;
+  outline: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
-  transition: background 0.12s, color 0.12s, box-shadow 0.2s, transform 0.2s var(--mu-ease);
+  --mu-edge: var(--mu-btn-edge);
 }
 
 .mu-mic.is-open .mu-mic-btn {
   pointer-events: auto;
 }
 
-.mu-mic-btn .mu-icon {
-  width: calc(30 * var(--px));
-  height: calc(30 * var(--px));
+.mu-mic-btn > .mu-bg {
+  background: var(--mu-btn);
 }
 
+.mu-mic-btn > .mu-glow {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.mu-mic-ico .mu-icon {
+  width: calc(28 * var(--px));
+  height: calc(28 * var(--px));
+}
+
+@media (hover: hover) {
+  .mu-mic-btn:hover {
+    --mu-edge: var(--mu-line-hi);
+  }
+
+  .mu-mic-btn:hover > .mu-bg {
+    background: var(--mu-btn-hi);
+  }
+}
+
+/* Mic on: the gold of the map's gold buttons (map.css .mu-ask-go), its stepped glow. */
 .mu-mic.is-talking .mu-mic-btn {
-  background: linear-gradient(180deg, #ffdc80, #eba52a);
   color: #2b1904;
-  border-color: rgba(255, 250, 225, 0.9);
-  box-shadow: 0 0 0 calc(8 * var(--px)) rgba(255, 208, 112, 0.25), 0 0 calc(28 * var(--px)) rgba(255, 200, 90, 0.55);
-  transform: scale(1.06);
+  --mu-edge: rgba(255, 250, 225, 0.85);
+}
+
+.mu-mic.is-talking .mu-mic-btn > .mu-bg {
+  background: linear-gradient(180deg, #ffdc80 0%, #f7bd40 55%, #eba52a 100%);
+}
+
+.mu-mic.is-talking .mu-mic-btn > .mu-glow {
+  opacity: 0.55;
 }
 
 .mu-mic-hint {
-  max-width: calc(200 * var(--px));
-  padding: calc(3 * var(--px)) calc(10 * var(--px));
-  border-radius: calc(8 * var(--px));
-  background: var(--mu-panel);
+  max-width: calc(220 * var(--px));
+  padding: calc(4 * var(--px)) calc(10 * var(--px));
   color: var(--mu-ink2);
   font: 600 calc(12 * var(--px)) / 1.3 var(--mu-font);
   text-align: center;
 }
 
-.mu-mic-hint:empty {
+.mu-mic-hint:has(.mu-mic-t:empty) {
   display: none;
 }
 
@@ -300,11 +327,10 @@
 
 /* Voice not joined yet: the crossed-out mic, quieter; joining: a slow pulse. */
 .mu-mic.is-off .mu-mic-btn {
-  color: var(--mu-ink2);
-  border-style: dashed;
+  color: var(--mu-dim);
 }
 
-.mu-mic.is-busy .mu-mic-btn {
+.mu-mic.is-busy .mu-mic-ico {
   animation: mu-mic-pulse 1.1s ease-in-out infinite;
 }
 
@@ -315,7 +341,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mu-mic.is-busy .mu-mic-btn {
+  .mu-mic.is-busy .mu-mic-ico {
     animation: none;
   }
 }
@@ -349,9 +375,9 @@
   position: absolute;
   left: calc(-2 * var(--px));
   bottom: calc(-2 * var(--px));
-  width: calc(12 * var(--px));
-  height: calc(12 * var(--px));
-  border-radius: 50%;
+  width: calc(10 * var(--px));
+  height: calc(10 * var(--px));
+  border-radius: calc(2 * var(--px));
   background: #7ee08a;
   box-shadow: 0 0 0 calc(2 * var(--px)) rgba(13, 25, 39, 0.9);
 }

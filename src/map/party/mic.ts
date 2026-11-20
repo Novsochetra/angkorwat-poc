@@ -1,5 +1,6 @@
 import { ICON } from '../ui/icons';
 import { onLang, t } from '../ui/lang';
+import { framed, setSteppedVars } from '../ui/shape';
 import type { VoiceState } from './panel';
 
 /**
@@ -38,11 +39,15 @@ export function createMicButton(root: HTMLElement, h: { join(): void; talk(on: b
   const wrap = document.createElement('div');
   wrap.className = 'map-ui mu-mic is-off';
   wrap.innerHTML = `
-    <button type="button" class="mu-mic-btn" aria-pressed="false">${ICON.micOff}</button>
-    <span class="mu-mic-hint"></span>`;
+    <button type="button" class="mu-mic-btn" aria-pressed="false"><span class="mu-mic-ico">${ICON.micOff}</span></button>
+    <span class="mu-mic-hint"><span class="mu-mic-t"></span></span>`;
+  // (the map's own stepped frame, as the corner's buttons: map.css .mu-frame)
+  setSteppedVars(wrap);
   root.after(wrap);
-  const btn = wrap.querySelector<HTMLButtonElement>('.mu-mic-btn')!;
-  const hint = wrap.querySelector<HTMLElement>('.mu-mic-hint')!;
+  const btn = framed(wrap.querySelector<HTMLButtonElement>('.mu-mic-btn')!, 'md', true);
+  const icon = btn.querySelector<HTMLElement>('.mu-mic-ico')!;
+  framed(wrap.querySelector<HTMLElement>('.mu-mic-hint')!, 'xs');
+  const hint = wrap.querySelector<HTMLElement>('.mu-mic-t')!;
   let shown = false;
   let state: VoiceState = 'off';
   let live = false;
@@ -73,7 +78,7 @@ export function createMicButton(root: HTMLElement, h: { join(): void; talk(on: b
     wrap.classList.toggle('is-busy', state === 'connecting' || state === 'reconnecting');
     wrap.classList.toggle('is-talking', live);
     btn.setAttribute('aria-pressed', String(live));
-    btn.innerHTML = live ? ICON.mic : ICON.micOff;
+    icon.innerHTML = live ? ICON.mic : ICON.micOff;
     words();
   }
 

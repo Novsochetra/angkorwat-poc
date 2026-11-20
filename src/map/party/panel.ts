@@ -66,8 +66,8 @@ function memberHtml(view: PartyView, party: Party, m: { id: string; name: string
   const muted = view.muted.has(m.id);
   const talking = view.voice === 'on' && view.speaking.has(m.id) && !muted;
   const tags = [mine ? t('partyYou') : '', m.id === party.maker ? t('partyMaker') : ''].filter(Boolean).join(' · ');
-  const muteBtn = mine || view.voice === 'off' ? '' : `<button type="button" class="mu-pty-ico${muted ? ' is-on' : ''}" data-act="mute" data-id="${esc(m.id)}" aria-pressed="${muted}" aria-label="${esc(t(muted ? 'partyUnmute' : 'partyMute', { name: m.name }))}">${muted ? ICON.muted : ICON.speaker}</button>`;
-  const removeBtn = !mine && party.maker === view.me ? `<button type="button" class="mu-pty-ico" data-act="remove" data-id="${esc(m.id)}" aria-label="${esc(t('partyRemove', { name: m.name }))}">${ICON.close}</button>` : '';
+  const muteBtn = mine || view.voice === 'off' ? '' : `<button type="button" class="mu-pty-ico mu-frame mu-xs${muted ? ' is-on' : ''}" data-act="mute" data-id="${esc(m.id)}" aria-pressed="${muted}" aria-label="${esc(t(muted ? 'partyUnmute' : 'partyMute', { name: m.name }))}"><span class="mu-bg"></span>${muted ? ICON.muted : ICON.speaker}</button>`;
+  const removeBtn = !mine && party.maker === view.me ? `<button type="button" class="mu-pty-ico mu-frame mu-xs" data-act="remove" data-id="${esc(m.id)}" aria-label="${esc(t('partyRemove', { name: m.name }))}"><span class="mu-bg"></span>${ICON.close}</button>` : '';
   return `<li class="mu-pty-member${talking ? ' is-talking' : ''}"><span class="mu-pty-dot" aria-hidden="true"></span>
     <span class="mu-pty-who"><b>${esc(m.name)}</b>${tags ? `<small>${tags}</small>` : ''}</span>${muteBtn}${removeBtn}</li>`;
 }
@@ -93,7 +93,7 @@ export function createPartyPanel(root: HTMLElement, act: PartyActions): PartyPan
     <section class="mu-ask-card mu-frame mu-lg" role="dialog" aria-modal="true" aria-labelledby="mu-pty-title" aria-hidden="true" tabindex="-1">
       <span class="mu-bg"></span>
       <div class="mu-ask-head"><span class="mu-ask-icon">${ICON.party}</span><h2 id="mu-pty-title"></h2>
-        <button type="button" class="mu-pty-x" data-act="close">${ICON.close}</button></div>
+        <button type="button" class="mu-pty-x mu-frame mu-xs" data-act="close"><span class="mu-bg"></span>${ICON.close}</button></div>
       <div class="mu-orn mu-ask-orn" aria-hidden="true"><i></i>${ICON.diamond}<i></i></div>
       <div class="mu-pty-body"></div>
       <p class="mu-pty-err" role="alert"></p>
