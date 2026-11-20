@@ -10,8 +10,18 @@ import type { NetPeer } from './types';
  * gap is longer than the delay), and never back along the way they go (a correction that would, waits). Missing from the snapshots `DROP` s, they go. No allocation per frame.
  */
 
-/** How far behind the server's newest snapshot the peers are shown (ms): one snapshot gap at 5 a second, less a little. */
+/**
+ * How far behind the server's newest snapshot the peers are shown (ms): one snapshot gap at 5 a second, less a
+ * little. A peer whose snapshots come further apart (protocol 2 sends the farther ones under 2 a second) is shown
+ * further behind: its gap less `DELAY_UNDER`, eased at most `DELAY_EASE` s a second (so they slow or hurry a little,
+ * never jump).
+ */
 export const DELAY = 120;
+const DELAY_UNDER = 80;
+const DELAY_MAX = 900;
+const DELAY_EASE = 0.25;
+/** The usual gap between snapshots (ms) at first. */
+const GAP0 = 200;
 /** Missing this long (s), a peer is dropped. */
 export const DROP = 5;
 /** Past the newer snapshot, they glide on along their last step at most this long (ms; then wait). */
@@ -43,6 +53,9 @@ export interface PeerRec extends NetPeer {
   ey: number;
   ez: number;
   eyaw: number;
+  /** The usual gap between their snapshots while they move (ms, eased) and how far behind they are shown (ms). */
+  gap: number;
+  delay: number;
   /** The way they last went (x, z: the last snapshot pair that moved) and when (server ms). */
   mx: number;
   mz: number;
@@ -81,6 +94,8 @@ export function newPeer(s: PeerState, at: number, emoteAtPage: number): PeerRec 
     ey: 0,
     ez: 0,
     eyaw: 0,
+    gap: GAP0,
+    delay: DELAY,
     mx: 0,
     mz: 0,
     movedAt: -Infinity,
@@ -100,22 +115,28 @@ function placeAt(p: PeerRec, at: number): void {
   out.yaw = p.ayaw + wrap(p.byaw - p.ayaw) * u;
 }
 
-/** A new snapshot of `p` at server time `at` (the newer becomes the older); `renderAt` the time they are drawn at now. */
-export function pushSnapshot(p: PeerRec, s: PeerState, at: number, renderAt: number): void {
+/** A new snapshot of `p` at server time `at` (the newer becomes the older); `serverNow` the server's time now (ms). */
+export function pushSnapshot(p: PeerRec, s: PeerState, at: number, serverNow: number): void {
   if (at <= p.tb) return;
+  const renderAt = serverNow - p.delay;
+  const dt = at - p.tb;
   // (where they would be drawn now, before the new pair: the correction starts from there)
   placeAt(p, renderAt);
   const x0 = out.x + p.ex;
   const y0 = out.y + p.ey;
   const z0 = out.z + p.ez;
   const yaw0 = out.yaw + p.eyaw;
-  // (after a long gap (out of reach a while) the old snapshot is no guide: start the step from the new one)
-  const gap = at - p.tb > 1000;
-  p.ta = gap ? at - 200 : p.tb;
-  p.ax = gap ? s.x : p.bx;
-  p.ay = gap ? s.y : p.by;
-  p.az = gap ? s.z : p.bz;
-  p.ayaw = gap ? s.yaw : p.byaw;
+  // (after a long gap they stood still where the last one had them (protocol 2 sends nothing while still): the step
+  // starts from there one usual gap ago, not from the old snapshot's time)
+  if (dt <= 1000) p.gap += (dt - p.gap) * 0.3;
+  const still = dt > Math.max(1.6 * p.gap, 400);
+  p.ta = still ? at - Math.min(p.gap, 1000) : p.tb;
+  // (a jump (Jump in, a ramp: tens of metres at once) is not glided across: the step starts where they land)
+  const jump = (s.x - p.bx) ** 2 + (s.z - p.bz) ** 2 > 30 * 30;
+  p.ax = jump ? s.x : p.bx;
+  p.ay = jump ? s.y : p.by;
+  p.az = jump ? s.z : p.bz;
+  p.ayaw = jump ? s.yaw : p.byaw;
   p.tb = at;
   p.bx = s.x;
   p.by = s.y;
@@ -145,8 +166,17 @@ export function pushSnapshot(p: PeerRec, s: PeerState, at: number, renderAt: num
   p.eyaw = far ? 0 : wrap(yaw0 - out.yaw);
 }
 
-/** Ease `p` to server time `renderAt` (ms), `dt` s since the last frame. */
-export function easePeer(p: PeerRec, renderAt: number, serverNow: number, dt: number): void {
+/** A keep-alive: `p` is still there at server time `at`, where it was. */
+export function touchPeer(p: PeerRec, at: number): void {
+  if (at > p.seenAt) p.seenAt = at;
+}
+
+/** Ease `p` to its time (`serverNow` less its delay, ms), `dt` s since the last frame. */
+export function easePeer(p: PeerRec, serverNow: number, dt: number): void {
+  const want = Math.min(DELAY_MAX, Math.max(DELAY, p.gap - DELAY_UNDER));
+  const step = DELAY_EASE * dt * 1000;
+  p.delay += Math.max(-step, Math.min(step, want - p.delay));
+  const renderAt = serverNow - p.delay;
   placeAt(p, renderAt);
   const k = Math.exp(-dt / SETTLE);
   p.ex *= k;

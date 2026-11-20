@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { LIMITS, PROTOCOL, testMidnight } from '../src/net/protocol.ts';
+import { LIMITS, PEER_E, PEER_N, PEER_S, POS_Q, PROTOCOL, YAW_Q, testMidnight } from '../src/net/protocol.ts';
 import type { ClientMsg, PeerState, ServerMsg, ServerPeers, ServerWelcome } from '../src/net/protocol.ts';
 import { startServer, type RunningServer } from './app.ts';
 
@@ -28,6 +28,11 @@ class Bot {
       this.msgs.push(m);
       if (m.t === 'welcome') this.welcome = m;
       if (m.t === 'peers') this.lastPeers = m;
+      if (m.t === 'pp') {
+        this.ppBytes += String(ev.data).length;
+        this.pp.push(m);
+        this.applyV2(m);
+      }
       this.poke();
     });
     this.ws.addEventListener('close', (ev) => {
@@ -35,6 +40,40 @@ class Bot {
       this.closeCode = ev.code;
       this.poke();
     });
+  }
+  /** Version 2: the players near, as the page keeps them (the 'pp' messages applied). */
+  known = new Map<number, PeerState>();
+  pp: Extract<ServerMsg, { t: 'pp' }>[] = [];
+  ppBytes = 0;
+  private applyV2(m: Extract<ServerMsg, { t: 'pp' }>): void {
+    for (const sid of m.g ?? []) this.known.delete(sid);
+    const n = m.n ?? [];
+    for (let i = 0; i < n.length; i += PEER_N) {
+      const sid = n[i] as number;
+      const p = this.known.get(sid) ?? { sid, name: '', x: 0, y: 0, z: 0, yaw: 0, ride: 0, emote: 0, emoteAt: 0, look: 0 };
+      p.name = n[i + 1] as string;
+      p.look = n[i + 2] as number;
+      p.party = n[i + 3] === 1;
+      this.known.set(sid, p);
+    }
+    const st = m.s ?? [];
+    for (let i = 0; i < st.length; i += PEER_S) {
+      const p = this.known.get(st[i]);
+      assert.ok(p, 'a state only for an introduced player');
+      p.x = st[i + 1] / POS_Q;
+      p.y = st[i + 2] / POS_Q;
+      p.z = st[i + 3] / POS_Q;
+      p.yaw = (st[i + 4] / YAW_Q) * Math.PI * 2;
+      p.ride = st[i + 5];
+    }
+    const e = m.e ?? [];
+    for (let i = 0; i < e.length; i += PEER_E) {
+      const p = this.known.get(e[i]);
+      if (!p) continue;
+      p.emote = e[i + 1];
+      p.emoteAt = m.now - e[i + 2];
+    }
+    this.lastPeers = { t: 'peers', now: m.now, peers: [...this.known.values()] };
   }
   private poke(): void {
     const w = this.waiters;
@@ -83,7 +122,7 @@ let devices = 0;
 async function join(srv: RunningServer, name: string, extra: Record<string, unknown> = {}): Promise<Bot> {
   const b = new Bot(srv.url);
   await b.open();
-  b.send({ t: 'hello', v: PROTOCOL, id: `test-device-${++devices}`, name, look: devices, room: 'public', ...extra });
+  b.send({ t: 'hello', v: (extra.v as number | undefined) ?? PROTOCOL, id: `test-device-${++devices}`, name, look: devices, room: 'public', ...extra });
   await b.until(() => b.welcome || b.error() || b.closed, 3000, `${name}'s welcome`);
   return b;
 }
@@ -124,6 +163,36 @@ await check('join, see each other in peers, health', async () => {
   assert.ok(h.players >= 2 && h.rooms >= 1 && h.crowds >= 1 && typeof h.uptime === 'number');
   a.close();
   b.close();
+});
+
+await check('version 1 pages still get the old peers; version 2 sends only what changed', async () => {
+  const old = await join(srv, 'Old Page', { v: 1 });
+  const a = await join(srv, 'New Page');
+  const b = await join(srv, 'Mover');
+  old.send({ t: 'state', x: 50, y: 0, z: 50, yaw: 0, ride: 0 });
+  a.send({ t: 'state', x: 51, y: 0, z: 50, yaw: 0, ride: 0 });
+  b.send({ t: 'state', x: 52.03, y: 1.26, z: 50, yaw: 1, ride: 2 });
+  const p1 = await old.until(() => old.lastPeers?.peers.find((p) => p.sid === b.welcome!.sid), 2000, 'old peers');
+  assert.equal(p1.x, 52.03);
+  assert.equal(old.pp.length, 0, 'no pp to a v1 page');
+  const p2 = await a.until(() => a.peer(b.welcome!.sid), 2000, 'v2 peers');
+  assert.ok(Math.abs(p2.x - 52.03) <= 0.5 / POS_Q && Math.abs(p2.y - 1.26) <= 0.5 / POS_Q, 'quantized to 1/20 m');
+  assert.ok(Math.abs(p2.yaw - 1) <= Math.PI / YAW_Q, 'yaw to 1/256 turn');
+  assert.equal(p2.ride, 2);
+  assert.equal(p2.name, 'Mover');
+  // Standing still: after the introduction only keep-alives (k), about every 2 s.
+  await wait(600);
+  const from = a.pp.length;
+  await wait(2500);
+  const later = a.pp.slice(from);
+  assert.ok(later.every((m) => !m.s && !m.n), 'nothing resent while still');
+  assert.ok(later.some((m) => m.k?.includes(b.welcome!.sid)), 'a keep-alive');
+  // Leaving: 'g' at once.
+  b.close();
+  await a.until(() => a.pp.some((m) => m.g?.includes(b.welcome!.sid)), 2000, 'gone');
+  assert.ok(!a.peer(b.welcome!.sid));
+  old.close();
+  a.close();
 });
 
 await check('ping → pong with server time', async () => {
@@ -343,6 +412,22 @@ await check('party: made with a code, a member joining a full crowd stays with i
   const far = fill[fill.length - 1];
   await far.until(() => far.lastPeers && far.lastPeers.peers.length === LIMITS.near, 2000, 'peers at the far end');
   assert.ok(far.lastPeers!.peers.every((p) => p.x >= LIMITS.crowd - 1 - LIMITS.near - 1), 'the far end sees its own neighbours');
+  // Tiers: a near player moving is sent 5 times a second, a far one (rank ≥ 15) under 2.
+  const nearOne = fill[4];
+  const farOne = fill[40];
+  const counts = (sid: number, list: typeof lead.pp): number => list.reduce((k, m) => k + ((m.s ?? []).filter((v, i) => i % PEER_S === 0 && v === sid).length), 0);
+  const from = lead.pp.length;
+  for (let step = 1; step <= 10; step++) {
+    nearOne.send({ t: 'state', x: 5, y: 0, z: step * 0.5, yaw: 0, ride: 0 });
+    farOne.send({ t: 'state', x: 41, y: 0, z: step * 0.5, yaw: 0, ride: 0 });
+    await wait(200);
+  }
+  await wait(100);
+  const got = lead.pp.slice(from);
+  const nNear = counts(nearOne.welcome!.sid, got);
+  const nFar = counts(farOne.welcome!.sid, got);
+  assert.ok(nNear >= 8, `near: ${nNear} states in 2 s`);
+  assert.ok(nFar >= 2 && nFar <= 5, `far: ${nFar} states in 2 s`);
   // An unknown code joins alone and says so without closing.
   const lost = await join(srv, 'Lost', { party: 'ZZZZZZ' });
   assert.ok(lost.welcome);

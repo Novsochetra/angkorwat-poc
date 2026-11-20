@@ -9,8 +9,14 @@
  * on the server (src/net/names.ts). Nothing here is saved by the server after the night.
  */
 
-/** The protocol's version: a server refuses a page that speaks another (`ServerError` 'version'). */
-export const PROTOCOL = 1;
+/**
+ * The protocol's version: a server refuses a page that speaks one it does not know (`ServerError` 'version').
+ * 2: the players near you come as `ServerPeersV2` ('pp', compact, only what changed); a page that says 1 still gets
+ * the old `ServerPeers` ('peers') from the server, so an older build keeps working.
+ */
+export const PROTOCOL = 2;
+/** The oldest version a server still speaks. */
+export const PROTOCOL_MIN = 1;
 
 /** Limits both sides keep (the server enforces them; the page stays under them). */
 export const LIMITS = {
@@ -147,6 +153,43 @@ export interface ServerPeers {
   now: number;
   peers: PeerState[];
 }
+/**
+ * Version 2's players near you (at most `LIMITS.near`): only what changed since the last one this page got, as flat
+ * arrays of numbers (records one after another), every list optional:
+ *
+ * - `n` introductions, `PEER_N` a record: [sid, name, look, party 0|1]: a player coming into reach, or whose name
+ *   (hidden as "Player") or party changed. A new player's `n` comes in the same message as its first `s`.
+ * - `s` states, `PEER_S` a record: [sid, x, y, z, yaw, ride]: x, y, z in 1/`POS_Q` m (integers), yaw in 1/`YAW_Q`
+ *   turn (0‥255, toward (sin, cos) as `PeerState.yaw`). The nearest `NEAR_FAST` are sent at `stateHz` while they
+ *   move, the rest about `FAR_HZ` a second; a player who stopped is sent once more where they stopped, then not.
+ * - `e` emotes, `PEER_E` a record: [sid, emote, age ms (server now − when it began)]: only when one begins (and with
+ *   a player's introduction, if they have one going).
+ * - `k` still there: sids not sent for `KEEP_MS` (a page drops a player missing `DROP` s).
+ * - `g` gone out of reach (or left): drop them now.
+ */
+export interface ServerPeersV2 {
+  t: 'pp';
+  /** Server time of this snapshot (ms). */
+  now: number;
+  n?: (number | string)[];
+  s?: number[];
+  e?: number[];
+  k?: number[];
+  g?: number[];
+}
+export const PEER_N = 4;
+export const PEER_S = 6;
+export const PEER_E = 3;
+/** Positions in `PEER_S` records: 1/20 m. */
+export const POS_Q = 20;
+/** Facing: 1/256 turn. */
+export const YAW_Q = 256;
+/** The nearest this many players come at `stateHz`; the rest of the `near` about `FAR_HZ` a second. */
+export const NEAR_FAST = 15;
+export const FAR_HZ = 5 / 3;
+/** A still player is named in `k` this often (ms). */
+export const KEEP_MS = 2000;
+
 /** How many players stand on each stage's ground now (the boards show it: nye/board.ts `setBoardPlayers`). */
 export interface ServerCount {
   t: 'count';
@@ -166,7 +209,7 @@ export interface ServerError {
   code: 'version' | 'name' | 'code' | 'full' | 'rate' | 'moved' | 'party';
   reason?: string;
 }
-export type ServerMsg = ServerWelcome | ServerPong | ServerPeers | ServerCount | ServerParty | ServerError;
+export type ServerMsg = ServerWelcome | ServerPong | ServerPeers | ServerPeersV2 | ServerCount | ServerParty | ServerError;
 
 /** The test room's midnight at or after `now` (ms): every quarter hour (:00, :15, :30, :45 UTC minutes), at least 2 minutes ahead. */
 export function testMidnight(now: number): number {

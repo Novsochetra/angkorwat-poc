@@ -35,12 +35,18 @@ interface Tag {
   name: string;
   party: boolean;
   shown: boolean;
+  /** Its size on the screen (px). */
+  w: number;
+  h: number;
 }
 
 export class NameTags {
   private readonly tags: Tag[] = [];
   private made = false;
   private readonly v = new Vector3();
+  /** Tags placed this frame, and their rectangles on the screen (x0, x1, y0, y1 each). */
+  private used = 0;
+  private readonly rects = new Float32Array(NAME_TAGS * 4);
 
   private make(): boolean {
     if (this.made) return this.tags.length > 0;
@@ -54,20 +60,27 @@ export class NameTags {
       el.setAttribute('aria-hidden', 'true');
       el.innerHTML = '<span class="pl-latin"></span><span class="pl-km"></span>';
       root.append(el);
-      this.tags.push({ el, latin: el.firstElementChild as HTMLElement, km: el.lastElementChild as HTMLElement, sid: -1, name: '', party: false, shown: false });
+      this.tags.push({ el, latin: el.firstElementChild as HTMLElement, km: el.lastElementChild as HTMLElement, sid: -1, name: '', party: false, shown: false, w: 0, h: 0 });
     }
     return true;
   }
 
+  /** A frame's names begin (then `add` the nearest first, then `end`). */
+  begin(): void {
+    this.used = 0;
+  }
+
   /**
-   * Tag `k` over the head point (x, y, z) for player `sid`, `d` m from the camera (k < NAME_TAGS; the scene picks the
-   * nearest). Tags not set this frame are hidden by `end`.
+   * Player `sid`'s name over the head point (x, y, z), `d` m from the camera (the nearest first: a name that would
+   * cover one already shown this frame is left out, so a bunch of players far off show only the nearest's names).
    */
-  set(k: number, camera: PerspectiveCamera, sid: number, name: string, party: boolean, x: number, y: number, z: number, d: number): void {
-    if (!this.make()) return;
-    const t = this.tags[k];
+  add(camera: PerspectiveCamera, sid: number, name: string, party: boolean, x: number, y: number, z: number, d: number): void {
+    if (this.used >= NAME_TAGS || !this.make()) return;
     this.v.set(x, y, z).project(camera);
-    if (this.v.z > 1 || Math.abs(this.v.x) > 1.1 || Math.abs(this.v.y) > 1.1) return this.hide(t);
+    if (this.v.z > 1 || Math.abs(this.v.x) > 1.1 || Math.abs(this.v.y) > 1.1) return;
+    const sx = ((this.v.x + 1) / 2) * innerWidth;
+    const sy = ((1 - this.v.y) / 2) * innerHeight;
+    const t = this.tags[this.used];
     if (t.sid !== sid || t.name !== name || t.party !== party) {
       t.sid = sid;
       t.name = name;
@@ -78,9 +91,20 @@ export class NameTags {
       t.km.textContent = km;
       t.km.style.display = km ? '' : 'none';
       t.el.classList.toggle('pl-party', party);
+      // (its size: measured once a name)
+      t.w = t.el.offsetWidth;
+      t.h = t.el.offsetHeight;
     }
-    const sx = ((this.v.x + 1) / 2) * innerWidth;
-    const sy = ((1 - this.v.y) / 2) * innerHeight;
+    const r = this.rects;
+    const x0 = sx - t.w / 2;
+    const x1 = sx + t.w / 2;
+    const y0 = sy - t.h;
+    for (let k = 0; k < this.used; k++) if (x0 < r[k * 4 + 1] && r[k * 4] < x1 && y0 < r[k * 4 + 3] && r[k * 4 + 2] < sy) return;
+    r[this.used * 4] = x0;
+    r[this.used * 4 + 1] = x1;
+    r[this.used * 4 + 2] = y0;
+    r[this.used * 4 + 3] = sy;
+    this.used++;
     const o = Math.max(0, Math.min(1, (NAME_NEAR - d) / NAME_FADE));
     t.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
     t.el.style.opacity = o.toFixed(2);
@@ -90,9 +114,9 @@ export class NameTags {
     }
   }
 
-  /** Hide every tag from `from` on (those not set this frame). */
-  end(from: number): void {
-    for (let k = from; k < this.tags.length; k++) this.hide(this.tags[k]);
+  /** Hide the tags not used this frame. */
+  end(): void {
+    for (let k = this.used; k < this.tags.length; k++) this.hide(this.tags[k]);
   }
 
   private hide(t: Tag): void {

@@ -7,17 +7,18 @@
  * No drawing, only connections: each bot joins the test room with a name, walks to the festival square at
  * Phnom Kulen's foot (up the lantern walk) or to the lake terrace, greets now and then, cheers at midnight and stays
  * through it. Every 10 s it prints the server's /health (players, crowds, CPU, memory, message rates) and what the
- * bots get (peers messages a second per bot, players per message, kB a second).
+ * bots get (peers messages and player states a second per bot, players near, kB a second each). The bots speak
+ * protocol 2 (`ServerPeersV2`: names once, then only what moved); `v=1` makes them ask for version 1's full snapshots.
  *
  * Options (key=value): bots (300), url (ws://localhost:8787), code (or EVENT_CODE in the shell), room (test|public),
  * rate (joins a second, 25), speed (m/s walking, 2.5), start (far: the village and the floating village | near: by
  * the square's gate and the terrace), secs (stop after this long; default: midnight + 60 s), lake (share of bots
- * going to the lake terrace, 0.3).
+ * going to the lake terrace, 0.3), mill (share of bots that keep walking about once there, 0.3), v (protocol, 2).
  *
  * The server limits joins to 6 a minute per address: start it with JOIN_LIMIT_EXEMPT=127.0.0.1,::1 (or the
  * load machine's address on a staging service).
  */
-import { EMOTES, PROTOCOL } from '../src/net/protocol.ts';
+import { EMOTES, PEER_N, PEER_S, PROTOCOL } from '../src/net/protocol.ts';
 import { LAKE_SHORE, LANTERN_WALK, SQUARE } from '../src/map/nye/plan.ts';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.split('=')).map(([k, ...v]) => [k, v.join('=')]));
@@ -30,6 +31,7 @@ const SPEED = Number(args.speed ?? 2.5);
 const START = args.start ?? 'far';
 const SECS = args.secs ? Number(args.secs) : null;
 const LAKE = Number(args.lake ?? 0.3);
+const MILL = Number(args.mill ?? 0.3);
 const HEALTH = URL_.replace(/^ws/, 'http').replace(/\/+$/, '') + '/health';
 
 if (ROOM === 'test' && !CODE) {
@@ -63,7 +65,7 @@ function pathFor(lake) {
   return [...way, end];
 }
 
-const stats = { joined: 0, refused: {}, closed: 0, peerMsgs: 0, peerCount: 0, bytes: 0, maxPeers: 0, midnights: new Set(), crowds: {}, counts: null };
+const stats = { states: 0, joined: 0, refused: {}, closed: 0, peerMsgs: 0, peerCount: 0, bytes: 0, maxPeers: 0, midnights: new Set(), crowds: {}, counts: null };
 const bots = [];
 const t0 = Date.now();
 
@@ -80,12 +82,14 @@ class Bot {
     this.lastSent = 0;
     this.nextGreet = Date.now() + rnd(10_000, 40_000);
     this.cheered = false;
+    this.known = new Set();
+    this.mill = Math.random() < MILL;
     this.ws = new WebSocket(URL_);
     this.ws.addEventListener('open', () => {
       this.ws.send(
         JSON.stringify({
           t: 'hello',
-          v: PROTOCOL,
+          v: Number(args.v ?? PROTOCOL),
           id: `nyeload-${process.pid}-${i}-${Math.random().toString(36).slice(2)}`,
           name: `${pick(FIRST)} ${pick(LAST)}`,
           look: Math.floor(Math.random() * 2 ** 31),
@@ -98,9 +102,18 @@ class Bot {
       const text = String(ev.data);
       stats.bytes += text.length;
       const m = JSON.parse(text);
-      if (m.t === 'peers') {
+      if (m.t === 'pp') {
+        // (protocol 2: introductions add, gone removes; the states, emotes and keep-alives are only counted)
+        for (const sid of m.g ?? []) this.known.delete(sid);
+        for (let i = 0; i < (m.n?.length ?? 0); i += PEER_N) this.known.add(m.n[i]);
+        stats.peerMsgs++;
+        stats.peerCount += this.known.size;
+        stats.states += (m.s?.length ?? 0) / PEER_S;
+        if (this.known.size > stats.maxPeers) stats.maxPeers = this.known.size;
+      } else if (m.t === 'peers') {
         stats.peerMsgs++;
         stats.peerCount += m.peers.length;
+        stats.states += m.peers.length;
         if (m.peers.length > stats.maxPeers) stats.maxPeers = m.peers.length;
       } else if (m.t === 'welcome') {
         this.welcome = m;
@@ -133,6 +146,8 @@ class Bot {
       if (d <= step) {
         [this.x, this.z] = target;
         this.leg++;
+        // (a share of them keep milling about on the ground they came to)
+        if (this.mill && this.leg === this.path.length - 1) this.path.push(inEllipse(this.lake ? LAKE_SHORE : SQUARE));
       } else {
         this.x += (dx / d) * step;
         this.z += (dz / d) * step;
@@ -181,7 +196,7 @@ const walking = setInterval(() => {
   for (const b of bots) b.tick(now, dt);
 }, 50);
 
-let prev = { peerMsgs: 0, peerCount: 0, bytes: 0, at: Date.now() };
+let prev = { peerMsgs: 0, peerCount: 0, bytes: 0, states: 0, at: Date.now() };
 const fmt = (n) => (Math.round(n * 10) / 10).toString();
 async function report(final = false) {
   const now = Date.now();
@@ -191,7 +206,8 @@ async function report(final = false) {
   const perBot = alive ? msgs / secs / alive : 0;
   const avgPeers = msgs ? (stats.peerCount - prev.peerCount) / msgs : 0;
   const kB = (stats.bytes - prev.bytes) / 1024 / secs;
-  prev = { peerMsgs: stats.peerMsgs, peerCount: stats.peerCount, bytes: stats.bytes, at: now };
+  const statesPerBot = alive ? (stats.states - prev.states) / secs / alive : 0;
+  prev = { peerMsgs: stats.peerMsgs, peerCount: stats.peerCount, bytes: stats.bytes, states: stats.states, at: now };
   let h = null;
   try {
     h = await (await fetch(HEALTH, { signal: AbortSignal.timeout(3000) })).json();
@@ -203,7 +219,7 @@ async function report(final = false) {
   const room = h?.byRoom?.[ROOM];
   console.log(
     `[${fmt((now - t0) / 1000)} s] bots ${alive}/${made} (joined ${stats.joined}, closed ${stats.closed}${Object.keys(stats.refused).length ? `, errors ${JSON.stringify(stats.refused)}` : ''})` +
-      ` · per bot ${fmt(perBot)} peers msgs/s, ${fmt(avgPeers)} players each (max ${stats.maxPeers}) · bots receive ${fmt(kB)} kB/s` +
+      ` · per bot ${fmt(perBot)} peers msgs/s, ${fmt(statesPerBot)} player states/s, ${fmt(avgPeers)} players near (max ${stats.maxPeers}) · ${fmt(alive ? kB / alive : 0)} kB/s each, ${fmt(kB)} kB/s all` +
       (stats.counts ? ` · square ${stats.counts.square} lake ${stats.counts.lake} online ${stats.counts.online}` : '') +
       (toMid !== null ? ` · midnight in ${toMid} s` : ''),
   );

@@ -8,7 +8,10 @@
  *   `LIMITS.crowd`; a party (a code from `PARTY_LETTERS`) always stays in one crowd.
  * - Each page sends its state about `LIMITS.stateHz` times a second; the server checks it (finite, on the map, no
  *   faster than `LIMITS.maxSpeed` with slack for lag) and sends each page the nearest `LIMITS.near` players of its
- *   crowd as often (a grid over the map finds them), and once a second how many stand on the two stages' grounds.
+ *   crowd (a grid over the map finds them), and once a second how many stand on the two stages' grounds. Protocol 2
+ *   (`ServerPeersV2`) sends only what changed: names once, quantized states, the nearest `NEAR_FAST` at stateHz and
+ *   the rest about `FAR_HZ`, nothing for a player standing still but a keep-alive every `KEEP_MS`; a version 1 page
+ *   still gets the whole `peers` snapshot stateHz times a second.
  * - Limits: joins a minute per address, messages a second per page, emotes, reports; idle pages are closed.
  * - Nothing is written to disk and nothing personal is kept: a player is a salted hash of the page's random id, in
  *   memory, gone when the server stops.
@@ -19,7 +22,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket, type RawData } from 'ws';
-import { EMOTES, LIMITS, PARTY_LETTERS, PROTOCOL, RIDES, testMidnight } from '../src/net/protocol.ts';
+import { EMOTES, KEEP_MS, FAR_HZ, LIMITS, NEAR_FAST, PARTY_LETTERS, POS_Q, PROTOCOL, PROTOCOL_MIN, RIDES, YAW_Q, testMidnight } from '../src/net/protocol.ts';
 import type { ClientHello, ClientMsg, ClientState, RoomKind, ServerError, ServerMsg } from '../src/net/protocol.ts';
 import { LAKE_SHORE, SQUARE } from '../src/map/nye/plan.ts';
 import type { TrackerConfig } from '../src/feedback/tracker.ts';
@@ -64,6 +67,9 @@ const SLOW_CLOSE = 4 * 1024 * 1024;
 /** The biggest message a page may send (bytes). */
 const MAX_PAYLOAD = 4 * 1024;
 
+/** Version 2: the farther players' states at most this often (ms; a tick's slack under `1000 / FAR_HZ`). */
+const FAR_MS = Math.round(1000 / FAR_HZ) - 20;
+
 const GRID_W = Math.ceil((MAP.x1 - MAP.x0) / CELL);
 const GRID_H = Math.ceil((MAP.z1 - MAP.z0) / CELL);
 
@@ -106,6 +112,22 @@ interface Room {
   midnight: number | null;
   players: number;
 }
+interface Sent {
+  qx: number;
+  qy: number;
+  qz: number;
+  qyaw: number;
+  ride: number;
+  /** When its state (or a keep-alive) was last sent (ms). */
+  at: number;
+  /** The last state sent was a move: send it once more when it stops. */
+  moving: boolean;
+  name: string;
+  party: boolean;
+  emoteAt: number;
+  /** The snapshot it was last near in. */
+  mark: number;
+}
 interface Client {
   ws: WebSocket;
   ip: string;
@@ -138,8 +160,20 @@ interface Client {
   strikes: number;
   pending: { x: number; z: number; at: number; n: number } | null;
   jumps: number[];
-  /** This snapshot's piece of JSON (without the closing brace), '' when not shown. */
+  /** This snapshot's piece of JSON for version 1 pages (without the closing brace). */
   frag: string;
+  /** The protocol version the page speaks. */
+  v: number;
+  /** The name as shown this snapshot ("Player" when hidden). */
+  shown: string;
+  /** This snapshot's state quantized (version 2) and its `PEER_S` record. */
+  qx: number;
+  qy: number;
+  qz: number;
+  qyaw: number;
+  qs: string;
+  /** Version 2: what this page was last sent about each player near it. */
+  sent: Map<Client, Sent>;
   closing: boolean;
 }
 
@@ -296,7 +330,8 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     if (c.room) return; // one hello a connection
     const now = Date.now();
     if (!joinsOk(c.ip, now)) return refuse(c, 'rate', 'joins');
-    if (m.v !== PROTOCOL) return refuse(c, 'version', `server speaks ${PROTOCOL}`);
+    if (!Number.isInteger(m.v) || m.v < PROTOCOL_MIN || m.v > PROTOCOL) return refuse(c, 'version', `server speaks ${PROTOCOL_MIN}‥${PROTOCOL}`);
+    c.v = m.v;
     const kind: RoomKind = m.room === 'test' ? 'test' : 'public';
     if (kind === 'test' && !eventCode) return refuse(c, 'code', 'closed');
     if (kind === 'test' && !codeOk(m.code)) return refuse(c, 'code');
@@ -529,14 +564,87 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     }
   };
 
-  const snapshot = (crowd: Crowd, head: string): void => {
+  /** Version 2: what this page was last sent about `m`, or a fresh record (an introduction is due). */
+  const sendV2 = (c: Client, near: Client[], now: number, tick: number): void => {
+    const n: string[] = [];
+    const st: string[] = [];
+    const e: string[] = [];
+    const k: number[] = [];
+    for (let rank = 0; rank < near.length; rank++) {
+      const m = near[rank];
+      const party = c.party !== null && m.party === c.party;
+      const every = rank < NEAR_FAST ? 0 : FAR_MS;
+      let r = c.sent.get(m);
+      if (!r) {
+        r = { qx: m.qx, qy: m.qy, qz: m.qz, qyaw: m.qyaw, ride: m.ride, at: now, moving: false, name: m.shown, party, emoteAt: m.emoteAt, mark: tick };
+        c.sent.set(m, r);
+        n.push(`${m.sid},${JSON.stringify(m.shown)},${m.look},${party ? 1 : 0}`);
+        st.push(m.qs);
+        if (m.emoteAt > 0) e.push(`${m.sid},${m.emote},${now - m.emoteAt}`);
+        continue;
+      }
+      r.mark = tick;
+      if (r.name !== m.shown || r.party !== party) {
+        r.name = m.shown;
+        r.party = party;
+        n.push(`${m.sid},${JSON.stringify(m.shown)},${m.look},${party ? 1 : 0}`);
+      }
+      if (r.emoteAt !== m.emoteAt) {
+        r.emoteAt = m.emoteAt;
+        e.push(`${m.sid},${m.emote},${now - m.emoteAt}`);
+      }
+      const changed = r.qx !== m.qx || r.qy !== m.qy || r.qz !== m.qz || r.qyaw !== m.qyaw || r.ride !== m.ride;
+      if (changed || r.moving) {
+        if (now - r.at >= every) {
+          st.push(m.qs);
+          r.qx = m.qx;
+          r.qy = m.qy;
+          r.qz = m.qz;
+          r.qyaw = m.qyaw;
+          r.ride = m.ride;
+          r.at = now;
+          // (moved: sent once more where it stops, so the page's last pair stands still there)
+          r.moving = changed;
+        }
+      } else if (now - r.at >= KEEP_MS) {
+        k.push(m.sid);
+        r.at = now;
+      }
+    }
+    const g: number[] = [];
+    for (const [m, r] of c.sent)
+      if (r.mark !== tick) {
+        g.push(m.sid);
+        c.sent.delete(m);
+      }
+    if (!n.length && !st.length && !e.length && !k.length && !g.length) return;
+    let body = `{"t":"pp","now":${now}`;
+    if (n.length) body += `,"n":[${n.join(',')}]`;
+    if (st.length) body += `,"s":[${st.join(',')}]`;
+    if (e.length) body += `,"e":[${e.join(',')}]`;
+    if (k.length) body += `,"k":[${k.join(',')}]`;
+    if (g.length) body += `,"g":[${g.join(',')}]`;
+    sendRaw(c, body + '}');
+    total.peerMsgs++;
+  };
+
+  let tickN = 0;
+  const snapshot = (crowd: Crowd, head: string, now: number, tick: number): void => {
     const shown: Client[] = [];
+    let v1 = false;
     for (const m of crowd.members) {
+      if (m.v < 2) v1 = true;
       if (!m.has || m.closing) continue;
-      const name = reports.isHidden(m.device, m.name) ? 'Player' : m.name;
-      m.frag = `{"sid":${m.sid},"name":${JSON.stringify(name)},"x":${r2(m.x)},"y":${r2(m.y)},"z":${r2(m.z)},"yaw":${r3(m.yaw)},"ride":${m.ride},"emote":${m.emote},"emoteAt":${m.emoteAt},"look":${m.look}`;
+      m.shown = reports.isHidden(m.device, m.name) ? 'Player' : m.name;
+      m.qx = Math.round(m.x * POS_Q);
+      m.qy = Math.round(m.y * POS_Q);
+      m.qz = Math.round(m.z * POS_Q);
+      m.qyaw = (((Math.round((m.yaw / (2 * Math.PI)) * YAW_Q) % YAW_Q) + YAW_Q) % YAW_Q);
+      m.qs = `${m.sid},${m.qx},${m.qy},${m.qz},${m.qyaw},${m.ride}`;
       shown.push(m);
     }
+    // (version 1 pages in this crowd: their JSON pieces too)
+    if (v1) for (const m of shown) m.frag = `{"sid":${m.sid},"name":${JSON.stringify(m.shown)},"x":${r2(m.x)},"y":${r2(m.y)},"z":${r2(m.z)},"yaw":${r3(m.yaw)},"ride":${m.ride},"emote":${m.emote},"emoteAt":${m.emoteAt},"look":${m.look}`;
     const all = shown.length <= LIMITS.near + 1;
     if (!all) {
       for (const m of shown) {
@@ -557,33 +665,40 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
         continue;
       }
       let near: Client[];
-      if (all || !c.has) {
-        near = all ? shown : [];
-        if (!all && !c.has) near = shown.slice(0, LIMITS.near); // not placed yet: anyone, until its first state
+      if (!c.has) {
+        near = shown.filter((m) => m !== c).slice(0, LIMITS.near); // not placed yet: anyone, until its first state
       } else {
         cand.length = 0;
-        const [cx, cz] = cellOf(c.x, c.z);
-        let r = 0;
-        while (cand.length <= LIMITS.near && r <= maxRing) ring(cx, cz, r++);
-        // Everything within (r − 1) cells is in; the k-th nearest may lie a little farther: take the rings it needs.
         dist.length = 0;
-        for (const m of cand) dist.push((m.x - c.x) ** 2 + (m.z - c.z) ** 2);
-        if (cand.length > LIMITS.near) {
-          const kth = Math.sqrt([...dist].sort((a, b) => a - b)[LIMITS.near]);
-          const need = Math.ceil(kth / CELL) + 1;
-          while (r <= need && r <= maxRing) {
-            const from = cand.length;
-            ring(cx, cz, r++);
-            for (let i = from; i < cand.length; i++) dist.push((cand[i].x - c.x) ** 2 + (cand[i].z - c.z) ** 2);
+        if (all) {
+          for (const m of shown) cand.push(m);
+          for (const m of cand) dist.push((m.x - c.x) ** 2 + (m.z - c.z) ** 2);
+        } else {
+          const [cx, cz] = cellOf(c.x, c.z);
+          let r = 0;
+          while (cand.length <= LIMITS.near && r <= maxRing) ring(cx, cz, r++);
+          // Everything within (r − 1) cells is in; the k-th nearest may lie a little farther: take the rings it needs.
+          for (const m of cand) dist.push((m.x - c.x) ** 2 + (m.z - c.z) ** 2);
+          if (cand.length > LIMITS.near) {
+            const kth = Math.sqrt([...dist].sort((a, b) => a - b)[LIMITS.near]);
+            const need = Math.ceil(kth / CELL) + 1;
+            while (r <= need && r <= maxRing) {
+              const from = cand.length;
+              ring(cx, cz, r++);
+              for (let i = from; i < cand.length; i++) dist.push((cand[i].x - c.x) ** 2 + (cand[i].z - c.z) ** 2);
+            }
           }
         }
         order.length = 0;
         for (let i = 0; i < cand.length; i++) if (cand[i] !== c) order.push(i);
-        if (order.length > LIMITS.near) {
-          order.sort((a, b) => dist[a] - dist[b]);
-          order.length = LIMITS.near;
-        }
+        // (nearest first: version 2 sends the first `NEAR_FAST` faster)
+        order.sort((a, b) => dist[a] - dist[b]);
+        if (order.length > LIMITS.near) order.length = LIMITS.near;
         near = order.map((i) => cand[i]);
+      }
+      if (c.v >= 2) {
+        sendV2(c, near, now, tick);
+        continue;
       }
       let body = head;
       let first = true;
@@ -601,8 +716,9 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
 
   const peersTick = (): void => {
     const now = Date.now();
+    const tick = ++tickN;
     const head = `{"t":"peers","now":${now},"peers":[`;
-    for (const room of rooms.values()) for (const crowd of room.crowds.values()) snapshot(crowd, head);
+    for (const room of rooms.values()) for (const crowd of room.crowds.values()) snapshot(crowd, head, now, tick);
   };
 
   const cpuRing: { at: number; us: number }[] = [];
@@ -744,6 +860,14 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
       pending: null,
       jumps: [],
       frag: '',
+      v: PROTOCOL,
+      shown: '',
+      qx: 0,
+      qy: 0,
+      qz: 0,
+      qyaw: 0,
+      qs: '',
+      sent: new Map(),
       closing: false,
     };
     clients.add(c);

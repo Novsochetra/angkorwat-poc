@@ -3,7 +3,7 @@ import { LIMITS, RIDES, type Ride } from '../../net/protocol';
 import type { MapFrame } from '../types';
 import type { Actor } from './_actor';
 import { Bicycle, BIKE_WHEEL } from './_bicycle';
-import { NameTags, NAME_NEAR, NAME_TAGS } from './_playersNames';
+import { NameTags, NAME_NEAR } from './_playersNames';
 import { GhostPeers, type PeerSource } from './_playersGhosts';
 import { EMOTE_PLAY, emotePose, playerLook } from './_playersLook';
 import { BALLOON_FLAME, GLIDE_PITCH, partyMarkDef, playerBalloonDef, playerBoatDef, playerChuteDef, playerGliderDef } from './_playersRigs';
@@ -133,7 +133,7 @@ export class Players implements PeopleScene {
     const ghosts = Number(env.params.get('ghosts') ?? 0);
     if (ghosts > 0) {
       const at = env.params.get('ghostsat');
-      this.ghosts = new GhostPeers(ghosts, at === 'lake' || at === 'map' ? at : 'square', env.ground);
+      this.ghosts = new GhostPeers(ghosts, at === 'lake' || at === 'map' || at === 'lineup' ? at : 'square', env.ground);
       this.source = this.ghosts;
     } else {
       // (the live connection, loaded on its own: playing alone it never connects)
@@ -325,14 +325,14 @@ export class Players implements PeopleScene {
       }
       near[j + 1] = b;
     }
-    const n = Math.min(NAME_TAGS, near.length);
-    for (let k = 0; k < n; k++) {
+    this.names.begin();
+    for (let k = 0; k < near.length; k++) {
       const b = near[k];
       const p = b.peer!;
       const ride = p.ride >= 0 && p.ride < RIDES.length ? p.ride : WALK;
-      this.names.set(k, f.camera, b.sid, p.name, !!p.party, p.x, p.y + HEAD_BY[ride] + 0.3, p.z, b.d);
+      this.names.add(f.camera, b.sid, p.name, !!p.party, p.x, p.y + HEAD_BY[ride] + 0.3, p.z, b.d);
     }
-    this.names.end(n);
+    this.names.end();
   }
 
   private giveProp(b: Body): void {

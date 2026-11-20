@@ -2,8 +2,23 @@ import { setServerOffset, setTestMidnight } from '../map/nye/clock';
 import { blockPeer, hideSid, isBlocked, newConnection } from './_blocked';
 import { ServerClock } from './_clock';
 import { deviceId, deviceLook } from './_device';
-import { DELAY, DROP, easePeer, newPeer, pushSnapshot, type PeerRec } from './_peers';
-import { LIMITS, PROTOCOL, testMidnight, type ClientMsg, type ClientState, type PeerState, type RoomKind, type ServerMsg } from './protocol';
+import { DROP, easePeer, newPeer, pushSnapshot, touchPeer, type PeerRec } from './_peers';
+import {
+  LIMITS,
+  PEER_E,
+  PEER_N,
+  PEER_S,
+  POS_Q,
+  PROTOCOL,
+  YAW_Q,
+  testMidnight,
+  type ClientMsg,
+  type ClientState,
+  type PeerState,
+  type RoomKind,
+  type ServerMsg,
+  type ServerPeersV2,
+} from './protocol';
 import type { JoinOptions, NetClient, NetState } from './types';
 
 /**
@@ -21,8 +36,10 @@ import type { JoinOptions, NetClient, NetState } from './types';
  *   protocol.ts `testMidnight`) goes to `setTestMidnight`, and the boards wear "TEST" (`setBoardTest`).
  * - **My state:** at most `LIMITS.stateHz` a second while he moves, once a second while still, nothing while the tab
  *   is hidden or in the overview (`update`'s `me` null: main.ts reads him with _me.ts).
- * - **The others:** `peers` by server id, eased `DELAY` ms behind the server (_peers.ts), dropped `DROP` s after
- *   they were last in a snapshot; blocked or reported ones never appear (_blocked.ts).
+ * - **The others:** `peers` by server id, eased `DELAY` ms behind the server (more for the farther ones, whose
+ *   snapshots come less often: _peers.ts), dropped when the server says they went (or `DROP` s after they were last
+ *   heard of); blocked or reported ones never appear (_blocked.ts). Protocol 2 (`ServerPeersV2`): names come once,
+ *   then only the moving fields, quantized; a page still reads version 1's `peers` (the nyetest mock).
  * - **The boards:** the server's count of players on the Kulen square and at the lake (`setBoardPlayers`) while
  *   online; no line otherwise.
  * - **The hidden test link** `/?event=<code>`: `pendingCode` (the join card asks for a name first if there is none,
@@ -96,6 +113,10 @@ class Client implements NetClient {
   party = { code: null as string | null, members: 0 };
   count = { square: 0, lake: 0, online: 0 };
   readonly peers = new Map<number, PeerRec>();
+  /** Protocol 2's introductions: who each server id is (name, look, party), until they go. */
+  private readonly intro = new Map<number, { name: string; look: number; party: boolean }>();
+  /** The state a 'pp' record is read into (reused). */
+  private readonly scratch: PeerState = { sid: 0, name: '', x: 0, y: 0, z: 0, yaw: 0, ride: 0, emote: 0, emoteAt: 0, look: 0, party: false };
   readonly available = serverAddress() !== null;
   readonly pendingCode = eventCode();
   lastError: string | null = null;
@@ -159,6 +180,7 @@ class Client implements NetClient {
     this.party = { code: null, members: 0 };
     this.count = { square: 0, lake: 0, online: 0 };
     this.peers.clear();
+    this.intro.clear();
     setTestMidnight(null);
     boards(null, null, false);
   }
@@ -246,6 +268,7 @@ class Client implements NetClient {
         this.party = { code: m.party ?? null, members: this.party.members };
         newConnection();
         this.peers.clear();
+        this.intro.clear();
         this.clock.rough(m.now);
         if (Number.isFinite(this.clock.offset)) setServerOffset(this.clock.offset);
         if (m.room === 'test' && typeof m.midnight === 'number') {
@@ -266,6 +289,9 @@ class Client implements NetClient {
         break;
       case 'peers':
         this.takePeers(m.now, m.peers);
+        break;
+      case 'pp':
+        this.takeV2(m);
         break;
       case 'count':
         this.count = { square: m.square, lake: m.lake, online: m.online };
@@ -293,7 +319,6 @@ class Client implements NetClient {
 
   private takePeers(at: number, list: readonly PeerState[]): void {
     const now = this.serverNow();
-    const renderAt = now - DELAY;
     const mine = this.me?.sid ?? -1;
     let changed = false;
     for (const s of list) {
@@ -305,13 +330,80 @@ class Client implements NetClient {
         changed = true;
       } else {
         if (p.name !== s.name || p.party !== !!s.party) changed = true;
-        pushSnapshot(p, s, at, renderAt);
+        pushSnapshot(p, s, at, now);
       }
       if (s.emoteAt !== p.emoteSrv) {
         p.emoteSrv = s.emoteAt;
         p.emote = s.emote;
         p.emoteAt = this.pageTime(s.emoteAt, now);
       } else p.emote = s.emote;
+    }
+    if (changed) this.emit();
+  }
+
+  /** Protocol 2: only what changed (protocol.ts `ServerPeersV2`). */
+  private takeV2(m: ServerPeersV2): void {
+    const at = m.now;
+    const now = this.serverNow();
+    const mine = this.me?.sid ?? -1;
+    let changed = false;
+    for (const sid of m.g ?? []) {
+      this.intro.delete(sid);
+      if (this.peers.delete(sid)) changed = true;
+    }
+    const n = m.n ?? [];
+    for (let i = 0; i + PEER_N <= n.length; i += PEER_N) {
+      const sid = Number(n[i]);
+      const who = { name: String(n[i + 1]), look: Number(n[i + 2]) >>> 0, party: n[i + 3] === 1 };
+      this.intro.set(sid, who);
+      const p = this.peers.get(sid);
+      if (!p) continue;
+      if (isBlocked(sid, who.name)) {
+        this.peers.delete(sid);
+        changed = true;
+      } else if (p.name !== who.name || p.party !== who.party) {
+        p.name = who.name;
+        p.party = who.party;
+        changed = true;
+      }
+    }
+    const st = m.s ?? [];
+    const s = this.scratch;
+    for (let i = 0; i + PEER_S <= st.length; i += PEER_S) {
+      const sid = st[i];
+      const who = this.intro.get(sid);
+      if (!who || sid === mine || isBlocked(sid, who.name)) continue;
+      s.sid = sid;
+      s.name = who.name;
+      s.look = who.look;
+      s.party = who.party;
+      s.x = st[i + 1] / POS_Q;
+      s.y = st[i + 2] / POS_Q;
+      s.z = st[i + 3] / POS_Q;
+      s.yaw = (st[i + 4] / YAW_Q) * Math.PI * 2;
+      s.ride = st[i + 5];
+      const p = this.peers.get(sid);
+      if (!p) {
+        s.emote = 0;
+        s.emoteAt = 0;
+        this.peers.set(sid, newPeer(s, at, this.pageTime(0, now)));
+        changed = true;
+      } else pushSnapshot(p, s, at, now);
+    }
+    const e = m.e ?? [];
+    for (let i = 0; i + PEER_E <= e.length; i += PEER_E) {
+      const p = this.peers.get(e[i]);
+      if (!p) continue;
+      const began = at - e[i + 2];
+      p.emote = e[i + 1];
+      if (began !== p.emoteSrv) {
+        p.emoteSrv = began;
+        p.emoteAt = this.pageTime(began, now);
+      }
+    }
+    for (const sid of m.k ?? []) {
+      const p = this.peers.get(sid);
+      if (p) touchPeer(p, at);
     }
     if (changed) this.emit();
   }
@@ -365,10 +457,9 @@ class Client implements NetClient {
     // The others: eased, and gone once missing too long.
     if (this.peers.size) {
       const now = this.serverNow();
-      const renderAt = now - DELAY;
       let gone = false;
       for (const [sid, p] of this.peers) {
-        easePeer(p, renderAt, now, dt);
+        easePeer(p, now, dt);
         if (p.stale > DROP) {
           this.peers.delete(sid);
           gone = true;

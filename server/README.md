@@ -7,8 +7,9 @@ The WebSocket service behind "Join the New Year online" (AWP-35, ticket 5; the p
 
 - `app.ts`: rooms (`public`, and `test` behind the hidden link's code), crowds of at most 120 (a party stays in one),
   the state checks (numbers, map bounds, speed with slack for lag; a jump like Jump in is taken after 3 steady
-  states, at most 6 a minute), message, join, emote and report limits, the nearest 50 players of the crowd 5 times a
-  second (a 40 m grid), the counts on the square and the lake terrace once a second, idle pages closed after 30 s.
+  states, at most 6 a minute), message, join, emote and report limits, the nearest 50 players of the crowd (a 40 m
+  grid; protocol 2: names once, then only what moved, quantized, the nearest 15 at 5 Hz and the rest at 1.7 Hz,
+  a still player only a keep-alive every 2 s; a version 1 page still gets the old full snapshots), the counts on the square and the lake terrace once a second, idle pages closed after 30 s.
 - `reports.ts`: reports, a name hidden ("Player") for everyone after 3 different reporters, tracker tickets.
 - `names.ts`: loads `src/net/names.ts` (a stub stands in if it cannot load; the start line and `/health` say which).
 - `main.ts`: the service (settings below). `test.ts`: the checks.

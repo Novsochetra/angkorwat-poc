@@ -23,7 +23,7 @@ export interface PeerSource {
   now(): number;
 }
 
-export type GhostsAt = 'square' | 'lake' | 'map';
+export type GhostsAt = 'square' | 'lake' | 'map' | 'lineup';
 
 /** An area ghosts walk in: an ellipse (or a strip: `rect`), with places kept clear. */
 interface Area {
@@ -70,6 +70,8 @@ interface Ghost {
   h: number;
   a: number;
   w: number;
+  /** Circling: the ground under the circle's middle (m; over a hill they keep 15 m over it). */
+  base: number;
   /** Leaves now and then (`away` until when): the scene's fade out and in. */
   away: number;
   rnd: () => number;
@@ -102,6 +104,10 @@ export class GhostPeers implements PeerSource {
         if (w === null || w < field.heightAt(x + Math.sin(a) * 10, z + Math.cos(a) * 10) + 0.4) ok = false;
       }
       if (ok && Math.hypot(x - LAKE_STAGE.x, z - LAKE_STAGE.z) > 16) water.push({ x, z });
+    }
+    if (at === 'lineup') {
+      this.lineup();
+      return;
     }
     for (let k = 0; k < n; k++) {
       const rnd = mulberry32(0x5eed + k * 7919);
@@ -149,11 +155,12 @@ export class GhostPeers implements PeerSource {
         yaw: rnd() * Math.PI * 2,
         stale: 0,
       };
-      const g: Ghost = { peer, motion, area, gx: 0, gz: 0, speed: ride === 'bike' ? 3.2 + rnd() * 1.4 : 1.3 + rnd() * 1.1, until: 0, cx: 0, cz: 0, cr: 0, h: 0, a: rnd() * Math.PI * 2, w: 0, away: -1, rnd };
+      const g: Ghost = { peer, motion, area, gx: 0, gz: 0, speed: ride === 'bike' ? 3.2 + rnd() * 1.4 : 1.3 + rnd() * 1.1, until: 0, cx: 0, cz: 0, cr: 0, h: 0, a: rnd() * Math.PI * 2, w: 0, base: 0, away: -1, rnd };
       if (motion === 'air') {
-        const c = at === 'lake' ? { x: LAKE_STAGE.x - 30, z: LAKE_STAGE.z + 10 } : at === 'map' ? areaPoint(areas[k % areas.length], rnd) : { x: STAGE.x + 15, z: STAGE.front - 40 };
+        const c = at === 'lake' ? { x: LAKE_STAGE.x - 30, z: LAKE_STAGE.z + 10 } : at === 'map' ? areaPoint(areas[k % areas.length], rnd) : { x: STAGE.x + 12, z: STAGE.front - 10 };
         g.cx = c.x;
         g.cz = c.z;
+        g.base = at === 'square' ? this.floor(SQUARE.x, SQUARE.z) : field.heightAt(c.x, c.z);
         g.cr = ride === 'balloon' ? 20 + rnd() * 30 : 45 + rnd() * 50;
         g.h = ride === 'balloon' ? 40 + rnd() * 50 : 35 + rnd() * 70;
         const v = ride === 'glide' ? 9 : ride === 'parachute' ? 5 : 1.6;
@@ -179,6 +186,26 @@ export class GhostPeers implements PeerSource {
     this.step(0);
   }
 
+  /**
+   * `ghostsat=lineup` (a check): every ride, then every emote (each played again and again), in a row across the
+   * Kulen square's gate, facing the gate (south: the crowd's camera `cam=384,11,-246,…` looks at their backs; turn
+   * round: `cam=384,10.5,-262,384,9,-244,60`); the riders in the air hang 4 m up.
+   */
+  private lineup(): void {
+    const rides = RIDES.map((r, k) => ({ ride: k, emote: 0, air: r === 'glide' || r === 'parachute' || r === 'balloon' }));
+    const emotes = PLAYS.map((e) => ({ ride: R('walk'), emote: e, air: false }));
+    const row = [...rides, ...emotes];
+    row.forEach((o, k) => {
+      const x = GATE.x - ((row.length - 1) / 2) * 2.2 + k * 2.2;
+      const z = GATE.z - 8 - (o.air ? 3 : 0) - (k % 2) * 1.2;
+      const y = this.floor(x, z) + (o.air ? 4 : 0);
+      const peer = { sid: 2000 + k, name: o.emote ? EMOTES[o.emote] : RIDES[o.ride], look: 0x1234 + k * 977, ride: o.ride, emote: o.emote, emoteAt: 0, party: k === 0, x, y, z, yaw: 0, stale: 0 };
+      const rnd = mulberry32(k);
+      this.ghosts.push({ peer, motion: 'stay', area: SQUARE_AREA, gx: x, gz: z, speed: 0, until: 0, cx: x, cz: z, cr: 0, h: 0, a: 0, w: 0, base: 0, away: -1, rnd });
+      this.peers.set(peer.sid, peer);
+    });
+  }
+
   now(): number {
     return this.t * 1000;
   }
@@ -195,7 +222,7 @@ export class GhostPeers implements PeerSource {
       const g = this.ghosts[k];
       const p = g.peer;
       // (one in eleven leaves for 6 s every 45 s: the scene fades them out and in)
-      if (k % 11 === 5 && t > 20) {
+      if (k % 11 === 5 && t > 20 && g.motion !== 'stay') {
         const away = (t + k * 3.1) % 45 < 6;
         if (away && this.peers.has(p.sid)) this.peers.delete(p.sid);
         else if (!away && !this.peers.has(p.sid)) this.peers.set(p.sid, p);
@@ -206,11 +233,16 @@ export class GhostPeers implements PeerSource {
         p.z = g.cz + Math.cos(g.a) * g.cr;
         // (heading along the circle)
         p.yaw = g.a + (g.w > 0 ? Math.PI / 2 : -Math.PI / 2);
-        if (g.motion === 'air') p.y = this.ground.field.heightAt(g.cx, g.cz) + g.h + Math.sin(t * 0.4 + k) * 1.5;
+        if (g.motion === 'air') p.y = Math.max(this.ground.field.heightAt(p.x, p.z) + 15, g.base + g.h) + Math.sin(t * 0.4 + k) * 1.5;
         else p.y = (this.ground.field.waterAt(p.x, p.z) ?? this.ground.field.heightAt(p.x, p.z)) + 0.05;
         continue;
       }
-      if (g.motion === 'stay') continue;
+      if (g.motion === 'stay') {
+        // (the lineup: each emote again a moment after it ends)
+        const e = EMOTE_PLAY[p.emote];
+        if (e && t * 1000 - p.emoteAt > (e.dur + 0.8) * 1000) p.emoteAt = t * 1000;
+        continue;
+      }
       if (t < g.until) continue;
       const dx = g.gx - p.x;
       const dz = g.gz - p.z;
