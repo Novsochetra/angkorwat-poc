@@ -140,9 +140,9 @@ export class NyeLife implements PeopleScene {
       this.actors.push(a);
       return a;
     };
-    // The night's crowd (as many as the crowd has room for, up to 104).
+    // The night's crowd (as many as the crowd has room for, up to 150: the square is 68 × 48 m).
     const room = crowd.capacity - crowd.count - 26;
-    this.plan = planCrowd(Math.max(0, Math.min(104, room)));
+    this.plan = planCrowd(Math.max(0, Math.min(150, room)));
     for (const m of this.plan.members) this.crowdActors.push(mk(m.look));
     // The sellers behind their stalls (each stall faces the square's middle: they stand at its back).
     STALLS.forEach((s, k) => {

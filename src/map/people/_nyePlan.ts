@@ -68,10 +68,10 @@ const POTS: readonly [number, number][] = [
 
 /** Seated families' mats at the square's sides (middle, size along x and z). */
 export const MATS: readonly { x: number; z: number; w: number; d: number }[] = [
-  { x: SQUARE.x - 14.6, z: SQUARE.z - 0.5, w: 2.2, d: 2.8 },
-  { x: SQUARE.x + 14.6, z: SQUARE.z - 0.5, w: 2.2, d: 2.8 },
-  { x: SQUARE.x - 12.2, z: SQUARE.z + 13, w: 2.8, d: 2.2 },
-  { x: SQUARE.x + 12.4, z: SQUARE.z + 13, w: 2.8, d: 2.2 },
+  { x: SQUARE.x - 22, z: SQUARE.z - 0.5, w: 2.2, d: 2.8 },
+  { x: SQUARE.x + 22, z: SQUARE.z - 0.5, w: 2.2, d: 2.8 },
+  { x: SQUARE.x - 17, z: SQUARE.z + 14, w: 2.8, d: 2.2 },
+  { x: SQUARE.x + 17, z: SQUARE.z + 14, w: 2.8, d: 2.2 },
 ];
 
 /** Two monks watching quietly at the west side, near the stage (not in the crowd's middle). */

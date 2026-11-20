@@ -146,7 +146,16 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   const trees: BuiltTree[] = [];
   for (const [i, t] of NYE_TREES.entries()) {
     if (low && t.extra) continue;
-    const spot = freeSpot(field, t.x, t.z);
+    // (an edge tree keeps its angle round the square and stands just outside its edge, whatever the square's size: the
+    // spots in `NYE_TREES` were set round a 44 × 42 m square; east of it the picnic trail, so no farther than x 418)
+    let tx = t.x;
+    let tz = t.z;
+    if (t.edge) {
+      const th = Math.atan2((t.z - SQUARE.z) / 21, (t.x - SQUARE.x) / 22);
+      tx = Math.min(418, SQUARE.x + Math.cos(th) * (SQUARE.rx + 4.5));
+      tz = SQUARE.z + Math.sin(th) * (SQUARE.rz + 4.5);
+    }
+    const spot = freeSpot(field, tx, tz);
     if (!spot) continue;
     const [x, z] = spot;
     const g = field.heightAt(x, z);

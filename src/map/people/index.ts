@@ -70,7 +70,7 @@ import { Things } from './_things';
  */
 
 /** Room in the crowd (people the scenes add, and some to spare for more scenes). */
-const CAPACITY = 410;
+const CAPACITY = 460;
 /** Room in the things (boxes of boats, the cart, kites, torches…: `_things.ts`). */
 const THINGS = 2200;
 /** A scene's maker (its module is loaded on its own: one that fails to load or to build is logged and left out). */
