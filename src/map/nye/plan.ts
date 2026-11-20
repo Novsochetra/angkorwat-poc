@@ -79,8 +79,8 @@ export const NAGA: readonly { x: number; z: number; facing: number }[] = [
  */
 export const SHOW_AREA = { x: 425, z: -385, spread: 90, depth: 60, low: 45, high: 250 } as const;
 
-/** Where a crowd camera looks at it all from (shots and the promo): from the gate's inside, eye height. */
-export const VIEW = { cam: [384, 12.5, -236] as const, at: [392, 40, -330] as const, fov: 55 } as const;
+/** Where a crowd camera looks at it all from (shots and the promo): inside the square, just past the gate's tower (≈ 19 m tall over the passage). */
+export const VIEW = { cam: [384, 11, -248] as const, at: [388, 20, -330] as const, fov: 55 } as const;
 
 /** Inside the square (with a margin m): no trees, nothing else built there. */
 export function onSquare(x: number, z: number, margin = 0): boolean {

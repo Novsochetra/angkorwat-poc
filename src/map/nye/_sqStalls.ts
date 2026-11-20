@@ -1,0 +1,205 @@
+import { traceSource } from '../../feedback/sourceTrace';
+import { hash3 } from '../../voxel/random';
+import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import type { Glow } from '../festival/_glow';
+import type { HeightField } from '../heightfield';
+import { BAMBOO, PLANK, POST, Site } from '../jungle/_campKit';
+import type { Lamps } from '../landmarks/_prasatKit';
+import { registerShop, type ShopItem } from '../shop';
+import { STALLS } from './plan';
+import { LAMP_HALO, pick } from './_sqKit';
+
+/**
+ * The New Year snack stalls round the square's sides (AWP-35; plan.ts `STALLS`), as at a Cambodian night fair:
+ * a timber stand under a striped awning with a scalloped valance, a counter with a red cloth, the goods on it and
+ * a little Khmer lamp hanging from the front beam (its flame glows; no light of its own). Four kinds:
+ *
+ * - នំ sweets: a charcoal griddle of num krok (its round cups), trays of num kong and palm sugar cakes;
+ * - អាំង grill: skewers of beef, grilled corn on a long grill, smoke the people part's;
+ * - ភេសជ្ជៈ drinks: green coconuts heaped, cups of sugarcane juice, the ice box;
+ * - នំអន្សម rice cakes: num ansom and num kom in banana leaf, stacked.
+ *
+ * Each registers a shop (shop.ts: E Buy while roaming), open while the square stands. Stall space: +z its front
+ * (the buyers' side, toward the square's middle), +x its left, y up from its ground; sizes as the map's people
+ * (1.4 ×). Families: timber `mapBark`, cloth and food `petal` (soft), the griddle and jars `mapStone`.
+ */
+
+type Kind = 'sweets' | 'grill' | 'drinks' | 'cakes';
+const KINDS: Kind[] = ['sweets', 'grill', 'drinks', 'cakes'];
+
+const item = (id: string, km: string, en: string, price: number, consume: ShopItem['consume'], colors?: number[]): ShopItem => ({ id, name: { km, en }, price, consume, ...(colors ? { colors } : {}) });
+
+const SHOPS: Record<Kind, { km: string; en: string; items: ShopItem[] }> = {
+  sweets: {
+    km: 'តូបនំ',
+    en: 'Sweets stall',
+    items: [
+      item('numKrok', 'នំក្រក', 'Num krok (coconut rice cakes)', 2000, 'sweet', [0xf0d8a0, 0xd89a48]),
+      item('numKong', 'នំកង', 'Num kong (sesame rings)', 1000, 'sweet', [0xc8843a, 0xe8d8b0]),
+      item('numAkor', 'នំអាកោ', 'Num akor (steamed cakes)', 1000, 'sweet', [0xe85a8a, 0xf2f0e8]),
+    ],
+  },
+  grill: {
+    km: 'តូបអាំង',
+    en: 'Grill stall',
+    items: [
+      item('sachKoAng', 'សាច់គោអាំង', 'Grilled beef skewers', 3000, 'skewer', [0x8a4a2a]),
+      item('poatAng', 'ពោតអាំង', 'Grilled corn', 2000, 'skewer', [0xe8c040]),
+      item('meukAng', 'មឹកអាំង', 'Grilled squid', 4000, 'skewer', [0xd8a888]),
+    ],
+  },
+  drinks: {
+    km: 'តូបភេសជ្ជៈ',
+    en: 'Drinks stall',
+    items: [
+      item('tukAmpov', 'ទឹកអំពៅ', 'Sugarcane juice', 2000, 'cupDrink', [0xc8d878]),
+      item('daung', 'ដូងខ្ចី', 'Green coconut', 3000, 'coconut'),
+      item('kafeTukDohKo', 'កាហ្វេទឹកដោះគោទឹកកក', 'Iced coffee with milk', 3000, 'bagDrink', [0xa8783a]),
+      item('tuk', 'ទឹកសុទ្ធ', 'Water', 1000, 'bottle'),
+    ],
+  },
+  cakes: {
+    km: 'តូបនំអន្សម',
+    en: 'Rice cake stall',
+    items: [
+      item('numAnsom', 'នំអន្សម', 'Num ansom (sticky rice cake)', 2000, 'sweet', [0x5a8a3a, 0xe8e0c8]),
+      item('numKom', 'នំគម', 'Num kom (coconut parcels)', 1000, 'sweet', [0x6a9a3a, 0xf0e8d0]),
+      item('numPlae', 'នំផ្លែអាយ', 'Num plae ai (palm sugar balls)', 1500, 'sweet', [0xf2f0e8, 0xb8783a]),
+    ],
+  },
+};
+
+/** Awnings: two red and white, two red and gold. */
+const AWNING: [number, number][] = [
+  [0xc8202a, 0xf2eee4],
+  [0xc8202a, 0xe8b440],
+  [0xc8202a, 0xf2eee4],
+  [0xc8202a, 0xe8b440],
+];
+
+/** The counter (stall space). */
+const COUNTER = { z: 0.7, w: 2.7, d: 0.6, top: 1.0 };
+
+export function buildStalls(b: VoxelBuilder, field: HeightField, lamps: Lamps, glow: Glow | null, low: boolean): void {
+  const src = traceSource();
+  STALLS.forEach((p, i) => {
+    const kind = KINDS[i % KINDS.length];
+    const y = field.heightAt(p.x, p.z);
+    const s = new Site(b, field, p.x, y, p.z, p.facing, src, 870 + i);
+    frame(s, AWNING[i % AWNING.length]);
+    goods(s, kind, low);
+    // The lamp hanging from the front beam, by the left post: a flame box under a little tower top.
+    const L = s.world(-0.95, 2.3, 1.05);
+    s.box(-0.95, 2.66, 1.05, 0.02, 0.32, 0.02, 0x3a3028, 'mapBark');
+    s.box(-0.95, 2.47, 1.05, 0.26, 0.05, 0.26, 0xb4a385, 'mapStone');
+    s.box(-0.95, 2.52, 1.05, 0.16, 0.06, 0.16, 0xc8b799, 'mapStone');
+    s.box(-0.95, 2.57, 1.05, 0.06, 0.06, 0.06, 0xd9a93a, 'mapStone');
+    s.box(-0.95, 2.14, 1.05, 0.22, 0.05, 0.22, 0xb4a385, 'mapStone');
+    lamps.add([L.x, L.y, L.z], 0.18, 0.9);
+    glow?.add(L.x, L.y, L.z, LAMP_HALO, 1.6, { level: 0.8 });
+    // Trees keep off it.
+    field.occupy(p.x - 2.2, p.z - 2.2, p.x + 2.2, p.z + 2.2);
+    // The shop: before the counter's middle, facing the stall.
+    const at = s.world(0, 0, 1.75);
+    const sh = SHOPS[kind];
+    registerShop({ id: `nye-${kind}`, name: { km: sh.km, en: sh.en }, x: at.x, y: field.heightAt(at.x, at.z), z: at.z, r: 1.9, facing: p.facing + Math.PI, items: sh.items });
+  });
+}
+
+/** Posts, beams, the counter with its cloth, the awning sloping out over the front with a scalloped valance. */
+function frame(s: Site, [red, other]: [number, number]): void {
+  const seed = s.seed;
+  const tone = (list: readonly number[], a: number, c: number) => pick(list, a, c, 1, seed);
+  const px = 1.45;
+  const pzF = 1.05;
+  const pzB = -0.75;
+  const hF = 2.85;
+  const hB = 3.05;
+  for (const [x, z, h] of [
+    [-px, pzF, hF],
+    [px, pzF, hF],
+    [-px, pzB, hB],
+    [px, pzB, hB],
+  ]) {
+    const g = s.ground(x, z);
+    s.box(x, (g + h) / 2, z, 0.13, h - g, 0.13, tone(POST, x * 10, z * 10), 'mapBark');
+  }
+  s.box(0, hF - 0.05, pzF, 2 * px + 0.2, 0.1, 0.1, tone(PLANK, 1, 2), 'mapBark');
+  s.box(0, hB - 0.05, pzB, 2 * px + 0.2, 0.1, 0.1, tone(PLANK, 2, 3), 'mapBark');
+  // The awning: stripes front to back, sloping down over the front and past it.
+  const depth = pzF - pzB + 0.9;
+  const tilt = Math.atan2(hB - hF + 0.25, depth);
+  const stripes = 7;
+  for (let k = 0; k < stripes; k++) {
+    const x = -px - 0.2 + ((k + 0.5) * (2 * px + 0.4)) / stripes;
+    s.box(x, (hF + hB) / 2 + 0.08, (pzF + pzB) / 2 + 0.25, (2 * px + 0.4) / stripes + 0.005, 0.05, depth, k % 2 ? other : red, 'petal', { rx: tilt });
+  }
+  // The valance: a scalloped band along the front edge.
+  const fz = pzF + 0.68;
+  const fy = hF - 0.12;
+  for (let k = 0; k < 9; k++) {
+    const x = -px - 0.2 + ((k + 0.5) * (2 * px + 0.4)) / 9;
+    s.box(x, fy, fz, (2 * px + 0.4) / 9 - 0.02, 0.22, 0.04, k % 2 ? red : other, 'petal');
+    s.box(x, fy - 0.15, fz, 0.18, 0.1, 0.04, k % 2 ? red : other, 'petal');
+  }
+  // The counter: a plank top on legs, a red cloth hung down its front with a gilt hem.
+  const C = COUNTER;
+  for (const sx of [1, -1]) for (const dz of [-1, 1]) s.box(sx * (C.w / 2 - 0.08), C.top / 2, C.z + dz * (C.d / 2 - 0.06), 0.08, C.top, 0.08, tone(BAMBOO, sx, dz), 'mapBark');
+  s.box(0, C.top - 0.03, C.z, C.w, 0.06, C.d, tone(PLANK, 4, 5), 'mapBark');
+  s.box(0, C.top * 0.55, C.z + C.d / 2 + 0.02, C.w, C.top * 0.8, 0.04, 0xb01828, 'petal');
+  s.box(0, C.top * 0.17, C.z + C.d / 2 + 0.03, C.w, 0.06, 0.04, 0xe2b04a, 'petal');
+  // A low stool for the seller behind it, a bench of crates.
+  s.box(0.6, 0.2, -0.2, 0.36, 0.06, 0.36, 0xd8352a, 'mapStone');
+  s.box(0.6, 0.09, -0.2, 0.3, 0.18, 0.3, 0xc82e24, 'mapStone');
+  s.box(-0.8, 0.22, -0.35, 0.6, 0.44, 0.42, tone(PLANK, 6, 7), 'mapBark');
+}
+
+/** The goods on the counter (and beside it), by kind. */
+function goods(s: Site, kind: Kind, low: boolean): void {
+  const C = COUNTER;
+  const top = C.top;
+  const r = (a: number, b = 0) => hash3(a, b, 7, s.seed);
+  if (kind === 'sweets') {
+    // The num krok griddle: a round iron pan of cups over a clay stove, at the counter's right.
+    s.box(0.85, top + 0.12, C.z, 0.5, 0.22, 0.5, 0x8a5a3a, 'mapStone');
+    s.box(0.85, top + 0.25, C.z, 0.52, 0.05, 0.52, 0x2a2826, 'mapStone');
+    if (!low) for (let a = 0; a < 3; a++) for (let c = 0; c < 3; c++) s.box(0.7 + a * 0.15, top + 0.28, C.z - 0.15 + c * 0.15, 0.08, 0.02, 0.08, 0xf0d8a0, 'petal');
+    // Trays of num kong and palm sugar cakes.
+    for (const [x, col] of [
+      [-0.85, 0xc8843a],
+      [-0.2, 0xe8d090],
+      [0.3, 0xe85a8a],
+    ] as const) {
+      s.box(x, top + 0.03, C.z, 0.48, 0.04, 0.42, 0xb8945a, 'mapBark');
+      for (let k = 0; k < (low ? 2 : 6); k++) s.box(x - 0.15 + (k % 3) * 0.15, top + 0.08, C.z - 0.08 + Math.floor(k / 3) * 0.16, 0.1, 0.05, 0.1, col, 'petal', { shade: 0.95 + 0.1 * r(k, x) });
+    }
+  } else if (kind === 'grill') {
+    // A long charcoal grill on the counter, skewers on it, cobs of corn.
+    s.box(0.15, top + 0.08, C.z, 1.6, 0.14, 0.42, 0x3a3634, 'mapStone');
+    s.box(0.15, top + 0.155, C.z, 1.5, 0.02, 0.34, 0x8a3a1a, 'mapStone', { shade: 1.2 });
+    for (let k = 0; k < (low ? 5 : 10); k++) s.box(-0.55 + k * 0.15, top + 0.18, C.z, 0.05, 0.04, 0.5, k % 3 === 2 ? 0xe8c040 : 0x7a3e22, 'petal');
+    s.box(-1.0, top + 0.06, C.z, 0.4, 0.08, 0.36, 0xd8d4ca, 'mapStone');
+    for (let k = 0; k < 3; k++) s.box(-1.08 + k * 0.08, top + 0.13, C.z, 0.06, 0.06, 0.26, 0xe8c040, 'petal');
+  } else if (kind === 'drinks') {
+    // A heap of green coconuts, cups of juice in a row, the blue ice box.
+    for (let k = 0; k < (low ? 4 : 7); k++) {
+      const x = -0.9 + (k % 4) * 0.2 + (k >= 4 ? 0.1 : 0);
+      s.box(x, top + 0.1 + (k >= 4 ? 0.16 : 0), C.z, 0.2, 0.2, 0.2, [0x6a9a2a, 0x7aa832, 0x5e8e26][k % 3], 'petal', { ry: r(k) });
+    }
+    for (let k = 0; k < 5; k++) s.box(0.05 + k * 0.14, top + 0.07, C.z + 0.1, 0.08, 0.12, 0.08, 0xc8d878, 'petal');
+    s.box(0.95, top + 0.17, C.z - 0.05, 0.5, 0.32, 0.4, 0x2a6ab8, 'mapStone');
+    s.box(0.95, top + 0.35, C.z - 0.05, 0.52, 0.05, 0.42, 0xf2efe6, 'mapStone');
+    // (cane stalks leaning on the post)
+    for (let k = 0; k < 3; k++) s.box(1.3 - k * 0.08, 0.9, 1.25, 0.05, 1.8, 0.05, 0x8a9a3a, 'mapBark', { rz: 0.12 + k * 0.05 });
+  } else {
+    // Num ansom: logs in banana leaf stacked; num kom: little green pyramids on a tray.
+    for (let k = 0; k < (low ? 3 : 6); k++) s.box(-0.8 + (k % 3) * 0.18, top + 0.06 + Math.floor(k / 3) * 0.11, C.z, 0.14, 0.11, 0.42, [0x5a8a3a, 0x4e7e32][k % 2], 'petal');
+    s.box(0.45, top + 0.03, C.z, 0.7, 0.04, 0.45, 0xb8945a, 'mapBark');
+    for (let k = 0; k < (low ? 3 : 8); k++) {
+      const x = 0.2 + (k % 4) * 0.16;
+      const z = C.z - 0.1 + Math.floor(k / 4) * 0.2;
+      s.box(x, top + 0.09, z, 0.12, 0.08, 0.12, 0x6a9a3a, 'petal');
+      s.box(x, top + 0.15, z, 0.06, 0.05, 0.06, 0x7aaa42, 'petal');
+    }
+  }
+}
