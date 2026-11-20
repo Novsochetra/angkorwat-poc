@@ -250,7 +250,6 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const tmp = new Color();
   const sum = new Vector3();
   let warm = 3;
-  let videoFrom: number | null = null;
   let frames = 0;
   let cpu = 0;
   let peak = 0;
@@ -260,14 +259,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
     clearSkyTint();
   };
 
-  /** The show's second now (a video moves on from the URL's moment), or null. */
-  const nowInShow = (f: MapFrame): number | null => {
-    const s = showTime();
-    if (s === null) return null;
-    if (!ctx.video) return s;
-    videoFrom ??= f.t;
-    return s + (f.t - videoFrom);
-  };
+  /** The show's second now (a video moves on from the URL's moment: clock.ts `nyeVideoTime`), or null. */
+  const nowInShow = (_f: MapFrame): number | null => showTime();
 
   if (ctx.shot) {
     // (how far each burst is clear of the land under it: the script keeps them over the hill as it is about)
