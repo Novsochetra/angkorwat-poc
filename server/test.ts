@@ -266,6 +266,30 @@ await check('test room closed with no EVENT_CODE', async () => {
   }
 });
 
+await check('event room by code (ROOM_CODE): the code (any case, any room asked) joins the public room, none or a wrong one is refused', async () => {
+  const s2 = await startServer({ port: 0, eventCode: CODE, roomCode: 'NYE2027', joinExempt: ['127.0.0.1', '::1'], log: () => {}, logEveryMs: 0 });
+  try {
+    const a = await join(s2, 'Event One', { room: 'test', code: ' nye-2027 ' });
+    assert.equal(a.welcome?.room, 'public');
+    assert.equal(a.welcome?.midnight, undefined, 'the real midnight: no test midnight');
+    const b = await join(s2, 'Event Two', { code: 'NYE2027' });
+    assert.equal(b.welcome?.room, 'public');
+    assert.equal(b.welcome?.crowd, a.welcome?.crowd, 'one crowd');
+    const none = await join(s2, 'No Code');
+    assert.equal(none.error()?.code, 'code');
+    assert.equal(none.error()?.reason, 'needed');
+    const wrong = await join(s2, 'Wrong Code', { code: 'NYE2026' });
+    assert.equal(wrong.error()?.code, 'code');
+    const test = await join(s2, 'Tester Too', { room: 'test', code: CODE });
+    assert.equal(test.welcome?.room, 'test', 'the test code still finds the test room');
+    a.close();
+    b.close();
+    test.close();
+  } finally {
+    await s2.close();
+  }
+});
+
 await check('test room: midnight moves on after the show + 1 min', async () => {
   const room = srv.rooms.get('test')!;
   const old = Date.now() - (480 + 61) * 1000;

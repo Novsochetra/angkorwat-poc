@@ -290,7 +290,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   connecting|online|retrying|offline|refused:<why>|code|list|player`, `nyename=`, `nyecode=`, `nyepeers=<n>`,
   `nyeask=block|report`, `nyetest=1`); other players drawn `people/_scenePlayers.ts` (`ghosts=<n>&ghostsat=square|lake|
   map|lineup`, no server). The server `server/` (its own package.json, `ws`; `npm run server`, `npm run server:test`,
-  deploy notes and Railway config in `server/README.md`, `server/railway.json`; `EVENT_CODE` only on the server);
+  deploy notes and Railway config in `server/README.md`, `server/railway.json`; `EVENT_CODE` the test room's and `ROOM_CODE` the event room's (e.g. NYE2027), only on the server; the join card asks a name, then the room code under it, filled from the link `?event=`);
   `npm run nyetest` (two pages see each other and agree on the time), `npm run nyeload -- bots=300` (robot players);
   perf views `nyeplayers`, `nyeplayersview`.
 - Parties and party voice (AWP-35 Phase 3, the plan `docs/discussion/new-year-voice.md`):

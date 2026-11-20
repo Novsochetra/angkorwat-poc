@@ -2143,12 +2143,13 @@ const WORDS = {
   },
   njTestRoom: { km: 'បន្ទប់សាកល្បង', en: 'Test room' },
   njTestTag: { km: 'សាកល្បង', en: 'TEST' },
-  // ("Have a code?": the hidden test room's, or a party's)
-  njCode: { km: 'មានលេខកូដ?', en: 'Have a code?' },
-  njCodeField: { km: 'លេខកូដ ៦ អក្សរ', en: '6-letter code' },
+  // (the room code under the name: the event's NYE2027, or the test room's)
+  njCode: { km: 'លេខកូដបន្ទប់', en: 'Room code' },
+  njCodeField: { km: 'ឧ. NYE2027', en: 'e.g. NYE2027' },
   njCodeGo: { km: 'ប្រើលេខកូដ', en: 'Use the code' },
-  njCodeBad: { km: 'លេខកូដមាន ៦ អក្សរ', en: 'A code has 6 letters' },
-  njCodeFrom: { km: 'លេខកូដពីតំណរបស់អ្នករួចរាល់ ✓ វាយតែឈ្មោះ ហើយចុច «ចូលរួម»', en: 'The code from your link is in ✓ Just type a name and press Join' },
+  njCodeBad: { km: 'លេខកូដមាន ៤ ដល់ ១៦ អក្សរ ឬលេខ', en: 'A code is 4 to 16 letters or digits' },
+  njCodeFrom: { km: 'លេខកូដបន្ទប់ពីតំណរបស់អ្នករួចរាល់ ✓ វាយឈ្មោះ ហើយចុច «ចូលរួម»', en: 'The room code from your link is in ✓ Type a name and press Join' },
+  njWhyCodeNeeded: { km: 'សូមវាយលេខកូដបន្ទប់ ដើម្បីចូល', en: 'Type the room code to go in' },
   njNameFirst: { km: 'សូមវាយឈ្មោះរបស់អ្នកជាមុនសិន', en: 'Type your name first' },
   // (the setting, Play tab)
   njSet: { km: 'ឆ្នាំថ្មីតាមអ៊ីនធឺណិត', en: 'New Year online' },

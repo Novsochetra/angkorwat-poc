@@ -1,9 +1,8 @@
 import { NET } from '../../net/client';
 import { checkName, type NameReason } from '../../net/names';
-import { LIMITS, PARTY_LETTERS } from '../../net/protocol';
 import { isKhmer, latinPart, playerName, setPlayerName, toKhmer } from '../khmerName';
 import { inTestRoom, nightHeld, nyePhase, squareShown } from '../nye/clock';
-import { openParty, partyCanOpen } from '../party/gate';
+import { openParty } from '../party/gate';
 import { clearMark, focusables, moveFocusIn } from '../pad/nav';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
@@ -81,7 +80,7 @@ export function refusalWords(r: string | null): string {
     staff: 'njWhyStaff',
     name: 'njWhyName',
   };
-  const other: Record<string, WordKey> = { code: 'njWhyCode', full: 'njWhyFull', rate: 'njWhyRate', version: 'njWhyVersion', offline: 'njOffline' };
+  const other: Record<string, WordKey> = { code: 'njWhyCode', 'code-needed': 'njWhyCodeNeeded', full: 'njWhyFull', rate: 'njWhyRate', version: 'njWhyVersion', offline: 'njOffline' };
   const k = (r && (names[r as NameReason] ?? other[r])) || 'njWhyOther';
   return t(k);
 }
@@ -121,6 +120,10 @@ function startName(): string {
   const n = playerName();
   return n ? n.latin || n.km : '';
 }
+/** The room code joined with last (the event's), or ''. */
+function savedCode(): string {
+  return tidyCode(progress.get('nye.code', '', isString)) ?? '';
+}
 /** The name as it will be joined with, if it passes the check, else null. */
 function goodName(): string | null {
   const c = checkName(startName());
@@ -139,9 +142,8 @@ export function tidyCode(raw: string): string | null {
     .toUpperCase()
     .replace(/[០-៩]/g, (d) => String(d.charCodeAt(0) - 0x17e0))
     .replace(/[\s\-_.]/g, '');
-  if (c.length !== LIMITS.partyLen) return null;
-  for (const ch of c) if (!PARTY_LETTERS.includes(ch)) return null;
-  return c;
+  // (a room's code: the event's NYE2027, the test room's: 4 to 16 letters or digits)
+  return /^[A-Z0-9]{4,16}$/.test(c) ? c : null;
 }
 
 // ── Joining ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -160,6 +162,7 @@ function join(name: string, code: string | null): boolean {
   if (!c.ok) return false;
   progress.set('nye.name', c.name);
   progress.set('nye.online', true);
+  progress.set('nye.code', code ?? '');
   // (no name of his own yet: this one is his, as the name card keeps it)
   if (!playerName()) {
     const km = inKhmer(c.name);
@@ -231,10 +234,11 @@ function makeCard(): Card {
           <label class="nj-field mu-frame mu-sm"><span class="mu-bg"></span><input id="nj-input" class="nj-input" type="text" maxlength="48" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" /></label>
           <p class="nj-km"><span class="nj-km-l"></span> <b lang="km"></b></p>
           <p class="nj-check" aria-live="polite"></p>
-          <button type="button" class="nj-code-t" aria-expanded="false" aria-controls="nj-code"></button>
-          <div class="nj-code" id="nj-code" hidden>
-            <label class="nj-field nj-code-field mu-frame mu-sm"><span class="mu-bg"></span><input class="nj-code-in" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" /></label>
-            <button type="button" class="nj-code-go mu-frame mu-sm"><span class="mu-bg"></span><span class="mu-focus"></span><span class="nj-code-go-t"></span></button>
+          <button type="button" class="nj-code-t" aria-expanded="true" aria-controls="nj-code" hidden></button>
+          <label class="nj-label nj-code-label" for="nj-code-in"></label>
+          <div class="nj-code" id="nj-code">
+            <label class="nj-field nj-code-field mu-frame mu-sm"><span class="mu-bg"></span><input id="nj-code-in" class="nj-code-in" type="text" maxlength="20" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" /></label>
+            <button type="button" class="nj-code-go mu-frame mu-sm" hidden><span class="mu-bg"></span><span class="mu-focus"></span><span class="nj-code-go-t"></span></button>
           </div>
           <p class="nj-code-why" aria-live="polite"></p>
         </div>
@@ -272,7 +276,7 @@ function makeCard(): Card {
   let codeTried = false;
   /** Join (or the code's button) was pressed with no good name: the check says to type one first. */
   let nameTried = false;
-  /** The code the test link brought (`?event=`): used by Join, its box not shown (nothing to type). */
+  /** The room code came with the link (`?event=`): the card says it is filled in. */
   let linkCode: string | null = null;
 
   /** What the buttons do now: by the connection's state. */
@@ -286,12 +290,13 @@ function makeCard(): Card {
 
   function words(): void {
     q('#nj-title').textContent = t('njTitle');
-    q('#nj-sub').textContent = from === 'link' && joinNet().state !== 'online' ? t('njCodeFrom') : t('njSub');
+    q('#nj-sub').textContent = linkCode !== null && joinNet().state !== 'online' ? t('njCodeFrom') : t('njSub');
     q('.nj-label').textContent = t('njName');
     input.placeholder = t('njNameType');
     input.setAttribute('aria-label', t('njNameField'));
     q('.nj-km-l').textContent = `${t('njKhmer')}:`;
     codeT.textContent = t('njCode');
+    q('.nj-code-label').textContent = t('njCode');
     codeIn.placeholder = t('njCodeField');
     codeIn.setAttribute('aria-label', t('njCodeField'));
     q('.nj-code-go-t').textContent = t('njCodeGo');
@@ -333,12 +338,9 @@ function makeCard(): Card {
     q('.nj-field').classList.toggle('is-bad', !!v.trim() && !c.ok);
     // The code: what is wrong with it, once pressed.
     const code = tidyCode(codeIn.value);
-    codeWhy.textContent = codeTried && !code ? t('njCodeBad') : '';
-    // (the code's button and Join stay pressable: pressed with no name, they say to type one first)
-    codeT.hidden = linkCode !== null;
-    if (linkCode !== null) codeBox.hidden = true;
-    // The buttons.
-    partyLink.hidden = !partyCanOpen();
+    codeWhy.textContent = codeTried && codeIn.value.trim() && !code ? t('njCodeBad') : '';
+    // The buttons (the party's row is not offered here for now: the owner, November 2026).
+    partyLink.hidden = true;
     later.querySelector('.mu-ask-t')!.textContent = t(m === 'form' ? 'njLater' : m === 'offline' ? 'njClose' : 'njLeave');
     people.hidden = m !== 'online';
     go.hidden = m === 'offline';
@@ -355,30 +357,27 @@ function makeCard(): Card {
     show();
   }
 
-  function tryJoin(code: string | null): void {
-    if (code === null && codeBox.hidden === false && codeIn.value.trim()) {
-      // (a code typed and Join pressed: the code's way)
-      return useCode();
-    }
+  /** Join: the name first, then the room code under it (empty: the open room, when the server has one). */
+  function tryJoin(): void {
     if (!checkName(input.value).ok) return nameFirst();
-    if (!join(input.value, code ?? linkCode)) return nameFirst();
+    codeTried = true;
+    let code: string | null = null;
+    if (codeIn.value.trim()) {
+      code = tidyCode(codeIn.value);
+      if (!code) {
+        shake(q('.nj-code-field'));
+        sound('back');
+        if (!pad.active) codeIn.focus({ preventScroll: true });
+        show();
+        return;
+      }
+      codeIn.value = code;
+    }
+    if (!join(input.value, code)) return nameFirst();
     sound('begin');
     show();
   }
-
-  function useCode(): void {
-    if (!checkName(input.value).ok) return nameFirst();
-    codeTried = true;
-    const code = tidyCode(codeIn.value);
-    if (!code) {
-      shake(q('.nj-code-field'));
-      sound('back');
-      show();
-      return;
-    }
-    codeIn.value = code;
-    tryJoin(code);
-  }
+  const useCode = tryJoin;
 
   function shake(el: HTMLElement): void {
     el.classList.remove('is-shake');
@@ -426,7 +425,7 @@ function makeCard(): Card {
   go.addEventListener('click', () => {
     const m = mode();
     if (m === 'online' || m === 'busy') close();
-    else tryJoin(null);
+    else tryJoin();
   });
   later.addEventListener('click', () => {
     const m = mode();
@@ -506,12 +505,9 @@ function makeCard(): Card {
       if (!isOpen || o.code) {
         const typed = SHOT ? params.get('nyename') : null;
         input.value = typed ?? (joinNet().me?.name || startName());
-        if (o.code && from === 'link') linkCode = o.code;
-        else if (o.code) {
-          codeIn.value = o.code;
-          codeBox.hidden = false;
-          codeT.setAttribute('aria-expanded', 'true');
-        }
+        // (the room code: the link's, else the one used last)
+        linkCode = o.code && from === 'link' ? o.code : null;
+        codeIn.value = o.code ?? savedCode();
       }
       codeTried = false;
       nameTried = false;
@@ -620,7 +616,7 @@ export function installJoin(o: { uiRoot: HTMLElement }): void {
   // The setting was on last time: in again with the same name (nothing said: the button and the setting show it).
   if (!SHOT && progress.get('nye.online', false, (v): v is boolean => typeof v === 'boolean') && joinOffered() && available() && n.state === 'off') {
     const name = goodName();
-    if (name) join(name, null);
+    if (name) join(name, savedCode() || null);
   }
 }
 
@@ -681,7 +677,7 @@ function wireSetting(root: HTMLElement): void {
     } else {
       const nm = goodName();
       sound('toggle');
-      if (nm && available()) join(nm, null);
+      if (nm && available()) join(nm, savedCode() || null);
       else openJoin({ from: 'settings' });
     }
     fill();
@@ -743,7 +739,8 @@ function injectStyle(): void {
     @keyframes nj-shake { 20% { transform: translateX(calc(-6 * var(--px))); } 45% { transform: translateX(calc(5 * var(--px))); } 70% { transform: translateX(calc(-2 * var(--px))); } }
     .nj-km { display: flex; align-items: baseline; gap: calc(6 * var(--px)); min-height: calc(30 * var(--px)); margin: calc(6 * var(--px)) 0 0 !important; font-size: calc(13 * var(--px)) !important; color: var(--mu-dim) !important; }
     .nj-km b { font: 400 calc(21 * var(--px)) / 1.4 Koulen, 'Kantumruy Pro', serif; color: var(--mu-gold-hi); letter-spacing: 0; }
-    .nj-km.is-empty { visibility: hidden; }
+    .nj-km.is-empty { display: none; }
+    .nj-check:empty { display: none; }
     .nj-check { min-height: calc(20 * var(--px)); margin: 0 !important; font-size: calc(13.5 * var(--px)) !important; font-weight: 600; }
     .nj-check.is-ok { color: #8fe3a3 !important; }
     .nj-check.is-bad { color: #ffb4a2 !important; }

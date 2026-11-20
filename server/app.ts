@@ -81,6 +81,11 @@ export interface ServerOptions {
   host?: string;
   /** The test room's code (EVENT_CODE); none: the test room is closed. */
   eventCode?: string;
+  /**
+   * The event room's code (ROOM_CODE, e.g. NYE2027): set, the public room (the real midnight) takes only players who
+   * bring it; none: the public room is open to all. A hello with a code goes to the room whose code it is.
+   */
+  roomCode?: string;
   /** Addresses the joins-a-minute limit skips (JOIN_LIMIT_EXEMPT: the load bots' machine). */
   joinExempt?: string[];
   /** Behind Railway's proxy: the player's address is X-Real-IP / the last X-Forwarded-For (TRUST_PROXY, on by itself on Railway). */
@@ -232,6 +237,7 @@ const inEllipse = (x: number, z: number, e: { x: number; z: number; rx: number; 
 export async function startServer(opts: ServerOptions = {}): Promise<RunningServer> {
   const log = opts.log ?? ((line: string) => console.log(line));
   const eventCode = opts.eventCode?.trim() ? digest(normCode(opts.eventCode.trim())) : null;
+  const roomCode = opts.roomCode?.trim() ? digest(normCode(opts.roomCode.trim())) : null;
   const exempt = new Set(opts.joinExempt ?? []);
   const origins = new Set((opts.allowedOrigins ?? []).filter(Boolean));
   const maxPlayers = opts.maxPlayers ?? 5000;
@@ -356,10 +362,11 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     return list.length <= LIMITS.joinsPerMin;
   };
 
-  const codeOk = (code: unknown): boolean => {
-    if (!eventCode || typeof code !== 'string' || code.length > 64) return false;
-    return timingSafeEqual(digest(normCode(code)), eventCode);
+  const codeIs = (code: unknown, want: Buffer | null): boolean => {
+    if (!want || typeof code !== 'string' || code.length > 64) return false;
+    return timingSafeEqual(digest(normCode(code)), want);
   };
+  const codeOk = (code: unknown): boolean => codeIs(code, eventCode);
 
   const onHello = (c: Client, m: ClientHello): void => {
     if (c.room) return; // one hello a connection
@@ -367,9 +374,15 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     if (!joinsOk(c.ip, now)) return refuse(c, 'rate', 'joins');
     if (!Number.isInteger(m.v) || m.v < PROTOCOL_MIN || m.v > PROTOCOL) return refuse(c, 'version', `server speaks ${PROTOCOL_MIN}‥${PROTOCOL}`);
     c.v = m.v;
-    const kind: RoomKind = m.room === 'test' ? 'test' : 'public';
-    if (kind === 'test' && !eventCode) return refuse(c, 'code', 'closed');
-    if (kind === 'test' && !codeOk(m.code)) return refuse(c, 'code');
+    // (a code chooses its room: the test room's, or the event room's; none: the public room, if it needs none)
+    const hasCode = typeof m.code === 'string' && m.code.trim() !== '';
+    let kind: RoomKind;
+    if (hasCode && codeOk(m.code)) kind = 'test';
+    else if (hasCode && codeIs(m.code, roomCode)) kind = 'public';
+    else if (m.room === 'test' && !eventCode && !roomCode) return refuse(c, 'code', 'closed');
+    else if (hasCode || m.room === 'test') return refuse(c, 'code');
+    else if (roomCode) return refuse(c, 'code', 'needed');
+    else kind = 'public';
     const named = checkName(m.name);
     if (!named.ok) return refuse(c, 'name', named.reason);
     if (players >= maxPlayers) return refuse(c, 'full');
@@ -839,6 +852,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
       uptime: Math.round((Date.now() - started) / 1000),
       names: NAMES_SOURCE,
       testRoom: eventCode !== null,
+      roomCode: roomCode !== null,
       byRoom,
       rates: lastMinute,
       memoryMB: Math.round(process.memoryUsage().rss / 1048576),

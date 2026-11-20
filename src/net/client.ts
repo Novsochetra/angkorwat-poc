@@ -318,7 +318,7 @@ class Client implements NetClient {
       case 'error':
         if (FATAL.has(m.code)) {
           this.state = 'refused';
-          this.refusal = m.code === 'name' ? (m.reason ?? 'name') : m.code;
+          this.refusal = m.code === 'name' ? (m.reason ?? 'name') : m.code === 'code' && m.reason === 'needed' ? 'code-needed' : m.code;
           // (nothing reconnects: the card says why and the player tries again)
           this.leaveQuietly();
           this.emit();

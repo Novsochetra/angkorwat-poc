@@ -15,6 +15,7 @@ const onRailway = Boolean(env.RAILWAY_ENVIRONMENT || env.RAILWAY_ENVIRONMENT_NAM
 const server = await startServer({
   port: Number(env.PORT) || 8787,
   eventCode: env.EVENT_CODE,
+  roomCode: env.ROOM_CODE,
   joinExempt: list(env.JOIN_LIMIT_EXEMPT),
   trustProxy: env.TRUST_PROXY ? env.TRUST_PROXY === '1' || env.TRUST_PROXY === 'true' : onRailway,
   allowedOrigins: list(env.ALLOWED_ORIGINS),
@@ -23,7 +24,7 @@ const server = await startServer({
 });
 
 console.log(
-  `[nye] live server on port ${server.port} · test room ${env.EVENT_CODE?.trim() ? 'open (EVENT_CODE set)' : 'closed (no EVENT_CODE)'} · ` +
+  `[nye] live server on port ${server.port} · test room ${env.EVENT_CODE?.trim() ? 'open (EVENT_CODE set)' : 'closed (no EVENT_CODE)'} · event room ${env.ROOM_CODE?.trim() ? 'by code (ROOM_CODE set)' : 'open to all'} · ` +
     `reports ${typeof tracker === 'string' ? `not filed (${tracker})` : `filed to ${tracker.url} (${tracker.project})`} · ` +
     `names ${NAMES_SOURCE === 'shared' ? 'src/net/names.ts' : `STUB (src/net/names.ts: ${NAMES_STUB_WHY})`}`,
 );
