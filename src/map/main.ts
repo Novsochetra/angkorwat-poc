@@ -420,7 +420,7 @@ timings.covered = Math.round(cutCovered(coverRoots(), undefined, work.knownCover
 // sites, the village (its rafts bob a little: their shadows stand), the paddies' props (they change with the season
 // only), the hamlets and the ledge, and the explorer while he stands on it (the overview); nor the people, animals
 // and boats.
-const STILL_PARTS = ['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'foreground'];
+const STILL_PARTS = ['terrain', 'vegetation', 'undergrowth', 'path', 'jungle', 'camps', 'village', 'paddies', 'hamlet', 'nye', 'foreground'];
 for (const p of parts) if (STILL_PARTS.includes(p.name) || p.name.startsWith('landmark:')) markStill(p.object);
 // The statues sculpted in workers (sacred/: Buddhas, offerings, the pagoda's naga) join their part when they are done:
 // still as it is, whenever they come. (They were only if they came before the line above: on the live page most did, in
@@ -455,7 +455,8 @@ const autoShort = new AutoShortView();
 const farBackdrop = scene.getObjectByName('far backdrop');
 if (farBackdrop) shortView.hideWhenShort(farBackdrop);
 installShortCut(renderer, camera);
-const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
+// (New Year's Eve's square `nye`: nothing in it moves but in shaders — the banners, flames, the ring — and the board's texture)
+const FROZEN = ['terrain', 'vegetation', 'village', 'path', 'nye', 'landmark:kulen', 'landmark:terrace', 'landmark:rivergate'];
 for (const p of parts) if (FROZEN.includes(p.name)) freezeMatrices(p.object);
 // (the low graphics level's plain blocks, now that they are built)
 setGraphics(graphicsNow.level, scene);

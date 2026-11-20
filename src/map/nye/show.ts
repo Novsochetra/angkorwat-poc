@@ -162,8 +162,8 @@ const LAYERS: Record<Exclude<Layer, 'crown'>, { d: [number, number]; el: [number
   low: { d: [100, 140], el: [8, 12], size: [8, 13], b: [38, 48] },
 };
 
-/** The crown: the highest, biggest bursts, over Kulen's summit and its east shoulder (m on the map; inside plan.ts `SHOW_AREA`). */
-const CROWN = { x0: 340, x1: 450, z0: -400, z1: -460, y: [162, 186], size: [36, 46] };
+/** The crown: the highest, biggest bursts, over Kulen's summit and its west flank, where the overview (the picker's camera) sees them over the hill (m on the map). */
+const CROWN = { x0: 275, x1: 410, z0: -395, z1: -440, y: [150, 176], size: [36, 46] };
 
 interface Spot {
   x: number;

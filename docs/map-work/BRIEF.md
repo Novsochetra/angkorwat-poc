@@ -2309,6 +2309,76 @@ title card and as a toast when roaming starts (`_banner.ts`); sound
 `fest=water&season=0.57&day=15` (add `clock=0.35` for the night),
 `fest=newyear`.
 
+## New Year's Eve (AWP-35, phase 1: the look)
+
+The plan is `docs/discussion/new-year-online.md`; this is how phase 1 is built. Players meet at a festival
+square at Phnom Kulen's foot for a countdown and fireworks at midnight, 1 January 2027 00:00 in Cambodia
+(UTC+7). Everything works offline, alone: the show plays from the real clock, the same rocket at the same
+second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
+
+- **When: `src/map/nye/clock.ts`, the only place that knows the date.** `nyeNow()` (the device's clock, a
+  server's correction `setServerOffset` for phase 2, the URL's move), `nyePhase()` (`days`, `lastDay`, `night`
+  from 22:30, `last10`, `midnight`, `after` from 00:10, `over` from 00:45, `gone` a day after), `nightHeld()`,
+  `showTime()`, `showSoon()`, `boardAt()`. A shot stands still at its moment, and the night comes in a shot
+  only when its URL asks (`nye=`, `countdown=`, `fireworks=`).
+- **Where: `src/map/nye/plan.ts`.** The ground (checked with the height field): x 356‥412, z −290‥−238 is flat at
+  8 m, between the back trail (south), the picnic trail (east), Kulen's slope (north) and the zip line's last
+  station (west). `SQUARE` (an ellipse round (383, −262)), `STAGE` (its back to Kulen, facing south),
+  `BOARD`, `RING`, `GATE` (the village side), `LANTERN_WALK` (up the Kulen foot trail), `STALLS`, `NAGA`,
+  `SHOW_AREA`, `VIEW` (the crowd's camera: `cam=384,11,-248,410,40,-335,55`), `onSquare`.
+- **The square: part `nye`** (`nye/index.ts`, built after the hamlets and before the trees, which keep off it;
+  only while `squareShown()`; `nye=0` leaves it out). Pieces, each loaded and built on its own:
+  - `square.ts` (`_sq*.ts`): 1 m sandstone pavers 0.08 m over the land (`noWalk`: he walks on the land under
+    them), a processional way gate → ring → stairs; the ring of light (`_sqRing.ts`: one additive quad, a gold
+    lotus painted once on a canvas, breathing; brighter with a light running round it on the night); the
+    Angkor Thom style gate with Bayon faces (`_sqGate.ts`, `landmarks/_faces.ts`); Khmer lamps (an Angkor tower
+    top) along the lantern walk, each finding ground off the trail and away from the nursery, his house and the
+    cattle trader (`_sqWalk.ts`); banners with the white Angkor Wat waving in the festival kit, the map's own
+    trees (two in blossom) with string lights, lotus pots (`_sqDecor.ts`); four snack stalls registered as shops
+    `nye-sweets`, `nye-grill`, `nye-drinks`, `nye-cakes` (`_sqStalls.ts`). ≈ 6.9 k blocks, ≈ 13 draws, two
+    night-only lamps (the ring, the gate passage).
+  - `stage.ts` (`_st*.ts`): a temple-terrace platform, stairs between two seven-headed naga (`sacred/naga.ts`
+    `stairNaga`) whose bodies run as the front balustrade, fire bowls, Khmer lamps; the board's gate: carved
+    kbach pillars (`_stCarve.ts`, `sacred/kbach.ts`), a balustered window, a lotus-bud prasat with two corner
+    towers (`landmarks/_prasat.ts`), banners. ≈ 4.4 k blocks, 10 draws (+1 naga), two night-only lamps.
+  - `board.ts`: a 1024 × 512 canvas on an unlit material (≈ 2× at night: blooms), redrawn only when its text
+    changes and only while it can be seen. States: `days` (DD:HH:MM:SS, "ព្រឹត្តិការណ៍ផ្ទាល់ / LIVE EVENT"),
+    `hms` (the last day), `last10` (one huge numeral), `midnight` ("សួស្តីឆ្នាំថ្មី ២០២៧"), `after` ("ជួបគ្នាឆ្នាំក្រោយ").
+    Khmer numerals and words first, English with `lang=en`; មរតកអង្គរ in Koulen pixels. Phase 2 hooks:
+    `setBoardPlayers(n)`, `setBoardTest(on)`.
+  - Nothing in the part moves but in shaders and the board's texture: it is in main.ts `FROZEN` and
+    `STILL_PARTS`.
+- **The people: `people/_sceneNye.ts`** (plan `people/_nyePlan.ts`). Ordinary days: 14 (sellers at the
+  stalls, a gate attendant, children at the ring, evening visitors). The night: 104 (47 on low) in 35 families
+  arriving by the lantern walk from 22:20, mats, sparklers, phones, two monks watching; the ring and an aisle
+  to the stairs kept open for players; apsara dancers and a pinpeat ensemble on the stage until 23:50; the
+  count, cheers and hugs at midnight, heads up for the show, gone by 00:40. The crowd's `CAPACITY` is 410.
+- **The fireworks: part `fireworks`** (`nye/fireworks.ts`, `_fwShaders.ts`), built only when the show is within
+  an hour (main.ts `LATER`). The script `nye/show.ts`: 789 rockets over 466 s, seeded, the same everywhere,
+  placed by bearing and height from the crowd's view over Kulen's east flank right of the stage, and a crown
+  over the summit for the overview and the rest of the map; acts: a five-shell opening, slow singles, colours
+  (pairs, rings, two-tone peonies), layers, the build-up, a lull, then waves of gold willows ending in 18
+  together. Kinds: willow, crackle, chrysanthemum, peony, ring; mostly gold, then lotus pink and purple, a
+  few ice blue-white. Drawing: the rockets in the air go into a float texture each frame and every spark is
+  placed in the vertex shader (drag, gravity, willow droop, ember fade, glitter): three additive draws (sparks,
+  halos with trails, flashes, glow and smoke; water mirrors). Sparks a rocket: low 51, medium 93, high 169,
+  max 219; the busiest second ≈ 110 rockets in the air (≈ 9 k sparks on medium); ≈ 0.1 ms CPU a frame;
+  nothing drawn and no work outside the show. Light on the world: two `own` lamps (instant, in the bursts'
+  colours, 900 m).
+- **The night and the interface.** main.ts holds the sky at night 22:30‥00:45 (`nightHeld`: the day's cycle
+  stops, then the player's own setting comes back). `nye/overlay.ts`: a chip at the top from 22:30, one huge
+  Khmer numeral in the last ten seconds, the greeting at midnight (pointer-events none; reduce motion fades
+  only). `nye/event.ts` `installNye` (called by main.ts after the interface; `update(frame)` each frame): the
+  toasts (`nyetoast=night|over`), the calendar entry `nye` (`realClock`: its own row on the card, never "Wait
+  for it"), the mini-map badge at the ring. Words in `ui/lang.ts` (`nye*`).
+- **The sound: `audio/fireworks.ts`** on its own bus (the Fireworks volume, under "Around you"): whooshes and
+  whistles, booms heard late by their distance (343 m/s), crackles, willow sizzle, the crowd's murmur, the
+  count shouted in Khmer, the cheer at midnight and at the finale's end; `planSounds` is the schedule alone.
+- **Checks.** `nye=+2m` (or `+90s`, `-30s`, an ISO time; `nye=0` none), `countdown=<s>`, `fireworks=<s>`,
+  `nyeboard=<state>`, `boardplayers=<n>`, `boardtest=1`, `nyetoast=night|over`, `people=nye`. Quick: 
+  `parts=terrain,nye` (+ `people`, `fireworks`) ≈ 15‥25 s on a CPU. Not yet measured on a GPU: `npm run perf`
+  with the show at its busiest (`fireworks=458`) on low, medium and phone, and the sound heard.
+
 ## World and scale
 
 - 1 unit = 1 m. +X east (right), −Z north (away from the camera), +Y up.

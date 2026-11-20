@@ -253,6 +253,19 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `fest=water|newyear|pchumben|visak`): the Water Festival with Khmer ngo racing
   boats (never dragon boats), Khmer New Year, and Pchum Ben and Visak Bochea at the
   village pagoda. A shot with none of `fest=`, `season=`, `day=` shows no festival.
+- New Year's Eve online, phase 1 (AWP-35, the plan `docs/discussion/new-year-online.md`;
+  the guide BRIEF.md "New Year's Eve"): the festival square at Phnom Kulen's foot
+  (`src/map/nye/`, part `nye`: floor, lotus ring, Bayon-face gate, lantern walk, stalls
+  `_sq*.ts`; the stage, naga and the Khmer countdown board `stage.ts`, `_st*.ts`, `board.ts`),
+  its people (`people/_sceneNye.ts`), the fireworks (part `fireworks`, built only when the
+  show is near: the script `nye/show.ts`, `fireworks.ts`, `_fw*.ts`), the night-time hold
+  22:30‥00:45 (main.ts `nightHeld`), the overlay, toasts and calendar entry (`nye/overlay.ts`,
+  `nye/event.ts`), the sound (`audio/fireworks.ts`, its own Fireworks volume). **Only
+  `nye/clock.ts` knows the date** (1 Jan 2027 00:00 ICT); where things stand is `nye/plan.ts`.
+  Shots: `nye=+2m` (midnight 2 min after opening; `-30s`, an ISO time; `nye=0` no event),
+  `countdown=<s>` (s before midnight), `fireworks=<s>` (s into the show),
+  `nyeboard=days|hms|last10|midnight|after`, `boardplayers=<n>`, `boardtest=1`,
+  `nyetoast=night|over`; the crowd's view `cam=384,11,-248,410,40,-335,55`.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
   hidden gold figures are in `src/map/treasure/` (their list of clues: a tap on the gold
