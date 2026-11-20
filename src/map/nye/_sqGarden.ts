@@ -141,6 +141,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   const eventKit = new Kit();
   const eventGlow = new Glow();
 
+  const v0 = b.boxes.length;
   // ── The trees ──
   const trees: BuiltTree[] = [];
   for (const [i, t] of NYE_TREES.entries()) {
@@ -210,18 +211,18 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
     // A lamp every 8 m on the terrace, its warm streak on the water.
     if (ri % 4 === 1) {
       khmerLamp(b, xw - 2.6, top + 0.12, z, 1.3, 40 + lampN++, src, lamps, glow, 2.0);
-      glow.add(xw + 2.2, wy, z, 0xffa850, 7, { mode: GLOW_MODE.streak, level: 1.3, width: 0.4 });
+      glow.add(row.mid + row.half * 0.55, wy, z, 0xffa850, 9, { mode: GLOW_MODE.streak, level: 2.2, width: 0.45 });
     }
     // Lily pads and lotus at the water's edge.
-    const n = low ? 1 : 2;
+    const n = low ? 2 : 3;
     for (let m = 0; m < n; m++) {
       const h = hash3(ri, m, 5, 77);
-      if (h < 0.25) continue;
+      if (h < 0.15) continue;
       const lx = xw + 0.9 + 1.6 * hash3(ri, m, 6, 77);
       const lz = z0 + 2 * hash3(ri, m, 7, 77);
       if (field.waterAt(lx, lz) === null) continue;
       lilyPad(kit, lx, wy, lz, ri * 7 + m);
-      if (h > 0.6) lotus(kit, lx + 0.35, wy, lz - 0.2, ri * 7 + m, h > 0.85);
+      if (h > 0.5) lotus(kit, lx + 0.35, wy, lz - 0.2, ri * 7 + m, h > 0.85);
     }
   }
   // Lily pads and lotus round the Kulen pool's edge.
@@ -263,7 +264,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       if (--n <= 0) break;
     }
   };
-  streamCandles(kit, glow, low ? 2 : 3, 1);
+  streamCandles(kit, glow, low ? 3 : 5, 1);
   poolCandles(kit, glow, low ? 6 : 10, 2);
   streamCandles(eventKit, eventGlow, low ? 3 : 6, 3);
   poolCandles(eventKit, eventGlow, low ? 8 : 16, 4);
@@ -272,7 +273,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   let extraHalos: ReturnType<Glow['build']> | null = null;
   let extraKit: ReturnType<Kit['build']> | null = null;
   console.info(
-    `[map] nye garden: ${trees.length} trees, ${beds.length} bed runs, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count} (+${eventGlow.count})`,
+    `[map] nye garden: ${b.boxes.length - v0} blocks, ${trees.length} trees, ${beds.length} bed runs, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count} (+${eventGlow.count})`,
   );
   return {
     trees,
@@ -342,7 +343,7 @@ function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: Heigh
   const rnd = (i: number) => hash3(seed, i, 3, 91);
   const myrtle = t.kind === 'myrtle';
   const R = t.r;
-  const Rv = R * (myrtle ? 0.72 : 0.6);
+  const Rv = R * (myrtle ? 0.86 : 0.74);
   const cy = t.h - Rv;
   const blobs: { x: number; y: number; z: number; r: number; ry: number }[] = [{ x: 0, y: cy, z: 0, r: R * 0.74, ry: Rv * 0.85 }];
   const n = myrtle ? 4 : 5;
@@ -350,10 +351,10 @@ function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: Heigh
   for (let q = 0; q < n; q++) {
     const a = a0 + (q / n) * Math.PI * 2 + (rnd(10 + q) - 0.5) * 0.7;
     const d = R * (0.45 + rnd(20 + q) * 0.2);
-    blobs.push({ x: Math.cos(a) * d, y: cy + Rv * (myrtle ? 0.1 + rnd(30 + q) * 0.35 : rnd(30 + q) * 0.3 - 0.15), z: Math.sin(a) * d, r: R * (0.42 + rnd(40 + q) * 0.14), ry: Rv * (0.55 + rnd(50 + q) * 0.15) });
+    blobs.push({ x: Math.cos(a) * d, y: cy + Rv * (myrtle ? rnd(30 + q) * 0.4 - 0.1 : rnd(30 + q) * 0.3 - 0.2), z: Math.sin(a) * d, r: R * (0.46 + rnd(40 + q) * 0.14), ry: Rv * (0.6 + rnd(50 + q) * 0.15) });
   }
-  blobs.push({ x: 0, y: cy + Rv * 0.5, z: 0, r: R * 0.45, ry: Rv * 0.5 });
-  const floor = cy - Rv * (myrtle ? 0.7 : 0.62);
+  blobs.push({ x: (rnd(70) - 0.5) * R * 0.4, y: cy + Rv * 0.55, z: (rnd(71) - 0.5) * R * 0.4, r: R * 0.5, ry: Rv * 0.5 });
+  const floor = cy - Rv * (myrtle ? 0.78 : 0.7);
   // Trunks to the lumps (myrtle: three stems from the foot; trumpet: one trunk, then limbs).
   const bark = BARK[t.kind];
   const bk = (i: number) => bark[Math.floor(rnd(60 + i) * bark.length) % bark.length];
@@ -461,18 +462,18 @@ function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, t: Ny
     const leaves = low ? 4 : 7;
     for (let l = 0; l < leaves; l++) {
       const az = (l / leaves) * Math.PI * 2 + rnd(30 + ti);
-      leaf(b, tip, { len: 0.55, wid: 0.16, az, el: 0.5 - 0.25 * (l % 2), color: LEAF[1 + (l % 3)], segs: low ? 1 : 2, rib: false, src });
+      leaf(b, tip, { len: 0.85, wid: 0.24, az, el: 0.45 - 0.3 * (l % 2), color: LEAF[1 + (l % 3)], segs: low ? 1 : 2, rib: false, src });
     }
     // The flowers: a cluster of five-petalled whites (each two crossed slabs) with yellow hearts, standing on the tuft.
-    const fl = low ? 2 : 4;
+    const fl = low ? 3 : 6;
     for (let f = 0; f < fl; f++) {
       const a = (f / fl) * Math.PI * 2 + rnd(40 + ti);
-      const fx = tip[0] + Math.cos(a) * 0.16;
-      const fz = tip[2] + Math.sin(a) * 0.16;
-      const fy = tip[1] + 0.2 + 0.06 * (f % 2);
-      kit.box(fx, fy, fz, 0.2, 0.05, 0.2, tones[4 + (f % 2)], { yaw: a, glow: 0.18 });
-      kit.box(fx, fy + 0.012, fz, 0.2, 0.05, 0.2, tones[3], { yaw: a + Math.PI / 4, glow: 0.18 });
-      kit.box(fx, fy + 0.04, fz, 0.07, 0.03, 0.07, 0xf3c23a, { glow: 0.2 });
+      const fx = tip[0] + Math.cos(a) * 0.24;
+      const fz = tip[2] + Math.sin(a) * 0.24;
+      const fy = tip[1] + 0.22 + 0.1 * (f % 2);
+      kit.box(fx, fy, fz, 0.3, 0.06, 0.3, tones[4 + (f % 2)], { yaw: a, glow: 0.22 });
+      kit.box(fx, fy + 0.015, fz, 0.3, 0.06, 0.3, tones[3], { yaw: a + Math.PI / 4, glow: 0.22 });
+      kit.box(fx, fy + 0.05, fz, 0.1, 0.03, 0.1, 0xf3c23a, { glow: 0.25 });
     }
     if (ti % 3 === 0) glow.add(tip[0], tip[1] + 0.2, tip[2], HALO.white, 2.2, { level: 0.12 });
   }
@@ -584,8 +585,8 @@ function bougainvilleaArch(b: VoxelBuilder, field: HeightField, x: number, z: nu
 /** A lily pad on the water (two thin slabs turned 45°: a round leaf), a little bobbing (the kit's drift). */
 function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
   const d = { anim: ANIM.drift, a: [0, hash3(i, 1, 3, 71), 0.08] as [number, number, number], b: [0, 0, perPeriod(0.05), 0] as [number, number, number, number] };
-  const s = 0.55 + 0.35 * hash3(i, 2, 3, 71);
-  const c = [0x3f7f35, 0x4f9440, 0x356e30][i % 3];
+  const s = 0.7 + 0.4 * hash3(i, 2, 3, 71);
+  const c = [0x4f9a3c, 0x5fae48, 0x468a36][i % 3];
   const yaw = hash3(i, 3, 3, 71) * 3;
   kit.box(x, wy + 0.03, z, s, 0.03, s * 0.9, c, { ...d, yaw });
   kit.box(x, wy + 0.035, z, s * 0.9, 0.03, s, c, { ...d, yaw: yaw + Math.PI / 4 });
@@ -596,7 +597,7 @@ function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
 
 /** A pink lotus (outer and inner petals crossed, a gold heart) standing on the water, or a bud on its stalk. */
 function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud: boolean): void {
-  const glow = 0.12;
+  const glow = 0.3;
   kit.box(x, wy + 0.25, z, 0.03, 0.5, 0.03, 0x5a7a3a);
   if (bud) {
     kit.box(x, wy + 0.58, z, 0.14, 0.2, 0.14, 0xf08ab0, { glow, yaw: 0.4 });
@@ -623,7 +624,7 @@ function candle(kit: Kit, glow: Glow, x: number, y: number, z: number, drift: Dr
   kit.box(x, y + 0.24, z, 0.05, 0.14, 0.05, 0xf4ecd8, d);
   kit.box(x, y + 0.35, z, 0.06, 0.09, 0.06, 0xffc070, { ...d, glow: 2.2 });
   glow.add(x, y + 0.36, z, 0xffa850, 1.4, { drift, level: 0.55 });
-  glow.add(x, y + 0.01, z, 0xffa040, 5, { drift, mode: GLOW_MODE.streak, level: 1.4, width: 0.26 });
+  glow.add(x, y + 0.01, z, 0xffa040, 6, { drift, mode: GLOW_MODE.streak, level: 1.8, width: 0.3 });
 }
 
 /** The stream's west bank by the square, row by row (2 m): its edge, water level, the land's top, the trail's edge. */
