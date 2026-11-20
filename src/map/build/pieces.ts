@@ -227,6 +227,8 @@ export const BUILT = {
    * roof)? build/footState.ts fills it.
    */
   feetRoom: (_f: Foot, _h: number): boolean => false,
+  /** Is one of his cows in the pen with this uid now (its place there or the lane to it)? roam/_cattleHerd.ts fills it. */
+  penHolds: (_uid: string): boolean => false,
 };
 
 /** A point of a piece's frame in the world (into `out`: x, z). */

@@ -310,6 +310,11 @@ export function createBuildView(shot = false): BuildView {
       if (r) show(r);
       return;
     }
+    // (moved: its light goes with it, put there again)
+    if (e.type === 'moved') {
+      lit.get(e.piece)?.remove();
+      lit.delete(e.piece);
+    }
     if (e.type === 'done' || e.type === 'moved' || (e.type === 'removed' && e.piece.done >= 1) || (e.type === 'added' && e.piece.done >= 1)) standDirty = true;
     risingDirty = true;
     lightsDirty = true;

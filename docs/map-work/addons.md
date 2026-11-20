@@ -3049,6 +3049,26 @@ sounds `audio/_build.ts`.
   first move over his shoulder (24°) is taken back off the move (`modeTurned`); Q / R, a
   drag or the right stick still turn it. After
   a fence or a lantern post the mode stays on for the next.
+- **Moving what he built** (move mode, `roam/_buildMove.ts`): the card's **"Move your things"**
+  row (the Buildings tab, after "Paint your buildings"; greyed with nothing built). He aims as in
+  paint mode: the piece under the mouse; with a pad, or keys and no mouse over the view, the one
+  at the gold ring over his head; nothing there, the one he faces within 2.6 m; on a phone the one tapped.
+  The piece aimed at is drawn over itself in gold (`BuildGhost` 'pick': its own blocks and seed,
+  a hair bigger, over everything), red with the reason where it cannot be picked up (`whyNot`:
+  half built "Finish building the … first"; a hanging lantern on it "Take down what hangs from it
+  first", as taking it down; the cattle pen while a cow of his is in it, `BUILT.penHolds`; more
+  than 10 m from him "Too far: come closer"). **E** (□, the touch Use button), a click or a tap on
+  it picks it up: build mode with it (`enterPlacing(id, piece)`, `moving`): its ghost (its own
+  look) goes with him, turns and snaps as a new one's (a fence run onto ends and filling gaps, at
+  its own length unless it fills one), where it stands not counted; count and riel never stop it.
+  **"E  Put it here"** sets it down at once and free (`BUILD.move`, the `moved` event: the view
+  draws it there, its light, seat, hammock and prayer spot go with it, `BuildUses.forget`); **Esc**
+  ("Put it back") leaves it where it was. Either way move mode goes on for the next; Esc there (✕,
+  ○) ends it, as walking 8 m off his land, another mode or another row of the card. The touch bar
+  shows only its card and ✕ buttons until he carries one. Footprint buildings are not moved (the
+  block layer's: take one down and draw it again). URL: `buildmove=1` (the mode on),
+  `buildmove=<uid>` (that piece carried); `__build.moveMode(on)`, `__build.move(uid)` (null, or
+  why not), `state().moveMode` (`aimed`, `why`), `state().placing.moving`.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block
@@ -3060,11 +3080,7 @@ sounds `audio/_build.ts`.
   first time a toast says how to go on); by it "E  Keep building (45%)" goes on; back
   to the map: paused, saved.
 - **By a piece he built** (facing it, within 1.25 m): a seat (the bed, the shelter's
-  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; a fence
-  (`MOVABLE` in `_build.ts`) "E  Move the fence  ·  hold to take it down": a short E picks it
-  up (build mode with it, `moving`: its ghost goes with him and snaps as a new run's, its own
-  length kept unless it fills a gap; where it stood does not count), "E  Put it here" sets it
-  down at once and free (`BUILD.move`, event `moved`), Esc leaves it where it was; else
+  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; else
   "E  Hold to take down the …". Held 0.8 s (a bar fills) it asks ("Take down the
   bamboo bed? You get half its materials back: 3 bamboo poles"); yes: he takes it apart
   (half the time, at least 2 s), it is gone, half its materials (rounded down) go into his

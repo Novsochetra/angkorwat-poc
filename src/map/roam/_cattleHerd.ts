@@ -272,6 +272,8 @@ export class CattleHerd {
     scene: Object3D,
   ) {
     for (let i = SLOTS - 1; i >= 0; i--) this.free.push(i);
+    // (a pen with a cow in it is not moved: roam/_buildMove.ts)
+    BUILT.penHolds = (uid) => this.beasts.some((q) => q.cow && q.penUid === uid && q.penSlot >= 0);
     this.flock.mesh.name = 'cattle:ox';
     scene.add(this.flock.mesh, this.blocks.mesh);
     const w = world;

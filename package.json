@@ -16,7 +16,8 @@
     "video": "node scripts/video.mjs",
     "wallpaper": "node scripts/wallpaper.mjs",
     "perf": "node scripts/perf.mjs",
-    "idle": "node scripts/idle.mjs"
+    "idle": "node scripts/idle.mjs",
+    "movecheck": "node scripts/movecheck.mjs"
   },
   "dependencies": {
     "posthog-js": "^1.434.14",

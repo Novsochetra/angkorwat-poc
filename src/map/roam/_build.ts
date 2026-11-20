@@ -19,6 +19,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
+import { MoveMode, whyNot } from './_buildMove';
 import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
@@ -118,8 +119,6 @@ const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 const CLOSE = { d: 2, reach: 6, angle: (30 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp', 'oillamp', 'hanglamp', 'pot']);
-/** Pieces a short E by them picks up to move (build mode with it: E puts it down where the ghost is, free; Esc leaves it). */
-const MOVABLE: ReadonlySet<PieceId> = new Set<PieceId>(['fence']);
 /**
  * Build mode's camera: tilt, distance at least (and per metre of the piece's reach; and per metre of a footprint building's height), its ease and back (1/s), the focus
  * toward the ghost, over his shoulder (rad); its first move (picked on the card): this quick (1/s), this long (s).
@@ -147,7 +146,7 @@ let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
-let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | 'move' | null; bed?: BedPlace | null; piece?: Built } | null = null;
+let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | null; bed?: BedPlace | null } | null = null;
 /** The piece he is moving (build mode with it: its ghost goes with him; it stays where it was until put down). */
 let moving: Built | null = null;
 /** What the take-down question is about. */
@@ -294,7 +293,6 @@ function holdStep(ctx: RoamCtx, dt: number): void {
     if (h.tap === 'keep') BuildWork.start(ctx, h.job);
     else if (h.tap === 'sit') env?.controls.press('KeyJ');
     else if (h.tap === 'sleep' && h.bed) BED_SLEEP.start?.(h.bed);
-    else if (h.tap === 'move' && h.piece) enterPlacing(h.piece.id, h.piece);
     return;
   }
   h.t += dt;
@@ -574,7 +572,7 @@ function placingNow(ctx: RoamCtx): void {
   spot.ceil = Infinity;
   let r: FurnReason | null;
   if (isFurniture(placing)) {
-    const f = furnSpot(ctx.world, placing, spot.x, spot.z, spot.yaw, b.pos.y, _fs);
+    const f = furnSpot(ctx.world, placing, spot.x, spot.z, spot.yaw, b.pos.y, _fs, moving);
     r = f.reason;
     spot.y = f.y;
     spot.ceil = f.ceil;
@@ -589,7 +587,9 @@ function placingNow(ctx: RoamCtx): void {
   const id = placing;
   const deg = shownDeg(id, spot.yaw);
   // (",." the d-pad's ← → on a pad, "⇧,." L2: hud.ts `promptPad`)
-  const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
+  // (carrying one he moves: Esc puts it back)
+  const esc = moving ? 'movePutBack' : 'buildExit';
+  const keys = words(`modeKeys|${esc}`, () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t(esc)}`);
   // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°"; on touch the build bar
   // has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
   // (moving one: "E  Put it here 45°")
@@ -630,8 +630,9 @@ function cannot(id: PieceId): string | null {
   return null;
 }
 
-/** Build mode for `id`; `move`: the piece he built that he is moving (else a new one). */
+/** Build mode for `id`; `move`: the piece he built that he is moving (else a new one: move mode ends). */
 function enterPlacing(id: PieceId, move: Built | null = null): void {
+  if (!move) MoveMode.exit();
   moving = move;
   if (!placing) {
     modeTurned = 0;
@@ -644,6 +645,39 @@ function enterPlacing(id: PieceId, move: Built | null = null): void {
   placing = id;
   spot.step = -1;
   ghost?.setPiece(id);
+  showTouchBar(true);
+}
+
+/** Move mode (the card's "Move your things"): he aims at what he built (roam/_buildMove.ts). */
+function enterMove(): void {
+  exitPlacing();
+  exitFoot();
+  MoveMode.enter();
+  showTouchBar(true);
+}
+
+/** Out of move mode (and what he carries put back: it never left its place). */
+function exitMove(): void {
+  if (placing && moving) exitPlacing();
+  if (!MoveMode.on) return;
+  MoveMode.exit();
+  showTouchBar(false);
+}
+
+/** Picked up in move mode: build mode with that piece (it stays where it is until he puts it down). */
+function pickUp(ctx: RoamCtx, b: Built): void {
+  if (!env || whyNot(b) || !BUILD.list.includes(b)) return;
+  lastCtx = ctx;
+  MoveMode.exit();
+  enterPlacing(b.id, b);
+  env.uiSound('select');
+  console.info(`[build] ${b.uid} picked up to move`);
+}
+
+/** Done carrying (put down, or Esc: put back): move mode again, for the next. */
+function backToMove(): void {
+  exitPlacing();
+  MoveMode.enter();
   showTouchBar(true);
 }
 
@@ -663,6 +697,7 @@ function enterFoot(kind: FootKind): void {
     modeCamOpen = placing ? 0 : MODE_CAM.openFor;
   }
   exitPlacing();
+  MoveMode.exit();
   FootMode.enter(kind);
   showTouchBar(true);
 }
@@ -699,15 +734,20 @@ function buildHere(ctx: RoamCtx): void {
   placingNow(ctx);
   if (!spot.ok) return;
   if (moving) {
-    // (moving one: put down where the ghost is, at once and free; the mode ends)
+    // (moving one: put down where the ghost is, at once and free; move mode goes on for the next)
     const m = moving;
-    if (!BUILD.list.includes(m)) return exitPlacing();
+    if (!BUILD.list.includes(m)) return backToMove();
+    const why = whyNot(m);
+    if (why) {
+      ctx.hud.toast(t(why, { name: pieceWord(m) }));
+      return backToMove();
+    }
     BUILD.move(m, spot.x, spot.y, spot.z, spot.yaw, spot.len);
     env.uiSound('select');
     ctx.hud.toast(t('buildMoved', { name: pieceWord(m) }));
     console.info(`[build] ${m.uid} moved to (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) yaw ${((m.yaw * 180) / Math.PI).toFixed(0)}°${m.len !== undefined ? ` ${m.len.toFixed(2)} m` : ''}`);
-    exitPlacing();
     turn = 0;
+    backToMove();
     return;
   }
   const id = placing;
@@ -899,6 +939,12 @@ function showTouchBar(on: boolean): void {
         return;
       }
       env?.uiSound('select');
+      if (MoveMode.on) {
+        // (move mode: ✕ out of it, the other button the card; nothing to turn before he picks one up)
+        if (d === 'done') exitMove();
+        else if (d === 'other' && lastCtx) openCard(lastCtx);
+        return;
+      }
       if (FootMode.on) {
         // (footprint mode: ⟲ ⟳ the door side, ✕ the first corner again, then out)
         if (d === 'done') backFoot();
@@ -907,8 +953,11 @@ function showTouchBar(on: boolean): void {
         else if (lastCtx) openCard(lastCtx);
         return;
       }
-      if (d === 'done') exitPlacing();
-      else if (d === 'left') turnBy(1);
+      // (carrying one he moves: ✕ puts it back, move mode goes on)
+      if (d === 'done') {
+        if (moving) backToMove();
+        else exitPlacing();
+      } else if (d === 'left') turnBy(1);
       else if (d === 'right') turnBy(-1);
       else if (lastCtx) openCard(lastCtx);
     });
@@ -926,7 +975,9 @@ function showTouchBar(on: boolean): void {
 let barSaid = '';
 function barWords(): void {
   if (!touchBar) return;
-  const done = FootMode.on && FootMode.stretching ? t('footAgain') : t('buildExit');
+  // (move mode: nothing to turn until he picks one up)
+  touchBar.classList.toggle('is-pick', MoveMode.on);
+  const done = FootMode.on && FootMode.stretching ? t('footAgain') : placing && moving ? t('movePutBack') : t('buildExit');
   const key = `${lang()}|${done}`;
   if (key === barSaid) return;
   barSaid = key;
@@ -949,6 +1000,7 @@ function injectStyle(): void {
   st.textContent = `
     .bd-bar { position: absolute; left: 50%; bottom: calc(206px + 4vh); transform: translateX(-50%); display: none; gap: 8px; z-index: 6; pointer-events: auto; }
     body.roam-touch:not(.pad-on) .bd-bar.is-on { display: flex; }
+    .bd-bar.is-pick [data-do="left"], .bd-bar.is-pick [data-do="right"], .bd-bar.is-pick .bd-tb-deg { display: none; }
     .bd-tb { position: relative; display: inline-flex; white-space: nowrap; align-items: center; gap: 6px; min-height: 40px; min-width: 44px; justify-content: center; padding: 0 12px; border: 0; background: none; color: var(--mu-ink); cursor: pointer;
       font: 700 14px / 1 var(--mu-display); --mu-edge: var(--mu-btn-edge); touch-action: manipulation; }
     .bd-tb > .mu-bg { background: var(--mu-btn); }
@@ -994,6 +1046,8 @@ function openCard(ctx: RoamCtx): void {
       });
       // (paint, AWP-22: the Buildings tab's last row; paint mode is roam/_paint.ts)
       const paint: BuildRow = { id: 'paint', name: t('paintRow'), count: '', note: t('paintRowLine'), short: false, buy: null, cost: [], price: '', off: BLOCKS.count ? null : t('paintNone'), group: 'foot' };
+      // (move mode: beside paint, a tool for what he built; roam/_buildMove.ts)
+      const move: BuildRow = { id: 'move', name: t('moveRow'), count: '', note: t('moveRowLine'), short: false, buy: null, cost: [], price: '', off: BUILD.list.length ? null : t('moveNone'), group: 'foot' };
       const rows: BuildRow[] = PIECE_IDS.map((id) => {
         const p = PIECES[id];
         const pay = toPay(id);
@@ -1023,7 +1077,7 @@ function openCard(ctx: RoamCtx): void {
         title: t('buildCardTitle'),
         note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
         cancel: t('buildCardCancel'),
-        rows: [...feet, paint, ...rows],
+        rows: [...feet, paint, move, ...rows],
         meter,
         // (on tabs, AWP-23: the footprint buildings, the yard's pieces, the furniture (each 9 rows at most: the keys 1‥9);
         // on a floor it opens on the furniture)
@@ -1041,7 +1095,12 @@ function openCard(ctx: RoamCtx): void {
         if (!BLOCKS.count) return;
         exitPlacing();
         exitFoot();
+        exitMove();
         PAINT_LINK.enter();
+        return;
+      }
+      if (id === 'move') {
+        if (BUILD.list.length) enterMove();
         return;
       }
       if (id.startsWith('foot:')) {
@@ -1148,11 +1207,6 @@ function nearNow(ctx: RoamCtx): void {
   if (PIECES[best.id].seat && BuildUses.seatNear(p.x, p.y, p.z) === best) {
     near.sit = true;
     near.prompt = words(`sit|${best.id}`, () => `E  ${t('buildSit')}  ·  ${t('buildHoldTake')}`);
-    return;
-  }
-  // (one he can move: a short E picks it up, held takes it down)
-  if (MOVABLE.has(best.id)) {
-    near.prompt = words(`move|${best.id}`, () => `E  ${t('buildMove', { name })}  ·  ${t('buildHoldTake')}`);
     return;
   }
   near.prompt = words(`take|${best.id}`, () => `E  ${t('buildTakeHold', { name })}`);
@@ -1294,7 +1348,7 @@ registerAddon({
     }
     // (paint mode, AWP-22: its F opens the card again; it ends when build mode starts)
     PAINT_LINK.card = () => void (lastCtx && openCard(lastCtx));
-    PAINT_LINK.building = () => !!placing || FootMode.on;
+    PAINT_LINK.building = () => !!placing || FootMode.on || MoveMode.on;
     view = createBuildView(e.shot);
     e.scene.add(view.object);
     // (footprint buildings, AWP-20: their plans need the land; a check's own, as `build=`)
@@ -1310,9 +1364,13 @@ registerAddon({
     BuildUses.init(e.world.field, view.standing);
     view.onStanding(() => BuildUses.sync(true));
     BUILD.on((ev) => {
+      // (moved: its hammock and prayer spot registered again where it stands now)
+      if (ev.type === 'moved') BuildUses.forget(ev.piece.uid);
       if (ev.type !== 'progress') BuildUses.sync();
     });
     ghost = new BuildGhost(e.scene, e.world);
+    // (move mode: a piece aimed at and picked up is build mode with it)
+    MoveMode.init(e, e.scene, (ctx, b) => pickUp(ctx, b));
     edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
     e.scene.add(edge.object);
     BuildWork.init(e);
@@ -1341,6 +1399,7 @@ registerAddon({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
             placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
+            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? null, why: MoveMode.aimed.why } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1364,9 +1423,16 @@ registerAddon({
           },
           card: () => lastCtx && openCard(lastCtx),
           place: (id: PieceId | null) => (id ? enterPlacing(id) : exitPlacing()),
+          // (move mode: on / off; pick up a piece by its uid as E on it would)
+          moveMode: (want = true) => (want ? enterMove() : exitMove()),
           move: (uid: string) => {
             const p = BUILD.byUid(uid);
-            if (p) enterPlacing(p.id, p);
+            if (!p || !lastCtx) return 'no piece';
+            if (!MoveMode.on) enterMove();
+            const why = whyNot(p);
+            if (why) return why;
+            pickUp(lastCtx, p);
+            return null;
           },
           all: () => placeAll(),
           full: () => placeFull(),
@@ -1398,6 +1464,7 @@ registerAddon({
     lastCtx = ctx;
     stepN++;
     FootMode.nextStep();
+    MoveMode.nextStep();
     if (card?.open || ask?.open) return true;
     holdStep(ctx, dt);
     if (BuildWork.active) return tap('KeyJ', 'KeyL', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3', 'KeyO', 'KeyI');
@@ -1415,17 +1482,19 @@ registerAddon({
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
-      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || cannot(placing)) {
+      // (one he moves: never "all of it built" or "not enough riel"; it is his already)
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || (!moving && cannot(placing))) {
         exitPlacing();
         return false;
       }
       const i = ctx.input;
       const taps = i.taps as Set<string> | undefined;
-      // Esc (the pad's ○, the touch ✕): out of build mode — not "Back to the map?".
+      // Esc (the pad's ○, the touch ✕): out of build mode — not "Back to the map?"; carrying one he moves: put back.
       if (i.exit) {
         i.exit = false;
         env?.uiSound('close');
-        exitPlacing();
+        if (moving) backToMove();
+        else exitPlacing();
         return false;
       }
       // , and . (the pad's d-pad ← →, read as 4 and 5): turn it 15°.
@@ -1443,6 +1512,34 @@ registerAddon({
         taps?.delete('KeyC');
         openCard(ctx);
         return true;
+      }
+    }
+    if (MoveMode.on) {
+      const p = ctx.body.pos;
+      // (out of it: far from home, another mode)
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR) {
+        exitMove();
+        return false;
+      }
+      const i = ctx.input;
+      const taps = i.taps as Set<string> | undefined;
+      // Esc (the pad's ○, the touch ✕): out of move mode — not "Back to the map?".
+      if (i.exit) {
+        i.exit = false;
+        env?.uiSound('close');
+        exitMove();
+        return false;
+      }
+      if (tap('KeyF', 'KeyC')) {
+        taps?.delete('KeyF');
+        taps?.delete('KeyC');
+        openCard(ctx);
+        return true;
+      }
+      // A mouse click on a piece: picked up (as E).
+      if (i.click && !env?.busy()) {
+        i.click = false;
+        MoveMode.use(ctx);
       }
     }
     if (FootMode.on) {
@@ -1485,15 +1582,15 @@ registerAddon({
   },
   offer(ctx, m) {
     lastCtx = ctx;
-    // (build mode's E is `buildMode`'s, first in the row)
-    if (m !== 'walk' || !env || placing || FootMode.on || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
+    // (build mode's E is `buildMode`'s, first in the row; move mode's too)
+    if (m !== 'walk' || !env || placing || FootMode.on || MoveMode.on || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     if (pressing) return near.prompt;
     nearNow(ctx);
     if (near.prompt) return near.prompt;
     return canStart(ctx, false) ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on) return;
     nearNow(ctx);
     if (near.piece) {
       wireHold();
@@ -1502,9 +1599,8 @@ registerAddon({
         job: pieceJob(piece),
         dist: (x, z) => distTo(piece, x, z),
         t: 0,
-        tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : MOVABLE.has(piece.id) ? 'move' : null,
+        tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null,
         bed: near.bed,
-        piece,
       };
       holdBar(0);
       return;
@@ -1532,6 +1628,9 @@ registerAddon({
     if (placing && free) placingNow(ctx);
     if (FootMode.on && free) FootMode.step(ctx);
     if (m === 'walk' && !BuildWork.active) modeCamera(ctx, (!!placing || FootMode.on) && !card?.open, dt);
+    // Move mode: the piece aimed at, highlighted; the gold ring.
+    if (MoveMode.on && free) MoveMode.step(ctx);
+    MoveMode.show(free && !card?.open);
     // Footprint mode: its ghost and panel (free), the touch bar's size and ✕.
     if (FootMode.on) {
       FootMode.show(free);
@@ -1542,6 +1641,7 @@ registerAddon({
       }
       barWords();
     } else FootMode.show(false);
+    if (MoveMode.on || moving) barWords();
     // The hint, once: the house is his, he is by it.
     if (!hinted && m === 'walk' && HOME.owned && env && (!env.shot || env.params.get('buildhint') === '1')) {
       const p = ctx.body.pos;
@@ -1555,7 +1655,8 @@ registerAddon({
     // The ghost before him (not while he works, a card is open, or something else has him).
     if (free) {
       placingNow(ctx);
-      ghost?.setPiece(placing, spot.len);
+      // (one he moves looks as it stands: its own seed)
+      ghost?.setPiece(placing, spot.len, moving?.seed);
       ghost?.show(spot.x, spot.z, spot.yaw, spot.ok, spot.y, spot.ceil);
     } else ghost?.show(null);
   },
@@ -1563,9 +1664,10 @@ registerAddon({
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
     // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
-    edge?.show(!!placing || FootMode.on || !!card?.open || edgeHeld);
+    edge?.show(!!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld);
     edge?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
+    MoveMode.frame(f.dt > 0 ? f.dt : 0);
     FootMode.frame(f.dt > 0 ? f.dt : 0);
     BUILD.tick(f.dt > 0 ? f.dt : 0);
     FOOTS.tick(f.dt > 0 ? f.dt : 0);
@@ -1577,6 +1679,7 @@ registerAddon({
     holdBar(null);
     BuildWork.stop(ctx, next === 'overview');
     exitPlacing();
+    exitMove();
     exitFoot();
   },
   fromUrl(q, ctx) {
@@ -1586,6 +1689,14 @@ registerAddon({
     if (!(env?.shot || import.meta.env.DEV)) return;
     if (q.get('build') === 'all' && !BUILD.list.length) placeAll(ctx.world);
     furnFromUrl(q, ctx);
+    // (move mode: `buildmove=1` on, `buildmove=<uid>` that piece picked up)
+    const mv = q.get('buildmove');
+    if (mv) {
+      const piece = mv === '1' ? null : BUILD.byUid(mv);
+      if (mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
+      enterMove();
+      if (piece) pickUp(ctx, piece);
+    }
     const g = q.get('buildghost');
     if (g) {
       const [id, deg] = g.split(':');
@@ -1677,7 +1788,9 @@ registerAddon({
     if (b) out.build = b;
     const fr = furnReport();
     if (fr) out.furn = fr;
-    if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
+    if (placing && moving) out.buildmove = moving.uid;
+    else if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
+    else if (MoveMode.on) out.buildmove = '1';
     const w = BuildWork.now;
     if (w && !w.take) {
       const p = BUILD.byUid(w.uid);
@@ -1702,7 +1815,7 @@ registerAddon({
   order: 3,
   // (while he places a piece or draws a footprint, "Build here" is the E row's last line: nothing after it, _addons.ts)
   get endsRow() {
-    return !!placing || FootMode.on;
+    return !!placing || FootMode.on || MoveMode.on;
   },
   // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
   // order 5, takes the L2 press after this one: taken here, it never raises them).
@@ -1711,8 +1824,9 @@ registerAddon({
     return false;
   },
   offer(ctx, m) {
-    if ((!placing && !FootMode.on) || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
+    if ((!placing && !FootMode.on && !MoveMode.on) || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     lastCtx = ctx;
+    if (MoveMode.on) return MoveMode.step(ctx);
     if (FootMode.on) {
       FootMode.step(ctx);
       return FootMode.prompt;
@@ -1722,6 +1836,7 @@ registerAddon({
   },
   use(ctx) {
     if (FootMode.on && env && !BuildWork.active) useFoot(ctx);
+    else if (MoveMode.on && env && !BuildWork.active) MoveMode.use(ctx);
     else if (placing && env && !BuildWork.active) buildHere(ctx);
   },
 });
@@ -1737,7 +1852,7 @@ const GARDEN_LATE = 95;
 /** The garden's late offer, worked out once a step there (_garden.ts `chooseOnce`), or null. */
 const gardenLate = (ctx: RoamCtx, m: 'walk' | 'boat'): string | null => addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
 /** Build mode, a card or the work has him: no "Build…". */
-const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
+const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || MoveMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
 registerAddon({
   id: 'buildLate',
   order: GARDEN_LATE - 0.1,
@@ -1751,7 +1866,7 @@ registerAddon({
     return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on || !canStart(ctx, true)) return;
     openCard(ctx);
   },
 });
@@ -1768,7 +1883,7 @@ registerAddon({
     return gardenLate(ctx, m)?.startsWith('E ') ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on || !canStart(ctx, true)) return;
     openCard(ctx);
   },
 });

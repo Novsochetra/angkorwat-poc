@@ -30,6 +30,12 @@ const NO = new Color(0xff5a48);
 const TINT = { ok: 0.55, no: 0.7 };
 const EDGE_OK = new Color(0xd8ffc8);
 const EDGE_NO = new Color(0xffb0a4);
+/**
+ * Move mode's highlight (roam/_buildMove.ts `look: 'pick'`): the piece aimed at, over itself, gold where it can be picked
+ * up and red where not (the reason in the prompt), a hair bigger than its blocks and drawn over everything: never
+ * fighting the piece's own faces for the same depth.
+ */
+const PICK = { ok: new Color(0xffd27a), tint: 0.8, alpha: 0.42, grow: 0.03 };
 /** Opacity where it can stand and where not; its breath (rad/s, swell). */
 const ALPHA = { ok: 0.5, no: 0.6 };
 const PULSE = 1.6;
@@ -75,6 +81,8 @@ export class BuildGhost {
   private id: PieceId | null = null;
   /** A fence run's own length (m: one that closes a gap), else undefined. */
   private len: number | undefined = undefined;
+  /** Its look's seed (a piece's own, highlighted: its blocks as they stand). */
+  private seed = 0.37;
   private want = false;
   private x = 0;
   private z = 0;
@@ -87,12 +95,17 @@ export class BuildGhost {
   private on = 0;
   private clock = 0;
 
-  constructor(parent: Object3D, private readonly world: RoamWorld) {
+  /** `look`: 'place' build mode's ghost (green / red), 'pick' move mode's highlight (gold / red, `PICK`). */
+  constructor(
+    parent: Object3D,
+    private readonly world: RoamWorld,
+    private readonly look: 'place' | 'pick' = 'place',
+  ) {
     this.mat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: true });
     this.mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), this.mat, MAX);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX * 3).fill(1), 3);
-    this.mesh.name = 'build:ghost';
+    this.mesh.name = look === 'pick' ? 'build:pick' : 'build:ghost';
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 3;
     this.mesh.castShadow = this.mesh.receiveShadow = false;
@@ -104,14 +117,20 @@ export class BuildGhost {
     parent.add(this.mesh);
   }
 
-  /** The piece it shows (its blocks made once per piece), a fence run of its own length (`len`, m: one that closes a gap). */
-  setPiece(id: PieceId, len?: number): void {
-    if (id === this.id && len === this.len) return;
+  /**
+   * The piece it shows (its blocks made once per piece), a fence run of its own length (`len`, m: one that closes a gap),
+   * its look's seed (`seed`: a piece's own, as it stands).
+   */
+  setPiece(id: PieceId, len?: number, seed = 0.37): void {
+    if (id === this.id && len === this.len && seed === this.seed) return;
     this.id = id;
     this.len = len;
+    this.seed = seed;
     this.shownOk = null;
     const out: GhostBox[] = [];
-    const look = pieceLook(id, 0.37, len);
+    const look = pieceLook(id, seed, len);
+    const pick = this.look === 'pick';
+    const grow = pick ? PICK.grow : 0;
     for (const b of look.boxes) {
       if (out.length >= MAX - 48) break;
       const c = new Color(b.color);
@@ -119,11 +138,11 @@ export class BuildGhost {
         x: b.x,
         y: b.y,
         z: b.z,
-        sx: b.sx,
-        sy: b.sy,
-        sz: b.sz,
+        sx: b.sx + grow,
+        sy: b.sy + grow,
+        sz: b.sz + grow,
         q: new Quaternion().setFromEuler(_e.set(b.rx ?? 0, b.ry ?? 0, b.rz ?? 0)),
-        ok: c.clone().lerp(OK, TINT.ok),
+        ok: pick ? c.clone().lerp(PICK.ok, PICK.tint) : c.clone().lerp(OK, TINT.ok),
         no: c.clone().lerp(NO, TINT.no),
         flat: false,
       });
@@ -133,6 +152,7 @@ export class BuildGhost {
     const pw = len ?? p.w;
     const hw = pw / 2 + 0.05;
     const hd = p.d / 2 + 0.05;
+    const edgeOk = pick ? PICK.ok : EDGE_OK;
     for (const [len, along, at] of [
       [pw, 'x', -hd],
       [pw, 'x', hd],
@@ -153,14 +173,15 @@ export class BuildGhost {
           sy: 0.04,
           sz: along === 'x' ? EDGE_W : seg * 0.96,
           q: new Quaternion(),
-          ok: EDGE_OK,
+          ok: edgeOk,
           no: EDGE_NO,
           flat: true,
         });
       }
     }
-    // A fence's guide: on along its run, both ways (not on a run that closes a gap: fence stands at both its ends).
-    if (id === 'fence' && len === undefined)
+    // A fence's guide: on along its run, both ways (not on a run that closes a gap: fence stands at both its ends; not
+    // on the highlight: it marks what stands, not where the next goes).
+    if (id === 'fence' && len === undefined && !pick)
       for (let side = -1; side <= 1; side += 2)
         for (let u = GUIDE.from; u + GUIDE.dash <= GUIDE.to; u += GUIDE.every) {
           const k = u / GUIDE.to;
@@ -221,9 +242,11 @@ export class BuildGhost {
     }
     this.mesh.visible = true;
     const breath = 1 + SWELL * Math.sin(this.clock * PULSE);
-    this.mat.opacity = this.on * (this.ok ? ALPHA.ok : ALPHA.no) * breath;
-    // (where it cannot stand it is drawn over what stands there: never invisible)
-    if (this.mat.depthTest !== this.ok) this.mat.depthTest = this.ok;
+    const pick = this.look === 'pick';
+    this.mat.opacity = this.on * (this.ok ? (pick ? PICK.alpha : ALPHA.ok) : ALPHA.no) * breath;
+    // (where it cannot stand it is drawn over what stands there: never invisible; the highlight always, over its piece)
+    const depth = this.ok && !pick;
+    if (this.mat.depthTest !== depth) this.mat.depthTest = depth;
     const recolour = this.shownOk !== this.ok;
     this.shownOk = this.ok;
     const f = this.world.field;
