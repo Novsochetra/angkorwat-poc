@@ -3,6 +3,7 @@ import type { HeightField } from '../heightfield';
 import { DEFAULT_SETTINGS, VOLUME_KEYS, type AnimalCall, type Duck, type MapFrame, type MapSettings, type PlaceId, type RoamSound, type TypeKey, type UISound, type VolumeKey } from '../types';
 import { warmUp } from './dsp';
 import { FestivalSound } from './festival';
+import { FireworksSound } from './fireworks';
 import { attachSfx, tickSfx } from './addonSfx';
 import { BUSES, SoundEngine, type Mix, type Volumes } from './engine';
 import { footstepsState, loadFootsteps, prefetchFootsteps, type FootstepsState, type StepSet } from './footsteps';
@@ -28,7 +29,8 @@ import type { Ears } from './water';
  * explorer, and pausing while the tab is hidden.
  *
  * Every slider has its own bus (`engine.ts`): Master, Music, Ambience,
- * Water, Animals, Steps, Moves (the explorer's other sounds), Interface.
+ * Water, Animals, Fireworks (New Year's Eve's: fireworks.ts), Steps, Moves
+ * (the explorer's other sounds), Interface.
  * The story's typing is on Interface; while the story is open every other
  * bus ducks (`duck`), so its keys are heard, and comes back when it closes.
  *
@@ -93,11 +95,15 @@ export interface AudioDebug {
   /** The typewriter recording (`typewriter.ts`), and the strikes cut from it. */
   typewriter: TypewriterState;
   strikes: number;
+  /** New Year's Eve's sounds made so far by kind (fireworks.ts: launch, whistle, boom, crackle, sizzle, shout, murmur, roar; dropped). */
+  fireworks: Record<string, number>;
 }
 
 /** How far ahead voices are scheduled (s), and how often the scheduler runs (ms). */
 const AHEAD = 1.2;
 const EVERY = 250;
+/** How far ahead New Year's Eve's fireworks are scheduled (s): their times are known (nye/show.ts). */
+const FIREWORKS_AHEAD = 3;
 /** Fade-in of music, ambience, water and the animals on start (s). */
 const FADE_IN = 3;
 /** Recordings that failed to load are tried again after these waits (s): the network may be back. */
@@ -153,6 +159,8 @@ export function createMapAudio(): MapAudio {
   let engine: SoundEngine | null = null;
   /** The festivals' drums, crowds and music (festival.ts), on the engine's buses. */
   let fest: FestivalSound | null = null;
+  /** New Year's Eve's fireworks and the crowd's countdown (fireworks.ts, its own bus): nothing far from the show. */
+  let fireworks: FireworksSound | null = null;
   let starting: Promise<void> | null = null;
   let suspendTimer = 0;
   /** Sound is running (not before start, not while the tab is hidden). */
@@ -174,6 +182,8 @@ export function createMapAudio(): MapAudio {
     try {
       engine.schedule(ctx.currentTime + AHEAD);
       fest?.schedule(ctx.currentTime, ctx.currentTime + AHEAD);
+      // (the show is a script: scheduled further ahead, so a long hitch of the page loses none of it)
+      fireworks?.schedule(ctx.currentTime, ctx.currentTime + FIREWORKS_AHEAD);
     } catch (e) {
       console.warn('[map] audio schedule failed:', e);
     }
@@ -294,6 +304,7 @@ export function createMapAudio(): MapAudio {
     ctx = new AC({ latencyHint: 'balanced' });
     engine = new SoundEngine(ctx);
     fest = new FestivalSound(engine);
+    fireworks = new FireworksSound(engine);
     // (the roaming add-ons' own sounds: addonSfx.ts)
     attachSfx(engine, live);
     engine.setVolumes(volumes, true);
@@ -473,6 +484,7 @@ export function createMapAudio(): MapAudio {
         engine.weather(f.weather, ears, f.roam !== 'overview', f.t, f.roam === 'walk' ? (f.canopy ?? 0) : 0);
         engine.roamLevels(f.roamLevels.wind, f.roamLevels.wake, f.roamLevels.sail ?? 0, f.roamLevels.burner ?? 0, f.roamLevels.fan ?? 0);
         fest?.update(ears);
+        fireworks?.update(ears);
         engine.events(ev, f.t);
       } catch (e) {
         console.warn('[map] audio update failed:', e);
@@ -484,7 +496,7 @@ export function createMapAudio(): MapAudio {
       const gains = { master: round(engine ? engine.master.gain.value : volumes.master ** 2) } as Record<VolumeKey, number>;
       for (const b of BUSES) gains[b] = round(engine ? engine.bus[b].dry.gain.value : volumes[b] ** 2);
       const steps = footstepsState();
-      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes };
+      return { state: ctx?.state ?? 'none', gains, footsteps: steps.state, recordings: steps.counts, played: { ...(engine?.stepsPlayed ?? {}) }, duck: ducked, duckLevel: round(engine?.duckLevel ?? 1), typewriter: typewriterState().state, strikes: typewriterState().strikes, fireworks: { ...(fireworks?.played ?? {}) } };
     },
   };
 }

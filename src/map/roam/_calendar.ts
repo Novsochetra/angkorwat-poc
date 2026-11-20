@@ -5,6 +5,8 @@ import { TIME, type MapMoment } from '../time';
 import type { MapFrame, MapPart, RoamMode } from '../types';
 import { onLang, t } from '../ui/lang';
 import type { Minimap } from '../ui/minimap';
+import { nightHeld, NYE_TIMES } from '../nye/clock';
+import { nyeClockAt } from '../nye/event';
 import { registerAddon, type AddonEnv } from './_addons';
 import { createCalendarCard, createCalendarToast, type CalendarCard, type CalendarToast, type CardModel, type CardRow, type CardSection } from './_calendarCard';
 import './_calendarEvents';
@@ -157,6 +159,14 @@ function model(): CardModel {
   };
   for (const e of CALENDAR) {
     const show: CardRow['show'] = whereOf(e) ? (target?.kind === 'event' && target.id === e.id ? 'on' : 'off') : 'none';
+    // (on the real clock — New Year's Eve, nye/event.ts —: its own line, the real countdown; never a Wait)
+    if (e.realClock) {
+      const r = e.realClock();
+      if (!r) continue;
+      if (r.on) nowRows.push({ e, when: r.when, real: real(e), muted: false, show, wait: false });
+      else ahead.push({ e, when: r.when, real: real(e), muted: false, show, wait: false, at: r.in / len });
+      continue;
+    }
     if (onNow(e, held)) {
       const tt = e.heldDay && held ? null : timeOf(e, now);
       let when = '';
@@ -194,7 +204,10 @@ function model(): CardModel {
     { key: 'ahead', title: 'whenAhead', empty: null, rows: ahead.sort(order) },
     { key: 'seasons', title: 'whenSeasons', empty: null, rows: seasons.sort(order) },
   ];
-  const heldLine = held
+  // (New Year's Eve holds the night by itself: it says so, not the Time setting's way to let it run)
+  const heldLine = nightHeld()
+    ? t('nyeHeld', { to: nyeClockAt(NYE_TIMES.nightTo) })
+    : held
     ? t('whenHeld', { mode: t(f.night >= 0.5 ? 'night' : 'day'), path: `${t('settings')} → ${t('tabGeneral')} → ${t('time')}: ${t('cycle')}` })
     : null;
   return { moment: momentWords(f.clock, f.season, f.day), held: heldLine, sections };
@@ -234,7 +247,11 @@ async function settle(limit: number): Promise<void> {
 /** Wait for it: fade out, move the time on to just before it, let what is built late come, fade in, say so. */
 async function waitFor(id: string): Promise<void> {
   const e = eventById(id);
-  if (!e || !env || waiting) return;
+  if (!e || !env || waiting || e.realClock) return;
+  if (nightHeld()) {
+    env.hud.toast(t('nyeHeld', { to: nyeClockAt(NYE_TIMES.nightTo) }));
+    return;
+  }
   if (!TIME.cycling()) {
     env.hud.toast(t('whenHeld', { mode: t((last?.night ?? 0) >= 0.5 ? 'night' : 'day'), path: `${t('settings')} → ${t('tabGeneral')} → ${t('time')}: ${t('cycle')}` }));
     return;
@@ -322,7 +339,7 @@ function check(mode: RoamMode): void {
     const before = was.get(e.id);
     was.set(e.id, on);
     // (not while waiting: the view is faded out, the time jumping; `waitFor` says what it waited for)
-    if (on && before === false && !jumped && !waiting && roaming(mode) && (!held || e.heldDay)) {
+    if (on && before === false && !jumped && !waiting && roaming(mode) && (!held || e.heldDay) && !e.realClock) {
       // (the festivals and rare moments always, and a season's first day; a day's moment, or a season's other days,
       // near him, or the first time in a visit)
       const where = whereOf(e);

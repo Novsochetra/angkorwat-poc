@@ -10,6 +10,8 @@ import { CART_AT, cartAway } from '../build/haul';
 import { nurseryToWorld } from '../hamlet/_nurseryPlan';
 import { traderToWorld } from '../cattle/plan';
 import { CLEARING } from '../veg/bambooForestPlan';
+import { squareShown } from '../nye/clock';
+import { RING } from '../nye/plan';
 import type { WordKey } from './lang';
 import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
 
@@ -30,7 +32,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle' | 'bamboo-forest';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle' | 'bamboo-forest' | 'nye-square';
 
 export interface MapSpot {
   id: SpotId;
@@ -399,6 +401,20 @@ function spot(id: SpotId, x: number, z: number, arrive: number, name: WordKey, t
 
 const reclining = WORSHIP.find((w) => w.id === 'kulen-buddha');
 
+/** New Year's Eve's festival square (nye/plan.ts): the countdown board in its stage gate, the gathering ring of light before it. */
+const NYE_ART = [
+  '....kKKKk....',
+  '...kYYYYYk...',
+  '...kYuYuYk...',
+  '...kkkkkkk...',
+  '.c.........c.',
+  '.cYYYYYYYYYc.',
+  '.Y.........Y.',
+  'Y...........Y',
+  '.Y.........Y.',
+  '..YYYYYYYYY..',
+];
+
 /** The places, drawn in this order (the temples go over them). */
 export const MAP_SPOTS: readonly MapSpot[] = [
   spot('back-hamlet', BACK_HAMLET.x, BACK_HAMLET.z, 18, 'jnHamlet', 'jnTheHamlet', outlined(HAMLET)),
@@ -426,6 +442,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   spot('cattle', CATTLE_AT[0], CATTLE_AT[1], 9, 'cattleMap', 'cattleTheMap', outlined(CATTLE_ART)),
   // (the bamboo forest's clearing at its trail's end, west of the Kulen foot trail: veg/bambooForest.ts)
   spot('bamboo-forest', CLEARING.x, CLEARING.z, 8, 'bambooForestMap', 'bambooForestTheMap', outlined(BAMBOO_ART)),
+  // (New Year's Eve's festival square at Kulen's foot, the meeting point: from the day it ships to the day after the night, nye/)
+  ...(squareShown() ? [spot('nye-square', RING.x, RING.z, RING.r + 4, 'nyeMap', 'nyeTheMap', outlined(NYE_ART))] : []),
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

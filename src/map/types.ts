@@ -299,6 +299,8 @@ export interface MapSettings {
   water: number;
   /** Animal calls (birds, monkeys, frogs, the rooster…), where the animals are. */
   animals: number;
+  /** New Year's Eve's fireworks and the crowd's countdown and cheer (audio/fireworks.ts; its own bus, AWP-35). */
+  fireworks: number;
   /** The explorer's footsteps. */
   steps: number;
   /** The explorer's other sounds: jump and landing, parachute, hang glider wind and sail, paddle, splash, tools, camera. */
@@ -364,10 +366,10 @@ export type WeatherSetting = (typeof WEATHER_SETTINGS)[number];
 export const MOON_PATHS = ['low', 'high'] as const;
 export type MoonPath = (typeof MOON_PATHS)[number];
 
-export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, shortView: false, fogAmount: 1 };
+export const DEFAULT_SETTINGS: MapSettings = { master: 1, music: 0.55, ambience: 0.8, water: 0.8, animals: 0.8, fireworks: 0.8, steps: 0.45, moves: 0.7, ui: 1, time: 'cycle', weather: 'clear', moonPath: 'low', calm: false, lang: 'km', easyFly: true, miniMap: 'show', keyHelp: true, padRumble: true, graphics: 'auto', resolution: 'auto', battery: false, shortView: false, fogAmount: 1 };
 
 /** The volume settings (sliders), in panel order. */
-export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'steps', 'moves', 'ui'] as const;
+export const VOLUME_KEYS = ['master', 'music', 'ambience', 'water', 'animals', 'fireworks', 'steps', 'moves', 'ui'] as const;
 export type VolumeKey = (typeof VOLUME_KEYS)[number];
 
 /** A built part of the map: main.ts adds `object` to the scene and calls `update` each frame. */

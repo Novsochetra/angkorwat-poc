@@ -355,6 +355,21 @@ const PAGE = [
   '.cccccccccc.',
 ];
 
+/** New Year's Eve's fireworks (nye/event.ts): a gold peony over its rising trail, a lotus-pink and an ice-blue spark beside it. */
+const FIREWORKS = [
+  '....Y.Y.Y....',
+  '..Y..YUY..Y..',
+  '...YYUUUYY...',
+  '.YYUUUWUUUYY.',
+  '...YYUUUYY...',
+  '..Y..YUY..Y..',
+  '....Y.u.Y....',
+  '......u......',
+  '.P....u....B.',
+  'PqP...u...BaB',
+  '.P....u....B.',
+];
+
 /** The pictures by event id (outlined once): a later event adds its line. */
 export const EVENT_ART: Record<string, string[]> = {
   water: outlined(WATER),
@@ -381,6 +396,8 @@ export const EVENT_ART: Record<string, string[]> = {
   pchumben: outlined(BAYBEN),
   visak: outlined(CANDLE),
   equinox: outlined(EQUINOX),
+  // (New Year's Eve's fireworks at Phnom Kulen: nye/event.ts)
+  nye: outlined(FIREWORKS),
   // (his garden's fruit trees: roam/_gardenSeasons.ts)
   'garden-mango': outlined(MANGO),
   'garden-jackfruit': outlined(JACKFRUIT),

@@ -23,6 +23,7 @@ import { WeatherSound } from './weather';
  *   ambience ─┤              │                               │
  *   water    ─┤              │                               │
  *   animals  ─┼─ Bus: volume ┤                               ├─ sum ─ compressor ─ trim ─ soft clip ─ master ─ out ─ speakers
+ *   fireworks─┤              │                               │
  *   steps    ─┤              │                               │
  *   moves    ─┤              └─ wet ─ reverb (convolver) ────┘
  *   ui       ─┘
@@ -32,7 +33,8 @@ import { WeatherSound } from './weather';
  * ambience.ts; the temples' chant, drum and bells: temple.ts; the people's
  * sounds: people.ts; the market's, the villages' and the picnic's beds:
  * hamlets.ts); `water` (falls and rivers: water.ts); `animals` (their
- * calls, placed on the map: animals.ts); `steps` (the explorer's footsteps)
+ * calls, placed on the map: animals.ts); `fireworks` (New Year's Eve's show
+ * and the crowd's countdown: fireworks.ts); `steps` (the explorer's footsteps)
  * and `moves` (his other sounds, the lasting wind, sail and wake too:
  * explorer.ts `roamBus`); `ui` (the interface and the camera's flights:
  * sfx.ts; the bell on entering a place; the story's typing: typing.ts). A

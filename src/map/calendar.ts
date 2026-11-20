@@ -61,6 +61,13 @@ export interface CalendarEvent {
   heldDay?(): { on: boolean; next: number };
   /** The next time it happens in Cambodia in real life, from the real day `from` (still on that day counts): its days. */
   real?(from: Date): RealSpan | null;
+  /**
+   * An event on the real clock, not the map's cycle (New Year's Eve, nye/event.ts): `on` reads the real time and
+   * ignores the moment. Asked when the card is made: on now, real seconds to its start (0 while on, for the order),
+   * and its line (the real countdown). The card offers no Wait (the map's time cannot move real time), `nextOf` is
+   * never asked for it, and the calendar leaves its banners to its own module. Null: not listed now.
+   */
+  realClock?(): { on: boolean; in: number; when: string } | null;
 }
 
 /** Days of the cycle between looks for a start (≈ 15 min of the map's day, 4 s of play). */

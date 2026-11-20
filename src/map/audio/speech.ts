@@ -633,6 +633,84 @@ function* crowdJob(seconds: number, seed: number): Job {
   return buf;
 }
 
+// ── The crowd's countdown (New Year's Eve: audio/fireworks.ts) ──────────────
+
+/** "ប្រាំ" (pram), the first half of 6 … 9. */
+const PRAM = syl('p+r', 'a', 'm', 0.17, 4, 5);
+/**
+ * What the crowd on the festival square shouts: index n the number n of the last ten seconds, in Khmer — ដប់ (dop),
+ * ប្រាំបួន, ប្រាំបី, ប្រាំពីរ, ប្រាំមួយ, ប្រាំ, បួន, បី, ពីរ, មួយ — and at 0 "សួស្តីឆ្នាំថ្មី!" (suo-sdey chnam thmey) at midnight.
+ */
+const SHOUTS: readonly (readonly Syl[])[] = [
+  [syl('s', 'ue', '', 0.2, 4, 5), syl('s+d', 'ei', '', 0.24, 6, 5), syl('ch+n', 'aa', 'm', 0.26, 6, 6.5), syl('th+m', 'ei', '', 0.6, 9, 2)],
+  [syl('m', 'ue', 'y', 0.42, 7, 1)],
+  [syl('p', 'i', '', 0.36, 6, 1)],
+  [syl('b', 'ei', '', 0.36, 6, 1)],
+  [syl('b', 'ue', 'n', 0.38, 6, 1)],
+  [syl('p+r', 'a', 'm', 0.38, 6, 1)],
+  [PRAM, syl('m', 'ue', 'y', 0.34, 6, 1)],
+  [PRAM, syl('p', 'i', '', 0.32, 6, 1)],
+  [PRAM, syl('b', 'ei', '', 0.32, 6, 1)],
+  [PRAM, syl('b', 'ue', 'n', 0.34, 6, 1)],
+  [syl('d', 'oa', 'p', 0.34, 5, 1)],
+];
+
+/** A crowd shouting `syls` together: nine raised voices (men, women, children), each a little early or late, across the stereo field. */
+function* shoutJob(syls: readonly Syl[], seed: number): Job {
+  const r = mulberry32(seed);
+  const people = [
+    man(range(r, 165, 190), { soft: -0.4 }),
+    man(range(r, 180, 205), { soft: -0.35, tract: 1.04 }),
+    man(range(r, 150, 172), { soft: -0.3 }),
+    woman(range(r, 290, 330), { soft: -0.45, breath: 0.1 }),
+    woman(range(r, 270, 305), { soft: -0.4 }),
+    woman(range(r, 300, 345), { soft: -0.5, tract: 1.2 }),
+    child(range(r, 360, 420)),
+    child(range(r, 340, 390), { tract: 1.28 }),
+    man(range(r, 170, 195), { soft: -0.4, breath: 0.2 }),
+  ];
+  const end = score(syls, 1).end;
+  const n = Math.ceil((end + 0.4) * LOOP_SR);
+  const L = new Float32Array(n);
+  const Rt = new Float32Array(n);
+  let k = 0;
+  for (let p = 0; p < people.length; p++) {
+    const w = people[p];
+    const pan = -0.85 + (1.7 * p) / (people.length - 1) + range(r, -0.15, 0.15);
+    const g = range(r, 0.55, 1);
+    const gains = [g * Math.cos(((pan + 1) * Math.PI) / 4), g * Math.sin(((pan + 1) * Math.PI) / 4)] as const;
+    // (each a little early or late, and a little higher or lower)
+    const shifted = syls.map((y) => ({ ...y, p: [y.p[0] + range(r, -1, 1), y.p[1] + range(r, -1, 1)] as const, d: y.d * range(r, 0.92, 1.1) }));
+    yield* speak(L, Rt, gains, Math.round(range(r, 0, 0.09) * LOOP_SR), LOOP_SR, w, score(shifted, w.tract), seed + ++k * 4099);
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(Rt[i]));
+  const kk = 0.85 / (peak || 1);
+  for (let i = 0; i < n; i++) {
+    L[i] *= kk;
+    Rt[i] *= kk;
+  }
+  const buf = new AudioBuffer({ numberOfChannels: 2, length: n, sampleRate: LOOP_SR });
+  buf.copyToChannel(L, 0);
+  buf.copyToChannel(Rt, 1);
+  return buf;
+}
+
+/** The countdown's shouts, made ahead when the night is near (`warmShouts`), else at once when wanted. */
+const SHOUT_JOBS: Record<string, () => Job> = {};
+SHOUTS.forEach((syls, i) => (SHOUT_JOBS[`speech-shout-${i}`] = () => shoutJob(syls, 7310 + i * 131)));
+
+/** The crowd shouting the number `n` (1‥10) of the last ten seconds, or (0) "សួស្តីឆ្នាំថ្មី!" at midnight (stereo). */
+export function shout(n: number): AudioBuffer {
+  const key = `speech-shout-${Math.max(0, Math.min(10, Math.round(n)))}`;
+  return obtain(key, SHOUT_JOBS[key]);
+}
+
+/** Make the shouts ahead, a slice at a time, while `timeLeft()` (ms) allows; true once all are made. */
+export function warmShouts(timeLeft: () => number): boolean {
+  return warm(SHOUT_JOBS, timeLeft);
+}
+
 // ── Made once, reused ──────────────────────────────────────────────────────
 
 /** Every buffer of speech, in the order they are warmed up. */

@@ -2034,6 +2034,43 @@ const WORDS = {
   equiNowHere: { km: 'ព្រះអាទិត្យកំពុងរះចំកំពូលកណ្ដាល! លើកកាមេរ៉ា (4) ថតទុកជាអនុស្សាវរីយ៍', en: 'The sun is rising right over the central tower! Raise your camera (4) for a keepsake' },
   // (the passport's section for rare moments, roam/_bookUi.ts; its stamp's own name is in roam/_bookData.ts)
   equiMoments: { km: 'ពេលវេលាដ៏កម្រ', en: 'Rare moments' },
+  // ── New Year's Eve online (nye…, AWP-35): the overlay nye/overlay.ts, the toasts and the calendar nye/event.ts,
+  // the sound audio/fireworks.ts. {year} is clock.ts's NYE_YEAR, {time} / {to} clock times in Cambodia (never written here).
+  nyeName: { km: 'កាំជ្រួចនៅភ្នំគូលែន', en: 'Fireworks at Phnom Kulen' },
+  nyeNote: {
+    km: 'រាប់ថយក្រោយជាមួយគ្នានៅទីលានពិធីបុណ្យ ជើងភ្នំគូលែន ហើយទស្សនាកាំជ្រួចចូលឆ្នាំសកល {year} ពេលអធ្រាត្រ ម៉ោងកម្ពុជា',
+    en: "Count down together on the festival square at Phnom Kulen's foot, and watch the fireworks for the New Year {year} at midnight, Cambodia time",
+  },
+  nyePlace: { km: 'ទីលានពិធីបុណ្យ ជើងភ្នំគូលែន', en: "The festival square, Phnom Kulen's foot" },
+  nyeBegins: { km: 'យប់ចូលឆ្នាំសកលចាប់ផ្ដើមហើយ', en: "New Year's Eve has begun" },
+  // (the overlay: the chip at the top, the greeting at midnight)
+  nyeChip: { km: 'ឆ្នាំថ្មី {year}', en: 'New Year {year}' },
+  nyeChipAria: { km: 'ពេលវេលានៅសល់មុនឆ្នាំថ្មី', en: 'Time left to the New Year' },
+  nyeHappy: { km: 'សួស្តីឆ្នាំថ្មី {year}', en: 'Happy New Year {year}' },
+  // (the toasts: the night comes by itself at 22:30, and goes after 00:45)
+  nyeToastKick: { km: 'យប់ចូលឆ្នាំសកល', en: "New Year's Eve" },
+  nyeToastNight: { km: 'យប់ចូលមកដល់សម្រាប់ពិធីចូលឆ្នាំ៖ កាំជ្រួចនៅភ្នំគូលែន ពេលអធ្រាត្រ', en: "Night falls for New Year's Eve: fireworks at Phnom Kulen at midnight" },
+  nyeToastNightNote: { km: 'ពេលវេលារបស់អ្នកនឹងត្រឡប់មកវិញ ក្រោយម៉ោង {to}', en: 'Your own time of day comes back after {to}' },
+  nyeToastOver: { km: 'យប់ចូលឆ្នាំបានចប់ហើយ៖ ពេលវេលារបស់អ្នកត្រឡប់មកវិញ', en: "New Year's night is over: your own time of day comes back" },
+  nyeToastOverNote: { km: 'ជួបគ្នាឆ្នាំក្រោយ', en: 'See you next year' },
+  // (the calendar's card: the real countdown, never the map's own time)
+  nyeAt: { km: 'ម៉ោង {time} ម៉ោងកម្ពុជា', en: 'At {time}, Cambodia time' },
+  nyeIn: { km: 'នៅសល់ {left}', en: 'in {left}' },
+  nyeDay1: { km: '១ ថ្ងៃ', en: '1 day' },
+  nyeDays: { km: '{n} ថ្ងៃ', en: '{n} days' },
+  nyeCountNow: { km: 'រាប់ថយក្រោយ · {left} ទៀតដល់អធ្រាត្រ', en: 'The countdown · {left} to midnight' },
+  nyeShowNow: { km: 'កាំជ្រួចកំពុងបាញ់ · នៅសល់ {left}', en: 'The fireworks · {left} left' },
+  nyeAfterNow: { km: 'រហូតដល់ម៉ោង {to}', en: 'Until {to}' },
+  nyeHeld: {
+    km: 'យប់ចូលឆ្នាំសកល៖ យប់នៅជាប់រហូតដល់ម៉ោង {to} ម៉ោងកម្ពុជា បន្ទាប់មកពេលវេលារបស់អ្នកត្រឡប់មកវិញ',
+    en: "New Year's Eve: the night holds until {to}, Cambodia time, then your own time of day comes back",
+  },
+  // (the mini-map's and the big map's badge for the square: the meeting point)
+  nyeMap: { km: 'ទីលានឆ្នាំថ្មី', en: 'New Year square' },
+  nyeTheMap: { km: 'ទីលានឆ្នាំថ្មី', en: 'the New Year square' },
+  // (the Sound settings' slider: its own bus)
+  fireworks: { km: 'កាំជ្រួច', en: 'Fireworks' },
+  fireworksTip: { km: 'កាំជ្រួចយប់ចូលឆ្នាំ និងហ្វូងមនុស្សរាប់ថយក្រោយ', en: "New Year's Eve fireworks and the crowd's countdown" },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;
 

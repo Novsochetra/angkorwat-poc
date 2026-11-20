@@ -1,4 +1,5 @@
 import type { PlaceDef } from '../layout';
+import { squareShown } from '../nye/clock';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
@@ -127,6 +128,7 @@ const SOUND_PART: Record<VolumeKey, WordKey | null> = {
   ambience: 'soundAround',
   water: 'soundAround',
   animals: 'soundAround',
+  fireworks: 'soundAround',
   steps: 'soundYours',
   moves: 'soundYours',
   ui: 'soundYours',
@@ -353,8 +355,9 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   coffeeBtn.dataset.tTitle = 'support';
   corner.append(coffeeBtn, creditsBtn, gearBtn);
 
+  // (the fireworks' slider only while New Year's Eve's square stands: nye/clock.ts)
   const slider = (k: VolumeKey) =>
-    `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`;
+    `<label class="mu-slider${k === 'master' ? ' is-master' : ''}" data-t-title="${k}Tip"${k === 'fireworks' && !squareShown() ? ' style="display: none"' : ''}><span data-t="${k}"></span><input type="range" min="0" max="100" step="1" data-k="${k}"><output></output></label>`;
   // (the sliders in `VOLUME_KEYS` order, a sub-heading over each part but the top)
   const soundParts = [...new Set(VOLUME_KEYS.map((k) => SOUND_PART[k]))].map((p) => {
     const rows = VOLUME_KEYS.filter((k) => SOUND_PART[k] === p).map(slider).join('');
