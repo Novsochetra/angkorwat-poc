@@ -21,6 +21,8 @@ const MODULES: readonly (() => Promise<unknown>)[] = [
   () => import('./_zip'),
   () => import('./_palmClimb'),
   // ── Village life: the hammock, the alms round (dak bat), the monk's blessing, kneeling to listen to the chanting, offering fruit, lotus, monkeys ──
+  // (New Year's Eve: watch the fireworks, the camera looking up at the show)
+  () => import('./_nyeWatch'),
   () => import('./_hammock'),
   () => import('./_dakBat'),
   () => import('./_blessing'),

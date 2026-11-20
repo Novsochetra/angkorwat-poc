@@ -2061,6 +2061,9 @@ const WORDS = {
   nyeCountNow: { km: 'រាប់ថយក្រោយ · {left} ទៀតដល់អធ្រាត្រ', en: 'The countdown · {left} to midnight' },
   nyeShowNow: { km: 'កាំជ្រួចកំពុងបាញ់ · នៅសល់ {left}', en: 'The fireworks · {left} left' },
   nyeAfterNow: { km: 'រហូតដល់ម៉ោង {to}', en: 'Until {to}' },
+  // (roam/_nyeWatch.ts: E while the show plays, the camera low behind him looking up at it)
+  nyeWatch: { km: 'មើលកាំជ្រួច', en: 'Watch the fireworks' },
+  nyeWatchStop: { km: 'ឈប់មើល', en: 'Stop watching' },
   nyeHeld: {
     km: 'យប់ចូលឆ្នាំសកល៖ យប់នៅជាប់រហូតដល់ម៉ោង {to} ម៉ោងកម្ពុជា បន្ទាប់មកពេលវេលារបស់អ្នកត្រឡប់មកវិញ',
     en: "New Year's Eve: the night holds until {to}, Cambodia time, then your own time of day comes back",

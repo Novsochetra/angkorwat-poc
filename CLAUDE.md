@@ -266,6 +266,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `countdown=<s>` (s before midnight), `fireworks=<s>` (s into the show),
   `nyeboard=days|hms|last10|midnight|after`, `boardplayers=<n>`, `boardtest=1`,
   `nyetoast=night|over`; the crowd's view `cam=384,11,-248,410,40,-335,55`.
+  While the show plays, on foot anywhere: E "Watch the fireworks" (`roam/_nyeWatch.ts`: he faces the show, the
+  camera low behind him looking up at it; a drag looks round, E or a move key lets go; `nyewatch=1` in shots).
   Live: `node scripts/nye-live.mjs` plays the night in real time (frames and a WAV of the page's sound in
   `screenshots/nye-live/`); `node scripts/nye-sound.mjs` renders the fireworks' sound offline from the square
   (`screenshots/nye-sound/midnight.wav`, `finale.wav`); `npm run perf -- only=nye,nyecrowd,nyeover`.
