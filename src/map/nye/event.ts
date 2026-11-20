@@ -130,7 +130,7 @@ export function installNye(o: NyeOptions): NyeUi {
 
   return {
     update(f) {
-      ov?.tick(f.dt);
+      ov?.tick();
       const s = nyeSeconds();
       // (far from the night: a look once a second)
       const near = s >= NYE_TIMES.nightFrom - NEAR && s < NYE_TIMES.nightTo + NEAR;

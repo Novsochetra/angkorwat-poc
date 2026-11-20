@@ -2380,8 +2380,15 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   count shouted in Khmer, the cheer at midnight and at the finale's end; `planSounds` is the schedule alone.
 - **Checks.** `nye=+2m` (or `+90s`, `-30s`, an ISO time; `nye=0` none), `countdown=<s>`, `fireworks=<s>`,
   `nyeboard=<state>`, `boardplayers=<n>`, `boardtest=1`, `nyetoast=night|over`, `people=nye`. Quick: 
-  `parts=terrain,nye` (+ `people`, `fireworks`) ≈ 15‥25 s on a CPU. Not yet measured on a GPU: `npm run perf`
-  with the show at its busiest (`fireworks=458`) on low, medium and phone, and the sound heard.
+  `parts=terrain,nye` (+ `people`, `fireworks`) ≈ 15‥25 s on a CPU. `npm run perf -- only=nye,nyecrowd,nyeover`
+  (on the square at the finale, at 23:30 with the crowd, the overview at the finale; not in the default list).
+  `node scripts/nye-live.mjs [lead=150 after=60]` opens a live page with midnight `lead` s away, presses Start and
+  keeps frames and a WAV of what the page played (`screenshots/nye-live/`); on a machine with no GPU its frames take
+  seconds and the scheduler lets go of sounds over 0.4 s late, so there `node scripts/nye-sound.mjs` renders the
+  Fireworks bus offline from the square instead (`screenshots/nye-sound/midnight.wav`, `finale.wav`: the count, the
+  roar, the bangs). Counted on 2026-11-20 (CPU, exact draws and triangles): as a phone on low walking on the square,
+  the event adds 24 draws and ≈ 5 % triangles; the finale's fireworks 4 draws and ≈ 70 k triangles more. Still to
+  measure on a GPU: the frame time on low, medium and phone at the finale.
 
 ## World and scale
 

@@ -34,7 +34,7 @@ export interface NyeOverlay {
   /** A toast under the chip for `seconds` (its kicker, its line, a note under it). */
   toast(kick: string, line: string, note: string, seconds: number): void;
   /** Every frame: the toast's time. */
-  tick(dt: number): void;
+  tick(): void;
   /** Its words again (the language changed): `year` the year that begins. */
   words(year: string): void;
   /** The greeting fades out (its last seconds), or not. */
@@ -209,6 +209,8 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
     toastEl.style.top = `${Math.round(below(toastEl.offsetWidth, toastEl.offsetHeight, top))}px`;
   };
   let placedAt = -1e9;
+  /** When `tick` last ran (ms, `performance.now`; −1 not yet). */
+  let tickAt = -1;
 
   return {
     set(v) {
@@ -247,7 +249,11 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
       toastLeft = shot ? Infinity : seconds;
       place();
     },
-    tick(dt) {
+    tick() {
+      // (by the wall clock, not the frame's dt: main.ts caps that at 0.1 s, so on slow frames a toast stayed for minutes)
+      const now = performance.now();
+      const dt = tickAt < 0 ? 0 : Math.min(5, (now - tickAt) / 1000);
+      tickAt = now;
       if (toastLeft > 0 && (toastLeft -= dt) <= 0) toastEl.classList.remove('is-on');
     },
     words,
