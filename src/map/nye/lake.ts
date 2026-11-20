@@ -15,6 +15,7 @@ import type { NyePiece } from './index';
 import { LAKE_SHORE, LAKE_STAGE } from './plan';
 import { buildBeams } from './_sqGlow';
 import { Bodies, lakeFrame, smooth } from './_lkKit';
+import { growLakeMeadow } from './_lkMeadow';
 import { buildLakeShore } from './_lkShore';
 import { buildLakeStage } from './_lkStage';
 import { dressLakeWater } from './_lkWater';
@@ -31,6 +32,8 @@ import { dressLakeWater } from './_lkWater';
  * - The shore (`_lkShore.ts`): the terrace, the ghat down into the water, the jetty to the stage, the balustrade and
  *   lamps, lantern poles and the string lights fanning from the stage, flags of Cambodia, flower beds and trees, paths
  *   to the lake trail and the east shore trail.
+ * - The garden round it (`_lkMeadow.ts`): groves, blossom trees, palms by the water, bananas, shrubs, tall grass, reeds,
+ *   lilies, the fishermen's corner (nets drying, fish traps, a skiff on the sand), stepping stones; in the shore's mesh.
  * - On the water (`_lkWater.ts`): floating lotus candles from the ghat and round the stage, lily pads, moored boats.
  * - The event night (clock.ts `nightHeld`): more candles (a kit and glow of their own, drawn only then), gold
  *   searchlight beams from behind the stage over the water (the square's, `_sqGlow.ts` `buildBeams`), everything
@@ -63,6 +66,11 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const tStage = performance.now();
   const sb = new VoxelBuilder();
   const shore = buildLakeShore(field, sb, kit, kit, bodies, glow, fr, stage.anchors, low);
+  // The garden round it all (groves, palms by the water, bananas, shrubs, tall grass, reeds and lilies, the fishermen's corner): after the shore.
+  const kitBefore = kit.count;
+  growLakeMeadow(sb, kit, glow, field, fr, low);
+  const meadow = sb.boxes.length - shore.blocks;
+  const meadowKit = kit.count - kitBefore;
   const shoreMesh = buildVoxelMesh(sb, { quality: low ? 'low' : 'medium', name: 'nye:lake:shore' });
   object.add(shoreMesh);
   const tShore = performance.now();
@@ -140,13 +148,13 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const shadows = new ShadowGate(true).addAll(object);
   object.updateMatrixWorld(true);
 
-  const blocks = stage.blocks + shore.blocks + kitMesh.boxes + extraKit.boxes;
+  const blocks = stage.blocks + shore.blocks + meadow + kitMesh.boxes + extraKit.boxes;
   let draws = 0;
   object.traverse((o) => {
     if ((o as Mesh).isMesh || (o as Points).isPoints) draws++;
   });
   console.info(
-    `[map] nye lake: ${blocks} blocks (stage ${stage.blocks}, shore ${shore.blocks}, kit ${kitMesh.boxes} + ${extraKit.boxes} on the night) · ${bodies.count} glowing boxes · ${glow.count} glows · ${water.candles} candles · ${draws} meshes (the naga +1) · deck ${fr.deck.toFixed(2)} m · built in ${(performance.now() - t0).toFixed(0)} ms (stage ${(tStage - t0).toFixed(0)}, shore ${(tShore - tStage).toFixed(0)})`,
+    `[map] nye lake: ${blocks} blocks (stage ${stage.blocks}, shore ${shore.blocks}, meadow ${meadow} + ${meadowKit} in the kit, kit ${kitMesh.boxes} + ${extraKit.boxes} on the night) · ${bodies.count} glowing boxes · ${glow.count} glows · ${water.candles} candles · ${draws} meshes (the naga +1) · deck ${fr.deck.toFixed(2)} m · built in ${(performance.now() - t0).toFixed(0)} ms (stage ${(tStage - t0).toFixed(0)}, shore ${(tShore - tStage).toFixed(0)})`,
   );
 
   let now = 0;

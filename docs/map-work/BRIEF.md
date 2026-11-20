@@ -2358,8 +2358,15 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
     pedestals, lantern poles with string lights fanning from the stage, flags of Cambodia, beds, four flowering trees,
     paths to the lake trail and the east shore trail. On the water (`_lkWater.ts`): lotus candles set afloat from the
     ghat and wandering round the stage (more on the night), lily pads, four moored boats with lanterns. The event night:
-    the square's searchlights (`_sqGlow.ts` `buildBeams`, facing out over the lake). ≈ 7.7 k blocks (4.7 k on low),
-    ≈ 11 draws (+3 on the night), two night-only lamps, built in ≈ 60‥180 ms. No loose rock on its landing
+    the square's searchlights (`_sqGlow.ts` `buildBeams`, facing out over the lake). The garden round it (`_lkMeadow.ts`
+    `growLakeMeadow`, the square's plants from `_sqMeadow.ts`, out to ≈ 45 m, thinning outward): groves of the map's trees a
+    third in blossom and two of the square's flowering trees by the rim, sugar and coconut palms on the bank and the sand
+    either side of the ghat, bananas, shrubs, bushes, tall grass, flowers, reeds, lily pads and lotus in the shallows, the
+    fishermen's corner on the village side (nets drying on bamboo frames, fish traps, a fish-drying rack, a skiff on the
+    sand: village/_kit.ts), stepping stones; nothing tall between the terrace and the stage or in the views over it
+    (`LAKE_VIEW`, the terrace's front), the crowd's way in from the east shore trail kept clear; in the shore's mesh and
+    the kit, no draw of its own (≈ 7.1 k blocks, 3.5 k on low, ≈ 60‥140 ms). In all ≈ 14.6 k blocks (8.3 k on low),
+    ≈ 11 draws (+3 on the night), two night-only lamps, built in ≈ 150‥300 ms. No loose rock on its landing
     (`onLakeLanding`, terrain/rocks.ts); the valley mist keeps off it (sky/mist.ts).
   - Nothing in the part moves but in shaders and the board's texture: it is in main.ts `FROZEN` and
     `STILL_PARTS`.

@@ -267,6 +267,10 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   `countdown=<s>` (s before midnight), `fireworks=<s>` (s into the show),
   `nyeboard=days|hms|last10|midnight|after`, `boardplayers=<n>`, `boardtest=1`,
   `nyetoast=night|over`; the crowd's view `cam=384,11,-248,410,40,-335,55`.
+  A second stage by the great lake, north of the floating village (the owner, November 2026): a floating stage with
+  its own board, the shore terrace and ghat, lotus candles and boats (`nye/lake.ts`, `_lk*.ts`; spots `LAKE_*` in
+  `plan.ts`), its people (`people/_sceneNyeLake.ts`) and its own show over the water in step with Kulen's (`show.ts`
+  `site`); the terrace's view `cam=-352,10.5,-54,-372,13,-25,55`.
   While the show plays, on foot anywhere: E "Watch the fireworks" (`roam/_nyeWatch.ts`: he faces the show, the
   camera low behind him looking up at it; a drag looks round, E or a move key lets go; `nyewatch=1` in shots).
   Live: `node scripts/nye-live.mjs` plays the night in real time (frames and a WAV of the page's sound in
