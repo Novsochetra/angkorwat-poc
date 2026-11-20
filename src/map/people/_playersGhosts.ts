@@ -48,6 +48,12 @@ const PICNIC: Area = { x: KULEN_PICNIC.x, z: KULEN_PICNIC.z, rx: 9, rz: 9 };
 
 /** Ghost names: a third in Khmer letters, the rest Latin (the name tags write those in Khmer too). */
 const LATIN = ['Dara', 'Sophea', 'Emma', 'Lucas', 'Mei', 'Kenji', 'Sokha', 'Ana', 'Tom', 'Linh', 'Rithy', 'Chloé', 'Noah', 'Malis', 'Ines', 'Arjun', 'Yuki', 'Ben', 'Vanna', 'Sara', 'Leo', 'Nita', 'Omar', 'Mia', 'Hugo'];
+/**
+ * The party's ghosts (every ninth, from the fifth) are named as the made-up friends of the party card's shots
+ * (party/index.ts `DEMO_PARTY`), so `partydemo=…&ghosts=…` finds them on the map (party/link.ts `matchFriends`):
+ * their distance in the card, the speaking mark over the one talking.
+ */
+const PARTY_NAMES = ['ស្រីនាង', 'Vanna'];
 /** Emotes ghosts play as they stop (every one but 'none'). */
 const PLAYS = EMOTES.map((_, k) => k).filter((k) => k > 0);
 const R = (r: Ride) => RIDES.indexOf(r);
@@ -140,7 +146,8 @@ export class GhostPeers implements PeerSource {
       }
       if (ride === 'boat' && !water.length) ride = 'walk';
       motion = ride === 'sit' || ride === 'lie' ? 'stay' : ride === 'glide' || ride === 'parachute' || ride === 'balloon' ? 'air' : ride === 'boat' ? 'water' : 'walk';
-      const name = k % 3 === 0 ? COMMON_NAMES[(k * 7) % COMMON_NAMES.length].km : LATIN[(k * 5) % LATIN.length];
+      const party = k % 9 === 4 && k < 9 * 8;
+      const name = party && PARTY_NAMES[(k - 4) / 9] ? PARTY_NAMES[(k - 4) / 9] : k % 3 === 0 ? COMMON_NAMES[(k * 7) % COMMON_NAMES.length].km : LATIN[(k * 5) % LATIN.length];
       const peer = {
         sid: 1000 + k,
         name,
@@ -148,7 +155,7 @@ export class GhostPeers implements PeerSource {
         ride: R(ride),
         emote: 0,
         emoteAt: -1e9,
-        party: k % 9 === 4 && k < 9 * 8,
+        party,
         x: 0,
         y: 0,
         z: 0,

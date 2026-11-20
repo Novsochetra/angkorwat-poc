@@ -1,7 +1,8 @@
 /**
  * The live server's checks: `node server/test.ts` (or `npm run server:test`). Starts the server on a free port and
  * plays it with WebSocket clients (Node's own): joining and seeing each other, names and codes refused, the limits,
- * the speed check, reports hiding a name, the test room's midnight, parties keeping a crowd, the nearest-50.
+ * the speed check, reports hiding a name, the test room's midnight, parties keeping a crowd (the server's own and the
+ * arcade service's codes), the nearest-50.
  */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -428,14 +429,54 @@ await check('party: made with a code, a member joining a full crowd stays with i
   const nFar = counts(farOne.welcome!.sid, got);
   assert.ok(nNear >= 8, `near: ${nNear} states in 2 s`);
   assert.ok(nFar >= 2 && nFar <= 5, `far: ${nFar} states in 2 s`);
-  // An unknown code joins alone and says so without closing.
-  const lost = await join(srv, 'Lost', { party: 'ZZZZZZ' });
+  // A code of another form (0 and O are not party letters) joins alone and says so without closing.
+  const lost = await join(srv, 'Lost', { party: 'ZZZZ0O' });
   assert.ok(lost.welcome);
   assert.equal(lost.error()?.code, 'party');
   assert.ok(!lost.closed);
   // In the friend's peers (far west, so the leader at the line's west end is the nearest) he is marked as party.
   await friend.until(() => friend.peer(lead.welcome!.sid)?.party === true, 3000, 'party flag');
   for (const b of [lead, loner, friend, lost, ...fill]) b.close();
+});
+
+await check('arcade party: a code the server never made groups its players in one crowd, even a full one; joining later moves him', async () => {
+  await wait(300);
+  const code = 'H4RT7Q';
+  const a = await join(srv, 'Arc Aa', { party: code });
+  assert.ok(a.welcome && !a.error(), 'an external code is taken');
+  assert.equal(a.welcome!.party, code);
+  a.send({ t: 'state', x: 380, y: 10, z: -250, yaw: 0, ride: 0 });
+  const crowd = a.welcome!.crowd;
+  const pub = srv.rooms.get('public')!;
+  // Fill his crowd: a friend with the same code still comes into it.
+  const fill: Bot[] = [];
+  for (let i = 0; pub.crowds.get(crowd)!.members.size < LIMITS.crowd; i++) fill.push(await join(srv, `Arc Fill ${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`));
+  const b = await join(srv, 'Arc Bb', { party: code.toLowerCase() });
+  assert.equal(b.welcome!.crowd, crowd, 'a full crowd still takes a party member');
+  assert.equal(b.welcome!.party, code);
+  b.send({ t: 'state', x: 384, y: 10, z: -252, yaw: 0, ride: 0 });
+  await a.until(() => a.msgs.some((m) => m.t === 'party' && m.members === 2), 2000, 'the party of 2');
+  await a.until(() => a.peer(b.welcome!.sid)?.party === true, 3000, 'b marked as party for a');
+  await b.until(() => b.peer(a.welcome!.sid)?.party === true, 3000, 'a marked as party for b');
+  // A third joins with no party (the crowd is full: another crowd), then makes the party his with ClientParty.code.
+  const c = await join(srv, 'Arc Cc');
+  assert.notEqual(c.welcome!.crowd, crowd, 'without the code: the next crowd');
+  c.send({ t: 'state', x: 386, y: 10, z: -250, yaw: 0, ride: 0 });
+  c.send({ t: 'party', code });
+  const moved = await c.until(() => c.msgs.find((m) => m.t === 'party' && m.code === code));
+  assert.equal(moved.t === 'party' ? moved.crowd : 0, crowd, 'moved into the party\'s crowd');
+  assert.ok([...pub.crowds.get(crowd)!.members].some((m) => m.sid === c.welcome!.sid), 'in the party\'s crowd on the server');
+  await c.until(() => c.peer(a.welcome!.sid)?.party === true, 3000, 'c sees a as party');
+  await a.until(() => a.peer(c.welcome!.sid)?.party === true, 3000, 'a sees c as party');
+  // Leaving it (code null): no longer marked.
+  c.send({ t: 'party', code: null });
+  await c.until(() => c.msgs.some((m) => m.t === 'party' && m.code === null), 2000, 'out of the party');
+  await a.until(() => a.peer(c.welcome!.sid)?.party === false, 3000, 'c no longer party for a');
+  // A code of another form: an error, and he stays as he was.
+  c.send({ t: 'party', code: 'NOT A CODE' });
+  await c.until(() => c.error()?.code === 'party', 2000, 'the party error');
+  assert.ok(!c.closed);
+  for (const x of [a, b, c, ...fill]) x.close();
 });
 
 await check('reports file a tracker ticket, one per target an hour, with no personal data', async () => {

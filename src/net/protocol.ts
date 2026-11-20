@@ -73,7 +73,7 @@ export interface PeerState {
   emoteAt: number;
   /** Clothes and look: a seed the crowd model dresses from (the same on every screen). */
   look: number;
-  /** In your party (voice later, phase 3). */
+  /** In your party (the same party code: phase 3's arcade party, whose voice the page fades by distance). */
   party?: boolean;
 }
 
@@ -89,7 +89,12 @@ export interface ClientHello {
   room: RoomKind;
   /** The test room's code (the hidden link `/?event=<code>` or typed in "Have a code?"); checked by the server only. */
   code?: string;
-  /** A party code to join (phase 3 uses it for voice; phase 2 keeps a party in one crowd). */
+  /**
+   * A party code to be in: one this server made (`ClientParty.make`), or the arcade live service's party (phase 3:
+   * the arcade service is the authority on who is in it; this server only keeps its players in one crowd and marks
+   * them to each other). Any code of `PARTY_LETTERS`, `LIMITS.partyLen` long, is taken; a code of another form
+   * joins alone with `ServerError` 'party'.
+   */
   party?: string;
 }
 export interface ClientState {
@@ -116,11 +121,17 @@ export interface ClientPing {
   /** The page's `performance.now()` when sent (ms), echoed back. */
   at: number;
 }
-/** Make a party (the server answers with its code) or leave it. */
+/**
+ * Make a party (the server answers with its code) or leave it; or (`code`, phase 3) be in that party now: the arcade
+ * party the player joined or made after the hello (a string), or none (null: left it). The server moves the player
+ * into the party's crowd if it is another one (`ServerParty.crowd`). A server without `code` ignores it (no version
+ * bump: an older page never sends it, an older server answers nothing).
+ */
 export interface ClientParty {
   t: 'party';
   make?: boolean;
   leave?: boolean;
+  code?: string | null;
 }
 export type ClientMsg = ClientHello | ClientState | ClientEmote | ClientReport | ClientPing | ClientParty;
 
@@ -202,6 +213,8 @@ export interface ServerParty {
   t: 'party';
   code: string | null;
   members: number;
+  /** The crowd the player is in now, when joining the party moved them into its crowd. */
+  crowd?: number;
 }
 export interface ServerError {
   t: 'error';

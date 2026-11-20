@@ -14,8 +14,28 @@ Lines marked **(to confirm)** are proposals waiting for the owner.
   made, a ticket written (so Railway's key and secret match the Droplet's), another site refused.
   It serves any game in `LIVE_GAMES`, so other arcade games can use parties later.
 - **In the game:** `src/map/party/` (CLAUDE.md "Parties and party voice"): the party card, the
-  mic button, Mute and Remove, behind the test switch `party=1`. Not yet: the distance fade (it
-  needs Phase 2's positions), Block and Report, the pad's button.
+  mic button, Mute and Remove.
+- **One system with Phase 2** (`party/link.ts`, 2026-11-20): the arcade party is the party. Its
+  code goes to our WebSocket server (the hello's `party`, and `ClientParty.code` when it changes:
+  no protocol bump, older pages and servers ignore it); the server groups any code of the party
+  letters in one crowd (a full crowd still takes a member; joining later moves him into the
+  party's crowd), so friends land together and see each other's gold mark. The arcade service
+  stays the authority on who is in the party.
+- **Distance fade:** done as planned below ("Proximity volume"): 5 times a second each friend is
+  found among the map's party players by name (one left over on each side paired) and heard by
+  distance, full to 20 m, silent from 100 m (`voicenear=`, `voicefar=`); not found, or not online:
+  full volume. The card shows each friend's distance ("too far to hear" past the fade).
+- **Speaking mark:** a friend talking shows three sound bars over their name tag and their gold
+  diamond bobs; in the party list, a green dot.
+- **Safety:** Mute (this visit), Block (for good on this device, by their arcade player id; also
+  hidden on the map), Report (sent as the map's report when the friend is found on the map, else
+  the card says it couldn't be sent). Not yet: a blocked player kept out of a party you're in
+  (that is the arcade service's to do).
+- **Open:** the party button shows while the New Year event is on offer (the join card's
+  conditions), and the join card links to the party card. A pad: □ on the party card, and the
+  DualSense touchpad, are the mic switch (Xbox: only from the card: every other button is taken).
+- Not yet: the Voice volume in the Sound settings, ducking the music, the stereo pan, the "About
+  voice" text for parents.
 
 ## What we decided
 

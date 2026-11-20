@@ -14,6 +14,7 @@
 //   - their `nyeNow()` agree within 0.2 s (the test room's midnight and the server's clock);
 //   - the other player moves smoothly (no step back along his walk) and at the right place (within 1.5 m);
 //   - a party made on one page is joined by the other (real server only);
+//   - the arcade party (phase 3): both pages told the same code (`NET.setParty`) are in it and marked to each other;
 //   - leave() puts the page back alone (state off, no test midnight, no peers).
 // Exit code 1 when a check fails.
 import { existsSync } from 'node:fs';
@@ -188,6 +189,21 @@ try {
       partyB = await b.waitForFunction(() => window.NET.state === 'online' && window.NET.party.code, null, { timeout: 3000 }).then((h) => h.jsonValue(), () => null);
     }
     check(!!partyA && partyA === partyB, `a party made on A is joined by B (A ${partyA}, B ${partyB})`);
+
+    // The arcade party (phase 3: map/party/ tells NET the arcade service's code): a code the server never made.
+    const arcade = 'H4RT7Q';
+    await a.evaluate((c) => window.NET.setParty(c), arcade);
+    await b.evaluate((c) => window.NET.setParty(c), arcade);
+    const sidA = await a.evaluate(() => window.NET.me?.sid);
+    const both = await b
+      .waitForFunction(
+        ({ c, sid }) => window.NET.party.code === c && window.NET.party.members === 2 && window.NET.peers.get(sid)?.party === true,
+        { c: arcade, sid: sidA },
+        { timeout: 4000 },
+      )
+      .then(() => true, () => false);
+    const aParty = await a.evaluate(() => ({ ...window.NET.party }));
+    check(both && aParty.code === arcade, `the arcade party's code groups A and B and marks A for B (A ${JSON.stringify(aParty)}, B ok ${both})`);
   }
 
   // Leave: alone again.

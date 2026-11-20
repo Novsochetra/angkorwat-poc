@@ -3,6 +3,7 @@ import { checkName, type NameReason } from '../../net/names';
 import { LIMITS, PARTY_LETTERS } from '../../net/protocol';
 import { isKhmer, latinPart, playerName, setPlayerName, toKhmer } from '../khmerName';
 import { inTestRoom, nightHeld, nyePhase, squareShown } from '../nye/clock';
+import { openParty, partyCanOpen } from '../party/gate';
 import { clearMark, focusables, moveFocusIn } from '../pad/nav';
 import { pad } from '../pad/pad';
 import { progress } from '../progress';
@@ -27,6 +28,8 @@ import { setSteppedVars } from './shape';
  *   digits read as digits, spaces and dashes out; it joins `room: 'test'` with it (the server checks it: the code is
  *   never in the game). The hidden link `/?event=<code>` (net/client.ts `pendingCode`): with a good name it joins
  *   at once, else the card opens on the name first.
+ * - **"Play with friends: a party"** (when the corner has the party button: party/gate.ts): closes this card and
+ *   opens the party card (map/party/): the party's players share a crowd here, and talk with each other.
  * - **Where it is offered** (never pushy): a small gold button by the calendar's while roaming, from the day the
  *   square ships until the night ends (`joinButton`, placed by roam/_nyePlayers.ts); once as this card when roaming
  *   starts during the night (`nye.asked`, kept); and the setting on the Play tab (New Year online on / off, the
@@ -236,6 +239,7 @@ function makeCard(): Card {
           <p class="nj-code-why" aria-live="polite"></p>
         </div>
         <p class="nj-safe"></p>
+        <button type="button" class="nj-party" hidden>${ICON.party}<span><b class="nj-party-t"></b><small class="nj-party-n"></small></span>${ICON.chevron}</button>
         <div class="mu-ask-row nj-row">
           <button type="button" class="mu-ask-stay mu-frame mu-sm nj-later"><span class="mu-bg"></span><span class="mu-focus"></span><span class="mu-ask-t"></span></button>
           <button type="button" class="mu-ask-stay mu-frame mu-sm nj-people"><span class="mu-bg"></span><span class="mu-focus"></span>${PEOPLE}<span class="mu-ask-t"></span></button>
@@ -258,6 +262,7 @@ function makeCard(): Card {
   const people = q<HTMLButtonElement>('.nj-people');
   const go = q<HTMLButtonElement>('.nj-go');
   const xBtn = q<HTMLButtonElement>('.nj-x');
+  const partyLink = q<HTMLButtonElement>('.nj-party');
 
   let isOpen = false;
   let from: 'button' | 'night' | 'link' | 'settings' = 'button';
@@ -287,6 +292,8 @@ function makeCard(): Card {
     codeIn.setAttribute('aria-label', t('njCodeField'));
     q('.nj-code-go-t').textContent = t('njCodeGo');
     q('.nj-safe').textContent = t('njSafe');
+    q('.nj-party-t').textContent = t('njParty');
+    q('.nj-party-n').textContent = t('njPartyNote');
     people.querySelector('.mu-ask-t')!.textContent = t('njPlayers');
     xBtn.setAttribute('aria-label', t('njClose'));
     xBtn.title = `${t('njClose')} (Esc)`;
@@ -325,6 +332,7 @@ function makeCard(): Card {
     codeWhy.textContent = codeTried && !code ? t('njCodeBad') : '';
     codeGo.disabled = !c.ok;
     // The buttons.
+    partyLink.hidden = !partyCanOpen();
     later.querySelector('.mu-ask-t')!.textContent = t(m === 'form' ? 'njLater' : m === 'offline' ? 'njClose' : 'njLeave');
     people.hidden = m !== 'online';
     go.hidden = m === 'offline';
@@ -418,6 +426,10 @@ function makeCard(): Card {
   people.addEventListener('click', () => {
     shut();
     openPlayers();
+  });
+  partyLink.addEventListener('click', () => {
+    shut();
+    openParty();
   });
   xBtn.addEventListener('click', close);
   wrap.addEventListener('pointerdown', (e) => {
@@ -739,6 +751,17 @@ function injectStyle(): void {
 
     .nj-safe { margin: calc(12 * var(--px)) 0 0 !important; padding: calc(8 * var(--px)) calc(10 * var(--px)); border-left: calc(3 * var(--px)) solid rgba(255, 208, 112, 0.5);
       background: rgba(255, 244, 222, 0.05); font-size: calc(12.5 * var(--px)) !important; line-height: 1.45 !important; color: var(--mu-ink2) !important; }
+    .nj-party { display: flex; align-items: center; gap: calc(10 * var(--px)); margin-top: calc(10 * var(--px)); padding: calc(8 * var(--px)) calc(10 * var(--px));
+      border: 1px solid var(--mu-line-hi); border-radius: calc(6 * var(--px)); background: rgba(255, 244, 222, 0.05); color: var(--mu-ink); text-align: left; cursor: pointer; outline: none; }
+    .nj-party[hidden] { display: none; }
+    .nj-party > .mu-icon { flex: none; width: calc(26 * var(--px)); height: calc(26 * var(--px)); color: var(--mu-gold-hi); }
+    .nj-party > .mu-icon:last-child { width: calc(16 * var(--px)); height: calc(16 * var(--px)); margin-left: auto; color: var(--mu-ink2); }
+    .nj-party > span { display: flex; flex-direction: column; min-width: 0; }
+    .nj-party b { font: 700 calc(14 * var(--px)) / 1.3 var(--mu-display); color: var(--mu-gold-hi); }
+    .nj-party small { font-size: calc(12.5 * var(--px)); line-height: 1.4; color: var(--mu-ink2); }
+    .nj-party:hover, .nj-party:focus-visible, .nj-party.pad-focus { border-color: var(--mu-gold-hi); background: rgba(255, 220, 140, 0.1); }
+    :lang(km) .nj-party b { font-size: calc(15 * var(--px)); letter-spacing: 0; }
+    :lang(km) .nj-party small { font-size: calc(13.5 * var(--px)); line-height: 1.55; }
     .nj .nj-row { margin-top: calc(16 * var(--px)); }
     .nj-row > [hidden] { display: none; }
     .nj-people .mu-icon { width: calc(19 * var(--px)); height: calc(19 * var(--px)); }

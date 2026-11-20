@@ -294,10 +294,23 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
 - Parties and party voice (AWP-35 Phase 3, the plan `docs/discussion/new-year-voice.md`):
   `src/map/party/` (the live service `api.ts`, the arcade repo's `apps/live` on Railway; the card
   `panel.ts`; the mic switch `mic.ts`, the one voice control: a tap or Left Alt / Option joins voice and turns the mic on or off; LiveKit
-  `voice.ts`, loaded only when voice turns on). The corner's party button shows only behind a test
-  switch for now (`party/gate.ts`: `party=1`, `event=`, or a party already kept). Shots:
-  `partydemo=start|in|voice|talk` (made-up friends, no server). `VITE_LIVE_URL` points at another
-  live service.
+  `voice.ts`, loaded only when voice turns on). One system with Phase 2 (`party/link.ts`): the arcade
+  party is THE party: its code goes to the live server (`NET.setParty`: in the hello and as `ClientParty.code`;
+  the server takes any code of `PARTY_LETTERS`, groups its players in one crowd, even a full one, and marks
+  them `party`); 5 times a second each friend (voice identity = arcade player id) is found among the map's
+  party-marked players by name (`matchFriends`; one left on each side paired; NET never shows device ids)
+  and heard by distance (`voiceFade`: full to 20 m, silent from 100 m; `voicenear=`, `voicefar=` in the
+  address), anyone not found at full volume; a friend talking gets the speaking mark (sound bars over the
+  name tag, the gold diamond bobbing: `partyLink.talking`, `people/_scenePlayers.ts`). The party list: Mute,
+  Block (for good on this device, `party/_blocked.ts` `angkor-party-blocked`; `NET.block` when found on the
+  map), Report (`NET.report` when found, else the card says it couldn't be sent), the maker's Remove; the
+  friend's distance. The corner's party button shows while the New Year event is on offer (the join card's
+  conditions: a server set, the square shown) and behind the test switches (`party/gate.ts`: `party=1`,
+  `event=`, a party kept); the join card links to it ("Play with friends: a party", gate.ts `openParty`).
+  A pad: the card is a pad layer (□ the mic), the DualSense touchpad is the mic in a party. Shots:
+  `partydemo=start|in|voice|talk` (made-up friends, no server; with `ghosts=` they are found among the
+  ghosts: `partydemo=talk&ghosts=6&ghostsat=square&roam=walk&at=384,-252&cam=387,12.5,-254,393,9,-271,55`
+  shows the speaking mark), `partyask=block|report`. `VITE_LIVE_URL` points at another live service.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
   hidden gold figures are in `src/map/treasure/` (their list of clues: a tap on the gold

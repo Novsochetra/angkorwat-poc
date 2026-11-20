@@ -2175,6 +2175,8 @@ const WORDS = {
   njMuted: { km: 'បានបិទសំឡេង {name}', en: 'Muted {name}' },
   njPlayerE: { km: 'អ្នកលេង៖ {name}…', en: 'Player: {name}…' },
   njPlayerAria: { km: 'អ្នកលេង {name}', en: 'Player {name}' },
+  njParty: { km: 'លេងជាមួយមិត្តភក្តិ៖ ក្រុមមិត្ត', en: 'Play with friends: a party' },
+  njPartyNote: { km: 'និយាយគ្នាតែក្នុងក្រុម ហើយឃើញគ្នានៅលើផែនទី', en: 'Talk only with your party, and see each other on the map' },
   // (the party and its voice: map/party/, the plan docs/discussion/new-year-voice.md)
   party: { km: 'ក្រុមមិត្ត', en: 'Party' },
   partyNote: { km: 'លេងជាមួយមិត្តភក្តិ៖ បង្កើតក្រុម ហើយប្រាប់មិត្តនូវលេខកូដ ៦ តួ (រហូតដល់ ៨ នាក់)។', en: 'Play with friends: make a party and tell them its 6-letter code (up to 8).' },
@@ -2203,6 +2205,17 @@ const WORDS = {
   partyErrSlow: { km: 'លឿនពេក សូមរង់ចាំបន្តិច', en: 'Too fast, wait a moment' },
   partyErrGone: { km: 'អ្នកមិននៅក្នុងក្រុមនេះទៀតទេ', en: "You're no longer in this party" },
   partyErr: { km: 'មានបញ្ហា សូមសាកល្បងម្ដងទៀត', en: 'Something went wrong, try again' },
+  // (the party list's safety and distances: panel.ts; a friend found on the map, link.ts)
+  partyFar: { km: 'ឆ្ងាយពេក មិនឮ', en: 'too far to hear' },
+  partyBlock: { km: 'រារាំង {name}', en: 'Block {name}' },
+  partyBlockedTag: { km: 'បានរារាំង', en: 'blocked' },
+  partyBlockNote: { km: 'អ្នកនឹងមិនឮ {name} ទៀតទេ នៅលើឧបករណ៍នេះ ហើយមិនឃើញគាត់នៅលើផែនទីដែរ', en: "You won't hear {name} again on this device, nor see them on the map" },
+  partyReport: { km: 'រាយការណ៍ {name}', en: 'Report {name}' },
+  partyReported: { km: 'បានរាយការណ៍ហើយ។ {name} ត្រូវបានលាក់ និងបិទសំឡេងសម្រាប់អ្នក។ អរគុណ!', en: 'Reported. {name} is hidden and muted for you now. Thank you!' },
+  partyReportNo: {
+    km: 'មិនអាចផ្ញើរបាយការណ៍បានទេ៖ {name} មិននៅជាមួយអ្នកលើផែនទីតាមអ៊ីនធឺណិតទេ។ រារាំងគាត់ ដើម្បីកុំឱ្យឮទៀត។',
+    en: "Couldn't send the report: {name} isn't with you on the map online. Block them to stop hearing them.",
+  },
   voiceJoin: { km: 'ចុចដើម្បីបើកការនិយាយ', en: 'Tap to turn on voice' },
   voiceNote: { km: 'ចុចប៊ូតុងមីក្រូហ្វូនខាងក្រោមស្ដាំ ដើម្បីនិយាយជាមួយមិត្ត ហើយចុចម្ដងទៀតដើម្បីបិទមីក្រូហ្វូន។ មានតែមិត្តក្នុងក្រុមនេះទេដែលឮអ្នក។ សំឡេងមិនត្រូវបានថតទុកទេ។ ពាក់កាសស្ដាប់ ដើម្បីកុំឱ្យមានសំឡេងបន្ទរ។', en: "Tap the mic button at the bottom right to talk with your friends, and tap it again to turn your mic off. Only friends in this party hear you. Voice isn't recorded. Headphones stop echo." },
   voiceMicOn: { km: 'មីក្រូហ្វូនបើក · ចុចដើម្បីបិទ', en: 'Mic on · tap to turn off' },

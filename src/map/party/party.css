@@ -200,6 +200,92 @@
   color: #ff9d8a;
 }
 
+.mu-pty-ico + .mu-pty-ico {
+  margin-left: calc(-4 * var(--px));
+}
+
+/* A friend found on the map: how far (link.ts); a blocked one dimmed. */
+.mu-pty-who small.mu-pty-d {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mu-sand, var(--mu-dim));
+}
+
+.mu-pty-who small.mu-pty-d:empty {
+  display: none;
+}
+
+.mu-pty-member.is-blocked .mu-pty-who b {
+  color: var(--mu-dim);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+/* Block and Report ask in the member's row (as the players list's, ui/_joinPlayers.ts). */
+.mu-pty-member:has(.mu-pty-ask) {
+  flex-wrap: wrap;
+  padding-bottom: calc(8 * var(--px));
+}
+
+.mu-pty-ask {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6 * var(--px));
+}
+
+.mu-pty-ask > span {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: calc(13.5 * var(--px));
+  line-height: 1.4;
+  color: var(--mu-ink);
+}
+
+.mu-pty-ask small {
+  font-size: calc(12.5 * var(--px));
+  color: var(--mu-ink2);
+}
+
+.mu-pty-b {
+  min-height: calc(34 * var(--px));
+  padding: 0 calc(12 * var(--px));
+  border: 1px solid var(--mu-line-hi);
+  border-radius: calc(5 * var(--px));
+  background: rgba(255, 244, 222, 0.06);
+  color: var(--mu-ink);
+  font: 700 calc(13 * var(--px)) / 1 var(--mu-display);
+  cursor: pointer;
+  outline: none;
+}
+
+.mu-pty-b.is-bad {
+  border-color: rgba(255, 138, 112, 0.6);
+  color: #ffb4a2;
+}
+
+.mu-pty-b:hover,
+.mu-pty-b:focus-visible,
+.mu-pty-b.pad-focus {
+  border-color: var(--mu-gold-hi);
+  color: var(--mu-gold-hi);
+}
+
+/* The pad's □ is the mic switch while the card is open: said only with a pad in hand. */
+.mu-pty-padmic {
+  display: none;
+  margin-left: calc(6 * var(--px));
+  white-space: nowrap;
+}
+
+body.pad-on .mu-pty-padmic {
+  display: inline;
+}
+
 .mu-pty-ico .mu-icon {
   width: calc(18 * var(--px));
   height: calc(18 * var(--px));

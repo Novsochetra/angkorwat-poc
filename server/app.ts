@@ -5,7 +5,10 @@
  *
  * - Rooms: `public` (everyone) and `test` (the hidden link's room: its own midnight every quarter hour; only with the
  *   EVENT_CODE the server is given, never one written in the game). A room is split into crowds of at most
- *   `LIMITS.crowd`; a party (a code from `PARTY_LETTERS`) always stays in one crowd.
+ *   `LIMITS.crowd`; a party (a code from `PARTY_LETTERS`) always stays in one crowd, even a full one. A party is one
+ *   this server made (`ClientParty.make`), or any code of that form a page brings (phase 3: the arcade live service's
+ *   party, which is the authority on who is in it; made here when its first player comes, and joining it later moves a
+ *   player into its crowd).
  * - Each page sends its state about `LIMITS.stateHz` times a second; the server checks it (finite, on the map, no
  *   faster than `LIMITS.maxSpeed` with slack for lag) and sends each page the nearest `LIMITS.near` players of its
  *   crowd (a grid over the map finds them), and once a second how many stand on the two stages' grounds. Protocol 2
@@ -287,8 +290,46 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     total.refused++;
     c.ws.close(1008, code);
   };
+  /** The party's code and size to each member (with the crowd each is in: a member moved into it learns its new one). */
   const partyNews = (p: Party): void => {
-    for (const m of p.members) send(m, { t: 'party', code: p.code, members: p.members.size });
+    for (const m of p.members) send(m, { t: 'party', code: p.code, members: p.members.size, ...(m.crowd ? { crowd: m.crowd.n } : {}) });
+  };
+  /** A party code's form: `LIMITS.partyLen` of `PARTY_LETTERS` (upper case, after `normCode`). */
+  const codeForm = (code: string): boolean => code.length === LIMITS.partyLen && [...code].every((ch) => PARTY_LETTERS.includes(ch));
+  /**
+   * The party with this code in the room; one nobody made here (an arcade party: its live service says who is in it,
+   * phase 3) is made now, in crowd `crowd`.
+   */
+  const partyFor = (room: Room, code: string, crowd: number): Party => {
+    let p = room.parties.get(code);
+    if (!p) {
+      p = { code, room, crowd, members: new Set(), emptySince: null };
+      room.parties.set(code, p);
+    }
+    return p;
+  };
+  /** Out of his party (kept a while when it empties: a page coming back finds it). */
+  const dropParty = (c: Client): void => {
+    const p = c.party;
+    if (!p) return;
+    p.members.delete(c);
+    c.party = null;
+    if (p.members.size === 0) p.emptySince = Date.now();
+    else partyNews(p);
+  };
+  /** A crowd nobody is in, and no party with members holds, goes (its number is used again). */
+  const tidyCrowd = (room: Room, crowd: Crowd): void => {
+    if (crowd.members.size === 0 && ![...room.parties.values()].some((p) => p.crowd === crowd.n && p.members.size > 0)) room.crowds.delete(crowd.n);
+  };
+  /** Into crowd `n` of his room (joining a party in another crowd): the snapshots tell both crowds he went and came. */
+  const moveCrowd = (c: Client, n: number): void => {
+    const room = c.room!;
+    const from = c.crowd!;
+    from.members.delete(c);
+    tidyCrowd(room, from);
+    const to = crowdOf(room, n);
+    to.members.add(c);
+    c.crowd = to;
   };
 
   // ── Joining and leaving ────────────────────────────────────────────────────────────────────────────────────────
@@ -296,16 +337,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
   const leave = (c: Client): void => {
     clients.delete(c);
     if (byDevice.get(c.device) === c) byDevice.delete(c.device);
-    if (c.party) {
-      const p = c.party;
-      p.members.delete(c);
-      c.party = null;
-      if (p.members.size === 0) p.emptySince = Date.now();
-      else partyNews(p);
-    }
+    dropParty(c);
     if (c.crowd && c.room) {
       c.crowd.members.delete(c);
-      if (c.crowd.members.size === 0 && ![...c.room.parties.values()].some((p) => p.crowd === c.crowd!.n && p.members.size > 0)) c.room.crowds.delete(c.crowd.n);
+      tidyCrowd(c.room, c.crowd);
       c.room.players--;
       players--;
     }
@@ -352,15 +387,16 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     }
     byDevice.set(c.device, c);
 
-    // A party keeps its crowd; a code that is wrong, gone or full joins alone (and says so, without closing).
+    // A party keeps its crowd, full or not; a code this server never made is an arcade party's (phase 3: made here
+    // now, in the first crowd with room). A code of another form, or a full party, joins alone (and says so, without closing).
     let party: Party | null = null;
     let partyErr: string | null = null;
     if (typeof m.party === 'string' && m.party.trim()) {
       const code = normCode(m.party);
-      const p = code.length === LIMITS.partyLen && [...code].every((ch) => PARTY_LETTERS.includes(ch)) ? room.parties.get(code) : undefined;
-      if (!p) partyErr = 'unknown';
-      else if (p.members.size >= LIMITS.partyMax) partyErr = 'full';
-      else party = p;
+      const p = codeForm(code) ? room.parties.get(code) : undefined;
+      if (!codeForm(code)) partyErr = 'unknown';
+      else if (p && p.members.size >= LIMITS.partyMax) partyErr = 'full';
+      else party = p ?? partyFor(room, code, openCrowd(room).n);
     }
 
     const crowd = party ? crowdOf(room, party.crowd) : openCrowd(room);
@@ -393,16 +429,31 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
     }
   };
 
+  /**
+   * Be in party `raw` now (phase 3: the arcade party joined, made or left after the hello; null or '' leaves): into
+   * its crowd if it is another one. A code of another form, or a full party: 'party' and he stays as he was.
+   */
+  const onPartyCode = (c: Client, raw: unknown): void => {
+    const room = c.room!;
+    const code = typeof raw === 'string' ? normCode(raw) : '';
+    if (code && c.party?.code === code) return partyNews(c.party);
+    if (code && !codeForm(code)) return send(c, { t: 'error', code: 'party', reason: 'unknown' });
+    const there = code ? room.parties.get(code) : undefined;
+    if (there && there.members.size >= LIMITS.partyMax) return send(c, { t: 'error', code: 'party', reason: 'full' });
+    dropParty(c);
+    if (!code) return send(c, { t: 'party', code: null, members: 0, crowd: c.crowd!.n });
+    const p = there ?? partyFor(room, code, c.crowd!.n);
+    if (p.crowd !== c.crowd!.n) moveCrowd(c, p.crowd);
+    p.members.add(c);
+    p.emptySince = null;
+    c.party = p;
+    partyNews(p);
+  };
+
   const onParty = (c: Client, make: boolean, leaveIt: boolean): void => {
     const room = c.room!;
     if (leaveIt) {
-      if (c.party) {
-        const p = c.party;
-        p.members.delete(c);
-        c.party = null;
-        if (p.members.size === 0) p.emptySince = Date.now();
-        else partyNews(p);
-      }
+      dropParty(c);
       send(c, { t: 'party', code: null, members: 0 });
       return;
     }
@@ -536,6 +587,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
       case 'report':
         return onReport(c, m.sid, m.reason);
       case 'party':
+        if ('code' in m && m.code !== undefined) return onPartyCode(c, m.code);
         return onParty(c, m.make === true, m.leave === true);
     }
   };

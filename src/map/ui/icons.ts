@@ -138,6 +138,10 @@ export const ICON = {
     '<rect x="8.6" y="2.6" width="6.8" height="11.6" rx="3.4" fill="currentColor" fill-opacity=".55"/>' +
       '<path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0M12 17.6v3.6M8.6 21.2h6.8M4 3.5l16 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   ),
+  /** A circle struck through (Block: the party list). */
+  block: svg('<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m6.6 6.6 10.8 10.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'),
+  /** A flag on its pole (Report: the party list). */
+  flag: svg('<path d="M6 21V3.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path fill="currentColor" d="M7 4h11.2l-2.6 4.3 2.6 4.3H7z"/>'),
   /** A padlock (push-to-talk locked on). */
   lock: svg('<rect x="5.5" y="10.5" width="13" height="10" rx="2" fill="currentColor"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/>'),
 };

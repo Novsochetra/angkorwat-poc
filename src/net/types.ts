@@ -73,6 +73,13 @@ export interface NetClient {
   isMuted(sid: number): boolean;
   makeParty(): void;
   leaveParty(): void;
+  /**
+   * The arcade party the player is in (phase 3: map/party/), or null when in none: the server groups the party's
+   * players in one crowd and marks them to each other (`NetPeer.party`), now if online, else from the next hello.
+   */
+  setParty(code: string | null): void;
+  /** Where he was last on the map (what `update` was given; the party's voice fades by the distance to a friend). */
+  readonly here: { readonly x: number; readonly y: number; readonly z: number } | null;
   /** Something changed (state, peers joined or left, the count, the party): for the interface. */
   onChange(cb: () => void): () => void;
 }

@@ -1,6 +1,6 @@
 import type { PlaceDef } from '../layout';
 import { squareShown } from '../nye/clock';
-import { partyKept, partyShown } from '../party/gate';
+import { partyKept, partyShown, setPartyOpener } from '../party/gate';
 import type { PartyUI } from '../party';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
@@ -356,7 +356,7 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   coffeeBtn.dataset.tAria = 'support';
   coffeeBtn.dataset.tTitle = 'support';
   corner.append(coffeeBtn, creditsBtn, gearBtn);
-  /** The party (map/party/, AWP-35): only behind the test switch until the New Year event opens it to all. */
+  /** The party (map/party/, AWP-35): while the New Year event is on offer, or behind a test switch (party/gate.ts). */
   const partyBtn = partyShown() ? framed(el('button', 'mu-round mu-party-btn', `${ICON.party}<span class="mu-party-n"></span>`), 'md') : null;
   if (partyBtn) {
     partyBtn.type = 'button';
@@ -1215,6 +1215,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
       partyBtn.blur();
       void loadParty().then((ui) => ui.toggle());
     });
+    // (the join card's "Play with friends: a party")
+    setPartyOpener(() => void loadParty().then((ui) => ui.open()));
     if (partyKept() || new URLSearchParams(location.search).has('partydemo')) void loadParty();
   }
 

@@ -33,6 +33,8 @@ export interface MicButton {
   say(text: string): void;
   /** Shots (`partydemo=talk`): looks as it does with the mic on, without a microphone. */
   demoTalking(): void;
+  /** As a tap on it (a game pad's button: the party card's □, the DualSense touchpad). */
+  press(): void;
 }
 
 export function createMicButton(root: HTMLElement, h: { join(): void; talk(on: boolean): void; tapToHear(): void }): MicButton {
@@ -152,6 +154,9 @@ export function createMicButton(root: HTMLElement, h: { join(): void; talk(on: b
     demoTalking() {
       live = true;
       look();
+    },
+    press() {
+      if (shown) press();
     },
   };
 }

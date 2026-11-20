@@ -42,6 +42,10 @@ import type { JoinOptions, NetClient, NetState } from './types';
  *   then only the moving fields, quantized; a page still reads version 1's `peers` (the nyetest mock).
  * - **The boards:** the server's count of players on the Kulen square and at the lake (`setBoardPlayers`) while
  *   online; no line otherwise.
+ * - **The party** (phase 3, `setParty`): the arcade party the player is in (map/party/index.ts tells it) goes in the
+ *   hello and, when it changes, in `ClientParty.code`: the server keeps the party in one crowd (moving him into its
+ *   crowd: `ServerParty.crowd`) and marks its players to each other (`NetPeer.party`), so the party's voice can fade
+ *   by distance (map/party/link.ts). `here` is where he was last (the `me` of `update`).
  * - **The hidden test link** `/?event=<code>`: `pendingCode` (the join card asks for a name first if there is none,
  *   then joins `room: 'test'` with it). The code itself is checked by the server only, never written here.
  */
@@ -120,8 +124,14 @@ class Client implements NetClient {
   readonly available = serverAddress() !== null;
   readonly pendingCode = eventCode();
   lastError: string | null = null;
+  /** Where he was last (the `me` given to `update`; kept in the overview, where none is given). */
+  here: { x: number; y: number; z: number } | null = null;
 
   private readonly url = serverAddress();
+  /** The arcade party the page is in (`setParty`): undefined until told (then the server's own party, kept across a retry). */
+  private partyWish: string | null | undefined = undefined;
+  /** The party the last hello asked for (a wish changed while connecting is sent after the welcome). */
+  private helloParty: string | null = null;
   private opts: JoinOptions | null = null;
   private ws: WebSocket | null = null;
   private retries = 0;
@@ -215,8 +225,9 @@ class Client implements NetClient {
     ws.onopen = () => {
       const o = this.opts;
       if (!o || ws !== this.ws) return;
-      // (back after a drop: into the same party, so the crowd keeps us together)
-      const party = this.party.code ?? o.party;
+      // (the arcade party, phase 3; else, back after a drop, into the same party, so the crowd keeps us together)
+      const party = this.partyWish !== undefined ? this.partyWish : (this.party.code ?? o.party);
+      this.helloParty = party ?? null;
       this.send({ t: 'hello', v: PROTOCOL, id: deviceId(), name: o.name, look: o.look, room: o.room, ...(o.code ? { code: o.code } : {}), ...(party ? { party } : {}) }, true);
     };
     ws.onmessage = (ev) => {
@@ -280,6 +291,7 @@ class Client implements NetClient {
         }
         this.sentAny = false;
         this.startPings();
+        if (this.partyWish !== undefined && this.partyWish !== this.helloParty) this.send({ t: 'party', code: this.partyWish }, true);
         this.emit();
         break;
       }
@@ -300,6 +312,7 @@ class Client implements NetClient {
         break;
       case 'party':
         this.party = { code: m.code, members: m.members };
+        if (typeof m.crowd === 'number') this.crowd = m.crowd;
         this.emit();
         break;
       case 'error':
@@ -453,6 +466,12 @@ class Client implements NetClient {
   }
 
   update(dt: number, me: { x: number; y: number; z: number; yaw: number; ride: number } | null): void {
+    if (me) {
+      const h = (this.here ??= { x: 0, y: 0, z: 0 });
+      h.x = me.x;
+      h.y = me.y;
+      h.z = me.z;
+    }
     if (this.state !== 'online' && this.state !== 'retrying') return;
     // The others: eased, and gone once missing too long.
     if (this.peers.size) {
@@ -523,6 +542,13 @@ class Client implements NetClient {
 
   leaveParty(): void {
     this.send({ t: 'party', leave: true }, true);
+  }
+
+  setParty(code: string | null): void {
+    if (code === this.partyWish) return;
+    this.partyWish = code;
+    // (online: now; else the next hello carries it)
+    if (this.state === 'online' && code !== this.party.code) this.send({ t: 'party', code }, true);
   }
 
   onChange(cb: () => void): () => void {

@@ -3,7 +3,8 @@ import { isKhmer, toKhmer } from '../khmerName';
 
 /**
  * Other players' names over their heads (people/_scenePlayers.ts) while they are close: the name as they chose it and,
- * for a name in Latin letters, the same in Khmer letters (khmerName.ts `toKhmer`), a gold ◆ before a party member's.
+ * for a name in Latin letters, the same in Khmer letters (khmerName.ts `toKhmer`), a gold ◆ before a party member's,
+ * and three moving sound bars after it while that friend talks in the party's voice (party/link.ts: the speaking mark).
  * A small pool of DOM tags in the interface's root (`#ui`: `ui=0` hides them, as it hides the speech bubbles), each
  * moved with a transform once a frame; the words are written only when the tag goes to another player. Readable on a
  * phone: never under 13 px, white with a dark outline.
@@ -34,6 +35,7 @@ interface Tag {
   sid: number;
   name: string;
   party: boolean;
+  talk: boolean;
   shown: boolean;
   /** Its size on the screen (px). */
   w: number;
@@ -58,9 +60,9 @@ export class NameTags {
       const el = document.createElement('div');
       el.className = 'pl-name';
       el.setAttribute('aria-hidden', 'true');
-      el.innerHTML = '<span class="pl-latin"></span><span class="pl-km"></span>';
+      el.innerHTML = '<span class="pl-latin"></span><span class="pl-km"></span><i class="pl-talk"><b></b><b></b><b></b></i>';
       root.append(el);
-      this.tags.push({ el, latin: el.firstElementChild as HTMLElement, km: el.lastElementChild as HTMLElement, sid: -1, name: '', party: false, shown: false, w: 0, h: 0 });
+      this.tags.push({ el, latin: el.children[0] as HTMLElement, km: el.children[1] as HTMLElement, sid: -1, name: '', party: false, talk: false, shown: false, w: 0, h: 0 });
     }
     return true;
   }
@@ -74,7 +76,7 @@ export class NameTags {
    * Player `sid`'s name over the head point (x, y, z), `d` m from the camera (the nearest first: a name that would
    * cover one already shown this frame is left out, so a bunch of players far off show only the nearest's names).
    */
-  add(camera: PerspectiveCamera, sid: number, name: string, party: boolean, x: number, y: number, z: number, d: number): void {
+  add(camera: PerspectiveCamera, sid: number, name: string, party: boolean, x: number, y: number, z: number, d: number, talk = false): void {
     if (this.used >= NAME_TAGS || !this.make()) return;
     this.v.set(x, y, z).project(camera);
     if (this.v.z > 1 || Math.abs(this.v.x) > 1.1 || Math.abs(this.v.y) > 1.1) return;
@@ -94,6 +96,10 @@ export class NameTags {
       // (its size: measured once a name)
       t.w = t.el.offsetWidth;
       t.h = t.el.offsetHeight;
+    }
+    if (t.talk !== talk) {
+      t.talk = talk;
+      t.el.classList.toggle('pl-talking', talk);
     }
     const r = this.rects;
     const x0 = sx - t.w / 2;
@@ -139,6 +145,15 @@ function injectStyle(): void {
     .pl-latin.pl-kh, .pl-km { font-family: Koulen, 'Kantumruy Pro', system-ui, sans-serif; font-weight: 400; }
     .pl-km { font-size: max(12px, calc(13 * var(--px))); opacity: 0.92; }
     .pl-party .pl-latin { color: #ffd76a; }
+    /* The speaking mark: three bars over the name, moving as a voice does (absolute: the tag's size stays). */
+    .pl-talk { position: absolute; left: 50%; bottom: 100%; display: none; gap: 2px; align-items: flex-end; height: 12px; margin-bottom: 3px; transform: translateX(-50%);
+      filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9)); }
+    .pl-talk b { width: 3px; height: 100%; border-radius: 1px; background: #8ff0a0; animation: pl-talk 0.7s ease-in-out infinite alternate; transform-origin: bottom; }
+    .pl-talk b:nth-child(2) { animation-delay: -0.25s; animation-duration: 0.55s; }
+    .pl-talk b:nth-child(3) { animation-delay: -0.5s; animation-duration: 0.8s; }
+    .pl-talking .pl-talk { display: flex; }
+    @keyframes pl-talk { from { transform: scaleY(0.3); } to { transform: scaleY(1); } }
+    .mu-calm ~ .pl-name .pl-talk b, .mu-calm .pl-talk b { animation: none; transform: scaleY(0.75); }
   `;
   document.head.append(s);
 }

@@ -111,6 +111,10 @@ export function makeFakeNet(q: URLSearchParams, here: () => { x: number; y: numb
     isMuted: (sid) => muted.has(sid),
     makeParty() {},
     leaveParty() {},
+    setParty() {},
+    get here() {
+      return here();
+    },
     onChange(cb) {
       listeners.add(cb);
       return () => listeners.delete(cb);

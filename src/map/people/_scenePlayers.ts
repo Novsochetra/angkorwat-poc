@@ -3,6 +3,7 @@ import { LIMITS, RIDES, type Ride } from '../../net/protocol';
 import type { MapFrame } from '../types';
 import type { Actor } from './_actor';
 import { Bicycle, BIKE_WHEEL } from './_bicycle';
+import { partyLink } from '../party/link';
 import { NameTags, NAME_NEAR } from './_playersNames';
 import { GhostPeers, type PeerSource } from './_playersGhosts';
 import { EMOTE_PLAY, emotePose, playerLook } from './_playersLook';
@@ -27,7 +28,9 @@ import { Rig, type RigDef } from './_things';
  *   in the basket (cheap box rigs: `_playersRigs.ts`). A pool of each (`POOL`): a player past it, or farther than
  *   `PROP_FAR` on a bicycle or in a boat, rides without one (a few pixels by then).
  * - **Emotes** (`EMOTES`, played once from `emoteAt`, on foot): `_playersLook.ts` `EMOTE_PLAY`.
- * - A party member has a small gold diamond turning over the head (`partyMarkDef`), and a gold name.
+ * - A party member has a small gold diamond turning over the head (`partyMarkDef`), and a gold name. A friend
+ *   talking in the party's voice (party/link.ts `partyLink.talking`) gets the speaking mark: the diamond bobs and
+ *   swells as a voice does, and their name tag shows three sound bars.
  * - **Joining and leaving:** they grow in from nothing and shrink away (`FADE` s; the crowd has no transparency),
  *   and go the same way when the connection has not heard of them for `STALE` s; a still shows them at full size.
  * - **Names** (`_playersNames.ts`): the nearest `NAME_TAGS` within `NAME_NEAR` m of the camera.
@@ -135,6 +138,8 @@ export class Players implements PeopleScene {
       const at = env.params.get('ghostsat');
       this.ghosts = new GhostPeers(ghosts, at === 'lake' || at === 'map' || at === 'lineup' ? at : 'square', env.ground);
       this.source = this.ghosts;
+      // (the party card's shots find their friends among the ghosts)
+      partyLink.ghosts = this.ghosts.peers;
     } else {
       // (the live connection, loaded on its own: playing alone it never connects)
       import('../../net/client')
@@ -309,7 +314,12 @@ export class Players implements PeopleScene {
     // The party's mark.
     if (p.party && !b.mark) b.mark = this.marks.pop() ?? null;
     else if (!p.party && b.mark) this.giveMark(b);
-    if (b.mark) b.mark.place(p.x, p.y + (HEAD_BY[ride] + 0.35) * g, p.z, now * 1.6, 0, 0, g).write();
+    if (b.mark) {
+      // (talking: it bobs and swells, as a voice does, and turns faster)
+      const talk = partyLink.talking.has(b.sid);
+      const beat = talk ? Math.abs(Math.sin(now * 9 + i)) : 0;
+      b.mark.place(p.x, p.y + (HEAD_BY[ride] + 0.35 + beat * 0.18) * g, p.z, now * (talk ? 4 : 1.6), 0, 0, g * (talk ? 1.3 + beat * 0.45 : 1)).write();
+    }
   }
 
   /** The nearest players' names (the bodies within `NAME_NEAR`, gathered by `update`). */
@@ -330,7 +340,7 @@ export class Players implements PeopleScene {
       const b = near[k];
       const p = b.peer!;
       const ride = p.ride >= 0 && p.ride < RIDES.length ? p.ride : WALK;
-      this.names.add(f.camera, b.sid, p.name, !!p.party, p.x, p.y + HEAD_BY[ride] + 0.3, p.z, b.d);
+      this.names.add(f.camera, b.sid, p.name, !!p.party, p.x, p.y + HEAD_BY[ride] + 0.3, p.z, b.d, partyLink.talking.has(b.sid));
     }
     this.names.end();
   }

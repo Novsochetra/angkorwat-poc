@@ -773,7 +773,8 @@ The buttons (PS names; Xbox: A B X Y, LB RB LT RT, View, Menu):
 | Where | Buttons |
 |---|---|
 | Map screen | stick / d-pad between the places, ✕ pick, ○ back, △ Jump in, Options settings; loading screen and story: ✕ |
-| On foot | left stick walk (L3 or R2: run), right stick look, R1 / L1 zoom in / out, ✕ jump, □ use, ○ back to the map, △ Explorer menu (its tabs L1 / R1: the album, all buttons…), d-pad ↑ light · ← camera · → selfie · ↓ greet, R3 nearest ramp, Create or touchpad big map |
+| On foot | left stick walk (L3 or R2: run), right stick look, R1 / L1 zoom in / out, ✕ jump, □ use, ○ back to the map, △ Explorer menu (its tabs L1 / R1: the album, all buttons…), d-pad ↑ light · ← camera · → selfie · ↓ greet, R3 nearest ramp, Create or touchpad big map (in a party the touchpad is the mic switch: map/party/) |
+| The party card | □ the mic switch (as the mic button), ○ close |
 | Boat, parachute, glider, balloon | as their keys: ✕ is Space, □ is E, R2 is Shift; the boat fishes with ↓ |
 | Camera / selfie | R2 or ✕ take, right stick aim, ○ put away, △ album; selfie: □ gesture, ↓ face, L3 stick |
 | Menus | stick / d-pad move, ✕ press, ○ back, L1 / R1 tabs |
