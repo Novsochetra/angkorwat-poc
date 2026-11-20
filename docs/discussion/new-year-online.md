@@ -32,6 +32,41 @@ over Angkor Wat at midnight.
   player sees the same rocket at the same second without any network. If the
   live server fails that night, the show still plays for everyone.
 
+## The countdown board and the festival square
+
+The owner's reference (2026-11-20): `assets/new-year-online/plaza-reference.png`.
+A square with a big countdown board people gather in front of, lanterns, red
+banners, stalls and a glowing ring on the floor.
+
+- **Where:** a festival stage on the open ground west of Angkor Wat, by the
+  reflecting pools, facing west. The players face east: the board low on its stage,
+  Angkor Wat's towers rising above it, and the fireworks above the towers and in the
+  pools, as in the reference (the temple's top over the board). The real temple is
+  not changed: the stage is a temporary one built in front of it.
+- **The board:** a big screen in a carved wooden stage gate with a Khmer roof.
+  Khmer first (numerals ០–៩, ថ្ងៃ ម៉ោង នាទី វិនាទី), English with `lang=en`.
+  It changes with the time:
+  - from the day it ships: days : hours : minutes : seconds to midnight, and
+    "ព្រឹត្តិការណ៍ផ្ទាល់ / LIVE EVENT" (a reason to come back each day);
+  - online: how many players are on the square now;
+  - the last 10 seconds: one huge numeral at a time;
+  - midnight: "សួស្តីឆ្នាំថ្មី ២០២៧" / "Happy New Year 2027";
+  - after: "ជួបគ្នាឆ្នាំក្រោយ" / "See you next year" until the night ends.
+  It follows `nye=` like everything else (rehearsals show it too).
+  It is drawn on a canvas updated once a second, so it costs almost nothing.
+- **The square:** the gathering ring of light on the floor (the meeting point, also
+  on the mini-map), a walk lined with lanterns from the roads, string lights in the
+  trees, red banners with the white Angkor Wat (the temple of the flag of Cambodia),
+  a few stalls (New Year snacks through `shop.ts`). Lamps are glowing blocks, with
+  only a few real lights, for phones.
+- **Kept Khmer** (the reference was drawn by a tool that mixes styles; the player checks):
+  - the curly beasts by the stairs become Khmer naga (cobras with a smooth fan hood,
+    as on Angkor Wat's causeway) or Angkor singha lions, never dragons;
+  - the stone lanterns become Khmer lamps, not Japanese stone lanterns;
+  - the trees are the map's own (string lights in them), not wisteria;
+  - the board's name is មរតកអង្គរ in Koulen pixel letters.
+- Shots: `nyeboard=<state>` (`days`, `last10`, `midnight`, `after`), with `nye=`.
+
 ## Part 1: fireworks and countdown (everyone, offline)
 
 - The show is a script: rocket times, places, colours and sizes. It is seeded and
@@ -158,11 +193,12 @@ voice, the countdown, the show, the cheer, and the sky going back after.
 ## Tickets to make (when the owner says go)
 
 1. The fireworks show script and its map part (Part 1).
-2. The countdown overlay, words, the night-time hold and the calendar entry.
-3. The live server on Railway: rooms, crowds, limits, the clock.
-4. Other players on the map: drawing, smoothing, names, `ghosts=`.
-5. Joining: the card, the name entry and its checks, the setting.
-6. Mute, Block, Report (and reports into the tracker).
-7. Parties and party voice (LiveKit).
-8. Rehearsals: `nye=`, the rehearsal room, staging, robot players, `nyetest`.
-9. The rehearsal nights and the freeze.
+2. The countdown board and the festival square.
+3. The countdown overlay, words, the night-time hold and the calendar entry.
+4. The live server on Railway: rooms, crowds, limits, the clock.
+5. Other players on the map: drawing, smoothing, names, `ghosts=`.
+6. Joining: the card, the name entry and its checks, the setting.
+7. Mute, Block, Report (and reports into the tracker).
+8. Parties and party voice (LiveKit).
+9. Rehearsals: `nye=`, the rehearsal room, staging, robot players, `nyetest`.
+10. The rehearsal nights and the freeze.
