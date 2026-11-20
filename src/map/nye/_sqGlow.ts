@@ -110,7 +110,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   }
 
   // ── Big pools: the square, before the stage, the gate, the stalls; the gilt band ──
-  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.16, 0, 18);
+  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.1, 0, 18);
   pools.add(STAGE.x, STAGE.front + 2, 15, 0xffa850, 0.22);
   pools.add(GATE.x, GATE.z - 4, 9, 0xffa850, 0.24);
   pools.add(GATE.x, GATE.z + 6, 11, 0xffa850, 0.34);
@@ -202,8 +202,8 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   }
 
   // ── The glow over the square: the dome of lit air (night), the ring's glow at midnight ──
-  glows.dome(SQUARE.x, G + 14, SQUARE.z - 1, 78, 0xffb050, 0.24);
-  glows.dome(SQUARE.x, G + 5, SQUARE.z + 1, 46, 0xffbc60, 0.22);
+  glows.dome(SQUARE.x, G + 14, SQUARE.z - 1, 78, 0xffb050, 0.13);
+  glows.dome(SQUARE.x, G + 5, SQUARE.z + 1, 46, 0xffbc60, 0.1);
   glows.dome(GATE.x + 6, G + 4, GATE.z + 10, 30, 0xffa850, 0.16);
   glows.add(RING.x, G + 2.5, RING.z, 30, 0xffc060, 0.5, 1, 2);
 
