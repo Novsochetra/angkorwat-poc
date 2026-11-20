@@ -84,7 +84,7 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
   for (const [pi, p] of paths.entries()) layStones(fb, field, p, pi, src);
 
   const tally: Record<string, number> = {};
-  let mark = b.boxes.length + fb.boxes.length;
+  let mark = n0;
   const count = (what: string) => {
     const now = b.boxes.length + fb.boxes.length;
     tally[what] = (tally[what] ?? 0) + now - mark;
@@ -93,7 +93,12 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
   count('stones');
   // ── Trees in the far band ──
   const trees: [number, number, number][] = [];
-  const maxTrees = low ? 14 : 28;
+  // (a few prototypes each, turned four ways: the map's way, and quick to build)
+  const greens = [0, 1, 2, 3, 4].map((i) => broadleaf({ s: 1, h: 8 + i * 1.1, r: 3.2 + ((i * 3) % 5) * 0.5, seed: 9700 + i * 13 }));
+  const blooms = [0, 1, 2].map((i) => broadleaf({ s: 1, h: 8.5 + i * 1.5, r: 3.4 + i * 0.8, seed: 9760 + i * 13, flower: 'pink' }));
+  const farGreens = [0, 1, 2].map((i) => broadleaf({ s: 2, h: 9 + i * 2, r: 3.6 + i, seed: 9800 + i * 13 }));
+  const farBlooms = [0, 1].map((i) => broadleaf({ s: 2, h: 10 + i * 2, r: 4 + i, seed: 9840 + i * 13, flower: 'pink' }));
+  const maxTrees = low ? 12 : 28;
   for (let t = 0; t < 3000 && trees.length < maxTrees; t++) {
     const a = hash3(t, 1, 0, 611) * Math.PI * 2;
     const d = 9 + hash3(t, 2, 0, 611) * (BAND - 8);
@@ -106,7 +111,10 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
       x = AVENUE.x + side * (13.5 + hash3(t, 4, 0, 611) * 10);
       z = AVENUE.z0 + 4 + hash3(t, 5, 0, 611) * (ARCH.z + 6 - AVENUE.z0 - 4);
     }
-    const r = 3.2 + hash3(t, 6, 0, 611) * 2;
+    const bloom = trees.length % 3 === 1 ? (trees.length % 2 ? 'purple' : 'pink') : null;
+    const pool = bloom ? blooms : greens;
+    const p = pool[Math.floor(hash3(t, 6, 0, 611) * pool.length)];
+    const r = p.r;
     if (z < STAGE.back + 6) continue;
     if (Math.abs(x - AVENUE.x) - r < 10.5 && z > GATE.z - 4) continue;
     if (outOf(x, z) < 8 || rho(x, z) < 1.4 || Math.hypot(x - SALA.x, z - SALA.z) < 10 || nearPath(x, z, r + 0.5)) continue;
@@ -115,28 +123,27 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
     if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < (tr + r) * 0.82)) continue;
     if (![[0, 0], [r * 0.6, 0], [-r * 0.6, 0], [0, r * 0.6], [0, -r * 0.6]].every(([dx, dz]) => field.isFree(x + dx, z + dz))) continue;
     const g = field.heightAt(x, z);
-    const bloom = trees.length % 3 === 1 ? (trees.length % 2 ? 'purple' : 'pink') : null;
-    const p = broadleaf({ s: 1, h: 8 + hash3(t, 7, 0, 611) * 4.5, r, seed: 9700 + t * 13, ...(bloom ? { flower: 'pink' as const } : {}) });
     stamp(b, field, p, x, g, z, 9700 + t, bloom === 'purple' ? toPurple : null);
     field.occupy(x - r * 0.7, z - r * 0.7, x + r * 0.7, z + r * 0.7);
     trees.push([x, z, r]);
   }
 
   // Farther out, round the band's rim: the map's far trees (2 m cells: a quarter of the blocks), thinning the garden into the land.
-  const farMax = trees.length + (low ? 8 : 16);
+  const farMax = trees.length + (low ? 7 : 16);
   for (let t = 0; t < 3000 && trees.length < farMax; t++) {
     const a = hash3(t, 1, 0, 627) * Math.PI * 2;
     const d = 20 + hash3(t, 2, 0, 627) * (BAND - 14);
     const [ex, ez] = edgeAt(a);
     const x = ex + Math.cos(a) * d;
     const z = ez + Math.sin(a) * d;
-    const r = 3.6 + hash3(t, 6, 0, 627) * 2;
+    const bloom = hash3(t, 9, 0, 627) < 0.25;
+    const pool = bloom ? farBlooms : farGreens;
+    const p = pool[Math.floor(hash3(t, 6, 0, 627) * pool.length)];
+    const r = p.r;
     if (z < STAGE.back + 6 || (Math.abs(x - AVENUE.x) - r < 10.5 && z > GATE.z - 4)) continue;
     if (Math.hypot(x - SALA.x, z - SALA.z) < 10 || nearPath(x, z, r + 0.5)) continue;
     if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < (tr + r) * 0.85)) continue;
     if (![[0, 0], [r * 0.6, 0], [-r * 0.6, 0], [0, r * 0.6], [0, -r * 0.6]].every(([dx, dz]) => field.isFree(x + dx, z + dz))) continue;
-    const bloom = hash3(t, 9, 0, 627) < 0.25;
-    const p = broadleaf({ s: 2, h: 9 + hash3(t, 7, 0, 627) * 4, r, seed: 9800 + t * 13, ...(bloom ? { flower: 'pink' as const } : {}) });
     stamp(b, field, p, Math.round(x / 2) * 2, field.heightAt(x, z), Math.round(z / 2) * 2, 9800 + t, bloom && t % 2 ? toPurple : null);
     field.occupy(x - r * 0.7, z - r * 0.7, x + r * 0.7, z + r * 0.7);
     trees.push([x, z, r]);
@@ -167,7 +174,7 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
   count('bananas');
   // ── Ground cover: patches of other greens over the land's own, everywhere in the band (cheap: two thin slabs) ──
   {
-    const gstep = low ? 4 : 2.9;
+    const gstep = low ? 4.6 : 2.9;
     let n = 0;
     for (let gz = SQUARE.z - SQUARE.rz - BAND; gz <= Math.max(SQUARE.z + SQUARE.rz + BAND, ARCH.z + 8); gz += gstep)
       for (let gx = SQUARE.x - SQUARE.rx - BAND; gx <= SQUARE.x + SQUARE.rx + BAND; gx += gstep) {
