@@ -110,7 +110,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   }
 
   // ── Big pools: the square, before the stage, the gate, the stalls; the gilt band ──
-  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.2, 0, 18);
+  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.16, 0, 18);
   pools.add(STAGE.x, STAGE.front + 2, 15, 0xffa850, 0.22);
   pools.add(GATE.x, GATE.z - 4, 9, 0xffa850, 0.24);
   pools.add(GATE.x, GATE.z + 6, 11, 0xffa850, 0.34);
@@ -154,7 +154,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
     196: ['PW'],
   };
   const every = low ? 1.9 : 0.95;
-  const string = (p: V3, q: V3, sag: number, halos: boolean) => stringLights(p, q, sag, every, bodies, low || !halos ? null : glows, wires);
+  const string = (p: V3, q: V3, sag: number, halos: boolean) => stringLights(p, q, sag, every, bodies, halos ? glows : null, wires, low ? 2 : 3);
   for (const pole of poles) for (const a of fan[pole.th] ?? []) string(anchors[a], pole, 3.2, true);
   for (let i = 0; i + 1 < poles.length; i++) string(poles[i], poles[i + 1], 1.5, false);
 
@@ -322,11 +322,11 @@ function walkPairs(field: HeightField): [[number, number], [number, number]][] {
     return true;
   };
   const out: [[number, number], [number, number]][] = [];
-  for (const s of [8, 17, 26]) {
+  for (const s of [7, 15]) {
     const [cx, cz, tx, tz] = at(s);
     const pair: [number, number][] = [];
     for (const side of [-1, 1]) {
-      for (const d of [5.6, 6.4, 7.2, 4.8, 8.2]) {
+      for (const d of [6.4, 7.2, 5.6, 8.2]) {
         const x = cx - tz * side * d;
         const z = cz + tx * side * d;
         if (ok(x, z)) {
@@ -402,8 +402,8 @@ function lantern(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[],
   }
 }
 
-/** A string of bulbs from p to q, sagging `sag` m in the middle: the wire into `wires`, a bulb every `every` m. */
-function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, glows: Glows | null, wires: number[]): void {
+/** A string of bulbs from p to q, sagging `sag` m in the middle: the wire into `wires`, a bulb every `every` m, a small halo round every `haloEvery`th. */
+function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, glows: Glows | null, wires: number[], haloEvery = 3): void {
   const len = Math.hypot(q.x - p.x, q.z - p.z);
   if (len < 1) return;
   const yAt = (u: number) => p.y + (q.y - p.y) * u - sag * 4 * u * (1 - u);
@@ -421,7 +421,7 @@ function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, 
     const y = yAt(u) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glows && i % 3 === 0) glows.halo(x, y, z, 0.8, c, 0.3);
+    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.8, c, 0.3);
   }
 }
 
