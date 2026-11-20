@@ -2367,7 +2367,19 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   stalls, a gate attendant, children at the ring, evening visitors). The night: 104 (47 on low) in 35 families
   arriving by the lantern walk from 22:20, mats, sparklers, phones, two monks watching; the ring and an aisle
   to the stairs kept open for players; apsara dancers and a pinpeat ensemble on the stage until 23:50; the
-  count, cheers and hugs at midnight, heads up for the show, gone by 00:40. The crowd's `CAPACITY` is 410.
+  count, cheers and hugs at midnight, heads up for the show, gone by 00:40.
+- **The lakeside people: `people/_sceneNyeLake.ts`** (scene `nyelake`; plan `people/_nyeLakePlan.ts`, whose
+  `LakeSite` follows the venue's own rules from the height field — the terrace's pavers, the ghat's step tops, the
+  jetty's slope — since the people's walk map does not hold the venue). Ordinary days: 3 (a couple strolling round
+  the terrace in the evening, a fisherman mending his net by the ghat by day). The night, on the same clock as
+  Kulen's: 78 on the terrace (40 on low) in 26 families walking up the east shore trail from the floating village
+  from 22:20 — six mat families on the landing at the ghat's top (an elder on a stool behind each), the rest standing
+  over the landing and the terrace, the jetty and the middle way kept open; sparklers, phones; from 22:58 two children
+  on the ghat's second wet step kneel to set lotus candles afloat (8 of their own afloat at once); five family boats
+  (14 people, 3 boats on low) paddle up and moor beyond the stage's village end, a lantern at each bow; a mahori
+  ensemble (roneat ek, khim, tro) and two romvong dancers on the deck until 23:50, off down the jetty at 00:15; the
+  count, cheers and hugs, heads up for the lake show, gone by 00:40. ≈ 0.1‥0.3 ms CPU a frame on a CPU-only machine
+  (a shot's "people CPU by step"). The crowd's `CAPACITY` is 560 (486 used with every scene).
 - **The fireworks: part `fireworks`** (`nye/fireworks.ts`, `_fwShaders.ts`), built only when the show is within
   an hour (main.ts `LATER`). The script `nye/show.ts`: 797 rockets over 465 s, seeded, the same everywhere,
   placed by bearing and height from the crowd's view over Kulen's east flank right of the stage, and a crown
