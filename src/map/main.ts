@@ -8,6 +8,7 @@ import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
+import { nightHeld, nyeAsked, showSoon, squareShown } from './nye/clock';
 import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, PHONE, phoneRate, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
@@ -269,6 +270,9 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['paddies', async () => (await import('./paddies')).buildPaddies],
   // (the east village, its market, the palm sugar grove, the Kulen picnic place, the hamlet behind Angkor Wat: before the trees, which keep off them)
   ['hamlet', async () => (await import('./hamlet')).buildHamlets],
+  // (New Year's Eve's festival square at Phnom Kulen's foot, from the day it ships to the day after the night: nye/clock.ts;
+  // before the trees, which keep off it)
+  ...(squareShown() ? [['nye', async () => (await import('./nye')).buildNye] as [string, () => Promise<Builder>]] : []),
   // (planted in a build worker on the land as it is here now, the reserved spots too; else here. While the page waits,
   // another works out the covered sides of the parts built so far, for `cutCovered` after the build)
   ['vegetation', async () => {
@@ -290,6 +294,8 @@ const BUILDERS: [string, () => Promise<Builder>][] = [
   ['jungleFauna', async () => (await import('./fauna/jungle')).buildJungleFauna],
   ['people', async () => (await import('./people')).buildPeople],
   ['festival', async () => (await import('./festival')).buildFestival],
+  // (New Year's Eve's fireworks: built only when the show is near, nye/clock.ts `showSoon`)
+  ['fireworks', async () => (await import('./nye/fireworks')).buildFireworks],
   ['treasure', async () => (await import('./treasure')).buildTreasure],
   // (the player's own blocks, apart from the baked world: blocks/store.ts, drawn chunk by chunk)
   ['blocks', async () => (await import('./blocks')).buildBlocks],
@@ -316,6 +322,8 @@ const LATER: Record<string, { atLoad: boolean; wanted: (f: MapFrame) => boolean;
   },
   rainbow: { atLoad: loadWants.rainbow, wanted: (f) => weather.wants(f).rainbow },
   festival: { atLoad: festivalNow({ season: SEASON0, day: DAY0 }) !== null, wanted: festivalSoon, now: (f) => festivalNow(f) !== null },
+  // (a shot builds it when its URL asks for the night: `nye=`, `countdown=`, `fireworks=`)
+  fireworks: { atLoad: showSoon() && (!shot || nyeAsked()), wanted: () => showSoon(), now: () => showSoon(60) },
 };
 const late = new LateParts({
   ctx,
@@ -651,6 +659,8 @@ let wasCycling = false;
 function nightTarget(): number {
   if (clockParam !== null) return nightOf(clockParam);
   if (params.has('night')) return Number(params.get('night'));
+  // (New Year's Eve, 22:30‥00:45 in Cambodia: the map's time comes to real night by itself, nye/clock.ts)
+  if (nyeNight) return 1;
   if (isCycling()) return nightOf(cycleDays % 1);
   return settings.time === 'night' ? 1 : 0;
 }
@@ -716,7 +726,9 @@ function placeCamera(cam: number[]): void {
 /** The clock runs: the Time setting is "Cycle" and nothing in the URL holds it. */
 /** Days moved on by `TIME.skipTo` since the page opened. */
 let skippedDays = 0;
-const isCycling = () => clockParam === null && !params.has('night') && (settings.time === 'cycle' || (urlRuns && settings.time === timeAtStart));
+const isCycling = () => clockParam === null && !params.has('night') && !nyeNight && (settings.time === 'cycle' || (urlRuns && settings.time === timeAtStart));
+/** New Year's Eve's night-time hold is on (nye/clock.ts `nightHeld`; asked once a frame in `step`). */
+let nyeNight = nightHeld();
 // (for the calendar of events and the stilt house's bed: time.ts)
 Object.assign(TIME, {
   days: () => cycleDays,
@@ -742,6 +754,7 @@ Object.assign(TIME, {
 } satisfies Partial<typeof TIME>);
 
 function step(t: number, dt: number): void {
+  nyeNight = nightHeld();
   // (`equinox=1` on the live page: Start lets the clock go, on from where `clock=` held it)
   if (clockRunsFrom !== null && entered && clockParam === clockRunsFrom) {
     cycleDays = Math.floor(cycleDays) + clockRunsFrom;

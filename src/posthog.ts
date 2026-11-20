@@ -19,8 +19,10 @@ if (isPostHogConfigured) {
     },
   });
 } else if (import.meta.env.DEV) {
+  // A warning, not a throw: a throw here stopped every page from starting on a machine without `.env`
+  // (a cloud machine's headless shots never reached `__ready`).
   const missingVariable = key ? 'VITE_POSTHOG_HOST' : 'VITE_POSTHOG_KEY';
-  throw new Error(
+  console.warn(
     `${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missingVariable} is configured`,
   );
 }
