@@ -11,5 +11,12 @@ Plans and idea lists live here; how a part works stays in `docs/world-kit.md`,
 - `visit-a-friend.md` — visiting a friend's home on the world map, safely for
   young players, then building together: a design note with the owner's
   questions, no code yet (ticket AWP-26, October 2026).
+- `new-year-online.md` — New Year's Eve online: players roam the map together
+  and watch fireworks with a countdown at the festival square at Phnom Kulen's
+  foot at midnight (ICT), party voice for friends, typed names (ticket AWP-35,
+  November 2026).
+- `new-year-voice.md` — the New Year party voice on our own LiveKit server
+  (DigitalOcean Singapore, `voice.morodokangkor.com`): how it works, the set-up,
+  the load test, phones, proximity, push-to-talk, safety (AWP-35 Phase 3).
 
 A new plan or discussion goes in this folder, named after what it is about.

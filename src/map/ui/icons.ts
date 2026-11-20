@@ -123,4 +123,21 @@ export const ICON = {
   bars4: bars(4),
   /** The resolution's whole steps (crisp: each pixel a square of screen dots): the sparkle alone, on its 7 × 7 cells. */
   sharp: svg(SPARKLE, '0 0 7 7', ' shape-rendering="crispEdges"'),
+  /** Two friends side by side (the party: map/party/). */
+  party: svg(
+    '<g fill="currentColor"><circle cx="8.6" cy="8" r="3.4"/><path d="M2.4 19.6c0-3.6 2.8-6.2 6.2-6.2s6.2 2.6 6.2 6.2z"/>' +
+      '<circle cx="16.4" cy="8.6" r="2.9" fill-opacity=".7"/><path d="M16 13.6c3.1 0 5.6 2.4 5.6 5.6v.4h-5.2c0-2.4-.9-4.5-2.5-5.7.6-.2 1.4-.3 2.1-.3z" fill-opacity=".7"/></g>',
+  ),
+  /** A microphone (party voice). */
+  mic: svg(
+    '<rect x="8.6" y="2.6" width="6.8" height="11.6" rx="3.4" fill="currentColor"/>' +
+      '<path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0M12 17.6v3.6M8.6 21.2h6.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  ),
+  /** A microphone struck through (voice off, or no microphone). */
+  micOff: svg(
+    '<rect x="8.6" y="2.6" width="6.8" height="11.6" rx="3.4" fill="currentColor" fill-opacity=".55"/>' +
+      '<path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0M12 17.6v3.6M8.6 21.2h6.8M4 3.5l16 17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  ),
+  /** A padlock (push-to-talk locked on). */
+  lock: svg('<rect x="5.5" y="10.5" width="13" height="10" rx="2" fill="currentColor"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/>'),
 };

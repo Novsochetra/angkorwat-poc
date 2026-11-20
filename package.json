@@ -19,6 +19,7 @@
     "idle": "node scripts/idle.mjs"
   },
   "dependencies": {
+    "livekit-client": "2.24.1",
     "posthog-js": "^1.434.14",
     "three": "^0.186.0"
   },
