@@ -26,8 +26,20 @@ over Angkor Wat at midnight.
   on the map and in the calendar (9): "Fireworks at Angkor Wat, 23:59".
 - **The countdown:** big Khmer numerals ១០ … ១ for the last ten seconds, then
   "សួស្តីឆ្នាំថ្មី ២០២៧" / "Happy New Year 2027" (words in `lang.ts`).
-- **The show:** about 8 minutes, bursts in temple gold, lotus pink and saffron,
-  with its own sound bus. A budget per graphics level so a phone on low keeps 30.
+- **The show:** about 8 minutes, with its own sound bus. A budget per graphics level
+  so a phone on low keeps 30. The look is the owner's reference
+  (`assets/new-year-online/fireworks-reference.png`):
+  - **Colours:** temple gold (the most), purple and lotus pink, and a few
+    ice blue-white bursts as accents.
+  - **Kinds of burst:** round peonies (a ball of sparks), chrysanthemums (sparks
+    that leave trails), gold willows (long trails that droop and fade slowly), and
+    small crackling ones low down. Each rocket rises on a thin trail before it bursts.
+  - **Layered:** big bursts high and small ones lower, several at once at
+    different depths, so the sky is full, not one at a time.
+  - **Light on the world:** each burst lights the clouds, the hill and the crowd in
+    its colour for a moment, and shows in the water (pools, the stream).
+  - **The shape of the show:** a slow start, building up, and a finale at the
+    end: many gold willows at once filling the sky.
 - **Works with no server:** the show is played from the real clock, so every
   player sees the same rocket at the same second without any network. If the
   live server fails that night, the show still plays for everyone.
@@ -48,6 +60,8 @@ banners, stalls and a glowing ring on the floor.
   It changes with the time:
   - from the day it ships: days : hours : minutes : seconds to midnight, and
     "ព្រឹត្តិការណ៍ផ្ទាល់ / LIVE EVENT" (a reason to come back each day);
+  - on the last day: hours : minutes : seconds, the days gone (as in the
+    fireworks reference);
   - online: how many players are on the square now;
   - the last 10 seconds: one huge numeral at a time;
   - midnight: "សួស្តីឆ្នាំថ្មី ២០២៧" / "Happy New Year 2027";
