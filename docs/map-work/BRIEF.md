@@ -2322,6 +2322,9 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   from 22:30, `last10`, `midnight`, `after` from 00:10, `over` from 00:45, `gone` a day after), `nightHeld()`,
   `showTime()`, `showSoon()`, `boardAt()`. A shot stands still at its moment, and the night comes in a shot
   only when its URL asks (`nye=`, `countdown=`, `fireworks=`).
+  Until launch the event is hidden: `NYE_PUBLIC = false` makes `nyePhase()` `gone` (nothing built, no calendar
+  entry, no join card or party button from it) unless the URL asks: `nye=1` (the real date), `nye=+2m`, `countdown=`,
+  `fireworks=`, or a test link's `event=<code>`. Launch is that one line set to true.
 - **Where: `src/map/nye/plan.ts`.** The ground (checked with the height field): x 356‥412, z −290‥−238 is flat at
   8 m, between the back trail (south), the picnic trail (east), Kulen's slope (north) and the zip line's last
   station (west). `SQUARE` (an ellipse round (383, −262)), `STAGE` (its back to Kulen, facing south),

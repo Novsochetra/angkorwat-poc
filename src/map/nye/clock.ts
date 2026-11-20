@@ -70,6 +70,14 @@ export type NyePhase =
   | 'gone';
 
 const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
+
+/**
+ * Open to everyone, with no URL value (the launch: flip to true). Until then the whole event (the square, the lake
+ * stage, the fireworks, the night held, the overlay, the calendar entry, the join card and the party button with it)
+ * is hidden unless the address asks for it: `nye=1` (the real date), `nye=+2m` / an ISO time, `countdown=`,
+ * `fireworks=`, or a test link's `event=<code>`. `nye=0` hides it always.
+ */
+export const NYE_PUBLIC = false;
 const shot = params.get('shot') === '1';
 const pageOpened = Date.now();
 
@@ -94,8 +102,11 @@ const url = (() => {
   let asked = false;
   if (nye !== null && nye !== '0') {
     asked = true;
-    const d = parseShift(nye);
-    if (Number.isFinite(d)) shift = NYE_MIDNIGHT - (pageOpened + d);
+    // (`nye=1` / `nye=on`: the event on the real date)
+    const real = nye === '1' || nye === 'on';
+    const d = real ? NaN : parseShift(nye);
+    if (real) shift = 0;
+    else if (Number.isFinite(d)) shift = NYE_MIDNIGHT - (pageOpened + d);
     else {
       const at = Date.parse(nye);
       if (Number.isFinite(at)) shift = at - pageOpened;
@@ -109,7 +120,10 @@ const url = (() => {
     asked = true;
     shift = NYE_MIDNIGHT + Number(fireworks) * 1000 - pageOpened;
   }
-  return { shift, asked, off: nye === '0' };
+  // (a test link's code opens it too; the temple events' own `event=dawnChant`… do not)
+  const ev = params.get('event');
+  const testLink = ev !== null && /^[A-Za-z0-9]{3,32}$/.test(ev.trim()) && !/[a-z][A-Z]/.test(ev);
+  return { shift, asked, off: nye === '0' || (!NYE_PUBLIC && !asked && !testLink) };
 })();
 
 /** The live server's clock minus the device's (ms): set when one answers (phase 2); 0 alone. */
