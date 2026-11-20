@@ -1,0 +1,23 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "nixpacksPlan": {
+      "providers": ["node"],
+      "variables": { "NIXPACKS_NODE_VERSION": "22" },
+      "phases": {
+        "install": { "cmds": ["npm ci --prefix server --omit=dev"] },
+        "build": { "cmds": ["node --version"] }
+      }
+    },
+    "watchPatterns": ["server/**", "src/net/**", "src/map/nye/plan.ts", "src/feedback/tracker.ts"]
+  },
+  "deploy": {
+    "startCommand": "node --experimental-strip-types server/main.ts",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 60,
+    "numReplicas": 1,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

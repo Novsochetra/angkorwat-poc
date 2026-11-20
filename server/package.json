@@ -1,0 +1,20 @@
+{
+  "name": "angkor-nye-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "New Year's Eve online, phase 2: the live player rooms (WebSocket). Runs as TypeScript on Node 22 (type stripping).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types main.ts",
+    "test": "node --experimental-strip-types test.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}
