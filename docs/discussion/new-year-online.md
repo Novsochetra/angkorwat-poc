@@ -52,7 +52,7 @@ banners, stalls and a glowing ring on the floor.
   - the last 10 seconds: one huge numeral at a time;
   - midnight: "សួស្តីឆ្នាំថ្មី ២០២៧" / "Happy New Year 2027";
   - after: "ជួបគ្នាឆ្នាំក្រោយ" / "See you next year" until the night ends.
-  It follows `nye=` like everything else (rehearsals show it too).
+  It follows `nye=` and the test room like everything else.
   It is drawn on a canvas updated once a second, so it costs almost nothing.
 - **The square:** the gathering ring of light on the floor (the meeting point, also
   on the mini-map), a walk lined with lanterns from the roads, string lights in the
@@ -74,7 +74,7 @@ banners, stalls and a glowing ring on the floor.
 - A new map part (fireworks): sparks, trails, glow in the pools, light on the towers.
 - The countdown overlay and the event's calendar entry (`src/map/calendar.ts`).
 - Shots and checks: `fireworks=<s>` (the show at second s), `countdown=<s>`,
-  `nye=<unix ms>` (pretend midnight is then, for a rehearsal); `npm run perf` on
+  `nye=<time>` or `nye=+2m` (pretend midnight is then); `npm run perf` on
   low, medium and phone with the show at its busiest.
 
 ## Part 2: live players (public)
@@ -133,32 +133,44 @@ The player types a name before joining the room.
 - No personal data: a player is a random id made on their device. No email, no
   phone number, no age.
 
-## Rehearsals: the whole night, before the real one
+## Testing: a hidden link into the event, any time
 
-We must be able to run the whole event, start to end, at any time we choose:
-the night coming on, the calendar mark, players joining with names, parties and
-voice, the countdown, the show, the cheer, and the sky going back after.
+No fixed rehearsal dates (owner, 2026-11-20): whoever has the hidden link (or
+its code) can enter the whole event whenever they want, alone or with friends,
+as many times as they like. The night coming on, players joining with names,
+parties and voice, the board, the countdown, the show, the cheer, and the sky
+going back after.
 
-- **One switch moves the whole night.** `nye=<time>` (a date and time, or
-  `+10m`: midnight ten minutes from now) shifts everything with it: the night
-  hold starts 90 minutes before, the countdown, the show, the end. Nothing in the
-  code may read "31 December" except through this one place.
-- **A private rehearsal room on the server.** A host (the owner) makes a
-  rehearsal with a code and picks its midnight ("in 15 minutes"). Everyone who
-  joins with the code gets that midnight from the server, so all testers' phones
-  count down together, as on the real night. Rehearsal players never mix with the
-  public, and the public never sees a rehearsal.
-- **A staging server.** A second Railway service, the same code, for rehearsals
-  and for trying changes; the real night's server only gets code that passed a
-  rehearsal on staging.
+- **The link:** `/?event=<code>`, for example `/?event=K7QM2P`. The same code also
+  works typed in the party code box ("Have a code?"), for phones where a link is
+  hard to open.
+- **The code is checked by the server, never written in the game.** The game is a
+  public website, so a code inside its files could be found. The code lives in
+  the server's settings on Railway; if it leaks, the owner changes it there and
+  the old link stops working, with no new build.
+- **A test countdown every 15 minutes.** In the test room midnight comes at
+  :00, :15, :30 and :45 of every hour. Whoever opens the link lands a few
+  minutes before the next one, and everyone in the room counts down to the same
+  second with no one having to set it up. The night comes at once (not 90
+  minutes before), the show plays, and the next countdown begins.
+- **Kept apart from the public:** test players are in their own room and never
+  meet the public, and the board shows "សាកល្បង / TEST" in a corner.
+- **Alone, no server:** `nye=+2m` in the address moves midnight for that player's
+  own screen only (the show, the board and the countdown, with no live players).
+  Harmless for anyone to find: it changes nothing for others.
+- **One switch for the date:** nothing in the code reads "31 December" except
+  through one place, which the test room and `nye=` move.
+- **A staging server:** a second Railway service, to try a change to the server
+  before it goes to the real one.
 - **Robot players.** `npm run nyeload -- bots=300`: a script (no drawing, only
-  connections) whose players join, take names, walk to the causeway, greet and
-  stay through midnight, to see the server and the crowds hold up.
-- **A headless check.** `npm run nyetest`: two or three browser pages join a local
-  server, see each other, make a party, count down to a midnight a minute away,
-  and check they reach zero within 0.2 s of each other.
+  connections) whose players join the test room, take names, walk to the
+  square, greet and stay through midnight, to see the server and the crowds
+  hold up.
+- **A headless check.** `npm run nyetest`: two or three browser pages open the
+  test link on a local server, see each other, make a party, count down, and
+  check they reach zero within 0.2 s of each other.
 
-### What a rehearsal checks
+### What to check in the test room before the night
 
 - Every device reaches "១" and the first rocket at the same second (phones and
   computers, Wi-Fi and 4G, Khmer and English).
@@ -172,21 +184,12 @@ voice, the countdown, the show, the cheer, and the sky going back after.
 - After the end the sky goes back to the player's own time, and nothing in their
   save has changed.
 
-### Dates
-
-| When | Rehearsal |
-|---|---|
-| ~20 Dec | Rehearsal 1 with friends on staging: the show, the countdown, live players. |
-| ~24 Dec | Load test with robot players on staging. |
-| ~28 Dec | Dress rehearsal: everything, voice included, with the build and the server of the real night. |
-| 31 Dec, afternoon | A last short run with `+10m` on the real server's rehearsal room. |
-
 ## Timeline (41 days from 2026-11-20)
 
 | By | What |
 |---|---|
-| ~10 Dec | Part 1 done: the show, countdown, calendar entry, phone budget. |
-| ~20 Dec | Part 2 done; rehearsal 1 with friends on staging. |
+| ~10 Dec | Part 1 done: the show, the board, the countdown, calendar entry, phone budget. |
+| ~20 Dec | Part 2 done, and the test link working: friends can test from then on. |
 | ~27 Dec | Part 3 done, then freeze: fixes only. |
 | 31 Dec | The night. If voice isn't solid by the 27th, it waits; the show doesn't need it. |
 
@@ -200,5 +203,5 @@ voice, the countdown, the show, the cheer, and the sky going back after.
 6. Joining: the card, the name entry and its checks, the setting.
 7. Mute, Block, Report (and reports into the tracker).
 8. Parties and party voice (LiveKit).
-9. Rehearsals: `nye=`, the rehearsal room, staging, robot players, `nyetest`.
-10. The rehearsal nights and the freeze.
+9. Testing: the hidden link and its test room, `nye=`, staging, robot players, `nyetest`.
+10. The freeze before the night.
