@@ -17,12 +17,12 @@ import { BUILT, FENCE_RUN, PIECE_IDS, PIECES, type Built, type PieceId } from '.
  *   point is from one (0 inside), `overlap` whether two would overlap.
  * - **Events** (`on`): `added` (paid for, nothing standing yet), `progress` (a
  *   block more), `done` (it stands: its seat, its hammock, its spirit house's
- *   prayer spot are used from then on), `removed` (taken down).
+ *   prayer spot are used from then on), `removed` (taken down), `moved` (put somewhere else, standing: `move`).
  */
 
 type Mut = { -readonly [K in keyof Built]: Built[K] };
 
-export type BuildEventType = 'added' | 'progress' | 'done' | 'removed';
+export type BuildEventType = 'added' | 'progress' | 'done' | 'removed' | 'moved';
 export interface BuildEvent {
   readonly type: BuildEventType;
   readonly piece: Built;
@@ -259,6 +259,23 @@ export const BUILD = {
     }
     pending = true;
     emit('progress', p);
+  },
+
+  /**
+   * Moved where he put it (roam/_build.ts move mode: a fence run picked up and set down again, free): its middle, turn
+   * and a fence run's own length (`len`: undefined its kind's).
+   */
+  move(b: Built, x: number, y: number, z: number, yaw: number, len?: number): void {
+    const p = list.find((q) => q === b);
+    if (!p) return;
+    p.x = x;
+    p.y = y;
+    p.z = z;
+    p.yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+    if (p.id === 'fence' && len !== undefined && Math.abs(len - PIECES.fence.w) > 1e-3) p.len = Math.min(PIECES.fence.w, Math.max(FENCE_RUN.min, len));
+    else delete p.len;
+    save();
+    emit('moved', p);
   },
 
   /** Taken down (gone from the list). */

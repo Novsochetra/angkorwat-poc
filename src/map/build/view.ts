@@ -310,7 +310,7 @@ export function createBuildView(shot = false): BuildView {
       if (r) show(r);
       return;
     }
-    if (e.type === 'done' || (e.type === 'removed' && e.piece.done >= 1) || (e.type === 'added' && e.piece.done >= 1)) standDirty = true;
+    if (e.type === 'done' || e.type === 'moved' || (e.type === 'removed' && e.piece.done >= 1) || (e.type === 'added' && e.piece.done >= 1)) standDirty = true;
     risingDirty = true;
     lightsDirty = true;
   });

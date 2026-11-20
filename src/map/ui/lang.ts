@@ -1713,6 +1713,10 @@ const WORDS = {
   buildKeep: { km: 'បន្តសង់{name} ({pct}%)', en: 'Keep building the {name} ({pct}%)' },
   buildSit: { km: 'អង្គុយ', en: 'Sit' },
   buildHoldTake: { km: 'សង្កត់ជាប់ ដើម្បីរុះចេញ', en: 'hold to take it down' },
+  // (moving one he built: E picks it up, the ghost goes with him, E puts it down; free)
+  buildMove: { km: 'ផ្លាស់ទី{name}', en: 'Move the {name}' },
+  buildMoveHere: { km: 'ដាក់នៅទីនេះ', en: 'Put it here' },
+  buildMoved: { km: 'បានផ្លាស់ទី{name}ហើយ', en: 'The {name} is moved' },
   buildTakeHold: { km: 'សង្កត់ជាប់ ដើម្បីរុះ{name}ចេញ', en: 'Hold to take down the {name}' },
   buildTakeAsk: { km: 'រុះ{name}ចេញឬ?', en: 'Take down the {name}?' },
   buildTakeNote: { km: 'អ្នកនឹងបានសម្ភារៈវិញពាក់កណ្ដាល៖ {what}', en: 'You get half its materials back: {what}' },

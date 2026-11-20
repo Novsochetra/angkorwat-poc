@@ -118,6 +118,8 @@ const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
 const CLOSE = { d: 2, reach: 6, angle: (30 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp', 'oillamp', 'hanglamp', 'pot']);
+/** Pieces a short E by them picks up to move (build mode with it: E puts it down where the ghost is, free; Esc leaves it). */
+const MOVABLE: ReadonlySet<PieceId> = new Set<PieceId>(['fence']);
 /**
  * Build mode's camera: tilt, distance at least (and per metre of the piece's reach; and per metre of a footprint building's height), its ease and back (1/s), the focus
  * toward the ghost, over his shoulder (rad); its first move (picked on the card): this quick (1/s), this long (s).
@@ -145,7 +147,9 @@ let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
-let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | null; bed?: BedPlace | null } | null = null;
+let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | 'move' | null; bed?: BedPlace | null; piece?: Built } | null = null;
+/** The piece he is moving (build mode with it: its ghost goes with him; it stays where it was until put down). */
+let moving: Built | null = null;
 /** What the take-down question is about. */
 let asking: WorkJob | null = null;
 /** The hint said (saved; a shot only with `buildhint=1`). */
@@ -290,6 +294,7 @@ function holdStep(ctx: RoamCtx, dt: number): void {
     if (h.tap === 'keep') BuildWork.start(ctx, h.job);
     else if (h.tap === 'sit') env?.controls.press('KeyJ');
     else if (h.tap === 'sleep' && h.bed) BED_SLEEP.start?.(h.bed);
+    else if (h.tap === 'move' && h.piece) enterPlacing(h.piece.id, h.piece);
     return;
   }
   h.t += dt;
@@ -355,12 +360,12 @@ const _e2: [number, number] = [0, 0];
 function findFreeEnds(): void {
   freeEnds.length = 0;
   for (const f of BUILT.list) {
-    if (f.id !== 'fence') continue;
+    if (f.id !== 'fence' || f === moving) continue;
     for (let end = -1; end <= 1; end += 2) {
       fenceEnd(f, end, _e);
       let free = true;
       for (const g of BUILT.list) {
-        if (g === f || g.id !== 'fence') continue;
+        if (g === f || g.id !== 'fence' || g === moving) continue;
         for (let k = -1; k <= 1 && free; k += 2) {
           fenceEnd(g, k, _e2);
           if (Math.hypot(_e[0] - _e2[0], _e[1] - _e2[1]) < MEET) free = false;
@@ -372,9 +377,9 @@ function findFreeEnds(): void {
   }
 }
 
-/** Would `_snap` stand clear of what he built (fence runs may cross at a joint)? */
+/** Would `_snap` stand clear of what he built (fence runs may cross at a joint; the one he is moving not counted)? */
 function snapFree(): boolean {
-  for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) return false;
+  for (const b of BUILT.list) if (b !== moving && overlapsBuilt(_snap, b)) return false;
   return true;
 }
 
@@ -430,8 +435,8 @@ function closeFence(raw: number): boolean {
  * fence end's run (its end at most `CLOSE.reach` back along that line, at `CLOSE.angle` or more to it): the corner
  * the two lines would make, where the next run closes it. `from`: the run it goes on from (not one to meet).
  */
-function meetLine(ex: number, ez: number, ux: number, uz: number, from: Built): number {
-  let t = PIECES.fence.w;
+function meetLine(ex: number, ez: number, ux: number, uz: number, from: Built, full: number): number {
+  let t = full;
   for (const g of freeEnds) {
     if (g.f === from || fenceJoint(g.f, from)) continue;
     // (the way the other run goes out past its free end: its local x, toward that end)
@@ -481,18 +486,19 @@ const onGrid = (v: number, o: number, g = GRID): number => o + Math.round((v - o
  * him, unclicked.
  */
 function snapFence(raw: number): boolean {
-  spot.len = undefined;
   findFreeEnds();
   // (a gap between two runs first: the run that fills it)
   if (closeFence(raw)) return true;
+  // (a run he moves goes on at its own length)
+  const full = moving?.len ?? PIECES.fence.w;
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
   let by = spot.yaw;
-  let bl = PIECES.fence.w;
-  const half = PIECES.fence.w / 2;
+  let bl = full;
+  const half = full / 2;
   for (const f of BUILT.list) {
-    if (f.id !== 'fence') continue;
+    if (f.id !== 'fence' || f === moving) continue;
     // (its own lines: on in line (0, π) or square (±π/2), the one nearest the way he faces)
     let yaw = spot.yaw;
     let near = SNAP.align;
@@ -519,7 +525,7 @@ function snapFence(raw: number): boolean {
         // (it stops where it meets another run's line: a corner the next run closes; its middle half its length out)
         const ux = -sig * c;
         const uz = sig * s;
-        const len = meetLine(ex, ez, ux, uz, f);
+        const len = meetLine(ex, ez, ux, uz, f, full);
         _snap.x = ex + (ux * len) / 2;
         _snap.z = ez + (uz * len) / 2;
         _snap.len = len < PIECES.fence.w ? len : undefined;
@@ -562,7 +568,8 @@ function placingNow(ctx: RoamCtx): void {
   const furn = isFurniture(placing);
   spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
   spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
-  spot.len = undefined;
+  // (a run he moves keeps its own length unless it snaps to fill a gap)
+  spot.len = moving?.len;
   spot.snapped = placing === 'fence' && snapFence(raw);
   spot.ceil = Infinity;
   let r: FurnReason | null;
@@ -574,7 +581,7 @@ function placingNow(ctx: RoamCtx): void {
   } else {
     // (a fence run of its own length: one that closes a gap, or stops on another run's line)
     const P = PIECES[placing];
-    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, null, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
+    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
     spot.y = ctx.world.field.heightAt(spot.x, spot.z);
   }
   spot.ok = !r;
@@ -585,7 +592,9 @@ function placingNow(ctx: RoamCtx): void {
   const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
   // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°"; on touch the build bar
   // has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
-  if (!r) spot.prompt = onTouch() ? words(`heret|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°`) : words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
+  // (moving one: "E  Put it here 45°")
+  const here = moving ? 'buildMoveHere' : 'buildHere';
+  if (!r) spot.prompt = onTouch() ? words(`heret|${here}|${deg}`, () => `E  ${t(here)} ${num(deg)}°`) : words(`here|${here}|${id}|${deg}`, () => `E  ${t(here)} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(reasonWord(r)));
   else spot.prompt = words(`not|${r}`, () => `${t(reasonWord(r))}  ·  ${keys}`);
   // (and by the touch bar's ⟲ ⟳, red or green)
@@ -621,7 +630,9 @@ function cannot(id: PieceId): string | null {
   return null;
 }
 
-function enterPlacing(id: PieceId): void {
+/** Build mode for `id`; `move`: the piece he built that he is moving (else a new one). */
+function enterPlacing(id: PieceId, move: Built | null = null): void {
+  moving = move;
   if (!placing) {
     modeTurned = 0;
     modeCamLetGo = false;
@@ -639,6 +650,7 @@ function enterPlacing(id: PieceId): void {
 function exitPlacing(): void {
   if (!placing) return;
   placing = null;
+  moving = null;
   ghost?.show(null);
   showTouchBar(false);
 }
@@ -686,6 +698,18 @@ function buildHere(ctx: RoamCtx): void {
   if (!env || !placing) return;
   placingNow(ctx);
   if (!spot.ok) return;
+  if (moving) {
+    // (moving one: put down where the ghost is, at once and free; the mode ends)
+    const m = moving;
+    if (!BUILD.list.includes(m)) return exitPlacing();
+    BUILD.move(m, spot.x, spot.y, spot.z, spot.yaw, spot.len);
+    env.uiSound('select');
+    ctx.hud.toast(t('buildMoved', { name: pieceWord(m) }));
+    console.info(`[build] ${m.uid} moved to (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) yaw ${((m.yaw * 180) / Math.PI).toFixed(0)}°${m.len !== undefined ? ` ${m.len.toFixed(2)} m` : ''}`);
+    exitPlacing();
+    turn = 0;
+    return;
+  }
   const id = placing;
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) {
@@ -1126,6 +1150,11 @@ function nearNow(ctx: RoamCtx): void {
     near.prompt = words(`sit|${best.id}`, () => `E  ${t('buildSit')}  ·  ${t('buildHoldTake')}`);
     return;
   }
+  // (one he can move: a short E picks it up, held takes it down)
+  if (MOVABLE.has(best.id)) {
+    near.prompt = words(`move|${best.id}`, () => `E  ${t('buildMove', { name })}  ·  ${t('buildHoldTake')}`);
+    return;
+  }
   near.prompt = words(`take|${best.id}`, () => `E  ${t('buildTakeHold', { name })}`);
 }
 
@@ -1311,7 +1340,7 @@ registerAddon({
           state: () => ({
             pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1335,6 +1364,10 @@ registerAddon({
           },
           card: () => lastCtx && openCard(lastCtx),
           place: (id: PieceId | null) => (id ? enterPlacing(id) : exitPlacing()),
+          move: (uid: string) => {
+            const p = BUILD.byUid(uid);
+            if (p) enterPlacing(p.id, p);
+          },
           all: () => placeAll(),
           full: () => placeFull(),
           rebuild: () => view?.rebuild(),
@@ -1465,7 +1498,14 @@ registerAddon({
     if (near.piece) {
       wireHold();
       const piece = near.piece;
-      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null, bed: near.bed };
+      pressing = {
+        job: pieceJob(piece),
+        dist: (x, z) => distTo(piece, x, z),
+        t: 0,
+        tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : MOVABLE.has(piece.id) ? 'move' : null,
+        bed: near.bed,
+        piece,
+      };
       holdBar(0);
       return;
     }

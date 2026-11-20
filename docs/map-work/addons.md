@@ -3060,7 +3060,11 @@ sounds `audio/_build.ts`.
   first time a toast says how to go on); by it "E  Keep building (45%)" goes on; back
   to the map: paused, saved.
 - **By a piece he built** (facing it, within 1.25 m): a seat (the bed, the shelter's
-  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; else
+  bench) "E  Sit  ·  hold to take it down"; half built "E  Keep building…"; a fence
+  (`MOVABLE` in `_build.ts`) "E  Move the fence  ·  hold to take it down": a short E picks it
+  up (build mode with it, `moving`: its ghost goes with him and snaps as a new run's, its own
+  length kept unless it fills a gap; where it stood does not count), "E  Put it here" sets it
+  down at once and free (`BUILD.move`, event `moved`), Esc leaves it where it was; else
   "E  Hold to take down the …". Held 0.8 s (a bar fills) it asks ("Take down the
   bamboo bed? You get half its materials back: 3 bamboo poles"); yes: he takes it apart
   (half the time, at least 2 s), it is gone, half its materials (rounded down) go into his
