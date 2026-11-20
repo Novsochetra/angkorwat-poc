@@ -1,0 +1,17 @@
+{
+  "name": "angkor-live",
+  "private": true,
+  "version": "0.1.0",
+  "description": "The New Year's Eve live service: parties and voice tickets (AWP-35)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test test.mjs"
+  },
+  "dependencies": {
+    "livekit-server-sdk": "2.20.1"
+  }
+}
