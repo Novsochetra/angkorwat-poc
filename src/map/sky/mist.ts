@@ -1,6 +1,8 @@
 import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGBAFormat, ShaderMaterial, Vector3, Vector4 } from 'three';
 import type { HeightField } from '../heightfield';
 import { MAP_BOUNDS, PLACES } from '../layout';
+import { squareShown } from '../nye/clock';
+import { SQUARE } from '../nye/plan';
 import { pastLand } from '../terrain/views';
 import { hazeUniforms, WIND } from './haze';
 
@@ -70,6 +72,12 @@ export function buildLandMap(field: HeightField): LandMap {
   for (const p of field.paths) for (let s = 0; s < p.samples.length; s += 3) clear(p.samples[s].x, p.samples[s].z, 8, 30, 0.2);
   for (const p of PLACES) clear(p.x, p.z, Math.max(...p.pad) * 0.8, Math.max(...p.pad) + 40, 0);
   for (const p of PLACES) clear(p.anchor[0], p.anchor[2], 10, 45, 0);
+  // (New Year's Eve's festival square at Kulen's foot while it stands, its avenue and the stream's ghat: the lit square
+  // reads clear in the night as in the owner's reference, the mist round it: nye/plan.ts)
+  if (squareShown()) {
+    clear(SQUARE.x + 12, SQUARE.z, 40, 95, 0);
+    clear(SQUARE.x + 1, SQUARE.z + 45, 20, 60, 0);
+  }
   const data = new Uint16Array(w * d * 4);
   for (let k = 0; k < d; k++)
     for (let i = 0; i < w; i++) {
