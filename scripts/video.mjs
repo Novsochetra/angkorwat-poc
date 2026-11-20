@@ -27,7 +27,8 @@
 // globals: `roam`, `__garden`, …), overlay: { html, css, show(u) → 0‥1 },
 // caption: { km, en, at: [in, out] (s) } (the cut's `captionCss`),
 // transition: { type, seconds } (into it: an ffmpeg xfade, else `fade`),
-// sound: { gain } (its own sounds) }, u going 0 → 1 over the shot.
+// sound: { gain } (its own sounds), nye: { at, ears } (New Year's Eve: the night's second at its start, its
+// fireworks and crowd heard from `ears` [x, y, z] in a cut with `audio`) }, u going 0 → 1 over the shot.
 //
 // The sound: `audio` (the map's own music and ambience, rendered offline, the
 // 15-second promo's), or `music` (a score, src/map/video/score.ts) with the
@@ -275,7 +276,7 @@ async function mapTrack(page) {
   await page.goto(`${base}/index.html?shot=1&ui=0&loading=0.5`, { waitUntil: 'load', timeout: 300_000 });
   return page
     .evaluate(
-      async ({ total, audio }) => {
+      async ({ total, audio, nye }) => {
         const { SoundEngine } = await import('/src/map/audio/engine.ts');
         // (the time of day along the video: straight lines between [u, night] stops)
         const night = (u) => {
@@ -296,6 +297,22 @@ async function mapTrack(page) {
         engine.fadeIn(audio.fadeIn);
         engine.schedule(0.75);
         for (const c of audio.cues) engine.play(c.sound, c.at);
+        // (New Year's Eve: a shot with `nye: { at }` — the night's second at its start, from midnight — hears the
+        // fireworks and the crowd at that second as from its `ears` (else the square's view), audio/fireworks.ts)
+        if (nye.some((n) => n.at !== undefined)) {
+          const { FireworksSound } = await import('/src/map/audio/fireworks.ts');
+          const { warmShouts } = await import('/src/map/audio/speech.ts');
+          const { VIEW } = await import('/src/map/nye/plan.ts');
+          while (!warmShouts(() => 1e9));
+          for (const n of nye) {
+            if (n.at === undefined) continue;
+            const fw = new FireworksSound(engine);
+            const [x, y, z] = n.ears ?? VIEW.cam;
+            const off = n.offset - n.at;
+            Object.assign(fw, { ears: { x, y, z, right: [1, 0, 0], forward: [0, 0, -1] }, active: true, offset: off, done: n.hear - off });
+            for (let t = n.hear; t < n.until; t += 0.5) fw.schedule(t, Math.min(n.until, t + 0.5));
+          }
+        }
         // (stop every quarter second: the time of day, and the voices scheduled ahead)
         for (let t = 0.25; t < total; t += 0.25) {
           const at = t;
@@ -308,7 +325,17 @@ async function mapTrack(page) {
         const buf = await ctx.startRendering();
         return [0, 1].map((c) => Array.from(buf.getChannelData(c)));
       },
-      { total, audio: cut.audio },
+      {
+        total,
+        audio: cut.audio,
+        nye: clips.map(({ shot }, i) => ({
+          at: shot.nye?.at,
+          ears: shot.nye?.ears,
+          offset: offsets[i],
+          hear: i === 0 ? 0 : offsets[i] + fadeOf(i) / 2,
+          until: i === clips.length - 1 ? total : offsets[i + 1] + fadeOf(i + 1) / 2,
+        })),
+      },
     )
     .catch((e) => (console.error('[audio]', e.message), null));
 }

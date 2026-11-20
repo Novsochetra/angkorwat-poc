@@ -2354,15 +2354,27 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   to the stairs kept open for players; apsara dancers and a pinpeat ensemble on the stage until 23:50; the
   count, cheers and hugs at midnight, heads up for the show, gone by 00:40. The crowd's `CAPACITY` is 410.
 - **The fireworks: part `fireworks`** (`nye/fireworks.ts`, `_fwShaders.ts`), built only when the show is within
-  an hour (main.ts `LATER`). The script `nye/show.ts`: 789 rockets over 466 s, seeded, the same everywhere,
+  an hour (main.ts `LATER`). The script `nye/show.ts`: 797 rockets over 465 s, seeded, the same everywhere,
   placed by bearing and height from the crowd's view over Kulen's east flank right of the stage, and a crown
-  over the summit for the overview and the rest of the map; acts: a five-shell opening, slow singles, colours
-  (pairs, rings, two-tone peonies), layers, the build-up, a lull, then waves of gold willows ending in 18
-  together. Kinds: willow, crackle, chrysanthemum, peony, ring; mostly gold, then lotus pink and purple, a
-  few ice blue-white. Drawing: the rockets in the air go into a float texture each frame and every spark is
-  placed in the vertex shader (drag, gravity, willow droop, ember fade, glitter): three additive draws (sparks,
-  halos with trails, flashes, glow and smoke; water mirrors). Sparks a rocket: low 51, medium 93, high 169,
-  max 219; the busiest second ≈ 110 rockets in the air (≈ 9 k sparks on medium); ≈ 0.1 ms CPU a frame;
+  over the summit for the overview and the rest of the map; acts: a five-shell opening and at 7.2 s the
+  **signature** (kind `angkor`: a golden lotus with Angkor Wat's three lotus-bud towers rising from it, as on the
+  flag, never five; `nye/_fwAngkor.ts` makes the picture once, 240 points along its outlines, a stroke a spark, every
+  spark of the rocket: 51 strokes on low; flat, turned to the square, held crisp 1.25 s, then drooping gold), its
+  twin over the west shoulder for the overview at 7.9 s (`Rocket.face`); the opening's mixed colours and the flag
+  moment at 24 s (blue, red, blue peonies, a white one in the red); colours (pairs, rings, two-tone peonies); layers
+  (signature west at 205 s); the build-up (signature east at 338 s); a lull; then the finale's layered waves (gold
+  willows, palms, comet fans, rings, crackles, purple, lotus and jade crossettes) ending in a carpet of 16 willows
+  and the two signatures (464.6 s east, 465.2 s west). Kinds (count): willow 192, chrysanthemum 157, crackle 157,
+  peony 110, comet 102 (in fans of 3‥5 low by the falls: a coloured head and a glittering tail shed as it climbs, a
+  tiny pop at the top), palm 42 (6‥9 thick gold arms on a gold comet trunk), ring 31, angkor 6; 68 crossettes
+  (`Rocket.cross`: peonies, chrysanthemums, palms whose stars pop into four white-gold pieces each, late in their
+  life). Mostly gold, then lotus pink and purple, a few ice blue-white; the flag's red and blue and jade sparingly.
+  Drawing: the rockets in the air go into a float texture each frame and every spark is
+  placed in the vertex shader (drag, gravity, willow droop, ember fade, glitter; palms' arms, comets' tails,
+  crossettes' pieces, the signature's picture from a small float texture: kinds by tables, no branches): three
+  additive draws (sparks, halos with trails, flashes, glow and smoke; water mirrors). Sparks a rocket: low 51, medium 93, high 169,
+  max 219; the busiest second (456 s) ≈ 108 rockets in the air on low (≈ 3.1 k sparks; ≈ 145 with smoke on medium, 9.4 k
+  sparks); ≈ 0.1 ms CPU a frame;
   nothing drawn and no work outside the show. Light on the world: two `own` lamps (instant, in the bursts'
   colours, 900 m). Light in the sky: `sky/tint.ts` `SKY_TINT` (the bursts' colour × light, saturating softly, at
   their light's middle; 0 outside the show), read as uniforms by the haze (`hazeColorDir`: a bloom toward the show),
@@ -2376,7 +2388,8 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   toasts (`nyetoast=night|over`), the calendar entry `nye` (`realClock`: its own row on the card, never "Wait
   for it"), the mini-map badge at the ring. Words in `ui/lang.ts` (`nye*`).
 - **The sound: `audio/fireworks.ts`** on its own bus (the Fireworks volume, under "Around you"): whooshes and
-  whistles, booms heard late by their distance (343 m/s), crackles, willow sizzle, the crowd's murmur, the
+  whistles, booms heard late by their distance (343 m/s), crackles (and a crossette's as its stars pop), the
+  sizzle of willows, palms and the signature, a comet's hiss as it climbs (its pop a small boom), the crowd's murmur, the
   count shouted in Khmer, the cheer at midnight and at the finale's end; `planSounds` is the schedule alone.
 - **Checks.** `nye=+2m` (or `+90s`, `-30s`, an ISO time; `nye=0` none), `countdown=<s>`, `fireworks=<s>`,
   `nyeboard=<state>`, `boardplayers=<n>`, `boardtest=1`, `nyetoast=night|over`, `people=nye`. Quick: 

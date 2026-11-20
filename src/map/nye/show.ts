@@ -10,8 +10,10 @@ import { VIEW } from './plan';
  * the sound (audio/fireworks.ts) bangs it, both from this list. No three.js.
  *
  * The look is the owner's reference (assets/new-year-online/fireworks-reference.png): mostly temple gold, then
- * purple and lotus pink, a few ice blue-white accents; peonies, chrysanthemums, gold willows, low crackles;
- * rising trails; layered depths; a slow start, building up, a gold-willow finale.
+ * purple and lotus pink, a few ice blue-white accents, the flag's red and blue and jade now and then; peonies,
+ * chrysanthemums, gold willows and palms, low crackles, comets, crossettes; rising trails; layered depths; the
+ * signature (a golden lotus with Angkor Wat's three towers) right after midnight, twice in the show and to end it;
+ * a calm start, building up, a finale of layered waves.
  */
 
 /** Kinds of burst. */
@@ -25,7 +27,17 @@ export type BurstKind =
   /** Small, low, crackling (many tiny flashes). */
   | 'crackle'
   /** A flat ring of sparks. */
-  | 'ring';
+  | 'ring'
+  /** A few (6‥9) thick bright gold arms fanned up and out, drooping heavy at their tips; on a gold comet trunk. */
+  | 'palm'
+  /** A bright coloured star climbing alone with a long glittering tail, a tiny pop at its top (fired in fans). */
+  | 'comet'
+  /**
+   * The signature: gold sparks that draw a lotus with the three lotus-bud towers of Angkor Wat rising from it (as on
+   * the flag: three towers, never five; nye/_fwAngkor.ts), flat, turned to the square (or `Rocket.face`), held crisp
+   * a second, then drooping and fading gold. Its towers the rocket's colour, its lotus the second.
+   */
+  | 'angkor';
 
 /** The show's colours (sRGB hex): index into this from `Rocket.color`. */
 export const SHOW_COLOURS = {
@@ -40,6 +52,12 @@ export const SHOW_COLOURS = {
   ice: 0xcfe8ff,
   /** White flash (crackles). */
   white: 0xfff4e0,
+  /** The flag of Cambodia's red (sparingly: the flag moment, accents). */
+  red: 0xff3047,
+  /** The flag's blue, bright enough to show in the night sky. */
+  blue: 0x5c8cff,
+  /** Jade (sparingly). */
+  jade: 0x3fe6a4,
 } as const;
 export type ShowColour = keyof typeof SHOW_COLOURS;
 
@@ -64,6 +82,10 @@ export interface Rocket {
   size: number;
   /** Seed for its sparks (directions, flicker). */
   seed: number;
+  /** A crossette (peonies, chrysanthemums, palms): late in their life its stars each pop into a few white-gold crackles. */
+  cross: boolean;
+  /** The signature's picture faces this point (x, z on the map); the crowd's view (plan.ts `VIEW.cam`) if not given. */
+  face?: readonly [number, number];
 }
 
 /** The show's length (s). */
@@ -102,7 +124,13 @@ export function rocketsBetween(t0: number, t1: number, out: number[]): number[] 
  * A rocket whose sparks strobe as they fade (glitter): some chrysanthemums, willows and peonies, from the seed, so
  * the script's fields stay as they are (the fireworks part reads it; the sound may crackle them).
  */
-export const isGlitter = (r: Rocket): boolean => r.kind !== 'crackle' && r.kind !== 'ring' && r.seed % 5 === 0;
+export const isGlitter = (r: Rocket): boolean => (r.kind === 'peony' || r.kind === 'chrysanthemum' || r.kind === 'willow' || r.kind === 'palm') && r.seed % 5 === 0;
+
+/** When a crossette's stars pop, about (s after its burst: the shader's 0.6‥0.7 of their kind's life): the sound's crackles. */
+export const CROSS_POP: Partial<Record<BurstKind, number>> = { peony: 1.55, chrysanthemum: 1.9, palm: 2.5 };
+
+/** How much of a willow's lasting glow each kind has (the shader's `KL`). */
+const LASTING: Partial<Record<BurstKind, number>> = { willow: 1, palm: 0.6, angkor: 1 };
 
 /**
  * How bright a rocket's burst is `tau` seconds after it burst (0 before; ≈ 1 for a 35 m peony at its peak): its
@@ -111,7 +139,7 @@ export const isGlitter = (r: Rocket): boolean => r.kind !== 'crackle' && r.kind 
  */
 export function burstLight(r: Rocket, tau: number): number {
   if (tau < 0) return 0;
-  const tail = r.kind === 'willow' ? 0.35 * Math.exp(-tau / 2.6) : 0;
+  const tail = (LASTING[r.kind] ?? 0) * 0.35 * Math.exp(-tau / 2.6);
   return burstPower(r) * (0.75 * Math.exp(-tau / 0.09) + 0.35 * Math.exp(-tau / 0.7) + tail);
 }
 
@@ -217,7 +245,11 @@ class Maker {
     const y = hillAt(x, z);
     // (a shell slows as it climbs: ≈ 2 s to 60 m, 3.4 s to 160 m)
     const rise = Math.min(4, 1.2 + Math.sqrt(s.y - y) * 0.17 + rnd() * 0.25);
-    const r: Rocket = { t: Math.max(0, burst - rise), x, y, z, bx: s.x, by: s.y, bz: s.z, rise, kind, color, color2, size: s.size, seed: Math.floor(rnd() * 2 ** 30) };
+    return this.fireFrom(burst, s, x, z, rise, kind, color, color2);
+  }
+  /** A rocket from a given launch point (x, z on the land) bursting at `s` at `burst`, `rise` s after its launch. */
+  fireFrom(burst: number, s: Spot, x: number, z: number, rise: number, kind: BurstKind, color: ShowColour, color2: ShowColour = color): Rocket {
+    const r: Rocket = { t: Math.max(0, burst - rise), x, y: hillAt(x, z), z, bx: s.x, by: s.y, bz: s.z, rise, kind, color, color2, size: s.size, seed: Math.floor(this.rnd() * 2 ** 30), cross: false };
     r.rise = burst - r.t;
     this.out.push(r);
     return r;
@@ -225,97 +257,211 @@ class Maker {
 }
 
 const BRIGHT: readonly ShowColour[] = ['gold', 'gold', 'gold', 'purple', 'lotus', 'gold', 'purple', 'lotus', 'ice'];
+/** The new colours, used sparingly (one shell in ten or so). */
+const ACCENT: readonly ShowColour[] = ['jade', 'red', 'blue', 'red', 'jade', 'blue'];
 const SECOND: Partial<Record<ShowColour, readonly ShowColour[]>> = {
   gold: ['gold', 'gold', 'willow', 'lotus', 'purple', 'white'],
   purple: ['purple', 'lotus', 'gold', 'ice'],
   lotus: ['lotus', 'purple', 'gold', 'white'],
   ice: ['ice', 'white', 'purple'],
+  red: ['red', 'white', 'gold'],
+  blue: ['blue', 'ice', 'white'],
+  jade: ['jade', 'gold', 'ice'],
 };
+
+/** The signature over Kulen's east flank for the crowd (bearing ° right of north from the square, distance m, radius m): above the ridge before it. */
+function signatureSpot(bearing: number, d: number, size: number): Spot {
+  const b = bearing * DEG;
+  const x = CAM[0] + Math.sin(b) * d;
+  const z = CAM[2] - Math.cos(b) * d;
+  // (its lotus's foot 2° over the ridge from the square and 25 m over the slope under it; its picture 2.02 radii tall)
+  const foot = Math.max(CAM[1] + Math.tan(ridgeBefore(b, d) + 2 * DEG) * d, hillAt(x, z) + 25);
+  return { x, z, size, y: foot + 1.02 * size };
+}
+/** The signature over Kulen's west shoulder, where the overview (the picker's camera) and the rest of the map see it; it faces between the square and the overview. */
+const SIGNATURE_WEST = { x: 240, z: -395, face: [259, -295] as const };
 
 /** The show (`SHOW_LENGTH` s): the acts, in order of burst; the list sorted by launch. */
 function makeScript(): Rocket[] {
   const m = new Maker(mulberry32(0x2027_0101));
   const rnd = m.rnd;
   const second = (c: ShowColour) => m.pick(SECOND[c] ?? [c]);
+  // (a colour: mostly the reference's, now and then one of the new ones)
+  const colour = (accent = 0.1): ShowColour => (rnd() < accent ? m.pick(ACCENT) : m.pick(BRIGHT));
   // (high, or now and then the crown over the summit)
   const up = (crown: number): Layer => (rnd() < crown ? 'crown' : 'high');
-  const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) => m.fire(at, spotIn(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' ? 'willow' : second(color));
+  const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) =>
+    m.fire(at, spotIn(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' || kind === 'palm' ? 'willow' : second(color));
+  /** Some peonies, chrysanthemums and palms are crossettes (`chance` of them). */
+  const crossed = (r: Rocket, chance: number): Rocket => {
+    r.cross = (r.kind === 'peony' || r.kind === 'chrysanthemum' || r.kind === 'palm') && rnd() < chance;
+    return r;
+  };
+  /** A palm on its gold trunk; a crossette now and then. */
+  const palm = (at: number, layer: Layer, bearing?: number, cross = 0.25) => crossed(shell(at, layer, 'palm', 'gold', bearing, (layer === 'mid' ? 1.3 : 1) * (0.95 + rnd() * 0.15)), cross);
+  /** A fan of `count` comets from one spot low by the falls, each a little after the last, bursting at about `at`. */
+  const comets = (at: number, count: number, c: ShowColour = colour(0.15)) => {
+    const b0 = 43 + rnd() * 4;
+    const d = 115 + rnd() * 30;
+    const fx = CAM[0] + Math.sin(b0 * DEG) * d;
+    const fz = CAM[2] - Math.cos(b0 * DEG) * d;
+    const tail = rnd() < 0.5 ? 'gold' : 'white';
+    for (let i = 0; i < count; i++) {
+      const off = (i - (count - 1) / 2) * (3.2 + rnd() * 1.2);
+      const b = (b0 + off) * DEG;
+      const dd = d + (rnd() - 0.5) * 12;
+      const x = CAM[0] + Math.sin(b) * dd;
+      const z = CAM[2] - Math.cos(b) * dd;
+      const y = Math.max(CAM[1] + Math.tan((27 + rnd() * 6 - Math.abs(off) * 0.35) * DEG) * dd, hillAt(x, z) + 45);
+      const lx = fx + (rnd() - 0.5) * 4;
+      const lz = fz + (rnd() - 0.5) * 4;
+      m.fireFrom(at + i * 0.16 + rnd() * 0.14, { x, y, z, size: 4 + rnd() * 2.5 }, lx, lz, 2.1 + rnd() * 0.6, 'comet', i % 3 === 1 && rnd() < 0.5 ? second(c) : c, tail);
+    }
+  };
+  /** The signature: over the east flank for the crowd, or (`west`) over the west shoulder for the overview. */
+  const signature = (at: number, west: boolean, sizeK = 1) => {
+    if (!west) return m.fire(at, signatureSpot(43 + (rnd() - 0.5) * 2, 230, 50 * sizeK), 'angkor', 'gold', 'willow');
+    const s = SIGNATURE_WEST;
+    const size = 48 * sizeK;
+    const r = m.fire(at, { x: s.x, z: s.z, size, y: hillAt(s.x, s.z) + 25 + 1.02 * size }, 'angkor', 'gold', 'willow');
+    r.face = s.face;
+    return r;
+  };
+  // (an act's bursts keep clear of a signature: none of its own within `gap` s of these)
+  const SIGNATURES = [7.2, 205, 338];
+  const clear = (t: number, gap = 2.2) => SIGNATURES.every((s) => Math.abs(t - s) > gap);
 
-  // ── Midnight (0‥8 s): a fan of five gold chrysanthemums, all bursting at once as the year turns, then an ice
-  // peony high in the middle of them.
-  for (let i = 0; i < 5; i++) shell(2.6, i % 2 ? 'mid' : 'high', 'chrysanthemum', 'gold', 33 + i * 3.2);
+  // ── Midnight (0‥8 s): a fan of five gold chrysanthemums as the year turns (a breath apart, not as one), an ice peony
+  // high in the middle of them; then the first big moment: the signature, a golden lotus and Angkor Wat's three towers
+  // over the east flank for the crowd, its twin over the west shoulder for the rest of the map.
+  for (let i = 0; i < 5; i++) shell(2.6 + [0, 0.12, 0.05, 0.17, 0.08][i], i % 2 ? 'mid' : 'high', 'chrysanthemum', 'gold', 33 + i * 3.2, 0.9 + 0.2 * rnd());
   shell(4.4, 'crown', 'peony', 'ice', 38, 1.1);
+  signature(7.2, false);
+  signature(7.9, true);
 
-  // ── A slow start (8‥70 s): one at a time, gold, a purple now and then, a willow.
-  for (let t = 9; t < 70; t += 3 + rnd() * 2.2) {
+  // ── The opening (12‥70 s): medium bursts in many colours, one or two at a time; a palm now and then, a comet fan.
+  // At 24 s the flag: blue, red and blue peonies across the sky, a white one in the red's middle (the temple), then
+  // red-and-white and blue pairs.
+  for (let t = 12.5; t < 70; t += 2.6 + rnd() * 1.6) {
+    if (t > 21 && t < 30) continue;
     const k = rnd();
-    const kind: BurstKind = k < 0.45 ? 'peony' : k < 0.85 ? 'chrysanthemum' : 'willow';
-    shell(t, rnd() < 0.5 ? 'mid' : up(0.3), kind, kind === 'willow' ? 'willow' : rnd() < 0.75 ? 'gold' : 'purple');
+    if (k < 0.12) palm(t, 'mid', undefined, 0);
+    else if (k < 0.2) shell(t, up(0.3), 'willow', 'willow');
+    else shell(t, rnd() < 0.6 ? 'mid' : up(0.3), rnd() < 0.5 ? 'peony' : 'chrysanthemum', colour(0.08), undefined, 0.85 + rnd() * 0.2);
   }
+  const red = spotIn(rnd, 'mid', 40, 1.35);
+  m.fire(24, spotIn(rnd, 'mid', 34), 'peony', 'blue', 'blue');
+  m.fire(24.1, red, 'peony', 'red', 'red');
+  m.fire(24.04, spotIn(rnd, 'mid', 46), 'peony', 'blue', 'blue');
+  m.fire(24.45, { ...red, size: red.size * 0.4 }, 'peony', 'white', 'white');
+  m.fire(26.4, spotIn(rnd, 'mid', 37), 'peony', 'red', 'white');
+  m.fire(26.6, spotIn(rnd, 'mid', 43), 'peony', 'blue', 'ice');
+  m.fire(27.6, spotIn(rnd, 'high', 40), 'chrysanthemum', 'white', 'red');
+  comets(47, 3, 'gold');
 
-  // ── Colours (70‥180 s): pairs mirrored about the show's middle, rings, two-tone peonies, the first crackles.
+  // ── Colours (70‥180 s): pairs mirrored about the show's middle, rings, two-tone peonies, the first crackles, palms,
+  // comet fans between the shells, the first crossettes.
+  let fanAt = 84;
   for (let t = 70; t < 180; t += 1.7 + rnd() * 1.2) {
+    if (t >= fanAt) {
+      comets(t, 3 + Math.floor(rnd() * 3));
+      fanAt += 22 + rnd() * 8;
+      continue;
+    }
     const k = rnd();
-    if (k < 0.3) {
-      // (a pair, mirrored: the same kind and colour left and right of the middle at once)
-      const c = m.pick(BRIGHT);
+    if (k < 0.27) {
+      // (a pair, mirrored: the same kind and colour left and right of the middle, a breath apart, not the same size)
+      const c = colour(0.12);
       const kind: BurstKind = rnd() < 0.5 ? 'peony' : 'chrysanthemum';
       const off = 3 + rnd() * 4;
       const layer: Layer = rnd() < 0.5 ? 'mid' : 'high';
-      shell(t, layer, kind, c, 40 - off);
-      shell(t, layer, kind, c, 40 + off);
-    } else if (k < 0.45) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'gold', 'ice'] as const));
-    else if (k < 0.58) {
+      const cr = rnd() < 0.2;
+      crossed(shell(t, layer, kind, c, 40 - off, 0.92 + rnd() * 0.12), cr ? 1 : 0);
+      crossed(shell(t + 0.08 + rnd() * 0.15, layer, kind, c, 40 + off, 0.92 + rnd() * 0.12), cr ? 1 : 0);
+    } else if (k < 0.4) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'gold', 'ice', 'jade'] as const));
+    else if (k < 0.52) {
       for (let i = 0; i < 3; i++) shell(t + i * 0.35, 'low', 'crackle', i === 1 ? 'white' : 'gold', 39 + i * 3);
-    } else shell(t, rnd() < 0.5 ? 'mid' : up(0.3), rnd() < 0.5 ? 'peony' : 'chrysanthemum', m.pick(BRIGHT));
+    } else if (k < 0.62) palm(t, rnd() < 0.5 ? 'mid' : up(0.3));
+    else crossed(shell(t, rnd() < 0.5 ? 'mid' : up(0.3), rnd() < 0.5 ? 'peony' : 'chrysanthemum', colour(0.12)), 0.18);
   }
 
-  // ── Layers (180‥290 s): big high bursts over small low ones, several at once at different depths; ice accents.
+  // ── Layers (180‥290 s): big high bursts over small low ones, several at once at different depths; palms, comets,
+  // crossettes, ice accents; at 205 s the signature again (over the west shoulder: the map's turn).
+  fanAt = 186;
   for (let t = 180; t < 290; t += 1.0 + rnd() * 0.9) {
-    shell(t, up(0.3), rnd() < 0.5 ? 'chrysanthemum' : 'peony', m.pick(BRIGHT));
-    if (rnd() < 0.6) shell(t + 0.15 + rnd() * 0.3, 'low', rnd() < 0.7 ? 'crackle' : 'peony', m.pick(['gold', 'white', 'lotus'] as const));
-    if (rnd() < 0.35) shell(t + 0.4, 'mid', m.pick(['ring', 'peony', 'chrysanthemum'] as const), m.pick(BRIGHT));
-    if (rnd() < 0.08) shell(t + 0.6, 'crown', 'peony', 'ice', undefined, 1.15);
+    if (!clear(t)) continue;
+    if (t >= fanAt) {
+      comets(t, 3 + Math.floor(rnd() * 3));
+      fanAt += 13 + rnd() * 7;
+    } else if (rnd() < 0.16) palm(t, up(0.3));
+    else crossed(shell(t, up(0.3), rnd() < 0.5 ? 'chrysanthemum' : 'peony', colour(0.12)), 0.22);
+    if (rnd() < 0.55) shell(t + 0.15 + rnd() * 0.3, 'low', rnd() < 0.7 ? 'crackle' : 'peony', m.pick(['gold', 'white', 'lotus'] as const));
+    if (rnd() < 0.3) shell(t + 0.4, 'mid', m.pick(['ring', 'peony', 'chrysanthemum'] as const), colour(0.15));
+    if (rnd() < 0.07) shell(t + 0.6, 'crown', 'peony', 'ice', undefined, 1.15);
   }
+  signature(205, true);
 
-  // ── Building up (290‥400 s): faster, fans of five every 11 s, crackle carpets, willows coming in.
+  // ── Building up (290‥400 s): faster, fans of five chrysanthemums every 11 s, comet fans between them, crackle
+  // carpets, willows and palms coming in, crossettes; at 338 s the signature over the east flank, the sky round it clear.
   let fan = 292;
+  fanAt = 297;
   for (let t = 290; t < 400; t += 0.55 + rnd() * 0.55) {
+    if (!clear(t, 2.6)) continue;
     if (t >= fan) {
-      const c = m.pick(['gold', 'purple', 'lotus', 'gold'] as const);
-      for (let i = 0; i < 5; i++) shell(t + i * 0.12, 'mid', 'chrysanthemum', c, 33 + i * 3.3);
+      const c = m.pick(['gold', 'purple', 'lotus', 'gold', 'jade'] as const);
+      for (let i = 0; i < 5; i++) crossed(shell(t + i * 0.12 + rnd() * 0.06, 'mid', 'chrysanthemum', c, 33 + i * 3.3, 0.9 + rnd() * 0.2), c === 'gold' ? 0.4 : 0);
       fan += 10 + rnd() * 3;
       t += 1.2;
       continue;
     }
+    if (t >= fanAt) {
+      comets(t, 4 + Math.floor(rnd() * 2));
+      fanAt += 9 + rnd() * 6;
+      t += 0.6;
+      continue;
+    }
     const k = rnd();
-    if (k < 0.25) for (let i = 0; i < 4; i++) shell(t + i * 0.18, 'low', 'crackle', i % 2 ? 'white' : 'gold', 39 + i * 2.5 + rnd() * 1.5);
-    else if (k < 0.4) shell(t, up(0.4), 'willow', 'willow');
-    else if (k < 0.5) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'ice'] as const));
-    else shell(t, rnd() < 0.6 ? up(0.3) : 'mid', rnd() < 0.55 ? 'chrysanthemum' : 'peony', m.pick(BRIGHT));
+    if (k < 0.22) for (let i = 0; i < 4; i++) shell(t + i * 0.18, 'low', 'crackle', i % 2 ? 'white' : 'gold', 39 + i * 2.5 + rnd() * 1.5);
+    else if (k < 0.35) shell(t, up(0.4), 'willow', 'willow');
+    else if (k < 0.45) palm(t, up(0.35), undefined, 0.35);
+    else if (k < 0.54) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'ice', 'jade'] as const));
+    else crossed(shell(t, rnd() < 0.6 ? up(0.3) : 'mid', rnd() < 0.55 ? 'chrysanthemum' : 'peony', colour(0.12)), 0.25);
   }
+  signature(338, false, 1.05);
 
-  // ── A lull (400‥425 s): the sky clears; a few small ice and lotus peonies, one lone gold willow.
+  // ── A lull (400‥425 s): the sky clears; a few small ice and lotus peonies, a jade one, one lone gold willow.
   for (const [t, kind, c] of [
     [403, 'peony', 'ice'],
     [408, 'peony', 'lotus'],
     [413.5, 'willow', 'willow'],
-    [419, 'peony', 'ice'],
+    [419, 'peony', 'jade'],
   ] as const)
     shell(t, kind === 'willow' ? 'crown' : 'mid', kind, c, kind === 'willow' ? 40 : undefined, kind === 'willow' ? 1.1 : 0.8);
 
-  // ── The finale (425‥472 s): waves of gold willows, more and quicker, crackles under them, gold chrysanthemums
-  // racing low; then the last wave: the whole sky in gold willows, white-gold peonies in their middle.
+  // ── The finale (425‥468 s): layered waves, more and quicker: gold willows high and over the crown, palms, comet fans
+  // low by the falls, rings and crackles under them, purple, lotus and jade crossettes in between, each wave's shells
+  // a breath apart and of different sizes. Then the last wave: a carpet of gold willows across the sky, and out of
+  // it the signature over the east flank, its twin over the west shoulder a moment later; crackles low under them.
   let n = 3;
-  for (let t = 425; t < 462; t += Math.max(0.9, 2.2 - (t - 425) * 0.04)) {
-    for (let i = 0; i < n; i++) shell(t + rnd() * 0.25, i % 3 === 2 ? 'mid' : i % 3 === 1 ? 'crown' : 'high', 'willow', 'willow', 29 + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * 20);
-    if (rnd() < 0.7) for (let i = 0; i < 3; i++) shell(t + 0.3 + i * 0.15, 'low', 'crackle', i === 1 ? 'white' : 'gold');
-    if (t > 445) shell(t + 0.5, 'mid', 'chrysanthemum', 'gold');
+  let wave = 0;
+  for (let t = 425; t < 459; t += Math.max(0.9, 2.2 - (t - 425) * 0.04), wave++) {
+    for (let i = 0; i < n; i++) shell(t + rnd() * 0.35, i % 3 === 2 ? 'mid' : i % 3 === 1 ? 'crown' : 'high', 'willow', 'willow', 29 + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * 20, 0.9 + rnd() * 0.25);
+    const extra = wave % 4;
+    if (extra === 0) palm(t + 0.4 + rnd() * 0.2, rnd() < 0.5 ? 'high' : 'mid', 30 + rnd() * 18, 0.5);
+    else if (extra === 1) comets(t + 0.6, 3 + Math.floor(rnd() * 2));
+    else if (extra === 2) shell(t + 0.5, 'mid', 'ring', m.pick(['purple', 'lotus', 'jade'] as const));
+    else crossed(shell(t + 0.45, 'mid', rnd() < 0.5 ? 'peony' : 'chrysanthemum', m.pick(['purple', 'lotus', 'jade', 'purple', 'lotus'] as const)), 0.6);
+    // (and in every wave a purple, lotus or jade shell high among the willows, its size its own)
+    crossed(shell(t + 0.2 + rnd() * 0.4, up(0.3), rnd() < 0.6 ? 'peony' : 'chrysanthemum', (['purple', 'lotus', 'jade', 'lotus', 'purple', 'ice'] as const)[wave % 6], 30 + rnd() * 18, 0.85 + rnd() * 0.3), 0.3);
+    if (rnd() < 0.55) for (let i = 0; i < 3; i++) shell(t + 0.3 + i * 0.17 + rnd() * 0.05, 'low', 'crackle', i === 1 ? 'white' : 'gold');
+    if (t > 445) crossed(shell(t + 0.7, 'mid', 'chrysanthemum', 'gold', undefined, 0.85 + rnd() * 0.2), 0.5);
     n = Math.min(8, n + (rnd() < 0.5 ? 1 : 0));
   }
-  for (let i = 0; i < 18; i++) shell(464 + i * 0.06 + rnd() * 0.2, i % 3 === 1 ? 'mid' : i % 3 === 2 ? 'crown' : 'high', 'willow', 'willow', 28 + (i / 17) * 21, 1.15);
-  for (let i = 0; i < 6; i++) shell(464.6 + i * 0.1, 'mid', 'peony', i % 2 ? 'white' : 'gold', 35 + i * 2, 1.1);
-  for (let i = 0; i < 8; i++) shell(465.2 + i * 0.12, 'low', 'crackle', i % 2 ? 'white' : 'gold', 38 + i * 1.3);
+  for (let i = 0; i < 16; i++) shell(461.4 + i * 0.07 + rnd() * 0.25, i % 3 === 1 ? 'mid' : i % 3 === 2 ? 'crown' : 'high', 'willow', 'willow', 28 + (i / 15) * 21, 1.05 + rnd() * 0.15);
+  for (let i = 0; i < 2; i++) palm(462.2 + i * 0.35, 'mid', i ? 46 : 31, 1);
+  for (let i = 0; i < 6; i++) shell(462.6 + i * 0.13 + rnd() * 0.05, 'low', 'crackle', i % 2 ? 'white' : 'gold', 38 + i * 1.8);
+  signature(464.6, false, 1.1);
+  signature(465.2, true, 1.05);
 
   const out = m.out.filter((r) => burstAt(r) < SHOW_LENGTH - 6);
   out.sort((a, b) => a.t - b.t || a.seed - b.seed);

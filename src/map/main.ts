@@ -8,7 +8,7 @@ import type { MapAudio } from './audio/audio';
 import { MapCameraRig } from './camera';
 import { cutCovered, ShadowGate } from './cull';
 import { festivalNow, festivalSoon } from './festival/_schedule';
-import { nightHeld, nyeAsked, showSoon, squareShown } from './nye/clock';
+import { nightHeld, nyeAsked, nyeVideoTime, showSoon, squareShown } from './nye/clock';
 import { AutoGraphics, autoLevel, frameCap, GRAPHICS, graphicsNow, lowerAutoLevel, markStill, PHONE, phoneRate, plainFar, resetAutoLevel, setBatterySaver, setGraphics, STILL_LAYER, stillCasters } from './graphics';
 import { compileFor, LateParts, type CompileTimes } from './lazy';
 import { PLACES } from './layout';
@@ -757,6 +757,8 @@ Object.assign(TIME, {
 } satisfies Partial<typeof TIME>);
 
 function step(t: number, dt: number): void {
+  // (a video: New Year's Eve's night moves on with its scene time, nye/clock.ts)
+  if (ctx.video) nyeVideoTime(t);
   nyeNight = nightHeld();
   // (`equinox=1` on the live page: Start lets the clock go, on from where `clock=` held it)
   if (clockRunsFrom !== null && entered && clockParam === clockRunsFrom) {

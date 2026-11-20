@@ -25,8 +25,9 @@ import { clearSkyTint, SKY_TINT } from '../sky/tint';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
 import { showTime } from './clock';
 import { KIND_INDEX, ROW, SEGS, SKY_FRAGMENT, SKY_VERTEX, WATER_FRAGMENT, WATER_VERTEX } from './_fwShaders';
-import { SQUARE } from './plan';
+import { SQUARE, VIEW } from './plan';
 import { burstAt, burstLight, burstPower, isGlitter, rocketsBetween, showScript, SHOW_COLOURS, type BurstKind, type ShowColour } from './show';
+import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
 
 /**
  * The New Year's Eve fireworks (AWP-35): the show's script (show.ts) drawn over Phnom Kulen's east flank, played
@@ -37,7 +38,10 @@ import { burstAt, burstLight, burstPower, isGlitter, rocketsBetween, showScript,
  * spark is placed in the vertex shader from its rocket's line, its index and the time (ballistic with drag and
  * gravity: nothing per spark on the CPU, so a held moment looks as it would live). Three draws:
  *  - the sparks: `PER[level]` instances a rocket (each its spark count at this level, the rest hidden), a ribbon
- *    streaked along its path for its trail (a willow's long and bending as it droops);
+ *    streaked along its path for its trail (a willow's long and bending as it droops); a palm's few thick arms, a
+ *    comet's glittering tail shed as it climbs, a crossette's stars popping into white-gold pieces, the signature's
+ *    picture (a lotus and Angkor Wat's three towers, `_fwAngkor.ts`: its points in a small float texture, a stroke a
+ *    spark, every spark of the rocket: fewer, longer strokes on low);
  *  - the halos, four a rocket: the shell climbing on its thin trail, the white flash of the burst, its glow in the
  *    air round it (the haze lit in its colour), its smoke drifting, lit by the bursts after it (not on low);
  *  - the reflections: each burst where the Kulen pool and the stream by the square mirror it (a quad per rocket and
@@ -49,16 +53,16 @@ import { burstAt, burstLight, burstPower, isGlitter, rocketsBetween, showScript,
  * No show (before midnight, after its 480 s): nothing is drawn and the update returns at once.
  */
 
-/** Sparks a rocket of each kind has (on high, at a 35 m burst; bigger or smaller with its size). */
-const SPARKS: Record<BurstKind, number> = { peony: 150, chrysanthemum: 130, willow: 100, crackle: 48, ring: 72 };
+/** Sparks a rocket of each kind has (on high, at a 35 m burst; bigger or smaller with its size; the signature all `PER`). */
+const SPARKS: Record<BurstKind, number> = { peony: 150, chrysanthemum: 130, willow: 100, crackle: 48, ring: 72, palm: 110, comet: 90, angkor: 150 };
 /** Share of those drawn on each graphics level (a phone on low keeps 30 a second). */
 const LEVEL_SPARKS: Record<GraphicsLevel, number> = { low: 0.3, medium: 0.55, high: 1, max: 1.3 };
 /** Spark instances a rocket on each level (the most a rocket has there). */
 const PER = Object.fromEntries(Object.entries(LEVEL_SPARKS).map(([k, v]) => [k, Math.ceil(Math.max(...Object.values(SPARKS)) * 1.12 * v)])) as Record<GraphicsLevel, number>;
-/** Lines of the data texture: rockets in the air at once, at most (the finale has ≈ 145 with their smoke). */
+/** Lines of the data texture: rockets in the air at once, at most (the finale has ≈ 145 with their smoke, 108 without). */
 const SLOTS = 176;
 /** How long after its burst a rocket is still drawn: its sparks (a willow 6.4 s at most, a little longer for the slowest), the smoke 9 s. */
-const SPARK_LIFE: Record<BurstKind, number> = { peony: 2.8, chrysanthemum: 3.4, willow: 7.4, crackle: 2.0, ring: 2.8 };
+const SPARK_LIFE: Record<BurstKind, number> = { peony: 2.8, chrysanthemum: 3.4, willow: 7.4, crackle: 2.0, ring: 2.8, palm: 4.6, comet: 2.2, angkor: 5.4 };
 const SMOKE_LIFE = 9;
 /** A lamp's intensity (cd) for a burst's light of 1 (a 35 m peony at its peak): it lights the hill and the square ≈ 150‥250 m off. */
 const LAMP_POWER = 30000;
@@ -100,13 +104,22 @@ export function buildFireworks(ctx: MapContext): MapPart {
   // (the launch points on the land: the script's are on the hill as it is about; drawn from the land itself)
   const launchY = script.map((r) => Math.max(r.y, field.heightAt(r.x, r.z) + 0.5));
   const seeds = script.map((r) => (r.seed % 65521) / 65521);
-  const glitter = script.map((r) => (isGlitter(r) ? 1 : 0));
+  // (flags: 1 glitter, 2 a crossette)
+  const flags = script.map((r) => (isGlitter(r) ? 1 : 0) + (r.cross ? 2 : 0));
+  // (the point each faces: the signature's picture turns to it; the crowd's view by default)
+  const faceX = script.map((r) => r.face?.[0] ?? VIEW.cam[0]);
+  const faceZ = script.map((r) => r.face?.[1] ?? VIEW.cam[2]);
+  const shapeTex = new DataTexture(angkorShape(), ANGKOR_POINTS, 1, RGBAFormat, FloatType);
+  shapeTex.magFilter = shapeTex.minFilter = NearestFilter;
+  shapeTex.generateMipmaps = false;
+  shapeTex.needsUpdate = true;
 
   // ── The sky: sparks and halos (one program, two materials: their own uniforms).
   const lightPos = [new Vector4(), new Vector4()];
   const lightCol = [new Vector4(), new Vector4()];
   const viewU = new Vector4(540, 1, 1, 1);
   const shared = { uData: { value: tex }, uTime: { value: 0 } };
+  const shape = { uShape: { value: shapeTex }, uShapeN: { value: ANGKOR_POINTS } };
   const skyMaterial = (mode: number) =>
     new ShaderMaterial({
       name: mode ? 'fireworks:halos' : 'fireworks:sparks',
@@ -119,6 +132,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
       uniforms: {
         ...hazeUniforms(),
         ...shared,
+        ...shape,
         uMode: { value: mode },
         uPer: { value: mode ? 4 : PER.medium },
         uFirst: { value: 0 },
@@ -250,7 +264,6 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const tmp = new Color();
   const sum = new Vector3();
   let warm = 3;
-  let videoFrom: number | null = null;
   let frames = 0;
   let cpu = 0;
   let peak = 0;
@@ -260,17 +273,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
     clearSkyTint();
   };
 
-  /** The show's second now (a video moves on from the URL's moment), or null. */
-  const nowInShow = (f: MapFrame): number | null => {
-    const s = showTime();
-    if (s === null) return null;
-    if (!ctx.video) return s;
-    videoFrom ??= f.t;
-    return s + (f.t - videoFrom);
-  };
+  /** The show's second now (a video moves on from the URL's moment: clock.ts `nyeVideoTime`), or null. */
+  const nowInShow = (_f: MapFrame): number | null => showTime();
 
   if (ctx.shot) {
     // (how far each burst is clear of the land under it: the script keeps them over the hill as it is about)
+    const kinds: Record<string, number> = {};
+    for (const r of script) kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
     let low = Infinity;
     let at = '';
     for (const r of script) {
@@ -281,7 +290,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
       }
     }
     console.info(
-      `[map] fireworks: ${script.length} rockets, ${spots} stretches of water mirror them, sparks a rocket ${Object.entries(PER)
+      `[map] fireworks: ${script.length} rockets (${Object.entries(kinds)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(', ')}; ${script.filter((r) => r.cross).length} crossettes), ${spots} stretches of water mirror them, sparks a rocket ${Object.entries(PER)
         .map(([k, v]) => `${k} ${v}`)
         .join(' · ')}; the lowest burst is ${low.toFixed(0)} m over the land (${at}); built in ${(performance.now() - t0).toFixed(1)} ms`,
     );
@@ -346,10 +357,12 @@ export function buildFireworks(ctx: MapContext): MapPart {
         data[o + 14] = c2.b;
         data[o + 15] = r.size;
         data[o + 16] = seeds[i];
-        data[o + 17] = Math.round(SPARKS[r.kind] * LEVEL_SPARKS[level] * (0.6 + 0.4 * Math.min(1.25, r.size / 35)));
-        data[o + 18] = glitter[i];
+        data[o + 17] = r.kind === 'angkor' ? PER[level] : Math.round(SPARKS[r.kind] * LEVEL_SPARKS[level] * (0.6 + 0.4 * Math.min(1.25, r.size / 35)));
+        data[o + 18] = flags[i];
         // (its light's strength: the shader's burstLight is show.ts's)
         data[o + 19] = burstPower(r);
+        data[o + 20] = faceX[i];
+        data[o + 21] = faceZ[i];
         if (first < 0 && s < b + SPARK_LIFE[r.kind]) first = k;
         // (the light now: the brightest alone, the others summed where their light's middle is)
         const l = burstLight(r, s - b);

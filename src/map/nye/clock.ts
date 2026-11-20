@@ -125,7 +125,20 @@ export const nyeOff = (): boolean => url.off;
 
 /** Now, as this screen counts it (ms since 1970): the device's clock, the server's correction, the URL's move. A shot stands still. */
 export function nyeNow(): number {
-  return (shot ? pageOpened : Date.now()) + serverOffset + url.shift;
+  return (shot ? pageOpened + videoMs : Date.now()) + serverOffset + url.shift;
+}
+
+/** A video (`video=1`, scripts/video.mjs): how far its scene time has moved on from its first frame (ms). */
+let videoMs = 0;
+let videoFrom: number | null = null;
+/**
+ * main.ts, each frame of a video: the scene's time `t` (s). The night moves on with it from the URL's moment, so a
+ * shot from `countdown=12` plays the count, midnight and the first bursts (the board, the overlay, the people, the
+ * fireworks all in step). Still shots never call it: they stand still.
+ */
+export function nyeVideoTime(t: number): void {
+  videoFrom ??= t;
+  videoMs = (t - videoFrom) * 1000;
 }
 
 /** Seconds from midnight to `now` (negative before midnight). */
