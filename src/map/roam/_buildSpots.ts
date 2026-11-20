@@ -103,22 +103,32 @@ export function overlapsBuilt(f: Foot, b: Foot): boolean {
   return overlap(f, b, j ? -TOUCH : 0, j);
 }
 /** Two fence runs' ends meet when this near (m: roam/_build.ts `snapFence` puts them on each other). */
-const MEET = 0.06;
+export const MEET = 0.06;
 
+/**
+ * A fence run's end on the map (`end` −1 or 1: along its local x; its length its own, a run that closes a gap, or its
+ * kind's 3 m), into `out` (x, z).
+ */
+export function fenceEnd(f: Foot, end: number, out: [number, number]): [number, number] {
+  const h = sizeOf(f).w / 2;
+  out[0] = f.x + end * h * Math.cos(f.yaw);
+  out[1] = f.z - end * h * Math.sin(f.yaw);
+  return out;
+}
+
+const _ea: [number, number] = [0, 0];
+const _eb: [number, number] = [0, 0];
 /**
  * How far in from their ends two pieces may cross: `FENCE_JOINT` for two fence runs with an end on an end (a joint),
  * else 0 (in line past each other, side by side, a T through the middle: refused as any overlap).
  */
 export function fenceJoint(a: Foot, b: Foot): number {
   if (a.id !== 'fence' || b.id !== 'fence') return 0;
-  const h = PIECES.fence.w / 2;
   for (let i = -1; i <= 1; i += 2)
     for (let k = -1; k <= 1; k += 2) {
-      const ax = a.x + i * h * Math.cos(a.yaw);
-      const az = a.z - i * h * Math.sin(a.yaw);
-      const bx = b.x + k * h * Math.cos(b.yaw);
-      const bz = b.z - k * h * Math.sin(b.yaw);
-      if (Math.hypot(ax - bx, az - bz) < MEET) return FENCE_JOINT;
+      fenceEnd(a, i, _ea);
+      fenceEnd(b, k, _eb);
+      if (Math.hypot(_ea[0] - _eb[0], _ea[1] - _eb[1]) < MEET) return FENCE_JOINT;
     }
   return 0;
 }

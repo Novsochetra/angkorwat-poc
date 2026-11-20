@@ -20,9 +20,11 @@
     "server": "node server/main.ts",
     "server:test": "node server/test.ts",
     "nyeload": "node scripts/nyeload.mjs",
-    "nyetest": "node scripts/nyenet-check.mjs"
+    "nyetest": "node scripts/nyenet-check.mjs",
+    "movecheck": "node scripts/movecheck.mjs"
   },
   "dependencies": {
+    "livekit-client": "2.24.1",
     "posthog-js": "^1.434.14",
     "three": "^0.186.0"
   },

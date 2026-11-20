@@ -2,6 +2,7 @@ import { BACK_HAMLET, EAST_VILLAGE, KULEN_PICNIC, MARKET, PALM_GROVE, PLACES } f
 import { WORSHIP } from '../roam/_worship';
 import { BIKE_SPOTS, type BikeSpotId } from '../roam/_bikeSpots';
 import { BIKE_OWN } from '../roam/_bikeOwn';
+import { DOG_WHERE } from '../roam/_dogWhere';
 import { shopToWorld } from '../roam/_bikeShopPlan';
 import { ZIP_START } from '../roam/_zipPlan';
 import { LOTUS_BED } from '../roam/_lotusHook';
@@ -32,7 +33,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'cattle' | 'bamboo-forest' | 'nye-square';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'my-dog' | 'cattle' | 'bamboo-forest' | 'nye-square';
 
 export interface MapSpot {
   id: SpotId;
@@ -211,6 +212,21 @@ const MY_BIKE_ART = [
   '..KKK......KKK.',
 ];
 
+/** His dog (roam/_dogWhere.ts: where it waits or sleeps): the tan village dog, its ears pricked and its tail curled up, a pink heart. */
+const MY_DOG_ART = [
+  '.PP.PP........',
+  '.PPPPP........',
+  '..PPP.....t.t.',
+  '...P......tTt.',
+  '.tt......tTdTT',
+  't..t.....TTTwd',
+  't.tTTTTTTTTww.',
+  '.ttTTTTTTTww..',
+  '...TTTTTTTw...',
+  '...Tw.TT..Tw..',
+  '...ww.ww..ww..',
+];
+
 /** His ox cart (roam/_haul.ts: where he left it): its load of logs and poles over its big wheel, an ox before it. */
 const MY_CART_ART = [
   '.uYuYu........k',
@@ -381,6 +397,96 @@ const MY_CART: MapSpot = {
 };
 
 /**
+ * His dog's badge (roam/_dogWhere.ts `DOG_WHERE`), as his bicycle's: where it waits or sleeps, only while it is not with
+ * him; the big map's button is moved by roam/_dog.ts (`placeBigSpot`). On the big map it stands clear of the village's
+ * and his house's badges (its bed by the village shop or under his house would sit on them: `clearOfSpots`); the
+ * mini-map and the target keep its own place.
+ */
+const myDogBig = { x: FAR, z: FAR, n: -1 };
+function myDogOnBig(): { x: number; z: number } {
+  if (!DOG_WHERE.shown) return { x: FAR, z: FAR };
+  if (myDogBig.n !== DOG_WHERE.n) {
+    myDogBig.n = DOG_WHERE.n;
+    const [x, z] = clearOfSpots(DOG_WHERE.x, DOG_WHERE.z);
+    myDogBig.x = x;
+    myDogBig.z = z;
+  }
+  return myDogBig;
+}
+const MY_DOG: MapSpot = {
+  id: 'my-dog',
+  get x() {
+    return DOG_WHERE.shown ? DOG_WHERE.x : FAR;
+  },
+  get z() {
+    return DOG_WHERE.shown ? DOG_WHERE.z : FAR;
+  },
+  get bx() {
+    return myDogOnBig().x;
+  },
+  get bz() {
+    return myDogOnBig().z;
+  },
+  arrive: 4,
+  name: 'dogMap',
+  the: 'dogTheMap',
+  rows: outlined(MY_DOG_ART),
+};
+
+/**
+ * On the big map (about 0.9 px a metre on a desktop; a badge is 32 px wide) a moving badge this near a fixed one's (m)
+ * would sit on it: out to this far along the line from it, again until it is clear of every one (a few passes).
+ */
+const SPOT_CLEAR = 40;
+const MOVERS: readonly SpotId[] = ['my-bike', 'my-cart', 'my-dog'];
+function clearOfSpots(x: number, z: number): [number, number] {
+  let bx = x;
+  let bz = z;
+  for (let pass = 0; pass < 4; pass++) {
+    let moved = false;
+    for (const s of MAP_SPOTS) {
+      if (MOVERS.includes(s.id)) continue;
+      const d = Math.hypot(bx - s.bx, bz - s.bz);
+      if (d >= SPOT_CLEAR - 0.01) continue;
+      // (right on it: out to the south-east, off the names under the badges)
+      const ux = d > 0.5 ? (bx - s.bx) / d : Math.SQRT1_2;
+      const uz = d > 0.5 ? (bz - s.bz) / d : Math.SQRT1_2;
+      bx = s.bx + ux * SPOT_CLEAR;
+      bz = s.bz + uz * SPOT_CLEAR;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return [bx, bz];
+}
+
+/**
+ * A moving badge's button on the big map (ui/minimap.ts placed every button once, at the start): moved to (bx, bz) m,
+ * or hidden. Its place in % comes from two fixed badges' (the big map's scale, whatever it is). False: the big map is
+ * not made yet (try again later).
+ */
+export function placeBigSpot(id: SpotId, bx: number, bz: number, shown: boolean): boolean {
+  if (typeof document === 'undefined') return true;
+  const btn = document.querySelector<HTMLElement>(`.mm-spot[data-id='${id}']`);
+  if (!btn) return false;
+  btn.hidden = !shown;
+  if (!shown) return true;
+  const a = document.querySelector<HTMLElement>(".mm-spot[data-id='back-hamlet']");
+  const b = document.querySelector<HTMLElement>(".mm-spot[data-id='east-village']");
+  const pa = MAP_SPOTS.find((m) => m.id === 'back-hamlet');
+  const pb = MAP_SPOTS.find((m) => m.id === 'east-village');
+  if (!a || !b || !pa || !pb) return false;
+  const ax = parseFloat(a.style.left);
+  const az = parseFloat(a.style.top);
+  const cx = parseFloat(b.style.left);
+  const cz = parseFloat(b.style.top);
+  if (![ax, az, cx, cz].every(Number.isFinite) || pa.bx === pb.bx || pa.bz === pb.bz) return false;
+  btn.style.left = `${(ax + (bx - pa.bx) * ((cx - ax) / (pb.bx - pa.bx))).toFixed(3)}%`;
+  btn.style.top = `${(az + (bz - pa.bz) * ((cz - az) / (pb.bz - pa.bz))).toFixed(3)}%`;
+  return true;
+}
+
+/**
  * On the big map (about 1 px a metre, less on a small screen) a badge this near a temple's icon
  * (m) would sit on it: it goes out to this far along the line from the temple (east if on it).
  */
@@ -444,6 +550,8 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   spot('bamboo-forest', CLEARING.x, CLEARING.z, 8, 'bambooForestMap', 'bambooForestTheMap', outlined(BAMBOO_ART)),
   // (New Year's Eve's festival square at Kulen's foot, the meeting point: from the day it ships to the day after the night, nye/)
   ...(squareShown() ? [spot('nye-square', RING.x, RING.z, RING.r + 4, 'nyeMap', 'nyeTheMap', outlined(NYE_ART))] : []),
+  // (his dog where it waits or sleeps, away from him: roam/_dog.ts; last, so it is drawn over the village and his house)
+  MY_DOG,
 ];
 
 /** A place's picture on its badge (the mini-map), `k` device px per pixel (gold: the target). */

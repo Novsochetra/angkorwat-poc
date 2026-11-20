@@ -11,6 +11,13 @@
  * keep nothing (they start fresh every time, and save nothing); a shot sets
  * what it needs with its own URL values.
  *
+ * Two pages of the map at once (a tab left open from an earlier visit, a phone's
+ * suspended tab): a save writes only its own key into the record as it is in the
+ * storage now, never this page's whole copy from when it loaded, so an old tab's
+ * garden or cattle saving every few seconds does not undo what the other tab
+ * kept (his bicycle, his dog: AWP-36); a page reads what another one saved
+ * (the `storage` event, and before each save).
+ *
  * No three.js, nothing per frame.
  */
 
@@ -27,11 +34,23 @@ const params = typeof location === 'undefined' ? new URLSearchParams() : new URL
 /** Saving: the live page (not a headless shot, not `progress=0`). */
 const saving = params.get('shot') !== '1' && params.get('progress') !== '0' && typeof localStorage !== 'undefined';
 
+/** The record's text as this page last read or wrote it (a different one in the storage: another page saved). */
+let seen: string | null = null;
+
 function load(): Saved {
   const empty: Saved = { v: 1, values: {} };
   if (!saving) return empty;
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null') as unknown;
+    seen = localStorage.getItem(KEY);
+    return parse(seen, empty);
+  } catch (e) {
+    return broken(String(e).slice(0, 120), empty);
+  }
+}
+
+function parse(text: string | null, empty: Saved): Saved {
+  try {
+    const raw = JSON.parse(text ?? 'null') as unknown;
     if (raw === null) return empty;
     if (typeof raw !== 'object' || (raw as Saved).v !== 1) return broken('not version 1', empty);
     const values = (raw as Saved).values;
@@ -50,6 +69,20 @@ function broken(why: string, empty: Saved): Saved {
 
 const state = load();
 const listeners: ((key: string) => void)[] = [];
+
+/** What another page saved since this one last read or wrote the record (kept as this page's values; none, or unreadable: as they are). */
+function catchUp(text: string | null): void {
+  if (text === seen || text === null) return;
+  seen = text;
+  const none: Saved = { v: 1, values: {} };
+  const other = parse(text, none);
+  if (other !== none) state.values = other.values;
+}
+
+if (saving && typeof addEventListener === 'function')
+  addEventListener('storage', (e) => {
+    if (e.key === KEY) catchUp(e.newValue);
+  });
 
 export interface Progress {
   /** The value kept under `key`, or `fallback` (none yet, or it fails `isOk`). */
@@ -70,11 +103,19 @@ export const progress: Progress = {
     return v as T;
   },
   set(key, value) {
+    if (saving)
+      try {
+        catchUp(localStorage.getItem(KEY));
+      } catch {
+        /* no storage */
+      }
     if (value === null) delete state.values[key];
     else state.values[key] = value;
     if (saving)
       try {
-        localStorage.setItem(KEY, JSON.stringify(state));
+        const text = JSON.stringify(state);
+        localStorage.setItem(KEY, text);
+        seen = text;
       } catch {
         /* no storage: kept until the page closes */
       }

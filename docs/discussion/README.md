@@ -16,5 +16,8 @@ Plans and idea lists live here; how a part works stays in `docs/world-kit.md`,
   foot at midnight (ICT), party
   voice for friends, typed names (ticket AWP-35, November 2026). Phase 1 (the look) is built:
   BRIEF.md "New Year's Eve".
+- `new-year-voice.md` — the New Year party voice on our own LiveKit server
+  (DigitalOcean Singapore, `voice.morodokangkor.com`): how it works, the set-up,
+  the load test, phones, proximity, push-to-talk, safety (AWP-35 Phase 3).
 
 A new plan or discussion goes in this folder, named after what it is about.

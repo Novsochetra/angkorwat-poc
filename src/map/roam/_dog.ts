@@ -14,6 +14,8 @@ import { BODY_UNIT_M } from '../../world/scale';
 import { ADDONS, BEFORE_SHRINE, eRowBefore, registerAddon, type AddonEnv, type AddonHold } from './_addons';
 import { closeDogCard, customDogName, dogCalled, dogCardOpen, dogNameIn, dogNameParam, dogQuoted, oldDogName, openDogCard, parseDogName, setDogCardDeps, typeDogCard, type DogName } from './_dogCard';
 import { DOG_MENU, DOG_ORDERS, type DogOrder } from './_dogHook';
+import { DOG_WHERE, dogWhere } from './_dogWhere';
+import { MAP_SPOTS, placeBigSpot } from '../ui/_minimapSpots';
 import { createDogOrderCard, type DogOrderCard, type DogOrderWords } from './_dogOrderCard';
 import { DOG_HEAD, DOG_SCALE, DogMesh, dogHeadLocal, dogPoint, newLook, type DogLook } from './_dogModel';
 import { ground, hallAt, KERB, lineWalk, onLand, PathSearch, STEP_UP, stepKind, stepTo, Trail, type Hall } from './_dogPath';
@@ -2526,6 +2528,31 @@ function draw(f: MapFrame, mode: RoamMode): void {
   mesh.flush(look, clock);
 }
 
+// ── The maps: "My dog" where it waits ──────────────────────────────────────
+
+/** Where it is without him (told to stay, on its bed, waiting while he sails or flies, at a hall's door): its badge shows there. */
+const AWAY_LIVES: ReadonlySet<Life> = new Set<Life>(['stay', 'bed', 'wait', 'door']);
+const MY_DOG_SPOT = MAP_SPOTS.find((m) => m.id === 'my-dog');
+/** `DOG_WHERE.n` when the big map's button was last placed (−1: not yet: the big map may not be made yet). */
+let bigPlacedN = -1;
+
+/** The maps' "My dog" badge follows it (ui/_minimapSpots.ts `my-dog`; AWP-36): a few comparisons a frame, the big map's button when it moves. */
+function onTheMaps(): void {
+  dogWhere(adopted && !hidden && D.placed && AWAY_LIVES.has(life), D.x, D.z);
+  if (DOG_WHERE.n === bigPlacedN || !MY_DOG_SPOT) return;
+  if (placeBigSpot('my-dog', MY_DOG_SPOT.bx, MY_DOG_SPOT.bz, DOG_WHERE.shown)) bigPlacedN = DOG_WHERE.n;
+  quietBigMapName();
+}
+
+/** Its name on the big map only while its badge is pointed at, picked or the target (as his bicycle's: the village's names are near). */
+function quietBigMapName(): void {
+  if (typeof document === 'undefined' || document.getElementById('dog-bigmap-style')) return;
+  const st = document.createElement('style');
+  st.id = 'dog-bigmap-style';
+  st.textContent = `.mm-spot[data-id='my-dog']:not(:hover, :focus-visible, .is-target) .mm-place-label { display: none; }`;
+  document.head.append(st);
+}
+
 // ── The add-on ─────────────────────────────────────────────────────────────
 
 function readSaved(): void {
@@ -2740,6 +2767,7 @@ registerAddon({
     }
     stepped = false;
     draw(f, mode);
+    onTheMaps();
   },
   setMode(next, prev, ctx) {
     roamMode = next;

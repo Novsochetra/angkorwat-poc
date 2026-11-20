@@ -1,4 +1,4 @@
-import { BUILT, PIECES } from '../build/pieces';
+import { BUILT, PIECES, solidsOf } from '../build/pieces';
 import type { RoamWorld } from './types';
 
 /**
@@ -85,8 +85,9 @@ export function installBuildWalk(world: RoamWorld): void {
       const P = PIECES[b.id];
       // (a seat over the ground with no solid under it, as a bench: a box under the seat, so he sits on something)
       const seat = P.seat;
-      const bench = seat && seat.y > 0.3 && !P.solids.some(([x, z, w, d, top]) => Math.abs(seat.x - x) < w / 2 && Math.abs(seat.z - z) < d / 2 && top >= seat.y - 0.05);
-      const boxes = bench ? [...P.solids, [seat.x, seat.z, Math.min(2.8, P.w - 0.8), 0.5, seat.y] as const] : P.solids;
+      const own = solidsOf(b);
+      const bench = seat && seat.y > 0.3 && !own.some(([x, z, w, d, top]) => Math.abs(seat.x - x) < w / 2 && Math.abs(seat.z - z) < d / 2 && top >= seat.y - 0.05);
+      const boxes = bench ? [...own, [seat.x, seat.z, Math.min(2.8, P.w - 0.8), 0.5, seat.y] as const] : own;
       for (const [x, z, w, d, top] of boxes) {
         const wx = b.x + x * c + z * s;
         const wz = b.z - x * s + z * c;

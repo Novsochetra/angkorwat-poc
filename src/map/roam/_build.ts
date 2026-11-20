@@ -1,5 +1,5 @@
 import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
-import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { boughtRiel, BUILT, FENCE_RUN, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
 import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
@@ -19,7 +19,8 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
+import { MoveMode, whyNot } from './_buildMove';
+import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
@@ -109,6 +110,13 @@ const PIECE_REACH = 1.25;
  * fence's own line, or square to it, when he faces within `align` of it (rad: 20°).
  */
 const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
+/**
+ * Fences meet (closing a gap between two runs he started apart): a run that fills the gap between two free fence ends
+ * 0.3‥3 m apart is offered when its middle is within `d` of the ghost's (m); a run going on from an end stops on the line
+ * of another free end's fence (a corner: the next run closes it square) when that line crosses it, the other fence's end
+ * at most `reach` m back along it (m), at `angle` or more between them (rad: 30°).
+ */
+const CLOSE = { d: 2, reach: 6, angle: (30 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp', 'oillamp', 'hanglamp', 'pot']);
 /**
@@ -133,12 +141,14 @@ let shiftDown = false;
 /** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
 let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
-const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity };
+const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined };
 let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
 /** E held on a piece or a footprint building: it as a job, how far he is from it, how long, what a short press does. */
 let pressing: { job: WorkJob; dist: (x: number, z: number) => number; t: number; tap: 'sit' | 'keep' | 'sleep' | null; bed?: BedPlace | null } | null = null;
+/** The piece he is moving (build mode with it: its ghost goes with him; it stays where it was until put down). */
+let moving: Built | null = null;
 /** What the take-down question is about. */
 let asking: WorkJob | null = null;
 /** The hint said (saved; a shot only with `buildhint=1`). */
@@ -181,7 +191,7 @@ function piecesBlocks(): number {
   if (piecesAt !== BUILT.version) {
     piecesAt = BUILT.version;
     piecesN = 0;
-    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed).boxes.length;
+    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed, p.len).boxes.length;
   }
   return piecesN;
 }
@@ -332,7 +342,116 @@ function askTake(ctx: RoamCtx, b: WorkJob): void {
 
 // ── Build mode ─────────────────────────────────────────────────────────────
 
-const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
+const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0, len: undefined as number | undefined };
+/** The free fence ends (no other run's end on them): x, z, their run, which end; filled each step a fence is placed. */
+interface FenceEnd {
+  x: number;
+  z: number;
+  f: Built;
+  end: number;
+}
+const freeEnds: FenceEnd[] = [];
+const _e: [number, number] = [0, 0];
+const _e2: [number, number] = [0, 0];
+
+/** The fence ends nothing else joins (into `freeEnds`). */
+function findFreeEnds(): void {
+  freeEnds.length = 0;
+  for (const f of BUILT.list) {
+    if (f.id !== 'fence' || f === moving) continue;
+    for (let end = -1; end <= 1; end += 2) {
+      fenceEnd(f, end, _e);
+      let free = true;
+      for (const g of BUILT.list) {
+        if (g === f || g.id !== 'fence' || g === moving) continue;
+        for (let k = -1; k <= 1 && free; k += 2) {
+          fenceEnd(g, k, _e2);
+          if (Math.hypot(_e[0] - _e2[0], _e[1] - _e2[1]) < MEET) free = false;
+        }
+        if (!free) break;
+      }
+      if (free) freeEnds.push({ x: _e[0], z: _e[1], f, end });
+    }
+  }
+}
+
+/** Would `_snap` stand clear of what he built (fence runs may cross at a joint; the one he is moving not counted)? */
+function snapFree(): boolean {
+  for (const b of BUILT.list) if (b !== moving && overlapsBuilt(_snap, b)) return false;
+  return true;
+}
+
+/**
+ * A run that closes the gap between two free fence ends (into `spot`, its own length `spot.len`): the two ends 0.3‥3 m
+ * apart, on two runs not already joined, its middle the nearest to the ghost's within `CLOSE.d`. Its front to him
+ * (`raw`). He started two fence lines apart and walked them toward each other: the last gap is seldom a whole 3 m run.
+ */
+function closeFence(raw: number): boolean {
+  let best = CLOSE.d;
+  let bx = 0;
+  let bz = 0;
+  let by = 0;
+  let bl = 0;
+  for (let i = 0; i < freeEnds.length; i++)
+    for (let j = i + 1; j < freeEnds.length; j++) {
+      const a = freeEnds[i];
+      const b = freeEnds[j];
+      if (a.f === b.f || fenceJoint(a.f, b.f)) continue;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
+      if (len < FENCE_RUN.min || len > PIECES.fence.w + 1e-3) continue;
+      const x = (a.x + b.x) / 2;
+      const z = (a.z + b.z) / 2;
+      const d = Math.hypot(x - spot.x, z - spot.z);
+      if (d >= best) continue;
+      // (its local x axis on the map is (cos, −sin) along a → b; its front, local +z (sin, cos), turned to him)
+      let yaw = Math.atan2(-dz, dx);
+      if (Math.cos(yaw - raw) < 0) yaw += Math.PI;
+      _snap.x = x;
+      _snap.z = z;
+      _snap.yaw = yaw;
+      _snap.len = Math.min(PIECES.fence.w, len);
+      if (!snapFree()) continue;
+      best = d;
+      bx = x;
+      bz = z;
+      by = yaw;
+      bl = _snap.len;
+    }
+  _snap.len = undefined;
+  if (best >= CLOSE.d) return false;
+  spot.x = bx;
+  spot.z = bz;
+  spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
+  spot.len = Math.abs(bl - PIECES.fence.w) < 1e-3 ? undefined : bl;
+  return true;
+}
+
+/**
+ * How long a run going from (ex, ez) along (ux, uz) may be (m, at most 3) before it meets the line of another free
+ * fence end's run (its end at most `CLOSE.reach` back along that line, at `CLOSE.angle` or more to it): the corner
+ * the two lines would make, where the next run closes it. `from`: the run it goes on from (not one to meet).
+ */
+function meetLine(ex: number, ez: number, ux: number, uz: number, from: Built, full: number): number {
+  let t = full;
+  for (const g of freeEnds) {
+    if (g.f === from || fenceJoint(g.f, from)) continue;
+    // (the way the other run goes out past its free end: its local x, toward that end)
+    const vx = g.end * Math.cos(g.f.yaw);
+    const vz = -g.end * Math.sin(g.f.yaw);
+    const cross = ux * vz - uz * vx;
+    if (Math.abs(cross) < Math.sin(CLOSE.angle)) continue;
+    // (e + t·u = g + s·v)
+    const wx = g.x - ex;
+    const wz = g.z - ez;
+    const tt = (wx * vz - wz * vx) / cross;
+    const ss = (wx * uz - wz * ux) / cross;
+    if (tt < FENCE_RUN.min || tt >= t - 1e-3 || ss < FENCE_RUN.min || ss > CLOSE.reach) continue;
+    t = tt;
+  }
+  return t;
+}
 /** Furniture's spot (AWP-23). */
 const _fs = { y: 0, ceil: Infinity, reason: null as FurnReason | null };
 
@@ -365,13 +484,19 @@ const onGrid = (v: number, o: number, g = GRID): number => o + Math.round((v - o
  * him, unclicked.
  */
 function snapFence(raw: number): boolean {
+  findFreeEnds();
+  // (a gap between two runs first: the run that fills it)
+  if (closeFence(raw)) return true;
+  // (a run he moves goes on at its own length)
+  const full = moving?.len ?? PIECES.fence.w;
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
   let by = spot.yaw;
-  const half = PIECES.fence.w / 2;
+  let bl = full;
+  const half = full / 2;
   for (const f of BUILT.list) {
-    if (f.id !== 'fence') continue;
+    if (f.id !== 'fence' || f === moving) continue;
     // (its own lines: on in line (0, π) or square (±π/2), the one nearest the way he faces)
     let yaw = spot.yaw;
     let near = SNAP.align;
@@ -386,27 +511,30 @@ function snapFence(raw: number): boolean {
     const c = Math.cos(yaw);
     const s = Math.sin(yaw);
     _snap.yaw = yaw;
-    // (its local x axis on the map is (cos, −sin): its ends half a run along it)
-    const fc = Math.cos(f.yaw);
-    const fs = Math.sin(f.yaw);
     for (let end = -1; end <= 1; end += 2) {
-      const ex = f.x + end * half * fc;
-      const ez = f.z - end * half * fs;
+      fenceEnd(f, end, _e);
+      const [ex, ez] = _e;
       for (let sig = -1; sig <= 1; sig += 2) {
         // (the new run's end `sig` on that end: its middle half a run back along its own way)
         const x = ex - sig * half * c;
         const z = ez + sig * half * s;
         const d = Math.hypot(x - spot.x, z - spot.z);
         if (d >= best) continue;
-        _snap.x = x;
-        _snap.z = z;
-        let free = true;
-        for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) free = false;
+        // (it stops where it meets another run's line: a corner the next run closes; its middle half its length out)
+        const ux = -sig * c;
+        const uz = sig * s;
+        const len = meetLine(ex, ez, ux, uz, f, full);
+        _snap.x = ex + (ux * len) / 2;
+        _snap.z = ez + (uz * len) / 2;
+        _snap.len = len < PIECES.fence.w ? len : undefined;
+        const free = snapFree();
+        _snap.len = undefined;
         if (!free) continue;
         best = d;
-        bx = x;
-        bz = z;
+        bx = ex + (ux * len) / 2;
+        bz = ez + (uz * len) / 2;
         by = yaw;
+        bl = len;
       }
     }
   }
@@ -414,6 +542,7 @@ function snapFence(raw: number): boolean {
   spot.x = bx;
   spot.z = bz;
   spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
+  spot.len = bl < PIECES.fence.w ? bl : undefined;
   return true;
 }
 
@@ -437,16 +566,20 @@ function placingNow(ctx: RoamCtx): void {
   const furn = isFurniture(placing);
   spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
   spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
+  // (a run he moves keeps its own length unless it snaps to fill a gap)
+  spot.len = moving?.len;
   spot.snapped = placing === 'fence' && snapFence(raw);
   spot.ceil = Infinity;
   let r: FurnReason | null;
   if (isFurniture(placing)) {
-    const f = furnSpot(ctx.world, placing, spot.x, spot.z, spot.yaw, b.pos.y, _fs);
+    const f = furnSpot(ctx.world, placing, spot.x, spot.z, spot.yaw, b.pos.y, _fs, moving);
     r = f.reason;
     spot.y = f.y;
     spot.ceil = f.ceil;
   } else {
-    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
+    // (a fence run of its own length: one that closes a gap, or stops on another run's line)
+    const P = PIECES[placing];
+    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, moving, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
     spot.y = ctx.world.field.heightAt(spot.x, spot.z);
   }
   spot.ok = !r;
@@ -454,10 +587,14 @@ function placingNow(ctx: RoamCtx): void {
   const id = placing;
   const deg = shownDeg(id, spot.yaw);
   // (",." the d-pad's ← → on a pad, "⇧,." L2: hud.ts `promptPad`)
-  const keys = words('modeKeys', () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t('buildExit')}`);
+  // (carrying one he moves: Esc puts it back)
+  const esc = moving ? 'movePutBack' : 'buildExit';
+  const keys = words(`modeKeys|${esc}`, () => `,.  ${t('buildTurn')}  ·  ⇧,.  ${t('buildTurnFine')}  ·  F  ${t('buildOther')}  ·  Esc  ${t(esc)}`);
   // (the turn on the Build here line itself: the phone's Use button reads it, "សង់នៅទីនេះ ៤៥°"; on touch the build bar
   // has the turn's, F's and Esc's buttons: only E's here, or they would show twice)
-  if (!r) spot.prompt = onTouch() ? words(`heret|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°`) : words(`here|${id}|${deg}`, () => `E  ${t('buildHere')} ${num(deg)}°  ·  ${keys}`);
+  // (moving one: "E  Put it here 45°")
+  const here = moving ? 'buildMoveHere' : 'buildHere';
+  if (!r) spot.prompt = onTouch() ? words(`heret|${here}|${deg}`, () => `E  ${t(here)} ${num(deg)}°`) : words(`here|${here}|${id}|${deg}`, () => `E  ${t(here)} ${num(deg)}°  ·  ${keys}`);
   else if (onTouch()) spot.prompt = words(`no|${r}`, () => t(reasonWord(r)));
   else spot.prompt = words(`not|${r}`, () => `${t(reasonWord(r))}  ·  ${keys}`);
   // (and by the touch bar's ⟲ ⟳, red or green)
@@ -493,7 +630,10 @@ function cannot(id: PieceId): string | null {
   return null;
 }
 
-function enterPlacing(id: PieceId): void {
+/** Build mode for `id`; `move`: the piece he built that he is moving (else a new one: move mode ends). */
+function enterPlacing(id: PieceId, move: Built | null = null): void {
+  if (!move) MoveMode.exit();
+  moving = move;
   if (!placing) {
     modeTurned = 0;
     modeCamLetGo = false;
@@ -508,9 +648,43 @@ function enterPlacing(id: PieceId): void {
   showTouchBar(true);
 }
 
+/** Move mode (the card's "Move your things"): he aims at what he built (roam/_buildMove.ts). */
+function enterMove(): void {
+  exitPlacing();
+  exitFoot();
+  MoveMode.enter();
+  showTouchBar(true);
+}
+
+/** Out of move mode (and what he carries put back: it never left its place). */
+function exitMove(): void {
+  if (placing && moving) exitPlacing();
+  if (!MoveMode.on) return;
+  MoveMode.exit();
+  showTouchBar(false);
+}
+
+/** Picked up in move mode: build mode with that piece (it stays where it is until he puts it down). */
+function pickUp(ctx: RoamCtx, b: Built): void {
+  if (!env || whyNot(b) || !BUILD.list.includes(b)) return;
+  lastCtx = ctx;
+  MoveMode.exit();
+  enterPlacing(b.id, b);
+  env.uiSound('select');
+  console.info(`[build] ${b.uid} picked up to move`);
+}
+
+/** Done carrying (put down, or Esc: put back): move mode again, for the next. */
+function backToMove(): void {
+  exitPlacing();
+  MoveMode.enter();
+  showTouchBar(true);
+}
+
 function exitPlacing(): void {
   if (!placing) return;
   placing = null;
+  moving = null;
   ghost?.show(null);
   showTouchBar(false);
 }
@@ -523,6 +697,7 @@ function enterFoot(kind: FootKind): void {
     modeCamOpen = placing ? 0 : MODE_CAM.openFor;
   }
   exitPlacing();
+  MoveMode.exit();
   FootMode.enter(kind);
   showTouchBar(true);
 }
@@ -549,7 +724,7 @@ function useFoot(ctx: RoamCtx): void {
 
 /** What build mode's camera frames: the piece's ghost, or the footprint (its middle, its reach, m). */
 function modeTarget(): { x: number; z: number; reach: number; high: number } | null {
-  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
+  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(spot.len ?? PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
   return FootMode.on ? FootMode.target() : null;
 }
 
@@ -558,6 +733,23 @@ function buildHere(ctx: RoamCtx): void {
   if (!env || !placing) return;
   placingNow(ctx);
   if (!spot.ok) return;
+  if (moving) {
+    // (moving one: put down where the ghost is, at once and free; move mode goes on for the next)
+    const m = moving;
+    if (!BUILD.list.includes(m)) return backToMove();
+    const why = whyNot(m);
+    if (why) {
+      ctx.hud.toast(t(why, { name: pieceWord(m) }));
+      return backToMove();
+    }
+    BUILD.move(m, spot.x, spot.y, spot.z, spot.yaw, spot.len);
+    env.uiSound('select');
+    ctx.hud.toast(t('buildMoved', { name: pieceWord(m) }));
+    console.info(`[build] ${m.uid} moved to (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) yaw ${((m.yaw * 180) / Math.PI).toFixed(0)}°${m.len !== undefined ? ` ${m.len.toFixed(2)} m` : ''}`);
+    turn = 0;
+    backToMove();
+    return;
+  }
   const id = placing;
   const p = PIECES[id];
   if (BUILD.count(id) >= p.max) {
@@ -577,7 +769,7 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
-  const piece = BUILD.add(id, spot.x, spot.y, spot.z, spot.yaw);
+  const piece = BUILD.add(id, spot.x, spot.y, spot.z, spot.yaw, 0, undefined, false, spot.len);
   if (!piece) {
     if (pay.riel > 0) env.purse.earn(pay.riel);
     return;
@@ -588,7 +780,7 @@ function buildHere(ctx: RoamCtx): void {
   const what = materialsText(both);
   env.uiSound('select');
   ctx.hud.toast(what ? (pay.riel > 0 ? t('buildUsedPaid', { what, riel: riel(pay.riel) }) : t('buildUsed', { what })) : t('buildPaid', { riel: riel(pay.riel) }));
-  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
+  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°${piece.len !== undefined ? ` ${piece.len.toFixed(2)} m` : ''}: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
   // (the next one starts straight again: a fence runs on in line from this one's end, a bend asked for again)
@@ -747,6 +939,12 @@ function showTouchBar(on: boolean): void {
         return;
       }
       env?.uiSound('select');
+      if (MoveMode.on) {
+        // (move mode: ✕ out of it, the other button the card; nothing to turn before he picks one up)
+        if (d === 'done') exitMove();
+        else if (d === 'other' && lastCtx) openCard(lastCtx);
+        return;
+      }
       if (FootMode.on) {
         // (footprint mode: ⟲ ⟳ the door side, ✕ the first corner again, then out)
         if (d === 'done') backFoot();
@@ -755,8 +953,11 @@ function showTouchBar(on: boolean): void {
         else if (lastCtx) openCard(lastCtx);
         return;
       }
-      if (d === 'done') exitPlacing();
-      else if (d === 'left') turnBy(1);
+      // (carrying one he moves: ✕ puts it back, move mode goes on)
+      if (d === 'done') {
+        if (moving) backToMove();
+        else exitPlacing();
+      } else if (d === 'left') turnBy(1);
       else if (d === 'right') turnBy(-1);
       else if (lastCtx) openCard(lastCtx);
     });
@@ -774,7 +975,9 @@ function showTouchBar(on: boolean): void {
 let barSaid = '';
 function barWords(): void {
   if (!touchBar) return;
-  const done = FootMode.on && FootMode.stretching ? t('footAgain') : t('buildExit');
+  // (move mode: nothing to turn until he picks one up)
+  touchBar.classList.toggle('is-pick', MoveMode.on);
+  const done = FootMode.on && FootMode.stretching ? t('footAgain') : placing && moving ? t('movePutBack') : t('buildExit');
   const key = `${lang()}|${done}`;
   if (key === barSaid) return;
   barSaid = key;
@@ -797,6 +1000,7 @@ function injectStyle(): void {
   st.textContent = `
     .bd-bar { position: absolute; left: 50%; bottom: calc(206px + 4vh); transform: translateX(-50%); display: none; gap: 8px; z-index: 6; pointer-events: auto; }
     body.roam-touch:not(.pad-on) .bd-bar.is-on { display: flex; }
+    .bd-bar.is-pick [data-do="left"], .bd-bar.is-pick [data-do="right"], .bd-bar.is-pick .bd-tb-deg { display: none; }
     .bd-tb { position: relative; display: inline-flex; white-space: nowrap; align-items: center; gap: 6px; min-height: 40px; min-width: 44px; justify-content: center; padding: 0 12px; border: 0; background: none; color: var(--mu-ink); cursor: pointer;
       font: 700 14px / 1 var(--mu-display); --mu-edge: var(--mu-btn-edge); touch-action: manipulation; }
     .bd-tb > .mu-bg { background: var(--mu-btn); }
@@ -842,6 +1046,8 @@ function openCard(ctx: RoamCtx): void {
       });
       // (paint, AWP-22: the Buildings tab's last row; paint mode is roam/_paint.ts)
       const paint: BuildRow = { id: 'paint', name: t('paintRow'), count: '', note: t('paintRowLine'), short: false, buy: null, cost: [], price: '', off: BLOCKS.count ? null : t('paintNone'), group: 'foot' };
+      // (move mode: beside paint, a tool for what he built; roam/_buildMove.ts)
+      const move: BuildRow = { id: 'move', name: t('moveRow'), count: '', note: t('moveRowLine'), short: false, buy: null, cost: [], price: '', off: BUILD.list.length ? null : t('moveNone'), group: 'foot' };
       const rows: BuildRow[] = PIECE_IDS.map((id) => {
         const p = PIECES[id];
         const pay = toPay(id);
@@ -871,7 +1077,7 @@ function openCard(ctx: RoamCtx): void {
         title: t('buildCardTitle'),
         note: `${t('buildCardNote', { riel: riel(env?.purse.riel ?? 0) })}\n${mats ? t('buildCardHave', { what: mats }) : t('buildCardNoMat')}`,
         cancel: t('buildCardCancel'),
-        rows: [...feet, paint, ...rows],
+        rows: [...feet, paint, move, ...rows],
         meter,
         // (on tabs, AWP-23: the footprint buildings, the yard's pieces, the furniture (each 9 rows at most: the keys 1‥9);
         // on a floor it opens on the furniture)
@@ -889,7 +1095,12 @@ function openCard(ctx: RoamCtx): void {
         if (!BLOCKS.count) return;
         exitPlacing();
         exitFoot();
+        exitMove();
         PAINT_LINK.enter();
+        return;
+      }
+      if (id === 'move') {
+        if (BUILD.list.length) enterMove();
         return;
       }
       if (id.startsWith('foot:')) {
@@ -929,7 +1140,8 @@ function nearNow(ctx: RoamCtx): void {
     // (the footprint's nearest point: in front of him, or he is on it)
     toLocal(q, p.x, p.z, _l);
     const P = PIECES[q.id];
-    const cx = Math.max(-P.w / 2, Math.min(P.w / 2, _l[0]));
+    const hw = (q.len ?? P.w) / 2;
+    const cx = Math.max(-hw, Math.min(hw, _l[0]));
     const cz = Math.max(-P.d / 2, Math.min(P.d / 2, _l[1]));
     const c = Math.cos(q.yaw);
     const s = Math.sin(q.yaw);
@@ -1136,7 +1348,7 @@ registerAddon({
     }
     // (paint mode, AWP-22: its F opens the card again; it ends when build mode starts)
     PAINT_LINK.card = () => void (lastCtx && openCard(lastCtx));
-    PAINT_LINK.building = () => !!placing || FootMode.on;
+    PAINT_LINK.building = () => !!placing || FootMode.on || MoveMode.on;
     view = createBuildView(e.shot);
     e.scene.add(view.object);
     // (footprint buildings, AWP-20: their plans need the land; a check's own, as `build=`)
@@ -1152,9 +1364,13 @@ registerAddon({
     BuildUses.init(e.world.field, view.standing);
     view.onStanding(() => BuildUses.sync(true));
     BUILD.on((ev) => {
+      // (moved: its hammock and prayer spot registered again where it stands now)
+      if (ev.type === 'moved') BuildUses.forget(ev.piece.uid);
       if (ev.type !== 'progress') BuildUses.sync();
     });
     ghost = new BuildGhost(e.scene, e.world);
+    // (move mode: a piece aimed at and picked up is build mode with it)
+    MoveMode.init(e, e.scene, (ctx, b) => pickUp(ctx, b));
     edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
     e.scene.add(edge.object);
     BuildWork.init(e);
@@ -1180,9 +1396,10 @@ registerAddon({
       Object.assign(window, {
         __build: {
           state: () => ({
-            pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3) })),
+            pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, moving: moving?.uid ?? null, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
+            moveMode: MoveMode.on ? { aimed: MoveMode.aimed.piece?.uid ?? null, why: MoveMode.aimed.why } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1206,6 +1423,17 @@ registerAddon({
           },
           card: () => lastCtx && openCard(lastCtx),
           place: (id: PieceId | null) => (id ? enterPlacing(id) : exitPlacing()),
+          // (move mode: on / off; pick up a piece by its uid as E on it would)
+          moveMode: (want = true) => (want ? enterMove() : exitMove()),
+          move: (uid: string) => {
+            const p = BUILD.byUid(uid);
+            if (!p || !lastCtx) return 'no piece';
+            if (!MoveMode.on) enterMove();
+            const why = whyNot(p);
+            if (why) return why;
+            pickUp(lastCtx, p);
+            return null;
+          },
           all: () => placeAll(),
           full: () => placeFull(),
           rebuild: () => view?.rebuild(),
@@ -1236,6 +1464,7 @@ registerAddon({
     lastCtx = ctx;
     stepN++;
     FootMode.nextStep();
+    MoveMode.nextStep();
     if (card?.open || ask?.open) return true;
     holdStep(ctx, dt);
     if (BuildWork.active) return tap('KeyJ', 'KeyL', 'KeyF', 'KeyC', 'KeyU', 'KeyP', 'Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3', 'KeyO', 'KeyI');
@@ -1253,17 +1482,19 @@ registerAddon({
     if (placing) {
       const p = ctx.body.pos;
       // (out of it: far from home, another mode, all of it built, not enough riel)
-      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || cannot(placing)) {
+      // (one he moves: never "all of it built" or "not enough riel"; it is his already)
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR || (!moving && cannot(placing))) {
         exitPlacing();
         return false;
       }
       const i = ctx.input;
       const taps = i.taps as Set<string> | undefined;
-      // Esc (the pad's ○, the touch ✕): out of build mode — not "Back to the map?".
+      // Esc (the pad's ○, the touch ✕): out of build mode — not "Back to the map?"; carrying one he moves: put back.
       if (i.exit) {
         i.exit = false;
         env?.uiSound('close');
-        exitPlacing();
+        if (moving) backToMove();
+        else exitPlacing();
         return false;
       }
       // , and . (the pad's d-pad ← →, read as 4 and 5): turn it 15°.
@@ -1281,6 +1512,34 @@ registerAddon({
         taps?.delete('KeyC');
         openCard(ctx);
         return true;
+      }
+    }
+    if (MoveMode.on) {
+      const p = ctx.body.pos;
+      // (out of it: far from home, another mode)
+      if (m !== 'walk' || pastPlot(p.x, p.z) > MODE_FAR) {
+        exitMove();
+        return false;
+      }
+      const i = ctx.input;
+      const taps = i.taps as Set<string> | undefined;
+      // Esc (the pad's ○, the touch ✕): out of move mode — not "Back to the map?".
+      if (i.exit) {
+        i.exit = false;
+        env?.uiSound('close');
+        exitMove();
+        return false;
+      }
+      if (tap('KeyF', 'KeyC')) {
+        taps?.delete('KeyF');
+        taps?.delete('KeyC');
+        openCard(ctx);
+        return true;
+      }
+      // A mouse click on a piece: picked up (as E).
+      if (i.click && !env?.busy()) {
+        i.click = false;
+        MoveMode.use(ctx);
       }
     }
     if (FootMode.on) {
@@ -1323,20 +1582,26 @@ registerAddon({
   },
   offer(ctx, m) {
     lastCtx = ctx;
-    // (build mode's E is `buildMode`'s, first in the row)
-    if (m !== 'walk' || !env || placing || FootMode.on || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
+    // (build mode's E is `buildMode`'s, first in the row; move mode's too)
+    if (m !== 'walk' || !env || placing || FootMode.on || MoveMode.on || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     if (pressing) return near.prompt;
     nearNow(ctx);
     if (near.prompt) return near.prompt;
     return canStart(ctx, false) ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on) return;
     nearNow(ctx);
     if (near.piece) {
       wireHold();
       const piece = near.piece;
-      pressing = { job: pieceJob(piece), dist: (x, z) => distTo(piece, x, z), t: 0, tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null, bed: near.bed };
+      pressing = {
+        job: pieceJob(piece),
+        dist: (x, z) => distTo(piece, x, z),
+        t: 0,
+        tap: piece.done < 1 ? 'keep' : near.bed ? 'sleep' : near.sit ? 'sit' : null,
+        bed: near.bed,
+      };
       holdBar(0);
       return;
     }
@@ -1363,6 +1628,9 @@ registerAddon({
     if (placing && free) placingNow(ctx);
     if (FootMode.on && free) FootMode.step(ctx);
     if (m === 'walk' && !BuildWork.active) modeCamera(ctx, (!!placing || FootMode.on) && !card?.open, dt);
+    // Move mode: the piece aimed at, highlighted; the gold ring.
+    if (MoveMode.on && free) MoveMode.step(ctx);
+    MoveMode.show(free && !card?.open);
     // Footprint mode: its ghost and panel (free), the touch bar's size and ✕.
     if (FootMode.on) {
       FootMode.show(free);
@@ -1373,6 +1641,7 @@ registerAddon({
       }
       barWords();
     } else FootMode.show(false);
+    if (MoveMode.on || moving) barWords();
     // The hint, once: the house is his, he is by it.
     if (!hinted && m === 'walk' && HOME.owned && env && (!env.shot || env.params.get('buildhint') === '1')) {
       const p = ctx.body.pos;
@@ -1386,6 +1655,8 @@ registerAddon({
     // The ghost before him (not while he works, a card is open, or something else has him).
     if (free) {
       placingNow(ctx);
+      // (one he moves looks as it stands: its own seed)
+      ghost?.setPiece(placing, spot.len, moving?.seed);
       ghost?.show(spot.x, spot.z, spot.yaw, spot.ok, spot.y, spot.ceil);
     } else ghost?.show(null);
   },
@@ -1393,9 +1664,10 @@ registerAddon({
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
     // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
-    edge?.show(!!placing || FootMode.on || !!card?.open || edgeHeld);
+    edge?.show(!!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld);
     edge?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
+    MoveMode.frame(f.dt > 0 ? f.dt : 0);
     FootMode.frame(f.dt > 0 ? f.dt : 0);
     BUILD.tick(f.dt > 0 ? f.dt : 0);
     FOOTS.tick(f.dt > 0 ? f.dt : 0);
@@ -1407,6 +1679,7 @@ registerAddon({
     holdBar(null);
     BuildWork.stop(ctx, next === 'overview');
     exitPlacing();
+    exitMove();
     exitFoot();
   },
   fromUrl(q, ctx) {
@@ -1416,6 +1689,14 @@ registerAddon({
     if (!(env?.shot || import.meta.env.DEV)) return;
     if (q.get('build') === 'all' && !BUILD.list.length) placeAll(ctx.world);
     furnFromUrl(q, ctx);
+    // (move mode: `buildmove=1` on, `buildmove=<uid>` that piece picked up)
+    const mv = q.get('buildmove');
+    if (mv) {
+      const piece = mv === '1' ? null : BUILD.byUid(mv);
+      if (mv !== '1' && !piece) console.warn(`[build] buildmove=: no piece "${mv}" (${BUILD.list.map((p) => p.uid).join(', ')})`);
+      enterMove();
+      if (piece) pickUp(ctx, piece);
+    }
     const g = q.get('buildghost');
     if (g) {
       const [id, deg] = g.split(':');
@@ -1507,7 +1788,9 @@ registerAddon({
     if (b) out.build = b;
     const fr = furnReport();
     if (fr) out.furn = fr;
-    if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
+    if (placing && moving) out.buildmove = moving.uid;
+    else if (placing) out.buildghost = `${placing}:${((turn * 180) / Math.PI).toFixed(0)}`;
+    else if (MoveMode.on) out.buildmove = '1';
     const w = BuildWork.now;
     if (w && !w.take) {
       const p = BUILD.byUid(w.uid);
@@ -1532,7 +1815,7 @@ registerAddon({
   order: 3,
   // (while he places a piece or draws a footprint, "Build here" is the E row's last line: nothing after it, _addons.ts)
   get endsRow() {
-    return !!placing || FootMode.on;
+    return !!placing || FootMode.on || MoveMode.on;
   },
   // While he places a piece, the pad's L2 is the fine turn's (L2 held with ← →: 5°), not the binoculars' (their add-on,
   // order 5, takes the L2 press after this one: taken here, it never raises them).
@@ -1541,8 +1824,9 @@ registerAddon({
     return false;
   },
   offer(ctx, m) {
-    if ((!placing && !FootMode.on) || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
+    if ((!placing && !FootMode.on && !MoveMode.on) || m !== 'walk' || !env || BuildWork.active || card?.open || ask?.open || env.busy()) return null;
     lastCtx = ctx;
+    if (MoveMode.on) return MoveMode.step(ctx);
     if (FootMode.on) {
       FootMode.step(ctx);
       return FootMode.prompt;
@@ -1552,6 +1836,7 @@ registerAddon({
   },
   use(ctx) {
     if (FootMode.on && env && !BuildWork.active) useFoot(ctx);
+    else if (MoveMode.on && env && !BuildWork.active) MoveMode.use(ctx);
     else if (placing && env && !BuildWork.active) buildHere(ctx);
   },
 });
@@ -1567,7 +1852,7 @@ const GARDEN_LATE = 95;
 /** The garden's late offer, worked out once a step there (_garden.ts `chooseOnce`), or null. */
 const gardenLate = (ctx: RoamCtx, m: 'walk' | 'boat'): string | null => addonOffer(ctx, m, GARDEN_LATE, GARDEN_LATE)?.prompt ?? null;
 /** Build mode, a card or the work has him: no "Build…". */
-const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
+const lateOff = (m: 'walk' | 'boat'): boolean => m !== 'walk' || !env || !!placing || FootMode.on || MoveMode.on || !!pressing || BuildWork.active || !!card?.open || !!ask?.open || env.busy();
 registerAddon({
   id: 'buildLate',
   order: GARDEN_LATE - 0.1,
@@ -1581,7 +1866,7 @@ registerAddon({
     return g ? words(`start|${g}`, () => `${start}  ·  ${g}`) : start;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on || !canStart(ctx, true)) return;
     openCard(ctx);
   },
 });
@@ -1598,7 +1883,7 @@ registerAddon({
     return gardenLate(ctx, m)?.startsWith('E ') ? words('start', () => `E  ${t('buildStart')}`) : null;
   },
   use(ctx) {
-    if (!env || BuildWork.active || placing || FootMode.on || !canStart(ctx, true)) return;
+    if (!env || BuildWork.active || placing || FootMode.on || MoveMode.on || !canStart(ctx, true)) return;
     openCard(ctx);
   },
 });
