@@ -21,7 +21,8 @@ import { setSteppedVars } from './shape';
  *
  * While it is up the body has `mu-asking` (roaming holds him still); Esc, ×, a click beside it or the pad's ○ shut
  * it. A pad layer: the d-pad moves between the buttons. A phone: a sheet from the bottom (on its side: at the right).
- * Shots: `nyejoin=list` (with `nyepeers=<n>`), `nyejoin=player` (the nearest picked).
+ * Shots: `nyejoin=list` (with `nyepeers=<n>`), `nyejoin=player` (the nearest picked), `nyeask=block|report` (the
+ * first row asks that).
  */
 
 /** Rows at most (the nearest). */
@@ -125,7 +126,7 @@ function makePanel() {
                 <button type="button" class="njp-b is-bad" data-act="reportName">${esc(t('njReportName'))}</button><button type="button" class="njp-b is-bad" data-act="reportAct">${esc(t('njReportAct'))}</button><button type="button" class="njp-b" data-act="cancel">${esc(t('njCancel'))}</button></div>`
               : `<div class="njp-acts"><button type="button" class="njp-b" data-act="mute" aria-pressed="${muted}">${MUTE_ICON(muted)}<span>${esc(t(muted ? 'njUnmute' : 'njMute'))}</span></button><button type="button" class="njp-b" data-act="block">${esc(t('njBlock'))}</button><button type="button" class="njp-b" data-act="report">${esc(t('njReport'))}</button></div>`;
         return `<li class="njp-row${p.sid === first ? ' is-first' : ''}${muted ? ' is-muted' : ''}" data-sid="${p.sid}" aria-label="${esc(t('njPlayerAria', { name: p.name }))}">
-          <div class="njp-who"><b${latin ? '' : ' lang="km"'}>${latin ? name : esc(km)}</b>${latin && km ? `<small lang="km">${esc(km)}</small>` : ''}</div>
+          <div class="njp-who"><b${latin ? ' lang="en"' : ' lang="km" class="is-km"'}>${latin ? name : esc(km)}</b>${latin && km ? `<small lang="km">${esc(km)}</small>` : ''}</div>
           <span class="njp-d">${d === null ? '' : esc(t('njMeters', { n: num(Math.round(d)) }))}</span>
           ${acts}</li>`;
       })
@@ -251,6 +252,12 @@ function makePanel() {
       }
       wrap.lang = lang();
       msg.textContent = '';
+      // (a shot: `nyeask=block|report` asks that of the first row)
+      const ask = shot ? new URLSearchParams(location.search).get('nyeask') : null;
+      if (ask === 'block' || ask === 'report') {
+        const sid = first ?? rows()[0]?.p.sid;
+        if (sid !== undefined) asks.set(sid, ask);
+      }
       draw(true);
       if (isOpen) return;
       isOpen = true;
@@ -303,7 +310,7 @@ function injectStyle(): void {
     .njp-row.is-first { background: rgba(255, 208, 112, 0.09); box-shadow: inset calc(3 * var(--px)) 0 0 rgba(255, 208, 112, 0.75); }
     .njp-who { display: flex; align-items: baseline; gap: calc(8 * var(--px)); min-width: 0; }
     .njp-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 calc(15.5 * var(--px)) / 1.35 var(--mu-font); color: var(--mu-ink); }
-    .njp-who b:lang(km) { font: 400 calc(17 * var(--px)) / 1.45 Koulen, 'Kantumruy Pro', serif; color: var(--mu-gold-hi); letter-spacing: 0; }
+    .njp-who b.is-km { font: 400 calc(17 * var(--px)) / 1.45 Koulen, 'Kantumruy Pro', serif; color: var(--mu-gold-hi); letter-spacing: 0; }
     .njp-who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 calc(15 * var(--px)) / 1.45 Koulen, 'Kantumruy Pro', serif; color: var(--mu-gold-hi); }
     .njp-row.is-muted .njp-who b { color: var(--mu-ink2); }
     .njp-d { font: 600 calc(12.5 * var(--px)) / 1 var(--mu-font); color: var(--mu-dim); font-variant-numeric: tabular-nums; }
@@ -326,7 +333,7 @@ function injectStyle(): void {
     :lang(km) .njp-head h2 { line-height: 1.4; letter-spacing: 0; }
     :lang(km) .njp-state, :lang(km) .njp-ask > span, :lang(km) .njp-msg { font-size: calc(14 * var(--px)); line-height: 1.55; }
     :lang(km) .njp-b { font-size: calc(13.5 * var(--px)); line-height: 1.4; letter-spacing: 0; }
-    body.pad-on .njp kbd:not(.is-pad) { display: none; }
+    body.pad-on .njp kbd:not(.is-pad), body.roam-touch .njp kbd { display: none; }
     /* A phone upright: a sheet from the bottom, big enough for a thumb. */
     @media (max-width: 639px), (pointer: coarse) {
       .njp { align-items: flex-end; justify-content: center; padding: 10px; }

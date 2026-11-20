@@ -8,6 +8,7 @@ import { pad } from '../pad/pad';
 import { progress } from '../progress';
 import type { UISound } from '../types';
 import { makeFakeNet, type JoinNet } from './_joinFake';
+import { openPlayers } from './_joinPlayers';
 import { ICON } from './icons';
 import { lang, num, onLang, t, type WordKey } from './lang';
 import { setSteppedVars } from './shape';
@@ -35,9 +36,11 @@ import { setSteppedVars } from './shape';
  * offered once). While the card is up the body has `mu-asking` (roaming holds him still) and its keys are its own.
  * A game pad: a pad layer (○ closes, △ joins).
  *
- * Shots (with the pretend room ui/_joinFake.ts): `nyejoin=card|connecting|online|retrying|offline|refused:<reason>
- * |code|list|player|button`, `nyename=<text>` typed in, `nyecode=<code>` in the code box, `nyepeers=`, `nyecrowd=`,
- * `nyeonline=`, `nyetest=1`; the setting with `uistate=settings,tab:play,scroll:nyeon`.
+ * Shots (with the pretend room ui/_joinFake.ts): `nyejoin=card|connecting|online|retrying|offline|refused:<reason>`
+ * the card in that state; `nyejoin=code` with the code box open (`nyecode=<code>`); `nyejoin=list|player` the players
+ * list (roaming: roam/_nyePlayers.ts); `nyejoin=button|setting` nothing opened (the button while roaming; the setting
+ * with `uistate=settings,tab:play,scroll:nyeon`); `nyename=<text>` typed in, `nyepeers=`, `nyecrowd=`, `nyeonline=`,
+ * `nyetest=1` (the test room, and the overlay's TEST tag).
  */
 
 const params = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
@@ -414,7 +417,7 @@ function makeCard(): Card {
   });
   people.addEventListener('click', () => {
     shut();
-    void import('./_joinPlayers').then((p) => p.openPlayers());
+    openPlayers();
   });
   xBtn.addEventListener('click', close);
   wrap.addEventListener('pointerdown', (e) => {
@@ -518,10 +521,11 @@ function makeCard(): Card {
 
 let btn: HTMLButtonElement | null = null;
 
-/** The button is offered: the square stands and the night is not over (or he is in a room: the test room any time). */
+/** The button is offered: a server is set, the square stands and the night is not over (or he is in a room: the test room any time). */
 export function joinOffered(): boolean {
   if (inRoom() || joinNet().room === 'test' || inTestRoom()) return true;
-  if (!squareShown()) return false;
+  // (no server set: no button — the setting says so, and the card from it)
+  if (!squareShown() || !available()) return false;
   const p = nyePhase();
   return p !== 'over' && p !== 'gone';
 }
@@ -598,7 +602,7 @@ function fromUrl(): void {
   const [kind] = (ASK ?? '').split(':');
   // (the list: once he stands, roam/_nyePlayers.ts `fromUrl`, for the distances; on the overview at once)
   if (kind === 'list' || kind === 'player') {
-    if (!params.has('roam')) void import('./_joinPlayers').then((p) => p.openPlayers());
+    if (!params.has('roam')) openPlayers();
   }
   else if (kind === 'code') openJoin({ code: params.get('nyecode') ?? 'K7QM2P', from: params.has('event') ? 'link' : 'button' });
   else if (kind !== 'button' && kind !== 'setting') openJoin({ from: 'button' });
@@ -744,7 +748,7 @@ function injectStyle(): void {
     :lang(km) .nj-label { letter-spacing: 0; font-size: calc(14.5 * var(--px)); }
     :lang(km) .nj-state { font-size: calc(15 * var(--px)) !important; line-height: 1.55 !important; }
     :lang(km) .nj-check, :lang(km) .nj-code-t { font-size: calc(14.5 * var(--px)) !important; }
-    body.pad-on .nj kbd:not(.is-pad) { display: none; }
+    body.pad-on .nj kbd:not(.is-pad), body.roam-touch .nj kbd { display: none; }
     body.nj-on .mm, body.nj-on .rh-help { opacity: 0 !important; visibility: hidden !important; }
     body.nj-on.roam-touch .rt, body.nj-on.roam-touch .rtb-wrap { display: none !important; }
     .mu-calm ~ .nj .nj-dot { animation: none; }

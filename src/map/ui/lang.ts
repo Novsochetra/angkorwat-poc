@@ -2140,7 +2140,7 @@ const WORDS = {
   njSetName: { km: 'ឈ្មោះ', en: 'Name' },
   njSetNone: { km: 'មិនទាន់មានឈ្មោះ', en: 'No name yet' },
   njSetEdit: { km: 'ប្ដូរ', en: 'Change' },
-  njSetOpen: { km: 'បើក', en: 'Open' },
+  njSetOpen: { km: 'ដាក់ឈ្មោះ', en: 'Add' },
   // (the players near you: ui/_joinPlayers.ts)
   njPlayers: { km: 'អ្នកលេងនៅជិត', en: 'Players near you' },
   njPlayersNone: { km: 'មិនទាន់មានអ្នកលេងនៅជិតទេ', en: 'No players near you yet' },

@@ -2,6 +2,7 @@ import { registerEvent, type RealSpan } from '../calendar';
 import type { MapFrame } from '../types';
 import { num, t } from '../ui/lang';
 import { inTestRoom, nightHeld, nyeAsked, nyePhase, nyeSeconds, NYE_MIDNIGHT, NYE_TIMES, NYE_YEAR, squareShown } from './clock';
+import { installJoin } from '../ui/_join';
 import { createNyeOverlay, type NyeOverlay, type NyeView } from './overlay';
 import { RING } from './plan';
 
@@ -108,7 +109,11 @@ export function installNye(o: NyeOptions): NyeUi {
   const params = new URLSearchParams(location.search);
   const shot = params.get('shot') === '1';
   // (joining the New Year online: the setting, the test link, the card; nothing connects until the player says so)
-  void import('../ui/_join').then((j) => j.installJoin({ uiRoot: o.uiRoot })).catch((e) => console.error('[map] New Year online failed:', e));
+  try {
+    installJoin({ uiRoot: o.uiRoot });
+  } catch (e) {
+    console.error('[map] New Year online failed:', e);
+  }
   /** `nyetest=1`: the test room's tag in a shot (the room itself comes from the server: clock.ts `inTestRoom`). */
   const testTag = shot && params.get('nyetest') === '1';
   /** `nyetoast=night|over`: that toast in a shot (shots stay calm otherwise). */
