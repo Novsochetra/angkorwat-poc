@@ -125,8 +125,28 @@ export const nyeOff = (): boolean => url.off;
 
 /** Now, as this screen counts it (ms since 1970): the device's clock, the server's correction, the URL's move. A shot stands still. */
 export function nyeNow(): number {
-  return (shot ? pageOpened + videoMs : Date.now()) + serverOffset + url.shift;
+  const real = (shot ? pageOpened + videoMs : Date.now()) + serverOffset;
+  // (the test room: its own midnight every quarter hour, the next one picked once the last show is over)
+  if (testMidnightAt !== null) {
+    if (testCycle && real - testMidnightAt > (NYE_TIMES.show + 60) * 1000) testMidnightAt = testCycle(real);
+    return real + (NYE_MIDNIGHT - testMidnightAt);
+  }
+  return real + url.shift;
 }
+
+/** The test room's midnight (ms since 1970, the server's clock), or null in public (src/net/: the welcome). */
+let testMidnightAt: number | null = null;
+let testCycle: ((now: number) => number) | null = null;
+/**
+ * The hidden test room (docs/discussion/new-year-online.md "Testing"): midnight at `at` (the server's next quarter hour),
+ * then the next one from `next(now)` once each show is over; the night is held all along. null: back to the real date.
+ */
+export function setTestMidnight(at: number | null, next: ((now: number) => number) | null = null): void {
+  testMidnightAt = at !== null && Number.isFinite(at) ? at : null;
+  testCycle = testMidnightAt === null ? null : next;
+}
+/** In the hidden test room ("សាកល្បង / TEST" on the boards). */
+export const inTestRoom = (): boolean => testMidnightAt !== null;
 
 /** A video (`video=1`, scripts/video.mjs): how far its scene time has moved on from its first frame (ms). */
 let videoMs = 0;
@@ -166,6 +186,7 @@ export const squareShown = (now = nyeNow()): boolean => nyePhase(now) !== 'gone'
  * this is true; the player's own setting comes back after. In a shot only when the URL asks for the event.
  */
 export function nightHeld(now = nyeNow()): boolean {
+  if (testMidnightAt !== null) return true;
   if (url.off || (shot && !url.asked)) return false;
   const s = nyeSeconds(now);
   return s >= NYE_TIMES.nightFrom && s < NYE_TIMES.nightTo;
