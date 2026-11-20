@@ -23,11 +23,11 @@ import { GOLD, khmerLamp, LAMP_HALO, LATERITE, PAVER, PAVER_LIGHT, pick, POST_ST
  *   cannot find is left out. None on the avenue: it has its own.
  * - The avenue (`layAvenue`, `AVENUE`): 4.6 m of sandstone pavers flush with the land as the square's floor (pale
  *   slabs down the middle, a laterite kerb each side with a thin warm glow strip along its inner edge, as the
- *   map's glowing road), from the gate's face 36 m south, across the back trail; a branch of pavers where the
- *   lantern walk comes in from the woodcutters' camp. Khmer lamps on both kerbs every 4.5 m (6.75 m on low; none
+ *   map's glowing road), from the gate's face 36 m south, across the back trail; the link of pavers (glow strips
+ *   along it) where the lantern walk comes in from the Kulen foot trail and turns north under the arch. Khmer lamps on both kerbs every 4.5 m (6.75 m on low; none
  *   on a trail's tread or the branch), fire bowls on stone stems by the gate and by the welcome arch. Between the
  *   lamps and 6 m out stays free (flower beds: the garden's); the flags stand there on slim poles (`_sqFlags.ts`).
- * - The welcome arch at the avenue's start (`welcomeArch`): two sandstone pillars, a lintel, a small Angkor tower
+ * - The welcome arch over the avenue just past the turn (`welcomeArch`): two sandstone pillars, a lintel, a small Angkor tower
  *   over its middle (corbelled tiers, the gilt lotus bud), a lacquer-red board with "សូមស្វាគមន៍" (welcome) and
  *   "ឆ្នាំថ្មី" with the year in Khmer numerals (clock.ts `NYE_YEAR`) in gold Koulen pixel letters on its south face.
  *
@@ -37,12 +37,17 @@ import { GOLD, khmerLamp, LAMP_HALO, LATERITE, PAVER, PAVER_LIGHT, pick, POST_ST
 
 /** The avenue: its middle line `x`, from the gate's face `z0` south to `z1`, `w` m of pavers between the kerbs. */
 export const AVENUE = { x: GATE.x, z0: GATE.z + 2.75, z1: GATE.z + 38.5, w: 4.6 } as const;
-/** The welcome arch across the avenue's start (its middle, m). */
-export const ARCH = { x: AVENUE.x, z: AVENUE.z1 - 2.2 } as const;
-/** Where the lantern walk's branch joins the avenue: from its last point but two to the avenue's east kerb. */
+/** The welcome arch across the avenue just north of where the lantern walk turns into it (its middle, m). */
+export const ARCH = { x: AVENUE.x, z: AVENUE.z1 - 5.2 } as const;
+/**
+ * The link: the lantern walk's stretch west from the Kulen foot trail into the avenue's south end (plan.ts
+ * `LANTERN_WALK`: its point before the avenue's corner, to the avenue's east kerb at the corner's z).
+ */
+const LINK_FROM = LANTERN_WALK[LANTERN_WALK.length - 3];
+const LINK_Z = LANTERN_WALK[LANTERN_WALK.length - 2][1];
 const BRANCH: readonly [[number, number], [number, number]] = [
-  [LANTERN_WALK[LANTERN_WALK.length - 2][0] + 1.5, LANTERN_WALK[LANTERN_WALK.length - 2][1] + 1.5],
-  [AVENUE.x + AVENUE.w / 2, LANTERN_WALK[LANTERN_WALK.length - 1][1] + 2.6],
+  [LINK_FROM[0], LINK_FROM[1]],
+  [AVENUE.x + AVENUE.w / 2, LINK_Z],
 ];
 /** Lamps along the kerbs stand this far from the avenue's middle (m); flags farther out (`_sqFlags.ts`). */
 export const KERB_LAMP = AVENUE.w / 2 + 0.55;
@@ -125,7 +130,7 @@ export function groundOk(field: HeightField, x: number, z: number, occupied: Arr
 export interface AvenueOut {
   /** Lamps and fire bowls (map x, z). */
   lights: [number, number][];
-  /** Ground free for a post by the avenue: as `groundOk`, against what stood there before the avenue (its own posts never crowd each other out of a 2 m cell). */
+  /** Ground free for a post by the avenue: as `groundOk`, but within 3.9 m of its middle only the land counts (its own posts never crowd each other out of a 2 m cell). */
   free(x: number, z: number): boolean;
   /** Blocks laid: pavers (the floor's builder), the rest (the walk's). */
   pavers: number;
@@ -138,8 +143,11 @@ export interface AvenueOut {
  */
 export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField, lamps: Lamps, glowStrip: Lamps, glow: Glow | null, low: boolean): AvenueOut {
   const src = traceSource();
+  // (the avenue's strip, 3.9 m each side of its middle, is its own: the garden's beds and the square's lights keep
+  // out of it, though their 2 m cells of `occupied` may reach in; so its posts check the land only)
   const before = field.occupied.slice();
-  const free = (x: number, z: number) => groundOk(field, x, z, before);
+  const none = { length: 0 } as ArrayLike<number>;
+  const free = (x: number, z: number) => Math.abs(x - AVENUE.x) < 3.9 ? groundOk(field, x, z, none) : groundOk(field, x, z, before);
   const p0 = fb.boxes.length;
   const b0 = b.boxes.length;
   const { x: ax, z0, z1, w } = AVENUE;
@@ -169,7 +177,7 @@ export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField,
       const g = field.heightAt(x, z + len / 2);
       glowStrip.strip([x, g + TOP + 0.1, z + len / 2], len - 0.1, 0.07, 0.04, Math.PI / 2, 0.55);
     }
-  // The branch from the lantern walk, 2.8 m wide, slabs turned along it.
+  // The link from the lantern walk, 2.8 m wide, slabs turned along it, a glow strip each side.
   {
     const [[bx0, bz0], [bx1, bz1]] = BRANCH;
     const L = Math.hypot(bx1 - bx0, bz1 - bz0);
@@ -182,8 +190,16 @@ export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField,
         const z = bz0 + tz * s + tx * o;
         if (onAvenue(x, z, -0.1)) continue;
         const c = field.index(x, z);
-        if (c < 0 || field.occupied[c] || field.waterAt(x, z) !== null) continue;
+        if (c < 0 || before[c] || field.waterAt(x, z) !== null) continue;
         fb.box(x, field.heightAt(x, z) + TOP - 0.15, z, 0.92, 0.3, 0.98, pick(o === 0 ? PAVER_LIGHT : PAVER, x, z, 6, 72), 'mapStone', { src, shade: 0.93 + 0.08 * hash3(x, z, 7, 72), ry });
+      }
+    for (const sd of [-1, 1])
+      for (let s = 0; s < L - 0.5; s += 4) {
+        const len = Math.min(4, L - s);
+        const m = s + len / 2;
+        const x = bx0 + tx * m - tz * sd * 1.45;
+        const z = bz0 + tz * m + tx * sd * 1.45;
+        glowStrip.strip([x, field.heightAt(x, z) + TOP + 0.04, z], len - 0.1, 0.07, 0.04, ry + Math.PI / 2, 0.55);
       }
   }
 
@@ -425,14 +441,14 @@ function welcomeArch(b: VoxelBuilder, field: HeightField, src: SourceTrace | und
   b.box(cx, ty + 0.66, z, 0.08, 0.2, 0.08, pick(GOLD, cx, z, 32, 91), 'mapStone', { src, shade: 1.12 });
   // The board under the lintel: a gold rim round the lacquer, the words on its south face.
   const bw = 5.2;
-  const bh = 1.5;
+  const bh = 2.0;
   const by = y0 - bh / 2 - 0.02;
   b.box(cx, by, z, bw + 0.16, bh + 0.16, 0.14, pick(GOLD, cx, z, 40, 91), 'mapStone', { src, shade: 0.98 });
   b.box(cx, by, z + 0.01, bw, bh, 0.16, LACQUER, 'mapStone', { src });
   const front = z + 0.09;
-  const px = 0.046;
-  boardWords(b, WELCOME, cx, by + 0.34, front, px, 0xf2c04c, src);
-  boardWords(b, newYearLine(), cx, by - 0.38, front, 0.026, 0xf6e6b8, src);
+  const px = 0.04;
+  boardWords(b, WELCOME, cx, by + 0.4, front, px, 0xf2c04c, src);
+  boardWords(b, newYearLine(), cx, by - 0.52, front, 0.027, 0xf6e6b8, src);
   // Two little lamps hung under the lintel, either side of the board: they light the words.
   for (const sd of [-1, 1]) {
     const x = cx + sd * (bw / 2 + 0.42);

@@ -152,8 +152,9 @@ function slimPole(b: VoxelBuilder, field: HeightField, x: number, z: number, h: 
  */
 function flag(kit: Kit, x: number, top: number, z: number, dir: number, w: number, low: boolean, seed: number, big = false): void {
   const h = w / FLAG_ASPECT;
-  const cols = big ? (low ? 14 : 22) : low ? 8 : 12;
-  const rows = big ? (low ? 20 : 32) : low ? 13 : 20;
+  // (fine enough across for the temple's three spires to stand apart: a blob of white is not Angkor Wat)
+  const cols = big ? (low ? 25 : 37) : low ? 19 : 25;
+  const rows = big ? (low ? 24 : 36) : low ? 16 : 24;
   const yaw = dir - Math.PI / 2;
   const s = Math.sin(dir);
   const c = Math.cos(dir);

@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   Color,
+  DoubleSide,
   Float32BufferAttribute,
   Group,
   InstancedBufferAttribute,
@@ -203,7 +204,6 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   // ── The glow over the square: the dome of lit air (night), the ring's glow at midnight ──
   glows.dome(SQUARE.x, G + 14, SQUARE.z - 1, 78, 0xffb050, 0.24);
   glows.dome(SQUARE.x, G + 5, SQUARE.z + 1, 46, 0xffbc60, 0.22);
-  glows.dome(STAGE.x, G + 12, STAGE.front - 2, 30, 0xffc070, 0.1);
   glows.dome(GATE.x + 6, G + 4, GATE.z + 10, 30, 0xffa850, 0.16);
   glows.add(RING.x, G + 2.5, RING.z, 30, 0xffc060, 0.5, 1, 2);
 
@@ -421,7 +421,7 @@ function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, 
     const y = yAt(u) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glows && i % 3 === 0) glows.halo(x, y, z, 1.1, c, 0.4);
+    if (glows && i % 3 === 0) glows.halo(x, y, z, 0.8, c, 0.3);
   }
 }
 
@@ -461,7 +461,7 @@ class Bodies {
       update(night, event) {
         const n = smooth(0.1, 0.85, night);
         // Paper and glass by day (a little warm), over 1.0 at night for the bloom.
-        material.color.setScalar((0.6 + 3.4 * n) * (1 + 0.2 * event));
+        material.color.setScalar((0.6 + 2.4 * n) * (1 + 0.2 * event));
       },
     };
   }
@@ -708,17 +708,23 @@ function buildBeams(bases: [number, number, number, number][], count: number): {
   const aim = new Float32Array(bases.length * 4);
   bases.forEach(([x, y, z, i], k) => {
     base.set([x, y, z, hash3(i, 1, 2, 97) * 6.28], k * 4);
-    // Lean back over Kulen and out to its side: azimuth (π north), elevation, sweep amplitude, sweep speed.
+    // Up and out to their side (never into Kulen's slope behind): azimuth (π/2 east, −π/2 west), elevation (the
+    // outer ones lower), sweep amplitude, sweep speed (rad/s).
     const side = (i + 0.5) / count - 0.5;
-    aim.set([Math.PI - side * 1.5, 1.12 + 0.18 * hash3(i, 3, 4, 97), 0.32 + 0.1 * hash3(i, 5, 6, 97), 0.13 + 0.06 * hash3(i, 7, 8, 97)], k * 4);
+    const az = (side > 0 ? 1 : -1) * (Math.PI / 2 - 0.35 + 0.3 * hash3(i, 9, 1, 97));
+    aim.set([az, 1.42 - Math.abs(side) * 0.55 + 0.06 * hash3(i, 3, 4, 97), 0.45 + 0.15 * hash3(i, 5, 6, 97), 0.11 + 0.06 * hash3(i, 7, 8, 97)], k * 4);
   });
   geo.setAttribute('bBase', new InstancedBufferAttribute(base, 4));
   geo.setAttribute('bAim', new InstancedBufferAttribute(aim, 4));
   geo.instanceCount = bases.length;
-  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffc468) } };
+  // (bound: the beams' reach; the map's culling reads it)
+  geo.boundingSphere = new Sphere(new Vector3(STAGE.x, GROUND + 120, STAGE.back), 280);
+  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffd890) } };
   const material = new ShaderMaterial({
     name: 'nye:beams',
     transparent: true,
+    // (turned to the camera round its axis: either winding)
+    side: DoubleSide,
     depthWrite: false,
     blending: AdditiveBlending,
     fog: true,
@@ -736,7 +742,7 @@ function buildBeams(bases: [number, number, number, number][], count: number): {
         float t = position.y + 0.5;
         vec3 p = bBase.xyz + dir * (t * 260.0);
         vec3 side = normalize(cross(dir, p - cameraPosition));
-        p += side * position.x * mix(1.4, 26.0, t);
+        p += side * position.x * mix(1.6, 34.0, t);
         vUv = vec2(position.x * 2.0, t);
         vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -750,10 +756,10 @@ function buildBeams(bases: [number, number, number, number][], count: number): {
       void main() {
         float across = exp(-vUv.x * vUv.x * 4.0) * 0.8 + exp(-vUv.x * vUv.x * 30.0) * 0.5;
         float along = pow(1.0 - vUv.y, 1.6) * smoothstep(0.0, 0.03, vUv.y);
-        vec3 col = uColor * (0.16 * uLevel * across * along);
+        vec3 col = uColor * (0.3 * uLevel * across * along);
         #ifdef USE_FOG
           vec3 hzRay = vFogWorld - cameraPosition;
-          col *= 1.0 - 0.85 * hazeDistance(length(hzRay));
+          col *= 1.0 - 0.55 * hazeDistance(length(hzRay));
         #endif
         if (max(col.r, max(col.g, col.b)) < 0.002) discard;
         gl_FragColor = vec4(col, 1.0);
@@ -761,7 +767,7 @@ function buildBeams(bases: [number, number, number, number][], count: number): {
   });
   const mesh = new Mesh(geo, material);
   mesh.name = 'nye:glow:beams';
-  mesh.frustumCulled = false;
+  mesh.frustumCulled = true;
   mesh.renderOrder = 13;
   mesh.visible = false;
   mesh.raycast = () => {};
