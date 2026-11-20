@@ -23,7 +23,7 @@ memory only; names, reports and hidden names are gone when the server stops. One
 | --- | --- | --- |
 | `PORT` | The port (Railway sets it). | 8787 |
 | `EVENT_CODE` | The hidden test room's code (`/?event=<code>`; letters, any case; dashes and spaces ignored). Not set: the test room is closed. Change it to retire a leaked link (no new build). | (none) |
-| `ROOM_CODE` | The event room's code (e.g. `NYE2027`): set, the public room (the real midnight) takes only players who type it on the join card or bring it in the link (`/?event=NYE2027`); the test room keeps its own `EVENT_CODE`. Not set: the public room is open to all. | (none) |
+| `ROOM_CODE` | The event room's code (e.g. `NYE2027`): set, the public room (the real midnight) takes only players who type it on the join card or bring it in the link (`/?event=NYE2027`); the test room keeps its own `EVENT_CODE`. `-`: the public room is open to all. | `NYE2027` |
 | `TRACKER_TOKEN` | API token for the tracker: each report also files a ticket in AWP ("Name report: …"), at most one per player an hour, 30 an hour in all. Not set: no tickets. | (none) |
 | `TRACKER_URL`, `TRACKER_PROJECT` | As for the bug button (`src/feedback/tracker.ts`). | the tracker, `AWP` |
 | `ALLOWED_ORIGINS` | Comma-separated page origins allowed to connect (e.g. `https://angkor.example`); pages from other sites are refused. Empty: any. | (any) |

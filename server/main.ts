@@ -15,7 +15,8 @@ const onRailway = Boolean(env.RAILWAY_ENVIRONMENT || env.RAILWAY_ENVIRONMENT_NAM
 const server = await startServer({
   port: Number(env.PORT) || 8787,
   eventCode: env.EVENT_CODE,
-  roomCode: env.ROOM_CODE,
+  // (the event room's code: the one players are told, so it may live here; ROOM_CODE on the service overrides it, ROOM_CODE=- opens the room to all)
+  roomCode: env.ROOM_CODE === '-' ? undefined : env.ROOM_CODE?.trim() || 'NYE2027',
   joinExempt: list(env.JOIN_LIMIT_EXEMPT),
   trustProxy: env.TRUST_PROXY ? env.TRUST_PROXY === '1' || env.TRUST_PROXY === 'true' : onRailway,
   allowedOrigins: list(env.ALLOWED_ORIGINS),
@@ -24,7 +25,7 @@ const server = await startServer({
 });
 
 console.log(
-  `[nye] live server on port ${server.port} · test room ${env.EVENT_CODE?.trim() ? 'open (EVENT_CODE set)' : 'closed (no EVENT_CODE)'} · event room ${env.ROOM_CODE?.trim() ? 'by code (ROOM_CODE set)' : 'open to all'} · ` +
+  `[nye] live server on port ${server.port} · test room ${env.EVENT_CODE?.trim() ? 'open (EVENT_CODE set)' : 'closed (no EVENT_CODE)'} · event room ${env.ROOM_CODE === '-' ? 'open to all (ROOM_CODE=-)' : `by code (${env.ROOM_CODE?.trim() ? 'ROOM_CODE' : 'NYE2027, the default'})`} · ` +
     `reports ${typeof tracker === 'string' ? `not filed (${tracker})` : `filed to ${tracker.url} (${tracker.project})`} · ` +
     `names ${NAMES_SOURCE === 'shared' ? 'src/net/names.ts' : `STUB (src/net/names.ts: ${NAMES_STUB_WHY})`}`,
 );
