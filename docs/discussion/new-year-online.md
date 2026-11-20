@@ -1,9 +1,9 @@
-# New Year's Eve online: fireworks at Angkor Wat
+# New Year's Eve online: fireworks at Phnom Kulen
 
 A plan for AWP-35, agreed with the owner on 2026-11-20. No code yet: the
 owner says when to start. Players meet online on the world map on
 31 December 2026, roam together, and watch a fireworks show with a countdown
-over Angkor Wat at midnight.
+over the festival square at Phnom Kulen's foot at midnight.
 
 ## What we decided
 
