@@ -1,4 +1,4 @@
-// New Year's Eve at Phnom Kulen (AWP-35, phase 1): a 40-second film of the night, for the owner to watch without a
+// New Year's Eve at Phnom Kulen (AWP-35, phase 1): a 50-second film of the night, for the owner to watch without a
 // GPU of his own. `VIDEO_CUT=scripts/promo-nye-cut.mjs npm run video` → screenshots/promo-nye.mp4 (on a machine with
 // no GPU: `VIDEO_SCALE=0.5 VIDEO_GRAPHICS=low`, ≈ 1‥4 s a frame; `-- preview` first).
 // Each shot's `query` holds the night's moment (nye/clock.ts: `countdown=<s>` before midnight, `fireworks=<s>` into
@@ -54,11 +54,11 @@ export default {
   captionCss: CAPTION_CSS,
   shots: [
     {
-      // 23:30: up the lantern walk from the village to the Bayon-face gate, the families arriving.
+      // 23:30: in under the welcome arch and up the avenue of flags and lamps to the Bayon-face gate, families arriving.
       name: 'arrive',
       seconds: 5,
       query: 'countdown=1800',
-      cam: move([404, 13, -200, 386, 14, -240], [388, 11, -226, 384, 15, -262]),
+      cam: move([384, 9, -196, 384, 12, -240], [384, 10, -224, 384, 15, -262]),
       caption: { km: 'ឆ្នាំថ្មី ២០២៧ · ភ្នំគូលែន', en: "New Year's Eve at Phnom Kulen", at: [0.6, 4.6] },
     },
     {
@@ -94,6 +94,22 @@ export default {
       query: 'fireworks=392',
       cam: move([440, 11, -246, 445, 55, -380], [441, 12, -258, 446, 62, -380]),
       nye: { at: 392, ears: [440, 11, -250] },
+    },
+    {
+      // The second stage, by the great lake: the floating stage, its board, the boats and the lotus candles round it.
+      name: 'lake',
+      seconds: 5,
+      query: 'countdown=1500',
+      cam: move([-347, 14, -45, -366, 6, -22], [-351, 11, -48, -370, 8, -22]),
+      caption: { km: 'ឆ្នេរបឹង · ឆាកអណ្ដែតទឹក', en: 'The floating stage on the lake', at: [0.5, 4.6] },
+    },
+    {
+      // The lake show over the water, in step with Kulen's, from the terrace.
+      name: 'lakeshow',
+      seconds: 5,
+      query: 'fireworks=446',
+      cam: move([-352, 10.5, -54, -372, 18, -25], [-354, 11, -52, -378, 26, -20]),
+      nye: { at: 446, ears: [-350, 10, -55] },
     },
     {
       // The finale's waves, the closing Angkor signature over the willows (≈ 465 s), and the title.
