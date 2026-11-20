@@ -188,8 +188,8 @@ export class GhostPeers implements PeerSource {
 
   /**
    * `ghostsat=lineup` (a check): every ride, then every emote (each played again and again), in a row across the
-   * Kulen square's gate, facing the gate (south: the crowd's camera `cam=384,11,-246,…` looks at their backs; turn
-   * round: `cam=384,10.5,-262,384,9,-244,60`); the riders in the air hang 4 m up.
+   * Kulen square's gate, facing the square (`cam=372,12,-259,374,10,-247,70` and `cam=393,13,-262,392,11,-247,70`);
+   * the riders in the air hang 4 m up.
    */
   private lineup(): void {
     const rides = RIDES.map((r, k) => ({ ride: k, emote: 0, air: r === 'glide' || r === 'parachute' || r === 'balloon' }));
@@ -199,7 +199,7 @@ export class GhostPeers implements PeerSource {
       const x = GATE.x - ((row.length - 1) / 2) * 2.2 + k * 2.2;
       const z = GATE.z - 8 - (o.air ? 3 : 0) - (k % 2) * 1.2;
       const y = this.floor(x, z) + (o.air ? 4 : 0);
-      const peer = { sid: 2000 + k, name: o.emote ? EMOTES[o.emote] : RIDES[o.ride], look: 0x1234 + k * 977, ride: o.ride, emote: o.emote, emoteAt: 0, party: k === 0, x, y, z, yaw: 0, stale: 0 };
+      const peer = { sid: 2000 + k, name: o.emote ? EMOTES[o.emote] : RIDES[o.ride], look: 0x1234 + k * 977, ride: o.ride, emote: o.emote, emoteAt: 0, party: k === 0, x, y, z, yaw: Math.PI, stale: 0 };
       const rnd = mulberry32(k);
       this.ghosts.push({ peer, motion: 'stay', area: SQUARE_AREA, gx: x, gz: z, speed: 0, until: 0, cx: x, cz: z, cr: 0, h: 0, a: 0, w: 0, base: 0, away: -1, rnd });
       this.peers.set(peer.sid, peer);
