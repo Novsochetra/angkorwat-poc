@@ -5,6 +5,7 @@ import { HAMLETS } from '../layout';
 import type { Sink } from './columns';
 import * as P from './palette';
 import { FACE_X_MAX, FACE_X_MIN, FACE_Z_MIN } from './views';
+import { onLakeLanding } from '../nye/plan';
 
 /**
  * Loose rock on the 2 m land: buttresses (rock masses standing against a
@@ -55,6 +56,8 @@ export function placeRocks(f: HeightField, sink: Sink, wet: Uint8Array): void {
       if (!plain(c)) continue;
       const h = H[c];
       const [x, z] = f.cellCenter(i, k);
+      // (none on New Year's Eve's lake venue: its ghat runs down the bank there, nye/plan.ts)
+      if (onLakeLanding(x, z, CELL)) continue;
       // (the row as the map was first made, for the random picks: heightfield.ts `row0`)
       const kh = k - f.row0;
       // The cliff behind this cell, on a side some camera sees: north (its

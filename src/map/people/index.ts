@@ -70,7 +70,7 @@ import { Things } from './_things';
  */
 
 /** Room in the crowd (people the scenes add, and some to spare for more scenes). */
-const CAPACITY = 460;
+const CAPACITY = 560;
 /** Room in the things (boxes of boats, the cart, kites, torches…: `_things.ts`). */
 const THINGS = 2200;
 /** A scene's maker (its module is loaded on its own: one that fails to load or to build is logged and left out). */
@@ -117,6 +117,8 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   bodhi: async () => ((m) => (e) => new m.BodhiMonk(e))(await import('./_sceneBodhiMonk')),
   // New Year's Eve's festival square at Phnom Kulen's foot: its sellers and visitors, and the night's crowd, dancers and pinpeat (AWP-35).
   nye: async () => ((m) => (e) => new m.NyeLife(e))(await import('./_sceneNye')),
+  // New Year's Eve by the great lake: the floating village's families on the shore terrace, their boats, the lotus candles, the mahori and the romvong on the floating stage (AWP-35).
+  nyelake: async () => ((m) => (e) => new m.NyeLakeLife(e))(await import('./_sceneNyeLake')),
 };
 /**
  * People, their things and the oxen cast shadows only while someone shown is

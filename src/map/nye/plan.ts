@@ -124,3 +124,16 @@ export function onLakeShore(x: number, z: number, margin = 0): boolean {
   const dz = (z - LAKE_SHORE.z) / (LAKE_SHORE.rz + margin);
   return dx * dx + dz * dz <= 1;
 }
+
+/**
+ * Between the lake stage and the terrace (with a margin m): the landing, the ghat down the bank and the jetty, in the
+ * stage's frame `u` across ±14 m, `v` 4‥32 m toward the shore. No loose rock is laid there (terrain/rocks.ts: an outcrop
+ * on the bank's lip stood in the ghat).
+ */
+export function onLakeLanding(x: number, z: number, margin = 0): boolean {
+  const dx = x - LAKE_STAGE.x;
+  const dz = z - LAKE_STAGE.z;
+  const u = dx * Math.cos(LAKE_STAGE.yaw) - dz * Math.sin(LAKE_STAGE.yaw);
+  const v = dx * Math.sin(LAKE_STAGE.yaw) + dz * Math.cos(LAKE_STAGE.yaw);
+  return Math.abs(u) <= 14 + margin && v >= 4 - margin && v <= 32 + margin;
+}

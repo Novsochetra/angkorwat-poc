@@ -80,7 +80,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   for (const [i, du] of offs.entries()) {
     const [x, z] = fr.at(du, -LAKE_STAGE.d / 2 - 0.2);
     beamBases.push([x, fr.deck + 0.4, z, i]);
-    eventGlow.add(x, fr.deck + 0.9, z, 0xffd080, 4.5, { level: 0.9 });
+    eventGlow.add(x, fr.deck + 0.7, z, 0xffd080, 2.6, { level: 0.55 });
   }
   const beams = buildBeams(beamBases, offs.length, fr.yaw + Math.PI, new Sphere(new Vector3(fr.x, fr.deck + 120, fr.z), 280));
   object.add(beams.mesh);

@@ -89,7 +89,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   // ── The floats: bundled bamboo in rows, lashed; bearers over them ─────────
   const rows = low ? 6 : 9;
   for (let r = 0; r < rows; r++) {
-    const z = -hd + 0.55 + ((2 * hd - 1.1) * r) / (rows - 1);
+    const z = -hd + 0.12 + ((2 * hd - 0.24) * r) / (rows - 1);
     const pieces = 3;
     for (let p = 0; p < pieces; p++) {
       const x0 = -hw - 0.2 + ((2 * hw + 0.4) * p) / pieces;
@@ -114,7 +114,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   for (let x = -hw + 0.6; x <= hw - 0.5; x += 2.9) span(x - 0.13, W + 0.2, -hd + 0.1, x + 0.13, W + 0.55, hd - 0.1, pick(TIMBER, hash3(x, 1, 1, 403)));
 
   // ── The deck: the skirt, the planks ───────────────────────────────────────
-  const skirt = (x0: number, z0: number, x1: number, z1: number) => span(x0, W + 0.3, z0, x1, D - 0.1, z1, pick(LACQUER, hash3(x0, z0, 1, 404)), 0.95);
+  const skirt = (x0: number, z0: number, x1: number, z1: number) => span(x0, W + 0.42, z0, x1, D - 0.1, z1, pick(LACQUER, hash3(x0, z0, 1, 404)), 0.95);
   skirt(-hw - 0.1, hd - 0.02, hw + 0.1, hd + 0.1);
   skirt(-hw - 0.1, -hd - 0.1, hw + 0.1, -hd + 0.02);
   skirt(-hw - 0.1, -hd, -hw + 0.02, hd);
@@ -154,7 +154,6 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   };
   bowl(-open - 0.55, hd - 0.7, false, 0.3);
   bowl(open + 0.55, hd - 0.7, false, 1.7);
-  streak(0, hd + 1, 12, 1.8, 0.6);
   // The naga's posts along the front edge, from each corner to the opening.
   const railY = D + 0.62;
   const zRail = hd - 0.35;
@@ -206,14 +205,15 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   // ── The Khmer lamps on the corners ─────────────────────────────────────────
   const toMap = (p: [number, number, number]) => P(p[0], p[1], p[2]);
   const lampFlames = bodies.asLamps(glow, toMap, 2.4);
+  // (the front pair a little back from the corners: the naga rear there)
   for (const [x, z] of [
-    [-hw + 0.55, hd - 0.55],
-    [hw - 0.55, hd - 0.55],
+    [-hw + 1.2, hd - 2.9],
+    [hw - 1.2, hd - 2.9],
     [-hw + 0.55, -hd + 0.55],
     [hw - 0.55, -hd + 0.55],
   ]) {
     khmerLamp(b, x, D, z, 1.1, 60 + Math.round(x + z), src, lampFlames, null, 2.4);
-    if (z > 0) streak(x, z + 0.5, 8, 1.4, 0.35);
+    streak(x + Math.sign(x) * 1.2, z + Math.sign(z) * 0.4, 8, 1.4, 0.35);
   }
 
   // ── The gate round the board ──────────────────────────────────────────────
@@ -254,6 +254,24 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
     span(x - 0.09, D + 0.12, zb - 0.1, x + 0.09, yb0 - 0.15, zb + 0.1, pick(STONE_LIGHT, (i * 0.37) % 1));
     if (!low) span(x - 0.13, D + 0.42, zb - 0.13, x + 0.13, D + 0.52, zb + 0.13, pick(STONE_LIGHT, 0.6), 1.05);
   }
+  // The back (seen from the lake and the boats): pilasters, a false door under a carved lintel, two wall lamps.
+  const zk = ZB - 0.12;
+  for (const x of [-2.9, 2.9, -bx + 0.2, bx - 0.2]) span(x - 0.28, D + 0.3, zk, x + 0.28, Y1 - 0.2, ZB, pick(STONE_LIGHT, hash3(x, 1, 1, 408)), 1.03);
+  span(-bx - 0.35, D, zk - 0.08, bx + 0.35, D + 0.3, ZB, pick(STONE_DARK, 0.3));
+  span(-bx - 0.35, Y1 - 0.2, zk - 0.05, bx + 0.35, Y1, ZB, pick(STONE_LIGHT, 0.7), 1.04);
+  // (the false door: its frame, the dark leaves with their panels, a lintel over it)
+  span(-1.15, D + 0.3, zk - 0.1, 1.15, D + 3.3, zk + 0.02, pick(STONE_LIGHT, 0.5), 1.05);
+  span(-0.8, D + 0.3, zk - 0.14, 0.8, D + 2.9, zk - 0.08, 0x3a2418, 0.85);
+  for (const x of [-0.42, 0.42]) for (const y of [0.9, 1.8, 2.5]) span(x - 0.26, D + y - 0.3, zk - 0.18, x + 0.26, D + y + 0.2, zk - 0.12, 0x4a2e1c, 0.95);
+  span(-1.5, D + 3.3, zk - 0.2, 1.5, D + 3.9, zk + 0.02, pick(STONE, 0.3));
+  gilt(-0.82, D + 0.32, zk - 0.16, 0.82, D + 0.36, zk - 0.12, 0.5);
+  for (const x of [-2.1, 2.1]) {
+    span(x - 0.18, D + 2.6, zk - 0.3, x + 0.18, D + 2.7, zk, pick(STONE_LIGHT, 0.4));
+    flame(x, D + 2.95, zk - 0.18, 0.26, 0.36, 1.1);
+    halo(x, D + 3.0, zk - 0.3, 2.4);
+    streak(x, -hd - 0.6, 10, 1.5, 0.4);
+  }
+
   // The lintel and its cornice.
   const L = bx + 2;
   span(-L, Y1, ZB - 0.1, L, Y1 + 0.9, ZF + 0.2, pick(STONE, 0.3));
@@ -265,12 +283,16 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   span(-L + 0.6, Y1 + 1.2, ZB, L - 0.6, Y1 + 1.5, ZF, pick(STONE, 0.6));
   span(-L + 1.1, Y1 + 1.5, ZB + 0.2, L - 1.1, ty, ZF - 0.2, pick(STONE_LIGHT, 0.3), 1.02);
   const m = new Mason(b, 0.5, { seed: 41, jitter: 0.035, ao: 0.3 });
+  // (the tiers on a finer grid: a smoother lotus bud, thinner cornices)
+  const fine = low ? undefined : new Mason(b, 0.25, { seed: 44, jitter: 0.03, ao: 0.3 });
   const pz = Math.round(((ZB + ZF) / 2) * 2) / 2;
-  const main = prasat(m, 0, pz, ty, { h: low ? 6 : 7, w: 3, tiers: low ? 4 : 5, doors: SIDE.pz | SIDE.px | SIDE.nx, body: 0.32, src, pal: SANDSTONE });
-  for (const s of [-1, 1]) prasat(m, s * 3.5, pz, ty, { h: 3.5, w: 2, tiers: 3, doors: SIDE.pz, body: 0.36, src });
-  m.weather(0.025, 42);
-  m.mottle(0.05, STONE_DARK, 43);
-  m.commit('none');
+  const main = prasat(m, 0, pz, ty, { h: low ? 6 : 7, w: 3, tiers: low ? 4 : 6, doors: SIDE.pz | SIDE.px | SIDE.nx, body: 0.3, src, pal: SANDSTONE, fine });
+  for (const s of [-1, 1]) prasat(m, s * 3.5, pz, ty, { h: 3.5, w: 2, tiers: 3, doors: SIDE.pz, body: 0.36, src, fine });
+  for (const g of fine ? [m, fine] : [m]) {
+    g.weather(0.025, 42);
+    g.mottle(0.05, STONE_DARK, 43);
+    g.commit('none');
+  }
   // (lamps in the doors, a gilt tip)
   flame(0, ty + 0.55, pz + 2.05, 0.5, 0.75, 1.1);
   halo(0, ty + 0.7, pz + 2.3, 3.2);
@@ -282,8 +304,6 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   // Braziers before the board.
   bowl(-bx + 0.6, zb + 1.4, true, 2.1);
   bowl(bx - 0.6, zb + 1.4, true, 3.3);
-  // The board's light on the deck and the water before it.
-  streak(0, hd + 0.5, 16, 0.9, 1.6);
 
   // ── Banners on lacquered poles either side of the gate ────────────────────
   const anchors: { x: number; y: number; z: number }[] = [];
@@ -309,6 +329,13 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
     quads.push({ at: [x0 + 0.12, D + 0.72, ZF + 0.01], u: [1.0, 0, 0], v: [0, Y1 - 0.6 - (D + 0.72), 0], part: 'pillar' });
   }
   quads.push({ at: [-L + 0.12, Y1 + 0.08, ZF + 0.21], u: [2 * L - 0.24, 0, 0], v: [0, 0.74, 0], part: 'lintel' });
+  // (and on the back: the lintel's back face, the false door's lintel, the pillars' backs)
+  quads.push({ at: [L - 0.12, Y1 + 0.08, ZB - 0.11], u: [-(2 * L - 0.24), 0, 0], v: [0, 0.74, 0], part: 'lintel' });
+  quads.push({ at: [1.4, D + 3.35, zk - 0.21], u: [-2.8, 0, 0], v: [0, 0.5, 0], part: 'lintel' });
+  for (const s of [-1, 1]) {
+    const x0 = s < 0 ? -bx - 1.6 : bx + 0.35;
+    quads.push({ at: [x0 + 1.13, D + 0.72, ZB - 0.01], u: [-1.0, 0, 0], v: [0, Y1 - 0.6 - (D + 0.72), 0], part: 'pillar' });
+  }
   const carving: Mesh = carvedPanels(quads, later);
   carving.name = 'nye:lake:carving';
 

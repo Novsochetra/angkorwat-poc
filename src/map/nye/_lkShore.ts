@@ -159,15 +159,21 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
     const dx = (bx - ax) / len;
     const dz = (bz - az) / len;
     const ry = Math.atan2(dx, dz);
+    // (its cells up to the trail; a land step on the way gets stairs of 0.33 m on its low side)
+    const cells: { x: number; z: number; g: number }[] = [];
     for (let s = 0.5; s < len; s += 1) {
       const x = ax + dx * s;
       const z = az + dz * s;
       const c = field.index(x, z);
       if (c < 0 || field.trail[c] === 2 || wet(x, z)) break;
+      cells.push({ x, z, g: land(x, z) });
+    }
+    for (const [i, { x, z, g }] of cells.entries()) {
       if (paved(x, z)) continue;
-      const g = land(x, z);
-      b.box(x, g + TOP - 0.15, z, 2.4, 0.3, 1.02, pick(PAVER_LIGHT, x, z, seed, 412), 'mapStone', { src, ry, shade: 0.95 + 0.07 * hash3(x, z, 2, 412) });
-      for (const sd of [-1, 1]) b.box(x + dz * sd * 1.45, g + TOP - 0.17, z - dx * sd * 1.45, 0.5, 0.3, 1.02, pick(LATERITE, x, z, seed + sd, 412), 'mapStone', { src, ry, shade: 0.94 });
+      let top = g;
+      for (const [j, o] of cells.entries()) top = Math.max(top, o.g - 0.33 * Math.abs(j - i));
+      b.box(x, (g - 0.3 + top + TOP) / 2, z, 2.4, top + TOP - (g - 0.3), 1.02, pick(PAVER_LIGHT, x, z, seed, 412), 'mapStone', { src, ry, shade: 0.95 + 0.07 * hash3(x, z, 2, 412) });
+      for (const sd of [-1, 1]) b.box(x + dz * sd * 1.45, (g - 0.32 + top + TOP - 0.02) / 2, z - dx * sd * 1.45, 0.5, top + TOP - 0.02 - (g - 0.32), 1.02, pick(LATERITE, x, z, seed + sd, 412), 'mapStone', { src, ry, shade: 0.94 });
       field.occupy(x - 1.7, z - 1.7, x + 1.7, z + 1.7);
       pavers += 3;
     }
@@ -388,8 +394,10 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
       stringLights(kit, bodies, glow, { x: ax, y: p.y + 1.02, z: az }, { x: bx, y: q.y + 1.02, z: bz }, 0.18, low ? 0.9 : 0.5, 4);
     }
     // Small flags of Cambodia on slim poles at every other post.
+    // (not on the last posts by the stage: from the jetty they would hide the board)
     for (let i = 1; i < ps.length; i += low ? 3 : 2) {
       const p = ps[i];
+      if (p.v < LAKE_STAGE.d / 2 + 5) continue;
       const [x, z] = fr.at(p.u + s * 0.12, p.v);
       b.box(x, p.y + 1.05 + 1.0, z, 0.06, 2.0, 0.06, 0xe6e2d8, 'mapStone', { src });
       b.box(x, p.y + 3.1, z, 0.12, 0.1, 0.12, pick(GOLD, x, z, 3, 417), 'mapStone', { src, shade: 1.08 });
