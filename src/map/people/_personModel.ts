@@ -2320,23 +2320,46 @@ export class Crowd {
     return this.size[i];
   }
 
-  /** Put person `i` on the map: feet at (x, y, z), facing `yaw` (0 = +z, turning to +x). */
-  place(i: number, x: number, y: number, z: number, yaw: number): void {
+  /**
+   * Put person `i` on the map: feet at (x, y, z), facing `yaw` (0 = +z, turning to +x). `pitch` tips the whole body
+   * forward about the feet (rad: π/2 lies them face down along the heading; the hang glider's pilot of another player,
+   * people/_scenePlayers.ts), `grow` sizes them against their own height (0‥1: coming in and going out). Both default
+   * to nothing (one matrix, as every scene places).
+   */
+  place(i: number, x: number, y: number, z: number, yaw: number, pitch = 0, grow = 1): void {
     const m = this.mat;
     const o = i * 16;
-    const k = this.size[i];
+    const k = this.size[i] * grow;
     const c = Math.fround(Math.cos(yaw) * k);
     const s = Math.fround(Math.sin(yaw) * k);
     x = Math.fround(x);
     y = Math.fround(y);
     z = Math.fround(z);
-    if (this.shown[i] && m[o + 12] === x && m[o + 13] === y && m[o + 14] === z && m[o] === c && m[o + 8] === s) return;
-    this.shown[i] = 1;
-    m[o] = c;
-    m[o + 2] = -s;
-    m[o + 5] = k;
-    m[o + 8] = s;
-    m[o + 10] = c;
+    if (pitch === 0) {
+      if (this.shown[i] && m[o + 12] === x && m[o + 13] === y && m[o + 14] === z && m[o] === c && m[o + 8] === s && m[o + 5] === Math.fround(k) && m[o + 6] === 0) return;
+      this.shown[i] = 1;
+      m[o] = c;
+      m[o + 2] = -s;
+      m[o + 4] = 0;
+      m[o + 5] = k;
+      m[o + 6] = 0;
+      m[o + 8] = s;
+      m[o + 9] = 0;
+      m[o + 10] = c;
+    } else {
+      // (R = turn(yaw) · tip(pitch): the up axis leans forward, the forward axis down)
+      const cp = Math.cos(pitch);
+      const sp = Math.sin(pitch);
+      this.shown[i] = 1;
+      m[o] = c;
+      m[o + 2] = -s;
+      m[o + 4] = s * sp;
+      m[o + 5] = k * cp;
+      m[o + 6] = c * sp;
+      m[o + 8] = s * cp;
+      m[o + 9] = -k * sp;
+      m[o + 10] = c * cp;
+    }
     m[o + 12] = x;
     m[o + 13] = y;
     m[o + 14] = z;

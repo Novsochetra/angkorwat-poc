@@ -63,16 +63,17 @@ import { Things } from './_things';
  * life's; `_lineup.ts`), `lod=near|far` (everyone in one model), `people=0`
  * (none), `people=<scene>,<scene>` (only those: monks, tour, fish, cart,
  * apsara, farm, kites, village, villagemarket, market, palmsugar,
- * eastvillage, kulen, back, alms), `monks=<m>` (the procession that far below
+ * eastvillage, kulen, back, alms, players), `ghosts=<n>&ghostsat=square|lake|map`
+ * (fake other players: `_scenePlayers.ts`), `monks=<m>` (the procession that far below
  * Angkor Wat's gate), `tour=<place>[:<s>]` (the visitors at that temple's
  * stop), `fish=<s>` (every fisherman that far into a throw), `cart=<m>`
  * (the ox cart that far round its loop).
  */
 
-/** Room in the crowd (people the scenes add, and some to spare for more scenes). */
-const CAPACITY = 560;
-/** Room in the things (boxes of boats, the cart, kites, torches…: `_things.ts`). */
-const THINGS = 2200;
+/** Room in the crowd (people the scenes add, and some to spare for more scenes; 50 of it other players: `_scenePlayers.ts`). */
+const CAPACITY = 610;
+/** Room in the things (boxes of boats, the cart, kites, torches…: `_things.ts`; ≈ 1000 of it other players' rides). */
+const THINGS = 3200;
 /** A scene's maker (its module is loaded on its own: one that fails to load or to build is logged and left out). */
 type SceneMaker = (env: PeopleEnv, ctx: MapContext) => PeopleScene;
 /** The scenes by name (`people=<name>,<name>` builds only those). */
@@ -119,6 +120,8 @@ const SCENES: Record<string, () => Promise<SceneMaker>> = {
   nye: async () => ((m) => (e) => new m.NyeLife(e))(await import('./_sceneNye')),
   // New Year's Eve by the great lake: the floating village's families on the shore terrace, their boats, the lotus candles, the mahori and the romvong on the floating stage (AWP-35).
   nyelake: async () => ((m) => (e) => new m.NyeLakeLife(e))(await import('./_sceneNyeLake')),
+  // Other players (New Year's Eve online, phase 2): the live rooms' peers (src/net/client.ts), or `ghosts=<n>` (AWP-35).
+  players: async () => ((m) => (e) => new m.Players(e))(await import('./_scenePlayers')),
 };
 /**
  * People, their things and the oxen cast shadows only while someone shown is

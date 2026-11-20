@@ -16,7 +16,11 @@
     "video": "node scripts/video.mjs",
     "wallpaper": "node scripts/wallpaper.mjs",
     "perf": "node scripts/perf.mjs",
-    "idle": "node scripts/idle.mjs"
+    "idle": "node scripts/idle.mjs",
+    "server": "node server/main.ts",
+    "server:test": "node server/test.ts",
+    "nyeload": "node scripts/nyeload.mjs",
+    "nyetest": "node scripts/nyenet-check.mjs"
   },
   "dependencies": {
     "posthog-js": "^1.434.14",

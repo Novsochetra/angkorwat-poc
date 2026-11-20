@@ -1,7 +1,7 @@
 import { registerEvent, type RealSpan } from '../calendar';
 import type { MapFrame } from '../types';
 import { num, t } from '../ui/lang';
-import { nightHeld, nyeAsked, nyePhase, nyeSeconds, NYE_MIDNIGHT, NYE_TIMES, NYE_YEAR, squareShown } from './clock';
+import { inTestRoom, nightHeld, nyeAsked, nyePhase, nyeSeconds, NYE_MIDNIGHT, NYE_TIMES, NYE_YEAR, squareShown } from './clock';
 import { createNyeOverlay, type NyeOverlay, type NyeView } from './overlay';
 import { RING } from './plan';
 
@@ -107,6 +107,10 @@ export function installNye(o: NyeOptions): NyeUi {
   if (!squareShown()) return { update() {} };
   const params = new URLSearchParams(location.search);
   const shot = params.get('shot') === '1';
+  // (joining the New Year online: the setting, the test link, the card; nothing connects until the player says so)
+  void import('../ui/_join').then((j) => j.installJoin({ uiRoot: o.uiRoot })).catch((e) => console.error('[map] New Year online failed:', e));
+  /** `nyetest=1`: the test room's tag in a shot (the room itself comes from the server: clock.ts `inTestRoom`). */
+  const testTag = shot && params.get('nyetest') === '1';
   /** `nyetoast=night|over`: that toast in a shot (shots stay calm otherwise). */
   const askToast = params.get('nyetoast');
   let ov: NyeOverlay | null = null;
@@ -114,7 +118,7 @@ export function installNye(o: NyeOptions): NyeUi {
   /** The night toast was said (this visit), the night was held at the last look. */
   let toldNight = false;
   let wasHeld = false;
-  const view: NyeView = { chip: null, numeral: null, greet: false };
+  const view: NyeView = { chip: null, numeral: null, greet: false, test: false };
 
   const overlay = (): NyeOverlay => {
     if (!ov) {
@@ -159,7 +163,8 @@ export function installNye(o: NyeOptions): NyeUi {
       view.chip = held && phase === 'night' ? nyeLeft(-s) : null;
       view.numeral = held && phase === 'last10' ? num(Math.min(10, Math.max(1, Math.ceil(-s)))) : null;
       view.greet = held && s >= 0 && s < GREET;
-      if (!ov && !view.chip && !view.numeral && !view.greet) return;
+      view.test = testTag || inTestRoom();
+      if (!ov && !view.chip && !view.numeral && !view.greet && !view.test) return;
       const v = overlay();
       v.set(view);
       v.fade(view.greet && s >= GREET - FADE && !shot);

@@ -27,6 +27,8 @@ export interface NyeView {
   numeral: string | null;
   /** The greeting shows (0 ≤ s < GREET), and fades (s ≥ GREET − FADE). */
   greet: boolean;
+  /** In the hidden test room: a small "សាកល្បង / TEST" tag in the bottom right corner (clock.ts `inTestRoom`). */
+  test?: boolean;
 }
 
 export interface NyeOverlay {
@@ -112,8 +114,14 @@ const STYLE = `
   .nye-toast { top: 52px; max-width: min(560px, calc(100vw - 32px)); }
   .nye-toast-text b { font-size: 15px; }
 }
+/* The test room's tag (docs/discussion/new-year-online.md "Testing"): small, in the bottom right corner, out of the way. */
+.nye-test { position: absolute; right: calc(14 * var(--px)); bottom: calc(14 * var(--px)); padding: calc(3 * var(--px)) calc(9 * var(--px)); opacity: 0; transition: opacity 0.4s;
+  border: 1px dashed rgba(255, 213, 74, 0.85); border-radius: calc(4 * var(--px)); background: rgba(40, 26, 4, 0.72); color: #ffd54a;
+  font: 700 calc(12 * var(--px)) / 1.3 var(--mu-display); letter-spacing: 0.14em; }
+.nye-test.is-on { opacity: 1; }
+:lang(km) .nye-test { letter-spacing: 0; font-size: calc(13 * var(--px)); line-height: 1.5; }
 /* (photos: the overlay stands aside, as the interface's banners do) */
-body.roam-photo .nye-chip, body.roam-photo .nye-toast { opacity: 0 !important; }
+body.roam-photo .nye-chip, body.roam-photo .nye-toast, body.roam-photo .nye-test { opacity: 0 !important; }
 `;
 
 /** What the chip and the toast must not cover: the interface's controls and counters near the top. */
@@ -137,7 +145,8 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
     <div class="nye-chip mu-frame mu-sm" role="timer" aria-live="off"><span class="mu-bg"></span>${SPARK.replace('<svg ', '<svg class="nye-chip-star" ')}<span class="nye-chip-y"></span><span class="nye-chip-sep">·</span><span class="nye-chip-t"></span></div>
     <div class="nye-toast mu-frame mu-sm" role="status"><span class="mu-bg"></span><span class="mu-glow"></span><span class="nye-toast-ico">${BURST}</span><span class="nye-toast-text"><em></em><b></b><span></span></span></div>
     <div class="nye-num" aria-hidden="true"></div>
-    <div class="nye-greet" role="status"></div>`;
+    <div class="nye-greet" role="status"></div>
+    <div class="nye-test" aria-hidden="true"></div>`;
   // (last in the root: over the map's name cards, which move with the map; it is never in the way of a click)
   root.append(ov);
   const chip = ov.querySelector<HTMLElement>('.nye-chip')!;
@@ -147,6 +156,7 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
   const [kickEl, lineEl, noteEl] = [...toastEl.querySelectorAll<HTMLElement>('.nye-toast-text > *')];
   const numEl = ov.querySelector<HTMLElement>('.nye-num')!;
   const greetEl = ov.querySelector<HTMLElement>('.nye-greet')!;
+  const testEl = ov.querySelector<HTMLElement>('.nye-test')!;
   let year = '';
   let shown: NyeView = { chip: null, numeral: null, greet: false };
   let toastLeft = 0;
@@ -157,6 +167,7 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
     chipY.textContent = t('nyeChip', { year });
     chip.setAttribute('aria-label', t('nyeChipAria'));
     greetEl.textContent = t('nyeHappy', { year });
+    testEl.textContent = t('njTestTag');
   };
   onLang(() => words(year));
 
@@ -236,7 +247,8 @@ export function createNyeOverlay(root: HTMLElement): NyeOverlay {
       if (v.greet !== shown.greet) {
         greetEl.classList.toggle('is-on', v.greet);
       }
-      shown = { chip: v.chip, numeral: v.numeral, greet: v.greet };
+      if (!!v.test !== !!shown.test) testEl.classList.toggle('is-on', !!v.test);
+      shown = { chip: v.chip, numeral: v.numeral, greet: v.greet, test: v.test };
     },
     toast(kick, line, note, seconds) {
       kickEl.textContent = kick;

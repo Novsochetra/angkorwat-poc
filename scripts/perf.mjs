@@ -90,6 +90,10 @@ const VIEWS = {
   nye: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&fireworks=458',
   nyecrowd: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&countdown=1800',
   nyeover: 'fireworks=458',
+  // (New Year's Eve online, phase 2: 50 fake other players (`ghosts=`, people/_scenePlayers.ts) among the night's crowd on
+  // the square, on foot by the gate and from the crowd's view)
+  nyeplayers: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&countdown=600&ghosts=50',
+  nyeplayersview: 'cam=384,11,-246,392,22,-330,55&countdown=600&ghosts=50',
   // (the day turning at dusk, the shadow map drawn when the live page draws it: `TURNING`)
   dusk: 'shadows=live',
   duskwalk: 'shadows=live&roam=walk&at=-304,63&yaw=225&sim=w:1&rcam=0,16,9',

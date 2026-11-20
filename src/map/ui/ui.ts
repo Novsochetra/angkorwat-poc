@@ -148,7 +148,7 @@ const TABS: TabDef<TabId>[] = [
   { id: 'about', word: 'tabAbout', icon: ICON.heartLine },
 ];
 /** The tab of each choice's heading (`#mu-<group>-h`): a shot's `scroll:<group>` shows that tab first. */
-const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', moon: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play', pad: 'play' };
+const GROUP_TAB: Record<string, TabId> = { lang: 'general', time: 'general', weather: 'general', moon: 'general', graphics: 'graphics', res: 'graphics', fog: 'graphics', mini: 'play', pad: 'play', nyeon: 'play' };
 /** The snow choice's icon: a six-armed snowflake, drawn like the sun's rays (round strokes). */
 const SNOW_ICON =
   '<svg class="mu-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
@@ -435,6 +435,16 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
         ${switchRow('keys', 'keyHelp', 'keyHelp', '<small data-t="keyHelpNote"></small>')}
         ${switchRow('fly', 'easyFly', 'easyFly', '<small class="mu-fly-note"></small>')}
         ${switchRow('calm', 'calm', 'calm', '<small data-t="calmNote"></small>')}
+        ${
+          // (New Year online, while the square stands: the switch and the name, wired by ui/_join.ts; nothing here joins)
+          squareShown()
+            ? `<div class="mu-set-group mu-nj-set" role="group" aria-labelledby="mu-nyeon-h">
+          ${head('nyeon', 'njSet')}
+          <div class="mu-set-row"><span id="mu-nyeon-l"><span data-t="njSetNote"></span><small class="mu-nj-state"></small></span><button type="button" class="mu-switch mu-nj-sw" role="switch" aria-checked="false" aria-labelledby="mu-nyeon-l"><span class="mu-knob"></span></button></div>
+          <div class="mu-set-row mu-nj-name-row"><span><span data-t="njSetName"></span><small class="mu-nj-name"></small></span><button type="button" class="mu-nj-edit" data-t="njSetEdit"></button></div>
+        </div>`
+            : ''
+        }
         <div class="mu-set-group mu-pad-group" role="group" aria-labelledby="mu-pad-h">
           ${head('pad', 'padHead', '<span class="mu-pad-state"></span>')}
           ${switchRow('rumble', 'padRumble', 'padRumble', '<small data-t="padRumbleNote"></small>')}
