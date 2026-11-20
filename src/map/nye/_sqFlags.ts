@@ -137,7 +137,7 @@ export function raiseFlags(o: WayIn): { blocks: number; kitBoxes: number } {
 }
 
 /** A slim white flagpole with a gilt knob (its foot on the land); returns its top (m). */
-function slimPole(b: VoxelBuilder, field: HeightField, x: number, z: number, h: number, src: SourceTrace | undefined): number {
+export function slimPole(b: VoxelBuilder, field: HeightField, x: number, z: number, h: number, src: SourceTrace | undefined): number {
   const g = field.heightAt(x, z);
   b.box(x, g + 0.08, z, 0.3, 0.24, 0.3, pick(POST_STONE, x, z, 1, 97), 'mapStone', { src, shade: 0.95 });
   b.box(x, g + h / 2, z, 0.09, h, 0.09, pick(POLE, x, z, 2, 97), 'mapStone', { src, shade: 1.02 });
@@ -150,7 +150,7 @@ function slimPole(b: VoxelBuilder, field: HeightField, x: number, z: number, h: 
  * as the flag's 25 : 16 says; columns of runs of `flagCell` colours (the temple's white a little proud of the red,
  * so it reads), waving.
  */
-function flag(kit: Kit, x: number, top: number, z: number, dir: number, w: number, low: boolean, seed: number, big = false): void {
+export function flag(kit: Kit, x: number, top: number, z: number, dir: number, w: number, low: boolean, seed: number, big = false): void {
   const h = w / FLAG_ASPECT;
   // (fine enough across for the temple's three spires to stand apart: a blob of white is not Angkor Wat)
   const cols = big ? (low ? 25 : 37) : low ? 19 : 25;

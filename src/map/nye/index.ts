@@ -32,6 +32,7 @@ type PieceBuilder = (ctx: MapContext) => NyePiece | Promise<NyePiece>;
 const PIECES: [string, () => Promise<PieceBuilder>][] = [
   ['square', async () => (await import('./square')).buildNyeSquare],
   ['stage', async () => (await import('./stage')).buildNyeStage],
+  ['lake', async () => (await import('./lake')).buildNyeLake],
 ];
 
 export async function buildNye(ctx: MapContext): Promise<MapPart> {

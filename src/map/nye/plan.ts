@@ -93,17 +93,21 @@ export function onSquare(x: number, z: number, margin = 0): boolean {
 // ── The second stage: by the great lake, north of the floating village (the owner, 2026-11-21) ───────────────────
 //
 // The ground (checked with the height field): the lake's north-east shore meadow, x −380‥−320, z −90‥−50, is flat at
-// 8 m; the water (level 5, bed 4) begins at z ≈ −48 there and curves south-east to x ≈ −308 at z −24; the lake trail
+// 8 m; under it a sand beach 1 m over the water (6 m) from z ≈ −48 there, ≈ 8 m wide, and the water (level 5, bed 4)
+// past it — at x −360 from z ≈ −36, curving south-east to x ≈ −320 at z −12 (the beach's edge to x ≈ −308 at z −24);
+// the shallows are 1 m deep (0.6 by the beach); the lake trail
 // runs along its north edge (z ≈ −94‥−100), the east shore trail at x ≈ −290, the Bayon stream at x ≈ −404; the
 // floating village lies ≈ 100 m south (−300, 74). From the shore the crowd looks south-west over a floating stage
 // across the open lake, the fireworks over the water behind the stage (and in it), the floating village's lights to
 // the left, the western cliffs and their lit stairway behind.
 
 /**
- * The lake stage: a floating stage on pontoons in the shallows off the shore, its front (the board) facing the shore
+ * The lake stage: a floating stage on pontoons in the shallows off the shore (13 m out along its axis from where the
+ * owner first set it, (−362, −37): that was the beach's edge; now all of it floats but a corner of its front by the
+ * beach), its front (the board) facing the shore
  * (`yaw`: radians toward (sin, cos) in x, z; the crowd is that way), `w` × `d` m, its deck `deck` m over the water.
  */
-export const LAKE_STAGE = { x: -362, z: -37, yaw: Math.atan2(22, -27), w: 22, d: 12, deck: 1.2 } as const;
+export const LAKE_STAGE = { x: -370.2, z: -26.9, yaw: Math.atan2(22, -27), w: 22, d: 12, deck: 1.2 } as const;
 
 /** The shore terrace where the lakeside crowd gathers, facing the stage: a paved ellipse on the meadow (m). */
 export const LAKE_SHORE = { x: -342, z: -64, rx: 20, rz: 15 } as const;

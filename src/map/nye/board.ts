@@ -211,21 +211,45 @@ export interface Board {
   update(f: MapFrame): void;
 }
 
-/** The board's mesh at its place (world m), its picture drawn now. */
-export function buildBoard(): Board {
+/**
+ * Where a board stands (world m): its middle, its screen `w` × `h` (the picture is the same canvas, 2 : 1, whatever
+ * the size), turned `yaw` (radians toward (sin, cos) in x, z: 0 faces south, +z), redrawn only within `far` m.
+ */
+export interface BoardPlace {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  yaw?: number;
+  far?: number;
+  name?: string;
+}
+
+/** The Kulen stage's board (plan.ts `BOARD`): facing south in its gate. */
+export const KULEN_BOARD: BoardPlace = { x: BOARD.x, y: GROUND + BOARD.y, z: BOARD.z, w: BOARD.w, h: BOARD.h, yaw: 0, far: 260, name: 'nye:board' };
+
+/** A board's mesh at its place (world m; the Kulen stage's by default), its picture drawn now. Each board has its own canvas. */
+export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
+  const yaw = place.yaw ?? 0;
+  const far = place.far ?? 260;
+  const name = place.name ?? 'nye:board';
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
   const canvas = document.createElement('canvas');
   canvas.width = CW;
   canvas.height = CH;
   const g = canvas.getContext('2d')!;
   const texture = new CanvasTexture(canvas);
-  texture.name = 'nye:board';
+  texture.name = name;
   texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 8;
   const material = new MeshBasicMaterial({ map: texture, color: 0xffffff });
-  material.name = 'nye:board';
-  const mesh = new Mesh(new PlaneGeometry(BOARD.w, BOARD.h), material);
-  mesh.name = 'nye:board';
-  mesh.position.set(BOARD.x, GROUND + BOARD.y, BOARD.z);
+  material.name = name;
+  const mesh = new Mesh(new PlaneGeometry(place.w, place.h), material);
+  mesh.name = name;
+  mesh.position.set(place.x, place.y, place.z);
+  mesh.rotation.y = yaw;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
 
@@ -433,7 +457,7 @@ export function buildBoard(): Board {
 
   const frustum = new Frustum();
   const view = new Matrix4();
-  const sphere = new Sphere(mesh.position.clone(), Math.hypot(BOARD.w, BOARD.h) / 2);
+  const sphere = new Sphere(mesh.position.clone(), Math.hypot(place.w, place.h) / 2);
   const inView = (cam: PerspectiveCamera) => {
     view.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     return frustum.setFromProjectionMatrix(view).intersectsSphere(sphere);
@@ -496,10 +520,10 @@ export function buildBoard(): Board {
       const sec = Math.floor(nyeNow() / 1000);
       if (sec === lastSecond && !dirty) return;
       const cam = f.camera;
-      const dx = cam.position.x - BOARD.x;
-      const dz = cam.position.z - BOARD.z;
-      // (past ≈ 260 m its digits are a few pixels; behind it, its back is the gate's stone; out of view, unseen)
-      if (drawn && (dx * dx + dz * dz > 260 * 260 || dz < -1 || !inView(cam))) return;
+      const dx = cam.position.x - place.x;
+      const dz = cam.position.z - place.z;
+      // (past `far` (≈ 260 m on Kulen) its digits are a few pixels; behind it, its back is the gate's stone; out of view, unseen)
+      if (drawn && (dx * dx + dz * dz > far * far || dx * fx + dz * fz < -1 || !inView(cam))) return;
       lastSecond = sec;
       refresh();
     },

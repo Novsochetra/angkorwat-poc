@@ -114,7 +114,7 @@ const ell = (thDeg: number, k: number): [number, number] => {
 };
 
 /** The kit's drift values for a candle (`ANIM.drift`). */
-interface Drift {
+export interface Drift {
   a: [number, number, number];
   b: [number, number, number, number];
 }
@@ -348,7 +348,7 @@ function freeSpot(field: HeightField, x: number, z: number): [number, number] | 
  * shell), blossom over most of it (the trumpet tree nearly all: it flowers bare), a few lit panicles on top in the
  * kit, soft halos round it at night.
  */
-function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: HeightField, t: NyeTree, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): { low: number; top: number } {
+export function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: HeightField, t: NyeTree, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): { low: number; top: number } {
   const rnd = (i: number) => hash3(seed, i, 3, 91);
   const myrtle = t.kind === 'myrtle';
   // (a broad, open crown of separate lobes on spreading limbs, not one ball: from above it reads as a tree, gaps
@@ -448,7 +448,7 @@ function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: Heigh
  * Frangipani (ចំប៉ា): a short pale trunk forking into thick grey branches that fork again (a candelabra), each tip
  * a tuft of long leaves (the plant kit's) round a cluster of white flowers with yellow hearts.
  */
-function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, t: NyeTree, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): { low: number; top: number } {
+export function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, t: NyeTree, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): { low: number; top: number } {
   void field;
   const rnd = (i: number) => hash3(seed, i, 4, 93);
   const bark = BARK.champa;
@@ -492,7 +492,7 @@ function champa(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, t: Ny
 }
 
 /** Petals fallen under a crown (the kit: thin slabs lying on the ground or the pavers). */
-function fallenPetals(kit: Kit, field: HeightField, t: NyeTree, x: number, z: number, seed: number, low: boolean): void {
+export function fallenPetals(kit: Kit, field: HeightField, t: NyeTree, x: number, z: number, seed: number, low: boolean): void {
   const tones = BLOOM[t.bloom];
   const n = low ? 10 : t.kind === 'champa' ? 18 : 34;
   for (let i = 0; i < n; i++) {
@@ -510,7 +510,7 @@ function fallenPetals(kit: Kit, field: HeightField, t: NyeTree, x: number, z: nu
  * A flower bed from (x0, z0) to (x1, z1), `w` m wide: dark soil, then plants in patches of one kind (each a leafy
  * mound and its flower heads on top), two rows staggered (one on the low level).
  */
-function flowerBed(b: VoxelBuilder, field: HeightField, x0: number, z0: number, x1: number, z1: number, seed: number, low: boolean, src: SourceTrace | undefined, w = 1.0): void {
+export function flowerBed(b: VoxelBuilder, field: HeightField, x0: number, z0: number, x1: number, z1: number, seed: number, low: boolean, src: SourceTrace | undefined, w = 1.0): void {
   const len = Math.hypot(x1 - x0, z1 - z0);
   if (len < 0.3) return;
   const ux = (x1 - x0) / len;
@@ -594,7 +594,7 @@ function bougainvilleaArch(b: VoxelBuilder, field: HeightField, x: number, z: nu
 }
 
 /** A lily pad on the water (two thin slabs turned 45°: a round leaf), a little bobbing (the kit's drift). */
-function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
+export function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
   const d = { anim: ANIM.drift, a: [0, hash3(i, 1, 3, 71), 0.08] as [number, number, number], b: [0, 0, perPeriod(0.05), 0] as [number, number, number, number] };
   const s = 0.7 + 0.4 * hash3(i, 2, 3, 71);
   const c = [0x4f9a3c, 0x5fae48, 0x468a36][i % 3];
@@ -607,7 +607,7 @@ function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
 }
 
 /** A pink lotus (outer and inner petals crossed, a gold heart) standing on the water, or a bud on its stalk. */
-function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud: boolean): void {
+export function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud: boolean): void {
   const glow = 0.3;
   kit.box(x, wy + 0.25, z, 0.03, 0.5, 0.03, 0x5a7a3a);
   if (bud) {
@@ -627,7 +627,7 @@ function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud: boole
  * A floating lotus candle (បណ្តែតប្រទីប: a banana-leaf boat, lotus petals, a candle and its flame), drifting; its
  * halo and its streak on the water drift with it. Night only.
  */
-function candle(kit: Kit, glow: Glow, x: number, y: number, z: number, drift: Drift, i: number): void {
+export function candle(kit: Kit, glow: Glow, x: number, y: number, z: number, drift: Drift, i: number): void {
   const d = { show: SHOW.night, anim: ANIM.drift, a: drift.a, b: drift.b };
   const petal = hash3(i, 7, 1, 55) < 0.6 ? 0xf29ab8 : 0xf6f0e4;
   kit.box(x, y + 0.05, z, 0.46, 0.1, 0.46, 0x5f9a3a, d);

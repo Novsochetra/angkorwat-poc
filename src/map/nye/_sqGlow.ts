@@ -699,7 +699,17 @@ class Glows {
 
 // ── The searchlight beams (the event night): soft additive cones swept in the shader ──
 
-function buildBeams(bases: [number, number, number, number][], count: number): { mesh: Mesh; u: { uLevel: { value: number }; uTime: { value: number } } } {
+/**
+ * The beams from `bases` (x, y, z, index): up and out to the sides of a stage facing `facing` (radians toward (sin, cos)
+ * in x, z; 0 the Kulen stage, facing south); `bound` the sphere round their reach (the map's culling reads it). The lake
+ * stage's too (lake.ts).
+ */
+export function buildBeams(
+  bases: [number, number, number, number][],
+  count: number,
+  facing = 0,
+  bound: Sphere = new Sphere(new Vector3(STAGE.x, GROUND + 120, STAGE.back), 280),
+): { mesh: Mesh; u: { uLevel: { value: number }; uTime: { value: number } } } {
   const quad = new PlaneGeometry(1, 1, 1, 8);
   const geo = new InstancedBufferGeometry();
   geo.setIndex(quad.getIndex());
@@ -711,14 +721,14 @@ function buildBeams(bases: [number, number, number, number][], count: number): {
     // Up and out to their side (never into Kulen's slope behind): azimuth (π/2 east, −π/2 west), elevation (the
     // outer ones lower), sweep amplitude, sweep speed (rad/s).
     const side = (i + 0.5) / count - 0.5;
-    const az = (side > 0 ? 1 : -1) * (Math.PI / 2 - 0.35 + 0.3 * hash3(i, 9, 1, 97));
+    const az = facing + (side > 0 ? 1 : -1) * (Math.PI / 2 - 0.35 + 0.3 * hash3(i, 9, 1, 97));
     aim.set([az, 1.42 - Math.abs(side) * 0.55 + 0.06 * hash3(i, 3, 4, 97), 0.45 + 0.15 * hash3(i, 5, 6, 97), 0.11 + 0.06 * hash3(i, 7, 8, 97)], k * 4);
   });
   geo.setAttribute('bBase', new InstancedBufferAttribute(base, 4));
   geo.setAttribute('bAim', new InstancedBufferAttribute(aim, 4));
   geo.instanceCount = bases.length;
   // (bound: the beams' reach; the map's culling reads it)
-  geo.boundingSphere = new Sphere(new Vector3(STAGE.x, GROUND + 120, STAGE.back), 280);
+  geo.boundingSphere = bound;
   const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffd890) } };
   const material = new ShaderMaterial({
     name: 'nye:beams',

@@ -22,6 +22,7 @@ import { layLanternWalk } from './_sqWalk';
 import { raiseFlags } from './_sqFlags';
 import { buildSala } from './_sqSala';
 import { buildSquareGlow } from './_sqGlow';
+import { growMeadow } from './_sqMeadow';
 
 /**
  * The festival square at Phnom Kulen's foot (AWP-35, docs/discussion/new-year-online.md; where: plan.ts), all
@@ -78,6 +79,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
   raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
+  // The garden round it all (tall grass, flowering shrubs, bananas, trees, stepping stones): after everything built, before the glow's poles.
+  growMeadow(b, fb, field, low);
 
   const floor = buildVoxelMesh(fb, { quality, name: 'nye:floor', castShadow: false });
   floor.traverse((o) => void (o.userData.noWalk = true));

@@ -2,7 +2,7 @@ import { DataTexture, DataUtils, DoubleSide, HalfFloatType, LinearFilter, RGBAFo
 import type { HeightField } from '../heightfield';
 import { MAP_BOUNDS, PLACES } from '../layout';
 import { squareShown } from '../nye/clock';
-import { SQUARE } from '../nye/plan';
+import { LAKE_SHORE, LAKE_STAGE, SQUARE } from '../nye/plan';
 import { pastLand } from '../terrain/views';
 import { hazeUniforms, WIND } from './haze';
 
@@ -77,6 +77,7 @@ export function buildLandMap(field: HeightField): LandMap {
   if (squareShown()) {
     clear(SQUARE.x + 12, SQUARE.z, 40, 95, 0);
     clear(SQUARE.x + 1, SQUARE.z + 45, 20, 60, 0);
+    clear((LAKE_SHORE.x + LAKE_STAGE.x) / 2, (LAKE_SHORE.z + LAKE_STAGE.z) / 2, 35, 85, 0);
   }
   const data = new Uint16Array(w * d * 4);
   for (let k = 0; k < d; k++)
