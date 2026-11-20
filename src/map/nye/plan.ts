@@ -52,8 +52,9 @@ export const LANTERN_WALK: readonly [number, number][] = [
   [414, -130],
   [410, -170],
   [404, -206],
-  [398, -222],
-  [390, -230],
+  // (then in under the welcome arch at the avenue's south end, and straight north up the avenue to the gate: _sqWalk.ts `AVENUE`)
+  [392, -203],
+  [384, -203],
   [384, -236],
 ];
 

@@ -17,8 +17,11 @@ import { buildGate } from './_sqGate';
 import { khmerLamp } from './_sqKit';
 import { buildNyeRing } from './_sqRing';
 import { buildStalls } from './_sqStalls';
-import { probeField } from './_sqGarden';
+import { plantGarden } from './_sqGarden';
 import { layLanternWalk } from './_sqWalk';
+import { raiseFlags } from './_sqFlags';
+import { buildSala } from './_sqSala';
+import { buildSquareGlow } from './_sqGlow';
 
 /**
  * The festival square at Phnom Kulen's foot (AWP-35, docs/discussion/new-year-online.md; where: plan.ts), all
@@ -56,7 +59,6 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const glow = new Glow();
 
   // The floor (its own mesh: kept out of the walk map, casting no shadow).
-  probeField(field);
   const fb = new VoxelBuilder();
   layFloor(fb, field, low);
   // The gate, its lamps either side of the passage, both faces.
@@ -69,10 +71,13 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       const z = GATE.z + dz;
       khmerLamp(b, x, field.heightAt(x, z), z, 1.5, 7 + dx + dz, src, lamps, glow, 2.2);
     }
-  const decor = dressSquare(b, kit, field, bulbs, glow, low);
+  buildSala(b, field, lamps, bulbs, glow, low);
+  const garden = plantGarden(b, field, lamps, low);
+  const decor = dressSquare(b, kit, field, bulbs, glow, low, garden.trees);
   buildStalls(b, field, lamps, glow, low);
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
+  raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
 
   const floor = buildVoxelMesh(fb, { quality, name: 'nye:floor', castShadow: false });
   floor.traverse((o) => void (o.userData.noWalk = true));
@@ -83,6 +88,8 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const mid = walk.length ? walk[Math.floor(walk.length / 2)] : [0, 0];
   const split = splitByPlace(wb, [{ x: walk[0]?.[0] ?? 0, z: walk[0]?.[1] ?? 0 }, { x: mid[0], z: mid[1] }], 30);
   for (const [i, part] of [...split.parts, split.rest].entries()) if (part.boxes.length) object.add(buildVoxelMesh(part, { quality, name: `nye:walk${i}` }));
+  const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees });
+  object.add(sqGlow.object);
   const shadows = new ShadowGate(true).addAll(object);
 
   // The kit (banners, wires): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
@@ -108,6 +115,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const g0 = field.heightAt(RING.x, RING.z);
   const ring = buildNyeRing(RING.x, g0 + TOP + 0.015, RING.z, RING.r, low);
   object.add(ring.mesh);
+  for (const m of garden.build(u)) object.add(m);
 
   // Two real lights, at night: warm gold over the ring, and in the gate's passage.
   const ringAt = new Group();
@@ -120,7 +128,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const ringLamp = addLamp({ kind: 'point', name: 'nye ring', color: 0xffb050, distance: 26, anchor: ringAt });
   const gateLamp = addLamp({ kind: 'point', name: 'nye gate', color: 0xffa860, distance: 13, anchor: gateAt });
 
-  const blocks = fb.boxes.length + b.boxes.length + wb.boxes.length + kitMesh.boxes;
+  const blocks = fb.boxes.length + b.boxes.length + wb.boxes.length + kitMesh.boxes + sqGlow.blocks + garden.kitBoxes;
   console.info(
     `[map] nye square: ${blocks} blocks (floor ${fb.boxes.length}, square ${b.boxes.length}, walk ${wb.boxes.length} · ${walk.length} lamps, kit ${kitMesh.boxes}, trees ${decor.trees.length}) · ${lamps.count + bulbs.count} flames · built in ${(performance.now() - t0).toFixed(1)} ms`,
   );
@@ -147,8 +155,10 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       lamps.update(n, now);
       bulbs.update(n, now + 1.7);
       ring.update(n, event, now);
+      garden.update(n, lit, event > 0);
       ringLamp.intensity = 110 * lit * (1 + 0.4 * event);
       gateLamp.intensity = 45 * lit;
+      sqGlow.update(f);
       shadows.update(f);
     },
   };

@@ -14,13 +14,29 @@ import { LATERITE, PAVER, PAVER_LIGHT, pick, RING_STONE } from './_sqKit';
  * - the processional way of pale slabs from the gate (through it, and an apron outside) to the ring, and on from
  *   the ring to the stage's stairs;
  * - the ring's carved band of darker stone (where the ring of light lies, `_sqRing.ts`) round a disc of pale
- *   stone, so by day it reads as an inlay.
+ *   stone, so by day it reads as an inlay;
+ * - concentric rings round it, so from above the square reads as one designed circle: a dark border ring with a
+ *   gilt-stone band inlaid in it (`INLAY`; at night a thin gold glow lies on it, `_sqGlow.ts`), a second dark ring
+ *   farther out, and radial joints of darker stone every 22.5° between the ring and the border.
  *
  * Returns the blocks laid.
  */
 
 /** How far the pavers' tops stand over the land (m). */
 export const TOP = 0.08;
+
+/** The gilt band's radius round the ring's middle (m; `_sqGlow.ts` lays its night glow there). */
+export const INLAY = 13.8;
+/** Gilt sandstone (a warm ochre-gold inlay). */
+const GILT = [0xc9a04c, 0xbf9644, 0xd2aa56];
+
+/** On a radial joint (every 22.5° round the ring, half a paver wide). */
+function radial(x: number, z: number, r: number): boolean {
+  const a = Math.atan2(z - RING.z, x - RING.x);
+  const step = Math.PI / 8;
+  const off = a - Math.round(a / step) * step;
+  return Math.abs(off) * r < 0.5;
+}
 
 export function layFloor(b: VoxelBuilder, field: HeightField, low: boolean): number {
   const src = traceSource();
@@ -55,6 +71,16 @@ export function layFloor(b: VoxelBuilder, field: HeightField, low: boolean): num
         shade *= 0.88;
         top = 0.03 - 0.03 * out;
       } else if (Math.abs(r - RING.r) <= 0.55) color = pick(RING_STONE, x, z, 1, 71);
+      else if (!onWay && e <= 0.94 && Math.abs(r - INLAY) <= 0.5) {
+        color = pick(GILT, x, z, 8, 71);
+        shade *= 1.02;
+      } else if (!onWay && e <= 0.94 && (Math.abs(r - INLAY) <= 1.5 || Math.abs(r - 18.6) <= 0.5)) {
+        color = pick(RING_STONE, x, z, 9, 71);
+        shade *= 0.97;
+      } else if (!onWay && e <= 0.94 && r > RING.r + 0.6 && radial(x, z, r)) {
+        color = pick(PAVER, x, z, 10, 71);
+        shade *= 0.86;
+      }
       else if (r < RING.r - 0.55) {
         color = pick(PAVER_LIGHT, x, z, 2, 71);
         shade *= 0.98;

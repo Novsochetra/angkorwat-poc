@@ -6,15 +6,14 @@ import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { FLAG_WHITE, flagCell } from '../roam/_flag';
-import { broadleaf } from '../veg/species';
 import { GATE, SQUARE, STAGE } from './plan';
-import { GOLD, pick, stampTree } from './_sqKit';
+import type { BuiltTree } from './_sqGarden';
+import { GOLD, pick } from './_sqKit';
 
 /**
  * The square's dressing (AWP-35): red banners with the white Angkor Wat on tall poles round its edge (the cloth
- * in the festival kit, waving in its shader), the map's own trees round it (the jungle's broadleaf prototypes,
- * two in pink and orange blossom), warm string lights sagging from tree to pole round the sides, lotus pots by
- * the processional way and marigolds at the trees' feet. Nothing stands between the gate and the stage.
+ * in the festival kit, waving in its shader), warm string lights sagging from pole to the flowering trees round
+ * the sides (the trees, flower beds and water are the garden's, `_sqGarden.ts`), lotus pots by the processional way. Nothing stands between the gate and the stage.
  *
  * Angles round the square: θ from +x (east), z = SQUARE.z + rz·sin θ (+z south: θ 90° is the gate, −90° the stage).
  */
@@ -24,17 +23,6 @@ const BANNER_THETA = [0, 180, -42, 222, 42, 138];
 const GATE_BANNERS: [number, number, number][] = [
   [GATE.x - 8.6, GATE.z + 3.4, -Math.PI / 2],
   [GATE.x + 8.6, GATE.z + 3.4, Math.PI / 2],
-];
-/** Trees round the edge: θ degrees, how far out (× the ellipse), height, crown radius, blossom. */
-const TREES: [number, number, number, number, 'pink' | 'orange' | null][] = [
-  [-50, 1.32, 11, 4.2, null],
-  [-22, 1.3, 10, 3.8, null],
-  [16, 1.3, 9, 3.6, 'orange'],
-  [56, 1.3, 10, 4.0, null],
-  [124, 1.3, 10, 4.0, null],
-  [164, 1.3, 9, 3.6, 'pink'],
-  [202, 1.3, 10, 3.8, null],
-  [230, 1.32, 11, 4.2, null],
 ];
 /** Lotus pots (map x, z): by the gate inside, along the way, at the stage's stairs. */
 const POTS: [number, number][] = [
@@ -51,7 +39,6 @@ const BANNER_RED = 0xc8102e;
 const TRIM = 0xe2b04a;
 const POLE = [0x5a2a20, 0x642f24, 0x52261c];
 const WIRE = 0x2a2420;
-const MARIGOLD = [0xf08a12, 0xf7b21c, 0xe8740e, 0xf4c030];
 /** Flags wave at about 2 rad/s (a whole number of turns in the kit's period). */
 const WAVE = perPeriod(2.0);
 
@@ -65,7 +52,7 @@ export interface DecorOut {
   trees: [number, number, number][];
 }
 
-export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, glow: Glow | null, low: boolean): DecorOut {
+export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, glow: Glow | null, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
   const src = traceSource();
   /** String-light anchors: map point, θ (for the order round the square), its side (east +1, west −1). */
   const anchors: { x: number; y: number; z: number; th: number }[] = [];
@@ -92,40 +79,17 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
   }
   for (const [i, [x, z, dir]] of GATE_BANNERS.entries()) pole(x, z, dir, 30 + i, 8);
 
-  // ── The map's own trees round the edge ──
+  // ── The flowering trees (the garden's: _sqGarden.ts `NYE_TREES`, built before this) ──
   const trees: [number, number, number][] = [];
-  for (const [i, [th, k0, h, r, flower]] of TREES.entries()) {
-    let spot: [number, number] | null = null;
-    for (const k of [k0, k0 + 0.08, k0 + 0.16]) {
-      const [x, z] = ell(th, k);
-      if (field.isFree(x, z) || field.trail[field.index(x, z)] === 1) {
-        spot = [x, z];
-        break;
-      }
-    }
-    if (!spot) continue;
-    const [x, z] = spot;
-    const g = field.heightAt(x, z);
-    const p = broadleaf({ s: 1, h, r, seed: 9300 + i * 7, ...(flower ? { flower } : {}) });
-    stampTree(b, field, p, x, g, z, 9300 + i);
-    field.occupy(x - r * 0.8, z - r * 0.8, x + r * 0.8, z + r * 0.8);
-    trees.push([x, z, r]);
+  for (const t of garden) {
+    trees.push([t.x, t.z, t.r]);
+    if (!t.edge) continue;
+    const th = (Math.atan2((t.z - SQUARE.z) / SQUARE.rz, (t.x - SQUARE.x) / SQUARE.rx) * 180) / Math.PI;
     // (the lights go into the crown's underside on the square's side)
-    const dx = SQUARE.x - x;
-    const dz = SQUARE.z - z;
+    const dx = SQUARE.x - t.x;
+    const dz = SQUARE.z - t.z;
     const d = Math.hypot(dx, dz);
-    anchors.push({ x: x + (dx / d) * 1.6, y: g + p.low - 0.2, z: z + (dz / d) * 1.6, th });
-    // Marigolds round its foot.
-    if (!low)
-      for (let m = 0; m < 9; m++) {
-        const a = (m / 9) * Math.PI * 2 + hash3(i, m, 1, 41);
-        const rr = 1.0 + 0.35 * hash3(i, m, 2, 41);
-        const mx = x + Math.cos(a) * rr;
-        const mz = z + Math.sin(a) * rr;
-        const gy = field.heightAt(mx, mz);
-        b.box(mx, gy + 0.12, mz, 0.42, 0.24, 0.42, pick([0x4f8a2c, 0x467d28, 0x5a9432], mx, mz, 5), 'mapLeaf', { src });
-        b.box(mx, gy + 0.3, mz, 0.28, 0.14, 0.28, pick(MARIGOLD, mx, mz, 6), 'petal', { src });
-      }
+    anchors.push({ x: t.x + (dx / d) * 1.6, y: t.low - 0.2, z: t.z + (dz / d) * 1.6, th });
   }
 
   // ── String lights from anchor to anchor round each side (none across the gate or before the stage) ──
