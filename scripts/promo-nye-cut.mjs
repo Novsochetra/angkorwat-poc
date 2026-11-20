@@ -1,4 +1,4 @@
-// New Year's Eve at Phnom Kulen (AWP-35, phase 1): a 30-second film of the night, for the owner to watch without a
+// New Year's Eve at Phnom Kulen (AWP-35, phase 1): a 40-second film of the night, for the owner to watch without a
 // GPU of his own. `VIDEO_CUT=scripts/promo-nye-cut.mjs npm run video` → screenshots/promo-nye.mp4 (on a machine with
 // no GPU: `VIDEO_SCALE=0.5 VIDEO_GRAPHICS=low`, ≈ 1‥4 s a frame; `-- preview` first).
 // Each shot's `query` holds the night's moment (nye/clock.ts: `countdown=<s>` before midnight, `fireworks=<s>` into
@@ -70,9 +70,10 @@ export default {
       caption: { km: 'មរតកអង្គរ · ការរាប់ថយក្រោយ', en: 'The countdown stage', at: [0.5, 4.6] },
     },
     {
-      // The last seconds: the count, midnight, the greeting and the first gold chrysanthemums over the falls.
+      // The last seconds: the count, midnight, the greeting, the opening salvo and the first Angkor signature (a lotus and
+      // three towers drawn in gold, crisp ≈ 8.4 s after midnight).
       name: 'count',
-      seconds: 9,
+      seconds: 15,
       query: 'countdown=6',
       setup: overlayOnly,
       cam: move([383, 9.6, -257, 383, 13.5, -291], [384, 10.5, -250, 404, 34, -330]),
@@ -95,16 +96,16 @@ export default {
       nye: { at: 392, ears: [440, 11, -250] },
     },
     {
-      // The gold-willow finale, the whole night lit, and the title.
+      // The finale's waves, the closing Angkor signature over the willows (≈ 465 s), and the title.
       name: 'finale',
-      seconds: 7,
-      query: 'fireworks=450',
+      seconds: 9,
+      query: 'fireworks=459',
       cam: move([330, 62, -172, 398, 70, -360], [322, 70, -160, 395, 80, -360]),
-      nye: { at: 450, ears: [384, 11, -248] },
+      nye: { at: 459, ears: [384, 11, -248] },
       overlay: {
         html: `<div class="km">សួស្តីឆ្នាំថ្មី ២០២៧</div><div class="en">Happy New Year</div><div class="when">មរតកអង្គរ · ភ្នំគូលែន</div>`,
         css: TITLE_CSS,
-        show: (u) => ease(Math.min(1, Math.max(0, (u - 0.45) / 0.25))),
+        show: (u) => ease(Math.min(1, Math.max(0, (u - 0.72) / 0.18))),
       },
     },
   ],
