@@ -51,26 +51,29 @@ parties, the test room's midnight), `rates` (messages a second over the last min
 
 ## Deploy on Railway (the owner)
 
-The service builds from the repository root with `server/railway.json` (Nixpacks, no Dockerfile): it installs only
-`server/`'s packages (`ws`), skips the game's build, and starts `node --experimental-strip-types server/main.ts`
-(the flag is needed on Node 22 before 22.18 and does nothing after). One replica only: rooms live in memory.
+A second service in the Morodok Angkor project, from this same repository, built with `server/Dockerfile`
+(Railway's config-as-code file `server/railway.json` is deprecated: services made after 28 August 2026 cannot
+use it and old ones stop reading it on 1 December 2026, so the settings live in the dashboard). The Dockerfile
+builds from the repository root (the server imports `src/net/`), installs only `ws`, runs Node 22. One replica:
+rooms live in memory. The game's website service never sets the Dockerfile variable, so it builds as before.
 
-1. **Staging first.** In the Railway project: New → GitHub Repo → this repository. In the new service's
-   Settings:
-   - Source: Root Directory empty (the repository root: the server imports `src/net/`), branch as you like
-     (e.g. a `staging` branch, or `main`).
-   - Config-as-code: Railway Config File = `server/railway.json`.
-   - Networking: Generate Domain (gives `wss://<name>.up.railway.app`).
-   - Variables: `EVENT_CODE` (a new code, e.g. 6 letters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`), and
-     `NIXPACKS_NODE_VERSION=22` if the build log shows an older Node. Leave `TRACKER_TOKEN` out on staging (or
-     point `TRACKER_URL` at a test tracker), so tests file no real tickets.
-   - Deploy, then open `https://<domain>/health`: `"ok": true`, `"testRoom": true`, `"names": "shared"`.
-   - Try it with bots from your computer: set `JOIN_LIMIT_EXEMPT` to your address on staging for the run, then
-     `npm run nyeload -- bots=300 url=wss://<domain> code=<EVENT_CODE>`; remove `JOIN_LIMIT_EXEMPT` after.
-2. **Production:** the same again as a second service (or a second Railway environment of the project), branch
-   `main`, its own domain (a custom one like `live.<site>` if wanted), its own `EVENT_CODE` (different from
-   staging's), `TRACKER_TOKEN` (a tracker API token), `ALLOWED_ORIGINS` = the game's address(es).
-3. Give the game the production address: `VITE_NYE_SERVER=wss://<domain>` in the build's .env (src/net/client.ts); `?nyeserver=wss://<staging domain>` in the address tries staging.
+1. In the project: Add → GitHub Repo → this repository (a second box beside the website's). In its settings:
+   - Source: branch `main`, Root Directory empty. Config-as-code: empty.
+   - Variables: `RAILWAY_DOCKERFILE_PATH=server/Dockerfile`, `PORT=8787`, `EVENT_CODE` (a new code, e.g. 6 letters
+     from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`); for the real night also `ALLOWED_ORIGINS` (the game's addresses) and
+     `TRACKER_TOKEN` (name reports as tickets).
+   - Build → Watch Paths: `/server/**`, `/src/net/**`, `/src/map/nye/plan.ts`, `/src/feedback/tracker.ts` (a push
+     that changes only the map never restarts the rooms).
+   - Deploy → Healthcheck Path `/health`. Scale: Singapore, 1 replica. Serverless (sleeping) off.
+   - Networking: Generate Domain on port 8787.
+2. Deploy, then open `https://<domain>/health`: `"ok": true`, `"testRoom": true`, `"names": "shared"` (the game's
+   page there means the Dockerfile variable is missing: Railway built the website).
+3. Test link: `https://morodokangkor.com/?event=<EVENT_CODE>&nyeserver=wss://<domain>&party=1`. For the night,
+   `VITE_NYE_SERVER=wss://<domain>` in the website's build variables (src/net/client.ts).
+4. Robot players from your computer: `JOIN_LIMIT_EXEMPT` = your address for the run, then
+   `npm run nyeload -- bots=300 url=wss://<domain> code=<EVENT_CODE>`; remove `JOIN_LIMIT_EXEMPT` after.
+
+Check the image here: `docker build -f server/Dockerfile -t nye-live . && docker run -e EVENT_CODE=TEST -p 8787:8787 nye-live`.
 
 Railway's free/hobby plans sleep or limit services; for the night use a plan where the service stays up, and
 keep one replica (a second one would split the rooms). A restart forgets hidden names and parties; pages reconnect
