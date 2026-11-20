@@ -3,6 +3,8 @@
 - Checks: `npm run typecheck`, `npm run build`, `npm run playtest` (headless play test),
   `npm run perf` (the world map's frame cost per view and graphics level, on the
   GPU: `scripts/perf.mjs`; `only=`, `levels=low,medium,phone`, `ablate=<part>`, `out=`).
+- `npm run movecheck` plays fence joining and move mode in a headless browser on the CPU (≈ 10 min;
+  `scripts/movecheck.mjs`, its pictures in `screenshots/`).
 - `npm run shots -- name="@game.html?shot=1&…"` renders a page headlessly into
   `screenshots/<name>.png`; view the PNG to check visual changes.
 - `npm run video` records the 15 s promo of the world map (`scripts/promo-cut.mjs`:
@@ -405,6 +407,11 @@ guide, with every add-on's keys and URL values for shots, is
     always bought; the totals are the old prices (AWP-9). Pieces, sizes, prices and spots: `src/map/build/pieces.ts`; models
     `build/models/`; the add-on `roam/_build*.ts` (`build=<id>@x/z/yaw[:done]`,
     `build=all`, `buildcard=1`, `buildghost=`, `buildwork=`, `buildsit=`).
+    Fence runs join: a run fills the gap between two fence ends 0.3‥3 m apart, and stops on another
+    run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`).
+  - Moving what he built: the card's "Move your things" row → move mode (`roam/_buildMove.ts`):
+    aim at a piece (gold), E picks it up, its ghost goes with him, E puts it down free, Esc puts it
+    back (`BUILD.move`, the `moved` event; `buildmove=1|<uid>`; addons.md "Moving what he built").
   - Footprint buildings (AWP-20): on the build card, a stilt house, a shed or a fence
     line drawn as a rectangle (E a corner, E again "Build here"; the mouse points, a tap
     puts the cursor): posts, floor, walls, roof and stair fit by themselves, written into

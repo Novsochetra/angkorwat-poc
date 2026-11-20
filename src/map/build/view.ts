@@ -74,19 +74,19 @@ export function forgetLooks(): void {
   looks.clear();
 }
 
-/** A piece's blocks in its own frame (made once per kind and seed). */
-export function pieceLook(id: PieceId, seed: number): PieceLookData {
-  const key = `${id}|${seed.toFixed(4)}`;
+/** A piece's blocks in its own frame (made once per kind, seed and a fence run's own length). */
+export function pieceLook(id: PieceId, seed: number, len?: number): PieceLookData {
+  const key = `${id}|${seed.toFixed(4)}${len !== undefined ? `|${len.toFixed(3)}` : ''}`;
   let l = looks.get(key);
   if (l) return l;
   const b = new VoxelBuilder();
   try {
-    buildPiece(b, { id, seed });
+    buildPiece(b, { id, seed, len });
   } catch (e) {
     console.error(`[build] the ${id} model failed:`, e);
   }
   let top = PIECES[id].h;
-  let reach = Math.hypot(PIECES[id].w, PIECES[id].d) / 2;
+  let reach = Math.hypot(len ?? PIECES[id].w, PIECES[id].d) / 2;
   for (const x of b.boxes) {
     top = Math.max(top, x.y + x.sy / 2);
     reach = Math.max(reach, Math.hypot(x.x, x.z) + Math.max(x.sx, x.sz) / 2);
@@ -224,7 +224,7 @@ export function createBuildView(shot = false): BuildView {
     let z0 = Infinity;
     let z1 = -Infinity;
     for (const p of ps) {
-      const l = pieceLook(p.id, p.seed);
+      const l = pieceLook(p.id, p.seed, p.len);
       x0 = Math.min(x0, p.x - l.reach);
       x1 = Math.max(x1, p.x + l.reach);
       z0 = Math.min(z0, p.z - l.reach);
@@ -248,7 +248,7 @@ export function createBuildView(shot = false): BuildView {
     stats.standing = ps.length;
     if (ps.length) {
       const b = new VoxelBuilder();
-      for (const p of ps) putInWorld(p, pieceLook(p.id, p.seed), b);
+      for (const p of ps) putInWorld(p, pieceLook(p.id, p.seed, p.len), b);
       stand = makeBatch(b, 'build:standing');
       sphereOf(ps, stand.sphere);
       standing.add(stand.group);
@@ -263,7 +263,7 @@ export function createBuildView(shot = false): BuildView {
 
   /** A piece under way: its own batch, drawing its first blocks. */
   function makeRising(p: Built): Rising {
-    const look = pieceLook(p.id, p.seed);
+    const look = pieceLook(p.id, p.seed, p.len);
     const b = new VoxelBuilder();
     putInWorld(p, look, b);
     const batch = makeBatch(b, `build:rising:${p.uid}`);
@@ -310,7 +310,12 @@ export function createBuildView(shot = false): BuildView {
       if (r) show(r);
       return;
     }
-    if (e.type === 'done' || (e.type === 'removed' && e.piece.done >= 1) || (e.type === 'added' && e.piece.done >= 1)) standDirty = true;
+    // (moved: its light goes with it, put there again)
+    if (e.type === 'moved') {
+      lit.get(e.piece)?.remove();
+      lit.delete(e.piece);
+    }
+    if (e.type === 'done' || e.type === 'moved' || (e.type === 'removed' && e.piece.done >= 1) || (e.type === 'added' && e.piece.done >= 1)) standDirty = true;
     risingDirty = true;
     lightsDirty = true;
   });

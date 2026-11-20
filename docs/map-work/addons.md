@@ -3023,7 +3023,15 @@ sounds `audio/_build.ts`.
   then the turn asked for (`,` `.` ⟲ ⟳: a bend of 15°, 30°…); past 20°, the ghost's own
   15° step. Two runs may cross 0.5 m in from their ends only where an end meets an end
   (`_buildSpots.ts` `fenceJoint`: in line past each other, side by side or a T through the
-  middle are refused); his own posts never count as "something in the way". The turn
+  middle are refused); his own posts never count as "something in the way". **Fences meet**
+  (two lines he started apart, walked toward each other): a fence run has a length of its own
+  when it must (`Built.len`, 0.3‥3 m, saved with it; its model's posts at most 1.5 m apart): where
+  two free ends (no other run's end on them; two runs not already joined) are 0.3‥3 m apart and
+  the ghost's middle is within 2 m of the gap's, the ghost is **the run that fills it**, end on
+  end at both sides at whatever angle the gap has (`snapFence` → `closeFence`; first, before a
+  run going on), no guide; and a run going on from an end **stops on another free end's line**
+  where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
+  they make; the next run closes it square). The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks
@@ -3041,6 +3049,26 @@ sounds `audio/_build.ts`.
   first move over his shoulder (24°) is taken back off the move (`modeTurned`); Q / R, a
   drag or the right stick still turn it. After
   a fence or a lantern post the mode stays on for the next.
+- **Moving what he built** (move mode, `roam/_buildMove.ts`): the card's **"Move your things"**
+  row (the Buildings tab, after "Paint your buildings"; greyed with nothing built). He aims as in
+  paint mode: the piece under the mouse; with a pad, or keys and no mouse over the view, the one
+  at the gold ring over his head; nothing there, the one he faces within 2.6 m; on a phone the one tapped.
+  The piece aimed at is drawn over itself in gold (`BuildGhost` 'pick': its own blocks and seed,
+  a hair bigger, over everything), red with the reason where it cannot be picked up (`whyNot`:
+  half built "Finish building the … first"; a hanging lantern on it "Take down what hangs from it
+  first", as taking it down; the cattle pen while a cow of his is in it, `BUILT.penHolds`; more
+  than 10 m from him "Too far: come closer"). **E** (□, the touch Use button), a click or a tap on
+  it picks it up: build mode with it (`enterPlacing(id, piece)`, `moving`): its ghost (its own
+  look) goes with him, turns and snaps as a new one's (a fence run onto ends and filling gaps, at
+  its own length unless it fills one), where it stands not counted; count and riel never stop it.
+  **"E  Put it here"** sets it down at once and free (`BUILD.move`, the `moved` event: the view
+  draws it there, its light, seat, hammock and prayer spot go with it, `BuildUses.forget`); **Esc**
+  ("Put it back") leaves it where it was. Either way move mode goes on for the next; Esc there (✕,
+  ○) ends it, as walking 8 m off his land, another mode or another row of the card. The touch bar
+  shows only its card and ✕ buttons until he carries one. Footprint buildings are not moved (the
+  block layer's: take one down and draw it again). URL: `buildmove=1` (the mode on),
+  `buildmove=<uid>` (that piece carried); `__build.moveMode(on)`, `__build.move(uid)` (null, or
+  why not), `state().moveMode` (`aimed`, `why`), `state().placing.moving`.
 - **The work** (it holds him): he walks to the side of the piece nearest him (round a
   big one, a side every 5.5 s; nearer a small one), his hammer in his right hand, and
   hammers — squatting flat-footed for low work, standing for high; the blow on the block

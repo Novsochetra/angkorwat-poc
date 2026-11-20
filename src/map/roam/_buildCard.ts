@@ -39,8 +39,8 @@ import { FURN_PIC } from './_buildFurnArt';
  */
 
 export interface BuildRow {
-  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20), or `paint` (paint mode, AWP-22). */
-  id: PieceId | `foot:${FootKind}` | 'paint';
+  /** A piece's id, or `foot:<kind>` (a footprint building, AWP-20), `paint` (paint mode, AWP-22), `move` (move mode). */
+  id: PieceId | `foot:${FootKind}` | 'paint' | 'move';
   /** Its name, how many he has ("1 / 3"), its line (or what he lacks), the riel to pay now ('' none). */
   name: string;
   count: string;
@@ -101,6 +101,8 @@ const PIC: Record<BuildRow['id'], string> = {
   'foot:shed': '<path fill="#c9a04a" d="M3 2h6v1H3zM2 3h8v1H2zM1 4h10v1H1z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M1 6h1v5H1zM10 6h1v5h-1z"/><path fill="#d8c08a" d="M2 9h8v2H2z"/><path fill="#b8a06a" d="M2 9h8v1H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   // (paint, AWP-22: a brush over a pot of lacquer red, a lotus-pink stroke)
   paint: '<path fill="#e58aa8" d="M1 2h6v2H1z"/><path fill="#f0a8c0" d="M1 2h6v1H1z"/><path fill="#8a6038" d="M8 1h1v1H8zM9 2h1v1H9zM10 3h1v1h-1z"/><path fill="#d8c08a" d="M6 3h2v2H6z"/><path fill="#5a3a24" d="M5 4h2v2H5z"/><path fill="#a8281e" d="M2 7h8v4H2z"/><path fill="#c84a3a" d="M2 7h8v1H2z"/><path fill="#6a1a14" d="M1 6h10v1H1z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
+  // (move mode: a jar lifted off its gold footprint, an arrow to where it goes)
+  move: '<path fill="#ffd27a" d="M0 10h5v1H0zM0 9h1v1H0zM4 9h1v1H4z"/><path fill="#5a3a24" d="M2 1h3v1H2z"/><path fill="#7a4a2a" d="M1 2h5v4H1zM2 6h3v1H2z"/><path fill="#9a6a3a" d="M2 3h1v2H2z"/><path fill="#e8eef2" d="M7 6h3v1H7zM9 5h1v1H9zM9 7h1v1H9zM10 6h1v1h-1z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   'foot:fence': '<path fill="#8e7a4e" d="M0 4h1v7H0zM4 4h1v7H4zM7 4h1v7H7zM11 4h1v7h-1z"/><path fill="#d6cc8c" d="M1 5h3v5H1zM8 5h3v5H8z"/><path fill="#c8b27a" d="M1 6h3v1H1zM8 6h3v1H8zM1 8h3v1H1zM8 8h3v1H8z"/><path fill="#9a8458" d="M1 5h3v1H1zM8 5h3v1H8z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   pen: '<path fill="#8a6038" d="M1 4h1v7H1zM5 4h1v7H5zM10 4h1v7h-1z"/><path fill="#b08a5a" d="M1 5h10v1H1zM1 8h10v1H1z"/><path fill="#c9a04a" d="M2 9h3v2H2z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',
   shelter: '<path fill="#c9a04a" d="M1 4h10v1H1zM2 3h8v1H2zM4 2h4v1H4z"/><path fill="#a07a30" d="M0 5h12v1H0z"/><path fill="#8a6038" d="M2 6h1v5H2zM9 6h1v5H9z"/><path fill="#b08a5a" d="M3 8h6v1H3z"/><path fill="#6a8a3a" d="M0 11h12v1H0z"/>',

@@ -1,5 +1,5 @@
 import type { Camera, Object3D } from 'three';
-import { BUILT, PIECES, pieceToWorld, type Built } from '../build/pieces';
+import { BUILT, PIECES, pieceToWorld, solidsOf, type Built } from '../build/pieces';
 import { addRideCow, COW_RIDE, removeRideCow, rideCow, type RideCow } from '../cattle/ride';
 import { cartBodyBlocks } from '../build/haul';
 import { CATTLE_OBSTACLES, inHours, LIE_HOURS, OX_NOSE, PEN_HOURS, postAnimal, ROPE, STAKES, TRADER_POSTS, traderToWorld, traderYaw } from '../cattle/plan';
@@ -272,6 +272,8 @@ export class CattleHerd {
     scene: Object3D,
   ) {
     for (let i = SLOTS - 1; i >= 0; i--) this.free.push(i);
+    // (a pen with a cow in it is not moved: roam/_buildMove.ts)
+    BUILT.penHolds = (uid) => this.beasts.some((q) => q.cow && q.penUid === uid && q.penSlot >= 0);
     this.flock.mesh.name = 'cattle:ox';
     scene.add(this.flock.mesh, this.blocks.mesh);
     const w = world;
@@ -719,7 +721,7 @@ export class CattleHerd {
       const s = Math.sin(p.yaw);
       const lx = dx * c - dz * s;
       const lz = dx * s + dz * c;
-      for (const [sx, sz, w, d] of spec.solids) if (Math.abs(lx - sx) < w / 2 + margin && Math.abs(lz - sz) < d / 2 + margin) return true;
+      for (const [sx, sz, w, d] of solidsOf(p)) if (Math.abs(lx - sx) < w / 2 + margin && Math.abs(lz - sz) < d / 2 + margin) return true;
     }
     return false;
   }

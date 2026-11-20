@@ -148,6 +148,16 @@ export const BuildUses = {
       }
   },
 
+  /** A piece moved (roam/_buildMove.ts): its hammock and prayer spot go, `sync` puts them where it stands now. */
+  forget(uid: string): void {
+    const id = `build-${uid}`;
+    if (hammockIds.delete(id)) removeHammock(id);
+    if (prayIds.delete(id)) {
+      const i = WORSHIP.findIndex((w) => w.id === id);
+      if (i >= 0) WORSHIP.splice(i, 1);
+    }
+  },
+
   /** For checks: the hammocks and prayer spots registered. */
   state(): { hammocks: string[]; prayers: string[] } {
     return { hammocks: [...hammockIds], prayers: [...prayIds] };
