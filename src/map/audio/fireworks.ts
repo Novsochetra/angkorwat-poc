@@ -173,9 +173,10 @@ export class FireworksSound {
     if (!this.active) return;
     const off = this.ctx.currentTime - nyeSeconds();
     // (the page's clock and the audio clock drift apart: follow softly, jump when far off — joining, a hidden tab)
+    // (what is scheduled already stays: `done` is show time, so a jump never plays a sound twice)
     if (this.offset === null || Math.abs(off - this.offset) > 0.25) {
+      if (this.offset === null) this.done = nyeSeconds();
       this.offset = off;
-      this.done = nyeSeconds();
     } else this.offset += (off - this.offset) * 0.02;
   }
 

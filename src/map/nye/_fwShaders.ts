@@ -57,7 +57,7 @@ export const SKY_VERTEX = /* glsl */ `
   // KA: drag (1/s), gravity (share of g), life (s), trail (s)
   const vec4 KA[5] = vec4[5](vec4(2.6, 1.0, 2.4, 0.13), vec4(2.2, 1.0, 2.9, 0.5), vec4(1.3, 1.7, 6.4, 1.8), vec4(3.4, 0.5, 1.7, 0.07), vec4(2.6, 0.7, 2.4, 0.15));
   // KB: width (m), brightness, embers from (share of life), speed spread
-  const vec4 KB[5] = vec4[5](vec4(0.6, 2.6, 0.55, 0.07), vec4(0.5, 2.2, 0.45, 0.1), vec4(0.42, 1.05, 0.5, 0.3), vec4(0.4, 1.3, 0.95, 0.6), vec4(0.6, 2.6, 0.55, 0.04));
+  const vec4 KB[5] = vec4[5](vec4(0.6, 2.6, 0.55, 0.07), vec4(0.5, 2.2, 0.45, 0.1), vec4(0.4, 0.72, 0.5, 0.3), vec4(0.4, 1.3, 0.95, 0.6), vec4(0.6, 2.6, 0.55, 0.04));
   // KC: a ring (1), crackles (1), flicker, a trail's tail brightness
   const vec4 KC[5] = vec4[5](vec4(0.0, 0.0, 0.12, 0.25), vec4(0.0, 0.0, 0.3, 0.12), vec4(0.0, 0.0, 0.25, 0.04), vec4(0.0, 1.0, 0.0, 0.3), vec4(1.0, 0.0, 0.12, 0.25));
   // KD: how quickly it fades (the brightness's power of the life left)
@@ -168,7 +168,7 @@ export const SKY_VERTEX = /* glsl */ `
       // (the halos are still: the ribbon is a square round its point, its length nothing)
       float fl = 0.75 + 0.25 * hash(floor(uTime * 30.0), seed * 7.0);
       vec3 shell = vec3(1.0, 0.78, 0.45) * 1.6 * fl * mix(0.1, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl));
-      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 7.0 * exp(-max(tau, 0.0) / 0.06);
+      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 4.0 * exp(-max(tau, 0.0) / 0.06);
       float lp = burstLight(d4.w, float(kind == 2), tau);
       vec3 glow = d2.rgb * 0.13 * lp / max(d4.w, 1e-3);
       // smoke: its own faint grey under the moon, and the light of the bursts now near it

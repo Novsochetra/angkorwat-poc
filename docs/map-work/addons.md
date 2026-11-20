@@ -239,6 +239,12 @@ calendar `_calendarKhmer.ts`, the bells `audio/_calendar.ts`, the maps
   on · `report()`: `calendar=1`. Checks in a live page: `window.__calendar`
   (`open`, `waiting`, `onNow`, `days()`, `next(id)`, `toggle()`, `wait(id)`,
   `show(id)`).
+- **On the real clock** (New Year's Eve, `nye/event.ts`, AWP-35): an event with
+  `realClock()` reads the real time (nye/clock.ts), not the map's moment: the card
+  shows its real countdown ("At 23:59, Cambodia time · in 41 days 09:43:19"; on:
+  "The countdown · 01:06:40 to midnight"), never a Wait, and the calendar leaves its
+  banners to its own module. While the night is held (22:30‥00:45 ICT) the card's
+  foot says so (`nyeHeld`) instead of pointing at the Time setting.
 - **Cost**: twice a second a rule each (no allocation per frame); the next
   times worked out one event a frame, then kept until they pass; the card's
   festivals (a year of the map, 400 days ahead at most) when it opens; the

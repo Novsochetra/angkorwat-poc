@@ -557,6 +557,8 @@ const handlers = {
   onStory: () => void openStory(0),
 };
 const ui: MapUI = await safe('ui', async () => (await import('./ui/ui')).createMapUI(uiRoot, PLACES, handlers, settings), () => ({ update() {}, setSelected() {}, setNight() {}, setRoaming() {}, setLang() {}, setGraphicsLevel() {}, setSoundHeld() {}, setDrawSize() {}, setShortView() {} }));
+// (New Year's Eve: the countdown overlay and its toasts, over the interface createMapUI has just made: nye/event.ts)
+const nyeUi = await safe('nye overlay', async () => (await import('./nye/event')).installNye({ uiRoot, ready: () => entered }), () => ({ update() {} }));
 ui.setGraphicsLevel(graphicsNow.level);
 audio.onHeld((held) => ui.setSoundHeld(held));
 // (the game pad's moves in the menus and on the map sound like the mouse over a card)
@@ -827,6 +829,7 @@ function step(t: number, dt: number): void {
   projectAnchors();
   ui.update(anchors, dt);
   ui.setNight(night);
+  nyeUi.update(frame);
   audio.update(frame, selected);
   // (animal calls: heard where they are)
   for (const c of frame.calls) audio.call(c);

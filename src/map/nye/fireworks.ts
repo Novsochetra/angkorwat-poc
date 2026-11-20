@@ -294,7 +294,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
       shared.uTime.value = s;
       // (the scene's height in pixels: the sparks' least width is in screen pixels, pxscale= grows it)
       ctx.renderer.getDrawingBufferSize(buf);
-      viewU.set((buf.y * view.scene) / view.canvas, PX_SCALE, Math.min(1.8, Math.sqrt(1 / LEVEL_SPARKS[level])) ** 0.6, f.night);
+      // (low: no bloom, fewer sparks: each a little wider and brighter)
+      viewU.set((buf.y * view.scene) / view.canvas, PX_SCALE * (level === 'low' ? 1.35 : 1), Math.min(1.8, Math.sqrt(1 / LEVEL_SPARKS[level])) ** 0.6, f.night);
       nightU.value = f.night;
 
       // The rockets in the air: launched, their last light (smoke, or sparks on low) not yet gone.

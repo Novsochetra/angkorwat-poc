@@ -75,7 +75,8 @@ const pageOpened = Date.now();
 
 /** `+2m`, `-30s`, `+1h`, `+3d` → ms (NaN if not that form). */
 function parseShift(v: string): number {
-  const m = /^([+-])(\d+(?:\.\d+)?)([smhd]?)$/.exec(v.trim());
+  // (a `+` typed in an address arrives as a space: `nye=+2m` reads " 2m")
+  const m = /^([+-])(\d+(?:\.\d+)?)([smhd]?)$/.exec(v.replace(/^ /, '+').trimEnd());
   if (!m) return NaN;
   const unit = { s: 1e3, m: 6e4, h: 3.6e6, d: 8.64e7, '': 1e3 }[m[3] as 's' | 'm' | 'h' | 'd' | ''];
   return (m[1] === '-' ? -1 : 1) * Number(m[2]) * unit;

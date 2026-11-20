@@ -129,7 +129,7 @@ export const burstPower = (r: Rocket): number => (r.size / 35) * (r.size / 35) *
 // over the view's top) and clear of the slope under it. Placed by bearing, distance and height from the square,
 // then put on the map (round plan.ts `SHOW_AREA`'s ground, east of it for the low ones). Over them, the crown: about
 // a fifth of the shells (and a third of the finale's willows) burst high over the summit and its east shoulder
-// (195‥245 m): over the stage when the crowd looks up, and over the hill from the overview and the rest of the map,
+// (160‥190 m; the overview's frame ends ≈ 190 m up over Kulen): over the stage when the crowd looks up, and over the hill from the overview and the rest of the map,
 // whose frame leaves the east flank out.
 
 const DEG = Math.PI / 180;
@@ -163,7 +163,7 @@ const LAYERS: Record<Exclude<Layer, 'crown'>, { d: [number, number]; el: [number
 };
 
 /** The crown: the highest, biggest bursts, over Kulen's summit and its east shoulder (m on the map; inside plan.ts `SHOW_AREA`). */
-const CROWN = { x0: 340, x1: 450, z0: -400, z1: -460, y: [195, 245], size: [40, 50] };
+const CROWN = { x0: 340, x1: 450, z0: -400, z1: -460, y: [162, 186], size: [36, 46] };
 
 interface Spot {
   x: number;
@@ -181,7 +181,7 @@ function spotIn(rnd: () => number, layer: Layer, bearing?: number, sizeK = 1): S
     const x = CROWN.x0 + k * (CROWN.x1 - CROWN.x0) + (rnd() - 0.5) * 12;
     const z = CROWN.z0 - rnd() * (CROWN.z0 - CROWN.z1);
     const size = (CROWN.size[0] + rnd() * (CROWN.size[1] - CROWN.size[0])) * sizeK;
-    return { x, z, size, y: Math.max(CROWN.y[0] + rnd() * (CROWN.y[1] - CROWN.y[0]), hillAt(x, z) + 40 + size) };
+    return { x, z, size, y: Math.max(CROWN.y[0] + rnd() * (CROWN.y[1] - CROWN.y[0]), hillAt(x, z) + 22 + 0.6 * size) };
   }
   const L = LAYERS[layer];
   const b = (bearing ?? L.b[0] + rnd() * (L.b[1] - L.b[0])) * DEG;
