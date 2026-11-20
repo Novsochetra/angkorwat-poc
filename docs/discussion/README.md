@@ -11,5 +11,8 @@ Plans and idea lists live here; how a part works stays in `docs/world-kit.md`,
 - `visit-a-friend.md` — visiting a friend's home on the world map, safely for
   young players, then building together: a design note with the owner's
   questions, no code yet (ticket AWP-26, October 2026).
+- `new-year-online.md` — New Year's Eve online: players roam the map together
+  and watch fireworks with a countdown over Angkor Wat at midnight (ICT), party
+  voice for friends, typed names (ticket AWP-35, November 2026).
 
 A new plan or discussion goes in this folder, named after what it is about.
