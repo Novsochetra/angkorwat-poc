@@ -17,6 +17,7 @@ import { buildGate } from './_sqGate';
 import { khmerLamp } from './_sqKit';
 import { buildNyeRing } from './_sqRing';
 import { buildStalls } from './_sqStalls';
+import { probeField } from './_sqGarden';
 import { layLanternWalk } from './_sqWalk';
 
 /**
@@ -55,6 +56,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const glow = new Glow();
 
   // The floor (its own mesh: kept out of the walk map, casting no shadow).
+  probeField(field);
   const fb = new VoxelBuilder();
   layFloor(fb, field, low);
   // The gate, its lamps either side of the passage, both faces.
