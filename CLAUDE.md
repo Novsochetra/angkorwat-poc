@@ -258,7 +258,8 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   (`src/map/nye/`, part `nye`: floor, lotus ring, Bayon-face gate, lantern walk, stalls
   `_sq*.ts`; the stage, naga and the Khmer countdown board `stage.ts`, `_st*.ts`, `board.ts`),
   its people (`people/_sceneNye.ts`), the fireworks (part `fireworks`, built only when the
-  show is near: the script `nye/show.ts`, `fireworks.ts`, `_fw*.ts`), the night-time hold
+  show is near: the script `nye/show.ts`, `fireworks.ts`, `_fw*.ts`; a second show over the great lake for the
+  lake stage's crowd, same clock and acts, `Rocket.site`, fired from barges `LAKE_BARGES`), the night-time hold
   22:30‥00:45 (main.ts `nightHeld`), the overlay, toasts and calendar entry (`nye/overlay.ts`,
   `nye/event.ts`), the sound (`audio/fireworks.ts`, its own Fireworks volume). **Only
   `nye/clock.ts` knows the date** (1 Jan 2027 00:00 ICT); where things stand is `nye/plan.ts`.

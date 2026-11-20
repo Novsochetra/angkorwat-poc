@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  BoxGeometry,
   BufferAttribute,
   Color,
   DoubleSide,
@@ -7,9 +8,14 @@ import {
   FloatType,
   Group,
   InstancedBufferGeometry,
+  InstancedMesh,
+  Matrix4,
   Mesh,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
   NearestFilter,
   PlaneGeometry,
+  Quaternion,
   RGBAFormat,
   ShaderMaterial,
   Sphere,
@@ -25,13 +31,29 @@ import { clearSkyTint, SKY_TINT } from '../sky/tint';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
 import { showTime } from './clock';
 import { KIND_INDEX, ROW, SEGS, SKY_FRAGMENT, SKY_VERTEX, WATER_FRAGMENT, WATER_VERTEX } from './_fwShaders';
-import { SQUARE, VIEW } from './plan';
-import { burstAt, burstLight, burstPower, isGlitter, rocketsBetween, showScript, SHOW_COLOURS, type BurstKind, type ShowColour } from './show';
+import { SQUARE } from './plan';
+import {
+  burstAt,
+  burstLight,
+  burstPower,
+  isGlitter,
+  LAKE_BARGES,
+  rocketsBetween,
+  showScript,
+  SHOW_COLOURS,
+  SHOW_SITES,
+  SITE_NEAR,
+  type BurstKind,
+  type ShowColour,
+  type ShowSite,
+} from './show';
 import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
 
 /**
- * The New Year's Eve fireworks (AWP-35): the show's script (show.ts) drawn over Phnom Kulen's east flank, played
- * from the real clock (clock.ts `showTime`; `fireworks=<s>` holds it at second s in a shot).
+ * The New Year's Eve fireworks (AWP-35): the show's script (show.ts) drawn over Phnom Kulen's east flank and over the
+ * great lake behind the lake stage (two sites, one clock: `Rocket.site`), played from the real clock (clock.ts
+ * `showTime`; `fireworks=<s>` holds it at second s in a shot). The lake's are fired from a line of barges, each with a
+ * lantern (`LAKE_BARGES`: two instanced draws, there from when the part is built).
  *
  * GPU-driven: each frame the rockets in the air (launched, their sparks, glow or smoke not yet gone) go into a
  * small float texture, a line each (`_fwShaders.ts`: where it bursts, when, its kind, colours, size, seed); every
@@ -44,11 +66,16 @@ import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
  *    spark, every spark of the rocket: fewer, longer strokes on low);
  *  - the halos, four a rocket: the shell climbing on its thin trail, the white flash of the burst, its glow in the
  *    air round it (the haze lit in its colour), its smoke drifting, lit by the bursts after it (not on low);
- *  - the reflections: each burst where the Kulen pool and the stream by the square mirror it (a quad per rocket and
- *    stretch of water, hidden where it misses the water).
+ *  - the reflections: each burst where the great lake, the Kulen pool and the stream by the square mirror it (a quad
+ *    per rocket and stretch of water, hidden where it misses the water).
  * Additive, no depth write, the map's haze. Light on the world: two lamps (sky/lampSlots.ts), the brightest burst
- * now and the rest of them together, in their colours, light the hill, the square and its crowd; and the sky
- * (sky/tint.ts `SKY_TINT`): the haze, the low sky and the clouds round the show take the bursts' colours.
+ * now and the rest of them together, in their colours, light the hill, the square and its crowd (or the lake, its stage
+ * and the shore); and the sky (sky/tint.ts `SKY_TINT`): the haze, the low sky and the clouds round the show take the
+ * bursts' colours. Both follow the show nearer the camera (and before it): a burst's light counts for less the farther
+ * its site is than the nearer one's, so by the lake the lake's show lights the scene, on the square Kulen's.
+ *
+ * On low, a site's small low bursts (`Rocket.close`) are drawn only within `SITE_NEAR` of its crowd view: the finale
+ * keeps ≤ 150 rockets in the air for a phone wherever it is.
  *
  * No show (before midnight, after its 480 s): nothing is drawn and the update returns at once.
  */
@@ -59,8 +86,11 @@ const SPARKS: Record<BurstKind, number> = { peony: 150, chrysanthemum: 130, will
 const LEVEL_SPARKS: Record<GraphicsLevel, number> = { low: 0.3, medium: 0.55, high: 1, max: 1.3 };
 /** Spark instances a rocket on each level (the most a rocket has there). */
 const PER = Object.fromEntries(Object.entries(LEVEL_SPARKS).map(([k, v]) => [k, Math.ceil(Math.max(...Object.values(SPARKS)) * 1.12 * v)])) as Record<GraphicsLevel, number>;
-/** Lines of the data texture: rockets in the air at once, at most (the finale has ≈ 145 with their smoke, 108 without). */
-const SLOTS = 176;
+/**
+ * Lines of the data texture: rockets in the air at once, at most (both sites' finale: ≈ 202 with their smoke, 149
+ * without; on low, near a site, the other's small low ones left out: ≤ 147).
+ */
+const SLOTS = 224;
 /** How long after its burst a rocket is still drawn: its sparks (a willow 6.4 s at most, a little longer for the slowest), the smoke 9 s. */
 const SPARK_LIFE: Record<BurstKind, number> = { peony: 2.8, chrysanthemum: 3.4, willow: 7.4, crackle: 2.0, ring: 2.8, palm: 4.6, comet: 2.2, angkor: 5.4 };
 const SMOKE_LIFE = 9;
@@ -106,9 +136,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const seeds = script.map((r) => (r.seed % 65521) / 65521);
   // (flags: 1 glitter, 2 a crossette)
   const flags = script.map((r) => (isGlitter(r) ? 1 : 0) + (r.cross ? 2 : 0));
-  // (the point each faces: the signature's picture turns to it; the crowd's view by default)
-  const faceX = script.map((r) => r.face?.[0] ?? VIEW.cam[0]);
-  const faceZ = script.map((r) => r.face?.[1] ?? VIEW.cam[2]);
+  // (the point each faces: the signature's picture turns to it; its site's crowd view by default)
+  const faceX = script.map((r) => r.face?.[0] ?? SHOW_SITES[r.site].view[0]);
+  const faceZ = script.map((r) => r.face?.[1] ?? SHOW_SITES[r.site].view[2]);
   const shapeTex = new DataTexture(angkorShape(), ANGKOR_POINTS, 1, RGBAFormat, FloatType);
   shapeTex.magFilter = shapeTex.minFilter = NearestFilter;
   shapeTex.generateMipmaps = false;
@@ -180,9 +210,15 @@ export function buildFireworks(ctx: MapContext): MapPart {
   halos.renderOrder = 13;
   sparks.renderOrder = 14;
 
-  // ── The water near the square that mirrors them: the Kulen pool, the stream by the square.
+  // ── The water that mirrors them: the great lake under the lake show (one wide stretch along its middle: the shore's
+  // land, a metre over the water, hides what of it reaches past the water), the Kulen pool, the stream by the square.
   const spotA: Vector4[] = [];
   const spotB: Vector4[] = [];
+  const lakeLevel = field.waterAt(-470, 20);
+  if (lakeLevel !== null) {
+    spotA.push(new Vector4(-620, 22, -370, 20));
+    spotB.push(new Vector4(72, lakeLevel, 0, 0));
+  }
   const POOL = { x: 446, z: -303, r: 11 };
   const poolLevel = field.waterAt(POOL.x, POOL.z);
   if (poolLevel !== null) {
@@ -248,10 +284,41 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const water = new Mesh(waterGeo, waterMat);
   water.name = 'fireworks:water';
   water.renderOrder = 12;
+  // (the show's three draws, hidden with nothing in the air; the barges stay)
+  const fx = new Group();
+  fx.name = 'fireworks:show';
+  object.add(fx);
   for (const m of [sparks, halos, water]) {
     m.raycast = () => {};
     m.matrixAutoUpdate = false;
-    object.add(m);
+    fx.add(m);
+  }
+
+  // ── The lake show's barges: a dark low pontoon each, a lantern on a short pole at its stern (two instanced draws).
+  {
+    const n = LAKE_BARGES.length;
+    const hulls = new InstancedMesh(new BoxGeometry(3.2, 0.9, 7.5), new MeshLambertMaterial({ color: 0x3a2c22 }), n);
+    const lights = new InstancedMesh(new BoxGeometry(0.5, 0.7, 0.5), new MeshBasicMaterial({ color: 0xffb760 }), n);
+    hulls.name = 'fireworks:barges';
+    lights.name = 'fireworks:barge-lanterns';
+    const mat = new Matrix4();
+    const q = new Quaternion();
+    const up = new Vector3(0, 1, 0);
+    const one = new Vector3(1, 1, 1);
+    const at = new Vector3();
+    LAKE_BARGES.forEach((b, i) => {
+      const level = field.waterAt(b.x, b.z) ?? 5;
+      q.setFromAxisAngle(up, b.yaw);
+      hulls.setMatrixAt(i, mat.compose(at.set(b.x, level + 0.25, b.z), q, one));
+      lights.setMatrixAt(i, mat.compose(at.set(b.x + Math.sin(b.yaw) * 2.8, level + 2.2, b.z + Math.cos(b.yaw) * 2.8), q, one));
+    });
+    for (const m of [hulls, lights]) {
+      m.computeBoundingSphere();
+      m.raycast = () => {};
+      m.matrixAutoUpdate = false;
+      m.frustumCulled = true;
+      object.add(m);
+    }
   }
 
   // ── Light on the world: the brightest burst now, and the rest together (the explorer's own lamps' rank: a burst's
@@ -260,6 +327,11 @@ export function buildFireworks(ctx: MapContext): MapPart {
 
   // ── Per frame: the rockets in the air into the texture.
   const alive: number[] = [];
+  const SITES: readonly ShowSite[] = ['kulen', 'lake'];
+  const near: Record<ShowSite, boolean> = { kulen: true, lake: true };
+  const dist: Record<ShowSite, number> = { kulen: 1, lake: 1 };
+  const weight: Record<ShowSite, number> = { kulen: 1, lake: 1 };
+  const fwd = new Vector3();
   const buf = new Vector2();
   const tmp = new Color();
   const sum = new Vector3();
@@ -290,7 +362,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
       }
     }
     console.info(
-      `[map] fireworks: ${script.length} rockets (${Object.entries(kinds)
+      `[map] fireworks: ${script.length} rockets (Kulen ${script.filter((r) => r.site === 'kulen').length}, the lake ${script.filter((r) => r.site === 'lake').length} from ${LAKE_BARGES.length} barges; ${Object.entries(kinds)
         .map(([k, v]) => `${k} ${v}`)
         .join(', ')}; ${script.filter((r) => r.cross).length} crossettes), ${spots} stretches of water mirror them, sparks a rocket ${Object.entries(PER)
         .map(([k, v]) => `${k} ${v}`)
@@ -306,13 +378,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
       const s = nowInShow(f);
       if (s === null) {
         // (shown for the first frames all the same, drawing nothing: their shaders compile at load)
-        object.visible = warm > 0;
+        fx.visible = warm > 0;
         if (warm > 0) warm--;
         sparkGeo.instanceCount = haloGeo.instanceCount = waterGeo.instanceCount = 0;
         lampsOff();
         return;
       }
-      object.visible = true;
+      fx.visible = true;
       warm = 0;
       const level = graphicsNow.level;
       shared.uTime.value = s;
@@ -322,8 +394,30 @@ export function buildFireworks(ctx: MapContext): MapPart {
       viewU.set((buf.y * view.scene) / view.canvas, PX_SCALE * (level === 'low' ? 1.35 : 1), Math.min(1.8, Math.sqrt(1 / LEVEL_SPARKS[level])) ** 0.6, f.night);
       nightU.value = f.night;
 
-      // The rockets in the air: launched, their last light (smoke, or sparks on low) not yet gone.
+      // The rockets in the air: launched, their last light (smoke, or sparks on low) not yet gone; on low a site's
+      // small low ones only near it.
       const smoke = level !== 'low';
+      const cam = f.camera.position;
+      for (const site of SITES) {
+        const v = SHOW_SITES[site].view;
+        near[site] = level !== 'low' || Math.hypot(cam.x - v[0], cam.z - v[2]) < SITE_NEAR;
+        // (each site's light counts by how near it is, against the nearer one: the nearer show lights the scene)
+        const a = SHOW_SITES[site].at;
+        dist[site] = Math.max(1, Math.hypot(cam.x - a.x, cam.y - a.y, cam.z - a.z));
+      }
+      // (and by whether the camera looks its way: from the overview, between the two, the one in the picture; the
+      // nearest in front of it counts in full)
+      const dNear = Math.min(dist.kulen, dist.lake);
+      f.camera.getWorldDirection(fwd);
+      let most = 0;
+      for (const site of SITES) {
+        const a = SHOW_SITES[site].at;
+        const facing = Math.max(0, (fwd.x * (a.x - cam.x) + fwd.y * (a.y - cam.y) + fwd.z * (a.z - cam.z)) / dist[site]);
+        const inView = Math.min(1, Math.max(0, (facing - 0.35) / 0.45));
+        weight[site] = (dNear / dist[site]) ** 4 * (0.1 + 0.9 * inView * inView * (3 - 2 * inView)) ** 2;
+        most = Math.max(most, weight[site]);
+      }
+      for (const site of SITES) weight[site] /= most;
       inTheAir(s, smoke);
       const n = Math.min(alive.length, SLOTS);
       const from = alive.length - n;
@@ -364,8 +458,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
         data[o + 20] = faceX[i];
         data[o + 21] = faceZ[i];
         if (first < 0 && s < b + SPARK_LIFE[r.kind]) first = k;
-        // (the light now: the brightest alone, the others summed where their light's middle is)
-        const l = burstLight(r, s - b);
+        // (the light now: the brightest alone, the others summed where their light's middle is; the far site's dimmed)
+        const l = burstLight(r, s - b) * weight[r.site];
         if (l <= 0) continue;
         if (l > bestL) {
           if (best >= 0) {
@@ -446,7 +540,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
         cpu += performance.now() - c0;
         if (++frames === 24 && ctx.shot)
           console.info(
-            `[map] fireworks: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24) at ${s.toFixed(1)} s · ${n} rockets in the air (most ${peak}), ` +
+            `[map] fireworks: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24) at ${s.toFixed(1)} s · ${n} rockets in the air (most ${peak}; light: Kulen ${weight.kulen.toFixed(2)}, the lake ${weight.lake.toFixed(2)}), ` +
               `${sparkGeo.instanceCount} spark + ${haloGeo.instanceCount} halo + ${waterGeo.instanceCount} water instances on ${level}`,
           );
       }
@@ -460,6 +554,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
     let n = 0;
     for (const i of alive) {
       const r = script[i];
+      if (r.close && !near[r.site]) continue;
       if (s < burstAt(r) + (smoke ? Math.max(SMOKE_LIFE, SPARK_LIFE[r.kind]) : SPARK_LIFE[r.kind])) alive[n++] = i;
     }
     alive.length = n;

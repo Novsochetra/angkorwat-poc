@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { showTime } from '../nye/clock';
+import { SHOW_SITES, type ShowSite } from '../nye/show';
 import { pad } from '../pad/pad';
 import { SKY_TINT } from '../sky/tint';
 import type { RoamMode } from '../types';
@@ -13,14 +14,15 @@ import type { RoamCtx } from './types';
  * the show is high over Phnom Kulen, above its frame. While the show plays, anywhere
  * on the map, E turns him to face it and brings the camera down low behind him, looking up at the sky (wider, him
  * small at the bottom of the picture): a drag, Q / R or the right stick looks round from there; E, a move key or
- * the stick lets go and the camera goes back to where it was. The way to the show follows its light
- * (sky/tint.ts `SKY_TINT`, where the bursts light the sky), else the show's middle.
+ * the stick lets go and the camera goes back to where it was. He watches the nearer of
+ * the two shows (over Phnom Kulen, over the great lake: nye/show.ts `SHOW_SITES`); the way to it follows its light
+ * (sky/tint.ts `SKY_TINT`, where the bursts light the sky, when that is round the show he watches), else its middle.
  *
  * Shots: `nyewatch=1` (with `fireworks=<s>` and a walk: `roam=walk&at=x,z`).
  */
 
-/** Where the show is when no burst lights the sky yet (m: over Kulen's east flank, nye/show.ts). */
-const SHOW_AT = { x: 490, y: 140, z: -400 };
+/** How near the sky's light must be to the show's middle to be its light (m): else it is the other show's. */
+const ITS_LIGHT = 450;
 /** The watching camera: this far behind him and this high over his feet (m), looking this far up (radians), this wide (°). */
 const VIEW = { back: 5.2, up: 1.15, look: 0.36, dist: 12, fov: 60 };
 /** How far up a drag may look (radians: the follow camera's `pitchMin` while watching). */
@@ -47,12 +49,22 @@ let env: AddonEnv | null = null;
 let session: Session | null = null;
 const _c = new Vector3();
 
-/** The way to the show from (x, z): its light's middle when there is light, else its middle. */
+/** The way to the nearer show from (x, z): its light's middle when there is light round it, else its middle. */
 function showFrom(x: number, z: number): { yaw: number; up: number } {
-  const lit = SKY_TINT.r + SKY_TINT.g + SKY_TINT.b > 0.05;
-  const sx = lit ? SKY_TINT.x : SHOW_AT.x;
-  const sy = lit ? SKY_TINT.y : SHOW_AT.y;
-  const sz = lit ? SKY_TINT.z : SHOW_AT.z;
+  let at = SHOW_SITES.kulen.at;
+  let best = Infinity;
+  for (const site of Object.keys(SHOW_SITES) as ShowSite[]) {
+    const a = SHOW_SITES[site].at;
+    const d = Math.hypot(a.x - x, a.z - z);
+    if (d < best) {
+      best = d;
+      at = a;
+    }
+  }
+  const lit = SKY_TINT.r + SKY_TINT.g + SKY_TINT.b > 0.05 && Math.hypot(SKY_TINT.x - at.x, SKY_TINT.z - at.z) < ITS_LIGHT;
+  const sx = lit ? SKY_TINT.x : at.x;
+  const sy = lit ? SKY_TINT.y : at.y;
+  const sz = lit ? SKY_TINT.z : at.z;
   const d = Math.max(1, Math.hypot(sx - x, sz - z));
   return { yaw: Math.atan2(sx - x, sz - z), up: Math.atan2(sy, d) };
 }

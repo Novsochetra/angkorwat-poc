@@ -1,7 +1,7 @@
 import { mulberry32 } from '../../voxel/random';
 import { NYE_TIMES } from './clock';
-import { PLATEAUS } from '../layout';
-import { VIEW } from './plan';
+import { LAKES, PLATEAUS } from '../layout';
+import { LAKE_VIEW, VIEW } from './plan';
 
 /**
  * The New Year's Eve fireworks show (AWP-35) as a script: every rocket's launch time, place, colour, kind and
@@ -84,9 +84,32 @@ export interface Rocket {
   seed: number;
   /** A crossette (peonies, chrysanthemums, palms): late in their life its stars each pop into a few white-gold crackles. */
   cross: boolean;
-  /** The signature's picture faces this point (x, z on the map); the crowd's view (plan.ts `VIEW.cam`) if not given. */
+  /** The signature's picture faces this point (x, z on the map); its site's crowd view (`SHOW_SITES[site].view`) if not given. */
   face?: readonly [number, number];
+  /** Where it is fired: over Phnom Kulen for the festival square, or over the great lake for the lakeside crowd. */
+  site: ShowSite;
+  /**
+   * A small low burst (the low layer: crackles, small shells near the crowd): the fireworks part draws it on low
+   * graphics only near its site (`SITE_NEAR`), so a phone far off keeps its budget; never by chance, so what is drawn
+   * near a site is the same on every device.
+   */
+  close: boolean;
 }
+
+/** The two shows, one clock: over Phnom Kulen for the festival square, over the great lake for the lakeside crowd. */
+export type ShowSite = 'kulen' | 'lake';
+
+/**
+ * Each show's crowd camera (`view`: plan.ts `VIEW`, `LAKE_VIEW`) and its middle in the sky (`at`, m: where the bursts
+ * are, about; what "Watch the fireworks" turns to before any burst lights the sky, and what the light follows).
+ */
+export const SHOW_SITES: Record<ShowSite, { view: readonly [number, number, number]; at: { x: number; y: number; z: number } }> = {
+  kulen: { view: VIEW.cam, at: { x: 490, y: 140, z: -400 } },
+  lake: { view: LAKE_VIEW.cam, at: { x: -470, y: 95, z: 25 } },
+};
+
+/** On low graphics a site's `close` rockets are drawn only with the camera this near its crowd view (m). */
+export const SITE_NEAR = 600;
 
 /** The show's length (s). */
 export const SHOW_LENGTH = NYE_TIMES.show;
@@ -228,7 +251,12 @@ function spotIn(rnd: () => number, layer: Layer, bearing?: number, sizeK = 1): S
 /** The script being made: its rockets, its random numbers. */
 class Maker {
   readonly out: Rocket[] = [];
-  constructor(readonly rnd: () => number) {}
+  constructor(
+    readonly rnd: () => number,
+    readonly site: ShowSite = 'kulen',
+    /** The ground (or water: a barge's deck) a rocket is launched from at (x, z). */
+    readonly ground: (x: number, z: number) => number = hillAt,
+  ) {}
   pick<T>(list: readonly T[]): T {
     return list[Math.floor(this.rnd() * list.length) % list.length];
   }
@@ -249,7 +277,24 @@ class Maker {
   }
   /** A rocket from a given launch point (x, z on the land) bursting at `s` at `burst`, `rise` s after its launch. */
   fireFrom(burst: number, s: Spot, x: number, z: number, rise: number, kind: BurstKind, color: ShowColour, color2: ShowColour = color): Rocket {
-    const r: Rocket = { t: Math.max(0, burst - rise), x, y: hillAt(x, z), z, bx: s.x, by: s.y, bz: s.z, rise, kind, color, color2, size: s.size, seed: Math.floor(this.rnd() * 2 ** 30), cross: false };
+    const r: Rocket = {
+      t: Math.max(0, burst - rise),
+      x,
+      y: this.ground(x, z),
+      z,
+      bx: s.x,
+      by: s.y,
+      bz: s.z,
+      rise,
+      kind,
+      color,
+      color2,
+      size: s.size,
+      seed: Math.floor(this.rnd() * 2 ** 30),
+      cross: false,
+      site: this.site,
+      close: false,
+    };
     r.rise = burst - r.t;
     this.out.push(r);
     return r;
@@ -290,8 +335,11 @@ function makeScript(): Rocket[] {
   const colour = (accent = 0.1): ShowColour => (rnd() < accent ? m.pick(ACCENT) : m.pick(BRIGHT));
   // (high, or now and then the crown over the summit)
   const up = (crown: number): Layer => (rnd() < crown ? 'crown' : 'high');
-  const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) =>
-    m.fire(at, spotIn(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' || kind === 'palm' ? 'willow' : second(color));
+  const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) => {
+    const r = m.fire(at, spotIn(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' || kind === 'palm' ? 'willow' : second(color));
+    r.close = layer === 'low';
+    return r;
+  };
   /** Some peonies, chrysanthemums and palms are crossettes (`chance` of them). */
   const crossed = (r: Rocket, chance: number): Rocket => {
     r.cross = (r.kind === 'peony' || r.kind === 'chrysanthemum' || r.kind === 'palm') && rnd() < chance;
@@ -463,7 +511,265 @@ function makeScript(): Rocket[] {
   signature(464.6, false, 1.1);
   signature(465.2, true, 1.05);
 
-  const out = m.out.filter((r) => burstAt(r) < SHOW_LENGTH - 6);
-  out.sort((a, b) => a.t - b.t || a.seed - b.seed);
+  const out = [...m.out, ...lakeShow()].filter((r) => burstAt(r) < SHOW_LENGTH - 6);
+  out.sort((a, b) => a.t - b.t || a.seed - b.seed || (a.site === b.site ? 0 : a.site === 'kulen' ? -1 : 1));
   return out;
+}
+
+// ── The lake show ───────────────────────────────────────────────────────────────────────────────────────────────
+//
+// The same night by the great lake (plan.ts `LAKE_STAGE`, `LAKE_SHORE`): the lakeside crowd looks south-west from the
+// shore terrace (`LAKE_VIEW`: bearing ≈ 222°, the floating stage 50 m off at 219°, the floating village's lights to
+// the left at 170°‥190°) over the open water. Its bursts are over the water behind the stage (bearings 208°‥258°,
+// clear of the village), in layers by distance and elevation from the terrace as Kulen's are from the square, and
+// mirrored in the lake; launched from three rows of barges on the water (`LAKE_BARGES`; the fireworks part draws
+// them, a lantern each). It follows Kulen's acts on the same clock (midnight's fan, the flag at 24 s, the signature
+// at 7.2, 205, 338 and to end, the build-up, the finale's waves), at under half its density: its own seed, so Kulen's
+// script is as it was.
+
+const LCAM = LAKE_VIEW.cam;
+const GREAT_LAKE = LAKES.find((l) => l.name === 'Great lake') ?? { x: -490, z: 22, rx: 206, rz: 78, rot: 0.05, level: 5 };
+/** The lake's water level (m), and a barge's deck over it. */
+const WATER = GREAT_LAKE.level;
+const DECK = WATER + 0.7;
+
+/** Inside the great lake's ellipse (its shore's roughness left out), `margin` m in from its shore. */
+export function inGreatLake(x: number, z: number, margin = 0): boolean {
+  const c = Math.cos(GREAT_LAKE.rot ?? 0);
+  const s = Math.sin(GREAT_LAKE.rot ?? 0);
+  const dx = x - GREAT_LAKE.x;
+  const dz = z - GREAT_LAKE.z;
+  return Math.hypot((dx * c + dz * s) / (GREAT_LAKE.rx - margin), (-dx * s + dz * c) / (GREAT_LAKE.rz - margin)) < 1;
+}
+
+/** A point at a bearing (° right of north) and distance (m) from the lakeside view. */
+const fromShore = (bearing: number, d: number): [number, number] => [LCAM[0] + Math.sin(bearing * DEG) * d, LCAM[2] - Math.cos(bearing * DEG) * d];
+
+/**
+ * The barges the lake show is fired from (x, z on the water, m; `yaw` along their row): three rows across the view at
+ * 118, 172 and 232 m from the terrace, one every 6° (bearings 208°‥256°), those on open water (10 m in from the
+ * shore). The same list for the script and the drawing.
+ */
+export const LAKE_BARGES: readonly { x: number; z: number; yaw: number }[] = (() => {
+  const out: { x: number; z: number; yaw: number }[] = [];
+  for (const d of [118, 172, 232])
+    for (let b = 208; b <= 256; b += 6) {
+      const [x, z] = fromShore(b + (d === 172 ? 3 : 0), d);
+      if (inGreatLake(x, z, 12)) out.push({ x, z, yaw: (b + 90) * DEG });
+    }
+  return out;
+})();
+
+/** The barge nearest (x, z). */
+function bargeNear(x: number, z: number): { x: number; z: number } {
+  let best = LAKE_BARGES[0];
+  let bd = Infinity;
+  for (const b of LAKE_BARGES) {
+    const d = (b.x - x) ** 2 + (b.z - z) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = b;
+    }
+  }
+  return best;
+}
+
+/** The lake's layers: distance from the terrace (m), elevation seen from it (°), burst radius (m), bearings (°). */
+const LAKE_LAYERS: Record<Layer, { d: [number, number]; el: [number, number]; size: [number, number]; b: [number, number] }> = {
+  // (the far high ones: over the open water west of the stage, seen from the floating village and far off)
+  crown: { d: [225, 285], el: [25, 31], size: [34, 44], b: [234, 256] },
+  high: { d: [180, 235], el: [19, 25], size: [29, 39], b: [212, 254] },
+  mid: { d: [140, 190], el: [13, 19], size: [19, 27], b: [210, 256] },
+  // (small and low, right of the stage and its board, before the far rows)
+  low: { d: [108, 130], el: [9, 12.5], size: [8, 12], b: [226, 254] },
+};
+
+/** A lake burst point in a layer at a bearing (°; random in the layer's if not given): over open water, clear of it. */
+function lakeSpot(rnd: () => number, layer: Layer, bearing?: number, sizeK = 1): Spot {
+  const L = LAKE_LAYERS[layer];
+  let b = bearing ?? L.b[0] + rnd() * (L.b[1] - L.b[0]);
+  const d = L.d[0] + rnd() * (L.d[1] - L.d[0]);
+  const size = (L.size[0] + rnd() * (L.size[1] - L.size[0])) * sizeK;
+  const el = (L.el[0] + rnd() * (L.el[1] - L.el[0])) * DEG;
+  // (over the water, well in from the shore: turned toward 245°, where the lake reaches from 90 to 330 m off)
+  for (let k = 0; k < 40 && !inGreatLake(...fromShore(b, d), 0.4 * size + 8); k++) b += Math.sign(245 - b) * 2;
+  const [x, z] = fromShore(b, d);
+  const y = Math.max(LCAM[1] + Math.tan(Math.min(34 * DEG, el)) * d, WATER + 20 + 0.6 * size);
+  return { x, y, z, size };
+}
+
+/** The lake show (its own seed: Kulen's script is untouched): Kulen's acts at under half the density. */
+function lakeShow(): Rocket[] {
+  const m = new Maker(mulberry32(0x2027_1a6e), 'lake', () => DECK);
+  const rnd = m.rnd;
+  const second = (c: ShowColour) => m.pick(SECOND[c] ?? [c]);
+  const colour = (accent = 0.1): ShowColour => (rnd() < accent ? m.pick(ACCENT) : m.pick(BRIGHT));
+  const up = (crown: number): Layer => (rnd() < crown ? 'crown' : 'high');
+  /** A rocket bursting at `s` at `at`, from the barge nearest under it (a few metres along its deck). */
+  const fire = (at: number, s: Spot, kind: BurstKind, color: ShowColour, color2: ShowColour = color): Rocket => {
+    const b = bargeNear(s.x, s.z);
+    const x = b.x + (rnd() - 0.5) * 3;
+    const z = b.z + (rnd() - 0.5) * 3;
+    const rise = Math.min(4, 1.2 + Math.sqrt(s.y - DECK) * 0.17 + rnd() * 0.25);
+    return m.fireFrom(at, s, x, z, rise, kind, color, color2);
+  };
+  const shell = (at: number, layer: Layer, kind: BurstKind, color: ShowColour, bearing?: number, sizeK = 1) => {
+    const r = fire(at, lakeSpot(rnd, layer, bearing, sizeK), kind, color, kind === 'willow' || kind === 'palm' ? 'willow' : second(color));
+    r.close = layer === 'low';
+    return r;
+  };
+  const crossed = (r: Rocket, chance: number): Rocket => {
+    r.cross = (r.kind === 'peony' || r.kind === 'chrysanthemum' || r.kind === 'palm') && rnd() < chance;
+    return r;
+  };
+  const palm = (at: number, layer: Layer, bearing?: number, cross = 0.25) => crossed(shell(at, layer, 'palm', 'gold', bearing, (layer === 'mid' ? 1.3 : 1) * (0.95 + rnd() * 0.15)), cross);
+  /** A fan of comets from one barge of the near row, right of the stage. */
+  const comets = (at: number, count: number, c: ShowColour = colour(0.15)) => {
+    const b0 = 230 + rnd() * 12;
+    const [fx, fz] = fromShore(b0, 118);
+    const from = bargeNear(fx, fz);
+    const tail = rnd() < 0.5 ? 'gold' : 'white';
+    for (let i = 0; i < count; i++) {
+      const off = (i - (count - 1) / 2) * (4.5 + rnd() * 1.5);
+      const dd = 118 + (rnd() - 0.5) * 14;
+      const [x, z] = fromShore(b0 + off, dd);
+      const y = Math.max(LCAM[1] + Math.tan((24 + rnd() * 5 - Math.abs(off) * 0.3) * DEG) * dd, WATER + 40);
+      m.fireFrom(at + i * 0.16 + rnd() * 0.14, { x, y, z, size: 4 + rnd() * 2.5 }, from.x + (rnd() - 0.5) * 2, from.z + (rnd() - 0.5) * 2, 2.1 + rnd() * 0.6, 'comet', i % 3 === 1 && rnd() < 0.5 ? second(c) : c, tail);
+    }
+  };
+  /**
+   * The signature: over the water behind the stage, facing the terrace; or (`village`) farther west over the open
+   * water, facing the floating village (and the rest of the map's south-west).
+   */
+  const signature = (at: number, village: boolean, sizeK = 1) => {
+    if (!village) {
+      const size = 46 * sizeK;
+      const d = 210;
+      const [x, z] = fromShore(222 + (rnd() - 0.5) * 3, d);
+      // (its lotus's foot 10° up from the terrace: over the stage's board and the far barges)
+      const foot = Math.max(LCAM[1] + Math.tan(10 * DEG) * d, WATER + 25);
+      const r = fire(at, { x, z, size, y: foot + 1.02 * size }, 'angkor', 'gold', 'willow');
+      r.face = [LCAM[0], LCAM[2]];
+      return r;
+    }
+    const size = 44 * sizeK;
+    const r = fire(at, { x: -455, z: 2, size, y: WATER + 45 + 1.02 * size }, 'angkor', 'gold', 'willow');
+    r.face = [-300, 40];
+    return r;
+  };
+  const SIGNATURES = [7.2, 205, 338];
+  const clear = (t: number, gap = 2.2) => SIGNATURES.every((s) => Math.abs(t - s) > gap);
+
+  // ── Midnight: a fan of three gold chrysanthemums as the year turns, an ice peony high over them; the signature.
+  for (let i = 0; i < 3; i++) shell(2.6 + [0, 0.12, 0.06][i], i % 2 ? 'mid' : 'high', 'chrysanthemum', 'gold', 216 + i * 14, 0.9 + 0.2 * rnd());
+  shell(4.4, 'crown', 'peony', 'ice', 244, 1.05);
+  signature(7.2, false);
+
+  // ── The opening (12‥70 s), one at a time; the flag at 24 s, as over Kulen.
+  for (let t = 13.5; t < 70; t += 5.5 + rnd() * 3) {
+    if (t > 21 && t < 30) continue;
+    const k = rnd();
+    if (k < 0.15) palm(t, 'mid', undefined, 0);
+    else if (k < 0.25) shell(t, up(0.3), 'willow', 'willow');
+    else shell(t, rnd() < 0.6 ? 'mid' : up(0.3), rnd() < 0.5 ? 'peony' : 'chrysanthemum', colour(0.08), undefined, 0.85 + rnd() * 0.2);
+  }
+  const red = lakeSpot(rnd, 'mid', 232, 1.35);
+  fire(24, lakeSpot(rnd, 'mid', 216), 'peony', 'blue', 'blue');
+  fire(24.1, red, 'peony', 'red', 'red');
+  fire(24.04, lakeSpot(rnd, 'mid', 248), 'peony', 'blue', 'blue');
+  fire(24.45, { ...red, size: red.size * 0.4 }, 'peony', 'white', 'white');
+  fire(26.5, lakeSpot(rnd, 'mid', 224), 'peony', 'red', 'white');
+  fire(26.7, lakeSpot(rnd, 'mid', 242), 'peony', 'blue', 'ice');
+  comets(49, 3, 'gold');
+
+  // ── Colours (70‥180 s): mirrored pairs, rings, crackles, palms, a comet fan now and then.
+  let fanAt = 92;
+  for (let t = 71; t < 180; t += 3.6 + rnd() * 2.6) {
+    if (t >= fanAt) {
+      comets(t, 3);
+      fanAt += 34 + rnd() * 10;
+      continue;
+    }
+    const k = rnd();
+    if (k < 0.25) {
+      const c = colour(0.12);
+      const kind: BurstKind = rnd() < 0.5 ? 'peony' : 'chrysanthemum';
+      const off = 7 + rnd() * 8;
+      const layer: Layer = rnd() < 0.5 ? 'mid' : 'high';
+      const cr = rnd() < 0.2;
+      crossed(shell(t, layer, kind, c, 234 - off, 0.92 + rnd() * 0.12), cr ? 1 : 0);
+      crossed(shell(t + 0.08 + rnd() * 0.15, layer, kind, c, 234 + off, 0.92 + rnd() * 0.12), cr ? 1 : 0);
+    } else if (k < 0.38) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'gold', 'ice', 'jade'] as const));
+    else if (k < 0.5) for (let i = 0; i < 2; i++) shell(t + i * 0.35, 'low', 'crackle', i ? 'white' : 'gold', 232 + i * 9);
+    else if (k < 0.6) palm(t, rnd() < 0.5 ? 'mid' : up(0.3));
+    else crossed(shell(t, rnd() < 0.5 ? 'mid' : up(0.3), rnd() < 0.5 ? 'peony' : 'chrysanthemum', colour(0.12)), 0.18);
+  }
+
+  // ── Layers (180‥290 s): high over low, palms, comets; at 205 s the signature faces the floating village.
+  fanAt = 190;
+  for (let t = 181; t < 290; t += 2.1 + rnd() * 1.9) {
+    if (!clear(t)) continue;
+    if (t >= fanAt) {
+      comets(t, 3 + Math.floor(rnd() * 2));
+      fanAt += 24 + rnd() * 10;
+    } else if (rnd() < 0.16) palm(t, up(0.3));
+    else crossed(shell(t, up(0.3), rnd() < 0.5 ? 'chrysanthemum' : 'peony', colour(0.12)), 0.22);
+    if (rnd() < 0.5) shell(t + 0.15 + rnd() * 0.3, 'low', rnd() < 0.7 ? 'crackle' : 'peony', m.pick(['gold', 'white', 'lotus'] as const));
+    if (rnd() < 0.25) shell(t + 0.4, 'mid', m.pick(['ring', 'peony', 'chrysanthemum'] as const), colour(0.15));
+  }
+  signature(205, true);
+
+  // ── Building up (290‥400 s): fans of three chrysanthemums every 13 s, comet fans, crackles, willows and palms;
+  // the signature again at 338 s, the sky round it clear.
+  let fan = 293;
+  fanAt = 300;
+  for (let t = 290; t < 400; t += 1.2 + rnd() * 1.2) {
+    if (!clear(t, 2.6)) continue;
+    if (t >= fan) {
+      const c = m.pick(['gold', 'purple', 'lotus', 'gold', 'jade'] as const);
+      for (let i = 0; i < 3; i++) crossed(shell(t + i * 0.14 + rnd() * 0.06, 'mid', 'chrysanthemum', c, 218 + i * 14, 0.9 + rnd() * 0.2), c === 'gold' ? 0.4 : 0);
+      fan += 12 + rnd() * 3;
+      t += 1.2;
+      continue;
+    }
+    if (t >= fanAt) {
+      comets(t, 3 + Math.floor(rnd() * 2));
+      fanAt += 15 + rnd() * 8;
+      t += 0.6;
+      continue;
+    }
+    const k = rnd();
+    if (k < 0.2) for (let i = 0; i < 3; i++) shell(t + i * 0.2, 'low', 'crackle', i % 2 ? 'white' : 'gold', 230 + i * 7 + rnd() * 3);
+    else if (k < 0.34) shell(t, up(0.4), 'willow', 'willow');
+    else if (k < 0.44) palm(t, up(0.35), undefined, 0.35);
+    else if (k < 0.53) shell(t, 'mid', 'ring', m.pick(['purple', 'lotus', 'ice', 'jade'] as const));
+    else crossed(shell(t, rnd() < 0.6 ? up(0.3) : 'mid', rnd() < 0.55 ? 'chrysanthemum' : 'peony', colour(0.12)), 0.25);
+  }
+  signature(338, false, 1.05);
+
+  // ── The lull: an ice peony, a lone gold willow.
+  shell(405, 'mid', 'peony', 'ice', undefined, 0.8);
+  shell(413.5, 'crown', 'willow', 'willow', 246, 1.05);
+
+  // ── The finale (425‥468 s): waves of gold willows (2, growing to 4), a palm, comets, a ring or a crossette in
+  // turn, a coloured shell high among them, crackles low; the last carpet of willows and the two signatures.
+  let n = 2;
+  let wave = 0;
+  for (let t = 425.3; t < 459; t += Math.max(1.25, 2.4 - (t - 425) * 0.04), wave++) {
+    for (let i = 0; i < n; i++) shell(t + rnd() * 0.35, i % 3 === 2 ? 'mid' : i % 3 === 1 ? 'crown' : 'high', 'willow', 'willow', 212 + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * 42, 0.9 + rnd() * 0.25);
+    const extra = wave % 4;
+    if (extra === 0) palm(t + 0.4 + rnd() * 0.2, rnd() < 0.5 ? 'high' : 'mid', 214 + rnd() * 38, 0.5);
+    else if (extra === 1) comets(t + 0.6, 3);
+    else if (extra === 2) shell(t + 0.5, 'mid', 'ring', m.pick(['purple', 'lotus', 'jade'] as const));
+    else crossed(shell(t + 0.45, 'mid', rnd() < 0.5 ? 'peony' : 'chrysanthemum', m.pick(['purple', 'lotus', 'jade', 'purple', 'lotus'] as const)), 0.6);
+    if (wave % 2 === 0) crossed(shell(t + 0.2 + rnd() * 0.4, up(0.3), rnd() < 0.6 ? 'peony' : 'chrysanthemum', (['purple', 'lotus', 'jade', 'lotus', 'purple', 'ice'] as const)[(wave >> 1) % 6], 214 + rnd() * 38, 0.85 + rnd() * 0.3), 0.3);
+    if (rnd() < 0.4) for (let i = 0; i < 2; i++) shell(t + 0.3 + i * 0.2 + rnd() * 0.05, 'low', 'crackle', i ? 'white' : 'gold');
+    n = Math.min(4, n + (rnd() < 0.4 ? 1 : 0));
+  }
+  for (let i = 0; i < 8; i++) shell(461.5 + i * 0.12 + rnd() * 0.25, i % 3 === 1 ? 'mid' : i % 3 === 2 ? 'crown' : 'high', 'willow', 'willow', 210 + (i / 7) * 46, 1.05 + rnd() * 0.15);
+  palm(462.3, 'mid', 240, 1);
+  for (let i = 0; i < 3; i++) shell(462.7 + i * 0.15 + rnd() * 0.05, 'low', 'crackle', i % 2 ? 'white' : 'gold', 230 + i * 8);
+  signature(464.6, false, 1.1);
+  signature(465.2, true, 1.0);
+  return m.out;
 }

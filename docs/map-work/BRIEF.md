@@ -2381,6 +2381,28 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   the sky dome (a low glow round it, its clouds there lit from below) and the rain clouds; never the lightning's
   `flash`. The water mirrors (the Kulen pool and the flat stretches of the stream, never over a fall): a soft
   shimmering streak a burst while its sparks glow.
+- **The lake show** (`Rocket.site`: `'kulen'` or `'lake'`): the same night over the great lake for the lakeside
+  crowd (plan.ts `LAKE_STAGE`, `LAKE_SHORE`, `LAKE_VIEW`), in the same script and on the same clock: 386 rockets of
+  its own seed (Kulen's 797 are as they were), ≈ 48 % of Kulen's, following its acts (a three-shell fan at
+  midnight and the signature at 7.2 s over the water behind the stage facing the terrace; the flag at 24 s; colours;
+  layers with the signature at 205 s facing the floating village; the build-up and the signature at 338 s; the
+  lull; the finale's waves of 2‥4 willows, a carpet of 8 and the two signatures at 464.6 / 465.2 s). Placed by
+  bearing (208°‥258°, right of and over the stage, clear of the floating village at 170°‥190°), distance and
+  elevation from `LAKE_VIEW.cam` in four layers (low 9°‥12.5° at 108‥130 m, mid, high, a far high one up to 31° at
+  225‥285 m), every burst over open water (show.ts `inGreatLake`), fired from 23 barges in three rows on the water
+  (`LAKE_BARGES`: drawn by the part, a dark pontoon and a lantern each, two instanced draws, there all the hour the
+  part is built). The great lake mirrors them (one wide stretch along its middle; the shore's land hides what reaches
+  past the water). Light: each site's bursts count for the lamps and `SKY_TINT` by how near its show is to the
+  camera and whether the camera looks its way (`(near/d)⁴`, in view), the nearest in view in full: by the lake the
+  lake's show lights the scene and the sky, on the square Kulen's. "Watch the fireworks" turns to the nearer show
+  (`SHOW_SITES[site].at`, its light when the tint is round it). Budget: on low a site's small low bursts
+  (`Rocket.close`) are drawn only within `SITE_NEAR` (600 m) of its crowd view; the busiest second (456 s): 149
+  rockets in the air on low with both sites' (147 near Kulen, 139 near the lake), 202 with smoke on medium (`SLOTS`
+  224). The overview's frame leaves the lake out (it is 70° left of its middle; the light there is Kulen's, the
+  lake's at 0.07); the floating village sees it to its west. The sound: every rocket is heard from where it is; the
+  crowd's count and cheers also come from the lake's terrace; `node scripts/nye-sound.mjs ears=lake` renders it from
+  `LAKE_VIEW` (`lake-midnight.wav`, `lake-finale.wav`). Shots: `cam=-330,12.5,-76,-385,30,-15,55` (the terrace),
+  `cam=-300,15,40,-400,40,-20,55` (the floating village).
 - **The night and the interface.** main.ts holds the sky at night 22:30‥00:45 (`nightHeld`: the day's cycle
   stops, then the player's own setting comes back). `nye/overlay.ts`: a chip at the top from 22:30, one huge
   Khmer numeral in the last ten seconds, the greeting at midnight (pointer-events none; reduce motion fades

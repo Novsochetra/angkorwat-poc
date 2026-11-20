@@ -1,5 +1,5 @@
 import { NYE_TIMES, nyeSeconds, showSoon } from '../nye/clock';
-import { RING, GROUND } from '../nye/plan';
+import { GROUND, LAKE_SHORE, RING } from '../nye/plan';
 import { burstAt, CROSS_POP, rocketsBetween, showScript, type BurstKind, type Rocket } from '../nye/show';
 import { biquad, cleanup, glide, mulberry32, noise, range } from './dsp';
 import type { SoundEngine } from './engine';
@@ -19,7 +19,8 @@ import type { Ears } from './water';
  * - **crackles** for the crackle bursts (dozens of tiny snaps over a second) and for a crossette's stars popping
  *   late in their life, the **sizzle** of the gold willows', palms' and the signature's long trails (a short one for
  *   the chrysanthemums), a comet's hiss as it climbs with its glittering tail (its pop at the top a small boom);
- * - **the crowd** on the festival square (at the ring, plan.ts `RING`): a murmur rising through the last ten seconds,
+ * - **the crowd** on the festival square (at the ring, plan.ts `RING`) and on the lake's shore terrace (`LAKE_SHORE`;
+ *   the rockets of both shows, nye/show.ts `Rocket.site`, are heard from wherever they are): a murmur rising through the last ten seconds,
  *   the count shouted in Khmer (ដប់ … មួយ: speech.ts `shout`), "សួស្តីឆ្នាំថ្មី!" and a roar at midnight, a cheer
  *   again as the finale ends.
  *
@@ -79,6 +80,12 @@ const SIZZLE: Partial<Record<BurstKind, number>> = { willow: 3.2, palm: 2.4, ang
 /** A sizzle's loudness by kind (a willow's 1). */
 const SIZZLE_LEVEL: Partial<Record<BurstKind, number>> = { willow: 1, palm: 1, angkor: 1.1, chrysanthemum: 0.6, comet: 0.7 };
 
+/** Where the crowds stand (m, their heads): the festival square's ring, the lake's shore terrace. */
+const CROWDS = [
+  { x: RING.x, y: GROUND + 1.6, z: RING.z },
+  { x: LAKE_SHORE.x, y: 8 + 1.6, z: LAKE_SHORE.z },
+];
+
 const pool: PlannedSound[] = [];
 const idx: number[] = [];
 
@@ -103,16 +110,19 @@ export function planSounds(t0: number, t1: number, ears: Pick<Ears, 'x' | 'y' | 
     out.push(p);
   };
   const dist = (x: number, y: number, z: number) => Math.hypot(x - ears.x, y - ears.y, z - ears.z);
-  // The crowd on the square: the count, midnight's greeting and roar, the cheer as the finale ends.
-  const cy = GROUND + 1.6;
-  const dc = dist(RING.x, cy, RING.z);
-  const gc = carry(dc, REACH.crowd[0], REACH.crowd[1]);
-  const late = dc / SOUND_SPEED;
-  add(-10.6 + late, 'murmur', -1, RING.x, cy, RING.z, dc, gc);
-  for (let n = 10; n >= 1; n--) add(-n + late, 'shout', n, RING.x, cy, RING.z, dc, gc);
-  add(0.15 + late, 'shout', 0, RING.x, cy, RING.z, dc, gc);
-  add(0 + late, 'roar', 0, RING.x, cy, RING.z, dc, gc);
-  add(NYE_TIMES.show - 6 + late, 'roar', 1, RING.x, cy, RING.z, dc, gc);
+  // The crowds on the square and by the lake: the count, midnight's greeting and roar, the cheer as the finale ends
+  // (they are 750 m apart: one is heard at a time).
+  for (const c of CROWDS) {
+    const dc = dist(c.x, c.y, c.z);
+    const gc = carry(dc, REACH.crowd[0], REACH.crowd[1]);
+    if (gc < QUIET) continue;
+    const late = dc / SOUND_SPEED;
+    add(-10.6 + late, 'murmur', -1, c.x, c.y, c.z, dc, gc);
+    for (let n = 10; n >= 1; n--) add(-n + late, 'shout', n, c.x, c.y, c.z, dc, gc);
+    add(0.15 + late, 'shout', 0, c.x, c.y, c.z, dc, gc);
+    add(0 + late, 'roar', 0, c.x, c.y, c.z, dc, gc);
+    add(NYE_TIMES.show - 6 + late, 'roar', 1, c.x, c.y, c.z, dc, gc);
+  }
   // The rockets: launched in [t0 − LOOK_BACK, t1), heard in [t0, t1).
   const s = showScript();
   rocketsBetween(t0 - LOOK_BACK, t1, idx);
