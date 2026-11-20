@@ -1,6 +1,6 @@
 import { NYE_TIMES, nyeSeconds, showSoon } from '../nye/clock';
 import { RING, GROUND } from '../nye/plan';
-import { burstAt, rocketsBetween, showScript, type Rocket } from '../nye/show';
+import { burstAt, CROSS_POP, rocketsBetween, showScript, type BurstKind, type Rocket } from '../nye/show';
 import { biquad, cleanup, glide, mulberry32, noise, range } from './dsp';
 import type { SoundEngine } from './engine';
 import { shout, warmShouts } from './speech';
@@ -16,8 +16,9 @@ import type { Ears } from './water';
  * - **the burst**: a boom where it bursts, *heard late by its distance* (343 m/s: the flash first, the boom after),
  *   deeper and longer for big, high bursts (a falling thump, the crack of the charge, the valley's echo: more of
  *   the reverb far away), darker far off (the air takes the top);
- * - **crackles** for the crackle bursts (dozens of tiny snaps over a second), the **sizzle** of the gold willows'
- *   long trails (and a short one for the chrysanthemums);
+ * - **crackles** for the crackle bursts (dozens of tiny snaps over a second) and for a crossette's stars popping
+ *   late in their life, the **sizzle** of the gold willows', palms' and the signature's long trails (a short one for
+ *   the chrysanthemums), a comet's hiss as it climbs with its glittering tail (its pop at the top a small boom);
  * - **the crowd** on the festival square (at the ring, plan.ts `RING`): a murmur rising through the last ten seconds,
  *   the count shouted in Khmer (ដប់ … មួយ: speech.ts `shout`), "សួស្តីឆ្នាំថ្មី!" and a roar at midnight, a cheer
  *   again as the finale ends.
@@ -73,6 +74,11 @@ export interface PlannedSound {
   g: number;
 }
 
+/** How long a burst's trails sizzle (s; none for the rest). */
+const SIZZLE: Partial<Record<BurstKind, number>> = { willow: 3.2, palm: 2.4, angkor: 3.6, chrysanthemum: 1.1 };
+/** A sizzle's loudness by kind (a willow's 1). */
+const SIZZLE_LEVEL: Partial<Record<BurstKind, number>> = { willow: 1, palm: 1, angkor: 1.1, chrysanthemum: 0.6, comet: 0.7 };
+
 const pool: PlannedSound[] = [];
 const idx: number[] = [];
 
@@ -119,7 +125,16 @@ export function planSounds(t0: number, t1: number, ears: Pick<Ears, 'x' | 'y' | 
     const at = burstAt(r) + db / SOUND_SPEED;
     add(at, 'boom', i, r.bx, r.by, r.bz, db, carry(db, REACH.boom[0], REACH.boom[1]) * Math.min(1.4, (r.size / 30) ** 0.6));
     if (r.kind === 'crackle') add(at + 0.35, 'crackle', i, r.bx, r.by, r.bz, db, carry(db, REACH.crackle[0], REACH.crackle[1]));
-    else if (r.kind === 'willow' || r.kind === 'chrysanthemum') add(at + 0.2, 'sizzle', i, r.bx, r.by, r.bz, db, carry(db, REACH.sizzle[0], REACH.sizzle[1]));
+    else if (SIZZLE[r.kind]) add(at + 0.2, 'sizzle', i, r.bx, r.by, r.bz, db, carry(db, REACH.sizzle[0], REACH.sizzle[1]));
+    // (a crossette: its stars crackle as they pop; a comet hisses all the way up, from the middle of its climb)
+    if (r.cross) add(at + (CROSS_POP[r.kind] ?? 1.5), 'crackle', i, r.bx, r.by, r.bz, db, carry(db, REACH.crackle[0], REACH.crackle[1]) * 0.8);
+    if (r.kind === 'comet') {
+      const mx = (r.x + r.bx) / 2;
+      const my = (r.y + r.by) / 2;
+      const mz = (r.z + r.bz) / 2;
+      const dm = dist(mx, my, mz);
+      add(r.t + 0.1 + dm / SOUND_SPEED, 'sizzle', i, mx, my, mz, dm, carry(dm, REACH.sizzle[0], REACH.sizzle[1]));
+    }
   }
   return out;
 }
@@ -224,7 +239,8 @@ export class FireworksSound {
         if (r) this.crackle(at, LEVEL.crackle * p.g, side, p.d, r.seed);
         return;
       case 'sizzle':
-        if (r) this.sizzle(at, LEVEL.sizzle * p.g * (r.kind === 'willow' ? 1 : 0.6), side, p.d, r.kind === 'willow' ? 3.2 : 1.1);
+        // (a comet's: its climb; a burst's: its trails)
+        if (r) this.sizzle(at, LEVEL.sizzle * p.g * (SIZZLE_LEVEL[r.kind] ?? 0.6), side, p.d, r.kind === 'comet' ? r.rise * 0.45 : (SIZZLE[r.kind] ?? 1.1));
         return;
       case 'shout':
         this.shoutAt(at, p.i, LEVEL.shout * p.g * (p.i === 0 ? 1.15 : 0.75 + 0.025 * (10 - p.i)), side, p.d);
