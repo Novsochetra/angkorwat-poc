@@ -173,10 +173,13 @@ always in the same crowd). Five times a second, each friend's voice volume is
 set from the distance between them on the map (LiveKit's
 `participant.setVolume`):
 
-- close (up to ≈ 15 m): full volume;
+- close (up to ≈ 20 m, about half the festival square): full volume;
 - then quieter with distance;
-- far (≈ 150 m and more): a quiet floor, about 20 %, so a party spread over the
-  map can still find each other. **(to confirm: floor or silence)**
+- far (≈ 100 m and more): **silent** (owner, 2026-11-20). For a feel of the
+  size (1 unit = 1 m): the festival square is ≈ 45 m across, so 100 m is about
+  two squares away; the whole map is ≈ 1.4 km by 0.9 km.
+- These are first numbers: tuned by ear in the test room (`voicenear=`,
+  `voicefar=` in the address).
 - In a boat, on the glider, in the balloon: the same rule.
 - Later, if there is time: left / right from where the friend stands (a stereo
   pan, not full 3D: cheap on phones).
@@ -195,6 +198,9 @@ party list.
   and the pad's button go with the other keys (`<kbd data-pad>`).
 - The microphone track is opened once when voice turns on and muted while the
   button is up, so the first word isn't cut off.
+- All of it is the game's own: its buttons, its party list, its cards, in its
+  look and words (Khmer first). `meet.livekit.io` was only to try the server;
+  players never see a LiveKit page.
 - **Mute** per member (in the party list): you stop hearing them; your own mute
   is the microphone button, crossed out.
 
@@ -222,14 +228,14 @@ So: Phase 2 on our WebSocket service; LiveKit for party voice only.
   a party you're in again), **Report** (into the tracker, as names are). A report
   carries no sound: nothing is kept.
 - **The party's maker can remove a member:** the token server takes them out of
-  the room and gives them no new ticket. **(to confirm)**
+  the room and gives them no new ticket (owner, 2026-11-20).
 - **No personal data:** the voice server sees a random player id and the checked
   name; it keeps no logs of what was said (it never has it).
 - **For parents** (a short "About voice" text in the settings): voice works only
   between friends who share a party code, up to 8; it is off by default; the
   microphone is on only while the button is held; nothing is recorded; the
-  server is in Singapore; voice can be turned off on this device. **(to confirm:
-  a switch that keeps voice off for good on a child's device)**
+  server is in Singapore. No extra parents' switch (owner, 2026-11-20): voice
+  is already off until it is turned on.
 
 ## Testing with the hidden link
 
@@ -260,8 +266,8 @@ If voice isn't solid by the 27th, the night goes on without it.
 
 ## Questions for the owner
 
-1. A far friend: a quiet floor (≈ 20 %) or silent past ≈ 150 m?
+1. ~~A far friend: a quiet floor or silent?~~ Silent (≈ 100 m, tuned in the test room).
 2. The computer's push-to-talk key: Left Alt / Option?
-3. Can the party's maker remove a member?
-4. A switch for parents that keeps voice off on the device?
+3. ~~Can the party's maker remove a member?~~ Yes.
+4. ~~A switch for parents that keeps voice off on the device?~~ Not needed.
 5. The relay on port 443 (TURN/TLS) for strict networks: worth it for the night?
