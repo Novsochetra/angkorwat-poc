@@ -270,6 +270,10 @@ function makeCard(): Card {
   let stopNet: (() => void) | null = null;
   /** The code box said what is wrong (after a press, not while typing). */
   let codeTried = false;
+  /** Join (or the code's button) was pressed with no good name: the check says to type one first. */
+  let nameTried = false;
+  /** The code the test link brought (`?event=`): used by Join, its box not shown (nothing to type). */
+  let linkCode: string | null = null;
 
   /** What the buttons do now: by the connection's state. */
   const mode = (): 'form' | 'busy' | 'online' | 'offline' => {
@@ -317,8 +321,8 @@ function makeCard(): Card {
     const c = checkName(v);
     const check = q('.nj-check');
     if (!v.trim()) {
-      check.textContent = '';
-      check.className = 'nj-check';
+      check.textContent = nameTried ? t('njNameFirst') : '';
+      check.className = nameTried ? 'nj-check is-bad' : 'nj-check';
     } else if (c.ok) {
       check.textContent = `✓ ${t('njNameOk')}`;
       check.className = 'nj-check is-ok';
@@ -330,14 +334,25 @@ function makeCard(): Card {
     // The code: what is wrong with it, once pressed.
     const code = tidyCode(codeIn.value);
     codeWhy.textContent = codeTried && !code ? t('njCodeBad') : '';
-    codeGo.disabled = !c.ok;
+    // (the code's button and Join stay pressable: pressed with no name, they say to type one first)
+    codeT.hidden = linkCode !== null;
+    if (linkCode !== null) codeBox.hidden = true;
     // The buttons.
     partyLink.hidden = !partyCanOpen();
     later.querySelector('.mu-ask-t')!.textContent = t(m === 'form' ? 'njLater' : m === 'offline' ? 'njClose' : 'njLeave');
     people.hidden = m !== 'online';
     go.hidden = m === 'offline';
     go.querySelector('.mu-ask-t')!.textContent = t(m === 'online' || m === 'busy' ? 'njClose' : n.state === 'refused' ? 'njAgain' : 'njJoin');
-    go.disabled = m === 'form' && !c.ok;
+    go.disabled = false;
+  }
+
+  /** Pressed with no good name: say so, shake the field and put the cursor there. */
+  function nameFirst(): void {
+    nameTried = true;
+    shake(q('.nj-field'));
+    sound('back');
+    if (!pad.active) input.focus({ preventScroll: true });
+    show();
   }
 
   function tryJoin(code: string | null): void {
@@ -345,16 +360,14 @@ function makeCard(): Card {
       // (a code typed and Join pressed: the code's way)
       return useCode();
     }
-    if (!join(input.value, code)) {
-      shake(q('.nj-field'));
-      sound('back');
-      return;
-    }
+    if (!checkName(input.value).ok) return nameFirst();
+    if (!join(input.value, code ?? linkCode)) return nameFirst();
     sound('begin');
     show();
   }
 
   function useCode(): void {
+    if (!checkName(input.value).ok) return nameFirst();
     codeTried = true;
     const code = tidyCode(codeIn.value);
     if (!code) {
@@ -493,13 +506,15 @@ function makeCard(): Card {
       if (!isOpen || o.code) {
         const typed = SHOT ? params.get('nyename') : null;
         input.value = typed ?? (joinNet().me?.name || startName());
-        if (o.code) {
+        if (o.code && from === 'link') linkCode = o.code;
+        else if (o.code) {
           codeIn.value = o.code;
           codeBox.hidden = false;
           codeT.setAttribute('aria-expanded', 'true');
         }
       }
       codeTried = false;
+      nameTried = false;
       words();
       if (isOpen) return;
       isOpen = true;

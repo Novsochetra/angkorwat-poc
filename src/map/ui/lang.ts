@@ -2148,7 +2148,8 @@ const WORDS = {
   njCodeField: { km: 'លេខកូដ ៦ អក្សរ', en: '6-letter code' },
   njCodeGo: { km: 'ប្រើលេខកូដ', en: 'Use the code' },
   njCodeBad: { km: 'លេខកូដមាន ៦ អក្សរ', en: 'A code has 6 letters' },
-  njCodeFrom: { km: 'អ្នកមកតាមតំណសាកល្បង៖ សូមដាក់ឈ្មោះមុននឹងចូល', en: 'You came by the test link: give a name to go in' },
+  njCodeFrom: { km: 'លេខកូដពីតំណរបស់អ្នករួចរាល់ ✓ វាយតែឈ្មោះ ហើយចុច «ចូលរួម»', en: 'The code from your link is in ✓ Just type a name and press Join' },
+  njNameFirst: { km: 'សូមវាយឈ្មោះរបស់អ្នកជាមុនសិន', en: 'Type your name first' },
   // (the setting, Play tab)
   njSet: { km: 'ឆ្នាំថ្មីតាមអ៊ីនធឺណិត', en: 'New Year online' },
   njSetNote: { km: 'ជួបអ្នកលេងផ្សេងទៀតនៅយប់ចូលឆ្នាំសកល', en: "Meet other players on New Year's Eve" },
