@@ -58,16 +58,15 @@ What happens:
   server when it makes the room, so a 9th ticket is refused by LiveKit too).
 - **Join a party:** a friend types the code; the live service puts them in the
   party (and in the same crowd).
-- **Turn voice on** (a tap or a click: the browser needs it):
+- **Turn voice on:** the first tap on the mic button (the browser needs a tap):
   1. the game downloads the voice library (once);
-  2. a card says what will happen ("Your friends in the party will hear you
-     while you hold the button. Voice isn't recorded.") and then the browser
-     asks for the microphone;
+  2. the browser asks for the microphone (the party card has already said who
+     hears you and that voice isn't recorded);
   3. the game asks the token server for a ticket, the server checks the party and
      answers with the ticket and the address;
-  4. the game joins the room: it hears the friends who talk, and talks while the
-     button or key is held.
-- **Turn voice off, leave the party, close the page:** the game leaves the room.
+  4. the game joins the room with the mic on: it hears the friends, and they hear
+     it until a tap turns the mic off.
+- **Leave the party, close the page:** the game leaves the room.
   A player with voice off is not connected to the voice server at all (costs
   nothing).
 
@@ -170,8 +169,9 @@ days, before the rest is built.
   a little (ducking). A **Voice** volume joins the other buses in the Sound
   settings (`VOLUME_KEYS`).
 - **Echo:** the browser's echo cancelling, noise suppression and auto gain stay
-  on (LiveKit's defaults). Push-to-talk keeps the microphone shut most of the
-  time, which removes most echo. The voice card says headphones sound best.
+  on (LiveKit's defaults). The mic is a switch, so it stays open
+  while on: the card says headphones stop echo, and the mic turns itself off
+  when the page is hidden.
   Chrome doesn't always cancel sound played through Web Audio: check it early
   with the proximity volume on.
 - **4G:** voice is ≈ 30 kbps each way, fine on 4G. The first test, a phone on 4G
@@ -199,22 +199,26 @@ set from the distance between them on the map (LiveKit's
 A friend who talks shows a small speaking mark over their head and in the
 party list.
 
-## Push-to-talk
+## The mic switch
 
-- **Phone:** a round microphone button on the right, above the tool bar. Hold to
-  talk: it glows gold and the other buttons stay where they are. Slide up while
-  holding to lock it on (a lock shows); tap to stop. Android gives a short
-  vibration on start.
-- **Computer:** hold a key. **(to confirm: Left Alt / Option)**: almost every
-  letter is taken (emotes, tools, menus) and V is the album. Its key help line
-  and the pad's button go with the other keys (`<kbd data-pad>`).
-- The microphone track is opened once when voice turns on and muted while the
-  button is up, so the first word isn't cut off.
+At first push-to-talk (hold to talk, slide up to lock); after testing, the owner
+(2026-11-20): one button, a switch, no holding.
+
+- **One control:** a round microphone button at the bottom right, there while
+  in a party, over the party card too. No voice button in the card.
+- **First tap:** joins voice and turns the mic on (gold). **Then a tap** turns
+  the mic off (white, crossed out) or on again. Friends are heard either way.
+- **Computer:** Left Alt / Option does the same as a tap (almost every letter is
+  taken, and V is the album); the hint under the button names it.
+- **The page hidden** (another tab or app, the phone locked) turns the mic off;
+  a tap turns it on again.
+- The microphone track is opened once when voice turns on and only muted and
+  unmuted after, so the first word isn't cut off.
 - All of it is the game's own: its buttons, its party list, its cards, in its
   look and words (Khmer first). `meet.livekit.io` was only to try the server;
   players never see a LiveKit page.
-- **Mute** per member (in the party list): you stop hearing them; your own mute
-  is the microphone button, crossed out.
+- **Mute** per member (in the party list): you stop hearing them; your own mic
+  is the microphone button, crossed out when off.
 
 ## Phase 2 on LiveKit too?
 
@@ -279,7 +283,7 @@ If voice isn't solid by the 27th, the night goes on without it.
 ## Questions for the owner
 
 1. ~~A far friend: a quiet floor or silent?~~ Silent (≈ 100 m, tuned in the test room).
-2. The computer's push-to-talk key: Left Alt / Option?
+2. ~~The computer's key?~~ Left Alt / Option, and the mic is a switch, not held.
 3. ~~Can the party's maker remove a member?~~ Yes.
 4. ~~A switch for parents that keeps voice off on the device?~~ Not needed.
 5. The relay on port 443 (TURN/TLS) for strict networks: worth it for the night?

@@ -1,4 +1,4 @@
-/* The party card and the push-to-talk button (map/party/). The card is an
+/* The party card and the mic switch (map/party/). The card is an
    asking card (map.css .mu-ask): these are only its own parts. */
 
 .mu-pty .mu-ask-head {
@@ -217,7 +217,7 @@
   color: #9be6a5 !important;
 }
 
-/* Push-to-talk: bottom right, over the tool bar's corner, under the right thumb. */
+/* The mic switch: bottom right, over the tool bar's corner, under the right thumb (mic.ts). */
 .mu-mic {
   position: fixed;
   /* (.map-ui stretches an overlay over the screen: this one is only the button's corner) */
@@ -253,7 +253,6 @@
   color: var(--mu-ink);
   box-shadow: var(--mu-shadow);
   cursor: pointer;
-  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -275,35 +274,6 @@
   border-color: rgba(255, 250, 225, 0.9);
   box-shadow: 0 0 0 calc(8 * var(--px)) rgba(255, 208, 112, 0.25), 0 0 calc(28 * var(--px)) rgba(255, 200, 90, 0.55);
   transform: scale(1.06);
-}
-
-.mu-mic-lock {
-  display: grid;
-  place-items: center;
-  width: calc(30 * var(--px));
-  height: calc(30 * var(--px));
-  border-radius: 50%;
-  background: var(--mu-panel-strong);
-  color: var(--mu-dim);
-  opacity: 0;
-  transform: translateY(calc(10 * var(--px)));
-  transition: opacity 0.2s, transform 0.25s var(--mu-ease), color 0.15s;
-}
-
-.mu-mic-lock .mu-icon {
-  width: calc(15 * var(--px));
-  height: calc(15 * var(--px));
-}
-
-.mu-mic.is-talking .mu-mic-lock,
-.mu-mic.is-locked .mu-mic-lock {
-  opacity: 1;
-  transform: none;
-}
-
-.mu-mic.is-near-lock .mu-mic-lock,
-.mu-mic.is-locked .mu-mic-lock {
-  color: var(--mu-gold-hi);
 }
 
 .mu-mic-hint {
