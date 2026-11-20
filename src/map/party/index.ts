@@ -1,6 +1,6 @@
 import { progress } from '../progress';
 import type { UISound } from '../types';
-import type { WordKey } from '../ui/lang';
+import { t, type WordKey } from '../ui/lang';
 import { joinParty, keptParty, leaveParty, makeParty, partyState, playerId, PartyFail, removeMember, voiceTicket, type Party } from './api';
 import { createMicButton } from './mic';
 import { createPartyPanel, type PartyView } from './panel';
@@ -71,20 +71,21 @@ export function mountParty(root: HTMLElement, h: { sound?(s: UISound): void }): 
       voice?.setVolume(id, on ? 0 : 1);
       draw();
     },
-    voice: (on) => void (on ? voiceOn() : voiceOff()),
     close: () => {
       panel.show(false);
       h.sound?.('close');
     },
   });
   const mic = createMicButton(root, {
+    join: () => void voiceOn(),
     talk: (on) => void voice?.talk(on),
     tapToHear: () => void voice?.resumeAudio(),
   });
 
   function draw(): void {
     panel.render(view);
-    mic.show(view.voice === 'on' || view.voice === 'reconnecting');
+    mic.show(view.party !== null);
+    mic.setState(view.voice);
     for (const fn of listeners) fn(view.party?.members.length ?? 0, view.voice !== 'off');
   }
 
@@ -155,6 +156,7 @@ export function mountParty(root: HTMLElement, h: { sound?(s: UISound): void }): 
     } catch (e) {
       view.voice = 'off';
       view.error = e instanceof PartyFail ? (REASONS[e.reason] ?? 'partyErr') : e instanceof DOMException && e.name === 'NotAllowedError' ? 'voiceNoMic' : 'partyErr';
+      mic.say(t(view.error));
     }
     draw();
   }
@@ -165,7 +167,10 @@ export function mountParty(root: HTMLElement, h: { sound?(s: UISound): void }): 
     mic.stop();
     view.voice = 'off';
     view.speaking = new Set();
-    if (why) view.error = why;
+    if (why) {
+      view.error = why;
+      mic.say(t(why));
+    }
     draw();
     await was?.close();
   }

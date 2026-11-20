@@ -320,8 +320,34 @@
   display: none;
 }
 
+.mu-mic.is-said .mu-mic-hint {
+  color: #ffb4a3;
+}
+
 .mu-mic.is-held .mu-mic-hint {
   color: var(--mu-gold-hi);
+}
+
+/* Voice not joined yet: the crossed-out mic, quieter; joining: a slow pulse. */
+.mu-mic.is-off .mu-mic-btn {
+  color: var(--mu-ink2);
+  border-style: dashed;
+}
+
+.mu-mic.is-busy .mu-mic-btn {
+  animation: mu-mic-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes mu-mic-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mu-mic.is-busy .mu-mic-btn {
+    animation: none;
+  }
 }
 
 /* The corner's party button: how many are in the party, and a green dot while voice is on. */

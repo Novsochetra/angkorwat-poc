@@ -8,7 +8,7 @@ import type { Party } from './api';
  * The party card (in the look of the map's asking cards, map.css `.mu-ask`):
  * out of a party, your name, "Make a party" and a code box to join a friend's;
  * in one, its code big (to read out), the members (who is talking, Mute, and
- * Remove for its maker), voice on / off, and Leave.
+ * Remove for its maker), and Leave. Voice itself is the mic button (mic.ts).
  *
  * It only draws a `PartyView` and says what was pressed (`PartyActions`):
  * index.ts holds the state and talks to the live service.
@@ -33,7 +33,6 @@ export interface PartyActions {
   leave(): void;
   remove(id: string): void;
   mute(id: string, on: boolean): void;
-  voice(on: boolean): void;
   close(): void;
 }
 
@@ -74,7 +73,6 @@ function memberHtml(view: PartyView, party: Party, m: { id: string; name: string
 }
 
 function inHtml(view: PartyView, party: Party): string {
-  const voiceOn = view.voice !== 'off';
   const voiceLine = view.voice === 'connecting' ? t('voiceConnecting') : view.voice === 'reconnecting' ? t('voiceReconnecting') : t('voiceNote');
   return `
     <p class="mu-pty-share">${t('partyShare')}</p>
@@ -84,8 +82,6 @@ function inHtml(view: PartyView, party: Party): string {
     <p class="mu-pty-vnote">${voiceLine}</p>
     <div class="mu-ask-row">
       <button type="button" class="mu-ask-stay mu-frame mu-sm" data-act="leave"><span class="mu-bg"></span><span class="mu-focus"></span><span>${t('partyLeave')}</span></button>
-      <button type="button" class="mu-ask-go mu-frame mu-sm${voiceOn ? ' is-voice-on' : ''}" data-act="voice"${view.voice === 'connecting' ? ' disabled' : ''}>
-        <span class="mu-bg"></span><span class="mu-glow"></span><span class="mu-focus"></span>${voiceOn ? ICON.micOff : ICON.mic}<span>${t(voiceOn ? 'voiceOff' : 'voiceOn')}</span></button>
     </div>`;
 }
 
@@ -147,7 +143,6 @@ export function createPartyPanel(root: HTMLElement, act: PartyActions): PartyPan
       case 'leave': return act.leave();
       case 'remove': return act.remove(id);
       case 'mute': return act.mute(id, !last?.muted.has(id));
-      case 'voice': return act.voice(last?.voice === 'off');
       case 'copy': return last?.party && copy(last.party.code);
     }
   });
