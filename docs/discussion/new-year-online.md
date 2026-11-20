@@ -19,11 +19,13 @@ over Angkor Wat at midnight.
 
 ## The night
 
-- **Where:** the west causeway and the reflecting pools before Angkor Wat. The
-  fireworks rise behind the five towers and show in the pools.
+- **Where:** a new festival square at the foot of Phnom Kulen, between the hill and
+  the sugar-palm village (the owner's sheet, `assets/new-year-online/plaza-sheet.png`).
+  The fireworks rise over the hill behind the stage, high enough to be seen from
+  almost anywhere on the map.
 - **When:** from 22:30 ICT the map's own time comes to real night by itself (a
   toast says why) and goes back to the player's setting after 00:45. A gold mark
-  on the map and in the calendar (9): "Fireworks at Angkor Wat, 23:59".
+  on the map and in the calendar (9): "Fireworks at Phnom Kulen, 23:59".
 - **The countdown:** big Khmer numerals ១០ … ១ for the last ten seconds, then
   "សួស្តីឆ្នាំថ្មី ២០២៧" / "Happy New Year 2027" (words in `lang.ts`).
 - **The show:** about 8 minutes, with its own sound bus. A budget per graphics level
@@ -50,12 +52,15 @@ The owner's reference (2026-11-20): `assets/new-year-online/plaza-reference.png`
 A square with a big countdown board people gather in front of, lanterns, red
 banners, stalls and a glowing ring on the floor.
 
-- **Where:** a festival stage on the open ground west of Angkor Wat, by the
-  reflecting pools, facing west. The players face east: the board low on its stage,
-  Angkor Wat's towers rising above it, and the fireworks above the towers and in the
-  pools, as in the reference (the temple's top over the board). The real temple is
-  not changed: the stage is a temporary one built in front of it.
-- **The board:** a big screen in a carved wooden stage gate with a Khmer roof.
+- **Where:** at the foot of Phnom Kulen, between the hill and the sugar-palm village
+  (the owner's sheet, "proposed placement"; first thought: before Angkor Wat, dropped
+  so the real temple stays as it is). The crowd faces the stage with Kulen's lit
+  stairway, its temple and the falls beside it and the fireworks above. The
+  entrance gate, with a Bayon face on top as at Angkor Thom, is on the village side.
+  To check before building: enough flat ground there among the picnic place, the
+  falls, the nursery, the cattle meadow and the Kulen trail.
+- **The board:** a big screen in a stage gate with a temple top (Khmer carving),
+  as in the sheet.
   Khmer first (numerals ០–៩, ថ្ងៃ ម៉ោង នាទី វិនាទី), English with `lang=en`.
   It changes with the time:
   - from the day it ships: days : hours : minutes : seconds to midnight, and
@@ -81,7 +86,11 @@ banners, stalls and a glowing ring on the floor.
   - the board's name is មរតកអង្គរ in Koulen pixel letters.
 - Shots: `nyeboard=<state>` (`days`, `last10`, `midnight`, `after`), with `nye=`.
 
-## Part 1: fireworks and countdown (everyone, offline)
+## Phase 1: the look (stage, square, board, fireworks; everyone, offline)
+
+Everything players see: the festival square and its stage, the entrance gate, the
+board, the composition from where the crowd stands, the countdown, the fireworks.
+No server: it works for everyone, alone, and is tested with `nye=+2m`.
 
 - The show is a script: rocket times, places, colours and sizes. It is seeded and
   played from the real time, corrected by the server's clock when we can reach it.
@@ -91,7 +100,10 @@ banners, stalls and a glowing ring on the floor.
   `nye=<time>` or `nye=+2m` (pretend midnight is then); `npm run perf` on
   low, medium and phone with the show at its busiest.
 
-## Part 2: live players (public)
+## Phase 2: live player rooms (public)
+
+Other people join and roam with you. Names, Safety and the hidden test link
+(below) belong to this phase.
 
 - **Joining is a choice:** a card "Join the New Year online" (also in the
   settings). Playing alone works as today.
@@ -110,7 +122,7 @@ banners, stalls and a glowing ring on the floor.
 - Checks: `ghosts=<n>` fills the map with fake players for shots and `npm run perf`;
   a test night with friends with `nye=` set to an hour we pick.
 
-## Part 3: party voice (friends only)
+## Phase 3: party voice (friends only)
 
 - **Make a party** gives a 6-letter code (no look-alikes like 0 / O); friends type
   it to join. Up to 8 in a party.
@@ -202,20 +214,29 @@ going back after.
 
 | By | What |
 |---|---|
-| ~10 Dec | Part 1 done: the show, the board, the countdown, calendar entry, phone budget. |
-| ~20 Dec | Part 2 done, and the test link working: friends can test from then on. |
-| ~27 Dec | Part 3 done, then freeze: fixes only. |
+| ~10 Dec | Phase 1 done: the square, the stage, the board, the countdown, the fireworks, phone budget. |
+| ~20 Dec | Phase 2 done, and the test link working: friends can test from then on. |
+| ~27 Dec | Phase 3 done, then freeze: fixes only. |
 | 31 Dec | The night. If voice isn't solid by the 27th, it waits; the show doesn't need it. |
 
 ## Tickets to make (when the owner says go)
 
-1. The fireworks show script and its map part (Part 1).
-2. The countdown board and the festival square.
-3. The countdown overlay, words, the night-time hold and the calendar entry.
-4. The live server on Railway: rooms, crowds, limits, the clock.
-5. Other players on the map: drawing, smoothing, names, `ghosts=`.
-6. Joining: the card, the name entry and its checks, the setting.
-7. Mute, Block, Report (and reports into the tracker).
-8. Parties and party voice (LiveKit).
-9. Testing: the hidden link and its test room, `nye=`, staging, robot players, `nyetest`.
-10. The freeze before the night.
+**Phase 1: the look**
+1. The festival square at Phnom Kulen's foot: the ground, the ring of light, the
+   lantern walk, banners, string lights, stalls, the Bayon-face entrance gate from
+   the village, the naga by the stage.
+2. The stage and the countdown board (its states, Khmer and English, `nyeboard=`).
+3. The fireworks: the show script and its map part (bursts, trails, light on the
+   world, reflections, phone budget, `fireworks=`).
+4. The night: the night-time hold, the countdown overlay, the words, the calendar
+   entry and the map mark, `nye=`.
+
+**Phase 2: live player rooms**
+5. The live server on Railway: rooms, crowds, limits, the clock, staging.
+6. Other players on the map: drawing, smoothing, names over them, `ghosts=`.
+7. Joining: the card, the name entry and its checks, the setting.
+8. Mute, Block, Report (and reports into the tracker).
+9. The hidden test link and its test room, robot players, `nyetest`.
+
+**Phase 3: party voice**
+10. Parties (codes) and party voice on LiveKit; then the freeze before the night.
