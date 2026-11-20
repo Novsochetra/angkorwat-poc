@@ -1,4 +1,4 @@
-import type { PeerState, RoomKind } from './protocol';
+import type { RoomKind } from './protocol';
 
 /**
  * The game's side of the live rooms (phase 2): what the rest of the map uses. The connection itself is
