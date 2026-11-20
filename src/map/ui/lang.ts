@@ -899,6 +899,9 @@ const WORDS = {
   // (his own bicycle on the maps)
   bikeOwnMap: { km: 'កង់របស់ខ្ញុំ', en: 'My bicycle' },
   bikeOwnTheMap: { km: 'កង់របស់ខ្ញុំ', en: 'my bicycle' },
+  // (his dog on the maps, where it waits or sleeps: roam/_dogWhere.ts)
+  dogMap: { km: 'សុនខរបស់ខ្ញុំ', en: 'My dog' },
+  dogTheMap: { km: 'សុនខរបស់ខ្ញុំ', en: 'my dog' },
   // (hiring one at Angkor Wat: E, paid, short of riel, gone back once he left it)
   bikeHire: { km: 'ជួលកង់ ({riel})', en: 'Hire a bicycle ({riel})' },
   bikeHired: { km: 'បានជួលកង់ហើយ — ជិះលេងតាមចិត្ត ពេលបងទុកវាចោល គេនឹងយកទៅវិញ', en: 'Hired! Ride as long as you like: it goes back once you leave it' },
