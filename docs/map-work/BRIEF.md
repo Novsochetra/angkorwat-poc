@@ -2346,6 +2346,21 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
     `hms` (the last day), `last10` (one huge numeral), `midnight` ("សួស្តីឆ្នាំថ្មី ២០២៧"), `after` ("ជួបគ្នាឆ្នាំក្រោយ").
     Khmer numerals and words first, English with `lang=en`; មរតកអង្គរ in Koulen pixels. Phase 2 hooks:
     `setBoardPlayers(n)`, `setBoardTest(on)`.
+  - `lake.ts` (`_lk*.ts`): the second stage, by the great lake (plan.ts `LAKE_STAGE`, `LAKE_SHORE`, `LAKE_VIEW`:
+    `cam=-330,12.5,-76,-385,30,-15,55`). A floating stage (`_lkStage.ts`, built square to itself in a group turned by
+    `LAKE_STAGE.yaw`; its deck walked on): bamboo floats, a teak deck with a red lacquer skirt, two naga at its front
+    corners whose bodies run along the front rail to the gangway, Khmer lamps, fire bowls, a carved gate (kbach pillars
+    and lintels front and back, a false door on the back) under a lotus-bud prasat and two corner towers, a second
+    board (`board.ts` `buildBoard(place)`: 9 × 4.5 m, the same states), banners with the white Angkor Wat in the kit.
+    The shore (`_lkShore.ts`): the paved terrace with a lotus medallion, its landing down to the bank, the ghat (steps
+    down the 2 m bank, an apron on the sand, steps into the water, strip by strip along the shore), the jetty down its
+    middle (|u| ≤ 1.5 in the stage's frame, sloping from the terrace to the deck), a balustrade along the back, lamps on
+    pedestals, lantern poles with string lights fanning from the stage, flags of Cambodia, beds, four flowering trees,
+    paths to the lake trail and the east shore trail. On the water (`_lkWater.ts`): lotus candles set afloat from the
+    ghat and wandering round the stage (more on the night), lily pads, four moored boats with lanterns. The event night:
+    the square's searchlights (`_sqGlow.ts` `buildBeams`, facing out over the lake). ≈ 7.7 k blocks (4.7 k on low),
+    ≈ 11 draws (+3 on the night), two night-only lamps, built in ≈ 60‥180 ms. No loose rock on its landing
+    (`onLakeLanding`, terrain/rocks.ts); the valley mist keeps off it (sky/mist.ts).
   - Nothing in the part moves but in shaders and the board's texture: it is in main.ts `FROZEN` and
     `STILL_PARTS`.
 - **The people: `people/_sceneNye.ts`** (plan `people/_nyePlan.ts`). Ordinary days: 14 (sellers at the

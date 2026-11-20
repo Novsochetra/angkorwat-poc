@@ -397,7 +397,7 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
     // (not on the last posts by the stage: from the jetty they would hide the board)
     for (let i = 1; i < ps.length; i += low ? 3 : 2) {
       const p = ps[i];
-      if (p.v < LAKE_STAGE.d / 2 + 5) continue;
+      if (p.v < LAKE_STAGE.d / 2 + 8) continue;
       const [x, z] = fr.at(p.u + s * 0.12, p.v);
       b.box(x, p.y + 1.05 + 1.0, z, 0.06, 2.0, 0.06, 0xe6e2d8, 'mapStone', { src });
       b.box(x, p.y + 3.1, z, 0.12, 0.1, 0.12, pick(GOLD, x, z, 3, 417), 'mapStone', { src, shade: 1.08 });

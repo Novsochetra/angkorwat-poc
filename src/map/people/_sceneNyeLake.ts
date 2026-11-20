@@ -390,7 +390,8 @@ export class NyeLakeLife implements PeopleScene {
       const there = s < LOTUS_TO;
       const tx = there ? m.wx : m.x;
       const tz = there ? m.wz : m.z;
-      this.put(a, a.shown ? a.x : m.x, a.shown ? a.z : m.z, m.yaw, 30);
+      // (a page opened now: already there)
+      if (!a.shown || a.riding) this.put(a, tx, tz, m.wyaw);
       a.goTo(tx, tz, 0.7);
       a.lookAt(null);
       a.tilt(0);

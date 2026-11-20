@@ -230,7 +230,7 @@ const SWAY = perPeriod(1.6);
 
 /**
  * A banner hanging from (x, top, z), facing `yaw`, `w` × `h` m: red, a gold band at the top and gold borders, the white
- * Angkor Wat (three towers) on its upper half, a small gold lotus under it, a pointed foot. Cloth in the kit (columns of
+ * Angkor Wat (three towers) on its upper half, a gold band under it, a pointed foot. Cloth in the kit (columns of
  * runs of one colour), swaying a little at its foot.
  */
 export function banner(kit: Kit, x: number, top: number, z: number, yaw: number, w: number, h: number, low: boolean, seed: number): void {
@@ -256,9 +256,9 @@ export function banner(kit: Kit, x: number, top: number, z: number, yaw: number,
     const ty = (v - sq.v0 * h) / sq.side;
     const tx = (u * w - (w - sq.side) / 2) / sq.side;
     if (tx >= 0 && tx <= 1 && ty >= 0 && ty <= 1 && onTemple(0.27 + tx * 0.46, 0.27 + ty * 0.46)) return 0xfffaf0;
-    // (a gold lotus bud under it, a thin deep-red frame inside the border)
-    const lv = (v - (sq.v0 * h + sq.side + 0.12)) / 0.3;
-    if (lv >= 0 && lv <= 1 && Math.abs(u - 0.5) * w < 0.16 * Math.sin(Math.PI * lv)) return BANNER_GOLD;
+    // (a gold band under it — on so few threads a lotus would read as a cross — and a thin deep-red frame inside the border)
+    const lv = v - (sq.v0 * h + sq.side + 0.18);
+    if (lv >= 0 && lv <= dv * 1.5 && c > 1 && c < cols - 2) return BANNER_GOLD;
     if (c === 1 || c === cols - 2) return BANNER_DEEP;
     return BANNER_RED;
   };

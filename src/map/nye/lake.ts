@@ -151,6 +151,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
 
   let now = 0;
   let started = false;
+  let frames = 0;
   return {
     object,
     blocks,
@@ -172,12 +173,20 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       u.uTime.value = ((now % PERIOD) + PERIOD) % PERIOD;
       u.uNight.value = n;
       u.uGlow.value = 0.3 + 3.2 * n * n;
+      // (the small things — cloth, candles, boats, bulbs, halos — only within 600 m: past it they are a few pixels)
+      // (and drawn wherever the camera is in the first frames, so their shaders compile at load)
+      const near = frames++ < 4 || f.camera.position.distanceToSquared(mid) < 600 * 600;
+      kitMesh.mesh.visible = near;
       halos.level.value = lit * (1 + 0.3 * event);
       halos.show(lit > 0);
-      const extra = event > 0 && lit > 0;
+      halos.mesh.visible = near && lit > 0;
+      const extra = near && event > 0 && lit > 0;
       extraKit.show(extra);
+      extraKit.mesh.visible = extra;
       extraHalos.level.value = lit;
       extraHalos.show(extra);
+      extraHalos.mesh.visible = extra;
+      if (body) body.mesh.visible = near;
       body?.update(n, event + 0.4 * pulse);
       beams.u.uLevel.value = event * lit;
       beams.u.uTime.value = now % 600;
