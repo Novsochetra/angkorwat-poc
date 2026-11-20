@@ -42,8 +42,8 @@ const POTS: [number, number][] = [
   [GATE.x + 4.4, GATE.z - 4.6],
   [GATE.x - 3.8, GATE.z - 10.5],
   [GATE.x + 3.8, GATE.z - 10.5],
-  [STAGE.x - 5.2, STAGE.stairTo + 1.6],
-  [STAGE.x + 5.2, STAGE.stairTo + 1.6],
+  [STAGE.x - 10, STAGE.stairTo + 2.2],
+  [STAGE.x + 10, STAGE.stairTo + 2.2],
 ];
 
 /** The banner's red, its gilt trim, the pole's lacquer. */
