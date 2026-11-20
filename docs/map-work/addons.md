@@ -3023,7 +3023,15 @@ sounds `audio/_build.ts`.
   then the turn asked for (`,` `.` ⟲ ⟳: a bend of 15°, 30°…); past 20°, the ghost's own
   15° step. Two runs may cross 0.5 m in from their ends only where an end meets an end
   (`_buildSpots.ts` `fenceJoint`: in line past each other, side by side or a T through the
-  middle are refused); his own posts never count as "something in the way". The turn
+  middle are refused); his own posts never count as "something in the way". **Fences meet**
+  (two lines he started apart, walked toward each other): a fence run has a length of its own
+  when it must (`Built.len`, 0.3‥3 m, saved with it; its model's posts at most 1.5 m apart): where
+  two free ends (no other run's end on them; two runs not already joined) are 0.3‥3 m apart and
+  the ghost's middle is within 2 m of the gap's, the ghost is **the run that fills it**, end on
+  end at both sides at whatever angle the gap has (`snapFence` → `closeFence`; first, before a
+  run going on), no guide; and a run going on from an end **stops on another free end's line**
+  where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
+  they make; the next run closes it square). The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks

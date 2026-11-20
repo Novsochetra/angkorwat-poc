@@ -4,7 +4,7 @@ import { cartBlockWhy } from '../build/haul';
 import { ownedBlocks } from '../build/owned';
 import { FURN, HANG, isFurniture, type FurnitureId } from '../build/furniture';
 import { shelterUnder } from '../build/models/shelter';
-import { BUILT, PIECES, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { BUILT, PIECES, pieceToWorld, solidsOf, type Built, type PieceId } from '../build/pieces';
 import { inPlot } from '../build/plot';
 import { distTo, toLocal } from '../build/state';
 import { HOME_SIZE, HOME_Z, homeFloor, homeLocal } from '../hamlet/_homePlan';
@@ -199,12 +199,12 @@ function builtInWay(id: PieceId, x: number, y: number, z: number, yaw: number, i
     if (b.y + b0 >= y + a1 - 0.01 || y + a0 >= b.y + b1 - 0.01) continue;
     if (Q.walkThrough && !isFurniture(b.id)) {
       // (under the shelter's roof, beside the hammock's cloth: only their posts and the bench are in the way)
-      for (const [sx, sz, sw, sd, top] of Q.solids) {
+      for (const [sx, sz, sw, sd, top] of solidsOf(b)) {
         if (b.y + top <= y + a0) continue;
         pieceToWorld(b, sx, sz, _w);
         if (rects(x, z, P.w / 2, P.d / 2, yaw, _w[0], _w[1], sw / 2, sd / 2, b.yaw, -TOUCH)) return 'piece';
       }
-    } else if (rects(x, z, P.w / 2, P.d / 2, yaw, b.x, b.z, Q.w / 2, Q.d / 2, b.yaw, -TOUCH)) return 'piece';
+    } else if (rects(x, z, P.w / 2, P.d / 2, yaw, b.x, b.z, (b.len ?? Q.w) / 2, Q.d / 2, b.yaw, -TOUCH)) return 'piece';
   }
   // (the spirit house's kneeling place, the pen's gate: kept clear on the ground before them)
   _foot.id = id;

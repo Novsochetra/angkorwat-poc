@@ -1,5 +1,5 @@
 import { progress } from '../progress';
-import { BUILT, PIECE_IDS, PIECES, type Built, type PieceId } from './pieces';
+import { BUILT, FENCE_RUN, PIECE_IDS, PIECES, type Built, type PieceId } from './pieces';
 
 /**
  * What he has built at home (the build add-on, roam/_build*.ts; the pieces and
@@ -46,7 +46,10 @@ function readOne(v: unknown): Mut | null {
   const o = v as Record<string, unknown>;
   if (typeof o.uid !== 'string' || typeof o.id !== 'string' || !(o.id in PIECES)) return null;
   if (!isNum(o.x) || !isNum(o.y) || !isNum(o.z) || !isNum(o.yaw) || !isNum(o.done) || !isNum(o.seed)) return null;
-  return { uid: o.uid, id: o.id as PieceId, x: o.x, y: o.y, z: o.z, yaw: o.yaw, done: Math.min(1, Math.max(0, o.done)), seed: o.seed };
+  const p: Mut = { uid: o.uid, id: o.id as PieceId, x: o.x, y: o.y, z: o.z, yaw: o.yaw, done: Math.min(1, Math.max(0, o.done)), seed: o.seed };
+  // (a fence run that closed a gap keeps its own length)
+  if (o.id === 'fence' && isNum(o.len)) p.len = Math.min(PIECES.fence.w, Math.max(FENCE_RUN.min, o.len));
+  return p;
 }
 
 const isList = (v: unknown): v is never[] => Array.isArray(v);
@@ -66,7 +69,17 @@ function save(): void {
   if (!progress.saving) return;
   progress.set(
     KEY,
-    list.map((p) => ({ uid: p.uid, id: p.id, x: round(p.x, 100), y: round(p.y, 100), z: round(p.z, 100), yaw: round(p.yaw, 1000), done: round(p.done, 1000), seed: round(p.seed, 1000) })),
+    list.map((p) => ({
+      uid: p.uid,
+      id: p.id,
+      x: round(p.x, 100),
+      y: round(p.y, 100),
+      z: round(p.z, 100),
+      yaw: round(p.yaw, 1000),
+      done: round(p.done, 1000),
+      seed: round(p.seed, 1000),
+      ...(p.len !== undefined ? { len: round(p.len, 1000) } : {}),
+    })),
   );
 }
 
@@ -108,10 +121,20 @@ export interface Foot {
   readonly yaw: number;
   readonly w?: number;
   readonly d?: number;
+  /** A fence run's own length (m: pieces.ts `Built.len`; its depth stays its kind's). */
+  readonly len?: number;
 }
 
-/** A footprint's size (m): its own, else its kind's. */
-export const sizeOf = (f: Foot): { readonly w: number; readonly d: number } => (f.w !== undefined && f.d !== undefined ? (f as { w: number; d: number }) : PIECES[f.id as PieceId]);
+const lenSizes = new Map<number, { readonly w: number; readonly d: number }>();
+/** A footprint's size (m): its own, else a fence run's own length, else its kind's. */
+export const sizeOf = (f: Foot): { readonly w: number; readonly d: number } => {
+  if (f.w !== undefined && f.d !== undefined) return f as { w: number; d: number };
+  const P = PIECES[f.id as PieceId];
+  if (f.len === undefined) return P;
+  let s = lenSizes.get(f.len);
+  if (!s) lenSizes.set(f.len, (s = { w: f.len, d: P.d }));
+  return s;
+};
 
 /** A world point (x, z) in a piece's frame (into `out`: local x, z). */
 export function toLocal(b: Pick<Foot, 'x' | 'z' | 'yaw'>, x: number, z: number, out: [number, number]): [number, number] {
@@ -141,7 +164,7 @@ function reach(b: Foot, ux: number, uz: number, m: number, sh = 0): number {
   const c = Math.cos(b.yaw);
   const s = Math.sin(b.yaw);
   // (its local x axis on the map is (c, −s), its local z axis (s, c): pieces.ts `pieceToWorld`)
-  return (p.w / 2 - sh + m) * Math.abs(ux * c - uz * s) + (p.d / 2 + m) * Math.abs(ux * s + uz * c);
+  return (Math.max(0, p.w / 2 - sh) + m) * Math.abs(ux * c - uz * s) + (p.d / 2 + m) * Math.abs(ux * s + uz * c);
 }
 
 /**
@@ -205,13 +228,15 @@ export const BUILD = {
 
   /**
    * A new piece (paid for): nothing standing yet (`done` 0), or as given (a check's). Null: he has all of its kind
-   * (`overMax`: a check's own, past the kind's max: `lamps=<n>`; a save keeps only the max).
+   * (`overMax`: a check's own, past the kind's max: `lamps=<n>`; a save keeps only the max). `len`: a fence run's own
+   * length (m: one that closes a gap).
    */
-  add(id: PieceId, x: number, y: number, z: number, yaw: number, done = 0, seed?: number, overMax = false): Built | null {
+  add(id: PieceId, x: number, y: number, z: number, yaw: number, done = 0, seed?: number, overMax = false, len?: number): Built | null {
     if (!overMax && count(id) >= PIECES[id].max) return null;
     let n = 1;
     for (const p of list) if (p.id === id) n = Math.max(n, Number(p.uid.slice(id.length + 1)) + 1 || n);
     const p: Mut = { uid: `${id}-${n}`, id, x, y, z, yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)), done: Math.min(1, Math.max(0, done)), seed: seed ?? seedAt(x, z) };
+    if (id === 'fence' && len !== undefined && Math.abs(len - PIECES.fence.w) > 1e-3) p.len = Math.min(PIECES.fence.w, Math.max(FENCE_RUN.min, len));
     list.push(p);
     save();
     emit('added', p);

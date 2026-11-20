@@ -1,5 +1,5 @@
 import { BAG, MATERIAL_IDS, STORE, haveOf, materialsText, missingOf, noMaterials, rielOf, useMaterials, type Materials } from '../build/materials';
-import { boughtRiel, BUILT, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
+import { boughtRiel, BUILT, FENCE_RUN, PIECE_IDS, PIECES, pieceBack, pieceToWorld, type Built, type PieceId } from '../build/pieces';
 import { addPlotBlocks, inPlot, pastPlot, PLOT_AREA, PLOT_BOX, PLOT_BUDGET, PLOT_CORNERS, plotBlocks, plotBlocksBy } from '../build/plot';
 import { createPlotEdge, type PlotEdge } from '../build/plotEdge';
 import { BLOCKS, cellMid, cellOf, CHUNK_CELLS, CHUNK_N } from '../blocks/store';
@@ -19,7 +19,7 @@ import { lang, num, t, type WordKey } from '../ui/lang';
 import { addonOffer, registerAddon, type AddonEnv } from './_addons';
 import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
-import { byHouse, canBuild, ghostAhead, overlapsBuilt } from './_buildSpots';
+import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
@@ -109,6 +109,13 @@ const PIECE_REACH = 1.25;
  * fence's own line, or square to it, when he faces within `align` of it (rad: 20°).
  */
 const SNAP = { d: 1.5, align: (20 * Math.PI) / 180 };
+/**
+ * Fences meet (closing a gap between two runs he started apart): a run that fills the gap between two free fence ends
+ * 0.3‥3 m apart is offered when its middle is within `d` of the ghost's (m); a run going on from an end stops on the line
+ * of another free end's fence (a corner: the next run closes it square) when that line crosses it, the other fence's end
+ * at most `reach` m back along it (m), at `angle` or more between them (rad: 30°).
+ */
+const CLOSE = { d: 2, reach: 6, angle: (30 * Math.PI) / 180 };
 /** Pieces the mode stays on for (one after another). */
 const REPEAT: ReadonlySet<PieceId> = new Set<PieceId>(['fence', 'lamp', 'oillamp', 'hanglamp', 'pot']);
 /**
@@ -133,7 +140,7 @@ let shiftDown = false;
 /** Shift was down as , or . went down (the fine turn: read on the key's own press, a quick chord is not missed). */
 let fineKey = false;
 /** Build mode now (worked out once a step): the spot (m), its turn, can it stand there, why not, the prompt. */
-const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity };
+const spot = { x: 0, y: 0, z: 0, yaw: 0, ok: false, reason: null as FurnReason | null, step: -1, prompt: null as string | null, snapped: false, ceil: Infinity, len: undefined as number | undefined };
 let stepN = 0;
 /** What E does by a piece (or a footprint building) now (once a step). */
 const near = { step: -1, piece: null as Built | null, foot: null as FootRec | null, sit: false, bed: null as BedPlace | null, prompt: null as string | null };
@@ -181,7 +188,7 @@ function piecesBlocks(): number {
   if (piecesAt !== BUILT.version) {
     piecesAt = BUILT.version;
     piecesN = 0;
-    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed).boxes.length;
+    for (const p of BUILD.list) piecesN += pieceLook(p.id, p.seed, p.len).boxes.length;
   }
   return piecesN;
 }
@@ -332,7 +339,116 @@ function askTake(ctx: RoamCtx, b: WorkJob): void {
 
 // ── Build mode ─────────────────────────────────────────────────────────────
 
-const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0 };
+const _snap = { id: 'fence' as PieceId, x: 0, z: 0, yaw: 0, len: undefined as number | undefined };
+/** The free fence ends (no other run's end on them): x, z, their run, which end; filled each step a fence is placed. */
+interface FenceEnd {
+  x: number;
+  z: number;
+  f: Built;
+  end: number;
+}
+const freeEnds: FenceEnd[] = [];
+const _e: [number, number] = [0, 0];
+const _e2: [number, number] = [0, 0];
+
+/** The fence ends nothing else joins (into `freeEnds`). */
+function findFreeEnds(): void {
+  freeEnds.length = 0;
+  for (const f of BUILT.list) {
+    if (f.id !== 'fence') continue;
+    for (let end = -1; end <= 1; end += 2) {
+      fenceEnd(f, end, _e);
+      let free = true;
+      for (const g of BUILT.list) {
+        if (g === f || g.id !== 'fence') continue;
+        for (let k = -1; k <= 1 && free; k += 2) {
+          fenceEnd(g, k, _e2);
+          if (Math.hypot(_e[0] - _e2[0], _e[1] - _e2[1]) < MEET) free = false;
+        }
+        if (!free) break;
+      }
+      if (free) freeEnds.push({ x: _e[0], z: _e[1], f, end });
+    }
+  }
+}
+
+/** Would `_snap` stand clear of what he built (fence runs may cross at a joint)? */
+function snapFree(): boolean {
+  for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) return false;
+  return true;
+}
+
+/**
+ * A run that closes the gap between two free fence ends (into `spot`, its own length `spot.len`): the two ends 0.3‥3 m
+ * apart, on two runs not already joined, its middle the nearest to the ghost's within `CLOSE.d`. Its front to him
+ * (`raw`). He started two fence lines apart and walked them toward each other: the last gap is seldom a whole 3 m run.
+ */
+function closeFence(raw: number): boolean {
+  let best = CLOSE.d;
+  let bx = 0;
+  let bz = 0;
+  let by = 0;
+  let bl = 0;
+  for (let i = 0; i < freeEnds.length; i++)
+    for (let j = i + 1; j < freeEnds.length; j++) {
+      const a = freeEnds[i];
+      const b = freeEnds[j];
+      if (a.f === b.f || fenceJoint(a.f, b.f)) continue;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
+      if (len < FENCE_RUN.min || len > PIECES.fence.w + 1e-3) continue;
+      const x = (a.x + b.x) / 2;
+      const z = (a.z + b.z) / 2;
+      const d = Math.hypot(x - spot.x, z - spot.z);
+      if (d >= best) continue;
+      // (its local x axis on the map is (cos, −sin) along a → b; its front, local +z (sin, cos), turned to him)
+      let yaw = Math.atan2(-dz, dx);
+      if (Math.cos(yaw - raw) < 0) yaw += Math.PI;
+      _snap.x = x;
+      _snap.z = z;
+      _snap.yaw = yaw;
+      _snap.len = Math.min(PIECES.fence.w, len);
+      if (!snapFree()) continue;
+      best = d;
+      bx = x;
+      bz = z;
+      by = yaw;
+      bl = _snap.len;
+    }
+  _snap.len = undefined;
+  if (best >= CLOSE.d) return false;
+  spot.x = bx;
+  spot.z = bz;
+  spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
+  spot.len = Math.abs(bl - PIECES.fence.w) < 1e-3 ? undefined : bl;
+  return true;
+}
+
+/**
+ * How long a run going from (ex, ez) along (ux, uz) may be (m, at most 3) before it meets the line of another free
+ * fence end's run (its end at most `CLOSE.reach` back along that line, at `CLOSE.angle` or more to it): the corner
+ * the two lines would make, where the next run closes it. `from`: the run it goes on from (not one to meet).
+ */
+function meetLine(ex: number, ez: number, ux: number, uz: number, from: Built): number {
+  let t = PIECES.fence.w;
+  for (const g of freeEnds) {
+    if (g.f === from || fenceJoint(g.f, from)) continue;
+    // (the way the other run goes out past its free end: its local x, toward that end)
+    const vx = g.end * Math.cos(g.f.yaw);
+    const vz = -g.end * Math.sin(g.f.yaw);
+    const cross = ux * vz - uz * vx;
+    if (Math.abs(cross) < Math.sin(CLOSE.angle)) continue;
+    // (e + t·u = g + s·v)
+    const wx = g.x - ex;
+    const wz = g.z - ez;
+    const tt = (wx * vz - wz * vx) / cross;
+    const ss = (wx * uz - wz * ux) / cross;
+    if (tt < FENCE_RUN.min || tt >= t - 1e-3 || ss < FENCE_RUN.min || ss > CLOSE.reach) continue;
+    t = tt;
+  }
+  return t;
+}
 /** Furniture's spot (AWP-23). */
 const _fs = { y: 0, ceil: Infinity, reason: null as FurnReason | null };
 
@@ -365,10 +481,15 @@ const onGrid = (v: number, o: number, g = GRID): number => o + Math.round((v - o
  * him, unclicked.
  */
 function snapFence(raw: number): boolean {
+  spot.len = undefined;
+  findFreeEnds();
+  // (a gap between two runs first: the run that fills it)
+  if (closeFence(raw)) return true;
   let best = SNAP.d;
   let bx = 0;
   let bz = 0;
   let by = spot.yaw;
+  let bl = PIECES.fence.w;
   const half = PIECES.fence.w / 2;
   for (const f of BUILT.list) {
     if (f.id !== 'fence') continue;
@@ -386,27 +507,30 @@ function snapFence(raw: number): boolean {
     const c = Math.cos(yaw);
     const s = Math.sin(yaw);
     _snap.yaw = yaw;
-    // (its local x axis on the map is (cos, −sin): its ends half a run along it)
-    const fc = Math.cos(f.yaw);
-    const fs = Math.sin(f.yaw);
     for (let end = -1; end <= 1; end += 2) {
-      const ex = f.x + end * half * fc;
-      const ez = f.z - end * half * fs;
+      fenceEnd(f, end, _e);
+      const [ex, ez] = _e;
       for (let sig = -1; sig <= 1; sig += 2) {
         // (the new run's end `sig` on that end: its middle half a run back along its own way)
         const x = ex - sig * half * c;
         const z = ez + sig * half * s;
         const d = Math.hypot(x - spot.x, z - spot.z);
         if (d >= best) continue;
-        _snap.x = x;
-        _snap.z = z;
-        let free = true;
-        for (const b of BUILT.list) if (overlapsBuilt(_snap, b)) free = false;
+        // (it stops where it meets another run's line: a corner the next run closes; its middle half its length out)
+        const ux = -sig * c;
+        const uz = sig * s;
+        const len = meetLine(ex, ez, ux, uz, f);
+        _snap.x = ex + (ux * len) / 2;
+        _snap.z = ez + (uz * len) / 2;
+        _snap.len = len < PIECES.fence.w ? len : undefined;
+        const free = snapFree();
+        _snap.len = undefined;
         if (!free) continue;
         best = d;
-        bx = x;
-        bz = z;
+        bx = ex + (ux * len) / 2;
+        bz = ez + (uz * len) / 2;
         by = yaw;
+        bl = len;
       }
     }
   }
@@ -414,6 +538,7 @@ function snapFence(raw: number): boolean {
   spot.x = bx;
   spot.z = bz;
   spot.yaw = Math.atan2(Math.sin(by), Math.cos(by));
+  spot.len = bl < PIECES.fence.w ? bl : undefined;
   return true;
 }
 
@@ -437,6 +562,7 @@ function placingNow(ctx: RoamCtx): void {
   const furn = isFurniture(placing);
   spot.x = onGrid(b.pos.x + Math.sin(b.yaw) * ahead, PLOT_BOX.x0, furn ? FURN_GRID : GRID);
   spot.z = onGrid(b.pos.z + Math.cos(b.yaw) * ahead, PLOT_BOX.z0, furn ? FURN_GRID : GRID);
+  spot.len = undefined;
   spot.snapped = placing === 'fence' && snapFence(raw);
   spot.ceil = Infinity;
   let r: FurnReason | null;
@@ -446,7 +572,9 @@ function placingNow(ctx: RoamCtx): void {
     spot.y = f.y;
     spot.ceil = f.ceil;
   } else {
-    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw);
+    // (a fence run of its own length: one that closes a gap, or stops on another run's line)
+    const P = PIECES[placing];
+    r = canBuild(ctx.world, placing, spot.x, spot.z, spot.yaw, null, spot.len !== undefined ? { w: spot.len, d: P.d, h: P.h } : null);
     spot.y = ctx.world.field.heightAt(spot.x, spot.z);
   }
   spot.ok = !r;
@@ -549,7 +677,7 @@ function useFoot(ctx: RoamCtx): void {
 
 /** What build mode's camera frames: the piece's ghost, or the footprint (its middle, its reach, m). */
 function modeTarget(): { x: number; z: number; reach: number; high: number } | null {
-  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
+  if (placing) return { x: spot.x, z: spot.z, reach: Math.hypot(spot.len ?? PIECES[placing].w, PIECES[placing].d) / 2, high: 0 };
   return FootMode.on ? FootMode.target() : null;
 }
 
@@ -577,7 +705,7 @@ function buildHere(ctx: RoamCtx): void {
     exitPlacing();
     return;
   }
-  const piece = BUILD.add(id, spot.x, spot.y, spot.z, spot.yaw);
+  const piece = BUILD.add(id, spot.x, spot.y, spot.z, spot.yaw, 0, undefined, false, spot.len);
   if (!piece) {
     if (pay.riel > 0) env.purse.earn(pay.riel);
     return;
@@ -588,7 +716,7 @@ function buildHere(ctx: RoamCtx): void {
   const what = materialsText(both);
   env.uiSound('select');
   ctx.hud.toast(what ? (pay.riel > 0 ? t('buildUsedPaid', { what, riel: riel(pay.riel) }) : t('buildUsed', { what })) : t('buildPaid', { riel: riel(pay.riel) }));
-  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
+  console.info(`[build] ${piece.uid} at (${piece.x.toFixed(2)}, ${piece.z.toFixed(2)}) yaw ${((piece.yaw * 180) / Math.PI).toFixed(0)}°${piece.len !== undefined ? ` ${piece.len.toFixed(2)} m` : ''}: used ${JSON.stringify(used)}, paid ${pay.riel} riel`);
   // (a fence or a lamp: the mode stays on for the next one, if he can)
   if (!REPEAT.has(id) || cannot(id)) exitPlacing();
   // (the next one starts straight again: a fence runs on in line from this one's end, a bend asked for again)
@@ -929,7 +1057,8 @@ function nearNow(ctx: RoamCtx): void {
     // (the footprint's nearest point: in front of him, or he is on it)
     toLocal(q, p.x, p.z, _l);
     const P = PIECES[q.id];
-    const cx = Math.max(-P.w / 2, Math.min(P.w / 2, _l[0]));
+    const hw = (q.len ?? P.w) / 2;
+    const cx = Math.max(-hw, Math.min(hw, _l[0]));
     const cz = Math.max(-P.d / 2, Math.min(P.d / 2, _l[1]));
     const c = Math.cos(q.yaw);
     const s = Math.sin(q.yaw);
@@ -1180,9 +1309,9 @@ registerAddon({
       Object.assign(window, {
         __build: {
           state: () => ({
-            pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3) })),
+            pieces: BUILD.list.map((p) => ({ uid: p.uid, id: p.id, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(3), done: +p.done.toFixed(3), ...(p.len !== undefined ? { len: +p.len.toFixed(3) } : {}) })),
             version: BUILT.version,
-            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, ghost: !!ghost?.shown } : null,
+            placing: placing ? { id: placing, x: +spot.x.toFixed(2), y: +spot.y.toFixed(2), z: +spot.z.toFixed(2), ceil: Number.isFinite(spot.ceil) ? +spot.ceil.toFixed(2) : null, yaw: +spot.yaw.toFixed(3), deg: shownDeg(placing, spot.yaw), turn: +turn.toFixed(3), ok: spot.ok, reason: spot.reason, prompt: spot.prompt, snapped: spot.snapped, len: spot.len !== undefined ? +spot.len.toFixed(3) : null, ghost: !!ghost?.shown } : null,
             near: near.piece || near.foot ? { uid: (near.piece ?? near.foot)!.uid, prompt: near.prompt, sit: near.sit } : null,
             work: BuildWork.now,
             card: !!card?.open,
@@ -1386,6 +1515,7 @@ registerAddon({
     // The ghost before him (not while he works, a card is open, or something else has him).
     if (free) {
       placingNow(ctx);
+      ghost?.setPiece(placing, spot.len);
       ghost?.show(spot.x, spot.z, spot.yaw, spot.ok, spot.y, spot.ceil);
     } else ghost?.show(null);
   },

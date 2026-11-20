@@ -183,6 +183,28 @@ export interface Built {
   readonly done: number;
   /** Seeded variety (never Math.random). */
   readonly seed: number;
+  /**
+   * A fence run's own length (m, `FENCE_RUN.min`‥`PIECES.fence.w`): a run that closes the gap between two fence ends
+   * (roam/_build.ts `snapFence`). Left out: its kind's length.
+   */
+  readonly len?: number;
+}
+
+/** A fence run that closes a gap is this long at least, and at most the piece's own 3 m (m). */
+export const FENCE_RUN = { min: 0.3 } as const;
+
+/** A piece's length along its run (m): its own (a fence that closes a gap), else its kind's. */
+export const runLen = (b: { readonly id: PieceId | 'foot'; readonly len?: number }): number =>
+  b.len ?? (b.id === 'foot' ? 0 : PIECES[b.id].w);
+
+const solidsByLen = new Map<number, PieceSpec['solids']>();
+/** A built piece's solids (its frame, m): a fence of its own length has one box that long. */
+export function solidsOf(b: { readonly id: PieceId; readonly len?: number }): PieceSpec['solids'] {
+  const P = PIECES[b.id];
+  if (b.len === undefined || b.id !== 'fence') return P.solids;
+  let s = solidsByLen.get(b.len);
+  if (!s) solidsByLen.set(b.len, (s = [[0, 0, b.len, P.d, P.h]]));
+  return s;
 }
 
 /**
@@ -220,6 +242,8 @@ export function pieceToWorld(b: Pick<Built, 'x' | 'z' | 'yaw'>, lx: number, lz: 
 export interface PieceLook {
   readonly id: PieceId;
   readonly seed: number;
+  /** A fence run's own length (m: `Built.len`). */
+  readonly len?: number;
 }
 
 /**

@@ -15,13 +15,18 @@ import { BAMBOO, KRAMA, NEW_BAMBOO, NODE, OLD_BAMBOO, post, rng, TIE, tone, type
  * runs side by side meet as a pair of posts, as fences do where two lengths
  * are tied together), the rails run to the ends, and the lattice's slant
  * repeats every 0.2 m, so it carries on unbroken into the next run.
+ * A run that closes the gap between two fence ends is shorter (`look.len`,
+ * 0.3‥3 m: roam/_build.ts `snapFence`): its posts at most 1.5 m apart (a 3 m
+ * run's three, a short one's two), the rest the same.
  * Seeded: the posts' tones and lean, a strip or two of a darker cut, now and
  * then a creeper of morning glory up a post, a krama drying over the top rail
  * or a clay pot turned upside down on a post.
  */
 
-/** Its length (m: `PIECES.fence.w`), the posts' height, the lattice between its rails (m over the ground). */
+/** Its length (m: `PIECES.fence.w`, or a closing run's own), the posts' height, the lattice between its rails (m over the ground). */
 const LEN = PIECES.fence.w;
+/** Posts at most this far apart (m: a 3 m run has three). */
+const POST_GAP = LEN / 2;
 const TOP = PIECES.fence.h;
 const LAT0 = 0.17;
 const LAT1 = TOP - 0.17;
@@ -32,13 +37,18 @@ const POST_W = 0.11;
 registerPieceModel('fence', (b, look) => {
   const r = rng(look.seed, 31);
   const src = traceSource();
-  const half = LEN / 2;
-  const xs = [-half + POST_W / 2, 0, half - POST_W / 2];
+  const len = look.len ?? LEN;
+  const half = len / 2;
+  // (a post at each end, flush with it, and between them at most `POST_GAP` apart: a 3 m run's middle one at 0)
+  const gaps = Math.max(1, Math.ceil(len / POST_GAP - 1e-6));
+  const xs: number[] = [];
+  for (let i = 0; i <= gaps; i++) xs.push(i === 0 ? -half + POST_W / 2 : i === gaps ? half - POST_W / 2 : -half + (i * len) / gaps);
+  const mid = Math.floor(xs.length / 2);
 
   // ── Posts: whole bamboo, sunk in, a node ring low and one under the cut top ──
   const tops: number[] = [];
   xs.forEach((x, i) => {
-    const top = TOP - 0.06 * r() - (i === 1 ? 0.02 : 0);
+    const top = TOP - 0.06 * r() - (i > 0 && i < gaps ? 0.02 : 0);
     tops.push(top);
     const c = tone(OLD_BAMBOO, r());
     post(b, x, 0, -0.15, top, POST_W, c, 'mapBark', 0.94 + r() * 0.08, src, (r() - 0.5) * 0.03, (r() - 0.5) * 0.02);
@@ -52,12 +62,12 @@ registerPieceModel('fence', (b, look) => {
   for (const y of railY)
     for (const s of [-1, 1]) {
       const c = tone(BAMBOO, r());
-      b.box(0, y + (r() - 0.5) * 0.012, s * 0.052, LEN, 0.062, 0.062, c, 'mapBark', { src, shade: 0.95 + r() * 0.08 });
+      b.box(0, y + (r() - 0.5) * 0.012, s * 0.052, len, 0.062, 0.062, c, 'mapBark', { src, shade: 0.95 + r() * 0.08 });
     }
 
   // ── The lattice: split bamboo on the slant both ways (one way behind, one in front: woven) ──
-  lattice(b, r, 1, 0.012, src);
-  lattice(b, r, -1, -0.012, src);
+  lattice(b, r, 1, 0.012, src, half);
+  lattice(b, r, -1, -0.012, src, half);
 
   // ── Rattan lashings where the rails cross the posts ──
   for (const x of xs)
@@ -65,24 +75,24 @@ registerPieceModel('fence', (b, look) => {
 
   // ── Now and then a last touch ──
   const t = r();
-  if (t < 0.3) creeper(b, r, xs[r() < 0.5 ? 0 : 2], src);
-  else if (t < 0.42) krama(b, r, src);
+  if (t < 0.3) creeper(b, r, xs[r() < 0.5 ? 0 : xs.length - 1], src);
+  else if (t < 0.42 && len >= 1) krama(b, r, src, len);
   else if (t < 0.5) {
     // A clay pot turned upside down on the middle post (to dry, or to keep the rain out of the bamboo).
     // (its neck down over the post, the round belly up)
     const c = tone([0xb8633a, 0xa9582f, 0x9a5a3a], r());
-    b.box(0, tops[1] + 0.03, 0, 0.16, 0.06, 0.16, c, 'mapStone', { src, shade: 0.9 });
-    b.box(0, tops[1] + 0.16, 0, 0.28, 0.2, 0.28, c, 'mapStone', { src });
-    b.box(0, tops[1] + 0.285, 0, 0.18, 0.05, 0.18, c, 'mapStone', { src, shade: 1.05 });
+    const px = xs[mid];
+    b.box(px, tops[mid] + 0.03, 0, 0.16, 0.06, 0.16, c, 'mapStone', { src, shade: 0.9 });
+    b.box(px, tops[mid] + 0.16, 0, 0.28, 0.2, 0.28, c, 'mapStone', { src });
+    b.box(px, tops[mid] + 0.285, 0, 0.18, 0.05, 0.18, c, 'mapStone', { src, shade: 1.05 });
   }
 });
 
 /**
  * One way of the lattice: strips of split bamboo at 45° (`dir` 1 rising toward +x, −1 falling), `PITCH` apart along
- * the run, cut at the run's ends and the rails, at depth `z`.
+ * the run, cut at the run's ends (`half` m from its middle) and the rails, at depth `z`.
  */
-function lattice(b: VoxelBuilder, r: Rand, dir: 1 | -1, z: number, src: ReturnType<typeof traceSource>): void {
-  const half = LEN / 2;
+function lattice(b: VoxelBuilder, r: Rand, dir: 1 | -1, z: number, src: ReturnType<typeof traceSource>, half: number): void {
   const h = LAT1 - LAT0;
   // (a strip is the line x = c + dir·(y − LAT0); c steps by PITCH from a phase that repeats every PITCH)
   for (let c = -half - h + PITCH / 2; c < half + h; c += PITCH) {
@@ -129,9 +139,10 @@ function creeper(b: VoxelBuilder, r: Rand, x: number, src: ReturnType<typeof tra
 }
 
 /** A krama drying over the top rail: hung across it, its two ends down each side, checks of a colour and white. */
-function krama(b: VoxelBuilder, r: Rand, src: ReturnType<typeof traceSource>): void {
+function krama(b: VoxelBuilder, r: Rand, src: ReturnType<typeof traceSource>, len: number): void {
   const [c, w] = KRAMA[Math.floor(r() * KRAMA.length) % KRAMA.length];
-  const x = (r() - 0.5) * 1.6;
+  // (between the end posts: over 1.6 m of a 3 m run's middle)
+  const x = (r() - 0.5) * Math.min(1.6, len - 0.7);
   // (over both top rails: they span 0.083 m each side of the middle)
   const y = LAT1 - 0.03 + 0.031;
   b.box(x, y + 0.015, 0, 0.5, 0.03, 0.25, c, 'petal', { src });

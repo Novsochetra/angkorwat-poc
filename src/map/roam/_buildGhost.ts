@@ -73,6 +73,8 @@ export class BuildGhost {
   private readonly mat: MeshBasicMaterial;
   private boxes: GhostBox[] = [];
   private id: PieceId | null = null;
+  /** A fence run's own length (m: one that closes a gap), else undefined. */
+  private len: number | undefined = undefined;
   private want = false;
   private x = 0;
   private z = 0;
@@ -102,13 +104,14 @@ export class BuildGhost {
     parent.add(this.mesh);
   }
 
-  /** The piece it shows (its blocks made once per piece). */
-  setPiece(id: PieceId): void {
-    if (id === this.id) return;
+  /** The piece it shows (its blocks made once per piece), a fence run of its own length (`len`, m: one that closes a gap). */
+  setPiece(id: PieceId, len?: number): void {
+    if (id === this.id && len === this.len) return;
     this.id = id;
+    this.len = len;
     this.shownOk = null;
     const out: GhostBox[] = [];
-    const look = pieceLook(id, 0.37);
+    const look = pieceLook(id, 0.37, len);
     for (const b of look.boxes) {
       if (out.length >= MAX - 48) break;
       const c = new Color(b.color);
@@ -127,11 +130,12 @@ export class BuildGhost {
     }
     // The footprint's outline on the ground, each side in short lengths (they follow the ground).
     const p = PIECES[id];
-    const hw = p.w / 2 + 0.05;
+    const pw = len ?? p.w;
+    const hw = pw / 2 + 0.05;
     const hd = p.d / 2 + 0.05;
     for (const [len, along, at] of [
-      [p.w, 'x', -hd],
-      [p.w, 'x', hd],
+      [pw, 'x', -hd],
+      [pw, 'x', hd],
       [p.d, 'z', -hw],
       [p.d, 'z', hw],
     ] as const) {
@@ -155,8 +159,8 @@ export class BuildGhost {
         });
       }
     }
-    // A fence's guide: on along its run, both ways.
-    if (id === 'fence')
+    // A fence's guide: on along its run, both ways (not on a run that closes a gap: fence stands at both its ends).
+    if (id === 'fence' && len === undefined)
       for (let side = -1; side <= 1; side += 2)
         for (let u = GUIDE.from; u + GUIDE.dash <= GUIDE.to; u += GUIDE.every) {
           const k = u / GUIDE.to;

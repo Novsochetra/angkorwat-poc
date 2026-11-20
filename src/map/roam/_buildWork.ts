@@ -170,13 +170,13 @@ export function pieceJob(b: Built): WorkJob {
     y: b.y,
     z: b.z,
     yaw: b.yaw,
-    w: p.w,
+    w: b.len ?? p.w,
     d: p.d,
     get done() {
       return b.done;
     },
     secs: p.secs,
-    look: () => pieceLook(b.id, b.seed),
+    look: () => pieceLook(b.id, b.seed, b.len),
     setDone: (v) => BUILD.setDone(b, v),
     alive: () => BUILD.list.includes(b),
     word: () => pieceWord(b),
