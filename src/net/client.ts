@@ -19,7 +19,7 @@ import {
   type ServerMsg,
   type ServerPeersV2,
 } from './protocol';
-import type { JoinOptions, NetClient, NetState } from './types';
+import type { JoinOptions, NetClient, NetState, VoiceTicket } from './types';
 
 /**
  * The game's connection to the live rooms (AWP-35 phase 2, tickets 5–6; docs/discussion/new-year-online.md):
@@ -315,7 +315,16 @@ class Client implements NetClient {
         if (typeof m.crowd === 'number') this.crowd = m.crowd;
         this.emit();
         break;
+      case 'voice':
+        this.voiceWait?.ok({ url: m.url, token: m.token, room: m.room });
+        this.voiceWait = null;
+        break;
       case 'error':
+        if (m.code === 'voice') {
+          this.voiceWait?.no(new Error(m.reason ?? 'voice'));
+          this.voiceWait = null;
+          break;
+        }
         if (FATAL.has(m.code)) {
           this.state = 'refused';
           this.refusal = m.code === 'name' ? (m.reason ?? 'name') : m.code === 'code' && m.reason === 'needed' ? 'code-needed' : m.code;
@@ -534,6 +543,25 @@ class Client implements NetClient {
     hideSid(sid);
     this.peers.delete(sid);
     this.emit();
+  }
+
+  /** The answer awaited for a voice ticket. */
+  private voiceWait: { ok(t: VoiceTicket): void; no(e: Error): void } | null = null;
+
+  /** A ticket to my crowd's voice room (online only; rejects: 'off' no voice on the server, 'rate', 'offline', 'timeout'). */
+  voiceTicket(): Promise<VoiceTicket> {
+    this.voiceWait?.no(new Error('again'));
+    if (this.state !== 'online') return Promise.reject(new Error('offline'));
+    return new Promise<VoiceTicket>((ok, no) => {
+      const wait = { ok, no };
+      this.voiceWait = wait;
+      this.send({ t: 'voice' });
+      window.setTimeout(() => {
+        if (this.voiceWait !== wait) return;
+        this.voiceWait = null;
+        no(new Error('timeout'));
+      }, 8000);
+    });
   }
 
   makeParty(): void {

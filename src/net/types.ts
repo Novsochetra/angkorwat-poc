@@ -38,6 +38,13 @@ export interface JoinOptions {
   party?: string;
 }
 
+/** A ticket to the crowd's voice room (LiveKit): the server, the token, the room's name. */
+export interface VoiceTicket {
+  url: string;
+  token: string;
+  room: string;
+}
+
 export interface NetClient {
   readonly state: NetState;
   /** A live server is set for this page (`VITE_NYE_SERVER`, or `?nyeserver=` for checks): joining can work. False: "the event isn't online" (joining refuses with 'offline'). */
@@ -71,6 +78,8 @@ export interface NetClient {
   block(sid: number): void;
   report(sid: number, reason: 'name' | 'behaviour'): void;
   isMuted(sid: number): boolean;
+  /** A ticket to my crowd's voice room (online only). */
+  voiceTicket(): Promise<VoiceTicket>;
   makeParty(): void;
   leaveParty(): void;
   /**

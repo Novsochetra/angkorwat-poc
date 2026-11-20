@@ -28,11 +28,16 @@ export interface VoiceHooks {
 export interface Voice {
   talk(on: boolean): Promise<void>;
   setVolume(id: string, volume: number): void;
+  /**
+   * The room's voice (`select`): hear only these identities (the nearest few), the others not even received. A party
+   * (no `select`) hears everyone.
+   */
+  want(ids: ReadonlySet<string>): void;
   resumeAudio(): Promise<void>;
   close(): Promise<void>;
 }
 
-export async function joinVoice(ticket: Ticket, hooks: VoiceHooks): Promise<Voice> {
+export async function joinVoice(ticket: Pick<Ticket, 'url' | 'token'>, hooks: VoiceHooks, opts: { select?: boolean } = {}): Promise<Voice> {
   const room = new Room({
     adaptiveStream: false,
     dynacast: false,
@@ -40,6 +45,17 @@ export async function joinVoice(ticket: Ticket, hooks: VoiceHooks): Promise<Voic
   });
   const volumes = new Map<string, number>();
   const audioOf = new Map<string, HTMLMediaElement[]>();
+  /** `select`: the identities heard now (null until the first `want`: nobody). */
+  let wanted: ReadonlySet<string> | null = null;
+  function applyWanted(): void {
+    if (!opts.select) return;
+    for (const p of room.remoteParticipants.values()) {
+      const on = !!wanted?.has(p.identity);
+      for (const pub of p.trackPublications.values()) {
+        if (pub.kind === Track.Kind.Audio && pub.isSubscribed !== on) pub.setSubscribed(on);
+      }
+    }
+  }
 
   function attach(track: RemoteTrack, who: RemoteParticipant): void {
     if (track.kind !== Track.Kind.Audio) return;
@@ -62,9 +78,11 @@ export async function joinVoice(ticket: Ticket, hooks: VoiceHooks): Promise<Voic
     .on(RoomEvent.AudioPlaybackStatusChanged, () => hooks.needsTap(!room.canPlaybackAudio))
     .on(RoomEvent.Reconnecting, () => hooks.reconnecting(true))
     .on(RoomEvent.Reconnected, () => hooks.reconnecting(false))
-    .on(RoomEvent.Disconnected, () => hooks.ended());
+    .on(RoomEvent.Disconnected, () => hooks.ended())
+    .on(RoomEvent.TrackPublished, () => applyWanted())
+    .on(RoomEvent.ParticipantConnected, () => applyWanted());
 
-  await room.connect(ticket.url, ticket.token, { autoSubscribe: true });
+  await room.connect(ticket.url, ticket.token, { autoSubscribe: !opts.select });
   // (this runs inside the tap that turned voice on: the browser lets sound start, and asks for the microphone, from it)
   await room.startAudio().catch(() => undefined);
   hooks.needsTap(!room.canPlaybackAudio);
@@ -84,6 +102,10 @@ export async function joinVoice(ticket: Ticket, hooks: VoiceHooks): Promise<Voic
     setVolume(id, volume) {
       volumes.set(id, volume);
       room.remoteParticipants.get(id)?.setVolume(volume);
+    },
+    want(ids) {
+      wanted = ids;
+      applyWanted();
     },
     async resumeAudio() {
       await room.startAudio();

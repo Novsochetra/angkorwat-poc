@@ -2228,6 +2228,9 @@ const WORDS = {
   voiceConnecting: { km: 'កំពុងភ្ជាប់…', en: 'Connecting…' },
   voiceReconnecting: { km: 'កំពុងភ្ជាប់ឡើងវិញ…', en: 'Reconnecting…' },
   voiceNoMic: { km: 'កម្មវិធីរុករកមិនអនុញ្ញាតមីក្រូហ្វូនទេ។ សូមអនុញ្ញាតវានៅក្នុងការកំណត់គេហទំព័រ។', en: "The browser didn't allow the microphone. Allow it in the site's settings." },
+  voiceRoomOff: { km: 'ការនិយាយមិនទាន់បើកក្នុងបន្ទប់នេះនៅឡើយទេ', en: "Voice isn't on in this room yet" },
+  voiceRoomSlow: { km: 'សូមរង់ចាំមួយភ្លែត ហើយសាកម្ដងទៀត', en: 'Wait a moment and try again' },
+  njVoiceHint: { km: 'ចុចប៊ូតុងមីក្រូហ្វូនខាងក្រោមស្ដាំ ដើម្បីនិយាយ។ អ្នកលេងនៅជិតអ្នក (ក្នុង ១០០ ម៉ែត្រ) ឮអ្នក កាន់តែជិត កាន់តែឮខ្លាំង។ បិទសំឡេងអ្នកណាម្នាក់បាននៅក្នុង «អ្នកលេងនៅជិត»។', en: 'Tap the mic button at the bottom right to talk. Players near you (within 100 m) hear you, louder the closer they are. Mute anyone in "Players near you".' },
   voiceLost: { km: 'ការនិយាយបានដាច់', en: 'Voice was cut off' },
 } satisfies Record<string, Record<Lang, string>>;
 export type WordKey = keyof typeof WORDS;

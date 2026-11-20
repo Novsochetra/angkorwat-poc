@@ -22,7 +22,7 @@
  * `startServer` is used by main.ts (the service) and test.ts (the checks).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 import { EMOTES, KEEP_MS, FAR_HZ, LIMITS, NEAR_FAST, PARTY_LETTERS, POS_Q, PROTOCOL, PROTOCOL_MIN, RIDES, YAW_Q, testMidnight } from '../src/net/protocol.ts';
@@ -86,6 +86,11 @@ export interface ServerOptions {
    * bring it; none: the public room is open to all. A hello with a code goes to the room whose code it is.
    */
   roomCode?: string;
+  /**
+   * The room's voice (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET; the same LiveKit server as the arcade's
+   * parties): set, a player in a room may ask for a ticket to their crowd's voice room; none: no voice.
+   */
+  voice?: { url: string; key: string; secret: string; prefix?: string };
   /** Addresses the joins-a-minute limit skips (JOIN_LIMIT_EXEMPT: the load bots' machine). */
   joinExempt?: string[];
   /** Behind Railway's proxy: the player's address is X-Real-IP / the last X-Forwarded-For (TRUST_PROXY, on by itself on Railway). */
@@ -137,6 +142,8 @@ interface Sent {
   mark: number;
 }
 interface Client {
+  /** Voice tickets asked in the last minute (at most `VOICE_PER_MIN`). */
+  voiceAsks?: number[];
   ws: WebSocket;
   ip: string;
   opened: number;
@@ -203,6 +210,10 @@ export interface Health {
   uptime: number;
   names: 'shared' | 'stub';
   testRoom: boolean;
+  /** The event room needs its code (ROOM_CODE). */
+  roomCode: boolean;
+  /** Voice tickets can be given (LIVEKIT_*). */
+  voice: boolean;
   byRoom: Record<string, { players: number; crowds: number[]; parties: number; midnight?: string }>;
   /** Per second over the last full minute. */
   rates: { msgsIn: number; msgsOut: number; peersOut: number; kBOut: number };
@@ -225,6 +236,31 @@ export interface RunningServer {
 const salt = randomBytes(16);
 const hashId = (id: string): string => createHash('sha256').update(salt).update(id).digest('base64url').slice(0, 22);
 const digest = (s: string): Buffer => createHash('sha256').update(s).digest();
+
+/** Voice tickets a player may ask a minute (a crowd change asks again). */
+const VOICE_PER_MIN = 6;
+/** A voice ticket's life (s): the night and then some. */
+const VOICE_TTL_S = 6 * 3600;
+/**
+ * A LiveKit access token (a JWT, HS256, as livekit-server-sdk makes one; node:crypto only): join `room` as `identity`,
+ * publish only a microphone, subscribe; no data.
+ */
+export function liveKitToken(key: string, secret: string, identity: string, name: string, room: string, ttlS = VOICE_TTL_S, now = Date.now()): string {
+  const t = Math.floor(now / 1000);
+  const part = (o: object): string => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const head = part({ alg: 'HS256', typ: 'JWT' });
+  const body = part({
+    iss: key,
+    sub: identity,
+    jti: identity,
+    name,
+    nbf: t - 10,
+    exp: t + ttlS,
+    video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: false, canPublishSources: ['microphone'] },
+  });
+  const sig = createHmac('sha256', secret).update(`${head}.${body}`).digest('base64url');
+  return `${head}.${body}.${sig}`;
+}
 const normCode = (s: string): string => s.toUpperCase().replace(/[\s-]+/gu, '');
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 const r3 = (v: number): number => Math.round(v * 1000) / 1000;
@@ -602,7 +638,22 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
       case 'party':
         if ('code' in m && m.code !== undefined) return onPartyCode(c, m.code);
         return onParty(c, m.make === true, m.leave === true);
+      case 'voice':
+        return onVoice(c);
     }
+  };
+
+  /** A ticket to the crowd's voice room (its identity the player's sid, so a voice is the player on the map). */
+  const onVoice = (c: Client): void => {
+    const v = opts.voice;
+    if (!v || !c.room || !c.crowd) return send(c, { t: 'error', code: 'voice', reason: 'off' });
+    const now = Date.now();
+    const asks = (c.voiceAsks ?? []).filter((t) => now - t < 60_000);
+    if (asks.length >= VOICE_PER_MIN) return send(c, { t: 'error', code: 'voice', reason: 'rate' });
+    asks.push(now);
+    c.voiceAsks = asks;
+    const room = `${v.prefix ?? 'angkor-'}nye-${c.room.kind}-${c.crowd.n}`;
+    send(c, { t: 'voice', url: v.url, room, token: liveKitToken(v.key, v.secret, String(c.sid), c.name, room) });
   };
 
   // ── The snapshots: the nearest of the crowd, stateHz times a second ────────────────────────────────────────────
@@ -853,6 +904,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
       names: NAMES_SOURCE,
       testRoom: eventCode !== null,
       roomCode: roomCode !== null,
+      voice: !!opts.voice,
       byRoom,
       rates: lastMinute,
       memoryMB: Math.round(process.memoryUsage().rss / 1048576),

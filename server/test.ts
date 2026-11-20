@@ -5,6 +5,7 @@
  * arcade service's codes), the nearest-50.
  */
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LIMITS, PEER_E, PEER_N, PEER_S, POS_Q, PROTOCOL, YAW_Q, testMidnight } from '../src/net/protocol.ts';
@@ -288,6 +289,38 @@ await check('event room by code (ROOM_CODE): the code (any case, any room asked)
   } finally {
     await s2.close();
   }
+});
+
+await check('voice: a ticket for the crowd\'s room (a LiveKit token signed with the secret, identity the sid), none without LIVEKIT_*', async () => {
+  const s2 = await startServer({ port: 0, voice: { url: 'wss://voice.example', key: 'devkey', secret: 'devsecret' }, joinExempt: ['127.0.0.1', '::1'], log: () => {}, logEveryMs: 0 });
+  try {
+    const a = await join(s2, 'Talker');
+    a.send({ t: 'voice' });
+    await a.until(() => a.msgs.some((m) => m.t === 'voice'), 2000, 'the ticket');
+    const v = a.msgs.find((m) => m.t === 'voice') as Extract<ServerMsg, { t: 'voice' }>;
+    assert.equal(v.url, 'wss://voice.example');
+    assert.equal(v.room, `angkor-nye-public-${a.welcome!.crowd}`);
+    const [h, b, sig] = v.token.split('.');
+    assert.equal(createHmac('sha256', 'devsecret').update(`${h}.${b}`).digest('base64url'), sig, 'signed with the secret');
+    const claims = JSON.parse(Buffer.from(b, 'base64url').toString());
+    assert.equal(claims.iss, 'devkey');
+    assert.equal(claims.sub, String(a.welcome!.sid));
+    assert.equal(claims.name, 'Talker');
+    assert.equal(claims.video.room, v.room);
+    assert.deepEqual(claims.video.canPublishSources, ['microphone']);
+    assert.ok(claims.exp > Date.now() / 1000 + 3600);
+    // asked too often: refused, the connection kept
+    for (let i = 0; i < 8; i++) a.send({ t: 'voice' });
+    await a.until(() => a.msgs.some((m) => m.t === 'error' && m.code === 'voice'), 2000, 'the rate error');
+    assert.ok(!a.closed);
+    a.close();
+  } finally {
+    await s2.close();
+  }
+  const b = await join(srv, 'Silent');
+  b.send({ t: 'voice' });
+  await b.until(() => b.msgs.some((m) => m.t === 'error' && m.code === 'voice'), 2000, 'no voice');
+  b.close();
 });
 
 await check('test room: midnight moves on after the show + 1 min', async () => {

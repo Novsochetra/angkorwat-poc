@@ -9,6 +9,7 @@ import { progress } from '../progress';
 import type { UISound } from '../types';
 import { makeFakeNet, type JoinNet } from './_joinFake';
 import { openPlayers } from './_joinPlayers';
+import { installRoomVoice } from './_joinVoice';
 import { ICON } from './icons';
 import { lang, num, onLang, t, type WordKey } from './lang';
 import { setSteppedVars } from './shape';
@@ -229,6 +230,7 @@ function makeCard(): Card {
         <div class="mu-ask-head nj-head"><span class="mu-ask-icon">${BURST}</span><div><h2 id="nj-title"></h2><p id="nj-sub" class="nj-sub"></p></div></div>
         <div class="mu-orn mu-ask-orn" aria-hidden="true"><i></i>${ICON.diamond}<i></i></div>
         <p class="nj-state" role="status" aria-live="polite"><i class="nj-dot" aria-hidden="true"></i><span class="nj-state-t"></span></p>
+        <p class="nj-voice" hidden>${ICON.mic}<span></span></p>
         <div class="nj-form">
           <label class="nj-label" for="nj-input"></label>
           <label class="nj-field mu-frame mu-sm"><span class="mu-bg"></span><input id="nj-input" class="nj-input" type="text" maxlength="48" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" /></label>
@@ -344,6 +346,9 @@ function makeCard(): Card {
     partyLink.hidden = true;
     later.querySelector('.mu-ask-t')!.textContent = t(m === 'form' ? 'njLater' : m === 'offline' ? 'njClose' : 'njLeave');
     people.hidden = m !== 'online';
+    const vh = q('.nj-voice');
+    vh.hidden = m !== 'online';
+    vh.querySelector('span')!.textContent = t('njVoiceHint');
     go.hidden = m === 'offline';
     go.querySelector('.mu-ask-t')!.textContent = t(m === 'online' || m === 'busy' ? 'njClose' : n.state === 'refused' ? 'njAgain' : 'njJoin');
     go.disabled = false;
@@ -606,6 +611,8 @@ export function installJoin(o: { uiRoot: HTMLElement }): void {
   const n = joinNet();
   // (checks on the dev server: the state, and open the card)
   if (import.meta.env.DEV) Object.assign(window, { __join: { net: n, open: openJoin, close: closeJoin, words: stateWords } });
+  // The room's mic (bottom right, while online): ui/_joinVoice.ts.
+  installRoomVoice(n, o.uiRoot);
   if (ASK !== null) return fromUrl();
   // The hidden test link: with a good name, in at once; else the card asks for the name first.
   const code = n.pendingCode ?? null;
@@ -769,6 +776,10 @@ function injectStyle(): void {
       border: 1px solid var(--mu-line-hi); border-radius: calc(6 * var(--px)); background: rgba(255, 244, 222, 0.05); color: var(--mu-ink); text-align: left; cursor: pointer; outline: none; }
     .nj-party[hidden] { display: none; }
     .nj-safe[hidden] { display: none; }
+    .nj-voice { display: flex; gap: calc(8 * var(--px)); align-items: flex-start; margin: calc(10 * var(--px)) 0 0 !important; padding: calc(8 * var(--px)) calc(10 * var(--px));
+      border-left: calc(3 * var(--px)) solid rgba(143, 227, 163, 0.6); background: rgba(143, 227, 163, 0.06); font-size: calc(13 * var(--px)) !important; line-height: 1.5 !important; color: var(--mu-ink2) !important; }
+    .nj-voice svg { flex: none; width: calc(18 * var(--px)); height: calc(18 * var(--px)); margin-top: calc(2 * var(--px)); color: #8fe3a3; }
+    .nj-voice[hidden] { display: none; }
     .nj-party > .mu-icon { flex: none; width: calc(26 * var(--px)); height: calc(26 * var(--px)); color: var(--mu-gold-hi); }
     .nj-party > .mu-icon:last-child { width: calc(16 * var(--px)); height: calc(16 * var(--px)); margin-left: auto; color: var(--mu-ink2); }
     .nj-party > span { display: flex; flex-direction: column; min-width: 0; }

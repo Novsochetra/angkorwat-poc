@@ -133,7 +133,15 @@ export interface ClientParty {
   leave?: boolean;
   code?: string | null;
 }
-export type ClientMsg = ClientHello | ClientState | ClientEmote | ClientReport | ClientPing | ClientParty;
+/**
+ * A ticket for the room's voice (LiveKit, the owner's voice server): the server answers `ServerVoice`, or the error
+ * 'voice' (no voice server set, or asked too often). Its identity is the player's server id, so a voice is the player
+ * on the map. A server without voice answers the error, an older one nothing (no version bump).
+ */
+export interface ClientVoice {
+  t: 'voice';
+}
+export type ClientMsg = ClientHello | ClientState | ClientEmote | ClientReport | ClientPing | ClientParty | ClientVoice;
 
 // ── Server → page ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -216,13 +224,20 @@ export interface ServerParty {
   /** The crowd the player is in now, when joining the party moved them into its crowd. */
   crowd?: number;
 }
+/** The voice ticket: the LiveKit server, a token for the crowd's voice room (identity: my `sid`), its name. */
+export interface ServerVoice {
+  t: 'voice';
+  url: string;
+  token: string;
+  room: string;
+}
 export interface ServerError {
   t: 'error';
   /** 'version' | 'name' (refused: `reason` from names.ts) | 'code' (a wrong test code) | 'full' | 'rate' | 'moved' (too fast) | 'party'. */
-  code: 'version' | 'name' | 'code' | 'full' | 'rate' | 'moved' | 'party';
+  code: 'version' | 'name' | 'code' | 'full' | 'rate' | 'moved' | 'party' | 'voice';
   reason?: string;
 }
-export type ServerMsg = ServerWelcome | ServerPong | ServerPeers | ServerPeersV2 | ServerCount | ServerParty | ServerError;
+export type ServerMsg = ServerWelcome | ServerPong | ServerPeers | ServerPeersV2 | ServerCount | ServerParty | ServerVoice | ServerError;
 
 /** The test room's midnight at or after `now` (ms): every quarter hour (:00, :15, :30, :45 UTC minutes), at least 2 minutes ahead. */
 export function testMidnight(now: number): number {

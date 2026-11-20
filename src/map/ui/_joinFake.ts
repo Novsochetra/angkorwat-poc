@@ -109,6 +109,9 @@ export function makeFakeNet(q: URLSearchParams, here: () => { x: number; y: numb
       emit();
     },
     isMuted: (sid) => muted.has(sid),
+    voiceTicket() {
+      return Promise.reject(new Error('off'));
+    },
     makeParty() {},
     leaveParty() {},
     setParty() {},
