@@ -2390,6 +2390,15 @@ pose `character/dogPet.ts`, sounds `audio/_dog.ts`.
   deck by its stair; a roof has none: it stays home until he is down, and 0 there says it
   cannot get up). Told to stay, it waits on where it was told; sent home, it is on its bed;
   neither comes in by him.
+- **On the maps** (AWP-36: a dog sent home was nowhere to be found): "សុនខរបស់ខ្ញុំ / My dog" (`my-dog`, the
+  tan dog with its tail curled up and a pink heart) stands where it is on the mini-map and the big map while it is
+  somewhere without him: told to stay, on its bed (sent home, or he sleeps in his house), waiting while he sails or
+  flies, at a hall's door; following him or coming to him, or not his yet, it has none. Its place for the maps is
+  `roam/_dogWhere.ts` (`DOG_WHERE`, no three.js: the add-on writes it each frame, moving it once the dog has moved
+  0.5 m); on the big map its button (`placeBigSpot` in `ui/_minimapSpots.ts`) stands 40 m clear of the fixed badges
+  (its bed by the village shop or under his house would sit on the village's or his house's), and its name shows
+  only while it is pointed at, picked or the target. Check: `roam=walk&at=405,-75&dogorder=home` (the mini-map),
+  with `bigmap=1` the big map.
 - **For his stilt house** (`_home.ts` uses it): `dogBed({ x, z, y?, yaw? } | null)` where it
   sleeps (its bed: null, the village); `dogHome(true)`: he is home (asleep): it goes to its
   bed (a way, else it is there) and sleeps flat out; `dogHome(false)`: it wakes and comes to
