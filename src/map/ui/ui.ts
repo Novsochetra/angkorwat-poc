@@ -1,7 +1,6 @@
 import type { PlaceDef } from '../layout';
 import { squareShown } from '../nye/clock';
-import { partyKept, partyShown, setPartyOpener } from '../party/gate';
-import type { PartyUI } from '../party';
+import { partyShown, setPartyOpener } from '../party/gate';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
@@ -360,8 +359,8 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   const partyBtn = partyShown() ? framed(el('button', 'mu-round mu-party-btn', `${ICON.party}<span class="mu-party-n"></span>`), 'md') : null;
   if (partyBtn) {
     partyBtn.type = 'button';
-    partyBtn.dataset.tAria = 'party';
-    partyBtn.dataset.tTitle = 'party';
+    partyBtn.dataset.tAria = 'njBtnAria';
+    partyBtn.dataset.tTitle = 'njBtnAria';
     corner.prepend(partyBtn);
   }
 
@@ -1198,26 +1197,27 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (a && isPostHogConfigured) posthog.capture('support_clicked', { from: a.dataset.from ?? '' });
   };
   panel.addEventListener('click', countSupport);
-  // (the party's card and voice: their module is loaded on the first press, or at once for a party kept from before)
+  // The corner's people button is the way into the New Year online (the owner, November 2026): it opens the join card
+  // (ui/_join.ts: the name and the room code, Join; in a room: Leave and the players with Mute), its number the
+  // players online. The party's card and voice (map/party/) are not offered for now: their code stays for later.
   if (partyBtn) {
-    let party: Promise<PartyUI> | null = null;
-    const loadParty = () =>
-      (party ??= import('../party').then(({ mountParty }) => {
-        const ui = mountParty(root, { sound: (s) => h.onSound(s) });
-        ui.onChange((n, voiceOn) => {
-          partyBtn.querySelector('.mu-party-n')!.textContent = n ? num(n) : '';
-          partyBtn.classList.toggle('is-voice', voiceOn);
-        });
-        return ui;
-      }));
+    const join = import('./_join');
+    void join.then(({ joinNet }) => {
+      const n = joinNet();
+      const count = () => {
+        const on = n.state === 'online';
+        partyBtn.querySelector('.mu-party-n')!.textContent = on ? num(Math.max(1, n.count.online)) : '';
+        partyBtn.classList.toggle('is-voice', on);
+      };
+      n.onChange(count);
+      count();
+    });
     partyBtn.addEventListener('click', () => {
       if (pad.active) clearMark();
       partyBtn.blur();
-      void loadParty().then((ui) => ui.toggle());
+      void join.then(({ joinOpen, openJoin, closeJoin }) => (joinOpen() ? closeJoin() : openJoin({ from: 'button' })));
     });
-    // (the join card's "Play with friends: a party")
-    setPartyOpener(() => void loadParty().then((ui) => ui.open()));
-    if (partyKept() || new URLSearchParams(location.search).has('partydemo')) void loadParty();
+    setPartyOpener(null);
   }
 
   // (the corner's coffee asks first, with a card: _support.ts)

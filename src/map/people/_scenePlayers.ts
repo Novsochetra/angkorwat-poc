@@ -145,7 +145,7 @@ export class Players implements PeopleScene {
       import('../../net/client')
         .then((m) => {
           const net = m.NET;
-          this.source = { get peers() { return net.peers; }, now: () => performance.now() };
+          this.source = { get peers() { return net.peers; }, now: () => performance.now(), muted: (sid) => net.isMuted(sid) };
         })
         .catch((e) => console.warn('[map] players: no live connection', e));
     }
@@ -248,7 +248,8 @@ export class Players implements PeopleScene {
     const kind = RIDE_PROP[ride];
     const r = RIDES[ride];
     // The emote (on foot only), from when it began.
-    const play = r === 'walk' ? EMOTE_PLAY[p.emote] : null;
+    // (a player he muted: no emotes, no name tag)
+    const play = r === 'walk' && !this.source?.muted?.(b.sid) ? EMOTE_PLAY[p.emote] : null;
     const age = (clock - p.emoteAt) / 1000;
     const emoting = !!play && age >= 0 && age < play.dur;
     const wear = emoting && play.feats.length ? p.emote : 0;
@@ -340,6 +341,7 @@ export class Players implements PeopleScene {
       const b = near[k];
       const p = b.peer!;
       const ride = p.ride >= 0 && p.ride < RIDES.length ? p.ride : WALK;
+      if (this.source?.muted?.(b.sid)) continue;
       this.names.add(f.camera, b.sid, p.name, !!p.party, p.x, p.y + HEAD_BY[ride] + 0.3, p.z, b.d, partyLink.talking.has(b.sid));
     }
     this.names.end();

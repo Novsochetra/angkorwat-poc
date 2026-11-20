@@ -21,6 +21,8 @@ export interface PeerSource {
   readonly peers: ReadonlyMap<number, NetPeer>;
   /** The clock the peers' `emoteAt` is on (ms). */
   now(): number;
+  /** Muted by this player (the players list's Mute): no emotes, no name tag. */
+  muted?(sid: number): boolean;
 }
 
 export type GhostsAt = 'square' | 'lake' | 'map' | 'lineup';

@@ -290,7 +290,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   connecting|online|retrying|offline|refused:<why>|code|list|player`, `nyename=`, `nyecode=`, `nyepeers=<n>`,
   `nyeask=block|report`, `nyetest=1`); other players drawn `people/_scenePlayers.ts` (`ghosts=<n>&ghostsat=square|lake|
   map|lineup`, no server). The server `server/` (its own package.json, `ws`; `npm run server`, `npm run server:test`,
-  deploy notes and Railway config in `server/README.md`, `server/railway.json`; `EVENT_CODE` the test room's and `ROOM_CODE` the event room's (e.g. NYE2027), only on the server; the join card asks a name, then the room code under it, filled from the link `?event=`);
+  deploy notes and Railway config in `server/README.md`, `server/railway.json`; `EVENT_CODE` the test room's and `ROOM_CODE` the event room's (e.g. NYE2027), only on the server; the join card asks a name, then the room code under it, filled from the link `?event=`; the corner's people button opens it, its number the players online; in a room it has Leave and the players list: Mute hides a player's name tag and emotes, Block, Report; the gold button under the mini-map and the party row are not shown for now);
   `npm run nyetest` (two pages see each other and agree on the time), `npm run nyeload -- bots=300` (robot players);
   perf views `nyeplayers`, `nyeplayersview`.
 - Parties and party voice (AWP-35 Phase 3, the plan `docs/discussion/new-year-voice.md`):
@@ -306,7 +306,7 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   name tag, the gold diamond bobbing: `partyLink.talking`, `people/_scenePlayers.ts`). The party list: Mute,
   Block (for good on this device, `party/_blocked.ts` `angkor-party-blocked`; `NET.block` when found on the
   map), Report (`NET.report` when found, else the card says it couldn't be sent), the maker's Remove; the
-  friend's distance. The corner's party button shows while the New Year event is on offer (the join card's
+  friend's distance. (Not offered for now, November 2026: the corner's people button opens the join card instead; the code stays.) The corner's party button showed while the New Year event is on offer (the join card's
   conditions: a server set, the square shown) and behind the test switches (`party/gate.ts`: `party=1`,
   `event=`, a party kept); the join card links to it ("Play with friends: a party", gate.ts `openParty`).
   A pad: the card is a pad layer (□ the mic), the DualSense touchpad is the mic in a party. Shots:

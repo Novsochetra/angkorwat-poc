@@ -301,6 +301,7 @@ function makeCard(): Card {
     codeIn.setAttribute('aria-label', t('njCodeField'));
     q('.nj-code-go-t').textContent = t('njCodeGo');
     q('.nj-safe').textContent = t('njSafe');
+    q('.nj-safe').hidden = true;
     q('.nj-party-t').textContent = t('njParty');
     q('.nj-party-n').textContent = t('njPartyNote');
     people.querySelector('.mu-ask-t')!.textContent = t('njPlayers');
@@ -588,7 +589,8 @@ function labelButton(): void {
   btn.dataset.state = n.state;
   btn.setAttribute('aria-label', `${t('njBtnAria')}: ${stateWords()}`);
   btn.title = t('njBtnAria');
-  btn.hidden = !joinOffered();
+  // (the corner's people button opens the card now: ui.ts; this one under the mini-map is not shown for now)
+  btn.hidden = true;
 }
 
 // ── Installing: the setting, the test link, a visit that joined last time, shots ───────────────────────────────
@@ -766,6 +768,7 @@ function injectStyle(): void {
     .nj-party { display: flex; align-items: center; gap: calc(10 * var(--px)); margin-top: calc(10 * var(--px)); padding: calc(8 * var(--px)) calc(10 * var(--px));
       border: 1px solid var(--mu-line-hi); border-radius: calc(6 * var(--px)); background: rgba(255, 244, 222, 0.05); color: var(--mu-ink); text-align: left; cursor: pointer; outline: none; }
     .nj-party[hidden] { display: none; }
+    .nj-safe[hidden] { display: none; }
     .nj-party > .mu-icon { flex: none; width: calc(26 * var(--px)); height: calc(26 * var(--px)); color: var(--mu-gold-hi); }
     .nj-party > .mu-icon:last-child { width: calc(16 * var(--px)); height: calc(16 * var(--px)); margin-left: auto; color: var(--mu-ink2); }
     .nj-party > span { display: flex; flex-direction: column; min-width: 0; }
