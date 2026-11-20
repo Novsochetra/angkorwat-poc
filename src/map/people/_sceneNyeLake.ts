@@ -25,7 +25,6 @@ import {
   netHeapDef,
   planLakeCrowd,
   stagePt,
-  toStage,
   stoolDef,
   WATER,
   type LakeBoat,
@@ -45,16 +44,19 @@ import { Rig } from './_things';
  * **Ordinary days**: a couple strolling round the shore terrace in the evening, looking out over the lake; a
  * fisherman sitting by the terrace's front steps by day, mending his net.
  *
- * **The night** (from 22:20): families walk up the east shore trail from the floating village and onto the terrace —
- * the mat families at its front by the steps down to the water (grandmother, mother, children; the grandfather on a
- * low stool behind), the standing families behind them, the nearest the stage first, the jetty line and a lane round
- * it kept open; children with sparklers, phones up. Five boats of families paddle up from the village and moor on the
- * water before the stage (its village side), a paper lantern glowing at each bow. From 22:58 two children kneel at
- * the water's edge below the mats and set lotus candles afloat in turn, which drift out and along the shore. On the
- * floating stage (22:30‥23:50) a mahori ensemble (roneat ek, khim, tro) plays and two dancers circle in the romvong;
- * at 23:50 they bow and step aside. The last ten seconds: everyone to the board, phones up, arms counting; midnight:
- * cheering, jumping, two of a family turning to each other; the fireworks over the lake behind the stage (heads up);
- * after the show they talk and from 00:09 go home (the boats paddle off), the last by 00:40.
+ * **The night** (from 22:20): families walk up the east shore trail from the floating village and onto the terrace
+ * (nye/_lkShore.ts) — the mat families on the landing at the top of the ghat, the steps down to the water
+ * (grandmother, mother, children; the grandfather on a low stool behind), the standing families over the landing and
+ * the terrace, denser toward the stage, the jetty and the pale way up the middle kept open; children with sparklers,
+ * phones up. Five boats of families paddle up from the village and moor on the open water beyond the stage's village
+ * end, a paper lantern glowing at each bow. From 22:58 two of the mats' children go down the ghat to the second step
+ * in the water, kneel and set lotus candles afloat in turn (a few of their own drift off along the shore, among the
+ * venue's: nye/_lkWater.ts), squatting to watch them go. On the floating stage (22:30‥23:50) a mahori ensemble (roneat
+ * ek, khim, tro) plays at its north-west end and two dancers circle in the romvong; at 23:50 they bow and step aside. The
+ * last ten seconds: everyone to the board, phones up, arms counting; midnight: cheering, jumping, two of a family
+ * turning to each other, the boats' children standing up; the fireworks over the lake behind the stage (heads up);
+ * after the show they talk and from 00:09 go home (the boats paddle off; the performers down the jetty from 00:15),
+ * the last by 00:40.
  *
  * Time: as the Kulen square's (`nyeSeconds`, a shot moves it on from its moment less the preroll). On the low graphics
  * level half the families stay home (`LakeMember.low`) and two boats fewer come.
@@ -208,14 +210,6 @@ export class NyeLakeLife implements PeopleScene {
       const lead = this.plan.members.find((p) => p.group === m.group);
       if (g && lead) this.matFrom[k] = g.start + lead.cum[lead.cum.length - 1] / g.v - 2;
     });
-    {
-      // DEBUG
-      const o = { x: 0, z: 0 };
-      const uv = (x: number, z: number) => { toStage(x, z, o); return `${o.x.toFixed(1)},${o.z.toFixed(1)}`; };
-      console.info(`[map] DEBUG bank ${Array.from(this.site.bank).map((v) => v.toFixed(1)).join(' ')} edge ${Array.from(this.site.edge).map((v) => v.toFixed(1)).join(' ')} T ${uv(LAKE_SHORE.x, LAKE_SHORE.z)}`);
-      console.info(`[map] DEBUG members v ${this.plan.members.map((m) => (toStage(m.x, m.z, o), Math.round(o.z))).sort((a, b) => a - b).join(',')}`);
-      console.info(`[map] DEBUG mats ${this.plan.mats.map((m) => uv(m.x, m.z)).join(' | ')} lotus ${this.plan.members.filter((m) => m.role === 'lotus').map((m) => uv(m.wx, m.wz) + '@' + m.wy.toFixed(2)).join(' ')} boats ${this.plan.boats.map((b) => uv(b.x, b.z)).join(' | ')}`);
-    }
     const ms = this.plan.members;
     const n = (f: (m: LakeMember) => boolean) => ms.filter(f).length;
     const crew = this.plan.boats.reduce((s, b) => s + b.crew.length, 0);
