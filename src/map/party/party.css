@@ -224,7 +224,8 @@
   inset: auto;
   right: calc(22 * var(--px));
   bottom: calc(110 * var(--px));
-  z-index: 35;
+  /* (over the party card, z 40: talk with it still open) */
+  z-index: 45;
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -152,8 +152,9 @@ export function createPartyPanel(root: HTMLElement, act: PartyActions): PartyPan
     }
   });
   wrap.addEventListener('keydown', (e) => {
-    // (the map's own keys stay out while a box is typed in; Esc closes, Enter in the code box joins)
-    e.stopPropagation();
+    // (the map's own keys stay out while a box is typed in; Esc closes, Enter in the code box joins;
+    // Alt / Option goes on to the mic button, so a player can talk with the card open)
+    if (e.code !== 'AltLeft' && e.code !== 'AltRight') e.stopPropagation();
     if (e.code === 'Escape') act.close();
     else if (e.code === 'Enter' && (e.target as Element).classList.contains('mu-pty-code')) act.join(value('.mu-pty-code'), value('.mu-pty-name'));
     else if (e.code === 'Enter' && (e.target as Element).classList.contains('mu-pty-name')) act.make(value('.mu-pty-name'));
