@@ -276,6 +276,19 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   Live: `node scripts/nye-live.mjs` plays the night in real time (frames and a WAV of the page's sound in
   `screenshots/nye-live/`); `node scripts/nye-sound.mjs` renders the fireworks' sound offline from the square
   (`screenshots/nye-sound/midnight.wav`, `finale.wav`); `npm run perf -- only=nye,nyecrowd,nyeover`.
+- New Year's Eve online, phase 2 (live player rooms, AWP-35; the plan's "Phase 2", "Names", "Safety", "Testing"):
+  the messages and limits shared by the game and the server `src/net/protocol.ts` (version 2: compact `pp` peers,
+  the nearest 15 at 5 Hz, the rest of the 50 at ≈ 1.7 Hz); the game's connection `src/net/client.ts` `NET` (the
+  server's clock into nye/clock.ts, the test room's midnight every quarter hour `setTestMidnight`, others eased by
+  `net/_peers.ts`, blocks `net/_blocked.ts`; the server from `VITE_NYE_SERVER` or `?nyeserver=ws://…`); names checked
+  on both sides `src/net/names.ts` (`node scripts/names-check.mjs`); the join card, code box, setting and the players
+  near you with Mute / Block / Report `ui/_join.ts`, `ui/_joinPlayers.ts`, `roam/_nyePlayers.ts` (shots: `nyejoin=card|
+  connecting|online|retrying|offline|refused:<why>|code|list|player`, `nyename=`, `nyecode=`, `nyepeers=<n>`,
+  `nyeask=block|report`, `nyetest=1`); other players drawn `people/_scenePlayers.ts` (`ghosts=<n>&ghostsat=square|lake|
+  map|lineup`, no server). The server `server/` (its own package.json, `ws`; `npm run server`, `npm run server:test`,
+  deploy notes and Railway config in `server/README.md`, `server/railway.json`; `EVENT_CODE` only on the server);
+  `npm run nyetest` (two pages see each other and agree on the time), `npm run nyeload -- bots=300` (robot players);
+  perf views `nyeplayers`, `nyeplayersview`.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
   hidden gold figures are in `src/map/treasure/` (their list of clues: a tap on the gold
