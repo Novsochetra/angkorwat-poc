@@ -98,12 +98,60 @@ The player types a name before joining the room.
 - No personal data: a player is a random id made on their device. No email, no
   phone number, no age.
 
+## Rehearsals: the whole night, before the real one
+
+We must be able to run the whole event, start to end, at any time we choose:
+the night coming on, the calendar mark, players joining with names, parties and
+voice, the countdown, the show, the cheer, and the sky going back after.
+
+- **One switch moves the whole night.** `nye=<time>` (a date and time, or
+  `+10m`: midnight ten minutes from now) shifts everything with it: the night
+  hold starts 90 minutes before, the countdown, the show, the end. Nothing in the
+  code may read "31 December" except through this one place.
+- **A private rehearsal room on the server.** A host (the owner) makes a
+  rehearsal with a code and picks its midnight ("in 15 minutes"). Everyone who
+  joins with the code gets that midnight from the server, so all testers' phones
+  count down together, as on the real night. Rehearsal players never mix with the
+  public, and the public never sees a rehearsal.
+- **A staging server.** A second Railway service, the same code, for rehearsals
+  and for trying changes; the real night's server only gets code that passed a
+  rehearsal on staging.
+- **Robot players.** `npm run nyeload -- bots=300`: a script (no drawing, only
+  connections) whose players join, take names, walk to the causeway, greet and
+  stay through midnight, to see the server and the crowds hold up.
+- **A headless check.** `npm run nyetest`: two or three browser pages join a local
+  server, see each other, make a party, count down to a midnight a minute away,
+  and check they reach zero within 0.2 s of each other.
+
+### What a rehearsal checks
+
+- Every device reaches "១" and the first rocket at the same second (phones and
+  computers, Wi-Fi and 4G, Khmer and English).
+- The show keeps 30 fps on a phone on low, with the crowd around.
+- Joining late (after midnight) starts the show at the right second; leaving
+  and coming back works.
+- The server stopped in the middle of the show: the show plays on, players come
+  back when it returns.
+- A rude name is refused; Report and Block work; party voice works, Mute works,
+  far friends sound quieter.
+- After the end the sky goes back to the player's own time, and nothing in their
+  save has changed.
+
+### Dates
+
+| When | Rehearsal |
+|---|---|
+| ~20 Dec | Rehearsal 1 with friends on staging: the show, the countdown, live players. |
+| ~24 Dec | Load test with robot players on staging. |
+| ~28 Dec | Dress rehearsal: everything, voice included, with the build and the server of the real night. |
+| 31 Dec, afternoon | A last short run with `+10m` on the real server's rehearsal room. |
+
 ## Timeline (41 days from 2026-11-20)
 
 | By | What |
 |---|---|
 | ~10 Dec | Part 1 done: the show, countdown, calendar entry, phone budget. |
-| ~20 Dec | Part 2 done; a test night with friends (`nye=` at an hour we pick). |
+| ~20 Dec | Part 2 done; rehearsal 1 with friends on staging. |
 | ~27 Dec | Part 3 done, then freeze: fixes only. |
 | 31 Dec | The night. If voice isn't solid by the 27th, it waits; the show doesn't need it. |
 
@@ -116,4 +164,5 @@ The player types a name before joining the room.
 5. Joining: the card, the name entry and its checks, the setting.
 6. Mute, Block, Report (and reports into the tracker).
 7. Parties and party voice (LiveKit).
-8. The test night and the freeze.
+8. Rehearsals: `nye=`, the rehearsal room, staging, robot players, `nyetest`.
+9. The rehearsal nights and the freeze.
