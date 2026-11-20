@@ -342,34 +342,36 @@ function freeSpot(field: HeightField, x: number, z: number): [number, number] | 
 function crown(b: VoxelBuilder, kit: Kit, blossom: Kit, glow: Glow, field: HeightField, t: NyeTree, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): { low: number; top: number } {
   const rnd = (i: number) => hash3(seed, i, 3, 91);
   const myrtle = t.kind === 'myrtle';
-  const R = t.r;
-  const Rv = R * (myrtle ? 0.86 : 0.74);
+  // (a broad, open crown of separate lobes on spreading limbs, not one ball: from above it reads as a tree, gaps
+  // between its lobes, each lobe at its own height; the trumpet tree flatter, an umbrella)
+  const R = t.r * 1.2;
+  const Rv = R * (myrtle ? 0.72 : 0.58);
   const cy = t.h - Rv;
-  const blobs: { x: number; y: number; z: number; r: number; ry: number }[] = [{ x: 0, y: cy, z: 0, r: R * 0.74, ry: Rv * 0.85 }];
-  const n = myrtle ? 4 : 5;
+  const blobs: { x: number; y: number; z: number; r: number; ry: number }[] = [{ x: 0, y: cy + Rv * 0.15, z: 0, r: R * 0.48, ry: Rv * 0.6 }];
+  const n = myrtle ? 5 : 6;
   const a0 = rnd(1) * Math.PI * 2;
   for (let q = 0; q < n; q++) {
-    const a = a0 + (q / n) * Math.PI * 2 + (rnd(10 + q) - 0.5) * 0.7;
-    const d = R * (0.45 + rnd(20 + q) * 0.2);
-    blobs.push({ x: Math.cos(a) * d, y: cy + Rv * (myrtle ? rnd(30 + q) * 0.4 - 0.1 : rnd(30 + q) * 0.3 - 0.2), z: Math.sin(a) * d, r: R * (0.46 + rnd(40 + q) * 0.14), ry: Rv * (0.6 + rnd(50 + q) * 0.15) });
+    const a = a0 + (q / n) * Math.PI * 2 + (rnd(10 + q) - 0.5) * 0.6;
+    const d = R * (0.68 + rnd(20 + q) * 0.24);
+    blobs.push({ x: Math.cos(a) * d, y: cy + Rv * (myrtle ? rnd(30 + q) * 0.6 - 0.3 : rnd(30 + q) * 0.4 - 0.25), z: Math.sin(a) * d, r: R * (0.36 + rnd(40 + q) * 0.12), ry: Rv * (0.5 + rnd(50 + q) * 0.15) });
   }
-  blobs.push({ x: (rnd(70) - 0.5) * R * 0.4, y: cy + Rv * 0.55, z: (rnd(71) - 0.5) * R * 0.4, r: R * 0.5, ry: Rv * 0.5 });
+  blobs.push({ x: (rnd(70) - 0.5) * R * 0.3, y: cy + Rv * 0.7, z: (rnd(71) - 0.5) * R * 0.3, r: R * 0.34, ry: Rv * 0.45 });
   const floor = cy - Rv * (myrtle ? 0.78 : 0.7);
   // Trunks to the lumps (myrtle: three stems from the foot; trumpet: one trunk, then limbs).
   const bark = BARK[t.kind];
   const bk = (i: number) => bark[Math.floor(rnd(60 + i) * bark.length) % bark.length];
   if (myrtle) {
-    for (let s = 0; s < 3; s++) {
+    for (let s = 0; s < n; s++) {
       const L = blobs[1 + s];
       const mid: P3 = [x + L.x * 0.35, g + floor * 0.55, z + L.z * 0.35];
-      log(b, [x + (s - 1) * 0.2, g - 0.1, z + (s % 2) * 0.2], mid, 0.4, bk(s), 'mapBark', 1, src);
+      log(b, [x + ((s % 3) - 1) * 0.2, g - 0.1, z + (s % 2) * 0.2], mid, 0.4, bk(s), 'mapBark', 1, src);
       log(b, mid, [x + L.x * 0.75, g + L.y - L.ry * 0.3, z + L.z * 0.75], 0.3, bk(s + 3), 'mapBark', 1, src);
     }
   } else {
     const fork: P3 = [x, g + floor * 0.7, z];
     log(b, [x, g - 0.2, z], fork, 0.7, bk(0), 'mapBark', 1, src);
     b.box(x, g + 0.25, z, 1.1, 0.5, 1.1, bk(1), 'mapBark', { src, shade: 0.9 });
-    for (let s = 1; s <= 4; s++) {
+    for (let s = 1; s <= n; s++) {
       const L = blobs[s];
       log(b, fork, [x + L.x * 0.8, g + L.y - L.ry * 0.2, z + L.z * 0.8], 0.36, bk(s + 1), 'mapBark', 1, src);
     }

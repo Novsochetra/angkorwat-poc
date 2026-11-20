@@ -421,7 +421,7 @@ function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, 
     const y = yAt(u) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.8, c, 0.3);
+    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.55, c, 0.2);
   }
 }
 
