@@ -85,6 +85,8 @@ export interface RoamTools {
   readonly purse: Purse;
   /** Something else has him now: praying, resting on the ground, at a stall or eating, a posture, the camera or the phone up, the album (an add-on offers nothing then). */
   busy(): boolean;
+  /** Down on the ground (J / L, _rest.ts): sitting, lying, asleep; null up (the live rooms show it: src/net/_me.ts). */
+  readonly resting: 'sit' | 'lie' | 'sleep' | null;
   /**
    * Before the mode's step: the tool and emote keys, the album, and photo
    * mode's input (it takes what it uses: no walking with the camera up,
@@ -479,6 +481,9 @@ export function createRoamTools(d: ToolDeps): RoamTools {
     photo,
     get purse() {
       return shopping.purse;
+    },
+    get resting() {
+      return rest.state;
     },
     busy: () => prayer.handsBusy || rest.active || shopping.handsBusy || shopping.menuOpen || !!explorer.animator.posture || !!photo.kind || photo.albumOpen,
     input(ctx, m, dt) {

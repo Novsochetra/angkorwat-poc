@@ -40,7 +40,15 @@ export interface JoinOptions {
 
 export interface NetClient {
   readonly state: NetState;
-  /** Why the server refused (a name: names.ts's reason key; 'code'; 'full'…), when `state` is 'refused'. */
+  /** A live server is set for this page (`VITE_NYE_SERVER`, or `?nyeserver=` for checks): joining can work. False: "the event isn't online" (joining refuses with 'offline'). */
+  readonly available: boolean;
+  /** The test room's code from the hidden link (`/?event=<code>`), or null: the join card joins `room: 'test'` with it once the player has a name. */
+  readonly pendingCode: string | null;
+  /** This device's look seed (from its random id: the same every night), for `JoinOptions.look`. */
+  readonly look: number;
+  /** The last error the server sent that did not end the connection ('party', 'moved', 'rate'), for a toast; null when none. */
+  readonly lastError?: string | null;
+  /** Why the server refused (a name: names.ts's reason key; 'code'; 'full'; 'version'; 'offline': no server set), when `state` is 'refused'. */
   readonly refusal: string | null;
   /** The room and crowd joined, my server id and accepted name, my party's code. */
   readonly room: RoomKind | null;

@@ -117,7 +117,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   object.add(extraHalos.mesh);
 
   // ── The board, facing the shore ──
-  const board = buildBoard({ ...stage.board, yaw: fr.yaw, far: 200, name: 'nye:lake:board' });
+  const board = buildBoard({ ...stage.board, yaw: fr.yaw, far: 200, name: 'nye:lake:board', ground: 'lake' });
   object.add(board.mesh);
 
   // ── The glowing boxes (built after everything put its flames in) ──

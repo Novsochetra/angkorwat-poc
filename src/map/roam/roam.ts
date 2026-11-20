@@ -72,6 +72,8 @@ export interface MapRoam extends MapPart {
   readonly balloon: BalloonInfo;
   /** Roaming (the follow camera has the view). */
   readonly active: boolean;
+  /** Down on the ground (J / L): sitting, lying, asleep; null up (the live rooms show it: src/net/_me.ts). */
+  readonly resting: 'sit' | 'lie' | 'sleep' | null;
   /** Leap off the ledge; at the end of the fall the parachute opens over him (`chute`, the default) or the hang glider (`glider`). */
   start(kind?: JumpKind): void;
   /** Back to the overview (fades out and in). */
@@ -390,6 +392,9 @@ export async function buildRoam(ctx: MapContext, deps: RoamDeps): Promise<MapRoa
     },
     get active() {
       return mode !== 'overview';
+    },
+    get resting() {
+      return tools.resting;
     },
     start(kind = 'chute') {
       if (mode !== 'overview' || leaving) return;

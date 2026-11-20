@@ -17,6 +17,9 @@ import type { Foreground } from './foreground';
 import type { MapPost } from './post';
 import { roamPrefs } from './roam/prefs';
 import type { MapRoam } from './roam/roam';
+// (New Year's Eve online, phase 2: the live rooms' connection; nothing runs until the player joins: src/net/client.ts)
+import { NET } from '../net/client';
+import { readMe } from '../net/_me';
 import { sacredReady } from './sacred/pending';
 import type { Story } from './story/story';
 import { fogAmountOf, fogNow, setFog } from './sky/fogLevel';
@@ -811,6 +814,8 @@ function step(t: number, dt: number): void {
   else if (!roam?.active) rig.update(dt, t);
   // Roaming moves the explorer and the follow camera first: the other parts read the camera.
   runUpdate(roam, frame);
+  // (the live rooms: my state to the server, the other players eased; a no-op unless joined: src/net/client.ts)
+  NET.update(dt, readMe(roam));
   // (the free camera, and the shots that draw what it saved, win over the follow camera too: the explorer stays where he
   // is, and the parts see the overview's rules with it: the rain, the shadows and the detail as a shot from `cam=` has
   // them. Not on the live page, where `?cam=` never held the camera while roaming)

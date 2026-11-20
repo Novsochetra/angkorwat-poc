@@ -67,18 +67,23 @@ const GLOW = 'rgba(255, 178, 64, 0.85)';
 
 // ── Phase 2's hooks ──────────────────────────────────────────────────────────
 
-let players: number | null = null;
+/** Players on each stage's ground (the Kulen square's, the lake garden's: `BoardPlace.ground`); null: the line is not drawn. */
+const players: { square: number | null; lake: number | null } = { square: null, lake: null };
 let testTag = false;
 /** Something the board shows changed outside the clock (a hook, the fonts, the language). */
 let dirty = true;
 
-/** Phase 2: how many players are on the square now (null: the line is not drawn). */
-export function setBoardPlayers(n: number | null): void {
+/**
+ * Phase 2: how many players are on a stage's ground now (null: the line is not drawn). `ground`: which boards
+ * (`square`: Kulen's, `lake`: the lake stage's; both when left out). src/net/client.ts sets both from the server's count.
+ */
+export function setBoardPlayers(n: number | null, ground?: BoardGround): void {
   const v = n === null || !Number.isFinite(n) ? null : Math.max(0, Math.round(n));
-  if (v !== players) {
-    players = v;
-    dirty = true;
-  }
+  for (const k of ground ? [ground] : (['square', 'lake'] as const))
+    if (v !== players[k]) {
+      players[k] = v;
+      dirty = true;
+    }
 }
 
 /** Phase 2: the test room's "សាកល្បង / TEST" tag in the board's corner. */
@@ -93,7 +98,7 @@ export function setBoardTest(on: boolean): void {
 if (typeof location !== 'undefined') {
   const q = new URLSearchParams(location.search);
   const n = q.get('boardplayers');
-  if (n !== null && Number.isFinite(Number(n))) players = Math.max(0, Math.round(Number(n)));
+  if (n !== null && Number.isFinite(Number(n))) players.square = players.lake = Math.max(0, Math.round(Number(n)));
   if (q.get('boardtest') === '1') testTag = true;
 }
 
@@ -224,7 +229,11 @@ export interface BoardPlace {
   yaw?: number;
   far?: number;
   name?: string;
+  /** Whose player count it shows (`setBoardPlayers`): the Kulen square's (default) or the lake's. */
+  ground?: BoardGround;
 }
+/** The stages' grounds the server counts players on (protocol.ts `ServerCount`). */
+export type BoardGround = 'square' | 'lake';
 
 /** The Kulen stage's board (plan.ts `BOARD`): facing south in its gate. */
 export const KULEN_BOARD: BoardPlace = { x: BOARD.x, y: GROUND + BOARD.y, z: BOARD.z, w: BOARD.w, h: BOARD.h, yaw: 0, far: 260, name: 'nye:board' };
@@ -234,6 +243,7 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
   const yaw = place.yaw ?? 0;
   const far = place.far ?? 260;
   const name = place.name ?? 'nye:board';
+  const ground = place.ground ?? 'square';
   const fx = Math.sin(yaw);
   const fz = Math.cos(yaw);
   const canvas = document.createElement('canvas');
@@ -410,8 +420,9 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
         break;
       }
     }
-    if (players !== null && b.state !== 'last10') {
-      const s = `${digits(String(players), km)} ${word('players', km)}`;
+    const count = players[ground];
+    if (count !== null && b.state !== 'last10') {
+      const s = `${digits(String(count), km)} ${word('players', km)}`;
       text(s, CW / 2, CH - 58, km ? KH_TEXT(24) : LAT_TEXT(20), 640, '#f3d9a0', 6);
     }
     if (testTag) {
@@ -469,7 +480,7 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
   const refresh = () => {
     const km = lang() === 'km';
     const b = boardAt();
-    const key = `${b.state}|${b.d}|${b.h}|${b.m}|${b.s}|${b.n}|${km}|${players}|${testTag}`;
+    const key = `${b.state}|${b.d}|${b.h}|${b.m}|${b.s}|${b.n}|${km}|${players[ground]}|${testTag}`;
     if (key === lastKey && !dirty) return;
     lastKey = key;
     dirty = false;
