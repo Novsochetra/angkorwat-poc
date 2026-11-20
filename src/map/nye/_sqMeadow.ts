@@ -60,17 +60,17 @@ const REED = [0x3f6a2e, 0x4c7a34, 0x5a8a3a, 0x466e2e];
 const CATTAIL = [0x5a3a22, 0x6a4428, 0x4e3220];
 const SHRUB_LEAF = [0x22422a, 0x2c5230, 0x376236, 0x447238, 0x527e3a];
 const GREEN_BUSH = [0x1f3a28, 0x2a4c30, 0x365c34, 0x456c36, 0x5a8038];
-const BOUG = [0xc0186e, 0xd42a80, 0xe2449a, 0xb01062, 0xe85aa8];
-const BOUG_PURPLE = [0x8a2aa8, 0x9a3ab8, 0xa84cc4, 0x7a2496];
+export const BOUG = [0xc0186e, 0xd42a80, 0xe2449a, 0xb01062, 0xe85aa8];
+export const BOUG_PURPLE = [0x8a2aa8, 0x9a3ab8, 0xa84cc4, 0x7a2496];
 const HIBISCUS = [0xd8202e, 0xe23a3a, 0xc81a2a, 0xf06a8a, 0xe84a6a];
-const IXORA = [0xe8402a, 0xf05a2a, 0xd8302a, 0xf27030];
+export const IXORA = [0xe8402a, 0xf05a2a, 0xd8302a, 0xf27030];
 const MARIGOLD = [0xf08a12, 0xf7a81c, 0xe8740e, 0xf7c030];
 const PERIWINKLE = [0xf07aa8, 0xe8609a, 0xfdf4f6, 0xf596bd];
 const FLOWER_LEAF = [0x3f7a2e, 0x4a8a36, 0x447e34];
 /** Blossom crowns: the map's pink ramp (veg/proto.ts `RAMPS.pink`) turned purple (crape myrtle's), deep → lit. */
 const PURPLE = [0x5e2e7a, 0x6a3488, 0x7e429e, 0x9455b6, 0xab6cca, 0xc18ada];
 
-type Shrub = 'boug' | 'hibiscus' | 'ixora' | 'green';
+export type Shrub = 'boug' | 'hibiscus' | 'ixora' | 'green';
 
 export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField, low: boolean): MeadowOut {
   const t0 = performance.now();
@@ -293,7 +293,7 @@ function edgeAt(a: number): [number, number] {
   return [SQUARE.x + c * R, SQUARE.z + s * R];
 }
 
-function nearWater(field: HeightField, x: number, z: number, m: number): boolean {
+export function nearWater(field: HeightField, x: number, z: number, m: number): boolean {
   for (const [dx, dz] of [
     [m, 0],
     [-m, 0],
@@ -306,9 +306,9 @@ function nearWater(field: HeightField, x: number, z: number, m: number): boolean
   return false;
 }
 
-type Line = readonly [number, number][];
+export type Line = readonly [number, number][];
 
-function toLine(p: Line, x: number, z: number): number {
+export function toLine(p: Line, x: number, z: number): number {
   let best = Infinity;
   for (let i = 1; i < p.length; i++) {
     const [ax, az] = p[i - 1];
@@ -386,23 +386,23 @@ function layStones(fb: VoxelBuilder, field: HeightField, p: Line, seed: number, 
 // ── What grows ──
 
 /** The pink blossom of a flowering prototype turned purple (crape myrtle's, as the garden's). */
-function toPurple(color: number): number {
+export function toPurple(color: number): number {
   const at = (RAMPS.pink as readonly number[]).indexOf(color);
   return at >= 0 ? PURPLE[at] : color;
 }
 
 /** The lit, outer tones of the bushes' ramps (veg/proto.ts `RAMPS`): where a flowering bush shows its flowers. */
-const BUSH_LIT = new Set<number>([RAMPS.bush, RAMPS.deep, RAMPS.jungle].flatMap((r) => r.slice(3)));
+export const BUSH_LIT = new Set<number>([RAMPS.bush, RAMPS.deep, RAMPS.jungle].flatMap((r) => r.slice(3)));
 
 /** The map's bush prototypes (veg/species.ts `bush`), a few sizes, made once a build. */
-function bushProtos(low: boolean): Proto[] {
+export function bushProtos(low: boolean): Proto[] {
   const out: Proto[] = [];
   for (let i = 0; i < (low ? 4 : 7); i++) out.push(bush({ s: 1, h: 1.6 + (i % 3) * 0.5, r: 1.5 + (i % 4) * 0.4, seed: 9900 + i * 17 }));
   return out;
 }
 
 /** A low patch of another green (or straw) over the land's grass: two thin slabs crossed at an angle. */
-function groundPatch(b: VoxelBuilder, x: number, g: number, z: number, seed: number, src: SourceTrace | undefined): void {
+export function groundPatch(b: VoxelBuilder, x: number, g: number, z: number, seed: number, src: SourceTrace | undefined): void {
   const h = hash3(seed, 1, 0, 620);
   const c = MOSS[Math.floor(hash3(seed, 2, 0, 620) * MOSS.length)];
   const w = 1.1 + 0.8 * h;
@@ -417,7 +417,7 @@ function groundPatch(b: VoxelBuilder, x: number, g: number, z: number, seed: num
 }
 
 /** A clump of thin blades leaning out from its foot (tall: 1‥1.6 m, else 0.5‥0.9 m), straw tips on some. */
-function grassClump(b: VoxelBuilder, x: number, g: number, z: number, seed: number, tall: boolean, low: boolean, src: SourceTrace | undefined): void {
+export function grassClump(b: VoxelBuilder, x: number, g: number, z: number, seed: number, tall: boolean, low: boolean, src: SourceTrace | undefined): void {
   const n = (low ? 3 : 4) + (tall && !low ? 1 : 0);
   const H = tall ? 1.0 + 0.6 * hash3(seed, 0, 1, 621) : 0.5 + 0.4 * hash3(seed, 0, 1, 621);
   const a0 = hash3(seed, 0, 2, 621) * Math.PI * 2;
@@ -434,7 +434,7 @@ function grassClump(b: VoxelBuilder, x: number, g: number, z: number, seed: numb
 }
 
 /** Reeds by the water: tall dark blades, two with a brown cattail head. */
-function reeds(b: VoxelBuilder, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): void {
+export function reeds(b: VoxelBuilder, x: number, g: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): void {
   const n = low ? 4 : 7;
   const a0 = hash3(seed, 0, 2, 622) * Math.PI * 2;
   for (let i = 0; i < n; i++) {
@@ -449,7 +449,7 @@ function reeds(b: VoxelBuilder, x: number, g: number, z: number, seed: number, l
 }
 
 /** A flowering shrub: overlapping leafy lumps turned every way on a dome, flowers on its top and sides. */
-function shrub(b: VoxelBuilder, field: HeightField, x: number, g: number, z: number, kind: Shrub, seed: number, low: boolean, src: SourceTrace | undefined): void {
+export function shrub(b: VoxelBuilder, field: HeightField, x: number, g: number, z: number, kind: Shrub, seed: number, low: boolean, src: SourceTrace | undefined): void {
   const rnd = (i: number, j = 0) => hash3(seed, i, j, 623);
   const [R, H] =
     kind === 'boug' ? [1.3 + 0.9 * rnd(1), 1.3 + 0.9 * rnd(2)] : kind === 'hibiscus' ? [0.9 + 0.4 * rnd(1), 1.8 + 0.8 * rnd(2)] : kind === 'ixora' ? [0.7 + 0.35 * rnd(1), 0.8 + 0.4 * rnd(2)] : [1.1 + 0.8 * rnd(1), 1.2 + 0.9 * rnd(2)];
@@ -494,7 +494,7 @@ function shrub(b: VoxelBuilder, field: HeightField, x: number, g: number, z: num
 }
 
 /** A small patch of marigolds or periwinkles: a leafy tuft and its flower head each. */
-function flowerPatch(b: VoxelBuilder, field: HeightField, x: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): void {
+export function flowerPatch(b: VoxelBuilder, field: HeightField, x: number, z: number, seed: number, low: boolean, src: SourceTrace | undefined): void {
   const marigold = hash3(seed, 0, 1, 624) < 0.55;
   const n = 2 + Math.floor(hash3(seed, 0, 2, 624) * (low ? 2 : 3));
   const tones = marigold ? MARIGOLD : PERIWINKLE;
@@ -524,7 +524,7 @@ function flowerPatch(b: VoxelBuilder, field: HeightField, x: number, z: number, 
  * Stamp a map tree prototype (veg/species.ts) with its trunk at (x, y, z), as `_sqKit.ts` `stampTree`, its blossom
  * its leaf colours changed by `recolor` when given (blossom turned purple, flowers on a bush).
  */
-function stamp(b: VoxelBuilder, f: HeightField, p: Proto, x: number, y: number, z: number, seed: number, recolor: ((color: number, c: number) => number) | null): void {
+export function stamp(b: VoxelBuilder, f: HeightField, p: Proto, x: number, y: number, z: number, seed: number, recolor: ((color: number, c: number) => number) | null): void {
   const s = p.s;
   const q = seed & 3;
   const turn = (i: number, k: number): [number, number] => (q === 0 ? [i, k] : q === 1 ? [-k, i] : q === 2 ? [-i, -k] : [k, -i]);
