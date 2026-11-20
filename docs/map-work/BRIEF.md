@@ -2364,7 +2364,11 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   halos with trails, flashes, glow and smoke; water mirrors). Sparks a rocket: low 51, medium 93, high 169,
   max 219; the busiest second ≈ 110 rockets in the air (≈ 9 k sparks on medium); ≈ 0.1 ms CPU a frame;
   nothing drawn and no work outside the show. Light on the world: two `own` lamps (instant, in the bursts'
-  colours, 900 m).
+  colours, 900 m). Light in the sky: `sky/tint.ts` `SKY_TINT` (the bursts' colour × light, saturating softly, at
+  their light's middle; 0 outside the show), read as uniforms by the haze (`hazeColorDir`: a bloom toward the show),
+  the sky dome (a low glow round it, its clouds there lit from below) and the rain clouds; never the lightning's
+  `flash`. The water mirrors (the Kulen pool and the flat stretches of the stream, never over a fall): a soft
+  shimmering streak a burst while its sparks glow.
 - **The night and the interface.** main.ts holds the sky at night 22:30‥00:45 (`nightHeld`: the day's cycle
   stops, then the player's own setting comes back). `nye/overlay.ts`: a chip at the top from 22:30, one huge
   Khmer numeral in the last ten seconds, the greeting at midnight (pointer-events none; reduce motion fades

@@ -270,20 +270,22 @@ export const WATER_VERTEX = /* glsl */ `
     float t = (c.y - level) / max(c.y - m.y, 1e-3);
     vec3 at = c + (m - c) * t;
     float tau = uTime - d0.w;
-    float lp = burstLight(d4.w, float(int(d2.w + 0.5) == 2), tau);
+    // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
+    float wl = float(int(d2.w + 0.5) == 2);
+    float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.45 * exp(-tau / 1.1) + wl * 0.4 * exp(-tau / 2.6));
     vec2 toCam = c.xz - at.xz;
     float dc = max(length(toCam), 1e-3);
     vec2 dir = toCam / dc;
     vec2 sideV = vec2(-dir.y, dir.x);
     float r = d3.w * length(at - c) / max(length(m - c), 1e-3);
     float sinA = (c.y - level) / max(length(at - c), 1e-3);
-    // (seen low over it, stretched towards the eye by the ripples)
-    float len = clamp(r / max(sinA, 0.08) * 0.9, 1.5, 45.0);
+    // (seen low over it, stretched towards the eye by the ripples: a long soft streak, as the lamps' on the water)
+    float len = clamp(r / max(sinA, 0.08) * 2.2, 3.0, 60.0);
     float wid = r * 0.7 + 0.4;
     vec2 xz = at.xz + dir * (position.y * len) + sideV * (position.x * 2.0 * wid);
     vec4 mvPosition = viewMatrix * vec4(xz.x, level + 0.12, xz.y, 1.0);
     gl_Position = projectionMatrix * mvPosition;
-    vCol = mix(d2.rgb, vec3(1.0), 0.25) * lp * 0.9 * (0.4 + 0.6 * uNight);
+    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 1.1 * (0.4 + 0.6 * uNight);
     vUv = position.xy * 2.0;
     vSeg = sa;
     vHalf = sb.x;
@@ -311,7 +313,8 @@ export const WATER_FRAGMENT = /* glsl */ `
     float inside = 1.0 - smoothstep(vHalf - 1.5, vHalf, length(vXZ - a - ab * t));
     float along = vUv.y;
     float across = vUv.x;
-    float ripple = 0.55 + 0.45 * sin(along * 23.0 - uTime * 2.1 + vSeed * 40.0) * sin(along * 9.0 + across * 3.0 + uTime * 0.9);
+    // (glints across the streak, as the festival's lamps on the water: festival/_glow.ts)
+    float ripple = 0.55 + 0.45 * sin(along * 23.0 - uTime * 2.1 + vSeed * 40.0) * sin(along * 9.0 + uTime * 0.9);
     float shape = exp(-across * across * 2.5) * (1.0 - along * along);
     vec3 col = vCol * shape * ripple * inside;
     #ifdef USE_FOG

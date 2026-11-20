@@ -8,6 +8,7 @@ import { FRONT_BANK, HAZE, HAZE_FUNCS, HAZE_PARS, hazeUniforms, WIND } from './s
 import { MIST_STACK, MIST_WET, mistBankMaterial, mistLayerMaterial, SEA_FROM } from './sky/mist';
 import { mistNoiseTexture } from './sky/noise';
 import { SKY } from './sky/palette';
+import { SKY_TINT } from './sky/tint';
 import type { FogStep, MapContext, MapFrame, MapPart } from './types';
 
 /**
@@ -453,7 +454,8 @@ const DECK_LOOKUPS = [
  * sky. `f.weather.cloud` sets how much of the sky they cover (a few heaps …
  * closed), `storm` how dark their cores are; they drift with the wind
  * (`wind`, `windDir`), the scud under them faster; `flash` lights them from
- * inside round where the lightning struck (`flashX`, `flashZ`). Colours from
+ * inside round where the lightning struck (`flashX`, `flashZ`); coloured light
+ * (sky/tint.ts, the fireworks) lights them from below round it. Colours from
  * the sky's own clouds (sky/palette.ts, already greyed by the rain there),
  * darker; at the horizon they melt into the haze.
  */
@@ -466,6 +468,8 @@ function rainDeck(ctx: MapContext): { mesh: Mesh; update(f: MapFrame): void } {
     uGlowDir: { value: new Vector3(0, 1, 0) },
     uFlash: { value: 0 },
     uFlashDir: { value: new Vector3(0, 1, 0) },
+    uTint: { value: new Color(0, 0, 0) },
+    uTintDir: { value: new Vector3(0, 1, 0) },
     uOff: { value: DECK_LOOKUPS.map(() => new Vector2()) },
     uNoise: { value: mistNoiseTexture() },
   };
@@ -495,6 +499,8 @@ function rainDeck(ctx: MapContext): { mesh: Mesh; update(f: MapFrame): void } {
       uniform vec3 uGlowDir;
       uniform float uFlash;
       uniform vec3 uFlashDir;
+      uniform vec3 uTint;
+      uniform vec3 uTintDir;
       uniform vec2 uOff[${DECK_LOOKUPS.length}];
       uniform sampler2D uNoise;
       varying vec3 vDir;
@@ -533,6 +539,9 @@ function rainDeck(ctx: MapContext): { mesh: Mesh; update(f: MapFrame): void } {
         // Lightning lights them from inside, brightest round where it struck.
         float mu = max(dot(d, uFlashDir), 0.0);
         col += vec3(0.78, 0.82, 1.0) * uFlash * (0.12 + 3.0 * pow(mu, 14.0)) * (0.25 + 0.75 * thick);
+        // Coloured light (the fireworks) from below, round it: the low bases and the thin sides toward it catch most.
+        float tMu = max(dot(d, uTintDir), 0.0);
+        col += uTint * (0.04 + 0.4 * pow(tMu, 8.0)) * (1.0 - 0.5 * thick) * (1.0 - 0.6 * smoothstep(0.1, 0.6, e));
         gl_FragColor = vec4(col, a * 0.95);
       }`,
   });
@@ -578,6 +587,9 @@ function rainDeck(ctx: MapContext): { mesh: Mesh; update(f: MapFrame): void } {
       u.uGlowDir.value.copy(SKY.glowDir);
       u.uFlash.value = w.flash;
       u.uFlashDir.value.set(w.flashX - cam.x, DECK_HEIGHT + 150 - cam.y, w.flashZ - cam.z).normalize();
+      u.uTint.value.setRGB(SKY_TINT.r, SKY_TINT.g, SKY_TINT.b);
+      // (toward the deck over it: the light comes up under the clouds there)
+      if (SKY_TINT.r + SKY_TINT.g + SKY_TINT.b > 0) u.uTintDir.value.set(SKY_TINT.x - cam.x, Math.max(SKY_TINT.y, 300) - cam.y, SKY_TINT.z - cam.z).normalize();
     },
   };
 }

@@ -84,6 +84,12 @@ const VIEWS = {
   bamboo: 'roam=walk&at=374,-196&yaw=270&sim=_:0.2',
   bambooin: 'roam=walk&at=378,-196&yaw=315&sim=_:0.2',
   bambooedge: 'roam=walk&at=408,-178&yaw=262&sim=_:0.2',
+  // (New Year's Eve, AWP-35: on the festival square at Phnom Kulen's foot facing the stage, at the fireworks' finale with the
+  // night's crowd (`fireworks=458`: the busiest seconds); the same square on its night before the show (the crowd, the
+  // dancers, no fireworks); the overview at the finale)
+  nye: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&fireworks=458',
+  nyecrowd: 'roam=walk&at=384,-252&yaw=0&sim=_:0.2&countdown=1800',
+  nyeover: 'fireworks=458',
   // (the day turning at dusk, the shadow map drawn when the live page draws it: `TURNING`)
   dusk: 'shadows=live',
   duskwalk: 'shadows=live&roam=walk&at=-304,63&yaw=225&sim=w:1&rcam=0,16,9',
@@ -106,7 +112,7 @@ const SETUPS = {
   phone: { query: 'graphics=low&phone=1', w: 844, h: 390 },
   'phone-medium': { query: 'graphics=medium&phone=1', w: 844, h: 390 },
 };
-const views = argv.only ? argv.only.split(',') : Object.keys(VIEWS).filter((v) => !v.startsWith('snow') && !v.startsWith('dusk') && v !== 'eastpaddies' && v !== 'market' && v !== 'home' && !v.startsWith('bamboo'));
+const views = argv.only ? argv.only.split(',') : Object.keys(VIEWS).filter((v) => !v.startsWith('snow') && !v.startsWith('dusk') && v !== 'eastpaddies' && v !== 'market' && v !== 'home' && !v.startsWith('bamboo') && !v.startsWith('nye'));
 const setups = (argv.levels ?? 'low,medium,phone').split(',');
 for (const v of views) if (!(v in VIEWS)) throw new Error(`perf: no view "${v}" (${Object.keys(VIEWS).join(', ')})`);
 for (const s of setups) if (!(s in SETUPS)) throw new Error(`perf: no setup "${s}" (${Object.keys(SETUPS).join(', ')})`);

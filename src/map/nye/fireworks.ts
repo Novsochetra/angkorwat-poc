@@ -21,6 +21,7 @@ import { graphicsNow } from '../graphics';
 import { PX_SCALE, view } from '../resolution';
 import { hazeUniforms } from '../sky/haze';
 import { addLamp } from '../sky/lampSlots';
+import { clearSkyTint, SKY_TINT } from '../sky/tint';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
 import { showTime } from './clock';
 import { KIND_INDEX, ROW, SEGS, SKY_FRAGMENT, SKY_VERTEX, WATER_FRAGMENT, WATER_VERTEX } from './_fwShaders';
@@ -42,7 +43,8 @@ import { burstAt, burstLight, burstPower, isGlitter, rocketsBetween, showScript,
  *  - the reflections: each burst where the Kulen pool and the stream by the square mirror it (a quad per rocket and
  *    stretch of water, hidden where it misses the water).
  * Additive, no depth write, the map's haze. Light on the world: two lamps (sky/lampSlots.ts), the brightest burst
- * now and the rest of them together, in their colours, light the hill, the square and its crowd.
+ * now and the rest of them together, in their colours, light the hill, the square and its crowd; and the sky
+ * (sky/tint.ts `SKY_TINT`): the haze, the low sky and the clouds round the show take the bursts' colours.
  *
  * No show (before midnight, after its 480 s): nothing is drawn and the update returns at once.
  */
@@ -173,21 +175,31 @@ export function buildFireworks(ctx: MapContext): MapPart {
     spotA.push(new Vector4(POOL.x, POOL.z, POOL.x + 0.01, POOL.z));
     spotB.push(new Vector4(POOL.r, poolLevel, 0, 0));
   }
+  type Sample = { x: number; z: number; level: number; w: number };
+  const stretch = (a: Sample, b: Sample) => {
+    spotA.push(new Vector4(a.x, a.z, b.x, b.z));
+    spotB.push(new Vector4(Math.max(1.5, Math.min(a.w, b.w) / 2), (a.level + b.level) / 2, 0, 0));
+  };
   for (const river of field.rivers) {
-    let from: { x: number; z: number; level: number; w: number } | null = null;
+    let from: Sample | null = null;
+    let prev: Sample | null = null;
     for (const s of river.samples) {
       if (spotA.length >= MAX_SPOTS) break;
       const near = Math.hypot(s.x - SQUARE.x, s.z - SQUARE.z) < WATER_REACH && Math.hypot(s.x - POOL.x, s.z - POOL.z) > POOL.r + 2;
       if (!near) {
-        from = null;
+        from = prev = null;
         continue;
       }
-      if (!from) from = s;
-      else if (Math.hypot(s.x - from.x, s.z - from.z) >= 14 || Math.abs(s.level - from.level) > 0.6) {
-        spotA.push(new Vector4(from.x, from.z, s.x, s.z));
-        spotB.push(new Vector4(Math.max(1.5, Math.min(from.w, s.w) / 2), (from.level + s.level) / 2, 0, 0));
+      if (!from || !prev) from = s;
+      else if (Math.abs(s.level - from.level) > 0.6) {
+        // (a fall or a rapid: no flat water to mirror over it; the still stretch before it does)
+        if (Math.hypot(prev.x - from.x, prev.z - from.z) >= 4) stretch(from, prev);
+        from = s;
+      } else if (Math.hypot(s.x - from.x, s.z - from.z) >= 14) {
+        stretch(from, s);
         from = s;
       }
+      prev = s;
     }
   }
   while (spotA.length < MAX_SPOTS) {
@@ -245,6 +257,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
 
   const lampsOff = () => {
     for (const l of lamps) l.intensity = 0;
+    clearSkyTint();
   };
 
   /** The show's second now (a video moves on from the URL's moment), or null. */
@@ -400,6 +413,21 @@ export function buildFireworks(ctx: MapContext): MapPart {
         lamps[1].intensity = 0;
         lightCol[1].set(0, 0, 0, 0);
       }
+
+      // The sky: all of it together, saturating softly (a finale tints the haze and clouds, it never floods them),
+      // where its light's middle is.
+      const w0 = bestL;
+      const w1 = restL * restK;
+      const total = w0 + w1;
+      if (total > 1e-3) {
+        const k = ((1.6 * (1 - Math.exp(-total / 1.6))) / total) * dim;
+        SKY_TINT.r = (lightCol[0].x + lightCol[1].x) * k;
+        SKY_TINT.g = (lightCol[0].y + lightCol[1].y) * k;
+        SKY_TINT.b = (lightCol[0].z + lightCol[1].z) * k;
+        SKY_TINT.x = (lightPos[0].x * w0 + lightPos[1].x * w1) / total;
+        SKY_TINT.y = (lightPos[0].y * w0 + lightPos[1].y * w1) / total;
+        SKY_TINT.z = (lightPos[0].z * w0 + lightPos[1].z * w1) / total;
+      } else clearSkyTint();
 
       if (f.dt > 0 && frames < 24) {
         cpu += performance.now() - c0;

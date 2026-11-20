@@ -1,6 +1,7 @@
 import { ShaderChunk, ShaderLib, UniformsLib, type Color, type Texture, type Vector3 } from 'three';
 import type { FogStep } from '../types';
 import { fogNow } from './fogLevel';
+import { SKY_TINT } from './tint';
 
 /**
  * The map's haze, in every material: three's fog chunks are replaced once
@@ -83,6 +84,33 @@ class FogStepValue {
   w = 0;
 }
 
+/**
+ * Coloured light in the sky (sky/tint.ts `SKY_TINT`: the fireworks), as vec3 uniform values shared by every
+ * material, read live each time three sends them (nothing copies them): its colour × strength, and where it is.
+ */
+class TintColourValue {
+  get x(): number {
+    return SKY_TINT.r;
+  }
+  get y(): number {
+    return SKY_TINT.g;
+  }
+  get z(): number {
+    return SKY_TINT.b;
+  }
+}
+class TintAtValue {
+  get x(): number {
+    return SKY_TINT.x;
+  }
+  get y(): number {
+    return SKY_TINT.y;
+  }
+  get z(): number {
+    return SKY_TINT.z;
+  }
+}
+
 /** Haze values beyond `scene.fog` (linear colours), written by the atmosphere each frame. */
 export const HAZE = {
   /** Direction towards the glow in the haze (the visible sun, or the moon), unit. */
@@ -109,6 +137,9 @@ export const HAZE = {
   shade: new Shared4(),
   /** The Fog setting's step (x: 0 full, 1 light, 2 simple) and thickness (y: 0‥1.5, 1 the game's own), live from `fogNow` (sky/fogLevel.ts). */
   fog: new FogStepValue() as Readonly<FogStepValue>,
+  /** Coloured light in the sky (sky/tint.ts): colour × strength (0 none) and where it is (m), live from `SKY_TINT`. */
+  tint: new TintColourValue() as Readonly<TintColourValue>,
+  tintAt: new TintAtValue() as Readonly<TintAtValue>,
 };
 
 const EXTRA_UNIFORMS: Record<string, { value: unknown }> = {
@@ -122,6 +153,8 @@ const EXTRA_UNIFORMS: Record<string, { value: unknown }> = {
   hazeLandBounds: { value: HAZE.landBounds },
   hazeShade: { value: HAZE.shade },
   hazeFog: { value: HAZE.fog },
+  hazeTint: { value: HAZE.tint },
+  hazeTintAt: { value: HAZE.tintAt },
   hazeNoise: { value: null },
   hazeLand: { value: null },
 };
@@ -139,6 +172,8 @@ uniform vec4 hazeMist;
 uniform vec4 hazeLandBounds;
 uniform vec4 hazeShade;
 uniform vec4 hazeFog;
+uniform vec3 hazeTint;
+uniform vec3 hazeTintAt;
 uniform sampler2D hazeNoise;
 uniform sampler2D hazeLand;
 #ifdef FOG_EXP2
@@ -180,9 +215,12 @@ float hazeSunAmount(vec3 dir) {
   float mu = max(dot(dir, hazeSunDir), 0.0);
   return 0.55 * pow(mu, 5.0) + 0.45 * pow(mu, 24.0);
 }
-// Haze colour seen along dir.
+// Haze colour seen along dir. Coloured light in the sky (hazeTint, the fireworks; 0 none) blooms in it
+// round where it is: a little all round, more toward it.
 vec3 hazeColorDir(vec3 dir) {
-  return mix(fogColor, hazeSunColor, hazeSunAmount(dir));
+  vec3 hzTo = hazeTintAt - cameraPosition;
+  float hzMu = max(dot(dir, hzTo) * inversesqrt(max(dot(hzTo, hzTo), 1.0)), 0.0);
+  return mix(fogColor, hazeSunColor, hazeSunAmount(dir)) + hazeTint * (0.004 + 0.045 * pow(hzMu, 4.0) + 0.13 * pow(hzMu, 12.0));
 }
 // Metres inside the side and back edges of the land (negative beyond them):
 // the map's box, and where the land has sunk into the mist inside it (the land

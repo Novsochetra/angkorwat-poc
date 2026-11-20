@@ -4,6 +4,7 @@ import { moonTexture } from './moon';
 import { mistNoiseTexture } from './noise';
 import type { SkyState } from './palette';
 import { createMeteors, METEOR_GLSL } from './stars';
+import { SKY_TINT } from './tint';
 import { PX_SCALE } from '../resolution';
 
 /**
@@ -27,6 +28,10 @@ import { PX_SCALE } from '../resolution';
  * Weather (`SkyState.cloud`, `flash`): cloud cover spreads the heaped clouds
  * over the sky, closes a grey veil over it and hides the sun, moon and
  * stars; a lightning flash lights the clouds from inside.
+ *
+ * Coloured light (sky/tint.ts `SKY_TINT`: the fireworks): a soft bloom low in
+ * the sky round where it is, and the clouds there catch it (their thin edges
+ * and the side toward it most). 0 when nothing lights the sky.
  *
  * Clouds: two layers on flat sheets over the land, seen from below (a
  * direction d meets them at s = d.xz / (d.y + 0.18): wide overhead, squeezed
@@ -146,6 +151,9 @@ export function buildSkyDome(): SkyDome {
     uMeteorFrom: { value: new Vector3(1, 0, 0) },
     uMeteorTo: { value: new Vector3(0, 0, -1) },
     uMeteor: { value: new Vector4() },
+    /** Coloured light in the sky (sky/tint.ts): colour × strength, and toward it from the camera (unit). */
+    uTint: { value: new Color(0, 0, 0) },
+    uTintDir: { value: new Vector3(0, 1, 0) },
   };
   // The haze (the sky has no scene fog, so it gets its own fog colour and range).
   const haze = hazeOwnUniforms();
@@ -183,6 +191,8 @@ export function buildSkyDome(): SkyDome {
       uniform float uTime;
       uniform sampler2D uNoise;
       uniform sampler2D uMoonMap;
+      uniform vec3 uTint;
+      uniform vec3 uTintDir;
       varying vec3 vDir;
 
       ${LOOKUP_GLSL}
@@ -254,6 +264,9 @@ export function buildSkyDome(): SkyDome {
         // Warm glow around the sun (or cool around the moon), broad and soft.
         float mu = max(dot(d, uGlowDir), 0.0);
         col += uGlow * uAmounts.w * (0.12 * pow(mu, 4.0) + 0.45 * pow(mu, 16.0) + 0.9 * pow(mu, 110.0));
+        // Coloured light (the fireworks): a soft bloom in the air round it, low in the sky, fading upward.
+        float tMu = max(dot(d, uTintDir), 0.0);
+        col += uTint * (0.01 * pow(tMu, 4.0) + 0.1 * pow(tMu, 12.0)) * (1.0 - 0.7 * smoothstep(0.0, 0.5, e));
         // The haze band at the horizon: exactly the haze, as far land fades into it.
         vec3 haze = hazeColorDir(d);
         col = mix(col, haze, 1.0 - smoothstep(-0.01, 0.12, e));
@@ -389,6 +402,8 @@ export function buildSkyDome(): SkyDome {
             cc += (1.0 - a) * o * c;
             a += (1.0 - a) * o;
           }
+          // Coloured light (the fireworks) from below: the clouds round it catch it, thin edges most.
+          cc += uTint * a * (1.0 - 0.5 * smoothstep(0.3, 1.0, a)) * (0.015 + 0.25 * pow(tMu, 6.0));
           cc = mix(cc, haze * a, horizon * 0.65);
           // Only thin veils cross the moon and the sun's disc.
           float veil = 1.0 - 0.55 * moonA * pow(moonMu, 900.0) - 0.5 * sunA * pow(max(dot(d, uSunDir), 0.0), 900.0);
@@ -431,6 +446,8 @@ export function buildSkyDome(): SkyDome {
       u.uCloudLit.value.copy(sky.cloudLit);
       u.uCloudBody.value.copy(sky.cloudBody);
       u.uTime.value = t;
+      u.uTint.value.setRGB(SKY_TINT.r, SKY_TINT.g, SKY_TINT.b);
+      if (SKY_TINT.r + SKY_TINT.g + SKY_TINT.b > 0) u.uTintDir.value.set(SKY_TINT.x - cameraPos.x, SKY_TINT.y - cameraPos.y, SKY_TINT.z - cameraPos.z).normalize();
       // Cloud lookups: each slides by its share of its layer's wind; the
       // camera's own move shifts a layer by move / height (parallax).
       for (const [layer, v] of layerAt) v.set(cameraPos.x / layer.height, cameraPos.z / layer.height);
