@@ -5,6 +5,18 @@ Phase 3 of AWP-35 (the plan: `new-year-online.md`), talked over with the owner o
 the phone on 4G: "it work perfectly"). No game code yet: the owner says when.
 Lines marked **(to confirm)** are proposals waiting for the owner.
 
+## Where it stands (2026-11-20)
+
+- **Voice server:** LiveKit on the Droplet at `voice.morodokangkor.com`; a first call (Mac and a
+  phone on 4G) worked.
+- **Live service:** parties and voice tickets in the arcade repo (`apps/live`, on `main`), the
+  Railway service `@arcade/live` at `arcadelive-production.up.railway.app`. Checked: a party
+  made, a ticket written (so Railway's key and secret match the Droplet's), another site refused.
+  It serves any game in `LIVE_GAMES`, so other arcade games can use parties later.
+- **In the game:** `src/map/party/` (CLAUDE.md "Parties and party voice"): the party card, the
+  mic button, Mute and Remove, behind the test switch `party=1`. Not yet: the distance fade (it
+  needs Phase 2's positions), Block and Report, the pad's button.
+
 ## What we decided
 
 | Question | Decision |

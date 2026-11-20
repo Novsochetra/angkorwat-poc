@@ -269,6 +269,13 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   Live: `node scripts/nye-live.mjs` plays the night in real time (frames and a WAV of the page's sound in
   `screenshots/nye-live/`); `node scripts/nye-sound.mjs` renders the fireworks' sound offline from the square
   (`screenshots/nye-sound/midnight.wav`, `finale.wav`); `npm run perf -- only=nye,nyecrowd,nyeover`.
+- Parties and party voice (AWP-35 Phase 3, the plan `docs/discussion/new-year-voice.md`):
+  `src/map/party/` (the live service `api.ts`, the arcade repo's `apps/live` on Railway; the card
+  `panel.ts`; push-to-talk `mic.ts`: hold the button, slide up to lock, Left Alt / Option; LiveKit
+  `voice.ts`, loaded only when voice turns on). The corner's party button shows only behind a test
+  switch for now (`party/gate.ts`: `party=1`, `event=`, or a party already kept). Shots:
+  `partydemo=start|in|voice|talk` (made-up friends, no server). `VITE_LIVE_URL` points at another
+  live service.
 - The album (V) also holds the nature book and the temple passport
   (`roam/_book*.ts`; `album=book|passport`, `book=all`, `stamps=all`);
   hidden gold figures are in `src/map/treasure/` (their list of clues: a tap on the gold

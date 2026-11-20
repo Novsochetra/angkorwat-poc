@@ -1,5 +1,7 @@
 import type { PlaceDef } from '../layout';
 import { squareShown } from '../nye/clock';
+import { partyKept, partyShown } from '../party/gate';
+import type { PartyUI } from '../party';
 import { DEFAULT_SETTINGS, GRAPHICS_CHOICES, MINIMAP_CHOICES, MOON_PATHS, VOLUME_KEYS, WEATHER_SETTINGS, type GraphicsChoice, type GraphicsLevel, type Lang, type MapSettings, type MiniMapChoice, type MoonPath, type PlaceId, type RoamMode, type UISound, type VolumeKey, type WeatherSetting } from '../types';
 import posthog, { isPostHogConfigured } from '../../posthog';
 import { isResolutionShare, resolutionSizes, sizeForShare, sizeOfShare, stepOf, view, type ResolutionSize } from '../resolution';
@@ -354,6 +356,14 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
   coffeeBtn.dataset.tAria = 'support';
   coffeeBtn.dataset.tTitle = 'support';
   corner.append(coffeeBtn, creditsBtn, gearBtn);
+  /** The party (map/party/, AWP-35): only behind the test switch until the New Year event opens it to all. */
+  const partyBtn = partyShown() ? framed(el('button', 'mu-round mu-party-btn', `${ICON.party}<span class="mu-party-n"></span>`), 'md') : null;
+  if (partyBtn) {
+    partyBtn.type = 'button';
+    partyBtn.dataset.tAria = 'party';
+    partyBtn.dataset.tTitle = 'party';
+    corner.prepend(partyBtn);
+  }
 
   // (the fireworks' slider only while New Year's Eve's square stands: nye/clock.ts)
   const slider = (k: VolumeKey) =>
@@ -1178,6 +1188,26 @@ export function createMapUI(root: HTMLElement, places: PlaceDef[], h: MapUIHandl
     if (a && isPostHogConfigured) posthog.capture('support_clicked', { from: a.dataset.from ?? '' });
   };
   panel.addEventListener('click', countSupport);
+  // (the party's card and voice: their module is loaded on the first press, or at once for a party kept from before)
+  if (partyBtn) {
+    let party: Promise<PartyUI> | null = null;
+    const loadParty = () =>
+      (party ??= import('../party').then(({ mountParty }) => {
+        const ui = mountParty(root, { sound: (s) => h.onSound(s) });
+        ui.onChange((n, voiceOn) => {
+          partyBtn.querySelector('.mu-party-n')!.textContent = n ? num(n) : '';
+          partyBtn.classList.toggle('is-voice', voiceOn);
+        });
+        return ui;
+      }));
+    partyBtn.addEventListener('click', () => {
+      if (pad.active) clearMark();
+      partyBtn.blur();
+      void loadParty().then((ui) => ui.toggle());
+    });
+    if (partyKept() || new URLSearchParams(location.search).has('partydemo')) void loadParty();
+  }
+
   // (the corner's coffee asks first, with a card: _support.ts)
   const support = createSupportCard(root, { sound: (s) => h.onSound(s) });
   coffeeBtn.addEventListener('click', () => {
