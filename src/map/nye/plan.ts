@@ -171,8 +171,8 @@ export function lakeFacingIn(phi: number): number {
  */
 export const LAKE_WALL = { r: 21.45, front: 30 * DEG } as const;
 
-/** The land gate: an Angkor gate with Bayon faces on the wall's line at `phi`, `half` m either side of it, `depth` m deep. */
-export const LAKE_GATE = { phi: -160 * DEG, half: 4.4, depth: 3.3 } as const;
+/** The land gate: an Angkor gate with Bayon faces on the wall's line at `phi`, `half` m either side of it, `depth` m deep (≈ 8.8 m to its tower's bud). */
+export const LAKE_GATE = { phi: -160 * DEG, half: 3.63, depth: 2.86 } as const;
 
 /** The paved avenue out from the gate to where the lake trail and the east shore trail meet: from `r0` to `r1` m out along the gate's bearing, `w` m wide. */
 export const LAKE_AVENUE = { phi: LAKE_GATE.phi, r0: LAKE_WALL.r + LAKE_GATE.depth / 2, r1: 45, w: 4.2 } as const;

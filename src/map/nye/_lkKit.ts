@@ -180,7 +180,8 @@ export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3,
     const z = p.z + (q.z - p.z) * t;
     const y = p.y + (q.y - p.y) * t - sag * 4 * t * (1 - t) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
-    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
+    // (dim, as the stage's: clamped to a small point they still bloomed into round orbs up close at full brightness)
+    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.45 + 0.15 * hash3(x, z, i, 96));
     if (glow && haloEvery > 0 && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
   }
 }
@@ -240,7 +241,7 @@ export const BRONZE: Tones = [0x5c4430, 0x664c36, 0x6e5238, 0x54402e];
 export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
   void bodies;
   const r = (i: number, k: number) => hash3(seed, i, k, 97);
-  kitFire(kit, x, y, z, 1.35 * s, seed);
+  kitFire(kit, x, y, z, 1.5 * s, seed);
   if (!low)
     for (let i = 0; i < 3; i++) {
       const period = [2, 2.4, 3][i];
@@ -252,7 +253,7 @@ export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: numb
         show: SHOW.night,
       });
     }
-  glow?.add(x, y + 0.45 * s, z, 0xffa040, 2.6 * s, { level: 0.65 });
+  glow?.add(x, y + 0.55 * s, z, 0xffa040, 3.1 * s, { level: 0.7 });
 }
 
 /**

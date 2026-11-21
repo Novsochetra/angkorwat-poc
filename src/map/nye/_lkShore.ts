@@ -257,8 +257,9 @@ export function buildLakeShore(field: HeightField, b: VoxelBuilder, kit: Kit, bl
 
   // ── Flowering trees framing the stage from the plaza: either side by the bank, and behind the salas (not on low) ──
   const TREES: { phi: number; d: number; t: Omit<NyeTree, 'x' | 'z'> }[] = [
-    { phi: -44, d: 25.2, t: { kind: 'myrtle', bloom: 'purple', h: 10, r: 4.2, edge: true } },
-    { phi: 44, d: 25.2, t: { kind: 'trumpet', bloom: 'pink', h: 9.5, r: 3.9, edge: true } },
+    // (out by the salas' near corners: from the crowd's eye height the lake shows between them and the stage)
+    { phi: -50, d: 28.5, t: { kind: 'myrtle', bloom: 'purple', h: 10, r: 4.0, edge: true } },
+    { phi: 50, d: 28.5, t: { kind: 'trumpet', bloom: 'pink', h: 9.5, r: 3.8, edge: true } },
     { phi: -80, d: 28.5, t: { kind: 'trumpet', bloom: 'pink', h: 10.5, r: 4.2, edge: false, extra: true } },
     { phi: 79, d: 28.5, t: { kind: 'myrtle', bloom: 'purple', h: 10, r: 4.0, edge: false, extra: true } },
   ];

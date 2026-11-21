@@ -3,7 +3,7 @@ import { ANIM, perPeriod, SHOW, type BoxOpts, type Kit } from '../festival/_kit'
 import type { HeightField } from '../heightfield';
 import { VILLAGE } from '../layout';
 import { onTemple } from '../roam/_flag';
-import { LAKE_STAGE } from './plan';
+import { LAKE_STAGE, LAKE_VIEW } from './plan';
 import { LAKE_BARGES } from './show';
 import type { WaterLights } from './_lkReflect';
 import type { LakeFrame } from './_lkKit';
@@ -101,20 +101,21 @@ export function lanternSkiff(kit: Kit, lights: WaterLights, x: number, wy: numbe
     kit.box(cx, wy + 1.14, cz, 0.5, 0.06, 1.5, c, on(d, { yaw }));
   }
   // The bow's lantern: a bamboo pole, an arm, a Khmer lantern under a small dark tower top.
+  // (a tall pole: from the terrace, eye height over the shore, the lantern stands clear of the water and its boat)
   const [px, pz] = at(L / 2 - 0.55);
-  const poleH = 1.9 + 0.5 * r(5);
+  const poleH = (low ? 2.6 : 2.4) + 0.9 * r(5);
   kit.box(px, wy + poleH / 2 + 0.1, pz, 0.06, poleH, 0.06, 0xb09a68, on(d));
-  const [lx, lz] = [px + fx * 0.4, pz + fz * 0.4];
-  kit.box(px + fx * 0.2, wy + poleH + 0.04, pz + fz * 0.2, 0.05, 0.05, 0.46, 0xb09a68, on(d, { yaw }));
-  const ly = wy + poleH - 0.4;
+  const [lx, lz] = [px + fx * 0.45, pz + fz * 0.45];
+  kit.box(px + fx * 0.22, wy + poleH + 0.04, pz + fz * 0.22, 0.06, 0.06, 0.52, 0xb09a68, on(d, { yaw }));
+  const ly = wy + poleH - 0.48;
   const glass = pickOf(GLASS, r(6));
-  kit.box(lx, ly, lz, 0.46, 0.6, 0.46, glass, on(d, { yaw, glow: 1.6 }));
-  kit.box(lx, ly + 0.34, lz, 0.56, 0.08, 0.56, 0x2e2018, on(d, { yaw }));
-  if (!low) kit.box(lx, ly + 0.46, lz, 0.3, 0.16, 0.3, 0x3a2a1e, on(d, { yaw }));
-  if (!low) kit.box(lx, ly + 0.58, lz, 0.1, 0.1, 0.1, 0xe0b040, on(d, { yaw, glow: 0.6 }));
-  kit.box(lx, ly - 0.33, lz, 0.5, 0.06, 0.5, 0x2e2018, on(d, { yaw }));
-  lights.halo(lx, ly, lz, 0xffb050, 2.4, { drift: d, level: 0.5, event: true });
-  lights.streak(lx, wy, lz, ly - wy, undefined, { drift: d, level: 1.7, width: 0.7, event: true });
+  kit.box(lx, ly, lz, 0.56, 0.74, 0.56, glass, on(d, { yaw, glow: 1.6 }));
+  kit.box(lx, ly + 0.41, lz, 0.68, 0.09, 0.68, 0x2e2018, on(d, { yaw }));
+  if (!low) kit.box(lx, ly + 0.55, lz, 0.36, 0.2, 0.36, 0x3a2a1e, on(d, { yaw }));
+  if (!low) kit.box(lx, ly + 0.7, lz, 0.12, 0.12, 0.12, 0xe0b040, on(d, { yaw, glow: 0.6 }));
+  kit.box(lx, ly - 0.4, lz, 0.6, 0.07, 0.6, 0x2e2018, on(d, { yaw }));
+  lights.halo(lx, ly, lz, 0xffb050, 2.6, { drift: d, level: 0.5, event: true });
+  lights.streak(lx, wy, lz, ly - wy, undefined, { drift: d, level: 1.9, width: 0.85, event: true });
   // Candles along the gunwales.
   if (candles && !low) {
     for (const [s, side] of [
@@ -341,6 +342,44 @@ export function launchFlotilla(field: HeightField, fr: LakeFrame, kit: Kit, ligh
       }
       carry = (carry + len) % along;
     }
+  }
+
+  // ── In the gaps the plaza's crowd sees the water through (LAKE_VIEW: either side of the stage, between it and the
+  // plaza's salas and blossom trees; and farther right for the side views; screen angles from the view's middle, ° right),
+  // 62‥180 m out from the crowd, broadside to it so each reads as a boat with its lantern ──
+  {
+    const [cx, , cz] = LAKE_VIEW.cam;
+    const len = Math.hypot(LAKE_VIEW.at[0] - cx, LAKE_VIEW.at[2] - cz);
+    const dx = (LAKE_VIEW.at[0] - cx) / len;
+    const dz = (LAKE_VIEW.at[2] - cz) / len;
+    const rx = -dz;
+    const rz = dx;
+    const bands: [number, number, number][] = low
+      ? [
+          [-18, -9, 4],
+          [5, 13, 4],
+          [21, 28, 2],
+        ]
+      : [
+          [-18, -9, 10],
+          [5, 13, 10],
+          [21, 28, 4],
+        ];
+    for (const [b0, b1, want] of bands)
+      for (let i = 0, made = 0; i < want * 14 && made < want; i++) {
+        seed++;
+        const th = ((b0 + (b1 - b0) * hash3(seed, 1, 6, 438)) * Math.PI) / 180;
+        const dist = 62 + 118 * Math.pow(hash3(seed, 2, 6, 438), 1.4);
+        const x = cx + dist * (Math.cos(th) * dx + Math.sin(th) * rx);
+        const z = cz + dist * (Math.cos(th) * dz + Math.sin(th) * rz);
+        if (!free(x, z, 3.4)) continue;
+        const r = hash3(seed, 3, 6, 438);
+        const yaw = Math.atan2(rx, rz) + (r < 0.5 ? 0 : Math.PI) + (hash3(seed, 4, 6, 438) - 0.5) * 0.7;
+        lanternSkiff(kit, lights, x, wyAt(x, z), z, yaw, 4000 + seed, wander(4000 + seed, 0.6 + 1.0 * r, 320 + 260 * r), low, r < 0.3, r > 0.72);
+        taken.push([x, z, 3.4]);
+        boats++;
+        made++;
+      }
   }
 
   // ── The rest round the stage: thick near it, thinning out to ≈ 150 m ──
