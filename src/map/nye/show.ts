@@ -519,7 +519,8 @@ function makeScript(): Rocket[] {
   let n = 3;
   let wave = 0;
   for (let t = 425; t < 459; t += Math.max(0.9, 2.2 - (t - 425) * 0.04), wave++) {
-    for (let i = 0; i < n; i++) shell(t + rnd() * 0.35, i % 3 === 2 ? 'mid' : i % 3 === 1 ? 'crown' : 'high', 'willow', 'willow', 29 + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * 20, 0.9 + rnd() * 0.25);
+    // (spread across the whole sky, over the hill and right of it, not heaped in one place: the mid layer every other wave)
+    for (let i = 0; i < n; i++) shell(t + rnd() * 0.35, i % 3 === 2 && wave % 2 ? 'mid' : i % 3 === 1 ? 'crown' : 'high', 'willow', 'willow', 28 + ((i + 0.5 + (rnd() - 0.5) * 0.6) / n) * 32, 0.9 + rnd() * 0.25);
     const extra = wave % 4;
     if (extra === 0) palm(t + 0.4 + rnd() * 0.2, rnd() < 0.5 ? 'high' : 'mid', 30 + rnd() * 25, 0.5);
     else if (extra === 1) comets(t + 0.6, 3 + Math.floor(rnd() * 2));
