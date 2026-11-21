@@ -91,7 +91,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
   const flags = raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
   // The garden round it all (tall grass, flowering shrubs, bananas, trees, stepping stones): after everything built, before the glow's poles.
-  growMeadow(b, fb, field, low);
+  growMeadow(b, fb, field, low, { lamps, glow });
 
   const floor = buildVoxelMesh(fb, { quality, name: 'nye:floor', castShadow: false });
   floor.traverse((o) => void (o.userData.noWalk = true));

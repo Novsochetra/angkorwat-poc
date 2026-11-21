@@ -138,6 +138,16 @@ export const NAGA: readonly { x: number; z: number; facing: number }[] = [
  */
 export const SHOW_AREA = { x: 425, z: -385, spread: 90, depth: 60, low: 45, high: 250 } as const;
 
+/**
+ * The footbridge over the Kulen stream east of the square, where the garden's river path crosses to the east bank
+ * (`_sqRiver.ts`, `_sqPath.ts`): its middle line `z`, its deck from `x0` on the west quay to `x1` on the east bank,
+ * `w` m wide (the stream there: water x 432‥440 at 5 m, the quay's top 8.1, the east bank 8).
+ */
+export const BRIDGE = { z: -248, x0: 430.2, x1: 444.2, w: 2.4 } as const;
+
+/** The stepping stones across the Kulen stream below the falls, from the quay's steps to the east bank (map z, `_sqRiver.ts`). */
+export const STEPS_Z = -276.5;
+
 /** Where a crowd camera looks at it all from (shots and the promo): inside the square, just past the gate's tower (≈ 19 m tall over the passage). */
 export const VIEW = { cam: [384, 11, -248] as const, at: [410, 40, -335] as const, fov: 55 } as const;
 
