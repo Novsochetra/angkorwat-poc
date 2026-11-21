@@ -7,6 +7,9 @@ import {
   DoubleSide,
   DataTexture,
   FloatType,
+  LinearFilter,
+  RGFormat,
+  UnsignedByteType,
   Frustum,
   Group,
   InstancedBufferGeometry,
@@ -31,7 +34,7 @@ import { addLamp } from '../sky/lampSlots';
 import { clearSkyTint, SKY_TINT } from '../sky/tint';
 import type { GraphicsLevel, MapContext, MapFrame, MapPart } from '../types';
 import { showTime } from './clock';
-import { FW_FRAGMENT, FW_VERTEX, KIND_INDEX, ROW, SEGS } from './_fwShaders';
+import { FW_FRAGMENT, FW_VERTEX, KIND_INDEX, MASK_ROWS, MASK_W, ROW, SEGS } from './_fwShaders';
 import { SQUARE } from './plan';
 import {
   burstAt,
@@ -219,6 +222,74 @@ export function buildFireworks(ctx: MapContext): MapPart {
   }
   const spots = spotB.filter((b) => b.y > -999).length;
 
+  // Where the map has water, for the glints (so no light falls on the land or the trees by the water, nor floats over
+  // other water at another level): a mask of two pages, the great lake round the lake show and the Kulen pool with the
+  // stream by the square (a texel ≈ 1 m): r wet, soft at the shores (blurred twice, a little in from the shore line);
+  // g the water's level there (m × 4, spread a texel onto the shore).
+  const maskData = new Uint8Array(MASK_W * 512 * 2);
+  const kulenBox = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+  spotA.slice(lakeLevel !== null ? 1 : 0, spots).forEach((a, i) => {
+    const r = spotB[i + (lakeLevel !== null ? 1 : 0)].x + 4;
+    kulenBox.x0 = Math.min(kulenBox.x0, a.x - r, a.z - r);
+    kulenBox.x1 = Math.max(kulenBox.x1, a.x + r, a.z + r);
+    kulenBox.z0 = Math.min(kulenBox.z0, a.y - r, a.w - r);
+    kulenBox.z1 = Math.max(kulenBox.z1, a.y + r, a.w + r);
+  });
+  if (!Number.isFinite(kulenBox.x0)) Object.assign(kulenBox, { x0: POOL.x - 20, x1: POOL.x + 20, z0: POOL.z - 20, z1: POOL.z + 20 });
+  const pages = [
+    { x0: -720, z0: -90, w: 470, h: 210 },
+    { x0: kulenBox.x0, z0: kulenBox.z0, w: kulenBox.x1 - kulenBox.x0, h: kulenBox.z1 - kulenBox.z0 },
+  ];
+  pages.forEach((pg, k) => {
+    const page = new Float32Array(MASK_W * MASK_ROWS);
+    const lev = new Float32Array(MASK_W * MASK_ROWS);
+    for (let j = 0; j < MASK_ROWS; j++)
+      for (let i = 0; i < MASK_W; i++) {
+        const x = pg.x0 + ((i + 0.5) / MASK_W) * pg.w;
+        const z = pg.z0 + ((j + 0.5) / MASK_ROWS) * pg.h;
+        const w = field.waterAt(x, z);
+        const wet = w !== null && w > field.heightAt(x, z) + 0.02;
+        page[j * MASK_W + i] = wet ? 1 : 0;
+        lev[j * MASK_W + i] = wet ? w : -1;
+      }
+    // (the level spread a texel onto the dry side, so the filtered level holds at the shore)
+    const lv = lev.slice();
+    for (let j = 0; j < MASK_ROWS; j++)
+      for (let i = 0; i < MASK_W; i++) {
+        if (lev[j * MASK_W + i] >= 0) continue;
+        let best = -1;
+        for (let dj = -1; dj <= 1; dj++)
+          for (let di = -1; di <= 1; di++) {
+            const jj = j + dj;
+            const ii = i + di;
+            if (jj >= 0 && jj < MASK_ROWS && ii >= 0 && ii < MASK_W) best = Math.max(best, lev[jj * MASK_W + ii]);
+          }
+        lv[j * MASK_W + i] = best;
+      }
+    const tmpPage = new Float32Array(page.length);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let j = 0; j < MASK_ROWS; j++)
+        for (let i = 0; i < MASK_W; i++) {
+          let sum = 0;
+          for (let dj = -1; dj <= 1; dj++)
+            for (let di = -1; di <= 1; di++) sum += page[Math.min(MASK_ROWS - 1, Math.max(0, j + dj)) * MASK_W + Math.min(MASK_W - 1, Math.max(0, i + di))];
+          tmpPage[j * MASK_W + i] = sum / 9;
+        }
+      page.set(tmpPage);
+    }
+    // (the second page from half way down: _fwShaders.ts `waterMask`)
+    const row0 = k * MASK_W * 256;
+    for (let n = 0; n < page.length; n++) {
+      const v = Math.min(1, Math.max(0, (page[n] - 0.45) / 0.5));
+      maskData[(row0 + n) * 2] = Math.round(v * v * (3 - 2 * v) * 255);
+      maskData[(row0 + n) * 2 + 1] = Math.round(Math.min(63.75, Math.max(0, lv[n])) * 4);
+    }
+  });
+  const mask = new DataTexture(maskData, MASK_W, 512, RGFormat, UnsignedByteType);
+  mask.magFilter = mask.minFilter = LinearFilter;
+  mask.generateMipmaps = false;
+  mask.needsUpdate = true;
+
   // (each barge's lantern: x, y, z and the water's level under it; set with the barges below)
   const bargeAt = Array.from({ length: MAX_BARGES }, () => new Vector4(0, -1000, 0, 0));
   const material = new ShaderMaterial({
@@ -246,6 +317,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
       uLightCol: { value: lightCol },
       uSpots: { value: Math.max(1, spots) },
       uWaterN: { value: 0 },
+      uMask: { value: mask },
+      uMaskA: { value: new Vector4(pages[0].x0, pages[0].z0, 1 / pages[0].w, 1 / pages[0].h) },
+      uMaskB: { value: new Vector4(pages[1].x0, pages[1].z0, 1 / pages[1].w, 1 / pages[1].h) },
       uBarge: { value: bargeAt },
       uSpotA: { value: spotA },
       uSpotB: { value: spotB },
