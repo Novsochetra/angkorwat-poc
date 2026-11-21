@@ -432,7 +432,7 @@ add-on: E, the visit, buying, the camera, the maps' badge, the URL),
 `_bikeShopPlan.ts` (where everything is, no three.js: the stall's frame, its hours,
 the buyer's place, the delivery spot, `SHOP_MECHANIC`), `_bikeShopStall.ts` (the
 stall's blocks and its walk map), `_bikeShopSign.ts` (the painted words),
-`_bikeOwn.ts` (the kinds, prices and trade-in, his bicycle and where it stands,
+`_bikeOwn.ts` (the kinds and prices, his bicycles and where each stands,
 saved; no three.js), the mechanic `people/_sceneBikeShop.ts` (scene `bikeshop`); the
 bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 
@@ -471,7 +471,7 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   over it and the parked motos kept out of the lens; never out over the land to the west:
   a phone's draws and triangles stay as at the market's cards), the picture slides left of the card, and the card opens in the buy
   menu's look (the `sl-` rows): the mechanic's words ("ចង់បានកង់មួយមែនទេ បង? …"; he
-  has one: "កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?"), the three bicycles (each its
+  has one: "កង់បងនៅល្អទេ? ចង់បានមួយទៀតទេ?"), the three bicycles (each its
   picture on a light tile, its name and a line, what it costs him now), "Ride it
   anywhere: it stays where you leave it" while he has none, the purse.
 - **Prices** (pocket money tops the purse up to 20,000 ៛ each dawn, and at a visit's start only once a map
@@ -481,27 +481,28 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   ពណ៌ខៀវមេឃ: a white basket, a cream saddle and grips, white mudguards, a skirt
   guard) **85,000 ៛**, the red bicycle with a back seat (កង់ក្រហម មានកៅអីក្រោយ:
   chrome mudguards, a padded seat on the rack to carry a friend, a lamp on the fork,
-  streamers from the grips) **120,000 ៛**. **One bicycle**: buying another trades his
-  in for half its price (`TRADE_IN`, to 1,000 ៛: 30,000, 43,000, 60,000), shown on the
-  row ("Trade in yours: 43,000 ៛ off", the old price struck through); his own says
+  streamers from the grips) **120,000 ៛**. **He keeps every one he buys** (one of each
+  kind, at its full price; no trade-in: the player, November 2026); one he has says
   "✓ Yours" (taken: "That one's yours already"). More than the purse holds: the row
   greyed, its price in red, "15,000 ៛ more"; tried anyway, it shakes and the mechanic
   says to save up a little more.
 - **Bought**: the purse pays (the notes, the purse glows and counts down), the
   mechanic hands it over (`SALE`), he reaches and takes its key on a red tag (the
   `interact` action, the key in his fist: the rig's `bikeShop` slot), the bell rings,
-  a toast ("Bought: …! It stands in front of the shop"; traded: "Your old one traded
-  in for 43,000 ៛"), and the bicycle stands on its stand before the stall's east
-  end, pointing east along the street (`SHOP_DELIVER`); the old one, wherever it
-  was, is gone. The card shuts by itself 2.6 s later.
-- **His own bicycle** (`_bikeOwn.ts` `BIKE_OWN`): ridden as the others (the same
-  model in its look), it stays where he gets off it, across Esc back to the map and
-  between visits. Saved (map/progress.ts): `bike.own` (`{ kind, colour }`),
-  `bike.ownAt` (`{ x, z, yaw°, y }`: `y` the floor it was left on, so one left on a
-  terrace, a deck or a bridge stands there again after a reload, not on the land under
-  it inside the stone; a save without `y` stands it on the land), `bike.bought` (how many). Its badge "កង់របស់ខ្ញុំ
-  / My bicycle" (`my-bike`, a bicycle with a pink heart) stands where it is on the
-  mini-map and the big map (it goes while he rides it, and while he has none); the
+  a toast ("Bought: …! It stands in front of the shop"), and the bicycle stands on its
+  stand before the stall's east end, pointing east along the street (`SHOP_DELIVER`;
+  beside one of his already there, a metre out to the street: `deliverySpot`); the
+  ones he had stay where he left them. The card shuts by itself 2.6 s later.
+- **His own bicycles** (`_bikeOwn.ts` `BIKE_OWN.bikes`, in the order bought): ridden as
+  the others (the same model in its look; `_bike.ts` has one for each kind), each stays
+  where he gets off it, across Esc back to the map and between visits. Saved
+  (map/progress.ts): `bike.owned` (a list of `{ kind, colour, x, z, yaw°, y }`: `y` the
+  floor it was left on, so one left on a terrace, a deck or a bridge stands there again
+  after a reload, not on the land under it inside the stone; one without `y` stands on
+  the land; a save from the one-bicycle days, `bike.own` + `bike.ownAt`, is read into
+  the list), `bike.bought` (how many). Each has its badge "កង់របស់ខ្ញុំ / My bicycle"
+  (`my-bike`, `my-bike-2`, `my-bike-3`: `MY_BIKE_IDS`, a bicycle with a pink heart)
+  where it stands on the mini-map and the big map (it goes while he rides it); the
   shop's "ហាងកង់ / Bicycle shop" (`bike-shop`, a bicycle under a blue tarp; on the
   big map 20 m behind the stall, clear of the market's): both named on the big map
   only while pointed at, picked or the target.
@@ -528,9 +529,9 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
 - **URL**: `bikeshop=1` he stands at the buyer's place facing the mechanic, the card
   open · `bikeshopbuy=town|lady|carrier` buys it as it opens (`sim=_:1.1` the hand-over,
   `_:3.2` shut, the bicycle out front) · `bikeshopfocus=<i>` the ring on row i ·
-  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>]`
-  he has that bicycle (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
-  `red`) · `bikeownat=x:z:yaw°[:y]` it stands there, on the floor at `y` (a terrace, a
+  `bikeshopopen=all|none` holds the shop open or shut · `bikeown=<kind>[:<colour>][,…]`
+  he has those bicycles (`town`, `lady`, `carrier`; `0` none; colours `black`, `sky`,
+  `red`) · `bikeownat=x:z:yaw°[:y][,…]` they stand there (in the same order), on the floor at `y` (a terrace, a
   deck; left out, on the ground there; no `bikeownat`, before the shop; nothing saved
   from either) · `bikehire=1` the hire bicycle is his for now · `purse=<riel>` · with
   `bike=ride`, `bikeleft=` ("Bicycle"). `report()` gives `bikeshop`, `bikeown`,
@@ -539,7 +540,7 @@ bicycles themselves are the bicycle add-on's (`_bike.ts`, `_bikeModel.ts`).
   the mechanic's flags, his action); `bikeDebug()` (above).
   E.g. the stall `cam=346.3,14,-78.9,340.6,9.2,-68.4,50&ui=0&clock=0.85`; the card
   `roam=walk&at=340.93,-71.11&clock=0.85&bikeshop=1&purse=70000` (`lang=en`; with
-  `bikeown=town` the trade-in; `touch=1&phone=1` a phone); buying
+  `bikeown=town` with one already; `touch=1&phone=1` a phone); buying
   `…&purse=95000&bikeshopbuy=lady&sim=_:1.1`; riding his own
   `roam=walk&at=352,-75&yaw=241&bike=ride:4&bikeown=carrier&sim=w:1&rcam=115,14,6.5`;
   a neighbour's `roam=walk&at=349.4,-71.2&yaw=90&sim=e:0.1,_:0.6`; the hire

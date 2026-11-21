@@ -33,7 +33,7 @@ import { badgeSprite, outlined, pixelSvg } from './_minimapArt';
  * (roam/_worship.ts: his badge stands on the statue).
  */
 
-export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | 'my-bike' | 'my-cart' | 'my-dog' | 'cattle' | 'bamboo-forest' | 'nye-square';
+export type SpotId = 'east-village' | 'market' | 'palm-grove' | 'kulen-picnic' | 'kulen-buddha' | 'back-hamlet' | BikeSpotId | 'zip-line' | 'lotus-bed' | 'home' | 'nursery' | 'bike-shop' | MyBikeId | 'my-cart' | 'my-dog' | 'cattle' | 'bamboo-forest' | 'nye-square';
 
 export interface MapSpot {
   id: SpotId;
@@ -344,32 +344,39 @@ const BIKE_SHOP_AT = shopToWorld(0, 0);
 const BIKE_SHOP_BIG = shopToWorld(0, -20);
 
 /**
- * His bicycle's badge stands where it does (roam/_bikeOwn.ts `BIKE_OWN`: the mini-map reads its place each frame; the
- * big map's button is moved and hidden by roam/_bikeShop.ts). While he has none, or rides it, it is far off every map
- * (not drawn).
+ * His bicycles' badges, one for each he has (roam/_bikeOwn.ts `BIKE_OWN.bikes`, in the order bought: the shop sells
+ * three kinds, he keeps all he buys), each where its bicycle stands (the mini-map reads its place each frame; the big
+ * map's buttons are moved and hidden by roam/_bikeShop.ts). One he does not have, or rides, is far off every map (not
+ * drawn).
  */
 const FAR = 1e5;
-/** (while he rides it, it is under his own arrow: no badge) */
-const myBikeShown = (): boolean => BIKE_OWN.kind !== null && !BIKE_OWN.riding;
-const MY_BIKE: MapSpot = {
-  id: 'my-bike',
+export const MY_BIKE_IDS = ['my-bike', 'my-bike-2', 'my-bike-3'] as const;
+type MyBikeId = (typeof MY_BIKE_IDS)[number];
+/** His `i`-th bicycle where it stands (while he rides it, it is under his own arrow: no badge), or null. */
+const myBikeAt = (i: number): { x: number; z: number } | null => {
+  const b = BIKE_OWN.bikes[i];
+  return b && !b.riding ? b : null;
+};
+const myBike = (id: MyBikeId, i: number): MapSpot => ({
+  id,
   get x() {
-    return myBikeShown() ? BIKE_OWN.x : FAR;
+    return myBikeAt(i)?.x ?? FAR;
   },
   get z() {
-    return myBikeShown() ? BIKE_OWN.z : FAR;
+    return myBikeAt(i)?.z ?? FAR;
   },
   get bx() {
-    return myBikeShown() ? BIKE_OWN.x : FAR;
+    return myBikeAt(i)?.x ?? FAR;
   },
   get bz() {
-    return myBikeShown() ? BIKE_OWN.z : FAR;
+    return myBikeAt(i)?.z ?? FAR;
   },
   arrive: 4,
   name: 'bikeOwnMap',
   the: 'bikeOwnTheMap',
   rows: outlined(MY_BIKE_ART),
-};
+});
+const MY_BIKES = MY_BIKE_IDS.map(myBike);
 
 /**
  * His ox cart's badge (build/haul.ts `CART_AT`), as his bicycle's: only once he has left it away from its place by the
@@ -438,7 +445,7 @@ const MY_DOG: MapSpot = {
  * would sit on it: out to this far along the line from it, again until it is clear of every one (a few passes).
  */
 const SPOT_CLEAR = 40;
-const MOVERS: readonly SpotId[] = ['my-bike', 'my-cart', 'my-dog'];
+const MOVERS: readonly SpotId[] = [...MY_BIKE_IDS, 'my-cart', 'my-dog'];
 function clearOfSpots(x: number, z: number): [number, number] {
   let bx = x;
   let bz = z;
@@ -541,7 +548,7 @@ export const MAP_SPOTS: readonly MapSpot[] = [
   { ...spot('nursery', NURSERY_AT[0], NURSERY_AT[1], 8, 'gardenShopMap', 'gardenShopTheMap', outlined(NURSERY_ART)), bx: NURSERY_BIG[0], bz: NURSERY_BIG[1] },
   // (the bicycle shop at the morning market, and his own bicycle where he left it: roam/_bikeShop.ts, _bike.ts)
   { ...spot('bike-shop', BIKE_SHOP_AT[0], BIKE_SHOP_AT[1], 7, 'bikeShopMap', 'bikeShopTheMap', outlined(BIKE_SHOP_ART)), bx: BIKE_SHOP_BIG[0], bz: BIKE_SHOP_BIG[1] },
-  MY_BIKE,
+  ...MY_BIKES,
   // (his ox cart where he left it away from the house: roam/_haul.ts)
   MY_CART,
   // (the cattle trader on the Kulen foot meadow, 50 m north of his house: roam/_cattle.ts)

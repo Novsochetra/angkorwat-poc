@@ -883,7 +883,7 @@ const WORDS = {
   bikeShopCall: { km: 'កង់ថ្មីៗ ជិះស្រួល! មើលសិនទៅ បង', en: 'New bicycles, smooth to ride! Come and look' },
   // (the card: what the mechanic says)
   bikeShopHi: { km: 'ចង់បានកង់មួយមែនទេ បង? រើសមើលចុះ', en: 'Looking for a bicycle? Take your pick' },
-  bikeShopHiOwn: { km: 'កង់បងនៅល្អទេ? ចង់ដូរមួយថ្មីមែនទេ?', en: "How's your bicycle? Fancy a new one?" },
+  bikeShopHiOwn: { km: 'កង់បងនៅល្អទេ? ចង់បានមួយទៀតទេ?', en: "How's your bicycle? Fancy another one?" },
   bikeShopShortSay: { km: 'លុយមិនទាន់គ្រប់ទេ បង — សន្សំបន្តិចទៀតណា៎', en: 'Not quite enough yet: save up a little more' },
   bikeShopBoughtSay: { km: 'ជិះឱ្យសប្បាយណា៎ បង! កង់នៅមុខហាងហ្នឹង', en: "Enjoy the ride! It's waiting out front" },
   bikeShopYoursSay: { km: 'កង់នេះជារបស់បងហើយតើ', en: "That one's yours already" },
@@ -894,14 +894,12 @@ const WORDS = {
   bikeShopLadyNote: { km: 'កន្ត្រកពណ៌ស កែបទន់ ស្រាលជិះ', en: 'A white basket, a soft saddle, light to ride' },
   bikeShopCarrier: { km: 'កង់ក្រហម មានកៅអីក្រោយ', en: 'Red bicycle with a back seat' },
   bikeShopCarrierNote: { km: 'កៅអីទន់នៅក្រោយ សម្រាប់ឱ្យមិត្តជិះដុប', en: 'A padded seat at the back to carry a friend' },
-  // (a row: his own, how much more he needs, the trade-in of the one he has; the foot's line)
+  // (a row: his own, how much more he needs; the foot's line)
   bikeShopYours: { km: 'របស់បង', en: 'Yours' },
   bikeShopMore: { km: 'ខ្វះ {riel} ទៀត', en: '{riel} more' },
-  bikeShopTrade: { km: 'ដូរកង់ចាស់ បញ្ចុះ {riel}', en: 'Trade in yours: {riel} off' },
   bikeShopFoot: { km: 'ជិះទៅណាក៏បាន កង់នៅកន្លែងដែលបងទុក', en: 'Ride it anywhere: it stays where you leave it' },
   // (bought: the toasts)
   bikeShopGot: { km: 'បានទិញ{name}! វាចតនៅមុខហាងកង់', en: 'Bought: {name}! It stands in front of the shop' },
-  bikeShopGotTraded: { km: 'បានទិញ{name}! កង់ចាស់ដូរបាន {riel}', en: 'Bought: {name}! Your old one traded in for {riel}' },
   // (his own bicycle on the maps)
   bikeOwnMap: { km: 'កង់របស់ខ្ញុំ', en: 'My bicycle' },
   bikeOwnTheMap: { km: 'កង់របស់ខ្ញុំ', en: 'my bicycle' },
