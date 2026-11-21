@@ -3449,6 +3449,9 @@ lanterns' cords, `furn=`, `__furn`), `roam/_buildFurnArt.ts` (the card's picture
   `build.pieces` keeps its floor's height `y`). The pot, the baskets, the mortar, the loom, the oil
   lamp stop him; the bench is a seat as the bamboo bed (its top 0.5 m: too high a step, Space hops onto
   it); the mats and the hanging lantern he walks through.
+- **The bench has no back** (`seat.both`, `seat.along` in build/furniture.ts; `_buildUses.ts` `seatSpot`): he sits
+  facing out from the side he comes from (its front or its back), where he stands along it (short of the jug and
+  cups at its +x end), not always at one place facing its front (November 2026).
 - **Seats** (the bench, the sleeping mat, as the bamboo bed and the shelter's bench): "E  Sit" is
   offered from any side of it and from beside it, whichever way he faces within 0.7 m of it (it comes
   before a piece near it), and J (L on the
