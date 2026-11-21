@@ -476,7 +476,11 @@ guide, with every add-on's keys and URL values for shots, is
     run's line at a corner (`snapFence` in `roam/_build.ts`; a run's own length `Built.len`). Near his
     land's edge and along it, a run lies just inside the edge, its face on the cord (`snapEdge`;
     `_buildSpots.ts` `FENCE_EDGE`: a fence's middle may lie on the edge, by a path, 0.15 m from water;
-    only the ground along its middle must be level).
+    only the ground along its middle must be level). His land is one map (`roam/_buildLand.ts`, made by
+    `_buildSpots.ts` `landMapOf`): 0.25 m squares with what stops a piece or a fence for good (water,
+    trail, past the land, the house, the bank stones); `canBuild` asks it, the cord is its outline
+    (build/plotEdge.ts with `runs`), and blocked squares show faint red while he builds
+    (`_buildLandView.ts`). Any change to the rules must keep every spot the old rules allowed.
   - Moving what he built: the card's "Move your things" row → move mode (`roam/_buildMove.ts`):
     aim at a piece (gold), E picks it up, its ghost goes with him, E puts it down free, Esc puts it
     back (`BUILD.move`, the `moved` event; `buildmove=1|<uid>`; addons.md "Moving what he built").

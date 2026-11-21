@@ -21,7 +21,9 @@ import { createBuildCard, type BuildCard, type BuildRow } from './_buildCard';
 import { BuildGhost } from './_buildGhost';
 import { grabAt, MoveMode, whyNot, whyNotFoot, type Grabbed } from './_buildMove';
 import { DRAG_GRAB } from './dragGrab';
-import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, MEET, overlapsBuilt } from './_buildSpots';
+import { byHouse, canBuild, fenceEnd, fenceJoint, ghostAhead, landMapOf, MEET, overlapsBuilt } from './_buildSpots';
+import type { LandMap } from './_buildLand';
+import { LandView } from './_buildLandView';
 import { BuildUses } from './_buildUses';
 import { furnFromUrl, furnitureHeldBy, furnReport, installFurniture } from './_buildFurniture';
 import { furnSpot, onFurnFloor, reasonWord, type FurnReason } from './_buildFurnSpots';
@@ -181,6 +183,9 @@ let longTimer: ReturnType<typeof setTimeout> | null = null;
 let longFired = false;
 /** His land's edge on the ground (while he builds). */
 let edge: PlotEdge | null = null;
+/** His land as one map (_buildLand.ts): the rules' squares, the cord's runs, the red squares (`landView`). */
+let land: LandMap | null = null;
+let landView: LandView | null = null;
 /** A check's `plotedge=1`: shown without building. */
 let edgeHeld = false;
 
@@ -582,9 +587,11 @@ function snapEdge(): boolean {
   const dz = -Math.sin(spot.yaw);
   let best = EDGE_SNAP.m;
   let hit: { x: number; z: number; yaw: number } | null = null;
-  for (let i = 0; i < PLOT_CORNERS.length; i++) {
-    const [ax, az] = PLOT_CORNERS[i];
-    const [bx, bz] = PLOT_CORNERS[(i + 1) % PLOT_CORNERS.length];
+  for (const run of land?.runs() ?? []) {
+    const ax = run.x0;
+    const az = run.z0;
+    const bx = run.x1;
+    const bz = run.z1;
     const len = Math.hypot(bx - ax, bz - az);
     const ux = (bx - ax) / len;
     const uz = (bz - az) / len;
@@ -598,12 +605,11 @@ function snapEdge(): boolean {
     const yaw = Math.atan2(-uz, ux);
     // (the way round nearer the one he had: its front stays his)
     const flip = dx * ux + dz * uz < 0;
-    // (inward: the side of the line his land is on)
+    // (just inside: the run's side where a fence fits)
     const px = ax + ux * tt;
     const pz = az + uz * tt;
-    const inw = inPlot(px - uz * 0.3, pz + ux * 0.3) ? 1 : -1;
     best = off;
-    hit = { x: px - uz * hd * inw, z: pz + ux * hd * inw, yaw: flip ? yaw + Math.PI : yaw };
+    hit = { x: px + run.inX * hd, z: pz + run.inZ * hd, yaw: flip ? yaw + Math.PI : yaw };
   }
   if (!hit) return false;
   spot.x = hit.x;
@@ -1593,8 +1599,9 @@ registerAddon({
     ghost = new BuildGhost(e.scene, e.world);
     // (move mode: a piece aimed at and picked up is build mode with it)
     MoveMode.init(e, e.scene, (ctx, b, foot) => (foot ? carryFoot(ctx, foot) : b && pickUp(ctx, b)));
-    edge = createPlotEdge(e.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'));
-    e.scene.add(edge.object);
+    // (his land's map: made in idle slices from the first frames (`frame`); the cord from it when first shown)
+    land = landMapOf(e.world);
+    landView = new LandView(e.scene, e.world, land);
     BuildWork.init(e);
     // (the card's riel and greyed rows as his purse changes while it is up)
     e.purse.onChange(() => card?.refresh());
@@ -1629,7 +1636,7 @@ registerAddon({
             pressing: pressing ? { uid: pressing.job.uid, t: +pressing.t.toFixed(2) } : null,
             foot: FootMode.state(),
             riel: env?.purse.riel ?? 0,
-            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0 },
+            plot: { area: +PLOT_AREA.toFixed(0), corners: PLOT_CORNERS.length, budget: PLOT_BUDGET, used: plotBlocks(), by: plotBlocksBy(), edge: !!edge?.shown, edgeBlocks: edge?.blocks ?? 0, land: land ? { ready: land.ready, ...land.size, runs: land.ready ? land.runs().length : 0, red: landView?.rows ?? 0, freePiece: land.ready ? land.free('piece') : 0, freeFence: land.ready ? land.free('fence') : 0 } : null },
             materials: { bag: BAG.all(), store: STORE.all() },
             owned: HOME.owned,
             view: view?.stats() ?? null,
@@ -1916,8 +1923,18 @@ registerAddon({
     if (!view) return;
     view.frame(f.camera, f.t, f.dt, f.night);
     // His land's edge while he builds (build mode, the card), or a check's `plotedge=1`.
-    edge?.show(!!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld);
+    if (land && !land.ready) land.step(2);
+    const showEdge = !!placing || FootMode.on || MoveMode.on || !!card?.open || edgeHeld;
+    // (the cord along the land map's outline: made the first time it shows)
+    if (showEdge && !edge && land && env) {
+      edge = createPlotEdge(env.world.field, () => (graphicsNow.plainBlocks ? 'low' : 'medium'), land.runs());
+      env.scene.add(edge.object);
+    }
+    edge?.show(showEdge);
     edge?.frame(f.dt > 0 ? f.dt : 0);
+    // (the red squares of what he places: a fence's, or a piece's for the rest)
+    landView?.show(showEdge ? (placing === 'fence' ? 'fence' : 'piece') : null);
+    landView?.frame(f.dt > 0 ? f.dt : 0);
     ghost?.frame(f.dt > 0 ? f.dt : 0);
     MoveMode.frame(f.dt > 0 ? f.dt : 0);
     FootMode.frame(f.dt > 0 ? f.dt : 0);

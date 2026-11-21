@@ -75,6 +75,7 @@ export function buildRoamWorld(field: HeightField, parts: readonly MapPart[], la
   const world: RoamWorld = {
     field,
     groundAt: (x, z) => walk.topAt(x, z),
+    baseGroundAt: (x, z) => walk.topAt(x, z),
     // (the water as drawn: the height field's cells run past the cliff lips)
     waterAt: (x, z) => river.levelAt(x, z),
     flowAt: (x, z, out) => flow(x, z, out),

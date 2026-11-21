@@ -3038,15 +3038,26 @@ sounds `audio/_build.ts`.
   end at both sides at whatever angle the gap has (`snapFence` → `closeFence`; first, before a
   run going on), no guide; and a run going on from an end **stops on another free end's line**
   where that line, out to 6 m past its end, crosses it at 30° or more (`meetLine`: the corner
-  they make; the next run closes it square). **On his land's edge** (November 2026): a run
-  within 0.55 m of a side of his land (the cord he sees while he builds) and within 15° of along
-  it, not snapped to a fence end, lies just inside the side, its outer face on the cord (no gap
-  left; on the upper side where the edge follows a step of the land), turned exactly along it,
-  kept within the side's length (`snapEdge`, `state().placing.edge`); the placing rules let a
-  fence's middle line lie on the edge (its half depth past it, `FENCE_EDGE` in `_buildSpots.ts`),
-  let it stand by a path (no margin; the trail's tread is still never under it) or 0.15 m from the
-  water, and ask only the ground along its middle to be level (where its posts stand), so a fence
-  can close his land beside the Kulen trail and along the land's steps. The materials are a whole run's. The turn
+  they make; the next run closes it square). **His land as one map** (November 2026,
+  `_buildLand.ts`, made by `_buildSpots.ts` `landMapOf` from its own rules, in idle slices after
+  roaming starts, ≈ 250 ms in all): 0.25 m squares over his land's box, each with what stops a piece
+  there for good — the water, the trail and paths, a field, past his land (a neighbour's yard), his
+  house's room (a square all inside it), something of the world standing there (the stream's bank
+  stones; read from the walk map without his own blocks, pieces or garden: `baseGroundAt`). Two
+  masks: a **piece** keeps 0.5 m from the trail and the water, a **fence** none from a path, 0.15 m
+  from the water, its middle line may lie on his land's edge (`MARGINS`, `FENCE_EDGE`). `canBuild`
+  asks the map square by square (then the live rules: level, trees, plants, his pieces and
+  buildings, the cart, his cows, the room before a piece). **The cord** is the fence mask's outline
+  where it meets past-the-land, a yard or the bank stones (`runs`; not along the trail's or the
+  stream's own sides, nor round islands under 25 m²: a rock, a tree's trunk), so a fence fits along
+  it: a run within 0.55 m of it and within 15° of along it lies just inside, its outer face on the
+  cord (`snapEdge`, `state().placing.edge`; 96 % of the cord takes a 3 m fence at once, the rest
+  is steep along it or shorter than a run). **The red squares** (`_buildLandView.ts`): while he
+  builds, what stops the kind he places on his land besides the trail's tread and the water
+  itself (their margins, the bank, his house) is a faint red film on the ground. Only the ground
+  along a fence's middle must be level (where its posts stand). The map gives every spot the old
+  rules gave and more (a jar 11 574 → 12 047 spots on a 0.5 m grid, a bed 21 404 → 21 410, a fence
+  23 923 → 24 141, the pen 5 084 → 5 287; none lost). `state().plot.land`. The materials are a whole run's. The turn
   shows: "E  Build here 45°" (the phone's Use button reads "សង់នៅទីនេះ ៤៥°") and in the
   touch bar between ⟲ ⟳ and the other buttons. "E  សង់នៅទីនេះ / Build here" (`buildMode`, order 3: first in
   the row, before a hammock, the dog, the house's doors) pays riel for what he lacks

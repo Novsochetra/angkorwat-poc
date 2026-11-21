@@ -65,6 +65,11 @@ export interface RoamWorld {
    * tree trunks (not leaves). Water is not included.
    */
   groundAt(x: number, z: number): number;
+  /**
+   * The world's own top at (x, z) (the walk map: the land and what the map stands on it, his blocks too), without
+   * what add-ons lay over `groundAt` (his pieces, his garden's trees, the house's doorway).
+   */
+  baseGroundAt?(x: number, z: number): number;
   /** Water surface at (x, z), or null where there is none. */
   waterAt(x: number, z: number): number | null;
   /** River current at (x, z) (m/s, map x and z), written to `out`; zero where the water is still or there is none. */
