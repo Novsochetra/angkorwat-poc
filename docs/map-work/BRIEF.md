@@ -2506,8 +2506,8 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   `standAt` as walls to his feet by `roam/_nyePlazaWalk.ts` (only while the `nye` part stands, within 36 m), as the zip
   line's rails and his built pieces are: sliding along the 0.9 m wall never ends on top.
 - **The lake stage and water** (`_lkStage.ts`, `_lkBoats.ts`, `_lkReflect.ts`): a deep carved gate over a 10 × 5 m board
-  under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board showing the plaza their
-  fanned heads, the stage light high over the shallows (a soft warm white), `kitFire` fire bowls,
+  under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board facing the crowd
+  (squared to `LAKE_VIEW`; Kulen's stair naga squared to `VIEW`), the stage light high over the shallows (a soft warm white), `kitFire` fire bowls,
   banners on tall poles; the event night's flotilla (84 lantern skiffs, 10 lotus floats, 2 illuminated floats with
   Angkor Wat in lights; 32 / 5 / 1 on low; some in the gaps the plaza crowd sees the water through), each skiff lit by
   its lantern (warm deck, gunwales, thwarts; the lantern low on a bow pole), lotus candles; every light's halo and
