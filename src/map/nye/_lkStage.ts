@@ -238,14 +238,13 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   const fanY = D + 0.62;
   const fanH = 3.3;
   const V = (x: number, y: number, z: number) => new Vector3(...P(x, y, z));
-  // (turned so the crowd sees the seven heads fanned out on their necks — the side that reads as a naga's face; its
-  // smooth hood plate, sacred/naga.ts's +z, looks like the back of a paddle from the plaza: checked from both sides,
-  // screenshots/h4/r4/naga-ab.png) — each squared to the crowd's view, a guardian either side of the board)
-  const lookAway = (at: Vector3) => new Vector3(at.x - LAKE_VIEW.cam[0], 0, at.z - LAKE_VIEW.cam[2]).normalize();
+  // (facing the crowd — sacred/naga.ts's +z: the seven heads before the one smooth fan; behind it the fan's back and the
+  // necks — each squared to the crowd's view (`LAKE_VIEW`), a guardian either side of the board)
+  const toCrowd = (at: Vector3) => new Vector3(LAKE_VIEW.cam[0] - at.x, 0, LAKE_VIEW.cam[2] - at.z).normalize();
   const naga: LakeStage['naga'] = {
     fans: [-1, 1].map((s) => {
       const at = V(s * NX, fanY, zRail);
-      return { at, look: lookAway(at), height: fanH };
+      return { at, look: toCrowd(at), height: fanH };
     }),
     bodies: [-1, 1].map((s) => ({
       path: [
