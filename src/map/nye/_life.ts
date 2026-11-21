@@ -33,8 +33,8 @@ import { SPARK_MAX, SPARKS, type SparkSite } from './_lifeSparks';
 const NEAR = 260;
 /** Each venue's sprites on high (medium draws the first `MEDIUM` share of each kind). */
 const COUNTS = {
-  kulen: { fireflies: 320, petals: 440, motes: 170, sparks: 8 },
-  lake: { fireflies: 260, petals: 320, motes: 130, sparks: 8 },
+  kulen: { fireflies: 320, petals: 440, motes: 170, sparks: 14 },
+  lake: { fireflies: 260, petals: 320, motes: 130, sparks: 14 },
 } as const;
 const MEDIUM = 0.55;
 /** The breeze the petals drift on (rad: toward (sin, cos) in x, z), and how much each strays from it. */
@@ -264,9 +264,9 @@ varying float vTumble;
 #include <common>
 #include <fog_pars_vertex>
 // The kinds' sizes (m), their smallest and biggest dot (px): firefly (with its halo), petal, mote, spark.
-const vec4 SIZE = vec4(0.26, 0.26, 0.04, 0.035);
-const vec4 MINPX = vec4(2.8, 2.0, 1.0, 1.3);
-const vec4 MAXPX = vec4(16.0, 11.0, 3.0, 4.0);
+const vec4 SIZE = vec4(0.26, 0.26, 0.04, 0.05);
+const vec4 MINPX = vec4(2.8, 2.0, 1.0, 1.8);
+const vec4 MAXPX = vec4(16.0, 11.0, 3.0, 5.0);
 const vec3 FIREFLY = vec3(0.72, 1.0, 0.3);
 const vec3 MOTE = vec3(1.0, 0.78, 0.45);
 const vec3 SPARK = vec3(1.0, 0.9, 0.62);
@@ -301,7 +301,7 @@ void main() {
   float us = fract(t * (1.7 + 1.5 * aSeed.w) + aSeed.x);
   float el = aSeed.z * 2.4 - 0.6;
   vec3 dir = vec3(cos(s.y) * cos(el), sin(el), sin(s.y) * cos(el));
-  vec3 pS = hs.xyz + dir * (0.03 + 0.32 * us) - vec3(0.0, 0.4 * us * us, 0.0);
+  vec3 pS = hs.xyz + dir * (0.04 + 0.5 * us) - vec3(0.0, 0.45 * us * us, 0.0);
   float iS = hs.w * (1.0 - us) * (1.0 - us);
   vec3 p = kw.x * pF + kw.y * pP + kw.z * pM + kw.w * pS;
   float I = dot(kw, vec4(iF, iP, iM, iS)) * uLevel;
@@ -314,7 +314,7 @@ void main() {
   gl_PointSize = clamp(px, lo, dot(kw, MAXPX)) * uPx * step(0.003, I);
   // (smaller than its smallest dot far off: its light spread over it, dimmer)
   float cover = clamp(px / lo, 0.3, 1.0);
-  vCol = (kw.x * FIREFLY * 2.4 * cover + kw.y * aColor * uPetal + kw.z * MOTE * 0.55 * cover + kw.w * SPARK * 3.0) * I;
+  vCol = (kw.x * FIREFLY * 2.4 * cover + kw.y * aColor * uPetal + kw.z * MOTE * 0.55 * cover + kw.w * SPARK * 5.0) * I;
   vCover = kw.y * I;
   vShape = kw.y;
   vTumble = flying * abs(cos(t * (2.0 + 2.5 * aSeed.w) + s.w)) + (1.0 - flying) * 0.3;
