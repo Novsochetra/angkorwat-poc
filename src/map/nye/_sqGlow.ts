@@ -35,6 +35,7 @@ import { buildSquareEdge } from './_sqEdge';
 import { INLAY, TOP } from './_sqFloor';
 import { AVENUE, onAvenue } from './_sqWalk';
 import { GOLD, LATERITE, pick } from './_sqKit';
+import type { Kit } from '../festival/_kit';
 
 /**
  * The festival square's light and air at night (AWP-35; the owner: "from above it looks quiet, small and dark":
@@ -79,6 +80,8 @@ export interface SquareGlowInput {
   walk?: readonly [number, number][];
   /** The square's trees (map x, z, crown radius: `_sqDecor.ts`). */
   trees?: readonly [number, number, number][];
+  /** The square's festival kit (`square.ts`): the edge pillars' fires and banners go into it (no draw of their own). */
+  kit?: Kit;
 }
 
 type V3 = { x: number; y: number; z: number };
@@ -144,12 +147,19 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   const bodies = new Bodies();
   const wires: number[] = [];
 
-  // ── The edge: balustrade and pedestal lamps ──
-  const flames = buildSquareEdge(b, field, low);
+  // ── The edge: balustrade, pedestal lamps and the lantern pillars' fires ──
+  const edge = buildSquareEdge(b, field, low, input.kit ?? null);
+  const flames = edge.lamps;
   for (const [x, y, z] of flames) {
     bodies.add(x, y, z, 0.26, 0.3, 0.26, 0xffb860, 1.1);
     glows.halo(x, y, z, 2.2, 0xffb45a, 0.7, HALO_LAMP);
     pools.add(x, z, 4.2, 0xffa850, 0.34);
+  }
+  for (const [x, y, z] of edge.fires) {
+    glows.halo(x, y, z, 3.0, 0xffa040, 0.75, HALO_LAMP);
+    // (a pool mostly on the square's side: past the edge the land often steps up into the garden's banks)
+    const k = 1.4 / Math.hypot(x - SQUARE.x, z - SQUARE.z);
+    pools.add(x + (SQUARE.x - x) * k, z + (SQUARE.z - z) * k, 3.8, 0xffa040, 0.38);
   }
 
   // ── Big pools: the square, before the stage, the gate, the stalls; the gilt band ──
@@ -159,7 +169,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   pools.add(STAGE.x, STAGE.front + 2, 13, 0xffa850, 0.16);
   pools.add(GATE.x, GATE.z - 4, 8, 0xffa850, 0.18);
   pools.add(GATE.x, GATE.z + 6, 10, 0xffa850, 0.26);
-  for (const s of STALLS) pools.add(s.x + Math.sin(s.facing) * 1.5, s.z + Math.cos(s.facing) * 1.5, 6.5, 0xffb058, 0.32);
+  for (const s of STALLS) pools.add(s.x + Math.sin(s.facing) * 2, s.z + Math.cos(s.facing) * 2, 5.2, 0xffb058, 0.34);
   pools.ring(RING.x, RING.z, INLAY, 0.22, 0xffc060, 0.5, G + TOP + 0.03);
   // At midnight the square's pool beats with the count (pulse only).
   pools.add(RING.x, RING.z, 24, 0xffb040, 0.26, 2, 14);
@@ -285,7 +295,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   object.add(beams.mesh);
 
   console.info(
-    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps · ${poles.length} poles · ${pairs.length} walk pairs · ${bodies.count} bulbs and lanterns · ${glows.count} glows · ${pools.count} pools · built in ${(performance.now() - t0).toFixed(1)} ms`,
+    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps, ${edge.fires.length} fire pillars · ${poles.length} poles · ${pairs.length} walk pairs · ${bodies.count} bulbs and lanterns · ${glows.count} glows · ${pools.count} pools · built in ${(performance.now() - t0).toFixed(1)} ms`,
   );
 
   let now = 0;
@@ -523,6 +533,7 @@ class Pools {
   private readonly loc: number[] = [];
   private readonly col: number[] = [];
   private readonly shape: number[] = [];
+  private readonly flat: number[] = [];
   private readonly idx: number[] = [];
   private n = 0;
   private readonly c = new Color();
@@ -549,12 +560,18 @@ class Pools {
         const px = x + u * r;
         const pz = z + v * r;
         let py = y;
+        let flat = 1;
         if (py === null) {
-          // (over the highest land near the point: block steps stay under it)
-          const h = Math.max(f.heightAt(px, pz), f.heightAt(px + 0.9, pz), f.heightAt(px - 0.9, pz), f.heightAt(px, pz + 0.9), f.heightAt(px, pz - 0.9));
+          // (over the highest land near the point: block steps stay under it; where the land steps more than a kerb,
+          // the light fades out there, so no sheet of it stands across a bank's face)
+          const hs = [f.heightAt(px, pz), f.heightAt(px + 0.9, pz), f.heightAt(px - 0.9, pz), f.heightAt(px, pz + 0.9), f.heightAt(px, pz - 0.9)];
+          const h = Math.max(...hs);
+          const step = h - Math.min(...hs);
+          flat = 1 - Math.min(1, Math.max(0, (step - 0.3) / 0.5));
           py = h + (onSquare(px, pz, 0.5) ? TOP + 0.05 : 0.12);
         }
         this.pos.push(px, py, pz);
+        this.flat.push(flat);
         this.loc.push(u * r, v * r);
         this.col.push(this.c.r, this.c.g, this.c.b);
         this.shape.push(kind, kind ? R : r, kind ? w : 0, show);
@@ -572,6 +589,7 @@ class Pools {
     geo.setAttribute('pLoc', new Float32BufferAttribute(this.loc, 2));
     geo.setAttribute('pCol', new Float32BufferAttribute(this.col, 3));
     geo.setAttribute('pShape', new Float32BufferAttribute(this.shape, 4));
+    geo.setAttribute('pFlat', new Float32BufferAttribute(this.flat, 1));
     geo.setIndex(this.idx);
     geo.computeBoundingSphere();
     const u = { ...hazeUniforms(), uLevel: { value: 0 }, uPulse: { value: 0 } };
@@ -590,6 +608,7 @@ class Pools {
         attribute vec2 pLoc;
         attribute vec3 pCol;
         attribute vec4 pShape;
+        attribute float pFlat;
         uniform float uLevel;
         uniform float uPulse;
         varying vec2 vLoc;
@@ -599,7 +618,7 @@ class Pools {
           vLoc = pLoc;
           vShape = pShape.xyz;
           float on = pShape.w > 1.5 ? uPulse : 1.0;
-          vCol = pCol * uLevel * on;
+          vCol = pCol * uLevel * on * pFlat;
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <fog_vertex>

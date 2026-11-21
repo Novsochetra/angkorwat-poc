@@ -3,6 +3,7 @@ import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { TRADER_AT } from '../cattle/plan';
 import type { Glow } from '../festival/_glow';
+import type { Kit } from '../festival/_kit';
 import { onNurseryLot } from '../hamlet/_nurseryPlan';
 import { HOME_AT } from '../hamlet/_homePlan';
 import type { HeightField } from '../heightfield';
@@ -10,7 +11,7 @@ import type { Lamps } from '../landmarks/_prasatKit';
 import { NYE_YEAR } from './clock';
 import { GATE, LANTERN_WALK, onSquare } from './plan';
 import { TOP } from './_sqFloor';
-import { GOLD, khmerLamp, LAMP_HALO, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
+import { GOLD, khmerLamp, kitFire, LAMP_HALO, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
 
 /**
  * The way in (AWP-35): the lantern walk from the sugar-palm village up the Kulen foot trail (plan.ts
@@ -141,7 +142,7 @@ export interface AvenueOut {
  * The avenue, its lamps, fire bowls and the welcome arch. `fb`: the floor's builder (pavers), `b`: the walk's
  * (stone). `glowStrip`: the warm strips along the kerbs (a soft lamp kind, `square.ts`'s bulbs).
  */
-export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField, lamps: Lamps, glowStrip: Lamps, glow: Glow | null, low: boolean): AvenueOut {
+export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField, lamps: Lamps, glowStrip: Lamps, glow: Glow | null, low: boolean, kit: Kit | null = null): AvenueOut {
   const src = traceSource();
   // (the avenue's strip, 3.9 m each side of its middle, is its own: the garden's beds and the square's lights keep
   // out of it, though their 2 m cells of `occupied` may reach in; so its posts check the land only)
@@ -215,14 +216,15 @@ export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField,
       field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
       lights.push([x, z]);
     }
-  // ── Fire bowls: either side of the gate's face, and before the arch's pillars ──
+  // ── Fire bowls: the two braziers flanking the gate's passage (the owner's sheet, "ENTRANCE GATE"), and before the
+  // arch's pillars; live fire in the festival kit when one is given (`_sqKit.ts` `kitFire`) ──
   for (const [x, z, k] of [
-    [ax - half - 1.6, z0 + 0.9, 1.2],
-    [ax + half + 1.6, z0 + 0.9, 1.2],
+    [ax - half - 1.6, z0 + 0.9, 1.35],
+    [ax + half + 1.6, z0 + 0.9, 1.35],
     [ARCH.x - 4.6, ARCH.z + 0.6, 1],
     [ARCH.x + 4.6, ARCH.z + 0.6, 1],
   ] as const) {
-    fireBowl(b, field, x, z, k, src, lamps, glow, low);
+    fireBowl(b, field, x, z, k, src, lamps, glow, low, kit);
     lights.push([x, z]);
   }
   welcomeArch(b, field, src, lamps, glow);
@@ -232,7 +234,7 @@ export function layAvenue(fb: VoxelBuilder, b: VoxelBuilder, field: HeightField,
 const BRONZE = [0x5c4430, 0x523c2a, 0x664c36];
 
 /** A fire bowl on a stone stem (its foot on the land at x, z; `k` its size): a bronze bowl, its fire's heart and tongues. */
-function fireBowl(b: VoxelBuilder, field: HeightField, x: number, z: number, k: number, src: SourceTrace | undefined, lamps: Lamps, glow: Glow | null, low: boolean): void {
+function fireBowl(b: VoxelBuilder, field: HeightField, x: number, z: number, k: number, src: SourceTrace | undefined, lamps: Lamps, glow: Glow | null, low: boolean, kit: Kit | null): void {
   const y = field.heightAt(x, z);
   const st = (i: number) => pick(POST_STONE, x, z, i, 81);
   b.box(x, y + 0.1 * k, z, 0.7 * k, 0.3 * k, 0.7 * k, pick(LATERITE, x, z, 1, 81), 'mapStone', { src, shade: 0.95 });
@@ -242,9 +244,12 @@ function fireBowl(b: VoxelBuilder, field: HeightField, x: number, z: number, k: 
   b.box(x, y + 1.42 * k, z, 0.62 * k, 0.16 * k, 0.62 * k, pick(BRONZE, x, z, 5, 81), 'mapStone', { src, shade: 0.9 });
   b.box(x, y + 1.54 * k, z, 0.76 * k, 0.1 * k, 0.76 * k, pick(BRONZE, x, z, 6, 81), 'mapStone', { src, shade: 0.95 });
   const fy = y + 1.6 * k;
-  lamps.add([x, fy + 0.16 * k, z], 0.5 * k, 1.5);
-  lamps.add([x + 0.05, fy + 0.46 * k, z - 0.03], 0.26 * k, 1.8);
-  glow?.add(x, fy + 0.4 * k, z, LAMP_HALO, low ? 3 : 3.6 * k, { level: 1.1 });
+  if (kit) kitFire(kit, x, fy - 0.02 * k, z, 1.05 * k, Math.round(x * 7 + z));
+  else {
+    lamps.add([x, fy + 0.16 * k, z], 0.5 * k, 1.5);
+    lamps.add([x + 0.05, fy + 0.46 * k, z - 0.03], 0.26 * k, 1.8);
+  }
+  glow?.add(x, fy + 0.4 * k, z, LAMP_HALO, low ? 3 : 3.2 * k, { level: kit ? 0.8 : 1.1 });
   field.occupy(x - 0.5 * k, z - 0.5 * k, x + 0.5 * k, z + 0.5 * k);
 }
 

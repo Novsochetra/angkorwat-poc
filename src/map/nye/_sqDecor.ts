@@ -7,7 +7,7 @@ import type { Lamps } from '../landmarks/_prasatKit';
 import { FLAG_WHITE, flagCell } from '../roam/_flag';
 import { GATE, SQUARE, STAGE } from './plan';
 import type { BuiltTree } from './_sqGarden';
-import { GOLD, pick } from './_sqKit';
+import { GOLD, hangingBanner, pick } from './_sqKit';
 
 /**
  * The square's dressing (AWP-35): red banners with the white Angkor Wat on tall poles round its edge (the cloth
@@ -17,11 +17,11 @@ import { GOLD, pick } from './_sqKit';
  * Angles round the square: θ from +x (east), z = SQUARE.z + rz·sin θ (+z south: θ 90° is the gate, −90° the stage).
  */
 
-/** Banners on the square's edge (θ degrees) and the two flanking the gate outside (map x, z). */
+/** Banners on the square's edge (θ degrees) and the two flanking the gate's passage outside (map x, z of the pole; the side). */
 const BANNER_THETA = [0, 180, -42, 222, 42, 138];
 const GATE_BANNERS: [number, number, number][] = [
-  [GATE.x - 8.6, GATE.z + 3.4, -Math.PI / 2],
-  [GATE.x + 8.6, GATE.z + 3.4, Math.PI / 2],
+  [GATE.x - 6.3, GATE.z + 3.5, -1],
+  [GATE.x + 6.3, GATE.z + 3.5, 1],
 ];
 /** Lotus pots (map x, z): by the gate inside, along the way, at the stage's stairs. */
 const POTS: [number, number][] = [
@@ -76,7 +76,20 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     const top = pole(x, z, dir, 10 + i);
     anchors.push({ x, y: top - 0.9, z, th });
   }
-  for (const [i, [x, z, dir]] of GATE_BANNERS.entries()) pole(x, z, dir, 30 + i, 8);
+  // The gate's two: a lacquered pole before each wing, a gilt arm in toward the passage, a long banner hanging from it
+  // facing the village (the owner's sheet, "ENTRANCE GATE"), between the braziers and the wings' ends.
+  for (const [i, [x, z, sd]] of GATE_BANNERS.entries()) {
+    const g = field.heightAt(x, z);
+    const h = 7.4;
+    b.box(x, g + 0.2, z, 0.56, 0.4, 0.56, pick([0x9c6d50, 0x916349], x, z, 1), 'mapStone', { src });
+    b.box(x, g + h / 2, z, 0.18, h, 0.18, pick(POLE, x, z, 2), 'mapBark', { src });
+    b.box(x, g + h + 0.06, z, 0.28, 0.12, 0.28, pick(GOLD, x, z, 3), 'mapStone', { src });
+    b.box(x, g + h + 0.24, z, 0.13, 0.24, 0.13, pick(GOLD, x, z, 4), 'mapStone', { src, shade: 1.08 });
+    const arm = g + h - 0.55;
+    b.box(x - sd * 0.85, arm, z, 1.7, 0.09, 0.09, pick(GOLD, x, z, 5), 'mapStone', { src, shade: 1.02 });
+    hangingBanner(kit, x - sd * 0.95, arm - 0.05, z + 0.08, 0, 1.25, 4.4, low, 30 + i, 0.05);
+    field.occupy(x - 0.4, z - 0.4, x + 0.4, z + 0.4);
+  }
 
   // ── The flowering trees (the garden's: _sqGarden.ts `NYE_TREES`, built before this) ──
   const trees: [number, number, number][] = [];

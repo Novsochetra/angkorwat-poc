@@ -64,7 +64,7 @@ export class StageGlow {
         const k = n * n * (3 - 2 * n);
         flames.uniforms.uTime.value = f.t;
         // (bright enough to bloom, not so bright the flames go white: they keep their gold and orange)
-        flames.uniforms.uLevel.value = 0.8 + k * 1.25;
+        flames.uniforms.uLevel.value = 0.75 + k * 0.7;
         flames.uniforms.uPulse.value = 0.12 + k * 0.08;
         flames.uniforms.uNearLevel.value = 1;
         gilt.uniforms.uTime.value = f.t;

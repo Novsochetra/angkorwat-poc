@@ -1,15 +1,19 @@
 import type { SourceTrace } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import { ANIM, perPeriod, type Kit } from '../festival/_kit';
 import type { Glow } from '../festival/_glow';
+import { onTemple } from '../roam/_flag';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import type { Proto } from '../veg/proto';
 
 /**
  * The festival square's shared bits (AWP-35, `square.ts`): its stone tones, the
- * Khmer lamp on its post (the lantern walk, the gate, the stalls), and a jungle
- * tree prototype stamped onto the map (the map's own trees round the square).
+ * Khmer lamp on its post (the lantern walk, the gate, the stalls), a jungle
+ * tree prototype stamped onto the map (the map's own trees round the square),
+ * and in the festival kit the hanging banner with the white Angkor Wat and the
+ * live fire of the fire bowls (`hangingBanner`, `kitFire`).
  *
  * Tones are sRGB, 3–5 close values each, picked with the seeded `hash3`.
  */
@@ -102,4 +106,99 @@ export function stampTree(b: VoxelBuilder, f: HeightField, p: Proto, x: number, 
     const odd = (q & 1) === 1;
     b.box(x + ox, y + bx.y, z + oz, odd ? bx.sz : bx.sx, bx.sy, odd ? bx.sx : bx.sz, bx.color, bx.leaf ? 'mapLeaf' : 'mapBark', { src, shade: bx.shade });
   }
+}
+
+// ── Banners and fire (the festival kit: cloth waving, flames leaping, in its shader) ──
+
+/** The banners' red, its deep edge, the gilt. */
+const BANNER_RED = 0xbe1422;
+const BANNER_DEEP = 0x7c0c14;
+const BANNER_GILT = 0xe8b44a;
+const BANNER_WHITE = 0xfffaf0;
+/** Swaying at about 1.6 rad/s (whole turns in the kit's period). */
+const SWAY = perPeriod(1.6);
+
+/**
+ * A banner hanging flat from (x, top, z), its face toward `face` (radians toward (sin, cos) in x, z), `w` × `h` m: red
+ * with gilt borders and a gilt band at the top, the white Angkor Wat of the flag of Cambodia (THREE towers:
+ * roam/_flag.ts `onTemple`) on its upper half, a gilt band under it, a pointed foot (the owner's sheet: the gathering
+ * area's pillars, the gate). Cloth in the festival kit, columns of runs of one colour, swaying a little at its foot;
+ * the temple's white faintly lit at night so it reads in the dark.
+ */
+export function hangingBanner(kit: Kit, x: number, top: number, z: number, face: number, w: number, h: number, low: boolean, seed: number, sway = 0.03): void {
+  const cols = low ? 9 : 13;
+  const rows = low ? 26 : 40;
+  const du = w / cols;
+  const dv = h / rows;
+  // (across the cloth: the face's left to right)
+  const ax = Math.cos(face);
+  const az = -Math.sin(face);
+  const tip = Math.round(rows * 0.12);
+  const phase = hash3(x, z, seed, 3) * 6.28;
+  const sq = { v0: 0.14, side: w * 0.8 };
+  const colour = (c: number, r: number): number | null => {
+    const u = (c + 0.5) / cols;
+    const v = (r + 0.5) * dv;
+    const fromFoot = rows - r;
+    if (fromFoot <= tip && Math.abs(u - 0.5) > (fromFoot / tip) * 0.5) return null;
+    if (r < 2) return BANNER_GILT;
+    if (c === 0 || c === cols - 1) return BANNER_GILT;
+    if (fromFoot <= tip && Math.abs(u - 0.5) > (fromFoot / tip) * 0.5 - 1 / cols) return BANNER_GILT;
+    const ty = (v - sq.v0 * h) / sq.side;
+    const tx = (u * w - (w - sq.side) / 2) / sq.side;
+    if (tx >= 0 && tx <= 1 && ty >= 0 && ty <= 1 && onTemple(0.27 + tx * 0.46, 0.27 + ty * 0.46)) return BANNER_WHITE;
+    const lv = v - (sq.v0 * h + sq.side + 0.12);
+    if (lv >= 0 && lv <= dv * 1.5 && c > 1 && c < cols - 2) return BANNER_GILT;
+    if (c === 1 || c === cols - 2) return BANNER_DEEP;
+    return BANNER_RED;
+  };
+  for (let c = 0; c < cols; c++) {
+    const off = -w / 2 + (c + 0.5) * du;
+    let r0 = 0;
+    while (r0 < rows) {
+      const col = colour(c, r0);
+      let r1 = r0 + 1;
+      while (r1 < rows && colour(c, r1) === col) r1++;
+      if (col !== null) {
+        const len = (r1 - r0) * dv;
+        const mid = r0 * dv + len / 2;
+        const white = col === BANNER_WHITE;
+        // (the box's own x runs down the cloth: rolled −90°; the sway grows from the bar down)
+        kit.box(x + ax * off, top - mid, z + az * off, len + 0.002, du + 0.002, white ? 0.05 : 0.03, col, {
+          yaw: face,
+          roll: -Math.PI / 2,
+          anim: ANIM.wave,
+          a: [sway, r0 * dv, SWAY],
+          b: [phase, 0, 0, 0],
+          // (lit a little from within at night, as by the fire over it: the red and the white temple read in the dark)
+          glow: white ? 0.16 : col === BANNER_GILT ? 0.12 : 0.07,
+        });
+      }
+      r0 = r1;
+    }
+  }
+}
+
+/** Flame colours (sRGB): the deep tongue, the heart, the yellow core; embers. */
+const FIRE = { tongue: 0xff9026, heart: 0xffbc44, core: 0xffe68c, ember: 0xe8501a } as const;
+
+/**
+ * A live fire in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 0.7 m across): embers on the rim, a wide
+ * heart and three tongues that leap, narrow and sway (the kit's `ANIM.flame`: each at its own pace, never in step with
+ * the next bowl's), glowing (blooming a little at night, orange and gold, never white). In the festival kit: no draw
+ * of its own. The halo and the pool of light round it are the caller's.
+ */
+export function kitFire(kit: Kit, x: number, y: number, z: number, s: number, seed: number): void {
+  const r = (k: number) => hash3(x, z, k, seed);
+  const ph = r(1) * 6.28;
+  kit.box(x, y + 0.03 * s, z, 0.56 * s, 0.06 * s, 0.56 * s, FIRE.ember, { glow: 0.24 });
+  // (each tongue a tall box tapering as it leaps: `ANIM.flame` narrows its top)
+  const tongue = (dx: number, dz: number, w: number, hh: number, color: number, glow: number, leap: number, k: number, speed: number) =>
+    kit.box(x + dx * s, y + 0.04 * s + (hh * s) / 2, z + dz * s, w * s, hh * s, w * s, color, { yaw: r(k) * 1.5, glow, anim: ANIM.flame, a: [leap, ph + k * 1.9, perPeriod(speed)] });
+  // (glow: at night ≈ 0.8 of the colour, orange and gold kept; the halo round it is the glow)
+  tongue(0, 0, 0.42, 0.28, FIRE.heart, 0.25, 0.3, 2, 5.3);
+  tongue(0.11, -0.07, 0.2, 0.56, FIRE.tongue, 0.24, 0.7, 3, 7.1);
+  tongue(-0.12, 0.05, 0.19, 0.48, FIRE.tongue, 0.24, 0.75, 4, 6.4);
+  tongue(0.06, 0.12, 0.16, 0.42, FIRE.tongue, 0.24, 0.8, 6, 7.7);
+  tongue(0.01, 0.0, 0.14, 0.78, FIRE.core, 0.3, 0.85, 5, 8.2);
 }

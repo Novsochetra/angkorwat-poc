@@ -322,7 +322,7 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     if (latin) {
       const lw = latin.width * 2;
       const lh = latin.height * 2;
-      g.drawImage(latin, CW / 2 - lw / 2, cy + h * 0.36, lw, lh);
+      g.drawImage(latin, CW / 2 - lw / 2, cy + h * 0.32, lw, lh);
     }
     g.shadowBlur = 0;
     g.imageSmoothingEnabled = true;
@@ -420,9 +420,10 @@ export function buildBoard(place: BoardPlace = KULEN_BOARD): Board {
     switch (b.state) {
       case 'days':
       case 'hms': {
-        drawTitle(km, 60, 2.6);
-        pill(b.state === 'days' ? word('live', km) : word('last', km), 122, km);
-        text(word('sub', km).replace(String(NYE_YEAR), digits(String(NYE_YEAR), km)), CW / 2, 162, km ? KH_TEXT(22) : LAT_TEXT(18), 520, PALE, 0);
+        // (in English the name's Latin line goes under the Khmer: everything over the clock a little lower)
+        drawTitle(km, km ? 60 : 48, km ? 2.6 : 2.2);
+        pill(b.state === 'days' ? word('live', km) : word('last', km), km ? 122 : 136, km);
+        text(word('sub', km).replace(String(NYE_YEAR), digits(String(NYE_YEAR), km)), CW / 2, km ? 162 : 172, km ? KH_TEXT(22) : LAT_TEXT(17), 520, PALE, 0);
         const groups = [
           { v: b.h, label: word('h', km) },
           { v: b.m, label: word('m', km) },
