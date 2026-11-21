@@ -14,6 +14,7 @@ import { KHMER_MONTHS, SPECIES_BY_KIND, STAMPS } from './_bookData';
 import { attachBookUi, type AlbumTab, type BookUi } from './_bookUi';
 import { whenMapShown } from './_nameCard';
 import { signPhoto } from './_nameMark';
+import { withPhotoLayers } from '../photoLayers';
 import { angleDiff } from './followCam';
 import type { RoamBody, RoamCtx, RoamWorld } from './types';
 
@@ -510,8 +511,9 @@ export function createRoamPhoto(d: PhotoDeps): RoamPhoto {
       // (in a selfie he stands in front of what is behind him)
       const s = body.scale;
       if (lensCam) journal.photographed(lensCam, d.canvas, last === 'selfie' ? { kind: 'visitor', x: body.pos.x, y: body.pos.y + 0.9 * s, z: body.pos.z, r: 0.75 * s } : null);
-      // (his name over the maker's mark, once he has one: _nameMark.ts)
-      album.capture(signPhoto(d.canvas), placeName(d.world, body.pos, d.mode()));
+      // (the other players' names over their heads, as the screen shows them: photoLayers.ts; his name over the
+      // maker's mark, once he has one: _nameMark.ts)
+      album.capture(signPhoto(withPhotoLayers(d.canvas)), placeName(d.world, body.pos, d.mode()));
       // (the shutter felt in the hand)
       pad.rumble('tick');
     },

@@ -1,13 +1,16 @@
 import { Vector3, type PerspectiveCamera } from 'three';
 import { isKhmer, toKhmer } from '../khmerName';
+import { addPhotoLayer } from '../photoLayers';
 
 /**
  * Other players' names over their heads (people/_scenePlayers.ts) while they are close: the name as they chose it and,
  * for a name in Latin letters, the same in Khmer letters (khmerName.ts `toKhmer`), a gold ◆ before a party member's,
  * and three moving sound bars after it while that friend talks in the party's voice (party/link.ts: the speaking mark).
- * A small pool of DOM tags in the interface's root (`#ui`: `ui=0` hides them, as it hides the speech bubbles), each
- * moved with a transform once a frame; the words are written only when the tag goes to another player. Readable on a
- * phone: never under 13 px, white with a dark outline.
+ * A small pool of DOM tags in their own layer over the map, just after the interface's root (`#ui`): the camera's
+ * viewfinder and the selfie phone hide the interface but not the names (a selfie with a friend shows the friend's
+ * name, on the screen and in the photo: photoLayers.ts); `ui=0`, the story, a bug report and the binoculars hide them
+ * as they hide the interface. Each tag is moved with a transform once a frame; the words are written only when the
+ * tag goes to another player. Readable on a phone: never under 13 px, white with a dark outline.
  */
 
 /** Tags at most (the nearest players get them). */
@@ -37,6 +40,10 @@ interface Tag {
   party: boolean;
   talk: boolean;
   shown: boolean;
+  /** Where it stands on the screen now (CSS px: the name's foot, centred) and how clear (0‥1). */
+  x: number;
+  y: number;
+  o: number;
   /** Its size on the screen (px). */
   w: number;
   h: number;
@@ -45,6 +52,10 @@ interface Tag {
 export class NameTags {
   private readonly tags: Tag[] = [];
   private made = false;
+  /** The names' layer, and the interface's root it follows (its size `--u`, `ui=0`, reduce motion). */
+  private layer: HTMLElement | null = null;
+  private root: HTMLElement | null = null;
+  private u = '';
   private readonly v = new Vector3();
   /** Tags placed this frame, and their rectangles on the screen (x0, x1, y0, y1 each). */
   private used = 0;
@@ -56,13 +67,21 @@ export class NameTags {
     const root = document.getElementById('ui');
     if (!root) return false;
     injectStyle();
+    const layer = document.createElement('div');
+    layer.className = 'pl-names';
+    layer.setAttribute('aria-hidden', 'true');
+    if (root.style.display === 'none') layer.style.display = 'none';
+    root.after(layer);
+    this.layer = layer;
+    this.root = root;
+    addPhotoLayer((g, _w, _h, sx, sy) => this.paint(g, sx, sy));
     for (let k = 0; k < NAME_TAGS; k++) {
       const el = document.createElement('div');
       el.className = 'pl-name';
       el.setAttribute('aria-hidden', 'true');
       el.innerHTML = '<span class="pl-latin"></span><span class="pl-km"></span><i class="pl-talk"><b></b><b></b><b></b></i>';
-      root.append(el);
-      this.tags.push({ el, latin: el.children[0] as HTMLElement, km: el.children[1] as HTMLElement, sid: -1, name: '', party: false, talk: false, shown: false, w: 0, h: 0 });
+      layer.append(el);
+      this.tags.push({ el, latin: el.children[0] as HTMLElement, km: el.children[1] as HTMLElement, sid: -1, name: '', party: false, talk: false, shown: false, x: 0, y: 0, o: 0, w: 0, h: 0 });
     }
     return true;
   }
@@ -70,6 +89,14 @@ export class NameTags {
   /** A frame's names begin (then `add` the nearest first, then `end`). */
   begin(): void {
     this.used = 0;
+    // (the interface's size and calm, as the tags were inside it)
+    const root = this.root;
+    const layer = this.layer;
+    if (!root || !layer) return;
+    const u = root.style.getPropertyValue('--u');
+    if (u !== this.u) layer.style.setProperty('--u', (this.u = u) || '1');
+    const calm = root.classList.contains('mu-calm');
+    if (calm !== layer.classList.contains('mu-calm')) layer.classList.toggle('mu-calm', calm);
   }
 
   /**
@@ -114,6 +141,9 @@ export class NameTags {
     const o = Math.max(0, Math.min(1, (NAME_NEAR - d) / NAME_FADE));
     t.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
     t.el.style.opacity = o.toFixed(2);
+    t.x = sx;
+    t.y = sy;
+    t.o = o;
     if (!t.shown) {
       t.shown = true;
       t.el.style.visibility = 'visible';
@@ -123,6 +153,52 @@ export class NameTags {
   /** Hide the tags not used this frame. */
   end(): void {
     for (let k = this.used; k < this.tags.length; k++) this.hide(this.tags[k]);
+  }
+
+  /**
+   * The names shown now, painted into a photo (photoLayers.ts; `sx`, `sy` CSS px to the photo's px): the same words,
+   * fonts, colours and dark outline as on the screen. False when none shows (or the layer is hidden).
+   */
+  private paint(g: CanvasRenderingContext2D, sx: number, sy: number): boolean {
+    const layer = this.layer;
+    if (!layer || this.used === 0 || layer.style.display === 'none' || getComputedStyle(layer).visibility === 'hidden') return false;
+    let drew = false;
+    g.textAlign = 'center';
+    g.textBaseline = 'bottom';
+    for (let k = 0; k < this.used; k++) {
+      const t = this.tags[k];
+      if (!t.shown || t.o <= 0.01) continue;
+      const lines = [t.latin, t.km].filter((e) => e.style.display !== 'none' && e.textContent);
+      if (!lines.length) continue;
+      g.save();
+      g.globalAlpha = t.o;
+      g.scale(sx, sy);
+      // (bottom up: the Khmer line under the Latin one, as the tag stacks them)
+      let y = t.y;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const e = lines[i];
+        const cs = getComputedStyle(e);
+        const size = Number.parseFloat(cs.fontSize) || 14;
+        g.font = `${cs.fontWeight} ${size}px ${cs.fontFamily}`;
+        const text = e.textContent ?? '';
+        g.lineJoin = 'round';
+        g.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        g.lineWidth = Math.max(2, size * 0.18);
+        g.shadowColor = 'rgba(0, 0, 0, 0.85)';
+        g.shadowBlur = 3;
+        g.shadowOffsetY = 1;
+        g.strokeText(text, t.x, y);
+        g.shadowColor = 'transparent';
+        g.fillStyle = cs.color;
+        g.globalAlpha = t.o * (Number.parseFloat(cs.opacity) || 1);
+        g.fillText(text, t.x, y);
+        g.globalAlpha = t.o;
+        y -= size * 1.15;
+      }
+      g.restore();
+      drew = true;
+    }
+    return drew;
   }
 
   private hide(t: Tag): void {
@@ -138,6 +214,9 @@ function injectStyle(): void {
   styled = true;
   const s = document.createElement('style');
   s.textContent = `
+    .pl-names { position: fixed; inset: 0; z-index: 5; overflow: hidden; pointer-events: none; --u: 1; --px: calc(1px * var(--u));
+      -webkit-font-smoothing: antialiased; font-synthesis: none; user-select: none; -webkit-user-select: none; }
+    body.reporting .pl-names, body.st-on .pl-names, body.roam-bino .pl-names { visibility: hidden; }
     .pl-name { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 0;
       visibility: hidden; pointer-events: none; white-space: nowrap; will-change: transform, opacity; color: #fff; line-height: 1.15;
       text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 1px #000; }
@@ -153,7 +232,7 @@ function injectStyle(): void {
     .pl-talk b:nth-child(3) { animation-delay: -0.5s; animation-duration: 0.8s; }
     .pl-talking .pl-talk { display: flex; }
     @keyframes pl-talk { from { transform: scaleY(0.3); } to { transform: scaleY(1); } }
-    .mu-calm ~ .pl-name .pl-talk b, .mu-calm .pl-talk b { animation: none; transform: scaleY(0.75); }
+    .mu-calm .pl-talk b { animation: none; transform: scaleY(0.75); }
   `;
   document.head.append(s);
 }
