@@ -8,9 +8,11 @@
 //
 // Env: SHOT_W / SHOT_H viewport (1280×800), SHOT_FULL=1 capture the whole page,
 // SHOT_OUT=dir output folder, SHOT_BASE=http://localhost:5173 use a running dev
-// server instead of starting one (faster when taking many shots).
-import { mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+// server instead of starting one (faster when taking many shots), SHOT_GPU=1 draw on the GPU (Playwright's
+// full Chromium, Metal: the night's glow and water as a player sees them, and much faster than the CPU).
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { chromiumPath } from './chromium.mjs';
@@ -43,11 +45,24 @@ const server = process.env.SHOT_BASE ? null : await createServer({ root, logLeve
 await server?.listen();
 const base = process.env.SHOT_BASE ?? `http://localhost:${server.resolvedUrls?.local?.[0] ? new URL(server.resolvedUrls.local[0]).port : (server.config.server.port ?? 5199)}`;
 
-const executablePath = chromiumPath();
-const browser = await chromium.launch({
-  executablePath,
-  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
-});
+/** Playwright's full Chromium (it draws with the GPU headless; the headless shell does not): as scripts/video.mjs. */
+function gpuChromium() {
+  if (process.env.CHROMIUM) return process.env.CHROMIUM;
+  const cache = process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(homedir(), process.platform === 'darwin' ? 'Library/Caches/ms-playwright' : '.cache/ms-playwright');
+  const app = process.platform === 'darwin' ? 'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' : 'chrome-linux/chrome';
+  for (const dir of existsSync(cache) ? readdirSync(cache).filter((d) => /^chromium-\d+$/.test(d)).sort().reverse() : []) {
+    const exe = join(cache, dir, app);
+    if (existsSync(exe)) return exe;
+  }
+  return undefined;
+}
+
+const gpu = process.env.SHOT_GPU === '1';
+const browser = await chromium.launch(
+  gpu
+    ? { executablePath: gpuChromium(), args: ['--use-angle=metal', '--ignore-gpu-blocklist', '--enable-gpu'] }
+    : { executablePath: chromiumPath(), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },
+);
 const page = await browser.newPage({ viewport: { width, height } });
 page.on('pageerror', (e) => console.error('[pageerror]', e.message));
 page.on('console', (m) => {
