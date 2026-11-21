@@ -63,11 +63,13 @@ export class StageGlow {
         const n = f.night;
         const k = n * n * (3 - 2 * n);
         flames.uniforms.uTime.value = f.t;
-        flames.uniforms.uLevel.value = 0.8 + k * 2.1;
+        // (bright enough to bloom, not so bright the flames go white: they keep their gold and orange)
+        flames.uniforms.uLevel.value = 0.75 + k * 0.7;
         flames.uniforms.uPulse.value = 0.12 + k * 0.08;
         flames.uniforms.uNearLevel.value = 1;
         gilt.uniforms.uTime.value = f.t;
-        gilt.uniforms.uLevel.value = 0.62 + k * 1.9;
+        // (gilt lines that read as gold at night, a soft bloom, never a white-hot rim round the board)
+        gilt.uniforms.uLevel.value = 0.62 + k * 0.75;
         gilt.uniforms.uNearLevel.value = 1;
         halo.uniforms.uTime.value = f.t;
         halo.uniforms.uScale.value = pointScale(renderer, f.camera);
