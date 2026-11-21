@@ -8,7 +8,8 @@ import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { onTemple } from '../roam/_flag';
 import { LAKE_STAGE } from './plan';
-import { GOLD, pick, type Tones } from './_sqKit';
+import { clampBulbs } from './_sqGlow';
+import { GOLD, kitFire, pick, type Tones } from './_sqKit';
 
 /**
  * The lake venue's shared bits (AWP-35, `lake.ts`): the stage's frame on the water, the woods and lacquer, the glowing
@@ -86,6 +87,10 @@ export const smooth = (a: number, b: number, x: number): number => {
 export class Bodies {
   private readonly items: { p: [number, number, number]; s: [number, number, number]; c: number; k: number; ry: number }[] = [];
   readonly material = new MeshBasicMaterial({ color: 0xffffff });
+  constructor() {
+    // (the bulbs — anything under 0.2 m — stay small bright points at any distance: the Kulen square's rule, `_sqGlow.ts`)
+    clampBulbs(this.material);
+  }
   get count(): number {
     return this.items.length;
   }
@@ -164,7 +169,7 @@ export function wire(kit: Kit, p: V3, q: V3, sag: number, thick = 0.025): void {
   }
 }
 
-/** A string of bulbs from p to q sagging `sag` m: the wire, a bulb every `every` m, a small halo on every `haloEvery`th. */
+/** A string of bulbs from p to q sagging `sag` m: the wire, a bulb every `every` m, a small halo on every `haloEvery`th (0: none). */
 export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3, q: V3, sag: number, every: number, haloEvery = 3): void {
   wire(kit, p, q, sag);
   const len = Math.hypot(q.x - p.x, q.z - p.z);
@@ -176,7 +181,7 @@ export function stringLights(kit: Kit, bodies: Bodies, glow: Glow | null, p: V3,
     const y = p.y + (q.y - p.y) * t - sag * 4 * t * (1 - t) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
     bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glow && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
+    if (glow && haloEvery > 0 && i % haloEvery === 0) glow.add(x, y, z, c, 0.7, { level: 0.22 });
   }
 }
 
@@ -219,6 +224,77 @@ export function lanternPole(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glo
   for (const s of [-1, 1]) towerLantern(b, kit, bodies, glow, x + cx * s * 0.85, ay - 0.05, z + cz * s * 0.85, 0.45, Math.round(x * 3 + s), src, ry);
   return { x, y: g + h - 0.15, z };
 }
+
+// ── Fire: in bowls on pillars, braziers ──────────────────────────────────────
+
+const EMBER = 0xff9a3a;
+/** Bronze: the bowls. */
+export const BRONZE: Tones = [0x5c4430, 0x664c36, 0x6e5238, 0x54402e];
+
+/**
+ * A fire burning in a bowl whose rim is at (x, y, z), `s` its size (1: a bowl ≈ 1 m across): the Kulen square's live
+ * fire (`_sqKit.ts` `kitFire`: tongues that leap, narrow and sway in the kit's shader, orange and gold, never white),
+ * embers rising and fading (the kit's `ANIM.arc`; not on low), a small halo (the glow's slow flicker). Every motion is
+ * in the kit's shaders: nothing to update. (`bodies`: kept for the callers; the fire has no glowing box of its own.)
+ */
+export function fire(kit: Kit, bodies: Bodies | null, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean): void {
+  void bodies;
+  const r = (i: number, k: number) => hash3(seed, i, k, 97);
+  kitFire(kit, x, y, z, 1.35 * s, seed);
+  if (!low)
+    for (let i = 0; i < 3; i++) {
+      const period = [2, 2.4, 3][i];
+      kit.box(x + (r(i, 9) - 0.5) * 0.4 * s, y + 0.35 * s, z + (r(i, 10) - 0.5) * 0.4 * s, 0.045, 0.045, 0.045, EMBER, {
+        anim: ANIM.arc,
+        a: [r(i, 11), period, 1.5],
+        b: [(r(i, 12) - 0.5) * 0.3, 0.75 + 0.3 * r(i, 13), (r(i, 14) - 0.5) * 0.3, -0.25],
+        glow: 1.2,
+        show: SHOW.night,
+      });
+    }
+  glow?.add(x, y + 0.45 * s, z, 0xffa040, 2.6 * s, { level: 0.65 });
+}
+
+/**
+ * A bronze fire bowl standing on (x, y, z) (a pillar's top, a pedestal), `s` its size (1: ≈ 1 m across): a foot, the
+ * bowl flaring out in two courses, a lip; the fire in it (`fire`). Blocks in `b` (stone: solid, it stands on things).
+ */
+export function fireBowl(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: number, z: number, s: number, seed: number, low: boolean, src: SourceTrace | undefined, ry = 0): void {
+  const t = (k: number) => pick(BRONZE, x, z, k, seed);
+  b.box(x, y + 0.07 * s, z, 0.42 * s, 0.14 * s, 0.42 * s, t(1), 'mapStone', { src, ry, shade: 0.92 });
+  b.box(x, y + 0.22 * s, z, 0.7 * s, 0.16 * s, 0.7 * s, t(2), 'mapStone', { src, ry });
+  b.box(x, y + 0.36 * s, z, 0.92 * s, 0.13 * s, 0.92 * s, t(3), 'mapStone', { src, ry, shade: 1.04 });
+  b.box(x, y + 0.45 * s, z, 1.02 * s, 0.06 * s, 1.02 * s, pick(GOLD, x, z, 4, seed), 'mapStone', { src, ry, shade: 0.9 });
+  fire(kit, bodies, glow, x, y + 0.42 * s, z, s, seed, low);
+}
+
+/**
+ * A lamp post (as on the plaza's rim): a laterite foot, a red-lacquer post `h` m tall, gilt collars, a small Angkor
+ * tower top (corbelled tiers, a gilt bud), and an arm toward `yaw` (radians toward (sin, cos) in x, z) with a tower
+ * lantern hanging from it. Returns the point string lights tie to (under the tower top).
+ */
+export function lampPost(b: VoxelBuilder, kit: Kit, bodies: Bodies, glow: Glow | null, x: number, g: number, z: number, h: number, yaw: number, seed: number, src: SourceTrace | undefined): V3 {
+  b.box(x, g + 0.18, z, 0.56, 0.42, 0.56, pick(LATERITE_LK, x, z, 1, seed), 'mapStone', { src, shade: 0.95 });
+  b.box(x, g + 0.43, z, 0.4, 0.1, 0.4, 0xbfae90, 'mapStone', { src });
+  b.box(x, g + h / 2, z, 0.17, h, 0.17, pick(LACQUER, x, z, 2, seed), 'mapStone', { src });
+  for (const k of [0.3, 0.75]) b.box(x, g + h * k, z, 0.24, 0.1, 0.24, pick(GOLD, x, z, 3 + k, seed), 'mapStone', { src, shade: 1.02 });
+  let y = g + h;
+  for (const [k, w] of [0.36, 0.28, 0.2, 0.12].entries()) {
+    b.box(x, y + 0.06, z, w, 0.12, w, k % 2 ? 0xbfae90 : pick(GOLD, x, z, 6 + k, seed), 'mapStone', { src, shade: 1 + 0.02 * k });
+    y += 0.12;
+  }
+  b.box(x, y + 0.08, z, 0.08, 0.16, 0.08, pick(GOLD, x, z, 11, seed), 'mapStone', { src, shade: 1.1 });
+  // The arm and its lantern.
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  const ay = g + h - 0.35;
+  b.box(x + fx * 0.42, ay, z + fz * 0.42, 0.84, 0.08, 0.08, pick(LACQUER, x, z, 12, seed), 'mapStone', { src, ry: yaw - Math.PI / 2 });
+  towerLantern(b, kit, bodies, glow, x + fx * 0.78, ay - 0.04, z + fz * 0.78, 0.3, seed, src, yaw);
+  return { x, y: g + h - 0.1, z };
+}
+
+/** Laterite (the posts' feet: the Kulen square's, `_sqKit.ts`). */
+const LATERITE_LK: Tones = [0x9c6d50, 0x916349, 0xa67858, 0x8a5e46];
 
 // ── Banners: red cloth with the white Angkor Wat, hanging from a bar ──────────
 

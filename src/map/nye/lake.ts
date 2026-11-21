@@ -1,4 +1,4 @@
-import { Group, Sphere, Vector3, type Mesh, type Points } from 'three';
+import { Group, Sphere, Vector3, type Mesh, type Points, type ShaderMaterial } from 'three';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { buildVoxelMesh } from '../../voxel/VoxelMesh';
 import { ShadowGate } from '../cull';
@@ -12,8 +12,9 @@ import type { MapContext, MapFrame } from '../types';
 import { buildBoard } from './board';
 import { nightHeld, nyeSeconds } from './clock';
 import type { NyePiece } from './index';
-import { LAKE_SHORE, LAKE_STAGE } from './plan';
+import { LAKE_GATE, LAKE_SHORE, LAKE_STAGE, lakePlazaAt } from './plan';
 import { buildBeams } from './_sqGlow';
+import { buildNyeRing } from './_sqRing';
 import { Bodies, lakeFrame, smooth } from './_lkKit';
 import { growLakeMeadow } from './_lkMeadow';
 import { buildLakeShore } from './_lkShore';
@@ -32,9 +33,10 @@ import { dressLakeWater } from './_lkWater';
  *   (`board.ts`, 10 × 5 m, the same states as Kulen's: clock.ts `boardAt`) under three lotus-bud towers outlined in
  *   bulbs, red banners with the white Angkor Wat on tall poles. Its blocks lie square to it in a turned group (one voxel
  *   draw, the carving one more).
- * - The shore (`_lkShore.ts`): the terrace, the ghat down into the water, the jetty to the stage, the balustrade and
- *   lamps, lantern poles and the string lights fanning from the stage, flags of Cambodia, flower beds and trees, paths
- *   to the lake trail and the east shore trail.
+ * - The shore (`_lkShore.ts`): the round plaza (`_lkPlaza*.ts`: concentric pavers round a gold lotus mandala — the
+ *   Kulen ring's painting, `_sqRing.ts` — the ring wall with fire pillars, lamp posts and string lights, the Bayon-face
+ *   gate with naga along its avenue, two salas, food stalls, flower beds, a lily pond), the ghat down into the water,
+ *   the jetty to the stage, lantern poles and the string lights fanning from the stage, flowering trees.
  * - The garden round it (`_lkMeadow.ts`): groves, blossom trees, palms by the water, bananas, shrubs, tall grass, reeds,
  *   lilies, the fishermen's corner (nets drying, fish traps, a skiff on the sand), stepping stones; in the shore's mesh.
  * - On the water (`_lkWater.ts`): floating lotus candles from the ghat and round the stage, lily pads and glowing
@@ -46,10 +48,13 @@ import { dressLakeWater } from './_lkWater';
  *   brighter; with the count the stage's light beats.
  *
  * Draws: the stage's blocks and carving (2), the shore's blocks (a mesh per family: stone, leaf, bark, petal), the kit
- * (cloth, flags, wires, candles, boats, blossom: 1), the glowing boxes (gilt, bulbs, lantern glass: 1), the stage's
- * live flames (1; on low they are glowing boxes), the glow (halos, streaks: 1), the board (1), the naga (1, once
- * sculpted), the deep water (1, at night); on the event night the extra candles and the flotilla (2) and the beams (1). Two real lights at night (sky/lampSlots.ts): over the stage's front and over the terrace. Nothing moves
- * but in shaders and the board's texture (the part is FROZEN): the stage's group is turned once, at the build.
+ * (cloth, flags, wires, candles, boats, blossom, the plaza's fire tongues and embers: 1), the glowing boxes (gilt, bulbs,
+ * lantern glass, the plaza's fires' hearts: 1), the stage's live flames (1; on low they are glowing boxes), the glow
+ * (halos, streaks: 1), the board (1), the naga (1, once sculpted), the deep water (1, at night); but on low the plaza's
+ * mandala (1) and the naga by its gate (1); on the event night the extra candles and the flotilla (2) and the beams (1).
+ * Two real lights at night (sky/lampSlots.ts): over the stage's front, and out over the plaza's avenue before its gate
+ * (the gate's face, the plaza's back half). Nothing moves but in shaders and the board's texture (the part is FROZEN):
+ * the stage's group is turned once, at the build.
  */
 export function buildNyeLake(ctx: MapContext): NyePiece {
   const t0 = performance.now();
@@ -80,6 +85,16 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const meadowKit = kit.count - kitBefore;
   const shoreMesh = buildVoxelMesh(sb, { quality: low ? 'low' : 'medium', name: 'nye:lake:shore' });
   object.add(shoreMesh);
+  // The plaza's gold lotus mandala (the Kulen ring's painting: one additive quad; not on low, where the paving's
+  // darker disc and gilt middle stone carry it).
+  const m = shore.plaza.mandala;
+  const ring = low ? null : buildNyeRing(m.x, m.y, m.z, m.r, false);
+  if (ring) {
+    // (a little dimmer than the Kulen square's: thin bright lines on dark stone, not a pool of light)
+    (ring.mesh.material as ShaderMaterial).uniforms.uColor.value.multiplyScalar(0.8);
+    ring.mesh.name = 'nye:lake:mandala';
+    object.add(ring.mesh);
+  }
   const tShore = performance.now();
   const water = dressLakeWater(field, fr, kit, glow, eventKit, lights, shore.waterEdge, low);
   // (the stage on the water: no trees, nothing else built there)
@@ -148,19 +163,27 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       sacred.add(stairNaga({ ...stage.naga, look: 'stone', hide: 320 }));
     }),
   );
+  // (and the plaza's two along its avenue, by the gate: not on low)
+  const plazaNaga = shore.plaza.naga;
+  if (plazaNaga) void trackSacred(Promise.all([nagaFanReady('stair'), nagaFanReady('stairFar')]).then(() => void sacred.add(stairNaga({ ...plazaNaga, look: 'stone', hide: 260 }))));
 
-  // ── Two real lights at night: before the stage, over the terrace ──
+  // ── Two real lights at night: before the stage, over the plaza's avenue before its gate ──
   const [sx, sz] = fr.at(0, LAKE_STAGE.d / 2 + 3);
   const stageAt = new Group();
   stageAt.position.set(sx, fr.deck + 3.6, sz);
   stageAt.name = 'nye lake stage light';
   const terraceAt = new Group();
-  terraceAt.position.set(LAKE_SHORE.x, field.heightAt(LAKE_SHORE.x, LAKE_SHORE.z) + 7, LAKE_SHORE.z);
+  {
+    // (out over the avenue before the plaza's gate: it lights the gate's face and the plaza's back half through it; the
+    // stage's light reaches the plaza's front half, the mandala glows in the middle)
+    const [tx, tz] = lakePlazaAt(LAKE_GATE.phi, 28);
+    terraceAt.position.set(tx, field.heightAt(tx, tz) + 8.5, tz);
+  }
   terraceAt.name = 'nye lake terrace light';
   object.add(stageAt, terraceAt);
   // (a warm white, not orange: the stone should read pale sandstone lit by fire, not an orange box)
   const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffc488, distance: 32, anchor: stageAt });
-  const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffb060, distance: 30, anchor: terraceAt });
+  const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffc488, distance: 44, anchor: terraceAt });
 
   const shadows = new ShadowGate(true).addAll(object);
   object.updateMatrixWorld(true);
@@ -226,8 +249,9 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
       beams.mesh.visible = event * lit > 0.001;
       const breathe = 1 + 0.06 * Math.sin(f.t * 2.3) + 0.04 * Math.sin(f.t * 3.7);
       stageLamp.intensity = 150 * lit * breathe * (1 + 0.45 * event + 0.5 * pulse);
-      terraceLamp.intensity = 95 * lit * (1 + 0.3 * event);
+      terraceLamp.intensity = 105 * lit * (1 + 0.3 * event);
       board.update(f);
+      ring?.update(n, event, now);
       sacred.update(f);
       shadows.update(f);
     },
