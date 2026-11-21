@@ -1,6 +1,10 @@
-import { DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3, type Camera, type Light, type Scene } from 'three';
+import { Color, DirectionalLight, Fog, Group, HemisphereLight, Matrix4, Vector3, type Camera, type Light, type Scene } from 'three';
 import { dealStillParts, graphicsNow, PHONE, STILL_LAYER, STILL_PART_LAYER, STILL_TURN, stillView } from './graphics';
 import { MAP_BOUNDS } from './layout';
+import { nightHeld } from './nye/clock';
+
+/** On New Year's Eve's night, the mist's colours this far toward the sky's far blue (0 none, 1 all). */
+const NYE_MIST = 0.6;
 import { CAM_REACH, ROAM_AREA } from './terrain/views';
 import { SHORT_NOW } from './shortView';
 import { skipDarkLights } from './sky/darkLights';
@@ -197,6 +201,9 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
   let lastDrift = NaN;
   /** How much the eye has got used to the shade under the leaves (0‥1, eased). */
   let under = 0;
+  /** How far the mist has sunk toward the night's far blue for New Year's Eve (0‥`NYE_MIST`). */
+  let held = 0;
+  const _mist = new Color();
 
   // ── Still shadows drawn over a few frames ──
   // The next map belongs to a light of its own that never lights anything
@@ -379,8 +386,11 @@ export function buildAtmosphere(ctx: MapContext): Atmosphere {
       fog.far = s.hazeFar;
       HAZE.sunDir.fromVector(s.glowDir);
       HAZE.sunColor.fromColor(s.hazeSun);
-      HAZE.lowColor.fromColor(s.mistShade);
-      HAZE.mistLit.fromColor(s.mistLit);
+      // (New Year's Eve's night, AWP-35: the sea of mist and its banks sink toward the far night blue, so the lake's horizon
+      // reads dark under the fireworks as in the owner's reference, not as a pale moonlit wall; eased in and out)
+      held += ((nightHeld() ? NYE_MIST * s.night : 0) - held) * (f.dt > 0 ? 1 - Math.exp(-f.dt / 4) : 1);
+      HAZE.lowColor.fromColor(held > 0.001 ? _mist.copy(s.mistShade).lerp(s.far, held) : s.mistShade);
+      HAZE.mistLit.fromColor(held > 0.001 ? _mist.copy(s.mistLit).lerp(s.far, held) : s.mistLit);
       HAZE.keyDir.fromVector(s.keyDir);
       HAZE.height.set(2, s.lowH, s.lowDensity);
       HAZE.height.w = s.lowMax;

@@ -12,6 +12,7 @@ import {
   ShaderMaterial,
   SrcColorFactor,
   Vector2,
+  Vector3,
   ZeroFactor,
 } from 'three';
 import { KIT_COMMON, type KitUniforms } from '../festival/_kit';
@@ -22,23 +23,27 @@ import { hazeUniforms } from '../sky/haze';
  * has a DEEP BLUE lake with a soft gold reflection under every light; the great lake's own water (water/surface.ts, the
  * map's) mirrors the pale moonlit sky at low angles, so round the stage it read grey-lavender and the warm light was lost.
  *
- * - `deepWater`: one flat disc lying just over the water round the venue, MULTIPLYING what is under it by a deep blue
- *   (darker and bluer; the moon's glints and the waves' pattern kept, only weaker): strongest round the stage and the
- *   lantern boats, gone by `r1`, at night only (gently, in full on the event night), fading into the haze with distance. Drawn first among the see-through
- *   things (`renderOrder` −1), so the reflections and the fireworks' mirror add over it.
+ * - `deepWater`: one flat disc lying just over the great lake, MULTIPLYING what is under it by a deep blue (darker and
+ *   bluer; the waves' pattern kept, only weaker), out to the far shore the venue looks across, gone by `r1`; at night
+ *   only (gently, in full on the event night), fading into the haze with distance and away as the camera leaves the
+ *   venue (`update`'s `fade`: the overview and the far map keep the lake as it was). The moon's path is spared: where
+ *   the water mirrors the moon's bearing (a column from under the moon toward the camera) it stays bright, as in the
+ *   owner's picture. Drawn first among the see-through things (`renderOrder` −1), so the reflections and the
+ *   fireworks' mirror add over it.
  * - `WaterLights`: the light ON the water — every lantern's, candle's, fire bowl's and bulb's reflection (a streak) and
  *   the halos of the things afloat — in ONE additive instanced draw. A streak lies on the water from under its light
- *   toward the camera, as long as the light stands high seen from where the camera is (its length on the water grows
- *   with the distance over the camera's height: from the terrace a long column, from above a short patch, the same
- *   size against its lantern either way), broken into ripples that drift toward the viewer and wobble sideways. Things
+ *   toward the camera, as a light's mirror image smeared by the ripples: on the screen it reaches down from the light's
+ *   foot about 1.6 times the light's own height there, plus a little (so from the terrace a long column on the water,
+ *   from above a short patch, the same against its lantern either way), broken into ripples evenly spaced on the screen
+ *   that drift toward the viewer and wobble sideways. Things
  *   afloat ride the festival kit's drift (`kDrift`, the same clock), so a boat's halo and streak stay under it. Lights of
  *   the event night only are drawn only then (`event`).
  */
 
 export interface DeepWater {
   mesh: Mesh;
-  /** Each frame: night 0‥1, the event night 0‥1. */
-  update(night: number, event: number): void;
+  /** Each frame: night 0‥1, the event night 0‥1, how near the camera is to the venue (1 near … 0 gone), the way to the moon (night: `MapFrame.lightDir`). */
+  update(night: number, event: number, fade: number, moon: Vector3): void;
 }
 
 /** The deep blue the water is multiplied by at the middle (linear light). */
@@ -54,6 +59,8 @@ export function deepWater(x: number, z: number, y: number, r0: number, r1: numbe
     uR: { value: new Vector2(r0, r1) },
     uTint: { value: TINT.clone() },
     uLevel: { value: 0 },
+    uY: { value: y },
+    uMoon: { value: new Vector3(0, 1, 0) },
   };
   const material = new ShaderMaterial({
     name: 'nye:lake:deep water',
@@ -83,14 +90,22 @@ export function deepWater(x: number, z: number, y: number, r0: number, r1: numbe
       uniform vec2 uR;
       uniform vec3 uTint;
       uniform float uLevel;
+      uniform float uY;
+      uniform vec3 uMoon;
       varying vec2 vXZ;
       void main() {
         float r = length(vXZ - uCenter);
         float k = uLevel * (1.0 - smoothstep(uR.x, uR.y, r));
+        // The moon's path spared: the view ray mirrored by the water, along the moon's bearing (a few degrees either side).
+        vec3 view = vec3(vXZ.x, uY, vXZ.y) - cameraPosition;
+        vec2 rxz = normalize(view.xz + vec2(1e-5, 0.0));
+        vec2 mxz = normalize(uMoon.xz + vec2(1e-5, 0.0));
+        float path = smoothstep(0.986, 0.9985, dot(rxz, mxz)) * smoothstep(0.0, 0.12, uMoon.y);
+        k *= 1.0 - 0.85 * path;
         #ifdef USE_FOG
-          // (less into the haze: far off the water is the haze's colour, which stays)
+          // (less into the haze, but not gone: the far lake under the haze reads deep blue to the horizon too)
           float hzDist = length(vFogWorld - cameraPosition);
-          k *= 1.0 - hazeDistance(hzDist);
+          k *= 1.0 - 0.5 * hazeDistance(hzDist);
         #endif
         gl_FragColor = vec4(mix(vec3(1.0), uTint, k), 1.0);
       }`,
@@ -104,10 +119,11 @@ export function deepWater(x: number, z: number, y: number, r0: number, r1: numbe
   geo.computeBoundingSphere();
   return {
     mesh,
-    update(night, event) {
+    update(night, event, fade, moon) {
       const n = night * night * (3 - 2 * night);
       // (gently on any night, in full on the event night)
-      uniforms.uLevel.value = n * (0.4 + 0.6 * event);
+      uniforms.uLevel.value = n * (0.4 + 0.6 * event) * fade;
+      uniforms.uMoon.value.copy(moon);
       mesh.visible = uniforms.uLevel.value > 0.01;
     },
   };
@@ -154,10 +170,10 @@ export class WaterLights {
 
   /**
    * The reflection of a light standing `high` m over the water at (x, wy, z) (wy: the water's level): a streak from
-   * under it toward the camera (its length on the water ≈ 1.7 × `high` × distance ÷ the camera's height over the water).
+   * under it toward the camera, on the screen ≈ 1.6 × the light's height seen from there, and ≈ 0.7° more.
    */
   streak(x: number, wy: number, z: number, high: number, color: number = REFLECT_WARM, o: WaterLightOpts = {}): void {
-    this.push(1, x, wy, z, color, 1.7 * high + 0.6, o);
+    this.push(1, x, wy, z, color, 1.6 * high + 0.3, o);
   }
 
   build(name: string, u: KitUniforms): { mesh: Mesh; update(level: number, event: number): void } {
@@ -227,13 +243,18 @@ export class WaterLights {
             float dist = max(length(toCam), 1e-3);
             vec2 dir = toCam / dist;
             vec2 side = vec2(-dir.y, dir.x);
-            float high = max(cameraPosition.y - p.y, 1.5);
-            float len = min(wCol.w * dist / high, dist * 0.6);
-            float wid = wMode.z + dist * 0.0025;
+            // (from the light's foot down the screen: its angle below the horizon grows evenly along the streak; back on the
+            // water that is a distance from the camera, never nearer than half a metre)
+            float eye = max(cameraPosition.y - p.y, 0.3);
+            float foot = atan(eye, dist);
+            float reach = wCol.w / dist + 0.012;
             float s = position.y + 0.5;
+            float ang = min(foot + s * reach, 1.5);
+            float near = max(eye / tan(ang), 0.5);
+            float wid = wMode.z + dist * 0.0025;
             // (the ripples bend it a little from side to side)
             float wob = 0.1 * wid * sin(s * 9.0 + uTime * ${((80 * Math.PI * 2) / 600).toFixed(5)} + wMode.y * 31.0);
-            vec2 xz = p.xz + dir * (s * len) + side * (position.x * wid + wob);
+            vec2 xz = p.xz + dir * max(dist - near, 0.0) + side * (position.x * wid + wob);
             mvPosition = viewMatrix * vec4(xz.x, p.y + 0.07, xz.y, 1.0);
             vUv = vec2(position.x * 2.0, s);
           }
@@ -258,13 +279,15 @@ export class WaterLights {
             float s = vUv.y;
             float x = vUv.x;
             // Broken into ripples drifting toward the viewer: bright dashes with dark water between.
-            float r1 = 0.5 + 0.5 * sin(s * 44.0 - uTime * ${((230 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 20.0);
-            float r2 = 0.5 + 0.5 * sin(s * 17.0 + uTime * ${((100 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 9.0);
-            float broken = smoothstep(0.3, 0.9, r1 * 0.7 + r2 * 0.45);
-            float across = exp(-x * x * (2.2 + 3.5 * (1.0 - broken)));
+            // (three ripples at odd lengths, so the dashes come uneven, never a string of beads)
+            float r1 = 0.5 + 0.5 * sin(s * 31.0 - uTime * ${((230 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 20.0);
+            float r2 = 0.5 + 0.5 * sin(s * 13.0 + uTime * ${((100 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 9.0);
+            float r3 = 0.5 + 0.5 * sin(s * 67.0 - uTime * ${((370 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 47.0);
+            float broken = smoothstep(0.25, 0.95, r1 * 0.5 + r2 * 0.35 + r3 * 0.3);
+            float across = exp(-x * x * (2.0 + 2.5 * (1.0 - broken)));
             // (clamped: s may come a hair over 1, and a NaN here would draw a black line through the bloom)
-            float along = smoothstep(0.0, 0.06, s) * pow(clamp(1.0 - s, 0.0, 1.0), 1.25);
-            a = along * across * (0.25 + 0.95 * broken);
+            float along = smoothstep(0.0, 0.05, s) * pow(clamp(1.0 - s, 0.0, 1.0), 0.85);
+            a = along * across * (0.4 + 0.8 * broken);
           }
           vec3 col = vCol * a;
           #ifdef USE_FOG
