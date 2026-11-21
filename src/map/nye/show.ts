@@ -549,7 +549,7 @@ function makeScript(): Rocket[] {
   signature(464.6, false, 1.1);
   signature(465.2, true, 1.05);
 
-  const out = [...m.out, ...lakeShow()].filter((r) => burstAt(r) < SHOW_LENGTH - 6);
+  const out = [...m.out, ...valleyShells('kulen'), ...lakeShow(), ...valleyShells('lake')].filter((r) => burstAt(r) < SHOW_LENGTH - 6);
   out.sort((a, b) => a.t - b.t || a.seed - b.seed || (a.site === b.site ? 0 : a.site === 'kulen' ? -1 : 1));
   return out;
 }
@@ -825,5 +825,64 @@ function lakeShow(): Rocket[] {
   for (let i = 0; i < 3; i++) shell(462.7 + i * 0.15 + rnd() * 0.05, 'low', 'crackle', i % 2 ? 'white' : 'gold', 230 + i * 8);
   signature(464.6, false, 1.1);
   signature(465.2, true, 1.0);
+  return m.out;
+}
+
+// ── The valley shells ───────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Low shells, small to mid (13‥26 m), 25‥60 m up: over the Kulen pool, the picnic place and the plain east of the falls
+// (in front of the falls' benches, which hide what is behind them from over the square), and over the water just behind
+// the lake stage, in front of the big shells' falling gold; so the views from above (over the square, over the lake's
+// plaza: their pictures end a few degrees over the horizon) have bursts in them too, while the crowds see them low under
+// the big ones. A few through the show, more as it builds, a steady stream through the finale in colours that stand out
+// from its gold willows. Their own seeds: the rest of the script is as it was.
+// `Rocket.close`: on low graphics drawn only near their site.
+
+/** Kulen's: bearing (° right of north) and distance (m) from the square, radius (m), height over the sea (m). */
+const VALLEY = { b: [38, 64], d: [78, 120], size: [13, 20], y: [30, 58] };
+/** In the finale, colours that stand out from its gold willows. */
+const FINALE_VALLEY: readonly ShowColour[] = ['purple', 'lotus', 'ice', 'jade', 'lotus', 'purple'];
+/** The lake's: bearing and distance from the terrace, radius, height over the sea. */
+const LAKE_VALLEY = { b: [206, 256], d: [110, 165], size: [18, 26], y: [26, 44] };
+
+function valleyShells(site: ShowSite): Rocket[] {
+  const lake = site === 'lake';
+  const m = new Maker(mulberry32(lake ? 0x2027_1a11 : 0x2027_0a11), site, lake ? () => DECK : hillAt);
+  const rnd = m.rnd;
+  const V = lake ? LAKE_VALLEY : VALLEY;
+  const spot = (): Spot => {
+    let b = V.b[0] + rnd() * (V.b[1] - V.b[0]);
+    const d = V.d[0] + rnd() * (V.d[1] - V.d[0]);
+    const size = V.size[0] + rnd() * (V.size[1] - V.size[0]);
+    const y0 = V.y[0] + rnd() * (V.y[1] - V.y[0]);
+    if (lake) {
+      for (let k = 0; k < 40 && !inGreatLake(...fromShore(b, d), 0.25 * size + 6); k++) b += Math.sign(245 - b) * 2;
+      const [x, z] = fromShore(b, d);
+      return { x, z, size, y: Math.max(y0, WATER + 14 + 0.5 * size) };
+    }
+    const x = CAM[0] + Math.sin(b * DEG) * d;
+    const z = CAM[2] - Math.cos(b * DEG) * d;
+    return { x, z, size, y: Math.max(y0, hillAt(x, z) + 11 + 0.5 * size) };
+  };
+  const fire = (at: number) => {
+    const k = rnd();
+    const kind: BurstKind = k < 0.45 ? 'peony' : k < 0.8 ? 'chrysanthemum' : k < 0.9 ? 'ring' : 'crackle';
+    const c: ShowColour = kind === 'crackle' ? (rnd() < 0.5 ? 'gold' : 'white') : at > 425 ? m.pick(FINALE_VALLEY) : rnd() < 0.1 ? m.pick(ACCENT) : m.pick(BRIGHT);
+    const s = spot();
+    let r: Rocket;
+    if (lake) {
+      const b = bargeNear(s.x, s.z);
+      r = m.fireFrom(at, s, b.x + (rnd() - 0.5) * 3, b.z + (rnd() - 0.5) * 3, Math.min(4, 1.2 + Math.sqrt(s.y - DECK) * 0.17 + rnd() * 0.25), kind, c, m.pick(SECOND[c] ?? [c]));
+    } else r = m.fire(at, s, kind, c, m.pick(SECOND[c] ?? [c]));
+    r.close = true;
+    return r;
+  };
+  const signatures = [7.2, 205, 338];
+  // (how often, by the acts: a few through the show, more as it builds, a stream through the finale)
+  const gap = (t: number): number => (t < 70 ? 3.4 : t < 180 ? 2.4 : t < 290 ? 1.6 : t < 400 ? 0.95 : t < 425 ? 6 : lake ? 0.85 : 0.6);
+  for (let t = 12; t < 462; t += gap(t) * (0.8 + 0.4 * rnd())) {
+    if (signatures.some((sg) => Math.abs(t - sg) < 2.6) || (t > 21 && t < 29)) continue;
+    fire(t);
+  }
   return m.out;
 }

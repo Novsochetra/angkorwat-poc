@@ -832,8 +832,8 @@ export function buildBeams(
   geo.instanceCount = bases.length;
   // (bound: the beams' reach; the map's culling reads it)
   geo.boundingSphere = bound;
-  // (uShow: the fireworks show playing, 0‥1: the beams dim by half and fan out low to the sides, so they never cross
-  // the bursts; set from the clock as the mesh draws, below)
+  // (the beams fan out in a V, never crossing in an X; uShow: the fireworks show playing, 0‥1: they dim by half and
+  // fan out lower still, clear of the bursts; set from the clock as the mesh draws, below)
   const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uShow: { value: 0 }, uColor: { value: new Color(0xffd890) }, uStrength: { value: look.level ?? 0.3 }, uWidth: { value: look.width ?? 34 } };
   const material = new ShaderMaterial({
     name: 'nye:beams',
@@ -853,8 +853,8 @@ export function buildBeams(
       uniform float uShow;
       varying vec2 vUv;
       void main() {
-        float az = bAim.x + bAim.z * (1.0 - 0.6 * uShow) * sin(uTime * bAim.w + bBase.w);
-        float el = bAim.y + 0.08 * sin(uTime * bAim.w * 0.71 + bBase.w * 1.3) - 0.45 * uShow;
+        float az = bAim.x + bAim.z * (0.6 - 0.2 * uShow) * sin(uTime * bAim.w + bBase.w);
+        float el = bAim.y + 0.08 * sin(uTime * bAim.w * 0.71 + bBase.w * 1.3) - 0.25 - 0.2 * uShow;
         vec3 dir = vec3(cos(el) * sin(az), sin(el), cos(el) * cos(az));
         float t = position.y + 0.5;
         vec3 p = bBase.xyz + dir * (t * 260.0);

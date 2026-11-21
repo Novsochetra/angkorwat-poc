@@ -157,7 +157,7 @@ export const FW_VERTEX = /* glsl */ `
     vec4(1.5, 1.4, 3.9, 1.25), vec4(2.0, 0.35, 1.7, 0.12), vec4(4.5, 0.9, 5.2, 0.3));
   // KB: width (m, for a 40 m burst: bigger shells have bigger stars), brightness, embers from (share of life), speed spread
   const vec4 KB[8] = vec4[8](vec4(0.8, 2.1, 0.6, 0.07), vec4(0.7, 1.9, 0.5, 0.1), vec4(0.6, 0.85, 0.5, 0.3), vec4(0.5, 1.3, 0.95, 0.6), vec4(0.75, 2.1, 0.6, 0.04),
-    vec4(1.2, 1.8, 0.55, 0.0), vec4(0.5, 1.9, 0.5, 0.25), vec4(1.35, 3.0, 0.7, 0.0));
+    vec4(1.5, 1.15, 0.55, 0.0), vec4(0.5, 1.9, 0.5, 0.25), vec4(1.35, 3.0, 0.7, 0.0));
   // KC: a ring (1), crackles (1), flicker, a trail's tail brightness
   const vec4 KC[8] = vec4[8](vec4(0.0, 0.0, 0.12, 0.15), vec4(0.0, 0.0, 0.3, 0.12), vec4(0.0, 0.0, 0.25, 0.04), vec4(0.0, 1.0, 0.0, 0.3), vec4(1.0, 0.0, 0.12, 0.15),
     vec4(0.0, 0.0, 0.15, 0.2), vec4(0.0, 0.0, 0.65, 0.3), vec4(0.0, 0.0, 0.1, 0.4));
@@ -299,11 +299,13 @@ export const FW_VERTEX = /* glsl */ `
       float az = arm * 6.2831853 / arms + seed * 6.2831853 + (hash(arm, seed * 11.0) - 0.5) * 0.4;
       float el = mix(0.12, 1.1, hash(arm + 3.0, seed * 17.0));
       vec3 armDir = vec3(cos(az) * cos(el), sin(el), sin(az) * cos(el));
-      dir = normalize(mix(mix(dir, ring, kc.x) + jit, armDir + jit * 0.35, ke.x));
+      dir = normalize(mix(mix(dir, ring, kc.x) + jit, armDir + jit * 0.1, ke.x));
       float k = ka.x;
       float g = 9.8 * ka.y;
       float life = ka.z * (0.85 + 0.3 * h2);
-      vec3 v0 = dir * size * k * mix(1.0 - kb.w * h1, 1.0 - 0.45 * along, ke.x);
+      // (a palm's stars leave close together along each arm, so the arm is one smooth thick stroke, not a comb of
+      // separate drooping trails)
+      vec3 v0 = dir * size * k * mix(1.0 - kb.w * h1, 1.0 - 0.14 * along, ke.x);
       // (the signature: spark j to point j·N/n of the picture, turned to face d5.xy, a stroke on to the next point)
       float N = max(uShapeN, 1.0);
       float i0 = min(floor(fj * N / n), N - 1.0);
