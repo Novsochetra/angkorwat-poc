@@ -2369,6 +2369,13 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
       falling from the flowering trees and lying a few seconds; the edge strings sway. Counts by quality (`COUNTS`),
       all posed in vertex shaders from one time, no matrices; fliers and fireflies go in rain. The kit's `ANIM.wave`
       takes a ripple down the cloth (`b.y` rad/m, `b.z` the box's top under the cloth's) and shades the folds.
+      The canopy's strings (the stage gate's fans, pole to pole, the lantern walk's) and the edge strings sway with
+      one shared swing (`_sqSway.ts` `nyeSwayAt`): sideways round the line between the ends, at most k × the sag in
+      the middle (0.2; 0.13 for spans ≥ 7 m up), two slow beats, halos following their bulbs; the hanging lanterns
+      swing as pendulums (2.2‥3.6°, 2.5‥4 s, each its own phase; the gate passage's half as far), cord, wood, body and
+      halo together. The lanterns' wood is boxes in the glow's bodies draw (`_sqGlowBodies.ts`: unlit, shaded by face
+      and the time of day, warm on the face turned to its lantern at night), not the square's voxels. All on the glow's
+      600 s clock (speeds whole turns in it), no draw of their own: compare two shots at `t=12` and `t=13.5`.
     - *Festival* (the stalls and seats above; the people below).
     - *Gardens* (`_sqPath.ts`, `_sqPathKit.ts`, `_sqRiver.ts`; `_sqGarden.ts`, `_sqMeadow.ts`): a front path from
       the back trail to the avenue by the gate, a river path round the south-east to the quay and a teak footbridge
