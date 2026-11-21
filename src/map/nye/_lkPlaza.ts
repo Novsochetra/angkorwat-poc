@@ -334,7 +334,49 @@ export function buildPlaza(o: PlazaIn): Plaza {
   }
   dressPlazaGarden({ field, b, kit, glow, low, src, paved });
 
+  // On low the painted mandala (lake.ts: one draw of its own) is left out: its lines instead, thin gilt strips in the kit.
+  if (low) mandalaLines(kit, LAKE_MANDALA.x, g0 + TOP + 0.03, LAKE_MANDALA.z, LAKE_MANDALA.r, fr.yaw);
+
   const blocks = b.boxes.length - n0;
   console.info(`[map] nye lake plaza: ${blocks} blocks (pavers ${pavers}, gate ${gate.blocks}, salas and stalls ${salas.blocks}), ${LAKE_PILLARS.length} fire pillars, ${ties.length} lamp posts`);
   return { blocks, mandala: { x: LAKE_MANDALA.x, y: g0 + TOP + 0.035, z: LAKE_MANDALA.z, r: LAKE_MANDALA.r }, naga: gate.naga, front, paved };
+}
+
+/**
+ * The lotus mandala as glowing gilt lines in the kit (the low level's: no draw of its own), after the Kulen ring's
+ * painting (`_sqRing.ts`): a bold rim and a thin one, sixteen lotus petals, a ring, eight inner petals, the heart's
+ * ring. Lines are flat strips lying on the pavers, glowing at night.
+ */
+function mandalaLines(kit: Kit, x: number, y: number, z: number, r: number, turn: number): void {
+  const s = r / 8.5;
+  const P = (rad: number, a: number): [number, number] => [x + Math.cos(a + turn) * rad, z + Math.sin(a + turn) * rad];
+  const line = (p: [number, number], q: [number, number], w: number) => {
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (len < 0.02) return;
+    kit.box((p[0] + q[0]) / 2, y, (p[1] + q[1]) / 2, len + w * 0.6, 0.02, w, 0xe8b24a, { yaw: Math.atan2(q[0] - p[0], q[1] - p[1]) - Math.PI / 2, glow: 0.75 });
+  };
+  const circle = (rad: number, w: number, n: number) => {
+    for (let i = 0; i < n; i++) line(P(rad, (i / n) * Math.PI * 2), P(rad, ((i + 1) / n) * Math.PI * 2), w);
+  };
+  /** A pointed petal at angle a from r0 to r1, `w` radians either side at its base: two curved sides of `k` strips. */
+  const petal = (a: number, r0: number, r1: number, w: number, k: number, lw: number) => {
+    for (const side of [-1, 1]) {
+      let prev = P(r0, a + side * w);
+      for (let i = 1; i <= k; i++) {
+        const t = i / k;
+        // (bulging out past its base, then drawing in to the tip)
+        const spread = w * (1 + 0.5 * Math.sin(Math.PI * t * 0.8)) * (1 - t);
+        const p = P(r0 + (r1 - r0) * t, a + side * spread);
+        line(prev, p, lw);
+        prev = p;
+      }
+    }
+  };
+  circle(r, 0.18 * s, 48);
+  circle(r - 0.45 * s, 0.07 * s, 40);
+  circle(r - 1.6 * s, 0.09 * s, 36);
+  for (let i = 0; i < 16; i++) petal(((i + 0.5) / 16) * Math.PI * 2, 3.4 * s, r - 1.85 * s, (Math.PI / 16) * 0.9, 3, 0.1 * s);
+  circle(3.1 * s, 0.09 * s, 24);
+  for (let i = 0; i < 8; i++) petal((i / 8) * Math.PI * 2, 1.6 * s, 2.95 * s, (Math.PI / 8) * 0.85, 2, 0.09 * s);
+  circle(1.45 * s, 0.08 * s, 16);
 }

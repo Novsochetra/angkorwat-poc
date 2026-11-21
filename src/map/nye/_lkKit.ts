@@ -252,7 +252,8 @@ export function fire(kit: Kit, bodies: Bodies, glow: Glow | null, x: number, y: 
       anim: ANIM.wave,
       a: [0.2 + 0.14 * r(i, 6), 0, perPeriod(13 + 12 * r(i, 7))],
       b: [r(i, 8) * 6.28, 0, 0, 0],
-      glow: 0.8,
+      // (no bloom on low: a lower glow keeps them orange, not white)
+      glow: low ? 0.45 : 0.8,
       show: SHOW.night,
     });
   }
