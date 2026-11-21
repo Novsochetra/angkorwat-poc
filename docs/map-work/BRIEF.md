@@ -2506,20 +2506,26 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   `standAt` as walls to his feet by `roam/_nyePlazaWalk.ts` (only while the `nye` part stands, within 36 m), as the zip
   line's rails and his built pieces are: sliding along the 0.9 m wall never ends on top.
 - **The lake stage and water** (`_lkStage.ts`, `_lkBoats.ts`, `_lkReflect.ts`): a deep carved gate over a 10 × 5 m board
-  under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board, `kitFire` fire bowls,
+  under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board showing the plaza their
+  fanned heads, the stage light high over the shallows (a soft warm white), `kitFire` fire bowls,
   banners on tall poles; the event night's flotilla (84 lantern skiffs, 10 lotus floats, 2 illuminated floats with
-  Angkor Wat in lights; 32 / 5 / 1 on low; some in the gaps the plaza crowd sees the water through), lotus candles; every
-  light's halo and reflection in one draw (`WaterLights`, sized on the screen); `deepWater`: the great lake deep blue to
+  Angkor Wat in lights; 32 / 5 / 1 on low; some in the gaps the plaza crowd sees the water through), each skiff lit by
+  its lantern (warm deck, gunwales, thwarts; the lantern low on a bow pole), lotus candles; every light's halo and
+  reflection in one draw (`WaterLights`, sized on the screen, shortening as the view steepens); `deepWater`: the great lake deep blue to
   the far shore at night (gentle on any night, full on the event night, the moon's path spared, fading out 450‥600 m
   from the venue).
 - **The sea of mist** on the event night sinks toward the far night blue (atmosphere.ts `NYE_MIST` 0.6, eased), so the
   lake's horizon reads dark under the fireworks.
-- **The fireworks**: 2334 rockets (Kulen 1401, the lake 933), several at once from the start. From the square: ≈ 2.5 bursts
+- **The fireworks**: ≈ 2570 rockets (Kulen 1401, the lake 1168), several at once from the start. From the square: ≈ 2.5 bursts
   on screen in the opening, 5 in the layers, 6 in the build-up, 18 in the finale, a high shell about a third of the view's
   height; high shells 24‥38° up at 28‥60° right, mid 16‥30°, the crown 115‥150 m out over Kulen's upper south face
-  (≤ 186 m up); by the lake 14‥37° up over open water (`SHOW_AREA`, `LAKE_SHOW`). One additive draw (`fireworks:show`:
-  sparks, halos, water glints in columns under each burst, the barges' lantern glow and streaks); the barges one unlit
-  draw, dark hulls with gold lanterns. Rockets behind the camera or off the picture's sides are not drawn. With more than
+  (≤ 186 m up); by the lake 5‥24° up from the terrace, spread across the horizon behind the stage (bearings 204‥258°),
+  also in the sky of the view from over the plaza (`SHOW_AREA`, `LAKE_SHOW`). One additive draw (`fireworks:show`:
+  sparks, halos, water glints in short broken columns under each burst, only on water at its own level (a mask of the
+  map's water: the great lake, and the Kulen pool with its stream, soft at the shores), the barges' lantern glow and
+  streaks); the barges one unlit draw: tarred boats with a pointed bow, a deck lit warm toward a lantern low at the
+  stern, racks of mortar tubes. Rocket trails short, warm and fading; crossette pieces short twinkling sparks. While the
+  show plays the searchlights dim by half and fan out (`_sqGlow.ts` `buildBeams` `uShow`). Rockets behind the camera or off the picture's sides are not drawn. With more than
   8 bursts glowing at once, stars, glows and smoke dim by (8 / bursts)^0.32 (^0.15 on low: `CROWD`); the sky's tint
   takes each flash softly (`show.ts` `burstGlow`) and saturates at 1.2. `SLOTS` 256. `fwstats=1` in a shot logs bursts
   on screen and their size per act, the skyline from the camera and the busiest second.
@@ -2530,6 +2536,19 @@ l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,
   from 23:55:50 groups gather toward the stage, from 23:58 all face the board; at midnight cheers, jumps, hugs
   (`POSE.hug`), heads up halfway up each show. The lake: 122 people (78 on low) in 35 families, arriving up the east
   shore trail and down the avenue through the gate, room kept for the other players' 50; three couples on the ghat's step.
+- **Lighter crowds**: `PEOPLE_FIRE` (`people/_personModel.ts`): each venue's firelight on the crowd near it on the event
+  night (a warm fill and a sheen on heads by a two-entry table in the lit shader, set by `_sceneNye*.ts`);
+  `festiveLooks` (`_nyeGroups.ts`) dresses the night's crowd lighter (white shirts, silk blouses, kramas on the head).
+- **Bayon faces and naga hoods** (shared, every place that shows them): `landmarks/_faces.ts` `FACE_TINY` is the calm
+  Bayon smile (lowered lids, closed full lips with raised corners, a broad nose, long ears); `sacred/naga.ts` the stair
+  naga's hood is one smooth fan with a rolled rim (no flame teeth). Banners' Angkor Wat: `_sqKit.ts` `bannerTemple`
+  (three lotus-bud towers with body); the flags' blue cloth keeps a little glow so warm light does not turn it purple.
+- **The mesa by the lake plaza** (north-east, a land tier 22 m over it): its rim toward the plaza dressed as the venue's
+  garden (`_lkMeadow.ts` `dressMesa`: bougainvillea, hibiscus, palms, Khmer lamps; low things within 22 m of the views).
+- **The far look** (low and phone): each venue seen from more than 340 m (back within 310) shows `nye/_far.ts` instead
+  of its own meshes (built in `nye/index.ts` from them): its blocks and kit cloth in one voxel mesh, every venue's lights
+  in one additive draw; the searchlights and the fireworks stay. `NyePiece.venue` / `detail` / `far()`. The overview at
+  the finale: the event 5 draws (phone 517 of 520; low 534, the map alone 530).
 - **Night life** (`nye/_life.ts`, piece `life`; sparks via `_lifeSparks.ts`): fireflies, petals falling from the flowering
   trees' blossom blocks (found by colour), motes in the stage light, sparkler sparks; one point draw a venue, all in the
   shader; event night only, within 260 m, 55 % on medium, none on low.
