@@ -348,15 +348,16 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   bulbRow(-L + 0.5, ty + 0.03, L - 0.5, ty + 0.03, ZF + 0.43, every);
   // THREE towers: the tall middle one and two lower ones (as Angkor Wat on the flag).
   const m = new Mason(b, 0.5, { seed: 41, jitter: 0.035, ao: 0.3 });
-  // (the tiers on a finer grid: a smoother lotus bud, thinner cornices)
-  const fine = low ? undefined : new Mason(b, 0.25, { seed: 44, jitter: 0.03, ao: 0.3 });
+  // (the tiers on a finer grid, on low too: a smoother lotus bud, thin cornices — on the 0.5 m grid each tier's cornice
+  // stands out a half metre and the towers stack up as plates, a pagoda, not a Khmer bud)
+  const fine = new Mason(b, 0.25, { seed: 44, jitter: 0.03, ao: 0.3 });
   const pz = -3.5;
   const SX = 5;
   const mainO = { h: low ? 10 : 11.5, w: 4, tiers: low ? 5 : 7, doors: SIDE.pz | SIDE.px | SIDE.nx, body: 0.28, src, pal: SANDSTONE, fine };
   const sideO = { h: low ? 6.5 : 7, w: 3, tiers: low ? 4 : 5, doors: SIDE.pz | SIDE.px | SIDE.nx, body: 0.33, src, pal: SANDSTONE, fine };
   const main = prasat(m, 0, pz, ty, mainO);
   const sides = [-1, 1].map((s) => prasat(m, s * SX, pz, ty, sideO));
-  for (const g of fine ? [m, fine] : [m]) {
+  for (const g of [m, fine]) {
     g.weather(0.025, 42);
     g.mottle(0.05, STONE_DARK, 43);
     g.commit('none');
@@ -366,7 +367,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   const tk = 0.55;
   const outline = (cx: number, o: typeof mainO, top: number) => {
     const c = 0.5;
-    const tc = fine ? 0.25 : 0.5;
+    const tc = 0.25;
     const hw2 = o.w / 2;
     const bodyH = snapTo(o.h * o.body, c);
     const finialH = snapTo(o.h * 0.08, tc);

@@ -24,7 +24,7 @@ import { hazeUniforms } from '../sky/haze';
  *
  * - `deepWater`: one flat disc lying just over the water round the venue, MULTIPLYING what is under it by a deep blue
  *   (darker and bluer; the moon's glints and the waves' pattern kept, only weaker): strongest round the stage and the
- *   lantern boats, gone by `r1`, at night only, fading into the haze with distance. Drawn first among the see-through
+ *   lantern boats, gone by `r1`, at night only (gently, in full on the event night), fading into the haze with distance. Drawn first among the see-through
  *   things (`renderOrder` −1), so the reflections and the fireworks' mirror add over it.
  * - `WaterLights`: the light ON the water — every lantern's, candle's, fire bowl's and bulb's reflection (a streak) and
  *   the halos of the things afloat — in ONE additive instanced draw. A streak lies on the water from under its light
@@ -106,7 +106,8 @@ export function deepWater(x: number, z: number, y: number, r0: number, r1: numbe
     mesh,
     update(night, event) {
       const n = night * night * (3 - 2 * night);
-      uniforms.uLevel.value = n * (0.82 + 0.18 * event);
+      // (gently on any night, in full on the event night)
+      uniforms.uLevel.value = n * (0.4 + 0.6 * event);
       mesh.visible = uniforms.uLevel.value > 0.01;
     },
   };

@@ -124,9 +124,10 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const waterLights = lights.build('nye:lake', u);
   bound(waterLights.mesh, 185, lakeMid);
   object.add(waterLights.mesh);
-  // The water round the venue at night: deep blue under the warm reflections (out over the flotilla, behind the stage).
-  const [dwx, dwz] = fr.at(4, -45);
-  const deep = deepWater(dwx, dwz, fr.water + 0.035, 55, 150);
+  // The water round the venue at night: deep blue under the warm reflections (out over the flotilla, behind the stage,
+  // to the far water the terrace looks across).
+  const [dwx, dwz] = fr.at(0, -60);
+  const deep = deepWater(dwx, dwz, fr.water + 0.035, 70, 240);
   object.add(deep.mesh);
   // The stage's live flames (null on low: there they are glowing boxes).
   if (stage.fire) object.add(stage.fire.mesh);
