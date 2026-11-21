@@ -166,9 +166,11 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   if (plazaNaga) void trackSacred(Promise.all([nagaFanReady('stair'), nagaFanReady('stairFar')]).then(() => void sacred.add(stairNaga({ ...plazaNaga, look: 'stone', hide: 260 }))));
 
   // ── Two real lights at night: before the stage, over the plaza's avenue before its gate ──
-  const [sx, sz] = fr.at(0, LAKE_STAGE.d / 2 + 3);
+  // (high and out over the shallows, a softer warm white: the gate and its towers lit, the dancers on the deck's front in
+  // their own colours, not turned orange by a lamp a few metres off)
+  const [sx, sz] = fr.at(0, LAKE_STAGE.d / 2 + 6);
   const stageAt = new Group();
-  stageAt.position.set(sx, fr.deck + 3.6, sz);
+  stageAt.position.set(sx, fr.deck + 6.5, sz);
   stageAt.name = 'nye lake stage light';
   const terraceAt = new Group();
   {
@@ -180,7 +182,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   terraceAt.name = 'nye lake terrace light';
   object.add(stageAt, terraceAt);
   // (a warm white, not orange: the stone should read pale sandstone lit by fire, not an orange box)
-  const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffc488, distance: 32, anchor: stageAt });
+  const stageLamp = addLamp({ kind: 'point', name: 'nye lake stage', color: 0xffe2c8, distance: 34, anchor: stageAt });
   const terraceLamp = addLamp({ kind: 'point', name: 'nye lake terrace', color: 0xffc488, distance: 30, anchor: terraceAt });
 
   const shadows = new ShadowGate(true).addAll(object);

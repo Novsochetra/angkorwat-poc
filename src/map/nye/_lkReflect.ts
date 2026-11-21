@@ -217,6 +217,7 @@ export class WaterLights {
         varying vec3 vCol;
         varying float vKind;
         varying float vSeed;
+        varying float vGraze;
         void main() {
           vec3 p = wPos.xyz;
           float sc = mix(1.0, uEvent, wMode.x);
@@ -230,12 +231,13 @@ export class WaterLights {
           vCol = wCol.rgb * uLevel * fl * sc;
           vKind = wPos.w;
           vSeed = wMode.y;
+          vGraze = 1.0;
           vUv = position.xy * 2.0;
           vec4 mvPosition;
           if (wPos.w < 0.5) {
             mvPosition = viewMatrix * vec4(p, 1.0);
             // (a little bigger far off, as a light seen through the night air: from the shore the far boats still glow)
-            float far = sqrt(max(1.0, -mvPosition.z / 60.0));
+            float far = min(sqrt(max(1.0, -mvPosition.z / 60.0)), 1.5);
             mvPosition.xy += position.xy * wCol.w * far * max(sc, 0.001);
           } else {
             // On the water, from under the light toward the camera; long seen low, short seen from above.
@@ -247,11 +249,14 @@ export class WaterLights {
             // water that is a distance from the camera, never nearer than half a metre)
             float eye = max(cameraPosition.y - p.y, 0.3);
             float foot = atan(eye, dist);
-            float reach = wCol.w / dist + 0.012;
+            // (long only seen at a grazing angle, from the terrace or a boat; looked down on, a short soft patch by the light)
+            float graze = 1.0 - 0.78 * smoothstep(0.06, 0.3, foot);
+            vGraze = graze;
+            float reach = (wCol.w / dist + 0.012) * graze;
             float s = position.y + 0.5;
             float ang = min(foot + s * reach, 1.5);
             float near = max(eye / tan(ang), 0.5);
-            float wid = wMode.z + dist * 0.0025;
+            float wid = (wMode.z + dist * 0.0025) * (1.0 + 0.35 * (1.0 - graze));
             // (the ripples bend it a little from side to side)
             float wob = 0.1 * wid * sin(s * 9.0 + uTime * ${((80 * Math.PI * 2) / 600).toFixed(5)} + wMode.y * 31.0);
             vec2 xz = p.xz + dir * max(dist - near, 0.0) + side * (position.x * wid + wob);
@@ -269,6 +274,7 @@ export class WaterLights {
         varying vec3 vCol;
         varying float vKind;
         varying float vSeed;
+        varying float vGraze;
         void main() {
           float a;
           if (vKind < 0.5) {
@@ -280,9 +286,11 @@ export class WaterLights {
             float x = vUv.x;
             // Broken into ripples drifting toward the viewer: bright dashes with dark water between.
             // (three ripples at odd lengths, so the dashes come uneven, never a string of beads)
-            float r1 = 0.5 + 0.5 * sin(s * 31.0 - uTime * ${((230 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 20.0);
-            float r2 = 0.5 + 0.5 * sin(s * 13.0 + uTime * ${((100 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 9.0);
-            float r3 = 0.5 + 0.5 * sin(s * 67.0 - uTime * ${((370 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 47.0);
+            // (as many ripples as the streak is long: a short patch from above has two or three)
+            float bands = mix(0.3, 1.0, vGraze);
+            float r1 = 0.5 + 0.5 * sin(s * 31.0 * bands - uTime * ${((230 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 20.0);
+            float r2 = 0.5 + 0.5 * sin(s * 13.0 * bands + uTime * ${((100 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 9.0);
+            float r3 = 0.5 + 0.5 * sin(s * 67.0 * bands - uTime * ${((370 * Math.PI * 2) / 600).toFixed(5)} + vSeed * 47.0);
             float broken = smoothstep(0.25, 0.95, r1 * 0.5 + r2 * 0.35 + r3 * 0.3);
             float across = exp(-x * x * (2.0 + 2.5 * (1.0 - broken)));
             // (clamped: s may come a hair over 1, and a NaN here would draw a black line through the bloom)

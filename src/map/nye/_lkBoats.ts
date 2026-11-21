@@ -43,6 +43,9 @@ const HULL = [0x4a3424, 0x553c2a, 0x3e2c20, 0x5e4430] as const;
 const STRAKE = [0x2f6f8a, 0x8a2a22, 0x3d7a4a, 0x2c4f8f, 0xb08a2a] as const;
 const DOK = [0xa08a58, 0x8f7a4c, 0xb39a64] as const;
 const GLASS = [0xffb860, 0xffc878, 0xffa850, 0xffd090, 0xff9c50] as const;
+/** The deck's planks and the gunwales' tops, warm where the lantern lights them (sRGB). */
+const DECK = 0x8a5e36;
+const BAMBOO_POLE = 0xc8b27a;
 const PETAL = [0xf29ab8, 0xee86aa, 0xf6f0e4, 0xf4b8cc] as const;
 const BULB = 0xffdc96;
 
@@ -77,13 +80,14 @@ export function lanternSkiff(kit: Kit, lights: WaterLights, x: number, wy: numbe
     const w = 0.34 + 0.66 * k;
     const len = L / seg + 0.03;
     const [cx, cz] = at(s);
-    // (the lantern lights its boat a little: warmer toward the bow)
-    const lit = 0.05 + 0.08 * (i / Math.max(1, seg - 1));
-    kit.box(cx, wy + 0.05, cz, w * 0.84, 0.12, len, hull, on(d, { yaw, glow: lit }));
+    // (the lantern at the bow lights its boat: the deck and the gunwales' tops warm, most near it; the hull's sides dark)
+    const lit = 0.16 + 0.3 * (i / Math.max(1, seg - 1));
+    kit.box(cx, wy + 0.05, cz, w * 0.84, 0.12, len, hull, on(d, { yaw }));
+    kit.box(cx, wy + 0.125, cz, w * 0.7, 0.03, len, DECK, on(d, { yaw, glow: lit }));
     for (const side of [-1, 1]) {
       const [px, pz] = at(s, side * w * 0.46);
-      kit.box(px, wy + 0.22, pz, 0.07, 0.34, len, hull, on(d, { yaw, glow: lit }));
-      if (!low) kit.box(px + ax * side * 0.012, wy + 0.37, pz + az * side * 0.012, 0.08, 0.06, len, strake, on(d, { yaw, glow: lit * 0.8 }));
+      kit.box(px, wy + 0.22, pz, 0.07, 0.34, len, hull, on(d, { yaw }));
+      kit.box(px - ax * side * 0.01, wy + 0.4, pz - az * side * 0.01, 0.09, 0.05, len, low ? DECK : strake, on(d, { yaw, glow: lit * 0.8 }));
     }
   }
   // (the raised bow and stern)
@@ -100,22 +104,32 @@ export function lanternSkiff(kit: Kit, lights: WaterLights, x: number, wy: numbe
     }
     kit.box(cx, wy + 1.14, cz, 0.5, 0.06, 1.5, c, on(d, { yaw }));
   }
-  // The bow's lantern: a bamboo pole, an arm, a Khmer lantern under a small dark tower top.
-  // (a tall pole: from the terrace, eye height over the shore, the lantern stands clear of the water and its boat)
-  const [px, pz] = at(L / 2 - 0.55);
-  const poleH = (low ? 2.6 : 2.4) + 0.9 * r(5);
-  kit.box(px, wy + poleH / 2 + 0.1, pz, 0.06, poleH, 0.06, 0xb09a68, on(d));
-  const [lx, lz] = [px + fx * 0.45, pz + fz * 0.45];
-  kit.box(px + fx * 0.22, wy + poleH + 0.04, pz + fz * 0.22, 0.06, 0.06, 0.52, 0xb09a68, on(d, { yaw }));
-  const ly = wy + poleH - 0.48;
+  // Thwarts across, lit too.
+  for (const t of [-0.9, 0.5]) {
+    const [cx, cz] = at(t * (L / 4.6));
+    kit.box(cx, wy + 0.34, cz, 0.86, 0.05, 0.2, DECK, on(d, { yaw, glow: t > 0 ? 0.38 : 0.22 }));
+  }
+  // The bow's lantern: a stout bamboo pole standing in the bow, a short arm, a Khmer lantern under a small dark tower top
+  // hanging just over the boat (it lights the boat and reads as the boat's lantern from above, never floating free).
+  const [px, pz] = at(L / 2 - 0.5);
+  const poleH = (low ? 1.95 : 1.75) + 0.4 * r(5);
+  kit.box(px, wy + poleH / 2 + 0.1, pz, 0.09, poleH, 0.09, BAMBOO_POLE, on(d, { glow: 0.12 }));
+  kit.box(px, wy + poleH + 0.06, pz, 0.12, 0.08, 0.12, 0x6a4a2a, on(d));
+  const [lx, lz] = [px - fx * 0.36, pz - fz * 0.36];
+  kit.box(px - fx * 0.18, wy + poleH - 0.02, pz - fz * 0.18, 0.06, 0.06, 0.42, BAMBOO_POLE, on(d, { yaw, glow: 0.12 }));
+  const ly = wy + poleH - 0.44;
   const glass = pickOf(GLASS, r(6));
-  kit.box(lx, ly, lz, 0.56, 0.74, 0.56, glass, on(d, { yaw, glow: 1.6 }));
-  kit.box(lx, ly + 0.41, lz, 0.68, 0.09, 0.68, 0x2e2018, on(d, { yaw }));
-  if (!low) kit.box(lx, ly + 0.55, lz, 0.36, 0.2, 0.36, 0x3a2a1e, on(d, { yaw }));
-  if (!low) kit.box(lx, ly + 0.7, lz, 0.12, 0.12, 0.12, 0xe0b040, on(d, { yaw, glow: 0.6 }));
-  kit.box(lx, ly - 0.4, lz, 0.6, 0.07, 0.6, 0x2e2018, on(d, { yaw }));
-  lights.halo(lx, ly, lz, 0xffb050, 2.6, { drift: d, level: 0.5, event: true });
-  lights.streak(lx, wy, lz, ly - wy, undefined, { drift: d, level: 1.9, width: 0.85, event: true });
+  kit.box(lx, ly + 0.27, lz, 0.02, 0.12, 0.02, 0x2e2018, on(d));
+  kit.box(lx, ly, lz, 0.44, 0.56, 0.44, glass, on(d, { yaw, glow: 1.5 }));
+  kit.box(lx, ly + 0.31, lz, 0.54, 0.07, 0.54, 0x2e2018, on(d, { yaw }));
+  if (!low) kit.box(lx, ly + 0.42, lz, 0.28, 0.15, 0.28, 0x3a2a1e, on(d, { yaw }));
+  if (!low) kit.box(lx, ly + 0.54, lz, 0.1, 0.1, 0.1, 0xe0b040, on(d, { yaw, glow: 0.6 }));
+  kit.box(lx, ly - 0.31, lz, 0.48, 0.06, 0.48, 0x2e2018, on(d, { yaw }));
+  lights.halo(lx, ly, lz, 0xffb050, 1.9, { drift: d, level: 0.45, event: true });
+  // (its light on and round the boat, low: the boat sits in a warm pool)
+  const [mx, mz] = at(L * 0.12);
+  lights.halo(mx, wy + 0.45, mz, 0xffa048, L * 0.62, { drift: d, level: 0.16, event: true });
+  lights.streak(lx, wy, lz, ly - wy, undefined, { drift: d, level: 1.8, width: 0.8, event: true });
   // Candles along the gunwales.
   if (candles && !low) {
     for (const [s, side] of [
