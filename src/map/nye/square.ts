@@ -50,7 +50,8 @@ const PEOPLE_FILL = 0.35;
  * the halos (1), the ring (1), the square's life (`_sqLife.ts`: the edge strings swaying, petals, the day's or the
  * night's flyers, fireflies and embers at night: 3‥4). Two real lights (sky/lampSlots.ts), at night only: the
  * ring's and the gate's; the rest is glow and bloom. What moves: the banners (the kit's shader), the ring's
- * breath and the glows (uniforms), the life (its shaders): no matrix changes after the build.
+ * breath and the glows (uniforms), the canopy's strings and lanterns swaying (`_sqGlow.ts`, `_sqSway.ts`), the life
+ * (its shaders): no matrix changes after the build.
  */
 export function buildNyeSquare(ctx: MapContext): NyePiece {
   const t0 = performance.now();

@@ -25,7 +25,8 @@ import { ARCH, AVENUE } from './_sqWalk';
  *   hovering and darting over the Kulen stream and its pool by day; **moths** circling the Khmer lamps and the edge
  *   strings' bulbs at night; **bats** crossing the sky over the square at night and two or three circling the stage's
  *   prasat, as flying foxes round Angkor Wat's towers;
- * - the edge strings of bulbs (`_sqDecor.ts`) **swaying** in the breeze (`_sqLifeSway.ts`).
+ * - the edge strings of bulbs (`_sqDecor.ts`) **swaying** in the breeze (`_sqLifeSway.ts`; the same swing as the
+ *   canopy's strings and its hanging lanterns, `_sqSway.ts`, drawn by `_sqGlow.ts`).
  *
  * No sky lanterns (khom loi: Thai). Draws: sparks 1 (night), petals 1, flyers 1 (the day's or the night's), strings 1;
  * all motion in vertex shaders from one clock, nothing drawn out of its time, no work a frame but uniforms. Counts by

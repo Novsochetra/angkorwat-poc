@@ -1,13 +1,14 @@
 import { BoxGeometry, Color, InstancedBufferAttribute, InstancedBufferGeometry, Mesh, MeshBasicMaterial, Sphere, Vector3 } from 'three';
 import { hash3 } from '../../voxel/random';
 import type { LifeUniforms } from './_sqLife';
+import { SWAY_GLSL } from './_sqSway';
 
 /**
  * The square's edge strings of warm bulbs (`_sqDecor.ts`: from the banners' poles to the flowering trees), swaying
  * in the breeze: the wire and its bulbs in one unlit instanced draw, posed in the vertex shader. Each string hangs
  * from p to q, sagging `sag` m in the middle; it swings sideways round the line between its ends, at most a fifth as
  * far as it sags there (none at the ends), on two slow beats of its own, rising a little as it swings out, as a
- * hanging cord does.
+ * hanging cord does: `_sqSway.ts`, the same swing as the canopy's strings and lanterns (`_sqGlow.ts`).
  * The wire's pieces are bent at their vertices (each knows where along the string it is), so it never breaks; each
  * bulb hangs under its point. The bulbs glow as the square's other bulbs do (square.ts `bulbs`: warm, ≈ 10 times
  * brighter at night, breathing); their halos stay where they hang still (festival/_glow.ts, a soft 0.9 m light).
@@ -45,7 +46,11 @@ attribute vec3 sCol;
 uniform float uLifeT;
 uniform vec3 uBulb;
 varying vec3 vSwCol;
+${SWAY_GLSL}
 `;
+
+/** How far the edge strings swing: a fifth of their sag at most (they hang low: `_sqSway.ts` `stringK`). */
+const EDGE_K = 0.2;
 
 const POSE = /* glsl */ `
   float isBulb = step(sU.y - sU.x, 1e-4);
@@ -53,8 +58,7 @@ const POSE = /* glsl */ `
   vec3 span = sB.xyz - sA.xyz;
   vec3 sideways = normalize(vec3(-span.z, 0.0, span.x));
   float bow = 4.0 * u * (1.0 - u);
-  float swing = 0.2 * sA.w * bow * (0.62 * sin(uLifeT * 1.31 + sB.w) + 0.38 * sin(uLifeT * 2.23 + sB.w * 1.7));
-  vec3 at = sA.xyz + span * u + vec3(0.0, 0.5 * swing * swing / max(sA.w, 0.3) - sA.w * bow, 0.0) + sideways * swing;
+  vec3 at = sA.xyz + span * u - vec3(0.0, sA.w * bow, 0.0) + nyeStringSway(span, sA.w, ${EDGE_K.toFixed(2)}, sB.w, u, uLifeT);
   vec3 along = normalize(span - vec3(0.0, sA.w * 4.0 * (1.0 - 2.0 * u), 0.0));
   vec3 across = cross(along, sideways);
   vec3 wire = at + (sideways * position.z + across * position.y) * sU.z;

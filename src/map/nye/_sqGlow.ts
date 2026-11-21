@@ -1,6 +1,5 @@
 import {
   AdditiveBlending,
-  BoxGeometry,
   BufferGeometry,
   Color,
   DoubleSide,
@@ -8,17 +7,10 @@ import {
   Group,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
-  InstancedMesh,
-  LineBasicMaterial,
-  LineSegments,
-  Matrix4,
   Mesh,
-  MeshBasicMaterial,
   PlaneGeometry,
-  Quaternion,
   ShaderMaterial,
   Sphere,
-  Euler,
   Vector3,
 } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
@@ -37,7 +29,9 @@ import { AVENUE, onAvenue } from './_sqWalk';
 import { GOLD, LATERITE, pick } from './_sqKit';
 import { LightWash } from './_sqLight';
 import { buildSquareAir } from './_sqLightAir';
-import { FLICKER_GLSL, flickerFlames } from './_sqLightFlicker';
+import { FLICKER_GLSL } from './_sqLightFlicker';
+import { Bodies, Wires, type Toward } from './_sqGlowBodies';
+import { alongString, onCord, STILL, stringK, SWAY_GLSL, swaySpan, type Sway, type SwaySpan } from './_sqSway';
 import { lightGate } from './_sqLightGate';
 
 /**
@@ -56,11 +50,14 @@ import { lightGate } from './_sqLightGate';
  * - **A canopy of string lights**: from the stage gate's top (its pillars, its corner towers, the prasat's front)
  *   fanning out to eight tall lacquered poles round the square's edge, the poles joined round the edge, and strings
  *   across the lantern walk before the gate, all sagging (catenaries ≥ 7 m over the square's middle, high over the
- *   gate → ring → stage way). Wires: one line draw; bulbs and lantern bodies: one draw (glowing boxes, colours over
- *   1.0 at night: the bloom).
+ *   gate → ring → stage way), swaying gently in the breeze as the edge strings do (`_sqSway.ts`: the high spans a
+ *   little less). Wires: one line draw; bulbs and lantern bodies: one draw (glowing boxes, colours over 1.0 at night:
+ *   the bloom; `_sqGlowBodies.ts`), both posed in their shaders, the halos round the bulbs going with them.
  * - **Hanging lanterns** (Khmer: a little Angkor tower top over a glowing body, or a round paper lamp in warm
- *   colours, never a Chinese red lantern with tassels): from the poles' arms and in the square's trees. Their wood
- *   and stone, the poles and the edge: one voxel mesh (`mapStone`).
+ *   colours, never a Chinese red lantern with tassels): from the poles' arms, the gate's passage and in the square's
+ *   trees, each swinging on its cord as a slow pendulum (≤ ≈ 4°, 2.5‥4 s), cord, wood, body and halo together: their
+ *   wood is boxes in the bodies' draw, lit by the hour and their own glow. The poles and the edge: one voxel mesh
+ *   (`mapStone`).
  * - **The glow over the square**: halos round the lamps and some bulbs (breathing with their flames:
  *   `_sqLightFlicker.ts`), soft shafts of light under the poles' lanterns, the flowering crowns lit from under by an
  *   uplight at each trunk, a large soft dome of lit air seen only from far off. One draw.
@@ -72,8 +69,8 @@ import { lightGate } from './_sqLightGate';
  *   and a glow over the ring pulse with the count.
  *
  * Draws: light on things 1, ground 1, wires 1, voxels 1, glowing bodies 1, glows 1, air 1 (at night), beams 1 (only
- * on the event night). Nothing moves but in shaders and uniforms: no matrix changes after the build (the part is
- * FROZEN).
+ * on the event night). Nothing moves but in shaders and uniforms (the strings and lanterns swaying among them, on the
+ * glow's clock): no matrix changes after the build (the part is FROZEN).
  */
 
 export interface SquareGlow {
@@ -118,7 +115,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   const light = new LightWash(field, low);
   const glows = new Glows();
   const bodies = new Bodies();
-  const wires: number[] = [];
+  const wires = new Wires();
   /** A lamp's light on the ground: a pool on the stone (its own tones kept) and a faint added glow (dark grass shows it too). */
   const lit = (x: number, z: number, r: number, level: number, flick = 0) => {
     light.pool(x, z, r, LAMPLIGHT_ON, level, flick);
@@ -148,7 +145,8 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
       flame: (x, y, z, sx, sy, sz, color, k, flick) => bodies.add(x, y, z, sx, sy, sz, color, k, 0, flick),
       halo: (x, y, z, size, color, level, flick) => glows.halo(x, y, z, size, color, level, flick),
       pool: (x, z, r, color, level) => pools.add(x, z, r, color, level),
-      lantern: (x, y, z, drop, seed) => lantern(b, bodies, glows, wires, x, y, z, drop, 'tower', seed, src),
+      // (in the passage, sheltered: it swings half as far)
+      lantern: (x, y, z, drop, seed) => lantern(bodies, glows, wires, x, y, z, drop, 'tower', seed, 0.5),
     },
     field,
   );
@@ -194,7 +192,12 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
     if (h < 2 || !onSquare(x, z, 2)) return;
     light.pool(x, z, 2.2 + 0.14 * h, 0xffc070, 0.6 * Math.min(1, (6 / h) ** 2));
   };
-  const string = (p: V3, q: V3, sag: number, halos: boolean) => stringLights(p, q, sag, every, bodies, halos ? glows : null, wires, low ? 2 : 4, under);
+  // (each swaying: the high spans, their middles ≥ 7 m up, a little less far: _sqSway.ts)
+  let strings = 0;
+  const string = (p: V3, q: V3, sag: number, halos: boolean) => {
+    const mid = (p.y + q.y) / 2 - sag - field.heightAt((p.x + q.x) / 2, (p.z + q.z) / 2);
+    stringLights(swaySpan(p, q, sag, stringK(mid), strings++), every, bodies, halos ? glows : null, wires, low ? 2 : 4, under);
+  };
   for (const pole of poles) for (const a of fan[pole.th] ?? []) string(anchors[a], pole, 3.2, true);
   for (let i = 0; i + 1 < poles.length; i++) string(poles[i], poles[i + 1], 1.5, false);
 
@@ -236,7 +239,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
       const lz = z + Math.cos(a) * d;
       const hang = g + 5.4 + 0.5 * hash3(i, k, 3, 91);
       const drop = 0.7 + 0.8 * hash3(i, k, 4, 91);
-      lantern(b, bodies, glows, wires, lx, hang, lz, drop, (i + k) % 3 === 0 ? 'round' : 'tower', i * 5 + k, src);
+      lantern(bodies, glows, wires, lx, hang, lz, drop, (i + k) % 3 === 0 ? 'round' : 'tower', i * 5 + k);
     }
     lit(x + Math.sin(toSq) * r * 0.7, z + Math.cos(toSq) * r * 0.7, 5, 0.6, 0.5);
   }
@@ -287,12 +290,8 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   object.add(wash.mesh);
   const body = bodies.build();
   if (body) object.add(body.mesh);
-  const wireGeo = new BufferGeometry();
-  wireGeo.setAttribute('position', new Float32BufferAttribute(wires, 3));
-  const wireMesh = new LineSegments(wireGeo, new LineBasicMaterial({ color: 0x241e1a, fog: true }));
-  wireMesh.name = 'nye:glow:wires';
-  wireMesh.raycast = () => {};
-  object.add(wireMesh);
+  const wire = wires.build();
+  object.add(wire.mesh);
   const glowMesh = glows.build();
   object.add(glowMesh.mesh);
   const beams = buildBeams(beamBases, offs.length);
@@ -301,7 +300,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   if (air) object.add(air.mesh);
 
   console.info(
-    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps · ${poles.length} poles · ${pairs.length} walk pairs · ${bodies.count} bulbs and lanterns · ${glows.count} glows · ${pools.count} pools · ${light.count} lights on things · ${air ? (air.mesh.geometry as InstancedBufferGeometry).instanceCount : 0} puffs of air · built in ${(performance.now() - t0).toFixed(1)} ms`,
+    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps · ${poles.length} poles · ${pairs.length} walk pairs · ${strings} swaying strings · ${bodies.count} bulbs, lanterns and their wood · ${glows.count} glows · ${pools.count} pools · ${light.count} lights on things · ${air ? (air.mesh.geometry as InstancedBufferGeometry).instanceCount : 0} puffs of air · built in ${(performance.now() - t0).toFixed(1)} ms`,
   );
 
   let now = 0;
@@ -339,6 +338,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
       glowMesh.u.uTime.value = t;
       glowMesh.mesh.visible = lit > 0.001;
       body?.update(n, event, t);
+      wire.time.value = t;
       beams.u.uLevel.value = event * lit;
       beams.u.uTime.value = t;
       beams.mesh.visible = event * lit > 0.001;
@@ -413,7 +413,7 @@ function walkPairs(field: HeightField): [[number, number], [number, number]][] {
 }
 
 /** A tall lacquered pole, a gilt collar and finial, a cross arm with a tower lantern hanging at each end (and its soft shaft of light down to the ground but on low). */
-function tallPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[], x: number, g: number, z: number, h: number, out: number, src: ReturnType<typeof traceSource>, low: boolean): void {
+function tallPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: Wires, x: number, g: number, z: number, h: number, out: number, src: ReturnType<typeof traceSource>, low: boolean): void {
   b.box(x, g + 0.2, z, 0.6, 0.4, 0.6, pick(LATERITE, x, z, 1, 92), 'mapStone', { src });
   b.box(x, g + h / 2, z, 0.2, h, 0.2, pick(LACQUER, x, z, 2, 92), 'mapStone', { src });
   b.box(x, g + h * 0.62, z, 0.28, 0.14, 0.28, pick(GOLD, x, z, 3, 92), 'mapStone', { src });
@@ -428,13 +428,13 @@ function tallPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[]
   for (const s of [-1, 1]) {
     const lx = x + cx * s * 0.85;
     const lz = z + cz * s * 0.85;
-    lantern(b, bodies, glows, wires, lx, ay - 0.05, lz, 0.45, 'tower', Math.round(x * 3 + s), src);
+    lantern(bodies, glows, wires, lx, ay - 0.05, lz, 0.45, 'tower', Math.round(x * 3 + s));
     if (!low) glows.shaft(lx, ay - 1.0, lz, ay - 1.0 - g, 0.3, 2.4, 0xffb060, 0.03);
   }
 }
 
 /** A walk pole: lacquer, a gilt top, a short bracket toward the way with a lantern on it. */
-function walkPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[], x: number, g: number, z: number, h: number, toward: number, src: ReturnType<typeof traceSource>, seed: number, low: boolean): void {
+function walkPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: Wires, x: number, g: number, z: number, h: number, toward: number, src: ReturnType<typeof traceSource>, seed: number, low: boolean): void {
   b.box(x, g + 0.18, z, 0.5, 0.36, 0.5, pick(LATERITE, x, z, 1, 93), 'mapStone', { src });
   b.box(x, g + h / 2, z, 0.18, h, 0.18, pick(LACQUER, x, z, 2, 93), 'mapStone', { src });
   b.box(x, g + h + 0.06, z, 0.26, 0.12, 0.26, pick(GOLD, x, z, 3, 93), 'mapStone', { src });
@@ -443,121 +443,70 @@ function walkPole(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[]
   const sx = Math.sin(toward);
   const sz = Math.cos(toward);
   b.box(x + sx * 0.4, ay, z + sz * 0.4, 0.8, 0.08, 0.08, pick(LACQUER, x, z, 5, 93), 'mapStone', { src, ry: toward - Math.PI / 2 });
-  lantern(b, bodies, glows, wires, x + sx * 0.75, ay - 0.04, z + sz * 0.75, 0.35, seed % 2 ? 'round' : 'tower', 200 + seed, src);
+  lantern(bodies, glows, wires, x + sx * 0.75, ay - 0.04, z + sz * 0.75, 0.35, seed % 2 ? 'round' : 'tower', 200 + seed);
   if (!low) glows.shaft(x + sx * 0.75, ay - 0.9, z + sz * 0.75, ay - 0.9 - g, 0.28, 2, 0xffb060, 0.03);
 }
 
 /**
  * A hanging lantern from (x, y, z) on a cord `drop` m long: `tower` a glowing body under a little Angkor tower top
  * (three corbelled tiers and a gilt lotus bud) on a dark wooden frame; `round` a round paper lamp (an octagon of two
- * crossed boxes) between two dark wooden rings.
+ * crossed boxes) between two dark wooden rings. It swings on its cord in the breeze (`calm` × as far: `_sqSway.ts`),
+ * cord, wood, body and halo together, so its wood is in the bodies' draw, not the square's still voxels.
  */
-function lantern(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[], x: number, y: number, z: number, drop: number, kind: 'tower' | 'round', seed: number, src: ReturnType<typeof traceSource>): void {
+function lantern(bodies: Bodies, glows: Glows, wires: Wires, x: number, y: number, z: number, drop: number, kind: 'tower' | 'round', seed: number, calm = 1): void {
   const top = y - drop;
-  wires.push(x, y, z, x, top, z);
+  const sway = onCord(x, y, z, drop, seed, calm);
+  wires.add([x, y, z], sway, [x, top, z], sway);
   const col = LANTERN[Math.floor(hash3(x, z, seed, 94) * LANTERN.length) % LANTERN.length];
-  const wood = (i: number) => pick(WOOD, x, z, i, 94 + seed);
+  const wood = (yy: number, w: number, h: number, i: number, shade: number, toward: Toward) => bodies.wood(x, yy, z, w, h, w, pick(WOOD, x, z, i, 94 + seed), shade, toward, sway);
   if (kind === 'tower') {
     // The tower top, from its bud down to the eave.
-    b.box(x, top - 0.05, z, 0.07, 0.1, 0.07, pick(GOLD, x, z, 1, 94), 'mapStone', { src, shade: 1.1 });
+    bodies.wood(x, top - 0.05, z, 0.07, 0.1, 0.07, pick(GOLD, x, z, 1, 94), 1.1, 0, sway);
     const tiers = [0.14, 0.22, 0.3];
     let yy = top - 0.1;
     for (const [i, w] of tiers.entries()) {
-      b.box(x, yy - 0.05, z, w, 0.1, w, wood(2 + i), 'mapStone', { src, shade: 1 + i * 0.03 });
+      wood(yy - 0.05, w, 0.1, 2 + i, 1 + i * 0.03, 0);
       yy -= 0.1;
     }
-    b.box(x, yy - 0.03, z, 0.44, 0.06, 0.44, wood(6), 'mapStone', { src });
+    wood(yy - 0.03, 0.44, 0.06, 6, 1, 1);
     yy -= 0.06;
-    bodies.add(x, yy - 0.22, z, 0.34, 0.44, 0.34, col, 0.95, 0, 0.8);
-    b.box(x, yy - 0.47, z, 0.4, 0.06, 0.4, wood(7), 'mapStone', { src });
-    glows.halo(x, yy - 0.22, z, 2.2, col, 0.6, 0.8);
+    bodies.add(x, yy - 0.22, z, 0.34, 0.44, 0.34, col, 0.95, 0, 0.8, sway);
+    wood(yy - 0.47, 0.4, 0.06, 7, 1, -1);
+    glows.halo(x, yy - 0.22, z, 2.2, col, 0.6, 0.8, sway);
   } else {
-    b.box(x, top - 0.03, z, 0.26, 0.06, 0.26, wood(2), 'mapStone', { src });
-    bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.85, 0, 0.8);
-    bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.85, Math.PI / 4, 0.8);
-    b.box(x, top - 0.57, z, 0.26, 0.06, 0.26, wood(3), 'mapStone', { src });
-    glows.halo(x, top - 0.3, z, 2.4, col, 0.6, 0.8);
+    wood(top - 0.03, 0.26, 0.06, 2, 1, 1);
+    bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.85, 0, 0.8, sway);
+    bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.85, Math.PI / 4, 0.8, sway);
+    wood(top - 0.57, 0.26, 0.06, 3, 1, -1);
+    glows.halo(x, top - 0.3, z, 2.4, col, 0.6, 0.8, sway);
   }
 }
 
 /**
- * A string of bulbs from p to q, sagging `sag` m in the middle: the wire into `wires`, a bulb every `every` m, a small
- * halo round every `haloEvery`th, and `under` called every ≈ 4.5 m along it (its light on the floor).
+ * A string of bulbs hanging along `s` (from p to q, sagging in the middle, swaying: `_sqSway.ts`): its wire, a bulb every
+ * `every` m, a small halo round every `haloEvery`th (swaying with it), and `under` called every ≈ 4.5 m along it where
+ * it hangs still (its light on the floor).
  */
-function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, glows: Glows | null, wires: number[], haloEvery = 3, under?: (x: number, y: number, z: number) => void): void {
+function stringLights(s: SwaySpan, every: number, bodies: Bodies, glows: Glows | null, wires: Wires, haloEvery = 3, under?: (x: number, y: number, z: number) => void): void {
+  const { p, q, sag } = s;
   const len = Math.hypot(q.x - p.x, q.z - p.z);
   if (len < 1) return;
-  const yAt = (u: number) => p.y + (q.y - p.y) * u - sag * 4 * u * (1 - u);
+  const at = (u: number): [number, number, number] => [p.x + (q.x - p.x) * u, p.y + (q.y - p.y) * u - sag * 4 * u * (1 - u), p.z + (q.z - p.z) * u];
   const pieces = Math.max(4, Math.round(len / 1.5));
-  for (let i = 0; i < pieces; i++) {
-    const u0 = i / pieces;
-    const u1 = (i + 1) / pieces;
-    wires.push(p.x + (q.x - p.x) * u0, yAt(u0), p.z + (q.z - p.z) * u0, p.x + (q.x - p.x) * u1, yAt(u1), p.z + (q.z - p.z) * u1);
-  }
+  for (let i = 0; i < pieces; i++) wires.add(at(i / pieces), alongString(s, i / pieces), at((i + 1) / pieces), alongString(s, (i + 1) / pieces));
   const n = Math.max(2, Math.round(len / every));
   for (let i = 1; i < n; i++) {
     const u = i / n;
-    const x = p.x + (q.x - p.x) * u;
-    const z = p.z + (q.z - p.z) * u;
-    const y = yAt(u) - 0.08;
+    const [x, hy, z] = at(u);
+    const y = hy - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
-    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.62 + 0.2 * hash3(x, z, i, 96));
-    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.5, c, 0.16);
+    const sway = alongString(s, u);
+    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.62 + 0.2 * hash3(x, z, i, 96), 0, 0, sway);
+    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.5, c, 0.16, 0, sway);
   }
   if (!under) return;
   const m = Math.max(1, Math.round(len / 4.5));
-  for (let i = 0; i < m; i++) {
-    const u = (i + 0.5) / m;
-    under(p.x + (q.x - p.x) * u, yAt(u), p.z + (q.z - p.z) * u);
-  }
-}
-
-// ── The glowing bodies: bulbs, lanterns and flames (one instanced draw, unlit, over 1.0 at night; flames and lanterns flicker) ──
-
-class Bodies {
-  private readonly items: { p: [number, number, number]; s: [number, number, number]; c: number; k: number; ry: number; flick: number }[] = [];
-  get count(): number {
-    return this.items.length;
-  }
-  /** A glowing box: colour (sRGB) × k; `flick` 0 a bulb (steady) ‥ 1 a flame. */
-  add(x: number, y: number, z: number, sx: number, sy: number, sz: number, c: number, k: number, ry = 0, flick = 0): void {
-    this.items.push({ p: [x, y, z], s: [sx, sy, sz], c, k, ry, flick });
-  }
-  build(): { mesh: InstancedMesh; update(night: number, event: number, t: number): void } | null {
-    if (!this.items.length) return null;
-    const material = new MeshBasicMaterial({ color: 0xffffff });
-    const time = { value: 0 };
-    flickerFlames(material, time, 'attr');
-    const geo = new BoxGeometry(1, 1, 1);
-    geo.setAttribute('aFlick', new InstancedBufferAttribute(new Float32Array(this.items.map((it) => 0.16 * it.flick)), 1));
-    const mesh = new InstancedMesh(geo, material, this.items.length);
-    mesh.name = 'nye:glow:bodies';
-    const m = new Matrix4();
-    const q = new Quaternion();
-    const e = new Euler();
-    const v = new Vector3();
-    const s = new Vector3();
-    const c = new Color();
-    this.items.forEach((it, i) => {
-      q.setFromEuler(e.set(0, it.ry, 0));
-      m.compose(v.set(...it.p), q, s.set(...it.s));
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, c.setHex(it.c).multiplyScalar(it.k));
-    });
-    mesh.castShadow = false;
-    mesh.receiveShadow = false;
-    mesh.raycast = () => {};
-    mesh.computeBoundingSphere();
-    return {
-      mesh,
-      update(night, event, t) {
-        const n = smooth(0.1, 0.85, night);
-        // Paper and glass by day (a little warm), over 1.0 at night for the bloom (a soft one: hundreds of bulbs).
-        material.color.setScalar((0.6 + 2.1 * n) * (1 + 0.12 * event));
-        time.value = t;
-      },
-    };
-  }
+  for (let i = 0; i < m; i++) under(...at((i + 0.5) / m));
 }
 
 // ── The light pools on the ground (one draw: a grid per pool, draped on the land) ──
@@ -706,6 +655,8 @@ class Pools {
 
 class Glows {
   private readonly data: number[] = [];
+  /** How each glow sways (`_sqSway.ts`: a halo round a swaying bulb or lantern goes with it). */
+  private readonly sway: number[] = [];
   private readonly c = new Color();
   get count(): number {
     return this.data.length / 12;
@@ -716,13 +667,14 @@ class Glows {
    * starts showing, × its size; a shaft: its length down (m, up if < 0), its far end's width; a canopy: how far it
    * lies toward the eye, m).
    */
-  add(x: number, y: number, z: number, size: number, color: number, level: number, kind = 0, show = 0, a = kind === 1 ? 1 : 0, b = 0): void {
+  add(x: number, y: number, z: number, size: number, color: number, level: number, kind = 0, show = 0, a = kind === 1 ? 1 : 0, b = 0, sway: Sway = STILL): void {
     this.c.setHex(color).multiplyScalar(level);
     this.data.push(x, y, z, size, this.c.r, this.c.g, this.c.b, kind, show, (x * 12.9898 + z * 78.233) % 1, a, b);
+    this.sway.push(...sway);
   }
-  /** A halo round a light; `flick` 0‥1 breathes with the flame there (`_sqLightFlicker.ts`). */
-  halo(x: number, y: number, z: number, size: number, color: number, level: number, flick = 0): void {
-    this.add(x, y, z, size, color, level, 0, 0, 0, flick);
+  /** A halo round a light; `flick` 0‥1 breathes with the flame there (`_sqLightFlicker.ts`); it sways with its light. */
+  halo(x: number, y: number, z: number, size: number, color: number, level: number, flick = 0, sway: Sway = STILL): void {
+    this.add(x, y, z, size, color, level, 0, 0, 0, flick, sway);
   }
   /** A dome of lit air, `size` m, showing from `far` × its size away. */
   dome(x: number, y: number, z: number, size: number, color: number, level: number, far = 1): void {
@@ -742,14 +694,17 @@ class Glows {
     const geo = new InstancedBufferGeometry();
     geo.setIndex(quad.getIndex());
     geo.setAttribute('position', quad.getAttribute('position'));
-    const take = (off: number) => {
+    const take = (from: readonly number[], off: number) => {
       const a = new Float32Array(n * 4);
-      for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) a[i * 4 + k] = this.data[i * 12 + off + k];
+      for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) a[i * 4 + k] = from[i * 12 + off + k];
       return new InstancedBufferAttribute(a, 4);
     };
-    geo.setAttribute('sPos', take(0));
-    geo.setAttribute('sCol', take(4));
-    geo.setAttribute('sOpt', take(8));
+    geo.setAttribute('sPos', take(this.data, 0));
+    geo.setAttribute('sCol', take(this.data, 4));
+    geo.setAttribute('sOpt', take(this.data, 8));
+    geo.setAttribute('sSwA', take(this.sway, 0));
+    geo.setAttribute('sSwB', take(this.sway, 4));
+    geo.setAttribute('sSwC', take(this.sway, 8));
     geo.instanceCount = n;
     // (bound: every glow and its size)
     const pts: Vector3[] = [];
@@ -770,6 +725,9 @@ class Glows {
         attribute vec4 sPos;
         attribute vec4 sCol;
         attribute vec4 sOpt;
+        attribute vec4 sSwA;
+        attribute vec4 sSwB;
+        attribute vec4 sSwC;
         uniform float uLevel;
         uniform float uEvent;
         uniform float uPulse;
@@ -778,6 +736,7 @@ class Glows {
         varying vec3 vCol;
         varying vec4 vKind;
         ${FLICKER_GLSL}
+        ${SWAY_GLSL}
         void main() {
           // Shown: at night (0), on the event night (1), with the midnight pulse (2).
           vec3 shows = vec3(1.0, uEvent, uPulse);
@@ -785,7 +744,9 @@ class Glows {
           // The kind, as weights (halo, dome, shaft, canopy): a table, no branches.
           float k = sCol.w;
           vec4 kind = vec4(step(k, 0.5), step(0.5, k) * step(k, 1.5), step(1.5, k) * step(k, 2.5), step(2.5, k));
-          vec4 mvPosition = viewMatrix * vec4(sPos.xyz, 1.0);
+          // (a halo goes with its swaying bulb or lantern)
+          vec3 at = nyeSwayAt(sPos.xyz, sSwA, sSwB, sSwC, uTime);
+          vec4 mvPosition = viewMatrix * vec4(at, 1.0);
           float dist = length(mvPosition.xyz);
           // A dome shows only from sOpt.z × its size off (a warm spot seen from afar, no haze over the square up close).
           float near = mix(1.0, smoothstep(sPos.w * 0.45 * sOpt.z, sPos.w * 1.25 * sOpt.z, dist), kind.y);
@@ -799,7 +760,7 @@ class Glows {
           face.xyz += kind.w * normalize(-mvPosition.xyz) * sOpt.z;
           face.xy += position.xy * sPos.w;
           float t = 0.5 - position.y;
-          vec3 sp = sPos.xyz - vec3(0.0, sOpt.z * t, 0.0);
+          vec3 sp = at - vec3(0.0, sOpt.z * t, 0.0);
           vec3 across = cross(vec3(0.0, 1.0, 0.0), sp - cameraPosition) + vec3(1e-4, 0.0, 0.0);
           sp += normalize(across) * position.x * mix(sPos.w, sOpt.w, t);
           vec4 strip = viewMatrix * vec4(sp, 1.0);
