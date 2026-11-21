@@ -37,7 +37,9 @@ import { buildSquareLife } from './_sqLife';
  * - the entrance gate on the village side with a Bayon face on each side of its tower (`_sqGate.ts`);
  * - the lantern walk from the village up the Kulen foot trail to the gate (`_sqWalk.ts`), Khmer lamps on posts;
  * - red banners with the white Angkor Wat on tall poles, the map's own trees with string lights, lotus pots
- *   (`_sqDecor.ts`); the four New Year snack stalls, each a shop (`_sqStalls.ts`).
+ *   (`_sqDecor.ts`); seven stalls, each a shop (`_sqStalls.ts`: four snacks, flowers, lamps and toys, the
+ *   sugarcane cart), the tables, benches and fire bowls (`_sqSeats.ts`); the light that lies on it all
+ *   (`_sqLight*.ts`) and the mist round it (`_sqLightAir.ts`).
  *
  * Draws: the floor (1), the square's blocks (a mesh per family: stone, bark, leaf, petal), the lantern walk's
  * (stone, in two places, culled apart), the kit (banners: 1, waving in its shader), the flames and the bulbs (2),
