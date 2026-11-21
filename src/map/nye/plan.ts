@@ -58,13 +58,71 @@ export const LANTERN_WALK: readonly [number, number][] = [
   [384, -236],
 ];
 
-/** Stalls round the square's sides (New Year snacks), each facing the square's middle. */
-export const STALLS: readonly { x: number; z: number; facing: number }[] = [
-  { x: 354, z: -271, facing: Math.PI / 2 + 0.25 },
-  { x: 352, z: -257, facing: Math.PI / 2 - 0.1 },
-  { x: 412, z: -271, facing: -Math.PI / 2 - 0.25 },
-  { x: 414, z: -257, facing: -Math.PI / 2 + 0.1 },
+/** What a stall sells (nye/_sqStalls.ts): the four snack stalls and the sugarcane juice cart are shops (E Buy). */
+export type StallKind = 'sweets' | 'grill' | 'drinks' | 'cakes' | 'flowers' | 'toys' | 'cane';
+
+/**
+ * Stalls on the square, each facing the square's middle: the four New Year snack stalls at its sides; lotus and
+ * jasmine garlands by the gate's east, paper lamps and toys by its west, the sugarcane juice cart (a pushcart under a
+ * parasol: `cane`) east of the ring.
+ */
+export const STALLS: readonly { x: number; z: number; facing: number; kind: StallKind }[] = [
+  { x: 354, z: -271, facing: Math.PI / 2 + 0.25, kind: 'sweets' },
+  { x: 352, z: -257, facing: Math.PI / 2 - 0.1, kind: 'grill' },
+  { x: 412, z: -271, facing: -Math.PI / 2 - 0.25, kind: 'drinks' },
+  { x: 414, z: -257, facing: -Math.PI / 2 + 0.1, kind: 'cakes' },
+  { x: 398, z: -246.2, facing: -2.36, kind: 'flowers' },
+  { x: 368, z: -246.2, facing: 2.36, kind: 'toys' },
+  { x: 404, z: -266.5, facing: -1.33, kind: 'cane' },
 ];
+
+/** Stalls are drawn this many times a real one's metres (nye/_sqStalls.ts), for the map's people (1.4 × a real person). */
+export const STALL_K = 1.3;
+
+/**
+ * Festival seating on the square (nye/_sqSeats.ts builds it; people/_nyePlan.ts seats the crowd there): low tables
+ * with four stools by the food stalls (`yaw`: the table's long side along (cos, −sin) in x, z), low wooden benches
+ * (`facing`: the way the sitters face; `len` m), fire bowls on stone stems that children run round. Seats' tops are
+ * `SEAT_H` m over the paving, the tables' `TABLE_H`.
+ */
+export const SEAT_H = 0.24;
+export const TABLE_H = 0.6;
+export const TABLES: readonly { x: number; z: number; yaw: number }[] = [
+  { x: 362.5, z: -270, yaw: 0.15 },
+  { x: 364.5, z: -263.5, yaw: -0.1 },
+  { x: 361, z: -257, yaw: 0.2 },
+  { x: 405.5, z: -259.5, yaw: -0.15 },
+];
+export const BENCHES: readonly { x: number; z: number; facing: number; len: number }[] = [
+  { x: 360.6, z: -278.6, facing: 1.75, len: 2.2 },
+  { x: 405.4, z: -278.6, facing: -1.75, len: 2.2 },
+  { x: 359.8, z: -250.2, facing: 2.0, len: 2.2 },
+  { x: 406.2, z: -250.2, facing: -2.0, len: 2.2 },
+];
+export const FIRES: readonly { x: number; z: number }[] = [
+  { x: 372.6, z: -252 },
+  { x: 393.4, z: -252 },
+];
+
+/**
+ * The sala (សាលា) on the square's west side, outside its edge (nye/_sqSala.ts): its middle, `w` × `d` m; its floor
+ * `SALA_FLOOR` m over the land's lowest corner under it. Monks watch from it on the night (people/_nyePlan.ts).
+ */
+export const SALA = { x: SQUARE.x - SQUARE.rx - 10.5, z: SQUARE.z - 0.5, w: 6.4, d: 8.8 } as const;
+export const SALA_FLOOR = 0.75;
+
+/** A table's four stools (map x, z; `facing` the table). */
+export function tableStools(t: { x: number; z: number; yaw: number }): { x: number; z: number; facing: number }[] {
+  const c = Math.cos(t.yaw);
+  const s = Math.sin(t.yaw);
+  const out: { x: number; z: number; facing: number }[] = [];
+  for (const side of [1, -1])
+    for (const u of [-0.45, 0.45]) {
+      const lz = side * 0.98;
+      out.push({ x: t.x + u * c + lz * s, z: t.z - u * s + lz * c, facing: t.yaw + (side > 0 ? Math.PI : 0) });
+    }
+  return out;
+}
 
 /** Naga (Khmer: cobras with a smooth fan hood, as on Angkor Wat's causeway) guarding the stage's stairs, facing south. */
 export const NAGA: readonly { x: number; z: number; facing: number }[] = [

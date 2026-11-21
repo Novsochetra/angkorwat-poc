@@ -1,11 +1,11 @@
 import { hash3 } from '../../voxel/random';
 import { graphicsNow } from '../graphics';
 import { nyeAsked, nyeOff, nyeSeconds, NYE_TIMES, squareShown } from '../nye/clock';
-import { BOARD, GATE, SHOW_AREA, SQUARE, STAGE, STALLS } from '../nye/plan';
+import { BOARD, GATE, SALA, SALA_FLOOR, SHOW_AREA, SQUARE, STAGE, STALL_K, STALLS } from '../nye/plan';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
-import { along, ALL_GONE, BOARD_AT, COME_FROM, ensembleDef, FLOOR, GATE_IN, GATE_OUT, MATS, matDef, planCrowd, SquareGround, STAGE_TOP, type Member, type NyeCrowdPlan } from './_nyePlan';
+import { along, ALL_GONE, BOARD_AT, COME_FROM, ensembleDef, FLOOR, GATE_IN, GATE_OUT, MATS, matDef, picnicDef, planCrowd, SquareGround, STAGE_TOP, type Member, type NyeCrowdPlan } from './_nyePlan';
 import { CARRY, danceSide, danceSteps, DANCE, FIT, POSE, SLOT, type Look, type Pose } from './_personModel';
 import type { Obstacle, Point, Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
@@ -15,25 +15,29 @@ import { Rig } from './_things';
  * The people of New Year's Eve's festival square at Phnom Kulen's foot (AWP-35; where: nye/plan.ts, when:
  * nye/clock.ts; the crowd's plan: `_nyePlan.ts`).
  *
- * **Ordinary days** (from the day the square ships until the night, and the day after): a seller behind each New
- * Year snack stall and an attendant inside the gate from morning to late evening; children running round the
- * gathering ring by day; visitors in the evening who come in through the gate, take a photo before the board, look at
- * a stall and go.
+ * **Ordinary days** (from the day the square ships until the night, and the day after): a seller at each stall and
+ * the juice cart and an attendant inside the gate from morning to late evening; children running round the gathering
+ * ring by day; visitors in the evening who come in through the gate, take a photo before the board, look at a stall
+ * and go.
  *
- * **The night** (from 22:20, ten minutes before the hold): families come up the lantern walk from the village and in
- * through the gate (the first half hour of the hold, a few later), and fill the square before the stage nearest
- * first — standing, a child on a father's shoulders now and then, grandparents, mothers and children seated on mats at
- * the sides, two monks watching quietly at the west side (they never cheer), children with sparklers; the ring and
- * the aisle from the gate to the stage's stairs stay open. On the stage (22:30‥23:50) four apsara dancers dance to a
- * pinpeat ensemble seated at its west end (roneat ek, skor thom, sralai, chhing: its phrases are `pinpeat` calls, as
- * at Angkor Wat); at 23:50 the dancers bow to the crowd and step aside to the stage's east end. The last ten seconds:
- * everyone faces the board, phones up, arms counting; midnight: cheering, jumping, two of a family turning to each
- * other; then the fireworks over the hill, heads up, phones up, a cheer now and then; after the show they talk and
- * from 00:08 go home down the lantern walk, the last by 00:40.
+ * **The night** (from 22:20, ten minutes before the hold): groups come up the lantern walk from the village and in
+ * through the gate, and spread over the whole square, each to its spot (the plan's): families watching the dance in
+ * loose knots before the stage (a child on a father's shoulders now and then), families eating at the low tables
+ * (they sit down on the stools, a bowl in hand), grandparents, mothers and children on mats with their picnic, elders
+ * on the benches, friends chatting in circles (one talks, the others turn to them, a laugh), couples taking selfies
+ * with the board behind them, children chasing round the fire bowls with sparklers, buyers queuing at every stall,
+ * strollers going from stall to stall, three monks watching from the sala (they never cheer); the ring and the aisle
+ * from the gate to the stage's stairs stay open. On the stage (22:30‥23:50) four apsara dancers dance to a pinpeat
+ * ensemble seated at its west end (roneat ek, skor thom, sralai, chhing: its phrases are `pinpeat` calls, as at
+ * Angkor Wat); at 23:50 the dancers bow to the crowd and step aside to the stage's east end. The last ten seconds:
+ * the runners and strollers back in their places, the diners up from their stools, everyone facing the board, phones
+ * up, arms counting; midnight: cheering, jumping, two of a group turning to each other; then the fireworks over the
+ * hill, heads up, phones up, a cheer now and then; after the show the diners sit down again, they talk and from 00:08
+ * go home down the lantern walk, the last by 00:40.
  *
  * Time: the night's own clock (`nyeSeconds`), so every player sees the same; in a shot (time stands still) the
  * people's clock moves it on from the still's moment minus the preroll (they walk, the dance goes on). On the low
- * graphics level half the standing families stay home (`Member.low`).
+ * graphics level half the groups stay home (`Member.low`).
  *
  * URL: `people=nye` (only them), with `countdown=<s>`, `fireworks=<s>`, `nye=+2m` (nye/clock.ts).
  */
@@ -69,6 +73,12 @@ const BOW = 6;
 const OFF_AT = 900;
 /** Walking on the stage (m/s). */
 const STAGE_WALK = 0.8;
+/** The diners stand up from their stools for the count (s from midnight) and sit down again after the show. */
+const UP_AT = -16;
+const DOWN_AT = NYE_TIMES.show + 25;
+/** Runners run and strollers stroll until this (s from midnight), then go to their places for the count. */
+const RUN_TO = -18;
+const STROLL_TO = -50;
 /**
  * Where heads turn in the fireworks: toward the show's middle, low (the `look` pose leans them back as well: their
  * heads tipped up to the bursts' height would show only their crowns).
@@ -78,6 +88,24 @@ const SKY_YAW_FROM = { x: SQUARE.x, z: SQUARE.z };
 /** The dancers (watched): their heads' height on the stage. */
 const STAGE_LOOK: Point = { x: STAGE.x, y: STAGE_TOP + 1.6, z: STAGE.front - 2.4 };
 const EX_AT: Point = { x: 0, y: 0, z: 0 };
+/** (a point looked at, filled per call: `lookAt` copies it) */
+const AT: Point = { x: 0, y: 0, z: 0 };
+/** What someone does in their place before the count (`NyeLife.before`'s answer, filled per call). */
+interface Mood {
+  pose: Pose;
+  yaw: number;
+  look: Point | null;
+  hold: number;
+}
+const BEFORE: Mood = { pose: POSE.stand, yaw: 0, look: null, hold: 0 };
+
+/** Someone's head (into `AT`). */
+function headOf(o: Actor): Point {
+  AT.x = o.x;
+  AT.y = o.y + 1.85 * o.crowd.scale(o.i) * 0.75;
+  AT.z = o.z;
+  return AT;
+}
 const P = { x: 0, z: 0, yaw: 0 };
 
 /** The ordinary days' hours (`clock`): sellers and the attendant, the children, the evening's visitors. */
@@ -92,7 +120,7 @@ interface Seller {
   yaw: number;
 }
 
-/** An evening visitor's round: points (x, z), how long they stay at each (s), the pose there. */
+/** A walk round points (x, z), staying at each a while (s) with a pose and facing; when each is reached and left. */
 interface Round {
   a: Actor;
   pts: Float32Array;
@@ -106,11 +134,26 @@ interface Round {
   phase: number;
 }
 
+/** A stroller's round (`Member.visits`): its legs' times (s after they start it), its length. */
+interface Stroll {
+  pts: Float32Array;
+  at: Float32Array;
+  off: Float32Array;
+  period: number;
+}
+
 export class NyeLife implements PeopleScene {
   readonly name = 'nye';
   readonly actors: Actor[] = [];
   private readonly plan: NyeCrowdPlan;
   private readonly crowdActors: Actor[] = [];
+  /** Per member: their seat's height (seated, the sala's monks: placed there), a mate to turn to, the look they wear (1: eating). */
+  private readonly rideY: Float32Array;
+  private readonly mate: Int16Array;
+  /** Each group's members (indices into the plan's members, by their place in the group). */
+  private readonly byGroup: number[][];
+  private readonly wearing: Uint8Array;
+  private readonly strolls: (Stroll | null)[] = [];
   private readonly sellers: Seller[] = [];
   private readonly guard: Seller;
   private readonly kids: Actor[] = [];
@@ -118,13 +161,14 @@ export class NyeLife implements PeopleScene {
   private readonly dancers: Actor[] = [];
   private readonly players: Actor[] = [];
   private readonly mats: Rig[] = [];
+  private readonly picnics: Rig[] = [];
   private readonly music: Rig;
   private readonly pace = new Pace(220, 560);
   private readonly ground: SquareGround;
   private shown = false;
   private rigsOut = false;
   private readonly matOut = new Uint8Array(MATS.length);
-  /** When each mat's family has come (s from midnight; the plan's first groups are theirs). */
+  /** When each mat's family has come (s from midnight). */
   private readonly matFrom = new Float64Array(MATS.length).fill(Infinity);
   /** (a shot: the people's clock at its first step) */
   private now0 = NaN;
@@ -141,14 +185,26 @@ export class NyeLife implements PeopleScene {
       return a;
     };
     // The night's crowd (as many as the crowd has room for, up to 150: the square is 68 × 48 m).
-    const room = crowd.capacity - crowd.count - 26;
+    const room = crowd.capacity - crowd.count - 29;
     this.plan = planCrowd(Math.max(0, Math.min(150, room)));
-    for (const m of this.plan.members) this.crowdActors.push(mk(m.look));
-    // The sellers behind their stalls (each stall faces the square's middle: they stand at its back).
+    const ms = this.plan.members;
+    for (const m of ms) this.crowdActors.push(mk(m.look));
+    // (seats' heights; the sala's floor over the land's lowest corner under it, as nye/_sqSala.ts builds it)
+    const field = env.ground.field;
+    const sala = Math.min(...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => field.heightAt(SALA.x + (sx * SALA.w) / 2, SALA.z + (sz * SALA.d) / 2)))) + SALA_FLOOR;
+    this.rideY = new Float32Array(ms.map((m) => (m.lift < 0 ? sala : this.groundAt(m.x, m.z) + m.lift)));
+    this.mate = new Int16Array(ms.map((m, k) => ms.findIndex((o, j) => j !== k && o.group === m.group && o.role !== 'shoulder')));
+    this.byGroup = this.plan.groups.map(() => []);
+    ms.forEach((m, k) => (this.byGroup[m.group][m.idx] = k));
+    this.wearing = new Uint8Array(ms.length);
+    for (const m of ms) this.strolls.push(m.visits ? strollOf(m) : null);
+    // The sellers behind their stalls (each stall faces the square's middle: they stand at its back; the cart's at its handles).
     STALLS.forEach((s, k) => {
-      const a = mk(dress('vendor', 9300 + k, { hat: k % 2 ? 'krama' : 'none', goods: 'sweets', sex: k === 2 ? 'm' : 'f' }));
-      // (behind the counter: its back edge is 0.4 m before the stall's middle, nye/_sqStalls.ts `COUNTER`)
-      this.sellers.push({ a, x: s.x - Math.sin(s.facing) * 0.05, z: s.z - Math.cos(s.facing) * 0.05, yaw: s.facing });
+      const kind = s.kind;
+      const a = mk(dress('vendor', 9300 + k, { hat: k % 2 ? 'krama' : 'none', goods: 'sweets', sex: k === 2 || kind === 'cane' ? 'm' : 'f' }));
+      // (behind the counter: its back edge is 0.3 m before the stall's middle, nye/_sqStalls.ts `COUNTER`)
+      const back = (kind === 'cane' ? 1.25 : 0.05) * STALL_K;
+      this.sellers.push({ a, x: s.x - Math.sin(s.facing) * back, z: s.z - Math.cos(s.facing) * back, yaw: s.facing });
     });
     // The attendant just inside the gate, east of the way in, turned to it.
     {
@@ -165,8 +221,8 @@ export class NyeLife implements PeopleScene {
     // The evening's visitors: in through the gate, a photo before the board, a stall, out again.
     for (let k = 0; k < 6; k++) {
       const st = STALLS[k % STALLS.length];
-      const sx = st.x + Math.sin(st.facing) * 2.4;
-      const sz = st.z + Math.cos(st.facing) * 2.4;
+      const sx = st.x + Math.sin(st.facing) * 2.4 * STALL_K;
+      const sz = st.z + Math.cos(st.facing) * 2.4 * STALL_K;
       const px = BOARD.x - 6 + k * 2.3 + (k > 2 ? 1.6 : 0);
       const pz = STAGE.stairTo + 2.2 + (k % 2) * 0.8;
       const pts = new Float32Array([GATE_OUT.x, GATE_OUT.z + 3, GATE_IN.x + (k % 2 ? 0.6 : -0.6), GATE_IN.z, px, pz, sx, sz, GATE_IN.x, GATE_IN.z, GATE_OUT.x, GATE_OUT.z + 3]);
@@ -199,21 +255,21 @@ export class NyeLife implements PeopleScene {
       a.avoid(null);
       this.players.push(a);
     });
-    // Their things: the families' mats, the ensemble.
+    // Their things: the families' mats with their picnics, the ensemble.
     MATS.forEach((m, k) => {
-      const r = new Rig(things, matDef(m.w, m.d, k));
-      this.mats.push(r);
+      this.mats.push(new Rig(things, matDef(m.w, m.d, k)));
+      this.picnics.push(new Rig(things, picnicDef(k)));
     });
     this.music = new Rig(things, ensembleDef());
-    MATS.forEach((_, k) => {
-      const g = this.plan.groups[k];
-      const lead = this.plan.members.find((p) => p.group === k && p.role === 'sit');
-      if (g && lead) this.matFrom[k] = g.start + lead.cum[lead.cum.length - 1] / g.v - 2;
+    this.plan.mats.forEach((g, k) => {
+      const gr = this.plan.groups[g];
+      const lead = ms.find((p) => p.group === g);
+      if (gr && lead) this.matFrom[k] = gr.start + lead.cum[lead.cum.length - 1] / gr.v - 2;
     });
-    const ms = this.plan.members;
     const n = (f: (m: Member) => boolean) => ms.filter(f).length;
+    const acts = [...new Set(ms.map((m) => m.act))].map((a) => `${a} ${n((m) => m.act === a)}`).join(', ');
     console.info(
-      `[map] nye people: ${ms.length} in the night's crowd (${n((m) => m.low)} on low; ${this.plan.groups.length} families, ${n((m) => m.role === 'sit')} seated, ${n((m) => m.role === 'shoulder')} on shoulders, ${n((m) => m.kid)} children, ${n((m) => m.sparkler)} sparklers, ${n((m) => m.phone)} phones), ${this.actors.length} in all`,
+      `[map] nye people: ${ms.length} in the night's crowd (${n((m) => m.low)} on low; ${this.plan.groups.length} groups: ${acts}; ${n((m) => m.role === 'seat')} on seats, ${n((m) => m.role === 'sit')} on mats and the floor, ${n((m) => m.role === 'shoulder')} on shoulders, ${n((m) => m.kid)} children, ${n((m) => m.sparkler)} sparklers, ${n((m) => m.phone)} phones), ${this.actors.length} in all`,
     );
   }
 
@@ -257,17 +313,23 @@ export class NyeLife implements PeopleScene {
     }
   }
 
-  /** The mats and the ensemble: out for the night, written once. */
+  /** The mats with their picnics and the ensemble: out for the night, written once. */
   private rigs(night: boolean, s: number): void {
-    // (each family's mat from when they come to when they get up to go: the plan's first groups are the mats' families)
+    // (each family's mat from when they come to when they get up to go)
     for (let k = 0; k < MATS.length; k++) {
       const m = MATS[k];
-      const g = this.plan.groups[k];
+      const g = this.plan.groups[this.plan.mats[k]];
       const out = night && !!g && s >= this.matFrom[k] && s < g.leave;
       if (out === !!this.matOut[k]) continue;
       this.matOut[k] = out ? 1 : 0;
-      if (out) this.mats[k].place(m.x, this.groundAt(m.x, m.z), m.z, 0).write();
-      else this.mats[k].hide();
+      if (out) {
+        const y = this.groundAt(m.x, m.z);
+        this.mats[k].place(m.x, y, m.z, 0).write();
+        this.picnics[k].place(m.x, y + 0.03, m.z, k * 0.7).write();
+      } else {
+        this.mats[k].hide();
+        this.picnics[k].hide();
+      }
     }
     if (night === this.rigsOut) return;
     this.rigsOut = night;
@@ -282,7 +344,7 @@ export class NyeLife implements PeopleScene {
 
   /** Show `a` at (x, z) (warped there when hidden or far: a page opened at any time has everyone where they belong). */
   private put(a: Actor, x: number, z: number, yaw: number, far = 5): void {
-    if (!a.shown || a.dist(x, z) > far) {
+    if (!a.shown || a.riding || a.dist(x, z) > far) {
       a.warp(x, this.groundAt(x, z), z, yaw);
       a.show();
     }
@@ -380,23 +442,28 @@ export class NyeLife implements PeopleScene {
     a.step(dt, now);
   }
 
-  /** One of the night's crowd: on the way, in their place, on the way home. */
+  /** One of the night's crowd: on the way, settling onto a seat, in their place (doing what their group does), on the way home. */
   private member(k: number, on: boolean, s: number, now: number, dt: number, ex: Obstacle | null): void {
     const m = this.plan.members[k];
     const a = this.crowdActors[k];
     if (m.role === 'shoulder') return this.shoulder(m, a, on, s, now);
     const g = this.plan.groups[m.group];
     const L = m.cum[m.cum.length - 1];
-    const goneD = (s - g.leave) * g.v - m.lag;
+    const E = m.settle;
     const comeD = (s - g.start) * g.v - m.lag;
-    if (!on || comeD < 0 || goneD >= L) return void (a.shown && a.hide());
+    const goneD = (s - g.leave) * g.v - m.lag;
+    if (!on || comeD < 0 || goneD >= L + E) {
+      if (a.shown) a.hide();
+      return;
+    }
     // On the way (in, or home: the way back), a point a little ahead to walk to.
-    if (comeD < L || goneD > 0) {
-      const home = goneD > 0;
-      const d = home ? L - goneD : comeD;
+    if (comeD < L || goneD > E) {
+      const home = goneD > E;
+      const d = home ? L - (goneD - E) : comeD;
+      this.wear(k, false);
       along(m, d, P);
       // (held up behind others or the explorer: a little quicker to catch up; far behind, there at once)
-      const behind = a.shown ? a.dist(P.x, P.z) : 0;
+      const behind = a.shown && !a.riding ? a.dist(P.x, P.z) : 0;
       this.put(a, P.x, P.z, home ? P.yaw + Math.PI : P.yaw, 8);
       along(m, home ? d - 1.2 : d + 1.2, P);
       a.goTo(P.x, P.z, g.v + Math.min(0.7, behind * 0.25));
@@ -407,11 +474,27 @@ export class NyeLife implements PeopleScene {
       a.step(dt, now);
       return;
     }
+    // Onto their seat or the sala's floor (the last metre placed, not walked), up for the count, down again after.
+    if (E > 0) {
+      let u = Math.min(1, (comeD - L) / E, 1 - Math.max(0, goneD) / E);
+      if (m.act === 'table') u = Math.min(u, s < UP_AT || s >= DOWN_AT + 1.6 ? 1 : s < DOWN_AT ? Math.max(0, 1 - (s - UP_AT) / 1.6) : (s - DOWN_AT) / 1.6);
+      if (u < 1) return this.settling(k, m, a, Math.max(0, u), s, now, dt, ex);
+      this.wear(k, m.act === 'table');
+      a.ride(m.x, this.rideY[k], m.z, m.yaw);
+      a.show();
+      const pose = this.mood(k, m, a, s, now, true);
+      a.pose(pose, now);
+      a.step(dt, now);
+      return;
+    }
+    // Running round the fire bowl, strolling round the stalls (before the count).
+    if (m.role === 'run' && (s < RUN_TO || s >= NYE_TIMES.show + 40)) return this.run(m, a, now, dt);
+    if (m.role === 'stroll' && s < STROLL_TO && this.stroll(k, m, a, s - (g.start + (L + m.lag) / g.v), now, dt)) return;
     // In their place.
-    this.put(a, m.x, m.z, m.yaw, 6);
-    a.goTo(m.x, m.z, 0.6);
-    const pose = this.mood(m, a, s, now);
-    a.pose(pose, now);
+    this.put(a, m.x, m.z, m.yaw, m.role === 'stroll' || m.role === 'run' ? 40 : 6);
+    a.goTo(m.x, m.z, m.role === 'stroll' ? 0.95 : m.role === 'run' ? 1.6 : 0.6);
+    const pose = this.mood(k, m, a, s, now, m.role === 'sit');
+    a.pose(a.dist(m.x, m.z) > 0.6 ? POSE.stand : pose, now);
     if (ex && s < -10 && a.dist(ex.x, ex.z) < 2.5) this.glance(a, ex, now);
     a.step(dt, now);
     // (jumping for joy in the first seconds of the year)
@@ -421,40 +504,81 @@ export class NyeLife implements PeopleScene {
     }
   }
 
+  /** Between where their route ends (u 0: standing there) and their seat (u 1), placed. */
+  private settling(k: number, m: Member, a: Actor, u: number, s: number, now: number, dt: number, ex: Obstacle | null): void {
+    const r = m.route;
+    const n = r.length;
+    const ax = r[n - 2];
+    const az = r[n - 1];
+    const y0 = this.groundAt(ax, az);
+    const x = ax + (m.x - ax) * u;
+    const z = az + (m.z - az) * u;
+    // (up the sala's steps over the first 1.5 m; seated for the last few centimetres)
+    const left = (1 - u) * m.settle;
+    const y = y0 + (this.rideY[k] - y0) * Math.min(1, (u * m.settle) / 1.5);
+    const seated = left < 0.3;
+    this.wear(k, seated && m.act === 'table');
+    if (u <= 0) {
+      // (up from the stool for the count and the show: standing behind it, turning as a walker would)
+      const was = a.shown ? a.yaw : m.yaw;
+      a.ride(ax, y0, az, was);
+      a.show();
+      const pose = this.mood(k, m, a, s, now, false);
+      const turn = Math.atan2(Math.sin(this.faceYaw - was), Math.cos(this.faceYaw - was));
+      a.ride(ax, y0, az, was + Math.max(-3 * dt, Math.min(3 * dt, turn)));
+      a.pose(pose, now);
+      if (ex && s < -10 && a.dist(ex.x, ex.z) < 2.5) this.glance(a, ex, now);
+      a.step(dt, now);
+      return;
+    }
+    const walkYaw = Math.atan2(m.x - ax, m.z - az);
+    const turn = Math.atan2(Math.sin(m.yaw - walkYaw), Math.cos(m.yaw - walkYaw));
+    a.ride(x, y, z, seated ? m.yaw : walkYaw + turn * Math.min(1, Math.max(0, (0.7 - left) / 0.4)));
+    a.show();
+    a.pose(seated ? (m.act === 'monk' ? POSE.sit : POSE.stool) : POSE.stand, now);
+    a.carry(0, now);
+    a.lookAt(null);
+    a.step(dt, now);
+    if (!seated) a.crowd.gait(a.i, 1, a.crowd.stepRate(a.i, 0.6), now);
+  }
+
+  /** The way someone stood up from their seat turns to (set by `mood` through `face`). */
+  private faceYaw = 0;
+
   /**
-   * What someone in their place does now (their pose; facing and looking set here): watching the dance, talking, a
-   * photo; the countdown; the cheer; the fireworks; after.
+   * What someone in their place does now (their pose; facing and looking set here): what their group does before the
+   * count (watching the dance, eating, chatting, a selfie, buying), the countdown, the cheer, the fireworks, after.
+   * `sitting`: on a seat, a mat or the sala's floor.
    */
-  private mood(m: Member, a: Actor, s: number, now: number): Pose {
+  private mood(k: number, m: Member, a: Actor, s: number, now: number, sitting: boolean): Pose {
     const i = a.i;
-    const seated = m.role === 'sit';
-    const monk = m.role === 'monk';
+    const monk = m.act === 'monk';
     // (a new mood every few seconds, each their own)
     const w = Math.floor((s + i * 2.9) / 7);
     const h = hash3(w, i, 5, 2027);
     let yaw = m.yaw;
     let look: Point | null = BOARD_AT;
-    let pose: Pose = seated ? POSE.sit : POSE.stand;
+    let pose: Pose = sitting ? (m.role === 'seat' ? POSE.stool : POSE.sit) : POSE.stand;
     let hold = 0;
     if (s < -10) {
-      // Before the countdown: the dance (heads to the stage), the phones, a word with the family.
       look = s < DANCE_TO ? STAGE_LOOK : BOARD_AT;
-      if (!seated && !monk) {
-        if (m.phone && h < 0.22) pose = POSE.photo;
-        else if (m.phone && h < 0.45) hold = 1;
-        else if (!m.kid && h > 0.82) pose = POSE.talk;
-        else if (m.kid && h > 0.86) pose = POSE.wave;
-      } else if (seated && m.phone && h < 0.2) hold = 1;
-      if (hold) look = null;
-      if (m.sparkler && s > -1500) hold = 1;
+      const act = this.before(k, m, a, s, h, sitting);
+      pose = act.pose;
+      yaw = act.yaw;
+      look = act.look;
+      hold = act.hold;
     } else if (s < 0) {
       // The last ten seconds: everyone to the board, phones up, arms counting; the last three, arms up.
-      if (!monk && !seated) pose = m.phone ? POSE.photo : s > -3 && h < 0.6 ? POSE.cheer : POSE.point;
+      if (!sitting) {
+        yaw = Math.atan2(BOARD.x - a.x, BOARD.z - a.z);
+        pose = m.phone ? POSE.photo : s > -3 && h < 0.6 ? POSE.cheer : POSE.point;
+      }
       if (m.sparkler) hold = 1;
     } else if (s < 30) {
-      // Midnight: the cheer (two of a family turn to each other for the first seconds), the waving; the monks stay still.
-      if (monk) pose = POSE.stand;
-      else if (seated) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
+      // Midnight: the cheer (two of a group turn to each other for the first seconds), the waving; the monks stay still.
+      if (!sitting) yaw = Math.atan2(BOARD.x - a.x, BOARD.z - a.z);
+      if (monk || (sitting && m.role === 'seat')) pose = sitting ? pose : POSE.stand;
+      else if (sitting) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
       else if (m.partner >= 0 && s > 2 && s < 9) {
         const o = this.crowdActors[m.partner];
         yaw = a.yawTo(o.x, o.z);
@@ -465,18 +589,190 @@ export class NyeLife implements PeopleScene {
     } else if (s < NYE_TIMES.show) {
       // The fireworks: heads up over the stage, phones up, a cheer at a big one now and then.
       look = SKY;
-      yaw = Math.atan2(SKY.x - SKY_YAW_FROM.x, SKY.z - SKY_YAW_FROM.z) * 0.5 + m.yaw * 0.5;
-      if (!seated && !monk) pose = m.phone && h < 0.5 ? POSE.photo : h > 0.93 ? POSE.cheer : h > 0.88 ? POSE.point : POSE.look;
+      if (!sitting) {
+        yaw = Math.atan2(SKY.x - SKY_YAW_FROM.x, SKY.z - SKY_YAW_FROM.z) * 0.5 + Math.atan2(BOARD.x - a.x, BOARD.z - a.z) * 0.5;
+        pose = m.phone && h < 0.5 ? POSE.photo : h > 0.93 ? POSE.cheer : h > 0.88 ? POSE.point : POSE.look;
+      }
       if (m.sparkler) hold = 1;
-    } else {
+    } else if (!sitting) {
       // After the show: talking, a last photo of the board, waving to friends.
-      if (!seated && !monk) pose = h < 0.35 ? POSE.talk : m.phone && h < 0.5 ? POSE.photo : h > 0.92 ? POSE.wave : POSE.stand;
+      pose = h < 0.35 ? POSE.talk : m.phone && h < 0.5 ? POSE.photo : h > 0.92 ? POSE.wave : POSE.stand;
+      if (m.act === 'circle' || m.act === 'selfie') yaw = Math.atan2(m.cx - a.x, m.cz - a.z);
     }
+    this.faceYaw = yaw;
     a.face(yaw);
     a.carry(hold, now);
     if (look) a.lookAt(look, now + 1);
     else a.lookAt(null);
     return pose;
+  }
+
+  /** Before the count: what each group does in its place (into `BEFORE`, read at once: no object a call). */
+  private before(k: number, m: Member, a: Actor, s: number, h: number, sitting: boolean): Mood {
+    const out = BEFORE;
+    out.pose = sitting ? (m.role === 'seat' ? POSE.stool : POSE.sit) : POSE.stand;
+    out.yaw = m.yaw;
+    out.look = s < DANCE_TO ? STAGE_LOOK : BOARD_AT;
+    out.hold = m.sparkler && s > -1500 ? 1 : 0;
+    const mate = this.mate[k] >= 0 ? this.crowdActors[this.mate[k]] : null;
+    switch (m.act) {
+      case 'table':
+        // Eating, a word with the one across, a glance at the stage (up from the stool: as the watchers).
+        if (!sitting) break;
+        out.pose = h < 0.6 ? POSE.eat : POSE.stool;
+        out.look = h < 0.6 ? null : h < 0.85 && mate ? headOf(mate) : out.look;
+        return out;
+      case 'mat':
+        if (m.kid && h > 0.85) out.pose = POSE.wave;
+        else if (m.phone && h < 0.3) {
+          out.hold = 1;
+          out.look = null;
+        } else if (h < 0.55 && mate) out.look = headOf(mate);
+        return out;
+      case 'bench':
+      case 'monk':
+        return out;
+      case 'circle': {
+        // One talks at a time, the others turn to them; a laugh now and then; a look at a phone.
+        const ks = this.byGroup[m.group];
+        const talker = Math.floor(hash3(Math.floor(s / 5), m.group, 9, 2027) * ks.length);
+        out.yaw = Math.atan2(m.cx - m.x, m.cz - m.z);
+        if (m.idx === talker) {
+          out.pose = POSE.talk;
+          out.look = null;
+        } else {
+          out.look = headOf(this.crowdActors[ks[talker]]);
+          if (h > 0.9) out.pose = POSE.cheer;
+          else if (m.phone && h < 0.18) {
+            out.hold = 1;
+            out.look = null;
+          }
+        }
+        return out;
+      }
+      case 'selfie': {
+        // A selfie with the board behind them (her arm up with the phone, his peace sign), then a look at it, a word.
+        // (side by side all the while: a half turn to each other to look at the picture and talk)
+        const phase = (s + m.group * 5.3) % 18;
+        if (phase < 8) {
+          out.yaw = m.yaw;
+          if (m.selfie === 1) out.pose = POSE.point;
+          else out.hold = 1;
+          AT.x = m.cx + Math.sin(m.yaw) * 1.4;
+          AT.y = a.y + 2.3;
+          AT.z = m.cz + Math.cos(m.yaw) * 1.4;
+          out.look = AT;
+        } else {
+          const toward = mate ? Math.atan2(Math.sin(a.yawTo(mate.x, mate.z) - m.yaw), Math.cos(a.yawTo(mate.x, mate.z) - m.yaw)) : 0;
+          out.yaw = m.yaw + toward * 0.35;
+          const check = phase < 13;
+          out.pose = check ? POSE.stand : m.selfie === 1 ? POSE.talk : POSE.stand;
+          out.hold = m.selfie === 1 && check ? 1 : 0;
+          const taker = m.selfie === 1 ? a : mate;
+          if (check && taker) {
+            AT.x = taker.x + Math.sin(taker.yaw) * 0.3;
+            AT.y = taker.y + 1.25;
+            AT.z = taker.z + Math.cos(taker.yaw) * 0.3;
+            out.look = AT;
+          } else out.look = null;
+        }
+        return out;
+      }
+      case 'queue':
+        // The first is handed what they bought, the others wait (a phone, a word).
+        AT.x = m.cx;
+        AT.y = FLOOR + 1.8;
+        AT.z = m.cz;
+        out.look = AT;
+        if (m.idx === 0) out.pose = h < 0.5 ? POSE.give : POSE.stand;
+        else if (m.phone && h < 0.4) {
+          out.hold = 1;
+          out.look = null;
+        } else if (h > 0.8) out.pose = POSE.talk;
+        return out;
+      default:
+        break;
+    }
+    // Watching the dance (and the strollers and runners back in their places): phones, a word with the family.
+    if (!sitting) {
+      if (m.phone && h < 0.22) out.pose = POSE.photo;
+      else if (m.phone && h < 0.45) out.hold = 1;
+      else if (!m.kid && h > 0.82) out.pose = POSE.talk;
+      else if (m.kid && h > 0.86) out.pose = POSE.wave;
+    }
+    if (out.hold && !m.sparkler) out.look = null;
+    return out;
+  }
+
+  /** A child chasing the others round their fire bowl, stopping now and then to wave a sparkler. */
+  private run(m: Member, a: Actor, now: number, dt: number): void {
+    const cycle = 21;
+    const u = now + m.group * 3.3;
+    const lap = Math.floor(u / cycle);
+    const t = u - lap * cycle;
+    const running = t < 15;
+    const r = 2.3 + 0.25 * Math.sin(m.idx * 2.1);
+    const ang = ((lap * 15 + Math.min(t, 15)) * 2.0) / r + m.idx * 2.09;
+    const x = m.cx + Math.cos(ang) * r;
+    const z = m.cz + Math.sin(ang) * r;
+    this.put(a, x, z, ang, 6);
+    if (running) {
+      const ahead = ang + 1.2 / r;
+      a.goTo(m.cx + Math.cos(ahead) * r, m.cz + Math.sin(ahead) * r, 2.0);
+      a.face(null);
+      a.pose(POSE.stand, now);
+      a.carry(m.sparkler ? 1 : 0, now);
+    } else {
+      a.goTo(x, z, 0.5);
+      a.face(Math.atan2(m.cx - x, m.cz - z) + Math.PI);
+      a.pose(hash3(lap, m.idx, 3, 7) < 0.5 ? POSE.cheer : POSE.wave, now);
+      a.carry(m.sparkler ? 1 : 0, now);
+    }
+    a.lookAt(null);
+    a.step(dt, now);
+  }
+
+  /** A stroller on their round of the stalls, `t` s after they first came to their place (true: done). */
+  private stroll(k: number, m: Member, a: Actor, t: number, now: number, dt: number): boolean {
+    const r = this.strolls[k];
+    if (!r || t < 0) return false;
+    const u = t % r.period;
+    const n = r.at.length;
+    let j = 0;
+    while (j < n - 1 && u >= r.off[j]) j++;
+    const px = r.pts[4 * j];
+    const pz = r.pts[4 * j + 1];
+    const there = u >= r.at[j];
+    this.put(a, px, pz, a.yaw, 40);
+    if (there && r.pts[4 * j + 2] > 0) {
+      const face = r.pts[4 * j + 3];
+      a.goTo(px, pz, 0.6);
+      a.face(face);
+      const h = hash3(Math.floor((u + a.i) / 6), a.i, 7, 2027);
+      a.pose(h < 0.3 ? POSE.point : h < 0.55 ? POSE.talk : m.phone && h < 0.75 ? POSE.photo : POSE.stand, now);
+      AT.x = px + Math.sin(face) * 2.2;
+      AT.y = FLOOR + 1.6;
+      AT.z = pz + Math.cos(face) * 2.2;
+      a.lookAt(AT, now + 1);
+    } else {
+      a.goTo(px, pz, 0.9);
+      a.face(null);
+      a.pose(POSE.stand, now);
+      a.lookAt(null);
+    }
+    a.carry(m.sparkler ? 1 : 0, now);
+    a.step(dt, now);
+    return true;
+  }
+
+  /** The look member `k` wears: with the bowl while seated at their table. */
+  private wear(k: number, eating: boolean): void {
+    const m = this.plan.members[k];
+    if (!m.eatLook || eating === !!this.wearing[k]) return;
+    this.wearing[k] = eating ? 1 : 0;
+    const a = this.crowdActors[k];
+    a.look = eating ? m.eatLook : m.look;
+    a.crowd.dress(a.i, a.look);
   }
 
   /** A child on a father's shoulders (rides with him; his hands on his head; hidden with him). */
@@ -632,4 +928,23 @@ export class NyeLife implements PeopleScene {
   report(traffic: Traffic): void {
     for (const a of this.actors) if (a.shown) traffic.add(this.name, a.x, a.y, a.z);
   }
+}
+
+/** A stroller's round from their place: each point reached and left (s), walking at 0.85 m/s. */
+function strollOf(m: Member): Stroll {
+  const pts = m.visits!;
+  const n = pts.length / 4;
+  const at = new Float32Array(n);
+  const off = new Float32Array(n);
+  let t = 0;
+  let [px, pz] = [m.x, m.z];
+  for (let j = 0; j < n; j++) {
+    t += Math.hypot(pts[4 * j] - px, pts[4 * j + 1] - pz) / 0.85;
+    at[j] = t;
+    t += pts[4 * j + 2] || 0;
+    off[j] = t;
+    px = pts[4 * j];
+    pz = pts[4 * j + 1];
+  }
+  return { pts, at, off, period: t };
 }

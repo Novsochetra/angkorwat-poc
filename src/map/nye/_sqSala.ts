@@ -4,7 +4,7 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
-import { SQUARE } from './plan';
+import { SALA, SALA_FLOOR } from './plan';
 import { GOLD, LAMP_HALO, LATERITE, pick, POST_STONE } from './_sqKit';
 
 /**
@@ -13,12 +13,16 @@ import { GOLD, LAMP_HALO, LATERITE, pick, POST_STONE } from './_sqKit';
  * its east side (toward the square), eight red-brown lacquered posts on stone bases, beams, benches round three
  * sides, and a two-tiered roof of terracotta tiles: a hipped skirt, over it a gable roof on a dark band, a plain
  * ridge with a small Angkor tower finial in its middle (corbelled tiers, a gilt lotus bud). Khmer, never Thai: no
- * gable horns (chofa), no flame finials. Three small lanterns hang inside from the tie beams; their flames glow.
+ * gable horns (chofa), no flame finials. Three small lanterns hang inside from the tie beams and one at each corner of
+ * the skirt; gilt rakes edge the gable ends, and bulbs outline the eaves and the rakes (the festival's lit roof, as in
+ * the owner's reference); a warm glow under the roof; a woven mat on the floor where monks sit on the night.
  *
- * Where: `SALA` (between the square's west trees, outside its edge; the zip line's last station is 26 m north-west).
- * Built in the square's builder (stone and bark: no draw of its own); its ground is occupied (trees keep off).
+ * Where: plan.ts `SALA` (between the square's west trees, outside its edge; the zip line's last station is 26 m
+ * north-west; the people part seats its monks there). Built in the square's builder (stone, bark and the mat's cloth:
+ * no draw of its own); its ground is occupied (trees keep off).
  */
-export const SALA = { x: SQUARE.x - SQUARE.rx - 10.5, z: SQUARE.z - 0.5, w: 6.4, d: 8.8 } as const;
+// (still exported from here: the garden round the square, _sqMeadow.ts, reads it from this module)
+export { SALA };
 
 const TILE = [0xa8492e, 0x9e4229, 0xb25234, 0x963d26];
 const TILE_DARK = [0x7e3220, 0x76301e, 0x873724];
@@ -34,7 +38,7 @@ export function buildSala(b: VoxelBuilder, field: HeightField, lamps: Lamps, bul
   const st = (i: number, k = 0) => pick(POST_STONE, i, k, 2, 120);
   const tile = (i: number) => pick(TILE, i, cz, 3, 120);
   // ── The plinth: a laterite course (sunk into the land), a sandstone top with a lip ──
-  const ph = 0.75;
+  const ph = SALA_FLOOR;
   b.box(cx, g + 0.12, cz, w, 0.7, d, lat(0), 'mapStone', { src, shade: 0.95 });
   b.box(cx, g + ph - 0.12, cz, w + 0.16, 0.24, d + 0.16, st(1), 'mapStone', { src, shade: 1.04 });
   const fy = g + ph;
@@ -73,6 +77,7 @@ export function buildSala(b: VoxelBuilder, field: HeightField, lamps: Lamps, bul
   let y = by + 0.42;
   let hx = w / 2 + 1.0;
   let hz = d / 2 + 1.0;
+  const eave = { y, hx, hz };
   // (the eave's fascia: a lacquer board, gilt along its foot)
   b.box(cx, y + 0.02, cz, hx * 2 + 0.06, 0.06, hz * 2 + 0.06, pick(GOLD, cx, cz, 10, 120), 'mapStone', { src, shade: 0.92 });
   for (let k = 0; k < 4; k++) {
@@ -89,6 +94,7 @@ export function buildSala(b: VoxelBuilder, field: HeightField, lamps: Lamps, bul
   const gz = hz + 0.15;
   const steps = 7;
   const dx = (gx - 0.3) / steps;
+  const gable = { y, gx };
   b.box(cx, y + 0.02, cz, gx * 2 + 0.06, 0.06, gz * 2 + 0.06, pick(GOLD, cx, cz, 13, 120), 'mapStone', { src, shade: 0.92 });
   for (let k = 0; k < steps; k++) {
     b.box(cx, y + 0.13, cz, gx * 2, 0.22, gz * 2, k % 2 ? tile(k + 20) : pick(TILE_DARK, k, 1, 14, 120), 'mapStone', { src, shade: 1 + 0.01 * k });
@@ -133,11 +139,49 @@ export function buildSala(b: VoxelBuilder, field: HeightField, lamps: Lamps, bul
     lamps.add([cx, ly, z], 0.28, 1);
     glow?.add(cx, ly, z, LAMP_HALO, 2.4, { level: 0.85 });
   }
-  // String lights along the east eave (the square's side), medium and up.
-  if (!low) {
-    const ex = cx + w / 2 + 1.0 - 0.05;
-    for (let z = cz - d / 2 - 0.6; z <= cz + d / 2 + 0.6; z += 0.6) bulbs.add([ex, by + 0.3 - 0.05 * Math.sin(((z - cz) / d) * Math.PI + Math.PI / 2), z], 0.1, 0.8 + 0.4 * hash3(ex, z, 1, 121));
-  }
+  // The roof outlined in light, as at a pagoda's festival: gilt rakes up the gable ends, bulbs along every eave and
+  // up the rakes (the skirt's eave on low too, sparser), a lamp hanging at each corner of the skirt.
+  const rise = y - gable.y;
+  const run = gable.gx - 0.3;
+  const rake = Math.atan2(rise, run);
+  const rakeLen = Math.hypot(rise, run);
+  for (const sd of [-1, 1])
+    for (const sx of [-1, 1]) {
+      const z = cz + sd * (gz + 0.04);
+      b.box(cx + (sx * (gable.gx + 0.3)) / 2, gable.y + rise / 2 + 0.12, z, rakeLen + 0.1, 0.09, 0.07, pick(GOLD, sx, sd, 23, 120), 'mapStone', { src, shade: 1.08, rz: -sx * rake });
+      if (!low) for (let t = 0.04; t < 1; t += 0.45 / rakeLen) bulbs.add([cx + sx * (gable.gx - t * run), gable.y + t * rise + 0.2, z + sd * 0.05], 0.09, 0.9);
+    }
+  const step = low ? 1.2 : 0.6;
+  const string = (x0: number, z0: number, x1: number, z1: number, yy: number) => {
+    const L = Math.hypot(x1 - x0, z1 - z0);
+    for (let t = step / 2; t < L; t += step) {
+      const u = t / L;
+      bulbs.add([x0 + (x1 - x0) * u, yy - 0.06 * Math.sin(u * Math.PI), z0 + (z1 - z0) * u], 0.1, 0.8 + 0.4 * hash3(x0 + u, z0, 1, 121));
+    }
+  };
+  const ey = eave.y - 0.06;
+  const [ex, ez] = [eave.hx + 0.03, eave.hz + 0.03];
+  string(cx + ex, cz - ez, cx + ex, cz + ez, ey);
+  string(cx - ex, cz - ez, cx - ex, cz + ez, ey);
+  string(cx - ex, cz + ez, cx + ex, cz + ez, ey);
+  string(cx - ex, cz - ez, cx + ex, cz - ez, ey);
+  if (!low) for (const sx of [-1, 1]) string(cx + sx * (gable.gx + 0.03), cz - gz, cx + sx * (gable.gx + 0.03), cz + gz, gable.y - 0.02);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const x = cx + sx * (eave.hx - 0.25);
+      const z = cz + sz * (eave.hz - 0.25);
+      const ly = eave.y - 0.62;
+      b.box(x, (eave.y + ly + 0.2) / 2, z, 0.03, eave.y - ly - 0.2, 0.03, 0x2a2420, 'mapStone', { src });
+      b.box(x, ly + 0.2, z, 0.28, 0.06, 0.28, pick(GOLD, x, z, 24, 120), 'mapStone', { src });
+      b.box(x, ly - 0.18, z, 0.28, 0.06, 0.28, pick(GOLD, x, z, 25, 120), 'mapStone', { src });
+      lamps.add([x, ly, z], 0.24, 1);
+      glow?.add(x, ly, z, LAMP_HALO, 2.2, { level: 0.85 });
+    }
+  // A warm glow under the roof, and the monks' woven mat on the floor's east half (they sit there on the night).
+  glow?.add(cx + 0.6, fy + 1.6, cz, 0xffb860, 5.5, { level: 0.55 });
+  b.box(cx + 1.25, fy + 0.012, cz, 1.9, 0.024, 4.6, 0xd8b060, 'petal', { src });
+  b.box(cx + 1.25, fy + 0.018, cz, 1.6, 0.024, 4.3, 0xa82838, 'petal', { src });
+  if (!low) for (let k = -3; k <= 3; k++) b.box(cx + 1.25, fy + 0.022, cz + k * 0.6, 1.5, 0.022, 0.08, 0xe2b04a, 'petal', { src });
   field.occupy(cx - w / 2 - 1.2, cz - d / 2 - 0.4, cx + w / 2 + 1.6, cz + d / 2 + 0.4);
   return b.boxes.length - n0;
 }
