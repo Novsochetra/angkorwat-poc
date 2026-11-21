@@ -1,14 +1,17 @@
 import { traceSource, type SourceTrace } from '../../feedback/sourceTrace';
 import { hash3, valueNoise3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
+import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
+import type { Lamps } from '../landmarks/_prasatKit';
 import { bananaPlant } from '../veg/banana';
 import { plantDetail } from '../veg/detail';
 import { beam, type P3 } from '../veg/plantKit';
 import { RAMPS, type Proto } from '../veg/proto';
 import { broadleaf, bush } from '../veg/species';
-import { GATE, onSquare, SQUARE, STAGE } from './plan';
+import { BOARD, BRIDGE, GATE, GROUND, onSquare, RING, SQUARE, STAGE, STEPS_Z, VIEW } from './plan';
 import { LATERITE, PAVER, pick } from './_sqKit';
+import { layGardenPaths, PATH_LINES, poleRoom, toGardenPath } from './_sqPath';
 import { SALA } from './_sqSala';
 import { ARCH, AVENUE, onAvenue } from './_sqWalk';
 
@@ -19,8 +22,13 @@ import { ARCH, AVENUE, onAvenue } from './_sqWalk';
  * before the string-light poles (`_sqGlow.ts`), which it leaves room for: nothing solid within 1.32 of the square's
  * ellipse nor 9.5 m of the avenue's middle where their pole pairs stand.
  *
- * In a band from the square's edge out to ≈ 35 m, and both sides of the avenue down to the welcome arch, dense near
- * the square and the avenue, thinning outward, in drifts (seeded value noise), never in rows:
+ * First the garden paths (`_sqPath.ts` `layGardenPaths`: the front path from the back trail, the river path to the
+ * footbridge, their lamps, fire bowls, planters and border beds) and the sala's stepping stones. Then, in a band from
+ * the square's edge out to ≈ 35 m, and both sides of the avenue down to the welcome arch, layered from the square
+ * outward (the owner: "framing the plaza rather than walling it"): dense low flowers and ixora by its edge, flowering
+ * shrubs to ≈ 9 m, then bushes and bananas, then the meadow and the trees; dense along the paths too (shrubs behind
+ * their border beds, the garden thick within ≈ 9 m of them), thinning outward, in drifts (seeded value noise), never
+ * in rows:
  *
  * - **ground cover**: low patches of darker moss, young green and dry straw-green over the land's grass, so the
  *   meadow is not one flat colour;
@@ -32,15 +40,20 @@ import { ARCH, AVENUE, onAvenue } from './_sqWalk';
  * - **banana plants** in small clumps (the map's own, `veg/banana.ts`; lite on low);
  * - **trees** in the far band: the map's own broadleaf (`veg/species.ts`), some in pink or purple blossom; none
  *   between the gate and the stage, none on the avenue's line of sight, none behind the stage (the hill's jungle is
- *   there, and the crowd looks over it at the show);
- * - **stepping stones**: from the sala south to the back trail, and from the gate's forecourt east over the picnic
- *   trail to the stream's ghat (in the floor's builder: kept out of the walk map, no shadow).
+ *   there, and the crowd looks over it at the show), and none in a sight line the views must keep (`hidesView`: from
+ *   the crowd's overhead reference view, the high overview and the crowd's own, to the board, the ring, the plaza's
+ *   near edge, the gate, the footbridge and its lanterns, the stream, the stepping stones and the paths): they frame
+ *   the square at the sides. The ground where the vegetation part's big trees would hide the same is marked built
+ *   (it plants after this part);
+ * - **stepping stones**: from the sala south to the back trail (in the floor's builder: kept out of the walk map, no
+ *   shadow).
  *
  * Everything goes into the square's builders and families (leaf, petal, bark, stone): no draw of its own. Plants
  * are soft (the walk map's `SOFT`: leaf and petal), so the trails stay walkable; trunks, banana stems and the
  * bushes' ground are `occupied` so the vegetation part's trees keep off. Static (the part is FROZEN).
  *
- * Blocks: ≈ 7–8 k on medium, ≈ 3.5–4 k on low (fewer of everything, single-blade clumps thinner, lite bananas).
+ * Blocks (with the paths): ≈ 10.5–11 k on medium, ≈ 4.5 k on low (fewer of everything, single-blade clumps thinner,
+ * lite bananas, the paths' stones in longer courses, no kerbs on the beds).
  */
 export interface MeadowOut {
   blocks: number;
@@ -72,15 +85,16 @@ const PURPLE = [0x5e2e7a, 0x6a3488, 0x7e429e, 0x9455b6, 0xab6cca, 0xc18ada];
 
 export type Shrub = 'boug' | 'hibiscus' | 'ixora' | 'green';
 
-export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField, low: boolean): MeadowOut {
+export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField, low: boolean, lights?: { lamps: Lamps; glow: Glow | null }): MeadowOut {
   const t0 = performance.now();
   const src = traceSource();
   const n0 = b.boxes.length + fb.boxes.length;
   plantDetail(low ? 'low' : 'medium');
 
-  // ── Stepping stones first (their line kept clear of plants) ──
-  const paths = stonePaths(field);
-  const nearPath = (x: number, z: number, m: number) => paths.some((p) => toLine(p, x, z) < m);
+  // ── The garden paths and the stepping stones first (their lines kept clear of plants) ──
+  const laid = lights ? layGardenPaths(b, fb, field, lights.lamps, lights.glow, low) : null;
+  const paths = stonePaths();
+  const nearPath = (x: number, z: number, m: number) => paths.some((p) => toLine(p, x, z) < m) || (laid !== null && toGardenPath(x, z) < m - 0.35);
   for (const [pi, p] of paths.entries()) layStones(fb, field, p, pi, src);
 
   const tally: Record<string, number> = {};
@@ -118,6 +132,7 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
     if (z < STAGE.back + 6) continue;
     if (Math.abs(x - AVENUE.x) - r < 10.5 && z > GATE.z - 4) continue;
     if (outOf(x, z) < 8 || rho(x, z) < 1.4 || Math.hypot(x - SALA.x, z - SALA.z) < 10 || nearPath(x, z, r + 0.5)) continue;
+    if (hidesView(x, field.heightAt(x, z), z, p)) continue;
     // (thinning outward: groves near the square, fewer far out)
     if (hash3(t, 8, 0, 611) > 1.05 - outOf(x, z) / (BAND + 14)) continue;
     if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < (tr + r) * 0.82)) continue;
@@ -142,6 +157,7 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
     const r = p.r;
     if (z < STAGE.back + 6 || (Math.abs(x - AVENUE.x) - r < 10.5 && z > GATE.z - 4)) continue;
     if (Math.hypot(x - SALA.x, z - SALA.z) < 10 || nearPath(x, z, r + 0.5)) continue;
+    if (hidesView(x, field.heightAt(x, z), z, p)) continue;
     if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < (tr + r) * 0.85)) continue;
     if (![[0, 0], [r * 0.6, 0], [-r * 0.6, 0], [0, r * 0.6], [0, -r * 0.6]].every(([dx, dz]) => field.isFree(x + dx, z + dz))) continue;
     stamp(b, field, p, Math.round(x / 2) * 2, field.heightAt(x, z), Math.round(z / 2) * 2, 9800 + t, bloom && t % 2 ? toPurple : null);
@@ -157,13 +173,13 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
     const [ex, ez] = edgeAt(a);
     const x = ex + Math.cos(a) * d;
     const z = ez + Math.sin(a) * d;
-    if (z < STAGE.back + 4 || Math.abs(x - AVENUE.x) < 11 || rho(x, z) < 1.34 || nearPath(x, z, 2.5)) continue;
+    if (z < STAGE.back + 4 || Math.abs(x - AVENUE.x) < 11 || rho(x, z) < 1.34 || nearPath(x, z, 5.2)) continue;
     if (trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < tr + 2)) continue;
     let n = 0;
     for (let k = 0; k < 3; k++) {
       const px = x + (k ? Math.cos(a + k * 2.1) * 2.2 : 0);
       const pz = z + (k ? Math.sin(a + k * 2.1) * 2.2 : 0);
-      if (!field.isFree(px, pz)) continue;
+      if (!field.isFree(px, pz) || nearPath(px, pz, 3.4)) continue;
       bananaPlant(b, px, field.heightAt(px, pz), pz, { seed: hash3(t, k, 3, 612), yaw: hash3(t, k, 4, 612) * 6.28, stage: k === 2 ? 3 : 4, bunch: k === 0 && !low });
       field.occupy(px - 0.6, pz - 0.6, px + 0.6, pz + 0.6);
       n++;
@@ -216,30 +232,56 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
       const w = Math.max(wSq, wAv * 0.95);
       if (w <= 0) continue;
       const c = field.index(x, z);
-      if (c < 0 || field.trail[c] === 2 || field.occupied[c] || field.waterAt(x, z) !== null || field.dropAt(x, z) > 1.2) continue;
+      // (a garden path's own border: planted right up to its kerbs, though the path keeps its cells for itself)
+      const pd = laid ? toGardenPath(x, z) : Infinity;
+      const border = pd > 1.45 && pd < 3.6;
+      if (c < 0 || field.trail[c] === 2 || (field.occupied[c] && !border) || field.waterAt(x, z) !== null || field.dropAt(x, z) > 1.2) continue;
       if (onSquare(x, z, 1.2) || onAvenue(x, z, 3.3) || nearPath(x, z, 0.7)) continue;
+      if (border && (laid?.lights.some(([lx, lz]) => Math.hypot(lx - x, lz - z) < 1.3) || !poleRoom(x, z, 1.2))) continue;
       // (behind the stage only low things: the hill's jungle is there)
       const behind = z < STAGE.front - 1 && x > STAGE.x0 - 6 && x < STAGE.x1 + 6;
+      const near = Math.min(d, inAv ? Math.max(0, dAv - 6) : Infinity, pd + 2);
       const drift = valueNoise3(x / 9, 0.5, z / 9, 614);
       const fine = valueNoise3(x / 3.2, 4.5, z / 3.2, 615);
-      const p = Math.max(w * (0.22 + 1.25 * drift * drift + 0.2 * fine), inAv && dAv < 13 ? 0.5 : 0);
+      // (layered from the square outward: dense low flowers by the edge, flowering shrubs, then bushes, then the meadow;
+      // and the paths run through garden all the way: dense within ≈ 9 m of them, thinning)
+      const floor = Math.max(border ? 0.92 : near < 3.5 ? 0.85 : near < 9 ? 0.8 : inAv && dAv < 13 ? 0.5 : 0, pd < 9 ? 0.8 - pd * 0.035 : 0);
+      const p = Math.max(w * (0.22 + 1.25 * drift * drift + 0.2 * fine), floor);
       const r = hash3(x, z, 3, 616);
       if (r > p) continue;
       const g = field.heightAt(x, z);
       const k = hash3(x, z, 4, 616);
       const wet = nearWater(field, x, z, 3.5);
-      // Solid things only where the string-light poles and the avenue's pole pairs will not want the ground.
-      const solidOk = !behind && field.isFree(x, z) && rho(x, z) > 1.32 && (!inAv || dAv > 9.5) && Math.hypot(x - GATE.x, z - GATE.z) > 9 && !trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < tr * 0.9);
-      const near = Math.min(d, inAv ? Math.max(0, dAv - 6) : Infinity);
-      // Ground cover under some (a patch of another green or straw).
+      // Solid things only where the string-light poles and the avenue's pole pairs will not want the ground; the soft
+      // flowering shrubs (leaves and petals: walked through) anywhere off those poles' spots, the avenue's flags and the
+      // gate's forecourt.
+      const underTree = trees.some(([tx, tz, tr]) => Math.hypot(tx - x, tz - z) < tr * 0.9);
+      const solidOk = !border && !behind && field.isFree(x, z) && rho(x, z) > 1.32 && (!inAv || dAv > 9.5) && Math.hypot(x - GATE.x, z - GATE.z) > 9 && !underTree;
+      const softOk = !border && !behind && !field.occupied[c] && field.trail[c] === 0 && poleRoom(x, z, 1.8) && (!inAv || dAv > 5.6) && Math.hypot(x - GATE.x, z - GATE.z) > 6.5 && !underTree;
       if (wet) {
         reeds(b, x, g, z, gi, low, src);
         count('reeds');
         continue;
       }
-      const shrubShare = near < 9 ? 0.55 : near < 20 ? 0.5 : 0.45;
-      const flowerShare = near < 9 ? 0.18 : near < 20 ? 0.12 : 0.07;
-      if (k < shrubShare && solidOk && near > 5 && hash3(x, z, 8, 616) < (near > 14 ? 0.75 : 0.5)) {
+      const s = hash3(x, z, 6, 616);
+      if (border) {
+        // Along a path, behind its border beds: ixora, bougainvillea and hibiscus, a few flowers.
+        if (k < 0.15) flowerPatch(b, field, x, z, gi, low, src);
+        else shrub(b, field, x, g, z, s < 0.4 ? 'ixora' : s < 0.75 ? 'boug' : 'hibiscus', gi, low, src);
+        count('borders');
+        continue;
+      }
+      if (near < 3.5 && !behind) {
+        // By the square's edge: flowers and low ixora, a little grass.
+        if (k < 0.55) flowerPatch(b, field, x, z, gi, low, src);
+        else if (k < 0.85 && rho(x, z) > 1.26) shrub(b, field, x, g, z, 'ixora', gi, low, src);
+        else grassClump(b, x, g, z, gi, false, low, src);
+        count('edge');
+        continue;
+      }
+      const shrubShare = near < 9 ? 0.68 : near < 20 ? 0.5 : 0.45;
+      const flowerShare = near < 9 ? 0.2 : near < 20 ? 0.12 : 0.07;
+      if (k < shrubShare && solidOk && near > 9 && hash3(x, z, 8, 616) < (near > 14 ? 0.75 : 0.5)) {
         // A big bush, the map's own: plain, or flowering on its lit side (bougainvillea, ixora).
         const bp = bushes[Math.floor(hash3(x, z, 9, 616) * bushes.length)];
         const f = hash3(x, z, 10, 616);
@@ -248,9 +290,8 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
         stamp(b, field, bp, x, g, z, gi, tones ? (color, c) => (BUSH_LIT.has(color) && hash3(c, gi, 1, 625) < share ? tones[c % tones.length] : color) : null);
         field.occupy(x - bp.r * 0.6, z - bp.r * 0.6, x + bp.r * 0.6, z + bp.r * 0.6);
         count('bushes');
-      } else if (k < shrubShare && solidOk) {
-        const s = hash3(x, z, 6, 616);
-        const kind: Shrub = near > 20 && s < 0.45 ? 'green' : s < 0.34 ? 'boug' : s < 0.6 ? 'hibiscus' : s < 0.86 ? 'ixora' : 'green';
+      } else if (k < shrubShare && (solidOk || softOk)) {
+        const kind: Shrub = near > 20 && s < 0.45 ? 'green' : s < 0.38 ? 'boug' : s < 0.64 ? 'hibiscus' : s < 0.88 ? 'ixora' : 'green';
         shrub(b, field, x, g, z, kind, gi, low, src);
         count('shrubs');
       } else if (k < shrubShare + flowerShare) {
@@ -262,9 +303,22 @@ export function growMeadow(b: VoxelBuilder, fb: VoxelBuilder, field: HeightField
       }
     }
 
+  // The vegetation part's trees (built after this part) kept out of the same sight lines: the ground where a tree of
+  // the jungle's size would hide what the views must see is marked built (not round the square's edge, where the
+  // string-light poles look for theirs).
+  let kept = 0;
+  for (let gz = z0; gz <= z1; gz += 2)
+    for (let gx = x0; gx <= x1 + 6; gx += 2) {
+      const c = field.index(gx, gz);
+      if (c < 0 || field.occupied[c] || field.waterAt(gx, gz) !== null || onSquare(gx, gz, 3) || onAvenue(gx, gz, 6) || !poleRoom(gx, gz, 2.6)) continue;
+      if (!hidesView(gx, field.heightAt(gx, gz), gz, JUNGLE_TREE)) continue;
+      field.occupy(gx - 0.9, gz - 0.9, gx + 0.9, gz + 0.9);
+      kept++;
+    }
+
   const blocks = b.boxes.length + fb.boxes.length - n0;
   const ms = performance.now() - t0;
-  console.info(`[map] nye meadow: ${blocks} blocks (${Object.entries(tally).map(([k, v]) => `${k} ${v}`).join(', ')}) · ${trees.length} trees · built in ${ms.toFixed(1)} ms`);
+  console.info(`[map] nye meadow: ${blocks} blocks (paths ${laid ? `${laid.stones} stones, ${laid.blocks} lamps and planters` : 'none'}, ${Object.entries(tally).map(([k, v]) => `${k} ${v}`).join(', ')}) · ${trees.length} trees · ${kept} cells kept open for the views · built in ${ms.toFixed(1)} ms`);
   return { blocks, ms };
 }
 
@@ -322,36 +376,81 @@ export function toLine(p: Line, x: number, z: number): number {
 }
 
 /**
- * The stepping-stone paths: the sala's steps (its east side, toward the square) south round the square's west trees
- * to the back trail; the gate's forecourt east over the picnic trail to the stream's ghat (where the water is).
+ * The stepping-stone path: the sala's steps (its east side, toward the square) south round the square's west trees to
+ * the back trail. (The gate's forecourt to the stream is the garden's river path now: `_sqPath.ts`.)
  */
-function stonePaths(field: HeightField): Line[] {
-  const out: Line[] = [];
+function stonePaths(): Line[] {
   const sx = SALA.x + SALA.w / 2 + 1.8;
-  out.push([
-    [sx, SALA.z + 1.5],
-    [sx - 0.6, SALA.z + 7],
-    [sx + 0.8, SALA.z + 13],
-    [sx + 3.2, SALA.z + 19],
-    [sx + 5.6, SALA.z + 24.5],
-  ]);
-  // The ghat: the stream's west edge a little north of the gate's line.
-  const gz = GATE.z - 5;
-  let xw = -1;
-  for (let x = 424; x <= 448; x += 0.5)
-    if (field.waterAt(x, gz) !== null) {
-      xw = x;
-      break;
+  return [
+    [
+      [sx, SALA.z + 1.5],
+      [sx - 0.6, SALA.z + 7],
+      [sx + 0.8, SALA.z + 13],
+      [sx + 3.2, SALA.z + 19],
+      [sx + 5.6, SALA.z + 24.5],
+    ],
+  ];
+}
+
+/**
+ * The views kept open over the garden (the crowd's overhead reference view, the high overview, the crowd's own on the
+ * square) and what each must see past the trees: the board, the ring, the gate, the footbridge and its lanterns, the
+ * stream by the square, the stepping stones, the garden paths, the plaza's near edge.
+ */
+const VIEWS: readonly (readonly [number, number, number])[] = [
+  [345, 42, -200],
+  [330, 90, -150],
+  [VIEW.cam[0], VIEW.cam[1], VIEW.cam[2]],
+];
+const SEEN: readonly (readonly [number, number, number])[] = [
+  [BOARD.x, 16, BOARD.z],
+  [RING.x, 8.5, RING.z],
+  [RING.x - 14, 8.5, RING.z + 8],
+  [RING.x + 14, 8.5, RING.z + 8],
+  [GATE.x, 14, GATE.z],
+  [(BRIDGE.x0 + BRIDGE.x1) / 2, 8.8, BRIDGE.z],
+  [(BRIDGE.x0 + BRIDGE.x1) / 2, 10.8, BRIDGE.z + 1.8],
+  [BRIDGE.x0 - 4, 8.4, BRIDGE.z + 1],
+  [436, 5.5, -262],
+  [437, 5.5, -238],
+  [437.5, 5.5, STEPS_Z],
+  // (the plaza's near edge, from the gate round the west to the stage: the views see the square whole)
+  ...[95, 110, 125, 140, 155, 170, 185, 200, 215, 230].map((th): readonly [number, number, number] => [SQUARE.x + Math.cos((th * Math.PI) / 180) * SQUARE.rx * 0.97, GROUND + 1, SQUARE.z + Math.sin((th * Math.PI) / 180) * SQUARE.rz * 0.97]),
+  // (the garden paths, every ≈ 6 m along them, a little over their lamps)
+  ...PATH_LINES.flatMap(({ line }) => line.filter((_, i) => i % 24 === 12).map((p): readonly [number, number, number] => [p.x, GROUND + 1.6, p.z])),
+];
+
+/**
+ * A tree prototype `p` at (x, g, z) would hide something a view must see: a sight line passes through its crown (an
+ * upright cylinder from the crown's foot to its top, a little wider than its radius).
+ */
+/** The jungle's big trees and its emergents (veg/species.ts), as the sight lines see them: crowns from 3 m to 20 m, 5.5 m round. */
+const JUNGLE_TREE = { r: 5.5, low: 3, h: 20 } as const;
+
+function hidesView(x: number, g: number, z: number, p: Pick<Proto, 'r' | 'low' | 'h'>): boolean {
+  const r = p.r * 1.08;
+  const y0 = g + p.low - 0.4;
+  const y1 = g + p.h + 0.3;
+  for (const [vx, vy, vz] of VIEWS)
+    for (const [tx, ty, tz] of SEEN) {
+      // (where the line is within r of the trunk's axis, seen from above: u0‥u1 along it; its height there)
+      const ax = vx - x;
+      const az = vz - z;
+      const dx = tx - vx;
+      const dz = tz - vz;
+      const qa = dx * dx + dz * dz;
+      const qb = 2 * (ax * dx + az * dz);
+      const qc = ax * ax + az * az - r * r;
+      const disc = qb * qb - 4 * qa * qc;
+      if (disc <= 0 || qa < 1e-6) continue;
+      const u0 = Math.max(0, (-qb - Math.sqrt(disc)) / (2 * qa));
+      const u1 = Math.min(0.97, (-qb + Math.sqrt(disc)) / (2 * qa));
+      if (u0 > u1) continue;
+      const ya = vy + (ty - vy) * u0;
+      const yb = vy + (ty - vy) * u1;
+      if (Math.min(ya, yb) < y1 && Math.max(ya, yb) > y0) return true;
     }
-  if (xw > 0)
-    out.push([
-      [GATE.x + 13, GATE.z + 3.5],
-      [GATE.x + 20, GATE.z + 1.5],
-      [GATE.x + 28, GATE.z - 2],
-      [(GATE.x + 28 + xw - 4.4) / 2, gz - 0.6],
-      [xw - 4.4, gz],
-    ]);
-  return out;
+  return false;
 }
 
 /** Flat stones every ≈ 0.85 m along a path, a little to either side, off trails' treads, water and what is built. */

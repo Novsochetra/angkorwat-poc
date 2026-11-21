@@ -7,9 +7,14 @@ import { ANIM, Kit, perPeriod, SHOW, type KitUniforms } from '../festival/_kit';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import { beam, leaf, log, type P3 } from '../veg/plantKit';
-import { SQUARE } from './plan';
+import { BRIDGE, SQUARE, STEPS_Z } from './plan';
 import { AVENUE } from './_sqWalk';
 import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
+import { onGardenPath, poleRoom } from './_sqPath';
+import { flowerBed, stonePlanter } from './_sqPathKit';
+import { dressRiver, lilyPad, lotus } from './_sqRiver';
+
+export { flowerBed, lilyPad, lotus };
 
 /**
  * The festival square's garden and water (AWP-35; the owner: "the colour of blossoms and water is missing"):
@@ -20,12 +25,16 @@ import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
  *   (ចំប៉ា, champa) by the gate, white with yellow hearts on forked grey branches; at night each crown glows softly
  *   (halos in its colours and a few lit panicles) and petals lie on the ground under them;
  * - **flower beds** along the square's edge and the gate's walk: marigolds, red cockscomb, pink periwinkle, purple
- *   torenia in patches; two **bougainvillea arches** over the walk outside the gate;
+ *   torenia in patches; round the square a wide bed (three rows mounded, a sandstone kerb each side) with every fourth
+ *   length a carved sandstone planter (`_sqPathKit.ts`), none where a garden path passes (`_sqPath.ts`); two
+ *   **bougainvillea arches** over the walk outside the gate;
  * - **the Kulen stream's west bank** (between the picnic trail and the water): sandstone ghat steps down to the
- *   water on a laterite footing, a flower bed along its top, Khmer lamps with their warm streaks on the water,
- *   lily pads and pink lotus at the water's edge;
- * - **floating lotus candles** (បណ្តែតប្រទីប, bandaet pratip) on the stream, drifting south with it, and on the
- *   Kulen pool, at night; many more on the event night (clock.ts `nightHeld`). No sky lanterns (Thai).
+ *   water on a laterite footing, a flower bed along its top, Khmer lamps every 6 m with their warm streaks on the
+ *   water, lily pads and pink lotus at the water's edge; where the footbridge starts (plan.ts `BRIDGE`) one solid
+ *   abutment instead of steps. The bridge, the stepping stones, the east bank and the lotus patches: `_sqRiver.ts`;
+ * - **floating lotus candles** (បណ្តែតប្រទីប, bandaet pratip) on the stream, drifting south with it (in two reaches,
+ *   either side of the stepping stones: none floats through them), and on the Kulen pool, at night; many more on the
+ *   event night (clock.ts `nightHeld`). No sky lanterns (Thai).
  *
  * Blocks: the trees, beds, arches and the ghat go into the square's builder (its families: no new draw). The rest
  * is the festival kit's way: one kit (petals, panicles, lily pads, lotus, candles), one glow (crowns, candles and
@@ -94,18 +103,8 @@ const BARK: Record<TreeKind, readonly number[]> = {
 /** Night halos round the crowns. */
 const HALO: Record<Bloom, number> = { purple: 0xb070ff, pink: 0xff7ab0, white: 0xffe8c0 };
 
-/** Flower bed plants: [leaves, flower] (marigold, red cockscomb, pink periwinkle, purple torenia, white jasmine). */
-const BED: readonly [number, readonly number[]][] = [
-  [0x4f8a2c, [0xf08a12, 0xf7a81c, 0xe8740e]],
-  [0x3f7a2e, [0xc8182e, 0xd82a3a, 0xb8102a]],
-  [0x4a8a36, [0xf07aa8, 0xe8609a, 0xf596bd]],
-  [0x447e34, [0x8a4cc8, 0x9a5ad6, 0x7a3eb4]],
-  [0x4f8a2c, [0xf7b21c, 0xf4c030, 0xf08a12]],
-  [0x3f7a2e, [0xe0407a, 0xd02e6a, 0xea5a8e]],
-];
 /** The bougainvillea arches over the avenue (map z; posts outside its kerbs). */
 const ARCHES = [AVENUE.z0 + 11, AVENUE.z0 + 23] as const;
-const SOIL = [0x4a3424, 0x543a28, 0x40301f];
 const BOUG = [0xc0186e, 0xd42a80, 0xe2449a, 0xb01062];
 
 const ell = (thDeg: number, k: number): [number, number] => {
@@ -166,7 +165,10 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   }
 
   // ── Flower beds: the square's edge (not before the gate or the stage, nor the west pavilion), the gate's walk ──
-  const beds: [number, number, number, number][] = [];
+  // (round the square a wide bed, three rows mounded in the middle, and every fourth length a carved planter in its
+  // line instead: bed, bed, bed, planter, as a temple terrace's garden; none where a garden path passes)
+  const beds: [number, number, number, number, number][] = [];
+  const planters: [number, number, number][] = [];
   const arc = (th0: number, th1: number, k: number) => {
     const steps = Math.max(1, Math.round(((th1 - th0) * Math.PI * SQUARE.rx * k) / 180 / 2.2));
     for (let s = 0; s < steps; s++) {
@@ -175,21 +177,26 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       const mx = (x0 + x1) / 2;
       const mz = (z0 + z1) / 2;
       if (mx < 369 && mx > 354 && mz > -276 && mz < -244) continue;
-      if (trees.some((t) => Math.hypot(t.x - mx, t.z - mz) < 1.8)) continue;
-      beds.push([x0, z0, x1, z1]);
+      if (trees.some((t) => Math.hypot(t.x - mx, t.z - mz) < 1.8) || onGardenPath(mx, mz, 1.4)) continue;
+      if (s % 4 === 2 && poleRoom(mx, mz, 2.2)) planters.push([mx, mz, Math.atan2(x1 - x0, z1 - z0)]);
+      else beds.push([x0, z0, x1, z1, 1.5]);
     }
   };
   arc(-58, 62, 1.12);
   arc(118, 238, 1.12);
-  // Along the avenue to the gate (_sqWalk.ts `AVENUE`): both sides, 3.9‥6 m out from its middle, off the trails' treads.
+  // Along the avenue to the gate (_sqWalk.ts `AVENUE`): both sides, 3.9‥6 m out from its middle, off the trails' treads and the paths.
   for (let z = AVENUE.z0 + 1.2; z + 2.2 <= AVENUE.z1 - 3.2; z += 2.4)
     for (const side of [-1, 1]) {
       const x = AVENUE.x + side * 4.95;
-      if ([z, z + 1.1, z + 2.2].some((zz) => field.trail[field.index(x, zz)] === 2 || field.waterAt(x, zz) !== null)) continue;
+      if ([z, z + 1.1, z + 2.2].some((zz) => field.trail[field.index(x, zz)] === 2 || field.waterAt(x, zz) !== null || onGardenPath(x, zz, 0.5))) continue;
       if (ARCHES.some((az) => Math.abs(az - (z + 1.1)) < 1.8)) continue;
-      beds.push([x, z, x, z + 2.2]);
+      beds.push([x, z, x, z + 2.2, 1.0]);
     }
-  for (const [i, [x0, z0, x1, z1]] of beds.entries()) flowerBed(b, field, x0, z0, x1, z1, i, low, src);
+  for (const [i, [x0, z0, x1, z1, w]] of beds.entries()) flowerBed(b, field, x0, z0, x1, z1, i, low, src, w, w > 1.2);
+  for (const [i, [x, z, ry]] of planters.entries()) {
+    stonePlanter(b, x, field.heightAt(x, z), z, 0.95, ry, 400 + i, low, src);
+    field.occupy(x - 0.7, z - 0.7, x + 0.7, z + 0.7);
+  }
 
   // ── Bougainvillea arches over the walk ──
   for (const [i, az] of ARCHES.entries()) bougainvilleaArch(b, field, AVENUE.x, az, 0, -1, 300 + i, low, src);
@@ -201,24 +208,32 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
     const { z, xw, wy, top, trailEdge } = row;
     const z0 = z - 1;
     const z1 = z + 1;
-    // The terrace on its laterite footing, and the steps down into the water.
-    b.box(xw - 2.5, (wy - 0.7 + top + 0.12) / 2, z, 2.2, top + 0.12 - (wy - 0.7), 2, pick(PAVER, xw, z, 1), 'mapStone', { src });
-    b.box(xw - 3.65, (wy - 0.7 + top + 0.2) / 2, z, 0.3, top + 0.2 - (wy - 0.7), 2, pick(LATERITE, xw, z, 2), 'mapStone', { src });
-    const k = Math.max(2, Math.round((top + 0.12 - wy) / 0.4));
-    const rise = (top + 0.12 - (wy + 0.05)) / k;
-    const run = 1.8 / k;
-    for (let s = 1; s <= k; s++) {
-      const x0 = xw - 1.4 + (s - 1) * run;
-      const x1 = xw + 0.5;
-      const y1 = top + 0.12 - s * rise;
-      b.box((x0 + x1) / 2, (wy - 0.7 + y1) / 2, z, x1 - x0, y1 - (wy - 0.7), 2, pick(PAVER, x0, z, 3 + s), 'mapStone', { src, shade: 1 - s * 0.03 });
+    // (where the footbridge starts: one solid abutment out to the water's edge, no steps, no lamp, no bed: the path)
+    const atBridge = Math.abs(z - BRIDGE.z) < BRIDGE.w / 2 + 0.4;
+    const nearBridge = Math.abs(z - BRIDGE.z) < BRIDGE.w / 2 + 2.4;
+    if (atBridge) {
+      b.box(xw - 1.7, (wy - 0.7 + top + 0.12) / 2, z, 4.2, top + 0.12 - (wy - 0.7), 2, pick(PAVER, xw, z, 1), 'mapStone', { src });
+      b.box(xw + 0.45, (wy - 0.7 + top + 0.02) / 2, z, 0.3, top + 0.02 - (wy - 0.7), 2, pick(LATERITE, xw, z, 5), 'mapStone', { src, shade: 0.9 });
+    } else {
+      // The terrace on its laterite footing, and the steps down into the water.
+      b.box(xw - 2.5, (wy - 0.7 + top + 0.12) / 2, z, 2.2, top + 0.12 - (wy - 0.7), 2, pick(PAVER, xw, z, 1), 'mapStone', { src });
+      const k = Math.max(2, Math.round((top + 0.12 - wy) / 0.4));
+      const rise = (top + 0.12 - (wy + 0.05)) / k;
+      const run = 1.8 / k;
+      for (let s = 1; s <= k; s++) {
+        const x0 = xw - 1.4 + (s - 1) * run;
+        const x1 = xw + 0.5;
+        const y1 = top + 0.12 - s * rise;
+        b.box((x0 + x1) / 2, (wy - 0.7 + y1) / 2, z, x1 - x0, y1 - (wy - 0.7), 2, pick(PAVER, x0, z, 3 + s), 'mapStone', { src, shade: 1 - s * 0.03 });
+      }
     }
+    b.box(xw - 3.65, (wy - 0.7 + top + 0.2) / 2, z, 0.3, top + 0.2 - (wy - 0.7), 2, pick(LATERITE, xw, z, 2), 'mapStone', { src });
     field.occupy(xw - 3.8, z0, xw, z1);
     // The bed between the trail and the terrace's kerb.
     const bx0 = Math.max(trailEdge + 0.3, xw - 4.9);
-    if (xw - 3.85 - bx0 > 0.45) flowerBed(b, field, (bx0 + xw - 3.85) / 2, z0 + 0.05, (bx0 + xw - 3.85) / 2, z1 - 0.05, 100 + ri, low, src, xw - 3.85 - bx0);
-    // A lamp every 8 m on the terrace, its warm streak on the water.
-    if (ri % 4 === 1) {
+    if (!nearBridge && xw - 3.85 - bx0 > 0.45) flowerBed(b, field, (bx0 + xw - 3.85) / 2, z0 + 0.05, (bx0 + xw - 3.85) / 2, z1 - 0.05, 100 + ri, low, src, xw - 3.85 - bx0);
+    // A lamp every 6 m on the terrace, its warm streak on the water (the bridge has its own).
+    if (ri % 3 === 1 && Math.abs(z - BRIDGE.z) > 4.5) {
       khmerLamp(b, xw - 2.6, top + 0.12, z, 1.3, 40 + lampN++, src, lamps, glow, 2.0);
       glow.add(row.mid + row.half * 0.55, wy, z, 0xffa850, 9, { mode: GLOW_MODE.streak, level: 2.2, width: 0.45 });
     }
@@ -229,11 +244,13 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
       if (h < 0.15) continue;
       const lx = xw + 0.9 + 1.6 * hash3(ri, m, 6, 77);
       const lz = z0 + 2 * hash3(ri, m, 7, 77);
-      if (field.waterAt(lx, lz) === null) continue;
+      if (field.waterAt(lx, lz) === null || Math.abs(lz - BRIDGE.z) < BRIDGE.w / 2 + 0.5 || Math.abs(lz - STEPS_Z) < 1.2) continue;
       lilyPad(kit, lx, wy, lz, ri * 7 + m);
       if (h > 0.5) lotus(kit, lx + 0.35, wy, lz - 0.2, ri * 7 + m, h > 0.85);
     }
   }
+  // The footbridge, the stepping stones, the east bank, lily pads and lotus in patches (`_sqRiver.ts`).
+  const river = dressRiver(b, kit, glow, lamps, field, low, src);
   // Lily pads and lotus round the Kulen pool's edge.
   for (let m = 0; m < (low ? 10 : 22); m++) {
     const a = hash3(m, 1, 9, 78) * Math.PI * 2;
@@ -248,16 +265,19 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
 
   // ── Floating lotus candles: the stream (drifting south with it) and the pool (wandering) ──
   let ci = 0;
+  // (in two reaches, past the stepping stones and on south under the bridge: none floats through the stones)
+  const reaches = [stream.filter((r) => r.z < STEPS_Z - 1.2), stream.filter((r) => r.z > STEPS_Z + 1.2)].filter((r) => r.length > 2);
   const streamCandles = (k: Kit, gl: Glow, per: number, seed: number) => {
-    for (let s = 0; s + 6 < stream.length; s += 6) {
-      const r0 = stream[s];
-      const r1 = stream[s + 6];
+    for (const reach of reaches) {
+      const r0 = reach[0];
+      const r1 = reach[reach.length - 1];
       const len = Math.hypot(r1.mid - r0.mid, r1.z - r0.z);
       const dx = (r1.mid - r0.mid) / len;
       const dz = (r1.z - r0.z) / len;
-      for (let i = 0; i < per; i++, ci++) {
+      const m = Math.max(1, Math.round((per * len) / 12));
+      for (let i = 0; i < m; i++, ci++) {
         const side = (hash3(ci, seed, 1, 81) - 0.5) * Math.max(0.5, r0.half - 1.6);
-        candle(k, gl, r0.mid + side, r0.wy, r0.z, { a: [1, hash3(ci, seed, 2, 81), len], b: [dx, dz, 160 + 120 * hash3(ci, seed, 3, 81), 0] }, ci);
+        candle(k, gl, r0.mid + side, r0.wy, r0.z, { a: [1, hash3(ci, seed, 2, 81), len], b: [dx, dz, (160 + 120 * hash3(ci, seed, 3, 81)) * (len / 12), 0] }, ci);
       }
     }
   };
@@ -282,7 +302,7 @@ export function plantGarden(b: VoxelBuilder, field: HeightField, lamps: Lamps, l
   let extraHalos: ReturnType<Glow['build']> | null = null;
   let extraKit: ReturnType<Kit['build']> | null = null;
   console.info(
-    `[map] nye garden: ${b.boxes.length - v0} blocks, ${trees.length} trees, ${beds.length} bed runs, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count} (+${eventGlow.count})`,
+    `[map] nye garden: ${b.boxes.length - v0} blocks (river ${river.blocks}), ${trees.length} trees, ${beds.length} bed runs, ${planters.length} planters, ${stream.length} bank rows, blossom ${blossom.count}, kit ${kit.count} (+${eventKit.count} on the night), glows ${glow.count} (+${eventGlow.count})`,
   );
   return {
     trees,
@@ -506,41 +526,6 @@ export function fallenPetals(kit: Kit, field: HeightField, t: NyeTree, x: number
   }
 }
 
-/**
- * A flower bed from (x0, z0) to (x1, z1), `w` m wide: dark soil, then plants in patches of one kind (each a leafy
- * mound and its flower heads on top), two rows staggered (one on the low level).
- */
-export function flowerBed(b: VoxelBuilder, field: HeightField, x0: number, z0: number, x1: number, z1: number, seed: number, low: boolean, src: SourceTrace | undefined, w = 1.0): void {
-  const len = Math.hypot(x1 - x0, z1 - z0);
-  if (len < 0.3) return;
-  const ux = (x1 - x0) / len;
-  const uz = (z1 - z0) / len;
-  const ry = Math.atan2(ux, uz);
-  const mx = (x0 + x1) / 2;
-  const mz = (z0 + z1) / 2;
-  const gm = field.heightAt(mx, mz);
-  b.box(mx, gm + 0.06, mz, w, 0.16, len + 0.1, pick(SOIL, mx, mz, 1), 'mapStone', { src, ry, shade: 0.9 });
-  field.occupy(mx - w / 2 - len / 2, mz - w / 2 - len / 2, mx + w / 2 + len / 2, mz + w / 2 + len / 2);
-  const rows = low || w < 0.8 ? 1 : 2;
-  const step = low ? 0.6 : 0.42;
-  const n = Math.max(1, Math.floor(len / step));
-  for (let i = 0; i < n; i++) {
-    const u = (i + 0.5) / n - 0.5;
-    for (let r = 0; r < rows; r++) {
-      const off = rows === 1 ? 0 : (r ? 0.22 : -0.22) * w;
-      const along = u * len + (r ? step * 0.25 : -step * 0.25);
-      const px = mx + ux * along + uz * off;
-      const pz = mz + uz * along - ux * off;
-      const kind = BED[Math.floor(hash3(Math.floor((seed * 7 + i / 6) as number), r, 3, 96) * BED.length) % BED.length];
-      const g = field.heightAt(px, pz);
-      const h = hash3(px, pz, seed, 97);
-      const s = 0.3 + 0.1 * h;
-      b.box(px, g + 0.14 + s * 0.4, pz, s, s * 0.8, s, kind[0], 'mapLeaf', { src, ry: h * 1.6, shade: 0.9 + 0.15 * h });
-      const fc = kind[1][Math.floor(hash3(px, pz, seed, 98) * kind[1].length) % kind[1].length];
-      b.box(px, g + 0.14 + s * 0.85, pz, s * 0.78, 0.13, s * 0.78, fc, 'petal', { src, ry: h * 2.3 + 0.4 });
-    }
-  }
-}
 
 /**
  * A bougainvillea arch over the walk at (x, z), the walk going (dx, dz): two dark wooden posts, a curved top, the
@@ -591,36 +576,6 @@ function bougainvilleaArch(b: VoxelBuilder, field: HeightField, x: number, z: nu
     const s = 0.42 + 0.18 * hash3(seed, c, 7, 99);
     b.box(p[0] + ox * Math.abs(dx) + nx * ox * 0.3, p[1] + oy, p[2] + oz * Math.abs(dz) + nz * oz * 0.3, s, s * 0.85, s, leafy ? LEAF[2] : BOUG[c % BOUG.length], leafy ? 'mapLeaf' : 'petal', { src, ry: hash3(seed, c, 8, 99), shade: 0.9 + 0.2 * u });
   }
-}
-
-/** A lily pad on the water (two thin slabs turned 45°: a round leaf), a little bobbing (the kit's drift). */
-export function lilyPad(kit: Kit, x: number, wy: number, z: number, i: number): void {
-  const d = { anim: ANIM.drift, a: [0, hash3(i, 1, 3, 71), 0.08] as [number, number, number], b: [0, 0, perPeriod(0.05), 0] as [number, number, number, number] };
-  const s = 0.7 + 0.4 * hash3(i, 2, 3, 71);
-  const c = [0x4f9a3c, 0x5fae48, 0x468a36][i % 3];
-  const yaw = hash3(i, 3, 3, 71) * 3;
-  kit.box(x, wy + 0.03, z, s, 0.03, s * 0.9, c, { ...d, yaw });
-  kit.box(x, wy + 0.035, z, s * 0.9, 0.03, s, c, { ...d, yaw: yaw + Math.PI / 4 });
-  // (a second, smaller pad beside it)
-  const a = yaw * 2;
-  kit.box(x + Math.cos(a) * s * 0.9, wy + 0.03, z + Math.sin(a) * s * 0.9, s * 0.6, 0.03, s * 0.55, c, { ...d, yaw: yaw + 0.5 });
-}
-
-/** A pink lotus (outer and inner petals crossed, a gold heart) standing on the water, or a bud on its stalk. */
-export function lotus(kit: Kit, x: number, wy: number, z: number, i: number, bud: boolean): void {
-  const glow = 0.3;
-  kit.box(x, wy + 0.25, z, 0.03, 0.5, 0.03, 0x5a7a3a);
-  if (bud) {
-    kit.box(x, wy + 0.58, z, 0.14, 0.2, 0.14, 0xf08ab0, { glow, yaw: 0.4 });
-    kit.box(x, wy + 0.7, z, 0.07, 0.08, 0.07, 0xf6b0c8, { glow, yaw: 0.4 });
-    return;
-  }
-  const yaw = hash3(i, 5, 3, 72) * 2;
-  kit.box(x, wy + 0.52, z, 0.42, 0.1, 0.18, 0xe8729c, { glow, yaw });
-  kit.box(x, wy + 0.52, z, 0.18, 0.1, 0.42, 0xe8729c, { glow, yaw });
-  kit.box(x, wy + 0.57, z, 0.3, 0.14, 0.3, 0xf08ab0, { glow, yaw: yaw + Math.PI / 4 });
-  kit.box(x, wy + 0.62, z, 0.2, 0.12, 0.2, 0xf6b0c8, { glow, yaw });
-  kit.box(x, wy + 0.67, z, 0.08, 0.04, 0.08, 0xf0c040, { glow: 0.3 });
 }
 
 /**
