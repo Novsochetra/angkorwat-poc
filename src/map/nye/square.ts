@@ -12,7 +12,8 @@ import { nightHeld } from './clock';
 import type { NyePiece } from './index';
 import { GATE, RING, SQUARE } from './plan';
 import { dressSquare } from './_sqDecor';
-import { layFloor, TOP } from './_sqFloor';
+import { INLAY, layFloor, TOP } from './_sqFloor';
+import { ringLights } from './_far';
 import { buildGate } from './_sqGate';
 import { khmerLamp } from './_sqKit';
 import { buildNyeRing } from './_sqRing';
@@ -51,6 +52,9 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const src = traceSource();
   const object = new Group();
   object.name = 'nye:square';
+  // (all but the searchlights: on low, far off, it gives way to the far look, index.ts and `_far.ts`)
+  const detail = new Group();
+  detail.name = 'nye:square:detail';
 
   // (the flames orange and gold at night, a little over 1.0: they bloom without going white)
   const lamps = new Lamps(0.6, 3.0);
@@ -82,29 +86,29 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   buildStalls(b, field, lamps, glow, low, bulbs);
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
-  raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
+  raiseFlags({ object: detail, fb, b, wb, field, u, lamps, bulbs, glow, low });
   // The garden round it all (tall grass, flowering shrubs, bananas, trees, stepping stones): after everything built, before the glow's poles.
   growMeadow(b, fb, field, low);
 
   const floor = buildVoxelMesh(fb, { quality, name: 'nye:floor', castShadow: false });
   floor.traverse((o) => void (o.userData.noWalk = true));
-  object.add(floor);
+  detail.add(floor);
   const square = buildVoxelMesh(b, { quality, name: 'nye:square' });
-  object.add(square);
+  detail.add(square);
   // (the walk's lamps in two places, the village end and the hill end: three leaves out the one off screen)
   const mid = walk.length ? walk[Math.floor(walk.length / 2)] : [0, 0];
   const split = splitByPlace(wb, [{ x: walk[0]?.[0] ?? 0, z: walk[0]?.[1] ?? 0 }, { x: mid[0], z: mid[1] }], 30);
-  for (const [i, part] of [...split.parts, split.rest].entries()) if (part.boxes.length) object.add(buildVoxelMesh(part, { quality, name: `nye:walk${i}` }));
+  for (const [i, part] of [...split.parts, split.rest].entries()) if (part.boxes.length) detail.add(buildVoxelMesh(part, { quality, name: `nye:walk${i}` }));
   const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees, kit });
-  object.add(sqGlow.object);
-  const shadows = new ShadowGate(true).addAll(object);
+  detail.add(sqGlow.object);
+  const shadows = new ShadowGate(true).addAll(detail);
 
   // The kit (banners, wires): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
   const kitMesh = kit.build('nye:square', u);
   kitMesh.show(true);
   kitMesh.mesh.castShadow = false;
   bound(kitMesh.mesh, new Sphere(new Vector3(SQUARE.x, field.heightAt(SQUARE.x, SQUARE.z) + 4, SQUARE.z + 4), Math.max(SQUARE.rx, SQUARE.rz) * 1.45));
-  object.add(kitMesh.mesh);
+  detail.add(kitMesh.mesh);
   // The halos round every flame and some bulbs (one additive draw, night only).
   const halos = glow.build('nye:square', u);
   {
@@ -114,15 +118,15 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
     s.radius += SQUARE.rx * 1.5;
     bound(halos.mesh, s);
   }
-  object.add(halos.mesh);
+  detail.add(halos.mesh);
   const flames = lamps.build('nye:flames');
   const lights = bulbs.build('nye:bulbs');
-  if (flames) object.add(flames);
-  if (lights) object.add(lights);
+  if (flames) detail.add(flames);
+  if (lights) detail.add(lights);
   const g0 = field.heightAt(RING.x, RING.z);
   const ring = buildNyeRing(RING.x, g0 + TOP + 0.015, RING.z, RING.r, low);
-  object.add(ring.mesh);
-  for (const m of garden.build(u)) object.add(m);
+  detail.add(ring.mesh);
+  for (const m of garden.build(u)) detail.add(m);
 
   // Two real lights, at night: warm gold over the ring, and in the gate's passage.
   const ringAt = new Group();
@@ -132,9 +136,12 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const gateAt = new Group();
   gateAt.position.set(GATE.x, field.heightAt(GATE.x, GATE.z) + 4.2, GATE.z + 6.5);
   gateAt.name = 'nye gate light';
-  object.add(ringAt, gateAt);
+  detail.add(ringAt, gateAt);
   const ringLamp = addLamp({ kind: 'point', name: 'nye ring', color: 0xffb050, distance: 26, anchor: ringAt });
   const gateLamp = addLamp({ kind: 'point', name: 'nye gate', color: 0xffa860, distance: 20, anchor: gateAt });
+
+  // (the searchlights out of the detail: they stay in the far look)
+  object.add(detail, sqGlow.beams);
 
   const blocks = fb.boxes.length + b.boxes.length + wb.boxes.length + kitMesh.boxes + sqGlow.blocks + garden.kitBoxes;
   console.info(
@@ -146,6 +153,15 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   return {
     object,
     blocks,
+    venue: 0,
+    detail,
+    far(c) {
+      // (the ring of light and its gilt course, a breath of warm air over the square)
+      ringLights(c, RING.x, g0 + TOP, RING.z, [RING.r, RING.r * 0.55, INLAY]);
+      // (the warm light on the floor, as the pools give it near: soft glows of lit air low over the square and the ring)
+      c.dome(SQUARE.x, g0 + 4, SQUARE.z, 60, 0xffa850, 0.24);
+      c.dome(RING.x, g0 + 2, RING.z, 30, 0xffb050, 0.22);
+    },
     update(f: MapFrame) {
       if (!started) {
         started = true;

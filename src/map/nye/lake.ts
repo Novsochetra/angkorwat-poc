@@ -10,6 +10,7 @@ import { SacredSet } from '../sacred/set';
 import { addLamp } from '../sky/lampSlots';
 import type { MapContext, MapFrame } from '../types';
 import { buildBoard } from './board';
+import { boardLights, ringLights } from './_far';
 import { nightHeld, nyeSeconds } from './clock';
 import type { NyePiece } from './index';
 import { LAKE_GATE, LAKE_SHORE, LAKE_STAGE, LAKE_WALL, lakePlazaAt } from './plan';
@@ -62,8 +63,12 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   const { field } = ctx;
   const low = ctx.quality === 'low';
   const fr = lakeFrame(field);
+  const root = new Group();
+  root.name = 'nye:lake';
+  // (all but the searchlights: on low, far off, it gives way to the far look, index.ts and `_far.ts`)
   const object = new Group();
-  object.name = 'nye:lake';
+  object.name = 'nye:lake:detail';
+  root.add(object);
 
   const u = kitUniforms();
   const kit = new Kit();
@@ -113,7 +118,7 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   }
   // (the Kulen beams' look: soft and slim, so they frame the stage and the show and do not fill the crowd's sky)
   const beams = buildBeams(beamBases, offs.length, fr.yaw + Math.PI, new Sphere(new Vector3(fr.x, fr.deck + 120, fr.z), 280), { level: 0.2, width: 20 });
-  object.add(beams.mesh);
+  root.add(beams.mesh);
 
   // ── Where it all is: the bounds three culls by ──
   const mid = new Vector3((fr.x + LAKE_SHORE.x) / 2, fr.deck + 6, (fr.z + LAKE_SHORE.z) / 2);
@@ -146,7 +151,8 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
 
 
   // ── The board, facing the shore ──
-  const board = buildBoard({ ...stage.board, yaw: fr.yaw, far: 200, name: 'nye:lake:board', ground: 'lake' });
+  const boardPlace = { ...stage.board, yaw: fr.yaw, far: 200, name: 'nye:lake:board', ground: 'lake' as const };
+  const board = buildBoard(boardPlace);
   object.add(board.mesh);
 
   // ── The glowing boxes (built after everything put its flames in) ──
@@ -199,8 +205,16 @@ export function buildNyeLake(ctx: MapContext): NyePiece {
   let started = false;
   let frames = 0;
   return {
-    object,
+    object: root,
     blocks,
+    venue: 1,
+    detail: object,
+    far(c) {
+      boardLights(c, boardPlace);
+      ringLights(c, m.x, m.y, m.z, [m.r, m.r * 0.55]);
+      c.dome(LAKE_SHORE.x, m.y + 4, LAKE_SHORE.z, 50, 0xffa850, 0.24);
+      c.dome(m.x, m.y + 2, m.z, 26, 0xffb050, 0.22);
+    },
     update(f: MapFrame) {
       if (!started) {
         started = true;
