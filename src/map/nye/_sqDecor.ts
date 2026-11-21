@@ -4,16 +4,18 @@ import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { ANIM, perPeriod, type Kit } from '../festival/_kit';
 import type { Glow } from '../festival/_glow';
 import type { HeightField } from '../heightfield';
-import type { Lamps } from '../landmarks/_prasatKit';
 import { FLAG_WHITE, flagCell } from '../roam/_flag';
 import { GATE, SQUARE, STAGE } from './plan';
 import type { BuiltTree } from './_sqGarden';
 import { GOLD, pick } from './_sqKit';
+import { bulbsAlong, hangAt, type StringSpan } from './_sqLifeSway';
 
 /**
  * The square's dressing (AWP-35): red banners with the white Angkor Wat on tall poles round its edge (the cloth
- * in the festival kit, waving in its shader), warm string lights sagging from pole to the flowering trees round
- * the sides (the trees, flower beds and water are the garden's, `_sqGarden.ts`), lotus pots by the processional way. Nothing stands between the gate and the stage.
+ * in the festival kit, waving in its shader: ripples running out from the pole and down the cloth, the light moving
+ * over them), warm string lights sagging from pole to the flowering trees round the sides (laid out here, drawn
+ * swaying in the breeze by `_sqLifeSway.ts`; the trees, flower beds and water are the garden's, `_sqGarden.ts`),
+ * lotus pots by the processional way. Nothing stands between the gate and the stage.
  *
  * Angles round the square: θ from +x (east), z = SQUARE.z + rz·sin θ (+z south: θ 90° is the gate, −90° the stage).
  */
@@ -38,9 +40,11 @@ const POTS: [number, number][] = [
 const BANNER_RED = 0xc8102e;
 const TRIM = 0xe2b04a;
 const POLE = [0x5a2a20, 0x642f24, 0x52261c];
-const WIRE = 0x2a2420;
-/** Flags wave at about 2 rad/s (a whole number of turns in the kit's period). */
-const WAVE = perPeriod(2.0);
+/** Banners wave at about 2.2 rad/s (a whole number of turns in the kit's period), the ripple running down the cloth `DOWN` rad a metre. */
+const WAVE = perPeriod(2.2);
+const DOWN = 0.8;
+/** How far the cloth swings out (m a metre from the pole). */
+const SWING = 0.15;
 
 const ell = (theta: number, k: number): [number, number] => {
   const a = (theta * Math.PI) / 180;
@@ -50,12 +54,15 @@ const ell = (theta: number, k: number): [number, number] => {
 export interface DecorOut {
   /** Where the trees stand (map x, z, crown radius). */
   trees: [number, number, number][];
+  /** The string lights round the sides (drawn, swaying, by the square's life: `_sqLife.ts`). */
+  strings: StringSpan[];
 }
 
-export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs: Lamps, glow: Glow | null, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
+export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, glow: Glow | null, low: boolean, garden: readonly BuiltTree[] = []): DecorOut {
   const src = traceSource();
   /** String-light anchors: map point, θ (for the order round the square), its side (east +1, west −1). */
   const anchors: { x: number; y: number; z: number; th: number }[] = [];
+  const strings: StringSpan[] = [];
 
   // ── Banners on their poles ──
   const pole = (x: number, z: number, dir: number, seed: number, h = 7.2) => {
@@ -64,7 +71,7 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     b.box(x, g + h / 2, z, 0.16, h, 0.16, pick(POLE, x, z, 2), 'mapBark', { src });
     b.box(x, g + h + 0.06, z, 0.26, 0.12, 0.26, pick(GOLD, x, z, 3), 'mapStone', { src });
     b.box(x, g + h + 0.22, z, 0.12, 0.22, 0.12, pick(GOLD, x, z, 4), 'mapStone', { src, shade: 1.08 });
-    banner(kit, x, g + h - 0.35, z, dir, 1.3, 3.6, seed);
+    banner(kit, x, g + h - 0.35, z, dir, 1.3, 3.6, seed, low ? 6 : 3);
     return g + h;
   };
   for (const [i, th] of BANNER_THETA.entries()) {
@@ -100,20 +107,20 @@ export function dressSquare(b: VoxelBuilder, kit: Kit, field: HeightField, bulbs
     const q = anchors[i + 1];
     // (east side: −90° < θ < 90°; west: 90° < θ < 270°: never across the gate's or the stage's line)
     if (side(p.th) !== side(q.th)) continue;
-    stringLights(kit, bulbs, glow, p, q, 0.9, every, low);
+    stringLights(strings, glow, p, q, 0.9, every, low);
   }
   // Two strings from the square's south corners up to the gate's top corners (beside the way, never across it).
   {
     const [wx, wz] = ell(124, 1.0);
     const [ex, ez] = ell(56, 1.0);
     const g = field.heightAt(GATE.x, GATE.z - 6);
-    stringLights(kit, bulbs, glow, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
-    stringLights(kit, bulbs, glow, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
+    stringLights(strings, glow, { x: wx, y: g + 5.6, z: wz }, { x: GATE.x - 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
+    stringLights(strings, glow, { x: ex, y: g + 5.6, z: ez }, { x: GATE.x + 5.6, y: g + 6.4, z: GATE.z - 1.6 }, 0.7, every, low);
   }
 
   // ── Lotus pots ──
   for (const [i, [x, z]] of POTS.entries()) lotusPot(b, x, field.heightAt(x, z), z, i, src);
-  return { trees };
+  return { trees, strings };
 }
 
 const norm = (th: number) => ((th % 360) + 450) % 360;
@@ -122,9 +129,11 @@ const side = (th: number) => (Math.cos((th * Math.PI) / 180) >= 0 ? 1 : -1);
 /**
  * A banner: the cloth's edge on the pole at (x, y, z) (its middle height), `w` m out toward `dir`, `h` m tall: the
  * red of the flag's band, a gilt band top and bottom and a gilt fringe, and Angkor Wat in white as on the flag of
- * Cambodia (three towers: roam/_flag.ts), drawn in cells and laid as runs down each column of the cloth.
+ * Cambodia (three towers: roam/_flag.ts), drawn in cells and laid as runs down each column of the cloth, none longer
+ * than `run` cells: the ripple running down the cloth bends it at their corners (3: 196 boxes a banner, 6 on the low
+ * level: 148; 120 in runs of any length).
  */
-function banner(kit: Kit, x: number, y: number, z: number, dir: number, w: number, h: number, seed: number): void {
+function banner(kit: Kit, x: number, y: number, z: number, dir: number, w: number, h: number, seed: number, run: number): void {
   const yaw = dir - Math.PI / 2;
   const s = Math.sin(dir);
   const c = Math.cos(dir);
@@ -162,45 +171,30 @@ function banner(kit: Kit, x: number, y: number, z: number, dir: number, w: numbe
     while (r0 < last) {
       const color = colorAt(col, r0);
       let r1 = r0 + 1;
-      while (r1 < last && colorAt(col, r1) === color) r1++;
+      while (r1 < last && r1 - r0 < run && colorAt(col, r1) === color) r1++;
       const top = y + h / 2 - r0 * dv;
       const hh = (r1 - r0) * dv;
       const white = color === 0xf4f2ec;
-      kit.box(cx, top - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.05 : 0.03, color, { yaw, anim: ANIM.wave, a: [0.07, u0, WAVE], b: [phase, 0, 0, 0] });
+      kit.box(cx, top - hh / 2, cz, du + 0.002, hh + 0.002, white ? 0.05 : 0.03, color, { yaw, anim: ANIM.wave, a: [SWING, u0, WAVE], b: [phase, DOWN, r0 * dv, 0] });
       r0 = r1;
     }
   }
 }
 
 /**
- * A string of warm bulbs from p to q, sagging `sag` m: the wire in short straight pieces (the kit), a bulb every
- * `every` m (a glowing box, and a small halo when not on the low level).
+ * A string of warm bulbs from p to q, sagging `sag` m, a bulb every `every` m: its wire and bulbs swaying
+ * (`_sqLifeSway.ts`, kept in `strings`), a small halo round every other bulb when not on the low level (still: the
+ * bulb sways inside it).
  */
-function stringLights(kit: Kit, bulbs: Lamps, glow: Glow | null, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number, low: boolean): void {
-  const len = Math.hypot(q.x - p.x, q.z - p.z);
-  if (len < 1) return;
-  const yaw = Math.atan2(q.x - p.x, q.z - p.z) - Math.PI / 2;
-  const yAt = (u: number) => p.y + (q.y - p.y) * u - sag * 4 * u * (1 - u);
-  const pieces = Math.max(3, Math.round(len / 1.6));
-  for (let i = 0; i < pieces; i++) {
-    const u0 = i / pieces;
-    const u1 = (i + 1) / pieces;
-    const x0 = p.x + (q.x - p.x) * u0;
-    const z0 = p.z + (q.z - p.z) * u0;
-    const x1 = p.x + (q.x - p.x) * u1;
-    const z1 = p.z + (q.z - p.z) * u1;
-    const y0 = yAt(u0);
-    const y1 = yAt(u1);
-    kit.box((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, y1 - y0, z1 - z0), 0.025, 0.025, WIRE, { yaw, roll: Math.atan2(y1 - y0, Math.hypot(x1 - x0, z1 - z0)) });
-  }
-  const n = Math.max(2, Math.round(len / every));
-  for (let i = 1; i < n; i++) {
-    const u = i / n;
-    const x = p.x + (q.x - p.x) * u;
-    const z = p.z + (q.z - p.z) * u;
-    const y = yAt(u) - 0.09;
-    bulbs.add([x, y, z], 0.11, 0.8 + 0.4 * hash3(x, z, i, 3));
-    if (!low && i % 2 === 0) glow?.add(x, y, z, 0xffc070, 0.9, { level: 0.45 });
+function stringLights(strings: StringSpan[], glow: Glow | null, p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, sag: number, every: number, low: boolean): void {
+  if (Math.hypot(q.x - p.x, q.z - p.z) < 1) return;
+  const span = { p, q, sag, every };
+  strings.push(span);
+  if (low || !glow) return;
+  for (const [i, u] of bulbsAlong(span).entries()) {
+    if (i % 2 === 0) continue;
+    const [x, y, z] = hangAt(span, u);
+    glow.add(x, y - 0.09, z, 0xffc070, 0.9, { level: 0.45 });
   }
 }
 

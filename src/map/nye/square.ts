@@ -23,6 +23,7 @@ import { raiseFlags } from './_sqFlags';
 import { buildSala } from './_sqSala';
 import { buildSquareGlow } from './_sqGlow';
 import { growMeadow } from './_sqMeadow';
+import { buildSquareLife } from './_sqLife';
 
 /**
  * The festival square at Phnom Kulen's foot (AWP-35, docs/discussion/new-year-online.md; where: plan.ts), all
@@ -38,10 +39,11 @@ import { growMeadow } from './_sqMeadow';
  *   (`_sqDecor.ts`); the four New Year snack stalls, each a shop (`_sqStalls.ts`).
  *
  * Draws: the floor (1), the square's blocks (a mesh per family: stone, bark, leaf, petal), the lantern walk's
- * (stone, in two places, culled apart), the kit (banners and the strings' wires: 1, waving in its shader), the
- * flames and the bulbs (2), the halos (1), the ring (1). Two real lights (sky/lampSlots.ts), at night only: the
+ * (stone, in two places, culled apart), the kit (banners: 1, waving in its shader), the flames and the bulbs (2),
+ * the halos (1), the ring (1), the square's life (`_sqLife.ts`: the edge strings swaying, petals, the day's or the
+ * night's flyers, fireflies and embers at night: 3‥4). Two real lights (sky/lampSlots.ts), at night only: the
  * ring's and the gate's; the rest is glow and bloom. What moves: the banners (the kit's shader), the ring's
- * breath and the glows (uniforms): no matrix changes after the build.
+ * breath and the glows (uniforms), the life (its shaders): no matrix changes after the build.
  */
 export function buildNyeSquare(ctx: MapContext): NyePiece {
   const t0 = performance.now();
@@ -74,11 +76,11 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
     }
   buildSala(b, field, lamps, bulbs, glow, low);
   const garden = plantGarden(b, field, lamps, low);
-  const decor = dressSquare(b, kit, field, bulbs, glow, low, garden.trees);
+  const decor = dressSquare(b, kit, field, glow, low, garden.trees);
   buildStalls(b, field, lamps, glow, low);
   const wb = new VoxelBuilder();
   const walk = layLanternWalk(wb, field, lamps, glow, low ? 14 : 11);
-  raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
+  const flags = raiseFlags({ object, fb, b, wb, field, u, lamps, bulbs, glow, low });
   // The garden round it all (tall grass, flowering shrubs, bananas, trees, stepping stones): after everything built, before the glow's poles.
   growMeadow(b, fb, field, low);
 
@@ -94,8 +96,11 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
   const sqGlow = buildSquareGlow(ctx, { walk, trees: decor.trees });
   object.add(sqGlow.object);
   const shadows = new ShadowGate(true).addAll(object);
+  // (fireflies, embers, petals, butterflies, dragonflies, moths, bats, the edge strings swaying: _sqLife.ts)
+  const life = buildSquareLife(ctx, { trees: garden.trees, walk, avenue: flags.lights, strings: decor.strings });
+  object.add(life.object);
 
-  // The kit (banners, wires): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
+  // The kit (the banners): waving in its shader; casts no shadow (still shadows on low and medium: it moves).
   const kitMesh = kit.build('nye:square', u);
   kitMesh.show(true);
   kitMesh.mesh.castShadow = false;
@@ -162,6 +167,7 @@ export function buildNyeSquare(ctx: MapContext): NyePiece {
       ringLamp.intensity = 110 * lit * (1 + 0.4 * event);
       gateLamp.intensity = 45 * lit;
       sqGlow.update(f);
+      life.update(f);
       shadows.update(f);
     },
   };
