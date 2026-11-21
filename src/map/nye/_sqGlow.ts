@@ -71,6 +71,8 @@ import type { Kit } from '../festival/_kit';
 
 export interface SquareGlow {
   object: Group;
+  /** The searchlights (in `object`; the square takes them out of its detail: they stay in the far look). */
+  beams: Mesh;
   blocks: number;
   update(f: MapFrame): void;
 }
@@ -322,6 +324,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   let started = false;
   return {
     object,
+    beams: beams.mesh,
     blocks,
     update(f: MapFrame) {
       if (!started) {

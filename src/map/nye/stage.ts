@@ -11,7 +11,8 @@ import { addLamp } from '../sky/lampSlots';
 import type { MapContext, MapFrame } from '../types';
 import { buildGate } from './_stGate';
 import { course, fireBowl, khmerLamp, Mason2, pick, StageGlow } from './_stKit';
-import { buildBoard } from './board';
+import { buildBoard, KULEN_BOARD } from './board';
+import { boardLights } from './_far';
 import type { NyePiece } from './index';
 import { BOARD, GROUND, NAGA, STAGE } from './plan';
 
@@ -197,6 +198,10 @@ export function buildNyeStage(ctx: MapContext): NyePiece {
   return {
     object,
     blocks,
+    // (all of it gives way to the far look on low, far off: index.ts, `_far.ts`; the board's frame and figures there)
+    venue: 0,
+    detail: object,
+    far: (c) => boardLights(c, KULEN_BOARD),
     update(f: MapFrame) {
       const n = f.night;
       const k = n * n * (3 - 2 * n);
