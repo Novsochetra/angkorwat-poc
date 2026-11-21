@@ -32,8 +32,9 @@ import { BOARD, GROUND, NAGA, STAGE } from './plan';
  * - The countdown board (board.ts): a canvas redrawn only when its text changes.
  *
  * Light: glow and bloom (flames, gilt, the board), two real lamps (sky/lampSlots.ts) at night: the fires
- * before the stage and the temple top. Nothing moves but the board's picture and the glow's flicker (in the
- * shader): the blocks, the naga and the carving are still.
+ * before the stage and the temple top. Nothing moves but the board's picture, the fires' tongues and the lamps'
+ * flicker (in the stage's festival kit's shader, `_stKit.ts` `StageGlow`): the blocks, the naga and the carving are
+ * still.
  */
 export function buildNyeStage(ctx: MapContext): NyePiece {
   const t0 = performance.now();
