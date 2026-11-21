@@ -24,6 +24,7 @@ import {
   type Texture,
   type TextureDataType,
   Uint16BufferAttribute,
+  Vector4,
   type WebGLProgramParametersWithUniforms,
   type WebGLRenderer,
   WebGLRenderTarget,
@@ -1840,7 +1841,32 @@ interface CrowdUniforms {
   uPEasePitch: { value: number };
   uPPal: { value: DataTexture };
   uPGlow: { value: number };
+  uPFire: { value: Vector4[] };
 }
+
+/**
+ * The New Year's Eve venues' firelight on the people in them (AWP-35: from above the crowd was dark hair and dark
+ * clothes; the venues' painted light pools light nobody): per venue its middle (x, z), radius (m) and strength (0 off),
+ * a table every crowd's shader reads (`FIRE_GLSL`: a warm fill on their colours, most on what faces up, a little warm
+ * sheen on dark hair). The New Year scenes (people/_sceneNye.ts, _sceneNyeLake.ts) set it on the event night.
+ */
+export const PEOPLE_FIRE: { value: Vector4[] } = { value: [new Vector4(), new Vector4()] };
+/** The firelight's colour (linear), and the sheen it leaves on any colour (dark hair from above). */
+const FIRE_COLOR = [1.0, 0.6, 0.3] as const;
+const FIRE_SHEEN = 0.15;
+/**
+ * The fill, for the lit vertex shader after the person's colour (`vPColor`) and posed normal (`pNrm`): the person's
+ * place from their instance (one loop over the venues' table, no branches), stronger the higher a face turns up.
+ */
+const FIRE_GLSL = /* glsl */ `
+  #ifdef USE_INSTANCING
+    vec3 pAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  #else
+    vec3 pAt = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  #endif
+  float pFire = 0.0;
+  for (int k = 0; k < ${PEOPLE_FIRE.value.length}; k++) pFire += uPFire[k].w * (1.0 - smoothstep(uPFire[k].z * 0.6, uPFire[k].z, length(pAt.xz - uPFire[k].xy)));
+  vPGlow += vec3(${FIRE_COLOR.map((v) => v.toFixed(2)).join(', ')}) * pFire * (0.35 + 0.65 * smoothstep(-0.3, 0.9, pNrm.y)) * (vPColor + ${FIRE_SHEEN.toFixed(2)});`;
 
 /** The bone texture the crowd reads (the bone pass; null without it). */
 interface BoneUniforms {
@@ -1855,7 +1881,7 @@ interface BoneUniforms {
  */
 function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & BoneUniforms, colour: boolean, bones: boolean): void {
   Object.assign(shader.uniforms, u);
-  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
+  const pars = colour ? `\nuniform sampler2D uPPal;\nuniform float uPGlow;\nuniform vec4 uPFire[${PEOPLE_FIRE.value.length}];\nvarying vec3 vPColor;\nvarying vec3 vPGlow;\n` : '';
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${GLSL_WORN}${bones ? GLSL_FETCH : GLSL_SKIN}${pars}`);
   // (a box not worn, or a person hidden, folds to a point before any posing)
   const pose = bones
@@ -1899,6 +1925,7 @@ function inject(shader: WebGLProgramParametersWithUniforms, u: CrowdUniforms & B
   // (the person's own row of colours: aPCh2.w)
   vPColor = texelFetch(uPPal, ivec2(pSlot, int(aPCh2.w + 0.5)), 0).rgb;
   vPGlow = pSlot == ${SLOT.flame} ? vPColor * uPGlow : vec3(0.0);
+${FIRE_GLSL}
   // Undersides a little darker (no bounce light there).
   vPColor *= 0.84 + 0.16 * smoothstep(-1.0, 0.2, normal.y);`,
       )
@@ -2178,6 +2205,7 @@ export class Crowd {
       uPEasePitch: { value: EASE[4] },
       uPPal: { value: this.palTex },
       uPGlow: { value: 1.5 },
+      uPFire: PEOPLE_FIRE,
     };
     const type = boneType(opts.renderer);
     const bones = type !== null;

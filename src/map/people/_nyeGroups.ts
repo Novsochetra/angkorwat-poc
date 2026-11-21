@@ -486,6 +486,50 @@ export function runnerAt(r: Runner, t: number, out: { x: number; z: number; yaw:
   return 0;
 }
 
+// ── Festival clothes ────────────────────────────────────────────────────────
+
+/** White and cream shirts, silk blouses (lotus pink, gold, sky, lilac, jade), the kramas' checks (red, blue, green). */
+const SHIRTS = [0xf4f0e6, 0xf6ecd6, 0xeee8dc];
+const SILKS = [0xf2a6bf, 0xe9c46a, 0xa9d0ee, 0xd4b4ec, 0x9fd8c0, 0xf6e7c8, 0xf0b890];
+const KRAMAS = [0xc8302a, 0x2a5aa8, 0x2a7a4a, 0xb0282a];
+const KID_TOPS = [0xf4f0e6, 0xf2d24a, 0xf2a6bf, 0x8fd0f0, 0xf0f0f0];
+
+/**
+ * The night's crowd in lighter festival clothes, so groups read as people with colour from above (the lead's art
+ * review: from over the plaza they were dark hair and dark clothes): most men in a white or cream shirt, most women in
+ * a silk blouse, children in bright tops, and a krama wound round the head for a share of the men and elders (its white
+ * and checks the brightest thing seen from above). `skip` keeps some as they are (the dancers in their silk, monks).
+ */
+export function festiveLooks(members: (CrowdMember & { look: Look })[], skip: (k: number) => boolean, seed: number): void {
+  members.forEach((m, k) => {
+    if (skip(k) || m.role === 'monk') return;
+    const h = (n: number) => hash3(k, n, 17, seed);
+    const l = m.look;
+    const colors = l.colors.slice();
+    const feats = l.feats.slice();
+    const top = (c: number) => {
+      for (const sl of [SLOT.top, SLOT.sleeveL, SLOT.sleeveR]) colors[sl] = c;
+    };
+    const woman = feats.includes(FEAT.skirt);
+    if (m.kid) {
+      if (h(1) < 0.7) top(KID_TOPS[Math.floor(h(2) * KID_TOPS.length)]);
+    } else if (woman) {
+      if (h(1) < 0.75) top(SILKS[Math.floor(h(2) * SILKS.length)]);
+    } else {
+      if (h(1) < 0.7) top(SHIRTS[Math.floor(h(2) * SHIRTS.length)]);
+      // (a krama round the head: short hair only, no hat)
+      if (h(3) < 0.35 && !feats.includes(FEAT.hatPalm) && !feats.includes(FEAT.hairLong) && !feats.includes(FEAT.hairBun) && !feats.includes(FEAT.kramaHead)) {
+        feats.push(FEAT.kramaHead);
+        colors[SLOT.accent] = KRAMAS[Math.floor(h(4) * KRAMAS.length)];
+        colors[SLOT.accent2] = 0xf4f0e6;
+        const neck = feats.indexOf(FEAT.kramaNeck);
+        if (neck >= 0) feats.splice(neck, 1);
+      }
+    }
+    m.look = { ...l, colors, feats };
+  });
+}
+
 // ── Sparklers ───────────────────────────────────────────────────────────────
 
 /**

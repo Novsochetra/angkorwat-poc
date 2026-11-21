@@ -6,9 +6,9 @@ import { SPARK_MAX, SPARKS, sparksOut } from '../nye/_lifeSparks';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
-import { gatherPlaces, GROUP, moreSparklers, pickCouples, planRunners, RUN, runnerAt, spreadGroups, VONG, vongAt, vongLook, type GroupPlan, type Runner } from './_nyeGroups';
+import { festiveLooks, gatherPlaces, GROUP, moreSparklers, pickCouples, planRunners, RUN, runnerAt, spreadGroups, VONG, vongAt, vongLook, type GroupPlan, type Runner } from './_nyeGroups';
 import { along, ALL_GONE, BOARD_AT, COME_FROM, ensembleDef, FLOOR, GATE_IN, GATE_OUT, MATS, matDef, planCrowd, SquareGround, STAGE_TOP, standable, type Member, type NyeCrowdPlan } from './_nyePlan';
-import { CARRY, danceSide, danceSteps, DANCE, FIT, POSE, SLOT, type Look, type Pose } from './_personModel';
+import { CARRY, danceSide, danceSteps, DANCE, FIT, PEOPLE_FIRE, POSE, SLOT, type Look, type Pose } from './_personModel';
 import type { Obstacle, Point, Traffic } from './_routes';
 import { Pace, viewDist, type PeopleEnv, type PeopleScene } from './_scene';
 import { Rig } from './_things';
@@ -109,6 +109,8 @@ const VONG_COUPLES = 16;
 const RUNNERS = 8;
 const RUN_TO = -90;
 /** Everyone turns to the board from two minutes before midnight (each at their own moment in its first half minute). */
+/** The venue's firelight on its people on the event night (`PEOPLE_FIRE`: a warm fill, most on what faces up). */
+const FIRE = 0.6;
 const TURN_FROM = -120;
 /** The groups gather toward the stage for the countdown (`_nyeGroups.ts` `gatherPlaces`), each setting off in these 100 s. */
 const GATHER_FROM = -250;
@@ -248,6 +250,7 @@ export class NyeLife implements PeopleScene {
       this.runners = planRunners(ms, this.groups, venue, RUNNERS, (k) => this.slotHigh[k] < 0);
       this.runnerOf = new Int16Array(ms.length).fill(-1);
       this.runners.forEach((r, j) => (this.runnerOf[r.k] = j));
+      festiveLooks(ms, (k) => this.slotHigh[k] >= 0, 0x2027 + 8);
       moreSparklers(ms, MORE_SPARKLERS, (k) => this.slotHigh[k] < 0, 0x2027 + 7);
       this.sparklers = ms.map((m, k) => (m.sparkler ? k : -1)).filter((k) => k >= 0).slice(0, SPARK_MAX);
       this.inRing = new Uint8Array(ms.length);
@@ -341,6 +344,8 @@ export class NyeLife implements PeopleScene {
     const s = nyeSeconds() + (this.env.shot ? now - this.now0 - SHOT_LEAD : 0);
     // (the night only when the URL asks for it in a shot, as the hold: nye/clock.ts)
     const night = (!this.env.shot || nyeAsked()) && s >= COME_FROM && s < NYE_TIMES.nightTo;
+    // (the square's firelight on its people on the event night, as it gets dark: _personModel.ts `PEOPLE_FIRE`)
+    PEOPLE_FIRE.value[0].set(SQUARE.x, SQUARE.z, Math.max(SQUARE.rx, SQUARE.rz) + 8, night ? FIRE * Math.min(1, Math.max(0, (f.night - 0.3) / 0.4)) : 0);
     const c = f.clock - Math.floor(f.clock);
     const low = graphicsNow.level === 'low';
     this.rigs(night, s);
@@ -892,6 +897,7 @@ export class NyeLife implements PeopleScene {
     this.shown = false;
     this.rigs(false, 0);
     sparksOut('kulen');
+    PEOPLE_FIRE.value[0].w = 0;
     this.inRing.fill(0);
     this.away.fill(0);
     for (const a of this.actors) {
