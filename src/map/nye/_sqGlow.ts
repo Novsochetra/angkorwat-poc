@@ -15,6 +15,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
+  type Material,
   Quaternion,
   ShaderMaterial,
   Sphere,
@@ -34,6 +35,7 @@ import { buildSquareEdge } from './_sqEdge';
 import { INLAY, TOP } from './_sqFloor';
 import { AVENUE, onAvenue } from './_sqWalk';
 import { GOLD, LATERITE, pick } from './_sqKit';
+import type { Kit } from '../festival/_kit';
 
 /**
  * The festival square's light and air at night (AWP-35; the owner: "from above it looks quiet, small and dark":
@@ -49,12 +51,16 @@ import { GOLD, LATERITE, pick } from './_sqKit';
  *   fanning out to eight tall lacquered poles round the square's edge, the poles joined round the edge, and strings
  *   across the lantern walk before the gate, all sagging (catenaries ≥ 7 m over the square's middle, high over the
  *   gate → ring → stage way). Wires: one line draw; bulbs and lantern bodies: one draw (glowing boxes, colours over
- *   1.0 at night: the bloom).
+ *   1.0 at night: the bloom). A bulb is a small bright point wherever the camera is (`clampBulbs`: never more than
+ *   ≈ 6 px, never less than ≈ 2 px), so near ones never swell into discs and the bloom round them stays modest.
  * - **Hanging lanterns** (Khmer: a little Angkor tower top over a glowing body, or a round paper lamp in warm
  *   colours, never a Chinese red lantern with tassels): from the poles' arms and in the square's trees. Their wood
  *   and stone, the poles and the edge: one voxel mesh (`mapStone`).
- * - **The glow over the square**: halos round the lamps and some bulbs and a few large soft camera-facing glows
- *   (a dome of lit air) that fade out as the camera comes in under them and into the haze far off. One draw.
+ * - **The glow over the square**: halos round the lamps and some bulbs (each no bigger on the screen than its own
+ *   limit: a bulb's a few pixels, a lamp's ≈ a twentieth of the picture's height) and a few large soft camera-facing
+ *   glows (a faint dome of lit air) that fade out as the camera comes in under them and into the haze far off. One
+ *   draw. Kept low (the owner's reference: deep blue night, warm pools with dark gaps between them, never an orange
+ *   haze over everything).
  * - **The event night** (clock.ts `nightHeld`): gold searchlight beams from behind the stage sweeping slowly in the
  *   sky (additive cones turned to the camera round their axis, swept in the shader; one draw), everything a little
  *   brighter; from ten seconds before midnight the square's pool and a glow over the ring pulse with the count.
@@ -74,6 +80,8 @@ export interface SquareGlowInput {
   walk?: readonly [number, number][];
   /** The square's trees (map x, z, crown radius: `_sqDecor.ts`). */
   trees?: readonly [number, number, number][];
+  /** The square's festival kit (`square.ts`): the edge pillars' fires and banners go into it (no draw of their own). */
+  kit?: Kit;
 }
 
 type V3 = { x: number; y: number; z: number };
@@ -82,6 +90,44 @@ type V3 = { x: number; y: number; z: number };
 const BULB = [0xffd89a, 0xffc878, 0xffe4b8, 0xffb860, 0xffd08a];
 /** Lantern bodies: gold, saffron, amber, and now and then a lotus pink. */
 const LANTERN = [0xffb44a, 0xff9a36, 0xffc45c, 0xffa848, 0xff9c8c];
+/** A string bulb's brightness against a lantern's (its colour × this; at night the bodies go over 1.0: the bloom). */
+const BULB_LEVEL = 1.0;
+/** The halos' size limits on the screen (a share of the picture's height): a bulb's, a lamp's or lantern's. */
+const HALO_BULB = 0.022;
+const HALO_LAMP = 0.11;
+/** A bulb's size on the screen (a share of the picture's height, as NDC: 2 is the whole height): at least, at most. */
+const BULB_MIN = 0.0045;
+const BULB_MAX = 0.013;
+
+/**
+ * Bulbs as small bright points: any instance of `material`'s instanced mesh smaller than 0.2 m (a bulb, not a lantern
+ * or a strip of light) is scaled about its middle so that it is between ≈ 2 and ≈ 6 px tall on a 940 px picture
+ * (`BULB_MIN`‥`BULB_MAX` of the screen), however near or far: near ones never swell into discs, far ones never
+ * vanish. In the vertex shader (one program for every material given it; the rest of the mesh as it was).
+ */
+export function clampBulbs(material: Material): void {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      /* glsl */ `
+      vec4 mvPosition = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        mvPosition = instanceMatrix * mvPosition;
+        vec3 bC = (modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+        float bS = max(length(instanceMatrix[0].xyz), max(length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz)));
+      #endif
+      mvPosition = modelViewMatrix * mvPosition;
+      #ifdef USE_INSTANCING
+        float bN = bS * projectionMatrix[1][1] / max(-bC.z, 0.05);
+        float bF = mix(1.0, clamp(bN, ${BULB_MIN.toFixed(4)}, ${BULB_MAX.toFixed(4)}) / max(bN, 1e-5), step(bS, 0.2));
+        mvPosition.xyz = bC + (mvPosition.xyz - bC) * bF;
+      #endif
+      gl_Position = projectionMatrix * mvPosition;`,
+    );
+  };
+  material.customProgramCacheKey = () => 'nye-bulbs';
+}
+
 /** The poles' red lacquer, the lanterns' dark wood. */
 const LACQUER = [0x5a2a20, 0x642f24, 0x52261c];
 const WOOD = [0x3e2a1e, 0x48301f, 0x36251a];
@@ -101,23 +147,32 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   const bodies = new Bodies();
   const wires: number[] = [];
 
-  // ── The edge: balustrade and pedestal lamps ──
-  const flames = buildSquareEdge(b, field, low);
+  // ── The edge: balustrade, pedestal lamps and the lantern pillars' fires ──
+  const edge = buildSquareEdge(b, field, low, input.kit ?? null);
+  const flames = edge.lamps;
   for (const [x, y, z] of flames) {
     bodies.add(x, y, z, 0.26, 0.3, 0.26, 0xffb860, 1.1);
-    glows.halo(x, y, z, 2.6, 0xffb45a, 0.9);
-    pools.add(x, z, 4.2, 0xffa850, 0.42);
+    glows.halo(x, y, z, 2.2, 0xffb45a, 0.7, HALO_LAMP);
+    pools.add(x, z, 4.2, 0xffa850, 0.34);
+  }
+  for (const [x, y, z] of edge.fires) {
+    glows.halo(x, y, z, 3.0, 0xffa040, 0.75, HALO_LAMP);
+    // (a pool mostly on the square's side: past the edge the land often steps up into the garden's banks)
+    const k = 1.4 / Math.hypot(x - SQUARE.x, z - SQUARE.z);
+    pools.add(x + (SQUARE.x - x) * k, z + (SQUARE.z - z) * k, 3.8, 0xffa040, 0.38);
   }
 
   // ── Big pools: the square, before the stage, the gate, the stalls; the gilt band ──
-  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.1, 0, 18);
-  pools.add(STAGE.x, STAGE.front + 2, 15, 0xffa850, 0.22);
-  pools.add(GATE.x, GATE.z - 4, 9, 0xffa850, 0.24);
-  pools.add(GATE.x, GATE.z + 6, 11, 0xffa850, 0.34);
-  for (const s of STALLS) pools.add(s.x + Math.sin(s.facing) * 1.5, s.z + Math.cos(s.facing) * 1.5, 7, 0xffb058, 0.3);
-  pools.ring(RING.x, RING.z, INLAY, 0.32, 0xffc060, 0.55, G + TOP + 0.03);
+  // (the square's own pool faint: the pavers and the lotus must read, the warm pools round the lamps and stalls with
+  // darker stone between them)
+  pools.add(SQUARE.x, SQUARE.z + 1, 34, 0xffa040, 0.035, 0, 18);
+  pools.add(STAGE.x, STAGE.front + 2, 13, 0xffa850, 0.16);
+  pools.add(GATE.x, GATE.z - 4, 8, 0xffa850, 0.18);
+  pools.add(GATE.x, GATE.z + 6, 10, 0xffa850, 0.26);
+  for (const s of STALLS) pools.add(s.x + Math.sin(s.facing) * 2, s.z + Math.cos(s.facing) * 2, 5.2, 0xffb058, 0.34);
+  pools.ring(RING.x, RING.z, INLAY, 0.22, 0xffc060, 0.5, G + TOP + 0.03);
   // At midnight the square's pool beats with the count (pulse only).
-  pools.add(RING.x, RING.z, 26, 0xffb040, 0.55, 2, 14);
+  pools.add(RING.x, RING.z, 24, 0xffb040, 0.26, 2, 14);
 
   // ── Tall poles round the edge, each with lanterns on its arms ──
   const poleTop = 10.2;
@@ -130,7 +185,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
     const out = Math.atan2(x - SQUARE.x, z - SQUARE.z);
     tallPole(b, bodies, glows, wires, x, g, z, poleTop, out, src);
     field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
-    pools.add(x, z, 6, 0xffa850, 0.3);
+    pools.add(x, z, 4.2, 0xffa850, 0.2);
     poles.push({ x, y: g + poleTop - 0.15, z, th });
   }
 
@@ -167,7 +222,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
       const toward = Math.atan2(pair[1 - k][0] - x, pair[1 - k][1] - z);
       walkPole(b, bodies, glows, wires, x, g, z, 6.4, toward, src, i * 2 + k);
       field.occupy(x - 0.4, z - 0.4, x + 0.4, z + 0.4);
-      pools.add(x, z, 4.5, 0xffa850, 0.28);
+      pools.add(x, z, 4.5, 0xffa850, 0.24);
       ends.push({ x, y: g + 6.25, z });
     }
     string(ends[0], ends[1], 0.9, true);
@@ -181,9 +236,9 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   }
 
   // ── The lantern walk's own lamps: a pool under each ──
-  for (const [x, z] of input.walk ?? []) pools.add(x, z, 4.2, 0xffa850, 0.34);
+  for (const [x, z] of input.walk ?? []) pools.add(x, z, 4.2, 0xffa850, 0.3);
   // (and the avenue's kerb lamps: a warm run of light up its middle)
-  for (let z = AVENUE.z0 + 3; z < AVENUE.z1 - 1; z += 6) pools.add(AVENUE.x, z, 5.5, 0xffa850, 0.24);
+  for (let z = AVENUE.z0 + 3; z < AVENUE.z1 - 1; z += 6) pools.add(AVENUE.x, z, 5, 0xffa850, 0.2);
 
   // ── Lanterns in the square's trees ──
   for (const [i, [x, z, r]] of (input.trees ?? []).entries()) {
@@ -198,14 +253,15 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
       const drop = 0.7 + 0.8 * hash3(i, k, 4, 91);
       lantern(b, bodies, glows, wires, lx, hang, lz, drop, (i + k) % 3 === 0 ? 'round' : 'tower', i * 5 + k, src);
     }
-    pools.add(x + Math.sin(toSq) * r * 0.7, z + Math.cos(toSq) * r * 0.7, 5.5, 0xffa850, 0.2);
+    pools.add(x + Math.sin(toSq) * r * 0.7, z + Math.cos(toSq) * r * 0.7, 5, 0xffa850, 0.16);
   }
 
   // ── The glow over the square: the dome of lit air (night), the ring's glow at midnight ──
-  glows.dome(SQUARE.x, G + 14, SQUARE.z - 1, 78, 0xffb050, 0.13);
-  glows.dome(SQUARE.x, G + 5, SQUARE.z + 1, 46, 0xffbc60, 0.1);
-  glows.dome(GATE.x + 6, G + 4, GATE.z + 10, 30, 0xffa850, 0.16);
-  glows.add(RING.x, G + 2.5, RING.z, 30, 0xffc060, 0.5, 1, 2);
+  // (faint: a breath of warm air over the square seen from afar, never a haze over the picture)
+  glows.dome(SQUARE.x, G + 14, SQUARE.z - 1, 78, 0xffb050, 0.045);
+  glows.dome(SQUARE.x, G + 5, SQUARE.z + 1, 46, 0xffbc60, 0.035);
+  glows.dome(GATE.x + 6, G + 4, GATE.z + 10, 30, 0xffa850, 0.06);
+  glows.add(RING.x, G + 2.5, RING.z, 26, 0xffc060, 0.22, 1, 2);
 
   // ── The beams (the event night only) ──
   const beamBases: [number, number, number, number][] = [];
@@ -215,7 +271,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
     const z = STAGE.back - 3.5 - Math.abs(dx) * 0.12;
     const y = field.heightAt(x, z) + 0.6;
     beamBases.push([x, y, z, i]);
-    glows.add(x, y + 0.6, z, 5, 0xffd080, 0.9, 0, 1);
+    glows.add(x, y + 0.6, z, 5, 0xffd080, 0.7, 0, 1, HALO_LAMP);
   }
 
   // ── Build ──
@@ -234,11 +290,12 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
   object.add(wireMesh);
   const glowMesh = glows.build();
   object.add(glowMesh.mesh);
-  const beams = buildBeams(beamBases, offs.length);
+  // (slimmer and fainter than they were: gold strokes in a deep blue sky, not a gold veil over Kulen)
+  const beams = buildBeams(beamBases, offs.length, 0, undefined, { level: 0.2, width: 20 });
   object.add(beams.mesh);
 
   console.info(
-    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps · ${poles.length} poles · ${pairs.length} walk pairs · ${bodies.count} bulbs and lanterns · ${glows.count} glows · ${pools.count} pools · built in ${(performance.now() - t0).toFixed(1)} ms`,
+    `[map] nye glow: ${blocks} blocks · ${flames.length} edge lamps, ${edge.fires.length} fire pillars · ${poles.length} poles · ${pairs.length} walk pairs · ${bodies.count} bulbs and lanterns · ${glows.count} glows · ${pools.count} pools · built in ${(performance.now() - t0).toFixed(1)} ms`,
   );
 
   let now = 0;
@@ -392,13 +449,13 @@ function lantern(b: VoxelBuilder, bodies: Bodies, glows: Glows, wires: number[],
     yy -= 0.06;
     bodies.add(x, yy - 0.22, z, 0.34, 0.44, 0.34, col, 1);
     b.box(x, yy - 0.47, z, 0.4, 0.06, 0.4, wood(7), 'mapStone', { src });
-    glows.halo(x, yy - 0.22, z, 2.4, col, 0.75);
+    glows.halo(x, yy - 0.22, z, 2.2, col, 0.6, HALO_LAMP);
   } else {
     b.box(x, top - 0.03, z, 0.26, 0.06, 0.26, wood(2), 'mapStone', { src });
     bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.9);
     bodies.add(x, top - 0.3, z, 0.44, 0.48, 0.44, col, 0.9, Math.PI / 4);
     b.box(x, top - 0.57, z, 0.26, 0.06, 0.26, wood(3), 'mapStone', { src });
-    glows.halo(x, top - 0.3, z, 2.6, col, 0.75);
+    glows.halo(x, top - 0.3, z, 2.4, col, 0.6, HALO_LAMP);
   }
 }
 
@@ -420,8 +477,8 @@ function stringLights(p: V3, q: V3, sag: number, every: number, bodies: Bodies, 
     const z = p.z + (q.z - p.z) * u;
     const y = yAt(u) - 0.08;
     const c = BULB[Math.floor(hash3(x, z, i, 95) * BULB.length) % BULB.length];
-    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, 0.85 + 0.3 * hash3(x, z, i, 96));
-    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.55, c, 0.2);
+    bodies.add(x, y, z, 0.11, 0.13, 0.11, c, BULB_LEVEL * (0.85 + 0.3 * hash3(x, z, i, 96)));
+    if (glows && i % haloEvery === 0) glows.halo(x, y, z, 0.55, c, 0.16, HALO_BULB);
   }
 }
 
@@ -438,6 +495,8 @@ class Bodies {
   build(): { mesh: InstancedMesh; update(night: number, event: number): void } | null {
     if (!this.items.length) return null;
     const material = new MeshBasicMaterial({ color: 0xffffff });
+    material.name = 'nye:glow:bodies';
+    clampBulbs(material);
     const mesh = new InstancedMesh(new BoxGeometry(1, 1, 1), material, this.items.length);
     mesh.name = 'nye:glow:bodies';
     const m = new Matrix4();
@@ -460,8 +519,8 @@ class Bodies {
       mesh,
       update(night, event) {
         const n = smooth(0.1, 0.85, night);
-        // Paper and glass by day (a little warm), over 1.0 at night for the bloom.
-        material.color.setScalar((0.6 + 2.4 * n) * (1 + 0.2 * event));
+        // Paper and glass by day (a little warm), over 1.0 at night for the bloom (lanterns keep their colour: not white).
+        material.color.setScalar((0.6 + 1.7 * n) * (1 + 0.15 * event));
       },
     };
   }
@@ -474,6 +533,7 @@ class Pools {
   private readonly loc: number[] = [];
   private readonly col: number[] = [];
   private readonly shape: number[] = [];
+  private readonly flat: number[] = [];
   private readonly idx: number[] = [];
   private n = 0;
   private readonly c = new Color();
@@ -500,12 +560,18 @@ class Pools {
         const px = x + u * r;
         const pz = z + v * r;
         let py = y;
+        let flat = 1;
         if (py === null) {
-          // (over the highest land near the point: block steps stay under it)
-          const h = Math.max(f.heightAt(px, pz), f.heightAt(px + 0.9, pz), f.heightAt(px - 0.9, pz), f.heightAt(px, pz + 0.9), f.heightAt(px, pz - 0.9));
+          // (over the highest land near the point: block steps stay under it; where the land steps more than a kerb,
+          // the light fades out there, so no sheet of it stands across a bank's face)
+          const hs = [f.heightAt(px, pz), f.heightAt(px + 0.9, pz), f.heightAt(px - 0.9, pz), f.heightAt(px, pz + 0.9), f.heightAt(px, pz - 0.9)];
+          const h = Math.max(...hs);
+          const step = h - Math.min(...hs);
+          flat = 1 - Math.min(1, Math.max(0, (step - 0.3) / 0.5));
           py = h + (onSquare(px, pz, 0.5) ? TOP + 0.05 : 0.12);
         }
         this.pos.push(px, py, pz);
+        this.flat.push(flat);
         this.loc.push(u * r, v * r);
         this.col.push(this.c.r, this.c.g, this.c.b);
         this.shape.push(kind, kind ? R : r, kind ? w : 0, show);
@@ -523,6 +589,7 @@ class Pools {
     geo.setAttribute('pLoc', new Float32BufferAttribute(this.loc, 2));
     geo.setAttribute('pCol', new Float32BufferAttribute(this.col, 3));
     geo.setAttribute('pShape', new Float32BufferAttribute(this.shape, 4));
+    geo.setAttribute('pFlat', new Float32BufferAttribute(this.flat, 1));
     geo.setIndex(this.idx);
     geo.computeBoundingSphere();
     const u = { ...hazeUniforms(), uLevel: { value: 0 }, uPulse: { value: 0 } };
@@ -541,6 +608,7 @@ class Pools {
         attribute vec2 pLoc;
         attribute vec3 pCol;
         attribute vec4 pShape;
+        attribute float pFlat;
         uniform float uLevel;
         uniform float uPulse;
         varying vec2 vLoc;
@@ -550,7 +618,7 @@ class Pools {
           vLoc = pLoc;
           vShape = pShape.xyz;
           float on = pShape.w > 1.5 ? uPulse : 1.0;
-          vCol = pCol * uLevel * on;
+          vCol = pCol * uLevel * on * pFlat;
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <fog_vertex>
@@ -597,13 +665,16 @@ class Glows {
   get count(): number {
     return this.data.length / 12;
   }
-  /** A glow at (x, y, z), `size` m across, colour (sRGB) × level; `kind` 0 halo, 1 dome; `show` 0 night, 1 event night, 2 midnight pulse. */
-  add(x: number, y: number, z: number, size: number, color: number, level: number, kind = 0, show = 0): void {
+  /**
+   * A glow at (x, y, z), `size` m across, colour (sRGB) × level; `kind` 0 halo, 1 dome; `show` 0 night, 1 event night,
+   * 2 midnight pulse; `limit` its largest size on the screen (a share of the picture's height, as NDC; 0: none).
+   */
+  add(x: number, y: number, z: number, size: number, color: number, level: number, kind = 0, show = 0, limit = 0): void {
     this.c.setHex(color).multiplyScalar(level);
-    this.data.push(x, y, z, size, this.c.r, this.c.g, this.c.b, kind, show, (x * 12.9898 + z * 78.233) % 1, 0, 0);
+    this.data.push(x, y, z, size, this.c.r, this.c.g, this.c.b, kind, show, (x * 12.9898 + z * 78.233) % 1, limit, 0);
   }
-  halo(x: number, y: number, z: number, size: number, color: number, level: number): void {
-    this.add(x, y, z, size, color, level, 0, 0);
+  halo(x: number, y: number, z: number, size: number, color: number, level: number, limit = 0): void {
+    this.add(x, y, z, size, color, level, 0, 0, limit);
   }
   dome(x: number, y: number, z: number, size: number, color: number, level: number): void {
     this.add(x, y, z, size, color, level, 1, 0);
@@ -661,7 +732,12 @@ class Glows {
           vCol = sCol.rgb * uLevel * on * near * fl;
           vKind = sCol.w;
           vUv = position.xy * 2.0;
-          mvPosition.xy += position.xy * sPos.w;
+          // (no bigger on the screen than its limit, if it has one: a near bulb's halo stays a few pixels)
+          float ndc = sPos.w * projectionMatrix[1][1] / max(-mvPosition.z, 0.05);
+          float lim = mix(1e6, sOpt.z, step(1e-6, sOpt.z));
+          mvPosition.xy += position.xy * sPos.w * min(1.0, lim / max(ndc, 1e-6));
+          // (pulled toward the camera a little: the bulb's own box does not cut its halo)
+          mvPosition.xyz += normalize(-mvPosition.xyz) * min(0.3, 0.25 * sPos.w);
           gl_Position = projectionMatrix * mvPosition;
           if (dot(vCol, vCol) < 1e-7) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
           #include <fog_vertex>
@@ -702,13 +778,14 @@ class Glows {
 /**
  * The beams from `bases` (x, y, z, index): up and out to the sides of a stage facing `facing` (radians toward (sin, cos)
  * in x, z; 0 the Kulen stage, facing south); `bound` the sphere round their reach (the map's culling reads it). The lake
- * stage's too (lake.ts).
+ * stage's too (lake.ts). `look`: their strength (0.3 by default) and their width at the far end (m, 34 by default).
  */
 export function buildBeams(
   bases: [number, number, number, number][],
   count: number,
   facing = 0,
   bound: Sphere = new Sphere(new Vector3(STAGE.x, GROUND + 120, STAGE.back), 280),
+  look: { level?: number; width?: number } = {},
 ): { mesh: Mesh; u: { uLevel: { value: number }; uTime: { value: number } } } {
   const quad = new PlaneGeometry(1, 1, 1, 8);
   const geo = new InstancedBufferGeometry();
@@ -729,7 +806,7 @@ export function buildBeams(
   geo.instanceCount = bases.length;
   // (bound: the beams' reach; the map's culling reads it)
   geo.boundingSphere = bound;
-  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffd890) } };
+  const u = { ...hazeUniforms(), uLevel: { value: 0 }, uTime: { value: 0 }, uColor: { value: new Color(0xffd890) }, uStrength: { value: look.level ?? 0.3 }, uWidth: { value: look.width ?? 34 } };
   const material = new ShaderMaterial({
     name: 'nye:beams',
     transparent: true,
@@ -744,6 +821,7 @@ export function buildBeams(
       attribute vec4 bBase;
       attribute vec4 bAim;
       uniform float uTime;
+      uniform float uWidth;
       varying vec2 vUv;
       void main() {
         float az = bAim.x + bAim.z * sin(uTime * bAim.w + bBase.w);
@@ -752,7 +830,7 @@ export function buildBeams(
         float t = position.y + 0.5;
         vec3 p = bBase.xyz + dir * (t * 260.0);
         vec3 side = normalize(cross(dir, p - cameraPosition));
-        p += side * position.x * mix(1.6, 34.0, t);
+        p += side * position.x * mix(1.6, uWidth, t);
         vUv = vec2(position.x * 2.0, t);
         vec4 mvPosition = viewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -761,12 +839,13 @@ export function buildBeams(
     fragmentShader: /* glsl */ `
       #include <fog_pars_fragment>
       uniform float uLevel;
+      uniform float uStrength;
       uniform vec3 uColor;
       varying vec2 vUv;
       void main() {
         float across = exp(-vUv.x * vUv.x * 4.0) * 0.8 + exp(-vUv.x * vUv.x * 30.0) * 0.5;
         float along = pow(1.0 - vUv.y, 1.6) * smoothstep(0.0, 0.03, vUv.y);
-        vec3 col = uColor * (0.3 * uLevel * across * along);
+        vec3 col = uColor * (uStrength * uLevel * across * along);
         #ifdef USE_FOG
           vec3 hzRay = vFogWorld - cameraPosition;
           col *= 1.0 - 0.55 * hazeDistance(length(hzRay));
