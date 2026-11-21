@@ -1,4 +1,4 @@
-import { Group, Vector3, type InstancedMesh, type Mesh } from 'three';
+import { Group, Vector3, type Mesh } from 'three';
 import { traceSource } from '../../feedback/sourceTrace';
 import { hash3 } from '../../voxel/random';
 import { VoxelBuilder } from '../../voxel/VoxelBuilder';
@@ -10,10 +10,9 @@ import type { StairNagaSpec } from '../sacred/naga';
 import { LAKE_STAGE } from './plan';
 import { carvedPanels, type CarveQuad } from './_stCarve';
 import { later } from './_stKit';
-import { khmerLamp } from './_sqKit';
+import { khmerLamp, kitFire } from './_sqKit';
 import { BAMBOO, banner, BULB, GOLD, lap, LACQUER, PLANK, ROPE, TIMBER, type Bodies, type LakeFrame } from './_lkKit';
 import type { WaterLights } from './_lkReflect';
-import { Fires } from './_lkStageFire';
 
 /**
  * The floating stage on the great lake (AWP-35, the lake venue: lake.ts; the owner's picture
@@ -37,9 +36,10 @@ import { Fires } from './_lkStageFire';
  *   Royal Palace is lit for a festival); a false door and wall lamps on its back, toward the lake;
  * - red banners with the white Angkor Wat on tall lacquered poles either side of the gate (the kit, swaying).
  *
- * What glows (gilt, bulbs, the lamps' glass) goes into the venue's `Bodies`, the flames into their own live draw
- * (`_lkStageFire.ts`), the halos and every light's streak on the water into its `Glow`, in map metres; the naga's spec
- * in map metres too (lake.ts sculpts it).
+ * What glows (gilt, bulbs, the lamps' glass) goes into the venue's `Bodies` (its bulbs small bright points: lake.ts
+ * `clampBulbs`), the live flames into the festival kit (`_sqKit.ts` `kitFire`: no draw of their own), the halos into its
+ * `Glow` and every light's reflection into the water lights (`_lkReflect.ts`), in map metres; the naga's spec in map
+ * metres too (lake.ts sculpts it).
  */
 
 export interface LakeStage {
@@ -54,9 +54,7 @@ export interface LakeStage {
   naga: Pick<StairNagaSpec, 'fans' | 'bodies' | 'radius'>;
   /** The tip of the middle tower (map y). */
   top: number;
-  /** The live flames (one draw; null on low, where they are still glowing boxes). */
-  fire: { mesh: InstancedMesh; update(t: number, night: number, event: number): void } | null;
-  /** Flames, small bulbs (counts, for the build line). */
+  /** Live flames (in the kit: `_sqKit.ts` `kitFire`), small bulbs (counts, for the build line). */
   flames: number;
   bulbs: number;
 }
@@ -73,30 +71,32 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   const hw = LAKE_STAGE.w / 2;
   const hd = LAKE_STAGE.d / 2;
   const yaw = fr.yaw;
-  const fires = new Fires(low ? bodies : null);
   let bulbs = 0;
+  let flames = 0;
   /** Local (x across, z toward the shore) → map metres, y as it is. */
   const P = (x: number, y: number, z: number): [number, number, number] => {
     const [mx, mz] = fr.at(x, z);
     return [mx, y, mz];
   };
   const span = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color: number, shade = 1) => b.span(x0, y0, z0, x1, y1, z1, color, 'mapStone', { src, shade });
-  const flame = (x: number, y: number, z: number, w: number, h: number, ph: number, k = 1.2) => {
+  /** A live fire whose rim is at (x, y, z), `size` 1 a bowl ≈ 0.7 m across (the festival kit's `ANIM.flame`: no draw of its own). */
+  const flame = (x: number, y: number, z: number, size: number, seed: number) => {
     const [mx, my, mz] = P(x, y, z);
-    fires.flame(mx, my, mz, w, h, yaw, ph, k);
+    kitFire(kit, mx, my, mz, size, seed);
+    flames++;
   };
   const gilt = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, k = 0.45) => {
     const [mx, my, mz] = P((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     bodies.add(mx, my, mz, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), 0xffc35a, k, yaw);
   };
-  /** A small bulb (warm white), its face toward the shore. */
-  const bulb = (x: number, y: number, z: number, k = 0.95) => {
+  /** A small bulb (warm white), its face toward the shore (a small bright point at any distance: lake.ts `clampBulbs`). */
+  const bulb = (x: number, y: number, z: number, k = 0.6) => {
     const [mx, my, mz] = P(x, y, z);
     bodies.add(mx, my, mz, 0.075, 0.085, 0.075, BULB[Math.floor(hash3(x, y, z, 451) * BULB.length) % BULB.length], k, yaw);
     bulbs++;
   };
   /** Bulbs from (x0, y0) to (x1, y1) at depth z, about `every` m apart, both ends included. */
-  const bulbRow = (x0: number, y0: number, x1: number, y1: number, z: number, every: number, k = 0.95) => {
+  const bulbRow = (x0: number, y0: number, x1: number, y1: number, z: number, every: number, k = 0.6) => {
     const n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / every));
     for (let i = 0; i <= n; i++) bulb(x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n, z, k);
   };
@@ -145,9 +145,9 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   skirt(-hw - 0.1, -hd, -hw + 0.02, hd);
   skirt(hw - 0.02, -hd, hw + 0.1, hd);
   // (the gilt line under the deck's edge, gold rosettes along the skirt)
-  gilt(-hw - 0.14, D - 0.2, hd + 0.08, hw + 0.14, D - 0.13, hd + 0.13, 0.5);
-  gilt(-hw - 0.14, D - 0.2, -hd - 0.13, hw + 0.14, D - 0.13, -hd - 0.08, 0.5);
-  for (const s of [-1, 1]) gilt(s * (hw + 0.1) - 0.03, D - 0.2, -hd - 0.1, s * (hw + 0.1) + 0.03, D - 0.13, hd + 0.1, 0.5);
+  gilt(-hw - 0.14, D - 0.2, hd + 0.08, hw + 0.14, D - 0.13, hd + 0.13, 0.3);
+  gilt(-hw - 0.14, D - 0.2, -hd - 0.13, hw + 0.14, D - 0.13, -hd - 0.08, 0.3);
+  for (const s of [-1, 1]) gilt(s * (hw + 0.1) - 0.03, D - 0.2, -hd - 0.1, s * (hw + 0.1) + 0.03, D - 0.13, hd + 0.1, 0.3);
   const rosette = (x: number, z: number) => span(x - 0.18, W + 0.62, z - 0.18, x + 0.18, W + 0.86, z + 0.18, pick(GOLD, hash3(x, z, 2, 404)), 1.05);
   for (let x = -hw + 0.9; x < hw; x += low ? 2.4 : 1.2) {
     rosette(x, hd + 0.04);
@@ -191,8 +191,8 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
     span(x - 0.22 * s, y0 + 0.7 * s, z - 0.22 * s, x + 0.22 * s, y0 + 0.78 * s, z + 0.22 * s, pick(STONE_LIGHT, 0.5), 1.05);
     span(x - 0.34 * s, y0 + 0.78 * s, z - 0.34 * s, x + 0.34 * s, y0 + 0.96 * s, z + 0.34 * s, 0x5c4430, 0.9);
     span(x - 0.4 * s, y0 + 0.96 * s, z - 0.4 * s, x + 0.4 * s, y0 + 1.06 * s, z + 0.4 * s, 0x664c36, 0.95);
-    flame(x, y0 + 1.02 * s, z, 0.62 * s, 0.95 * s, ph, 1.25);
-    halo(x, y0 + 1.45 * s, z, 2.3 * s, 0.6);
+    flame(x, y0 + 1.06 * s, z, 1.05 * s, Math.round(ph * 10));
+    halo(x, y0 + 1.45 * s, z, 1.5 * s, 0.45);
     if (wet) streak(x, hd + 0.3, y0 + 1.4 * s - W, 1.4, 0.5 * s);
   };
   bowl(-open - 0.55, hd - 0.7, D, 1, 0.3);
@@ -259,7 +259,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
 
   // ── The Khmer lamps by the side rails and on the back corners ─────────────
   const toMap = (p: [number, number, number]) => P(p[0], p[1], p[2]);
-  const lampFlames = bodies.asLamps(glow, toMap, 2.0);
+  const lampFlames = bodies.asLamps(glow, toMap, 1.3);
   for (const [x, z] of [
     [-hw + 1.1, hd - 3.3],
     [hw - 1.1, hd - 3.3],
@@ -329,8 +329,8 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   gilt(-0.82, D + 0.32, zk - 0.16, 0.82, D + 0.36, zk - 0.12, 0.4);
   for (const x of [-2.2, 2.2]) {
     span(x - 0.18, D + 2.6, zk - 0.3, x + 0.18, D + 2.7, zk, pick(STONE_LIGHT, 0.4));
-    flame(x, D + 2.7, zk - 0.18, 0.32, 0.52, 4 + x, 1.1);
-    halo(x, D + 3.0, zk - 0.3, 2.0);
+    flame(x, D + 2.7, zk - 0.15, 0.45, 40 + Math.round(x));
+    halo(x, D + 3.0, zk - 0.3, 1.4, 0.5);
     streak(x, -hd - 0.3, 3.9, 1.3, 0.45);
   }
 
@@ -364,7 +364,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
   }
   // Their profiles in bulbs: each tier's cornice corners up the bud, the body's corners, a light on the tip (softer than
   // the gate's: a fine line of light round the stone, not a glare over it).
-  const tk = 0.55;
+  const tk = 0.4;
   const outline = (cx: number, o: typeof mainO, top: number) => {
     const c = 0.5;
     const tc = 0.25;
@@ -385,16 +385,16 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
       for (const s of [-1, 1]) bulb(cx + s * (half + tc + 0.03), y + 0.03, zCorner(half + tc, tc), tk);
       if (half >= 1) bulb(cx, y + 0.03, pz + half + tc + 0.04, tk);
     }
-    bulb(cx, top + 0.08, pz, 1.2);
+    bulb(cx, top + 0.08, pz, 0.9);
   };
   outline(0, mainO, main.top);
   for (const [i, s] of [-1, 1].entries()) outline(s * SX, sideO, sides[i].top);
   // (lamps in the doors, a gilt tip)
-  flame(0, ty + 0.05, pz + 2.35, 0.55, 0.85, 5.1, 1.1);
-  halo(0, ty + 0.7, pz + 2.6, 2.6);
+  flame(0, ty + 0.05, pz + 2.35, 0.75, 51);
+  halo(0, ty + 0.7, pz + 2.6, 1.8, 0.5);
   for (const s of [-1, 1]) {
-    flame(s * SX, ty + 0.05, pz + 1.85, 0.45, 0.65, 6 + s, 1);
-    halo(s * SX, ty + 0.5, pz + 2.1, 1.9);
+    flame(s * SX, ty + 0.05, pz + 1.85, 0.6, 52 + s);
+    halo(s * SX, ty + 0.5, pz + 2.1, 1.4, 0.5);
   }
   gilt(-0.08, main.top, pz - 0.08, 0.08, main.top + 0.45, pz + 0.08, 1);
   // Braziers before the board (their light on the water seen past the deck's front).
@@ -453,8 +453,7 @@ export function buildLakeStage(fr: LakeFrame, kit: Kit, bodies: Bodies, glow: Gl
     anchors,
     naga,
     top: main.top,
-    fire: fires.build('nye:lake:fire'),
-    flames: fires.count,
+    flames,
     bulbs,
   };
 }
