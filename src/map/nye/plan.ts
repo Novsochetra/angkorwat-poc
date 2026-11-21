@@ -167,9 +167,9 @@ export function lakeFacingIn(phi: number): number {
  * The ring wall round the plaza (a low stone wall, fire pillars on it): its middle line `r` m out, its openings — the
  * front to the landing and the ghat (|phi| < `front`), the land gate (`LAKE_GATE`), the side way in from the east shore
  * trail (`LAKE_SIDE`, where the crowd's way reaches the plaza: people/_nyeLakePlan.ts `ENTRY`) — and the two salas,
- * which stand in its line (`LAKE_SALAS`).
+ * which stand in its line (`LAKE_SALAS`). `half` its footing's half thickness, `top` its coping's top over the land (m).
  */
-export const LAKE_WALL = { r: 21.45, front: 30 * DEG } as const;
+export const LAKE_WALL = { r: 21.45, front: 30 * DEG, half: 0.25, top: 0.88 } as const;
 
 /** The land gate: an Angkor gate with Bayon faces on the wall's line at `phi`, `half` m either side of it, `depth` m deep (≈ 8.8 m to its tower's bud). */
 export const LAKE_GATE = { phi: -160 * DEG, half: 3.63, depth: 2.86 } as const;
@@ -197,6 +197,56 @@ export const LAKE_PILLARS: readonly { phi: number; x: number; z: number; big: bo
   const [x, z] = lakePlazaAt(d * DEG, LAKE_WALL.r);
   return { phi: d * DEG, x, z, big: Math.abs(d) === 30 };
 });
+
+/**
+ * The ring wall's runs: bearings from → to (radians, 0‥2π round from the front opening's right edge, +φ), the openings
+ * (the front, the land gate, the side way) and the salas left out. The plaza's builder lays the wall along them, the
+ * walk map's overlay (roam/_nyePlazaWalk.ts) makes them walls to his feet.
+ */
+export function lakeWallRuns(): [number, number][] {
+  const R = LAKE_WALL.r;
+  const gate = Math.atan((LAKE_GATE.half - 0.15) / R);
+  const sala = (s: (typeof LAKE_SALAS)[number]) => Math.atan(s.w / 2 / R) + 0.01;
+  const side = Math.atan((LAKE_SIDE.half + 0.5) / R);
+  const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const cuts = [...LAKE_SALAS.map((s) => [s.phi - sala(s), s.phi + sala(s)]), [LAKE_SIDE.phi - side, LAKE_SIDE.phi + side], [LAKE_GATE.phi - gate, LAKE_GATE.phi + gate]]
+    .map(([a, b]) => [norm(a), norm(b)] as [number, number])
+    .sort((p, q) => p[0] - q[0]);
+  const runs: [number, number][] = [];
+  let at = LAKE_WALL.front;
+  for (const [a, b] of cuts) {
+    if (a > at) runs.push([at, a]);
+    at = Math.max(at, b);
+  }
+  if (2 * Math.PI - LAKE_WALL.front > at) runs.push([at, 2 * Math.PI - LAKE_WALL.front]);
+  return runs;
+}
+
+/**
+ * The naga balustrades' pedestals either side of the avenue (m along it from the gate's middle; `kerb` m across from its
+ * middle line): the braziers' by the gate (`foot`, `footHalf` m square, `footTop` m high), the hoods' (`head`).
+ */
+export const LAKE_NAGA = {
+  kerb: LAKE_AVENUE.w / 2 + 0.42,
+  foot: LAKE_GATE.depth / 2 + 1,
+  head: LAKE_GATE.depth / 2 + 7.2,
+  footHalf: 0.65,
+  footTop: 1.05,
+  headHalf: 0.73,
+  headTop: 0.67,
+} as const;
+
+/** A sala's floor over its lowest corner (m), its furniture in its frame (x across, z toward the plaza; half sizes; top over the floor). */
+export const LAKE_SALA_FLOOR = 0.66;
+export const LAKE_SALA_FURNITURE: readonly { x: number; z: number; hx: number; hz: number; top: number }[] = [
+  // (the low tables with fruit and cakes, the bench along the back: sala d 7, w 6.4)
+  { x: 0, z: -7 / 6 - 0.5, hx: 0.8, hz: 0.4, top: 0.4 },
+  { x: 0, z: 7 / 6 + 0.3, hx: 0.8, hz: 0.4, top: 0.4 },
+  { x: 0, z: -7 / 2 + 0.75, hx: (6.4 - 1.6) / 2, hz: 0.23, top: 0.46 },
+];
+
+/** A stall's counter in its frame (x across, z toward the plaza's middle; its top over the stall's floor, m). */
+export const LAKE_STALL_COUNTER = { z: 0.75, w: 2.8, d: 0.62, top: 1.0 } as const;
 
 /** The gold lotus mandala in the plaza's middle (its rim, m: the Kulen ring's painting, nye/_sqRing.ts). */
 export const LAKE_MANDALA = { x: LAKE_SHORE.x, z: LAKE_SHORE.z, r: 8.6 } as const;

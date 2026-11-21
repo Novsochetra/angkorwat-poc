@@ -8,7 +8,7 @@ import type { HeightField } from '../heightfield';
 import { BAYON_STONE, bondTone, carveFace, courseShade, FACE_TINY, fillBox, tone, type Side, type StoneTones } from '../landmarks/_faces';
 import { Frame, type Lamps } from '../landmarks/_prasatKit';
 import type { StairNagaSpec } from '../sacred/naga';
-import { LAKE_AVENUE, LAKE_GATE, LAKE_WALL, lakeFacingIn, lakePlazaAt } from './plan';
+import { LAKE_AVENUE, LAKE_GATE, LAKE_NAGA, LAKE_WALL, lakeFacingIn, lakePlazaAt } from './plan';
 import { hangingBanner, khmerLamp, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
 import { fireBowl, GOLD, LACQUER, towerLantern, type Bodies } from './_lkKit';
 import type { PlazaPools } from './_lkPlazaLight';
@@ -137,10 +137,10 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
   }
 
   // ── The naga's pedestals and posts (the balustrades' stone), braziers by the gate, banners ──
-  const NL = 7.2;
-  const kerb = W / 2 + 0.42;
-  const footZ = z0 + 1.0;
-  const headZ = Math.min(z0 + NL, end - 1);
+  // (where: plan.ts `LAKE_NAGA`, as the walk map's overlay has them, roam/_nyePlazaWalk.ts)
+  const kerb = LAKE_NAGA.kerb;
+  const footZ = LAKE_NAGA.foot;
+  const headZ = Math.min(LAKE_NAGA.head, end - 1);
   const railY = 0.78;
   for (const s of [-1, 1]) {
     // The pedestal by the gate (a fire bowl on it) and the one at the outer end (the hood rears on it).

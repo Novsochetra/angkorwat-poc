@@ -6,7 +6,7 @@ import type { Kit } from '../festival/_kit';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import type { StairNagaSpec } from '../sacred/naga';
-import { LAKE_AVENUE, LAKE_GATE, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SIDE, LAKE_WALL, lakeFacingIn, lakePlazaAt, lakePlazaPolar } from './plan';
+import { LAKE_AVENUE, LAKE_GATE, lakeWallRuns, LAKE_MANDALA, LAKE_PILLARS, LAKE_SALAS, LAKE_SHORE, LAKE_SIDE, LAKE_WALL, lakeFacingIn, lakePlazaAt, lakePlazaPolar } from './plan';
 import { hangingBanner, LATERITE, PAVER, PAVER_LIGHT, pick, POST_STONE } from './_sqKit';
 import { fireBowl, GOLD, lampPost, stringLights, type Bodies, type LakeFrame } from './_lkKit';
 import { buildLakeGate } from './_lkPlazaGate';
@@ -76,31 +76,6 @@ export interface Plaza {
   paved(x: number, z: number): boolean;
   /** The pools of firelight on the ground (lake.ts adds the mandala and builds them: one draw). */
   pools: PlazaPools;
-}
-
-/** Wall runs between these bearings (radians) — the openings and the salas left out — each end inset for a pillar. */
-function wallRuns(): [number, number][] {
-  const R = LAKE_WALL.r;
-  const gate = Math.atan((LAKE_GATE.half - 0.15) / R);
-  const sala = (s: (typeof LAKE_SALAS)[number]) => Math.atan(s.w / 2 / R) + 0.01;
-  const side = Math.atan((LAKE_SIDE.half + 0.5) / R);
-  // (the cuts, as [from, to] in bearings round from the front's right edge)
-  const cuts: [number, number][] = [
-    ...LAKE_SALAS.map((s) => [s.phi - sala(s), s.phi + sala(s)] as [number, number]),
-    [LAKE_SIDE.phi - side, LAKE_SIDE.phi + side],
-    [LAKE_GATE.phi - gate, LAKE_GATE.phi + gate],
-  ];
-  // Walk round from +front to 2π − front, cutting the openings out.
-  const norm = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  const cs = cuts.map(([a, b]) => [norm(a), norm(b)] as [number, number]).sort((p, q) => p[0] - q[0]);
-  const runs: [number, number][] = [];
-  let at = LAKE_WALL.front;
-  for (const [a, b] of cs) {
-    if (a > at) runs.push([at, a]);
-    at = Math.max(at, b);
-  }
-  if (2 * Math.PI - LAKE_WALL.front > at) runs.push([at, 2 * Math.PI - LAKE_WALL.front]);
-  return runs;
 }
 
 export function buildPlaza(o: PlazaIn): Plaza {
@@ -220,7 +195,7 @@ export function buildPlaza(o: PlazaIn): Plaza {
     for (let x = LAKE_SHORE.x - RW - 2; x <= LAKE_SHORE.x + RW + 2; x += 1) if (Math.hypot(x - LAKE_SHORE.x, z - LAKE_SHORE.z) <= RW + 1.8 || onLanding(x, z)) field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
 
   // ── The ring wall: straight runs between the pillars, round the openings ──
-  for (const [a0, a1] of wallRuns()) {
+  for (const [a0, a1] of lakeWallRuns()) {
     // Split at the pillars inside the run (the wall runs into them), and into chords of at most 3.4 m.
     const pts: number[] = [a0];
     const inside = LAKE_PILLARS.map((p) => p.phi).map((p) => ((p % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)).filter((p) => p > a0 + 0.01 && p < a1 - 0.01).sort((p, q) => p - q);

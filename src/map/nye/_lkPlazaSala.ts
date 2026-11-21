@@ -6,7 +6,7 @@ import type { Kit } from '../festival/_kit';
 import type { HeightField } from '../heightfield';
 import { BAMBOO, PLANK, POST, Site } from '../jungle/_campKit';
 import { registerShop, type ShopItem } from '../shop';
-import { LAKE_SALAS, LAKE_STALLS, lakePlazaPolar } from './plan';
+import { LAKE_SALA_FLOOR, LAKE_SALAS, LAKE_STALL_COUNTER, LAKE_STALLS, lakePlazaPolar } from './plan';
 import { LATERITE, pick, POST_STONE } from './_sqKit';
 import { BULB, GOLD, LANTERN, towerLantern, type Bodies } from './_lkKit';
 import type { PlazaPools } from './_lkPlazaLight';
@@ -80,7 +80,7 @@ function sala(o: SalasIn, p: (typeof LAKE_SALAS)[number], i: number): { near: V3
   const st = (k: number) => pick(POST_STONE, i, k, 2, 642);
   const tile = (k: number) => pick(TILE, i, k, 3, 642);
   // ── The plinth (sunk into the land), a sandstone top with a lip; steps down the front (+z) to the plaza's floor ──
-  const ph = 0.66;
+  const ph = LAKE_SALA_FLOOR;
   S.box(0, 0.1, 0, w, 0.8, d, lat(0), 'mapStone', { shade: 0.95 });
   S.box(0, ph - 0.11, 0, w + 0.16, 0.22, d + 0.16, st(1), 'mapStone', { shade: 1.04 });
   for (let k = 0; k < 3; k++) {
@@ -295,7 +295,7 @@ const SHOPS: Record<Kind, { km: string; en: string; items: ShopItem[] }> = {
 };
 
 /** The counter (stall space: +z its front, toward the plaza's middle). */
-const COUNTER = { z: 0.75, w: 2.8, d: 0.62, top: 1.0 };
+const COUNTER = LAKE_STALL_COUNTER;
 const RED = 0xc8202a;
 const WHITE = 0xf2eee4;
 
