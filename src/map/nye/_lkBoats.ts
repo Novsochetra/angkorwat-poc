@@ -344,9 +344,9 @@ export function launchFlotilla(field: HeightField, fr: LakeFrame, kit: Kit, ligh
     }
   }
 
-  // ── In the gaps the terrace's crowd sees the water through (LAKE_VIEW: left of the stage, between it and the white
-  // blossom tree, between that and the dark trees on the right; screen angles from the view's middle, ° right), 62‥180 m
-  // out from the crowd, broadside to it so each reads as a boat with its lantern ──
+  // ── In the gaps the plaza's crowd sees the water through (LAKE_VIEW: either side of the stage, between it and the
+  // plaza's salas and blossom trees; and farther right for the side views; screen angles from the view's middle, ° right),
+  // 62‥180 m out from the crowd, broadside to it so each reads as a boat with its lantern ──
   {
     const [cx, , cz] = LAKE_VIEW.cam;
     const len = Math.hypot(LAKE_VIEW.at[0] - cx, LAKE_VIEW.at[2] - cz);
@@ -356,14 +356,14 @@ export function launchFlotilla(field: HeightField, fr: LakeFrame, kit: Kit, ligh
     const rz = dx;
     const bands: [number, number, number][] = low
       ? [
-          [-28, -9, 5],
-          [7, 12, 2],
-          [21, 28, 3],
+          [-18, -9, 4],
+          [5, 13, 4],
+          [21, 28, 2],
         ]
       : [
-          [-28, -9, 12],
-          [7, 12, 4],
-          [21, 28, 7],
+          [-18, -9, 10],
+          [5, 13, 10],
+          [21, 28, 4],
         ];
     for (const [b0, b1, want] of bands)
       for (let i = 0, made = 0; i < want * 14 && made < want; i++) {
