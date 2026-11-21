@@ -4,7 +4,7 @@ import { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import type { Glow } from '../festival/_glow';
 import type { Kit } from '../festival/_kit';
 import { SURFACE, type HeightField } from '../heightfield';
-import { Frame } from '../landmarks/_prasatKit';
+import { Frame, type Lamps } from '../landmarks/_prasatKit';
 import { bananaPlant } from '../veg/banana';
 import { plantDetail } from '../veg/detail';
 import { palmProto } from '../veg/palms';
@@ -13,7 +13,7 @@ import { broadleaf } from '../veg/species';
 import { BAMBOO, drapedNet, Local, skiff, tone, traps } from '../village/_kit';
 import { LAKE_AVENUE, LAKE_POND, LAKE_SHORE, LAKE_VIEW, lakePlazaAt, onLakeLanding, onLakeShore } from './plan';
 import { champa, crown, lilyPad, lotus, type NyeTree } from './_sqGarden';
-import { LATERITE, PAVER, pick } from './_sqKit';
+import { khmerLamp, LATERITE, PAVER, pick } from './_sqKit';
 import { BOUG, BOUG_PURPLE, BUSH_LIT, bushProtos, flowerPatch, grassClump, groundPatch, IXORA, reeds, shrub, stamp, toLine, toPurple, type Line, type MeadowOut, type Shrub } from './_sqMeadow';
 import type { LakeFrame } from './_lkKit';
 
@@ -75,7 +75,7 @@ const FISH = [0xb8b4a6, 0xc4bea8, 0xa8a496, 0xcab48a];
 /** Coarse matting under them. */
 const MATTING = 0xb09868;
 
-export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, fr: LakeFrame, low: boolean): MeadowOut {
+export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: HeightField, fr: LakeFrame, low: boolean, lamps: Lamps | null = null): MeadowOut {
   const t0 = performance.now();
   const src = traceSource();
   const n0 = b.boxes.length;
@@ -395,6 +395,9 @@ export function growLakeMeadow(b: VoxelBuilder, kit: Kit, glow: Glow, field: Hei
     }
   }
 
+  // ── The mesa over the lake trail: its rim toward the plaza dressed as a garden ──
+  dressMesa(b, field, lamps, low, src, () => count('mesa'));
+
   const blocks = b.boxes.length - n0 + kit.count - k0;
   const ms = performance.now() - t0;
   console.info(`[map] nye lake meadow: ${blocks} blocks (${Object.entries(tally).map(([k, v]) => `${k} ${v}`).join(', ')}) · ${trees.length} trees, ${placed.length} palms · fishermen ${corner ? corner.at.map((v) => v.toFixed(1)).join(', ') : 'none'} · built in ${ms.toFixed(1)} ms`);
@@ -583,4 +586,106 @@ function fishermen(
     return { at: [tx, tz], from: -1.6 };
   }
   return null;
+}
+
+// ── The mesa ──
+
+/** The two views over the plaza from its gate side (l-over, l-ref: map x, z): nothing tall within this of them (m). */
+const OVER_CAMS: readonly (readonly [number, number])[] = [
+  [-312, -104],
+  [-324, -88],
+];
+const CAM_CLEAR = 13;
+/** And within this, only low things (the cameras float a few metres over the mesa: a bush there is a wall of cubes). */
+const CAM_LOW = 22;
+
+/**
+ * The mesa north of the plaza (the land's: its top ≈ 22 m over the plaza, a sheer face just behind the lake trail) fills
+ * the right of the views over the plaza (the owner's free camera floats over its top): its rim toward the plaza dressed
+ * as the venue's garden — bougainvillea and flowering bushes, palms (none near those cameras), flower patches, Khmer
+ * lamps along the edge, and bougainvillea cascading down the face. The rim: within 10 m of where the land drops 6 m or
+ * more on the way to the plaza's middle, on flat top. In the shore's builder (leaf and petal soft, the lamps stone).
+ */
+function dressMesa(b: VoxelBuilder, field: HeightField, lamps: Lamps | null, low: boolean, src: SourceTrace | undefined, done: () => void): void {
+  const { x: cx, z: cz } = LAKE_SHORE;
+  const bushes = bushProtos(low);
+  const palms: Proto[] = [0, 1, 2].map((i) => palmProto({ s: 1, h: 8 + i * 1.4, seed: 31 + i * 3 + (i === 2 ? 0 : 1) }));
+  const lampsAt: [number, number][] = [];
+  const palmsAt: [number, number][] = [];
+  const step = low ? 2.4 : 1.7;
+  // (the mesa's side toward the plaza: north-west through north-east of it, 22‥60 m out)
+  for (let r = 22; r <= 62; r += step)
+    for (let a = 100; a <= 200; a += (step / r) * (180 / Math.PI)) {
+      const [x0, z0] = lakePlazaAt((a * Math.PI) / 180, r);
+      const x = x0 + (hash3(r, a, 1, 671) - 0.5) * step;
+      const z = z0 + (hash3(r, a, 2, 671) - 0.5) * step;
+      const g = field.heightAt(x, z);
+      if (g < 16) continue;
+      // (the way down to the plaza: where the face is, how far)
+      const d = Math.hypot(cx - x, cz - z);
+      const dx = (cx - x) / d;
+      const dz = (cz - z) / d;
+      let face = -1;
+      for (let k = 0.5; k <= 10; k += 0.5)
+        if (field.heightAt(x + dx * k, z + dz * k) < g - 6) {
+          face = k;
+          break;
+        }
+      if (face < 0) continue;
+      const c = field.index(x, z);
+      if (c < 0 || field.trail[c] === 2 || field.occupied[c] || field.waterAt(x, z) !== null) continue;
+      if ([[0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9]].some(([ox, oz]) => Math.abs(field.heightAt(x + ox, z + oz) - g) > 0.1)) continue;
+      // (under those cameras only what stays low: flowers, small shrubs; bushes and palms farther along the rim)
+      const camD = Math.min(...OVER_CAMS.map(([qx, qz]) => Math.hypot(qx - x, qz - z)));
+      const nearCam = camD < CAM_CLEAR;
+      const lowOnly = camD < CAM_LOW;
+      const h = hash3(x, z, 3, 671);
+      // On the very edge: a lamp now and then, else bougainvillea spilling down the face.
+      if (face <= 2) {
+        if (!low && !nearCam && lampsAt.every(([lx, lz]) => Math.hypot(lx - x, lz - z) > 9)) {
+          khmerLamp(b, x, g, z, 1.2, 690 + lampsAt.length, src, lamps, null, 2.2);
+          lampsAt.push([x, z]);
+          field.occupy(x - 0.5, z - 0.5, x + 0.5, z + 0.5);
+        } else if (h < 0.55) cascade(b, field, x, z, g, dx, dz, face, Math.round(h * 997), low, src);
+        continue;
+      }
+      if (!lowOnly && h < 0.09 && palmsAt.every(([px, pz]) => Math.hypot(px - x, pz - z) > 7)) {
+        stamp(b, field, palms[Math.floor(hash3(x, z, 4, 671) * palms.length)], x, g, z, 6000 + palmsAt.length, null);
+        palmsAt.push([x, z]);
+        field.occupy(x - 0.6, z - 0.6, x + 0.6, z + 0.6);
+      } else if (h < 0.42) {
+        const kind: Shrub = h < 0.25 ? 'boug' : h < 0.34 ? 'hibiscus' : 'ixora';
+        shrub(b, field, x, g, z, kind, Math.round(h * 9973) + 7000, low, src);
+      } else if (h < 0.62 && !lowOnly && field.isFree(x, z)) {
+        const bp = bushes[Math.floor(hash3(x, z, 5, 671) * bushes.length)];
+        const tones = h < 0.52 ? BOUG : BOUG_PURPLE;
+        const gi = Math.round(h * 7919);
+        stamp(b, field, bp, x, g, z, gi, (color, ci) => (BUSH_LIT.has(color) && hash3(ci, gi, 1, 672) < 0.5 ? tones[ci % tones.length] : color));
+        field.occupy(x - bp.r * 0.6, z - bp.r * 0.6, x + bp.r * 0.6, z + bp.r * 0.6);
+      } else if (h < 0.8) flowerPatch(b, field, x, z, Math.round(h * 4241) + 7100, low, src);
+      done();
+    }
+  done();
+}
+
+/** Bougainvillea hanging from the mesa's edge down its face (toward (dx, dz), the face `face` m out): a curtain of bracts and leaves. */
+function cascade(b: VoxelBuilder, field: HeightField, x: number, z: number, g: number, dx: number, dz: number, face: number, seed: number, low: boolean, src: SourceTrace | undefined): void {
+  // (where exactly the land drops, to a tenth of a metre)
+  let f = face - 0.5;
+  while (f < face && field.heightAt(x + dx * (f + 0.1), z + dz * (f + 0.1)) > g - 1) f += 0.1;
+  const fx = x + dx * (f + 0.18);
+  const fz = z + dz * (f + 0.18);
+  const ry = Math.atan2(dx, dz);
+  const len = 3 + 6 * hash3(seed, 1, 1, 673);
+  const cell = low ? 0.7 : 0.48;
+  for (let k = 0; k * cell < len; k++) {
+    for (const side of low ? [0] : [-0.5, 0.5]) {
+      const r = hash3(seed, k, side, 674);
+      if (r < 0.18 + (k * cell) / len / 2) continue;
+      const leafy = r < 0.42;
+      const sx = fx + Math.cos(ry) * side * cell;
+      const sz = fz - Math.sin(ry) * side * cell;
+      b.box(sx, g - 0.1 - k * cell, sz, cell, cell, cell * 0.8, leafy ? 0x3f6e2e : BOUG[Math.floor(r * 997) % BOUG.length], leafy ? 'mapLeaf' : 'petal', { src, ry, shade: 0.88 + 0.16 * r });
+    }
+  }
 }

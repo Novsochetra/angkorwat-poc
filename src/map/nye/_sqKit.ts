@@ -3,7 +3,6 @@ import { hash3 } from '../../voxel/random';
 import type { VoxelBuilder } from '../../voxel/VoxelBuilder';
 import { ANIM, perPeriod, type Kit } from '../festival/_kit';
 import type { Glow } from '../festival/_glow';
-import { onTemple } from '../roam/_flag';
 import type { HeightField } from '../heightfield';
 import type { Lamps } from '../landmarks/_prasatKit';
 import type { Proto } from '../veg/proto';
@@ -119,9 +118,34 @@ const BANNER_WHITE = 0xfffaf0;
 const SWAY = perPeriod(1.6);
 
 /**
+ * Angkor Wat for a banner's few threads (its square: `x`, `y` 0‥1 across and down): the flag's drawing (roam/_flag.ts
+ * `onTemple`) has slender spires that, on 10 threads, read as a thin spike, a crown or a raised hand. Here THREE
+ * lotus-bud towers with body — the middle one tallest and widest, swelling from its foot and drawn in to a point —
+ * on a gallery and a stepped base.
+ */
+export function bannerTemple(x: number, y: number): boolean {
+  if (x < 0 || x > 1 || y < 0 || y > 1) return false;
+  // The galleries and the stepped base.
+  if (y >= 0.62 && y <= 0.72 && x >= 0.12 && x <= 0.88) return true;
+  if (y > 0.72 && y <= 0.84 && x >= 0.05 && x <= 0.95) return true;
+  for (const [c, hw, tip] of [
+    [0.5, 0.17, 0.02],
+    [0.22, 0.11, 0.24],
+    [0.78, 0.11, 0.24],
+  ] as const) {
+    if (y < tip || y > 0.62) continue;
+    // (a lotus bud: drawn to a point at its tip, widest two thirds down, a little waist at its foot)
+    const k = (y - tip) / (0.62 - tip);
+    const p = k < 0.66 ? Math.pow(Math.sin((k / 0.66) * (Math.PI / 2)), 0.7) : 1 - 0.14 * ((k - 0.66) / 0.34);
+    if (Math.abs(x - c) <= hw * p) return true;
+  }
+  return false;
+}
+
+/**
  * A banner hanging flat from (x, top, z), its face toward `face` (radians toward (sin, cos) in x, z), `w` × `h` m: red
- * with gilt borders and a gilt band at the top, the white Angkor Wat of the flag of Cambodia (THREE towers:
- * roam/_flag.ts `onTemple`) on its upper half, a gilt band under it, a pointed foot (the owner's sheet: the gathering
+ * with gilt borders and a gilt band at the top, the white Angkor Wat (THREE lotus-bud towers, the middle tallest:
+ * `bannerTemple`) on its upper half, a gilt band under it, a pointed foot (the owner's sheet: the gathering
  * area's pillars, the gate). Cloth in the festival kit, columns of runs of one colour, swaying a little at its foot;
  * the temple's white faintly lit at night so it reads in the dark.
  */
@@ -146,7 +170,7 @@ export function hangingBanner(kit: Kit, x: number, top: number, z: number, face:
     if (fromFoot <= tip && Math.abs(u - 0.5) > (fromFoot / tip) * 0.5 - 1 / cols) return BANNER_GILT;
     const ty = (v - sq.v0 * h) / sq.side;
     const tx = (u * w - (w - sq.side) / 2) / sq.side;
-    if (tx >= 0 && tx <= 1 && ty >= 0 && ty <= 1 && onTemple(0.27 + tx * 0.46, 0.27 + ty * 0.46)) return BANNER_WHITE;
+    if (bannerTemple(tx, ty)) return BANNER_WHITE;
     const lv = v - (sq.v0 * h + sq.side + 0.12);
     if (lv >= 0 && lv <= dv * 1.5 && c > 1 && c < cols - 2) return BANNER_GILT;
     if (c === 1 || c === cols - 2) return BANNER_DEEP;
