@@ -48,8 +48,8 @@ export const SHOW_COLOURS = {
   purple: 0xb070ff,
   /** Lotus pink. */
   lotus: 0xff6fb8,
-  /** Ice blue-white (a few, as accents). */
-  ice: 0xcfe8ff,
+  /** Ice blue (a few, as accents; blue enough not to bloom white). */
+  ice: 0xb0d4ff,
   /** White flash (crackles). */
   white: 0xfff4e0,
   /** The flag of Cambodia's red (sparingly: the flag moment, accents). */
@@ -105,7 +105,7 @@ export type ShowSite = 'kulen' | 'lake';
  */
 export const SHOW_SITES: Record<ShowSite, { view: readonly [number, number, number]; at: { x: number; y: number; z: number } }> = {
   kulen: { view: VIEW.cam, at: { x: 465, y: 145, z: -420 } },
-  lake: { view: LAKE_VIEW.cam, at: { x: -495, y: 110, z: 50 } },
+  lake: { view: LAKE_VIEW.cam, at: { x: -495, y: 60, z: 50 } },
 };
 
 /** On low graphics a site's `close` rockets are drawn only with the camera this near its crowd view (m). */

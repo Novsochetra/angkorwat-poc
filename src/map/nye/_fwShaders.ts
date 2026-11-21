@@ -71,7 +71,7 @@ export const FW_VERTEX = /* glsl */ `
   // The signature's picture: its points (x, y, outline, tower), how many.
   uniform sampler2D uShape;
   uniform float uShapeN;
-  // The water that mirrors them: each stretch a segment (x0, z0, x1, z1) and (half width, water level, -, -); how many.
+  // The water that mirrors them: each stretch a segment (x0, z0, x1, z1) and (half width, water level, the glints' strength, -); how many.
   uniform float uSpots;
   uniform vec4 uSpotA[12];
   uniform vec4 uSpotB[12];
@@ -134,7 +134,7 @@ export const FW_VERTEX = /* glsl */ `
     // (the water mirrors the burst's sparks as long as they glow, not only its flash: a slower curve than its light)
     float wl = KL[int(d2.w + 0.5)];
     float lp = tau < 0.0 ? 0.0 : d4.w * (0.5 * exp(-tau / 0.09) + 0.5 * exp(-tau / 1.2) + wl * 0.45 * exp(-tau / 2.6));
-    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * (0.4 + 0.6 * uView.w);
+    vCol = mix(d2.rgb, vec3(1.0), 0.2) * lp * 3.0 * sb.z * (0.4 + 0.6 * uView.w);
     vQ = vec2(position.x, position.y);
     vSoft = -1.0;
     vCore = 0.0;
@@ -204,7 +204,7 @@ export const FW_VERTEX = /* glsl */ `
     vec3 warm = vec3(1.0, 0.48, 0.1) * fl * (0.3 + 0.7 * uView.w);
     vec3 c = cameraPosition;
     vec4 halo = viewMatrix * vec4(bl.xyz, 1.0);
-    halo.xy += vec2(position.x, position.z) * 1.5 * sqrt(max(1.0, -halo.z / 60.0));
+    halo.xy += vec2(position.x, position.z) * 0.95 * sqrt(max(1.0, -halo.z / 60.0));
     vec2 toCam = c.xz - bl.xz;
     float dist = max(length(toCam), 1e-3);
     vec2 dir = toCam / dist;
@@ -350,6 +350,9 @@ export const FW_VERTEX = /* glsl */ `
       col = mix(col, EMBER, (1.0 - s) * 0.45 * (1.0 - held));
       // (a little brighter as it leaves: not much, or a burst's first fifth of a second is a ball in the bloom)
       float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 0.3 * exp(-tl / 0.12));
+      // (a burst opens: its stars at under half strength as they leave the heart, full by a third of a second; crackles,
+      // comets and the signature their own)
+      bright *= mix(1.0, mix(0.4, 1.0, smoothstep(0.0, 0.35, tl)), (1.0 - kc.y) * (1.0 - ke.y) * (1.0 - ke.z));
       // (flicker; glitter strobes as it fades)
       float fl = 1.0 - kc.z + kc.z * hash(floor(uTime * 24.0), fj + seed * 13.0);
       float strobe = step(0.45, fract(uTime * 11.0 + h1 * 13.0)) * 1.9;

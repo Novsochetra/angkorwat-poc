@@ -121,7 +121,7 @@ export const LAKE_STAGE = { x: -370.2, z: -26.9, yaw: Math.atan2(22, -27), w: 22
 export const LAKE_SHORE = { x: -342.09, z: -61.4, rx: 21, rz: 21 } as const;
 
 /** The lake show: the bursts over the open water behind the stage seen from the shore (its middle, m each way; `low`‥`high` m over the water). */
-export const LAKE_SHOW = { x: -488, z: 47, spread: 110, depth: 60, low: 30, high: 225 } as const;
+export const LAKE_SHOW = { x: -488, z: 47, spread: 110, depth: 60, low: 15, high: 150 } as const;
 
 /** The lakeside crowd's camera (shots and the film): on the terrace's back, eye height, looking over the stage to the lake. */
 export const LAKE_VIEW = { cam: [-330, 12.5, -76] as const, at: [-385, 30, -15] as const, fov: 55 } as const;
