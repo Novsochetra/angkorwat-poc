@@ -1043,9 +1043,9 @@ const mirror = (s: Partial<Record<BoneName, V3>>): Partial<Record<BoneName, V3>>
 const VONG_A: Partial<Record<BoneName, V3>> = {
   chest: [0.03, 0.12, -0.04],
   head: [0.06, -0.2, 0.12],
-  armL: [-0.6, 0.05, 1.08],
-  foreL: [-1.55, 0, 0.3],
-  armR: [-0.85, 0.15, -0.32],
+  armL: [-0.25, 0.05, 1.42],
+  foreL: [-0.3, 0, 1.5],
+  armR: [-0.55, 0.25, -0.42],
   foreR: [-1.2, 0, 0],
 };
 const VONG_RATE = wholeTurns(1.15);
@@ -1562,7 +1562,7 @@ vec3 pRot(int p, int b, PP P) {
   }
   // The roam vong: the hands' two shapes by the tables, swung over slowly (each dancer a little apart in time);
   // the hug: its one shape, breathing.
-  if (p == P_VONG) return mix(P_VONG_A[b], P_VONG_B[b], smoothstep(-0.55, 0.55, sin(t * P_VONG_RATE + P.seed * 1.7)));
+  if (p == P_VONG) return mix(P_VONG_A[b], P_VONG_B[b], smoothstep(-0.3, 0.3, sin(t * P_VONG_RATE + P.seed * 3.1)));
   if (p == P_HUG) return P_HUG_ROT[b] + vec3(b == B_CHEST ? 0.015 * br : 0.0, 0.0, 0.0);
   if (p == P_CHANT) {
     // Seated as P_SIT, palms together at the chest, by the table; the breath and the chant's slow sway.

@@ -10,7 +10,8 @@ import { CARRY, FEAT, SLOT, type Look } from './_personModel';
  * - `spreadGroups`: the standing families re-placed as small groups over the whole plaza — each on a short arc round
  *   its own middle (a family chatting, the arc open to the stage), the groups ≥ ≈ 2.5 m apart, denser toward the
  *   stage; some round the dance (watching it), a few before the stalls. Their place's facing stays the board's (the
- *   countdown); the chat's facing is new (`GroupPlan.chat`).
+ *   countdown); the chat's facing is new (`GroupPlan.chat`). `gatherPlaces`: where they gather toward the stage for
+ *   the countdown (closer together, the dance's ring left open).
  * - `pickCouples` and `vongAt`: the roam vong (រាំវង់) round the mandala: couples from the crowd, the woman a step
  *   ahead of the man, slowly round the ring (counter-clockwise seen from above), now and then she turns back to face
  *   him, or turns once on the spot; the hands in `POSE.vong`.
@@ -249,6 +250,74 @@ export function spreadGroups(members: CrowdMember[], v: Venue, skip: (k: number)
     }
   }
   return out;
+}
+
+/** Room between neighbouring groups gathered before the stage for the countdown (m). */
+const GATHER_GAP = 1.1;
+
+/**
+ * Where each re-placed group stands for the countdown (into `gx`, `gz` a member; the others keep their place): each
+ * group moved `pull` of the way toward the stage's front (the nearest the stage first, onto the free place nearest
+ * that), closer together, each on its own arc still (opening toward the board), the dance's ring left open.
+ */
+export function gatherPlaces(members: CrowdMember[], plan: GroupPlan, v: Venue, pull: number): { gx: Float32Array; gz: Float32Array } {
+  const n = members.length;
+  const gx = new Float32Array(n);
+  const gz = new Float32Array(n);
+  members.forEach((m, k) => {
+    gx[k] = m.x;
+    gz[k] = m.z;
+  });
+  const rnd = mulberry32(v.seed + 11);
+  const byGroup = new Map<number, number[]>();
+  members.forEach((m, k) => {
+    if (Number.isNaN(plan.chat[k])) return;
+    let list = byGroup.get(m.group);
+    if (!list) byGroup.set(m.group, (list = []));
+    list.push(k);
+  });
+  const dFront = (x: number, z: number) => Math.hypot(x - v.front.x, z - v.front.z);
+  const groups = [...byGroup.values()].sort((a, b) => dFront(plan.cx[a[0]], plan.cz[a[0]]) - dFront(plan.cx[b[0]], plan.cz[b[0]]));
+  const [x0, z0, x1, z1] = v.box;
+  const cand: { x: number; z: number; d: number }[] = [];
+  for (let z = z0; z <= z1; z += 0.6)
+    for (let x = x0; x <= x1; x += 0.6) {
+      const jx = x + (rnd() - 0.5) * 0.4;
+      const jz = z + (rnd() - 0.5) * 0.4;
+      if (v.ok(jx, jz)) cand.push({ x: jx, z: jz, d: 0 });
+    }
+  const placed: { x: number; z: number; r: number }[] = [];
+  for (const list of groups) {
+    const size = list.length;
+    const { step, r } = arcOf(size);
+    // (the free places by their distance from where the group heads: its middle, pulled toward the stage's front)
+    const cx = plan.cx[list[0]];
+    const cz = plan.cz[list[0]];
+    const tx = cx + (v.front.x - cx) * pull;
+    const tz = cz + (v.front.z - cz) * pull;
+    for (const c of cand) c.d = Math.hypot(c.x - tx, c.z - tz) + rnd() * 0.6;
+    cand.sort((a, b) => a.d - b.d);
+    for (const c of cand) {
+      if (placed.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < p.r + r + GATHER_GAP)) continue;
+      const open = v.board(c.x, c.z);
+      const pts: [number, number][] = [];
+      for (let j = 0; j < size; j++) {
+        const a = open + Math.PI + (j - (size - 1) / 2) * step * 0.8;
+        const px = c.x + Math.sin(a) * r;
+        const pz = c.z + Math.cos(a) * r;
+        if (!v.ok(px, pz)) break;
+        pts.push([px, pz]);
+      }
+      if (pts.length < size) continue;
+      list.forEach((k, j) => {
+        gx[k] = pts[j][0];
+        gz[k] = pts[j][1];
+      });
+      placed.push({ x: c.x, z: c.z, r });
+      break;
+    }
+  }
+  return { gx, gz };
 }
 
 // ── The roam vong ─────────────────────────────────────────────────────────────

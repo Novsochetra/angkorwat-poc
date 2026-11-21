@@ -6,7 +6,7 @@ import { SPARK_MAX, SPARKS, sparksOut } from '../nye/_lifeSparks';
 import type { MapFrame } from '../types';
 import { Actor } from './_actor';
 import { dress } from './_kinds';
-import { GROUP, moreSparklers, pickCouples, planRunners, RUN, runnerAt, spreadGroups, VONG, vongAt, vongLook, type GroupPlan, type Runner } from './_nyeGroups';
+import { gatherPlaces, GROUP, moreSparklers, pickCouples, planRunners, RUN, runnerAt, spreadGroups, VONG, vongAt, vongLook, type GroupPlan, type Runner } from './_nyeGroups';
 import { along, ALL_GONE, BOARD_AT, COME_FROM, ensembleDef, FLOOR, GATE_IN, GATE_OUT, MATS, matDef, planCrowd, SquareGround, STAGE_TOP, standable, type Member, type NyeCrowdPlan } from './_nyePlan';
 import { CARRY, danceSide, danceSteps, DANCE, FIT, POSE, SLOT, type Look, type Pose } from './_personModel';
 import type { Obstacle, Point, Traffic } from './_routes';
@@ -33,7 +33,8 @@ import { Rig } from './_things';
  * (`POSE.vong`; on low half of them), and go back to their families at 23:58:40. On the stage (22:30‥23:50) four
  * apsara dancers dance to a pinpeat ensemble seated at its west end (roneat ek, skor thom, sralai, chhing: its phrases
  * are `pinpeat` calls, as at Angkor Wat; it plays on for the roam vong); at 23:50 the dancers bow to the crowd and
- * step aside to the stage's east end. From two minutes before midnight everyone turns to the board; the last ten
+ * step aside to the stage's east end. From four minutes before midnight the groups gather toward the stage, closer
+ * together (`gatherPlaces`), and from two minutes before everyone turns to the board; the last ten
  * seconds: phones up, arms counting; midnight: cheering, jumping (heads up to the first bursts), two of a family
  * stepping together to hug; then the fireworks over the hill, heads up, phones up, a cheer now and then; after the
  * show they talk and from 00:08 go home down the lantern walk, the last by 00:40.
@@ -101,6 +102,9 @@ const RUNNERS = 8;
 const RUN_TO = -90;
 /** Everyone turns to the board from two minutes before midnight (each at their own moment in its first half minute). */
 const TURN_FROM = -120;
+/** The groups gather toward the stage for the countdown (`_nyeGroups.ts` `gatherPlaces`), each setting off in these 100 s. */
+const GATHER_FROM = -250;
+const GATHER_PULL = 0.5;
 /** Midnight's hug: partners standing near each other step together (s from midnight). */
 const HUG_FROM = 1.5;
 const HUG_TO = 8.5;
@@ -108,6 +112,8 @@ const HUG_TO = 8.5;
 const MORE_SPARKLERS = 11;
 const V = { x: 0, z: 0, yaw: 0, turn: 0 };
 const T = { x: 0, z: 0 };
+const Q = { x: 0, z: 0 };
+const Q2 = { x: 0, z: 0 };
 const LOOK: Point = { x: 0, y: 0, z: 0 };
 const HAND = { x: 0, y: 0, z: 0 };
 
@@ -154,6 +160,9 @@ export class NyeLife implements PeopleScene {
   /** Per member: in the dance's ring now; away from their place (walking back from the dance or a run). */
   private readonly inRing: Uint8Array;
   private readonly away: Uint8Array;
+  /** Per member: where they stand gathered toward the stage for the countdown. */
+  private readonly gx: Float32Array;
+  private readonly gz: Float32Array;
   /** The sparklers (member indices: their tips go to `SPARKS.kulen`). */
   private readonly sparklers: number[];
   private readonly sellers: Seller[] = [];
@@ -203,6 +212,7 @@ export class NyeLife implements PeopleScene {
         seed: 0x2027 + 5,
       };
       this.groups = spreadGroups(ms, venue);
+      ({ gx: this.gx, gz: this.gz } = gatherPlaces(ms, this.groups, venue, GATHER_PULL));
       const carriers = new Set(ms.filter((m) => m.role === 'shoulder').map((m) => m.carrier));
       const couples = pickCouples(ms, VONG_COUPLES, (k) => !carriers.has(k), 0x2027 + 6);
       this.slotHigh = new Int16Array(ms.length).fill(-1);
@@ -493,7 +503,7 @@ export class NyeLife implements PeopleScene {
       along(m, d, P);
       // (held up behind others or the explorer: a little quicker to catch up; far behind, there at once)
       const behind = a.shown ? a.dist(P.x, P.z) : 0;
-      this.put(a, P.x, P.z, home ? P.yaw + Math.PI : P.yaw, 8);
+      this.put(a, P.x, P.z, home ? P.yaw + Math.PI : P.yaw, home ? 40 : 8);
       along(m, home ? d - 1.2 : d + 1.2, P);
       a.goTo(P.x, P.z, g.v + Math.min(0.7, behind * 0.25));
       a.face(null);
@@ -513,10 +523,12 @@ export class NyeLife implements PeopleScene {
     // Running between the groups.
     const r = this.runnerOf[k];
     if (r >= 0 && s < RUN_TO) return this.run(k, this.runners[r], s, now, dt);
-    // Back from the dance or a run: walking to their place.
-    if (this.away[k] && a.shown && a.dist(m.x, m.z) > 0.45) {
-      this.put(a, m.x, m.z, m.yaw, 80);
-      a.goTo(m.x, m.z, 1.15);
+    // Walking to their place: back from the dance or a run, or gathering toward the stage for the countdown.
+    const q = this.place(k, s, Q);
+    const off = a.shown ? a.dist(q.x, q.z) : 0;
+    if (off > 1.2 || (this.away[k] && off > 0.45)) {
+      this.put(a, q.x, q.z, m.yaw, 80);
+      a.goTo(q.x, q.z, this.away[k] ? 1.15 : 0.95);
       a.face(null);
       a.pose(POSE.stand, now);
       a.carry(m.sparkler ? 1 : 0, now);
@@ -526,9 +538,9 @@ export class NyeLife implements PeopleScene {
     }
     this.away[k] = 0;
     // In their place (midnight's hug: a step toward the partner).
-    this.put(a, m.x, m.z, m.yaw, 6);
-    T.x = m.x;
-    T.z = m.z;
+    this.put(a, q.x, q.z, m.yaw, 80);
+    T.x = q.x;
+    T.z = q.z;
     const pose = this.mood(k, m, a, s, now);
     a.goTo(T.x, T.z, 0.6);
     a.pose(pose, now);
@@ -539,6 +551,20 @@ export class NyeLife implements PeopleScene {
       const hop = Math.abs(Math.sin((s + k * 0.37) * Math.PI * 1.6)) * 0.22 * (1 - s / 14);
       a.crowd.place(a.i, a.x, a.y + hop, a.z, a.yaw);
     }
+  }
+
+  /** Has group g set off to gather toward the stage for the countdown (each at its own moment)? */
+  private gathered(g: number, s: number): boolean {
+    return s >= GATHER_FROM + 100 * hash3(g, 4, 5, 2027);
+  }
+
+  /** Where member k stands at s (into `out`): their place, or gathered toward the stage for the countdown. */
+  private place(k: number, s: number, out: { x: number; z: number }): { x: number; z: number } {
+    const m = this.plan.members[k];
+    const g = this.gathered(m.group, s);
+    out.x = g ? this.gx[k] : m.x;
+    out.z = g ? this.gz[k] : m.z;
+    return out;
   }
 
   /** A dancer of the roam vong: to their place in the ring (walking), then slowly round it, the hands dancing. */
@@ -622,12 +648,13 @@ export class NyeLife implements PeopleScene {
     // (a new mood every few seconds, each their own)
     const w = Math.floor((s + i * 2.9) / 7);
     const h = hash3(w, i, 5, 2027);
-    let yaw = m.yaw;
+    // (turned to the board from where they stand: their place, or gathered toward the stage)
+    let yaw = Math.atan2(BOARD.x - T.x, BOARD.z - T.z);
     let look: Point | null = BOARD_AT;
     let pose: Pose = seated ? POSE.sit : POSE.stand;
     let hold = 0;
     // (from two minutes before midnight everyone turns to the board, each at their own moment)
-    const turned = s >= TURN_FROM + 30 * hash3(i, 3, 5, 2027);
+    const turned = s >= TURN_FROM + 30 * hash3(i, 3, 5, 2027) || this.gathered(m.group, s);
     if (s < -10 && !turned) {
       // Before the countdown: the group chats (turned to its middle), or watches the dance round the mandala or the
       // stage's apsara, or stands at its stall; phones, a word, a wave.
@@ -673,14 +700,14 @@ export class NyeLife implements PeopleScene {
       const o = m.partner >= 0 ? this.plan.members[m.partner] : null;
       if (monk) pose = POSE.stand;
       else if (seated) pose = m.kid ? POSE.cheer : h < 0.5 ? POSE.wave : POSE.sit;
-      else if (o && o.role === 'stand' && s > HUG_FROM && s < HUG_TO && Math.hypot(o.x - m.x, o.z - m.z) < 2.6) {
+      else if (o && o.role === 'stand' && s > HUG_FROM && s < HUG_TO && Math.hypot(this.place(m.partner, s, Q2).x - T.x, Q2.z - T.z) < 2.6) {
         const p = this.crowdActors[m.partner];
         // (each a step toward the middle between their places)
-        const mx = (m.x + o.x) / 2;
-        const mz = (m.z + o.z) / 2;
-        const d = Math.hypot(m.x - mx, m.z - mz) || 1;
-        T.x = mx + ((m.x - mx) / d) * 0.3;
-        T.z = mz + ((m.z - mz) / d) * 0.3;
+        const mx = (T.x + Q2.x) / 2;
+        const mz = (T.z + Q2.z) / 2;
+        const d = Math.hypot(T.x - mx, T.z - mz) || 1;
+        T.x = mx + ((T.x - mx) / d) * 0.3;
+        T.z = mz + ((T.z - mz) / d) * 0.3;
         yaw = a.yawTo(p.x, p.z);
         pose = POSE.hug;
         look = null;
