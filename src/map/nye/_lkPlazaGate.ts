@@ -92,7 +92,8 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
   }
   for (const s of [-1, 1]) {
     const [x, z] = [F.wx(0, s * ((NK * C) / 2 - 0.4)), F.wz(0, s * ((NK * C) / 2 - 0.4))];
-    towerLantern(out, kit, bodies, glow, x, ground + 3.35, z, 0.25, 470 + s, src, yawOut);
+    // (high in the corbelled top: its foot ≈ 2.45 m up, clear of his head, 2.26 m)
+    towerLantern(out, kit, bodies, glow, x, ground + 3.48, z, 0.1, 470 + s, src, yawOut);
     for (const lx of [-2.42, 2.42])
       for (const ly of [1.15, 1.8]) {
         const fx = F.wx(lx, s * ((NK * C) / 2 + 0.03));
@@ -100,6 +101,12 @@ export function buildLakeGate(field: HeightField, out: VoxelBuilder, kit: Kit, b
         bodies.add(fx, ground + ly, fz, 0.1, 0.16, 0.06, 0xffa850, 0.95, yawOut);
         glow.add(fx, ground + ly, fz, 0xffb45a, 1.1, { level: 0.6 });
       }
+  }
+
+  // The passage paved as the plaza and the avenue (the grid's own floor is the land's height: grass showed through).
+  {
+    const [px, pz] = [F.wx(0, 0), F.wz(0, 0)];
+    out.box(px, ground + 0.08 - 0.15, pz, 2.5, 0.3, NK * C + 0.1, 0xc6b393, 'mapStone', { src, ry: yawOut, shade: 0.97 });
   }
 
   // ── The avenue, in the gate's frame: lx across, lz outward from the gate's middle ──
