@@ -287,6 +287,15 @@ checks, which file does what) is `docs/map-work/BRIEF.md`. Target look:
   its own board, the shore terrace and ghat, lotus candles and boats (`nye/lake.ts`, `_lk*.ts`; spots `LAKE_*` in
   `plan.ts`), its people (`people/_sceneNyeLake.ts`) and its own show over the water in step with Kulen's (`show.ts`
   `site`); the terrace's view `cam=-352,10.5,-54,-372,13,-25,55`.
+  The craft pass (21 November 2026; the target `assets/new-year-online/lake-reference.png`, the fixed views and
+  everything it added in BRIEF.md "The craft pass"): bulbs kept small (`_sqGlow.ts` `clampBulbs`), the board as the
+  owner's sheet (`board.ts`), live flames (`festival/_kit.ts` `ANIM.flame`, `_sqKit.ts` `kitFire`), lantern pillars; the
+  lake's round plaza (`nye/_lkPlaza*.ts`: mandala, ring wall with fire pillars, Bayon gate and naga avenue, salas, stalls
+  `nye-lake-*`, lily pond; layout plan.ts `LAKE_SHORE` … `lakePlazaAt`), the stage a three-tower prasat, the night's
+  lantern flotilla (`_lkBoats.ts`), reflections and the deep-blue lake (`_lkReflect.ts`), the mist darker on the night
+  (atmosphere.ts `NYE_MIST`); the fireworks filling the sky (`fwstats=1`); the crowds' life `people/_nyeGroups.ts`
+  (groups, roam vong `POSE.vong`, runners, the countdown's gathering, hugs) and `nye/_life.ts` (piece `life`: fireflies,
+  petals, motes, sparks). `SHOT_GPU=1 npm run shots -- …` draws a shot on the GPU in ≈ 10 s.
   While the show plays, on foot anywhere: E "Watch the fireworks" (`roam/_nyeWatch.ts`: he faces the show, the
   camera low behind him looking up at it; a drag looks round, E or a move key lets go; `nyewatch=1` in shots).
   Live: `node scripts/nye-live.mjs` plays the night in real time (frames and a WAV of the page's sound in

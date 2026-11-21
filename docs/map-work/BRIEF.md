@@ -2463,6 +2463,78 @@ second on every device. Phases 2 (live rooms) and 3 (party voice) are not built.
   the event adds 24 draws and ≈ 5 % triangles; the finale's fireworks 4 draws and ≈ 70 k triangles more. Still to
   measure on a GPU: the frame time on low, medium and phone at the finale.
 
+### The craft pass (21 November 2026: the owner's lake reference)
+
+The target is `assets/new-year-online/lake-reference.png` (the owner's: a round plaza by the lake, warm pools of
+firelight in a deep blue night, lantern boats, fireworks filling the sky); `lake-before-owner.png` is what it was.
+Fixed views (`index.html?shot=1&ui=0&graphics=high&…`, `SHOT_GPU=1` for a GPU shot in ≈ 10 s):
+k-over `countdown=1900&cam=383,42,-208,383,6,-272,50`, k-crowd `cam=384,11,-248,410,40,-335,55`, k-side
+`cam=412,14,-232,380,8,-280,55`, l-over `cam=-312,38,-104,-362,4,-38,50`, l-crowd `cam=-330,12.5,-76,-385,30,-15,55`,
+l-ref `cam=-324,18,-88,-360,6,-36,55`; fireworks `fireworks=<s>&cam=384,11,-248,410,60,-335,60` and
+`cam=-330,12.5,-76,-385,40,-15,60`. Close-ups: the board `cam=383,16.4,-265,383,16.4,-290.6,42`, the lake stage
+`cam=-350,10,-36,-371,12,-26,50`, a float `cam=-388,8,-46,-400,6,-33,50`, the lake gate
+`cam=-308,9,-82,-323.67,12,-72.39,55`.
+
+- **Light without the wash** (`_sqGlow.ts`): bulbs are small bright points at any distance (`clampBulbs`: `BULB_MIN`‥
+  `BULB_MAX`, 2‥5 px on 940 px; nearer than their largest size they dim to half); halos have a screen-size limit
+  (`HALO_BULB`, `HALO_LAMP`); domes and pools are faint, pools 0.22 as bright on grass as on paving and fading where the
+  land steps. `buildBeams(…, look)`: both stages `{ level: 0.2, width: 20 }` (default 0.3 / 34 m).
+- **The board** (`board.ts`, both stages), as the owner's sheet: a near black-brown screen in a broad gold kbach frame,
+  crisp gold numerals over a faint wide glow, a gold LIVE EVENT pill with dark words, small pale labels; night ×1.32.
+- **Kulen's floor and edge**: the gathering area (`_sqFloor.ts` `GATHER`, 19.1 m round the ring) in turned pavers in
+  concentric courses (`COURSES`, a gilt course at `INLAY`, a darker border) over a dark bed; the ring of light thin gold
+  lines (1024 px canvas, 512 on low). Every other newel post and each opening's gatepost is a lantern pillar with a live
+  fire and a red banner toward the square (`_sqEdge.ts`, `_sqKit.ts` `kitFire`, `hangingBanner`); four chunky lantern
+  pillars round the gathering ring in the crowd's widest gaps (`gatheringPillars`, r 20.6 m: re-check if
+  `people/_nyePlan.ts` changes). The gate: braziers with live fire, two long banners on gilt arms (`_sqDecor.ts`
+  `GATE_BANNERS`), its lamp low before the Bayon face. Stalls: red-and-white awnings, lamps, paper lanterns, a fruit crate.
+  The stage's fires and lamps are a festival kit of its own (`_stKit.ts` `StageGlow`), no new draw.
+- **Live flames** (`festival/_kit.ts` `ANIM.flame` = 7, `kFlick`): a tongue on its foot, leaping, narrowing and swaying,
+  its glow flickering; leap 0 is a still box whose glow flickers.
+- **The lake plaza** (`_lkPlaza.ts`, `_lkPlazaGate.ts`, `_lkPlazaSala.ts`, `_lkPlazaGarden.ts`, `_lkPlazaLight.ts`; where:
+  plan.ts `LAKE_SHORE` (a circle r 21 at (−342.09, −61.4) on the stage's axis), `lakePlazaAt` / `lakePlazaPolar` /
+  `lakeFacingIn` (bearings: 0 toward the stage), `LAKE_WALL`, `LAKE_GATE`, `LAKE_AVENUE`, `LAKE_SIDE`, `LAKE_SALAS`,
+  `LAKE_STALLS`, `LAKE_PILLARS`, `LAKE_MANDALA`, `LAKE_POND`): warm sandstone pavers in concentric rings (dark stone only
+  two thin courses); the plaza's light on the ground in one additive draw (`PlazaPools`: pools round its fires, lamps,
+  stalls, salas and gate, and the gold lotus from the Kulen ring's painted texture); a slim ring wall between 13 fire
+  pillars with banners; lamp posts and dim string lights (no halos); an ≈ 8.8 m Bayon-face gopura at −160° on a 0.22 m
+  grid, its avenue between naga (not on low), braziers, banners and Khmer lamps; a side way in at −127°; two Khmer salas
+  at ±62° lit inside; four stalls (shops `nye-lake-grill|fruit|drinks|sweets`, a seller on each stool); purple beds, a
+  lily pond with lotus candles, pink and purple trees framing the stage. The plaza's real light stands low before the gate.
+  Walking into the 0.9 m wall stops him, but sliding along it the walker's `carried` rule can step him onto it.
+- **The lake stage and water** (`_lkStage.ts`, `_lkBoats.ts`, `_lkReflect.ts`): a deep carved gate over a 10 × 5 m board
+  under three lotus-bud towers outlined in dim bulbs, two big naga either side of the board, `kitFire` fire bowls,
+  banners on tall poles; the event night's flotilla (84 lantern skiffs, 10 lotus floats, 2 illuminated floats with
+  Angkor Wat in lights; 32 / 5 / 1 on low; some in the gaps the plaza crowd sees the water through), lotus candles; every
+  light's halo and reflection in one draw (`WaterLights`, sized on the screen); `deepWater`: the great lake deep blue to
+  the far shore at night (gentle on any night, full on the event night, the moon's path spared, fading out 450‥600 m
+  from the venue).
+- **The sea of mist** on the event night sinks toward the far night blue (atmosphere.ts `NYE_MIST` 0.6, eased), so the
+  lake's horizon reads dark under the fireworks.
+- **The fireworks**: 2334 rockets (Kulen 1401, the lake 933), several at once from the start. From the square: ≈ 2.5 bursts
+  on screen in the opening, 5 in the layers, 6 in the build-up, 18 in the finale, a high shell about a third of the view's
+  height; high shells 24‥38° up at 28‥60° right, mid 16‥30°, the crown 115‥150 m out over Kulen's upper south face
+  (≤ 186 m up); by the lake 14‥37° up over open water (`SHOW_AREA`, `LAKE_SHOW`). One additive draw (`fireworks:show`:
+  sparks, halos, water glints in columns under each burst, the barges' lantern glow and streaks); the barges one unlit
+  draw, dark hulls with gold lanterns. Rockets behind the camera or off the picture's sides are not drawn. With more than
+  8 bursts glowing at once, stars, glows and smoke dim by (8 / bursts)^0.32 (^0.15 on low: `CROWD`); the sky's tint
+  takes each flash softly (`show.ts` `burstGlow`) and saturates at 1.2. `SLOTS` 256. `fwstats=1` in a shot logs bursts
+  on screen and their size per act, the skyline from the camera and the busiest second.
+- **The people** (`people/_nyeGroups.ts` for both venues): families in small groups on arcs round their own middle
+  (`spreadGroups`, ≥ 2.4 m apart, denser toward the stage, some at the stalls and salas), children running two by two
+  (`planRunners`), sparklers with a small ember; the roam vong (រាំវង់) round the mandala 22:42‥23:58:40 (Kulen 16
+  couples, 9 on low; the lake 12 round `LAKE_MANDALA` + 2 m; `POSE.vong`, silk colours), the pinpeat / mahori playing on;
+  from 23:55:50 groups gather toward the stage, from 23:58 all face the board; at midnight cheers, jumps, hugs
+  (`POSE.hug`), heads up halfway up each show. The lake: 122 people (78 on low) in 35 families, arriving up the east
+  shore trail and down the avenue through the gate, room kept for the other players' 50; three couples on the ghat's step.
+- **Night life** (`nye/_life.ts`, piece `life`; sparks via `_lifeSparks.ts`): fireflies, petals falling from the flowering
+  trees' blossom blocks (found by colour), motes in the stage light, sparkler sparks; one point draw a venue, all in the
+  shader; event night only, within 260 m, 55 % on medium, none on low.
+- **Cost** (GPU, `npm run perf`, before → after): nye high 309 → 308 draws, 7.1 → 6.8 ms; nyecrowd high 306 → 307,
+  6.0 → 6.4 ms; nyeover high 611 → 612, 12.6 → 13.4 ms; nyelake high 169 → 172, 4.3 → 4.9 ms; nyelakefw high 128 → 128;
+  low: nye 253 → 251, nyeover 566 → 567 (still over the phone overview's 520), nyelake 124 → 126, nyelakefw 116 → 115.
+  `npm run perf -- only=nyelake,nyelakefw` measure the lake venue.
+
 ## World and scale
 
 - 1 unit = 1 m. +X east (right), −Z north (away from the camera), +Y up.
