@@ -6,6 +6,7 @@ import {
   DoubleSide,
   DataTexture,
   FloatType,
+  Frustum,
   Group,
   InstancedBufferGeometry,
   InstancedMesh,
@@ -75,8 +76,8 @@ import { ANGKOR_POINTS, angkorShape } from './_fwAngkor';
  * bursts' colours. Both follow the show nearer the camera (and before it): a burst's light counts for less the farther
  * its site is than the nearer one's, so by the lake the lake's show lights the scene, on the square Kulen's.
  *
- * Rockets wholly behind the camera are not drawn (on every level: the other show, 750 m off, mostly is), their light
- * counts all the same. On low, a site's small low bursts (`Rocket.close`) are drawn only within `SITE_NEAR` of its
+ * Rockets wholly behind the camera or off the picture's sides are not drawn (on every level: the other show, 750 m
+ * off, mostly is), their light counts all the same. On low, a site's small low bursts (`Rocket.close`) are drawn only within `SITE_NEAR` of its
  * crowd view.
  *
  * No show (before midnight, after its 480 s): nothing is drawn and the update returns at once.
@@ -302,6 +303,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const dist: Record<ShowSite, number> = { kulen: 1, lake: 1 };
   const weight: Record<ShowSite, number> = { kulen: 1, lake: 1 };
   const fwd = new Vector3();
+  const frustum = new Frustum();
+  const viewProj = new Matrix4();
+  const mid = new Vector3();
   const buf = new Vector2();
   const tmp = new Color();
   const sum = new Vector3();
@@ -384,6 +388,8 @@ export function buildFireworks(ctx: MapContext): MapPart {
       // nearest in front of it counts in full)
       const dNear = Math.min(dist.kulen, dist.lake);
       f.camera.getWorldDirection(fwd);
+      frustum.setFromProjectionMatrix(viewProj.multiplyMatrices(f.camera.projectionMatrix, f.camera.matrixWorldInverse));
+      const [right, left, , , , nearPlane] = frustum.planes;
       let most = 0;
       for (const site of SITES) {
         const a = SHOW_SITES[site].at;
@@ -404,12 +410,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
       for (const i of alive) {
         const r = script[i];
         const b = burstAt(r);
-        // (drawn unless all of it is behind the camera: its burst with its sparks' reach and fall, its climb from the
-        // launch; the other show, 750 m off, mostly is. Its light counts all the same: a show behind the camera
-        // still lights what it looks at)
-        const reach = r.size * 1.6 + 60;
-        const ahead = Math.max(fwd.x * (r.bx - cam.x) + fwd.y * (r.by - cam.y) + fwd.z * (r.bz - cam.z), fwd.x * (r.x - cam.x) + fwd.y * (launchY[i] - cam.y) + fwd.z * (r.z - cam.z));
-        if (ahead > -reach) drawn.push(i);
+        // (drawn unless all of it is behind the camera or off its picture to the left or right: its burst with its
+        // sparks' reach and fall, its climb from the launch (not above or below the picture: its glints on the water
+        // may be in it); the other show, 750 m off, mostly is. Its light counts all the same: a show out of the
+        // picture still lights what it looks at)
+        mid.set((r.bx + r.x) / 2, (r.by + launchY[i]) / 2, (r.bz + r.z) / 2);
+        const reach = r.size * 1.6 + 60 + Math.hypot(r.bx - r.x, r.by - launchY[i], r.bz - r.z) / 2;
+        if (nearPlane.distanceToPoint(mid) > -reach && left.distanceToPoint(mid) > -reach && right.distanceToPoint(mid) > -reach) drawn.push(i);
         // (the light now: the brightest alone, the others summed where their light's middle is; the far site's dimmed)
         const l = burstLight(r, s - b) * weight[r.site];
         if (l <= 0) continue;
