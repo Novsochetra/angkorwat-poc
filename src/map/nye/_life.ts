@@ -264,9 +264,9 @@ varying float vTumble;
 #include <common>
 #include <fog_pars_vertex>
 // The kinds' sizes (m), their smallest and biggest dot (px): firefly (with its halo), petal, mote, spark.
-const vec4 SIZE = vec4(0.26, 0.26, 0.04, 0.05);
-const vec4 MINPX = vec4(2.8, 2.0, 1.0, 1.8);
-const vec4 MAXPX = vec4(16.0, 11.0, 3.0, 5.0);
+const vec4 SIZE = vec4(0.26, 0.26, 0.04, 0.04);
+const vec4 MINPX = vec4(2.8, 2.0, 1.0, 1.5);
+const vec4 MAXPX = vec4(16.0, 11.0, 3.0, 3.5);
 const vec3 FIREFLY = vec3(0.72, 1.0, 0.3);
 const vec3 MOTE = vec3(1.0, 0.78, 0.45);
 const vec3 SPARK = vec3(1.0, 0.9, 0.62);
@@ -314,7 +314,7 @@ void main() {
   gl_PointSize = clamp(px, lo, dot(kw, MAXPX)) * uPx * step(0.003, I);
   // (smaller than its smallest dot far off: its light spread over it, dimmer)
   float cover = clamp(px / lo, 0.3, 1.0);
-  vCol = (kw.x * FIREFLY * 2.4 * cover + kw.y * aColor * uPetal + kw.z * MOTE * 0.55 * cover + kw.w * SPARK * 5.0) * I;
+  vCol = (kw.x * FIREFLY * 2.4 * cover + kw.y * aColor * uPetal + kw.z * MOTE * 0.55 * cover + kw.w * SPARK * 4.0) * I;
   vCover = kw.y * I;
   vShape = kw.y;
   vTumble = flying * abs(cos(t * (2.0 + 2.5 * aSeed.w) + s.w)) + (1.0 - flying) * 0.3;

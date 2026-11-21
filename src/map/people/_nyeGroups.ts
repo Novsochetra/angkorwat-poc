@@ -486,10 +486,13 @@ export function runnerAt(r: Runner, t: number, out: { x: number; z: number; yaw:
 
 // ── Sparklers ───────────────────────────────────────────────────────────────
 
-/** A look holding a sparkler (as the plans' children's: a thin grey wire, its tip burning white-gold). */
+/**
+ * A look holding a sparkler: a thin grey wire, its tip a small dim ember (the plans' children's burned white-gold and
+ * bloomed into blobs; the sparks round the tip are the night's life's small points, nye/_life.ts).
+ */
 export function sparklerLook(l: Look): Look {
   const colors = l.colors.slice();
-  colors[SLOT.flame] = 0xffd890;
+  colors[SLOT.flame] = 0x8a5a24;
   colors[SLOT.wood] = 0x8a8a86;
   const feats = l.feats.filter((f) => f !== FEAT.phone);
   if (!feats.includes(FEAT.torch)) feats.push(FEAT.torch);
@@ -498,10 +501,13 @@ export function sparklerLook(l: Look): Look {
 
 /**
  * Up to `max` more sparklers for those standing who hold no phone (children, and the young who jump at midnight: the
- * `jumps` flag), picked by a seeded hash; `ok` filters them (not the dancers). Their looks change; returns how many.
+ * `jumps` flag), picked by a seeded hash; `ok` filters them (not the dancers). Their looks change (and the plan's own
+ * sparklers': `sparklerLook`); returns how many new.
  */
 export function moreSparklers(members: (CrowdMember & { look: Look; jumps: boolean })[], max: number, ok: (k: number) => boolean, seed: number): number {
   const order = members.map((_, k) => k).sort((a, b) => hash3(a, 3, 1, seed) - hash3(b, 3, 1, seed));
+  // (the plans' own sparklers too: the same small ember)
+  for (const m of members) if (m.sparkler) m.look = sparklerLook(m.look);
   let n = 0;
   for (const k of order) {
     if (n >= max) break;

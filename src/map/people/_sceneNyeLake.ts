@@ -91,8 +91,13 @@ const PLAYERS: readonly [number, number][] = [
 const ROMVONG = { u: -2.6, v: 2.6, r: 1.05, w: 0.1 } as const;
 /** Where the dancers stand aside (they all go off by the gangway and the jetty: `goOff`). */
 const ASIDE = { u: 3.0, v: 3.4 } as const;
-/** The board's face on the deck (v; nye/_lkStage.ts: its gate at the back, braziers before it at u ±3.9, v −3.2). */
-const BOARD_V = -LAKE_STAGE.d / 2 + 1.64;
+/**
+ * The board's face on the deck (v) and its middle's height over the deck (nye/_lkStage.ts: the gate's front at v −1.5,
+ * the board 1.05‥6.05 m over the deck; the braziers before it at u ±4.3, v −0.35, where nobody stands: the performers
+ * keep to v ≥ 1 in front of them).
+ */
+const BOARD_V = -1.6;
+const BOARD_Y = 3.55;
 /** Lotus candles kept afloat at once (a ring of rigs). */
 const CANDLES = 8;
 
@@ -211,7 +216,7 @@ export class NyeLakeLife implements PeopleScene {
     this.stageLook = { x: sl.x, y: this.deck + 1.6, z: sl.z };
     // (the board's middle: in its gate at the deck's back, nye/_lkStage.ts)
     const bd = stagePt(0, BOARD_V, { x: 0, z: 0 });
-    this.boardAt = { x: bd.x, y: this.deck + 3.2, z: bd.z };
+    this.boardAt = { x: bd.x, y: this.deck + BOARD_Y, z: bd.z };
     this.sky = { x: LAKE_SHOW.x, y: WATER + LAKE_SHOW.low - 5, z: LAKE_SHOW.z };
     // The night's crowd (room left in the crowd, less the boats, the stage and the ordinary days' people: up to 78).
     const room = crowd.capacity - crowd.count - 22;
@@ -742,7 +747,7 @@ export class NyeLakeLife implements PeopleScene {
       }
       if (!seated) {
         if (m.phone && h < 0.22) pose = POSE.photo;
-        else if (m.phone && h < 0.4) hold = 1;
+        else if (m.phone && h < 0.32) hold = 1;
         else if (m.kid && h > 0.86) pose = POSE.wave;
       } else if (m.phone && h < 0.2) hold = 1;
       if (hold) look = null;

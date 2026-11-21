@@ -684,7 +684,7 @@ export class NyeLife implements PeopleScene {
       }
       if (!seated && !monk) {
         if (m.phone && h < 0.22) pose = POSE.photo;
-        else if (m.phone && h < 0.4) hold = 1;
+        else if (m.phone && h < 0.32) hold = 1;
         else if (m.kid && h > 0.86) pose = POSE.wave;
       } else if (seated && m.phone && h < 0.2) hold = 1;
       if (hold) look = null;
