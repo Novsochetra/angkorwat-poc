@@ -56,8 +56,8 @@ export const SHOW_COLOURS = {
   red: 0xff3047,
   /** The flag's blue, bright enough to show in the night sky. */
   blue: 0x5c8cff,
-  /** Jade (sparingly). */
-  jade: 0x3fe6a4,
+  /** Jade (sparingly; a little deep: green is the brightest colour to the eye, and a fresh jade burst bloomed into a soft ball). */
+  jade: 0x2ed39a,
 } as const;
 export type ShowColour = keyof typeof SHOW_COLOURS;
 
@@ -164,6 +164,17 @@ export function burstLight(r: Rocket, tau: number): number {
   if (tau < 0) return 0;
   const tail = (LASTING[r.kind] ?? 0) * 0.35 * Math.exp(-tau / 2.6);
   return burstPower(r) * (0.75 * Math.exp(-tau / 0.09) + 0.35 * Math.exp(-tau / 0.7) + tail);
+}
+
+/**
+ * The light a burst leaves in the haze and the clouds round it `tau` s after it burst (the sky's tint, sky/tint.ts): as
+ * `burstLight`, but its flash counts for little, so a burst just opening tints the sky as its stars do, never as one
+ * bright soft ball of its colour round it.
+ */
+export function burstGlow(r: Rocket, tau: number): number {
+  if (tau < 0) return 0;
+  const tail = (LASTING[r.kind] ?? 0) * 0.35 * Math.exp(-tau / 2.6);
+  return burstPower(r) * (0.15 * Math.exp(-tau / 0.09) + 0.35 * Math.exp(-tau / 0.7) + tail);
 }
 
 /** A burst's light's strength (its size squared, a 40 m burst 1; crackles less): `burstLight` scales its curve by this. */

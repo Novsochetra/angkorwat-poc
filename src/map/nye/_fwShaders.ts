@@ -56,6 +56,8 @@ export const FW_VERTEX = /* glsl */ `
   uniform float uFirst;
   // Smoke drawn (1) or not (0: low).
   uniform float uSmoke;
+  // The crowd (fireworks.ts CROWD): the halos dim as the sky fills (the stars by uView.z).
+  uniform float uCrowd;
   // The scene's height (px), the pixel size's scale (pxscale=), the sparks' brightness for their count, the night.
   uniform vec4 uView;
   // Light now (lamps): where (xyz) and its colour times its strength.
@@ -152,7 +154,7 @@ export const FW_VERTEX = /* glsl */ `
   const vec4 KB[8] = vec4[8](vec4(0.8, 2.1, 0.6, 0.07), vec4(0.7, 1.9, 0.5, 0.1), vec4(0.6, 0.85, 0.5, 0.3), vec4(0.5, 1.3, 0.95, 0.6), vec4(0.75, 2.1, 0.6, 0.04),
     vec4(1.2, 1.8, 0.55, 0.0), vec4(0.5, 1.9, 0.5, 0.25), vec4(1.35, 3.0, 0.7, 0.0));
   // KC: a ring (1), crackles (1), flicker, a trail's tail brightness
-  const vec4 KC[8] = vec4[8](vec4(0.0, 0.0, 0.12, 0.25), vec4(0.0, 0.0, 0.3, 0.12), vec4(0.0, 0.0, 0.25, 0.04), vec4(0.0, 1.0, 0.0, 0.3), vec4(1.0, 0.0, 0.12, 0.25),
+  const vec4 KC[8] = vec4[8](vec4(0.0, 0.0, 0.12, 0.15), vec4(0.0, 0.0, 0.3, 0.12), vec4(0.0, 0.0, 0.25, 0.04), vec4(0.0, 1.0, 0.0, 0.3), vec4(1.0, 0.0, 0.12, 0.15),
     vec4(0.0, 0.0, 0.15, 0.2), vec4(0.0, 0.0, 0.65, 0.3), vec4(0.0, 0.0, 0.1, 0.4));
   // KD: how quickly it fades (the brightness's power of the life left); KH: burning steady until this share of its
   // life (a star burns, then goes out: a still picture catches most bursts bright, as the reference's)
@@ -336,10 +338,11 @@ export const FW_VERTEX = /* glsl */ `
       // signature: its towers the first colour, its lotus the second.
       col = mix(mix(d2.rgb, d3.rgb, smoothstep(0.25, 0.6, u)), mix(d3.rgb, d2.rgb, P0.w), ke.z);
       // (white-hot as it leaves the burst, its colour coming as it cools; not the signature's gold, not crackles)
-      col = mix(col, vec3(1.0, 0.93, 0.8), 0.45 * exp(-tl / 0.2) * (1.0 - ke.z) * (1.0 - kc.y));
+      col = mix(col, vec3(1.0, 0.93, 0.8), 0.35 * exp(-tl / 0.15) * (1.0 - ke.z) * (1.0 - kc.y));
       col = mix(col, EMBER * 0.7, smoothstep(kb.z, 1.0, u));
       col = mix(col, EMBER, (1.0 - s) * 0.45 * (1.0 - held));
-      float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 1.0 * exp(-tl / 0.12));
+      // (a little brighter as it leaves: not much, or a burst's first fifth of a second is a ball in the bloom)
+      float bright = kb.y * pow(1.0 - smoothstep(KH[kind], 1.0, u), KD[kind]) * (1.0 + 0.3 * exp(-tl / 0.12));
       // (flicker; glitter strobes as it fades)
       float fl = 1.0 - kc.z + kc.z * hash(floor(uTime * 24.0), fj + seed * 13.0);
       float strobe = step(0.45, fract(uTime * 11.0 + h1 * 13.0)) * 1.9;
@@ -381,19 +384,20 @@ export const FW_VERTEX = /* glsl */ `
       // (the halos are still: the ribbon is a square round its point, its length nothing)
       float fl = 0.75 + 0.25 * hash(floor(uTime * 30.0), seed * 7.0);
       vec3 shell = mix(vec3(1.0, 0.78, 0.45), mix(d2.rgb, vec3(1.0), 0.3), kf.z) * 1.6 * kf.w * fl * mix(0.1, 1.0, pow(s, 2.0)) * (0.6 + 0.4 * smoothstep(0.0, 0.3, tl));
-      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 2.6 * exp(-max(tau, 0.0) / 0.06);
+      // (the burst's flash: small and quick, a bright point, not a ball that the bloom spreads over the sky)
+      vec3 flash = mix(d2.rgb, vec3(1.0), 0.65) * 1.1 * sqrt(uCrowd) * exp(-max(tau, 0.0) / 0.05);
       // (the glow lasts as its sparks do: a soft halo of its colour behind them, white at its heart at first)
       float gl = tau < 0.0 ? 0.0 : 0.55 * exp(-tau / 0.12) + 0.45 * exp(-tau / 1.3) + KL[kind] * 0.35 * exp(-tau / 2.6);
-      vec3 glow = mix(d2.rgb, vec3(1.0), 0.25 * exp(-max(tau, 0.0) / 0.25)) * 0.045 * gl;
+      vec3 glow = mix(d2.rgb, vec3(1.0), 0.25 * exp(-max(tau, 0.0) / 0.25)) * 0.045 * gl * uCrowd;
       // smoke: its own faint grey under the moon, and the light of the bursts now near it
       vec3 lit = vec3(0.004, 0.005, 0.008) * uView.w;
       for (int i = 0; i < 2; i++) {
         float dl = length(uLightPos[i].xyz - smokeAt) / 70.0;
-        lit += uLightCol[i].rgb * 0.035 / (1.0 + dl * dl);
+        lit += uLightCol[i].rgb * 0.03 / (1.0 + dl * dl);
       }
-      vec3 smoke = lit * smoothstep(0.2, 1.4, tau) * (1.0 - smoothstep(5.0, 9.0, tau));
+      vec3 smoke = lit * uCrowd * smoothstep(0.2, 1.4, tau) * (1.0 - smoothstep(5.0, 9.0, tau));
       col = oh.x * shell + oh.y * flash + oh.z * glow + oh.w * smoke;
-      width = dot(oh, vec4(kf.x, size * 0.3 * (1.0 + 2.0 * max(tau, 0.0)), size * 2.0, size * (0.75 + 0.08 * tau)));
+      width = dot(oh, vec4(kf.x, size * 0.2 * (1.0 + 2.0 * max(tau, 0.0)), size * 2.0, size * (0.75 + 0.08 * tau)));
       minPx = dot(oh, vec4(1.6, 3.0, 4.0, 4.0));
       vSoft = dot(oh, vec4(3.0, 3.5, 2.6, 2.2));
       vCore = dot(oh, vec4(0.8, 0.8, 0.0, 0.0));
@@ -401,7 +405,8 @@ export const FW_VERTEX = /* glsl */ `
       vec2 span = oh.x * vec2(-rise, 0.0) + oh.y * vec2(0.0, 0.4) + oh.z * vec2(0.0, 4.0) + oh.w * vec2(0.2, 9.0 * uSmoke);
       hide = float(tau < span.x || tau > span.y);
     }
-    vSoft = isSpark > 0.5 ? 2.4 : vSoft;
+    // (a star a crisp point: its edge falls off quickly)
+    vSoft = isSpark > 0.5 ? 3.2 : vSoft;
     vCore = isSpark > 0.5 ? 0.8 : vCore;
     vSeg = vec4(0.0);
     vB = vec4(0.0);
