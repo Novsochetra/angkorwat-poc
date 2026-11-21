@@ -73,12 +73,14 @@ export const NAGA: readonly { x: number; z: number; facing: number }[] = [
 ];
 
 /**
- * The fireworks: launched from Kulen's lower slopes behind and right of the stage and over the falls, so from the
- * square they rise over the stage with the hill on the left and the falls on the right (the owner's fireworks
- * reference), and are seen from most of the map. `x`, `z` the show's middle, `spread` m each way in x; bursts
- * between `low` and `high` m over the sea level (the hill's top is 150 m).
+ * The fireworks: launched from Kulen's slopes behind and right of the stage and over the falls, so from the square
+ * they fill the sky over the hill and right of it (the owner's fireworks reference: the hill on the left, the bursts
+ * over and beside it), and are seen from most of the map. `x`, `z` the show's middle, `spread` m each way in x,
+ * `depth` in z; bursts between `low` and `high` m over the sea level (the hill's top is 150 m): the crown over its
+ * upper south face and summit (to 186 m), the big high ones over its east flank (to ≈ 260 m), crackles low by the
+ * falls (nye/show.ts places them).
  */
-export const SHOW_AREA = { x: 425, z: -385, spread: 90, depth: 60, low: 45, high: 250 } as const;
+export const SHOW_AREA = { x: 464, z: -412, spread: 140, depth: 60, low: 45, high: 260 } as const;
 
 /** Where a crowd camera looks at it all from (shots and the promo): inside the square, just past the gate's tower (≈ 19 m tall over the passage). */
 export const VIEW = { cam: [384, 11, -248] as const, at: [410, 40, -335] as const, fov: 55 } as const;
@@ -118,8 +120,8 @@ export const LAKE_STAGE = { x: -370.2, z: -26.9, yaw: Math.atan2(22, -27), w: 22
  */
 export const LAKE_SHORE = { x: -342.09, z: -61.4, rx: 21, rz: 21 } as const;
 
-/** The lake show: the bursts over the open water behind the stage seen from the shore (m; `low`‥`high` over the water). */
-export const LAKE_SHOW = { x: -440, z: 10, spread: 70, depth: 45, low: 40, high: 210 } as const;
+/** The lake show: the bursts over the open water behind the stage seen from the shore (its middle, m each way; `low`‥`high` m over the water). */
+export const LAKE_SHOW = { x: -488, z: 47, spread: 110, depth: 60, low: 30, high: 225 } as const;
 
 /** The lakeside crowd's camera (shots and the film): on the terrace's back, eye height, looking over the stage to the lake. */
 export const LAKE_VIEW = { cam: [-330, 12.5, -76] as const, at: [-385, 30, -15] as const, fov: 55 } as const;
