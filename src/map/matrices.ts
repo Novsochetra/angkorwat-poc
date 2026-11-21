@@ -166,11 +166,22 @@ export function installMatrixUpdate(search = typeof location === 'undefined' ? '
     compose.call(this);
     keep(this);
   };
-  // (whoever makes a world matrix, its children know: three's `updateWorldMatrix` makes it without theirs)
+  // (whoever makes a world matrix, its children know: three's `updateWorldMatrix` makes it without theirs. Counted only
+  // when it came out different: `getWorldPosition` of anything makes every world matrix above it again, up to the
+  // scene, and a scene counted as made again each frame had every frozen part walked each frame, ≈ 1,800 objects for
+  // nothing. The matrix before, one a nesting level: the call makes its parents' first, through this same function)
   const world = Object3D.prototype.updateWorldMatrix;
+  const before: Matrix4[] = [];
+  let depth = 0;
   Object3D.prototype.updateWorldMatrix = function (this: Kept, updateParents: boolean, updateChildren: boolean, force?: boolean) {
-    world.call(this, updateParents, updateChildren, force);
-    this._world = (this._world ?? 0) + 1;
+    const was = (before[depth] ??= new Matrix4()).copy(this.matrixWorld);
+    depth++;
+    try {
+      world.call(this, updateParents, updateChildren, force);
+    } finally {
+      depth--;
+    }
+    if (this._world === undefined || !was.equals(this.matrixWorld)) this._world = (this._world ?? 0) + 1;
     this._keptParent = this.parent;
     this._parentWorld = (this.parent as Kept | null)?._world;
   };
