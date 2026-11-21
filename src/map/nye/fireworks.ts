@@ -35,6 +35,7 @@ import { FW_FRAGMENT, FW_VERTEX, KIND_INDEX, ROW, SEGS } from './_fwShaders';
 import { SQUARE } from './plan';
 import {
   burstAt,
+  burstGlow,
   burstLight,
   burstPower,
   isGlitter,
@@ -106,6 +107,16 @@ const LAMP_POWER = 30000;
 /** The halos' and sparks' look: the water near the square (m) its reflections are drawn on. */
 const WATER_REACH = 170;
 const MAX_SPOTS = 12;
+/**
+ * The crowd: with more than `CROWD` bursts glowing in the picture at once, each star, glow and puff of smoke dims by
+ * (CROWD / bursts)^power (a finale's 60‥80 to about half on high; less on low, which has no bloom to wash it out).
+ * Crackles and comets count for less.
+ */
+const CROWD = 8;
+const CROWD_POWER: Record<GraphicsLevel, number> = { low: 0.15, medium: 0.3, high: 0.32, max: 0.32 };
+/** The rest's light in the smoke against their light on the land (about `burstGlow` over `burstLight` once a flash is past). */
+const GLOW_SHARE = 0.7;
+const GLOWS: Record<BurstKind, number> = { peony: 1, chrysanthemum: 1, willow: 1, crackle: 0.3, ring: 0.7, palm: 1, comet: 0.3, angkor: 1 };
 /** The barges' lanterns the shader holds (`uBarge`), their height over the water and how far astern of the middle (m). */
 const MAX_BARGES = 24;
 const BARGE_LANTERN = 3.1;
@@ -229,6 +240,7 @@ export function buildFireworks(ctx: MapContext): MapPart {
       uPer: { value: PER.medium },
       uFirst: { value: 0 },
       uSmoke: { value: 1 },
+      uCrowd: { value: 1 },
       uView: { value: viewU },
       uLightPos: { value: lightPos },
       uLightCol: { value: lightCol },
@@ -335,10 +347,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
   const buf = new Vector2();
   const tmp = new Color();
   const sum = new Vector3();
+  const skyAt = new Vector3();
+  const skyCol = new Color();
   let warm = 3;
   // (a shot's `fwstats=1`: how the show reads from its camera, logged once: _fwStats.ts)
   let stats = ctx.shot && new URLSearchParams(location.search).get('fwstats') === '1' ? 3 : 0;
   let frames = 0;
+  let crowd = 1;
   let cpu = 0;
   let peak = 0;
 
@@ -435,6 +450,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
       let bestL = 0;
       let restL = 0;
       sum.set(0, 0, 0);
+      let skyW = 0;
+      skyAt.set(0, 0, 0);
+      skyCol.setRGB(0, 0, 0);
       tmp.setRGB(0, 0, 0);
       drawn.length = 0;
       for (const i of alive) {
@@ -447,10 +465,19 @@ export function buildFireworks(ctx: MapContext): MapPart {
         mid.set((r.bx + r.x) / 2, (r.by + launchY[i]) / 2, (r.bz + r.z) / 2);
         const reach = r.size * 1.6 + 60 + Math.hypot(r.bx - r.x, r.by - launchY[i], r.bz - r.z) / 2;
         if (nearPlane.distanceToPoint(mid) > -reach && left.distanceToPoint(mid) > -reach && right.distanceToPoint(mid) > -reach) drawn.push(i);
-        // (the light now: the brightest alone, the others summed where their light's middle is; the far site's dimmed)
+        // (the light now: the brightest alone, the others summed where their light's middle is; the far site's dimmed;
+        // the sky's own, its flashes softened)
         const l = burstLight(r, s - b) * weight[r.site];
         if (l <= 0) continue;
         const c1 = COLOURS[r.color];
+        const g = burstGlow(r, s - b) * weight[r.site];
+        skyW += g;
+        skyAt.x += r.bx * g;
+        skyAt.y += r.by * g;
+        skyAt.z += r.bz * g;
+        skyCol.r += c1.r * g;
+        skyCol.g += c1.g * g;
+        skyCol.b += c1.b * g;
         if (l > bestL) {
           if (best >= 0) {
             const q = script[best];
@@ -477,6 +504,9 @@ export function buildFireworks(ctx: MapContext): MapPart {
       // The drawn ones into the texture (the newest if more than its lines).
       const n = Math.min(drawn.length, SLOTS);
       const from = drawn.length - n;
+      // (how many bursts glow in the picture at once: their stars and halos dim as the sky fills, so a finale's
+      // hundred bursts stay distinct bursts on a dark sky and never add up to one bright wash in the bloom)
+      let glowing = 0;
       for (let k = 0; k < n; k++) {
         const i = drawn[from + k];
         const r = script[i];
@@ -508,9 +538,13 @@ export function buildFireworks(ctx: MapContext): MapPart {
         data[o + 20] = faceX[i];
         data[o + 21] = faceZ[i];
         if (first < 0 && s < b + SPARK_LIFE[r.kind]) first = k;
+        if (s >= b && s < b + SPARK_LIFE[r.kind] * 0.75) glowing += GLOWS[r.kind];
       }
       tex.needsUpdate = true;
       peak = Math.max(peak, n);
+      crowd = Math.min(1, (CROWD / Math.max(glowing, 1)) ** CROWD_POWER[level]);
+      u.uCrowd.value = crowd;
+      viewU.z *= crowd;
       if (first < 0) first = n;
       const per = PER[level];
       u.uPer.value = per;
@@ -529,7 +563,10 @@ export function buildFireworks(ctx: MapContext): MapPart {
         lamps[0].color.copy(COLOURS[q.color]);
         lamps[0].intensity = bestL * LAMP_POWER * dim;
         lightPos[0].set(q.bx, q.by, q.bz, 1);
-        lightCol[0].set(COLOURS[q.color].r * bestL, COLOURS[q.color].g * bestL, COLOURS[q.color].b * bestL, 1);
+        // (the smoke round it is lit by its glow, its flash softened: a burst just opening lights the smoke as its
+        // stars do, never a soft ball of its colour round it)
+        const g0 = burstGlow(q, s - burstAt(q)) * weight[q.site];
+        lightCol[0].set(COLOURS[q.color].r * g0, COLOURS[q.color].g * g0, COLOURS[q.color].b * g0, 1);
       } else {
         lamps[0].intensity = 0;
         lightCol[0].set(0, 0, 0, 0);
@@ -541,32 +578,30 @@ export function buildFireworks(ctx: MapContext): MapPart {
         lamps[1].color.setRGB(tmp.r / restL, tmp.g / restL, tmp.b / restL);
         lamps[1].intensity = restL * restK * LAMP_POWER * dim;
         lightPos[1].set(sum.x / restL, sum.y / restL, sum.z / restL, 1);
-        lightCol[1].set(tmp.r * restK, tmp.g * restK, tmp.b * restK, 1);
+        lightCol[1].set(tmp.r * restK * GLOW_SHARE, tmp.g * restK * GLOW_SHARE, tmp.b * restK * GLOW_SHARE, 1);
       } else {
         lamps[1].intensity = 0;
         lightCol[1].set(0, 0, 0, 0);
       }
 
-      // The sky: all of it together, saturating softly (a finale tints the haze and clouds, it never floods them),
-      // where its light's middle is.
-      const w0 = bestL;
-      const w1 = restL * restK;
-      const total = w0 + w1;
-      if (total > 1e-3) {
-        const k = ((1.6 * (1 - Math.exp(-total / 1.6))) / total) * dim;
-        SKY_TINT.r = (lightCol[0].x + lightCol[1].x) * k;
-        SKY_TINT.g = (lightCol[0].y + lightCol[1].y) * k;
-        SKY_TINT.b = (lightCol[0].z + lightCol[1].z) * k;
-        SKY_TINT.x = (lightPos[0].x * w0 + lightPos[1].x * w1) / total;
-        SKY_TINT.y = (lightPos[0].y * w0 + lightPos[1].y * w1) / total;
-        SKY_TINT.z = (lightPos[0].z * w0 + lightPos[1].z * w1) / total;
+      // The sky: all of it together (each burst's flash softened: `burstGlow`), saturating softly (a finale tints the
+      // haze and clouds, it never floods them: at most 1.2, so the hill and the sky between the bursts stay dark), where
+      // its light's middle is.
+      if (skyW > 1e-3) {
+        const k = ((1.2 * (1 - Math.exp(-skyW / 1.2))) / skyW) * dim;
+        SKY_TINT.r = skyCol.r * k;
+        SKY_TINT.g = skyCol.g * k;
+        SKY_TINT.b = skyCol.b * k;
+        SKY_TINT.x = skyAt.x / skyW;
+        SKY_TINT.y = skyAt.y / skyW;
+        SKY_TINT.z = skyAt.z / skyW;
       } else clearSkyTint();
 
       if (f.dt > 0 && frames < 24) {
         cpu += performance.now() - c0;
         if (++frames === 24 && ctx.shot)
           console.info(
-            `[map] fireworks: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24) at ${s.toFixed(1)} s · ${alive.length} rockets in the air, ${n} drawn (most ${peak}; light: Kulen ${weight.kulen.toFixed(2)}, the lake ${weight.lake.toFixed(2)}), ` +
+            `[map] fireworks: ${(cpu / 24).toFixed(3)} ms a frame (CPU, average of 24) at ${s.toFixed(1)} s · ${alive.length} rockets in the air, ${n} drawn (most ${peak}; crowd ${crowd.toFixed(2)}; light: Kulen ${weight.kulen.toFixed(2)}, the lake ${weight.lake.toFixed(2)}), ` +
               `${u.uSparkN.value} spark + ${u.uHaloN.value} halo + ${u.uWaterN.value} water + ${bargeLit} lantern instances (one draw) on ${level}`,
           );
       }
