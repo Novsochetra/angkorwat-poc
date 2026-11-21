@@ -428,6 +428,12 @@ export const FEAT = {
   /** A sprig for the blessing's water (`POSE.bless`): a stem (`wood`), a bunch of leaves (`prop2`), a lotus bud (`prop`), along the right fist's grip. */
   sprig: 45,
   /**
+   * A festival krama wound round the head as cloth (the New Year crowd: people/_nyeGroups.ts `festiveLooks`): a
+   * rounded band low over the brow and a soft crown in its cream (`accent2`), a fine muted check (`accent`), a knot and
+   * a short tail at the left side. Softer than the work krama (`kramaHead`).
+   */
+  kramaWrap: 46,
+  /**
    * A fruit he gave them (roam/_shareFruit.ts, people/_shareBack.ts; worn only then: `prop` its body, `prop2` its stalk):
    * in the right hand, between both hands as they take it (`give`), held up in the `cheer`; between the palms in the
    * sampeah, bow and kneel.
@@ -660,6 +666,25 @@ function buildModel(): Builder {
     .box('head', [0.2, 1.53, -0.265], [0.12, 0.11, 0.09], S.accent, F.kramaHead)
     .box('head', [0.23, 1.39, -0.275], [0.09, 0.18, 0.04], S.accent, F.kramaHead)
     .box('head', [0.23, 1.285, -0.275], [0.092, 0.035, 0.042], S.accent2, F.kramaHead);
+  // The festival krama (kramaWrap): a rounded band (two crossed boxes) low over the brow, a soft crown stepped in, a
+  // fine check (thin bands round it and a few small squares on top), a knot at the left side and its tail.
+  // (over the short hair: the band round it from the brow, the crown just over its top)
+  m.box('head', [0, 1.525, 0.01], [0.64, 0.16, 0.53], S.accent2, F.kramaWrap)
+    .box('head', [0, 1.525, 0.01], [0.57, 0.16, 0.585], S.accent2, F.kramaWrap)
+    .box('head', [0, 1.64, -0.01], [0.625, 0.07, 0.505], S.accent2, F.kramaWrap)
+    .box('head', [0, 1.69, -0.02], [0.44, 0.04, 0.36], S.accent2, F.kramaWrap);
+  for (const y of [1.475, 1.57]) m.box('head', [0, y, 0.01], [0.644, 0.014, 0.534], S.accent, F.kramaWrap).box('head', [0, y, 0.01], [0.574, 0.014, 0.589], S.accent, F.kramaWrap);
+  for (const [x, z] of [
+    [-0.12, -0.12],
+    [0.12, -0.12],
+    [0, -0.02],
+    [-0.12, 0.08],
+    [0.12, 0.08],
+  ])
+    m.box('head', [x, 1.711, z], [0.07, 0.006, 0.07], S.accent, F.kramaWrap);
+  m.box('head', [0.335, 1.51, -0.13], [0.07, 0.1, 0.12], S.accent2, F.kramaWrap)
+    .box('head', [0.35, 1.39, -0.16], [0.04, 0.17, 0.09], S.accent2, F.kramaWrap)
+    .box('head', [0.35, 1.3, -0.16], [0.042, 0.03, 0.092], S.accent, F.kramaWrap);
   // The Khmer apsara crown (mokot), as on Angkor Wat's devata and in the Royal Ballet's Robam Tep Apsara: a gold
   // band and diadem with a red jewel at the front, THREE tall spikes in a row across it (the middle one tallest,
   // each tapering to its point, a jewel at its foot), strands of white jasmine hanging at the sides by the ears,
@@ -909,6 +934,8 @@ function buildFarModel(): Builder {
     .box('head', [0, 1.76, 0], [0.52, 0.26, 0.52], S.hat, F.hatPalm)
     .box('head', [0, 1.55, 0.01], [0.625, 0.22, 0.515], S.accent2, F.kramaHead)
     .box('head', [0, 1.53, 0.01], [0.63, 0.07, 0.52], S.accent, F.kramaHead)
+    .box('head', [0, 1.525, 0.01], [0.64, 0.17, 0.53], S.accent2, F.kramaWrap)
+    .box('head', [0, 1.65, -0.01], [0.6, 0.09, 0.5], S.accent2, F.kramaWrap)
     .box('head', [0, 1.66, 0.02], [0.56, 0.14, 0.46], S.gold, F.headdress)
     .box('head', [0, 1.9, 0.05], [0.08, 0.36, 0.08], S.gold, F.headdress)
     .boxLR('head', [0.16, 1.85, 0.05], [0.07, 0.26, 0.07], S.gold, F.headdress)
@@ -1846,11 +1873,12 @@ interface CrowdUniforms {
 
 /**
  * The New Year's Eve venues' firelight on the people in them (AWP-35: from above the crowd was dark hair and dark
- * clothes; the venues' painted light pools light nobody): per venue its middle (x, z), radius (m) and strength (0 off),
- * a table every crowd's shader reads (`FIRE_GLSL`: a warm fill on their colours, most on what faces up, a little warm
+ * clothes; the venues' painted light pools light nobody): per venue its middle (x, z), radius (m) and strength (0 off; a
+ * stage's entry less than 0 takes it off the performers there, lit by the stage's own lamps: entries 0, 1 the Kulen
+ * square and the lake plaza, 2, 3 their stages), a table every crowd's shader reads (`FIRE_GLSL`: a warm fill on their colours, most on what faces up, a little warm
  * sheen on dark hair). The New Year scenes (people/_sceneNye.ts, _sceneNyeLake.ts) set it on the event night.
  */
-export const PEOPLE_FIRE: { value: Vector4[] } = { value: [new Vector4(), new Vector4()] };
+export const PEOPLE_FIRE: { value: Vector4[] } = { value: [new Vector4(), new Vector4(), new Vector4(), new Vector4()] };
 /** The firelight's colour (linear), and the sheen it leaves on any colour (dark hair from above). */
 const FIRE_COLOR = [1.0, 0.6, 0.3] as const;
 const FIRE_SHEEN = 0.15;
@@ -1866,7 +1894,7 @@ const FIRE_GLSL = /* glsl */ `
   #endif
   float pFire = 0.0;
   for (int k = 0; k < ${PEOPLE_FIRE.value.length}; k++) pFire += uPFire[k].w * (1.0 - smoothstep(uPFire[k].z * 0.6, uPFire[k].z, length(pAt.xz - uPFire[k].xy)));
-  vPGlow += vec3(${FIRE_COLOR.map((v) => v.toFixed(2)).join(', ')}) * pFire * (0.35 + 0.65 * smoothstep(-0.3, 0.9, pNrm.y)) * (vPColor + ${FIRE_SHEEN.toFixed(2)});`;
+  vPGlow += vec3(${FIRE_COLOR.map((v) => v.toFixed(2)).join(', ')}) * max(pFire, 0.0) * (0.35 + 0.65 * smoothstep(-0.3, 0.9, pNrm.y)) * (vPColor + ${FIRE_SHEEN.toFixed(2)});`;
 
 /** The bone texture the crowd reads (the bone pass; null without it). */
 interface BoneUniforms {

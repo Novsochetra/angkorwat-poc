@@ -488,17 +488,19 @@ export function runnerAt(r: Runner, t: number, out: { x: number; z: number; yaw:
 
 // ── Festival clothes ────────────────────────────────────────────────────────
 
-/** White and cream shirts, silk blouses (lotus pink, gold, sky, lilac, jade), the kramas' checks (red, blue, green). */
+/** White and cream shirts, silk blouses (lotus pink, gold, sky, lilac, jade), the kramas' fine checks (muted red, slate blue, sage, plum) on cream. */
 const SHIRTS = [0xf4f0e6, 0xf6ecd6, 0xeee8dc];
 const SILKS = [0xf2a6bf, 0xe9c46a, 0xa9d0ee, 0xd4b4ec, 0x9fd8c0, 0xf6e7c8, 0xf0b890];
-const KRAMAS = [0xc8302a, 0x2a5aa8, 0x2a7a4a, 0xb0282a];
+const KRAMAS = [0xb0675a, 0x6a84aa, 0x7a9a72, 0x9a6a8a];
+const KRAMA_CREAM = [0xece2cc, 0xf0e8d6];
 const KID_TOPS = [0xf4f0e6, 0xf2d24a, 0xf2a6bf, 0x8fd0f0, 0xf0f0f0];
 
 /**
  * The night's crowd in lighter festival clothes, so groups read as people with colour from above (the lead's art
  * review: from over the plaza they were dark hair and dark clothes): most men in a white or cream shirt, most women in
- * a silk blouse, children in bright tops, and a krama wound round the head for a share of the men and elders (its white
- * and checks the brightest thing seen from above). `skip` keeps some as they are (the dancers in their silk, monks).
+ * a silk blouse, children in bright tops, and a festival krama wound round the head for about one man in five (cream
+ * cloth with a fine muted check: `FEAT.kramaWrap`, seen from above as cloth, not a parcel). `skip` keeps some as they
+ * are (the dancers in their silk, monks).
  */
 export function festiveLooks(members: (CrowdMember & { look: Look })[], skip: (k: number) => boolean, seed: number): void {
   members.forEach((m, k) => {
@@ -517,11 +519,11 @@ export function festiveLooks(members: (CrowdMember & { look: Look })[], skip: (k
       if (h(1) < 0.75) top(SILKS[Math.floor(h(2) * SILKS.length)]);
     } else {
       if (h(1) < 0.7) top(SHIRTS[Math.floor(h(2) * SHIRTS.length)]);
-      // (a krama round the head: short hair only, no hat)
-      if (h(3) < 0.35 && !feats.includes(FEAT.hatPalm) && !feats.includes(FEAT.hairLong) && !feats.includes(FEAT.hairBun) && !feats.includes(FEAT.kramaHead)) {
-        feats.push(FEAT.kramaHead);
+      // (a festival krama round the head, about one man in five: short hair only, no hat)
+      if (h(3) < 0.2 && !feats.includes(FEAT.hatPalm) && !feats.includes(FEAT.hairLong) && !feats.includes(FEAT.hairBun) && !feats.includes(FEAT.kramaHead)) {
+        feats.push(FEAT.kramaWrap);
         colors[SLOT.accent] = KRAMAS[Math.floor(h(4) * KRAMAS.length)];
-        colors[SLOT.accent2] = 0xf4f0e6;
+        colors[SLOT.accent2] = KRAMA_CREAM[Math.floor(h(5) * KRAMA_CREAM.length)];
         const neck = feats.indexOf(FEAT.kramaNeck);
         if (neck >= 0) feats.splice(neck, 1);
       }
