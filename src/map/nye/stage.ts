@@ -200,7 +200,8 @@ export function buildNyeStage(ctx: MapContext): NyePiece {
       const n = f.night;
       const k = n * n * (3 - 2 * n);
       const breathe = 1 + 0.06 * Math.sin(f.t * 2.3) + 0.04 * Math.sin(f.t * 3.7);
-      fires.intensity = 240 * k * breathe;
+      // (softer since the aisle to the stairs is open: the stairs had burned white under it)
+      fires.intensity = 180 * k * breathe;
       temple.intensity = 200 * k;
       lights.update(f);
       gate.update(f);

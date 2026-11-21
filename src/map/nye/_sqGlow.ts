@@ -135,7 +135,7 @@ export function buildSquareGlow(ctx: MapContext, input: SquareGlowInput = {}): S
 
   // ── The stage's front, the stalls; the gilt band; the gate (_sqLightGate.ts) ──
   // (the stage's fires light its front already, stage.ts: this only gathers it into a pool)
-  light.pool(STAGE.x, STAGE.front + 3, 12, 0xffc080, 0.14, 0.5);
+  light.pool(STAGE.x, STAGE.front + 3, 12, 0xffc080, 0.05, 0.5);
   for (const s of STALLS) lit(s.x + Math.sin(s.facing) * 1.5, s.z + Math.cos(s.facing) * 1.5, 6, 0.85);
   pools.ring(RING.x, RING.z, INLAY, 0.3, 0xffc060, 0.42, G + TOP + 0.03);
   // At midnight the square's pool beats with the count (pulse only).
